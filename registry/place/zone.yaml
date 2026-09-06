@@ -7,8 +7,7 @@
 #
 # scripts/registry/build_place.py がこのファイルを読んで place / place_source_ref に流す。
 # 中身は「フラットな辞書のリスト」だけで、ネストや複数行文字列など YAML の一般機能は
-# 使っていない。この repo にはまだ PyYAML 依存が無いため、依存を増やさず
-# build_place.py 側の自前の小さいパーサ（_load_zone_yaml）で読む。
+# 使っていない。読み込みは PyYAML（requirements.txt 参照）で統一している。
 
 - zone: 1
   name_ja: 山地源流域

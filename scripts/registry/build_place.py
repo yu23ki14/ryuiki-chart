@@ -52,13 +52,15 @@ sensor_timeseries にしか出てこない行」を区別しない。site_id は
 
 ## zone
 
-`registry/place/zone.yaml`（手書き）を読む。ネストの無い「辞書のリスト」だけの
-単純な形なので、PyYAML への依存を増やさず自前の小さいパーサ `_load_zone_yaml()`
-で読む（この repo にはまだ YAML パーサの依存が無い）。
+`registry/place/zone.yaml`（手書き）を読む。PyYAML（`yaml.safe_load`）で読む
+（A-2/A-5 と統一。以前は自前の小さいパーサだったが、YAML の読み方をリポジトリ全体で
+1本化するため置き換えた）。
 """
 import csv
 import pathlib
 import sqlite3
+
+import yaml
 
 from . import common
 
@@ -109,31 +111,11 @@ def _load_site_supplement() -> dict[str, dict]:
 
 
 def _load_zone_yaml() -> list[dict]:
-    """registry/place/zone.yaml（手書き）を読む。
-
-    フラットな「マッピングのリスト」だけの単純な形（ネスト無し・複数行文字列無し）
-    なので、依存を増やさず自前の小さいパーサで読む。
-    """
+    """registry/place/zone.yaml（手書き）を PyYAML で読む。"""
     path = PLACE_DIR / "zone.yaml"
-    items: list[dict] = []
-    current: dict | None = None
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        stripped = raw.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        if stripped.startswith("- "):
-            if current is not None:
-                items.append(current)
-            current = {}
-            stripped = stripped[2:]
-        if current is None:
-            raise ValueError(f"zone.yaml: リスト項目(先頭 '- ')以外の行が来た: {raw!r}")
-        key, colon, value = stripped.partition(":")
-        if not colon:
-            raise ValueError(f"zone.yaml: 'key: value' の形でない行: {raw!r}")
-        current[key.strip()] = value.strip()
-    if current is not None:
-        items.append(current)
+    with path.open(encoding="utf-8") as f:
+        items = yaml.safe_load(f)
+    assert len(items) == 5, f"registry/place/zone.yaml は5件のはずが{len(items)}件"
     return items
 
 

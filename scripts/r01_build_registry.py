@@ -16,6 +16,18 @@ D1 は「捨てて再構築できる」もの — ADR-0001）。
 import pathlib
 import sys
 
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+REQUIREMENTS_TXT = ROOT / "requirements.txt"
+
+try:
+    import yaml  # noqa: F401  (build_*.py が実際に使う。ここでは有無だけ確認する)
+except ImportError:
+    sys.exit(
+        "PyYAML が見つからない。レジストリビルドの依存を先に入れる:\n"
+        f"  pip install -r {REQUIREMENTS_TXT}\n"
+        "（.venv を使っている場合は .venv/bin/pip install -r requirements.txt）"
+    )
+
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 from registry import common
@@ -32,6 +44,30 @@ STEPS = [
     ("taxon (A-4)", build_taxon),
     ("caveat (A-5)", build_caveat),
 ]
+
+
+# PRIMARY KEY 列は SQLite が挿入時点で一意性を強制する（列の型が TEXT でも rowid alias
+# ではない PK には暗黙の UNIQUE index が張られる）ので、ここでの assert は理論上
+# 冗長ではある。それでも「4モジュールが同じ DB に同居したときの主キー衝突」を
+# ビルドの最後に明示的に検証しておく（統合作業の受け入れ基準）。
+ID_UNIQUENESS_CHECKS = [
+    ("unit", "unit_id"),
+    ("variable", "variable_id"),
+    ("place", "place_id"),
+    ("taxon", "taxon_id"),
+    ("caveat", "caveat_id"),
+]
+
+
+def _assert_id_uniqueness(conn) -> None:
+    for table, column in ID_UNIQUENESS_CHECKS:
+        total = conn.execute(f"SELECT count({column}) FROM {table}").fetchone()[0]
+        distinct = conn.execute(f"SELECT count(DISTINCT {column}) FROM {table}").fetchone()[0]
+        if total != distinct:
+            raise AssertionError(
+                f"{table}.{column} が一意ではない: {total:,}行中 distinct は {distinct:,}"
+            )
+        print(f"  一意性OK: {table}.{column} ({distinct:,})")
 
 
 def main() -> None:
@@ -54,6 +90,8 @@ def main() -> None:
 
         grand_total = sum(totals.values())
         print(f"完了: {len(totals)} テーブル / {grand_total:,} 行 -> {common.REGISTRY_DB}")
+
+        _assert_id_uniqueness(conn)
     finally:
         conn.close()
         for c in src.values():

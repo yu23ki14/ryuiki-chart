@@ -92,6 +92,14 @@ def unit_slug(symbol: str) -> str:
 
     / -> _per_ 、. -> _ 、°C/℃ -> degc 、小文字 ASCII 化。
     例: "mg/L" -> "mg_per_l" 、"m" -> "m" 、"°C" -> "degc" 、"dimensionless" -> "dimensionless"。
+
+    非ASCII文字（例: "点"）はこの規則では単純に消え、"0.1%" と "0.1percent" のような
+    別の単位が同じ slug に潰れることがある（A-2 の実測）。**この関数は「別の単位が
+    区別できない slug を返した」ことを検知できるだけの単独関数ではない**ので、空文字に
+    潰れた場合はここで例外にする。それ以外の衝突（空文字にはならないが既出の slug と
+    一致するケース）は呼び出し側が `seen` を渡したときだけ `unit_id()` 側で検知する。
+    どちらの場合も対処は「黙って壊れた ID を作らない」ことで、呼び出し側（現状は
+    registry/unit.yaml が明示する unit_id を正とする経路）に倒す。
     """
     s = (symbol or "").strip().lower()
     s = s.replace("℃", "degc")
@@ -100,11 +108,28 @@ def unit_slug(symbol: str) -> str:
     s = s.replace(".", "_")
     s = re.sub(r"[^a-z0-9_]+", "_", s)
     s = re.sub(r"_+", "_", s).strip("_")
+    if not s:
+        raise ValueError(
+            f"unit_slug: シンボル {symbol!r} が空文字列の slug に潰れた"
+            "（非ASCII文字のみ等）。unit_id を registry/unit.yaml 側で明示すること。"
+        )
     return s
 
 
-def unit_id(symbol: str, scope: str = "common") -> str:
-    return scoped_id("unit", unit_slug(symbol), scope)
+def unit_id(symbol: str, scope: str = "common", seen: set[str] | None = None) -> str:
+    """symbol から unit_id を作る。`seen` を渡すと、既出の slug と衝突した場合に
+    例外を投げる（呼び出し側が同一ビルド内で使った unit_id の集合を保持・更新する）。
+    """
+    uid = scoped_id("unit", unit_slug(symbol), scope)
+    if seen is not None:
+        if uid in seen:
+            raise ValueError(
+                f"unit_id 衝突: シンボル {symbol!r} から生成した {uid} は、"
+                "別のシンボルから生成済みの unit_id と衝突する。"
+                "registry/unit.yaml 側で unit_id を明示して回避すること。"
+            )
+        seen.add(uid)
+    return uid
 
 
 def variable_id(theme: str, name: str, scope: str = "common") -> str:
