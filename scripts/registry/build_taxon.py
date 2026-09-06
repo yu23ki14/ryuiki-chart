@@ -20,43 +20,65 @@
    `taxon_rank` は原本で大文字/小文字が混在する（'SPECIES'/'species' 等）ため
    小文字に統一するが、値の意味は変えない。
 
-2. **`taxa` のうち `gbif_taxon_key` を持つ行（2,643件。重複キーを除く distinct は
-   2,596件）は、新しい行を作らず対応する `common:taxon:gbif.<key>` に寄せる。**
-   同じ gbif_taxon_key を複数の `taxa` 行が指すことがある
-   （`gbif_match_type` が `HIGHERRANK`/`FUZZY` のとき、GBIF が種以下まで一致させられず
-   属・科・時に kingdom まで遡った結果、別種の `taxa` 行が同じ広いキーに衝突する。
-   例: key=1（Animalia, kingdom）に 10件の無関係な `taxa` 行が載る）。
-   **`vernacular_name_ja` をこの行に持たせてよいのは `gbif_match_type='EXACT'`
-   （種階級での一致）の `taxa` 行だけ、かつ同じキーを指す EXACT 行同士で
-   和名が完全に一致するときだけ。** それ以外（HIGHERRANK/FUZZY/NONE、または
-   EXACT 同士で和名が食い違う場合）は和名を持たせない。
+2. **`taxa` のうち `gbif_taxon_key` を持ち、かつ `gbif_match_type='EXACT'`
+   （種階級での一致）の行だけを、新しい行を作らず対応する `common:taxon:gbif.<key>`
+   に寄せる。** `HIGHERRANK`/`FUZZY`（合わせて300件。`gbif_taxon_key` はあるが
+   種以下まで一致していない）は方針3の unresolved 側に回す（レビュー指摘・
+   ADR-0019決定4）。
+
+   **なぜ EXACT 限定に直したか（当初は HIGHERRANK/FUZZY も寄せていた）**:
+   同じ gbif_taxon_key を複数の `taxa` 行が指すことがある（`gbif_match_type` が
+   `HIGHERRANK`/`FUZZY` のとき、GBIF が種以下まで一致させられず属・科・時に
+   kingdom まで遡った結果、別種の `taxa` 行が同じ広いキーに衝突する。例:
+   key=1（Animalia, kingdom）に CR/EN の昆虫を含む10件の無関係な `taxa` 行が
+   載る）。この300件のうち258件がレッドリストカテゴリを持ち、うち202件は
+   そのキーが `organism_records` に出現しないため、寄せた場合レジストリ行の
+   `scientific_name`/`rank` が「その taxon_key で GBIF が実際に一致させた階級
+   （属・科…）」ではなく「たまたま `taxon_id` 昇順で先頭だった `taxa` 行の
+   種名」になり、**ID の実体（属・科）と名前（種）が矛盾する**
+   （例: `common:taxon:gbif.3123761` は GBIF では属 *Nabalus* だが、寄せると
+   `scientific_name='Nabalus tanakae …', rank='genus'` のような矛盾した行に
+   なっていた）。ADR-0019決定4「`gbif_match_type` が弱いものは捨てずに
+   `status='unresolved'` で保持する」に反するため、EXACT 限定に直した。
+
+   **`vernacular_name_ja` をこの行に持たせてよいのは、EXACT 行同士で
+   和名が完全に一致するときだけ。** 和名が食い違う場合は和名を持たせない。
    理由: `domain.ts` の `NAME_JA` コメントが警告する「学名の広い一致に和名を
    機械結合すると別種・別個体群の和名が付く」事故（Plecoglossus altivelis に
    リュウキュウアユ）と、原理的に同じ危険が `taxa`→GBIF 側でも起きるため
-   （実測で確認済み: 上記 key=1 のような衝突が10グループ、うち "EXACT のみ"の
-   衝突は8グループで、これらは学名の表記ゆれ（著者引用の有無）による同一種の
-   重複であり和名も完全に一致していた。EXACT 限定はこの安全な場合だけを拾う）。
-   `scientific_name`/`rank` の代表選びも同じ理由で EXACT 行を優先する
-   （EXACT 行があればその中で `taxon_id`（taxa の主キー文字列）昇順の先頭、
-   無ければ全行の中で `taxon_id` 昇順の先頭。決定論的タイブレーク）。
+   （実測で確認済み: 同じキーに複数の EXACT 行が載るのは8グループで、
+   これらは学名の表記ゆれ（著者引用の有無）による同一種の重複であり
+   和名も完全に一致していた）。
+   `scientific_name`/`rank` の代表選びは、EXACT 限定にした後は同じキーを指す
+   EXACT 行全体の中で `taxon_id`（taxa の主キー文字列）昇順の先頭を採用する
+   （決定論的タイブレーク）。
    `rank` は `taxa` 自身の列には無いため、既存の
    `data/processed/taxon_crosswalk.csv`（c24_taxon_crosswalk.py の成果。
    gbif_taxon_key を持つ taxa 全2,643件がここに taxon_id で引ける）の
    `rank` 列を使う。
 
-3. **`gbif_taxon_key` を持たない `taxa` 行（5,942件）は捨てず
+3. **`gbif_match_type='EXACT'` でない `taxa` 行は捨てず
    `common:taxon:ryuiki-taxa.<taxa.taxon_id>` で `status='unresolved'` として登録する。**
-   `taxa.taxon_id` は学名の正規化文字列（`c25_taxa_table.py` 参照。和名のみの行は
-   `wamei:<和名>`）であり、整数の主キーではない。
-   PHASE_A.md は「5,908件（`gbif_match_type` が NULL）」と書いているが、実測では
-   `gbif_taxon_key` が空/NULL の行は 5,942件ある。差の34件は
-   `gbif_match_type='NONE'`（GBIF に照会はしたが一致しなかった）の行で、
-   これも「GBIF に無い」という点で NULL 行と同じく解決していないので、
-   このモジュールでは **5,942件を unresolved の母数として扱う**
-   （5,908 は「照会すらできていない」件数、34 はその内数の「照会したが不一致」件数、
-   合計が実際の unresolved 件数）。この行の `vernacular_name_ja` は `taxa` 自身の
-   列をそのまま転記する（`taxa` 行そのものが持つ属性であり、学名を介した
-   別行への機械結合ではないため、方針3の制限は掛からない）。
+   内訳は次の2種類（合計 6,242件。方針2の見直しで従来の5,942件から300件増えた）:
+   - `gbif_taxon_key` を持たない行（5,942件）。`taxa.taxon_id` は学名の正規化文字列
+     （`c25_taxa_table.py` 参照。和名のみの行は `wamei:<和名>`）であり、整数の
+     主キーではない。PHASE_A.md は「5,908件（`gbif_match_type` が NULL）」と
+     書いているが、実測では `gbif_taxon_key` が空/NULL の行は 5,942件ある。
+     差の34件は `gbif_match_type='NONE'`（GBIF に照会はしたが一致しなかった）の
+     行で、これも「GBIF に無い」という点で NULL 行と同じく解決していないので、
+     5,942件を母数として扱う（5,908 は「照会すらできていない」件数、34 は
+     その内数の「照会したが不一致」件数）。
+   - `gbif_taxon_key` を持つが `gbif_match_type` が `HIGHERRANK`/`FUZZY`
+     （合わせて300件。方針2参照）。GBIF に照会でき、広い階級までは一致したが、
+     「その GBIF taxon_key が指す概念そのもの」ではないため、対応する
+     `gbif.<key>` 行には寄せず、`taxa` 行1件ごとに個別の unresolved 行として残す
+     （同じキーに複数の `taxa` 行が衝突していても、unresolved 側では
+     `taxa.taxon_id` ごとに別々の ID になるので、別種の和名・レッドリストカテゴリが
+     混ざることはない）。
+
+   いずれの場合も `vernacular_name_ja` は `taxa` 自身の列をそのまま転記する
+   （`taxa` 行そのものが持つ属性であり、学名を介した別行への機械結合ではないため、
+   方針2の制限は掛からない）。
 
 4. **和名は `registry/taxon/vernacular_ja.csv`（`domain.ts` の `NAME_JA` 54件を
    1件も増減せずに複製したもの）だけを、機械結合ではない人間確認済みの和名として
@@ -180,8 +202,16 @@ def _load_crosswalk_rank() -> dict[str, str]:
 
 
 def _group_taxa_by_gbif_key(taxa_rows) -> dict[str, list[dict]]:
+    """`gbif_match_type='EXACT'` の taxa 行だけを gbif_taxon_key でグループ化する。
+
+    HIGHERRANK/FUZZY（キーはあるが種以下まで一致していない）はここに含めない
+    （モジュール docstring 方針2）。呼び出し側はこの辞書に無いキーを
+    「EXACT で寄せられる taxa 行が無い」とみなす。
+    """
     groups: dict[str, list[dict]] = {}
     for row in taxa_rows:
+        if row["gbif_match_type"] != "EXACT":
+            continue
         key = (row["gbif_taxon_key"] or "").strip()
         if not key:
             continue
@@ -197,16 +227,16 @@ def _group_taxa_by_gbif_key(taxa_rows) -> dict[str, list[dict]]:
 
 
 def _pick_taxa_representative(rows: list[dict], crosswalk_rank: dict[str, str]):
-    """gbif_taxon_key を共有する taxa 行の集まりから、代表 (scientific_name, rank) と
-    安全な場合だけの vernacular_name_ja を選ぶ（モジュール docstring 方針2）。
+    """EXACT の taxa 行の集まり（`_group_taxa_by_gbif_key` の出力）から、
+    代表 (scientific_name, rank) と、和名が食い違っていない場合だけの
+    vernacular_name_ja を選ぶ（モジュール docstring 方針2）。
+    全行が EXACT である前提だが、タイブレークは `taxon_id` 昇順の先頭。
     """
-    exact = [r for r in rows if r["gbif_match_type"] == "EXACT"]
-    pool = exact if exact else rows
-    rep = min(pool, key=lambda r: r["taxon_id"])
+    rep = min(rows, key=lambda r: r["taxon_id"])
     rank_raw = crosswalk_rank.get(rep["taxon_id"])
 
-    exact_vernaculars = {r["vernacular_name_ja"] for r in exact if r["vernacular_name_ja"]}
-    vernacular = next(iter(exact_vernaculars)) if len(exact_vernaculars) == 1 else None
+    vernaculars = {r["vernacular_name_ja"] for r in rows if r["vernacular_name_ja"]}
+    vernacular = next(iter(vernaculars)) if len(vernaculars) == 1 else None
     return rep["scientific_name"], rank_raw, vernacular
 
 
@@ -289,18 +319,35 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
         f"taxa のみ {n_from_taxa_only:,})"
     )
 
-    # --- taxa の GBIF 未照合行（unresolved） ---------------------------------------
+    # --- taxa の gbif_match_type != 'EXACT' な行（unresolved） ---------------------
+    # 内訳: gbif_taxon_key を持たない（NONE/NULL）5,942件 + 持つが弱い一致
+    # （HIGHERRANK/FUZZY）300件（モジュール docstring 方針3。レビュー指摘で
+    # 従来の「キー無しだけ unresolved」から広げた）。
     n_unresolved = 0
+    n_unresolved_weak_match = 0
+    seen_unresolved: dict = {}
     for row in taxa_rows:
-        if (row["gbif_taxon_key"] or "").strip():
-            continue
-        taxon_id = common.taxon_id_unresolved(row["taxon_id"])
+        has_key = bool((row["gbif_taxon_key"] or "").strip())
+        if has_key and row["gbif_match_type"] == "EXACT":
+            continue  # 方針2で対応する gbif.<key> 行に寄せ済み
+        taxon_id = common.taxon_id_unresolved(row["taxon_id"], seen=seen_unresolved)
+        if taxon_id in rows_by_id:
+            raise ValueError(
+                f"taxon_id 衝突: unresolved 側で組み立てた {taxon_id!r} が"
+                "既存の行（gbif 側 or 別の taxa 行）と衝突した"
+            )
         rows_by_id[taxon_id] = [
             taxon_id, row["scientific_name"], None, None,
             row["vernacular_name_ja"], "unresolved", None,
         ]
         n_unresolved += 1
-    print(f"  [taxon] taxa 由来 unresolved = {n_unresolved:,} / taxa総数 {len(taxa_rows):,}")
+        if has_key:
+            n_unresolved_weak_match += 1
+    print(
+        f"  [taxon] taxa 由来 unresolved = {n_unresolved:,} / taxa総数 {len(taxa_rows):,}"
+        f"（うち gbif_taxon_key はあるが gbif_match_type が EXACT でない弱い一致: "
+        f"{n_unresolved_weak_match:,}）"
+    )
 
     # --- NAME_JA（人手確認済み54件）を binom で上書き -------------------------------
     overrides = _load_vernacular_overrides()

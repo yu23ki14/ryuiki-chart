@@ -14,7 +14,7 @@
 | 4 | `sensor_timeseries` の site_id 77種 → `place_id` | 100% | 100.00%（未解決 0種 / 行ベースでは 100.00%） | OK |
 | 5 | `organism_records` 823,692行 → `taxon_id` | ≥99.8% | 99.8964%（未解決 853行） | OK |
 | 6 | 単位が決まる measurement 行（単位欠落 109,078行のうち） | 報告のみ | 104,410行（95.72%）が埋まる。残り 4,668行は未解決 | 報告のみ |
-| 7 | `taxa` 8,585行 → `taxon_id` | 報告のみ | GBIF照合あり 2,643行 / `unresolved` 5,942行 | 報告のみ |
+| 7 | `taxa` 8,585行 → `taxon_id` | 報告のみ | GBIF照合(EXACT)あり 2,343行 / registry `status='unresolved'` 6,242行（詳細は§7） | 報告のみ |
 
 100%/≥99.8% を要求する項目（#1〜#5）はすべて目標を満たしている。
 
@@ -64,20 +64,24 @@
 ## 7. taxa → taxon_id（報告のみ）／ status='unresolved' の taxon
 
 - `taxa` 8,585行のうち、`gbif_taxon_key` を持つのは 2,643行。持たない（GBIFに未照合）のは 5,942行。
-- レジストリ側 `taxon` テーブルは 41,324行 （`status='accepted'` 35,382 / `status='unresolved'` 5,942）。`unresolved` の件数は `taxa` の未照合件数と一致する。
-- 未照合の内訳（`gbif_match_type` 別）:
+- `gbif_taxon_key` を持つ 2,643行の内訳: `gbif_match_type='EXACT'`（種階級での一致）2,343行 / `HIGHERRANK`・`FUZZY`（キーはあるが種以下まで一致していない弱い一致）300行。
+- レジストリ側 `taxon` テーブルは 41,444行 （`status='accepted'` 35,202 / `status='unresolved'` 6,242）。**`unresolved` の件数は `taxa` の未照合件数（gbif_taxon_key欠落）と一致しない。** レビュー指摘（ADR-0019決定4）を受け、`gbif_match_type='EXACT'` 以外は `gbif_taxon_key` があっても対応する `gbif.<key>` 行に寄せず `status='unresolved'` で taxa 行ごとに個別登録する方針に直したため、`unresolved` は「未照合 5,942行」に「弱い一致 300行」を加えた6,242行になる（実測: `status='unresolved'` 6,242行）。弱い一致を寄せていた旧実装では、GBIF が種以下まで一致させられなかった広い taxon_key（例: kingdom=Animalia）に複数の無関係な種の名前・レッドリストカテゴリが混ざる行ができていた。
+- 未照合・弱い一致の内訳（`gbif_match_type` 別。EXACT を除く全件）:
 
   | gbif_match_type | 件数 | 意味 |
   |---|---|---|
   | `(NULL)` | 5,908 | GBIFへの照会自体が未実施（gbif_taxon_key欠落） |
+  | `FUZZY` | 60 | GBIFに照会でき gbif_taxon_key はあるが、種階級までの一致ではない |
+  | `HIGHERRANK` | 240 | GBIFに照会でき gbif_taxon_key はあるが、種階級までの一致ではない |
   | `NONE` | 34 | GBIFへ照会したが一致しなかった |
 
-- 全件（5942行）: `reports/registry_resolution/unresolved_taxa.csv`。以下は先頭 40 件（`taxon_id` 昇順の代表例。全件は上記CSV参照）:
+- 全件（6242行）: `reports/registry_resolution/unresolved_taxa.csv`。以下は先頭 40 件（`taxon_id` 昇順の代表例。全件は上記CSV参照）:
 
   | taxon_id | scientific_name | vernacular_name_ja | taxon_group_ja | gbif_match_type |
   |---|---|---|---|---|
   | `abbottina rivularis` | Abbottina rivularis | ツチフキ | 汽水・淡水魚類 |  |
   | `abelia chinensis var. ionandra` | Abelia chinensis var. ionandra | タイワンツクバネウツギ | 維管束植物 |  |
+  | `abelia serrata siebold & zucc. var. serrata` | Abelia serrata Siebold & Zucc. var. serrata | コツクバネウツギ | 維管束植物 | HIGHERRANK |
   | `abelmoschus moschatus var. betulifolius` | Abelmoschus moschatus var. betulifolius | センカクトロロアオイ | 維管束植物 |  |
   | `abrodictyum boninense` | Abrodictyum boninense | ハハジマホラゴケ | 維管束植物 |  |
   | `abroscelis anchoralis` | Abroscelis anchoralis | イカリモンハンミョウ | 昆虫類 |  |
@@ -115,7 +119,6 @@
   | `acheilognathus tabira tohokuensis` | Acheilognathus tabira tohokuensis | キタノアカヒレタビラ | 汽水・淡水魚類 |  |
   | `achillea alpina subsp. japonica` | Achillea alpina subsp. japonica | キタノコギリソウ | 維管束植物 |  |
   | `achillea alpina subsp. subcartilaginea` | Achillea alpina subsp. subcartilaginea | アソノコギリソウ | 維管束植物 |  |
-  | `achillea ptarmica subsp. macrocephala var. yezoensis` | Achillea ptarmica subsp. macrocephala var. yezoensis | ホソバエゾノコギリ | 維管束植物 |  |
 
 ## 生成ファイル一覧
 
@@ -126,5 +129,5 @@
 | `unresolved_organism_records.csv` | 853 | taxon_id が付かない occurrence |
 | `needs_review_place.csv` | 90 | 座標未確認等の place |
 | `needs_review_variable.csv` | 1 | 単位・粒度未確定の variable |
-| `unresolved_taxa.csv` | 5942 | GBIF未照合の taxa（全件） |
+| `unresolved_taxa.csv` | 6242 | GBIF未照合の taxa（全件） |
 

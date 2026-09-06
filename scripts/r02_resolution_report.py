@@ -372,38 +372,62 @@ def report_needs_review(ryuiki: sqlite3.Connection, unit_still_missing_by_variab
 # ---------------------------------------------------------------------------
 
 def report_taxa(ryuiki: sqlite3.Connection) -> dict:
+    """taxa 8,585行の GBIF 照合状況と、registry 側 taxon.status='unresolved' の対応。
+
+    build_taxon.py はレビュー指摘で「`gbif_match_type='EXACT'`（種階級での一致）の
+    taxa 行だけを対応する gbif.<key> 行に寄せ、`HIGHERRANK`/`FUZZY`（キーはあるが
+    種以下まで一致していない）は捨てずに `status='unresolved'` で個別に残す」方針に
+    直した（ADR-0019決定4）。そのため registry 側の unresolved（6,242件）は
+    「taxa の生の gbif_taxon_key 欠落数」（5,942件）より300件多い。この節では
+    両方の数字を出し、差分（EXACT でない弱い一致）を明示する。
+    """
     total_taxa = scalar(ryuiki, "SELECT count(*) FROM taxa")
     with_gbif_key = scalar(
         ryuiki, "SELECT count(*) FROM taxa WHERE gbif_taxon_key IS NOT NULL AND gbif_taxon_key <> ''"
     )
-    unresolved = total_taxa - with_gbif_key
+    no_gbif_key = total_taxa - with_gbif_key
+    exact_with_key = scalar(
+        ryuiki,
+        "SELECT count(*) FROM taxa WHERE gbif_taxon_key IS NOT NULL AND gbif_taxon_key <> '' "
+        "AND gbif_match_type = 'EXACT'",
+    )
+    weak_with_key = with_gbif_key - exact_with_key  # HIGHERRANK + FUZZY
 
+    # registry の unresolved と同じ定義（gbif_match_type が EXACT でない全行）。
     unresolved_rows = rows(
         ryuiki,
         """
         SELECT taxon_id, scientific_name, vernacular_name_ja, taxon_group_ja,
-               redlist_kanagawa, redlist_national, ias_category, gbif_match_type, source_id
+               redlist_kanagawa, redlist_national, ias_category, gbif_match_type,
+               gbif_taxon_key, source_id
         FROM taxa
-        WHERE gbif_taxon_key IS NULL OR gbif_taxon_key = ''
+        WHERE gbif_match_type IS NOT 'EXACT'
         ORDER BY taxon_id
         """,
     )
 
-    def reason(match_type):
+    def reason(match_type, gbif_key):
         if match_type == "NONE":
             return "GBIFへ照会したが一致しなかった（gbif_match_type=NONE）"
+        if match_type in ("HIGHERRANK", "FUZZY"):
+            return (
+                f"GBIFに照会でき gbif_taxon_key={gbif_key} まで辿れたが、種階級までの"
+                f"一致ではない（gbif_match_type={match_type}）。対応するgbif行に寄せると"
+                "別種の名前・レッドリストカテゴリが混ざる恐れがあるため、taxa 行ごとに"
+                "unresolved のまま個別登録する（ADR-0019決定4）。"
+            )
         return "GBIFへの照会自体が未実施（gbif_taxon_key欠落・gbif_match_type=NULL）"
 
     n_csv = write_csv(
         "unresolved_taxa.csv",
         ["taxon_id", "scientific_name", "vernacular_name_ja", "taxon_group_ja",
          "redlist_kanagawa", "redlist_national", "ias_category", "gbif_match_type",
-         "source_id", "reason"],
+         "gbif_taxon_key", "source_id", "reason"],
         [
             (r["taxon_id"], r["scientific_name"], r["vernacular_name_ja"],
              r["taxon_group_ja"], r["redlist_kanagawa"], r["redlist_national"],
-             r["ias_category"], r["gbif_match_type"], r["source_id"],
-             reason(r["gbif_match_type"]))
+             r["ias_category"], r["gbif_match_type"], r["gbif_taxon_key"], r["source_id"],
+             reason(r["gbif_match_type"], r["gbif_taxon_key"]))
             for r in unresolved_rows
         ],
     )
@@ -413,7 +437,7 @@ def report_taxa(ryuiki: sqlite3.Connection) -> dict:
         """
         SELECT COALESCE(gbif_match_type, '(NULL)') AS match_type, count(*) AS n
         FROM taxa
-        WHERE gbif_taxon_key IS NULL OR gbif_taxon_key = ''
+        WHERE gbif_match_type IS NOT 'EXACT'
         GROUP BY COALESCE(gbif_match_type, '(NULL)')
         ORDER BY match_type
         """,
@@ -432,7 +456,9 @@ def report_taxa(ryuiki: sqlite3.Connection) -> dict:
     return {
         "total_taxa": total_taxa,
         "with_gbif_key": with_gbif_key,
-        "unresolved": unresolved,
+        "exact_with_key": exact_with_key,
+        "weak_with_key": weak_with_key,
+        "unresolved": no_gbif_key,
         "unresolved_csv_rows": n_csv,
         "by_match_type": [(r["match_type"], r["n"]) for r in by_match_type],
         "sample": sample,
@@ -518,7 +544,8 @@ def render_markdown(v, p, o, u, nr, t) -> str:
 
     a(
         f"| 7 | `taxa` {t['total_taxa']:,}行 → `taxon_id` | 報告のみ | "
-        f"GBIF照合あり {t['with_gbif_key']:,}行 / `unresolved` {t['unresolved']:,}行 | 報告のみ |"
+        f"GBIF照合(EXACT)あり {t['exact_with_key']:,}行 / registry `status='unresolved'` "
+        f"{t['registry_taxon_unresolved']:,}行（詳細は§7） | 報告のみ |"
     )
     a("")
 
@@ -638,21 +665,38 @@ def render_markdown(v, p, o, u, nr, t) -> str:
         f"{t['with_gbif_key']:,}行。持たない（GBIFに未照合）のは {t['unresolved']:,}行。"
     )
     a(
+        f"- `gbif_taxon_key` を持つ {t['with_gbif_key']:,}行の内訳: "
+        f"`gbif_match_type='EXACT'`（種階級での一致）{t['exact_with_key']:,}行 / "
+        f"`HIGHERRANK`・`FUZZY`（キーはあるが種以下まで一致していない弱い一致）"
+        f"{t['weak_with_key']:,}行。"
+    )
+    a(
         f"- レジストリ側 `taxon` テーブルは {t['registry_taxon_total']:,}行 "
         f"（`status='accepted'` {t['registry_taxon_accepted']:,} / "
         f"`status='unresolved'` {t['registry_taxon_unresolved']:,}）。"
-        f"`unresolved` の件数は `taxa` の未照合件数と一致する。"
+        "**`unresolved` の件数は `taxa` の未照合件数（gbif_taxon_key欠落）と"
+        "一致しない。** レビュー指摘（ADR-0019決定4）を受け、`gbif_match_type='EXACT'` "
+        "以外は `gbif_taxon_key` があっても対応する `gbif.<key>` 行に寄せず "
+        "`status='unresolved'` で taxa 行ごとに個別登録する方針に直したため、"
+        f"`unresolved` は「未照合 {t['unresolved']:,}行」に「弱い一致 "
+        f"{t['weak_with_key']:,}行」を加えた"
+        f"{t['unresolved'] + t['weak_with_key']:,}行になる"
+        f"（実測: `status='unresolved'` {t['registry_taxon_unresolved']:,}行）。"
+        "弱い一致を寄せていた旧実装では、GBIF が種以下まで一致させられなかった"
+        "広い taxon_key（例: kingdom=Animalia）に複数の無関係な種の名前・"
+        "レッドリストカテゴリが混ざる行ができていた。"
     )
-    a("- 未照合の内訳（`gbif_match_type` 別）:")
+    a("- 未照合・弱い一致の内訳（`gbif_match_type` 別。EXACT を除く全件）:")
     a("")
     a("  | gbif_match_type | 件数 | 意味 |")
     a("  |---|---|---|")
     for match_type, n in t["by_match_type"]:
-        meaning = (
-            "GBIFへ照会したが一致しなかった"
-            if match_type == "NONE"
-            else "GBIFへの照会自体が未実施（gbif_taxon_key欠落）"
-        )
+        if match_type == "NONE":
+            meaning = "GBIFへ照会したが一致しなかった"
+        elif match_type in ("HIGHERRANK", "FUZZY"):
+            meaning = "GBIFに照会でき gbif_taxon_key はあるが、種階級までの一致ではない"
+        else:
+            meaning = "GBIFへの照会自体が未実施（gbif_taxon_key欠落）"
         a(f"  | `{match_type}` | {n:,} | {meaning} |")
     a("")
     a(

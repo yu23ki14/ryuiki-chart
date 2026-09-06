@@ -87,6 +87,61 @@ def scoped_id(entity: str, local_key: str, scope: str = "common") -> str:
     return f"{scope}:{entity}:{local_key}"
 
 
+_LOCAL_KEY_SAFE = re.compile(r"[A-Za-z0-9_.-]")
+
+
+def slugify_local_key(raw: str, *, seen: dict | None = None) -> str:
+    """出典の生の識別子や学名を ADR-0004 規約4（公開 ID は URI に解決できる形にする）に
+    合わせて正規化する。`taxon_id_unresolved()` / `place_id()` の `local` 部分は
+    必ずこれを通す（レビュー指摘: 空白・コロン・非ASCIIがそのまま ID に入っていた）。
+
+    規則:
+    - 前後の空白を落とし、内部の空白列は `_` に畳む。
+    - `:` は `.` に変える（`<scope>:<entity>:<local_key>` の3分割が曖昧にならないよう。
+      local_key 側に `:` が残ると分割位置が一意に決まらない）。
+    - `/` は `_` に変える。
+    - 連続する `_`/`.` は1文字に畳み、前後の `_`/`.` は落とす。
+    - それでも残る非ASCII文字・URI的に安全でない記号（`(` `)` `,` `?` 全角文字等）は
+      UTF-8 バイト列を percent-encode する（`urllib.parse.unquote` で復元できる。
+      **元の文字列を捨てない** — ただし復元用途としては、通常は呼び出し元の行が
+      `scientific_name` / `name_ja` 等で原文をそのまま持っているので、そちらを正とする）。
+
+    `seen` に呼び出し側が dict を渡すと、正規化後の slug が別の元文字列（`raw`）から
+    生成済みの slug と衝突した場合に例外を投げる（**別々の元キーが同じ slug に
+    黙って潰れてはいけない**）。`seen` のキー空間（どの範囲で衝突を見るか）は
+    呼び出し側が決める（例: place_id は place_kind・namespace ごとに区切る）。
+    """
+    if raw is None:
+        raise ValueError("slugify_local_key: raw が None")
+    s = raw.strip()
+    s = re.sub(r"\s+", "_", s)
+    s = s.replace(":", ".")
+    s = s.replace("/", "_")
+    s = re.sub(r"[_.]{2,}", lambda m: m.group(0)[0], s)
+    s = s.strip("_.")
+    out = []
+    for ch in s:
+        if _LOCAL_KEY_SAFE.match(ch):
+            out.append(ch)
+        else:
+            out.extend(f"%{b:02X}" for b in ch.encode("utf-8"))
+    slug = "".join(out)
+    if not slug:
+        raise ValueError(
+            f"slugify_local_key: {raw!r} が空文字列の slug に潰れた"
+            "（空白・区切り記号のみ等）。呼び出し元で明示的な local を用意すること。"
+        )
+    if seen is not None:
+        prev = seen.get(slug)
+        if prev is not None and prev != raw:
+            raise ValueError(
+                f"slugify_local_key: 衝突。{raw!r} と {prev!r} が同じ slug "
+                f"{slug!r} に潰れた（黙って同じIDに束ねない）。"
+            )
+        seen[slug] = raw
+    return slug
+
+
 def unit_slug(symbol: str) -> str:
     """正準シンボルを common:unit:<slug> の <slug> に変換する。
 
@@ -136,18 +191,51 @@ def variable_id(theme: str, name: str, scope: str = "common") -> str:
     return scoped_id("variable", f"{theme}.{name}", scope)
 
 
-def place_id(place_kind: str, namespace: str, local: str, scope: str = "common") -> str:
-    """common:place:<kind>.<namespace>-<local>。site は通常 jp-14 スコープ。"""
-    return scoped_id("place", f"{place_kind}.{namespace}-{local}", scope)
+def place_id(
+    place_kind: str,
+    namespace: str | None,
+    local: str,
+    scope: str = "common",
+    *,
+    seen: dict | None = None,
+) -> str:
+    """common:place:<kind>.<namespace>-<local>。site は通常 jp-14 スコープ。
+
+    `namespace` に None（または空文字）を渡すと `<namespace>-` を省いて
+    `common:place:<kind>.<local>` にする（例: grid01 のように、値そのものが
+    ID 全体で一意な出典由来のグリッド）。
+
+    `local` は `slugify_local_key()` を通す（空白・コロン・非ASCII対策。
+    レビュー指摘）。`seen` を渡すと、同じ (place_kind, namespace) の中で
+    別の元 local が同じ slug に潰れた場合に例外を投げる。
+    """
+    slug = slugify_local_key(str(local))
+    if seen is not None:
+        key = (place_kind, namespace)
+        bucket = seen.setdefault(key, {})
+        prev = bucket.get(slug)
+        if prev is not None and prev != local:
+            raise ValueError(
+                f"place_id 衝突: place_kind={place_kind!r} namespace={namespace!r} の下で "
+                f"{local!r} と {prev!r} が同じ slug {slug!r} に潰れた。"
+            )
+        bucket[slug] = local
+    middle = f"{namespace}-{slug}" if namespace else slug
+    return scoped_id("place", f"{place_kind}.{middle}", scope)
 
 
 def taxon_id_gbif(gbif_key, scope: str = "common") -> str:
     return scoped_id("taxon", f"gbif.{gbif_key}", scope)
 
 
-def taxon_id_unresolved(taxa_pk, scope: str = "common") -> str:
-    """v1 の taxa 由来で GBIF 未照合のもの。"""
-    return scoped_id("taxon", f"ryuiki-taxa.{taxa_pk}", scope)
+def taxon_id_unresolved(taxa_pk, scope: str = "common", *, seen: dict | None = None) -> str:
+    """v1 の taxa 由来で GBIF 未照合（`gbif_match_type` が EXACT でない、または
+    GBIF に照会できていない）もの。`taxa_pk` は `slugify_local_key()` を通す
+    （空白・コロン・非ASCII対策。レビュー指摘）。`seen` を渡すと、別の
+    `taxa_pk` が同じ slug に潰れた場合に例外を投げる。
+    """
+    slug = slugify_local_key(str(taxa_pk), seen=seen)
+    return scoped_id("taxon", f"ryuiki-taxa.{slug}", scope)
 
 
 def caveat_id(key: str, scope: str = "common") -> str:

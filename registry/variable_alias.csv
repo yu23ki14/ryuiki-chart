@@ -8,7 +8,7 @@ COD 75%値,measurements,common:variable:water.cod,,p75,fiscal_year,
 浮遊物質量 SS,measurements,common:variable:water.ss,,mean,mixed,採水個別値(grain=day)と年度代表値(grain=fiscal_year)が同じ表記で混在。原本のまま、集計方法の統一はしていない。
 全窒素 T-N,measurements,common:variable:water.tn,,,fiscal_year,
 全燐 T-P,measurements,common:variable:water.tp,,,fiscal_year,
-pH,measurements,common:variable:water.ph,common:unit:dimensionless,point,day,web/src/lib/domain.ts の VARIABLE_UNIT_FALLBACK が pH は無次元と既に明記
+pH,measurements,common:variable:water.ph,common:unit:dimensionless,point,mixed,"web/src/lib/domain.ts の VARIABLE_UNIT_FALLBACK が pH は無次元と既に明記。実測で measured_on の書式が採水個別値(grain=day、34,165行)と年度代表値(grain=fiscal_year、768行)で混在することを確認し、grain=day から mixed に修正した。"
 pH（最大値）,measurements,common:variable:water.ph,common:unit:dimensionless,max,fiscal_year,web/src/lib/domain.ts の VARIABLE_UNIT_FALLBACK が pH は無次元と既に明記
 pH（最小値）,measurements,common:variable:water.ph,common:unit:dimensionless,min,fiscal_year,web/src/lib/domain.ts の VARIABLE_UNIT_FALLBACK が pH は無次元と既に明記
 大腸菌群数,measurements,common:variable:water.coliform_group,,mean,mixed,採水個別値(grain=day)と年度代表値(grain=fiscal_year)が同じ表記で混在。原本のまま、集計方法の統一はしていない。
