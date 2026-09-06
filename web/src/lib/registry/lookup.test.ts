@@ -78,13 +78,14 @@ describe("caveatBody / caveatsForTables — generated-client.ts 経由でも cav
   });
 });
 
-describe("caveatsForTables — table_synthetic が 1:N（複数の synthetic テーブルが別々の注記を持つ場合）", () => {
+describe("caveatsForTables — priority が同点の synthetic が 1:N（複数の synthetic テーブルが別々の注記を持つ場合）", () => {
   // 現行の registry/caveat.yaml では 6 つの synthetic テーブルが全て同じキー
   // "synthetic" に写るため、実データだけでは「最初の1件で break していないか」を
-  // 見分けられない（レビュー指摘: caveatsForTables の table_synthetic 分岐が
-  // 最初に一致したテーブルの注記だけを足して break していた）。ここでは
-  // generated-client.ts をモックし、2つの synthetic テーブルにそれぞれ別のキーを
-  // 割り当てて、両方とも失われず返ることを確認する。
+  // 見分けられない（レビュー指摘: caveatsForTables の旧 table_synthetic 特殊分岐が
+  // 最初に一致したテーブルの注記だけを足して break していた。修正1で scope_kind の
+  // 特殊値を廃止し、priority 列だけで優先度を表す一般規則にした）。ここでは
+  // generated-client.ts をモックし、2つの synthetic テーブル（どちらも priority=1）に
+  // それぞれ別のキーを割り当てて、両方とも失われず返ることを確認する。
   it("2つ目以降の synthetic テーブルの注記も失われない", async () => {
     vi.resetModules();
     vi.doMock("@/lib/registry/generated-client", () => ({
@@ -93,8 +94,8 @@ describe("caveatsForTables — table_synthetic が 1:N（複数の synthetic テ
         { key: "synthetic_b", severity: null, kind: null, bodyJa: "B注記" },
       ],
       GENERATED_CAVEAT_SCOPE: [
-        { scopeKind: "table_synthetic", scopeRef: "observers", caveatKey: "synthetic_a", sortOrder: 0 },
-        { scopeKind: "table_synthetic", scopeRef: "quality_monthly", caveatKey: "synthetic_b", sortOrder: 0 },
+        { scopeKind: "table", scopeRef: "observers", caveatKey: "synthetic_a", sortOrder: 0, priority: 1 },
+        { scopeKind: "table", scopeRef: "quality_monthly", caveatKey: "synthetic_b", sortOrder: 0, priority: 1 },
       ],
     }));
     try {

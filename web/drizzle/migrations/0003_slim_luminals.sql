@@ -12,7 +12,8 @@ CREATE TABLE `caveat_scope` (
 	`caveat_id` text,
 	`scope_kind` text,
 	`scope_ref` text,
-	`sort_order` integer
+	`sort_order` integer,
+	`priority` integer DEFAULT 0 NOT NULL
 );
 --> statement-breakpoint
 CREATE INDEX `ix_caveat_scope_scope` ON `caveat_scope` (`scope_kind`,`scope_ref`);--> statement-breakpoint

@@ -25,23 +25,15 @@ title_ja, body_ja, quote)` という単一テーブルだった。しかし実�
 "No schema changes" になることと、まっさらな状態からの `pnpm run db:migrate` が
 通ることを確認済み）。
 
-## `caveat_scope.scope_kind` が取りうる値
+## `caveat_scope.scope_kind` が取りうる値（**一致方法だけ**を表す）
 
-- `'table'`      — scope_ref はテーブル名の完全一致（例: `'sites'`, `'measurements'`）。
-                   `caveats.ts` の `SITES_CAVEATS` / `MEASURE_TABLES` / `ORGANISM_TABLES` /
-                   `MESH_TABLES_EXTRA`（`species_mesh_year`）/ `IAS_CAVEATS`（`ias_species`）
-                   に対応する。
+- `'table'`      — scope_ref はテーブル名の完全一致（例: `'sites'`, `'measurements'`,
+                   `SYNTHETIC_TABLES`）。`caveats.ts` の `SITES_CAVEATS` / `MEASURE_TABLES` /
+                   `ORGANISM_TABLES` / `MESH_TABLES_EXTRA`（`species_mesh_year`）/
+                   `IAS_CAVEATS`（`ias_species`）/ `SYNTHETIC_CAVEATS`（`SYNTHETIC_TABLES`）
+                   すべてがこの1種類に対応する。
 - `'table_prefix'` — scope_ref はテーブル名の前方一致パターン（今のところ `'mesh_'` のみ）。
                    `caveats.ts` の `t.startsWith("mesh_")` を表す。
-- `'table_synthetic'` — scope_ref はテーブル名の完全一致で、`SYNTHETIC_TABLES`
-                   （`observers` / `interventions` / `decisions` / `quality_transitions` /
-                   `quality_monthly` / `event_observers`）専用。`'table'` と分けてあるのは、
-                   この注記（`synthetic`）だけは「渡されたテーブルの中に1つでもあれば、
-                   他のどのテーブルより先頭に置く」という優先規則が付くため
-                   （`caveats.ts` の `if (tables.some((t) => SYNTHETIC_TABLES.has(t))) add(...)`
-                   が特別扱いしているのと同じ）。この規則自体はデータではなくコード側
-                   （A-7 が実装する読み出し層）が持つ。`caveat_scope` はあくまで
-                   「どのテーブルが synthetic 優先グループに属するか」を表すだけ。
 - `'cell'`       — `cells.sqlite` の `notes` 由来。scope_ref は `notes.doc_id`
                    （原本の文書ID。全207行に必ず入っている）。
 - `'cell_table'` — 同じく `notes` 由来で、`notes.table_ids`（JSON配列、59/207行で非空）が
@@ -49,26 +41,36 @@ title_ja, body_ja, quote)` という単一テーブルだった。しかし実�
                    （`table_ids` の値は文書内で使われる略記で、文書をまたいで一意とは限らない
                    ため doc_id を前置して衝突を避けている）。
   **`'cell'` / `'cell_table'` は `caveatsForTables()` の対象外。** テーブル向けの
-  `'table'` / `'table_prefix'` / `'table_synthetic'` 側には絶対に混ぜない
+  `'table'` / `'table_prefix'` 側には絶対に混ぜない
   （混ぜると `caveats.test.ts` のスナップショットが壊れる）。
+
+**優先度は `scope_kind` ではなく `priority` 列（既定0）が持つ。** 以前は `synthetic`
+専用に `scope_kind='table_synthetic'` という一致方法を作り、「渡されたテーブルの中に
+1つでもあれば他のどのテーブルより先頭に置く」という優先規則をそこに乗せていた。
+しかしこれは「一致方法」ではなく「優先順位」の話であり、`scope_kind` に混ぜたことで
+`caveatsForTables()` 側に `if (scope_kind === 'table_synthetic')` という特殊分岐が必要になり、
+**実際にバグを生んだ**（複数の synthetic テーブルが別々の注記キーを持つとき、最初の1件で
+`break` して2件目以降を落とす欠陥。直前のコミットで修正済み）。`priority` を明示の列として
+切り出し、`synthetic` の scope 行だけ `priority=SYNTHETIC_PRIORITY`（1、他は既定0）にすることで、
+「優先度が高い」という事実がデータ側に乗り、読み出し側は特殊分岐無しの一般規則で済むようにした。
 
 ## `caveatsForTables()` の順序を `caveat_scope` から復元する方法
 
 `sort_order` は「同じ `(scope_kind, scope_ref)` の中での並び」だけを表す
 （例: `('table', 'sites', ...)` は `zone` が0、`municipality` が1）。
 スコープ同士（＝渡されたテーブルの間）の並びは、現行の `caveatsForTables()` と同じく
-**呼び出し側が渡すテーブル名の順序**に従う。つまり読み出し側は:
+**呼び出し側が渡すテーブル名の順序**に従う。読み出し側は**単一の一般規則**でよい:
 
-1. 渡されたテーブル名のどれかが `scope_kind='table_synthetic'` の `scope_ref` と一致すれば、
-   その `caveat_id`（＝ `synthetic`）を最優先で先頭に置く。
-2. 渡されたテーブルを順に見て、各テーブルについて
+1. 渡されたテーブルを順に見て、各テーブルについて
    `scope_kind='table' AND scope_ref=<テーブル名>` または
-   `scope_kind='table_prefix' AND <テーブル名> LIKE scope_ref || '%'` に一致する行を
-   `sort_order` 昇順で取り出し、`caveat_id` を追加する。
+   `scope_kind='table_prefix' AND <テーブル名> LIKE scope_ref || '%'` に一致する行を集める。
+2. 全ての一致行を `(priority 降順, その行がマッチしたテーブルの呼び出し側での出現順序 昇順,
+   sort_order 昇順)` で並べる。
 3. `caveat_id` で重複排除（先勝ち）。
 
-これは `caveats.ts` の `caveatsForTables()` の実装をそのままデータ側から辿れる形に
-しただけで、アルゴリズム自体は変えていない。
+`priority` が同点（既定0同士）のときはテーブルの出現順序がそのまま並びを決めるので、
+以前の「synthetic だけ先頭・残りは渡された順」という挙動は `priority` の値だけで
+再現される。特殊分岐は要らない。
 
 ## cells.notes（207行）の取り込み
 
@@ -166,12 +168,20 @@ SYNTHETIC_TABLES = [
     "event_observers",
 ]
 
+# 「渡されたテーブルの中に synthetic 対象が1つでもあれば、他のどのテーブルより先頭に
+# 置く」という優先規則を表す priority 値（既定は 0）。scope_kind ではなくここで表す
+# （このファイル冒頭のモジュール docstring 参照）。
+SYNTHETIC_PRIORITY = 1
+DEFAULT_PRIORITY = 0
+
 
 def _load_caveat_yaml() -> list[dict]:
     with CAVEAT_YAML.open(encoding="utf-8") as f:
         doc = yaml.safe_load(f)
     entries = doc["caveats"]
-    assert len(entries) == 14, f"registry/caveat.yaml は14件のはずが{len(entries)}件"
+    keys = [e["key"] for e in entries]
+    dupes = sorted({k for k in keys if keys.count(k) > 1})
+    assert not dupes, f"registry/caveat.yaml の key が重複している: {dupes}"
     return entries
 
 
@@ -195,21 +205,23 @@ def _build_table_scope_rows() -> list[tuple]:
     """caveats.ts のテーブル→注記マッピングを caveat_scope の行として複製する。"""
     rows: list[tuple] = []
 
-    def add_table_group(tables: list[str], keys: list[str], scope_kind: str = "table") -> None:
+    def add_table_group(
+        tables: list[str], keys: list[str], priority: int = DEFAULT_PRIORITY
+    ) -> None:
         for t in tables:
             for i, key in enumerate(keys):
-                rows.append((common.caveat_id(key), scope_kind, t, i))
+                rows.append((common.caveat_id(key), "table", t, i, priority))
 
     add_table_group(["sites"], SITES_CAVEATS)
     add_table_group(MEASURE_TABLES, MEASURE_CAVEATS)
     add_table_group(ORGANISM_TABLES, ORGANISM_CAVEATS)
     add_table_group(MESH_TABLES_EXTRA, MESH_CAVEATS)
     add_table_group([IAS_TABLE], IAS_CAVEATS)
-    add_table_group(SYNTHETIC_TABLES, SYNTHETIC_CAVEATS, scope_kind="table_synthetic")
+    add_table_group(SYNTHETIC_TABLES, SYNTHETIC_CAVEATS, priority=SYNTHETIC_PRIORITY)
 
     # mesh_ 接頭辞は個別テーブル名ではなくパターンなので table_prefix で1回だけ持つ。
     for i, key in enumerate(MESH_CAVEATS):
-        rows.append((common.caveat_id(key), "table_prefix", MESH_TABLE_PREFIX, i))
+        rows.append((common.caveat_id(key), "table_prefix", MESH_TABLE_PREFIX, i, DEFAULT_PRIORITY))
 
     return rows
 
@@ -244,11 +256,11 @@ def _build_cells_notes(cells_conn: sqlite3.Connection) -> tuple[list[tuple], lis
         )
 
         doc_id = row["doc_id"]
-        scope_rows.append((cid, "cell", doc_id, 0))
+        scope_rows.append((cid, "cell", doc_id, 0, DEFAULT_PRIORITY))
 
         table_ids = json.loads(row["table_ids"] or "[]")
         for i, table_id in enumerate(table_ids):
-            scope_rows.append((cid, "cell_table", f"{doc_id}#{table_id}", i + 1))
+            scope_rows.append((cid, "cell_table", f"{doc_id}#{table_id}", i + 1, DEFAULT_PRIORITY))
 
     return caveat_rows, scope_rows
 
@@ -275,7 +287,7 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     n_scope = common.insert_many(
         conn,
         "caveat_scope",
-        ["caveat_id", "scope_kind", "scope_ref", "sort_order"],
+        ["caveat_id", "scope_kind", "scope_ref", "sort_order", "priority"],
         scope_rows,
     )
     return {"caveat": n_caveat, "caveat_scope": n_scope}

@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "55a35c62-ce0b-4e03-8492-1fcac2f8c9e2",
+  "id": "31df9539-0c8d-46d3-9e5d-756b233a1ab2",
   "prevId": "f5e973e9-44d7-4ea8-bd47-a61220703e77",
   "tables": {
     "cells": {
@@ -5892,6 +5892,14 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "priority": {
+          "name": "priority",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
         }
       },
       "indexes": {

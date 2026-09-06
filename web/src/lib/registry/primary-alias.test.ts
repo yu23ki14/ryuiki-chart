@@ -16,6 +16,12 @@ import { buildClientVariableMaps, pickPrimaryAlias } from "../../../scripts/lib/
  * 引き続き保証する）。
  *
  * 実データに依存しない合成入力だけを使う（data/db/registry.sqlite が無い環境でも動く）。
+ *
+ * 修正2（`/simplify`）で `web/src/lib/registry/lookup.ts` の実行時版 `primaryAlias()` も
+ * `pickPrimaryAlias()` を呼ぶ薄いラッパに統合した。選定ロジックの実装は
+ * `web/scripts/lib/registry-codegen.mjs` の1箇所だけになったので、このテストはもはや
+ * 「ビルド時実装と実行時実装が一致するか」ではなく、「代表エイリアス選定の規則そのもの」
+ * （fiscal_year 優先度・タイブレーク）を検証するテストである。
  */
 
 describe("pickPrimaryAlias", () => {

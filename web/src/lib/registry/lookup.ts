@@ -13,6 +13,7 @@
  *
  * docs/plans/PHASE_A.md §A-7 / §A-8。
  */
+import { pickPrimaryAlias } from "../../../scripts/lib/registry-codegen.mjs";
 import {
   GENERATED_UNITS,
   GENERATED_VARIABLES,
@@ -107,29 +108,25 @@ export function resolveVariableInfo(
 /**
  * variable_id ごとの「代表エイリアス」を選ぶ。
  *
- * ルール（scripts/registry/build_variable.py 側のデータからは分からない、
- * このアプリの表示都合の選択なのでここに置く）:
- *   1. grain が 'fiscal_year' でない行があれば、それを使う
- *      （検体値ベースの表記を年度代表値の別名より優先する）。
- *   2. 無ければ（=その variable の出典表記が年度代表値しか無い）、
- *      variable.default_stat と一致する stat の行を使う（無ければ先頭行）。
+ * ルール自体（scripts/registry/build_variable.py 側のデータからは分からない、このアプリの
+ * 表示都合の選択）の実装は `web/scripts/lib/registry-codegen.mjs` の `pickPrimaryAlias()`
+ * に1本化した（以前はここに一字一句同じロジックが独立に実装されており、規則を直すときに
+ * 2箇所を直す必要があった。修正2）。ここでは D1/`generated.ts` 由来の行を
+ * `(variableId, sourceScope)` で絞り込んで渡すだけの薄いラッパ。
  *
  * `web/src/lib/registry/generated-client.ts` の VARIABLE_SHORT / VARIABLE_NOTE /
- * HIGHER_IS_WORSE は、ビルド時に `web/scripts/lib/registry-codegen.mjs`（この関数と
- * 同じ規則）がこの代表エイリアスをキーにして再現する。両者は独立実装だが同じ規則を
- * 実装しているので、`web/src/lib/registry/primary-alias.test.ts` が一致を確認する。
+ * HIGHER_IS_WORSE は、ビルド時に同じ `pickPrimaryAlias()` を呼んでこの代表エイリアスを
+ * キーにして再現する（`web/scripts/build-registry-ts.mjs` 経由）。
+ * `web/src/lib/registry/primary-alias.test.ts` は「2実装が一致するか」ではなく、
+ * `pickPrimaryAlias()` という規則そのもの（fiscal_year 優先度・タイブレーク）を検証する。
  */
 export function primaryAlias(
   variableId: string,
   sourceScope: string = "measurements",
 ): GeneratedVariableAlias | undefined {
   const rows = (aliasesByVariable.get(variableId) ?? []).filter((a) => a.sourceScope === sourceScope);
-  if (rows.length === 0) return undefined;
-  const nonFiscal = rows.find((a) => a.grain !== "fiscal_year");
-  if (nonFiscal) return nonFiscal;
   const v = variableById.get(variableId);
-  const wantStat = v?.defaultStat ?? null;
-  return rows.find((a) => (a.stat ?? null) === wantStat) ?? rows[0];
+  return pickPrimaryAlias(rows, v?.defaultStat ?? null) as GeneratedVariableAlias | undefined;
 }
 
 export function allVariables(): readonly GeneratedVariable[] {

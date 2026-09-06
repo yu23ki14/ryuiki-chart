@@ -143,38 +143,21 @@ def report_variable(ryuiki: sqlite3.Connection) -> dict:
 # ---------------------------------------------------------------------------
 
 def report_place(ryuiki: sqlite3.Connection) -> dict:
+    """`distinct_resolved` と `row_resolved` は、未解決側の site_id 別内訳
+    （`site_unresolved` 1クエリ）から総数の引き算で出す。以前は解決側を JOIN で
+    数える専用クエリを2本（distinct 用・行ベース用）別に打っていた（sensor_timeseries
+    側で実測 約244ms）。総数（`distinct_total`・`row_total`）と未解決の内訳だけで
+    十分なので、その2本を削る（/simplify 修正7。scripts/registry/build_taxon.py の
+    診断ブロック・report_organism と同じ形の重複）。
+    """
     out = {}
     unresolved_rows = []
 
     for table in ("measurements", "sensor_timeseries"):
         distinct_total = scalar(ryuiki, f"SELECT count(DISTINCT site_id) FROM {table}")
-        distinct_resolved = scalar(
-            ryuiki,
-            f"""
-            SELECT count(*) FROM (SELECT DISTINCT site_id FROM {table}) d
-            JOIN reg.place_source_ref psr
-              ON psr.external_key = d.site_id AND psr.source_id = 'sites.site_id'
-            """,
-        )
         row_total = scalar(ryuiki, f"SELECT count(*) FROM {table}")
-        row_resolved = scalar(
-            ryuiki,
-            f"""
-            SELECT count(*) FROM {table} t
-            JOIN reg.place_source_ref psr
-              ON psr.external_key = t.site_id AND psr.source_id = 'sites.site_id'
-            """,
-        )
-        out[table] = {
-            "distinct_total": distinct_total,
-            "distinct_resolved": distinct_resolved,
-            "distinct_unresolved": distinct_total - distinct_resolved,
-            "row_total": row_total,
-            "row_resolved": row_resolved,
-            "row_unresolved": row_total - row_resolved,
-        }
 
-        for r in rows(
+        site_unresolved = rows(
             ryuiki,
             f"""
             SELECT t.site_id AS site_id, count(*) AS n
@@ -185,7 +168,20 @@ def report_place(ryuiki: sqlite3.Connection) -> dict:
             GROUP BY t.site_id
             ORDER BY t.site_id
             """,
-        ):
+        )
+        distinct_unresolved = len(site_unresolved)
+        row_unresolved = sum(r["n"] for r in site_unresolved)
+
+        out[table] = {
+            "distinct_total": distinct_total,
+            "distinct_resolved": distinct_total - distinct_unresolved,
+            "distinct_unresolved": distinct_unresolved,
+            "row_total": row_total,
+            "row_resolved": row_total - row_unresolved,
+            "row_unresolved": row_unresolved,
+        }
+
+        for r in site_unresolved:
             unresolved_rows.append((table, r["site_id"], r["n"]))
 
     out["unresolved_csv_rows"] = write_csv(
@@ -204,16 +200,14 @@ REASON_NO_MATERIAL = "scientific_name等の分類群情報が空欄で照合材�
 
 
 def report_organism(ryuiki: sqlite3.Connection) -> dict:
+    """`resolved`（JOIN。実測1051ms）と `by_source`（GROUP BY。実測416ms）は、CSV 用に
+    どのみち全件取得する `unresolved_rows` から Python 側で導ける（`organism_records`
+    は distinct taxon_key 全件が `reg.taxon` に登録済みなので、taxon_key が非NULL/非空の
+    行は必ず解決できる。build_taxon.py の `_load_occurrence_representatives` 参照）。
+    総数（`total`）とこの1クエリだけで済み、以前打っていた2クエリ（約1,467ms）を
+    まるごと削れる（/simplify 修正7）。
+    """
     total = scalar(ryuiki, "SELECT count(*) FROM organism_records")
-    resolved = scalar(
-        ryuiki,
-        """
-        SELECT count(*) FROM organism_records o
-        JOIN reg.taxon t ON t.gbif_taxon_key = o.taxon_key
-        WHERE o.taxon_key IS NOT NULL AND o.taxon_key <> ''
-        """,
-    )
-    unresolved = total - resolved
 
     unresolved_rows = rows(
         ryuiki,
@@ -225,6 +219,9 @@ def report_organism(ryuiki: sqlite3.Connection) -> dict:
         ORDER BY record_id
         """,
     )
+    unresolved = len(unresolved_rows)
+    resolved = total - unresolved
+
     n_csv = write_csv(
         "unresolved_organism_records.csv",
         ["record_id", "source_id", "site_id", "observed_on", "scientific_name",
@@ -237,23 +234,17 @@ def report_organism(ryuiki: sqlite3.Connection) -> dict:
         ],
     )
 
-    by_source = rows(
-        ryuiki,
-        """
-        SELECT source_id, count(*) AS n
-        FROM organism_records
-        WHERE taxon_key IS NULL OR taxon_key = ''
-        GROUP BY source_id
-        ORDER BY source_id
-        """,
-    )
+    by_source_counts: dict = {}
+    for r in unresolved_rows:
+        by_source_counts[r["source_id"]] = by_source_counts.get(r["source_id"], 0) + 1
+    by_source = sorted(by_source_counts.items())
 
     return {
         "total": total,
         "resolved": resolved,
         "unresolved": unresolved,
         "unresolved_csv_rows": n_csv,
-        "by_source": [(r["source_id"], r["n"]) for r in by_source],
+        "by_source": by_source,
     }
 
 

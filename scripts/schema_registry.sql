@@ -111,14 +111,17 @@ CREATE TABLE IF NOT EXISTS caveat (
   quote TEXT
 );
 
--- caveat が掛かる範囲。1注記に対して複数行になりうる(1:N)。scope_kind の取りうる値と
+-- caveat が掛かる範囲。1注記に対して複数行になりうる(1:N)。scope_kind は「一致方法」だけを
+-- 表す(table/table_prefix/cell/cell_table)。「渡されたテーブルの中でどれを先頭に出すか」という
+-- 優先規則は scope_kind ではなく priority 列が持つ(既定0。大きいほど優先)。
 -- caveatsForTables() の順序復元の方法は scripts/registry/build_caveat.py の docstring 参照。
 CREATE TABLE IF NOT EXISTS caveat_scope (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   caveat_id TEXT,
   scope_kind TEXT,
   scope_ref TEXT,
-  sort_order INTEGER
+  sort_order INTEGER,
+  priority INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS ix_caveat_scope_scope ON caveat_scope(scope_kind, scope_ref);
 CREATE INDEX IF NOT EXISTS ix_caveat_scope_caveat ON caveat_scope(caveat_id);

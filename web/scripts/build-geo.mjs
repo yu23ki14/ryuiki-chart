@@ -14,6 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 import { fileURLToPath } from "node:url";
+import { parseCsvRows } from "./lib/csv.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, "..", "..");
@@ -74,13 +75,14 @@ CREATE TABLE landuse_watershed (
   n_cells INTEGER, area_km2 REAL
 );`);
 {
-  const csv = fs.readFileSync(path.join(PROCESSED, "nlni_l03b_landuse_by_watershed.csv"), "utf8").replace(/\r/g, "").trim().split("\n");
-  const head = parseCsvLine(csv[0]);
+  const csvText = fs.readFileSync(path.join(PROCESSED, "nlni_l03b_landuse_by_watershed.csv"), "utf8");
+  const csv = parseCsvRows(csvText);
+  const head = csv[0];
   const idx = Object.fromEntries(head.map((h, i) => [h, i]));
   const ins = db.prepare(`INSERT INTO landuse_watershed VALUES (?,?,?,?,?,?)`);
   db.transaction(() => {
     for (let i = 1; i < csv.length; i++) {
-      const c = parseCsvLine(csv[i]);
+      const c = csv[i];
       ins.run(
         c[idx.watershed_id],
         Number(c[idx.data_year]),
@@ -250,21 +252,3 @@ log("watershed_rollup");
 
 db.close();
 console.log("→", OUT, (fs.statSync(OUT).size / 1e6).toFixed(1), "MB");
-
-function parseCsvLine(line) {
-  const out = [];
-  let cur = "";
-  let q = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (q) {
-      if (ch === '"') {
-        if (line[i + 1] === '"') { cur += '"'; i++; } else q = false;
-      } else cur += ch;
-    } else if (ch === '"') q = true;
-    else if (ch === ",") { out.push(cur); cur = ""; }
-    else cur += ch;
-  }
-  out.push(cur);
-  return out;
-}

@@ -264,17 +264,14 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     taxa_by_key = _group_taxa_by_gbif_key(taxa_rows)
 
     # --- 診断: organism_records の taxon_key 解決率 -------------------------------
+    # unresolved の総数と source_id 別内訳を同じ GROUP BY クエリ1回で出す
+    # （以前は総数用の COUNT(*) と内訳用の GROUP BY を別々に打っていた。/simplify 修正7）。
     total_org = ryuiki.execute("SELECT COUNT(*) FROM organism_records").fetchone()[0]
-    unresolved_org = ryuiki.execute(
-        "SELECT COUNT(*) FROM organism_records WHERE taxon_key IS NULL OR taxon_key=''"
-    ).fetchone()[0]
-    resolved_org = total_org - unresolved_org
-    unresolved_by_source = dict(
-        ryuiki.execute(
-            "SELECT source_id, COUNT(*) FROM organism_records "
-            "WHERE taxon_key IS NULL OR taxon_key='' GROUP BY source_id"
-        ).fetchall()
+    unresolved_org, unresolved_by_source_rows = common.count_and_breakdown(
+        ryuiki, "organism_records", "taxon_key IS NULL OR taxon_key=''", "source_id"
     )
+    resolved_org = total_org - unresolved_org
+    unresolved_by_source = dict(unresolved_by_source_rows)
     print(
         f"  [taxon] organism_records {total_org:,}行 -> taxon_key解決 {resolved_org:,}行 "
         f"({resolved_org / total_org * 100:.2f}%)。未解決 {unresolved_org:,}行 "

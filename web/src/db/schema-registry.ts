@@ -163,10 +163,15 @@ export const caveat = sqliteTable("caveat", {
 
 /**
  * `caveat` が掛かる範囲。1注記に対して複数行になりうる（1:N）。
- * `scope_kind` の取りうる値と、そこから `caveatsForTables()` の順序を復元する方法は
- * `scripts/registry/build_caveat.py` の docstring に書いてある
- * （`sort_order` は「同じ scope_ref の中での並び」だけを表し、scope 同士の並びは
- * 呼び出し側が渡すテーブル名の順序に従う——現行の `caveatsForTables()` と同じ規則）。
+ * `scope_kind` は**一致方法だけ**を表す（`table` / `table_prefix` / `cell` / `cell_table`）。
+ * 「渡されたテーブルのうちどれを先頭に出すか」という**優先規則**は `scope_kind` の値では
+ * 表さず、`priority` 列（既定0・大きいほど優先）が持つ。以前は `scope_kind='table_synthetic'`
+ * という専用の一致方法を作ってこの優先規則を表していたが、優先度は本来「一致方法」ではないため
+ * `caveatsForTables()` 側に特殊分岐が必要になり、実際にバグ（複数 synthetic テーブルのうち
+ * 最初の1件しか注記を拾わない）を生んだ。`priority` を切り出したことで、読み出し側は
+ * `(priority, 呼び出し側が渡したテーブルの順序, sort_order)` の一般規則1本で済む。
+ * `sort_order` は「同じ (scope_kind, scope_ref) の中での並び」だけを表し、scope 同士の並びは
+ * 呼び出し側が渡すテーブル名の順序に従う。詳細は `scripts/registry/build_caveat.py` の docstring。
  */
 export const caveatScope = sqliteTable("caveat_scope", {
 	id: integer().primaryKey({ autoIncrement: true }),
@@ -174,6 +179,7 @@ export const caveatScope = sqliteTable("caveat_scope", {
 	scopeKind: text("scope_kind"),
 	scopeRef: text("scope_ref"),
 	sortOrder: integer("sort_order"),
+	priority: integer().notNull().default(0),
 },
 (table) => [
 	index("ix_caveat_scope_scope").on(table.scopeKind, table.scopeRef),

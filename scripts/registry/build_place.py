@@ -166,7 +166,10 @@ def _load_zone_yaml() -> list[dict]:
     path = PLACE_DIR / "zone.yaml"
     with path.open(encoding="utf-8") as f:
         items = yaml.safe_load(f)
-    assert len(items) == 5, f"registry/place/zone.yaml は5件のはずが{len(items)}件"
+    # 件数のハードコード assert ではなく、zone 番号の一意性チェックにする（/simplify 修正5）。
+    zones = [item["zone"] for item in items]
+    dupes = sorted({z for z in zones if zones.count(z) > 1})
+    assert not dupes, f"registry/place/zone.yaml の zone が重複している: {dupes}"
     return items
 
 

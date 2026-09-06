@@ -28,11 +28,19 @@ VARIABLE_YAML = common.ROOT / "registry" / "variable.yaml"
 VARIABLE_ALIAS_CSV = common.ROOT / "registry" / "variable_alias.csv"
 
 
+def _assert_unique(keys: list, label: str) -> None:
+    """件数のハードコード assert ではなく、キーの一意性チェックにする（/simplify 修正5）。
+    語彙が増減しても中身が壊れていなければ通る。中身（重複）が壊れていれば必ず落ちる。
+    """
+    dupes = sorted({k for k in keys if keys.count(k) > 1})
+    assert not dupes, f"{label} が重複している: {dupes}"
+
+
 def _load_unit_yaml() -> list[dict]:
     with UNIT_YAML.open(encoding="utf-8") as f:
         doc = yaml.safe_load(f)
     entries = doc["units"]
-    assert len(entries) == 28, f"registry/unit.yaml は28件のはずが{len(entries)}件"
+    _assert_unique([e["unit_id"] for e in entries], "registry/unit.yaml の unit_id")
     return entries
 
 
@@ -40,14 +48,19 @@ def _load_variable_yaml() -> list[dict]:
     with VARIABLE_YAML.open(encoding="utf-8") as f:
         doc = yaml.safe_load(f)
     entries = doc["variables"]
-    assert len(entries) == 85, f"registry/variable.yaml は85件のはずが{len(entries)}件"
+    _assert_unique([e["variable_id"] for e in entries], "registry/variable.yaml の variable_id")
     return entries
 
 
 def _load_variable_alias_csv() -> list[dict]:
     with VARIABLE_ALIAS_CSV.open(encoding="utf-8", newline="") as f:
         rows = list(csv.DictReader(f))
-    assert len(rows) == 117, f"registry/variable_alias.csv は117行のはずが{len(rows)}行"
+    # alias は出典（source_scope）をまたいで再利用されうるため、一意性は
+    # (alias, source_scope) の組で見る（web/src/db/schema-registry.ts の variableAlias 参照）。
+    _assert_unique(
+        [(r["alias"], r.get("source_scope") or None) for r in rows],
+        "registry/variable_alias.csv の (alias, source_scope)",
+    )
     return rows
 
 

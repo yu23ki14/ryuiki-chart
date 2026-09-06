@@ -39,20 +39,32 @@
  * 直接編集しない。中身を直したいときは registry/*.yaml / registry/*.csv /
  * scripts/registry/build_*.py / web/scripts/lib/registry-codegen.mjs 側を直してから、
  * このコマンドで作り直す。
+ *
+ * 入出力パスは環境変数で上書きできる（既定は下記の固定値）。
+ * `web/src/lib/registry/generated.test.ts`（陳腐化ガード）が、このスクリプトの
+ * ソースを文字列で書き換える代わりに、実物をこのまま一時ディレクトリ向けに実行して
+ * 生成物の差分が無いことを確認するために使う（/simplify 修正6）:
+ *   - RYUIKI_REGISTRY_DB: 入力の registry.sqlite
+ *   - RYUIKI_VERNACULAR_CSV: 入力の vernacular_ja.csv
+ *   - RYUIKI_REGISTRY_TS_OUT_SERVER / RYUIKI_REGISTRY_TS_OUT_CLIENT: 出力先
  */
 import Database from "better-sqlite3";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseCsvRecords } from "./lib/csv.mjs";
 import { buildClientVariableMaps } from "./lib/registry-codegen.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB = path.resolve(__dirname, "..");
 const REPO = path.resolve(WEB, "..");
-const REGISTRY_DB = path.join(REPO, "data", "db", "registry.sqlite");
-const VERNACULAR_CSV = path.join(REPO, "registry", "taxon", "vernacular_ja.csv");
-const OUT_SERVER = path.join(WEB, "src", "lib", "registry", "generated.ts");
-const OUT_CLIENT = path.join(WEB, "src", "lib", "registry", "generated-client.ts");
+const REGISTRY_DB = process.env.RYUIKI_REGISTRY_DB ?? path.join(REPO, "data", "db", "registry.sqlite");
+const VERNACULAR_CSV =
+  process.env.RYUIKI_VERNACULAR_CSV ?? path.join(REPO, "registry", "taxon", "vernacular_ja.csv");
+const OUT_SERVER =
+  process.env.RYUIKI_REGISTRY_TS_OUT_SERVER ?? path.join(WEB, "src", "lib", "registry", "generated.ts");
+const OUT_CLIENT =
+  process.env.RYUIKI_REGISTRY_TS_OUT_CLIENT ?? path.join(WEB, "src", "lib", "registry", "generated-client.ts");
 
 if (!fs.existsSync(REGISTRY_DB)) {
   console.error(
@@ -66,101 +78,9 @@ if (!fs.existsSync(VERNACULAR_CSV)) {
   process.exit(1);
 }
 
-/**
- * 最小限の RFC4180 準拠 CSV パーサ（引用符・引用符内カンマ・引用符内改行・
- * ""エスケープに対応）。依存追加を避けるためここに書く。
- *
- * `scripts/registry/build_taxon.py` / `build_place.py` が `csv.DictReader` を
- * 使っているのと同じ厳密さにする（レビュー指摘: 以前は `line.split(",")` で
- * 位置分解しており、`vernacular_name_ja` に引用符付きでカンマを含む値が
- * 入ると黙って切り詰められていた）。列数が想定と違えば例外を投げる
- * （黙って壊れない。`registry/variable_alias.csv` は既に引用符つきの
- * カンマを含むフィールドを持っており、この規約はこのリポジトリで現に使われている）。
- *
- * 戻り値は `expectedHeader`（この順で存在すると期待するヘッダ）をキーにした
- * オブジェクトの配列。ヘッダ自体が `expectedHeader` と一致しない場合も例外にする。
- */
-function parseCsvRows(text) {
-  const rows = [];
-  let field = "";
-  let row = [];
-  let inQuotes = false;
-  // 末尾の "\r\n" 等をここで一括処理するため、charCodeAt ベースで1文字ずつ読む。
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (inQuotes) {
-      if (c === '"') {
-        if (text[i + 1] === '"') {
-          field += '"';
-          i++;
-        } else {
-          inQuotes = false;
-        }
-      } else {
-        field += c;
-      }
-      continue;
-    }
-    if (c === '"') {
-      inQuotes = true;
-      continue;
-    }
-    if (c === ",") {
-      row.push(field);
-      field = "";
-      continue;
-    }
-    if (c === "\r") {
-      continue; // \r\n の \r を読み飛ばす（\n 側で行を確定する）
-    }
-    if (c === "\n") {
-      row.push(field);
-      field = "";
-      rows.push(row);
-      row = [];
-      continue;
-    }
-    field += c;
-  }
-  if (inQuotes) {
-    throw new Error("parseCsvRows: 引用符が閉じられないまま CSV が終端した");
-  }
-  // 最終行（末尾に改行が無い場合）も確定させる。空文字列1個だけの残骸（末尾の
-  // 改行の後の空行）は無視する。
-  if (field !== "" || row.length > 0) {
-    row.push(field);
-    rows.push(row);
-  }
-  return rows.filter((r) => !(r.length === 1 && r[0] === ""));
-}
-
-function parseCsvRecords(text, expectedHeader) {
-  const rows = parseCsvRows(text);
-  if (rows.length === 0) {
-    throw new Error("parseCsvRecords: CSV が空（ヘッダ行すら無い）");
-  }
-  const [header, ...dataRows] = rows;
-  const headerStr = header.join(",");
-  const expectedStr = expectedHeader.join(",");
-  if (headerStr !== expectedStr) {
-    throw new Error(
-      `parseCsvRecords: ヘッダが想定と違う。期待: ${expectedStr} / 実際: ${headerStr}`,
-    );
-  }
-  return dataRows.map((cols, idx) => {
-    if (cols.length !== header.length) {
-      throw new Error(
-        `parseCsvRecords: ${idx + 2}行目の列数が想定と違う` +
-          `（期待 ${header.length}列、実際 ${cols.length}列）: ${JSON.stringify(cols)}`,
-      );
-    }
-    const record = {};
-    header.forEach((key, i) => {
-      record[key] = cols[i];
-    });
-    return record;
-  });
-}
+// CSV パーサ（引用符・引用符内カンマ・引用符内改行・""エスケープ対応、ヘッダ検証つき）は
+// `./lib/csv.mjs` に共通化した（`web/scripts/build-geo.mjs` の手書きパーサと同じアルゴリズムの
+// 再実装だったため。/simplify 修正3）。
 
 const db = new Database(REGISTRY_DB, { readonly: true });
 
@@ -232,8 +152,8 @@ const caveats = db
 
 const caveatScope = db
   .prepare(
-    `SELECT caveat_id, scope_kind, scope_ref, sort_order FROM caveat_scope
-     WHERE scope_kind IN ('table', 'table_prefix', 'table_synthetic')
+    `SELECT caveat_id, scope_kind, scope_ref, sort_order, priority FROM caveat_scope
+     WHERE scope_kind IN ('table', 'table_prefix')
      ORDER BY scope_kind, scope_ref, sort_order`,
   )
   .all()
@@ -242,6 +162,7 @@ const caveatScope = db
     scopeRef: r.scope_ref,
     caveatKey: r.caveat_id.slice(CAVEAT_ID_PREFIX.length),
     sortOrder: r.sort_order,
+    priority: r.priority,
   }));
 
 const vernacular = parseCsvRecords(fs.readFileSync(VERNACULAR_CSV, "utf-8"), [
@@ -399,7 +320,7 @@ export interface GeneratedVernacular {
   vernacularNameJa: string;
 }
 
-export type CaveatScopeKind = "table" | "table_prefix" | "table_synthetic";
+export type CaveatScopeKind = "table" | "table_prefix";
 
 export interface GeneratedCaveat {
   key: string;
@@ -413,6 +334,10 @@ export interface GeneratedCaveatScope {
   scopeRef: string;
   caveatKey: string;
   sortOrder: number;
+  /** 優先度（既定0・大きいほど優先）。synthetic 由来の scope 行だけ1。
+   * scope_kind ではなくこの列が「先頭に出すべきか」を表す（docs/plans/PHASE_A.md §A-7、
+   * scripts/registry/build_caveat.py の docstring）。 */
+  priority: number;
 }
 `;
 
@@ -451,14 +376,15 @@ export const GENERATED_CAVEATS: readonly GeneratedCaveat[] = ${emitObjectArray(c
 ])};
 
 /**
- * テーブル -> 注記キーのスコープ（caveat_scope の scope_kind in
- * ('table','table_prefix','table_synthetic')）。cell/cell_table（cells.notes 由来）は含めない。
+ * テーブル -> 注記キーのスコープ（caveat_scope の scope_kind in ('table','table_prefix')）。
+ * cell/cell_table（cells.notes 由来）は含めない。
  * 同じ (scopeKind, scopeRef) の中の並びは sortOrder。scope 同士（渡されたテーブル間）の並びは
- * 呼び出し側がテーブル名を渡す順序に従う（scripts/registry/build_caveat.py の docstring参照）。
+ * 呼び出し側がテーブル名を渡す順序と priority（既定0。synthetic だけ1で最優先）に従う
+ * （scripts/registry/build_caveat.py の docstring参照）。
  */
 export const GENERATED_CAVEAT_SCOPE: readonly GeneratedCaveatScope[] = ${emitObjectArray(
   caveatScope,
-  ["scopeKind", "scopeRef", "caveatKey", "sortOrder"],
+  ["scopeKind", "scopeRef", "caveatKey", "sortOrder", "priority"],
 )};
 `;
 
