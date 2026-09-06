@@ -18,7 +18,7 @@ done
 # 1. 集計 DB。原本から再生成できるものなので、無ければ作る（初回のみ・約1分）
 if [ ! -f "$DB_DIR/derived.sqlite" ]; then
   echo "▶ 集計 DB が無いので作る (build:derived)"
-  npm run build:derived
+  pnpm run build:derived
 else
   echo "✔ 集計 DB あり"
 fi
@@ -26,18 +26,18 @@ fi
 # 1.5. 語彙レジストリ。ryuiki/cells/derived を読み取り専用で読んで作る（scripts/r01_build_registry.py）
 if [ ! -f "$DB_DIR/registry.sqlite" ]; then
   echo "▶ 語彙レジストリが無いので作る (build:registry)"
-  npm run build:registry
+  pnpm run build:registry
 else
   echo "✔ 語彙レジストリあり"
 fi
 
 # 2. マイグレーション。適用済みのものは wrangler が d1_migrations を見て飛ばす
 echo "▶ D1 マイグレーション"
-npm run db:migrate
+pnpm run db:migrate
 
 # 3. シード。原本のフィンガープリントが一致していればスクリプト側で飛ばす
 echo "▶ D1 シード"
-npm run db:seed
+pnpm run db:seed
 
 echo "▶ dev サーバ起動"
-exec npm run dev
+exec pnpm run dev

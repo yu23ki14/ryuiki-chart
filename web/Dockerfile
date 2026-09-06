@@ -17,9 +17,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app/web
 
+# pnpm を corepack 経由で固定する（web/package.json の packageManager と揃える）
+RUN corepack enable && corepack prepare pnpm@10.18.3 --activate
+
 # 依存だけ先に入れてレイヤをキャッシュする
-COPY package.json package-lock.json ./
-RUN npm ci
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
 
 COPY . .
 
