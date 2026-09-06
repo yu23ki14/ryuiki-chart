@@ -1,0 +1,2 @@
+variable_id,code,name_ja,theme,measurement_rows_with_missing_unit,reason
+common:variable:hydro.flow,hydro.flow,流量関連,hydro,4668,description_ja が未設定（unit_id が決まらないため status=needs_review。経緯は registry/variable.yaml のコメント参照）
