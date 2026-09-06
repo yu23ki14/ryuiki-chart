@@ -24,12 +24,8 @@ else
 fi
 
 # 1.5. 語彙レジストリ。ryuiki/cells/derived を読み取り専用で読んで作る（scripts/r01_build_registry.py）
-if [ ! -f "$DB_DIR/registry.sqlite" ]; then
-  echo "▶ 語彙レジストリが無いので作る (build:registry)"
-  pnpm run build:registry
-else
-  echo "✔ 語彙レジストリあり"
-fi
+# 「無ければ作る」の判定は db:setup の predb:setup フックと共通（scripts/ensure-registry.sh）
+scripts/ensure-registry.sh
 
 # 2. マイグレーション。適用済みのものは wrangler が d1_migrations を見て飛ばす
 echo "▶ D1 マイグレーション"

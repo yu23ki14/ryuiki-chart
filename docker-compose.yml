@@ -24,8 +24,12 @@ services:
       - ./web/next.config.ts:/app/web/next.config.ts
       - ./web/wrangler.jsonc:/app/web/wrangler.jsonc
       - ./web/drizzle.config.ts:/app/web/drizzle.config.ts
-      # 原本 SQLite と GeoJSON。derived.sqlite をここに書くので rw
+      # 原本 SQLite と GeoJSON。derived.sqlite / registry.sqlite をここに書くので rw
       - ./data:/app/data
+      # レジストリビルド（scripts/r01_build_registry.py, scripts/registry/*.py）と
+      # その手書きソース（registry/*.yaml, *.csv）。コンテナからは読むだけなので ro
+      - ./scripts:/app/scripts:ro
+      - ./registry:/app/registry:ro
       # ローカル D1 (miniflare) の実体。消さない限りシードは 1 回だけ
       - d1-state:/app/web/.wrangler
       # .next はホストと共有しない（ホスト側の next dev と衝突させない）
