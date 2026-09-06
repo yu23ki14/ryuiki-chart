@@ -1,0 +1,24 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ryuiki-demo",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "observability": { "enabled": true },
+
+  // 流域カルテの全データを 1 つの D1 に入れる。
+  // database_id は `wrangler d1 create ryuiki` が採番したもの（本番用）。
+  // ローカル（miniflare）ではこの値は使われず、.wrangler/ 配下の SQLite を見る。
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ryuiki",
+      "database_id": "634bbe1b-72aa-48a0-9021-c15167f68a0b",
+      "migrations_dir": "drizzle/migrations"
+    }
+  ]
+}

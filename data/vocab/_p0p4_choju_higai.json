@@ -1,0 +1,410 @@
+[
+  {
+    "doc_id": "choju_higai_gaiyou_2022",
+    "areas": [], "indicators": [], "units": [], "era_formats": [],
+    "notes": [
+      {
+        "note_id": "n_higai_gaiyou2022_001",
+        "table_ids": [],
+        "kind": "definition_change",
+        "text": "※アライグマは令和３年度分までは「その他獣類」に含めて算出しています。",
+        "page": 1,
+        "blocks_timeseries": true,
+        "reason": "アライグマは令和4年度から独立した被害鳥獣区分として集計されるようになった。令和3年度以前は「その他獣類」に含まれていたため、「アライグマ」単独の経年比較はR4以降のみ可能で、R3以前と単純接続できない。同様に「その他獣類」区分もR4以降はアライグマ分が抜けるため、R3以前とR4以降で定義が変わっている。"
+      },
+      {
+        "note_id": "n_higai_gaiyou2022_002",
+        "table_ids": [],
+        "kind": "footnote",
+        "text": "※被害額は、千円止めで四捨五入していることにより、合計値は一致しない場合があります。",
+        "page": 1,
+        "blocks_timeseries": false,
+        "reason": "四捨五入による内訳と合計の不一致に関する一般的な注記。C5(合計整合性)チェックで不一致が出ても、内訳を調整して合わせてはならない。"
+      }
+    ]
+  },
+  {
+    "doc_id": "choju_higai_gaiyou_2021",
+    "areas": [], "indicators": [], "units": [], "era_formats": [],
+    "notes": [
+      {
+        "note_id": "n_higai_gaiyou2021_001",
+        "table_ids": [],
+        "kind": "footnote",
+        "text": "※被害額は、千円止めで四捨五入していることにより、合計値は一致しない場合があります。",
+        "page": 1,
+        "blocks_timeseries": false,
+        "reason": "四捨五入注記。令和4年度版と同一文言。この年度の概況にはアライグマの区分変更に関する注記は見られない（R4版で初めて明記された）。"
+      }
+    ]
+  },
+  {
+    "doc_id": "choju_higai_gaiyou_2020",
+    "areas": [], "indicators": [], "units": [], "era_formats": [],
+    "notes": [
+      {
+        "note_id": "n_higai_gaiyou2020_001",
+        "table_ids": [],
+        "kind": "footnote",
+        "text": "※被害額は、千円止めで四捨五入していることにより、合計値は一致しない場合があります。",
+        "page": 1,
+        "blocks_timeseries": false,
+        "reason": "四捨五入注記。"
+      }
+    ]
+  },
+  {
+    "doc_id": "choju_higai_gaiyou_2019",
+    "areas": [], "indicators": [], "units": [], "era_formats": [],
+    "notes": [
+      {
+        "note_id": "n_higai_gaiyou2019_001",
+        "table_ids": [],
+        "kind": "footnote",
+        "text": "※被害額は、千円止めで四捨五入していることにより、合計値は一致しない場合があります。",
+        "page": 1,
+        "blocks_timeseries": false,
+        "reason": "四捨五入注記。"
+      }
+    ]
+  },
+  {
+    "doc_id": "choju_higai_gaiyou_2018",
+    "areas": [], "indicators": [], "units": [], "era_formats": [],
+    "notes": [
+      {
+        "note_id": "n_higai_gaiyou2018_001",
+        "table_ids": [],
+        "kind": "footnote",
+        "text": "※被害額は、千円止めで四捨五入していることにより合計値は一致しない場合があります。",
+        "page": 1,
+        "blocks_timeseries": false,
+        "reason": "四捨五入注記（読点の有無以外は他年度と同文）。"
+      }
+    ]
+  },
+  {
+    "doc_id": "choju_higai_shichoson_sakumotsu_2022",
+    "areas": [], "indicators": [], "units": [], "era_formats": [],
+    "notes": [
+      {
+        "note_id": "n_higai_ssak2022_001",
+        "table_ids": ["p2_t1"],
+        "kind": "footnote",
+        "text": "※四捨五入により合計が突合しない場合がある。",
+        "page": 2,
+        "blocks_timeseries": false,
+        "reason": "四捨五入注記。"
+      },
+      {
+        "note_id": "n_higai_ssak2022_002",
+        "table_ids": ["p2_t1"],
+        "kind": "definition_change",
+        "text": "※表中「0」は被害面積0.005ha未満、被害量0.0005t未満、被害額500円未満の場合。または積算資料がなく被害量、被害額が算出できなかった場合。",
+        "page": 2,
+        "blocks_timeseries": true,
+        "reason": "表中の「0」表示が「実質ゼロ(僅少)」と「データが無く算出不能」という異なる状態を区別せずに同じ表記で示している。年度間で「0」の内訳（僅少なのか欠測なのか）が変化していても数値上は判別できないため、経年比較で「0」が続く区分は注意が必要。P6の「空欄と0と－を区別する」原則に照らしても、この0は真のゼロ値と保証されない。"
+      }
+    ]
+  },
+  {
+    "doc_id": "choju_higai_shichoson_sakumotsu_2021",
+    "areas": [], "indicators": [], "units": [], "era_formats": [],
+    "notes": [
+      {
+        "note_id": "n_higai_ssak2021_001",
+        "table_ids": ["p2_t1"],
+        "kind": "footnote",
+        "text": "※四捨五入により合計が突合しない場合がある。",
+        "page": 2,
+        "blocks_timeseries": false,
+        "reason": "四捨五入注記。"
+      },
+      {
+        "note_id": "n_higai_ssak2021_002",
+        "table_ids": ["p2_t1"],
+        "kind": "definition_change",
+        "text": "※表中「0」は被害面積0.005ha未満、被害量0.0005t未満、被害額500円未満の場合。または積算資料がなく被害量、被害額が算出できなかった場合。",
+        "page": 2,
+        "blocks_timeseries": true,
+        "reason": "choju_higai_shichoson_sakumotsu_2022と同一注記。「0」表示に僅少値と欠測が混在する。"
+      }
+    ]
+  },
+  {
+    "doc_id": "choju_higai_shichoson_sakumotsu_2020",
+    "areas": [], "indicators": [], "units": [], "era_formats": [],
+    "notes": [
+      {
+        "note_id": "n_higai_ssak2020_001",
+        "table_ids": ["p2_t1"],
+        "kind": "footnote",
+        "text": "※四捨五入により合計が突合しない場合がある。",
+        "page": 2,
+        "blocks_timeseries": false,
+        "reason": "四捨五入注記。"
+      },
+      {
+        "note_id": "n_higai_ssak2020_002",
+        "table_ids": ["p2_t1"],
+        "kind": "definition_change",
+        "text": "※表中「0」は被害面積0.005ha未満、被害量0.0005t未満、被害額500円未満の場合。または積算資料がなく被害量、被害額が算出できなかった場合。",
+        "page": 2,
+        "blocks_timeseries": true,
+        "reason": "同上。「0」表示に僅少値と欠測が混在する。"
+      }
+    ]
+  },
+  {
+    "doc_id": "choju_higai_shichoson_sakumotsu_2019",
+    "areas": [], "indicators": [], "units": [], "era_formats": [],
+    "notes": [
+      {
+        "note_id": "n_higai_ssak2019_001",
+        "table_ids": ["p2_t1"],
+        "kind": "footnote",
+        "text": "※四捨五入により合計が突合しない場合がある。",
+        "page": 2,
+        "blocks_timeseries": false,
+        "reason": "四捨五入注記。"
+      },
+      {
+        "note_id": "n_higai_ssak2019_002",
+        "table_ids": ["p2_t1"],
+        "kind": "definition_change",
+        "text": "※表中「0」は被害面積0.005ha未満、被害量0.0005t未満、被害額500円未満の場合。または積算資料がなく被害量、被害額が算出できなかった場合。",
+        "page": 2,
+        "blocks_timeseries": true,
+        "reason": "同上。"
+      }
+    ]
+  },
+  {
+    "doc_id": "choju_higai_shichoson_sakumotsu_2018",
+    "areas": [], "indicators": [], "units": [], "era_formats": [],
+    "notes": [
+      {
+        "note_id": "n_higai_ssak2018_001",
+        "table_ids": ["p2_t1"],
+        "kind": "footnote",
+        "text": "※四捨五入により合計が突合しない場合がある。",
+        "page": 2,
+        "blocks_timeseries": false,
+        "reason": "四捨五入注記。"
+      },
+      {
+        "note_id": "n_higai_ssak2018_002",
+        "table_ids": ["p2_t1"],
+        "kind": "definition_change",
+        "text": "※表中「0」は被害面積0.005ha未満、被害量0.0005t未満、被害額500円未満の場合。または積算資料がなく被害量、被害額が算出できなかった場合。",
+        "page": 2,
+        "blocks_timeseries": true,
+        "reason": "同上。5年分(H30〜R4)すべての「市町村ー作物種類別」表に共通して付されている注記であることを確認した。"
+      }
+    ]
+  },
+  {
+    "doc_id": "choju_higai_choju_sakumotsu_2022",
+    "areas": [], "indicators": [], "units": [], "era_formats": [],
+    "notes": [
+      {
+        "note_id": "n_higai_csak2022_001",
+        "table_ids": ["p2_t1"],
+        "kind": "footnote",
+        "text": "※四捨五入により合計が突合しない場合がある。",
+        "page": 2,
+        "blocks_timeseries": false,
+        "reason": "四捨五入注記。"
+      },
+      {
+        "note_id": "n_higai_csak2022_002",
+        "table_ids": ["p2_t1"],
+        "kind": "definition_change",
+        "text": "※表中「0」は被害面積0.005ha未満、被害量0.0005t未満、被害額500円未満の場合。または積算資料がなく被害量、被害額が算出できなかった場合。",
+        "page": 2,
+        "blocks_timeseries": true,
+        "reason": "「鳥獣別・作物種類別」表でも「0」表示が僅少値/欠測の両方を意味しうる。"
+      },
+      {
+        "note_id": "n_higai_csak2022_003",
+        "table_ids": ["p2_t1"],
+        "kind": "definition_change",
+        "text": "アライグマ 被害面積(ha) 0.01 2.33 0.12 0.21 0.58 3.24",
+        "page": 1,
+        "blocks_timeseries": true,
+        "reason": "本表(鳥獣別・作物種類別)では令和4年度からアライグマが独立した行として集計されている。choju_higai_gaiyou_2022の注記の通り、令和3年度以前は「その他獣類」に含まれていたため、行単位の経年比較でアライグマ行がR3以前に存在しないのは欠測ではなく区分変更による。"
+      }
+    ]
+  },
+  {
+    "doc_id": "choju_higai_choju_sakumotsu_2021",
+    "areas": [], "indicators": [], "units": [], "era_formats": [],
+    "notes": [
+      {
+        "note_id": "n_higai_csak2021_001",
+        "table_ids": ["p2_t1"],
+        "kind": "footnote",
+        "text": "※四捨五入により合計が突合しない場合がある。",
+        "page": 2,
+        "blocks_timeseries": false,
+        "reason": "四捨五入注記。"
+      },
+      {
+        "note_id": "n_higai_csak2021_002",
+        "table_ids": ["p2_t1"],
+        "kind": "definition_change",
+        "text": "※表中「0」は被害面積0.005ha未満、被害量0.0005t未満、被害額500円未満の場合。または積算資料がなく被害量、被害額が算出できなかった場合。",
+        "page": 2,
+        "blocks_timeseries": true,
+        "reason": "同上。"
+      }
+    ]
+  },
+  {
+    "doc_id": "choju_higai_choju_sakumotsu_2020",
+    "areas": [], "indicators": [], "units": [], "era_formats": [],
+    "notes": [
+      {
+        "note_id": "n_higai_csak2020_001",
+        "table_ids": ["p2_t1"],
+        "kind": "footnote",
+        "text": "※四捨五入により合計が突合しない場合がある。",
+        "page": 2,
+        "blocks_timeseries": false,
+        "reason": "四捨五入注記。"
+      },
+      {
+        "note_id": "n_higai_csak2020_002",
+        "table_ids": ["p2_t1"],
+        "kind": "definition_change",
+        "text": "※表中「0」は被害面積0.005ha未満、被害量0.0005t未満、被害額500円未満の場合。または積算資料がなく被害量、被害額が算出できなかった場合。",
+        "page": 2,
+        "blocks_timeseries": true,
+        "reason": "同上。"
+      }
+    ]
+  },
+  {
+    "doc_id": "choju_higai_choju_sakumotsu_2019",
+    "areas": [], "indicators": [], "units": [], "era_formats": [],
+    "notes": [
+      {
+        "note_id": "n_higai_csak2019_001",
+        "table_ids": ["p1_t1"],
+        "kind": "footnote",
+        "text": "※四捨五入により合計が突合しない場合がある。",
+        "page": 1,
+        "blocks_timeseries": false,
+        "reason": "四捨五入注記。"
+      },
+      {
+        "note_id": "n_higai_csak2019_002",
+        "table_ids": ["p1_t1"],
+        "kind": "definition_change",
+        "text": "※表中「0」は被害面積0.005ha未満、被害量0.0005t未満、被害額500円未満の場合。または積算資料がなく被害量、被害額が算出できなかった場合。",
+        "page": 1,
+        "blocks_timeseries": true,
+        "reason": "同上。"
+      }
+    ]
+  },
+  {
+    "doc_id": "choju_higai_choju_sakumotsu_2018",
+    "areas": [], "indicators": [], "units": [], "era_formats": [],
+    "notes": [
+      {
+        "note_id": "n_higai_csak2018_001",
+        "table_ids": ["p1_t1"],
+        "kind": "footnote",
+        "text": "※四捨五入により合計が突合しない場合がある。",
+        "page": 1,
+        "blocks_timeseries": false,
+        "reason": "四捨五入注記。"
+      },
+      {
+        "note_id": "n_higai_csak2018_002",
+        "table_ids": ["p1_t1"],
+        "kind": "definition_change",
+        "text": "※表中「0」は被害面積0.005ha未満、被害量0.0005t未満、被害額500円未満の場合。または積算資料がなく被害量、被害額が算出できなかった場合。",
+        "page": 1,
+        "blocks_timeseries": true,
+        "reason": "5年分(H30〜R4)すべての「鳥獣別・作物種類別」表に共通する注記であることを確認した。"
+      }
+    ]
+  },
+  {
+    "doc_id": "choju_higai_shichoson_choju_2022",
+    "areas": [], "indicators": [], "units": [], "era_formats": [],
+    "notes": [
+      {
+        "note_id": "n_higai_schoju2022_001",
+        "table_ids": ["p2_t1", "p2_t2"],
+        "kind": "footnote",
+        "text": "※四捨五入により合計が突合しない場合がある。",
+        "page": 2,
+        "blocks_timeseries": false,
+        "reason": "四捨五入注記。この「市町村ー鳥獣別」表はp1_maker.pyの一般的な表構造検出アルゴリズムでは正しく解析できず(市町村名・鳥獣種名が本来はデータ列であるにもかかわらずrow_keyとして誤結合され、C6違反(同一row_key/col_keyの組が多数重複)が358/864件検出された)、抽出結果全体の信頼性が低いことを別途報告する。この注記自体は本文に実在する。"
+      }
+    ]
+  },
+  {
+    "doc_id": "choju_higai_shichoson_choju_2021",
+    "areas": [], "indicators": [], "units": [], "era_formats": [],
+    "notes": [
+      {
+        "note_id": "n_higai_schoju2021_001",
+        "table_ids": ["p2_t1", "p2_t2"],
+        "kind": "footnote",
+        "text": "※四捨五入により合計が突合しない場合がある。",
+        "page": 2,
+        "blocks_timeseries": false,
+        "reason": "四捨五入注記。この表は表構造抽出に問題があり(C6違反370/880件)、抽出結果全体の信頼性が低い。"
+      }
+    ]
+  },
+  {
+    "doc_id": "choju_higai_shichoson_choju_2020",
+    "areas": [], "indicators": [], "units": [], "era_formats": [],
+    "notes": [
+      {
+        "note_id": "n_higai_schoju2020_001",
+        "table_ids": ["p2_t1", "p2_t2"],
+        "kind": "footnote",
+        "text": "※四捨五入により合計が突合しない場合がある。",
+        "page": 2,
+        "blocks_timeseries": false,
+        "reason": "四捨五入注記。この表は表構造抽出に問題があり(C6違反367/880件)、抽出結果全体の信頼性が低い。"
+      }
+    ]
+  },
+  {
+    "doc_id": "choju_higai_shichoson_choju_2019",
+    "areas": [], "indicators": [], "units": [], "era_formats": [],
+    "notes": [
+      {
+        "note_id": "n_higai_schoju2019_001",
+        "table_ids": ["p1_t1"],
+        "kind": "footnote",
+        "text": "※四捨五入により合計が突合しない場合がある。",
+        "page": 1,
+        "blocks_timeseries": false,
+        "reason": "四捨五入注記。この表は表構造抽出に問題があり(C6違反85/288件)、抽出結果全体の信頼性が低い。"
+      }
+    ]
+  },
+  {
+    "doc_id": "choju_higai_shichoson_choju_2018",
+    "areas": [], "indicators": [], "units": [], "era_formats": [],
+    "notes": [
+      {
+        "note_id": "n_higai_schoju2018_001",
+        "table_ids": ["p1_t1"],
+        "kind": "footnote",
+        "text": "※四捨五入により合計が突合しない場合がある。",
+        "page": 1,
+        "blocks_timeseries": false,
+        "reason": "四捨五入注記。この表は表構造抽出に問題があり(C6違反83/280件)、抽出結果全体の信頼性が低い。"
+      }
+    ]
+  }
+]

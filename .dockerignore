@@ -1,0 +1,5 @@
+# ビルドコンテキストは ./web だが、念のためルートにも置く
+.git
+.venv
+data
+node_modules

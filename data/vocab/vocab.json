@@ -1,0 +1,6331 @@
+{
+  "vocab_version": "v1",
+  "areas": [
+    {
+      "doc_id": "biodic_6th_kanagawa_h16",
+      "name": "丹沢全域",
+      "definition": "丹沢全域と特定流域という2つの空間スケールで、生物種の目録調査及び生物群集の構造（構成種、分布など）を把握した。",
+      "found_definition": true,
+      "page": 5
+    },
+    {
+      "doc_id": "biodic_6th_kanagawa_h16",
+      "name": "東丹沢モニタリングエリア（東丹沢MA）",
+      "definition": "東丹沢と西丹沢において、自然条件が異なる2流域にモニタリングエリアを設置し、植生タイプごとの生物群集の構成種や分布など、種間関係や種と生息地との関係を解析するための詳細な生物生息情報を収集した。",
+      "found_definition": true,
+      "page": 5
+    },
+    {
+      "doc_id": "biodic_6th_kanagawa_h16",
+      "name": "西丹沢モニタリングエリア（西丹沢MA）",
+      "definition": "東丹沢と西丹沢において、自然条件が異なる2流域にモニタリングエリアを設置し...（東丹沢MAと同一記述内で対をなす区域）",
+      "found_definition": true,
+      "page": 5
+    },
+    {
+      "doc_id": "biodic_6th_kanagawa_h16",
+      "name": "植生タイプ（スギ林・ヒノキ林・アカマツ林・フサザクラ等渓畔林・シデ等渓畔林・ケヤキ林・モミ林・ブナ林・崩壊地の9区分）",
+      "definition": "丹沢山地東部に位置する札掛地区を調査地域として、9つの植生タイプの◯◯林分に方形枠を設置した（図1）。◯◯林分の内訳は、スギ林が4か所、ヒノキ林が2か所、アカマツ林が2か所、フサザクラ等渓畔林が2か所、シデ等渓畔林が2か所、ケヤキ林が2か所、モミ林が2か所、ブナ林が2か所、崩壊地が1か所である。",
+      "found_definition": true,
+      "page": 13
+    },
+    {
+      "doc_id": "biodic_6th_kanagawa_h16",
+      "name": "自然林種／人工林種／ジェネラリスト／低頻度種（生育環境の選好性区分）",
+      "definition": "植物種がどの植生タイプに偏って出現するか、すなわち種の生育環境の選好性を統計的検定により8タイプに区分した...人工林に偏って出現した種は人工林種、自然林に偏って出現した種は自然林種とした...出現頻度の合計が5以下である場合は低頻度種とした。有意差がみられなかった種はジェネラリストとした。",
+      "found_definition": true,
+      "page": 14
+    },
+    {
+      "doc_id": "biodic_6th_kanagawa_h16",
+      "name": "ブナ林種／モミ林種／渓畔林種／崩壊地性種／自然林ジェネラリスト（自然林種の内訳区分）",
+      "definition": "次に自然林種を同様の手順で、崩壊地に偏って出現した種（崩壊地性種）と崩壊地以外の種、偏りに有意差がみられない種（自然林ジェネラリスト）に区分した。そして崩壊地以外の種を、同様の手順でブナ・モミ林に偏って出現する種〈ブナ・モミ林種〉渓畔林に偏って出現する種（渓畔林種） 偏りのみられない種（自然林ジェネラリスト）に区分し、最後にブナ・モミ林種を、ブナ林に偏って出現する種（ブナ林種）とモミ林に偏って出現する種（モミ林種） 偏りのみられない種（自然林ジェネラリスト）に区分した。",
+      "found_definition": true,
+      "page": 14
+    },
+    {
+      "doc_id": "biodic_6th_kanagawa_h16",
+      "name": "希少性区分A〜E",
+      "definition": "『神奈川県植物誌◯◯◯◯』を用いて種の分布地点数から希少性を5区分した。その区分は、分布地点数が◯◯以下、◯◯以上◯◯未満、◯◯以上◯◯◯未満、◯◯以上◯◯◯未満、◯◯◯以上である。（表3注：A：◯◯以下、B：◯◯以上◯◯未満、C：◯◯以上◯◯未満、D：◯◯以上◯◯◯未満、E：◯◯◯以上）",
+      "found_definition": true,
+      "page": 18
+    },
+    {
+      "doc_id": "biodic_6th_kanagawa_h16",
+      "name": "高採食圧区／低採食圧区／採食圧除去区",
+      "definition": "堂平地区は、◯◯◯◯年代からシカの採食影響の高まりにより、林床植生の衰退が見られる地域である...堂平地区は高密度状態が◯◯年以上継続していることから高採食圧区、菰釣山地区は低密度のため低採食圧区とした。また、堂平地区において設置後7年経過した柵内を採食圧除去区とした。",
+      "found_definition": true,
+      "page": 20
+    },
+    {
+      "doc_id": "biodic_6th_kanagawa_h16",
+      "name": "衰退度ランク（0〜4）",
+      "definition": "0：健全、枯枝は認められない／1：枯れた小枝が少しある／2：枯れた小枝がふえ、太い枝から小枝が出る／3：枯れた小枝の古いものは落ち、更に枯枝が増える／4：枯枝の太いものも落ち、着葉は小枝だけになる（図1 衰退度のランク、山家（◯◯◯◯）をもとに作成）",
+      "found_definition": true,
+      "page": 25
+    },
+    {
+      "doc_id": "biodic_6th_kanagawa_h16",
+      "name": "自然林（区分）",
+      "definition": null,
+      "found_definition": false,
+      "page": null
+    },
+    {
+      "doc_id": "biodic_6th_kanagawa_h16",
+      "name": "二次林",
+      "definition": null,
+      "found_definition": false,
+      "page": null
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "相模川",
+      "kind": "target_river",
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "相模川",
+      "kind": "river_system",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "境川",
+      "kind": "river_system",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "沢井川",
+      "kind": "river_system",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "底沢",
+      "kind": "river_system",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "秋山川",
+      "kind": "river_system",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "篠原川",
+      "kind": "river_system",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "道志川",
+      "kind": "river_system",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "串川",
+      "kind": "river_system",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "中津川",
+      "kind": "river_system",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "小鮎川",
+      "kind": "river_system",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "玉川",
+      "kind": "river_system",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "鳩川",
+      "kind": "river_system",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "永池川",
+      "kind": "river_system",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "小倉橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "昭和橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "神川橋下",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "堺橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "自然公園センター前",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "上沢井橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "千木良",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "日向（遊魚園）",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "新大橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "緑の休暇村センター",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "青山水源地脇",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "神ノ川・日陰沢",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "西沢・水沐所橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "道場",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "河原橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "馬渡橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "鮎津橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "早戸川・国際マス釣り場",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "水沢川・水沢橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "宮ヶ瀬金沢・宮ヶ瀬",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "布川・唐沢川",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "布川・金沢キャンプ場",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "布川・境沢（林道終点）",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "本谷川・本谷橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "塩水川・塩水橋上流",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "南沢・おたき橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "善明川・ビオトープ前",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "第2鮎津橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "柿ノ木平川",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "荻野川・新道橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "籠堰橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "酒井橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "七沢川・二の橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "日向川・日向薬師",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "恩曽川・長ヶ町橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "今橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "新一の沢橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "馬船橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "道保川・一ノ関橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "平泉橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "酒匂川",
+      "kind": "target_river",
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "酒匂川",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "河内川",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "鮎沢川",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "玄倉川",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "小菅沢",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "世附川",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "大又沢",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "塩沢",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "畑沢",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "皆瀬川",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "内川",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "尺里川",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "中津川（酒匂川水系）",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "四十八瀬川",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "川音川",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "狩川",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "金瀬川",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "山北道の駅前（河内川）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "十文字橋（酒匂川）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "報徳橋（酒匂川）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "小田原大橋上（酒匂川）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "新鮎沢橋（鮎沢川）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "旧白石沢キャンプ場（河内川）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "東沢（河内川）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "西沢（河内川）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "大滝沢・峰山橋（河内川）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "中川温泉下（河内川）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "ユーシンロッヂ前（玄倉川）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "仲の沢・小割沢橋（玄倉川）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "玄倉水位観測所（玄倉川）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "小菅沢橋（小菅沢）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "金山沢・菰釣橋（世附川）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "一の沢・一の沢橋（世附川）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "浅瀬（世附川）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "白水沢・白水沢橋（大又沢）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "千鳥橋（大又沢）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "塩沢・集落終点（塩沢）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "3号橋（畑沢）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "人遠橋（皆瀬川）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "新樋口橋（皆瀬川）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "工一橋（内川）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "尾崎橋（内川）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "県立山北高校前（尺里川）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "やどりき水源林内（中津川）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "湯ノ沢橋（中津川）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "勘七橋（四十八瀬川）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "河内橋（四十八瀬川）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "文久橋（川音川）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "川入橋（狩川）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "上河原橋（狩川）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "上総川・大瀬戸橋（狩川）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "太刀洗川・栄橋（狩川）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "洞川・下河原橋（狩川）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "分沢川・森と水の公園上（狩川）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "仙了川・仙了橋（狩川）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "狩川橋（狩川）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "飯泉橋上（金瀬川）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "相模川",
+      "kind": "target_river",
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "相模川",
+      "kind": "river_system",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "境川",
+      "kind": "river_system",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "沢井川",
+      "kind": "river_system",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "底沢",
+      "kind": "river_system",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "秋山川",
+      "kind": "river_system",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "篠原川",
+      "kind": "river_system",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "道志川",
+      "kind": "river_system",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "串川",
+      "kind": "river_system",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "中津川",
+      "kind": "river_system",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "小鮎川",
+      "kind": "river_system",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "玉川",
+      "kind": "river_system",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "鳩川",
+      "kind": "river_system",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "永池川",
+      "kind": "river_system",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "小倉橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "昭和橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "神川橋下",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "堺橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "自然公園センター前",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "上沢井橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "千木良",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "日向（遊魚園）",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "新大橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "緑の休暇村センター",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "青山水源地脇",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "神ノ川・日陰沢",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "西沢・水沐所橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "道場",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "河原橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "馬渡橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "鮎津橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "早戸川・国際マス釣り場",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "水沢川・水沢橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "宮ヶ瀬金沢・宮ヶ瀬",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "布川・唐沢川",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "布川・金沢キャンプ場",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "布川・境沢（林道終点）",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "本谷川・本谷橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "塩水川・塩水橋上流",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "南沢・おたき橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "善明川・ビオトープ前",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "第2鮎津橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "柿ノ木平川",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "荻野川・新道橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "籠堰橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "酒井橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "七沢川・二の橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "日向川・日向薬師",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "恩曽川・長ヶ町橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "今橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "新一の沢橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "馬船橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "道保川・一ノ関橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "平泉橋",
+      "kind": "survey_point",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "酒匂川",
+      "kind": "target_river",
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "酒匂川",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "河内川",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "鮎沢川",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "玄倉川",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "小菅沢",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "世附川",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "大又沢",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "塩沢",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "畑沢",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "皆瀬川",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "内川",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "尺里川",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "中津川（酒匂川水系）",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "四十八瀬川",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "川音川",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "狩川",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "金瀬川",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "山北道の駅前",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "十文字橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "報徳橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "小田原大橋上",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "新鮎沢橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "旧白石沢キャンプ場",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "東沢",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "西沢",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "大滝沢・峰山橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "中川温泉下",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "ユーシンロッヂ前",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "中の沢・小割沢橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "玄倉水位観測所",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "小菅沢橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "金山沢・菰釣橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "一の沢・一の沢橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "浅瀬",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "白水沢・白水沢橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "千鳥橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "塩沢・集落終点",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "3号橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "人遠橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "新樋口橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "工一橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "尾崎橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "県立山北高校前",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "やどりき水源林内",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "湯ノ沢橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "勘七橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "河内橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "文久橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "川入橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "上河原橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "上総川・大瀬戸橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "太刀洗川・栄橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "洞川・下河原橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "分沢川・森と水の公園上",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "仙了川・仙了橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "狩川橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "飯泉橋上",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "相模川",
+      "kind": "target_river",
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "相模川",
+      "kind": "river_system",
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "境川",
+      "kind": "river_system",
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "沢井川",
+      "kind": "river_system",
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "底沢",
+      "kind": "river_system",
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "秋山川",
+      "kind": "river_system",
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "篠原川",
+      "kind": "river_system",
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "道志川",
+      "kind": "river_system",
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "串川",
+      "kind": "river_system",
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "中津川",
+      "kind": "river_system",
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "小鮎川",
+      "kind": "river_system",
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "玉川",
+      "kind": "river_system",
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "鳩川",
+      "kind": "river_system",
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "永池川",
+      "kind": "river_system",
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "小倉橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "昭和橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "神川橋下",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "堺橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "旧自然公園センター前",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "上沢井橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "千木良",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "日向（遊魚園）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "新大橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "緑の休暇村センター",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "青山水源地脇",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "神ノ川・日陰沢",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "西沢・水沐所橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "道場",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "河原橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "馬渡橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "鮎津橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "早戸川・国際マス釣り場",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "水沢川・水沢橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "布川・札掛橋下流",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "布川・旧金沢キャンプ場",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "布川・境沢（林道終点）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "本谷川・本谷橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "塩水川・塩水橋上流",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "南沢・おたき橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "善明川・ビオトープ前",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "第2鮎津橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "柿ノ木平川",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "荻野川・新道橋（表記ゆれ:萩野川）",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "籠堰橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "酒井橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "七沢川・二の橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "日向川・日向薬師",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "恩曽川・長ヶ町橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "今橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "新一の沢橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "馬船橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "道保川・一ノ関橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "平泉橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "宮ヶ瀬金沢・宮ヶ瀬（No.20、崩落により調査不可のため削除）",
+      "kind": "survey_point_removed",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "酒匂川",
+      "kind": "target_river",
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "酒匂川",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "河内川",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "鮎沢川",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "玄倉川",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "小菅沢",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "世附川",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "大又沢",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "塩沢",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "畑沢",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "皆瀬川",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "内川",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "尺里川",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "中津川（酒匂川水系）",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "四十八瀬川",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "川音川",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "狩川",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "金瀬川",
+      "kind": "river_system",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "山北道の駅前",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "十文字橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "報徳橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "小田原大橋上",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "新鮎沢橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "旧白石沢キャンプ場",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "東沢",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "西沢",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "大滝沢・峰山橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "中川温泉下",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "ユーシンロッヂ前",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "中の沢・小割沢橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "玄倉水位観測所",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "小菅沢橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "金山沢・菰釣橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "一の沢・一の沢橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "浅瀬",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "白水沢・白水沢橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "千鳥橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "塩沢・集落終点",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "3号橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "人遠橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "新樋口橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "工一橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "尾崎橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "県立山北高校前",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "やどりき水源林内",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "湯ノ沢橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "勘七橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "河内橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "文久橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "川入橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "上河原橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "上総川・大瀬戸橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "太刀洗川・栄橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "洞川・下河原橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "分沢川・森と水の公園上",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "仙了川・仙了橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "狩川橋",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "飯泉橋上",
+      "kind": "survey_point",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "（崩落のため未調査の1地点、番号不特定：表-1の10番と11番の間に注記あり）",
+      "kind": "survey_point_removed",
+      "page": 5
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "St.11（令和元年度／平成31年度のナルコスゲ調査で調査対象外）",
+      "kind": "survey_point_excluded_partial",
+      "page": 23
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_fish",
+      "name": "相模川流域",
+      "definition": "降った雨や雪の水が、相模川に集まってくる範囲です。（位置図凡例より）",
+      "first_page": 1
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_fish",
+      "name": "相模川水系",
+      "definition": "相模川水系の河川。太く示した河川は、京浜河川事務所で管理しており、調査は管理区域内で実施しています。（位置図凡例より、河川そのものを指す語）",
+      "first_page": 1
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_fish",
+      "name": "管理区域",
+      "definition": "位置図凡例の「相模川水系の河川」注記中に登場。京浜河川事務所が管理する区域を指し、調査はこの区域内で実施されているとされる。区域の外縁（座標・範囲）の明示なし。",
+      "first_page": 1
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_fish",
+      "name": "調査地点①〜③",
+      "definition": "「●：調査地点（この番号が、次の確認種リストの調査地点番号と対応しています。）」。魚類調査では3地点（地点①〜③）。",
+      "first_page": 1
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_benthos",
+      "name": "相模川流域",
+      "definition": "降った雨や雪の水が、相模川に集まってくる範囲です。（位置図凡例より）",
+      "first_page": 1
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_benthos",
+      "name": "相模川水系",
+      "definition": "相模川水系の河川。太く示した河川は、京浜河川事務所で管理しており、調査は管理区域内で実施しています。",
+      "first_page": 1
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_benthos",
+      "name": "管理区域",
+      "definition": "位置図凡例中に登場。京浜河川事務所が管理する区域を指し、調査はこの区域内で実施。",
+      "first_page": 1
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_benthos",
+      "name": "調査地点①〜③",
+      "definition": "底生動物調査では3地点（地点①〜③）。地点番号は確認種リストの調査地点番号と対応。",
+      "first_page": 1
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_birds",
+      "name": "相模川流域",
+      "definition": "降った雨や雪の水が、相模川に集まってくる範囲です。（位置図凡例より）",
+      "first_page": 1
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_birds",
+      "name": "相模川水系",
+      "definition": "相模川水系の河川。太く示した河川は、京浜河川事務所で管理しており、調査は管理区域内で実施しています。",
+      "first_page": 1
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_birds",
+      "name": "管理区域",
+      "definition": "位置図凡例中に登場。京浜河川事務所が管理する区域を指し、調査はこの区域内で実施。",
+      "first_page": 1
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_birds",
+      "name": "調査地点①〜⑦",
+      "definition": "鳥類調査では7地点（地点①〜⑦）。地点番号は確認種リストの調査地点番号と対応。他分類群（魚類・底生動物3地点、植物5地点、昆虫4地点等）と地点数・位置が異なるため同一視しない。",
+      "first_page": 1
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_plants",
+      "name": "相模川流域",
+      "definition": "降った雨や雪の水が、相模川に集まってくる範囲です。（位置図凡例より）",
+      "first_page": 1
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_plants",
+      "name": "相模川水系",
+      "definition": "相模川水系の河川。太く示した河川は、京浜河川事務所で管理しており、調査は管理区域内で実施しています。",
+      "first_page": 1
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_plants",
+      "name": "管理区域",
+      "definition": "位置図凡例中に登場。京浜河川事務所が管理する区域を指し、調査はこの区域内で実施。",
+      "first_page": 1
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_plants",
+      "name": "調査地点①〜⑤",
+      "definition": "植物調査では5地点（地点①〜⑤）。地点番号は確認種リストの調査地点番号と対応。他分類群と地点数・位置が異なるため同一視しない。",
+      "first_page": 1
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_insects",
+      "name": "相模川流域",
+      "definition": "降った雨や雪の水が、相模川に集まってくる範囲です。（位置図凡例より）",
+      "first_page": 1
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_insects",
+      "name": "相模川水系",
+      "definition": "相模川水系の河川。太く示した河川は、京浜河川事務所で管理しており、調査は管理区域内で実施しています。",
+      "first_page": 1
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_insects",
+      "name": "管理区域",
+      "definition": "位置図凡例中に登場。京浜河川事務所が管理する区域を指し、調査はこの区域内で実施。",
+      "first_page": 1
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_insects",
+      "name": "調査地点①〜④",
+      "definition": "陸上昆虫類等調査では4地点（地点①〜④、位置図では地点②③が同一地点として並記）。他分類群と地点数・位置が異なるため同一視しない。",
+      "first_page": 1
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_herptile_mammal",
+      "name": "相模川流域",
+      "definition": "降った雨や雪の水が、相模川に集まってくる範囲です。（位置図凡例より）",
+      "first_page": 1
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_herptile_mammal",
+      "name": "相模川水系",
+      "definition": "相模川水系の河川。太く示した河川は、京浜河川事務所で管理しており、調査は管理区域内で実施しています。",
+      "first_page": 1
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_herptile_mammal",
+      "name": "管理区域",
+      "definition": "位置図凡例中に登場。京浜河川事務所が管理する区域を指し、調査はこの区域内で実施。",
+      "first_page": 1
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_herptile_mammal",
+      "name": "調査地点①〜④（うち②④は同一地点）",
+      "definition": "両生類・爬虫類・哺乳類調査の位置図では「地点①」「地点②④」「地点③」の3ラベルで4つの地点番号が示されており、地点②と地点④は同一地点として重ねて表記されている。他分類群（魚類・底生動物3地点、鳥類7地点、植物5地点、昆虫4地点）と地点数・位置・付番方式が異なるため同一視しない。",
+      "first_page": 1
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "水源保全地域",
+      "definition": "主として、県外上流域を含めたダム上流域を中心に、河川水及び地下水の取水地点の集水域全体（水源保全地域）",
+      "found_definition": true,
+      "pages": [
+        22,
+        23
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "水源の森林エリア",
+      "definition": "本県の広域的な水源であるダム水源等を保全する上で重要な県内の森林の区域",
+      "found_definition": true,
+      "pages": [
+        23,
+        26
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "地域水源林エリア",
+      "definition": "地域内の河川表流水や伏流水、地下水、湧水を主要な水道水源としている地域と相模川水系・酒匂川水系取水堰の県内集水域のうち、水源の森林エリアを除いた区域",
+      "found_definition": true,
+      "pages": [
+        23,
+        26
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "相模川水系県外上流域",
+      "definition": null,
+      "found_definition": false,
+      "pages": [
+        19,
+        23,
+        26
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "酒匂川水系県外上流域",
+      "definition": null,
+      "found_definition": false,
+      "pages": [
+        19,
+        23,
+        26
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "県内水源保全地",
+      "definition": null,
+      "found_definition": false,
+      "pages": [
+        23
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "県外上流域",
+      "definition": null,
+      "found_definition": false,
+      "pages": [
+        23
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "ダム集水域",
+      "definition": null,
+      "found_definition": false,
+      "pages": [
+        26,
+        29,
+        38,
+        90
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "河川中流域",
+      "definition": null,
+      "found_definition": false,
+      "pages": [
+        26
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "小仏山地",
+      "definition": "堆積岩の急峻な山地のまとまった人工林。地質は、かつて海底であった時代の砂と粘土の堆積物を起源とする小仏層群。比較的私有林が多く、スギやヒノキの人工林が広く分布。",
+      "found_definition": true,
+      "pages": [
+        16
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "丹沢山地",
+      "definition": "急峻でもろい山地のモザイク状の森林。地質は、東部は第三紀層丹沢層群（凝灰岩）、西部は深成岩（石英閃緑岩）。過去からの地殻変動の影響で急峻でもろい。",
+      "found_definition": true,
+      "pages": [
+        16
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "箱根外輪山",
+      "definition": "火山堆積物の緩やかな山地のまとまった人工林。地質は、箱根火山の噴出物に由来。大部分が市町村所有であり、人工林が多く分布し、林道が密に整備されている。",
+      "found_definition": true,
+      "pages": [
+        16
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "県西部",
+      "definition": null,
+      "found_definition": false,
+      "pages": [
+        9,
+        10
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "県中央部",
+      "definition": null,
+      "found_definition": false,
+      "pages": [
+        9,
+        10
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "県東部",
+      "definition": null,
+      "found_definition": false,
+      "pages": [
+        9,
+        10
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "name": "保護管理区域",
+      "definition": null,
+      "found_definition": false,
+      "pages": [
+        2,
+        3,
+        4,
+        6,
+        9,
+        12,
+        14,
+        19,
+        20,
+        21,
+        26
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "name": "定着防止区域",
+      "definition": null,
+      "found_definition": false,
+      "pages": [
+        2,
+        3,
+        4,
+        7,
+        9,
+        10,
+        11,
+        13,
+        14,
+        19,
+        20,
+        22,
+        26
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "name": "自然植生回復エリア",
+      "definition": null,
+      "found_definition": false,
+      "pages": [
+        6,
+        19,
+        25
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "name": "生息環境管理エリア",
+      "definition": null,
+      "found_definition": false,
+      "pages": [
+        6,
+        19,
+        25
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "name": "被害防除対策エリア",
+      "definition": null,
+      "found_definition": false,
+      "pages": [
+        6,
+        7,
+        21
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "name": "箱根山地",
+      "definition": null,
+      "found_definition": false,
+      "pages": [
+        23
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "name": "保護管理区域",
+      "definition": null,
+      "found_definition": false,
+      "pages": [
+        1,
+        2,
+        3,
+        9,
+        18,
+        20,
+        21
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "name": "定着防止区域",
+      "definition": null,
+      "found_definition": false,
+      "pages": [
+        1,
+        2,
+        3,
+        9,
+        10,
+        18,
+        20,
+        21
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "name": "自然植生回復エリア",
+      "definition": null,
+      "found_definition": false,
+      "pages": [
+        5,
+        23
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "name": "生息環境管理エリア",
+      "definition": null,
+      "found_definition": false,
+      "pages": [
+        5,
+        18,
+        23
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "name": "被害防除対策エリア",
+      "definition": null,
+      "found_definition": false,
+      "pages": [
+        7,
+        20
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "name": "箱根山地",
+      "definition": null,
+      "found_definition": false,
+      "pages": [
+        9,
+        22
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "name": "保護管理区域",
+      "definition": "県内33市町村のうち、シカの主要な生息分布域である丹沢山地を含む8市町村　相模原市（緑区のうち旧津久井町の区域）、秦野市、厚木市、伊勢原市、松田町、山北町、愛川町及び清川村",
+      "found_definition": true,
+      "pages": [
+        1
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "name": "定着防止区域",
+      "definition": "(1)以外で、シカの生息や目撃情報等が得られている市町　相模原市（緑区のうち旧藤野町、旧相模湖町、旧城山町の区域）、平塚市、小田原市、南足柄市、大磯町、二宮町、中井町、大井町、開成町、箱根町、真鶴町及び湯河原町（※第3次計画中は「分布拡大防止区域」、第2次計画中は「監視区域」）",
+      "found_definition": true,
+      "pages": [
+        2
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "name": "自然植生回復エリア",
+      "definition": "丹沢山地の主に高標高域（概ね800m以上）に位置し、主稜線部の丹沢大山国定公園特別保護地区を中心とするエリアである。丹沢山地の主稜線部にあって、丹沢大山国定公園の中核的地域として人為的な改変を避けて優れた自然環境が保全されている。このエリアでは、シカによる過度の採食圧によって林床植生の劣化が顕在化していることから、シカの生息密度を低減し、林床植生を早期に回復させることを目標に、主に県が主体となって管理捕獲を中心に管理事業を実施する",
+      "found_definition": true,
+      "pages": [
+        10
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "name": "生息環境管理エリア",
+      "definition": "スギやヒノキの人工林が広がる中標高域（概ね300〜800m）に位置し、丹沢大山国定公園及び県立丹沢大山自然公園の特別地域を中心とするエリアである。人工林や二次林において、水源の森林づくり事業等により、森林整備が行われている。このエリアをシカの主要な生息域として位置付け、林床植生の衰退が生じないレベルでシカを安定的に生息させることを目標として、主に県が主体となってシカ管理捕獲と森林整備を連携させた管理事業を実施する",
+      "found_definition": true,
+      "pages": [
+        10
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "name": "被害防除対策エリア",
+      "definition": "主に山麓部（概ね300m以下）に位置し、保護管理区域のうち、自然植生回復エリア及び生息環境管理エリア以外のエリアである。農地及び市街地が広がり、人の経済活動が活発な地域である。このエリアでは、農地周辺でのシカの定着を解消し、農林業被害を軽減することを目標に、市町村等地域が主体となって被害防除対策と管理捕獲を中心に管理事業を実施する",
+      "found_definition": true,
+      "pages": [
+        10
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "name": "箱根山地",
+      "definition": "箱根山地では、シカの定着が進んでおり、生息密度の増加により部分的な林床植生が衰退する懸念があるため、継続的かつこれまでよりも高い捕獲圧をかけていく必要がある。",
+      "found_definition": true,
+      "pages": [
+        11,
+        17
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "name": "小仏山地",
+      "definition": "小仏山地では、隣接都県からシカの移入を受けやすい地理的環境にあるため、モニタリングによる生息状況等の把握を行い、相模原市へ情報提供していく。",
+      "found_definition": true,
+      "pages": [
+        11,
+        18
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "name": "丹沢山地",
+      "definition": "丹沢山地は神奈川県の北西部に位置し、北西端に大室山、中核部に蛭ヶ岳・丹沢山、塔ノ岳、東端に大山などの峰があり、それらの峰から北東〜南西方向に延びる稜線と谷の繰り返し、並びに北西〜南東方向に延びる稜線とが組み合わさった複雑な地形をなしている。",
+      "found_definition": true,
+      "pages": [
+        28
+      ]
+    }
+  ],
+  "indicators": [
+    {
+      "doc_id": "biodic_6th_kanagawa_h16",
+      "name": "種密度",
+      "unit": "種/4m²",
+      "method": "林床植物調査枠の出現種数として算出",
+      "first_page": 14,
+      "definition": "各林分の植物種多様性の尺度として、単位面積あたりの種数、すなわち種密度...を用いた。種密度は、林床植物調査枠の出現種数として算出した。",
+      "found_definition": true
+    },
+    {
+      "doc_id": "biodic_6th_kanagawa_h16",
+      "name": "Shannon-WienerのH'",
+      "unit": "無次元（多様度指数）",
+      "method": "各林分における植物種の相対出現頻度から算出",
+      "first_page": 14,
+      "definition": "Shannon-WienerのH'とPielouのJ'を用いた...Shannon-WienerのH'とPielouのJ'は各林分における植物種の相対出現頻度から算出した。",
+      "found_definition": true
+    },
+    {
+      "doc_id": "biodic_6th_kanagawa_h16",
+      "name": "PielouのJ'",
+      "unit": "無次元（均等度指数）",
+      "method": "各林分における植物種の相対出現頻度から算出",
+      "first_page": 14,
+      "definition": "同上（Shannon-WienerのH'と同一箇所で定義）",
+      "found_definition": true
+    },
+    {
+      "doc_id": "biodic_6th_kanagawa_h16",
+      "name": "植被率",
+      "unit": "%",
+      "method": "林床植物調査用の方形枠（2×2m）における記録",
+      "first_page": 20,
+      "definition": "各調査区において林床植物調査用の方形枠（2×2m）を◯◯個設置し、植被率と出現した植物種を記録した。",
+      "found_definition": true
+    },
+    {
+      "doc_id": "biodic_6th_kanagawa_h16",
+      "name": "スズタケの桿長・葉長",
+      "unit": "cm",
+      "method": "ブナ林の各方形枠で最大桿長と最大葉長を測定",
+      "first_page": 21,
+      "definition": "ブナ林では各方形枠でスズタケの最大桿長と最大葉長を測定した。",
+      "found_definition": true
+    },
+    {
+      "doc_id": "biodic_6th_kanagawa_h16",
+      "name": "撮影頻度（カメラ・日あたり）",
+      "unit": "枚/カメラ・日",
+      "method": "延べカメラ設置日数（カメラ日）を分母に撮影枚数を集計",
+      "first_page": 68,
+      "definition": "延べカメラ設置日数（以下カメラ日）は東丹沢◯◯◯◯日（うち尾根筋◯◯◯日）、西丹沢◯◯◯日の計◯◯◯◯日であった。調査地全体における撮影頻度は、丹沢全体で◯◯◯◯枚/カメラ・日であった。",
+      "found_definition": true
+    },
+    {
+      "doc_id": "biodic_6th_kanagawa_h16",
+      "name": "カモシカの生息密度",
+      "unit": "頭/km²",
+      "method": "ニホンジカ保護管理事業の区画法による密度調査時にカモシカの目撃数も記録し算出",
+      "first_page": 63,
+      "definition": "ニホンジカ保護管理事業で行われている生息密度調査の際、カモシカの目撃数も合わせて記録し、生息密度を算出した。",
+      "found_definition": true
+    },
+    {
+      "doc_id": "biodic_6th_kanagawa_h16",
+      "name": "藻類現存量（石礫1平方ミリメートル上の細胞数）",
+      "unit": "細胞/mm²（糸状藍藻は糸状体数）",
+      "method": "石礫上5×5cm²の方形枠内の藻類を1採集地点につき4試料剥離採集し、光学顕微鏡で計数",
+      "first_page": 39,
+      "definition": "表1 石礫1平方ミリメートル上の現存量（細胞数、糸状藍藻は糸状体数）",
+      "found_definition": true
+    },
+    {
+      "doc_id": "biodic_6th_kanagawa_h16",
+      "name": "優占種の出現率",
+      "unit": "無次元（比率、100/出現taxa数を基準値とする）",
+      "method": "平均の出現率（100/出現taxa数）より高い値を示す種を優占種として集計",
+      "first_page": 49,
+      "definition": "ここでの優占種とは平均の出現率（100 / 出現taxa数）より大な種をいう。",
+      "found_definition": true
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "pH",
+      "unit": null,
+      "method": null,
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "BOD",
+      "unit": "mg/L",
+      "method": "水質測定計画に基づく方法に準じて実施",
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "COD",
+      "unit": "mg/L",
+      "method": null,
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "SS（浮遊物質量）",
+      "unit": "mg/L",
+      "method": null,
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "DO",
+      "unit": null,
+      "method": null,
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "全窒素",
+      "unit": "mg/L",
+      "method": null,
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "溶解性全窒素",
+      "unit": null,
+      "method": null,
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "硝酸性窒素",
+      "unit": null,
+      "method": "注1）硝酸性(態)窒素は硝酸塩として含まれている窒素。出典：水質用語集(国交省京浜河川事務所)",
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "亜硝酸性窒素",
+      "unit": null,
+      "method": null,
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "アンモニア性窒素",
+      "unit": null,
+      "method": null,
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "全リン",
+      "unit": "mg/L",
+      "method": null,
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "溶解性全リン",
+      "unit": null,
+      "method": null,
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "リン酸態リン",
+      "unit": null,
+      "method": "注2）リン酸イオンとして存在するリン。出典：水質用語集(国交省京浜河川事務所)",
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "TOC",
+      "unit": "mg/L",
+      "method": null,
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "基礎生産量（クロロフィル量）",
+      "unit": null,
+      "method": null,
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "底生動物 種類数",
+      "unit": "種類",
+      "method": "平成18年度版河川水辺の国勢調査マニュアルに準拠、夏冬2回調査",
+      "page": 14
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "平均スコア法（ASPT）",
+      "unit": null,
+      "method": "底生動物の科に水質汚濁への影響の弱いものから強いものへ10〜1のスコアを与え、出現した全科のスコア合計を科数で除した値。ASPT=ΣSi／ｎ",
+      "page": 14
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "魚類 確認種類数",
+      "unit": "種類",
+      "method": null,
+      "page": 14
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "両生類 確認種類数",
+      "unit": "種類",
+      "method": null,
+      "page": 14
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "鳥類 確認種数",
+      "unit": "種",
+      "method": null,
+      "page": 14
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "植物 確認種類数／帰化種割合",
+      "unit": "種類／％",
+      "method": null,
+      "page": 14
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "付着藻類 種類数",
+      "unit": "種類",
+      "method": null,
+      "page": 14
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "DAIpo（有機汚濁指数）",
+      "unit": null,
+      "method": "付着珪藻を好清水性・広適応性・好汚濁性の3生態種群に分け、DAIpo=50+1/2(ΣXi－ΣSi)で算出。100点満点で100が最も清浄。",
+      "page": 14
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "透視度（県民参加型・水質評価ランク）",
+      "unit": "cm",
+      "method": "表-3 評価項目とランク（A〜D）による定性評価",
+      "page": 22
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "ゴミの量（県民参加型）",
+      "unit": null,
+      "method": null,
+      "page": 22
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "水のにおい（県民参加型）",
+      "unit": null,
+      "method": null,
+      "page": 22
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "name": "川底の感触（県民参加型）",
+      "unit": null,
+      "method": null,
+      "page": 22
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "pH",
+      "unit": null,
+      "method": null,
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "BOD",
+      "unit": "mg/L",
+      "method": null,
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "COD",
+      "unit": "mg/L",
+      "method": null,
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "SS",
+      "unit": "mg/L",
+      "method": null,
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "DO",
+      "unit": null,
+      "method": null,
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "全窒素",
+      "unit": "mg/L",
+      "method": null,
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "溶解性全窒素",
+      "unit": null,
+      "method": null,
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "硝酸性窒素",
+      "unit": null,
+      "method": "注1）硝酸性(態)窒素は硝酸塩として含まれている窒素。出典：水質用語集(国交省京浜河川事務所)",
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "亜硝酸性窒素",
+      "unit": null,
+      "method": null,
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "アンモニア性窒素",
+      "unit": null,
+      "method": null,
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "全リン",
+      "unit": "mg/L",
+      "method": null,
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "溶解性全リン",
+      "unit": null,
+      "method": null,
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "リン酸態リン",
+      "unit": null,
+      "method": "注2）リン酸イオンとして存在するリン。出典：水質用語集(国交省京浜河川事務所)",
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "TOC",
+      "unit": "mg/L",
+      "method": null,
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "電気伝導度",
+      "unit": null,
+      "method": null,
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "基礎生産量（クロロフィル量）",
+      "unit": null,
+      "method": null,
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "底生動物 種類数",
+      "unit": "種類",
+      "method": null,
+      "page": 14
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "平均スコア法（ASPT）",
+      "unit": null,
+      "method": "底生動物の科に水質汚濁への耐忍性の弱いものから強いものへ10〜1のスコアを与え、全科のスコア合計（BMWPスコア値）を科数で割ったもの。ASPT=ΣSi／ｎ。BMWP=Biological Monitoring Working Party(1976,英国)",
+      "page": 14
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "魚類 確認種類数",
+      "unit": "種類",
+      "method": null,
+      "page": 14
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "両生類 確認種類数",
+      "unit": "種類",
+      "method": null,
+      "page": 14
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "鳥類 確認種数",
+      "unit": "種",
+      "method": null,
+      "page": 14
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "植物 確認種類数／帰化種割合",
+      "unit": "種類／％",
+      "method": null,
+      "page": 14
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "付着藻類 種類数",
+      "unit": "種類",
+      "method": null,
+      "page": 14
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "DAIpo（有機汚濁指数）",
+      "unit": null,
+      "method": "DAIpo=50+1/2(ΣXi–ΣSi)。100点満点で100が最も清浄。",
+      "page": 14
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "EPT指数",
+      "unit": null,
+      "method": "カゲロウ(E)・カワゲラ(P)・トビケラ(T)の種類数合計。",
+      "page": 26
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "name": "透視度（県民参加型・水質評価ランク）",
+      "unit": "cm",
+      "method": "表-2 評価項目とランク（A〜D）",
+      "page": 24
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "pH",
+      "unit": null,
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "BOD",
+      "unit": "mg/L",
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "COD",
+      "unit": "mg/L",
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "SS",
+      "unit": "mg/L",
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "DO",
+      "unit": null,
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "全窒素",
+      "unit": "mg/L",
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "溶解性全窒素",
+      "unit": null,
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "硝酸性窒素",
+      "unit": null,
+      "method": "注1）硝酸性(態)窒素は硝酸塩として含まれている窒素。出典：水質用語集(国交省京浜河川事務所)",
+      "page": 7
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "亜硝酸性窒素",
+      "unit": null,
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "アンモニア性窒素",
+      "unit": null,
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "全燐",
+      "unit": "mg/L",
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "溶解性全燐",
+      "unit": null,
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "燐酸態燐",
+      "unit": null,
+      "method": "注2）燐酸イオンとして存在する燐。出典：水質用語集(国交省京浜河川事務所)",
+      "page": 7
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "TOC",
+      "unit": "mg/L",
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "基礎生産量（クロロフィル量）",
+      "unit": null,
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "底生動物 種類数",
+      "unit": "種",
+      "method": null,
+      "page": 13
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "平均スコア法（ASPT）",
+      "unit": null,
+      "method": "BMWP法を日本向けに改良。各科に耐忍性の弱いものから強いものへ10〜1のスコアを与え、合計を科数で割った値。ASPT=ΣSi／ｎ。スコア表は野崎(2012)水環境学会誌35(4)による。",
+      "page": 15
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "魚類 確認種類数",
+      "unit": "種",
+      "method": null,
+      "page": 13
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "両生類 確認種類数",
+      "unit": "種",
+      "method": null,
+      "page": 13
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "鳥類 確認種数",
+      "unit": "種",
+      "method": null,
+      "page": 13
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "植物 確認種類数／帰化種割合",
+      "unit": "種類／科／％",
+      "method": null,
+      "page": 13
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "付着藻類 種類数",
+      "unit": "種",
+      "method": null,
+      "page": 13
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "name": "DAIpo（有機汚濁指数）",
+      "unit": null,
+      "method": "珪藻の好清水性種・好汚濁性種の相対頻度からDAIpo=50+1/2（A－B）で算出。",
+      "page": 16
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "pH",
+      "unit": null,
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "BOD",
+      "unit": "mg/L",
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "COD",
+      "unit": "mg/L",
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "SS",
+      "unit": "mg/L",
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "DO",
+      "unit": null,
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "全窒素",
+      "unit": "mg/L",
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "溶解性全窒素",
+      "unit": null,
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "硝酸性窒素",
+      "unit": null,
+      "method": "注1）硝酸性(態)窒素は硝酸塩として含まれている窒素。出典：水質用語集(国交省京浜河川事務所)",
+      "page": 7
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "亜硝酸性窒素",
+      "unit": null,
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "アンモニア性窒素",
+      "unit": null,
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "全燐",
+      "unit": "mg/L",
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "溶解性全燐",
+      "unit": null,
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "燐酸態燐",
+      "unit": null,
+      "method": "注2）燐酸イオンとして存在する燐。出典：水質用語集(国交省京浜河川事務所)",
+      "page": 7
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "TOC",
+      "unit": "mg/L",
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "基礎生産量（クロロフィル量）",
+      "unit": null,
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "底生動物 種類数（重要種・国外外来種を含む）",
+      "unit": "種",
+      "method": null,
+      "page": 14
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "平均スコア法（ASPT）",
+      "unit": null,
+      "method": "BMWP法準拠。ASPT=ΣSi／ｎ。スコア表は野崎(2012)水環境学会誌35(4)による。",
+      "page": 15
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "魚類 確認種類数（重要種・外来種を含む）",
+      "unit": "種",
+      "method": null,
+      "page": 14
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "両生類 確認種類数（重要種を含む）",
+      "unit": "種",
+      "method": null,
+      "page": 14
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "鳥類 確認種数（重要種を含む）",
+      "unit": "種",
+      "method": null,
+      "page": 14
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "植物 確認種類数／帰化種割合",
+      "unit": "種／％",
+      "method": null,
+      "page": 14
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "付着藻類 種類数",
+      "unit": "種類",
+      "method": null,
+      "page": 15
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "name": "DAIpo（有機汚濁指数）",
+      "unit": null,
+      "method": "DAIpo=50+1/2（A－B）",
+      "page": 16
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "pH",
+      "unit": null,
+      "method": null,
+      "page": 6
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "BOD",
+      "unit": "mg/L",
+      "method": null,
+      "page": 6
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "COD",
+      "unit": "mg/L",
+      "method": null,
+      "page": 6
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "SS",
+      "unit": "mg/L",
+      "method": null,
+      "page": 6
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "DO",
+      "unit": null,
+      "method": null,
+      "page": 6
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "全窒素",
+      "unit": "mg/L",
+      "method": null,
+      "page": 6
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "溶解性全窒素",
+      "unit": null,
+      "method": null,
+      "page": 6
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "硝酸性窒素",
+      "unit": null,
+      "method": "注1）硝酸性(態)窒素は硝酸塩として含まれている窒素。出典：水質用語集(国交省京浜河川事務所)",
+      "page": 7
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "亜硝酸性窒素",
+      "unit": null,
+      "method": null,
+      "page": 6
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "アンモニア性窒素",
+      "unit": null,
+      "method": null,
+      "page": 6
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "全リン",
+      "unit": "mg/L",
+      "method": null,
+      "page": 6
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "溶解性全リン",
+      "unit": null,
+      "method": null,
+      "page": 6
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "リン酸態リン",
+      "unit": null,
+      "method": "注2）見出しは『リン酸態リン』（カタカナ）だが説明文本文は『燐酸態燐は、燐酸イオンとして存在する燐のことで…』（漢字）と表記が混在。出典：水質用語集(国交省京浜河川事務所)",
+      "page": 7
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "TOC",
+      "unit": "mg/L",
+      "method": null,
+      "page": 6
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "基礎生産量（クロロフィル量）",
+      "unit": null,
+      "method": null,
+      "page": 6
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "底生動物 種類数",
+      "unit": "種類",
+      "method": "平成28年度版河川水辺の国勢調査マニュアルに準拠",
+      "page": 13
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "平均スコア法（ASPT）",
+      "unit": null,
+      "method": "底生動物の科に耐忍性の弱いものから強いものへ10〜1のスコアを与え、合計（BMWPスコア値）を科数で割ったもの。ASPT=ΣSi／ｎ",
+      "page": 14
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "魚類 確認種類数",
+      "unit": "種類",
+      "method": null,
+      "page": 13
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "両生類 確認種類数（サンショウウオ調査を含む）",
+      "unit": "種類",
+      "method": null,
+      "page": 13
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "鳥類 確認種数",
+      "unit": "種",
+      "method": null,
+      "page": 13
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "植物 確認種数／帰化率",
+      "unit": "種／科／％",
+      "method": null,
+      "page": 13
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "付着藻類 種類数",
+      "unit": "種類",
+      "method": null,
+      "page": 13
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "name": "DAIpo（有機汚濁指数）",
+      "unit": null,
+      "method": "DAIpo=50+1/2(ΣXi–ΣSi)。100点満点で100が最も清浄。",
+      "page": 14
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "pH",
+      "unit": null,
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "BOD",
+      "unit": "mg/L",
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "COD",
+      "unit": "mg/L",
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "SS",
+      "unit": "mg/L",
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "DO",
+      "unit": null,
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "全窒素",
+      "unit": "mg/L",
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "溶解性全窒素",
+      "unit": null,
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "硝酸性窒素",
+      "unit": null,
+      "method": "注1）硝酸性(態)窒素は硝酸塩として含まれている窒素。出典：水質用語集(国交省京浜河川事務所)",
+      "page": 7
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "亜硝酸性窒素",
+      "unit": null,
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "アンモニア性窒素",
+      "unit": null,
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "全燐",
+      "unit": "mg/L",
+      "method": null,
+      "page": 7
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "燐酸態燐",
+      "unit": null,
+      "method": "注2）燐酸イオンとして存在する燐。出典：水質用語集(国交省京浜河川事務所)",
+      "page": 7
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "全リン（調査項目の見出しではカタカナ表記）",
+      "unit": "mg/L",
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "溶解性全リン",
+      "unit": null,
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "リン酸態リン（調査項目の見出しではカタカナ表記）",
+      "unit": null,
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "TOC",
+      "unit": "mg/L",
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "電気伝導率",
+      "unit": null,
+      "method": null,
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "底生動物 種類数（重要種・国外外来種を含む）",
+      "unit": "種",
+      "method": null,
+      "page": 12
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "平均スコア法（ASPT）",
+      "unit": null,
+      "method": "BMWP法準拠。ASPT=ΣSi／ｎ",
+      "page": 13
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "魚類 確認種類数（重要種・外来種を含む）",
+      "unit": "種類",
+      "method": null,
+      "page": 12
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "両生類 確認種類数（重要種を含む）",
+      "unit": "種",
+      "method": null,
+      "page": 12
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "鳥類 確認種数（重要種を含む）",
+      "unit": "種",
+      "method": null,
+      "page": 12
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "植物 確認種類数／帰化種数",
+      "unit": "種",
+      "method": null,
+      "page": 12
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "付着藻類 種類数",
+      "unit": "種類",
+      "method": null,
+      "page": 12
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "name": "DAIpo（有機汚濁指数）",
+      "unit": null,
+      "method": "DAIpo=50+1/2（A－B）",
+      "page": 13
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_fish",
+      "name": "合計種類数",
+      "unit": "種（および目・科の数）",
+      "method": "確認種リストの末尾に「合計種類数：11目25科56種※」として集計。※は No.欄が空白（種名不明で科・属等のみ記録）の行を含まないことを示す注記付き。",
+      "first_page": 3
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_fish",
+      "name": "調査地点別確認（表中●印）",
+      "unit": null,
+      "method": "「【表の見方】各種が確認された調査地点には、\"●\"を示しました。」地点ごとの在不在（プレゼンス）表示であり、個体数・回数のカウントではない。",
+      "first_page": 3
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_benthos",
+      "name": "合計種類数",
+      "unit": "種（および綱・目・科の数）",
+      "method": "確認種リスト末尾に「合計種類数：15綱39目88科173種 ※」として集計。※は No.欄空白（種名不明で科・属等のみ記録）の行を除く注記付き。",
+      "first_page": 6
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_benthos",
+      "name": "調査地点別確認（表中●印）",
+      "unit": null,
+      "method": "各種が確認された調査地点に\"●\"を表示する在不在方式。",
+      "first_page": 6
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_birds",
+      "name": "合計種類数",
+      "unit": "種（および目・科の数）",
+      "method": "確認種リスト末尾に「合計種類数：13目30科65種 ※」として集計。※はNo.欄空白行（種名不明で科・属等のみ記録）を除く注記付き。",
+      "first_page": 3
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_birds",
+      "name": "調査地点別確認（表中●印）",
+      "unit": null,
+      "method": "各種が確認された調査地点に\"●\"を表示する在不在方式。",
+      "first_page": 3
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_plants",
+      "name": "合計種類数",
+      "unit": "種（および科の数、植物調査の表には「目」列がない）",
+      "method": "確認種リスト末尾に「合計種類数：□□科　□□種 ※」として集計（実数字はスキャン上判読不可の伏字表記だが、指標自体は他分類群と同形式）。※はNo.欄空白行（種名不明で科等のみ記録）を除く注記付き。",
+      "first_page": 13
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_plants",
+      "name": "調査地点別確認（表中●印／非表示「-」）",
+      "unit": null,
+      "method": "各種が確認された調査地点に\"●\"を表示。ただし一部の環境省RL掲載種は地点を伏せて「-」表記（保全上の理由）。",
+      "first_page": 13
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_insects",
+      "name": "合計種類数",
+      "unit": "種（および目・科の数）",
+      "method": "確認種リスト末尾に「合計種類数：□目　□科　□種 ※」として集計（実数字はスキャン上伏字だが、指標自体は他分類群と同形式）。※はNo.欄空白行（種名不明で科・属等のみ記録）を除く注記付き。",
+      "first_page": 22
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_insects",
+      "name": "調査地点別確認（表中●印）",
+      "unit": null,
+      "method": "各種が確認された調査地点に\"●\"を表示する在不在方式。",
+      "first_page": 22
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_herptile_mammal",
+      "name": "合計種類数（両生類）",
+      "unit": "種（および目・科の数）",
+      "method": "「合計種類数　：　1目 2科 3種 ※」として集計。",
+      "first_page": 2
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_herptile_mammal",
+      "name": "合計種類数（爬虫類）",
+      "unit": "種（および目・科の数）",
+      "method": "「合計種類数　：　2目 5科 5種 ※」として集計。",
+      "first_page": 2
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_herptile_mammal",
+      "name": "合計種類数（哺乳類）",
+      "unit": "種（および目・科の数）",
+      "method": "「合計種類数　：　5目 9科11種 ※」として集計。",
+      "first_page": 2
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_herptile_mammal",
+      "name": "調査地点別確認（表中●印）",
+      "unit": null,
+      "method": "各種が確認された調査地点に\"●\"を表示する在不在方式。",
+      "first_page": 2
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "BOD",
+      "unit": "mg/L",
+      "method": "有機汚濁物質の指標。河川の水質・生物調査地点で測定（例：串川「道場」「河原橋」、恩曽川上流下流）",
+      "pages": [
+        68,
+        85,
+        86,
+        87
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "全リン濃度",
+      "unit": "mg/L",
+      "method": "ダム湖（相模湖）・取水堰の水質定点調査",
+      "pages": [
+        66,
+        87,
+        88
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "全窒素濃度",
+      "unit": "mg/L",
+      "method": "ダム湖（相模湖）・取水堰の水質定点調査",
+      "pages": [
+        68,
+        87
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "アオコ細胞数",
+      "unit": "個/mL（万個/mL）",
+      "method": "水中のアオコ細胞数を測定。10万個/mLを「アオコ異常発生ライン」とする",
+      "pages": [
+        12,
+        69
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "アオコ異常発生回数",
+      "unit": "回/年",
+      "method": "年平均アオコ異常発生回数の集計",
+      "pages": [
+        69
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "テトラクロロエチレン濃度",
+      "unit": "mg/L",
+      "method": "地下水質のメッシュ調査・モニタリング調査地点での定期測定",
+      "pages": [
+        71
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "地下水位",
+      "unit": "GLm（年平均）",
+      "method": "県内地下水利用地域（座間市・秦野市・真鶴町等）での定点観測",
+      "pages": [
+        70
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "下層植生の植被率",
+      "unit": "%",
+      "method": "高さ1.5m未満の植生によって覆われる地表面の面積割合。モニタリング地点で調査",
+      "pages": [
+        59,
+        60,
+        61
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "立木密度",
+      "unit": "本/ha",
+      "method": "モニタリング地点でのレーザ測量等による調査",
+      "pages": [
+        56
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "シカ生息密度",
+      "unit": "頭/km2",
+      "method": "区画法による保護管理区域全体の生息密度推移調査",
+      "pages": [
+        57
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "糞塊密度",
+      "unit": "糞塊数/km（狩猟メッシュ4×5km単位）",
+      "method": "糞塊法調査（ルート調査、10粒以上の糞粒からなる糞塊を対象）",
+      "pages": [
+        58
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "シカ個体数推計",
+      "unit": "頭（生息数）",
+      "method": "階層ベイズ法による推定（第5次ニホンジカ管理計画）",
+      "pages": [
+        58
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "崩壊地面積",
+      "unit": "ha",
+      "method": "県内国有林を除く森林の崩壊地面積の推移",
+      "pages": [
+        14
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "森林総蓄積",
+      "unit": "千m3",
+      "method": "県内国有林を除く森林の総蓄積量",
+      "pages": [
+        14
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "森林塾実施人数（新規就労者育成）",
+      "unit": "人",
+      "method": "かながわ森林塾の年度別実施人数",
+      "pages": [
+        35,
+        42,
+        43,
+        44,
+        45
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "中高標高域シカ管理捕獲",
+      "unit": "箇所",
+      "method": "丹沢大山地域での管理捕獲実施箇所数",
+      "pages": [
+        36,
+        42,
+        43,
+        44,
+        45
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "間伐材搬出量",
+      "unit": "m3",
+      "method": "間伐材の搬出促進事業の年度別実績",
+      "pages": [
+        42,
+        43,
+        44,
+        45
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "水源林確保・水源林整備",
+      "unit": "ha",
+      "method": "水源の森林づくり事業の年度別実績（確保／整備を区別して集計）",
+      "pages": [
+        42,
+        43,
+        44,
+        45
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "下水道普及率",
+      "unit": "%",
+      "method": "県内ダム集水域における公共下水道整備状況の指標",
+      "pages": [
+        43,
+        44,
+        45
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "生活排水処理率",
+      "unit": "%",
+      "method": "県内水源保全地域全体／うちダム集水域に分けて算出",
+      "pages": [
+        38,
+        45,
+        90
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "浮遊土砂流出量（対照流域比）",
+      "unit": "倍（対照流域に対する比率）",
+      "method": "ヌタノ沢試験流域での柵設置前後の月単位浮遊土砂流出量の比較（降水量200mm以上の月を対象）",
+      "pages": [
+        61
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "河川流量（年間総流量の増加）",
+      "unit": "%（年降水量に対する割合）",
+      "method": "貝沢試験流域・大洞沢試験流域での間伐前後の流量比較・流出モデル解析",
+      "pages": [
+        62
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "年間土壌侵食深ランク別面積割合",
+      "unit": "%（面積割合）",
+      "method": "ランク区分：1cm<x／0.1mm<x≦1cm／x≦0.1mm。宮ヶ瀬湖上流域を対象に施策前・開始後10年・施策なし劣化を解析で比較",
+      "pages": [
+        61,
+        62
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "底生動物合計種数・トビケラ/トンボ/カゲロウ合計種数",
+      "unit": "種",
+      "method": "恩曽川など事業実施箇所での定点調査",
+      "pages": [
+        73,
+        74
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "平均スコア値（平均スコア法）",
+      "unit": "スコア（1〜10）",
+      "method": "汚れた水に生息する生物からきれいな水に生息する生物まで1から10のスコアを与え、採集された生物のスコアの平均値を求める水質評価手法。6.0以上が良好、7.5以上が非常に良好な水質の目安",
+      "pages": [
+        74
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "支払意思額（WTP）",
+      "unit": "円/月・世帯",
+      "method": "CVM（仮想的市場評価法）によるWEBアンケート調査（二段階二項選択方式）",
+      "pages": [
+        84
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "水源環境保全・再生施策の実現した効果の評価額（経済的評価額）",
+      "unit": "億円/年",
+      "method": "1世帯当たり支払意思額×12月×世帯数×有効回答率で算出",
+      "pages": [
+        84,
+        85
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "費用対効果",
+      "unit": "無次元（評価額/費用）",
+      "method": "経済的評価額を水源環境保全税を活用した特別対策事業費（または一般財源等含む事業費）で除して算出",
+      "pages": [
+        85
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "年平均気温",
+      "unit": "℃",
+      "method": "横浜地方気象台の観測データ（1897〜2022年）、5年移動平均も算出",
+      "pages": [
+        100
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "短時間強雨（「滝のように降る雨」）発生回数",
+      "unit": "回（1地点あたり）",
+      "method": "1時間降水量50mm以上を「滝のように降る雨」と定義し発生回数を集計（1976〜2022年）",
+      "pages": [
+        101
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "年降水量",
+      "unit": "mm",
+      "method": "横浜地方気象台の観測データ（1897〜2022年）",
+      "pages": [
+        101
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "水需要",
+      "unit": "億m3/年",
+      "method": "神奈川県営水道事業審議会報告書に基づく推計（高位・中位・低位推計）",
+      "pages": [
+        100
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "name": "取水制限日数",
+      "unit": "日",
+      "method": "利根川水系等における取水制限実施日数の通算",
+      "pages": [
+        86
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "name": "区画法による生息密度",
+      "unit": "頭/km2",
+      "method": "区画法により調査地点ごとにシカの生息密度を測定",
+      "pages": [
+        25,
+        26,
+        27
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "name": "糞塊密度",
+      "unit": "糞塊/km",
+      "method": "3次メッシュ単位で10粒以上の糞粒からなる糞塊数を集計",
+      "pages": [
+        28
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "name": "捕獲効率",
+      "unit": "頭/人・日",
+      "method": "巻狩り（組猟）による捕獲数を参加人数で除して算出",
+      "pages": [
+        28
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "name": "目撃効率",
+      "unit": "頭/人・日",
+      "method": "巻狩り時に目撃した個体数（重複除く）を参加人数で除して算出",
+      "pages": [
+        28
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "name": "目撃捕獲率",
+      "unit": null,
+      "method": "捕獲数を目撃頭数で除して算出",
+      "pages": [
+        28
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "name": "腎脂肪率",
+      "unit": "%",
+      "method": "管理捕獲（植生回復・生息環境）の捕獲個体（メス、3歳以上、1〜3月捕獲）について算出",
+      "pages": [
+        29
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "name": "妊娠率",
+      "unit": "%",
+      "method": "同上の捕獲個体について算出",
+      "pages": [
+        30
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "name": "林床植生の植被率",
+      "unit": "%",
+      "method": "植生定点調査により柵内外の林床植生を調査",
+      "pages": [
+        30,
+        31
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "name": "稚樹高",
+      "unit": "cm",
+      "method": "植生定点調査",
+      "pages": [
+        31
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "name": "不嗜好性種被度",
+      "unit": "%",
+      "method": "植生定点調査",
+      "pages": [
+        31
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "name": "採食耐性種被度",
+      "unit": "%",
+      "method": "植生定点調査",
+      "pages": [
+        31
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "name": "ササ稈高",
+      "unit": "cm",
+      "method": "植生定点調査",
+      "pages": [
+        31
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "name": "シカによる農業被害（被害面積・被害量・被害金額）",
+      "unit": "ha, t, 千円",
+      "method": "農林水産省「野生鳥獣による農作物被害調査」に基づき市町村が農業協同組合等に聞き取り、県へ報告",
+      "pages": [
+        32,
+        33
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "name": "狩猟免許所持者数",
+      "unit": "人",
+      "method": null,
+      "pages": [
+        16,
+        34
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "name": "猟区入猟者数",
+      "unit": "人",
+      "method": null,
+      "pages": [
+        16
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "name": "区画法による生息密度",
+      "unit": "頭/km2",
+      "method": "区画法により調査地点ごとにシカの生息密度を測定",
+      "pages": [
+        23,
+        24,
+        25
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "name": "糞塊密度",
+      "unit": "糞塊/km",
+      "method": "3次メッシュ単位で10粒以上の糞粒からなる糞塊数を集計",
+      "pages": [
+        26
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "name": "捕獲効率",
+      "unit": "頭/人・日",
+      "method": "巻狩り（組猟）による捕獲数を参加人数で除して算出",
+      "pages": [
+        26
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "name": "目撃効率",
+      "unit": "頭/人・日",
+      "method": "巻狩り時に目撃した個体数（重複除く）を参加人数で除して算出",
+      "pages": [
+        26
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "name": "目撃捕獲率",
+      "unit": null,
+      "method": "捕獲数を目撃頭数で除して算出",
+      "pages": [
+        26
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "name": "腎脂肪率",
+      "unit": "%",
+      "method": "管理捕獲（植生回復・生息環境）の捕獲個体（メス、3歳以上、1〜3月捕獲）について算出",
+      "pages": [
+        28
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "name": "妊娠率",
+      "unit": "%",
+      "method": "同上の捕獲個体について算出",
+      "pages": [
+        29
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "name": "林床植生の植被率",
+      "unit": "%",
+      "method": "植生定点調査により柵内外の林床植生を調査",
+      "pages": [
+        29,
+        30
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "name": "シカによる農業被害（被害面積・被害量・被害金額）",
+      "unit": "ha, t, 千円",
+      "method": "農林水産省「野生鳥獣による農作物被害調査」に基づき市町村が農業協同組合等に聞き取り、県へ報告",
+      "pages": [
+        31,
+        32
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "name": "狩猟免許所持者数",
+      "unit": "人",
+      "method": null,
+      "pages": [
+        15,
+        33
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "name": "猟区入猟者数",
+      "unit": "人",
+      "method": null,
+      "pages": [
+        15
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "name": "林床植生の植被率",
+      "unit": "%",
+      "method": "植生定点調査（丹沢山地72地点、水源林23地点）で柵内外の林床植物が覆っている割合を百分率で示す",
+      "pages": [
+        4,
+        5,
+        41
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "name": "区画法による生息密度",
+      "unit": "頭/km2",
+      "method": "区画法により調査地点内を複数区画に区分し、調査員が一定時間区画内を歩き動物を数える",
+      "pages": [
+        24,
+        31,
+        47
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "name": "糞塊密度",
+      "unit": "糞塊/km",
+      "method": "3次メッシュ単位で糞塊数を集計",
+      "pages": [
+        32
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "name": "腎脂肪率",
+      "unit": "%",
+      "method": "管理捕獲個体（メス、3歳以上、1〜3月捕獲）から算出",
+      "pages": [
+        42
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "name": "妊娠率",
+      "unit": "%",
+      "method": "同上の捕獲個体から算出",
+      "pages": [
+        42
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "name": "捕獲効率（CPUE）",
+      "unit": null,
+      "method": "単位捕獲努力量当たりの捕獲数。捕獲数を捕獲にかかった総人数で除して算出",
+      "pages": [
+        50
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "name": "推定個体数（生息数）",
+      "unit": "頭",
+      "method": "捕獲数に基づく階層ベイズモデル（ハーベストベースドモデル）により、密度指標の時系列データと捕獲数から個体数と自然増加率を推定",
+      "pages": [
+        19,
+        35,
+        39,
+        40
+      ]
+    }
+  ],
+  "units": [
+    {
+      "doc_id": "biodic_6th_kanagawa_h16",
+      "unit": "%",
+      "context": "比率・植被率・出現率など各所で使用"
+    },
+    {
+      "doc_id": "biodic_6th_kanagawa_h16",
+      "unit": "cm",
+      "context": "スズタケの桿長・葉長"
+    },
+    {
+      "doc_id": "biodic_6th_kanagawa_h16",
+      "unit": "m",
+      "context": "標高、方形枠サイズ"
+    },
+    {
+      "doc_id": "biodic_6th_kanagawa_h16",
+      "unit": "4m²",
+      "context": "種密度の分母単位（種/4m²）"
+    },
+    {
+      "doc_id": "biodic_6th_kanagawa_h16",
+      "unit": "km²",
+      "context": "丹沢山地の面積、大型哺乳類の生息密度の分母"
+    },
+    {
+      "doc_id": "biodic_6th_kanagawa_h16",
+      "unit": "頭/km²",
+      "context": "カモシカ・シカの生息密度"
+    },
+    {
+      "doc_id": "biodic_6th_kanagawa_h16",
+      "unit": "mm²",
+      "context": "藻類調査の石礫上採集面積・現存量の分母"
+    },
+    {
+      "doc_id": "biodic_6th_kanagawa_h16",
+      "unit": "細胞/mm²",
+      "context": "藻類現存量"
+    },
+    {
+      "doc_id": "biodic_6th_kanagawa_h16",
+      "unit": "枚/カメラ・日",
+      "context": "自動撮影カメラの撮影頻度"
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "literal": "mg/L",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "literal": "cm",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "literal": "％",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "literal": "種",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "literal": "種類",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "literal": "地点",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "literal": "mg/L",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "literal": "cm",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "literal": "％",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "literal": "種",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "literal": "種類",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "literal": "地点",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "literal": "mg/L",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "literal": "％",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "literal": "種",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "literal": "種類",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "literal": "科",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "literal": "地点",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "literal": "mg/L",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "literal": "％",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "literal": "種",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "literal": "種類",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "literal": "地点",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "literal": "mg/L",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "literal": "％",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "literal": "種",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "literal": "種類",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "literal": "地点",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "literal": "mg/L",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "literal": "％",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "literal": "種",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "literal": "種類",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "literal": "地点",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_fish",
+      "literal": "種",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_fish",
+      "literal": "科",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_fish",
+      "literal": "目",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_fish",
+      "literal": "●（確認地点マーク）",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_benthos",
+      "literal": "種",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_benthos",
+      "literal": "科",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_benthos",
+      "literal": "目",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_benthos",
+      "literal": "綱",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_benthos",
+      "literal": "●（確認地点マーク）",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_birds",
+      "literal": "種",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_birds",
+      "literal": "科",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_birds",
+      "literal": "目",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_birds",
+      "literal": "●（確認地点マーク）",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_plants",
+      "literal": "種",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_plants",
+      "literal": "科",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_plants",
+      "literal": "●（確認地点マーク）",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_plants",
+      "literal": "-（地点非公開マーク）",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_insects",
+      "literal": "種",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_insects",
+      "literal": "科",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_insects",
+      "literal": "目",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_insects",
+      "literal": "●（確認地点マーク）",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_herptile_mammal",
+      "literal": "種",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_herptile_mammal",
+      "literal": "科",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_herptile_mammal",
+      "literal": "目",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_herptile_mammal",
+      "literal": "●（確認地点マーク）",
+      "quantity": null,
+      "pages": []
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "ha",
+      "quantity": "面積（森林・林地）",
+      "pages": [
+        9,
+        42,
+        43,
+        44,
+        45,
+        61
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "km2",
+      "quantity": "面積（集水域・地域区分）",
+      "pages": [
+        10,
+        57
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "%",
+      "quantity": "各種比率（進捗率、普及率、処理率、被覆率等）",
+      "pages": [
+        8,
+        43,
+        59,
+        90
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "mg/L",
+      "quantity": "水質濃度（BOD、全窒素、全リン、テトラクロロエチレン等）",
+      "pages": [
+        66,
+        68,
+        71,
+        85
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "個/mL",
+      "quantity": "アオコ細胞数",
+      "pages": [
+        12,
+        69
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "万個/mL",
+      "quantity": "アオコ細胞数（別表記）",
+      "pages": [
+        11
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "千/mL（千/mℓ）",
+      "quantity": "アオコ細胞数（グラフ軸表記、別表記）",
+      "pages": [
+        12
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "回/年",
+      "quantity": "アオコ異常発生回数",
+      "pages": [
+        69
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "千m3",
+      "quantity": "森林蓄積量・貯水量",
+      "pages": [
+        14,
+        88
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "万m3",
+      "quantity": "ダム有効貯水容量",
+      "pages": [
+        9
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "m3/日",
+      "quantity": "給水量・下水処理場流入水量",
+      "pages": [
+        11,
+        65
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "千人",
+      "quantity": "給水人口",
+      "pages": [
+        11
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "万人",
+      "quantity": "県人口",
+      "pages": [
+        100
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "m",
+      "quantity": "植生保護柵・丸太柵の延長",
+      "pages": [
+        42,
+        43,
+        44,
+        45
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "m3",
+      "quantity": "間伐材搬出量",
+      "pages": [
+        42,
+        43,
+        44,
+        45
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "本/ha",
+      "quantity": "立木密度",
+      "pages": [
+        56
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "頭/km2",
+      "quantity": "シカ生息密度",
+      "pages": [
+        57
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "糞塊数/km",
+      "quantity": "シカ糞塊密度",
+      "pages": [
+        58
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "頭",
+      "quantity": "シカ生息数推計",
+      "pages": [
+        58
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "GLm",
+      "quantity": "地下水位（年平均）",
+      "pages": [
+        70
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "億円",
+      "quantity": "事業費（大綱事業・特別対策事業）",
+      "pages": [
+        24,
+        46,
+        85
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "万円",
+      "quantity": "事業費（年度別執行額）",
+      "pages": [
+        42,
+        43,
+        44,
+        45
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "円/月・世帯",
+      "quantity": "支払意思額",
+      "pages": [
+        84
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "℃",
+      "quantity": "気温",
+      "pages": [
+        100
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "mm",
+      "quantity": "降水量",
+      "pages": [
+        11,
+        61,
+        101
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "kg",
+      "quantity": "リン削減量（理論値）",
+      "pages": [
+        39
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "kg/月",
+      "quantity": "リン負荷量（累積負荷軽減量）",
+      "pages": [
+        65
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "km",
+      "quantity": "河川延長（串川約14km等）",
+      "pages": [
+        68
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "literal": "頭",
+      "quantity": "捕獲数・生息数",
+      "pages": [
+        3,
+        4,
+        6,
+        8
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "literal": "頭/km2",
+      "quantity": "生息密度（区画法）",
+      "pages": [
+        25,
+        26,
+        27
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "literal": "頭/km",
+      "quantity": "生息密度（区画法、表記ゆれ）",
+      "pages": [
+        26
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "literal": "糞塊/km",
+      "quantity": "糞塊密度",
+      "pages": [
+        28
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "literal": "頭/人・日",
+      "quantity": "捕獲効率・目撃効率",
+      "pages": [
+        28
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "literal": "%",
+      "quantity": "腎脂肪率、妊娠率、植被率、被度",
+      "pages": [
+        29,
+        30,
+        31
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "literal": "ha",
+      "quantity": "被害面積、森林整備面積",
+      "pages": [
+        19,
+        32
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "literal": "t",
+      "quantity": "被害量",
+      "pages": [
+        32
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "literal": "千円",
+      "quantity": "被害金額",
+      "pages": [
+        32
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "literal": "m",
+      "quantity": "植生保護柵延長",
+      "pages": [
+        20
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "literal": "cm",
+      "quantity": "稚樹高、ササ稈高",
+      "pages": [
+        31
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "literal": "人",
+      "quantity": "狩猟免許所持者数、入猟者数、隊員数",
+      "pages": [
+        16,
+        18,
+        34
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "literal": "頭",
+      "quantity": "捕獲数・生息数",
+      "pages": [
+        1,
+        2,
+        3,
+        8
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "literal": "頭/km2",
+      "quantity": "生息密度（区画法）",
+      "pages": [
+        23,
+        24,
+        25
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "literal": "糞塊/km",
+      "quantity": "糞塊密度",
+      "pages": [
+        26
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "literal": "頭/人・日",
+      "quantity": "捕獲効率・目撃効率",
+      "pages": [
+        26
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "literal": "%",
+      "quantity": "腎脂肪率、妊娠率、植被率",
+      "pages": [
+        28,
+        29,
+        30
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "literal": "ha",
+      "quantity": "被害面積、森林整備面積",
+      "pages": [
+        18,
+        31
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "literal": "t",
+      "quantity": "被害量",
+      "pages": [
+        31
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "literal": "千円",
+      "quantity": "被害金額",
+      "pages": [
+        31
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "literal": "m",
+      "quantity": "植生保護柵延長",
+      "pages": [
+        19
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "literal": "人",
+      "quantity": "狩猟免許所持者数、入猟者数、隊員数",
+      "pages": [
+        15,
+        17,
+        33
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "literal": "頭/km2",
+      "quantity": "生息密度（区画法）",
+      "pages": [
+        24,
+        31
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "literal": "糞塊/km",
+      "quantity": "糞塊密度",
+      "pages": [
+        32
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "literal": "%",
+      "quantity": "植被率、腎脂肪率、妊娠率",
+      "pages": [
+        4,
+        5,
+        41,
+        42
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "literal": "ha",
+      "quantity": "被害面積、森林整備面積",
+      "pages": [
+        43
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "literal": "頭",
+      "quantity": "捕獲数・推定生息数",
+      "pages": [
+        19,
+        33,
+        34,
+        35
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "literal": "km",
+      "quantity": "3次メッシュの一辺（約1km四方）",
+      "pages": [
+        47
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "literal": "人",
+      "quantity": "狩猟免許所持者数",
+      "pages": [
+        44
+      ]
+    }
+  ],
+  "eras": [
+    {
+      "doc_id": "biodic_6th_kanagawa_h16",
+      "pattern": "平成◯◯（◯◯◯◯）年",
+      "example": "平成 ◯◯( ◯◯◯◯) 年３月",
+      "page": 1
+    },
+    {
+      "doc_id": "biodic_6th_kanagawa_h16",
+      "pattern": "昭和◯◯（◯◯◯◯）年",
+      "example": "環境庁（当時）が昭和 ◯◯( ◯◯◯◯) 年より自然環境保全法に基づき行っている",
+      "page": 2
+    },
+    {
+      "doc_id": "biodic_6th_kanagawa_h16",
+      "pattern": "平成◯年度",
+      "example": "平成6（◯◯◯◯）年度より「生物多様性調査」が新たな枠組みとして開始された",
+      "page": 2
+    },
+    {
+      "doc_id": "biodic_6th_kanagawa_h16",
+      "pattern": "第◯回",
+      "example": "第6回　自然環境保全基礎調査",
+      "page": 1
+    },
+    {
+      "doc_id": "biodic_6th_kanagawa_h16",
+      "pattern": "西暦年（◯◯◯◯年）＋月日",
+      "example": "◯◯◯◯年6月◯◯日から開始し、◯◯月◯◯日までの記録を解析した。",
+      "page": 65
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "pattern": "平成20年度",
+      "page": 1
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "pattern": "平成21年5月",
+      "page": 1
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "pattern": "平成18年度版（マニュアル）",
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "pattern": "平成17年（国交省案）",
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "pattern": "2005年度",
+      "page": 7
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "pattern": "2006年度",
+      "page": 7
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+      "pattern": "2008年度",
+      "page": 7
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "pattern": "平成21年度",
+      "page": 1
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "pattern": "平成22年11月",
+      "page": 1
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "pattern": "平成18年度版（マニュアル）",
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "pattern": "平成19年度作成（マニュアル）",
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "pattern": "平成17年（国交省案）",
+      "page": 3
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "pattern": "2005年度〜2009年度",
+      "page": 7
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "pattern": "昭和60年代",
+      "page": 25
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+      "pattern": "平成14,15年度",
+      "page": 25
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "pattern": "平成25年度",
+      "page": 1
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "pattern": "平成30年6月（発行）",
+      "page": 1
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "pattern": "平成20年度（比較対象）",
+      "page": 7
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+      "pattern": "平成18年度版（マニュアル）",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "pattern": "平成26年度",
+      "page": 1
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "pattern": "平成30年6月（発行）",
+      "page": 1
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "pattern": "平成21年度（比較対象）",
+      "page": 7
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+      "pattern": "平成18年度版（マニュアル）",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "pattern": "平成30年度",
+      "page": 1
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "pattern": "令和2年〇月（発行、日未定）",
+      "page": 1
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "pattern": "平成31年（水質調査実施日表）",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "pattern": "平成20、25年度（比較対象）",
+      "page": 11
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "pattern": "平成28年度版（マニュアル）",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+      "pattern": "平成20年年度（本文中の比較記述、図キャプションは20・25年度）",
+      "page": 7
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "pattern": "令和元年度",
+      "page": 1
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "pattern": "令和元年(平成31年)",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "pattern": "令和2年（水質調査実施日表）",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "pattern": "平成21年度、平成26年度（比較対象、本文表記）",
+      "page": 7
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "pattern": "平成28年度版（マニュアル）",
+      "page": 4
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "pattern": "平成31年度（図-13キャプション表記）",
+      "page": 23
+    },
+    {
+      "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+      "pattern": "令和元年度（図-8,9,11,12,14キャプション表記、同一年度を指す）",
+      "page": 23
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_fish",
+      "literal": "平成19年度 調査 (2007年度)（位置図タイトル表記）",
+      "pages": []
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_fish",
+      "literal": "平成19年度(2007年度)（確認種リストの調査年度表記）",
+      "pages": []
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_benthos",
+      "literal": "平成20年度 (2008年度)（位置図タイトル表記）",
+      "pages": []
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_benthos",
+      "literal": "平成20年度(2008年度)（確認種リストの調査年度表記）",
+      "pages": []
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_birds",
+      "literal": "平成21年度 (2009年度)（位置図タイトル表記）",
+      "pages": []
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_birds",
+      "literal": "調査年度：平成21年度(2009年度)（確認種リスト表記、末尾が資料上でトリミングされ「200」までしか判読できない箇所あり）",
+      "pages": []
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_plants",
+      "literal": "調査年度：平成17年度 (2005年度)（位置図タイトル表記）",
+      "pages": []
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_plants",
+      "literal": "調査年度：平成□年度（□□□□年度）（確認種リストヘッダー、スキャンの都合で数字部分が判読困難だが位置図と同一年度と推定）",
+      "pages": []
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_insects",
+      "literal": "調査年度：平成18年度 (2006年度)（位置図タイトル表記）",
+      "pages": []
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_insects",
+      "literal": "調査年度：平成□年度（□□□□年度）（確認種リストヘッダー、スキャンの都合で数字部分が判読困難だが位置図と同一年度と推定）",
+      "pages": []
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_herptile_mammal",
+      "literal": "調査年度：平成16年度 (2004年度)（位置図タイトル表記）",
+      "pages": []
+    },
+    {
+      "doc_id": "kasen_kokusei_sagami_herptile_mammal",
+      "literal": "調査年度：平成16年度（2004年度）（確認種リストヘッダー）",
+      "pages": []
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "令和6年3月",
+      "pages": [
+        1
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "平成19(2007)年度",
+      "pages": [
+        2,
+        15,
+        20,
+        45
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "令和3(2021)年度",
+      "pages": [
+        2,
+        45,
+        49
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "令和8(2026)年度",
+      "pages": [
+        22,
+        24
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "第1期（平成19(2007)年〜平成23(2011)年）",
+      "pages": [
+        36
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "第2期（平成24(2012)年〜平成28(2016)年）",
+      "pages": [
+        36
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "第3期（平成29(2017)年〜令和3(2021)年）",
+      "pages": [
+        37
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "第4期（令和4(2022)年〜令和8(2026)年）",
+      "pages": [
+        37
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "H19〜H23・H24〜H28・H29〜R3・R4〜R8（グラフ軸の期区分略記）",
+      "pages": [
+        59,
+        60
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "19年度・20年度・21年度・22年度・23年度（実績額表の年度表記）",
+      "pages": [
+        42,
+        43
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "24年度・25年度・26年度・27年度・28年度",
+      "pages": [
+        44
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "29年度・30年度・令和元年度・2年度・3年度",
+      "pages": [
+        45
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "昭和22(1947)年",
+      "pages": [
+        9
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "昭和40(1965)年",
+      "pages": [
+        9,
+        11
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "昭和54(1979)年",
+      "pages": [
+        9
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "平成13(2001)年",
+      "pages": [
+        9
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "S42(1967)",
+      "pages": [
+        11
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "S47(1972)",
+      "pages": [
+        11
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "H8(1996)",
+      "pages": [
+        11,
+        12
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "平成7(1995)年",
+      "pages": [
+        11
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "大正12(1923)年",
+      "pages": [
+        13,
+        15
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "昭和30(1955)年",
+      "pages": [
+        13,
+        15
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "平成15(2003)年",
+      "pages": [
+        11
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "令和元年（東日本台風）",
+      "pages": [
+        41,
+        48
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "平成26(2014)年度",
+      "pages": [
+        84,
+        85
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "令和4(2022)年度",
+      "pages": [
+        84,
+        85
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "令和5(2023)年1月1日",
+      "pages": [
+        84
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "令和4(2022)年12月22日〜12月28日",
+      "pages": [
+        84
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "令和2(2020)年",
+      "pages": [
+        90
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "平成23(2011)年度末",
+      "pages": [
+        94
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "令和5(2023)年3月末日現在",
+      "pages": [
+        93
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "平成19(2007)年12月・平成20(2008)年2月",
+      "pages": [
+        96
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "1897〜2022年",
+      "pages": [
+        100,
+        101
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "1976〜2022年",
+      "pages": [
+        101
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "令和32(2050)年",
+      "pages": [
+        102
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "令和12(2030)年度",
+      "pages": [
+        102
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "2013年度",
+      "pages": [
+        102
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "令和元(2019)年11月",
+      "pages": [
+        102
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "令和2(2020)年2月",
+      "pages": [
+        102
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "平成28(2016)年3月",
+      "pages": [
+        102,
+        103
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "平成18(2006)年",
+      "pages": [
+        103
+      ]
+    },
+    {
+      "doc_id": "suigen_hozen_final_eval",
+      "literal": "平成24(2012)年",
+      "pages": [
+        103
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "literal": "令和6年度",
+      "pages": [
+        1,
+        2
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "literal": "令和7年8月",
+      "pages": [
+        1
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "literal": "R6",
+      "pages": [
+        3,
+        4,
+        6,
+        8
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "literal": "令和6(2024)年度",
+      "pages": [
+        2
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "literal": "H5〜H30",
+      "pages": [
+        8,
+        16,
+        34
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "literal": "R1〜R6",
+      "pages": [
+        8,
+        16
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "literal": "平成25年度",
+      "pages": [
+        7
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "literal": "平成19年度",
+      "pages": [
+        28
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "literal": "令和元(2019)年度",
+      "pages": [
+        18
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "literal": "平成30(2018)年度",
+      "pages": [
+        18
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "literal": "令和3年度",
+      "pages": [
+        23
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "literal": "平成29年10月",
+      "pages": [
+        23
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "literal": "平成31年4月",
+      "pages": [
+        23
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "literal": "令和6年4月",
+      "pages": [
+        23
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r6",
+      "literal": "令和7年3月末",
+      "pages": [
+        18
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "literal": "令和4年度",
+      "pages": [
+        1,
+        2
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "literal": "令和5年9月",
+      "pages": [
+        1
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "literal": "R4",
+      "pages": [
+        2,
+        3,
+        5
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "literal": "令和4(2022)年度",
+      "pages": [
+        2
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "literal": "H5〜H30",
+      "pages": [
+        8,
+        15,
+        33
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "literal": "R1〜R4",
+      "pages": [
+        8,
+        15
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "literal": "平成25年度",
+      "pages": [
+        6
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "literal": "平成30年度",
+      "pages": [
+        14
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "literal": "平成26年度",
+      "pages": [
+        16
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "literal": "平成29年度",
+      "pages": [
+        16
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "literal": "令和元年度",
+      "pages": [
+        9,
+        16
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "literal": "令和3年度",
+      "pages": [
+        22
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "literal": "平成29年10月",
+      "pages": [
+        22
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "literal": "平成31年4月",
+      "pages": [
+        22
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_r4",
+      "literal": "令和5年3月末",
+      "pages": [
+        17
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "literal": "令和5年3月",
+      "pages": [
+        1
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "literal": "2023（令和5）年4月1日から2027（令和9）年3月31日まで",
+      "pages": [
+        1
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "literal": "2003（平成15）年3月",
+      "pages": [
+        1,
+        26
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "literal": "2007（平成19）年3月",
+      "pages": [
+        1,
+        27
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "literal": "2012（平成24）年3月",
+      "pages": [
+        1,
+        27
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "literal": "2015（平成27）年5月29日",
+      "pages": [
+        1
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "literal": "2017（平成29）年3月",
+      "pages": [
+        1,
+        27
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "literal": "1次(H15-H18)〜4次(H29-R4)",
+      "pages": [
+        5,
+        29,
+        42
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "literal": "2016（平成28）〜2020（令和2）年度",
+      "pages": [
+        4,
+        5,
+        6,
+        7
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "literal": "2022（令和4）年度末時点",
+      "pages": [
+        7
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "literal": "2023（令和5）〜2026（令和8）年度",
+      "pages": [
+        14,
+        15,
+        16
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "literal": "2021（令和3）年度",
+      "pages": [
+        35
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "literal": "2000（平成12）年度",
+      "pages": [
+        43
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "literal": "2001（平成13）年度",
+      "pages": [
+        43
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "literal": "2011（平成23）年度",
+      "pages": [
+        43
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "literal": "2012（平成24）〜2016（平成28）年度",
+      "pages": [
+        43
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "literal": "2007（平成19）年度",
+      "pages": [
+        44
+      ]
+    },
+    {
+      "doc_id": "tanzawa_shika_plan5",
+      "literal": "2009（平成21）年度",
+      "pages": [
+        44
+      ]
+    }
+  ]
+}

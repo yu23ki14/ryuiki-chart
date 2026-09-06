@@ -1,0 +1,198 @@
+[
+  {
+    "doc_id": "tanzawa_shika_r6",
+    "areas": [
+      {"name": "保護管理区域", "definition": null, "found_definition": false, "pages": [2,3,4,6,9,12,14,19,20,21,26]},
+      {"name": "定着防止区域", "definition": null, "found_definition": false, "pages": [2,3,4,7,9,10,11,13,14,19,20,22,26]},
+      {"name": "自然植生回復エリア", "definition": null, "found_definition": false, "pages": [6,19,25]},
+      {"name": "生息環境管理エリア", "definition": null, "found_definition": false, "pages": [6,19,25]},
+      {"name": "被害防除対策エリア", "definition": null, "found_definition": false, "pages": [6,7,21]},
+      {"name": "箱根山地", "definition": null, "found_definition": false, "pages": [23]}
+    ],
+    "indicators": [
+      {"name": "区画法による生息密度", "unit": "頭/km2", "method": "区画法により調査地点ごとにシカの生息密度を測定", "pages": [25,26,27]},
+      {"name": "糞塊密度", "unit": "糞塊/km", "method": "3次メッシュ単位で10粒以上の糞粒からなる糞塊数を集計", "pages": [28]},
+      {"name": "捕獲効率", "unit": "頭/人・日", "method": "巻狩り（組猟）による捕獲数を参加人数で除して算出", "pages": [28]},
+      {"name": "目撃効率", "unit": "頭/人・日", "method": "巻狩り時に目撃した個体数（重複除く）を参加人数で除して算出", "pages": [28]},
+      {"name": "目撃捕獲率", "unit": null, "method": "捕獲数を目撃頭数で除して算出", "pages": [28]},
+      {"name": "腎脂肪率", "unit": "%", "method": "管理捕獲（植生回復・生息環境）の捕獲個体（メス、3歳以上、1〜3月捕獲）について算出", "pages": [29]},
+      {"name": "妊娠率", "unit": "%", "method": "同上の捕獲個体について算出", "pages": [30]},
+      {"name": "林床植生の植被率", "unit": "%", "method": "植生定点調査により柵内外の林床植生を調査", "pages": [30,31]},
+      {"name": "稚樹高", "unit": "cm", "method": "植生定点調査", "pages": [31]},
+      {"name": "不嗜好性種被度", "unit": "%", "method": "植生定点調査", "pages": [31]},
+      {"name": "採食耐性種被度", "unit": "%", "method": "植生定点調査", "pages": [31]},
+      {"name": "ササ稈高", "unit": "cm", "method": "植生定点調査", "pages": [31]},
+      {"name": "シカによる農業被害（被害面積・被害量・被害金額）", "unit": "ha, t, 千円", "method": "農林水産省「野生鳥獣による農作物被害調査」に基づき市町村が農業協同組合等に聞き取り、県へ報告", "pages": [32,33]},
+      {"name": "狩猟免許所持者数", "unit": "人", "method": null, "pages": [16,34]},
+      {"name": "猟区入猟者数", "unit": "人", "method": null, "pages": [16]}
+    ],
+    "units": [
+      {"literal": "頭", "quantity": "捕獲数・生息数", "pages": [3,4,6,8]},
+      {"literal": "頭/km2", "quantity": "生息密度（区画法）", "pages": [25,26,27]},
+      {"literal": "頭/km", "quantity": "生息密度（区画法、表記ゆれ）", "pages": [26]},
+      {"literal": "糞塊/km", "quantity": "糞塊密度", "pages": [28]},
+      {"literal": "頭/人・日", "quantity": "捕獲効率・目撃効率", "pages": [28]},
+      {"literal": "%", "quantity": "腎脂肪率、妊娠率、植被率、被度", "pages": [29,30,31]},
+      {"literal": "ha", "quantity": "被害面積、森林整備面積", "pages": [19,32]},
+      {"literal": "t", "quantity": "被害量", "pages": [32]},
+      {"literal": "千円", "quantity": "被害金額", "pages": [32]},
+      {"literal": "m", "quantity": "植生保護柵延長", "pages": [20]},
+      {"literal": "cm", "quantity": "稚樹高、ササ稈高", "pages": [31]},
+      {"literal": "人", "quantity": "狩猟免許所持者数、入猟者数、隊員数", "pages": [16,18,34]}
+    ],
+    "era_formats": [
+      {"literal": "令和6年度", "pages": [1,2]},
+      {"literal": "令和7年8月", "pages": [1]},
+      {"literal": "R6", "pages": [3,4,6,8]},
+      {"literal": "令和6(2024)年度", "pages": [2]},
+      {"literal": "H5〜H30", "pages": [8,16,34]},
+      {"literal": "R1〜R6", "pages": [8,16]},
+      {"literal": "平成25年度", "pages": [7]},
+      {"literal": "平成19年度", "pages": [28]},
+      {"literal": "令和元(2019)年度", "pages": [18]},
+      {"literal": "平成30(2018)年度", "pages": [18]},
+      {"literal": "令和3年度", "pages": [23]},
+      {"literal": "平成29年10月", "pages": [23]},
+      {"literal": "平成31年4月", "pages": [23]},
+      {"literal": "令和6年4月", "pages": [23]},
+      {"literal": "令和7年3月末", "pages": [18]}
+    ],
+    "notes": [
+      {"note_id": "tanzawa_shika_r6_n001", "table_ids": [], "kind": "comparability", "text": "林業被害について：造林木の樹皮剥ぎや枝葉の採食は県内の各地で見られているが、被害時期の把握、被害額算定が難しい。そのため、令和6年度の被害額は0円となっている。", "page": 33, "blocks_timeseries": true, "reason": "被害額0円は実際の被害が消失したことを意味せず算定困難によるものであり、年度間の被害額を単純比較すると誤解を招く。"},
+      {"note_id": "tanzawa_shika_r6_n002", "table_ids": [], "kind": "definition_change", "text": "相模原市での保護管理区域は、津久井地区（青根、青野原、青山、太井、鳥屋、中野、長竹、根小屋、又野、三井、三ケ木）が該当する。", "page": 33, "blocks_timeseries": true, "reason": "「相模原市」の集計範囲が保護管理区域と定着防止区域とで異なる地区を指しており、単純な市町村名の一致だけで経年比較・区域比較を行うと誤る。"},
+      {"note_id": "tanzawa_shika_r6_n003", "table_ids": [], "kind": "comparability", "text": "狩猟免許の大量更新が3年ごとに訪れるので、その年は前年と比較し、狩猟免許所持者数が減少する傾向にある（上記表では平成6年度から3年ごと）。", "page": 34, "blocks_timeseries": true, "reason": "3年周期の制度的な減少パターンがあるため、前年比較のみで実態の増減トレンドを判断すると誤る。"},
+      {"note_id": "tanzawa_shika_r6_n004", "table_ids": [], "kind": "comparability", "text": "昭和53年（1978年）から3年ごとの有効期限制になったため大量更新年が発生。", "page": 34, "blocks_timeseries": true, "reason": "免許更新周期の制度的背景であり、n003と合わせて経年比較時に考慮が必要。"},
+      {"note_id": "tanzawa_shika_r6_n005", "table_ids": [], "kind": "footnote", "text": "1人で複数の免許を取得している場合もあるため、合計（人数）は、種別の合計と一致しない。", "page": 34, "blocks_timeseries": false, "reason": "合計値と内訳の非整合に関する説明であり、年度をまたいだ比較そのものを妨げるものではない。"},
+      {"note_id": "tanzawa_shika_r6_n006", "table_ids": [], "kind": "definition_change", "text": "第4次計画までのシカ植生定点調査、シカ森林一体的管理植生定点調査、水源林植生定点調査の調査地の重複や林相、柵の有無、継続の必要性などを考慮し、第5次計画からは、「シカ植生定点調査」（広葉樹林）は72地点、「水源林植生定点調査」（スギ、ヒノキ人工林主体）は23地点としてモニタリング地点の統合と整理を図り、他の地点では必要な際に調査することとした。", "page": 30, "blocks_timeseries": true, "reason": "第4次計画以前と第5次計画以降で調査地点数・調査体系そのものが変更されており、植生モニタリング指標の経年比較は単純にできない。"},
+      {"note_id": "tanzawa_shika_r6_n007", "table_ids": [], "kind": "survey_scope", "text": "各計画期間中の1〜3月捕獲、3歳以上メスについて平均値を算出。※第2次計画以降継続的に管理捕獲を実施している管理ユニットでの捕獲個体について集計（1次計画期間は2次計画以降継続実施管理ユニットの一部で捕獲実施）", "page": 29, "blocks_timeseries": true, "reason": "集計対象となる管理ユニットの範囲が計画期間ごとに異なるため、腎脂肪率・妊娠率の経年比較には注意が必要。"},
+      {"note_id": "tanzawa_shika_r6_n008", "table_ids": [], "kind": "survey_scope", "text": "令和元年度未実施メッシュ", "page": 28, "blocks_timeseries": true, "reason": "令和元年度は一部メッシュで糞塊密度調査が未実施であり、他年度との分布図・件数の単純比較はできない。"},
+      {"note_id": "tanzawa_shika_r6_n009", "table_ids": [], "kind": "footnote", "text": "()は計画変更", "page": 4, "blocks_timeseries": true, "reason": "括弧書きの数値は当初計画から変更された計画数であることを示す注記であり、これを区別せずに「計画」欄の数値を年度間で比較すると誤る。"}
+    ]
+  },
+  {
+    "doc_id": "tanzawa_shika_r4",
+    "areas": [
+      {"name": "保護管理区域", "definition": null, "found_definition": false, "pages": [1,2,3,9,18,20,21]},
+      {"name": "定着防止区域", "definition": null, "found_definition": false, "pages": [1,2,3,9,10,18,20,21]},
+      {"name": "自然植生回復エリア", "definition": null, "found_definition": false, "pages": [5,23]},
+      {"name": "生息環境管理エリア", "definition": null, "found_definition": false, "pages": [5,18,23]},
+      {"name": "被害防除対策エリア", "definition": null, "found_definition": false, "pages": [7,20]},
+      {"name": "箱根山地", "definition": null, "found_definition": false, "pages": [9,22]}
+    ],
+    "indicators": [
+      {"name": "区画法による生息密度", "unit": "頭/km2", "method": "区画法により調査地点ごとにシカの生息密度を測定", "pages": [23,24,25]},
+      {"name": "糞塊密度", "unit": "糞塊/km", "method": "3次メッシュ単位で10粒以上の糞粒からなる糞塊数を集計", "pages": [26]},
+      {"name": "捕獲効率", "unit": "頭/人・日", "method": "巻狩り（組猟）による捕獲数を参加人数で除して算出", "pages": [26]},
+      {"name": "目撃効率", "unit": "頭/人・日", "method": "巻狩り時に目撃した個体数（重複除く）を参加人数で除して算出", "pages": [26]},
+      {"name": "目撃捕獲率", "unit": null, "method": "捕獲数を目撃頭数で除して算出", "pages": [26]},
+      {"name": "腎脂肪率", "unit": "%", "method": "管理捕獲（植生回復・生息環境）の捕獲個体（メス、3歳以上、1〜3月捕獲）について算出", "pages": [28]},
+      {"name": "妊娠率", "unit": "%", "method": "同上の捕獲個体について算出", "pages": [29]},
+      {"name": "林床植生の植被率", "unit": "%", "method": "植生定点調査により柵内外の林床植生を調査", "pages": [29,30]},
+      {"name": "シカによる農業被害（被害面積・被害量・被害金額）", "unit": "ha, t, 千円", "method": "農林水産省「野生鳥獣による農作物被害調査」に基づき市町村が農業協同組合等に聞き取り、県へ報告", "pages": [31,32]},
+      {"name": "狩猟免許所持者数", "unit": "人", "method": null, "pages": [15,33]},
+      {"name": "猟区入猟者数", "unit": "人", "method": null, "pages": [15]}
+    ],
+    "units": [
+      {"literal": "頭", "quantity": "捕獲数・生息数", "pages": [1,2,3,8]},
+      {"literal": "頭/km2", "quantity": "生息密度（区画法）", "pages": [23,24,25]},
+      {"literal": "糞塊/km", "quantity": "糞塊密度", "pages": [26]},
+      {"literal": "頭/人・日", "quantity": "捕獲効率・目撃効率", "pages": [26]},
+      {"literal": "%", "quantity": "腎脂肪率、妊娠率、植被率", "pages": [28,29,30]},
+      {"literal": "ha", "quantity": "被害面積、森林整備面積", "pages": [18,31]},
+      {"literal": "t", "quantity": "被害量", "pages": [31]},
+      {"literal": "千円", "quantity": "被害金額", "pages": [31]},
+      {"literal": "m", "quantity": "植生保護柵延長", "pages": [19]},
+      {"literal": "人", "quantity": "狩猟免許所持者数、入猟者数、隊員数", "pages": [15,17,33]}
+    ],
+    "era_formats": [
+      {"literal": "令和4年度", "pages": [1,2]},
+      {"literal": "令和5年9月", "pages": [1]},
+      {"literal": "R4", "pages": [2,3,5]},
+      {"literal": "令和4(2022)年度", "pages": [2]},
+      {"literal": "H5〜H30", "pages": [8,15,33]},
+      {"literal": "R1〜R4", "pages": [8,15]},
+      {"literal": "平成25年度", "pages": [6]},
+      {"literal": "平成30年度", "pages": [14]},
+      {"literal": "平成26年度", "pages": [16]},
+      {"literal": "平成29年度", "pages": [16]},
+      {"literal": "令和元年度", "pages": [9,16]},
+      {"literal": "令和3年度", "pages": [22]},
+      {"literal": "平成29年10月", "pages": [22]},
+      {"literal": "平成31年4月", "pages": [22]},
+      {"literal": "令和5年3月末", "pages": [17]}
+    ],
+    "notes": [
+      {"note_id": "tanzawa_shika_r4_n001", "table_ids": [], "kind": "survey_scope", "text": "令和元年度の台風被害が一部の林道で残っていること、また、その後の豪雨により通行困難となった林道もあったことから、一部管理ユニットでの捕獲作業が制限された。", "page": 3, "blocks_timeseries": true, "reason": "台風・豪雨による林道の通行制限という外的要因で一部管理ユニットの捕獲作業が制限されており、当該年度の捕獲実績を他年度と単純比較すると過小評価につながる。"},
+      {"note_id": "tanzawa_shika_r4_n002", "table_ids": [], "kind": "definition_change", "text": "第3次計画までは、針葉樹人工林と広葉樹林の計50地点で林床植生のモニタリング調査を約5年おきに実施してきた。第4次計画からは、調査地点を整理し、林相が針葉樹人工林であり、かつ目標林型が針広混交林または巨木林の23地点を対象として、林床植生に加えて林分構造を調査することで、目標林型への誘導状況を把握することとした。", "page": 29, "blocks_timeseries": true, "reason": "調査地点数・対象林相が第3次計画までと第4次計画以降で変更されており、水源林の植生モニタリング結果の経年比較には調査体系の違いを考慮する必要がある。"},
+      {"note_id": "tanzawa_shika_r4_n003", "table_ids": [], "kind": "definition_change", "text": "第3次計画までのシカ植生定点調査、シカ森林一体的管理植生定点調査、水源林植生定点調査の調査地の重複や林相、柵の有無、継続の必要性などを考慮し、第4次計画からは、「シカ植生定点調査」（広葉樹林）は72地点、「水源林植生定点調査」（スギ、ヒノキ人工林主体）は23地点としてモニタリング地点の統合と整理を図り、他の地点では必要な際に調査することとした。", "page": 29, "blocks_timeseries": true, "reason": "第3次計画以前と第4次計画以降で調査体系そのものが変更されており、植生モニタリング指標の経年比較は単純にできない。"},
+      {"note_id": "tanzawa_shika_r4_n004", "table_ids": [], "kind": "comparability", "text": "林業被害について：造林木の樹皮剥ぎや枝葉の採食は県内の各地で見られているが、被害時期の把握、被害額算定が難しい。令和4年度の被害報告は1件あり、枯死にいたらない樹皮剥ぎであり、被害額は0円となっている。", "page": 32, "blocks_timeseries": true, "reason": "被害額0円は実態の被害消失を意味せず算定困難によるものであり、年度間の被害額を単純比較すると誤解を招く。"},
+      {"note_id": "tanzawa_shika_r4_n005", "table_ids": [], "kind": "definition_change", "text": "相模原市での保護管理区域は、津久井地区（青根、青野原、青山、太井、鳥屋、中野、長竹、根小屋、又野、三井、三ケ木）が該当する。", "page": 32, "blocks_timeseries": true, "reason": "「相模原市」の集計範囲が保護管理区域と定着防止区域とで異なる地区を指しており、単純な市町村名の一致だけで比較すると誤る。"},
+      {"note_id": "tanzawa_shika_r4_n006", "table_ids": [], "kind": "comparability", "text": "狩猟免許の大量更新が3年ごとに訪れるので、その年は前年と比較し、狩猟免許所持者数が減少する傾向にある（上記表では平成6年度から3年ごと）。", "page": 33, "blocks_timeseries": true, "reason": "3年周期の制度的な減少パターンがあるため、前年比較のみで実態の増減トレンドを判断すると誤る。"},
+      {"note_id": "tanzawa_shika_r4_n007", "table_ids": [], "kind": "comparability", "text": "昭和53年（1978年）から3年ごとの有効期限制になったため大量更新年が発生。", "page": 33, "blocks_timeseries": true, "reason": "免許更新周期の制度的背景であり、n006と合わせて経年比較時に考慮が必要。"},
+      {"note_id": "tanzawa_shika_r4_n008", "table_ids": [], "kind": "footnote", "text": "1人で複数の免許を取得している場合もあるため、合計（人数）は、種別の合計と一致しない。", "page": 33, "blocks_timeseries": false, "reason": "合計値と内訳の非整合に関する説明であり、年度をまたいだ比較そのものを妨げるものではない。"},
+      {"note_id": "tanzawa_shika_r4_n009", "table_ids": [], "kind": "survey_scope", "text": "令和元年度未実施メッシュ", "page": 27, "blocks_timeseries": true, "reason": "令和元年度は一部メッシュで糞塊密度調査が未実施であり、他年度との分布図・件数の単純比較はできない。"}
+    ]
+  },
+  {
+    "doc_id": "tanzawa_shika_plan5",
+    "areas": [
+      {"name": "保護管理区域", "definition": "県内33市町村のうち、シカの主要な生息分布域である丹沢山地を含む8市町村　相模原市（緑区のうち旧津久井町の区域）、秦野市、厚木市、伊勢原市、松田町、山北町、愛川町及び清川村", "found_definition": true, "pages": [1]},
+      {"name": "定着防止区域", "definition": "(1)以外で、シカの生息や目撃情報等が得られている市町　相模原市（緑区のうち旧藤野町、旧相模湖町、旧城山町の区域）、平塚市、小田原市、南足柄市、大磯町、二宮町、中井町、大井町、開成町、箱根町、真鶴町及び湯河原町（※第3次計画中は「分布拡大防止区域」、第2次計画中は「監視区域」）", "found_definition": true, "pages": [2]},
+      {"name": "自然植生回復エリア", "definition": "丹沢山地の主に高標高域（概ね800m以上）に位置し、主稜線部の丹沢大山国定公園特別保護地区を中心とするエリアである。丹沢山地の主稜線部にあって、丹沢大山国定公園の中核的地域として人為的な改変を避けて優れた自然環境が保全されている。このエリアでは、シカによる過度の採食圧によって林床植生の劣化が顕在化していることから、シカの生息密度を低減し、林床植生を早期に回復させることを目標に、主に県が主体となって管理捕獲を中心に管理事業を実施する", "found_definition": true, "pages": [10]},
+      {"name": "生息環境管理エリア", "definition": "スギやヒノキの人工林が広がる中標高域（概ね300〜800m）に位置し、丹沢大山国定公園及び県立丹沢大山自然公園の特別地域を中心とするエリアである。人工林や二次林において、水源の森林づくり事業等により、森林整備が行われている。このエリアをシカの主要な生息域として位置付け、林床植生の衰退が生じないレベルでシカを安定的に生息させることを目標として、主に県が主体となってシカ管理捕獲と森林整備を連携させた管理事業を実施する", "found_definition": true, "pages": [10]},
+      {"name": "被害防除対策エリア", "definition": "主に山麓部（概ね300m以下）に位置し、保護管理区域のうち、自然植生回復エリア及び生息環境管理エリア以外のエリアである。農地及び市街地が広がり、人の経済活動が活発な地域である。このエリアでは、農地周辺でのシカの定着を解消し、農林業被害を軽減することを目標に、市町村等地域が主体となって被害防除対策と管理捕獲を中心に管理事業を実施する", "found_definition": true, "pages": [10]},
+      {"name": "箱根山地", "definition": "箱根山地では、シカの定着が進んでおり、生息密度の増加により部分的な林床植生が衰退する懸念があるため、継続的かつこれまでよりも高い捕獲圧をかけていく必要がある。", "found_definition": true, "pages": [11,17]},
+      {"name": "小仏山地", "definition": "小仏山地では、隣接都県からシカの移入を受けやすい地理的環境にあるため、モニタリングによる生息状況等の把握を行い、相模原市へ情報提供していく。", "found_definition": true, "pages": [11,18]},
+      {"name": "丹沢山地", "definition": "丹沢山地は神奈川県の北西部に位置し、北西端に大室山、中核部に蛭ヶ岳・丹沢山、塔ノ岳、東端に大山などの峰があり、それらの峰から北東〜南西方向に延びる稜線と谷の繰り返し、並びに北西〜南東方向に延びる稜線とが組み合わさった複雑な地形をなしている。", "found_definition": true, "pages": [28]}
+    ],
+    "indicators": [
+      {"name": "林床植生の植被率", "unit": "%", "method": "植生定点調査（丹沢山地72地点、水源林23地点）で柵内外の林床植物が覆っている割合を百分率で示す", "pages": [4,5,41]},
+      {"name": "区画法による生息密度", "unit": "頭/km2", "method": "区画法により調査地点内を複数区画に区分し、調査員が一定時間区画内を歩き動物を数える", "pages": [24,31,47]},
+      {"name": "糞塊密度", "unit": "糞塊/km", "method": "3次メッシュ単位で糞塊数を集計", "pages": [32]},
+      {"name": "腎脂肪率", "unit": "%", "method": "管理捕獲個体（メス、3歳以上、1〜3月捕獲）から算出", "pages": [42]},
+      {"name": "妊娠率", "unit": "%", "method": "同上の捕獲個体から算出", "pages": [42]},
+      {"name": "捕獲効率（CPUE）", "unit": null, "method": "単位捕獲努力量当たりの捕獲数。捕獲数を捕獲にかかった総人数で除して算出", "pages": [50]},
+      {"name": "推定個体数（生息数）", "unit": "頭", "method": "捕獲数に基づく階層ベイズモデル（ハーベストベースドモデル）により、密度指標の時系列データと捕獲数から個体数と自然増加率を推定", "pages": [19,35,39,40]}
+    ],
+    "units": [
+      {"literal": "頭/km2", "quantity": "生息密度（区画法）", "pages": [24,31]},
+      {"literal": "糞塊/km", "quantity": "糞塊密度", "pages": [32]},
+      {"literal": "%", "quantity": "植被率、腎脂肪率、妊娠率", "pages": [4,5,41,42]},
+      {"literal": "ha", "quantity": "被害面積、森林整備面積", "pages": [43]},
+      {"literal": "頭", "quantity": "捕獲数・推定生息数", "pages": [19,33,34,35]},
+      {"literal": "km", "quantity": "3次メッシュの一辺（約1km四方）", "pages": [47]},
+      {"literal": "人", "quantity": "狩猟免許所持者数", "pages": [44]}
+    ],
+    "era_formats": [
+      {"literal": "令和5年3月", "pages": [1]},
+      {"literal": "2023（令和5）年4月1日から2027（令和9）年3月31日まで", "pages": [1]},
+      {"literal": "2003（平成15）年3月", "pages": [1,26]},
+      {"literal": "2007（平成19）年3月", "pages": [1,27]},
+      {"literal": "2012（平成24）年3月", "pages": [1,27]},
+      {"literal": "2015（平成27）年5月29日", "pages": [1]},
+      {"literal": "2017（平成29）年3月", "pages": [1,27]},
+      {"literal": "1次(H15-H18)〜4次(H29-R4)", "pages": [5,29,42]},
+      {"literal": "2016（平成28）〜2020（令和2）年度", "pages": [4,5,6,7]},
+      {"literal": "2022（令和4）年度末時点", "pages": [7]},
+      {"literal": "2023（令和5）〜2026（令和8）年度", "pages": [14,15,16]},
+      {"literal": "2021（令和3）年度", "pages": [35]},
+      {"literal": "2000（平成12）年度", "pages": [43]},
+      {"literal": "2001（平成13）年度", "pages": [43]},
+      {"literal": "2011（平成23）年度", "pages": [43]},
+      {"literal": "2012（平成24）〜2016（平成28）年度", "pages": [43]},
+      {"literal": "2007（平成19）年度", "pages": [44]},
+      {"literal": "2009（平成21）年度", "pages": [44]}
+    ],
+    "notes": [
+      {"note_id": "tanzawa_shika_plan5_n001", "table_ids": [], "kind": "definition_change", "text": "（※第3次計画中は「分布拡大防止区域」、第2次計画中は「監視区域」）", "page": 2, "blocks_timeseries": true, "reason": "現在の「定着防止区域」は計画次第で「分布拡大防止区域」「監視区域」と呼称が異なっていたため、計画期をまたいだ捕獲実績等の比較には名称の読み替えが必要。"},
+      {"note_id": "tanzawa_shika_plan5_n002", "table_ids": [], "kind": "comparability", "text": "農業被害面積は、2000（平成12）年度以前は被害の見られた農地の全面積、2001（平成13）年度以降は実際に被害にあった部分の面積の集計値（2001（平成13）年度に調査方法改正）", "page": 43, "blocks_timeseries": true, "reason": "2001年度に被害面積の集計対象の定義そのものが変更されており、それ以前と以降の被害面積を単純比較できない。"},
+      {"note_id": "tanzawa_shika_plan5_n003", "table_ids": [], "kind": "definition_change", "text": "農業被害の数値は、2011（平成23）年度以前は保護管理区域の集計値", "page": 43, "blocks_timeseries": true, "reason": "2011年度以前は集計範囲が保護管理区域のみであり、それ以降の全区域集計値とは対象範囲が異なるため単純比較できない。"},
+      {"note_id": "tanzawa_shika_plan5_n004", "table_ids": [], "kind": "definition_change", "text": "区分の「定着防止区域」の2012（平成24）〜2016（平成28）年度における名称は「分布拡大防止区域」。", "page": 43, "blocks_timeseries": true, "reason": "同一区分でも年度により名称が異なっており、n001と合わせて表記の読み替えが必要。"},
+      {"note_id": "tanzawa_shika_plan5_n005", "table_ids": [], "kind": "definition_change", "text": "2007（平成19）年度に鳥獣保護法が改正され、網・わな猟免許が網猟免許、わな猟免許に区分され、2009（平成21）年度に移行が完了した。", "page": 44, "blocks_timeseries": true, "reason": "免許区分（網・わな猟が単一区分から2区分へ分離）が制度改正により変わっており、2009年度前後の免許者数を区分ごとに単純比較できない。"},
+      {"note_id": "tanzawa_shika_plan5_n006", "table_ids": [], "kind": "footnote", "text": "実人数とは1人で複数の免許を所持している者を1名として集計したもの", "page": 44, "blocks_timeseries": false, "reason": "集計方法自体は全期間共通のルールであり、経年比較を直接妨げるものではない。"},
+      {"note_id": "tanzawa_shika_plan5_n007", "table_ids": [], "kind": "survey_scope", "text": "（注）2023(R5).1現在；広域の被害防止計画として、足柄上地域鳥獣被害防止計画（2015(H27)〜2017(H29)）がある。【南足柄市、中井町、大井町、松田町、山北町、開成町が策定】", "page": 45, "blocks_timeseries": true, "reason": "個別市町の計画とは別に広域計画が存在した期間があり、市町別の策定状況集計だけでは実態把握が不十分になりうる。"},
+      {"note_id": "tanzawa_shika_plan5_n008", "table_ids": [], "kind": "survey_scope", "text": "4次計画中のデータは2022（令和4）年度分は含まれていない。", "page": 42, "blocks_timeseries": true, "reason": "「4次」区分の実績値に令和4年度分が含まれておらず、他の区分（1次〜3次）と単純に並べて比較すると集計期間が不揃いになる。"},
+      {"note_id": "tanzawa_shika_plan5_n009", "table_ids": [], "kind": "survey_scope", "text": "中川川上流A・B・C、丹沢湖B、丹沢中央A・B・D、丹沢南麓B・C・D、中津川B・Cで1月〜3月に捕獲された3歳以上のメス", "page": 42, "blocks_timeseries": true, "reason": "腎脂肪率・妊娠率の集計対象が特定の管理ユニット・月・性別・年齢に限定されており、区域全体の代表値として単純比較するには注意が必要。"}
+    ]
+  }
+]

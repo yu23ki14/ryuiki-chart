@@ -1,0 +1,194 @@
+[
+  {
+    "doc_id": "choju_kyugo_jisseki_2017",
+    "areas": [], "indicators": [], "units": [], "era_formats": [],
+    "notes": [
+      {
+        "note_id": "n_kyugo_j2017_001",
+        "table_ids": ["p2_t1", "p2_t2"],
+        "kind": "survey_scope",
+        "text": "＊平成29年度は鳥インフルエンザの影響で以下の期間、鳥類の受け入れを休止しました。\n鳥類の受け入れ休止期間：横浜市立動物園：2017年12月～\n川崎市立夢見ヶ崎動物公園：2018年1月～\n保全センター：2018年1月11日～2月5日",
+        "page": 2,
+        "blocks_timeseries": true,
+        "reason": "平成29年度は鳥インフルエンザ対策のため一部施設・期間で鳥類の受け入れを休止しており、年度内の鳥類救護件数が実際の傷病鳥獣発生数を反映していない。平成29年度の鳥類件数を他年度と単純比較すると過小評価になる。"
+      },
+      {
+        "note_id": "n_kyugo_j2017_002",
+        "table_ids": ["p2_t1"],
+        "kind": "definition_change",
+        "text": "＊（）はへい死体で持ち込まれたもので、内数",
+        "page": 1,
+        "blocks_timeseries": false,
+        "reason": "括弧内の数値が「持ち込み時点で死亡していた個体数」を示す内数であることの定義。全体件数の一部であり、独立した別カウントではない点に注意。"
+      },
+      {
+        "note_id": "n_kyugo_j2017_003",
+        "table_ids": ["p2_t1", "p2_t2"],
+        "kind": "definition_change",
+        "text": "＊各年度の3月31日時点（へい死体除く）",
+        "page": 2,
+        "blocks_timeseries": false,
+        "reason": "放野率・死亡率等の集計基準日と、へい死体(搬入時死亡)を除く対象範囲の定義。"
+      },
+      {
+        "note_id": "n_kyugo_j2017_004",
+        "table_ids": ["p2_t1", "p2_t2"],
+        "kind": "definition_change",
+        "text": "＊その他は治療中・終生飼養・長期飼養に移管したものなどを含む。",
+        "page": 2,
+        "blocks_timeseries": false,
+        "reason": "転帰区分「その他」の定義。"
+      }
+    ]
+  },
+  {
+    "doc_id": "choju_kyugo_jisseki_2016",
+    "areas": [], "indicators": [], "units": [], "era_formats": [],
+    "notes": [
+      {
+        "note_id": "n_kyugo_j2016_001",
+        "table_ids": ["p2_t1", "p2_t2"],
+        "kind": "survey_scope",
+        "text": "＊平成 28 年度は鳥インフルエンザの影響で鳥類の受け入れを休止しているため、例年より鳥類の救護件数が変動しています。\n鳥類の受け入れ休止期間：横浜市立及び川崎市立動物園：2016年12月～\n保全センター：2017年2月8日～3月22日",
+        "page": 2,
+        "blocks_timeseries": true,
+        "reason": "平成28年度も鳥インフルエンザ対策で鳥類受け入れを休止した期間があり、鳥類の救護件数が例年と異なる水準になっている。平成28・29年度は連続して鳥インフルエンザによる休止が発生しており、この2年度の鳥類データは前後の年度と同一条件で比較できない。"
+      },
+      {
+        "note_id": "n_kyugo_j2016_002",
+        "table_ids": ["p2_t1"],
+        "kind": "definition_change",
+        "text": "＊（）はへい死体で持ち込まれたもので、内数",
+        "page": 1,
+        "blocks_timeseries": false,
+        "reason": "n_kyugo_j2017_002と同一定義。"
+      }
+    ]
+  },
+  {
+    "doc_id": "choju_kyugo_jisseki_2022",
+    "areas": [], "indicators": [], "units": [], "era_formats": [],
+    "notes": [
+      {
+        "note_id": "n_kyugo_j2022_001",
+        "table_ids": ["p2_t1"],
+        "kind": "definition_change",
+        "text": "*その他は治療中・終生飼養・長期飼養に移管したものなどを含む。",
+        "page": 2,
+        "blocks_timeseries": false,
+        "reason": "転帰区分「その他」の定義。年度間で表記の＊/*が変わっているが内容は同一。"
+      }
+    ]
+  },
+  {
+    "doc_id": "choju_kyugo_jisseki_2021",
+    "areas": [], "indicators": [], "units": [], "era_formats": [],
+    "notes": [
+      {
+        "note_id": "n_kyugo_j2021_001",
+        "table_ids": ["p2_t1"],
+        "kind": "definition_change",
+        "text": "*その他は治療中・終生飼養・長期飼養に移管したものなどを含む。",
+        "page": 2,
+        "blocks_timeseries": false,
+        "reason": "転帰区分「その他」の定義。"
+      }
+    ]
+  },
+  {
+    "doc_id": "choju_kyugo_jisseki_2020",
+    "areas": [], "indicators": [], "units": [], "era_formats": [],
+    "notes": [
+      {
+        "note_id": "n_kyugo_j2020_001",
+        "table_ids": ["p2_t1"],
+        "kind": "definition_change",
+        "text": "*その他は治療中・終生飼養・長期飼養に移管したものなどを含む。",
+        "page": 2,
+        "blocks_timeseries": false,
+        "reason": "転帰区分「その他」の定義。"
+      }
+    ]
+  },
+  {
+    "doc_id": "choju_kyugo_jisseki_2019",
+    "areas": [], "indicators": [], "units": [], "era_formats": [],
+    "notes": [
+      {
+        "note_id": "n_kyugo_j2019_001",
+        "table_ids": ["p1_t1"],
+        "kind": "definition_change",
+        "text": "＊（）はへい死体で持ち込まれたもので、内数",
+        "page": 1,
+        "blocks_timeseries": false,
+        "reason": "内数の定義。"
+      },
+      {
+        "note_id": "n_kyugo_j2019_002",
+        "table_ids": ["p2_t1"],
+        "kind": "definition_change",
+        "text": "＊各年度の3月31日時点（へい死体除く）",
+        "page": 2,
+        "blocks_timeseries": false,
+        "reason": "集計基準日の定義。"
+      },
+      {
+        "note_id": "n_kyugo_j2019_003",
+        "table_ids": [],
+        "kind": "footnote",
+        "text": "＊ボランティア登録数は、各年度の3月31日現在",
+        "page": 4,
+        "blocks_timeseries": false,
+        "reason": "ボランティア登録数の集計基準日。"
+      },
+      {
+        "note_id": "n_kyugo_j2019_004",
+        "table_ids": [],
+        "kind": "footnote",
+        "text": "＊各年度新たに依頼した分のみ掲載",
+        "page": 4,
+        "blocks_timeseries": true,
+        "reason": "累計ではなく各年度新規分のみの掲載であることの明記。累計値と誤認して年度をまたいで加算すると二重計上を避けられる一方、経年での「累計」を見たい場合はこの表からは算出できない。"
+      }
+    ]
+  },
+  {
+    "doc_id": "choju_kyugo_jisseki_2018",
+    "areas": [], "indicators": [], "units": [], "era_formats": [],
+    "notes": [
+      {
+        "note_id": "n_kyugo_j2018_001",
+        "table_ids": ["p1_t1"],
+        "kind": "definition_change",
+        "text": "＊（）はへい死体で持ち込まれたもので、内数",
+        "page": 1,
+        "blocks_timeseries": false,
+        "reason": "内数の定義。"
+      },
+      {
+        "note_id": "n_kyugo_j2018_002",
+        "table_ids": ["p2_t1"],
+        "kind": "definition_change",
+        "text": "＊各年度の3月31日時点（へい死体除く）",
+        "page": 2,
+        "blocks_timeseries": false,
+        "reason": "集計基準日の定義。"
+      }
+    ]
+  },
+  {
+    "doc_id": "choju_kyugo_jisseki_2014",
+    "areas": [], "indicators": [], "units": [], "era_formats": [],
+    "notes": [
+      {
+        "note_id": "n_kyugo_j2014_001",
+        "table_ids": ["p1_t1"],
+        "kind": "definition_change",
+        "text": "＊（ ）は死体で持ち込まれたもので、内数",
+        "page": 1,
+        "blocks_timeseries": true,
+        "reason": "他年度(2015〜2019)は「へい死体」という表現だが、2014年度版は「死体」という表現になっている。用語の揺れがあり、同一概念か厳密には要確認。定義文言が年度によって変化していること自体を記録する。"
+      }
+    ]
+  }
+]

@@ -1,0 +1,31 @@
+loop: table_extraction
+unit: table               # PDFではなく表を1単位とする
+
+goal:
+  all_cells_verified: true
+  min_cells: 1
+  require_source_text: true
+  require_bbox: true
+
+budget:
+  max_turns: 8
+  max_minutes: 10
+  max_tokens: 120000
+
+stop:
+  consecutive_failures: 3   # → needs_human、PDFは続行
+  on_hallucination: abort   # C1失敗は即時隔離
+  on_unknown_vocab: pause   # 未知の区域名 → L2のトリアージへ
+
+roles:
+  maker:   {prompt: P1, sees: [image, raw_text, vocab]}
+  checker: {prompt: P2, sees: [extracted, raw_text, vocab], new_session: true}
+  fixer:   {prompt: P3, sees: [failures, image, raw_text]}
+
+escalation:
+  to: "#env-data レビュー担当"
+  payload: [doc_id, page, table_id, failures, page_image, raw_text]
+
+idempotency:
+  key: [doc_sha256, page_no, table_id, extractor_version, vocab_version]
+  # 辞書を更新したら vocab_version が変わり、全件が再実行対象になる

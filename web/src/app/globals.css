@@ -1,0 +1,280 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------ */
+/* デザイントークン                                                     */
+/* 「流域カルテ」= 尾根から海まで(Ridge to Reef)を貫くカルテ。            */
+/* 配色は上流(森の緑)→中流(土の黄)→下流(水の青) の連続で統一する。       */
+/* ------------------------------------------------------------------ */
+:root {
+  --paper: #f6f7f6;
+  --surface: #ffffff;
+  --surface-2: #f0f3f2;
+  --ink: #12211f;
+  --ink-2: #40514f;
+  --muted: #6b7a78;
+  --line: #dde4e2;
+  --line-strong: #c3cfcc;
+
+  --water: #0b6e6e;
+  --water-ink: #084f4f;
+  --water-soft: #e2f0ef;
+
+  /* --- データ可視化の配色（validate_palette.js で検証済み） --- */
+  /* カテゴリカル8色: 系列の識別に使う。順序固定・循環させない */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #008300;
+  --series-7: #4a3aa7;
+  --series-8: #e34948;
+
+  /* ゾーン(Ridge to Reef 1-5)は順序尺度なので単一色相の序列ランプ */
+  --zone-1: #86b6ef;
+  --zone-2: #5598e7;
+  --zone-3: #2a78d6;
+  --zone-4: #1c5cab;
+  --zone-5: #104281;
+
+  /* 連続量(密度・件数)用の逐次ランプ。ゾーンと同時に出るので別色相にする */
+  --seq-1: #ffe3d8;
+  --seq-2: #f9ccbc;
+  --seq-3: #edb19b;
+  --seq-4: #e0967b;
+  --seq-5: #d27a5a;
+  --seq-6: #c25a33;
+  --seq-7: #b03700;
+  --seq-8: #971200;
+
+  /* 状態色（固定・系列には流用しない。必ずアイコンかラベルを添える） */
+  --st-good: #0ca30c;
+  --st-warn: #fab219;
+  --st-serious: #ec835a;
+  --st-critical: #d03b3b;
+
+  --ok: #0ca30c;
+  --warn: #b8770f;
+  --bad: #d03b3b;
+
+  /* チャートの罫線・軸 */
+  --grid: #e6eae8;
+  --axis: #c3cfcc;
+
+  --radius: 8px;
+  --shadow-sm: 0 1px 2px rgba(18, 33, 31, 0.06), 0 1px 1px rgba(18, 33, 31, 0.04);
+  --shadow: 0 2px 8px rgba(18, 33, 31, 0.08), 0 1px 2px rgba(18, 33, 31, 0.05);
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-water: var(--water);
+  --color-water-ink: var(--water-ink);
+  --color-water-soft: var(--water-soft);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+  --color-grid: var(--grid);
+  --color-axis: var(--axis);
+  --color-st-good: var(--st-good);
+  --color-st-warn: var(--st-warn);
+  --color-st-serious: var(--st-serious);
+  --color-st-critical: var(--st-critical);
+  --font-sans: var(--font-noto-sans-jp), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SFMono-Regular", monospace;
+  --radius-card: var(--radius);
+}
+
+* {
+  border-color: var(--line);
+}
+
+html,
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-feature-settings: "palt" 1;
+}
+
+body {
+  font-family: var(--font-noto-sans-jp), ui-sans-serif, system-ui, "Hiragino Sans", "Yu Gothic UI", sans-serif;
+}
+
+/* 数値は等幅かつ桁揃え */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* カード */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+/* 細いスクロールバー */
+.thin-scroll::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+.thin-scroll::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.thin-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* AI アシスタントの「回答を生成中」バブル（Thread.tsx の ThinkingBubble）の3点ドット。
+   既定は上下バウンス、prefers-reduced-motion: reduce の環境では明滅だけの控えめな動きに落とす。 */
+@keyframes dot-bounce {
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  40% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+@keyframes dot-fade {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.loading-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.loading-dots > span {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--muted);
+  animation: dot-bounce 1.1s ease-in-out infinite;
+}
+.loading-dots > span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.loading-dots > span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .loading-dots > span {
+    animation: dot-fade 1.8s ease-in-out infinite;
+  }
+}
+
+/* データテーブル */
+.dtable {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: max-content;
+  min-width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+.dtable th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line-strong);
+  text-align: left;
+  font-weight: 600;
+  white-space: nowrap;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.dtable td {
+  border-bottom: 1px solid var(--line);
+  padding: 5px 10px;
+  font-size: 12.5px;
+  white-space: nowrap;
+  max-width: 460px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dtable tbody tr:hover td {
+  background: var(--water-soft);
+}
+.dtable td.num {
+  text-align: right;
+}
+.dtable td.null {
+  color: #a9b5b3;
+  font-style: italic;
+}
+
+/* MapLibre の見た目をアプリに寄せる */
+.maplibregl-ctrl-attrib {
+  font-size: 10px !important;
+}
+.maplibregl-popup-content {
+  border-radius: var(--radius) !important;
+  box-shadow: var(--shadow) !important;
+  padding: 10px 12px !important;
+  font-size: 12px;
+}
+.maplibregl-ctrl-group button {
+  width: 30px !important;
+  height: 30px !important;
+}
+
+/* 会議用の書き出し（印刷 / PDF）。操作 UI を落として図と注記だけを残す */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  html,
+  body {
+    background: #fff;
+    height: auto;
+    overflow: visible;
+  }
+  body {
+    display: block;
+  }
+  aside,
+  [class*="overflow-y-auto"],
+  [class*="overflow-auto"] {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+  main {
+    display: block !important;
+    overflow: visible !important;
+  }
+  .thin-scroll {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+  .card,
+  figure {
+    break-inside: avoid;
+    box-shadow: none;
+  }
+  a[href^="http"]::after {
+    content: " (" attr(href) ")";
+    font-size: 9px;
+    color: #666;
+    word-break: break-all;
+  }
+}

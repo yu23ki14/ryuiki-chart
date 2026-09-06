@@ -1,0 +1,65 @@
+[
+  {
+    "doc_id": "tanzawa_shika_r6",
+    "areas": [],
+    "indicators": [],
+    "units": [],
+    "era_formats": [],
+    "notes": [
+      {
+        "note_id": "tanzawa_shika_r6_p4_note1",
+        "table_ids": ["p4_t1"],
+        "kind": "footnote",
+        "text": "注１）R6年度当初計画合計　4,743頭",
+        "page": 4,
+        "blocks_timeseries": false,
+        "reason": "計画値の補足情報であり、実績値の時系列比較そのものを妨げる記述ではない。ただし表中のR6計画Bの内訳合計(5,108)とは一致しない当初計画値であることに注意。"
+      },
+      {
+        "note_id": "tanzawa_shika_r6_p4_note2",
+        "table_ids": ["p4_t1"],
+        "kind": "comparability",
+        "text": "注２）R5年度の県自然公園担当部局、国立公園管理者、国有林管理者の捕獲数は箱根町に含まれる",
+        "page": 4,
+        "blocks_timeseries": true,
+        "reason": "表I-1-1のR5実績C列のうち、県自然公園担当部局・国立公園管理者・国有林管理者の各行は、R5年度データでは箱根町分がどこか別区分(おそらく市町村扱い)にまとめられており、R6年度の内訳との単純な行単位比較ができない。実際にこれらの行のR5実績Cはいずれも「－」表記になっている。"
+      }
+    ]
+  },
+  {
+    "doc_id": "tanzawa_shika_r6",
+    "areas": [],
+    "indicators": [],
+    "units": [],
+    "era_formats": [],
+    "notes": [
+      {
+        "note_id": "tanzawa_shika_r6_p4_note3",
+        "table_ids": ["p4_t1"],
+        "kind": "definition_change",
+        "text": "※内訳ごとの捕獲数については、参考資料（P31）を参照",
+        "page": 4,
+        "blocks_timeseries": false,
+        "reason": "参照先の指示であり、それ自体は比較可能性を妨げる記述ではない。"
+      }
+    ]
+  },
+  {
+    "doc_id": "tanzawa_shika_r4",
+    "areas": [],
+    "indicators": [],
+    "units": [],
+    "era_formats": [],
+    "notes": [
+      {
+        "note_id": "tanzawa_shika_r4_p3_note1",
+        "table_ids": ["p3_t1"],
+        "kind": "comparability",
+        "text": "県実施合計 （a保護管理区域＋d定着防止区域）　（）内：民間事業者等委託",
+        "page": 3,
+        "blocks_timeseries": true,
+        "reason": "R4年度実績の概要表（表I-1-1）は、R6年度版の同名表と行構成が異なる。R4版には「県実施合計」「（）内：民間事業者等委託」という独自の集計行があり、また定着防止区域の内訳がd,e,fの3区分のみ（R6版はd,e,f,g,hの5区分で、県森林担当部局・県自然公園担当部局・国立公園管理者・国有林管理者を独立行として分離）。同じ『計(d)』であっても年度により内包する内訳範囲が異なる可能性があり、行単位での年度間比較は注意が必要。"
+      }
+    ]
+  }
+]

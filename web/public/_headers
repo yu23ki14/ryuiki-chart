@@ -1,0 +1,5 @@
+# Cloudflare Workers の静的アセットに付けるヘッダ。
+# GeoJSON は国土数値情報の年次データで日中に変わることはないので、
+# ブラウザにも 1 時間持たせる（エッジ側は Workers が自動でキャッシュする）。
+/geo/*
+  Cache-Control: public, max-age=3600

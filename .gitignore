@@ -1,0 +1,44 @@
+# ---------------------------------------------------------------
+# データ (data/)
+# ---------------------------------------------------------------
+# 収集物・中間生成物・DB は合計 14GB あり GitHub には載せない。
+# すべて scripts/ のコレクタと web/scripts/ のビルダで再生成できる。
+#   - data/raw, data/processed, data/dwca : scripts/c*.py が取得・整形
+#   - data/db/derived.sqlite              : cd web && npm run build:derived
+#   - data/db/ryuiki.sqlite, cells.sqlite : 原本。100MB 超のため別配布
+# 例外は 2 つだけ。どちらも「スクリプトで再生成できない、手で育てるデータ」。
+#   - data/vocab/ : LLM 抽出済みの語彙（再取得できず、436KB）
+#   - data/water/ : 水道水の水源マップの原本 CSV（事業体の PDF を人と Agent が読んで作る。
+#                   docs/WATER_SOURCE_MAP.md §6。PDF 自体は data/raw/water/ で管理外）
+data/*
+!data/vocab/
+!data/water/
+
+# ---------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# ---------------------------------------------------------------
+# Node / Next.js / Cloudflare
+# ---------------------------------------------------------------
+# web/ 配下の node_modules, .next, .wrangler, .open-next は web/.gitignore が担当。
+# ここではルートに漏れたものだけを拾う。
+node_modules/
+.env
+.env.*
+!.env.example
+
+# ---------------------------------------------------------------
+# OS / エディタ
+# ---------------------------------------------------------------
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/

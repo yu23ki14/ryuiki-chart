@@ -1,0 +1,3135 @@
+[
+  {
+    "doc_id": "kanagawa_river_monitoring_h20_sagami_results",
+    "areas": [
+      {
+        "name": "相模川",
+        "kind": "target_river",
+        "page": 3
+      },
+      {
+        "name": "相模川",
+        "kind": "river_system",
+        "page": 4
+      },
+      {
+        "name": "境川",
+        "kind": "river_system",
+        "page": 4
+      },
+      {
+        "name": "沢井川",
+        "kind": "river_system",
+        "page": 4
+      },
+      {
+        "name": "底沢",
+        "kind": "river_system",
+        "page": 4
+      },
+      {
+        "name": "秋山川",
+        "kind": "river_system",
+        "page": 4
+      },
+      {
+        "name": "篠原川",
+        "kind": "river_system",
+        "page": 4
+      },
+      {
+        "name": "道志川",
+        "kind": "river_system",
+        "page": 4
+      },
+      {
+        "name": "串川",
+        "kind": "river_system",
+        "page": 4
+      },
+      {
+        "name": "中津川",
+        "kind": "river_system",
+        "page": 4
+      },
+      {
+        "name": "小鮎川",
+        "kind": "river_system",
+        "page": 4
+      },
+      {
+        "name": "玉川",
+        "kind": "river_system",
+        "page": 4
+      },
+      {
+        "name": "鳩川",
+        "kind": "river_system",
+        "page": 4
+      },
+      {
+        "name": "永池川",
+        "kind": "river_system",
+        "page": 4
+      },
+      {
+        "name": "小倉橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "昭和橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "神川橋下",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "堺橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "自然公園センター前",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "上沢井橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "千木良",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "日向（遊魚園）",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "新大橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "緑の休暇村センター",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "青山水源地脇",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "神ノ川・日陰沢",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "西沢・水沐所橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "道場",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "河原橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "馬渡橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "鮎津橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "早戸川・国際マス釣り場",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "水沢川・水沢橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "宮ヶ瀬金沢・宮ヶ瀬",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "布川・唐沢川",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "布川・金沢キャンプ場",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "布川・境沢（林道終点）",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "本谷川・本谷橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "塩水川・塩水橋上流",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "南沢・おたき橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "善明川・ビオトープ前",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "第2鮎津橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "柿ノ木平川",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "荻野川・新道橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "籠堰橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "酒井橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "七沢川・二の橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "日向川・日向薬師",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "恩曽川・長ヶ町橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "今橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "新一の沢橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "馬船橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "道保川・一ノ関橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "平泉橋",
+        "kind": "survey_point",
+        "page": 4
+      }
+    ],
+    "indicators": [
+      {
+        "name": "pH",
+        "unit": null,
+        "method": null,
+        "page": 3
+      },
+      {
+        "name": "BOD",
+        "unit": "mg/L",
+        "method": "水質測定計画に基づく方法に準じて実施",
+        "page": 3
+      },
+      {
+        "name": "COD",
+        "unit": "mg/L",
+        "method": null,
+        "page": 3
+      },
+      {
+        "name": "SS（浮遊物質量）",
+        "unit": "mg/L",
+        "method": null,
+        "page": 3
+      },
+      {
+        "name": "DO",
+        "unit": null,
+        "method": null,
+        "page": 3
+      },
+      {
+        "name": "全窒素",
+        "unit": "mg/L",
+        "method": null,
+        "page": 3
+      },
+      {
+        "name": "溶解性全窒素",
+        "unit": null,
+        "method": null,
+        "page": 3
+      },
+      {
+        "name": "硝酸性窒素",
+        "unit": null,
+        "method": "注1）硝酸性(態)窒素は硝酸塩として含まれている窒素。出典：水質用語集(国交省京浜河川事務所)",
+        "page": 3
+      },
+      {
+        "name": "亜硝酸性窒素",
+        "unit": null,
+        "method": null,
+        "page": 3
+      },
+      {
+        "name": "アンモニア性窒素",
+        "unit": null,
+        "method": null,
+        "page": 3
+      },
+      {
+        "name": "全リン",
+        "unit": "mg/L",
+        "method": null,
+        "page": 3
+      },
+      {
+        "name": "溶解性全リン",
+        "unit": null,
+        "method": null,
+        "page": 3
+      },
+      {
+        "name": "リン酸態リン",
+        "unit": null,
+        "method": "注2）リン酸イオンとして存在するリン。出典：水質用語集(国交省京浜河川事務所)",
+        "page": 3
+      },
+      {
+        "name": "TOC",
+        "unit": "mg/L",
+        "method": null,
+        "page": 3
+      },
+      {
+        "name": "基礎生産量（クロロフィル量）",
+        "unit": null,
+        "method": null,
+        "page": 3
+      },
+      {
+        "name": "底生動物 種類数",
+        "unit": "種類",
+        "method": "平成18年度版河川水辺の国勢調査マニュアルに準拠、夏冬2回調査",
+        "page": 14
+      },
+      {
+        "name": "平均スコア法（ASPT）",
+        "unit": null,
+        "method": "底生動物の科に水質汚濁への影響の弱いものから強いものへ10〜1のスコアを与え、出現した全科のスコア合計を科数で除した値。ASPT=ΣSi／ｎ",
+        "page": 14
+      },
+      {
+        "name": "魚類 確認種類数",
+        "unit": "種類",
+        "method": null,
+        "page": 14
+      },
+      {
+        "name": "両生類 確認種類数",
+        "unit": "種類",
+        "method": null,
+        "page": 14
+      },
+      {
+        "name": "鳥類 確認種数",
+        "unit": "種",
+        "method": null,
+        "page": 14
+      },
+      {
+        "name": "植物 確認種類数／帰化種割合",
+        "unit": "種類／％",
+        "method": null,
+        "page": 14
+      },
+      {
+        "name": "付着藻類 種類数",
+        "unit": "種類",
+        "method": null,
+        "page": 14
+      },
+      {
+        "name": "DAIpo（有機汚濁指数）",
+        "unit": null,
+        "method": "付着珪藻を好清水性・広適応性・好汚濁性の3生態種群に分け、DAIpo=50+1/2(ΣXi－ΣSi)で算出。100点満点で100が最も清浄。",
+        "page": 14
+      },
+      {
+        "name": "透視度（県民参加型・水質評価ランク）",
+        "unit": "cm",
+        "method": "表-3 評価項目とランク（A〜D）による定性評価",
+        "page": 22
+      },
+      {
+        "name": "ゴミの量（県民参加型）",
+        "unit": null,
+        "method": null,
+        "page": 22
+      },
+      {
+        "name": "水のにおい（県民参加型）",
+        "unit": null,
+        "method": null,
+        "page": 22
+      },
+      {
+        "name": "川底の感触（県民参加型）",
+        "unit": null,
+        "method": null,
+        "page": 22
+      }
+    ],
+    "units": [
+      "mg/L",
+      "cm",
+      "％",
+      "種",
+      "種類",
+      "地点"
+    ],
+    "era_formats": [
+      {
+        "pattern": "平成20年度",
+        "page": 1
+      },
+      {
+        "pattern": "平成21年5月",
+        "page": 1
+      },
+      {
+        "pattern": "平成18年度版（マニュアル）",
+        "page": 3
+      },
+      {
+        "pattern": "平成17年（国交省案）",
+        "page": 3
+      },
+      {
+        "pattern": "2005年度",
+        "page": 7
+      },
+      {
+        "pattern": "2006年度",
+        "page": 7
+      },
+      {
+        "pattern": "2008年度",
+        "page": 7
+      }
+    ],
+    "notes": [
+      {
+        "note_id": "h20-n1",
+        "table_ids": [],
+        "kind": "footnote",
+        "text": "サンショウウオ類は、貴重種のため詳細な分布情報の公開はしない。",
+        "page": 14,
+        "blocks_timeseries": true,
+        "reason": "当該分類群は分布データが非公開のため、年度間の空間比較ができない。"
+      },
+      {
+        "note_id": "h20-n2",
+        "table_ids": [],
+        "kind": "comparability",
+        "text": "6地点（小倉橋、昭和橋、第2鮎津橋、酒井橋、馬船橋、平泉橋）について、BOD、SS、窒素及び全リンの結果を「公共用水域水質調査結果」2005年度及び2006年度と比較した(図-５)。",
+        "page": 7,
+        "blocks_timeseries": false,
+        "reason": "比較対象は40地点中6地点のみに限定されており、全地点の経年比較には使えない。"
+      },
+      {
+        "note_id": "h20-n3",
+        "table_ids": [],
+        "kind": "comparability",
+        "text": "5月はBOD、SS、全リンが他の月と比較して高かった。これは直前の降雨の影響と考えられる。",
+        "page": 7,
+        "blocks_timeseries": true,
+        "reason": "降雨等の気象条件により月別値が変動することが明記されており、単純な月次・年次比較は気象条件の違いを考慮しないと誤解を招く。"
+      },
+      {
+        "note_id": "h20-n4",
+        "table_ids": [],
+        "kind": "survey_scope",
+        "text": "本川、支川、渓流を含む相模川水系40地点（図-１、表-１）。ただしサンショウウオ類は25地点",
+        "page": 3,
+        "blocks_timeseries": false,
+        "reason": "調査地点数が分類群によって異なることを明示。サンショウウオ類とその他分類群を同一地点数で比較しないよう注意が必要。"
+      },
+      {
+        "note_id": "h20-n5",
+        "table_ids": [],
+        "kind": "definition_change",
+        "text": "底生動物の科（Family）に対して水質汚濁などの人為的な影響の弱いものから強いものへ順に10から1までのスコアを与え、出現したすべての科のスコアの合計値（総スコア値）を科数で割ったもの。",
+        "page": 14,
+        "blocks_timeseries": false,
+        "reason": "平均スコア法の定義文言が本書では『人為的な影響』表現だが、後年（H21以降）は『耐忍性』表現に変わっており、算出式自体は同一ながら説明文言の変化がある。"
+      }
+    ]
+  },
+  {
+    "doc_id": "kanagawa_river_monitoring_h21_sakawa_results",
+    "areas": [
+      {
+        "name": "酒匂川",
+        "kind": "target_river",
+        "page": 3
+      },
+      {
+        "name": "酒匂川",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "河内川",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "鮎沢川",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "玄倉川",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "小菅沢",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "世附川",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "大又沢",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "塩沢",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "畑沢",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "皆瀬川",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "内川",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "尺里川",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "中津川（酒匂川水系）",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "四十八瀬川",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "川音川",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "狩川",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "金瀬川",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "山北道の駅前（河内川）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "十文字橋（酒匂川）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "報徳橋（酒匂川）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "小田原大橋上（酒匂川）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "新鮎沢橋（鮎沢川）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "旧白石沢キャンプ場（河内川）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "東沢（河内川）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "西沢（河内川）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "大滝沢・峰山橋（河内川）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "中川温泉下（河内川）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "ユーシンロッヂ前（玄倉川）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "仲の沢・小割沢橋（玄倉川）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "玄倉水位観測所（玄倉川）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "小菅沢橋（小菅沢）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "金山沢・菰釣橋（世附川）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "一の沢・一の沢橋（世附川）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "浅瀬（世附川）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "白水沢・白水沢橋（大又沢）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "千鳥橋（大又沢）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "塩沢・集落終点（塩沢）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "3号橋（畑沢）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "人遠橋（皆瀬川）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "新樋口橋（皆瀬川）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "工一橋（内川）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "尾崎橋（内川）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "県立山北高校前（尺里川）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "やどりき水源林内（中津川）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "湯ノ沢橋（中津川）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "勘七橋（四十八瀬川）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "河内橋（四十八瀬川）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "文久橋（川音川）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "川入橋（狩川）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "上河原橋（狩川）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "上総川・大瀬戸橋（狩川）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "太刀洗川・栄橋（狩川）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "洞川・下河原橋（狩川）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "分沢川・森と水の公園上（狩川）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "仙了川・仙了橋（狩川）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "狩川橋（狩川）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "飯泉橋上（金瀬川）",
+        "kind": "survey_point",
+        "page": 5
+      }
+    ],
+    "indicators": [
+      {
+        "name": "pH",
+        "unit": null,
+        "method": null,
+        "page": 3
+      },
+      {
+        "name": "BOD",
+        "unit": "mg/L",
+        "method": null,
+        "page": 3
+      },
+      {
+        "name": "COD",
+        "unit": "mg/L",
+        "method": null,
+        "page": 3
+      },
+      {
+        "name": "SS",
+        "unit": "mg/L",
+        "method": null,
+        "page": 3
+      },
+      {
+        "name": "DO",
+        "unit": null,
+        "method": null,
+        "page": 3
+      },
+      {
+        "name": "全窒素",
+        "unit": "mg/L",
+        "method": null,
+        "page": 3
+      },
+      {
+        "name": "溶解性全窒素",
+        "unit": null,
+        "method": null,
+        "page": 3
+      },
+      {
+        "name": "硝酸性窒素",
+        "unit": null,
+        "method": "注1）硝酸性(態)窒素は硝酸塩として含まれている窒素。出典：水質用語集(国交省京浜河川事務所)",
+        "page": 3
+      },
+      {
+        "name": "亜硝酸性窒素",
+        "unit": null,
+        "method": null,
+        "page": 3
+      },
+      {
+        "name": "アンモニア性窒素",
+        "unit": null,
+        "method": null,
+        "page": 3
+      },
+      {
+        "name": "全リン",
+        "unit": "mg/L",
+        "method": null,
+        "page": 3
+      },
+      {
+        "name": "溶解性全リン",
+        "unit": null,
+        "method": null,
+        "page": 3
+      },
+      {
+        "name": "リン酸態リン",
+        "unit": null,
+        "method": "注2）リン酸イオンとして存在するリン。出典：水質用語集(国交省京浜河川事務所)",
+        "page": 3
+      },
+      {
+        "name": "TOC",
+        "unit": "mg/L",
+        "method": null,
+        "page": 3
+      },
+      {
+        "name": "電気伝導度",
+        "unit": null,
+        "method": null,
+        "page": 3
+      },
+      {
+        "name": "基礎生産量（クロロフィル量）",
+        "unit": null,
+        "method": null,
+        "page": 3
+      },
+      {
+        "name": "底生動物 種類数",
+        "unit": "種類",
+        "method": null,
+        "page": 14
+      },
+      {
+        "name": "平均スコア法（ASPT）",
+        "unit": null,
+        "method": "底生動物の科に水質汚濁への耐忍性の弱いものから強いものへ10〜1のスコアを与え、全科のスコア合計（BMWPスコア値）を科数で割ったもの。ASPT=ΣSi／ｎ。BMWP=Biological Monitoring Working Party(1976,英国)",
+        "page": 14
+      },
+      {
+        "name": "魚類 確認種類数",
+        "unit": "種類",
+        "method": null,
+        "page": 14
+      },
+      {
+        "name": "両生類 確認種類数",
+        "unit": "種類",
+        "method": null,
+        "page": 14
+      },
+      {
+        "name": "鳥類 確認種数",
+        "unit": "種",
+        "method": null,
+        "page": 14
+      },
+      {
+        "name": "植物 確認種類数／帰化種割合",
+        "unit": "種類／％",
+        "method": null,
+        "page": 14
+      },
+      {
+        "name": "付着藻類 種類数",
+        "unit": "種類",
+        "method": null,
+        "page": 14
+      },
+      {
+        "name": "DAIpo（有機汚濁指数）",
+        "unit": null,
+        "method": "DAIpo=50+1/2(ΣXi–ΣSi)。100点満点で100が最も清浄。",
+        "page": 14
+      },
+      {
+        "name": "EPT指数",
+        "unit": null,
+        "method": "カゲロウ(E)・カワゲラ(P)・トビケラ(T)の種類数合計。",
+        "page": 26
+      },
+      {
+        "name": "透視度（県民参加型・水質評価ランク）",
+        "unit": "cm",
+        "method": "表-2 評価項目とランク（A〜D）",
+        "page": 24
+      }
+    ],
+    "units": [
+      "mg/L",
+      "cm",
+      "％",
+      "種",
+      "種類",
+      "地点"
+    ],
+    "era_formats": [
+      {
+        "pattern": "平成21年度",
+        "page": 1
+      },
+      {
+        "pattern": "平成22年11月",
+        "page": 1
+      },
+      {
+        "pattern": "平成18年度版（マニュアル）",
+        "page": 3
+      },
+      {
+        "pattern": "平成19年度作成（マニュアル）",
+        "page": 3
+      },
+      {
+        "pattern": "平成17年（国交省案）",
+        "page": 3
+      },
+      {
+        "pattern": "2005年度〜2009年度",
+        "page": 7
+      },
+      {
+        "pattern": "昭和60年代",
+        "page": 25
+      },
+      {
+        "pattern": "平成14,15年度",
+        "page": 25
+      }
+    ],
+    "notes": [
+      {
+        "note_id": "h21-n1",
+        "table_ids": [],
+        "kind": "comparability",
+        "text": "9地点（十文字橋、報徳橋、小田原大橋上、新鮎沢橋、中川温泉下、玄倉水位観測所、浅瀬、文久橋、狩川橋）について、ＢＯＤ、ＳＳ、全窒素及び全リンの結果を「公共用水域水質調査結果」2005年度〜2008年度と比較した(図-５)。",
+        "page": 7,
+        "blocks_timeseries": false,
+        "reason": "比較対象は40地点中9地点のみに限定されており、全地点の経年比較には使えない。"
+      },
+      {
+        "note_id": "h21-n2",
+        "table_ids": [],
+        "kind": "survey_scope",
+        "text": "相模川流域・酒匂川流域や都市部の支川を含む任意の地点および時期に調査を行った。",
+        "page": 3,
+        "blocks_timeseries": true,
+        "reason": "県民参加型調査は地点・時期が年度ごとに任意で固定されておらず、年度間の定点比較には使えない。"
+      },
+      {
+        "note_id": "h21-n3",
+        "table_ids": [],
+        "kind": "comparability",
+        "text": "底生動物による水質を主眼とした環境評価（平均スコア法※）の階級分布を図-６(2)に示す。種類数は中・上流の地点で多い傾向がみられたがあまり差は明確ではなかった。",
+        "page": 14,
+        "blocks_timeseries": false,
+        "reason": "著者自身が地点間の差が明確でないと留保しており、地点間比較の解釈に注意が必要。"
+      },
+      {
+        "note_id": "h21-n4",
+        "table_ids": [],
+        "kind": "definition_change",
+        "text": "底生動物の科（Family）に対して水質汚濁への耐忍性の弱いものから強いものへ順に10から１までのスコアを与え、出現したすべての科のスコアの合計値（BMWPスコア値）を科数で割ったもの。注）BMWP：イギリスにおいて生物学的水質評価法を標準化するために作られたワーキンググループ（Biological Monitoring Working Party）。(1976)",
+        "page": 14,
+        "blocks_timeseries": false,
+        "reason": "H20版の説明文言『人為的な影響の弱いものから強いものへ』から『水質汚濁への耐忍性の弱いものから強いものへ』に表現が変化し、BMWPという用語・出典注が新たに追加された。算出式(ASPT=ΣSi／ｎ)自体は同一。"
+      },
+      {
+        "note_id": "h21-n5",
+        "table_ids": [],
+        "kind": "footnote",
+        "text": "サンショウウオ類は主に源流近くで確認された。",
+        "page": 15,
+        "blocks_timeseries": false,
+        "reason": "H20報告書にあった『貴重種のため詳細な分布情報の公開はしない』という非公開の断り書きが本書には見当たらず、記載の有無が年度で異なる。"
+      }
+    ]
+  },
+  {
+    "doc_id": "kanagawa_river_monitoring_h25_sagami_results",
+    "areas": [
+      {
+        "name": "相模川",
+        "kind": "target_river",
+        "page": 3
+      },
+      {
+        "name": "相模川",
+        "kind": "river_system",
+        "page": 4
+      },
+      {
+        "name": "境川",
+        "kind": "river_system",
+        "page": 4
+      },
+      {
+        "name": "沢井川",
+        "kind": "river_system",
+        "page": 4
+      },
+      {
+        "name": "底沢",
+        "kind": "river_system",
+        "page": 4
+      },
+      {
+        "name": "秋山川",
+        "kind": "river_system",
+        "page": 4
+      },
+      {
+        "name": "篠原川",
+        "kind": "river_system",
+        "page": 4
+      },
+      {
+        "name": "道志川",
+        "kind": "river_system",
+        "page": 4
+      },
+      {
+        "name": "串川",
+        "kind": "river_system",
+        "page": 4
+      },
+      {
+        "name": "中津川",
+        "kind": "river_system",
+        "page": 4
+      },
+      {
+        "name": "小鮎川",
+        "kind": "river_system",
+        "page": 4
+      },
+      {
+        "name": "玉川",
+        "kind": "river_system",
+        "page": 4
+      },
+      {
+        "name": "鳩川",
+        "kind": "river_system",
+        "page": 4
+      },
+      {
+        "name": "永池川",
+        "kind": "river_system",
+        "page": 4
+      },
+      {
+        "name": "小倉橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "昭和橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "神川橋下",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "堺橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "自然公園センター前",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "上沢井橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "千木良",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "日向（遊魚園）",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "新大橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "緑の休暇村センター",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "青山水源地脇",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "神ノ川・日陰沢",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "西沢・水沐所橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "道場",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "河原橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "馬渡橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "鮎津橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "早戸川・国際マス釣り場",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "水沢川・水沢橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "宮ヶ瀬金沢・宮ヶ瀬",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "布川・唐沢川",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "布川・金沢キャンプ場",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "布川・境沢（林道終点）",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "本谷川・本谷橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "塩水川・塩水橋上流",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "南沢・おたき橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "善明川・ビオトープ前",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "第2鮎津橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "柿ノ木平川",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "荻野川・新道橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "籠堰橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "酒井橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "七沢川・二の橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "日向川・日向薬師",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "恩曽川・長ヶ町橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "今橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "新一の沢橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "馬船橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "道保川・一ノ関橋",
+        "kind": "survey_point",
+        "page": 4
+      },
+      {
+        "name": "平泉橋",
+        "kind": "survey_point",
+        "page": 4
+      }
+    ],
+    "indicators": [
+      {
+        "name": "pH",
+        "unit": null,
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "BOD",
+        "unit": "mg/L",
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "COD",
+        "unit": "mg/L",
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "SS",
+        "unit": "mg/L",
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "DO",
+        "unit": null,
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "全窒素",
+        "unit": "mg/L",
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "溶解性全窒素",
+        "unit": null,
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "硝酸性窒素",
+        "unit": null,
+        "method": "注1）硝酸性(態)窒素は硝酸塩として含まれている窒素。出典：水質用語集(国交省京浜河川事務所)",
+        "page": 7
+      },
+      {
+        "name": "亜硝酸性窒素",
+        "unit": null,
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "アンモニア性窒素",
+        "unit": null,
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "全燐",
+        "unit": "mg/L",
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "溶解性全燐",
+        "unit": null,
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "燐酸態燐",
+        "unit": null,
+        "method": "注2）燐酸イオンとして存在する燐。出典：水質用語集(国交省京浜河川事務所)",
+        "page": 7
+      },
+      {
+        "name": "TOC",
+        "unit": "mg/L",
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "基礎生産量（クロロフィル量）",
+        "unit": null,
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "底生動物 種類数",
+        "unit": "種",
+        "method": null,
+        "page": 13
+      },
+      {
+        "name": "平均スコア法（ASPT）",
+        "unit": null,
+        "method": "BMWP法を日本向けに改良。各科に耐忍性の弱いものから強いものへ10〜1のスコアを与え、合計を科数で割った値。ASPT=ΣSi／ｎ。スコア表は野崎(2012)水環境学会誌35(4)による。",
+        "page": 15
+      },
+      {
+        "name": "魚類 確認種類数",
+        "unit": "種",
+        "method": null,
+        "page": 13
+      },
+      {
+        "name": "両生類 確認種類数",
+        "unit": "種",
+        "method": null,
+        "page": 13
+      },
+      {
+        "name": "鳥類 確認種数",
+        "unit": "種",
+        "method": null,
+        "page": 13
+      },
+      {
+        "name": "植物 確認種類数／帰化種割合",
+        "unit": "種類／科／％",
+        "method": null,
+        "page": 13
+      },
+      {
+        "name": "付着藻類 種類数",
+        "unit": "種",
+        "method": null,
+        "page": 13
+      },
+      {
+        "name": "DAIpo（有機汚濁指数）",
+        "unit": null,
+        "method": "珪藻の好清水性種・好汚濁性種の相対頻度からDAIpo=50+1/2（A－B）で算出。",
+        "page": 16
+      }
+    ],
+    "units": [
+      "mg/L",
+      "％",
+      "種",
+      "種類",
+      "科",
+      "地点"
+    ],
+    "era_formats": [
+      {
+        "pattern": "平成25年度",
+        "page": 1
+      },
+      {
+        "pattern": "平成30年6月（発行）",
+        "page": 1
+      },
+      {
+        "pattern": "平成20年度（比較対象）",
+        "page": 7
+      },
+      {
+        "pattern": "平成18年度版（マニュアル）",
+        "page": 4
+      }
+    ],
+    "notes": [
+      {
+        "note_id": "h25-n1",
+        "table_ids": [],
+        "kind": "comparability",
+        "text": "40地点について、BOD,SS、全窒素及び全燐の結果を平成20年度調査結果と比較した(図-7)。",
+        "page": 7,
+        "blocks_timeseries": false,
+        "reason": "比較は平成20年度と平成25年度の2時点のみで実施地点数・方法は同一と読めるが、間の年度データは含まれない。"
+      },
+      {
+        "note_id": "h25-n2",
+        "table_ids": [],
+        "kind": "comparability",
+        "text": "2月はSS、全窒素及び全燐がやや高かったが、これは、降雪の影響の可能性も考えられる。",
+        "page": 7,
+        "blocks_timeseries": true,
+        "reason": "気象（降雪）の影響で特定月の値が変動したことを明記しており、単純な月次比較は気象条件差を考慮する必要がある。"
+      },
+      {
+        "note_id": "h25-n3",
+        "table_ids": [],
+        "kind": "definition_change",
+        "text": "全窒素は年平均1.6mg/Lで、そのほとんどが硝酸性窒素１）であった。また、全燐は年平均0.036mg/Lで、その多くは燐酸態燐２）（0.025mg/L）であった。",
+        "page": 7,
+        "blocks_timeseries": true,
+        "reason": "H20/H21では『全リン』『リン酸態リン』とカタカナ表記だったが、本書（H25）以降は『全燐』『燐酸態燐』と漢字表記に変わっている。同一指標だが表記が変わっており、文字列一致による時系列突合を行う際は注意が必要。"
+      },
+      {
+        "note_id": "h25-n4",
+        "table_ids": [],
+        "kind": "footnote",
+        "text": "全調査地点の40地点全て で確認された種は、ウルマーシマトビケラ、ニセテンマクエリユスリカ属、エリユスリカ亜科、ハモンユスリカ属の4種であった。ただし、エリユスリカ亜科については、複数の不明属を含む可能性が高い。",
+        "page": 14,
+        "blocks_timeseries": true,
+        "reason": "同定精度に関する留保（不明属を含む可能性）が明記されており、種数の年度間比較の精度に影響しうる。"
+      },
+      {
+        "note_id": "h25-n5",
+        "table_ids": [],
+        "kind": "comparability",
+        "text": "底生動物による環境評価（平均スコア法※）の年度比較を図-９に示す。平成20年度調査と同様に平均スコアの値は上流で高く、下流になるに従い低くなる傾向がみられた。",
+        "page": 14,
+        "blocks_timeseries": false,
+        "reason": "平成20年度との定性的傾向比較であり、数値の単純比較の妥当性については言及がない。"
+      },
+      {
+        "note_id": "h25-n6",
+        "table_ids": [],
+        "kind": "footnote",
+        "text": "カエル類の代表種として、神奈川県レッドデータ生物調査報告書2006の希少種であるナガレタゴガエルの分布の年度比較を図-11に示す。サンショウウオ類は主に宮ヶ瀬湖の上流で確認された。",
+        "page": 14,
+        "blocks_timeseries": false,
+        "reason": "H20報告書にあった『サンショウウオ類の詳細分布は非公開』という断り書きが本書には明記されておらず、代表種もカジカガエルからナガレタゴガエルに変更されている。"
+      }
+    ]
+  },
+  {
+    "doc_id": "kanagawa_river_monitoring_h26_sakawa_results",
+    "areas": [
+      {
+        "name": "酒匂川",
+        "kind": "target_river",
+        "page": 3
+      },
+      {
+        "name": "酒匂川",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "河内川",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "鮎沢川",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "玄倉川",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "小菅沢",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "世附川",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "大又沢",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "塩沢",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "畑沢",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "皆瀬川",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "内川",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "尺里川",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "中津川（酒匂川水系）",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "四十八瀬川",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "川音川",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "狩川",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "金瀬川",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "山北道の駅前",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "十文字橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "報徳橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "小田原大橋上",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "新鮎沢橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "旧白石沢キャンプ場",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "東沢",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "西沢",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "大滝沢・峰山橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "中川温泉下",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "ユーシンロッヂ前",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "中の沢・小割沢橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "玄倉水位観測所",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "小菅沢橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "金山沢・菰釣橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "一の沢・一の沢橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "浅瀬",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "白水沢・白水沢橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "千鳥橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "塩沢・集落終点",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "3号橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "人遠橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "新樋口橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "工一橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "尾崎橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "県立山北高校前",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "やどりき水源林内",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "湯ノ沢橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "勘七橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "河内橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "文久橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "川入橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "上河原橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "上総川・大瀬戸橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "太刀洗川・栄橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "洞川・下河原橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "分沢川・森と水の公園上",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "仙了川・仙了橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "狩川橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "飯泉橋上",
+        "kind": "survey_point",
+        "page": 5
+      }
+    ],
+    "indicators": [
+      {
+        "name": "pH",
+        "unit": null,
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "BOD",
+        "unit": "mg/L",
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "COD",
+        "unit": "mg/L",
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "SS",
+        "unit": "mg/L",
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "DO",
+        "unit": null,
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "全窒素",
+        "unit": "mg/L",
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "溶解性全窒素",
+        "unit": null,
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "硝酸性窒素",
+        "unit": null,
+        "method": "注1）硝酸性(態)窒素は硝酸塩として含まれている窒素。出典：水質用語集(国交省京浜河川事務所)",
+        "page": 7
+      },
+      {
+        "name": "亜硝酸性窒素",
+        "unit": null,
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "アンモニア性窒素",
+        "unit": null,
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "全燐",
+        "unit": "mg/L",
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "溶解性全燐",
+        "unit": null,
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "燐酸態燐",
+        "unit": null,
+        "method": "注2）燐酸イオンとして存在する燐。出典：水質用語集(国交省京浜河川事務所)",
+        "page": 7
+      },
+      {
+        "name": "TOC",
+        "unit": "mg/L",
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "基礎生産量（クロロフィル量）",
+        "unit": null,
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "底生動物 種類数（重要種・国外外来種を含む）",
+        "unit": "種",
+        "method": null,
+        "page": 14
+      },
+      {
+        "name": "平均スコア法（ASPT）",
+        "unit": null,
+        "method": "BMWP法準拠。ASPT=ΣSi／ｎ。スコア表は野崎(2012)水環境学会誌35(4)による。",
+        "page": 15
+      },
+      {
+        "name": "魚類 確認種類数（重要種・外来種を含む）",
+        "unit": "種",
+        "method": null,
+        "page": 14
+      },
+      {
+        "name": "両生類 確認種類数（重要種を含む）",
+        "unit": "種",
+        "method": null,
+        "page": 14
+      },
+      {
+        "name": "鳥類 確認種数（重要種を含む）",
+        "unit": "種",
+        "method": null,
+        "page": 14
+      },
+      {
+        "name": "植物 確認種類数／帰化種割合",
+        "unit": "種／％",
+        "method": null,
+        "page": 14
+      },
+      {
+        "name": "付着藻類 種類数",
+        "unit": "種類",
+        "method": null,
+        "page": 15
+      },
+      {
+        "name": "DAIpo（有機汚濁指数）",
+        "unit": null,
+        "method": "DAIpo=50+1/2（A－B）",
+        "page": 16
+      }
+    ],
+    "units": [
+      "mg/L",
+      "％",
+      "種",
+      "種類",
+      "地点"
+    ],
+    "era_formats": [
+      {
+        "pattern": "平成26年度",
+        "page": 1
+      },
+      {
+        "pattern": "平成30年6月（発行）",
+        "page": 1
+      },
+      {
+        "pattern": "平成21年度（比較対象）",
+        "page": 7
+      },
+      {
+        "pattern": "平成18年度版（マニュアル）",
+        "page": 4
+      }
+    ],
+    "notes": [
+      {
+        "note_id": "h26-n1",
+        "table_ids": [],
+        "kind": "footnote",
+        "text": "（エ）平成20年度調査結果との比較\n 40地点の年平均値について、BOD,SS、全窒素及び全燐の結果を平成21年度調査結果と比較した(図-7)。",
+        "page": 7,
+        "blocks_timeseries": true,
+        "reason": "小見出しは『平成20年度調査結果との比較』だが本文は『平成21年度調査結果と比較』としており、見出しと本文の年度表記が一致していない（酒匂川調査は平成21年度が前回のはずで、平成20年度は相模川報告書の年度）。誤記の可能性が高く、機械的な年度突合を誤らせるおそれがある。"
+      },
+      {
+        "note_id": "h26-n2",
+        "table_ids": [],
+        "kind": "comparability",
+        "text": "カジカは、相模川では開空率の増加に伴い減少、酒匂川では攪乱の増加に伴い増加したと考えられた。",
+        "page": 14,
+        "blocks_timeseries": true,
+        "reason": "同一種でも河川間で増減の方向・要因が逆であると明記されており、河川を跨いだ単純比較はできない。"
+      },
+      {
+        "note_id": "h26-n3",
+        "table_ids": [],
+        "kind": "comparability",
+        "text": "ワンド・たまりで繁殖する両生類の分布状況は出水等により変化するものの、水系全体での生息状況は安定していると考えられた。",
+        "page": 14,
+        "blocks_timeseries": true,
+        "reason": "出水（増水）等の一時的な攪乱要因により分布が変動しうることが明記されている。"
+      },
+      {
+        "note_id": "h26-n4",
+        "table_ids": [],
+        "kind": "comparability",
+        "text": "ナルコスゲは相模川水系と酒匂川水系で異なる変化傾向で、相模川では増加しているが酒匂川では減少していた。また、確認地点数が減少した種は酒匂川に多いという結果になっており、鳥類と同様に酒匂川の出水の影響を受けて変化している可能性があると考えられた。",
+        "page": 14,
+        "blocks_timeseries": true,
+        "reason": "確認地点数の減少が『出水の影響』による可能性があると明記されており、年度間の減少を生物学的トレンドと解釈すると誤る可能性がある。"
+      },
+      {
+        "note_id": "h26-n5",
+        "table_ids": [],
+        "kind": "comparability",
+        "text": "相模川では特に下流域の支川でDAIpoが大きく減少しており、酒匂川においては、本川も含めて全体的にDAIpoが下がる傾向にあった。付着藻類の出現に影響する水質や開空率の変化を整理したが、大きな変化はみられず、他の要因が影響していると考えられた。",
+        "page": 15,
+        "blocks_timeseries": true,
+        "reason": "DAIpoの低下要因が特定できず『他の要因』と留保されている。また本書は酒匂川の報告書だが本文に『相模川では』という記述が混在しており、記載の出典・対象範囲に注意が必要（テンプレート流用の可能性）。"
+      }
+    ]
+  },
+  {
+    "doc_id": "kanagawa_river_monitoring_h30sagamigawa",
+    "areas": [
+      {
+        "name": "相模川",
+        "kind": "target_river",
+        "page": 3
+      },
+      {
+        "name": "相模川",
+        "kind": "river_system",
+        "page": 3
+      },
+      {
+        "name": "境川",
+        "kind": "river_system",
+        "page": 3
+      },
+      {
+        "name": "沢井川",
+        "kind": "river_system",
+        "page": 3
+      },
+      {
+        "name": "底沢",
+        "kind": "river_system",
+        "page": 3
+      },
+      {
+        "name": "秋山川",
+        "kind": "river_system",
+        "page": 3
+      },
+      {
+        "name": "篠原川",
+        "kind": "river_system",
+        "page": 3
+      },
+      {
+        "name": "道志川",
+        "kind": "river_system",
+        "page": 3
+      },
+      {
+        "name": "串川",
+        "kind": "river_system",
+        "page": 3
+      },
+      {
+        "name": "中津川",
+        "kind": "river_system",
+        "page": 3
+      },
+      {
+        "name": "小鮎川",
+        "kind": "river_system",
+        "page": 3
+      },
+      {
+        "name": "玉川",
+        "kind": "river_system",
+        "page": 3
+      },
+      {
+        "name": "鳩川",
+        "kind": "river_system",
+        "page": 3
+      },
+      {
+        "name": "永池川",
+        "kind": "river_system",
+        "page": 3
+      },
+      {
+        "name": "小倉橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "昭和橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "神川橋下",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "堺橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "旧自然公園センター前",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "上沢井橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "千木良",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "日向（遊魚園）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "新大橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "緑の休暇村センター",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "青山水源地脇",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "神ノ川・日陰沢",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "西沢・水沐所橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "道場",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "河原橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "馬渡橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "鮎津橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "早戸川・国際マス釣り場",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "水沢川・水沢橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "布川・札掛橋下流",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "布川・旧金沢キャンプ場",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "布川・境沢（林道終点）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "本谷川・本谷橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "塩水川・塩水橋上流",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "南沢・おたき橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "善明川・ビオトープ前",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "第2鮎津橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "柿ノ木平川",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "荻野川・新道橋（表記ゆれ:萩野川）",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "籠堰橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "酒井橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "七沢川・二の橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "日向川・日向薬師",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "恩曽川・長ヶ町橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "今橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "新一の沢橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "馬船橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "道保川・一ノ関橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "平泉橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "宮ヶ瀬金沢・宮ヶ瀬（No.20、崩落により調査不可のため削除）",
+        "kind": "survey_point_removed",
+        "page": 5
+      }
+    ],
+    "indicators": [
+      {
+        "name": "pH",
+        "unit": null,
+        "method": null,
+        "page": 6
+      },
+      {
+        "name": "BOD",
+        "unit": "mg/L",
+        "method": null,
+        "page": 6
+      },
+      {
+        "name": "COD",
+        "unit": "mg/L",
+        "method": null,
+        "page": 6
+      },
+      {
+        "name": "SS",
+        "unit": "mg/L",
+        "method": null,
+        "page": 6
+      },
+      {
+        "name": "DO",
+        "unit": null,
+        "method": null,
+        "page": 6
+      },
+      {
+        "name": "全窒素",
+        "unit": "mg/L",
+        "method": null,
+        "page": 6
+      },
+      {
+        "name": "溶解性全窒素",
+        "unit": null,
+        "method": null,
+        "page": 6
+      },
+      {
+        "name": "硝酸性窒素",
+        "unit": null,
+        "method": "注1）硝酸性(態)窒素は硝酸塩として含まれている窒素。出典：水質用語集(国交省京浜河川事務所)",
+        "page": 7
+      },
+      {
+        "name": "亜硝酸性窒素",
+        "unit": null,
+        "method": null,
+        "page": 6
+      },
+      {
+        "name": "アンモニア性窒素",
+        "unit": null,
+        "method": null,
+        "page": 6
+      },
+      {
+        "name": "全リン",
+        "unit": "mg/L",
+        "method": null,
+        "page": 6
+      },
+      {
+        "name": "溶解性全リン",
+        "unit": null,
+        "method": null,
+        "page": 6
+      },
+      {
+        "name": "リン酸態リン",
+        "unit": null,
+        "method": "注2）見出しは『リン酸態リン』（カタカナ）だが説明文本文は『燐酸態燐は、燐酸イオンとして存在する燐のことで…』（漢字）と表記が混在。出典：水質用語集(国交省京浜河川事務所)",
+        "page": 7
+      },
+      {
+        "name": "TOC",
+        "unit": "mg/L",
+        "method": null,
+        "page": 6
+      },
+      {
+        "name": "基礎生産量（クロロフィル量）",
+        "unit": null,
+        "method": null,
+        "page": 6
+      },
+      {
+        "name": "底生動物 種類数",
+        "unit": "種類",
+        "method": "平成28年度版河川水辺の国勢調査マニュアルに準拠",
+        "page": 13
+      },
+      {
+        "name": "平均スコア法（ASPT）",
+        "unit": null,
+        "method": "底生動物の科に耐忍性の弱いものから強いものへ10〜1のスコアを与え、合計（BMWPスコア値）を科数で割ったもの。ASPT=ΣSi／ｎ",
+        "page": 14
+      },
+      {
+        "name": "魚類 確認種類数",
+        "unit": "種類",
+        "method": null,
+        "page": 13
+      },
+      {
+        "name": "両生類 確認種類数（サンショウウオ調査を含む）",
+        "unit": "種類",
+        "method": null,
+        "page": 13
+      },
+      {
+        "name": "鳥類 確認種数",
+        "unit": "種",
+        "method": null,
+        "page": 13
+      },
+      {
+        "name": "植物 確認種数／帰化率",
+        "unit": "種／科／％",
+        "method": null,
+        "page": 13
+      },
+      {
+        "name": "付着藻類 種類数",
+        "unit": "種類",
+        "method": null,
+        "page": 13
+      },
+      {
+        "name": "DAIpo（有機汚濁指数）",
+        "unit": null,
+        "method": "DAIpo=50+1/2(ΣXi–ΣSi)。100点満点で100が最も清浄。",
+        "page": 14
+      }
+    ],
+    "units": [
+      "mg/L",
+      "％",
+      "種",
+      "種類",
+      "地点"
+    ],
+    "era_formats": [
+      {
+        "pattern": "平成30年度",
+        "page": 1
+      },
+      {
+        "pattern": "令和2年〇月（発行、日未定）",
+        "page": 1
+      },
+      {
+        "pattern": "平成31年（水質調査実施日表）",
+        "page": 4
+      },
+      {
+        "pattern": "平成20、25年度（比較対象）",
+        "page": 11
+      },
+      {
+        "pattern": "平成28年度版（マニュアル）",
+        "page": 4
+      },
+      {
+        "pattern": "平成20年年度（本文中の比較記述、図キャプションは20・25年度）",
+        "page": 7
+      }
+    ],
+    "notes": [
+      {
+        "note_id": "h30-n1",
+        "table_ids": [],
+        "kind": "survey_scope",
+        "text": "本川、支川、渓流を含む相模川水系39地点（図-１、表-１）。ただしサンショウウオ類は源流域25地点\n(前回までの調査地点は40地点だったが、崩落が発生したため1地点減)",
+        "page": 3,
+        "blocks_timeseries": true,
+        "reason": "調査地点数が前回（平成25年度）の40地点から39地点へ、崩落を理由に変更されたことが明記されている。地点集合が変わったため全地点平均値等の単純な年度間比較はできない。"
+      },
+      {
+        "note_id": "h30-n2",
+        "table_ids": [],
+        "kind": "footnote",
+        "text": "崩落により調査不可",
+        "page": 5,
+        "blocks_timeseries": true,
+        "reason": "表-1の地点状況表で該当地点（No.20 宮ヶ瀬金沢・宮ヶ瀬付近）が調査不能であったことを示す注記。地点脱落の直接証拠。"
+      },
+      {
+        "note_id": "h30-n3",
+        "table_ids": [],
+        "kind": "comparability",
+        "text": "39地点について、BOD、SS、全窒素及び全リンの結果を平成20年度調査結果と比較した(図-７)。",
+        "page": 7,
+        "blocks_timeseries": true,
+        "reason": "本文は『平成20年度調査結果との比較』とのみ記すが、図-7のキャプションは『平成20、25年度調査結果との比較』であり2時点比較であることが図側にしか明記されていない。加えて地点数が39（前回40）であるため比較対象地点集合も完全一致しない。"
+      },
+      {
+        "note_id": "h30-n4",
+        "table_ids": [],
+        "kind": "definition_change",
+        "text": "リン酸態リン：燐酸態燐は、燐酸イオンとして存在する燐のことで、栄養塩として藻類に吸収利用されるため富栄養化現象の直接的な原因物質になる。",
+        "page": 7,
+        "blocks_timeseries": false,
+        "reason": "見出し語は『リン酸態リン』（カタカナ、H20/H21/H30本文の主表記）だが、脚注の説明文自体はH25/H26で使われていた『燐酸態燐』（漢字）の文章がそのまま残っており、同一書類内で表記が不統一。"
+      },
+      {
+        "note_id": "h30-n5",
+        "table_ids": [],
+        "kind": "footnote",
+        "text": "地点名の表記変更: No.5『自然公園センター前』→『旧自然公園センター前』、No.21『布川・唐沢川』→『布川・札掛橋下流』、No.22『布川・金沢キャンプ場』→『布川・旧金沢キャンプ場』、No.30『荻野川・新道橋』の写真キャプションは『萩野川・新道橋』と異なる漢字表記。",
+        "page": 5,
+        "blocks_timeseries": true,
+        "reason": "複数の調査地点で名称・漢字表記が過去年度から変更されており、地点名の文字列一致による過去データとの突合が失敗しうる。"
+      },
+      {
+        "note_id": "h30-n6",
+        "table_ids": [],
+        "kind": "footnote",
+        "text": "No.g40、No.g39のように地点番号に「g」が付与された表記が本文中で使われている（例：No.g40（平泉橋）、No.g32(酒井橋)）。",
+        "page": 7,
+        "blocks_timeseries": false,
+        "reason": "H20/H25では『No.40』のように接頭辞なしで表記していたが、本書では『No.g40』のように接頭辞『g』付きの新しい地点番号表記が使われている。文字列一致でのID突合を行う場合は接頭辞の有無に注意が必要。"
+      }
+    ]
+  },
+  {
+    "doc_id": "kanagawa_river_monitoring_r1_sakawa_results",
+    "areas": [
+      {
+        "name": "酒匂川",
+        "kind": "target_river",
+        "page": 3
+      },
+      {
+        "name": "酒匂川",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "河内川",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "鮎沢川",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "玄倉川",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "小菅沢",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "世附川",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "大又沢",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "塩沢",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "畑沢",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "皆瀬川",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "内川",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "尺里川",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "中津川（酒匂川水系）",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "四十八瀬川",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "川音川",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "狩川",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "金瀬川",
+        "kind": "river_system",
+        "page": 5
+      },
+      {
+        "name": "山北道の駅前",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "十文字橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "報徳橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "小田原大橋上",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "新鮎沢橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "旧白石沢キャンプ場",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "東沢",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "西沢",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "大滝沢・峰山橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "中川温泉下",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "ユーシンロッヂ前",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "中の沢・小割沢橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "玄倉水位観測所",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "小菅沢橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "金山沢・菰釣橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "一の沢・一の沢橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "浅瀬",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "白水沢・白水沢橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "千鳥橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "塩沢・集落終点",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "3号橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "人遠橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "新樋口橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "工一橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "尾崎橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "県立山北高校前",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "やどりき水源林内",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "湯ノ沢橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "勘七橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "河内橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "文久橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "川入橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "上河原橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "上総川・大瀬戸橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "太刀洗川・栄橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "洞川・下河原橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "分沢川・森と水の公園上",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "仙了川・仙了橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "狩川橋",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "飯泉橋上",
+        "kind": "survey_point",
+        "page": 5
+      },
+      {
+        "name": "（崩落のため未調査の1地点、番号不特定：表-1の10番と11番の間に注記あり）",
+        "kind": "survey_point_removed",
+        "page": 5
+      },
+      {
+        "name": "St.11（令和元年度／平成31年度のナルコスゲ調査で調査対象外）",
+        "kind": "survey_point_excluded_partial",
+        "page": 23
+      }
+    ],
+    "indicators": [
+      {
+        "name": "pH",
+        "unit": null,
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "BOD",
+        "unit": "mg/L",
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "COD",
+        "unit": "mg/L",
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "SS",
+        "unit": "mg/L",
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "DO",
+        "unit": null,
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "全窒素",
+        "unit": "mg/L",
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "溶解性全窒素",
+        "unit": null,
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "硝酸性窒素",
+        "unit": null,
+        "method": "注1）硝酸性(態)窒素は硝酸塩として含まれている窒素。出典：水質用語集(国交省京浜河川事務所)",
+        "page": 7
+      },
+      {
+        "name": "亜硝酸性窒素",
+        "unit": null,
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "アンモニア性窒素",
+        "unit": null,
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "全燐",
+        "unit": "mg/L",
+        "method": null,
+        "page": 7
+      },
+      {
+        "name": "燐酸態燐",
+        "unit": null,
+        "method": "注2）燐酸イオンとして存在する燐。出典：水質用語集(国交省京浜河川事務所)",
+        "page": 7
+      },
+      {
+        "name": "全リン（調査項目の見出しではカタカナ表記）",
+        "unit": "mg/L",
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "溶解性全リン",
+        "unit": null,
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "リン酸態リン（調査項目の見出しではカタカナ表記）",
+        "unit": null,
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "TOC",
+        "unit": "mg/L",
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "電気伝導率",
+        "unit": null,
+        "method": null,
+        "page": 4
+      },
+      {
+        "name": "底生動物 種類数（重要種・国外外来種を含む）",
+        "unit": "種",
+        "method": null,
+        "page": 12
+      },
+      {
+        "name": "平均スコア法（ASPT）",
+        "unit": null,
+        "method": "BMWP法準拠。ASPT=ΣSi／ｎ",
+        "page": 13
+      },
+      {
+        "name": "魚類 確認種類数（重要種・外来種を含む）",
+        "unit": "種類",
+        "method": null,
+        "page": 12
+      },
+      {
+        "name": "両生類 確認種類数（重要種を含む）",
+        "unit": "種",
+        "method": null,
+        "page": 12
+      },
+      {
+        "name": "鳥類 確認種数（重要種を含む）",
+        "unit": "種",
+        "method": null,
+        "page": 12
+      },
+      {
+        "name": "植物 確認種類数／帰化種数",
+        "unit": "種",
+        "method": null,
+        "page": 12
+      },
+      {
+        "name": "付着藻類 種類数",
+        "unit": "種類",
+        "method": null,
+        "page": 12
+      },
+      {
+        "name": "DAIpo（有機汚濁指数）",
+        "unit": null,
+        "method": "DAIpo=50+1/2（A－B）",
+        "page": 13
+      }
+    ],
+    "units": [
+      "mg/L",
+      "％",
+      "種",
+      "種類",
+      "地点"
+    ],
+    "era_formats": [
+      {
+        "pattern": "令和元年度",
+        "page": 1
+      },
+      {
+        "pattern": "令和元年(平成31年)",
+        "page": 4
+      },
+      {
+        "pattern": "令和2年（水質調査実施日表）",
+        "page": 4
+      },
+      {
+        "pattern": "平成21年度、平成26年度（比較対象、本文表記）",
+        "page": 7
+      },
+      {
+        "pattern": "平成28年度版（マニュアル）",
+        "page": 4
+      },
+      {
+        "pattern": "平成31年度（図-13キャプション表記）",
+        "page": 23
+      },
+      {
+        "pattern": "令和元年度（図-8,9,11,12,14キャプション表記、同一年度を指す）",
+        "page": 23
+      }
+    ],
+    "notes": [
+      {
+        "note_id": "r1-n1",
+        "table_ids": [],
+        "kind": "survey_scope",
+        "text": "本川、支川、渓流を含む酒匂川水系39地点（図-１、表-１）。 ただしサンショウウオ類は25地点",
+        "page": 3,
+        "blocks_timeseries": true,
+        "reason": "平成26年度report(40地点)から39地点に減少している。理由は表-1の『崩落のため未調査』注記に対応すると考えられ、地点集合の変更のため単純な全地点平均の経年比較はできない。"
+      },
+      {
+        "note_id": "r1-n2",
+        "table_ids": [],
+        "kind": "footnote",
+        "text": "崩落のため未調査",
+        "page": 5,
+        "blocks_timeseries": true,
+        "reason": "表-1の地点状況表で該当地点が調査不能であったことを示す注記。地点脱落の直接証拠（h30と同種の崩落起因の欠測）。"
+      },
+      {
+        "note_id": "r1-n3",
+        "table_ids": [],
+        "kind": "footnote",
+        "text": "（エ）過度調査結果との比較\n 39地点の年平均値について、BOD,SS、全窒素及び全燐の結果を過年度(平成21年度および平成26年度)調査結果と比較した(図-7)。",
+        "page": 7,
+        "blocks_timeseries": true,
+        "reason": "見出し・本文とも『過年度』とすべきところが『過度』という誤記になっている（図-7キャプションも同様に『過度調査結果との比較』）。誤記のため、テキスト検索や年度キーワードでの機械的な比較セクション抽出に失敗する可能性がある。また比較対象地点数が過年度(40地点)と当年度(39地点)で異なる。"
+      },
+      {
+        "note_id": "r1-n4",
+        "table_ids": [],
+        "kind": "comparability",
+        "text": "BOD、全窒素は平成21年度、平成26年度、今年度と段階的に低下していた。一方、SSは、平成21年度よりやや低く、平成26年度よりやや高かった。全燐は、平成21年度によりやや低く、平成26年度と同程度であった。",
+        "page": 7,
+        "blocks_timeseries": false,
+        "reason": "3時点比較で指標ごとに増減方向が異なっており、『全体として改善傾向』と単純化して解釈しない方がよい。"
+      },
+      {
+        "note_id": "r1-n5",
+        "table_ids": [],
+        "kind": "comparability",
+        "text": "相模川では特に下流域の支川でDAIpoが大きく減少しており、酒匂川においては、本川も含めて全体的にDAIpoが下がる傾向にあった。付着藻類の出現に影響する水質や開空率の変化を整理したが、大きな変化はみられず、他の要因が影響していると考えられた。",
+        "page": 12,
+        "blocks_timeseries": true,
+        "reason": "本書は酒匂川の報告書だが本文に『相模川では』という記述が混在しており（h26と全く同一の文言）、記述が酒匂川データに固有のものか使い回しかの判別ができない。DAIpo低下の要因も『他の要因』として特定されていない。"
+      },
+      {
+        "note_id": "r1-n6",
+        "table_ids": [],
+        "kind": "footnote",
+        "text": "平成31年度のSt.11は調査対象外。",
+        "page": 23,
+        "blocks_timeseries": true,
+        "reason": "図-13（ナルコスゲの分布図）において、令和元年度（平成31年度）はSt.11が調査対象から除外されたことが明記されている。特定の年度・特定指標について地点が欠落しており、その地点を含む経年比較はできない。"
+      },
+      {
+        "note_id": "r1-n7",
+        "table_ids": [],
+        "kind": "footnote",
+        "text": "同一年度内で図-10・図-13は『平成31年度』、図-8・図-9・図-11・図-12・図-14は『令和元年度』とキャプション表記が混在（表-2の調査実施日表では『令和元年(平成31年)』と両方併記）。",
+        "page": 23,
+        "blocks_timeseries": true,
+        "reason": "2019年度は元号が平成から令和に変わった年度であり、同一の調査年度が資料内で『平成31年度』『令和元年度』の両方の表記で登場する。年度文字列の完全一致に頼った時系列突合は失敗しうる。"
+      }
+    ]
+  }
+]

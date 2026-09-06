@@ -1,0 +1,50 @@
+# 流域カルテ デモ — 開発環境
+#
+#   docker compose up
+#
+# 初回だけ「集計 DB の生成 → D1 マイグレーション → シード投入」が走る（数分）。
+# 2 回目以降は名前付きボリューム d1-state に残った D1 をそのまま使うので素通りする。
+# 入れ直したいときは `docker compose down -v`。
+
+services:
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      target: development
+    container_name: ryuiki-web
+    ports:
+      - "3000:3000"
+    volumes:
+      # ソースはマウントしてホットリロードを効かせる（node_modules はイメージ側のまま）
+      - ./web/src:/app/web/src
+      - ./web/public:/app/web/public
+      - ./web/scripts:/app/web/scripts
+      - ./web/drizzle:/app/web/drizzle
+      - ./web/next.config.ts:/app/web/next.config.ts
+      - ./web/wrangler.jsonc:/app/web/wrangler.jsonc
+      - ./web/drizzle.config.ts:/app/web/drizzle.config.ts
+      # 原本 SQLite と GeoJSON。derived.sqlite をここに書くので rw
+      - ./data:/app/data
+      # ローカル D1 (miniflare) の実体。消さない限りシードは 1 回だけ
+      - d1-state:/app/web/.wrangler
+      # .next はホストと共有しない（ホスト側の next dev と衝突させない）
+      - next-cache:/app/web/.next
+    # AI アシスタントの資格情報（AI_GATEWAY_* / AI_MODEL）。
+    # web/.dockerignore が .env*.local を弾いているのでイメージには入らない（秘密情報を焼かないため）。
+    # ここで実行時の環境変数として渡す。ファイルが無くても起動できるように required: false。
+    # 未設定なら /api/chat が 503 と「AI が未設定です」を返すだけで、他の画面は普通に動く。
+    env_file:
+      - path: ./web/.env.local
+        required: false
+    environment:
+      NODE_ENV: development
+      RYUIKI_DB_DIR: /app/data/db
+      # 地図で Mapbox を使うときだけ。無ければ OpenStreetMap と地理院タイル
+      NEXT_PUBLIC_MAPBOX_TOKEN: ${NEXT_PUBLIC_MAPBOX_TOKEN:-}
+    stdin_open: true
+    tty: true
+
+volumes:
+  d1-state:
+  next-cache:

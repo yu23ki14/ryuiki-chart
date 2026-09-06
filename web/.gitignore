@@ -1,0 +1,56 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# MapLibre のワーカー（node_modules からコピーして生成する）
+/public/maplibre
+# WebGL 確認用の一時ファイル
+/public/webgl-test.html
+
+# wrangler / miniflare のローカル状態（ローカル D1 の実体を含む。1GB 超になる）
+/.wrangler/
+# @opennextjs/cloudflare のビルド成果物
+/.open-next/
+# db:export が書き出す本番投入用 SQL（861MB）
+/dist/
+
+# 地図の GeoJSON（data/processed からコピーして生成する）
+/public/geo
