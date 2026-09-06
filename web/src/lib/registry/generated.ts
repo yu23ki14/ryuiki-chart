@@ -1,16 +1,16 @@
 /**
- * 生成物。直接編集しない。
+ * 生成物。直接編集しない。サーバ専用（unit / variable / variable_alias の生テーブル）。
  *
  * 再生成: `cd web && npm run build:registry:ts`
- * 生成元: `web/scripts/build-registry-ts.mjs`（data/db/registry.sqlite と
- * registry/taxon/vernacular_ja.csv から作る）。
+ * 生成元: `web/scripts/build-registry-ts.mjs`（data/db/registry.sqlite から作る）。
  *
- * クライアント安全（'server-only' は付けない。証跡カードなどクライアント
- * コンポーネントからも import される）。D1 から動的に引く必要があるもの
- * （taxon 全体・place・cells.notes 由来の caveat）はここには無い。
- * 読み出しは `web/src/lib/registry/index.ts`（server-only）を使う。
+ * クライアントバンドルに含めないこと。ここを import してよいのは
+ * `web/src/lib/registry/lookup.ts`（server-only ではないが、D1 から引く大きい
+ * テーブルを持つためクライアントコンポーネントから import しない）だけ。
+ * クライアント安全な語彙定数（VARIABLE_SHORT 等）・caveat は
+ * `./generated-client.ts` を使う。
  *
- * docs/plans/PHASE_A.md §A-7
+ * docs/plans/PHASE_A.md §A-7 / code-review #4（クライアントバンドル+65KB問題）
  */
 
 export interface GeneratedUnit {
@@ -42,27 +42,6 @@ export interface GeneratedVariableAlias {
   unitId: string | null;
   stat: string | null;
   grain: string | null;
-}
-
-export type CaveatScopeKind = "table" | "table_prefix" | "table_synthetic";
-
-export interface GeneratedCaveat {
-  key: string;
-  severity: string | null;
-  kind: string | null;
-  bodyJa: string;
-}
-
-export interface GeneratedCaveatScope {
-  scopeKind: CaveatScopeKind;
-  scopeRef: string;
-  caveatKey: string;
-  sortOrder: number;
-}
-
-export interface GeneratedVernacular {
-  scientificName: string;
-  vernacularNameJa: string;
 }
 
 /** measurements.unit 9種 + sensor_timeseries.unit 22種を正準化したもの（registry/unit.yaml）。 */
@@ -305,181 +284,4 @@ export const GENERATED_VARIABLE_ALIASES: readonly GeneratedVariableAlias[] = [
   { alias: "大気現象_雷日数", sourceScope: "sensor_timeseries", variableId: "common:variable:weather.days_with_thunder", unitId: "common:unit:days", stat: "sum", grain: "month" },
   { alias: "天気概況_昼 (06:00-18:00)", sourceScope: "sensor_timeseries", variableId: "common:variable:weather.weather_summary_day", unitId: null, stat: null, grain: "day" },
   { alias: "天気概況_夜 (18:00-翌日06:00)", sourceScope: "sensor_timeseries", variableId: "common:variable:weather.weather_summary_night", unitId: null, stat: null, grain: "day" },
-];
-
-/**
- * 注記14件（registry/caveat.yaml）。cells.notes 由来（207件）は含めない。
- * key は caveat_id から "common:caveat:" を外したもの
- * （web/src/lib/ai/caveats.ts が今返しているキー文字列と同じ）。
- */
-export const GENERATED_CAVEATS: readonly GeneratedCaveat[] = [
-  { key: "censored", severity: "blocking", kind: "censoring", bodyJa: "全体の約24%は定量下限未満（原表記が「<0.5」など）で、value 列には 0 が入っている。折れ線では中抜きの点で示し、平均には含めるが「0 が観測された」とは読まないこと。" },
-  { key: "duplicates", severity: null, kind: null, bodyJa: "同一の地点・日・項目に複数行あるのは、原本が採水時刻を落としているため。ここでは日ごとに平均して1点にまとめている。" },
-  { key: "effort", severity: "blocking", kind: null, bodyJa: "生物観察の件数は観察努力（記録した人の数）に強く影響される。件数の増加をそのまま「生物が増えた」と読んではいけない。" },
-  { key: "fishClass", severity: null, kind: "definition_change", bodyJa: "魚類は class 列に現れない（Actinopterygii が入っておらず空になっている）。門が Chordata で綱が空のものを魚類として扱っている。" },
-  { key: "gbifCutoff", severity: "blocking", kind: "coverage_gap", bodyJa: "GBIF 側の取り込みは 2024年12月で実質途切れている（2025年1月に月8,750件→399件）。鳥類の2025年以降の減少はデータの都合であり、生きものの減少ではない。" },
-  { key: "inatBackfill", severity: null, kind: "method_change", bodyJa: "iNaturalist 由来の 165,332 件は分類階級が空だったため、学名の先頭2語をキーに GBIF 側の分類を引き当てて補完している（96%が解決）。" },
-  { key: "isAlien", severity: "blocking", kind: "known_error", bodyJa: "原本の is_alien フラグは同一種の中で 1 と 0 が混在し、オオクチバスやウシガエルが 0 件になるなど信頼できない。外来種の判定には環境省の生態系被害防止外来種リスト（taxa.ias_category）を学名で結合した結果を使っている。" },
-  { key: "measuredOn", severity: null, kind: null, bodyJa: "measurements.measured_on には「2015-04-08」形式（検体値・216,990行）と「2015」形式（年度集計値・98,328行）が混在する。年度集計値は日本の年度（4月〜翌3月）を指す。この画面では両者を kind で区別している。" },
-  { key: "municipality", severity: null, kind: null, bodyJa: "sites.municipality は出典によって中身が違う。環境省 公共用水域の290地点では水域名（河川名・湖沼名）が入り、それ以外の62地点では市区町村名が入る。列名と中身が一致していないため、この画面では「水域・地域」と呼ぶ。" },
-  { key: "organismSite", severity: null, kind: null, bodyJa: "生物レコードには site_id が無い（原本で全件 NULL）。流域への割り当ては緯度経度と国土数値情報 W12（1977年版）ポリゴンの点内包判定によるもので、原本の属性ではない。" },
-  { key: "regimes", severity: "blocking", kind: "time_series_break", bodyJa: "記録の中身は年代で入れ替わっている。2013–2016 は標本由来の植物、2017–2024 は eBird 由来の鳥類、2025 以降は iNaturalist 由来の昆虫・植物・菌類が中心。分類群をまたいだ件数の比較はできない。" },
-  { key: "share", severity: "blocking", kind: null, bodyJa: "件数そのものではなく、同じ分類群の中での割合（‰）で比べている。観察する人が増えれば件数は全種で一斉に増えるため、生の件数の増減には意味がない。" },
-  { key: "synthetic", severity: "blocking", kind: "synthetic", bodyJa: "観測者・介入・意思決定・品質段階の遷移は合成データ（デモ用に生成したもの）。実在の公開データではない。" },
-  { key: "zone", severity: null, kind: null, bodyJa: "ゾーンは標高と海岸線距離だけから機械的に付けた操作的定義であり、公式の区分ではない。zone 1（標高800m超）には水質データが無い。" },
-];
-
-/**
- * テーブル -> 注記キーのスコープ（caveat_scope の scope_kind in
- * ('table','table_prefix','table_synthetic')）。cell/cell_table（cells.notes 由来）は含めない。
- * 同じ (scopeKind, scopeRef) の中の並びは sortOrder。scope 同士（渡されたテーブル間）の並びは
- * 呼び出し側がテーブル名を渡す順序に従う（scripts/registry/build_caveat.py の docstring参照）。
- */
-export const GENERATED_CAVEAT_SCOPE: readonly GeneratedCaveatScope[] = [
-  { scopeKind: "table", scopeRef: "effort_year", caveatKey: "organismSite", sortOrder: 0 },
-  { scopeKind: "table", scopeRef: "effort_year", caveatKey: "effort", sortOrder: 1 },
-  { scopeKind: "table", scopeRef: "effort_year", caveatKey: "regimes", sortOrder: 2 },
-  { scopeKind: "table", scopeRef: "effort_year", caveatKey: "gbifCutoff", sortOrder: 3 },
-  { scopeKind: "table", scopeRef: "effort_year", caveatKey: "share", sortOrder: 4 },
-  { scopeKind: "table", scopeRef: "ias_species", caveatKey: "isAlien", sortOrder: 0 },
-  { scopeKind: "table", scopeRef: "meas_clim", caveatKey: "measuredOn", sortOrder: 0 },
-  { scopeKind: "table", scopeRef: "meas_clim", caveatKey: "censored", sortOrder: 1 },
-  { scopeKind: "table", scopeRef: "meas_clim", caveatKey: "duplicates", sortOrder: 2 },
-  { scopeKind: "table", scopeRef: "meas_daily", caveatKey: "measuredOn", sortOrder: 0 },
-  { scopeKind: "table", scopeRef: "meas_daily", caveatKey: "censored", sortOrder: 1 },
-  { scopeKind: "table", scopeRef: "meas_daily", caveatKey: "duplicates", sortOrder: 2 },
-  { scopeKind: "table", scopeRef: "meas_month", caveatKey: "measuredOn", sortOrder: 0 },
-  { scopeKind: "table", scopeRef: "meas_month", caveatKey: "censored", sortOrder: 1 },
-  { scopeKind: "table", scopeRef: "meas_month", caveatKey: "duplicates", sortOrder: 2 },
-  { scopeKind: "table", scopeRef: "meas_year", caveatKey: "measuredOn", sortOrder: 0 },
-  { scopeKind: "table", scopeRef: "meas_year", caveatKey: "censored", sortOrder: 1 },
-  { scopeKind: "table", scopeRef: "meas_year", caveatKey: "duplicates", sortOrder: 2 },
-  { scopeKind: "table", scopeRef: "measurements", caveatKey: "measuredOn", sortOrder: 0 },
-  { scopeKind: "table", scopeRef: "measurements", caveatKey: "censored", sortOrder: 1 },
-  { scopeKind: "table", scopeRef: "measurements", caveatKey: "duplicates", sortOrder: 2 },
-  { scopeKind: "table", scopeRef: "org_group_year", caveatKey: "organismSite", sortOrder: 0 },
-  { scopeKind: "table", scopeRef: "org_group_year", caveatKey: "effort", sortOrder: 1 },
-  { scopeKind: "table", scopeRef: "org_group_year", caveatKey: "regimes", sortOrder: 2 },
-  { scopeKind: "table", scopeRef: "org_group_year", caveatKey: "gbifCutoff", sortOrder: 3 },
-  { scopeKind: "table", scopeRef: "org_group_year", caveatKey: "share", sortOrder: 4 },
-  { scopeKind: "table", scopeRef: "org_norm", caveatKey: "organismSite", sortOrder: 0 },
-  { scopeKind: "table", scopeRef: "org_norm", caveatKey: "effort", sortOrder: 1 },
-  { scopeKind: "table", scopeRef: "org_norm", caveatKey: "regimes", sortOrder: 2 },
-  { scopeKind: "table", scopeRef: "org_norm", caveatKey: "gbifCutoff", sortOrder: 3 },
-  { scopeKind: "table", scopeRef: "org_norm", caveatKey: "share", sortOrder: 4 },
-  { scopeKind: "table", scopeRef: "org_watershed", caveatKey: "organismSite", sortOrder: 0 },
-  { scopeKind: "table", scopeRef: "org_watershed", caveatKey: "effort", sortOrder: 1 },
-  { scopeKind: "table", scopeRef: "org_watershed", caveatKey: "regimes", sortOrder: 2 },
-  { scopeKind: "table", scopeRef: "org_watershed", caveatKey: "gbifCutoff", sortOrder: 3 },
-  { scopeKind: "table", scopeRef: "org_watershed", caveatKey: "share", sortOrder: 4 },
-  { scopeKind: "table", scopeRef: "org_watershed_year", caveatKey: "organismSite", sortOrder: 0 },
-  { scopeKind: "table", scopeRef: "org_watershed_year", caveatKey: "effort", sortOrder: 1 },
-  { scopeKind: "table", scopeRef: "org_watershed_year", caveatKey: "regimes", sortOrder: 2 },
-  { scopeKind: "table", scopeRef: "org_watershed_year", caveatKey: "gbifCutoff", sortOrder: 3 },
-  { scopeKind: "table", scopeRef: "org_watershed_year", caveatKey: "share", sortOrder: 4 },
-  { scopeKind: "table", scopeRef: "organism_records", caveatKey: "organismSite", sortOrder: 0 },
-  { scopeKind: "table", scopeRef: "organism_records", caveatKey: "effort", sortOrder: 1 },
-  { scopeKind: "table", scopeRef: "organism_records", caveatKey: "regimes", sortOrder: 2 },
-  { scopeKind: "table", scopeRef: "organism_records", caveatKey: "gbifCutoff", sortOrder: 3 },
-  { scopeKind: "table", scopeRef: "organism_records", caveatKey: "share", sortOrder: 4 },
-  { scopeKind: "table", scopeRef: "site_var", caveatKey: "measuredOn", sortOrder: 0 },
-  { scopeKind: "table", scopeRef: "site_var", caveatKey: "censored", sortOrder: 1 },
-  { scopeKind: "table", scopeRef: "site_var", caveatKey: "duplicates", sortOrder: 2 },
-  { scopeKind: "table", scopeRef: "sites", caveatKey: "zone", sortOrder: 0 },
-  { scopeKind: "table", scopeRef: "sites", caveatKey: "municipality", sortOrder: 1 },
-  { scopeKind: "table", scopeRef: "species2", caveatKey: "organismSite", sortOrder: 0 },
-  { scopeKind: "table", scopeRef: "species2", caveatKey: "effort", sortOrder: 1 },
-  { scopeKind: "table", scopeRef: "species2", caveatKey: "regimes", sortOrder: 2 },
-  { scopeKind: "table", scopeRef: "species2", caveatKey: "gbifCutoff", sortOrder: 3 },
-  { scopeKind: "table", scopeRef: "species2", caveatKey: "share", sortOrder: 4 },
-  { scopeKind: "table", scopeRef: "species_mesh_year", caveatKey: "share", sortOrder: 0 },
-  { scopeKind: "table", scopeRef: "species_mesh_year", caveatKey: "effort", sortOrder: 1 },
-  { scopeKind: "table", scopeRef: "species_month", caveatKey: "organismSite", sortOrder: 0 },
-  { scopeKind: "table", scopeRef: "species_month", caveatKey: "effort", sortOrder: 1 },
-  { scopeKind: "table", scopeRef: "species_month", caveatKey: "regimes", sortOrder: 2 },
-  { scopeKind: "table", scopeRef: "species_month", caveatKey: "gbifCutoff", sortOrder: 3 },
-  { scopeKind: "table", scopeRef: "species_month", caveatKey: "share", sortOrder: 4 },
-  { scopeKind: "table", scopeRef: "species_year2", caveatKey: "organismSite", sortOrder: 0 },
-  { scopeKind: "table", scopeRef: "species_year2", caveatKey: "effort", sortOrder: 1 },
-  { scopeKind: "table", scopeRef: "species_year2", caveatKey: "regimes", sortOrder: 2 },
-  { scopeKind: "table", scopeRef: "species_year2", caveatKey: "gbifCutoff", sortOrder: 3 },
-  { scopeKind: "table", scopeRef: "species_year2", caveatKey: "share", sortOrder: 4 },
-  { scopeKind: "table", scopeRef: "var_catalog", caveatKey: "measuredOn", sortOrder: 0 },
-  { scopeKind: "table", scopeRef: "var_catalog", caveatKey: "censored", sortOrder: 1 },
-  { scopeKind: "table", scopeRef: "var_catalog", caveatKey: "duplicates", sortOrder: 2 },
-  { scopeKind: "table", scopeRef: "zone_clim", caveatKey: "measuredOn", sortOrder: 0 },
-  { scopeKind: "table", scopeRef: "zone_clim", caveatKey: "censored", sortOrder: 1 },
-  { scopeKind: "table", scopeRef: "zone_clim", caveatKey: "duplicates", sortOrder: 2 },
-  { scopeKind: "table", scopeRef: "zone_year", caveatKey: "measuredOn", sortOrder: 0 },
-  { scopeKind: "table", scopeRef: "zone_year", caveatKey: "censored", sortOrder: 1 },
-  { scopeKind: "table", scopeRef: "zone_year", caveatKey: "duplicates", sortOrder: 2 },
-  { scopeKind: "table_prefix", scopeRef: "mesh_", caveatKey: "share", sortOrder: 0 },
-  { scopeKind: "table_prefix", scopeRef: "mesh_", caveatKey: "effort", sortOrder: 1 },
-  { scopeKind: "table_synthetic", scopeRef: "decisions", caveatKey: "synthetic", sortOrder: 0 },
-  { scopeKind: "table_synthetic", scopeRef: "event_observers", caveatKey: "synthetic", sortOrder: 0 },
-  { scopeKind: "table_synthetic", scopeRef: "interventions", caveatKey: "synthetic", sortOrder: 0 },
-  { scopeKind: "table_synthetic", scopeRef: "observers", caveatKey: "synthetic", sortOrder: 0 },
-  { scopeKind: "table_synthetic", scopeRef: "quality_monthly", caveatKey: "synthetic", sortOrder: 0 },
-  { scopeKind: "table_synthetic", scopeRef: "quality_transitions", caveatKey: "synthetic", sortOrder: 0 },
-];
-
-/**
- * 和名54件（registry/taxon/vernacular_ja.csv、domain.ts の NAME_JA をそのまま複製した台帳）。
- * taxon テーブル全体の vernacular_name_ja（8,324件、taxa 由来の別の母集団）とは別物。
- */
-export const GENERATED_VERNACULAR_JA: readonly GeneratedVernacular[] = [
-  { scientificName: "Hypsipetes amaurotis", vernacularNameJa: "ヒヨドリ" },
-  { scientificName: "Passer montanus", vernacularNameJa: "スズメ" },
-  { scientificName: "Corvus corone", vernacularNameJa: "ハシボソガラス" },
-  { scientificName: "Corvus macrorhynchos", vernacularNameJa: "ハシブトガラス" },
-  { scientificName: "Egretta garzetta", vernacularNameJa: "コサギ" },
-  { scientificName: "Ardea intermedia", vernacularNameJa: "チュウサギ" },
-  { scientificName: "Ardea cinerea", vernacularNameJa: "アオサギ" },
-  { scientificName: "Fulica atra", vernacularNameJa: "オオバン" },
-  { scientificName: "Alcedo atthis", vernacularNameJa: "カワセミ" },
-  { scientificName: "Garrulax canorus", vernacularNameJa: "ガビチョウ" },
-  { scientificName: "Leiothrix lutea", vernacularNameJa: "ソウシチョウ" },
-  { scientificName: "Aythya fuligula", vernacularNameJa: "キンクロハジロ" },
-  { scientificName: "Aythya ferina", vernacularNameJa: "ホシハジロ" },
-  { scientificName: "Anas acuta", vernacularNameJa: "オナガガモ" },
-  { scientificName: "Mareca penelope", vernacularNameJa: "ヒドリガモ" },
-  { scientificName: "Mareca strepera", vernacularNameJa: "オカヨシガモ" },
-  { scientificName: "Zosterops japonicus", vernacularNameJa: "メジロ" },
-  { scientificName: "Cyanopica cyanus", vernacularNameJa: "オナガ" },
-  { scientificName: "Motacilla cinerea", vernacularNameJa: "キセキレイ" },
-  { scientificName: "Alauda arvensis", vernacularNameJa: "ヒバリ" },
-  { scientificName: "Phasianus versicolor", vernacularNameJa: "キジ" },
-  { scientificName: "Podiceps cristatus", vernacularNameJa: "カンムリカイツブリ" },
-  { scientificName: "Psittacula krameri", vernacularNameJa: "ワカケホンセイインコ" },
-  { scientificName: "Delichon dasypus", vernacularNameJa: "イワツバメ" },
-  { scientificName: "Apus nipalensis", vernacularNameJa: "ヒメアマツバメ" },
-  { scientificName: "Columba livia", vernacularNameJa: "カワラバト（ドバト）" },
-  { scientificName: "Coccothraustes coccothraustes", vernacularNameJa: "シメ" },
-  { scientificName: "Emberiza rustica", vernacularNameJa: "カシラダカ" },
-  { scientificName: "Trichonephila clavata", vernacularNameJa: "ジョロウグモ" },
-  { scientificName: "Harmonia axyridis", vernacularNameJa: "ナミテントウ" },
-  { scientificName: "Hestina assimilis", vernacularNameJa: "アカボシゴマダラ" },
-  { scientificName: "Callosciurus erythraeus", vernacularNameJa: "タイワンリス" },
-  { scientificName: "Solidago altissima", vernacularNameJa: "セイタカアワダチソウ" },
-  { scientificName: "Trachemys scripta", vernacularNameJa: "アカミミガメ" },
-  { scientificName: "Coreopsis lanceolata", vernacularNameJa: "オオキンケイギク" },
-  { scientificName: "Procambarus clarkii", vernacularNameJa: "アメリカザリガニ" },
-  { scientificName: "Lithobates catesbeianus", vernacularNameJa: "ウシガエル" },
-  { scientificName: "Procyon lotor", vernacularNameJa: "アライグマ" },
-  { scientificName: "Paguma larvata", vernacularNameJa: "ハクビシン" },
-  { scientificName: "Nipponoluciola cruciata", vernacularNameJa: "ゲンジボタル" },
-  { scientificName: "Plecoglossus altivelis", vernacularNameJa: "アユ" },
-  { scientificName: "Cyprinus carpio", vernacularNameJa: "コイ" },
-  { scientificName: "Zacco platypus", vernacularNameJa: "オイカワ" },
-  { scientificName: "Pseudorasbora parva", vernacularNameJa: "モツゴ" },
-  { scientificName: "Lepomis macrochirus", vernacularNameJa: "ブルーギル" },
-  { scientificName: "Micropterus salmoides", vernacularNameJa: "オオクチバス" },
-  { scientificName: "Cobitis biwae", vernacularNameJa: "シマドジョウ" },
-  { scientificName: "Anguilla japonica", vernacularNameJa: "ニホンウナギ" },
-  { scientificName: "Cervus nippon", vernacularNameJa: "ニホンジカ" },
-  { scientificName: "Bidens pilosa", vernacularNameJa: "オオバナセンダングサ" },
-  { scientificName: "Persicaria capitata", vernacularNameJa: "ヒメツルソバ" },
-  { scientificName: "Oenothera laciniata", vernacularNameJa: "コマツヨイグサ" },
-  { scientificName: "Robinia pseudoacacia", vernacularNameJa: "ハリエンジュ" },
-  { scientificName: "Pomacea canaliculata", vernacularNameJa: "スクミリンゴガイ" },
 ];

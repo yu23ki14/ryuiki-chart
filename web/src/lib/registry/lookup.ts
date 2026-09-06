@@ -1,21 +1,22 @@
 /**
- * `generated.ts`（クライアント安全・同期の語彙定数）の上に立つ、手書きの参照ヘルパ。
+ * `generated.ts`（サーバ専用・unit / variable / variable_alias の生テーブル）の上に立つ、
+ * 手書きの参照ヘルパ。
  *
- * `server-only` は付けない。`domain.ts`（13ファイルの利用側があり、うち証跡カードは
- * クライアントコンポーネント）と `web/src/lib/ai/caveats.ts` の両方から同期で呼ばれる。
+ * `server-only` は付けていないが、`./generated.ts`（大きい生テーブル）に依存するため
+ * クライアントコンポーネントから import しないこと。caveat 関連（クライアントからも
+ * 使われる）は `./lookup-client.ts` に分けてある（code-review #4: 以前はここに
+ * 全部同居しており、caveatBody() だけを使いたいクライアントコンポーネントも
+ * variable(85件)・variable_alias(117件) の生テーブルをまるごと bundle に引き込んでいた）。
+ *
  * D1 から動的に読む必要があるもの（taxon 全体・place・cells.notes 由来の caveat）は
  * `./index.ts`（server-only）を使うこと。ここでは扱わない。
  *
  * docs/plans/PHASE_A.md §A-7 / §A-8。
  */
 import {
-  GENERATED_CAVEATS,
-  GENERATED_CAVEAT_SCOPE,
   GENERATED_UNITS,
   GENERATED_VARIABLES,
   GENERATED_VARIABLE_ALIASES,
-  type GeneratedCaveat,
-  type GeneratedCaveatScope,
   type GeneratedUnit,
   type GeneratedVariable,
   type GeneratedVariableAlias,
@@ -28,7 +29,6 @@ import {
 
 const variableById = new Map<string, GeneratedVariable>(GENERATED_VARIABLES.map((v) => [v.variableId, v]));
 const unitById = new Map<string, GeneratedUnit>(GENERATED_UNITS.map((u) => [u.unitId, u]));
-const caveatByKey = new Map<string, GeneratedCaveat>(GENERATED_CAVEATS.map((c) => [c.key, c]));
 
 /** (sourceScope, alias) -> 行。同じ alias 文字列でも sourceScope が違えば別物になりうる。 */
 const aliasIndex = new Map<string, GeneratedVariableAlias>(
@@ -114,9 +114,10 @@ export function resolveVariableInfo(
  *   2. 無ければ（=その variable の出典表記が年度代表値しか無い）、
  *      variable.default_stat と一致する stat の行を使う（無ければ先頭行）。
  *
- * domain.ts の VARIABLE_SHORT / VARIABLE_NOTE / HIGHER_IS_WORSE は、
- * この代表エイリアスをキーにして再現すると現行の値と一致する
- * （web/src/lib/domain.test.ts で固定）。
+ * `web/src/lib/registry/generated-client.ts` の VARIABLE_SHORT / VARIABLE_NOTE /
+ * HIGHER_IS_WORSE は、ビルド時に `web/scripts/lib/registry-codegen.mjs`（この関数と
+ * 同じ規則）がこの代表エイリアスをキーにして再現する。両者は独立実装だが同じ規則を
+ * 実装しているので、`web/src/lib/registry/primary-alias.test.ts` が一致を確認する。
  */
 export function primaryAlias(
   variableId: string,
@@ -131,91 +132,10 @@ export function primaryAlias(
   return rows.find((a) => (a.stat ?? null) === wantStat) ?? rows[0];
 }
 
-export function caveatBody(key: string): string | undefined {
-  return caveatByKey.get(key)?.bodyJa;
-}
-
-export function allCaveats(): readonly GeneratedCaveat[] {
-  return GENERATED_CAVEATS;
-}
-
 export function allVariables(): readonly GeneratedVariable[] {
   return GENERATED_VARIABLES;
 }
 
 export function allUnits(): readonly GeneratedUnit[] {
   return GENERATED_UNITS;
-}
-
-/* ------------------------------------------------------------------ */
-/* caveatsForTables（web/src/lib/ai/caveats.ts の中身。ここに置いて、
-   caveats.ts は薄いラッパにする） */
-/* ------------------------------------------------------------------ */
-
-export interface CaveatRef {
-  key: string;
-  text: string;
-}
-
-const SCOPE_BY_KIND_REF = new Map<string, GeneratedCaveatScope[]>();
-for (const s of GENERATED_CAVEAT_SCOPE) {
-  const k = `${s.scopeKind}	${s.scopeRef}`;
-  const list = SCOPE_BY_KIND_REF.get(k) ?? [];
-  list.push(s);
-  SCOPE_BY_KIND_REF.set(k, list);
-}
-
-const TABLE_PREFIX_SCOPES = GENERATED_CAVEAT_SCOPE.filter((s) => s.scopeKind === "table_prefix");
-const SYNTHETIC_TABLE_REFS = new Set(
-  GENERATED_CAVEAT_SCOPE.filter((s) => s.scopeKind === "table_synthetic").map((s) => s.scopeRef),
-);
-
-function caveatRefsFor(scopeKind: GeneratedCaveatScope["scopeKind"], scopeRef: string): CaveatRef[] {
-  const rows = SCOPE_BY_KIND_REF.get(`${scopeKind}	${scopeRef}`) ?? [];
-  return [...rows]
-    .sort((a, b) => a.sortOrder - b.sortOrder)
-    .map((r) => ({ key: r.caveatKey, text: caveatBody(r.caveatKey) ?? r.caveatKey }));
-}
-
-/**
- * ツールが触れたテーブル名から、該当する注記を決定論的に引く。
- *
- * 順序規則（現行の web/src/lib/ai/caveats.ts と同一。scripts/registry/build_caveat.py の
- * docstring に「caveat_scope から caveatsForTables() の順序を復元する方法」として書かれている
- * 手順をそのまま実装したもの）:
- *   1. 渡されたテーブルのどれかが table_synthetic のスコープに一致すれば、対応する
- *      caveat（synthetic）を最優先で先頭に置く。
- *   2. 渡されたテーブルを順に見て、各テーブルについて table / table_prefix のスコープに
- *      一致する行を sortOrder 昇順で足す。
- *   3. caveat の key で重複排除（先勝ち）。
- */
-export function caveatsForTables(tables: readonly string[]): CaveatRef[] {
-  const seen = new Map<string, CaveatRef>();
-  const add = (refs: CaveatRef[]) => {
-    for (const r of refs) if (!seen.has(r.key)) seen.set(r.key, r);
-  };
-
-  if (tables.some((t) => SYNTHETIC_TABLE_REFS.has(t))) {
-    for (const t of tables) {
-      if (SYNTHETIC_TABLE_REFS.has(t)) {
-        add(caveatRefsFor("table_synthetic", t));
-        break;
-      }
-    }
-  }
-
-  for (const t of tables) {
-    add(caveatRefsFor("table", t));
-    for (const prefixScope of TABLE_PREFIX_SCOPES) {
-      if (t.startsWith(prefixScope.scopeRef)) {
-        add(caveatRefsFor("table_prefix", prefixScope.scopeRef));
-      }
-    }
-  }
-
-  return [...seen.values()];
-}
-
-export function caveatKeysForTables(tables: readonly string[]): string[] {
-  return caveatsForTables(tables).map((c) => c.key);
 }

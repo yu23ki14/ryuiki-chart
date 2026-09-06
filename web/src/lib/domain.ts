@@ -2,7 +2,7 @@
  * 領域知識。データ探索で分かった「原本の癖」をここに集約する。
  * 画面側で個別に補正を書かないための場所。
  *
- * @deprecated このファイルの定数は `web/src/lib/registry/generated.ts`
+ * @deprecated このファイルの定数は `web/src/lib/registry/generated-client.ts`
  * （レジストリ由来・docs/plans/PHASE_A.md §A-2〜A-5）から組み立てる薄い層になった（§A-8）。
  * 13ファイルの利用側（`page.tsx` / `MapPage` / `SiteList` / `TimeseriesExplorer` /
  * `BiotaExplorer` / `QualityDashboard` / `DocumentsExplorer` / `SiteDetail` /
@@ -12,13 +12,24 @@
  *
  * `rowKeyLabel()` / `speciesLabel()` / `shortVariable()` のような関数はレジストリの対象外
  * （§A-8 の指示どおり、そのまま残す）。
+ *
+ * 「代表エイリアスから機械的に再構成する」性質は変わっていないが、再構成そのものは
+ * ビルド時（`web/scripts/lib/registry-codegen.mjs`）に前倒しした（code-review #4）。
+ * 以前はここで実行時に `allVariables()` / `primaryAlias()` を呼んで組み立てており、
+ * その結果 variable(85件)・variable_alias(117件) の生テーブルがまるごとクライアント
+ * バンドルに乗っていた（+43.5KB）。`generated-client.ts` は既に組み立て済みの
+ * Record だけを持つので、ここは import してそのまま re-export するだけでよい。
  */
 import {
-  GENERATED_VARIABLE_ALIASES,
-  GENERATED_VERNACULAR_JA,
-  type GeneratedVariable,
-} from "@/lib/registry/generated";
-import { allVariables, caveatBody, primaryAlias, unitSymbol } from "@/lib/registry/lookup";
+  VARIABLE_SHORT,
+  VARIABLE_NOTE,
+  HIGHER_IS_WORSE,
+  VARIABLE_UNIT_FALLBACK,
+  NAME_JA,
+} from "@/lib/registry/generated-client";
+import { caveatBody } from "@/lib/registry/lookup-client";
+
+export { VARIABLE_SHORT, VARIABLE_NOTE, HIGHER_IS_WORSE, VARIABLE_UNIT_FALLBACK, NAME_JA };
 
 /** レジストリに実在するキーの本文だけを使う。無ければビルド時に気づけるよう例外を投げる。 */
 function mustCaveatBody(key: string): string {
@@ -27,68 +38,9 @@ function mustCaveatBody(key: string): string {
   return body;
 }
 
-interface PrimaryMeasurementAlias {
-  variable: GeneratedVariable;
-  alias: string;
-  grain: string | null;
-}
-
-/**
- * `variable_alias`（source_scope='measurements'）の中から、各 variable の
- * 「代表エイリアス」（`primaryAlias()`、web/src/lib/registry/lookup.ts 参照）だけを集めたもの。
- * VARIABLE_SHORT / VARIABLE_NOTE / HIGHER_IS_WORSE はすべてここから作る
- * （代表エイリアスの選び方は共通。使う列と、値が無いときに落とすかどうかが違うだけ）。
- */
-const PRIMARY_MEASUREMENT_ALIASES: PrimaryMeasurementAlias[] = allVariables()
-  .map((variable) => ({ variable, row: primaryAlias(variable.variableId, "measurements") }))
-  .filter((x): x is { variable: GeneratedVariable; row: NonNullable<ReturnType<typeof primaryAlias>> } => !!x.row)
-  .map(({ variable, row }) => ({ variable, alias: row.alias, grain: row.grain }));
-
-/** 水質項目の短い表示名（原本の variable は長いものがある） */
-export const VARIABLE_SHORT: Record<string, string> = Object.fromEntries(
-  PRIMARY_MEASUREMENT_ALIASES
-    // grain='fiscal_year' しか出典表記が無い項目（健康項目27種・全窒素・全燐など）は対象にしない。
-    // domain.ts の原文もこれらを「短縮」していない（原表記がすでに正式な学術記号か、
-    // 出典側コードそのままで、短縮の必要が無い）。primaryAlias が fiscal_year に落ちるのは
-    // 「検体値・年度集計値混在（grain='mixed'/'day'）の出典表記が無い」variable だけなので、
-    // この条件で domain.ts の元の対象範囲（7件）とちょうど一致する。
-    .filter(({ grain }) => grain !== "fiscal_year")
-    .filter(({ variable, alias }) => variable.nameJa && variable.nameJa !== alias)
-    .map(({ variable, alias }) => [alias, variable.nameJa as string]),
-);
-
-/**
- * 単位が原本で NULL の項目に、既知のものだけ補う（推測はしない）。
- *
- * `variable`（正準の指標）側の unit_id ではなく、`variable_alias` の行が個別に
- * unit_id を明示している（＝出典表記ごとの上書き）ケースだけを見る。pH 系の3表記
- * （本体・最大値・最小値）がこれにあたる（registry/variable_alias.csv の note に
- * 「domain.ts の VARIABLE_UNIT_FALLBACK が pH は無次元と既に明記」とある）。
- */
-export const VARIABLE_UNIT_FALLBACK: Record<string, string> = Object.fromEntries(
-  GENERATED_VARIABLE_ALIASES.filter((a) => a.sourceScope === "measurements" && a.unitId)
-    .map((a) => [a.alias, unitSymbol(a.unitId)] as const)
-    .filter((pair): pair is [string, string] => pair[1] === ""),
-);
-
 export function shortVariable(v: string): string {
   return VARIABLE_SHORT[v] ?? v;
 }
-
-/** 何を意味する指標か。ツールチップに出す。 */
-export const VARIABLE_NOTE: Record<string, string> = Object.fromEntries(
-  PRIMARY_MEASUREMENT_ALIASES.filter(({ grain }) => grain !== "fiscal_year")
-    .filter(({ variable }) => variable.descriptionJa)
-    .map(({ variable, alias }) => [alias, variable.descriptionJa as string]),
-);
-
-/** 上流→下流でこの向きに動くのが「悪化」か。矢印の向きに使う。 */
-export const HIGHER_IS_WORSE: Record<string, boolean> = Object.fromEntries(
-  PRIMARY_MEASUREMENT_ALIASES.filter(({ variable }) => variable.higherIsWorse !== null).map(({ variable, alias }) => [
-    alias,
-    variable.higherIsWorse as boolean,
-  ]),
-);
 
 export const ZONE_INFO = [
   { zone: 1, label: "山地源流域", cond: "標高 800m 超" },
@@ -121,7 +73,7 @@ export const DATA_CAVEATS = {
 } as const;
 
 /**
- * 和名の辞書（本デモで付与したもの）。
+ * 和名の辞書（本デモで付与したもの、`NAME_JA`。上で import・re-export 済み）。
  *
  * organism_records に和名は入っておらず（vernacular_name は英名）、
  * taxa テーブルの和名を学名で機械結合すると別地域の個体群の名前が付いてしまう
@@ -131,10 +83,6 @@ export const DATA_CAVEATS = {
  * vernacular_name_ja、8,324件・taxa 由来の別の母集団とは別物）。
  * ここに無い種は学名と英名だけを表示し、和名を推測しない。
  */
-export const NAME_JA: Record<string, string> = Object.fromEntries(
-  GENERATED_VERNACULAR_JA.map((v) => [v.scientificName, v.vernacularNameJa]),
-);
-
 export function speciesLabel(binom: string, enName?: string | null): string {
   const ja = NAME_JA[binom];
   if (ja) return ja;

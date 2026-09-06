@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { caveatBody, caveatsForTables, getUnit, getVariable, primaryAlias, resolveVariableInfo, unitSymbol } from "@/lib/registry/lookup";
+import { describe, expect, it, vi } from "vitest";
+import { getUnit, getVariable, primaryAlias, resolveVariableInfo, unitSymbol } from "@/lib/registry/lookup";
+import { caveatBody, caveatsForTables } from "@/lib/registry/lookup-client";
 
 describe("resolveVariableInfo", () => {
   it("出典表記から正準 variable を引く（measurements, 既定スコープ）", () => {
@@ -65,7 +66,7 @@ describe("getVariable / getUnit / unitSymbol", () => {
   });
 });
 
-describe("caveatBody / caveatsForTables — generated.ts 経由でも caveats.ts と同じ結果になる", () => {
+describe("caveatBody / caveatsForTables — generated-client.ts 経由でも caveats.ts と同じ結果になる", () => {
   it("caveatBody は registry/caveat.yaml の本文をそのまま返す", () => {
     expect(caveatBody("zone")).toContain("公式の区分ではない");
   });
@@ -74,5 +75,37 @@ describe("caveatBody / caveatsForTables — generated.ts 経由でも caveats.ts
     const refs = caveatsForTables(["measurements", "observers"]);
     expect(refs[0].key).toBe("synthetic");
     expect(refs.map((r) => r.key)).toContain("measuredOn");
+  });
+});
+
+describe("caveatsForTables — table_synthetic が 1:N（複数の synthetic テーブルが別々の注記を持つ場合）", () => {
+  // 現行の registry/caveat.yaml では 6 つの synthetic テーブルが全て同じキー
+  // "synthetic" に写るため、実データだけでは「最初の1件で break していないか」を
+  // 見分けられない（レビュー指摘: caveatsForTables の table_synthetic 分岐が
+  // 最初に一致したテーブルの注記だけを足して break していた）。ここでは
+  // generated-client.ts をモックし、2つの synthetic テーブルにそれぞれ別のキーを
+  // 割り当てて、両方とも失われず返ることを確認する。
+  it("2つ目以降の synthetic テーブルの注記も失われない", async () => {
+    vi.resetModules();
+    vi.doMock("@/lib/registry/generated-client", () => ({
+      GENERATED_CAVEATS: [
+        { key: "synthetic_a", severity: null, kind: null, bodyJa: "A注記" },
+        { key: "synthetic_b", severity: null, kind: null, bodyJa: "B注記" },
+      ],
+      GENERATED_CAVEAT_SCOPE: [
+        { scopeKind: "table_synthetic", scopeRef: "observers", caveatKey: "synthetic_a", sortOrder: 0 },
+        { scopeKind: "table_synthetic", scopeRef: "quality_monthly", caveatKey: "synthetic_b", sortOrder: 0 },
+      ],
+    }));
+    try {
+      const mod = await import("@/lib/registry/lookup-client");
+      const refs = mod.caveatsForTables(["observers", "quality_monthly"]);
+      const keys = refs.map((r) => r.key);
+      expect(keys).toContain("synthetic_a");
+      expect(keys).toContain("synthetic_b");
+    } finally {
+      vi.doUnmock("@/lib/registry/generated-client");
+      vi.resetModules();
+    }
   });
 });

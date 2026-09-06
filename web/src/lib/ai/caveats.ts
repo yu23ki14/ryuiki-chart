@@ -1,5 +1,5 @@
-import { GENERATED_CAVEAT_SCOPE } from "@/lib/registry/generated";
-import { caveatBody, caveatKeysForTables, caveatsForTables, type CaveatRef } from "@/lib/registry/lookup";
+import { GENERATED_CAVEAT_SCOPE } from "@/lib/registry/generated-client";
+import { caveatBody, caveatKeysForTables, caveatsForTables, type CaveatRef } from "@/lib/registry/lookup-client";
 
 /**
  * ツールが触れたテーブル名から、該当する注記を決定論的に引く。

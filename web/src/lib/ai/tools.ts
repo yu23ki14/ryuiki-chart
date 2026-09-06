@@ -63,7 +63,7 @@ export interface ToolResult<T> {
 }
 
 /* ------------------------------------------------------------------ */
-/* 8KB 切り詰めヘルパ（全ツール共通で通す）                                */
+/* 24KB 切り詰めヘルパ（全ツール共通で通す）                               */
 /* ------------------------------------------------------------------ */
 
 /**
@@ -108,7 +108,7 @@ function subsample<T>(arr: T[], keep: number): T[] {
 }
 
 /**
- * JSON化して8KBを超えたら、いちばん大きい配列を等間隔に間引いて縮める。
+ * JSON化して24KBを超えたら、いちばん大きい配列を等間隔に間引いて縮める。
  * organism_records 系は素で数万トークンになりうるので、これを全ツールの出口に通す。
  *
  * 先にコピーを取ってから縮めるのは、ZONE_INFO のようなモジュールレベルの定数が
@@ -135,7 +135,7 @@ function fitToBudget<T>(data: T): { data: T; truncated: boolean } {
 }
 
 /**
- * ツール結果に載せる registry の一式（variable_id / unit / higher_is_worse）。
+ * ツール結果に載せる registry の情報（variable_id / unit / higher_is_worse）。
  *
  * 出典表記（`variable` 引数・`variableCatalog()` の行の `variable` 列）は出典ごとに
  * 揺れる（ADR-0010: OX / Ox(ppm) / 光化学オキシダント_日平均 が同じ量）。ここで
@@ -148,6 +148,75 @@ function registryInfo(
   sourceScope: "measurements" | "sensor_timeseries" = "measurements",
 ): ResolvedVariableInfo | null {
   return resolveVariableInfo(variable, sourceScope) ?? null;
+}
+
+/**
+ * ツール結果の共有辞書 `registry` の1エントリ。
+ *
+ * `variableId` は持たない（キーに出るので二重持ちしない）。`code` も持たない
+ * （`variableId` は常に `"common:variable:" + code` の形なので、`code` は
+ * `variableId` から機械的に取り出せる冗長な値。実測で registry/variable.yaml の
+ * 85件全件がこの形を満たすことを確認済み。持たせても情報は増えないのに
+ * `list_catalog(what='variables')` のように行ごとの variable が大半重複しない
+ * 一覧では、辞書のキー自体（variableId 文字列）を持つコストが de-dup の効果を
+ * 上回ってしまい、`code` を削らないと合計サイズがむしろ増える）。
+ */
+interface RegistryEntry {
+  nameJa: string | null;
+  unit: string | null;
+  higherIsWorse: boolean | null;
+  descriptionJa: string | null;
+}
+
+function toRegistryEntry(info: ResolvedVariableInfo): RegistryEntry {
+  return {
+    nameJa: info.nameJa,
+    unit: info.unit,
+    higherIsWorse: info.higherIsWorse,
+    descriptionJa: info.descriptionJa,
+  };
+}
+
+/**
+ * レジストリ情報を「行には variableId だけ」「本体は1つの共有辞書 registry」に分けて
+ * 複数行にまとめて添える。
+ *
+ * レビュー指摘: 以前は行ごとに `registry: registryInfo(...)` をインライン展開しており、
+ * `nameJa`/`descriptionJa`/`unit`/`code` が行の数だけ重複していた（実測:
+ * list_catalog(what='variables') が 9,084 -> 20,333 バイトに膨張。BYTE_BUDGET
+ * 24KB の85%を占め、`fitToBudget` の間引きが `var_catalog` の行から先に始まる
+ * 状態だった）。variableId が同じなら registry の中身も同じなので、行ごとに
+ * 持たせる必要が無い。
+ */
+function withRegistry<T>(
+  rows: readonly T[],
+  variableOf: (row: T) => string,
+  sourceScope: "measurements" | "sensor_timeseries" = "measurements",
+): { rows: (T & { variableId: string | null })[]; registry: Record<string, RegistryEntry> } {
+  const registry: Record<string, RegistryEntry> = {};
+  const withIds = rows.map((row) => {
+    const info = registryInfo(variableOf(row), sourceScope);
+    if (info) registry[info.variableId] = toRegistryEntry(info);
+    return { ...row, variableId: info?.variableId ?? null };
+  });
+  return { rows: withIds, registry };
+}
+
+/**
+ * `withRegistry` の単一 variable 版（get_timeseries / get_seasonality のように
+ * 行の配列ではなく1つの variable だけを扱うツール用）。形を揃えることで、
+ * モデル・システムプロンプトが「ツール結果の registry[variableId] を見る」という
+ * 単一の説明で済むようにする。
+ */
+function singleRegistry(
+  variable: string,
+  sourceScope: "measurements" | "sensor_timeseries" = "measurements",
+): { variableId: string | null; registry: Record<string, RegistryEntry> } {
+  const info = registryInfo(variable, sourceScope);
+  return {
+    variableId: info?.variableId ?? null,
+    registry: info ? { [info.variableId]: toRegistryEntry(info) } : {},
+  };
 }
 
 function makeResult<T>(opts: {
@@ -215,11 +284,11 @@ const list_catalog = tool({
       });
     }
     const rows = await variableCatalog();
-    const variables = rows.map((r) => ({ ...r, registry: registryInfo(r.variable) }));
+    const { rows: variables, registry } = withRegistry(rows, (r) => r.variable);
     return makeResult({
       tool: "list_catalog",
       tables: ["var_catalog"],
-      data: { variables },
+      data: { variables, registry },
       rowCount: variables.length,
       elapsedMs: performance.now() - t0,
     });
@@ -272,7 +341,7 @@ const get_timeseries = tool({
   execute: async ({ variable, scope, grain, kind, from, to }) => {
     const t0 = performance.now();
     const { kind: resolvedKind, unit } = await resolveVariable(variable, kind);
-    const registry = registryInfo(variable);
+    const { variableId, registry } = singleRegistry(variable);
     const tables = new Set<string>(["var_catalog"]);
 
     if (scope.type === "zone") {
@@ -281,7 +350,7 @@ const get_timeseries = tool({
       return makeResult({
         tool: "get_timeseries",
         tables: [...tables],
-        data: { scope, grain: "year", kind: resolvedKind, unit, registry, points },
+        data: { scope, grain: "year", kind: resolvedKind, unit, variableId, registry, points },
         rowCount: points.length,
         elapsedMs: performance.now() - t0,
       });
@@ -306,7 +375,7 @@ const get_timeseries = tool({
       return makeResult({
         tool: "get_timeseries",
         tables: [...tables],
-        data: { scope, sites, grain, kind: resolvedKind, unit, registry, points },
+        data: { scope, sites, grain, kind: resolvedKind, unit, variableId, registry, points },
         rowCount: points.length,
         elapsedMs: performance.now() - t0,
       });
@@ -317,7 +386,7 @@ const get_timeseries = tool({
       return makeResult({
         tool: "get_timeseries",
         tables: [...tables],
-        data: { scope, sites, grain, unit, registry, points },
+        data: { scope, sites, grain, unit, variableId, registry, points },
         rowCount: points.length,
         elapsedMs: performance.now() - t0,
       });
@@ -327,7 +396,7 @@ const get_timeseries = tool({
     return makeResult({
       tool: "get_timeseries",
       tables: [...tables],
-      data: { scope, sites, grain, from, to, unit, registry, points },
+      data: { scope, sites, grain, from, to, unit, variableId, registry, points },
       rowCount: points.length,
       elapsedMs: performance.now() - t0,
     });
@@ -346,10 +415,11 @@ const get_seasonality = tool({
   execute: async ({ variable }) => {
     const t0 = performance.now();
     const [overall, byZone] = await Promise.all([climatology(variable), zoneClimatology(variable)]);
+    const { variableId, registry } = singleRegistry(variable);
     return makeResult({
       tool: "get_seasonality",
       tables: ["meas_clim", "zone_clim"],
-      data: { variable, registry: registryInfo(variable), overall, byZone },
+      data: { variable, variableId, registry, overall, byZone },
       rowCount: overall.length + byZone.length,
       elapsedMs: performance.now() - t0,
     });
@@ -373,11 +443,11 @@ const get_sites = tool({
     const t0 = performance.now();
     if (siteId) {
       const [site, siteVars] = await Promise.all([getSite(siteId), siteVariables(siteId)]);
-      const variables = siteVars.map((v) => ({ ...v, registry: registryInfo(v.variable) }));
+      const { rows: variables, registry } = withRegistry(siteVars, (v) => v.variable);
       return makeResult({
         tool: "get_sites",
         tables: ["sites", "watershed_meta", "site_var"],
-        data: { site: site ?? null, variables },
+        data: { site: site ?? null, variables, registry },
         rowCount: variables.length,
         elapsedMs: performance.now() - t0,
       });

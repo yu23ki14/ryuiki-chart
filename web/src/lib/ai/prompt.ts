@@ -1,7 +1,8 @@
 import "server-only";
 import { TABLE_META, SCHEMA_META, TABLE_ORIGIN, SAMPLE_QUERIES } from "@/lib/table-meta";
 import { DATA_CAVEATS, BIOTA_CAVEATS } from "@/lib/domain";
-import { caveatBody, resolveVariableInfo } from "@/lib/registry/lookup";
+import { caveatBody } from "@/lib/registry/lookup-client";
+import { resolveVariableInfo } from "@/lib/registry/lookup";
 import { describePageContext, type PageContext } from "./page-context";
 
 /**
@@ -45,8 +46,11 @@ function allCaveats(): string {
  * §A-7 で追加した、レジストリ由来の語彙情報。
  *
  * get_timeseries / get_seasonality / list_catalog(what='variables') / get_sites の
- * ツール結果に registry.variableId（正準の指標ID）が付くようになったので、それが
- * 何を意味するかをここで説明する。例は ADR-0010 が挙げているのと同じ
+ * ツール結果に variableId（正準の指標ID）と、その中身を引く共有辞書 registry が
+ * 付くようになったので、それが何を意味するかをここで説明する
+ * （code-review #5: 行ごとに nameJa/unit 等をインライン展開すると list_catalog の
+ * ペイロードが膨らむため、行には variableId だけを持たせ、本体は
+ * `registry[variableId]` に集約してある）。例は ADR-0010 が挙げているのと同じ
  * 「OX / Ox(ppm) / 光化学オキシダント（Ox）_日平均」（sensor_timeseries の出典表記違い）を、
  * ハードコードした文字列ではなくレジストリを実際に引いて確かめてから使う
  * （もし対応が崩れたら、この一致確認が失敗して例文が出なくなる＝気づける）。
@@ -60,9 +64,11 @@ function variableVocabNote(): string {
     : "";
   return (
     `get_timeseries・get_seasonality・list_catalog(what='variables')・get_sites の結果には ` +
-    `variableId（レジストリの正準の指標ID。例: "common:variable:water.bod"）が付くことがある。` +
+    `variableId（レジストリの正準の指標ID。例: "common:variable:water.bod"）と、その中身を引く共有辞書 ` +
+    `registry（キーが variableId、値が nameJa/unit/higherIsWorse/descriptionJa 等）が付くことがある。` +
     `出典側の表記（水質項目名など）は同じ量でも出典ごとに違うことがあるが、variableId が同じなら同じ量を指す。` +
-    `ただし単位・スケールは出典ごとに違いうる（例: air.co は0.1ppm刻みの原表記）ので、値を比較するときは必ずツール結果の registry.unit を見ること。` +
+    `ただし単位・スケールは出典ごとに違いうる（例: air.co は0.1ppm刻みの原表記）ので、` +
+    `値を比較するときは必ずツール結果の registry[variableId].unit を見ること。` +
     `名前の文字列一致ではなく variableId の一致で「同じ指標か」を判断すること。${example}`
   );
 }

@@ -285,7 +285,7 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     # --- 行の組み立て --------------------------------------------------------------
     rows_by_id: dict[str, list] = {}
 
-    all_keys = set(occ.keys()) | set(taxa_by_key.keys())
+    all_keys = sorted(set(occ.keys()) | set(taxa_by_key.keys()))
     n_from_occurrence_only = 0
     n_from_both = 0
     n_from_taxa_only = 0

@@ -78,7 +78,7 @@ species_year2 / species_month / effort_year などの derived テーブルを使
 - [municipality] sites.municipality は出典によって中身が違う。環境省 公共用水域の290地点では水域名（河川名・湖沼名）が入り、それ以外の62地点では市区町村名が入る。列名と中身が一致していないため、この画面では「水域・地域」と呼ぶ。
 
 ## 指標の正準ID（variableId）
-get_timeseries・get_seasonality・list_catalog(what='variables')・get_sites の結果には variableId（レジストリの正準の指標ID。例: "common:variable:water.bod"）が付くことがある。出典側の表記（水質項目名など）は同じ量でも出典ごとに違うことがあるが、variableId が同じなら同じ量を指す。ただし単位・スケールは出典ごとに違いうる（例: air.co は0.1ppm刻みの原表記）ので、値を比較するときは必ずツール結果の registry.unit を見ること。名前の文字列一致ではなく variableId の一致で「同じ指標か」を判断すること。
+get_timeseries・get_seasonality・list_catalog(what='variables')・get_sites の結果には variableId（レジストリの正準の指標ID。例: "common:variable:water.bod"）と、その中身を引く共有辞書 registry（キーが variableId、値が nameJa/unit/higherIsWorse/descriptionJa 等）が付くことがある。出典側の表記（水質項目名など）は同じ量でも出典ごとに違うことがあるが、variableId が同じなら同じ量を指す。ただし単位・スケールは出典ごとに違いうる（例: air.co は0.1ppm刻みの原表記）ので、値を比較するときは必ずツール結果の registry[variableId].unit を見ること。名前の文字列一致ではなく variableId の一致で「同じ指標か」を判断すること。
 例: 出典表記「OX」と「Ox(ppm)」は文字列としては別物だが、どちらも variableId="common:variable:air.photochemical_oxidant"（同じ量）。
 
 ## 開示義務
