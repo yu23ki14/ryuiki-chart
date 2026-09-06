@@ -34,6 +34,7 @@ const SOURCES = [
   { alias: "ryuiki", file: "ryuiki.sqlite", required: true },
   { alias: "cells", file: "cells.sqlite", required: true },
   { alias: "derived", file: "derived.sqlite", required: true },
+  { alias: "registry", file: "registry.sqlite", required: true },
 ];
 
 /** マイグレーションと wrangler / miniflare の管理テーブル。シードの対象外。 */
@@ -72,7 +73,9 @@ function fingerprint() {
         `原本が無い: ${p}\n` +
           (s.file === "derived.sqlite"
             ? "集計 DB は `npm run build:derived` で作る（初回のみ・約1分）。"
-            : "data/db/ に原本を置く。"),
+            : s.file === "registry.sqlite"
+              ? "語彙レジストリは `npm run build:registry` で作る（scripts/r01_build_registry.py）。"
+              : "data/db/ に原本を置く。"),
       );
     }
     const st = fs.statSync(p);

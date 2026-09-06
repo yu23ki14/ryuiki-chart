@@ -23,6 +23,14 @@ else
   echo "✔ 集計 DB あり"
 fi
 
+# 1.5. 語彙レジストリ。ryuiki/cells/derived を読み取り専用で読んで作る（scripts/r01_build_registry.py）
+if [ ! -f "$DB_DIR/registry.sqlite" ]; then
+  echo "▶ 語彙レジストリが無いので作る (build:registry)"
+  npm run build:registry
+else
+  echo "✔ 語彙レジストリあり"
+fi
+
 # 2. マイグレーション。適用済みのものは wrangler が d1_migrations を見て飛ばす
 echo "▶ D1 マイグレーション"
 npm run db:migrate

@@ -23,7 +23,9 @@
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "db:export": "node scripts/export-d1-sql.mjs",
-    "db:verify:remote": "node scripts/verify-d1-remote.mjs"
+    "db:verify:remote": "node scripts/verify-d1-remote.mjs",
+    "build:registry": "cd .. && .venv/bin/python3 scripts/r01_build_registry.py",
+    "test": "vitest run"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.40",
@@ -56,6 +58,7 @@
     "eslint-config-next": "16.3.3",
     "tailwindcss": "^4",
     "typescript": "^5",
+    "vitest": "^5.0.0",
     "wrangler": "^4.127.1"
   }
 }
