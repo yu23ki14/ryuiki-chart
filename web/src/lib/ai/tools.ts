@@ -5,6 +5,7 @@ import { caveatKeysForTables } from "./caveats";
 import { listTables, runUserSql, SqlError } from "@/lib/db";
 import { TABLE_META, SCHEMA_META, TABLE_ORIGIN } from "@/lib/table-meta";
 import { ZONE_INFO } from "@/lib/domain";
+import { resolveVariableInfo, type ResolvedVariableInfo } from "@/lib/registry/lookup";
 import {
   listSites,
   getSite,
@@ -133,6 +134,22 @@ function fitToBudget<T>(data: T): { data: T; truncated: boolean } {
   return { data: copy, truncated };
 }
 
+/**
+ * ツール結果に載せる registry の一式（variable_id / unit / higher_is_worse）。
+ *
+ * 出典表記（`variable` 引数・`variableCatalog()` の行の `variable` 列）は出典ごとに
+ * 揺れる（ADR-0010: OX / Ox(ppm) / 光化学オキシダント_日平均 が同じ量）。ここで
+ * レジストリの正準 `variableId` を引いて添えることで、モデルが名前の文字列一致ではなく
+ * `variableId` の一致で「同じ指標か」を判断できるようにする（system prompt 側の説明と対）。
+ * 未登録（レジストリにまだ無い出典表記）のときは null を返す（推測で埋めない）。
+ */
+function registryInfo(
+  variable: string,
+  sourceScope: "measurements" | "sensor_timeseries" = "measurements",
+): ResolvedVariableInfo | null {
+  return resolveVariableInfo(variable, sourceScope) ?? null;
+}
+
 function makeResult<T>(opts: {
   tool: string;
   tables: string[];
@@ -198,11 +215,12 @@ const list_catalog = tool({
       });
     }
     const rows = await variableCatalog();
+    const variables = rows.map((r) => ({ ...r, registry: registryInfo(r.variable) }));
     return makeResult({
       tool: "list_catalog",
       tables: ["var_catalog"],
-      data: { variables: rows },
-      rowCount: rows.length,
+      data: { variables },
+      rowCount: variables.length,
       elapsedMs: performance.now() - t0,
     });
   },
@@ -254,6 +272,7 @@ const get_timeseries = tool({
   execute: async ({ variable, scope, grain, kind, from, to }) => {
     const t0 = performance.now();
     const { kind: resolvedKind, unit } = await resolveVariable(variable, kind);
+    const registry = registryInfo(variable);
     const tables = new Set<string>(["var_catalog"]);
 
     if (scope.type === "zone") {
@@ -262,7 +281,7 @@ const get_timeseries = tool({
       return makeResult({
         tool: "get_timeseries",
         tables: [...tables],
-        data: { scope, grain: "year", kind: resolvedKind, unit, points },
+        data: { scope, grain: "year", kind: resolvedKind, unit, registry, points },
         rowCount: points.length,
         elapsedMs: performance.now() - t0,
       });
@@ -287,7 +306,7 @@ const get_timeseries = tool({
       return makeResult({
         tool: "get_timeseries",
         tables: [...tables],
-        data: { scope, sites, grain, kind: resolvedKind, unit, points },
+        data: { scope, sites, grain, kind: resolvedKind, unit, registry, points },
         rowCount: points.length,
         elapsedMs: performance.now() - t0,
       });
@@ -298,7 +317,7 @@ const get_timeseries = tool({
       return makeResult({
         tool: "get_timeseries",
         tables: [...tables],
-        data: { scope, sites, grain, unit, points },
+        data: { scope, sites, grain, unit, registry, points },
         rowCount: points.length,
         elapsedMs: performance.now() - t0,
       });
@@ -308,7 +327,7 @@ const get_timeseries = tool({
     return makeResult({
       tool: "get_timeseries",
       tables: [...tables],
-      data: { scope, sites, grain, from, to, unit, points },
+      data: { scope, sites, grain, from, to, unit, registry, points },
       rowCount: points.length,
       elapsedMs: performance.now() - t0,
     });
@@ -330,7 +349,7 @@ const get_seasonality = tool({
     return makeResult({
       tool: "get_seasonality",
       tables: ["meas_clim", "zone_clim"],
-      data: { variable, overall, byZone },
+      data: { variable, registry: registryInfo(variable), overall, byZone },
       rowCount: overall.length + byZone.length,
       elapsedMs: performance.now() - t0,
     });
@@ -353,7 +372,8 @@ const get_sites = tool({
   execute: async ({ siteId, query, zone, limit }) => {
     const t0 = performance.now();
     if (siteId) {
-      const [site, variables] = await Promise.all([getSite(siteId), siteVariables(siteId)]);
+      const [site, siteVars] = await Promise.all([getSite(siteId), siteVariables(siteId)]);
+      const variables = siteVars.map((v) => ({ ...v, registry: registryInfo(v.variable) }));
       return makeResult({
         tool: "get_sites",
         tables: ["sites", "watershed_meta", "site_var"],

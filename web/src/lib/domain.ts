@@ -1,55 +1,94 @@
 /**
  * 領域知識。データ探索で分かった「原本の癖」をここに集約する。
  * 画面側で個別に補正を書かないための場所。
+ *
+ * @deprecated このファイルの定数は `web/src/lib/registry/generated.ts`
+ * （レジストリ由来・docs/plans/PHASE_A.md §A-2〜A-5）から組み立てる薄い層になった（§A-8）。
+ * 13ファイルの利用側（`page.tsx` / `MapPage` / `SiteList` / `TimeseriesExplorer` /
+ * `BiotaExplorer` / `QualityDashboard` / `DocumentsExplorer` / `SiteDetail` /
+ * `SeriesChartCard` / ai の4ファイル）は Phase A では書き換えない。エクスポートの
+ * 名前・形・値は変えていない（`web/src/lib/domain.test.ts` が現行値と一致することを固定する）。
+ * 完全な撤去は Phase B 以降。新しい値をここに書き足さない（レジストリ側に足す）。
+ *
+ * `rowKeyLabel()` / `speciesLabel()` / `shortVariable()` のような関数はレジストリの対象外
+ * （§A-8 の指示どおり、そのまま残す）。
  */
+import {
+  GENERATED_VARIABLE_ALIASES,
+  GENERATED_VERNACULAR_JA,
+  type GeneratedVariable,
+} from "@/lib/registry/generated";
+import { allVariables, caveatBody, primaryAlias, unitSymbol } from "@/lib/registry/lookup";
+
+/** レジストリに実在するキーの本文だけを使う。無ければビルド時に気づけるよう例外を投げる。 */
+function mustCaveatBody(key: string): string {
+  const body = caveatBody(key);
+  if (body === undefined) throw new Error(`registry/caveat.yaml に "${key}" が無い（domain.ts が参照している）`);
+  return body;
+}
+
+interface PrimaryMeasurementAlias {
+  variable: GeneratedVariable;
+  alias: string;
+  grain: string | null;
+}
+
+/**
+ * `variable_alias`（source_scope='measurements'）の中から、各 variable の
+ * 「代表エイリアス」（`primaryAlias()`、web/src/lib/registry/lookup.ts 参照）だけを集めたもの。
+ * VARIABLE_SHORT / VARIABLE_NOTE / HIGHER_IS_WORSE はすべてここから作る
+ * （代表エイリアスの選び方は共通。使う列と、値が無いときに落とすかどうかが違うだけ）。
+ */
+const PRIMARY_MEASUREMENT_ALIASES: PrimaryMeasurementAlias[] = allVariables()
+  .map((variable) => ({ variable, row: primaryAlias(variable.variableId, "measurements") }))
+  .filter((x): x is { variable: GeneratedVariable; row: NonNullable<ReturnType<typeof primaryAlias>> } => !!x.row)
+  .map(({ variable, row }) => ({ variable, alias: row.alias, grain: row.grain }));
 
 /** 水質項目の短い表示名（原本の variable は長いものがある） */
-export const VARIABLE_SHORT: Record<string, string> = {
-  "生物化学的酸素要求量 BOD": "BOD",
-  "化学的酸素要求量 COD": "COD",
-  "溶存酸素量 DO": "DO",
-  "浮遊物質量 SS": "SS",
-  "直鎖アルキルベンゼンスルホン酸及びその塩 LAS": "LAS",
-  "ノルマルヘキサン抽出物質": "n-ヘキサン抽出物質",
-  "流量関連（公式定義未確認のため原表記のまま）": "流量関連",
-};
+export const VARIABLE_SHORT: Record<string, string> = Object.fromEntries(
+  PRIMARY_MEASUREMENT_ALIASES
+    // grain='fiscal_year' しか出典表記が無い項目（健康項目27種・全窒素・全燐など）は対象にしない。
+    // domain.ts の原文もこれらを「短縮」していない（原表記がすでに正式な学術記号か、
+    // 出典側コードそのままで、短縮の必要が無い）。primaryAlias が fiscal_year に落ちるのは
+    // 「検体値・年度集計値混在（grain='mixed'/'day'）の出典表記が無い」variable だけなので、
+    // この条件で domain.ts の元の対象範囲（7件）とちょうど一致する。
+    .filter(({ grain }) => grain !== "fiscal_year")
+    .filter(({ variable, alias }) => variable.nameJa && variable.nameJa !== alias)
+    .map(({ variable, alias }) => [alias, variable.nameJa as string]),
+);
 
-/** 単位が原本で NULL の項目に、既知のものだけ補う（推測はしない） */
-export const VARIABLE_UNIT_FALLBACK: Record<string, string> = {
-  pH: "",
-  "pH（最大値）": "",
-  "pH（最小値）": "",
-};
+/**
+ * 単位が原本で NULL の項目に、既知のものだけ補う（推測はしない）。
+ *
+ * `variable`（正準の指標）側の unit_id ではなく、`variable_alias` の行が個別に
+ * unit_id を明示している（＝出典表記ごとの上書き）ケースだけを見る。pH 系の3表記
+ * （本体・最大値・最小値）がこれにあたる（registry/variable_alias.csv の note に
+ * 「domain.ts の VARIABLE_UNIT_FALLBACK が pH は無次元と既に明記」とある）。
+ */
+export const VARIABLE_UNIT_FALLBACK: Record<string, string> = Object.fromEntries(
+  GENERATED_VARIABLE_ALIASES.filter((a) => a.sourceScope === "measurements" && a.unitId)
+    .map((a) => [a.alias, unitSymbol(a.unitId)] as const)
+    .filter((pair): pair is [string, string] => pair[1] === ""),
+);
 
 export function shortVariable(v: string): string {
   return VARIABLE_SHORT[v] ?? v;
 }
 
 /** 何を意味する指標か。ツールチップに出す。 */
-export const VARIABLE_NOTE: Record<string, string> = {
-  "生物化学的酸素要求量 BOD": "微生物が有機物を分解するのに使う酸素量。大きいほど有機汚濁が進んでいる",
-  "化学的酸素要求量 COD": "酸化剤で有機物を分解したときの消費酸素量。湖沼・海域の指標として使われる",
-  "溶存酸素量 DO": "水に溶けている酸素。小さいほど生き物が棲みにくい。水温が上がると下がる",
-  "浮遊物質量 SS": "水に浮いている細かい粒子の量。降雨で土砂が入ると上がる",
-  全亜鉛: "水生生物の保全に係る環境基準項目",
-  大腸菌群数: "し尿等による汚染の指標。2022年度以降は「大腸菌数」に移行しつつある",
-  水温: "採水時の水温",
-  透明度: "湖沼・海域で円板が見えなくなる深さ",
-};
+export const VARIABLE_NOTE: Record<string, string> = Object.fromEntries(
+  PRIMARY_MEASUREMENT_ALIASES.filter(({ grain }) => grain !== "fiscal_year")
+    .filter(({ variable }) => variable.descriptionJa)
+    .map(({ variable, alias }) => [alias, variable.descriptionJa as string]),
+);
 
 /** 上流→下流でこの向きに動くのが「悪化」か。矢印の向きに使う。 */
-export const HIGHER_IS_WORSE: Record<string, boolean> = {
-  "生物化学的酸素要求量 BOD": true,
-  "化学的酸素要求量 COD": true,
-  "浮遊物質量 SS": true,
-  大腸菌群数: true,
-  大腸菌数: true,
-  全亜鉛: true,
-  "全窒素 T-N": true,
-  "全燐 T-P": true,
-  "溶存酸素量 DO": false,
-  透明度: false,
-};
+export const HIGHER_IS_WORSE: Record<string, boolean> = Object.fromEntries(
+  PRIMARY_MEASUREMENT_ALIASES.filter(({ variable }) => variable.higherIsWorse !== null).map(({ variable, alias }) => [
+    alias,
+    variable.higherIsWorse as boolean,
+  ]),
+);
 
 export const ZONE_INFO = [
   { zone: 1, label: "山地源流域", cond: "標高 800m 超" },
@@ -72,19 +111,13 @@ export const MUNICIPALITY_LABEL = "水域・地域";
 
 /** 原本の癖。画面の注記に出して、読み手が誤解しないようにする。 */
 export const DATA_CAVEATS = {
-  measuredOn:
-    "measurements.measured_on には「2015-04-08」形式（検体値・216,990行）と「2015」形式（年度集計値・98,328行）が混在する。年度集計値は日本の年度（4月〜翌3月）を指す。この画面では両者を kind で区別している。",
-  censored:
-    "全体の約24%は定量下限未満（原表記が「<0.5」など）で、value 列には 0 が入っている。折れ線では中抜きの点で示し、平均には含めるが「0 が観測された」とは読まないこと。",
-  duplicates:
-    "同一の地点・日・項目に複数行あるのは、原本が採水時刻を落としているため。ここでは日ごとに平均して1点にまとめている。",
-  zone: "ゾーンは標高と海岸線距離だけから機械的に付けた操作的定義であり、公式の区分ではない。zone 1（標高800m超）には水質データが無い。",
-  organismSite:
-    "生物レコードには site_id が無い（原本で全件 NULL）。流域への割り当ては緯度経度と国土数値情報 W12（1977年版）ポリゴンの点内包判定によるもので、原本の属性ではない。",
-  effort:
-    "生物観察の件数は観察努力（記録した人の数）に強く影響される。件数の増加をそのまま「生物が増えた」と読んではいけない。",
-  synthetic:
-    "観測者・介入・意思決定・品質段階の遷移は合成データ（デモ用に生成したもの）。実在の公開データではない。",
+  measuredOn: mustCaveatBody("measuredOn"),
+  censored: mustCaveatBody("censored"),
+  duplicates: mustCaveatBody("duplicates"),
+  zone: mustCaveatBody("zone"),
+  organismSite: mustCaveatBody("organismSite"),
+  effort: mustCaveatBody("effort"),
+  synthetic: mustCaveatBody("synthetic"),
 } as const;
 
 /**
@@ -93,65 +126,14 @@ export const DATA_CAVEATS = {
  * organism_records に和名は入っておらず（vernacular_name は英名）、
  * taxa テーブルの和名を学名で機械結合すると別地域の個体群の名前が付いてしまう
  * （例: Plecoglossus altivelis に「リュウキュウアユ」）。
- * そのため、画面に出す代表種についてだけ人が確認した和名をここに持つ。
+ * そのため、画面に出す代表種についてだけ人が確認した和名をここに持つ
+ * （`registry/taxon/vernacular_ja.csv` に移した54件。taxon テーブル全体の
+ * vernacular_name_ja、8,324件・taxa 由来の別の母集団とは別物）。
  * ここに無い種は学名と英名だけを表示し、和名を推測しない。
  */
-export const NAME_JA: Record<string, string> = {
-  "Hypsipetes amaurotis": "ヒヨドリ",
-  "Passer montanus": "スズメ",
-  "Corvus corone": "ハシボソガラス",
-  "Corvus macrorhynchos": "ハシブトガラス",
-  "Egretta garzetta": "コサギ",
-  "Ardea intermedia": "チュウサギ",
-  "Ardea cinerea": "アオサギ",
-  "Fulica atra": "オオバン",
-  "Alcedo atthis": "カワセミ",
-  "Garrulax canorus": "ガビチョウ",
-  "Leiothrix lutea": "ソウシチョウ",
-  "Aythya fuligula": "キンクロハジロ",
-  "Aythya ferina": "ホシハジロ",
-  "Anas acuta": "オナガガモ",
-  "Mareca penelope": "ヒドリガモ",
-  "Mareca strepera": "オカヨシガモ",
-  "Zosterops japonicus": "メジロ",
-  "Cyanopica cyanus": "オナガ",
-  "Motacilla cinerea": "キセキレイ",
-  "Alauda arvensis": "ヒバリ",
-  "Phasianus versicolor": "キジ",
-  "Podiceps cristatus": "カンムリカイツブリ",
-  "Psittacula krameri": "ワカケホンセイインコ",
-  "Delichon dasypus": "イワツバメ",
-  "Apus nipalensis": "ヒメアマツバメ",
-  "Columba livia": "カワラバト（ドバト）",
-  "Coccothraustes coccothraustes": "シメ",
-  "Emberiza rustica": "カシラダカ",
-  "Trichonephila clavata": "ジョロウグモ",
-  "Harmonia axyridis": "ナミテントウ",
-  "Hestina assimilis": "アカボシゴマダラ",
-  "Callosciurus erythraeus": "タイワンリス",
-  "Solidago altissima": "セイタカアワダチソウ",
-  "Trachemys scripta": "アカミミガメ",
-  "Coreopsis lanceolata": "オオキンケイギク",
-  "Procambarus clarkii": "アメリカザリガニ",
-  "Lithobates catesbeianus": "ウシガエル",
-  "Procyon lotor": "アライグマ",
-  "Paguma larvata": "ハクビシン",
-  "Nipponoluciola cruciata": "ゲンジボタル",
-  "Plecoglossus altivelis": "アユ",
-  "Cyprinus carpio": "コイ",
-  "Zacco platypus": "オイカワ",
-  "Pseudorasbora parva": "モツゴ",
-  "Lepomis macrochirus": "ブルーギル",
-  "Micropterus salmoides": "オオクチバス",
-  "Cobitis biwae": "シマドジョウ",
-  "Anguilla japonica": "ニホンウナギ",
-  "Cervus nippon": "ニホンジカ",
-  "Bidens pilosa": "オオバナセンダングサ",
-  "Persicaria capitata": "ヒメツルソバ",
-  "Oenothera laciniata": "コマツヨイグサ",
-  "Robinia pseudoacacia": "ハリエンジュ",
-  "Pomacea canaliculata": "スクミリンゴガイ",
-};
+export const NAME_JA: Record<string, string> = Object.fromEntries(
+  GENERATED_VERNACULAR_JA.map((v) => [v.scientificName, v.vernacularNameJa]),
+);
 
 export function speciesLabel(binom: string, enName?: string | null): string {
   const ja = NAME_JA[binom];
@@ -161,18 +143,12 @@ export function speciesLabel(binom: string, enName?: string | null): string {
 
 /** 生物データの観察努力に関する事実（画面に必ず添える） */
 export const BIOTA_CAVEATS = {
-  regimes:
-    "記録の中身は年代で入れ替わっている。2013–2016 は標本由来の植物、2017–2024 は eBird 由来の鳥類、2025 以降は iNaturalist 由来の昆虫・植物・菌類が中心。分類群をまたいだ件数の比較はできない。",
-  gbifCutoff:
-    "GBIF 側の取り込みは 2024年12月で実質途切れている（2025年1月に月8,750件→399件）。鳥類の2025年以降の減少はデータの都合であり、生きものの減少ではない。",
-  share:
-    "件数そのものではなく、同じ分類群の中での割合（‰）で比べている。観察する人が増えれば件数は全種で一斉に増えるため、生の件数の増減には意味がない。",
-  inatBackfill:
-    "iNaturalist 由来の 165,332 件は分類階級が空だったため、学名の先頭2語をキーに GBIF 側の分類を引き当てて補完している（96%が解決）。",
-  fishClass:
-    "魚類は class 列に現れない（Actinopterygii が入っておらず空になっている）。門が Chordata で綱が空のものを魚類として扱っている。",
-  isAlien:
-    "原本の is_alien フラグは同一種の中で 1 と 0 が混在し、オオクチバスやウシガエルが 0 件になるなど信頼できない。外来種の判定には環境省の生態系被害防止外来種リスト（taxa.ias_category）を学名で結合した結果を使っている。",
+  regimes: mustCaveatBody("regimes"),
+  gbifCutoff: mustCaveatBody("gbifCutoff"),
+  share: mustCaveatBody("share"),
+  inatBackfill: mustCaveatBody("inatBackfill"),
+  fishClass: mustCaveatBody("fishClass"),
+  isAlien: mustCaveatBody("isAlien"),
 } as const;
 
 /**

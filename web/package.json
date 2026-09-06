@@ -26,6 +26,7 @@
     "db:export": "node scripts/export-d1-sql.mjs",
     "db:verify:remote": "node scripts/verify-d1-remote.mjs",
     "build:registry": "cd .. && .venv/bin/python3 scripts/r01_build_registry.py",
+    "build:registry:ts": "node scripts/build-registry-ts.mjs",
     "test": "vitest run"
   },
   "dependencies": {
