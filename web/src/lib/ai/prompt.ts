@@ -1,7 +1,7 @@
 import "server-only";
 import { TABLE_META, SCHEMA_META, TABLE_ORIGIN, SAMPLE_QUERIES } from "@/lib/table-meta";
 import { DATA_CAVEATS, BIOTA_CAVEATS } from "@/lib/domain";
-import { resolveVariableInfo } from "@/lib/registry/lookup";
+import { caveatBody, resolveVariableInfo } from "@/lib/registry/lookup";
 import { describePageContext, type PageContext } from "./page-context";
 
 /**
@@ -27,10 +27,18 @@ function schemaOrigins(): string {
 /**
  * 注記は `[キー] 本文` の形で出す。ツール結果にはキーだけが載るので、
  * モデルはここを引いて本文に戻せる。本文を両方に載せると純粋な重複になる。
+ *
+ * municipality は DATA_CAVEATS / BIOTA_CAVEATS（domain.ts、画面の注記用に選んだ13件）に
+ * 含めていないので、ここだけ `registry/caveat.yaml` を lookup.ts 経由で直接引く。
+ * 本文を直書きしない（レジストリと文言がずれる「二重の真実」を防ぐ）。
  */
 function allCaveats(): string {
   const lines = [...Object.entries(DATA_CAVEATS), ...Object.entries(BIOTA_CAVEATS)];
-  return lines.map(([key, text]) => `- [${key}] ${text}`).join("\n");
+  const municipality = caveatBody("municipality");
+  if (municipality === undefined) {
+    throw new Error('registry/caveat.yaml に "municipality" が無い（prompt.ts が参照している）');
+  }
+  return [...lines, ["municipality", municipality] as const].map(([key, text]) => `- [${key}] ${text}`).join("\n");
 }
 
 /**
@@ -54,6 +62,7 @@ function variableVocabNote(): string {
     `get_timeseries・get_seasonality・list_catalog(what='variables')・get_sites の結果には ` +
     `variableId（レジストリの正準の指標ID。例: "common:variable:water.bod"）が付くことがある。` +
     `出典側の表記（水質項目名など）は同じ量でも出典ごとに違うことがあるが、variableId が同じなら同じ量を指す。` +
+    `ただし単位・スケールは出典ごとに違いうる（例: air.co は0.1ppm刻みの原表記）ので、値を比較するときは必ずツール結果の registry.unit を見ること。` +
     `名前の文字列一致ではなく variableId の一致で「同じ指標か」を判断すること。${example}`
   );
 }
@@ -124,7 +133,6 @@ species_year2 / species_month / effort_year などの derived テーブルを使
 
 ## データの癖・注記（全文）
 ${allCaveats()}
-- [municipality] sites.municipality は出典によって中身が違う。環境省 公共用水域の290地点では水域名（河川名・湖沼名）が入り、それ以外の62地点では市区町村名が入る。列名と中身が一致していない。
 
 ## 指標の正準ID（variableId）
 ${variableVocabNote()}

@@ -197,7 +197,7 @@ export const GENERATED_VARIABLE_ALIASES: readonly GeneratedVariableAlias[] = [
   { alias: "浮遊物質量 SS", sourceScope: "measurements", variableId: "common:variable:water.ss", unitId: null, stat: "mean", grain: "mixed" },
   { alias: "全窒素 T-N", sourceScope: "measurements", variableId: "common:variable:water.tn", unitId: null, stat: null, grain: "fiscal_year" },
   { alias: "全燐 T-P", sourceScope: "measurements", variableId: "common:variable:water.tp", unitId: null, stat: null, grain: "fiscal_year" },
-  { alias: "pH", sourceScope: "measurements", variableId: "common:variable:water.ph", unitId: "common:unit:dimensionless", stat: "point", grain: "day" },
+  { alias: "pH", sourceScope: "measurements", variableId: "common:variable:water.ph", unitId: "common:unit:dimensionless", stat: "point", grain: "mixed" },
   { alias: "pH（最大値）", sourceScope: "measurements", variableId: "common:variable:water.ph", unitId: "common:unit:dimensionless", stat: "max", grain: "fiscal_year" },
   { alias: "pH（最小値）", sourceScope: "measurements", variableId: "common:variable:water.ph", unitId: "common:unit:dimensionless", stat: "min", grain: "fiscal_year" },
   { alias: "大腸菌群数", sourceScope: "measurements", variableId: "common:variable:water.coliform_group", unitId: null, stat: "mean", grain: "mixed" },

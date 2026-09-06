@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -16,6 +17,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB = path.resolve(__dirname, "..", "..", "..");
 const GENERATED_PATH = path.join(WEB, "src", "lib", "registry", "generated.ts");
 const REGISTRY_DB = path.join(WEB, "..", "data", "db", "registry.sqlite");
+const BUILD_SCRIPT = path.join(WEB, "scripts", "build-registry-ts.mjs");
 
 /**
  * `generated.ts` は生成物（`web/scripts/build-registry-ts.mjs` が
@@ -28,17 +30,55 @@ const REGISTRY_DB = path.join(WEB, "..", "data", "db", "registry.sqlite");
  */
 const hasRegistryDb = fs.existsSync(REGISTRY_DB);
 
+/**
+ * build-registry-ts.mjs のソースのうち、書き出し先を決めている部分。
+ * ここだけを一時パス（WEB は固定文字列、OUT は一時ファイル）に差し替えたコピーを作って実行する。
+ * `web/scripts/` は他エージェントが編集中のため触れない。ファイル自体は一切書き換えず、
+ * メモリ上の文字列に対して置換するだけ（一時ファイルへの書き出しは patched の実行結果のみ）。
+ */
+const PATH_SETUP_ANCHOR =
+  'const __dirname = path.dirname(fileURLToPath(import.meta.url));\n' +
+  'const WEB = path.resolve(__dirname, "..");\n' +
+  'const REPO = path.resolve(WEB, "..");\n' +
+  'const REGISTRY_DB = path.join(REPO, "data", "db", "registry.sqlite");\n' +
+  'const VERNACULAR_CSV = path.join(REPO, "registry", "taxon", "vernacular_ja.csv");\n' +
+  'const OUT = path.join(WEB, "src", "lib", "registry", "generated.ts");\n';
+
 describe.skipIf(!hasRegistryDb)("build:registry:ts は再生成しても差分が無い", () => {
-  it("regenerate produces byte-identical output", () => {
-    const before = fs.readFileSync(GENERATED_PATH, "utf-8");
-    execFileSync("node", ["scripts/build-registry-ts.mjs"], { cwd: WEB, stdio: "pipe" });
-    const after = fs.readFileSync(GENERATED_PATH, "utf-8");
+  it("regenerate produces byte-identical output（追跡対象の generated.ts は書き換えない）", () => {
+    const original = fs.readFileSync(BUILD_SCRIPT, "utf-8");
+    if (!original.includes(PATH_SETUP_ANCHOR)) {
+      throw new Error(
+        "build-registry-ts.mjs のパス定義（WEB/REPO/REGISTRY_DB/VERNACULAR_CSV/OUT）の書式が" +
+          "想定と変わっている。このテストの一時出力先への差し替えが効かなくなっているので、" +
+          "PATH_SETUP_ANCHOR を実物に合わせて更新すること。",
+      );
+    }
+
+    const tmpDir = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), "registry-ts-check-"));
+    const tmpOut = path.join(tmpDir, "generated.ts");
     try {
+      // WEB/REGISTRY_DB は既知の絶対パスに固定し、OUT だけ一時ファイルに向ける。
+      // スクリプト本体（web/scripts/build-registry-ts.mjs）には一切書き込まない。
+      const patched = original.replace(
+        PATH_SETUP_ANCHOR,
+        `const WEB = ${JSON.stringify(WEB)};\n` +
+          'const REPO = path.resolve(WEB, "..");\n' +
+          `const REGISTRY_DB = ${JSON.stringify(REGISTRY_DB)};\n` +
+          'const VERNACULAR_CSV = path.join(REPO, "registry", "taxon", "vernacular_ja.csv");\n' +
+          `const OUT = ${JSON.stringify(tmpOut)};\n`,
+      );
+
+      // bare import（better-sqlite3 等）が web/node_modules を解決できるよう、
+      // node をコード文字列（--input-type=module -e）で cwd=WEB のまま実行する。
+      // ファイルとしてどこかに書き出す必要が無いので、web/scripts/ は触らずに済む。
+      execFileSync("node", ["--input-type=module", "-e", patched], { cwd: WEB, stdio: "pipe" });
+
+      const after = fs.readFileSync(tmpOut, "utf-8");
+      const before = fs.readFileSync(GENERATED_PATH, "utf-8");
       expect(after).toBe(before);
     } finally {
-      // 差分が無い前提のテストなので書き戻しは不要だが、万一 before != after だった場合に
-      // 作業ツリーを壊れたままにしない。
-      if (after !== before) fs.writeFileSync(GENERATED_PATH, before);
+      fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
 });

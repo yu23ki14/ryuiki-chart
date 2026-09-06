@@ -75,10 +75,10 @@ species_year2 / species_month / effort_year などの derived テーブルを使
 - [inatBackfill] iNaturalist 由来の 165,332 件は分類階級が空だったため、学名の先頭2語をキーに GBIF 側の分類を引き当てて補完している（96%が解決）。
 - [fishClass] 魚類は class 列に現れない（Actinopterygii が入っておらず空になっている）。門が Chordata で綱が空のものを魚類として扱っている。
 - [isAlien] 原本の is_alien フラグは同一種の中で 1 と 0 が混在し、オオクチバスやウシガエルが 0 件になるなど信頼できない。外来種の判定には環境省の生態系被害防止外来種リスト（taxa.ias_category）を学名で結合した結果を使っている。
-- [municipality] sites.municipality は出典によって中身が違う。環境省 公共用水域の290地点では水域名（河川名・湖沼名）が入り、それ以外の62地点では市区町村名が入る。列名と中身が一致していない。
+- [municipality] sites.municipality は出典によって中身が違う。環境省 公共用水域の290地点では水域名（河川名・湖沼名）が入り、それ以外の62地点では市区町村名が入る。列名と中身が一致していないため、この画面では「水域・地域」と呼ぶ。
 
 ## 指標の正準ID（variableId）
-get_timeseries・get_seasonality・list_catalog(what='variables')・get_sites の結果には variableId（レジストリの正準の指標ID。例: "common:variable:water.bod"）が付くことがある。出典側の表記（水質項目名など）は同じ量でも出典ごとに違うことがあるが、variableId が同じなら同じ量を指す。名前の文字列一致ではなく variableId の一致で「同じ指標か」を判断すること。
+get_timeseries・get_seasonality・list_catalog(what='variables')・get_sites の結果には variableId（レジストリの正準の指標ID。例: "common:variable:water.bod"）が付くことがある。出典側の表記（水質項目名など）は同じ量でも出典ごとに違うことがあるが、variableId が同じなら同じ量を指す。ただし単位・スケールは出典ごとに違いうる（例: air.co は0.1ppm刻みの原表記）ので、値を比較するときは必ずツール結果の registry.unit を見ること。名前の文字列一致ではなく variableId の一致で「同じ指標か」を判断すること。
 例: 出典表記「OX」と「Ox(ppm)」は文字列としては別物だが、どちらも variableId="common:variable:air.photochemical_oxidant"（同じ量）。
 
 ## 開示義務

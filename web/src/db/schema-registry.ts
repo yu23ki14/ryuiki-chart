@@ -74,8 +74,12 @@ export const variableAlias = sqliteTable("variable_alias", {
 
 /**
  * 空間単位（ADR-0006）。Phase A で登録するのは集計軸として実在するものだけ
- * （site / watershed / mesh3 / zone）。`place_relation` と `geometry_ref` は
+ * （site / watershed / grid01 / zone）。`place_relation` と `geometry_ref` は
  * Phase A では持たない（点→place の解決も含め Phase B）。
+ *
+ * `grid01` は当初 `mesh3`（3次メッシュ = 30秒×45秒）の想定だったが、実装時に
+ * `mesh_all` の実体が3次メッシュではなく独自の 0.01 度グリッドだと分かったため改名した。
+ * ADR-0006 のコードリストにまだ `grid01` は無い（docs/plans/PHASE_B_INTAKE.md §11）。
  */
 export const place = sqliteTable("place", {
 	placeId: text("place_id").primaryKey(),
@@ -111,9 +115,16 @@ export const placeSourceRef = sqliteTable("place_source_ref", {
 
 /**
  * 分類群レジストリ（ADR-0019）。GBIF 由来は `taxon_id = common:taxon:gbif.<key>`、
- * `taxa`（v1）由来で GBIF 未照合のものは `common:taxon:ryuiki-taxa.<taxa の主キー>`。
- * `accepted_taxon_id` は `status='synonym'` のときに正の taxon を指す
- * （ADR-0004 規約2: ID は不変、実体が変わったら新 ID を作り旧 ID は残す）。
+ * `taxa`（v1）由来で GBIF 未照合のものは `common:taxon:ryuiki-taxa.<学名をスラッグ化したもの>`
+ * （`taxa` の主キーではない。学名を小文字化・記号を `%` エスケープして作った ID）。
+ * 現状の `status` は `accepted` / `unresolved` の2値のみで、`synonym` は無い。
+ * `accepted_taxon_id` は現状すべて NULL。将来 `status='synonym'` の行を持たせて
+ * 正の taxon を指させるための列（ADR-0004 規約2: ID は不変、実体が変わったら
+ * 新 ID を作り旧 ID は残す）で、まだ埋めていない。
+ * 上流の `scripts/c24_taxon_crosswalk.py` の `accepted_scientific_name` 列は
+ * GBIF の `acceptedUsageKey`（受理名）を引いたものではなく、一致したノード自身の学名を
+ * 転記しているだけだったと判明している。列名と実態が食い違いやすい箇所なので、
+ * `accepted_taxon_id` を埋めるときは誤用しないこと（docs/plans/PHASE_B_INTAKE.md §8）。
  */
 export const taxon = sqliteTable("taxon", {
 	taxonId: text("taxon_id").primaryKey(),
