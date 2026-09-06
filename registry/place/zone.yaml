@@ -1,0 +1,27 @@
+# registry/place/zone.yaml
+#
+# zone（Ridge to Reef 1-5）の操作的定義。docs/ZONE_DEFINITION.md の定義表をそのまま転記した。
+# これは標高と海岸線距離だけから機械的に算出した操作的区分であり、公式の行政区分・
+# 学術区分ではない。閾値は本作業（データ統合）で仮に置いた値であり、水野研レビュー等で
+# 確定する必要がある（docs/ZONE_DEFINITION.md 冒頭の「重要な限界」を参照）。
+#
+# scripts/registry/build_place.py がこのファイルを読んで place / place_source_ref に流す。
+# 中身は「フラットな辞書のリスト」だけで、ネストや複数行文字列など YAML の一般機能は
+# 使っていない。この repo にはまだ PyYAML 依存が無いため、依存を増やさず
+# build_place.py 側の自前の小さいパーサ（_load_zone_yaml）で読む。
+
+- zone: 1
+  name_ja: 山地源流域
+  condition_ja: 標高 > 800m
+- zone: 2
+  name_ja: 山地渓流
+  condition_ja: 400m < 標高 <= 800m
+- zone: 3
+  name_ja: 丘陵・扇状地
+  condition_ja: 100m < 標高 <= 400m
+- zone: 4
+  name_ja: 平野・沖積低地
+  condition_ja: 標高 <= 100m、かつ海岸線から2kmより遠い
+- zone: 5
+  name_ja: 河口・沿岸
+  condition_ja: 標高 <= 100m、かつ海岸線から2km以内

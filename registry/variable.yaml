@@ -1,0 +1,961 @@
+# 正準の指標（variable）レジストリ（docs/plans/PHASE_A.md §A-2, docs/adr/0010-variable-registry.md）。
+#
+# measurements.variable（58種）と sensor_timeseries.datastream（59種）の出典表記から、
+# 名前に埋め込まれた単位・粒度・統計量を剥がして正準化した85種。出典表記との対応は
+# variable_alias.csv 側（117行）に持つ。
+#
+# name_ja / description_ja / higher_is_worse は web/src/lib/domain.ts の
+# VARIABLE_SHORT / VARIABLE_NOTE / HIGHER_IS_WORSE の値をそのまま移した。
+# domain.ts に無いキーは空のまま（推測で足していない）。
+#
+# 例外1件・意図的な逸脱: water.* の健康項目27種（cd/cn/pb 等の原表記）だけは、domain.ts に
+# 無いにもかかわらず name_ja を埋めた。理由: 環境省 公共用水域水質データファイル利用説明書
+# （検体値）第1版 (2012-08-22)「健康項目」カラム定義（水・大気環境局 水環境課, 出典
+# https://water-pub.env.go.jp/water-pub/mizu-site/mizu/download/kousui/kousui_k_manual.pdf）に
+# CD=カドミウム 等の対応がそのまま明記されており、これは推測ではなく一次資料からの確認。
+# ただし description_ja / higher_is_worse は同じ理由でも埋めていない（domain.ts 由来のみとする
+# 指示に従う。埋めるべきかは A-6 以降の判断に委ねる。詳細は本タスクの報告を参照）。
+#
+# status=（needs_review）は hydro.flow の1種のみ。原本の収集スクリプト
+# (scripts/c12_env_kousui.py) が「公式定義未確認のため原表記のまま」と明記しており、
+# 単位・意味とも確定できない（測定は4,668行）。
+#
+# theme は water(水質) / hydro(水文) / land(地盤沈下観測) / air(大気) / weather(気象)。
+# value_type は num（既定）/ category（風向・天気概況などの文字列値）。
+
+variables:
+  - variable_id: common:variable:water.bod
+    code: water.bod
+    name_ja: "BOD"
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: true
+    description_ja: "微生物が有機物を分解するのに使う酸素量。大きいほど有機汚濁が進んでいる"
+    status: ok
+  - variable_id: common:variable:water.cod
+    code: water.cod
+    name_ja: "COD"
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: true
+    description_ja: "酸化剤で有機物を分解したときの消費酸素量。湖沼・海域の指標として使われる"
+    status: ok
+  - variable_id: common:variable:water.do
+    code: water.do
+    name_ja: "DO"
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: false
+    description_ja: "水に溶けている酸素。小さいほど生き物が棲みにくい。水温が上がると下がる"
+    status: ok
+  - variable_id: common:variable:water.do_bottom
+    code: water.do_bottom
+    name_ja: null
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:water.ss
+    code: water.ss
+    name_ja: "SS"
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: true
+    description_ja: "水に浮いている細かい粒子の量。降雨で土砂が入ると上がる"
+    status: ok
+  - variable_id: common:variable:water.tn
+    code: water.tn
+    name_ja: null
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: true
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:water.tp
+    code: water.tp
+    name_ja: null
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: true
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:water.ph
+    code: water.ph
+    name_ja: null
+    name_en: null
+    theme: water
+    unit_id: common:unit:dimensionless
+    value_type: num
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:water.coliform_group
+    code: water.coliform_group
+    name_ja: null
+    name_en: null
+    theme: water
+    unit_id: common:unit:mpn_per_100ml
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: true
+    description_ja: "し尿等による汚染の指標。2022年度以降は「大腸菌数」に移行しつつある"
+    status: ok
+  - variable_id: common:variable:water.ecoli
+    code: water.ecoli
+    name_ja: null
+    name_en: null
+    theme: water
+    unit_id: common:unit:cfu_per_100ml
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: true
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:water.total_zinc
+    code: water.total_zinc
+    name_ja: null
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: true
+    description_ja: "水生生物の保全に係る環境基準項目"
+    status: ok
+  - variable_id: common:variable:water.n_hexane_extract
+    code: water.n_hexane_extract
+    name_ja: "n-ヘキサン抽出物質"
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:water.las
+    code: water.las
+    name_ja: "LAS"
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:water.nonylphenol
+    code: water.nonylphenol
+    name_ja: null
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:water.water_temp
+    code: water.water_temp
+    name_ja: null
+    name_en: null
+    theme: water
+    unit_id: common:unit:degc
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: null
+    description_ja: "採水時の水温"
+    status: ok
+  - variable_id: common:variable:water.transparency
+    code: water.transparency
+    name_ja: null
+    name_en: null
+    theme: water
+    unit_id: common:unit:m
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: false
+    description_ja: "湖沼・海域で円板が見えなくなる深さ"
+    status: ok
+  - variable_id: common:variable:water.cadmium
+    code: water.cadmium
+    name_ja: "カドミウム"
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:water.cyanide
+    code: water.cyanide
+    name_ja: "全シアン"
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:water.lead
+    code: water.lead
+    name_ja: "鉛"
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:water.hexavalent_chromium
+    code: water.hexavalent_chromium
+    name_ja: "六価クロム"
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:water.arsenic
+    code: water.arsenic
+    name_ja: "砒素"
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:water.total_mercury
+    code: water.total_mercury
+    name_ja: "総水銀"
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:water.alkyl_mercury
+    code: water.alkyl_mercury
+    name_ja: "アルキル水銀"
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:water.pcb
+    code: water.pcb
+    name_ja: "PCB"
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:water.dichloromethane
+    code: water.dichloromethane
+    name_ja: "ジクロロメタン"
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:water.carbon_tetrachloride
+    code: water.carbon_tetrachloride
+    name_ja: "四塩化炭素"
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:water.12_dichloroethane
+    code: water.12_dichloroethane
+    name_ja: "1,2-ジクロロエタン"
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:water.11_dichloroethylene
+    code: water.11_dichloroethylene
+    name_ja: "1,1-ジクロロエチレン"
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:water.cis12_dichloroethylene
+    code: water.cis12_dichloroethylene
+    name_ja: "シス-1,2-ジクロロエチレン"
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:water.111_trichloroethane
+    code: water.111_trichloroethane
+    name_ja: "1,1,1-トリクロロエタン"
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:water.112_trichloroethane
+    code: water.112_trichloroethane
+    name_ja: "1,1,2-トリクロロエタン"
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:water.trichloroethylene
+    code: water.trichloroethylene
+    name_ja: "トリクロロエチレン"
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:water.tetrachloroethylene
+    code: water.tetrachloroethylene
+    name_ja: "テトラクロロエチレン"
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:water.13_dichloropropene
+    code: water.13_dichloropropene
+    name_ja: "1,3-ジクロロプロペン"
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:water.thiuram
+    code: water.thiuram
+    name_ja: "チウラム"
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:water.simazine
+    code: water.simazine
+    name_ja: "シマジン"
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:water.thiobencarb
+    code: water.thiobencarb
+    name_ja: "チオベンカルブ"
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:water.benzene
+    code: water.benzene
+    name_ja: "ベンゼン"
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:water.selenium
+    code: water.selenium
+    name_ja: "セレン"
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:water.nitrate_nitrite_n
+    code: water.nitrate_nitrite_n
+    name_ja: "硝酸性窒素及び亜硝酸性窒素"
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:water.fluorine
+    code: water.fluorine
+    name_ja: "ふっ素"
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:water.boron
+    code: water.boron
+    name_ja: "ホウ素"
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:water.14_dioxane
+    code: water.14_dioxane
+    name_ja: "1,4-ジオキサン"
+    name_en: null
+    theme: water
+    unit_id: common:unit:mg_per_l
+    value_type: num
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:hydro.flow
+    code: hydro.flow
+    name_ja: "流量関連"
+    name_en: null
+    theme: hydro
+    unit_id: null
+    value_type: num
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: needs_review
+  - variable_id: common:variable:hydro.groundwater_level
+    code: hydro.groundwater_level
+    name_ja: null
+    name_en: null
+    theme: hydro
+    unit_id: common:unit:t_p_m
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:hydro.river_stage
+    code: hydro.river_stage
+    name_ja: null
+    name_en: null
+    theme: hydro
+    unit_id: common:unit:m
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:hydro.soil_moisture
+    code: hydro.soil_moisture
+    name_ja: null
+    name_en: null
+    theme: hydro
+    unit_id: common:unit:m3_per_m3
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:land.max_subsidence
+    code: land.max_subsidence
+    name_ja: null
+    name_en: null
+    theme: land
+    unit_id: common:unit:cm
+    value_type: num
+    default_stat: "max"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:land.benchmark_count_valid
+    code: land.benchmark_count_valid
+    name_ja: null
+    name_en: null
+    theme: land
+    unit_id: common:unit:count
+    value_type: num
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:land.benchmark_count_settled_1_2cm
+    code: land.benchmark_count_settled_1_2cm
+    name_ja: null
+    name_en: null
+    theme: land
+    unit_id: common:unit:count
+    value_type: num
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:land.benchmark_count_settled_2cm_plus
+    code: land.benchmark_count_settled_2cm_plus
+    name_ja: null
+    name_en: null
+    theme: land
+    unit_id: common:unit:count
+    value_type: num
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:land.subsidence_area_1_2cm
+    code: land.subsidence_area_1_2cm
+    name_ja: null
+    name_en: null
+    theme: land
+    unit_id: common:unit:km2
+    value_type: num
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:land.subsidence_area_2cm_plus
+    code: land.subsidence_area_2cm_plus
+    name_ja: null
+    name_en: null
+    theme: land
+    unit_id: common:unit:km2
+    value_type: num
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:land.survey_area
+    code: land.survey_area
+    name_ja: null
+    name_en: null
+    theme: land
+    unit_id: common:unit:km2
+    value_type: num
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:air.no2
+    code: air.no2
+    name_ja: null
+    name_en: null
+    theme: air
+    unit_id: common:unit:ppb
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:air.so2
+    code: air.so2
+    name_ja: null
+    name_en: null
+    theme: air
+    unit_id: common:unit:ppb
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:air.no
+    code: air.no
+    name_ja: null
+    name_en: null
+    theme: air
+    unit_id: common:unit:ppb
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:air.nox
+    code: air.nox
+    name_ja: null
+    name_en: null
+    theme: air
+    unit_id: common:unit:ppb
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:air.photochemical_oxidant
+    code: air.photochemical_oxidant
+    name_ja: null
+    name_en: null
+    theme: air
+    unit_id: common:unit:ppb
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:air.spm
+    code: air.spm
+    name_ja: null
+    name_en: null
+    theme: air
+    unit_id: common:unit:ug_per_m3
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:air.pm25
+    code: air.pm25
+    name_ja: null
+    name_en: null
+    theme: air
+    unit_id: common:unit:ug_per_m3
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:air.co
+    code: air.co
+    name_ja: null
+    name_en: null
+    theme: air
+    unit_id: common:unit:0_1ppm
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:air.ch4
+    code: air.ch4
+    name_ja: null
+    name_en: null
+    theme: air
+    unit_id: common:unit:0_01ppmc
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:air.nmhc
+    code: air.nmhc
+    name_ja: null
+    name_en: null
+    theme: air
+    unit_id: common:unit:0_01ppmc
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:air.thc
+    code: air.thc
+    name_ja: null
+    name_en: null
+    theme: air
+    unit_id: common:unit:0_01ppmc
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:weather.air_temp
+    code: weather.air_temp
+    name_ja: null
+    name_en: null
+    theme: weather
+    unit_id: common:unit:degc
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:weather.precipitation
+    code: weather.precipitation
+    name_ja: null
+    name_en: null
+    theme: weather
+    unit_id: common:unit:mm
+    value_type: num
+    default_stat: "sum"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:weather.humidity
+    code: weather.humidity
+    name_ja: null
+    name_en: null
+    theme: weather
+    unit_id: common:unit:percent
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:weather.pressure_station
+    code: weather.pressure_station
+    name_ja: null
+    name_en: null
+    theme: weather
+    unit_id: common:unit:hpa
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:weather.pressure_sea_level
+    code: weather.pressure_sea_level
+    name_ja: null
+    name_en: null
+    theme: weather
+    unit_id: common:unit:hpa
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:weather.sunshine_duration
+    code: weather.sunshine_duration
+    name_ja: null
+    name_en: null
+    theme: weather
+    unit_id: common:unit:h
+    value_type: num
+    default_stat: "sum"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:weather.wind_speed_mean
+    code: weather.wind_speed_mean
+    name_ja: null
+    name_en: null
+    theme: weather
+    unit_id: common:unit:m_per_s
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:weather.wind_speed_max
+    code: weather.wind_speed_max
+    name_ja: null
+    name_en: null
+    theme: weather
+    unit_id: common:unit:m_per_s
+    value_type: num
+    default_stat: "max"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:weather.wind_direction_at_max
+    code: weather.wind_direction_at_max
+    name_ja: null
+    name_en: null
+    theme: weather
+    unit_id: null
+    value_type: category
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:weather.wind_gust_max
+    code: weather.wind_gust_max
+    name_ja: null
+    name_en: null
+    theme: weather
+    unit_id: common:unit:m_per_s
+    value_type: num
+    default_stat: "max"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:weather.wind_direction_at_gust
+    code: weather.wind_direction_at_gust
+    name_ja: null
+    name_en: null
+    theme: weather
+    unit_id: null
+    value_type: category
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:weather.snow_depth_max
+    code: weather.snow_depth_max
+    name_ja: null
+    name_en: null
+    theme: weather
+    unit_id: common:unit:cm
+    value_type: num
+    default_stat: "max"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:weather.snowfall_depth_total
+    code: weather.snowfall_depth_total
+    name_ja: null
+    name_en: null
+    theme: weather
+    unit_id: common:unit:cm
+    value_type: num
+    default_stat: "sum"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:weather.snowfall_depth_max_daily
+    code: weather.snowfall_depth_max_daily
+    name_ja: null
+    name_en: null
+    theme: weather
+    unit_id: common:unit:cm
+    value_type: num
+    default_stat: "max"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:weather.cloud_cover_mean
+    code: weather.cloud_cover_mean
+    name_ja: null
+    name_en: null
+    theme: weather
+    unit_id: common:unit:tenths
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:weather.days_with_snow
+    code: weather.days_with_snow
+    name_ja: null
+    name_en: null
+    theme: weather
+    unit_id: common:unit:days
+    value_type: num
+    default_stat: "sum"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:weather.days_with_fog
+    code: weather.days_with_fog
+    name_ja: null
+    name_en: null
+    theme: weather
+    unit_id: common:unit:days
+    value_type: num
+    default_stat: "sum"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:weather.days_with_thunder
+    code: weather.days_with_thunder
+    name_ja: null
+    name_en: null
+    theme: weather
+    unit_id: common:unit:days
+    value_type: num
+    default_stat: "sum"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:weather.weather_summary_day
+    code: weather.weather_summary_day
+    name_ja: null
+    name_en: null
+    theme: weather
+    unit_id: null
+    value_type: category
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:weather.weather_summary_night
+    code: weather.weather_summary_night
+    name_ja: null
+    name_en: null
+    theme: weather
+    unit_id: null
+    value_type: category
+    default_stat: null
+    higher_is_worse: null
+    description_ja: null
+    status: ok

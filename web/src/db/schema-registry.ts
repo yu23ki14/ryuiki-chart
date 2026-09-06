@@ -1,7 +1,9 @@
 /**
  * 語彙レジストリ（Phase A, docs/plans/PHASE_A.md §A-1）のスキーマ定義。
  *
- * unit / variable / variable_alias / place / place_source_ref / taxon / caveat。
+ * unit / variable / variable_alias / place / place_source_ref / taxon / caveat / caveat_scope。
+ * （計画時点は caveat 単体で7テーブルの想定だったが、A-5 実装時に caveat/caveat_scope の
+ * 2テーブルに分けた。理由は caveat の定義コメントを参照）
  * ID 規約は docs/adr/0004-identifiers.md。中身（行）は
  * `scripts/r01_build_registry.py`（→ scripts/registry/build_*.py）が
  * 読み取り専用の原本（ryuiki.sqlite / cells.sqlite / derived.sqlite）から
@@ -129,18 +131,40 @@ export const taxon = sqliteTable("taxon", {
 /**
  * 注意事項（ADR-0013）。`caveat_id` は `web/src/lib/ai/caveats.ts` が今返している
  * キー文字列をそのまま使う（`common:caveat:<key>`）。`cells.notes` 由来は
- * `common:caveat:cells.<note の主キー>`。引き方は `scope_kind` + `scope_ref` の組。
+ * `common:caveat:cells.<note の主キー>`。
+ *
+ * PHASE_A.md §A-5 の計画では `caveat` 単体に `scope_kind`/`scope_ref` を持たせる
+ * 7列構成だったが、実装時に「1つの注記が複数のテーブルに掛かる」
+ * （例: `censored` は `measurements`/`meas_year`/`meas_month` など9テーブルに掛かる）
+ * ことが分かり、`caveat_id` を主キーにしたままでは 1:N を表せなかった。
+ * そのため `caveat` は注記そのもの（このテーブル）に絞り、スコープは
+ * 下の `caveatScope` に切り出した（計画の7テーブル→8テーブルの逸脱。
+ * 理由の詳細は `scripts/registry/build_caveat.py` の docstring）。
  */
 export const caveat = sqliteTable("caveat", {
 	caveatId: text("caveat_id").primaryKey(),
-	scopeKind: text("scope_kind"),
-	scopeRef: text("scope_ref"),
 	severity: text(),
 	kind: text(),
 	titleJa: text("title_ja"),
 	bodyJa: text("body_ja"),
 	quote: text(),
+});
+
+/**
+ * `caveat` が掛かる範囲。1注記に対して複数行になりうる（1:N）。
+ * `scope_kind` の取りうる値と、そこから `caveatsForTables()` の順序を復元する方法は
+ * `scripts/registry/build_caveat.py` の docstring に書いてある
+ * （`sort_order` は「同じ scope_ref の中での並び」だけを表し、scope 同士の並びは
+ * 呼び出し側が渡すテーブル名の順序に従う——現行の `caveatsForTables()` と同じ規則）。
+ */
+export const caveatScope = sqliteTable("caveat_scope", {
+	id: integer().primaryKey({ autoIncrement: true }),
+	caveatId: text("caveat_id"),
+	scopeKind: text("scope_kind"),
+	scopeRef: text("scope_ref"),
+	sortOrder: integer("sort_order"),
 },
 (table) => [
-	index("ix_caveat_scope").on(table.scopeKind, table.scopeRef),
+	index("ix_caveat_scope_scope").on(table.scopeKind, table.scopeRef),
+	index("ix_caveat_scope_caveat").on(table.caveatId),
 ]);

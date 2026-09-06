@@ -1,7 +1,5 @@
 CREATE TABLE `caveat` (
 	`caveat_id` text PRIMARY KEY NOT NULL,
-	`scope_kind` text,
-	`scope_ref` text,
 	`severity` text,
 	`kind` text,
 	`title_ja` text,
@@ -9,7 +7,16 @@ CREATE TABLE `caveat` (
 	`quote` text
 );
 --> statement-breakpoint
-CREATE INDEX `ix_caveat_scope` ON `caveat` (`scope_kind`,`scope_ref`);--> statement-breakpoint
+CREATE TABLE `caveat_scope` (
+	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	`caveat_id` text,
+	`scope_kind` text,
+	`scope_ref` text,
+	`sort_order` integer
+);
+--> statement-breakpoint
+CREATE INDEX `ix_caveat_scope_scope` ON `caveat_scope` (`scope_kind`,`scope_ref`);--> statement-breakpoint
+CREATE INDEX `ix_caveat_scope_caveat` ON `caveat_scope` (`caveat_id`);--> statement-breakpoint
 CREATE TABLE `place` (
 	`place_id` text PRIMARY KEY NOT NULL,
 	`region_id` text,

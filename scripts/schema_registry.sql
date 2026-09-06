@@ -1,6 +1,6 @@
 -- 語彙レジストリ(docs/plans/PHASE_A.md §A-1, docs/adr/0004/0006/0010/0013/0019)の DDL。
--- web/src/db/schema.ts の drizzle 定義から生成した
--- web/drizzle/migrations/0003_worthless_longshot.sql と列・索引を一致させてある。
+-- web/src/db/schema-registry.ts の drizzle 定義から生成した web/drizzle/migrations/ 配下の
+-- マイグレーションと列・索引を一致させてある。
 -- スキーマを変えるときは両方を更新すること(正は drizzle 側。ここは追随する)。
 --
 -- scripts/r01_build_registry.py が起動時にこれを流して data/db/registry.sqlite を作る。
@@ -95,15 +95,30 @@ CREATE INDEX IF NOT EXISTS ix_taxon_gbif_key ON taxon(gbif_taxon_key);
 
 -- 注意事項(ADR-0013)。caveat_id は web/src/lib/ai/caveats.ts が今返しているキー文字列を
 -- そのまま使う(common:caveat:<key>)。cells.notes 由来は common:caveat:cells.<note の主キー>。
--- 引き方は scope_kind + scope_ref の組。
+--
+-- 計画(PHASE_A.md §A-1)では caveat 単体に scope_kind/scope_ref を持たせる7テーブル構成
+-- だったが、A-5 の実装時に「1つの注記が複数のテーブルに掛かる」(例: censored は
+-- measurements/meas_year/meas_month など9テーブルに掛かる)ことが分かり、caveat_id を
+-- 主キーにしたままでは1:Nを表せなかった。そのため caveat は注記そのものに絞り、
+-- スコープは caveat_scope に切り出した(計画の7テーブル→8テーブルの逸脱。
+-- 理由の詳細は scripts/registry/build_caveat.py の docstring)。
 CREATE TABLE IF NOT EXISTS caveat (
   caveat_id TEXT PRIMARY KEY,
-  scope_kind TEXT,
-  scope_ref TEXT,
   severity TEXT,
   kind TEXT,
   title_ja TEXT,
   body_ja TEXT,
   quote TEXT
 );
-CREATE INDEX IF NOT EXISTS ix_caveat_scope ON caveat(scope_kind, scope_ref);
+
+-- caveat が掛かる範囲。1注記に対して複数行になりうる(1:N)。scope_kind の取りうる値と
+-- caveatsForTables() の順序復元の方法は scripts/registry/build_caveat.py の docstring 参照。
+CREATE TABLE IF NOT EXISTS caveat_scope (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  caveat_id TEXT,
+  scope_kind TEXT,
+  scope_ref TEXT,
+  sort_order INTEGER
+);
+CREATE INDEX IF NOT EXISTS ix_caveat_scope_scope ON caveat_scope(scope_kind, scope_ref);
+CREATE INDEX IF NOT EXISTS ix_caveat_scope_caveat ON caveat_scope(caveat_id);
