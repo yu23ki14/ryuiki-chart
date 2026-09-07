@@ -2,13 +2,20 @@ name: CI
 
 # docs/plans/PHASE_B_INTAKE.md #7。原本 3 ファイル（ryuiki/cells/derived, data/db/ に置く。
 # .gitignore で除外されているため CI には無い）を必要とせず、`registry/` 配下の手書き
-# ファイルとリポジトリのコードだけで完結する2ジョブ。
+# ファイルとリポジトリのコードだけで完結する3ジョブ。
 #
 # - registry: `scripts/r01_build_registry.py --files-only` で作った registry.sqlite から
 #   generated.ts / generated-client.ts を再生成し、コミット済みの内容と一致するかを
 #   `git diff --exit-code` で機械的に確認する（レジストリと生成物のずれをここで落とす）。
 # - web: lint・型検査・テスト（`generated.test.ts` の再生成チェックが走るよう、
 #   ここでも --files-only で registry.sqlite を用意する）。
+# - reconcile: Phase B 突合ハーネス（scripts/b01_derived_baseline.py /
+#   scripts/b02_derived_compare.py / scripts/reconcile/*.py）のフィクスチャテストと、
+#   reports/derived_baseline.json がコミットされていることの確認。
+#   docs/plans/PHASE_B_RECONCILIATION.md §5「CI の限界」で明言しているとおり、
+#   このジョブが保証するのはこの2点だけ。実データ（data/db/derived.sqlite、14GB）に
+#   対する b01 の再実行や b02 の完全モード突合は、原本のある環境でしか走らない
+#   （ここではやらないし、やれない）。
 
 on:
   push:
@@ -108,3 +115,52 @@ jobs:
       - name: Test
         working-directory: web
         run: pnpm run test
+
+  reconcile:
+    name: reconcile (Phase B harness fixtures; does NOT touch real data)
+    # ここが保証するのは docs/plans/PHASE_B_RECONCILIATION.md §5 の2点だけ:
+    #   1. ハーネス自体（b01/b02/reconcile/*）が正しく動くこと
+    #      （scripts/tests/ は自前でフィクスチャ sqlite を作るので、
+    #      原本 data/db/*.sqlite・data/db/derived.sqlite（.gitignore 済み、
+    #      合計14GB）は要らないし、ここでは一切開かない）。
+    #   2. reports/derived_baseline.json がコミットされていて、
+    #      common.SCHEMA_VERSION と一致すること。
+    # 保証しないこと: 実データに対する b01 の再実行、b02 の完全モード突合
+    # （行レベルの内訳）。これらは原本のある環境でしか走らない。
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Phase B 突合ハーネスのフィクスチャテスト（原本DBは使わない）
+        run: pytest
+
+      - name: derived_baseline.json がコミットされ schema_version が一致することを確認
+        run: |
+          python3 - <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          sys.path.insert(0, "scripts")
+          from reconcile import common
+
+          path = pathlib.Path("reports/derived_baseline.json")
+          if not path.exists():
+              sys.exit(f"{path} が無い。scripts/b01_derived_baseline.py で作ってコミットすること。")
+
+          data = json.loads(path.read_text(encoding="utf-8"))
+          if data.get("schema_version") != common.SCHEMA_VERSION:
+              sys.exit(
+                  f"schema_version が想定と異なる（期待 {common.SCHEMA_VERSION}、"
+                  f"実際 {data.get('schema_version')!r}）。"
+                  "scripts/b01_derived_baseline.py を実行して作り直すこと。"
+              )
+          print(f"OK: {path} (schema_version={data['schema_version']}, tables={data['table_count']})")
+          PY
