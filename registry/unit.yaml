@@ -158,6 +158,11 @@ units:
     ucum: "m/s"
     name_ja: "メートル毎秒"
     quantity_kind: velocity
+  - unit_id: common:unit:m3_per_s
+    symbol: "m3/s"
+    ucum: "m3/s"
+    name_ja: "立方メートル毎秒"
+    quantity_kind: volumetric_flow_rate
   - unit_id: common:unit:0_1m_per_s
     symbol: "0.1m/s"
     ucum: null

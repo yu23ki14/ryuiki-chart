@@ -112,7 +112,7 @@ Phase A の判断が誤りだったという意味ではない——**計画ど�
 （`docs/plans/PHASE_B_ALIAS_STAT_SOURCES.md` §2.4）。列レイアウトを確認できる一次資料
 （`zip_create` API 自体のドキュメント等）が見つかれば、Phase B 以降で埋められる。
 
-### `common:variable:hydro.flow`（`流量関連（公式定義未確認のため原表記のまま）`）の公式定義が判明（着手できる状態）
+### `common:variable:hydro.flow`（`流量関連（公式定義未確認のため原表記のまま）`）の公式定義が判明 **解決済み（`phase-b/variable-flow`）**
 
 環境省 公共用水域水質**検体値**データファイル利用説明書（国立環境研究所, 平成27年4月,
 `MK_manu.pdf`）の一般項目ファイルレイアウトに「流量」項目ID `090700`、単位 `m3/s` と
@@ -120,14 +120,17 @@ Phase A の判断が誤りだったという意味ではない——**計画ど�
 から来ており、他 source_id には出現しない（`docs/plans/PHASE_B_ALIAS_STAT_SOURCES.md`
 §3.3）。
 
-- **やること**: `registry/variable.yaml` の `common:variable:hydro.flow` の
+- ~~**やること**: `registry/variable.yaml` の `common:variable:hydro.flow` の
   `name_ja`（現在「流量関連（公式定義未確認のため原表記のまま）」）と `unit_id`
-  （現在 `null`）と `status`（現在 `needs_review`）を確定値に更新する。
-- **なぜ本PRでやらないか**: `variable.yaml` の `name_ja` を直すと `generated-client.ts`
+  （現在 `null`）と `status`（現在 `needs_review`）を確定値に更新する。~~
+- **なぜ本PRでやらなかったか**: `variable.yaml` の `name_ja` を直すと `generated-client.ts`
   の `VARIABLE_SHORT` の値が変わり、本PRの受け入れ条件「`generated-client.ts` の
-  差分が0行」が壊れる。これは「移行」ではなく「意図的な語彙の修正」なので別PRにする。
-- 行数・出典行数（4,668行）・根拠（`MK_manu.pdf` 項目19）はすべて確認済みなので、
-  次のPRはこの節を読むだけで着手できる。
+  差分が0行」が壊れる。これは「移行」ではなく「意図的な語彙の修正」なので別PRにした。
+- 行数・出典行数（4,668行）・根拠（`MK_manu.pdf` 項目19）はすべて確認済みだったので、
+  この節を読むだけで着手できた。**→ `phase-b/variable-flow` で対応済み**:
+  `name_ja`="流量"、`unit_id`=`common:unit:m3_per_s`（新設）、`status`="ok"、
+  `description_ja` に出典（利用説明書名・発行元・年月・項目ID）を明記。
+  `higher_is_worse` は流量の「高いほど悪い」が自明でないため引き続き `null` のまま。
 
 ### 水生生物保全項目（全亜鉛・ノニルフェノール・LAS）の環境基準は確定、API列との対応は未確認
 

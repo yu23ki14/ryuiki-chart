@@ -13,7 +13,7 @@
 | 3 | `measurements` の site_id 250種 → `place_id` | 100% | 100.00%（未解決 0種 / 行ベースでは 100.00%） | OK |
 | 4 | `sensor_timeseries` の site_id 77種 → `place_id` | 100% | 100.00%（未解決 0種 / 行ベースでは 100.00%） | OK |
 | 5 | `organism_records` 823,692行 → `taxon_id` | ≥99.8% | 99.8964%（未解決 853行） | OK |
-| 6 | 単位が決まる measurement 行（単位欠落 109,078行のうち） | 報告のみ | 104,410行（95.72%）が埋まる。残り 4,668行は未解決 | 報告のみ |
+| 6 | 単位が決まる measurement 行（単位欠落 109,078行のうち） | 報告のみ | 109,078行（100.00%）が埋まる。残り 0行は未解決 | 報告のみ |
 | 7 | `taxa` 8,585行 → `taxon_id` | 報告のみ | GBIF照合(EXACT)あり 2,343行 / registry `status='unresolved'` 6,242行（詳細は§7） | 報告のみ |
 | 8 | `registry/variable_alias.csv` の (dataset, alias, source_id) 154組 ⇔ v1 実データの組 154組 | 過不足なく一致 | 一致 154組 / CSVのみ 0組 / 実データのみ 0組 | OK |
 
@@ -48,19 +48,17 @@
 
 ## 6. 単位が決まる measurement 行（報告のみ）
 
-- 原本で単位（`unit`）が空の行 109,078行のうち、`variable_alias.unit_id`（無ければ `variable.unit_id`）で 104,410行（95.72%）の単位が決まる。
-- 残り 4,668行は変数自体が `needs_review`（下記 §7 の `variable` 一覧を参照）で、単位が決まらない。
+- 原本で単位（`unit`）が空の行 109,078行のうち、`variable_alias.unit_id`（無ければ `variable.unit_id`）で 109,078行（100.00%）の単位が決まる。
+- 残り 0行は変数自体が `needs_review`（下記 §7 の `variable` 一覧を参照）で、単位が決まらない。
 - 単位が埋まらない行の内訳（原文の指標表記別）:
 
   | 原文の指標表記 | 対応する variable_id | 未解決行数 |
   |---|---|---|
-  | `流量関連（公式定義未確認のため原表記のまま）` | `common:variable:hydro.flow` | 4,668 |
 
 ## needs_review の一覧（place / variable / variable_alias.stat）
 
 - `place.status='needs_review'`: 90件。座標などが原本から確認できず、捏造せず `NULL` のまま登録した地点。一覧: `reports/registry_resolution/needs_review_place.csv`（90行）。
-- `variable.status='needs_review'`: 1件。一覧: `reports/registry_resolution/needs_review_variable.csv`（1行）。
-  - `common:variable:hydro.flow`（hydro.flow / 流量関連）: description_ja が未設定（unit_id が決まらないため status=needs_review。経緯は registry/variable.yaml のコメント参照）
+- `variable.status='needs_review'`: 0件。一覧: `reports/registry_resolution/needs_review_variable.csv`（0行）。
 - `variable_alias.stat` が空の行: 50件（一次資料調査で確定できなかったもの・統計量という概念自体が無いカテゴリ属性の両方を含む機械的な列挙。理由は各行の `note` 列を参照。docs/plans/PHASE_B_ALIAS_STAT_SOURCES.md 参照）。一覧: `reports/registry_resolution/needs_review_alias_stat.csv`（50行）。
 
 ## 7. taxa → taxon_id（報告のみ）／ status='unresolved' の taxon
@@ -138,7 +136,7 @@
 | `unresolved_site_ids.csv` | 0 | 未解決の site_id |
 | `unresolved_organism_records.csv` | 853 | taxon_id が付かない occurrence |
 | `needs_review_place.csv` | 90 | 座標未確認等の place |
-| `needs_review_variable.csv` | 1 | 単位・粒度未確定の variable |
+| `needs_review_variable.csv` | 0 | 単位・粒度未確定の variable |
 | `needs_review_alias_stat.csv` | 50 | stat が空の variable_alias 行 |
 | `unresolved_taxa.csv` | 6242 | GBIF未照合の taxa（全件） |
 | `alias_source_pairs_csv_only.csv` | 0 | CSVにあるが実データに無い (dataset, alias, source_id) |

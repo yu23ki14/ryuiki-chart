@@ -16,9 +16,11 @@
 # ただし description_ja / higher_is_worse は同じ理由でも埋めていない（domain.ts 由来のみとする
 # 指示に従う。埋めるべきかは A-6 以降の判断に委ねる。詳細は本タスクの報告を参照）。
 #
-# status=（needs_review）は hydro.flow の1種のみ。原本の収集スクリプト
-# (scripts/c12_env_kousui.py) が「公式定義未確認のため原表記のまま」と明記しており、
-# 単位・意味とも確定できない（測定は4,668行）。
+# hydro.flow はかつて status=needs_review だった（原本の収集スクリプト
+# (scripts/c12_env_kousui.py) が「公式定義未確認のため原表記のまま」と出力していたため）。
+# 一次資料（docs/plans/PHASE_B_ALIAS_STAT_SOURCES.md §3.3、MK_manu.pdf 項目ID 090700）で
+# 単位 m3/s・意味「流量」を確定し、status=ok に直した（測定は4,668行、すべて
+# env_kousui_sample_kanagawa 由来）。全85件のうち status=needs_review は現在0件。
 #
 # theme は water(水質) / hydro(水文) / land(地盤沈下観測) / air(大気) / weather(気象)。
 # value_type は num（既定）/ category（風向・天気概況などの文字列値）。
@@ -499,15 +501,15 @@ variables:
     status: ok
   - variable_id: common:variable:hydro.flow
     code: hydro.flow
-    name_ja: "流量関連"
+    name_ja: "流量"
     name_en: null
     theme: hydro
-    unit_id: null
+    unit_id: common:unit:m3_per_s
     value_type: num
     default_stat: null
     higher_is_worse: null
-    description_ja: null
-    status: needs_review
+    description_ja: "公共用水域水質検体値データファイル利用説明書（国立環境研究所, 平成27年4月）の一般項目ファイル項目ID 090700「流量」に基づく。単位は m3/s（欠測時は\"99999\"、有効桁数・報告下限値の設定なし）"
+    status: ok
   - variable_id: common:variable:hydro.groundwater_level
     code: hydro.groundwater_level
     name_ja: null

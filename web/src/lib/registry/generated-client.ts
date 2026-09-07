@@ -64,7 +64,7 @@ export interface GeneratedZone {
  * variable(85件)・variable_alias(117件)から「代表エイリアス」を選んで再構成した派生値。
  */
 export const VARIABLE_SHORT: Readonly<Record<string, string>> = {
-  "流量関連（公式定義未確認のため原表記のまま）": "流量関連",
+  "流量関連（公式定義未確認のため原表記のまま）": "流量",
   "生物化学的酸素要求量 BOD": "BOD",
   "化学的酸素要求量 COD": "COD",
   "溶存酸素量 DO": "DO",
@@ -75,6 +75,7 @@ export const VARIABLE_SHORT: Readonly<Record<string, string>> = {
 
 /** 何を意味する指標か（旧 domain.ts の VARIABLE_NOTE）。ツールチップに出す。 */
 export const VARIABLE_NOTE: Readonly<Record<string, string>> = {
+  "流量関連（公式定義未確認のため原表記のまま）": "公共用水域水質検体値データファイル利用説明書（国立環境研究所, 平成27年4月）の一般項目ファイル項目ID 090700「流量」に基づく。単位は m3/s（欠測時は\"99999\"、有効桁数・報告下限値の設定なし）",
   "生物化学的酸素要求量 BOD": "微生物が有機物を分解するのに使う酸素量。大きいほど有機汚濁が進んでいる",
   "化学的酸素要求量 COD": "酸化剤で有機物を分解したときの消費酸素量。湖沼・海域の指標として使われる",
   "大腸菌群数": "し尿等による汚染の指標。2022年度以降は「大腸菌数」に移行しつつある",
