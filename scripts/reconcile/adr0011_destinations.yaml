@@ -1,0 +1,70 @@
+# docs/adr/0011-aggregation-cube.md 「33テーブルの行き先」表をそのまま転記したデータ。
+#
+# scripts/b01_derived_baseline.py はこのファイルを読むだけで、どのテーブルが
+# ADR-0011 のどの行き先（キューブ observation / キューブ occurrence / variable
+# レジストリ / place の属性 / taxon / L2 ファクト本体 / メタ）に対応するかを
+# derived_baseline.md に併記する。テーブルごとの分岐はコード側に書かない。
+#
+# 33テーブルの内訳（ADR-0011 表と一致することを scripts/tests で確認）:
+#   14 + 11 + 1 + 2 + 3 + 1 + 1 = 33
+
+cube_observation:
+  label_ja: "キューブ（入力 observation）"
+  tables:
+    - meas_daily
+    - meas_month
+    - meas_year
+    - meas_clim
+    - zone_year
+    - zone_clim
+    - sensor_daily
+    - sensor_hour_month
+    - rain_daily
+    - landuse_watershed
+    - landuse_change
+    - quality_monthly
+    - doc_series
+    - site_var
+
+cube_occurrence:
+  label_ja: "キューブ（入力 occurrence）"
+  tables:
+    - mesh_year
+    - mesh_all
+    - mesh_species
+    - species_mesh_year
+    - species_month
+    - species_year2
+    - species2
+    - org_watershed
+    - org_watershed_year
+    - org_group_year
+    - effort_year
+
+variable_registry:
+  label_ja: "variable レジストリ"
+  tables:
+    - var_catalog
+
+place_attribute:
+  label_ja: "place の属性"
+  tables:
+    - watershed_meta
+    - watershed_rollup
+
+taxon_registry:
+  label_ja: "taxon / taxon_assessment（ADR-0019）"
+  tables:
+    - redlist_map
+    - redlist_change
+    - ias_species
+
+fact_body:
+  label_ja: "L2 のファクト本体に統合"
+  tables:
+    - org_norm
+
+doc_meta:
+  label_ja: "document / variable のメタ"
+  tables:
+    - doc_series_meta
