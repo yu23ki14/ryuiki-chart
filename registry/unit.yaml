@@ -1,7 +1,7 @@
 # 単位（unit）レジストリ（docs/plans/PHASE_A.md §A-2, docs/adr/0010-variable-registry.md）。
 #
 # measurements.unit の9種 + sensor_timeseries.unit の22種（重複除く）を正準化して列挙する。
-# unit_id（common:unit:<slug> の形）は28件全行がこの yaml で明示する値であり、
+# unit_id（common:unit:<slug> の形）は29件全行がこの yaml で明示する値であり、
 # 機械的な slug 化関数から自動導出したものではない（`scripts/registry/build_unit_variable.py`
 # の `_unit_rows()` はここに書かれた `unit_id` をそのまま使うだけで、symbol から
 # 何かを計算していない）。これは例外ではなくもともとの設計: 単位のように件数が少なく
@@ -14,7 +14,7 @@
 # （例: "点" → 空文字、"0.1%" → "0_1" で "0.1percent" と区別できなくなる）を情報ごと
 # 潰す規約の割れがあったため削除した（動かない安全網より、要件が出た時点で書き直す方が
 # 安全という判断。ADR-0001）。"点" / "0.1%" の `unit_id`（`common:unit:count` /
-# `common:unit:0_1percent`）はその関数と無関係に、他の26件と同じくここで人手で決めた値。
+# `common:unit:0_1percent`）はその関数と無関係に、他の27件と同じくここで人手で決めた値。
 #
 # "0.1*" 系（0.1mm, 0.1℃, 0.1%, 0.1ppm, 0.1m/s, 0.01ppmC）は換算ミスではない。
 # 平塚市大気環境の1時間値データフォーマット説明書（images/1hour_description.pdf, 実測確認済み。
