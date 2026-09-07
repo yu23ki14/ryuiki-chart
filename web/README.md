@@ -125,7 +125,7 @@ src/db/schema.ts        ── drizzle-kit generate ──> drizzle/migrations/0
 - 中身は「意図レベルのツール」10個（`src/lib/ai/tools.ts`）。モデルが70個の関数を選ぶような作りにはしていない。
   ツールはほぼ `src/lib/queries.ts` の合成で、新しい SQL はほとんど書いていない。フォールバックとして
   `run_sql`（SELECT/WITH/EXPLAIN のみ・行数200・応答8KBまで）がある。
-- ツールが触れたテーブルから、`domain.ts` の注記（測定値の癖・観察努力バイアス・合成データ等）を
+- ツールが触れたテーブルから、レジストリ（`registry/caveat.yaml` → `src/lib/registry/`）の注記（測定値の癖・観察努力バイアス・合成データ等）を
   **決定論的に**引いて必ず証跡カードに出す（`src/lib/ai/caveats.ts`）。モデルの文章に注記の有無を委ねない。
 - 会話は `AssistantPanel`（`src/components/assistant/`）が `app/layout.tsx` に常駐して持つので、
   画面を遷移しても会話は消えない。
@@ -159,7 +159,7 @@ src/
   lib/
     db.ts         D1 接続。参照系のみ。バインド上限の分割もここ
     queries.ts    画面が使う問い合わせ（すべて async）
-    domain.ts     原本の癖と注記の文言
+    registry/     語彙レジストリ（指標・単位・注記・zone）の読み出し層。generated*.ts は再生成物
     map/          ベースマップの抽象化
 drizzle/
   migrations/     drizzle-kit が生成した D1 マイグレーション
