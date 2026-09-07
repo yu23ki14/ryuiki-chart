@@ -95,10 +95,19 @@ def pct(n: int, total: int) -> str:
 # ---------------------------------------------------------------------------
 
 def report_variable(ryuiki: sqlite3.Connection) -> dict:
+    """`variable_alias` は Phase B で (dataset, alias, source_id) 単位に分かれたため、
+    同じ (dataset, alias) に複数の source_id 違いの行がありうる（例:
+    `生物化学的酸素要求量 BOD` は measurements 側に3行）。単純な JOIN では1件の
+    measurement 行が複数の variable_alias 行にマッチして count が水増しされるため、
+    ここでは EXISTS/NOT EXISTS で「一致する行があるか」だけを見る（重複カウントしない。
+    variable_id の解決だけが目的なので source_id までは絞らない。dataset/alias が
+    同じなら variable_id は必ず一致する — build_unit_variable.py の
+    `_assert_variable_unit_consistent_per_alias` がビルド時に保証している）。
+    """
     out = {}
     unresolved_rows = []
 
-    for table, col, scope in (
+    for table, col, dataset in (
         ("measurements", "variable", "measurements"),
         ("sensor_timeseries", "datastream", "sensor_timeseries"),
     ):
@@ -107,10 +116,13 @@ def report_variable(ryuiki: sqlite3.Connection) -> dict:
             ryuiki,
             f"""
             SELECT count(*) FROM {table} t
-            JOIN reg.variable_alias va ON va.alias = t.{col} AND va.source_scope = ?
-            JOIN reg.variable v ON v.variable_id = va.variable_id
+            WHERE EXISTS (
+              SELECT 1 FROM reg.variable_alias va
+              JOIN reg.variable v ON v.variable_id = va.variable_id
+              WHERE va.alias = t.{col} AND va.dataset = ?
+            )
             """,
-            (scope,),
+            (dataset,),
         )
         unresolved = total - resolved
         out[table] = {"total": total, "resolved": resolved, "unresolved": unresolved}
@@ -120,22 +132,83 @@ def report_variable(ryuiki: sqlite3.Connection) -> dict:
             f"""
             SELECT t.{col} AS raw_label, count(*) AS n
             FROM {table} t
-            LEFT JOIN reg.variable_alias va ON va.alias = t.{col} AND va.source_scope = ?
-            LEFT JOIN reg.variable v ON v.variable_id = va.variable_id
-            WHERE v.variable_id IS NULL
+            WHERE NOT EXISTS (
+              SELECT 1 FROM reg.variable_alias va
+              JOIN reg.variable v ON v.variable_id = va.variable_id
+              WHERE va.alias = t.{col} AND va.dataset = ?
+            )
             GROUP BY t.{col}
             ORDER BY t.{col}
             """,
-            (scope,),
+            (dataset,),
         ):
-            unresolved_rows.append((scope, r["raw_label"], r["n"]))
+            unresolved_rows.append((dataset, r["raw_label"], r["n"]))
 
     out["unresolved_csv_rows"] = write_csv(
         "unresolved_variable_aliases.csv",
-        ["source_scope", "raw_label", "row_count"],
+        ["dataset", "raw_label", "row_count"],
         unresolved_rows,
     )
     return out
+
+
+# ---------------------------------------------------------------------------
+# A'. (dataset, alias, source_id) の網羅性: registry/variable_alias.csv の154組が
+# v1 の実データの組と過不足なく一致するか（docs/plans/PHASE_B_INTAKE.md 設計C）。
+#
+# build_unit_variable.py は原本 DB を一切開かない（#7, CI のため）ので、
+# 「CSVの組が実データと過不足なく一致するか」はここ（原本を読める r02）でしか
+# 検証できない。黙って落とす・黙って埋めるのではなく、両方向のズレを列挙する。
+# ---------------------------------------------------------------------------
+
+def report_alias_source_pairs(ryuiki: sqlite3.Connection) -> dict:
+    data_rows = rows(
+        ryuiki,
+        """
+        SELECT 'measurements' AS dataset, variable AS alias, COALESCE(source_id, '') AS source_id,
+               count(*) AS n
+        FROM measurements
+        GROUP BY variable, COALESCE(source_id, '')
+        UNION ALL
+        SELECT 'sensor_timeseries' AS dataset, datastream AS alias, COALESCE(source_id, '') AS source_id,
+               count(*) AS n
+        FROM sensor_timeseries
+        GROUP BY datastream, COALESCE(source_id, '')
+        """,
+    )
+    data_by_key = {(r["dataset"], r["alias"], r["source_id"]): r["n"] for r in data_rows}
+    data_keys = set(data_by_key)
+
+    registry_rows = rows(
+        ryuiki,
+        "SELECT dataset, alias, COALESCE(source_id, '') AS source_id FROM reg.variable_alias",
+    )
+    registry_keys = {(r["dataset"], r["alias"], r["source_id"]) for r in registry_rows}
+
+    csv_only = sorted(registry_keys - data_keys)
+    data_only = sorted(data_keys - registry_keys)
+
+    n_csv_only = write_csv(
+        "alias_source_pairs_csv_only.csv",
+        ["dataset", "alias", "source_id"],
+        csv_only,
+    )
+    n_data_only = write_csv(
+        "alias_source_pairs_data_only.csv",
+        ["dataset", "alias", "source_id", "row_count"],
+        [(d, a, s, data_by_key[(d, a, s)]) for d, a, s in data_only],
+    )
+
+    return {
+        "registry_total": len(registry_keys),
+        "data_total": len(data_keys),
+        "csv_only": csv_only,
+        "csv_only_csv_rows": n_csv_only,
+        "data_only": data_only,
+        "data_only_csv_rows": n_data_only,
+        "data_only_rows_by_key": data_by_key,
+        "matches": len(registry_keys & data_keys),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -253,6 +326,11 @@ def report_organism(ryuiki: sqlite3.Connection) -> dict:
 # ---------------------------------------------------------------------------
 
 def report_unit(ryuiki: sqlite3.Connection) -> dict:
+    """`variable_alias` は (dataset, alias) が複数行（source_id 違い）になりうるため、
+    report_variable と同じ理由で EXISTS/NOT EXISTS を使い、行の水増しを避ける
+    （unit_id は (dataset, alias) の中で一致することを build 時に保証済みなので、
+    「一致する行が1つでもあるか」だけを見れば足りる）。
+    """
     total_missing = scalar(
         ryuiki, "SELECT count(*) FROM measurements WHERE unit IS NULL OR unit = ''"
     )
@@ -260,10 +338,13 @@ def report_unit(ryuiki: sqlite3.Connection) -> dict:
         ryuiki,
         """
         SELECT count(*) FROM measurements m
-        LEFT JOIN reg.variable_alias va ON va.alias = m.variable AND va.source_scope = 'measurements'
-        LEFT JOIN reg.variable v ON v.variable_id = va.variable_id
         WHERE (m.unit IS NULL OR m.unit = '')
-          AND (va.unit_id IS NOT NULL OR v.unit_id IS NOT NULL)
+          AND EXISTS (
+            SELECT 1 FROM reg.variable_alias va
+            LEFT JOIN reg.variable v ON v.variable_id = va.variable_id
+            WHERE va.alias = m.variable AND va.dataset = 'measurements'
+              AND (va.unit_id IS NOT NULL OR v.unit_id IS NOT NULL)
+          )
         """,
     )
     still_missing = total_missing - filled
@@ -271,13 +352,19 @@ def report_unit(ryuiki: sqlite3.Connection) -> dict:
     by_variable = rows(
         ryuiki,
         """
-        SELECT m.variable AS raw_label, va.variable_id AS variable_id, count(*) AS n
+        SELECT m.variable AS raw_label,
+               (SELECT va.variable_id FROM reg.variable_alias va
+                WHERE va.alias = m.variable AND va.dataset = 'measurements' LIMIT 1) AS variable_id,
+               count(*) AS n
         FROM measurements m
-        LEFT JOIN reg.variable_alias va ON va.alias = m.variable AND va.source_scope = 'measurements'
-        LEFT JOIN reg.variable v ON v.variable_id = va.variable_id
         WHERE (m.unit IS NULL OR m.unit = '')
-          AND va.unit_id IS NULL AND v.unit_id IS NULL
-        GROUP BY m.variable, va.variable_id
+          AND NOT EXISTS (
+            SELECT 1 FROM reg.variable_alias va
+            LEFT JOIN reg.variable v ON v.variable_id = va.variable_id
+            WHERE va.alias = m.variable AND va.dataset = 'measurements'
+              AND (va.unit_id IS NOT NULL OR v.unit_id IS NOT NULL)
+          )
+        GROUP BY m.variable
         ORDER BY m.variable
         """,
     )
@@ -346,6 +433,29 @@ def report_needs_review(ryuiki: sqlite3.Connection, unit_still_missing_by_variab
         ],
     )
 
+    # variable_alias.stat が空/NULL の行（docs/plans/PHASE_B_ALIAS_STAT_SOURCES.md の
+    # 一次資料調査で「一次資料からは確定できなかった」ことが分かった行を含む。
+    # 黙って埋めない・落とさない契約（COLLECTOR_CONTRACT.md）に従い、機械的に全件列挙する
+    # だけで、どれが「本当に未確認」でどれが「カテゴリ属性で stat という概念自体が無い」かの
+    # 判定はしない — note 列にその理由が書いてある）。
+    alias_stat_rows = rows(
+        ryuiki,
+        """
+        SELECT dataset, alias, source_id, variable_id, note
+        FROM reg.variable_alias
+        WHERE stat IS NULL OR stat = ''
+        ORDER BY dataset, alias, source_id
+        """,
+    )
+    n_alias_stat_csv = write_csv(
+        "needs_review_alias_stat.csv",
+        ["dataset", "alias", "source_id", "variable_id", "note"],
+        [
+            (r["dataset"], r["alias"], r["source_id"], r["variable_id"], r["note"])
+            for r in alias_stat_rows
+        ],
+    )
+
     return {
         "place_count": len(place_rows),
         "place_csv_rows": n_place_csv,
@@ -355,6 +465,8 @@ def report_needs_review(ryuiki: sqlite3.Connection, unit_still_missing_by_variab
             (r["variable_id"], r["code"], r["name_ja"], r["description_ja"] or fallback_reason)
             for r in variable_rows
         ],
+        "alias_stat_count": len(alias_stat_rows),
+        "alias_stat_csv_rows": n_alias_stat_csv,
     }
 
 
@@ -467,7 +579,7 @@ def judge(ok: bool) -> str:
     return "OK" if ok else "**未達**"
 
 
-def render_markdown(v, p, o, u, nr, t) -> str:
+def render_markdown(v, p, o, u, nr, t, ap) -> str:
     lines = []
     a = lines.append
 
@@ -538,9 +650,16 @@ def render_markdown(v, p, o, u, nr, t) -> str:
         f"GBIF照合(EXACT)あり {t['exact_with_key']:,}行 / registry `status='unresolved'` "
         f"{t['registry_taxon_unresolved']:,}行（詳細は§7） | 報告のみ |"
     )
+    ap_ok = not ap["csv_only"] and not ap["data_only"]
+    a(
+        f"| 8 | `registry/variable_alias.csv` の (dataset, alias, source_id) "
+        f"{ap['registry_total']}組 ⇔ v1 実データの組 {ap['data_total']}組 | "
+        f"過不足なく一致 | 一致 {ap['matches']}組 / CSVのみ {len(ap['csv_only'])}組 / "
+        f"実データのみ {len(ap['data_only'])}組 | {judge(ap_ok)} |"
+    )
     a("")
 
-    if not (m_ok and s_ok and pm_ok and ps_ok and o_ok):
+    if not (m_ok and s_ok and pm_ok and ps_ok and o_ok and ap_ok):
         a(
             "**目標未達の項目がある（上表で「未達」と記した行）。"
             "このレポートは数字をそのまま記録するものであり、目標に合わせて"
@@ -564,12 +683,12 @@ def render_markdown(v, p, o, u, nr, t) -> str:
     a("")
     a(
         f"- `measurements` {v['measurements']['total']:,}行、"
-        f"`variable_alias`（`source_scope='measurements'`）で全件解決"
+        f"`variable_alias`（`dataset='measurements'`）で全件解決"
         f"（未解決 {v['measurements']['unresolved']:,}行）。"
     )
     a(
         f"- `sensor_timeseries` {v['sensor_timeseries']['total']:,}行、同様に "
-        f"`source_scope='sensor_timeseries'` で全件解決"
+        f"`dataset='sensor_timeseries'` で全件解決"
         f"（未解決 {v['sensor_timeseries']['unresolved']:,}行）。"
     )
     a(
@@ -632,7 +751,7 @@ def render_markdown(v, p, o, u, nr, t) -> str:
         a(f"  | `{raw_label}` | `{variable_id}` | {n:,} |")
     a("")
 
-    a("## needs_review の一覧（place / variable）")
+    a("## needs_review の一覧（place / variable / variable_alias.stat）")
     a("")
     a(
         f"- `place.status='needs_review'`: {nr['place_count']}件。"
@@ -647,6 +766,14 @@ def render_markdown(v, p, o, u, nr, t) -> str:
     )
     for variable_id, code, name_ja, description_ja in nr["variable_rows"]:
         a(f"  - `{variable_id}`（{code} / {name_ja}）: {description_ja}")
+    a(
+        f"- `variable_alias.stat` が空の行: {nr['alias_stat_count']}件"
+        f"（一次資料調査で確定できなかったもの・統計量という概念自体が無いカテゴリ属性の"
+        f"両方を含む機械的な列挙。理由は各行の `note` 列を参照。"
+        f"docs/plans/PHASE_B_ALIAS_STAT_SOURCES.md 参照）。"
+        f"一覧: `reports/registry_resolution/needs_review_alias_stat.csv`"
+        f"（{nr['alias_stat_csv_rows']}行）。"
+    )
     a("")
 
     a("## 7. taxa → taxon_id（報告のみ）／ status='unresolved' の taxon")
@@ -706,6 +833,36 @@ def render_markdown(v, p, o, u, nr, t) -> str:
         )
     a("")
 
+    a("## 8. (dataset, alias, source_id) の網羅性（docs/plans/PHASE_B_INTAKE.md 設計C）")
+    a("")
+    a(
+        "`registry/variable_alias.csv` は `build_unit_variable.py` が原本 DB を一切開かずに "
+        "作る（#7・CI のため）。そのため「154組が v1 の実データの組と過不足なく一致するか」は "
+        "原本を読めるここでしか検証できない。**片方でもズレがあれば、黙って落とす・"
+        "黙って埋めるのではなくここに列挙する。**"
+    )
+    a("")
+    a(
+        f"- registry 側 (dataset, alias, source_id): {ap['registry_total']}組。"
+        f"v1 実データ側: {ap['data_total']}組。一致: {ap['matches']}組。"
+    )
+    a(
+        f"- CSV にあるが実データに無い組: {len(ap['csv_only'])}組。"
+        f"一覧: `reports/registry_resolution/alias_source_pairs_csv_only.csv`"
+        f"（{ap['csv_only_csv_rows']}行。0行ならヘッダのみ）。"
+    )
+    for dataset, alias, source_id in ap["csv_only"]:
+        a(f"  - `{dataset}` / `{alias}` / `{source_id or '(空)'}`")
+    a(
+        f"- 実データにあるが CSV に無い組: {len(ap['data_only'])}組。"
+        f"一覧: `reports/registry_resolution/alias_source_pairs_data_only.csv`"
+        f"（{ap['data_only_csv_rows']}行。0行ならヘッダのみ）。"
+    )
+    for dataset, alias, source_id in ap["data_only"]:
+        n = ap["data_only_rows_by_key"][(dataset, alias, source_id)]
+        a(f"  - `{dataset}` / `{alias}` / `{source_id or '(空)'}`（{n:,}行）")
+    a("")
+
     a("## 生成ファイル一覧")
     a("")
     a("| ファイル | 行数（ヘッダ除く） | 内容 |")
@@ -715,7 +872,16 @@ def render_markdown(v, p, o, u, nr, t) -> str:
     a(f"| `unresolved_organism_records.csv` | {o['unresolved_csv_rows']} | taxon_id が付かない occurrence |")
     a(f"| `needs_review_place.csv` | {nr['place_csv_rows']} | 座標未確認等の place |")
     a(f"| `needs_review_variable.csv` | {nr['variable_csv_rows']} | 単位・粒度未確定の variable |")
+    a(f"| `needs_review_alias_stat.csv` | {nr['alias_stat_csv_rows']} | stat が空の variable_alias 行 |")
     a(f"| `unresolved_taxa.csv` | {t['unresolved_csv_rows']} | GBIF未照合の taxa（全件） |")
+    a(
+        f"| `alias_source_pairs_csv_only.csv` | {ap['csv_only_csv_rows']} | "
+        "CSVにあるが実データに無い (dataset, alias, source_id) |"
+    )
+    a(
+        f"| `alias_source_pairs_data_only.csv` | {ap['data_only_csv_rows']} | "
+        "実データにあるがCSVに無い (dataset, alias, source_id) |"
+    )
     a("")
 
     return "\n".join(lines) + "\n"
@@ -734,9 +900,10 @@ def main() -> None:
         u = report_unit(ryuiki)
         nr = report_needs_review(ryuiki, u["still_missing_by_variable"])
         t = report_taxa(ryuiki)
+        ap = report_alias_source_pairs(ryuiki)
 
         REPORT_MD.parent.mkdir(parents=True, exist_ok=True)
-        REPORT_MD.write_text(render_markdown(v, p, o, u, nr, t), encoding="utf-8")
+        REPORT_MD.write_text(render_markdown(v, p, o, u, nr, t, ap), encoding="utf-8")
         print(f"完了: {REPORT_MD}")
         print(f"CSV: {CSV_DIR}/*.csv")
     finally:
