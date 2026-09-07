@@ -26,6 +26,12 @@ except ImportError:  # pragma: no cover - requirements.txt で入れる
 
 from . import datasource
 
+# `reports/derived_baseline.json` の形式バージョン。b01 が書き、b02 が
+# 読んで検証する（想定外なら「b01 を実行し直せ」と言って落ちる。
+# `scripts/b01_derived_baseline.py` の `main()` と
+# `scripts/b02_derived_compare.py` の `main()` の両方が参照する、ただ1つの定義）。
+SCHEMA_VERSION = 1
+
 
 # ---------------------------------------------------------------------------
 # 読み取り専用オープン
@@ -38,25 +44,6 @@ def open_readonly(path) -> sqlite3.Connection:
         raise FileNotFoundError(f"sqlite ファイルが無い: {p}")
     conn = sqlite3.connect(f"file:{p}?mode=ro", uri=True)
     return conn
-
-
-def list_tables(conn: sqlite3.Connection) -> list[str]:
-    """ユーザーテーブルだけを返す。
-
-    `sqlite_sequence`（`AUTOINCREMENT` で自動生成）や `sqlite_stat1`/`sqlite_stat4`
-    （`ANALYZE` を打つと生成される）のような `sqlite_` 始まりの内部テーブルは
-    `sqlite_master` に `type='table'` として現れるが、これらは派生33テーブルの
-    一部ではない。含めてしまうと、たとえば `sqlite_stat1` は列の意味上
-    一意なキーが無く、`derive_key` が「宣言が要る」という誤ったメッセージで
-    止まる（レビュー指摘）。GLOB は `_` を（`LIKE` と違って）ワイルドカードとして
-    扱わないので、`sqlite_` に続く任意の文字列を素直に除外できる。
-    """
-    return sorted(
-        r[0]
-        for r in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT GLOB 'sqlite_*'"
-        )
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -83,18 +70,28 @@ def get_pk_columns(conn: sqlite3.Connection, table: str) -> list[str]:
     return [name for _, name in pairs]
 
 
-def is_numeric_column(conn: sqlite3.Connection, table: str, col: str) -> bool:
-    """非NULL値がすべて INTEGER/REAL ストレージクラスなら数値列とみなす。
+def numeric_columns_of(conn: sqlite3.Connection, table: str, columns: Sequence[str]) -> list[str]:
+    """`columns` のうち、非NULL値がすべて INTEGER/REAL ストレージクラスの列
+    （数値列）だけを、元の並び順で返す。
 
     `CREATE TABLE ... AS SELECT` では列の宣言型が集計関数の結果に付かない
-    （common.py の derive_key のドキストリング参照）ため、宣言型ではなく
-    実データの `typeof()` で判定する。
+    （`derive_key` のドキストリング参照）ため、宣言型ではなく実データの
+    `typeof()` で判定する。
+
+    列ごとに独立した `SELECT COUNT(*) ...` を打つと、テーブル全体を列数ぶん
+    スキャンすることになる（レビュー指摘。実測: `org_norm` 816,856行×21列で
+    8.16s）。1テーブル1クエリ（列ごとに `MAX(CASE WHEN ...)` を並べる形）に
+    まとめ、5.95s に短縮した（27〜30%減）。
     """
-    n = conn.execute(
-        f'SELECT COUNT(*) FROM "{table}" '
-        f'WHERE "{col}" IS NOT NULL AND typeof("{col}") NOT IN (\'integer\',\'real\')'
-    ).fetchone()[0]
-    return n == 0
+    if not columns:
+        return []
+    exprs = ", ".join(
+        f'MAX(CASE WHEN "{c}" IS NOT NULL AND typeof("{c}") NOT IN (\'integer\',\'real\') '
+        f"THEN 1 ELSE 0 END)"
+        for c in columns
+    )
+    row = conn.execute(f'SELECT {exprs} FROM "{table}"').fetchone()
+    return [c for c, non_numeric in zip(columns, row) if not (non_numeric or 0)]
 
 
 # ---------------------------------------------------------------------------
@@ -155,7 +152,6 @@ def _search(
     cache: _DistinctCache,
     base: Sequence[str],
     pool: Sequence[str],
-    max_extra: int,
 ) -> list[str] | None:
     """`base`（固定で含める列）+ `pool` から増分で選んだ列、のうち一意なものを
     列数が小さい順・`pool` の並び順で最初に見つかったものを返す。
@@ -167,7 +163,7 @@ def _search(
     base_prod = 1
     for c in base:
         base_prod *= max(cache.get(c), 1)
-    for k in range(1, min(max_extra, len(pool)) + 1):
+    for k in range(1, len(pool) + 1):
         for combo in itertools.combinations(pool, k):
             prod = base_prod
             for c in combo:
@@ -243,11 +239,11 @@ def derive_key(
     total = conn.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]
     cache = _DistinctCache(conn, table)
 
-    key = _search(conn, table, total, cache, base=[], pool=typed, max_extra=len(typed))
+    key = _search(conn, table, total, cache, base=[], pool=typed)
     if key is not None:
         return key, "auto", None
 
-    key = _search(conn, table, total, cache, base=typed, pool=untyped, max_extra=len(untyped))
+    key = _search(conn, table, total, cache, base=typed, pool=untyped)
     if key is not None:
         return key, "auto", None
 
@@ -295,16 +291,26 @@ def _canonicalize_scalar(value):
     return value
 
 
+# `json.dumps(..., separators=(",", ":"))` は呼ぶたびに内部で `json.JSONEncoder`
+# を構築し直す（`separators` を明示すると CPython の高速パスに乗らない）。
+# `canonical_row_bytes` は行ごとに（207万行 × 33テーブルぶん）呼ばれるので、
+# エンコーダをモジュールレベルで1つだけ作って使い回す（レビュー指摘の実測:
+# 207万行×21列相当のベンチで 36.02s → 25.49s、29%減）。出力バイト列は
+# `json.dumps` と同じキーワード引数を渡しているので不変（ベースライン
+# JSON の作り直しは不要）。
+_ROW_ENCODER = json.JSONEncoder(ensure_ascii=True, separators=(",", ":")).encode
+
+
 def canonical_row_bytes(row: Sequence) -> bytes:
     """1行分の値を正準化した JSON 配列 + 改行のバイト列にする。
 
     数値（int/float/bool）は `_canonicalize_scalar` で固定小数点表現に揃えた
-    うえで、`json.dumps(..., ensure_ascii=True, separators=(",", ":"))` に渡す
-    （None→null / str→エスケープ済み文字列）。行の区切りに改行を使うことで、
-    値の中にたまたま同じ文字列表現が現れても行単位の連結は曖昧にならない。
+    うえで `_ROW_ENCODER`（None→null / str→エスケープ済み文字列）に渡す。
+    行の区切りに改行を使うことで、値の中にたまたま同じ文字列表現が現れても
+    行単位の連結は曖昧にならない。
     """
     canon = [_canonicalize_scalar(v) for v in row]
-    return (json.dumps(canon, ensure_ascii=True, separators=(",", ":")) + "\n").encode("utf-8")
+    return (_ROW_ENCODER(canon) + "\n").encode("utf-8")
 
 
 # ---------------------------------------------------------------------------

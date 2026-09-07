@@ -108,13 +108,23 @@ def test_format_number_fixed_six_decimals():
     assert common.format_number(0) == "0.000000"
 
 
-def test_is_numeric_column(fixture_db):
+def test_numeric_columns_of(fixture_db):
+    """回帰テスト（レビュー指摘 B-3）。列ごとに別クエリを打っていたのを
+    1テーブル1クエリにまとめた後も、判定結果自体は変わらないこと。
+    """
     conn = common.open_readonly(fixture_db)
     try:
-        assert common.is_numeric_column(conn, "t_dims", "year") is True
-        assert common.is_numeric_column(conn, "t_dims", "avg") is True
-        assert common.is_numeric_column(conn, "t_dims", "site") is False
-        assert common.is_numeric_column(conn, "t_dims", "kind") is False
+        columns = common.get_columns(conn, "t_dims")
+        numeric = common.numeric_columns_of(conn, "t_dims", columns)
+    finally:
+        conn.close()
+    assert numeric == ["year", "n", "avg"]
+
+
+def test_numeric_columns_of_empty_columns_list(fixture_db):
+    conn = common.open_readonly(fixture_db)
+    try:
+        assert common.numeric_columns_of(conn, "t_dims", []) == []
     finally:
         conn.close()
 

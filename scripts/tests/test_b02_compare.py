@@ -29,25 +29,19 @@ def _make_baseline(tmp_path, *, include_dupe=False):
     return db_path, baseline_json, baseline
 
 
-def _run_cli(baseline_json, baseline_data, candidate, out_md, tolerance=0.0):
-    return subprocess.run(
-        [
-            sys.executable,
-            str(B02_SCRIPT),
-            "--baseline-json",
-            str(baseline_json),
-            "--baseline-data",
-            str(baseline_data),
-            "--candidate",
-            str(candidate),
-            "--tolerance",
-            str(tolerance),
-            "--out-md",
-            str(out_md),
-        ],
-        capture_output=True,
-        text=True,
-    )
+def _run_cli(baseline_json, baseline_data, candidate, out_md, tolerance=0.0, reduced=False):
+    """b02 の CLI を起動する。`baseline_data=None` なら `--baseline-data` を
+    渡さない（`reduced=True` と組み合わせて縮退モードのテストに使う。
+    レビュー指摘 A-6: 以前はこのためだけに `subprocess.run` を呼び出し側で
+    再実装していた）。
+    """
+    args = [sys.executable, str(B02_SCRIPT), "--baseline-json", str(baseline_json)]
+    if baseline_data is not None:
+        args += ["--baseline-data", str(baseline_data)]
+    if reduced:
+        args.append("--reduced")
+    args += ["--candidate", str(candidate), "--tolerance", str(tolerance), "--out-md", str(out_md)]
+    return subprocess.run(args, capture_output=True, text=True)
 
 
 def test_identical_candidate_matches_and_exits_zero(tmp_path):
@@ -232,6 +226,28 @@ def test_stale_baseline_data_is_reported_and_exits_nonzero(tmp_path):
     assert "食い違う" in result.stderr or "整合性" in out_md.read_text(encoding="utf-8")
 
 
+def test_unsupported_schema_version_is_rejected(tmp_path):
+    """回帰テスト（レビュー指摘 A-4）。`schema_version` は b01 が書くだけで
+    誰も読んでいなかった。b02 が読んで検証し、想定外なら b01 の再実行を
+    促して非0で落ちることを確認する。
+    """
+    db_path, baseline_json_path, baseline = _make_baseline(tmp_path)
+
+    wrong_version = copy.deepcopy(baseline)
+    wrong_version["schema_version"] = 999
+    wrong_version_path = tmp_path / "wrong_version_baseline.json"
+    b01.write_json(wrong_version, wrong_version_path)
+
+    candidate_db = tmp_path / "candidate.sqlite"
+    make_fixture_db(candidate_db, include_dupe=False)
+
+    out_md = tmp_path / "reconciliation.md"
+    result = _run_cli(wrong_version_path, db_path, candidate_db, out_md)
+
+    assert result.returncode != 0
+    assert "schema_version" in (result.stdout + result.stderr)
+
+
 def _make_null_dim_baseline(tmp_path, *, rows=None):
     db_path = tmp_path / "baseline_null.sqlite"
     make_null_key_fixture_db(db_path, rows=rows)
@@ -282,23 +298,7 @@ def test_reduced_mode_rejects_nonzero_tolerance(tmp_path):
     make_fixture_db(candidate_db, include_dupe=False)
     out_md = tmp_path / "reconciliation.md"
 
-    result = subprocess.run(
-        [
-            sys.executable,
-            str(B02_SCRIPT),
-            "--baseline-json",
-            str(baseline_json),
-            "--reduced",
-            "--candidate",
-            str(candidate_db),
-            "--tolerance",
-            "1e-6",
-            "--out-md",
-            str(out_md),
-        ],
-        capture_output=True,
-        text=True,
-    )
+    result = _run_cli(baseline_json, None, candidate_db, out_md, tolerance=1e-6, reduced=True)
 
     assert result.returncode != 0
     assert "tolerance" in (result.stdout + result.stderr)

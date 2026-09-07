@@ -51,14 +51,35 @@ def test_render_markdown_is_deterministic(tmp_path):
     make_fixture_db(db_path, include_dupe=False)
     keys_yaml = tmp_path / "derived_keys.yaml"
     keys_yaml.write_text("{}\n", encoding="utf-8")
-    baseline, _ = b01.build_baseline(db_path, keys_yaml)
+    baseline, key_sources = b01.build_baseline(db_path, keys_yaml)
 
     destinations = {}
-    md1 = b01.render_markdown(baseline, destinations)
-    md2 = b01.render_markdown(baseline, destinations)
+    md1 = b01.render_markdown(baseline, destinations, key_sources)
+    md2 = b01.render_markdown(baseline, destinations, key_sources)
     assert md1 == md2
     assert "t_dims" in md1
     assert "t_pk" in md1
+
+
+def test_render_markdown_shows_declared_key_reason(tmp_path):
+    """回帰テスト（レビュー指摘 A-5）。`derived_keys.yaml` の宣言キーには
+    「なぜ自動で決まらないか」の理由が必ず添えられる決まりなので、
+    `derived_baseline.md` の「キーの由来の内訳」節にもその理由を出す。
+    """
+    db_path = tmp_path / "fixture.sqlite"
+    make_fixture_db(db_path, include_dupe=False)
+    keys_yaml = tmp_path / "derived_keys.yaml"
+    reason = "テスト用の宣言理由: この列組み合わせでなければ一意にならないため"
+    keys_yaml.write_text(
+        f"t_dims:\n  key: [site, year, kind]\n  reason: \"{reason}\"\n",
+        encoding="utf-8",
+    )
+    baseline, key_sources = b01.build_baseline(db_path, keys_yaml)
+    assert baseline["tables"]["t_dims"]["key_source"] == "declared"
+
+    md = b01.render_markdown(baseline, {}, key_sources)
+    assert "t_dims" in md
+    assert reason in md
 
 
 def test_cli_two_runs_are_byte_identical(tmp_path):

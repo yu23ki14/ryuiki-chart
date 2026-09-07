@@ -42,8 +42,6 @@ DEFAULT_DESTINATIONS_YAML = ROOT / "scripts" / "reconcile" / "adr0011_destinatio
 DEFAULT_OUT_JSON = ROOT / "reports" / "derived_baseline.json"
 DEFAULT_OUT_MD = ROOT / "reports" / "derived_baseline.md"
 
-SCHEMA_VERSION = 1
-
 
 def build_baseline(db_path, keys_yaml_path) -> tuple[dict, dict[str, int]]:
     """`db_path` の全テーブルを指紋化する。`(baseline, key_sources)` を返す
@@ -51,8 +49,9 @@ def build_baseline(db_path, keys_yaml_path) -> tuple[dict, dict[str, int]]:
 
     `baseline` の構造はそのまま `reports/derived_baseline.json` の中身になる
     （`write_json` に渡す）。`key_sources` はキーの由来（`"pk"`/`"auto"`/
-    `"declared"`）ごとのテーブル数で、CLI のログ出力にだけ使う
-    （`main()` 参照。決定論が要る出力ファイルには含めない）。
+    `"declared"`）ごとのテーブル数で、CLI のログ出力と `render_markdown` の
+    「キーの由来の内訳」節の両方に使う（`main()` 参照。決定論が要る出力
+    ファイルには含めない）。
 
     b02 はこの関数を使わず、この関数が書いた JSON を読む側（`derive_key` を
     再実行しない。理由は docs/plans/PHASE_B_RECONCILIATION.md 参照）。
@@ -61,16 +60,15 @@ def build_baseline(db_path, keys_yaml_path) -> tuple[dict, dict[str, int]]:
     overrides = common.load_key_overrides(keys_yaml_path)
     source = datasource.SqliteSource(conn)
     try:
-        tables = common.list_tables(conn)
         table_entries = {}
         key_sources: dict[str, int] = {}
-        for table in tables:
+        for table in source.tables():
             columns = common.get_columns(conn, table)
             column_types = common.get_column_types(conn, table)
             key, key_source, key_note = common.derive_key(conn, table, overrides)
             key_sources[key_source] = key_sources.get(key_source, 0) + 1
 
-            numeric_columns = [c for c in columns if common.is_numeric_column(conn, table, c)]
+            numeric_columns = common.numeric_columns_of(conn, table, columns)
             fp = common.compute_fingerprint(source, table, columns, key, numeric_columns)
 
             table_entries[table] = {
@@ -85,7 +83,7 @@ def build_baseline(db_path, keys_yaml_path) -> tuple[dict, dict[str, int]]:
 
         total_rows = sum(t["row_count"] for t in table_entries.values())
         baseline = {
-            "schema_version": SCHEMA_VERSION,
+            "schema_version": common.SCHEMA_VERSION,
             "source_db": pathlib.Path(db_path).name,
             "table_count": len(table_entries),
             "total_rows": total_rows,
@@ -103,7 +101,7 @@ def write_json(baseline: dict, out_path) -> None:
     out_path.write_text(text, encoding="utf-8")
 
 
-def render_markdown(baseline: dict, destinations: dict[str, dict]) -> str:
+def render_markdown(baseline: dict, destinations: dict[str, dict], key_sources: dict[str, int]) -> str:
     lines: list[str] = []
     a = lines.append
 
@@ -144,18 +142,20 @@ def render_markdown(baseline: dict, destinations: dict[str, dict]) -> str:
     declared = [t for t, e in baseline["tables"].items() if e["key_source"] == "declared"]
     a("## キーの由来の内訳")
     a("")
-    counts: dict[str, int] = {}
-    for e in baseline["tables"].values():
-        counts[e["key_source"]] = counts.get(e["key_source"], 0) + 1
     for source_kind in ("pk", "auto", "declared"):
-        if source_kind in counts:
-            a(f"- `{source_kind}`: {counts[source_kind]}テーブル")
+        if source_kind in key_sources:
+            a(f"- `{source_kind}`: {key_sources[source_kind]}テーブル")
     a("")
     if declared:
         a(
-            f"`declared`（`scripts/reconcile/derived_keys.yaml` の宣言に頼ったテーブル）: "
-            f"{', '.join(f'`{t}`' for t in sorted(declared))}"
+            "`declared`（`scripts/reconcile/derived_keys.yaml` の宣言に頼ったテーブル）。"
+            "宣言キーには「なぜ自動で決まらないか」の理由（`derived_keys.yaml` の"
+            "`reason`）を必ず添えることになっているので、ここにその理由も出す:"
         )
+        a("")
+        for t in sorted(declared):
+            note = baseline["tables"][t].get("key_note") or "（理由が記録されていない）"
+            a(f"- `{t}`: {note}")
     else:
         a(
             "`declared` は0件。33テーブルすべて自動導出できた"
@@ -198,7 +198,7 @@ def main() -> None:
     print(f"→ {args.out_json}")
 
     destinations = common.load_destinations(args.destinations_yaml)
-    md = render_markdown(baseline, destinations)
+    md = render_markdown(baseline, destinations, key_sources)
     out_md = pathlib.Path(args.out_md)
     out_md.parent.mkdir(parents=True, exist_ok=True)
     out_md.write_text(md, encoding="utf-8")

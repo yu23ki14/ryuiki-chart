@@ -30,6 +30,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import pathlib
 import sys
@@ -147,6 +148,20 @@ def _compare_full(
     candidate_source: datasource.DataSource,
     tolerance: float,
 ) -> dict:
+    """完全モードの1テーブル分の突合。
+
+    マージ結合でベースライン行を読みながら、その場で `entry`（記録された
+    指紋）に対する鮮度チェック（B-1）も行う。以前は突合の前に
+    `check_baseline_freshness` が全33テーブルのベースラインをフルスキャンし、
+    直後にこの関数がまた同じベースラインをキー順に読み直しており、完全モード
+    実測 4m2.6s のうち93.33秒（38.5%）が鮮度チェックの二重スキャン分だった
+    （レビュー指摘）。ここでベースライン行を `pop()` するたびに
+    `canonical_row_bytes` を sha256 へ流し込み、ループを抜けたところで
+    `entry["row_count"]`/`entry["content_hash"]` と突き合わせれば、
+    別パスは要らない。候補に無いテーブル・列が過不足するテーブルの鮮度は
+    `compare_all` 側の `_baseline_fingerprint_matches` が別途見る
+    （そちらはマージ結合が無いのでベースライン単独の1パスのまま）。
+    """
     columns = [c["name"] for c in entry["columns"]]
     key = entry["key"]
     numeric_columns = list(entry["numeric_columns"].keys())
@@ -161,6 +176,7 @@ def _compare_full(
 
     baseline_stream = _KeyedStream(baseline_source, table, columns, key)
     candidate_stream = _KeyedStream(candidate_source, table, columns, key)
+    baseline_hasher = hashlib.sha256()
 
     baseline_row_count = 0
     candidate_row_count = 0
@@ -178,12 +194,16 @@ def _compare_full(
 
     # 両ソースをキー順にマージ結合する。片側にしか無いキーは前へ進めるだけ、
     # 両側にあるキーだけ値を突き合わせる（`_KeyedStream` のドキストリング参照）。
+    # ベースライン側は「候補に無いキー」「共通キー」のどちらの分岐でも
+    # 必ず `pop()` されるので、候補に存在しない・候補の方が少ないテーブルでも
+    # ベースラインの全行がハッシュに入る（鮮度チェックが成立する）。
     while baseline_stream.peek_key() is not None or candidate_stream.peek_key() is not None:
         bk = baseline_stream.peek_key()
         ck = candidate_stream.peek_key()
         if bk is not None and (ck is None or _key_less(bk, ck)):
-            baseline_stream.pop()
+            _, brow = baseline_stream.pop()
             baseline_row_count += 1
+            baseline_hasher.update(common.canonical_row_bytes(brow))
             only_in_baseline_count += 1
             if len(only_in_baseline_sample) < SAMPLE_LIMIT:
                 only_in_baseline_sample.append(list(bk))
@@ -201,6 +221,7 @@ def _compare_full(
         _, crow = candidate_stream.pop()
         baseline_row_count += 1
         candidate_row_count += 1
+        baseline_hasher.update(common.canonical_row_bytes(brow))
 
         for col in numeric_columns:
             i = numeric_idx[col]
@@ -240,6 +261,11 @@ def _compare_full(
             f"候補側に重複キーが{candidate_stream.dup_count}件ある"
             f"（先頭N件: {candidate_stream.dup_keys[:5]}）。"
         )
+
+    baseline_content_hash = "sha256:" + baseline_hasher.hexdigest()
+    result["baseline_stale"] = (
+        baseline_row_count != entry["row_count"] or baseline_content_hash != entry["content_hash"]
+    )
 
     result["baseline_row_count"] = baseline_row_count
     result["candidate_row_count"] = candidate_row_count
@@ -323,6 +349,54 @@ def _compare_reduced(table: str, entry: dict, candidate_source: datasource.DataS
     return result
 
 
+def _baseline_fingerprint_matches(baseline_source, table: str, entry: dict) -> bool:
+    """`baseline_source`（実データ）を読み直した指紋が `entry`（`derived_baseline.json`
+    の記録）と一致するか。候補にこのテーブルが無い・列が過不足するために
+    `_compare_full` の（鮮度チェックも兼ねる）マージ結合に乗せられない
+    テーブルの鮮度だけを、ここで別途1パス読んで確認する
+    （B-1: `_compare_full` に乗る大多数のテーブルは、そちらが自前で
+    鮮度チェックまで済ませるので、ここは通らない）。
+
+    `numeric_columns=[]` を渡して集計（min/max/合計）の計算を省く
+    （鮮度判定は `row_count`/`content_hash` だけを見るので不要。
+    `content_hash` は全列を読んで計算するので、これを渡しても変わらない）。
+    """
+    if not baseline_source.has_table(table):
+        return False
+    columns = [c["name"] for c in entry["columns"]]
+    key = entry["key"]
+    fp = common.compute_fingerprint(baseline_source, table, columns, key, numeric_columns=[])
+    return fp["row_count"] == entry["row_count"] and fp["content_hash"] == entry["content_hash"]
+
+
+def _unresolved_result(
+    mode: str,
+    status: str,
+    baseline_row_count: int,
+    candidate_row_count: int,
+    notes: list[str],
+    baseline_source,
+    table: str,
+    entry: dict,
+) -> dict:
+    """`missing_in_candidate` / `incomparable`（候補と行レベルで突き合わせられない
+    テーブル）の結果 dict を組み立てる共通ビルダー（レビュー指摘 A-7:
+    以前はこの2つがほぼ同じ形の dict をそれぞれ手で組み立てていた）。
+    """
+    result = {
+        "mode": mode,
+        "status": status,
+        "baseline_row_count": baseline_row_count,
+        "candidate_row_count": candidate_row_count,
+        "row_count_diff": candidate_row_count - baseline_row_count,
+        "notes": notes,
+        "numeric_diffs": {},
+    }
+    if baseline_source is not None:
+        result["baseline_stale"] = not _baseline_fingerprint_matches(baseline_source, table, entry)
+    return result
+
+
 def compare_all(
     baseline_json: dict, baseline_source, candidate_source, tolerance: float
 ) -> tuple[dict, list[str]]:
@@ -330,6 +404,9 @@ def compare_all(
 
     戻り値は `(results, extra_tables)`。`results` はベースラインが持つ33
     テーブルについての突合結果（このゲートの合否＝終了コードを決める）。
+    完全モードでは各エントリに `baseline_stale`（`derived_baseline.json` の
+    記録が実データと食い違うか）も入る——呼び出し側（`main()`）はこれを
+    集めて「b01 を再実行してコミットし忘れている」を報告する。
     `extra_tables` は「候補側にはあるがベースライン（v1）には無いテーブル」
     （降順ではなく名前順）で、**ゲートの合否には含めない**——このゲートの
     合格条件は「v1 の33テーブルを再現できたか」であり、候補が余分にテーブルを
@@ -342,15 +419,16 @@ def compare_all(
     for table, entry in sorted(baseline_json["tables"].items()):
         mode = "full" if baseline_source is not None else "reduced"
         if not candidate_source.has_table(table):
-            results[table] = {
-                "mode": mode,
-                "status": "missing_in_candidate",
-                "baseline_row_count": entry["row_count"],
-                "candidate_row_count": 0,
-                "row_count_diff": -entry["row_count"],
-                "notes": ["候補側にこのテーブルが無い。"],
-                "numeric_diffs": {},
-            }
+            results[table] = _unresolved_result(
+                mode,
+                "missing_in_candidate",
+                entry["row_count"],
+                0,
+                ["候補側にこのテーブルが無い。"],
+                baseline_source,
+                table,
+                entry,
+            )
             continue
 
         candidate_columns = set(candidate_source.columns(table))
@@ -366,15 +444,11 @@ def compare_all(
                 notes.append(
                     f"候補側に余分な列がある（『同じ形』という前提が崩れている）: {extra_columns}"
                 )
-            results[table] = {
-                "mode": mode,
-                "status": "incomparable",
-                "baseline_row_count": entry["row_count"],
-                "candidate_row_count": candidate_source.row_count(table),
-                "row_count_diff": candidate_source.row_count(table) - entry["row_count"],
-                "notes": notes,
-                "numeric_diffs": {},
-            }
+            candidate_row_count = candidate_source.row_count(table)  # 1回だけ呼ぶ
+            results[table] = _unresolved_result(
+                mode, "incomparable", entry["row_count"], candidate_row_count, notes,
+                baseline_source, table, entry,
+            )
             continue
 
         if baseline_source is not None:
@@ -384,25 +458,6 @@ def compare_all(
 
     extra_tables = sorted(set(candidate_source.tables()) - set(baseline_json["tables"].keys()))
     return results, extra_tables
-
-
-def check_baseline_freshness(baseline_json: dict, baseline_source) -> list[str]:
-    """`baseline_source`（実データ）から再計算した指紋が `baseline_json` の記録と
-    一致するか確認する。食い違いがあれば、そのテーブル名を返す
-    （= b01 を再実行してコミットし直す必要がある、という意味）。
-    """
-    stale: list[str] = []
-    for table, entry in sorted(baseline_json["tables"].items()):
-        if not baseline_source.has_table(table):
-            stale.append(table)
-            continue
-        columns = [c["name"] for c in entry["columns"]]
-        key = entry["key"]
-        numeric_columns = list(entry["numeric_columns"].keys())
-        fp = common.compute_fingerprint(baseline_source, table, columns, key, numeric_columns)
-        if fp["row_count"] != entry["row_count"] or fp["content_hash"] != entry["content_hash"]:
-            stale.append(table)
-    return stale
 
 
 # ---------------------------------------------------------------------------
@@ -558,6 +613,12 @@ def main() -> int:
             "先に `.venv/bin/python3 scripts/b01_derived_baseline.py` を実行すること。"
         )
     baseline_json = json.loads(baseline_json_path.read_text(encoding="utf-8"))
+    if baseline_json.get("schema_version") != common.SCHEMA_VERSION:
+        sys.exit(
+            f"{baseline_json_path} の schema_version が想定と異なる"
+            f"（期待 {common.SCHEMA_VERSION}、実際 {baseline_json.get('schema_version')!r}）。"
+            "scripts/b01_derived_baseline.py を実行して作り直すこと。"
+        )
 
     if args.reduced:
         baseline_data_path = None
@@ -582,10 +643,8 @@ def main() -> int:
 
     candidate_source = datasource.open_source(args.candidate)
 
-    stale_tables: list[str] = []
     if baseline_data_path is not None:
         baseline_source = datasource.open_source(baseline_data_path)
-        stale_tables = check_baseline_freshness(baseline_json, baseline_source)
         mode = "full"
     else:
         baseline_source = None
@@ -596,6 +655,9 @@ def main() -> int:
         )
 
     results, extra_tables = compare_all(baseline_json, baseline_source, candidate_source, args.tolerance)
+    # 鮮度チェックは `compare_all` が各テーブルの結果に畳み込んでいる
+    # （`_compare_full` のマージ結合中、または `_unresolved_result` 経由。B-1）。
+    stale_tables = sorted(t for t, r in results.items() if r.get("baseline_stale"))
 
     md = render_markdown(results, mode, args.tolerance, stale_tables, extra_tables)
     out_md = pathlib.Path(args.out_md)
