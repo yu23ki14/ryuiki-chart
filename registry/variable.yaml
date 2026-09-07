@@ -508,7 +508,7 @@ variables:
     value_type: num
     default_stat: null
     higher_is_worse: null
-    description_ja: "公共用水域水質検体値データファイル利用説明書（国立環境研究所, 平成27年4月）の一般項目ファイル項目ID 090700「流量」に基づく。単位は m3/s（欠測時は\"99999\"、有効桁数・報告下限値の設定なし）"
+    description_ja: "河川などを流れる水の量（流量）。単位時間あたりに流れる水の体積。環境省 公共用水域水質（検体値）の項目090700に基づく"
     status: ok
   - variable_id: common:variable:hydro.groundwater_level
     code: hydro.groundwater_level
