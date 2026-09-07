@@ -79,6 +79,34 @@ def _assert_variable_unit_consistent_per_alias(rows: list[dict]) -> None:
         seen[key] = val
 
 
+def _assert_fiscal_year_not_first_when_mixed(rows: list[dict]) -> None:
+    """`web/scripts/lib/registry-codegen.mjs` の `dedupeByAlias()` は、同じ alias
+    文字列を持つ複数行（`(dataset, alias, source_id)` の分割で増えた分）のうち
+    CSV の行順で最初の1行だけを代表として残す。ある alias に
+    `grain != 'fiscal_year'` の行が1つでもあるなら、その alias の最初の行
+    （CSV順）も `grain != 'fiscal_year'` でなければならない。さもないと
+    `primaryAlias()`/`buildClientVariableMaps()` がこの alias を誤って
+    fiscal_year 扱いし、`VARIABLE_SHORT`/`VARIABLE_NOTE` からその alias が
+    黙って抜け落ちる（code-review 指摘: 以前はコードコメントだけが前提を
+    保証しており、ビルドは落ちなかった）。
+    """
+    first_grain: dict[tuple, str] = {}
+    grains: dict[tuple, set] = {}
+    for r in rows:
+        key = (r["dataset"], r["alias"])
+        grain = r.get("grain") or ""
+        first_grain.setdefault(key, grain)
+        grains.setdefault(key, set()).add(grain)
+    for key, first in first_grain.items():
+        if first == "fiscal_year" and grains[key] != {"fiscal_year"}:
+            raise AssertionError(
+                f"registry/variable_alias.csv: {key!r} の最初の行が "
+                f"grain='fiscal_year' だが、同じ alias に他の grain の行がある: "
+                f"{sorted(grains[key])}。dedupeByAlias() がこの alias を誤って "
+                "fiscal_year 扱いする。grain='fiscal_year' でない行を先に置くこと。"
+            )
+
+
 # grain/stat のコードリスト。一次資料調査（docs/plans/PHASE_B_ALIAS_STAT_SOURCES.md）で
 # (dataset, alias, source_id) の組ごとに固定1値へ決め切ったため、'mixed' のような
 # 「行ごとに決まる」値はもう無い。ここにあるのは実際に registry/variable_alias.csv で
@@ -125,6 +153,7 @@ def _load_variable_alias_csv() -> list[dict]:
     )
     _assert_variable_unit_consistent_per_alias(rows)
     _assert_grain_and_stat_codes(rows)
+    _assert_fiscal_year_not_first_when_mixed(rows)
     return rows
 
 
