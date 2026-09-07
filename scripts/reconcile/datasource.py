@@ -26,6 +26,43 @@ import sqlite3
 from typing import Iterator, Sequence
 
 
+def _sqlite_type_rank(value) -> int:
+    """SQLite の既定の型順序（ASC）: NULL(0) < INTEGER/REAL(1) < TEXT(2) < BLOB(3)。"""
+    if value is None:
+        return 0
+    if isinstance(value, (int, float)):
+        return 1
+    if isinstance(value, str):
+        return 2
+    if isinstance(value, (bytes, bytearray)):
+        return 3
+    return 4  # 未知の型（保険。実データでは起きない想定）
+
+
+def sqlite_sort_key(row: Sequence) -> tuple:
+    """SQLite の `ORDER BY` 既定の型順序で行やキータプルを比較可能にする。
+
+    2つの用途がある:
+    - `JsonSource.fetch_rows` の `order_by` を、SQLite 側の物理ソート順
+      （`SqliteSource.fetch_rows` が発行する `ORDER BY`）と一致させる。
+      素朴に `sorted(rows, key=lambda r: tuple(...))` すると、(a) キー列に
+      NULL があると `int`/`str`/`None` の混在比較で `TypeError` になる、
+      (b) 型が揃っていても Python の比較順序は SQLite の型順序と一致しない
+      場合があり、**同じ論理データでも並び順が変わって `content_hash` が
+      ずれる**（レビュー指摘）。
+    - `b02_derived_compare.py` がキー集合の差分（ベースライン/候補にしか
+      無い行）を安定した順序でレポートに出すときの `sorted()` の `key=`。
+      同じ理由（NULL・型混在で `TypeError` になる）で素朴な `sorted()` は使えない。
+
+    ランクが同じ値同士だけを直接比較する（例: 数値どうし）ので、
+    `int` と `float` のように相互比較できる型のペアはランク内で正しく順序が付く。
+    """
+    return tuple((_sqlite_type_rank(v), v) for v in row)
+
+
+_SYSTEM_TABLE_GLOB = "sqlite_*"
+
+
 class DataSource:
     def tables(self) -> list[str]:
         raise NotImplementedError
@@ -63,7 +100,11 @@ class SqliteSource(DataSource):
     def __init__(self, conn: sqlite3.Connection):
         self._conn = conn
         self._tables = sorted(
-            r[0] for r in self._conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            r[0]
+            for r in self._conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT GLOB ?",
+                (_SYSTEM_TABLE_GLOB,),
+            )
         )
 
     def tables(self) -> list[str]:
@@ -122,7 +163,7 @@ class JsonSource(DataSource):
         rows = spec["rows"]
         if order_by:
             order_idx = [idx[c] for c in order_by]
-            rows = sorted(rows, key=lambda r: tuple(r[i] for i in order_idx))
+            rows = sorted(rows, key=lambda r: sqlite_sort_key([r[i] for i in order_idx]))
         want_idx = [idx[c] for c in columns]
         for r in rows:
             yield tuple(r[i] for i in want_idx)

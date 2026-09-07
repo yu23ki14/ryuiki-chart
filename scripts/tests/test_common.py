@@ -3,7 +3,7 @@ import pytest
 
 from reconcile import common, datasource
 
-from .fixtures import make_fixture_db
+from .fixtures import make_fixture_db, make_null_key_fixture_db
 
 
 @pytest.fixture()
@@ -36,6 +36,29 @@ def test_derive_key_auto_two_phase_needs_untyped_column(fixture_db):
     assert key == ["site", "year", "kind"]
     assert source == "auto"
     assert note is None
+
+
+def test_derive_key_null_in_typed_dimension_column_is_not_pruned_away(tmp_path):
+    """回帰テスト（レビュー指摘 #1）。
+
+    `t_null_dim` は `(grp, sub)` が一意な次元列だけの組み合わせ（`sub` に
+    NULL を含む）。`_DistinctCache` が `COUNT(DISTINCT sub)`（NULL を数えない）
+    だけを見ていると、鳩の巣原理の枝刈りが `(grp,sub)` を「一意になり得ない」と
+    誤判定し、探索Aで見つからず探索Bに落ちて、宣言型を持たない集計列もどきの
+    `val` がキーに紛れ込んでいた。修正後は探索Aだけで `(grp, sub)` が
+    見つかり、`val` は絶対にキーに入らないことを確認する。
+    """
+    path = tmp_path / "null_dim.sqlite"
+    make_null_key_fixture_db(path)
+    conn = common.open_readonly(path)
+    try:
+        key, source, note = common.derive_key(conn, "t_null_dim", overrides={})
+    finally:
+        conn.close()
+    assert key == ["grp", "sub"]
+    assert source == "auto"
+    assert note is None
+    assert "val" not in key
 
 
 def test_derive_key_declared_override_takes_precedence(fixture_db):

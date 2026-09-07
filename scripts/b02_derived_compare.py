@@ -19,11 +19,13 @@
   実データを行レベルで突き合わせる。キー集合の差・数値列ごとの差の分布が出せる。
   併せて、渡された実データが `derived_baseline.json` の記録と食い違っていないか
   （＝ b01 を再実行し忘れていないか）も検証する。
-- **縮退モード**（`--baseline-data` 無し・既定の実データも無い。CI の実行環境）:
-  `derived_baseline.json` に記録した行数・内容ハッシュ・数値集計と候補側を
-  比べるだけ。行レベルの内訳（どのキーが欠けているか等）は出せない
-  （原本 14GB が無いと計算できないため。docs/plans/PHASE_B_RECONCILIATION.md
-  の「CI の限界」参照）。
+- **縮退モード**（`--baseline-data` 無し・既定の実データも無い。または
+  `--reduced` で明示的に強制。CI の実行環境）: `derived_baseline.json` に
+  記録した行数・内容ハッシュ・数値集計と候補側を比べるだけ。行レベルの内訳
+  （どのキーが欠けているか等）は出せない（原本 14GB が無いと計算できない
+  ため。docs/plans/PHASE_B_RECONCILIATION.md の「CI の限界」参照）。
+  縮退モードでは `--tolerance` は使えない（ハッシュ同士の比較に許容誤差の
+  概念が無いため、指定すると明示的なエラーで止まる）。
 """
 from __future__ import annotations
 
@@ -74,22 +76,68 @@ def _exceeds_tolerance(baseline_val: float, candidate_val: float, tolerance: flo
 # テーブル単位の突合
 # ---------------------------------------------------------------------------
 
-def _build_key_map(source: datasource.DataSource, table: str, columns: list[str], key: list[str]):
-    """`table` を `key` 順に読み、key タプル -> 行タプル の辞書を作る。
+class _KeyedStream:
+    """`source.fetch_rows(table, columns, order_by=key)`（キー順）を1件ずつ
+    取り出せるようにする、突合用のマージ結合の片側。
 
-    重複キー（この突合の前提「行がキーで一意」が崩れている状態）が見つかった場合は
-    別リストで返す（最初の出現を代表として辞書には残す）。
+    以前の実装は両テーブルを丸ごと `dict[key, row]` に読み込んでから集合演算で
+    突き合わせていた。`org_norm`（816,856行）・`sensor_daily`（352,043行）の
+    ような大きいテーブルでは、これがベースライン・候補それぞれ全列を
+    メモリに保持することになり無駄が大きい（レビュー指摘）。両ソースは
+    すでに `fetch_rows(..., order_by=key)` でキー順に取れるので、ここでは
+    単純なマージ結合にして、保持するのは「今見ている1行」と
+    レポート用のサンプル（`SAMPLE_LIMIT` 件まで）・数値列ごとの差分リストだけにする。
+
+    同じキーが連続した場合は最初の行を代表として扱い、以降は重複として
+    数える（`dup_count`／`dup_keys`。この突合の前提「行がキーで一意」が
+    崩れている状態を検出する）。
     """
-    key_idx = [columns.index(c) for c in key]
-    key_map: dict[tuple, tuple] = {}
-    duplicates: list[tuple] = []
-    for row in source.fetch_rows(table, columns, order_by=key):
-        k = tuple(row[i] for i in key_idx)
-        if k in key_map:
-            duplicates.append(k)
-        else:
-            key_map[k] = row
-    return key_map, duplicates
+
+    _SENTINEL = object()
+
+    def __init__(self, source: datasource.DataSource, table: str, columns: list[str], key: list[str]):
+        self._key_idx = [columns.index(c) for c in key]
+        self._iter = iter(source.fetch_rows(table, columns, order_by=key))
+        self.dup_count = 0
+        self.dup_keys: list[list] = []
+        self._next: tuple | object = self._SENTINEL
+        self._advance()
+
+    def _row_key(self, row: tuple) -> tuple:
+        return tuple(row[i] for i in self._key_idx)
+
+    def _advance(self) -> None:
+        self._next = next(self._iter, self._SENTINEL)
+
+    def peek_key(self):
+        """次に取り出される行のキー。ストリームが尽きていれば `None`。"""
+        if self._next is self._SENTINEL:
+            return None
+        return self._row_key(self._next)
+
+    def pop(self) -> tuple[tuple, tuple]:
+        """現在のキーの代表行 `(key, row)` を返し、同じキーが続く分は
+        重複として飲み込んで次の異なるキーまで進める。"""
+        if self._next is self._SENTINEL:
+            raise StopIteration
+        current_key = self._row_key(self._next)
+        row = self._next
+        self._advance()
+        while self._next is not self._SENTINEL and self._row_key(self._next) == current_key:
+            self.dup_count += 1
+            if len(self.dup_keys) < SAMPLE_LIMIT:
+                self.dup_keys.append(list(current_key))
+            self._advance()
+        return current_key, row
+
+
+def _key_less(a: tuple, b: tuple) -> bool:
+    """突合のマージ結合で使うキー比較。SQLite の型順序（NULL < 数値 < TEXT
+    < BLOB）に揃える（`datasource.sqlite_sort_key`）。NULL や型混在があると
+    素朴な `<` は `TypeError` になる（レビュー指摘: 不一致のときにしか
+    通らない経路でだけ落ちる、最悪の壊れ方だった）。
+    """
+    return datasource.sqlite_sort_key(a) < datasource.sqlite_sort_key(b)
 
 
 def _compare_full(
@@ -102,94 +150,135 @@ def _compare_full(
     columns = [c["name"] for c in entry["columns"]]
     key = entry["key"]
     numeric_columns = list(entry["numeric_columns"].keys())
-    result: dict = {"mode": "full", "notes": []}
-
-    baseline_map, baseline_dupes = _build_key_map(baseline_source, table, columns, key)
-    candidate_map, candidate_dupes = _build_key_map(candidate_source, table, columns, key)
-
-    if baseline_dupes:
-        result["notes"].append(
-            f"ベースライン実データに重複キーが{len(baseline_dupes)}件ある"
-            "（このテーブルの突合の前提であるキーの一意性が崩れている）。"
-        )
-    if candidate_dupes:
-        result["notes"].append(
-            f"候補側に重複キーが{len(candidate_dupes)}件ある"
-            "（先頭N件: " + ", ".join(str(k) for k in candidate_dupes[:5]) + "）。"
-        )
-
-    baseline_keys = set(baseline_map.keys())
-    candidate_keys = set(candidate_map.keys())
-    only_in_baseline = sorted(baseline_keys - candidate_keys)
-    only_in_candidate = sorted(candidate_keys - baseline_keys)
-    common_keys = baseline_keys & candidate_keys
-
-    result["baseline_row_count"] = len(baseline_map)
-    result["candidate_row_count"] = len(candidate_map)
-    result["row_count_diff"] = len(candidate_map) - len(baseline_map)
-    result["keys_only_in_baseline"] = {
-        "count": len(only_in_baseline),
-        "sample": [list(k) for k in only_in_baseline[:SAMPLE_LIMIT]],
-    }
-    result["keys_only_in_candidate"] = {
-        "count": len(only_in_candidate),
-        "sample": [list(k) for k in only_in_candidate[:SAMPLE_LIMIT]],
-    }
-
-    numeric_diffs = {}
     numeric_idx = {c: columns.index(c) for c in numeric_columns}
-    for col in numeric_columns:
-        i = numeric_idx[col]
-        abs_diffs = []
-        rel_diffs = []
-        n_exceed = 0
-        n_null_mismatch = 0
-        for k in common_keys:
-            bv = baseline_map[k][i]
-            cv = candidate_map[k][i]
-            if bv is None or cv is None:
-                if bv is not cv:
-                    n_null_mismatch += 1
-                continue
-            bv = float(bv)
-            cv = float(cv)
-            abs_diff = abs(cv - bv)
-            abs_diffs.append(abs_diff)
-            rel_diffs.append(abs_diff / abs(bv) if bv != 0 else (0.0 if abs_diff == 0 else float("inf")))
-            if _exceeds_tolerance(bv, cv, tolerance):
-                n_exceed += 1
-        abs_diffs.sort()
-        numeric_diffs[col] = {
-            "n_compared": len(abs_diffs),
-            "n_null_mismatch": n_null_mismatch,
-            "n_exceeding_tolerance": n_exceed,
-            "max_abs_diff": max(abs_diffs) if abs_diffs else 0.0,
-            "p50_abs_diff": _percentile(abs_diffs, 50),
-            "p95_abs_diff": _percentile(abs_diffs, 95),
-            "max_rel_diff": max(rel_diffs) if rel_diffs else 0.0,
-        }
-    result["numeric_diffs"] = numeric_diffs
-
     # 数値以外の列（次元列だが key に含まれないもの等）も、値の変化を1つ残らず
     # 検出する対象に含める。ADR-0011 の統計量ではないので分布は出さず、
     # 完全一致件数の差分だけを数える（許容誤差はそもそも数値以外に適用できない）。
     text_columns = [c for c in columns if c not in key and c not in numeric_columns]
     text_idx = {c: columns.index(c) for c in text_columns}
-    text_diffs = {}
-    for col in text_columns:
-        i = text_idx[col]
-        n_diff = sum(1 for k in common_keys if baseline_map[k][i] != candidate_map[k][i])
-        if n_diff:
-            text_diffs[col] = n_diff
-    result["text_diffs"] = text_diffs
+
+    result: dict = {"mode": "full", "notes": []}
+
+    baseline_stream = _KeyedStream(baseline_source, table, columns, key)
+    candidate_stream = _KeyedStream(candidate_source, table, columns, key)
+
+    baseline_row_count = 0
+    candidate_row_count = 0
+    only_in_baseline_count = 0
+    only_in_baseline_sample: list[list] = []
+    only_in_candidate_count = 0
+    only_in_candidate_sample: list[list] = []
+
+    abs_diffs: dict[str, list[float]] = {c: [] for c in numeric_columns}
+    rel_diffs: dict[str, list[float]] = {c: [] for c in numeric_columns}
+    n_null_mismatch: dict[str, int] = {c: 0 for c in numeric_columns}
+    n_unparseable: dict[str, int] = {c: 0 for c in numeric_columns}
+    n_exceed: dict[str, int] = {c: 0 for c in numeric_columns}
+    text_diff_counts: dict[str, int] = {}
+
+    # 両ソースをキー順にマージ結合する。片側にしか無いキーは前へ進めるだけ、
+    # 両側にあるキーだけ値を突き合わせる（`_KeyedStream` のドキストリング参照）。
+    while baseline_stream.peek_key() is not None or candidate_stream.peek_key() is not None:
+        bk = baseline_stream.peek_key()
+        ck = candidate_stream.peek_key()
+        if bk is not None and (ck is None or _key_less(bk, ck)):
+            baseline_stream.pop()
+            baseline_row_count += 1
+            only_in_baseline_count += 1
+            if len(only_in_baseline_sample) < SAMPLE_LIMIT:
+                only_in_baseline_sample.append(list(bk))
+            continue
+        if ck is not None and (bk is None or _key_less(ck, bk)):
+            candidate_stream.pop()
+            candidate_row_count += 1
+            only_in_candidate_count += 1
+            if len(only_in_candidate_sample) < SAMPLE_LIMIT:
+                only_in_candidate_sample.append(list(ck))
+            continue
+
+        # bk == ck（両側に存在する共通キー）。
+        _, brow = baseline_stream.pop()
+        _, crow = candidate_stream.pop()
+        baseline_row_count += 1
+        candidate_row_count += 1
+
+        for col in numeric_columns:
+            i = numeric_idx[col]
+            bv, cv = brow[i], crow[i]
+            if bv is None or cv is None:
+                if bv is not cv:
+                    n_null_mismatch[col] += 1
+                continue
+            try:
+                bv_f = float(bv)
+                cv_f = float(cv)
+            except (TypeError, ValueError):
+                # 候補が数値列のはずの場所に "N/A" 等の非数値を書いてきた場合。
+                # 落ちずに差として数える（レビュー指摘）。
+                n_unparseable[col] += 1
+                continue
+            abs_diff = abs(cv_f - bv_f)
+            abs_diffs[col].append(abs_diff)
+            rel_diffs[col].append(
+                abs_diff / abs(bv_f) if bv_f != 0 else (0.0 if abs_diff == 0 else float("inf"))
+            )
+            if _exceeds_tolerance(bv_f, cv_f, tolerance):
+                n_exceed[col] += 1
+
+        for col in text_columns:
+            i = text_idx[col]
+            if brow[i] != crow[i]:
+                text_diff_counts[col] = text_diff_counts.get(col, 0) + 1
+
+    if baseline_stream.dup_count:
+        result["notes"].append(
+            f"ベースライン実データに重複キーが{baseline_stream.dup_count}件ある"
+            "（このテーブルの突合の前提であるキーの一意性が崩れている）。"
+        )
+    if candidate_stream.dup_count:
+        result["notes"].append(
+            f"候補側に重複キーが{candidate_stream.dup_count}件ある"
+            f"（先頭N件: {candidate_stream.dup_keys[:5]}）。"
+        )
+
+    result["baseline_row_count"] = baseline_row_count
+    result["candidate_row_count"] = candidate_row_count
+    result["row_count_diff"] = candidate_row_count - baseline_row_count
+    result["keys_only_in_baseline"] = {
+        "count": only_in_baseline_count,
+        "sample": only_in_baseline_sample,
+    }
+    result["keys_only_in_candidate"] = {
+        "count": only_in_candidate_count,
+        "sample": only_in_candidate_sample,
+    }
+
+    numeric_diffs = {}
+    for col in numeric_columns:
+        diffs = sorted(abs_diffs[col])
+        numeric_diffs[col] = {
+            "n_compared": len(diffs),
+            "n_null_mismatch": n_null_mismatch[col],
+            "n_unparseable": n_unparseable[col],
+            "n_exceeding_tolerance": n_exceed[col],
+            "max_abs_diff": max(diffs) if diffs else 0.0,
+            "p50_abs_diff": _percentile(diffs, 50),
+            "p95_abs_diff": _percentile(diffs, 95),
+            "max_rel_diff": max(rel_diffs[col]) if rel_diffs[col] else 0.0,
+        }
+    result["numeric_diffs"] = numeric_diffs
+    result["text_diffs"] = text_diff_counts
 
     matches = (
-        not only_in_baseline
-        and not only_in_candidate
-        and not baseline_dupes
-        and not candidate_dupes
-        and not text_diffs
-        and all(d["n_exceeding_tolerance"] == 0 and d["n_null_mismatch"] == 0 for d in numeric_diffs.values())
+        only_in_baseline_count == 0
+        and only_in_candidate_count == 0
+        and baseline_stream.dup_count == 0
+        and candidate_stream.dup_count == 0
+        and not text_diff_counts
+        and all(
+            d["n_exceeding_tolerance"] == 0 and d["n_null_mismatch"] == 0 and d["n_unparseable"] == 0
+            for d in numeric_diffs.values()
+        )
     )
     result["status"] = "match" if matches else "mismatch"
     return result
@@ -234,13 +323,27 @@ def _compare_reduced(table: str, entry: dict, candidate_source: datasource.DataS
     return result
 
 
-def compare_all(baseline_json: dict, baseline_source, candidate_source, tolerance: float) -> dict:
-    """全テーブルを突合する。`baseline_source` が None なら縮退モード。"""
+def compare_all(
+    baseline_json: dict, baseline_source, candidate_source, tolerance: float
+) -> tuple[dict, list[str]]:
+    """全テーブルを突合する。`baseline_source` が None なら縮退モード。
+
+    戻り値は `(results, extra_tables)`。`results` はベースラインが持つ33
+    テーブルについての突合結果（このゲートの合否＝終了コードを決める）。
+    `extra_tables` は「候補側にはあるがベースライン（v1）には無いテーブル」
+    （降順ではなく名前順）で、**ゲートの合否には含めない**——このゲートの
+    合格条件は「v1 の33テーブルを再現できたか」であり、候補が余分にテーブルを
+    持つこと自体は再現の失敗ではない（docs/plans/PHASE_B_RECONCILIATION.md
+    §「候補側の余分なテーブル・列」参照）。ただし対象テーブルの中で列が
+    過不足していれば、その**テーブル**は不一致として扱う（行比較の前提である
+    「同じ形」が崩れているため）。
+    """
     results: dict[str, dict] = {}
     for table, entry in sorted(baseline_json["tables"].items()):
+        mode = "full" if baseline_source is not None else "reduced"
         if not candidate_source.has_table(table):
             results[table] = {
-                "mode": "full" if baseline_source is not None else "reduced",
+                "mode": mode,
                 "status": "missing_in_candidate",
                 "baseline_row_count": entry["row_count"],
                 "candidate_row_count": 0,
@@ -252,15 +355,24 @@ def compare_all(baseline_json: dict, baseline_source, candidate_source, toleranc
 
         candidate_columns = set(candidate_source.columns(table))
         declared_columns = [c["name"] for c in entry["columns"]]
+        declared_column_set = set(declared_columns)
         missing_columns = [c for c in declared_columns if c not in candidate_columns]
-        if missing_columns:
+        extra_columns = sorted(candidate_columns - declared_column_set)
+        if missing_columns or extra_columns:
+            notes = []
+            if missing_columns:
+                notes.append(f"候補側に列が無い: {missing_columns}")
+            if extra_columns:
+                notes.append(
+                    f"候補側に余分な列がある（『同じ形』という前提が崩れている）: {extra_columns}"
+                )
             results[table] = {
-                "mode": "full" if baseline_source is not None else "reduced",
+                "mode": mode,
                 "status": "incomparable",
                 "baseline_row_count": entry["row_count"],
                 "candidate_row_count": candidate_source.row_count(table),
                 "row_count_diff": candidate_source.row_count(table) - entry["row_count"],
-                "notes": [f"候補側に列が無い: {missing_columns}"],
+                "notes": notes,
                 "numeric_diffs": {},
             }
             continue
@@ -269,7 +381,9 @@ def compare_all(baseline_json: dict, baseline_source, candidate_source, toleranc
             results[table] = _compare_full(table, entry, baseline_source, candidate_source, tolerance)
         else:
             results[table] = _compare_reduced(table, entry, candidate_source)
-    return results
+
+    extra_tables = sorted(set(candidate_source.tables()) - set(baseline_json["tables"].keys()))
+    return results, extra_tables
 
 
 def check_baseline_freshness(baseline_json: dict, baseline_source) -> list[str]:
@@ -303,7 +417,13 @@ STATUS_LABEL = {
 }
 
 
-def render_markdown(results: dict[str, dict], mode: str, tolerance: float, stale_tables: list[str]) -> str:
+def render_markdown(
+    results: dict[str, dict],
+    mode: str,
+    tolerance: float,
+    stale_tables: list[str],
+    extra_tables: list[str] | None = None,
+) -> str:
     lines: list[str] = []
     a = lines.append
 
@@ -352,6 +472,13 @@ def render_markdown(results: dict[str, dict], mode: str, tolerance: float, stale
             a(f"| `{t}` | {STATUS_LABEL.get(r['status'], r['status'])} | {r.get('row_count_diff', 'n/a')} |")
         a("")
 
+    if extra_tables:
+        a(
+            "**候補側にしか無いテーブル**（参考情報。v1 の33テーブルには無いので"
+            "このゲートの合否には含めない）: " + ", ".join(f"`{t}`" for t in extra_tables)
+        )
+        a("")
+
     a("## テーブルごとの詳細")
     a("")
     for table in sorted(results):
@@ -375,13 +502,17 @@ def render_markdown(results: dict[str, dict], mode: str, tolerance: float, stale
                 )
             if r.get("numeric_diffs"):
                 a("")
-                a("  | 数値列 | 比較件数 | NULL不一致 | 許容超え | max絶対差 | p50絶対差 | p95絶対差 | max相対差 |")
-                a("  |---|---:|---:|---:|---:|---:|---:|---:|")
+                a(
+                    "  | 数値列 | 比較件数 | NULL不一致 | 数値化不能 | 許容超え | "
+                    "max絶対差 | p50絶対差 | p95絶対差 | max相対差 |"
+                )
+                a("  |---|---:|---:|---:|---:|---:|---:|---:|---:|")
                 for col, d in sorted(r["numeric_diffs"].items()):
                     a(
                         f"  | `{col}` | {d['n_compared']} | {d['n_null_mismatch']} | "
-                        f"{d['n_exceeding_tolerance']} | {d['max_abs_diff']:.6g} | "
-                        f"{d['p50_abs_diff']:.6g} | {d['p95_abs_diff']:.6g} | {d['max_rel_diff']:.6g} |"
+                        f"{d.get('n_unparseable', 0)} | {d['n_exceeding_tolerance']} | "
+                        f"{d['max_abs_diff']:.6g} | {d['p50_abs_diff']:.6g} | "
+                        f"{d['p95_abs_diff']:.6g} | {d['max_rel_diff']:.6g} |"
                     )
         elif r["mode"] == "reduced" and "numeric_diffs" in r and r.get("baseline_content_hash"):
             a(f"- ベースライン内容ハッシュ: `{r['baseline_content_hash']}`")
@@ -410,6 +541,14 @@ def main() -> int:
     parser.add_argument("--candidate", required=True, help="候補側（sqlite または .json）")
     parser.add_argument("--tolerance", type=float, default=0.0)
     parser.add_argument("--out-md", default=str(DEFAULT_OUT_MD))
+    parser.add_argument(
+        "--reduced",
+        action="store_true",
+        help="縮退モードを強制する。--baseline-data の指定や、既定の "
+        f"{DEFAULT_BASELINE_DB} の自動検出より優先する。CI で明示的に軽い検証だけ"
+        "したい場合や、実データが存在する環境で縮退モードの動作を確かめたい場合に使う"
+        "（『たまたまファイルが無いので縮退モードになる』という暗黙の依存を避ける）。",
+    )
     args = parser.parse_args()
 
     baseline_json_path = pathlib.Path(args.baseline_json)
@@ -420,9 +559,26 @@ def main() -> int:
         )
     baseline_json = json.loads(baseline_json_path.read_text(encoding="utf-8"))
 
-    baseline_data_path = args.baseline_data
-    if baseline_data_path is None and DEFAULT_BASELINE_DB.exists():
-        baseline_data_path = str(DEFAULT_BASELINE_DB)
+    if args.reduced:
+        baseline_data_path = None
+    else:
+        baseline_data_path = args.baseline_data
+        if baseline_data_path is None and DEFAULT_BASELINE_DB.exists():
+            baseline_data_path = str(DEFAULT_BASELINE_DB)
+
+    if baseline_data_path is None and args.tolerance > 0:
+        # 縮退モードは content_hash 同士の完全一致と numeric_stats の厳密一致
+        # しか見ておらず、許容誤差を適用する手段が原理的に無い（行レベルの値を
+        # 持っていないため）。黙って無視するのではなく、ここで明示的に落とす
+        # （レビュー指摘: `--tolerance 1e-6` を付けた CI が無警告でゼロ寛容に
+        # なっていた）。#4 でハッシュ側の数値表現を正準化したので、表現差による
+        # 偽の不一致はそもそも起きなくなっており、縮退モードで許容誤差を
+        # 別途サポートする理由も無い。
+        sys.exit(
+            "縮退モード（--baseline-data 無し）では --tolerance は使えない。"
+            "content_hash 同士の比較に許容誤差の概念が無く、適用したふりをしない。"
+            "行レベルの許容誤差比較には --baseline-data が要る。"
+        )
 
     candidate_source = datasource.open_source(args.candidate)
 
@@ -439,9 +595,9 @@ def main() -> int:
             "（行レベルの内訳は出せない。docs/plans/PHASE_B_RECONCILIATION.md 参照）"
         )
 
-    results = compare_all(baseline_json, baseline_source, candidate_source, args.tolerance)
+    results, extra_tables = compare_all(baseline_json, baseline_source, candidate_source, args.tolerance)
 
-    md = render_markdown(results, mode, args.tolerance, stale_tables)
+    md = render_markdown(results, mode, args.tolerance, stale_tables, extra_tables)
     out_md = pathlib.Path(args.out_md)
     out_md.parent.mkdir(parents=True, exist_ok=True)
     out_md.write_text(md, encoding="utf-8")

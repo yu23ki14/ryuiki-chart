@@ -45,10 +45,15 @@ DEFAULT_OUT_MD = ROOT / "reports" / "derived_baseline.md"
 SCHEMA_VERSION = 1
 
 
-def build_baseline(db_path, keys_yaml_path) -> dict:
-    """`db_path` の全テーブルを指紋化した辞書を返す（ファイルには書かない）。
+def build_baseline(db_path, keys_yaml_path) -> tuple[dict, dict[str, int]]:
+    """`db_path` の全テーブルを指紋化する。`(baseline, key_sources)` を返す
+    （ファイルには書かない）。
 
-    戻り値の構造はそのまま `reports/derived_baseline.json` の中身になる。
+    `baseline` の構造はそのまま `reports/derived_baseline.json` の中身になる
+    （`write_json` に渡す）。`key_sources` はキーの由来（`"pk"`/`"auto"`/
+    `"declared"`）ごとのテーブル数で、CLI のログ出力にだけ使う
+    （`main()` 参照。決定論が要る出力ファイルには含めない）。
+
     b02 はこの関数を使わず、この関数が書いた JSON を読む側（`derive_key` を
     再実行しない。理由は docs/plans/PHASE_B_RECONCILIATION.md 参照）。
     """

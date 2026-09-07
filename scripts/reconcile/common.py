@@ -41,8 +41,21 @@ def open_readonly(path) -> sqlite3.Connection:
 
 
 def list_tables(conn: sqlite3.Connection) -> list[str]:
+    """ユーザーテーブルだけを返す。
+
+    `sqlite_sequence`（`AUTOINCREMENT` で自動生成）や `sqlite_stat1`/`sqlite_stat4`
+    （`ANALYZE` を打つと生成される）のような `sqlite_` 始まりの内部テーブルは
+    `sqlite_master` に `type='table'` として現れるが、これらは派生33テーブルの
+    一部ではない。含めてしまうと、たとえば `sqlite_stat1` は列の意味上
+    一意なキーが無く、`derive_key` が「宣言が要る」という誤ったメッセージで
+    止まる（レビュー指摘）。GLOB は `_` を（`LIKE` と違って）ワイルドカードとして
+    扱わないので、`sqlite_` に続く任意の文字列を素直に除外できる。
+    """
     return sorted(
-        r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        r[0]
+        for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT GLOB 'sqlite_*'"
+        )
     )
 
 
@@ -89,12 +102,28 @@ def is_numeric_column(conn: sqlite3.Connection, table: str, col: str) -> bool:
 # ---------------------------------------------------------------------------
 
 class _DistinctCache:
-    """列ごとの distinct 件数を遅延計算してキャッシュする。
+    """列ごとの「実効カーディナリティ」を遅延計算してキャッシュする。
 
     候補の組み合わせ数は列数に対して指数的に増えうるが、実際に SQL を打つ前に
     「積が総行数に届かない組み合わせは鳩の巣原理で一意になり得ない」ことを
-    distinct 件数だけで判定できる（`_search` 参照）。列ごとに高々1回だけ
-    `COUNT(DISTINCT col)` を打てば済む。
+    カーディナリティだけで判定できる（`_search` 参照）。列ごとに高々1回だけ
+    クエリを打てば済む。
+
+    **`COUNT(DISTINCT col)` は NULL を数えない**が、`_is_unique` が使う
+    `GROUP BY` は NULL を（他の NULL と同じ）1つのグループ値として数える。
+    この2つの食い違いをそのまま鳩の巣原理の枝刈りに使うと、NULL を含む列の
+    カーディナリティを1少なく見積もり、**本当は一意な組み合わせを誤って
+    枝刈りしてしまう**（レビュー指摘。実測: `(a,b)` が `('x',NULL),('x','q'),
+    ('y',NULL)` で一意であるにもかかわらず `COUNT(DISTINCT a)*COUNT(DISTINCT b)
+    = 2*1 = 2 < 3` で枝刈りされていた）。
+
+    壊れ方が特に悪い: 探索A（宣言型を持つ列だけの部分集合）で NULL を含む
+    次元列がこうして誤って除外されると、探索Bに落ちて宣言型を持たない列
+    （集計列 `avg`/`n` 等）がキーに紛れ込む — 2段階探索がまさに防ぐはずだった
+    事故が、この枝刈りの穴から起きる。
+
+    そのため、列に NULL が1件でもあれば実効カーディナリティに +1 する
+    （NULL 自身も `GROUP BY` の下では区別可能な1つの値なので）。
     """
 
     def __init__(self, conn: sqlite3.Connection, table: str):
@@ -104,9 +133,12 @@ class _DistinctCache:
 
     def get(self, col: str) -> int:
         if col not in self._cache:
-            self._cache[col] = self._conn.execute(
-                f'SELECT COUNT(DISTINCT "{col}") FROM "{self._table}"'
-            ).fetchone()[0]
+            row = self._conn.execute(
+                f'SELECT COUNT(DISTINCT "{col}"), '
+                f'MAX(CASE WHEN "{col}" IS NULL THEN 1 ELSE 0 END) FROM "{self._table}"'
+            ).fetchone()
+            distinct_non_null, has_null = row
+            self._cache[col] = distinct_non_null + (has_null or 0)
         return self._cache[col]
 
 
@@ -220,8 +252,9 @@ def derive_key(
         return key, "auto", None
 
     raise RuntimeError(
-        f"{table}: 一意なキー列の組み合わせが自動で見つからなかった（全列を使っても一意にならない。"
-        "重複行がある可能性が高い）。scripts/reconcile/derived_keys.yaml に "
+        f"{table}: 一意なキー列の組み合わせが自動で見つからなかった"
+        "（宣言型を持つ列・持たない列を合わせた全列の組み合わせを試しても一意にならない）。"
+        "scripts/reconcile/derived_keys.yaml に "
         f"{table} の宣言的なキーを追記すること（なぜ自動で決まらないかを1行のコメントで残す。"
         "docs/plans/PHASE_B_RECONCILIATION.md 参照）。"
     )
@@ -240,15 +273,38 @@ def format_number(value) -> str:
     return f"{float(value):.6f}"
 
 
+def _canonicalize_scalar(value):
+    """int/float は `format_number` で固定小数点の文字列に揃える。
+
+    sqlite の `REAL` 列から来た `1.0`（Python `float`）と、手書き/他言語製の
+    JSON 候補が同じ値を書いた `1`（`json.load` で Python `int` になる）は、
+    そのまま `json.dumps` すると `1.0` と `1` という別のトークンになり、
+    `numeric_stats` は一致するのに `content_hash` だけ食い違う
+    （レビュー指摘。ドキュメントで「候補は sqlite でも JSON でもよい」と
+    明言している以上、最初の非 Python 製の射影で必ず踏む）。
+
+    文字列・None・bytes はそのまま返す（数値に見える文字列を誤って
+    数値として丸めない。テキスト列の値をここで書き換えてはいけない）。
+    """
+    if isinstance(value, bool):
+        # SQLite に真偽型は無く 0/1 の INTEGER として保持される。JSON 側が
+        # true/false を書いてきても同じ扱いにする。
+        return format_number(int(value))
+    if isinstance(value, (int, float)):
+        return format_number(value)
+    return value
+
+
 def canonical_row_bytes(row: Sequence) -> bytes:
     """1行分の値を正準化した JSON 配列 + 改行のバイト列にする。
 
-    `json.dumps(..., ensure_ascii=True, separators=(",", ":"))` は None→null /
-    int→そのまま / float→Python の repr ベース（同一環境・同一 IEEE754 値なら
-    決定論的）/ str→エスケープ済み文字列、を返す。行の区切りに改行を使うことで、
+    数値（int/float/bool）は `_canonicalize_scalar` で固定小数点表現に揃えた
+    うえで、`json.dumps(..., ensure_ascii=True, separators=(",", ":"))` に渡す
+    （None→null / str→エスケープ済み文字列）。行の区切りに改行を使うことで、
     値の中にたまたま同じ文字列表現が現れても行単位の連結は曖昧にならない。
     """
-    return (json.dumps(list(row), ensure_ascii=True, separators=(",", ":")) + "\n").encode("utf-8")
+    canon = [_canonicalize_scalar(v) for v in row]
+    return (json.dumps(canon, ensure_ascii=True, separators=(",", ":")) + "\n").encode("utf-8")
 
 
 # ---------------------------------------------------------------------------

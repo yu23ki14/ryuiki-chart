@@ -9,6 +9,14 @@
 - `t_dupe`    : 完全に重複する行がある。どんな列の組み合わせを使っても一意な
                 キーが作れない（`derived_keys.yaml` に宣言を書かないと
                 `derive_key` が例外を投げる、という失敗経路のテスト用）。
+- `t_null_dim`: 宣言型を持つ次元列（`sub`）に NULL が混じる。`(grp, sub)` は
+                一意（`grp='g1'` の行が `sub=NULL` と `sub='x'` で2つに分かれる
+                ため）だが、`COUNT(DISTINCT sub)` は NULL を数えないので、
+                誤ったカーディナリティ計算では枝刈りされてしまう
+                （`common.py` の `_DistinctCache` の回帰テスト用）。
+                `('g1', NULL)` と `('g1', 'x')` はキーの最初の要素が等しいので、
+                これらを含む集合を素朴に `sorted()` すると `None < 'x'` の比較で
+                `TypeError` になる（b02 の回帰テスト用）。
 """
 import sqlite3
 
@@ -31,6 +39,15 @@ T_DUPE_ROWS = [
     ("y", 2),
 ]
 
+# grp, sub は宣言型を持つ次元列（typed）。val は宣言型を持たない集計列もどき
+# （untyped。もし (grp, sub) が誤って枝刈りされて探索Aで見つからなければ、
+# 探索Bでこの val がキーに紛れ込んでしまう）。
+T_NULL_DIM_ROWS = [
+    ("g1", None, 10.0),
+    ("g1", "x", 20.0),
+    ("g2", None, 30.0),
+]
+
 
 def make_fixture_db(path, *, include_dupe: bool = True) -> None:
     """`t_pk` / `t_dims` を作る。`include_dupe=True`（既定）なら、どんな列の
@@ -47,6 +64,23 @@ def make_fixture_db(path, *, include_dupe: bool = True) -> None:
         if include_dupe:
             conn.execute("CREATE TABLE t_dupe (a TEXT, b INTEGER)")
             conn.executemany("INSERT INTO t_dupe VALUES (?,?)", T_DUPE_ROWS)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def make_null_key_fixture_db(path, *, rows=None) -> None:
+    """`t_null_dim` だけを持つ小さな DB を作る（NULL を含む次元列のテスト用）。
+
+    既存の `make_fixture_db` に足さず別関数にしてあるのは、`t_pk`/`t_dims`
+    を前提にした他のテストの「このDBのテーブルはこれだけ」という assert を
+    壊さないため。`rows` を渡すと `T_NULL_DIM_ROWS` の代わりに使う
+    （候補側を「全部消えた」状態にするテスト等で空リストを渡す）。
+    """
+    conn = sqlite3.connect(str(path))
+    try:
+        conn.execute("CREATE TABLE t_null_dim (grp TEXT, sub TEXT, val)")
+        conn.executemany("INSERT INTO t_null_dim VALUES (?,?,?)", rows if rows is not None else T_NULL_DIM_ROWS)
         conn.commit()
     finally:
         conn.close()
