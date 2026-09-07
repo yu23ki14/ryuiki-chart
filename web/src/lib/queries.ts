@@ -1,5 +1,6 @@
 import "server-only";
 import { query, queryOne, queryChunked, ph } from "./db";
+import { QUALITY_STAGES } from "./quality";
 
 /* ------------------------------ 地点 ------------------------------ */
 
@@ -301,10 +302,11 @@ export async function landuseChange(watershedId: string) {
 }
 
 /* --------------------------- 品質・ガバナンス --------------------------- */
-// `measurements.quality_stage` 等が取りうる3値（暫定→検証済→公開済）は
-// `@/lib/quality` の QUALITY_STAGES/QualityStage を使う（このファイルの
-// `to_stage='公開済'` 等のSQLと同じ3値・順序）。queries.ts は server-only なので
-// クライアントコンポーネントから読む型はここには置けない（docs/plans/PHASE_B_INTAKE.md #6）。
+// `measurements.quality_stage` 等が取りうる3値（暫定→検証済→公開済）は `@/lib/quality` の
+// QUALITY_STAGES/QualityStage を正とする。以下の SQL の to_stage/from_stage 判定はこの3値・
+// 順序を前提にしているので、文字列を直書きせずここから引く（queries.ts は server-only だが、
+// quality.ts は server-only ではないので import できる。docs/plans/PHASE_B_INTAKE.md #6）。
+const [STAGE_PROVISIONAL, STAGE_VERIFIED, STAGE_PUBLISHED] = QUALITY_STAGES;
 
 export async function qualityMonthly() {
   return query<{ ym: string; submitted: number; verified: number; published: number; returned: number }>(
@@ -317,7 +319,7 @@ export async function qualityByActor() {
     SELECT actor,
            SUM(CASE WHEN note LIKE '%合格%' THEN 1 ELSE 0 END) AS pass,
            SUM(CASE WHEN note LIKE '%差し戻し%' THEN 1 ELSE 0 END) AS reject,
-           SUM(CASE WHEN to_stage='公開済' THEN 1 ELSE 0 END) AS publish
+           SUM(CASE WHEN to_stage='${STAGE_PUBLISHED}' THEN 1 ELSE 0 END) AS publish
     FROM quality_transitions WHERE actor LIKE 'OBS-%' GROUP BY actor ORDER BY actor`);
 }
 
@@ -728,10 +730,10 @@ export async function pairedMeasurements() {
 export async function qualityTotals() {
   return queryOne<{ submitted: number; verified: number; published: number; returned: number; targets: number }>(`
     SELECT
-      SUM(CASE WHEN from_stage IS NULL AND to_stage='暫定' THEN 1 ELSE 0 END) AS submitted,
-      SUM(CASE WHEN from_stage='暫定'  AND to_stage='検証済' THEN 1 ELSE 0 END) AS verified,
-      SUM(CASE WHEN from_stage='検証済' AND to_stage='公開済' THEN 1 ELSE 0 END) AS published,
-      SUM(CASE WHEN from_stage='暫定'  AND to_stage='暫定'  THEN 1 ELSE 0 END) AS returned,
+      SUM(CASE WHEN from_stage IS NULL AND to_stage='${STAGE_PROVISIONAL}' THEN 1 ELSE 0 END) AS submitted,
+      SUM(CASE WHEN from_stage='${STAGE_PROVISIONAL}' AND to_stage='${STAGE_VERIFIED}' THEN 1 ELSE 0 END) AS verified,
+      SUM(CASE WHEN from_stage='${STAGE_VERIFIED}' AND to_stage='${STAGE_PUBLISHED}' THEN 1 ELSE 0 END) AS published,
+      SUM(CASE WHEN from_stage='${STAGE_PROVISIONAL}' AND to_stage='${STAGE_PROVISIONAL}' THEN 1 ELSE 0 END) AS returned,
       COUNT(DISTINCT target_id) AS targets
     FROM quality_transitions`);
 }
