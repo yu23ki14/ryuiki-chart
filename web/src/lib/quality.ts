@@ -1,7 +1,7 @@
 /**
  * `measurements.quality_stage` / `organism_records.quality_stage` /
  * `quality_transitions.from_stage`・`to_stage`（`@/lib/queries.ts`）が取りうる3値
- * （暫定→検証済→公開済の順で進む。旧 web/src/lib/domain.ts の QUALITY_STAGES）。
+ * （暫定→検証済→公開済の順で進む。旧 domain.ts の QUALITY_STAGES）。
  *
  * 指標・単位・注記・zone のような登録語彙ではないので `@/lib/registry/` には置かない
  * （docs/plans/PHASE_B_INTAKE.md #6）。`queries.ts` は `server-only` なのでクライアント
