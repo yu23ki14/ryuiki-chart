@@ -11,7 +11,8 @@
   どの原本から来たテーブルかは `web/src/lib/table-meta.ts` の `TABLE_ORIGIN`。
 - D1 のスキーマは `web/src/db/schema.ts`（Drizzle）が原本。触ったら `pnpm run db:generate` で
   `web/drizzle/migrations/` を作り直す。マイグレーション SQL を直接書き換えない。
-- 原本は `data/db/ryuiki.sqlite` と `data/db/cells.sqlite`。**読み取り専用**で扱う。
+- 原本は `data/db/ryuiki.sqlite` と `data/db/cells.sqlite`。**読み取り専用**で扱う
+  （この規約は `web/` 側から見たものであり、書き手は `scripts/m0x_*.py` に限る）。
   集計は `data/db/derived.sqlite` に分けて書く（`cd web && pnpm run build:derived` で再生成）。
   この 3 ファイルが D1 シードの入力になる（`web/scripts/seed-d1-local.mjs`）。
 - 地図の GeoJSON は `web/public/geo/`。`data/processed` から `pnpm run prepare:geo` が写す生成物で、
@@ -41,7 +42,9 @@
   `wildlife_sightings` / `river_segments` を新設した（DDL は `scripts/schema_tier1.sql`）。
   API は `/api/nature?kind=...` と `/api/geo/{protected-areas,vegetation,river-segments}`。
 - 収集スクリプトの User-Agent に個人名・個人アドレスを入れない（`scripts/common.py`）。
-  経緯は `docs/COLLECTOR_CONTRACT.md` の追記を読むこI
+  経緯は `docs/COLLECTOR_CONTRACT.md` の追記を読むこと。
+- 新しいエリア（東京都・沖縄県・兵庫県など）を足すときは `docs/add_area.md` の手順に従う。
+  方式（単一 D1 + `region_id`）は `docs/adr/0002-multi-region.md` で決定済みで蒸し返さない。
 
 ## 開発フロー
 
