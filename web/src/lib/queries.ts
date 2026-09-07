@@ -301,6 +301,10 @@ export async function landuseChange(watershedId: string) {
 }
 
 /* --------------------------- 品質・ガバナンス --------------------------- */
+// `measurements.quality_stage` 等が取りうる3値（暫定→検証済→公開済）は
+// `@/lib/quality` の QUALITY_STAGES/QualityStage を使う（このファイルの
+// `to_stage='公開済'` 等のSQLと同じ3値・順序）。queries.ts は server-only なので
+// クライアントコンポーネントから読む型はここには置けない（docs/plans/PHASE_B_INTAKE.md #6）。
 
 export async function qualityMonthly() {
   return query<{ ym: string; submitted: number; verified: number; published: number; returned: number }>(

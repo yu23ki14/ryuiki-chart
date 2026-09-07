@@ -4,7 +4,8 @@ import * as React from "react";
 import Link from "next/link";
 import { ZONE_COLORS, ZONE_LABELS } from "@/components/viz/palette";
 import { Btn, inputCls, nf } from "@/components/ui";
-import { MUNICIPALITY_LABEL, DATA_CAVEATS } from "@/lib/domain";
+import { caveatBody } from "@/lib/registry/lookup-client";
+import { MUNICIPALITY_LABEL } from "@/lib/municipality";
 
 interface Site {
   site_id: string;
@@ -166,7 +167,7 @@ export function SiteList({ sites }: { sites: Site[] }) {
       </div>
 
       <div className="no-print border-t border-line bg-surface px-4 py-2 text-[10.5px] text-muted leading-relaxed">
-        {DATA_CAVEATS.zone}　「{MUNICIPALITY_LABEL}」列は原本では municipality という列名だが、
+        {caveatBody("zone")}　「{MUNICIPALITY_LABEL}」列は原本では municipality という列名だが、
         環境省の水質測定点 290 件では水域名（河川名・湖沼名）が、それ以外の 62 件では市区町村名が入っている。
       </div>
     </div>

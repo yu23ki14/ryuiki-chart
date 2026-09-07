@@ -8,7 +8,9 @@ import { ChartFrame, MiniTable } from "@/components/viz/ChartFrame";
 import { MapCanvas } from "@/components/map/MapCanvas";
 import { SERIES, ZONE_COLORS, ZONE_LABELS, ZONE_ELEV } from "@/components/viz/palette";
 import { Btn, Stat, nf, Provenance, Spinner } from "@/components/ui";
-import { shortVariable, VARIABLE_NOTE, MUNICIPALITY_LABEL, DATA_CAVEATS } from "@/lib/domain";
+import { shortVariable, caveatBody } from "@/lib/registry/lookup-client";
+import { VARIABLE_NOTE } from "@/lib/registry/generated-client";
+import { MUNICIPALITY_LABEL } from "@/lib/municipality";
 import { useJson } from "@/components/useJson";
 import { fmt } from "@/components/viz/scales";
 import { useSetPageContext } from "@/components/assistant/PageContextProvider";
@@ -217,7 +219,7 @@ export function SiteDetail({ site, variables }: { site: Site; variables: Variabl
             }
             note={
               <>
-                {DATA_CAVEATS.duplicates} {DATA_CAVEATS.censored}
+                {caveatBody("duplicates")} {caveatBody("censored")}
               </>
             }
           >

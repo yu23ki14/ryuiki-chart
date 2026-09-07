@@ -1,12 +1,12 @@
 import "server-only";
 import { TABLE_META, SCHEMA_META, TABLE_ORIGIN, SAMPLE_QUERIES } from "@/lib/table-meta";
-import { DATA_CAVEATS, BIOTA_CAVEATS } from "@/lib/domain";
 import { caveatBody } from "@/lib/registry/lookup-client";
+import type { CaveatKey } from "@/lib/registry/generated-client";
 import { resolveVariableInfo } from "@/lib/registry/lookup";
 import { describePageContext, type PageContext } from "./page-context";
 
 /**
- * システムプロンプトは table-meta.ts / domain.ts / registry から組み立てる（文字列にハードコードしない）。
+ * システムプロンプトは table-meta.ts / registry から組み立てる（文字列にハードコードしない）。
  * テーブルや注記が増えたときにここだけ更新漏れが起きるのを防ぐため。
  */
 
@@ -29,17 +29,40 @@ function schemaOrigins(): string {
  * 注記は `[キー] 本文` の形で出す。ツール結果にはキーだけが載るので、
  * モデルはここを引いて本文に戻せる。本文を両方に載せると純粋な重複になる。
  *
- * municipality は DATA_CAVEATS / BIOTA_CAVEATS（domain.ts、画面の注記用に選んだ13件）に
- * 含めていないので、ここだけ `registry/caveat.yaml` を lookup.ts 経由で直接引く。
- * 本文を直書きしない（レジストリと文言がずれる「二重の真実」を防ぐ）。
+ * 画面の注記用に選んだ13件（旧 domain.ts の DATA_CAVEATS / BIOTA_CAVEATS。
+ * Phase B で撤去。docs/plans/PHASE_B_INTAKE.md #6）に municipality を足した14件が
+ * registry/caveat.yaml の全件（cells.notes 由来を除く）。並び順は旧実装のまま変えない
+ * （ここを変えるのは構造の変更ではなく、モデルへの入力を変える意図的な変更になるため）。
+ * 本文は `caveatBody`（レジストリ由来）から引き、直書きしない
+ * （レジストリと文言がずれる「二重の真実」を防ぐ）。
+ *
+ * `satisfies Record<CaveatKey, true>` で「registry/caveat.yaml の14件ちょうどと
+ * 過不足なく一致する」ことをコンパイル時に強制する（キーが1つ欠けても、
+ * CaveatKey に無い誤ったキーがあっても、ここで型エラーになる）。
+ * 実行時にレジストリと突き合わせて例外を投げる形（旧 domain.ts の mustCaveatBody と
+ * 同じ「気づいたときには落ちている」方式）より前倒しで検出できる（/simplify 指摘）。
+ * `Object.keys()` はオブジェクトリテラルの記述順を保つので、並び順の指定も兼ねる。
  */
+const CAVEAT_KEY_ORDER = {
+  measuredOn: true,
+  censored: true,
+  duplicates: true,
+  zone: true,
+  organismSite: true,
+  effort: true,
+  synthetic: true,
+  regimes: true,
+  gbifCutoff: true,
+  share: true,
+  inatBackfill: true,
+  fishClass: true,
+  isAlien: true,
+  municipality: true,
+} satisfies Record<CaveatKey, true>;
+const CAVEAT_KEYS = Object.keys(CAVEAT_KEY_ORDER) as CaveatKey[];
+
 function allCaveats(): string {
-  const lines = [...Object.entries(DATA_CAVEATS), ...Object.entries(BIOTA_CAVEATS)];
-  const municipality = caveatBody("municipality");
-  if (municipality === undefined) {
-    throw new Error('registry/caveat.yaml に "municipality" が無い（prompt.ts が参照している）');
-  }
-  return [...lines, ["municipality", municipality] as const].map(([key, text]) => `- [${key}] ${text}`).join("\n");
+  return CAVEAT_KEYS.map((key) => `- [${key}] ${caveatBody(key)}`).join("\n");
 }
 
 /**

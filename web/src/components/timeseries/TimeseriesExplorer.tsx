@@ -8,7 +8,9 @@ import { BarChart, ColumnChart } from "@/components/viz/BarChart";
 import { ChartFrame, MiniTable } from "@/components/viz/ChartFrame";
 import { SERIES, ZONE_COLORS, ZONE_LABELS, INK } from "@/components/viz/palette";
 import { Btn, inputCls, Spinner, Provenance, nf } from "@/components/ui";
-import { shortVariable, VARIABLE_NOTE, HIGHER_IS_WORSE, DATA_CAVEATS } from "@/lib/domain";
+import { shortVariable, caveatBody } from "@/lib/registry/lookup-client";
+import { VARIABLE_NOTE, HIGHER_IS_WORSE } from "@/lib/registry/generated-client";
+import { MUNICIPALITY_LABEL } from "@/lib/municipality";
 import { useJson } from "@/components/useJson";
 import { useSetPageContext } from "@/components/assistant/PageContextProvider";
 
@@ -121,7 +123,7 @@ export function TimeseriesExplorer({ waters, vars }: { waters: WaterBody[]; vars
 
         {mode === "water" && (
           <label className="block">
-            <span className="block text-[10.5px] text-muted mb-1">水域・地域</span>
+            <span className="block text-[10.5px] text-muted mb-1">{MUNICIPALITY_LABEL}</span>
             <select
               className={inputCls + " w-56"}
               value={water}
@@ -357,8 +359,8 @@ function WaterMode({
           }
           note={
             <>
-              {DATA_CAVEATS.duplicates} {DATA_CAVEATS.censored}
-              {kind === "annual" && ` ${DATA_CAVEATS.measuredOn}`}
+              {caveatBody("duplicates")} {caveatBody("censored")}
+              {kind === "annual" && ` ${caveatBody("measuredOn")}`}
             </>
           }
         >
@@ -542,7 +544,7 @@ function ZoneMode({ variable, kind, unit }: { variable: string; kind: "daily" | 
             rows={(data?.points ?? []).map((p) => [`${p.zone}. ${ZONE_LABELS[p.zone]}`, p.year, p.avg, p.n_sites])}
           />
         }
-        note={DATA_CAVEATS.zone}
+        note={caveatBody("zone")}
       >
         <LineChart
           series={series}

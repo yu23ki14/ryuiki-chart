@@ -7,7 +7,7 @@ import { Spinner } from "@/components/ui";
 import { LineChart, type LineSeries } from "@/components/viz/LineChart";
 import { ChartFrame } from "@/components/viz/ChartFrame";
 import { SERIES, ZONE_COLORS, ZONE_LABELS, INK } from "@/components/viz/palette";
-import { shortVariable } from "@/lib/domain";
+import { shortVariable } from "@/lib/registry/lookup-client";
 import { timeseriesUrl } from "@/lib/ai/links";
 import { ProvenanceFooter, type Provenance } from "./ProvenanceFooter";
 import { TOOL_LABEL } from "./ToolResultCard";

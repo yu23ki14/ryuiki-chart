@@ -8,7 +8,7 @@ import {
 } from "@/lib/queries";
 import { HomeHighlights } from "@/components/HomeHighlights";
 import { Stat, nf } from "@/components/ui";
-import { DATA_CAVEATS } from "@/lib/domain";
+import { caveatBody } from "@/lib/registry/lookup-client";
 import { PageContextSetter } from "@/components/assistant/PageContextProvider";
 import { EXPLORE_ENABLED } from "@/lib/features";
 
@@ -130,13 +130,13 @@ export default async function Home() {
           </p>
           <ul className="mt-3 space-y-2">
             {[
-              ["日付の形式が2種類ある", DATA_CAVEATS.measuredOn],
-              ["「0」は本当に0ではない", DATA_CAVEATS.censored],
-              ["同じ日に同じ項目が複数行ある", DATA_CAVEATS.duplicates],
-              ["ゾーンは公式の区分ではない", DATA_CAVEATS.zone],
-              ["生物レコードは地点に紐づいていない", DATA_CAVEATS.organismSite],
-              ["生物の件数は観察努力を写している", DATA_CAVEATS.effort],
-              ["一部は合成データ", DATA_CAVEATS.synthetic],
+              ["日付の形式が2種類ある", caveatBody("measuredOn")],
+              ["「0」は本当に0ではない", caveatBody("censored")],
+              ["同じ日に同じ項目が複数行ある", caveatBody("duplicates")],
+              ["ゾーンは公式の区分ではない", caveatBody("zone")],
+              ["生物レコードは地点に紐づいていない", caveatBody("organismSite")],
+              ["生物の件数は観察努力を写している", caveatBody("effort")],
+              ["一部は合成データ", caveatBody("synthetic")],
             ].map(([t, b]) => (
               <li key={t} className="border-l-2 border-line pl-3">
                 <div className="text-[12.5px] font-medium">{t}</div>
