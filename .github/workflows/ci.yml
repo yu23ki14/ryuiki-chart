@@ -19,6 +19,12 @@ env:
   PYTHON_VERSION: "3.13"
   NODE_VERSION: "22"
   PNPM_VERSION: "10.18.3"
+  # scripts/r01_build_registry.py --files-only の既定の書き込み先は、正規の
+  # data/db/registry.sqlite を壊さないよう別ファイル（registry_files_only.sqlite）だが、
+  # CI では checkout のたびにまっさらなので、パスをここで明示して
+  # r01_build_registry.py / build-registry-ts.mjs / generated.test.ts の3箇所が
+  # 確実に同じファイルを指すようにする（3つとも RYUIKI_REGISTRY_DB を見る）。
+  RYUIKI_REGISTRY_DB: ${{ github.workspace }}/data/db/registry_files_only.sqlite
 
 jobs:
   registry:

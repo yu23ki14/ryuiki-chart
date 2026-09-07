@@ -22,6 +22,15 @@ import { buildClientVariableMaps, dedupeByAlias, pickPrimaryAlias } from "../../
  * `web/scripts/lib/registry-codegen.mjs` の1箇所だけになったので、このテストはもはや
  * 「ビルド時実装と実行時実装が一致するか」ではなく、「代表エイリアス選定の規則そのもの」
  * （fiscal_year 優先度・タイブレーク）を検証するテストである。
+ *
+ * その後（Phase B, 独立 `/code-review high` 指摘）、`lookup.ts` の `primaryAlias()` は
+ * 本番の呼び出し元が無い（`domain.ts` は既にビルド時の `generated-client.ts` を読むだけ）
+ * うえ、行全体を返すため `variable_alias` が `(dataset, alias, sourceId)` 単位に
+ * 分かれた後は `stat`/`grain` が「たまたま CSV で先に来た source_id のもの」という
+ * 曖昧な値になってしまっていた（`resolveAlias()` を削除したのと同じ理由）ため削除した。
+ * 「代表エイリアス選定」の規則そのものは `web/scripts/build-registry-ts.mjs` が
+ * ビルド時に呼ぶ `pickPrimaryAlias()`/`dedupeByAlias()` として引き続き生きており、
+ * このテストが検証を継続する。
  */
 
 describe("pickPrimaryAlias", () => {

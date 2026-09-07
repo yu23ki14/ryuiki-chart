@@ -1,12 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  getUnit,
-  getVariable,
-  primaryAlias,
-  resolveAliasForSource,
-  resolveVariableInfo,
-  unitSymbol,
-} from "@/lib/registry/lookup";
+import { getUnit, getVariable, resolveAliasForSource, resolveVariableInfo, unitSymbol } from "@/lib/registry/lookup";
 import { caveatBody, caveatsForTables } from "@/lib/registry/lookup-client";
 
 describe("resolveVariableInfo", () => {
@@ -48,20 +41,6 @@ describe("resolveVariableInfo", () => {
   });
 });
 
-describe("primaryAlias", () => {
-  it("fiscal_year でない表記があればそれを選ぶ（fiscal_yearの別名より優先）", () => {
-    const a = primaryAlias("common:variable:water.bod");
-    expect(a?.alias).toBe("生物化学的酸素要求量 BOD");
-    expect(a?.grain).toBe("day");
-  });
-
-  it("fiscal_year の表記しか無い variable は default_stat と一致する行を選ぶ", () => {
-    const a = primaryAlias("common:variable:water.tn");
-    expect(a?.alias).toBe("全窒素 T-N");
-    expect(a?.grain).toBe("fiscal_year");
-  });
-});
-
 describe("resolveAliasForSource", () => {
   it("(dataset, alias, sourceId) の完全一致で stat/grain を含む1行を返す（BOD の3出典）", () => {
     const atsugi = resolveAliasForSource("生物化学的酸素要求量 BOD", "measurements", "atsugi_river_water_quality");
@@ -88,6 +67,30 @@ describe("resolveAliasForSource", () => {
 
   it("一致が無ければ undefined（推測で埋めない）", () => {
     expect(resolveAliasForSource("生物化学的酸素要求量 BOD", "measurements", "そんな出典は無い")).toBeUndefined();
+  });
+});
+
+describe("variable_alias の (dataset, alias, sourceId) 重複は索引構築時に例外にする", () => {
+  // scripts/registry/build_unit_variable.py の _load_variable_alias_csv が
+  // Python 側で一意性を assert しているが、SQLite の索引は非 UNIQUE で
+  // D1 側では何も強制しない（code-review 指摘）。generated.ts をモックして
+  // 重複行を注入し、モジュール読み込み時点で例外になることを確認する。
+  it("(dataset, alias, sourceId) が重複する行があると import 時に throw する", async () => {
+    vi.resetModules();
+    vi.doMock("@/lib/registry/generated", () => ({
+      GENERATED_UNITS: [],
+      GENERATED_VARIABLES: [],
+      GENERATED_VARIABLE_ALIASES: [
+        { alias: "pH", dataset: "measurements", sourceId: "dup", variableId: "v.ph", unitId: null, stat: "point", grain: "day" },
+        { alias: "pH", dataset: "measurements", sourceId: "dup", variableId: "v.ph", unitId: null, stat: "mean", grain: "day" },
+      ],
+    }));
+    try {
+      await expect(import("@/lib/registry/lookup")).rejects.toThrow(/重複している/);
+    } finally {
+      vi.doUnmock("@/lib/registry/generated");
+      vi.resetModules();
+    }
   });
 });
 

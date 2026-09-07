@@ -20,12 +20,25 @@ D1 は「捨てて再構築できる」もの — ADR-0001）。
 `build_caveat.py` の Python 定数だけから作れる部分（`unit`/`variable`/`variable_alias`
 と、ファイル由来の `caveat`/`caveat_scope`）だけを作るモード。`place`/`taxon`、および
 `cells.notes`/`place`/`taxon` 由来の `caveat` は作らない（それらのテーブルは空のまま）。
-CI がこのモードで `registry.sqlite` を作り、`web/scripts/build-registry-ts.mjs` で
+CI がこのモードで registry.sqlite を作り、`web/scripts/build-registry-ts.mjs` で
 `generated.ts`/`generated-client.ts` を再生成して `git diff --exit-code` することで、
 レジストリ（手書きファイル）と生成物のずれを検出する。原本 DB が存在しない環境
 （CI ランナー）でも動くことが要件。
+
+**書き込み先は既定で正規の `data/db/registry.sqlite` とは別のファイル**
+（`common.FILES_ONLY_REGISTRY_DB` = `data/db/registry_files_only.sqlite`）。
+`--files-only` は place/taxon/cells由来caveatを持たないスタブなので、正規の
+registry.sqlite を上書きすると完全なレジストリ（place 4,960/taxon 41,444/
+caveat 221 件）が154 alias だけのスタブに黙って壊れて消える
+（独立レビューで実際に踏まれた事故。`web/scripts/ensure-registry.sh` は
+「ファイルが無いとき」しか作り直さないので、壊れたことに誰も気づけない）。
+書き込み先は `RYUIKI_REGISTRY_DB` 環境変数で明示的に上書きできる
+（`--files-only` の有無に関わらず。CI はこれで files-only 用のパスを指定する。
+`web/scripts/build-registry-ts.mjs` / `web/src/lib/registry/generated.test.ts` も
+同じ環境変数を見るので、CI では3箇所が同じファイルを指す）。
 """
 import argparse
+import os
 import pathlib
 import sys
 
@@ -97,20 +110,26 @@ def main() -> None:
         help=(
             "原本 DB（ryuiki/cells/derived）を開かず、registry/ 配下の手書きファイルと "
             "build_caveat.py の Python 定数だけから unit/variable/variable_alias と "
-            "ファイル由来の caveat/caveat_scope だけを作る（CI 用）。"
+            "ファイル由来の caveat/caveat_scope だけを作る（CI 用）。書き込み先は既定で "
+            f"正規の {common.REGISTRY_DB.name} とは別ファイル "
+            f"（{common.FILES_ONLY_REGISTRY_DB.name}）にする。RYUIKI_REGISTRY_DB で上書き可。"
         ),
     )
     args = parser.parse_args()
 
     steps = FILES_ONLY_STEPS if args.files_only else STEPS
+    default_db = common.FILES_ONLY_REGISTRY_DB if args.files_only else common.REGISTRY_DB
+    env_override = os.environ.get("RYUIKI_REGISTRY_DB")
+    target_db = pathlib.Path(env_override) if env_override else default_db
+
     if args.files_only:
-        print("▶ --files-only: 原本 DB は開かない")
+        print(f"▶ --files-only: 原本 DB は開かない（正規の {common.REGISTRY_DB} には触れない）")
         src: dict = {}
     else:
         print(f"▶ 原本を読み取り専用で開く: {common.DB_DIR}")
         src = common.open_sources()
-    print(f"▶ registry.sqlite を作り直す: {common.REGISTRY_DB}")
-    conn = common.create_registry_db()
+    print(f"▶ registry.sqlite を作り直す: {target_db}")
+    conn = common.create_registry_db(target_db)
 
     try:
         totals: dict[str, int] = {}
@@ -125,7 +144,7 @@ def main() -> None:
                 print(f"  {table}: {n:,} 行")
 
         grand_total = sum(totals.values())
-        print(f"完了: {len(totals)} テーブル / {grand_total:,} 行 -> {common.REGISTRY_DB}")
+        print(f"完了: {len(totals)} テーブル / {grand_total:,} 行 -> {target_db}")
 
         _assert_id_uniqueness(conn)
     finally:

@@ -21,7 +21,6 @@
  * 要る場面（`resolveVariableInfo`）ではどの行を引いても曖昧さは無い。`stat`/`grain`の
  * ように行によって値が変わりうる情報が要る場面は `resolveAliasForSource` を使うこと。
  */
-import { dedupeByAlias, pickPrimaryAlias } from "../../../scripts/lib/registry-codegen.mjs";
 import {
   GENERATED_UNITS,
   GENERATED_VARIABLES,
@@ -47,24 +46,32 @@ function sourceKey(sourceId: string | null | undefined): string {
  * (dataset, alias) -> 最初に見つかった行。`variableId`/`unitId` の解決だけが目的で、
  * `sourceId` は問わない（複数行あっても variableId/unitId は一致することが
  * ビルド時に保証されている）。`stat`/`grain` はここでは扱わない
- * （`resolveAliasForSource` を使うこと）。
+ * （`resolveAliasForSource` を使うこと）。このキーは意図的に複数行が来うる
+ * （`(dataset, alias)` は1対多で正しい）ので、先勝ちで無言のまま構わない。
  */
 const firstAliasByDatasetAlias = new Map<string, GeneratedVariableAlias>();
-/** (dataset, alias, sourceId) -> 行。厳密な1行引き（`resolveAliasForSource`）に使う。 */
+/**
+ * (dataset, alias, sourceId) -> 行。厳密な1行引き（`resolveAliasForSource`）に使う。
+ * このキーは一意でなければならない（`scripts/registry/build_unit_variable.py` の
+ * `_load_variable_alias_csv` が Python 側で assert している）が、SQLite の
+ * `ix_variable_alias_dataset_alias_source` は非 UNIQUE 索引で D1 側では何も
+ * 強制しない。別経路（例: 将来 D1 から直接読む経路）で重複が紛れ込むと、
+ * 後勝ちで黙って上書きされ、`resolveAliasForSource` が誤った行を返しても
+ * 誰も気づけない。ここで重複を検出したら例外を投げ、うるさく落とす
+ * （code-review 指摘: 索引構築時点の防御を1本足す）。
+ */
 const aliasBySourceKey = new Map<string, GeneratedVariableAlias>();
 for (const a of GENERATED_VARIABLE_ALIASES) {
   const datasetAliasKey = `${a.dataset ?? ""}\t${a.alias}`;
   if (!firstAliasByDatasetAlias.has(datasetAliasKey)) firstAliasByDatasetAlias.set(datasetAliasKey, a);
-  aliasBySourceKey.set(`${a.dataset ?? ""}\t${a.alias}\t${sourceKey(a.sourceId)}`, a);
-}
 
-/** variableId ごとのエイリアス行（dataset 別、source 違いを含む）。primaryAlias の算出に使う。 */
-const aliasesByVariable = new Map<string, GeneratedVariableAlias[]>();
-for (const a of GENERATED_VARIABLE_ALIASES) {
-  if (!a.variableId) continue;
-  const list = aliasesByVariable.get(a.variableId) ?? [];
-  list.push(a);
-  aliasesByVariable.set(a.variableId, list);
+  const sourceKeyStr = `${a.dataset ?? ""}\t${a.alias}\t${sourceKey(a.sourceId)}`;
+  if (aliasBySourceKey.has(sourceKeyStr)) {
+    throw new Error(
+      `variable_alias: (dataset, alias, sourceId) が重複している: ${sourceKeyStr}`,
+    );
+  }
+  aliasBySourceKey.set(sourceKeyStr, a);
 }
 
 /* ------------------------------------------------------------------ */
@@ -139,38 +146,6 @@ export function resolveAliasForSource(
   sourceId: string | null | undefined,
 ): GeneratedVariableAlias | undefined {
   return aliasBySourceKey.get(`${dataset}\t${alias}\t${sourceKey(sourceId)}`);
-}
-
-/**
- * variable_id ごとの「代表エイリアス」を選ぶ。
- *
- * ルール自体（scripts/registry/build_variable.py 側のデータからは分からない、このアプリの
- * 表示都合の選択）の実装は `web/scripts/lib/registry-codegen.mjs` の `pickPrimaryAlias()`
- * に1本化した（以前はここに一字一句同じロジックが独立に実装されており、規則を直すときに
- * 2箇所を直す必要があった。修正2）。ここでは D1/`generated.ts` 由来の行を
- * `(variableId, dataset)` で絞り込み、`dedupeByAlias()` で alias 単位に戻してから渡すだけの
- * 薄いラッパ。
- *
- * `dedupeByAlias()` が要る理由（Phase B, docs/plans/PHASE_B_INTAKE.md 設計D）:
- * `variable_alias` が `(dataset, alias)` 単位から `(dataset, alias, sourceId)` 単位に
- * 分かれたため、同じ alias 文字列が複数行（source 違い）になりうる。
- * `pickPrimaryAlias()` の「fiscal_year でない最初の行」判定は alias 単位の判定なので、
- * 渡す前に alias 文字列で重複を除き（CSV の行順を保ったまま最初の1つを残す）、
- * 1 alias = 1行の形に戻す。
- *
- * `web/src/lib/registry/generated-client.ts` の VARIABLE_SHORT / VARIABLE_NOTE /
- * HIGHER_IS_WORSE は、ビルド時に同じ `pickPrimaryAlias()`（+ 同じ `dedupeByAlias()`）を
- * 呼んでこの代表エイリアスをキーにして再現する（`web/scripts/build-registry-ts.mjs` 経由）。
- * `web/src/lib/registry/primary-alias.test.ts` は「2実装が一致するか」ではなく、
- * `pickPrimaryAlias()` という規則そのもの（fiscal_year 優先度・タイブレーク）を検証する。
- */
-export function primaryAlias(
-  variableId: string,
-  dataset: string = "measurements",
-): GeneratedVariableAlias | undefined {
-  const rows = dedupeByAlias((aliasesByVariable.get(variableId) ?? []).filter((a) => a.dataset === dataset));
-  const v = variableById.get(variableId);
-  return pickPrimaryAlias(rows, v?.defaultStat ?? null) as GeneratedVariableAlias | undefined;
 }
 
 export function allVariables(): readonly GeneratedVariable[] {
