@@ -7,13 +7,15 @@
  * 読み取り元:
  *   - data/db/registry.sqlite（scripts/r01_build_registry.py が作る）の
  *     unit / variable / variable_alias / caveat / caveat_scope
- *   - registry/taxon/vernacular_ja.csv（domain.ts の NAME_JA 54件をそのまま複製した台帳）
+ *   - registry/taxon/vernacular_ja.csv（旧 domain.ts の NAME_JA 54件をそのまま複製した台帳）
+ *   - registry/place/zone.yaml（旧 domain.ts の ZONE_INFO。registry.sqlite を経由せず
+ *     直接読む。vernacular_ja.csv と同じ扱い）
  *
  * ## 2ファイルに分けている理由（レビュー指摘・code-review #4）
  *
  * 以前は1本の `generated.ts` に unit(28) / variable(85, description_ja込み) /
  * variable_alias(117, stat/grain/unitId込み) / caveat(14) / caveat_scope(約40) /
- * vernacular(54) を全部載せていた。`domain.ts`（8つの client component から import
+ * vernacular(54) を全部載せていた。旧 `domain.ts`（8つの client component から import
  * される）がこれを丸ごと import していたため、クライアントバンドルに
  * GENERATED_VARIABLES 22.7KB + GENERATED_VARIABLE_ALIASES 20.8KB が乗っていた
  * （domain.ts が実際に使うのは、そこから機械的に再構成した4つの派生ラベル表
@@ -24,9 +26,10 @@
  *     `web/src/lib/registry/lookup.ts`（server-onlyではないが D1/大きいテーブルに
  *     依存するため、クライアントコンポーネントから import しないこと）が使う。
  *   - `generated-client.ts`（クライアント安全）: VARIABLE_SHORT / VARIABLE_NOTE /
- *     HIGHER_IS_WORSE / VARIABLE_UNIT_FALLBACK / NAME_JA（domain.ts が実際に使う、
- *     派生済みの4+1個の Record）と、caveat 14件・caveat_scope（小さいので両方に
- *     置いて問題ない）。生の variable / alias テーブルはここには載せない。
+ *     HIGHER_IS_WORSE / VARIABLE_UNIT_FALLBACK / NAME_JA（旧 domain.ts が実際に使っていた、
+ *     派生済みの4+1個の Record）、ZONE_INFO・CaveatKey（Phase B で旧 domain.ts から
+ *     移設。docs/plans/PHASE_B_INTAKE.md #6）と、caveat 14件・caveat_scope
+ *     （小さいので両方に置いて問題ない）。生の variable / alias テーブルはここには載せない。
  *
  * 派生値の組み立てロジック（元は domain.ts が実行時に primaryAlias() 経由で
  * やっていた「代表エイリアスの選定」）は `web/scripts/lib/registry-codegen.mjs`
@@ -46,12 +49,14 @@
  * 生成物の差分が無いことを確認するために使う（/simplify 修正6）:
  *   - RYUIKI_REGISTRY_DB: 入力の registry.sqlite
  *   - RYUIKI_VERNACULAR_CSV: 入力の vernacular_ja.csv
+ *   - RYUIKI_ZONE_YAML: 入力の zone.yaml
  *   - RYUIKI_REGISTRY_TS_OUT_SERVER / RYUIKI_REGISTRY_TS_OUT_CLIENT: 出力先
  */
 import Database from "better-sqlite3";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { load as loadYaml } from "js-yaml";
 import { parseCsvRecords } from "./lib/csv.mjs";
 import { buildClientVariableMaps } from "./lib/registry-codegen.mjs";
 
@@ -61,22 +66,25 @@ const REPO = path.resolve(WEB, "..");
 const REGISTRY_DB = process.env.RYUIKI_REGISTRY_DB ?? path.join(REPO, "data", "db", "registry.sqlite");
 const VERNACULAR_CSV =
   process.env.RYUIKI_VERNACULAR_CSV ?? path.join(REPO, "registry", "taxon", "vernacular_ja.csv");
+const ZONE_YAML = process.env.RYUIKI_ZONE_YAML ?? path.join(REPO, "registry", "place", "zone.yaml");
 const OUT_SERVER =
   process.env.RYUIKI_REGISTRY_TS_OUT_SERVER ?? path.join(WEB, "src", "lib", "registry", "generated.ts");
 const OUT_CLIENT =
   process.env.RYUIKI_REGISTRY_TS_OUT_CLIENT ?? path.join(WEB, "src", "lib", "registry", "generated-client.ts");
 
-if (!fs.existsSync(REGISTRY_DB)) {
-  console.error(
-    `registry.sqlite が無い: ${REGISTRY_DB}\n` +
-      "先に `cd web && npm run build:registry`（scripts/r01_build_registry.py）で作る。",
-  );
+/** 入力ファイルが無ければヒントを添えて即座に落ちる（3つの入力（DB・CSV・YAML）で共通化）。 */
+function requireFile(filePath, label, hint) {
+  if (fs.existsSync(filePath)) return;
+  console.error(`${label}が無い: ${filePath}${hint ? `\n${hint}` : ""}`);
   process.exit(1);
 }
-if (!fs.existsSync(VERNACULAR_CSV)) {
-  console.error(`和名台帳が無い: ${VERNACULAR_CSV}`);
-  process.exit(1);
-}
+requireFile(
+  REGISTRY_DB,
+  "registry.sqlite",
+  "先に `cd web && npm run build:registry`（scripts/r01_build_registry.py）で作る。",
+);
+requireFile(VERNACULAR_CSV, "和名台帳");
+requireFile(ZONE_YAML, "zone.yaml");
 
 // CSV パーサ（引用符・引用符内カンマ・引用符内改行・""エスケープ対応、ヘッダ検証つき）は
 // `./lib/csv.mjs` に共通化した（`web/scripts/build-geo.mjs` の手書きパーサと同じアルゴリズムの
@@ -175,6 +183,37 @@ const vernacular = parseCsvRecords(fs.readFileSync(VERNACULAR_CSV, "utf-8"), [
   scientificName: r.scientific_name,
   vernacularNameJa: r.vernacular_name_ja,
 }));
+
+// registry/place/zone.yaml を直接読む（registry.sqlite を経由しない。vernacular_ja.csv と
+// 同じ扱い）。scripts/registry/build_place.py も同じファイルを読むが、あちらは
+// condition_ja（不等号表記、definition_ref の一文に埋め込む）を使い、こちらは
+// ui_condition_ja（画面・AIツール向けの短い日本語表記、旧 domain.ts の ZONE_INFO.cond）を
+// 使う。用途が違う別々の列なので統合しない（zone.yaml のコメント参照）。
+const zoneRows = loadYaml(fs.readFileSync(ZONE_YAML, "utf-8"));
+{
+  const seenZones = new Set();
+  for (const r of zoneRows) {
+    if (seenZones.has(r.zone)) {
+      throw new Error(`registry/place/zone.yaml の zone が重複している: ${r.zone}`);
+    }
+    seenZones.add(r.zone);
+    if (!r.ui_condition_ja) {
+      throw new Error(`registry/place/zone.yaml の zone=${r.zone} に ui_condition_ja が無い`);
+    }
+  }
+}
+const zoneInfo = zoneRows
+  .map((r) => ({ zone: r.zone, label: r.name_ja, cond: r.ui_condition_ja }))
+  .sort((a, b) => a.zone - b.zone);
+
+// caveat キーの union 型（build-registry-ts.mjs が唯一の生成元。手書きしない）。
+// 画面・prompt.ts が既知のキーを直接引くときの型チェックに使う
+// （web/src/lib/registry/lookup-client.ts の caveatBody）。
+// 0件だと `export type CaveatKey = ;` という不正な TS になってしまうので、うるさく落ちる。
+const caveatKeys = caveats.map((c) => c.key);
+if (caveatKeys.length === 0) {
+  throw new Error("caveat が0件（registry.sqlite の caveat テーブルが空）。CaveatKey を生成できない。");
+}
 
 db.close();
 
@@ -304,23 +343,23 @@ export const GENERATED_VARIABLE_ALIASES: readonly GeneratedVariableAlias[] = ${e
 
 const CLIENT_HEADER = `/**
  * 生成物。直接編集しない。クライアント安全（'server-only' は付けない。
- * domain.ts・証跡カードなどクライアントコンポーネントからも import される）。
+ * 証跡カードなどクライアントコンポーネントからも import される）。
  *
  * 再生成: \`cd web && npm run build:registry:ts\`
  * 生成元: \`web/scripts/build-registry-ts.mjs\`（data/db/registry.sqlite と
- * registry/taxon/vernacular_ja.csv から作る。派生値の組み立ては
+ * registry/taxon/vernacular_ja.csv・registry/place/zone.yaml から作る。派生値の組み立ては
  * \`web/scripts/lib/registry-codegen.mjs\`）。
  *
  * VARIABLE_SHORT 等は、生の variable(85件)/variable_alias(117件) テーブルから
  * 「代表エイリアス」を選んで再構成した派生値であり、生テーブルそのものではない
- * （レビュー指摘・code-review #4: 以前は domain.ts が実行時にこの再構成を行っており、
- * その結果クライアントバンドルに生テーブル全体が乗っていた）。生テーブルが要る場合は
- * \`./generated.ts\`（サーバ専用）を使う。
+ * （レビュー指摘・code-review #4: 以前は旧 domain.ts が実行時にこの再構成を
+ * 行っており、その結果クライアントバンドルに生テーブル全体が乗っていた）。生テーブルが
+ * 要る場合は \`./generated.ts\`（サーバ専用）を使う。
  *
  * D1 から動的に引く必要があるもの（taxon 全体・place・cells.notes 由来の caveat）は
  * ここには無い。読み出しは \`web/src/lib/registry/index.ts\`（server-only）を使う。
  *
- * docs/plans/PHASE_A.md §A-7 / code-review #4
+ * docs/plans/PHASE_A.md §A-7 / code-review #4 / docs/plans/PHASE_B_INTAKE.md #6
  */
 
 export interface GeneratedVernacular {
@@ -329,6 +368,14 @@ export interface GeneratedVernacular {
 }
 
 export type CaveatScopeKind = "table" | "table_prefix";
+
+/**
+ * caveat の既知のキー14件の union（docs/plans/PHASE_B_INTAKE.md #6）。
+ * 画面・\`web/src/lib/ai/prompt.ts\` が \`caveatBody(key)\`（lookup-client.ts）を直接
+ * 呼ぶときの型で、存在しないキーはここでコンパイルエラーになる（旧 domain.ts の
+ * mustCaveatBody() は実行時例外だった）。
+ */
+export type CaveatKey = ${caveatKeys.map((k) => esc(k)).join(" | ")};
 
 export interface GeneratedCaveat {
   key: string;
@@ -347,26 +394,33 @@ export interface GeneratedCaveatScope {
    * scripts/registry/build_caveat.py の docstring）。 */
   priority: number;
 }
+
+/** Ridge to Reef ゾーン(1-5)。registry/place/zone.yaml から作る（旧 domain.ts の ZONE_INFO）。 */
+export interface GeneratedZone {
+  zone: number;
+  label: string;
+  cond: string;
+}
 `;
 
 const clientOut = `${CLIENT_HEADER}
 /**
- * 水質項目の短い表示名（domain.ts の VARIABLE_SHORT）。
+ * 水質項目の短い表示名（旧 domain.ts の VARIABLE_SHORT）。
  * variable(85件)・variable_alias(117件)から「代表エイリアス」を選んで再構成した派生値。
  */
 export const VARIABLE_SHORT: Readonly<Record<string, string>> = ${emitRecord(variableShort)};
 
-/** 何を意味する指標か（domain.ts の VARIABLE_NOTE）。ツールチップに出す。 */
+/** 何を意味する指標か（旧 domain.ts の VARIABLE_NOTE）。ツールチップに出す。 */
 export const VARIABLE_NOTE: Readonly<Record<string, string>> = ${emitRecord(variableNote)};
 
-/** 上流→下流でこの向きに動くのが「悪化」か（domain.ts の HIGHER_IS_WORSE）。 */
+/** 上流→下流でこの向きに動くのが「悪化」か（旧 domain.ts の HIGHER_IS_WORSE）。 */
 export const HIGHER_IS_WORSE: Readonly<Record<string, boolean>> = ${emitRecord(higherIsWorse)};
 
-/** 単位が原本で NULL の項目に既知のものだけ補う（domain.ts の VARIABLE_UNIT_FALLBACK）。 */
+/** 単位が原本で NULL の項目に既知のものだけ補う（旧 domain.ts の VARIABLE_UNIT_FALLBACK）。 */
 export const VARIABLE_UNIT_FALLBACK: Readonly<Record<string, string>> = ${emitRecord(variableUnitFallback)};
 
 /**
- * 和名54件（registry/taxon/vernacular_ja.csv、domain.ts の NAME_JA をそのまま複製した台帳）。
+ * 和名54件（registry/taxon/vernacular_ja.csv、旧 domain.ts の NAME_JA をそのまま複製した台帳）。
  * taxon テーブル全体の vernacular_name_ja（8,324件、taxa 由来の別の母集団）とは別物。
  */
 export const NAME_JA: Readonly<Record<string, string>> = ${emitRecord(nameJa)};
@@ -394,6 +448,9 @@ export const GENERATED_CAVEAT_SCOPE: readonly GeneratedCaveatScope[] = ${emitObj
   caveatScope,
   ["scopeKind", "scopeRef", "caveatKey", "sortOrder", "priority"],
 )};
+
+/** Ridge to Reef ゾーン(1-5)の定義（registry/place/zone.yaml、旧 domain.ts の ZONE_INFO）。 */
+export const ZONE_INFO: readonly GeneratedZone[] = ${emitObjectArray(zoneInfo, ["zone", "label", "cond"])};
 `;
 
 fs.mkdirSync(path.dirname(OUT_SERVER), { recursive: true });
@@ -407,5 +464,6 @@ console.log(
   `wrote ${path.relative(REPO, OUT_CLIENT)} ` +
     `(variableShort=${Object.keys(variableShort).length} variableNote=${Object.keys(variableNote).length} ` +
     `higherIsWorse=${Object.keys(higherIsWorse).length} variableUnitFallback=${Object.keys(variableUnitFallback).length} ` +
-    `nameJa=${Object.keys(nameJa).length} caveats=${caveats.length} caveatScope=${caveatScope.length})`,
+    `nameJa=${Object.keys(nameJa).length} caveats=${caveats.length} caveatScope=${caveatScope.length} ` +
+    `zones=${zoneInfo.length})`,
 );

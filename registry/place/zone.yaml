@@ -5,22 +5,42 @@
 # 学術区分ではない。閾値は本作業（データ統合）で仮に置いた値であり、水野研レビュー等で
 # 確定する必要がある（docs/ZONE_DEFINITION.md 冒頭の「重要な限界」を参照）。
 #
-# scripts/registry/build_place.py がこのファイルを読んで place / place_source_ref に流す。
+# scripts/registry/build_place.py がこのファイルを読んで place / place_source_ref に流す
+# （condition_ja を definition_ref の文中に埋め込む。不等号表記）。
+# web/scripts/build-registry-ts.mjs はこのファイルを直接読んで（registry.sqlite を経由せず、
+# registry/taxon/vernacular_ja.csv と同じ扱い）generated-client.ts の ZONE_INFO を作る
+# （zone・name_ja を zone/label に、ui_condition_ja を cond に使う。旧 web/src/lib/domain.ts
+# の ZONE_INFO が手書きしていた文言をそのまま転記したもの。condition_ja とは表記が違う
+# 別物なので統合しない — 不等号表記は definition_ref の一文向け、ui_condition_ja は
+# 画面・AIツール向けの短い日本語表記、と用途が異なる）。
+#
+# condition_ja と ui_condition_ja は同じ閾値を指す前提だが、機械的な数値の整合チェックは
+# 無い（自由記述の日本語同士なので、自動検証はパースが脆く壊れやすい）。
+# 水野研レビュー等で閾値そのものを変えるときは、この2列を両方手で直すこと。
+# 片方だけ直すと「AIツールの回答」と「definition_ref の一文」が別の数字を語ることになる
+# （code-review 指摘）。
+#
 # 中身は「フラットな辞書のリスト」だけで、ネストや複数行文字列など YAML の一般機能は
-# 使っていない。読み込みは PyYAML（requirements.txt 参照）で統一している。
+# 使っていない。読み込みは Python 側が PyYAML（requirements.txt 参照）、Node 側が
+# js-yaml（web/package.json）で統一している。
 
 - zone: 1
   name_ja: 山地源流域
   condition_ja: 標高 > 800m
+  ui_condition_ja: 標高 800m 超
 - zone: 2
   name_ja: 山地渓流
   condition_ja: 400m < 標高 <= 800m
+  ui_condition_ja: 標高 400–800m
 - zone: 3
   name_ja: 丘陵・扇状地
   condition_ja: 100m < 標高 <= 400m
+  ui_condition_ja: 標高 100–400m
 - zone: 4
   name_ja: 平野・沖積低地
   condition_ja: 標高 <= 100m、かつ海岸線から2kmより遠い
+  ui_condition_ja: 標高 100m 以下・海岸から 2km 超
 - zone: 5
   name_ja: 河口・沿岸
   condition_ja: 標高 <= 100m、かつ海岸線から2km以内
+  ui_condition_ja: 標高 100m 以下・海岸から 2km 以内
