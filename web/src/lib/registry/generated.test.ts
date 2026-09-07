@@ -13,6 +13,7 @@ import {
   GENERATED_CAVEATS,
   GENERATED_CAVEAT_SCOPE,
   NAME_JA,
+  ZONE_INFO,
 } from "@/lib/registry/generated-client";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -102,5 +103,28 @@ describe("generated.ts / generated-client.ts の形", () => {
 
   it("和名台帳（NAME_JA、generated-client.ts）は54件", () => {
     expect(Object.keys(NAME_JA)).toHaveLength(54);
+  });
+
+  /**
+   * `Plecoglossus altivelis`（アユ）に地域個体群の和名「リュウキュウアユ」が誤って
+   * 付いていないことの回帰ガード（旧 domain.test.ts。code-review 指摘: これは「レジストリに
+   * 語彙を足すたびに赤くなる」全件一致テストではなく、既知の1件の誤りが再発しないことだけを
+   * 見る狭いテストなので、domain.ts 撤去後もここに残す価値がある）。
+   *
+   * `NAME_JA` は `registry/taxon/vernacular_ja.csv` 直読みで、taxa テーブルの和名を学名で
+   * 機械結合したものではない。機械結合すると別地域の個体群の名前が付く事故が実際にあった
+   * （`Plecoglossus altivelis` に「リュウキュウアユ」。docs/plans/PHASE_A.md §A-4）。
+   */
+  it("Plecoglossus altivelis に地域個体群の和名（リュウキュウアユ）が誤って付いていないこと", () => {
+    expect(NAME_JA["Plecoglossus altivelis"]).not.toBe("リュウキュウアユ");
+  });
+
+  it("ZONE_INFO（generated-client.ts）は5件、zoneは1..5が過不足なく揃っている", () => {
+    expect(ZONE_INFO).toHaveLength(5);
+    expect(ZONE_INFO.map((z) => z.zone).sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5]);
+    for (const z of ZONE_INFO) {
+      expect(z.label.length).toBeGreaterThan(0);
+      expect(z.cond.length).toBeGreaterThan(0);
+    }
   });
 });
