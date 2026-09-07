@@ -51,16 +51,36 @@ export const variable = sqliteTable("variable", {
 });
 
 /**
- * 出典表記 → 正準 variable の対応。`alias` が v1 の `measurements.variable` /
- * `sensor_timeseries.datastream` の生の文字列。1エイリアスにつき1行（PK は
- * 別に自動採番の id を持つ。alias 自体は出典をまたいで再利用されうるため
- * 一意にならない）。逆引きは `alias` と `variable_id` の両方から行うのでどちらにも
- * 索引を張る。
+ * 出典表記 → 正準 variable の対応。**エイリアスは「出典 × 表記」で解決する**
+ * （ADR-0010 決定1）。`alias` が v1 の `measurements.variable` /
+ * `sensor_timeseries.datastream` の生の文字列、`dataset` はそのどちらのテーブルの
+ * 表記か（`measurements` / `sensor_timeseries`。以前の `source_scope` を改名した。
+ * 「出典スコープ」を名乗りながらテーブル名だけを持っていたのが
+ * docs/plans/PHASE_B_INTAKE.md #1 の中身なので、実態に合わせて改名した）、
+ * `sourceId` は v1 `source_registry.source_id`（空 = 出典未記録。`is_synthetic=1` の行）。
+ *
+ * 同じ `(dataset, alias)` でも `sourceId` が違えば `grain`/`stat` が異なりうる
+ * （例: 環境省公共用水域水質の同じ項目名でも、年度代表値の出典と検体値の出典で
+ * 粒度が違う）。1つの `(dataset, alias, sourceId)` の組につき1行（PK は
+ * 別に自動採番の id を持つ。公開 ID ではないので ADR-0004「ID は不変」の対象外）。
+ * `sourceId` は `source_registry`/`source_edition`（ADR-0005）が入る Phase C で
+ * `source_edition_id` に置き換わる**暫定形**（docs/plans/PHASE_B_INTAKE.md #9 と
+ * 同じ性質の暫定接続点）。
+ *
+ * `grain`/`stat` は一次資料調査（docs/plans/PHASE_B_ALIAS_STAT_SOURCES.md）済みで、
+ * `(dataset, alias, sourceId)` の組ごとに固定1値に決まる（`atsugi_river_water_quality`
+ * の「日付書式の混在」も統計量としては全期間 `mean`/`day` で確定するため、行ごとに
+ * 値が変わる宣言的な列は持たない）。
+ *
+ * 逆引きは `alias` と `variable_id` の両方から行うのでどちらにも索引を張る。
+ * `(dataset, alias, sourceId)` はビルド時の一意性検証（`build_unit_variable.py`）と
+ * 完全一致の読み出し（`resolveAliasForSource`）に使うので複合索引も張る。
  */
 export const variableAlias = sqliteTable("variable_alias", {
 	id: integer().primaryKey({ autoIncrement: true }),
 	alias: text().notNull(),
-	sourceScope: text("source_scope"),
+	dataset: text(),
+	sourceId: text("source_id"),
 	variableId: text("variable_id"),
 	unitId: text("unit_id"),
 	stat: text(),
@@ -70,6 +90,7 @@ export const variableAlias = sqliteTable("variable_alias", {
 (table) => [
 	index("ix_variable_alias_alias").on(table.alias),
 	index("ix_variable_alias_variable").on(table.variableId),
+	index("ix_variable_alias_dataset_alias_source").on(table.dataset, table.alias, table.sourceId),
 ]);
 
 /**
