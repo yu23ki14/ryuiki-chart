@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import { getUnit, getVariable, primaryAlias, resolveVariableInfo, unitSymbol } from "@/lib/registry/lookup";
+import {
+  getUnit,
+  getVariable,
+  primaryAlias,
+  resolveAliasForSource,
+  resolveVariableInfo,
+  unitSymbol,
+} from "@/lib/registry/lookup";
 import { caveatBody, caveatsForTables } from "@/lib/registry/lookup-client";
 
 describe("resolveVariableInfo", () => {
@@ -12,9 +19,14 @@ describe("resolveVariableInfo", () => {
     expect(info?.higherIsWorse).toBe(true);
   });
 
-  it("sourceScope が違えば別物として扱う（sensor_timeseries）", () => {
+  it("dataset が違えば別物として扱う（sensor_timeseries）", () => {
     const info = resolveVariableInfo("OX", "sensor_timeseries");
     expect(info?.variableId).toBe("common:variable:air.photochemical_oxidant");
+  });
+
+  it("同じ (dataset, alias) が複数 source_id に分かれていても一意に解決できる（BOD: atsugi/annual/sample の3行）", () => {
+    const info = resolveVariableInfo("生物化学的酸素要求量 BOD", "measurements");
+    expect(info?.variableId).toBe("common:variable:water.bod");
   });
 
   it("ADR-0010 の例: OX / Ox(ppm) / 光化学オキシダント（Ox）_日平均 は同じ variableId", () => {
@@ -37,16 +49,45 @@ describe("resolveVariableInfo", () => {
 });
 
 describe("primaryAlias", () => {
-  it("grain='mixed'/'day' の表記があればそれを選ぶ（fiscal_yearの別名より優先）", () => {
+  it("fiscal_year でない表記があればそれを選ぶ（fiscal_yearの別名より優先）", () => {
     const a = primaryAlias("common:variable:water.bod");
     expect(a?.alias).toBe("生物化学的酸素要求量 BOD");
-    expect(a?.grain).toBe("mixed");
+    expect(a?.grain).toBe("day");
   });
 
   it("fiscal_year の表記しか無い variable は default_stat と一致する行を選ぶ", () => {
     const a = primaryAlias("common:variable:water.tn");
     expect(a?.alias).toBe("全窒素 T-N");
     expect(a?.grain).toBe("fiscal_year");
+  });
+});
+
+describe("resolveAliasForSource", () => {
+  it("(dataset, alias, sourceId) の完全一致で stat/grain を含む1行を返す（BOD の3出典）", () => {
+    const atsugi = resolveAliasForSource("生物化学的酸素要求量 BOD", "measurements", "atsugi_river_water_quality");
+    expect(atsugi?.stat).toBe("mean");
+    expect(atsugi?.grain).toBe("day");
+
+    const sample = resolveAliasForSource("生物化学的酸素要求量 BOD", "measurements", "env_kousui_sample_kanagawa");
+    expect(sample?.stat).toBe("point");
+    expect(sample?.grain).toBe("day");
+
+    const annual = resolveAliasForSource("生物化学的酸素要求量 BOD", "measurements", "env_kousui_annual_kanagawa");
+    expect(annual?.stat).toBe("mean");
+    expect(annual?.grain).toBe("fiscal_year");
+  });
+
+  it("sourceId が undefined/null は「出典未記録」として同じ意味に扱う（pH の合成データ行）", () => {
+    const viaUndefined = resolveAliasForSource("pH", "measurements", undefined);
+    const viaNull = resolveAliasForSource("pH", "measurements", null);
+    const viaEmpty = resolveAliasForSource("pH", "measurements", "");
+    expect(viaUndefined).toBeDefined();
+    expect(viaUndefined).toEqual(viaNull);
+    expect(viaUndefined).toEqual(viaEmpty);
+  });
+
+  it("一致が無ければ undefined（推測で埋めない）", () => {
+    expect(resolveAliasForSource("生物化学的酸素要求量 BOD", "measurements", "そんな出典は無い")).toBeUndefined();
   });
 });
 

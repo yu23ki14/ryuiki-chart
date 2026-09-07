@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildClientVariableMaps, pickPrimaryAlias } from "../../../scripts/lib/registry-codegen.mjs";
+import { buildClientVariableMaps, dedupeByAlias, pickPrimaryAlias } from "../../../scripts/lib/registry-codegen.mjs";
 
 /**
  * `web/scripts/lib/registry-codegen.mjs`（`web/scripts/build-registry-ts.mjs` が
@@ -27,8 +27,8 @@ import { buildClientVariableMaps, pickPrimaryAlias } from "../../../scripts/lib/
 describe("pickPrimaryAlias", () => {
   it("grain が 'fiscal_year' でない行があれば、それを優先する", () => {
     const rows = [
-      { alias: "年度代表値", sourceScope: "measurements", variableId: "v1", unitId: null, stat: "mean", grain: "fiscal_year" },
-      { alias: "検体値", sourceScope: "measurements", variableId: "v1", unitId: null, stat: "mean", grain: "day" },
+      { alias: "年度代表値", dataset: "measurements", variableId: "v1", unitId: null, stat: "mean", grain: "fiscal_year" },
+      { alias: "検体値", dataset: "measurements", variableId: "v1", unitId: null, stat: "mean", grain: "day" },
     ];
     const picked = pickPrimaryAlias(rows, "mean");
     expect(picked?.alias).toBe("検体値");
@@ -36,8 +36,8 @@ describe("pickPrimaryAlias", () => {
 
   it("grain='fiscal_year' でない行が複数あれば先頭（見つかった順）を使う", () => {
     const rows = [
-      { alias: "採水個別値", sourceScope: "measurements", variableId: "v1", unitId: null, stat: "mean", grain: "mixed" },
-      { alias: "別表記", sourceScope: "measurements", variableId: "v1", unitId: null, stat: "mean", grain: "day" },
+      { alias: "採水個別値", dataset: "measurements", variableId: "v1", unitId: null, stat: "mean", grain: "mixed" },
+      { alias: "別表記", dataset: "measurements", variableId: "v1", unitId: null, stat: "mean", grain: "day" },
     ];
     const picked = pickPrimaryAlias(rows, "mean");
     expect(picked?.alias).toBe("採水個別値");
@@ -45,8 +45,8 @@ describe("pickPrimaryAlias", () => {
 
   it("fiscal_year の行しか無ければ default_stat と一致する stat の行を選ぶ", () => {
     const rows = [
-      { alias: "75%値", sourceScope: "measurements", variableId: "v1", unitId: null, stat: "p75", grain: "fiscal_year" },
-      { alias: "平均値", sourceScope: "measurements", variableId: "v1", unitId: null, stat: "mean", grain: "fiscal_year" },
+      { alias: "75%値", dataset: "measurements", variableId: "v1", unitId: null, stat: "p75", grain: "fiscal_year" },
+      { alias: "平均値", dataset: "measurements", variableId: "v1", unitId: null, stat: "mean", grain: "fiscal_year" },
     ];
     const picked = pickPrimaryAlias(rows, "mean");
     expect(picked?.alias).toBe("平均値");
@@ -54,8 +54,8 @@ describe("pickPrimaryAlias", () => {
 
   it("default_stat と一致する行が無ければ先頭行にフォールバックする", () => {
     const rows = [
-      { alias: "75%値", sourceScope: "measurements", variableId: "v1", unitId: null, stat: "p75", grain: "fiscal_year" },
-      { alias: "最大値", sourceScope: "measurements", variableId: "v1", unitId: null, stat: "max", grain: "fiscal_year" },
+      { alias: "75%値", dataset: "measurements", variableId: "v1", unitId: null, stat: "p75", grain: "fiscal_year" },
+      { alias: "最大値", dataset: "measurements", variableId: "v1", unitId: null, stat: "max", grain: "fiscal_year" },
     ];
     const picked = pickPrimaryAlias(rows, "mean");
     expect(picked?.alias).toBe("75%値");
@@ -63,7 +63,7 @@ describe("pickPrimaryAlias", () => {
 
   it("stat が null の行と default_stat=null が一致するケース", () => {
     const rows = [
-      { alias: "T-N", sourceScope: "measurements", variableId: "v1", unitId: null, stat: null, grain: "fiscal_year" },
+      { alias: "T-N", dataset: "measurements", variableId: "v1", unitId: null, stat: null, grain: "fiscal_year" },
     ];
     const picked = pickPrimaryAlias(rows, null);
     expect(picked?.alias).toBe("T-N");
@@ -71,6 +71,42 @@ describe("pickPrimaryAlias", () => {
 
   it("空配列は undefined", () => {
     expect(pickPrimaryAlias([], "mean")).toBeUndefined();
+  });
+});
+
+describe("dedupeByAlias", () => {
+  it("同じ alias 文字列は最初の1行だけ残す（CSVの行順を保つ）", () => {
+    const rows = [
+      { alias: "生物化学的酸素要求量 BOD", sourceId: "atsugi", grain: "mixed" },
+      { alias: "生物化学的酸素要求量 BOD", sourceId: "env_kousui_sample", grain: "day" },
+      { alias: "生物化学的酸素要求量 BOD", sourceId: "env_kousui_annual", grain: "fiscal_year" },
+      { alias: "BOD 75%値", sourceId: "env_kousui_annual", grain: "fiscal_year" },
+    ];
+    const deduped = dedupeByAlias(rows);
+    expect(deduped).toHaveLength(2);
+    expect(deduped[0]).toEqual(rows[0]);
+    expect(deduped[1]).toEqual(rows[3]);
+  });
+
+  it("空配列は空配列", () => {
+    expect(dedupeByAlias([])).toEqual([]);
+  });
+});
+
+describe("dedupeByAlias + pickPrimaryAlias（Phase B: 1 alias が複数 source_id 行に分かれても代表選定は変わらない）", () => {
+  it("alias の最初の行が非 fiscal_year なら、他の source の fiscal_year 行に埋もれない", () => {
+    // registry/variable_alias.csv の並び: 同じ alias の中では fiscal_year の
+    // 出典（env_kousui_annual_kanagawa 相当）を最後に置く規約（生成スクリプトのコメント参照）。
+    const rows = [
+      { alias: "生物化学的酸素要求量 BOD", variableId: "v.bod", dataset: "measurements", stat: "mean", grain: "mixed" },
+      { alias: "生物化学的酸素要求量 BOD", variableId: "v.bod", dataset: "measurements", stat: "mean", grain: "day" },
+      { alias: "生物化学的酸素要求量 BOD", variableId: "v.bod", dataset: "measurements", stat: "mean", grain: "fiscal_year" },
+      { alias: "BOD 75%値", variableId: "v.bod", dataset: "measurements", stat: "p75", grain: "fiscal_year" },
+    ];
+    const deduped = dedupeByAlias(rows.filter((a) => a.dataset === "measurements"));
+    const picked = pickPrimaryAlias(deduped, "mean");
+    expect(picked?.alias).toBe("生物化学的酸素要求量 BOD");
+    expect(picked?.grain).toBe("mixed");
   });
 });
 
@@ -103,10 +139,10 @@ describe("buildClientVariableMaps", () => {
     },
   ];
   const aliases = [
-    { alias: "生物化学的酸素要求量 BOD", sourceScope: "measurements", variableId: "v.bod", unitId: null, stat: "mean", grain: "mixed" },
-    { alias: "pH", sourceScope: "measurements", variableId: "v.ph", unitId: "u.dimensionless", stat: "point", grain: "mixed" },
+    { alias: "生物化学的酸素要求量 BOD", dataset: "measurements", variableId: "v.bod", unitId: null, stat: "mean", grain: "mixed" },
+    { alias: "pH", dataset: "measurements", variableId: "v.ph", unitId: "u.dimensionless", stat: "point", grain: "mixed" },
     // v.tn は fiscal_year の表記しか無い（全窒素 T-N のような health 系項目を模す）。
-    { alias: "全窒素 T-N", sourceScope: "measurements", variableId: "v.tn", unitId: null, stat: "mean", grain: "fiscal_year" },
+    { alias: "全窒素 T-N", dataset: "measurements", variableId: "v.tn", unitId: null, stat: "mean", grain: "fiscal_year" },
   ];
 
   it("VARIABLE_SHORT: alias と nameJa が同じ（＝短縮の必要が無い）行は含めない", () => {
