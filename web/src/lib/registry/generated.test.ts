@@ -1,0 +1,100 @@
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, expect, it } from "vitest";
+import {
+  GENERATED_UNITS,
+  GENERATED_VARIABLES,
+  GENERATED_VARIABLE_ALIASES,
+} from "@/lib/registry/generated";
+import {
+  GENERATED_CAVEATS,
+  GENERATED_CAVEAT_SCOPE,
+  NAME_JA,
+} from "@/lib/registry/generated-client";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const WEB = path.resolve(__dirname, "..", "..", "..");
+const GENERATED_SERVER_PATH = path.join(WEB, "src", "lib", "registry", "generated.ts");
+const GENERATED_CLIENT_PATH = path.join(WEB, "src", "lib", "registry", "generated-client.ts");
+const REGISTRY_DB = path.join(WEB, "..", "data", "db", "registry.sqlite");
+const BUILD_SCRIPT = path.join(WEB, "scripts", "build-registry-ts.mjs");
+
+/**
+ * `generated.ts`（サーバ専用）・`generated-client.ts`（クライアント安全）は生成物
+ * （`web/scripts/build-registry-ts.mjs` が `data/db/registry.sqlite` から作る）。
+ * 「再生成しても差分が出ない」ことが生成物の陳腐化を防ぐ受け入れ条件
+ * （docs/plans/PHASE_A.md §A-7。2ファイルに分けた経緯は code-review #4）。
+ *
+ * `data/db/registry.sqlite` が無い環境（CI でレジストリのビルドを走らせていない等）では
+ * このテストをスキップする（`pnpm run build:registry` が先に要る、というだけで
+ * generated.ts / generated-client.ts 自体の内容が壊れているわけではないため）。
+ */
+const hasRegistryDb = fs.existsSync(REGISTRY_DB);
+
+describe.skipIf(!hasRegistryDb)("build:registry:ts は再生成しても差分が無い", () => {
+  it("regenerate produces byte-identical output（追跡対象の generated.ts / generated-client.ts は書き換えない）", () => {
+    // build-registry-ts.mjs の入出力パスは環境変数で上書きできる（RYUIKI_REGISTRY_DB /
+    // RYUIKI_REGISTRY_TS_OUT_SERVER / RYUIKI_REGISTRY_TS_OUT_CLIENT。スクリプト冒頭の
+    // コメント参照）。実物のスクリプトをソース文字列の書き換え無しにそのまま
+    // 一時ディレクトリ向けに実行し、生成物を追跡対象のファイルと比較する
+    // （/simplify 修正6: 以前はスクリプトのソースをアンカー文字列で `.replace()` して
+    // 実行しており、意味を変えない整形だけでもテストが落ちた）。
+    const tmpDir = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), "registry-ts-check-"));
+    const tmpOutServer = path.join(tmpDir, "generated.ts");
+    const tmpOutClient = path.join(tmpDir, "generated-client.ts");
+    try {
+      execFileSync("node", [BUILD_SCRIPT], {
+        cwd: WEB,
+        stdio: "pipe",
+        env: {
+          ...process.env,
+          RYUIKI_REGISTRY_DB: REGISTRY_DB,
+          RYUIKI_REGISTRY_TS_OUT_SERVER: tmpOutServer,
+          RYUIKI_REGISTRY_TS_OUT_CLIENT: tmpOutClient,
+        },
+      });
+
+      expect(fs.readFileSync(tmpOutServer, "utf-8")).toBe(fs.readFileSync(GENERATED_SERVER_PATH, "utf-8"));
+      expect(fs.readFileSync(tmpOutClient, "utf-8")).toBe(fs.readFileSync(GENERATED_CLIENT_PATH, "utf-8"));
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+});
+
+/**
+ * 生成物の形の健全性（regenerate できない環境でも実行できる、軽い形チェック）。
+ */
+describe("generated.ts / generated-client.ts の形", () => {
+  it("caveat は cells.notes 由来（207件）を含まない14件のまま", () => {
+    expect(GENERATED_CAVEATS).toHaveLength(14);
+    expect(GENERATED_CAVEATS.every((c) => !c.key.startsWith("cells."))).toBe(true);
+  });
+
+  it("caveat_scope は table/table_prefix のみ（優先度は scope_kind ではなく priority 列が持つ）", () => {
+    expect(GENERATED_CAVEAT_SCOPE.length).toBeGreaterThan(0);
+    expect(GENERATED_CAVEAT_SCOPE.every((s) => s.scopeKind === "table" || s.scopeKind === "table_prefix")).toBe(true);
+    expect(GENERATED_CAVEAT_SCOPE.some((s) => s.priority > 0)).toBe(true);
+  });
+
+  it("caveat_scope が参照する caveatKey はすべて GENERATED_CAVEATS に実在する", () => {
+    const keys = new Set(GENERATED_CAVEATS.map((c) => c.key));
+    for (const s of GENERATED_CAVEAT_SCOPE) expect(keys.has(s.caveatKey)).toBe(true);
+  });
+
+  it("variable_alias が参照する variableId / unitId は実在するもの以外は null（generated.ts、サーバ専用）", () => {
+    const variableIds = new Set(GENERATED_VARIABLES.map((v) => v.variableId));
+    const unitIds = new Set(GENERATED_UNITS.map((u) => u.unitId));
+    for (const a of GENERATED_VARIABLE_ALIASES) {
+      if (a.variableId !== null) expect(variableIds.has(a.variableId)).toBe(true);
+      if (a.unitId !== null) expect(unitIds.has(a.unitId)).toBe(true);
+    }
+  });
+
+  it("和名台帳（NAME_JA、generated-client.ts）は54件", () => {
+    expect(Object.keys(NAME_JA)).toHaveLength(54);
+  });
+});

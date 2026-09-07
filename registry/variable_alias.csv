@@ -1,0 +1,118 @@
+alias,source_scope,variable_id,unit_id,stat,grain,note
+生物化学的酸素要求量 BOD,measurements,common:variable:water.bod,,mean,mixed,採水個別値(grain=day)と年度代表値(grain=fiscal_year)が同じ表記で混在。原本のまま、集計方法の統一はしていない。
+BOD 75%値,measurements,common:variable:water.bod,,p75,fiscal_year,
+化学的酸素要求量 COD,measurements,common:variable:water.cod,,mean,mixed,採水個別値(grain=day)と年度代表値(grain=fiscal_year)が同じ表記で混在。原本のまま、集計方法の統一はしていない。
+COD 75%値,measurements,common:variable:water.cod,,p75,fiscal_year,
+溶存酸素量 DO,measurements,common:variable:water.do,,mean,mixed,採水個別値(grain=day)と年度代表値(grain=fiscal_year)が同じ表記で混在。原本のまま、集計方法の統一はしていない。
+底層溶存酸素量,measurements,common:variable:water.do_bottom,,mean,mixed,採水個別値(grain=day)と年度代表値(grain=fiscal_year)が同じ表記で混在。原本のまま、集計方法の統一はしていない。
+浮遊物質量 SS,measurements,common:variable:water.ss,,mean,mixed,採水個別値(grain=day)と年度代表値(grain=fiscal_year)が同じ表記で混在。原本のまま、集計方法の統一はしていない。
+全窒素 T-N,measurements,common:variable:water.tn,,,fiscal_year,
+全燐 T-P,measurements,common:variable:water.tp,,,fiscal_year,
+pH,measurements,common:variable:water.ph,common:unit:dimensionless,point,mixed,"web/src/lib/domain.ts の VARIABLE_UNIT_FALLBACK が pH は無次元と既に明記。実測で measured_on の書式が採水個別値(grain=day、34,165行)と年度代表値(grain=fiscal_year、768行)で混在することを確認し、grain=day から mixed に修正した。"
+pH（最大値）,measurements,common:variable:water.ph,common:unit:dimensionless,max,fiscal_year,web/src/lib/domain.ts の VARIABLE_UNIT_FALLBACK が pH は無次元と既に明記
+pH（最小値）,measurements,common:variable:water.ph,common:unit:dimensionless,min,fiscal_year,web/src/lib/domain.ts の VARIABLE_UNIT_FALLBACK が pH は無次元と既に明記
+大腸菌群数,measurements,common:variable:water.coliform_group,,mean,mixed,採水個別値(grain=day)と年度代表値(grain=fiscal_year)が同じ表記で混在。原本のまま、集計方法の統一はしていない。
+大腸菌数,measurements,common:variable:water.ecoli,,mean,mixed,採水個別値(grain=day)と年度代表値(grain=fiscal_year)が同じ表記で混在。原本のまま、集計方法の統一はしていない。
+大腸菌数 90%値,measurements,common:variable:water.ecoli,,p90,fiscal_year,
+全亜鉛,measurements,common:variable:water.total_zinc,,mean,mixed,採水個別値(grain=day)と年度代表値(grain=fiscal_year)が同じ表記で混在。原本のまま、集計方法の統一はしていない。
+ノルマルヘキサン抽出物質,measurements,common:variable:water.n_hexane_extract,,mean,mixed,採水個別値(grain=day)と年度代表値(grain=fiscal_year)が同じ表記で混在。原本のまま、集計方法の統一はしていない。
+直鎖アルキルベンゼンスルホン酸及びその塩 LAS,measurements,common:variable:water.las,,mean,mixed,採水個別値(grain=day)と年度代表値(grain=fiscal_year)が同じ表記で混在。原本のまま、集計方法の統一はしていない。
+ノニルフェノール,measurements,common:variable:water.nonylphenol,,mean,mixed,採水個別値(grain=day)と年度代表値(grain=fiscal_year)が同じ表記で混在。原本のまま、集計方法の統一はしていない。
+水温,measurements,common:variable:water.water_temp,,point,day,
+透明度,measurements,common:variable:water.transparency,,point,day,
+気温,measurements,common:variable:weather.air_temp,,point,day,採水時の気象付帯情報（環境省 公共用水域水質測定）。JMA 由来の気温系列と物理量として同一のため同一 variable に統合。
+cd,measurements,common:variable:water.cadmium,common:unit:mg_per_l,,fiscal_year,環境省 公共用水域水質データファイル利用説明書（検体値）第1版(2012-08-22) 健康項目カラム定義
+cn,measurements,common:variable:water.cyanide,common:unit:mg_per_l,,fiscal_year,環境省 公共用水域水質データファイル利用説明書（検体値）第1版(2012-08-22) 健康項目カラム定義
+pb,measurements,common:variable:water.lead,common:unit:mg_per_l,,fiscal_year,環境省 公共用水域水質データファイル利用説明書（検体値）第1版(2012-08-22) 健康項目カラム定義
+cr6,measurements,common:variable:water.hexavalent_chromium,common:unit:mg_per_l,,fiscal_year,環境省 公共用水域水質データファイル利用説明書（検体値）第1版(2012-08-22) 健康項目カラム定義
+ass,measurements,common:variable:water.arsenic,common:unit:mg_per_l,,fiscal_year,環境省 公共用水域水質データファイル利用説明書（検体値）第1版(2012-08-22) 健康項目カラム定義
+thg,measurements,common:variable:water.total_mercury,common:unit:mg_per_l,,fiscal_year,環境省 公共用水域水質データファイル利用説明書（検体値）第1版(2012-08-22) 健康項目カラム定義
+srhg,measurements,common:variable:water.alkyl_mercury,common:unit:mg_per_l,,fiscal_year,環境省 公共用水域水質データファイル利用説明書（検体値）第1版(2012-08-22) 健康項目カラム定義
+pcb,measurements,common:variable:water.pcb,common:unit:mg_per_l,,fiscal_year,環境省 公共用水域水質データファイル利用説明書（検体値）第1版(2012-08-22) 健康項目カラム定義
+jikurorometan,measurements,common:variable:water.dichloromethane,common:unit:mg_per_l,,fiscal_year,環境省 公共用水域水質データファイル利用説明書（検体値）第1版(2012-08-22) 健康項目カラム定義
+sienkatanso,measurements,common:variable:water.carbon_tetrachloride,common:unit:mg_per_l,,fiscal_year,環境省 公共用水域水質データファイル利用説明書（検体値）第1版(2012-08-22) 健康項目カラム定義
+jikuroroetan12,measurements,common:variable:water.12_dichloroethane,common:unit:mg_per_l,,fiscal_year,環境省 公共用水域水質データファイル利用説明書（検体値）第1版(2012-08-22) 健康項目カラム定義
+jikuroroechiren11,measurements,common:variable:water.11_dichloroethylene,common:unit:mg_per_l,,fiscal_year,環境省 公共用水域水質データファイル利用説明書（検体値）第1版(2012-08-22) 健康項目カラム定義
+s12jikuroroetiren,measurements,common:variable:water.cis12_dichloroethylene,common:unit:mg_per_l,,fiscal_year,環境省 公共用水域水質データファイル利用説明書（検体値）第1版(2012-08-22) 健康項目カラム定義
+torikuroroetan111,measurements,common:variable:water.111_trichloroethane,common:unit:mg_per_l,,fiscal_year,環境省 公共用水域水質データファイル利用説明書（検体値）第1版(2012-08-22) 健康項目カラム定義
+torikuroroetan112,measurements,common:variable:water.112_trichloroethane,common:unit:mg_per_l,,fiscal_year,環境省 公共用水域水質データファイル利用説明書（検体値）第1版(2012-08-22) 健康項目カラム定義
+torikuroroechiren,measurements,common:variable:water.trichloroethylene,common:unit:mg_per_l,,fiscal_year,環境省 公共用水域水質データファイル利用説明書（検体値）第1版(2012-08-22) 健康項目カラム定義
+tetorakuroroechiren,measurements,common:variable:water.tetrachloroethylene,common:unit:mg_per_l,,fiscal_year,環境省 公共用水域水質データファイル利用説明書（検体値）第1版(2012-08-22) 健康項目カラム定義
+jikuroropuropen13,measurements,common:variable:water.13_dichloropropene,common:unit:mg_per_l,,fiscal_year,環境省 公共用水域水質データファイル利用説明書（検体値）第1版(2012-08-22) 健康項目カラム定義
+chiraumu,measurements,common:variable:water.thiuram,common:unit:mg_per_l,,fiscal_year,環境省 公共用水域水質データファイル利用説明書（検体値）第1版(2012-08-22) 健康項目カラム定義
+shimajin,measurements,common:variable:water.simazine,common:unit:mg_per_l,,fiscal_year,環境省 公共用水域水質データファイル利用説明書（検体値）第1版(2012-08-22) 健康項目カラム定義
+chiobenkarubu,measurements,common:variable:water.thiobencarb,common:unit:mg_per_l,,fiscal_year,環境省 公共用水域水質データファイル利用説明書（検体値）第1版(2012-08-22) 健康項目カラム定義
+benzen,measurements,common:variable:water.benzene,common:unit:mg_per_l,,fiscal_year,環境省 公共用水域水質データファイル利用説明書（検体値）第1版(2012-08-22) 健康項目カラム定義
+seren,measurements,common:variable:water.selenium,common:unit:mg_per_l,,fiscal_year,環境省 公共用水域水質データファイル利用説明書（検体値）第1版(2012-08-22) 健康項目カラム定義
+nno3,measurements,common:variable:water.nitrate_nitrite_n,common:unit:mg_per_l,,fiscal_year,環境省 公共用水域水質データファイル利用説明書（検体値）第1版(2012-08-22) 健康項目カラム定義
+f,measurements,common:variable:water.fluorine,common:unit:mg_per_l,,fiscal_year,環境省 公共用水域水質データファイル利用説明書（検体値）第1版(2012-08-22) 健康項目カラム定義
+b,measurements,common:variable:water.boron,common:unit:mg_per_l,,fiscal_year,環境省 公共用水域水質データファイル利用説明書（検体値）第1版(2012-08-22) 健康項目カラム定義
+n14jiokisan,measurements,common:variable:water.14_dioxane,common:unit:mg_per_l,,fiscal_year,環境省 公共用水域水質データファイル利用説明書（検体値）第1版(2012-08-22) 健康項目カラム定義
+流量関連（公式定義未確認のため原表記のまま）,measurements,common:variable:hydro.flow,,,day,原本の収集スクリプト(scripts/c12_env_kousui.py)が公式定義を確認できず未確定のまま出力しているため、単位・意味とも確定できない。
+地下水位(年平均),measurements,common:variable:hydro.groundwater_level,common:unit:t_p_m,mean,year,
+最大沈下量(基準点),measurements,common:variable:land.max_subsidence,common:unit:cm,max,year,
+有効水準点数,measurements,common:variable:land.benchmark_count_valid,common:unit:count,,year,
+沈下水準点数(1cm以上2cm未満),measurements,common:variable:land.benchmark_count_settled_1_2cm,common:unit:count,,year,
+沈下水準点数(2cm以上),measurements,common:variable:land.benchmark_count_settled_2cm_plus,common:unit:count,,year,
+沈下面積(1cm以上2cm未満),measurements,common:variable:land.subsidence_area_1_2cm,common:unit:km2,,year,
+沈下面積(2cm以上),measurements,common:variable:land.subsidence_area_2cm_plus,common:unit:km2,,year,
+調査面積,measurements,common:variable:land.survey_area,common:unit:km2,,year,
+water_temperature,sensor_timeseries,common:variable:water.water_temp,,,hour,source_id=synthetic_sensor（合成データ。domain.ts の DATA_CAVEATS.synthetic 参照）
+河川水位_日平均,sensor_timeseries,common:variable:hydro.river_stage,common:unit:m,mean,day,
+河川水位_日最高,sensor_timeseries,common:variable:hydro.river_stage,common:unit:m,max,day,
+soil_moisture,sensor_timeseries,common:variable:hydro.soil_moisture,common:unit:m3_per_m3,,hour,source_id=synthetic_sensor（合成データ）
+NO2(ppm),sensor_timeseries,common:variable:air.no2,common:unit:ppm,,hour,
+二酸化窒素（NO2）_日平均,sensor_timeseries,common:variable:air.no2,common:unit:ppb,mean,day,"平塚市大気環境状況 1時間値データフォーマット説明書（測定項目番号表, images/1hour_description.pdf）"
+SO2(ppm),sensor_timeseries,common:variable:air.so2,common:unit:ppm,,hour,
+二酸化硫黄（SO2）_日平均,sensor_timeseries,common:variable:air.so2,common:unit:ppb,mean,day,"平塚市大気環境状況 1時間値データフォーマット説明書（測定項目番号表, images/1hour_description.pdf）"
+一酸化窒素（NO）_日平均,sensor_timeseries,common:variable:air.no,common:unit:ppb,mean,day,"平塚市大気環境状況 1時間値データフォーマット説明書（測定項目番号表, images/1hour_description.pdf）"
+窒素酸化物（NOx）_日平均,sensor_timeseries,common:variable:air.nox,common:unit:ppb,mean,day,"平塚市大気環境状況 1時間値データフォーマット説明書（測定項目番号表, images/1hour_description.pdf）"
+OX,sensor_timeseries,common:variable:air.photochemical_oxidant,,,hour,出典(相模原市オープンデータ)に単位記載が無く、収集スクリプト(scripts/c13_sagamihara_taiki.py)も推測換算していない。値域から1/1000スケール(ppm相当)の可能性が指摘されているが未確定。
+Ox(ppm),sensor_timeseries,common:variable:air.photochemical_oxidant,common:unit:ppm,,hour,
+光化学オキシダント（Ox）_日平均,sensor_timeseries,common:variable:air.photochemical_oxidant,common:unit:ppb,mean,day,"平塚市大気環境状況 1時間値データフォーマット説明書（測定項目番号表, images/1hour_description.pdf）"
+SPM(mg/m3),sensor_timeseries,common:variable:air.spm,common:unit:mg_per_m3,,hour,
+浮遊粒子状物質（SPM）_日平均,sensor_timeseries,common:variable:air.spm,common:unit:ug_per_m3,mean,day,"平塚市大気環境状況 1時間値データフォーマット説明書（測定項目番号表, images/1hour_description.pdf）"
+PM2.5(μg/m3),sensor_timeseries,common:variable:air.pm25,common:unit:ug_per_m3,,hour,
+微小粒子状物質（PM2.5）_日平均,sensor_timeseries,common:variable:air.pm25,common:unit:ug_per_m3,mean,day,"平塚市大気環境状況 1時間値データフォーマット説明書（測定項目番号表, images/1hour_description.pdf）"
+一酸化炭素（CO）_日平均,sensor_timeseries,common:variable:air.co,common:unit:0_1ppm,mean,day,"平塚市大気環境状況 1時間値データフォーマット説明書（測定項目番号表, images/1hour_description.pdf）"
+メタン（CH4）_日平均,sensor_timeseries,common:variable:air.ch4,common:unit:0_01ppmc,mean,day,"平塚市大気環境状況 1時間値データフォーマット説明書（測定項目番号表, images/1hour_description.pdf）"
+非メタン炭化水素（NMHC）_日平均,sensor_timeseries,common:variable:air.nmhc,common:unit:0_01ppmc,mean,day,"平塚市大気環境状況 1時間値データフォーマット説明書（測定項目番号表, images/1hour_description.pdf）"
+全炭化水素（THC）_日平均,sensor_timeseries,common:variable:air.thc,common:unit:0_01ppmc,mean,day,"平塚市大気環境状況 1時間値データフォーマット説明書（測定項目番号表, images/1hour_description.pdf）"
+RAIN,sensor_timeseries,common:variable:weather.precipitation,,,hour,出典(相模原市オープンデータ)に単位記載が無く、収集スクリプトも推測換算していない。0は無降雨の実測として扱う旨が原本にあり欠測ではない。
+気温_平均,sensor_timeseries,common:variable:weather.air_temp,common:unit:degc,mean,day,
+気温_平均_日平均,sensor_timeseries,common:variable:weather.air_temp,common:unit:degc,mean,month,
+気温_平均_日最低,sensor_timeseries,common:variable:weather.air_temp,common:unit:degc,mean_of_daily_min,month,
+気温_平均_日最高,sensor_timeseries,common:variable:weather.air_temp,common:unit:degc,mean_of_daily_max,month,
+気温_最低,sensor_timeseries,common:variable:weather.air_temp,common:unit:degc,min,mixed,同じ表記が日別集計(jma_daily_yokohama)と月別集計(jma_monthly_kanagawa)の双方に出現し、alias 単独では grain が一意に決まらない。
+気温_最高,sensor_timeseries,common:variable:weather.air_temp,common:unit:degc,max,mixed,同じ表記が日別集計(jma_daily_yokohama)と月別集計(jma_monthly_kanagawa)の双方に出現し、alias 単独では grain が一意に決まらない。
+温度（TEMP）_日平均,sensor_timeseries,common:variable:weather.air_temp,common:unit:0_1degc,mean,day,"平塚市大気環境状況 1時間値データフォーマット説明書（測定項目番号表, images/1hour_description.pdf）"
+降水量_合計,sensor_timeseries,common:variable:weather.precipitation,common:unit:mm,sum,mixed,同じ表記が日別集計(jma_daily_yokohama)と月別集計(jma_monthly_kanagawa)の双方に出現し、alias 単独では grain が一意に決まらない。
+降水量_最大_10分間,sensor_timeseries,common:variable:weather.precipitation,common:unit:mm,max_10min,mixed,同じ表記が日別集計(jma_daily_yokohama)と月別集計(jma_monthly_kanagawa)の双方に出現し、alias 単独では grain が一意に決まらない。
+降水量_最大_1時間,sensor_timeseries,common:variable:weather.precipitation,common:unit:mm,max_1h,mixed,同じ表記が日別集計(jma_daily_yokohama)と月別集計(jma_monthly_kanagawa)の双方に出現し、alias 単独では grain が一意に決まらない。
+降水量_最大_日,sensor_timeseries,common:variable:weather.precipitation,common:unit:mm,max_daily,month,
+雨量（RAIN）_日平均,sensor_timeseries,common:variable:weather.precipitation,common:unit:0_1mm,mean,day,"平塚市大気環境状況 1時間値データフォーマット説明書（測定項目番号表, images/1hour_description.pdf）"
+湿度_平均,sensor_timeseries,common:variable:weather.humidity,common:unit:percent,mean,mixed,同じ表記が日別集計(jma_daily_yokohama)と月別集計(jma_monthly_kanagawa)の双方に出現し、alias 単独では grain が一意に決まらない。
+湿度_最小,sensor_timeseries,common:variable:weather.humidity,common:unit:percent,min,mixed,同じ表記が日別集計(jma_daily_yokohama)と月別集計(jma_monthly_kanagawa)の双方に出現し、alias 単独では grain が一意に決まらない。
+湿度（HUM）_日平均,sensor_timeseries,common:variable:weather.humidity,common:unit:0_1percent,mean,day,"平塚市大気環境状況 1時間値データフォーマット説明書（測定項目番号表, images/1hour_description.pdf）"
+気圧_現地_平均,sensor_timeseries,common:variable:weather.pressure_station,common:unit:hpa,mean,mixed,同じ表記が日別集計(jma_daily_yokohama)と月別集計(jma_monthly_kanagawa)の双方に出現し、alias 単独では grain が一意に決まらない。
+気圧_海面_平均,sensor_timeseries,common:variable:weather.pressure_sea_level,common:unit:hpa,mean,mixed,同じ表記が日別集計(jma_daily_yokohama)と月別集計(jma_monthly_kanagawa)の双方に出現し、alias 単独では grain が一意に決まらない。
+日照 時間,sensor_timeseries,common:variable:weather.sunshine_duration,common:unit:h,sum,mixed,同じ表記が日別集計(jma_daily_yokohama)と月別集計(jma_monthly_kanagawa)の双方に出現し、alias 単独では grain が一意に決まらない。
+風向・風速_平均 風速,sensor_timeseries,common:variable:weather.wind_speed_mean,common:unit:m_per_s,mean,mixed,同じ表記が日別集計(jma_daily_yokohama)と月別集計(jma_monthly_kanagawa)の双方に出現し、alias 単独では grain が一意に決まらない。
+風速（WS）_日平均,sensor_timeseries,common:variable:weather.wind_speed_mean,common:unit:0_1m_per_s,mean,day,"平塚市大気環境状況 1時間値データフォーマット説明書（測定項目番号表, images/1hour_description.pdf）"
+風向・風速_最大風速_風速,sensor_timeseries,common:variable:weather.wind_speed_max,common:unit:m_per_s,max,mixed,同じ表記が日別集計(jma_daily_yokohama)と月別集計(jma_monthly_kanagawa)の双方に出現し、alias 単独では grain が一意に決まらない。
+風向・風速_最大風速_風向,sensor_timeseries,common:variable:weather.wind_direction_at_max,,,mixed,同じ表記が日別集計(jma_daily_yokohama)と月別集計(jma_monthly_kanagawa)の双方に出現し、alias 単独では grain が一意に決まらない。
+風向・風速_最大瞬間風速_風速,sensor_timeseries,common:variable:weather.wind_gust_max,common:unit:m_per_s,max,mixed,同じ表記が日別集計(jma_daily_yokohama)と月別集計(jma_monthly_kanagawa)の双方に出現し、alias 単独では grain が一意に決まらない。
+風向・風速_最大瞬間風速_風向,sensor_timeseries,common:variable:weather.wind_direction_at_gust,,,mixed,同じ表記が日別集計(jma_daily_yokohama)と月別集計(jma_monthly_kanagawa)の双方に出現し、alias 単独では grain が一意に決まらない。
+雪_最深 積雪,sensor_timeseries,common:variable:weather.snow_depth_max,common:unit:cm,max,month,scripts/c10_jma.py の VARMAP で「雪_最深積雪」「雪_最深積雪_値」と同一 variable_en(snow_depth_max) に統合済み
+雪_最深積雪,sensor_timeseries,common:variable:weather.snow_depth_max,common:unit:cm,max,month,
+雪_最深積雪_値,sensor_timeseries,common:variable:weather.snow_depth_max,common:unit:cm,max,day,
+雪_降雪_合計,sensor_timeseries,common:variable:weather.snowfall_depth_total,common:unit:cm,sum,mixed,scripts/c10_jma.py の VARMAP で「雪_降雪の深さ_合計」と同一 variable_en(snowfall_depth_total) に統合済み。同じ表記が日別集計(jma_daily_yokohama)と月別集計(jma_monthly_kanagawa)の双方に出現し、alias 単独では grain が一意に決まらない。
+雪_降雪の深さ_合計,sensor_timeseries,common:variable:weather.snowfall_depth_total,common:unit:cm,sum,month,
+雪_降雪_日合計の最大,sensor_timeseries,common:variable:weather.snowfall_depth_max_daily,common:unit:cm,max_daily,month,scripts/c10_jma.py の VARMAP で「雪_降雪の深さ_日合計の最大」と同一 variable_en(snowfall_depth_max_daily) に統合済み
+雪_降雪の深さ_日合計の最大,sensor_timeseries,common:variable:weather.snowfall_depth_max_daily,common:unit:cm,max_daily,month,
+雲量_平均,sensor_timeseries,common:variable:weather.cloud_cover_mean,common:unit:tenths,mean,month,
+大気現象_雪日数,sensor_timeseries,common:variable:weather.days_with_snow,common:unit:days,sum,month,
+大気現象_霧日数,sensor_timeseries,common:variable:weather.days_with_fog,common:unit:days,sum,month,
+大気現象_雷日数,sensor_timeseries,common:variable:weather.days_with_thunder,common:unit:days,sum,month,
+天気概況_昼 (06:00-18:00),sensor_timeseries,common:variable:weather.weather_summary_day,,,day,
+天気概況_夜 (18:00-翌日06:00),sensor_timeseries,common:variable:weather.weather_summary_night,,,day,

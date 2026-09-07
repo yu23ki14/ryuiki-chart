@@ -1,0 +1,11 @@
+# これはレジストリビルド（scripts/r01_build_registry.py と scripts/registry/*.py）が
+# 実際に import するサードパーティ依存の固定リストであり、scripts/c*.py（収集スクリプト）
+# 全体の依存マニフェストではない。収集スクリプト側は別途棚卸しが必要（このファイルの範囲外）。
+#
+# レジストリは「捨てて作り直せる」ことが要件（ADR-0001）。再構築には
+#   pip install -r requirements.txt
+#   .venv/bin/python3 scripts/r01_build_registry.py
+# だけで足りる（詳細は registry/README.md）。
+#
+# バージョンは、このリポジトリの .venv に実際に入っているものをそのまま固定した。
+PyYAML==6.0.3

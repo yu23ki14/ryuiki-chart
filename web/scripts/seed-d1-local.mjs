@@ -34,6 +34,7 @@ const SOURCES = [
   { alias: "ryuiki", file: "ryuiki.sqlite", required: true },
   { alias: "cells", file: "cells.sqlite", required: true },
   { alias: "derived", file: "derived.sqlite", required: true },
+  { alias: "registry", file: "registry.sqlite", required: true },
 ];
 
 /** マイグレーションと wrangler / miniflare の管理テーブル。シードの対象外。 */
@@ -44,6 +45,22 @@ const t0 = Date.now();
 const log = (...a) => console.log(`[seed ${((Date.now() - t0) / 1000).toFixed(1)}s]`, ...a);
 const qi = (n) => `"${String(n).replace(/"/g, '""')}"`;
 
+/**
+ * miniflare は D1 の実体ファイルを `database_id` などから導出したハッシュ名で
+ * `.wrangler/state/v3/d1/miniflare-D1DatabaseObject/<hash>.sqlite` に置く。ハッシュの
+ * 導出規則は wrangler のバージョンが変わると変わることがあり、`docker-compose.yml` の
+ * 名前付きボリューム（`d1-state`）はイメージを作り直しても中身を引き継ぐため、
+ * 「古い wrangler で作った <旧hash>.sqlite が残ったまま、新しい wrangler が
+ * <新hash>.sqlite を新規に作る」という状態が起こりうる（実際に発生した障害の原因）。
+ * `wrangler.jsonc` の d1_databases 定義自体は Phase A を通じて1本（database_id 固定）
+ * のままなので、コード側の不整合ではなく「持ち越した状態」の問題。
+ *
+ * 対処: ファイルが複数あるときは即エラーにはせず、直前の `npm run db:migrate` が
+ * 触ったばかりの＝最も mtime が新しいものを「現在使うべき実体」として選ぶ
+ * （entrypoint は migrate → seed の順で必ず直列に呼ぶので、今回のマイグレーションが
+ * 触ったファイルが常に最新になる）。古いファイルは消さずに警告だけ出す。
+ * 黙って選ぶのではなく、選んだ理由と捨てた候補を必ずログに残す。
+ */
 function findLocalD1() {
   if (!fs.existsSync(D1_STATE)) {
     throw new Error(
@@ -55,10 +72,31 @@ function findLocalD1() {
     .readdirSync(D1_STATE)
     .filter((f) => f.endsWith(".sqlite") && f !== "metadata.sqlite")
     .map((f) => path.join(D1_STATE, f));
-  if (files.length !== 1) {
-    throw new Error(`ローカル D1 の SQLite ファイルを一意に決められない: ${JSON.stringify(files)}`);
+  if (files.length === 0) {
+    throw new Error(
+      `ローカル D1 の SQLite ファイルが無い: ${D1_STATE}\n` +
+        `先に \`npm run db:migrate\` (wrangler d1 migrations apply) を実行する。`,
+    );
   }
-  return files[0];
+  if (files.length === 1) return files[0];
+
+  // 複数ある: 直前の db:migrate が触った(mtime が最新の)ものを採用し、他は警告に出す。
+  const withStat = files.map((f) => ({ f, mtimeMs: fs.statSync(f).mtimeMs }));
+  withStat.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  const [chosen, ...stale] = withStat;
+  log(
+    `⚠ ローカル D1 の SQLite ファイルが ${files.length} 個ある（wrangler のバージョン更新等で` +
+      `古いファイルが d1-state ボリュームに残ったと思われる）。最も新しく更新された ` +
+      `${chosen.f} を使う。`,
+  );
+  for (const s of stale) {
+    log(`  未使用（古い可能性）: ${s.f} (mtime=${new Date(s.mtimeMs).toISOString()})`);
+  }
+  log(
+    "  古いファイルが不要なら `pnpm run db:reset`（.wrangler/state/v3/d1 ごと消して作り直す）" +
+      "で整理できる。",
+  );
+  return chosen.f;
 }
 
 /** 原本の同一性。中身のハッシュは 1.1GB 読むので、サイズと mtime で足りる。 */
@@ -72,7 +110,9 @@ function fingerprint() {
         `原本が無い: ${p}\n` +
           (s.file === "derived.sqlite"
             ? "集計 DB は `npm run build:derived` で作る（初回のみ・約1分）。"
-            : "data/db/ に原本を置く。"),
+            : s.file === "registry.sqlite"
+              ? "語彙レジストリは `npm run build:registry` で作る（scripts/r01_build_registry.py）。"
+              : "data/db/ に原本を置く。"),
       );
     }
     const st = fs.statSync(p);

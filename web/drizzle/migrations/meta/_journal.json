@@ -22,6 +22,13 @@
       "when": 1788594940476,
       "tag": "0002_mute_tempest",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1788692961678,
+      "tag": "0003_slim_luminals",
+      "breakpoints": true
     }
   ]
 }

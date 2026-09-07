@@ -1,0 +1,170 @@
+# 単位（unit）レジストリ（docs/plans/PHASE_A.md §A-2, docs/adr/0010-variable-registry.md）。
+#
+# measurements.unit の9種 + sensor_timeseries.unit の22種（重複除く）を正準化して列挙する。
+# unit_id（common:unit:<slug> の形）は28件全行がこの yaml で明示する値であり、
+# 機械的な slug 化関数から自動導出したものではない（`scripts/registry/build_unit_variable.py`
+# の `_unit_rows()` はここに書かれた `unit_id` をそのまま使うだけで、symbol から
+# 何かを計算していない）。これは例外ではなくもともとの設計: 単位のように件数が少なく
+# 表記のゆらぎが大きい語彙は、機械的な slug 化に頼らず人がここで1件ずつ決める
+# （`place_id()` / `taxon_id_unresolved()` が使う `slugify_local_key()` とは対象が違う）。
+#
+# 過去に symbol から機械的に slug を作る `scripts/registry/common.py` の
+# `unit_slug()`/`unit_id()` があったが、4本の build_*.py のどこからも一度も呼ばれておらず
+# （このファイルの `unit_id` が常に正として使われていたため）、かつ非ASCII文字
+# （例: "点" → 空文字、"0.1%" → "0_1" で "0.1percent" と区別できなくなる）を情報ごと
+# 潰す規約の割れがあったため削除した（動かない安全網より、要件が出た時点で書き直す方が
+# 安全という判断。ADR-0001）。"点" / "0.1%" の `unit_id`（`common:unit:count` /
+# `common:unit:0_1percent`）はその関数と無関係に、他の26件と同じくここで人手で決めた値。
+#
+# "0.1*" 系（0.1mm, 0.1℃, 0.1%, 0.1ppm, 0.1m/s, 0.01ppmC）は換算ミスではない。
+# 平塚市大気環境の1時間値データフォーマット説明書（images/1hour_description.pdf, 実測確認済み。
+# scripts/c85_hiratsuka_taiki.py が同じ PDF から測定局・項目表を抽出している）に、まさにこの
+# スケールが測定単位として明記されている。値は raw のまま（実値 = 格納値 × 0.1 等）であり、
+# ここでは変換していない（v1 のファクトは一切動かさない）。
+#
+# ucum は UCUM で確実に分かるものだけ書いた。CFU/100mL・MPN/100mL・T.P. m・点・days・tenths・
+# "0.1*" 系は UCUM の正式なコードを確信を持って断定できないため空にした（推測で埋めない）。
+#
+# pH のような無次元は common:unit:dimensionless（symbol は空、ucum は 1）。
+
+units:
+  - unit_id: common:unit:mg_per_l
+    symbol: "mg/L"
+    ucum: "mg/L"
+    name_ja: "ミリグラム毎リットル"
+    quantity_kind: mass_concentration
+  - unit_id: common:unit:cfu_per_100ml
+    symbol: "CFU/100mL"
+    ucum: null
+    name_ja: "コロニー形成単位毎100ミリリットル（大腸菌数）"
+    quantity_kind: microbial_density
+  - unit_id: common:unit:mpn_per_100ml
+    symbol: "MPN/100mL"
+    ucum: null
+    name_ja: "最確数毎100ミリリットル（大腸菌群数）"
+    quantity_kind: microbial_density
+  - unit_id: common:unit:t_p_m
+    symbol: "T.P. m"
+    ucum: null
+    name_ja: "東京湾平均海面(T.P.)基準の標高（メートル）"
+    quantity_kind: elevation
+  - unit_id: common:unit:cm
+    symbol: "cm"
+    ucum: "cm"
+    name_ja: "センチメートル"
+    quantity_kind: length
+  - unit_id: common:unit:degc
+    symbol: "degC"
+    ucum: "Cel"
+    name_ja: "セ氏度"
+    quantity_kind: temperature
+  - unit_id: common:unit:km2
+    symbol: "km2"
+    ucum: "km2"
+    name_ja: "平方キロメートル"
+    quantity_kind: area
+  - unit_id: common:unit:m
+    symbol: "m"
+    ucum: "m"
+    name_ja: "メートル"
+    quantity_kind: length
+  - unit_id: common:unit:count
+    symbol: "点"
+    ucum: null
+    name_ja: "地点数（可算・地盤沈下観測の水準点数）"
+    quantity_kind: count
+  - unit_id: common:unit:ppm
+    symbol: "ppm"
+    ucum: "[ppm]"
+    name_ja: "百万分率"
+    quantity_kind: volume_fraction
+  - unit_id: common:unit:ug_per_m3
+    symbol: "ug/m3"
+    ucum: "ug/m3"
+    name_ja: "マイクログラム毎立方メートル"
+    quantity_kind: mass_concentration
+  - unit_id: common:unit:mg_per_m3
+    symbol: "mg/m3"
+    ucum: "mg/m3"
+    name_ja: "ミリグラム毎立方メートル"
+    quantity_kind: mass_concentration
+  - unit_id: common:unit:m3_per_m3
+    symbol: "m3/m3"
+    ucum: "m3/m3"
+    name_ja: "立方メートル毎立方メートル（体積含水率）"
+    quantity_kind: volume_fraction
+  - unit_id: common:unit:0_01ppmc
+    symbol: "0.01ppmC"
+    ucum: null
+    name_ja: "ppmC(炭素換算した百万分率)の1/100単位の原表記。実値は本値×0.01（平塚市大気環境データ仕様書に基づく。換算はしていない）"
+    quantity_kind: volume_fraction
+  - unit_id: common:unit:0_1ppm
+    symbol: "0.1ppm"
+    ucum: null
+    name_ja: "ppmの1/10単位の原表記。実値は本値×0.1（平塚市大気環境データ仕様書に基づく。換算はしていない）"
+    quantity_kind: volume_fraction
+  - unit_id: common:unit:ppb
+    symbol: "ppb"
+    ucum: "[ppb]"
+    name_ja: "十億分率"
+    quantity_kind: volume_fraction
+  - unit_id: common:unit:days
+    symbol: "days"
+    ucum: null
+    name_ja: "日数（可算・現象のあった日数）"
+    quantity_kind: count
+  - unit_id: common:unit:h
+    symbol: "h"
+    ucum: "h"
+    name_ja: "時間"
+    quantity_kind: time
+  - unit_id: common:unit:hpa
+    symbol: "hPa"
+    ucum: "hPa"
+    name_ja: "ヘクトパスカル"
+    quantity_kind: pressure
+  - unit_id: common:unit:0_1degc
+    symbol: "0.1℃"
+    ucum: null
+    name_ja: "セ氏度の1/10単位の原表記。実値は本値×0.1（平塚市大気環境データ仕様書に基づく。換算はしていない）"
+    quantity_kind: temperature
+  - unit_id: common:unit:percent
+    symbol: "percent"
+    ucum: "%"
+    name_ja: "パーセント"
+    quantity_kind: fraction
+  - unit_id: common:unit:0_1percent
+    symbol: "0.1%"
+    ucum: null
+    name_ja: "パーセントの1/10単位の原表記。実値は本値×0.1（平塚市大気環境データ仕様書に基づく。換算はしていない）"
+    quantity_kind: fraction
+  - unit_id: common:unit:mm
+    symbol: "mm"
+    ucum: "mm"
+    name_ja: "ミリメートル"
+    quantity_kind: length
+  - unit_id: common:unit:0_1mm
+    symbol: "0.1mm"
+    ucum: null
+    name_ja: "ミリメートルの1/10単位の原表記。実値は本値×0.1（平塚市大気環境データ仕様書に基づく。換算はしていない）"
+    quantity_kind: length
+  - unit_id: common:unit:tenths
+    symbol: "tenths"
+    ucum: null
+    name_ja: "10分比（雲量の目視観測階級。0〜10）"
+    quantity_kind: fraction
+  - unit_id: common:unit:m_per_s
+    symbol: "m/s"
+    ucum: "m/s"
+    name_ja: "メートル毎秒"
+    quantity_kind: velocity
+  - unit_id: common:unit:0_1m_per_s
+    symbol: "0.1m/s"
+    ucum: null
+    name_ja: "メートル毎秒の1/10単位の原表記。実値は本値×0.1（平塚市大気環境データ仕様書に基づく。換算はしていない）"
+    quantity_kind: velocity
+  - unit_id: common:unit:dimensionless
+    symbol: ""
+    ucum: "1"
+    name_ja: "無次元（pH 等）"
+    quantity_kind: dimensionless

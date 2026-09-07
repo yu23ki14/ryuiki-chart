@@ -2,6 +2,7 @@
   "name": "web",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.18.3",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -17,13 +18,18 @@
     "db:migrate": "wrangler d1 migrations apply ryuiki --local",
     "db:migrate:remote": "wrangler d1 migrations apply ryuiki --remote",
     "db:seed": "node scripts/seed-d1-local.mjs",
+    "predb:setup": "scripts/ensure-registry.sh",
     "db:setup": "npm run db:migrate && npm run db:seed",
     "db:reset": "rm -rf .wrangler/state/v3/d1 && npm run db:setup",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "db:export": "node scripts/export-d1-sql.mjs",
-    "db:verify:remote": "node scripts/verify-d1-remote.mjs"
+    "db:verify:remote": "node scripts/verify-d1-remote.mjs",
+    "build:registry": "scripts/run-python.sh scripts/r01_build_registry.py",
+    "report:registry": "scripts/run-python.sh scripts/r02_resolution_report.py",
+    "build:registry:ts": "node scripts/build-registry-ts.mjs",
+    "test": "vitest run"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.40",
@@ -56,6 +62,7 @@
     "eslint-config-next": "16.3.3",
     "tailwindcss": "^4",
     "typescript": "^5",
+    "vitest": "^5.0.0",
     "wrangler": "^4.127.1"
   }
 }

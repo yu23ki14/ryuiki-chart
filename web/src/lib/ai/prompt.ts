@@ -1,10 +1,12 @@
 import "server-only";
 import { TABLE_META, SCHEMA_META, TABLE_ORIGIN, SAMPLE_QUERIES } from "@/lib/table-meta";
 import { DATA_CAVEATS, BIOTA_CAVEATS } from "@/lib/domain";
+import { caveatBody } from "@/lib/registry/lookup-client";
+import { resolveVariableInfo } from "@/lib/registry/lookup";
 import { describePageContext, type PageContext } from "./page-context";
 
 /**
- * システムプロンプトは table-meta.ts / domain.ts から組み立てる（文字列にハードコードしない）。
+ * システムプロンプトは table-meta.ts / domain.ts / registry から組み立てる（文字列にハードコードしない）。
  * テーブルや注記が増えたときにここだけ更新漏れが起きるのを防ぐため。
  */
 
@@ -26,10 +28,49 @@ function schemaOrigins(): string {
 /**
  * 注記は `[キー] 本文` の形で出す。ツール結果にはキーだけが載るので、
  * モデルはここを引いて本文に戻せる。本文を両方に載せると純粋な重複になる。
+ *
+ * municipality は DATA_CAVEATS / BIOTA_CAVEATS（domain.ts、画面の注記用に選んだ13件）に
+ * 含めていないので、ここだけ `registry/caveat.yaml` を lookup.ts 経由で直接引く。
+ * 本文を直書きしない（レジストリと文言がずれる「二重の真実」を防ぐ）。
  */
 function allCaveats(): string {
   const lines = [...Object.entries(DATA_CAVEATS), ...Object.entries(BIOTA_CAVEATS)];
-  return lines.map(([key, text]) => `- [${key}] ${text}`).join("\n");
+  const municipality = caveatBody("municipality");
+  if (municipality === undefined) {
+    throw new Error('registry/caveat.yaml に "municipality" が無い（prompt.ts が参照している）');
+  }
+  return [...lines, ["municipality", municipality] as const].map(([key, text]) => `- [${key}] ${text}`).join("\n");
+}
+
+/**
+ * §A-7 で追加した、レジストリ由来の語彙情報。
+ *
+ * get_timeseries / get_seasonality / list_catalog(what='variables') / get_sites の
+ * ツール結果に variableId（正準の指標ID）と、その中身を引く共有辞書 registry が
+ * 付くようになったので、それが何を意味するかをここで説明する
+ * （code-review #5: 行ごとに nameJa/unit 等をインライン展開すると list_catalog の
+ * ペイロードが膨らむため、行には variableId だけを持たせ、本体は
+ * `registry[variableId]` に集約してある）。例は ADR-0010 が挙げているのと同じ
+ * 「OX / Ox(ppm) / 光化学オキシダント（Ox）_日平均」（sensor_timeseries の出典表記違い）を、
+ * ハードコードした文字列ではなくレジストリを実際に引いて確かめてから使う
+ * （もし対応が崩れたら、この一致確認が失敗して例文が出なくなる＝気づける）。
+ */
+function variableVocabNote(): string {
+  const ox = resolveVariableInfo("OX", "sensor_timeseries");
+  const oxPpm = resolveVariableInfo("Ox(ppm)", "sensor_timeseries");
+  const sameId = ox && oxPpm && ox.variableId === oxPpm.variableId ? ox.variableId : null;
+  const example = sameId
+    ? `\n例: 出典表記「OX」と「Ox(ppm)」は文字列としては別物だが、どちらも variableId="${sameId}"（同じ量）。`
+    : "";
+  return (
+    `get_timeseries・get_seasonality・list_catalog(what='variables')・get_sites の結果には ` +
+    `variableId（レジストリの正準の指標ID。例: "common:variable:water.bod"）と、その中身を引く共有辞書 ` +
+    `registry（キーが variableId、値が nameJa/unit/higherIsWorse/descriptionJa 等）が付くことがある。` +
+    `出典側の表記（水質項目名など）は同じ量でも出典ごとに違うことがあるが、variableId が同じなら同じ量を指す。` +
+    `ただし単位・スケールは出典ごとに違いうる（例: air.co は0.1ppm刻みの原表記）ので、` +
+    `値を比較するときは必ずツール結果の registry[variableId].unit を見ること。` +
+    `名前の文字列一致ではなく variableId の一致で「同じ指標か」を判断すること。${example}`
+  );
 }
 
 function fewShotSql(): string {
@@ -98,7 +139,9 @@ species_year2 / species_month / effort_year などの derived テーブルを使
 
 ## データの癖・注記（全文）
 ${allCaveats()}
-- [municipality] sites.municipality は出典によって中身が違う。環境省 公共用水域の290地点では水域名（河川名・湖沼名）が入り、それ以外の62地点では市区町村名が入る。列名と中身が一致していない。
+
+## 指標の正準ID（variableId）
+${variableVocabNote()}
 
 ## 開示義務
 observers（観測者）・interventions（介入）・decisions（意思決定）・quality_transitions / quality_monthly（品質段階の遷移）は

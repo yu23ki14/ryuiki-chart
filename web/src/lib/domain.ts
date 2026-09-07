@@ -1,55 +1,46 @@
 /**
  * 領域知識。データ探索で分かった「原本の癖」をここに集約する。
  * 画面側で個別に補正を書かないための場所。
+ *
+ * @deprecated このファイルの定数は `web/src/lib/registry/generated-client.ts`
+ * （レジストリ由来・docs/plans/PHASE_A.md §A-2〜A-5）から組み立てる薄い層になった（§A-8）。
+ * 13ファイルの利用側（`page.tsx` / `MapPage` / `SiteList` / `TimeseriesExplorer` /
+ * `BiotaExplorer` / `QualityDashboard` / `DocumentsExplorer` / `SiteDetail` /
+ * `SeriesChartCard` / ai の4ファイル）は Phase A では書き換えない。エクスポートの
+ * 名前・形・値は変えていない（`web/src/lib/domain.test.ts` が現行値と一致することを固定する）。
+ * 完全な撤去は Phase B 以降。新しい値をここに書き足さない（レジストリ側に足す）。
+ *
+ * `rowKeyLabel()` / `speciesLabel()` / `shortVariable()` のような関数はレジストリの対象外
+ * （§A-8 の指示どおり、そのまま残す）。
+ *
+ * 「代表エイリアスから機械的に再構成する」性質は変わっていないが、再構成そのものは
+ * ビルド時（`web/scripts/lib/registry-codegen.mjs`）に前倒しした（code-review #4）。
+ * 以前はここで実行時に `allVariables()` / `primaryAlias()` を呼んで組み立てており、
+ * その結果 variable(85件)・variable_alias(117件) の生テーブルがまるごとクライアント
+ * バンドルに乗っていた（+43.5KB）。`generated-client.ts` は既に組み立て済みの
+ * Record だけを持つので、ここは import してそのまま re-export するだけでよい。
  */
+import {
+  VARIABLE_SHORT,
+  VARIABLE_NOTE,
+  HIGHER_IS_WORSE,
+  VARIABLE_UNIT_FALLBACK,
+  NAME_JA,
+} from "@/lib/registry/generated-client";
+import { caveatBody } from "@/lib/registry/lookup-client";
 
-/** 水質項目の短い表示名（原本の variable は長いものがある） */
-export const VARIABLE_SHORT: Record<string, string> = {
-  "生物化学的酸素要求量 BOD": "BOD",
-  "化学的酸素要求量 COD": "COD",
-  "溶存酸素量 DO": "DO",
-  "浮遊物質量 SS": "SS",
-  "直鎖アルキルベンゼンスルホン酸及びその塩 LAS": "LAS",
-  "ノルマルヘキサン抽出物質": "n-ヘキサン抽出物質",
-  "流量関連（公式定義未確認のため原表記のまま）": "流量関連",
-};
+export { VARIABLE_SHORT, VARIABLE_NOTE, HIGHER_IS_WORSE, VARIABLE_UNIT_FALLBACK, NAME_JA };
 
-/** 単位が原本で NULL の項目に、既知のものだけ補う（推測はしない） */
-export const VARIABLE_UNIT_FALLBACK: Record<string, string> = {
-  pH: "",
-  "pH（最大値）": "",
-  "pH（最小値）": "",
-};
+/** レジストリに実在するキーの本文だけを使う。無ければビルド時に気づけるよう例外を投げる。 */
+function mustCaveatBody(key: string): string {
+  const body = caveatBody(key);
+  if (body === undefined) throw new Error(`registry/caveat.yaml に "${key}" が無い（domain.ts が参照している）`);
+  return body;
+}
 
 export function shortVariable(v: string): string {
   return VARIABLE_SHORT[v] ?? v;
 }
-
-/** 何を意味する指標か。ツールチップに出す。 */
-export const VARIABLE_NOTE: Record<string, string> = {
-  "生物化学的酸素要求量 BOD": "微生物が有機物を分解するのに使う酸素量。大きいほど有機汚濁が進んでいる",
-  "化学的酸素要求量 COD": "酸化剤で有機物を分解したときの消費酸素量。湖沼・海域の指標として使われる",
-  "溶存酸素量 DO": "水に溶けている酸素。小さいほど生き物が棲みにくい。水温が上がると下がる",
-  "浮遊物質量 SS": "水に浮いている細かい粒子の量。降雨で土砂が入ると上がる",
-  全亜鉛: "水生生物の保全に係る環境基準項目",
-  大腸菌群数: "し尿等による汚染の指標。2022年度以降は「大腸菌数」に移行しつつある",
-  水温: "採水時の水温",
-  透明度: "湖沼・海域で円板が見えなくなる深さ",
-};
-
-/** 上流→下流でこの向きに動くのが「悪化」か。矢印の向きに使う。 */
-export const HIGHER_IS_WORSE: Record<string, boolean> = {
-  "生物化学的酸素要求量 BOD": true,
-  "化学的酸素要求量 COD": true,
-  "浮遊物質量 SS": true,
-  大腸菌群数: true,
-  大腸菌数: true,
-  全亜鉛: true,
-  "全窒素 T-N": true,
-  "全燐 T-P": true,
-  "溶存酸素量 DO": false,
-  透明度: false,
-};
 
 export const ZONE_INFO = [
   { zone: 1, label: "山地源流域", cond: "標高 800m 超" },
@@ -72,87 +63,26 @@ export const MUNICIPALITY_LABEL = "水域・地域";
 
 /** 原本の癖。画面の注記に出して、読み手が誤解しないようにする。 */
 export const DATA_CAVEATS = {
-  measuredOn:
-    "measurements.measured_on には「2015-04-08」形式（検体値・216,990行）と「2015」形式（年度集計値・98,328行）が混在する。年度集計値は日本の年度（4月〜翌3月）を指す。この画面では両者を kind で区別している。",
-  censored:
-    "全体の約24%は定量下限未満（原表記が「<0.5」など）で、value 列には 0 が入っている。折れ線では中抜きの点で示し、平均には含めるが「0 が観測された」とは読まないこと。",
-  duplicates:
-    "同一の地点・日・項目に複数行あるのは、原本が採水時刻を落としているため。ここでは日ごとに平均して1点にまとめている。",
-  zone: "ゾーンは標高と海岸線距離だけから機械的に付けた操作的定義であり、公式の区分ではない。zone 1（標高800m超）には水質データが無い。",
-  organismSite:
-    "生物レコードには site_id が無い（原本で全件 NULL）。流域への割り当ては緯度経度と国土数値情報 W12（1977年版）ポリゴンの点内包判定によるもので、原本の属性ではない。",
-  effort:
-    "生物観察の件数は観察努力（記録した人の数）に強く影響される。件数の増加をそのまま「生物が増えた」と読んではいけない。",
-  synthetic:
-    "観測者・介入・意思決定・品質段階の遷移は合成データ（デモ用に生成したもの）。実在の公開データではない。",
+  measuredOn: mustCaveatBody("measuredOn"),
+  censored: mustCaveatBody("censored"),
+  duplicates: mustCaveatBody("duplicates"),
+  zone: mustCaveatBody("zone"),
+  organismSite: mustCaveatBody("organismSite"),
+  effort: mustCaveatBody("effort"),
+  synthetic: mustCaveatBody("synthetic"),
 } as const;
 
 /**
- * 和名の辞書（本デモで付与したもの）。
+ * 和名の辞書（本デモで付与したもの、`NAME_JA`。上で import・re-export 済み）。
  *
  * organism_records に和名は入っておらず（vernacular_name は英名）、
  * taxa テーブルの和名を学名で機械結合すると別地域の個体群の名前が付いてしまう
  * （例: Plecoglossus altivelis に「リュウキュウアユ」）。
- * そのため、画面に出す代表種についてだけ人が確認した和名をここに持つ。
+ * そのため、画面に出す代表種についてだけ人が確認した和名をここに持つ
+ * （`registry/taxon/vernacular_ja.csv` に移した54件。taxon テーブル全体の
+ * vernacular_name_ja、8,324件・taxa 由来の別の母集団とは別物）。
  * ここに無い種は学名と英名だけを表示し、和名を推測しない。
  */
-export const NAME_JA: Record<string, string> = {
-  "Hypsipetes amaurotis": "ヒヨドリ",
-  "Passer montanus": "スズメ",
-  "Corvus corone": "ハシボソガラス",
-  "Corvus macrorhynchos": "ハシブトガラス",
-  "Egretta garzetta": "コサギ",
-  "Ardea intermedia": "チュウサギ",
-  "Ardea cinerea": "アオサギ",
-  "Fulica atra": "オオバン",
-  "Alcedo atthis": "カワセミ",
-  "Garrulax canorus": "ガビチョウ",
-  "Leiothrix lutea": "ソウシチョウ",
-  "Aythya fuligula": "キンクロハジロ",
-  "Aythya ferina": "ホシハジロ",
-  "Anas acuta": "オナガガモ",
-  "Mareca penelope": "ヒドリガモ",
-  "Mareca strepera": "オカヨシガモ",
-  "Zosterops japonicus": "メジロ",
-  "Cyanopica cyanus": "オナガ",
-  "Motacilla cinerea": "キセキレイ",
-  "Alauda arvensis": "ヒバリ",
-  "Phasianus versicolor": "キジ",
-  "Podiceps cristatus": "カンムリカイツブリ",
-  "Psittacula krameri": "ワカケホンセイインコ",
-  "Delichon dasypus": "イワツバメ",
-  "Apus nipalensis": "ヒメアマツバメ",
-  "Columba livia": "カワラバト（ドバト）",
-  "Coccothraustes coccothraustes": "シメ",
-  "Emberiza rustica": "カシラダカ",
-  "Trichonephila clavata": "ジョロウグモ",
-  "Harmonia axyridis": "ナミテントウ",
-  "Hestina assimilis": "アカボシゴマダラ",
-  "Callosciurus erythraeus": "タイワンリス",
-  "Solidago altissima": "セイタカアワダチソウ",
-  "Trachemys scripta": "アカミミガメ",
-  "Coreopsis lanceolata": "オオキンケイギク",
-  "Procambarus clarkii": "アメリカザリガニ",
-  "Lithobates catesbeianus": "ウシガエル",
-  "Procyon lotor": "アライグマ",
-  "Paguma larvata": "ハクビシン",
-  "Nipponoluciola cruciata": "ゲンジボタル",
-  "Plecoglossus altivelis": "アユ",
-  "Cyprinus carpio": "コイ",
-  "Zacco platypus": "オイカワ",
-  "Pseudorasbora parva": "モツゴ",
-  "Lepomis macrochirus": "ブルーギル",
-  "Micropterus salmoides": "オオクチバス",
-  "Cobitis biwae": "シマドジョウ",
-  "Anguilla japonica": "ニホンウナギ",
-  "Cervus nippon": "ニホンジカ",
-  "Bidens pilosa": "オオバナセンダングサ",
-  "Persicaria capitata": "ヒメツルソバ",
-  "Oenothera laciniata": "コマツヨイグサ",
-  "Robinia pseudoacacia": "ハリエンジュ",
-  "Pomacea canaliculata": "スクミリンゴガイ",
-};
-
 export function speciesLabel(binom: string, enName?: string | null): string {
   const ja = NAME_JA[binom];
   if (ja) return ja;
@@ -161,18 +91,12 @@ export function speciesLabel(binom: string, enName?: string | null): string {
 
 /** 生物データの観察努力に関する事実（画面に必ず添える） */
 export const BIOTA_CAVEATS = {
-  regimes:
-    "記録の中身は年代で入れ替わっている。2013–2016 は標本由来の植物、2017–2024 は eBird 由来の鳥類、2025 以降は iNaturalist 由来の昆虫・植物・菌類が中心。分類群をまたいだ件数の比較はできない。",
-  gbifCutoff:
-    "GBIF 側の取り込みは 2024年12月で実質途切れている（2025年1月に月8,750件→399件）。鳥類の2025年以降の減少はデータの都合であり、生きものの減少ではない。",
-  share:
-    "件数そのものではなく、同じ分類群の中での割合（‰）で比べている。観察する人が増えれば件数は全種で一斉に増えるため、生の件数の増減には意味がない。",
-  inatBackfill:
-    "iNaturalist 由来の 165,332 件は分類階級が空だったため、学名の先頭2語をキーに GBIF 側の分類を引き当てて補完している（96%が解決）。",
-  fishClass:
-    "魚類は class 列に現れない（Actinopterygii が入っておらず空になっている）。門が Chordata で綱が空のものを魚類として扱っている。",
-  isAlien:
-    "原本の is_alien フラグは同一種の中で 1 と 0 が混在し、オオクチバスやウシガエルが 0 件になるなど信頼できない。外来種の判定には環境省の生態系被害防止外来種リスト（taxa.ias_category）を学名で結合した結果を使っている。",
+  regimes: mustCaveatBody("regimes"),
+  gbifCutoff: mustCaveatBody("gbifCutoff"),
+  share: mustCaveatBody("share"),
+  inatBackfill: mustCaveatBody("inatBackfill"),
+  fishClass: mustCaveatBody("fishClass"),
+  isAlien: mustCaveatBody("isAlien"),
 } as const;
 
 /**
