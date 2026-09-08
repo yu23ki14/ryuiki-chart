@@ -5,11 +5,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
-  GENERATED_UNITS,
-  GENERATED_VARIABLES,
-  GENERATED_VARIABLE_ALIASES,
-} from "@/lib/registry/generated";
-import {
   GENERATED_CAVEATS,
   GENERATED_CAVEAT_SCOPE,
   NAME_JA,
@@ -85,20 +80,6 @@ describe("generated.ts / generated-client.ts の形", () => {
     expect(GENERATED_CAVEAT_SCOPE.length).toBeGreaterThan(0);
     expect(GENERATED_CAVEAT_SCOPE.every((s) => s.scopeKind === "table" || s.scopeKind === "table_prefix")).toBe(true);
     expect(GENERATED_CAVEAT_SCOPE.some((s) => s.priority > 0)).toBe(true);
-  });
-
-  it("caveat_scope が参照する caveatKey はすべて GENERATED_CAVEATS に実在する", () => {
-    const keys = new Set(GENERATED_CAVEATS.map((c) => c.key));
-    for (const s of GENERATED_CAVEAT_SCOPE) expect(keys.has(s.caveatKey)).toBe(true);
-  });
-
-  it("variable_alias が参照する variableId / unitId は実在するもの以外は null（generated.ts、サーバ専用）", () => {
-    const variableIds = new Set(GENERATED_VARIABLES.map((v) => v.variableId));
-    const unitIds = new Set(GENERATED_UNITS.map((u) => u.unitId));
-    for (const a of GENERATED_VARIABLE_ALIASES) {
-      if (a.variableId !== null) expect(variableIds.has(a.variableId)).toBe(true);
-      if (a.unitId !== null) expect(unitIds.has(a.unitId)).toBe(true);
-    }
   });
 
   it("和名台帳（NAME_JA、generated-client.ts）は54件", () => {

@@ -2,23 +2,39 @@
 #
 # measurements.variable（58種）と sensor_timeseries.datastream（59種）の出典表記から、
 # 名前に埋め込まれた単位・粒度・統計量を剥がして正準化した85種。出典表記との対応は
-# variable_alias.csv 側（117行）に持つ。
+# variable_alias.csv 側（154行。117行から (dataset, alias, source_id) に分割した経緯は
+# docs/plans/PHASE_B_INTAKE.md #1）に持つ。
 #
-# name_ja / description_ja / higher_is_worse は web/src/lib/domain.ts の
-# VARIABLE_SHORT / VARIABLE_NOTE / HIGHER_IS_WORSE の値をそのまま移した。
-# domain.ts に無いキーは空のまま（推測で足していない）。
+# name_ja / description_ja / higher_is_worse は、Phase A 時点では web/src/lib/domain.ts の
+# VARIABLE_SHORT / VARIABLE_NOTE / HIGHER_IS_WORSE の値をそのまま移した
+# （domain.ts 自体は13ファイルの利用側をレジストリ直読みに切り替えた後、削除済み）。
+# domain.ts に無かったキーは空のまま（推測で足していない）。
 #
-# 例外1件・意図的な逸脱: water.* の健康項目27種（cd/cn/pb 等の原表記）だけは、domain.ts に
-# 無いにもかかわらず name_ja を埋めた。理由: 環境省 公共用水域水質データファイル利用説明書
-# （検体値）第1版 (2012-08-22)「健康項目」カラム定義（水・大気環境局 水環境課, 出典
+# 例外1: water.* の健康項目27種（cd/cn/pb 等の原表記）だけは、domain.ts に無いにもかかわらず
+# name_ja を埋めた。理由: 環境省 公共用水域水質データファイル利用説明書（検体値）第1版
+# (2012-08-22)「健康項目」カラム定義（水・大気環境局 水環境課, 出典
 # https://water-pub.env.go.jp/water-pub/mizu-site/mizu/download/kousui/kousui_k_manual.pdf）に
 # CD=カドミウム 等の対応がそのまま明記されており、これは推測ではなく一次資料からの確認。
-# ただし description_ja / higher_is_worse は同じ理由でも埋めていない（domain.ts 由来のみとする
-# 指示に従う。埋めるべきかは A-6 以降の判断に委ねる。詳細は本タスクの報告を参照）。
+# ただし description_ja / higher_is_worse は同じ理由でも埋めていない（埋めるべきかは
+# A-6 以降の判断に委ねた）。
 #
-# status=（needs_review）は hydro.flow の1種のみ。原本の収集スクリプト
-# (scripts/c12_env_kousui.py) が「公式定義未確認のため原表記のまま」と明記しており、
-# 単位・意味とも確定できない（測定は4,668行）。
+# 例外2: hydro.flow（下記）の description_ja も domain.ts 由来ではない。domain.ts には
+# この変数の説明文が無く、本PR（phase-b/variable-flow）で一次資料の確認結果を踏まえて
+# 新規に書いた。
+#
+# hydro.flow はかつて status=needs_review だった（原本の収集スクリプト
+# (scripts/c12_env_kousui.py) が「公式定義未確認のため原表記のまま」と出力していたため）。
+# 一次資料（docs/plans/PHASE_B_ALIAS_STAT_SOURCES.md §3.3、MK_manu.pdf 項目ID 090700）で
+# 単位 m3/s・意味「流量」を確定し、status=ok に直した（測定は4,668行、すべて
+# env_kousui_sample_kanagawa 由来）。
+# description_ja は出典の書誌ではなく「読み手が誤読しないために必要な1点」を書く方針にした
+# （web/src/components/timeseries/TimeseriesExplorer.tsx の該当 <p> は全角約42文字で折り返す
+# UI 制約があり、既存の最長も34文字だった）。感潮域では潮汐による逆流で流量が負の値になる
+# （180行/4,668行・14地点/83地点。一次資料と実データの突き合わせは
+# PHASE_B_ALIAS_STAT_SOURCES.md §3.3）ことを読み手が知らずに負値を見ると誤読するため、
+# これは必ず含めた。出典の書誌（利用説明書名・発行元・年月・項目ID）は
+# variable_alias.csv の note 列と PHASE_B_ALIAS_STAT_SOURCES.md §3.3 に既にあるため、
+# description_ja には入れていない。
 #
 # theme は water(水質) / hydro(水文) / land(地盤沈下観測) / air(大気) / weather(気象)。
 # value_type は num（既定）/ category（風向・天気概況などの文字列値）。
@@ -499,15 +515,15 @@ variables:
     status: ok
   - variable_id: common:variable:hydro.flow
     code: hydro.flow
-    name_ja: "流量関連"
+    name_ja: "流量"
     name_en: null
     theme: hydro
-    unit_id: null
+    unit_id: common:unit:m3_per_s
     value_type: num
     default_stat: null
     higher_is_worse: null
-    description_ja: null
-    status: needs_review
+    description_ja: "河川の流量。感潮域では潮汐による逆流で負の値になる"
+    status: ok
   - variable_id: common:variable:hydro.groundwater_level
     code: hydro.groundwater_level
     name_ja: null

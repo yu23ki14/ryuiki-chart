@@ -51,8 +51,8 @@
    一般項目ファイルレイアウトに「流量」項目ID `090700`、単位 `m3/s` と明記されていた。
    該当する `measurements` 全4,668行はすべて `env_kousui_sample_kanagawa` から来ており
    （`kosui_k08` = 検体値・一般項目、まさにこの表に対応）、他 source_id には出現しない。
-   **`variable.yaml` の `name_ja`/`unit_id` を直すのは別PR**（本PRで直すと
-   `generated-client.ts` の `VARIABLE_SHORT` が変わり、受け入れ条件「差分0行」が壊れるため）。
+   **`variable.yaml` の `name_ja`/`unit_id`/`status` への反映は `phase-b/variable-flow` で
+   完了済み**（詳細な反証可能性の検討は §3.3）。
 4. **健康項目（cd, cn, pb, cr6, ass, thg, srhg, pcb 等27項目）は全て `env_kousui_annual_kanagawa` 由来**で、
    `env_kousui_sample_kanagawa` には出現しない。従来の `variable_alias.csv` の note は
    「環境省 公共用水域水質データファイル利用説明書（**検体値**）第1版(2012-08-22)」を引用していたが、
@@ -263,10 +263,52 @@ MK_manu.pdf「２．データレイアウト(1)一般項目ファイル」より
 |---|---|---|---|---|---|
 | 流量関連（公式定義未確認のため原表記のまま） | env_kousui_sample_kanagawa | 流量（河川の流量） | m3/s | day | MK_manu.pdf「一般項目ファイル」項目19（090700） |
 
-**この発見を `variable.yaml`（`common:variable:hydro.flow` の `name_ja`/`unit_id`/`status`）に
-反映するのは別PR**。本PRで stat/grain の分割だけを先に済ませ、`name_ja` の修正は
-`docs/plans/PHASE_B_INTAKE.md` に着手可能な課題として申し送る（`VARIABLE_SHORT` が変わり
-受け入れ条件「`generated-client.ts` 差分0行」に抵触するため）。
+#### 反証可能性の検討: `FLOW` 列・川幅の可能性を排除する
+
+同定に対する自然な疑義は「`FLOW` という別列があるのに、なぜ `FLOWRATE`＝090700 と言えるのか。
+`FLOWRATE` が実は川幅を表している可能性は排除できているのか」である。`kosui_k08` の実列は
+以下の並びを持つ（`RECORDID` 等のメタ列を省いた実測値部分）:
+
+> ... WEATHER, FLOW, ODOR, HUE, TEMPERATURE, TEMPERATURE2, WTEMP, WTEMP2,
+> FLOWRATE, FLOWRATE2, DEPTH, DEPTH2, CLEARNESS, CLEARNESS2
+
+以下4点の根拠で、この疑義は排除できる。
+
+1. **`FLOW` は数値項目ではない。** `FLOW` は `'00'` のような2桁のコード値（流況区分の
+   カテゴリ値）であり、`scripts/c12_env_kousui.py` の `META_COLS`
+   （`{"weather", "flow", "odor", "hue", "all2", ...}`）で既にメタ情報として除外済み。
+   同スクリプトの `find_measure_cols()` は「値列 X は X2 または X3 という兄弟列を持つ」
+   ことを機械的な検出条件にしており、`FLOW` にはその兄弟列（`FLOW2`）が無いため、
+   そもそも測定値としては抽出されていない。`FLOWRATE` との同定を疑うにあたって、
+   `FLOW` は数値項目ですらないので候補になりえない。
+2. **`FLOWRATE` は数値項目で、小数を持つ兄弟列 `FLOWRATE2` を持つ。** `melt()` の
+   `style='k'`（検体値ファイル）の規約は「`X`=値・`X2`=小数値・`X3`=フラグ」の3列構造
+   （関数のdocstring参照）。`FLOWRATE`/`FLOWRATE2` の組はこの構造どおりで、単独のコード
+   列である `FLOW` とは形自体が異なる。この出典で数値の測定項目は必ずこの3列構造に
+   乗っており、`FLOWRATE` はその条件を満たす。
+3. **列の並びが項目IDの並びと対応する。** MK_manu.pdf の一般項目ファイルレイアウトは、
+   `090700`「流量」（項目19、原文引用は上記）の直前に `090500`「気温」・`090600`「水温」が
+   並ぶ連番になっている（§3.4 の「気温」「水温」の行も同じレイアウトの隣接項目として
+   個別に確定済み）。実列の並びも `..., TEMPERATURE, TEMPERATURE2, WTEMP, WTEMP2,
+   FLOWRATE, FLOWRATE2, ...` と同じ順序になっており、気温・水温の列位置が確定している
+   以上、その直後の値列（`FLOWRATE`）が `090700`「流量」であることは、項目IDと実列の
+   両方が同じ連番構造を持つことから導かれる（偶然の一致ではない）。
+4. **負の値の分布が「川幅」ではなく「流量」であることを支持する。** `FLOWRATE` には
+   負の値が180行ある（全4,668行の3.9%）。この180行は83地点中14地点に集中しており
+   （瀬戸橋/宮川30行、平潟橋/侍従川24行、夫婦橋/平作川22行、追浜橋/鷹取川21行、
+   竹川合流後18行、入江橋/入江川16行、清水橋/大岡川12行、渚橋/田越川10行、他6地点
+   合計27行）、いずれも感潮域（河口付近で潮汐の影響を受ける区間）の地点である。
+   全体の値の範囲は最小-8.5〜最大81。**川幅が負の値になることは物理的にありえないが、
+   潮汐による逆流は流量(m3/s)として物理的に整合する。** つまり負の値は同定への反証では
+   なく、むしろ「これは川幅ではなく流量である」ことを支持する証拠になる
+   （`data/db/ryuiki.sqlite` を読み取り専用で開き、
+   `variable_en='river_width_or_flow' AND source_id='env_kousui_sample_kanagawa'` で
+   集計。件数・min/max・地点数を実測確認済み）。
+
+**この発見は `phase-b/variable-flow` で `registry/variable.yaml`
+（`common:variable:hydro.flow` の `name_ja`/`unit_id`/`status`）に反映済み**
+（`name_ja`="流量"、`unit_id`=`common:unit:m3_per_s`、`status`="ok"）。反映の経緯は
+`docs/plans/PHASE_B_INTAKE.md` の該当節を参照。
 
 ### 3.4 検体値の全16 alias（すべて確定）
 

@@ -18,9 +18,10 @@ build() の引数 src はシグネチャ互換のため受け取るが、この3
 の3件組が v1 の実データと過不足なく一致するかどうかの検証は、原本を読む
 scripts/r02_resolution_report.py 側の仕事（このモジュールの責務ではない）。
 
-3ファイルの作成根拠・resolutionの実測値（154組=100%解決、単位欠落109,078行のうち
-104,410行がエイリアス側の unit_id で解決）は A-2 担当のタスク報告と
-docs/plans/PHASE_B_INTAKE.md #1 の申し送りを参照。正式なレポートは
+3ファイルの作成根拠・resolutionの実測値（154組=100%解決、単位欠落109,078行は現在
+100%解決。うち104,410行は variable_alias.unit_id、残り4,668行（hydro.flow の
+FLOWRATE、phase-b/variable-flow で確定）は variable.unit_id で解決している）は
+A-2 担当のタスク報告と docs/plans/PHASE_B_INTAKE.md #1 の申し送りを参照。正式なレポートは
 A-6 (scripts/r02_resolution_report.py) が作る。
 """
 import csv
@@ -49,6 +50,7 @@ def _load_unit_yaml() -> list[dict]:
         doc = yaml.safe_load(f)
     entries = doc["units"]
     _assert_unique([e["unit_id"] for e in entries], "registry/unit.yaml の unit_id")
+    _assert_quantity_kind_codes(entries)
     return entries
 
 
@@ -119,6 +121,27 @@ STAT_CODES = frozenset({
     "p75", "p90", "max_10min", "max_1h", "max_daily",
     "mean_of_daily_min", "mean_of_daily_max",
 })
+
+# registry/unit.yaml の quantity_kind のコードリスト。GRAIN_CODES/STAT_CODES と同じ理由の
+# 同じ形のガード（このリストに無い値が来たらビルドを落とす。増やすときはこのリスト自体を
+# 更新し、根拠を残すこと）。既存値は QUDT（https://qudt.org/vocab/quantitykind/）の
+# 量種名に揃えた命名（例: 流量は QUDT の `VolumeFlowRate` に合わせて `volume_flow_rate`）。
+QUANTITY_KIND_CODES = frozenset({
+    "", "mass_concentration", "microbial_density", "elevation", "length", "temperature",
+    "area", "count", "volume_fraction", "time", "pressure", "fraction", "velocity",
+    "volume_flow_rate", "dimensionless",
+})
+
+
+def _assert_quantity_kind_codes(entries: list[dict]) -> None:
+    """quantity_kind がコードリスト外の値を持たないこと。"""
+    for e in entries:
+        qk = e.get("quantity_kind") or ""
+        if qk not in QUANTITY_KIND_CODES:
+            raise AssertionError(
+                f"registry/unit.yaml: 未知の quantity_kind={qk!r} "
+                f"unit_id={e['unit_id']!r}（コードリスト: {sorted(QUANTITY_KIND_CODES)}）"
+            )
 
 
 def _assert_grain_and_stat_codes(rows: list[dict]) -> None:

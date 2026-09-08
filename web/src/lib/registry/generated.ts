@@ -49,7 +49,8 @@ export interface GeneratedVariableAlias {
   grain: string | null;
 }
 
-/** measurements.unit 9種 + sensor_timeseries.unit 22種を正準化したもの（registry/unit.yaml）。 */
+/** measurements.unit 9種 + sensor_timeseries.unit 22種を正準化したものに、一次資料由来の
+ * 単位（m3/s。どちらの原本にも出現しない）を加えた29件（registry/unit.yaml）。 */
 export const GENERATED_UNITS: readonly GeneratedUnit[] = [
   { unitId: "common:unit:0_01ppmc", symbol: "0.01ppmC", ucum: null, nameJa: "ppmC(炭素換算した百万分率)の1/100単位の原表記。実値は本値×0.01（平塚市大気環境データ仕様書に基づく。換算はしていない）", quantityKind: "volume_fraction" },
   { unitId: "common:unit:0_1degc", symbol: "0.1℃", ucum: null, nameJa: "セ氏度の1/10単位の原表記。実値は本値×0.1（平塚市大気環境データ仕様書に基づく。換算はしていない）", quantityKind: "temperature" },
@@ -68,6 +69,7 @@ export const GENERATED_UNITS: readonly GeneratedUnit[] = [
   { unitId: "common:unit:km2", symbol: "km2", ucum: "km2", nameJa: "平方キロメートル", quantityKind: "area" },
   { unitId: "common:unit:m", symbol: "m", ucum: "m", nameJa: "メートル", quantityKind: "length" },
   { unitId: "common:unit:m3_per_m3", symbol: "m3/m3", ucum: "m3/m3", nameJa: "立方メートル毎立方メートル（体積含水率）", quantityKind: "volume_fraction" },
+  { unitId: "common:unit:m3_per_s", symbol: "m3/s", ucum: "m3/s", nameJa: "立方メートル毎秒", quantityKind: "volume_flow_rate" },
   { unitId: "common:unit:m_per_s", symbol: "m/s", ucum: "m/s", nameJa: "メートル毎秒", quantityKind: "velocity" },
   { unitId: "common:unit:mg_per_l", symbol: "mg/L", ucum: "mg/L", nameJa: "ミリグラム毎リットル", quantityKind: "mass_concentration" },
   { unitId: "common:unit:mg_per_m3", symbol: "mg/m3", ucum: "mg/m3", nameJa: "ミリグラム毎立方メートル", quantityKind: "mass_concentration" },
@@ -94,7 +96,7 @@ export const GENERATED_VARIABLES: readonly GeneratedVariable[] = [
   { variableId: "common:variable:air.so2", code: "air.so2", nameJa: null, nameEn: null, theme: "air", unitId: "common:unit:ppb", valueType: "num", defaultStat: "mean", higherIsWorse: null, descriptionJa: null, status: "ok" },
   { variableId: "common:variable:air.spm", code: "air.spm", nameJa: null, nameEn: null, theme: "air", unitId: "common:unit:ug_per_m3", valueType: "num", defaultStat: "mean", higherIsWorse: null, descriptionJa: null, status: "ok" },
   { variableId: "common:variable:air.thc", code: "air.thc", nameJa: null, nameEn: null, theme: "air", unitId: "common:unit:0_01ppmc", valueType: "num", defaultStat: "mean", higherIsWorse: null, descriptionJa: null, status: "ok" },
-  { variableId: "common:variable:hydro.flow", code: "hydro.flow", nameJa: "流量関連", nameEn: null, theme: "hydro", unitId: null, valueType: "num", defaultStat: null, higherIsWorse: null, descriptionJa: null, status: "needs_review" },
+  { variableId: "common:variable:hydro.flow", code: "hydro.flow", nameJa: "流量", nameEn: null, theme: "hydro", unitId: "common:unit:m3_per_s", valueType: "num", defaultStat: null, higherIsWorse: null, descriptionJa: "河川の流量。感潮域では潮汐による逆流で負の値になる", status: "ok" },
   { variableId: "common:variable:hydro.groundwater_level", code: "hydro.groundwater_level", nameJa: null, nameEn: null, theme: "hydro", unitId: "common:unit:t_p_m", valueType: "num", defaultStat: "mean", higherIsWorse: null, descriptionJa: null, status: "ok" },
   { variableId: "common:variable:hydro.river_stage", code: "hydro.river_stage", nameJa: null, nameEn: null, theme: "hydro", unitId: "common:unit:m", valueType: "num", defaultStat: "mean", higherIsWorse: null, descriptionJa: null, status: "ok" },
   { variableId: "common:variable:hydro.soil_moisture", code: "hydro.soil_moisture", nameJa: null, nameEn: null, theme: "hydro", unitId: "common:unit:m3_per_m3", valueType: "num", defaultStat: "mean", higherIsWorse: null, descriptionJa: null, status: "ok" },

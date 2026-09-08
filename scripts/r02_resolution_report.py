@@ -325,49 +325,56 @@ def report_organism(ryuiki: sqlite3.Connection) -> dict:
 # D. 単位が決まる measurement 行（報告のみ）
 # ---------------------------------------------------------------------------
 
+# `variable_alias.unit_id`（無ければ `variable.unit_id`）が「NULL ではない」だけでなく、
+# 実際に `unit` テーブルに存在する行を指しているかまで見る EXISTS 断片。by_variable
+# （NOT EXISTS 版、still_missing の内訳）側だけで使い、filled はその合計からの
+# 引き算で出す（同じ条件で measurements をフルスキャンするクエリを2本打たない）。
+# 存在しない unit_id（タイポ等でぶら下がった参照）は「解決していない」として扱う——
+# `scripts/r01_build_registry.py` の `ID_REFERENCE_CHECKS`（参照整合性検証）と揃えた判断。
+_UNIT_ID_RESOLVED_EXISTS = """
+    EXISTS (
+      SELECT 1 FROM reg.variable_alias va
+      LEFT JOIN reg.variable v ON v.variable_id = va.variable_id
+      WHERE va.alias = m.variable AND va.dataset = 'measurements'
+        AND EXISTS (
+          SELECT 1 FROM reg.unit u WHERE u.unit_id = COALESCE(va.unit_id, v.unit_id)
+        )
+    )
+"""
+
+
 def report_unit(ryuiki: sqlite3.Connection) -> dict:
     """`variable_alias` は (dataset, alias) が複数行（source_id 違い）になりうるため、
     report_variable と同じ理由で EXISTS/NOT EXISTS を使い、行の水増しを避ける
     （unit_id は (dataset, alias) の中で一致することを build 時に保証済みなので、
     「一致する行が1つでもあるか」だけを見れば足りる）。
+
+    `filled` は `by_variable`（NOT EXISTS 版）の合計からの引き算で出す。以前は
+    `filled`（EXISTS 版）と `by_variable`（NOT EXISTS 版）が同じ条件で measurements
+    109,078行を2回別々にフルスキャンしていた（`filled` 単体で実測0.45〜0.58秒、
+    report_unit() 全体の3〜4割）。report_place・report_organism と同じ形で、
+    内訳側の1クエリだけで済ませる（/simplify 修正7と同種）。
     """
     total_missing = scalar(
         ryuiki, "SELECT count(*) FROM measurements WHERE unit IS NULL OR unit = ''"
     )
-    filled = scalar(
-        ryuiki,
-        """
-        SELECT count(*) FROM measurements m
-        WHERE (m.unit IS NULL OR m.unit = '')
-          AND EXISTS (
-            SELECT 1 FROM reg.variable_alias va
-            LEFT JOIN reg.variable v ON v.variable_id = va.variable_id
-            WHERE va.alias = m.variable AND va.dataset = 'measurements'
-              AND (va.unit_id IS NOT NULL OR v.unit_id IS NOT NULL)
-          )
-        """,
-    )
-    still_missing = total_missing - filled
 
     by_variable = rows(
         ryuiki,
-        """
+        f"""
         SELECT m.variable AS raw_label,
                (SELECT va.variable_id FROM reg.variable_alias va
                 WHERE va.alias = m.variable AND va.dataset = 'measurements' LIMIT 1) AS variable_id,
                count(*) AS n
         FROM measurements m
         WHERE (m.unit IS NULL OR m.unit = '')
-          AND NOT EXISTS (
-            SELECT 1 FROM reg.variable_alias va
-            LEFT JOIN reg.variable v ON v.variable_id = va.variable_id
-            WHERE va.alias = m.variable AND va.dataset = 'measurements'
-              AND (va.unit_id IS NOT NULL OR v.unit_id IS NOT NULL)
-          )
+          AND NOT {_UNIT_ID_RESOLVED_EXISTS}
         GROUP BY m.variable
         ORDER BY m.variable
         """,
     )
+    still_missing = sum(r["n"] for r in by_variable)
+    filled = total_missing - still_missing
 
     return {
         "total_missing": total_missing,
@@ -416,9 +423,11 @@ def report_needs_review(ryuiki: sqlite3.Connection, unit_still_missing_by_variab
         ORDER BY variable_id
         """,
     )
+    # hydro.flow 専用の説明文をハードコードしていた版は、その変数が status=ok になった
+    # 今では到達不能な上に他の変数には嘘になる（code-review 指摘）。variable ごとに理由は
+    # 異なりうる（unit_id が決まらない・定義そのものが未確認 等）ため、汎用の案内に留める。
     fallback_reason = (
-        "description_ja が未設定（unit_id が決まらないため status=needs_review。"
-        "経緯は registry/variable.yaml のコメント参照）"
+        "description_ja が未設定（理由は registry/variable.yaml の該当エントリのコメントを参照）"
     )
     missing_by_var = {v: n for _, v, n in unit_still_missing_by_variable}
     n_variable_csv = write_csv(
@@ -579,6 +588,32 @@ def judge(ok: bool) -> str:
     return "OK" if ok else "**未達**"
 
 
+def _match_type_meaning(match_type: str) -> str:
+    if match_type == "NONE":
+        return "GBIFへ照会したが一致しなかった"
+    if match_type in ("HIGHERRANK", "FUZZY"):
+        return "GBIFに照会でき gbif_taxon_key はあるが、種階級までの一致ではない"
+    return "GBIFへの照会自体が未実施（gbif_taxon_key欠落）"
+
+
+def render_table_or_note(a, items: list, header_lines: list[str], row_fmt, empty_note: str) -> None:
+    """`items` があれば `header_lines` + 表を、無ければ `empty_note` の一文だけを出す。
+
+    0件のとき「見出し行だけの空表」が出る、という同じ根の問題を1箇所で塞ぐ
+    （/simplify 指摘C: render_markdown() 内に手書きの `if x > 0:` 分岐がバラバラに
+    （うち3箇所はガードすら無く）散らばっていた）。
+    """
+    if items:
+        for line in header_lines:
+            a(line)
+        for item in items:
+            a(row_fmt(item))
+        a("")
+    else:
+        a(empty_note)
+        a("")
+
+
 def render_markdown(v, p, o, u, nr, t, ap) -> str:
     lines = []
     a = lines.append
@@ -724,32 +759,49 @@ def render_markdown(v, p, o, u, nr, t, ap) -> str:
         f" `taxon_key` 経由で `taxon_id` に解決できる。目標 ≥99.8% を満たす。"
     )
     a(f"- 未解決 {o['unresolved']:,}行。全件を `reports/registry_resolution/unresolved_organism_records.csv` に出す。")
-    a("- 出典別の内訳（全件が同一理由: 分類群情報が空欄で照合材料が無い）:")
-    a("")
-    a("  | source_id | 未解決行数 |")
-    a("  |---|---|")
-    for source_id, n in o["by_source"]:
-        a(f"  | `{source_id}` | {n:,} |")
-    a("")
+    render_table_or_note(
+        a,
+        o["by_source"],
+        [
+            f"- 出典別の内訳（未解決 {o['unresolved']:,}行、全件が同一理由: "
+            f"分類群情報が空欄で照合材料が無い）:",
+            "",
+            "  | source_id | 未解決行数 |",
+            "  |---|---|",
+        ],
+        lambda item: f"  | `{item[0]}` | {item[1]:,} |",
+        "- 出典別の内訳: 該当なし（未解決行が無い）。",
+    )
 
     a("## 6. 単位が決まる measurement 行（報告のみ）")
     a("")
     a(
         f"- 原本で単位（`unit`）が空の行 {u['total_missing']:,}行のうち、"
-        f"`variable_alias.unit_id`（無ければ `variable.unit_id`）で "
-        f"{u['filled']:,}行（{pct(u['filled'], u['total_missing'])}）の単位が決まる。"
+        f"`variable_alias.unit_id`（無ければ `variable.unit_id`。ただし `unit` に実在する"
+        f"値のみ「決まる」とみなす）で {u['filled']:,}行"
+        f"（{pct(u['filled'], u['total_missing'])}）の単位が決まる。"
     )
-    a(
-        f"- 残り {u['still_missing']:,}行は変数自体が `needs_review`"
-        f"（下記 §7 の `variable` 一覧を参照）で、単位が決まらない。"
+    # このクエリは「unit_id が unit に実在する行が無い」ことだけで絞っており、
+    # `variable.status='needs_review'` の条件は付いていない（code-review 指摘）。
+    # status='ok' なのに unit_id が未解決の変数（例: 申し送り #5 の相模原 OX、意図的に
+    # unit_id=null のまま status=ok）もここに含まれうるため、「変数自体が
+    # needs_review」と断定しない。
+    render_table_or_note(
+        a,
+        u["still_missing_by_variable"],
+        [
+            f"- 残り {u['still_missing']:,}行は `variable_alias.unit_id`/`variable.unit_id` の"
+            f"どちらにも `unit` に実在する値が無く、単位が決まらない"
+            f"（`variable.status` の値とは無関係。needs_review でも unit_id が解決していれば"
+            f"ここには含まれず、status='ok' でも unit_id が未解決ならここに含まれる）。",
+            "- 単位が埋まらない行の内訳（原文の指標表記別）:",
+            "",
+            "  | 原文の指標表記 | 対応する variable_id | 未解決行数 |",
+            "  |---|---|---|",
+        ],
+        lambda item: f"  | `{item[0]}` | `{item[1]}` | {item[2]:,} |",
+        f"- 残り {u['still_missing']:,}行。単位が埋まらない measurement 行は無い。",
     )
-    a("- 単位が埋まらない行の内訳（原文の指標表記別）:")
-    a("")
-    a("  | 原文の指標表記 | 対応する variable_id | 未解決行数 |")
-    a("  |---|---|---|")
-    for raw_label, variable_id, n in u["still_missing_by_variable"]:
-        a(f"  | `{raw_label}` | `{variable_id}` | {n:,} |")
-    a("")
 
     a("## needs_review の一覧（place / variable / variable_alias.stat）")
     a("")
@@ -804,34 +856,38 @@ def render_markdown(v, p, o, u, nr, t, ap) -> str:
         "広い taxon_key（例: kingdom=Animalia）に複数の無関係な種の名前・"
         "レッドリストカテゴリが混ざる行ができていた。"
     )
-    a("- 未照合・弱い一致の内訳（`gbif_match_type` 別。EXACT を除く全件）:")
-    a("")
-    a("  | gbif_match_type | 件数 | 意味 |")
-    a("  |---|---|---|")
-    for match_type, n in t["by_match_type"]:
-        if match_type == "NONE":
-            meaning = "GBIFへ照会したが一致しなかった"
-        elif match_type in ("HIGHERRANK", "FUZZY"):
-            meaning = "GBIFに照会でき gbif_taxon_key はあるが、種階級までの一致ではない"
-        else:
-            meaning = "GBIFへの照会自体が未実施（gbif_taxon_key欠落）"
-        a(f"  | `{match_type}` | {n:,} | {meaning} |")
-    a("")
+    render_table_or_note(
+        a,
+        t["by_match_type"],
+        [
+            "- 未照合・弱い一致の内訳（`gbif_match_type` 別。EXACT を除く全件）:",
+            "",
+            "  | gbif_match_type | 件数 | 意味 |",
+            "  |---|---|---|",
+        ],
+        lambda item: f"  | `{item[0]}` | {item[1]:,} | {_match_type_meaning(item[0])} |",
+        "- 未照合・弱い一致の内訳: 該当なし（EXACT を除く taxa が無い）。",
+    )
     a(
         f"- 全件（{t['unresolved_csv_rows']}行）: "
         f"`reports/registry_resolution/unresolved_taxa.csv`。"
-        f"以下は先頭 {len(t['sample'])} 件（`taxon_id` 昇順の代表例。全件は上記CSV参照）:"
     )
-    a("")
-    a("  | taxon_id | scientific_name | vernacular_name_ja | taxon_group_ja | gbif_match_type |")
-    a("  |---|---|---|---|---|")
-    for r in t["sample"]:
-        a(
+    render_table_or_note(
+        a,
+        t["sample"],
+        [
+            f"- 以下は先頭 {len(t['sample'])} 件（`taxon_id` 昇順の代表例。全件は上記CSV参照）:",
+            "",
+            "  | taxon_id | scientific_name | vernacular_name_ja | taxon_group_ja | gbif_match_type |",
+            "  |---|---|---|---|---|",
+        ],
+        lambda r: (
             f"  | `{r['taxon_id']}` | {r['scientific_name'] or ''} | "
             f"{r['vernacular_name_ja'] or ''} | {r['taxon_group_ja'] or ''} | "
             f"{r['gbif_match_type'] or ''} |"
-        )
-    a("")
+        ),
+        "- 代表例は無い（該当行が無いため）。",
+    )
 
     a("## 8. (dataset, alias, source_id) の網羅性（docs/plans/PHASE_B_INTAKE.md 設計C）")
     a("")

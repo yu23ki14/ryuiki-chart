@@ -309,7 +309,8 @@ export interface GeneratedVariableAlias {
 `;
 
 const serverOut = `${SERVER_HEADER}
-/** measurements.unit 9種 + sensor_timeseries.unit 22種を正準化したもの（registry/unit.yaml）。 */
+/** measurements.unit 9種 + sensor_timeseries.unit 22種を正準化したものに、一次資料由来の
+ * 単位（m3/s。どちらの原本にも出現しない）を加えた29件（registry/unit.yaml）。 */
 export const GENERATED_UNITS: readonly GeneratedUnit[] = ${emitObjectArray(units, [
   "unitId",
   "symbol",

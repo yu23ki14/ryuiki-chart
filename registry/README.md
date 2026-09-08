@@ -10,7 +10,7 @@ Phase A（`docs/plans/PHASE_A.md`, ADR-0016）の成果物。v1 のファクト�
 
 | ファイル | 中身 |
 |---|---|
-| `unit.yaml` | 単位28件。`unit_id` を各行が明示する（後述） |
+| `unit.yaml` | 単位29件。`unit_id` を各行が明示する（後述） |
 | `variable.yaml` | 正準指標85件 |
 | `variable_alias.csv` | 出典表記→正準 `variable_id` の対応154件（列は後述「`variable_alias.csv` の列」） |
 | `place/zone.yaml` | Ridge to Reef ゾーン(1-5)の操作的定義 |
