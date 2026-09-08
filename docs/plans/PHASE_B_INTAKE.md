@@ -17,11 +17,11 @@ Phase A の判断が誤りだったという意味ではない——**計画ど�
 | # | 何 | なぜ Phase A で直さなかったか | 放置すると何が高くつくか |
 |---|---|---|---|
 | 1 | ~~`variable_alias.source_scope` が出典（`source_edition_id`）ではなくテーブル名~~ **解決済み（本PR、`phase-b/alias-source-key`）** | ADR-0010 決定1は `source_edition_id` を持つ設計だが、計画 §A-1 の列定義がテーブル名だったため実装もそれに従った | 20 alias が `grain='mixed'` になっている（`env_kousui_sample`/`env_kousui_annual`、`jma_daily`/`jma_monthly` が同じ alias に相乗り）。BOD の検体値行に `stat=mean` が付くなど、キューブ化（行ごとに grain/stat が要る）で誤った集計を招く。**→ 実測すると28 alias、さらに一次資料調査（`docs/plans/PHASE_B_ALIAS_STAT_SOURCES.md`）で `mixed` は0件に解消。詳細は本ファイル末尾の追記を参照** |
-| 2 | `caveat_scope` の `scope_kind` が `table`/`table_prefix`/`cell`/`cell_table`（`/simplify` 指摘で `table_synthetic` は撤去し `priority` 列に分離済み）のまま（ADR-0013 本来の `variable`/`place`/`source_edition`/`observation_set`/`dataset`/`taxon` になっていない） | v1 テーブルへの暫定接続として計画どおり実装した。`observation`/`occurrence` 統合（ADR-0007）はまだ無い | `observation` 統合後、v1 のテーブル名スコープが意味を失う。またテーブル→注記の対応表は `registry/` ではなく `scripts/registry/build_caveat.py` の Python 定数にあり、`registry/README.md` の「正は常に registry/」と少しズレている |
+| 2 | `caveat_scope` の `scope_kind` が `table`/`table_prefix`/`cell`/`cell_table`（`/simplify` 指摘で `table_synthetic` は撤去し `priority` 列に分離済み）のまま（ADR-0013 本来の `variable`/`place`/`source_edition`/`observation_set`/`dataset`/`taxon` になっていない） | v1 テーブルへの暫定接続として計画どおり実装した。`observation`/`occurrence` 統合（ADR-0007）はまだ無い | `observation` 統合後、v1 のテーブル名スコープが意味を失う。またテーブル→注記の対応表は `registry/` ではなく `scripts/registry/build_caveat.py` の Python 定数にあり、`registry/README.md` の「正は常に registry/」と少しズレている。**着手判定（`phase-b/fact-slice`）**: `measurements`→`observation`→`meas_daily`/`meas_month`/`meas_year` の縦線はこれを塞がない（`b03`/`b04`/`b05` のどこにも caveat への参照が無く、caveat を一切消費しない）。塞ぐのは応答に caveat を同梱する経路（`docs/plans/PHASE_B_FACT_SLICE.md` §2） |
 | 3 | caveat の `severity`/`kind` は Phase A で新たに付けた判断（14件、うち blocking 7件。本文の禁止表現から機械的に分類） | 消費者（応答に警告を出す仕組み）がまだ無いので、付けても挙動は変わらない | ADR-0013 決定1により blocking は将来応答の警告になる。人がレビューする前に消費者を付けると、機械分類の誤りがそのままユーザー向けの警告文になる。`cells.notes` 由来の `kind`（`footnote`/`comparability`/`survey_scope`、127件）は ADR-0013 の enum 外だが原本値のまま残してある（これは正しい判断。enum 拡張か写像は Phase B で決める） |
-| 4 | `common:` スコープの place（watershed・grid）にも `region_id='jp-14'` が入っている | Phase A では place の列だけ用意し、値は既存の派生データをそのまま流した | ADR-0004 規約0（`common` の実体に地域を埋めない）と ADR-0006 の `region_id` 列の使い方が少し矛盾する。`place_relation` を作る前に「登録した地域（管理主体）」なのか「所在（地理的な位置）」なのかを定義しないと、地域フィルタが誤って `common` の実体を除外/包含する |
-| 5 | 原表記スケールの単位10件（`0.1ppm`/`0.1℃` 等、`ucum=null`） | 換算しないことを `name_ja` に明記する方針（推測で埋めない）を Phase A で優先した | キューブで並べると値が10倍ずれる。alias に `scale_to_canonical` のような列を持たせて正準単位に寄せる設計が要る。相模原の OX が単位不明（`unitId=null`）のままなのは正しい判断（推測しない） |
-| 6 | `domain.ts`（`VARIABLE_SHORT` 等）の完全一致テストが Phase A の間だけ正しい。`primaryAlias()` が `GENERATED_VARIABLE_ALIASES` の並び順（= CSV の行順）に依存する | domain.ts をレジストリの薄い層にする（§A-8）ところまでが Phase A のスコープで、13ファイルの利用側の書き換えは対象外 | レジストリに `name_ja`/`description_ja`/`higher_is_worse` を1つ足すと `domain.test.ts` が赤くなる（静かに壊れるのではなく、うるさく落ちる＝設計としては正しいが、語彙を育てるたびにテスト更新が要る）。`primaryAlias()` の「fiscal_year でない行を優先」ヒューリスティックも、CSV に `primary` 列が無いために行順へ依存したまま |
+| 4 | `common:` スコープの place（watershed・grid）にも `region_id='jp-14'` が入っている | Phase A では place の列だけ用意し、値は既存の派生データをそのまま流した | ADR-0004 規約0（`common` の実体に地域を埋めない）と ADR-0006 の `region_id` 列の使い方が少し矛盾する。`place_relation` を作る前に「登録した地域（管理主体）」なのか「所在（地理的な位置）」なのかを定義しないと、地域フィルタが誤って `common` の実体を除外/包含する。**着手判定（`phase-b/fact-slice`）**: この縦線はロールアップしない（`meas_daily`/`meas_month`/`meas_year` は地点別のまま。`b03`/`b04`/`b05` のどこにも `place_relation` への参照が無い）ので塞がない。`place_relation` を要するのは `zone_year`/`zone_clim`/`org_watershed_*` 系（`docs/plans/PHASE_B_FACT_SLICE.md` §2） |
+| 5 | 原表記スケールの単位10件（`0.1ppm`/`0.1℃` 等、`ucum=null`） | 換算しないことを `name_ja` に明記する方針（推測で埋めない）を Phase A で優先した | キューブで並べると値が10倍ずれる。alias に `scale_to_canonical` のような列を持たせて正準単位に寄せる設計が要る。相模原の OX が単位不明（`unitId=null`）のままなのは正しい判断（推測しない）。**着手判定（`phase-b/fact-slice`）**: この縦線はこれを塞がない——`ucum=null` の12単位のうち×10スケール7件（`0.1ppm`/`0.01ppmC`/`0.1℃`/`0.1%`/`0.1mm`/`0.1m/s`/`tenths`）は全部 `dataset='sensor_timeseries'` のエイリアスで、`dataset='measurements'` 側の `ucum=null` は `t_p_m`（基準面）と `count`（可算）だけ（実測。`docs/plans/PHASE_B_FACT_SLICE.md` §2）。塞ぐのは `sensor_daily`/`sensor_hour_month` の縦線 |
+| 6 | ~~`domain.ts`（`VARIABLE_SHORT` 等）の完全一致テストが Phase A の間だけ正しい。`primaryAlias()` が `GENERATED_VARIABLE_ALIASES` の並び順（= CSV の行順）に依存する~~ **解決済み（`phase-b/domain-removal`、PR #5）** | domain.ts をレジストリの薄い層にする（§A-8）ところまでが Phase A のスコープで、13ファイルの利用側の書き換えは対象外 | レジストリに `name_ja`/`description_ja`/`higher_is_worse` を1つ足すと `domain.test.ts` が赤くなる（静かに壊れるのではなく、うるさく落ちる＝設計としては正しいが、語彙を育てるたびにテスト更新が要る）。`primaryAlias()` の「fiscal_year でない行を優先」ヒューリスティックも、CSV に `primary` 列が無いために行順へ依存したまま |
 | 7 | ~~`generated.ts` の陳腐化ガード（`generated.test.ts`）が CI で効かない~~ **解決済み（本PR）** | `data/db/registry.sqlite`（15GB の原本から作る）を CI に置けないため、無い環境では skip する設計にした（この判断自体は妥当） | そもそもこのリポジトリに CI が無いので、レジストリと生成物がずれても誰も気づかない。`r01 → build-registry-ts → git diff --exit-code` を1ジョブにする CI が Phase B で要る。**→ `scripts/r01_build_registry.py --files-only`（原本DB無しで unit/variable/variable_alias とファイル由来の caveat/caveat_scope だけを作る）を新設し、`.github/workflows/ci.yml` の `registry` ジョブに組み込んだ。`generated.test.ts` は CI でも registry.sqlite（`RYUIKI_REGISTRY_DB` で指すファイル）が作れるので skip されず走る。書き込み先は正規の `data/db/registry.sqlite` とは別ファイル（既定 `registry_files_only.sqlite`）にしてある——独立レビューで指摘された事故（`--files-only` が正規のレジストリを154 alias のスタブで上書きしてしまう）を踏まえた修正** |
 | 8 | `taxon.accepted_taxon_id` が全行 NULL | `taxa` 側 GBIF 未照合 5,908 件を捨てず `unresolved` として登録することを優先し、受理名解決は範囲外にした | 原因は `scripts/c24_taxon_crosswalk.py` が GBIF の `acceptedUsageKey` を取得しておらず、`accepted_scientific_name` 列が実は「一致したノード自身の学名」を転記しているだけだったこと。`status='SYNONYM'` 376件のうち学名が食い違う252件はすべて著者引用の有無だけの差で、別分類群への受理名解決ではない。列名と実態が食い違っており、埋めるときに誤用されうる罠 |
 | 9 | `place_source_ref.source_id` が `'sites.site_id'` のような文字列リテラルで、`source_registry` の ID ではない | 「v1 を動かさずに並走させる」接続点として、既存の列名をそのまま記録する設計を計画どおり採用した | ADR-0006 は `source_edition_id` を想定している。`source_registry`/`source_edition`（ADR-0005）が実装される Phase C で置換が要る |
@@ -152,3 +152,36 @@ Phase A の判断が誤りだったという意味ではない——**計画ど�
 他の接尾辞（`_max` 等）が無いこと、生活環境項目と同じ「素の列名＝mean」パターンと
 整合することから可能性は高いが、「確定」ではなく「高確度の一致」として `stat='mean'`
 を維持した（`docs/plans/PHASE_B_ALIAS_STAT_SOURCES.md` §2.3）。
+
+## Phase B 縦に薄い1本（`phase-b/fact-slice`）で分かった新しい事実
+
+`measurements` → `observation` → キューブ → `meas_daily`/`meas_month`/`meas_year` の縦線
+（詳細設計・実測値は [docs/plans/PHASE_B_FACT_SLICE.md](PHASE_B_FACT_SLICE.md)）で分かった、
+この申し送りに関係する新しい事実を残す。
+
+### 移行で温存した v1 の癖（要点。詳細は `PHASE_B_FACT_SLICE.md` §6）
+
+- `ノニルフェノール` の `value_raw='0.00006'` 等 **69行**が v1 で `value IS NULL`（パース失敗＝
+  v1 のバグ）。v2 も `value_num=NULL` のまま運び、集計に入らない穴として温存した。
+- `>` 表記（`透明度`）**26行**もすべて `value IS NULL`。`above_lod` に 0 を代入しないので
+  集計に入らない＝v1 と一致。
+- `atsugi_river_water_quality` の年度番号だけの日付 **3,840行**は `source_ref` の月ラベルから
+  復元可能（`scripts/migrate/period_exceptions.yaml` に記録済み）。
+- v1 の派生集計に合成データ（`is_synthetic=1`）**2,265行**が混入している（全行
+  `length(measured_on)=10` かつ `value IS NOT NULL` で `meas_daily` に流れ込む）。v2 も
+  そのまま含めて再現した。
+- `kanagawa_jiban_chinka` の年次 `n=2` グループ **1,625件**はすべて同値ペア（`min=max`）。
+  実測で確認すると、同じ年の値が異なる年度の報告書（`r5table.xlsx`/`r6table.xlsx` のように
+  過去分を再掲する仕様）から重複して収集されている二重投入だった。
+- `meas_year` は `kind='annual'`（100,240行）が `kind='daily'`（15,836行）の**約6.3倍**。
+
+### ADR-0009 決定3の適用範囲の訂正
+
+`scripts/migrate/censoring.py` の実装時点で、`◯未満`（日本語表記の定量下限未満）を
+`unknown` にする当初案は撤回された。ADR-0009 決定3が禁じているのは「**意味が不明**な
+`detection_flag` コードを推測でマッピングすること」であり、`◯未満` は `<` と同じ
+「定量下限未満」を日本語で書いただけの**意味が読める**表記である。意味が読める行を
+`unknown`（＝「不明」）と書くのは決定3の趣旨から外れる誤った適用だった、というのが
+オーナーの指摘。`unknown` は `detection_flag` の意味不明コード（`'10'`/`'20'`/`'30'` 等、
+ADR-0009 背景参照）専用の語彙として残し、`◯未満` は `below_lod` に写す（実測: この変更の
+結果、`unknown` は実データに対して0件になった）。
