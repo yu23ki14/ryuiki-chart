@@ -34,12 +34,23 @@ CREATE TABLE IF NOT EXISTS variable (
 );
 
 -- 出典表記 -> 正準 variable の対応。alias が v1 の measurements.variable /
--- sensor_timeseries.datastream の生の文字列。alias は出典をまたいで再利用され
--- うるため一意にならず、PK は別に自動採番の id を持つ。
+-- sensor_timeseries.datastream の生の文字列。エイリアスは「出典 × 表記」で解決する
+-- (docs/adr/0010-variable-registry.md 決定1)。dataset は alias がどの v1 テーブルの
+-- 表記かを表し (measurements / sensor_timeseries)、source_id は v1
+-- source_registry.source_id (空 = 出典未記録。is_synthetic=1 の行)。
+-- 同じ (dataset, alias) でも source_id が違えば grain/stat が異なりうるため、
+-- PK は別に自動採番の id を持つ。source_id は source_registry/source_edition
+-- (ADR-0005) が入る Phase C で source_edition_id に置き換わる暫定形
+-- (docs/plans/PHASE_B_INTAKE.md #1/#9 と同じ性質の暫定接続点)。
+-- grain/stat は一次資料調査 (docs/plans/PHASE_B_ALIAS_STAT_SOURCES.md) 済みで、
+-- (dataset, alias, source_id) の組ごとに固定 1 値に決まる (atsugi_river_water_quality
+-- の「日付書式の混在」も統計量としては全期間 mean/day で確定するため、行ごとに決まる
+-- 宣言的な列は不要と判断した)。
 CREATE TABLE IF NOT EXISTS variable_alias (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   alias TEXT NOT NULL,
-  source_scope TEXT,
+  dataset TEXT,
+  source_id TEXT,
   variable_id TEXT,
   unit_id TEXT,
   stat TEXT,
@@ -48,6 +59,7 @@ CREATE TABLE IF NOT EXISTS variable_alias (
 );
 CREATE INDEX IF NOT EXISTS ix_variable_alias_alias ON variable_alias(alias);
 CREATE INDEX IF NOT EXISTS ix_variable_alias_variable ON variable_alias(variable_id);
+CREATE INDEX IF NOT EXISTS ix_variable_alias_dataset_alias_source ON variable_alias(dataset, alias, source_id);
 
 -- 空間単位(ADR-0006)。Phase A で登録するのは集計軸として実在するものだけ
 -- (site / watershed / mesh3 / zone)。place_relation と geometry_ref は

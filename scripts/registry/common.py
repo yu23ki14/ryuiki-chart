@@ -15,6 +15,11 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 DB_DIR = ROOT / "data" / "db"
 SCHEMA_SQL = ROOT / "scripts" / "schema_registry.sql"
 REGISTRY_DB = DB_DIR / "registry.sqlite"
+# `scripts/r01_build_registry.py --files-only` の既定の書き込み先。正規の REGISTRY_DB
+# とは別ファイルにする（`--files-only` は place/taxon/cells由来caveatを持たないスタブなので、
+# 正規の registry.sqlite を上書きすると place 4,960/taxon 41,444/caveat 221 件が
+# 154 alias だけのスタブに壊れて消える。実害あり・独立レビューで実際に踏まれた事故）。
+FILES_ONLY_REGISTRY_DB = DB_DIR / "registry_files_only.sqlite"
 
 SOURCE_NAMES = ("ryuiki", "cells", "derived")
 

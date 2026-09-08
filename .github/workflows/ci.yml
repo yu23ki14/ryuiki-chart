@@ -1,0 +1,110 @@
+name: CI
+
+# docs/plans/PHASE_B_INTAKE.md #7。原本 3 ファイル（ryuiki/cells/derived, data/db/ に置く。
+# .gitignore で除外されているため CI には無い）を必要とせず、`registry/` 配下の手書き
+# ファイルとリポジトリのコードだけで完結する2ジョブ。
+#
+# - registry: `scripts/r01_build_registry.py --files-only` で作った registry.sqlite から
+#   generated.ts / generated-client.ts を再生成し、コミット済みの内容と一致するかを
+#   `git diff --exit-code` で機械的に確認する（レジストリと生成物のずれをここで落とす）。
+# - web: lint・型検査・テスト（`generated.test.ts` の再生成チェックが走るよう、
+#   ここでも --files-only で registry.sqlite を用意する）。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  PYTHON_VERSION: "3.13"
+  NODE_VERSION: "22"
+  PNPM_VERSION: "10.18.3"
+  # scripts/r01_build_registry.py --files-only の既定の書き込み先は、正規の
+  # data/db/registry.sqlite を壊さないよう別ファイル（registry_files_only.sqlite）だが、
+  # CI では checkout のたびにまっさらなので、パスをここで明示して
+  # r01_build_registry.py / build-registry-ts.mjs / generated.test.ts の3箇所が
+  # 確実に同じファイルを指すようにする（3つとも RYUIKI_REGISTRY_DB を見る）。
+  RYUIKI_REGISTRY_DB: ${{ github.workspace }}/data/db/registry_files_only.sqlite
+
+jobs:
+  registry:
+    name: registry (files-only build matches committed generated files)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install registry build deps
+        run: pip install -r requirements.txt
+
+      - name: Build registry.sqlite（原本DBを一切開かない）
+        run: python3 scripts/r01_build_registry.py --files-only
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install web deps
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+
+      - name: Regenerate generated.ts / generated-client.ts
+        working-directory: web
+        run: node scripts/build-registry-ts.mjs
+
+      - name: レジストリと生成物がずれていないことを確認
+        run: |
+          git diff --exit-code \
+            web/src/lib/registry/generated.ts \
+            web/src/lib/registry/generated-client.ts
+
+  web:
+    name: web (lint, typecheck, test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install registry build deps
+        run: pip install -r requirements.txt
+
+      - name: Build registry.sqlite（generated.test.ts が skip されないように用意する）
+        run: python3 scripts/r01_build_registry.py --files-only
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install web deps
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        working-directory: web
+        run: pnpm run lint
+
+      - name: 型検査
+        working-directory: web
+        run: pnpm exec tsc --noEmit
+
+      - name: Test
+        working-directory: web
+        run: pnpm run test

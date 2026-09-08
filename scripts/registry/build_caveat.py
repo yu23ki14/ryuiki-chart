@@ -265,29 +265,42 @@ def _build_cells_notes(cells_conn: sqlite3.Connection) -> tuple[list[tuple], lis
     return caveat_rows, scope_rows
 
 
+# caveat / caveat_scope の列リストは1箇所にまとめる（code-review 指摘: build_from_files()
+# と build() の両方が同じ2つの列リストを別々に書いており、列を足す/直すときに
+# 2箇所編集が必要で、片方だけ直すと INSERT の列不一致に気づきにくかった）。
+CAVEAT_COLUMNS = ["caveat_id", "severity", "kind", "title_ja", "body_ja", "quote"]
+CAVEAT_SCOPE_COLUMNS = ["caveat_id", "scope_kind", "scope_ref", "sort_order", "priority"]
+
+
+def _insert_caveat_and_scope(
+    conn: sqlite3.Connection, caveat_rows: list[tuple], scope_rows: list[tuple]
+) -> dict[str, int]:
+    n_caveat = common.insert_many(conn, "caveat", CAVEAT_COLUMNS, caveat_rows)
+    n_scope = common.insert_many(conn, "caveat_scope", CAVEAT_SCOPE_COLUMNS, scope_rows)
+    return {"caveat": n_caveat, "caveat_scope": n_scope}
+
+
+def build_from_files(conn: sqlite3.Connection) -> dict[str, int]:
+    """`registry/caveat.yaml` とこのファイルのモジュール定数（テーブル→注記の
+    マッピング）だけから caveat / caveat_scope を作る。原本 DB には一切触れない
+    （docs/plans/PHASE_B_INTAKE.md #7。`scripts/r01_build_registry.py --files-only` が
+    使う。`place`/`taxon`/`cells.notes` 由来の caveat（`build()` が足す分）は含まない）。
+    """
+    entries = _load_caveat_yaml()
+    caveat_rows = _build_caveat_rows(entries)
+    scope_rows = _build_table_scope_rows()
+    return _insert_caveat_and_scope(conn, caveat_rows, scope_rows)
+
+
 def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[str, int]:
     """conn: registry.sqlite への書き込み用コネクション。
     src: {'ryuiki': ..., 'cells': ..., 'derived': ...} の読み取り専用コネクション。
     戻り値: {テーブル名: 挿入した行数}（ログ表示用）。
     """
-    entries = _load_caveat_yaml()
-    caveat_rows = _build_caveat_rows(entries)
-    scope_rows = _build_table_scope_rows()
+    counts = build_from_files(conn)
 
     cells_caveat_rows, cells_scope_rows = _build_cells_notes(src["cells"])
-    caveat_rows += cells_caveat_rows
-    scope_rows += cells_scope_rows
-
-    n_caveat = common.insert_many(
-        conn,
-        "caveat",
-        ["caveat_id", "severity", "kind", "title_ja", "body_ja", "quote"],
-        caveat_rows,
-    )
-    n_scope = common.insert_many(
-        conn,
-        "caveat_scope",
-        ["caveat_id", "scope_kind", "scope_ref", "sort_order", "priority"],
-        scope_rows,
-    )
-    return {"caveat": n_caveat, "caveat_scope": n_scope}
+    cells_counts = _insert_caveat_and_scope(conn, cells_caveat_rows, cells_scope_rows)
+    counts["caveat"] += cells_counts["caveat"]
+    counts["caveat_scope"] += cells_counts["caveat_scope"]
+    return counts

@@ -12,7 +12,7 @@ Phase A（`docs/plans/PHASE_A.md`, ADR-0016）の成果物。v1 のファクト�
 |---|---|
 | `unit.yaml` | 単位28件。`unit_id` を各行が明示する（後述） |
 | `variable.yaml` | 正準指標85件 |
-| `variable_alias.csv` | 出典表記→正準 `variable_id` の対応117件 |
+| `variable_alias.csv` | 出典表記→正準 `variable_id` の対応154件（列は後述「`variable_alias.csv` の列」） |
 | `place/zone.yaml` | Ridge to Reef ゾーン(1-5)の操作的定義 |
 | `place/site_supplement.csv` | `sites` テーブルに無い観測地点の補完（143件）。`place_local` 列は、
   `site_id` の局番コード部分（`"__"` の後ろ）が空文字で自動導出できない行にだけ
@@ -78,6 +78,41 @@ v1 側の識別子（`sites.site_id` / `watershed_meta.watershed_id` / `mlat,mlo
 assert する（`scripts/r01_build_registry.py` の `_assert_id_uniqueness`）。SQLite の
 PRIMARY KEY 制約により挿入時点でも保証されるが、4モジュールが同じ DB に同居する統合作業の
 受け入れ基準として明示的に確認している。
+
+### `variable_alias.csv` の列（Phase B: 出典 × 表記で解決する）
+
+ADR-0010 決定1「エイリアスは出典 × 表記で解決する」に沿って、Phase B で列を作り直した
+（`docs/plans/PHASE_B_INTAKE.md` #1）。117行（`(alias, source_scope)` 単位）から
+154行（`(alias, dataset, source_id)` 単位）になっている。
+
+| 列 | 意味 |
+|---|---|
+| `alias` | v1 の生の表記（`measurements.variable` / `sensor_timeseries.datastream`） |
+| `dataset` | v1 のどのテーブルの表記か（`measurements` / `sensor_timeseries`）。以前の `source_scope` を改名した。「出典スコープ」を名乗りながらテーブル名を持っていたのが Phase A の実装のズレだったので、実態に合わせて改名した |
+| `source_id` | v1 `source_registry.source_id`。空 = 出典未記録（`measurements.source_id IS NULL` の行。全件 `is_synthetic=1`） |
+| `variable_id` / `unit_id` | 従来どおり。同じ `(dataset, alias)` を共有する行は必ず一致する（ビルド時表明。後述） |
+| `stat` / `grain` | 従来どおり。`(dataset, alias, source_id)` の組ごとに固定1値（一次資料調査済み。`docs/plans/PHASE_B_ALIAS_STAT_SOURCES.md`） |
+| `note` | 従来どおり。根拠となる一次資料は `docs/plans/PHASE_B_ALIAS_STAT_SOURCES.md` の該当節を参照する形で書く（154行全部にURLを書けないため） |
+
+`source_id` は ADR-0010 決定1が言う `source_edition_id` の**暫定形**。`source_registry`/
+`source_edition`（ADR-0005）が入る Phase C で置き換わる（`docs/plans/PHASE_B_INTAKE.md` #9
+と同じ性質の暫定接続点）。
+
+**ビルド時の表明**（`scripts/registry/build_unit_variable.py`。原本 DB は開かない）:
+
+1. `(dataset, alias, source_id)` が一意（`source_id` が空の行も Python 側で明示的に比較する。
+   SQLite の「NULL は互いに異なる」に頼らない）。
+2. 同じ `(dataset, alias)` を共有する行は `variable_id` と `unit_id` が一致する
+   （`resolveVariableInfo()` が「どの `source_id` の行を引いたか」に関わらず同じ結果を
+   返すための根拠）。
+3. `grain` は `{hour, day, month, year, fiscal_year}`、`stat` は実際に使われている値の
+   集合（`point, mean, min, max, sum, p75, p90, max_10min, max_1h, max_daily,
+   mean_of_daily_min, mean_of_daily_max` と空）のコードリストに入っていること。
+
+「CSV の154組が v1 の実データの組と過不足なく一致するか」は `build_unit_variable.py` の
+責務ではない（原本 DB を開かないため）。`scripts/r02_resolution_report.py`（原本を読める側）
+が突合し、`reports/registry_resolution.md` §8 と `reports/registry_resolution/
+alias_source_pairs_{csv,data}_only.csv` に片方向ずつのズレを出す（0件が現状）。
 
 ### `local_key` のスラッグ化（ADR-0004 規約4）
 

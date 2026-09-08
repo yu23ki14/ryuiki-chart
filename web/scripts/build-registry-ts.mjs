@@ -122,12 +122,14 @@ const variables = db
 
 const variableAliases = db
   .prepare(
-    `SELECT alias, source_scope, variable_id, unit_id, stat, grain FROM variable_alias ORDER BY id`,
+    `SELECT alias, dataset, source_id, variable_id, unit_id, stat, grain
+     FROM variable_alias ORDER BY id`,
   )
   .all()
   .map((r) => ({
     alias: r.alias,
-    sourceScope: r.source_scope,
+    dataset: r.dataset,
+    sourceId: r.source_id,
     variableId: r.variable_id,
     unitId: r.unit_id,
     stat: r.stat || null,
@@ -254,7 +256,12 @@ export interface GeneratedVariable {
 
 export interface GeneratedVariableAlias {
   alias: string;
-  sourceScope: string | null;
+  /** v1 のどのテーブルの表記か（measurements / sensor_timeseries）。以前の sourceScope。 */
+  dataset: string | null;
+  /** v1 source_registry.source_id。null = 出典未記録（is_synthetic=1 の行）。
+   * source_registry/source_edition（ADR-0005）が入る Phase C で source_edition_id に
+   * 置き換わる暫定形（docs/plans/PHASE_B_INTAKE.md #1/#9）。 */
+  sourceId: string | null;
   variableId: string | null;
   unitId: string | null;
   stat: string | null;
@@ -287,10 +294,11 @@ export const GENERATED_VARIABLES: readonly GeneratedVariable[] = ${emitObjectArr
   "status",
 ])};
 
-/** 出典表記 -> 正準 variable の対応（registry/variable_alias.csv）。 */
+/** 出典表記 -> 正準 variable の対応（registry/variable_alias.csv、154行。エイリアスは
+ * 出典 × 表記で解決する — ADR-0010 決定1）。 */
 export const GENERATED_VARIABLE_ALIASES: readonly GeneratedVariableAlias[] = ${emitObjectArray(
   variableAliases,
-  ["alias", "sourceScope", "variableId", "unitId", "stat", "grain"],
+  ["alias", "dataset", "sourceId", "variableId", "unitId", "stat", "grain"],
 )};
 `;
 

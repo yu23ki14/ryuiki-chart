@@ -20,6 +20,28 @@
  */
 
 /**
+ * alias 文字列で重複を除く。CSV（= variable_alias テーブルの id 順）の行順を保ったまま、
+ * 同じ alias 文字列の最初の1行だけを残す。
+ *
+ * Phase B で variable_alias が (dataset, alias) 単位から (dataset, alias, sourceId) 単位に
+ * 分かれたため、同じ alias 文字列が複数行（source 違い）になりうる
+ * （docs/plans/PHASE_B_INTAKE.md 設計D）。`pickPrimaryAlias()` の
+ * 「fiscal_year でない最初の行」判定は alias 単位の判定なので、渡す前にここで
+ * 1 alias = 1行に戻す（build_unit_variable.py の `_assert_variable_unit_consistent_per_alias`
+ * が保証する「同じ (dataset, alias) は variable_id/unit_id が一致する」ことが前提）。
+ */
+export function dedupeByAlias(rows) {
+  const seen = new Set();
+  const out = [];
+  for (const row of rows) {
+    if (seen.has(row.alias)) continue;
+    seen.add(row.alias);
+    out.push(row);
+  }
+  return out;
+}
+
+/**
  * variable_alias の行の集まりから「代表エイリアス」を選ぶ。
  *
  *   1. grain が 'fiscal_year' でない行があれば、それを使う
@@ -27,8 +49,9 @@
  *   2. 無ければ（=その variable の出典表記が年度代表値しか無い）、
  *      `defaultStat` と一致する stat の行を使う（無ければ先頭行）。
  *
- * `rows` は呼び出し側があらかじめ同じ (variableId, sourceScope) に絞り込んだ配列を渡すこと
- * （このファイル自身は variableId や sourceScope を知らない）。
+ * `rows` は呼び出し側があらかじめ同じ (variableId, dataset) に絞り込み、
+ * `dedupeByAlias()` で alias 単位に戻した配列を渡すこと
+ * （このファイル自身は variableId や dataset を知らない）。
  */
 export function pickPrimaryAlias(rows, defaultStat) {
   if (rows.length === 0) return undefined;
@@ -50,11 +73,11 @@ function unitSymbolOf(unitId, units) {
  * 組み立てる（値・フィルタ条件は元の `domain.ts` の実装と1つも変えていない）。
  *
  * @param variables `{variableId, nameJa, descriptionJa, higherIsWorse, defaultStat, ...}` の配列
- * @param aliases `{alias, sourceScope, variableId, unitId, stat, grain}` の配列
+ * @param aliases `{alias, dataset, variableId, unitId, stat, grain}` の配列
  * @param units `{unitId, symbol}` の配列（VARIABLE_UNIT_FALLBACK の unitSymbol 解決に使う）
- * @param sourceScope domain.ts の元の対象範囲と同じく "measurements" 固定
+ * @param dataset domain.ts の元の対象範囲と同じく "measurements" 固定
  */
-export function buildClientVariableMaps(variables, aliases, units, sourceScope = "measurements") {
+export function buildClientVariableMaps(variables, aliases, units, dataset = "measurements") {
   const aliasesByVariable = new Map();
   for (const a of aliases) {
     if (!a.variableId) continue;
@@ -65,7 +88,7 @@ export function buildClientVariableMaps(variables, aliases, units, sourceScope =
 
   const primaryByVariable = variables
     .map((variable) => {
-      const rows = (aliasesByVariable.get(variable.variableId) ?? []).filter((a) => a.sourceScope === sourceScope);
+      const rows = dedupeByAlias((aliasesByVariable.get(variable.variableId) ?? []).filter((a) => a.dataset === dataset));
       const row = pickPrimaryAlias(rows, variable.defaultStat);
       return row ? { variable, alias: row.alias, grain: row.grain } : null;
     })
@@ -93,7 +116,7 @@ export function buildClientVariableMaps(variables, aliases, units, sourceScope =
 
   const variableUnitFallback = Object.fromEntries(
     aliases
-      .filter((a) => a.sourceScope === sourceScope && a.unitId)
+      .filter((a) => a.dataset === dataset && a.unitId)
       .map((a) => [a.alias, unitSymbolOf(a.unitId, units)])
       .filter((pair) => pair[1] === ""),
   );

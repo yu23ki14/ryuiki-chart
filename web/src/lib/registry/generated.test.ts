@@ -19,17 +19,23 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB = path.resolve(__dirname, "..", "..", "..");
 const GENERATED_SERVER_PATH = path.join(WEB, "src", "lib", "registry", "generated.ts");
 const GENERATED_CLIENT_PATH = path.join(WEB, "src", "lib", "registry", "generated-client.ts");
-const REGISTRY_DB = path.join(WEB, "..", "data", "db", "registry.sqlite");
+// build-registry-ts.mjs と同じく RYUIKI_REGISTRY_DB を見る（code-review 指摘: 以前は
+// data/db/registry.sqlite に決め打ちで、CI が --files-only 用に別ファイルへ書いても
+// このテストの skip 判定にも子プロセスへ渡す入力パスにも反映されなかった）。
+// scripts/r01_build_registry.py --files-only の既定の書き込み先も正規の registry.sqlite
+// とは別ファイル（registry_files_only.sqlite）なので、環境変数を渡さなければ
+// このテストは「正規の registry.sqlite がある環境だけ実行する」という元の意味を保つ。
+const REGISTRY_DB = process.env.RYUIKI_REGISTRY_DB ?? path.join(WEB, "..", "data", "db", "registry.sqlite");
 const BUILD_SCRIPT = path.join(WEB, "scripts", "build-registry-ts.mjs");
 
 /**
  * `generated.ts`（サーバ専用）・`generated-client.ts`（クライアント安全）は生成物
- * （`web/scripts/build-registry-ts.mjs` が `data/db/registry.sqlite` から作る）。
+ * （`web/scripts/build-registry-ts.mjs` が registry.sqlite から作る）。
  * 「再生成しても差分が出ない」ことが生成物の陳腐化を防ぐ受け入れ条件
  * （docs/plans/PHASE_A.md §A-7。2ファイルに分けた経緯は code-review #4）。
  *
- * `data/db/registry.sqlite` が無い環境（CI でレジストリのビルドを走らせていない等）では
- * このテストをスキップする（`pnpm run build:registry` が先に要る、というだけで
+ * registry.sqlite が無い環境（CI でレジストリのビルドを走らせていない等）では
+ * このテストをスキップする（先にビルドが要る、というだけで
  * generated.ts / generated-client.ts 自体の内容が壊れているわけではないため）。
  */
 const hasRegistryDb = fs.existsSync(REGISTRY_DB);

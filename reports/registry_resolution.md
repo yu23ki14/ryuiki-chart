@@ -15,6 +15,7 @@
 | 5 | `organism_records` 823,692行 → `taxon_id` | ≥99.8% | 99.8964%（未解決 853行） | OK |
 | 6 | 単位が決まる measurement 行（単位欠落 109,078行のうち） | 報告のみ | 104,410行（95.72%）が埋まる。残り 4,668行は未解決 | 報告のみ |
 | 7 | `taxa` 8,585行 → `taxon_id` | 報告のみ | GBIF照合(EXACT)あり 2,343行 / registry `status='unresolved'` 6,242行（詳細は§7） | 報告のみ |
+| 8 | `registry/variable_alias.csv` の (dataset, alias, source_id) 154組 ⇔ v1 実データの組 154組 | 過不足なく一致 | 一致 154組 / CSVのみ 0組 / 実データのみ 0組 | OK |
 
 100%/≥99.8% を要求する項目（#1〜#5）はすべて目標を満たしている。
 
@@ -24,8 +25,8 @@
 
 ## 1〜2. measurements / sensor_timeseries → variable_id
 
-- `measurements` 323,164行、`variable_alias`（`source_scope='measurements'`）で全件解決（未解決 0行）。
-- `sensor_timeseries` 717,839行、同様に `source_scope='sensor_timeseries'` で全件解決（未解決 0行）。
+- `measurements` 323,164行、`variable_alias`（`dataset='measurements'`）で全件解決（未解決 0行）。
+- `sensor_timeseries` 717,839行、同様に `dataset='sensor_timeseries'` で全件解決（未解決 0行）。
 - 未解決の指標表記（原文）の一覧: `reports/registry_resolution/unresolved_variable_aliases.csv`（0行。0行ならヘッダのみで、未解決が無いことを示す）。
 
 ## 3〜4. site_id → place_id
@@ -55,11 +56,12 @@
   |---|---|---|
   | `流量関連（公式定義未確認のため原表記のまま）` | `common:variable:hydro.flow` | 4,668 |
 
-## needs_review の一覧（place / variable）
+## needs_review の一覧（place / variable / variable_alias.stat）
 
 - `place.status='needs_review'`: 90件。座標などが原本から確認できず、捏造せず `NULL` のまま登録した地点。一覧: `reports/registry_resolution/needs_review_place.csv`（90行）。
 - `variable.status='needs_review'`: 1件。一覧: `reports/registry_resolution/needs_review_variable.csv`（1行）。
   - `common:variable:hydro.flow`（hydro.flow / 流量関連）: description_ja が未設定（unit_id が決まらないため status=needs_review。経緯は registry/variable.yaml のコメント参照）
+- `variable_alias.stat` が空の行: 50件（一次資料調査で確定できなかったもの・統計量という概念自体が無いカテゴリ属性の両方を含む機械的な列挙。理由は各行の `note` 列を参照。docs/plans/PHASE_B_ALIAS_STAT_SOURCES.md 参照）。一覧: `reports/registry_resolution/needs_review_alias_stat.csv`（50行）。
 
 ## 7. taxa → taxon_id（報告のみ）／ status='unresolved' の taxon
 
@@ -120,6 +122,14 @@
   | `achillea alpina subsp. japonica` | Achillea alpina subsp. japonica | キタノコギリソウ | 維管束植物 |  |
   | `achillea alpina subsp. subcartilaginea` | Achillea alpina subsp. subcartilaginea | アソノコギリソウ | 維管束植物 |  |
 
+## 8. (dataset, alias, source_id) の網羅性（docs/plans/PHASE_B_INTAKE.md 設計C）
+
+`registry/variable_alias.csv` は `build_unit_variable.py` が原本 DB を一切開かずに 作る（#7・CI のため）。そのため「154組が v1 の実データの組と過不足なく一致するか」は 原本を読めるここでしか検証できない。**片方でもズレがあれば、黙って落とす・黙って埋めるのではなくここに列挙する。**
+
+- registry 側 (dataset, alias, source_id): 154組。v1 実データ側: 154組。一致: 154組。
+- CSV にあるが実データに無い組: 0組。一覧: `reports/registry_resolution/alias_source_pairs_csv_only.csv`（0行。0行ならヘッダのみ）。
+- 実データにあるが CSV に無い組: 0組。一覧: `reports/registry_resolution/alias_source_pairs_data_only.csv`（0行。0行ならヘッダのみ）。
+
 ## 生成ファイル一覧
 
 | ファイル | 行数（ヘッダ除く） | 内容 |
@@ -129,5 +139,8 @@
 | `unresolved_organism_records.csv` | 853 | taxon_id が付かない occurrence |
 | `needs_review_place.csv` | 90 | 座標未確認等の place |
 | `needs_review_variable.csv` | 1 | 単位・粒度未確定の variable |
+| `needs_review_alias_stat.csv` | 50 | stat が空の variable_alias 行 |
 | `unresolved_taxa.csv` | 6242 | GBIF未照合の taxa（全件） |
+| `alias_source_pairs_csv_only.csv` | 0 | CSVにあるが実データに無い (dataset, alias, source_id) |
+| `alias_source_pairs_data_only.csv` | 0 | 実データにあるがCSVに無い (dataset, alias, source_id) |
 
