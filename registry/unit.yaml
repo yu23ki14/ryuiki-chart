@@ -1,6 +1,11 @@
 # 単位（unit）レジストリ（docs/plans/PHASE_A.md §A-2, docs/adr/0010-variable-registry.md）。
 #
-# measurements.unit の9種 + sensor_timeseries.unit の22種（重複除く）を正準化して列挙する。
+# measurements.unit の9種 + sensor_timeseries.unit の22種（重複除く）＝28種を原データから
+# 正準化し、そこに一次資料由来の単位を1件加えて29件にした
+# （common:unit:m3_per_s、`m3/s` はどちらの原本の unit 列にも出現しない。環境省の利用説明書
+# から確定した値。docs/plans/PHASE_B_ALIAS_STAT_SOURCES.md §3.3、phase-b/variable-flow）。
+# このファイルの契約は「原データに出現した単位だけを列挙する」ではなく
+# 「原データに出現した単位 + 一次資料で確定した単位を列挙する」に変わっている。
 # unit_id（common:unit:<slug> の形）は29件全行がこの yaml で明示する値であり、
 # 機械的な slug 化関数から自動導出したものではない（`scripts/registry/build_unit_variable.py`
 # の `_unit_rows()` はここに書かれた `unit_id` をそのまま使うだけで、symbol から
@@ -162,7 +167,7 @@ units:
     symbol: "m3/s"
     ucum: "m3/s"
     name_ja: "立方メートル毎秒"
-    quantity_kind: volumetric_flow_rate
+    quantity_kind: volume_flow_rate
   - unit_id: common:unit:0_1m_per_s
     symbol: "0.1m/s"
     ucum: null
