@@ -62,4 +62,26 @@
 - あなた自身はコードを書かない。全て実装はSonnetエージェントに任せる。
 - 設計や実装をある程度終わった段階で不安要素が残るときは、アドバイザーとしてFableサブエージェントに聞くことも大切です。
 - 一度方針が決まったら毎回私に質問せず、PRを出すところまでやってください。方針に曖昧さがあるときは最初に質問をして、決めてください。
-- PRを出す前には/code-reviewと/simplifyのスキルをつかって整えることを忘れないでください。
+- PRはエージェントに任せるのではなく自分でだし、出す前には/code-reviewと/simplifyのスキルをつかって整えることを忘れないでください。
+
+## worktree の運用
+
+サブエージェントを並行させるときは git worktree を使う。以下は実際に事故った/踏んだものだけを書いている。
+
+- **`git add -A` / `git commit -a` を使わない。パスを明示して add する。**
+  worktree は `.claude/worktrees/` に作られ、**リポジトリの中**にあるので `-A` で index に入る
+  （実際に入った。コミットまでは至らなかった）。`.gitignore` に `.claude/` を足して塞いであるが、
+  ユーザーが手で編集した無関係なファイルを巻き込む事故は防げないので、明示的な add を徹底する。
+- **worktree には `data/db` が無い。** `data/*` は `.gitignore` 済みなので worktree にも clone にも
+  入らない。集計や突合を走らせるなら symlink を張る:
+  `ln -s /home/yu23ki14/cfj/ryuiki-demo/data/db <worktree>/data/db`
+- **原本を移動・退避しない。** `data/db/ryuiki.sqlite`(828MB) と `cells.sqlite`(42MB) は
+  「100MB 超のため別配布」で `scripts/c*.py` から再生成できない（`derived.sqlite` だけは
+  `pnpm run build:derived` で作り直せる）。読み取り専用（`file:...?mode=ro`）でのみ開く。
+- **「原本の無い環境」（CI の再現）は worktree ではなく一時ディレクトリへの `git clone` で作る。**
+  `data/*` が gitignore 済みなので、原本が存在しない状態が非破壊で作れる。`actions/checkout` と同じ。
+  原本を `/tmp` に退避して CI を再現しようとするな（掃除されうるし、途中で死ねば戻らない）。
+- **stash は worktree 間で共有される。** bare の `git stash` / `git stash pop` を使わない
+  （他のセッションの stash を pop しうる）。退避が要るなら WIP コミット。
+- **使い終わったら片付ける。** `git worktree remove <path>` のあと、worktree 用に作られたブランチ
+  （`worktree-agent-*`）も消す。`git worktree list` で残骸が無いことを確認する。
