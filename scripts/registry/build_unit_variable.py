@@ -127,17 +127,17 @@ STAT_CODES = frozenset({
 # 更新し、根拠を残すこと）。既存値は QUDT（https://qudt.org/vocab/quantitykind/）の
 # 量種名に揃えた命名（例: 流量は QUDT の `VolumeFlowRate` に合わせて `volume_flow_rate`）。
 QUANTITY_KIND_CODES = frozenset({
-    "mass_concentration", "microbial_density", "elevation", "length", "temperature",
+    "", "mass_concentration", "microbial_density", "elevation", "length", "temperature",
     "area", "count", "volume_fraction", "time", "pressure", "fraction", "velocity",
     "volume_flow_rate", "dimensionless",
 })
 
 
 def _assert_quantity_kind_codes(entries: list[dict]) -> None:
-    """quantity_kind がコードリスト外の値を持たないこと（空/未設定は許容する）。"""
+    """quantity_kind がコードリスト外の値を持たないこと。"""
     for e in entries:
         qk = e.get("quantity_kind") or ""
-        if qk and qk not in QUANTITY_KIND_CODES:
+        if qk not in QUANTITY_KIND_CODES:
             raise AssertionError(
                 f"registry/unit.yaml: 未知の quantity_kind={qk!r} "
                 f"unit_id={e['unit_id']!r}（コードリスト: {sorted(QUANTITY_KIND_CODES)}）"
