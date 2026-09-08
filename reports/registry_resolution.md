@@ -39,7 +39,7 @@
 
 - 823,692行中 822,839行（99.8964%）が `taxon_key` 経由で `taxon_id` に解決できる。目標 ≥99.8% を満たす。
 - 未解決 853行。全件を `reports/registry_resolution/unresolved_organism_records.csv` に出す。
-- 出典別の内訳（全件が同一理由: 分類群情報が空欄で照合材料が無い）:
+- 出典別の内訳（未解決 853行、全件が同一理由: 分類群情報が空欄で照合材料が無い）:
 
   | source_id | 未解決行数 |
   |---|---|
@@ -71,7 +71,8 @@
   | `HIGHERRANK` | 240 | GBIFに照会でき gbif_taxon_key はあるが、種階級までの一致ではない |
   | `NONE` | 34 | GBIFへ照会したが一致しなかった |
 
-- 全件（6242行）: `reports/registry_resolution/unresolved_taxa.csv`。以下は先頭 40 件（`taxon_id` 昇順の代表例。全件は上記CSV参照）:
+- 全件（6242行）: `reports/registry_resolution/unresolved_taxa.csv`。
+- 以下は先頭 40 件（`taxon_id` 昇順の代表例。全件は上記CSV参照）:
 
   | taxon_id | scientific_name | vernacular_name_ja | taxon_group_ja | gbif_match_type |
   |---|---|---|---|---|
