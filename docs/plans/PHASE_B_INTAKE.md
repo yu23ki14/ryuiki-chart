@@ -30,6 +30,7 @@ Phase A の判断が誤りだったという意味ではない——**計画ど�
 | 12 | `<出典名前空間>` と `<local>` の区切りが同じ `-`（例: `jp-14:place:site.jiban-chinka-12-1`）なので機械的に分解できない | ADR-0004 の例（`env-pubwater-0142`）自体が持つ曖昧さで、Phase A の実装の問題ではない | 名前空間とローカルキーを文字列分割で取り出す処理を書くと、`-` を含むローカルキーで誤分割する。ADR 側の課題なので Phase C で ADR-0004 を改定してから直す |
 | 13 | `registry/place/zone.yaml` の `condition_ja`（不等号表記、`definition_ref` 用）と `ui_condition_ja`（画面・AIツール向けの短い表記、`ZONE_INFO.cond`）が同じ閾値を別々の自由記述で持っていて、機械的な整合チェックが無い | 本筋は閾値を構造化した数値として持ち、両方の文言をそこから生成することだが、それには `scripts/registry/build_place.py` の `definition_ref` テンプレートの作り直しが要り、`definition_ref` の文言そのものが変わる（＝挙動変更になる）。#6（`phase-b/domain-removal`、`domain.ts` 撤去）は「移すだけ・画面に出る文字列は1つも変えない」ことが受け入れ条件だったため、スコープ外にした（zone.yaml のコメントに注意書きは残してある） | 片方だけ直すと「AIツールの回答」（`ui_condition_ja` 由来）と「`definition_ref` の一文」（`condition_ja` 由来）が別の数字を語ることになる。水野研レビュー等で zone の閾値そのものを見直すタイミングが、両方をまとめて構造化データ化する好機 |
 | 14 | 手元で `cd web && pnpm run lint` を走らせると1080件の警告が出るが、実体は `web/public/maplibre/maplibre-gl-worker.mjs`・`maplibre-gl-shared.mjs`（`prepare:maplibre` が `node_modules` からコピーする、`web/.gitignore` 済みの vendor 生成物）に対するもの（`@typescript-eslint/no-unused-expressions` 1058件・`no-unused-vars` 22件）で、`web/` 自身のコードの本物の警告3件が埋もれる | `.github/workflows/ci.yml` は `prepare:assets` を走らせないためこのファイルが存在せず、CI の lint はこの警告を出さない（既存 CI の責任範囲外）。`web/eslint.config.mjs` の `globalIgnores` に1行足せば直るが、#6（`domain.ts` 撤去）の主題と無関係な変更を混ぜないために見送った | 手元で lint を確認する開発者が、新規に増えた本物の警告に気づきにくくなる（1080件のノイズに埋もれる）。`web/eslint.config.mjs` の `globalIgnores`（`.next/**` 等を列挙している箇所）に `public/maplibre/**` を足せば解決する |
+| 15 | AIアシスタントの回答とチャートの縦軸で単位の情報源が違う: ツール結果の最上位 `unit`（`get_timeseries` 等が `resolveVariable()`→`variableCatalog()`経由で返す `var_catalog.unit`＝原本 `measurements.unit` そのもの）と、`registry[variableId].unit`（`variable_alias.unit_id`/`variable.unit_id` を`unitSymbol()`で解決した値）が食い違いうる。`web/src/lib/ai/prompt.ts` はモデルに「値を比較するときは必ず `registry[variableId].unit` を見る」よう指示する一方、`web/src/components/assistant/tool-ui/SeriesChartCard.tsx` の `buildSeries()`（`const unit = data.unit ?? points.find((p) => p.unit)?.unit ?? null`）は最上位/行の raw unit しか見ず、`registry` を一切参照しない。**実測（`phase-b/variable-flow` で確認）: 原本 `measurements.unit` が空なのに `variable_alias`/`variable` 側で単位が解決している行は104,410行・30変数**（`pH`/`pH（最小値）`/`pH（最大値）` 計40,881行が `dimensionless`、健康項目29種 計63,529行（24〜2,902行/変数）が `mg_per_l`）**で、Phase A（`b6cf1bc` 以前、本PRより前）から存在する既存の不整合**。本PRの `hydro.flow`（4,668行、`m3/s`）はこの既存パターンに新たに乗っただけで、新しい不整合を作ったわけではない（`SELECT ... WHERE (unit IS NULL OR unit='') AND EXISTS(...unit_id が reg.unit に実在する...)` で実測、`data/db/ryuiki.sqlite` 読み取り専用） | Phase A/本PR の対象はレジストリの語彙（`unit`/`variable`/`variable_alias`）を正準化することで、それを消費する `SeriesChartCard`/`tools.ts` 側の情報源の統一はスコープ外だった | AIは「m3/s」「mg/L」と正しく語るのに、チャートの縦軸には単位が出ない（あるいは pH のように単位自体が無い変数と区別がつかない）という体験のズレが利用者に見える。直す場所の候補: (a) `SeriesChartCard.tsx` の `buildSeries()` が `data.unit`/`points[].unit` が空のとき `data.registry[data.variableId]?.unit` にフォールバックする、(b) `web/src/lib/ai/tools.ts` の `resolveVariable()` が最上位 `unit` を `var_catalog.unit`（raw）ではなく `registryInfo()` 解決後の値で埋める。(a)/(b) のどちらが正しいかは「原本に単位の記載が無いことをそのまま画面にも見せるべきか（=raw unit を優先する現状維持）」という設計判断が要るため、Phase B 以降で決める |
 
 ## 優先度（アドバイザーの助言）
 
@@ -129,8 +130,20 @@ Phase A の判断が誤りだったという意味ではない——**計画ど�
 - 行数・出典行数（4,668行）・根拠（`MK_manu.pdf` 項目19）はすべて確認済みだったので、
   この節を読むだけで着手できた。**→ `phase-b/variable-flow` で対応済み**:
   `name_ja`="流量"、`unit_id`=`common:unit:m3_per_s`（新設）、`status`="ok"、
-  `description_ja` に出典（利用説明書名・発行元・年月・項目ID）を明記。
-  `higher_is_worse` は流量の「高いほど悪い」が自明でないため引き続き `null` のまま。
+  `description_ja`="河川の流量。感潮域では潮汐による逆流で負の値になる"（画面の表示幅
+  制約で全角42文字以内が必要なため、出典の書誌ではなく読み手の誤読を防ぐ1点だけを書いた。
+  出典の書誌は `variable_alias.csv` の note 列と `PHASE_B_ALIAS_STAT_SOURCES.md` §3.3 に
+  ある）。`higher_is_worse` は流量の「高いほど悪い」が自明でないため引き続き `null` のまま。
+
+### 申し送り: 変数単位の caveat が登録できず description_ja に押し込んでいる
+
+上の hydro.flow の対応で、感潮域の逆流（180行・14地点）という「この変数の値をどう読むべきか」
+という注意事項を、本来なら caveat として登録したかった。しかし現状の `caveat_scope.scope_kind`
+は `table`/`table_prefix`/`cell`/`cell_table`（#2）のままで、ADR-0013 が想定する
+`variable` スコープが無い。そのため、変数単位の注意事項を独立したデータとして持てず、
+`description_ja` という1つの短い自由記述に埋め込むしかなかった（他の注意事項と同じ画面に
+複数出したり、AIアシスタントの応答に caveat として同梱したりする経路が無い）。
+**#2（ADR-0013 の `scope_kind` を `variable` に拡張する作業）の必要性の具体例。**
 
 ### 水生生物保全項目（全亜鉛・ノニルフェノール・LAS）の環境基準は確定、API列との対応は未確認
 
