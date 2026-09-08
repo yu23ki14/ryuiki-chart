@@ -48,12 +48,8 @@
 
 ## 6. 単位が決まる measurement 行（報告のみ）
 
-- 原本で単位（`unit`）が空の行 109,078行のうち、`variable_alias.unit_id`（無ければ `variable.unit_id`）で 109,078行（100.00%）の単位が決まる。
-- 残り 0行は変数自体が `needs_review`（下記 §7 の `variable` 一覧を参照）で、単位が決まらない。
-- 単位が埋まらない行の内訳（原文の指標表記別）:
-
-  | 原文の指標表記 | 対応する variable_id | 未解決行数 |
-  |---|---|---|
+- 原本で単位（`unit`）が空の行 109,078行のうち、`variable_alias.unit_id`（無ければ `variable.unit_id`。ただし `unit` に実在する値のみ「決まる」とみなす）で 109,078行（100.00%）の単位が決まる。
+- 残り 0行。単位が埋まらない measurement 行は無い。
 
 ## needs_review の一覧（place / variable / variable_alias.stat）
 
