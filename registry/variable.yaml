@@ -26,7 +26,7 @@
 # (scripts/c12_env_kousui.py) が「公式定義未確認のため原表記のまま」と出力していたため）。
 # 一次資料（docs/plans/PHASE_B_ALIAS_STAT_SOURCES.md §3.3、MK_manu.pdf 項目ID 090700）で
 # 単位 m3/s・意味「流量」を確定し、status=ok に直した（測定は4,668行、すべて
-# env_kousui_sample_kanagawa 由来）。全85件のうち status=needs_review は現在0件。
+# env_kousui_sample_kanagawa 由来）。
 # description_ja は出典の書誌ではなく「読み手が誤読しないために必要な1点」を書く方針にした
 # （web/src/components/timeseries/TimeseriesExplorer.tsx の該当 <p> は全角約42文字で折り返す
 # UI 制約があり、既存の最長も34文字だった）。感潮域では潮汐による逆流で流量が負の値になる

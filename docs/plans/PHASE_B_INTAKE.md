@@ -130,10 +130,9 @@ Phase A の判断が誤りだったという意味ではない——**計画ど�
 - 行数・出典行数（4,668行）・根拠（`MK_manu.pdf` 項目19）はすべて確認済みだったので、
   この節を読むだけで着手できた。**→ `phase-b/variable-flow` で対応済み**:
   `name_ja`="流量"、`unit_id`=`common:unit:m3_per_s`（新設）、`status`="ok"、
-  `description_ja`="河川の流量。感潮域では潮汐による逆流で負の値になる"（画面の表示幅
-  制約で全角42文字以内が必要なため、出典の書誌ではなく読み手の誤読を防ぐ1点だけを書いた。
-  出典の書誌は `variable_alias.csv` の note 列と `PHASE_B_ALIAS_STAT_SOURCES.md` §3.3 に
-  ある）。`higher_is_worse` は流量の「高いほど悪い」が自明でないため引き続き `null` のまま。
+  `description_ja`="河川の流量。感潮域では潮汐による逆流で負の値になる"（選定理由は
+  `registry/variable.yaml` 冒頭コメント参照）。`higher_is_worse` は流量の「高いほど悪い」が
+  自明でないため引き続き `null` のまま。
 
 ### 申し送り: 変数単位の caveat が登録できず description_ja に押し込んでいる
 
