@@ -325,6 +325,24 @@ def report_organism(ryuiki: sqlite3.Connection) -> dict:
 # D. 単位が決まる measurement 行（報告のみ）
 # ---------------------------------------------------------------------------
 
+# `variable_alias.unit_id`（無ければ `variable.unit_id`）が「NULL ではない」だけでなく、
+# 実際に `unit` テーブルに存在する行を指しているかまで見る EXISTS 断片。filled 側と
+# by_variable（still_missing の内訳）側の両方で使い、同じ条件から数字を出す
+# （ここが分かれると「filled の合計」と「still_missing の一覧」の数字が食い違いうる）。
+# 存在しない unit_id（タイポ等でぶら下がった参照）は「解決していない」として扱う——
+# `web/src/lib/registry/generated.test.ts` の参照整合性テストと揃えた判断。
+_UNIT_ID_RESOLVED_EXISTS = """
+    EXISTS (
+      SELECT 1 FROM reg.variable_alias va
+      LEFT JOIN reg.variable v ON v.variable_id = va.variable_id
+      WHERE va.alias = m.variable AND va.dataset = 'measurements'
+        AND EXISTS (
+          SELECT 1 FROM reg.unit u WHERE u.unit_id = COALESCE(va.unit_id, v.unit_id)
+        )
+    )
+"""
+
+
 def report_unit(ryuiki: sqlite3.Connection) -> dict:
     """`variable_alias` は (dataset, alias) が複数行（source_id 違い）になりうるため、
     report_variable と同じ理由で EXISTS/NOT EXISTS を使い、行の水増しを避ける
@@ -336,34 +354,24 @@ def report_unit(ryuiki: sqlite3.Connection) -> dict:
     )
     filled = scalar(
         ryuiki,
-        """
+        f"""
         SELECT count(*) FROM measurements m
         WHERE (m.unit IS NULL OR m.unit = '')
-          AND EXISTS (
-            SELECT 1 FROM reg.variable_alias va
-            LEFT JOIN reg.variable v ON v.variable_id = va.variable_id
-            WHERE va.alias = m.variable AND va.dataset = 'measurements'
-              AND (va.unit_id IS NOT NULL OR v.unit_id IS NOT NULL)
-          )
+          AND {_UNIT_ID_RESOLVED_EXISTS}
         """,
     )
     still_missing = total_missing - filled
 
     by_variable = rows(
         ryuiki,
-        """
+        f"""
         SELECT m.variable AS raw_label,
                (SELECT va.variable_id FROM reg.variable_alias va
                 WHERE va.alias = m.variable AND va.dataset = 'measurements' LIMIT 1) AS variable_id,
                count(*) AS n
         FROM measurements m
         WHERE (m.unit IS NULL OR m.unit = '')
-          AND NOT EXISTS (
-            SELECT 1 FROM reg.variable_alias va
-            LEFT JOIN reg.variable v ON v.variable_id = va.variable_id
-            WHERE va.alias = m.variable AND va.dataset = 'measurements'
-              AND (va.unit_id IS NOT NULL OR v.unit_id IS NOT NULL)
-          )
+          AND NOT {_UNIT_ID_RESOLVED_EXISTS}
         GROUP BY m.variable
         ORDER BY m.variable
         """,
@@ -416,9 +424,11 @@ def report_needs_review(ryuiki: sqlite3.Connection, unit_still_missing_by_variab
         ORDER BY variable_id
         """,
     )
+    # hydro.flow 専用の説明文をハードコードしていた版は、その変数が status=ok になった
+    # 今では到達不能な上に他の変数には嘘になる（code-review 指摘）。variable ごとに理由は
+    # 異なりうる（unit_id が決まらない・定義そのものが未確認 等）ため、汎用の案内に留める。
     fallback_reason = (
-        "description_ja が未設定（unit_id が決まらないため status=needs_review。"
-        "経緯は registry/variable.yaml のコメント参照）"
+        "description_ja が未設定（理由は registry/variable.yaml の該当エントリのコメントを参照）"
     )
     missing_by_var = {v: n for _, v, n in unit_still_missing_by_variable}
     n_variable_csv = write_csv(
@@ -736,20 +746,32 @@ def render_markdown(v, p, o, u, nr, t, ap) -> str:
     a("")
     a(
         f"- 原本で単位（`unit`）が空の行 {u['total_missing']:,}行のうち、"
-        f"`variable_alias.unit_id`（無ければ `variable.unit_id`）で "
-        f"{u['filled']:,}行（{pct(u['filled'], u['total_missing'])}）の単位が決まる。"
+        f"`variable_alias.unit_id`（無ければ `variable.unit_id`。ただし `unit` に実在する"
+        f"値のみ「決まる」とみなす）で {u['filled']:,}行"
+        f"（{pct(u['filled'], u['total_missing'])}）の単位が決まる。"
     )
-    a(
-        f"- 残り {u['still_missing']:,}行は変数自体が `needs_review`"
-        f"（下記 §7 の `variable` 一覧を参照）で、単位が決まらない。"
-    )
-    a("- 単位が埋まらない行の内訳（原文の指標表記別）:")
-    a("")
-    a("  | 原文の指標表記 | 対応する variable_id | 未解決行数 |")
-    a("  |---|---|---|")
-    for raw_label, variable_id, n in u["still_missing_by_variable"]:
-        a(f"  | `{raw_label}` | `{variable_id}` | {n:,} |")
-    a("")
+    if u["still_missing"] > 0:
+        # このクエリは「unit_id が unit に実在する行が無い」ことだけで絞っており、
+        # `variable.status='needs_review'` の条件は付いていない（code-review 指摘）。
+        # status='ok' なのに unit_id が未解決の変数（例: 申し送り #5 の相模原 OX、意図的に
+        # unit_id=null のまま status=ok）もここに含まれうるため、「変数自体が
+        # needs_review」と断定しない。
+        a(
+            f"- 残り {u['still_missing']:,}行は `variable_alias.unit_id`/`variable.unit_id` の"
+            f"どちらにも `unit` に実在する値が無く、単位が決まらない"
+            f"（`variable.status` の値とは無関係。needs_review でも unit_id が解決していれば"
+            f"ここには含まれず、status='ok' でも unit_id が未解決ならここに含まれる）。"
+        )
+        a("- 単位が埋まらない行の内訳（原文の指標表記別）:")
+        a("")
+        a("  | 原文の指標表記 | 対応する variable_id | 未解決行数 |")
+        a("  |---|---|---|")
+        for raw_label, variable_id, n in u["still_missing_by_variable"]:
+            a(f"  | `{raw_label}` | `{variable_id}` | {n:,} |")
+        a("")
+    else:
+        a(f"- 残り {u['still_missing']:,}行。単位が埋まらない measurement 行は無い。")
+        a("")
 
     a("## needs_review の一覧（place / variable / variable_alias.stat）")
     a("")
