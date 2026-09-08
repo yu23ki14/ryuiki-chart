@@ -102,6 +102,38 @@ def _assert_id_uniqueness(conn) -> None:
         print(f"  一意性OK: {table}.{column} ({distinct:,})")
 
 
+# 外部キーが親テーブルの主キーを指しているかの検証（/simplify 指摘A: 同型の参照整合性
+# チェックが web/src/lib/registry/generated.test.ts に3つ手書きで並び、しかも
+# place_source_ref.place_id -> place.place_id は1つも検査されていなかった。生成物
+# （generated.ts/generated-client.ts）は registry.sqlite から機械的に作るので、
+# ここで DB を検証すれば TS 側の個別テストは不要になる）。
+# NULL の外部キーは「未設定」であって「壊れている」ではないので検査対象から外す
+# （例: variable.unit_id は値の無い指標があるため NULL 可）。
+ID_REFERENCE_CHECKS = [
+    # (子テーブル, 外部キー列, 親テーブル, 主キー列)
+    ("variable", "unit_id", "unit", "unit_id"),
+    ("variable_alias", "unit_id", "unit", "unit_id"),
+    ("variable_alias", "variable_id", "variable", "variable_id"),
+    ("caveat_scope", "caveat_id", "caveat", "caveat_id"),
+    ("place_source_ref", "place_id", "place", "place_id"),
+]
+
+
+def _assert_id_references(conn) -> None:
+    for child, fk_col, parent, pk_col in ID_REFERENCE_CHECKS:
+        missing = conn.execute(
+            f"SELECT count(*) FROM {child} "
+            f"WHERE {fk_col} IS NOT NULL "
+            f"AND NOT EXISTS (SELECT 1 FROM {parent} WHERE {parent}.{pk_col} = {child}.{fk_col})"
+        ).fetchone()[0]
+        if missing:
+            raise AssertionError(
+                f"{child}.{fk_col} が {parent}.{pk_col} に無い値を参照している行が "
+                f"{missing:,} 件ある"
+            )
+        print(f"  参照整合性OK: {child}.{fk_col} -> {parent}.{pk_col}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument(
@@ -147,6 +179,7 @@ def main() -> None:
         print(f"完了: {len(totals)} テーブル / {grand_total:,} 行 -> {target_db}")
 
         _assert_id_uniqueness(conn)
+        _assert_id_references(conn)
     finally:
         conn.close()
         for c in src.values():
