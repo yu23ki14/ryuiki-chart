@@ -101,6 +101,17 @@ describe("generated.ts / generated-client.ts の形", () => {
     }
   });
 
+  it("variable が参照する unitId は実在するもの以外は null（generated.ts、サーバ専用）", () => {
+    // code-review 指摘: 上の variable_alias 側の検査だけでは、variable.unit_id に
+    // 直接タイポ（例: common:unit:m3_per_sec）を書いても検出できない。unitSymbol() は
+    // 該当が無ければ null を返すだけなので、静かに単位なし表示になる（registry/variable.yaml
+    // で hydro.flow に手書きの unit_id を入れた本PRで初めて意味を持つガード）。
+    const unitIds = new Set(GENERATED_UNITS.map((u) => u.unitId));
+    for (const v of GENERATED_VARIABLES) {
+      if (v.unitId !== null) expect(unitIds.has(v.unitId)).toBe(true);
+    }
+  });
+
   it("和名台帳（NAME_JA、generated-client.ts）は54件", () => {
     expect(Object.keys(NAME_JA)).toHaveLength(54);
   });
