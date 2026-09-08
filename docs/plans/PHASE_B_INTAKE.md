@@ -28,10 +28,12 @@ Phase A の判断が誤りだったという意味ではない——**計画ど�
 | 10 | GBIF 弱一致 300件（HIGHERRANK 240 / FUZZY 60）を `unresolved` に倒した | Phase A は「未解決を可視化する」ことが合格条件で、再照合はスコープ外 | 近傍の GBIF キーは `data/processed/taxon_crosswalk.csv` から `taxa.taxon_id` で引ける状態のまま埋もれている。GBIF の高次分類 API を使った再照合が Phase B でできる |
 | 11 | `place_kind='grid01'` が ADR-0006 のコードリストに無い | `mesh_all` の実体が3次メッシュ（30秒×45秒）ではなく独自の0.01度グリッドだと実装時に判明し、実態に合わせて改名した（`mesh3` のまま偽って登録するより正直な選択） | ADR-0006 のコードリストにコードを足すか、実体を本物の3次メッシュに作り直すかを Phase B で決めないと、`place_kind` のコードリスト運用が形骸化する |
 | 12 | `<出典名前空間>` と `<local>` の区切りが同じ `-`（例: `jp-14:place:site.jiban-chinka-12-1`）なので機械的に分解できない | ADR-0004 の例（`env-pubwater-0142`）自体が持つ曖昧さで、Phase A の実装の問題ではない | 名前空間とローカルキーを文字列分割で取り出す処理を書くと、`-` を含むローカルキーで誤分割する。ADR 側の課題なので Phase C で ADR-0004 を改定してから直す |
+| 13 | `registry/place/zone.yaml` の `condition_ja`（不等号表記、`definition_ref` 用）と `ui_condition_ja`（画面・AIツール向けの短い表記、`ZONE_INFO.cond`）が同じ閾値を別々の自由記述で持っていて、機械的な整合チェックが無い | 本筋は閾値を構造化した数値として持ち、両方の文言をそこから生成することだが、それには `scripts/registry/build_place.py` の `definition_ref` テンプレートの作り直しが要り、`definition_ref` の文言そのものが変わる（＝挙動変更になる）。#6（`phase-b/domain-removal`、`domain.ts` 撤去）は「移すだけ・画面に出る文字列は1つも変えない」ことが受け入れ条件だったため、スコープ外にした（zone.yaml のコメントに注意書きは残してある） | 片方だけ直すと「AIツールの回答」（`ui_condition_ja` 由来）と「`definition_ref` の一文」（`condition_ja` 由来）が別の数字を語ることになる。水野研レビュー等で zone の閾値そのものを見直すタイミングが、両方をまとめて構造化データ化する好機 |
+| 14 | 手元で `cd web && pnpm run lint` を走らせると1080件の警告が出るが、実体は `web/public/maplibre/maplibre-gl-worker.mjs`・`maplibre-gl-shared.mjs`（`prepare:maplibre` が `node_modules` からコピーする、`web/.gitignore` 済みの vendor 生成物）に対するもの（`@typescript-eslint/no-unused-expressions` 1058件・`no-unused-vars` 22件）で、`web/` 自身のコードの本物の警告3件が埋もれる | `.github/workflows/ci.yml` は `prepare:assets` を走らせないためこのファイルが存在せず、CI の lint はこの警告を出さない（既存 CI の責任範囲外）。`web/eslint.config.mjs` の `globalIgnores` に1行足せば直るが、#6（`domain.ts` 撤去）の主題と無関係な変更を混ぜないために見送った | 手元で lint を確認する開発者が、新規に増えた本物の警告に気づきにくくなる（1080件のノイズに埋もれる）。`web/eslint.config.mjs` の `globalIgnores`（`.next/**` 等を列挙している箇所）に `public/maplibre/**` を足せば解決する |
 
 ## 優先度（アドバイザーの助言）
 
-上の12件のうち、**Phase B の最初に着手すべきは #1・#6・#7**。理由:
+上の14件のうち、**Phase B の最初に着手すべきは #1・#6・#7**。理由:
 
 - #1（`source_scope`→`source_edition_id`）は `(alias, source_id)` を鍵にして grain/stat を
   確定させるだけで、`lookup.ts` の `primaryAlias()` のヒューリスティックが不要になる

@@ -6,7 +6,8 @@ import { MapCanvas, type MapLayerSpec } from "./MapCanvas";
 import { SEQ, SEQ2, DIVERGING, ZONE_COLORS, ZONE_LABELS, ZONE_ELEV, STATUS } from "@/components/viz/palette";
 import { Btn, nf, Spinner } from "@/components/ui";
 import { useJson } from "@/components/useJson";
-import { DATA_CAVEATS } from "@/lib/domain";
+import { caveatBody } from "@/lib/registry/lookup-client";
+import { MUNICIPALITY_LABEL } from "@/lib/municipality";
 import { fmt } from "@/components/viz/scales";
 import Link from "next/link";
 
@@ -338,8 +339,8 @@ export function MapPage() {
         </div>
 
         <div className="p-3 border-t border-line text-[10px] text-muted leading-relaxed">
-          <p className="mb-1.5">{DATA_CAVEATS.organismSite}</p>
-          <p className="mb-1.5">{DATA_CAVEATS.zone}</p>
+          <p className="mb-1.5">{caveatBody("organismSite")}</p>
+          <p className="mb-1.5">{caveatBody("zone")}</p>
           <p>
             出典: 国土数値情報 流域界・非集水域 W12（国土数値情報利用約款）／河川 W05／土地利用細分メッシュ L03-b、
             環境省 公共用水域 水質測定点マスタ、GBIF・iNaturalist。
@@ -460,7 +461,7 @@ function SiteCard({ p }: { p: Record<string, unknown> }) {
         </div>
       )}
       <Row k="標高" v={p.elevation_m != null ? `${fmt(Number(p.elevation_m))} m` : "–"} />
-      <Row k="水域・地域" v={String(p.municipality ?? "–")} />
+      <Row k={MUNICIPALITY_LABEL} v={String(p.municipality ?? "–")} />
       <Row k="水系" v={String(p.water_system_name ?? "–")} />
       <Row k="運用" v={String(p.operator ?? "–")} />
       <Row k="測定値" v={`${nf(Number(p.n_meas ?? 0))} 件 / ${nf(Number(p.n_var ?? 0))} 項目`} />

@@ -1,4 +1,4 @@
-import { shortVariable } from "@/lib/domain";
+import { shortVariable } from "@/lib/registry/lookup-client";
 
 /**
  * 画面の「状態」のスナップショット。データそのもの（表示中の行や点列）は含めない。

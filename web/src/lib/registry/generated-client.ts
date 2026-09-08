@@ -1,22 +1,22 @@
 /**
  * 生成物。直接編集しない。クライアント安全（'server-only' は付けない。
- * domain.ts・証跡カードなどクライアントコンポーネントからも import される）。
+ * 証跡カードなどクライアントコンポーネントからも import される）。
  *
  * 再生成: `cd web && npm run build:registry:ts`
  * 生成元: `web/scripts/build-registry-ts.mjs`（data/db/registry.sqlite と
- * registry/taxon/vernacular_ja.csv から作る。派生値の組み立ては
+ * registry/taxon/vernacular_ja.csv・registry/place/zone.yaml から作る。派生値の組み立ては
  * `web/scripts/lib/registry-codegen.mjs`）。
  *
  * VARIABLE_SHORT 等は、生の variable(85件)/variable_alias(117件) テーブルから
  * 「代表エイリアス」を選んで再構成した派生値であり、生テーブルそのものではない
- * （レビュー指摘・code-review #4: 以前は domain.ts が実行時にこの再構成を行っており、
- * その結果クライアントバンドルに生テーブル全体が乗っていた）。生テーブルが要る場合は
- * `./generated.ts`（サーバ専用）を使う。
+ * （レビュー指摘・code-review #4: 以前は旧 domain.ts が実行時にこの再構成を
+ * 行っており、その結果クライアントバンドルに生テーブル全体が乗っていた）。生テーブルが
+ * 要る場合は `./generated.ts`（サーバ専用）を使う。
  *
  * D1 から動的に引く必要があるもの（taxon 全体・place・cells.notes 由来の caveat）は
  * ここには無い。読み出しは `web/src/lib/registry/index.ts`（server-only）を使う。
  *
- * docs/plans/PHASE_A.md §A-7 / code-review #4
+ * docs/plans/PHASE_A.md §A-7 / code-review #4 / docs/plans/PHASE_B_INTAKE.md #6
  */
 
 export interface GeneratedVernacular {
@@ -25,6 +25,14 @@ export interface GeneratedVernacular {
 }
 
 export type CaveatScopeKind = "table" | "table_prefix";
+
+/**
+ * caveat の既知のキー14件の union（docs/plans/PHASE_B_INTAKE.md #6）。
+ * 画面・`web/src/lib/ai/prompt.ts` が `caveatBody(key)`（lookup-client.ts）を直接
+ * 呼ぶときの型で、存在しないキーはここでコンパイルエラーになる（旧 domain.ts の
+ * mustCaveatBody() は実行時例外だった）。
+ */
+export type CaveatKey = "censored" | "duplicates" | "effort" | "fishClass" | "gbifCutoff" | "inatBackfill" | "isAlien" | "measuredOn" | "municipality" | "organismSite" | "regimes" | "share" | "synthetic" | "zone";
 
 export interface GeneratedCaveat {
   key: string;
@@ -44,8 +52,15 @@ export interface GeneratedCaveatScope {
   priority: number;
 }
 
+/** Ridge to Reef ゾーン(1-5)。registry/place/zone.yaml から作る（旧 domain.ts の ZONE_INFO）。 */
+export interface GeneratedZone {
+  zone: number;
+  label: string;
+  cond: string;
+}
+
 /**
- * 水質項目の短い表示名（domain.ts の VARIABLE_SHORT）。
+ * 水質項目の短い表示名（旧 domain.ts の VARIABLE_SHORT）。
  * variable(85件)・variable_alias(117件)から「代表エイリアス」を選んで再構成した派生値。
  */
 export const VARIABLE_SHORT: Readonly<Record<string, string>> = {
@@ -58,7 +73,7 @@ export const VARIABLE_SHORT: Readonly<Record<string, string>> = {
   "浮遊物質量 SS": "SS",
 };
 
-/** 何を意味する指標か（domain.ts の VARIABLE_NOTE）。ツールチップに出す。 */
+/** 何を意味する指標か（旧 domain.ts の VARIABLE_NOTE）。ツールチップに出す。 */
 export const VARIABLE_NOTE: Readonly<Record<string, string>> = {
   "生物化学的酸素要求量 BOD": "微生物が有機物を分解するのに使う酸素量。大きいほど有機汚濁が進んでいる",
   "化学的酸素要求量 COD": "酸化剤で有機物を分解したときの消費酸素量。湖沼・海域の指標として使われる",
@@ -70,7 +85,7 @@ export const VARIABLE_NOTE: Readonly<Record<string, string>> = {
   "水温": "採水時の水温",
 };
 
-/** 上流→下流でこの向きに動くのが「悪化」か（domain.ts の HIGHER_IS_WORSE）。 */
+/** 上流→下流でこの向きに動くのが「悪化」か（旧 domain.ts の HIGHER_IS_WORSE）。 */
 export const HIGHER_IS_WORSE: Readonly<Record<string, boolean>> = {
   "生物化学的酸素要求量 BOD": true,
   "化学的酸素要求量 COD": true,
@@ -84,7 +99,7 @@ export const HIGHER_IS_WORSE: Readonly<Record<string, boolean>> = {
   "透明度": false,
 };
 
-/** 単位が原本で NULL の項目に既知のものだけ補う（domain.ts の VARIABLE_UNIT_FALLBACK）。 */
+/** 単位が原本で NULL の項目に既知のものだけ補う（旧 domain.ts の VARIABLE_UNIT_FALLBACK）。 */
 export const VARIABLE_UNIT_FALLBACK: Readonly<Record<string, string>> = {
   "pH": "",
   "pH（最大値）": "",
@@ -92,7 +107,7 @@ export const VARIABLE_UNIT_FALLBACK: Readonly<Record<string, string>> = {
 };
 
 /**
- * 和名54件（registry/taxon/vernacular_ja.csv、domain.ts の NAME_JA をそのまま複製した台帳）。
+ * 和名54件（registry/taxon/vernacular_ja.csv、旧 domain.ts の NAME_JA をそのまま複製した台帳）。
  * taxon テーブル全体の vernacular_name_ja（8,324件、taxa 由来の別の母集団）とは別物。
  */
 export const NAME_JA: Readonly<Record<string, string>> = {
@@ -267,4 +282,13 @@ export const GENERATED_CAVEAT_SCOPE: readonly GeneratedCaveatScope[] = [
   { scopeKind: "table", scopeRef: "zone_year", caveatKey: "duplicates", sortOrder: 2, priority: 0 },
   { scopeKind: "table_prefix", scopeRef: "mesh_", caveatKey: "share", sortOrder: 0, priority: 0 },
   { scopeKind: "table_prefix", scopeRef: "mesh_", caveatKey: "effort", sortOrder: 1, priority: 0 },
+];
+
+/** Ridge to Reef ゾーン(1-5)の定義（registry/place/zone.yaml、旧 domain.ts の ZONE_INFO）。 */
+export const ZONE_INFO: readonly GeneratedZone[] = [
+  { zone: 1, label: "山地源流域", cond: "標高 800m 超" },
+  { zone: 2, label: "山地渓流", cond: "標高 400–800m" },
+  { zone: 3, label: "丘陵・扇状地", cond: "標高 100–400m" },
+  { zone: 4, label: "平野・沖積低地", cond: "標高 100m 以下・海岸から 2km 超" },
+  { zone: 5, label: "河口・沿岸", cond: "標高 100m 以下・海岸から 2km 以内" },
 ];

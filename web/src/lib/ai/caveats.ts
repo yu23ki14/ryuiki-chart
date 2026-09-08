@@ -1,13 +1,12 @@
 import { GENERATED_CAVEAT_SCOPE } from "@/lib/registry/generated-client";
-import { caveatBody, caveatKeysForTables, caveatsForTables, type CaveatRef } from "@/lib/registry/lookup-client";
+import { tryCaveatBody, caveatKeysForTables, caveatsForTables, type CaveatRef } from "@/lib/registry/lookup-client";
 
 /**
  * ツールが触れたテーブル名から、該当する注記を決定論的に引く。
  *
  * 中身は `web/src/lib/registry/lookup.ts`（レジストリの `caveat` / `caveat_scope` 由来）に
- * 移した（docs/plans/PHASE_A.md §A-7）。以前はここに `domain.ts` の `DATA_CAVEATS` /
- * `BIOTA_CAVEATS` とテーブル→注記のマッピングを直書きしていたが、
- * 同じ情報がレジストリ（`registry/caveat.yaml` → `data/db/registry.sqlite`）に
+ * 移した（docs/plans/PHASE_A.md §A-7）。以前はここにテーブル→注記のマッピングを
+ * 直書きしていたが、同じ情報がレジストリ（`registry/caveat.yaml` → `data/db/registry.sqlite`）に
  * 一級のデータとして載ったので、そちらを正とする。
  *
  * このファイル自体が持つ役割は変わっていない: モデルに注意書きを書かせない
@@ -30,11 +29,11 @@ export { caveatsForTables, caveatKeysForTables };
  *
  * 対象はテーブルに紐づく注記（`caveat_scope` に table/table_prefix/table_synthetic の
  * 行があるもの）だけ。`fishClass` / `inatBackfill` はテーブル→注記のマッピングに
- * 一度も登場しない（`BiotaExplorer.tsx` が `domain.ts` の `BIOTA_CAVEATS` から直接引いている）ため、
- * 以前の実装と同じくここには含まれない。
+ * 一度も登場しない（`BiotaExplorer.tsx` が `caveatBody("fishClass"/"inatBackfill")` を
+ * 直接引いている）ため、以前の実装と同じくここには含まれない。
  */
 export const CAVEAT_TEXT: Record<string, string> = Object.fromEntries(
-  [...new Set(GENERATED_CAVEAT_SCOPE.map((s) => s.caveatKey))].map((key) => [key, caveatBody(key) ?? key]),
+  [...new Set(GENERATED_CAVEAT_SCOPE.map((s) => s.caveatKey))].map((key) => [key, tryCaveatBody(key) ?? key]),
 );
 
 export function caveatText(key: string): string {

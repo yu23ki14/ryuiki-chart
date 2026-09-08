@@ -6,7 +6,21 @@ import { ChartFrame, MiniTable } from "@/components/viz/ChartFrame";
 import { SERIES, STATUS } from "@/components/viz/palette";
 import { inputCls, Spinner, Stat, nf, Provenance } from "@/components/ui";
 import { useJson } from "@/components/useJson";
-import { rowKeyLabel } from "@/lib/domain";
+
+/**
+ * 行政文書から抽出した表の行キーは、表によって行見出しと列見出しが連結されている
+ * （例: `湘南地域秦野市伊勢原市|清川村`）。信頼できるのは最後の `|` の後ろだけなので、
+ * 表示名にはそこを使う。原文の行キーは別途そのまま見せる。
+ *
+ * この画面（DocumentsExplorer）だけが使う整形なので、レジストリの語彙ではなくここに置く
+ * （旧 domain.ts の rowKeyLabel。docs/plans/PHASE_B_INTAKE.md #6）。
+ */
+function rowKeyLabel(rowKey: string): string {
+  if (!rowKey) return "";
+  const i = rowKey.lastIndexOf("|");
+  const tail = i >= 0 ? rowKey.slice(i + 1) : rowKey;
+  return tail.trim() || rowKey;
+}
 
 interface SeriesMeta {
   doc_id: string;

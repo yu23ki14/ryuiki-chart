@@ -25,8 +25,16 @@
   実体が壊れたときバイト列を変えられる逃げ道が要る。経緯は `DEPLOYMENT.md`）。
 - D1 はバインドパラメータが 1 クエリ 100 個まで。`IN (...)` を書くときは
   `web/src/lib/db.ts` の `queryChunked` を使う。生の `query()` は 100 個で例外を投げる。
-- データの癖（日付書式の混在、定量下限の 0 潰し、`municipality` 列に水域名が入っている等）は
-  `web/src/lib/domain.ts` にまとめてある。画面ごとに個別対応を書かない。
+- 語彙（指標・単位・注記・和名・zone）の正は `registry/` 配下のファイルで、web からは
+  `web/src/lib/registry/`（`generated.ts`/`generated-client.ts` が再生成物、`lookup.ts`/
+  `lookup-client.ts` が読み出し層。画面は `lookup-client.ts` の `caveatBody`/`shortVariable`/
+  `speciesLabel` や `generated-client.ts` の `VARIABLE_NOTE` 等を直接 import する）経由で読む。
+  画面ごとに個別対応を書かない。`web/src/lib/domain.ts` は Phase B で撤去済み
+  （`docs/plans/PHASE_B_INTAKE.md` #6）。日付書式の混在・定量下限の 0 潰しのような
+  レジストリの語彙ではないデータの癖は、それを使う画面・モジュール側（例:
+  `municipality` 列に水域名が入っている件の表示名は `web/src/lib/municipality.ts`、
+  `measurements.quality_stage` 等の3値は `web/src/lib/quality.ts` の `QUALITY_STAGES`）に
+  1箇所だけ置く。複数画面が同じ値を使うときは、その1箇所から import する。
 - 本番 D1 への投入は `pnpm run db:export` が書き出す .sql を `wrangler d1 execute --remote --file` に流す。
   `wrangler d1 export` は大きいテーブルで OOM するので使わない。
 - 画面と API の出し分けは `web/src/lib/features.ts` の 1 ファイル。`EXPLORE_ENABLED` が false の間、

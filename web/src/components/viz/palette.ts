@@ -5,6 +5,8 @@
  * - SEQ:    連続量(件数・密度)用の逐次ランプ。ゾーンと同時に出るため別色相。
  * - STATUS: 状態色。系列には流用せず、必ずラベルを添える。
  */
+import { ZONE_INFO } from "@/lib/registry/generated-client";
+import type { QualityStage } from "@/lib/quality";
 
 export const SERIES = [
   "#2a78d6",
@@ -31,14 +33,21 @@ export const ZONE_COLORS: Record<number, string> = {
   5: "#104281",
 };
 
-export const ZONE_LABELS: Record<number, string> = {
-  1: "山地源流域",
-  2: "山地渓流",
-  3: "丘陵・扇状地",
-  4: "平野・沖積低地",
-  5: "河口・沿岸",
-};
+/**
+ * `registry/place/zone.yaml` が正の `ZONE_INFO` から、zone番号 -> 名前だけを引ける形にする
+ * （手書きの複製をやめる。/simplify 指摘: 値は `ZONE_INFO[].label` と完全一致だった）。
+ */
+export const ZONE_LABELS: Record<number, string> = Object.fromEntries(ZONE_INFO.map((z) => [z.zone, z.label]));
 
+/**
+ * 既知の未解消の重複（code-review 指摘、Phase B #6 の範囲外）: この5件は
+ * `ZONE_INFO[].cond`（`registry/place/zone.yaml` が正）と同じ情報を別に手書きしている。
+ * 表記が微妙に違う（例: zone4 はここでは「2km超」、ZONE_INFO 側は「2km 超」と
+ * 半角スペース入り）ため、`ZONE_LABELS` と同じようには統合できない。
+ * 今の画面の表示文字列を変えない、というこの PR の制約上ここでは統合しない
+ * （統合すると MapPage/SiteDetail の画面表示が変わってしまう）。
+ * 水野研レビューで zone の閾値が確定するタイミングで、この2つの表記を統合する形で見直すこと。
+ */
 export const ZONE_ELEV: Record<number, string> = {
   1: "標高 800m 超",
   2: "標高 400–800m",
@@ -80,8 +89,8 @@ export const STATUS = {
   critical: "#d03b3b",
 } as const;
 
-/** 品質段階。順序があるので序列として扱い、必ずラベルとセットで出す。 */
-export const QUALITY_STAGE: Record<string, { color: string; order: number }> = {
+/** 品質段階の配色。順序があるので序列として扱い、必ずラベルとセットで出す（3値の定義は `@/lib/quality`）。 */
+export const QUALITY_STAGE: Record<QualityStage, { color: string; order: number }> = {
   暫定: { color: STATUS.warning, order: 1 },
   検証済: { color: "#5598e7", order: 2 },
   公開済: { color: STATUS.good, order: 3 },

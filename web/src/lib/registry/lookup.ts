@@ -86,7 +86,7 @@ export function getUnit(unitId: string | null | undefined): GeneratedUnit | unde
   return unitId ? unitById.get(unitId) : undefined;
 }
 
-/** unit の表示用シンボル。無次元（symbol=null）は "" にする（domain.ts の VARIABLE_UNIT_FALLBACK と同じ扱い）。 */
+/** unit の表示用シンボル。無次元（symbol=null）は "" にする（旧 domain.ts の VARIABLE_UNIT_FALLBACK と同じ扱い）。 */
 export function unitSymbol(unitId: string | null | undefined): string | null {
   if (!unitId) return null;
   const u = unitById.get(unitId);

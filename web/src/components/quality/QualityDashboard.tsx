@@ -7,7 +7,7 @@ import { ChartFrame, MiniTable } from "@/components/viz/ChartFrame";
 import { SERIES, STATUS, QUALITY_STAGE, INK } from "@/components/viz/palette";
 import { Btn, Stat, Spinner, nf, Provenance } from "@/components/ui";
 import { useJson } from "@/components/useJson";
-import { DATA_CAVEATS } from "@/lib/domain";
+import { caveatBody } from "@/lib/registry/lookup-client";
 import { fmt } from "@/components/viz/scales";
 
 interface Payload {
@@ -82,7 +82,7 @@ export function QualityDashboard() {
         <Btn active={tab === "governance"} onClick={() => setTab("governance")}>
           介入と意思決定
         </Btn>
-        <p className="text-[10.5px] text-muted ml-auto max-w-lg leading-snug">{DATA_CAVEATS.synthetic}</p>
+        <p className="text-[10.5px] text-muted ml-auto max-w-lg leading-snug">{caveatBody("synthetic")}</p>
       </div>
       <div className="flex-1 overflow-y-auto thin-scroll p-4">
         {tab === "pipeline" && <PipelineTab data={data} />}

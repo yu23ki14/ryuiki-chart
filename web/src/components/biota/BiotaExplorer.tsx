@@ -9,7 +9,7 @@ import { SlopeChart, type SlopeFlow } from "@/components/viz/SlopeChart";
 import { ChartFrame, MiniTable } from "@/components/viz/ChartFrame";
 import { SERIES, seriesColor, INK, STATUS } from "@/components/viz/palette";
 import { Btn, inputCls, Spinner, Stat, nf, Provenance } from "@/components/ui";
-import { speciesLabel, BIOTA_CAVEATS, DATA_CAVEATS } from "@/lib/domain";
+import { speciesLabel, caveatBody } from "@/lib/registry/lookup-client";
 import { useJson } from "@/components/useJson";
 import { useSetPageContext } from "@/components/assistant/PageContextProvider";
 
@@ -159,7 +159,7 @@ function EffortTab() {
         }
         note={
           <>
-            {BIOTA_CAVEATS.regimes} {BIOTA_CAVEATS.inatBackfill} {BIOTA_CAVEATS.fishClass}
+            {caveatBody("regimes")} {caveatBody("inatBackfill")} {caveatBody("fishClass")}
           </>
         }
       >
@@ -180,7 +180,7 @@ function EffortTab() {
               rows={(data?.effort ?? []).filter((r) => r.year >= 2000).map((r) => [r.year, r.n_gbif, r.n_inat])}
             />
           }
-          note={BIOTA_CAVEATS.gbifCutoff}
+          note={caveatBody("gbifCutoff")}
         >
           <LineChart
             series={effortSeries}
@@ -206,7 +206,7 @@ function EffortTab() {
               rows={(data?.effort ?? []).filter((r) => r.year >= 2000).map((r) => [r.year, r.mesh_n, r.species_n, r.n])}
             />
           }
-          note={DATA_CAVEATS.effort}
+          note={caveatBody("effort")}
         >
           <LineChart series={meshSeries} height={240} xFormat={(x) => String(Math.round(x))} yZero />
         </ChartFrame>
@@ -301,7 +301,7 @@ function TrendTab() {
         </label>
         <YearRange label="前の期間" value={a} onChange={setA} />
         <YearRange label="後の期間" value={b} onChange={setB} />
-        <p className="text-[10.5px] text-muted max-w-md ml-auto leading-snug">{BIOTA_CAVEATS.share}</p>
+        <p className="text-[10.5px] text-muted max-w-md ml-auto leading-snug">{caveatBody("share")}</p>
       </div>
 
       {loading && !data ? (
@@ -481,7 +481,7 @@ function IasTab() {
       <div className="card p-3">
         <p className="text-[12px] text-ink-2 leading-relaxed">
           外来種の判定に、原本の <code className="font-mono text-[11px]">is_alien</code> フラグは使っていない。
-          {BIOTA_CAVEATS.isAlien}
+          {caveatBody("isAlien")}
         </p>
       </div>
 

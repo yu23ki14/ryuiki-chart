@@ -1,36 +1,80 @@
 /**
- * `generated-client.ts`（クライアント安全・caveat / caveat_scope だけの小さいデータ）の
- * 上に立つ、caveat 専用の参照ヘルパ。
+ * `generated-client.ts`（クライアント安全・小さいデータだけ）の上に立つ、
+ * caveat・和名・短縮表示名の参照ヘルパ。
  *
- * `server-only` は付けない。`domain.ts`（13ファイルの利用側があり、うち証跡カードは
- * クライアントコンポーネント）と `web/src/lib/ai/caveats.ts` の両方から同期で呼ばれる。
+ * `server-only` は付けない。13ファイルの画面側（うち証跡カードはクライアント
+ * コンポーネント）と `web/src/lib/ai/caveats.ts` / `prompt.ts` の両方から同期で呼ばれる
+ * （旧 domain.ts が薄いラッパとして持っていた口を、Phase B で撤去して
+ * ここへ一本化した。docs/plans/PHASE_B_INTAKE.md #6）。
  *
  * variable / unit の生テーブルにはここでは一切触れない（そちらは `./lookup.ts`。
  * D1 から動的に読む必要があるもの（taxon 全体・place・cells.notes 由来の caveat）は
  * `./index.ts`（server-only）を使うこと）。
  *
  * 分離の理由（code-review #4）: 以前は `./lookup.ts` 1本に caveat 関連もまとめて
- * 同居しており、caveatBody() だけを使いたいクライアントコンポーネント（domain.ts /
- * 証跡カード）も、variable(85件)・variable_alias(117件) の生テーブルをモジュール
- * 丸ごと import することで一緒に bundle へ引き込んでいた（+43.5KB）。
+ * 同居しており、caveatBody() だけを使いたいクライアントコンポーネントも、
+ * variable(85件)・variable_alias(117件) の生テーブルをモジュール丸ごと import する
+ * ことで一緒に bundle へ引き込んでいた（+43.5KB）。
  *
  * docs/plans/PHASE_A.md §A-7 / §A-8。
  */
 import {
   GENERATED_CAVEATS,
   GENERATED_CAVEAT_SCOPE,
+  NAME_JA,
+  VARIABLE_SHORT,
+  type CaveatKey,
   type GeneratedCaveat,
   type GeneratedCaveatScope,
 } from "./generated-client";
 
 const caveatByKey = new Map<string, GeneratedCaveat>(GENERATED_CAVEATS.map((c) => [c.key, c]));
 
-export function caveatBody(key: string): string | undefined {
+/**
+ * 動的な（コンパイル時に既知でない）キーでの生の引き。無ければ undefined。
+ * `caveat_scope` 由来の文字列キー（`caveatsForTables` / `web/src/lib/ai/caveats.ts`）専用。
+ * 既知のキーを直書きする画面・prompt.ts は代わりに `caveatBody` を使うこと。
+ */
+export function tryCaveatBody(key: string): string | undefined {
   return caveatByKey.get(key)?.bodyJa;
+}
+
+/**
+ * 既知の caveat キー（`CaveatKey`。build-registry-ts.mjs が生成する union、14件）専用の引き。
+ * 存在しないキーは呼び出し側でコンパイルエラーになる（旧 domain.ts の DATA_CAVEATS /
+ * BIOTA_CAVEATS 経由の mustCaveatBody() は実行時例外だった。docs/plans/PHASE_B_INTAKE.md #6）。
+ * 画面・prompt.ts はこれを直接呼ぶ。
+ *
+ * ここで投げる例外は、CaveatKey の生成元（caveat テーブル）と GENERATED_CAVEATS の生成元が
+ * 同じクエリである限り届かない防御であり、正常経路では起きない。
+ */
+export function caveatBody(key: CaveatKey): string {
+  const body = tryCaveatBody(key);
+  if (body === undefined) {
+    throw new Error(`registry/caveat.yaml に "${key}" が無い（caveatBody が参照している）`);
+  }
+  return body;
 }
 
 export function allCaveats(): readonly GeneratedCaveat[] {
   return GENERATED_CAVEATS;
+}
+
+/** 水質項目の短い表示名。無ければそのまま返す（旧 domain.ts の shortVariable）。 */
+export function shortVariable(v: string): string {
+  return VARIABLE_SHORT[v] ?? v;
+}
+
+/**
+ * 和名（本デモで人が確認した54件、`NAME_JA`）。無ければ英名、それも無ければ学名を返す
+ * （旧 domain.ts の speciesLabel。organism_records に和名は入っておらず、taxa の和名を
+ * 学名で機械結合すると別地域の個体群の名前が付く事故があるため、代表種だけ人が確認した
+ * 和名をここで引く）。
+ */
+export function speciesLabel(binom: string, enName?: string | null): string {
+  const ja = NAME_JA[binom];
+  if (ja) return ja;
+  return enName || binom;
 }
 
 /* ------------------------------------------------------------------ */
@@ -92,7 +136,7 @@ export function caveatsForTables(tables: readonly string[]): CaveatRef[] {
   const seen = new Map<string, CaveatRef>();
   for (const { scope } of matches) {
     if (seen.has(scope.caveatKey)) continue;
-    seen.set(scope.caveatKey, { key: scope.caveatKey, text: caveatBody(scope.caveatKey) ?? scope.caveatKey });
+    seen.set(scope.caveatKey, { key: scope.caveatKey, text: tryCaveatBody(scope.caveatKey) ?? scope.caveatKey });
   }
 
   return [...seen.values()];

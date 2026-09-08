@@ -4,7 +4,7 @@ import { tool } from "ai";
 import { caveatKeysForTables } from "./caveats";
 import { listTables, runUserSql, SqlError } from "@/lib/db";
 import { TABLE_META, SCHEMA_META, TABLE_ORIGIN } from "@/lib/table-meta";
-import { ZONE_INFO } from "@/lib/domain";
+import { ZONE_INFO } from "@/lib/registry/generated-client";
 import { resolveVariableInfo, type ResolvedVariableInfo } from "@/lib/registry/lookup";
 import {
   listSites,
