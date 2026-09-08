@@ -25,6 +25,16 @@ __pycache__/
 .ipynb_checkpoints/
 
 # ---------------------------------------------------------------
+# Phase B 突合ハーネス (docs/plans/PHASE_B_RECONCILIATION.md)
+# ---------------------------------------------------------------
+# reports/derived_baseline.json / .md は scripts/b01_derived_baseline.py が
+# 書く「正」でコミット対象（ADR-0016 の受け入れゲート）。一方
+# reports/derived_reconciliation.md は scripts/b02_derived_compare.py が
+# 候補と突き合わせるたびに書き直す成果物（ADR-0016 の言う「CI の成果物」）
+# なので、コミットしない。
+reports/derived_reconciliation.md
+
+# ---------------------------------------------------------------
 # Node / Next.js / Cloudflare
 # ---------------------------------------------------------------
 # web/ 配下の node_modules, .next, .wrangler, .open-next は web/.gitignore が担当。
