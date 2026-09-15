@@ -44,19 +44,21 @@ pnpm run db:setup                        # migrate + seed。registry.sqlite も4
 無ければ同じ `build:registry` を走らせる（`web/scripts/ensure-registry.sh`）。
 
 `r01_build_registry.py` は原本3ファイル（ryuiki / cells / derived）を読み取り専用で開き、
-一切書き換えない。実行時間は実測で約9秒（8テーブル・52,057行）。2回連続で実行しても
+一切書き換えない。実行時間は実測で約9秒（9テーブル・52,505行）。2回連続で実行しても
 `registry.sqlite` の中身（テーブルごとの行数・全行を安定な順序で並べたハッシュ）は同一になる
 （決定論的な再生成）。
 
 ## テーブルとID規約（ADR-0004 の Phase A での具体形）
 
-8テーブル：`unit` / `variable` / `variable_alias` / `place` / `place_source_ref` /
-`taxon` / `caveat` / `caveat_scope`。DDL は `scripts/schema_registry.sql`
-（= `web/src/db/schema-registry.ts` の drizzle 定義から生成）。
+9テーブル：`unit` / `variable` / `variable_alias` / `place` / `place_source_ref` /
+`place_relation` / `taxon` / `caveat` / `caveat_scope`。DDL は `scripts/schema_registry.sql`
+（= `web/src/db/schema-registry.ts` の drizzle 定義から生成。ただし `place_relation` は
+まだ drizzle 側に無い。後述「`place.region_id` と `place_relation`」参照）。
 
 計画時点（PHASE_A.md §A-1）は `caveat` 単体7テーブル構成だったが、実装時に「1つの注記が
 複数テーブルに掛かる」ことが分かり、スコープを `caveat_scope` に切り出して8テーブルにした
-（1:N を表現するため。詳細は `scripts/registry/build_caveat.py` のdocstring）。
+（1:N を表現するため。詳細は `scripts/registry/build_caveat.py` のdocstring）。Phase B
+（`phase-b/region-scope`, ADR-0022）で `place_relation` を新設し9テーブルになった。
 
 | entity | ID の形 | 例 |
 |---|---|---|
@@ -78,6 +80,43 @@ v1 側の識別子（`sites.site_id` / `watershed_meta.watershed_id` / `mlat,mlo
 assert する（`scripts/r01_build_registry.py` の `_assert_id_uniqueness`）。SQLite の
 PRIMARY KEY 制約により挿入時点でも保証されるが、4モジュールが同じ DB に同居する統合作業の
 受け入れ基準として明示的に確認している。
+
+### `place.region_id` と `place_relation`（Phase B `phase-b/region-scope`, ADR-0022）
+
+`place.region_id` は **`place_id` 自身のスコープ（`<scope>:place:...` の `<scope>`）と
+一致させる**。`common` なら `region_id=NULL`（地域非依存。レジストリと県境をまたぐ実体、
+例: 相模川水系・独自グリッド `grid01`）、それ以外（例 `jp-14`）なら `region_id=<scope>`
+そのもの。`scripts/registry/common.py` の `region_id_for_scoped_id()` が発行済みの
+`place_id` から導出し（値を別途ハードコードしない）、`scripts/r01_build_registry.py` が
+ビルドのたびにこの不変条件を検証する（`_assert_region_id_scope_invariant`。1行でも
+崩れたら止まる）。実測: `common -> NULL` 4,460件（grid01 4,083 + watershed 377）、
+`jp-14 -> jp-14` 500件（site 495 + zone 5）。
+
+「所在（この place が地理的にどこにあるか）」は `region_id` 列ではなく **`place_relation`**
+の辺で表す。Phase B で作った最初の辺は地点→ゾーンだけ（`sites.zone` 由来、290件。
+`sites.zone IS NOT NULL` の地点数と一致する）:
+
+```
+place_relation(parent_id=ゾーンのplace_id, child_id=地点のplace_id,
+                relation='within', fraction=1.0, basis=<zone.yamlの定義を指す文字列>)
+```
+
+`fraction` は **NOT NULL**。全体を含む関係には `1.0` を入れる（「NULL＝全体」という
+暗黙の意味を持たせない。ADR-0011 の「`fraction` があるものは加重する」を常に同じ式で
+書けるようにするため）。`(parent_id, child_id, relation)` の一意性は DDL の `UNIQUE`
+制約ではなく r01 の Python 表明で検証する（`variable_alias` の `(dataset, alias, source_id)`
+一意性と同じ流儀。`ID_REFERENCE_CHECKS` に `place_relation.parent_id`/`child_id` ->
+`place.place_id` も追加してある）。`source_edition_id`（ADR-0006 が挙げる列）はまだ
+持たない — 出典の版管理（`source_registry`/`source_edition`, ADR-0005）自体が Phase C の
+仕事で、いま作る唯一の辺の出典は `registry/place/zone.yaml` という手書きファイル1つに
+固定されているため。
+
+`place_relation` はまだ `web/src/db/schema-registry.ts`（D1）に無い。地域・ゾーン単位の
+ロールアップ集計のような消費者がまだ無いため、載せる判断を先送りしている
+（ADR-0001: D1 は捨てて作り直せる配信キャッシュ）。`web/scripts/seed-d1-local.mjs` は
+D1 側に既に存在するテーブルだけをシードするので（`registry.sqlite` にテーブルが1つ
+増えても、D1 の migration に無ければ単に読み飛ばされる）、この先送りはローカル D1 の
+シードを壊さない。
 
 ### `variable_alias.csv` の列（Phase B: 出典 × 表記で解決する）
 

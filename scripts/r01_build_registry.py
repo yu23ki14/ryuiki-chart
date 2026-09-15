@@ -1,5 +1,6 @@
 """語彙レジストリ（unit / variable / variable_alias / place / place_source_ref /
-taxon / caveat）を data/db/registry.sqlite として生成する（docs/plans/PHASE_A.md §A-1）。
+place_relation / taxon / caveat）を data/db/registry.sqlite として生成する
+（docs/plans/PHASE_A.md §A-1、place_relation は Phase B `phase-b/region-scope`、ADR-0022）。
 
     .venv/bin/python3 scripts/r01_build_registry.py
     .venv/bin/python3 scripts/r01_build_registry.py --files-only
@@ -18,8 +19,10 @@ D1 は「捨てて再構築できる」もの — ADR-0001）。
 
 原本 DB（`ryuiki`/`cells`/`derived`）を一切開かず、`registry/` 配下の手書きファイルと
 `build_caveat.py` の Python 定数だけから作れる部分（`unit`/`variable`/`variable_alias`
-と、ファイル由来の `caveat`/`caveat_scope`）だけを作るモード。`place`/`taxon`、および
-`cells.notes`/`place`/`taxon` 由来の `caveat` は作らない（それらのテーブルは空のまま）。
+と、ファイル由来の `caveat`/`caveat_scope`）だけを作るモード。`place`/`place_relation`/
+`taxon`、および `cells.notes`/`place`/`taxon` 由来の `caveat` は作らない（それらのテーブルは
+空のまま。`place_relation` は `place` 経由でしか作れない辺なので、`place` を作らない
+このモードでは当然に空になる）。
 CI がこのモードで registry.sqlite を作り、`web/scripts/build-registry-ts.mjs` で
 `generated.ts`/`generated-client.ts` を再生成して `git diff --exit-code` することで、
 レジストリ（手書きファイル）と生成物のずれを検出する。原本 DB が存在しない環境
@@ -116,6 +119,8 @@ ID_REFERENCE_CHECKS = [
     ("variable_alias", "variable_id", "variable", "variable_id"),
     ("caveat_scope", "caveat_id", "caveat", "caveat_id"),
     ("place_source_ref", "place_id", "place", "place_id"),
+    ("place_relation", "parent_id", "place", "place_id"),
+    ("place_relation", "child_id", "place", "place_id"),
 ]
 
 
@@ -132,6 +137,43 @@ def _assert_id_references(conn) -> None:
                 f"{missing:,} 件ある"
             )
         print(f"  参照整合性OK: {child}.{fk_col} -> {parent}.{pk_col}")
+
+
+# place.region_id は place_id 自身のスコープ（<scope>:place:...）と一致していなければ
+# ならない（ADR-0022 決定1）。common.region_id_for_scoped_id() を通した値だけが入る
+# 設計だが、build_place.py 以外の経路（将来の別モジュール・手動の INSERT）が
+# この不変条件を破っていないかを、生成後の DB に対して機械的に検証する。
+def _assert_region_id_scope_invariant(conn) -> None:
+    rows = conn.execute("SELECT place_id, region_id FROM place").fetchall()
+    bad = []
+    for place_id, region_id in rows:
+        scope = place_id.split(":", 1)[0]
+        expected = None if scope == "common" else scope
+        if region_id != expected:
+            bad.append((place_id, region_id, expected))
+    if bad:
+        sample = "; ".join(f"{p!r}(region_id={r!r}, 期待={e!r})" for p, r, e in bad[:10])
+        raise AssertionError(
+            f"place.region_id が place_id のスコープと一致しない行が {len(bad):,} 件ある"
+            f"（ADR-0022 決定1）。例: {sample}"
+        )
+    print(f"  region_id 不変条件OK: {len(rows):,} 件（common:->NULL, <region>:-><region>）")
+
+
+# (parent_id, child_id, relation) の組の一意性。PRIMARY KEY 制約が無い複合キーなので
+# variable_alias の (dataset, alias, source_id) と同じ流儀で Python 側の表明にする
+# （schema_registry.sql に UNIQUE 制約は張らない。registry/README.md 参照）。
+def _assert_place_relation_uniqueness(conn) -> None:
+    total = conn.execute("SELECT count(*) FROM place_relation").fetchone()[0]
+    distinct = conn.execute(
+        "SELECT count(*) FROM (SELECT DISTINCT parent_id, child_id, relation FROM place_relation)"
+    ).fetchone()[0]
+    if total != distinct:
+        raise AssertionError(
+            f"place_relation の (parent_id, child_id, relation) が一意ではない: "
+            f"{total:,}行中 distinct は {distinct:,}"
+        )
+    print(f"  一意性OK: place_relation(parent_id, child_id, relation) ({distinct:,})")
 
 
 def main() -> None:
@@ -180,6 +222,8 @@ def main() -> None:
 
         _assert_id_uniqueness(conn)
         _assert_id_references(conn)
+        _assert_region_id_scope_invariant(conn)
+        _assert_place_relation_uniqueness(conn)
     finally:
         conn.close()
         for c in src.values():

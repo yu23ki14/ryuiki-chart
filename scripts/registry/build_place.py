@@ -1,12 +1,29 @@
-"""place / place_source_ref を作る（docs/plans/PHASE_A.md §A-3）。
+"""place / place_source_ref / place_relation を作る（docs/plans/PHASE_A.md §A-3、
+place_relation は Phase B `phase-b/region-scope`、ADR-0022）。
 
 対象: site（sites 352件 + sensor_timeseries/measurements 側で不足する分）、
 watershed（derived.watershed_meta 377件）、grid01（derived.mesh_all 4,083件。
 実体・命名の経緯は後述）、zone（registry/place/zone.yaml 5件）。town_block と
 river_segment は Phase A では登録しない。place_source_ref で v1 の
 site_id / watershed_id / mlat,mlon / zone の整数値を引けるようにする（ADR-0006）。
+place_relation は地点→ゾーンの辺（`sites.zone` 由来。後述「place_relation」）だけを作る。
 
-region_id は全行 "jp-14"（神奈川県。Phase A の対象地域はここだけ）。
+## region_id（ADR-0022 決定1）
+
+`place.region_id` は **ID のスコープ（`<scope>:place:...` の `<scope>`）と一致させる**。
+`common.region_id_for_scoped_id()` で発行済みの `place_id` から機械的に導く（別途
+`REGION_ID` 定数を region_id 列に直接代入しない）。
+
+- site / zone: `place_id` のスコープは `jp-14`（Phase A の対象地域はここだけ）なので
+  `region_id='jp-14'`。
+- watershed / grid01: `place_id` のスコープは `common`（相模川のような県境をまたぐ流域や、
+  `organism_records` の座標から機械的に作った独自グリッドは地域の属性ではない。
+  ADR-0004 規約0）なので `region_id=NULL`。
+
+以前は「Phase A の対象地域は神奈川県だけだから」という理由で `region_id` に全行
+`"jp-14"` を代入していたが、これは watershed / grid01 の `place_id` が
+`common:place:...` スコープで発行されていることと矛盾していた
+（`docs/plans/PHASE_B_INTAKE.md` #4、ADR-0022 背景の実測）。
 
 ## `place_kind='grid01'` について（ADR-0006 のコードリストからの逸脱）
 
@@ -97,6 +114,26 @@ ID を機械的に作っていたが、レビューで「ID は不変（ADR-0004
 `registry/place/zone.yaml`（手書き）を読む。PyYAML（`yaml.safe_load`）で読む
 （A-2/A-5 と統一。以前は自前の小さいパーサだったが、YAML の読み方をリポジトリ全体で
 1本化するため置き換えた）。
+
+## place_relation（ADR-0006 / ADR-0022、Phase B で新設）
+
+作る辺は**地点→ゾーンの1種類だけ**（`child_id`=地点の `place_id`、`parent_id`=ゾーンの
+`place_id`、`relation='within'`、`fraction=1.0`、`basis`=zone.yaml の操作的定義を指す文字列）。
+
+- 対象は `sites` テーブル本体（352件）のうち `zone IS NOT NULL` の行（実測290件）。
+  `zone` は `sites` 本体にしか無い列なので、`site_supplement.csv` 側の補完地点
+  （sites に無い site_id）は対象外。
+- `parent_id`（ゾーンの `place_id`）は `place_source_ref(source_id='sites.zone')` 相当の
+  対応（本 build() 内で zone の place_id を作る際に組み立てた `{ゾーン番号: place_id}`
+  の対応表）を引いて解決する。`registry/place/zone.yaml` に無いゾーン番号が
+  `sites.zone` に現れたら（黙って捨てず）例外を投げて止める。
+- `fraction` は ADR-0022 決定2により NOT NULL。地点はゾーンに完全に含まれる
+  （1地点が複数ゾーンにまたがることはない）ので常に `1.0` を入れる
+  （「NULL＝全体」のような暗黙の意味を持たせない）。
+- `source_edition_id`（ADR-0006 の列）はまだ持たない。この辺の出典は
+  `registry/place/zone.yaml` という手書きファイル1つに固定されており、出典の版を
+  切り替える必要が今は無い（`source_registry`/`source_edition` そのものが Phase C の
+  仕事。ADR-0022 決定3参照）。
 """
 import csv
 import pathlib
@@ -106,7 +143,10 @@ import yaml
 
 from . import common
 
-REGION_ID = "jp-14"  # 神奈川県固定（Phase A の対象地域はここだけ）
+# site / zone の place_id を発行する scope（Phase A の対象地域は神奈川県だけ）。
+# place.region_id 列はこの scope をそのまま複製するのではなく、発行した place_id から
+# common.region_id_for_scoped_id() で導出する（ADR-0022 決定1）。
+REGION_ID = "jp-14"
 
 PLACE_DIR = pathlib.Path(__file__).resolve().parents[2] / "registry" / "place"
 
@@ -188,13 +228,17 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     # スラッグ化で別々の元キーが黙って同じIDに潰れてはいけない）。
     place_id_seen: dict = {}
 
+    # site_id -> place_id（sites 本体のみ。place_relation の地点側の解決に使う）。
+    site_place_id_by_site_id: dict[str, str] = {}
+
     # --- site: sites テーブル本体（352件） ---------------------------------
     for row in ryuiki.execute(
         "SELECT site_id, name, lat, lon, elevation_m, source_id, source_ref FROM sites"
     ):
         pid = _site_place_id(row["site_id"], seen=place_id_seen)
+        site_place_id_by_site_id[row["site_id"]] = pid
         place_rows.append((
-            pid, REGION_ID, "site", row["name"], row["lat"], row["lon"],
+            pid, common.region_id_for_scoped_id(pid), "site", row["name"], row["lat"], row["lon"],
             row["elevation_m"], None, row["source_ref"] or row["source_id"], "ok",
         ))
         ref_rows.append((pid, row["site_id"], "sites.site_id"))
@@ -223,7 +267,10 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
         lon = float(sup["lon"]) if sup["lon"] else None
         definition_ref = sup["definition_ref"] or None
         status = "ok" if lat is not None else "needs_review"
-        place_rows.append((pid, REGION_ID, "site", name_ja, lat, lon, None, None, definition_ref, status))
+        place_rows.append((
+            pid, common.region_id_for_scoped_id(pid), "site", name_ja, lat, lon,
+            None, None, definition_ref, status,
+        ))
         ref_rows.append((pid, site_id, "sites.site_id"))
 
     # --- watershed: derived.watershed_meta（377件） -------------------------
@@ -233,7 +280,7 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     ):
         pid = common.place_id("watershed", "nlni", row["watershed_id"], scope="common", seen=place_id_seen)
         place_rows.append((
-            pid, REGION_ID, "watershed", row["water_system_name"],
+            pid, common.region_id_for_scoped_id(pid), "watershed", row["water_system_name"],
             row["centroid_lat"], row["centroid_lon"], None, row["area_km2"],
             row["source_ref"], "ok",
         ))
@@ -262,7 +309,10 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
             "（place_kind='grid01'。ADR-0006 のコードリストからの逸脱の経緯は "
             "registry/README.md 参照）。"
         )
-        place_rows.append((pid, REGION_ID, "grid01", None, lat, lon, None, None, definition_ref, "ok"))
+        place_rows.append((
+            pid, common.region_id_for_scoped_id(pid), "grid01", None, lat, lon,
+            None, None, definition_ref, "ok",
+        ))
         ref_rows.append((pid, f"grid01:{mlat},{mlon}", "mesh_all.mlat_mlon"))
 
     # --- zone: registry/place/zone.yaml（5件） ------------------------------
@@ -273,14 +323,44 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
         "閾値は仮に置いた値であり、専門家レビューで確定する必要がある"
         "（docs/ZONE_DEFINITION.md）。"
     )
+    # ゾーン番号(文字列) -> place_id。place_relation の地点->ゾーン解決に使う
+    # （place_source_ref(source_id='sites.zone') 相当の対応をここで直接引ける形で持つ）。
+    zone_place_id_by_number: dict[str, str] = {}
     for item in _load_zone_yaml():
         n = int(item["zone"])
         pid = common.place_id("zone", "r2r", str(n), scope=REGION_ID, seen=place_id_seen)
+        zone_place_id_by_number[str(n)] = pid
         definition_ref = f"{disclaimer} 条件: {item['condition_ja']}。"
         place_rows.append((
-            pid, REGION_ID, "zone", item["name_ja"], None, None, None, None, definition_ref, "ok",
+            pid, common.region_id_for_scoped_id(pid), "zone", item["name_ja"],
+            None, None, None, None, definition_ref, "ok",
         ))
         ref_rows.append((pid, str(n), "sites.zone"))
+
+    # --- place_relation: 地点 -> ゾーン（sites.zone 由来。ADR-0022 決定2） ------
+    # sites 本体（zone は sites にしか無い列。site_supplement.csv 側の補完地点は対象外）。
+    relation_rows: list[tuple] = []
+    zone_relation_basis = (
+        "sites.zone（Ridge to Reef ゾーン1-5、registry/place/zone.yaml の操作的定義。"
+        "標高・海岸線からの距離のみに基づく操作的区分であり、公式の行政区分・学術区分ではない）"
+        "の値から機械的に生成。"
+    )
+    for row in ryuiki.execute("SELECT site_id, zone FROM sites WHERE zone IS NOT NULL"):
+        site_pid = site_place_id_by_site_id.get(row["site_id"])
+        if site_pid is None:
+            # sites 本体は全行を上の site loop で place 化済みのはずなので理論上
+            # 起こらないが、黙って握りつぶさず検出する。
+            raise AssertionError(
+                f"sites.site_id={row['site_id']!r} の place_id が見つからない（site loop の不整合）"
+            )
+        zone_key = str(row["zone"])
+        zone_pid = zone_place_id_by_number.get(zone_key)
+        if zone_pid is None:
+            raise ValueError(
+                f"sites.zone={row['zone']!r}（site_id={row['site_id']!r}）を解決できるゾーンが "
+                "registry/place/zone.yaml に無い（黙って捨てない。ADR-0022 決定2）。"
+            )
+        relation_rows.append((zone_pid, site_pid, "within", 1.0, zone_relation_basis))
 
     common.insert_many(
         conn, "place",
@@ -293,5 +373,14 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
         ["place_id", "external_key", "source_id"],
         ref_rows,
     )
+    common.insert_many(
+        conn, "place_relation",
+        ["parent_id", "child_id", "relation", "fraction", "basis"],
+        relation_rows,
+    )
 
-    return {"place": len(place_rows), "place_source_ref": len(ref_rows)}
+    return {
+        "place": len(place_rows),
+        "place_source_ref": len(ref_rows),
+        "place_relation": len(relation_rows),
+    }
