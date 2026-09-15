@@ -85,24 +85,39 @@ FILES_ONLY_STEPS = [
 # ではない PK には暗黙の UNIQUE index が張られる）ので、ここでの assert は理論上
 # 冗長ではある。それでも「4モジュールが同じ DB に同居したときの主キー衝突」を
 # ビルドの最後に明示的に検証しておく（統合作業の受け入れ基準）。
+# column は単一列（str）のほか、複合キー（tuple）も受け付ける（PRIMARY KEY / UNIQUE
+# 制約が無い複合キー、例: place_relation の (parent_id, child_id, relation) を
+# 専用関数ではなくこの宣言リストで表すため）。
 ID_UNIQUENESS_CHECKS = [
     ("unit", "unit_id"),
     ("variable", "variable_id"),
     ("place", "place_id"),
     ("taxon", "taxon_id"),
     ("caveat", "caveat_id"),
+    ("place_relation", ("parent_id", "child_id", "relation")),
 ]
 
 
 def _assert_id_uniqueness(conn) -> None:
     for table, column in ID_UNIQUENESS_CHECKS:
-        total = conn.execute(f"SELECT count({column}) FROM {table}").fetchone()[0]
-        distinct = conn.execute(f"SELECT count(DISTINCT {column}) FROM {table}").fetchone()[0]
+        # SQLite の count(DISTINCT a, b) は使えない（DISTINCT は集約関数の引数1個にしか
+        # 掛からない）ので、複合キーは「SELECT count(*) FROM (SELECT DISTINCT ... FROM t)」
+        # の形で組み立てる。単一列でも同じ式で total/distinct とも求まる。
+        cols = (column,) if isinstance(column, str) else column
+        collist = ", ".join(cols)
+        total = conn.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+        distinct = conn.execute(
+            f"SELECT count(*) FROM (SELECT DISTINCT {collist} FROM {table})"
+        ).fetchone()[0]
         if total != distinct:
+            label = f"{table}.{collist}" if isinstance(column, str) else f"{table}({collist})"
             raise AssertionError(
-                f"{table}.{column} が一意ではない: {total:,}行中 distinct は {distinct:,}"
+                f"{label} が一意ではない: {total:,}行中 distinct は {distinct:,}"
             )
-        print(f"  一意性OK: {table}.{column} ({distinct:,})")
+        if isinstance(column, str):
+            print(f"  一意性OK: {table}.{collist} ({distinct:,})")
+        else:
+            print(f"  一意性OK: {table}({collist}) ({distinct:,})")
 
 
 # 外部キーが親テーブルの主キーを指しているかの検証（/simplify 指摘A: 同型の参照整合性
@@ -143,12 +158,15 @@ def _assert_id_references(conn) -> None:
 # ならない（ADR-0022 決定1）。common.region_id_for_scoped_id() を通した値だけが入る
 # 設計だが、build_place.py 以外の経路（将来の別モジュール・手動の INSERT）が
 # この不変条件を破っていないかを、生成後の DB に対して機械的に検証する。
+# 期待値の算出は common.region_id_for_scoped_id() 自体を使う（自前で再実装すると
+# 規則が二重管理になるうえ、こちらの方が発行側より緩くなりうる。実際 place_id に
+# ':' が無い壊れた行を common.scope_of() は ValueError で止めるが、split(":", 1)[0]
+# は黙って ID 全体をスコープ扱いしていた）。
 def _assert_region_id_scope_invariant(conn) -> None:
     rows = conn.execute("SELECT place_id, region_id FROM place").fetchall()
     bad = []
     for place_id, region_id in rows:
-        scope = place_id.split(":", 1)[0]
-        expected = None if scope == "common" else scope
+        expected = common.region_id_for_scoped_id(place_id)
         if region_id != expected:
             bad.append((place_id, region_id, expected))
     if bad:
@@ -158,22 +176,6 @@ def _assert_region_id_scope_invariant(conn) -> None:
             f"（ADR-0022 決定1）。例: {sample}"
         )
     print(f"  region_id 不変条件OK: {len(rows):,} 件（common:->NULL, <region>:-><region>）")
-
-
-# (parent_id, child_id, relation) の組の一意性。PRIMARY KEY 制約が無い複合キーなので
-# variable_alias の (dataset, alias, source_id) と同じ流儀で Python 側の表明にする
-# （schema_registry.sql に UNIQUE 制約は張らない。registry/README.md 参照）。
-def _assert_place_relation_uniqueness(conn) -> None:
-    total = conn.execute("SELECT count(*) FROM place_relation").fetchone()[0]
-    distinct = conn.execute(
-        "SELECT count(*) FROM (SELECT DISTINCT parent_id, child_id, relation FROM place_relation)"
-    ).fetchone()[0]
-    if total != distinct:
-        raise AssertionError(
-            f"place_relation の (parent_id, child_id, relation) が一意ではない: "
-            f"{total:,}行中 distinct は {distinct:,}"
-        )
-    print(f"  一意性OK: place_relation(parent_id, child_id, relation) ({distinct:,})")
 
 
 def main() -> None:
@@ -223,7 +225,6 @@ def main() -> None:
         _assert_id_uniqueness(conn)
         _assert_id_references(conn)
         _assert_region_id_scope_invariant(conn)
-        _assert_place_relation_uniqueness(conn)
     finally:
         conn.close()
         for c in src.values():

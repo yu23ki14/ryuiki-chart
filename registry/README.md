@@ -81,42 +81,33 @@ assert する（`scripts/r01_build_registry.py` の `_assert_id_uniqueness`）�
 PRIMARY KEY 制約により挿入時点でも保証されるが、4モジュールが同じ DB に同居する統合作業の
 受け入れ基準として明示的に確認している。
 
-### `place.region_id` と `place_relation`（Phase B `phase-b/region-scope`, ADR-0022）
+### `place.region_id` と `place_relation`（Phase B `phase-b/region-scope`。理由・経緯は ADR-0022 参照）
 
-`place.region_id` は **`place_id` 自身のスコープ（`<scope>:place:...` の `<scope>`）と
-一致させる**。`common` なら `region_id=NULL`（地域非依存。レジストリと県境をまたぐ実体、
-例: 相模川水系・独自グリッド `grid01`）、それ以外（例 `jp-14`）なら `region_id=<scope>`
-そのもの。`scripts/registry/common.py` の `region_id_for_scoped_id()` が発行済みの
-`place_id` から導出し（値を別途ハードコードしない）、`scripts/r01_build_registry.py` が
-ビルドのたびにこの不変条件を検証する（`_assert_region_id_scope_invariant`。1行でも
-崩れたら止まる）。実測: `common -> NULL` 4,460件（grid01 4,083 + watershed 377）、
+`place.region_id` は `place_id` のスコープと一致させる: `common` なら `region_id=NULL`、
+それ以外（例 `jp-14`）なら `region_id=<scope>` そのもの。`scripts/registry/common.py` の
+`region_id_for_scoped_id()` が発行済みの `place_id` から導出し、
+`scripts/r01_build_registry.py` の `_assert_region_id_scope_invariant` がビルドのたびに
+検証する。実測: `common -> NULL` 4,460件（grid01 4,083 + watershed 377）、
 `jp-14 -> jp-14` 500件（site 495 + zone 5）。
 
-「所在（この place が地理的にどこにあるか）」は `region_id` 列ではなく **`place_relation`**
-の辺で表す。Phase B で作った最初の辺は地点→ゾーンだけ（`sites.zone` 由来、290件。
-`sites.zone IS NOT NULL` の地点数と一致する）:
+「所在」は `region_id` 列ではなく `place_relation` の辺で表す。Phase B で作った最初の
+辺は地点→ゾーンだけ（290件 = `sites.zone IS NOT NULL` の地点数）:
 
 ```
 place_relation(parent_id=ゾーンのplace_id, child_id=地点のplace_id,
                 relation='within', fraction=1.0, basis=<zone.yamlの定義を指す文字列>)
 ```
 
-`fraction` は **NOT NULL**。全体を含む関係には `1.0` を入れる（「NULL＝全体」という
-暗黙の意味を持たせない。ADR-0011 の「`fraction` があるものは加重する」を常に同じ式で
-書けるようにするため）。`(parent_id, child_id, relation)` の一意性は DDL の `UNIQUE`
-制約ではなく r01 の Python 表明で検証する（`variable_alias` の `(dataset, alias, source_id)`
-一意性と同じ流儀。`ID_REFERENCE_CHECKS` に `place_relation.parent_id`/`child_id` ->
-`place.place_id` も追加してある）。`source_edition_id`（ADR-0006 が挙げる列）はまだ
-持たない — 出典の版管理（`source_registry`/`source_edition`, ADR-0005）自体が Phase C の
-仕事で、いま作る唯一の辺の出典は `registry/place/zone.yaml` という手書きファイル1つに
-固定されているため。
+`fraction` は NOT NULL・常に `1.0`。`(parent_id, child_id, relation)` の一意性は DDL の
+`UNIQUE` 制約ではなく r01 の `ID_UNIQUENESS_CHECKS`（Python 表明）で検証する
+（`ID_REFERENCE_CHECKS` に `place_relation.parent_id`/`child_id` -> `place.place_id` も
+ある）。`source_edition_id`（ADR-0006 が挙げる列）はまだ持たない。
 
 `place_relation` はまだ `web/src/db/schema-registry.ts`（D1）に無い。地域・ゾーン単位の
 ロールアップ集計のような消費者がまだ無いため、載せる判断を先送りしている
 （ADR-0001: D1 は捨てて作り直せる配信キャッシュ）。`web/scripts/seed-d1-local.mjs` は
-D1 側に既に存在するテーブルだけをシードするので（`registry.sqlite` にテーブルが1つ
-増えても、D1 の migration に無ければ単に読み飛ばされる）、この先送りはローカル D1 の
-シードを壊さない。
+D1 側に既に存在するテーブルだけをシードするので、この先送りはローカル D1 のシードを
+壊さない。
 
 ### `variable_alias.csv` の列（Phase B: 出典 × 表記で解決する）
 

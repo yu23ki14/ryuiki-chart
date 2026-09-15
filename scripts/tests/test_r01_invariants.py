@@ -52,7 +52,21 @@ def test_region_id_scope_invariant_raises_for_region_scope_with_null(empty_regis
         r01._assert_region_id_scope_invariant(empty_registry)
 
 
+def test_region_id_scope_invariant_raises_for_malformed_place_id(empty_registry):
+    """place_id に ':' が無い壊れた行は common.scope_of() が ValueError を投げる
+    （common.region_id_for_scoped_id() をそのまま使うようになったので、以前のように
+    ID 全体をスコープ扱いして黙って通すことはない）。"""
+    _insert_place(empty_registry, "malformed-place-id-without-colon", None)
+    empty_registry.commit()
+
+    with pytest.raises(ValueError, match="scoped_id の形が想定外"):
+        r01._assert_region_id_scope_invariant(empty_registry)
+
+
 def test_place_relation_uniqueness_passes_for_distinct_edges(empty_registry):
+    """place_relation の複合キー一意性は ID_UNIQUENESS_CHECKS / _assert_id_uniqueness
+    に統合済み（専用関数 _assert_place_relation_uniqueness は無い）。他のテーブルは
+    空のままなので distinct と total が両方 0 で一致し、trivially に通る。"""
     empty_registry.executemany(
         "INSERT INTO place_relation (parent_id, child_id, relation, fraction) VALUES (?,?,?,?)",
         [
@@ -62,7 +76,7 @@ def test_place_relation_uniqueness_passes_for_distinct_edges(empty_registry):
     )
     empty_registry.commit()
 
-    r01._assert_place_relation_uniqueness(empty_registry)  # 例外を投げなければOK
+    r01._assert_id_uniqueness(empty_registry)  # 例外を投げなければOK
 
 
 def test_place_relation_uniqueness_raises_for_duplicate_edge(empty_registry):
@@ -76,7 +90,7 @@ def test_place_relation_uniqueness_raises_for_duplicate_edge(empty_registry):
     empty_registry.commit()
 
     with pytest.raises(AssertionError, match="一意ではない"):
-        r01._assert_place_relation_uniqueness(empty_registry)
+        r01._assert_id_uniqueness(empty_registry)
 
 
 def test_id_references_catches_dangling_place_relation_child(empty_registry):
