@@ -185,3 +185,23 @@ Phase A の判断が誤りだったという意味ではない——**計画ど�
 オーナーの指摘。`unknown` は `detection_flag` の意味不明コード（`'10'`/`'20'`/`'30'` 等、
 ADR-0009 背景参照）専用の語彙として残し、`◯未満` は `below_lod` に写す（実測: この変更の
 結果、`unknown` は実データに対して0件になった）。
+
+### `synthetic_sensor`（合成センサー）の grain は `hour` ではなく `instant` だった
+
+`registry/variable_alias.csv` の `synthetic_sensor`（`water_temperature`/`soil_moisture`）2行が
+`grain='hour'` になっていたが、データを作っている `scripts/s01_synthetic.py` の
+`build_sensor_timeseries()`（749行〜）は764-765行目で `for h in (0, 6, 12, 18)` により
+**0時・6時・12時・18時ちょうどの点サンプル**（時刻 `h` の正弦波で日内変動を載せた瞬時値、
+水温は気温からの回帰＋日内変動、土壌水分は前時刻からの減衰＋降水量で更新した瞬時値）を
+生成しているだけで、1時間の区間を代表する平均値等ではない。ADR-0008 の `grain` 語彙表には
+`instant`（時刻点。`period_end = period_start`）が元からあったが、`scripts/registry/
+build_unit_variable.py` の `GRAIN_CODES` にはまだ入っていなかった（実データでの使用例が
+無かったため）。この2行を `grain='instant'` に直し、`GRAIN_CODES` に `instant` を追加した。
+
+気づいたきっかけは、Phase B の縦に薄い1本の次（`sensor_timeseries` 側の縦線）に向けて
+「センサー行が指すのは区間か時刻点か」をどこかで機械的に宣言する必要が出てきたこと。
+`sensor_timeseries` は `scripts/b03_build_observation.py` の `variable_alias` 結合が
+`dataset='measurements'` 限定（`b05_project_v1.py` も同様）なので、現時点ではこの2行の
+`grain` を読む消費者は無く、今回の変更で `web/`（`lookup.ts`/`lookup-client.ts` は
+`stat`/`grain` の値そのものを呼び出し側に返さない設計）・AIツール・`scripts/b0*` の
+挙動は変わらない。`sensor_timeseries` の縦線を作るときに、この宣言が効いてくる。
