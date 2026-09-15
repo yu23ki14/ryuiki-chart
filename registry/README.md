@@ -77,12 +77,10 @@ pnpm run db:setup                        # migrate + seed。registry.sqlite も4
    「古い」と判定され、実際のビルドに進んで `open_source('derived')` の分かりやすいエラー
    （`build:derived` を促す）で止まる。
 
-**`ryuiki.sqlite` / `cells.sqlite` は `mode` に関わらず指紋に含めない。** 読み取り専用で
-扱ってはいるが、書き手は `scripts/m0x_*.py` に限られる。理由は実務上の2つ:
-`organism_records` だけで82万行あり毎回 SELECT するコストが釣り合わないことと、
-**`ensure-registry.sh` は `m0x_*.py` による原本の書き換えを検知できない**という既知の限界
-（隠さず明記する）。**`m0x_*.py` で原本（ryuiki/cells）を書き換えたら、
-`cd web && pnpm run build:registry` を明示的に走らせること。**
+**`ryuiki.sqlite` / `cells.sqlite` は `mode` に関わらず指紋に含めない。** 理由は
+`scripts/registry/common.py` の `compute_input_fingerprint()` docstring 参照（正はそちら1箇所）。
+**`m0x_*.py` で原本（ryuiki/cells）を書き換えたら、`cd web && pnpm run build:registry` を
+明示的に走らせること**（`ensure-registry.sh` はこの書き換えを検知できないため）。
 
 `mode` は `full`（通常ビルド）/`files_only`（`--files-only`）。実行時刻は持たない（決定論）。
 
@@ -90,16 +88,9 @@ pnpm run db:setup                        # migrate + seed。registry.sqlite も4
 何も書かずに、対象の registry.sqlite（`RYUIKI_REGISTRY_DB` を尊重）が今の入力と一致するかだけを
 判定する。**PyYAML を import しない**（実際にビルドする4モジュールのうち3つが registry/*.yaml
 を読むために PyYAML に依存するが、`--check-fresh` はそれらを import せずに完結する）。
-終了コードは3種類を区別する:
-
-- `0`（`EXIT_FRESH`）: 今の入力から作ったものと一致する。
-- `10`（`EXIT_STALE`）: 一致しない（ファイルが無い/古い/壊れている等）。
-- それ以外: **判定できない**（Python が起動できない・`--check-fresh` 自体が例外で
-  落ちた等）。「古い」と誤読して作り直しに進むと、同じ原因（例: PyYAML 未インストール）で
-  rebuild 側も落ち、`db:setup` 全体が止まる退行を生む（以前実際に踏まれた: 本ファイルが
-  モジュール読み込み時に無条件で PyYAML の有無を確認しており、`--check-fresh` もこれに
-  巻き込まれて非0を返し、シェル側の「非0はすべて古い」という単純な読みと組み合わさって
-  落ちた）。
+終了コードは `EXIT_FRESH`=0 / `EXIT_STALE`=10 / それ以外=判定できない、の3種類。それぞれの
+意味と、「判定できない」を「古い」と誤読してはいけない理由は `scripts/r01_build_registry.py`
+のモジュール docstring 参照（正はそちら1箇所）。
 
 `web/scripts/ensure-registry.sh` はこの終了コードで3分岐する: `0` なら作り直さない、`10` なら
 作り直す、それ以外は「判定できない」として——レジストリが在るなら警告を出して今のファイルを

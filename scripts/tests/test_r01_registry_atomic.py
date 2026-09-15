@@ -18,6 +18,8 @@ import pytest
 import r01_build_registry as r01
 from registry import common
 
+from .registry_fixtures import make_derived_places_db
+
 
 # ---------------------------------------------------------------------------
 # 1. 原子性: チェック / ビルドが失敗しても前の正規ファイルはバイト単位で残り、
@@ -31,45 +33,47 @@ def _run_files_only(monkeypatch, target) -> None:
     r01.main()
 
 
-def test_atomic_build_failure_preserves_previous_registry(monkeypatch, tmp_path):
-    """ビルドステップそのものが例外を投げるケース。"""
+def _boom_build_step(conn, _src):
+    raise RuntimeError("ビルド中の例外（テスト用）")
+
+
+def _boom_post_build_check(conn):
+    raise AssertionError("チェック失敗（テスト用）")
+
+
+@pytest.mark.parametrize(
+    "attr, value, exc_type, match",
+    [
+        pytest.param(
+            "FILES_ONLY_STEPS", [("boom", _boom_build_step)], RuntimeError, "ビルド中の例外",
+            id="build_step_raises",
+        ),
+        pytest.param(
+            "_assert_id_uniqueness", _boom_post_build_check, AssertionError, "チェック失敗",
+            id="post_build_check_raises",
+        ),
+    ],
+)
+def test_atomic_failure_preserves_previous_registry(
+    monkeypatch, tmp_path, attr, value, exc_type, match
+):
+    """ビルドステップそのものが例外を投げるケースと、ビルド後のチェック
+    （_assert_id_uniqueness 等）が落ちるケースの両方で、前の正規ファイルがバイト単位で
+    残り、一時ファイルも残らない。"""
     target = tmp_path / "registry.sqlite"
     _run_files_only(monkeypatch, target)  # 1回目: 正常終了して正規のレジストリができる
     assert target.exists()
     good_bytes = target.read_bytes()
 
-    def _boom(conn, _src):
-        raise RuntimeError("ビルド中の例外（テスト用）")
-
-    monkeypatch.setattr(r01, "FILES_ONLY_STEPS", [("boom", _boom)])
+    monkeypatch.setattr(r01, attr, value)
     monkeypatch.setattr(sys, "argv", ["r01_build_registry.py", "--files-only"])
     monkeypatch.setenv("RYUIKI_REGISTRY_DB", str(target))
 
-    with pytest.raises(RuntimeError, match="ビルド中の例外"):
+    with pytest.raises(exc_type, match=match):
         r01.main()
 
     assert target.read_bytes() == good_bytes  # 前の正規ファイルがバイト単位で残る
     assert list(tmp_path.glob("registry.sqlite.tmp-*")) == []  # 一時ファイルも残らない
-
-
-def test_atomic_check_failure_preserves_previous_registry(monkeypatch, tmp_path):
-    """ビルド後のチェック（_assert_id_uniqueness 等）が落ちるケース。"""
-    target = tmp_path / "registry.sqlite"
-    _run_files_only(monkeypatch, target)
-    good_bytes = target.read_bytes()
-
-    def _boom(conn):
-        raise AssertionError("チェック失敗（テスト用）")
-
-    monkeypatch.setattr(r01, "_assert_id_uniqueness", _boom)
-    monkeypatch.setattr(sys, "argv", ["r01_build_registry.py", "--files-only"])
-    monkeypatch.setenv("RYUIKI_REGISTRY_DB", str(target))
-
-    with pytest.raises(AssertionError, match="チェック失敗"):
-        r01.main()
-
-    assert target.read_bytes() == good_bytes
-    assert list(tmp_path.glob("registry.sqlite.tmp-*")) == []
 
 
 # ---------------------------------------------------------------------------
@@ -133,31 +137,32 @@ def test_check_fresh_returns_stale_when_registry_build_table_missing(tmp_path):
     assert r01._check_fresh(target, common.MODE_FULL) == r01.EXIT_STALE
 
 
-def test_check_fresh_returns_stale_when_mode_differs(tmp_path, monkeypatch):
+@pytest.mark.parametrize(
+    "stored_mode, stored_fingerprint, computed_fingerprint, expected_exit",
+    [
+        pytest.param(
+            common.MODE_FILES_ONLY, "fp-1", "fp-1", "EXIT_STALE", id="mode_differs",
+        ),
+        pytest.param(
+            common.MODE_FULL, "fp-old", "fp-new", "EXIT_STALE", id="fingerprint_differs",
+        ),
+        pytest.param(
+            common.MODE_FULL, "fp-1", "fp-1", "EXIT_FRESH", id="mode_and_fingerprint_match",
+        ),
+    ],
+)
+def test_check_fresh_mode_and_fingerprint_combinations(
+    tmp_path, monkeypatch, stored_mode, stored_fingerprint, computed_fingerprint, expected_exit
+):
+    """`registry_build` に記録済みの mode/指紋と、今の入力（モック）の組み合わせで
+    EXIT_FRESH/EXIT_STALE が正しく決まる。判定対象の mode は常に MODE_FULL
+    （mode 不一致・指紋不一致・両方一致の3ケース）。"""
     target = tmp_path / "registry.sqlite"
-    _make_registry_with_build_row(target, "fp-1", common.MODE_FILES_ONLY)
+    _make_registry_with_build_row(target, stored_fingerprint, stored_mode)
 
-    monkeypatch.setattr(common, "compute_input_fingerprint", lambda *a, **k: "fp-1")
+    monkeypatch.setattr(common, "compute_input_fingerprint", lambda *a, **k: computed_fingerprint)
 
-    assert r01._check_fresh(target, common.MODE_FULL) == r01.EXIT_STALE
-
-
-def test_check_fresh_returns_stale_when_fingerprint_differs(tmp_path, monkeypatch):
-    target = tmp_path / "registry.sqlite"
-    _make_registry_with_build_row(target, "fp-old", common.MODE_FULL)
-
-    monkeypatch.setattr(common, "compute_input_fingerprint", lambda *a, **k: "fp-new")
-
-    assert r01._check_fresh(target, common.MODE_FULL) == r01.EXIT_STALE
-
-
-def test_check_fresh_returns_fresh_when_mode_and_fingerprint_match(tmp_path, monkeypatch):
-    target = tmp_path / "registry.sqlite"
-    _make_registry_with_build_row(target, "fp-1", common.MODE_FULL)
-
-    monkeypatch.setattr(common, "compute_input_fingerprint", lambda *a, **k: "fp-1")
-
-    assert r01._check_fresh(target, common.MODE_FULL) == r01.EXIT_FRESH
+    assert r01._check_fresh(target, common.MODE_FULL) == getattr(r01, expected_exit)
 
 
 def test_check_fresh_end_to_end_after_files_only_build(monkeypatch, tmp_path):
@@ -285,18 +290,6 @@ def test_check_fresh_without_pyyaml_does_not_import_yaml(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def _write_derived_sqlite(path, watershed_rows, mesh_rows) -> None:
-    conn = sqlite3.connect(path)
-    conn.execute(
-        "CREATE TABLE watershed_meta (watershed_id TEXT, water_system_name TEXT)"
-    )
-    conn.execute("CREATE TABLE mesh_all (mlat INTEGER, mlon INTEGER)")
-    conn.executemany("INSERT INTO watershed_meta VALUES (?, ?)", watershed_rows)
-    conn.executemany("INSERT INTO mesh_all VALUES (?, ?)", mesh_rows)
-    conn.commit()
-    conn.close()
-
-
 def test_fingerprint_full_mode_changes_when_taxon_crosswalk_csv_changes(tmp_path):
     root = tmp_path / "repo"
     _make_fingerprint_input_tree(root)
@@ -316,7 +309,9 @@ def test_fingerprint_full_mode_changes_when_derived_tables_change(tmp_path):
     _make_fingerprint_input_tree(root)
     (root / "data" / "db").mkdir(parents=True)
     derived_path = root / "data" / "db" / "derived.sqlite"
-    _write_derived_sqlite(derived_path, [("w1", "川1")], [(3500, 13900)])
+    # watershed_meta は build_place.py が実際に SELECT する列を持つ（残りは None で埋める。
+    # scripts/tests/registry_fixtures.py の共通フィクスチャ）。
+    make_derived_places_db(derived_path, [("w1", "川1", None, None, None, None)], [(3500, 13900)])
 
     before = common.compute_input_fingerprint(root=root, mode=common.MODE_FULL)
 
@@ -367,7 +362,9 @@ def test_fingerprint_files_only_mode_never_touches_derived_or_taxon_crosswalk(tm
     (root / "data" / "processed").mkdir(parents=True)
     (root / "data" / "processed" / "taxon_crosswalk.csv").write_text("x\n", encoding="utf-8")
     (root / "data" / "db").mkdir(parents=True)
-    _write_derived_sqlite(root / "data" / "db" / "derived.sqlite", [("w1", "川1")], [])
+    make_derived_places_db(
+        root / "data" / "db" / "derived.sqlite", [("w1", "川1", None, None, None, None)], []
+    )
 
     fp_with = common.compute_input_fingerprint(root=root, mode=common.MODE_FILES_ONLY)
 
@@ -386,7 +383,7 @@ def test_fingerprint_full_mode_handles_missing_derived_without_crashing(tmp_path
     assert fp_missing  # 例外にならない
 
     (root / "data" / "db").mkdir(parents=True)
-    _write_derived_sqlite(root / "data" / "db" / "derived.sqlite", [], [])
+    make_derived_places_db(root / "data" / "db" / "derived.sqlite", [], [])
     fp_present = common.compute_input_fingerprint(root=root, mode=common.MODE_FULL)
 
     assert fp_missing != fp_present
@@ -498,3 +495,49 @@ def test_cleanup_stale_tmp_files_ignores_different_target_name(tmp_path):
     common.cleanup_stale_tmp_files(target, max_age_seconds=3600)
 
     assert other_old_tmp.exists()
+
+
+# ---------------------------------------------------------------------------
+# 9. _hash_labeled: _hash_optional_file / _hash_derived_tables の「無い」分岐が
+#    共有する下請けへの整理前後で、同じ入力に対して同じバイト整形になること
+#    （指紋そのものの値は入力にビルドコード自身も含むため、整理前後で一致しない
+#    のが正しい——ここでは「整形のバイト列」だけを、旧実装をその場に書き下して比較する）
+# ---------------------------------------------------------------------------
+
+
+def test_hash_labeled_matches_previous_inline_byte_layout():
+    """`_hash_labeled()` が組み立てるバイト列が、整理前に `_hash_optional_file` /
+    `_hash_derived_tables` がそれぞれ別々にインライン実装していた
+    「ラベル + \\0 + (中身 or _ABSENT_MARKER) + \\0」と一致することを確認する。"""
+    import hashlib
+
+    for label, data in (("label", b"content"), ("label", None)):
+        got = hashlib.sha256()
+        common._hash_labeled(got, label, data)
+
+        want = hashlib.sha256()
+        want.update(label.encode("utf-8"))
+        want.update(b"\0")
+        want.update(data if data is not None else common._ABSENT_MARKER)
+        want.update(b"\0")
+
+        assert got.hexdigest() == want.hexdigest()
+
+
+def test_hash_optional_file_still_uses_hash_labeled_byte_layout(tmp_path):
+    """`_hash_optional_file()` を通した結果も、`_hash_labeled()` を直接呼んだ結果と
+    一致する（統合窓口として使われていることの確認）。"""
+    import hashlib
+
+    present = tmp_path / "present.txt"
+    present.write_bytes(b"hello")
+    missing = tmp_path / "missing.txt"
+
+    for path, label in ((present, "present.txt"), (missing, "missing.txt")):
+        via_file = hashlib.sha256()
+        common._hash_optional_file(via_file, label, path)
+
+        via_labeled = hashlib.sha256()
+        common._hash_labeled(via_labeled, label, path.read_bytes() if path.exists() else None)
+
+        assert via_file.hexdigest() == via_labeled.hexdigest()

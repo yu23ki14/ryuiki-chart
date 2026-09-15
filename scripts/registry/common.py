@@ -223,8 +223,10 @@ DERIVED_TABLE_WATERSHED_META = "watershed_meta"
 DERIVED_TABLE_MESH_ALL = "mesh_all"
 DERIVED_TABLES_READ = (DERIVED_TABLE_WATERSHED_META, DERIVED_TABLE_MESH_ALL)
 
-# build_taxon.py が読む、derived 以外の「読み取り専用だが値が変わりうる」入力
-# （`data/processed/taxon_crosswalk.csv`、scripts/c24_taxon_crosswalk.py の成果物）。
+# build_taxon.py が読み、指紋計算もハッシュする、derived 以外の「読み取り専用だが値が
+# 変わりうる」入力（scripts/c24_taxon_crosswalk.py の成果物）。DERIVED_TABLES_READ と同じ
+# 理由で、ビルド側（build_taxon.py の CROSSWALK_CSV）と指紋計算（_hash_optional_file 呼び出し
+# 側）がこの宣言を共有する（指紋の対象とビルドが実際に読むファイルがずれる穴を防ぐため）。
 TAXON_CROSSWALK_CSV_RELPATH = pathlib.PurePosixPath("data/processed/taxon_crosswalk.csv")
 
 # full モード限定の入力が「無い」ときに指紋へ混ぜる固定マーカー。実際の中身とは
@@ -255,18 +257,25 @@ def _fingerprint_source_paths(root: pathlib.Path) -> list[pathlib.Path]:
     return sorted(existing, key=lambda p: p.relative_to(root).as_posix())
 
 
+def _hash_labeled(h, label: str, data: bytes | None) -> None:
+    """`ラベル + \\0 + (中身 or _ABSENT_MARKER) + \\0` の形で `h` に混ぜる。
+
+    `_hash_optional_file()`（ファイル1個）と `_hash_derived_tables()`（テーブルが
+    丸ごと無いときのフォールバック）が同じバイト整形を別々に実装していたのを
+    1つの下請けにまとめたもの。`data=None` は「無い」を表し `_ABSENT_MARKER` を混ぜる。
+    """
+    h.update(label.encode("utf-8"))
+    h.update(b"\0")
+    h.update(data if data is not None else _ABSENT_MARKER)
+    h.update(b"\0")
+
+
 def _hash_optional_file(h, label: str, path: pathlib.Path) -> None:
     """`path` の中身を指紋に混ぜる。無ければクラッシュせず「無い」という固定
     マーカーを混ぜる（`_ABSENT_MARKER`）。`label` は相対パス文字列（存在有無に
     関わらず指紋に含める。ファイルの有無自体も指紋の一部にするため）。
     """
-    h.update(label.encode("utf-8"))
-    h.update(b"\0")
-    if path.exists():
-        h.update(path.read_bytes())
-    else:
-        h.update(_ABSENT_MARKER)
-    h.update(b"\0")
+    _hash_labeled(h, label, path.read_bytes() if path.exists() else None)
 
 
 def _hash_derived_tables(h, derived_path: pathlib.Path) -> None:
@@ -287,10 +296,7 @@ def _hash_derived_tables(h, derived_path: pathlib.Path) -> None:
     """
     if not derived_path.exists():
         for table in DERIVED_TABLES_READ:
-            h.update(table.encode("utf-8"))
-            h.update(b"\0")
-            h.update(_ABSENT_MARKER)
-            h.update(b"\0")
+            _hash_labeled(h, table, None)
         return
 
     conn = sqlite3.connect(f"file:{derived_path}?mode=ro", uri=True)
@@ -338,8 +344,7 @@ def compute_input_fingerprint(
     (2) `m0x_*.py` で原本を書き換えても `ensure-registry.sh` はその変更を検知
     **できない**——これは既知の限界であり隠さない（`prefer-declared-diffs-over-bending-data`
     と同じ考え方）。**原本 DB を書き換えたら
-    `cd web && pnpm run build:registry` を明示的に走らせること**
-    （`registry/README.md` にも同じ注意を書いてある）。
+    `cd web && pnpm run build:registry` を明示的に走らせること**。
 
     `root` を渡すとその配下を対象にする（テスト専用。一時ディレクトリにコピーした
     入力で指紋の変化を確認するため）。省略時はこのリポジトリ（`ROOT`）。

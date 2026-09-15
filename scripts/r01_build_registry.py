@@ -407,44 +407,43 @@ def main() -> None:
 
     conn = None
     try:
-        try:
-            # create_registry_db() 自体（スキーマ流し込み）の失敗も含めて try で囲む
-            # （fix 4）。以前はこの呼び出しが try の外にあり、ここで例外が出ると
-            # 一時ファイルの掃除にも src コネクションの close にも到達しなかった。
-            conn = common.create_registry_db(tmp_db)
+        # create_registry_db() 自体（スキーマ流し込み）の失敗も含めて try で囲む
+        # （fix 4）。以前はこの呼び出しが try の外にあり、ここで例外が出ると
+        # 一時ファイルの掃除にも src コネクションの close にも到達しなかった。
+        conn = common.create_registry_db(tmp_db)
 
-            totals: dict[str, int] = {}
-            for label, fn in steps:
-                print(f"▶ {label}")
-                counts = fn(conn, src) or {}
-                conn.commit()
-                if not counts:
-                    print("  (0行。まだスタブ)")
-                for table, n in counts.items():
-                    totals[table] = totals.get(table, 0) + n
-                    print(f"  {table}: {n:,} 行")
-
-            grand_total = sum(totals.values())
-            print(f"完了: {len(totals)} テーブル / {grand_total:,} 行")
-
-            _assert_id_uniqueness(conn)
-            _assert_id_references(conn)
-            _assert_region_id_scope_invariant(conn)
-
-            conn.execute("DELETE FROM registry_build")
-            conn.execute(
-                "INSERT INTO registry_build (input_fingerprint, mode) VALUES (?, ?)",
-                (fingerprint, mode),
-            )
+        totals: dict[str, int] = {}
+        for label, fn in steps:
+            print(f"▶ {label}")
+            counts = fn(conn, src) or {}
             conn.commit()
-            print(f"▶ 指紋(registry_build): {fingerprint}（mode={mode}, ビルド開始前に計算）")
-        except BaseException:
-            # ビルド中でもチェック中でも、失敗したら一時ファイルを消して正規パスには
-            # 一切触れない（前の正しいレジストリをバイト単位で残す）。
-            if conn is not None:
-                conn.close()
-            common.remove_sqlite_file(tmp_db)
-            raise
+            if not counts:
+                print("  (0行。まだスタブ)")
+            for table, n in counts.items():
+                totals[table] = totals.get(table, 0) + n
+                print(f"  {table}: {n:,} 行")
+
+        grand_total = sum(totals.values())
+        print(f"完了: {len(totals)} テーブル / {grand_total:,} 行")
+
+        _assert_id_uniqueness(conn)
+        _assert_id_references(conn)
+        _assert_region_id_scope_invariant(conn)
+
+        conn.execute("DELETE FROM registry_build")
+        conn.execute(
+            "INSERT INTO registry_build (input_fingerprint, mode) VALUES (?, ?)",
+            (fingerprint, mode),
+        )
+        conn.commit()
+        print(f"▶ 指紋(registry_build): {fingerprint}（mode={mode}, ビルド開始前に計算）")
+    except BaseException:
+        # ビルド中でもチェック中でも、失敗したら一時ファイルを消して正規パスには
+        # 一切触れない（前の正しいレジストリをバイト単位で残す）。
+        if conn is not None:
+            conn.close()
+        common.remove_sqlite_file(tmp_db)
+        raise
     finally:
         for c in src.values():
             c.close()
