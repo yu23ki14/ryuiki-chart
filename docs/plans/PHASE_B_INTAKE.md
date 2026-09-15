@@ -190,7 +190,7 @@ ADR-0009 背景参照）専用の語彙として残し、`◯未満` は `below_
 
 `registry/variable_alias.csv` の `synthetic_sensor`（`water_temperature`/`soil_moisture`）2行が
 `grain='hour'` になっていたが、データを作っている `scripts/s01_synthetic.py` の
-`build_sensor_timeseries()`（749行〜）は764-765行目で `for h in (0, 6, 12, 18)` により
+`build_sensor_timeseries()` の `for h in (0, 6, 12, 18)` により
 **0時・6時・12時・18時ちょうどの点サンプル**（時刻 `h` の正弦波で日内変動を載せた瞬時値、
 水温は気温からの回帰＋日内変動、土壌水分は前時刻からの減衰＋降水量で更新した瞬時値）を
 生成しているだけで、1時間の区間を代表する平均値等ではない。ADR-0008 の `grain` 語彙表には

@@ -115,11 +115,8 @@ def _assert_fiscal_year_not_first_when_mixed(rows: list[dict]) -> None:
 # 使われている値の集合であり、新しい値を推測で発明しないためのガード
 # （このリストに無い値が来たらビルドを落とす。値を増やすときはこのリスト自体を
 # 更新し、根拠を PHASE_B_ALIAS_STAT_SOURCES.md 等に残すこと）。
-# 'instant' は ADR-0008（時間は「区間＋粒度」の3点セット、period_end=period_start）の
-# 語彙にあったが、このリストにはまだ足していなかった。synthetic_sensor の
-# water_temperature / soil_moisture（scripts/s01_synthetic.py の build_sensor_timeseries()）
-# が0/6/12/18時ちょうどの点サンプルで、1時間区間の代表値ではないと判明したため
-# （元は grain=hour だったが誤り）、ここに追加した。
+# 'instant' は ADR-0008 の語彙にあったが未使用だったため追加。経緯は
+# docs/plans/PHASE_B_INTAKE.md 参照。
 GRAIN_CODES = frozenset({"hour", "day", "month", "year", "fiscal_year", "instant"})
 STAT_CODES = frozenset({
     "", "point", "mean", "min", "max", "sum",

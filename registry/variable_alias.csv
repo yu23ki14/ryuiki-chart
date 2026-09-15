@@ -78,10 +78,10 @@ n14jiokisan,measurements,env_kousui_annual_kanagawa,common:variable:water.14_dio
 沈下面積(1cm以上2cm未満),measurements,kanagawa_jiban_chinka,common:variable:land.subsidence_area_1_2cm,common:unit:km2,,year,
 沈下面積(2cm以上),measurements,kanagawa_jiban_chinka,common:variable:land.subsidence_area_2cm_plus,common:unit:km2,,year,
 調査面積,measurements,kanagawa_jiban_chinka,common:variable:land.survey_area,common:unit:km2,,year,
-water_temperature,sensor_timeseries,synthetic_sensor,common:variable:water.water_temp,,,instant,source_id=synthetic_sensor（合成データ。domain.ts の DATA_CAVEATS.synthetic 参照）。scripts/s01_synthetic.py の build_sensor_timeseries()（749行〜）の764-765行目: 0時・6時・12時・18時ちょうどにタイムスタンプを打つ点サンプル（正弦波で日内変動を載せた瞬時値）を生成しており、1時間区間の代表値ではない。grain=hourではなくinstant（ADR-0008: instantはperiod_end=period_start）。
+water_temperature,sensor_timeseries,synthetic_sensor,common:variable:water.water_temp,,,instant,source_id=synthetic_sensor（合成データ）。grain=instant（0/6/12/18時の点サンプル。経緯は docs/plans/PHASE_B_INTAKE.md）
 河川水位_日平均,sensor_timeseries,yokohama_river_waterlevel,common:variable:hydro.river_stage,common:unit:m,mean,day,
 河川水位_日最高,sensor_timeseries,yokohama_river_waterlevel,common:variable:hydro.river_stage,common:unit:m,max,day,
-soil_moisture,sensor_timeseries,synthetic_sensor,common:variable:hydro.soil_moisture,common:unit:m3_per_m3,,instant,source_id=synthetic_sensor（合成データ）。scripts/s01_synthetic.py の build_sensor_timeseries()（749行〜）の764-765行目: 0時・6時・12時・18時ちょうどにタイムスタンプを打つ点サンプル（前時刻からの減衰＋降水量で更新した瞬時値）を生成しており、1時間区間の代表値ではない。grain=hourではなくinstant（ADR-0008: instantはperiod_end=period_start）。
+soil_moisture,sensor_timeseries,synthetic_sensor,common:variable:hydro.soil_moisture,common:unit:m3_per_m3,,instant,source_id=synthetic_sensor（合成データ）。grain=instant（0/6/12/18時の点サンプル。経緯は docs/plans/PHASE_B_INTAKE.md）
 NO2(ppm),sensor_timeseries,soramame_hourly_kanagawa,common:variable:air.no2,common:unit:ppm,,hour,
 二酸化窒素（NO2）_日平均,sensor_timeseries,hiratsuka_taiki,common:variable:air.no2,common:unit:ppb,mean,day,"平塚市大気環境状況 1時間値データフォーマット説明書（測定項目番号表, images/1hour_description.pdf）"
 SO2(ppm),sensor_timeseries,soramame_hourly_kanagawa,common:variable:air.so2,common:unit:ppm,,hour,
