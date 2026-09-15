@@ -55,6 +55,16 @@
   経緯は `docs/COLLECTOR_CONTRACT.md` の追記を読むこと。
 - 新しいエリア（東京都・沖縄県・兵庫県など）を足すときは `docs/add_area.md` の手順に従う。
   方式（単一 D1 + `region_id`）は `docs/adr/0002-multi-region.md` で決定済みで蒸し返さない。
+- Phase B（ADR-0016）の縦に薄い1本は `scripts/b03_build_observation.py`（`measurements`→
+  `observation`）/ `scripts/b04_build_cube.py`（`observation`→キューブ `observation_agg`）/
+  `scripts/b05_project_v1.py`（キューブ→v1形）の3本。出力は `data/db/v2.sqlite`
+  （`observation`/`observation_agg`）と `data/db/v1_projection.sqlite`
+  （`meas_daily`/`meas_month`/`meas_year`）で、どちらも `.gitignore` 済み・捨てて作り直せる。
+  設計・実測は `docs/plans/PHASE_B_FACT_SLICE.md`。
+- **キューブ（`observation_agg`）を作るのは SQLite 3.43 以降でなければならない**
+  （`b04_build_cube.py` が起動時に検証して止める。`AVG()`/`SUM()` の加算アルゴリズムが
+  3.43 で変わり、それより前だと平均値が黙って変わる行がある。見るのは `sqlite3` CLI では
+  なく Python 同梱の `sqlite3` モジュールのバージョン。詳細は `docs/adr/0021-observation-grain-and-cube-key.md`）。
 
 ## 開発フロー
 

@@ -10,12 +10,23 @@ name: CI
 # - web: lint・型検査・テスト（`generated.test.ts` の再生成チェックが走るよう、
 #   ここでも --files-only で registry.sqlite を用意する）。
 # - reconcile: Phase B 突合ハーネス（scripts/b01_derived_baseline.py /
-#   scripts/b02_derived_compare.py / scripts/reconcile/*.py）のフィクスチャテストと、
-#   reports/derived_baseline.json がコミットされていることの確認。
+#   scripts/b02_derived_compare.py / scripts/b03_build_observation.py /
+#   scripts/b04_build_cube.py / scripts/b05_project_v1.py / scripts/reconcile/*.py /
+#   scripts/migrate/*.py）のフィクスチャテストと、以下の構造検証（いずれも
+#   data/db/*.sqlite・data/db/derived.sqlite を一切必要としない）:
+#     - reports/derived_baseline.json がコミットされ、schema_version が一致すること。
+#     - scripts/reconcile/expected_diffs.yaml が読めて形（テーブル名 -> 宣言のリスト）を
+#       満たし、テーブル名が derived_baseline.json に実在し、key の要素数がそのテーブルの
+#       キー列数と一致し、kind が3種のいずれかであること
+#       （scripts/b02_derived_compare.py の `main()` と同じ `common.validate_expected_diffs`
+#       を呼ぶ。検証ロジックの二重定義を避けるため）。
+#     - scripts/migrate/period_exceptions.yaml が読めて、各エントリが
+#       period_grain_override/expected_row_count/reason/restoration_plan を持つこと
+#       （`migrate.period.validate_period_exceptions_shape`）。
 #   docs/plans/PHASE_B_RECONCILIATION.md §5「CI の限界」で明言しているとおり、
-#   このジョブが保証するのはこの2点だけ。実データ（data/db/derived.sqlite、14GB）に
-#   対する b01 の再実行や b02 の完全モード突合は、原本のある環境でしか走らない
-#   （ここではやらないし、やれない）。
+#   このジョブが保証するのはハーネス自体の正しさとこれらの構造検証だけ。実データ
+#   （data/db/derived.sqlite、14GB）に対する b01 の再実行や b02 の完全モード突合は、
+#   原本のある環境でしか走らない（ここではやらないし、やれない）。
 
 on:
   push:
@@ -118,13 +129,15 @@ jobs:
 
   reconcile:
     name: reconcile (Phase B harness fixtures; does NOT touch real data)
-    # ここが保証するのは docs/plans/PHASE_B_RECONCILIATION.md §5 の2点だけ:
-    #   1. ハーネス自体（b01/b02/reconcile/*）が正しく動くこと
+    # ここが保証するのは docs/plans/PHASE_B_RECONCILIATION.md §5 のとおり、次の3点だけ:
+    #   1. ハーネス自体（b01〜b05/reconcile/*/migrate/*）が正しく動くこと
     #      （scripts/tests/ は自前でフィクスチャ sqlite を作るので、
     #      原本 data/db/*.sqlite・data/db/derived.sqlite（.gitignore 済み、
     #      合計14GB）は要らないし、ここでは一切開かない）。
     #   2. reports/derived_baseline.json がコミットされていて、
     #      common.SCHEMA_VERSION と一致すること。
+    #   3. 宣言ファイル2つ（expected_diffs.yaml / period_exceptions.yaml）が
+    #      読めて、原本DBを必要としない範囲の形を満たすこと。
     # 保証しないこと: 実データに対する b01 の再実行、b02 の完全モード突合
     # （行レベルの内訳）。これらは原本のある環境でしか走らない。
     runs-on: ubuntu-latest
@@ -163,4 +176,34 @@ jobs:
                   "scripts/b01_derived_baseline.py を実行して作り直すこと。"
               )
           print(f"OK: {path} (schema_version={data['schema_version']}, tables={data['table_count']})")
+          PY
+
+      - name: 宣言ファイル（expected_diffs.yaml / period_exceptions.yaml）の構造検証（原本DBは使わない）
+        run: |
+          python3 - <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          sys.path.insert(0, "scripts")
+          from migrate import period
+          from reconcile import common
+
+          baseline = json.loads(pathlib.Path("reports/derived_baseline.json").read_text(encoding="utf-8"))
+
+          # scripts/b02_derived_compare.py の main() が呼ぶのと同じ関数を呼ぶ
+          # （検証ロジックの二重定義を避ける。common.load_expected_diffs 自体も
+          # 「宣言のリストになっているか」という形を検証する）。
+          expected_diffs_path = pathlib.Path("scripts/reconcile/expected_diffs.yaml")
+          expected_diffs = common.load_expected_diffs(expected_diffs_path)
+          common.validate_expected_diffs(expected_diffs, baseline["tables"], str(expected_diffs_path))
+          n_declared = sum(len(v) for v in expected_diffs.values())
+          print(f"OK: {expected_diffs_path}（テーブル{len(expected_diffs)}件・宣言{n_declared}件）")
+
+          # scripts/b03_build_observation.py が呼ぶのと同じ読み込みで、かつ
+          # CI ではさらに必須キーが揃っていることまで検証する。
+          exceptions_path = pathlib.Path("scripts/migrate/period_exceptions.yaml")
+          period.validate_period_exceptions_shape(exceptions_path)
+          exceptions = period.load_period_exceptions(exceptions_path)
+          print(f"OK: {exceptions_path}（{len(exceptions)}件の例外）")
           PY

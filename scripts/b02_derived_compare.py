@@ -26,6 +26,36 @@
   ため。docs/plans/PHASE_B_RECONCILIATION.md の「CI の限界」参照）。
   縮退モードでは `--tolerance` は使えない（ハッシュ同士の比較に許容誤差の
   概念が無いため、指定すると明示的なエラーで止まる）。
+
+## 宣言済み差分（`scripts/reconcile/expected_diffs.yaml`）
+
+「v1 を再現できないが、原因が判明していて v1 側のバグだと確定しているもの」だけを、
+テーブル名 -> `[{key, kind, reason, found_on, record}, ...]` の形でキー1件ずつ宣言できる
+（ワイルドカード・テーブル単位の免除は書けない。ファイルの形はオーナー決定）。
+既定でこのファイルを読む。`--expected-diffs <path>` で別ファイルに差し替え、
+`--no-expected-diffs` で宣言を一切読まずに実行できる（「宣言なしで何が赤くなるか」を
+見る用）。ファイルが無ければ「宣言0件」として動く。
+
+宣言だからといって信用せず、以下をすべて検証する（`derive_key` が宣言キーでも
+一意性を assert しているのと同じ思想）:
+
+- 宣言のテーブル名が `derived_baseline.json` に無い → 非0で止まる。
+- `key` の要素数がそのテーブルのキー列数と違う → 非0で止まる。
+- `kind` が `row_only_in_candidate`/`row_only_in_baseline`/`value_diff` のどれでもない
+  → 非0で止まる。
+- **宣言したキーが実際には差分になっていない（腐った宣言）→ 非0で止まる。**
+  これが一番重要。免除が残り続けて他の退行を隠すのを防ぐ。
+- 宣言した `kind` と実際の差分の種類が食い違う → 非0で止まる。
+
+宣言と完全に一致した差分だけを不一致から除く。除いた結果すべての差分が説明できた
+テーブルは、状態表示を「一致」ではなく「宣言済み差分のみ」にする
+（`STATUS_LABEL["declared_diffs_only"]`）。合否（終了コード）には数えない。
+レポートに専用の節を作り、適用した宣言を1件ずつ出す。
+
+**縮退モード（`--baseline-data` 無し・ベースライン実データ無し）では宣言を適用できない**
+（行レベルの差分を見られないので「実際に差分になっているか」を検証できない）。
+対象テーブル（`--tables`/既定で選ばれた範囲）に宣言が1件でもあるのに縮退モードなら、
+黙って無視せず非0で止まる（`--tolerance` を縮退モードで拒否しているのと同じ考え方）。
 """
 from __future__ import annotations
 
@@ -44,8 +74,19 @@ from reconcile import common, datasource  # noqa: E402
 DEFAULT_BASELINE_JSON = ROOT / "reports" / "derived_baseline.json"
 DEFAULT_BASELINE_DB = ROOT / "data" / "db" / "derived.sqlite"
 DEFAULT_OUT_MD = ROOT / "reports" / "derived_reconciliation.md"
+DEFAULT_EXPECTED_DIFFS = ROOT / "scripts" / "reconcile" / "expected_diffs.yaml"
 
 SAMPLE_LIMIT = 20  # レポートに出す「先頭N件の実例」
+
+
+class ExpectedDiffError(Exception):
+    """宣言済み差分（expected_diffs.yaml）の検証に失敗したときに投げる。
+
+    「腐った宣言（実際には差分になっていない）」「kind の食い違い」は行レベルの
+    データを見ないと判定できないため、`main()` の引数検証より後、`_compare_full`
+    の中で（そのテーブルの突合結果が揃った時点で）検出する。`main()` はこれを
+    捕まえてメッセージだけを出し非0で終了する（Traceback は出さない）。
+    """
 
 
 # ---------------------------------------------------------------------------
@@ -147,6 +188,7 @@ def _compare_full(
     baseline_source: datasource.DataSource,
     candidate_source: datasource.DataSource,
     tolerance: float,
+    expected_entries: Sequence[dict] = (),
 ) -> dict:
     """完全モードの1テーブル分の突合。
 
@@ -161,6 +203,13 @@ def _compare_full(
     別パスは要らない。候補に無いテーブル・列が過不足するテーブルの鮮度は
     `compare_all` 側の `_baseline_fingerprint_matches` が別途見る
     （そちらはマージ結合が無いのでベースライン単独の1パスのまま）。
+
+    `expected_entries`（`expected_diffs.yaml` のこのテーブル分の宣言）を渡すと、
+    宣言されたキーが実際に差分になっているかを検証したうえで、不一致から除く
+    （モジュール docstring「宣言済み差分」参照）。空（既定）のときは、この
+    検証のための追加のキー集合（`*_full_keys`）を一切作らない——宣言が無い
+    30テーブルぶんの突合で、行数の多いテーブル（`org_norm` 等）に余計なメモリを
+    使わないため。
     """
     columns = [c["name"] for c in entry["columns"]]
     key = entry["key"]
@@ -192,6 +241,13 @@ def _compare_full(
     n_exceed: dict[str, int] = {c: 0 for c in numeric_columns}
     text_diff_counts: dict[str, int] = {}
 
+    # 宣言済み差分の検証用に、キー単位の完全な集合を持つかどうか
+    # （docstring 参照。宣言が無いテーブルでは一切作らない）。
+    track_expected = bool(expected_entries)
+    only_in_baseline_keys: set[tuple] = set() if track_expected else None
+    only_in_candidate_keys: set[tuple] = set() if track_expected else None
+    value_diff_keys: set[tuple] = set() if track_expected else None
+
     # 両ソースをキー順にマージ結合する。片側にしか無いキーは前へ進めるだけ、
     # 両側にあるキーだけ値を突き合わせる（`_KeyedStream` のドキストリング参照）。
     # ベースライン側は「候補に無いキー」「共通キー」のどちらの分岐でも
@@ -207,6 +263,8 @@ def _compare_full(
             only_in_baseline_count += 1
             if len(only_in_baseline_sample) < SAMPLE_LIMIT:
                 only_in_baseline_sample.append(list(bk))
+            if track_expected:
+                only_in_baseline_keys.add(bk)
             continue
         if ck is not None and (bk is None or _key_less(ck, bk)):
             candidate_stream.pop()
@@ -214,6 +272,8 @@ def _compare_full(
             only_in_candidate_count += 1
             if len(only_in_candidate_sample) < SAMPLE_LIMIT:
                 only_in_candidate_sample.append(list(ck))
+            if track_expected:
+                only_in_candidate_keys.add(ck)
             continue
 
         # bk == ck（両側に存在する共通キー）。
@@ -222,6 +282,7 @@ def _compare_full(
         baseline_row_count += 1
         candidate_row_count += 1
         baseline_hasher.update(common.canonical_row_bytes(brow))
+        row_differs = False
 
         for col in numeric_columns:
             i = numeric_idx[col]
@@ -229,6 +290,7 @@ def _compare_full(
             if bv is None or cv is None:
                 if bv is not cv:
                     n_null_mismatch[col] += 1
+                    row_differs = True
                 continue
             try:
                 bv_f = float(bv)
@@ -237,6 +299,7 @@ def _compare_full(
                 # 候補が数値列のはずの場所に "N/A" 等の非数値を書いてきた場合。
                 # 落ちずに差として数える（レビュー指摘）。
                 n_unparseable[col] += 1
+                row_differs = True
                 continue
             abs_diff = abs(cv_f - bv_f)
             abs_diffs[col].append(abs_diff)
@@ -245,11 +308,16 @@ def _compare_full(
             )
             if _exceeds_tolerance(bv_f, cv_f, tolerance):
                 n_exceed[col] += 1
+                row_differs = True
 
         for col in text_columns:
             i = text_idx[col]
             if brow[i] != crow[i]:
                 text_diff_counts[col] = text_diff_counts.get(col, 0) + 1
+                row_differs = True
+
+        if track_expected and row_differs:
+            value_diff_keys.add(bk)
 
     if baseline_stream.dup_count:
         result["notes"].append(
@@ -306,7 +374,60 @@ def _compare_full(
             for d in numeric_diffs.values()
         )
     )
-    result["status"] = "match" if matches else "mismatch"
+    status = "match" if matches else "mismatch"
+
+    if track_expected:
+        # `expected_entries` の構造（テーブル名の実在・key の長さ・kind の語彙）は
+        # 呼び出し側（`main()`）が事前に検証済みであることが前提（`compare_all` の
+        # `selected_tables` と同じ考え方——ここでは黙って信用して使うだけ）。
+        # ここで検証するのは、行レベルのデータを見ないと判定できない1点だけ:
+        # 「宣言したキーが、宣言した kind の実際の差分として本当に存在するか」。
+        kind_to_set = {
+            "row_only_in_candidate": only_in_candidate_keys,
+            "row_only_in_baseline": only_in_baseline_keys,
+            "value_diff": value_diff_keys,
+        }
+        # 不正な宣言は見つけたその場で raise せず、このテーブルの宣言を全部
+        # 走査してから1回でまとめて投げる（レビュー指摘: 上流のバグを1つ直すと
+        # 同じテーブルの宣言がまとめて腐るのが普通（atsugi の宣言がその例）なので、
+        # 1件ずつ投げると完全モードで4分かけて1件ずつ知らされることになる）。
+        applied: list[dict] = []
+        bad_entries: list[str] = []
+        for d in expected_entries:
+            key_tuple = tuple(d["key"])
+            kind = d["kind"]
+            target_set = kind_to_set[kind]
+            if key_tuple in target_set:
+                target_set.discard(key_tuple)
+                applied.append({**d, "table": table})
+                continue
+            actual_kind = next((k for k, s in kind_to_set.items() if key_tuple in s), None)
+            if actual_kind is not None:
+                bad_entries.append(
+                    f"key={list(d['key'])} の kind が実際の差分と食い違う"
+                    f"（宣言: {kind!r}、実際: {actual_kind!r}）"
+                )
+            else:
+                bad_entries.append(
+                    f"key={list(d['key'])}（kind={kind!r}）は実際には差分になっていない（腐った宣言）"
+                )
+        if bad_entries:
+            raise ExpectedDiffError(
+                f"{table}: expected_diffs.yaml の宣言に不正なものが{len(bad_entries)}件ある"
+                "（これは他の退行を隠さないための検証であり、無効化できない。kind の食い違いは "
+                "expected_diffs.yaml の kind を直し、腐った宣言（既に再現できている）はそこから"
+                "削除すること）:\n- " + "\n- ".join(bad_entries)
+            )
+        result["declared_diffs_applied"] = applied
+
+        # 宣言で説明しきれた（＝残りが0件になった）ときだけ「宣言済み差分のみ」にする。
+        # 重複キー（dup_count）は宣言の対象外なので、それが残っていれば常に mismatch のまま。
+        remaining = len(only_in_baseline_keys) + len(only_in_candidate_keys) + len(value_diff_keys)
+        dup_ok = baseline_stream.dup_count == 0 and candidate_stream.dup_count == 0
+        if remaining == 0 and dup_ok:
+            status = "declared_diffs_only"
+
+    result["status"] = status
     return result
 
 
@@ -398,7 +519,12 @@ def _unresolved_result(
 
 
 def compare_all(
-    baseline_json: dict, baseline_source, candidate_source, tolerance: float
+    baseline_json: dict,
+    baseline_source,
+    candidate_source,
+    tolerance: float,
+    selected_tables: set[str] | None = None,
+    expected_diffs_by_table: dict[str, list[dict]] | None = None,
 ) -> tuple[dict, list[str]]:
     """全テーブルを突合する。`baseline_source` が None なら縮退モード。
 
@@ -414,9 +540,26 @@ def compare_all(
     §「候補側の余分なテーブル・列」参照）。ただし対象テーブルの中で列が
     過不足していれば、その**テーブル**は不一致として扱う（行比較の前提である
     「同じ形」が崩れているため）。
+
+    `selected_tables` を渡すと、ベースラインが持つテーブルのうちその集合に含まれるものだけを
+    突合する（`--tables` 用。呼び出し前に検証済みであること――未知の名前が混じっていないこと――が
+    前提で、ここでは黙ってフィルタするだけであり、タイポの検出はしない。検証は `main()` 側の責務）。
+    `extra_tables` は `selected_tables` の影響を受けない。ベースラインの全体集合を使って判定する
+    ――「`--tables` で選ばなかっただけの、v1に実在するテーブル」を「候補側の余分」に混ぜないため。
+
+    `expected_diffs_by_table`（`expected_diffs.yaml` を読んだもの）を渡すと、テーブルごとに
+    該当する宣言のリストを `_compare_full` に渡す（縮退モードでは使わない——渡されても
+    無視する。`--reduced`/実データ無しでの整合性検証は `main()` の責務）。この関数自身も
+    含め、宣言の構造（テーブル名の実在・key の長さ・kind の語彙）を検証**しない**——
+    `selected_tables` と同じ理由で、検証は呼び出し前（`main()`）に済んでいる前提。
     """
     results: dict[str, dict] = {}
-    for table, entry in sorted(baseline_json["tables"].items()):
+    target_items = [
+        (table, entry)
+        for table, entry in baseline_json["tables"].items()
+        if selected_tables is None or table in selected_tables
+    ]
+    for table, entry in sorted(target_items):
         mode = "full" if baseline_source is not None else "reduced"
         if not candidate_source.has_table(table):
             results[table] = _unresolved_result(
@@ -452,7 +595,10 @@ def compare_all(
             continue
 
         if baseline_source is not None:
-            results[table] = _compare_full(table, entry, baseline_source, candidate_source, tolerance)
+            expected_entries = (expected_diffs_by_table or {}).get(table, [])
+            results[table] = _compare_full(
+                table, entry, baseline_source, candidate_source, tolerance, expected_entries
+            )
         else:
             results[table] = _compare_reduced(table, entry, candidate_source)
 
@@ -466,6 +612,7 @@ def compare_all(
 
 STATUS_LABEL = {
     "match": "一致",
+    "declared_diffs_only": "宣言済み差分のみ",
     "mismatch": "不一致",
     "missing_in_candidate": "候補側に無い",
     "incomparable": "比較不能（列が無い）",
@@ -478,6 +625,8 @@ def render_markdown(
     tolerance: float,
     stale_tables: list[str],
     extra_tables: list[str] | None = None,
+    partial_tables: list[str] | None = None,
+    total_baseline_tables: int | None = None,
 ) -> str:
     lines: list[str] = []
     a = lines.append
@@ -489,6 +638,16 @@ def render_markdown(
         "（v1 派生テーブルの指紋）と候補側を突き合わせた結果。"
     )
     a("")
+    if partial_tables is not None:
+        excluded_count = (total_baseline_tables or 0) - len(partial_tables)
+        a(
+            f"**部分ゲート**: ベースライン{total_baseline_tables}テーブル中"
+            f"{len(partial_tables)}テーブルだけを対象にした"
+            "（対象: " + ", ".join(f"`{t}`" for t in partial_tables) + "）。"
+            "全体の合格ではない。"
+        )
+        a(f"（対象外にしたテーブル: {excluded_count}件）")
+        a("")
     mode_ja = "完全モード（行レベルの内訳あり）" if mode == "full" else "縮退モード（行数・ハッシュ・集計のみ）"
     a(f"モード: **{mode_ja}** / 許容誤差: {tolerance}")
     a("")
@@ -507,15 +666,23 @@ def render_markdown(
         a("")
 
     matched = sorted(t for t, r in results.items() if r["status"] == "match")
-    mismatched = sorted(t for t, r in results.items() if r["status"] != "match")
+    declared_only = sorted(t for t, r in results.items() if r["status"] == "declared_diffs_only")
+    mismatched = sorted(t for t, r in results.items() if r["status"] not in ("match", "declared_diffs_only"))
 
     a("## サマリ（先に見る場所）")
     a("")
     a(f"- 一致: {len(matched)}テーブル")
+    a(f"- 宣言済み差分のみ: {len(declared_only)}テーブル（合否には数えない）")
     a(f"- 不一致: {len(mismatched)}テーブル")
     a("")
     if matched:
         a("**一致したテーブル**: " + ", ".join(f"`{t}`" for t in matched))
+        a("")
+    if declared_only:
+        a(
+            "**宣言済み差分のみのテーブル**（`expected_diffs.yaml` の宣言で全差分が説明できている。"
+            "詳細は下の「宣言済み差分」節）: " + ", ".join(f"`{t}`" for t in declared_only)
+        )
         a("")
     if mismatched:
         a("**不一致のテーブル**:")
@@ -532,6 +699,35 @@ def render_markdown(
             "**候補側にしか無いテーブル**（参考情報。v1 の33テーブルには無いので"
             "このゲートの合否には含めない）: " + ", ".join(f"`{t}`" for t in extra_tables)
         )
+        a("")
+
+    applied_all = [
+        {**d, "table": table}
+        for table in sorted(results)
+        for d in results[table].get("declared_diffs_applied", [])
+    ]
+    if applied_all:
+        applied_all.sort(key=lambda d: (d["table"], [str(x) for x in d["key"]]))
+        a("## 宣言済み差分（expected_diffs.yaml で適用したもの）")
+        a("")
+        a(
+            "「v1 を再現できないが、原因が判明していて v1 側のバグだと確定しているもの」として"
+            "`scripts/reconcile/expected_diffs.yaml` に宣言され、実際にその通りの差分として"
+            "検証できたため、不一致から除いたもの。"
+        )
+        a("")
+        a("| テーブル | キー | kind | reason | found_on | record |")
+        a("|---|---|---|---|---|---|")
+        for d in applied_all:
+            # YAML の `>`（折り畳みブロックスカラー）で書いた reason は、改行が
+            # スペースに変わっても末尾の改行（chomping）は残る。Markdown の表は
+            # 1行に収まっていないと崩れるので、ここで空白に正規化する。
+            reason = " ".join(str(d.get("reason", "")).split())
+            record = " ".join(str(d.get("record", "")).split())
+            a(
+                f"| `{d['table']}` | {d['key']} | `{d['kind']}` | {reason} | "
+                f"{d.get('found_on', '')} | {record} |"
+            )
         a("")
 
     a("## テーブルごとの詳細")
@@ -595,6 +791,14 @@ def main() -> int:
     )
     parser.add_argument("--candidate", required=True, help="候補側（sqlite または .json）")
     parser.add_argument("--tolerance", type=float, default=0.0)
+    parser.add_argument(
+        "--tables",
+        default=None,
+        help="カンマ区切りでテーブル名を絞り込む（例: meas_daily,meas_month,meas_year）。"
+        "省略時はベースラインの全テーブルが対象（従来通り）。指定した名前が"
+        "derived_baseline.json に無ければ、その名前を挙げて即座に終了する"
+        "（黙って無視しない。タイポで『0件を突合して緑』になるのが最悪の失敗のため）。",
+    )
     parser.add_argument("--out-md", default=str(DEFAULT_OUT_MD))
     parser.add_argument(
         "--reduced",
@@ -603,6 +807,18 @@ def main() -> int:
         f"{DEFAULT_BASELINE_DB} の自動検出より優先する。CI で明示的に軽い検証だけ"
         "したい場合や、実データが存在する環境で縮退モードの動作を確かめたい場合に使う"
         "（『たまたまファイルが無いので縮退モードになる』という暗黙の依存を避ける）。",
+    )
+    parser.add_argument(
+        "--expected-diffs",
+        default=str(DEFAULT_EXPECTED_DIFFS),
+        help="宣言済み差分（v1を再現できないが原因が判明しているキー）の YAML。既定は "
+        f"{DEFAULT_EXPECTED_DIFFS}。ファイルが無ければ『宣言0件』として動く。",
+    )
+    parser.add_argument(
+        "--no-expected-diffs",
+        action="store_true",
+        help="宣言済み差分を一切読まずに実行する（--expected-diffs の値も無視する）。"
+        "『宣言なしで何が赤くなるか』を見たいときに使う。",
     )
     args = parser.parse_args()
 
@@ -620,12 +836,70 @@ def main() -> int:
             "scripts/b01_derived_baseline.py を実行して作り直すこと。"
         )
 
+    selected_tables: set[str] | None = None
+    if args.tables is not None:
+        # 空文字・空白だけのトークンは「カンマの打ち間違いで意図せず0件/欠けた対象になる」
+        # 事故に繋がるので許容しない(黙って無視すると『0件を突合して緑』の亜種になる)。
+        # 重複は実害が無い(同じテーブルを2回選んでも結果は変わらない。タイポの検出とは
+        # 性質が違う)ので、順序を保って重複除去するだけにする。
+        raw_names = [name.strip() for name in args.tables.split(",")]
+        if any(name == "" for name in raw_names):
+            sys.exit(
+                f"--tables に空のテーブル名が含まれている（カンマの打ち間違いの可能性）: {args.tables!r}"
+            )
+        seen: set[str] = set()
+        requested: list[str] = []
+        for name in raw_names:
+            if name not in seen:
+                seen.add(name)
+                requested.append(name)
+        unknown = [name for name in requested if name not in baseline_json["tables"]]
+        if unknown:
+            sys.exit(
+                f"--tables に指定した名前がベースラインに無い: {unknown}\n"
+                f"ベースラインが持つテーブル（{len(baseline_json['tables'])}件）: "
+                f"{sorted(baseline_json['tables'].keys())}"
+            )
+        selected_tables = set(requested)
+
+    # 宣言済み差分（expected_diffs.yaml）の読み込みと構造の検証。
+    # ここでの検証は「行レベルのデータを見なくても分かること」だけ
+    # （宣言の形（マッピングのリスト）・テーブル名の実在・key の要素数・kind の語彙）。
+    # 前半（形）は `load_expected_diffs` 自身が検証し、後半3点は `derived_baseline.json`
+    # と突き合わせないと判定できないので `common.validate_expected_diffs` に任せる
+    # （CI の宣言ファイル構造検証ステップと同じ関数を呼び、検証ロジックを2箇所に
+    # 書かない）。「宣言したキーが実際に差分になっているか」は行レベルの突合を
+    # しないと判定できないので、`_compare_full` 側（`ExpectedDiffError`）で検証する。
+    if args.no_expected_diffs:
+        expected_diffs_by_table: dict[str, list[dict]] = {}
+    else:
+        expected_diffs_by_table = common.load_expected_diffs(args.expected_diffs)
+        common.validate_expected_diffs(
+            expected_diffs_by_table, baseline_json["tables"], str(args.expected_diffs)
+        )
+
     if args.reduced:
         baseline_data_path = None
     else:
         baseline_data_path = args.baseline_data
         if baseline_data_path is None and DEFAULT_BASELINE_DB.exists():
             baseline_data_path = str(DEFAULT_BASELINE_DB)
+
+    # 縮退モード（ベースライン実データ無し）では、宣言が実際に差分になっているかを
+    # 行レベルで検証できない。--tolerance を縮退モードで拒否しているのと同じ考え方で、
+    # 黙って無視せず明示的に落とす（対象＝今回突合する範囲に宣言があるときだけ）。
+    target_tables = selected_tables if selected_tables is not None else set(baseline_json["tables"].keys())
+    tables_with_declared_diffs_in_scope = sorted(
+        t for t, diffs in expected_diffs_by_table.items() if diffs and t in target_tables
+    )
+    if baseline_data_path is None and tables_with_declared_diffs_in_scope:
+        sys.exit(
+            "縮退モード（--baseline-data 無し・ベースライン実データ無し）では宣言済み差分"
+            "（expected_diffs.yaml）を適用できない（行レベルの差分を見られないので、宣言が"
+            f"実際に差分になっているか検証できない）。対象テーブルに宣言がある: "
+            f"{tables_with_declared_diffs_in_scope}\n"
+            "縮退モードで動かしたいなら --no-expected-diffs を付けること。"
+        )
 
     if baseline_data_path is None and args.tolerance > 0:
         # 縮退モードは content_hash 同士の完全一致と numeric_stats の厳密一致
@@ -654,20 +928,56 @@ def main() -> int:
             "（行レベルの内訳は出せない。docs/plans/PHASE_B_RECONCILIATION.md 参照）"
         )
 
-    results, extra_tables = compare_all(baseline_json, baseline_source, candidate_source, args.tolerance)
+    try:
+        results, extra_tables = compare_all(
+            baseline_json,
+            baseline_source,
+            candidate_source,
+            args.tolerance,
+            selected_tables,
+            expected_diffs_by_table,
+        )
+    except ExpectedDiffError as e:
+        sys.exit(str(e))
     # 鮮度チェックは `compare_all` が各テーブルの結果に畳み込んでいる
     # （`_compare_full` のマージ結合中、または `_unresolved_result` 経由。B-1）。
     stale_tables = sorted(t for t, r in results.items() if r.get("baseline_stale"))
 
-    md = render_markdown(results, mode, args.tolerance, stale_tables, extra_tables)
+    # 「部分ゲート」とみなすのは、選んだテーブル数がベースライン全体より少ない場合だけ。
+    # --tables に全テーブル名を明示的に列挙しても実質フルゲートなので区別しない
+    # （フラグの有無ではなく選択結果で判定する方が『たまたま全部列挙した』場合に
+    # 誤って部分ゲート表示になる/ならないの揺れが無い）。
+    is_partial = selected_tables is not None and len(selected_tables) < len(baseline_json["tables"])
+
+    md = render_markdown(
+        results,
+        mode,
+        args.tolerance,
+        stale_tables,
+        extra_tables,
+        partial_tables=sorted(selected_tables) if is_partial else None,
+        total_baseline_tables=len(baseline_json["tables"]) if is_partial else None,
+    )
     out_md = pathlib.Path(args.out_md)
     out_md.parent.mkdir(parents=True, exist_ok=True)
     out_md.write_text(md, encoding="utf-8")
     print(f"→ {out_md}")
 
-    n_mismatch = sum(1 for r in results.values() if r["status"] != "match")
-    n_match = len(results) - n_mismatch
-    print(f"一致: {n_match} / 不一致: {n_mismatch}")
+    n_mismatch = sum(1 for r in results.values() if r["status"] not in ("match", "declared_diffs_only"))
+    n_declared_only = sum(1 for r in results.values() if r["status"] == "declared_diffs_only")
+    n_match = len(results) - n_mismatch - n_declared_only
+    print(f"一致: {n_match} / 宣言済み差分のみ: {n_declared_only} / 不一致: {n_mismatch}")
+    n_applied = sum(len(r.get("declared_diffs_applied", [])) for r in results.values())
+    if n_applied:
+        print(f"適用した宣言済み差分: {n_applied}件")
+
+    if is_partial:
+        excluded_count = len(baseline_json["tables"]) - len(selected_tables)
+        print(
+            f"部分ゲート: ベースライン{len(baseline_json['tables'])}テーブル中"
+            f"{len(selected_tables)}テーブルだけが対象（--tables指定）。"
+            f"全体の合格ではない（対象外: {excluded_count}テーブル）。"
+        )
 
     if stale_tables:
         print(f"ベースラインが実データと食い違うテーブル: {stale_tables}", file=sys.stderr)

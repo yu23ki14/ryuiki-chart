@@ -171,3 +171,107 @@ def test_compute_fingerprint_detects_a_single_changed_value(fixture_db, tmp_path
     assert changed_fp["content_hash"] != baseline_fp["content_hash"]
     assert changed_fp["row_count"] == baseline_fp["row_count"]
     assert changed_fp["numeric_stats"]["avg"] != baseline_fp["numeric_stats"]["avg"]
+
+
+# ---------------------------------------------------------------------------
+# load_expected_diffs / validate_expected_diffs（変更9・CI 構造検証）
+# ---------------------------------------------------------------------------
+
+def test_load_expected_diffs_rejects_mapping_instead_of_list(tmp_path):
+    """`meas_daily:` の直下に `key:`/`kind:` を書いてしまう（宣言のリストでは
+    なくマッピングにしてしまう）と、以前はここでは何も検証しておらず、
+    呼び出し側の `for d in diffs: d.get(...)` が文字列キーを回して
+    `AttributeError: 'str' object has no attribute 'get'` という生のトレースバックに
+    なっていた（レビュー指摘）。テーブル名を含む説明的なエラーで止まることを確認する。
+    """
+    path = tmp_path / "expected_diffs.yaml"
+    path.write_text(
+        "meas_daily:\n"
+        "  key: [\"a\"]\n"
+        "  kind: row_only_in_candidate\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(SystemExit, match="meas_daily"):
+        common.load_expected_diffs(path)
+
+
+def test_load_expected_diffs_accepts_well_formed_list(tmp_path):
+    path = tmp_path / "expected_diffs.yaml"
+    path.write_text(
+        "meas_daily:\n"
+        "  - key: [\"a\"]\n"
+        "    kind: row_only_in_candidate\n",
+        encoding="utf-8",
+    )
+    diffs = common.load_expected_diffs(path)
+    assert diffs == {"meas_daily": [{"key": ["a"], "kind": "row_only_in_candidate"}]}
+
+
+def test_load_expected_diffs_missing_file_returns_empty(tmp_path):
+    assert common.load_expected_diffs(tmp_path / "does_not_exist.yaml") == {}
+
+
+# `REQUIRED_DIFF_KEYS`（B-2）を満たす宣言の共通部分。`key`/`kind` 以外の必須項目
+# （非空であること自体を検証する側の対象）を毎回書かずに済ませる。
+_REQUIRED_EXTRAS = {"reason": "テスト用の理由", "found_on": "2026-09-08", "record": "テスト"}
+
+
+def test_validate_expected_diffs_unknown_table_name_raises(tmp_path):
+    with pytest.raises(SystemExit, match="no_such_table"):
+        common.validate_expected_diffs(
+            {"no_such_table": [{"key": ["a"], "kind": "row_only_in_candidate", **_REQUIRED_EXTRAS}]},
+            {"t_pk": {"key": ["raw"]}},
+            "expected_diffs.yaml",
+        )
+
+
+def test_validate_expected_diffs_bad_kind_raises():
+    with pytest.raises(SystemExit, match="kind が不正"):
+        common.validate_expected_diffs(
+            {"t_pk": [{"key": ["a"], "kind": "not_a_real_kind", **_REQUIRED_EXTRAS}]},
+            {"t_pk": {"key": ["raw"]}},
+            "expected_diffs.yaml",
+        )
+
+
+def test_validate_expected_diffs_bad_key_length_raises():
+    with pytest.raises(SystemExit, match="要素数"):
+        common.validate_expected_diffs(
+            {"t_dims": [{"key": ["a"], "kind": "row_only_in_candidate", **_REQUIRED_EXTRAS}]},
+            {"t_dims": {"key": ["site", "year", "kind"]}},
+            "expected_diffs.yaml",
+        )
+
+
+def test_validate_expected_diffs_accepts_well_formed_declaration():
+    common.validate_expected_diffs(
+        {"t_pk": [{"key": ["a"], "kind": "row_only_in_candidate", **_REQUIRED_EXTRAS}]},
+        {"t_pk": {"key": ["raw"]}},
+        "expected_diffs.yaml",
+    )  # 例外を投げなければ良い
+
+
+def test_validate_expected_diffs_missing_required_key_raises():
+    """B-2: `reason`/`found_on`/`record` のいずれかが欠けていると、免除ゲート自体を
+    免除する宣言なのに『なぜ免除するか』が機械可読な形で残らない。`kind`/`key`
+    の検証と非対称にならないよう、こちらも欠落を検出して止まる。
+    """
+    with pytest.raises(SystemExit, match="必須項目が欠けている"):
+        common.validate_expected_diffs(
+            {"t_pk": [{"key": ["a"], "kind": "row_only_in_candidate"}]},  # reason 等が無い
+            {"t_pk": {"key": ["raw"]}},
+            "expected_diffs.yaml",
+        )
+
+
+def test_validate_expected_diffs_empty_required_value_raises():
+    """`reason: ""` のように項目自体はあっても空文字なら、キーが欠けているのと
+    同じ扱いで止まる（空文字1つで免除ゲートの説明義務を骨抜きにできないように）。
+    """
+    entry = {"key": ["a"], "kind": "row_only_in_candidate", **_REQUIRED_EXTRAS, "reason": ""}
+    with pytest.raises(SystemExit, match="必須項目が欠けている"):
+        common.validate_expected_diffs(
+            {"t_pk": [entry]},
+            {"t_pk": {"key": ["raw"]}},
+            "expected_diffs.yaml",
+        )

@@ -406,3 +406,99 @@ def load_destinations(path) -> dict[str, dict]:
         for table in spec.get("tables", []):
             flat[table] = {"category": category, "label_ja": label}
     return flat
+
+
+# `expected_diffs.yaml`（b02 の「宣言済み差分」）の kind の語彙。ここに書けるのは
+# 常に「v1 を再現できないが、原因が判明していて v1 側のバグだと確定しているもの」の
+# キー1件ずつであり、テーブル単位・ワイルドカードの免除は書けない
+# （scripts/reconcile/expected_diffs.yaml の冒頭コメント参照）。
+EXPECTED_DIFF_KINDS = ("row_only_in_candidate", "row_only_in_baseline", "value_diff")
+
+# 宣言の必須項目（レビュー指摘 B-2）。`scripts/migrate/period.py` の
+# `REQUIRED_EXCEPTION_KEYS`（`period_exceptions.yaml` の必須項目を非空で
+# 検証する）と同じ発想を、対称性の無かったこちらにも入れる。`expected_diffs.yaml`
+# は「ゲート自体を免除する」宣言で、`period_exceptions.yaml`（1行ずつの粒度の
+# 食い違いを免除するだけ）より影響が大きいにもかかわらず、こちらには非空検証が
+# 無かった——`reason: ""` でも通ってしまい、「なぜ免除するかを機械可読な形で
+# 残す」というこの仕組みの存在理由が空文字1つで骨抜きにできた。
+REQUIRED_DIFF_KEYS = ("key", "kind", "reason", "found_on", "record")
+
+
+def load_expected_diffs(path) -> dict[str, list[dict]]:
+    """`expected_diffs.yaml` を読む。トップレベルはテーブル名 ->
+    `[{"key": [...], "kind": ..., "reason": ..., "found_on": ..., "record": ...}, ...]`。
+
+    ここで検証するのは「YAML を読むだけで分かる形」——各テーブルの値が
+    **宣言（マッピング）のリスト**になっていること——だけ（レビュー指摘: 検証して
+    いなかったため、`meas_daily:` の直下に `key:`/`kind:` を書く（リストではなく
+    マッピングにする）ような形の誤りが、`for d in diffs: d.get(...)` の
+    `AttributeError: 'str' object has no attribute 'get'` という生の
+    トレースバックとして出ていた。docstring が約束する「黙って無視せず明示的な
+    エラーで止まる」を実際に満たすには、ここで形を確認する必要がある）。
+
+    宣言のテーブル名がベースラインに実在するか・`key` の要素数がそのテーブルの
+    キー列数と合っているか・`kind` が `EXPECTED_DIFF_KINDS` のどれかは、
+    `derived_baseline.json` と突き合わせないと判定できないため、引き続き
+    `validate_expected_diffs`（呼び出し側が `derived_baseline.json` を渡して呼ぶ）
+    の責務にする。
+    """
+    raw = load_yaml(path)
+    for table, diffs in raw.items():
+        if not isinstance(diffs, list) or not all(isinstance(d, dict) for d in diffs):
+            raise SystemExit(
+                f"{path} の {table!r} の値が「宣言（マッピング）のリスト」になっていない"
+                f"（実際の型: {type(diffs).__name__}）。トップレベルはテーブル名 -> "
+                "[{key, kind, reason, found_on, record}, ...] の形で、各宣言はリストの"
+                "要素（`- key: [...]` / `  kind: ...` のように `-` で始まる形）として書くこと。"
+            )
+    return raw
+
+
+def validate_expected_diffs(
+    expected_diffs_by_table: dict[str, list[dict]], baseline_tables: dict, source_label: str
+) -> None:
+    """`load_expected_diffs` の戻り値を検証する。
+
+    `REQUIRED_DIFF_KEYS` の非空チェックは `derived_baseline.json` を必要としない
+    （`period.validate_period_exceptions_shape` と同じ、原本DB不要の構造検証）が、
+    残り3点——宣言のテーブル名の実在・`key` の要素数・`kind` の語彙——は
+    `derived_baseline.json`（`baseline_tables` = その `tables` 辞書）と
+    突き合わせないと判定できないため、検証をまとめてこの1関数に置く。
+
+    `scripts/b02_derived_compare.py` の `main()` と CI の宣言ファイル構造検証
+    ステップ（`.github/workflows/ci.yml` の `reconcile` ジョブ）の両方から呼ぶ
+    （検証ロジックを2箇所に書かないため）。`source_label` はエラーメッセージに
+    出すファイルパスの表記（呼び出し側で扱うパス変数の型が違いうるため文字列で受ける）。
+    """
+    unknown_diff_tables = sorted(t for t in expected_diffs_by_table if t not in baseline_tables)
+    if unknown_diff_tables:
+        raise SystemExit(
+            f"{source_label} に、ベースラインに無いテーブル名の宣言がある: {unknown_diff_tables}"
+        )
+    missing_required: list[tuple] = []
+    bad_kind: list[tuple] = []
+    bad_key_len: list[tuple] = []
+    for table, diffs in expected_diffs_by_table.items():
+        expected_key_len = len(baseline_tables[table]["key"])
+        for d in diffs:
+            missing = [k for k in REQUIRED_DIFF_KEYS if d.get(k) in (None, "", [])]
+            if missing:
+                missing_required.append((table, d.get("key"), missing))
+            if d.get("kind") not in EXPECTED_DIFF_KINDS:
+                bad_kind.append((table, d.get("key"), d.get("kind")))
+            if len(d.get("key", [])) != expected_key_len:
+                bad_key_len.append((table, d.get("key"), expected_key_len))
+    if missing_required:
+        raise SystemExit(
+            f"{source_label} に必須項目が欠けている（または空）宣言がある"
+            f"（(テーブル, key, 欠けている項目) の順）: {missing_required}"
+        )
+    if bad_kind:
+        raise SystemExit(
+            f"{source_label} の kind が不正（{EXPECTED_DIFF_KINDS} のいずれかであること）: {bad_kind}"
+        )
+    if bad_key_len:
+        raise SystemExit(
+            f"{source_label} の key の要素数がベースラインのキー列数と違う"
+            f"（(テーブル, key, 期待する要素数) の順）: {bad_key_len}"
+        )

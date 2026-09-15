@@ -1,0 +1,36 @@
+# value_grain != period_grain を許す、唯一の宣言的な例外表（design.md D4）。
+#
+# 通常は「値が代表する期間の粒度」（value_grain。variable_alias.grain 由来）と
+# 「日付の桁数から確実に言える期間の粒度」（period_grain。measured_on から作る）
+# は一致する。measured_on が4桁（年度番号のみ）の行は、value_grain が
+# 'year'（暦年）か 'fiscal_year'（年度）であれば period_grain もそれに従うので
+# 一致するが、value_grain がそのどちらでもない（＝日次や月次の統計量を名乗って
+# いる）のに日付が4桁しか無い行は、構造的に value_grain != period_grain になる。
+#
+# scripts/migrate/period.py の compute_period() は、このケースに入ったときだけ
+# ここを見る。(source_id) がここに無ければ例外を投げて止まる（黙って許可しない）。
+#
+# 追記する場合は、なぜ起きるか（reason）と、いつ・どう解消するか
+# （restoration_plan）を必ず書くこと。
+
+atsugi_river_water_quality:
+  # このソースの variable_alias は grain='day'（日間平均値）だが、
+  # measured_on が4桁の行だけがここに来る（compute_period() 側の分岐条件）。
+  period_grain_override: fiscal_year
+  # 実測（design.md 実測値）: この宣言に該当する行数。ここに書いた数と食い違ったら
+  # b03 が例外を投げて止まる（scripts/migrate/period.py の verify_all_used 系の
+  # チェックとは別に、b03 側で件数を突き合わせる）。
+  expected_row_count: 3840
+  reason: >
+    scripts/m05_tier1.py:312 の `measured_on = sampled_on or fiscal_year` の副作用。
+    このソースの alias は grain='day'（日間平均値）を宣言しているが、
+    `sampled_on`（採水日）が無い行は `fiscal_year`（年度番号、4桁）だけが
+    `measured_on` に残る。「日間平均値である」という情報（value_grain='day'）は
+    失わずに observation に残すが、期間はその日付からは特定できず、
+    年度としてしか表せない。
+  restoration_plan: >
+    `source_ref` に月ラベルが19年度×12ヶ月ぶん残っているため、日付は復元できる
+    （このエントリの reason に書いた副作用を直せば良い）。ADR-0016 の順序どおり、
+    Phase B のゲート（scripts/b02_derived_compare.py）が緑になった後に対応する。
+    復元できれば value_grain と period_grain が一致するようになり、
+    このエントリ自体が不要になる。

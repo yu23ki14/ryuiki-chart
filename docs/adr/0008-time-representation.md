@@ -3,6 +3,12 @@
 - 状態: 提案中 / 日付: 2026-09-06
 - 関連: ADR-0007（observation）, ADR-0011（キューブ）, ADR-0013（caveat）
 
+**2026-09-08 追記（ADR-0021 で拡張）**: `grain` は「日付から確実に言える期間の粒度」
+（`period_grain`）であり、「値が代表する統計期間」（`value_grain`。出典側の宣言に由来し、
+日付の桁数からは再導出しない）とは別の軸であることが Phase B の実装で判明した
+（`atsugi_river_water_quality` のように、値は日間平均値でも日付が年度番号までしか残っていない
+出典があるため）。詳細は [ADR-0021](0021-observation-grain-and-cube-key.md)。
+
 ## 背景
 
 `measurements.measured_on` には**2つの意味の値が混在**している（実測）。
