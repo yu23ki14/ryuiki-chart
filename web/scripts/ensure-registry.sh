@@ -7,7 +7,8 @@
 # （phase-b/registry-atomic。`--files-only` が正規のレジストリを154 aliasのスタブで
 # 上書きした事故——docs/plans/PHASE_B_INTAKE.md #7 の追記——と同じ根: 「在る」と「正しい」を
 # 区別していなかった）。今は `scripts/r01_build_registry.py --check-fresh` の終了コードで
-# 判定する（原本DBは開かない・何も書かない。指紋が今の入力と一致するかだけを見る）。
+# 判定する（ryuiki/cells は開かない・登録先には何も書かない。指紋が今の入力と一致するか
+# だけを見る）。
 #
 # db:setup の predb:setup フックと docker-entrypoint.sh の両方から呼ぶ。
 # 「作り直すか」の判定はここ 1 箇所だけに書き、二重に持たない
@@ -19,10 +20,35 @@ set -e
 
 REPO_ROOT="$(cd .. && pwd)"
 DB_DIR="${RYUIKI_DB_DIR:-$REPO_ROOT/data/db}"
+REGISTRY_FILE="$DB_DIR/registry.sqlite"
 
-if RYUIKI_REGISTRY_DB="$DB_DIR/registry.sqlite" scripts/run-python.sh scripts/r01_build_registry.py --check-fresh; then
-  echo "✔ 語彙レジストリは新鮮"
+# --check-fresh の終了コードは3種類を区別する（r01_build_registry.py の
+# EXIT_FRESH=0 / EXIT_STALE=10。それ以外は「判定できない」。fix 1, phase-b/registry-atomic）。
+# `if cmd; then` の形にすると set -e に巻き込まれず $? を安全に取れる。
+if RYUIKI_REGISTRY_DB="$REGISTRY_FILE" scripts/run-python.sh scripts/r01_build_registry.py --check-fresh; then
+  status=0
 else
-  echo "▶ 語彙レジストリが古い/無いので作り直す (build:registry)"
-  RYUIKI_REGISTRY_DB="$DB_DIR/registry.sqlite" npm run build:registry
+  status=$?
+fi
+
+if [ "$status" -eq 0 ]; then
+  echo "✔ 語彙レジストリは新鮮"
+elif [ "$status" -eq 10 ]; then
+  echo "▶ 語彙レジストリが古いので作り直す (build:registry)"
+  RYUIKI_REGISTRY_DB="$REGISTRY_FILE" npm run build:registry
+else
+  # 判定できない（例: PyYAML が無い環境で --check-fresh 自体が起動できない・
+  # RYUIKI_PYTHON が存在しないパスを指している等）。以前はここを「非0はすべて古い」と
+  # 読んでいたため、docker で作った正しいレジストリを持つ開発者がホストで
+  # `pnpm run db:setup` すると、PyYAML 未インストールという同じ理由で build:registry も
+  # 落ち、db:setup 全体が止まる退行があった。「判定できない」を「古い」と誤読しない:
+  # レジストリが在るなら警告を出して今のファイルを使い続け（以前の挙動への退避）、
+  # 無いなら作る。
+  echo "⚠ 語彙レジストリの鮮度を判定できない（終了コード $status）" >&2
+  if [ -f "$REGISTRY_FILE" ]; then
+    echo "⚠ 既存の $REGISTRY_FILE をそのまま使う（新鮮性は未確認）" >&2
+  else
+    echo "▶ レジストリが無いので作る (build:registry)" >&2
+    RYUIKI_REGISTRY_DB="$REGISTRY_FILE" npm run build:registry
+  fi
 fi

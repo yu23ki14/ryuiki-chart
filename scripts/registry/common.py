@@ -20,6 +20,7 @@ import os
 import re
 import sqlite3
 import pathlib
+import time
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 DB_DIR = ROOT / "data" / "db"
@@ -77,12 +78,24 @@ def create_registry_db(path: pathlib.Path | None = None) -> sqlite3.Connection:
     作った使い捨ての一時ファイルパスをここに渡し、全ステップとチェックが通ってから
     `os.replace()` で正規パスへ置き換える設計にしたので、ここで既存ファイルを
     消す必要が無くなった（一時ファイル名は PID 込みで衝突しない）。
+
+    `schema_registry.sql` の流し込みに失敗した場合（例: SQL が壊れている）は、
+    ここで開いた sqlite3 接続を確実に閉じてから例外を再送出する（fix 4,
+    phase-b/registry-atomic）。**このファイル自体（`target` のパス）は消さない**
+    ——「一時ファイルパスとして扱ってよいか」は呼び出し側だけが知っている
+    （このヘルパは正規の `REGISTRY_DB` に直接呼ばれることもあるテストがあるため、
+    ここで無条件に消すと呼び出し側の意図と衝突する）。一時ファイルの削除は
+    呼び出し側（`scripts/r01_build_registry.py`）の責務のままにする。
     """
     target = path or REGISTRY_DB
     target.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(target)
-    conn.executescript(SCHEMA_SQL.read_text(encoding="utf-8"))
-    conn.commit()
+    try:
+        conn.executescript(SCHEMA_SQL.read_text(encoding="utf-8"))
+        conn.commit()
+    except BaseException:
+        conn.close()
+        raise
     return conn
 
 
@@ -108,6 +121,50 @@ def remove_sqlite_file(path: pathlib.Path) -> None:
         p = pathlib.Path(f"{path}{suffix}")
         if p.exists():
             p.unlink()
+
+
+# 一時ファイルの既定の「十分古い」しきい値（1時間）。fix 4, phase-b/registry-atomic。
+STALE_TMP_MAX_AGE_SECONDS = 60 * 60
+
+
+def cleanup_stale_tmp_files(
+    target: pathlib.Path, max_age_seconds: float = STALE_TMP_MAX_AGE_SECONDS
+) -> None:
+    """`target` と同じディレクトリに残った `<target名>.tmp-<pid>`（`registry_tmp_path()`
+    が作る一時ファイル）のうち、`max_age_seconds`（既定1時間）より古いものを消す
+    （fix 4, phase-b/registry-atomic）。
+
+    ビルド中の SIGKILL/OOM 等では、r01_build_registry.py 側の例外ハンドラも
+    finally も走らず一時ファイルが残る。以前は「同じ PID のファイルが既にあれば
+    消す」（r01 側、PID を使い回した極端に稀なケース用の後始末）しか無く、
+    それ以外の PID が残した分は誰も掃除しなかった。ここでは正規パスと同じ
+    ディレクトリを毎起動時にスキャンし、古いものを一括で消す。
+
+    **「PID がまだ生きているか」では判定しない。** docker コンテナとホストは
+    PID 名前空間が別なので、ファイル名に埋め込まれた PID を `/proc/<pid>` や
+    `os.kill(pid, 0)` で確認しても、それがホスト側の意味のある生死判定にはならない
+    （コンテナ内の PID 1234 とホストの PID 1234 は無関係な別プロセスでありうる。
+    「生きている」と誤判定して消し忘れることも、「死んでいる」と誤判定して
+    たまたま同じ番号の無関係な現役プロセスの作業ファイルを消すことも起こりうる）。
+    mtime（更新からの経過時間）だけを見ればこの環境差に左右されない。
+
+    `-wal`/`-shm`/`-journal` の副産物ファイルも glob には乗るが、本体
+    （`*.tmp-<pid>`）の `remove_sqlite_file()` が一緒に消すのでここでは単独処理せず
+    スキップする（二重ログ・二重処理を避けるため）。
+    """
+    now = time.time()
+    for p in sorted(target.parent.glob(f"{target.name}.tmp-*")):
+        if p.name.endswith(("-wal", "-shm", "-journal")):
+            continue
+        try:
+            age_seconds = now - p.stat().st_mtime
+        except FileNotFoundError:
+            continue  # 直前のループ・他プロセスが既に消した
+        if age_seconds > max_age_seconds:
+            print(
+                f"▶ 古い一時ファイルを削除（更新から約{age_seconds / 3600:.1f}時間経過）: {p}"
+            )
+            remove_sqlite_file(p)
 
 
 def insert_many(conn: sqlite3.Connection, table: str, columns: list[str], rows) -> int:
@@ -158,15 +215,32 @@ def count_and_breakdown(
 MODE_FULL = "full"
 MODE_FILES_ONLY = "files_only"
 
+# build_place.py が derived.sqlite から実際に読むテーブル（fix 2, phase-b/registry-atomic）。
+# 指紋計算（_hash_derived_tables 以下）とビルド側（build_place.py の derived.execute()）が
+# この宣言を共有する。derived.sqlite に新しいテーブルを足して読むようになったら、
+# ここに追記するだけで指紋にも自動的に乗る。
+DERIVED_TABLE_WATERSHED_META = "watershed_meta"
+DERIVED_TABLE_MESH_ALL = "mesh_all"
+DERIVED_TABLES_READ = (DERIVED_TABLE_WATERSHED_META, DERIVED_TABLE_MESH_ALL)
+
+# build_taxon.py が読む、derived 以外の「読み取り専用だが値が変わりうる」入力
+# （`data/processed/taxon_crosswalk.csv`、scripts/c24_taxon_crosswalk.py の成果物）。
+TAXON_CROSSWALK_CSV_RELPATH = pathlib.PurePosixPath("data/processed/taxon_crosswalk.csv")
+
+# full モード限定の入力が「無い」ときに指紋へ混ぜる固定マーカー。実際の中身とは
+# 絶対に衝突しない値であればよい（中身のバイト列をそのままハッシュに混ぜる他の
+# 入力と違い、「無い」という状態自体を表す印）。
+_ABSENT_MARKER = b"\x00ABSENT\x00"
+
 
 def _fingerprint_source_paths(root: pathlib.Path) -> list[pathlib.Path]:
     """指紋の対象ファイルを決まった順（root からの相対パス文字列でソート）で返す。
 
-    対象は「ビルドの論理（コード）」と「手書きの入力（registry/ 配下）」だけ:
+    対象は「ビルドの論理（コード）」と「手書きの入力（registry/ 配下）」:
     scripts/schema_registry.sql・scripts/r01_build_registry.py・scripts/registry/*.py・
-    registry/ 配下の全ファイル。原本（ryuiki/cells/derived）は対象に**含めない**
-    ——読み取り専用で扱っており値が変わる前提が無いうえ、828MB/42MB/449MBを毎回
-    ハッシュするコストが見合わない（オーナー判断。phase-b/registry-atomic）。
+    registry/ 配下の全ファイル。ここでは常にこの集合だけを扱う
+    （derived.sqlite の一部テーブルと taxon_crosswalk.csv は `compute_input_fingerprint()`
+    側が mode に応じて別途混ぜる。後述）。
 
     存在しないパスは黙って除く（テストが一時ディレクトリに入力の一部だけを
     コピーして使うため）。
@@ -181,11 +255,91 @@ def _fingerprint_source_paths(root: pathlib.Path) -> list[pathlib.Path]:
     return sorted(existing, key=lambda p: p.relative_to(root).as_posix())
 
 
-def compute_input_fingerprint(root: pathlib.Path | None = None) -> str:
+def _hash_optional_file(h, label: str, path: pathlib.Path) -> None:
+    """`path` の中身を指紋に混ぜる。無ければクラッシュせず「無い」という固定
+    マーカーを混ぜる（`_ABSENT_MARKER`）。`label` は相対パス文字列（存在有無に
+    関わらず指紋に含める。ファイルの有無自体も指紋の一部にするため）。
+    """
+    h.update(label.encode("utf-8"))
+    h.update(b"\0")
+    if path.exists():
+        h.update(path.read_bytes())
+    else:
+        h.update(_ABSENT_MARKER)
+    h.update(b"\0")
+
+
+def _hash_derived_tables(h, derived_path: pathlib.Path) -> None:
+    """`DERIVED_TABLES_READ`（build_place.py が実際に読むテーブル）の中身だけを、
+    決まった順の SELECT で指紋に混ぜる。derived.sqlite 全体（449MB）はハッシュ
+    しない。ORDER BY rowid は「値の意味」ではなく物理走査順だが、同じ
+    derived.sqlite ファイルに対しては常に同じ順序を返すので指紋の決定論には
+    十分（`registry.README.md` 同旨）。
+
+    derived.sqlite そのものが無い場合（full モードだが `pnpm run build:derived`
+    をまだ実行していない環境）はクラッシュせず、テーブルごとに `_ABSENT_MARKER`
+    を混ぜる。この結果、実際の中身から計算した以前の指紋とは必ず異なるため
+    `--check-fresh` は「古い」と判定し、実際のビルドに進んで
+    `common.open_source('derived')` の分かりやすいエラー（`pnpm run build:derived`
+    を促す）で止まる。「derived が無い」を「判定できない」ではなく「古い」として
+    扱う（オーナー決定。--files-only は元々 derived を一切開かないので、この
+    分岐が動くのは full モードだけ）。
+    """
+    if not derived_path.exists():
+        for table in DERIVED_TABLES_READ:
+            h.update(table.encode("utf-8"))
+            h.update(b"\0")
+            h.update(_ABSENT_MARKER)
+            h.update(b"\0")
+        return
+
+    conn = sqlite3.connect(f"file:{derived_path}?mode=ro", uri=True)
+    try:
+        for table in DERIVED_TABLES_READ:
+            cur = conn.execute(f"SELECT * FROM {table} ORDER BY rowid")
+            cols = [d[0] for d in cur.description]
+            h.update(table.encode("utf-8"))
+            h.update(b"\0")
+            h.update(",".join(cols).encode("utf-8"))
+            h.update(b"\0")
+            for row in cur:
+                for value in row:
+                    h.update(repr(value).encode("utf-8"))
+                    h.update(b"\x1f")
+                h.update(b"\0")
+    finally:
+        conn.close()
+
+
+def compute_input_fingerprint(
+    root: pathlib.Path | None = None, mode: str = MODE_FULL
+) -> str:
     """ビルドの論理と手書きの入力から sha256 を計算する（`_fingerprint_source_paths()`
     が対象を決める）。相対パスと中身を決まった順に連結するので、ファイルの移動や
     リネームも検知する。実行時刻は入れない（決定論。scripts/b01_derived_baseline.py /
     scripts/b04_build_cube.py と同じ理由）。
+
+    `mode=MODE_FULL`（既定）のときだけ、追加で2つの入力を混ぜる（fix 2,
+    phase-b/registry-atomic。どちらも build_place.py / build_taxon.py が読むのに
+    以前は指紋に入っていなかった）:
+
+    - `derived.sqlite` のうち `DERIVED_TABLES_READ` の中身（`_hash_derived_tables()`）。
+    - `data/processed/taxon_crosswalk.csv`（build_taxon.py の `CROSSWALK_CSV`）の中身。
+
+    `mode=MODE_FILES_ONLY` のときはどちらにも触れない（`--files-only` は
+    build_place.py/build_taxon.py 自体を呼ばないので、CI のように derived も
+    taxon_crosswalk.csv も存在しない環境でも指紋計算が要件どおり動く）。
+
+    **`ryuiki.sqlite` / `cells.sqlite` は mode に関わらず指紋に含めない。**
+    読み取り専用で扱ってはいるが、書き手は `scripts/m0x_*.py` に限られる
+    （web からは触らない）。含めない理由は実務上の2つ:
+    (1) `organism_records` だけで82万行あり、SELECT を毎回打つコストが
+    「レジストリの鮮度を一瞬で判定する」という `--check-fresh` の目的に見合わない。
+    (2) `m0x_*.py` で原本を書き換えても `ensure-registry.sh` はその変更を検知
+    **できない**——これは既知の限界であり隠さない（`prefer-declared-diffs-over-bending-data`
+    と同じ考え方）。**原本 DB を書き換えたら
+    `cd web && pnpm run build:registry` を明示的に走らせること**
+    （`registry/README.md` にも同じ注意を書いてある）。
 
     `root` を渡すとその配下を対象にする（テスト専用。一時ディレクトリにコピーした
     入力で指紋の変化を確認するため）。省略時はこのリポジトリ（`ROOT`）。
@@ -198,6 +352,13 @@ def compute_input_fingerprint(root: pathlib.Path | None = None) -> str:
         h.update(b"\0")
         h.update(p.read_bytes())
         h.update(b"\0")
+
+    if mode == MODE_FULL:
+        _hash_derived_tables(h, base / "data" / "db" / "derived.sqlite")
+        _hash_optional_file(
+            h, TAXON_CROSSWALK_CSV_RELPATH.as_posix(), base / TAXON_CROSSWALK_CSV_RELPATH
+        )
+
     return h.hexdigest()
 
 

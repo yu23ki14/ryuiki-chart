@@ -45,29 +45,66 @@ pnpm run db:setup                        # migrate + seed。registry.sqlite も4
 （`web/scripts/ensure-registry.sh`）。
 
 `r01_build_registry.py` は原本3ファイル（ryuiki / cells / derived）を読み取り専用で開き、
-一切書き換えない。実行時間は実測で約9秒（9テーブル・52,505行）。2回連続で実行しても
+一切書き換えない。実行時間は実測で約6秒（9テーブル・52,505行）。2回連続で実行しても
 `registry.sqlite` の中身（テーブルごとの行数・全行を安定な順序で並べたハッシュ）は同一になる
 （決定論的な再生成）。書き込みは同じディレクトリの一時ファイル（`registry.sqlite.tmp-<pid>`）に
 行い、全ステップとチェックが通ってから `os.replace()` で正規パスへ原子的に置き換える。途中で
 例外が出ても一時ファイルを消すだけで正規の `registry.sqlite` には一切触れない（phase-b/registry-atomic。
 以前は先に既存ファイルを消してから作り直しており、ビルドやチェックの失敗で壊れた/半端なファイルが
-正規のパスに残る事故があった）。
+正規のパスに残る事故があった。`create_registry_db()` 自体の失敗も含めて後始末する）。
+起動のたびに、同じ正規パスに残った「十分古い」（既定1時間より前）一時ファイルもまとめて掃除する
+（SIGKILL/OOM 等で例外ハンドラも通らず残ったものが対象。ファイル名の PID の生死では判定しない
+——docker とホストは PID 名前空間が別で無意味なため。mtime だけを見る）。
 
 ### ビルドの指紋と `--check-fresh`
 
 `registry_build(input_fingerprint, mode)` という1行だけのメタ表を持つ。`input_fingerprint` は
-ビルドの論理（`scripts/schema_registry.sql` / `scripts/r01_build_registry.py` /
-`scripts/registry/*.py`）と手書きの入力（`registry/` 配下の全ファイル）から計算した sha256
-（`scripts/registry/common.py` の `compute_input_fingerprint()`。原本 ryuiki/cells/derived は
-対象に含めない——読み取り専用で変わらない前提な上、828MB/42MB/449MB を毎回ハッシュするのは
-割に合わない）。`mode` は `full`（通常ビルド）/`files_only`（`--files-only`）。実行時刻は
-持たない（決定論）。
+ビルドの最初のステップより**前**に1回だけ計算し（ビルド中に `registry/` 配下を編集しても、
+記録される指紋がビルドの実際の入力からズレないようにするため）、`scripts/registry/common.py` の
+`compute_input_fingerprint()` が計算する。対象は次の3種類:
 
-`scripts/r01_build_registry.py --check-fresh` は原本 DB を一切開かず・何も書かずに、対象の
-registry.sqlite（`RYUIKI_REGISTRY_DB` を尊重）が今の入力と一致するかだけを判定する
-（一致すれば終了コード0、そうでなければ理由を1行出して1）。`web/scripts/ensure-registry.sh` は
-「ファイルが在るか」ではなくこの終了コードで作り直すかどうかを決める——ファイルの有無だけでは、
-ビルドの論理が変わった後の古いレジストリや、途中で壊れた半端なファイルを見分けられないため
+1. ビルドの論理（`scripts/schema_registry.sql` / `scripts/r01_build_registry.py` /
+   `scripts/registry/*.py`）と手書きの入力（`registry/` 配下の全ファイル）。`mode` に関わらず対象。
+2. **`mode='full'` のときだけ**、追加で2つ: `derived.sqlite` のうち build_place.py が実際に
+   読むテーブル（`common.DERIVED_TABLES_READ` = `watershed_meta`/`mesh_all`。ファイル全体
+   449MB はハッシュせず、決まった順の SELECT 結果だけを混ぜる）と、build_taxon.py が読む
+   `data/processed/taxon_crosswalk.csv` の中身。どちらも「読み取り専用だが再生成すれば
+   値が変わりうる」入力で、以前は指紋の対象外だったため、この2つだけを更新しても
+   レジストリが「新鮮」のまま固まってしまっていた。`--files-only` はどちらも開かない
+   （build_place.py/build_taxon.py 自体を呼ばないため。CI に原本が無くても動く要件を保つ）。
+   `full` モードで `derived.sqlite` が無い（`build:derived` 未実行）場合はクラッシュせず
+   「無い」ことを指紋に混ぜる——以前の指紋（中身がある状態で計算済み）とは必ず食い違うので
+   「古い」と判定され、実際のビルドに進んで `open_source('derived')` の分かりやすいエラー
+   （`build:derived` を促す）で止まる。
+
+**`ryuiki.sqlite` / `cells.sqlite` は `mode` に関わらず指紋に含めない。** 読み取り専用で
+扱ってはいるが、書き手は `scripts/m0x_*.py` に限られる。理由は実務上の2つ:
+`organism_records` だけで82万行あり毎回 SELECT するコストが釣り合わないことと、
+**`ensure-registry.sh` は `m0x_*.py` による原本の書き換えを検知できない**という既知の限界
+（隠さず明記する）。**`m0x_*.py` で原本（ryuiki/cells）を書き換えたら、
+`cd web && pnpm run build:registry` を明示的に走らせること。**
+
+`mode` は `full`（通常ビルド）/`files_only`（`--files-only`）。実行時刻は持たない（決定論）。
+
+`scripts/r01_build_registry.py --check-fresh` は `ryuiki`/`cells` を一切開かず・登録先には
+何も書かずに、対象の registry.sqlite（`RYUIKI_REGISTRY_DB` を尊重）が今の入力と一致するかだけを
+判定する。**PyYAML を import しない**（実際にビルドする4モジュールのうち3つが registry/*.yaml
+を読むために PyYAML に依存するが、`--check-fresh` はそれらを import せずに完結する）。
+終了コードは3種類を区別する:
+
+- `0`（`EXIT_FRESH`）: 今の入力から作ったものと一致する。
+- `10`（`EXIT_STALE`）: 一致しない（ファイルが無い/古い/壊れている等）。
+- それ以外: **判定できない**（Python が起動できない・`--check-fresh` 自体が例外で
+  落ちた等）。「古い」と誤読して作り直しに進むと、同じ原因（例: PyYAML 未インストール）で
+  rebuild 側も落ち、`db:setup` 全体が止まる退行を生む（以前実際に踏まれた: 本ファイルが
+  モジュール読み込み時に無条件で PyYAML の有無を確認しており、`--check-fresh` もこれに
+  巻き込まれて非0を返し、シェル側の「非0はすべて古い」という単純な読みと組み合わさって
+  落ちた）。
+
+`web/scripts/ensure-registry.sh` はこの終了コードで3分岐する: `0` なら作り直さない、`10` なら
+作り直す、それ以外は「判定できない」として——レジストリが在るなら警告を出して今のファイルを
+使い続け（以前の挙動への退避）、無ければ作る。ファイルの有無だけでは、ビルドの論理が変わった後の
+古いレジストリや、途中で壊れた半端なファイルを見分けられないため
 （`docs/plans/PHASE_B_INTAKE.md` #7 の追記「`--files-only` が正規のレジストリを154 aliasの
 スタブで上書きした事故」と同根の問題への対応）。
 
