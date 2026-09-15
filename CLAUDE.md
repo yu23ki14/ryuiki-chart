@@ -7,7 +7,8 @@
 - 開発環境は `docker compose up`（リポジトリ直下）。起動時に「集計 DB 生成 → 語彙レジストリ生成 →
   D1 マイグレーション → シード」を、まだのものだけ実行する。ホストで直接動かすときは
   `cd web && pnpm run build:derived && pnpm run db:setup && pnpm run dev`
-  （`db:setup` は `predb:setup` フックで語彙レジストリも「無ければ作る」。`web/scripts/ensure-registry.sh`）。
+  （`db:setup` は `predb:setup` フックで語彙レジストリも「指紋が古ければ作り直す」。
+  `web/scripts/ensure-registry.sh` が `scripts/r01_build_registry.py --check-fresh` を呼ぶ）。
 - データの置き場所は **Cloudflare D1**（デプロイ先を Cloudflare 想定にしたため）。
   61 テーブルを 1 つの D1 に統合してある。D1 に `ATTACH` は無いので `d.` / `c.` の接頭辞は使わない。
   どの原本から来たテーブルかは `web/src/lib/table-meta.ts` の `TABLE_ORIGIN`。
@@ -82,9 +83,26 @@
   worktree は `.claude/worktrees/` に作られ、**リポジトリの中**にあるので `-A` で index に入る
   （実際に入った。コミットまでは至らなかった）。`.gitignore` に `.claude/` を足して塞いであるが、
   ユーザーが手で編集した無関係なファイルを巻き込む事故は防げないので、明示的な add を徹底する。
-- **worktree には `data/db` が無い。** `data/*` は `.gitignore` 済みなので worktree にも clone にも
-  入らない。集計や突合を走らせるなら symlink を張る:
-  `ln -s /home/yu23ki14/cfj/ryuiki-demo/data/db <worktree>/data/db`
+- **worktree には `data/db` が無い。`data/db` 自体をまるごと symlink しない。**
+  `data/*` は `.gitignore` 済みなので worktree にも clone にも入らないが、`data/db` は
+  読み取り専用の原本（ryuiki/cells/derived）だけでなく、`scripts/r01_build_registry.py`
+  が書く `registry.sqlite` や `scripts/b03〜b05_*.py` が書く `v2.sqlite`/`v1_projection.sqlite`
+  のような**生成物の置き場でもある**。ディレクトリごと symlink すると、worktree からの
+  ビルドが元のチェックアウトの生成物を上書きする（実際に踏みかけた事故）。
+  読み取り専用の原本・入力ファイルだけを1ファイルずつ symlink し、生成物は worktree 内の
+  実ファイルに書かせる:
+  ```
+  mkdir -p <worktree>/data/db <worktree>/data/processed
+  ln -s /home/yu23ki14/cfj/ryuiki-demo/data/db/ryuiki.sqlite  <worktree>/data/db/ryuiki.sqlite
+  ln -s /home/yu23ki14/cfj/ryuiki-demo/data/db/cells.sqlite   <worktree>/data/db/cells.sqlite
+  ln -s /home/yu23ki14/cfj/ryuiki-demo/data/db/derived.sqlite <worktree>/data/db/derived.sqlite
+  ln -s /home/yu23ki14/cfj/ryuiki-demo/data/processed/taxon_crosswalk.csv \
+        <worktree>/data/processed/taxon_crosswalk.csv
+  ```
+  レジストリのビルド先を明示したいときは `RYUIKI_REGISTRY_DB=<worktree の絶対パス>/data/db/registry.sqlite`
+  （`scripts/r01_build_registry.py` / `web/scripts/build-registry-ts.mjs` /
+  `web/src/lib/registry/generated.test.ts` が見る環境変数。既定でも worktree 内の
+  `data/db/registry.sqlite` を指すので、並行して複数 worktree を動かす等で明示したいときだけでよい）。
 - **原本を移動・退避しない。** `data/db/ryuiki.sqlite`(828MB) と `cells.sqlite`(42MB) は
   「100MB 超のため別配布」で `scripts/c*.py` から再生成できない（`derived.sqlite` だけは
   `pnpm run build:derived` で作り直せる）。読み取り専用（`file:...?mode=ro`）でのみ開く。

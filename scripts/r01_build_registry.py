@@ -39,10 +39,36 @@ caveat 221 件）が154 alias だけのスタブに黙って壊れて消える
 （`--files-only` の有無に関わらず。CI はこれで files-only 用のパスを指定する。
 `web/scripts/build-registry-ts.mjs` / `web/src/lib/registry/generated.test.ts` も
 同じ環境変数を見るので、CI では3箇所が同じファイルを指す）。
+
+## 書き込みの原子性（phase-b/registry-atomic）
+
+「在る」ことと「正しい」ことは区別する。以前は `common.create_registry_db()` が
+正規パスの既存ファイルを先に消してから作っていたため、ビルド中またはビルド後の
+チェック（`_assert_id_uniqueness` 等）で例外が出ると、前の正しいレジストリは
+既に消えており、壊れた（または半端な）ファイルが正規のパスに残った
+（`web/scripts/ensure-registry.sh` は「ファイルが在るか」しか見ないので、次の
+`db:setup` はその壊れたファイルを使い続ける——独立レビューで実際に踏まれた事故と
+同じ形）。
+
+現在は `common.registry_tmp_path()` が作る同じディレクトリの一時ファイル
+（`<正規パス>.tmp-<pid>`）にビルドし、全ステップと全チェックが通ってから
+`os.replace()`（同一ファイルシステム内なら原子的）で正規パスへ置き換える。
+途中で例外が出た場合は一時ファイルを消して正規パスには一切触れず、非0で終わる
+（`--files-only` も同じ経路を通る）。
+
+## 「何から作ったか」の指紋（`--check-fresh`）
+
+ビルドが成功すると `registry_build(input_fingerprint, mode)` に1行書く
+（指紋は `common.compute_input_fingerprint()`、`mode` は `full`/`files_only`）。
+`--check-fresh` は原本DBを一切開かず・何も書かずに、対象レジストリの
+`registry_build` が「今の入力」と「期待する mode」に一致するかだけを判定して
+0/1 を返す。`web/scripts/ensure-registry.sh` はファイルの有無ではなくこの終了コードで
+作り直すかどうかを決める。
 """
 import argparse
 import os
 import pathlib
+import sqlite3
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -178,6 +204,62 @@ def _assert_region_id_scope_invariant(conn) -> None:
     print(f"  region_id 不変条件OK: {len(rows):,} 件（common:->NULL, <region>:-><region>）")
 
 
+# --check-fresh が「古い」と判定して1を返す理由の1行メッセージは、ensure-registry.sh の
+# ログにそのまま出る（「原本を開かない・何も書かない」ので、理由を人間が読める形で
+# 残しておかないと再ビルドのトリガーがブラックボックスになる）。
+def _check_fresh(target_db: pathlib.Path, expected_mode: str) -> int:
+    """`target_db` が「今の入力（コード + registry/ 配下）」と `expected_mode` から
+    作ったものと一致するかだけを判定する。原本DB（ryuiki/cells/derived）は一切開かず、
+    `target_db` にも何も書かない。一致すれば0、そうでなければ理由を1行 stderr に出し1。
+    """
+    if not target_db.exists():
+        print(f"registry.sqlite が無い: {target_db}", file=sys.stderr)
+        return 1
+
+    try:
+        conn = sqlite3.connect(f"file:{target_db}?mode=ro", uri=True)
+        try:
+            has_table = conn.execute(
+                "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='registry_build'"
+            ).fetchone()[0]
+            if not has_table:
+                print(
+                    f"registry_build テーブルが無い（指紋を持たない古いレジストリ）: {target_db}",
+                    file=sys.stderr,
+                )
+                return 1
+            row = conn.execute("SELECT input_fingerprint, mode FROM registry_build").fetchone()
+        finally:
+            conn.close()
+    except sqlite3.DatabaseError as exc:
+        print(f"registry.sqlite が読めない（壊れている可能性）: {target_db}（{exc}）", file=sys.stderr)
+        return 1
+
+    if row is None:
+        print(f"registry_build に行が無い: {target_db}", file=sys.stderr)
+        return 1
+
+    fingerprint, mode = row
+    if mode != expected_mode:
+        print(
+            f"mode が期待と違う（期待 {expected_mode!r}、実際 {mode!r}）: {target_db}",
+            file=sys.stderr,
+        )
+        return 1
+
+    expected_fingerprint = common.compute_input_fingerprint()
+    if fingerprint != expected_fingerprint:
+        print(
+            "指紋が今の入力と一致しない（コードまたは registry/ 配下が変わった）: "
+            f"{target_db}（登録済み {fingerprint}、現在 {expected_fingerprint}）",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(f"✔ 新鮮: {target_db}（mode={mode}, fingerprint={fingerprint}）")
+    return 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument(
@@ -191,12 +273,26 @@ def main() -> None:
             f"（{common.FILES_ONLY_REGISTRY_DB.name}）にする。RYUIKI_REGISTRY_DB で上書き可。"
         ),
     )
+    parser.add_argument(
+        "--check-fresh",
+        action="store_true",
+        help=(
+            "ビルドせず、対象レジストリ（RYUIKI_REGISTRY_DB があればそれ、無ければ "
+            "--files-only の有無で決まる既定パス）が今の入力から作ったものかだけを判定する。"
+            "原本DBは開かない・何も書かない。一致すれば終了コード0、そうでなければ理由を"
+            "1行出して1（web/scripts/ensure-registry.sh が使う）。"
+        ),
+    )
     args = parser.parse_args()
 
     steps = FILES_ONLY_STEPS if args.files_only else STEPS
+    mode = common.MODE_FILES_ONLY if args.files_only else common.MODE_FULL
     default_db = common.FILES_ONLY_REGISTRY_DB if args.files_only else common.REGISTRY_DB
     env_override = os.environ.get("RYUIKI_REGISTRY_DB")
     target_db = pathlib.Path(env_override) if env_override else default_db
+
+    if args.check_fresh:
+        sys.exit(_check_fresh(target_db, mode))
 
     if args.files_only:
         print(f"▶ --files-only: 原本 DB は開かない（正規の {common.REGISTRY_DB} には触れない）")
@@ -204,31 +300,56 @@ def main() -> None:
     else:
         print(f"▶ 原本を読み取り専用で開く: {common.DB_DIR}")
         src = common.open_sources()
-    print(f"▶ registry.sqlite を作り直す: {target_db}")
-    conn = common.create_registry_db(target_db)
+
+    tmp_db = common.registry_tmp_path(target_db)
+    if tmp_db.exists():
+        # 同じ PID を使い回した等の極端に稀なケースの後始末。正規ファイルではなく
+        # この実行専用の一時ファイルなので、消しても前回の正しいレジストリには影響しない。
+        common.remove_sqlite_file(tmp_db)
+    print(f"▶ 一時ファイルに作る（成功したら {target_db} へ置き換える）: {tmp_db}")
+    conn = common.create_registry_db(tmp_db)
 
     try:
-        totals: dict[str, int] = {}
-        for label, fn in steps:
-            print(f"▶ {label}")
-            counts = fn(conn, src) or {}
+        try:
+            totals: dict[str, int] = {}
+            for label, fn in steps:
+                print(f"▶ {label}")
+                counts = fn(conn, src) or {}
+                conn.commit()
+                if not counts:
+                    print("  (0行。まだスタブ)")
+                for table, n in counts.items():
+                    totals[table] = totals.get(table, 0) + n
+                    print(f"  {table}: {n:,} 行")
+
+            grand_total = sum(totals.values())
+            print(f"完了: {len(totals)} テーブル / {grand_total:,} 行")
+
+            _assert_id_uniqueness(conn)
+            _assert_id_references(conn)
+            _assert_region_id_scope_invariant(conn)
+
+            fingerprint = common.compute_input_fingerprint()
+            conn.execute("DELETE FROM registry_build")
+            conn.execute(
+                "INSERT INTO registry_build (input_fingerprint, mode) VALUES (?, ?)",
+                (fingerprint, mode),
+            )
             conn.commit()
-            if not counts:
-                print("  (0行。まだスタブ)")
-            for table, n in counts.items():
-                totals[table] = totals.get(table, 0) + n
-                print(f"  {table}: {n:,} 行")
-
-        grand_total = sum(totals.values())
-        print(f"完了: {len(totals)} テーブル / {grand_total:,} 行 -> {target_db}")
-
-        _assert_id_uniqueness(conn)
-        _assert_id_references(conn)
-        _assert_region_id_scope_invariant(conn)
+            print(f"▶ 指紋(registry_build): {fingerprint}（mode={mode}）")
+        except BaseException:
+            # ビルド中でもチェック中でも、失敗したら一時ファイルを消して正規パスには
+            # 一切触れない（前の正しいレジストリをバイト単位で残す）。
+            conn.close()
+            common.remove_sqlite_file(tmp_db)
+            raise
     finally:
-        conn.close()
         for c in src.values():
             c.close()
+
+    conn.close()
+    os.replace(tmp_db, target_db)
+    print(f"▶ 正規パスへ置き換えた: {target_db}")
 
 
 if __name__ == "__main__":

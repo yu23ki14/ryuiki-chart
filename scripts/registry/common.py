@@ -3,10 +3,20 @@
 - ID 生成（docs/adr/0004-identifiers.md 準拠、Phase A で使う具体形）
 - 原本 3 ファイル（ryuiki / cells / derived）を読み取り専用で開く
 - registry.sqlite の新規作成（DDL は scripts/schema_registry.sql）と書き込みユーティリティ
+- ビルドの指紋（`registry_build` テーブル。phase-b/registry-atomic）: 「在る」ことと
+  「正しい」ことを区別するため、`scripts/r01_build_registry.py --check-fresh` が
+  作り直しの要否を判定するのに使う
 
 各 build_*.py はここの関数だけを使ってレジストリを書く。原本への書き込みは一切しない
 （open_source は読み取り専用でしか開けない）。
+
+`registry.sqlite` 本体への書き込みの原子性（一時ファイルに作ってから os.replace()
+で正規パスへ置き換える）は scripts/r01_build_registry.py 側が担う。ここ（common.py）は
+一時ファイルパスの命名と後始末のユーティリティだけを持つ（判定・置き換えのオーケストレーションを
+r01 側に一本化するため、二重に持たない）。
 """
+import hashlib
+import os
 import re
 import sqlite3
 import pathlib
@@ -57,15 +67,47 @@ def open_sources() -> dict[str, sqlite3.Connection]:
 # ---------------------------------------------------------------------------
 
 def create_registry_db(path: pathlib.Path | None = None) -> sqlite3.Connection:
-    """registry.sqlite を新規に作る。既存があれば消してから作り直す（決定論的な再生成）。"""
+    """`path`（無ければ REGISTRY_DB）に新規の registry.sqlite を作り、スキーマを流す。
+
+    以前はここで「既存があれば消してから作る」としていたが、`path` に正規の
+    `registry.sqlite` を直接渡す呼び出し方だと、この関数を呼んだ時点で前の正しい
+    レジストリが消え、その後のビルドやチェックが失敗すると壊れた（または半端な）
+    ファイルが正規のパスに残った（実際に踏まれた事故。phase-b/registry-atomic）。
+    現在は呼び出し側（scripts/r01_build_registry.py）が `registry_tmp_path()` で
+    作った使い捨ての一時ファイルパスをここに渡し、全ステップとチェックが通ってから
+    `os.replace()` で正規パスへ置き換える設計にしたので、ここで既存ファイルを
+    消す必要が無くなった（一時ファイル名は PID 込みで衝突しない）。
+    """
     target = path or REGISTRY_DB
     target.parent.mkdir(parents=True, exist_ok=True)
-    if target.exists():
-        target.unlink()
     conn = sqlite3.connect(target)
     conn.executescript(SCHEMA_SQL.read_text(encoding="utf-8"))
     conn.commit()
     return conn
+
+
+def registry_tmp_path(target: pathlib.Path) -> pathlib.Path:
+    """`target` と同じディレクトリの一時ファイルパスを返す。`os.replace()` で正規パスへ
+    原子的に置き換えるには同じファイルシステム上に置く必要がある（`tempfile` の既定の
+    一時ディレクトリだと別ファイルシステムになりうる）。PID をファイル名に含めるので、
+    同時に走る複数プロセス（並行 worktree 等、別々の RYUIKI_REGISTRY_DB を指していても
+    たまたま同じディレクトリを指すような事故のケース）とも衝突しない。
+    """
+    return target.with_name(f"{target.name}.tmp-{os.getpid()}")
+
+
+def remove_sqlite_file(path: pathlib.Path) -> None:
+    """`path` 本体と、-wal/-shm/-journal の残骸をまとめて消す（無ければ何もしない）。
+
+    一時ファイルの後始末専用（正規の registry.sqlite には使わない）。デフォルトの
+    rollback journal モードでは commit + close 後に -journal は残らないはずだが、
+    「一時ファイル側に残骸を残さない」という受け入れ基準を機械的に保証するため、
+    接続を閉じたあとに明示的に確認して消す。
+    """
+    for suffix in ("", "-wal", "-shm", "-journal"):
+        p = pathlib.Path(f"{path}{suffix}")
+        if p.exists():
+            p.unlink()
 
 
 def insert_many(conn: sqlite3.Connection, table: str, columns: list[str], rows) -> int:
@@ -104,6 +146,59 @@ def count_and_breakdown(
     breakdown = [(r[0], r[1]) for r in rows]
     total = sum(n for _, n in breakdown)
     return total, breakdown
+
+
+# ---------------------------------------------------------------------------
+# ビルドの指紋（`registry_build` テーブル。phase-b/registry-atomic）
+# ---------------------------------------------------------------------------
+
+# `registry_build.mode`。目的の registry.sqlite が「何から」「どちらのモードで」
+# 作られたかを一意に区別する（--files-only は place/taxon 等が空のスタブなので、
+# 同じ入力から作っていても full と files_only は別物として扱う）。
+MODE_FULL = "full"
+MODE_FILES_ONLY = "files_only"
+
+
+def _fingerprint_source_paths(root: pathlib.Path) -> list[pathlib.Path]:
+    """指紋の対象ファイルを決まった順（root からの相対パス文字列でソート）で返す。
+
+    対象は「ビルドの論理（コード）」と「手書きの入力（registry/ 配下）」だけ:
+    scripts/schema_registry.sql・scripts/r01_build_registry.py・scripts/registry/*.py・
+    registry/ 配下の全ファイル。原本（ryuiki/cells/derived）は対象に**含めない**
+    ——読み取り専用で扱っており値が変わる前提が無いうえ、828MB/42MB/449MBを毎回
+    ハッシュするコストが見合わない（オーナー判断。phase-b/registry-atomic）。
+
+    存在しないパスは黙って除く（テストが一時ディレクトリに入力の一部だけを
+    コピーして使うため）。
+    """
+    candidates = [
+        root / "scripts" / "schema_registry.sql",
+        root / "scripts" / "r01_build_registry.py",
+        *(root / "scripts" / "registry").glob("*.py"),
+        *(p for p in (root / "registry").rglob("*") if p.is_file()),
+    ]
+    existing = (p for p in candidates if p.exists())
+    return sorted(existing, key=lambda p: p.relative_to(root).as_posix())
+
+
+def compute_input_fingerprint(root: pathlib.Path | None = None) -> str:
+    """ビルドの論理と手書きの入力から sha256 を計算する（`_fingerprint_source_paths()`
+    が対象を決める）。相対パスと中身を決まった順に連結するので、ファイルの移動や
+    リネームも検知する。実行時刻は入れない（決定論。scripts/b01_derived_baseline.py /
+    scripts/b04_build_cube.py と同じ理由）。
+
+    `root` を渡すとその配下を対象にする（テスト専用。一時ディレクトリにコピーした
+    入力で指紋の変化を確認するため）。省略時はこのリポジトリ（`ROOT`）。
+    """
+    base = root or ROOT
+    h = hashlib.sha256()
+    for p in _fingerprint_source_paths(base):
+        rel = p.relative_to(base).as_posix()
+        h.update(rel.encode("utf-8"))
+        h.update(b"\0")
+        h.update(p.read_bytes())
+        h.update(b"\0")
+    return h.hexdigest()
 
 
 # ---------------------------------------------------------------------------

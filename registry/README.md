@@ -40,13 +40,36 @@ pnpm run db:setup                        # migrate + seed。registry.sqlite も4
 ```
 
 コンテナ（`docker compose up`）では `web/Dockerfile` が apt の `python3-yaml` を入れているので
-`pip install` は不要。`docker-entrypoint.sh` が起動時に `registry.sqlite` の有無を見て
-無ければ同じ `build:registry` を走らせる（`web/scripts/ensure-registry.sh`）。
+`pip install` は不要。`docker-entrypoint.sh` が起動時に `registry.sqlite` が新鮮か
+（後述「ビルドの指紋と `--check-fresh`」）を見て、古ければ同じ `build:registry` を走らせる
+（`web/scripts/ensure-registry.sh`）。
 
 `r01_build_registry.py` は原本3ファイル（ryuiki / cells / derived）を読み取り専用で開き、
 一切書き換えない。実行時間は実測で約9秒（9テーブル・52,505行）。2回連続で実行しても
 `registry.sqlite` の中身（テーブルごとの行数・全行を安定な順序で並べたハッシュ）は同一になる
-（決定論的な再生成）。
+（決定論的な再生成）。書き込みは同じディレクトリの一時ファイル（`registry.sqlite.tmp-<pid>`）に
+行い、全ステップとチェックが通ってから `os.replace()` で正規パスへ原子的に置き換える。途中で
+例外が出ても一時ファイルを消すだけで正規の `registry.sqlite` には一切触れない（phase-b/registry-atomic。
+以前は先に既存ファイルを消してから作り直しており、ビルドやチェックの失敗で壊れた/半端なファイルが
+正規のパスに残る事故があった）。
+
+### ビルドの指紋と `--check-fresh`
+
+`registry_build(input_fingerprint, mode)` という1行だけのメタ表を持つ。`input_fingerprint` は
+ビルドの論理（`scripts/schema_registry.sql` / `scripts/r01_build_registry.py` /
+`scripts/registry/*.py`）と手書きの入力（`registry/` 配下の全ファイル）から計算した sha256
+（`scripts/registry/common.py` の `compute_input_fingerprint()`。原本 ryuiki/cells/derived は
+対象に含めない——読み取り専用で変わらない前提な上、828MB/42MB/449MB を毎回ハッシュするのは
+割に合わない）。`mode` は `full`（通常ビルド）/`files_only`（`--files-only`）。実行時刻は
+持たない（決定論）。
+
+`scripts/r01_build_registry.py --check-fresh` は原本 DB を一切開かず・何も書かずに、対象の
+registry.sqlite（`RYUIKI_REGISTRY_DB` を尊重）が今の入力と一致するかだけを判定する
+（一致すれば終了コード0、そうでなければ理由を1行出して1）。`web/scripts/ensure-registry.sh` は
+「ファイルが在るか」ではなくこの終了コードで作り直すかどうかを決める——ファイルの有無だけでは、
+ビルドの論理が変わった後の古いレジストリや、途中で壊れた半端なファイルを見分けられないため
+（`docs/plans/PHASE_B_INTAKE.md` #7 の追記「`--files-only` が正規のレジストリを154 aliasの
+スタブで上書きした事故」と同根の問題への対応）。
 
 ## テーブルとID規約（ADR-0004 の Phase A での具体形）
 
