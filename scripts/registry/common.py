@@ -115,6 +115,26 @@ def scoped_id(entity: str, local_key: str, scope: str = "common") -> str:
     return f"{scope}:{entity}:{local_key}"
 
 
+def scope_of(scoped_id_value: str) -> str:
+    """`<scope>:<entity>:<local_key>` の `<scope>` 部分を取り出す（ADR-0004）。"""
+    scope, sep, _rest = scoped_id_value.partition(":")
+    if not sep:
+        raise ValueError(f"scoped_id の形が想定外（':' が無い）: {scoped_id_value!r}")
+    return scope
+
+
+def region_id_for_scoped_id(scoped_id_value: str) -> str | None:
+    """エンティティの `region_id` 列は、その ID 自身のスコープと一致させる
+    （ADR-0022 決定1）。`common:` なら地域非依存として NULL、それ以外はスコープ
+    そのもの（例: `jp-14`）。呼び出し側が region_id 用に別の値を持ち回って
+    ハードコードするのではなく、実際に発行した ID から機械的に導く
+    （地域固有だと分かって scope を変えたのに region_id 列だけ古い値のまま、
+    という食い違いを構造的に起こさないため）。
+    """
+    scope = scope_of(scoped_id_value)
+    return None if scope == "common" else scope
+
+
 _LOCAL_KEY_SAFE = re.compile(r"[A-Za-z0-9_.-]")
 
 

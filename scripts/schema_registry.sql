@@ -2,6 +2,8 @@
 -- web/src/db/schema-registry.ts の drizzle 定義から生成した web/drizzle/migrations/ 配下の
 -- マイグレーションと列・索引を一致させてある。
 -- スキーマを変えるときは両方を更新すること(正は drizzle 側。ここは追随する)。
+-- 例外: place_relation(下記)はまだ web/src/db/schema-registry.ts に無い。D1 に載せる
+-- 消費者がまだ無いため意図的に見送っている(ADR-0022)。
 --
 -- scripts/r01_build_registry.py が起動時にこれを流して data/db/registry.sqlite を作る。
 -- CREATE TABLE IF NOT EXISTS なので再実行しても安全。中身(行)は scripts/registry/build_*.py
@@ -62,8 +64,9 @@ CREATE INDEX IF NOT EXISTS ix_variable_alias_variable ON variable_alias(variable
 CREATE INDEX IF NOT EXISTS ix_variable_alias_dataset_alias_source ON variable_alias(dataset, alias, source_id);
 
 -- 空間単位(ADR-0006)。Phase A で登録するのは集計軸として実在するものだけ
--- (site / watershed / mesh3 / zone)。place_relation と geometry_ref は
--- Phase A では持たない(点→place の解決も含め Phase B)。
+-- (site / watershed / mesh3 / zone)。geometry_ref は持たない(点→place の解決も含め
+-- Phase B 以降)。region_id は place_id 自身のスコープ(<scope>:place:...)と一致させる
+-- (ADR-0022 決定1。common なら NULL、地域固有なら region_id、例: jp-14)。
 CREATE TABLE IF NOT EXISTS place (
   place_id TEXT PRIMARY KEY,
   region_id TEXT,
@@ -77,6 +80,31 @@ CREATE TABLE IF NOT EXISTS place (
   status TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_place_kind ON place(place_kind);
+
+-- 空間単位どうしの関係(ADR-0006)。Phase B(phase-b/region-scope, ADR-0022)で新設。
+-- 最初に作る辺は「地点 -> ゾーン」1種類だけ(parent_id=ゾーンの place_id,
+-- child_id=地点の place_id, relation='within')。fraction は NOT NULL とし、
+-- 全体を含む関係には 1.0 を入れる("NULL=全体"のような暗黙の意味を持たせない。
+-- ADR-0011 の「fraction があるものは加重する」を常に同じ式で書けるようにするため)。
+-- ADR-0006 が挙げる source_edition_id 列はまだ持たない: 出典の版管理
+-- (source_registry/source_edition, ADR-0005)自体が Phase C の仕事で、いま作る唯一の
+-- 辺(地点->ゾーン)の出典は registry/place/zone.yaml という手書きファイル1つに
+-- 固定されており、版を切り替える必要が今は無い(ADR-0022 決定3)。
+-- (parent_id, child_id, relation) の一意性は DDL の UNIQUE 制約ではなく
+-- scripts/r01_build_registry.py 側の Python 表明で検証する(variable_alias の
+-- (dataset, alias, source_id) 一意性と同じ流儀。registry/README.md 参照)。
+-- web の D1(schema.ts/schema-registry.ts)にはまだ載せない: 消費者がまだ無く、
+-- D1 は捨てて作り直せる配信キャッシュ(ADR-0001)なので、使う側が現れてから足す。
+CREATE TABLE IF NOT EXISTS place_relation (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  parent_id TEXT NOT NULL,
+  child_id TEXT NOT NULL,
+  relation TEXT NOT NULL,
+  fraction REAL NOT NULL,
+  basis TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_place_relation_parent ON place_relation(parent_id);
+CREATE INDEX IF NOT EXISTS ix_place_relation_child ON place_relation(child_id);
 
 -- v1 の出典側識別子(sites.site_id / watershed_meta.watershed_id / mlat,mlon 等)から
 -- place への対応。「v1 を動かさずに並走させる」ための接続点(PHASE_A.md §A-3)。
