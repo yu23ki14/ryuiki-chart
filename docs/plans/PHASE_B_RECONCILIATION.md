@@ -1,9 +1,10 @@
 # Phase B 突合ゲート — v1 派生テーブルの再現性を機械で判定する
 
-対象: ADR-0016 の Phase B / 状態: **実データで3テーブル（`meas_daily`/`meas_month`/`meas_year`）を
-1本通した（`phase-b/fact-slice`。部分ゲート＝33テーブル中3テーブルだけの合格で、全体の合格では
-ない。宣言済み差分のみで一致、残り30テーブルは未着手）**
-作成: 2026-09-07 / 更新: 2026-09-08
+対象: ADR-0016 の Phase B / 状態: **実データで6テーブル（`meas_daily`/`meas_month`/`meas_year`/
+`meas_clim`/`site_var`/`var_catalog`）を通した（`phase-b/fact-slice` + `phase-b/meas-remainder`。
+部分ゲート＝33テーブル中6テーブルだけの合格で、全体の合格ではない。宣言済み差分のみで一致、
+残り27テーブルは未着手）**
+作成: 2026-09-07 / 更新: 2026-09-15
 
 **このドキュメントが説明するのはゲートの仕組みと、実データで実行した結果（§6・宣言済み差分の節）。
 `observation`/`occurrence` の作成とキューブ本体の設計・実測は
@@ -235,15 +236,30 @@ ADR-0016 の言葉を借りれば、**「それは v1 のバグの発見でも�
 で3テーブルを実データで突合した結果、1つの原因から生じた食い違いが見つかった。原因が判明し、
 v1 側のバグだと確定できたため、`scripts/reconcile/expected_diffs.yaml` にキー単位で宣言し
 （§7参照）、突合結果を「宣言済み差分のみ」にした（`reports/derived_reconciliation.md` で確認、
-終了コード0）。
+終了コード0）。`phase-b/meas-remainder`（同じ3スクリプトの拡張。`b05` に `meas_clim`/`site_var`/
+`var_catalog` を追加しただけで `b03`/`b04` は無変更）で残り3テーブルを実データで突合したところ、
+**新しい原因は1つも見つからず**、同じ12行が3テーブルの集計元（`meas_clim` は `meas_daily`、
+`site_var`/`var_catalog` は `meas_year`）を通じて機械的に波及した差分だけだった
+（`--no-expected-diffs` で実測。2026-09-15）。
 
-3テーブルまとめて1行にした——3テーブルとも**同じ1つの原因**（後述）から機械的に伝播した結果
-であり、テーブルごとに3行書いても同じ説明を繰り返すだけになるため（「読みやすい方でよい、
-理由を1行添える」という本ドキュメントの指示に対する判断）。
+6テーブルまとめて1行にした——6テーブルとも**同じ1つの原因**（後述）から機械的に伝播した結果
+であり、テーブルごとに6行書いても同じ説明を繰り返すだけになるため（「読みやすい方でよい、
+理由を1行添える」という本ドキュメントの指示に対する判断）。テーブル別の内訳（件数・発見日）は
+表の直下に書く（詳細は `scripts/reconcile/expected_diffs.yaml` の各テーブル節の直前コメント参照。
+二重に書かない）。
 
 | テーブル | 発見日 | 症状 | 原因 | 対応 |
 |---|---|---|---|---|
-| `meas_daily`（2件）/ `meas_month`（2件）/ `meas_year`（9件） 計13キー | 2026-09-08 | `atsugi_river_water_quality__中津川` の `浮遊物質量 SS`・`value_raw='1未満'` の12行に由来する13キーで、行の新規出現（`meas_daily`/`meas_month`）と平均・最小値・件数の変化（`meas_year`）が起きる | **v1 側のバグ**: `web/scripts/build-derived.mjs` は `value_raw LIKE '<%'`（ASCII の `<`）しか検閲として扱わず、日本語表記の `未満` をパースできないため `value` が `NULL` のまま集計（`AVG(value)`）から静かに落としていた。v2 は `censoring.py` が `未満` も `below_lod` として拾い、`imputation='zero'` で 0.0 を代入して集計に含める | `scripts/reconcile/expected_diffs.yaml` にキーを1件ずつ宣言（`kind`/`reason`/`found_on`/`record` 付き）。v1 側の是正（`build-derived.mjs` の検閲判定を直す）は本ドキュメントのスコープ外、別途起票する |
+| 計18キー（内訳は直下） | 2026-09-08 〜 2026-09-15（内訳は直下） | `atsugi_river_water_quality__中津川` の `浮遊物質量 SS`・`value_raw='1未満'` の12行に由来する18キーで、行の新規出現（`meas_daily`/`meas_month`）と平均・最小値・件数の変化（`meas_year`/`meas_clim`/`site_var`/`var_catalog`）が起きる | **v1 側のバグ**: `web/scripts/build-derived.mjs` は `value_raw LIKE '<%'`（ASCII の `<`）しか検閲として扱わず、日本語表記の `未満` をパースできないため `value` が `NULL` のまま集計（`AVG(value)`）から静かに落としていた。v2 は `censoring.py` が `未満` も `below_lod` として拾い、`imputation='zero'` で 0.0 を代入して集計に含める。`meas_clim`/`site_var`/`var_catalog` はそれぞれ `meas_daily`/`meas_year` を集計元にするだけなので、同じ12行の増分がそのまま波及する | `scripts/reconcile/expected_diffs.yaml` にキーを1件ずつ宣言（`kind`/`reason`/`found_on`/`record` 付き）。v1 側の是正（`build-derived.mjs` の検閲判定を直す）は本ドキュメントのスコープ外、別途起票する |
+
+テーブル別の内訳:
+
+- `meas_daily`: 2キー（2026-09-08）
+- `meas_month`: 2キー（2026-09-08）
+- `meas_year`: 9キー（2026-09-08）
+- `meas_clim`: 2キー（2026-09-15）
+- `site_var`: 2キー（2026-09-15）
+- `var_catalog`: 1キー（2026-09-15）
 
 ## 7. 宣言済み差分（`expected_diffs.yaml`）
 
@@ -291,15 +307,16 @@ v1 側を直すまで v2 のゲートが恒久的に赤いままになる。ADR-
 実質的にはテーブル全体を免除しているのと変わらない状態になりうる。この仕組みは
 「宣言したキーが本当にその通りの差分か」しか検証せず、「宣言が増えすぎていないか」
 「宣言理由が的確か」は機械では判定できない、人間のレビューに依存したままの部分である。
-現状は3テーブルで13キー（1つの原因）に留まっているが、この件数が増え続けるようなら、
+現状は6テーブルで18キー（1つの原因）に留まっているが、この件数が増え続けるようなら、
 免除ではなく v1/v2 双方の是正を優先すべき兆候として扱う。
 
 ## 8. やっていないこと（このPRのスコープ外）
 
-- 残り30テーブル（ADR-0011「33テーブルの行き先」参照。`meas_clim`/`zone_year`/`zone_clim`/
-  `sensor_daily`/… および `occurrence` を入力にする生物系11テーブル）
+- 残り27テーブル（ADR-0011「33テーブルの行き先」参照。`zone_year`/`zone_clim`/
+  `sensor_daily`/… および `occurrence` を入力にする生物系11テーブル。`meas_clim`/
+  `site_var`/`var_catalog` は `phase-b/meas-remainder` で済んだ）
 - `imputation='lod'` 併記（ADR-0009 決定4。今回は `zero` のみ）
 - Parquet 化（ADR-0001）
-- `.github/workflows/` への `phase-b/fact-slice` の3テーブル部分ゲートの配線（CI ワークフロー
+- `.github/workflows/` への `phase-b/fact-slice` の6テーブル部分ゲートの配線（CI ワークフロー
   自体は `phase-b/alias-source-key` で新設済みだが、`--tables` オプションでの実行はまだ
   ジョブに組み込まれていない）
