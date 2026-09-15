@@ -1,13 +1,21 @@
 # Phase B 縦に薄い1本 — `measurements` → `observation` → キューブ → v1形
 
-対象: ADR-0016 の Phase B / 状態: **実データで一度緑になった（部分ゲート。33テーブル中3テーブル）**
-作成: 2026-09-08 / 関連: ADR-0007, 0008, 0009, 0010, 0011, 0016, 0021
+対象: ADR-0016 の Phase B / 状態: **実データで一度緑になった（部分ゲート。33テーブル中6テーブル）**
+作成: 2026-09-08 / 更新: 2026-09-15 / 関連: ADR-0007, 0008, 0009, 0010, 0011, 0016, 0021
 
 このドキュメントは `docs/plans/PHASE_B_RECONCILIATION.md`（突合ゲートの仕組み）と対になる、
 **縦に薄い1本の設計と実測**の記録。`b03_build_observation.py` / `b04_build_cube.py` /
 `b05_project_v1.py` と `scripts/migrate/*` がここで説明する対象そのもの
 （`PHASE_B_RECONCILIATION.md` はゲートの仕組みだけを説明し、この2つを実装するのは範囲外と
 明記していた。本ドキュメントがその続き）。
+
+**2026-09-15 追記**: `measurements` 由来の残り3テーブル（`meas_clim`/`site_var`/
+`var_catalog`）を `b05_project_v1.py` の射影に追加し、対象を3テーブルから6テーブルに
+広げた（`phase-b/meas-remainder`）。新しいファクト源は足していない
+（`b03`/`b04` は無変更）。この3テーブルは ADR-0011 のキューブのセルにはせず、
+射影（`b05`）でのみ計算する（§5「決定事項」D10・理由は §「なぜキューブのセルに
+しないか」参照）。§6 に `meas_clim` が統計量の異なる系列を混ぜて平年値を作っている
+件の実測を追記した。
 
 ## 1. なぜ縦に薄い1本なのか
 
@@ -50,13 +58,13 @@ ADR-0011 の対象は33テーブル。これを一度に全部揃えようとす
 |---|---|
 | `scripts/b03_build_observation.py` | `data/db/ryuiki.sqlite` の `measurements`（読み取り専用）を `data/db/v2.sqlite` の `observation`（ADR-0007）にする。alias/place 解決、`value_grain`/`period_grain` の展開、検閲分類を行い、`reports/phase_b_fact_slice.md` に要約を書く |
 | `scripts/b04_build_cube.py` | `observation` から `observation_agg`（ADR-0011 のキューブ、ADR-0021 で拡張したキー）を作る。`imputation='zero'` の系列だけ |
-| `scripts/b05_project_v1.py` | `observation_agg` を v1 の派生テーブル形（`meas_daily`/`meas_month`/`meas_year`）に射影し、`data/db/v1_projection.sqlite` に書く |
+| `scripts/b05_project_v1.py` | `observation_agg` を v1 の派生テーブル形（`meas_daily`/`meas_month`/`meas_year`/`meas_clim`/`site_var`/`var_catalog`）に射影し、`data/db/v1_projection.sqlite` に書く。後半3テーブルはキューブのセルを直接使わず、既存の `_MEAS_DAILY_SQL`/`_MEAS_YEAR_SQL` を実体化した一時テーブル（`meas_daily`/`meas_year`）を再利用する（D10） |
 | `scripts/migrate/censoring.py` | `value_raw` → `(censoring, censoring_limit)` の5分岐（ADR-0009） |
 | `scripts/migrate/period.py` | `measured_on` → `(period_grain, period_start, period_end)`。`period_exceptions.yaml` の宣言だけを例外的に許す |
 | `scripts/migrate/period_exceptions.yaml` | `value_grain != period_grain` を許す唯一の宣言表（現状 `atsugi_river_water_quality` の1件のみ） |
 | `scripts/migrate/common.py` | b03/b04/b05 共通の土台（`timed_step`/`fresh_sqlite`/`replace_table`/`attach_readonly`。読み取り専用オープンは `scripts/reconcile/common.open_readonly` を再利用） |
 | `scripts/reconcile/expected_diffs.yaml` | 「v1 を再現できないが v1 側のバグだと確定しているもの」をキー単位で宣言する（`scripts/b02_derived_compare.py` が読む） |
-| `scripts/b02_derived_compare.py --tables meas_daily,meas_month,meas_year` | この3テーブルだけを対象にした部分ゲート |
+| `scripts/b02_derived_compare.py --tables meas_daily,meas_month,meas_year,meas_clim,site_var,var_catalog` | この6テーブルだけを対象にした部分ゲート |
 | `scripts/tests/test_b03_*` / `test_b04_*` / `test_b05_*` / `test_migrate_*` | フィクスチャ sqlite だけで完結するテスト（原本を要さない） |
 
 ## 4. 実測した前提（すべて読み取り専用で確認済み）
@@ -74,8 +82,10 @@ ADR-0011 の対象は33テーブル。これを一度に全部揃えようとす
 | 年次グループサイズ（`site,variable,year(4桁)`、value NOT NULL） | n=1: 98,295 / n=2: 1,625 / n=10: 3 / n=11: 4 / n=12: 313 | 実測 |
 | `meas_year.kind` の内訳（v1・v2 とも一致） | `annual` 100,240 / `daily` 15,836（annual は daily の約6.3倍） | `data/db/derived.sqlite` と `data/db/v1_projection.sqlite` を実測、両者一致 |
 | `value IS NULL` の内訳 | `ノニルフェノール`（`value_raw`='0.00006'等）69行 / `透明度`（`>`表記）26行 / `浮遊物質量 SS`（`未満`表記）12行 = 計107行 | 実測 |
-| ベースライン行数 | `meas_daily` 139,530 / `meas_month` 127,491 / `meas_year` 116,076 | `data/db/derived.sqlite` |
-| 候補（v2射影）行数 | `meas_daily` 139,532 / `meas_month` 127,493 / `meas_year` 116,076 | `data/db/v1_projection.sqlite`。差は宣言済み差分（§6参照） |
+| ベースライン行数 | `meas_daily` 139,530 / `meas_month` 127,491 / `meas_year` 116,076 / `meas_clim` 192 / `site_var` 8,140 / `var_catalog` 58 | `data/db/derived.sqlite` |
+| 候補（v2射影）行数 | `meas_daily` 139,532 / `meas_month` 127,493 / `meas_year` 116,076 / `meas_clim` 192 / `site_var` 8,140 / `var_catalog` 58 | `data/db/v1_projection.sqlite`。行数は全テーブルでベースラインと一致（差は値だけ。宣言済み差分は§6参照） |
+| dataset='measurements' で1 aliasに複数の `(variable_id, grain, stat, unit_id)` が対応する件数 | 12 alias（全58 alias中） | `data/db/registry.sqlite` の `variable_alias` を実測（2026-09-15） |
+| うち `grain='day'` の系列を2つ以上持つ alias（`meas_clim` で実際に混ざる） | 5 alias（`pH`/`化学的酸素要求量 COD`/`浮遊物質量 SS`/`溶存酸素量 DO`/`生物化学的酸素要求量 BOD`） | 同上。詳細は §6 |
 
 ## 5. 決定事項（実装された最終形。ADR-0009 決定3 の適用範囲修正を反映）
 
@@ -162,6 +172,39 @@ ADR-0011「粒度をまたぐ再集計をしない」）。月・年セルの `n
 標準出力に「部分ゲート」である旨を明記する（実装済み。`reports/derived_reconciliation.md` で
 確認）。指定されたテーブルがベースラインに無ければ例外で止める。
 
+### D10. `meas_clim`/`site_var`/`var_catalog` はキューブのセルにせず、射影（`b05`）でのみ計算する（オーナー決定）
+
+**このタスク（`phase-b/meas-remainder`）で追加した3テーブルは `b04_build_cube.py`
+（`observation_agg`）を一切変更しない。** 理由は2つ、どちらも ADR-0011/ADR-0021 の
+既存の決定と矛盾しないための線引き:
+
+1. **ADR-0011 の事前計算の範囲外**: 事前計算するのは `place_kind ∈ {site, watershed,
+   mesh3}` × `grain ∈ {day, month, year, fiscal_year}`。`meas_clim` の月別平年値
+   （`month` 1〜12、年をまたいで積む）と `site_var`/`var_catalog` の全期間・地点別
+   要約は、どちらもこの `grain` の語彙に無い集計軸——`observation_agg` の1行
+   （1セル）として表せない。
+2. **`meas_clim` は ADR-0021 決定2が禁じる `obs_stat` の混合をそのまま行う**:
+   v1 の `meas_clim`（`web/scripts/build-derived.mjs`）は `GROUP BY variable, month`
+   （v1 の変数文字列＝alias ごと）で、`site_id` も `obs_stat` も見ない。同じ alias
+   文字列を異なる `obs_stat`/`unit_id` の系列が名乗っていれば、`meas_clim` はそれらを
+   区別せず1つの平均に混ぜる（実測は §6）。ADR-0021 決定2は「キューブの1セルで
+   `obs_stat` を混ぜない」と決めているので、この挙動を持つテーブルは原理的に
+   キューブのセルになれない——**v1 のバグではなく v1 の元々の集計仕様**なので、
+   直さずそのまま再現する対象。
+
+そこで `b05_project_v1.py` は、`meas_clim`/`var_catalog`/`site_var` の v1 SQL
+（それぞれ `meas_daily`/`meas_year` を `FROM` に取るだけの単純な再集計）と同じ形を
+採る: 新しい逆引きを書かず、既存の `_MEAS_DAILY_SQL`/`_MEAS_YEAR_SQL`（`alias_lookup`/
+`unit_lookup`/`place_lookup`/`year_keyed` を使う、既に一意性を検証済みの SELECT 文）を
+`_materialize_lookup_tables` の直後（`_materialize_projection_tables`）で**一時テーブル
+`meas_daily`/`meas_year` にそれぞれ1回だけ実体化**し、3つの再集計はそこから読む
+（テキストのままサブクエリに埋め込むと、`meas_daily` の結合が2回・`meas_year` の
+結合＋ピボットが3回計算し直しになるため。`alias_lookup`/`unit_lookup`/`year_keyed`
+を実体化しているのと同じ理由・同じ手法）。`_materialize_lookup_tables` や
+`assert_alias_is_function` 等を2つ目書かない、という原則も守っている。
+`var_catalog` の ADR-0011 上の行き先は `variable` レジストリだが、レジストリへの
+移設はこのタスクの範囲外（ゲートのために射影で再現するだけ）。
+
 ## 6. 移行で温存した v1 の癖（ゲートが緑のうちは直さない）
 
 - **`ノニルフェノール` の `value_raw='0.00006'` 等 69行**が v1 で `value IS NULL`（パース失敗＝
@@ -192,11 +235,55 @@ ADR-0011「粒度をまたぐ再集計をしない」）。月・年セルの `n
   データ収集（`scripts/c8*` 系）側の課題であり、この縦線（`b03`〜`b05`）の実装の問題ではない。
 - **`meas_year` は `kind='annual'` が `kind='daily'` の約6.3倍**（実測: `annual` 100,240行 /
   `daily` 15,836行。`data/db/derived.sqlite` と `data/db/v1_projection.sqlite` の両方で一致）。
+- **`meas_clim`（月別平年値）は、同じ alias 文字列を持つ `obs_stat`（入力側の統計量）の
+  異なる別系列を区別せず、1つの平均に混ぜている（D10 の理由2。v1 のバグではなく元々の
+  集計仕様として温存）。** `data/db/registry.sqlite` の `variable_alias`（`dataset=
+  'measurements'`）を実測すると、1つの alias 文字列に複数の `(variable_id, grain, stat,
+  unit_id)` が対応する alias が**12件**（全58 alias中）ある。このうち `meas_clim` が
+  実際に混ぜるのは、複数の系列がどちらも `grain='day'`（`meas_daily` を経由して
+  `meas_clim` に入る）を持つ**5 alias**だけ（残り7 alias は `fiscal_year` 側の系列しか
+  重複がなく、`meas_clim` の入力である `meas_daily` に現れない）:
+
+  | alias | 混ざる系列（`obs_stat`／出典） | day セル数（内訳） | 合成データ混入 |
+  |---|---|---:|---|
+  | `pH` | `mean`／`atsugi_river_water_quality` と `point`／`env_kousui_sample_kanagawa` | 144 + 19,076 = 19,220 | `point` 側に673セル（`source_id IS NULL` の合成データが `env_kousui_sample_kanagawa` と同じ tuple に解決されるため） |
+  | `化学的酸素要求量 COD` | `mean`／`atsugi_river_water_quality` と `point`／`env_kousui_sample_kanagawa` | 144 + 18,399 = 18,543 | 無し |
+  | `浮遊物質量 SS` | `mean`／`atsugi_river_water_quality`（+合成データ） と `point`／`env_kousui_sample_kanagawa` | 236 + 12,928 = 13,164 | `mean` 側に92セル |
+  | `溶存酸素量 DO` | `mean`／`atsugi_river_water_quality`（+合成データ） と `point`／`env_kousui_sample_kanagawa` | 236 + 18,410 = 18,646 | `mean` 側に92セル |
+  | `生物化学的酸素要求量 BOD` | `mean`／`atsugi_river_water_quality` と `point`／`env_kousui_sample_kanagawa` | 144 + 14,045 = 14,189 | 無し |
+
+  （2026-09-15実測。「day セル数」は `data/db/v2.sqlite` の `observation_agg`
+  （`grain='day'`）を `variable_alias` で alias 引き戻ししたセル数で、`meas_clim` の
+  `SUM(n)`（全12ヶ月合計）と一致することを確認済み。合成データ列は、`source_id IS NULL`
+  ＝`is_synthetic=1` の観測が寄与しているセル数。`浮遊物質量 SS`/`溶存酸素量 DO` は
+  `source_id IS NULL` の tuple が `atsugi_river_water_quality` と同じ
+  `(variable_id, grain='day', stat='mean', unit_id)` に解決されるため `mean` 側に混じり、
+  `pH` は `source_id IS NULL` の tuple が `env_kousui_sample_kanagawa` と同じ tuple に
+  解決されるため `point` 側に混じる——どちらに混じるかは alias の定義（レジストリ）
+  次第で、規則性は無い）。`site_var`/`var_catalog` は `meas_year`（`site_id` を保つ）を
+  経由するが、次の2つは挙動が異なる（混ざるのではなく止まる場合と、無防備に混ざる
+  場合がある。実測は下記）:
+  - **同じ地点・同じ年に同じ alias・同じ kind の2系列がある場合**: `meas_year` の
+    キー（`site_id, variable, year, kind`）が重複し、`assert_v1_keys_are_unique` が
+    検出して `MigrationError` で**止まる**（混ざらない）。
+  - **黙って混ざるのは別の年の場合**: 同じ地点が、ある年に系列A、別の年に系列B
+    （同じ alias・同じ kind だが `(variable_id, value_grain, obs_stat, unit_id)` は
+    別）を持つと、`meas_year` のキーは年が違うので衝突せず2行のまま残る。`site_var`
+    は `site_id, variable, kind` で `AVG(avg)` するため、この2系列を区別せず平均に
+    混ぜる——`assert_v1_keys_are_unique`（出力キーの一意性しか見ない）では捕まらない。
+  - `var_catalog` は `variable` だけで集計するので、そもそも常に地点・系列をまたいで
+    `n` を合計し `MAX(unit)` を取る（1系列に限定する仕組みが無い）。
+  - いずれも v1（`web/scripts/build-derived.mjs`）と同じ挙動なので、この2つの
+    ゲートは正しい。「別の年に同じ地点・alias・kind の別系列がある」件数を
+    `data/db/v2.sqlite`（読み取り専用）で実測すると**0件**（2026-09-15実測。
+    year_keyed を `site_id, variable(alias), kind` でグルーピングし、複数の
+    `(variable_id, value_grain, obs_stat, unit_id)` にまたがるグループが無いことを
+    確認した）。
 
 ## 7. やっていないこと
 
-- 残り30テーブル（`meas_clim`/`zone_year`/`zone_clim`/`sensor_daily`/…、ADR-0011 §「33テーブルの
-  行き先」参照）
+- 残り27テーブル（`zone_year`/`zone_clim`/`sensor_daily`/…、ADR-0011 §「33テーブルの
+  行き先」参照。`meas_clim`/`site_var`/`var_catalog` は本タスクで済んだ）
 - `sensor_timeseries` を入力にする縦線（`sensor_daily`/`sensor_hour_month`。申し送り #5 が
   ここで初めて塞ぐ）
 - `occurrence` を入力にする縦線（生物系11テーブル）
@@ -214,9 +301,10 @@ ADR-0011「粒度をまたぐ再集計をしない」）。月・年セルの `n
 
 ## 8. 次の一手（オーナーの方針）
 
-- (a) `◯未満` の下限反映で動いた13セル（`expected_diffs.yaml` に宣言した12行由来。
-  `meas_daily` 2件・`meas_month` 2件・`meas_year` 9件の差分として波及）は、**zero→lod 切替の
-  前に**単独で確認できる状態にしてある（`scripts/reconcile/expected_diffs.yaml` に理由・実測値
-  つきで記録済み）。
+- (a) `◯未満` の下限反映で動いた18キー（`expected_diffs.yaml` に宣言した同じ12行由来。
+  `meas_daily` 2件・`meas_month` 2件・`meas_year` 9件・`meas_clim` 2件・`site_var` 2件・
+  `var_catalog` 1件の差分として波及。後半3テーブルの波及は2026-09-15実測）は、
+  **zero→lod 切替の前に**単独で確認できる状態にしてある（`scripts/reconcile/expected_diffs.yaml`
+  に理由・実測値つきで記録済み）。
 - (b) 次の縦線は `sensor_timeseries` 系（`sensor_daily`/`sensor_hour_month`）。そこで初めて
   申し送り #5（原表記スケール単位。×10スケールの7単位）が着手判定を塞ぐ。

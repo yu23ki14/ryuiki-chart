@@ -147,3 +147,72 @@ meas_year:
       （2.0→1.67…）・min（1.0→0.0）・n_censored（0→2）が動く。
     found_on: 2026-09-08
     record: docs/plans/PHASE_B_RECONCILIATION.md 「再現できなかった箇所の記録」
+
+# 経緯（変更2・2026-09-15）: `measurements` 残り3テーブル（`meas_clim`/`site_var`/
+# `var_catalog`）を b05（射影）に追加した拡張（PHASE_B_RECONCILIATION.md #6 参照）。
+# `--no-expected-diffs` で実測した結果、新しい原因は無く、上と同じ12行
+# （`atsugi_river_water_quality__中津川` の `浮遊物質量 SS`・`value_raw='1未満'`）が
+# `meas_daily`/`meas_year` を経由して機械的に波及しただけだった（内訳は各テーブルの
+# 節の直前コメント参照）。
+
+meas_clim:
+  # meas_daily に新規出現した2セル（上の meas_daily 宣言と同じ原因・同じ2行）が
+  # 月別平年値（全地点・全出典をプールする、site_id を持たない集計）に1件ずつ
+  # 混ざる。2002-11-06 は11月、2003-10-07 は10月の集計に入る。
+  - key: ["浮遊物質量 SS", 10]
+    kind: value_diff
+    reason: >
+      meas_daily に新規出現した 2003-10-07 のセル（value=0.0, below_lod）が
+      10月の平年値に1件追加される。n が 1152→1153 になり、
+      avg が 3.625850…→3.622705…に動く（min=0.0・max=66.0・unit=mg/L は
+      不変）。
+    found_on: 2026-09-15
+    record: docs/plans/PHASE_B_RECONCILIATION.md 「再現できなかった箇所の記録」
+  - key: ["浮遊物質量 SS", 11]
+    kind: value_diff
+    reason: >
+      meas_daily に新規出現した 2002-11-06 のセル（value=0.0, below_lod）が
+      11月の平年値に1件追加される。n が 1080→1081 になり、
+      avg が 3.605665…→3.602329…に動く（min=0.0・max=64.5・unit=mg/L は
+      不変）。
+    found_on: 2026-09-15
+    record: docs/plans/PHASE_B_RECONCILIATION.md 「再現できなかった箇所の記録」
+
+site_var:
+  # meas_year の kind='annual'/'daily' それぞれが、site_id, variable, kind 単位で
+  # SUM(n)/AVG(avg) される。上の meas_year 宣言9件（annual 7件・daily 2件）の
+  # 増分が、kind ごとにまとめて1行の差分として現れる。
+  - key: ["atsugi_river_water_quality__中津川", "浮遊物質量 SS", "annual"]
+    kind: value_diff
+    reason: >
+      meas_year(kind='annual') の該当7年度（2005・2006・2007・2014・2016・
+      2018・2020）で below_lod の0.0代入行が計10行増える（上の meas_year
+      宣言のうち annual の7件の合計）。n が 182→192 になり、
+      avg（AVG(avg) over 年）が 2.606629…→2.463542…に動く（y_from=2005・
+      y_to=2020・unit=mg/L は不変）。
+    found_on: 2026-09-15
+    record: docs/plans/PHASE_B_RECONCILIATION.md 「再現できなかった箇所の記録」
+  - key: ["atsugi_river_water_quality__中津川", "浮遊物質量 SS", "daily"]
+    kind: value_diff
+    reason: >
+      meas_year(kind='daily') の該当2年（2002・2003）で below_lod の0.0代入行が
+      計2行増える（上の meas_year 宣言のうち daily の2件）。n が 34→36 になり、
+      avg（AVG(avg) over 年）が 4.224432…→3.979167…に動く（y_from=2002・
+      y_to=2005・unit=mg/L は不変）。
+    found_on: 2026-09-15
+    record: docs/plans/PHASE_B_RECONCILIATION.md 「再現できなかった箇所の記録」
+
+var_catalog:
+  # site_var の2行（annual/daily）ぶんの増分が、variable 単位（全地点合計）で
+  # さらに集約される先。n_daily の +2 と n_annual の +10 の合計が n の +12 に
+  # 一致することを実測で確認した。
+  - key: ["浮遊物質量 SS"]
+    kind: value_diff
+    reason: >
+      上の site_var 2行の増分（annual +10・daily +2）がそのまま合算される。
+      n が 16048→16060（annual +10 と daily +2 の合計 +12）、n_daily が
+      13162→13164（+2）、n_annual が 2886→2896（+10）、n_censored が
+      2040→2052（below_lod 代入12行ぶんの n_censored 合計 +12）に動く
+      （unit=mg/L・n_sites=125・y_from=2002・y_to=2026 は不変）。
+    found_on: 2026-09-15
+    record: docs/plans/PHASE_B_RECONCILIATION.md 「再現できなかった箇所の記録」
