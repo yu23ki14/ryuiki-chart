@@ -1,7 +1,7 @@
-# Phase B 縦に薄い1本 — `measurements` → `observation` → キューブ → v1形
+# Phase B 縦に薄い1本 — `measurements`/`sensor_timeseries` → `observation` → キューブ → v1形
 
-対象: ADR-0016 の Phase B / 状態: **実データで一度緑になった（部分ゲート。33テーブル中6テーブル）**
-作成: 2026-09-08 / 更新: 2026-09-15 / 関連: ADR-0007, 0008, 0009, 0010, 0011, 0016, 0021
+対象: ADR-0016 の Phase B / 状態: **実データで一度緑になった（部分ゲート。33テーブル中9テーブル）**
+作成: 2026-09-08 / 更新: 2026-09-15 / 関連: ADR-0007, 0008, 0009, 0010, 0011, 0016, 0021, 0023, 0024
 
 このドキュメントは `docs/plans/PHASE_B_RECONCILIATION.md`（突合ゲートの仕組み）と対になる、
 **縦に薄い1本の設計と実測**の記録。`b03_build_observation.py` / `b04_build_cube.py` /
@@ -16,6 +16,15 @@
 射影（`b05`）でのみ計算する（§5「決定事項」D10・理由は §「なぜキューブのセルに
 しないか」参照）。§6 に `meas_clim` が統計量の異なる系列を混ぜて平年値を作っている
 件の実測を追記した。
+
+続けて同日、`sensor_timeseries`（717,839行）を入力に追加し、対象を6テーブルから
+**9テーブル**（`sensor_daily`/`rain_daily`/`sensor_hour_month`）に広げた
+（`phase-b/sensor-slice`。新設 [ADR-0023](../adr/0023-unit-canonicalization.md)・
+[ADR-0024](../adr/0024-local-time-and-time-labels.md)）。この縦線は `b03`/`b04` も
+変更している（`observation` は出典ごとに1トランザクションでストリーム挿入する形に
+書き換え、キューブは毎時・瞬時の観測を日次セルへ積み上げ、月次・年次の出典配布セルを
+持つようになった）。設計・実測・決定（T1〜T6）は §9、キューブに織り込んだ意図的な
+変更は §10 を参照。
 
 ## 1. なぜ縦に薄い1本なのか
 
@@ -56,15 +65,16 @@ ADR-0011 の対象は33テーブル。これを一度に全部揃えようとす
 
 | ファイル | 役割 |
 |---|---|
-| `scripts/b03_build_observation.py` | `data/db/ryuiki.sqlite` の `measurements`（読み取り専用）を `data/db/v2.sqlite` の `observation`（ADR-0007）にする。alias/place 解決、`value_grain`/`period_grain` の展開、検閲分類を行い、`reports/phase_b_fact_slice.md` に要約を書く |
-| `scripts/b04_build_cube.py` | `observation` から `observation_agg`（ADR-0011 のキューブ、ADR-0021 で拡張したキー）を作る。`imputation='zero'` の系列だけ |
-| `scripts/b05_project_v1.py` | `observation_agg` を v1 の派生テーブル形（`meas_daily`/`meas_month`/`meas_year`/`meas_clim`/`site_var`/`var_catalog`）に射影し、`data/db/v1_projection.sqlite` に書く。後半3テーブルはキューブのセルを直接使わず、既存の `_MEAS_DAILY_SQL`/`_MEAS_YEAR_SQL` を実体化した一時テーブル（`meas_daily`/`meas_year`）を再利用する（D10） |
-| `scripts/migrate/censoring.py` | `value_raw` → `(censoring, censoring_limit)` の5分岐（ADR-0009） |
-| `scripts/migrate/period.py` | `measured_on` → `(period_grain, period_start, period_end)`。`period_exceptions.yaml` の宣言だけを例外的に許す |
-| `scripts/migrate/period_exceptions.yaml` | `value_grain != period_grain` を許す唯一の宣言表（現状 `atsugi_river_water_quality` の1件のみ） |
+| `scripts/b03_build_observation.py` | `data/db/ryuiki.sqlite` の `measurements`・`sensor_timeseries`（読み取り専用、出典ごとに1トランザクションでストリーム挿入）を `data/db/v2.sqlite` の `observation`（ADR-0007）**テーブルだけ**を作り直して書く（`fresh_sqlite` から `replace_table` に変更。§7「既知の負債」参照）。alias/place 解決、`value_grain`/`period_grain` の展開（センサーは ADR-0024 の時刻帯なしローカル時刻・hour_ending 変換を含む）、検閲分類（`measurements` のみ）を行い、`reports/phase_b_fact_slice.md` に出典ごとの節で要約を書く |
+| `scripts/b04_build_cube.py` | `observation` から `observation_agg`（ADR-0011 のキューブ、ADR-0021 で拡張したキー）を作る。`imputation='zero'` の系列だけ。センサー分の拡張（毎時・瞬時の日次積み上げ、月次・年次の出典配布セル）は §9 T4 |
+| `scripts/b05_project_v1.py` | `observation_agg` を v1 の派生テーブル形（`meas_daily`/`meas_month`/`meas_year`/`meas_clim`/`site_var`/`var_catalog`/`sensor_daily`/`rain_daily`/`sensor_hour_month`）に射影し、`data/db/v1_projection.sqlite` に書く。`meas_clim`/`site_var`/`var_catalog` はキューブのセルを直接使わず、既存の `_MEAS_DAILY_SQL`/`_MEAS_YEAR_SQL` を実体化した一時テーブルを再利用する（D10）。`sensor_daily`/`rain_daily`/`sensor_hour_month` の毎時分は同じ理由でキューブを経由せず L2（`observation`）から直接集計する（§9 T5）。`verify_hourly_daily_rollup`（§9 T6）による機械検証もここで行う |
+| `scripts/migrate/censoring.py` | `value_raw` → `(censoring, censoring_limit)` の5分岐（ADR-0009。`measurements` のみ。センサーに検閲の概念は無い） |
+| `scripts/migrate/period.py` | `measured_on`/`phenomenon_time` → `(period_grain, period_start, period_end)`。`period_exceptions.yaml` の宣言（4桁の食い違い）と `time_label_conventions.yaml` の宣言（25桁・`value_grain='hour'` の時刻ラベルの意味。ADR-0024 決定2）を例外的に許す |
+| `scripts/migrate/period_exceptions.yaml` | `value_grain != period_grain` を許す宣言表（`atsugi_river_water_quality` の1件、3,840行） |
+| `scripts/migrate/time_label_conventions.yaml` | `value_grain='hour'` の出典の時刻ラベルの意味（`convention`/`expected_row_count`/`evidence`）を宣言する（ADR-0024 決定2）。`sagamihara_taiki_hourly`・`soramame_hourly_kanagawa` の2件。CI が構造（必須キーの有無）を検証する |
 | `scripts/migrate/common.py` | b03/b04/b05 共通の土台（`timed_step`/`fresh_sqlite`/`replace_table`/`attach_readonly`。読み取り専用オープンは `scripts/reconcile/common.open_readonly` を再利用） |
 | `scripts/reconcile/expected_diffs.yaml` | 「v1 を再現できないが v1 側のバグだと確定しているもの」をキー単位で宣言する（`scripts/b02_derived_compare.py` が読む） |
-| `scripts/b02_derived_compare.py --tables meas_daily,meas_month,meas_year,meas_clim,site_var,var_catalog` | この6テーブルだけを対象にした部分ゲート |
+| `scripts/b02_derived_compare.py --tables meas_daily,meas_month,meas_year,meas_clim,site_var,var_catalog,sensor_daily,rain_daily,sensor_hour_month` | この9テーブルだけを対象にした部分ゲート |
 | `scripts/tests/test_b03_*` / `test_b04_*` / `test_b05_*` / `test_migrate_*` | フィクスチャ sqlite だけで完結するテスト（原本を要さない） |
 
 ## 4. 実測した前提（すべて読み取り専用で確認済み）
@@ -86,6 +96,13 @@ ADR-0011 の対象は33テーブル。これを一度に全部揃えようとす
 | 候補（v2射影）行数 | `meas_daily` 139,532 / `meas_month` 127,493 / `meas_year` 116,076 / `meas_clim` 192 / `site_var` 8,140 / `var_catalog` 58 | `data/db/v1_projection.sqlite`。行数は全テーブルでベースラインと一致（差は値だけ。宣言済み差分は§6参照） |
 | dataset='measurements' で1 aliasに複数の `(variable_id, grain, stat, unit_id)` が対応する件数 | 12 alias（全58 alias中） | `data/db/registry.sqlite` の `variable_alias` を実測（2026-09-15） |
 | うち `grain='day'` の系列を2つ以上持つ alias（`meas_clim` で実際に混ざる） | 5 alias（`pH`/`化学的酸素要求量 COD`/`浮遊物質量 SS`/`溶存酸素量 DO`/`生物化学的酸素要求量 BOD`） | 同上。詳細は §6 |
+| `sensor_timeseries` 行数（alias/place 解決率） | 717,839 / 717,839（全行解決） | `reports/phase_b_fact_slice.md` |
+| `observation` 総行数（`measurements`+`sensor_timeseries`） | 1,041,003（323,164 + 717,839） | 同上 |
+| `observation_agg` 総行数（内訳） | 1,993,816（`day`=1,479,883 / `month`(day側)=139,176 / `month`(出典側)=23,022 / `year`(day側)=51,015 / `year`(出典側)=300,720） | `data/db/v2.sqlite` を実測（2026-09-15、`b04_build_cube.py` の標準出力） |
+| v1形9テーブルの候補行数合計 | 749,300（`meas_daily` 139,532 / `meas_month` 127,493 / `meas_year` 116,076 / `meas_clim` 192 / `site_var` 8,140 / `var_catalog` 58 / `sensor_daily` 352,043 / `rain_daily` 3,654 / `sensor_hour_month` 2,112） | `data/db/v1_projection.sqlite` を実測（2026-09-15） |
+| 突合ゲート（9テーブル対象） | 一致3（`sensor_daily`/`rain_daily`/`sensor_hour_month`、宣言済み差分0）・宣言済み差分のみ6（`meas_*`/`site_var`/`var_catalog`、既存の18キーのまま）・不一致0 | `reports/derived_reconciliation.md` |
+| 既存6テーブルの射影の指紋（先頭16桁） | 1ビットも変わらず（`meas_daily=700094a0f8f2b979` 等、実装時の指定値と一致） | 実装コミット `000c393`（`phase-b/sensor-slice`）のコミットメッセージに記録 |
+| パイプラインの所要時間（b03/b04/b05、単独実行） | 28.0s / 64.0s / 51.1s＋書き出し2.8s | 2026-09-15、`--out`/`--report`/`--cube-db` を一時ファイルに向けて再実行し実測（実行のたびに数秒変動する。実装時の申し送りは28.3s/60.3s/48.5s） |
 
 ## 5. 決定事項（実装された最終形。ADR-0009 決定3 の適用範囲修正を反映）
 
@@ -280,24 +297,68 @@ ADR-0011「粒度をまたぐ再集計をしない」）。月・年セルの `n
     `(variable_id, value_grain, obs_stat, unit_id)` にまたがるグループが無いことを
     確認した）。
 
+- **`sensor_daily`/`rain_daily`/`sensor_hour_month` の毎時分（sagamihara/soramame）は
+  v1 のラベル日割り（`substr(phenomenon_time,1,10)`）をそのまま再現している。**
+  hour_ending のラベルは区間の終わりなので、23時〜24時の値がラベルの日（＝翌日）に
+  入るという、区間の境界をはみ出す集計になっている（v1 の癖。ADR-0024 決定3・§9 T5）。
+  「ラベルが00:00:00（日をまたぐ24時ラベル）」の件数は数え方が2通りある（実測。
+  `value_grain='hour'` の行を `sensor_timeseries.source_id` で引き戻して集計）:
+  全行（`result IS NULL` も含む）では sagamihara 7,306 / soramame 7,020（計14,326）、
+  `value_num IS NOT NULL` に絞ると sagamihara 7,263 / soramame 6,498（計13,761）。
+  `b05` の `verify_hourly_daily_rollup`（T6）が実際に使うのは後者（キューブ側の
+  `WHERE v IS NOT NULL` と揃えるため）。
+- **`rain_daily` は単位不明の相模原 `RAIN`（`sagamihara_taiki_hourly`、`unit_id=NULL`）
+  を `/10` で推測換算している**（v1 のコメント「0.1mm 単位（原本に unit の記載が
+  ないので mm に直した）」をそのまま再現するためだけの処理。レジストリは `RAIN` の
+  単位を推測せず `unit_id=NULL` のまま持つ。ADR-0023 が扱う「単位は分かっているが
+  出典間でスケールが違う」8変数とは別の問題）。
+- **`jma_monthly_kanagawa` の積雪3変数に、月次限定の alias 表記ゆれがある**（実測。
+  `variable_alias` の `source_id='jma_monthly_kanagawa'` を確認すると、
+  `weather.snow_depth_max`（`雪_最深 積雪`〔全角スペースあり〕/`雪_最深積雪`）・
+  `weather.snowfall_depth_total`（`雪_降雪_合計`/`雪_降雪の深さ_合計`）・
+  `weather.snowfall_depth_max_daily`（`雪_降雪_日合計の最大`/`雪_降雪の深さ_日合計の最大`）
+  の3変数が、それぞれ2つの alias 文字列から同じ `(variable_id, unit_id, stat, grain)`
+  に解決される）。`jma_monthly` は月次出典配布セルであり v1 の9テーブルには射影しない
+  ため実害は無いが、`assert_alias_is_function` の sensor 側検証は b05 が実際に消費する
+  grain（day/hour/instant）だけに絞ってこの重複を意図的に見逃している（§9 T5「逆引きの
+  検証」）。
+- **`jma_daily_yokohama` の文字列系4系列は `result` が全行 `NULL`**（実測。
+  `天気概況_昼`/`天気概況_夜`/`風向・風速_最大瞬間風速_風向`/`風向・風速_最大風速_風向`
+  の4系列、各971行、全行 `result IS NULL`）。`value_text` は上流の `m02` で既に消えて
+  いるため、このセンサーの縦線では文字列値を持つ観測が無い（§9 T3）。負債として記録
+  のみ、この縦線では対応しない。
+- **`soramame_hourly_kanagawa` の hour_ending という前提は一次資料未確認**（ADR-0024
+  T2）。収集スクリプトの記載（`scripts/c11_soramame.py`・`scripts/c13_sagamihara_taiki.py`
+  の「そらまめ君同様」という伝聞）のみを根拠に採用している。環境省の一次資料を
+  Web 検索で探したが確認できなかった（2026-09-15）。
+
 ## 7. やっていないこと
 
-- 残り27テーブル（`zone_year`/`zone_clim`/`sensor_daily`/…、ADR-0011 §「33テーブルの
-  行き先」参照。`meas_clim`/`site_var`/`var_catalog` は本タスクで済んだ）
-- `sensor_timeseries` を入力にする縦線（`sensor_daily`/`sensor_hour_month`。申し送り #5 が
-  ここで初めて塞ぐ）
+- 残り24テーブル（`zone_year`/`zone_clim`/…、ADR-0011 §「33テーブルの行き先」参照。
+  `meas_clim`/`site_var`/`var_catalog`/`sensor_daily`/`rain_daily`/`sensor_hour_month`
+  の6テーブルは本タスク・前タスクで済んだ）
 - `occurrence` を入力にする縦線（生物系11テーブル）
 - `imputation='lod'` 併記（ADR-0009 決定4。今回は `zero` のみ）
+- 正準単位の併記（ADR-0023。方針は決定済みだが未実装）
+- 時刻帯の実データ結線（ADR-0024。`region_id` から実際のUTCオフセットを引く仕組みは
+  未実装。応答封筒〔ADR-0014〕の実装より前に要る）
 - Parquet 化（ADR-0001。D8 参照）
 - 公開 ID（`observation_id`）の発行（ADR-0016 Phase C の仕事）
-- **既知の負債**: `scripts/b03_build_observation.py` の `write_observation` は
-  `common.fresh_sqlite`（ファイル全体を作り直す）で `observation` を書いており、
-  「`observation` はこのスクリプトの単独所有」を前提にしている。ADR-0007 は
-  `measurements` と `sensor_timeseries` を**同じ** `observation` に統合すると
-  明言しているため、`sensor_timeseries` を入力にする次の縦線では
-  `write_observation` をファイル全体作り直しから `observation` テーブル単位の
-  作り直しに変える必要がある——b04 が `observation_agg` に対して既に採っている
-  パターン（`common.replace_table`）と同じ形。今回はコードを変えない。
+- **既知の負債（`observation` の単独所有は解消、`observation_agg`/v1形の非原子は残る）**:
+  `scripts/b03_build_observation.py` の `observation` 書き込みは、`sensor_timeseries` を
+  入力に追加したこのタスクで `common.fresh_sqlite`（ファイル全体を作り直す）から
+  `common.replace_table`（`observation` テーブルだけを作り直す）に変更した（§3参照）。
+  ADR-0007 が `measurements` と `sensor_timeseries` を**同じ** `observation` に統合すると
+  明言しているため、将来 `occurrence`（ADR-0007 決定3）が同じ `v2.sqlite` に増えても
+  `b03` の実行がそれを消さなくなった。**一方、`b04_build_cube.py`（`replace_table` の
+  `DROP TABLE IF EXISTS` → `CREATE`）と `b05_project_v1.py`（`v1_projection.sqlite` を
+  `fresh_sqlite` でファイルごと作り直す）は、どちらも「先に消してから書く」という
+  非原子な書き込みのまま**——途中でプロセスが落ちると、そのテーブル・ファイルが
+  消えたまま次回実行まで残る。語彙レジストリ（`data/db/registry.sqlite`）の書き込みを
+  一時ファイル＋`os.replace()` で原子化した PR #11 は、この負債を「`b03`〜`b05` の
+  `fresh_sqlite()` も同じ『先に消してから書く』非原子のまま。今は『無ければ作る』自動化
+  が無く手で再実行する前提なので被害は小さい。自動化するときに同じ形で直す」と明記して
+  おり、本タスクでもその判断を踏襲し、コードは変えていない。
 
 ## 8. 次の一手（オーナーの方針）
 
@@ -308,3 +369,93 @@ ADR-0011「粒度をまたぐ再集計をしない」）。月・年セルの `n
   に理由・実測値つきで記録済み）。
 - (b) 次の縦線は `sensor_timeseries` 系（`sensor_daily`/`sensor_hour_month`）。そこで初めて
   申し送り #5（原表記スケール単位。×10スケールの7単位）が着手判定を塞ぐ。
+  **→ `phase-b/sensor-slice` で実施済み（§9・§10）。**
+
+## 9. センサーの縦線（`sensor_timeseries` → `observation` → キューブ → `sensor_daily`/`rain_daily`/`sensor_hour_month`）
+
+対象: `sensor_timeseries`（717,839行。`sagamihara_taiki_hourly`/`soramame_hourly_kanagawa`/
+`hiratsuka_taiki`/`jma_daily_yokohama`/`jma_monthly_kanagawa`/`yokohama_river_waterlevel`/
+`synthetic_sensor` の7出典）を入力に追加し、`sensor_daily`/`rain_daily`/`sensor_hour_month`
+の3テーブルを通した（`phase-b/sensor-slice`）。設計は `sensor_design_v2.md`（オーナー決定、
+アドバイザーのレビュー反映済み）。決定は ADR-0023（単位）・ADR-0024（時刻帯・時刻ラベル）に
+切り出した。ここでは実装された最終形（T1〜T6）を記録する。
+
+### T1. 時刻帯なしのローカル時刻（ADR-0024 決定1）
+
+`period_start`/`period_end` は時刻帯なしのローカル時刻。原表記（`+09:00` 付き）は
+`period_raw` に残す。`scripts/migrate/period.py` の `_strip_tz` が25桁ラベルから時刻帯を
+落とす。`b03` が全行で不変条件（`+`/`Z` を含まない・`date(period_start)` が日付部分と
+一致）を検証する。
+
+### T2. 時刻ラベルの意味の宣言（ADR-0024 決定2）
+
+`scripts/migrate/time_label_conventions.yaml` に `sagamihara_taiki_hourly`
+（`expected_row_count=175,344`）・`soramame_hourly_kanagawa`（`expected_row_count=168,793`）
+の2件を `hour_ending` として宣言した。CI（`79da0fc`）が構造（`convention`/
+`expected_row_count`/`evidence` の必須キー）を、`b03` が実行時に使用件数・件数一致を検証する。
+
+### T3. `b03` が `measurements` と `sensor_timeseries` を1本の `observation` に統合
+
+出典ごとの取り込み関数（`_ingest_measurements`/`_ingest_sensor_timeseries`）に分け、
+alias/place 解決・grain の食い違い検証・時刻の不変条件は共有する。`observation` の書き込みを
+`fresh_sqlite`（ファイル全体作り直し）から `replace_table`（`observation` テーブルだけ作り
+直し）に変更し、出典ごとに1トランザクションでストリーム挿入する（全行をリストに溜めない）。
+`source_measurement_id` を `source_table`+`source_row_id` に一般化した。センサーは
+`censoring='none'`・`value_raw=NULL` 固定、単位は出典のまま（ADR-0023 決定1）。
+
+### T4. キューブ（`b04`）が毎時・瞬時・月次出典配布セルを持つ
+
+`period_grain IN ('hour','instant')` の観測も日次セルに積み上げる（日付は
+`substr(period_start,1,10)`＝区間の始まりの日付。正しい日割り。ADR-0024 決定3）。日次セルは
+全変数で `stat ∈ {mean, min, max}` を作り、`default_stat='sum'` かつ `obs_stat` が `NULL`/
+`'sum'` の系列だけ `stat='sum'` も足す。`period_grain='month'`（`jma_monthly`）は日次セルを
+経由しない出典配布の月次セル（年次の出典配布セルと対称）にした。出典配布の年次セルは
+`period_grain IN ('year','fiscal_year')` に閉じた（以前の `period_grain <> 'day'` は
+月次・毎時まで吸い込んでいた）。月次・年次（日次セルから積み上げる側）の `input_grain` は
+`cube_day` から引き継ぐ（`'day'` 直書きをやめた）。詳細は ADR-0021 の2026-09-15追記。
+
+### T5. 射影（`b05`）— v1 の癖は射影にだけ置く
+
+- `sensor_daily`: `value_grain ∈ {day, instant}` の出典（hiratsuka/jma_daily/yokohama/
+  合成）はキューブの日次セルから（mean/min/max をピボット）。`value_grain='hour'` の出典
+  （sagamihara/soramame）は `observation`（L2）から `substr(period_raw,1,10)`（v1 の
+  ラベル日割り）で直接集計し `UNION ALL`（キューブを経由しない。ADR-0024 決定3）。
+- `rain_daily`: 同じく L2 から。`ROUND(SUM(value_num)/10.0, 2)`（v1 の推測換算の再現。§6）。
+- `sensor_hour_month`: 月・時刻は `period_raw` から取る（`period_start` だと hour_ending で
+  1時間ずれる）。地点をまたいで混ぜる（v1 と同じ）。
+- 逆引きの検証: `(variable_id, value_grain, obs_stat, unit_id) → alias` の関数性は、射影する
+  セル・行に現れる tuple に限って assert する（`jma_monthly` の積雪3変数の alias 重複は
+  月次で射影しないため対象外。§6）。**tuple → dataset の一意性**も新たに assert する
+  （同じセルが `meas_*` と `sensor_*` の両方に二重に出ないように。実測では衝突0件）。
+
+### T6. キューブの毎時→日次の正しさを機械で確かめる
+
+`verify_hourly_daily_rollup` が、`value_grain='hour'` の各系列・各日 `D` について
+「キューブの日次セルの n = v1形の日 D の n − 日 D のラベル00時の件数 + 日 D+1 のラベル00時の
+件数」が全日で成り立つことと、系列ごとの全期間の Σn・min・max が L2 とキューブで一致すること
+を検証する（崩れれば `MigrationError`）。実データで通過を確認済み。詳細は ADR-0024 決定4。
+
+## 10. キューブに既に織り込んだ意図的な変更
+
+キューブ（`observation_agg`）の日次セルは、hour_ending の毎時値を**正しい日割り**（区間の
+始まりの日付）で積み上げている。v1（および v1 互換の射影 `sensor_daily`/`rain_daily`/
+`sensor_hour_month`）は**ラベルの日付**で日割りしており、この2つは食い違う。以下は
+「v1 のラベル日割り」と「キューブの正しい日割り」を直接比較した実測（2026-09-15、
+`value_num IS NOT NULL` の観測のみ対象。n/avg/min/max のいずれかが変われば「値が変わる」に
+数える）:
+
+| 対象 | 値が変わる | 消える（v1にあってキューブに無い） | 現れる |
+|---|---:|---:|---:|
+| `sensor_daily`（hour-grain系列のみ。v1側13,831 (系列,日) 組） | 9,424 | 2 | 0 |
+| `rain_daily`（v1側3,654 (日) 組） | 549 | 1 | 0 |
+| `sensor_hour_month`（月×時刻のバケツ替え。2,112行中） | 1,992 | 0 | 0 |
+
+**この変更量は今すぐ表に出ない。** `sensor_daily`/`rain_daily`/`sensor_hour_month` は
+（T5 のとおり）キューブを経由せず L2 から v1 のラベル日割りで直接計算されるため、
+`b02_derived_compare.py` の突合ゲートは v1 と完全一致し続ける（§4「突合ゲート（9テーブル対象）」
+の行・`docs/plans/PHASE_B_RECONCILIATION.md` §6参照）。
+**切り替えは「v1 互換の射影（L2 直接集計の分岐）を退役させ、キューブの日次セルだけを使う」
+だけで起き、その時点で `sensor_daily` の9,424行・`rain_daily` の549行・`sensor_hour_month`
+の1,992行が一度に動く。それまでは `observation`/`observation_agg`（v2）は1行も動かない。**
+この量を宣言済み差分（`expected_diffs.yaml`）で1件ずつ吸収するのは非現実的な規模なので、
+退役の判断自体をこのドキュメントと ADR-0024 に残す。

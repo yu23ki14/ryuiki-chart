@@ -3,6 +3,19 @@
 - 状態: 提案中 / 日付: 2026-09-08
 - 関連: ADR-0007（observation）, ADR-0008（時間）, ADR-0010（指標）, ADR-0011（キューブ）, ADR-0016（移行計画）
 
+**2026-09-15 追記（センサーの縦線・ADR-0024）**: 観測はそれぞれ自分の `period_grain` の格に入る
+——`day` は日次セル、`hour`/`instant` は日次セルに積み上げ（日付は区間の始まり。ADR-0024）、
+`month`（`jma_monthly`）は出典配布の月次セル（年次の出典配布セルと対称）、`year`/`fiscal_year`
+は出典配布の年次セルに**閉じる**（以前の `period_grain <> 'day'` は月次・毎時まで年次として
+誤って吸い込んでいたため）。日次セルは全変数で `stat ∈ {mean, min, max}` を必ず作り、
+`variable.default_stat='sum'` かつ `obs_stat` が `NULL`/`'sum'` の系列だけ `stat='sum'` も足す
+（雨量等。`降水量_最大_10分間` のような「最大値」系列には合計をかけない）。月次・年次の積み上げ
+（日次セルから作る側）は `stat='mean'` の日次セルだけを使い、`input_grain` は日次セル
+（`cube_day`）から**引き継ぐ**（`'day'` 直書きをやめた）。**既知の制約**: 月・年の格の鍵に
+「日次のどの `stat` から積んだか」の軸が無い（今は `mean` 経路だけを積み上げに使うので衝突
+しないが、将来 `sum` 経由の月次集計を作るようになったら再検討が要る）。詳細は
+[ADR-0024](0024-local-time-and-time-labels.md)・`docs/plans/PHASE_B_FACT_SLICE.md` §9。
+
 ## 背景（実測。Phase B 縦に薄い1本 `measurements`→`observation`→`meas_daily`/`meas_month`/`meas_year` で判明）
 
 ADR-0008 は時間を `period_start` / `period_end` / `grain` の3点セットで表すと決めた。しかし

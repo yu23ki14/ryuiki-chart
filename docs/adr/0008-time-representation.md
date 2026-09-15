@@ -9,6 +9,11 @@
 （`atsugi_river_water_quality` のように、値は日間平均値でも日付が年度番号までしか残っていない
 出典があるため）。詳細は [ADR-0021](0021-observation-grain-and-cube-key.md)。
 
+**2026-09-15 追記**: [ADR-0024](0024-local-time-and-time-labels.md) で時刻帯（`period_start`/
+`period_end` は時刻帯なしのローカル時刻、原表記は `period_raw`）と時刻ラベルの意味
+（`hour_ending` 等、出典ごとの宣言）を明確化した。本 ADR の決定（区間＋粒度の3点セット）自体は
+変わらない。
+
 ## 背景
 
 `measurements.measured_on` には**2つの意味の値が混在**している（実測）。

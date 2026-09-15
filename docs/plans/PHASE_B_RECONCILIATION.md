@@ -1,9 +1,10 @@
 # Phase B 突合ゲート — v1 派生テーブルの再現性を機械で判定する
 
-対象: ADR-0016 の Phase B / 状態: **実データで6テーブル（`meas_daily`/`meas_month`/`meas_year`/
-`meas_clim`/`site_var`/`var_catalog`）を通した（`phase-b/fact-slice` + `phase-b/meas-remainder`。
-部分ゲート＝33テーブル中6テーブルだけの合格で、全体の合格ではない。宣言済み差分のみで一致、
-残り27テーブルは未着手）**
+対象: ADR-0016 の Phase B / 状態: **実データで9テーブル（`meas_daily`/`meas_month`/`meas_year`/
+`meas_clim`/`site_var`/`var_catalog`/`sensor_daily`/`rain_daily`/`sensor_hour_month`）を通した
+（`phase-b/fact-slice` + `phase-b/meas-remainder` + `phase-b/sensor-slice`。部分ゲート＝33テーブル
+中9テーブルだけの合格で、全体の合格ではない。前6テーブルは宣言済み差分のみで一致、センサー由来の
+後3テーブルは宣言済み差分0で完全一致。残り24テーブルは未着手）**
 作成: 2026-09-07 / 更新: 2026-09-15
 
 **このドキュメントが説明するのはゲートの仕組みと、実データで実行した結果（§6・宣言済み差分の節）。
@@ -261,6 +262,24 @@ v1 側のバグだと確定できたため、`scripts/reconcile/expected_diffs.y
 - `site_var`: 2キー（2026-09-15）
 - `var_catalog`: 1キー（2026-09-15）
 
+続く `phase-b/sensor-slice`（`sensor_timeseries` を入力に追加し `sensor_daily`/`rain_daily`/
+`sensor_hour_month` の3テーブルを通した）でも、**新しく再現できなかった箇所は無い**——
+この3テーブルは宣言済み差分0で v1 と完全一致した（`reports/derived_reconciliation.md`
+「一致したテーブル」）。
+
+ただし1点、このゲートが**見なくなった**経路があることを正直に書く。キューブ
+（`observation_agg`）は毎時値を「区間の始まりの日付」で日次セルに積み上げるが、v1（および
+`sensor_daily`/`rain_daily`/`sensor_hour_month` の射影）は「ラベルの日付」で日割りしており、
+この2つは食い違う（ADR-0024 決定3。区間の境界をはみ出す集計）。射影（`b05`）はこの食い違いを
+避けるため、hour-grain の系列だけキューブを経由せず L2（`observation`）から v1 のラベル日割りで
+直接計算する——**キューブに実際には織り込まれている「正しい日割りへの意図的な変更」は、
+射影がキューブを迂回しているぶん、この突合ゲートには一切現れない。**
+代わりに `b05` の `verify_hourly_daily_rollup`（T6。`docs/plans/PHASE_B_FACT_SLICE.md` §9）が、
+「キューブの日次セルの n」と「v1形の日割りから機械的に導ける期待値」が全日で一致することを
+検証する。ゲートが直接確認できない差分を、宣言（`expected_diffs.yaml`）ではなく計算式による
+機械検証に置き換えた形で、代わりに保証している。変更量そのものの実測は
+`docs/plans/PHASE_B_FACT_SLICE.md` §10「キューブに既に織り込んだ意図的な変更」を参照。
+
 ## 7. 宣言済み差分（`expected_diffs.yaml`）
 
 ADR-0016 の受け入れ基準は「`imputation='zero'` の系列で v1 の派生テーブルの値が再現できること」
@@ -312,11 +331,13 @@ v1 側を直すまで v2 のゲートが恒久的に赤いままになる。ADR-
 
 ## 8. やっていないこと（このPRのスコープ外）
 
-- 残り27テーブル（ADR-0011「33テーブルの行き先」参照。`zone_year`/`zone_clim`/
-  `sensor_daily`/… および `occurrence` を入力にする生物系11テーブル。`meas_clim`/
-  `site_var`/`var_catalog` は `phase-b/meas-remainder` で済んだ）
+- 残り24テーブル（ADR-0011「33テーブルの行き先」参照。`zone_year`/`zone_clim`/…
+  および `occurrence` を入力にする生物系11テーブル。`meas_clim`/`site_var`/`var_catalog`
+  は `phase-b/meas-remainder`、`sensor_daily`/`rain_daily`/`sensor_hour_month` は
+  `phase-b/sensor-slice` で済んだ）
 - `imputation='lod'` 併記（ADR-0009 決定4。今回は `zero` のみ）
+- 正準単位の併記（ADR-0023。方針は決定済みだが未実装）
 - Parquet 化（ADR-0001）
-- `.github/workflows/` への `phase-b/fact-slice` の6テーブル部分ゲートの配線（CI ワークフロー
+- `.github/workflows/` への `phase-b/fact-slice` の9テーブル部分ゲートの配線（CI ワークフロー
   自体は `phase-b/alias-source-key` で新設済みだが、`--tables` オプションでの実行はまだ
   ジョブに組み込まれていない）
