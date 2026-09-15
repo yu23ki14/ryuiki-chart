@@ -206,4 +206,11 @@ jobs:
           period.validate_period_exceptions_shape(exceptions_path)
           exceptions = period.load_period_exceptions(exceptions_path)
           print(f"OK: {exceptions_path}（{len(exceptions)}件の例外）")
+
+          # time_label_conventions.yaml（センサーの縦線 設計 v2 T2）も同じ
+          # 流儀で検証する。
+          conventions_path = pathlib.Path("scripts/migrate/time_label_conventions.yaml")
+          period.validate_time_label_conventions_shape(conventions_path)
+          conventions = period.load_time_label_conventions(conventions_path)
+          print(f"OK: {conventions_path}（{len(conventions)}件の宣言）")
           PY
