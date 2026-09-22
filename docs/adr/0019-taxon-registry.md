@@ -3,6 +3,67 @@
 - 状態: 提案中 / 日付: 2026-09-06
 - 関連: ADR-0004（ID）, ADR-0010（語彙）, ADR-0018（公開範囲）
 
+**2026-09-22 追記（生物の出現の縦線 Slice 0、`phase-b/occurrence-registry`）**:
+Phase A の実装（`scripts/registry/build_taxon.py`）は `organism_records.taxon_key`
+を出典に関わらず `common:taxon:gbif.<key>` に通していたが、iNaturalist 行の
+`taxon_key` には iNaturalist 自身の `taxon.id`（GBIF の taxonKey とは無関係な
+別の数値空間）が入っていた（`scripts/m03_organisms.py`）。GBIF と iNat が偶然
+同じ数値を発行した**9件が衝突**し（例: `8026` は GBIF では科 *Axiidae*、iNat では
+*Corvus macrorhynchos*）、件数の多い側の学名が少ない側の実体を上書きしていた。
+
+`organism_records.source_id` で出典を判定し、GBIF 由来は
+`common:taxon:gbif.<GBIFのtaxonKey>`、iNaturalist 由来は
+`common:taxon:inat.<iNatのtaxon.id>` に分けた（**決定1の「`taxon_id` は `common:`
+スコープ」自体は変わらない**。`gbif.`/`inat.` は `local_key` 側の名前空間で、
+ADR-0004 規約1「`local_key` は出典の識別子をそのまま使ってよいが、必ず名前空間を
+前置する」の具体化）。`gbif_taxon_key` 列は本物の GBIF taxonKey のときだけ埋める。
+
+これは **ADR-0004「ID は不変」の例外**として記録する: occurrence ファクト（まだ
+未着手）が `taxon_id` を参照するようになる前の、ID を組み替えても参照が壊れない
+唯一の時点で行った。web・scripts 側を全件 grep し、レジストリのビルダー・検証
+自身（本ファイル・`r01_build_registry.py`・関連テスト）以外に `taxon_id`/
+`gbif_taxon_key` の呼び出し元が無いことを確認済み。
+
+あわせて、v1（`web/scripts/build-biota.mjs` の `org_norm`）が記録ごとに行っていた
+分類補完（`kingdom`/`phylum`/`class` の `COALESCE(own, 二名法キーの多数決,
+属の多数決)`、および `taxon_group` の CASE 式）を、taxon（namespace, taxon_key）
+単位でレジストリのビルダー側に移した（`taxon.kingdom`/`phylum`/`class`/`order`/
+`family`/`classification_basis`/`canonical_binomial`/`taxon_group` 列を追加。
+`order`/`family` は多数決で補完しない。`taxon_group` は
+`registry/taxon/taxon_group.yaml` から生成）。v1 の暗黙の同数処理
+（`ROW_NUMBER` の実装依存順）を明示規則（件数降順、同数なら値の昇順）に置き換えた。
+`classification_basis` の解決不能値は `'unresolved'` ではなく `'no_match'` と
+名付けた（`taxon.status='unresolved'`——GBIF backbone未照合——と文字列が同じで
+紛らわしいため）。
+
+**分類が不確かな taxon の可視化（`status='needs_review'`）は、独立レビュー
+（/code-review）で2点補強した**: (1) 属単位の多数決が同数の場合だけでなく、
+**属自体が複数の class にまたがる場合**（同数でなくても多数決の信頼性が低い）も
+対象にした。(2) `status='unresolved'`（GBIF backbone未照合）の行でも、分類の
+多数決が不確かなら `needs_review` に置き換えるようにした（初版は「`unresolved`
+は上書きしない」としていたが、これだと *Martensia flabelliformis* のように
+taxon_group 自体が丸ごと変わりうる不確かさが `taxa` 由来の unresolved 行では
+一切可視化されなかった。`unresolved` と `needs_review` は別軸の事実だが `status`
+は単一値なので、より新しい・具体的な判定を優先する）。実測件数・実例は
+`docs/plans/PHASE_B_OCCURRENCE.md` 参照。決定そのもの（backbone は GBIF を正とする、
+未解決は `unresolved` で保持する等）は変更していない。
+
+**2回目の独立レビューで、上記の実装の同数処理・名前空間の扱いに4件の
+頑健性修正を追加した**（`docs/plans/PHASE_B_OCCURRENCE.md` §7）: 名前空間を
+2値に決め打ちしていた3箇所を対応表から導く形に一般化、kingdom の
+needs_review 判定が (class,kingdom) の組の同数を誤って流用していたのを
+列ごとの食い違いで判定する形に修正（多数決の値の選び方自体は変えていない）、
+taxon_key ごとの代表選びの同数で分類には無関係な表記ゆれでもビルド全体が
+止まっていた assert を撤去、指紋の古さメッセージに `organism_records` を追記。
+**4件とも実データでの出力（taxon_id・分類の値・`status`）を1行も変えないことを
+全41,454行の diff で確認済み**——将来のデータ・辺縁ケースに備えた防御的な修正。
+
+**PR #15 の CI が `ModuleNotFoundError: No module named 'requests'` で落ちたため、
+`TAXON_KEY_SOURCE_NAMESPACE` の置き場を `scripts/common.py`（`requests` に依存する
+収集系の共有モジュール）から、依存の無い `scripts/taxon_namespaces.py` に移した**
+（`docs/plans/PHASE_B_OCCURRENCE.md` §8）。「レジストリのパッケージの外の1箇所」
+という意図・値は変えていない。
+
 ## 背景（実測）
 
 生物データはこの基盤で最大のファクト（`occurrence` 823,692行）であり、

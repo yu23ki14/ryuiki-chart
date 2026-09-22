@@ -558,12 +558,17 @@ def report_taxa(ryuiki: sqlite3.Connection) -> dict:
     sample = unresolved_rows[:40]  # ORDER BY taxon_id 済みなので決定論的
 
     registry_taxon_total = scalar(ryuiki, "SELECT count(*) FROM reg.taxon")
-    registry_taxon_unresolved = scalar(
-        ryuiki, "SELECT count(*) FROM reg.taxon WHERE status = 'unresolved'"
+    # status の内訳は固定2値（accepted/unresolved）決め打ちではなく GROUP BY で全部
+    # 数える（/code-review 指摘4。以前は accepted/unresolved の2つしか数えておらず、
+    # 分類の多数決が不確かな taxon に付く status='needs_review' が内訳から漏れて
+    # 合計が registry_taxon_total と一致しなかった）。
+    registry_taxon_status_rows = rows(
+        ryuiki,
+        "SELECT COALESCE(status, '(NULL)') AS status, count(*) AS n "
+        "FROM reg.taxon GROUP BY COALESCE(status, '(NULL)') ORDER BY status",
     )
-    registry_taxon_accepted = scalar(
-        ryuiki, "SELECT count(*) FROM reg.taxon WHERE status = 'accepted'"
-    )
+    registry_taxon_status = [(r["status"], r["n"]) for r in registry_taxon_status_rows]
+    registry_taxon_status_dict = dict(registry_taxon_status)
 
     return {
         "total_taxa": total_taxa,
@@ -575,8 +580,11 @@ def report_taxa(ryuiki: sqlite3.Connection) -> dict:
         "by_match_type": [(r["match_type"], r["n"]) for r in by_match_type],
         "sample": sample,
         "registry_taxon_total": registry_taxon_total,
-        "registry_taxon_unresolved": registry_taxon_unresolved,
-        "registry_taxon_accepted": registry_taxon_accepted,
+        "registry_taxon_status": registry_taxon_status,
+        # 個別値は後方互換のため残す（'needs_review' は無ければ0）。
+        "registry_taxon_unresolved": registry_taxon_status_dict.get("unresolved", 0),
+        "registry_taxon_accepted": registry_taxon_status_dict.get("accepted", 0),
+        "registry_taxon_needs_review": registry_taxon_status_dict.get("needs_review", 0),
     }
 
 
@@ -840,21 +848,28 @@ def render_markdown(v, p, o, u, nr, t, ap) -> str:
         f"`HIGHERRANK`・`FUZZY`（キーはあるが種以下まで一致していない弱い一致）"
         f"{t['weak_with_key']:,}行。"
     )
+    status_breakdown_ja = " / ".join(
+        f"`status='{status}'` {n:,}" for status, n in t["registry_taxon_status"]
+    )
+    status_sum = sum(n for _, n in t["registry_taxon_status"])
     a(
         f"- レジストリ側 `taxon` テーブルは {t['registry_taxon_total']:,}行 "
-        f"（`status='accepted'` {t['registry_taxon_accepted']:,} / "
-        f"`status='unresolved'` {t['registry_taxon_unresolved']:,}）。"
+        f"（{status_breakdown_ja}。合計 {status_sum:,} = 全体 {t['registry_taxon_total']:,}）。"
         "**`unresolved` の件数は `taxa` の未照合件数（gbif_taxon_key欠落）と"
         "一致しない。** レビュー指摘（ADR-0019決定4）を受け、`gbif_match_type='EXACT'` "
         "以外は `gbif_taxon_key` があっても対応する `gbif.<key>` 行に寄せず "
         "`status='unresolved'` で taxa 行ごとに個別登録する方針に直したため、"
-        f"`unresolved` は「未照合 {t['unresolved']:,}行」に「弱い一致 "
+        f"「未照合 {t['unresolved']:,}行」に「弱い一致 "
         f"{t['weak_with_key']:,}行」を加えた"
-        f"{t['unresolved'] + t['weak_with_key']:,}行になる"
-        f"（実測: `status='unresolved'` {t['registry_taxon_unresolved']:,}行）。"
-        "弱い一致を寄せていた旧実装では、GBIF が種以下まで一致させられなかった"
-        "広い taxon_key（例: kingdom=Animalia）に複数の無関係な種の名前・"
-        "レッドリストカテゴリが混ざる行ができていた。"
+        f"{t['unresolved'] + t['weak_with_key']:,}行が母数になる"
+        "（うち一部は分類の多数決が不確かで `status='needs_review'` に回るため、"
+        f"`status='unresolved'` の実測件数 {t['registry_taxon_unresolved']:,} とは"
+        "一致しない。`needs_review`（分類の多数決が同数、または属が複数classに"
+        "またがる場合に付く。accepted/unresolved どちらの行にも起こりうる）は"
+        f"{t['registry_taxon_needs_review']:,}行。詳細は"
+        "`docs/plans/PHASE_B_OCCURRENCE.md`）。弱い一致を寄せていた旧実装では、"
+        "GBIF が種以下まで一致させられなかった広い taxon_key（例: kingdom=Animalia）"
+        "に複数の無関係な種の名前・レッドリストカテゴリが混ざる行ができていた。"
     )
     render_table_or_note(
         a,

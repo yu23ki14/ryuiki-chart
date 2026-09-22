@@ -18,6 +18,7 @@ Phase A（`docs/plans/PHASE_A.md`, ADR-0016）の成果物。v1 のファクト�
   `site_id` の局番コード部分（`"__"` の後ろ）が空文字で自動導出できない行にだけ
   明示の local を持たせる列（後述「空の局番コード」参照）。他の142行は空欄 |
 | `taxon/vernacular_ja.csv` | 人手確認済みの和名54件（`domain.ts` の `NAME_JA` の複製） |
+| `taxon/taxon_group.yaml` | 生物群の日本語ラベル（`taxon_group`）の先勝ちルール表。`web/scripts/build-biota.mjs` の `TAXON_GROUP` CASE式をデータ化したもの（Phase B `phase-b/occurrence-registry`、後述「taxon の分類補完」） |
 | `caveat.yaml` | 注記14件（`domain.ts` の `DATA_CAVEATS`/`BIOTA_CAVEATS` 等の移設） |
 
 **生成物はここには置かない。** `data/db/registry.sqlite`（gitignore 済み）が唯一の生成物で、
@@ -64,29 +65,38 @@ pnpm run db:setup                        # migrate + seed。registry.sqlite も4
 `compute_input_fingerprint()` が計算する。対象は次の3種類:
 
 1. ビルドの論理（`scripts/schema_registry.sql` / `scripts/r01_build_registry.py` /
-   `scripts/registry/*.py`）と手書きの入力（`registry/` 配下の全ファイル）。`mode` に関わらず対象。
-2. **`mode='full'` のときだけ**、追加で2つ: `derived.sqlite` のうち build_place.py が実際に
-   読むテーブル（`common.DERIVED_TABLES_READ` = `watershed_meta`/`mesh_all`。ファイル全体
-   449MB はハッシュせず、決まった順の SELECT 結果だけを混ぜる）と、build_taxon.py が読む
-   `data/processed/taxon_crosswalk.csv` の中身。どちらも「読み取り専用だが再生成すれば
-   値が変わりうる」入力で、以前は指紋の対象外だったため、この2つだけを更新しても
-   レジストリが「新鮮」のまま固まってしまっていた。`--files-only` はどちらも開かない
+   `scripts/taxon_namespaces.py` / `scripts/registry/*.py`）と手書きの入力
+   （`registry/` 配下の全ファイル）。`mode` に関わらず対象。
+2. **`mode='full'` のときだけ**、追加で3つ: `derived.sqlite` のうち build_place.py が実際に
+   読むテーブル（`common.DERIVED_TABLES_READ` = `watershed_meta`。ファイル全体
+   449MB はハッシュせず、決まった順の SELECT 結果だけを混ぜる。`mesh_all` は
+   Phase B `phase-b/occurrence-registry` で外した——grid01 の入力が `derived.mesh_all`
+   から `ryuiki.organism_records` の座標に変わり、`build_place.py` がもう
+   `derived.mesh_all` を読まなくなったため）、build_taxon.py が読む
+   `data/processed/taxon_crosswalk.csv` の中身、そして **`ryuiki.organism_records`
+   の軽い代理指標（行数・最大rowid）**（3つ目は同じ Phase B PR で追加。grid01 の入力が
+   `derived.mesh_all` から `organism_records` に変わったことで、鮮度検知の経路
+   （後述）が一つ抜けたのを塞ぐため）。3つとも「読み取り専用だが再生成・追記すれば
+   値が変わりうる」入力で、以前は指紋の対象外だったため、これらだけを更新しても
+   レジストリが「新鮮」のまま固まってしまっていた。`--files-only` はどれも開かない
    （build_place.py/build_taxon.py 自体を呼ばないため。CI に原本が無くても動く要件を保つ）。
-   `full` モードで `derived.sqlite` が無い（`build:derived` 未実行）場合はクラッシュせず
+   `full` モードで `derived.sqlite`/`ryuiki.sqlite` が無い場合はクラッシュせず
    「無い」ことを指紋に混ぜる——以前の指紋（中身がある状態で計算済み）とは必ず食い違うので
-   「古い」と判定され、実際のビルドに進んで `open_source('derived')` の分かりやすいエラー
-   （`build:derived` を促す）で止まる。
+   「古い」と判定され、実際のビルドに進んで分かりやすいエラーで止まる。
 
-**`ryuiki.sqlite` / `cells.sqlite` は `mode` に関わらず指紋に含めない。** 理由は
+**`ryuiki.sqlite` / `cells.sqlite` の内容全体は `mode` に関わらず指紋に含めない**
+（`organism_records` の行数・最大rowidだけは例外。前段落参照）。理由は
 `scripts/registry/common.py` の `compute_input_fingerprint()` docstring 参照（正はそちら1箇所）。
 **`m0x_*.py` で原本（ryuiki/cells）を書き換えたら、`cd web && pnpm run build:registry` を
-明示的に走らせること**（`ensure-registry.sh` はこの書き換えを検知できないため）。
+明示的に走らせること**（`ensure-registry.sh` は行数・最大rowidが変わらない書き換え
+——例: license 列のバックフィル再実行のような UPDATE——を検知できないため）。
 
 `mode` は `full`（通常ビルド）/`files_only`（`--files-only`）。実行時刻は持たない（決定論）。
 
-`scripts/r01_build_registry.py --check-fresh` は `ryuiki`/`cells` を一切開かず・登録先には
-何も書かずに、対象の registry.sqlite（`RYUIKI_REGISTRY_DB` を尊重）が今の入力と一致するかだけを
-判定する。**PyYAML を import しない**（実際にビルドする4モジュールのうち3つが registry/*.yaml
+`scripts/r01_build_registry.py --check-fresh` は登録先には何も書かない。`cells` は一切
+開かない。`ryuiki` は `mode='full'` のときだけ `organism_records` の行数・最大rowid
+（実測で合計約5ms）を読むために一瞬だけ開く（`mode='files_only'` のときは開かない）。
+**PyYAML を import しない**（実際にビルドする4モジュールのうち3つが registry/*.yaml
 を読むために PyYAML に依存するが、`--check-fresh` はそれらを import せずに完結する）。
 終了コードは `EXIT_FRESH`=0 / `EXIT_STALE`=10 / それ以外=判定できない、の3種類。それぞれの
 意味と、「判定できない」を「古い」と誤読してはいけない理由は `scripts/r01_build_registry.py`
@@ -117,8 +127,9 @@ pnpm run db:setup                        # migrate + seed。registry.sqlite も4
 | variable | `common:variable:<theme>.<name>` | `common:variable:water.bod` |
 | place（namespace あり） | `<scope>:place:<kind>.<namespace>-<local>` | `jp-14:place:site.env-pubwater-0142` |
 | place（namespace 無し） | `<scope>:place:<kind>.<local>` | `common:place:grid01.3500_13900`（後述） |
-| taxon（GBIF照合） | `common:taxon:gbif.<taxon_key>` | `common:taxon:gbif.2480932` |
-| taxon（GBIF未照合） | `common:taxon:ryuiki-taxa.<slug(taxa.taxon_id)>` | 元の `taxa` 由来の識別子を後述のスラッグ化を通したもの |
+| taxon（GBIF由来） | `common:taxon:gbif.<GBIFのtaxonKey>` | `common:taxon:gbif.2480932` |
+| taxon（iNaturalist由来） | `common:taxon:inat.<iNatのtaxon.id>` | `common:taxon:inat.12345`（GBIFのtaxonKeyとは無関係な別の数値空間。Phase B `phase-b/occurrence-registry`、後述「taxon の名前空間分割」） |
+| taxon（taxa由来・GBIF未照合） | `common:taxon:ryuiki-taxa.<slug(taxa.taxon_id)>` | 元の `taxa` 由来の識別子を後述のスラッグ化を通したもの |
 | caveat | `common:caveat:<key>` | `common:caveat:censored` |
 | caveat（cells.notes由来） | `common:caveat:cells.<note_id\|rowid>` | `common:caveat:cells.42` |
 
@@ -239,6 +250,71 @@ ADR-0006 のコードリストに `grid01` を正式に追記するか、将来�
 メッシュを登録する時点で `mesh3` と `grid01` を明確に書き分けるかを判断する**
 申し送りとする。
 
+### grid01 の入力を `derived.mesh_all` から `organism_records` の座標に変える
+（Phase B `phase-b/occurrence-registry`。docs/plans/PHASE_B_OCCURRENCE.md §2-3）
+
+`derived.mesh_all` は年フィルタ済みの `mesh_year`（`yr BETWEEN 1970 AND 2026`）を畳んだ
+ものなので、年フィルタで弾かれた記録しか持たないセルが grid01 から欠落していた
+（1970年より前の記録しか無い3セル、日付の無い記録しか無い1セル。計4セル）。
+`build_place.py` の grid01 節を `ryuiki.organism_records` の座標（`FLOOR(lat*100)`/
+`FLOOR(lon*100)`）から直接作るように変えた。**日付の無い記録の座標も含める**
+（座標は823,692行全件に入っており、日付の有無と独立。ADR-0007 原則1が occurrence に
+求める「日付の無い記録も保持する」に、grid01 側もあらかじめ整合させる判断）。
+実測: 4,083セル → **4,087セル**。`place_source_ref.source_id` も
+`mesh_all.mlat_mlon` から `organism_records.lat_lon` に変わった（`external_key` の形
+`grid01:{mlat},{mlon}` は変えない）。これに伴い、ビルドの指紋（後述）から
+`derived.mesh_all` を読む記述を外した（`ryuiki.sqlite` はもともと指紋の対象外なので、
+指紋計算の対象は増えていない）。
+
+taxon の分類多数決（後述）は逆に v1 と同じ「日付ありの記録だけ」を母集団にしたまま
+温存している——grid01（場所の集計単位の完全性）と taxon の分類（v1 の値を変えない）は
+別の設計判断で、根拠も別々。
+
+## taxon の名前空間分割と分類補完（Phase B `phase-b/occurrence-registry`）
+
+**決定と理由の正は `docs/adr/0019-taxon-registry.md` の日付付き追記、実測の正は
+`docs/plans/PHASE_B_OCCURRENCE.md`。ここには実装の要点だけを書く。**
+
+**F1（taxon_id の名前空間分割）**: `organism_records.taxon_key` は出典によって
+別の数値空間（GBIF の `taxonKey` / iNaturalist 自身の `taxon.id`）が入っている。
+以前はどちらも `common:taxon:gbif.<key>` に通しており、偶然同じ数値を発行した
+9件が衝突していた（例: `8026` = GBIF 科 *Axiidae* / iNat *Corvus macrorhynchos*）。
+`organism_records.source_id` から名前空間を引く対応は `scripts/taxon_namespaces.py`
+の `TAXON_KEY_SOURCE_NAMESPACE`（正。`scripts/x01_dwca.py` 等レジストリを経由しない
+読み手にも届くように、`scripts/registry/build_taxon.py` の private 定数ではなく
+ここに置く。当初は `scripts/common.py`——収集系の共有モジュール——に置いたが、
+`requests` に依存するため CI で `ModuleNotFoundError` を起こし、依存の無い
+モジュールに切り出し直した）。GBIF 由来は `common:taxon:gbif.<key>`、iNaturalist 由来は
+`common:taxon:inat.<id>` に分ける。`gbif_taxon_key` 列は本物の GBIF taxonKey の
+ときだけ埋める。**ADR-0004「ID は不変」の例外**（occurrence ファクトが
+`taxon_id` を参照する前の今だけ安全にできる）であることの確認（呼び出し元grep等）は
+ADR-0019 参照。実測: gbif 21,234件 / inat 13,978件。
+
+**F2（kingdom/phylum/class/order/family/taxon_group）**: v1（`org_norm`）が
+記録ごとに行っていた分類補完を taxon 単位でレジストリのビルダーに移した。
+`classification_basis`（`source`/`binomial_match`/`genus_match`/`no_match`。
+`no_match` は旧名 `unresolved`——`taxon.status='unresolved'` と紛らわしいため
+改名）は `class` の解決経路。`order`/`family` は多数決で補完しない。
+`taxon_group` は `registry/taxon/taxon_group.yaml` から生成する。
+
+**これらの列は `registry.sqlite` だけにあり、D1（`schema-registry.ts`）には
+載せていない**（オーナー決定。`place_relation` と同じ判断——ADR-0001。
+`status='needs_review'` は既存の `status` 列にそのまま乗るので D1 側の
+スキーマ変更は不要）。
+
+**同数・不確かさの扱い**: 多数決の母集団は v1 と同じ「`observed_on` がある記録」
+（v1 の値を変えないため）。同数は件数降順→値の昇順で決定論的に解決する。
+属単位の多数決が同数、または**属自体が複数の class にまたがる**（同数でなくても
+信頼性が低い。実測26属）場合、その taxon を `status='needs_review'` にする
+（`accepted`/`unresolved` どちらの行にも起こりうる——backbone未照合と分類の
+不確かさは別軸の事実なので、より新しい判定を優先する）。実測件数は
+`docs/plans/PHASE_B_OCCURRENCE.md` 参照。
+
+**検証**: `org_norm`（816,856行）との record 単位の突き合わせで `cls`/`kdm`/`phy`/
+`taxon_group` の**不一致1件**（属の多数決が同数だった *Sirosporium celtidis*。
+`taxon_group` は「菌類」で変わらない）。残り775行は `taxon_key` 自体が無く
+元々 `taxon_id` 解決の対象外。
+
 ## `status='needs_review'` / `'unresolved'` が意味すること
 
 **黙って埋めない・落とさないという契約**（`docs/COLLECTOR_CONTRACT.md`）。レジストリは
@@ -246,6 +322,8 @@ ADR-0006 のコードリストに `grid01` を正式に追記するか、将来�
 
 - `place.status='needs_review'`: 座標などが原本に無く、捏造せず `NULL` のまま登録した行
   （例: 収集スクリプト自身が緯度経度を持たない観測地点90件）。
+- `taxon.status='needs_review'`: `place` とは別の意味（座標欠落ではなく分類の多数決が
+  不確か）。詳細は上記「taxon の名前空間分割と分類補完」節参照。
 - `taxon.status='unresolved'`: `taxa`（神奈川県RL等・和名中心）のうち、対応する
   GBIF の taxon 概念そのものとして扱えなかった6,242件（実測値。従来5,942件と
   報告していたが、レビュー指摘を受けて300件増えた）。内訳:

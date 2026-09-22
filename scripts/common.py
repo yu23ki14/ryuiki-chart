@@ -6,6 +6,12 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 RAW, PROC, DB, LOGS = ROOT/"data/raw", ROOT/"data/processed", ROOT/"data/db", ROOT/"data/logs"
 for d in (RAW, PROC, DB, LOGS): d.mkdir(parents=True, exist_ok=True)
 
+# organism_records.taxon_key の名前空間の対応（GBIF/iNaturalist の別）は
+# scripts/taxon_namespaces.py に置く（このモジュールは requests に依存するため、
+# CI（PyYAML・pytestしか入れない）で ModuleNotFoundError を起こした。
+# 依存の無いモジュールに切り出した経緯は taxon_namespaces.py 参照）。
+# ここから import はしない（逆向きの依存を作らない）。
+
 # クローラの名乗り。個人名・個人アドレスは載せない。
 # 2026-08-30: 以前は特定個人のメールアドレスを全リクエストに付与していたが、
 # 当該個人の承諾が未確認だったため docs/COLLECTOR_CONTRACT.md の定める代替手順

@@ -14,7 +14,7 @@
 | 4 | `sensor_timeseries` の site_id 77種 → `place_id` | 100% | 100.00%（未解決 0種 / 行ベースでは 100.00%） | OK |
 | 5 | `organism_records` 823,692行 → `taxon_id` | ≥99.8% | 99.8964%（未解決 853行） | OK |
 | 6 | 単位が決まる measurement 行（単位欠落 109,078行のうち） | 報告のみ | 109,078行（100.00%）が埋まる。残り 0行は未解決 | 報告のみ |
-| 7 | `taxa` 8,585行 → `taxon_id` | 報告のみ | GBIF照合(EXACT)あり 2,343行 / registry `status='unresolved'` 6,242行（詳細は§7） | 報告のみ |
+| 7 | `taxa` 8,585行 → `taxon_id` | 報告のみ | GBIF照合(EXACT)あり 2,343行 / registry `status='unresolved'` 6,215行（詳細は§7） | 報告のみ |
 | 8 | `registry/variable_alias.csv` の (dataset, alias, source_id) 154組 ⇔ v1 実データの組 154組 | 過不足なく一致 | 一致 154組 / CSVのみ 0組 / 実データのみ 0組 | OK |
 
 100%/≥99.8% を要求する項目（#1〜#5）はすべて目標を満たしている。
@@ -61,7 +61,7 @@
 
 - `taxa` 8,585行のうち、`gbif_taxon_key` を持つのは 2,643行。持たない（GBIFに未照合）のは 5,942行。
 - `gbif_taxon_key` を持つ 2,643行の内訳: `gbif_match_type='EXACT'`（種階級での一致）2,343行 / `HIGHERRANK`・`FUZZY`（キーはあるが種以下まで一致していない弱い一致）300行。
-- レジストリ側 `taxon` テーブルは 41,444行 （`status='accepted'` 35,202 / `status='unresolved'` 6,242）。**`unresolved` の件数は `taxa` の未照合件数（gbif_taxon_key欠落）と一致しない。** レビュー指摘（ADR-0019決定4）を受け、`gbif_match_type='EXACT'` 以外は `gbif_taxon_key` があっても対応する `gbif.<key>` 行に寄せず `status='unresolved'` で taxa 行ごとに個別登録する方針に直したため、`unresolved` は「未照合 5,942行」に「弱い一致 300行」を加えた6,242行になる（実測: `status='unresolved'` 6,242行）。弱い一致を寄せていた旧実装では、GBIF が種以下まで一致させられなかった広い taxon_key（例: kingdom=Animalia）に複数の無関係な種の名前・レッドリストカテゴリが混ざる行ができていた。
+- レジストリ側 `taxon` テーブルは 41,454行 （`status='accepted'` 35,188 / `status='needs_review'` 51 / `status='unresolved'` 6,215。合計 41,454 = 全体 41,454）。**`unresolved` の件数は `taxa` の未照合件数（gbif_taxon_key欠落）と一致しない。** レビュー指摘（ADR-0019決定4）を受け、`gbif_match_type='EXACT'` 以外は `gbif_taxon_key` があっても対応する `gbif.<key>` 行に寄せず `status='unresolved'` で taxa 行ごとに個別登録する方針に直したため、「未照合 5,942行」に「弱い一致 300行」を加えた6,242行が母数になる（うち一部は分類の多数決が不確かで `status='needs_review'` に回るため、`status='unresolved'` の実測件数 6,215 とは一致しない。`needs_review`（分類の多数決が同数、または属が複数classにまたがる場合に付く。accepted/unresolved どちらの行にも起こりうる）は51行。詳細は`docs/plans/PHASE_B_OCCURRENCE.md`）。弱い一致を寄せていた旧実装では、GBIF が種以下まで一致させられなかった広い taxon_key（例: kingdom=Animalia）に複数の無関係な種の名前・レッドリストカテゴリが混ざる行ができていた。
 - 未照合・弱い一致の内訳（`gbif_match_type` 別。EXACT を除く全件）:
 
   | gbif_match_type | 件数 | 意味 |

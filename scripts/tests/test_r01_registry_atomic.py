@@ -223,6 +223,28 @@ def test_compute_input_fingerprint_changes_when_build_code_changes(tmp_path):
     assert before != after
 
 
+def test_compute_input_fingerprint_changes_when_taxon_namespaces_changes(tmp_path):
+    """scripts/taxon_namespaces.py（build_taxon.py が読む TAXON_KEY_SOURCE_NAMESPACE
+    の正。scripts/registry/ の外にあるため *.py の glob には乗らない）を編集すると
+    指紋も変わる（足し忘れると --check-fresh がこの対応表の変更を検知できず
+    「新鮮」のまま固まる。scripts/common.py に置いていたときは requests 依存で
+    CI が落ちたため移した経緯がある。docs/plans/PHASE_B_OCCURRENCE.md §8参照）。
+    """
+    root = tmp_path / "repo"
+    _make_fingerprint_input_tree(root)
+    (root / "scripts" / "taxon_namespaces.py").write_text(
+        "TAXON_KEY_SOURCE_NAMESPACE = {}\n", encoding="utf-8"
+    )
+    before = common.compute_input_fingerprint(root=root)
+
+    (root / "scripts" / "taxon_namespaces.py").write_text(
+        "TAXON_KEY_SOURCE_NAMESPACE = {'x': 'y'}\n", encoding="utf-8"
+    )
+    after = common.compute_input_fingerprint(root=root)
+
+    assert before != after
+
+
 def test_compute_input_fingerprint_ignores_files_outside_the_input_set(tmp_path):
     root = tmp_path / "repo"
     _make_fingerprint_input_tree(root)
@@ -311,7 +333,7 @@ def test_fingerprint_full_mode_changes_when_derived_tables_change(tmp_path):
     derived_path = root / "data" / "db" / "derived.sqlite"
     # watershed_meta は build_place.py が実際に SELECT する列を持つ（残りは None で埋める。
     # scripts/tests/registry_fixtures.py の共通フィクスチャ）。
-    make_derived_places_db(derived_path, [("w1", "川1", None, None, None, None)], [(3500, 13900)])
+    make_derived_places_db(derived_path, [("w1", "川1", None, None, None, None)])
 
     before = common.compute_input_fingerprint(root=root, mode=common.MODE_FULL)
 
@@ -327,9 +349,65 @@ def test_fingerprint_full_mode_changes_when_derived_tables_change(tmp_path):
     assert before != after
 
 
-def test_fingerprint_full_mode_ignores_ryuiki_and_cells(tmp_path):
-    """ryuiki.sqlite / cells.sqlite が変わっても指紋は変わらない（意図的に対象外。
-    理由は compute_input_fingerprint() の docstring）。"""
+def test_fingerprint_full_mode_ignores_cells_and_most_of_ryuiki(tmp_path):
+    """cells.sqlite が変わっても指紋は変わらない（意図的に対象外）。ryuiki.sqlite も
+    `organism_records` の行数・最大rowid 以外（他のテーブル、既存行の値の書き換え）は
+    無視する（理由は compute_input_fingerprint() の docstring）。
+    """
+    root = tmp_path / "repo"
+    _make_fingerprint_input_tree(root)
+    (root / "data" / "db").mkdir(parents=True)
+    ryuiki_path = root / "data" / "db" / "ryuiki.sqlite"
+    conn = sqlite3.connect(ryuiki_path)
+    conn.execute("CREATE TABLE organism_records (a)")
+    conn.execute("CREATE TABLE other_table (b)")
+    conn.execute("INSERT INTO organism_records VALUES (1)")
+    conn.commit()
+    conn.close()
+
+    before = common.compute_input_fingerprint(root=root, mode=common.MODE_FULL)
+
+    # 行数・最大rowidが変わらない書き換え（既存行の値をUPDATE、別テーブルへのINSERT）
+    # は検知できない既知の限界（軽い代理指標のため。docstring参照）。
+    conn = sqlite3.connect(ryuiki_path)
+    conn.execute("UPDATE organism_records SET a = 999")
+    conn.execute("INSERT INTO other_table VALUES (1)")
+    conn.commit()
+    conn.close()
+    after = common.compute_input_fingerprint(root=root, mode=common.MODE_FULL)
+
+    assert before == after
+
+
+def test_fingerprint_full_mode_detects_organism_records_row_count_change(tmp_path):
+    """`organism_records` の行数（≒最大rowid）が変わると指紋も変わる
+    （/code-review 指摘7。grid01 の入力が derived.mesh_all から organism_records に
+    変わったことで抜けた鮮度検知を塞ぐ）。"""
+    root = tmp_path / "repo"
+    _make_fingerprint_input_tree(root)
+    (root / "data" / "db").mkdir(parents=True)
+    ryuiki_path = root / "data" / "db" / "ryuiki.sqlite"
+    conn = sqlite3.connect(ryuiki_path)
+    conn.execute("CREATE TABLE organism_records (a)")
+    conn.execute("INSERT INTO organism_records VALUES (1)")
+    conn.commit()
+    conn.close()
+
+    before = common.compute_input_fingerprint(root=root, mode=common.MODE_FULL)
+
+    conn = sqlite3.connect(ryuiki_path)
+    conn.execute("INSERT INTO organism_records VALUES (2)")
+    conn.commit()
+    conn.close()
+    after = common.compute_input_fingerprint(root=root, mode=common.MODE_FULL)
+
+    assert before != after
+
+
+def test_fingerprint_files_only_mode_ignores_ryuiki(tmp_path):
+    """--files-only は ryuiki.sqlite を一切開かないので、organism_records の行数が
+    変わっても files_only モードの指紋には影響しない（CI に原本が無くても動く要件）。
+    """
     root = tmp_path / "repo"
     _make_fingerprint_input_tree(root)
     (root / "data" / "db").mkdir(parents=True)
@@ -339,13 +417,13 @@ def test_fingerprint_full_mode_ignores_ryuiki_and_cells(tmp_path):
     conn.commit()
     conn.close()
 
-    before = common.compute_input_fingerprint(root=root, mode=common.MODE_FULL)
+    before = common.compute_input_fingerprint(root=root, mode=common.MODE_FILES_ONLY)
 
     conn = sqlite3.connect(ryuiki_path)
     conn.execute("INSERT INTO organism_records VALUES (1)")
     conn.commit()
     conn.close()
-    after = common.compute_input_fingerprint(root=root, mode=common.MODE_FULL)
+    after = common.compute_input_fingerprint(root=root, mode=common.MODE_FILES_ONLY)
 
     assert before == after
 
@@ -363,7 +441,7 @@ def test_fingerprint_files_only_mode_never_touches_derived_or_taxon_crosswalk(tm
     (root / "data" / "processed" / "taxon_crosswalk.csv").write_text("x\n", encoding="utf-8")
     (root / "data" / "db").mkdir(parents=True)
     make_derived_places_db(
-        root / "data" / "db" / "derived.sqlite", [("w1", "川1", None, None, None, None)], []
+        root / "data" / "db" / "derived.sqlite", [("w1", "川1", None, None, None, None)]
     )
 
     fp_with = common.compute_input_fingerprint(root=root, mode=common.MODE_FILES_ONLY)
@@ -383,7 +461,7 @@ def test_fingerprint_full_mode_handles_missing_derived_without_crashing(tmp_path
     assert fp_missing  # 例外にならない
 
     (root / "data" / "db").mkdir(parents=True)
-    make_derived_places_db(root / "data" / "db" / "derived.sqlite", [], [])
+    make_derived_places_db(root / "data" / "db" / "derived.sqlite", [])
     fp_present = common.compute_input_fingerprint(root=root, mode=common.MODE_FULL)
 
     assert fp_missing != fp_present

@@ -135,17 +135,30 @@ export const placeSourceRef = sqliteTable("place_source_ref", {
 ]);
 
 /**
- * 分類群レジストリ（ADR-0019）。GBIF 由来は `taxon_id = common:taxon:gbif.<key>`、
- * `taxa`（v1）由来で GBIF 未照合のものは `common:taxon:ryuiki-taxa.<学名をスラッグ化したもの>`
- * （`taxa` の主キーではない。学名を小文字化・記号を `%` エスケープして作った ID）。
- * 現状の `status` は `accepted` / `unresolved` の2値のみで、`synonym` は無い。
- * `accepted_taxon_id` は現状すべて NULL。将来 `status='synonym'` の行を持たせて
- * 正の taxon を指させるための列（ADR-0004 規約2: ID は不変、実体が変わったら
- * 新 ID を作り旧 ID は残す）で、まだ埋めていない。
- * 上流の `scripts/c24_taxon_crosswalk.py` の `accepted_scientific_name` 列は
- * GBIF の `acceptedUsageKey`（受理名）を引いたものではなく、一致したノード自身の学名を
- * 転記しているだけだったと判明している。列名と実態が食い違いやすい箇所なので、
- * `accepted_taxon_id` を埋めるときは誤用しないこと（docs/plans/PHASE_B_INTAKE.md §8）。
+ * 分類群レジストリ（ADR-0019。taxon_id の名前空間分割・分類補完は Phase B
+ * `phase-b/occurrence-registry`。決定と理由の正は ADR-0019 の日付付き追記、
+ * 実測の正は `docs/plans/PHASE_B_OCCURRENCE.md`——ここには実装に必要な最小限だけ書く）。
+ *
+ * `taxon_id` は出典ごとに名前空間を分ける: GBIF 由来は `common:taxon:gbif.<GBIFのtaxonKey>`、
+ * iNaturalist 由来は `common:taxon:inat.<iNatのtaxon.id>`（GBIF の taxonKey とは無関係な
+ * 別の数値空間。以前は両方を `gbif.<key>` に混ぜて9件衝突していた——詳細は ADR-0019）。
+ * `taxa`（v1）由来で GBIF 未照合のものは `common:taxon:ryuiki-taxa.<学名をスラッグ化したもの>`。
+ * `gbif_taxon_key` 列は本物の GBIF taxonKey のときだけ埋める（iNat 由来行は常に NULL。
+ * 理由は `scripts/registry/common.py` の `taxon_id_inat()` docstring）。
+ *
+ * `status` は `accepted` / `unresolved` / `needs_review`（分類の多数決が不確か
+ * ——同数、または属が複数classにまたがる——な taxon。accepted/unresolved どちらの
+ * 行にも起こりうる。実測件数は `docs/plans/PHASE_B_OCCURRENCE.md`）の3値で、
+ * `synonym` は無い。`accepted_taxon_id` は現状すべて NULL（`docs/plans/PHASE_B_INTAKE.md`
+ * §8。`c24_taxon_crosswalk.py` の `accepted_scientific_name` を誤用しないこと）。
+ *
+ * **`kingdom`/`phylum`/`class`/`order`/`family`/`classification_basis`/
+ * `canonical_binomial`/`taxon_group` は `scripts/schema_registry.sql` の
+ * `registry.sqlite` 側にはあるが、意図的にここ（D1 側）には載せていない**
+ * （オーナー決定。`place_relation` を D1 に載せなかったのと同じ判断——理由は
+ * `registry/README.md`「taxon の名前空間分割と分類補完」参照）。
+ * `status='needs_review'` は既存の `status` 列にそのまま乗るので、D1 側の
+ * スキーマ変更なしで既にシードされている。
  */
 export const taxon = sqliteTable("taxon", {
 	taxonId: text("taxon_id").primaryKey(),
