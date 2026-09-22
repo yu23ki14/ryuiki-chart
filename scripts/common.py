@@ -6,21 +6,11 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 RAW, PROC, DB, LOGS = ROOT/"data/raw", ROOT/"data/processed", ROOT/"data/db", ROOT/"data/logs"
 for d in (RAW, PROC, DB, LOGS): d.mkdir(parents=True, exist_ok=True)
 
-# organism_records.taxon_key の名前空間の正（phase-b/occurrence-registry, F1）。
-# taxon_key は出典によって別の数値空間が入っている: GBIF 由来行（taxon_key=GBIFの
-# taxonKey）は 'gbif'、iNaturalist 由来行（taxon_key=iNaturalist自身のtaxon.id。
-# GBIFのtaxonKeyとは無関係な別の数値空間）は 'inat'。m03_organisms.py が
-# organism_records.source_id にこの2値を書き込む。
-# scripts/registry/build_taxon.py（taxon_id を common:taxon:<namespace>.<key> の形に
-# 組み立てる）はここを正として import する（以前は build_taxon.py 内の private な
-# 辞書だったため、レジストリを経由しない読み手に届かなかった）。
-# scripts/x01_dwca.py（DwC-A 書き出し）はまだこれを経由せず、生の taxon_key を
-# 出典の区別なしに taxonID にそのまま書いている（docs/plans/PHASE_B_INTAKE.md 参照。
-# 直すのは公開物の意図的な変更になるため別PR）。
-TAXON_KEY_SOURCE_NAMESPACE = {
-    "gbif_kanagawa_occurrences": "gbif",
-    "inaturalist_kanagawa": "inat",
-}
+# organism_records.taxon_key の名前空間の対応（GBIF/iNaturalist の別）は
+# scripts/taxon_namespaces.py に置く（このモジュールは requests に依存するため、
+# CI（PyYAML・pytestしか入れない）で ModuleNotFoundError を起こした。
+# 依存の無いモジュールに切り出した経緯は taxon_namespaces.py 参照）。
+# ここから import はしない（逆向きの依存を作らない）。
 
 # クローラの名乗り。個人名・個人アドレスは載せない。
 # 2026-08-30: 以前は特定個人のメールアドレスを全リクエストに付与していたが、

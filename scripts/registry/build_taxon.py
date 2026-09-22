@@ -14,9 +14,12 @@
 ## 方針（要点）
 
 1. **occurrence 側は (名前空間, taxon_key) で解決する。** `organism_records.source_id`
-   から名前空間を判定する対応表は `scripts/common.py` の `TAXON_KEY_SOURCE_NAMESPACE`
-   （収集系の共有モジュール側が正。`scripts/x01_dwca.py` 等レジストリを経由しない
-   読み手にも届くようにするため。/code-review 指摘5）。`organism_records` の
+   から名前空間を判定する対応表は `scripts/taxon_namespaces.py` の
+   `TAXON_KEY_SOURCE_NAMESPACE`（依存の無い小さなモジュール側が正。
+   `scripts/x01_dwca.py` 等レジストリを経由しない読み手にも届くようにするため。
+   `scripts/common.py`（収集系の共有モジュール）に置いていたが、`requests` に
+   依存するため CI で `ModuleNotFoundError` を起こし、依存の無いモジュールに
+   切り出し直した。/code-review 指摘5）。`organism_records` の
    distinct (namespace, taxon_key) の組ごとに taxon を1行作る。代表
    `scientific_name`/`rank`/分類列は、同じ組の中で最も件数の多い組み合わせ
    （最頻値）を採用する。同数の場合は分類列も含めた全タイブレーク列の昇順で
@@ -82,7 +85,7 @@ import sqlite3
 
 import yaml
 
-from common import TAXON_KEY_SOURCE_NAMESPACE
+from taxon_namespaces import TAXON_KEY_SOURCE_NAMESPACE
 from registry import common
 
 CROSSWALK_CSV = common.ROOT / common.TAXON_CROSSWALK_CSV_RELPATH
@@ -108,7 +111,7 @@ def _namespace_for_source(source_id: str) -> str:
     if ns is None:
         raise ValueError(
             f"未知の organism_records.source_id: {source_id!r}"
-            "（scripts/common.py の TAXON_KEY_SOURCE_NAMESPACE に無い。"
+            "（scripts/taxon_namespaces.py の TAXON_KEY_SOURCE_NAMESPACE に無い。"
             "原本に新しい出典が増えた可能性がある。taxon_id の名前空間を追加すること）"
         )
     return ns
@@ -132,8 +135,8 @@ def _namespace_traits(ns: str) -> dict:
     if traits is None:
         raise ValueError(
             f"未知の taxon_id 名前空間: {ns!r}（_NAMESPACE_TRAITS に無い。"
-            "scripts/common.py の TAXON_KEY_SOURCE_NAMESPACE に新しい出典を足したら、"
-            "ここにも id_builder/fill_gbif_taxon_key を対で足すこと）"
+            "scripts/taxon_namespaces.py の TAXON_KEY_SOURCE_NAMESPACE に新しい出典を"
+            "足したら、ここにも id_builder/fill_gbif_taxon_key を対で足すこと）"
         )
     return traits
 
@@ -186,7 +189,8 @@ def _assert_known_source_ids(ryuiki: sqlite3.Connection) -> None:
     if unknown:
         raise ValueError(
             "organism_records に taxon_id の名前空間が未定義の source_id がある"
-            f"（scripts/common.py の TAXON_KEY_SOURCE_NAMESPACE に追記すること）: {unknown}"
+            f"（scripts/taxon_namespaces.py の TAXON_KEY_SOURCE_NAMESPACE に"
+            f"追記すること）: {unknown}"
         )
 
 

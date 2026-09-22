@@ -277,10 +277,18 @@ def _fingerprint_source_paths(root: pathlib.Path) -> list[pathlib.Path]:
     """指紋の対象ファイルを決まった順（root からの相対パス文字列でソート）で返す。
 
     対象は「ビルドの論理（コード）」と「手書きの入力（registry/ 配下）」:
-    scripts/schema_registry.sql・scripts/r01_build_registry.py・scripts/registry/*.py・
-    registry/ 配下の全ファイル。ここでは常にこの集合だけを扱う
-    （derived.sqlite の一部テーブルと taxon_crosswalk.csv は `compute_input_fingerprint()`
-    側が mode に応じて別途混ぜる。後述）。
+    scripts/schema_registry.sql・scripts/r01_build_registry.py・
+    scripts/taxon_namespaces.py・scripts/registry/*.py・registry/ 配下の全ファイル。
+    ここでは常にこの集合だけを扱う（derived.sqlite の一部テーブルと
+    taxon_crosswalk.csv は `compute_input_fingerprint()` 側が mode に応じて
+    別途混ぜる。後述）。
+
+    `scripts/taxon_namespaces.py`（build_taxon.py が読む `TAXON_KEY_SOURCE_NAMESPACE`
+    の正。`scripts/registry/` の外にあるため `*.py` の glob には乗らない）を
+    ここに明示で足している。足し忘れると、この対応表だけを編集しても
+    `--check-fresh` が「新鮮」のまま固まってしまう（`scripts/common.py` に
+    置いていたときは requests 依存で CI が落ちたため移した経緯がある。
+    docs/plans/PHASE_B_OCCURRENCE.md §8 参照）。
 
     存在しないパスは黙って除く（テストが一時ディレクトリに入力の一部だけを
     コピーして使うため）。
@@ -288,6 +296,7 @@ def _fingerprint_source_paths(root: pathlib.Path) -> list[pathlib.Path]:
     candidates = [
         root / "scripts" / "schema_registry.sql",
         root / "scripts" / "r01_build_registry.py",
+        root / "scripts" / "taxon_namespaces.py",
         *(root / "scripts" / "registry").glob("*.py"),
         *(p for p in (root / "registry").rglob("*") if p.is_file()),
     ]
