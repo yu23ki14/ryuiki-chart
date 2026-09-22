@@ -89,16 +89,11 @@ ADR-0002（多地域）・ADR-0008（時間の3点セット）・ADR-0014（応�
 `sensor_daily` の毎時分（`sagamihara`/`soramame`）はキューブを経由しないため、
 `scripts/b02_derived_compare.py` の突合ゲートはキューブの日割りの正しさを直接確認できない。
 代わりに `b05_project_v1.py` の `verify_hourly_daily_rollup` が、`value_grain='hour'` の各系列・
-各日 `D` について次が全日で成り立つことを検証する（崩れれば `MigrationError`）。
-
-```
-キューブの日次セルの n
-  = v1形（L2 のラベル日割り）の日 D の n
-  − (日 D のラベル00時の件数)
-  + (日 D+1 のラベル00時の件数)
-```
-
-あわせて、系列ごとの全期間の Σn・min・max がキューブの日次セルと L2 で一致することも確認する。
+各日について、キューブの日次セルの件数が v1形（L2 のラベル日割り）から機械的に導ける期待値と
+全日で一致することを検証する（崩れれば `MigrationError`）。あわせて、系列ごとの全期間の
+Σn・min・max がキューブの日次セルと L2 で一致することも確認する。**検証式そのものの正は
+`scripts/b05_project_v1.py` の `verify_hourly_daily_rollup` の docstring**（D-1: 同じ式を
+ここに書き下さない。ここでは「機械検証で代替する」という決定だけを書く）。
 
 **ラベル00時の件数は数え方が2通りある**（実測。`value_grain='hour'` の行を `sensor_timeseries`
 の `source_id` で引き戻して集計）:

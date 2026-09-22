@@ -65,7 +65,7 @@ ADR-0011 の対象は33テーブル。これを一度に全部揃えようとす
 
 | ファイル | 役割 |
 |---|---|
-| `scripts/b03_build_observation.py` | `data/db/ryuiki.sqlite` の `measurements`・`sensor_timeseries`（読み取り専用、出典ごとに1トランザクションでストリーム挿入）を `data/db/v2.sqlite` の `observation`（ADR-0007）**テーブルだけ**を作り直して書く（`fresh_sqlite` から `replace_table` に変更。§7「既知の負債」参照）。alias/place 解決、`value_grain`/`period_grain` の展開（センサーは ADR-0024 の時刻帯なしローカル時刻・hour_ending 変換を含む）、検閲分類（`measurements` のみ）を行い、`reports/phase_b_fact_slice.md` に出典ごとの節で要約を書く |
+| `scripts/b03_build_observation.py` | `data/db/ryuiki.sqlite` の `measurements`・`sensor_timeseries`（読み取り専用、出典ごとに1トランザクションでストリーム挿入）を `data/db/v2.sqlite` の `observation`（ADR-0007）**テーブルだけ**を作り直して書く（`fresh_sqlite` から `migrate.common.staged_table`——検証が全部通ってから本番名に差し替える——に変更。§7「既知の負債」参照）。alias/place 解決、`value_grain`/`period_grain` の展開（センサーは ADR-0024 の時刻帯なしローカル時刻・hour_ending 変換を含む）、検閲分類（`measurements` のみ）を行い、`reports/phase_b_fact_slice.md` に出典ごとの節で要約を書く |
 | `scripts/b04_build_cube.py` | `observation` から `observation_agg`（ADR-0011 のキューブ、ADR-0021 で拡張したキー）を作る。`imputation='zero'` の系列だけ。センサー分の拡張（毎時・瞬時の日次積み上げ、月次・年次の出典配布セル）は §9 T4 |
 | `scripts/b05_project_v1.py` | `observation_agg` を v1 の派生テーブル形（`meas_daily`/`meas_month`/`meas_year`/`meas_clim`/`site_var`/`var_catalog`/`sensor_daily`/`rain_daily`/`sensor_hour_month`）に射影し、`data/db/v1_projection.sqlite` に書く。`meas_clim`/`site_var`/`var_catalog` はキューブのセルを直接使わず、既存の `_MEAS_DAILY_SQL`/`_MEAS_YEAR_SQL` を実体化した一時テーブルを再利用する（D10）。`sensor_daily`/`rain_daily`/`sensor_hour_month` の毎時分は同じ理由でキューブを経由せず L2（`observation`）から直接集計する（§9 T5）。`verify_hourly_daily_rollup`（§9 T6）による機械検証もここで行う |
 | `scripts/migrate/censoring.py` | `value_raw` → `(censoring, censoring_limit)` の5分岐（ADR-0009。`measurements` のみ。センサーに検閲の概念は無い） |
@@ -344,21 +344,33 @@ ADR-0011「粒度をまたぐ再集計をしない」）。月・年セルの `n
   未実装。応答封筒〔ADR-0014〕の実装より前に要る）
 - Parquet 化（ADR-0001。D8 参照）
 - 公開 ID（`observation_id`）の発行（ADR-0016 Phase C の仕事）
-- **既知の負債（`observation` の単独所有は解消、`observation_agg`/v1形の非原子は残る）**:
+- **既知の負債（D-3: 「`b03` の負債は解消」の記述を実態に合わせて更新）**:
   `scripts/b03_build_observation.py` の `observation` 書き込みは、`sensor_timeseries` を
   入力に追加したこのタスクで `common.fresh_sqlite`（ファイル全体を作り直す）から
   `common.replace_table`（`observation` テーブルだけを作り直す）に変更した（§3参照）。
   ADR-0007 が `measurements` と `sensor_timeseries` を**同じ** `observation` に統合すると
   明言しているため、将来 `occurrence`（ADR-0007 決定3）が同じ `v2.sqlite` に増えても
-  `b03` の実行がそれを消さなくなった。**一方、`b04_build_cube.py`（`replace_table` の
-  `DROP TABLE IF EXISTS` → `CREATE`）と `b05_project_v1.py`（`v1_projection.sqlite` を
-  `fresh_sqlite` でファイルごと作り直す）は、どちらも「先に消してから書く」という
-  非原子な書き込みのまま**——途中でプロセスが落ちると、そのテーブル・ファイルが
-  消えたまま次回実行まで残る。語彙レジストリ（`data/db/registry.sqlite`）の書き込みを
-  一時ファイル＋`os.replace()` で原子化した PR #11 は、この負債を「`b03`〜`b05` の
-  `fresh_sqlite()` も同じ『先に消してから書く』非原子のまま。今は『無ければ作る』自動化
-  が無く手で再実行する前提なので被害は小さい。自動化するときに同じ形で直す」と明記して
-  おり、本タスクでもその判断を踏襲し、コードは変えていない。
+  `b03` の実行がそれを消さなくなった。**その後（センサーの縦線の整理、A-1）**:
+  `b03`/`b04` は両方とも `common.staged_table`（作業用テーブルに作る→全検証（取り込み・
+  宣言表・T1不変条件／次元キーの一意性）を通す→本番名に差し替える）へ変わり、検証に
+  1つでも失敗すれば前回のテーブルがそのまま残るようになった（`replace_table` の
+  「先に消してから作る」非原子は `observation`/`observation_agg` については解消済み）。
+  `b05_project_v1.py`（`v1_projection.sqlite` を `fresh_sqlite` でファイルごと作り直す）は
+  元々「メモリ上で全検証→書き出し」の設計のため対象外（変更なし）。
+  **残っている負債は2つ**: (1) 段の間で、前の段が検証を通った状態を次の段が機械的に
+  確かめる仕組みが無い（例: `b04` は `observation` テーブルが存在すれば読めてしまい、
+  それが `b03` の全検証を通った状態か、`b03` が古いバージョンで作った・別の経路で
+  壊れたものかを区別しない——各段の出力に指紋を持たせて次の段が検証する、のような
+  仕組みが要る）。(2) ファイル単位の原子性（`staged_table` の差し替え自体
+  ——`DROP TABLE`→`ALTER TABLE RENAME` は SQLite の DDL で、片方だけ確定した状態で
+  プロセスが落ちる窓が理論上残る。頻度・実害は小さいが「無い」わけではない）。
+  どちらも `v2.sqlite` を複数の段（`b03`/`b04`）で共有する設計と絡むため、このタスクの
+  スコープには含めず後に回す（語彙レジストリの一時ファイル＋`os.replace()` による原子化
+  〔PR #11〕とは別の対象——`registry.sqlite` は単一の書き手が単一ファイルを作り直すのに
+  対し、`v2.sqlite` は複数スクリプトがテーブル単位で共有する構造が違う）。
+  **もう1つ、既知の判断として**: `scripts/b05_project_v1.py` は v1 互換の射影の置き場
+  として線形に増え続けている（現在9テーブル）。次に T6 級（出典固有の Python 検証関数）
+  を足す時点で、検証関数群を別モジュールに分けること。
 
 ## 8. 次の一手（オーナーの方針）
 
@@ -430,10 +442,11 @@ alias/place 解決・grain の食い違い検証・時刻の不変条件は共�
 
 ### T6. キューブの毎時→日次の正しさを機械で確かめる
 
-`verify_hourly_daily_rollup` が、`value_grain='hour'` の各系列・各日 `D` について
-「キューブの日次セルの n = v1形の日 D の n − 日 D のラベル00時の件数 + 日 D+1 のラベル00時の
-件数」が全日で成り立つことと、系列ごとの全期間の Σn・min・max が L2 とキューブで一致すること
-を検証する（崩れれば `MigrationError`）。実データで通過を確認済み。詳細は ADR-0024 決定4。
+`verify_hourly_daily_rollup` が、`value_grain='hour'` の各系列・各日について、キューブの日次
+セルの件数が v1形のラベル日割りから機械的に導ける期待値と一致すること、系列ごとの全期間の
+Σn・min・max が L2 とキューブで一致することを検証する（崩れれば `MigrationError`）。実データで
+通過を確認済み。**検証式は `scripts/b05_project_v1.py` の `verify_hourly_daily_rollup` の
+docstring が正**（D-1）。決定の経緯は ADR-0024 決定4。
 
 ## 10. キューブに既に織り込んだ意図的な変更
 
