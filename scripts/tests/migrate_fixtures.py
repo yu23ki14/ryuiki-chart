@@ -91,6 +91,12 @@ DEFAULT_PLACE_RELATIONS = [
     ("place_zone1", "place_s1", "within", 1.0, "test"),
 ]
 
+# ゾーンを1つ足した `places`/`place_refs`（/simplify 指摘: テスト側で
+# `DEFAULT_PLACES + DEFAULT_ZONE_PLACES` / `DEFAULT_PLACE_REFS +
+# DEFAULT_ZONE_PLACE_REFS` を6箇所書いていたものをここに1組まとめた）。
+PLACES_WITH_ZONE = DEFAULT_PLACES + DEFAULT_ZONE_PLACES
+PLACE_REFS_WITH_ZONE = DEFAULT_PLACE_REFS + DEFAULT_ZONE_PLACE_REFS
+
 # `variable.default_stat`（b04 の T4-2「sum」の絞り込みが読む）。
 # weather.precipitation だけ 'sum' にしておくと、RAIN（sensor 側）の日次セルに
 # sum 行が足されることをテストできる。

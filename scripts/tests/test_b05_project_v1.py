@@ -12,9 +12,10 @@ from .migrate_fixtures import (
     DEFAULT_ALIASES,
     DEFAULT_PLACE_REFS,
     DEFAULT_PLACES,
+    DEFAULT_PLACE_RELATIONS,
     DEFAULT_SENSOR_ROWS,
-    DEFAULT_ZONE_PLACE_REFS,
-    DEFAULT_ZONE_PLACES,
+    PLACE_REFS_WITH_ZONE,
+    PLACES_WITH_ZONE,
     make_measurements_db,
     make_registry_db,
     make_time_label_conventions_yaml,
@@ -328,14 +329,18 @@ def test_place_lookup_non_injective_place_id_raises_migration_error(tmp_path):
 
 # ---------------------------------------------------------------------------
 # ゾーンの縦線（zone_year/zone_clim。`place_relation` の最初の消費者。
-# phase-b/zone-slice。ADR-0022 決定2）
+# phase-b/zone-slice。ADR-0022 決定2。D11参照）
 #
-# 検証（fraction=1.0 / 地点は単一ゾーン / ゾーン番号は数字のみ / ゾーン番号は
-# place をまたいで衝突しない）は `site_zone_lookup` の上で行われ、
-# `_materialize_lookup_tables` に組み込まれている（`build_projections` 以外の
-# 呼び出し口を持たない）。そのため、検証が効くことを確認するテストは検証
-# 関数を直接呼ぶのではなく **`build_projections` を通して**確認する
-# （検証の呼び出しを消したらテストが落ちる形にする）。
+# 「レジストリの不変条件」（地点→ゾーンの辺の単射性・ゾーン番号の数値形式・
+# place_source_ref の一意性）は scripts/r01_build_registry.py 側で保証する
+# （scripts/tests/test_r01_invariants.py）。ここでテストするのは「射影
+# （b05）固有の前提」だけ: fraction=1.0（v1 を非加重で再現する b05 の設計
+# 判断）・ゾーン番号の place をまたいだ衝突（b05 が place_id を番号に潰す
+# ことから生じる）・site_zone_lookup の site_id 一意（結合の安全性）。
+# いずれも `_materialize_lookup_tables` に組み込まれ、`build_projections`
+# 以外の呼び出し口を持たない private 関数なので、検証が効くことを確認する
+# テストは検証関数を直接呼ぶのではなく **`build_projections` を通して**
+# 確認する（検証の呼び出しを消したらテストが落ちる形にする）。
 # ---------------------------------------------------------------------------
 
 _ZONE_BOD_ROWS = [
@@ -357,8 +362,8 @@ def test_zone_year_and_zone_clim_average_site_averages_unweighted(tmp_path):
     make_measurements_db(measurements_db, rows=_ZONE_BOD_ROWS)
     make_registry_db(
         registry_db,
-        places=DEFAULT_PLACES + DEFAULT_ZONE_PLACES,
-        place_refs=DEFAULT_PLACE_REFS + DEFAULT_ZONE_PLACE_REFS,
+        places=PLACES_WITH_ZONE,
+        place_refs=PLACE_REFS_WITH_ZONE,
         place_relations=[
             ("place_zone1", "place_s1", "within", 1.0, "test"),
             ("place_zone1", "place_s2", "within", 1.0, "test"),
@@ -403,9 +408,9 @@ def test_zone_year_and_zone_clim_exclude_sites_without_a_zone_edge(tmp_path):
     make_measurements_db(measurements_db, rows=_ZONE_BOD_ROWS)
     make_registry_db(
         registry_db,
-        places=DEFAULT_PLACES + DEFAULT_ZONE_PLACES,
-        place_refs=DEFAULT_PLACE_REFS + DEFAULT_ZONE_PLACE_REFS,
-        place_relations=[("place_zone1", "place_s1", "within", 1.0, "test")],  # S1 のみ
+        places=PLACES_WITH_ZONE,
+        place_refs=PLACE_REFS_WITH_ZONE,
+        place_relations=DEFAULT_PLACE_RELATIONS,  # S1 のみ
     )
 
     v2_db, _ = _run_b03_b04(measurements_db, registry_db, tmp_path)
@@ -457,8 +462,8 @@ def test_non_zone_within_edges_do_not_block_or_affect_zone_projection(tmp_path):
     non_zone_places = [("place_ws1", "common", "watershed"), ("place_region1", "common", "region")]
     make_registry_db(
         registry_db,
-        places=DEFAULT_PLACES + DEFAULT_ZONE_PLACES + non_zone_places,
-        place_refs=DEFAULT_PLACE_REFS + DEFAULT_ZONE_PLACE_REFS,
+        places=PLACES_WITH_ZONE + non_zone_places,
+        place_refs=PLACE_REFS_WITH_ZONE,
         place_relations=[
             ("place_zone1", "place_s1", "within", 1.0, "test"),
             ("place_zone1", "place_s2", "within", 1.0, "test"),
@@ -505,9 +510,9 @@ def test_zone_clim_averages_meas_month_values_not_raw_daily_observations(tmp_pat
     )
     make_registry_db(
         registry_db,
-        places=DEFAULT_PLACES + DEFAULT_ZONE_PLACES,
-        place_refs=DEFAULT_PLACE_REFS + DEFAULT_ZONE_PLACE_REFS,
-        place_relations=[("place_zone1", "place_s1", "within", 1.0, "test")],
+        places=PLACES_WITH_ZONE,
+        place_refs=PLACE_REFS_WITH_ZONE,
+        place_relations=DEFAULT_PLACE_RELATIONS,
     )
 
     v2_db, _ = _run_b03_b04(measurements_db, registry_db, tmp_path)
@@ -548,9 +553,9 @@ def test_zone_year_keeps_daily_and_annual_kind_separate(tmp_path):
                 "common:unit:mg_per_l", None, "year",
             ),
         ],
-        places=DEFAULT_PLACES + DEFAULT_ZONE_PLACES,
-        place_refs=DEFAULT_PLACE_REFS + DEFAULT_ZONE_PLACE_REFS,
-        place_relations=[("place_zone1", "place_s1", "within", 1.0, "test")],
+        places=PLACES_WITH_ZONE,
+        place_refs=PLACE_REFS_WITH_ZONE,
+        place_relations=DEFAULT_PLACE_RELATIONS,
     )
 
     v2_db, _ = _run_b03_b04(measurements_db, registry_db, tmp_path)
@@ -604,8 +609,8 @@ def test_build_projections_raises_when_zone_edge_fraction_is_not_one(tmp_path):
     make_measurements_db(measurements_db, rows=_ZONE_BOD_ROWS)
     make_registry_db(
         registry_db,
-        places=DEFAULT_PLACES + DEFAULT_ZONE_PLACES,
-        place_refs=DEFAULT_PLACE_REFS + DEFAULT_ZONE_PLACE_REFS,
+        places=PLACES_WITH_ZONE,
+        place_refs=PLACE_REFS_WITH_ZONE,
         place_relations=[("place_zone1", "place_s1", "within", 0.5, "test")],
     )
     v2_db, _ = _run_b03_b04(measurements_db, registry_db, tmp_path)
@@ -661,28 +666,6 @@ def test_build_projections_raises_when_zone_number_collides_across_zone_places(t
     v2_db, _ = _run_b03_b04(measurements_db, registry_db, tmp_path)
 
     with pytest.raises(common.MigrationError, match="同じゾーン番号に解決されている"):
-        b05.build_projections(v2_db, registry_db)
-
-
-def test_build_projections_raises_when_zone_number_is_not_numeric(tmp_path):
-    """検証 (d): ゾーン番号（`sites.zone` 由来の `external_key`）が数字だけの
-    文字列でなければ `build_projections` 経由で止まる
-    （`CAST(... AS INT)` が黙って0にするのを防ぐ）。
-    """
-    measurements_db = tmp_path / "ryuiki.sqlite"
-    registry_db = tmp_path / "registry.sqlite"
-    make_measurements_db(measurements_db, rows=_ZONE_BOD_ROWS)
-    zone_places = [("place_zone1", "jp-14", "zone")]
-    zone_refs = [("place_zone1", "z1", "sites.zone")]  # 数字だけでない
-    make_registry_db(
-        registry_db,
-        places=DEFAULT_PLACES + zone_places,
-        place_refs=DEFAULT_PLACE_REFS + zone_refs,
-        place_relations=[("place_zone1", "place_s1", "within", 1.0, "test")],
-    )
-    v2_db, _ = _run_b03_b04(measurements_db, registry_db, tmp_path)
-
-    with pytest.raises(common.MigrationError, match="数字だけの文字列でない"):
         b05.build_projections(v2_db, registry_db)
 
 
