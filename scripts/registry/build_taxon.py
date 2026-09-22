@@ -114,6 +114,53 @@ def _namespace_for_source(source_id: str) -> str:
     return ns
 
 
+# 名前空間ごとの性質: taxon_id の組み立て方（id_builder）と、gbif_taxon_key 列を
+# 埋めるかどうか（fill_gbif_taxon_key）。TAXON_KEY_SOURCE_NAMESPACE は「出典→名前空間」
+# の対応だが、それとは別に「名前空間→taxon_idの作り方」を持たないと、3つ目以降の
+# 名前空間を TAXON_KEY_SOURCE_NAMESPACE に足しただけでは taxon_id を組み立てられない
+# （以前は `"gbif"/"inat"` の2値決め打ちの if/else が3箇所にあり、3つ目を足すと
+# KeyError になるか、黙って inat 扱いになって F1 が直した衝突が戻っていた。
+# /code-review 指摘1）。
+_NAMESPACE_TRAITS: dict[str, dict] = {
+    "gbif": {"id_builder": common.taxon_id_gbif, "fill_gbif_taxon_key": True},
+    "inat": {"id_builder": common.taxon_id_inat, "fill_gbif_taxon_key": False},
+}
+
+
+def _namespace_traits(ns: str) -> dict:
+    traits = _NAMESPACE_TRAITS.get(ns)
+    if traits is None:
+        raise ValueError(
+            f"未知の taxon_id 名前空間: {ns!r}（_NAMESPACE_TRAITS に無い。"
+            "scripts/common.py の TAXON_KEY_SOURCE_NAMESPACE に新しい出典を足したら、"
+            "ここにも id_builder/fill_gbif_taxon_key を対で足すこと）"
+        )
+    return traits
+
+
+def _assert_namespaces_have_traits() -> None:
+    """`TAXON_KEY_SOURCE_NAMESPACE` が出しうる名前空間ラベルは、必ず `_NAMESPACE_TRAITS`
+    に対応するエントリを持つことをビルド開始直後に確認する。ここで止めないと、
+    新しい出典を `TAXON_KEY_SOURCE_NAMESPACE` にだけ足した場合に、行の組み立て
+    ループの途中まで進んでから初めて失敗する（またはさらに悪いことに、黙って
+    既存の名前空間の規則で組み立ててしまう）。
+    """
+    missing = sorted(set(TAXON_KEY_SOURCE_NAMESPACE.values()) - set(_NAMESPACE_TRAITS))
+    if missing:
+        raise ValueError(
+            "TAXON_KEY_SOURCE_NAMESPACE にある名前空間だが _NAMESPACE_TRAITS に無いものが"
+            f"ある（taxon_id の組み立て方が決まらない）: {missing}"
+        )
+
+
+def _taxon_id_for(ns: str, key: str) -> str:
+    return _namespace_traits(ns)["id_builder"](key)
+
+
+def _gbif_taxon_key_for(ns: str, key: str) -> str | None:
+    return key if _namespace_traits(ns)["fill_gbif_taxon_key"] else None
+
+
 def _namespace_case_sql(column: str) -> str:
     """`column`（例: `source_id`）から taxon_id の名前空間を引く SQL の CASE 式を、
     `TAXON_KEY_SOURCE_NAMESPACE`（正）から組み立てる（SQL 側にハードコードした
@@ -206,18 +253,27 @@ def _assert_taxon_key_maps_to_single_binom(ryuiki: sqlite3.Connection) -> None:
 def _load_occurrence_representatives(ryuiki: sqlite3.Connection) -> dict[tuple[str, str], dict]:
     """distinct (名前空間, taxon_key) ごとの代表 (scientific_name, rank, 分類列) と全体件数。
 
-    最頻値（同数は scientific_name → taxon_rank → 分類列（kingdom/phylum/class/order/
-    family）の昇順でタイブレーク）。タイブレーク列は `counted` の GROUP BY キーと
-    完全に一致する（`ns`/`taxon_key` を除く全列）ため、同じ (ns, taxon_key) 内で
-    2つの `counted` 行が全タイブレーク列で一致することは無く、順序は必ず一意に決まる
-    （/code-review 指摘3）。
+    最頻値（同数は件数降順のあと、NULL を最後に回して scientific_name → taxon_rank →
+    分類列（kingdom/phylum/class/order/family）の昇順でタイブレーク。`_majority_vote()`
+    と同じ NULL-last の理由）。
 
-    それでも「最頻値の件数そのものが複数の候補で並ぶ」（=選択に実質的な理由が無い
-    状態）が無いことを別途 assert する。実測0件。
+    **最頻値の件数そのものが複数の候補で並ぶ（＝著者引用や rank 表記のゆれだけで
+    2レコードに分かれ、件数が同点になる）ことはある。以前はこれを全部
+    AssertionError で止めていたが、著者名の表記ゆれ2件だけでビルド全体
+    （ひいては `ensure-registry.sh`→`docker compose up`）が止まる事故だった
+    （/code-review 指摘3）。** 同数はタイブレークで決定論的に選び、**同数の候補
+    どうしで分類列（kingdom/phylum/class/order/family）が実際に食い違うときだけ**
+    `representative_ambiguous=True` を返す（学名の表記ゆれ・rank違いだけなら
+    黙って選ぶ）。`build()` はこれを見て `needs_review` に反映する。
 
     SQL 側で集約するので Python 側で 823,692 行をループしない。
     """
     ns_case = _namespace_case_sql("source_id")
+    classification_cols = ("kingdom0", "phylum0", "class0", "order0", "family0")
+    tie_break = ", ".join(
+        f"({c} IS NULL), {c} ASC" for c in ("scientific_name", "taxon_rank", *classification_cols)
+    )
+    distinct_list = ", ".join(f"COUNT(DISTINCT {c}) AS nd_{c}" for c in classification_cols)
     sql = f"""
         WITH ns_rows AS (
             SELECT
@@ -241,7 +297,7 @@ def _load_occurrence_representatives(ryuiki: sqlite3.Connection) -> dict[tuple[s
         ),
         maxn AS (SELECT ns, taxon_key, MAX(n) AS max_n FROM counted GROUP BY ns, taxon_key),
         tie AS (
-            SELECT c.ns AS ns, c.taxon_key AS taxon_key, COUNT(*) AS n_at_max
+            SELECT c.ns AS ns, c.taxon_key AS taxon_key, COUNT(*) AS n_at_max, {distinct_list}
             FROM counted c JOIN maxn m ON m.ns = c.ns AND m.taxon_key = c.taxon_key AND m.max_n = c.n
             GROUP BY c.ns, c.taxon_key
         ),
@@ -249,25 +305,31 @@ def _load_occurrence_representatives(ryuiki: sqlite3.Connection) -> dict[tuple[s
             SELECT ns, taxon_key, scientific_name, taxon_rank,
                    kingdom0, phylum0, class0, order0, family0,
                    ROW_NUMBER() OVER (
-                       PARTITION BY ns, taxon_key
-                       ORDER BY n DESC, scientific_name ASC, taxon_rank ASC,
-                                kingdom0 ASC, phylum0 ASC, class0 ASC, order0 ASC, family0 ASC
+                       PARTITION BY ns, taxon_key ORDER BY n DESC, {tie_break}
                    ) AS rn
             FROM counted
         )
         SELECT r.ns AS ns, r.taxon_key AS taxon_key, r.scientific_name AS scientific_name,
                r.taxon_rank AS rank_raw, r.kingdom0 AS kingdom0, r.phylum0 AS phylum0,
                r.class0 AS class0, r.order0 AS order0, r.family0 AS family0,
-               t.total_n AS total_n, tie.n_at_max AS n_at_max
+               t.total_n AS total_n, tie.n_at_max AS n_at_max,
+               {", ".join(f"tie.nd_{c} AS nd_{c}" for c in classification_cols)}
         FROM ranked r
         JOIN totals t ON t.ns = r.ns AND t.taxon_key = r.taxon_key
         JOIN tie ON tie.ns = r.ns AND tie.taxon_key = r.taxon_key
         WHERE r.rn = 1
     """
     out = {}
-    top_count_ties: list[tuple[str, str, int]] = []
+    n_ties = 0
+    n_ambiguous = 0
     for row in ryuiki.execute(sql):
         key = (row["ns"], row["taxon_key"])
+        is_tied = row["n_at_max"] > 1
+        ambiguous = is_tied and any(row[f"nd_{c}"] > 1 for c in classification_cols)
+        if is_tied:
+            n_ties += 1
+        if ambiguous:
+            n_ambiguous += 1
         out[key] = {
             "scientific_name": row["scientific_name"],
             "rank_raw": row["rank_raw"],
@@ -277,17 +339,13 @@ def _load_occurrence_representatives(ryuiki: sqlite3.Connection) -> dict[tuple[s
             "order0": row["order0"],
             "family0": row["family0"],
             "total_n": row["total_n"],
+            "representative_ambiguous": ambiguous,
         }
-        if row["n_at_max"] > 1:
-            top_count_ties.append((row["ns"], row["taxon_key"], row["n_at_max"]))
-    if top_count_ties:
-        sample = ", ".join(f"{ns}.{key}(候補{n}件)" for ns, key, n in top_count_ties[:10])
-        raise AssertionError(
-            f"taxon_key ごとの代表選びで最頻値の件数が同数の候補が並ぶものが "
-            f"{len(top_count_ties):,} 件ある（分類列を含めた並びで決定的に選んではいるが、"
-            f"選択に実質的な理由が無い状態。例: {sample}）"
-        )
-    print(f"  [taxon] F2機械検証OK: taxon_key ごとの代表選びに件数同数の候補は無い（{len(out):,}件確認）")
+    print(
+        f"  [taxon] taxon_key ごとの代表選び = {len(out):,}件（うち最頻値が同数の候補: "
+        f"{n_ties:,}件、うち分類（kingdom/phylum/class/order/family）が食い違うもの: "
+        f"{n_ambiguous:,}件→needs_review に反映）"
+    )
     return out
 
 
@@ -421,17 +479,36 @@ def _majority_vote(
 ) -> dict[str, dict]:
     """`_POPULATION_TEMP_TABLE` を `group_col` でグループ化し、`vote_col` の最頻値を
     多数決で選ぶ（v1 の bc/gc/bp の3つの CTE を1つの関数に統合したもの。
-    /simplify 指摘9）。同数は件数降順のあと `vote_col`→`companion_cols` の昇順で
-    決定論的にタイブレークする。`companion_cols` は `vote_col` と同じグループ化キー
-    （同じ `(group_col, vote_col, *companion_cols)` の組）で件数を数える同伴列
+    /simplify 指摘9）。**値の選び方は v1 と同じ「(vote_col, *companion_cols) の組」
+    単位の多数決のまま変えない**（v1 の `org_norm` 816,856行との突き合わせを
+    崩さないため。/code-review 指摘2）。同数は件数降順のあと、**NULL を最後に
+    回した**うえで `vote_col`→`companion_cols` の昇順で決定論的にタイブレークする
+    （`(col IS NULL), col ASC` は非NULLが0・NULLが1になるので、NULL の候補が
+    同数で勝って値が NULL に落ちる——例えば kingdom が NULL になって taxon_group が
+    「未判定」に落ちる——事故を防ぐ）。
+
+    `companion_cols` は `vote_col` と同じグループ化キー（同じ
+    `(group_col, vote_col, *companion_cols)` の組）で件数を数える同伴列
     （例: kingdom は class と同じ (binom, class0, kingdom0) の組で数える。v1 の
     bc CTE と同じ挙動）。
 
-    戻り値: `{group値: {vote_col: 値, **companion_colsの値, "is_tied": bool}}`。
+    `is_tied` は組全体が同数で並んだかどうか（値の選び方は変えず、従来どおり
+    診断ログに使う）。**`ambiguous_cols`** は、その同数の候補どうしで実際に
+    値が食い違った列だけを集めたもの（vote_col・companion_cols それぞれ独立に
+    判定する）。例えば bc で (ClassA, Animalia)×2 と (ClassB, Animalia)×2 が
+    同数のとき、`is_tied=True` だが `ambiguous_cols` に入るのは `class0` だけ
+    （`kingdom0` は同数の候補どうしで一致しているので曖昧ではない）。
+    呼び出し側はこの列単位の曖昧さで `needs_review` を判定する（`is_tied` を
+    そのまま使うと、companion 側が実は一致しているのに誤検出する。
+    /code-review 指摘2）。
+
+    戻り値: `{group値: {vote_col: 値, **companion_colsの値, "is_tied": bool,
+    "ambiguous_cols": frozenset[str]}}`。
     """
     cols = (vote_col,) + companion_cols
     collist = ", ".join(cols)
-    tie_break = ", ".join(f"{c} ASC" for c in cols)
+    tie_break = ", ".join(f"({c} IS NULL), {c} ASC" for c in cols)
+    distinct_list = ", ".join(f"COUNT(DISTINCT {c}) AS nd_{c}" for c in cols)
     sql = f"""
         WITH counted AS (
             SELECT {group_col} AS g, {collist}, COUNT(*) AS n
@@ -441,7 +518,7 @@ def _majority_vote(
         ),
         maxn AS (SELECT g, MAX(n) AS max_n FROM counted GROUP BY g),
         tie AS (
-            SELECT c.g AS g, COUNT(*) AS n_at_max
+            SELECT c.g AS g, COUNT(*) AS n_at_max, {distinct_list}
             FROM counted c JOIN maxn m ON m.g = c.g AND m.max_n = c.n
             GROUP BY c.g
         ),
@@ -451,7 +528,8 @@ def _majority_vote(
             FROM counted
         )
         SELECT r.g AS g, {", ".join(f"r.{c} AS {c}" for c in cols)},
-               COALESCE(t.n_at_max, 1) > 1 AS is_tied
+               COALESCE(t.n_at_max, 1) > 1 AS is_tied,
+               {", ".join(f"COALESCE(t.nd_{c}, 1) AS nd_{c}" for c in cols)}
         FROM ranked r LEFT JOIN tie t ON t.g = r.g
         WHERE r.rn = 1
     """
@@ -459,6 +537,7 @@ def _majority_vote(
     for row in ryuiki.execute(sql):
         entry = {c: row[c] for c in cols}
         entry["is_tied"] = bool(row["is_tied"])
+        entry["ambiguous_cols"] = frozenset(c for c in cols if row[f"nd_{c}"] > 1)
         out[row["g"]] = entry
     return out
 
@@ -492,15 +571,19 @@ def _resolve_classification(
     """(kingdom, phylum, class, classification_basis, needs_review) を返す。
 
     v1 (org_norm) の COALESCE 規則（own -> 二名法多数決 -> 属多数決[class のみ]）を
-    taxon 単位で適用する。`classification_basis` は class の解決経路。kingdom/phylum は
-    それぞれ独立の COALESCE チェーンを持つ（v1 と同じ——kingdom は bc からしか
+    taxon 単位で適用する。**値の選び方は変えない**: `classification_basis` は
+    class の解決経路。kingdom/phylum はそれぞれ独立の COALESCE チェーンを持つ
+    （v1 と同じ——kingdom は bc（(binom,class0,kingdom0) の組の多数決）からしか
     補完されず gc からは補完されない。phylum は bp からのみ）。
 
     `bc.get(binom)` は class と kingdom の両方の解決に使うので1回だけ計算する
-    （/simplify 指摘12）。bc の多数決が同数だった場合、class・kingdom どちらの
-    解決経路で使っても needs_review を立てる（/code-review 指摘2。以前は
-    own_class が無く own_kingdom も無いときしか bc の tie を見ておらず、
-    「class は自前・kingdom だけ bc 頼り」のケースで kingdom 側の同数を見逃していた）。
+    （/simplify 指摘12）。needs_review は `_majority_vote()` が返す
+    `ambiguous_cols`（同数の候補どうしで実際に値が食い違った列）で判定する
+    ——`is_tied`（組全体が同数かどうか）をそのまま使うと、bc は (class0, kingdom0)
+    の組の同数なので、同数の候補どうしで kingdom0 が実は一致している場合にも
+    kingdom 側を誤って needs_review にしてしまう（/code-review 指摘2。例:
+    (ClassA, Animalia)×2 と (ClassB, Animalia)×2 が同数でも、kingdom は
+    どちらも Animalia で一致しているので kingdom 側は曖昧ではない）。
     """
     binom = _binom(scientific_name)
     genus = _genus(binom)
@@ -513,13 +596,15 @@ def _resolve_classification(
     elif bc_entry is not None:
         cls = bc_entry["class0"]
         basis = "binomial_match"
-        needs_review = needs_review or bc_entry["is_tied"]
+        needs_review = needs_review or ("class0" in bc_entry["ambiguous_cols"])
     else:
         gc_entry = gc.get(genus) if genus else None
         if gc_entry is not None:
             cls = gc_entry["class0"]
             basis = "genus_match"
-            needs_review = needs_review or gc_entry["is_tied"] or gc_entry["multi_class"]
+            needs_review = (
+                needs_review or ("class0" in gc_entry["ambiguous_cols"]) or gc_entry["multi_class"]
+            )
         else:
             cls = None
             basis = "no_match"
@@ -528,7 +613,7 @@ def _resolve_classification(
         kdm = own_kingdom
     elif bc_entry is not None:
         kdm = bc_entry["kingdom0"]
-        needs_review = needs_review or bc_entry["is_tied"]
+        needs_review = needs_review or ("kingdom0" in bc_entry["ambiguous_cols"])
     else:
         kdm = None
 
@@ -538,7 +623,7 @@ def _resolve_classification(
         bp_entry = bp.get(binom) if binom else None
         if bp_entry is not None:
             phy = bp_entry["phylum0"]
-            needs_review = needs_review or bp_entry["is_tied"]
+            needs_review = needs_review or ("phylum0" in bp_entry["ambiguous_cols"])
         else:
             phy = None
 
@@ -639,6 +724,7 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     """
     ryuiki = src["ryuiki"]
 
+    _assert_namespaces_have_traits()
     _assert_known_source_ids(ryuiki)
     _assert_taxon_key_maps_to_single_binom(ryuiki)
 
@@ -675,10 +761,12 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
         f"({resolved_org / total_org * 100:.2f}%)。未解決 {unresolved_org:,}行 "
         f"内訳: {unresolved_by_source}"
     )
-    n_by_ns = {"gbif": 0, "inat": 0}
+    # 名前空間を決め打ちにしない（2つとは限らない。/code-review 指摘1）。
+    n_by_ns: dict[str, int] = {}
     for ns, _key in occ.keys():
-        n_by_ns[ns] += 1
-    print(f"  [taxon] distinct (namespace, taxon_key) = {len(occ):,}（gbif {n_by_ns['gbif']:,} / inat {n_by_ns['inat']:,}）")
+        n_by_ns[ns] = n_by_ns.get(ns, 0) + 1
+    ns_breakdown = " / ".join(f"{ns} {n:,}" for ns, n in sorted(n_by_ns.items()))
+    print(f"  [taxon] distinct (namespace, taxon_key) = {len(occ):,}（{ns_breakdown}）")
 
     # --- 行の組み立て --------------------------------------------------------------
     rows_by_id: dict[str, dict] = {}
@@ -701,11 +789,16 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     basis_counts: dict[str, int] = {}
 
     for ns, key in all_keys:
-        taxon_id = common.taxon_id_gbif(key) if ns == "gbif" else common.taxon_id_inat(key)
+        taxon_id = _taxon_id_for(ns, key)
+        # taxa（v1）のリンクは常に taxa.gbif_taxon_key 経由の GBIF 固有の概念であり
+        # （taxa テーブルは inat 用の列を持たない）、名前空間が増えても gbif 以外に
+        # 広がることはない。_NAMESPACE_TRAITS のような一般化の対象ではない
+        # （/code-review 指摘1の対象外。意図的な決め打ち）。
         taxa_group = taxa_by_key.get(key) if ns == "gbif" else None
 
         occ_info = occ.get((ns, key))
         rep = None
+        representative_ambiguous = False
         if occ_info is not None:
             # organism_records 側の分類列を優先する（GBIF backbone がその taxon_key に
             # 実際に返した値。taxa 側の分類列より実体に近い。モジュール docstring 方針2）。
@@ -713,6 +806,7 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
             rank_raw = occ_info["rank_raw"]
             own_kingdom, own_phylum, own_class = occ_info["kingdom0"], occ_info["phylum0"], occ_info["class0"]
             own_order, own_family = occ_info["order0"], occ_info["family0"]
+            representative_ambiguous = occ_info["representative_ambiguous"]
             if taxa_group is not None:
                 n_from_both += 1
             else:
@@ -735,6 +829,9 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
         kdm, phy, cls, basis, needs_review = _resolve_classification(
             scientific_name, own_kingdom, own_phylum, own_class, bc, gc, bp
         )
+        # 代表選び自体が同数で、かつ分類が食い違っていた場合も needs_review にする
+        # （/code-review 指摘3）。
+        needs_review = needs_review or representative_ambiguous
         basis_counts[basis] = basis_counts.get(basis, 0) + 1
         status = "needs_review" if needs_review else "accepted"
         if needs_review:
@@ -743,7 +840,7 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
         _insert(taxon_id, (ns, key), _build_taxon_row(
             taxon_id, scientific_name, kdm, phy, cls, own_order, own_family, basis,
             group_rules, group_default,
-            rank=rank, gbif_taxon_key=(key if ns == "gbif" else None),
+            rank=rank, gbif_taxon_key=_gbif_taxon_key_for(ns, key),
             vernacular_name_ja=vernacular, status=status,
         ))
 
@@ -813,7 +910,7 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
             print(f"  [taxon][WARN] NAME_JA '{name}' に一致する taxon_key が無い（未適用）")
             continue
         winner = max(candidates, key=lambda k: (total_by_key[k], k))
-        winner_taxon_id = common.taxon_id_gbif(winner[1]) if winner[0] == "gbif" else common.taxon_id_inat(winner[1])
+        winner_taxon_id = _taxon_id_for(winner[0], winner[1])
         rows_by_id[winner_taxon_id]["vernacular_name_ja"] = ov["vernacular_name_ja"]
         n_applied += 1
     print(f"  [taxon] NAME_JA 適用 = {n_applied:,} / {len(overrides):,}")

@@ -337,7 +337,8 @@ def _check_fresh(target_db: pathlib.Path, expected_mode: str) -> int:
     if fingerprint != expected_fingerprint:
         print(
             "指紋が今の入力と一致しない（コード・registry/ 配下・"
-            "[full モードのみ] derived.sqlite/taxon_crosswalk.csv が変わった）: "
+            "[full モードのみ] derived.sqlite/taxon_crosswalk.csv/"
+            "ryuiki.organism_records が変わった）: "
             f"{target_db}（登録済み {fingerprint}、現在 {expected_fingerprint}）",
             file=sys.stderr,
         )
