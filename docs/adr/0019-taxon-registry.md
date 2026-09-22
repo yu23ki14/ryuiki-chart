@@ -58,6 +58,12 @@ taxon_key ごとの代表選びの同数で分類には無関係な表記ゆれ�
 **4件とも実データでの出力（taxon_id・分類の値・`status`）を1行も変えないことを
 全41,454行の diff で確認済み**——将来のデータ・辺縁ケースに備えた防御的な修正。
 
+**PR #15 の CI が `ModuleNotFoundError: No module named 'requests'` で落ちたため、
+`TAXON_KEY_SOURCE_NAMESPACE` の置き場を `scripts/common.py`（`requests` に依存する
+収集系の共有モジュール）から、依存の無い `scripts/taxon_namespaces.py` に移した**
+（`docs/plans/PHASE_B_OCCURRENCE.md` §8）。「レジストリのパッケージの外の1箇所」
+という意図・値は変えていない。
+
 ## 背景（実測）
 
 生物データはこの基盤で最大のファクト（`occurrence` 823,692行）であり、

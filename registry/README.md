@@ -65,7 +65,8 @@ pnpm run db:setup                        # migrate + seed。registry.sqlite も4
 `compute_input_fingerprint()` が計算する。対象は次の3種類:
 
 1. ビルドの論理（`scripts/schema_registry.sql` / `scripts/r01_build_registry.py` /
-   `scripts/registry/*.py`）と手書きの入力（`registry/` 配下の全ファイル）。`mode` に関わらず対象。
+   `scripts/taxon_namespaces.py` / `scripts/registry/*.py`）と手書きの入力
+   （`registry/` 配下の全ファイル）。`mode` に関わらず対象。
 2. **`mode='full'` のときだけ**、追加で3つ: `derived.sqlite` のうち build_place.py が実際に
    読むテーブル（`common.DERIVED_TABLES_READ` = `watershed_meta`。ファイル全体
    449MB はハッシュせず、決まった順の SELECT 結果だけを混ぜる。`mesh_all` は
@@ -278,10 +279,12 @@ taxon の分類多数決（後述）は逆に v1 と同じ「日付ありの記�
 別の数値空間（GBIF の `taxonKey` / iNaturalist 自身の `taxon.id`）が入っている。
 以前はどちらも `common:taxon:gbif.<key>` に通しており、偶然同じ数値を発行した
 9件が衝突していた（例: `8026` = GBIF 科 *Axiidae* / iNat *Corvus macrorhynchos*）。
-`organism_records.source_id` から名前空間を引く対応は `scripts/common.py` の
-`TAXON_KEY_SOURCE_NAMESPACE`（正。`scripts/x01_dwca.py` 等レジストリを経由しない
+`organism_records.source_id` から名前空間を引く対応は `scripts/taxon_namespaces.py`
+の `TAXON_KEY_SOURCE_NAMESPACE`（正。`scripts/x01_dwca.py` 等レジストリを経由しない
 読み手にも届くように、`scripts/registry/build_taxon.py` の private 定数ではなく
-ここに置く）。GBIF 由来は `common:taxon:gbif.<key>`、iNaturalist 由来は
+ここに置く。当初は `scripts/common.py`——収集系の共有モジュール——に置いたが、
+`requests` に依存するため CI で `ModuleNotFoundError` を起こし、依存の無い
+モジュールに切り出し直した）。GBIF 由来は `common:taxon:gbif.<key>`、iNaturalist 由来は
 `common:taxon:inat.<id>` に分ける。`gbif_taxon_key` 列は本物の GBIF taxonKey の
 ときだけ埋める。**ADR-0004「ID は不変」の例外**（occurrence ファクトが
 `taxon_id` を参照する前の今だけ安全にできる）であることの確認（呼び出し元grep等）は

@@ -320,14 +320,15 @@ test_kingdom_only_tie_marks_needs_review_even_with_own_class`）はこの経路�
 複数候補で並ぶ」ケースが無いことを機械検証する assert を追加した
 （code-review指摘3）。**実測: 33,613件全件で違反0件**（`F2機械検証OK` ログ）。
 
-### 6-4. 「出典→名前空間」の正を `scripts/common.py` に移す
+### 6-4. 「出典→名前空間」の正を切り出す
 
 `SOURCE_NAMESPACE` は `build_taxon.py` の private 定数だったため、レジストリを
 経由しない読み手（`scripts/x01_dwca.py` の DwC-A 書き出し。`occurrence.txt` の
 `taxonID` 列に `organism_records.taxon_key` を出典の区別なく生のまま書いている）
-に届いていなかった（code-review指摘5）。正を `scripts/common.py` の
-`TAXON_KEY_SOURCE_NAMESPACE` に移し、`build_taxon.py` の SQL の CASE 式も
-そこから組み立てるようにした（ハードコードの重複を解消）。
+に届いていなかった（code-review指摘5）。正を `build_taxon.py` の外（当初は
+`scripts/common.py`、後に `scripts/taxon_namespaces.py` に移動——経緯は
+§9「CI失敗の修正」参照）の `TAXON_KEY_SOURCE_NAMESPACE` に移し、`build_taxon.py`
+の SQL の CASE 式もそこから組み立てるようにした（ハードコードの重複を解消）。
 **`scripts/x01_dwca.py` の書き出し自体は本PRでは直していない**（公開物の
 意図的な変更になるため別PR。`docs/plans/PHASE_B_INTAKE.md` #17 に起票した）。
 
@@ -425,7 +426,8 @@ canonical_binomial）は今の値から変えない**のが前提——実際、
 
 `n_by_ns = {"gbif": 0, "inat": 0}` と、taxon_id の組み立て・`gbif_taxon_key` を
 埋めるかどうかの判定が `if ns == "gbif" else ...` の2値決め打ちで3箇所にあった。
-`scripts/common.py` の `TAXON_KEY_SOURCE_NAMESPACE` に3つ目の出典を足しても、
+`TAXON_KEY_SOURCE_NAMESPACE`（この時点では `scripts/common.py`。後に
+`scripts/taxon_namespaces.py` に移動——§9参照）に3つ目の出典を足しても、
 これらは追随せず、`n_by_ns[ns] += 1` は `KeyError`、taxon_id の組み立ては
 黙って `inat.` 扱いになって F1 が直した衝突が戻る欠陥があった。
 
@@ -532,7 +534,37 @@ companion列なし）は元々 `is_tied` と `ambiguous_cols` が数学的に同
 辺縁ケースを、将来データが増えても黙って壊れないように機械的に担保する」
 性質の修正であることを、実測によって確認した。
 
-## 8. 再現の壁・申し送り
+## 8. CI失敗の修正: `TAXON_KEY_SOURCE_NAMESPACE` を依存の無いモジュールに切り出す
+
+PR #15 の CI が3ジョブとも `ModuleNotFoundError: No module named 'requests'` で
+落ちた。§6-4 で `TAXON_KEY_SOURCE_NAMESPACE` を `scripts/common.py`（収集系の
+共有モジュール）に移したが、そのモジュールは冒頭で `requests` を import して
+いる。そのため `scripts/registry/build_taxon.py`（→ `r01_build_registry.py
+--files-only`・`scripts/tests/test_registry_taxon.py`）が `requests` に
+依存するようになった。CI は `requirements.txt`（PyYAML・pytest だけ）しか
+入れないため落ちる。手元の `.venv` には `requests` が（収集スクリプト用に）
+入っているため、この不整合はローカルでは再現しなかった。
+
+「レジストリを経由しない読み手（`x01_dwca.py` 等）からも import できる、
+レジストリのパッケージ（`scripts/registry/`）の外の1箇所」という意図は
+保ったまま、**依存の無い小さなモジュール `scripts/taxon_namespaces.py`**
+（標準ライブラリにも `requests` にも依存しない。import 時の副作用も無い、
+`TAXON_KEY_SOURCE_NAMESPACE` の辞書リテラルだけを持つファイル）に切り出した。
+`scripts/common.py` からは削除し、re-export もしない（`scripts/common.py` に
+依存する既存の呼び出し元は無いことを確認済み——grep で `TAXON_KEY_SOURCE_NAMESPACE`
+の参照は本PR自身のファイルだけだった）。`build_taxon.py` の import と、
+エラーメッセージ・docstring・`registry/README.md`/`docs/plans/PHASE_B_OCCURRENCE.md`
+中の参照先をすべて新モジュールに更新した。
+
+**CI と同じ環境で確認**: scratchpad に `requests` の入っていない一時的な venv
+（`python3 -m venv` + `pip install -r requirements.txt` だけ）を作り、その中で
+`python3 -m pytest -q` と `RYUIKI_REGISTRY_DB=<tmp>/x.sqlite python3
+scripts/r01_build_registry.py --files-only` が通ることを確認した（実測は
+本PRのコミットメッセージ参照。venv は確認後に削除済み）。手元の `.venv`
+（`requests` あり）でもフルビルド・`taxon` 41,454行・全生成物の差分0を
+再確認した。
+
+## 9. 再現の壁・申し送り
 
 - **O-1/O-2 はまだ設計のみ**（本ドキュメント §4 の切り方の記述だけで、実装は
   無い）。`occurrence` テーブルの DDL・キューブ拡張（`source_id` を次元に追加）・
