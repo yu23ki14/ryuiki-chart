@@ -12,9 +12,9 @@ name: CI
 # - reconcile: Phase B 突合ハーネス（scripts/b01_derived_baseline.py /
 #   scripts/b02_derived_compare.py / scripts/b03_build_observation.py /
 #   scripts/b04_build_cube.py / scripts/b05_project_v1.py / scripts/b06_build_occurrence.py /
-#   scripts/b08_project_occurrence_v1.py / scripts/reconcile/*.py /
-#   scripts/migrate/*.py）のフィクスチャテストと、以下の構造検証（いずれも
-#   data/db/*.sqlite・data/db/derived.sqlite を一切必要としない）:
+#   scripts/b07_build_occurrence_cube.py / scripts/b08_project_occurrence_v1.py /
+#   scripts/reconcile/*.py / scripts/migrate/*.py）のフィクスチャテストと、以下の構造検証
+#   （いずれも data/db/*.sqlite・data/db/derived.sqlite を一切必要としない）:
 #     - reports/derived_baseline.json がコミットされ、schema_version が一致すること。
 #     - scripts/reconcile/expected_diffs.yaml が読めて形（テーブル名 -> 宣言のリスト）を
 #       満たし、テーブル名が derived_baseline.json に実在し、key の要素数がそのテーブルの
@@ -35,6 +35,11 @@ name: CI
 #       expected_row_count が整数で、宣言された形の名前の集合がコードの12形と
 #       過不足なく一致すること（`migrate.occurrence_period.
 #       validate_occurrence_period_shapes_shape`）。
+#     - scripts/migrate/occurrence_cube_declarations.yaml（O-1b。leaf セル
+#       〔grain='survey_period'〕の元記録数の宣言）が読めて、必須キーを持ち、
+#       expected_row_count が整数で、宣言名の集合が `leaf_cell_source_rows` 1件と
+#       過不足なく一致すること（`b07_build_occurrence_cube.
+#       validate_cube_declarations_shape`）。
 #   docs/plans/PHASE_B_RECONCILIATION.md §5「CI の限界」で明言しているとおり、
 #   このジョブが保証するのはハーネス自体の正しさとこれらの構造検証だけ。実データ
 #   （data/db/derived.sqlite、14GB）に対する b01 の再実行や b02 の完全モード突合は、
@@ -190,7 +195,7 @@ jobs:
           print(f"OK: {path} (schema_version={data['schema_version']}, tables={data['table_count']})")
           PY
 
-      - name: 宣言ファイル（expected_diffs.yaml / period_exceptions.yaml / time_label_conventions.yaml / source_regions.yaml / occurrence_period_shapes.yaml）の構造検証（原本DBは使わない）
+      - name: 宣言ファイル（expected_diffs.yaml / period_exceptions.yaml / time_label_conventions.yaml / source_regions.yaml / occurrence_period_shapes.yaml / occurrence_cube_declarations.yaml）の構造検証（原本DBは使わない）
         run: |
           python3 - <<'PY'
           import json
@@ -198,6 +203,7 @@ jobs:
           import sys
 
           sys.path.insert(0, "scripts")
+          import b07_build_occurrence_cube as b07
           from migrate import occurrence_period, period, source_regions
           from reconcile import common
 
@@ -237,4 +243,10 @@ jobs:
           occurrence_period.validate_occurrence_period_shapes_shape(period_shapes_path)
           shapes = occurrence_period.load_period_shapes(period_shapes_path)
           print(f"OK: {period_shapes_path}（{len(shapes)}形の宣言）")
+
+          # occurrence_cube_declarations.yaml（O-1b。scripts/b07_build_occurrence_cube.py
+          # が読む leaf セルの元記録数の宣言）も同じ流儀で検証する。
+          cube_declarations_path = pathlib.Path("scripts/migrate/occurrence_cube_declarations.yaml")
+          b07.validate_cube_declarations_shape(cube_declarations_path)
+          print(f"OK: {cube_declarations_path}")
           PY

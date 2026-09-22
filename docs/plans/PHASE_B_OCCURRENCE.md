@@ -912,3 +912,131 @@ pytest: 308件成功（原本の無い一時 clone + requirements.txt だけの 
 scripts/b06_build_occurrence.py    19.2s
 scripts/b08_project_occurrence_v1.py へ射影して書き出し  7.8s
 ```
+
+## 13. O-1b（`occurrence_agg` ＋ 年キー8表 ＋ `species_month`）実装・実測（`phase-b/occurrence-cube`）
+
+ADR-0025 D2・D3、`o1_design_v2.md` D2・D3 のとおり実装した。ここには実装したファイルと
+実測値だけを記録する。
+
+### 構成
+
+| ファイル | 役割 |
+|---|---|
+| `scripts/b07_build_occurrence_cube.py`（新規） | `occurrence` から `data/db/v2.sqlite` の `occurrence_agg` を作る（`observation`/`observation_agg`/`occurrence` と同居） |
+| `scripts/migrate/occurrence_cube_declarations.yaml`（新規） | leaf セル（`grain='survey_period'`。年をまたぐ区間）の元記録数（1,191）の宣言 |
+| `scripts/b08_project_occurrence_v1.py`（拡張） | `org_group_year`/`effort_year`/`species2`/`species_year2`/`mesh_year`/`mesh_all`/`mesh_species`/`species_mesh_year`（`occurrence_agg` だけから）と `species_month`（`occurrence`＝L2 から）を追加。`org_norm` の実装・値は無変更（`build_org_norm_projection` は後方互換のまま残し、`main()` は10テーブルまとめて書く `build_all_projections` を使う） |
+| `scripts/reconcile/expected_diffs.yaml`（`species2:` 節） | `org_norm` と同じ原因（*Sirosporium celtidis* の `cls`）の1キー宣言 |
+| `scripts/tests/occurrence_fixtures.py`（拡張） | `occurrence_agg` を持つ v2.sqlite 相当を作る `make_v2_db_with_occurrence_and_agg` を追加 |
+| `scripts/tests/test_b07_build_occurrence_cube.py`（新規） | grain 判定・機械検証 (i)〜(iii)・次元キー一意性のフィクスチャテスト |
+| `scripts/tests/test_b08_occurrence_cube_projections.py`（新規） | 年キー8表・`species_month` のフィクスチャテスト（leaf セルの開始年への帰属、複数 `taxon_id` → 同じ `binom` の DISTINCT 集約、`species_month` の `mo` 非月値の再現等） |
+| `.github/workflows/ci.yml`（拡張） | `occurrence_cube_declarations.yaml` の構造検証ステップを追加 |
+
+### キューブの実測（`data/db/ryuiki.sqlite`/`registry.sqlite`、2026-09-22。ローカル実行）
+
+```
+occurrence_agg 総セル数        471,060
+  year セル                   469,933
+  leaf セル（survey_period）    1,127
+  元記録: year                815,665
+  元記録: leaf                 1,191（宣言値と一致）
+  日付あり合計                816,856（= year 元記録 + leaf 元記録。(iii) 検証どおり）
+  検証した系列数（source×taxon） 32,187
+```
+
+機械検証 (i)〜(iii) はすべて実データで通った:
+- (i) 系列（source_id, taxon_id。taxon_id NULL を含む）ごとの Σn/Σn_red_list が
+  `occurrence` の日付あり行と全件一致（32,187系列、不一致0）。
+- (ii) leaf セルの元記録数 1,191 が宣言値と一致。
+- (iii) year セルの元記録数 + leaf セルの元記録数 = 日付あり行数（815,665 + 1,191 = 816,856）。
+
+### v1 射影の実測（`scripts/b08_project_occurrence_v1.py`）
+
+```
+org_norm            816,856行（O-1a と同じ。無変更）
+org_group_year        1,166行
+effort_year               57行
+species2              23,618行
+species_year2        116,899行
+mesh_year             37,043行
+mesh_all               4,083行
+mesh_species            4,086行
+species_mesh_year    276,163行
+species_month           9,997行
+```
+
+すべて v1（`data/db/derived.sqlite`）の行数と一致（`reports/derived_baseline.json` 記録どおり）。
+
+### 受け入れ基準1（`scripts/b02_derived_compare.py --tables org_norm,org_group_year,effort_year,species2,species_year2,species_month,mesh_year,mesh_all,mesh_species,species_mesh_year`）
+
+```
+$ .venv/bin/python3 scripts/b02_derived_compare.py \
+    --candidate data/db/v1_projection_occurrence.sqlite \
+    --tables org_norm,org_group_year,effort_year,species2,species_year2,species_month,mesh_year,mesh_all,mesh_species,species_mesh_year
+一致: 8 / 宣言済み差分のみ: 2 / 不一致: 0
+適用した宣言済み差分: 2件
+EXIT=0
+```
+
+`--no-expected-diffs` で実行すると、不一致は `org_norm.cls` 1行（O-1a と同じ）と
+`species2.cls` 1行（同じ *Sirosporium celtidis*。属単位の多数決の同数タイブレークが
+v1 と taxon レジストリで食い違う——原因は §3「F2: 分類の補完」と同一）の**計2件だけ**。
+残り8表（`org_group_year`/`effort_year`/`species_year2`/`mesh_year`/`mesh_all`/
+`mesh_species`/`species_mesh_year`/`species_month`）は数値列・文字列列とも全件一致。
+
+### 既存11テーブル・O-1a のゲートが変わらないことの確認（受け入れ基準2）
+
+```
+b03→b04→b05 再実行後: b02 --tables meas_daily,...,zone_clim（11表）
+  一致5 / 宣言済み差分のみ6 / 不一致0（EXIT=0。変更なし）
+occurrence（823,692行）・org_norm（816,856行）: O-1a と同じ実装のまま
+  （`_CREATE_ORG_NORM_SQL`/`_ORG_NORM_SELECT_EXPRS`/`_ORG_NORM_COLUMNS` を
+  `git diff origin/phase-b/occurrence-l2` で確認——1バイトも変わっていない）
+```
+
+`b06_build_occurrence.py`・`scripts/migrate/` 配下は本 PR で一切変更していない
+（`git diff --stat origin/phase-b/occurrence-l2 -- scripts/b06_build_occurrence.py
+scripts/migrate/` が空）。
+
+### 実行時間
+
+```
+scripts/b07_build_occurrence_cube.py      23.9s（occurrence_agg 471,060セルの構築）
+scripts/b08_project_occurrence_v1.py      45.1s（10テーブル合計1,289,968行を射影して書き出し）
+```
+
+### pytest
+
+```
+scripts/tests 全体: 345件成功（O-1a までの326件 + O-1b で追加した19件
+  〔test_b07_build_occurrence_cube.py 11件・test_b08_occurrence_cube_projections.py 8件〕）
+原本の無い一時 clone（.gitignore 済み data/db 無し）+ requirements.txt だけの venv
+（Python 3.13.7、CI の actions/setup-python と同じ版）でも345件成功
+  （システムの既定 python3〔3.10系〕は sqlite3 モジュールが3.37.2で b04 の起動時
+  ガードに引っかかるため、CI と同じ Python 3.13 を明示して確認した）
+```
+
+### 設計からの逸脱
+
+- **`built_from` に SQLite バージョンを埋め込まない**（`scripts/b07_build_occurrence_cube.py`
+  モジュール docstring 参照）。ADR-0021 決定3の SQLite バージョン検証（`AVG()`/`SUM()` の
+  浮動小数点加算アルゴリズム）は `occurrence_agg` の値（`n`/`n_red_list`。ともに整数の
+  `COUNT()`/`SUM(CASE ...)`）には適用対象が無い——SQLite の `SUM()` は整数列に対しては
+  常に厳密な64bit整数和を返すため。ADR-0025 D2 が「共通」と明記する規律
+  （`staged_table`・`COALESCE(c,'')` の `UNIQUE INDEX`・`built_from`/`spec_version`）には
+  含まれていないため、b04 のような `sqlite3.sqlite_version_info` の起動時検証は実装して
+  いない（意図的な判断。オーナー確認が要れば報告する）。
+
+### 未決
+
+なし（設計どおりに実装でき、実測がすべて期待値と一致した）。
+
+### 既知の負債
+
+- `docs/plans/PHASE_B_RECONCILIATION.md` の突合ゲートは、まだ全33テーブルを1回の
+  `b02` 呼び出しに束ねていない（`--tables` を候補ファイルごとに個別に指定する運用の
+  ままD4に明記済みの既知の負債。§4参照）。
+- `mesh_all`/`mesh_species` の行数差（4,083 と 4,086）は v1 の仕様どおり（`mesh_all` は
+  年 1970–2026 でフィルタ済みの `mesh_year` から積み上げるが、`mesh_species` には
+  年フィルタが無いため、<1970 の記録しか持たない3メッシュ分だけ多い）。バグではないが、
+  画面側でこの2表を並べて使うときに気づきにくい差なので、将来 API を生やす際は
+  ドキュメント化しておくこと。
