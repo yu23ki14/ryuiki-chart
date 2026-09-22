@@ -405,14 +405,17 @@ def test_classification_basis_no_match_when_nothing_resolves(tmp_path):
 
 
 def test_representative_selection_uses_shared_source_namespace(tmp_path):
-    """未知の source_id のエラーメッセージが、正の置き場(scripts/common.py)を指す
-    （/code-review 指摘5。SOURCE_NAMESPACE は build_taxon.py の private 定数ではなく
-    scripts/common.py の TAXON_KEY_SOURCE_NAMESPACE に移した）。
+    """未知の source_id のエラーメッセージが、正の置き場(scripts/taxon_namespaces.py)
+    を指す（/code-review 指摘5。SOURCE_NAMESPACE は build_taxon.py の private 定数
+    ではなく scripts/taxon_namespaces.py の TAXON_KEY_SOURCE_NAMESPACE に移した。
+    当初は scripts/common.py に置いたが、そのモジュールは requests に依存し
+    CI（PyYAML・pytestしか入れない）で ModuleNotFoundError を起こしたため、
+    依存の無いモジュールに切り出し直した）。
     """
     rows = [
         ("some_new_source", "1", "Foo bar", "species", None, None, None, None, None, "2020-01-01"),
     ]
-    with pytest.raises(ValueError, match="scripts/common.py"):
+    with pytest.raises(ValueError, match="scripts/taxon_namespaces.py"):
         _build(tmp_path, organism_records_rows=rows)
 
 

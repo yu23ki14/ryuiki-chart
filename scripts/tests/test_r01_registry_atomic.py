@@ -223,6 +223,28 @@ def test_compute_input_fingerprint_changes_when_build_code_changes(tmp_path):
     assert before != after
 
 
+def test_compute_input_fingerprint_changes_when_taxon_namespaces_changes(tmp_path):
+    """scripts/taxon_namespaces.py（build_taxon.py が読む TAXON_KEY_SOURCE_NAMESPACE
+    の正。scripts/registry/ の外にあるため *.py の glob には乗らない）を編集すると
+    指紋も変わる（足し忘れると --check-fresh がこの対応表の変更を検知できず
+    「新鮮」のまま固まる。scripts/common.py に置いていたときは requests 依存で
+    CI が落ちたため移した経緯がある。docs/plans/PHASE_B_OCCURRENCE.md §8参照）。
+    """
+    root = tmp_path / "repo"
+    _make_fingerprint_input_tree(root)
+    (root / "scripts" / "taxon_namespaces.py").write_text(
+        "TAXON_KEY_SOURCE_NAMESPACE = {}\n", encoding="utf-8"
+    )
+    before = common.compute_input_fingerprint(root=root)
+
+    (root / "scripts" / "taxon_namespaces.py").write_text(
+        "TAXON_KEY_SOURCE_NAMESPACE = {'x': 'y'}\n", encoding="utf-8"
+    )
+    after = common.compute_input_fingerprint(root=root)
+
+    assert before != after
+
+
 def test_compute_input_fingerprint_ignores_files_outside_the_input_set(tmp_path):
     root = tmp_path / "repo"
     _make_fingerprint_input_tree(root)
