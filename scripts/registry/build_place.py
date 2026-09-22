@@ -294,9 +294,11 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
         ref_rows.append((pid, site_id, "sites.site_id"))
 
     # --- watershed: derived.watershed_meta（377件） -------------------------
+    # テーブル名は common.DERIVED_TABLE_WATERSHED_META を参照する（common.py の
+    # 指紋計算 DERIVED_TABLES_READ と宣言を共有する。fix 2, phase-b/registry-atomic）。
     for row in derived.execute(
         "SELECT watershed_id, water_system_name, area_km2, centroid_lat, centroid_lon, source_ref "
-        "FROM watershed_meta"
+        f"FROM {common.DERIVED_TABLE_WATERSHED_META}"
     ):
         pid = common.place_id("watershed", "nlni", row["watershed_id"], scope="common", seen=place_id_seen)
         place_rows.append((
@@ -309,7 +311,9 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     # --- grid01: derived.mesh_all（4,083件） --------------------------------
     # 旧 place_kind='mesh3'。ADR-0006 のコードリストの mesh3（標準地域メッシュ/
     # 3次メッシュ）とは実体が違うため grid01 に改名した（モジュール docstring参照）。
-    for row in derived.execute("SELECT mlat, mlon FROM mesh_all"):
+    for row in derived.execute(
+        f"SELECT mlat, mlon FROM {common.DERIVED_TABLE_MESH_ALL}"
+    ):
         mlat, mlon = row["mlat"], row["mlon"]
         local = f"{mlat}_{mlon}"
         # namespace=None: common:place:grid01.<mlat>_<mlon>（watershed の
