@@ -63,10 +63,14 @@
   （11テーブル: `meas_daily`/`meas_month`/`meas_year`/`meas_clim`/`site_var`/`var_catalog`/
   `sensor_daily`/`rain_daily`/`sensor_hour_month`/`zone_year`/`zone_clim`）で、どちらも
   `.gitignore` 済み・捨てて作り直せる。設計・実測は `docs/plans/PHASE_B_FACT_SLICE.md`。
-  生物の出現（occurrence、O-1a）は別の縦線: `scripts/b06_build_occurrence.py`
-  （`organism_records`→`occurrence`。`data/db/v2.sqlite` に `observation` と同居）/
-  `scripts/b08_project_occurrence_v1.py`（`occurrence`→v1形 `org_norm`、出力
-  `data/db/v1_projection_occurrence.sqlite`）の2本。設計・実測は
+  生物の出現（occurrence、O-1a/O-1b）は別の縦線: `scripts/b06_build_occurrence.py`
+  （`organism_records`→`occurrence`。`data/db/v2.sqlite` に `observation`/`observation_agg`
+  と同居）/ `scripts/b07_build_occurrence_cube.py`（`occurrence`→キューブ
+  `occurrence_agg`。同じ `data/db/v2.sqlite` に同居）/
+  `scripts/b08_project_occurrence_v1.py`（`occurrence`/`occurrence_agg`→v1形10テーブル:
+  `org_norm`・`org_group_year`・`effort_year`・`species2`・`species_year2`・
+  `species_month`・`mesh_year`・`mesh_all`・`mesh_species`・`species_mesh_year`、出力
+  `data/db/v1_projection_occurrence.sqlite`）の3本。設計・実測は
   `docs/plans/PHASE_B_OCCURRENCE.md`・`docs/adr/0025-occurrence-fact-and-cube.md`。
 - **`+09:00` 付きの時刻文字列に SQLite の日時関数（`date`/`datetime`/`strftime`）を使わない**
   （UTC に正規化されて日付が1日ずれる。`observation.period_start` は時刻帯なしのローカル時刻で

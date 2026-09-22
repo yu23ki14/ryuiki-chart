@@ -1,0 +1,13 @@
+# occurrence_agg（scripts/b07_build_occurrence_cube.py）の機械検証が読む宣言。
+# 形式は occurrence_period_shapes.yaml と同じ（name -> {expected_row_count, note}）。
+# scripts/migrate/period.py の required_keys_problems/entries_with_required_keys/
+# validate_expected_row_count をそのまま再利用する（b06 の occurrence_period_shapes.yaml
+# と同じ流儀。宣言された名前の集合が過不足なく一致することも b07 が検証する）。
+
+leaf_cell_source_rows:
+  expected_row_count: 1191
+  note: >
+    grain='survey_period'（年をまたぐ区間。b07 の「leaf セル」）に集約される、
+    日付ありの occurrence 記録の件数。O-1 設計 v2 実測「区間 4,840行のうち
+    年をまたぐもの 1,191」（docs/plans/PHASE_B_OCCURRENCE.md O-1b 節・
+    ADR-0025 D2）を固定値として宣言する。不一致は b07 を止める。

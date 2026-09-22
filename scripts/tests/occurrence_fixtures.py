@@ -238,3 +238,38 @@ def make_v2_db_with_occurrence(path, rows: list[tuple]) -> None:
 
 def make_taxon_group_yaml(path, default_label_ja: str = "未判定") -> None:
     path.write_text(f'default_label_ja: "{default_label_ja}"\nrules: []\n', encoding="utf-8")
+
+
+# O-1b（`scripts/b07_build_occurrence_cube.py`/年キー8表・species_month）の
+# テスト用: `occurrence_agg` のスキーマは `_CREATE_OCCURRENCE_AGG_SQL` 1箇所が正
+# （同じ考え方。b07 の DIM_COLUMNS の並びで列を持つ）。
+_OCCURRENCE_AGG_COLUMNS = (
+    "region_id", "source_id", "place_id", "taxon_id", "grain", "period_start", "period_end",
+    "n", "n_red_list", "built_from", "spec_version",
+)
+
+
+def make_v2_db_with_occurrence_and_agg(
+    path, occurrence_rows: list[tuple], occurrence_agg_rows: list[tuple],
+) -> None:
+    """`occurrence`（L2）と `occurrence_agg`（キューブ）の両方を持つ v2.sqlite
+    相当を作る（`scripts/b08_project_occurrence_v1.py` の
+    `_build_cube_projections` は両方を読む——年キー8表は `occurrence_agg`
+    だけから、`species2.en_name`/`red_list_category` と `species_month` は
+    `occurrence` から）。
+    """
+    import b06_build_occurrence as b06
+    import b07_build_occurrence_cube as b07
+
+    conn = sqlite3.connect(f"file:{path}", uri=True)
+    try:
+        conn.execute(b06._CREATE_OCCURRENCE_SQL.format(table="occurrence"))
+        placeholders = ", ".join("?" for _ in _OCCURRENCE_COLUMNS)
+        conn.executemany(f"INSERT INTO occurrence VALUES ({placeholders})", occurrence_rows)
+
+        conn.execute(b07._CREATE_OCCURRENCE_AGG_SQL.format(table="occurrence_agg"))
+        agg_placeholders = ", ".join("?" for _ in _OCCURRENCE_AGG_COLUMNS)
+        conn.executemany(f"INSERT INTO occurrence_agg VALUES ({agg_placeholders})", occurrence_agg_rows)
+        conn.commit()
+    finally:
+        conn.close()
