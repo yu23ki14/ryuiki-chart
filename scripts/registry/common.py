@@ -168,12 +168,16 @@ def cleanup_stale_tmp_files(
 
 
 def insert_many(conn: sqlite3.Connection, table: str, columns: list[str], rows) -> int:
-    """rows（columns の順のタプルの列。ジェネレータ可）を table に流し込み、件数を返す。"""
+    """rows（columns の順のタプルの列。ジェネレータ可）を table に流し込み、件数を返す。
+
+    列名は二重引用符で囲む（taxon.order のような SQL 予約語をそのまま列名に使っている
+    テーブルがあるため。二重引用符での囲みは予約語でない通常の識別子にも常に安全）。
+    """
     rows = list(rows)
     if not rows:
         return 0
     placeholders = ",".join("?" for _ in columns)
-    collist = ",".join(columns)
+    collist = ",".join(f'"{c}"' for c in columns)
     conn.executemany(f"INSERT INTO {table} ({collist}) VALUES ({placeholders})", rows)
     return len(rows)
 
@@ -219,9 +223,16 @@ MODE_FILES_ONLY = "files_only"
 # 指紋計算（_hash_derived_tables 以下）とビルド側（build_place.py の derived.execute()）が
 # この宣言を共有する。derived.sqlite に新しいテーブルを足して読むようになったら、
 # ここに追記するだけで指紋にも自動的に乗る。
+#
+# `mesh_all`（旧・grid01 の入力）は phase-b/occurrence-registry で外した: grid01 は
+# `derived.mesh_all`（`observed_on` が無い記録や1970年より前しか無いセルを取りこぼす、
+# `web/scripts/build-biota.mjs` 側の年フィルタ由来の欠け）ではなく `ryuiki.organism_records`
+# の座標から直接作るようになった（build_place.py の grid01 節 docstring 参照）。
+# `ryuiki.sqlite` は元々指紋の対象外（このモジュール docstring 参照）なので、この変更で
+# 指紋の対象が増えたわけではない——`organism_records` を書き換える `m0x_*.py` を実行したら
+# 引き続き `pnpm run build:registry` を明示的に走らせる必要がある（既存の運用のまま）。
 DERIVED_TABLE_WATERSHED_META = "watershed_meta"
-DERIVED_TABLE_MESH_ALL = "mesh_all"
-DERIVED_TABLES_READ = (DERIVED_TABLE_WATERSHED_META, DERIVED_TABLE_MESH_ALL)
+DERIVED_TABLES_READ = (DERIVED_TABLE_WATERSHED_META,)
 
 # build_taxon.py が読み、指紋計算もハッシュする、derived 以外の「読み取り専用だが値が
 # 変わりうる」入力（scripts/c24_taxon_crosswalk.py の成果物）。DERIVED_TABLES_READ と同じ
@@ -490,6 +501,26 @@ def place_id(
 
 def taxon_id_gbif(gbif_key, scope: str = "common") -> str:
     return scoped_id("taxon", f"gbif.{gbif_key}", scope)
+
+
+def taxon_id_inat(inat_id, scope: str = "common") -> str:
+    """iNaturalist 由来の taxon（`organism_records.taxon_key` に iNaturalist 自身の
+    `taxon.id` が入っている行。GBIF の taxonKey とは無関係な別の ID 空間）。
+
+    F1（phase-b/occurrence-registry）: 以前は iNat 行も `taxon_id_gbif()` に通しており、
+    GBIF と iNat がたまたま同じ数値を発行した9件（例: `8026` = GBIF 科 *Axiidae* /
+    iNat *Corvus macrorhynchos*）が同じ `common:taxon:gbif.8026` に衝突し、件数の多い方
+    （iNat 側）の学名がレジストリ行を乗っ取っていた。`inat.` 名前空間を分けることで
+    構造的に衝突しなくなる（`gbif.`/`inat.` の接頭辞が異なるため、同じ数値でも別ID）。
+
+    `gbif_taxon_key` 列には入れない（本物の GBIF taxonKey ではないため。iNat の ID は
+    この `taxon_id` 自体にしか持たせない——`inat_taxon_id` のような専用列を新設しなかった
+    理由: 現状 `getTaxonByGbifKey()` のような「iNat IDで逆引きしたい」消費者が無く
+    （`web/src/lib/registry/index.ts` に呼び出し元なし、実測済み）、無い列を先回りで
+    増やさない。将来 iNat ID からの逆引きが要る消費者が現れたら、その時点で
+    `local_key` を `taxon_id` から取り出す関数を足すか、専用列を検討する）。
+    """
+    return scoped_id("taxon", f"inat.{inat_id}", scope)
 
 
 def taxon_id_unresolved(taxa_pk, scope: str = "common", *, seen: dict | None = None) -> str:

@@ -1,10 +1,11 @@
 """place / place_source_ref / place_relation を作る（docs/plans/PHASE_A.md §A-3、
-place_relation は Phase B `phase-b/region-scope`、ADR-0022）。
+place_relation は Phase B `phase-b/region-scope`、ADR-0022。grid01 の入力切り替えは
+Phase B `phase-b/occurrence-registry`、docs/plans/PHASE_B_OCCURRENCE.md §2-3）。
 
 対象: site（sites 352件 + sensor_timeseries/measurements 側で不足する分）、
-watershed（derived.watershed_meta 377件）、grid01（derived.mesh_all 4,083件。
-実体・命名の経緯は後述）、zone（registry/place/zone.yaml 5件）。town_block と
-river_segment は Phase A では登録しない。place_source_ref で v1 の
+watershed（derived.watershed_meta 377件）、grid01（`ryuiki.organism_records` の座標
+から直接作る。件数・実体・命名の経緯は後述）、zone（registry/place/zone.yaml 5件）。
+town_block と river_segment は Phase A では登録しない。place_source_ref で v1 の
 site_id / watershed_id / mlat,mlon / zone の整数値を引けるようにする（ADR-0006）。
 place_relation は地点→ゾーンの辺（`sites.zone` 由来。後述「place_relation」）だけを作る。
 
@@ -21,7 +22,8 @@ watershed / grid01 は scope=`common`（県境をまたぐ流域・独自グリ�
 当初は `place_kind='mesh3'` としていたが、レビューで「3次メッシュ（標準地域メッシュ）
 ではなく本アプリ独自の0.01度グリッドなのに、ADR-0006 のコードリストの語である
 `mesh3` を名乗っている」と指摘された。実測（`data/db/derived.sqlite` の
-`mesh_all.mlat`/`mlon`）で確認した事実:
+`mesh_all.mlat`/`mlon`、Phase B `phase-b/occurrence-registry` 以降は
+`ryuiki.organism_records` の座標そのもの）で確認した事実:
 
 - `mlat` は 3500, 3501, 3502, … と **1刻み**（= 0.01度刻み）。国土地理院の標準
   3次メッシュ（緯度30秒×経度45秒 ≒ 約1km四方、緯度は約1/120度刻み）とは刻み幅が
@@ -29,8 +31,8 @@ watershed / grid01 は scope=`common`（県境をまたぐ流域・独自グリ�
 - 本ビルドの `lat = mlat / 100 + 0.005` という計算自体が「1/100度グリッドの
   セル中心」を表しており、3次メッシュのコード体系（都道府県コード+地域メッシュ
   コード）とは無関係。
-- つまり `mesh_all` は `web/scripts/build-biota.mjs` が `organism_records` の
-  座標から `FLOOR(lat*100)`/`FLOOR(lon*100)` で機械的に作った、本アプリ独自の
+- `mlat`/`mlon` は `web/scripts/build-biota.mjs` が `organism_records` の
+  座標から `FLOOR(lat*100)`/`FLOOR(lon*100)` で機械的に作る、本アプリ独自の
   集計用グリッドであり、標準地域メッシュではないことを確認済み。
 
 このため `place_kind` を `grid01`（0.01度グリッドの意）に改め、ID も
@@ -41,13 +43,44 @@ watershed / grid01 は scope=`common`（県境をまたぐ流域・独自グリ�
 （`grid01` を正式な値として追加するか、将来 grid01 とは別に本物の3次メッシュを
 登録する地域が出た時点で区別する）を申し送る。詳細は `registry/README.md`。**
 
+### grid01 の入力を `derived.mesh_all` から `organism_records` の座標に変える
+（Phase B `phase-b/occurrence-registry`、docs/plans/PHASE_B_OCCURRENCE.md §2-3）
+
+`derived.mesh_all` は `web/scripts/build-biota.mjs` の `mesh_year`
+（`WHERE lat IS NOT NULL AND yr BETWEEN 1970 AND 2026` でフィルタ済み）を
+`GROUP BY mlat, mlon` で畳んだものなので、**年フィルタで弾かれた記録しか
+持たないセルが grid01 から欠落する**。実測: `derived.mesh_all` 由来の grid01 は
+4,083セルだが、`organism_records` の座標を直接 `FLOOR(lat*100)`/`FLOOR(lon*100)`
+で丸めると **4,087セル**（4件差）。内訳:
+
+- **3セル**は1970年より前の記録（6行）しか無いために `mesh_year` の年フィルタで
+  弾かれていた（(3521,13898)/(3544,13913)/(3544,13968)）。v1 の `mesh_species`
+  （年フィルタ無し、org_norm 全行から集計）には元々この3セルが存在しており、
+  `mesh_all` だけが取りこぼしていた食い違い。
+- **1セル**は `observed_on` が無い記録（iNaturalist 由来1行、緯度経度のみ）しか
+  持たない（(3537,13977)）。`organism_records` は日付の無い記録も823,692行中
+  6,836行持つが、座標（lat/lon）は**全行に入っている**（NULL 0件、実測済み）。
+
+**日付の無い記録の座標も含める（=後者の1セルも作る）ことに決めた。** 理由:
+1. 座標はそもそも全行にあり、座標の有無と日付の有無は独立（座標が使えない理由がない）。
+2. occurrence ファクト（将来の O-1）は ADR-0007 原則1により日付の無い記録も
+   保持する設計になる見込みで、その記録がいつか grid01 に解決されようとしたときに
+   解決先の place が無い、という将来の欠落を今のうちに塞いでおける。
+3. 「place（空間の集計単位）は場所そのものを表す」という ADR-0006 の設計に立つと、
+   ある座標に有効な記録が存在するかどうかは日付の有無に依存しない。
+
+一方、**分類（F2）の多数決の母集団は v1 と同じ日付ありに揃えたまま**にしてある
+（`scripts/registry/build_taxon.py` の `_DATED_POPULATION_WHERE`）。grid01（場所の
+集計単位を洗い出す）と taxon の分類多数決（v1 の値を変えない）は別の設計判断で、
+根拠も別々なので意図的に扱いを分けている。
+
 ## `place_source_ref.external_key` の合成規則（v1 側の識別子との接続点）
 
 | place_kind | external_key                  | source_id                    |
 |---|---|---|
 | site       | v1 の `site_id` そのまま       | `sites.site_id`               |
 | watershed  | `watershed_meta.watershed_id` そのまま | `watershed_meta.watershed_id` |
-| grid01     | `f"grid01:{mlat},{mlon}"`（2列を1文字列に合成。旧`mesh3:{mlat},{mlon}`から改名） | `mesh_all.mlat_mlon` |
+| grid01     | `f"grid01:{mlat},{mlon}"`（2列を1文字列に合成。旧`mesh3:{mlat},{mlon}`から改名。**形は変えない**） | `organism_records.lat_lon`（旧`mesh_all.mlat_mlon`から変更。入力が `derived.mesh_all` から `ryuiki.organism_records` の座標に変わったため） |
 | zone       | `sites.zone` の整数値を文字列化（"1".."5"） | `sites.zone`                  |
 
 site の external_key は「sites テーブルにある行」と「measurements /
@@ -308,11 +341,19 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
         ))
         ref_rows.append((pid, row["watershed_id"], "watershed_meta.watershed_id"))
 
-    # --- grid01: derived.mesh_all（4,083件） --------------------------------
+    # --- grid01: ryuiki.organism_records の座標（4,087件） -------------------
     # 旧 place_kind='mesh3'。ADR-0006 のコードリストの mesh3（標準地域メッシュ/
     # 3次メッシュ）とは実体が違うため grid01 に改名した（モジュール docstring参照）。
-    for row in derived.execute(
-        f"SELECT mlat, mlon FROM {common.DERIVED_TABLE_MESH_ALL}"
+    # Phase B `phase-b/occurrence-registry` で入力を derived.mesh_all から
+    # ryuiki.organism_records の座標そのものに変えた（モジュール docstring「grid01 の
+    # 入力を derived.mesh_all から organism_records の座標に変える」参照。年フィルタで
+    # 欠落していた3セルと、日付の無い記録しか持たない1セルを拾えるようになる）。
+    # 日付の有無・年の範囲でフィルタしない（座標は全行に入っている。lat IS NOT NULL は
+    # 実測上つねに真だが、将来座標欠損行が増えても黙って混ぜないための防御として残す）。
+    for row in ryuiki.execute(
+        "SELECT DISTINCT CAST(FLOOR(lat*100) AS INT) AS mlat, "
+        "CAST(FLOOR(lon*100) AS INT) AS mlon "
+        "FROM organism_records WHERE lat IS NOT NULL AND lon IS NOT NULL"
     ):
         mlat, mlon = row["mlat"], row["mlon"]
         local = f"{mlat}_{mlon}"
@@ -326,18 +367,19 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
         lat = mlat / 100 + 0.005
         lon = mlon / 100 + 0.005
         definition_ref = (
-            "0.01度グリッド（web/scripts/build-biota.mjs: "
+            "0.01度グリッド（organism_records: "
             "mlat=CAST(FLOOR(lat*100) AS INT), mlon=CAST(FLOOR(lon*100) AS INT)）の"
             "セル中心。国土地理院の標準地域メッシュ（3次メッシュ）ではなく、本アプリが "
             "organism_records の座標から独自に定義した集計用グリッド"
             "（place_kind='grid01'。ADR-0006 のコードリストからの逸脱の経緯は "
-            "registry/README.md 参照）。"
+            "registry/README.md 参照）。日付の無い記録の座標も含む"
+            "（docs/plans/PHASE_B_OCCURRENCE.md §2-3）。"
         )
         place_rows.append((
             pid, common.region_id_for_scoped_id(pid), "grid01", None, lat, lon,
             None, None, definition_ref, "ok",
         ))
-        ref_rows.append((pid, f"grid01:{mlat},{mlon}", "mesh_all.mlat_mlon"))
+        ref_rows.append((pid, f"grid01:{mlat},{mlon}", "organism_records.lat_lon"))
 
     # --- zone: registry/place/zone.yaml（5件） ------------------------------
     disclaimer = (

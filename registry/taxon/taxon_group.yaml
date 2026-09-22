@@ -1,0 +1,67 @@
+# 生物群（taxon_group）の日本語ラベル。
+#
+# 由来: web/scripts/build-biota.mjs の TAXON_GROUP（v1 の SQL CASE 式）を、
+# phase-b/occurrence-registry（F2, docs/adr/0019-taxon-registry.md 追記）でデータ化した
+# もの。v1 は org_norm の行ごと（record 単位）にこの CASE を適用していたが、
+# taxon レジストリでは taxon（scientific_name の学名の単位）ごとに1回だけ適用する
+# （同じ taxon_key の記録は class/phylum/kingdom が全て同じ値になる実測済みの前提が
+# あるので、record 単位で計算しても taxon 単位で計算しても結果は変わらない。
+# 詳細は scripts/registry/build_taxon.py の docstring）。
+#
+# **順序は先勝ち（CASE 式と同じ）。並び替えない。** 上から順に見て最初に一致した
+# ルールの label_ja を採用する。どのルールにも一致しない場合は default_label_ja。
+#
+# ルールの match は class / phylum / kingdom の値に対する条件（複数キーがあれば AND）。
+# 値が配列なら「そのいずれかに一致（OR、SQL の IN 相当）」。配列の要素 `null` は
+# 「NULL または空文字」を表す（v1 の NULLIF(class,'') と同じ扱い。
+# scripts/registry/build_taxon.py が class/phylum/kingdom を読む時点で既に
+# 空文字を None に正規化しているので、ここでの null は「値が無い」1通りだけを指す）。
+#
+# 5番目のルール（魚類）だけが phylum と class の両方を条件に持つ複合ルール:
+# 「脊索動物門であり、かつ class が空(未判定)か軟骨魚綱等3綱のいずれか」。
+# 魚類には Actinopterygii（条鰭綱）が GBIF backbone に存在せず class が空になる行が
+# 多いための対処（build-biota.mjs のコメント参照）。
+default_label_ja: "未判定"
+rules:
+  - match: { class: "Aves" }
+    label_ja: "鳥類"
+  - match: { class: "Mammalia" }
+    label_ja: "哺乳類"
+  - match: { class: ["Squamata", "Testudines"] }
+    label_ja: "爬虫類"
+  - match: { class: "Amphibia" }
+    label_ja: "両生類"
+  - match: { phylum: "Chordata", class: [null, "Elasmobranchii", "Myxini", "Holocephali"] }
+    label_ja: "魚類"
+  - match: { class: "Insecta" }
+    label_ja: "昆虫類"
+  - match: { class: "Arachnida" }
+    label_ja: "クモ・ダニ類"
+  - match: { class: ["Malacostraca", "Maxillopoda", "Ostracoda", "Branchiopoda"] }
+    label_ja: "甲殻類"
+  - match: { class: ["Gastropoda", "Bivalvia", "Cephalopoda", "Polyplacophora"] }
+    label_ja: "貝類・軟体動物"
+  - match: { class: ["Magnoliopsida", "Liliopsida"] }
+    label_ja: "被子植物"
+  - match: { class: ["Polypodiopsida", "Lycopodiopsida"] }
+    label_ja: "シダ植物"
+  - match: { class: ["Pinopsida", "Cycadopsida", "Ginkgoopsida", "Gnetopsida"] }
+    label_ja: "裸子植物"
+  - match:
+      class:
+        [
+          "Bryopsida",
+          "Jungermanniopsida",
+          "Marchantiopsida",
+          "Polytrichopsida",
+          "Sphagnopsida",
+          "Anthocerotopsida",
+          "Andreaeopsida",
+        ]
+    label_ja: "コケ植物"
+  - match: { kingdom: "Fungi" }
+    label_ja: "菌類"
+  - match: { kingdom: "Plantae" }
+    label_ja: "その他植物・藻類"
+  - match: { kingdom: "Animalia" }
+    label_ja: "その他無脊椎動物"

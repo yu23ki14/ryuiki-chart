@@ -135,22 +135,50 @@ export const placeSourceRef = sqliteTable("place_source_ref", {
 ]);
 
 /**
- * 分類群レジストリ（ADR-0019）。GBIF 由来は `taxon_id = common:taxon:gbif.<key>`、
+ * 分類群レジストリ（ADR-0019、taxon_id の名前空間分割と分類補完は Phase B
+ * `phase-b/occurrence-registry`、ADR-0019 追記）。
+ *
+ * `taxon_id` は出典ごとに名前空間を分ける: GBIF 由来は `common:taxon:gbif.<GBIFのtaxonKey>`、
+ * iNaturalist 由来は `common:taxon:inat.<iNatのtaxon.id>`（GBIF の taxonKey とは無関係な
+ * 別の数値空間。以前は両方を `gbif.<key>` に混ぜており、偶然同じ数値を持つ9件が
+ * 衝突していた——例: `8026` は GBIF では科 *Axiidae*、iNat では *Corvus macrorhynchos*）。
  * `taxa`（v1）由来で GBIF 未照合のものは `common:taxon:ryuiki-taxa.<学名をスラッグ化したもの>`
  * （`taxa` の主キーではない。学名を小文字化・記号を `%` エスケープして作った ID）。
- * 現状の `status` は `accepted` / `unresolved` の2値のみで、`synonym` は無い。
- * `accepted_taxon_id` は現状すべて NULL。将来 `status='synonym'` の行を持たせて
- * 正の taxon を指させるための列（ADR-0004 規約2: ID は不変、実体が変わったら
+ * `gbif_taxon_key` 列は本物の GBIF taxonKey のときだけ埋める（iNat 由来行は常に NULL。
+ * iNat の ID は `taxon_id` 自体にしか持たせない——理由は `scripts/registry/common.py` の
+ * `taxon_id_inat()` docstring）。
+ *
+ * 現状の `status` は `accepted` / `unresolved` / `needs_review`
+ * （分類の多数決が同数で決定論的なタイブレーク規則に頼った taxon だけ。実測1件）の3値で、
+ * `synonym` は無い。`accepted_taxon_id` は現状すべて NULL。将来 `status='synonym'` の行を
+ * 持たせて正の taxon を指させるための列（ADR-0004 規約2: ID は不変、実体が変わったら
  * 新 ID を作り旧 ID は残す）で、まだ埋めていない。
  * 上流の `scripts/c24_taxon_crosswalk.py` の `accepted_scientific_name` 列は
  * GBIF の `acceptedUsageKey`（受理名）を引いたものではなく、一致したノード自身の学名を
  * 転記しているだけだったと判明している。列名と実態が食い違いやすい箇所なので、
  * `accepted_taxon_id` を埋めるときは誤用しないこと（docs/plans/PHASE_B_INTAKE.md §8）。
+ *
+ * `kingdom`/`phylum`/`class`/`order`/`family`/`classificationBasis`/`canonicalBinomial`/
+ * `taxonGroup` は v1（`web/scripts/build-biota.mjs` の `org_norm`）の分類補完規則を
+ * レジストリのビルダー側（`scripts/registry/build_taxon.py`）に移したもの。
+ * `classificationBasis` は `class` の解決経路（`source`=出典が直接持つ／
+ * `binomial_match`=同じ二名法キーの他記録からの多数決／`genus_match`=同じ属の他記録
+ * からの多数決／`unresolved`=解決不能）。`order`/`family` は多数決による補完をしない
+ * （v1 も補完していない。出典の値のみ）。`taxonGroup` は `registry/taxon/taxon_group.yaml`
+ * （v1 の `TAXON_GROUP` CASE 式を移したもの）から機械的に生成した日本語ラベル。
  */
 export const taxon = sqliteTable("taxon", {
 	taxonId: text("taxon_id").primaryKey(),
 	scientificName: text("scientific_name"),
+	canonicalBinomial: text("canonical_binomial"),
 	rank: text(),
+	kingdom: text(),
+	phylum: text(),
+	class: text(),
+	order: text(),
+	family: text(),
+	classificationBasis: text("classification_basis"),
+	taxonGroup: text("taxon_group"),
 	gbifTaxonKey: text("gbif_taxon_key"),
 	vernacularNameJa: text("vernacular_name_ja"),
 	status: text(),
@@ -158,6 +186,7 @@ export const taxon = sqliteTable("taxon", {
 },
 (table) => [
 	index("ix_taxon_gbif_key").on(table.gbifTaxonKey),
+	index("ix_taxon_binomial").on(table.canonicalBinomial),
 ]);
 
 /**
