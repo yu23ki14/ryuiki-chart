@@ -423,6 +423,17 @@ EXPECTED_DIFF_KINDS = ("row_only_in_candidate", "row_only_in_baseline", "value_d
 # 残す」というこの仕組みの存在理由が空文字1つで骨抜きにできた。
 REQUIRED_DIFF_KEYS = ("key", "kind", "reason", "found_on", "record")
 
+# `value_diff` の宣言だけに要る追加の必須項目（変更6・オーナー決定）。
+# `row_only_in_candidate`/`row_only_in_baseline` は「その側にあった行」が
+# そのまま実測に出るので不要だが、`value_diff` は `key`/`kind` だけでは
+# 「同じキーで、宣言時に想定していなかった別の列まで動いた」ケースを検出
+# できない。「動くと期待する列名の集合」を必須で書かせ、
+# `scripts/b02_derived_compare.py`（`_apply_expected_diffs`）が実際に
+# 食い違った列の集合と完全一致するかを検証する（行レベルのデータが要るので、
+# その一致検証自体は b02 側の責務。ここでは「非空で書かれているか」という
+# 構造だけを見る）。
+REQUIRED_VALUE_DIFF_KEYS = ("columns",)
+
 
 def load_expected_diffs(path) -> dict[str, list[dict]]:
     """`expected_diffs.yaml` を読む。トップレベルはテーブル名 ->
@@ -459,11 +470,15 @@ def validate_expected_diffs(
 ) -> None:
     """`load_expected_diffs` の戻り値を検証する。
 
-    `REQUIRED_DIFF_KEYS` の非空チェックは `derived_baseline.json` を必要としない
+    `REQUIRED_DIFF_KEYS`（`kind == "value_diff"` の宣言は `REQUIRED_VALUE_DIFF_KEYS`
+    も合わせて）の非空チェックは `derived_baseline.json` を必要としない
     （`period.validate_period_exceptions_shape` と同じ、原本DB不要の構造検証）が、
     残り3点——宣言のテーブル名の実在・`key` の要素数・`kind` の語彙——は
     `derived_baseline.json`（`baseline_tables` = その `tables` 辞書）と
     突き合わせないと判定できないため、検証をまとめてこの1関数に置く。
+    `value_diff` の `columns` が実際に食い違った列の集合と一致するかは、行レベルの
+    データが要るのでここでは検証しない（`scripts/b02_derived_compare.py` の
+    `_apply_expected_diffs` の責務）。
 
     `scripts/b02_derived_compare.py` の `main()` と CI の宣言ファイル構造検証
     ステップ（`.github/workflows/ci.yml` の `reconcile` ジョブ）の両方から呼ぶ
@@ -481,7 +496,10 @@ def validate_expected_diffs(
     for table, diffs in expected_diffs_by_table.items():
         expected_key_len = len(baseline_tables[table]["key"])
         for d in diffs:
-            missing = [k for k in REQUIRED_DIFF_KEYS if d.get(k) in (None, "", [])]
+            required_keys = REQUIRED_DIFF_KEYS
+            if d.get("kind") == "value_diff":
+                required_keys = required_keys + REQUIRED_VALUE_DIFF_KEYS
+            missing = [k for k in required_keys if d.get(k) in (None, "", [])]
             if missing:
                 missing_required.append((table, d.get("key"), missing))
             if d.get("kind") not in EXPECTED_DIFF_KINDS:

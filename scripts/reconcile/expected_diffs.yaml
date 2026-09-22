@@ -1,20 +1,13 @@
 # 宣言済み差分（scripts/b02_derived_compare.py の「宣言済み差分」機構が読む）。
+# 形式・運用ルール（書ける形・reason に前後の数値を書かない理由・b02 が検証する
+# 内容）は docs/plans/PHASE_B_RECONCILIATION.md §7「宣言済み差分」を参照
+# （ここでは重複させない）。
 #
-# ここに書けるのは「v1 を再現できないが、原因が判明していて、v1 側のバグだと
-# 確定しているもの」だけ。常に「キーを1件ずつ列挙したもの」であり、ワイルドカード・
-# テーブル単位の免除は書けない（他の差分を隠せないようにするための、オーナー決定の形）。
-#
-# トップレベルはテーブル名 -> 宣言のリスト。各宣言は:
-#   key:      ベースラインのキー列と同じ順・同じ個数（derived_baseline.json の
-#             tables.<table>.key の並びに一致させる。b02 が要素数を検証する）。
-#   kind:     row_only_in_candidate | row_only_in_baseline | value_diff
-#             （このキーが実際にどう差分になっているか。b02 が実測と食い違わないか検証する）。
-#   reason:   なぜこの差分が出るかの具体的な説明（「n が 10→12 になり avg/min が動く」まで書く）。
-#   found_on: 実測した日付。
-#   record:   詳しい経緯を書いた場所。
-#
-# b02 は「宣言したキーが実際には差分になっていない（腐った宣言）」「宣言した kind と
-# 実際の種類が食い違う」を必ず検証し、食い違えば非0で止まる（信用しない）。
+# 各宣言のフィールド: key（ベースラインのキー列と同じ順・同じ個数）/ kind
+# （row_only_in_candidate | row_only_in_baseline | value_diff）/ reason（原因の
+# 説明のみ。前後の数値は書かない） / found_on（実測した日付）/ record（詳しい
+# 経緯を書いた場所）。kind: value_diff の宣言だけ columns（食い違うと期待する
+# 列名の集合。例: [n, avg, min]）も必須。
 #
 # 経緯（変更1）: `scripts/migrate/censoring.py` が『◯未満』（日本語表記の定量下限未満）を
 # `unknown` ではなく `below_lod` に写すよう変更された。v1（web/scripts/build-derived.mjs）は
@@ -39,16 +32,16 @@ meas_daily:
     reason: >
       v1 は value_raw='1未満' をパースできず value=NULL としたため、この日は
       site×variable×day の観測が1件しか無く、グループごと meas_daily から
-      落ちていた（v1 のバグ）。v2 は below_lod として 0.0 を代入するため、
-      n_raw=1・value=0.0・n_censored=1 の日次セルが新規に現れる。
+      落ちていた（v1 のバグ）。v2 は below_lod として 0.0 を代入してこの観測を
+      拾うため、meas_daily に日次セルが新規に現れる。
     found_on: 2026-09-08
     record: docs/plans/PHASE_B_RECONCILIATION.md 「再現できなかった箇所の記録」
   - key: ["atsugi_river_water_quality__中津川", "浮遊物質量 SS", "2003-10-07"]
     kind: row_only_in_candidate
     reason: >
-      2002-11-06 と同じ理由（v1 が '1未満' をパースできずグループごと落としていた）。
-      この日も観測が1件だけなので、v2 では n_raw=1・value=0.0・n_censored=1 の
-      日次セルが新規に現れる。
+      2002-11-06 と同じ理由（v1 が '1未満' をパースできず、観測が1件しか無い
+      グループごと meas_daily から落としていた）。v2 は below_lod として 0.0 を
+      代入してこの観測を拾うため、この日の日次セルが新規に現れる。
     found_on: 2026-09-08
     record: docs/plans/PHASE_B_RECONCILIATION.md 「再現できなかった箇所の記録」
 
@@ -60,14 +53,16 @@ meas_month:
     kind: row_only_in_candidate
     reason: >
       meas_daily に新規に現れた 2002-11-06 のセルが、2002年11月で唯一の観測
-      だったため、月次セル自体が meas_month に新規に現れる（n=1, avg=0.0）。
+      だったため、月次セル自体が meas_month に新規に現れる（meas_month は
+      meas_daily から積み上げるため。ADR-0011）。
     found_on: 2026-09-08
     record: docs/plans/PHASE_B_RECONCILIATION.md 「再現できなかった箇所の記録」
   - key: ["atsugi_river_water_quality__中津川", "浮遊物質量 SS", 2003, 10]
     kind: row_only_in_candidate
     reason: >
       meas_daily に新規に現れた 2003-10-07 のセルが、2003年10月で唯一の観測
-      だったため、月次セル自体が meas_month に新規に現れる（n=1, avg=0.0）。
+      だったため、月次セル自体が meas_month に新規に現れる（meas_month は
+      meas_daily から積み上げるため。ADR-0011）。
     found_on: 2026-09-08
     record: docs/plans/PHASE_B_RECONCILIATION.md 「再現できなかった箇所の記録」
 
@@ -76,75 +71,76 @@ meas_year:
   # 年次集計（daily側）に1件ずつ追加され、n・avg・min が動く。
   - key: ["atsugi_river_water_quality__中津川", "浮遊物質量 SS", 2002, "daily"]
     kind: value_diff
+    columns: [n, avg, min, n_censored]
     reason: >
-      2002-11-06 の新規日次セル（value=0.0）が2002年の年次集計（kind='daily'）に
-      1件追加され、n が 8→9 になり avg・min が動く（min は 2.0→0.0）。
+      2002-11-06 の新規日次セル（below_lod, value=0.0）が、その年の年次集計
+      （kind='daily'。meas_daily を積み上げたもの）に1件追加され、n・avg・min
+      が動く。
     found_on: 2026-09-08
     record: docs/plans/PHASE_B_RECONCILIATION.md 「再現できなかった箇所の記録」
   - key: ["atsugi_river_water_quality__中津川", "浮遊物質量 SS", 2003, "daily"]
     kind: value_diff
+    columns: [n, avg, min, n_censored]
     reason: >
-      2003-10-07 の新規日次セル（value=0.0）が2003年の年次集計（kind='daily'）に
-      1件追加され、n が 11→12 になり avg・min が動く（min は 1.0→0.0）。
+      2003-10-07 の新規日次セル（below_lod, value=0.0）が、その年の年次集計
+      （kind='daily'。meas_daily を積み上げたもの）に1件追加され、n・avg・min
+      が動く。
     found_on: 2026-09-08
     record: docs/plans/PHASE_B_RECONCILIATION.md 「再現できなかった箇所の記録」
   # kind='annual'（出典が直接配った年度値。atsugi の measured_on 4桁行を
-  # 観測から直接集計。meas_daily を経由しない）: 該当年度の '1未満' 行数ぶん
-  # n が増え、below_lod の 0.0 代入により avg・min・n_censored が動く。
+  # 観測から直接集計。meas_daily を経由しない）: 該当年度に '1未満' があった
+  # ぶん、v1 はどれも value=NULL として年次集計から落としていたが、v2 は
+  # below_lod として 0.0 を代入して拾うため、n・avg・min・n_censored が動く
+  # （7件とも同じ原因・同じ説明なので、年度ごとの '1未満' の件数だけを各行の
+  # reason に書く。内訳: 2005年度2件・2006年度1件・2007年度1件・2014年度1件・
+  # 2016年度1件・2018年度2件・2020年度2件。ファイル冒頭「経緯（変更1）」参照）。
   - key: ["atsugi_river_water_quality__中津川", "浮遊物質量 SS", 2005, "annual"]
     kind: value_diff
+    columns: [n, avg, min, n_censored]
     reason: >
-      2005年度に '1未満' が2件あり、v1 はどちらも value=NULL で集計から
-      落としていた。v2 は below_lod として 0.0 を代入するため n が 10→12 に
-      なり、avg（4.9→4.083…）・min（2.0→0.0）・n_censored（0→2）が動く。
+      2005年度に '1未満' が2件あった。
     found_on: 2026-09-08
     record: docs/plans/PHASE_B_RECONCILIATION.md 「再現できなかった箇所の記録」
   - key: ["atsugi_river_water_quality__中津川", "浮遊物質量 SS", 2006, "annual"]
     kind: value_diff
+    columns: [n, avg, min, n_censored]
     reason: >
-      2006年度に '1未満' が1件あり、v1 は value=NULL で落としていた。v2 は
-      below_lod として 0.0 を代入するため n が 11→12 になり、avg
-      （3.27…→3.0）・min（1.0→0.0）・n_censored（0→1）が動く。
+      2005年度と同じ理由（該当: 1件）。
     found_on: 2026-09-08
     record: docs/plans/PHASE_B_RECONCILIATION.md 「再現できなかった箇所の記録」
   - key: ["atsugi_river_water_quality__中津川", "浮遊物質量 SS", 2007, "annual"]
     kind: value_diff
+    columns: [n, avg, min, n_censored]
     reason: >
-      2007年度に '1未満' が1件あり、v1 は value=NULL で落としていた。v2 は
-      below_lod として 0.0 を代入するため n が 11→12 になり、avg
-      （3.45…→3.17…）・min（1.0→0.0）・n_censored（0→1）が動く。
+      2005年度と同じ理由（該当: 1件）。
     found_on: 2026-09-08
     record: docs/plans/PHASE_B_RECONCILIATION.md 「再現できなかった箇所の記録」
   - key: ["atsugi_river_water_quality__中津川", "浮遊物質量 SS", 2014, "annual"]
     kind: value_diff
+    columns: [n, avg, min, n_censored]
     reason: >
-      2014年度に '1未満' が1件あり、v1 は value=NULL で落としていた。v2 は
-      below_lod として 0.0 を代入するため n が 11→12 になり、avg
-      （1.45…→1.33…）・min（1.0→0.0）・n_censored（0→1）が動く。
+      2005年度と同じ理由（該当: 1件）。
     found_on: 2026-09-08
     record: docs/plans/PHASE_B_RECONCILIATION.md 「再現できなかった箇所の記録」
   - key: ["atsugi_river_water_quality__中津川", "浮遊物質量 SS", 2016, "annual"]
     kind: value_diff
+    columns: [n, avg, min, n_censored]
     reason: >
-      2016年度に '1未満' が1件あり、v1 は value=NULL で落としていた。v2 は
-      below_lod として 0.0 を代入するため n が 11→12 になり、avg
-      （2.09…→1.92…）・min（1.0→0.0）・n_censored（0→1）が動く。
+      2005年度と同じ理由（該当: 1件）。
     found_on: 2026-09-08
     record: docs/plans/PHASE_B_RECONCILIATION.md 「再現できなかった箇所の記録」
   - key: ["atsugi_river_water_quality__中津川", "浮遊物質量 SS", 2018, "annual"]
     kind: value_diff
+    columns: [n, avg, min, n_censored]
     reason: >
-      2018年度に '1未満' が2件あり、v1 はどちらも value=NULL で落としていた。
-      v2 は below_lod として 0.0 を代入するため n が 10→12 になり、avg
-      （1.7→1.42…）・min（1.0→0.0）・n_censored（0→2）が動く。
+      2005年度と同じ理由（該当: 2件）。
     found_on: 2026-09-08
     record: docs/plans/PHASE_B_RECONCILIATION.md 「再現できなかった箇所の記録」
   - key: ["atsugi_river_water_quality__中津川", "浮遊物質量 SS", 2020, "annual"]
     kind: value_diff
+    columns: [n, avg, min, n_censored]
     reason: >
-      2020年度に '1未満' が2件あり、v1 はどちらも value=NULL で落としていた。
-      v2 は below_lod として 0.0 を代入するため n が 10→12 になり、avg
-      （2.0→1.67…）・min（1.0→0.0）・n_censored（0→2）が動く。
+      2005年度と同じ理由（該当: 2件）。
     found_on: 2026-09-08
     record: docs/plans/PHASE_B_RECONCILIATION.md 「再現できなかった箇所の記録」
 
@@ -161,20 +157,20 @@ meas_clim:
   # 混ざる。2002-11-06 は11月、2003-10-07 は10月の集計に入る。
   - key: ["浮遊物質量 SS", 10]
     kind: value_diff
+    columns: [n, avg]
     reason: >
-      meas_daily に新規出現した 2003-10-07 のセル（value=0.0, below_lod）が
-      10月の平年値に1件追加される。n が 1152→1153 になり、
-      avg が 3.625850…→3.622705…に動く（min=0.0・max=66.0・unit=mg/L は
-      不変）。
+      meas_daily に新規出現した 2003-10-07 のセル（below_lod, value=0.0）が、
+      10月の月別平年値（全地点・全出典をプールする、site_id を持たない集計）に
+      1件追加され、n・avg が動く。
     found_on: 2026-09-15
     record: docs/plans/PHASE_B_RECONCILIATION.md 「再現できなかった箇所の記録」
   - key: ["浮遊物質量 SS", 11]
     kind: value_diff
+    columns: [n, avg]
     reason: >
-      meas_daily に新規出現した 2002-11-06 のセル（value=0.0, below_lod）が
-      11月の平年値に1件追加される。n が 1080→1081 になり、
-      avg が 3.605665…→3.602329…に動く（min=0.0・max=64.5・unit=mg/L は
-      不変）。
+      meas_daily に新規出現した 2002-11-06 のセル（below_lod, value=0.0）が、
+      11月の月別平年値（全地点・全出典をプールする、site_id を持たない集計）に
+      1件追加され、n・avg が動く。
     found_on: 2026-09-15
     record: docs/plans/PHASE_B_RECONCILIATION.md 「再現できなかった箇所の記録」
 
@@ -184,21 +180,21 @@ site_var:
   # 増分が、kind ごとにまとめて1行の差分として現れる。
   - key: ["atsugi_river_water_quality__中津川", "浮遊物質量 SS", "annual"]
     kind: value_diff
+    columns: [n, avg]
     reason: >
-      meas_year(kind='annual') の該当7年度（2005・2006・2007・2014・2016・
-      2018・2020）で below_lod の0.0代入行が計10行増える（上の meas_year
-      宣言のうち annual の7件の合計）。n が 182→192 になり、
-      avg（AVG(avg) over 年）が 2.606629…→2.463542…に動く（y_from=2005・
-      y_to=2020・unit=mg/L は不変）。
+      meas_year(kind='annual') の該当年度（上の meas_year 宣言のうち annual の
+      各年）で below_lod の 0.0 代入行が増えるぶんが、site_var の annual 行
+      （site_id, variable, kind 単位で meas_year を SUM(n)/AVG(avg) したもの）に
+      反映され、n・avg が動く。
     found_on: 2026-09-15
     record: docs/plans/PHASE_B_RECONCILIATION.md 「再現できなかった箇所の記録」
   - key: ["atsugi_river_water_quality__中津川", "浮遊物質量 SS", "daily"]
     kind: value_diff
+    columns: [n, avg]
     reason: >
-      meas_year(kind='daily') の該当2年（2002・2003）で below_lod の0.0代入行が
-      計2行増える（上の meas_year 宣言のうち daily の2件）。n が 34→36 になり、
-      avg（AVG(avg) over 年）が 4.224432…→3.979167…に動く（y_from=2002・
-      y_to=2005・unit=mg/L は不変）。
+      meas_year(kind='daily') の該当年（上の meas_year 宣言のうち daily の各年）
+      で below_lod の 0.0 代入行が増えるぶんが、site_var の daily 行に反映され、
+      n・avg が動く。
     found_on: 2026-09-15
     record: docs/plans/PHASE_B_RECONCILIATION.md 「再現できなかった箇所の記録」
 
@@ -208,11 +204,10 @@ var_catalog:
   # 一致することを実測で確認した。
   - key: ["浮遊物質量 SS"]
     kind: value_diff
+    columns: [n, n_daily, n_annual, n_censored]
     reason: >
-      上の site_var 2行の増分（annual +10・daily +2）がそのまま合算される。
-      n が 16048→16060（annual +10 と daily +2 の合計 +12）、n_daily が
-      13162→13164（+2）、n_annual が 2886→2896（+10）、n_censored が
-      2040→2052（below_lod 代入12行ぶんの n_censored 合計 +12）に動く
-      （unit=mg/L・n_sites=125・y_from=2002・y_to=2026 は不変）。
+      上の site_var（annual・daily 両行）の増分が、variable 単位（全地点合計）で
+      さらに集約される。below_lod の 0.0 代入行が増えたぶんが n・n_daily・
+      n_annual・n_censored に反映される。
     found_on: 2026-09-15
     record: docs/plans/PHASE_B_RECONCILIATION.md 「再現できなかった箇所の記録」

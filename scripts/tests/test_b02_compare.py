@@ -528,17 +528,33 @@ _RECORD = "docs/plans/PHASE_B_RECONCILIATION.md 「再現できなかった箇�
 
 
 def test_expected_diff_row_only_in_candidate_is_applied_and_gate_passes(tmp_path):
-    """`row_only_in_candidate` の宣言が、実際にその通りの差分（候補にしか無い行）を
-    説明できるときは、そのテーブルの状態が『宣言済み差分のみ』になりゲートは0で通る。
+    """`row_only_in_candidate` / `row_only_in_baseline` の宣言が、実際にその通りの
+    差分（候補にしか無い行・ベースラインにしか無い行）を説明できるときは、
+    そのテーブルの状態が『宣言済み差分のみ』になりゲートは0で通る。レポートには
+    その行の（キー以外の）列の値が実測の前後の値として出て、キー列（`year`）は
+    「キー」列にすでに出ているので重複して出さない。
     """
     db_path, baseline_json, _ = _make_baseline(tmp_path)
     candidate = dump_all_tables_as_json(db_path)
+    # s2/2020/daily (n=5, avg=3.0) を候補から削る -> row_only_in_baseline
+    candidate["t_dims"]["rows"] = [
+        row for row in candidate["t_dims"]["rows"]
+        if not (row[0] == "s2" and row[1] == 2020 and row[2] == "daily")
+    ]
+    # 新しい行 (n=1, avg=4.0) を候補に足す -> row_only_in_candidate
     candidate["t_dims"]["rows"].append(["s3", 2022, "daily", 1, 4.0])
     candidate_path = tmp_path / "candidate.json"
     candidate_path.write_text(json.dumps(candidate), encoding="utf-8")
 
     expected_diffs = _write_expected_diffs_yaml(tmp_path, {
         "t_dims": [
+            {
+                "key": ["s2", 2020, "daily"],
+                "kind": "row_only_in_baseline",
+                "reason": _REASON,
+                "found_on": _FOUND_ON,
+                "record": _RECORD,
+            },
             {
                 "key": ["s3", 2022, "daily"],
                 "kind": "row_only_in_candidate",
@@ -558,16 +574,24 @@ def test_expected_diff_row_only_in_candidate_is_applied_and_gate_passes(tmp_path
     assert "### `t_dims` — 宣言済み差分のみ" in text
     assert "expected_diffs.yaml で適用したもの" in text
     assert "['s3', 2022, 'daily']" in text or "[\"s3\", 2022, \"daily\"]" in text
+    assert "`avg`=3.000000; `n`=5.000000" in text  # ベースラインにしか無い行 (s2)
+    assert "`avg`=4.000000; `n`=1.000000" in text  # 候補にしか無い行 (s3)
+    assert "`year`=2020" not in text  # キー列は実測の前後の値に重複して出さない
+    assert "`year`=2022" not in text
 
 
 def test_expected_diff_value_diff_is_applied_and_gate_passes(tmp_path):
     """`value_diff` の宣言が、実際に値が変わっている共通キーを説明できるときも
-    同様にゲートが0で通る。"""
+    同様にゲートが0で通る。レポートには実測した前後の値が「列名: ベースライン→
+    候補（差 ...）」の形で出る。t_dims の共通行で `avg` だけ変え `n` は変えて
+    いないので、`avg` は前後の値付きで出るが、一致した `n` は「実測の前後の値」
+    に一切出ない。
+    """
     db_path, baseline_json, _ = _make_baseline(tmp_path)
     candidate = dump_all_tables_as_json(db_path)
     for row in candidate["t_dims"]["rows"]:
         if row[0] == "s1" and row[1] == 2020 and row[2] == "daily":
-            row[4] = 9.99
+            row[4] = 9.99  # avg: 1.5 -> 9.99 (n=10 はそのまま)
     candidate_path = tmp_path / "candidate.json"
     candidate_path.write_text(json.dumps(candidate), encoding="utf-8")
 
@@ -576,6 +600,7 @@ def test_expected_diff_value_diff_is_applied_and_gate_passes(tmp_path):
             {
                 "key": ["s1", 2020, "daily"],
                 "kind": "value_diff",
+                "columns": ["avg"],
                 "reason": _REASON,
                 "found_on": _FOUND_ON,
                 "record": _RECORD,
@@ -589,6 +614,45 @@ def test_expected_diff_value_diff_is_applied_and_gate_passes(tmp_path):
     assert result.returncode == 0, result.stdout + result.stderr
     text = out_md.read_text(encoding="utf-8")
     assert "宣言済み差分のみ" in text
+    assert "`avg`: 1.500000→9.990000（差 8.490000）" in text
+    assert "`n`:" not in text  # 一致した列は出さない
+
+
+def test_reduced_mode_never_shows_observed_values(tmp_path):
+    """縮退モードでは宣言（`expected_diffs.yaml`）を適用できない（行レベルの
+    差分を見られないため。既存の
+    `test_expected_diff_reduced_mode_with_declared_diff_in_scope_exits_nonzero`
+    参照）。宣言のあるテーブルを `--tables` の対象から外せば縮退モードでも
+    実行はできるが、そのときレポートに「宣言済み差分」節や実測の前後の値は
+    一切出ないことを確認する。
+    """
+    db_path, baseline_json, _ = _make_baseline(tmp_path)
+    candidate_db = tmp_path / "candidate.sqlite"
+    make_fixture_db(candidate_db, include_dupe=False)  # t_pk はベースラインと同一
+
+    expected_diffs = _write_expected_diffs_yaml(tmp_path, {
+        "t_dims": [
+            {
+                "key": ["s1", 2020, "daily"],
+                "kind": "value_diff",
+                "columns": ["avg"],
+                "reason": _REASON,
+                "found_on": _FOUND_ON,
+                "record": _RECORD,
+            },
+        ],
+    })
+
+    out_md = tmp_path / "reconciliation.md"
+    result = _run_cli(
+        baseline_json, None, candidate_db, out_md, reduced=True, tables="t_pk",
+        expected_diffs=expected_diffs,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    text = out_md.read_text(encoding="utf-8")
+    assert "宣言済み差分（expected_diffs.yaml で適用したもの）" not in text
+    assert "実測の前後の値" not in text
 
 
 def test_expected_diff_rotten_declaration_exits_nonzero(tmp_path):
@@ -633,6 +697,7 @@ def test_expected_diff_kind_mismatch_exits_nonzero(tmp_path):
             {
                 "key": ["s3", 2022, "daily"],
                 "kind": "value_diff",  # 実際は row_only_in_candidate
+                "columns": ["avg"],
                 "reason": _REASON,
                 "found_on": _FOUND_ON,
                 "record": _RECORD,
@@ -658,6 +723,7 @@ def test_expected_diff_bad_key_length_exits_nonzero(tmp_path):
             {
                 "key": ["s1", 2020],  # 2要素（本来3要素: site, year, kind）
                 "kind": "value_diff",
+                "columns": ["avg"],
                 "reason": _REASON,
                 "found_on": _FOUND_ON,
                 "record": _RECORD,
@@ -725,6 +791,75 @@ def test_expected_diff_empty_required_value_exits_nonzero(tmp_path):
 
     assert result.returncode != 0
     assert "必須項目が欠けている" in (result.stdout + result.stderr)
+    assert not out_md.exists()
+
+
+def test_expected_diff_value_diff_missing_columns_exits_nonzero(tmp_path):
+    """変更6: `value_diff` の宣言だけ `columns`（動くと期待する列名の集合）が
+    必須。`row_only_in_candidate`/`row_only_in_baseline` には無い追加の必須項目
+    なので、`kind` ごとに要件が変わることを回帰させないために別テストにする。
+    """
+    db_path, baseline_json, _ = _make_baseline(tmp_path)
+    candidate_db = tmp_path / "candidate.sqlite"
+    make_fixture_db(candidate_db, include_dupe=False)
+
+    expected_diffs = _write_expected_diffs_yaml(tmp_path, {
+        "t_dims": [
+            {
+                "key": ["s1", 2020, "daily"],
+                "kind": "value_diff",
+                # columns が無い。
+                "reason": _REASON,
+                "found_on": _FOUND_ON,
+                "record": _RECORD,
+            },
+        ],
+    })
+
+    out_md = tmp_path / "reconciliation.md"
+    result = _run_cli(baseline_json, db_path, candidate_db, out_md, expected_diffs=expected_diffs)
+
+    assert result.returncode != 0
+    assert "必須項目が欠けている" in (result.stdout + result.stderr)
+    assert not out_md.exists()
+
+
+def test_expected_diff_value_diff_wrong_columns_exits_nonzero(tmp_path):
+    """変更6: `value_diff` の `columns` が実際に食い違った列の集合と一致しないと
+    非0で落ちる（腐った宣言と同じ扱い）。t_dims の s1/2020/daily で `n` と `avg`
+    の両方を変えたのに `columns: ["avg"]`（`n` が抜けている）としか宣言していない
+    ケース。メッセージに宣言した集合・実際の集合の両方が出ることを確認する。
+    """
+    db_path, baseline_json, _ = _make_baseline(tmp_path)
+    candidate = dump_all_tables_as_json(db_path)
+    for row in candidate["t_dims"]["rows"]:
+        if row[0] == "s1" and row[1] == 2020 and row[2] == "daily":
+            row[3] = 12  # n: 10 -> 12
+            row[4] = 9.99  # avg: 1.5 -> 9.99
+    candidate_path = tmp_path / "candidate.json"
+    candidate_path.write_text(json.dumps(candidate), encoding="utf-8")
+
+    expected_diffs = _write_expected_diffs_yaml(tmp_path, {
+        "t_dims": [
+            {
+                "key": ["s1", 2020, "daily"],
+                "kind": "value_diff",
+                "columns": ["avg"],  # 実際は n・avg の両方が食い違う
+                "reason": _REASON,
+                "found_on": _FOUND_ON,
+                "record": _RECORD,
+            },
+        ],
+    })
+
+    out_md = tmp_path / "reconciliation.md"
+    result = _run_cli(baseline_json, db_path, candidate_path, out_md, expected_diffs=expected_diffs)
+
+    assert result.returncode != 0
+    output = result.stdout + result.stderr
+    assert "columns" in output
+    assert "['avg']" in output  # 宣言した集合
+    assert "['avg', 'n']" in output  # 実際に食い違った集合
     assert not out_md.exists()
 
 
@@ -870,6 +1005,7 @@ def test_expected_diff_multiple_bad_declarations_in_one_table_are_reported_toget
             {  # kind の食い違い（実際は row_only_in_candidate）
                 "key": ["s3", 2022, "daily"],
                 "kind": "value_diff",
+                "columns": ["avg"],
                 "reason": _REASON,
                 "found_on": _FOUND_ON,
                 "record": _RECORD,
