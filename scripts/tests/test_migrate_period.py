@@ -141,3 +141,167 @@ def test_validate_period_exceptions_shape_rejects_missing_required_key(tmp_path)
 
 def test_validate_period_exceptions_shape_missing_file_is_allowed(tmp_path):
     period.validate_period_exceptions_shape(tmp_path / "does_not_exist.yaml")  # 空表は許す
+
+
+# ---------------------------------------------------------------------------
+# センサーの縦線 設計 v2 T1・T2: month（7桁）・instant/hour（25桁）
+# ---------------------------------------------------------------------------
+
+def test_month_grain_matches():
+    """jma_monthly 相当（7桁、value_grain='month'）。月の初日〜末日。"""
+    usage = period.PeriodExceptionUsage({})
+    grain, start, end = period.compute_period("2019-01", "month", "jma_monthly_kanagawa", {}, usage)
+    assert (grain, start, end) == ("month", "2019-01-01", "2019-01-31")
+
+
+def test_month_grain_handles_december_and_leap_february():
+    usage = period.PeriodExceptionUsage({})
+    assert period.compute_period("2019-12", "month", "src", {}, usage)[1:] == ("2019-12-01", "2019-12-31")
+    assert period.compute_period("2020-02", "month", "src", {}, usage)[1:] == ("2020-02-01", "2020-02-29")
+    assert period.compute_period("2021-02", "month", "src", {}, usage)[1:] == ("2021-02-01", "2021-02-28")
+
+
+def test_month_length_but_non_month_value_grain_raises():
+    usage = period.PeriodExceptionUsage({})
+    with pytest.raises(period.PeriodMismatchError):
+        period.compute_period("2019-01", "day", "src", {}, usage)
+
+
+def test_instant_grain_strips_timezone_and_keeps_label():
+    """`value_grain='instant'`（合成センサー相当）は時刻帯を落として
+    `period_start=period_end=ラベル` にする。`time_conventions` は不要
+    （T2: instant/day は宣言不要）。
+    """
+    usage = period.PeriodExceptionUsage({})
+    grain, start, end = period.compute_period(
+        "2024-01-01T00:00:00+09:00", "instant", "synthetic_sensor", {}, usage
+    )
+    assert (grain, start, end) == ("instant", "2024-01-01T00:00:00", "2024-01-01T00:00:00")
+
+
+def test_hour_grain_without_time_conventions_raises_unknown_convention():
+    """value_grain='hour' の出典で `time_conventions` が空（または該当なし）
+    だと `UnknownTimeLabelConventionError`（`PeriodMismatchError` とは別系統。
+    T2）で止まる。
+    """
+    usage = period.PeriodExceptionUsage({})
+    with pytest.raises(period.UnknownTimeLabelConventionError):
+        period.compute_period(
+            "2015-04-01T01:00:00+09:00", "hour", "sagamihara_taiki_hourly", {}, usage, {}, None
+        )
+
+
+def _hour_ending_convention(source_id="sagamihara_taiki_hourly", expected_row_count=None):
+    return {
+        source_id: period.TimeLabelConvention(
+            source_id=source_id,
+            convention="hour_ending",
+            expected_row_count=expected_row_count,
+            evidence="テスト用",
+        )
+    }
+
+
+def test_hour_ending_subtracts_one_hour():
+    """hour_ending: period_start = ラベル-1時間、period_end = ラベル。"""
+    conventions = _hour_ending_convention()
+    time_usage = period.TimeLabelConventionUsage(conventions)
+    grain, start, end = period.compute_period(
+        "2015-04-01T01:00:00+09:00", "hour", "sagamihara_taiki_hourly", {}, period.PeriodExceptionUsage({}),
+        conventions, time_usage,
+    )
+    assert (grain, start, end) == ("hour", "2015-04-01T00:00:00", "2015-04-01T01:00:00")
+    assert time_usage.counts() == {"sagamihara_taiki_hourly": 1}
+
+
+def test_hour_ending_00_00_label_crosses_to_previous_day():
+    """「24時」ラベル（翌日00:00として保存済み）は hour_ending で前日23:00に
+    なる——T1「時刻の計算は時刻帯を落としてから行う」の日またぎケース。
+    """
+    conventions = _hour_ending_convention()
+    time_usage = period.TimeLabelConventionUsage(conventions)
+    grain, start, end = period.compute_period(
+        "2015-05-01T00:00:00+09:00", "hour", "sagamihara_taiki_hourly", {}, period.PeriodExceptionUsage({}),
+        conventions, time_usage,
+    )
+    assert (grain, start, end) == ("hour", "2015-04-30T23:00:00", "2015-05-01T00:00:00")
+
+
+def test_hour_grain_unknown_source_id_raises_even_with_other_conventions_declared():
+    conventions = _hour_ending_convention(source_id="sagamihara_taiki_hourly")
+    with pytest.raises(period.UnknownTimeLabelConventionError):
+        period.compute_period(
+            "2025-08-01T01:00:00+09:00", "hour", "soramame_hourly_kanagawa", {}, period.PeriodExceptionUsage({}),
+            conventions, period.TimeLabelConventionUsage(conventions),
+        )
+
+
+def test_25_digit_label_with_unexpected_timezone_offset_raises():
+    """`+09:00` 以外のオフセットは推測で読み替えず即座に止まる。"""
+    conventions = _hour_ending_convention()
+    with pytest.raises(period.MigrationError):
+        period.compute_period(
+            "2015-04-01T01:00:00+00:00", "hour", "sagamihara_taiki_hourly", {}, period.PeriodExceptionUsage({}),
+            conventions, period.TimeLabelConventionUsage(conventions),
+        )
+
+
+def test_load_time_label_conventions_from_yaml(tmp_path):
+    yaml_path = tmp_path / "conventions.yaml"
+    yaml_path.write_text(
+        "sagamihara_taiki_hourly:\n"
+        "  convention: hour_ending\n"
+        "  expected_row_count: 3\n"
+        "  evidence: テスト\n",
+        encoding="utf-8",
+    )
+    conventions = period.load_time_label_conventions(yaml_path)
+    assert set(conventions) == {"sagamihara_taiki_hourly"}
+    assert conventions["sagamihara_taiki_hourly"].convention == "hour_ending"
+    assert conventions["sagamihara_taiki_hourly"].expected_row_count == 3
+
+
+def test_load_time_label_conventions_missing_file_returns_empty(tmp_path):
+    assert period.load_time_label_conventions(tmp_path / "does_not_exist.yaml") == {}
+
+
+def test_load_time_label_conventions_rejects_unsupported_convention(tmp_path):
+    yaml_path = tmp_path / "conventions.yaml"
+    yaml_path.write_text(
+        "src:\n  convention: hour_beginning\n  expected_row_count: 1\n  evidence: テスト\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(period.MigrationError, match="未対応"):
+        period.load_time_label_conventions(yaml_path)
+
+
+def test_time_label_convention_usage_reports_unused_and_mismatched():
+    conventions = _hour_ending_convention(expected_row_count=5)
+    usage = period.TimeLabelConventionUsage(conventions)
+    assert usage.unused_entries() == ["sagamihara_taiki_hourly"]
+    usage.mark_used("sagamihara_taiki_hourly")
+    usage.mark_used("sagamihara_taiki_hourly")
+    assert usage.unused_entries() == []
+    assert usage.mismatched_expected_counts() == {"sagamihara_taiki_hourly": (5, 2)}
+
+
+def test_validate_time_label_conventions_shape_rejects_missing_required_key(tmp_path):
+    yaml_path = tmp_path / "conventions.yaml"
+    yaml_path.write_text("src:\n  convention: hour_ending\n", encoding="utf-8")
+    with pytest.raises(period.MigrationError, match="src"):
+        period.validate_time_label_conventions_shape(yaml_path)
+
+
+def test_validate_time_label_conventions_shape_accepts_complete_entry(tmp_path):
+    yaml_path = tmp_path / "conventions.yaml"
+    yaml_path.write_text(
+        "src:\n  convention: hour_ending\n  expected_row_count: 1\n  evidence: テスト\n",
+        encoding="utf-8",
+    )
+    period.validate_time_label_conventions_shape(yaml_path)  # 例外を投げなければ良い
+
+
+def test_unexpected_digit_count_message_mentions_all_supported_lengths():
+    usage = period.PeriodExceptionUsage({})
+    with pytest.raises(period.MigrationError, match="4/7/10/25桁"):
+        period.compute_period("abc", "day", "src_a", {}, usage)

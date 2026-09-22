@@ -1,0 +1,52 @@
+# 時刻ラベルの意味の宣言（`scripts/migrate/period.py` の
+# `load_time_label_conventions` が読む。センサーの縦線 設計 v2 T2）。
+#
+# `value_grain='hour'` の出典だけがここに宣言を要る（`instant`・`day` 以上は
+# 展開規則が自明なので宣言不要。T2 決定）。value_grain='hour' の出典で、ここに
+# 宣言の無い source_id に出会ったら `scripts/b03_build_observation.py` は
+# `period.UnknownTimeLabelConventionError` で即座に止まる。宣言が1件も使われ
+# なかった場合・実測件数が `expected_row_count` と食い違う場合も同様に止める
+# （`scripts/migrate/period_exceptions.yaml` と同じ流儀。腐った宣言を放置しない）。
+#
+# 各エントリ:
+#   convention:         今のところ `hour_ending` のみ対応
+#                        （ラベル＝区間の終わり。`period_start = ラベル-1時間`,
+#                        `period_end = ラベル`）。
+#   expected_row_count:  この source_id で value_grain='hour' として現れるはずの
+#                        行数（実測。`scripts/b03_build_observation.py` が実行の
+#                        たびに検証する）。
+#   evidence:            根拠。一次資料（発行元の仕様書等）が確認できたときは
+#                        それを、できなかったときは「収集スクリプトの記載のみ・
+#                        一次資料未確認」と正直に書く（推測で断定しない。T2）。
+
+sagamihara_taiki_hourly:
+  convention: hour_ending
+  expected_row_count: 175344
+  evidence: >
+    収集スクリプト scripts/c13_sagamihara_taiki.py:86 のコメント
+    「『1時』= 00:00〜01:00 の値。JMA/そらまめ君同様、時刻ラベルをそのまま採用」
+    （c13 自身の記載。相模原市オープンデータの CSV そのものには時刻定義の説明が
+    無い——値の列名が「1時」「2時」…「24時」という 1〜24 の番号だけで、それが
+    区間の始まりか終わりかは CSV 側に書かれていない）。相模原市「大気の状況」
+    データの一次資料（測定局運用マニュアル等）は未確認。ここでは収集エージェントが
+    実装時に確認したという記載（「JMA/そらまめ君同様」）を根拠として採用する。
+
+soramame_hourly_kanagawa:
+  convention: hour_ending
+  expected_row_count: 168793
+  evidence: >
+    そらまめ君（環境省 大気汚染物質広域監視システム）の公開 CSV には「時」列
+    （1〜24）があるが、区間の始まりか終わりかの説明は含まれていない。収集
+    スクリプト scripts/c11_soramame.py:121-123 のコメントは「『24時』は翌日
+    00:00 として ISO 表記」という変換規則の記載のみで、hour_ending か
+    hour_beginning かを明言していない。同じ変換規則
+    （`base + timedelta(hours=hh)`）を採る scripts/c13_sagamihara_taiki.py:86 の
+    コメントに「JMA/そらまめ君同様、時刻ラベルをそのまま採用」とあり、これは
+    そらまめ君も hour_ending であるという c13（相模原市大気局）側の収集時の
+    確認の記載——だが、そらまめ君自身の一次資料ではない。環境省「そらまめ君」・
+    「環境大気常時監視マニュアル」の一次資料を Web 検索で探したが、該当ページ
+    （環境省 大気環境・自動車対策サイト、PDF 「環境大気常時監視マニュアル
+    第6版」）から「1時」等のラベルの区間定義を確認できるテキストを抽出できず、
+    一次資料での確認には至らなかった（2026-09-15）。そのため
+    「収集スクリプト（c11・および c13 の『そらまめ君同様』という記載）の
+    記載のみ・一次資料未確認」として扱う。推測で hour_beginning と断定しない。

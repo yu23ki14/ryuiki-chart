@@ -8,6 +8,15 @@
 `obs_stat`（入力側の統計量）・`value_grain`・`input_grain` を次元キーに追加している。詳細は
 [ADR-0021](0021-observation-grain-and-cube-key.md)。
 
+**2026-09-15 追記（センサーの縦線・ADR-0024）**: 「メンバーの区間がセルの区間をはみ出す集計」
+（v1 が hour_ending の24時ラベルを翌日のセルに含めてしまうラベル日割りのような、セルの期間宣言
+と実際のメンバーの区間が食い違う集計）と、「climatology の軸」（`sensor_hour_month` の月×時刻の
+平年値のように、`grain` の語彙に無い集計軸）は、どちらもキューブのセルにしない
+（`docs/plans/PHASE_B_FACT_SLICE.md` D10 の原則の実例が2つ目・3つ目に増えた。1つ目は
+`meas_clim`/`site_var`/`var_catalog`）。射影（`scripts/b05_project_v1.py`）が L2
+（`observation`）から直接作ることがある——本節が既に許している「事前計算しなかった軸は `dist/`
+の Parquet への直クエリに任せる」と同じ考え方を、v1 互換の射影という形で先取りしたもの。
+
 ## 背景（実測）
 
 `derived.sqlite` の**33テーブル**は、画面・AIツール・チャート部品ごとに個別対応で作られている。
