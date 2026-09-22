@@ -413,7 +413,126 @@ full モードの指紋に追加した。
   `schema-registry.ts`・`web/src/lib/registry/index.ts`・`registry/README.md`）は
   「なぜこの形か」を1〜2文＋参照に縮めた。
 
-## 7. 再現の壁・申し送り
+## 7. 2回目の独立レビュー（/code-review）を受けた追加修正と実測
+
+§6（HEAD `6a294a9`〜`674ea99`）に再度 `/code-review` をかけて4件出た。
+**taxon_id と分類の値（class/kingdom/phylum/order/family/taxon_group/
+canonical_binomial）は今の値から変えない**のが前提——実際、実データでの
+検証（後述）では**この4件どれも現在の出力を1行も変えていない**（すべて
+将来のデータ・辺縁ケースに備えた防御的な修正）。
+
+### 7-1. 名前空間が Python の3箇所で2つに決め打ちだった（medium）
+
+`n_by_ns = {"gbif": 0, "inat": 0}` と、taxon_id の組み立て・`gbif_taxon_key` を
+埋めるかどうかの判定が `if ns == "gbif" else ...` の2値決め打ちで3箇所にあった。
+`scripts/common.py` の `TAXON_KEY_SOURCE_NAMESPACE` に3つ目の出典を足しても、
+これらは追随せず、`n_by_ns[ns] += 1` は `KeyError`、taxon_id の組み立ては
+黙って `inat.` 扱いになって F1 が直した衝突が戻る欠陥があった。
+
+`build_taxon.py` に「名前空間ごとの性質」の小さな対応表 `_NAMESPACE_TRAITS`
+（名前空間 → `id_builder`/`fill_gbif_taxon_key`）を新設し、`_assert_namespaces_have_traits()`
+で `TAXON_KEY_SOURCE_NAMESPACE` の全名前空間が `_NAMESPACE_TRAITS` に対応する
+エントリを持つことをビルド開始直後に確認するようにした（無ければ明示的に
+`ValueError`）。`n_by_ns` も固定2キーの辞書ではなく `occ.keys()` から動的に
+集計する形に直した。
+
+実測: フィクスチャで3つ目の名前空間（`TAXON_KEY_SOURCE_NAMESPACE`）を
+`_NAMESPACE_TRAITS` 無しで足すと `_assert_namespaces_have_traits()` で
+明示的に止まること、対で足すと正しい形の taxon_id になり既存の gbif/inat と
+衝突しないことを確認した（`scripts/tests/test_registry_taxon.py`
+`test_new_namespace_without_traits_raises_immediately`/
+`test_new_namespace_with_traits_gets_correct_id_and_no_collision`）。
+
+### 7-2. kingdom の needs_review 判定が (class,kingdom) の組の同数を誤って流用していた（low）
+
+`_majority_vote()`（bc: 二名法キー→(class0, kingdom0) の組の多数決）の
+`is_tied`（組全体が同数かどうか）を、class の needs_review 判定にも kingdom の
+needs_review 判定にもそのまま使っていた。しかし bc は (class0, kingdom0) の
+**組**の同数であり、例えば (ClassA, Animalia)×2 と (ClassB, Animalia)×2 が
+同数のとき、class は確かに曖昧（A/B で割れる）だが kingdom はどちらも
+Animalia で一致しており曖昧ではない。`is_tied` だけを見ると kingdom 側も
+誤って `needs_review` にしてしまっていた。
+
+**値の選び方（多数決の勝者）は変えていない**（v1 の `org_norm` と同じ
+「組」単位の多数決のまま）。`_majority_vote()` が、同数で並んだ候補どうしで
+実際に値が食い違った列だけを `ambiguous_cols` として返すように拡張し
+（`COUNT(DISTINCT col)` を同数グループ内で数える。NULL は distinct 集計から
+除外されるため「NULL vs 実値」は食い違いとして扱わない——実値の方を採用する
+NULL-last の判断と整合する）、`_resolve_classification()` は列ごとに
+`ambiguous_cols` を見て判定するようにした。
+
+あわせて、同数のタイブレークで **NULL を最後に回す**ように直した
+（`(col IS NULL), col ASC`）。以前は kingdom0 が NULL の候補が同数で先頭に
+来ると kingdom が NULL に落ち、`taxon_group` が「未判定」になりうる欠陥が
+あった（実データでは bc の同数自体が0件のため顕在化していない）。
+
+実測: フィクスチャで (ClassA,Animalia)×2 vs (ClassB,Animalia)×2 の同数では
+kingdom 側に needs_review が付かないこと、(ClassA,NULL)×2 vs (ClassA,K)×2 の
+同数では NULL ではなく K が選ばれることを確認した
+（`test_class_tie_with_matching_kingdom_does_not_mark_kingdom_needs_review`/
+`test_bc_tie_null_last_prefers_non_null_kingdom`）。実データでは bc の同数が
+0件のため、この修正による実出力への影響は無い（後述7-5）。
+
+### 7-3. 新しい assert が同数1件でビルド全体を止めていた（low）
+
+`_load_occurrence_representatives()` に足した「taxon_key ごとの代表選びで
+最頻値の件数が同数の候補は無い」という assert が、著者引用の有無や rank の
+表記ゆれだけで2レコードに分かれ件数が同点になるケースでも無条件に
+`AssertionError` を投げていた。これはレジストリのビルド全体（ひいては
+`ensure-registry.sh` → `docker compose up` の起動）を、分類には無関係な
+表記ゆれ2件だけで止める欠陥だった。
+
+assert をやめ、既存の決定論的なタイブレーク（分類列を含めた全列の昇順、
+NULL-last）で選ぶようにした。そのうえで、同数の候補どうしで**分類列
+（kingdom/phylum/class/order/family）が実際に食い違うときだけ**
+`representative_ambiguous=True` を返し、`build()` がこれを `needs_review`
+に反映する（学名の表記ゆれ・rank違いだけなら黙って選ぶ）。
+
+実測: フィクスチャで著者引用だけが違う2レコードの同数ではビルドが止まらず
+`needs_review` にもならないこと、分類が食い違う同数では `needs_review` に
+なることを確認した
+（`test_representative_selection_tie_with_only_naming_difference_does_not_stop_build`/
+`test_representative_selection_tie_with_classification_conflict_marks_needs_review`）。
+実データでは `_load_occurrence_representatives()` の同数自体が0件
+（33,613件全件確認、後述7-5）のため、この修正による実出力への影響は無い。
+
+### 7-4. 指紋が古いときのメッセージに organism_records が出ていなかった（low）
+
+`scripts/r01_build_registry.py` の `_check_fresh()` が「古い」と判定したときの
+1行メッセージが「derived.sqlite/taxon_crosswalk.csv が変わった」としか言わず、
+§6-5 で指紋に足した `ryuiki.organism_records` の軽い代理指標が抜けていた。
+メッセージに `ryuiki.organism_records` を追記した。
+
+### 7-5. 実データでの検証: 7-1〜7-3 は現在の出力を1行も変えない
+
+修正前（`674ea99` 時点）と修正後で `build_taxon.build()` をそれぞれ実行し、
+`taxon` テーブル41,454行を全行 diff した結果:
+
+```
+taxon_id の集合: 完全一致
+scientific_name/canonical_binomial/rank/kingdom/phylum/class/order/family/
+  gbif_taxon_key/vernacular_name_ja/accepted_taxon_id/classification_basis/
+  taxon_group: 全41,454行で完全一致（diff 0）
+status: 差分0（needs_reviewに新たになった行・外れた行のどちらも0件）
+needs_review 総数: 51件（修正前後で不変）
+```
+
+理由: 7-1（名前空間の一般化）は現状2つの名前空間（gbif/inat）だけなら
+挙動が変わらないリファクタリング。7-2（kingdom の ambiguous_cols）は、
+実データでは bc（二名法キー単位の多数決）の同数が0件（`docs/plans/
+PHASE_B_OCCURRENCE.md` §3 F2参照）なので影響しようがない。gc（属単位、
+companion列なし）は元々 `is_tied` と `ambiguous_cols` が数学的に同値
+（1列の投票に companion が無いため）で、こちらも無変化。7-3
+（`_load_occurrence_representatives` の同数緩和）は、実データではこの
+関数の同数自体が0件（全33,613件を確認）なので、assert を消しても
+「同数の代表がある」という状況そのものが発生しない。
+
+`org_norm`（816,856行）との突き合わせも不一致1件のまま
+（*Sirosporium celtidis*、§6-1参照）で変わらない。4件とも「今は起きていない
+辺縁ケースを、将来データが増えても黙って壊れないように機械的に担保する」
+性質の修正であることを、実測によって確認した。
+
+## 8. 再現の壁・申し送り
 
 - **O-1/O-2 はまだ設計のみ**（本ドキュメント §4 の切り方の記述だけで、実装は
   無い）。`occurrence` テーブルの DDL・キューブ拡張（`source_id` を次元に追加）・
