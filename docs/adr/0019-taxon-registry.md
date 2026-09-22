@@ -3,6 +3,40 @@
 - 状態: 提案中 / 日付: 2026-09-06
 - 関連: ADR-0004（ID）, ADR-0010（語彙）, ADR-0018（公開範囲）
 
+**2026-09-22 追記（生物の出現の縦線 Slice 0、`phase-b/occurrence-registry`）**:
+Phase A の実装（`scripts/registry/build_taxon.py`）は `organism_records.taxon_key`
+を出典に関わらず `common:taxon:gbif.<key>` に通していたが、iNaturalist 行の
+`taxon_key` には iNaturalist 自身の `taxon.id`（GBIF の taxonKey とは無関係な
+別の数値空間）が入っていた（`scripts/m03_organisms.py`）。GBIF と iNat が偶然
+同じ数値を発行した**9件が衝突**し（例: `8026` は GBIF では科 *Axiidae*、iNat では
+*Corvus macrorhynchos*）、件数の多い側の学名が少ない側の実体を上書きしていた。
+
+`organism_records.source_id` で出典を判定し、GBIF 由来は
+`common:taxon:gbif.<GBIFのtaxonKey>`、iNaturalist 由来は
+`common:taxon:inat.<iNatのtaxon.id>` に分けた（**決定1の「`taxon_id` は `common:`
+スコープ」自体は変わらない**。`gbif.`/`inat.` は `local_key` 側の名前空間で、
+ADR-0004 規約1「`local_key` は出典の識別子をそのまま使ってよいが、必ず名前空間を
+前置する」の具体化）。`gbif_taxon_key` 列は本物の GBIF taxonKey のときだけ埋める。
+
+これは **ADR-0004「ID は不変」の例外**として記録する: occurrence ファクト（まだ
+未着手）が `taxon_id` を参照するようになる前の、ID を組み替えても参照が壊れない
+唯一の時点で行った。web・scripts 側を全件 grep し、レジストリのビルダー・検証
+自身（本ファイル・`r01_build_registry.py`・関連テスト）以外に `taxon_id`/
+`gbif_taxon_key` の呼び出し元が無いことを確認済み。
+
+あわせて、v1（`web/scripts/build-biota.mjs` の `org_norm`）が記録ごとに行っていた
+分類補完（`kingdom`/`phylum`/`class` の `COALESCE(own, 二名法キーの多数決,
+属の多数決)`、および `taxon_group` の CASE 式）を、taxon（namespace, taxon_key）
+単位でレジストリのビルダー側に移した（`taxon.kingdom`/`phylum`/`class`/`order`/
+`family`/`classification_basis`/`canonical_binomial`/`taxon_group` 列を追加。
+`order`/`family` は多数決で補完しない。`taxon_group` は
+`registry/taxon/taxon_group.yaml` から生成）。v1 の暗黙の同数処理
+（`ROW_NUMBER` の実装依存順）を明示規則（件数降順、同数なら値の昇順）に置き換え、
+同数だった1 taxon だけ `status='needs_review'` にした。詳細な実測・検証結果は
+`registry/README.md`「taxon の名前空間分割と分類補完」と
+`docs/plans/PHASE_B_OCCURRENCE.md` 参照。決定そのもの（backbone は GBIF を正とする、
+未解決は `unresolved` で保持する等）は変更していない。
+
 ## 背景（実測）
 
 生物データはこの基盤で最大のファクト（`occurrence` 823,692行）であり、

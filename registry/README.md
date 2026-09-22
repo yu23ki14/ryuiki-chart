@@ -18,6 +18,7 @@ Phase A（`docs/plans/PHASE_A.md`, ADR-0016）の成果物。v1 のファクト�
   `site_id` の局番コード部分（`"__"` の後ろ）が空文字で自動導出できない行にだけ
   明示の local を持たせる列（後述「空の局番コード」参照）。他の142行は空欄 |
 | `taxon/vernacular_ja.csv` | 人手確認済みの和名54件（`domain.ts` の `NAME_JA` の複製） |
+| `taxon/taxon_group.yaml` | 生物群の日本語ラベル（`taxon_group`）の先勝ちルール表。`web/scripts/build-biota.mjs` の `TAXON_GROUP` CASE式をデータ化したもの（Phase B `phase-b/occurrence-registry`、後述「taxon の分類補完」） |
 | `caveat.yaml` | 注記14件（`domain.ts` の `DATA_CAVEATS`/`BIOTA_CAVEATS` 等の移設） |
 
 **生成物はここには置かない。** `data/db/registry.sqlite`（gitignore 済み）が唯一の生成物で、
@@ -66,8 +67,12 @@ pnpm run db:setup                        # migrate + seed。registry.sqlite も4
 1. ビルドの論理（`scripts/schema_registry.sql` / `scripts/r01_build_registry.py` /
    `scripts/registry/*.py`）と手書きの入力（`registry/` 配下の全ファイル）。`mode` に関わらず対象。
 2. **`mode='full'` のときだけ**、追加で2つ: `derived.sqlite` のうち build_place.py が実際に
-   読むテーブル（`common.DERIVED_TABLES_READ` = `watershed_meta`/`mesh_all`。ファイル全体
-   449MB はハッシュせず、決まった順の SELECT 結果だけを混ぜる）と、build_taxon.py が読む
+   読むテーブル（`common.DERIVED_TABLES_READ` = `watershed_meta`。ファイル全体
+   449MB はハッシュせず、決まった順の SELECT 結果だけを混ぜる。`mesh_all` は
+   Phase B `phase-b/occurrence-registry` で外した——grid01 の入力が `derived.mesh_all`
+   から `ryuiki.organism_records` の座標に変わり、`build_place.py` がもう
+   `derived.mesh_all` を読まなくなったため。`ryuiki.sqlite` はもともと指紋の対象外
+   ——後述——なので、この変更で指紋の対象が増えたわけではない）と、build_taxon.py が読む
    `data/processed/taxon_crosswalk.csv` の中身。どちらも「読み取り専用だが再生成すれば
    値が変わりうる」入力で、以前は指紋の対象外だったため、この2つだけを更新しても
    レジストリが「新鮮」のまま固まってしまっていた。`--files-only` はどちらも開かない
@@ -117,8 +122,9 @@ pnpm run db:setup                        # migrate + seed。registry.sqlite も4
 | variable | `common:variable:<theme>.<name>` | `common:variable:water.bod` |
 | place（namespace あり） | `<scope>:place:<kind>.<namespace>-<local>` | `jp-14:place:site.env-pubwater-0142` |
 | place（namespace 無し） | `<scope>:place:<kind>.<local>` | `common:place:grid01.3500_13900`（後述） |
-| taxon（GBIF照合） | `common:taxon:gbif.<taxon_key>` | `common:taxon:gbif.2480932` |
-| taxon（GBIF未照合） | `common:taxon:ryuiki-taxa.<slug(taxa.taxon_id)>` | 元の `taxa` 由来の識別子を後述のスラッグ化を通したもの |
+| taxon（GBIF由来） | `common:taxon:gbif.<GBIFのtaxonKey>` | `common:taxon:gbif.2480932` |
+| taxon（iNaturalist由来） | `common:taxon:inat.<iNatのtaxon.id>` | `common:taxon:inat.12345`（GBIFのtaxonKeyとは無関係な別の数値空間。Phase B `phase-b/occurrence-registry`、後述「taxon の名前空間分割」） |
+| taxon（taxa由来・GBIF未照合） | `common:taxon:ryuiki-taxa.<slug(taxa.taxon_id)>` | 元の `taxa` 由来の識別子を後述のスラッグ化を通したもの |
 | caveat | `common:caveat:<key>` | `common:caveat:censored` |
 | caveat（cells.notes由来） | `common:caveat:cells.<note_id\|rowid>` | `common:caveat:cells.42` |
 
@@ -238,6 +244,81 @@ alias_source_pairs_{csv,data}_only.csv` に片方向ずつのズレを出す（0
 ADR-0006 のコードリストに `grid01` を正式に追記するか、将来別地域が本物の3次
 メッシュを登録する時点で `mesh3` と `grid01` を明確に書き分けるかを判断する**
 申し送りとする。
+
+### grid01 の入力を `derived.mesh_all` から `organism_records` の座標に変える
+（Phase B `phase-b/occurrence-registry`。docs/plans/PHASE_B_OCCURRENCE.md §2-3）
+
+`derived.mesh_all` は年フィルタ済みの `mesh_year`（`yr BETWEEN 1970 AND 2026`）を畳んだ
+ものなので、年フィルタで弾かれた記録しか持たないセルが grid01 から欠落していた
+（1970年より前の記録しか無い3セル、日付の無い記録しか無い1セル。計4セル）。
+`build_place.py` の grid01 節を `ryuiki.organism_records` の座標（`FLOOR(lat*100)`/
+`FLOOR(lon*100)`）から直接作るように変えた。**日付の無い記録の座標も含める**
+（座標は823,692行全件に入っており、日付の有無と独立。ADR-0007 原則1が occurrence に
+求める「日付の無い記録も保持する」に、grid01 側もあらかじめ整合させる判断）。
+実測: 4,083セル → **4,087セル**。`place_source_ref.source_id` も
+`mesh_all.mlat_mlon` から `organism_records.lat_lon` に変わった（`external_key` の形
+`grid01:{mlat},{mlon}` は変えない）。これに伴い、ビルドの指紋（後述）から
+`derived.mesh_all` を読む記述を外した（`ryuiki.sqlite` はもともと指紋の対象外なので、
+指紋計算の対象は増えていない）。
+
+taxon の分類多数決（後述）は逆に v1 と同じ「日付ありの記録だけ」を母集団にしたまま
+温存している——grid01（場所の集計単位の完全性）と taxon の分類（v1 の値を変えない）は
+別の設計判断で、根拠も別々。
+
+## taxon の名前空間分割と分類補完（Phase B `phase-b/occurrence-registry`。
+ADR-0019 追記、docs/plans/PHASE_B_OCCURRENCE.md 参照）
+
+### F1: taxon_id の名前空間を出典ごとに分ける
+
+`organism_records.taxon_key` は出典によって別の数値空間が入っている
+（GBIF 行は GBIF の `taxonKey`、iNaturalist 行は iNaturalist 自身の `taxon.id`）。
+以前はどちらも `common:taxon:gbif.<key>` に通していたため、両方の空間が偶然
+同じ数値を発行した**9件が衝突**していた（例: `8026` は GBIF では科 *Axiidae*、
+iNat では *Corvus macrorhynchos*。件数の多い iNat 側がレジストリ行を乗っ取り、
+GBIF 側の実体は失われていた）。`organism_records.source_id` で出典を判定し、
+GBIF 由来は `common:taxon:gbif.<key>`、iNaturalist 由来は `common:taxon:inat.<id>`
+に分ける（`scripts/registry/build_taxon.py` の `SOURCE_NAMESPACE`）。
+`gbif_taxon_key` 列は本物の GBIF taxonKey のときだけ埋める（iNat 由来行は常に NULL。
+iNat の ID 自体は `taxon_id` にしか持たせない——専用列を新設しなかった理由は
+`scripts/registry/common.py` の `taxon_id_inat()` docstring）。
+
+実測: gbif 21,234件 / inat 13,978件（distinct (namespace, taxon_key) は
+gbif 19,635 / inat 13,978）。
+
+**ADR-0004「ID は不変」の例外**: occurrence ファクト（O-1、まだ未着手）が
+`taxon_id` を参照する前の今だけ、ID を組み替えても参照が壊れない。web
+（`web/src/lib/registry/index.ts` の `getTaxonById`/`getTaxonByGbifKey`/
+`getTaxaByScientificNames`）にも scripts 側にも、レジストリのビルダー・検証以外に
+`taxon_id`/`gbif_taxon_key` の呼び出し元が無いことを確認済み（grep で全件確認）。
+
+**機械検証**（`scripts/registry/build_taxon.py`）: 同じ taxon_id が2つの出典から
+作られない（`_insert()` が重複を検知）、出典内で taxon_key → 二名法キーが関数
+（実測: distinct (source_id, taxon_key) 33,613組で違反0件）。
+
+### F2: kingdom/phylum/class/order/family と taxon_group
+
+v1（`web/scripts/build-biota.mjs` の `org_norm`）が記録ごとに行っていた分類補完
+（`COALESCE(own, 二名法キーの多数決, 属の多数決)`）を taxon（namespace, taxon_key）
+単位で行うようにレジストリのビルダーに移した。`classification_basis`
+（`source`/`binomial_match`/`genus_match`/`unresolved`）は `class` の解決経路。
+`order`/`family` は多数決で補完しない（v1 も補完していない。出典の値のみ）。
+`taxon_group` は `registry/taxon/taxon_group.yaml`（v1 の `TAXON_GROUP` CASE式を
+先勝ち順のまま移したデータ）から生成する。
+
+多数決の母集団は v1 と同じ「`observed_on` がある記録」に揃えてある（v1 の値を
+変えないため）。**同数の決め方**: 件数降順、同数なら値の昇順。実測では
+二名法キー単位の多数決に同数は無いが、**属単位の多数決に3属が同数**
+（*Martensia*・*Stilbum*・*Sirosporium*、異界ホモニム）。実際に影響するのは
+1 taxon（GBIF `Sirosporium celtidis`）で、この taxon だけ `status='needs_review'`
+にする（`taxon.status` は `accepted`/`unresolved` に加えてこの用途で `needs_review`
+も持つ。`unresolved`——GBIF 未照合——は上書きしない。既存の意味が別軸のため）。
+
+**検証**: `derived.sqlite` の `org_norm`（816,856行）の各記録について、対応する
+taxon の `cls`/`kdm`/`phy`/`taxon_group` を突き合わせた結果、**不一致1件**
+（上記 `Sirosporium celtidis`。v1（`ROW_NUMBER` の暗黙順）は `Sordariomycetes` を
+選んでいたが、本規則（class 昇順）は `Dothideomycetes` を選ぶ。`taxon_group` は
+どちらも「菌類」で変わらない）。残り775行は `taxon_key` 自体が無く
+（`scientific_name` も空）、元々 `taxon_id` 解決の対象外。
 
 ## `status='needs_review'` / `'unresolved'` が意味すること
 
