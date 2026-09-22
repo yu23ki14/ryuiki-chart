@@ -135,7 +135,7 @@ export const placeSourceRef = sqliteTable("place_source_ref", {
 ]);
 
 /**
- * 分類群レジストリ（ADR-0019、taxon_id の名前空間分割と分類補完は Phase B
+ * 分類群レジストリ（ADR-0019、taxon_id の名前空間分割は Phase B
  * `phase-b/occurrence-registry`、ADR-0019 追記）。
  *
  * `taxon_id` は出典ごとに名前空間を分ける: GBIF 由来は `common:taxon:gbif.<GBIFのtaxonKey>`、
@@ -149,36 +149,32 @@ export const placeSourceRef = sqliteTable("place_source_ref", {
  * `taxon_id_inat()` docstring）。
  *
  * 現状の `status` は `accepted` / `unresolved` / `needs_review`
- * （分類の多数決が同数で決定論的なタイブレーク規則に頼った taxon だけ。実測1件）の3値で、
- * `synonym` は無い。`accepted_taxon_id` は現状すべて NULL。将来 `status='synonym'` の行を
- * 持たせて正の taxon を指させるための列（ADR-0004 規約2: ID は不変、実体が変わったら
- * 新 ID を作り旧 ID は残す）で、まだ埋めていない。
+ * （分類の多数決が同数で決定論的なタイブレーク規則に頼った taxon だけ。実測1件。
+ * 後述）の3値で、`synonym` は無い。`accepted_taxon_id` は現状すべて NULL。将来
+ * `status='synonym'` の行を持たせて正の taxon を指させるための列（ADR-0004 規約2:
+ * ID は不変、実体が変わったら新 ID を作り旧 ID は残す）で、まだ埋めていない。
  * 上流の `scripts/c24_taxon_crosswalk.py` の `accepted_scientific_name` 列は
  * GBIF の `acceptedUsageKey`（受理名）を引いたものではなく、一致したノード自身の学名を
  * 転記しているだけだったと判明している。列名と実態が食い違いやすい箇所なので、
  * `accepted_taxon_id` を埋めるときは誤用しないこと（docs/plans/PHASE_B_INTAKE.md §8）。
  *
- * `kingdom`/`phylum`/`class`/`order`/`family`/`classificationBasis`/`canonicalBinomial`/
- * `taxonGroup` は v1（`web/scripts/build-biota.mjs` の `org_norm`）の分類補完規則を
- * レジストリのビルダー側（`scripts/registry/build_taxon.py`）に移したもの。
- * `classificationBasis` は `class` の解決経路（`source`=出典が直接持つ／
- * `binomial_match`=同じ二名法キーの他記録からの多数決／`genus_match`=同じ属の他記録
- * からの多数決／`unresolved`=解決不能）。`order`/`family` は多数決による補完をしない
- * （v1 も補完していない。出典の値のみ）。`taxonGroup` は `registry/taxon/taxon_group.yaml`
- * （v1 の `TAXON_GROUP` CASE 式を移したもの）から機械的に生成した日本語ラベル。
+ * **`kingdom`/`phylum`/`class`/`order`/`family`/`classification_basis`/
+ * `canonical_binomial`/`taxon_group`（v1 の org_norm の分類補完・`TAXON_GROUP` を
+ * taxon 単位でレジストリのビルダー側に移したもの）は `scripts/schema_registry.sql`
+ * の `registry.sqlite` 側にはあるが、意図的にここ（D1 側）には載せていない**
+ * （オーナー決定）。理由: `web/scripts/seed-d1-local.mjs` は「D1 の列 ∩ 元
+ * （registry.sqlite）の列」だけを INSERT する実装（元にしかない列は黙って無視。
+ * `PRAGMA table_info` の交差）なので、D1 側のスキーマを変えなくてもシードは壊れない。
+ * D1 は捨てて作り直せる配信キャッシュ（ADR-0001）であり、これらの列を読む web 側の
+ * 消費者がまだ無い（`place_relation` を D1 に載せなかったのと同じ判断——
+ * `registry/README.md`「`place.region_id` と `place_relation`」参照）。使う側が
+ * 現れた時点で改めてここに足す。`status='needs_review'` だけは既存の `status` 列に
+ * そのまま値として乗るので、D1 側のスキーマ変更なしで既にシードされている。
  */
 export const taxon = sqliteTable("taxon", {
 	taxonId: text("taxon_id").primaryKey(),
 	scientificName: text("scientific_name"),
-	canonicalBinomial: text("canonical_binomial"),
 	rank: text(),
-	kingdom: text(),
-	phylum: text(),
-	class: text(),
-	order: text(),
-	family: text(),
-	classificationBasis: text("classification_basis"),
-	taxonGroup: text("taxon_group"),
 	gbifTaxonKey: text("gbif_taxon_key"),
 	vernacularNameJa: text("vernacular_name_ja"),
 	status: text(),
@@ -186,7 +182,6 @@ export const taxon = sqliteTable("taxon", {
 },
 (table) => [
 	index("ix_taxon_gbif_key").on(table.gbifTaxonKey),
-	index("ix_taxon_binomial").on(table.canonicalBinomial),
 ]);
 
 /**

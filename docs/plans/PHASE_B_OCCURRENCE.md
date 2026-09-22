@@ -209,6 +209,23 @@ python3 scripts/r01_build_registry.py`）実測:
 新 grid01 はこれに加えて `observed_on` が NULL の記録しか持たない1セルも含むため
 4,087セル。
 
+### taxon の新しい列は D1 に載せない（オーナー決定）
+
+`kingdom`/`phylum`/`class`/`order`/`family`/`classification_basis`/
+`canonical_binomial`/`taxon_group` は `scripts/schema_registry.sql`（`registry.sqlite`）
+にはあるが、`web/src/db/schema-registry.ts`（D1）には**意図的に追加しない**。
+`web/scripts/seed-d1-local.mjs` は「D1 の列 ∩ 元の列」の交差だけを INSERT する実装
+（元にしかない列は黙って無視。`PRAGMA table_info` の交差を取る）なので、
+D1 側のスキーマを変えなくてもシードは壊れない。D1 は捨てて作り直せる配信キャッシュ
+（ADR-0001）で、これらの列を読む web 側の消費者がまだ無い——`place_relation` を
+D1 に載せなかったのと同じ判断（`registry/README.md`「`place.region_id` と
+`place_relation`」）。使う側が現れた時点で改めて D1 側にも足す。
+**`status='needs_review'` だけは既存の `status` 列にそのまま値として乗るので、
+D1 側のスキーマ変更なしで既にシードされている**（実測: ローカル D1 を
+`db:reset`→`db:migrate --local`→`db:seed` で作り直し、`taxon` テーブルが
+元の7列のまま 41,454行シードされ、`common:taxon:gbif.2621284`
+（Sirosporium celtidis）の `status` が `needs_review` になっていることを確認）。
+
 ### 既存のゲートが動かないことの確認（受け入れ条件5）
 
 `grep` で確認: `scripts/b03_build_observation.py`・`b04_build_cube.py`・

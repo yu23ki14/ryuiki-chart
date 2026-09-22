@@ -305,6 +305,14 @@ v1（`web/scripts/build-biota.mjs` の `org_norm`）が記録ごとに行って�
 `taxon_group` は `registry/taxon/taxon_group.yaml`（v1 の `TAXON_GROUP` CASE式を
 先勝ち順のまま移したデータ）から生成する。
 
+**これらの列は `registry.sqlite`（`scripts/schema_registry.sql`）だけにあり、
+D1（`web/src/db/schema-registry.ts`）には載せていない**（オーナー決定）。
+`web/scripts/seed-d1-local.mjs` は D1 の列と元の列の交差だけを INSERT するため、
+D1 側のスキーマを変えなくてもシードは壊れない。読む web 側の消費者がまだ無く、
+`place_relation` を D1 に載せなかったのと同じ判断（ADR-0001）。`status='needs_review'`
+は既存の `status` 列にそのまま値として乗るため、D1 側のスキーマ変更なしで
+既にシードされている。
+
 多数決の母集団は v1 と同じ「`observed_on` がある記録」に揃えてある（v1 の値を
 変えないため）。**同数の決め方**: 件数降順、同数なら値の昇順。実測では
 二名法キー単位の多数決に同数は無いが、**属単位の多数決に3属が同数**
