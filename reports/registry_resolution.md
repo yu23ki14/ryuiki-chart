@@ -61,7 +61,7 @@
 
 - `taxa` 8,585行のうち、`gbif_taxon_key` を持つのは 2,643行。持たない（GBIFに未照合）のは 5,942行。
 - `gbif_taxon_key` を持つ 2,643行の内訳: `gbif_match_type='EXACT'`（種階級での一致）2,343行 / `HIGHERRANK`・`FUZZY`（キーはあるが種以下まで一致していない弱い一致）300行。
-- レジストリ側 `taxon` テーブルは 41,444行 （`status='accepted'` 35,202 / `status='unresolved'` 6,242）。**`unresolved` の件数は `taxa` の未照合件数（gbif_taxon_key欠落）と一致しない。** レビュー指摘（ADR-0019決定4）を受け、`gbif_match_type='EXACT'` 以外は `gbif_taxon_key` があっても対応する `gbif.<key>` 行に寄せず `status='unresolved'` で taxa 行ごとに個別登録する方針に直したため、`unresolved` は「未照合 5,942行」に「弱い一致 300行」を加えた6,242行になる（実測: `status='unresolved'` 6,242行）。弱い一致を寄せていた旧実装では、GBIF が種以下まで一致させられなかった広い taxon_key（例: kingdom=Animalia）に複数の無関係な種の名前・レッドリストカテゴリが混ざる行ができていた。
+- レジストリ側 `taxon` テーブルは 41,454行 （`status='accepted'` 35,211 / `status='unresolved'` 6,242）。**`unresolved` の件数は `taxa` の未照合件数（gbif_taxon_key欠落）と一致しない。** レビュー指摘（ADR-0019決定4）を受け、`gbif_match_type='EXACT'` 以外は `gbif_taxon_key` があっても対応する `gbif.<key>` 行に寄せず `status='unresolved'` で taxa 行ごとに個別登録する方針に直したため、`unresolved` は「未照合 5,942行」に「弱い一致 300行」を加えた6,242行になる（実測: `status='unresolved'` 6,242行）。弱い一致を寄せていた旧実装では、GBIF が種以下まで一致させられなかった広い taxon_key（例: kingdom=Animalia）に複数の無関係な種の名前・レッドリストカテゴリが混ざる行ができていた。
 - 未照合・弱い一致の内訳（`gbif_match_type` 別。EXACT を除く全件）:
 
   | gbif_match_type | 件数 | 意味 |
