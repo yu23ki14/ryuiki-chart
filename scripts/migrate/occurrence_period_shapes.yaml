@@ -1,0 +1,110 @@
+# organism_records.observed_on の形の宣言（scripts/migrate/occurrence_period.py が
+# 読む。O-1 設計 v2 D1）。
+#
+# `observed_on` は実測で12種類の「形」を持つ（docs/plans/PHASE_B_OCCURRENCE.md /
+# 設計 v2「実測」節。すべて GBIF 経由。NULL 6,836行は形を持たない別扱いで、
+# ここには宣言しない——scripts/b06_build_occurrence.py は観測日の無い記録も
+# 落とさず、period_grain/period_start/period_end/period_raw を NULL のまま
+# 保持する）。
+#
+# 各エントリ:
+#   length:              observed_on の文字数（scripts/migrate/occurrence_period.py の
+#                        `_SHAPE_BY_LENGTH` がこの値で形を判定する。宣言だけを見て
+#                        判定するのではなく、コード側の対応表と `expected_row_count` の
+#                        突き合わせで両方を検証する）。
+#   period_grain:        展開後の period_grain（'year'|'month'|'day'|'instant'|
+#                        'survey_period'）。
+#   expected_row_count:  実測件数（data/db/ryuiki.sqlite、2026-09-22）。
+#                        scripts/b06_build_occurrence.py が実行のたびに検証する。
+#   note:                形式の説明・展開規則。
+
+year:
+  length: 4
+  period_grain: year
+  expected_row_count: 1797
+  note: "'YYYY'。暦年。period_start/end = YYYY-01-01 / YYYY-12-31。"
+
+month:
+  length: 7
+  period_grain: month
+  expected_row_count: 1320
+  note: "'YYYY-MM'。period_start/end = 月初日 / 月末日。"
+
+year_interval:
+  length: 9
+  period_grain: survey_period
+  expected_row_count: 1046
+  note: >
+    'YYYY/YYYY'（調査期間の開始年/終了年）。period_start = 開始年-01-01、
+    period_end = 終了年-12-31。
+
+day:
+  length: 10
+  period_grain: day
+  expected_row_count: 740323
+  note: "'YYYY-MM-DD'。period_start = period_end = その日。"
+
+month_interval:
+  length: 15
+  period_grain: survey_period
+  expected_row_count: 14
+  note: >
+    'YYYY-MM/YYYY-MM'（調査期間の開始月/終了月）。period_start = 開始月の月初日、
+    period_end = 終了月の月末日。
+
+instant_minute:
+  length: 16
+  period_grain: instant
+  expected_row_count: 26042
+  note: >
+    'YYYY-MM-DDTHH:MM'（秒・時刻帯なし）。秒を ':00' で補完して
+    period_start = period_end にする。時刻帯が無い=すでにローカル時刻
+    （設計 v2「実測」: 時刻帯なし66,675行は全てGBIF、時刻分布は10–14時にピークで
+    ローカルであることを裏付ける）ので変換しない。
+
+instant_minute_z:
+  length: 17
+  period_grain: instant
+  expected_row_count: 958
+  note: >
+    'YYYY-MM-DDTHH:MMZ'（秒なし・UTC）。秒を ':00' で補完したうえで、
+    'Z' を出典の region の utc_offset（source_regions.yaml）でローカル時刻に
+    変換する（時刻帯なしにする。ADR-0024）。
+
+instant_second:
+  length: 19
+  period_grain: instant
+  expected_row_count: 40633
+  note: >
+    'YYYY-MM-DDTHH:MM:SS'（時刻帯なし）。instant_minute と同じ理由で変換しない。
+
+instant_second_z:
+  length: 20
+  period_grain: instant
+  expected_row_count: 143
+  note: "'YYYY-MM-DDTHH:MM:SSZ'（UTC）。'Z' を region の utc_offset でローカル時刻に変換する。"
+
+day_interval:
+  length: 21
+  period_grain: survey_period
+  expected_row_count: 3723
+  note: >
+    'YYYY-MM-DD/YYYY-MM-DD'（調査期間の開始日/終了日）。period_start/end は
+    そのまま両端の日付。
+
+instant_millisecond_z:
+  length: 24
+  period_grain: instant
+  expected_row_count: 800
+  note: >
+    'YYYY-MM-DDTHH:MM:SS.sssZ'（ミリ秒付き・UTC）。ミリ秒を切り捨ててから
+    'Z' を region の utc_offset でローカル時刻に変換する。
+
+instant_minute_z_interval:
+  length: 35
+  period_grain: survey_period
+  expected_row_count: 57
+  note: >
+    'YYYY-MM-DDTHH:MMZ/YYYY-MM-DDTHH:MMZ'（区間の両端とも秒なし・UTC の瞬時）。
+    両端それぞれ instant_minute_z と同じ規則でローカル時刻に変換し、
+    period_start/end にする。

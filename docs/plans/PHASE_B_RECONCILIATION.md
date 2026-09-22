@@ -289,6 +289,18 @@ v1 側のバグだと確定できたため、`scripts/reconcile/expected_diffs.y
 機械検証に置き換えた形で、代わりに保証している。変更量そのものの実測は
 `docs/plans/PHASE_B_FACT_SLICE.md` §10「キューブに既に織り込んだ意図的な変更」を参照。
 
+続く `phase-b/occurrence-l2`（`organism_records` を入力に `occurrence` を作り、
+`org_norm` 1テーブルを通した。O-1a）では、**1行1列だけ再現できない taxon が見つかった**。
+
+| テーブル | 発見日 | 症状 | 原因 | 対応 |
+|---|---|---|---|---|
+| `org_norm` | 2026-09-22 | `gbif_kanagawa_occurrences__1829967465`（*Sirosporium celtidis*）の `cls` 列が v1 と食い違う（1行1列。他816,855行・他の全列は完全一致） | **v1・v2 どちらも「間違い」ではない、決定論性の実装差**: 属 *Sirosporium* の class 多数決が同数（Dothideomycetes と Sordariomycetes）で、v1（`web/scripts/build-biota.mjs` の `ROW_NUMBER() OVER (... ORDER BY COUNT(*) DESC)`、同数時の順序は SQLite の実装依存の暗黙順）は `Sordariomycetes` を選んでいたが、taxon レジストリ（`scripts/registry/build_taxon.py` の `_majority_vote()`）は明示的な決定論的タイブレーク（件数降順・同数なら値の昇順）で `Dothideomycetes` を選ぶ。`taxon_group`（菌類）はどちらの候補でも変わらないため、この食い違いは `cls` 列だけに留まる | `scripts/reconcile/expected_diffs.yaml` の `org_norm:` にキーを1件宣言（`kind: value_diff`, `columns: [cls]`）。v1 側の是正は不要（v1 のバグではなく、v1 が同数タイブレークの規則を持たなかっただけ） |
+
+この1件は `docs/plans/PHASE_B_OCCURRENCE.md` §3「F2: 分類の補完」で Slice 0 の時点から
+実測・記載済みだった食い違い（属単位の多数決が同数だった3属のうち、実際に
+`org_norm` の値へ影響したのはこの1 taxon だけ）を、O-1a でゲートに通して
+再確認したもの。新しい原因は無い。
+
 ## 7. 宣言済み差分（`expected_diffs.yaml`）
 
 ADR-0016 の受け入れ基準は「`imputation='zero'` の系列で v1 の派生テーブルの値が再現できること」

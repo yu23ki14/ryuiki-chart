@@ -285,6 +285,15 @@ class PeriodMismatchError(MigrationError):
 # への別名（B-3。上の `TimeLabelConventionUsage` と同じクラスだった）。
 PeriodExceptionUsage = _EntryUsage
 
+# `_EntryUsage` は「`source_id`（や任意のキー文字列）->宣言」の使用状況を追跡する
+# 汎用トラッカーで、measurements/sensor_timeseries 固有ではない。occurrence の縦線
+# （scripts/migrate/source_regions.py・scripts/migrate/occurrence_period.py）も同じ
+# 形の宣言表（出典→region、期間の形→期待件数）を持つため、同じ実装をここから公開名
+# で再利用する（B-3 と同じ判断: 同じ形のトラッカーを2つ目書かない）。measurements 用の
+# 2エイリアス（`PeriodExceptionUsage`/`TimeLabelConventionUsage`）は呼び出し側の型名を
+# 変えないためにそのまま残す。
+EntryUsage = _EntryUsage
+
 
 def _year_bounds(year: int) -> tuple[str, str]:
     """暦年（1/1〜12/31。ADR-0008）。"""

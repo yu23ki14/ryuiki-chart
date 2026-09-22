@@ -1,0 +1,40 @@
+# occurrence（organism_records）の region_id を出典（マニフェスト）から決める宣言
+# （scripts/migrate/source_regions.py が読む。ADR-0022 決定3・O-1 設計 v2 D1）。
+#
+# occurrence は `place`（grid01。県境という概念を持たない機械グリッド）経由では
+# region_id を決められない（ADR-0022 決定3が明記する「既知の結合」）。そこで
+# ADR-0012 のマニフェストが本来持つべき `region:` 欄を、この宣言ファイルとして
+# 先に実装する（マニフェスト本体は Phase C）。
+#
+# sources: organism_records.source_id -> region_id。未知の source_id・
+#   宣言はあるが1行も現れなかった source_id（未使用宣言）・実測件数が
+#   expected_row_count と食い違う場合はいずれも scripts/b06_build_occurrence.py を
+#   止める（scripts/migrate/period_exceptions.yaml と同じ流儀）。
+# regions: region_id -> utc_offset（'Z' 表記の時刻をローカル時刻に直すのに使う。
+#   ADR-0024。「+09:00 を b06 に直書きしない」ための唯一の置き場）。
+#   宣言されているのに sources のどれからも参照されない region_id（未使用宣言）は
+#   同様に止める。
+
+sources:
+  gbif_kanagawa_occurrences:
+    region_id: jp-14
+    # 実測（data/db/ryuiki.sqlite、2026-09-22）: organism_records の
+    # source_id 別件数。
+    expected_row_count: 658360
+    evidence: >
+      GBIF 経由で取得した神奈川県内の occurrence（収集は scripts/c02_gbif.py 系）。
+      対象地域を神奈川県（ADR-0002 jp-14）に絞って収集しているため region_id=jp-14。
+  inaturalist_kanagawa:
+    region_id: jp-14
+    expected_row_count: 165332
+    evidence: >
+      iNaturalist 経由で取得した神奈川県内の観測（収集は scripts/c03_inaturalist.py）。
+      同じく対象地域を神奈川県に絞って収集しているため region_id=jp-14。
+
+regions:
+  jp-14:
+    utc_offset: "+09:00"
+    evidence: >
+      日本標準時（JST、UTC+9）。ADR-0002 のコードリストにある神奈川県のスコープ。
+      'Z'（UTC）表記の observed_on をローカル時刻に直すときにこの値を使う
+      （scripts/migrate/occurrence_period.py、ADR-0024）。

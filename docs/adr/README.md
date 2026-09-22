@@ -37,6 +37,7 @@ Architecture Decision Record。1ファイル＝1決定。**背景・決定・根
 | [0022](0022-place-region-scope.md) | `place.region_id` は ID のスコープと一致させ、所在は `place_relation` の辺で表す | 提案中 |
 | [0023](0023-unit-canonicalization.md) | 単位の正準化は取り込み時に潰さず、レジストリの換算係数とキューブの軸に分けて持つ | 提案中 |
 | [0024](0024-local-time-and-time-labels.md) | 時刻は時刻帯なしのローカル時刻で持ち、時刻ラベルの意味は出典ごとに宣言する | 提案中 |
+| [0025](0025-occurrence-fact-and-cube.md) | occurrence ファクトとキューブの設計（region は出典から・期間は12形の宣言・1ファクト＝1キューブ表） | 提案中 |
 
 ### 未着手（この順で書く予定）
 

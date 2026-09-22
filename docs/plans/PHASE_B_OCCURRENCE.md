@@ -566,9 +566,12 @@ scripts/r01_build_registry.py --files-only` が通ることを確認した（実
 
 ## 9. 再現の壁・申し送り
 
-- **O-1/O-2 はまだ設計のみ**（本ドキュメント §4 の切り方の記述だけで、実装は
-  無い）。`occurrence` テーブルの DDL・キューブ拡張（`source_id` を次元に追加）・
-  射影の設計は O-1 着手時に別ドキュメントで詳細化する。
+- **O-1a（`occurrence` ＋ `org_norm`）は実装済み**（`phase-b/occurrence-l2`。
+  詳細・実測は §10）。**O-1b（`occurrence_agg` ＋ 年キー8表 ＋
+  `species_month`）と O-2（流域2表）はまだ設計のみ**（本ドキュメント §4 の
+  切り方の記述だけで、実装は無い）。キューブ拡張（`occurrence_agg`、
+  `source_id` を次元に追加）・年キー8表・`species_month` の射影の詳細は
+  O-1b 着手時に詰める。
 - **F3（流域の点内包判定）は本 PR で一切触れていない。** ADR-0006 規約2の改定
   （複数面への直接解決）は O-2 で ADR 追記とセットで行う。
 - **taxon の `parent_taxon_id`（ADR-0019 の図にはあるが実装に無い）は本 PR でも
@@ -580,3 +583,99 @@ scripts/r01_build_registry.py --files-only` が通ることを確認した（実
   ADR-0006のコードリストに無い）は本 PR のスコープ外のまま（#11 は grid01 の
   **入力**を変えただけで、コードリストからの逸脱自体は解消していない。詳細は
   `docs/plans/PHASE_B_INTAKE.md` #16）。
+
+## 10. O-1a（`occurrence` ＋ `org_norm`）実装・実測（`phase-b/occurrence-l2`）
+
+設計の決定は [ADR-0025](../adr/0025-occurrence-fact-and-cube.md)（D1〜D4）に切り出した。
+ここには実装したファイルと実測値だけを記録する。
+
+### 構成
+
+| ファイル | 役割 |
+|---|---|
+| `scripts/b06_build_occurrence.py` | `organism_records`（823,692行）から `data/db/v2.sqlite` の `occurrence` を作る（`observation`/`observation_agg` と同居） |
+| `scripts/migrate/source_regions.py` / `source_regions.yaml` | 出典 → region、region → utc_offset の宣言（未知の出典・未使用宣言・件数不一致で止める） |
+| `scripts/migrate/occurrence_period.py` / `occurrence_period_shapes.yaml` | `observed_on` の12形の宣言・展開・'Z' 変換（未知の形・件数不一致で止める） |
+| `scripts/b08_project_occurrence_v1.py` | `occurrence` から `org_norm` を `data/db/v1_projection_occurrence.sqlite` に射影する（番号 b07 は O-1b のキューブ用に空けてある） |
+| `scripts/reconcile/expected_diffs.yaml`（`org_norm:` 節） | *Sirosporium celtidis* の `cls` 1キーの宣言 |
+| `scripts/tests/occurrence_fixtures.py` / `test_migrate_occurrence_period.py` / `test_migrate_source_regions.py` / `test_b06_build_occurrence.py` / `test_b08_project_occurrence_v1.py` | フィクスチャ sqlite だけで完結するテスト（原本不要） |
+
+### 実測（`data/db/ryuiki.sqlite`/`registry.sqlite`、2026-09-22。ローカル実行）
+
+```
+occurrence 総行数            823,692
+  日付あり（period_raw NOT NULL）  816,856
+  taxon_id NULL               853（うち日付あり 775。775 は「日付ありの母集団
+                               （org_norm と同じ）」での実測、853 はそれに日付
+                               無し78行を加えた全体——taxon_key='' の記録に
+                               日付の有無は関係しないため、両方が正しい実測）
+  region 内訳                 jp-14 823,692（全行）
+  期間の形（12形）             day 740,323 / day_interval 3,723 /
+                               instant_millisecond_z 800 / instant_minute 26,042 /
+                               instant_minute_z 958 / instant_minute_z_interval 57 /
+                               instant_second 40,633 / instant_second_z 143 /
+                               month 1,320 / month_interval 14 / year 1,797 /
+                               year_interval 1,046（すべて宣言の expected_row_count
+                               と一致）
+  'Z' → ローカル時刻の変換件数   1,958（期待どおり）
+  変換で日が変わった件数        221（期待どおり）
+  変換で月が変わった件数        10（期待どおり）
+  変換で年が変わった件数        0（1件でもあれば構築が止まる設計。実測どおり0）
+```
+
+`org_norm` 射影（`scripts/b08_project_occurrence_v1.py`）: **816,856行**
+（v1 と一致。母集団は `occurrence.period_raw IS NOT NULL`）。
+
+### 受け入れ基準1（`scripts/b02_derived_compare.py --tables org_norm`）
+
+```
+$ .venv/bin/python3 scripts/b02_derived_compare.py \
+    --candidate data/db/v1_projection_occurrence.sqlite --tables org_norm
+一致: 0 / 宣言済み差分のみ: 1 / 不一致: 0
+適用した宣言済み差分: 1件
+EXIT=0
+```
+
+宣言なし（`--no-expected-diffs`）で実行すると、不一致は `org_norm` の `cls` 列
+**1行だけ**（`gbif_kanagawa_occurrences__1829967465`、*Sirosporium celtidis*）で、
+数値列（`is_alien`/`lat`/`lon`/`mlat`/`mlon`/`mo`/`yr`）は816,856行全件で
+差分0（実測。`docs/adr/0025-occurrence-fact-and-cube.md` D3・D1 の「実測」節
+参照）。
+
+### 既存9テーブルのゲートが動かないことの確認（受け入れ基準2）
+
+同じ worktree で `b03`→`b04`→`b05` を実行し直しても（`b06`/`b08` の追加後）:
+
+```
+observation: 1,041,003件（323,164 + 717,839。measurements/sensor_timeseries と一致）
+observation_agg: 構築成功（v2.sqlite に occurrence と同居していても b04 は
+  observation/observation_agg だけを作り直す——staged_table のテーブル単位の
+  分離どおり）
+v1_projection.sqlite: 749,300件（9テーブル合計。既存の実測値と一致）
+b02 --tables meas_daily,meas_month,meas_year,meas_clim,site_var,var_catalog,
+  sensor_daily,sensor_hour_month,rain_daily: 一致3 / 宣言済み差分のみ6 / 不一致0
+  （既存の実測どおり）
+```
+
+`scripts/migrate/period.py` には `EntryUsage`（`_EntryUsage` の公開名。
+`source_regions.py`/`occurrence_period.py` が再利用するための1行の追加のみ）
+だけを足した。`b03` の出力（`observation` 1,041,003行）・既存テストは無変更
+（`test_migrate_period.py`/`test_b03_build_observation.py` 全件成功）。
+
+### 実行時間
+
+```
+scripts/b06_build_occurrence.py    23.2s（occurrence 823,692行の構築）
+scripts/b08_project_occurrence_v1.py
+  org_norm へ射影                  15.1s
+  v1_projection_occurrence.sqlite に書き出し  4.1s
+```
+
+### この PR での設計からの逸脱・申し送り
+
+- `occurrence` は ADR-0007 が挙げる `observation` の列（`quality_stage`/
+  `is_synthetic`/`source_ref`/`event_id`/`method_id`/`instrument_id`/
+  `observer_id`）を持たない。`organism_records.is_synthetic` は全行0で、
+  他の列も v1 のどの派生テーブルからも参照されないため、O-1 設計 v2 D1 が
+  明示した列（F6 の原表記の旗＋識別子＋region/taxon/place/期間）だけに絞った
+  （ADR-0025「影響」節に明記）。将来これらの列を使う消費者が現れたら追加する。
