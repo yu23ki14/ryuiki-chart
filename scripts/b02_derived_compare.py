@@ -50,7 +50,11 @@
 宣言と完全に一致した差分だけを不一致から除く。除いた結果すべての差分が説明できた
 テーブルは、状態表示を「一致」ではなく「宣言済み差分のみ」にする
 （`STATUS_LABEL["declared_diffs_only"]`）。合否（終了コード）には数えない。
-レポートに専用の節を作り、適用した宣言を1件ずつ出す。
+レポートに専用の節を作り、適用した宣言を1件ずつ、**その場で実測した前後の値**
+（食い違った列だけ。数値は `common.format_number` で小数点以下6桁）と一緒に出す
+（`_compare_full` の `observed` / `render_markdown` の `_format_observed`）。
+`reason` に前後の数値を手で書く必要は無い（書くと `/simplify` 指摘の通りゲートが
+検証しない手計算が腐っていく。`reason` は原因の説明だけに絞る）。
 
 **縮退モード（`--baseline-data` 無し・ベースライン実データ無し）では宣言を適用できない**
 （行レベルの差分を見られないので「実際に差分になっているか」を検証できない）。
@@ -112,6 +116,45 @@ def _exceeds_tolerance(baseline_val: float, candidate_val: float, tolerance: flo
         return abs_diff != 0
     allowed = max(tolerance * abs(baseline_val), 1e-9)
     return abs_diff > allowed
+
+
+# ---------------------------------------------------------------------------
+# 宣言済み差分レポート用: 実測の前後の値の文字列化
+# ---------------------------------------------------------------------------
+
+def _format_diff_value(value) -> str:
+    """宣言済み差分レポートに出す1個の値を文字列にする。
+
+    NULL は `NULL`、数値（`bool` を除く `int`/`float`）は `common.format_number`
+    （小数点以下6桁）で揃え、それ以外（文字列・キー列由来の値等）はそのまま
+    文字列化する。`derived_baseline.json` の `reason` に手で書いていた前後の値を
+    ここで実測に置き換える（オーナー決定。docs/plans/PHASE_B_RECONCILIATION.md
+    「宣言済み差分」参照）。
+    """
+    if value is None:
+        return "NULL"
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, (int, float)):
+        return common.format_number(value)
+    return str(value)
+
+
+def _row_value_dict(
+    row: tuple, numeric_idx: dict[str, int], text_idx: dict[str, int], key: Sequence[str]
+) -> dict[str, str]:
+    """`row_only_in_candidate` / `row_only_in_baseline` の宣言用に、キー以外の
+    列を `{列名: 表示用文字列}` にする（`_format_diff_value` で揃える）。
+
+    `numeric_idx` は「数値ストレージクラスの列」（`common.numeric_columns_of`）
+    であり、キー列が数値型（`year` 等）だとここに紛れ込む。レポートの
+    「キー」列にすでに出ている値をもう一度出すと紛らわしいので、`key` に
+    含まれる列はここでは除く。
+    """
+    key_set = set(key)
+    out = {c: _format_diff_value(row[i]) for c, i in numeric_idx.items() if c not in key_set}
+    out.update({c: _format_diff_value(row[i]) for c, i in text_idx.items() if c not in key_set})
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -207,9 +250,20 @@ def _compare_full(
     `expected_entries`（`expected_diffs.yaml` のこのテーブル分の宣言）を渡すと、
     宣言されたキーが実際に差分になっているかを検証したうえで、不一致から除く
     （モジュール docstring「宣言済み差分」参照）。空（既定）のときは、この
-    検証のための追加のキー集合（`*_full_keys`）を一切作らない——宣言が無い
-    30テーブルぶんの突合で、行数の多いテーブル（`org_norm` 等）に余計なメモリを
-    使わないため。
+    検証のための追加のキー集合（`*_full_keys`）や、レポートに出す実測の前後の値
+    （`*_rows` / `value_diff_details`）を一切作らない——宣言が無い30テーブルぶんの
+    突合で、行数の多いテーブル（`org_norm` 等）に余計なメモリを使わないため。
+
+    宣言が適用されたキーについては、実測した前後の値を `result["declared_diffs_applied"]`
+    の各要素の `observed` に積む（`reason` に手で前後の値を書かなくて済むようにする
+    ためのもの。docs/plans/PHASE_B_RECONCILIATION.md「宣言済み差分」参照）。
+    `kind` ごとに形が違う:
+    - `value_diff`: `{"value_diff": {列名: {"baseline": ..., "candidate": ..., "diff": ...}}}`。
+      値が食い違った列だけを含む（一致した列は出さない）。数値列以外や NULL 絡みの
+      食い違いでは `diff` は `None`。
+    - `row_only_in_candidate` / `row_only_in_baseline`: `{kind: {列名: 値, ...}}`
+      （そちら側に実在した行の、キー以外の列の値）。
+    数値の文字列化はすべて `common.format_number`（小数点以下6桁）で揃える。
     """
     columns = [c["name"] for c in entry["columns"]]
     key = entry["key"]
@@ -247,6 +301,11 @@ def _compare_full(
     only_in_baseline_keys: set[tuple] = set() if track_expected else None
     only_in_candidate_keys: set[tuple] = set() if track_expected else None
     value_diff_keys: set[tuple] = set() if track_expected else None
+    # 宣言が適用されたときにレポートへ出す実測の前後の値（docstring 参照）。
+    # 宣言が無いテーブルでは None のまま（要素を積まない）。
+    only_in_baseline_rows: dict[tuple, dict] = {} if track_expected else None
+    only_in_candidate_rows: dict[tuple, dict] = {} if track_expected else None
+    value_diff_details: dict[tuple, dict] = {} if track_expected else None
 
     # 両ソースをキー順にマージ結合する。片側にしか無いキーは前へ進めるだけ、
     # 両側にあるキーだけ値を突き合わせる（`_KeyedStream` のドキストリング参照）。
@@ -265,15 +324,17 @@ def _compare_full(
                 only_in_baseline_sample.append(list(bk))
             if track_expected:
                 only_in_baseline_keys.add(bk)
+                only_in_baseline_rows[bk] = _row_value_dict(brow, numeric_idx, text_idx, key)
             continue
         if ck is not None and (bk is None or _key_less(ck, bk)):
-            candidate_stream.pop()
+            _, crow = candidate_stream.pop()
             candidate_row_count += 1
             only_in_candidate_count += 1
             if len(only_in_candidate_sample) < SAMPLE_LIMIT:
                 only_in_candidate_sample.append(list(ck))
             if track_expected:
                 only_in_candidate_keys.add(ck)
+                only_in_candidate_rows[ck] = _row_value_dict(crow, numeric_idx, text_idx, key)
             continue
 
         # bk == ck（両側に存在する共通キー）。
@@ -283,6 +344,10 @@ def _compare_full(
         candidate_row_count += 1
         baseline_hasher.update(common.canonical_row_bytes(brow))
         row_differs = False
+        # このキーの共通行のうち、宣言済み差分レポート用に「食い違った列だけ」を
+        # 積む（一致した列は出さない。docstring 参照）。宣言が無いテーブルでは
+        # 一切書き込まない（track_expected のときだけ）。
+        row_diff_detail: dict[str, dict] = {}
 
         for col in numeric_columns:
             i = numeric_idx[col]
@@ -291,6 +356,12 @@ def _compare_full(
                 if bv is not cv:
                     n_null_mismatch[col] += 1
                     row_differs = True
+                    if track_expected:
+                        row_diff_detail[col] = {
+                            "baseline": _format_diff_value(bv),
+                            "candidate": _format_diff_value(cv),
+                            "diff": None,
+                        }
                 continue
             try:
                 bv_f = float(bv)
@@ -300,6 +371,12 @@ def _compare_full(
                 # 落ちずに差として数える（レビュー指摘）。
                 n_unparseable[col] += 1
                 row_differs = True
+                if track_expected:
+                    row_diff_detail[col] = {
+                        "baseline": _format_diff_value(bv),
+                        "candidate": _format_diff_value(cv),
+                        "diff": None,
+                    }
                 continue
             abs_diff = abs(cv_f - bv_f)
             abs_diffs[col].append(abs_diff)
@@ -309,15 +386,28 @@ def _compare_full(
             if _exceeds_tolerance(bv_f, cv_f, tolerance):
                 n_exceed[col] += 1
                 row_differs = True
+                if track_expected:
+                    row_diff_detail[col] = {
+                        "baseline": common.format_number(bv_f),
+                        "candidate": common.format_number(cv_f),
+                        "diff": common.format_number(cv_f - bv_f),
+                    }
 
         for col in text_columns:
             i = text_idx[col]
             if brow[i] != crow[i]:
                 text_diff_counts[col] = text_diff_counts.get(col, 0) + 1
                 row_differs = True
+                if track_expected:
+                    row_diff_detail[col] = {
+                        "baseline": _format_diff_value(brow[i]),
+                        "candidate": _format_diff_value(crow[i]),
+                        "diff": None,
+                    }
 
         if track_expected and row_differs:
             value_diff_keys.add(bk)
+            value_diff_details[bk] = row_diff_detail
 
     if baseline_stream.dup_count:
         result["notes"].append(
@@ -399,7 +489,13 @@ def _compare_full(
             target_set = kind_to_set[kind]
             if key_tuple in target_set:
                 target_set.discard(key_tuple)
-                applied.append({**d, "table": table})
+                if kind == "row_only_in_candidate":
+                    observed = {"row_only_in_candidate": only_in_candidate_rows[key_tuple]}
+                elif kind == "row_only_in_baseline":
+                    observed = {"row_only_in_baseline": only_in_baseline_rows[key_tuple]}
+                else:  # value_diff
+                    observed = {"value_diff": value_diff_details[key_tuple]}
+                applied.append({**d, "table": table, "observed": observed})
                 continue
             actual_kind = next((k for k, s in kind_to_set.items() if key_tuple in s), None)
             if actual_kind is not None:
@@ -619,6 +715,34 @@ STATUS_LABEL = {
 }
 
 
+def _format_observed(d: dict) -> str:
+    """宣言済み差分1件の `observed`（`_compare_full` が実測して積んだもの）を
+    レポートの表の1セルに収める文字列にする。列名の昇順で並べる。
+    一致した列は `observed` に入っていない（`_compare_full` 側で除外済み）ので
+    ここでも絞り込みはしない。
+    """
+    observed = d.get("observed") or {}
+    if "value_diff" in observed:
+        cols = observed["value_diff"]
+        if not cols:
+            return "(食い違った列なし)"
+        parts = []
+        for col in sorted(cols):
+            v = cols[col]
+            piece = f"`{col}`: {v['baseline']}→{v['candidate']}"
+            if v.get("diff") is not None:
+                piece += f"（差 {v['diff']}）"
+            parts.append(piece)
+        return "; ".join(parts)
+    for kind in ("row_only_in_candidate", "row_only_in_baseline"):
+        if kind in observed:
+            cols = observed[kind]
+            if not cols:
+                return "(値なし)"
+            return "; ".join(f"`{c}`={cols[c]}" for c in sorted(cols))
+    return ""
+
+
 def render_markdown(
     results: dict[str, dict],
     mode: str,
@@ -716,16 +840,23 @@ def render_markdown(
             "検証できたため、不一致から除いたもの。"
         )
         a("")
-        a("| テーブル | キー | kind | reason | found_on | record |")
-        a("|---|---|---|---|---|---|")
+        a(
+            "「実測の前後の値」列は `reason` に手で書いた数値ではなく、この実行で実際に"
+            "突き合わせて出した値（食い違った列だけ。一致した列は出さない。数値は "
+            "`common.format_number` で小数点以下6桁に揃えてある）。"
+        )
+        a("")
+        a("| テーブル | キー | kind | 実測の前後の値 | reason | found_on | record |")
+        a("|---|---|---|---|---|---|---|")
         for d in applied_all:
             # YAML の `>`（折り畳みブロックスカラー）で書いた reason は、改行が
             # スペースに変わっても末尾の改行（chomping）は残る。Markdown の表は
             # 1行に収まっていないと崩れるので、ここで空白に正規化する。
             reason = " ".join(str(d.get("reason", "")).split())
             record = " ".join(str(d.get("record", "")).split())
+            observed_text = _format_observed(d)
             a(
-                f"| `{d['table']}` | {d['key']} | `{d['kind']}` | {reason} | "
+                f"| `{d['table']}` | {d['key']} | `{d['kind']}` | {observed_text} | {reason} | "
                 f"{d.get('found_on', '')} | {record} |"
             )
         a("")

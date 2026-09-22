@@ -591,6 +591,130 @@ def test_expected_diff_value_diff_is_applied_and_gate_passes(tmp_path):
     assert "宣言済み差分のみ" in text
 
 
+# ---------------------------------------------------------------------------
+# 宣言済み差分の「実測の前後の値」（reason に手で数値を書かないための機構。
+# /simplify 指摘を受けたオーナー決定。docs/plans/PHASE_B_RECONCILIATION.md 参照）
+# ---------------------------------------------------------------------------
+
+def test_expected_diff_value_diff_observed_values_show_only_mismatched_columns(tmp_path):
+    """`value_diff` の宣言が適用されたとき、レポートには実測した前後の値が
+    `列名: ベースライン→候補（差 ...）` の形で出る。t_dims の共通行で `avg` だけ
+    変え `n` は変えていないので、`avg` は前後の値付きで出るが、一致した `n` は
+    「実測の前後の値」に一切出ない（宣言済み差分の1件ぶんの表現なので、他の
+    宣言が無いこのテストでは `n` がどこにも出ないことをそのまま検証できる）。
+    """
+    db_path, baseline_json, _ = _make_baseline(tmp_path)
+    candidate = dump_all_tables_as_json(db_path)
+    for row in candidate["t_dims"]["rows"]:
+        if row[0] == "s1" and row[1] == 2020 and row[2] == "daily":
+            row[4] = 9.99  # avg: 1.5 -> 9.99 (n=10 はそのまま)
+    candidate_path = tmp_path / "candidate.json"
+    candidate_path.write_text(json.dumps(candidate), encoding="utf-8")
+
+    expected_diffs = _write_expected_diffs_yaml(tmp_path, {
+        "t_dims": [
+            {
+                "key": ["s1", 2020, "daily"],
+                "kind": "value_diff",
+                "reason": _REASON,
+                "found_on": _FOUND_ON,
+                "record": _RECORD,
+            },
+        ],
+    })
+
+    out_md = tmp_path / "reconciliation.md"
+    result = _run_cli(baseline_json, db_path, candidate_path, out_md, expected_diffs=expected_diffs)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    text = out_md.read_text(encoding="utf-8")
+    assert "`avg`: 1.500000→9.990000（差 8.490000）" in text
+    assert "`n`:" not in text  # 一致した列は出さない
+
+
+def test_expected_diff_row_only_observed_values_show_full_row(tmp_path):
+    """`row_only_in_candidate` / `row_only_in_baseline` の宣言が適用されたとき、
+    レポートにはその行の（キー以外の）列の値が出る。キー列（`year`）は「キー」
+    列にすでに出ているので、実測の前後の値には重複して出さない。
+    """
+    db_path, baseline_json, _ = _make_baseline(tmp_path)
+    candidate = dump_all_tables_as_json(db_path)
+    # s2/2020/daily (n=5, avg=3.0) を候補から削る -> row_only_in_baseline
+    candidate["t_dims"]["rows"] = [
+        row for row in candidate["t_dims"]["rows"]
+        if not (row[0] == "s2" and row[1] == 2020 and row[2] == "daily")
+    ]
+    # 新しい行 (n=1, avg=4.0) を候補に足す -> row_only_in_candidate
+    candidate["t_dims"]["rows"].append(["s3", 2022, "daily", 1, 4.0])
+    candidate_path = tmp_path / "candidate.json"
+    candidate_path.write_text(json.dumps(candidate), encoding="utf-8")
+
+    expected_diffs = _write_expected_diffs_yaml(tmp_path, {
+        "t_dims": [
+            {
+                "key": ["s2", 2020, "daily"],
+                "kind": "row_only_in_baseline",
+                "reason": _REASON,
+                "found_on": _FOUND_ON,
+                "record": _RECORD,
+            },
+            {
+                "key": ["s3", 2022, "daily"],
+                "kind": "row_only_in_candidate",
+                "reason": _REASON,
+                "found_on": _FOUND_ON,
+                "record": _RECORD,
+            },
+        ],
+    })
+
+    out_md = tmp_path / "reconciliation.md"
+    result = _run_cli(baseline_json, db_path, candidate_path, out_md, expected_diffs=expected_diffs)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    text = out_md.read_text(encoding="utf-8")
+    assert "`avg`=3.000000; `n`=5.000000" in text  # ベースラインにしか無い行 (s2)
+    assert "`avg`=4.000000; `n`=1.000000" in text  # 候補にしか無い行 (s3)
+    assert "`year`=2020" not in text  # キー列は実測の前後の値に重複して出さない
+    assert "`year`=2022" not in text
+
+
+def test_reduced_mode_never_shows_observed_values(tmp_path):
+    """縮退モードでは宣言（`expected_diffs.yaml`）を適用できない（行レベルの
+    差分を見られないため。既存の
+    `test_expected_diff_reduced_mode_with_declared_diff_in_scope_exits_nonzero`
+    参照）。宣言のあるテーブルを `--tables` の対象から外せば縮退モードでも
+    実行はできるが、そのときレポートに「宣言済み差分」節や実測の前後の値は
+    一切出ないことを確認する。
+    """
+    db_path, baseline_json, _ = _make_baseline(tmp_path)
+    candidate_db = tmp_path / "candidate.sqlite"
+    make_fixture_db(candidate_db, include_dupe=False)  # t_pk はベースラインと同一
+
+    expected_diffs = _write_expected_diffs_yaml(tmp_path, {
+        "t_dims": [
+            {
+                "key": ["s1", 2020, "daily"],
+                "kind": "value_diff",
+                "reason": _REASON,
+                "found_on": _FOUND_ON,
+                "record": _RECORD,
+            },
+        ],
+    })
+
+    out_md = tmp_path / "reconciliation.md"
+    result = _run_cli(
+        baseline_json, None, candidate_db, out_md, reduced=True, tables="t_pk",
+        expected_diffs=expected_diffs,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    text = out_md.read_text(encoding="utf-8")
+    assert "宣言済み差分（expected_diffs.yaml で適用したもの）" not in text
+    assert "実測の前後の値" not in text
+
+
 def test_expected_diff_rotten_declaration_exits_nonzero(tmp_path):
     """宣言したキーが実際には差分になっていない（腐った宣言）と非0で落ちる。
     これが宣言済み差分の機構でいちばん重要な検証——免除が残り続けて他の
