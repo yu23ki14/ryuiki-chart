@@ -311,7 +311,7 @@ def test_fingerprint_full_mode_changes_when_derived_tables_change(tmp_path):
     derived_path = root / "data" / "db" / "derived.sqlite"
     # watershed_meta は build_place.py が実際に SELECT する列を持つ（残りは None で埋める。
     # scripts/tests/registry_fixtures.py の共通フィクスチャ）。
-    make_derived_places_db(derived_path, [("w1", "川1", None, None, None, None)], [(3500, 13900)])
+    make_derived_places_db(derived_path, [("w1", "川1", None, None, None, None)])
 
     before = common.compute_input_fingerprint(root=root, mode=common.MODE_FULL)
 
@@ -363,7 +363,7 @@ def test_fingerprint_files_only_mode_never_touches_derived_or_taxon_crosswalk(tm
     (root / "data" / "processed" / "taxon_crosswalk.csv").write_text("x\n", encoding="utf-8")
     (root / "data" / "db").mkdir(parents=True)
     make_derived_places_db(
-        root / "data" / "db" / "derived.sqlite", [("w1", "川1", None, None, None, None)], []
+        root / "data" / "db" / "derived.sqlite", [("w1", "川1", None, None, None, None)]
     )
 
     fp_with = common.compute_input_fingerprint(root=root, mode=common.MODE_FILES_ONLY)
@@ -383,7 +383,7 @@ def test_fingerprint_full_mode_handles_missing_derived_without_crashing(tmp_path
     assert fp_missing  # 例外にならない
 
     (root / "data" / "db").mkdir(parents=True)
-    make_derived_places_db(root / "data" / "db" / "derived.sqlite", [], [])
+    make_derived_places_db(root / "data" / "db" / "derived.sqlite", [])
     fp_present = common.compute_input_fingerprint(root=root, mode=common.MODE_FULL)
 
     assert fp_missing != fp_present
