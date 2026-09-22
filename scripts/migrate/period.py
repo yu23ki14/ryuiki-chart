@@ -72,10 +72,15 @@ class PeriodException:
 
 
 def _load_raw(path) -> dict:
-    """`period_exceptions.yaml` を生の dict（YAML をそのまま読んだもの）として返す。
-    無ければ `{}`。`load_period_exceptions`（値を埋めて `PeriodException` にする）と
-    `validate_period_exceptions_shape`（欠けているキーそのものを検出したい）の
-    両方がこの読み込みを共有する（検証ロジックを2箇所に書かないため）。
+    """宣言 YAML（`period_exceptions.yaml`/`time_label_conventions.yaml`）を
+    生の dict（YAML をそのまま読んだもの）として返す。無ければ `{}`。
+
+    `load_period_exceptions`/`load_time_label_conventions`（値を埋めて
+    `PeriodException`/`TimeLabelConvention` にする）と `_validate_shape`
+    （欠けているキーそのものを検出したい。CI 用）の4つの読み込み全部がこれを
+    共有する（検証ロジックを複数箇所に書かないため。B-3: 以前は
+    `time_label_conventions.yaml` 側だけこれを経由せず `load_yaml` を
+    直接呼んでいた）。
 
     読み込み自体は `scripts/reconcile/common.load_yaml` に委ねる
     （`migrate.common` が re-export したもの）。PyYAML が無いときの失敗が
@@ -109,11 +114,13 @@ def load_period_exceptions(path=DEFAULT_EXCEPTIONS_YAML) -> dict[str, PeriodExce
 REQUIRED_EXCEPTION_KEYS = ("period_grain_override", "expected_row_count", "reason", "restoration_plan")
 
 
-def validate_period_exceptions_shape(path=DEFAULT_EXCEPTIONS_YAML) -> None:
-    """`period_exceptions.yaml` の各エントリが `REQUIRED_EXCEPTION_KEYS` を
-    すべて持つことを検証する（原本DBを一切必要としない構造検証。CI 用）。
-    1つでも欠けていれば、どのエントリの何が足りないかをまとめて示して
-    `MigrationError` で止まる。
+def _validate_shape(path, required_keys: tuple[str, ...]) -> None:
+    """宣言 YAML（`source_id -> エントリ`の形）の各エントリが `required_keys` を
+    すべて持つことを検証する（原本DBを一切必要としない構造検証。CI 用。B-3:
+    `validate_period_exceptions_shape`/`validate_time_label_conventions_shape`
+    が持っていた同型の検証ループを1つに集約したもの——違いは呼び出し側が渡す
+    `required_keys` だけ）。1つでも欠けていれば、どのエントリの何が足りないかを
+    まとめて示して `MigrationError` で止まる。
     """
     raw = _load_raw(path)
     problems: list[str] = []
@@ -121,13 +128,20 @@ def validate_period_exceptions_shape(path=DEFAULT_EXCEPTIONS_YAML) -> None:
         if not isinstance(spec, dict):
             problems.append(f"{source_id}: エントリがマッピングになっていない（実際の型: {type(spec).__name__}）")
             continue
-        missing = [k for k in REQUIRED_EXCEPTION_KEYS if spec.get(k) in (None, "")]
+        missing = [k for k in required_keys if spec.get(k) in (None, "")]
         if missing:
             problems.append(f"{source_id}: 必須キーが欠けている（または空）: {missing}")
     if problems:
         raise MigrationError(
             f"{path} の形が不正:\n- " + "\n- ".join(problems)
         )
+
+
+def validate_period_exceptions_shape(path=DEFAULT_EXCEPTIONS_YAML) -> None:
+    """`period_exceptions.yaml` の各エントリが `REQUIRED_EXCEPTION_KEYS` を
+    すべて持つことを検証する（`_validate_shape` 参照）。
+    """
+    _validate_shape(path, REQUIRED_EXCEPTION_KEYS)
 
 
 @dataclass(frozen=True)
@@ -154,7 +168,7 @@ def load_time_label_conventions(
     `value_grain='hour'` の行に一切出会えない（出会えば
     `UnknownTimeLabelConventionError`）。
     """
-    raw = load_yaml(path)
+    raw = _load_raw(path)
     out: dict[str, TimeLabelConvention] = {}
     for source_id, spec in raw.items():
         convention = spec["convention"]
@@ -180,31 +194,29 @@ REQUIRED_TIME_LABEL_KEYS = ("convention", "expected_row_count", "evidence")
 
 def validate_time_label_conventions_shape(path=DEFAULT_TIME_LABEL_CONVENTIONS_YAML) -> None:
     """`time_label_conventions.yaml` の各エントリが `REQUIRED_TIME_LABEL_KEYS` を
-    すべて持つことを検証する（原本DBを一切必要としない構造検証。CI 用。
-    `validate_period_exceptions_shape` と対になる）。
+    すべて持つことを検証する（`_validate_shape` 参照）。
     """
-    raw = load_yaml(path)
-    problems: list[str] = []
-    for source_id, spec in raw.items():
-        if not isinstance(spec, dict):
-            problems.append(f"{source_id}: エントリがマッピングになっていない（実際の型: {type(spec).__name__}）")
-            continue
-        missing = [k for k in REQUIRED_TIME_LABEL_KEYS if spec.get(k) in (None, "")]
-        if missing:
-            problems.append(f"{source_id}: 必須キーが欠けている（または空）: {missing}")
-    if problems:
-        raise MigrationError(f"{path} の形が不正:\n- " + "\n- ".join(problems))
+    _validate_shape(path, REQUIRED_TIME_LABEL_KEYS)
 
 
-class TimeLabelConventionUsage:
-    """`time_label_conventions.yaml` の各エントリが実際に何行に使われたかを数える
-    （`PeriodExceptionUsage` と同じ役割・同じ形。b03 の最後にこれを見て、1件も
-    当たらなかったエントリが無いことを確認する）。
+class _EntryUsage:
+    """宣言 YAML（`source_id -> エントリ`）の各エントリが実際に何行に使われたかを
+    数える汎用トラッカー（B-3）。
+
+    `period_exceptions.yaml`（`PeriodException`）と `time_label_conventions.yaml`
+    （`TimeLabelConvention`）はどちらも「`source_id` をキーにした宣言の集まりを
+    受け取り、`mark_used` で使用回数を数え、`unused_entries`/
+    `mismatched_expected_counts` で『1件も当たらなかった宣言・実測件数が
+    `expected_row_count` と食い違う宣言』を検出する」という同じ形をしていた
+    （実際に使うのは各エントリの `expected_row_count` 属性だけで、
+    `PeriodException`/`TimeLabelConvention` のどちらも持つ）。`PeriodExceptionUsage`/
+    `TimeLabelConventionUsage` はこのクラスへの別名（呼び出し側の型名・
+    公開 API はそのまま維持する）。
     """
 
-    def __init__(self, conventions: dict[str, TimeLabelConvention]):
-        self._conventions = conventions
-        self._used: dict[str, int] = {k: 0 for k in conventions}
+    def __init__(self, entries: dict):
+        self._entries = entries
+        self._used: dict[str, int] = {k: 0 for k in entries}
 
     def mark_used(self, source_id: str) -> None:
         self._used[source_id] = self._used.get(source_id, 0) + 1
@@ -217,13 +229,16 @@ class TimeLabelConventionUsage:
 
     def mismatched_expected_counts(self) -> dict[str, tuple[int, int]]:
         mismatched = {}
-        for sid, conv in self._conventions.items():
-            if conv.expected_row_count is None:
+        for sid, entry in self._entries.items():
+            if entry.expected_row_count is None:
                 continue
             actual = self._used.get(sid, 0)
-            if actual != conv.expected_row_count:
-                mismatched[sid] = (conv.expected_row_count, actual)
+            if actual != entry.expected_row_count:
+                mismatched[sid] = (entry.expected_row_count, actual)
         return mismatched
+
+
+TimeLabelConventionUsage = _EntryUsage
 
 
 class UnknownTimeLabelConventionError(MigrationError):
@@ -265,38 +280,10 @@ class PeriodMismatchError(MigrationError):
         )
 
 
-class PeriodExceptionUsage:
-    """`period_exceptions.yaml` の各エントリが実際に何行に使われたかを数える。
-
-    b03 の最後にこれを見て、1件も当たらなかったエントリが無いことを確認する
-    （腐った例外が宣言だけ残り続けないように。design.md の明示的な要求）。
-    """
-
-    def __init__(self, exceptions: dict[str, PeriodException]):
-        self._exceptions = exceptions
-        self._used: dict[str, int] = {k: 0 for k in exceptions}
-
-    def mark_used(self, source_id: str) -> None:
-        self._used[source_id] = self._used.get(source_id, 0) + 1
-
-    def counts(self) -> dict[str, int]:
-        return dict(self._used)
-
-    def unused_entries(self) -> list[str]:
-        return [sid for sid, n in self._used.items() if n == 0]
-
-    def mismatched_expected_counts(self) -> dict[str, tuple[int, int]]:
-        """`expected_row_count` を宣言しているエントリについて、実測件数と
-        食い違うものを `{source_id: (expected, actual)}` で返す。
-        """
-        mismatched = {}
-        for sid, exc in self._exceptions.items():
-            if exc.expected_row_count is None:
-                continue
-            actual = self._used.get(sid, 0)
-            if actual != exc.expected_row_count:
-                mismatched[sid] = (exc.expected_row_count, actual)
-        return mismatched
+# `PeriodExceptionUsage`（b03 の最後にこれを見て、1件も当たらなかったエントリが
+# 無いことを確認する。腐った例外が宣言だけ残り続けないように）は `_EntryUsage`
+# への別名（B-3。上の `TimeLabelConventionUsage` と同じクラスだった）。
+PeriodExceptionUsage = _EntryUsage
 
 
 def _year_bounds(year: int) -> tuple[str, str]:

@@ -77,6 +77,81 @@ def fresh_sqlite(path) -> sqlite3.Connection:
     return conn
 
 
+def _staging_table_name(table: str) -> str:
+    return f"{table}__building"
+
+
+@contextlib.contextmanager
+def staged_table(conn: sqlite3.Connection, table: str, create_sql: str, params=()):
+    """`table`（`observation`/`observation_agg` のような本番テーブル）を
+    「作業用テーブルに作る → 呼び出し側が全部挿入・検証する → 本番名に差し替える」
+    の手順で作り直す（A-1）。
+
+    以前の b03/b04 は `replace_table`（DROP+CREATE、本番名に対して実行）を検証
+    より先に呼んでいた。`dest.commit()` を出典ごと・ステップごとに呼んでいた
+    ため、検証に失敗しても、それより前に呼ばれた `commit()` の分だけは既に
+    確定してしまっており、本番テーブルは新しい（まだ全部の検証を通っていない）
+    内容に差し替わっていた。ここでは DDL・DML を**作業用の別名**
+    （`f"{table}__building"`）に対してだけ行い、本番名（`table`）に触る DDL は
+    `with` ブロックが例外なく終わったとき（＝全検証を通過したとき）にしか
+    実行しない。
+
+    **明示的に `commit()`/`rollback()` を呼ぶ（DDL が暗黙にコミットすることに
+    頼らない）。** Python 3.6 以降の `sqlite3` モジュールは、DML（INSERT 等）の
+    直前にだけ暗黙のトランザクションを開始し、DDL（CREATE/DROP/ALTER）の
+    前に自動でコミットすることは**しない**（それより前の Python の挙動だった。
+    実測: `executemany` の後に `DROP TABLE` するだけでは、そのままプロセスを
+    `close()` すると `DROP` 自体も取り消される——保留中の DML トランザクションに
+    DDL が相乗りするだけで、コミットされないため）。そのためここでは各ステップ
+    （作業用テーブルの準備・失敗時の破棄・成功時の差し替え）の前後で
+    `conn.commit()`/`conn.rollback()` を明示的に呼び、呼び出し側が `with`
+    ブロックの中でコミットしたかどうかに依存しない。
+
+    使い方:
+
+        with common.staged_table(conn, "observation", CREATE_SQL) as staging:
+            conn.executemany(f'INSERT INTO "{staging}" ...', rows)
+            ... # 検証。失敗したら例外を投げる
+        # ここまで来たら差し替え済み（本番テーブル名 "observation" で読める）
+
+    - `with` ブロックで例外（検証失敗を含む）が起きたら、`conn.rollback()`
+      （呼び出し側が積んだ未コミットの INSERT 等を破棄する）→ 作業用テーブルを
+      `DROP` → `conn.commit()`（`DROP` を確定させる）の順で片付けてから、同じ
+      例外をそのまま再送出する。**本番テーブルには一切触れない。**
+    - ブロックが正常に終わったら、`conn.commit()`（呼び出し側が積んだ最後の
+      未コミット分を確定させる）→ `DROP TABLE IF EXISTS` で本番テーブルを消す
+      → `ALTER TABLE ... RENAME TO` で作業用テーブルを本番名にする（SQLite の
+      `RENAME` はテーブルに張ったインデックスをそのまま引き継ぐ——`CREATE INDEX`/
+      `CREATE UNIQUE INDEX` は `with` ブロック内で作業用テーブル名に対して行えば、
+      差し替え後もそのまま有効に残る。ただし**インデックス自体の名前**は
+      `table`（本番名）に依存させないこと——差し替えの前後でインデックス名は
+      変わらないため、本番名を埋め込むと「作業用テーブルに対する索引なのに
+      本番名を名乗る」中途半端な状態が差し替え前に一時的に生まれる）→
+      `conn.commit()` で差し替えを確定させる。
+    - この関数の呼び出し時点で、前回のクラッシュで残った同名の作業用テーブルが
+      あれば、作り始める前に `DROP` する（starting-state のクリーンアップ）。
+
+    `create_sql` は `{table}` プレースホルダを含む文字列
+    （例: `f"CREATE TABLE {{table}} (...)"`）にしておくこと——ここで作業用の
+    テーブル名を埋め込む。
+    """
+    staging = _staging_table_name(table)
+    conn.execute(f'DROP TABLE IF EXISTS "{staging}"')
+    conn.execute(create_sql.format(table=f'"{staging}"'), params)
+    conn.commit()
+    try:
+        yield staging
+    except BaseException:
+        conn.rollback()
+        conn.execute(f'DROP TABLE IF EXISTS "{staging}"')
+        conn.commit()
+        raise
+    conn.commit()
+    conn.execute(f'DROP TABLE IF EXISTS "{table}"')
+    conn.execute(f'ALTER TABLE "{staging}" RENAME TO "{table}"')
+    conn.commit()
+
+
 def replace_table(conn: sqlite3.Connection, table: str, create_sql: str, params=()) -> None:
     """`table` を作り直す（`DROP TABLE IF EXISTS` の後に `create_sql` を実行するだけ）。
 
