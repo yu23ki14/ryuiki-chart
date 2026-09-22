@@ -181,14 +181,17 @@ def make_v2_db_with_observation(path, create_sql: str, rows: list[tuple]) -> sql
     registry_db)` に直接渡し、使い終わったら自分で `close()` する）。`create_sql`
     は呼び出し側が `b03_build_observation._CREATE_OBSERVATION_SQL` を渡すことを
     想定している（本物のスキーマとテストのスキーマがずれる事故を避ける——
-    スキーマの正は b03 の定義1箇所だけに置く）。
+    スキーマの正は b03 の定義1箇所だけに置く）。A-1 以降 `_CREATE_OBSERVATION_SQL`
+    は `{table}` プレースホルダを持つ（`migrate.common.staged_table` が本番名/
+    作業用テーブル名のどちらでも使えるように）ので、ここで `"observation"` を
+    埋めて実行する。
 
     `uri=True` で開く（`b04_build_cube.build_cube` が `registry_db` を
     `file:...?mode=ro` として ATTACH するのに必要。実データで踏んだのと同じ
     理由——`scripts/b04_build_cube.py` の `main()` のコメント参照）。
     """
     conn = sqlite3.connect(f"file:{path}", uri=True)
-    conn.execute(create_sql)
+    conn.execute(create_sql.format(table="observation"))
     placeholders = ", ".join("?" for _ in rows[0])
     conn.executemany(f"INSERT INTO observation VALUES ({placeholders})", rows)
     conn.commit()

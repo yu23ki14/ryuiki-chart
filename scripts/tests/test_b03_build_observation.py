@@ -13,6 +13,7 @@ from reconcile import common as reconcile_common
 from reconcile import datasource
 
 from .migrate_fixtures import (
+    DEFAULT_ALIASES,
     DEFAULT_SENSOR_ROWS,
     make_measurements_db,
     make_registry_db,
@@ -387,3 +388,139 @@ def test_running_twice_yields_identical_content_hash(tmp_path):
         return fp["content_hash"]
 
     assert fingerprint(out1) == fingerprint(out2)
+
+
+# ---------------------------------------------------------------------------
+# A-1: 検証が全部通ってから本番名に差し替える（受け入れ条件4）
+# ---------------------------------------------------------------------------
+
+def _observation_tables_and_rows(out_path):
+    conn = sqlite3.connect(f"file:{out_path}?mode=ro", uri=True)
+    tables = sorted(r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'"))
+    rows = conn.execute("SELECT source_row_id FROM observation ORDER BY source_row_id").fetchall()
+    conn.close()
+    return tables, rows
+
+
+def test_a1_declaration_failure_preserves_previous_observation(tmp_path):
+    """A-1: 1回目を成功させたあと、2回目を宣言表（period_exceptions.yaml）の
+    未使用エントリで失敗させる。前回の observation がそのまま残り、作業用
+    テーブル（observation__building）も残らない。
+    """
+    measurements_db = tmp_path / "ryuiki.sqlite"
+    registry_db = tmp_path / "registry.sqlite"
+    make_measurements_db(measurements_db)
+    make_registry_db(registry_db)
+    out = tmp_path / "v2.sqlite"
+
+    b03.build_and_write_observation(
+        measurements_db, registry_db, _no_exceptions_path(tmp_path), _no_conventions_path(tmp_path), out
+    )
+    before_tables, before_rows = _observation_tables_and_rows(out)
+    assert before_tables == ["observation"]
+
+    exceptions_yaml = tmp_path / "exceptions.yaml"
+    exceptions_yaml.write_text(
+        "never_appears:\n"
+        "  period_grain_override: fiscal_year\n"
+        "  reason: テスト\n"
+        "  restoration_plan: テスト\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(common.MigrationError, match="1件も該当しなかった"):
+        b03.build_and_write_observation(
+            measurements_db, registry_db, exceptions_yaml, _no_conventions_path(tmp_path), out
+        )
+
+    after_tables, after_rows = _observation_tables_and_rows(out)
+    assert after_tables == ["observation"], "作業用テーブルが残っている"
+    assert after_rows == before_rows, "前回の observation が変わってしまった"
+
+
+def test_a1_t1_invariant_failure_preserves_previous_observation(tmp_path, monkeypatch):
+    """A-1: 1回目を成功させたあと、2回目を T1 不変条件（時刻帯を持たない）
+    違反で失敗させる（`period.compute_period` をモンキーパッチして時刻帯
+    付きの period_start/period_end を混入させる）。前回の observation が
+    そのまま残り、作業用テーブルも残らない。
+    """
+    measurements_db = tmp_path / "ryuiki.sqlite"
+    registry_db = tmp_path / "registry.sqlite"
+    make_measurements_db(measurements_db)
+    make_registry_db(registry_db)
+    out = tmp_path / "v2.sqlite"
+
+    b03.build_and_write_observation(
+        measurements_db, registry_db, _no_exceptions_path(tmp_path), _no_conventions_path(tmp_path), out
+    )
+    before_tables, before_rows = _observation_tables_and_rows(out)
+
+    from migrate import period as period_mod
+
+    orig_compute_period = period_mod.compute_period
+
+    def broken_compute_period(*args, **kwargs):
+        grain, start, end = orig_compute_period(*args, **kwargs)
+        return grain, start + "+09:00", end + "+09:00"
+
+    monkeypatch.setattr(b03.period, "compute_period", broken_compute_period)
+
+    with pytest.raises(common.MigrationError, match="T1"):
+        b03.build_and_write_observation(
+            measurements_db, registry_db, _no_exceptions_path(tmp_path), _no_conventions_path(tmp_path), out
+        )
+
+    after_tables, after_rows = _observation_tables_and_rows(out)
+    assert after_tables == ["observation"], "作業用テーブルが残っている"
+    assert after_rows == before_rows, "前回の observation が変わってしまった"
+
+
+def test_a1_running_twice_successfully_does_not_collide_on_index_name(tmp_path):
+    """C-5 の検証用一意インデックスは使い捨て（張った直後に DROP する）。
+    固定名の索引を本番テーブルまで残すと2回目の実行が名前衝突で壊れるはず
+    ——2回連続で成功することを確認して、そうなっていないことを示す。
+    """
+    measurements_db = tmp_path / "ryuiki.sqlite"
+    registry_db = tmp_path / "registry.sqlite"
+    make_measurements_db(measurements_db)
+    make_registry_db(registry_db)
+    out = tmp_path / "v2.sqlite"
+
+    b03.build_and_write_observation(
+        measurements_db, registry_db, _no_exceptions_path(tmp_path), _no_conventions_path(tmp_path), out
+    )
+    # 2回目も例外を投げず成功すること（索引名の衝突があればここで
+    # sqlite3.OperationalError になる）。
+    all_stats = b03.build_and_write_observation(
+        measurements_db, registry_db, _no_exceptions_path(tmp_path), _no_conventions_path(tmp_path), out
+    )
+    assert all_stats["measurements"]["n_observation"] == 3
+    tables, _ = _observation_tables_and_rows(out)
+    assert tables == ["observation"]
+
+
+# ---------------------------------------------------------------------------
+# A-2: 重複行は IntegrityError ではなく MigrationError（件数・実例つき）
+# ---------------------------------------------------------------------------
+
+def test_a2_duplicate_rows_raise_migration_error_with_count_and_examples(tmp_path):
+    """A-2: `source_row_id` が複数行にマッチする（alias の解決が「関数」で
+    なくなっている）と、`sqlite3.IntegrityError`（以前は数えた後も挿入を
+    試みて主キー違反で落ちていた）ではなく、件数と実例を含む
+    `common.MigrationError` になる。
+    """
+    measurements_db = tmp_path / "ryuiki.sqlite"
+    registry_db = tmp_path / "registry.sqlite"
+    make_measurements_db(measurements_db)
+    # BOD/src_a に2つ目の alias を足し、m1/m2（どちらも BOD/src_a）を
+    # JOIN で2行にファンアウトさせる（本物の重複行ではなく、alias の解決が
+    # 「関数」でなくなるケース。b03 のモジュール docstring 参照）。
+    aliases = list(DEFAULT_ALIASES) + [
+        ("measurements", "BOD", "src_a", "common:variable:water.bod2", "common:unit:mg_per_l", None, "day"),
+    ]
+    make_registry_db(registry_db, aliases=aliases)
+
+    with pytest.raises(common.MigrationError, match=r"source_row_id が複数行にマッチした.*2件.*m1.*m2"):
+        b03.build_and_write_observation(
+            measurements_db, registry_db, _no_exceptions_path(tmp_path), _no_conventions_path(tmp_path),
+            tmp_path / "v2.sqlite",
+        )
