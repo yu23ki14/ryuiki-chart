@@ -123,7 +123,7 @@ import sqlite3
 
 from registry import common
 
-CROSSWALK_CSV = common.ROOT / "data" / "processed" / "taxon_crosswalk.csv"
+CROSSWALK_CSV = common.ROOT / common.TAXON_CROSSWALK_CSV_RELPATH
 VERNACULAR_CSV = common.ROOT / "registry" / "taxon" / "vernacular_ja.csv"
 
 

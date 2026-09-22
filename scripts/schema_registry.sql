@@ -165,3 +165,17 @@ CREATE TABLE IF NOT EXISTS caveat_scope (
 );
 CREATE INDEX IF NOT EXISTS ix_caveat_scope_scope ON caveat_scope(scope_kind, scope_ref);
 CREATE INDEX IF NOT EXISTS ix_caveat_scope_caveat ON caveat_scope(caveat_id);
+
+-- ビルドの指紋(phase-b/registry-atomic)。「在る」ことと「正しい」ことを区別するための
+-- 1行だけのメタ表。UNIQUE 制約は持たせず、r01 側の運用(INSERT 前に DELETE FROM)で
+-- 単一行を保証する(他の複合キーと同じく、この程度の不変条件のために表自体の設計を
+-- 複雑にしない)。web/src/db/schema-registry.ts(D1)には載せない: place_relation と同じ
+-- 理由で、D1 側に消費者がいない(この表を読むのは r01 --check-fresh だけ)。
+-- input_fingerprint は scripts/registry/common.py の compute_input_fingerprint()
+-- (ビルドの論理 + registry/ 配下の手書き入力から算出した sha256)。
+-- mode は 'full'(原本DBを読む通常ビルド) / 'files_only'(--files-only、CI用)。
+-- 実行時刻は持たない(決定論。他のキューブ生成物と同じ理由)。
+CREATE TABLE IF NOT EXISTS registry_build (
+  input_fingerprint TEXT NOT NULL,
+  mode TEXT NOT NULL
+);

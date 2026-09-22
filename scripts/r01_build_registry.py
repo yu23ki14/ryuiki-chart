@@ -39,46 +39,137 @@ caveat 221 件）が154 alias だけのスタブに黙って壊れて消える
 （`--files-only` の有無に関わらず。CI はこれで files-only 用のパスを指定する。
 `web/scripts/build-registry-ts.mjs` / `web/src/lib/registry/generated.test.ts` も
 同じ環境変数を見るので、CI では3箇所が同じファイルを指す）。
+
+## 書き込みの原子性（phase-b/registry-atomic）
+
+「在る」ことと「正しい」ことは区別する。以前は `common.create_registry_db()` が
+正規パスの既存ファイルを先に消してから作っていたため、ビルド中またはビルド後の
+チェック（`_assert_id_uniqueness` 等）で例外が出ると、前の正しいレジストリは
+既に消えており、壊れた（または半端な）ファイルが正規のパスに残った
+（`web/scripts/ensure-registry.sh` は「ファイルが在るか」しか見ないので、次の
+`db:setup` はその壊れたファイルを使い続ける——独立レビューで実際に踏まれた事故と
+同じ形）。
+
+現在は `common.registry_tmp_path()` が作る同じディレクトリの一時ファイル
+（`<正規パス>.tmp-<pid>`）にビルドし、全ステップと全チェックが通ってから
+`os.replace()`（同一ファイルシステム内なら原子的）で正規パスへ置き換える。
+途中で例外が出た場合は一時ファイルを消して正規パスには一切触れず、非0で終わる
+（`--files-only` も同じ経路を通る）。`create_registry_db()` の呼び出し自体も含めて
+try で囲んであり、スキーマ流し込みの失敗でも一時ファイルは残らない（fix 4）。
+起動のたびに、同じ正規パスに残った古い（既定1時間より前の）一時ファイルも
+まとめて掃除する（`common.cleanup_stale_tmp_files()`。SIGKILL/OOM 等で
+例外ハンドラも通らず残ったものが対象。PID の生死では判定しない——理由は
+そのdocstring参照）。
+
+## 「何から作ったか」の指紋（`--check-fresh`）
+
+ビルドが成功すると `registry_build(input_fingerprint, mode)` に1行書く
+（指紋は `common.compute_input_fingerprint()`、`mode` は `full`/`files_only`）。
+指紋はビルドの最初のステップより**前に1回だけ**計算する（fix 3）。以前はビルド後
+（各ステップが完了した後）に計算していたため、ビルド実行中（約4〜9秒）に
+`registry/variable.yaml` 等を編集すると、実際にはその場のステップは編集前の内容で
+走ったのに、記録される指紋は編集後の内容になり、以後ずっと「新鮮」と誤判定され
+続けるレースがあった。
+
+`--check-fresh` は `ryuiki`/`cells` を一切開かず・何も書かずに、対象レジストリの
+`registry_build` が「今の入力」と「期待する mode」に一致するかだけを判定して
+終了コードを返す。`web/scripts/ensure-registry.sh` はファイルの有無ではなくこの
+終了コードで作り直すかどうかを決める。
+
+**`derived.sqlite` は例外。** `full` モードの指紋には、build_place.py が実際に読む
+テーブル（`common.DERIVED_TABLES_READ`）の中身と `data/processed/taxon_crosswalk.csv`
+の中身も混ぜる（fix 2）。どちらも「読み取り専用だが再生成すれば値が変わりうる」
+入力であり、以前は指紋の対象外だったため、`derived.sqlite`/`taxon_crosswalk.csv`
+だけを作り直してもレジストリが「新鮮」のまま固まってしまっていた。ただし
+`derived.sqlite` の**ファイル全体**は開かない・ハッシュしない（449MB。読むのは
+2テーブルの SELECT 結果だけ）。`--files-only` はこの2つのどちらも開かない
+（`build_place.py`/`build_taxon.py` 自体を呼ばないため。CI が原本無しで動く要件を保つ）。
+
+**終了コードは3種類を区別する**（`web/scripts/ensure-registry.sh` がこれを読む）:
+
+- `EXIT_FRESH`（`0`）: 今の入力から作ったものと一致する。作り直さない。
+- `EXIT_STALE`（`10`）: 一致しない（ファイルが無い/古い/壊れている等）。作り直す。
+- **それ以外**（Python が起動できない・`--check-fresh` の実行自体が例外で落ちた等）:
+  **判定できない**。「古い」と誤読して作り直しに進むと、原因（例: PyYAML 未インストール）
+  が rebuild 側でも再現してそちらも落ち、`db:setup` 全体が止まる退行を生む
+  （実際に踏まれた事故。以前は本ファイルがモジュール読み込み時に無条件で PyYAML の
+  有無を確認しており、`--check-fresh` もこの分岐に巻き込まれて「非0」を返していた）。
+  そのため `--check-fresh` の実装は **PyYAML を一切 import しない**（yaml が要るのは
+  実際にビルドする4モジュールのうちの3つだけで、`--check-fresh` はそれらを import しない。
+  `_load_build_steps()` 参照）。`ensure-registry.sh` 側は「判定できない」場合、レジストリが
+  在るなら警告を出して今のファイルを使い続け（以前の挙動への退避）、無いなら作る。
 """
 import argparse
 import os
 import pathlib
+import sqlite3
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 REQUIREMENTS_TXT = ROOT / "requirements.txt"
 
-try:
-    import yaml  # noqa: F401  (build_*.py が実際に使う。ここでは有無だけ確認する)
-except ImportError:
-    sys.exit(
-        "PyYAML が見つからない。レジストリビルドの依存を先に入れる:\n"
-        f"  pip install -r {REQUIREMENTS_TXT}\n"
-        "（.venv を使っている場合は .venv/bin/pip install -r requirements.txt）"
-    )
-
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
+# `registry.common` は sqlite3/hashlib/os/re/pathlib/time だけに依存する（PyYAML 不要）。
+# `--check-fresh` はこのモジュールだけで完結するので、ここで import してよい
+# （fix 1: PyYAML の無い環境でも --check-fresh が動く条件）。
 from registry import common
-from registry.build_unit_variable import build as build_unit_variable
-from registry.build_place import build as build_place
-from registry.build_taxon import build as build_taxon
-from registry.build_caveat import build as build_caveat, build_from_files as build_caveat_from_files
 
 # 実行順序に依存関係は無い（PHASE_A.md §3: A-2/A-3/A-4/A-5 は独立）。
 # 並べ方はレポートの読みやすさのためだけ。
-STEPS = [
-    ("unit/variable/variable_alias (A-2)", build_unit_variable),
-    ("place/place_source_ref (A-3)", build_place),
-    ("taxon (A-4)", build_taxon),
-    ("caveat (A-5)", build_caveat),
-]
+#
+# `build_unit_variable`/`build_place`/`build_taxon`/`build_caveat` は PyYAML に依存する
+# （registry/*.yaml を読むため）。モジュール読み込み時に無条件で import すると
+# PyYAML の無い環境では `--check-fresh` まで巻き添えで起動できなくなる（fix 1 の
+# 退行そのもの）ため、実際にビルドするとき（`--check-fresh` ではないとき）だけ
+# `_load_build_steps()` が遅延 import して、この2つの module-level 変数を埋める。
+STEPS = None
+FILES_ONLY_STEPS = None
 
-# --files-only: 原本 DB を開かないので、src を受け取らない関数だけを実行する。
-FILES_ONLY_STEPS = [
-    ("unit/variable/variable_alias (A-2)", build_unit_variable),
-    ("caveat, ファイル由来のみ (A-5, --files-only)", lambda conn, _src: build_caveat_from_files(conn)),
-]
+
+def _require_pyyaml() -> None:
+    """実際にビルドするときだけ PyYAML の有無を確認する（分かりやすいエラーのため。
+    `--check-fresh` はこの関数を呼ばない）。"""
+    try:
+        import yaml  # noqa: F401
+    except ImportError:
+        sys.exit(
+            "PyYAML が見つからない。レジストリビルドの依存を先に入れる:\n"
+            f"  pip install -r {REQUIREMENTS_TXT}\n"
+            "（.venv を使っている場合は .venv/bin/pip install -r requirements.txt）"
+        )
+
+
+def _load_build_steps() -> None:
+    """STEPS / FILES_ONLY_STEPS を実際にビルドする時点で遅延構築する（fix 1）。
+
+    既に値が入っている変数は上書きしない（テストが
+    `monkeypatch.setattr(r01, "FILES_ONLY_STEPS", [...])` でこのリストを差し替えて
+    ビルド失敗ケースを作るため。二重に import しても実害は無いが、テストの
+    差し替えを踏みつぶさないためのガード）。
+    """
+    global STEPS, FILES_ONLY_STEPS
+    if STEPS is not None and FILES_ONLY_STEPS is not None:
+        return
+
+    from registry.build_unit_variable import build as build_unit_variable
+    from registry.build_place import build as build_place
+    from registry.build_taxon import build as build_taxon
+    from registry.build_caveat import build as build_caveat, build_from_files as build_caveat_from_files
+
+    if STEPS is None:
+        STEPS = [
+            ("unit/variable/variable_alias (A-2)", build_unit_variable),
+            ("place/place_source_ref (A-3)", build_place),
+            ("taxon (A-4)", build_taxon),
+            ("caveat (A-5)", build_caveat),
+        ]
+    if FILES_ONLY_STEPS is None:
+        # --files-only: 原本 DB を開かないので、src を受け取らない関数だけを実行する。
+        FILES_ONLY_STEPS = [
+            ("unit/variable/variable_alias (A-2)", build_unit_variable),
+            ("caveat, ファイル由来のみ (A-5, --files-only)", lambda conn, _src: build_caveat_from_files(conn)),
+        ]
 
 
 # PRIMARY KEY 列は SQLite が挿入時点で一意性を強制する（列の型が TEXT でも rowid alias
@@ -178,6 +269,78 @@ def _assert_region_id_scope_invariant(conn) -> None:
     print(f"  region_id 不変条件OK: {len(rows):,} 件（common:->NULL, <region>:-><region>）")
 
 
+# --check-fresh の終了コード（web/scripts/ensure-registry.sh が読む。fix 1）。
+# 0 でも EXIT_STALE でもない終了コード（Python が起動できない・--check-fresh 自体が
+# 例外で落ちた 等）は「判定できない」を表す——このモジュールはそれ用の定数を持たない
+# （`sys.exit(0/EXIT_STALE)` 以外の終了は「意図的な第3の状態」ではなく「本当に失敗した」
+# ことの表れなので、あえて名前を付けて正常系のように扱わない）。
+EXIT_FRESH = 0
+EXIT_STALE = 10
+
+
+# --check-fresh が「古い」と判定して EXIT_STALE を返す理由の1行メッセージは、
+# ensure-registry.sh のログにそのまま出る（「ryuiki/cells を開かない・登録先には
+# 何も書かない」ので、理由を人間が読める形で残しておかないと再ビルドのトリガーが
+# ブラックボックスになる）。
+def _check_fresh(target_db: pathlib.Path, expected_mode: str) -> int:
+    """`target_db` が「今の入力（コード + registry/ 配下 + [full モードのみ]
+    derived.sqlite の一部テーブル・taxon_crosswalk.csv）」と `expected_mode` から
+    作ったものと一致するかだけを判定する。`ryuiki`/`cells` は一切開かない。
+    `target_db` にも何も書かない。一致すれば `EXIT_FRESH`、そうでなければ理由を
+    1行 stderr に出し `EXIT_STALE`。
+
+    PyYAML を import しない（fix 1）。このため呼び出し元は `_load_build_steps()`
+    （PyYAML 依存の4モジュールを import する）より前に、この関数だけを呼べる。
+    """
+    if not target_db.exists():
+        print(f"registry.sqlite が無い: {target_db}", file=sys.stderr)
+        return EXIT_STALE
+
+    try:
+        conn = sqlite3.connect(f"file:{target_db}?mode=ro", uri=True)
+        try:
+            has_table = conn.execute(
+                "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='registry_build'"
+            ).fetchone()[0]
+            if not has_table:
+                print(
+                    f"registry_build テーブルが無い（指紋を持たない古いレジストリ）: {target_db}",
+                    file=sys.stderr,
+                )
+                return EXIT_STALE
+            row = conn.execute("SELECT input_fingerprint, mode FROM registry_build").fetchone()
+        finally:
+            conn.close()
+    except sqlite3.DatabaseError as exc:
+        print(f"registry.sqlite が読めない（壊れている可能性）: {target_db}（{exc}）", file=sys.stderr)
+        return EXIT_STALE
+
+    if row is None:
+        print(f"registry_build に行が無い: {target_db}", file=sys.stderr)
+        return EXIT_STALE
+
+    fingerprint, mode = row
+    if mode != expected_mode:
+        print(
+            f"mode が期待と違う（期待 {expected_mode!r}、実際 {mode!r}）: {target_db}",
+            file=sys.stderr,
+        )
+        return EXIT_STALE
+
+    expected_fingerprint = common.compute_input_fingerprint(mode=expected_mode)
+    if fingerprint != expected_fingerprint:
+        print(
+            "指紋が今の入力と一致しない（コード・registry/ 配下・"
+            "[full モードのみ] derived.sqlite/taxon_crosswalk.csv が変わった）: "
+            f"{target_db}（登録済み {fingerprint}、現在 {expected_fingerprint}）",
+            file=sys.stderr,
+        )
+        return EXIT_STALE
+
+    print(f"✔ 新鮮: {target_db}（mode={mode}, fingerprint={fingerprint}）")
+    return EXIT_FRESH
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument(
@@ -191,12 +354,42 @@ def main() -> None:
             f"（{common.FILES_ONLY_REGISTRY_DB.name}）にする。RYUIKI_REGISTRY_DB で上書き可。"
         ),
     )
+    parser.add_argument(
+        "--check-fresh",
+        action="store_true",
+        help=(
+            "ビルドせず、対象レジストリ（RYUIKI_REGISTRY_DB があればそれ、無ければ "
+            "--files-only の有無で決まる既定パス）が今の入力から作ったものかだけを判定する。"
+            "ryuiki/cells は開かない（full モードでは derived.sqlite の一部テーブルと "
+            "taxon_crosswalk.csv だけ読む。PyYAML は import しない）。一致すれば終了コード "
+            f"{EXIT_FRESH}、古ければ{EXIT_STALE}、判定できなければそれ以外"
+            "（web/scripts/ensure-registry.sh が使う）。"
+        ),
+    )
     args = parser.parse_args()
 
-    steps = FILES_ONLY_STEPS if args.files_only else STEPS
+    mode = common.MODE_FILES_ONLY if args.files_only else common.MODE_FULL
     default_db = common.FILES_ONLY_REGISTRY_DB if args.files_only else common.REGISTRY_DB
     env_override = os.environ.get("RYUIKI_REGISTRY_DB")
     target_db = pathlib.Path(env_override) if env_override else default_db
+
+    if args.check_fresh:
+        sys.exit(_check_fresh(target_db, mode))
+
+    # ここから下はビルド実行時だけ通る経路（PyYAML が要る）。
+    _require_pyyaml()
+    _load_build_steps()
+    steps = FILES_ONLY_STEPS if args.files_only else STEPS
+
+    # 起動のたびに、同じ正規パスに残った「十分古い」一時ファイル（他 PID・
+    # SIGKILL/OOM 由来）を掃除する（fix 4）。--check-fresh は何も書かないので
+    # この呼び出しより前で return 済み。
+    common.cleanup_stale_tmp_files(target_db)
+
+    # 指紋はここ（最初のステップより前）で1回だけ計算する（fix 3）。ビルド中に
+    # 入力が書き換わっても、記録される指紋は「ビルドが実際に使った内容」のまま
+    # であることを保証するため。
+    fingerprint = common.compute_input_fingerprint(mode=mode)
 
     if args.files_only:
         print(f"▶ --files-only: 原本 DB は開かない（正規の {common.REGISTRY_DB} には触れない）")
@@ -204,10 +397,21 @@ def main() -> None:
     else:
         print(f"▶ 原本を読み取り専用で開く: {common.DB_DIR}")
         src = common.open_sources()
-    print(f"▶ registry.sqlite を作り直す: {target_db}")
-    conn = common.create_registry_db(target_db)
 
+    tmp_db = common.registry_tmp_path(target_db)
+    if tmp_db.exists():
+        # 同じ PID を使い回した等の極端に稀なケースの後始末。正規ファイルではなく
+        # この実行専用の一時ファイルなので、消しても前回の正しいレジストリには影響しない。
+        common.remove_sqlite_file(tmp_db)
+    print(f"▶ 一時ファイルに作る（成功したら {target_db} へ置き換える）: {tmp_db}")
+
+    conn = None
     try:
+        # create_registry_db() 自体（スキーマ流し込み）の失敗も含めて try で囲む
+        # （fix 4）。以前はこの呼び出しが try の外にあり、ここで例外が出ると
+        # 一時ファイルの掃除にも src コネクションの close にも到達しなかった。
+        conn = common.create_registry_db(tmp_db)
+
         totals: dict[str, int] = {}
         for label, fn in steps:
             print(f"▶ {label}")
@@ -220,15 +424,33 @@ def main() -> None:
                 print(f"  {table}: {n:,} 行")
 
         grand_total = sum(totals.values())
-        print(f"完了: {len(totals)} テーブル / {grand_total:,} 行 -> {target_db}")
+        print(f"完了: {len(totals)} テーブル / {grand_total:,} 行")
 
         _assert_id_uniqueness(conn)
         _assert_id_references(conn)
         _assert_region_id_scope_invariant(conn)
+
+        conn.execute("DELETE FROM registry_build")
+        conn.execute(
+            "INSERT INTO registry_build (input_fingerprint, mode) VALUES (?, ?)",
+            (fingerprint, mode),
+        )
+        conn.commit()
+        print(f"▶ 指紋(registry_build): {fingerprint}（mode={mode}, ビルド開始前に計算）")
+    except BaseException:
+        # ビルド中でもチェック中でも、失敗したら一時ファイルを消して正規パスには
+        # 一切触れない（前の正しいレジストリをバイト単位で残す）。
+        if conn is not None:
+            conn.close()
+        common.remove_sqlite_file(tmp_db)
+        raise
     finally:
-        conn.close()
         for c in src.values():
             c.close()
+
+    conn.close()
+    os.replace(tmp_db, target_db)
+    print(f"▶ 正規パスへ置き換えた: {target_db}")
 
 
 if __name__ == "__main__":
