@@ -72,7 +72,9 @@ tuple 自体の一意性は保証していないため。実測では衝突0件�
 
 ## meas_year のピボット（design.md D5・D6）は変更なし
 
-## T4-3: `cube_day` を読む箇所の `stat='mean'` 絞り込み
+## T4-3: 日次セルを読む箇所の `stat='mean'` 絞り込み（旧称 `cube_day`。
+## b04 の C-1 でその名の一時テーブルは無くなったが、絞り込みの必要性自体は
+## 変わらない）
 
 `_MEAS_DAILY_SQL`/`_MEAS_MONTH_SQL` に `AND c.stat = 'mean'` を明示的に足した
 （b04 が日次セルに `mean`/`min`/`max`/`sum` の複数行を持つようになったため。
@@ -84,14 +86,14 @@ value_grain に `'month'` が無い）ため実害は無いが、将来の事故
 
 ## T6: 毎時→日次の正しさを機械で確かめる（`verify_hourly_daily_rollup`）
 
-`value_grain='hour'` の各系列・各日 D について、
-**キューブの日次セルの n = v1形（L2 のラベル日割り）の日 D の n
-− (日 D のラベル 00 時の件数) + (日 D+1 のラベル 00 時の件数)**
-が全日で成り立つことを検証する（時刻帯の9時間ずれ・日割りの誤りはこれで
-捕まる）。あわせて、系列ごとの全期間の Σn・min・max がキューブの日次セルと
-L2 で一致することも確認する。どちらも崩れていれば `MigrationError` で
-止まる（ゲートがこの経路を直接見なくなる——`sensor_daily` の毎時分はキューブを
-経由しないため——代わりの機械検証）。
+`value_grain='hour'` の各系列・各日について、キューブの日次セルの件数が
+v1形（L2 のラベル日割り）から期待される値と一致することを検証する（時刻帯の
+9時間ずれ・日割りの誤りはこれで捕まる）。あわせて、系列ごとの全期間の
+Σn・min・max がキューブの日次セルと L2 で一致することも確認する。**検証式の
+正は `verify_hourly_daily_rollup` の docstring**（D-1: 同じ式をここに書き
+下さない）。どちらも崩れていれば `MigrationError` で止まる（ゲートがこの
+経路を直接見なくなる——`sensor_daily` の毎時分はキューブを経由しないため
+——代わりの機械検証）。
 """
 from __future__ import annotations
 
@@ -112,7 +114,49 @@ DEFAULT_REGISTRY_DB = ROOT / "data" / "db" / "registry.sqlite"
 DEFAULT_OUT = ROOT / "data" / "db" / "v1_projection.sqlite"
 DEFAULT_BASELINE_JSON = ROOT / "reports" / "derived_baseline.json"
 
-_DIM_SELECT7 = "variable_id, grain, stat, unit_id"  # alias_lookup の元キー（dataset内）
+# B-5: `unit_lookup`/`obs_agg_keyed`/`label25_obs_keyed` の3箇所が同じ結合キー
+# （`(variable_id, value_grain, obs_stat, unit_id)` を `|` で連結したもの）を
+# 別々に書いていたものを1つに集約。`_alias_lookup_sql` の結合キー（`grain`/
+# `stat` — variable_alias 自身の列名）はこれとは別物（列名が違う）なので、
+# ここには含めない。
+_AKEY_EXPR = (
+    "variable_id || '|' || COALESCE(value_grain, '') || '|' || COALESCE(obs_stat, '') || '|' || "
+    "COALESCE(unit_id, '')"
+)
+
+
+def _gkey_expr(prefix: str = "") -> str:
+    """`year_keyed`/`day_keyed` が自己 JOIN のピボットに使う結合キー `gkey` の式
+    （B-5: 2箇所で同じ式が重複していたものを1つに）。`prefix` は列参照の
+    修飾子——`day_keyed` は `obs_agg_keyed` を別名 `c` で JOIN するため列名が
+    曖昧になり、`"c."` を渡す必要がある（`year_keyed` は単一テーブルからの
+    `SELECT *` なので不要、既定の `""` のまま）。
+    """
+    cols = ("place_id", "akey", "period_start", "input_grain")
+    return " || '|' || ".join(f"{prefix}{c}" for c in cols)
+
+
+# B-6: `day_keyed`（sensor_daily (a)。`input_grain` で絞る）と
+# `label25_obs_keyed`（sensor_daily (b)・rain_daily・sensor_hour_month・T6。
+# `value_grain` で絞る）は別々の列・別々の範囲を消費するが、どちらも
+# `build_projections` の `assert_alias_is_function(work, "sensor_timeseries",
+# grains=...)` が検証すべき「b05 が実際に読む grain」の一部を成す。以前は
+# 3箇所（この2つの SQL の WHERE 句と assert の `grains=` タプル）が手書きの
+# タプルとして独立に書かれていた。ここに1度だけ宣言し、SQL の WHERE も
+# assert の `grains=` もここから作る（jma_monthly の積雪 alias の表記ゆれ
+# （`grain='month'`）を射影が引きずらない、という今の意図は変えない——
+# 'month' はどちらの集合にも含めない）。
+_DAY_KEYED_INPUT_GRAINS = ("day", "instant")
+_LABEL25_VALUE_GRAINS = ("hour", "instant")
+_SENSOR_ALIAS_GRAINS = tuple(sorted(set(_DAY_KEYED_INPUT_GRAINS) | set(_LABEL25_VALUE_GRAINS)))
+
+
+def _sql_in_clause(values: tuple[str, ...]) -> str:
+    """`values`（このモジュール内の固定タプル。ユーザー入力ではない）を SQL の
+    `IN (...)` に埋め込む文字列にする（`scripts/b04_build_cube.py` の
+    `_ZERO_IMPUTED_IN_CLAUSE` と同じ考え方。バインドパラメータにしない）。
+    """
+    return ", ".join(f"'{v}'" for v in values)
 
 
 def _alias_lookup_sql(dataset: str) -> str:
@@ -146,8 +190,7 @@ def _unit_lookup_sql(source_table: str) -> str:
     """
     return f"""
     SELECT variable_id, value_grain, obs_stat, unit_id,
-           variable_id || '|' || COALESCE(value_grain, '') || '|' || COALESCE(obs_stat, '') || '|' ||
-           COALESCE(unit_id, '') AS akey,
+           {_AKEY_EXPR} AS akey,
            MAX(unit_raw) AS unit_raw
     FROM cube.observation
     WHERE source_table = '{source_table}'
@@ -156,11 +199,10 @@ def _unit_lookup_sql(source_table: str) -> str:
 
 
 # `observation_agg` 側にも同じ形の結合キーを持つ VIEW を張る（`c.akey` として参照）。
-_OBS_AGG_KEYED_VIEW_SQL = """
+_OBS_AGG_KEYED_VIEW_SQL = f"""
 CREATE TEMP VIEW obs_agg_keyed AS
 SELECT *,
-       variable_id || '|' || COALESCE(value_grain, '') || '|' || COALESCE(obs_stat, '') || '|' ||
-       COALESCE(unit_id, '') AS akey
+       {_AKEY_EXPR} AS akey
 FROM cube.observation_agg
 """
 
@@ -191,21 +233,42 @@ JOIN unit_lookup ul ON ul.akey = c.akey
 WHERE c.grain = 'month' AND c.stat = 'mean'
 """
 
-# 年次セルは stat ごとに別行（b04）。同じグループを1行にまとめるための結合キー。
-_MEAS_YEAR_SQL = """
-SELECT psr.external_key AS site_id, al.alias AS variable,
-       CASE WHEN m.input_grain = 'day' THEN 'daily' ELSE 'annual' END AS kind,
-       CAST(substr(m.period_start, 1, 4) AS INT) AS year,
-       m.n AS n, m.value AS avg, mn.value AS min, mx.value AS max,
-       m.n_censored AS n_censored, ul.unit_raw AS unit
-FROM year_keyed m
-JOIN year_keyed mn ON mn.gkey = m.gkey AND mn.stat = 'min'
-JOIN year_keyed mx ON mx.gkey = m.gkey AND mx.stat = 'max'
-JOIN unit_lookup ul ON ul.akey = m.akey
-JOIN place_lookup psr ON psr.place_id = m.place_id
-JOIN alias_lookup al ON al.akey = m.akey
-WHERE m.stat = 'mean'
-"""
+# B-5: `meas_year` と `sensor_daily`（キューブ由来の (a) 側）はどちらも同じ形
+# ——`stat IN ('mean','min','max')` の3行を `gkey` で自己 JOIN して1行に
+# ピボットし、`alias_lookup`/`unit_lookup`/`place_lookup` で v1 の名前に逆引き
+# する——で、`table`（`year_keyed`/`day_keyed`）・`alias_lookup`/`unit_lookup`
+# のテーブル名・`al.alias` の出力列名・テーブル固有の追加列だけが違う。
+# `extra_head`（`al.alias AS ...` の直後、`m.n` の前に足す列）・`extra_tail`
+# （`mx.value AS max` の直後、`unit` の前に足す列）で差分を表す。
+def _pivot_mean_min_max_sql(
+    table: str, alias_lookup: str, unit_lookup: str, alias_column: str,
+    extra_head: str = "", extra_tail: str = "",
+) -> str:
+    head = f"{extra_head}\n       " if extra_head else ""
+    tail = f"{extra_tail}, " if extra_tail else ""
+    return f"""
+    SELECT psr.external_key AS site_id, al.alias AS {alias_column},
+           {head}m.n AS n, m.value AS avg, mn.value AS min, mx.value AS max, {tail}ul.unit_raw AS unit
+    FROM {table} m
+    JOIN {table} mn ON mn.gkey = m.gkey AND mn.stat = 'min'
+    JOIN {table} mx ON mx.gkey = m.gkey AND mx.stat = 'max'
+    JOIN {unit_lookup} ul ON ul.akey = m.akey
+    JOIN place_lookup psr ON psr.place_id = m.place_id
+    JOIN {alias_lookup} al ON al.akey = m.akey
+    WHERE m.stat = 'mean'
+    """
+
+
+# 年次セルは stat ごとに別行（b04）。同じグループを1行にまとめるための結合キー
+# （`year_keyed`。`_materialize_lookup_tables` 参照）。
+_MEAS_YEAR_SQL = _pivot_mean_min_max_sql(
+    "year_keyed", "alias_lookup", "unit_lookup", "variable",
+    extra_head=(
+        "CASE WHEN m.input_grain = 'day' THEN 'daily' ELSE 'annual' END AS kind,\n"
+        "       CAST(substr(m.period_start, 1, 4) AS INT) AS year,"
+    ),
+    extra_tail="m.n_censored AS n_censored",
+)
 
 _MEAS_CLIM_SQL = """
 SELECT variable, CAST(substr(d, 6, 2) AS INT) AS month,
@@ -240,19 +303,13 @@ GROUP BY site_id, variable, kind
 # ---------------------------------------------------------------------------
 
 # (a) value_grain IN ('day', 'instant') はキューブの日次セルから（mean/min/max
-# をピボット）。`day_keyed` は `_materialize_lookup_tables` が sensor_alias_lookup
-# の akey に絞って作る（measurements の日次セル約141万行を無駄にスキャンしない）。
-_SENSOR_DAILY_FROM_CUBE_SQL = """
-SELECT psr.external_key AS site_id, al.alias AS datastream, m.period_start AS d,
-       m.n AS n, m.value AS avg, mn.value AS min, mx.value AS max, ul.unit_raw AS unit
-FROM day_keyed m
-JOIN day_keyed mn ON mn.gkey = m.gkey AND mn.stat = 'min'
-JOIN day_keyed mx ON mx.gkey = m.gkey AND mx.stat = 'max'
-JOIN sensor_unit_lookup ul ON ul.akey = m.akey
-JOIN place_lookup psr ON psr.place_id = m.place_id
-JOIN sensor_alias_lookup al ON al.akey = m.akey
-WHERE m.stat = 'mean'
-"""
+# をピボット。`_pivot_mean_min_max_sql`——B-5）。`day_keyed` は
+# `_materialize_lookup_tables` が sensor_alias_lookup の akey に絞って作る
+# （measurements の日次セル約141万行を無駄にスキャンしない）。
+_SENSOR_DAILY_FROM_CUBE_SQL = _pivot_mean_min_max_sql(
+    "day_keyed", "sensor_alias_lookup", "sensor_unit_lookup", "datastream",
+    extra_head="m.period_start AS d,",
+)
 
 # (b) value_grain='hour' は L2（observation）から、v1 のラベル日割り
 # （substr(period_raw,1,10)）で直接集計する（キューブを経由しない。D10 と
@@ -320,6 +377,45 @@ _TABLE_SQL = {
 }
 
 
+def _year_keyed_sql() -> str:
+    return f"""
+    CREATE TEMP TABLE year_keyed AS
+    SELECT *,
+           {_gkey_expr()} AS gkey
+    FROM obs_agg_keyed
+    WHERE grain IN ('year', 'fiscal_year')
+    """
+
+
+# sensor_daily (a) 用。sensor_alias_lookup の akey に絞って作る——measurements
+# の日次セル（約141万行）を無駄にスキャンしない（`obs_agg_keyed` を JOIN の
+# 時点で sensor 側の akey だけに絞り込む）。読む input_grain の範囲は
+# `_DAY_KEYED_INPUT_GRAINS`（B-6: SQL の WHERE と `assert_alias_is_function` の
+# `grains=` の両方をこの1つの定数から作る）。
+def _day_keyed_sql() -> str:
+    return f"""
+    CREATE TEMP TABLE day_keyed AS
+    SELECT c.*, {_gkey_expr("c.")} AS gkey
+    FROM obs_agg_keyed c
+    JOIN sensor_alias_lookup al ON al.akey = c.akey
+    WHERE c.grain = 'day' AND c.input_grain IN ({_sql_in_clause(_DAY_KEYED_INPUT_GRAINS)})
+    """
+
+
+# sensor_daily (b)・rain_daily・sensor_hour_month で共有する、25桁ラベル
+# （B-6: `_LABEL25_VALUE_GRAINS`）だけの一時テーブル。v1
+# （sensor_daily/rain_daily/sensor_hour_month）はどれもこの範囲の observation
+# をキューブを経由せず直接集計する（T5）。
+def _label25_obs_keyed_sql() -> str:
+    return f"""
+    CREATE TEMP TABLE label25_obs_keyed AS
+    SELECT *,
+           {_AKEY_EXPR} AS akey
+    FROM cube.observation
+    WHERE value_grain IN ({_sql_in_clause(_LABEL25_VALUE_GRAINS)})
+    """
+
+
 def _materialize_lookup_tables(work: sqlite3.Connection) -> None:
     """自動インデックスの効かない `IS`（NULL-safe）JOIN を、実体化した一時
     テーブル＋インデックスの通常の等値 JOIN に置き換える。`measurements`/
@@ -337,45 +433,13 @@ def _materialize_lookup_tables(work: sqlite3.Connection) -> None:
     work.execute(f"CREATE TEMP TABLE sensor_unit_lookup AS {_unit_lookup_sql('sensor_timeseries')}")
     work.execute("CREATE UNIQUE INDEX sensor_unit_lookup_akey ON sensor_unit_lookup (akey)")
 
-    work.execute(
-        """
-        CREATE TEMP TABLE year_keyed AS
-        SELECT *,
-               place_id || '|' || akey || '|' || period_start || '|' || input_grain AS gkey
-        FROM obs_agg_keyed
-        WHERE grain IN ('year', 'fiscal_year')
-        """
-    )
+    work.execute(_year_keyed_sql())
     work.execute("CREATE INDEX year_keyed_gkey_stat ON year_keyed (gkey, stat)")
 
-    # sensor_daily (a) 用。sensor_alias_lookup の akey に絞って作る——
-    # measurements の日次セル（約141万行）を無駄にスキャンしない
-    # （`obs_agg_keyed` を JOIN の時点で sensor 側の akey だけに絞り込む）。
-    work.execute(
-        """
-        CREATE TEMP TABLE day_keyed AS
-        SELECT c.*, c.place_id || '|' || c.akey || '|' || c.period_start || '|' || c.input_grain AS gkey
-        FROM obs_agg_keyed c
-        JOIN sensor_alias_lookup al ON al.akey = c.akey
-        WHERE c.grain = 'day' AND c.input_grain IN ('day', 'instant')
-        """
-    )
+    work.execute(_day_keyed_sql())
     work.execute("CREATE INDEX day_keyed_gkey_stat ON day_keyed (gkey, stat)")
 
-    # sensor_daily (b)・rain_daily・sensor_hour_month で共有する、25桁ラベル
-    # （value_grain IN ('hour','instant')）だけの一時テーブル。v1
-    # （sensor_daily/rain_daily/sensor_hour_month）はどれもこの範囲の
-    # observation をキューブを経由せず直接集計する（T5）。
-    work.execute(
-        """
-        CREATE TEMP TABLE label25_obs_keyed AS
-        SELECT *,
-               variable_id || '|' || COALESCE(value_grain, '') || '|' || COALESCE(obs_stat, '') || '|' ||
-               COALESCE(unit_id, '') AS akey
-        FROM cube.observation
-        WHERE value_grain IN ('hour', 'instant')
-        """
-    )
+    work.execute(_label25_obs_keyed_sql())
     work.execute("CREATE INDEX label25_obs_keyed_akey ON label25_obs_keyed (akey)")
 
     work.execute(
@@ -544,14 +608,24 @@ def verify_hourly_daily_rollup(work: sqlite3.Connection, sample_limit: int = 20)
     どちらか一方でも崩れていれば `common.MigrationError` で止まる。
     戻り値は検証した件数（レポート用）。`_materialize_lookup_tables` の後
     （`label25_obs_keyed`/`day_keyed` を使う）に呼ぶ。
+
+    C-4: `value_grain='hour'` の絞り込み（`label25_obs_keyed`）は以前、
+    日ごとの件数（v1形）用と系列ごとの全期間 Σn・min・max 用の2つの別クエリで
+    2回スキャンしていた。日ごとの集計に `MIN`/`MAX` を足して1回のスキャンで
+    済ませ、系列ごとの合計（Σn・min・max）はその日次結果から Python で
+    再集計する（Σn は日ごとの n の和、min/max は日ごとの min/max の
+    min/max——どちらも再スキャンせず正確に求まる。MIN/MAX は選択演算であり
+    加算のような丸め誤差が無いため、日次から再集計しても全期間を直接
+    スキャンした場合とビット単位で一致する）。
     """
-    # 日ごとの v1形の件数と、「ラベルが00:00:00（日をまたぐ24時ラベル）の件数」
-    # を同じクエリで求める。
+    # 日ごとの v1形の件数・「ラベルが00:00:00（日をまたぐ24時ラベル）の件数」・
+    # min/max を同じクエリで求める（C-4: 1回のスキャン）。
     v1_daily = work.execute(
         f"""
         SELECT {_HOUR_SERIES_DIM}, substr(period_raw, 1, 10) AS d,
                COUNT(*) AS n,
-               SUM(CASE WHEN substr(period_raw, 12, 8) = '00:00:00' THEN 1 ELSE 0 END) AS n_midnight
+               SUM(CASE WHEN substr(period_raw, 12, 8) = '00:00:00' THEN 1 ELSE 0 END) AS n_midnight,
+               MIN(value_num) AS vmin, MAX(value_num) AS vmax
         FROM label25_obs_keyed
         WHERE value_grain = 'hour' AND value_num IS NOT NULL
         GROUP BY {_HOUR_SERIES_DIM}, d
@@ -571,11 +645,20 @@ def verify_hourly_daily_rollup(work: sqlite3.Connection, sample_limit: int = 20)
 
     v1_n: dict[tuple, int] = {}
     v1_midnight: dict[tuple, int] = {}
+    # C-4: 系列ごとの全期間 Σn・min・max を、日次の行から再集計しながら作る
+    # （l2_totals を別クエリで取り直さない）。
+    l2_n: dict[tuple, int] = {}
+    l2_min: dict[tuple, float] = {}
+    l2_max: dict[tuple, float] = {}
     for row in v1_daily:
         key = row[:7]
         d = row[7]
-        v1_n[(key, d)] = row[8]
-        v1_midnight[(key, d)] = row[9]
+        n, n_midnight, vmin, vmax = row[8], row[9], row[10], row[11]
+        v1_n[(key, d)] = n
+        v1_midnight[(key, d)] = n_midnight
+        l2_n[key] = l2_n.get(key, 0) + n
+        l2_min[key] = vmin if key not in l2_min else min(l2_min[key], vmin)
+        l2_max[key] = vmax if key not in l2_max else max(l2_max[key], vmax)
 
     cube_n: dict[tuple, int] = {}
     for row in cube_daily:
@@ -600,15 +683,8 @@ def verify_hourly_daily_rollup(work: sqlite3.Connection, sample_limit: int = 20)
             "scripts/b04_build_cube.py の日割り（substr(period_start,1,10)）を確認すること。"
         )
 
-    # 系列ごとの全期間の Σn・min・max が一致すること。
-    l2_totals = work.execute(
-        f"""
-        SELECT {_HOUR_SERIES_DIM}, COUNT(*) AS n, MIN(value_num) AS vmin, MAX(value_num) AS vmax
-        FROM label25_obs_keyed
-        WHERE value_grain = 'hour' AND value_num IS NOT NULL
-        GROUP BY {_HOUR_SERIES_DIM}
-        """
-    ).fetchall()
+    # 系列ごとの全期間の Σn・min・max が一致すること。L2 側（`l2_by_key`）は
+    # 上で日次から再集計済み（C-4）——ここで label25_obs_keyed を読み直さない。
     cube_totals = work.execute(
         f"""
         SELECT {_HOUR_SERIES_DIM},
@@ -620,7 +696,7 @@ def verify_hourly_daily_rollup(work: sqlite3.Connection, sample_limit: int = 20)
         GROUP BY {_HOUR_SERIES_DIM}
         """
     ).fetchall()
-    l2_by_key = {row[:7]: row[7:] for row in l2_totals}
+    l2_by_key = {key: (l2_n[key], l2_min[key], l2_max[key]) for key in l2_n}
     cube_by_key = {row[:7]: row[7:] for row in cube_totals}
     total_mismatches = []
     for key in set(l2_by_key) | set(cube_by_key):
@@ -648,10 +724,12 @@ def build_projections(
         common.attach_readonly(work, cube_db, "cube")
         common.attach_readonly(work, registry_db, "reg")
         assert_alias_is_function(work, "measurements")
-        # b05 が実際に消費する grain（day/hour/instant）だけに絞る
-        # （assert_alias_is_function の docstring 参照。jma_monthly の
-        # 積雪3変数にある month 限定の alias 重複は射影対象外なので見ない）。
-        assert_alias_is_function(work, "sensor_timeseries", grains=("day", "hour", "instant"))
+        # b05 が実際に消費する grain（B-6: `_SENSOR_ALIAS_GRAINS`。
+        # day_keyed の input_grain 範囲と label25_obs_keyed の value_grain
+        # 範囲を合わせたもの）だけに絞る（assert_alias_is_function の
+        # docstring 参照。jma_monthly の積雪3変数にある month 限定の alias
+        # 重複は射影対象外なので見ない）。
+        assert_alias_is_function(work, "sensor_timeseries", grains=_SENSOR_ALIAS_GRAINS)
         assert_alias_tuple_maps_to_single_dataset(work)
         assert_unit_raw_is_function(work)
         _materialize_lookup_tables(work)

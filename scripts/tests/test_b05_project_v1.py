@@ -497,7 +497,41 @@ def test_verify_hourly_daily_rollup_function_directly():
             (*dim, "2020-01-01", "2020-01-01", "day", "hour", "max", 4.0, 4),
         ],
     )
-    import b05_project_v1 as b05_mod
-
-    stats = b05_mod.verify_hourly_daily_rollup(work)
+    stats = b05.verify_hourly_daily_rollup(work)
     assert stats["n_series_days_checked"] >= 1
+
+
+# ---------------------------------------------------------------------------
+# B-6: 読む grain の宣言（定数）と、実際に読む SQL の WHERE が一致していること
+# ---------------------------------------------------------------------------
+
+def test_sensor_alias_grains_is_the_union_of_day_keyed_and_label25_grains():
+    """`_SENSOR_ALIAS_GRAINS`（`assert_alias_is_function` に渡す grain 集合）が
+    `_DAY_KEYED_INPUT_GRAINS` と `_LABEL25_VALUE_GRAINS` の和集合そのもので
+    あることを確認する（3箇所が手書きのタプルとして食い違う事故を防ぐ）。
+    `'month'`（jma_monthly の積雪 alias の表記ゆれ）がどちらにも含まれない
+    ——射影が消費しない grain は検証対象に含めない——という意図も確認する。
+    """
+    assert set(b05._SENSOR_ALIAS_GRAINS) == set(b05._DAY_KEYED_INPUT_GRAINS) | set(b05._LABEL25_VALUE_GRAINS)
+    assert "month" not in b05._SENSOR_ALIAS_GRAINS
+
+
+def test_day_keyed_sql_where_matches_declared_grains():
+    """`_day_keyed_sql()` の WHERE 句が `_DAY_KEYED_INPUT_GRAINS` から作った
+    IN リストをそのまま含んでいる（SQL がこの定数から作られている——手書きの
+    別タプルに乖離していない）ことを、生成された SQL テキストを見て確認する。
+    """
+    sql = b05._day_keyed_sql()
+    assert f"c.input_grain IN ({b05._sql_in_clause(b05._DAY_KEYED_INPUT_GRAINS)})" in sql
+    for grain in b05._DAY_KEYED_INPUT_GRAINS:
+        assert f"'{grain}'" in sql
+
+
+def test_label25_obs_keyed_sql_where_matches_declared_grains():
+    """`_label25_obs_keyed_sql()` の WHERE 句が `_LABEL25_VALUE_GRAINS` から
+    作った IN リストをそのまま含んでいることを確認する（同上）。
+    """
+    sql = b05._label25_obs_keyed_sql()
+    assert f"value_grain IN ({b05._sql_in_clause(b05._LABEL25_VALUE_GRAINS)})" in sql
+    for grain in b05._LABEL25_VALUE_GRAINS:
+        assert f"'{grain}'" in sql
