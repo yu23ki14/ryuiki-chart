@@ -1,14 +1,37 @@
 #!/usr/bin/env python3
 """`observation_agg`（`data/db/v2.sqlite`、b04 が作ったキューブ）を v1 の派生
-テーブル形（`meas_daily`/`meas_month`/`meas_year`）に射影する
-（ADR-0016 Phase B「ファクトとキューブ」縦に薄い1本）。
+テーブル形（`meas_daily`/`meas_month`/`meas_year`/`meas_clim`/`site_var`/
+`var_catalog`）に射影する（ADR-0016 Phase B「ファクトとキューブ」縦に薄い1本。
+`measurements` 系の残り3テーブルへの拡張）。
 
     .venv/bin/python3 scripts/b05_project_v1.py
 
 `data/db/v1_projection.sqlite`（毎回ゼロから作り直す、専用の出力ファイル）に
-3テーブルを書く。列名・列順は `reports/derived_baseline.json` の記録と
+6テーブルを書く。列名・列順は `reports/derived_baseline.json` の記録と
 完全に一致させてある（`scripts/b02_derived_compare.py --tables
-meas_daily,meas_month,meas_year` がそのまま突き合わせられるように）。
+meas_daily,meas_month,meas_year,meas_clim,site_var,var_catalog` がそのまま
+突き合わせられるように）。
+
+## `meas_clim`/`site_var`/`var_catalog` はキューブのセルにしない（オーナー決定）
+
+`month`（1〜12、年をまたいで積む）や「全期間」の地点別要約は ADR-0011 の事前計算の軸
+（`grain ∈ {day, month, year, fiscal_year}`）に無く、`meas_clim` は ADR-0021 決定2が
+禁じる `obs_stat` の混合を行う（v1 の元々の集計仕様）ため、どちらも原理的にキューブの
+1セルになれない。理由の詳細・実測は `docs/plans/PHASE_B_FACT_SLICE.md` D10 を参照。
+
+## 逆引き済みの meas_daily/meas_year を1回だけ実体化して再集計する
+
+`meas_clim`/`var_catalog`/`site_var` の v1 SQL（`web/scripts/build-derived.mjs`）は
+それぞれ `meas_daily`/`meas_year` を `FROM` に取るだけの単純な再集計
+（`GROUP BY` の粒度を粗くするだけ）。`_materialize_lookup_tables` の直後
+（`_materialize_projection_tables`）で、逆引き済みの `_MEAS_DAILY_SQL`/
+`_MEAS_YEAR_SQL`（`alias_lookup`/`unit_lookup`/`place_lookup`/`year_keyed` を使う
+SELECT 文）をそれぞれ**1回だけ**一時テーブル（`meas_daily`/`meas_year`）に
+実体化し、6テーブルの出力（`meas_daily`/`meas_year` 自身の出力を含む）と3つの
+再集計はすべてそこから読む。テキストのままサブクエリに埋め込むと `meas_daily`
+の結合が2回・`meas_year` の結合＋ピボットが3回計算し直しになる
+（`alias_lookup`/`unit_lookup`/`year_keyed` を実体化しているのと同じ理由で、
+ここも埋め込まず実体化する）。
 
 ## 数値はキューブから、ラベルは引き戻しで
 
@@ -161,10 +184,56 @@ JOIN alias_lookup al ON al.akey = m.akey
 WHERE m.stat = 'mean'
 """
 
+# v1 の `meas_clim` は `FROM meas_daily GROUP BY variable, month`
+# （`web/scripts/build-derived.mjs` の 95行目付近）。`meas_daily`（実体化済みの
+# 一時テーブル。`_materialize_projection_tables` 参照）をそのまま `FROM` に使う
+# （列名 variable/d/value/unit は `_MEAS_DAILY_SQL` の出力そのもの。上の
+# モジュール docstring 参照）。`site_id` が GROUP BY に無い＝出典・地点をまたいで
+# 同じ alias 文字列を混ぜる（v1 と同じ挙動をそのまま再現する。実測は
+# docs/plans/PHASE_B_FACT_SLICE.md §6）。
+_MEAS_CLIM_SQL = """
+SELECT variable, CAST(substr(d, 6, 2) AS INT) AS month,
+       COUNT(*) AS n, AVG(value) AS avg,
+       MIN(value) AS min, MAX(value) AS max, MAX(unit) AS unit
+FROM meas_daily
+GROUP BY variable, month
+"""
+
+# v1 の `var_catalog`/`site_var` は両方とも `FROM meas_year GROUP BY ...`
+# （`web/scripts/build-derived.mjs` の125〜150行目付近）。`meas_year`（実体化済みの
+# 一時テーブル）をそのまま `FROM` に使う（列名 site_id/variable/kind/year/n/avg/
+# min/max/n_censored/unit は `_MEAS_YEAR_SQL` の出力そのもの）。
+_VAR_CATALOG_SQL = """
+SELECT variable,
+       MAX(unit) AS unit,
+       SUM(n) AS n,
+       COUNT(DISTINCT site_id) AS n_sites,
+       MIN(year) AS y_from, MAX(year) AS y_to,
+       SUM(CASE WHEN kind = 'daily' THEN n ELSE 0 END) AS n_daily,
+       SUM(CASE WHEN kind = 'annual' THEN n ELSE 0 END) AS n_annual,
+       SUM(n_censored) AS n_censored
+FROM meas_year
+GROUP BY variable
+"""
+
+_SITE_VAR_SQL = """
+SELECT site_id, variable, kind, SUM(n) AS n, MIN(year) AS y_from, MAX(year) AS y_to,
+       AVG(avg) AS avg, MAX(unit) AS unit
+FROM meas_year
+GROUP BY site_id, variable, kind
+"""
+
+# `meas_daily`/`meas_year` の出力そのものは、実体化した一時テーブルをそのまま
+# 読み返すだけでよい（`_materialize_projection_tables` が `CREATE TEMP TABLE
+# meas_daily/meas_year AS _MEAS_DAILY_SQL/_MEAS_YEAR_SQL` で作る時点で、列名・
+# 列順は `_MEAS_DAILY_SQL`/`_MEAS_YEAR_SQL` の SELECT リストのまま）。
 _TABLE_SQL = {
-    "meas_daily": _MEAS_DAILY_SQL,
+    "meas_daily": "SELECT * FROM meas_daily",
     "meas_month": _MEAS_MONTH_SQL,
-    "meas_year": _MEAS_YEAR_SQL,
+    "meas_year": "SELECT * FROM meas_year",
+    "meas_clim": _MEAS_CLIM_SQL,
+    "site_var": _SITE_VAR_SQL,
+    "var_catalog": _VAR_CATALOG_SQL,
 }
 
 
@@ -215,6 +284,24 @@ def _materialize_lookup_tables(work: sqlite3.Connection) -> None:
             "決まらない。place_source_ref 側の重複を解消してから再実行すること。"
         )
     work.execute("CREATE UNIQUE INDEX place_lookup_place_id ON place_lookup (place_id)")
+
+
+def _materialize_projection_tables(work: sqlite3.Connection) -> None:
+    """逆引き済みの `meas_daily`/`meas_year`（`_MEAS_DAILY_SQL`/`_MEAS_YEAR_SQL`）を
+    それぞれ1回だけ一時テーブルに実体化する（`_materialize_lookup_tables` の直後に
+    呼ぶ。同じ手法の延長——`alias_lookup`/`unit_lookup`/`year_keyed` を実体化して
+    いるのと同じ理由）。
+
+    `meas_clim` は `meas_daily` を、`site_var`/`var_catalog` は `meas_year` を
+    再集計するだけ（v1 の `web/scripts/build-derived.mjs` も同じ形）だが、
+    以前はそれぞれの SELECT 文をテキストのままサブクエリに埋め込んでいたため、
+    `meas_daily` の逆引き結合を2回、`meas_year` の逆引き結合＋ピボットを3回
+    計算し直していた（実測: 重複ぶん約2.7秒）。ここで1回だけ計算して一時テーブル
+    に置き、`_TABLE_SQL` の6エントリ（`meas_daily`/`meas_year` の出力そのものを
+    含む）はすべてこの一時テーブルを読む。
+    """
+    work.execute(f"CREATE TEMP TABLE meas_daily AS {_MEAS_DAILY_SQL}")
+    work.execute(f"CREATE TEMP TABLE meas_year AS {_MEAS_YEAR_SQL}")
 
 
 def assert_alias_is_function(work) -> None:
@@ -322,6 +409,7 @@ def build_projections(
         assert_alias_is_function(work)
         assert_unit_raw_is_function(work)
         _materialize_lookup_tables(work)
+        _materialize_projection_tables(work)
         out = {}
         for table, sql in _TABLE_SQL.items():
             cur = work.execute(sql)
@@ -345,6 +433,18 @@ _CREATE_SQL = {
     "meas_year": (
         "CREATE TABLE meas_year (site_id TEXT, variable TEXT, kind TEXT, year INTEGER, "
         "n INTEGER, avg REAL, min REAL, max REAL, n_censored INTEGER, unit TEXT)"
+    ),
+    "meas_clim": (
+        "CREATE TABLE meas_clim (variable TEXT, month INTEGER, n INTEGER, avg REAL, "
+        "min REAL, max REAL, unit TEXT)"
+    ),
+    "site_var": (
+        "CREATE TABLE site_var (site_id TEXT, variable TEXT, kind TEXT, n INTEGER, "
+        "y_from INTEGER, y_to INTEGER, avg REAL, unit TEXT)"
+    ),
+    "var_catalog": (
+        "CREATE TABLE var_catalog (variable TEXT, unit TEXT, n INTEGER, n_sites INTEGER, "
+        "y_from INTEGER, y_to INTEGER, n_daily INTEGER, n_annual INTEGER, n_censored INTEGER)"
     ),
 }
 
