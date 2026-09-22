@@ -34,6 +34,7 @@ Architecture Decision Record。1ファイル＝1決定。**背景・決定・根
 | [0019](0019-taxon-registry.md) | 分類群レジストリと分類カテゴリの表記ゆれの扱い | 提案中 |
 | [0020](0020-freshness-rebuild.md) | 更新方式・鮮度・再ビルド運用 | 提案中 |
 | [0021](0021-observation-grain-and-cube-key.md) | 粒度は「値の粒度」と「日付の精度」に分け、キューブは入力の統計量と粒度を鍵に含める | 提案中 |
+| [0022](0022-place-region-scope.md) | `place.region_id` は ID のスコープと一致させ、所在は `place_relation` の辺で表す | 提案中 |
 
 ### 未着手（この順で書く予定）
 

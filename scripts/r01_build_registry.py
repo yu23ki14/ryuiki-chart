@@ -1,5 +1,6 @@
 """語彙レジストリ（unit / variable / variable_alias / place / place_source_ref /
-taxon / caveat）を data/db/registry.sqlite として生成する（docs/plans/PHASE_A.md §A-1）。
+place_relation / taxon / caveat）を data/db/registry.sqlite として生成する
+（docs/plans/PHASE_A.md §A-1、place_relation は Phase B `phase-b/region-scope`、ADR-0022）。
 
     .venv/bin/python3 scripts/r01_build_registry.py
     .venv/bin/python3 scripts/r01_build_registry.py --files-only
@@ -18,8 +19,10 @@ D1 は「捨てて再構築できる」もの — ADR-0001）。
 
 原本 DB（`ryuiki`/`cells`/`derived`）を一切開かず、`registry/` 配下の手書きファイルと
 `build_caveat.py` の Python 定数だけから作れる部分（`unit`/`variable`/`variable_alias`
-と、ファイル由来の `caveat`/`caveat_scope`）だけを作るモード。`place`/`taxon`、および
-`cells.notes`/`place`/`taxon` 由来の `caveat` は作らない（それらのテーブルは空のまま）。
+と、ファイル由来の `caveat`/`caveat_scope`）だけを作るモード。`place`/`place_relation`/
+`taxon`、および `cells.notes`/`place`/`taxon` 由来の `caveat` は作らない（それらのテーブルは
+空のまま。`place_relation` は `place` 経由でしか作れない辺なので、`place` を作らない
+このモードでは当然に空になる）。
 CI がこのモードで registry.sqlite を作り、`web/scripts/build-registry-ts.mjs` で
 `generated.ts`/`generated-client.ts` を再生成して `git diff --exit-code` することで、
 レジストリ（手書きファイル）と生成物のずれを検出する。原本 DB が存在しない環境
@@ -82,24 +85,39 @@ FILES_ONLY_STEPS = [
 # ではない PK には暗黙の UNIQUE index が張られる）ので、ここでの assert は理論上
 # 冗長ではある。それでも「4モジュールが同じ DB に同居したときの主キー衝突」を
 # ビルドの最後に明示的に検証しておく（統合作業の受け入れ基準）。
+# column は単一列（str）のほか、複合キー（tuple）も受け付ける（PRIMARY KEY / UNIQUE
+# 制約が無い複合キー、例: place_relation の (parent_id, child_id, relation) を
+# 専用関数ではなくこの宣言リストで表すため）。
 ID_UNIQUENESS_CHECKS = [
     ("unit", "unit_id"),
     ("variable", "variable_id"),
     ("place", "place_id"),
     ("taxon", "taxon_id"),
     ("caveat", "caveat_id"),
+    ("place_relation", ("parent_id", "child_id", "relation")),
 ]
 
 
 def _assert_id_uniqueness(conn) -> None:
     for table, column in ID_UNIQUENESS_CHECKS:
-        total = conn.execute(f"SELECT count({column}) FROM {table}").fetchone()[0]
-        distinct = conn.execute(f"SELECT count(DISTINCT {column}) FROM {table}").fetchone()[0]
+        # SQLite の count(DISTINCT a, b) は使えない（DISTINCT は集約関数の引数1個にしか
+        # 掛からない）ので、複合キーは「SELECT count(*) FROM (SELECT DISTINCT ... FROM t)」
+        # の形で組み立てる。単一列でも同じ式で total/distinct とも求まる。
+        cols = (column,) if isinstance(column, str) else column
+        collist = ", ".join(cols)
+        total = conn.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+        distinct = conn.execute(
+            f"SELECT count(*) FROM (SELECT DISTINCT {collist} FROM {table})"
+        ).fetchone()[0]
         if total != distinct:
+            label = f"{table}.{collist}" if isinstance(column, str) else f"{table}({collist})"
             raise AssertionError(
-                f"{table}.{column} が一意ではない: {total:,}行中 distinct は {distinct:,}"
+                f"{label} が一意ではない: {total:,}行中 distinct は {distinct:,}"
             )
-        print(f"  一意性OK: {table}.{column} ({distinct:,})")
+        if isinstance(column, str):
+            print(f"  一意性OK: {table}.{collist} ({distinct:,})")
+        else:
+            print(f"  一意性OK: {table}({collist}) ({distinct:,})")
 
 
 # 外部キーが親テーブルの主キーを指しているかの検証（/simplify 指摘A: 同型の参照整合性
@@ -116,6 +134,8 @@ ID_REFERENCE_CHECKS = [
     ("variable_alias", "variable_id", "variable", "variable_id"),
     ("caveat_scope", "caveat_id", "caveat", "caveat_id"),
     ("place_source_ref", "place_id", "place", "place_id"),
+    ("place_relation", "parent_id", "place", "place_id"),
+    ("place_relation", "child_id", "place", "place_id"),
 ]
 
 
@@ -132,6 +152,30 @@ def _assert_id_references(conn) -> None:
                 f"{missing:,} 件ある"
             )
         print(f"  参照整合性OK: {child}.{fk_col} -> {parent}.{pk_col}")
+
+
+# place.region_id は place_id 自身のスコープ（<scope>:place:...）と一致していなければ
+# ならない（ADR-0022 決定1）。common.region_id_for_scoped_id() を通した値だけが入る
+# 設計だが、build_place.py 以外の経路（将来の別モジュール・手動の INSERT）が
+# この不変条件を破っていないかを、生成後の DB に対して機械的に検証する。
+# 期待値の算出は common.region_id_for_scoped_id() 自体を使う（自前で再実装すると
+# 規則が二重管理になるうえ、こちらの方が発行側より緩くなりうる。実際 place_id に
+# ':' が無い壊れた行を common.scope_of() は ValueError で止めるが、split(":", 1)[0]
+# は黙って ID 全体をスコープ扱いしていた）。
+def _assert_region_id_scope_invariant(conn) -> None:
+    rows = conn.execute("SELECT place_id, region_id FROM place").fetchall()
+    bad = []
+    for place_id, region_id in rows:
+        expected = common.region_id_for_scoped_id(place_id)
+        if region_id != expected:
+            bad.append((place_id, region_id, expected))
+    if bad:
+        sample = "; ".join(f"{p!r}(region_id={r!r}, 期待={e!r})" for p, r, e in bad[:10])
+        raise AssertionError(
+            f"place.region_id が place_id のスコープと一致しない行が {len(bad):,} 件ある"
+            f"（ADR-0022 決定1）。例: {sample}"
+        )
+    print(f"  region_id 不変条件OK: {len(rows):,} 件（common:->NULL, <region>:-><region>）")
 
 
 def main() -> None:
@@ -180,6 +224,7 @@ def main() -> None:
 
         _assert_id_uniqueness(conn)
         _assert_id_references(conn)
+        _assert_region_id_scope_invariant(conn)
     finally:
         conn.close()
         for c in src.values():
