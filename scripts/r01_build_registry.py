@@ -71,18 +71,23 @@ try で囲んであり、スキーマ流し込みの失敗でも一時ファイ�
 走ったのに、記録される指紋は編集後の内容になり、以後ずっと「新鮮」と誤判定され
 続けるレースがあった。
 
-`--check-fresh` は `ryuiki`/`cells` を一切開かず・何も書かずに、対象レジストリの
-`registry_build` が「今の入力」と「期待する mode」に一致するかだけを判定して
-終了コードを返す。`web/scripts/ensure-registry.sh` はファイルの有無ではなくこの
-終了コードで作り直すかどうかを決める。
+`--check-fresh` は何も書かず、対象レジストリの `registry_build` が「今の入力」と
+「期待する mode」に一致するかだけを判定して終了コードを返す。`cells` は一切開かない。
+`ryuiki` は `mode='full'` のときだけ、`organism_records` の軽い代理指標を読むために
+一瞬だけ開く（次の段落参照。実測で合計約5ms）。`web/scripts/ensure-registry.sh` は
+ファイルの有無ではなくこの終了コードで作り直すかどうかを決める。
 
-**`derived.sqlite` は例外。** `full` モードの指紋には、build_place.py が実際に読む
-テーブル（`common.DERIVED_TABLES_READ`）の中身と `data/processed/taxon_crosswalk.csv`
-の中身も混ぜる（fix 2）。どちらも「読み取り専用だが再生成すれば値が変わりうる」
-入力であり、以前は指紋の対象外だったため、`derived.sqlite`/`taxon_crosswalk.csv`
-だけを作り直してもレジストリが「新鮮」のまま固まってしまっていた。ただし
-`derived.sqlite` の**ファイル全体**は開かない・ハッシュしない（449MB。読むのは
-2テーブルの SELECT 結果だけ）。`--files-only` はこの2つのどちらも開かない
+**`derived.sqlite`/`ryuiki.sqlite` は例外。** `full` モードの指紋には、build_place.py
+が実際に読むテーブル（`common.DERIVED_TABLES_READ`）の中身、
+`data/processed/taxon_crosswalk.csv` の中身、`ryuiki.organism_records` の軽い代理指標
+（行数・最大rowid。grid01 の入力が `derived.mesh_all` から `organism_records` に
+変わったための追加。`common.py` の `_hash_organism_records_freshness()` docstring
+参照）も混ぜる（fix 2、phase-b/occurrence-registry）。いずれも「読み取り専用だが
+再生成・追記すれば値が変わりうる」入力であり、以前は指紋の対象外だったため、
+これらだけを更新してもレジストリが「新鮮」のまま固まってしまっていた。ただし
+`derived.sqlite`/`ryuiki.sqlite` の**ファイル全体**は開かない・ハッシュしない
+（449MB/828MB。読むのは `derived.sqlite` の2テーブルの SELECT 結果と、
+`ryuiki.sqlite` の軽い集約2つだけ）。`--files-only` はこの3つのどれも開かない
 （`build_place.py`/`build_taxon.py` 自体を呼ばないため。CI が原本無しで動く要件を保つ）。
 
 **終了コードは3種類を区別する**（`web/scripts/ensure-registry.sh` がこれを読む）:
@@ -279,15 +284,16 @@ EXIT_STALE = 10
 
 
 # --check-fresh が「古い」と判定して EXIT_STALE を返す理由の1行メッセージは、
-# ensure-registry.sh のログにそのまま出る（「ryuiki/cells を開かない・登録先には
-# 何も書かない」ので、理由を人間が読める形で残しておかないと再ビルドのトリガーが
-# ブラックボックスになる）。
+# ensure-registry.sh のログにそのまま出る（登録先には何も書かないので、理由を
+# 人間が読める形で残しておかないと再ビルドのトリガーがブラックボックスになる）。
 def _check_fresh(target_db: pathlib.Path, expected_mode: str) -> int:
     """`target_db` が「今の入力（コード + registry/ 配下 + [full モードのみ]
-    derived.sqlite の一部テーブル・taxon_crosswalk.csv）」と `expected_mode` から
-    作ったものと一致するかだけを判定する。`ryuiki`/`cells` は一切開かない。
-    `target_db` にも何も書かない。一致すれば `EXIT_FRESH`、そうでなければ理由を
-    1行 stderr に出し `EXIT_STALE`。
+    derived.sqlite の一部テーブル・taxon_crosswalk.csv・ryuiki.organism_records の
+    軽い代理指標）」と `expected_mode` から作ったものと一致するかだけを判定する。
+    `cells` は一切開かない。`ryuiki` は full モードのときだけ軽い集約2つのために
+    一瞬だけ開く（実測で合計約5ms。`common._hash_organism_records_freshness()`
+    docstring 参照）。`target_db` にも何も書かない。一致すれば `EXIT_FRESH`、
+    そうでなければ理由を1行 stderr に出し `EXIT_STALE`。
 
     PyYAML を import しない（fix 1）。このため呼び出し元は `_load_build_steps()`
     （PyYAML 依存の4モジュールを import する）より前に、この関数だけを呼べる。
@@ -360,8 +366,9 @@ def main() -> None:
         help=(
             "ビルドせず、対象レジストリ（RYUIKI_REGISTRY_DB があればそれ、無ければ "
             "--files-only の有無で決まる既定パス）が今の入力から作ったものかだけを判定する。"
-            "ryuiki/cells は開かない（full モードでは derived.sqlite の一部テーブルと "
-            "taxon_crosswalk.csv だけ読む。PyYAML は import しない）。一致すれば終了コード "
+            "cells は開かない（full モードでは derived.sqlite の一部テーブルと "
+            "taxon_crosswalk.csv、ryuiki.organism_records の軽い代理指標だけ読む。"
+            "PyYAML は import しない）。一致すれば終了コード "
             f"{EXIT_FRESH}、古ければ{EXIT_STALE}、判定できなければそれ以外"
             "（web/scripts/ensure-registry.sh が使う）。"
         ),

@@ -118,29 +118,29 @@ CREATE TABLE IF NOT EXISTS place_source_ref (
 CREATE INDEX IF NOT EXISTS ix_place_source_ref_external ON place_source_ref(external_key);
 CREATE INDEX IF NOT EXISTS ix_place_source_ref_place ON place_source_ref(place_id);
 
--- 分類群レジストリ(ADR-0019)。taxon_id は出典ごとに名前空間を分ける
--- (phase-b/occurrence-registry, F1, ADR-0019 追記): GBIF 由来は
--- common:taxon:gbif.<GBIFのtaxonKey>、iNaturalist 由来は common:taxon:inat.<iNatのtaxon.id>
--- (GBIF の taxonKey とは無関係な別の数値空間。以前は両方を gbif.<key> に混ぜており、
--- 偶然同じ数値を持つ9件が衝突していた)、taxa(v1)由来で GBIF 未照合のものは
--- common:taxon:ryuiki-taxa.<taxa の主キー>。gbif_taxon_key 列は本物の GBIF taxonKey の
--- ときだけ埋める(iNat 由来行は常に NULL。iNat の ID は taxon_id 自体にしか持たせない)。
+-- 分類群レジストリ(ADR-0019。taxon_id の名前空間分割・分類補完は Phase B
+-- phase-b/occurrence-registry。決定と理由の正は ADR-0019 の日付付き追記、
+-- 実測の正は docs/plans/PHASE_B_OCCURRENCE.md。ここには列の意味だけ書く)。
+--
+-- taxon_id は出典ごとに名前空間を分ける: GBIF 由来は common:taxon:gbif.<GBIFのtaxonKey>、
+-- iNaturalist 由来は common:taxon:inat.<iNatのtaxon.id>(GBIFのtaxonKeyとは無関係な
+-- 別の数値空間)、taxa(v1)由来で GBIF 未照合のものは common:taxon:ryuiki-taxa.<taxaの主キー>。
+-- 名前空間の対応の正は scripts/common.py の TAXON_KEY_SOURCE_NAMESPACE。
+-- gbif_taxon_key 列は本物の GBIF taxonKey のときだけ埋める(iNat 由来行は常に NULL)。
 -- accepted_taxon_id は status='synonym' のときに正の taxon を指す
 -- (ADR-0004 規約2: ID は不変、実体が変わったら新 ID を作り旧 ID は残す)。
 --
--- kingdom/phylum/class/order/family と classification_basis
--- (phase-b/occurrence-registry, F2): v1 (web/scripts/build-biota.mjs の
--- org_norm 生成部)の分類補完規則をレジストリのビルダー側に移した。
--- classification_basis は class の解決経路 ('source'=出典が直接持つ /
+-- kingdom/phylum/class/order/family/classification_basis/canonical_binomial/
+-- taxon_group は v1 (org_norm) の分類補完規則を taxon 単位でレジストリのビルダー側に
+-- 移したもの。classification_basis は class の解決経路 ('source'=出典が直接持つ /
 -- 'binomial_match'=同じ二名法キーの他記録からの多数決 /
--- 'genus_match'=同じ属の他記録からの多数決 / 'unresolved'=解決不能)。
--- order/family は多数決による補完をしない(v1 も補完していない。出典の値のみ)。
--- canonical_binomial は学名の先頭2語(v1の BINOM と同じ規則)。
--- taxon_group は registry/taxon/taxon_group.yaml (v1の TAXON_GROUP を移したもの)
--- から機械的に生成した日本語ラベル。
--- status は 'accepted' / 'unresolved' に加え、分類の多数決が同数で決定論的な
--- タイブレーク規則に頼った taxon だけ 'needs_review' を持つ
--- (scripts/registry/build_taxon.py 参照。実測では1件)。
+-- 'genus_match'=同じ属の他記録からの多数決 / 'no_match'=解決不能。
+-- taxon.status='unresolved' と紛らわしいため 'unresolved' から改名)。
+-- order/family は多数決による補完をしない。taxon_group は
+-- registry/taxon/taxon_group.yaml から機械的に生成した日本語ラベル。
+-- status は 'accepted'/'unresolved' に加え、分類の多数決が不確か(同数、または
+-- 属が複数classにまたがる)な taxon だけ 'needs_review' を持つ(accepted/unresolved
+-- どちらの行にも起こりうる)。
 CREATE TABLE IF NOT EXISTS taxon (
   taxon_id TEXT PRIMARY KEY,
   scientific_name TEXT,

@@ -240,6 +240,33 @@ DERIVED_TABLES_READ = (DERIVED_TABLE_WATERSHED_META,)
 # 側）がこの宣言を共有する（指紋の対象とビルドが実際に読むファイルがずれる穴を防ぐため）。
 TAXON_CROSSWALK_CSV_RELPATH = pathlib.PurePosixPath("data/processed/taxon_crosswalk.csv")
 
+# grid01（build_place.py）の入力が derived.mesh_all から ryuiki.organism_records の
+# 座標に変わったことで抜けた鮮度検知の穴を塞ぐ軽い代理指標（phase-b/occurrence-registry
+# code-review 指摘7）。以前は grid01 が derived.mesh_all（DERIVED_TABLES_READ 経由で
+# 指紋の対象）を読んでいたので、「集計 DB 生成」（`pnpm run build:derived`）を挟む
+# 標準手順（CLAUDE.md）が間接的に鮮度を伝播させていた。organism_records を直接読む
+# ようになった今、その経路が無い。
+#
+# `ryuiki.sqlite`/`cells.sqlite` を mode に関わらず指紋に含めない既存方針
+# （compute_input_fingerprint() docstring 参照）はそのまま維持しつつ、grid01 が
+# 実際に読む organism_records だけ、内容全体ではなく「行数」と「最大 rowid」という
+# 軽い代理指標を混ぜる。これは INSERT（行が増える）と DELETE（行が減る）を検知できるが、
+# **UPDATE（行数も rowid も変わらない書き換え。例: license 列のバックフィル再実行）は
+# 検知できない**——完全な内容ハッシュにすると「軽い」の意味が無くなるための割り切り
+# （既存の「m0x_*.py で原本を書き換えたら build:registry を明示的に走らせること」という
+# 運用に頼る）。
+#
+# 実測（このモジュールの単体テストではなく実際の organism_records、823,692行）:
+# `SELECT COUNT(*), MAX(rowid)` を1クエリにまとめると約160msかかる（SQLite が
+# 2つの集約を同時に満たそうとして索引の高速経路を使えなくなるらしい）のに対し、
+# `SELECT COUNT(*)` と `SELECT MAX(rowid)` を別々に2回打つと合計 約5ms
+# （COUNT(*) 単体で約5ms、MAX(rowid) 単体はほぼ0ms）。閾値(+200ms)を大きく下回る
+# ため、両方の代理指標をこの形（2クエリ）で採用する。
+_ORGANISM_RECORDS_FRESHNESS_SQL = (
+    "SELECT COUNT(*) FROM organism_records",
+    "SELECT MAX(rowid) FROM organism_records",
+)
+
 # full モード限定の入力が「無い」ときに指紋へ混ぜる固定マーカー。実際の中身とは
 # 絶対に衝突しない値であればよい（中身のバイト列をそのままハッシュに混ぜる他の
 # 入力と違い、「無い」という状態自体を表す印）。
@@ -328,6 +355,23 @@ def _hash_derived_tables(h, derived_path: pathlib.Path) -> None:
         conn.close()
 
 
+def _hash_organism_records_freshness(h, ryuiki_path: pathlib.Path) -> None:
+    """grid01 が読む `organism_records` の軽い代理指標（行数・最大rowid）を指紋に混ぜる
+    （`_ORGANISM_RECORDS_FRESHNESS_SQL` docstring 参照。fix, code-review 指摘7）。
+    `ryuiki.sqlite` が無い場合（原本の無い環境）はクラッシュせず「無い」を混ぜる
+    （`_hash_derived_tables()` の derived 版と同じ扱い）。
+    """
+    if not ryuiki_path.exists():
+        _hash_labeled(h, "organism_records_freshness", None)
+        return
+    conn = sqlite3.connect(f"file:{ryuiki_path}?mode=ro", uri=True)
+    try:
+        values = [conn.execute(sql).fetchone()[0] for sql in _ORGANISM_RECORDS_FRESHNESS_SQL]
+    finally:
+        conn.close()
+    _hash_labeled(h, "organism_records_freshness", repr(values).encode("utf-8"))
+
+
 def compute_input_fingerprint(
     root: pathlib.Path | None = None, mode: str = MODE_FULL
 ) -> str:
@@ -336,26 +380,32 @@ def compute_input_fingerprint(
     リネームも検知する。実行時刻は入れない（決定論。scripts/b01_derived_baseline.py /
     scripts/b04_build_cube.py と同じ理由）。
 
-    `mode=MODE_FULL`（既定）のときだけ、追加で2つの入力を混ぜる（fix 2,
-    phase-b/registry-atomic。どちらも build_place.py / build_taxon.py が読むのに
-    以前は指紋に入っていなかった）:
+    `mode=MODE_FULL`（既定）のときだけ、追加で3つの入力を混ぜる（fix 2,
+    phase-b/registry-atomic。3つ目は phase-b/occurrence-registry で追加。
+    いずれも build_place.py / build_taxon.py が読むのに以前は指紋に入っていなかった）:
 
     - `derived.sqlite` のうち `DERIVED_TABLES_READ` の中身（`_hash_derived_tables()`）。
     - `data/processed/taxon_crosswalk.csv`（build_taxon.py の `CROSSWALK_CSV`）の中身。
+    - `ryuiki.sqlite` の `organism_records` の軽い代理指標（行数・最大rowid、
+      `_hash_organism_records_freshness()`）。grid01（build_place.py）の入力に
+      なったための例外（次の段落参照）。
 
-    `mode=MODE_FILES_ONLY` のときはどちらにも触れない（`--files-only` は
+    `mode=MODE_FILES_ONLY` のときはどれにも触れない（`--files-only` は
     build_place.py/build_taxon.py 自体を呼ばないので、CI のように derived も
-    taxon_crosswalk.csv も存在しない環境でも指紋計算が要件どおり動く）。
+    taxon_crosswalk.csv も ryuiki.sqlite も存在しない環境でも指紋計算が要件どおり動く）。
 
-    **`ryuiki.sqlite` / `cells.sqlite` は mode に関わらず指紋に含めない。**
+    **`ryuiki.sqlite` / `cells.sqlite` の内容全体は mode に関わらず指紋に含めない。**
     読み取り専用で扱ってはいるが、書き手は `scripts/m0x_*.py` に限られる
     （web からは触らない）。含めない理由は実務上の2つ:
-    (1) `organism_records` だけで82万行あり、SELECT を毎回打つコストが
+    (1) `organism_records` だけで82万行あり、内容全体を SELECT するコストが
     「レジストリの鮮度を一瞬で判定する」という `--check-fresh` の目的に見合わない。
     (2) `m0x_*.py` で原本を書き換えても `ensure-registry.sh` はその変更を検知
     **できない**——これは既知の限界であり隠さない（`prefer-declared-diffs-over-bending-data`
     と同じ考え方）。**原本 DB を書き換えたら
     `cd web && pnpm run build:registry` を明示的に走らせること**。
+    `organism_records` の行数・最大rowidだけを混ぜる上記の例外は、この方針を覆すもの
+    ではない——完全な内容ハッシュではなく INSERT/DELETE だけを拾う軽い代理指標であり、
+    実測で約5ms（`_ORGANISM_RECORDS_FRESHNESS_SQL` docstring 参照）。
 
     `root` を渡すとその配下を対象にする（テスト専用。一時ディレクトリにコピーした
     入力で指紋の変化を確認するため）。省略時はこのリポジトリ（`ROOT`）。
@@ -374,6 +424,7 @@ def compute_input_fingerprint(
         _hash_optional_file(
             h, TAXON_CROSSWALK_CSV_RELPATH.as_posix(), base / TAXON_CROSSWALK_CSV_RELPATH
         )
+        _hash_organism_records_freshness(h, base / "data" / "db" / "ryuiki.sqlite")
 
     return h.hexdigest()
 
@@ -505,20 +556,14 @@ def taxon_id_gbif(gbif_key, scope: str = "common") -> str:
 
 def taxon_id_inat(inat_id, scope: str = "common") -> str:
     """iNaturalist 由来の taxon（`organism_records.taxon_key` に iNaturalist 自身の
-    `taxon.id` が入っている行。GBIF の taxonKey とは無関係な別の ID 空間）。
+    `taxon.id` が入っている行。GBIF の taxonKey とは無関係な別の ID 空間。F1、
+    phase-b/occurrence-registry。決定の経緯は `docs/adr/0019-taxon-registry.md` の
+    追記、実測は `docs/plans/PHASE_B_OCCURRENCE.md`）。
 
-    F1（phase-b/occurrence-registry）: 以前は iNat 行も `taxon_id_gbif()` に通しており、
-    GBIF と iNat がたまたま同じ数値を発行した9件（例: `8026` = GBIF 科 *Axiidae* /
-    iNat *Corvus macrorhynchos*）が同じ `common:taxon:gbif.8026` に衝突し、件数の多い方
-    （iNat 側）の学名がレジストリ行を乗っ取っていた。`inat.` 名前空間を分けることで
-    構造的に衝突しなくなる（`gbif.`/`inat.` の接頭辞が異なるため、同じ数値でも別ID）。
-
-    `gbif_taxon_key` 列には入れない（本物の GBIF taxonKey ではないため。iNat の ID は
-    この `taxon_id` 自体にしか持たせない——`inat_taxon_id` のような専用列を新設しなかった
-    理由: 現状 `getTaxonByGbifKey()` のような「iNat IDで逆引きしたい」消費者が無く
-    （`web/src/lib/registry/index.ts` に呼び出し元なし、実測済み）、無い列を先回りで
-    増やさない。将来 iNat ID からの逆引きが要る消費者が現れたら、その時点で
-    `local_key` を `taxon_id` から取り出す関数を足すか、専用列を検討する）。
+    `gbif_taxon_key` 列には入れない（本物の GBIF taxonKey ではないため）。iNat の ID は
+    `taxon_id` 自体にしか持たせない——専用列を新設しなかった理由は、現状これを
+    逆引きしたい消費者が無いため（`web/src/lib/registry/index.ts` に呼び出し元なし、
+    実測済み）。将来必要になったら `local_key` を取り出す関数か専用列を検討する。
     """
     return scoped_id("taxon", f"inat.{inat_id}", scope)
 

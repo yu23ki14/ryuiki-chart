@@ -1,69 +1,34 @@
 """taxon を作る（docs/plans/PHASE_A.md §A-4・最大の難所。ADR-0019）。
 
-## 実測（PHASE_A.md §A-4 に詳しい。ここでは要点だけ）
-
 `organism_records`（823,692行）と `taxa`（8,585行）は**別の母集団**である。
 `organism_records` は GBIF/iNaturalist 由来の学名・taxon_key 中心、`taxa` は神奈川県RL・
 環境省RL・外来種リスト由来の和名中心の語彙で、`taxa.gbif_taxon_key` を持つのはそのうち
 2,643件だけ、かつ `organism_records` の distinct taxon_key（33,604）とは 818件しか重ならない。
 このモジュールは両方を taxon の識別子空間に束ねる。
 
-## F1（phase-b/occurrence-registry）: taxon_id の名前空間を出典ごとに分ける
+**taxon_id の名前空間分割（F1）と分類補完（F2）の決定・理由の正は
+`docs/adr/0019-taxon-registry.md` の日付付き追記、実測の正は
+`docs/plans/PHASE_B_OCCURRENCE.md`。ここには実装に必要な最小限だけを書く**
+（同じ経緯があちこちに全文コピーされていた指摘を受けて集約した。/simplify 指摘14）。
 
-`organism_records.taxon_key` は出典によって**別の数値空間**が入っている
-（`scripts/m03_organisms.py` 参照）: GBIF 行は GBIF の `taxonKey`、iNaturalist 行は
-iNaturalist 自身の `taxon.id`。以前はどちらも `taxon_id_gbif(key)`（`common:taxon:gbif.<key>`）
-に通していたため、両方の空間が偶然同じ数値を発行した **9件が衝突**していた
-（実測。例: `8026` は GBIF では科 *Axiidae*（1行）、iNat では *Corvus macrorhynchos*
-（515行）——件数の多い iNat 側の学名がレジストリ行を乗っ取り、GBIF 側の Axiidae という
-実体は失われていた）。
+## 方針（要点）
 
-`organism_records.source_id` で出典を判定し（`SOURCE_NAMESPACE`）、GBIF 由来は
-`common.taxon_id_gbif()`、iNaturalist 由来は `common.taxon_id_inat()`
-（`common:taxon:inat.<id>`）に振り分ける。`gbif_taxon_key` 列は本物の GBIF taxonKey の
-ときだけ埋める（iNat 由来行は常に NULL）。
-
-**ADR-0004「ID は不変」の例外であることの記録**: `taxon_id` を今この時点で組み替えるのは、
-occurrence ファクト（O-1、まだ作っていない）が `taxon_id` を参照する前だから安全にできる。
-`web/src/lib/registry/index.ts` の `getTaxonById`/`getTaxonByGbifKey`/`getTaxaByScientificNames`
-に呼び出し元が無いこと（grep で確認済み。`web/src/lib/ai/tools.ts` 等どこからも呼ばれていない）、
-`scripts/`・`web/scripts/` 側にも `taxon_id`/`gbif_taxon_key` を読む消費者が
-このレジストリのビルダー自身（本ファイル・`r01_build_registry.py`・
-`scripts/tests/test_r01_invariants.py`・`scripts/r02_resolution_report.py`。いずれも
-レジストリを作る/検証する側であって、値を業務ロジックとして使う側ではない）以外に無いことを
-確認済み。誰も参照していない今が、ID を動かしても参照が壊れない唯一の時点
-（詳細は `docs/plans/PHASE_B_OCCURRENCE.md`、ADR-0019 の日付付き追記）。
-
-**F1の機械検証**（`_assert_known_source_ids` / `_assert_taxon_key_maps_to_single_binom`）:
-同じ taxon_id が2つの出典から作られないこと（`_insert()` が taxon_id の重複を検知）、
-出典内では taxon_key → 二名法キー（binom）が関数であること（実測: 823,692行中
-distinct (source_id, taxon_key) 33,613件で違反0件）。
-
-## 方針（このファイルの実装。F1適用後も骨格は同じ）
-
-1. **occurrence 側は (名前空間, taxon_key) で解決する。** `organism_records` の
-   distinct (source_id が示す名前空間, taxon_key) の組ごとに taxon を1行作る。
-   代表 `scientific_name` / `rank` / 分類列（kingdom/phylum/class/order/family）は、
-   同じ組の中で最も件数の多い組み合わせ（最頻値）を採用する。同数の場合は
-   `scientific_name` 昇順→`taxon_rank` 昇順で決定論的にタイブレークする（件数差が出る
-   組は33,613件中8件のみで、いずれも大差がつく実質的な最頻値なのでこの規則で十分。
-   分類列は同じ taxon_key 内で常に一定であることを実測で確認済みなので、この
-   タイブレークは実質的に rank の表記ゆれ——'SPECIES'/'species' 等——だけに効く）。
-   `taxon_rank` は原本で大文字/小文字が混在するため小文字に統一するが、値の意味は変えない。
+1. **occurrence 側は (名前空間, taxon_key) で解決する。** `organism_records.source_id`
+   から名前空間を判定する対応表は `scripts/common.py` の `TAXON_KEY_SOURCE_NAMESPACE`
+   （収集系の共有モジュール側が正。`scripts/x01_dwca.py` 等レジストリを経由しない
+   読み手にも届くようにするため。/code-review 指摘5）。`organism_records` の
+   distinct (namespace, taxon_key) の組ごとに taxon を1行作る。代表
+   `scientific_name`/`rank`/分類列は、同じ組の中で最も件数の多い組み合わせ
+   （最頻値）を採用する。同数の場合は分類列も含めた全タイブレーク列の昇順で
+   決定論的に決める（`_load_occurrence_representatives()` docstring参照）。
 
 2. **`taxa` のうち `gbif_taxon_key` を持ち、かつ `gbif_match_type='EXACT'`
    （種階級での一致）の行だけを、新しい行を作らず対応する `common:taxon:gbif.<key>`
    に寄せる。** `HIGHERRANK`/`FUZZY`（合わせて300件）は方針3の unresolved 側に回す
-   （ADR-0019決定4）。`taxa` 行の EXACT グループが `organism_records` にも
-   taxon_key として出現する場合（`n_from_both`）は、分類列（kingdom/phylum/class/
-   order/family）は **`organism_records` 側の値を優先する**（GBIF backbone が
-   その具体的な taxon_key に対して実際に返した値であり、`taxa`（神奈川県RL等、
-   別データセット）が独自に持つ分類列より、その taxon_id が指す実体そのものに近い）。
-   `organism_records` に出現しない場合（`n_from_taxa_only`）だけ `taxa` 側代表行の
-   分類列を使う。
-
-   **なぜ EXACT 限定に直したか**: `registry/README.md`「`status='needs_review'`/
-   `'unresolved'` が意味すること」参照。
+   （ADR-0019決定4）。`organism_records` にも taxon_key として出現する場合
+   （`n_from_both`）は、分類列は `organism_records` 側の値を優先する（GBIF backbone
+   がその具体的な taxon_key に実際に返した値であり、`taxa` 独自の分類列より実体に
+   近いため）。出現しない場合（`n_from_taxa_only`）だけ `taxa` 側代表行の分類列を使う。
 
 3. **`gbif_match_type='EXACT'` でない `taxa` 行は捨てず
    `common:taxon:ryuiki-taxa.<taxa.taxon_id>` で `status='unresolved'` として登録する。**
@@ -75,74 +40,54 @@ distinct (source_id, taxon_key) 33,613件で違反0件）。
 
 5. `taxon_key` を持たない `organism_records` 853行は `taxon_id` 解決の対象外。
 
-## F2（phase-b/occurrence-registry）: kingdom/phylum/class/order/family と taxon_group
+## 分類の補完（F2。要点）
 
-v1（`web/scripts/build-biota.mjs` の `org_norm`）は **記録ごと**に分類を補完していた:
-`class = COALESCE(記録自身の class, 同じ二名法キーの記録の多数決 class, 同じ属の記録の
-多数決 class)`、`kingdom = COALESCE(記録自身, 二名法キーの多数決)`、
-`phylum = COALESCE(記録自身, 二名法キーの多数決)`。`order`/`family` は補完しない。
+v1（`web/scripts/build-biota.mjs` の `org_norm`）は**記録ごと**に分類を補完していた:
+`class = COALESCE(記録自身, 二名法キーの多数決, 属の多数決)`、`kingdom`/`phylum` は
+`COALESCE(記録自身, 二名法キーの多数決)`。`order`/`family` は補完しない。本ビルダーは
+同じ規則を taxon（(namespace, taxon_key) の単位）ごとに1回適用する（前提: 同じ
+taxon_key の記録は常に同じ分類列を持つ——実測で確認済み）。多数決の母集団は v1 と
+同じ「`observed_on` がある記録」（`_DATED_POPULATION_WHERE`。v1 の値を変えないための
+意図的な温存）。
 
-本ビルダーは同じ規則を **taxon（(namespace, taxon_key) の単位）ごとに1回**適用する。
-これで v1 と結果が一致する前提は「同じ taxon_key の記録は常に同じ分類列を持つ」こと
-（GBIF 行では実測で不整合0。iNat 行は分類列が全行 NULL なので自明に一定）。
+`classification_basis` は `class` の解決経路: `source`（出典が直接持つ）/
+`binomial_match`（同じ二名法キーの多数決）/ `genus_match`（同じ属の多数決）/
+`no_match`（どちらからも決まらない）。**`status='unresolved'`（GBIF backbone未照合）
+とは別の軸の値なので、意味の重複を避けて `no_match` と名付けている**
+（旧実装は両方とも文字列 `'unresolved'` で紛らわしかった。/simplify 指摘11）。
 
-多数決の母集団は v1 と同じ **`observed_on IS NOT NULL AND length(observed_on)>=4` の
-記録**（`_DATED_POPULATION_WHERE`）に揃える。これは v1 の癖（日付の無い記録は
-`org_norm` にそもそも入らない）をこの Slice では意図的に温存する——「v1 の値は
-変わらない」が受け入れ条件のため。ADR-0007 原則1（occurrence は日付の無い記録も持つ）
-の適用は occurrence ファクトそのものを作る O-1 の仕事で、taxon の分類多数決の母集団
-とは別の話（occurrence 側は grid01 の解決で日付の無い記録も含める。
-`scripts/registry/build_place.py` の grid01 節参照）。
-
-**同数の決め方（明示の規則）**: 件数降順、同数なら値の昇順（class は
-class 昇順→kingdom 昇順、genus 多数決は class 昇順）。実測では二名法キー単位の
-多数決（`bc`/`bp`）に同数は無いが、**属単位の多数決（`gc`）に3属が同数**
-（異界ホモニム: *Martensia* 紅藻/端脚類、*Stilbum* 菌/ハチ、*Sirosporium*）。
-このうち実際に影響するのは1 taxon（GBIF `Sirosporium celtidis`。同数解消規則の
-選び方次第で class が `Dothideomycetes` にも `Sordariomycetes` にもなりうる——
-v1（ROW_NUMBER の暗黙順）は `Sordariomycetes` を選んでいたが、本規則
-（class 昇順）は `Dothideomycetes` を選ぶ。taxon_group はどちらでも「菌類」で
-変わらない）。同数だった多数決を使って class が決まった taxon は
-`status='needs_review'` にする（`accepted` 系のみ。`unresolved` は元々
-「照合できていない」を表しているので上書きしない）。
+**同数の決め方**: 件数降順、同数なら値の昇順。属単位の多数決（`genus_match`）で
+選んだ taxon は、次のいずれかに該当すると `status='needs_review'` にする
+（`status='unresolved'` の行も対象——backbone未照合と多数決の不確かさは独立の事実
+なので、両方起きていれば両方分かるべきだが `status` は単一値のため、より新しい
+判定であるこちらを優先する。/code-review 指摘1・6）:
+- その属単位の多数決が同数だった（実測で3属。詳細は `docs/plans/PHASE_B_OCCURRENCE.md`）。
+- その属自体が複数の class にまたがる（同数でなくても、属という単位が複数の class を
+  含む時点で「多数決で選んだ class」の信頼性が低いため。実測件数は
+  `docs/plans/PHASE_B_OCCURRENCE.md` 参照）。
 
 `taxon_group` は `registry/taxon/taxon_group.yaml`（v1 の `TAXON_GROUP` CASE式を
 先勝ち順のまま移したデータ）から機械的に生成する。
 
 ## `accepted_taxon_id`（方針6・シノニム解決）
 
-`data/processed/taxon_crosswalk.csv` の `status`/`accepted_scientific_name` 列は、
-GBIF `/species/match` のレスポンスの `status`/`scientificName` をそのまま転記した
-ものだが、**`accepted_scientific_name` は「マッチしたノード自身の学名」であって
-「本当の受理名」ではない**（GBIF の応答に `acceptedUsageKey`/真の受理名が別途
-必要だが `c24_taxon_crosswalk.py` はそれを取得していない）。実際に
-`status='SYNONYM'` な376件を確認すると、`scientific_name` と
-`accepted_scientific_name` が食い違う252件はすべて著者引用の有無だけの差
-（例: "Pteropus loochoensis" → "Pteropus loochoensis Gray, 1870"）で、
-別の分類群を指す受理名ではなかった。つまり `accepted_taxon_id` に使える
-「別の taxon_id への受理名情報」は現状のクロスウォークに**存在しない**。
-方針6「情報がある場合だけ埋める、無ければ NULL」に従い、Phase A では
-`accepted_taxon_id` を全行 NULL のままにする。
+`data/processed/taxon_crosswalk.csv` の `accepted_scientific_name` は「マッチした
+ノード自身の学名」であって「本当の受理名」ではない（`c24_taxon_crosswalk.py` が
+GBIF の `acceptedUsageKey` を取得していないため）。使える「別の taxon_id への
+受理名情報」が現状存在しないため、`accepted_taxon_id` は全行 NULL のままにする
+（詳細は `docs/plans/PHASE_A.md` §A-4）。
 """
 import csv
-import pathlib
 import sqlite3
 
 import yaml
 
+from common import TAXON_KEY_SOURCE_NAMESPACE
 from registry import common
 
 CROSSWALK_CSV = common.ROOT / common.TAXON_CROSSWALK_CSV_RELPATH
 VERNACULAR_CSV = common.ROOT / "registry" / "taxon" / "vernacular_ja.csv"
 TAXON_GROUP_YAML = common.ROOT / "registry" / "taxon" / "taxon_group.yaml"
-
-# organism_records.source_id -> taxon_id の名前空間（F1）。他の値が出てきたら
-# 黙って混ぜず例外を投げる（_assert_known_source_ids / _load_occurrence_representatives
-# の CASE 式がここと同じ対応を持つ。宣言をここ1箇所にまとめる）。
-SOURCE_NAMESPACE = {
-    "gbif_kanagawa_occurrences": "gbif",
-    "inaturalist_kanagawa": "inat",
-}
 
 # taxon の列（この順で INSERT する。行の組み立ては dict で行い、最後にこの順へ変換する
 # ——列の追加・並べ替えのたびにタプルの位置番号を数え直す事故を避けるため）。
@@ -154,34 +99,47 @@ TAXON_COLUMNS = [
 ]
 
 # v1 (web/scripts/build-biota.mjs org_norm) と同じ母集団: 日付の無い記録は
-# 分類の多数決に含めない（モジュール docstring F2参照。v1 の値を変えないための温存）。
+# 分類の多数決に含めない（モジュール docstring参照。v1 の値を変えないための温存）。
 _DATED_POPULATION_WHERE = "observed_on IS NOT NULL AND length(observed_on) >= 4"
 
 
 def _namespace_for_source(source_id: str) -> str:
-    ns = SOURCE_NAMESPACE.get(source_id)
+    ns = TAXON_KEY_SOURCE_NAMESPACE.get(source_id)
     if ns is None:
         raise ValueError(
-            f"未知の organism_records.source_id: {source_id!r}（SOURCE_NAMESPACE に無い。"
+            f"未知の organism_records.source_id: {source_id!r}"
+            "（scripts/common.py の TAXON_KEY_SOURCE_NAMESPACE に無い。"
             "原本に新しい出典が増えた可能性がある。taxon_id の名前空間を追加すること）"
         )
     return ns
 
 
+def _namespace_case_sql(column: str) -> str:
+    """`column`（例: `source_id`）から taxon_id の名前空間を引く SQL の CASE 式を、
+    `TAXON_KEY_SOURCE_NAMESPACE`（正）から組み立てる（SQL 側にハードコードした
+    対応が Python 側の辞書とズレる事故を防ぐ。/code-review 指摘5）。
+    """
+    branches = " ".join(
+        f"WHEN '{src.replace(chr(39), chr(39) * 2)}' THEN '{ns}'"
+        for src, ns in TAXON_KEY_SOURCE_NAMESPACE.items()
+    )
+    return f"CASE {column} {branches} END"
+
+
 def _assert_known_source_ids(ryuiki: sqlite3.Connection) -> None:
-    """taxon_key を持つ organism_records の source_id が SOURCE_NAMESPACE に無い値を
-    含んでいたら止める（F1）。ここで止めないと `_load_occurrence_representatives()` の
-    SQL の CASE 式が未知の source_id を黙って ns=NULL に落とし、taxon_id が組み立てられず
-    後段で分かりにくいエラーになる。
+    """taxon_key を持つ organism_records の source_id が TAXON_KEY_SOURCE_NAMESPACE に
+    無い値を含んでいたら止める（F1）。ここで止めないと `_load_occurrence_representatives()`
+    の SQL の CASE 式が未知の source_id を黙って ns=NULL に落とし、taxon_id が組み立て
+    られず後段で分かりにくいエラーになる。
     """
     rows = ryuiki.execute(
         "SELECT DISTINCT source_id FROM organism_records WHERE taxon_key IS NOT NULL AND taxon_key <> ''"
     ).fetchall()
-    unknown = sorted(r[0] for r in rows if r[0] not in SOURCE_NAMESPACE)
+    unknown = sorted(r[0] for r in rows if r[0] not in TAXON_KEY_SOURCE_NAMESPACE)
     if unknown:
         raise ValueError(
             "organism_records に taxon_id の名前空間が未定義の source_id がある"
-            f"（SOURCE_NAMESPACE に追記すること）: {unknown}"
+            f"（scripts/common.py の TAXON_KEY_SOURCE_NAMESPACE に追記すること）: {unknown}"
         )
 
 
@@ -248,16 +206,22 @@ def _assert_taxon_key_maps_to_single_binom(ryuiki: sqlite3.Connection) -> None:
 def _load_occurrence_representatives(ryuiki: sqlite3.Connection) -> dict[tuple[str, str], dict]:
     """distinct (名前空間, taxon_key) ごとの代表 (scientific_name, rank, 分類列) と全体件数。
 
-    最頻値（同数は scientific_name → taxon_rank の昇順でタイブレーク）。
+    最頻値（同数は scientific_name → taxon_rank → 分類列（kingdom/phylum/class/order/
+    family）の昇順でタイブレーク）。タイブレーク列は `counted` の GROUP BY キーと
+    完全に一致する（`ns`/`taxon_key` を除く全列）ため、同じ (ns, taxon_key) 内で
+    2つの `counted` 行が全タイブレーク列で一致することは無く、順序は必ず一意に決まる
+    （/code-review 指摘3）。
+
+    それでも「最頻値の件数そのものが複数の候補で並ぶ」（=選択に実質的な理由が無い
+    状態）が無いことを別途 assert する。実測0件。
+
     SQL 側で集約するので Python 側で 823,692 行をループしない。
     """
-    sql = """
+    ns_case = _namespace_case_sql("source_id")
+    sql = f"""
         WITH ns_rows AS (
             SELECT
-              CASE source_id
-                WHEN 'gbif_kanagawa_occurrences' THEN 'gbif'
-                WHEN 'inaturalist_kanagawa' THEN 'inat'
-              END AS ns,
+              {ns_case} AS ns,
               taxon_key, scientific_name, taxon_rank,
               NULLIF(kingdom,'') AS kingdom0, NULLIF(phylum,'') AS phylum0,
               NULLIF(class,'') AS class0, NULLIF("order",'') AS order0,
@@ -275,25 +239,36 @@ def _load_occurrence_representatives(ryuiki: sqlite3.Connection) -> dict[tuple[s
         totals AS (
             SELECT ns, taxon_key, SUM(n) AS total_n FROM counted GROUP BY ns, taxon_key
         ),
+        maxn AS (SELECT ns, taxon_key, MAX(n) AS max_n FROM counted GROUP BY ns, taxon_key),
+        tie AS (
+            SELECT c.ns AS ns, c.taxon_key AS taxon_key, COUNT(*) AS n_at_max
+            FROM counted c JOIN maxn m ON m.ns = c.ns AND m.taxon_key = c.taxon_key AND m.max_n = c.n
+            GROUP BY c.ns, c.taxon_key
+        ),
         ranked AS (
             SELECT ns, taxon_key, scientific_name, taxon_rank,
                    kingdom0, phylum0, class0, order0, family0,
                    ROW_NUMBER() OVER (
                        PARTITION BY ns, taxon_key
-                       ORDER BY n DESC, scientific_name ASC, taxon_rank ASC
+                       ORDER BY n DESC, scientific_name ASC, taxon_rank ASC,
+                                kingdom0 ASC, phylum0 ASC, class0 ASC, order0 ASC, family0 ASC
                    ) AS rn
             FROM counted
         )
         SELECT r.ns AS ns, r.taxon_key AS taxon_key, r.scientific_name AS scientific_name,
                r.taxon_rank AS rank_raw, r.kingdom0 AS kingdom0, r.phylum0 AS phylum0,
                r.class0 AS class0, r.order0 AS order0, r.family0 AS family0,
-               t.total_n AS total_n
-        FROM ranked r JOIN totals t ON t.ns = r.ns AND t.taxon_key = r.taxon_key
+               t.total_n AS total_n, tie.n_at_max AS n_at_max
+        FROM ranked r
+        JOIN totals t ON t.ns = r.ns AND t.taxon_key = r.taxon_key
+        JOIN tie ON tie.ns = r.ns AND tie.taxon_key = r.taxon_key
         WHERE r.rn = 1
     """
     out = {}
+    top_count_ties: list[tuple[str, str, int]] = []
     for row in ryuiki.execute(sql):
-        out[(row["ns"], row["taxon_key"])] = {
+        key = (row["ns"], row["taxon_key"])
+        out[key] = {
             "scientific_name": row["scientific_name"],
             "rank_raw": row["rank_raw"],
             "kingdom0": row["kingdom0"],
@@ -303,6 +278,16 @@ def _load_occurrence_representatives(ryuiki: sqlite3.Connection) -> dict[tuple[s
             "family0": row["family0"],
             "total_n": row["total_n"],
         }
+        if row["n_at_max"] > 1:
+            top_count_ties.append((row["ns"], row["taxon_key"], row["n_at_max"]))
+    if top_count_ties:
+        sample = ", ".join(f"{ns}.{key}(候補{n}件)" for ns, key, n in top_count_ties[:10])
+        raise AssertionError(
+            f"taxon_key ごとの代表選びで最頻値の件数が同数の候補が並ぶものが "
+            f"{len(top_count_ties):,} 件ある（分類列を含めた並びで決定的に選んではいるが、"
+            f"選択に実質的な理由が無い状態。例: {sample}）"
+        )
+    print(f"  [taxon] F2機械検証OK: taxon_key ごとの代表選びに件数同数の候補は無い（{len(out):,}件確認）")
     return out
 
 
@@ -327,7 +312,7 @@ def _load_crosswalk_rank() -> dict[str, str]:
             "（GBIF API 呼び出しを伴うため、通常はリポジトリの成果物をそのまま使う）。"
         )
     out = {}
-    with open(CROSSWALK_CSV, encoding="utf-8", newline="") as f:
+    with CROSSWALK_CSV.open(encoding="utf-8", newline="") as f:
         for row in csv.DictReader(f):
             out[row["taxon_id"]] = row.get("rank") or None
     return out
@@ -393,7 +378,7 @@ def _load_vernacular_overrides() -> list[dict]:
             f"人手確認済み和名 CSV が無い: {VERNACULAR_CSV}\n"
             "domain.ts の NAME_JA 54件をそのまま複製したもの。新規に増減しない。"
         )
-    with open(VERNACULAR_CSV, encoding="utf-8", newline="") as f:
+    with VERNACULAR_CSV.open(encoding="utf-8", newline="") as f:
         return list(csv.DictReader(f))
 
 
@@ -401,116 +386,98 @@ def _load_vernacular_overrides() -> list[dict]:
 # F2: kingdom/phylum/class/order/family/taxon_group の多数決
 # ---------------------------------------------------------------------------
 
-def _load_binom_class_majority(ryuiki: sqlite3.Connection) -> dict[str, dict]:
-    """二名法キー(binom) -> 多数決の (class, kingdom, is_tied)。
+# 3つの多数決（二名法キー×class、属×class、二名法キー×phylum）が共有する一時テーブル。
+# 以前は3つの関数がそれぞれ独立に organism_records をスキャンし、二名法キー(binom)を
+# 計算し直していた（実測: フルビルド時間の半分近くを占めていた）。ここで1回だけ
+# 作り、3つの多数決はこのテーブルから集計する（/code-review 指摘8）。
+_POPULATION_TEMP_TABLE = "_classification_population"
 
-    v1 (build-biota.mjs の bc CTE) と同じ母集団・同じ集計（グループは
-    (binom, class0, kingdom0) の組、件数降順）に、明示の同数処理を足したもの
-    （件数降順、同数なら class 昇順→kingdom 昇順）。実測ではこの多数決に同数は0件。
+
+def _create_classification_population(ryuiki: sqlite3.Connection) -> None:
+    """`_POPULATION_TEMP_TABLE` を作る。母集団は v1 と同じ「`observed_on` がある記録」
+    （モジュール docstring 参照）。二名法キー(binom)と属(genus)をここで1回だけ計算する。
     """
-    binom_expr = _binom_sql("scientific_name")
-    sql = f"""
-        WITH b AS (
-            SELECT {binom_expr} AS binom, NULLIF(class,'') AS class0, NULLIF(kingdom,'') AS kingdom0
-            FROM organism_records
-            WHERE {_DATED_POPULATION_WHERE}
-        ),
-        counted AS (
-            SELECT binom, class0, kingdom0, COUNT(*) AS n
-            FROM b WHERE class0 IS NOT NULL
-            GROUP BY binom, class0, kingdom0
-        ),
-        maxn AS (SELECT binom, MAX(n) AS max_n FROM counted GROUP BY binom),
-        tie AS (
-            SELECT c.binom AS binom, COUNT(*) AS n_at_max
-            FROM counted c JOIN maxn m ON m.binom = c.binom AND m.max_n = c.n
-            GROUP BY c.binom
-        ),
-        ranked AS (
-            SELECT binom, class0, kingdom0,
-                   ROW_NUMBER() OVER (PARTITION BY binom ORDER BY n DESC, class0 ASC, kingdom0 ASC) AS rn
-            FROM counted
-        )
-        SELECT r.binom AS binom, r.class0 AS class, r.kingdom0 AS kingdom,
-               COALESCE(t.n_at_max, 1) > 1 AS is_tied
-        FROM ranked r LEFT JOIN tie t ON t.binom = r.binom
-        WHERE r.rn = 1
-    """
-    return {
-        row["binom"]: {"class": row["class"], "kingdom": row["kingdom"], "is_tied": bool(row["is_tied"])}
-        for row in ryuiki.execute(sql)
-    }
-
-
-def _load_genus_class_majority(ryuiki: sqlite3.Connection) -> dict[str, dict]:
-    """属(genus) -> 多数決の (class, is_tied)。v1 の gc CTE と同じ母集団・同じ集計。
-
-    実測で3属が同数（*Martensia*・*Stilbum*・*Sirosporium*。異界ホモニム）。
-    """
+    ryuiki.execute(f"DROP TABLE IF EXISTS temp.{_POPULATION_TEMP_TABLE}")
     binom_expr = _binom_sql("scientific_name")
     genus_expr = "substr(binom,1,CASE WHEN instr(binom,' ')>0 THEN instr(binom,' ')-1 ELSE length(binom) END)"
-    sql = f"""
-        WITH b AS (
-            SELECT {binom_expr} AS binom, NULLIF(class,'') AS class0
+    ryuiki.execute(f"""
+        CREATE TEMP TABLE {_POPULATION_TEMP_TABLE} AS
+        SELECT binom, {genus_expr} AS genus, class0, kingdom0, phylum0
+        FROM (
+            SELECT {binom_expr} AS binom, NULLIF(class,'') AS class0,
+                   NULLIF(kingdom,'') AS kingdom0, NULLIF(phylum,'') AS phylum0
             FROM organism_records
             WHERE {_DATED_POPULATION_WHERE}
-        ),
-        g AS (
-            SELECT {genus_expr} AS genus, class0 FROM b
-        ),
-        counted AS (
-            SELECT genus, class0, COUNT(*) AS n FROM g WHERE class0 IS NOT NULL
-            GROUP BY genus, class0
-        ),
-        maxn AS (SELECT genus, MAX(n) AS max_n FROM counted GROUP BY genus),
-        tie AS (
-            SELECT c.genus AS genus, COUNT(*) AS n_at_max
-            FROM counted c JOIN maxn m ON m.genus = c.genus AND m.max_n = c.n
-            GROUP BY c.genus
-        ),
-        ranked AS (
-            SELECT genus, class0,
-                   ROW_NUMBER() OVER (PARTITION BY genus ORDER BY n DESC, class0 ASC) AS rn
-            FROM counted
         )
-        SELECT r.genus AS genus, r.class0 AS class, COALESCE(t.n_at_max, 1) > 1 AS is_tied
-        FROM ranked r LEFT JOIN tie t ON t.genus = r.genus
-        WHERE r.rn = 1
-    """
-    return {row["genus"]: {"class": row["class"], "is_tied": bool(row["is_tied"])} for row in ryuiki.execute(sql)}
+    """)
 
 
-def _load_binom_phylum_majority(ryuiki: sqlite3.Connection) -> dict[str, dict]:
-    """二名法キー(binom) -> 多数決の (phylum, is_tied)。v1 の bp CTE と同じ母集団・同じ集計。
-    実測ではこの多数決に同数は0件。
+def _majority_vote(
+    ryuiki: sqlite3.Connection,
+    *,
+    group_col: str,
+    vote_col: str,
+    companion_cols: tuple[str, ...] = (),
+) -> dict[str, dict]:
+    """`_POPULATION_TEMP_TABLE` を `group_col` でグループ化し、`vote_col` の最頻値を
+    多数決で選ぶ（v1 の bc/gc/bp の3つの CTE を1つの関数に統合したもの。
+    /simplify 指摘9）。同数は件数降順のあと `vote_col`→`companion_cols` の昇順で
+    決定論的にタイブレークする。`companion_cols` は `vote_col` と同じグループ化キー
+    （同じ `(group_col, vote_col, *companion_cols)` の組）で件数を数える同伴列
+    （例: kingdom は class と同じ (binom, class0, kingdom0) の組で数える。v1 の
+    bc CTE と同じ挙動）。
+
+    戻り値: `{group値: {vote_col: 値, **companion_colsの値, "is_tied": bool}}`。
     """
-    binom_expr = _binom_sql("scientific_name")
+    cols = (vote_col,) + companion_cols
+    collist = ", ".join(cols)
+    tie_break = ", ".join(f"{c} ASC" for c in cols)
     sql = f"""
-        WITH b AS (
-            SELECT {binom_expr} AS binom, NULLIF(phylum,'') AS phylum0
-            FROM organism_records
-            WHERE {_DATED_POPULATION_WHERE}
+        WITH counted AS (
+            SELECT {group_col} AS g, {collist}, COUNT(*) AS n
+            FROM {_POPULATION_TEMP_TABLE}
+            WHERE {vote_col} IS NOT NULL
+            GROUP BY {group_col}, {collist}
         ),
-        counted AS (
-            SELECT binom, phylum0, COUNT(*) AS n FROM b WHERE phylum0 IS NOT NULL
-            GROUP BY binom, phylum0
-        ),
-        maxn AS (SELECT binom, MAX(n) AS max_n FROM counted GROUP BY binom),
+        maxn AS (SELECT g, MAX(n) AS max_n FROM counted GROUP BY g),
         tie AS (
-            SELECT c.binom AS binom, COUNT(*) AS n_at_max
-            FROM counted c JOIN maxn m ON m.binom = c.binom AND m.max_n = c.n
-            GROUP BY c.binom
+            SELECT c.g AS g, COUNT(*) AS n_at_max
+            FROM counted c JOIN maxn m ON m.g = c.g AND m.max_n = c.n
+            GROUP BY c.g
         ),
         ranked AS (
-            SELECT binom, phylum0,
-                   ROW_NUMBER() OVER (PARTITION BY binom ORDER BY n DESC, phylum0 ASC) AS rn
+            SELECT g, {collist},
+                   ROW_NUMBER() OVER (PARTITION BY g ORDER BY n DESC, {tie_break}) AS rn
             FROM counted
         )
-        SELECT r.binom AS binom, r.phylum0 AS phylum, COALESCE(t.n_at_max, 1) > 1 AS is_tied
-        FROM ranked r LEFT JOIN tie t ON t.binom = r.binom
+        SELECT r.g AS g, {", ".join(f"r.{c} AS {c}" for c in cols)},
+               COALESCE(t.n_at_max, 1) > 1 AS is_tied
+        FROM ranked r LEFT JOIN tie t ON t.g = r.g
         WHERE r.rn = 1
     """
-    return {row["binom"]: {"phylum": row["phylum"], "is_tied": bool(row["is_tied"])} for row in ryuiki.execute(sql)}
+    out = {}
+    for row in ryuiki.execute(sql):
+        entry = {c: row[c] for c in cols}
+        entry["is_tied"] = bool(row["is_tied"])
+        out[row["g"]] = entry
+    return out
+
+
+def _load_multi_class_genera(ryuiki: sqlite3.Connection) -> set[str]:
+    """属の多数決（genus_match）で使う属のうち、複数の class にまたがるものを返す。
+
+    同数でなくても、属という単位そのものが複数の class を含む場合（例: *Pieris* は
+    チョウ目 Insecta が優勢だが被子植物 Magnoliopsida も一定数混ざる、異名同属の
+    ホモニム）、多数決で選んだ class の信頼性は低い。該当する taxon は
+    `status='needs_review'` にする（/code-review 指摘6。件数は build() が print する）。
+    """
+    sql = f"""
+        SELECT genus FROM {_POPULATION_TEMP_TABLE}
+        WHERE class0 IS NOT NULL
+        GROUP BY genus
+        HAVING COUNT(DISTINCT class0) > 1
+    """
+    return {row["genus"] for row in ryuiki.execute(sql)}
 
 
 def _resolve_classification(
@@ -528,42 +495,49 @@ def _resolve_classification(
     taxon 単位で適用する。`classification_basis` は class の解決経路。kingdom/phylum は
     それぞれ独立の COALESCE チェーンを持つ（v1 と同じ——kingdom は bc からしか
     補完されず gc からは補完されない。phylum は bp からのみ）。
+
+    `bc.get(binom)` は class と kingdom の両方の解決に使うので1回だけ計算する
+    （/simplify 指摘12）。bc の多数決が同数だった場合、class・kingdom どちらの
+    解決経路で使っても needs_review を立てる（/code-review 指摘2。以前は
+    own_class が無く own_kingdom も無いときしか bc の tie を見ておらず、
+    「class は自前・kingdom だけ bc 頼り」のケースで kingdom 側の同数を見逃していた）。
     """
     binom = _binom(scientific_name)
     genus = _genus(binom)
     needs_review = False
+    bc_entry = bc.get(binom) if binom else None
 
     if own_class is not None:
         cls = own_class
         basis = "source"
+    elif bc_entry is not None:
+        cls = bc_entry["class0"]
+        basis = "binomial_match"
+        needs_review = needs_review or bc_entry["is_tied"]
     else:
-        bc_entry = bc.get(binom) if binom else None
-        if bc_entry is not None:
-            cls = bc_entry["class"]
-            basis = "binomial_match"
-            needs_review = needs_review or bc_entry["is_tied"]
+        gc_entry = gc.get(genus) if genus else None
+        if gc_entry is not None:
+            cls = gc_entry["class0"]
+            basis = "genus_match"
+            needs_review = needs_review or gc_entry["is_tied"] or gc_entry["multi_class"]
         else:
-            gc_entry = gc.get(genus) if genus else None
-            if gc_entry is not None:
-                cls = gc_entry["class"]
-                basis = "genus_match"
-                needs_review = needs_review or gc_entry["is_tied"]
-            else:
-                cls = None
-                basis = "unresolved"
+            cls = None
+            basis = "no_match"
 
     if own_kingdom is not None:
         kdm = own_kingdom
+    elif bc_entry is not None:
+        kdm = bc_entry["kingdom0"]
+        needs_review = needs_review or bc_entry["is_tied"]
     else:
-        bc_entry = bc.get(binom) if binom else None
-        kdm = bc_entry["kingdom"] if bc_entry is not None else None
+        kdm = None
 
     if own_phylum is not None:
         phy = own_phylum
     else:
         bp_entry = bp.get(binom) if binom else None
         if bp_entry is not None:
-            phy = bp_entry["phylum"]
+            phy = bp_entry["phylum0"]
             needs_review = needs_review or bp_entry["is_tied"]
         else:
             phy = None
@@ -573,10 +547,30 @@ def _resolve_classification(
 
 def _load_taxon_group_rules() -> tuple[list[dict], str]:
     """registry/taxon/taxon_group.yaml（v1 の TAXON_GROUP CASE 式を先勝ち順のまま
-    データ化したもの）を読む。"""
-    with open(TAXON_GROUP_YAML, encoding="utf-8") as f:
+    データ化したもの）を読む。先勝ちの表なので、同じ条件(match)が2回登場すると
+    片方が黙って無効になる——`build_place._load_zone_yaml()`/
+    `build_caveat._load_caveat_yaml()` と同じ流儀で重複を検知する（/simplify 指摘13）。
+    """
+    with TAXON_GROUP_YAML.open(encoding="utf-8") as f:
         doc = yaml.safe_load(f)
-    return doc["rules"], doc["default_label_ja"]
+    rules = doc["rules"]
+    keys = [_match_key(rule["match"]) for rule in rules]
+    dupes = sorted({k for k in keys if keys.count(k) > 1}, key=repr)
+    assert not dupes, f"registry/taxon/taxon_group.yaml の match が重複している: {dupes}"
+    return rules, doc["default_label_ja"]
+
+
+def _match_key(match: dict) -> tuple:
+    """taxon_group.yaml の `match` 辞書を、重複検知用の比較可能なタプルに変える。
+    値が配列の場合は要素の並びに意味が無い（IN 相当）ので、ソートして正規化する
+    （`None` は文字列と比較できないため `(値がNoneか, 値)` をキーにする）。
+    """
+    def norm(v):
+        if isinstance(v, list):
+            return tuple(sorted(v, key=lambda x: (x is None, x)))
+        return v
+
+    return tuple((k, norm(v)) for k, v in sorted(match.items()))
 
 
 def _rule_matches(value: str | None, cond) -> bool:
@@ -598,6 +592,45 @@ def _taxon_group_for(cls_: str | None, phy_: str | None, kdm_: str | None, rules
     return default_label
 
 
+def _build_taxon_row(
+    taxon_id: str,
+    scientific_name: str | None,
+    kdm: str | None,
+    phy: str | None,
+    cls: str | None,
+    own_order: str | None,
+    own_family: str | None,
+    basis: str,
+    group_rules,
+    group_default: str,
+    *,
+    rank: str | None,
+    gbif_taxon_key: str | None,
+    vernacular_name_ja: str | None,
+    status: str,
+) -> dict:
+    """taxon 行の共通構築（occurrence/taxa 両ループが使う。/simplify 指摘10）。
+    2箇所でほぼ同じ15キーの dict リテラルを書いていたのをここに集約した。
+    """
+    return {
+        "taxon_id": taxon_id,
+        "scientific_name": scientific_name,
+        "canonical_binomial": _binom(scientific_name),
+        "rank": rank,
+        "kingdom": kdm,
+        "phylum": phy,
+        "class": cls,
+        "order": own_order,
+        "family": own_family,
+        "classification_basis": basis,
+        "taxon_group": _taxon_group_for(cls, phy, kdm, group_rules, group_default),
+        "gbif_taxon_key": gbif_taxon_key,
+        "vernacular_name_ja": vernacular_name_ja,
+        "status": status,
+        "accepted_taxon_id": None,
+    }
+
+
 def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[str, int]:
     """conn: registry.sqlite への書き込み用コネクション。
     src: {'ryuiki': ..., 'cells': ..., 'derived': ...} の読み取り専用コネクション。
@@ -614,14 +647,20 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     crosswalk_rank = _load_crosswalk_rank()
     taxa_by_key = _group_taxa_by_gbif_key(taxa_rows)
 
-    bc = _load_binom_class_majority(ryuiki)
-    gc = _load_genus_class_majority(ryuiki)
-    bp = _load_binom_phylum_majority(ryuiki)
+    _create_classification_population(ryuiki)
+    bc = _majority_vote(ryuiki, group_col="binom", vote_col="class0", companion_cols=("kingdom0",))
+    gc = _majority_vote(ryuiki, group_col="genus", vote_col="class0")
+    bp = _majority_vote(ryuiki, group_col="binom", vote_col="phylum0")
+    multi_class_genera = _load_multi_class_genera(ryuiki)
+    for genus, entry in gc.items():
+        entry["multi_class"] = genus in multi_class_genera
     group_rules, group_default = _load_taxon_group_rules()
+
     tied_genus_count = sum(1 for v in gc.values() if v["is_tied"])
     print(
         f"  [taxon] F2 多数決テーブル: 二名法キー(class/kingdom) {len(bc):,} / "
-        f"属(class) {len(gc):,}（うち同数 {tied_genus_count}） / 二名法キー(phylum) {len(bp):,}"
+        f"属(class) {len(gc):,}（うち同数 {tied_genus_count} / 複数classにまたがる "
+        f"{len(multi_class_genera):,}） / 二名法キー(phylum) {len(bp):,}"
     )
 
     # --- 診断: organism_records の taxon_key 解決率 -------------------------------
@@ -666,6 +705,7 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
         taxa_group = taxa_by_key.get(key) if ns == "gbif" else None
 
         occ_info = occ.get((ns, key))
+        rep = None
         if occ_info is not None:
             # organism_records 側の分類列を優先する（GBIF backbone がその taxon_key に
             # 実際に返した値。taxa 側の分類列より実体に近い。モジュール docstring 方針2）。
@@ -686,7 +726,10 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
 
         vernacular = None
         if taxa_group is not None:
-            vernacular = _pick_taxa_representative(taxa_group, crosswalk_rank)["vernacular"]
+            # rep は occ_info が None のときだけ計算済み（上の分岐）。occ_info が
+            # あるとき（n_from_both）は taxa 側の代表をここで初めて要る
+            # （/simplify 指摘12。同じ引数での2回呼び出しを避ける）。
+            vernacular = (rep or _pick_taxa_representative(taxa_group, crosswalk_rank))["vernacular"]
 
         rank = rank_raw.lower() if rank_raw else None
         kdm, phy, cls, basis, needs_review = _resolve_classification(
@@ -697,23 +740,12 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
         if needs_review:
             n_needs_review += 1
 
-        _insert(taxon_id, (ns, key), {
-            "taxon_id": taxon_id,
-            "scientific_name": scientific_name,
-            "canonical_binomial": _binom(scientific_name),
-            "rank": rank,
-            "kingdom": kdm,
-            "phylum": phy,
-            "class": cls,
-            "order": own_order,
-            "family": own_family,
-            "classification_basis": basis,
-            "taxon_group": _taxon_group_for(cls, phy, kdm, group_rules, group_default),
-            "gbif_taxon_key": key if ns == "gbif" else None,
-            "vernacular_name_ja": vernacular,
-            "status": status,
-            "accepted_taxon_id": None,
-        })
+        _insert(taxon_id, (ns, key), _build_taxon_row(
+            taxon_id, scientific_name, kdm, phy, cls, own_order, own_family, basis,
+            group_rules, group_default,
+            rank=rank, gbif_taxon_key=(key if ns == "gbif" else None),
+            vernacular_name_ja=vernacular, status=status,
+        ))
 
     print(
         f"  [taxon] gbif/inat行 = {len(rows_by_id):,} "
@@ -725,6 +757,7 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     # --- taxa の gbif_match_type != 'EXACT' な行（unresolved） ---------------------
     n_unresolved = 0
     n_unresolved_weak_match = 0
+    n_unresolved_needs_review = 0
     seen_unresolved: dict = {}
     for row in taxa_rows:
         has_key = bool((row["gbif_taxon_key"] or "").strip())
@@ -732,39 +765,36 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
             continue  # 方針2で対応する gbif.<key> 行に寄せ済み
         taxon_id = common.taxon_id_unresolved(row["taxon_id"], seen=seen_unresolved)
         scientific_name = row["scientific_name"]
-        # unresolved 行も分類列の多数決（bc/gc/bp）は共有する。status='unresolved' は
-        # 「GBIF backbone と照合できていない」を表す既存の意味を上書きしないので、
-        # needs_review（多数決が同数だった）の情報は basis だけに残し status は
-        # 変えない（accepted 系との非対称。関数docstring参照）。
-        kdm, phy, cls, basis, _needs_review = _resolve_classification(
+        kdm, phy, cls, basis, needs_review = _resolve_classification(
             scientific_name, row["kingdom0"], row["phylum0"], row["class0"], bc, gc, bp
         )
-        _insert(taxon_id, ("ryuiki-taxa", row["taxon_id"]), {
-            "taxon_id": taxon_id,
-            "scientific_name": scientific_name,
-            "canonical_binomial": _binom(scientific_name),
-            "rank": None,
-            "kingdom": kdm,
-            "phylum": phy,
-            "class": cls,
-            "order": row["order0"],
-            "family": row["family0"],
-            "classification_basis": basis,
-            "taxon_group": _taxon_group_for(cls, phy, kdm, group_rules, group_default),
-            "gbif_taxon_key": None,
-            "vernacular_name_ja": row["vernacular_name_ja"],
-            "status": "unresolved",
-            "accepted_taxon_id": None,
-        })
+        basis_counts[basis] = basis_counts.get(basis, 0) + 1
+        # unresolved（GBIF backbone未照合）と needs_review（分類の多数決が不確か）は
+        # 別軸の事実だが status は単一値なので、より新しい判定である needs_review を
+        # 優先する（/code-review 指摘1。以前は無条件で 'unresolved' にしており、
+        # 例えば *Martensia flabelliformis*（属の多数決が紅藻2件/端脚類2件の同数）
+        # のような taxon_group が丸ごと変わりうるケースが可視化されていなかった）。
+        status = "needs_review" if needs_review else "unresolved"
+        if needs_review:
+            n_unresolved_needs_review += 1
+        _insert(taxon_id, ("ryuiki-taxa", row["taxon_id"]), _build_taxon_row(
+            taxon_id, scientific_name, kdm, phy, cls, row["order0"], row["family0"], basis,
+            group_rules, group_default,
+            rank=None, gbif_taxon_key=None,
+            vernacular_name_ja=row["vernacular_name_ja"], status=status,
+        ))
         n_unresolved += 1
         if has_key:
             n_unresolved_weak_match += 1
     print(
         f"  [taxon] taxa 由来 unresolved = {n_unresolved:,} / taxa総数 {len(taxa_rows):,}"
         f"（うち gbif_taxon_key はあるが gbif_match_type が EXACT でない弱い一致: "
-        f"{n_unresolved_weak_match:,}）"
+        f"{n_unresolved_weak_match:,} / 分類の多数決が不確かで status='needs_review' に"
+        f"なったもの: {n_unresolved_needs_review:,}）"
     )
-    print(f"  [taxon] classification_basis の多数決が同数で status='needs_review' = {n_needs_review:,}")
+    n_needs_review += n_unresolved_needs_review
+    print(f"  [taxon] classification_basis 内訳（unresolved含む全体）: {basis_counts}")
+    print(f"  [taxon] status='needs_review'（accepted系 + unresolved系）合計 = {n_needs_review:,}")
 
     # --- NAME_JA（人手確認済み54件）を binom で上書き（gbif/inat 両方の名前空間を横断） ---
     overrides = _load_vernacular_overrides()
