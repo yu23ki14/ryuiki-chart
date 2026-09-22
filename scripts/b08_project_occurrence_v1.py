@@ -152,10 +152,16 @@ def _build_insert_sql() -> str:
     """
 
 
+# `occurrence.taxon_id` の distinct 値（実測 約33,613種）を `reg.taxon` と
+# 突き合わせる。823,692行を直接 JOIN するより軽い（/simplify 指摘12。実測
+# 1.19秒 かかっていたものを短縮）——taxon_id が古い registry に無いかどうかは
+# 種類（distinct 値）の話であり、それを持つ行数を数えても意味が増えない。
 _STALE_TAXON_COUNT_SQL = """
-SELECT COUNT(*) FROM cube.occurrence o
-LEFT JOIN reg.taxon t ON t.taxon_id = o.taxon_id
-WHERE o.taxon_id IS NOT NULL AND t.taxon_id IS NULL
+SELECT COUNT(*) FROM (
+  SELECT DISTINCT o.taxon_id FROM cube.occurrence o WHERE o.taxon_id IS NOT NULL
+) d
+LEFT JOIN reg.taxon t ON t.taxon_id = d.taxon_id
+WHERE t.taxon_id IS NULL
 """
 
 
@@ -190,8 +196,8 @@ def build_org_norm_projection(
         stale = conn.execute(_STALE_TAXON_COUNT_SQL).fetchone()[0]
         if stale:
             raise common.MigrationError(
-                f"occurrence.taxon_id が registry.taxon に無い行が{stale}件ある"
-                "（taxon_id は NULL ではないのに、registry 側にその taxon が無い＝"
+                f"registry.taxon に無い taxon_id が{stale}種ある"
+                "（occurrence.taxon_id は NULL ではないのに、registry 側にその taxon が無い＝"
                 "b06 実行後に registry.sqlite が taxon を含まない版に入れ替わった"
                 "疑いがある）。同じ registry.sqlite で scripts/b06_build_occurrence.py "
                 "を再実行するか、registry.sqlite を作り直してから再実行すること。"

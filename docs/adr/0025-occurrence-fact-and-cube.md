@@ -51,8 +51,13 @@ ADR-0007 決定3は「`observation` と `occurrence` は分ける」と決めて
 - **`region_id` は出典から決める**（ADR-0022 決定3の最初の実装）。宣言は
   `scripts/migrate/source_regions.py`/`source_regions.yaml`（`sources:` に
   `source_id → region_id`/`expected_row_count`/`evidence`、`regions:` に
-  `region_id → utc_offset`）。未知の出典・使われない宣言・件数不一致は
-  `scripts/b06_build_occurrence.py` を止める。`b03`（`observation`）の
+  `region_id → utc_offset`）。**`sources:` と `regions:` は意味が違う**——
+  `sources:` は「occurrence の出典ごとの行数検証」という occurrence 固有の
+  宣言だが、`regions:` の `utc_offset` は region そのものの属性（ADR-0024
+  「時刻帯は地域の属性」）であり、将来 `observation` 側が同じ経路で
+  region を解決するようになれば `regions:` はそちらからも読まれうる。
+  未知の出典・使われない宣言・件数不一致は `scripts/b06_build_occurrence.py`
+  を止める。`b03`（`observation`）の
   `place_source_ref(source_id='sites.site_id') → place.region_id` という既知の
   結合はそのまま残す（ADR-0022 決定3が明記したとおり、地点に紐づく観測だけを
   扱っているあいだは結果が一致するため。occurrence で先に地域決定の出典依存を

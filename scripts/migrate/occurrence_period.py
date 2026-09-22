@@ -20,10 +20,11 @@ day_changed, month_changed)` を導出する（O-1 設計 v2 D1。
 ## 分類は正規表現を順に試す（コードレビュー指摘9）
 
 文字数（`length`）だけで形を決め打つと、将来2つの形が同じ文字数を持つように
-なったときに黙って誤分類する恐れがある。`classify_shape()` は
-`_SHAPE_DEFS`（実測頻度の降順。`day` が最多で先頭）を**全部**試し、一致した形の
-名前を集める——0件なら `UnknownPeriodShapeError`、2件以上（複数の形に同時に
-一致する値）なら `AmbiguousPeriodShapeError` で止める（黙ってどちらかを選ばない）。
+なったときに黙って誤分類する恐れがある。`classify_shape()` は `_SHAPE_DEFS` を
+**全部**試し、一致した形の名前を集める——0件なら `UnknownPeriodShapeError`、
+2件以上（複数の形に同時に一致する値）なら `AmbiguousPeriodShapeError` で
+止める（黙ってどちらかを選ばない）。`_SHAPE_DEFS` の並び順は読みやすさのため
+だけで、全パターンを毎回試すため判定の速さにも正しさにも影響しない。
 
 ## 実在する日付・時刻としての検証（コードレビュー指摘3）
 
@@ -57,18 +58,20 @@ import datetime
 import pathlib
 import re
 from dataclasses import dataclass
+from typing import NamedTuple
 
+from . import period
 from .common import MigrationError, load_yaml
-from .period import EntryUsage, month_bounds, year_bounds
+from .period import month_bounds, parse_utc_offset, year_bounds
 
 DEFAULT_SHAPES_YAML = pathlib.Path(__file__).resolve().parent / "occurrence_period_shapes.yaml"
 
 REQUIRED_SHAPE_KEYS = ("expected_row_count", "note")
 
-# 形の名前 -> (検証用の正規表現、period_grain)。**実測頻度の降順**（コードレビュー
-# 指摘9: 最頻の 'day' を先頭に）。`classify_shape()` はこの並びを全部試し、
-# 一致した名前を集める（複数一致なら止める。順序は可読性のためのものであり、
-# 判定の正しさ自体は並びに依存しない——全パターンを試すため）。
+# 形の名前 -> (検証用の正規表現、period_grain)。`classify_shape()` はこの並びを
+# 全部試し、一致した名前を集める（複数一致なら止める。コードレビュー指摘9）。
+# **並び順は読みやすさのためだけ**（`day` が実測で最多なので先頭に置いてある）で、
+# 判定の速さ・正しさのどちらにも影響しない——全パターンを毎回試すため。
 #
 # `\d` ではなく `[0-9]` を使う（コードレビュー指摘2）: Python の `re` は `str`
 # パターンの `\d` を既定で Unicode 数字（全角数字 '２０２０' 等）にもマッチさせる。
@@ -134,41 +137,24 @@ def load_period_shapes(path=DEFAULT_SHAPES_YAML) -> dict[str, PeriodShape]:
     return out
 
 
-def _validate_expected_row_count(name: str, spec: dict) -> str | None:
-    """`expected_row_count` が「非負整数」であることを検証する（コードレビュー
-    指摘6: `.get()` で黙って検査を外さない。欠落・空・真偽値・文字列・非整数の
-    float はすべて拒否する）。問題が無ければ `None`、あれば理由の文字列を返す。
-    """
-    value = spec.get("expected_row_count")
-    if isinstance(value, bool) or not isinstance(value, int):
-        return f"{name}: expected_row_count が整数でない（実際: {value!r}）"
-    if value < 0:
-        return f"{name}: expected_row_count が負の数（実際: {value!r}）"
-    return None
-
-
 def validate_occurrence_period_shapes_shape(path=DEFAULT_SHAPES_YAML) -> None:
     """`occurrence_period_shapes.yaml` の構造を検証する（原本DBを必要としない。
     CI 用、かつ `scripts/b06_build_occurrence.py` も実行時に呼ぶ——コードレビュー
     指摘6）。
 
     - 各エントリが `REQUIRED_SHAPE_KEYS`（`expected_row_count`/`note`）を
-      すべて持ち、`expected_row_count` が整数であること。
+      すべて持ち、`expected_row_count` が整数であること（必須キーの検査は
+      `period.required_keys_problems()`、整数検査は
+      `period.validate_expected_row_count()` に委ねる。必須キー自体が欠けて
+      いるエントリは整数検査を二重にしない——/simplify 指摘5・6）。
     - **宣言された形の名前の集合が、コード（`_SHAPE_DEFS`）の12形と過不足なく
       一致すること**（コードレビュー指摘4）。片方にしかない名前があれば、
       それを名指しして止める。
     """
     raw = load_yaml(path)
-    problems: list[str] = []
-    for name, spec in raw.items():
-        if not isinstance(spec, dict):
-            problems.append(f"{name}: エントリがマッピングになっていない（実際の型: {type(spec).__name__}）")
-            continue
-        missing = [k for k in REQUIRED_SHAPE_KEYS if spec.get(k) in (None, "")]
-        if missing:
-            problems.append(f"{name}: 必須キーが欠けている（または空）: {missing}")
-            continue
-        count_problem = _validate_expected_row_count(name, spec)
+    problems = period.required_keys_problems(raw, REQUIRED_SHAPE_KEYS)
+    for name, spec in period.entries_with_required_keys(raw, REQUIRED_SHAPE_KEYS).items():
+        count_problem = period.validate_expected_row_count(name, spec)
         if count_problem:
             problems.append(count_problem)
     if problems:
@@ -294,16 +280,6 @@ def _real_datetime(text19: str, *, value: str, record_id) -> datetime.datetime:
         raise InvalidPeriodValueError(value, record_id, str(e)) from e
 
 
-def _parse_utc_offset(utc_offset: str) -> datetime.timedelta:
-    """`'+09:00'`/`'-05:30'` のような表記を `timedelta` にする。`utc_offset` は
-    `source_regions.py` の `load_source_regions()` が既に `^[+-][0-9]{2}:[0-9]{2}$`
-    で検証済みの値を渡してくる前提（ここでは二重に検証しない）。
-    """
-    sign = 1 if utc_offset[0] == "+" else -1
-    hh, mm = utc_offset[1:].split(":")
-    return sign * datetime.timedelta(hours=int(hh), minutes=int(mm))
-
-
 def _convert_z_instant(
     label: str, utc_offset: str, *, value: str, record_id
 ) -> tuple[str, bool, bool]:
@@ -322,7 +298,7 @@ def _convert_z_instant(
     else:  # 19桁（秒あり）または 23桁（秒+ミリ秒）
         body19 = body[:19]  # ミリ秒があれば切り捨て
     raw_dt = _real_datetime(body19, value=value, record_id=record_id)
-    converted_dt = raw_dt + _parse_utc_offset(utc_offset)
+    converted_dt = raw_dt + parse_utc_offset(utc_offset)
     converted19 = converted_dt.strftime("%Y-%m-%dT%H:%M:%S")
 
     if converted_dt.year != raw_dt.year:
@@ -332,9 +308,11 @@ def _convert_z_instant(
     return converted19, day_changed, month_changed
 
 
-@dataclass(frozen=True)
-class ExpandedPeriod:
-    """`expand_period()` の戻り値。"""
+class ExpandedPeriod(NamedTuple):
+    """`expand_period()` の戻り値。行ごとに1個作る（`scripts/b06_build_occurrence.py`
+    が823,692行ぶん）ホットパスなので、`@dataclass` ではなく `NamedTuple`
+    にしてある（属性アクセスは同じまま。/simplify 指摘11。実測で約0.9秒短縮）。
+    """
 
     shape: str
     period_grain: str
@@ -424,8 +402,3 @@ def expand_period(
         shape=shape, period_grain=grain, period_start=start, period_end=end,
         day_changed=day_changed, month_changed=month_changed,
     )
-
-
-# `PeriodShapeUsage` は `migrate.period.EntryUsage`（形の使用状況を追跡する
-# 汎用トラッカー）への別名（B-3 と同じ判断）。
-PeriodShapeUsage = EntryUsage

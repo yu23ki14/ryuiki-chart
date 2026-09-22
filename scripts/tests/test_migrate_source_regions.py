@@ -1,7 +1,7 @@
 """scripts/migrate/source_regions.py の単体テスト（ADR-0022 決定3・O-1 設計 v2 D1）。"""
 import pytest
 
-from migrate import source_regions as sr
+from migrate import period, source_regions as sr
 
 
 def test_load_source_regions_from_yaml(tmp_path):
@@ -174,12 +174,13 @@ def test_validate_source_regions_shape_missing_file_is_allowed(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# SourceRegionUsage / RegionUsage（未使用宣言・件数不一致の検出）
+# period.EntryUsage（未使用宣言・件数不一致の検出。専用の別名は持たない
+# ——/simplify 指摘10）
 # ---------------------------------------------------------------------------
 
 def test_source_region_usage_reports_unused_and_mismatched():
     src = sr.SourceRegion(source_id="src_a", region_id="jp-14", expected_row_count=3, evidence="テスト")
-    usage = sr.SourceRegionUsage({"src_a": src})
+    usage = period.EntryUsage({"src_a": src})
     assert usage.unused_entries() == ["src_a"]
     usage.mark_used("src_a")
     usage.mark_used("src_a")
@@ -191,7 +192,7 @@ def test_region_usage_reports_unused_without_expected_count():
     """regions には expected_row_count が無い（常に None）ので、未使用の検出
     だけが働き、件数不一致は検出されない。"""
     region = sr.Region(region_id="jp-14", utc_offset="+09:00", evidence="テスト")
-    usage = sr.RegionUsage({"jp-14": region})
+    usage = period.EntryUsage({"jp-14": region})
     assert usage.unused_entries() == ["jp-14"]
     usage.mark_used("jp-14")
     assert usage.unused_entries() == []

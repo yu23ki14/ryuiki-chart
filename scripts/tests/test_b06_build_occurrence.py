@@ -125,7 +125,7 @@ def test_row_without_coordinates_is_kept_with_null_place(tmp_path):
 
 def test_unresolved_taxon_key_raises(tmp_path):
     """未解決の taxon_key を持つ行は `_problems_from_stats` が
-    `_declaration_problems`（宣言表の件数照合）より先に止めるため、
+    `period.declaration_problems`（宣言表の件数照合）より先に止めるため、
     宣言表の件数を追加行に合わせて厳密に揃える必要はない（既定のままでよい）。"""
     rows = list(DEFAULT_ORGANISM_RECORDS) + [
         (

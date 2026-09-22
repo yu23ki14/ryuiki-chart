@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import sqlite3
 
+from migrate import occurrence_period as _occurrence_period
+
 # 既定のフィクスチャ: 12形すべてを1行ずつ（gbif 11行・inat 1行）。
 # gbif__1（day, taxon_key あり）と inat__1（instant_minute_z, taxon_key 無し
 # ＝ taxon_id NULL の正常系）は元からのテストが record_id で直接参照するため
@@ -85,19 +87,14 @@ DEFAULT_ORGANISM_RECORDS = [
     ),
 ]
 
+# 12形の名前の正は `migrate.occurrence_period._SHAPE_NAMES`（コード。モジュール
+# docstring 参照）——ここでリテラルの一覧を2つ持たない（/simplify 指摘8）。
+_ALL_SHAPE_NAMES = tuple(sorted(_occurrence_period._SHAPE_NAMES))
+
 # 形の名前 -> 既定フィクスチャでの実際の件数（`DEFAULT_ORGANISM_RECORDS` と対で
 # 保つ。`period_shapes_yaml_text()` の既定値、および出典ごとの件数の算出に使う）。
-DEFAULT_SHAPE_COUNTS = {
-    "day": 1, "instant_minute_z": 1, "year": 1, "month": 1, "year_interval": 1,
-    "month_interval": 1, "instant_minute": 1, "instant_second": 1, "instant_second_z": 1,
-    "day_interval": 1, "instant_millisecond_z": 1, "instant_minute_z_interval": 1,
-}
-
-_ALL_SHAPE_NAMES = (
-    "year", "month", "year_interval", "day", "month_interval",
-    "instant_minute", "instant_minute_z", "instant_second", "instant_second_z",
-    "day_interval", "instant_millisecond_z", "instant_minute_z_interval",
-)
+# `DEFAULT_ORGANISM_RECORDS` は12形すべてを1行ずつ持つので、既定は全形1件。
+DEFAULT_SHAPE_COUNTS = {name: 1 for name in _ALL_SHAPE_NAMES}
 
 DEFAULT_TAXA = [
     # taxon_id, canonical_binomial, rank, class, kingdom, phylum, "order", family, taxon_group

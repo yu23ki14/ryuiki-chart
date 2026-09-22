@@ -2,6 +2,7 @@
 import pytest
 
 from migrate import occurrence_period as op
+from migrate import period
 
 
 # ---------------------------------------------------------------------------
@@ -309,12 +310,13 @@ def test_assert_declared_shapes_match_code_rejects_partial_set():
 
 
 # ---------------------------------------------------------------------------
-# PeriodShapeUsage（未使用宣言・件数不一致の検出）
+# period.EntryUsage（未使用宣言・件数不一致の検出。専用の別名は持たない
+# ——/simplify 指摘10）
 # ---------------------------------------------------------------------------
 
 def test_period_shape_usage_reports_unused_and_mismatched():
     day_shape = op.PeriodShape(name="day", expected_row_count=3, note="t")
-    usage = op.PeriodShapeUsage({"day": day_shape})
+    usage = period.EntryUsage({"day": day_shape})
     assert usage.unused_entries() == ["day"]
     usage.mark_used("day")
     assert usage.unused_entries() == []

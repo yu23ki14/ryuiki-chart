@@ -100,9 +100,9 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from migrate import common, occurrence_period, source_regions  # noqa: E402
+from migrate import common, occurrence_period, period, source_regions  # noqa: E402
 from registry import common as registry_common  # noqa: E402
-from taxon_namespaces import TAXON_KEY_SOURCE_NAMESPACE  # noqa: E402
+from taxon_namespaces import TAXON_KEY_SOURCE_NAMESPACE, assert_known_source_ids  # noqa: E402
 
 DEFAULT_RYUIKI_DB = ROOT / "data" / "db" / "ryuiki.sqlite"
 DEFAULT_REGISTRY_DB = ROOT / "data" / "db" / "registry.sqlite"
@@ -139,26 +139,17 @@ def _assert_namespaces_have_id_builders() -> None:
 
 def _assert_known_source_ids(work: sqlite3.Connection) -> None:
     """`organism_records.source_id` が `TAXON_KEY_SOURCE_NAMESPACE`
-    （taxon_id 候補の組み立てに使う）に無い値を含んでいたら止める
-    （`scripts/registry/build_taxon.py` の `_assert_known_source_ids` と同じ
-    考え方）。`work` は `src` として `ryuiki.sqlite` を ATTACH 済みの接続。
+    （taxon_id 候補の組み立てに使う）に無い値を含んでいたら止める。`work` は
+    `src` として `ryuiki.sqlite` を ATTACH 済みの接続。
 
-    `source_id` は理論上 NULL でありうる（`organism_records` に NOT NULL 制約は
-    無い）ため、`sorted()` に `None` と `str` が混ざると `TypeError` になる
-    （コードレビュー指摘11）。`key=lambda v: (v is None, v)` で NULL を最後に
-    回して比較可能にする。
+    実際の検査（重複除去・None-safe なソート・例外送出）は
+    `taxon_namespaces.assert_known_source_ids()` に一本化してある——
+    `scripts/registry/build_taxon.py` の同じ検査と重複させない（/simplify
+    指摘1）。`error_cls=common.MigrationError` を渡し、`build_and_write_occurrence`
+    が捕まえる例外の型を揃える。
     """
     rows = work.execute("SELECT DISTINCT source_id FROM src.organism_records").fetchall()
-    unknown = sorted(
-        (r[0] for r in rows if r[0] not in TAXON_KEY_SOURCE_NAMESPACE),
-        key=lambda v: (v is None, v),
-    )
-    if unknown:
-        raise common.MigrationError(
-            "organism_records に taxon_id の名前空間が未定義の source_id がある"
-            f"（scripts/taxon_namespaces.py の TAXON_KEY_SOURCE_NAMESPACE に追記すること）: "
-            f"{unknown}"
-        )
+    assert_known_source_ids((r[0] for r in rows), error_cls=common.MigrationError)
 
 
 _SELECT_ORGANISM_RECORDS_SQL = """
@@ -278,7 +269,6 @@ def _ingest(
     regions: dict,
     source_usage,
     region_usage,
-    shapes: dict,
     shape_usage,
 ) -> dict:
     """`organism_records` を1行ずつ読み、`insert_table` へ `executemany` で
@@ -365,20 +355,6 @@ def _ingest(
     return stats
 
 
-def _declaration_problems(usage, yaml_label: str) -> list[str]:
-    problems: list[str] = []
-    unused = usage.unused_entries()
-    if unused:
-        problems.append(f"{yaml_label} に宣言されているが1件も該当しなかったエントリ: {unused}")
-    mismatched = usage.mismatched_expected_counts()
-    if mismatched:
-        problems.append(
-            f"{yaml_label} の expected_row_count と実測件数が食い違う: "
-            f"{mismatched}（宣言 (expected, actual) の順）"
-        )
-    return problems
-
-
 def build_and_write_occurrence(
     ryuiki_db,
     registry_db,
@@ -402,8 +378,8 @@ def build_and_write_occurrence(
     occurrence_period.validate_occurrence_period_shapes_shape(period_shapes_yaml)
 
     sources, regions = source_regions.load_source_regions(source_regions_yaml)
-    source_usage = source_regions.SourceRegionUsage(sources)
-    region_usage = source_regions.RegionUsage(regions)
+    source_usage = period.EntryUsage(sources)
+    region_usage = period.EntryUsage(regions)
     shapes = occurrence_period.load_period_shapes(period_shapes_yaml)
     # `validate_occurrence_period_shapes_shape()` は生の YAML dict に対して
     # 同じ名前集合の一致を既に検証済みだが、ここでは `load_period_shapes()` が
@@ -411,7 +387,7 @@ def build_and_write_occurrence(
     # （読み込み処理自体が将来変わって2つの結果がずれても黙って見逃さないため。
     # 12要素の集合比較で安価）。
     occurrence_period.assert_declared_shapes_match_code(shapes, period_shapes_yaml)
-    shape_usage = occurrence_period.PeriodShapeUsage(shapes)
+    shape_usage = period.EntryUsage(shapes)
 
     out_path = pathlib.Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -427,7 +403,7 @@ def build_and_write_occurrence(
                 taxon_ids = _load_taxon_ids(work)
                 stats = _ingest(
                     work, dest, staging, taxon_ids, sources, regions, source_usage, region_usage,
-                    shapes, shape_usage,
+                    shape_usage,
                 )
             finally:
                 work.close()
@@ -441,9 +417,9 @@ def build_and_write_occurrence(
             dest.commit()
 
             declaration_problems = (
-                _declaration_problems(source_usage, "source_regions.yaml (sources)")
-                + _declaration_problems(region_usage, "source_regions.yaml (regions)")
-                + _declaration_problems(shape_usage, "occurrence_period_shapes.yaml")
+                period.declaration_problems(source_usage, "source_regions.yaml (sources)")
+                + period.declaration_problems(region_usage, "source_regions.yaml (regions)")
+                + period.declaration_problems(shape_usage, "occurrence_period_shapes.yaml")
             )
             if declaration_problems:
                 raise common.MigrationError(

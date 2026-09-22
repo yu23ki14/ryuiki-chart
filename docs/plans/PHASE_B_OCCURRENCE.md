@@ -809,3 +809,106 @@ scripts/b08_project_occurrence_v1.py へ射影して書き出し  7.8〜11.1s（
   15.1s+4.1s=19.2s。fetchall+位置指定executemanyの2段階から、ATTACHした
   1本のINSERT...SELECTに変えたことで明確に速くなった）
 ```
+
+## 12. 独立レビュー（`/simplify`）を受けた修正と実測
+
+§11（HEAD `57bf83b`）に `/simplify` をかけて12件の指摘（深さ2件・再利用3件・
+単純化4件・効率2件＋どちらにも数えない1件）を受け、すべて反映した。**実測どおり、
+`occurrence`・`org_norm`・`observation` の値は完全に不変**——修正前
+（`57bf83b`）のコード一式を `git archive` で復元して同じ実データからビルドし、
+正準化した sha256 で突き合わせて確認した（§11と同じ方法）。
+
+### 反映した指摘（要約）
+
+- **深さ1**: `scripts/b06_build_occurrence.py` の `_assert_known_source_ids` と
+  `scripts/registry/build_taxon.py` の同名関数が同じ検査（重複除去・
+  None-safe なソート・例外送出）を別々に持っていたのを、依存の無い
+  `scripts/taxon_namespaces.py` の `assert_known_source_ids(source_ids,
+  error_cls=ValueError)` に一本化した。`error_cls` で呼び出し側が投げたい
+  例外の型を選べる（`build_taxon.py` は既定の `ValueError`、`b06` は
+  `common.MigrationError`）——既存テストが見ている例外の型・メッセージは
+  変えていない。
+- **深さ2**: `_parse_utc_offset` を `scripts/migrate/occurrence_period.py` から
+  `scripts/migrate/period.py`（`_strip_tz` の隣）に移設し、公開名
+  `parse_utc_offset` で再利用する形にした（時刻帯の扱いを1か所に。ADR-0024）。
+- **深さ3**: ADR-0025 D1 に「`source_regions.yaml` の `regions:`（地域の属性。
+  将来 `observation` も読みうる）と `sources:`（occurrence の出典ごとの
+  行数検証）は意味が違う」という1文を追記した。
+- **再利用4**: `_declaration_problems`（b03・b06 で同一実装）を
+  `scripts/migrate/period.py` の `EntryUsage` の隣に `declaration_problems()`
+  として1つだけ置き、両方から呼ぶ形にした。
+- **再利用5**: `_validate_expected_row_count`（`occurrence_period.py`・
+  `source_regions.py` で同一）を `period.validate_expected_row_count()` に統合。
+- **再利用6**: `period._validate_shape` を「パスを読む部分」（`_validate_shape`
+  のまま）と「生の dict の必須キーを検査する部分」（新設
+  `required_keys_problems()`）に分割し、後者と新設のフィルタ
+  `entries_with_required_keys()` を `occurrence_period.py`/`source_regions.py`
+  のセクションごとの検証（`sources:`/`regions:`/形の宣言）から使うようにした。
+  `period_exceptions.yaml`・`time_label_conventions.yaml` の検証結果は
+  変えていない（`validate_period_exceptions_shape`/
+  `validate_time_label_conventions_shape` は無変更のまま `_validate_shape` を
+  呼ぶ）。
+- **単純化7**: `_ingest()` の使われない引数 `shapes` を削除。
+- **単純化8**: `scripts/tests/occurrence_fixtures.py` の12形の名前を、
+  `migrate.occurrence_period._SHAPE_NAMES`（正）から導出する形にし、リテラルの
+  重複を無くした。
+- **単純化9**: `occurrence_period_shapes.yaml` の `note` を「どの原表記か」の
+  識別だけに削ぎ落とし、展開規則の文章は削除した（正はコード、説明は
+  ADR-0025 D1 の表の1か所だけに集約）。
+- **単純化10**: `EntryUsage` の別名（`PeriodShapeUsage`・`SourceRegionUsage`・
+  `RegionUsage`）を廃止し、呼び出し側（`b06`）は `period.EntryUsage` を直接
+  使うようにした。
+- **効率11**: `ExpandedPeriod`（1行に1個、823,692回作られるホットパス）を
+  `@dataclass(frozen=True)` から `typing.NamedTuple` に変更した（属性参照は
+  変わらない。実測 約0.9秒短縮）。
+- **効率12**: `b08` の古い registry 検出を、`occurrence.taxon_id` を1行ずつ
+  JOIN する形から、distinct 値（実測 約33,613種）だけを `reg.taxon` と
+  突き合わせる形に変えた。メッセージも「行が何件」ではなく「taxon_id が
+  何種」に合わせた。
+- **`classify_shape` の docstring 修正**: 「実測頻度の降順」という記述が、
+  全形を毎回試す実装（正しさも速さも並び順に依存しない）と矛盾して見える
+  との指摘を受け、「並びは読みやすさのためだけ」と明記した。
+
+### 見送った指摘（オーナー判断。理由は前回の指示メッセージのまま）
+
+- 形の判定を文字数で絞る高速化（実測 約2.3秒）: `/code-review` 指摘9で
+  意図的に外した特例を戻すことになるため見送り。
+- `source_id` の二重走査の畳み込み（実測 約0.47秒）: 「1行も処理する前に
+  全件を診断する」という `_assert_known_source_ids`/宣言表検証の設計を
+  優先し見送り。
+- 例外クラスの使われない属性の整理: 既存の `PeriodMismatchError` 等と同じ
+  流儀のまま。全体を揃えるなら別途。
+
+### 値の不変性を確認した方法（§11と同じ手法）
+
+`git archive 57bf83b` で修正前のコード一式を復元し、同じ実データ
+（`data/db/ryuiki.sqlite`/`registry.sqlite`）に対して実行して `v2_old.sqlite`/
+`v1_projection_occurrence_old.sqlite` を作り、現在のコードの出力と
+`record_id` 順・正準化 sha256 で突き合わせた。
+
+```
+occurrence（823,692行、全22列。source_row_id は int() 正準化）: 完全一致
+org_norm（816,856行、全21列）: 完全一致
+```
+
+`observation` は main（`22138f2`）のコード一式を同様に復元して突き合わせ、
+**完全一致**（1,041,003行、全21列）を確認した。
+
+### 受け入れ基準（実測）
+
+```
+b06 → b08 → b02 --tables org_norm: exit 0、宣言済み差分のみ1・不一致0
+既存9表のゲート（b03→b04→b05）: 一致3・宣言済み差分のみ6・不一致0（変更なし）
+r01 のフルビルド（worktree の registry.sqlite）: taxon 41,454・place 4,964 等、
+  すべて修正前と同じ件数
+web/src/lib/registry/generated.ts・generated-client.ts の再生成: git diff 0行
+pytest: 308件成功（原本の無い一時 clone + requirements.txt だけの venv でも
+  308件成功）
+```
+
+### 実行時間（`/simplify` 反映後）
+
+```
+scripts/b06_build_occurrence.py    19.2s
+scripts/b08_project_occurrence_v1.py へ射影して書き出し  7.8s
+```

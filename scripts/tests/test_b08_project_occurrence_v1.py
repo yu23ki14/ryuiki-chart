@@ -167,11 +167,12 @@ def test_yr_mo_mlat_mlon_are_integer_storage_class(tmp_path):
 
 
 def test_stale_taxon_id_raises(tmp_path):
-    """`occurrence.taxon_id` は NULL ではないのに `registry.taxon` に無い行が
+    """`occurrence.taxon_id` は NULL ではないのに `registry.taxon` に無い
+    taxon_id（distinct 値。/simplify 指摘12で行ではなく種類を数える形にした）が
     あれば止める（古い registry を検出する。コードレビュー指摘7）。"""
     cube_db, registry_db, taxon_group_yaml = _setup(tmp_path, [_TAXON_RESOLVED_ROW, _STALE_TAXON_ROW])
     out = tmp_path / "v1_projection_occurrence.sqlite"
-    with pytest.raises(common.MigrationError, match="registry.taxon"):
+    with pytest.raises(common.MigrationError, match="registry.taxon に無い taxon_id が1種"):
         b08.build_org_norm_projection(cube_db, registry_db, out, taxon_group_yaml)
 
 
