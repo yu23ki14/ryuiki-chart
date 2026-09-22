@@ -181,11 +181,16 @@ python3 scripts/r01_build_registry.py`）実測:
 
 ### F2: 分類補完の検証
 
-`classification_basis` 内訳（taxon 単位、gbif+inat 計35,212件）:
+`classification_basis` 内訳（taxon 単位、gbif+inat 計35,212件。`unresolved`
+（`taxa`由来6,242件）を含めた全体は §6 で改めて示す）:
 
 ```
 {'unresolved': 5266, 'source': 20186, 'genus_match': 3658, 'binomial_match': 6102}
 ```
+
+（この節は初回実装時点の実測をそのまま残す。独立レビュー後の値は
+`classification_basis='unresolved'` → `'no_match'` に改名されている——§6参照。
+件数自体は改名の前後で変わらない。）
 
 `derived.sqlite` の `org_norm`（816,856行）との record 単位の突き合わせ
 （各記録の `taxon_id` を引いて `class`/`kingdom`/`phylum`/`taxon_group` を再計算し
@@ -195,11 +200,15 @@ python3 scripts/r01_build_registry.py`）実測:
 `Sirosporium celtidis`、属単位の多数決が同数だったケース。v1 は
 `Sordariomycetes` を選んでいたが、本ビルダーの明示規則（件数降順・同数ならclass昇順）
 は `Dothideomycetes` を選ぶ。`taxon_group` はどちらも「菌類」で変わらない）。
-この1件は `taxon.status='needs_review'` で可視化されている。
+この不一致件数（1件）は独立レビュー後も変わらない（§6 の修正は `status`/
+`classification_basis` の**値の意味付け**を直すものであり、`class`/`kingdom`/
+`phylum`/`taxon_group` の**値そのもの**は変えていないため）。
 
-同数だった属単位の多数決は3属あったが（*Martensia*・*Stilbum*・*Sirosporium*）、
-実際に不一致を生んだのは *Sirosporium* の1 taxon だけ（他の2属はそもそも
-その属多数決に頼らないといけない taxon がその属内に存在しなかった）。
+同数だった属単位の多数決は3属あった（*Martensia*・*Stilbum*・*Sirosporium*）。
+このうち `org_norm` との不一致を生んだのは *Sirosporium* の1 taxon だけ
+（他の2属はそもそもその属多数決に頼らないといけない taxon がその属内に
+存在しなかった）。ただし「同数の属多数決を使った taxon 自体」はこの3属の中に
+複数存在しうる——`status='needs_review'` にすべき件数は §6 で独立に集計し直した。
 
 ### grid01 の place
 
@@ -236,7 +245,175 @@ D1 側のスキーマ変更なしで既にシードされている**（実測: �
 条件には元々ヒットしない）。measurements/sensor の縦線（Phase B 既存ゲート）は
 本 PR の影響を受けない。
 
-## 6. 再現の壁・申し送り
+## 6. 独立レビュー（/code-review・/simplify）を受けた修正と実測
+
+Slice 0（HEAD `6a71b94`）に独立レビューを走らせ、オーナーが採否を決めた8件
+（code-review 4件・修正の深さ2件・効率1件・単純化/再利用は代表8件のうち影響の
+大きいもの）を反映した。**taxon_id と class/kingdom/phylum/taxon_group の値は
+変えていない**（下記で明示したもの以外）。以下すべて実際にフルビルドを走らせて確認。
+
+**レジストリの中身の差が意図どおりだけであることの検証**（修正前・修正後それぞれで
+`build_taxon.build()` を実行し、`taxon` テーブルを全行 diff）:
+
+```
+taxon_id の集合: 完全一致（41,454件、片方にしかない行は0件）
+scientific_name / canonical_binomial / rank / kingdom / phylum / class / order /
+  family / gbif_taxon_key / vernacular_name_ja / accepted_taxon_id / taxon_group:
+  全41,454行で完全一致（diff 0）
+status が変わった行: 50件（すべて旧→'needs_review'。逆方向・無関係な変化は0件。
+  旧時点で既に needs_review だった1件——Sirosporium celtidis——と合わせて
+  新の needs_review 総数51件と一致）
+classification_basis が変わった行: 8,025件（すべて旧'unresolved'→新'no_match'の
+  改名のみ。それ以外の値の変化は0件）
+```
+
+`place`/`place_source_ref`/`place_relation`/`unit`/`variable`/`variable_alias`/
+`caveat`/`caveat_scope` は本ラウンドでコードを変えていないため未検証（変更対象外）。
+
+### 6-1. 分類が不確かな taxon の可視化を2点補強
+
+1. **unresolved（taxa由来）行でも needs_review が分かるようにした**
+   （旧実装は `status='unresolved'` を絶対に上書きせず、分類の多数決が同数でも
+   隠れていた）。実例: *Martensia flabelliformis*（`common:taxon:ryuiki-taxa.
+   martensia_flabelliformis`）は属 *Martensia* の多数決が紅藻綱
+   Florideophyceae 2件 対 （端脚類側の）綱2件の同数で、`class` は
+   `Dothideomycetes`型の規則で決定論的に選ばれるが、taxon_group が丸ごと
+   変わりうる不確かさは以前は可視化されていなかった。今は
+   `status='needs_review'` になる。
+2. **属の多数決で補完した taxon は、同数でなくても属自体が複数の class に
+   またがれば needs_review にする**。実測: 該当属 **26属**（アドバイザー概算と
+   一致。例: `Ficus`・`Stellaria`・`Juncus` 等）。**3属の完全同数（*Martensia*・
+   *Stilbum*・*Sirosporium*）はこの26属の部分集合**（2グループが同数で並ぶ時点で
+   その属は自明に複数classを含むため）。
+
+**実測（フルビルド、`status='needs_review'` の内訳）**:
+
+```
+needs_review 合計 = 51（gbif 1 / inat 23 / ryuiki-taxa(unresolved由来) 27）
+全51件とも classification_basis='genus_match'
+```
+
+`status='accepted'` 35,188 / `status='needs_review'` 51 /
+`status='unresolved'` 6,215（= 6,242 − 27）。合計 41,454 = `taxon` の総行数
+（`reports/registry_resolution.md` §7 で機械的に検算——後述6-2）。
+
+**kingdom 単独の同数（code-review指摘2、own class はあるが own kingdom が
+二名法多数決で同数のケース）は、実データでは0件**（全51件が genus_match 経由
+のため）。ただしこれは「今のデータでは起きていない」だけで、`_resolve_classification()`
+の機械検証（`scripts/tests/test_registry_taxon.py::
+test_kingdom_only_tie_marks_needs_review_even_with_own_class`）はこの経路を
+実際に踏んで確認している——将来データが増えて発生したときに黙って見逃さない
+ようにする、という指摘の趣旨どおりの「潜在バグの修正」。
+
+### 6-2. `reports/registry_resolution.md` の内訳を固定2値から全 status 集計に直す
+
+`scripts/r02_resolution_report.py` が `status='accepted'`/`'unresolved'` の
+2つしか数えておらず、`needs_review` が内訳から漏れて合計が
+`registry_taxon_total` と一致しなかった（code-review指摘4）。`GROUP BY status`
+に直し、実測で合計が一致することを確認（35,188 + 51 + 6,215 = 41,454）。
+
+### 6-3. taxon_key ごとの代表選びを完全に決定的にする
+
+`_load_occurrence_representatives()` の `ROW_NUMBER` タイブレークに分類列
+（kingdom/phylum/class/order/family）を追加し、`counted` の GROUP BY キー全体を
+並びに含めることで理論上も曖昧さを無くした。さらに「最頻値の件数そのものが
+複数候補で並ぶ」ケースが無いことを機械検証する assert を追加した
+（code-review指摘3）。**実測: 33,613件全件で違反0件**（`F2機械検証OK` ログ）。
+
+### 6-4. 「出典→名前空間」の正を `scripts/common.py` に移す
+
+`SOURCE_NAMESPACE` は `build_taxon.py` の private 定数だったため、レジストリを
+経由しない読み手（`scripts/x01_dwca.py` の DwC-A 書き出し。`occurrence.txt` の
+`taxonID` 列に `organism_records.taxon_key` を出典の区別なく生のまま書いている）
+に届いていなかった（code-review指摘5）。正を `scripts/common.py` の
+`TAXON_KEY_SOURCE_NAMESPACE` に移し、`build_taxon.py` の SQL の CASE 式も
+そこから組み立てるようにした（ハードコードの重複を解消）。
+**`scripts/x01_dwca.py` の書き出し自体は本PRでは直していない**（公開物の
+意図的な変更になるため別PR。`docs/plans/PHASE_B_INTAKE.md` #17 に起票した）。
+
+### 6-5. grid01 の鮮度検知の後退を直す
+
+grid01 の入力が `derived.mesh_all`（指紋の対象）から `ryuiki.organism_records`
+（指紋の対象外）に変わったことで、`m0x_*.py` が `organism_records` に新しい
+座標を追記しても `--check-fresh` がそれを検知できなくなっていた（以前は
+`build:derived` を挟む標準手順が間接的に伝播させていたが、その経路が無くなった。
+code-review指摘7）。`organism_records` の軽い代理指標（行数・最大rowid）を
+full モードの指紋に追加した。
+
+**実測（COUNT(*)/MAX(rowid) の選択根拠）**: `SELECT COUNT(*), MAX(rowid)` を
+1クエリにまとめると約160ms（SQLiteが2つの集約を同時に満たそうとしてインデックスの
+高速経路を使えなくなる）。`SELECT COUNT(*)` と `SELECT MAX(rowid)` を別々に
+2回打つと合計約5ms（それぞれ約5ms・ほぼ0ms）。+200ms の閾値を大きく下回るため、
+2クエリ形式で両方採用した（`MAX(rowid)` だけへの縮退は不要だった）。
+
+**`--check-fresh` の所要時間（前後）**:
+
+| | `compute_input_fingerprint(mode=full)` 単体 | `--check-fresh` サブプロセス全体 |
+|---|---|---|
+| 修正前 | 約6ms | (未計測。今回計測した後の値のみ) |
+| 修正後 | 約11ms（+5ms） | 約49〜59ms（Python起動オーバーヘッドが大半） |
+
+「行数・最大rowidが変わらない書き換え（UPDATE、例: license列のバックフィル
+再実行）は検知できない」という限界は明示的に残した（軽い代理指標という設計の
+性質上の割り切り。`common.py` のコメント参照）。
+
+### 6-6. 分類の多数決3関数の統合（効率）
+
+`_load_binom_class_majority`/`_load_genus_class_majority`/
+`_load_binom_phylum_majority` がそれぞれ独立に `organism_records` をスキャンし、
+二名法キー(binom)を計算し直していたのを、1回だけ一時テーブル
+（`_classification_population`）に落としてから3つの多数決を集計する形に
+直した（code-review指摘8、simplify指摘9で1つの汎用関数 `_majority_vote()` にも
+統合）。
+
+**実測（`build_taxon.build()` 単体、`ryuiki.sqlite` 823,692行、同一マシンで
+3回計測し安定した値。r01 全体ではなく taxon ステップだけを切り出して計測）**:
+
+```
+旧: _load_binom_class_majority + _load_genus_class_majority + _load_binom_phylum_majority
+    = 3.28s + 5.46s + 2.95s = 11.69s（3関数合計）
+    build_taxon.build() 全体 = 23.40s
+
+新: _create_classification_population + 3×_majority_vote + _load_multi_class_genera
+    = 6.79s + (1.56s + 1.10s + 1.26s) + 0.81s = 11.52s
+    build_taxon.build() 全体 = 23.69s
+```
+
+**「約6秒減る」というアドバイザーの概算は実測では再現しなかった。** 3関数の
+統合そのものは約1秒の短縮（11.69s→10.71s、`_load_multi_class_genera` の0.81sを
+除く）にとどまり、同じPRで追加した正しさ担保のチェック（6-1の複数class属検出
+0.81s、6-3の代表選びタイブレーク強化で `_load_occurrence_representatives` が
+約6.3s→約8.1s に増加）がほぼ同じだけ時間を使うため、**`build_taxon.build()`
+全体の所要時間は実質的に変わらない**（23.40s→23.69s、フル `r01` 全体では
+約27.3s→約27.6s、体感差なし）。効率だけを見れば期待した改善は得られなかったが、
+3関数の重複コードを1つの `_majority_vote()` に統合したこと自体（simplify指摘9）
+と、6-3の正しさ強化は独立に価値があるため両方とも採用した。
+
+### 6-7. classification_basis の改名（`unresolved` → `no_match`）
+
+`classification_basis='unresolved'`（分類の多数決が引けない）と
+`taxon.status='unresolved'`（GBIF backbone未照合）が同じ文字列で意味が違い
+紛らわしかったため、前者を `'no_match'` に改名した（simplify指摘11）。
+`registry/README.md`・`scripts/schema_registry.sql`・
+`web/src/db/schema-registry.ts`・本ドキュメントのコメントを合わせて更新した。
+値の意味は変わらない（文字列だけの変更）。
+
+### 6-8. その他の単純化（simplify指摘9・10・12・13・14）
+
+- taxon 行を組み立てる2箇所の dict リテラルを `_build_taxon_row()` に統合。
+- `_resolve_classification()` の `bc.get(binom)` を1回計算に、
+  `_pick_taxa_representative()` の同一引数2回呼び出しを1回に、未使用の
+  `import pathlib` を削除。
+- `registry/taxon/taxon_group.yaml` の読み込みに、`build_place._load_zone_yaml()`/
+  `build_caveat._load_caveat_yaml()` と同じ流儀で match 条件の重複検知を追加
+  （実測: 重複0件）。`open()` も `<Path>.open()` に統一。
+- 同じ経緯（9件衝突・8026の例・ADR-0004例外の理由等）が8箇所に全文コピーされて
+  いた指摘を受け、**決定と理由の正を ADR-0019 の追記、実測の正を本ドキュメント**
+  に一本化し、他（`build_taxon.py`・`common.py`・`schema_registry.sql`・
+  `schema-registry.ts`・`web/src/lib/registry/index.ts`・`registry/README.md`）は
+  「なぜこの形か」を1〜2文＋参照に縮めた。
+
+## 7. 再現の壁・申し送り
 
 - **O-1/O-2 はまだ設計のみ**（本ドキュメント §4 の切り方の記述だけで、実装は
   無い）。`occurrence` テーブルの DDL・キューブ拡張（`source_id` を次元に追加）・

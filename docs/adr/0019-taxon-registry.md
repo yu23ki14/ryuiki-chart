@@ -31,9 +31,20 @@ ADR-0004 規約1「`local_key` は出典の識別子をそのまま使ってよ�
 `family`/`classification_basis`/`canonical_binomial`/`taxon_group` 列を追加。
 `order`/`family` は多数決で補完しない。`taxon_group` は
 `registry/taxon/taxon_group.yaml` から生成）。v1 の暗黙の同数処理
-（`ROW_NUMBER` の実装依存順）を明示規則（件数降順、同数なら値の昇順）に置き換え、
-同数だった1 taxon だけ `status='needs_review'` にした。詳細な実測・検証結果は
-`registry/README.md`「taxon の名前空間分割と分類補完」と
+（`ROW_NUMBER` の実装依存順）を明示規則（件数降順、同数なら値の昇順）に置き換えた。
+`classification_basis` の解決不能値は `'unresolved'` ではなく `'no_match'` と
+名付けた（`taxon.status='unresolved'`——GBIF backbone未照合——と文字列が同じで
+紛らわしいため）。
+
+**分類が不確かな taxon の可視化（`status='needs_review'`）は、独立レビュー
+（/code-review）で2点補強した**: (1) 属単位の多数決が同数の場合だけでなく、
+**属自体が複数の class にまたがる場合**（同数でなくても多数決の信頼性が低い）も
+対象にした。(2) `status='unresolved'`（GBIF backbone未照合）の行でも、分類の
+多数決が不確かなら `needs_review` に置き換えるようにした（初版は「`unresolved`
+は上書きしない」としていたが、これだと *Martensia flabelliformis* のように
+taxon_group 自体が丸ごと変わりうる不確かさが `taxa` 由来の unresolved 行では
+一切可視化されなかった。`unresolved` と `needs_review` は別軸の事実だが `status`
+は単一値なので、より新しい・具体的な判定を優先する）。実測件数・実例は
 `docs/plans/PHASE_B_OCCURRENCE.md` 参照。決定そのもの（backbone は GBIF を正とする、
 未解決は `unresolved` で保持する等）は変更していない。
 
