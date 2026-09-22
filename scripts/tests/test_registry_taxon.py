@@ -88,6 +88,50 @@ def test_unknown_source_id_raises(tmp_path):
         _build(tmp_path, organism_records_rows=rows)
 
 
+def test_new_namespace_without_traits_raises_immediately(tmp_path, monkeypatch):
+    """TAXON_KEY_SOURCE_NAMESPACE に3つ目の名前空間を足しても、taxon_id の
+    組み立て方（_NAMESPACE_TRAITS）が無ければビルド開始直後に明示的に止まる
+    （黙って既存の名前空間——inat——に化けたりしない。/code-review 指摘1）。
+    """
+    monkeypatch.setitem(build_taxon_module.TAXON_KEY_SOURCE_NAMESPACE, "third_source", "third")
+    rows = [
+        ("third_source", "1", "Foo bar", "species", None, None, None, None, None, "2020-01-01"),
+    ]
+    with pytest.raises(ValueError, match="_NAMESPACE_TRAITS"):
+        _build(tmp_path, organism_records_rows=rows)
+
+
+def test_new_namespace_with_traits_gets_correct_id_and_no_collision(tmp_path, monkeypatch):
+    """_NAMESPACE_TRAITS に3つ目の名前空間の組み立て方を足せば、正しい形の
+    taxon_id になり、既存の gbif/inat 名前空間と衝突しない（同じ数値キー8026が
+    3つの名前空間それぞれで別の taxon になる。/code-review 指摘1）。
+    """
+    monkeypatch.setitem(build_taxon_module.TAXON_KEY_SOURCE_NAMESPACE, "third_source", "third")
+    monkeypatch.setitem(
+        build_taxon_module._NAMESPACE_TRAITS,
+        "third",
+        {
+            "id_builder": lambda key: f"common:taxon:third.{key}",
+            "fill_gbif_taxon_key": False,
+        },
+    )
+    rows = [
+        ("gbif_kanagawa_occurrences", "8026", "Axiidae", "FAMILY",
+         None, None, None, None, None, "2020-01-01"),
+        ("inaturalist_kanagawa", "8026", "Corvus macrorhynchos", "species",
+         None, None, None, None, None, "2020-01-02"),
+        ("third_source", "8026", "Something thirdish", "species",
+         None, None, None, None, None, "2020-01-03"),
+    ]
+    conn, counts = _build(tmp_path, organism_records_rows=rows)
+    assert counts["taxon"] == 3
+    third_row = _taxon(conn, "common:taxon:third.8026")
+    assert third_row["scientific_name"] == "Something thirdish"
+    assert third_row["gbif_taxon_key"] is None
+    assert _taxon(conn, "common:taxon:gbif.8026")["scientific_name"] == "Axiidae"
+    assert _taxon(conn, "common:taxon:inat.8026")["scientific_name"] == "Corvus macrorhynchos"
+
+
 def test_taxon_key_to_binomial_must_be_a_function(tmp_path):
     """出典内で同じ taxon_key に異なる二名法キー(binom)が付くと機械検証で止まる
     （F1機械検証。同じ数値キーが実は複数の実体を指している異常を示す）。
@@ -100,20 +144,41 @@ def test_taxon_key_to_binomial_must_be_a_function(tmp_path):
         _build(tmp_path, organism_records_rows=rows)
 
 
-def test_representative_selection_raises_on_genuine_count_tie(tmp_path):
-    """同じ (ns, taxon_key) の中で、代表候補(scientific_name違い)の件数が完全に
-    同数で並ぶ場合は機械検証で止まる（/code-review 指摘3）。binom は同じ
-    ("Testx aaa")なので F1 のbinom関数性チェックはパスするが、著者引用などの
-    細部（"forma1"/"forma2"）が違う全体表記が1件ずつで並ぶケース。
+def test_representative_selection_tie_with_only_naming_difference_does_not_stop_build(tmp_path):
+    """同じ (ns, taxon_key) の中で代表候補(scientific_name違い)の件数が同数でも、
+    分類（kingdom/phylum/class/order/family）が一致していれば黙って選び、
+    ビルドを止めず needs_review にもしない（/code-review 指摘3。以前は
+    AssertionError で必ず止めていたため、著者引用の表記ゆれ2件だけで
+    ensure-registry.sh→docker compose up が起動しなくなる事故だった）。
     """
     rows = [
         ("gbif_kanagawa_occurrences", "50", "Testx aaa forma1", "species",
-         None, None, None, None, None, "2020-01-01"),
+         "Kingdom1", "Phylum1", "ClassA", None, None, "2020-01-01"),
         ("gbif_kanagawa_occurrences", "50", "Testx aaa forma2", "species",
-         None, None, None, None, None, "2020-01-02"),
+         "Kingdom1", "Phylum1", "ClassA", None, None, "2020-01-02"),
     ]
-    with pytest.raises(AssertionError, match="最頻値の件数が同数"):
-        _build(tmp_path, organism_records_rows=rows)
+    conn, counts = _build(tmp_path, organism_records_rows=rows)
+    assert counts["taxon"] == 1
+    t = _taxon(conn, "common:taxon:gbif.50")
+    assert t["class"] == "ClassA"
+    assert t["status"] == "accepted"
+
+
+def test_representative_selection_tie_with_classification_conflict_marks_needs_review(tmp_path):
+    """同じ (ns, taxon_key) の中で代表候補の件数が同数で、かつ分類が食い違う場合は
+    needs_review にする（ビルドは止めない。/code-review 指摘3）。
+    """
+    rows = [
+        ("gbif_kanagawa_occurrences", "51", "Testy aaa forma1", "species",
+         "Kingdom1", "Phylum1", "ClassA", None, None, "2020-01-01"),
+        ("gbif_kanagawa_occurrences", "51", "Testy aaa forma2", "species",
+         "Kingdom1", "Phylum1", "ClassB", None, None, "2020-01-02"),
+    ]
+    conn, counts = _build(tmp_path, organism_records_rows=rows)
+    assert counts["taxon"] == 1
+    t = _taxon(conn, "common:taxon:gbif.51")
+    assert t["status"] == "needs_review"
+    assert t["class"] in ("ClassA", "ClassB")  # NULL-lastのタイブレークで決定論的に決まる
 
 
 # ---------------------------------------------------------------------------
@@ -239,6 +304,61 @@ def test_kingdom_only_tie_marks_needs_review_even_with_own_class(tmp_path):
     assert t["classification_basis"] == "source"  # class は own なので source
     assert t["kingdom"] == "KingdomX"  # 2対2の同数、kingdom昇順のタイブレークで KingdomX
     assert t["status"] == "needs_review"  # だが kingdom の補完元(bc)が同数なので要確認
+
+
+def test_class_tie_with_matching_kingdom_does_not_mark_kingdom_needs_review(tmp_path):
+    """bc の多数決が (class0, kingdom0) の組で同数でも、同数の候補どうしで kingdom
+    が一致していれば（class だけが食い違っていても）needs_review にしない
+    （/code-review 指摘2。`is_tied`——組全体の同数——をそのまま使うと、companion
+    列(kingdom)が実は一致しているケースを誤検出する）。own class がある行は
+    class 自体が bc を経由しないので、class 側の食い違いにも引きずられない。
+    """
+    rows = [
+        ("gbif_kanagawa_occurrences", "60", "Testk aaa", "species",
+         "Animalia", "Phylum1", "ClassA", None, None, "2020-01-01"),
+        ("gbif_kanagawa_occurrences", "61", "Testk aaa", "species",
+         "Animalia", "Phylum1", "ClassA", None, None, "2020-01-02"),
+        ("inaturalist_kanagawa", "60", "Testk aaa", "species",
+         "Animalia", "Phylum1", "ClassB", None, None, "2020-01-03"),
+        ("inaturalist_kanagawa", "61", "Testk aaa", "species",
+         "Animalia", "Phylum1", "ClassB", None, None, "2020-01-04"),
+        # 対象: own class はある(多数決には現れない値)が own kingdom が無い。
+        ("gbif_kanagawa_occurrences", "62", "Testk aaa", "species",
+         None, None, "ClassSelf", None, None, "2020-01-05"),
+    ]
+    conn, _counts = _build(tmp_path, organism_records_rows=rows)
+    t = _taxon(conn, "common:taxon:gbif.62")
+    assert t["class"] == "ClassSelf"
+    assert t["classification_basis"] == "source"
+    assert t["kingdom"] == "Animalia"
+    assert t["status"] == "accepted"  # class側のtie(A/B)に引きずられて誤検出しない
+
+
+def test_bc_tie_null_last_prefers_non_null_kingdom(tmp_path):
+    """bc の同数タイブレークは NULL を最後に回すので、(class=A, kingdom=NULL)×2 と
+    (class=A, kingdom=K)×2 が同数のとき K が選ばれる（NULL が勝って kingdom が
+    落ち taxon_group が「未判定」になる事故を防ぐ。/code-review 指摘2）。NULL は
+    COUNT(DISTINCT ...) の対象外なので「食い違い」とは扱わず needs_review にもならない。
+    """
+    rows = [
+        ("gbif_kanagawa_occurrences", "70", "Testn aaa", "species",
+         None, None, "ClassA", None, None, "2020-01-01"),
+        ("gbif_kanagawa_occurrences", "71", "Testn aaa", "species",
+         None, None, "ClassA", None, None, "2020-01-02"),
+        ("inaturalist_kanagawa", "70", "Testn aaa", "species",
+         "K", None, "ClassA", None, None, "2020-01-03"),
+        ("inaturalist_kanagawa", "71", "Testn aaa", "species",
+         "K", None, "ClassA", None, None, "2020-01-04"),
+        # 対象: own class・own kingdom とも無く、bc の多数決に頼る。
+        ("gbif_kanagawa_occurrences", "72", "Testn aaa", "species",
+         None, None, None, None, None, "2020-01-05"),
+    ]
+    conn, _counts = _build(tmp_path, organism_records_rows=rows)
+    t = _taxon(conn, "common:taxon:gbif.72")
+    assert t["class"] == "ClassA"
+    assert t["kingdom"] == "K"
+    assert t["classification_basis"] == "binomial_match"
+    assert t["status"] == "accepted"
 
 
 def test_multi_class_genus_marks_needs_review_without_tie(tmp_path):
