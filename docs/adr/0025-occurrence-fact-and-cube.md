@@ -36,11 +36,15 @@ ADR-0007 決定3は「`observation` と `occurrence` は分ける」と決めて
 - **観測日の無い6,836行も落とさない**（ADR-0007 原則1）。`period_grain`/
   `period_start`/`period_end`/`period_raw` が `NULL` になるだけで、
   `taxon_id`/`place_id`/`region_id` は他の行と同じ規則で解決する。
-- `taxon_id`: `scripts/taxon_namespaces.py` の名前空間（`gbif`/`inat`）から
-  `common:taxon:<ns>.<key>` を組み立て、`registry.taxon` に実在することを検証する。
-  `taxon_key` の無い853行（うち観測日あり775行）は `NULL`。
-- `place_id`: grid01 に**必ず**解決する（`organism_records` は座標を全行持つ）。
-  **ADR-0006 規約4の改定（F4）**: 機械グリッドには常に解決し、
+- `taxon_id`: `scripts/taxon_namespaces.py` の名前空間（`gbif`/`inat`）から、
+  `scripts/registry/common.py` の `taxon_id_gbif`/`taxon_id_inat`（taxon
+  レジストリのビルドが実際に ID を発行するのと同じ関数）で候補を組み立て、
+  `registry.taxon` に実在することを検証する。`taxon_key` の無い853行
+  （うち観測日あり775行）は `NULL`。
+- `place_id`: 座標のある行は grid01 に**必ず**解決する（`organism_records` は
+  実測で座標を全行持つ）。**座標が無い行は `place_id`/`lat`/`lon` を NULL の
+  まま保持する**（ADR-0007 原則1。落とさない）。**ADR-0006 規約4の改定
+  （F4）**: 機械グリッドには常に解決し、
   `coordinate_uncertainty_m` を occurrence に運ぶ（使う側が精度で絞る。規約4の
   文字どおりの適用——精度不明なら解決しない——は地点等の細かい単位への解決と
   公開時の一般化〔ADR-0018〕に限る）。
@@ -111,16 +115,21 @@ ADR-0011 は入力を `observation` と `occurrence` の2つに決めている�
 作る。**ADR-0011 の `org_norm` の行き先は「L2 のファクト本体に統合」**であり、
 射影元は L2（`occurrence`）であって、まだ実装していないキューブ（D2）ではない。
 
-- `binom`/`cls`/`kdm`/`phy`/`ord`/`family`/`taxon_group` は**taxon の属性**
-  （`occurrence.taxon_id` → `registry.taxon` を素直に JOIN するだけで足りる。
-  v1 の記録ごとの多数決 COALESCE は Slice 0 で taxon レジストリのビルド時に
-  taxon 単位へ移設済み——実データで検証: 816,856行中不一致は `cls` の1件のみ）。
-  `taxon_group` は `COALESCE(taxon.taxon_group, registry/taxon/taxon_group.yaml
-  の default_label_ja)`（taxon_id が NULL の775行はこの既定に落ちる。リテラルを
-  射影スクリプトに書かない）。
-- `scientific_name`/`vernacular_name`/`taxon_rank`（`rank_l` は
-  `lower(taxon_rank)`）/`red_list_category`/`license_class`/`is_alien` は
-  **記録の原表記**（occurrence の F6 列。NULLIF 等の正規化はしない）。
+- `binom`/`rank_l`/`cls`/`kdm`/`phy`/`ord`/`family`/`taxon_group` は**taxon の
+  属性**（`occurrence.taxon_id` → `registry.taxon` を素直に JOIN するだけで
+  足りる。v1 の記録ごとの多数決 COALESCE は Slice 0 で taxon レジストリの
+  ビルド時に taxon 単位へ移設済み——実データで検証: 816,856行中不一致は
+  `cls` の1件のみ）。`taxon_group` は `COALESCE(taxon.taxon_group,
+  registry/taxon/taxon_group.yaml の default_label_ja)`（taxon_id が NULL の
+  775行はこの既定に落ちる。リテラルを射影スクリプトに書かない）。
+  **`rank_l`**: 初回実装は「taxon の属性」に分類し損ねて `lower(記録の
+  taxon_rank)`（F6 の原表記側）から計算していた（独立レビューで指摘）。
+  `registry.taxon.rank`（build_taxon.py が組み立て時に小文字化して持つ）と
+  `lower(記録の taxon_rank)` が816,856行全件で一致することを実測で確認した
+  うえで、`t.rank`（taxon の属性）に修正した——本節の分類どおりになった。
+- `scientific_name`/`vernacular_name`/`red_list_category`/`license_class`/
+  `is_alien` は**記録の原表記**（occurrence の F6 列。NULLIF 等の正規化は
+  しない）。
 - `yr`/`mo` は **`period_raw`（原表記）から v1 の式をそのまま**適用する
   （`yr=CAST(substr(period_raw,1,4) AS INT)`、`mo` は `length(period_raw)>=7`
   のとき `CAST(substr(period_raw,6,2) AS INT)`）。`period_start`/`period_end`

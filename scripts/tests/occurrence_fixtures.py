@@ -5,18 +5,29 @@
 `organism_records`（`ryuiki.sqlite` 相当）と `taxon`/`place_source_ref`/`place`
 （`registry.sqlite` 相当）のうち、b06 が実際に `SELECT` する列だけを持つ
 最小限の形にしてある（`scripts/tests/migrate_fixtures.py` と同じ方針）。
+
+## `occurrence_period_shapes.yaml` は12形すべてを宣言する必要がある
+
+`scripts/migrate/occurrence_period.py` の `assert_declared_shapes_match_code()`
+は「宣言された形の名前の集合がコードの12形と過不足なく一致すること」を
+`scripts/b06_build_occurrence.py` の実行のたびに検証する（コードレビュー
+指摘4）。加えて、宣言された形は実際に1回以上使われないと「未使用宣言」として
+止まる（既存の `EntryUsage` の仕様）。そのため**既定の `organism_records`
+フィクスチャは12形すべてを最低1行ずつ持つ**（`DEFAULT_ORGANISM_RECORDS`）。
+特定の失敗系だけを見たいテストは、そのテストの目的に必要な行だけを渡せば
+よい（`assert_declared_shapes_match_code`/宣言表の検証より前に別の理由で
+止まるテストは12形を揃えなくてよい）。
 """
 from __future__ import annotations
 
 import sqlite3
 
-# 既定の2出典×2行。source_id は本物の値
-# （`scripts/taxon_namespaces.py` の `TAXON_KEY_SOURCE_NAMESPACE` が実際に
-# 知っている2値。b06 はこの対応表を注入できない作りなので、フィクスチャも
-# 本物の source_id を使う——`scripts/tests/test_registry_taxon.py` と同じ方針）。
-# gbif 側は taxon_key 解決あり、inat 側は taxon_key 無し（taxon_id=NULL に
-# なる正常系）。座標は両方とも grid01 (3550, 13900) に解決する位置
-# （lat=35.50..35.51, lon=139.00..139.01）。
+# 既定のフィクスチャ: 12形すべてを1行ずつ（gbif 11行・inat 1行）。
+# gbif__1（day, taxon_key あり）と inat__1（instant_minute_z, taxon_key 無し
+# ＝ taxon_id NULL の正常系）は元からのテストが record_id で直接参照するため
+# 名前を変えていない。残り10形は "gbif__<shape>" という素直な名前にした。
+# 座標はすべて grid01 (3550, 13900) に解決する位置（lat=35.50..35.51,
+# lon=139.00..139.01）。
 DEFAULT_ORGANISM_RECORDS = [
     # record_id, source_id, observed_on, lat, lon, coordinate_uncertainty_m,
     # scientific_name, vernacular_name, taxon_rank, taxon_key,
@@ -25,17 +36,75 @@ DEFAULT_ORGANISM_RECORDS = [
         "gbif__1", "gbif_kanagawa_occurrences", "2020-01-05", 35.505, 139.005, 10.0,
         "Foo bar", "フーバー", "SPECIES", "1001",
         "LC", 0, "CC-BY", "公開",
-    ),
+    ),  # day
     (
         "inat__1", "inaturalist_kanagawa", "2020-02-01T03:00Z", 35.506, 139.006, None,
         "", "", "", "",
         "", 0, "", "限定共有",
+    ),  # instant_minute_z, taxon_key 無し
+    (
+        "gbif__year", "gbif_kanagawa_occurrences", "2020", 35.505, 139.005, None,
+        "Foo bar", "", "SPECIES", "1001", "", 0, "", "公開",
+    ),
+    (
+        "gbif__month", "gbif_kanagawa_occurrences", "2020-02", 35.505, 139.005, None,
+        "Foo bar", "", "SPECIES", "1001", "", 0, "", "公開",
+    ),
+    (
+        "gbif__year_interval", "gbif_kanagawa_occurrences", "1990/1992", 35.505, 139.005, None,
+        "Foo bar", "", "SPECIES", "1001", "", 0, "", "公開",
+    ),
+    (
+        "gbif__month_interval", "gbif_kanagawa_occurrences", "2012-08/2013-06", 35.505, 139.005, None,
+        "Foo bar", "", "SPECIES", "1001", "", 0, "", "公開",
+    ),
+    (
+        "gbif__instant_minute", "gbif_kanagawa_occurrences", "2020-01-05T12:30", 35.505, 139.005, None,
+        "Foo bar", "", "SPECIES", "1001", "", 0, "", "公開",
+    ),
+    (
+        "gbif__instant_second", "gbif_kanagawa_occurrences", "2020-01-05T12:30:45", 35.505, 139.005, None,
+        "Foo bar", "", "SPECIES", "1001", "", 0, "", "公開",
+    ),
+    (
+        "gbif__instant_second_z", "gbif_kanagawa_occurrences", "2020-01-05T12:30:45Z", 35.505, 139.005, None,
+        "Foo bar", "", "SPECIES", "1001", "", 0, "", "公開",
+    ),
+    (
+        "gbif__day_interval", "gbif_kanagawa_occurrences", "2019-08-01/2019-08-31", 35.505, 139.005, None,
+        "Foo bar", "", "SPECIES", "1001", "", 0, "", "公開",
+    ),
+    (
+        "gbif__instant_millisecond_z", "gbif_kanagawa_occurrences", "2020-01-05T12:30:45.123Z",
+        35.505, 139.005, None, "Foo bar", "", "SPECIES", "1001", "", 0, "", "公開",
+    ),
+    (
+        "gbif__instant_minute_z_interval", "gbif_kanagawa_occurrences",
+        "2020-01-05T12:30Z/2020-01-06T12:30Z", 35.505, 139.005, None,
+        "Foo bar", "", "SPECIES", "1001", "", 0, "", "公開",
     ),
 ]
 
+# 形の名前 -> 既定フィクスチャでの実際の件数（`DEFAULT_ORGANISM_RECORDS` と対で
+# 保つ。`period_shapes_yaml_text()` の既定値、および出典ごとの件数の算出に使う）。
+DEFAULT_SHAPE_COUNTS = {
+    "day": 1, "instant_minute_z": 1, "year": 1, "month": 1, "year_interval": 1,
+    "month_interval": 1, "instant_minute": 1, "instant_second": 1, "instant_second_z": 1,
+    "day_interval": 1, "instant_millisecond_z": 1, "instant_minute_z_interval": 1,
+}
+
+_ALL_SHAPE_NAMES = (
+    "year", "month", "year_interval", "day", "month_interval",
+    "instant_minute", "instant_minute_z", "instant_second", "instant_second_z",
+    "day_interval", "instant_millisecond_z", "instant_minute_z_interval",
+)
+
 DEFAULT_TAXA = [
-    # taxon_id, canonical_binomial, class, kingdom, phylum, "order", family, taxon_group
-    ("common:taxon:gbif.1001", "Foo bar", "Insecta", "Animalia", "Arthropoda", "Fooales", "Fooidae", "昆虫類"),
+    # taxon_id, canonical_binomial, rank, class, kingdom, phylum, "order", family, taxon_group
+    (
+        "common:taxon:gbif.1001", "Foo bar", "species", "Insecta", "Animalia",
+        "Arthropoda", "Fooales", "Fooidae", "昆虫類",
+    ),
 ]
 
 DEFAULT_PLACE = [
@@ -48,11 +117,13 @@ DEFAULT_PLACE_SOURCE_REF = [
     ("common:place:grid01.3550_13900", "grid01:3550,13900", "organism_records.lat_lon"),
 ]
 
+# 既定フィクスチャの出典別件数（gbif 11行・inat 1行。`DEFAULT_ORGANISM_RECORDS`
+# 参照）。
 DEFAULT_SOURCE_REGIONS_YAML_TEXT = (
     "sources:\n"
     "  gbif_kanagawa_occurrences:\n"
     "    region_id: jp-14\n"
-    "    expected_row_count: 1\n"
+    "    expected_row_count: 11\n"
     "    evidence: テスト用\n"
     "  inaturalist_kanagawa:\n"
     "    region_id: jp-14\n"
@@ -90,8 +161,8 @@ def make_occurrence_registry_db(path, taxa=None, places=None, place_refs=None) -
     try:
         conn.execute(
             """CREATE TABLE taxon (
-                taxon_id TEXT PRIMARY KEY, canonical_binomial TEXT, class TEXT, kingdom TEXT,
-                phylum TEXT, "order" TEXT, family TEXT, taxon_group TEXT
+                taxon_id TEXT PRIMARY KEY, canonical_binomial TEXT, rank TEXT, class TEXT,
+                kingdom TEXT, phylum TEXT, "order" TEXT, family TEXT, taxon_group TEXT
             )"""
         )
         conn.execute("CREATE TABLE place (place_id TEXT PRIMARY KEY, region_id TEXT, place_kind TEXT)")
@@ -99,7 +170,7 @@ def make_occurrence_registry_db(path, taxa=None, places=None, place_refs=None) -
             "CREATE TABLE place_source_ref (place_id TEXT, external_key TEXT, source_id TEXT)"
         )
         conn.executemany(
-            "INSERT INTO taxon VALUES (?,?,?,?,?,?,?,?)", taxa if taxa is not None else DEFAULT_TAXA
+            "INSERT INTO taxon VALUES (?,?,?,?,?,?,?,?,?)", taxa if taxa is not None else DEFAULT_TAXA
         )
         conn.executemany(
             "INSERT INTO place VALUES (?,?,?)", places if places is not None else DEFAULT_PLACE
@@ -117,24 +188,29 @@ def make_source_regions_yaml(path, text: str | None = None) -> None:
     path.write_text(text if text is not None else DEFAULT_SOURCE_REGIONS_YAML_TEXT, encoding="utf-8")
 
 
-# `occurrence_period_shapes.yaml` 相当。既定フィクスチャが使う形
-# （day/instant_minute_z）だけを宣言する。
-DEFAULT_PERIOD_SHAPES_YAML_TEXT = (
-    "day:\n"
-    "  length: 10\n"
-    "  period_grain: day\n"
-    "  expected_row_count: 1\n"
-    "  note: テスト用\n"
-    "instant_minute_z:\n"
-    "  length: 17\n"
-    "  period_grain: instant\n"
-    "  expected_row_count: 1\n"
-    "  note: テスト用\n"
-)
+def period_shapes_yaml_text(counts: dict[str, int] | None = None) -> str:
+    """`occurrence_period_shapes.yaml` 相当のテキストを、コードの12形**全部**に
+    ついて組み立てる（`assert_declared_shapes_match_code()` が過不足を許さない
+    ため）。`counts` で個別に上書きできる（既定は `DEFAULT_SHAPE_COUNTS`）。
+    """
+    merged = dict(DEFAULT_SHAPE_COUNTS)
+    if counts:
+        merged.update(counts)
+    lines = []
+    for name in _ALL_SHAPE_NAMES:
+        n = merged.get(name, 0)
+        lines.append(f"{name}:\n  expected_row_count: {n}\n  note: テスト用\n")
+    return "".join(lines)
 
 
-def make_period_shapes_yaml(path, text: str | None = None) -> None:
-    path.write_text(text if text is not None else DEFAULT_PERIOD_SHAPES_YAML_TEXT, encoding="utf-8")
+DEFAULT_PERIOD_SHAPES_YAML_TEXT = period_shapes_yaml_text()
+
+
+def make_period_shapes_yaml(path, text: str | None = None, counts: dict[str, int] | None = None) -> None:
+    if text is not None:
+        path.write_text(text, encoding="utf-8")
+    else:
+        path.write_text(period_shapes_yaml_text(counts), encoding="utf-8")
 
 
 # b08（射影）のテスト用: occurrence テーブルだけを持つ v2.sqlite 相当。スキーマの

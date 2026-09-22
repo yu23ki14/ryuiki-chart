@@ -333,6 +333,15 @@ def _month_bounds(measured_on7: str) -> tuple[str, str]:
     return start, end.isoformat()
 
 
+# 公開名（B-3・EntryUsage と同じ判断）。`scripts/migrate/occurrence_period.py` の
+# 'year'/'month' 形（区間の両端の計算を含む）が同じ規則を要るため、ここから
+# 再利用する（二重実装を避ける）。measurements 側の呼び出し（`_bounds_for_grain`
+# 等）は引き続き private 名 `_year_bounds`/`_month_bounds` を直接使い、
+# 挙動は一切変えない。
+year_bounds = _year_bounds
+month_bounds = _month_bounds
+
+
 def _strip_tz(label: str, source_id: str | None) -> str:
     """25桁の `'YYYY-MM-DDTHH:MM:SS+09:00'` から時刻帯を落として、19桁の
     時刻帯なしローカル時刻にする（T1: `period_start`/`period_end` は時刻帯を

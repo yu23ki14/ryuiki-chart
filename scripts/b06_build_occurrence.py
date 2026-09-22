@@ -17,23 +17,34 @@
 `organism_records` は823,692行**全行**を対象にする（`observed_on` が NULL の
 6,836行も落とさない。ADR-0007 原則1「データは落とさない」。日付が無い行は
 `period_grain`/`period_start`/`period_end`/`period_raw` が NULL になるだけで、
-`taxon_id`/`place_id`/`region_id` は他の行と同じ規則で解決する）。
+`taxon_id`/`place_id`/`region_id` は他の行と同じ規則で解決する。**座標
+（`lat`/`lon`）が無い行も同じ原則で落とさない**——`organism_records` は実測で
+全行に座標があるが、将来そうでない行が現れても `place_id`/`place_kind` を
+NULL にするだけで扱えるようにしてある。座標があるのに grid01 に解決しない行
+だけを異常として止める）。
 
 - `record_id` / `source_table`（常に `'organism_records'`）/ `source_row_id`
-  （rowid。O-2 で v1 の走査順の再現に要る）/ `source_id`
+  （`organism_records.rowid`。**INTEGER**。O-2 で v1 の走査順の再現に要る。
+  rowid は原本のスナップショットに固有の値で、`VACUUM` 等で変わりうる——
+  恒久的な識別子ではない。v1（`web/scripts/build-biota.mjs`）も同じ
+  スナップショットを走査するため、O-2 の走査順の再現にはこの `rowid` を
+  「同じスナップショットの中でだけ」比較に使う。**恒久的な識別子は
+  `record_id`（TEXT の主キー）**）/ `source_id`
   （`gbif_kanagawa_occurrences`/`inaturalist_kanagawa`。将来 O-1b のキューブが
   次元に使う）— 素の carry-over。
 - `region_id`: **出典から決める**（ADR-0022 決定3の最初の実装。
   `scripts/migrate/source_regions.py`・`source_regions.yaml`）。`place`
   経由では決められない（grid01 の region_id は常に NULL——ADR-0022 決定1）。
 - `taxon_id`: `scripts/taxon_namespaces.py` の名前空間から
-  `common:taxon:gbif.<key>`/`common:taxon:inat.<key>` を組み立て、
+  `scripts/registry/common.py` の `taxon_id_gbif`/`taxon_id_inat`（taxon
+  レジストリのビルドが実際に ID を組み立てるのと同じ関数）で候補を作り、
   `registry.sqlite` の `taxon` に実在することを検証する。`taxon_key` が
   無い853行（日付ありは775行）は `taxon_id=NULL`。
 - `place_id`/`place_kind`: grid01（`registry.build_place` が
-  `organism_records` の座標から作った機械グリッド）に**必ず**解決する
-  （lat/lon は全行に入っている。ADR-0006 規約4の改定——F4: 機械グリッドには
-  常に解決し `coordinate_uncertainty_m` を運ぶ。使う側が精度で絞る）。
+  `organism_records` の座標から作った機械グリッド）に解決する。座標がある
+  行は**必ず**解決する（ADR-0006 規約4の改定——F4: 機械グリッドには常に解決し
+  `coordinate_uncertainty_m` を運ぶ。使う側が精度で絞る）。座標が無い行は
+  `place_id`/`place_kind` とも NULL（ADR-0007 原則1）。
 - `coordinate_uncertainty_m`/`lat`/`lon`/`scientific_name`/`vernacular_name`/
   `taxon_rank`/`red_list_category`/`is_alien`/`license_class`/
   `publication_scope`: 原表記の旗（F6）。記録にそのまま運ぶ（NULLIF 等の
@@ -43,9 +54,9 @@
   持たない（O-1 設計 v2 D1 に明記）。
 - `period_grain`/`period_start`/`period_end`/`period_raw`: ADR-0008・
   ADR-0024。`observed_on` から `scripts/migrate/occurrence_period.py` で展開する
-  （12形。宣言表は `occurrence_period_shapes.yaml`）。'Z' 終端の形は
-  `source_regions.yaml` の region の `utc_offset` でローカル時刻に変換する
-  （SQLite の日時関数は使わない。Python の `datetime` で計算する）。
+  （12形。宣言表は `occurrence_period_shapes.yaml`。形の定義自体はコードが正）。
+  'Z' 終端の形は `source_regions.yaml` の region の `utc_offset` でローカル時刻に
+  変換する（SQLite の日時関数は使わない。Python の `datetime` で計算する）。
 
 ## 埋めない列（理由）
 
@@ -57,19 +68,27 @@
 `source_ref` は org_norm 等の v1 派生テーブルにも現れず、この O-1a の
 対象外——将来の消費者が現れたら別途追加を検討する）。
 
-## 機械検証（1つでも失敗すれば `MigrationError` で止まる）
+## 機械検証（1つでも失敗すれば `MigrationError`（のサブクラス）で止まる）
 
-- 出典（`organism_records.source_id`）が `source_regions.yaml` に無い →
-  即座に止まる（`UnknownSourceRegionError`）。
+- `source_regions.yaml`/`occurrence_period_shapes.yaml` の構造
+  （`validate_source_regions_shape`/`validate_occurrence_period_shapes_shape`）
+  を実行のたびに検証する——`.get()` で黙って検査を外さない。
+  `occurrence_period_shapes.yaml` の形の名前がコード（`_SHAPE_DEFS`）と
+  過不足なく一致することも含む。
+- 出典（`organism_records.source_id`）が `source_regions.yaml`/
+  `taxon_namespaces.TAXON_KEY_SOURCE_NAMESPACE` に無い → 即座に止まる。
 - `source_regions.yaml`/`occurrence_period_shapes.yaml` の宣言が1件も
   使われなかった・実測件数が `expected_row_count` と食い違う → 止まる。
 - `taxon_key` はあるのに `registry.taxon` に無い → 止まる。
-- 座標のある行（＝全行）で grid01 の `place_id` が解決できない → 止まる。
-- 'Z' → ローカル時刻の変換で年が変わった（D3の前提が破れた）→ 止まる
-  （`occurrence_period.YearBoundaryCrossedError`）。
+- 座標が**あるのに** grid01 の `place_id` が解決できない行 → 止まる
+  （座標が無い行は止めない。上記参照）。
+- `observed_on` の形が想定外・複数の形に同時に一致・実在しない日付/時刻
+  （`'2020-02-30'`・`'...T24:00'` 等）・'Z' → ローカル時刻の変換で年が
+  変わった（D3の前提が破れた）→ 止まる（`scripts/migrate/occurrence_period.py`
+  の各例外）。
 - `period_start`/`period_end` が時刻帯（`+`/`Z`）を持つ、または
-  `date(period_start)` が日付部分と一致しない（T1 と同じ不変条件。
-  NULL の行は対象外）→ 止まる。
+  `date(period_start)`/`date(period_end)` が日付部分と一致しない（T1 と
+  同じ不変条件。NULL の行は対象外）→ 止まる。
 """
 from __future__ import annotations
 
@@ -82,6 +101,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from migrate import common, occurrence_period, source_regions  # noqa: E402
+from registry import common as registry_common  # noqa: E402
 from taxon_namespaces import TAXON_KEY_SOURCE_NAMESPACE  # noqa: E402
 
 DEFAULT_RYUIKI_DB = ROOT / "data" / "db" / "ryuiki.sqlite"
@@ -93,64 +113,82 @@ DEFAULT_REPORT = ROOT / "reports" / "phase_b_occurrence.md"
 
 _SAMPLE_LIMIT = 20
 
-# `taxon_key` を持つ行の taxon_id 候補（`common:taxon:<ns>.<key>`）を組み立てる
-# CASE 式。`TAXON_KEY_SOURCE_NAMESPACE`（正）から動的に組み立てる——ハードコードの
-# 重複を作らない（`scripts/registry/build_taxon.py` の `_namespace_case_sql` と
-# 同じ考え方）。
-def _taxon_id_candidate_case_sql() -> str:
-    branches = " ".join(
-        f"WHEN o.source_id = '{source_id.replace(chr(39), chr(39) * 2)}' "
-        f"THEN 'common:taxon:{ns}.' || o.taxon_key"
-        for source_id, ns in TAXON_KEY_SOURCE_NAMESPACE.items()
-    )
-    return (
-        "CASE WHEN o.taxon_key IS NULL OR o.taxon_key = '' THEN NULL "
-        f"{branches} ELSE NULL END"
-    )
+# 名前空間（`TAXON_KEY_SOURCE_NAMESPACE` の値。'gbif'/'inat'）ごとの taxon_id
+# 組み立て関数。**taxon レジストリのビルドが実際に ID を発行するのと同じ関数**
+# （`scripts/registry/common.py`）を再利用する——ID の書式（`common:taxon:...`）を
+# ここで書き直さない（コードレビュー指摘12）。
+_ID_BUILDER_BY_NAMESPACE = {
+    "gbif": registry_common.taxon_id_gbif,
+    "inat": registry_common.taxon_id_inat,
+}
 
 
-_SELECT_ORGANISM_RECORDS_SQL_TEMPLATE = """
-WITH base AS (
-  SELECT
-    o.rowid AS source_row_id,
-    o.record_id, o.source_id, o.observed_on,
-    o.lat, o.lon, o.coordinate_uncertainty_m,
-    o.scientific_name, o.vernacular_name, o.taxon_rank,
-    o.red_list_category, o.is_alien, o.license_class, o.publication_scope,
-    CAST(FLOOR(o.lat*100) AS INT) AS mlat,
-    CAST(FLOOR(o.lon*100) AS INT) AS mlon,
-    {taxon_id_candidate_case} AS taxon_id_candidate
-  FROM src.organism_records o
-)
+def _assert_namespaces_have_id_builders() -> None:
+    """`TAXON_KEY_SOURCE_NAMESPACE` が出しうる名前空間ラベルは、必ず
+    `_ID_BUILDER_BY_NAMESPACE` に対応するエントリを持つことをビルド開始直後に
+    確認する（`scripts/registry/build_taxon.py` の
+    `_assert_namespaces_have_traits()` と同じ考え方）。
+    """
+    missing = sorted(set(TAXON_KEY_SOURCE_NAMESPACE.values()) - set(_ID_BUILDER_BY_NAMESPACE))
+    if missing:
+        raise ValueError(
+            "TAXON_KEY_SOURCE_NAMESPACE にある名前空間だが _ID_BUILDER_BY_NAMESPACE に"
+            f"無いものがある（taxon_id の組み立て方が決まらない）: {missing}"
+        )
+
+
+def _assert_known_source_ids(work: sqlite3.Connection) -> None:
+    """`organism_records.source_id` が `TAXON_KEY_SOURCE_NAMESPACE`
+    （taxon_id 候補の組み立てに使う）に無い値を含んでいたら止める
+    （`scripts/registry/build_taxon.py` の `_assert_known_source_ids` と同じ
+    考え方）。`work` は `src` として `ryuiki.sqlite` を ATTACH 済みの接続。
+
+    `source_id` は理論上 NULL でありうる（`organism_records` に NOT NULL 制約は
+    無い）ため、`sorted()` に `None` と `str` が混ざると `TypeError` になる
+    （コードレビュー指摘11）。`key=lambda v: (v is None, v)` で NULL を最後に
+    回して比較可能にする。
+    """
+    rows = work.execute("SELECT DISTINCT source_id FROM src.organism_records").fetchall()
+    unknown = sorted(
+        (r[0] for r in rows if r[0] not in TAXON_KEY_SOURCE_NAMESPACE),
+        key=lambda v: (v is None, v),
+    )
+    if unknown:
+        raise common.MigrationError(
+            "organism_records に taxon_id の名前空間が未定義の source_id がある"
+            f"（scripts/taxon_namespaces.py の TAXON_KEY_SOURCE_NAMESPACE に追記すること）: "
+            f"{unknown}"
+        )
+
+
+_SELECT_ORGANISM_RECORDS_SQL = """
 SELECT
-  b.source_row_id, b.record_id, b.source_id, b.observed_on,
-  b.lat, b.lon, b.coordinate_uncertainty_m,
-  b.scientific_name, b.vernacular_name, b.taxon_rank,
-  b.red_list_category, b.is_alien, b.license_class, b.publication_scope,
-  b.taxon_id_candidate, t.taxon_id AS taxon_id_resolved,
+  o.rowid AS source_row_id, o.record_id, o.source_id, o.observed_on, o.taxon_key,
+  o.lat, o.lon, o.coordinate_uncertainty_m,
+  o.scientific_name, o.vernacular_name, o.taxon_rank,
+  o.red_list_category, o.is_alien, o.license_class, o.publication_scope,
   psr.place_id AS place_id, p.place_kind AS place_kind
-FROM base b
-LEFT JOIN reg.taxon t ON t.taxon_id = b.taxon_id_candidate
+FROM src.organism_records o
 LEFT JOIN reg.place_source_ref psr
   ON psr.source_id = 'organism_records.lat_lon'
- AND psr.external_key = 'grid01:' || b.mlat || ',' || b.mlon
+ AND psr.external_key = 'grid01:' || CAST(FLOOR(o.lat*100) AS INT) || ',' || CAST(FLOOR(o.lon*100) AS INT)
 LEFT JOIN reg.place p ON p.place_id = psr.place_id
-ORDER BY b.source_row_id
+ORDER BY o.rowid
 """
 
 _CREATE_OCCURRENCE_SQL = """
 CREATE TABLE {table} (
   record_id                TEXT NOT NULL,
   source_table              TEXT NOT NULL,
-  source_row_id             TEXT NOT NULL,
+  source_row_id             INTEGER NOT NULL,
   source_id                 TEXT NOT NULL,
   region_id                 TEXT NOT NULL,
   taxon_id                  TEXT,
-  place_id                  TEXT NOT NULL,
-  place_kind                TEXT NOT NULL,
+  place_id                  TEXT,
+  place_kind                TEXT,
   coordinate_uncertainty_m  REAL,
-  lat                       REAL NOT NULL,
-  lon                       REAL NOT NULL,
+  lat                       REAL,
+  lon                       REAL,
   period_grain              TEXT,
   period_start              TEXT,
   period_end                TEXT,
@@ -181,28 +219,11 @@ INSERT INTO {table} (
 """
 
 
-def _assert_known_source_ids(work: sqlite3.Connection) -> None:
-    """`organism_records.source_id` が `TAXON_KEY_SOURCE_NAMESPACE`
-    （taxon_id 候補の組み立てに使う）に無い値を含んでいたら止める
-    （`scripts/registry/build_taxon.py` の `_assert_known_source_ids` と同じ
-    考え方——ここで止めないと taxon_id_candidate の CASE 式が未知の source_id を
-    黙って NULL に落とし、taxon 解決漏れとして紛れ込む）。`work` は `src` として
-    `ryuiki.sqlite` を ATTACH 済みの接続（`_ingest` と同じ入力）。
-    """
-    rows = work.execute("SELECT DISTINCT source_id FROM src.organism_records").fetchall()
-    unknown = sorted(r[0] for r in rows if r[0] not in TAXON_KEY_SOURCE_NAMESPACE)
-    if unknown:
-        raise common.MigrationError(
-            "organism_records に taxon_id の名前空間が未定義の source_id がある"
-            f"（scripts/taxon_namespaces.py の TAXON_KEY_SOURCE_NAMESPACE に追記すること）: "
-            f"{unknown}"
-        )
-
-
 def _empty_stats() -> dict:
     return {
         "total": 0,
         "n_dated": 0,
+        "no_coordinate_count": 0,
         "unresolved_taxon_count": 0,
         "unresolved_taxon_sample": [],
         "unresolved_place_count": 0,
@@ -217,14 +238,17 @@ def _empty_stats() -> dict:
     }
 
 
+# (件数のキー, サンプル一覧のキー, メッセージのテンプレート)。`_SAMPLE_LIMIT` まで
+# サンプルを出す（テーブルごとに上限を変える理由が無いので、値を1種類だけ持つ
+# ——以前は使われない `sample_limit` 次元を持っていた。コードレビュー指摘13）。
 _PROBLEM_SPECS = (
     (
-        "unresolved_taxon_count", "unresolved_taxon_sample", None,
+        "unresolved_taxon_count", "unresolved_taxon_sample",
         "occurrence: taxon_key はあるが registry.taxon に無い行: "
         "{count}件（例: {sample}）",
     ),
     (
-        "unresolved_place_count", "unresolved_place_sample", None,
+        "unresolved_place_count", "unresolved_place_sample",
         "occurrence: 座標はあるのに grid01 の place_id が解決できない行: "
         "{count}件（例: {sample}）",
     ),
@@ -233,19 +257,23 @@ _PROBLEM_SPECS = (
 
 def _problems_from_stats(stats: dict) -> list[str]:
     problems: list[str] = []
-    for count_key, sample_key, sample_limit, template in _PROBLEM_SPECS:
+    for count_key, sample_key, template in _PROBLEM_SPECS:
         count = stats[count_key]
         if not count:
             continue
-        sample = stats[sample_key][:sample_limit] if sample_limit is not None else stats[sample_key]
-        problems.append(template.format(count=count, sample=sample))
+        problems.append(template.format(count=count, sample=stats[sample_key]))
     return problems
+
+
+def _load_taxon_ids(work: sqlite3.Connection) -> set[str]:
+    return {row[0] for row in work.execute("SELECT taxon_id FROM reg.taxon")}
 
 
 def _ingest(
     work: sqlite3.Connection,
     dest: sqlite3.Connection,
     insert_table: str,
+    taxon_ids: set[str],
     sources: dict,
     regions: dict,
     source_usage,
@@ -258,23 +286,18 @@ def _ingest(
     溜めない）。
     """
     stats = _empty_stats()
-    sql = _SELECT_ORGANISM_RECORDS_SQL_TEMPLATE.format(
-        taxon_id_candidate_case=_taxon_id_candidate_case_sql()
-    )
 
     def rows():
-        for row in work.execute(sql):
+        for row in work.execute(_SELECT_ORGANISM_RECORDS_SQL):
             (
-                source_row_id, record_id, source_id, observed_on,
+                source_row_id, record_id, source_id, observed_on, taxon_key,
                 lat, lon, coordinate_uncertainty_m,
                 scientific_name, vernacular_name, taxon_rank,
                 red_list_category, is_alien, license_class, publication_scope,
-                taxon_id_candidate, taxon_id_resolved,
                 place_id, place_kind,
             ) = row
 
             stats["total"] += 1
-            source_row_id = str(source_row_id)
 
             source_region = sources.get(source_id)
             if source_region is None:
@@ -285,20 +308,26 @@ def _ingest(
             stats["region_counts"][region_id] = stats["region_counts"].get(region_id, 0) + 1
             utc_offset = regions[region_id].utc_offset
 
-            if taxon_id_candidate is None:
+            if not taxon_key:
                 taxon_id = None
                 stats["taxon_null_count"] += 1
                 if observed_on is not None:
                     stats["taxon_null_dated_count"] += 1
-            elif taxon_id_resolved is None:
-                stats["unresolved_taxon_count"] += 1
-                if len(stats["unresolved_taxon_sample"]) < _SAMPLE_LIMIT:
-                    stats["unresolved_taxon_sample"].append((record_id, taxon_id_candidate))
-                continue
             else:
-                taxon_id = taxon_id_resolved
+                ns = TAXON_KEY_SOURCE_NAMESPACE[source_id]  # _assert_known_source_ids 済み
+                taxon_id_candidate = _ID_BUILDER_BY_NAMESPACE[ns](taxon_key)
+                if taxon_id_candidate not in taxon_ids:
+                    stats["unresolved_taxon_count"] += 1
+                    if len(stats["unresolved_taxon_sample"]) < _SAMPLE_LIMIT:
+                        stats["unresolved_taxon_sample"].append((record_id, taxon_id_candidate))
+                    continue
+                taxon_id = taxon_id_candidate
 
-            if place_id is None:
+            if lat is None or lon is None:
+                # 座標が無い記録（ADR-0007 原則1で落とさない。実測では0件だが、
+                # 将来そういう記録が増えても扱えるようにしてある）。
+                stats["no_coordinate_count"] += 1
+            elif place_id is None:
                 stats["unresolved_place_count"] += 1
                 if len(stats["unresolved_place_sample"]) < _SAMPLE_LIMIT:
                     stats["unresolved_place_sample"].append((record_id, lat, lon))
@@ -307,7 +336,9 @@ def _ingest(
             if observed_on is None:
                 period_grain = period_start = period_end = period_raw = None
             else:
-                expanded = occurrence_period.expand_period(observed_on, shapes, utc_offset)
+                expanded = occurrence_period.expand_period(
+                    observed_on, utc_offset, record_id=record_id
+                )
                 shape_usage.mark_used(expanded.shape)
                 stats["shape_counts"][expanded.shape] = stats["shape_counts"].get(expanded.shape, 0) + 1
                 if expanded.shape in occurrence_period.Z_SHAPES:
@@ -358,16 +389,28 @@ def build_and_write_occurrence(
     """`occurrence` を構築し、`out_path` の `occurrence` テーブルに書き込む
     （`out_path` の他のテーブル——`observation`/`observation_agg`——は触らない）。
 
-    問題が見つかれば（宣言表の未使用・件数不一致・解決漏れ・年境界越え・T1
-    不変条件違反のいずれか）`common.MigrationError`（または
-    `occurrence_period.YearBoundaryCrossedError`。どちらも `MigrationError` の
-    サブクラス）を投げる。A-1: `migrate.common.staged_table` の `with` ブロックの
-    中で全検証を行うため、失敗すれば本番の `occurrence` には一切触れずに終わる。
+    問題が見つかれば（宣言表の構造・未使用・件数不一致・解決漏れ・形の異常・
+    年境界越え・T1 不変条件違反のいずれか）`common.MigrationError`（のサブクラス）
+    を投げる。A-1: `migrate.common.staged_table` の `with` ブロックの中で全検証を
+    行うため、失敗すれば本番の `occurrence` には一切触れずに終わる。
     """
+    _assert_namespaces_have_id_builders()
+
+    # 宣言表の構造検証（コードレビュー指摘6: `.get()` で黙って検査を外さない。
+    # CI 用の `validate_*_shape` を実行時にも呼ぶ）。
+    source_regions.validate_source_regions_shape(source_regions_yaml)
+    occurrence_period.validate_occurrence_period_shapes_shape(period_shapes_yaml)
+
     sources, regions = source_regions.load_source_regions(source_regions_yaml)
     source_usage = source_regions.SourceRegionUsage(sources)
     region_usage = source_regions.RegionUsage(regions)
     shapes = occurrence_period.load_period_shapes(period_shapes_yaml)
+    # `validate_occurrence_period_shapes_shape()` は生の YAML dict に対して
+    # 同じ名前集合の一致を既に検証済みだが、ここでは `load_period_shapes()` が
+    # 実際に作った `PeriodShape` の集合に対して独立にもう一度確認する
+    # （読み込み処理自体が将来変わって2つの結果がずれても黙って見逃さないため。
+    # 12要素の集合比較で安価）。
+    occurrence_period.assert_declared_shapes_match_code(shapes, period_shapes_yaml)
     shape_usage = occurrence_period.PeriodShapeUsage(shapes)
 
     out_path = pathlib.Path(out_path)
@@ -381,8 +424,9 @@ def build_and_write_occurrence(
                 common.attach_readonly(work, ryuiki_db, "src")
                 common.attach_readonly(work, registry_db, "reg")
                 _assert_known_source_ids(work)
+                taxon_ids = _load_taxon_ids(work)
                 stats = _ingest(
-                    work, dest, staging, sources, regions, source_usage, region_usage,
+                    work, dest, staging, taxon_ids, sources, regions, source_usage, region_usage,
                     shapes, shape_usage,
                 )
             finally:
@@ -412,8 +456,9 @@ def build_and_write_occurrence(
             dest.execute(_DROP_OCCURRENCE_INDEX_SQL)
 
             # T1 不変条件（ADR-0024）: period_start/period_end が時刻帯を持たない、
-            # date(period_start) が period_start 自身の日付部分と一致する
-            # （NULL の行——observed_on が無い記録——は対象外）。
+            # date(period_start)/date(period_end) がそれぞれ自身の日付部分と一致する
+            # （NULL の行——observed_on が無い記録——は対象外）。period_end も見る
+            # （以前は period_start だけだった。コードレビュー指摘3）。
             bad = dest.execute(
                 f"""
                 SELECT COUNT(*) FROM "{staging}"
@@ -422,6 +467,8 @@ def build_and_write_occurrence(
                   OR period_end LIKE '%+%' OR period_end LIKE '%Z%'
                   OR date(period_start) IS NULL
                   OR date(period_start) <> substr(period_start, 1, 10)
+                  OR date(period_end) IS NULL
+                  OR date(period_end) <> substr(period_end, 1, 10)
                   OR period_start > period_end
                 )
                 """
@@ -455,6 +502,7 @@ def render_report(stats: dict) -> str:
     a(f"- `organism_records` 総行数: **{stats['total']:,}**")
     a(f"- `occurrence` 行数: **{stats['total']:,}**（全行取り込む。ADR-0007原則1）")
     a(f"- 日付あり（`period_raw` NOT NULL）: **{stats['n_dated']:,}**")
+    a(f"- 座標なし（`lat`/`lon` NULL）: **{stats['no_coordinate_count']:,}**")
     a(
         f"- `taxon_id` NULL: **{stats['taxon_null_count']:,}**"
         f"（うち日付あり: {stats['taxon_null_dated_count']:,}）"
@@ -474,13 +522,10 @@ def render_report(stats: dict) -> str:
     for shape, n in sorted(stats["shape_counts"].items()):
         a(f"| `{shape}` | {n:,} |")
     a("")
+    a(f"- 'Z' → ローカル時刻の変換件数: **{stats['z_converted_count']:,}**")
     a(
-        f"- 'Z' → ローカル時刻の変換件数: **{stats['z_converted_count']:,}**"
-        f"（期待 1,958）"
-    )
-    a(
-        f"- 変換で日が変わった件数: **{stats['day_changed_count']:,}**（期待 221） / "
-        f"月が変わった件数: **{stats['month_changed_count']:,}**（期待 10） / "
+        f"- 変換で日が変わった件数: **{stats['day_changed_count']:,}** / "
+        f"月が変わった件数: **{stats['month_changed_count']:,}** / "
         "年が変わった件数: 0（1件でもあれば構築自体が止まる。D3の前提）"
     )
     a("")

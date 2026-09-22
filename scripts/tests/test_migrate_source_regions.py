@@ -50,6 +50,60 @@ def test_load_source_regions_source_with_undeclared_region_raises(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# utc_offset の厳密な検証（コードレビュー指摘1）
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "utc_offset",
+    ["09:00", "+9:00", "+090:00", "+09:0", "+09-00", "+09:00:00", "", "JST"],
+)
+def test_load_source_regions_rejects_malformed_utc_offset(tmp_path, utc_offset):
+    """符号無し（`'09:00'`）を読むと `_parse_utc_offset` の
+    `sign = 1 if s[0]=='+' else -1` が黙って負に倒れる事故を防ぐ——読み込み時点
+    で `^[+-][0-9]{2}:[0-9]{2}$` に一致しない値をすべて拒否する。"""
+    yaml_path = tmp_path / "source_regions.yaml"
+    yaml_path.write_text(
+        "sources:\n"
+        "  src_a:\n"
+        "    region_id: jp-14\n"
+        "    expected_row_count: 1\n"
+        "    evidence: テスト\n"
+        "regions:\n"
+        "  jp-14:\n"
+        f"    utc_offset: \"{utc_offset}\"\n"
+        "    evidence: テスト\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(sr.MigrationError, match="utc_offset"):
+        sr.load_source_regions(yaml_path)
+
+
+def test_load_source_regions_accepts_negative_utc_offset(tmp_path):
+    yaml_path = tmp_path / "source_regions.yaml"
+    yaml_path.write_text(
+        "sources:\n"
+        "  src_a:\n"
+        "    region_id: us-west\n"
+        "    expected_row_count: 1\n"
+        "    evidence: テスト\n"
+        "regions:\n"
+        "  us-west:\n"
+        "    utc_offset: \"-08:00\"\n"
+        "    evidence: テスト\n",
+        encoding="utf-8",
+    )
+    _sources, regions = sr.load_source_regions(yaml_path)
+    assert regions["us-west"].utc_offset == "-08:00"
+
+
+def test_utc_offset_pattern_matches_examples():
+    assert sr.UTC_OFFSET_PATTERN.fullmatch("+09:00")
+    assert sr.UTC_OFFSET_PATTERN.fullmatch("-05:30")
+    assert not sr.UTC_OFFSET_PATTERN.fullmatch("09:00")
+    assert not sr.UTC_OFFSET_PATTERN.fullmatch("+9:00")
+
+
+# ---------------------------------------------------------------------------
 # validate_source_regions_shape（CI の構造検証。原本DBを必要としない）
 # ---------------------------------------------------------------------------
 
@@ -89,6 +143,29 @@ def test_validate_source_regions_shape_rejects_missing_region_key(tmp_path):
         encoding="utf-8",
     )
     with pytest.raises(sr.MigrationError, match="jp-14"):
+        sr.validate_source_regions_shape(yaml_path)
+
+
+def test_validate_source_regions_shape_rejects_non_integer_expected_row_count(tmp_path):
+    """コードレビュー指摘6: expected_row_count は整数必須。"""
+    yaml_path = tmp_path / "source_regions.yaml"
+    yaml_path.write_text(
+        "sources:\n  src_a:\n    region_id: jp-14\n    expected_row_count: \"1\"\n    evidence: テスト\n"
+        "regions:\n  jp-14:\n    utc_offset: \"+09:00\"\n    evidence: テスト\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(sr.MigrationError, match="整数"):
+        sr.validate_source_regions_shape(yaml_path)
+
+
+def test_validate_source_regions_shape_rejects_malformed_utc_offset(tmp_path):
+    yaml_path = tmp_path / "source_regions.yaml"
+    yaml_path.write_text(
+        "sources:\n  src_a:\n    region_id: jp-14\n    expected_row_count: 1\n    evidence: テスト\n"
+        "regions:\n  jp-14:\n    utc_offset: \"09:00\"\n    evidence: テスト\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(sr.MigrationError, match="utc_offset"):
         sr.validate_source_regions_shape(yaml_path)
 
 

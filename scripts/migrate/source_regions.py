@@ -12,6 +12,7 @@ ADR-0022 決定3・O-1 設計 v2 D1）。
 from __future__ import annotations
 
 import pathlib
+import re
 from dataclasses import dataclass
 
 from .common import MigrationError, load_yaml
@@ -22,6 +23,13 @@ DEFAULT_SOURCE_REGIONS_YAML = pathlib.Path(__file__).resolve().parent / "source_
 REQUIRED_SOURCE_KEYS = ("region_id", "expected_row_count", "evidence")
 REQUIRED_REGION_KEYS = ("utc_offset", "evidence")
 
+# `'+09:00'`/`'-05:30'` の形だけを許す（コードレビュー指摘1）。`_parse_utc_offset`
+# （scripts/migrate/occurrence_period.py）は符号1文字＋2桁＋':'＋2桁だけを前提に
+# 減算するため、`"09:00"`（符号無し）のような値を読むと符号判定が
+# `sign = 1 if s[0]=='+' else -1` で黙って `-1`（負）に倒れる事故が起きる。
+# 読み込み時（ここ）と構造検証（CI）の両方で同じ正規表現を使う。
+UTC_OFFSET_PATTERN = re.compile(r"^[+-][0-9]{2}:[0-9]{2}$")
+
 
 @dataclass(frozen=True)
 class SourceRegion:
@@ -29,7 +37,7 @@ class SourceRegion:
 
     source_id: str
     region_id: str
-    expected_row_count: int | None
+    expected_row_count: int
     evidence: str
 
 
@@ -49,33 +57,39 @@ class Region:
     expected_row_count: int | None = None
 
 
-def _load_raw(path) -> dict:
-    return load_yaml(path)
-
-
 def load_source_regions(
     path=DEFAULT_SOURCE_REGIONS_YAML,
 ) -> tuple[dict[str, SourceRegion], dict[str, Region]]:
     """`(sources, regions)` を返す。`sources` の全 `region_id` が `regions` に
-    宣言されていることをここで検証する（黙って `KeyError` にしない）。
+    宣言されていることと、`regions` の `utc_offset` が `UTC_OFFSET_PATTERN`
+    に一致することをここで検証する（黙って `KeyError` や符号違いの値を通さない）。
     """
-    raw = _load_raw(path)
+    raw = load_yaml(path)
     sources_raw = raw.get("sources") or {}
     regions_raw = raw.get("regions") or {}
 
-    regions: dict[str, Region] = {
-        region_id: Region(
+    bad_offsets: list[tuple[str, str]] = []
+    regions: dict[str, Region] = {}
+    for region_id, spec in regions_raw.items():
+        utc_offset = spec["utc_offset"]
+        if not UTC_OFFSET_PATTERN.fullmatch(utc_offset):
+            bad_offsets.append((region_id, utc_offset))
+        regions[region_id] = Region(
             region_id=region_id,
-            utc_offset=spec["utc_offset"],
+            utc_offset=utc_offset,
             evidence=spec.get("evidence", ""),
         )
-        for region_id, spec in regions_raw.items()
-    }
+    if bad_offsets:
+        raise MigrationError(
+            f"{path} の regions.<region_id>.utc_offset が想定外の形"
+            f"（'+HH:MM'/'-HH:MM' のみ対応）: {bad_offsets}"
+        )
+
     sources: dict[str, SourceRegion] = {
         source_id: SourceRegion(
             source_id=source_id,
             region_id=spec["region_id"],
-            expected_row_count=spec.get("expected_row_count"),
+            expected_row_count=spec["expected_row_count"],
             evidence=spec.get("evidence", ""),
         )
         for source_id, spec in sources_raw.items()
@@ -90,31 +104,65 @@ def load_source_regions(
     return sources, regions
 
 
-def _validate_section_shape(path, raw: dict, section: str, required_keys: tuple[str, ...]) -> list[str]:
-    problems: list[str] = []
-    entries = raw.get(section)
-    if entries is None:
-        entries = {}
-    if not isinstance(entries, dict):
-        return [f"{section}: マッピング（{{キー: {{...}}}}）になっていない（実際の型: {type(entries).__name__}）"]
-    for key, spec in entries.items():
-        if not isinstance(spec, dict):
-            problems.append(f"{section}.{key}: エントリがマッピングになっていない（実際の型: {type(spec).__name__}）")
-            continue
-        missing = [k for k in required_keys if spec.get(k) in (None, "")]
-        if missing:
-            problems.append(f"{section}.{key}: 必須キーが欠けている（または空）: {missing}")
-    return problems
+def _validate_expected_row_count(label: str, spec: dict) -> str | None:
+    """`expected_row_count` が「非負整数」であることを検証する（コードレビュー
+    指摘6: `.get()` で黙って検査を外さない）。問題が無ければ `None`。
+    """
+    value = spec.get("expected_row_count")
+    if isinstance(value, bool) or not isinstance(value, int):
+        return f"{label}: expected_row_count が整数でない（実際: {value!r}）"
+    if value < 0:
+        return f"{label}: expected_row_count が負の数（実際: {value!r}）"
+    return None
 
 
 def validate_source_regions_shape(path=DEFAULT_SOURCE_REGIONS_YAML) -> None:
-    """`source_regions.yaml` の形（`sources`/`regions` それぞれの必須キー）を検証する
-    （原本DBを一切必要としない構造検証。CI 用。`migrate.period._validate_shape` と
-    同じ流儀）。
+    """`source_regions.yaml` の形（`sources`/`regions` それぞれの必須キー・
+    `sources` の `expected_row_count` が整数・`regions` の `utc_offset` の形）を
+    検証する（原本DBを一切必要としない構造検証。CI 用）。
     """
-    raw = _load_raw(path)
-    problems = _validate_section_shape(path, raw, "sources", REQUIRED_SOURCE_KEYS)
-    problems += _validate_section_shape(path, raw, "regions", REQUIRED_REGION_KEYS)
+    raw = load_yaml(path)
+    problems: list[str] = []
+
+    sources = raw.get("sources")
+    if sources is None:
+        sources = {}
+    if not isinstance(sources, dict):
+        problems.append(f"sources: マッピングになっていない（実際の型: {type(sources).__name__}）")
+    else:
+        for source_id, spec in sources.items():
+            if not isinstance(spec, dict):
+                problems.append(f"sources.{source_id}: エントリがマッピングになっていない（実際の型: {type(spec).__name__}）")
+                continue
+            missing = [k for k in REQUIRED_SOURCE_KEYS if spec.get(k) in (None, "")]
+            if missing:
+                problems.append(f"sources.{source_id}: 必須キーが欠けている（または空）: {missing}")
+                continue
+            count_problem = _validate_expected_row_count(f"sources.{source_id}", spec)
+            if count_problem:
+                problems.append(count_problem)
+
+    regions = raw.get("regions")
+    if regions is None:
+        regions = {}
+    if not isinstance(regions, dict):
+        problems.append(f"regions: マッピングになっていない（実際の型: {type(regions).__name__}）")
+    else:
+        for region_id, spec in regions.items():
+            if not isinstance(spec, dict):
+                problems.append(f"regions.{region_id}: エントリがマッピングになっていない（実際の型: {type(spec).__name__}）")
+                continue
+            missing = [k for k in REQUIRED_REGION_KEYS if spec.get(k) in (None, "")]
+            if missing:
+                problems.append(f"regions.{region_id}: 必須キーが欠けている（または空）: {missing}")
+                continue
+            utc_offset = spec.get("utc_offset")
+            if not isinstance(utc_offset, str) or not UTC_OFFSET_PATTERN.fullmatch(utc_offset):
+                problems.append(
+                    f"regions.{region_id}: utc_offset が想定外の形"
+                    f"（'+HH:MM'/'-HH:MM' のみ対応。実際: {utc_offset!r}）"
+                )
+
     if problems:
         raise MigrationError(f"{path} の形が不正:\n- " + "\n- ".join(problems))
 
