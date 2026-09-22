@@ -15,9 +15,22 @@ design.md D8 は `observation` と `observation_agg` を同じ `data/db/v2.sqlit
 文字通りファイル単位で守ると、`observation`（b03 の出力）を上書きしてしまう。
 そこでここでは**テーブル単位**で守る: `v2.sqlite` は読み書き可能で開くが、
 `observation` は一切変更しない（`SELECT` するだけ）。作り直すのは
-`observation_agg` テーブルだけ（`migrate.common.replace_table`）。
+`observation_agg` テーブルだけ（`migrate.common.staged_table`）。
 `registry.sqlite`（`variable.default_stat` を読むためだけに使う。下記
 「日次セルの stat」節参照）は読み取り専用で ATTACH する。
+
+## 検証が全部通ってから本番名に差し替える（A-1）
+
+以前は `common.replace_table`（DROP+CREATE、本番テーブル名 `observation_agg`
+に対して実行）で作り直してから、最後に次元キーの一意性を検証していた。
+`replace_table` の DROP+CREATE 自体は即座に確定するものではない
+（`migrate.common.staged_table` の docstring 参照——Python 3.6 以降の
+`sqlite3` は DDL の前に暗黙コミットしない）が、それより後に `conn.commit()`
+を呼んでいたため、**一意性検証に失敗しても、それより前に確定した
+`observation_agg` の中身は元に戻せなかった**（バグ）。今は
+`migrate.common.staged_table` を使い、一意性検証（下記 C-3）まで含めて
+全部通ってから本番名 `observation_agg` に差し替える。失敗すれば作業用
+テーブルを `DROP` するだけで済み、前回の `observation_agg` はそのまま残る。
 
 ## キューブの次元キー（design.md D5・ADR-0011・ADR-0021）
 
@@ -133,7 +146,7 @@ DEFAULT_REGISTRY_DB = ROOT / "data" / "db" / "registry.sqlite"
 
 # SQLite 3.43 で AVG()/SUM() の加算が Kahan-Babuška-Neumaier に変わった
 # （上のモジュール docstring「SQLite の版を守る」参照）。ここより前のバージョンでは
-# 平均が黙って壊れる（アドバイザー実測: meas_year(kind='daily') の20%が変わる）ので、
+# 平均が黙って壊れる（アドバイザー実測: meas_year(kind='daily')の20%が変わる）ので、
 # 黙って進まず、モジュール読み込み時点で止める。`assert` ではなく明示的な
 # `raise SystemExit` にする（レビュー指摘: `python -O`/`PYTHONOPTIMIZE=1` では
 # `assert` が丸ごと消え、SQLite 3.43 未満で `meas_year` の約20%が黙って変わる
@@ -144,7 +157,7 @@ if sqlite3.sqlite_version_info < _MIN_SQLITE_VERSION:
         f"sqlite3（Python 同梱、バージョン {sqlite3.sqlite_version}）が古すぎる。"
         f"SQLite {'.'.join(map(str, _MIN_SQLITE_VERSION))} 以降が必要——それより前は "
         "AVG()/SUM() が Kahan-Babuška-Neumaier 加算ではなく素朴な左→右加算に落ち、"
-        "meas_year(kind='daily') の20%（アドバイザー実測: 3,176/15,836グループ）で"
+        "meas_year(kind='daily')の20%（アドバイザー実測: 3,176/15,836グループ）で"
         "平均値が変わる。sqlite3 CLI のバージョンではなく、この Python が import する "
         "sqlite3 モジュール（標準ライブラリに静的リンクされた版）のバージョンを見ている。"
     )
@@ -162,8 +175,10 @@ DIM_COLUMNS = [
     "value_grain", "period_start", "period_end", "grain", "input_grain", "stat", "imputation",
 ]
 
+# `{table}` プレースホルダに本番名（`observation_agg`）または作業用テーブル名を
+# 埋め込む（`migrate.common.staged_table` 参照。A-1）。
 _CREATE_OBSERVATION_AGG_SQL = f"""
-CREATE TABLE observation_agg (
+CREATE TABLE {{table}} (
   {", ".join(f'{c} TEXT' for c in DIM_COLUMNS)},
   value REAL,
   n INTEGER NOT NULL,
@@ -194,6 +209,22 @@ _DIM_SELECT = ", ".join(DIM_COLUMNS[:7])  # region_id..value_grain（期間よ�
 # ならないように）。
 _BUILT_FROM_SELECT = "? AS built_from, ? AS spec_version"
 
+# B-4: `stat`/値列の組は4箇所（日次・年次(day側)・月次(出典側)・年次(出典側)の
+# それぞれの展開ループ）で同じ3つ組を使っていた。ここに1つ宣言する。
+_STAT_VALUE_COLUMNS = (("mean", "v_mean"), ("min", "v_min"), ("max", "v_max"))
+
+# B-4: INSERT 列の末尾（`n, n_censored, n_not_detected, 1 AS n_places,
+# built_from, spec_version`）は5つの展開 SQL（日次×2・年次(day側)・
+# 月次(出典側)・年次(出典側)）で同じ形だった。
+_AGG_TAIL_SELECT = f"n, n_censored, n_not_detected,\n           1 AS n_places, {_BUILT_FROM_SELECT}"
+
+# B-4: 検閲件数の式（below_lod/not_detected の個数）は3箇所（日次・
+# 月次(出典側)・年次(出典側)の集計 SQL）で同じ形だった。
+_CENSORED_COUNTS_SELECT = (
+    "SUM(censoring = 'below_lod') AS n_censored,\n"
+    "           SUM(censoring = 'not_detected') AS n_not_detected"
+)
+
 
 # ---------------------------------------------------------------------------
 # 日次セル（T4-2）
@@ -211,8 +242,7 @@ def _day_stats_sql() -> str:
            substr(period_start, 1, 10) AS period_end,
            AVG(v) AS v_mean, MIN(v) AS v_min, MAX(v) AS v_max, SUM(v) AS v_sum,
            COUNT(*) AS n,
-           SUM(censoring = 'below_lod') AS n_censored,
-           SUM(censoring = 'not_detected') AS n_not_detected
+           {_CENSORED_COUNTS_SELECT}
     FROM obs_zero
     WHERE period_grain IN ('day', 'hour', 'instant') AND v IS NOT NULL
     GROUP BY {_DIM_SELECT}, period_grain, substr(period_start, 1, 10)
@@ -224,8 +254,7 @@ def _day_expand_sql(stat: str, value_column: str) -> str:
     return f"""
     SELECT {_DIM_SELECT}, period_start, period_end,
            'day' AS grain, period_grain AS input_grain, '{stat}' AS stat, 'zero' AS imputation,
-           {value_column} AS value, n, n_censored, n_not_detected,
-           1 AS n_places, {_BUILT_FROM_SELECT}
+           {value_column} AS value, {_AGG_TAIL_SELECT}
     FROM day_stats
     """
 
@@ -237,8 +266,7 @@ def _day_sum_expand_sql() -> str:
     return f"""
     SELECT {_DIM_SELECT}, period_start, period_end,
            'day' AS grain, period_grain AS input_grain, 'sum' AS stat, 'zero' AS imputation,
-           v_sum AS value, n, n_censored, n_not_detected,
-           1 AS n_places, {_BUILT_FROM_SELECT}
+           v_sum AS value, {_AGG_TAIL_SELECT}
     FROM day_stats
     WHERE variable_id IN (SELECT variable_id FROM reg.variable WHERE default_stat = 'sum')
       AND (obs_stat IS NULL OR obs_stat = 'sum')
@@ -254,12 +282,19 @@ def _day_sum_expand_sql() -> str:
 # （web/scripts/build-derived.mjs）も meas_month/meas_year(kind='daily') の
 # 両方を FROM meas_daily で作っており、同じ経路（月を経由しない）。
 #
-# cube_day は「直前に observation_agg へ書いた日次セルそのもの」を読み返す
-# だけ（`build_cube` 参照）——_day_stats_sql/_day_expand_sql をもう一度
-# 計算し直さない。`WHERE stat='mean'` は必須（T4-3。絞らないと月・年の
-# 平均に日次の min/max/sum が混ざる）。
+# C-1: 以前は `cube_day`（`observation_agg` の日次セル全体、約4秒かけて丸ごと
+# コピー）を経由して `stat='mean'` を絞り込んでいた。月次・年次の積み上げが
+# 実際に使うのは `stat='mean'` の行だけ（月次は AVG(value) だけ、年次は
+# AVG/MIN/MAX(value) のどれも「日次の平均」列に対する集計）なので、
+# `cube_day` に丸ごとコピーする意味が無い。作業用テーブル（`staging`）を
+# `WHERE grain='day' AND stat='mean'` で直接絞り込んで読む——この時点では
+# まだ月次・年次の行を挿入していないので、`WHERE grain='day'` は「今ある
+# 日次セルだけ」を正しく指す。`INSERT INTO staging SELECT ... FROM staging
+# WHERE ...` という自己参照は SQLite が単一の SELECT 実行中は安定したスナップ
+# ショットを読むため安全（挿入した 'month'/'year' 行が同じ WHERE 句に
+# 再マッチすることはない。実測で確認済み）。
 
-def _month_from_day_sql() -> str:
+def _month_from_day_sql(staging: str) -> str:
     return f"""
     SELECT {_DIM_SELECT},
            date(period_start, 'start of month') AS period_start,
@@ -268,21 +303,21 @@ def _month_from_day_sql() -> str:
            AVG(value) AS value,
            COUNT(*) AS n, SUM(n_censored) AS n_censored, SUM(n_not_detected) AS n_not_detected,
            1 AS n_places, {_BUILT_FROM_SELECT}
-    FROM cube_day
-    WHERE stat = 'mean'
+    FROM "{staging}"
+    WHERE grain = 'day' AND stat = 'mean'
     GROUP BY {_DIM_SELECT}, input_grain, date(period_start, 'start of month')
     """
 
 
-def _year_from_day_stats_sql() -> str:
+def _year_from_day_stats_sql(staging: str) -> str:
     return f"""
     SELECT {_DIM_SELECT}, input_grain,
            date(period_start, 'start of year') AS period_start,
            date(period_start, 'start of year', '+1 year', '-1 day') AS period_end,
            AVG(value) AS v_mean, MIN(value) AS v_min, MAX(value) AS v_max,
            COUNT(*) AS n, SUM(n_censored) AS n_censored, SUM(n_not_detected) AS n_not_detected
-    FROM cube_day
-    WHERE stat = 'mean'
+    FROM "{staging}"
+    WHERE grain = 'day' AND stat = 'mean'
     GROUP BY {_DIM_SELECT}, input_grain, date(period_start, 'start of year')
     """
 
@@ -291,8 +326,7 @@ def _year_from_day_expand_sql(stat: str, value_column: str) -> str:
     return f"""
     SELECT {_DIM_SELECT}, period_start, period_end,
            'year' AS grain, input_grain, '{stat}' AS stat, 'zero' AS imputation,
-           {value_column} AS value, n, n_censored, n_not_detected,
-           1 AS n_places, {_BUILT_FROM_SELECT}
+           {value_column} AS value, {_AGG_TAIL_SELECT}
     FROM year_from_day_stats
     """
 
@@ -310,8 +344,7 @@ def _month_source_stats_sql() -> str:
     SELECT {_DIM_SELECT}, period_start, period_end,
            AVG(v) AS v_mean, MIN(v) AS v_min, MAX(v) AS v_max,
            COUNT(*) AS n,
-           SUM(censoring = 'below_lod') AS n_censored,
-           SUM(censoring = 'not_detected') AS n_not_detected
+           {_CENSORED_COUNTS_SELECT}
     FROM obs_zero
     WHERE period_grain = 'month' AND v IS NOT NULL
     GROUP BY {_DIM_SELECT}, period_start, period_end
@@ -322,8 +355,7 @@ def _month_source_expand_sql(stat: str, value_column: str) -> str:
     return f"""
     SELECT {_DIM_SELECT}, period_start, period_end,
            'month' AS grain, 'month' AS input_grain, '{stat}' AS stat, 'zero' AS imputation,
-           {value_column} AS value, n, n_censored, n_not_detected,
-           1 AS n_places, {_BUILT_FROM_SELECT}
+           {value_column} AS value, {_AGG_TAIL_SELECT}
     FROM month_source_stats
     """
 
@@ -333,8 +365,7 @@ def _year_source_stats_sql() -> str:
     SELECT {_DIM_SELECT}, period_start, period_end, period_grain,
            AVG(v) AS v_mean, MIN(v) AS v_min, MAX(v) AS v_max,
            COUNT(*) AS n,
-           SUM(censoring = 'below_lod') AS n_censored,
-           SUM(censoring = 'not_detected') AS n_not_detected
+           {_CENSORED_COUNTS_SELECT}
     FROM obs_zero
     WHERE period_grain IN ('year', 'fiscal_year') AND v IS NOT NULL
     GROUP BY {_DIM_SELECT}, period_start, period_end, period_grain
@@ -346,10 +377,57 @@ def _year_source_expand_sql(stat: str, value_column: str) -> str:
     SELECT {_DIM_SELECT}, period_start, period_end,
            period_grain AS grain, period_grain AS input_grain,
            '{stat}' AS stat, 'zero' AS imputation,
-           {value_column} AS value, n, n_censored, n_not_detected,
-           1 AS n_places, {_BUILT_FROM_SELECT}
+           {value_column} AS value, {_AGG_TAIL_SELECT}
     FROM year_source_stats
     """
+
+
+# ---------------------------------------------------------------------------
+# 次元キーの一意性検証（C-3）
+# ---------------------------------------------------------------------------
+# day/month(day側/出典側)/year(day側/出典側) の5経路は grain/input_grain/stat
+# の値で互いに排他のはずだが、それが崩れていないことを実測で確認する。
+#
+# 以前は全13列の GROUP BY（約22秒）で確認していた。ここでは代わりに、作業用
+# テーブルに13列の `CREATE UNIQUE INDEX` を張ることで検証する——重複が無ければ
+# 索引の作成が成功するだけで済み（実測 約12.9秒。区切り文字を連結して
+# `COUNT(DISTINCT ...)` で比べる案は15.7秒で候補になったが、列値が区切り文字を
+# 含むと衝突しうるため採らない）、GROUP BY で全行を読み直すより速い。重複が
+# あれば `CREATE UNIQUE INDEX` 自体が `sqlite3.IntegrityError` で失敗するので、
+# そのときだけ GROUP BY で実例を取る。
+#
+# 索引は検証用の使い捨て——成功しても検証後に `DROP INDEX` する
+# （`scripts/b03_build_observation.py` の `_CREATE_OBSERVATION_INDEX_SQL` の
+# コメントと同じ理由: 固定名の索引を本番テーブルまで残すと、次回実行が同じ
+# 固定名で索引を作ろうとしたときに名前衝突で壊れる）。
+#
+# **`DIM_COLUMNS` の生の列に索引を張ってはいけない**（レビューで実際に踏んだ）。
+# `obs_stat`/`unit_id` は NULL がありうるが、SQL の一意制約は NULL 同士を
+# 「等しくない」と扱うため、`obs_stat IS NULL` の行が2つあっても
+# `CREATE UNIQUE INDEX` は重複として検出しない——GROUP BY（NULL 同士を
+# 同じグループにまとめる）となら検出結果が食い違う、という「厳密さ」自体が
+# 崩れる壊れ方。列を `COALESCE(col, '')` で包んで NULL を空文字に正準化した
+# 式に索引を張ることで、GROUP BY と同じ「NULL 同士は同じ値」という扱いに揃える
+# （`scripts/b05_project_v1.py` の `_AKEY_EXPR` 等、この文脈で NULL を空文字に
+# 正準化するのはこのコードベース全体の既存の慣習）。
+_DIM_KEY_INDEX_NAME = "observation_agg_dim_key"
+
+
+def _assert_dimension_key_unique(conn: sqlite3.Connection, staging: str) -> None:
+    key_cols = ", ".join(DIM_COLUMNS)
+    key_exprs = ", ".join(f"COALESCE({c}, '')" for c in DIM_COLUMNS)
+    try:
+        conn.execute(f'CREATE UNIQUE INDEX {_DIM_KEY_INDEX_NAME} ON "{staging}" ({key_exprs})')
+    except sqlite3.IntegrityError:
+        dup = conn.execute(
+            f'SELECT {key_cols}, COUNT(*) c FROM "{staging}" GROUP BY {key_exprs} HAVING c > 1 LIMIT 5'
+        ).fetchall()
+        raise common.MigrationError(
+            "observation_agg の次元キーが一意でない行がある"
+            f"（例: {dup}）。day/month/year の集計経路が重なっている可能性がある。"
+        )
+    else:
+        conn.execute(f'DROP INDEX IF EXISTS "{_DIM_KEY_INDEX_NAME}"')
 
 
 def build_cube(
@@ -364,6 +442,8 @@ def build_cube(
     モジュール docstring 参照）。`registry_db`（`variable.default_stat` を読む
     ためだけに使う。T4-2）は読み取り専用で ATTACH する。ここでは `observation`
     を変更する SQL を一切実行しない（`SELECT`/一時 VIEW・TEMP TABLE の作成のみ）。
+    `observation_agg` 本体は `migrate.common.staged_table`（A-1）で作り直す
+    ——検証（次元キーの一意性）まで全部通ってから本番名に差し替える。
 
     戻り値はレポート用の統計（経路ごとの行数）。
     """
@@ -371,86 +451,62 @@ def build_cube(
     common.attach_readonly(conn, registry_db, "reg")
     conn.execute(_CREATE_OBS_ZERO_VIEW_SQL)
 
-    common.replace_table(conn, "observation_agg", _CREATE_OBSERVATION_AGG_SQL)
-    insert_cols = ", ".join(
-        DIM_COLUMNS + ["value", "n", "n_censored", "n_not_detected", "n_places", "built_from", "spec_version"]
-    )
-    insert_sql = f"INSERT INTO observation_agg ({insert_cols}) "
-
-    # 日次（T4-2）。
-    common.replace_table(conn, "day_stats", f"CREATE TEMP TABLE day_stats AS {_day_stats_sql()}")
-    for stat, value_column in (("mean", "v_mean"), ("min", "v_min"), ("max", "v_max")):
-        conn.execute(insert_sql + _day_expand_sql(stat, value_column), params)
-    conn.execute(insert_sql + _day_sum_expand_sql(), params)
-    n_day = conn.execute("SELECT COUNT(*) FROM observation_agg WHERE grain='day'").fetchone()[0]
-
-    # cube_day: 直前に書いた日次セルそのものを読み返す（列の並びは
-    # observation_agg の列そのもの。_day_stats_sql をもう一度計算し直さない）。
-    common.replace_table(
-        conn, "cube_day", "CREATE TEMP TABLE cube_day AS SELECT * FROM observation_agg WHERE grain='day'"
-    )
-
-    # 月次（日次から積み上げ）。
-    conn.execute(insert_sql + _month_from_day_sql(), params)
-    n_month_from_day = conn.execute(
-        "SELECT COUNT(*) FROM observation_agg WHERE grain='month' AND input_grain IN ('day','hour','instant')"
-    ).fetchone()[0]
-
-    # 年次（日次から積み上げ）。mean/min/max を1本の GROUP BY でまとめて計算し、
-    # stat リテラルと対応する値列だけを変えた3本の INSERT に展開する。
-    common.replace_table(
-        conn, "year_from_day_stats", f"CREATE TEMP TABLE year_from_day_stats AS {_year_from_day_stats_sql()}"
-    )
-    for stat, value_column in (("mean", "v_mean"), ("min", "v_min"), ("max", "v_max")):
-        conn.execute(insert_sql + _year_from_day_expand_sql(stat, value_column), params)
-    n_year_from_day = conn.execute(
-        "SELECT COUNT(*) FROM observation_agg WHERE grain='year' AND input_grain IN ('day','hour','instant')"
-    ).fetchone()[0]
-
-    # 月次（出典配布側。jma_monthly。年次の出典配布セルと対称）。
-    common.replace_table(
-        conn, "month_source_stats", f"CREATE TEMP TABLE month_source_stats AS {_month_source_stats_sql()}"
-    )
-    for stat, value_column in (("mean", "v_mean"), ("min", "v_min"), ("max", "v_max")):
-        conn.execute(insert_sql + _month_source_expand_sql(stat, value_column), params)
-
-    # 年次（出典配布側）。
-    common.replace_table(
-        conn, "year_source_stats", f"CREATE TEMP TABLE year_source_stats AS {_year_source_stats_sql()}"
-    )
-    for stat, value_column in (("mean", "v_mean"), ("min", "v_min"), ("max", "v_max")):
-        conn.execute(insert_sql + _year_source_expand_sql(stat, value_column), params)
-
-    # 出典配布セルの件数は grain = input_grain（積み上げを経由しない）で判定する
-    # （T4-4）。`input_grain <> 'day'` という以前の条件は月次の出典配布セル
-    # （input_grain='month'）まで拾ってしまうため、ここには使わない。
-    n_month_source = conn.execute(
-        "SELECT COUNT(*) FROM observation_agg WHERE grain='month' AND grain = input_grain"
-    ).fetchone()[0]
-    n_year_source = conn.execute(
-        "SELECT COUNT(*) FROM observation_agg WHERE grain IN ('year','fiscal_year') AND grain = input_grain"
-    ).fetchone()[0]
-
-    conn.execute('DROP TABLE IF EXISTS "day_stats"')
-    conn.execute('DROP TABLE IF EXISTS "cube_day"')
-    conn.execute('DROP TABLE IF EXISTS "year_from_day_stats"')
-    conn.execute('DROP TABLE IF EXISTS "month_source_stats"')
-    conn.execute('DROP TABLE IF EXISTS "year_source_stats"')
-    conn.execute("DROP VIEW IF EXISTS obs_zero")
-    conn.commit()
-
-    # 次元キーが本当に一意か（同じキーの行が複数できていないか）を確認する。
-    # day/month(day側/出典側)/year(day側/出典側) の5経路は grain/input_grain/
-    # stat の値で互いに排他のはずだが、それが崩れていないことを実測で確認する。
-    key_cols = ", ".join(DIM_COLUMNS)
-    dup = conn.execute(
-        f"SELECT {key_cols}, COUNT(*) c FROM observation_agg GROUP BY {key_cols} HAVING c > 1 LIMIT 5"
-    ).fetchall()
-    if dup:
-        raise common.MigrationError(
-            "observation_agg の次元キーが一意でない行がある"
-            f"（例: {dup}）。day/month/year の集計経路が重なっている可能性がある。"
+    with common.staged_table(conn, "observation_agg", _CREATE_OBSERVATION_AGG_SQL) as staging:
+        insert_cols = ", ".join(
+            DIM_COLUMNS + ["value", "n", "n_censored", "n_not_detected", "n_places", "built_from", "spec_version"]
         )
+        insert_sql = f'INSERT INTO "{staging}" ({insert_cols}) '
+
+        # 日次（T4-2）。C-2: COUNT(*) を打ち直さず、直前の INSERT の
+        # cursor.rowcount を積み上げて件数にする。
+        common.replace_table(conn, "day_stats", f"CREATE TEMP TABLE day_stats AS {_day_stats_sql()}")
+        n_day = 0
+        for stat, value_column in _STAT_VALUE_COLUMNS:
+            cur = conn.execute(insert_sql + _day_expand_sql(stat, value_column), params)
+            n_day += cur.rowcount
+        n_day += conn.execute(insert_sql + _day_sum_expand_sql(), params).rowcount
+
+        # 月次（日次から積み上げ。C-1: cube_day を経由せず staging を直接読む）。
+        n_month_from_day = conn.execute(insert_sql + _month_from_day_sql(staging), params).rowcount
+
+        # 年次（日次から積み上げ）。mean/min/max を1本の GROUP BY でまとめて
+        # 計算し、stat リテラルと対応する値列だけを変えた3本の INSERT に展開する。
+        common.replace_table(
+            conn, "year_from_day_stats",
+            f"CREATE TEMP TABLE year_from_day_stats AS {_year_from_day_stats_sql(staging)}",
+        )
+        n_year_from_day = 0
+        for stat, value_column in _STAT_VALUE_COLUMNS:
+            cur = conn.execute(insert_sql + _year_from_day_expand_sql(stat, value_column), params)
+            n_year_from_day += cur.rowcount
+
+        # 月次（出典配布側。jma_monthly。年次の出典配布セルと対称）。
+        common.replace_table(
+            conn, "month_source_stats", f"CREATE TEMP TABLE month_source_stats AS {_month_source_stats_sql()}"
+        )
+        n_month_source = 0
+        for stat, value_column in _STAT_VALUE_COLUMNS:
+            cur = conn.execute(insert_sql + _month_source_expand_sql(stat, value_column), params)
+            n_month_source += cur.rowcount
+
+        # 年次（出典配布側）。
+        common.replace_table(
+            conn, "year_source_stats", f"CREATE TEMP TABLE year_source_stats AS {_year_source_stats_sql()}"
+        )
+        n_year_source = 0
+        for stat, value_column in _STAT_VALUE_COLUMNS:
+            cur = conn.execute(insert_sql + _year_source_expand_sql(stat, value_column), params)
+            n_year_source += cur.rowcount
+
+        # B-4: 一時テーブルの DROP をループに（cube_day は C-1 で無くなった）。
+        for t in ("day_stats", "year_from_day_stats", "month_source_stats", "year_source_stats"):
+            conn.execute(f'DROP TABLE IF EXISTS "{t}"')
+        conn.execute("DROP VIEW IF EXISTS obs_zero")
+
+        # 次元キーが本当に一意か（同じキーの行が複数できていないか）を確認する
+        # （C-3）。ここで失敗すれば staged_table が作業用テーブルを破棄し、
+        # 前回の observation_agg がそのまま残る（A-1）。
+        _assert_dimension_key_unique(conn, staging)
 
     return {
         "n_day": n_day,

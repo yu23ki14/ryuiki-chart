@@ -3,11 +3,15 @@
 `observation` の列は `scripts/b03_build_observation.py` の
 `_CREATE_OBSERVATION_SQL` をそのまま使う（スキーマの正を1箇所に保つ）。
 """
+import sqlite3
 import subprocess
 import sys
 
+import pytest
+
 import b03_build_observation as b03
 import b04_build_cube as b04
+from migrate import common
 
 from .migrate_fixtures import make_registry_db, make_v2_db_with_observation
 
@@ -306,6 +310,87 @@ def test_dimension_key_uniqueness_is_verified(tmp_path):
         b04.build_cube(conn, _registry_db(tmp_path))  # 例外を投げなければ良い
     finally:
         conn.close()
+
+
+def test_assert_dimension_key_unique_raises_with_examples(tmp_path):
+    """C-3: `_assert_dimension_key_unique`（`CREATE UNIQUE INDEX` を使った
+    一意性検証）自体を、重複キーを直接仕込んだ作業用テーブルに対して呼び、
+    `sqlite3.IntegrityError` ではなく実例つきの `MigrationError` になる
+    ことを確認する（GROUP BY へのフォールバックが機能している証拠）。
+    """
+    db_path = tmp_path / "t.sqlite"
+    conn = sqlite3.connect(f"file:{db_path}", uri=True)
+    conn.execute(b04._CREATE_OBSERVATION_AGG_SQL.format(table='"staging"'))
+    cols = ", ".join(
+        b04.DIM_COLUMNS + ["value", "n", "n_censored", "n_not_detected", "n_places", "built_from", "spec_version"]
+    )
+    row = (
+        "jp-14", "place_s1", "site", "common:variable:water.bod", None, "common:unit:mg_per_l",
+        "day", "2020-01-01", "2020-01-01", "day", "day", "mean", "zero",
+        1.0, 1, 0, 0, 1, "bf", "sv",
+    )
+    placeholders = ", ".join("?" for _ in row)
+    conn.executemany(f'INSERT INTO "staging" ({cols}) VALUES ({placeholders})', [row, row])
+    conn.commit()
+    try:
+        with pytest.raises(common.MigrationError, match="次元キーが一意でない"):
+            b04._assert_dimension_key_unique(conn, "staging")
+    finally:
+        conn.close()
+
+
+def test_a1_uniqueness_failure_preserves_previous_observation_agg(tmp_path, monkeypatch):
+    """A-1: 1回目を成功させたあと、2回目を一意性検証の失敗で止める
+    （`_assert_dimension_key_unique` をモンキーパッチして強制的に失敗させる
+    ——実データで5経路を衝突させるのは難しいため、`staged_table` の
+    「検証が全部通ってから差し替える」契約そのものを検証する）。前回の
+    observation_agg がそのまま残り、作業用テーブルも残らない。
+    """
+    rows = [_row("measurements", "m1", "2020-01-01", "2020-01-01", 1.0, "1.0", "none")]
+    db_path = tmp_path / "v2.sqlite"
+    registry_db = _registry_db(tmp_path)
+    conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
+    b04.build_cube(conn, registry_db)
+    before = conn.execute("SELECT * FROM observation_agg ORDER BY stat").fetchall()
+    conn.close()
+
+    def boom(conn, staging):
+        raise common.MigrationError("テスト用に強制した一意性違反")
+
+    monkeypatch.setattr(b04, "_assert_dimension_key_unique", boom)
+
+    conn2 = sqlite3.connect(f"file:{db_path}", uri=True)
+    try:
+        with pytest.raises(common.MigrationError, match="テスト用に強制した一意性違反"):
+            b04.build_cube(conn2, registry_db)
+
+        tables = sorted(r[0] for r in conn2.execute("SELECT name FROM sqlite_master WHERE type='table'"))
+        after = conn2.execute("SELECT * FROM observation_agg ORDER BY stat").fetchall()
+    finally:
+        conn2.close()
+    assert tables == ["observation", "observation_agg"], "作業用テーブルが残っている"
+    assert after == before, "前回の observation_agg が変わってしまった"
+
+
+def test_a1_running_twice_successfully_does_not_collide_on_index_name(tmp_path):
+    """C-3 の検証用一意インデックスは使い捨て（張った直後に DROP する）。
+    固定名の索引を本番テーブルまで残すと2回目の実行が名前衝突で壊れるはず
+    ——2回連続で成功することを確認して、そうなっていないことを示す
+    （実測で踏んだ回帰）。
+    """
+    rows = [_row("measurements", "m1", "2020-01-01", "2020-01-01", 1.0, "1.0", "none")]
+    db_path = tmp_path / "v2.sqlite"
+    registry_db = _registry_db(tmp_path)
+    conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
+    b04.build_cube(conn, registry_db)
+    conn.close()
+
+    conn2 = sqlite3.connect(f"file:{db_path}", uri=True)
+    try:
+        stats = b04.build_cube(conn2, registry_db)
+    finally:
+        conn2.close()
+    assert stats["n_total"] > 0
 
 
 def test_min_sqlite_version_guard_is_systemexit_not_assert(tmp_path):
