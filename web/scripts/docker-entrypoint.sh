@@ -1,6 +1,8 @@
 #!/bin/sh
 # コンテナ起動時に、必要な分だけ用意してから dev サーバを立てる。
-# 3 つとも「まだなら やる」なので、2 回目以降の `docker compose up` は素通りする。
+# 集計DB・マイグレーションは「無ければやる」。語彙レジストリだけは「指紋が古ければ
+# 作り直す」（判定は scripts/ensure-registry.sh）。いずれも 2 回目以降の
+# `docker compose up` は該当ステップを素通りする。
 set -e
 
 cd /app/web
@@ -24,7 +26,7 @@ else
 fi
 
 # 1.5. 語彙レジストリ。ryuiki/cells/derived を読み取り専用で読んで作る（scripts/r01_build_registry.py）
-# 「無ければ作る」の判定は db:setup の predb:setup フックと共通（scripts/ensure-registry.sh）
+# 「指紋が古ければ作り直す」判定は db:setup の predb:setup フックと共通（scripts/ensure-registry.sh）
 scripts/ensure-registry.sh
 
 # 2. マイグレーション。適用済みのものは wrangler が d1_migrations を見て飛ばす
