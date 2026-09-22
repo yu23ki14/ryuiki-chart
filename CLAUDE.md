@@ -60,9 +60,9 @@
   `sensor_timeseries`の両方→`observation`）/ `scripts/b04_build_cube.py`（`observation`→
   キューブ `observation_agg`）/ `scripts/b05_project_v1.py`（キューブ→v1形）の3本。出力は
   `data/db/v2.sqlite`（`observation`/`observation_agg`）と `data/db/v1_projection.sqlite`
-  （9テーブル: `meas_daily`/`meas_month`/`meas_year`/`meas_clim`/`site_var`/`var_catalog`/
-  `sensor_daily`/`rain_daily`/`sensor_hour_month`）で、どちらも `.gitignore` 済み・捨てて
-  作り直せる。設計・実測は `docs/plans/PHASE_B_FACT_SLICE.md`。
+  （11テーブル: `meas_daily`/`meas_month`/`meas_year`/`meas_clim`/`site_var`/`var_catalog`/
+  `sensor_daily`/`rain_daily`/`sensor_hour_month`/`zone_year`/`zone_clim`）で、どちらも
+  `.gitignore` 済み・捨てて作り直せる。設計・実測は `docs/plans/PHASE_B_FACT_SLICE.md`。
 - **`+09:00` 付きの時刻文字列に SQLite の日時関数（`date`/`datetime`/`strftime`）を使わない**
   （UTC に正規化されて日付が1日ずれる。`observation.period_start` は時刻帯なしのローカル時刻で
   持つ。詳細は `docs/adr/0024-local-time-and-time-labels.md`）。

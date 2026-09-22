@@ -1,7 +1,7 @@
 # Phase B 縦に薄い1本 — `measurements`/`sensor_timeseries` → `observation` → キューブ → v1形
 
-対象: ADR-0016 の Phase B / 状態: **実データで一度緑になった（部分ゲート。33テーブル中9テーブル）**
-作成: 2026-09-08 / 更新: 2026-09-15 / 関連: ADR-0007, 0008, 0009, 0010, 0011, 0016, 0021, 0023, 0024
+対象: ADR-0016 の Phase B / 状態: **実データで一度緑になった（部分ゲート。33テーブル中11テーブル）**
+作成: 2026-09-08 / 更新: 2026-09-22 / 関連: ADR-0007, 0008, 0009, 0010, 0011, 0016, 0021, 0022, 0023, 0024
 
 このドキュメントは `docs/plans/PHASE_B_RECONCILIATION.md`（突合ゲートの仕組み）と対になる、
 **縦に薄い1本の設計と実測**の記録。`b03_build_observation.py` / `b04_build_cube.py` /
@@ -25,6 +25,13 @@
 書き換え、キューブは毎時・瞬時の観測を日次セルへ積み上げ、月次・年次の出典配布セルを
 持つようになった）。設計・実測・決定（T1〜T6）は §9、キューブに織り込んだ意図的な
 変更は §10 を参照。
+
+**2026-09-22 追記**: `zone_year`/`zone_clim` を `b05_project_v1.py` の射影に追加し、
+対象を9テーブルから**11テーブル**に広げた（`phase-b/zone-slice`）。新しいファクト源は
+足していない（`b03`/`b04` は無変更。`meas_year`/`meas_month` という既に実体化済みの
+v1形の一時テーブルから射影するだけ）。この2テーブルも ADR-0011 のキューブのセルには
+せず、射影（`b05`）でのみ計算する（D10 の3例目・D11）。地点→ゾーンの対応は
+ADR-0022 決定2で新設された `place_relation` から初めて引く。設計・実測・決定は §11 を参照。
 
 ## 1. なぜ縦に薄い1本なのか
 
@@ -57,7 +64,12 @@ ADR-0011 の対象は33テーブル。これを一度に全部揃えようとす
 - **#4（`place.region_id` の意味）**: この縦線はロールアップしない。`b03`/`b04`/`b05` のどこにも
   `place_relation` への参照が無い（`meas_daily`/`meas_month`/`meas_year` は地点別のまま）。
   `place_relation` を要するのは `zone_year`/`zone_clim`/`org_watershed_*` 系で、この縦線には
-  含まれない。→ **#4 が塞ぐのはロールアップ系の縦線**。
+  含まれない。→ **#4 が塞ぐのはロールアップ系の縦線**。（**2026-09-22 追記**: #4 は
+  ADR-0022 で決着済み。`phase-b/zone-slice` で `zone_year`/`zone_clim` をこの縦線に加えた結果、
+  `b05` だけが `place_relation` を読むようになったが、`meas_daily`/`meas_month`/`meas_year` 本体
+  および `b03`/`b04` は今も地点別のまま・無関与。ロールアップと呼べるのは `zone_year`/`zone_clim`
+  の2テーブルの射影だけで、しかもキューブのセルではなく v1形からの単純な非加重平均（§11）。
+  ADR-0011 の `roll_up_to`（キューブのロールアップセル）はまだ作っていない）。
 - **#2（`caveat_scope.scope_kind`）**: この縦線は caveat を一切消費しない（`b03`/`b04`/`b05` に
   caveat への参照が無い）。→ **#2 が塞ぐのは応答に caveat を同梱する経路**。
 
@@ -67,14 +79,14 @@ ADR-0011 の対象は33テーブル。これを一度に全部揃えようとす
 |---|---|
 | `scripts/b03_build_observation.py` | `data/db/ryuiki.sqlite` の `measurements`・`sensor_timeseries`（読み取り専用、出典ごとに1トランザクションでストリーム挿入）を `data/db/v2.sqlite` の `observation`（ADR-0007）**テーブルだけ**を作り直して書く（`fresh_sqlite` から `migrate.common.staged_table`——検証が全部通ってから本番名に差し替える——に変更。§7「既知の負債」参照）。alias/place 解決、`value_grain`/`period_grain` の展開（センサーは ADR-0024 の時刻帯なしローカル時刻・hour_ending 変換を含む）、検閲分類（`measurements` のみ）を行い、`reports/phase_b_fact_slice.md` に出典ごとの節で要約を書く |
 | `scripts/b04_build_cube.py` | `observation` から `observation_agg`（ADR-0011 のキューブ、ADR-0021 で拡張したキー）を作る。`imputation='zero'` の系列だけ。センサー分の拡張（毎時・瞬時の日次積み上げ、月次・年次の出典配布セル）は §9 T4 |
-| `scripts/b05_project_v1.py` | `observation_agg` を v1 の派生テーブル形（`meas_daily`/`meas_month`/`meas_year`/`meas_clim`/`site_var`/`var_catalog`/`sensor_daily`/`rain_daily`/`sensor_hour_month`）に射影し、`data/db/v1_projection.sqlite` に書く。`meas_clim`/`site_var`/`var_catalog` はキューブのセルを直接使わず、既存の `_MEAS_DAILY_SQL`/`_MEAS_YEAR_SQL` を実体化した一時テーブルを再利用する（D10）。`sensor_daily`/`rain_daily`/`sensor_hour_month` の毎時分は同じ理由でキューブを経由せず L2（`observation`）から直接集計する（§9 T5）。`verify_hourly_daily_rollup`（§9 T6）による機械検証もここで行う |
+| `scripts/b05_project_v1.py` | `observation_agg` を v1 の派生テーブル形（`meas_daily`/`meas_month`/`meas_year`/`meas_clim`/`site_var`/`var_catalog`/`sensor_daily`/`rain_daily`/`sensor_hour_month`/`zone_year`/`zone_clim`）に射影し、`data/db/v1_projection.sqlite` に書く。`meas_clim`/`site_var`/`var_catalog` はキューブのセルを直接使わず、既存の `_MEAS_DAILY_SQL`/`_MEAS_YEAR_SQL` を実体化した一時テーブルを再利用する（D10）。`sensor_daily`/`rain_daily`/`sensor_hour_month` の毎時分は同じ理由でキューブを経由せず L2（`observation`）から直接集計する（§9 T5）。`zone_year`/`zone_clim` も同じ理由で `meas_year`/`meas_month`（実体化済み一時テーブル）から射影し、地点→ゾーンは `place_relation` から引く（§11・D11）。`verify_hourly_daily_rollup`（§9 T6）による機械検証もここで行う |
 | `scripts/migrate/censoring.py` | `value_raw` → `(censoring, censoring_limit)` の5分岐（ADR-0009。`measurements` のみ。センサーに検閲の概念は無い） |
 | `scripts/migrate/period.py` | `measured_on`/`phenomenon_time` → `(period_grain, period_start, period_end)`。`period_exceptions.yaml` の宣言（4桁の食い違い）と `time_label_conventions.yaml` の宣言（25桁・`value_grain='hour'` の時刻ラベルの意味。ADR-0024 決定2）を例外的に許す |
 | `scripts/migrate/period_exceptions.yaml` | `value_grain != period_grain` を許す宣言表（`atsugi_river_water_quality` の1件、3,840行） |
 | `scripts/migrate/time_label_conventions.yaml` | `value_grain='hour'` の出典の時刻ラベルの意味（`convention`/`expected_row_count`/`evidence`）を宣言する（ADR-0024 決定2）。`sagamihara_taiki_hourly`・`soramame_hourly_kanagawa` の2件。CI が構造（必須キーの有無）を検証する |
 | `scripts/migrate/common.py` | b03/b04/b05 共通の土台（`timed_step`/`fresh_sqlite`/`replace_table`/`attach_readonly`。読み取り専用オープンは `scripts/reconcile/common.open_readonly` を再利用） |
 | `scripts/reconcile/expected_diffs.yaml` | 「v1 を再現できないが v1 側のバグだと確定しているもの」をキー単位で宣言する（`scripts/b02_derived_compare.py` が読む） |
-| `scripts/b02_derived_compare.py --tables meas_daily,meas_month,meas_year,meas_clim,site_var,var_catalog,sensor_daily,rain_daily,sensor_hour_month` | この9テーブルだけを対象にした部分ゲート |
+| `scripts/b02_derived_compare.py --tables meas_daily,meas_month,meas_year,meas_clim,site_var,var_catalog,sensor_daily,sensor_hour_month,rain_daily,zone_year,zone_clim` | この11テーブルだけを対象にした部分ゲート |
 | `scripts/tests/test_b03_*` / `test_b04_*` / `test_b05_*` / `test_migrate_*` | フィクスチャ sqlite だけで完結するテスト（原本を要さない） |
 
 ## 4. 実測した前提（すべて読み取り専用で確認済み）
@@ -103,6 +115,12 @@ ADR-0011 の対象は33テーブル。これを一度に全部揃えようとす
 | 突合ゲート（9テーブル対象） | 一致3（`sensor_daily`/`rain_daily`/`sensor_hour_month`、宣言済み差分0）・宣言済み差分のみ6（`meas_*`/`site_var`/`var_catalog`、既存の18キーのまま）・不一致0 | `reports/derived_reconciliation.md` |
 | 既存6テーブルの射影の指紋（先頭16桁） | 1ビットも変わらず（`meas_daily=700094a0f8f2b979` 等、実装時の指定値と一致） | 実装コミット `000c393`（`phase-b/sensor-slice`）のコミットメッセージに記録 |
 | パイプラインの所要時間（b03/b04/b05、単独実行） | 28.0s / 64.0s / 51.1s＋書き出し2.8s | 2026-09-15、`--out`/`--report`/`--cube-db` を一時ファイルに向けて再実行し実測（実行のたびに数秒変動する。実装時の申し送りは28.3s/60.3s/48.5s） |
+| `place_relation`（地点→ゾーンの辺、`relation='within'`） | 290件。`fraction` は全行1.0、地点はすべて単一ゾーンにのみ属す（複数ゾーンにまたがる地点0件） | `data/db/registry.sqlite` を実測（2026-09-22） |
+| `zone_year`/`zone_clim` 行数（v1・v2 とも一致） | `zone_year` 3,710 / `zone_clim` 619 | `data/db/derived.sqlite` と `data/db/v1_projection.sqlite` を実測（2026-09-22）、両者一致 |
+| v1形11テーブルの候補行数合計 | 753,629（9テーブル分749,300 + `zone_year` 3,710 + `zone_clim` 619） | `data/db/v1_projection.sqlite` を実測（2026-09-22） |
+| 突合ゲート（11テーブル対象） | 一致5（`sensor_daily`/`rain_daily`/`sensor_hour_month`/`zone_year`/`zone_clim`、宣言済み差分0）・宣言済み差分のみ6（`meas_*`/`site_var`/`var_catalog`、既存の18キーのまま）・不一致0 | `reports/derived_reconciliation.md`（2026-09-22実測） |
+| 既存9テーブルの射影の指紋（全列・全行を `ORDER BY` で正準化して sha256） | 1ビットも変わらず（`zone_year`/`zone_clim` の追加前後で完全一致。main の `data/db/v1_projection.sqlite` とも一致） | 2026-09-22実測（`phase-b/zone-slice`） |
+| パイプラインの所要時間（b05、`zone_year`/`zone_clim` 追加後・単独実行） | 39.7s＋書き出し1.9s（追加前は36.6s＋2.7s） | 2026-09-22実測 |
 
 ## 5. 決定事項（実装された最終形。ADR-0009 決定3 の適用範囲修正を反映）
 
@@ -222,6 +240,70 @@ ADR-0011「粒度をまたぐ再集計をしない」）。月・年セルの `n
 `var_catalog` の ADR-0011 上の行き先は `variable` レジストリだが、レジストリへの
 移設はこのタスクの範囲外（ゲートのために射影で再現するだけ）。
 
+### D11. `zone_year`/`zone_clim` もキューブのセルにせず、射影（`b05`）でのみ計算する（オーナー決定。D10 の3例目）
+
+`phase-b/zone-slice` で追加した `zone_year`/`zone_clim` も `b04_build_cube.py`
+（`observation_agg`）を一切変更しない。理由は D10 と同じ2点:
+
+1. **ADR-0011 の事前計算の範囲外**: 事前計算するのは `place_kind ∈ {site, watershed,
+   mesh3}`。`zone` はこの語彙に無い。
+2. **v1 の `zone_year`/`zone_clim`（`web/scripts/build-derived.mjs`）は
+   `AVG(y.avg)`/`AVG(m.avg)`——ゾーン内の地点別平均を非加重で平均する**（`n` でも
+   `place_relation.fraction` でも重み付けしない）。ADR-0011「`fraction` があるものは
+   加重する」を素直に読めばキューブのロールアップセルは `SUM(value*fraction)/
+   SUM(fraction)`（またはそれに準じた加重）になるはずだが、v1 はそうなっていない
+   ——**v1 のバグではなく v1 の元々の集計仕様**なので、直さずそのまま再現する対象
+   （D10 理由2と同型）。
+
+そこで `b05_project_v1.py` は、`zone_year`/`zone_clim` の v1 SQL（`meas_year`/
+`meas_month` を `FROM` に取るだけの単純な再集計）と同じ形を採る: D10 の3テーブルと
+同じく、既に実体化している一時テーブル `meas_year`/`meas_month`
+（`_materialize_projection_tables`）から読む（`meas_month` はこのタスクで新たに
+一時テーブル化した——以前は `meas_month` 自体の出力 SQL がそのまま `_TABLE_SQL` に
+入っていたが、`zone_clim` も同じ集計を読む必要があるため、`meas_daily`/`meas_year`
+と同様に1回だけ実体化する形に揃えた）。
+
+地点→ゾーンの対応は、`sites.zone` を直接読まず、レジストリの `place_relation`
+（`relation='within'`。ADR-0022 決定2）から引く——`place_relation` の最初の消費者
+（`place_lookup` の site_id 側と `place_source_ref(source_id='sites.zone')` の
+ゾーン番号側を辺で繋いだ `site_zone_lookup` を作る）。この JOIN 自体がゾーンの
+辺だけへの絞り込みになる（`place_relation` に将来ゾーン以外の `'within'` 辺が
+増えても影響しない）。
+
+**検証は「レジストリの不変条件」と「射影（b05）固有の前提」を分ける**
+（コードレビュー対応。当初は4条件すべてを `b05` が `site_zone_lookup` の上で
+検証していたが、うち3つはレジストリの書き手 `scripts/registry/build_place.py`
+の出力そのものが満たすべき不変条件であり、消費者（`b05`）ではなく書き手側で
+1回だけ保証する方が正しい深さ、との指摘で分けた）:
+
+- **`scripts/r01_build_registry.py`（レジストリの不変条件。既存の
+  `ID_UNIQUENESS_CHECKS`/`_assert_region_id_scope_invariant` と同じ置き場）**:
+  (i) 地点がゾーンへの `'within'` 辺を高々1本しか持たない
+  （`_assert_zone_relation_child_is_single_valued`）、(ii) `sites.zone` の
+  `external_key` が数字だけの文字列（`_assert_zone_external_key_is_numeric`）、
+  (iii) `place_source_ref(place_id, source_id)` の一意性（実データで全
+  `source_id` について重複0件を確認したため `ID_UNIQUENESS_CHECKS` に汎用に
+  追加）。テストは `scripts/tests/test_r01_invariants.py`。
+- **`b05_project_v1.py`（射影固有の前提。レジストリ全体の不変条件ではない）**:
+  `fraction` が全行1.0（v1 を非加重で再現するという `b05` の設計判断であり、
+  `place_relation` 全体が守るべき制約ではない）、異なるゾーンの place が同じ
+  ゾーン番号に解決されていないこと（`b05` が place_id ではなく番号だけで
+  ゾーンを区別することから生じる、射影固有の懸念）、`site_zone_lookup` の
+  `site_id` 一意（結合そのものの安全性——r01 が保証済みだが `b05` 側の防御と
+  しても残す）、`reg.place_relation` テーブルが無い古い registry の検出。
+  テストは `scripts/tests/test_b05_project_v1.py`（すべて `build_projections`
+  経由——検証の呼び出しを消したらテストが落ちる形）。
+
+どちらも崩れていれば `MigrationError`（またはr01では `AssertionError`）で
+止まる（実データでは290辺すべて全条件を満たす。実測は §11・§4）。
+
+キューブのゾーンのロールアップセル（ADR-0011 の `roll_up_to`）はまだ作らない。
+使う側が現れたら作る。作るなら系列ごと・`n_places` 付き。
+
+`sites.zone` の番号は region でスコープされていない（2地域目でゾーンを定義
+すると番号が衝突しうる）。根本は ADR-0022 の place のキー設計側の課題として
+`docs/add_area.md` に申し送った（本書では対応しない）。
+
 ## 6. 移行で温存した v1 の癖（ゲートが緑のうちは直さない）
 
 - **`ノニルフェノール` の `value_raw='0.00006'` 等 69行**が v1 で `value IS NULL`（パース失敗＝
@@ -318,7 +400,7 @@ ADR-0011「粒度をまたぐ再集計をしない」）。月・年セルの `n
   `weather.snowfall_depth_total`（`雪_降雪_合計`/`雪_降雪の深さ_合計`）・
   `weather.snowfall_depth_max_daily`（`雪_降雪_日合計の最大`/`雪_降雪の深さ_日合計の最大`）
   の3変数が、それぞれ2つの alias 文字列から同じ `(variable_id, unit_id, stat, grain)`
-  に解決される）。`jma_monthly` は月次出典配布セルであり v1 の9テーブルには射影しない
+  に解決される）。`jma_monthly` は月次出典配布セルであり v1 の11テーブルには射影しない
   ため実害は無いが、`assert_alias_is_function` の sensor 側検証は b05 が実際に消費する
   grain（day/hour/instant）だけに絞ってこの重複を意図的に見逃している（§9 T5「逆引きの
   検証」）。
@@ -334,10 +416,12 @@ ADR-0011「粒度をまたぐ再集計をしない」）。月・年セルの `n
 
 ## 7. やっていないこと
 
-- 残り24テーブル（`zone_year`/`zone_clim`/…、ADR-0011 §「33テーブルの行き先」参照。
-  `meas_clim`/`site_var`/`var_catalog`/`sensor_daily`/`rain_daily`/`sensor_hour_month`
-  の6テーブルは本タスク・前タスクで済んだ）
+- 残り22テーブル（ADR-0011 §「33テーブルの行き先」参照。`meas_clim`/`site_var`/
+  `var_catalog`/`sensor_daily`/`rain_daily`/`sensor_hour_month`/`zone_year`/
+  `zone_clim` の8テーブルは本タスク・前タスクで済んだ）
 - `occurrence` を入力にする縦線（生物系11テーブル）
+- キューブのゾーンのロールアップセル（ADR-0011 の `roll_up_to`。D11参照。使う側が
+  現れたら作る。作るなら系列ごと・`n_places` 付き）
 - `imputation='lod'` 併記（ADR-0009 決定4。今回は `zero` のみ）
 - 正準単位の併記（ADR-0023。方針は決定済みだが未実装）
 - 時刻帯の実データ結線（ADR-0024。`region_id` から実際のUTCオフセットを引く仕組みは
@@ -369,7 +453,7 @@ ADR-0011「粒度をまたぐ再集計をしない」）。月・年セルの `n
   〔PR #11〕とは別の対象——`registry.sqlite` は単一の書き手が単一ファイルを作り直すのに
   対し、`v2.sqlite` は複数スクリプトがテーブル単位で共有する構造が違う）。
   **もう1つ、既知の判断として**: `scripts/b05_project_v1.py` は v1 互換の射影の置き場
-  として線形に増え続けている（現在9テーブル）。次に T6 級（出典固有の Python 検証関数）
+  として線形に増え続けている（現在11テーブル）。次に T6 級（出典固有の Python 検証関数）
   を足す時点で、検証関数群を別モジュールに分けること。
 
 ## 8. 次の一手（オーナーの方針）
@@ -472,3 +556,50 @@ docstring が正**（D-1）。決定の経緯は ADR-0024 決定4。
 の1,992行が一度に動く。それまでは `observation`/`observation_agg`（v2）は1行も動かない。**
 この量を宣言済み差分（`expected_diffs.yaml`）で1件ずつ吸収するのは非現実的な規模なので、
 退役の判断自体をこのドキュメントと ADR-0024 に残す。
+
+## 11. ゾーンの縦線（`meas_year`/`meas_month` → `zone_year`/`zone_clim`。`place_relation` の最初の消費者）
+
+対象: `sites.zone` を持つ290地点（`meas_year`/`meas_month` を経由）を `zone_year`/
+`zone_clim` の2テーブルに束ねた（`phase-b/zone-slice`）。設計・決定・検証条件・
+`sites.zone` ではなく `place_relation` から引く理由・レジストリ（r01）と射影
+（b05）の分担は**すべて D11（§5）を正とする**（ここでは繰り返さない）。
+`b03`/`b04` は無変更——新しいファクト源を足していない。入力は既に実体化済みの
+v1形の一時テーブル（`meas_year`/`meas_month`）で、`observation_agg` は一切読まない。
+
+### レビュー対応の経緯
+
+1回目のコードレビューで、検証の対象が `reg.place_relation` テーブル全体
+（ゾーン以外の `'within'` 辺を含みうる）になっており、`site_zone_lookup`
+（ゾーンの辺だけに絞った一時テーブル）に絞るべきと指摘され、検証をそちらに
+移した（併せてゾーン番号の形式・place をまたぐゾーン番号衝突の2条件を追加）。
+
+2回目の `/simplify` で、その4条件のうち3つ（地点→ゾーンの辺の単射性・
+ゾーン番号の数値形式・`place_source_ref` の一意性）は「射影（b05）の前提」
+ではなく「レジストリの不変条件」であり、書き手 `scripts/r01_build_registry.py`
+側で1回だけ保証する方が正しい深さ、との指摘で `r01` に移設した（D11 参照）。
+`b05` に残したのは、射影固有の前提（`fraction=1.0`・ゾーン番号の place を
+またいだ衝突）と、結合そのものの安全性（`site_zone_lookup` の site_id 一意）
+だけ。あわせて、重複検査の同型のコード（`GROUP BY ... HAVING ... > 1` →
+先頭5件を例示 → `MigrationError`）を `_raise_on_group_by_duplicates` の
+1関数に統合した（既存の `assert_alias_is_function` 等も含む）。
+
+### 実測結果
+
+`zone_year`（3,710行）・`zone_clim`（619行）とも v1（`data/db/derived.sqlite`）と
+**完全一致**（宣言済み差分0。`reports/derived_reconciliation.md` の該当節。§4）。
+差分が出るはずの唯一の既知経路（§6「移行で温存した v1 の癖」の`atsugi_river_
+water_quality__中津川`の`未満`表記12行）は、この site_id が `sites` テーブル本体に
+存在しない（`site_supplement.csv` 側の補完地点）ため `sites.zone` を持たず、
+`place_relation` にも辺が無い——`zone_year`/`zone_clim` には波及しない（実測で
+確認。中津川はもともと `sites` に登録が無い出典側の地点）。
+
+既存9テーブルの射影の指紋（全列・全行を `ORDER BY` で正準化した sha256）は
+`zone_year`/`zone_clim` の追加前後で1ビットも変わらない（`meas_month` の
+出力元を「直接 SELECT」から「実体化した一時テーブルから SELECT」に変えたが、
+SQL の計算結果自体は同じため。§4実測）。
+
+`r01` に移設した不変条件も実データで確認済み（`scripts/r01_build_registry.py`
+の標準出力）: 地点→ゾーンの辺は単射290件、`sites.zone` の external_key
+数値形式OK 5件、`place_source_ref(place_id, source_id)` 一意性OK 4,964件
+（全4種の `source_id`——`sites.site_id`/`sites.zone`/
+`watershed_meta.watershed_id`/`organism_records.lat_lon`——で重複0件）。

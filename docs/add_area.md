@@ -542,6 +542,13 @@ zone のしきい値・海岸線の定義はエリアごとに持つべきとい
 ア別ドキュメント（例 `docs/ZONE_DEFINITION_tokyo.md`）を都度作り、`scripts/m01_sites.py` の
 `zone_of()` 相当をエリア別に分岐させずに済む形（設定値の外出し）で実装することを推奨する。
 
+**申し送り（Phase B、蒸し返さない）**: `sites.zone`（`place_source_ref(source_id=
+'sites.zone').external_key`）はゾーン番号（"1".."5"）を region でスコープしていない。
+2地域目でゾーンを定義すると、番号が神奈川県の既存ゾーンと衝突しうる（`scripts/
+b05_project_v1.py` の `_assert_zone_numbers_do_not_collide_across_zone_places` が検出して
+止める）。根本はこの番号を region でスコープしていない ADR-0022 の place のキー設計の側で
+直すべき問題であり、本書の手順では対応しない。
+
 ---
 
 ## 8. やってはいけないこと

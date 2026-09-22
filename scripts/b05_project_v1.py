@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """`observation_agg`（`data/db/v2.sqlite`、b04 が作ったキューブ）を v1 の派生
 テーブル形（`meas_daily`/`meas_month`/`meas_year`/`meas_clim`/`site_var`/
-`var_catalog`/`sensor_daily`/`rain_daily`/`sensor_hour_month`）に射影する
-（ADR-0016 Phase B「ファクトとキューブ」縦に薄い1本。センサーの縦線の設計は
-「センサーの縦線 設計 v2」オーナー決定・ADR-0023・ADR-0024 参照）。
+`var_catalog`/`sensor_daily`/`rain_daily`/`sensor_hour_month`/`zone_year`/
+`zone_clim`）に射影する（ADR-0016 Phase B「ファクトとキューブ」縦に薄い1本。
+センサーの縦線の設計は「センサーの縦線 設計 v2」オーナー決定・ADR-0023・
+ADR-0024、ゾーンの縦線は `docs/plans/PHASE_B_FACT_SLICE.md`（D11）・
+ADR-0022 参照）。
 
     .venv/bin/python3 scripts/b05_project_v1.py
 
 `data/db/v1_projection.sqlite`（毎回ゼロから作り直す、専用の出力ファイル）に
-9テーブルを書く。列名・列順は `reports/derived_baseline.json` の記録と完全に
+11テーブルを書く。列名・列順は `reports/derived_baseline.json` の記録と完全に
 一致させてある（`scripts/b02_derived_compare.py --tables ...` がそのまま
 突き合わせられるように）。
 
@@ -16,6 +18,13 @@
 
 `docs/plans/PHASE_B_FACT_SLICE.md` D10 参照（変更なし。この3テーブルは
 `measurements` 由来のみで、センサーの縦線とは無関係）。
+
+## `zone_year`/`zone_clim`（`place_relation` の最初の消費者。phase-b/zone-slice）
+
+`docs/plans/PHASE_B_FACT_SLICE.md` D11 参照（この2テーブルも `measurements`
+由来のみで、センサーの縦線とは無関係。レジストリの不変条件は
+`scripts/r01_build_registry.py` 側、射影固有の前提は本ファイルの
+`_assert_zone_edges_have_fraction_one` 等に分けてある——分担の理由も D11）。
 
 ## センサーの縦線 設計 v2 T5: `sensor_daily`/`rain_daily`/`sensor_hour_month`
 は v1 の癖を射影にだけ置く
@@ -159,6 +168,26 @@ def _sql_in_clause(values: tuple[str, ...]) -> str:
     return ", ".join(f"'{v}'" for v in values)
 
 
+def _raise_on_group_by_duplicates(work: sqlite3.Connection, sql: str, params: tuple, build_message) -> None:
+    """`GROUP BY ... HAVING <集計> > 1` の形で重複を検出する `sql` を実行し、
+    1行でも返れば `build_message(dup_rows)` が組み立てた文言で
+    `MigrationError` を投げる（/simplify 指摘: `place_lookup`/
+    `site_zone_lookup` の一意性検証・ゾーン番号の衝突検証・
+    `assert_alias_is_function`/`assert_alias_tuple_maps_to_single_dataset`/
+    `assert_unit_raw_is_function` はどれもこの同じ形——クエリを実行し、
+    重複が見つかったら特定の文言で止める——だったものを1箇所に集約した）。
+
+    サンプル件数の絞り込み（`LIMIT n`）を入れるかどうか・`COUNT(*)` か
+    `COUNT(DISTINCT ...)` か・メッセージの文言は、すべて呼び出し側に委ねる
+    （このモジュールの検証はそれぞれ意味も重要度も違うため、文言を1つの
+    テンプレートに揃えない——既存テストが見ているメッセージはこの関数を
+    導入しても1文字も変わらない）。
+    """
+    dup = work.execute(sql, params).fetchall()
+    if dup:
+        raise common.MigrationError(build_message(dup))
+
+
 def _alias_lookup_sql(dataset: str) -> str:
     """`(variable_id, grain, stat, unit_id) → alias` の逆引き元 SQL
     （`dataset` でデータセットを絞る。`measurements`/`sensor_timeseries` の
@@ -299,6 +328,49 @@ GROUP BY site_id, variable, kind
 """
 
 # ---------------------------------------------------------------------------
+# ゾーン別2テーブル（`place_relation` の最初の消費者。D11参照。measurements
+# 由来の meas_year/meas_month をそのままゾーンに束ねるだけで、キューブは
+# 経由しない——D10/D11 と同じ理由）
+# ---------------------------------------------------------------------------
+
+# 地点→ゾーンの対応（D11参照）。実装メモ:
+# - `zone_raw`（原文字列）と `zone_place_id`（`pr.parent_id`）は検証専用の列
+#   ——外側の SELECT（`_ZONE_YEAR_SQL` 等）が読むのは `zone`/`site_id` だけ。
+# - `place_lookup` に依存する（`psr` の JOIN 元）ため、`_materialize_lookup_
+#   tables` の中で `place_lookup` の一意性検証（UNIQUE INDEX）の後に実行すること。
+_SITE_ZONE_LOOKUP_SQL = """
+CREATE TEMP TABLE site_zone_lookup AS
+SELECT psr.external_key AS site_id,
+       pr.parent_id AS zone_place_id,
+       zref.external_key AS zone_raw,
+       CAST(zref.external_key AS INT) AS zone,
+       pr.fraction AS fraction
+FROM reg.place_relation pr
+JOIN place_lookup psr ON psr.place_id = pr.child_id
+JOIN reg.place_source_ref zref
+  ON zref.place_id = pr.parent_id AND zref.source_id = 'sites.zone'
+WHERE pr.relation = 'within'
+"""
+
+_ZONE_YEAR_SQL = """
+SELECT sz.zone AS zone, y.variable AS variable, y.kind AS kind, y.year AS year,
+       COUNT(DISTINCT y.site_id) AS n_sites, SUM(y.n) AS n,
+       AVG(y.avg) AS avg, MAX(y.unit) AS unit
+FROM meas_year y
+JOIN site_zone_lookup sz ON sz.site_id = y.site_id
+GROUP BY sz.zone, y.variable, y.kind, y.year
+"""
+
+_ZONE_CLIM_SQL = """
+SELECT sz.zone AS zone, m.variable AS variable, m.month AS month,
+       COUNT(DISTINCT m.site_id) AS n_sites, SUM(m.n) AS n,
+       AVG(m.avg) AS avg, MAX(m.unit) AS unit
+FROM meas_month m
+JOIN site_zone_lookup sz ON sz.site_id = m.site_id
+GROUP BY sz.zone, m.variable, m.month
+"""
+
+# ---------------------------------------------------------------------------
 # sensor_timeseries 由来 3テーブル（T5）
 # ---------------------------------------------------------------------------
 
@@ -366,7 +438,7 @@ GROUP BY al.alias, month, hour
 
 _TABLE_SQL = {
     "meas_daily": "SELECT * FROM meas_daily",
-    "meas_month": _MEAS_MONTH_SQL,
+    "meas_month": "SELECT * FROM meas_month",
     "meas_year": "SELECT * FROM meas_year",
     "meas_clim": _MEAS_CLIM_SQL,
     "site_var": _SITE_VAR_SQL,
@@ -374,6 +446,8 @@ _TABLE_SQL = {
     "sensor_daily": _SENSOR_DAILY_SQL,
     "rain_daily": _RAIN_DAILY_SQL,
     "sensor_hour_month": _SENSOR_HOUR_MONTH_SQL,
+    "zone_year": _ZONE_YEAR_SQL,
+    "zone_clim": _ZONE_CLIM_SQL,
 }
 
 
@@ -416,10 +490,81 @@ def _label25_obs_keyed_sql() -> str:
     """
 
 
+def _assert_place_relation_table_exists(work: sqlite3.Connection) -> None:
+    """`reg.place_relation` テーブルが存在することを確認する（無いと素の
+    `sqlite3.OperationalError` になり原因が分かりにくいため）。理由は D11。
+    """
+    row = work.execute(
+        "SELECT 1 FROM reg.sqlite_master WHERE type = 'table' AND name = 'place_relation'"
+    ).fetchone()
+    if row is None:
+        raise common.MigrationError(
+            "registry.sqlite に place_relation テーブルが無い（ADR-0022 決定2で新設された"
+            "テーブルなので、それより前にビルドした古い registry.sqlite には無い）。"
+            "scripts/r01_build_registry.py で registry.sqlite を作り直すこと。"
+        )
+
+
+def _assert_zone_numbers_do_not_collide_across_zone_places(work: sqlite3.Connection) -> None:
+    """異なる place のゾーンが同じゾーン番号（`zone_raw`）に解決されていない
+    ことを確認する（b05 が place_id ではなく番号だけでゾーンを区別すること
+    から生じる、射影固有の前提）。理由は D11。
+    """
+    _raise_on_group_by_duplicates(
+        work,
+        "SELECT zone_raw, COUNT(DISTINCT zone_place_id) AS n_places, "
+        "GROUP_CONCAT(DISTINCT zone_place_id) AS zone_place_ids "
+        "FROM site_zone_lookup GROUP BY zone_raw HAVING n_places > 1 LIMIT 5",
+        (),
+        lambda dup: (
+            f"異なるゾーンの place が同じゾーン番号に解決されている: {dup}\n"
+            "zone_year/zone_clim はゾーン番号（整数）だけを鍵にしているため、"
+            "由来の違うゾーンが1行に混ざる前に止める。"
+        ),
+    )
+
+
+def _assert_zone_edges_have_fraction_one(work: sqlite3.Connection) -> None:
+    """`site_zone_lookup` の `fraction` が全行1.0であることを確認する
+    （v1 を非加重で再現するという b05 固有の前提。レジストリ全体の不変条件
+    ではない）。理由は D11。
+    """
+    bad = work.execute(
+        "SELECT site_id, zone_place_id, fraction FROM site_zone_lookup "
+        "WHERE fraction <> 1.0 LIMIT 5"
+    ).fetchall()
+    if bad:
+        raise common.MigrationError(
+            "地点→ゾーンの辺（place_relation, relation='within'、sites.zone に解決"
+            f"できたもの）に fraction が1.0でないものがある（例（site_id, zone_place_id, "
+            f"fraction）: {bad}）。zone_year/zone_clim の射影は非加重の前提（v1 と同じ"
+            " AVG()）で書かれており、この前提が崩れている。"
+        )
+
+
+def _assert_site_maps_to_at_most_one_zone(work: sqlite3.Connection) -> None:
+    """`site_zone_lookup` で1つの地点が複数行を持たないことを確認する
+    （結合そのものの安全性。r01 がレジストリ側で既に保証しているが、b05側の
+    防御としても残す）。理由は D11。
+    """
+    _raise_on_group_by_duplicates(
+        work,
+        "SELECT site_id, COUNT(*) AS n FROM site_zone_lookup GROUP BY site_id HAVING n > 1 LIMIT 5",
+        (),
+        lambda dup: (
+            f"複数のゾーンに属する（またはゾーンへの辺が重複している）地点がある: {dup}\n"
+            "v1 の sites.zone は単一列であり、zone_year/zone_clim は地点が1つの"
+            "ゾーンにのみ、1本の辺で対応することを前提にしている。"
+        ),
+    )
+
+
 def _materialize_lookup_tables(work: sqlite3.Connection) -> None:
     """自動インデックスの効かない `IS`（NULL-safe）JOIN を、実体化した一時
     テーブル＋インデックスの通常の等値 JOIN に置き換える。`measurements`/
-    `sensor_timeseries` の両方ぶんの逆引きテーブルをここで作る。
+    `sensor_timeseries` の両方ぶんの逆引きテーブルと、`place_lookup` の
+    直後に地点→ゾーンの対応（`site_zone_lookup`。`zone_year`/`zone_clim` が
+    使う。ADR-0022 決定2の最初の消費者）をここで作る。
     """
     work.execute(_OBS_AGG_KEYED_VIEW_SQL)
 
@@ -446,25 +591,39 @@ def _materialize_lookup_tables(work: sqlite3.Connection) -> None:
         "CREATE TEMP TABLE place_lookup AS "
         "SELECT place_id, external_key FROM reg.place_source_ref WHERE source_id = 'sites.site_id'"
     )
-    dup_places = work.execute(
-        "SELECT place_id, COUNT(*) AS n FROM place_lookup GROUP BY place_id HAVING n > 1 LIMIT 5"
-    ).fetchall()
-    if dup_places:
-        raise common.MigrationError(
+    _raise_on_group_by_duplicates(
+        work,
+        "SELECT place_id, COUNT(*) AS n FROM place_lookup GROUP BY place_id HAVING n > 1 LIMIT 5",
+        (),
+        lambda dup: (
             "place_source_ref（source_id='sites.site_id'）が place_id について単射でない"
-            f"（同じ place_id に複数の external_key（site_id）が対応している。例: {dup_places}）。"
+            f"（同じ place_id に複数の external_key（site_id）が対応している。例: {dup}）。"
             "キューブのキー place_id から v1 の site_id を一意に復元できないため、射影が"
             "決まらない。place_source_ref 側の重複を解消してから再実行すること。"
-        )
+        ),
+    )
     work.execute("CREATE UNIQUE INDEX place_lookup_place_id ON place_lookup (place_id)")
+
+    # 地点→ゾーン（site_zone_lookup。`place_lookup` に依存するため、この直後で
+    # 作る）。検証は射影固有の前提だけ（D11参照。レジストリの不変条件は
+    # scripts/r01_build_registry.py 側に移設済み）。
+    _assert_place_relation_table_exists(work)
+    work.execute(_SITE_ZONE_LOOKUP_SQL)
+    _assert_zone_numbers_do_not_collide_across_zone_places(work)
+    _assert_zone_edges_have_fraction_one(work)
+    _assert_site_maps_to_at_most_one_zone(work)
+    work.execute("CREATE UNIQUE INDEX site_zone_lookup_site_id ON site_zone_lookup (site_id)")
 
 
 def _materialize_projection_tables(work: sqlite3.Connection) -> None:
-    """逆引き済みの `meas_daily`/`meas_year` をそれぞれ1回だけ一時テーブルに
-    実体化する（`meas_clim`/`site_var`/`var_catalog` がここから読む。変更なし
-    ——`measurements` 専用で `sensor_timeseries` とは無関係）。
+    """逆引き済みの `meas_daily`/`meas_month`/`meas_year` をそれぞれ1回だけ
+    一時テーブルに実体化する（`meas_clim`/`site_var`/`var_catalog` は
+    `meas_daily`/`meas_year` から、`zone_year`/`zone_clim` は
+    `meas_year`/`meas_month` からそれぞれ読む。`measurements` 専用で
+    `sensor_timeseries` とは無関係——変更なし）。
     """
     work.execute(f"CREATE TEMP TABLE meas_daily AS {_MEAS_DAILY_SQL}")
+    work.execute(f"CREATE TEMP TABLE meas_month AS {_MEAS_MONTH_SQL}")
     work.execute(f"CREATE TEMP TABLE meas_year AS {_MEAS_YEAR_SQL}")
 
 
@@ -492,7 +651,8 @@ def assert_alias_is_function(work, dataset: str = "measurements", grains: tuple[
         placeholders = ", ".join("?" for _ in grains)
         grain_filter = f" AND grain IN ({placeholders})"
         params = (dataset, *grains)
-    dup = work.execute(
+    _raise_on_group_by_duplicates(
+        work,
         f"""
         SELECT variable_id, grain, stat, unit_id, COUNT(DISTINCT alias) AS n_alias
         FROM reg.variable_alias
@@ -501,14 +661,13 @@ def assert_alias_is_function(work, dataset: str = "measurements", grains: tuple[
         HAVING n_alias > 1
         """,
         params,
-    ).fetchall()
-    if dup:
-        raise common.MigrationError(
+        lambda dup: (
             f"({dataset}) (variable_id, grain, stat, unit_id) -> alias が関数になっていない"
             f"（同じ組に複数の alias がある）: {dup}\n"
             "b05 は『どちらの alias を v1 の variable/datastream 名として使うか』を推測できない"
             "ため、variable_alias 側の重複を解消してから再実行すること。"
-        )
+        ),
+    )
 
 
 def assert_alias_tuple_maps_to_single_dataset(work) -> None:
@@ -521,22 +680,23 @@ def assert_alias_tuple_maps_to_single_dataset(work) -> None:
     `assert_alias_is_function` が捕まえる壊れ方（順方向の衝突）とは別の
     壊れ方なので、そのまま残す。
     """
-    dup = work.execute(
+    _raise_on_group_by_duplicates(
+        work,
         """
         SELECT variable_id, grain, stat, unit_id,
                COUNT(DISTINCT dataset) AS n_dataset, GROUP_CONCAT(DISTINCT dataset) AS datasets
         FROM reg.variable_alias
         GROUP BY variable_id, grain, stat, unit_id
         HAVING n_dataset > 1
-        """
-    ).fetchall()
-    if dup:
-        raise common.MigrationError(
+        """,
+        (),
+        lambda dup: (
             "(variable_id, grain, stat, unit_id) が複数の dataset にまたがっている"
             f"（同じキューブのセルが meas_* と sensor_* の両方の出力テーブルに二重に現れる"
             f"恐れがある）: {dup}\nvariable_alias 側で tuple が dataset をまたいで重複しない"
             "ようにしてから再実行すること。"
-        )
+        ),
+    )
 
 
 def assert_unit_raw_is_function(work) -> None:
@@ -546,21 +706,22 @@ def assert_unit_raw_is_function(work) -> None:
     （1つの系列は1種類の単位しか持たない）だが、将来2種以上の unit_raw を
     持つ系列が現れたら、どの組が何種に割れているかを示して止まる。
     """
-    dup = work.execute(
+    _raise_on_group_by_duplicates(
+        work,
         """
         SELECT variable_id, value_grain, obs_stat, unit_id, COUNT(DISTINCT unit_raw) AS n_unit_raw
         FROM cube.observation
         GROUP BY variable_id, value_grain, obs_stat, unit_id
         HAVING n_unit_raw > 1
-        """
-    ).fetchall()
-    if dup:
-        raise common.MigrationError(
+        """,
+        (),
+        lambda dup: (
             "(variable_id, value_grain, obs_stat, unit_id) -> unit_raw が関数になっていない"
             f"（同じ系列に複数の unit_raw がある）: {dup}\n"
             "b05 は『どの unit_raw を v1 の unit 表記として使うか』を推測できないため、"
             "該当する系列の unit_raw の食い違いを解消してから再実行すること。"
-        )
+        ),
+    )
 
 
 def _load_v1_keys(baseline_json_path) -> dict[str, list[str]]:
@@ -718,7 +879,7 @@ def verify_hourly_daily_rollup(work: sqlite3.Connection, sample_limit: int = 20)
 def build_projections(
     cube_db, registry_db, baseline_json=DEFAULT_BASELINE_JSON
 ) -> dict[str, list[tuple]]:
-    """9テーブルぶんの `(columns, rows)` を返す（ファイルには書かない）。"""
+    """11テーブルぶんの `(columns, rows)` を返す（ファイルには書かない）。"""
     work = sqlite3.connect(":memory:", uri=True)
     try:
         common.attach_readonly(work, cube_db, "cube")
@@ -732,6 +893,9 @@ def build_projections(
         assert_alias_is_function(work, "sensor_timeseries", grains=_SENSOR_ALIAS_GRAINS)
         assert_alias_tuple_maps_to_single_dataset(work)
         assert_unit_raw_is_function(work)
+        # ゾーン（place_relation）の射影固有の検証は _materialize_lookup_tables
+        # の中、site_zone_lookup を実体化した直後で行う（D11参照。レジストリの
+        # 不変条件は r01 側で保証済み）。
         _materialize_lookup_tables(work)
         _materialize_projection_tables(work)
         verify_hourly_daily_rollup(work)
@@ -779,6 +943,14 @@ _CREATE_SQL = {
     "sensor_hour_month": (
         "CREATE TABLE sensor_hour_month (datastream TEXT, month INTEGER, hour INTEGER, "
         "n INTEGER, avg REAL, max REAL)"
+    ),
+    "zone_year": (
+        "CREATE TABLE zone_year (zone INTEGER, variable TEXT, kind TEXT, year INTEGER, "
+        "n_sites INTEGER, n INTEGER, avg REAL, unit TEXT)"
+    ),
+    "zone_clim": (
+        "CREATE TABLE zone_clim (zone INTEGER, variable TEXT, month INTEGER, "
+        "n_sites INTEGER, n INTEGER, avg REAL, unit TEXT)"
     ),
 }
 

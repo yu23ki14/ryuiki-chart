@@ -191,6 +191,11 @@ ID_UNIQUENESS_CHECKS = [
     ("taxon", "taxon_id"),
     ("caveat", "caveat_id"),
     ("place_relation", ("parent_id", "child_id", "relation")),
+    # Phase B `phase-b/zone-slice` のコードレビュー対応で追加。実データで
+    # 全 source_id について重複0件を確認済み（4件の source_id: sites.site_id/
+    # sites.zone/watershed_meta.watershed_id/organism_records.lat_lon）なので、
+    # sites.zone に限定せず汎用にここへ入れる。
+    ("place_source_ref", ("place_id", "source_id")),
 ]
 
 
@@ -272,6 +277,66 @@ def _assert_region_id_scope_invariant(conn) -> None:
             f"（ADR-0022 決定1）。例: {sample}"
         )
     print(f"  region_id 不変条件OK: {len(rows):,} 件（common:->NULL, <region>:-><region>）")
+
+
+# ゾーン関連の不変条件（Phase B `phase-b/zone-slice` のコードレビュー対応で b05 から
+# 移設。「レジストリの不変条件」と「射影〔b05〕の前提」を分ける——書き手
+# scripts/registry/build_place.py の出力をここで1回だけ保証すれば、消費側
+# （b05_project_v1.py）は結果を信用してよい。fraction=1.0 のような「射影固有の
+# 前提」（v1 を非加重で再現するという b05 の設計判断であり、レジストリ全体が
+# 守るべき不変条件ではない）はここに置かず b05 側に残す。docs/plans/
+# PHASE_B_FACT_SLICE.md D11 参照。
+def _assert_zone_relation_child_is_single_valued(conn) -> None:
+    """地点（`place_relation.child_id`）が、ゾーン（`place_source_ref
+    (source_id='sites.zone')` を持つ place を `parent_id` とする `'within'`
+    辺）を高々1本しか持たないことを検証する。v1 の `sites.zone` は単一列
+    であり、地点は必ず1つのゾーンにしか属さないため。
+    """
+    dup = conn.execute(
+        """
+        SELECT pr.child_id, COUNT(*) AS n
+        FROM place_relation pr
+        JOIN place_source_ref zref
+          ON zref.place_id = pr.parent_id AND zref.source_id = 'sites.zone'
+        WHERE pr.relation = 'within'
+        GROUP BY pr.child_id
+        HAVING n > 1
+        """
+    ).fetchall()
+    if dup:
+        raise AssertionError(
+            f"地点がゾーンへの 'within' 辺を複数持っている（child_id, 本数）: {dup[:10]}"
+        )
+    n = conn.execute(
+        """
+        SELECT COUNT(*) FROM place_relation pr
+        JOIN place_source_ref zref
+          ON zref.place_id = pr.parent_id AND zref.source_id = 'sites.zone'
+        WHERE pr.relation = 'within'
+        """
+    ).fetchone()[0]
+    print(f"  地点→ゾーンの辺は単射OK: {n:,} 件")
+
+
+def _assert_zone_external_key_is_numeric(conn) -> None:
+    """`place_source_ref(source_id='sites.zone').external_key`（ゾーン番号）が
+    数字だけの文字列であることを検証する。消費側（`b05_project_v1.py`）が
+    `CAST(... AS INT)` で整数に変換するため、非数値文字列（例: `'z1'`）が
+    紛れ込むと黙って `0` になる。
+    """
+    bad = conn.execute(
+        "SELECT place_id, external_key FROM place_source_ref "
+        "WHERE source_id = 'sites.zone' "
+        "AND (external_key IS NULL OR external_key = '' OR external_key GLOB '*[^0-9]*')"
+    ).fetchall()
+    if bad:
+        raise AssertionError(
+            f"sites.zone の external_key が数字だけの文字列でない行がある: {bad[:10]}"
+        )
+    n = conn.execute(
+        "SELECT COUNT(*) FROM place_source_ref WHERE source_id = 'sites.zone'"
+    ).fetchone()[0]
+    print(f"  sites.zone の external_key 数値形式OK: {n:,} 件")
 
 
 # --check-fresh の終了コード（web/scripts/ensure-registry.sh が読む。fix 1）。
@@ -437,6 +502,8 @@ def main() -> None:
         _assert_id_uniqueness(conn)
         _assert_id_references(conn)
         _assert_region_id_scope_invariant(conn)
+        _assert_zone_relation_child_is_single_valued(conn)
+        _assert_zone_external_key_is_numeric(conn)
 
         conn.execute("DELETE FROM registry_build")
         conn.execute(
