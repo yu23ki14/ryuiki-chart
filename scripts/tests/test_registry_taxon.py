@@ -100,6 +100,22 @@ def test_taxon_key_to_binomial_must_be_a_function(tmp_path):
         _build(tmp_path, organism_records_rows=rows)
 
 
+def test_representative_selection_raises_on_genuine_count_tie(tmp_path):
+    """同じ (ns, taxon_key) の中で、代表候補(scientific_name違い)の件数が完全に
+    同数で並ぶ場合は機械検証で止まる（/code-review 指摘3）。binom は同じ
+    ("Testx aaa")なので F1 のbinom関数性チェックはパスするが、著者引用などの
+    細部（"forma1"/"forma2"）が違う全体表記が1件ずつで並ぶケース。
+    """
+    rows = [
+        ("gbif_kanagawa_occurrences", "50", "Testx aaa forma1", "species",
+         None, None, None, None, None, "2020-01-01"),
+        ("gbif_kanagawa_occurrences", "50", "Testx aaa forma2", "species",
+         None, None, None, None, None, "2020-01-02"),
+    ]
+    with pytest.raises(AssertionError, match="最頻値の件数が同数"):
+        _build(tmp_path, organism_records_rows=rows)
+
+
 # ---------------------------------------------------------------------------
 # F2: 分類補完(kingdom/phylum/class/taxon_group)
 # ---------------------------------------------------------------------------
@@ -171,9 +187,11 @@ def test_genus_majority_tie_marks_needs_review(tmp_path):
     assert a["status"] == "accepted"
 
 
-def test_unresolved_status_is_not_overridden_by_needs_review(tmp_path):
-    """taxa 由来 unresolved (GBIF 未照合) 行は、分類の多数決が同数でも
-    status='unresolved' のまま(needs_review に上書きしない。既存の意味を壊さないため)。
+def test_unresolved_status_becomes_needs_review_when_classification_tied(tmp_path):
+    """taxa 由来 unresolved (GBIF 未照合) 行でも、分類の多数決が不確か（同数・複数class
+    にまたがる属）なら status='needs_review' に変わる（/code-review 指摘1。実データの
+    *Martensia flabelliformis*——属の多数決が紅藻2件/端脚類2件の同数——で taxon_group が
+    丸ごと変わりうるのに、以前は unresolved のまま隠れていた回帰）。
     """
     taxa_rows = [
         ("wamei:てすと", "Testgenus ddd", None, None, None,
@@ -187,8 +205,95 @@ def test_unresolved_status_is_not_overridden_by_needs_review(tmp_path):
     ]
     conn, _counts = _build(tmp_path, organism_records_rows=organism_rows, taxa_rows=taxa_rows)
     t = _taxon(conn, "common:taxon:ryuiki-taxa.wamei.%E3%81%A6%E3%81%99%E3%81%A8")
-    assert t["status"] == "unresolved"
+    assert t["status"] == "needs_review"
     assert t["classification_basis"] == "genus_match"
+
+
+def test_kingdom_only_tie_marks_needs_review_even_with_own_class(tmp_path):
+    """own class はあるが own kingdom が無く、kingdom を二名法キーの多数決(bc)から
+    補完するケースで、その bc の多数決が同数なら needs_review になる
+    （/code-review 指摘2。以前は class が自前にあると bc の tie を一切見ておらず、
+    kingdom 側の同数を見逃していた）。
+
+    同じ binom "Testbinom aaa" で KingdomX/KingdomY が2件ずつの同数（bcのkingdomがtie）。
+    対象行自身（own class はあるが own kingdom は無い）も class0 が非NULLなので bc の
+    母集団に (ClassShared, kingdom0=NULL) として1件加わるが、最多得票数(2)には届かない
+    ため tie の対象外（NULL が誤って勝つことはない）。
+    """
+    rows = [
+        ("gbif_kanagawa_occurrences", "20", "Testbinom aaa", "species",
+         "KingdomX", "Phylum1", "ClassShared", None, None, "2020-01-01"),
+        ("gbif_kanagawa_occurrences", "21", "Testbinom aaa", "species",
+         "KingdomX", "Phylum1", "ClassShared", None, None, "2020-01-02"),
+        ("inaturalist_kanagawa", "20", "Testbinom aaa", "species",
+         "KingdomY", "Phylum1", "ClassShared", None, None, "2020-01-03"),
+        ("inaturalist_kanagawa", "21", "Testbinom aaa", "species",
+         "KingdomY", "Phylum1", "ClassShared", None, None, "2020-01-04"),
+        # 対象: own class はある(ClassShared)が own kingdom が無い。
+        ("gbif_kanagawa_occurrences", "22", "Testbinom aaa", "species",
+         None, None, "ClassShared", None, None, "2020-01-05"),
+    ]
+    conn, _counts = _build(tmp_path, organism_records_rows=rows)
+    t = _taxon(conn, "common:taxon:gbif.22")
+    assert t["class"] == "ClassShared"
+    assert t["classification_basis"] == "source"  # class は own なので source
+    assert t["kingdom"] == "KingdomX"  # 2対2の同数、kingdom昇順のタイブレークで KingdomX
+    assert t["status"] == "needs_review"  # だが kingdom の補完元(bc)が同数なので要確認
+
+
+def test_multi_class_genus_marks_needs_review_without_tie(tmp_path):
+    """属の多数決で class を補完した taxon は、同数でなくてもその属が複数の class に
+    またがっていれば needs_review にする（/code-review 指摘6。アドバイザーの概算で
+    実データ約24 taxon。例: Pieris はチョウ目 Insecta が優勢だが被子植物
+    Magnoliopsida も混じる）。
+    """
+    rows = [
+        # 属 Multigen: Insecta が3件、Magnoliopsida が1件（同数ではないが複数classにまたがる）。
+        ("gbif_kanagawa_occurrences", "30", "Multigen aaa", "species",
+         None, None, "Insecta", None, None, "2020-01-01"),
+        ("gbif_kanagawa_occurrences", "31", "Multigen bbb", "species",
+         None, None, "Insecta", None, None, "2020-01-02"),
+        ("gbif_kanagawa_occurrences", "32", "Multigen ccc", "species",
+         None, None, "Insecta", None, None, "2020-01-03"),
+        ("gbif_kanagawa_occurrences", "33", "Multigen ddd", "species",
+         None, None, "Magnoliopsida", None, None, "2020-01-04"),
+        # 対象: own class 無し・binom 単位の多数決も無い。属の多数決(Insecta、優勢)で埋まる。
+        ("gbif_kanagawa_occurrences", "34", "Multigen eee", "species",
+         None, None, None, None, None, "2020-01-05"),
+    ]
+    conn, _counts = _build(tmp_path, organism_records_rows=rows)
+    t = _taxon(conn, "common:taxon:gbif.34")
+    assert t["classification_basis"] == "genus_match"
+    assert t["class"] == "Insecta"  # 3対1で同数ではない(tieではない)
+    assert t["status"] == "needs_review"  # が、属自体が複数classを含むので要確認
+
+
+def test_classification_basis_no_match_when_nothing_resolves(tmp_path):
+    """own も二名法キーの多数決も属の多数決も無ければ classification_basis='no_match'
+    （旧名 'unresolved' から改名。status='unresolved'——GBIF backbone未照合——と
+    文字列が同じで紛らわしかったため。/simplify 指摘11）。
+    """
+    rows = [
+        ("gbif_kanagawa_occurrences", "1", "Solounicum aaa", "species",
+         None, None, None, None, None, "2020-01-01"),
+    ]
+    conn, _counts = _build(tmp_path, organism_records_rows=rows)
+    t = _taxon(conn, "common:taxon:gbif.1")
+    assert t["classification_basis"] == "no_match"
+    assert t["class"] is None
+    assert t["status"] == "accepted"  # 分類が不明でも backbone は accepted のまま
+
+
+def test_representative_selection_uses_shared_source_namespace(tmp_path):
+    """未知の source_id のエラーメッセージが、正の置き場(scripts/common.py)を指す
+    （/code-review 指摘5。SOURCE_NAMESPACE は build_taxon.py の private 定数ではなく
+    scripts/common.py の TAXON_KEY_SOURCE_NAMESPACE に移した）。
+    """
+    rows = [
+        ("some_new_source", "1", "Foo bar", "species", None, None, None, None, None, "2020-01-01"),
+    ]
+    with pytest.raises(ValueError, match="scripts/common.py"):
+        _build(tmp_path, organism_records_rows=rows)
 
 
 def test_taxon_group_default_is_unclassified(tmp_path):
@@ -213,3 +318,26 @@ def test_taxon_group_first_match_wins_over_later_rule(tmp_path):
     conn, _counts = _build(tmp_path, organism_records_rows=rows)
     t = _taxon(conn, "common:taxon:gbif.1")
     assert t["taxon_group"] == "鳥類"
+
+
+def test_taxon_group_yaml_rejects_duplicate_match_conditions(tmp_path, monkeypatch):
+    """taxon_group.yaml は先勝ちの表なので、同じ match 条件が2回登場すると片方が
+    黙って無効になる。build_place._load_zone_yaml()/build_caveat._load_caveat_yaml()
+    と同じ流儀で重複を検知する（/simplify 指摘13）。
+    """
+    dup_yaml = tmp_path / "taxon_group.yaml"
+    dup_yaml.write_text(
+        "default_label_ja: \"未判定\"\n"
+        "rules:\n"
+        "  - match: { class: \"Aves\" }\n"
+        "    label_ja: \"鳥類\"\n"
+        # 配列の並び順が違うだけの同一条件（重複として検知されるべき）。
+        "  - match: { class: [\"Squamata\", \"Testudines\"] }\n"
+        "    label_ja: \"爬虫類\"\n"
+        "  - match: { class: [\"Testudines\", \"Squamata\"] }\n"
+        "    label_ja: \"別ラベル\"\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(build_taxon_module, "TAXON_GROUP_YAML", dup_yaml)
+    with pytest.raises(AssertionError, match="match が重複している"):
+        build_taxon_module._load_taxon_group_rules()

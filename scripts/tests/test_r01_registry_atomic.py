@@ -327,9 +327,65 @@ def test_fingerprint_full_mode_changes_when_derived_tables_change(tmp_path):
     assert before != after
 
 
-def test_fingerprint_full_mode_ignores_ryuiki_and_cells(tmp_path):
-    """ryuiki.sqlite / cells.sqlite が変わっても指紋は変わらない（意図的に対象外。
-    理由は compute_input_fingerprint() の docstring）。"""
+def test_fingerprint_full_mode_ignores_cells_and_most_of_ryuiki(tmp_path):
+    """cells.sqlite が変わっても指紋は変わらない（意図的に対象外）。ryuiki.sqlite も
+    `organism_records` の行数・最大rowid 以外（他のテーブル、既存行の値の書き換え）は
+    無視する（理由は compute_input_fingerprint() の docstring）。
+    """
+    root = tmp_path / "repo"
+    _make_fingerprint_input_tree(root)
+    (root / "data" / "db").mkdir(parents=True)
+    ryuiki_path = root / "data" / "db" / "ryuiki.sqlite"
+    conn = sqlite3.connect(ryuiki_path)
+    conn.execute("CREATE TABLE organism_records (a)")
+    conn.execute("CREATE TABLE other_table (b)")
+    conn.execute("INSERT INTO organism_records VALUES (1)")
+    conn.commit()
+    conn.close()
+
+    before = common.compute_input_fingerprint(root=root, mode=common.MODE_FULL)
+
+    # 行数・最大rowidが変わらない書き換え（既存行の値をUPDATE、別テーブルへのINSERT）
+    # は検知できない既知の限界（軽い代理指標のため。docstring参照）。
+    conn = sqlite3.connect(ryuiki_path)
+    conn.execute("UPDATE organism_records SET a = 999")
+    conn.execute("INSERT INTO other_table VALUES (1)")
+    conn.commit()
+    conn.close()
+    after = common.compute_input_fingerprint(root=root, mode=common.MODE_FULL)
+
+    assert before == after
+
+
+def test_fingerprint_full_mode_detects_organism_records_row_count_change(tmp_path):
+    """`organism_records` の行数（≒最大rowid）が変わると指紋も変わる
+    （/code-review 指摘7。grid01 の入力が derived.mesh_all から organism_records に
+    変わったことで抜けた鮮度検知を塞ぐ）。"""
+    root = tmp_path / "repo"
+    _make_fingerprint_input_tree(root)
+    (root / "data" / "db").mkdir(parents=True)
+    ryuiki_path = root / "data" / "db" / "ryuiki.sqlite"
+    conn = sqlite3.connect(ryuiki_path)
+    conn.execute("CREATE TABLE organism_records (a)")
+    conn.execute("INSERT INTO organism_records VALUES (1)")
+    conn.commit()
+    conn.close()
+
+    before = common.compute_input_fingerprint(root=root, mode=common.MODE_FULL)
+
+    conn = sqlite3.connect(ryuiki_path)
+    conn.execute("INSERT INTO organism_records VALUES (2)")
+    conn.commit()
+    conn.close()
+    after = common.compute_input_fingerprint(root=root, mode=common.MODE_FULL)
+
+    assert before != after
+
+
+def test_fingerprint_files_only_mode_ignores_ryuiki(tmp_path):
+    """--files-only は ryuiki.sqlite を一切開かないので、organism_records の行数が
+    変わっても files_only モードの指紋には影響しない（CI に原本が無くても動く要件）。
+    """
     root = tmp_path / "repo"
     _make_fingerprint_input_tree(root)
     (root / "data" / "db").mkdir(parents=True)
@@ -339,13 +395,13 @@ def test_fingerprint_full_mode_ignores_ryuiki_and_cells(tmp_path):
     conn.commit()
     conn.close()
 
-    before = common.compute_input_fingerprint(root=root, mode=common.MODE_FULL)
+    before = common.compute_input_fingerprint(root=root, mode=common.MODE_FILES_ONLY)
 
     conn = sqlite3.connect(ryuiki_path)
     conn.execute("INSERT INTO organism_records VALUES (1)")
     conn.commit()
     conn.close()
-    after = common.compute_input_fingerprint(root=root, mode=common.MODE_FULL)
+    after = common.compute_input_fingerprint(root=root, mode=common.MODE_FILES_ONLY)
 
     assert before == after
 
