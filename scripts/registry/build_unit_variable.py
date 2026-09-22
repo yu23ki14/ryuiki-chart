@@ -115,7 +115,9 @@ def _assert_fiscal_year_not_first_when_mixed(rows: list[dict]) -> None:
 # 使われている値の集合であり、新しい値を推測で発明しないためのガード
 # （このリストに無い値が来たらビルドを落とす。値を増やすときはこのリスト自体を
 # 更新し、根拠を PHASE_B_ALIAS_STAT_SOURCES.md 等に残すこと）。
-GRAIN_CODES = frozenset({"hour", "day", "month", "year", "fiscal_year"})
+# 'instant' は ADR-0008 の語彙にあったが未使用だったため追加。経緯は
+# docs/plans/PHASE_B_INTAKE.md 参照。
+GRAIN_CODES = frozenset({"hour", "day", "month", "year", "fiscal_year", "instant"})
 STAT_CODES = frozenset({
     "", "point", "mean", "min", "max", "sum",
     "p75", "p90", "max_10min", "max_1h", "max_daily",
