@@ -37,7 +37,17 @@ export async function getTaxonById(taxonId: string): Promise<TaxonRow | undefine
 
 /**
  * GBIF taxon_key から `common:taxon:gbif.<key>` を引く。
- * `organism_records` の99.9%はこの経路で `taxon_id` に解決できる（PHASE_A.md §A-4）。
+ *
+ * `organism_records` の taxon_key 解決経路は出典によって分かれる（F1、
+ * phase-b/occurrence-registry、docs/adr/0019-taxon-registry.md 追記）: GBIF 由来
+ * （658,360件、80%）はこの `gbif_taxon_key` 経由、iNaturalist 由来（165,332件、20%）は
+ * `taxon_id` を直接 `common:taxon:inat.<id>` の形で組み立てる経路（`gbif_taxon_key` は
+ * 常に NULL）。以前は両方とも `gbif_taxon_key` に taxon_key をそのまま入れていた
+ * （iNaturalist 自身の taxon.id を GBIF の taxonKey であるかのように扱っていた）ため
+ * 「99.9%はこの経路で解決できる」という記述だったが、実際には GBIF と iNat の
+ * 数値空間が別物で、偶然一致した9件が衝突していた。全体の taxon_key 解決率
+ * （99.90%、823,692行中822,839行）自体は変わらない——GBIF/inat どちらの経路でも
+ * `taxon_id` は必ず組み立てられる。
  */
 export async function getTaxonByGbifKey(gbifKey: string | number): Promise<TaxonRow | undefined> {
   return queryOne<TaxonRow>(`SELECT ${TAXON_COLUMNS} FROM taxon WHERE gbif_taxon_key = ?`, [String(gbifKey)]);
