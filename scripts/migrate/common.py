@@ -119,15 +119,29 @@ def staged_table(conn: sqlite3.Connection, table: str, create_sql: str, params=(
       `DROP` → `conn.commit()`（`DROP` を確定させる）の順で片付けてから、同じ
       例外をそのまま再送出する。**本番テーブルには一切触れない。**
     - ブロックが正常に終わったら、`conn.commit()`（呼び出し側が積んだ最後の
-      未コミット分を確定させる）→ `DROP TABLE IF EXISTS` で本番テーブルを消す
-      → `ALTER TABLE ... RENAME TO` で作業用テーブルを本番名にする（SQLite の
-      `RENAME` はテーブルに張ったインデックスをそのまま引き継ぐ——`CREATE INDEX`/
-      `CREATE UNIQUE INDEX` は `with` ブロック内で作業用テーブル名に対して行えば、
-      差し替え後もそのまま有効に残る。ただし**インデックス自体の名前**は
-      `table`（本番名）に依存させないこと——差し替えの前後でインデックス名は
-      変わらないため、本番名を埋め込むと「作業用テーブルに対する索引なのに
-      本番名を名乗る」中途半端な状態が差し替え前に一時的に生まれる）→
-      `conn.commit()` で差し替えを確定させる。
+      未コミット分を確定させる）のあと、`DROP TABLE IF EXISTS`（本番テーブルを
+      消す）と `ALTER TABLE ... RENAME TO`（作業用テーブルを本番名にする）を
+      **明示の `BEGIN`〜`COMMIT` で1つのトランザクションにする**（コードレビュー
+      指摘。SQLite は DDL をトランザクションに入れられる）。`conn.commit()` の
+      直後は開いているトランザクションが無いため、この2つの DDL を裸のまま
+      実行すると**それぞれが独立に即座確定する別々の操作**になる——`DROP` が
+      確定した直後（`RENAME` の前）にプロセスが死ぬと（Ctrl-C・SIGKILL・OOM・
+      停電）、本番テーブルは消えたまま戻らず、次回実行は残った作業用テーブルを
+      起動時に `DROP` するため、前回の正しいデータが失われる（レビューで
+      `os._exit()` を使って再現・修正を確認済み）。明示のトランザクションに
+      包めば、この間にプロセスが死んでもコミットされておらず、再起動後の
+      SQLite が未コミットの変更を自動的に巻き戻す（`DROP` も無かったことになり、
+      本番テーブルは元のまま）。`with` ブロックの中で例外が起きた場合と同様、
+      この2つの DDL の間で何か（通常の Python 例外）が起きたら `conn.rollback()`
+      で本番テーブルを元に戻し、作業用テーブルも `DROP` する（`with` ブロックの
+      失敗時と同じ「本番はそのまま・作業用は残さない」を保つ）。
+      （SQLite の `RENAME` はテーブルに張ったインデックスをそのまま引き継ぐ
+      ——`CREATE INDEX`/`CREATE UNIQUE INDEX` は `with` ブロック内で作業用
+      テーブル名に対して行えば、差し替え後もそのまま有効に残る。ただし
+      **インデックス自体の名前**は `table`（本番名）に依存させないこと——
+      差し替えの前後でインデックス名は変わらないため、本番名を埋め込むと
+      「作業用テーブルに対する索引なのに本番名を名乗る」中途半端な状態が
+      差し替え前に一時的に生まれる）。
     - この関数の呼び出し時点で、前回のクラッシュで残った同名の作業用テーブルが
       あれば、作り始める前に `DROP` する（starting-state のクリーンアップ）。
 
@@ -147,8 +161,18 @@ def staged_table(conn: sqlite3.Connection, table: str, create_sql: str, params=(
         conn.commit()
         raise
     conn.commit()
-    conn.execute(f'DROP TABLE IF EXISTS "{table}"')
-    conn.execute(f'ALTER TABLE "{staging}" RENAME TO "{table}"')
+    # 差し替え（DROP + RENAME）を1つの明示トランザクションにする——コード
+    # レビュー指摘。裸の DDL 2文のままだと、間でプロセスが死んだときに
+    # 「本番テーブルが消えたまま戻らない」窓が生まれる（docstring 参照）。
+    conn.execute("BEGIN")
+    try:
+        conn.execute(f'DROP TABLE IF EXISTS "{table}"')
+        conn.execute(f'ALTER TABLE "{staging}" RENAME TO "{table}"')
+    except BaseException:
+        conn.rollback()  # 本番テーブルを元に戻す（DROP をまだ確定していない）
+        conn.execute(f'DROP TABLE IF EXISTS "{staging}"')  # 作業用テーブルも残さない
+        conn.commit()
+        raise
     conn.commit()
 
 
