@@ -266,11 +266,13 @@ ADR-0011「粒度をまたぐ再集計をしない」）。月・年セルの `n
 地点→ゾーンの対応は、`sites.zone` を直接読まず、レジストリの `place_relation`
 （`relation='within'`。ADR-0022 決定2）から引く——`place_relation` の最初の消費者
 （`place_lookup` の site_id 側と `place_source_ref(source_id='sites.zone')` の
-ゾーン番号側を辺で繋いだ `site_zone_lookup` を作る）。`assert_zone_relation_
-fraction_is_one`/`assert_site_belongs_to_at_most_one_zone` が、この辺が v1 互換の
-非加重射影に使える形（`fraction` が全行1.0・地点が複数ゾーンにまたがらない）で
-あることを毎回検証し、崩れていれば `MigrationError` で止まる（実データでは290辺
-すべて条件を満たす。§4）。
+ゾーン番号側を辺で繋いだ `site_zone_lookup` を作る）。この JOIN 自体がゾーンの
+辺だけへの絞り込みになるため、検証も `reg.place_relation` テーブル全体にでは
+なく `site_zone_lookup` の上で行う（`place_relation` に将来ゾーン以外の
+`'within'` 辺が増えても影響しない）。4条件——ゾーン番号が数字だけの文字列・
+異なるゾーンの place が同じ番号に解決されていない・`fraction` が全行1.0・
+地点が複数ゾーンにまたがらない——を毎回検証し、崩れていれば `MigrationError`
+で止まる（実データでは290辺すべて条件を満たす。詳細は §11・§4）。
 
 キューブのゾーンのロールアップセル（ADR-0011 の `roll_up_to`）はまだ作らない。
 使う側が現れたら作る。作るなら系列ごと・`n_places` 付き。
@@ -550,9 +552,9 @@ ADR-0022 決定2で新設）を経由する。理由は「ゾーンの対応の�
 新設した `place_relation` が誰にも使われない辺のまま残る）。
 
 地点(v1 の site_id) → ゾーン番号(整数) の対応は次の2段の結合で作る
-（`_site_zone_lookup_sql`。`site_zone_lookup` として一時テーブルに実体化する。
-`_materialize_lookup_tables` が作る `place_lookup` に依存するため、その後に
-呼ぶ）:
+（モジュール定数 `_SITE_ZONE_LOOKUP_SQL`。`site_zone_lookup` として一時
+テーブルに実体化する。`_materialize_lookup_tables` の中、`place_lookup` の
+一意性検証の直後で実行する——`place_lookup` に依存するため）:
 
 ```
 place_relation(relation='within')
@@ -562,23 +564,58 @@ place_relation(relation='within')
 
 `sites.zone IS NOT NULL` の地点だけが `place_relation` に辺を持つため、
 INNER JOIN だけで v1 の `WHERE s.zone IS NOT NULL` と同じ絞り込みになる
-（フィクスチャテスト `test_zone_year_excludes_sites_without_a_zone_edge` で
-確認）。
+（フィクスチャテスト `test_zone_year_and_zone_clim_exclude_sites_without_a_zone_edge`
+で確認）。この JOIN 自体が「ゾーンの辺だけへの絞り込み」でもある——
+`place_relation` に将来ゾーン以外の `'within'` 辺（例: 地点→流域）が増えても、
+`place_source_ref(source_id='sites.zone')` に一致しない限り `site_zone_lookup`
+には現れない（`test_non_zone_within_edges_do_not_block_or_affect_zone_projection`
+で確認。コードレビューの指摘で、検証の対象を `reg.place_relation` 全体から
+この一時テーブルに絞り込んだ）。
 
-### 機械検証: `fraction` と「地点は1つのゾーンにのみ属す」
+### 機械検証: `site_zone_lookup` 上の4条件（レビュー指摘で `reg.place_relation` 全体から絞り込み）
 
-v1 の `zone_year`/`zone_clim` は `AVG(y.avg)`/`AVG(m.avg)`——ゾーン内の地点別
-平均を**非加重**で平均する（D11）。この射影は加重集計を実装していないため、
-次の2条件が崩れていたら `MigrationError` で止める（黙って無視しない）:
+当初の実装は `reg.place_relation` テーブル全体（ゾーン以外の辺を含みうる）に
+対して `fraction`/複数ゾーン所属を検証していたが、コードレビューで
+「ゾーンの辺だけに絞った上で検証すべき」との指摘を受け、`site_zone_lookup`
+（前節の JOIN で既にゾーンの辺だけに絞られている）の上で検証する形に直した。
+併せて、レビューで浮かんだ2つの検証（ゾーン番号の形式・place をまたいだ
+ゾーン番号の衝突）も追加し、`_materialize_lookup_tables` の中で
+`site_zone_lookup` を作った直後に**4条件すべて**を検証する
+（`build_projections` 以外の呼び出し口を持たない private 関数）:
 
-- `assert_zone_relation_fraction_is_one`: `place_relation`（`relation='within'`）
-  の `fraction` が全行1.0であること。
-- `assert_site_belongs_to_at_most_one_zone`: 1つの地点（`child_id`）が複数の
-  ゾーン（`parent_id`）に属していないこと（v1 の `sites.zone` は単一列）。
+1. `_assert_zone_numbers_are_numeric`: ゾーン番号
+   （`place_source_ref(source_id='sites.zone').external_key`）が数字だけの
+   文字列であること。`CAST(... AS INT)` は非数値文字列（例: `'z1'`）を
+   黙って `0` にするため、`zone` 列を信用する前に形を検査する。
+2. `_assert_zone_numbers_do_not_collide_across_zone_places`: 異なる
+   ゾーンの place（`zone_place_id`）が同じゾーン番号に解決されていないこと
+   （将来2地域目が増えて `jp-13:...:zone.1` と `jp-14:...:zone.1` が番号
+   だけを鍵にして黙って1行に潰れるのを防ぐ）。
+3. `_assert_zone_edges_have_fraction_one`: `fraction` が全行1.0であること
+   （v1 の `zone_year`/`zone_clim` は `AVG(y.avg)`/`AVG(m.avg)`——ゾーン内の
+   地点別平均を**非加重**で平均しており〔D11〕、この射影は加重集計を
+   実装していない）。
+4. `_assert_site_maps_to_at_most_one_zone`: 1つの地点（`site_id`）が
+   `site_zone_lookup` で複数行を持たないこと（複数のゾーンに属す・同じ
+   ゾーンへの辺が重複している、のどちらでも v1 互換の1本のゾーンへ
+   解決できない。v1 の `sites.zone` は単一列）。
 
-実データでは290辺すべてが両条件を満たす（§4実測）。どちらもフィクスチャテスト
-で検証済み（`test_assert_zone_relation_fraction_is_one_raises_on_partial_fraction`/
-`test_assert_site_belongs_to_at_most_one_zone_raises_on_multiple_zones`、原本DB不要）。
+どれか1つでも崩れていれば黙って無視せず `MigrationError` で止める。実データ
+では290辺すべてが4条件を満たす（§4実測）。4条件それぞれが `build_projections`
+経由で止まることをフィクスチャテストで確認済み（
+`test_build_projections_raises_when_zone_number_is_not_numeric`/
+`test_build_projections_raises_when_zone_number_collides_across_zone_places`/
+`test_build_projections_raises_when_zone_edge_fraction_is_not_one`/
+`test_build_projections_raises_when_site_belongs_to_multiple_zones`。検証
+関数を直接呼ぶテストにはしていない——検証の呼び出しを消したらテストが
+落ちる形にするため。原本DB不要）。
+
+また、`reg.place_relation` テーブル自体が無い（ADR-0022 より前にビルドした
+古い `registry.sqlite`）場合も、素の `OperationalError`（"no such table"）
+ではなく「`scripts/r01_build_registry.py` で作り直せ」という
+`MigrationError` で止まる（`_assert_place_relation_table_exists`、
+`test_build_projections_raises_with_helpful_error_when_registry_predates_place_relation`
+で確認）。
 
 ### 実測結果
 

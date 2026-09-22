@@ -155,8 +155,10 @@ def make_registry_db(
 ) -> None:
     """`place_relations` の既定は空（ゾーンを持たないテストはそのまま動く。
     `phase-b/zone-slice` で `place_relation`（地点→ゾーンの辺、ADR-0022 決定2）
-    を新設。列は本物の `scripts/schema_registry.sql` の `place_relation` と
-    同じ並び——`parent_id, child_id, relation, fraction, basis`）。
+    を新設。DDL は本物の `scripts/schema_registry.sql` の `place_relation` と
+    完全に一致させてある——`id INTEGER PRIMARY KEY AUTOINCREMENT` を含む6列。
+    `place_relations` に渡す各要素は `id` を除いた
+    `(parent_id, child_id, relation, fraction, basis)` の5つ組）。
     """
     conn = sqlite3.connect(str(path))
     try:
@@ -173,8 +175,9 @@ def make_registry_db(
             "CREATE TABLE place_source_ref (place_id TEXT, external_key TEXT, source_id TEXT)"
         )
         conn.execute(
-            "CREATE TABLE place_relation (parent_id TEXT, child_id TEXT, relation TEXT, "
-            "fraction REAL, basis TEXT)"
+            "CREATE TABLE place_relation (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "parent_id TEXT NOT NULL, child_id TEXT NOT NULL, relation TEXT NOT NULL, "
+            "fraction REAL NOT NULL, basis TEXT)"
         )
         conn.execute("CREATE TABLE variable (variable_id TEXT PRIMARY KEY, default_stat TEXT)")
         conn.executemany(
@@ -189,7 +192,8 @@ def make_registry_db(
             place_refs if place_refs is not None else DEFAULT_PLACE_REFS,
         )
         conn.executemany(
-            "INSERT INTO place_relation VALUES (?,?,?,?,?)",
+            "INSERT INTO place_relation (parent_id, child_id, relation, fraction, basis) "
+            "VALUES (?,?,?,?,?)",
             place_relations if place_relations is not None else [],
         )
         conn.executemany(

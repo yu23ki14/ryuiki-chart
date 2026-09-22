@@ -35,13 +35,30 @@ v1 の `zone_year`/`zone_clim`（`web/scripts/build-derived.mjs`）はゾーン�
 （`relation='within'`。`place_lookup`——`place_source_ref(source_id=
 'sites.site_id')`——の place_id 側と `place_source_ref(source_id='sites.zone')`
 のゾーン番号側を辺で繋ぐ）から引く。ADR-0022 決定2で新設された
-`place_relation` の最初の消費者。`assert_zone_relation_fraction_is_one`/
-`assert_site_belongs_to_at_most_one_zone` が、この辺が v1 互換の非加重射影に
-使える形（`fraction` が全行1.0・地点が複数ゾーンにまたがらない）であることを
-毎回検証し、崩れていれば黙って無視せず `MigrationError` で止まる（実データでは
-290辺すべて条件を満たす）。ロールアップのキューブのセル（ADR-0011の
-`roll_up_to`）はここでも作らない——`docs/plans/PHASE_B_FACT_SLICE.md` の
-「やっていないこと」参照。
+`place_relation` の最初の消費者。**`place_relation` にはゾーン以外の
+`'within'` 辺（例: 将来の site→watershed）が増えうるため、検証は
+`reg.place_relation` 全体にではなく、ゾーンの辺だけに絞った一時テーブル
+`site_zone_lookup`（`_SITE_ZONE_LOOKUP_SQL`。`zref` との JOIN で自然に
+ゾーンの辺だけに絞られる）の上で行う**（`_materialize_lookup_tables` が
+`place_lookup` の直後に作り、そのまま4つの検証を行う）:
+
+1. **ゾーン番号が数字だけの文字列であること**（`CAST(... AS INT)` は
+   非数値文字列を黙って0にするため、先に形を検査する）。
+2. **異なるゾーンの place が同じゾーン番号に解決されていないこと**
+   （将来2地域目が増えて `jp-13:...:zone.1` と `jp-14:...:zone.1` が
+   番号だけを鍵にして黙って1行に潰れるのを防ぐ）。
+3. **`fraction` が全行1.0であること**（`zone_year`/`zone_clim` の射影は
+   v1（`web/scripts/build-derived.mjs`）と同じ非加重の集計（`AVG(y.avg)`）
+   をそのまま再現するだけで、加重は実装していない）。
+4. **1つの地点が複数のゾーンに属していない・同じゾーンへの辺が
+   重複していないこと**（v1 の `sites.zone` は単一列）。
+
+どれか1つでも崩れていれば、黙って無視せず `MigrationError` で止まる
+（実データでは290辺すべて4条件を満たす）。`reg.place_relation` テーブル
+自体が無い（ADR-0022 以前の古い `registry.sqlite`）場合も、素の
+`OperationalError` ではなく「r01 で作り直せ」という `MigrationError` で
+止まる。ロールアップのキューブのセル（ADR-0011の `roll_up_to`）はここでも
+作らない——`docs/plans/PHASE_B_FACT_SLICE.md` の「やっていないこと」参照。
 
 ## センサーの縦線 設計 v2 T5: `sensor_daily`/`rain_daily`/`sensor_hour_month`
 は v1 の癖を射影にだけ置く
@@ -330,6 +347,34 @@ GROUP BY site_id, variable, kind
 # ゾーンに束ねるだけで、キューブは経由しない——D10/D11 と同じ理由）
 # ---------------------------------------------------------------------------
 
+# 地点（v1 の site_id）→ ゾーンの対応（`place_relation` の地点→ゾーンの辺、
+# `relation='within'`。ADR-0022 決定2の最初の消費者）を作る SQL。
+# `place_lookup`（`_materialize_lookup_tables` が作る。place_id → v1 の
+# site_id）を `child_id` 側に、`reg.place_source_ref(source_id='sites.zone')`
+# （ゾーンの place_id → ゾーン番号の文字列）を `parent_id` 側に結合する
+# ——この JOIN 自体が「ゾーンの辺だけ」への絞り込みになる（`place_relation`
+# に将来ゾーン以外の `'within'` 辺——例: site→watershed——が増えても、
+# `zref` に一致しない限りこの一時テーブルには現れない）。
+# `sites.zone IS NOT NULL` の地点だけが `place_relation` に辺を持つため、
+# INNER JOIN だけで v1 の `WHERE s.zone IS NOT NULL` と同じ絞り込みになる。
+# `zone_raw`（ゾーン番号の原文字列）と `zone_place_id`（`pr.parent_id`）は
+# 検証専用の列——`zone`/`site_id` だけを外側の SELECT（`_ZONE_YEAR_SQL` 等）
+# が読む。`place_lookup` に依存するため、`_materialize_lookup_tables` の中で
+# `place_lookup` の一意性検証（UNIQUE INDEX）の後に実行すること。
+_SITE_ZONE_LOOKUP_SQL = """
+CREATE TEMP TABLE site_zone_lookup AS
+SELECT psr.external_key AS site_id,
+       pr.parent_id AS zone_place_id,
+       zref.external_key AS zone_raw,
+       CAST(zref.external_key AS INT) AS zone,
+       pr.fraction AS fraction
+FROM reg.place_relation pr
+JOIN place_lookup psr ON psr.place_id = pr.child_id
+JOIN reg.place_source_ref zref
+  ON zref.place_id = pr.parent_id AND zref.source_id = 'sites.zone'
+WHERE pr.relation = 'within'
+"""
+
 _ZONE_YEAR_SQL = """
 SELECT sz.zone AS zone, y.variable AS variable, y.kind AS kind, y.year AS year,
        COUNT(DISTINCT y.site_id) AS n_sites, SUM(y.n) AS n,
@@ -468,10 +513,118 @@ def _label25_obs_keyed_sql() -> str:
     """
 
 
+def _assert_place_relation_table_exists(work: sqlite3.Connection) -> None:
+    """`reg.place_relation`（ADR-0022 決定2で新設）がある registry.sqlite を
+    渡されていることを確認する。無いまま `_SITE_ZONE_LOOKUP_SQL` を実行すると
+    素の `sqlite3.OperationalError`（"no such table"）になり、原因が
+    「registry.sqlite が古い」ことだと分かりにくい。原因はほぼ確実にそれ
+    （ADR-0022 より前にビルドした registry.sqlite）なので、対処を示して
+    `MigrationError` で止める。
+    """
+    row = work.execute(
+        "SELECT 1 FROM reg.sqlite_master WHERE type = 'table' AND name = 'place_relation'"
+    ).fetchone()
+    if row is None:
+        raise common.MigrationError(
+            "registry.sqlite に place_relation テーブルが無い（ADR-0022 決定2で新設された"
+            "テーブルなので、それより前にビルドした古い registry.sqlite には無い）。"
+            "scripts/r01_build_registry.py で registry.sqlite を作り直すこと。"
+        )
+
+
+def _assert_zone_numbers_are_numeric(work: sqlite3.Connection) -> None:
+    """`site_zone_lookup.zone_raw`（`sites.zone` 由来の
+    `place_source_ref.external_key`）が数字だけの文字列であることを確認する。
+    `CAST(... AS INT)` は非数値文字列（例: `'z1'`）を黙って `0` にするため、
+    `zone` 列（`_ZONE_YEAR_SQL`/`_ZONE_CLIM_SQL` が読む）を信用する前に
+    ここで形を検査する。
+    """
+    bad = work.execute(
+        "SELECT DISTINCT zone_place_id, zone_raw FROM site_zone_lookup "
+        "WHERE zone_raw IS NULL OR zone_raw = '' OR zone_raw GLOB '*[^0-9]*' LIMIT 5"
+    ).fetchall()
+    if bad:
+        raise common.MigrationError(
+            "ゾーン番号（place_source_ref(source_id='sites.zone').external_key）が"
+            f"数字だけの文字列でない（例（zone_place_id, external_key）: {bad}）。"
+            "CAST(... AS INT) は非数値文字列を黙って0にするため、先にここで止める。"
+            "registry/place/zone.yaml またはビルドロジックを確認すること。"
+        )
+
+
+def _assert_zone_numbers_do_not_collide_across_zone_places(work: sqlite3.Connection) -> None:
+    """異なるゾーンの place（`zone_place_id`）が同じゾーン番号（`zone_raw`）に
+    解決されていないことを確認する。`zone_year`/`zone_clim` はゾーンを
+    place_id ではなく番号（整数）だけで区別するため、将来2地域目が増えて
+    例えば `jp-13:place:zone.r2r-1` と `jp-14:place:zone.r2r-1` が両方とも
+    `external_key='1'` を持つと、由来の違うゾーンが黙って同じ `zone=1` の
+    1行に混ざる。実データ（jp-14のみ、5ゾーン）では衝突しない。
+    """
+    dup = work.execute(
+        "SELECT zone_raw, COUNT(DISTINCT zone_place_id) AS n_places, "
+        "GROUP_CONCAT(DISTINCT zone_place_id) AS zone_place_ids "
+        "FROM site_zone_lookup GROUP BY zone_raw HAVING n_places > 1 LIMIT 5"
+    ).fetchall()
+    if dup:
+        raise common.MigrationError(
+            f"異なるゾーンの place が同じゾーン番号に解決されている: {dup}\n"
+            "zone_year/zone_clim はゾーン番号（整数）だけを鍵にしているため、"
+            "由来の違うゾーンが1行に混ざる前に止める。"
+        )
+
+
+def _assert_zone_edges_have_fraction_one(work: sqlite3.Connection) -> None:
+    """`site_zone_lookup`（地点→ゾーンの辺のうち `sites.zone` に解決できた
+    ものだけ。ゾーン以外の `'within'` 辺は対象外）の `fraction` が全行1.0で
+    あることを確認する。`zone_year`/`zone_clim` の射影は v1
+    （`web/scripts/build-derived.mjs`）と同じ**非加重**の `AVG()` をそのまま
+    再現するだけで、加重集計は実装していない。`fraction<1.0` の辺が1件でも
+    現れたら、黙って無視せずここで止める（実データでは290辺すべて1.0）。
+    """
+    bad = work.execute(
+        "SELECT site_id, zone_place_id, fraction FROM site_zone_lookup "
+        "WHERE fraction <> 1.0 LIMIT 5"
+    ).fetchall()
+    if bad:
+        raise common.MigrationError(
+            "地点→ゾーンの辺（place_relation, relation='within'、sites.zone に解決"
+            f"できたもの）に fraction が1.0でないものがある（例（site_id, zone_place_id, "
+            f"fraction）: {bad}）。zone_year/zone_clim の射影は非加重の前提（v1 と同じ"
+            " AVG()）で書かれており、この前提が崩れている。"
+        )
+
+
+def _assert_site_maps_to_at_most_one_zone(work: sqlite3.Connection) -> None:
+    """`site_zone_lookup` で1つの地点（`site_id`）が複数行を持たないことを
+    確認する。複数行になるのは次のいずれか:
+
+    - 同じ地点が異なる2つのゾーン（`zone_place_id`）に `place_relation` で
+      結ばれている（v1 の `sites.zone` は単一列なので、対応する v1 の
+      集計が定まらない）。
+    - 同じゾーンへの辺が重複している、またはゾーンの place が
+      `place_source_ref(source_id='sites.zone')` に複数の `external_key` を
+      持っている（レジストリ側のデータ異常）。
+
+    原因を問わず、地点ごとに v1 互換の1本のゾーンへ解決できないため止める
+    （`place_lookup` の単射性検証と同じ形。実データでは290辺すべて単一）。
+    """
+    dup = work.execute(
+        "SELECT site_id, COUNT(*) AS n FROM site_zone_lookup GROUP BY site_id HAVING n > 1 LIMIT 5"
+    ).fetchall()
+    if dup:
+        raise common.MigrationError(
+            f"複数のゾーンに属する（またはゾーンへの辺が重複している）地点がある: {dup}\n"
+            "v1 の sites.zone は単一列であり、zone_year/zone_clim は地点が1つの"
+            "ゾーンにのみ、1本の辺で対応することを前提にしている。"
+        )
+
+
 def _materialize_lookup_tables(work: sqlite3.Connection) -> None:
     """自動インデックスの効かない `IS`（NULL-safe）JOIN を、実体化した一時
     テーブル＋インデックスの通常の等値 JOIN に置き換える。`measurements`/
-    `sensor_timeseries` の両方ぶんの逆引きテーブルをここで作る。
+    `sensor_timeseries` の両方ぶんの逆引きテーブルと、`place_lookup` の
+    直後に地点→ゾーンの対応（`site_zone_lookup`。`zone_year`/`zone_clim` が
+    使う。ADR-0022 決定2の最初の消費者）をここで作る。
     """
     work.execute(_OBS_AGG_KEYED_VIEW_SQL)
 
@@ -510,36 +663,17 @@ def _materialize_lookup_tables(work: sqlite3.Connection) -> None:
         )
     work.execute("CREATE UNIQUE INDEX place_lookup_place_id ON place_lookup (place_id)")
 
-
-def _site_zone_lookup_sql() -> str:
-    """地点（v1 の site_id）→ ゾーン番号（整数）の対応を作る SQL
-    （`place_relation` の地点→ゾーンの辺、`relation='within'`。ADR-0022 決定2の
-    最初の消費者）。`place_lookup`（`_materialize_lookup_tables` が作る。
-    place_id → v1 の site_id）を `child_id` 側に、`reg.place_source_ref
-    (source_id='sites.zone')`（ゾーンの place_id → ゾーン番号の文字列）を
-    `parent_id` 側に結合する。`sites.zone IS NOT NULL` の地点だけが
-    `place_relation` に辺を持つため、INNER JOIN だけで v1 の
-    `WHERE s.zone IS NOT NULL` と同じ絞り込みになる。`place_lookup` に
-    依存するため、`_materialize_lookup_tables` の後に呼ぶこと。
-    """
-    return """
-    CREATE TEMP TABLE site_zone_lookup AS
-    SELECT psr.external_key AS site_id, CAST(zref.external_key AS INT) AS zone
-    FROM reg.place_relation pr
-    JOIN place_lookup psr ON psr.place_id = pr.child_id
-    JOIN reg.place_source_ref zref
-      ON zref.place_id = pr.parent_id AND zref.source_id = 'sites.zone'
-    WHERE pr.relation = 'within'
-    """
-
-
-def _materialize_zone_lookup(work: sqlite3.Connection) -> None:
-    """`site_zone_lookup`（`zone_year`/`zone_clim` が使う地点→ゾーンの対応）を
-    一時テーブルに実体化する。`_materialize_lookup_tables` が作る
-    `place_lookup` に依存するため、その後に呼ぶこと。
-    """
-    work.execute(_site_zone_lookup_sql())
-    work.execute("CREATE INDEX site_zone_lookup_site_id ON site_zone_lookup (site_id)")
+    # 地点→ゾーン（site_zone_lookup。`place_lookup` に依存するため、この直後で
+    # 作る）。検証は `reg.place_relation` 全体にではなく、ゾーンの辺だけに
+    # 絞ったこの一時テーブルの上で行う（モジュール docstring「ゾーンの縦線」
+    # 参照。ゾーン以外の `'within'` 辺が増えても影響しない）。
+    _assert_place_relation_table_exists(work)
+    work.execute(_SITE_ZONE_LOOKUP_SQL)
+    _assert_zone_numbers_are_numeric(work)
+    _assert_zone_numbers_do_not_collide_across_zone_places(work)
+    _assert_zone_edges_have_fraction_one(work)
+    _assert_site_maps_to_at_most_one_zone(work)
+    work.execute("CREATE UNIQUE INDEX site_zone_lookup_site_id ON site_zone_lookup (site_id)")
 
 
 def _materialize_projection_tables(work: sqlite3.Connection) -> None:
@@ -646,48 +780,6 @@ def assert_unit_raw_is_function(work) -> None:
             f"（同じ系列に複数の unit_raw がある）: {dup}\n"
             "b05 は『どの unit_raw を v1 の unit 表記として使うか』を推測できないため、"
             "該当する系列の unit_raw の食い違いを解消してから再実行すること。"
-        )
-
-
-def assert_zone_relation_fraction_is_one(work) -> None:
-    """`place_relation`（地点→ゾーンの辺、`relation='within'`）の `fraction` が
-    全行 1.0 であることを確認する（ADR-0022 決定2）。`zone_year`/`zone_clim` の
-    射影は v1（`web/scripts/build-derived.mjs`）と同じ**非加重**の集計
-    （`AVG(y.avg)`）をそのまま再現するだけで、`fraction` による加重は実装して
-    いない。`fraction<1.0` の辺が1件でも現れたら、黙って無視せずここで止める
-    （実データでは290辺すべて1.0）。
-    """
-    bad = work.execute(
-        "SELECT parent_id, child_id, fraction FROM reg.place_relation "
-        "WHERE relation = 'within' AND fraction <> 1.0 LIMIT 5"
-    ).fetchall()
-    if bad:
-        raise common.MigrationError(
-            "place_relation（relation='within'）に fraction が1.0でない辺がある"
-            f"（例（parent_id, child_id, fraction）: {bad}）。"
-            "zone_year/zone_clim の射影は非加重の AVG をそのまま再現しているだけで、"
-            "fraction による加重集計を実装していない。fraction<1.0 の辺を扱うには、"
-            "射影側を SUM(value * fraction) / SUM(fraction) の形に書き換えること。"
-        )
-
-
-def assert_site_belongs_to_at_most_one_zone(work) -> None:
-    """1つの地点（`place_relation.child_id`）が複数のゾーン（`parent_id`）に
-    属していないことを確認する。v1 の `sites.zone` は単一列（地点は必ず1つの
-    ゾーンにしか属さない）なので、`zone_year`/`zone_clim` の射影も地点が
-    1つのゾーンに一意に決まることを前提にしている。崩れていれば、対応する
-    v1 の集計が定まらないため止める（実データでは290辺すべて単一ゾーン）。
-    """
-    dup = work.execute(
-        "SELECT child_id, COUNT(DISTINCT parent_id) AS n_zones "
-        "FROM reg.place_relation WHERE relation = 'within' "
-        "GROUP BY child_id HAVING n_zones > 1 LIMIT 5"
-    ).fetchall()
-    if dup:
-        raise common.MigrationError(
-            f"複数のゾーンに属する地点がある（child_id, ゾーン数）: {dup}\n"
-            "v1 の sites.zone は単一列であり、zone_year/zone_clim は地点が"
-            "1つのゾーンにのみ属することを前提にしている。"
         )
 
 
@@ -860,10 +952,11 @@ def build_projections(
         assert_alias_is_function(work, "sensor_timeseries", grains=_SENSOR_ALIAS_GRAINS)
         assert_alias_tuple_maps_to_single_dataset(work)
         assert_unit_raw_is_function(work)
-        assert_zone_relation_fraction_is_one(work)
-        assert_site_belongs_to_at_most_one_zone(work)
+        # ゾーン（place_relation）の検証は _materialize_lookup_tables の中、
+        # site_zone_lookup を実体化した直後で行う（モジュール docstring
+        # 「ゾーンの縦線」参照。reg.place_relation 全体ではなく、ゾーンの辺
+        # だけに絞った一時テーブルの上で検証するため）。
         _materialize_lookup_tables(work)
-        _materialize_zone_lookup(work)
         _materialize_projection_tables(work)
         verify_hourly_daily_rollup(work)
         out = {}

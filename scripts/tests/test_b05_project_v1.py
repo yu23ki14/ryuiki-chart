@@ -9,7 +9,7 @@ import b05_project_v1 as b05
 from migrate import common
 
 from .migrate_fixtures import (
-    DEFAULT_PLACE_RELATIONS,
+    DEFAULT_ALIASES,
     DEFAULT_PLACE_REFS,
     DEFAULT_PLACES,
     DEFAULT_SENSOR_ROWS,
@@ -265,18 +265,24 @@ def test_site_var_and_var_catalog_split_daily_and_annual_kind(tmp_path):
     assert row[vidx["n_annual"]] == 1
 
 
-def test_load_v1_keys_covers_all_nine_tables():
+def test_load_v1_keys_covers_all_table_sql_entries():
     """`_load_v1_keys` が `reports/derived_baseline.json`（コミット済みの小さな
-    指紋ファイル。本物の `data/db/*.sqlite` は不要）から、6テーブル＋センサー
-    3テーブルぶんのキーをちゃんと読めることを確認する（受け入れ条件1）。
+    指紋ファイル。本物の `data/db/*.sqlite` は不要）から、`_TABLE_SQL` の
+    全エントリ（11テーブル）ぶんのキーをちゃんと読めることを確認する
+    （受け入れ条件1）。新しいテーブルを `_TABLE_SQL` に足し忘れたり、
+    このテストの更新を忘れたりすると `set(keys) == set(b05._TABLE_SQL)` が
+    落ちる。
     """
     keys = b05._load_v1_keys(b05.DEFAULT_BASELINE_JSON)
+    assert set(keys) == set(b05._TABLE_SQL)
     assert keys["meas_clim"] == ["variable", "month"]
     assert keys["site_var"] == ["site_id", "variable", "kind"]
     assert keys["var_catalog"] == ["variable"]
     assert keys["sensor_daily"] == ["site_id", "datastream", "d"]
     assert keys["rain_daily"] == ["d"]
     assert keys["sensor_hour_month"] == ["datastream", "month", "hour"]
+    assert keys["zone_year"] == ["zone", "variable", "year", "kind"]
+    assert keys["zone_clim"] == ["zone", "variable", "month"]
 
 
 def test_assert_v1_keys_are_unique_detects_duplicate_in_new_tables():
@@ -323,6 +329,13 @@ def test_place_lookup_non_injective_place_id_raises_migration_error(tmp_path):
 # ---------------------------------------------------------------------------
 # ゾーンの縦線（zone_year/zone_clim。`place_relation` の最初の消費者。
 # phase-b/zone-slice。ADR-0022 決定2）
+#
+# 検証（fraction=1.0 / 地点は単一ゾーン / ゾーン番号は数字のみ / ゾーン番号は
+# place をまたいで衝突しない）は `site_zone_lookup` の上で行われ、
+# `_materialize_lookup_tables` に組み込まれている（`build_projections` 以外の
+# 呼び出し口を持たない）。そのため、検証が効くことを確認するテストは検証
+# 関数を直接呼ぶのではなく **`build_projections` を通して**確認する
+# （検証の呼び出しを消したらテストが落ちる形にする）。
 # ---------------------------------------------------------------------------
 
 _ZONE_BOD_ROWS = [
@@ -381,9 +394,9 @@ def test_zone_year_and_zone_clim_average_site_averages_unweighted(tmp_path):
     assert crow[cidx["unit"]] == "mg/L"
 
 
-def test_zone_year_excludes_sites_without_a_zone_edge(tmp_path):
+def test_zone_year_and_zone_clim_exclude_sites_without_a_zone_edge(tmp_path):
     """`place_relation` に辺を持たない地点（v1 の `sites.zone IS NULL` 相当）は
-    zone_year/zone_clim に含まれない。S2 にはゾーンの辺を張らない。
+    zone_year・zone_clim のどちらからも除かれる。S2 にはゾーンの辺を張らない。
     """
     measurements_db = tmp_path / "ryuiki.sqlite"
     registry_db = tmp_path / "registry.sqlite"
@@ -406,6 +419,14 @@ def test_zone_year_excludes_sites_without_a_zone_edge(tmp_path):
     assert row[idx["n"]] == 2  # S1 の2件のみ（S2の1件は含まない）
     assert row[idx["avg"]] == 3.0
 
+    zc_columns, zc_rows = projections["zone_clim"]
+    cidx = {c: i for i, c in enumerate(zc_columns)}
+    assert len(zc_rows) == 1
+    crow = zc_rows[0]
+    assert crow[cidx["n_sites"]] == 1
+    assert crow[cidx["n"]] == 2
+    assert crow[cidx["avg"]] == 3.0
+
 
 def test_zone_year_and_zone_clim_are_empty_without_any_place_relation(tmp_path):
     """`place_relation` が空（既定フィクスチャ）でも例外にならず、
@@ -424,42 +445,182 @@ def test_zone_year_and_zone_clim_are_empty_without_any_place_relation(tmp_path):
     assert projections["zone_clim"][1] == []
 
 
-def test_assert_zone_relation_checks_pass_on_default_zone_fixture(tmp_path):
+def test_non_zone_within_edges_do_not_block_or_affect_zone_projection(tmp_path):
+    """`place_relation` に `'within'` 辺が増えても、`sites.zone` に解決できない
+    もの（地点→流域、流域→地域で `fraction<1`）は `site_zone_lookup` の JOIN
+    条件（`place_source_ref(source_id='sites.zone')`）に一致しないため、
+    ゾーンの検証にも zone_year/zone_clim の値にも一切影響しない。
+    """
+    measurements_db = tmp_path / "ryuiki.sqlite"
     registry_db = tmp_path / "registry.sqlite"
+    make_measurements_db(measurements_db, rows=_ZONE_BOD_ROWS)
+    non_zone_places = [("place_ws1", "common", "watershed"), ("place_region1", "common", "region")]
+    make_registry_db(
+        registry_db,
+        places=DEFAULT_PLACES + DEFAULT_ZONE_PLACES + non_zone_places,
+        place_refs=DEFAULT_PLACE_REFS + DEFAULT_ZONE_PLACE_REFS,
+        place_relations=[
+            ("place_zone1", "place_s1", "within", 1.0, "test"),
+            ("place_zone1", "place_s2", "within", 1.0, "test"),
+            # 地点→流域（sites.zone に解決されないので site_zone_lookup には現れない）
+            ("place_ws1", "place_s1", "within", 1.0, "site->watershed"),
+            # 流域→地域、fraction<1（同上。fraction 検証の対象にもならない）
+            ("place_region1", "place_ws1", "within", 0.3, "watershed->region"),
+        ],
+    )
+
+    v2_db, _ = _run_b03_b04(measurements_db, registry_db, tmp_path)
+    projections = b05.build_projections(v2_db, registry_db)  # 例外を投げなければ良い
+
+    zy_columns, zy_rows = projections["zone_year"]
+    idx = {c: i for i, c in enumerate(zy_columns)}
+    assert len(zy_rows) == 1
+    row = zy_rows[0]
+    assert row[idx["n_sites"]] == 2
+    assert row[idx["n"]] == 3
+    assert row[idx["avg"]] == 6.5
+
+
+def test_zone_clim_averages_meas_month_values_not_raw_daily_observations(tmp_path):
+    """`zone_clim` は `meas_month`（(site, year-month) ごとに日次値を平均した
+    もの）の `avg` を `AVG()` する——`meas_daily`（生の日次値）を月番号だけで
+    直接平均するのではない。S1 に、同じ月（1月）だが年が異なる2つの
+    meas_month 行を持たせる（2020-01: 2日分の平均=3.0、2021-01: 1日のみ=100.0）。
+
+    - 正しい実装（meas_month.avg を平均）: AVG(3.0, 100.0) = 51.5
+    - 誤った実装（全日次値を月番号だけで直接平均）: AVG(1.0, 5.0, 100.0)
+      ≈ 35.33（日数の多い年に引っ張られる）
+
+    この2つの値は明確に異なるため区別できる。
+    """
+    measurements_db = tmp_path / "ryuiki.sqlite"
+    registry_db = tmp_path / "registry.sqlite"
+    make_measurements_db(
+        measurements_db,
+        rows=[
+            ("m1", "S1", "2020-01-01", "BOD", "src_a", 1.0, "1.0", "mg/L", "公開済", 0, "ref1", "ev1"),
+            ("m2", "S1", "2020-01-02", "BOD", "src_a", 5.0, "5.0", "mg/L", "公開済", 0, "ref1", "ev1"),
+            ("m3", "S1", "2021-01-15", "BOD", "src_a", 100.0, "100.0", "mg/L", "公開済", 0, "ref1", "ev1"),
+        ],
+    )
     make_registry_db(
         registry_db,
         places=DEFAULT_PLACES + DEFAULT_ZONE_PLACES,
         place_refs=DEFAULT_PLACE_REFS + DEFAULT_ZONE_PLACE_REFS,
-        place_relations=DEFAULT_PLACE_RELATIONS,
+        place_relations=[("place_zone1", "place_s1", "within", 1.0, "test")],
     )
-    work = sqlite3.connect("file::memory:?cache=shared", uri=True)
-    common.attach_readonly(work, registry_db, "reg")
-    try:
-        b05.assert_zone_relation_fraction_is_one(work)  # 例外を投げなければ良い
-        b05.assert_site_belongs_to_at_most_one_zone(work)  # 同上
-    finally:
-        work.close()
+
+    v2_db, _ = _run_b03_b04(measurements_db, registry_db, tmp_path)
+    projections = b05.build_projections(v2_db, registry_db)
+
+    zc_columns, zc_rows = projections["zone_clim"]
+    idx = {c: i for i, c in enumerate(zc_columns)}
+    assert len(zc_rows) == 1
+    row = zc_rows[0]
+    assert row[idx["month"]] == 1
+    assert row[idx["n_sites"]] == 1
+    assert row[idx["n"]] == 3  # meas_month.n の合計（2020-01の2 + 2021-01の1）
+    assert row[idx["avg"]] == 51.5  # AVG(3.0, 100.0)。meas_month 経由でないと出ない値
 
 
-def test_assert_zone_relation_fraction_is_one_raises_on_partial_fraction(tmp_path):
+def test_zone_year_keeps_daily_and_annual_kind_separate(tmp_path):
+    """`zone_year` は `(zone, variable, kind, year)` でグループ化する——同じ
+    ゾーン・変数・年でも `kind`（'daily'/'annual'）が違えば別行のまま混ざら
+    ないことを確認する。S1 の日次由来の BOD（kind='daily'）と、別 alias
+    （grain='year' 宣言）による年次直接値（kind='annual'）を同じ年（2020）に
+    持たせる。
+    """
+    measurements_db = tmp_path / "ryuiki.sqlite"
     registry_db = tmp_path / "registry.sqlite"
+    make_measurements_db(
+        measurements_db,
+        rows=[
+            ("m1", "S1", "2020-01-01", "BOD", "src_a", 1.0, "1.0", "mg/L", "公開済", 0, "ref1", "ev1"),
+            ("m2", "S1", "2020-01-02", "BOD", "src_a", 5.0, "5.0", "mg/L", "公開済", 0, "ref1", "ev1"),
+            ("m3", "S1", "2020", "BOD", "src_b", 50.0, "50.0", "mg/L", "公開済", 0, "ref2", "ev2"),
+        ],
+    )
+    make_registry_db(
+        registry_db,
+        aliases=DEFAULT_ALIASES + [
+            (
+                "measurements", "BOD", "src_b", "common:variable:water.bod_annual",
+                "common:unit:mg_per_l", None, "year",
+            ),
+        ],
+        places=DEFAULT_PLACES + DEFAULT_ZONE_PLACES,
+        place_refs=DEFAULT_PLACE_REFS + DEFAULT_ZONE_PLACE_REFS,
+        place_relations=[("place_zone1", "place_s1", "within", 1.0, "test")],
+    )
+
+    v2_db, _ = _run_b03_b04(measurements_db, registry_db, tmp_path)
+    projections = b05.build_projections(v2_db, registry_db)
+
+    zy_columns, zy_rows = projections["zone_year"]
+    idx = {c: i for i, c in enumerate(zy_columns)}
+    by_kind = {row[idx["kind"]]: row for row in zy_rows}
+    assert set(by_kind) == {"daily", "annual"}
+    assert by_kind["daily"][idx["year"]] == 2020
+    assert by_kind["daily"][idx["avg"]] == 3.0
+    assert by_kind["annual"][idx["year"]] == 2020
+    assert by_kind["annual"][idx["avg"]] == 50.0
+
+
+def test_meas_month_materialization_preserves_value_and_type(tmp_path):
+    """`meas_month` を一時テーブルに実体化しても（このタスクで
+    `_MEAS_MONTH_SQL` を直接 SELECT する形から変更した）、値・型が変わらない
+    ことを確認する（`AVG()` の REAL の 3.0 が INTEGER の 3 にならない等）。
+    """
+    measurements_db = tmp_path / "ryuiki.sqlite"
+    registry_db = tmp_path / "registry.sqlite"
+    make_measurements_db(
+        measurements_db,
+        rows=[
+            ("m1", "S1", "2020-01-01", "BOD", "src_a", 2.0, "2.0", "mg/L", "公開済", 0, "ref1", "ev1"),
+            ("m2", "S1", "2020-01-02", "BOD", "src_a", 4.0, "4.0", "mg/L", "公開済", 0, "ref1", "ev1"),
+        ],
+    )
+    make_registry_db(registry_db)
+
+    v2_db, _ = _run_b03_b04(measurements_db, registry_db, tmp_path)
+    projections = b05.build_projections(v2_db, registry_db)
+
+    columns, rows = projections["meas_month"]
+    idx = {c: i for i, c in enumerate(columns)}
+    assert len(rows) == 1
+    row = rows[0]
+    assert row[idx["avg"]] == 3.0
+    assert isinstance(row[idx["avg"]], float)  # INTEGER の 3 にならない
+    assert row[idx["n"]] == 2
+    assert isinstance(row[idx["n"]], int)
+
+
+def test_build_projections_raises_when_zone_edge_fraction_is_not_one(tmp_path):
+    """検証 (a): `site_zone_lookup` 上で `fraction<>1.0` が1件でもあれば
+    `build_projections` 経由で止まる。
+    """
+    measurements_db = tmp_path / "ryuiki.sqlite"
+    registry_db = tmp_path / "registry.sqlite"
+    make_measurements_db(measurements_db, rows=_ZONE_BOD_ROWS)
     make_registry_db(
         registry_db,
         places=DEFAULT_PLACES + DEFAULT_ZONE_PLACES,
         place_refs=DEFAULT_PLACE_REFS + DEFAULT_ZONE_PLACE_REFS,
         place_relations=[("place_zone1", "place_s1", "within", 0.5, "test")],
     )
-    work = sqlite3.connect("file::memory:?cache=shared", uri=True)
-    common.attach_readonly(work, registry_db, "reg")
-    try:
-        with pytest.raises(common.MigrationError, match="fraction が1.0でない"):
-            b05.assert_zone_relation_fraction_is_one(work)
-    finally:
-        work.close()
+    v2_db, _ = _run_b03_b04(measurements_db, registry_db, tmp_path)
+
+    with pytest.raises(common.MigrationError, match="fraction が1.0でない"):
+        b05.build_projections(v2_db, registry_db)
 
 
-def test_assert_site_belongs_to_at_most_one_zone_raises_on_multiple_zones(tmp_path):
+def test_build_projections_raises_when_site_belongs_to_multiple_zones(tmp_path):
+    """検証 (b): 1つの地点が2つの異なるゾーン（番号も別）に属していれば
+    `build_projections` 経由で止まる。
+    """
+    measurements_db = tmp_path / "ryuiki.sqlite"
     registry_db = tmp_path / "registry.sqlite"
+    make_measurements_db(measurements_db, rows=_ZONE_BOD_ROWS)
     zone_places = [("place_zone1", "jp-14", "zone"), ("place_zone2", "jp-14", "zone")]
     zone_refs = [("place_zone1", "1", "sites.zone"), ("place_zone2", "2", "sites.zone")]
     make_registry_db(
@@ -471,22 +632,79 @@ def test_assert_site_belongs_to_at_most_one_zone_raises_on_multiple_zones(tmp_pa
             ("place_zone2", "place_s1", "within", 1.0, "test"),  # S1 が2つ目のゾーンにも属す
         ],
     )
-    work = sqlite3.connect("file::memory:?cache=shared", uri=True)
-    common.attach_readonly(work, registry_db, "reg")
-    try:
-        with pytest.raises(common.MigrationError, match="複数のゾーンに属する地点"):
-            b05.assert_site_belongs_to_at_most_one_zone(work)
-    finally:
-        work.close()
+    v2_db, _ = _run_b03_b04(measurements_db, registry_db, tmp_path)
+
+    with pytest.raises(common.MigrationError, match="複数のゾーンに属する"):
+        b05.build_projections(v2_db, registry_db)
 
 
-def test_load_v1_keys_covers_zone_tables():
-    """`_load_v1_keys` が `reports/derived_baseline.json` から
-    zone_year/zone_clim のキーも読めることを確認する（受け入れ条件1）。
+def test_build_projections_raises_when_zone_number_collides_across_zone_places(tmp_path):
+    """検証 (c): 異なる place_id を持つ2つのゾーンが同じゾーン番号
+    （`external_key`）に解決されていれば `build_projections` 経由で止まる
+    （将来の2地域目を想定した検証）。S1/S2 はそれぞれ単一のゾーンにしか
+    属さないため、検証 (b)（地点の単一ゾーン所属）には引っかからない。
     """
-    keys = b05._load_v1_keys(b05.DEFAULT_BASELINE_JSON)
-    assert keys["zone_year"] == ["zone", "variable", "year", "kind"]
-    assert keys["zone_clim"] == ["zone", "variable", "month"]
+    measurements_db = tmp_path / "ryuiki.sqlite"
+    registry_db = tmp_path / "registry.sqlite"
+    make_measurements_db(measurements_db, rows=_ZONE_BOD_ROWS)
+    zone_places = [("place_zoneA", "jp-14", "zone"), ("place_zoneB", "jp-13", "zone")]
+    zone_refs = [("place_zoneA", "1", "sites.zone"), ("place_zoneB", "1", "sites.zone")]  # 両方 "1"
+    make_registry_db(
+        registry_db,
+        places=DEFAULT_PLACES + zone_places,
+        place_refs=DEFAULT_PLACE_REFS + zone_refs,
+        place_relations=[
+            ("place_zoneA", "place_s1", "within", 1.0, "test"),
+            ("place_zoneB", "place_s2", "within", 1.0, "test"),
+        ],
+    )
+    v2_db, _ = _run_b03_b04(measurements_db, registry_db, tmp_path)
+
+    with pytest.raises(common.MigrationError, match="同じゾーン番号に解決されている"):
+        b05.build_projections(v2_db, registry_db)
+
+
+def test_build_projections_raises_when_zone_number_is_not_numeric(tmp_path):
+    """検証 (d): ゾーン番号（`sites.zone` 由来の `external_key`）が数字だけの
+    文字列でなければ `build_projections` 経由で止まる
+    （`CAST(... AS INT)` が黙って0にするのを防ぐ）。
+    """
+    measurements_db = tmp_path / "ryuiki.sqlite"
+    registry_db = tmp_path / "registry.sqlite"
+    make_measurements_db(measurements_db, rows=_ZONE_BOD_ROWS)
+    zone_places = [("place_zone1", "jp-14", "zone")]
+    zone_refs = [("place_zone1", "z1", "sites.zone")]  # 数字だけでない
+    make_registry_db(
+        registry_db,
+        places=DEFAULT_PLACES + zone_places,
+        place_refs=DEFAULT_PLACE_REFS + zone_refs,
+        place_relations=[("place_zone1", "place_s1", "within", 1.0, "test")],
+    )
+    v2_db, _ = _run_b03_b04(measurements_db, registry_db, tmp_path)
+
+    with pytest.raises(common.MigrationError, match="数字だけの文字列でない"):
+        b05.build_projections(v2_db, registry_db)
+
+
+def test_build_projections_raises_with_helpful_error_when_registry_predates_place_relation(tmp_path):
+    """`place_relation` テーブルを持たない古い registry.sqlite（ADR-0022 より
+    前にビルドしたもの相当）を渡すと、素の `OperationalError`（"no such
+    table"）ではなく、r01 の再実行を促す `MigrationError` になる。
+    """
+    measurements_db = tmp_path / "ryuiki.sqlite"
+    registry_db = tmp_path / "registry.sqlite"
+    make_measurements_db(measurements_db)
+    make_registry_db(registry_db)
+
+    conn = sqlite3.connect(str(registry_db))
+    conn.execute("DROP TABLE place_relation")
+    conn.commit()
+    conn.close()
+
+    v2_db, _ = _run_b03_b04(measurements_db, registry_db, tmp_path)
+
+    with pytest.raises(common.MigrationError, match="r01_build_registry.py"):
+        b05.build_projections(v2_db, registry_db)
 
 
 # ---------------------------------------------------------------------------
