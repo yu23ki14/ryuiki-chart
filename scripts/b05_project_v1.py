@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """`observation_agg`（`data/db/v2.sqlite`、b04 が作ったキューブ）を v1 の派生
 テーブル形（`meas_daily`/`meas_month`/`meas_year`/`meas_clim`/`site_var`/
-`var_catalog`/`sensor_daily`/`rain_daily`/`sensor_hour_month`）に射影する
-（ADR-0016 Phase B「ファクトとキューブ」縦に薄い1本。センサーの縦線の設計は
-「センサーの縦線 設計 v2」オーナー決定・ADR-0023・ADR-0024 参照）。
+`var_catalog`/`sensor_daily`/`rain_daily`/`sensor_hour_month`/`zone_year`/
+`zone_clim`）に射影する（ADR-0016 Phase B「ファクトとキューブ」縦に薄い1本。
+センサーの縦線の設計は「センサーの縦線 設計 v2」オーナー決定・ADR-0023・
+ADR-0024、ゾーンの縦線は `docs/plans/PHASE_B_FACT_SLICE.md`（D11）・
+ADR-0022 参照）。
 
     .venv/bin/python3 scripts/b05_project_v1.py
 
 `data/db/v1_projection.sqlite`（毎回ゼロから作り直す、専用の出力ファイル）に
-9テーブルを書く。列名・列順は `reports/derived_baseline.json` の記録と完全に
+11テーブルを書く。列名・列順は `reports/derived_baseline.json` の記録と完全に
 一致させてある（`scripts/b02_derived_compare.py --tables ...` がそのまま
 突き合わせられるように）。
 
@@ -16,6 +18,30 @@
 
 `docs/plans/PHASE_B_FACT_SLICE.md` D10 参照（変更なし。この3テーブルは
 `measurements` 由来のみで、センサーの縦線とは無関係）。
+
+## ゾーンの縦線: `zone_year`/`zone_clim`（`place_relation` の最初の消費者。phase-b/zone-slice）
+
+`meas_clim`/`site_var`/`var_catalog`（D10）と同じ理由でキューブのセルにしない
+（`docs/plans/PHASE_B_FACT_SLICE.md` D11）。ADR-0011 の初期の事前計算は
+`place_kind ∈ {site, watershed, mesh3}` に絞っており zone を含まない。加えて
+v1 の `zone_year`/`zone_clim`（`web/scripts/build-derived.mjs`）はゾーン内の
+地点の `meas_year.avg`/`meas_month.avg` を**非加重**の `AVG()` で平均しており
+（`n` でも `place_relation.fraction` でも重み付けしない）、これもキューブの
+1セルに素直に落ちない v1 固有の集計仕様（D10 理由2と同種）。`b05` が既に
+実体化している v1形の一時テーブル `meas_year`/`meas_month` から、v1 と同じ
+`GROUP BY zone, variable, [kind,] year|month` で射影する。
+
+地点→ゾーンの対応は `sites.zone` を直接読まず、レジストリの `place_relation`
+（`relation='within'`。`place_lookup`——`place_source_ref(source_id=
+'sites.site_id')`——の place_id 側と `place_source_ref(source_id='sites.zone')`
+のゾーン番号側を辺で繋ぐ）から引く。ADR-0022 決定2で新設された
+`place_relation` の最初の消費者。`assert_zone_relation_fraction_is_one`/
+`assert_site_belongs_to_at_most_one_zone` が、この辺が v1 互換の非加重射影に
+使える形（`fraction` が全行1.0・地点が複数ゾーンにまたがらない）であることを
+毎回検証し、崩れていれば黙って無視せず `MigrationError` で止まる（実データでは
+290辺すべて条件を満たす）。ロールアップのキューブのセル（ADR-0011の
+`roll_up_to`）はここでも作らない——`docs/plans/PHASE_B_FACT_SLICE.md` の
+「やっていないこと」参照。
 
 ## センサーの縦線 設計 v2 T5: `sensor_daily`/`rain_daily`/`sensor_hour_month`
 は v1 の癖を射影にだけ置く
@@ -299,6 +325,30 @@ GROUP BY site_id, variable, kind
 """
 
 # ---------------------------------------------------------------------------
+# ゾーン別2テーブル（`place_relation` の最初の消費者。モジュール docstring
+# 「ゾーンの縦線」参照。measurements 由来の meas_year/meas_month をそのまま
+# ゾーンに束ねるだけで、キューブは経由しない——D10/D11 と同じ理由）
+# ---------------------------------------------------------------------------
+
+_ZONE_YEAR_SQL = """
+SELECT sz.zone AS zone, y.variable AS variable, y.kind AS kind, y.year AS year,
+       COUNT(DISTINCT y.site_id) AS n_sites, SUM(y.n) AS n,
+       AVG(y.avg) AS avg, MAX(y.unit) AS unit
+FROM meas_year y
+JOIN site_zone_lookup sz ON sz.site_id = y.site_id
+GROUP BY sz.zone, y.variable, y.kind, y.year
+"""
+
+_ZONE_CLIM_SQL = """
+SELECT sz.zone AS zone, m.variable AS variable, m.month AS month,
+       COUNT(DISTINCT m.site_id) AS n_sites, SUM(m.n) AS n,
+       AVG(m.avg) AS avg, MAX(m.unit) AS unit
+FROM meas_month m
+JOIN site_zone_lookup sz ON sz.site_id = m.site_id
+GROUP BY sz.zone, m.variable, m.month
+"""
+
+# ---------------------------------------------------------------------------
 # sensor_timeseries 由来 3テーブル（T5）
 # ---------------------------------------------------------------------------
 
@@ -366,7 +416,7 @@ GROUP BY al.alias, month, hour
 
 _TABLE_SQL = {
     "meas_daily": "SELECT * FROM meas_daily",
-    "meas_month": _MEAS_MONTH_SQL,
+    "meas_month": "SELECT * FROM meas_month",
     "meas_year": "SELECT * FROM meas_year",
     "meas_clim": _MEAS_CLIM_SQL,
     "site_var": _SITE_VAR_SQL,
@@ -374,6 +424,8 @@ _TABLE_SQL = {
     "sensor_daily": _SENSOR_DAILY_SQL,
     "rain_daily": _RAIN_DAILY_SQL,
     "sensor_hour_month": _SENSOR_HOUR_MONTH_SQL,
+    "zone_year": _ZONE_YEAR_SQL,
+    "zone_clim": _ZONE_CLIM_SQL,
 }
 
 
@@ -459,12 +511,46 @@ def _materialize_lookup_tables(work: sqlite3.Connection) -> None:
     work.execute("CREATE UNIQUE INDEX place_lookup_place_id ON place_lookup (place_id)")
 
 
+def _site_zone_lookup_sql() -> str:
+    """地点（v1 の site_id）→ ゾーン番号（整数）の対応を作る SQL
+    （`place_relation` の地点→ゾーンの辺、`relation='within'`。ADR-0022 決定2の
+    最初の消費者）。`place_lookup`（`_materialize_lookup_tables` が作る。
+    place_id → v1 の site_id）を `child_id` 側に、`reg.place_source_ref
+    (source_id='sites.zone')`（ゾーンの place_id → ゾーン番号の文字列）を
+    `parent_id` 側に結合する。`sites.zone IS NOT NULL` の地点だけが
+    `place_relation` に辺を持つため、INNER JOIN だけで v1 の
+    `WHERE s.zone IS NOT NULL` と同じ絞り込みになる。`place_lookup` に
+    依存するため、`_materialize_lookup_tables` の後に呼ぶこと。
+    """
+    return """
+    CREATE TEMP TABLE site_zone_lookup AS
+    SELECT psr.external_key AS site_id, CAST(zref.external_key AS INT) AS zone
+    FROM reg.place_relation pr
+    JOIN place_lookup psr ON psr.place_id = pr.child_id
+    JOIN reg.place_source_ref zref
+      ON zref.place_id = pr.parent_id AND zref.source_id = 'sites.zone'
+    WHERE pr.relation = 'within'
+    """
+
+
+def _materialize_zone_lookup(work: sqlite3.Connection) -> None:
+    """`site_zone_lookup`（`zone_year`/`zone_clim` が使う地点→ゾーンの対応）を
+    一時テーブルに実体化する。`_materialize_lookup_tables` が作る
+    `place_lookup` に依存するため、その後に呼ぶこと。
+    """
+    work.execute(_site_zone_lookup_sql())
+    work.execute("CREATE INDEX site_zone_lookup_site_id ON site_zone_lookup (site_id)")
+
+
 def _materialize_projection_tables(work: sqlite3.Connection) -> None:
-    """逆引き済みの `meas_daily`/`meas_year` をそれぞれ1回だけ一時テーブルに
-    実体化する（`meas_clim`/`site_var`/`var_catalog` がここから読む。変更なし
-    ——`measurements` 専用で `sensor_timeseries` とは無関係）。
+    """逆引き済みの `meas_daily`/`meas_month`/`meas_year` をそれぞれ1回だけ
+    一時テーブルに実体化する（`meas_clim`/`site_var`/`var_catalog` は
+    `meas_daily`/`meas_year` から、`zone_year`/`zone_clim` は
+    `meas_year`/`meas_month` からそれぞれ読む。`measurements` 専用で
+    `sensor_timeseries` とは無関係——変更なし）。
     """
     work.execute(f"CREATE TEMP TABLE meas_daily AS {_MEAS_DAILY_SQL}")
+    work.execute(f"CREATE TEMP TABLE meas_month AS {_MEAS_MONTH_SQL}")
     work.execute(f"CREATE TEMP TABLE meas_year AS {_MEAS_YEAR_SQL}")
 
 
@@ -560,6 +646,48 @@ def assert_unit_raw_is_function(work) -> None:
             f"（同じ系列に複数の unit_raw がある）: {dup}\n"
             "b05 は『どの unit_raw を v1 の unit 表記として使うか』を推測できないため、"
             "該当する系列の unit_raw の食い違いを解消してから再実行すること。"
+        )
+
+
+def assert_zone_relation_fraction_is_one(work) -> None:
+    """`place_relation`（地点→ゾーンの辺、`relation='within'`）の `fraction` が
+    全行 1.0 であることを確認する（ADR-0022 決定2）。`zone_year`/`zone_clim` の
+    射影は v1（`web/scripts/build-derived.mjs`）と同じ**非加重**の集計
+    （`AVG(y.avg)`）をそのまま再現するだけで、`fraction` による加重は実装して
+    いない。`fraction<1.0` の辺が1件でも現れたら、黙って無視せずここで止める
+    （実データでは290辺すべて1.0）。
+    """
+    bad = work.execute(
+        "SELECT parent_id, child_id, fraction FROM reg.place_relation "
+        "WHERE relation = 'within' AND fraction <> 1.0 LIMIT 5"
+    ).fetchall()
+    if bad:
+        raise common.MigrationError(
+            "place_relation（relation='within'）に fraction が1.0でない辺がある"
+            f"（例（parent_id, child_id, fraction）: {bad}）。"
+            "zone_year/zone_clim の射影は非加重の AVG をそのまま再現しているだけで、"
+            "fraction による加重集計を実装していない。fraction<1.0 の辺を扱うには、"
+            "射影側を SUM(value * fraction) / SUM(fraction) の形に書き換えること。"
+        )
+
+
+def assert_site_belongs_to_at_most_one_zone(work) -> None:
+    """1つの地点（`place_relation.child_id`）が複数のゾーン（`parent_id`）に
+    属していないことを確認する。v1 の `sites.zone` は単一列（地点は必ず1つの
+    ゾーンにしか属さない）なので、`zone_year`/`zone_clim` の射影も地点が
+    1つのゾーンに一意に決まることを前提にしている。崩れていれば、対応する
+    v1 の集計が定まらないため止める（実データでは290辺すべて単一ゾーン）。
+    """
+    dup = work.execute(
+        "SELECT child_id, COUNT(DISTINCT parent_id) AS n_zones "
+        "FROM reg.place_relation WHERE relation = 'within' "
+        "GROUP BY child_id HAVING n_zones > 1 LIMIT 5"
+    ).fetchall()
+    if dup:
+        raise common.MigrationError(
+            f"複数のゾーンに属する地点がある（child_id, ゾーン数）: {dup}\n"
+            "v1 の sites.zone は単一列であり、zone_year/zone_clim は地点が"
+            "1つのゾーンにのみ属することを前提にしている。"
         )
 
 
@@ -718,7 +846,7 @@ def verify_hourly_daily_rollup(work: sqlite3.Connection, sample_limit: int = 20)
 def build_projections(
     cube_db, registry_db, baseline_json=DEFAULT_BASELINE_JSON
 ) -> dict[str, list[tuple]]:
-    """9テーブルぶんの `(columns, rows)` を返す（ファイルには書かない）。"""
+    """11テーブルぶんの `(columns, rows)` を返す（ファイルには書かない）。"""
     work = sqlite3.connect(":memory:", uri=True)
     try:
         common.attach_readonly(work, cube_db, "cube")
@@ -732,7 +860,10 @@ def build_projections(
         assert_alias_is_function(work, "sensor_timeseries", grains=_SENSOR_ALIAS_GRAINS)
         assert_alias_tuple_maps_to_single_dataset(work)
         assert_unit_raw_is_function(work)
+        assert_zone_relation_fraction_is_one(work)
+        assert_site_belongs_to_at_most_one_zone(work)
         _materialize_lookup_tables(work)
+        _materialize_zone_lookup(work)
         _materialize_projection_tables(work)
         verify_hourly_daily_rollup(work)
         out = {}
@@ -779,6 +910,14 @@ _CREATE_SQL = {
     "sensor_hour_month": (
         "CREATE TABLE sensor_hour_month (datastream TEXT, month INTEGER, hour INTEGER, "
         "n INTEGER, avg REAL, max REAL)"
+    ),
+    "zone_year": (
+        "CREATE TABLE zone_year (zone INTEGER, variable TEXT, kind TEXT, year INTEGER, "
+        "n_sites INTEGER, n INTEGER, avg REAL, unit TEXT)"
+    ),
+    "zone_clim": (
+        "CREATE TABLE zone_clim (zone INTEGER, variable TEXT, month INTEGER, "
+        "n_sites INTEGER, n INTEGER, avg REAL, unit TEXT)"
     ),
 }
 

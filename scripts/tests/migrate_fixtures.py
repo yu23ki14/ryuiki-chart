@@ -73,6 +73,24 @@ DEFAULT_PLACE_REFS = [
     ("place_s2", "S2", "sites.site_id"),
 ]
 
+# ゾーン（`place_relation`、ADR-0022 決定2）のフィクスチャ。地点→ゾーンの辺を
+# テストするときは、DEFAULT_PLACES/DEFAULT_PLACE_REFS にこれらを連結して渡す
+# （`make_registry_db` の `places`/`place_refs` は完全上書きのため、足したい側が
+# 連結する）。S1 をゾーン1に属させる（S2 はどのゾーンにも属さない——v1 の
+# `sites.zone IS NULL` に相当。zone_year/zone_clim では自然に除外される）。
+DEFAULT_ZONE_PLACES = [
+    ("place_zone1", "jp-14", "zone"),
+]
+
+DEFAULT_ZONE_PLACE_REFS = [
+    ("place_zone1", "1", "sites.zone"),
+]
+
+DEFAULT_PLACE_RELATIONS = [
+    # parent_id (ゾーン), child_id (地点), relation, fraction, basis
+    ("place_zone1", "place_s1", "within", 1.0, "test"),
+]
+
 # `variable.default_stat`（b04 の T4-2「sum」の絞り込みが読む）。
 # weather.precipitation だけ 'sum' にしておくと、RAIN（sensor 側）の日次セルに
 # sum 行が足されることをテストできる。
@@ -132,7 +150,14 @@ def make_measurements_db(path, rows=None, sensor_rows=None) -> None:
         conn.close()
 
 
-def make_registry_db(path, aliases=None, places=None, place_refs=None, variables=None) -> None:
+def make_registry_db(
+    path, aliases=None, places=None, place_refs=None, variables=None, place_relations=None,
+) -> None:
+    """`place_relations` の既定は空（ゾーンを持たないテストはそのまま動く。
+    `phase-b/zone-slice` で `place_relation`（地点→ゾーンの辺、ADR-0022 決定2）
+    を新設。列は本物の `scripts/schema_registry.sql` の `place_relation` と
+    同じ並び——`parent_id, child_id, relation, fraction, basis`）。
+    """
     conn = sqlite3.connect(str(path))
     try:
         conn.execute(
@@ -147,6 +172,10 @@ def make_registry_db(path, aliases=None, places=None, place_refs=None, variables
         conn.execute(
             "CREATE TABLE place_source_ref (place_id TEXT, external_key TEXT, source_id TEXT)"
         )
+        conn.execute(
+            "CREATE TABLE place_relation (parent_id TEXT, child_id TEXT, relation TEXT, "
+            "fraction REAL, basis TEXT)"
+        )
         conn.execute("CREATE TABLE variable (variable_id TEXT PRIMARY KEY, default_stat TEXT)")
         conn.executemany(
             "INSERT INTO variable_alias VALUES (?,?,?,?,?,?,?)",
@@ -158,6 +187,10 @@ def make_registry_db(path, aliases=None, places=None, place_refs=None, variables
         conn.executemany(
             "INSERT INTO place_source_ref VALUES (?,?,?)",
             place_refs if place_refs is not None else DEFAULT_PLACE_REFS,
+        )
+        conn.executemany(
+            "INSERT INTO place_relation VALUES (?,?,?,?,?)",
+            place_relations if place_relations is not None else [],
         )
         conn.executemany(
             "INSERT INTO variable VALUES (?,?)",
