@@ -18,6 +18,16 @@ from .occurrence_fixtures import (
     occurrence_row,
 )
 
+# b07 は `assert_grouped_totals_match`（FULL OUTER JOIN、SQLite 3.39以降）を
+# 使うため `common.require_sqlite_version()` で古い SQLite を拒む
+# （`scripts/migrate/common.py` 参照）。この版のガード自体の単体テストは
+# `scripts/tests/test_migrate_common.py`。ここでは環境の SQLite が実際に
+# 古いとき、意味の無い失敗の山を作らずスキップする。
+pytestmark = pytest.mark.skipif(
+    sqlite3.sqlite_version_info < common.MIN_SQLITE_VERSION,
+    reason=f"SQLite {common.MIN_SQLITE_VERSION} 未満（実際: {sqlite3.sqlite_version}）",
+)
+
 
 def _write_declarations_yaml(tmp_path, expected_row_count: int):
     path = tmp_path / "occurrence_cube_declarations.yaml"

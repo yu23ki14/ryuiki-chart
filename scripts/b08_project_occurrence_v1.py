@@ -126,6 +126,24 @@ scripts/b07_build_occurrence_cube.py を再実行すること」と案内して�
 年キー8表だけを作る `build_occurrence_cube_projections`（テスト・単体検証用）
 はこの前提を持たないため、既定で古い taxon 検査を行う。
 
+## SQLite の版（年キー8表の経路は3.43以降が前提。コードレビュー指摘）
+
+`_assert_cube_is_current_l2_partition`（上記）が呼ぶ
+`scripts/migrate/common.assert_grouped_totals_match` は `FULL OUTER JOIN`
+（SQLite 3.39 で追加）を使うため、それより古い版では `sqlite3.
+OperationalError: RIGHT and FULL OUTER JOINs are not currently supported`
+で落ちる（実測。古い `sqlite3` CLI 3.37.2 で確認済み）。年キー8表・
+`species_month` を作る経路（`build_occurrence_cube_projections`/
+`build_all_projections`）の先頭で `common.require_sqlite_version()`
+（b04・b05・b07・b10 と共有するガード）を呼ぶ——`FULL OUTER JOIN` 自体が
+要求する最小版（3.39）ではなく、`AVG()`/`SUM()` を使う他のスクリプトと同じ
+**3.43 で統一**する（`scripts/b07_build_occurrence_cube.py` のモジュール
+docstring と同じ理由。パイプライン全体を1つの基準で揃える）。
+`org_norm` だけを作る `build_org_norm_projection` は `occurrence_agg`
+（したがって `FULL OUTER JOIN`）を一切使わないため、このガードを呼ばない
+（実際に古い SQLite でも動く。`test_b08_project_occurrence_v1.py` は
+バージョンでスキップしない）。
+
 ## 前提（入力テーブル）を出力ファイルを消す前に確かめる（コードレビュー指摘6）
 
 `common.fresh_sqlite(out_path)` は既存の `out_path` を即座に削除する。以前は
@@ -400,6 +418,11 @@ def build_org_norm_projection(
     （`fresh_sqlite` で毎回作り直す。既存テスト・単体検証用のエントリ
     ポイント——`main()` は10テーブルまとめて書く `build_all_projections` を
     使う）。戻り値は `{"n": 行数}`。
+
+    `FULL OUTER JOIN`（`assert_grouped_totals_match`）を使わないため、ここでは
+    `common.require_sqlite_version()` を呼ばない（モジュール docstring
+    「SQLite の版」参照。年キー8表側の経路とは異なり、このエントリポイントは
+    実際に古い SQLite でも動く）。
     """
     _assert_prerequisites(cube_db, registry_db, need_occurrence_agg=False)
     default_taxon_group = _load_default_taxon_group(taxon_group_yaml)
@@ -845,7 +868,12 @@ def build_occurrence_cube_projections(
     """年キー8表と `species_month` だけを単独で `out_path` に書く（`org_norm`
     を含まない。既存テスト・単体検証用のエントリポイント——`main()` は
     10テーブルまとめて書く `build_all_projections` を使う）。
+
+    `_assert_cube_is_current_l2_partition` が `FULL OUTER JOIN` を使うため、
+    その前に `common.require_sqlite_version()` を呼ぶ（モジュール docstring
+    「SQLite の版」参照）。
     """
+    common.require_sqlite_version()
     _assert_prerequisites(cube_db, registry_db, need_occurrence_agg=True)
     default_taxon_group = _load_default_taxon_group(taxon_group_yaml)
     conn = common.fresh_sqlite(out_path)
@@ -871,7 +899,12 @@ def build_all_projections(
     年キー8表・`species_month` を作る——後者が `species2` を読むため、かつ
     `occurrence_agg` に対する古い taxon 検査を重ねがけしないため。モジュール
     docstring参照）。戻り値はテーブルごとの行数。
+
+    `_assert_cube_is_current_l2_partition` が `FULL OUTER JOIN` を使うため、
+    その前に `common.require_sqlite_version()` を呼ぶ（モジュール docstring
+    「SQLite の版」参照）。
     """
+    common.require_sqlite_version()
     _assert_prerequisites(cube_db, registry_db, need_occurrence_agg=True)
     default_taxon_group = _load_default_taxon_group(taxon_group_yaml)
     conn = common.fresh_sqlite(out_path)

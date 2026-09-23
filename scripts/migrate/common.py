@@ -11,9 +11,13 @@ v1射影）が共有する薄い土台。
   で直接開き `fresh_sqlite` を経由しない**ため、それぞれの `main()` が引数
   パース直後に同じ検査を個別に呼ぶ。
 - 実行時間とテーブルごとの行数を `[12.3s] ラベル / N行` の形で出す（`timed_step`）。
-- `AVG()`/`SUM()` を使うスクリプト（b04・b05・b10）は `require_sqlite_version()`
-  を**各スクリプトの構築関数の先頭**で呼ぶ（モジュール読み込み時点ではない
-  ——`require_sqlite_version` の docstring 参照）。
+- `AVG()`/`SUM()`（b04・b05・b10）または `FULL OUTER JOIN`（`assert_grouped_totals_match`
+  経由。b07・b08）を使うスクリプトは、どちらも SQLite 3.43 以降が前提
+  （`AVG()`/`SUM()` は加算アルゴリズムの正しさ、`FULL OUTER JOIN` は機能自体の
+  対応のため——3.39で足りる `FULL OUTER JOIN` 単体の最小版ではなく、他の
+  スクリプトと同じ3.43に揃える）。`require_sqlite_version()` を**各スクリプトの
+  構築関数の先頭**で呼ぶ（モジュール読み込み時点ではない——
+  `require_sqlite_version` の docstring 参照）。
 """
 from __future__ import annotations
 
@@ -36,9 +40,14 @@ from reconcile.common import load_yaml, open_readonly  # noqa: E402,F401  (b03/b
 # （キーの構成や集計方法が変わる＝過去に作った observation_agg と比較できなくなるとき）。
 SPEC_VERSION = "phase-b-fact-slice/v1"
 
-# SQLite 3.43 未満では AVG()/SUM() の加算アルゴリズムが素朴な左→右加算に落ち、
-# 平均が黙って壊れる。元は b04 だけに書かれていたが、b05・b10 でも同じ理由の
-# リスクがあるため共通ヘルパへ切り出した。バージョン・件数の実測は
+# SQLite 3.43 未満では2つの理由でパイプラインが壊れる: (1) AVG()/SUM() の
+# 加算アルゴリズムが素朴な左→右加算に落ち、平均が黙って壊れる（b04・b05・
+# b10）。(2) FULL OUTER JOIN（`assert_grouped_totals_match` が使う。SQLite
+# 3.39 で追加）自体が使えず `sqlite3.OperationalError` で落ちる（b07・b08）。
+# 元は b04 だけに書かれていたが、他のスクリプトでも同じ「3.43 以降が前提」
+# というリスクがあるため共通ヘルパへ切り出した。3.39 で足りる FULL OUTER
+# JOIN 単体の最小版ではなく、AVG()/SUM() の要件に合わせて 3.43 で統一する
+# （パイプライン全体を1つの基準で揃える）。バージョン・件数の実測は
 # docs/plans/PHASE_B_DOCUMENTS.md §2 の1箇所にまとめてある（ここでは繰り返さない）。
 MIN_SQLITE_VERSION = (3, 43, 0)
 
@@ -46,15 +55,17 @@ MIN_SQLITE_VERSION = (3, 43, 0)
 def require_sqlite_version(min_version: tuple[int, int, int] = MIN_SQLITE_VERSION) -> None:
     """`sqlite3.sqlite_version_info` が `min_version` 未満なら `SystemExit` で止まる。
 
-    **呼び出し側（b04/b05/b10）は各スクリプトの構築関数の先頭
-    （`build_cube`/`build_projections`/`build_documents_projection`）でこれを
-    呼ぶこと。モジュール読み込み時点（トップレベル）では呼ばない。** 古い
-    SQLite の環境で `import` した瞬間に `SystemExit` が飛ぶと、`pytest` は
-    複数のテストファイルを import してから収集するため、無関係な1ファイルの
-    import 失敗がスイート全体の収集を止めてしまう（守りたい状況（古い環境）
-    でこそ壊れる形だった——コードレビュー指摘。実測は
-    `docs/plans/PHASE_B_DOCUMENTS.md` §2 参照）。関数の先頭で呼べば、CLI からの
-    実行でも関数の直接呼び出しでも同じガードが効き、`import` 自体は安全になる。
+    **呼び出し側（b04/b05/b07/b08/b10）は各スクリプトの構築・射影関数の先頭
+    （`build_cube`/`build_projections`/`build_documents_projection`/
+    `build_org_norm_projection`/`build_occurrence_cube_projections`/
+    `build_all_projections`）でこれを呼ぶこと。モジュール読み込み時点
+    （トップレベル）では呼ばない。** 古い SQLite の環境で `import` した瞬間に
+    `SystemExit` が飛ぶと、`pytest` は複数のテストファイルを import してから
+    収集するため、無関係な1ファイルの import 失敗がスイート全体の収集を
+    止めてしまう（守りたい状況（古い環境）でこそ壊れる形だった——コード
+    レビュー指摘。実測は `docs/plans/PHASE_B_DOCUMENTS.md` §2 参照）。関数の
+    先頭で呼べば、CLI からの実行でも関数の直接呼び出しでも同じガードが効き、
+    `import` 自体は安全になる。
 
     `assert` にしない理由は `python -O`/`PYTHONOPTIMIZE=1` では `assert` が
     丸ごと消え、まさにこのガードが要る場面で無効化されてしまうため
@@ -65,10 +76,11 @@ def require_sqlite_version(min_version: tuple[int, int, int] = MIN_SQLITE_VERSIO
         raise SystemExit(
             f"sqlite3（Python 同梱、バージョン {sqlite3.sqlite_version}）が古すぎる。"
             f"SQLite {'.'.join(map(str, min_version))} 以降が必要——それより前は "
-            "AVG()/SUM() が Kahan-Babuška-Neumaier 加算ではなく素朴な左→右加算に落ち、"
-            "平均値が黙って変わる行がある。実測は docs/plans/PHASE_B_DOCUMENTS.md §2 参照。"
-            "sqlite3 CLI のバージョンではなく、この Python が import する sqlite3 モジュール"
-            "（標準ライブラリに静的リンクされた版）のバージョンを見ている。"
+            "AVG()/SUM() が Kahan-Babuška-Neumaier 加算ではなく素朴な左→右加算に落ちて"
+            "平均値が黙って変わる（b04/b05/b10）、または FULL OUTER JOIN 自体が使えず"
+            "OperationalError で落ちる（b07/b08）。実測は docs/plans/PHASE_B_DOCUMENTS.md "
+            "§2 参照。sqlite3 CLI のバージョンではなく、この Python が import する "
+            "sqlite3 モジュール（標準ライブラリに静的リンクされた版）のバージョンを見ている。"
         )
 
 

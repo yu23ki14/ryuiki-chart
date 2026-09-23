@@ -53,7 +53,7 @@ b06 が保証済みのはずだが、b07 自身も入力を信用せず確かめ
 この2つの `grain` で、日付のある全記録がちょうど1つのセルに入る
 （キューブ＝L2 の分割。ADR-0025 D2）。
 
-## `built_from` に SQLite バージョンを埋め込まない（b04 との相違点）
+## `built_from` に SQLite バージョンを埋め込まない、が書き込み経路自体は3.43以降が前提
 
 `scripts/b04_build_cube.py`（`observation_agg`）は `AVG()`/`SUM()` の
 浮動小数点加算アルゴリズムが SQLite 3.43 で変わる問題（ADR-0021 決定3）を
@@ -65,6 +65,20 @@ b06 が保証済みのはずだが、b07 自身も入力を信用せず確かめ
 （入力テーブル名）に留める。ADR-0025 D2 が明示する「共通」の規律（
 `staged_table`・`COALESCE(c,'') の UNIQUE INDEX`・`built_from`/`spec_version`）
 はそのまま満たす。
+
+**ただし、この書き込み経路自体は SQLite 3.43 以降が前提**（コードレビュー
+指摘: 以前はここに「版の検査は要らない」と書いていたが誤りだった。「値の
+計算に版依存が無い」ことと「使っている SQL 機能に版の前提が無い」ことは別）。
+検証（`_assert_series_totals_match_l2`）が呼ぶ `scripts/migrate/common.
+assert_grouped_totals_match` は `FULL OUTER JOIN`（SQLite 3.39 で追加）を
+使うため、それより古い版では `sqlite3.OperationalError: RIGHT and FULL
+OUTER JOINs are not currently supported` で落ちる（実測。古い `sqlite3`
+CLI 3.37.2 で確認済み）。`build_cube()` の先頭で `common.
+require_sqlite_version()`（b04・b05・b10 と共有するガード）を呼ぶ——
+`FULL OUTER JOIN` 自体が要求する最小版（3.39）ではなく、`AVG()`/`SUM()` を
+使う他のスクリプトと同じ **3.43 で統一**する（このパイプライン全体を
+「SQLite 3.43 以降が前提」という1つの基準で揃え、機能ごとに違う最小版を
+持ち込まない）。
 
 ## 機械検証（1つでも失敗すれば `common.MigrationError` で止まる）
 
@@ -481,7 +495,13 @@ def build_cube(
     `occurrence` を変更する SQL は一切実行しない（`SELECT`のみ）。
     `occurrence_agg` 本体は `migrate.common.staged_table`（b04 の A-1 と同じ）
     で作り直す——検証まで全部通ってから本番名に差し替える。戻り値はレポート用の統計。
+
+    検証（`_assert_series_totals_match_l2`）が `FULL OUTER JOIN` を使うため、
+    その前に `common.require_sqlite_version()` を呼ぶ（モジュール docstring
+    「built_from に SQLite バージョンを埋め込まない、が書き込み経路自体は
+    3.43以降が前提」参照）。
     """
+    common.require_sqlite_version()
     declarations = load_and_validate_cube_declarations(declarations_yaml)
     leaf_expected = declarations[_LEAF_DECLARATION_NAME]["expected_row_count"]
     _assert_t1_invariant(conn)
