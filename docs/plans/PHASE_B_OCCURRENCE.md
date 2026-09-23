@@ -1319,3 +1319,98 @@ scripts/tests 全体: 432件成功（O-1b までの412件 + 本PRで追加した
   等）は `organism_records` の rowid（原本のスナップショット）に固有——原本を
   `VACUUM` 等で書き換えたら実測し直して更新する必要がある（宣言YAMLのnoteに
   明記済み）。
+
+## 16. O-2a に `/code-review` 15件の指摘を反映（`phase-b/occurrence-watershed`）
+
+実データの値（`occurrence`・`occurrence_agg`・既存10表・`org_watershed_year`・
+`org_watershed`）は**1ビットも変わっていない**（下記「実測」節）。
+
+### 反映した指摘（要約）
+
+- **境界上の点が検出できていなかった**（`scripts/migrate/point_in_polygon.py`）:
+  even-odd の交差判定内だけで「際どさ」を見ていたため、点の y がちょうど
+  頂点の y と一致する辺（水平な辺・頂点そのもの）は交差判定の対象外になり、
+  隣接ポリゴンが共有する境界線上の点が片側に静かに解決されていた（隣接する
+  2つの正方形で実際に再現）。**点から辺までの幾何的な距離**を even-odd とは
+  独立に判定する形に直し、際どい座標には `fractions.Fraction` による厳密な
+  「辺の上に乗っているか」の判定（`on_boundary()`）を追加した——乗っていれば
+  ADR-0026 D1 のとおり無条件に止まる。
+- **MultiPolygon・穴の判定で `near` が早期 return/break により失われていた**:
+  最初に一致した部分ポリゴン・最初に一致した穴で即座に返していたのを、
+  全ての環を見てから返す形にした。
+- **v1 の母集団の条件が1つ抜けていた**（`LENGTH(observed_on) >= 4`）:
+  b08 の `_V1_POPULATION_WHERE_TMPL` に追加。実データでは b06 が12形
+  〔最短4桁〕以外を弾いているため値は変わらないことを実測で確認した。
+- **保存則が実質的に恒等式になっていた**: `sum_n`/`exact_resolved_dated` を
+  同じ中間テーブル（`watershed_record_enriched`）から数えていたため、
+  `occurrence_place` が古い・部分的でも通ってしまっていた。
+  `exact_resolved_dated` を `occurrence_place` から直接数える独立した経路に
+  直し、v1 の母集団の記録が `occurrence_place` に必ず1行あることを別途
+  確認する `_assert_population_has_occurrence_place()` を追加した。
+- **`place_id` が解決できないときに黙って NULL になっていた**（流域側）:
+  mesh 側の `_assert_all_places_resolve_to_mesh` と同型の
+  `_assert_all_watershed_places_resolve()` を追加した。
+- **`external_key → place_id` の辞書の一意性検査が無かった**（b09）:
+  `_assert_watershed_external_key_unique()` を追加した。
+- b09 に `common.reject_protected_source_db`（`--v2-db` に原本を渡す事故を
+  防ぐ）・`common.assert_dimension_key_unique`（手書きの
+  `CREATE UNIQUE INDEX` を共通ヘルパに置き換え）・`COALESCE(SUM(...), 0)`
+  （母集団が空のときの `TypeError` を防ぐ）を追加した。
+- GeoJSON の座標が3要素（標高付き）だと `ValueError` になっていたのを、
+  v1（JS）と同じく先頭2要素だけを読む形にした。
+- `main()` の合計件数が統計値（`memo_moved_records` 等）で水増しされていた
+  問題を、`_build_watershed()`/`build_watershed_projections()`/
+  `build_all_projections()` の戻り値を `(table_counts, diagnostics)` の
+  2要素タプルに分ける構造的な修正で解消した（許可リストのような場当たり
+  対応にしていない）。
+- `.5` の境界のテストが、実際には丸め方に依らず同じ結果になる値
+  （`139.0100`/`139.0104`）を使っていたのを、`floor(x+0.5)` と
+  `truncate`/`round()` で結果が変わる値（`139.0105`）に差し替えた。
+- `occurrence_place` の DDL がテスト側に手書きで複製され `NOT NULL` が
+  落ちていたのを、`b09._CREATE_OCCURRENCE_PLACE_SQL` を import して使う形に
+  統一した。
+- `occurrence_place` の `caveat_scope` に、無関係な4件（`effort`/`regimes`/
+  `gbifCutoff`/`share`）まで付いていたのを、`organismSite` 1件だけに絞った
+  （`org_watershed`/`org_watershed_year` は本PR以前から `ORGANISM_TABLES`
+  ——`caveats.ts` の既存マッピングの複製——に含まれており、v1 の表示ロジックと
+  の一致を優先して変更していない。5件すべてが本当に妥当かは別途
+  `caveats.ts` 側の見直しが要る、と申し送る）。
+- fixture テストを6件追加した（境界上で止まる／`external_key` 重複で止まる／
+  母集団が空でも `TypeError` にならない／3要素座標を読める／
+  `place_id` が解決できないと止まる／`occurrence_place` が古いと止まる）。
+
+### 実測（`data/db/ryuiki.sqlite`/`registry.sqlite`/GeoJSON、2026-09-23。修正後）
+
+```
+occurrence_place: 母集団823,692／解決737,407／NULL 86,285（不変）
+  distinct座標224,282、際どい判定0件、境界上の点0件（新設の検証で0件を再確認）
+org_watershed_year 10,699行・org_watershed 287行（不変、v1と宣言なし完全一致）
+memo_moved_records 11,306（ws_to_ws 9,428/v1_assigned_exact_unassigned 622/
+  v1_unassigned_exact_assigned 1,256）・memo_mixed_buckets 741・
+  keys_changed_vs_exact 1,091（すべて不変）
+保存則: 732,707 + 1,256 − 622 = 733,341（occurrence_place直接集計と一致、不変）
+
+b02 --tables (12表): 一致10 / 宣言済み差分のみ2 / 不一致0（EXIT=0、不変）
+既存11表・watershed_meta のゲート: 不変（EXIT=0）
+pytest: 438件成功（修正前432件 + 本ラウンドで追加した6件）
+```
+
+### 実行時間（修正後。辺までの距離判定を全辺で行うようになった分、増加）
+
+```
+scripts/b09_build_occurrence_place.py    約22秒 → 約40〜41秒
+  （PIP本体: 224,282distinct座標に対し約29秒。even-oddの交差判定だけでなく
+  境界検出〔全辺との距離〕も行うため、以前の約9〜11秒から増えた）
+scripts/b08_project_occurrence_v1.py     約116秒 → 約134秒
+  （既存チェックに加え、occurrence_place の存在確認・place_watershed_lookup
+  の解決確認を追加したぶん）
+```
+
+### 見送った指摘（オーナー判断が必要な項目）
+
+`org_watershed`/`org_watershed_year` の `caveat_scope`
+（`effort`/`regimes`/`gbifCutoff`/`share` を含む5件）は、`scripts/registry/
+build_caveat.py` の `ORGANISM_TABLES`（本PR以前から存在、`caveats.ts` の
+既存マッピングの複製）にすでに含まれていたものであり、本PRの範囲外として
+変更していない。5件すべてが2表に妥当かどうかは、v1 の `caveats.ts` 側の
+設計判断そのものの見直しになるため、別途の検討課題として申し送る。

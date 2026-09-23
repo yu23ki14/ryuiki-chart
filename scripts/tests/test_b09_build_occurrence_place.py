@@ -23,9 +23,14 @@ from .occurrence_fixtures import (
 _W1_RINGS = [[[139.0, 35.0], [139.1, 35.0], [139.1, 35.1], [139.0, 35.1], [139.0, 35.0]]]
 # W2: W1 と重なる正方形（lon [139.05, 139.15] x lat [35.05, 35.15]）。
 _W2_RINGS = [[[139.05, 35.05], [139.15, 35.05], [139.15, 35.15], [139.05, 35.15], [139.05, 35.05]]]
+# W3: W1 と辺を共有する（重ならない）隣の正方形（lon [139.1, 139.2] x lat [35.0, 35.1]。
+# W1 の右辺 lon=139.1 と W3 の左辺 lon=139.1 が同じ——境界上の点のテスト用
+# （コードレビュー指摘1）。
+_W3_RINGS = [[[139.1, 35.0], [139.2, 35.0], [139.2, 35.1], [139.1, 35.1], [139.1, 35.0]]]
 
 _W1_PLACE_ID = "common:place:watershed.w1"
 _W2_PLACE_ID = "common:place:watershed.w2"
+_W3_PLACE_ID = "common:place:watershed.w3"
 
 
 def _setup(tmp_path, *, occurrence_rows, geojson_features, place_refs, sites_rows=(), taxa=()):
@@ -118,6 +123,54 @@ def test_two_overlapping_polygons_halts(tmp_path):
         b09.build_and_write_occurrence_place(v2_db, ryuiki_db, registry_db, geojson, decl)
 
 
+def test_point_on_shared_edge_boundary_halts(tmp_path):
+    """W1 と W3 が共有する辺（`lon=139.1`）ちょうど上にある座標は、even-odd の
+    交差判定だけでは片方に静かに入ってしまう（コードレビュー指摘1。
+    `scripts/tests/test_migrate_point_in_polygon.py` で単体テスト済みの
+    `on_boundary()` を b09 の実データ経路で確認する）。境界上なので
+    `_assert_no_multi_match`（一致が2つ以上）ではなく、専用の境界検証で
+    無条件に止まる。
+    """
+    rows = [occurrence_row_at("r1", 35.05, 139.1, source_row_id=1)]  # W1/W3 共有辺のちょうど上
+    v2_db, ryuiki_db, registry_db, geojson = _setup(
+        tmp_path,
+        occurrence_rows=rows,
+        geojson_features=[("W1", _W1_RINGS), ("W3", _W3_RINGS)],
+        place_refs=[
+            (_W1_PLACE_ID, "W1", "watershed_meta.watershed_id"),
+            (_W3_PLACE_ID, "W3", "watershed_meta.watershed_id"),
+        ],
+    )
+    decl = _declarations(tmp_path, n_watershed_polygons=2, place_id_null_count=0, resolved_count=1)
+
+    with pytest.raises(common.MigrationError, match="境界"):
+        b09.build_and_write_occurrence_place(v2_db, ryuiki_db, registry_db, geojson, decl)
+
+
+def test_watershed_external_key_duplicate_halts(tmp_path):
+    """registry の `place_source_ref(source_id='watershed_meta.watershed_id')`
+    に同じ `external_key`（watershed_id）を持つ行が2つあると、
+    `watershed_id -> place_id` の辞書が後勝ちで黙って潰れる——事前に
+    一意性を検証して止める（コードレビュー指摘5）。
+    """
+    rows = [occurrence_row_at("r1", 35.05, 139.05, source_row_id=1)]
+    other_place_id = "common:place:watershed.w1-dup"
+    v2_db, ryuiki_db, registry_db, geojson = _setup(
+        tmp_path,
+        occurrence_rows=rows,
+        geojson_features=[("W1", _W1_RINGS)],
+        # 同じ external_key "W1" に2つの異なる place_id が対応している。
+        place_refs=[
+            (_W1_PLACE_ID, "W1", "watershed_meta.watershed_id"),
+            (other_place_id, "W1", "watershed_meta.watershed_id"),
+        ],
+    )
+    decl = _declarations(tmp_path, n_watershed_polygons=1, place_id_null_count=0, resolved_count=1)
+
+    with pytest.raises(common.MigrationError, match="一意でない"):
+        b09.build_and_write_occurrence_place(v2_db, ryuiki_db, registry_db, geojson, decl)
+
+
 def test_geojson_registry_set_mismatch_halts(tmp_path):
     rows = [occurrence_row_at("r1", 35.05, 139.05, source_row_id=1)]
     v2_db, ryuiki_db, registry_db, geojson = _setup(
@@ -162,6 +215,27 @@ def test_site_watershed_edge_mismatch_halts(tmp_path):
 
     with pytest.raises(common.MigrationError, match="sites.watershed"):
         b09.build_and_write_occurrence_place(v2_db, ryuiki_db, registry_db, geojson, decl)
+
+
+def test_empty_population_does_not_crash_on_sum(tmp_path):
+    """座標のある記録が1件も無いとき（`occurrence_place` が空のまま作られる）、
+    `SUM(CASE ...)` が空集合に対して NULL を返し、宣言との突き合わせで
+    `None:,` の書式化が `TypeError` になっていた（コードレビュー指摘11）。
+    `COALESCE(..., 0)` で空でも 0 として扱われることを確認する。
+    """
+    rows = [occurrence_row_at("r1", None, None, source_row_id=1)]  # 座標なし=母集団から除外
+    v2_db, ryuiki_db, registry_db, geojson = _setup(
+        tmp_path,
+        occurrence_rows=rows,
+        geojson_features=[("W1", _W1_RINGS)],
+        place_refs=[(_W1_PLACE_ID, "W1", "watershed_meta.watershed_id")],
+    )
+    decl = _declarations(tmp_path, n_watershed_polygons=1, place_id_null_count=0, resolved_count=0)
+
+    stats = b09.build_and_write_occurrence_place(v2_db, ryuiki_db, registry_db, geojson, decl)
+    assert stats["n_total"] == 0
+    assert stats["n_null"] == 0
+    assert stats["n_resolved"] == 0
 
 
 def test_site_watershed_edge_matches_passes(tmp_path):

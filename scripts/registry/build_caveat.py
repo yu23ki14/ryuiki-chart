@@ -149,12 +149,22 @@ ORGANISM_TABLES = [
     "species_year2",
     "species_month",
     "effort_year",
-    # occurrence_place（O-2a、v2.sqlite のL2サテライト表。scripts/b09_build_occurrence_place.py）
-    # は v1 の derived.sqlite には存在しない新設テーブルだが、organismSite（W12 1977年版の
-    # 点内包判定）の注記が指す「流域への割り当て」を実際に行っている表そのものなので、
-    # org_watershed/org_watershed_year と同じスコープに含める（ADR-0026）。
-    "occurrence_place",
 ]
+
+# occurrence_place（O-2a、v2.sqlite のL2サテライト表。scripts/b09_build_occurrence_place.py）
+# は v1 の derived.sqlite には存在しない新設テーブルで、`caveats.ts` に対応物が無い
+# （`ORGANISM_TABLES`/`ORGANISM_CAVEATS` は `caveats.ts` の既存マッピングの複製であり、
+# ここに足すと `effort`/`regimes`/`gbifCutoff`/`share`——観測努力・分類群構成の変化・
+# GBIF取り込みの打ち切り・分類群内での割合比較——という、件数や年・分類群の列を一切
+# 持たない `occurrence_place`（record_id/place_kind/place_id/method/built_from/
+# spec_version だけの表）には無関係な注記まで付いてしまう。**`organismSite`
+# （W12 1977年版の点内包判定）1件だけ**を付ける（コードレビュー指摘14。
+# `org_watershed`/`org_watershed_year` は `caveats.ts` の既存マッピングをそのまま
+# 複製した ORGANISM_TABLES に元から含まれており〔本PR より前から〕、v1 の
+# 表示ロジックとの一致を優先してここでは変更しない——同じ5件が本当に全部
+# 妥当かは別途 `caveats.ts` 側の見直しが要る）。
+OCCURRENCE_PLACE_TABLE = "occurrence_place"
+OCCURRENCE_PLACE_CAVEATS = ["organismSite"]
 
 MESH_CAVEATS = ["share", "effort"]
 MESH_TABLE_PREFIX = "mesh_"
@@ -220,6 +230,7 @@ def _build_table_scope_rows() -> list[tuple]:
     add_table_group(["sites"], SITES_CAVEATS)
     add_table_group(MEASURE_TABLES, MEASURE_CAVEATS)
     add_table_group(ORGANISM_TABLES, ORGANISM_CAVEATS)
+    add_table_group([OCCURRENCE_PLACE_TABLE], OCCURRENCE_PLACE_CAVEATS)
     add_table_group(MESH_TABLES_EXTRA, MESH_CAVEATS)
     add_table_group([IAS_TABLE], IAS_CAVEATS)
     add_table_group(SYNTHETIC_TABLES, SYNTHETIC_CAVEATS, priority=SYNTHETIC_PRIORITY)

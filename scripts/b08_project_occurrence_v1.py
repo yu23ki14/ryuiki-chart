@@ -956,6 +956,16 @@ _WATERSHED_NULL_SENTINEL = "__NULL_WATERSHED_ID__"  # COUNT(DISTINCT ...) で NU
 # watershed_id は v1 形の '83030-0001' のような数字とハイフンだけの文字列なので衝突しない。
 # NUL バイトは sqlite3 モジュールが SQL 文字列として受け付けないため使わない）
 
+# v1（`web/scripts/build-geo.mjs` の `rows()` クエリ）と一字一句同じ母集団条件
+# （コードレビュー指摘9: 以前は `period_raw IS NOT NULL AND lat IS NOT NULL` だけで
+# `LENGTH(observed_on) >= 4` が抜けていた。実データでは b06
+# （`scripts/migrate/occurrence_period.py`）が12形〔最短4桁〕以外の
+# `observed_on` を弾いているため、`period_raw IS NOT NULL` の行は実測上すべて
+# 4桁以上のはずだが、v1 の式と一字一句合わせて機械的に検算する——
+# `_build_watershed()` が実測して報告する）。`{p}` は列参照の接頭辞
+# （無指定なら空文字列、別名を使う側は `"o."` を渡す）。
+_V1_POPULATION_WHERE_TMPL = "{p}period_raw IS NOT NULL AND length({p}period_raw) >= 4 AND {p}lat IS NOT NULL"
+
 # place_id -> watershed_id（v1形、'83030-0001' 等）の逆引き。
 # registry.build_place.py が作った place_source_ref(source_id='watershed_meta.watershed_id')
 # と同型（scripts/b08_project_occurrence_v1.py の place_mesh_lookup と同じ流儀）。
@@ -984,6 +994,66 @@ def _assert_place_watershed_lookup_is_function(conn) -> None:
     )
 
 
+def _assert_all_watershed_places_resolve(conn) -> None:
+    """`occurrence_place.place_id`（`place_kind='watershed'`）が NULL でないのに
+    `place_watershed_lookup` で `watershed_id` が引けない行があれば止める
+    （コードレビュー指摘3。mesh 側の `_assert_all_places_resolve_to_mesh` と
+    同じ考え方——座標が無い記録・どの流域にも入らない記録〔`place_id IS NULL`〕
+    は正常系だが、`place_id` があるのに引けないのは
+    `place_watershed_lookup`（`place_source_ref(source_id='watershed_meta.
+    watershed_id')`）が `occurrence_place.place_id` の全体をカバーしていない
+    異常——黙って NULL に落とさず止める）。
+    """
+    bad = conn.execute(
+        """
+        SELECT COUNT(*) FROM cube.occurrence_place op
+        LEFT JOIN place_watershed_lookup pw ON pw.place_id = op.place_id
+        WHERE op.place_kind = ? AND op.place_id IS NOT NULL AND pw.watershed_id IS NULL
+        """,
+        (_WATERSHED_PLACE_KIND,),
+    ).fetchone()[0]
+    if bad:
+        raise common.MigrationError(
+            f"org_watershed_year: occurrence_place.place_id（place_kind={_WATERSHED_PLACE_KIND!r}）"
+            f"はあるのに watershed_id が解決できない行が{bad}件ある（place_source_ref"
+            f"(source_id={_WATERSHED_SOURCE_ID!r}) が該当 place_id を含まない可能性がある。"
+            "registry.sqlite と occurrence_place を同じ版で揃えて b09 を再実行すること）。"
+        )
+
+
+def _assert_population_has_occurrence_place(conn) -> None:
+    """v1 の母集団（`_V1_POPULATION_WHERE_TMPL`）の記録が、`occurrence_place`
+    （`place_kind='watershed'`）に**必ず1行**持つことを確認する
+    （コードレビュー指摘6。`occ_place_watershed`/`watershed_record_enriched` は
+    `cube.occurrence_place` を起点に `LEFT JOIN` するため、occurrence_place が
+    古い・部分的（b06 の後に b09 を回し忘れた、`place_kind` を打ち間違えた等）
+    だと、本来あるはずの行が黙って「NULL＝どの流域にも入らない」と区別が
+    つかなくなる——この存在チェックで先に検出する）。
+    """
+    population_where = _V1_POPULATION_WHERE_TMPL.format(p="")
+    joined_where = _V1_POPULATION_WHERE_TMPL.format(p="o.")
+    population_n, joined_n = conn.execute(
+        f"""
+        SELECT
+          (SELECT COUNT(*) FROM cube.occurrence WHERE {population_where}),
+          (SELECT COUNT(*) FROM cube.occurrence o
+           JOIN cube.occurrence_place op
+             ON op.record_id = o.record_id AND op.place_kind = ?
+           WHERE {joined_where})
+        """,
+        (_WATERSHED_PLACE_KIND,),
+    ).fetchone()
+    if population_n != joined_n:
+        raise common.MigrationError(
+            f"org_watershed_year: v1 の母集団（occurrence、{population_n:,}行）のうち、"
+            f"occurrence_place（place_kind={_WATERSHED_PLACE_KIND!r}）に対応する行が"
+            f"{joined_n:,}行しかない。scripts/b06_build_occurrence.py の後に"
+            "scripts/b09_build_occurrence_place.py を実行し忘れている、または"
+            "occurrence と occurrence_place が別々のスナップショットから作られている"
+            "可能性がある。"
+        )
+
+
 # occurrence_place（place_kind='watershed'）の各記録の「正確な」watershed_id
 # （NULL を含む）。O-2a の母集団は occurrence 全体（823,692行）だが、ここでは
 # 後続のクエリが record_id で LEFT JOIN するだけなので絞り込まない。
@@ -995,16 +1065,16 @@ LEFT JOIN place_watershed_lookup pw ON pw.place_id = op.place_id
 WHERE op.place_kind = ?
 """
 
-# v1 の母集団（period_raw IS NOT NULL AND lat IS NOT NULL）のバケットごとの
-# 代表（MIN(source_row_id)）。
-_WATERSHED_BUCKET_REPR_SQL = """
+# v1 の母集団（`_V1_POPULATION_WHERE_TMPL`）のバケットごとの代表
+# （MIN(source_row_id)）。
+_WATERSHED_BUCKET_REPR_SQL = f"""
 CREATE TEMP TABLE watershed_bucket_repr AS
 SELECT
   CAST(FLOOR(lon * 1000 + 0.5) AS INT) AS bx,
   CAST(FLOOR(lat * 1000 + 0.5) AS INT) AS by,
   MIN(source_row_id) AS repr_source_row_id
 FROM cube.occurrence
-WHERE period_raw IS NOT NULL AND lat IS NOT NULL
+WHERE {_V1_POPULATION_WHERE_TMPL.format(p="")}
 GROUP BY bx, by
 """
 
@@ -1020,7 +1090,7 @@ LEFT JOIN occ_place_watershed opw ON opw.record_id = o.record_id
 # v1 の母集団の全記録に、バケットの「メモの流域」・記録自身の「正確な流域」
 # ・年・学名・外来種フラグ・RL原表記を1回の走査で載せた作業テーブル。
 # org_watershed_year（メモ方式）・機械検証（6〜7）はすべてここから作る。
-_WATERSHED_RECORD_ENRICHED_SQL = """
+_WATERSHED_RECORD_ENRICHED_SQL = f"""
 CREATE TEMP TABLE watershed_record_enriched AS
 SELECT
   o.record_id AS record_id,
@@ -1036,7 +1106,7 @@ JOIN watershed_bucket_watershed bw
   ON bw.bx = CAST(FLOOR(o.lon * 1000 + 0.5) AS INT)
  AND bw.by = CAST(FLOOR(o.lat * 1000 + 0.5) AS INT)
 LEFT JOIN occ_place_watershed opw ON opw.record_id = o.record_id
-WHERE o.period_raw IS NOT NULL AND o.lat IS NOT NULL
+WHERE {_V1_POPULATION_WHERE_TMPL.format(p="o.")}
 """
 
 # 列名・列順は v1（data/db/derived.sqlite）の実物を PRAGMA table_info で
@@ -1271,11 +1341,24 @@ def _assert_watershed_conservation(conn, moved: dict) -> dict:
     """保存則（O-2a brief 受け入れ3）: `Σ org_watershed_year.n` +
     `v1_unassigned_exact_assigned` − `v1_assigned_exact_unassigned` が
     `occurrence_place` で「日付があり・watershed に解決した」記録数と一致する
-    ことを、3つを独立に計算して検証する。
+    ことを検証する。
+
+    コードレビュー指摘6: `sum_n`（本番の出力テーブル `org_watershed_year` から）
+    と `exact_resolved_dated` は**別々の経路**で計算する——以前は
+    `exact_resolved_dated` も `watershed_record_enriched`（`occ_place_watershed`
+    経由で `cube.occurrence_place` を間接的に参照する中間テーブル）から数えて
+    いたため、`occurrence_place` が古い・部分的でもこの保存則自体は
+    （辻褄が合ったまま）通ってしまっていた。ここでは `cube.occurrence_place` を
+    直接 `cube.occurrence` と JOIN して独立に数える。
     """
     sum_n = conn.execute("SELECT COALESCE(SUM(n), 0) FROM org_watershed_year").fetchone()[0]
     exact_resolved_dated = conn.execute(
-        "SELECT COUNT(*) FROM watershed_record_enriched WHERE exact_watershed_id IS NOT NULL"
+        f"""
+        SELECT COUNT(*) FROM cube.occurrence o
+        JOIN cube.occurrence_place op ON op.record_id = o.record_id AND op.place_kind = ?
+        WHERE {_V1_POPULATION_WHERE_TMPL.format(p="o.")} AND op.place_id IS NOT NULL
+        """,
+        (_WATERSHED_PLACE_KIND,),
     ).fetchone()[0]
     lhs = sum_n + moved["v1_unassigned_exact_assigned"] - moved["v1_assigned_exact_unassigned"]
     if lhs != exact_resolved_dated:
@@ -1290,18 +1373,26 @@ def _assert_watershed_conservation(conn, moved: dict) -> dict:
 
 def _build_watershed(
     conn, declarations_yaml=DEFAULT_WATERSHED_DECLARATIONS_YAML,
-) -> dict[str, int]:
+) -> tuple[dict[str, int], dict]:
     """`conn`（`cube`/`reg` を ATTACH 済みの書き込み用接続）に
     `org_watershed_year`/`org_watershed` を作る。`_build_org_norm`/
     `_build_cube_projections` と独立に呼べる（`occurrence`/`occurrence_place`
-    だけに依存し、`occurrence_agg` は読まない）。戻り値はテーブルごとの行数
-    ＋機械検証の実測値。
+    だけに依存し、`occurrence_agg` は読まない）。
+
+    戻り値は `(table_counts, diagnostics)` の2要素タプル
+    （コードレビュー指摘2・12: 以前はテーブル行数と機械検証の実測値
+    〔`memo_moved_records` 等、行数ではない統計値〕を同じ dict に混ぜていた
+    ため、`main()`/呼び出し側が `sum(counts.values())`・`set(counts)` を
+    テーブル行数だけの集合として扱えなかった。`table_counts` は
+    `{"org_watershed_year": n, "org_watershed": n}` の2キーだけを持つ）。
     """
     declarations = load_and_validate_watershed_declarations(declarations_yaml)
 
     conn.execute(_PLACE_WATERSHED_LOOKUP_SQL, (_WATERSHED_SOURCE_ID,))
     _assert_place_watershed_lookup_is_function(conn)
+    _assert_all_watershed_places_resolve(conn)
     conn.execute(_OCC_PLACE_WATERSHED_SQL, (_WATERSHED_PLACE_KIND,))
+    _assert_population_has_occurrence_place(conn)
     conn.execute(_WATERSHED_BUCKET_REPR_SQL)
     conn.execute(_WATERSHED_BUCKET_WATERSHED_SQL)
     conn.execute(_WATERSHED_RECORD_ENRICHED_SQL)
@@ -1318,20 +1409,18 @@ def _build_watershed(
     moved = _assert_watershed_declarations_match(conn, declarations, declarations_yaml)
     conservation = _assert_watershed_conservation(conn, moved)
 
-    return {
-        "org_watershed_year": n_org_watershed_year,
-        "org_watershed": n_org_watershed,
-        **moved,
-        **conservation,
-    }
+    table_counts = {"org_watershed_year": n_org_watershed_year, "org_watershed": n_org_watershed}
+    diagnostics = {**moved, **conservation}
+    return table_counts, diagnostics
 
 
 def build_watershed_projections(
     cube_db, registry_db, out_path, declarations_yaml=DEFAULT_WATERSHED_DECLARATIONS_YAML,
-) -> dict[str, int]:
+) -> tuple[dict[str, int], dict]:
     """`org_watershed_year`/`org_watershed` だけを単独で `out_path` に書く
     （既存テスト・単体検証用のエントリポイント——`main()` は12テーブルまとめて
-    書く `build_all_projections` を使う）。
+    書く `build_all_projections` を使う）。戻り値は `_build_watershed()` と
+    同じ `(table_counts, diagnostics)`。
 
     `_measure_keys_changed_vs_exact` が `FULL OUTER JOIN` を使うため、その前に
     `common.require_sqlite_version()` を呼ぶ。
@@ -1342,9 +1431,9 @@ def build_watershed_projections(
     try:
         common.attach_readonly(conn, cube_db, "cube")
         common.attach_readonly(conn, registry_db, "reg")
-        counts = _build_watershed(conn, declarations_yaml)
+        table_counts, diagnostics = _build_watershed(conn, declarations_yaml)
         conn.commit()
-        return counts
+        return table_counts, diagnostics
     finally:
         conn.close()
 
@@ -1356,13 +1445,19 @@ def build_watershed_projections(
 def build_all_projections(
     cube_db, registry_db, out_path, taxon_group_yaml=DEFAULT_TAXON_GROUP_YAML,
     watershed_declarations_yaml=DEFAULT_WATERSHED_DECLARATIONS_YAML,
-) -> dict[str, int]:
+) -> tuple[dict[str, int], dict]:
     """`org_norm` ＋ 年キー8表 ＋ `species_month` ＋ `org_watershed_year`/
     `org_watershed`（O-2a）の12テーブルを、1つの `fresh_sqlite` 接続で
     `out_path` に書く（`org_norm` を先に作ってから年キー8表・
     `species_month` を作る——後者が `species2` を読むため、かつ
     `occurrence_agg` に対する古い taxon 検査を重ねがけしないため。モジュール
-    docstring参照）。戻り値はテーブルごとの行数。
+    docstring参照）。
+
+    戻り値は `(table_counts, watershed_diagnostics)` の2要素タプル
+    （コードレビュー指摘2・12）。`table_counts` はこの12テーブルの行数**だけ**
+    を持つ dict（`set(table_counts) == {12テーブル名}` が常に成り立つ——
+    `memo_moved_records` のような行数ではない機械検証の実測値は混ぜない）。
+    `watershed_diagnostics` は `_build_watershed()` の2つ目の戻り値そのもの。
 
     `_assert_cube_is_current_l2_partition`/`_measure_keys_changed_vs_exact` が
     `FULL OUTER JOIN` を使うため、その前に `common.require_sqlite_version()`
@@ -1379,9 +1474,10 @@ def build_all_projections(
         common.attach_readonly(conn, registry_db, "reg")
         n_org_norm = _build_org_norm(conn, default_taxon_group)
         counts = _build_cube_projections(conn, default_taxon_group, check_stale_taxon=False)
-        watershed_counts = _build_watershed(conn, watershed_declarations_yaml)
+        watershed_table_counts, watershed_diagnostics = _build_watershed(conn, watershed_declarations_yaml)
         conn.commit()
-        return {"org_norm": n_org_norm, **counts, **watershed_counts}
+        table_counts = {"org_norm": n_org_norm, **counts, **watershed_table_counts}
+        return table_counts, watershed_diagnostics
     finally:
         conn.close()
 
@@ -1403,32 +1499,24 @@ def main() -> None:
     print(f"▶ 読み取り専用で開く: {registry_db}")
 
     with common.timed_step("v1 形（12テーブル）へ射影して書き出し") as info:
-        counts = build_all_projections(
+        counts, watershed_diagnostics = build_all_projections(
             args.cube_db, registry_db, args.out, args.taxon_group_yaml, args.watershed_declarations_yaml,
         )
-        info["n"] = sum(
-            v for k, v in counts.items()
-            if k not in (
-                "ws_to_ws", "v1_assigned_exact_unassigned", "v1_unassigned_exact_assigned",
-                "memo_mixed_buckets", "org_watershed_year_keys_changed_vs_exact",
-                "sum_n", "exact_resolved_dated",
-            )
-        )
+        # `counts` はテーブル行数だけを持つ（コードレビュー指摘2・12）ので、
+        # 除外リストなしでそのまま合計できる。
+        info["n"] = sum(counts.values())
 
-    _TABLE_KEYS = frozenset({
-        "org_norm", "org_group_year", "effort_year", "species2", "species_year2",
-        "species_month", "mesh_year", "mesh_all", "mesh_species", "species_mesh_year",
-        "org_watershed_year", "org_watershed",
-    })
     for table, n in sorted(counts.items()):
-        if table in _TABLE_KEYS:
-            print(f"  {table}: {n:,}行")
+        print(f"  {table}: {n:,}行")
     print(
-        f"  [org_watershed] memo_moved_records={counts['memo_moved_records']:,} "
-        f"(ws_to_ws={counts['ws_to_ws']:,} / v1_assigned_exact_unassigned={counts['v1_assigned_exact_unassigned']:,} / "
-        f"v1_unassigned_exact_assigned={counts['v1_unassigned_exact_assigned']:,}) / "
-        f"memo_mixed_buckets={counts['memo_mixed_buckets']:,} / "
-        f"keys_changed_vs_exact={counts['org_watershed_year_keys_changed_vs_exact']:,}"
+        f"  [org_watershed] memo_moved_records={watershed_diagnostics['memo_moved_records']:,} "
+        f"(ws_to_ws={watershed_diagnostics['ws_to_ws']:,} / "
+        f"v1_assigned_exact_unassigned={watershed_diagnostics['v1_assigned_exact_unassigned']:,} / "
+        f"v1_unassigned_exact_assigned={watershed_diagnostics['v1_unassigned_exact_assigned']:,}) / "
+        f"memo_mixed_buckets={watershed_diagnostics['memo_mixed_buckets']:,} / "
+        f"keys_changed_vs_exact={watershed_diagnostics['org_watershed_year_keys_changed_vs_exact']:,} / "
+        f"保存則: sum_n={watershed_diagnostics['sum_n']:,} / "
+        f"exact_resolved_dated={watershed_diagnostics['exact_resolved_dated']:,}"
     )
 
 

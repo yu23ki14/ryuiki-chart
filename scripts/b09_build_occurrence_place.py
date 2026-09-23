@@ -55,20 +55,25 @@ GeoJSON バイト列の sha256 先頭16桁）。
 1. **GeoJSON の `watershed_id` の集合**が、registry の
    `place_source_ref(source_id='watershed_meta.watershed_id')` の
    `external_key` 集合と一致する（実測377=377）。食い違えば、レジストリと
-   GeoJSON の版がずれている可能性があるため止まる。
-2. **浮動小数点の曖昧さ**（ADR-0026）: even-odd の交差判定で
-   `abs(x - x_cross) < 1e-9` になった distinct 座標は、`fractions.Fraction` で
-   厳密に再判定する。float 版の一致ポリゴン集合と厳密版の一致ポリゴン集合が
-   1件でも食い違えば止まる（実測: 際どい交差自体が0件）。
-3. **解決規則**: 一致ポリゴンが2つ以上の distinct 座標が1件でもあれば止まる
+   GeoJSON の版がずれている可能性があるため止まる。`external_key` 自体が
+   一意であることも確認する（重複があると `watershed_id -> place_id` の
+   辞書が後勝ちで黙って潰れるため）。
+2. **境界上の点**（ADR-0026 D1）: 点から辺（頂点上を含む）までの距離が
+   1e-9度未満だった distinct 座標は、`fractions.Fraction` で「実際に辺の上に
+   厳密に乗っているか」を再判定する。乗っていれば無条件に止まる（実測: 0件）。
+3. **浮動小数点の曖昧さ**（ADR-0026）: 2 で「境界上」ではなかった際どい座標は、
+   `locate_exact()`（フルの厳密判定）で float 版の一致ポリゴン集合と厳密版が
+   食い違えば止まる（実測: 該当自体が0件）。
+4. **解決規則**: 一致ポリゴンが2つ以上の distinct 座標が1件でもあれば止まる
    （宣言値ではなく無条件の停止条件。実測0件）。
-4. **宣言**（`scripts/migrate/occurrence_place_declarations.yaml`）:
+5. **宣言**（`scripts/migrate/occurrence_place_declarations.yaml`）:
    ポリゴン数（377）・`place_id` が NULL になった記録数（86,285）・解決した
    記録数（737,407）を実測件数と突き合わせる。式の検算
    （823,692 − 86,285 = 737,407）も行う。
-5. **記録×place の一意性**: 座標のある全記録にちょうど1行
-   （`UNIQUE(record_id, place_kind)`、行数 = 座標あり行数）。
-6. **P-1a が入れた site→watershed の辺との突き合わせ**: `sites`（座標を持つ
+6. **記録×place の一意性**: 座標のある全記録にちょうど1行
+   （`UNIQUE(record_id, place_kind)`、行数 = 座標あり行数。
+   `scripts/migrate/common.assert_dimension_key_unique` で検証）。
+7. **P-1a が入れた site→watershed の辺との突き合わせ**: `sites`（座標を持つ
    352地点）に対して同じ PIP 関数を直接実行し、結果が `sites.watershed` 列
    （`scripts/m01_sites.py:110-128` が shapely の `contains`/`intersects` で
    機械的に決定した値。P-1a の `place_relation` の地点→流域の辺278件の元に
@@ -116,10 +121,12 @@ CREATE TABLE {table} (
   spec_version  TEXT NOT NULL
 )
 """
-_CREATE_OCCURRENCE_PLACE_INDEX_SQL = (
-    "CREATE UNIQUE INDEX occurrence_place_record_kind ON {table} (record_id, place_kind)"
-)
-_DROP_OCCURRENCE_PLACE_INDEX_SQL = "DROP INDEX IF EXISTS occurrence_place_record_kind"
+# `occurrence_place` の唯一の消費者（scripts/tests/occurrence_fixtures.py の
+# フィクスチャ・scripts/b08_project_occurrence_v1.py の一時テーブル作成）は
+# この DDL 文字列をそのまま import して使うこと（コードレビュー指摘13:
+# DDL を複数箇所に手書きで複製しない）。
+_DIM_COLUMNS = ["record_id", "place_kind"]
+_DIM_KEY_INDEX_NAME = "occurrence_place_dim_key"
 
 _INSERT_SQL = """
 INSERT INTO {table} (record_id, place_kind, place_id, method, built_from, spec_version)
@@ -177,6 +184,27 @@ def _built_from(geojson_path) -> str:
 # 検証1: GeoJSON の watershed_id 集合 == registry の watershed external_key 集合
 # ---------------------------------------------------------------------------
 
+def _assert_watershed_external_key_unique(conn: sqlite3.Connection) -> None:
+    """`place_source_ref(source_id='watershed_meta.watershed_id')` の
+    `external_key` が一意であることを確認する（コードレビュー指摘5）。
+    重複があると、`external_key -> place_id` の辞書内包表記が後勝ちで
+    黙って別の place に束ねてしまう——`place_mesh_lookup`
+    （`scripts/b08_project_occurrence_v1.py`）と同型の検証。
+    """
+    common.raise_on_group_by_duplicates(
+        conn,
+        "SELECT external_key, COUNT(*) AS c FROM reg.place_source_ref "
+        "WHERE source_id = ? GROUP BY external_key HAVING c > 1 LIMIT 5",
+        (WATERSHED_SOURCE_ID,),
+        lambda dup: (
+            "occurrence_place: place_source_ref"
+            f"（source_id={WATERSHED_SOURCE_ID!r}）の external_key が一意でない"
+            f"（同じ watershed_id に複数の place_id が対応している。例: {dup}）。"
+            "watershed_id -> place_id の辞書を一意に構築できない。"
+        ),
+    )
+
+
 def _assert_polygon_set_matches_registry(polys: list[pip.Polygon], reg_conn: sqlite3.Connection) -> None:
     geojson_ids = {p.id for p in polys}
     registry_ids = {
@@ -219,14 +247,38 @@ def _resolve_distinct_coordinates(
     return matches, near_coords
 
 
+def _assert_no_boundary_points(
+    near_coords: list[tuple[float, float]],
+    polys: list[pip.Polygon],
+    grid: pip.Grid,
+) -> int:
+    """検証2（ADR-0026 D1「境界上なら止める」。コードレビュー指摘1）: 際どい
+    座標（点から辺までの距離が1e-9度未満）のうち、`fractions.Fraction` の
+    厳密演算で実際に候補ポリゴンの辺（頂点上を含む）に乗っている座標が
+    1件でもあれば止める——2つ以上に一致する座標と同じく、無条件の停止条件
+    （推測で割り当てない）。戻り値は判定した座標数（レポート用）。
+    """
+    boundary = [
+        (lat, lon) for lat, lon in near_coords if pip.on_boundary(lon, lat, polys, grid)
+    ]
+    if boundary:
+        raise common.MigrationError(
+            "occurrence_place: 流域ポリゴンの境界（頂点・辺上を含む）に厳密に乗っている"
+            f"座標が{len(boundary)}件ある（例（上限{_SAMPLE_LIMIT}件、(lat, lon)）: "
+            f"{boundary[:_SAMPLE_LIMIT]}）。推測で割り当てず止める（ADR-0026 D1）。"
+        )
+    return len(near_coords)
+
+
 def _assert_no_float_exact_mismatch(
     near_coords: list[tuple[float, float]],
     matches: dict[tuple[float, float], list[str]],
     polys: list[pip.Polygon],
     grid: pip.Grid,
 ) -> int:
-    """検証2: 際どい交差があった座標を `Fraction` で厳密に再判定し、float 版と
-    一致ポリゴン集合が食い違えば止める。戻り値は再判定した座標数（レポート用）。
+    """検証3: 際どい座標（境界上ではないと検証2で確認済み）を `Fraction` で
+    フルに厳密再判定し、float 版と一致ポリゴン集合が食い違えば止める。
+    戻り値は再判定した座標数（レポート用）。
     """
     mismatches = []
     for lat, lon in near_coords:
@@ -244,7 +296,7 @@ def _assert_no_float_exact_mismatch(
 
 
 def _assert_no_multi_match(matches: dict[tuple[float, float], list[str]]) -> None:
-    """検証3: 一致ポリゴンが2つ以上の distinct 座標が1件でもあれば止める
+    """検証4: 一致ポリゴンが2つ以上の distinct 座標が1件でもあれば止める
     （宣言値ではなく無条件の停止条件）。
     """
     multi = [(lat, lon, ids) for (lat, lon), ids in matches.items() if len(ids) >= 2]
@@ -257,7 +309,7 @@ def _assert_no_multi_match(matches: dict[tuple[float, float], list[str]]) -> Non
 
 
 # ---------------------------------------------------------------------------
-# 検証6: sites（P-1a の site→watershed 辺の元）との突き合わせ
+# 検証7: sites（P-1a の site→watershed 辺の元）との突き合わせ
 # ---------------------------------------------------------------------------
 
 def _assert_matches_site_watershed_edges(
@@ -325,6 +377,7 @@ def build_and_write_occurrence_place(
         common.attach_readonly(conn, ryuiki_db, "ryuiki")
 
         _assert_polygon_set_matches_registry(polys, conn)
+        _assert_watershed_external_key_unique(conn)
         watershed_place_id = {
             external_key: place_id
             for place_id, external_key in conn.execute(
@@ -340,6 +393,7 @@ def build_and_write_occurrence_place(
             )
         ]
         matches, near_coords = _resolve_distinct_coordinates(coords, polys, grid)
+        _assert_no_boundary_points(near_coords, polys, grid)
         n_near_checked = _assert_no_float_exact_mismatch(near_coords, matches, polys, grid)
         _assert_no_multi_match(matches)
 
@@ -359,13 +413,22 @@ def build_and_write_occurrence_place(
                     yield (record_id, PLACE_KIND, place_id, METHOD, built_from, common.SPEC_VERSION)
 
             conn.executemany(_INSERT_SQL.format(table=f'"{staging}"'), rows())
-            conn.execute(_CREATE_OCCURRENCE_PLACE_INDEX_SQL.format(table=f'"{staging}"'))
-            conn.execute(_DROP_OCCURRENCE_PLACE_INDEX_SQL)
+            # 検証6: UNIQUE(record_id, place_kind)（コードレビュー指摘10:
+            # 手書きの CREATE UNIQUE INDEX/DROP INDEX ではなく共通ヘルパを使う
+            # ——重複時に生の IntegrityError ではなく、どの行かを示す
+            # MigrationError になる）。
+            common.assert_dimension_key_unique(
+                conn, staging, _DIM_COLUMNS,
+                index_name=_DIM_KEY_INDEX_NAME,
+                table_label="occurrence_place",
+                cause_hint="occurrence の座標あり記録が record_id について重複している可能性がある。",
+            )
 
             n_total, n_null, n_resolved = conn.execute(
                 f"""
-                SELECT COUNT(*), SUM(CASE WHEN place_id IS NULL THEN 1 ELSE 0 END),
-                       SUM(CASE WHEN place_id IS NOT NULL THEN 1 ELSE 0 END)
+                SELECT COUNT(*),
+                       COALESCE(SUM(CASE WHEN place_id IS NULL THEN 1 ELSE 0 END), 0),
+                       COALESCE(SUM(CASE WHEN place_id IS NOT NULL THEN 1 ELSE 0 END), 0)
                 FROM "{staging}"
                 """
             ).fetchone()
@@ -426,6 +489,12 @@ def main() -> None:
     args = parser.parse_args()
 
     db_path = pathlib.Path(args.v2_db)
+    # `--v2-db` を `sqlite3.connect` で直接開く（`fresh_sqlite` を経由しない）
+    # ため、ここで個別に検査する（コードレビュー指摘4。b03/b04 と同じ流儀
+    # ——`scripts/migrate/common.py` の `reject_protected_source_db` の
+    # docstring 参照。原本〔ryuiki/cells/derived〕を誤って `--v2-db` に渡すと
+    # 書き込みで壊す事故を防ぐ）。
+    common.reject_protected_source_db(db_path)
     if not db_path.exists():
         sys.exit(
             f"{db_path} が無い。先に `.venv/bin/python3 scripts/b06_build_occurrence.py` を実行すること。"

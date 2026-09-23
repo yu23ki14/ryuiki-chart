@@ -21,6 +21,7 @@ import pytest
 
 import b07_build_occurrence_cube as b07
 import b08_project_occurrence_v1 as b08
+import b09_build_occurrence_place as b09
 from migrate import common
 
 from .occurrence_fixtures import (
@@ -111,13 +112,12 @@ def _add_occurrence_place(db_path, rows) -> None:
     （O-2a）テーブルを追加で作る（`build_all_projections`/
     `build_watershed_projections` が要求するため）。`rows` は
     `occurrence_fixtures.occurrence_place_row()` で組み立てたタプル列。
+    スキーマは `b09._CREATE_OCCURRENCE_PLACE_SQL` 1箇所が正（O-2a の
+    コードレビュー指摘13: 手書きで複製すると NOT NULL 等がずれる）。
     """
     conn = sqlite3.connect(f"file:{db_path}", uri=True)
     try:
-        conn.execute(
-            "CREATE TABLE occurrence_place (record_id TEXT, place_kind TEXT, place_id TEXT, "
-            "method TEXT, built_from TEXT, spec_version TEXT)"
-        )
+        conn.execute(b09._CREATE_OCCURRENCE_PLACE_SQL.format(table="occurrence_place"))
         conn.executemany("INSERT INTO occurrence_place VALUES (?,?,?,?,?,?)", rows)
         conn.commit()
     finally:
@@ -502,16 +502,21 @@ def test_build_all_projections_writes_org_norm_and_eleven_more_tables(tmp_path):
         v1_unassigned_exact_assigned=0, mixed_buckets=0, keys_changed=0,
     )
     out = tmp_path / "out.sqlite"
-    counts = b08.build_all_projections(cube_db, registry_db, out, taxon_group_yaml, watershed_decl)
+    counts, watershed_diagnostics = b08.build_all_projections(
+        cube_db, registry_db, out, taxon_group_yaml, watershed_decl
+    )
     _table_keys = {
         "org_norm", "org_group_year", "effort_year", "species2", "species_year2",
         "mesh_year", "mesh_all", "mesh_species", "species_mesh_year", "species_month",
         "org_watershed_year", "org_watershed",
     }
-    assert _table_keys <= set(counts)
+    # `counts` はテーブル行数だけを持つ（コードレビュー指摘2・12: 統計値
+    # 〔memo_moved_records 等〕を混ぜない）——完全一致で確認する。
+    assert set(counts) == _table_keys
     assert counts["org_norm"] == 1
     assert counts["org_watershed_year"] == 0  # place_id=None なのでどの流域にも入らない
     assert counts["org_watershed"] == 0
+    assert watershed_diagnostics["memo_moved_records"] == 0
 
     conn = sqlite3.connect(f"file:{out}?mode=ro", uri=True)
     try:

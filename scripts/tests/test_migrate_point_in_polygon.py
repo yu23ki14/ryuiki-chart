@@ -72,6 +72,36 @@ def test_point_in_two_overlapping_polygons_reports_both():
     assert sorted(matched) == ["A", "B"]
 
 
+def test_load_polygons_normalizes_3d_coordinates(tmp_path):
+    """GeoJSON の座標に標高等の3要素目があっても v1（JS の分割代入 `[x, y]`）と
+    同じく無視する（コードレビュー指摘15: 以前は `for x, y in ring` が3要素の
+    座標で `ValueError` になっていた）。
+    """
+    geojson = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {"watershed_id": "P1"},
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[
+                        [0.0, 0.0, 12.5], [1.0, 0.0, 12.5], [1.0, 1.0, 12.5],
+                        [0.0, 1.0, 12.5], [0.0, 0.0, 12.5],
+                    ]],
+                },
+            },
+        ],
+    }
+    path = tmp_path / "test_3d.geojson"
+    path.write_text(json.dumps(geojson), encoding="utf-8")
+
+    polys = pip.load_polygons(path)
+    grid = pip.build_grid(polys)
+    matched, _near = pip.locate(0.5, 0.5, polys, grid)
+    assert matched == ["P1"]
+
+
 def test_load_polygons_handles_polygon_and_multipolygon_and_skips_other_types(tmp_path):
     geojson = {
         "type": "FeatureCollection",

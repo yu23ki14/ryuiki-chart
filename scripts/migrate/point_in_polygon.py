@@ -18,16 +18,38 @@
 判定の際どさを検出するのがこのモジュールの仕事。呼び出し側〔`scripts/b09_build_occurrence_place.py`〕
 が「ちょうど1つに一致」だけを解決とみなす）。
 
-## 浮動小数点の曖昧さ（ADR-0026）
+## 浮動小数点の曖昧さと境界上の点（ADR-0026・コードレビュー対応）
 
-even-odd 判定はエッジの交差 x 座標 `x_cross` と点の x 座標を比較する
-（`x < x_cross`）。`abs(x - x_cross)` が閾値（既定 `DEFAULT_NEAR_THRESHOLD=1e-9`）
-未満のとき、その交差は浮動小数点の丸め誤差で結果が入れ替わりうる「際どい」交差として
-扱う（`locate()` の戻り値 `near_boundary`）。際どいと判定された distinct 座標は、
-呼び出し側が `locate_exact()`（`fractions.Fraction` による厳密有理数演算）で
-やり直し、float 版の結果と一致するかを確認する——実測（`data/db/ryuiki.sqlite`
-全 distinct 座標 224,282件、2026-09-23）では際どい交差自体が0件だった
-（最短の余裕は 4.4e-9度）。
+`near`（際どい判定）は **点から候補ポリゴンの辺（外環・穴のどの辺も、頂点上を含む）
+までの距離**が閾値（既定 `DEFAULT_NEAR_THRESHOLD=1e-9`）未満かどうかで判定する
+（`_point_in_ring` が辺ごとに判定し、even-odd の交差判定とは独立に行う）。
+
+**この形にした理由（コードレビュー指摘1・7）**: 当初は even-odd の交差判定
+（`x < x_cross`）の中でだけ「際どさ」を見ていたが、この判定は `(yi > y) != (yj > y)`
+が成り立つ辺（レイと交差しうる辺）にしか実行されない。**点の y がちょうど頂点の y と
+一致する場合（水平な辺・頂点そのものに乗っている場合を含む）、この条件は常に不成立
+になり、辺の存在自体が判定から漏れる**（隣接する2つの正方形で実際に再現した:
+共有する垂直辺 `x=1` 上の点は両方の交差判定に乗って `near` が立つが、共有する水平辺
+`y=1` 上の点はどちらの正方形でも交差判定の対象外になり、`near` が立たないまま
+「どちらにも属さない」という誤った結果になる）。点から辺までの幾何的な距離を直接
+測る現在の実装は、辺の向きに関わらずこの穴を塞ぐ。
+
+`near=True` の distinct 座標は、呼び出し側が2段階で確認する:
+
+1. **厳密な境界判定**（`polygon_boundary_contains_exact()`/`on_boundary()`。
+   `fractions.Fraction` で「点が辺〔頂点を含む〕の上に厳密に乗っているか」を判定）。
+   乗っていれば**ADR-0026 D1 の「境界上」に該当し、呼び出し側は無条件に止める**
+   （推測で割り当てない）。
+2. 厳密には乗っていない（float の近さだけだった）場合は `locate_exact()`
+   （厳密有理数演算によるフルの点内包判定）で float 版の結果と一致するかを確認する
+   （ADR-0026 機械検証2。食い違えば呼び出し側が止める）。
+
+実測（`data/db/ryuiki.sqlite` 全 distinct 座標 224,282件、2026-09-23）では
+際どい判定・境界上の点のどちらも0件だった（最短の余裕は 4.4e-9度）。
+
+MultiPolygon・穴の判定は**全ての環を見てから返す**（コードレビュー指摘7: 以前は
+最初に一致した部分ポリゴン・最初に一致した穴で早期 return/break していたため、
+残りの環の際どさが握り潰されていた）。
 """
 from __future__ import annotations
 
@@ -40,11 +62,11 @@ from fractions import Fraction
 # v1（`web/scripts/build-geo.mjs:117`）と同じグリッドセル幅。
 CELL = 0.02
 
-# `abs(x - x_cross) < DEFAULT_NEAR_THRESHOLD` を「際どい交差」とみなす閾値
-# （ADR-0026「機械検証」節）。実測の最短余裕（4.4e-9度）より1桁近い値にして
-# ある——閾値を実測の余裕ぎりぎりに置くと、次にデータが増えたときに際どい
-# 交差が「たまたま」閾値のすぐ外側に来て検知漏れになりかねないため、余裕を
-# 持たせて早めに拾う。
+# 点から辺までの距離がこの閾値未満なら「際どい」とみなす（モジュール docstring
+# 「浮動小数点の曖昧さと境界上の点」参照）。実測の最短余裕（4.4e-9度）より1桁
+# 近い値にしてある——閾値を実測の余裕ぎりぎりに置くと、次にデータが増えたときに
+# 際どい判定が「たまたま」閾値のすぐ外側に来て検知漏れになりかねないため、
+# 余裕を持たせて早めに拾う。
 DEFAULT_NEAR_THRESHOLD = 1e-9
 
 Point = tuple[float, float]
@@ -84,12 +106,25 @@ def _bbox_of(rings: list[PolygonCoordinates]) -> tuple[float, float, float, floa
     return minx, miny, maxx, maxy
 
 
+def _as_xy(coord) -> Point:
+    """GeoJSON の1点（`[x, y]` または `[x, y, z]`）から `(x, y)` を取り出す。
+
+    コードレビュー指摘15: v1（JS）は配列の先頭2要素だけを使い、標高等の3要素目が
+    あっても無視する（`for (const [x, y] of ring)` の分割代入は3要素目を黙って
+    捨てる）。こちらは `for x, y in ring` のタプル分割だと3要素の座標で
+    `ValueError` になっていたため、明示的に先頭2要素だけを取る形にして
+    v1 と同じ寛容さに合わせた。
+    """
+    return (coord[0], coord[1])
+
+
 def load_polygons(geojson_path, id_property: str = "watershed_id") -> list[Polygon]:
     """`geojson_path`（GeoJSON FeatureCollection）を読み、`Polygon` のリストにする。
 
     `web/scripts/build-geo.mjs:120-136` の移植。Polygon/MultiPolygon 以外の
     geometry type は v1 と同じく黙ってスキップする（実データには現れない
-    ——実測: 377 feature 全件が Polygon）。
+    ——実測: 377 feature 全件が Polygon）。各点は `_as_xy()` で `(x, y)` に
+    正規化する（3要素目〔標高等〕があっても無視する）。
     """
     data = json.loads(pathlib.Path(geojson_path).read_text(encoding="utf-8"))
     polys: list[Polygon] = []
@@ -97,11 +132,14 @@ def load_polygons(geojson_path, id_property: str = "watershed_id") -> list[Polyg
         geom = feat["geometry"]
         gtype = geom["type"]
         if gtype == "Polygon":
-            rings = [geom["coordinates"]]
+            raw_rings = [geom["coordinates"]]
         elif gtype == "MultiPolygon":
-            rings = list(geom["coordinates"])
+            raw_rings = list(geom["coordinates"])
         else:
             continue
+        rings: list[PolygonCoordinates] = [
+            [[_as_xy(pt) for pt in ring] for ring in poly] for poly in raw_rings
+        ]
         pid = feat["properties"][id_property]
         polys.append(Polygon(id=pid, rings=rings, bbox=_bbox_of(rings)))
     return polys
@@ -126,13 +164,43 @@ def build_grid(polys: list[Polygon], cell: float = CELL) -> Grid:
     return grid
 
 
-def _point_in_ring(x: float, y: float, ring: Ring, threshold: float) -> tuple[bool, bool]:
-    """`web/scripts/build-geo.mjs:147-154` の even-odd 判定の移植。
+def _segment_bbox_reject(x: float, y: float, x1: float, y1: float, x2: float, y2: float, threshold: float) -> bool:
+    """線分の bbox を `threshold` ぶん広げた矩形の外に `(x, y)` があれば True
+    （距離計算を省く早期棄却）。"""
+    if x < min(x1, x2) - threshold or x > max(x1, x2) + threshold:
+        return True
+    if y < min(y1, y2) - threshold or y > max(y1, y2) + threshold:
+        return True
+    return False
 
-    戻り値: `(内側か, 際どい交差が1つでもあったか)`。
+
+def _dist_sq_point_to_segment(x: float, y: float, x1: float, y1: float, x2: float, y2: float) -> float:
+    """点 `(x, y)` から線分 `(x1,y1)-(x2,y2)` までの最短距離の2乗（float）。"""
+    dx, dy = x2 - x1, y2 - y1
+    seg_len2 = dx * dx + dy * dy
+    if seg_len2 == 0.0:
+        ex, ey = x - x1, y - y1
+        return ex * ex + ey * ey
+    t = ((x - x1) * dx + (y - y1) * dy) / seg_len2
+    if t < 0.0:
+        t = 0.0
+    elif t > 1.0:
+        t = 1.0
+    cx, cy = x1 + t * dx, y1 + t * dy
+    ex, ey = x - cx, y - cy
+    return ex * ex + ey * ey
+
+
+def _point_in_ring(x: float, y: float, ring: Ring, threshold: float) -> tuple[bool, bool]:
+    """`web/scripts/build-geo.mjs:147-154` の even-odd 判定の移植
+    （`inside` の計算はそのまま）＋ 辺までの距離による `near` 判定（モジュール
+    docstring 参照。even-odd の交差判定とは独立に、全ての辺で行う）。
+
+    戻り値: `(内側か, 辺までの距離が閾値未満の辺が1つでもあったか)`。
     """
     inside = False
     near = False
+    thr2 = threshold * threshold
     n = len(ring)
     j = n - 1
     for i in range(n):
@@ -140,16 +208,18 @@ def _point_in_ring(x: float, y: float, ring: Ring, threshold: float) -> tuple[bo
         xj, yj = ring[j]
         if (yi > y) != (yj > y):
             x_cross = (xj - xi) * (y - yi) / (yj - yi) + xi
-            if abs(x - x_cross) < threshold:
-                near = True
             if x < x_cross:
                 inside = not inside
+        if not near and not _segment_bbox_reject(x, y, xi, yi, xj, yj, threshold):
+            if _dist_sq_point_to_segment(x, y, xi, yi, xj, yj) < thr2:
+                near = True
         j = i
     return inside, near
 
 
 def _point_in_ring_exact(x: Fraction, y: Fraction, ring: list[tuple[Fraction, Fraction]]) -> bool:
-    """`_point_in_ring` と同じ式を `Fraction` の厳密演算で行う（丸め誤差なし）。"""
+    """`_point_in_ring` の `inside` と同じ式を `Fraction` の厳密演算で行う
+    （丸め誤差なし）。"""
     inside = False
     n = len(ring)
     j = n - 1
@@ -167,34 +237,36 @@ def _point_in_ring_exact(x: Fraction, y: Fraction, ring: list[tuple[Fraction, Fr
 def point_in_polygon(
     x: float, y: float, poly: Polygon, threshold: float = DEFAULT_NEAR_THRESHOLD
 ) -> tuple[bool, bool]:
-    """`web/scripts/build-geo.mjs:155-165` の移植（穴あり）。
+    """`web/scripts/build-geo.mjs:155-165` の移植（穴あり、MultiPolygon 対応）。
 
-    戻り値: `(poly に含まれるか, 際どい交差が1つでもあったか)`。
+    **全ての部分ポリゴン・全ての穴を見てから返す**（コードレビュー指摘7:
+    以前は最初に一致した部分ポリゴンで即座に `return`、最初に一致した穴で
+    `break` していたため、残りの環の `near` 情報が失われていた）。
+
+    戻り値: `(poly に含まれるか, 際どい辺が1つでもあったか)`。
     """
     minx, miny, maxx, maxy = poly.bbox
-    if x < minx or x > maxx or y < miny or y > maxy:
+    if x < minx - threshold or x > maxx + threshold or y < miny - threshold or y > maxy + threshold:
         return False, False
     near_any = False
+    inside_any = False
     for rings in poly.rings:
         outer = rings[0]
         in_outer, near = _point_in_ring(x, y, outer, threshold)
         near_any = near_any or near
-        if not in_outer:
-            continue
         in_hole = False
         for h in range(1, len(rings)):
             ih, nearh = _point_in_ring(x, y, rings[h], threshold)
             near_any = near_any or nearh
-            if ih:
-                in_hole = True
-                break
-        if not in_hole:
-            return True, near_any
-    return False, near_any
+            in_hole = in_hole or ih
+        if in_outer and not in_hole:
+            inside_any = True
+    return inside_any, near_any
 
 
 def point_in_polygon_exact(x: Fraction, y: Fraction, poly: Polygon) -> bool:
-    """`point_in_polygon` と同じ判定を `Fraction` の厳密演算でやり直す。
+    """`point_in_polygon` の `inside` と同じ判定を `Fraction` の厳密演算で
+    やり直す（`near` は扱わない——`locate_exact()` 専用のフル判定）。
 
     `locate()` が `near_boundary=True` を返した distinct 座標だけに使う想定
     （bbox は事前にグリッドで絞り込み済みの候補に対して呼ばれるため、
@@ -215,9 +287,56 @@ def point_in_polygon_exact(x: Fraction, y: Fraction, poly: Polygon) -> bool:
     return False
 
 
+def _point_on_segment_exact(
+    px: Fraction, py: Fraction, x1: Fraction, y1: Fraction, x2: Fraction, y2: Fraction
+) -> bool:
+    """点 `(px, py)` が線分 `(x1,y1)-(x2,y2)`（端点＝頂点を含む）の上に厳密に
+    乗っているかを判定する（`Fraction`。外積で共線性、内積で線分範囲内かを見る）。
+    """
+    cross = (x2 - x1) * (py - y1) - (y2 - y1) * (px - x1)
+    if cross != 0:
+        return False
+    dot = (px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)
+    if dot < 0:
+        return False
+    seg_len2 = (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1)
+    if dot > seg_len2:
+        return False
+    return True
+
+
+def _ring_boundary_contains_exact(px: Fraction, py: Fraction, ring: Ring) -> bool:
+    n = len(ring)
+    j = n - 1
+    for i in range(n):
+        xi, yi = Fraction(ring[i][0]), Fraction(ring[i][1])
+        xj, yj = Fraction(ring[j][0]), Fraction(ring[j][1])
+        if _point_on_segment_exact(px, py, xi, yi, xj, yj):
+            return True
+        j = i
+    return False
+
+
+def polygon_boundary_contains_exact(x: float, y: float, poly: Polygon) -> bool:
+    """点 `(x, y)` が `poly` の境界（外環・穴のどの辺上、頂点上を含む）に
+    厳密に乗っているかを `Fraction` の厳密演算で判定する（ADR-0026 D1
+    「2つ以上・境界上は止める」の「境界上」の実体。コードレビュー指摘1）。
+
+    全ての環（外環・穴）を見る（`point_in_polygon_exact` と違い、1つ見つかれば
+    即座に返してよい——「境界上かどうか」は1件見つかった時点で確定する単純な
+    真偽値で、`inside`/`near` のような情報を積み上げる必要が無いため）。
+    """
+    fx, fy = Fraction(x), Fraction(y)
+    for rings in poly.rings:
+        for ring in rings:
+            if _ring_boundary_contains_exact(fx, fy, ring):
+                return True
+    return False
+
+
 def candidates_for(x: float, y: float, grid: Grid, cell: float = CELL) -> list[int]:
     """`(x, y)` が属する 0.02度セルに登録済みのポリゴン index 列を返す
-    （無ければ空リスト）。`locate()`/`locate_exact()` が共有する。
+    （無ければ空リスト）。`locate()`/`locate_exact()`/`on_boundary()` が共有する。
     """
     gx, gy = math.floor(x / cell), math.floor(y / cell)
     return list(grid.get((gx, gy), ()))
@@ -261,3 +380,15 @@ def locate_exact(x: float, y: float, polys: list[Polygon], grid: Grid, cell: flo
         if point_in_polygon_exact(fx, fy, p):
             matched.append(p.id)
     return matched
+
+
+def on_boundary(x: float, y: float, polys: list[Polygon], grid: Grid, cell: float = CELL) -> bool:
+    """`(x, y)` が候補ポリゴン（`locate()` と同じグリッドで絞り込む）いずれかの
+    境界（頂点・辺上を含む）に厳密に乗っているか。`locate()` が
+    `near_boundary=True` を返した点だけに使う想定（軽い float 判定で絞り込んで
+    から、ここで `Fraction` の厳密判定をする）。
+    """
+    for pi in candidates_for(x, y, grid, cell):
+        if polygon_boundary_contains_exact(x, y, polys[pi]):
+            return True
+    return False

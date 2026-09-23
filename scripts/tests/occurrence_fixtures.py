@@ -320,6 +320,7 @@ def make_v2_db_with_occurrence_and_place(
     `_build_watershed` は両方を読む）。
     """
     import b06_build_occurrence as b06
+    import b09_build_occurrence_place as b09
 
     conn = sqlite3.connect(f"file:{path}", uri=True)
     try:
@@ -327,10 +328,7 @@ def make_v2_db_with_occurrence_and_place(
         placeholders = ", ".join("?" for _ in _OCCURRENCE_COLUMNS)
         conn.executemany(f"INSERT INTO occurrence VALUES ({placeholders})", occurrence_rows)
 
-        conn.execute(
-            "CREATE TABLE occurrence_place (record_id TEXT, place_kind TEXT, place_id TEXT, "
-            "method TEXT, built_from TEXT, spec_version TEXT)"
-        )
+        conn.execute(b09._CREATE_OCCURRENCE_PLACE_SQL.format(table="occurrence_place"))
         place_placeholders = ", ".join("?" for _ in _OCCURRENCE_PLACE_COLUMNS)
         conn.executemany(f"INSERT INTO occurrence_place VALUES ({place_placeholders})", occurrence_place_rows)
         conn.commit()
