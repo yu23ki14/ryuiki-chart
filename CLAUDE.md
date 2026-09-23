@@ -72,6 +72,10 @@
   `species_month`・`mesh_year`・`mesh_all`・`mesh_species`・`species_mesh_year`、出力
   `data/db/v1_projection_occurrence.sqlite`）の3本。設計・実測は
   `docs/plans/PHASE_B_OCCURRENCE.md`・`docs/adr/0025-occurrence-fact-and-cube.md`。
+- watershed の属性（`watershed_meta`）は `scripts/b11_project_place_v1.py`
+  （`registry.sqlite` の `place`/`place_watershed`/`place_source_ref` → v1形）。
+  出力は `data/db/v1_projection_place.sqlite`（`.gitignore` 済み・捨てて作り直せる）。
+  設計・実測は `docs/plans/PHASE_B_PLACE_ATTRIBUTES.md`。
 - **`+09:00` 付きの時刻文字列に SQLite の日時関数（`date`/`datetime`/`strftime`）を使わない**
   （UTC に正規化されて日付が1日ずれる。`observation.period_start` は時刻帯なしのローカル時刻で
   持つ。詳細は `docs/adr/0024-local-time-and-time-labels.md`）。
@@ -111,6 +115,12 @@
   ln -s /home/yu23ki14/cfj/ryuiki-demo/data/db/derived.sqlite <worktree>/data/db/derived.sqlite
   ln -s /home/yu23ki14/cfj/ryuiki-demo/data/processed/taxon_crosswalk.csv \
         <worktree>/data/processed/taxon_crosswalk.csv
+  ln -s /home/yu23ki14/cfj/ryuiki-demo/data/processed/nlni_w12_watersheds.jsonl \
+        <worktree>/data/processed/nlni_w12_watersheds.jsonl
+  ln -s /home/yu23ki14/cfj/ryuiki-demo/data/processed/nlni_w12_watersheds.geojson \
+        <worktree>/data/processed/nlni_w12_watersheds.geojson
+  ln -s /home/yu23ki14/cfj/ryuiki-demo/data/processed/nlni_l03b_landuse_by_watershed.csv \
+        <worktree>/data/processed/nlni_l03b_landuse_by_watershed.csv
   ```
   レジストリのビルド先を明示したいときは `RYUIKI_REGISTRY_DB=<worktree の絶対パス>/data/db/registry.sqlite`
   （`scripts/r01_build_registry.py` / `web/scripts/build-registry-ts.mjs` /

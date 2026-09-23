@@ -1,23 +1,36 @@
-"""scripts/registry/build_place.py（place / place_source_ref / place_relation を作る）
-用の、本物の `data/db/*.sqlite`（828MB/42MB/449MB）を要さない小さな sqlite フィクスチャ。
+"""scripts/registry/build_place.py（place / place_source_ref / place_relation /
+place_watershed を作る）用の、本物の `data/db/*.sqlite`（828MB/42MB/449MB）を
+要さない小さな sqlite フィクスチャ。
 
-`sites` / `watershed_meta` / `organism_records` のうち、build_place.build() が実際に
-SELECT する列だけを持つ最小限の形にしてある（実データの全列を真似ない。
-scripts/tests/migrate_fixtures.py と同じ方針）。site_id の名前空間は
-`build_place.SITE_NAMESPACE` に実在する `jma_stations_kanagawa`（-> `jma`）を使う
-（未知の名前空間は build_place 側で例外になるため）。
+`sites` / `organism_records` のうち、build_place.build() が実際に SELECT する列だけを
+持つ最小限の形にしてある（実データの全列を真似ない。scripts/tests/migrate_fixtures.py
+と同じ方針）。site_id の名前空間は `build_place.SITE_NAMESPACE` に実在する
+`jma_stations_kanagawa`（-> `jma`）を使う（未知の名前空間は build_place 側で例外になるため）。
 
 grid01 の入力は Phase B `phase-b/occurrence-registry` で `derived.mesh_all` から
 `ryuiki.organism_records` の座標に変わった（`scripts/registry/build_place.py` の
 grid01 節参照）。`make_ryuiki_places_db()` の `organism_records_rows` がその入力。
+
+watershed の入力は Phase B `phase-b/place-attributes` で `derived.watershed_meta`
+から `data/processed/nlni_w12_watersheds.jsonl`（L1）直読みに変わった
+（`scripts/registry/build_place.py` の watershed 節参照）。`write_watershed_jsonl()`
+がその入力を作る。呼び出し側が `build_place_module.WATERSHED_JSONL` をこの JSONL の
+パスに monkeypatch すること（`scripts/registry/build_taxon.py` の `CROSSWALK_CSV` と
+同じ流儀）。`make_derived_places_db()` は watershed 節ではもう使わない
+（derived.sqlite は registry ビルドの入力ではなくなった）が、「derived.sqlite の
+中身は指紋・ビルドに一切影響しない」ことを確認するテスト
+（scripts/tests/test_r01_registry_atomic.py）専用に残してある。
 """
 from __future__ import annotations
 
+import json
 import sqlite3
 
 
 def make_ryuiki_places_db(path, sites_rows, organism_records_rows=()) -> None:
-    """sites_rows: (site_id, name, lat, lon, elevation_m, source_id, source_ref, zone) の列。
+    """sites_rows: (site_id, name, lat, lon, elevation_m, source_id, source_ref, zone,
+    watershed) の列（`watershed` は Phase B `phase-b/place-attributes` で追加。
+    地点->流域の place_relation の入力）。
     organism_records_rows: (lat, lon) の列（grid01 の入力。build_place.build() は
     `FLOOR(lat*100)`/`FLOOR(lon*100)` で丸めるだけなので、他の列は要らない）。
 
@@ -30,20 +43,39 @@ def make_ryuiki_places_db(path, sites_rows, organism_records_rows=()) -> None:
         conn.execute(
             """CREATE TABLE sites (
                 site_id TEXT PRIMARY KEY, name TEXT, lat REAL, lon REAL, elevation_m REAL,
-                source_id TEXT, source_ref TEXT, zone INTEGER
+                source_id TEXT, source_ref TEXT, zone INTEGER, watershed TEXT
             )"""
         )
         conn.execute("CREATE TABLE measurements (site_id TEXT)")
         conn.execute("CREATE TABLE sensor_timeseries (site_id TEXT)")
         conn.execute("CREATE TABLE organism_records (lat REAL, lon REAL)")
-        conn.executemany("INSERT INTO sites VALUES (?,?,?,?,?,?,?,?)", sites_rows)
+        conn.executemany("INSERT INTO sites VALUES (?,?,?,?,?,?,?,?,?)", sites_rows)
         conn.executemany("INSERT INTO organism_records VALUES (?,?)", organism_records_rows)
         conn.commit()
     finally:
         conn.close()
 
 
+def write_watershed_jsonl(path, rows) -> None:
+    """`data/processed/nlni_w12_watersheds.jsonl` 相当のテスト用フィクスチャを書く。
+
+    `rows` は dict のリスト。build_place.py が実際に読むキーだけを持たせればよい
+    （`watershed_id`/`water_system_code_old`/`water_system_name_ja_estimated`/
+    `water_system_category_ja`/`main_river_names_ja`/`area_km2`/`centroid_lat`/
+    `centroid_lon`/`data_year`/`source_ref`）。実物と同じ1行1レコードの JSON。
+    """
+    with open(path, "w", encoding="utf-8") as f:
+        for row in rows:
+            f.write(json.dumps(row, ensure_ascii=False))
+            f.write("\n")
+
+
 def make_derived_places_db(path, watershed_rows=()) -> None:
+    """`derived.sqlite` の一般的な代用フィクスチャ（任意の形の `watershed_meta`
+    テーブルを持つ）。registry ビルド本体はもうこのテーブルを読まないので
+    （モジュール docstring 参照）、「derived.sqlite が存在しても指紋・ビルドに
+    影響しない」ことを確認するテスト専用に残してある。
+    """
     conn = sqlite3.connect(str(path))
     try:
         conn.execute(
@@ -99,14 +131,12 @@ def open_taxon_src(ryuiki_path) -> dict:
     return {"ryuiki": conn}
 
 
-def open_places_src(ryuiki_path, derived_path) -> dict:
-    """build_place.build(conn, src) の src 引数を作る（row_factory=Row。本物の
-    scripts/registry/common.open_sources() と同じ形）。呼び出し側が使い終わったら
-    自分で close() すること。
+def open_places_src(ryuiki_path) -> dict:
+    """build_place.build(conn, src) の src 引数を作る（row_factory=Row）。
+    'ryuiki' キーだけを使う（build_place.py は Phase B `phase-b/place-attributes`
+    で 'derived' を読まなくなった——watershed の入力を WATERSHED_JSONL の直読みに
+    切り替えたため。呼び出し側が使い終わったら自分で close() すること。
     """
-    out = {}
-    for key, path in (("ryuiki", ryuiki_path), ("derived", derived_path)):
-        c = sqlite3.connect(str(path))
-        c.row_factory = sqlite3.Row
-        out[key] = c
-    return out
+    conn = sqlite3.connect(str(ryuiki_path))
+    conn.row_factory = sqlite3.Row
+    return {"ryuiki": conn}

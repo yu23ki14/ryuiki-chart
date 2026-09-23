@@ -1,7 +1,7 @@
 """レジストリビルドの共通ヘルパ。
 
 - ID 生成（docs/adr/0004-identifiers.md 準拠、Phase A で使う具体形）
-- 原本 3 ファイル（ryuiki / cells / derived）を読み取り専用で開く
+- 原本（ryuiki / cells）を読み取り専用で開く
 - registry.sqlite の新規作成（DDL は scripts/schema_registry.sql）と書き込みユーティリティ
 - ビルドの指紋（`registry_build` テーブル。phase-b/registry-atomic）: 「在る」ことと
   「正しい」ことを区別するため、`scripts/r01_build_registry.py --check-fresh` が
@@ -32,7 +32,22 @@ REGISTRY_DB = DB_DIR / "registry.sqlite"
 # 154 alias だけのスタブに壊れて消える。実害あり・独立レビューで実際に踏まれた事故）。
 FILES_ONLY_REGISTRY_DB = DB_DIR / "registry_files_only.sqlite"
 
+# registry ビルド（build_unit_variable.py/build_place.py/build_taxon.py/
+# build_caveat.py）が実際に読む原本。**`derived.sqlite` がここから外れた経緯
+# （watershed の入力を L1 の直読みに切り替え、registry ビルドが derived.sqlite
+# を読む箇所自体が無くなったこと。実測は docs/plans/PHASE_B_PLACE_ATTRIBUTES.md）
+# は、このモジュール内ではここに1箇所だけ書く**（他のコメントはここを参照する）。
+# 結果として **full ビルドに `derived.sqlite`（`pnpm run build:derived` の成果物）
+# はもう要らない**——`open_sources()` が無条件に開いていたのをやめたことで、
+# 無い環境でも `r01_build_registry.py` のフルビルドが通る。
+# `open_source("derived")` で個別に開くことは引き続きできる（将来また
+# derived.sqlite の特定テーブルを読むモジュールが増えたときのため。
+# `DB_DIR / "derived.sqlite"` が実際に存在する限り動く）——ここから外したのは
+# `open_sources()`（既定で開く集合）だけ。
 SOURCE_NAMES = ("ryuiki", "cells", "derived")
+
+# `open_sources()` が既定で開く原本（registry ビルドが実際に使うものだけ）。
+DEFAULT_SOURCES = ("ryuiki", "cells")
 
 
 # ---------------------------------------------------------------------------
@@ -59,8 +74,11 @@ def open_source(name: str) -> sqlite3.Connection:
 
 
 def open_sources() -> dict[str, sqlite3.Connection]:
-    """3 原本すべてを読み取り専用で開いて返す。"""
-    return {name: open_source(name) for name in SOURCE_NAMES}
+    """registry ビルドが実際に使う原本（`DEFAULT_SOURCES`）だけを読み取り専用で
+    開いて返す。`derived.sqlite` は含まない（上記 `SOURCE_NAMES` のコメント参照。
+    個別に要る場合は `open_source("derived")` を呼ぶこと）。
+    """
+    return {name: open_source(name) for name in DEFAULT_SOURCES}
 
 
 # ---------------------------------------------------------------------------
@@ -219,26 +237,23 @@ def count_and_breakdown(
 MODE_FULL = "full"
 MODE_FILES_ONLY = "files_only"
 
-# build_place.py が derived.sqlite から実際に読むテーブル（fix 2, phase-b/registry-atomic）。
-# 指紋計算（_hash_derived_tables 以下）とビルド側（build_place.py の derived.execute()）が
-# この宣言を共有する。derived.sqlite に新しいテーブルを足して読むようになったら、
-# ここに追記するだけで指紋にも自動的に乗る。
-#
-# `mesh_all`（旧・grid01 の入力）は phase-b/occurrence-registry で外した: grid01 は
-# `derived.mesh_all`（`observed_on` が無い記録や1970年より前しか無いセルを取りこぼす、
-# `web/scripts/build-biota.mjs` 側の年フィルタ由来の欠け）ではなく `ryuiki.organism_records`
-# の座標から直接作るようになった（build_place.py の grid01 節 docstring 参照）。
-# `ryuiki.sqlite` は元々指紋の対象外（このモジュール docstring 参照）なので、この変更で
-# 指紋の対象が増えたわけではない——`organism_records` を書き換える `m0x_*.py` を実行したら
-# 引き続き `pnpm run build:registry` を明示的に走らせる必要がある（既存の運用のまま）。
-DERIVED_TABLE_WATERSHED_META = "watershed_meta"
-DERIVED_TABLES_READ = (DERIVED_TABLE_WATERSHED_META,)
-
-# build_taxon.py が読み、指紋計算もハッシュする、derived 以外の「読み取り専用だが値が
-# 変わりうる」入力（scripts/c24_taxon_crosswalk.py の成果物）。DERIVED_TABLES_READ と同じ
-# 理由で、ビルド側（build_taxon.py の CROSSWALK_CSV）と指紋計算（_hash_optional_file 呼び出し
-# 側）がこの宣言を共有する（指紋の対象とビルドが実際に読むファイルがずれる穴を防ぐため）。
+# build_place.py/build_taxon.py が derived.sqlite 以外から読み、指紋計算もハッシュする、
+# 「読み取り専用だが値が変わりうる」入力（data/processed/ の収集物）。ビルド側
+# （build_place.py の WATERSHED_JSONL / build_taxon.py の CROSSWALK_CSV）と指紋計算
+# （_hash_optional_file 呼び出し側）がこの宣言を共有する（指紋の対象とビルドが実際に
+# 読むファイルがずれる穴を防ぐため）。derived.sqlite がここに無い経緯は `SOURCE_NAMES`
+# 直前のコメント参照。旧 `DERIVED_TABLES_READ`/`_hash_derived_tables()`（derived.sqlite
+# の特定テーブルの中身を1テーブル単位で指紋に混ぜる仕組み）は対象が空になったため
+# 削除した——将来また derived.sqlite の特定テーブルを読むようになったら、この
+# `_hash_optional_file()` ベースの仕組み（1ファイル単位）かそちらを復元すること。
 TAXON_CROSSWALK_CSV_RELPATH = pathlib.PurePosixPath("data/processed/taxon_crosswalk.csv")
+
+# build_place.py の watershed 節が読む L1（国土数値情報 W12 流域界 1977年版、377面）。
+# 経緯・実測（旧 derived.watershed_meta との値の一致確認を含む）は
+# docs/plans/PHASE_B_PLACE_ATTRIBUTES.md 参照。`ryuiki.sqlite`/`cells.sqlite` と違い、
+# この1ファイルは読み取り専用の配布物だが「原本」（scripts/m0x_*.py が書く3ファイル）
+# ではないので、内容ハッシュを指紋に混ぜてよい（taxon_crosswalk.csv と同じ扱い）。
+WATERSHED_JSONL_RELPATH = pathlib.PurePosixPath("data/processed/nlni_w12_watersheds.jsonl")
 
 # grid01（build_place.py）の入力が derived.mesh_all から ryuiki.organism_records の
 # 座標に変わったことで抜けた鮮度検知の穴を塞ぐ軽い代理指標（phase-b/occurrence-registry
@@ -279,9 +294,8 @@ def _fingerprint_source_paths(root: pathlib.Path) -> list[pathlib.Path]:
     対象は「ビルドの論理（コード）」と「手書きの入力（registry/ 配下）」:
     scripts/schema_registry.sql・scripts/r01_build_registry.py・
     scripts/taxon_namespaces.py・scripts/registry/*.py・registry/ 配下の全ファイル。
-    ここでは常にこの集合だけを扱う（derived.sqlite の一部テーブルと
-    taxon_crosswalk.csv は `compute_input_fingerprint()` 側が mode に応じて
-    別途混ぜる。後述）。
+    ここでは常にこの集合だけを扱う（watershed の JSONL と taxon_crosswalk.csv は
+    `compute_input_fingerprint()` 側が mode に応じて別途混ぜる。後述）。
 
     `scripts/taxon_namespaces.py`（build_taxon.py が読む `TAXON_KEY_SOURCE_NAMESPACE`
     の正。`scripts/registry/` の外にあるため `*.py` の glob には乗らない）を
@@ -307,9 +321,10 @@ def _fingerprint_source_paths(root: pathlib.Path) -> list[pathlib.Path]:
 def _hash_labeled(h, label: str, data: bytes | None) -> None:
     """`ラベル + \\0 + (中身 or _ABSENT_MARKER) + \\0` の形で `h` に混ぜる。
 
-    `_hash_optional_file()`（ファイル1個）と `_hash_derived_tables()`（テーブルが
-    丸ごと無いときのフォールバック）が同じバイト整形を別々に実装していたのを
-    1つの下請けにまとめたもの。`data=None` は「無い」を表し `_ABSENT_MARKER` を混ぜる。
+    `_hash_optional_file()`（ファイル1個）と `_hash_organism_records_freshness()`
+    （代理指標が丸ごと無いときのフォールバック）が同じバイト整形を別々に実装
+    していたのを1つの下請けにまとめたもの。`data=None` は「無い」を表し
+    `_ABSENT_MARKER` を混ぜる。
     """
     h.update(label.encode("utf-8"))
     h.update(b"\0")
@@ -325,50 +340,11 @@ def _hash_optional_file(h, label: str, path: pathlib.Path) -> None:
     _hash_labeled(h, label, path.read_bytes() if path.exists() else None)
 
 
-def _hash_derived_tables(h, derived_path: pathlib.Path) -> None:
-    """`DERIVED_TABLES_READ`（build_place.py が実際に読むテーブル）の中身だけを、
-    決まった順の SELECT で指紋に混ぜる。derived.sqlite 全体（449MB）はハッシュ
-    しない。ORDER BY rowid は「値の意味」ではなく物理走査順だが、同じ
-    derived.sqlite ファイルに対しては常に同じ順序を返すので指紋の決定論には
-    十分（`registry.README.md` 同旨）。
-
-    derived.sqlite そのものが無い場合（full モードだが `pnpm run build:derived`
-    をまだ実行していない環境）はクラッシュせず、テーブルごとに `_ABSENT_MARKER`
-    を混ぜる。この結果、実際の中身から計算した以前の指紋とは必ず異なるため
-    `--check-fresh` は「古い」と判定し、実際のビルドに進んで
-    `common.open_source('derived')` の分かりやすいエラー（`pnpm run build:derived`
-    を促す）で止まる。「derived が無い」を「判定できない」ではなく「古い」として
-    扱う（オーナー決定。--files-only は元々 derived を一切開かないので、この
-    分岐が動くのは full モードだけ）。
-    """
-    if not derived_path.exists():
-        for table in DERIVED_TABLES_READ:
-            _hash_labeled(h, table, None)
-        return
-
-    conn = sqlite3.connect(f"file:{derived_path}?mode=ro", uri=True)
-    try:
-        for table in DERIVED_TABLES_READ:
-            cur = conn.execute(f"SELECT * FROM {table} ORDER BY rowid")
-            cols = [d[0] for d in cur.description]
-            h.update(table.encode("utf-8"))
-            h.update(b"\0")
-            h.update(",".join(cols).encode("utf-8"))
-            h.update(b"\0")
-            for row in cur:
-                for value in row:
-                    h.update(repr(value).encode("utf-8"))
-                    h.update(b"\x1f")
-                h.update(b"\0")
-    finally:
-        conn.close()
-
-
 def _hash_organism_records_freshness(h, ryuiki_path: pathlib.Path) -> None:
     """grid01 が読む `organism_records` の軽い代理指標（行数・最大rowid）を指紋に混ぜる
     （`_ORGANISM_RECORDS_FRESHNESS_SQL` docstring 参照。fix, code-review 指摘7）。
     `ryuiki.sqlite` が無い場合（原本の無い環境）はクラッシュせず「無い」を混ぜる
-    （`_hash_derived_tables()` の derived 版と同じ扱い）。
+    （`_hash_optional_file()` がファイル1個で行うのと同じ扱い）。
     """
     if not ryuiki_path.exists():
         _hash_labeled(h, "organism_records_freshness", None)
@@ -393,15 +369,18 @@ def compute_input_fingerprint(
     phase-b/registry-atomic。3つ目は phase-b/occurrence-registry で追加。
     いずれも build_place.py / build_taxon.py が読むのに以前は指紋に入っていなかった）:
 
-    - `derived.sqlite` のうち `DERIVED_TABLES_READ` の中身（`_hash_derived_tables()`）。
+    - `data/processed/nlni_w12_watersheds.jsonl`（build_place.py の `WATERSHED_JSONL`）
+      の中身。
     - `data/processed/taxon_crosswalk.csv`（build_taxon.py の `CROSSWALK_CSV`）の中身。
     - `ryuiki.sqlite` の `organism_records` の軽い代理指標（行数・最大rowid、
       `_hash_organism_records_freshness()`）。grid01（build_place.py）の入力に
       なったための例外（次の段落参照）。
 
     `mode=MODE_FILES_ONLY` のときはどれにも触れない（`--files-only` は
-    build_place.py/build_taxon.py 自体を呼ばないので、CI のように derived も
-    taxon_crosswalk.csv も ryuiki.sqlite も存在しない環境でも指紋計算が要件どおり動く）。
+    build_place.py/build_taxon.py 自体を呼ばないので、CI のように watershed の
+    JSONL も taxon_crosswalk.csv も ryuiki.sqlite も存在しない環境でも指紋計算が
+    要件どおり動く）。**`derived.sqlite` は mode に関わらず指紋に一切触れない**
+    （理由は `SOURCE_NAMES` 直前のコメント参照）。
 
     **`ryuiki.sqlite` / `cells.sqlite` の内容全体は mode に関わらず指紋に含めない。**
     読み取り専用で扱ってはいるが、書き手は `scripts/m0x_*.py` に限られる
@@ -429,7 +408,9 @@ def compute_input_fingerprint(
         h.update(b"\0")
 
     if mode == MODE_FULL:
-        _hash_derived_tables(h, base / "data" / "db" / "derived.sqlite")
+        _hash_optional_file(
+            h, WATERSHED_JSONL_RELPATH.as_posix(), base / WATERSHED_JSONL_RELPATH
+        )
         _hash_optional_file(
             h, TAXON_CROSSWALK_CSV_RELPATH.as_posix(), base / TAXON_CROSSWALK_CSV_RELPATH
         )

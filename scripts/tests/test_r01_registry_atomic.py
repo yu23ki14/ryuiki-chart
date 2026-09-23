@@ -77,15 +77,25 @@ def test_atomic_failure_preserves_previous_registry(
 
 
 # ---------------------------------------------------------------------------
-# 2. 決定論: --files-only を2回走らせても9テーブル＋registry_build の中身が一致する
+# 2. 決定論: --files-only を2回走らせても全テーブル＋registry_build の中身が一致する
 #    （フルビルドでの2回一致は受け入れ基準3で手動確認する。828MBの原本が要るため
 #    pytest では回さない）
 # ---------------------------------------------------------------------------
 
-_ALL_TABLES = (
-    "unit", "variable", "variable_alias", "place", "place_source_ref",
-    "place_relation", "taxon", "caveat", "caveat_scope", "registry_build",
-)
+
+def _all_table_names(conn: sqlite3.Connection) -> list[str]:
+    """`sqlite_master` から通常テーブル名を集める（`sqlite_%` を除く、名前順）。
+    ハードコードした表の一覧だと、`schema_registry.sql` に表が増えたときにこの
+    テストが追随せず決定性を見落とす（code-review 指摘9: 実際に `place_watershed`
+    が漏れていた）。ビルド結果そのものから導出することで、表が増えても腐らない。
+    """
+    return [
+        r[0]
+        for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' "
+            "ORDER BY name"
+        )
+    ]
 
 
 def test_files_only_build_is_deterministic_across_two_runs(monkeypatch, tmp_path):
@@ -98,7 +108,9 @@ def test_files_only_build_is_deterministic_across_two_runs(monkeypatch, tmp_path
     conn_a = sqlite3.connect(target_a)
     conn_b = sqlite3.connect(target_b)
     try:
-        for table in _ALL_TABLES:
+        tables_a = _all_table_names(conn_a)
+        assert tables_a == _all_table_names(conn_b)  # スキーマ自体も一致すること
+        for table in tables_a:
             rows_a = conn_a.execute(f"SELECT * FROM {table} ORDER BY rowid").fetchall()
             rows_b = conn_b.execute(f"SELECT * FROM {table} ORDER BY rowid").fetchall()
             assert rows_a == rows_b, f"{table} が2回のビルドで一致しない"
@@ -306,9 +318,14 @@ def test_check_fresh_without_pyyaml_does_not_import_yaml(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# 6. fix 2: 指紋の入力 — taxon_crosswalk.csv / derived.sqlite の中身、
-#    ryuiki/cells の除外、--files-only での derived/taxon_crosswalk 不使用。
-#    どれもリポジトリ・原本には触れず、一時ディレクトリにコピーした入力で確認する。
+# 6. fix 2: 指紋の入力 — taxon_crosswalk.csv / nlni_w12_watersheds.jsonl の中身、
+#    ryuiki/cells/derived の除外、--files-only での watershed jsonl/taxon_crosswalk
+#    不使用。どれもリポジトリ・原本には触れず、一時ディレクトリにコピーした入力で確認する。
+#
+#    derived.sqlite は Phase B `phase-b/place-attributes` で watershed の入力が
+#    L1（nlni_w12_watersheds.jsonl）直読みに切り替わったことで、mode に関わらず
+#    指紋計算が一切開かなくなった（旧 DERIVED_TABLES_READ/_hash_derived_tables()
+#    は対象が空になったため削除した。scripts/registry/common.py 参照）。
 # ---------------------------------------------------------------------------
 
 
@@ -326,27 +343,55 @@ def test_fingerprint_full_mode_changes_when_taxon_crosswalk_csv_changes(tmp_path
     assert before != after
 
 
-def test_fingerprint_full_mode_changes_when_derived_tables_change(tmp_path):
+def test_fingerprint_full_mode_changes_when_watershed_jsonl_changes(tmp_path):
+    """build_place.py の watershed 節が読む `nlni_w12_watersheds.jsonl` の中身が
+    変わると指紋も変わる（Phase B `phase-b/place-attributes`。旧
+    `test_fingerprint_full_mode_changes_when_derived_tables_change` の後継——
+    watershed の入力が derived.sqlite から L1 直読みに切り替わったため）。
+    """
     root = tmp_path / "repo"
     _make_fingerprint_input_tree(root)
-    (root / "data" / "db").mkdir(parents=True)
-    derived_path = root / "data" / "db" / "derived.sqlite"
-    # watershed_meta は build_place.py が実際に SELECT する列を持つ（残りは None で埋める。
-    # scripts/tests/registry_fixtures.py の共通フィクスチャ）。
-    make_derived_places_db(derived_path, [("w1", "川1", None, None, None, None)])
+    (root / "data" / "processed").mkdir(parents=True)
+    jsonl_path = root / "data" / "processed" / "nlni_w12_watersheds.jsonl"
+    jsonl_path.write_text('{"watershed_id": "w1", "water_system_name_ja_estimated": "川1"}\n', encoding="utf-8")
 
     before = common.compute_input_fingerprint(root=root, mode=common.MODE_FULL)
 
-    conn = sqlite3.connect(derived_path)
+    jsonl_path.write_text('{"watershed_id": "w1", "water_system_name_ja_estimated": "川2"}\n', encoding="utf-8")
+    after = common.compute_input_fingerprint(root=root, mode=common.MODE_FULL)
+
+    assert before != after
+
+
+def test_fingerprint_full_mode_ignores_derived_sqlite_entirely(tmp_path):
+    """`derived.sqlite` は mode に関わらず指紋に一切影響しない（Phase B
+    `phase-b/place-attributes` で watershed の入力を L1 直読みに切り替えた結果、
+    registry ビルドがこのファイルを読む箇所が無くなったため。旧
+    `test_fingerprint_full_mode_handles_missing_derived_without_crashing` の後継
+    ——以前は「derived が無い」と「ある」で指紋が変わることを確認していたが、
+    今は逆に「変わらない」ことを確認する）。
+    """
+    root = tmp_path / "repo"
+    _make_fingerprint_input_tree(root)
+
+    fp_missing = common.compute_input_fingerprint(root=root, mode=common.MODE_FULL)
+
+    (root / "data" / "db").mkdir(parents=True)
+    make_derived_places_db(root / "data" / "db" / "derived.sqlite", [("w1", "川1", None, None, None, None)])
+    fp_present = common.compute_input_fingerprint(root=root, mode=common.MODE_FULL)
+
+    assert fp_missing == fp_present
+
+    conn = sqlite3.connect(root / "data" / "db" / "derived.sqlite")
     conn.execute(
         "UPDATE watershed_meta SET water_system_name = ? WHERE watershed_id = ?",
         ("川2", "w1"),
     )
     conn.commit()
     conn.close()
-    after = common.compute_input_fingerprint(root=root, mode=common.MODE_FULL)
+    fp_after_update = common.compute_input_fingerprint(root=root, mode=common.MODE_FULL)
 
-    assert before != after
+    assert fp_present == fp_after_update
 
 
 def test_fingerprint_full_mode_ignores_cells_and_most_of_ryuiki(tmp_path):
@@ -430,8 +475,9 @@ def test_fingerprint_files_only_mode_ignores_ryuiki(tmp_path):
 
 def test_fingerprint_files_only_mode_never_touches_derived_or_taxon_crosswalk(tmp_path):
     """--files-only は build_place.py/build_taxon.py を呼ばないので、指紋計算も
-    derived.sqlite / taxon_crosswalk.csv を一切開かない（CI に原本が無くても
-    --files-only が動く要件。置いても置かなくても files_only の指紋は変わらない）。"""
+    derived.sqlite / taxon_crosswalk.csv / nlni_w12_watersheds.jsonl を一切開かない
+    （CI に原本が無くても --files-only が動く要件。置いても置かなくても
+    files_only の指紋は変わらない）。"""
     root = tmp_path / "repo"
     _make_fingerprint_input_tree(root)
 
@@ -439,6 +485,9 @@ def test_fingerprint_files_only_mode_never_touches_derived_or_taxon_crosswalk(tm
 
     (root / "data" / "processed").mkdir(parents=True)
     (root / "data" / "processed" / "taxon_crosswalk.csv").write_text("x\n", encoding="utf-8")
+    (root / "data" / "processed" / "nlni_w12_watersheds.jsonl").write_text(
+        '{"watershed_id": "w1"}\n', encoding="utf-8"
+    )
     (root / "data" / "db").mkdir(parents=True)
     make_derived_places_db(
         root / "data" / "db" / "derived.sqlite", [("w1", "川1", None, None, None, None)]
@@ -447,24 +496,6 @@ def test_fingerprint_files_only_mode_never_touches_derived_or_taxon_crosswalk(tm
     fp_with = common.compute_input_fingerprint(root=root, mode=common.MODE_FILES_ONLY)
 
     assert fp_without == fp_with
-
-
-def test_fingerprint_full_mode_handles_missing_derived_without_crashing(tmp_path):
-    """derived.sqlite が無い環境（full モードだが build:derived をまだ実行していない）
-    でも compute_input_fingerprint() は例外を投げない。derived が現れると指紋も変わる
-    （「無い」は「古い」として検知される。フル環境で derived が要ることに変わりは無いので、
-    実際のビルドは既存の分かりやすいエラー — pnpm run build:derived を促す — で止まる）。"""
-    root = tmp_path / "repo"
-    _make_fingerprint_input_tree(root)
-
-    fp_missing = common.compute_input_fingerprint(root=root, mode=common.MODE_FULL)
-    assert fp_missing  # 例外にならない
-
-    (root / "data" / "db").mkdir(parents=True)
-    make_derived_places_db(root / "data" / "db" / "derived.sqlite", [])
-    fp_present = common.compute_input_fingerprint(root=root, mode=common.MODE_FULL)
-
-    assert fp_missing != fp_present
 
 
 # ---------------------------------------------------------------------------

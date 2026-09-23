@@ -215,7 +215,7 @@ def _variable_alias_rows(rows: list[dict]) -> list[tuple]:
 
 def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[str, int]:
     """conn: registry.sqlite への書き込み用コネクション。
-    src: {'ryuiki': ..., 'cells': ..., 'derived': ...} の読み取り専用コネクション
+    src: {'ryuiki': ..., 'cells': ...} の読み取り専用コネクション
     （このモジュールでは未使用。原本は registry/*.yaml・*.csv を手書きする時点で
     参照済みであり、build() 自体は原本に触れない）。
     戻り値: {テーブル名: 挿入した行数}（ログ表示用）。

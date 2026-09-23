@@ -10,14 +10,17 @@ scripts/registry/build_unit_variable.py（A-2）/ build_place.py（A-3）/
 build_taxon.py（A-4）/ build_caveat.py（A-5）。並行作業で衝突しないよう
 モジュールを分けてあるので、ここにロジックを足さない。
 
-原本 data/db/ryuiki.sqlite / cells.sqlite / derived.sqlite は読み取り専用で開き、
-一切書き換えない。registry.sqlite は毎回ゼロから作り直す
+原本 data/db/ryuiki.sqlite / cells.sqlite は読み取り専用で開き、一切書き換えない
+（`common.open_sources()` が既定で開くのはこの2つ。`derived.sqlite` は Phase B
+`phase-b/place-attributes` で registry ビルドの入力から外れた——下記「watershed の
+入力」の節参照。**full ビルドに `data/db/derived.sqlite`（`pnpm run build:derived`
+の成果物）はもう要らない**）。registry.sqlite は毎回ゼロから作り直す
 （レジストリの正はリポジトリの registry/ 配下と、これらの読み取り専用の原本であり、
 D1 は「捨てて再構築できる」もの — ADR-0001）。
 
 ## `--files-only`（docs/plans/PHASE_B_INTAKE.md #7、CI 用）
 
-原本 DB（`ryuiki`/`cells`/`derived`）を一切開かず、`registry/` 配下の手書きファイルと
+原本 DB（`ryuiki`/`cells`）を一切開かず、`registry/` 配下の手書きファイルと
 `build_caveat.py` の Python 定数だけから作れる部分（`unit`/`variable`/`variable_alias`
 と、ファイル由来の `caveat`/`caveat_scope`）だけを作るモード。`place`/`place_relation`/
 `taxon`、および `cells.notes`/`place`/`taxon` 由来の `caveat` は作らない（それらのテーブルは
@@ -77,18 +80,23 @@ try で囲んであり、スキーマ流し込みの失敗でも一時ファイ�
 一瞬だけ開く（次の段落参照。実測で合計約5ms）。`web/scripts/ensure-registry.sh` は
 ファイルの有無ではなくこの終了コードで作り直すかどうかを決める。
 
-**`derived.sqlite`/`ryuiki.sqlite` は例外。** `full` モードの指紋には、build_place.py
-が実際に読むテーブル（`common.DERIVED_TABLES_READ`）の中身、
-`data/processed/taxon_crosswalk.csv` の中身、`ryuiki.organism_records` の軽い代理指標
-（行数・最大rowid。grid01 の入力が `derived.mesh_all` から `organism_records` に
-変わったための追加。`common.py` の `_hash_organism_records_freshness()` docstring
-参照）も混ぜる（fix 2、phase-b/occurrence-registry）。いずれも「読み取り専用だが
-再生成・追記すれば値が変わりうる」入力であり、以前は指紋の対象外だったため、
-これらだけを更新してもレジストリが「新鮮」のまま固まってしまっていた。ただし
-`derived.sqlite`/`ryuiki.sqlite` の**ファイル全体**は開かない・ハッシュしない
-（449MB/828MB。読むのは `derived.sqlite` の2テーブルの SELECT 結果と、
-`ryuiki.sqlite` の軽い集約2つだけ）。`--files-only` はこの3つのどれも開かない
-（`build_place.py`/`build_taxon.py` 自体を呼ばないため。CI が原本無しで動く要件を保つ）。
+**`ryuiki.sqlite` は例外。** `full` モードの指紋には、
+`data/processed/nlni_w12_watersheds.jsonl`（build_place.py の watershed 節が読む
+L1。Phase B `phase-b/place-attributes` で `derived.watershed_meta` から切り替えた）
+の中身、`data/processed/taxon_crosswalk.csv` の中身、`ryuiki.organism_records` の
+軽い代理指標（行数・最大rowid。grid01 の入力が `derived.mesh_all` から
+`organism_records` に変わったための追加。`common.py` の
+`_hash_organism_records_freshness()` docstring 参照）を混ぜる（fix 2、
+phase-b/occurrence-registry）。いずれも「読み取り専用だが再生成・追記すれば値が
+変わりうる」入力であり、以前は指紋の対象外だったため、これらだけを更新しても
+レジストリが「新鮮」のまま固まってしまっていた。`ryuiki.sqlite` の**ファイル全体**は
+開かない・ハッシュしない（828MB。読むのは軽い集約2つだけ）。**`derived.sqlite` は
+mode に関わらず一切開かない**——`phase-b/place-attributes` で watershed の入力を
+L1 直読みに切り替えたことで、registry ビルドがこのファイルを読む箇所が無くなった
+（`scripts/registry/common.py` の `WATERSHED_JSONL_RELPATH` 定義直前のコメント参照）。
+`--files-only` は watershed の JSONL・taxon_crosswalk.csv・ryuiki.sqlite のどれも
+開かない（`build_place.py`/`build_taxon.py` 自体を呼ばないため。CI が原本無しで
+動く要件を保つ）。
 
 **終了コードは3種類を区別する**（`web/scripts/ensure-registry.sh` がこれを読む）:
 
@@ -196,6 +204,10 @@ ID_UNIQUENESS_CHECKS = [
     # sites.zone/watershed_meta.watershed_id/organism_records.lat_lon）なので、
     # sites.zone に限定せず汎用にここへ入れる。
     ("place_source_ref", ("place_id", "source_id")),
+    # place_watershed は place_id が PRIMARY KEY（Phase B `phase-b/place-attributes`、
+    # P-1a）。SQLite が挿入時点で保証済みだが、他の PK 列（place/taxon/caveat）と
+    # 同じく統合作業の受け入れ基準として明示的にも検証する。
+    ("place_watershed", "place_id"),
 ]
 
 
@@ -237,6 +249,7 @@ ID_REFERENCE_CHECKS = [
     ("place_source_ref", "place_id", "place", "place_id"),
     ("place_relation", "parent_id", "place", "place_id"),
     ("place_relation", "child_id", "place", "place_id"),
+    ("place_watershed", "place_id", "place", "place_id"),
 ]
 
 
@@ -279,43 +292,113 @@ def _assert_region_id_scope_invariant(conn) -> None:
     print(f"  region_id 不変条件OK: {len(rows):,} 件（common:->NULL, <region>:-><region>）")
 
 
-# ゾーン関連の不変条件（Phase B `phase-b/zone-slice` のコードレビュー対応で b05 から
-# 移設。「レジストリの不変条件」と「射影〔b05〕の前提」を分ける——書き手
-# scripts/registry/build_place.py の出力をここで1回だけ保証すれば、消費側
-# （b05_project_v1.py）は結果を信用してよい。fraction=1.0 のような「射影固有の
-# 前提」（v1 を非加重で再現するという b05 の設計判断であり、レジストリ全体が
-# 守るべき不変条件ではない）はここに置かず b05 側に残す。docs/plans/
-# PHASE_B_FACT_SLICE.md D11 参照。
-def _assert_zone_relation_child_is_single_valued(conn) -> None:
-    """地点（`place_relation.child_id`）が、ゾーン（`place_source_ref
-    (source_id='sites.zone')` を持つ place を `parent_id` とする `'within'`
-    辺）を高々1本しか持たないことを検証する。v1 の `sites.zone` は単一列
-    であり、地点は必ず1つのゾーンにしか属さないため。
+# 「地点は X への 'within' 辺を高々1本」という不変条件（Phase B `phase-b/zone-slice`
+# のコードレビュー対応で b05 から移設。「レジストリの不変条件」と「射影〔b05/b11〕の
+# 前提」を分ける——書き手 scripts/registry/build_place.py の出力をここで1回だけ
+# 保証すれば、消費側（b05_project_v1.py/b11_project_place_v1.py）は結果を信用して
+# よい。fraction=1.0 のような「射影固有の前提」（v1 を非加重で再現するという b05 の
+# 設計判断であり、レジストリ全体が守るべき不変条件ではない）はここに置かず b05 側に
+# 残す。docs/plans/PHASE_B_FACT_SLICE.md D11 参照）。
+#
+# ゾーン（sites.zone 由来）と流域（sites.watershed 由来、Phase B
+# `phase-b/place-attributes`、P-1a）は同じ形の検証だったので、この宣言リストと
+# 共通実装（`_assert_relation_child_is_single_valued()`）から回す
+# （code-review 指摘。辺の種類が増えたらここに1行足すだけでよい）。
+# 各要素: (place_source_ref.source_id, レポート・メッセージに出す日本語ラベル)。
+RELATION_SINGLE_VALUED_CHECKS = [
+    ("sites.zone", "ゾーン"),
+    ("watershed_meta.watershed_id", "流域"),
+]
+
+
+def _assert_relation_child_is_single_valued(conn, source_id: str, label: str) -> None:
+    """地点（`place_relation.child_id`）が、`label`（`place_source_ref
+    (source_id=source_id)` を持つ place を `parent_id` とする `'within'` 辺）を
+    高々1本しか持たないことを検証する。v1 側（`sites.zone`/`sites.watershed`）が
+    単一列であり、地点は必ず1つの X にしか属さないため。
     """
     dup = conn.execute(
         """
         SELECT pr.child_id, COUNT(*) AS n
         FROM place_relation pr
-        JOIN place_source_ref zref
-          ON zref.place_id = pr.parent_id AND zref.source_id = 'sites.zone'
+        JOIN place_source_ref ref
+          ON ref.place_id = pr.parent_id AND ref.source_id = ?
         WHERE pr.relation = 'within'
         GROUP BY pr.child_id
         HAVING n > 1
-        """
+        """,
+        (source_id,),
     ).fetchall()
     if dup:
         raise AssertionError(
-            f"地点がゾーンへの 'within' 辺を複数持っている（child_id, 本数）: {dup[:10]}"
+            f"地点が{label}への 'within' 辺を複数持っている（child_id, 本数）: {dup[:10]}"
         )
     n = conn.execute(
         """
         SELECT COUNT(*) FROM place_relation pr
-        JOIN place_source_ref zref
-          ON zref.place_id = pr.parent_id AND zref.source_id = 'sites.zone'
+        JOIN place_source_ref ref
+          ON ref.place_id = pr.parent_id AND ref.source_id = ?
         WHERE pr.relation = 'within'
-        """
+        """,
+        (source_id,),
     ).fetchone()[0]
-    print(f"  地点→ゾーンの辺は単射OK: {n:,} 件")
+    print(f"  地点→{label}の辺は単射OK: {n:,} 件")
+
+
+def _assert_all_relation_single_valued_checks(conn) -> None:
+    """`RELATION_SINGLE_VALUED_CHECKS` に宣言した全ペアを検証する。"""
+    for source_id, label in RELATION_SINGLE_VALUED_CHECKS:
+        _assert_relation_child_is_single_valued(conn, source_id, label)
+
+
+# watershed の属性完全性（Phase B `phase-b/place-attributes`、P-1a。上の
+# 「地点は X への辺が高々1本」と同じ「レジストリの不変条件はここで1回だけ保証し、
+# 消費側は信用してよい」という考え方——b11_project_place_v1.py がこれを信用して
+# よい前提を作る。b11 側に残すのは、その結果を信用したうえでの射影固有の防御
+# （テーブル存在チェック・JOIN 由来の行の水増し検出）だけ。docs/plans/
+# PHASE_B_PLACE_ATTRIBUTES.md 参照）。
+def _assert_watershed_place_has_attributes_and_source_ref(conn) -> None:
+    """`place_kind='watershed'` の各 place が、`place_watershed`（属性サテライト）
+    と `place_source_ref(source_id='watershed_meta.watershed_id')`（v1 の
+    watershed_id への逆引き）をそれぞれちょうど1件持つことを検証する。
+    `scripts/registry/build_place.py` の watershed 節が両方を同じループで1回ずつ
+    積む構造を裏付ける不変条件——欠けていると `b11_project_place_v1.py` の
+    INNER JOIN がその place を黙って落とす（一番気づきにくい壊れ方）。逆向きの
+    参照整合性（`place_watershed.place_id -> place.place_id` 等）は
+    `ID_REFERENCE_CHECKS` が別途保証する（本関数は前向き＝欠落の検出）。
+    """
+    missing_attrs = conn.execute(
+        """
+        SELECT p.place_id FROM place p
+        WHERE p.place_kind = 'watershed'
+          AND NOT EXISTS (SELECT 1 FROM place_watershed pw WHERE pw.place_id = p.place_id)
+        LIMIT 10
+        """
+    ).fetchall()
+    if missing_attrs:
+        raise AssertionError(
+            "place_kind='watershed' なのに place_watershed に行が無い place がある: "
+            f"{[r[0] for r in missing_attrs]}"
+        )
+    missing_ref = conn.execute(
+        """
+        SELECT p.place_id FROM place p
+        WHERE p.place_kind = 'watershed'
+          AND NOT EXISTS (
+            SELECT 1 FROM place_source_ref ref
+            WHERE ref.place_id = p.place_id AND ref.source_id = 'watershed_meta.watershed_id'
+          )
+        LIMIT 10
+        """
+    ).fetchall()
+    if missing_ref:
+        raise AssertionError(
+            "place_kind='watershed' なのに "
+            "place_source_ref(source_id='watershed_meta.watershed_id') が無い place がある: "
+            f"{[r[0] for r in missing_ref]}"
+        )
+    n = conn.execute("SELECT COUNT(*) FROM place WHERE place_kind='watershed'").fetchone()[0]
+    print(f"  watershed place の属性/逆引きOK: {n:,} 件")
 
 
 def _assert_zone_external_key_is_numeric(conn) -> None:
@@ -353,7 +436,7 @@ EXIT_STALE = 10
 # 人間が読める形で残しておかないと再ビルドのトリガーがブラックボックスになる）。
 def _check_fresh(target_db: pathlib.Path, expected_mode: str) -> int:
     """`target_db` が「今の入力（コード + registry/ 配下 + [full モードのみ]
-    derived.sqlite の一部テーブル・taxon_crosswalk.csv・ryuiki.organism_records の
+    nlni_w12_watersheds.jsonl・taxon_crosswalk.csv・ryuiki.organism_records の
     軽い代理指標）」と `expected_mode` から作ったものと一致するかだけを判定する。
     `cells` は一切開かない。`ryuiki` は full モードのときだけ軽い集約2つのために
     一瞬だけ開く（実測で合計約5ms。`common._hash_organism_records_freshness()`
@@ -402,7 +485,7 @@ def _check_fresh(target_db: pathlib.Path, expected_mode: str) -> int:
     if fingerprint != expected_fingerprint:
         print(
             "指紋が今の入力と一致しない（コード・registry/ 配下・"
-            "[full モードのみ] derived.sqlite/taxon_crosswalk.csv/"
+            "[full モードのみ] nlni_w12_watersheds.jsonl/taxon_crosswalk.csv/"
             "ryuiki.organism_records が変わった）: "
             f"{target_db}（登録済み {fingerprint}、現在 {expected_fingerprint}）",
             file=sys.stderr,
@@ -419,7 +502,7 @@ def main() -> None:
         "--files-only",
         action="store_true",
         help=(
-            "原本 DB（ryuiki/cells/derived）を開かず、registry/ 配下の手書きファイルと "
+            "原本 DB（ryuiki/cells）を開かず、registry/ 配下の手書きファイルと "
             "build_caveat.py の Python 定数だけから unit/variable/variable_alias と "
             "ファイル由来の caveat/caveat_scope だけを作る（CI 用）。書き込み先は既定で "
             f"正規の {common.REGISTRY_DB.name} とは別ファイル "
@@ -432,7 +515,7 @@ def main() -> None:
         help=(
             "ビルドせず、対象レジストリ（RYUIKI_REGISTRY_DB があればそれ、無ければ "
             "--files-only の有無で決まる既定パス）が今の入力から作ったものかだけを判定する。"
-            "cells は開かない（full モードでは derived.sqlite の一部テーブルと "
+            "cells は開かない（full モードでは nlni_w12_watersheds.jsonl と "
             "taxon_crosswalk.csv、ryuiki.organism_records の軽い代理指標だけ読む。"
             "PyYAML は import しない）。一致すれば終了コード "
             f"{EXIT_FRESH}、古ければ{EXIT_STALE}、判定できなければそれ以外"
@@ -502,8 +585,9 @@ def main() -> None:
         _assert_id_uniqueness(conn)
         _assert_id_references(conn)
         _assert_region_id_scope_invariant(conn)
-        _assert_zone_relation_child_is_single_valued(conn)
+        _assert_all_relation_single_valued_checks(conn)
         _assert_zone_external_key_is_numeric(conn)
+        _assert_watershed_place_has_attributes_and_source_ref(conn)
 
         conn.execute("DELETE FROM registry_build")
         conn.execute(

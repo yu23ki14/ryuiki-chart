@@ -208,6 +208,25 @@ def attach_readonly(conn: sqlite3.Connection, path, alias: str) -> None:
     conn.execute(f"ATTACH DATABASE 'file:{p}?mode=ro' AS {alias}")
 
 
+def assert_attached_table_exists(conn: sqlite3.Connection, alias: str, table: str, *, hint: str) -> None:
+    """`ATTACH`（`attach_readonly` 等）した `alias` に `table` が存在することを
+    確認する。無いと素の `sqlite3.OperationalError`（no such table）になり原因が
+    分かりにくいため（`scripts/b05_project_v1.py` の
+    `_assert_place_relation_table_exists`・`scripts/b11_project_place_v1.py` の
+    `_assert_place_watershed_table_exists` が同型の検証を別々に持っていたものを
+    1箇所に集約した。Phase B `phase-b/place-attributes`、main へのリベース時）。
+
+    `hint` は「テーブルが無いときに何をすべきか」を示す1文（呼び出し元ごとに
+    文言が違うため呼び出し側から渡す。`raise_on_group_by_duplicates` の
+    `build_message` と同じ、文言を1つのテンプレートに揃えない方針）。
+    """
+    row = conn.execute(
+        f"SELECT 1 FROM {alias}.sqlite_master WHERE type = 'table' AND name = ?", (table,)
+    ).fetchone()
+    if row is None:
+        raise MigrationError(f"{alias} に {table} テーブルが無い。{hint}")
+
+
 def resolve_registry_db(cli_value: str | None, default: pathlib.Path) -> pathlib.Path:
     """`--registry-db` > `RYUIKI_REGISTRY_DB` 環境変数 > `default`、の優先順位。
     `scripts/r01_build_registry.py` と同じ環境変数を見る（CLAUDE.md の規約）。

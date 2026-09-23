@@ -294,7 +294,8 @@ def build_from_files(conn: sqlite3.Connection) -> dict[str, int]:
 
 def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[str, int]:
     """conn: registry.sqlite への書き込み用コネクション。
-    src: {'ryuiki': ..., 'cells': ..., 'derived': ...} の読み取り専用コネクション。
+    src: {'ryuiki': ..., 'cells': ...} の読み取り専用コネクション
+    （`common.open_sources()` の既定の集合。'derived' は含まれない）。
     戻り値: {テーブル名: 挿入した行数}（ログ表示用）。
     """
     counts = build_from_files(conn)

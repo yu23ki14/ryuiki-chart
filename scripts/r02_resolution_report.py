@@ -22,8 +22,10 @@ dict/set の反復順に依存しない）。実行時刻や実行環境に依�
 
 ## 読み取り専用
 
-原本3ファイル（ryuiki/cells/derived）は `scripts/registry/common.py` の
-`open_sources()` で読み取り専用に開く。`registry.sqlite` もこのスクリプトからは
+原本（ryuiki/cells）は `scripts/registry/common.py` の `open_sources()` で
+読み取り専用に開く（`derived.sqlite` は registry ビルドが読まなくなったため
+`open_sources()` の既定の集合から外れている。`common.py` の `SOURCE_NAMES`/
+`DEFAULT_SOURCES` のコメント参照）。`registry.sqlite` もこのスクリプトからは
 読み取り専用の ATTACH でしか触らない（生成物ではあるが、レポート実行が
 書き換えないという契約をコード上でも保証する）。
 """

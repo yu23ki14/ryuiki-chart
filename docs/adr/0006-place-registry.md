@@ -18,6 +18,18 @@
 解決しない」という文字どおりの適用は、地点のような細かい単位への解決と、公開時の
 一般化（ADR-0018）に限る。
 
+**2026-09-23 追記（place の属性、Phase B `phase-b/place-attributes`）**: **kind 固有の属性は
+`place_<kind>` という属性サテライトに置き、`place` 本体の列は増やさない**——ADR-0011 の
+「place の属性」カテゴリ（`watershed_meta`/`watershed_rollup`）の具体形。最初の例が
+`place_watershed(place_id PK, water_system_code, water_system_category, main_rivers,
+data_year)`（watershed だけが持つ4列。`place` 本体には `name_ja`/`lat`/`lon`/`area_km2`/
+`definition_ref` のような、kind をまたいで共通する列だけを置く）。`water_system_code`
+（v1 の水系コード）を親 place（`water_system` という新しい `place_kind`）＋
+`place_relation` の辺にする案も検討したが、再現（v1 の `watershed_meta` を1テーブルへ
+射影し直すだけ）には過剰な設計であり、今回は単純に列として `place_watershed` に持たせた。
+需要が増えたら（例: 水系単位のロールアップが要る）見直す。詳細・実測は
+`docs/plans/PHASE_B_PLACE_ATTRIBUTES.md`。
+
 ## 背景
 
 現行では「場所」が5種類以上の別々の形で表現されている。

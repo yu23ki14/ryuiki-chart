@@ -146,7 +146,7 @@ def test_zone_relation_child_is_single_valued_passes_for_single_zone_edge(empty_
     _insert_place_relation(empty_registry, "zone1", "s1")
     empty_registry.commit()
 
-    r01._assert_zone_relation_child_is_single_valued(empty_registry)  # 例外を投げなければOK
+    r01._assert_relation_child_is_single_valued(empty_registry, "sites.zone", "ゾーン")  # 例外を投げなければOK
 
 
 def test_zone_relation_child_is_single_valued_raises_for_two_zone_edges(empty_registry):
@@ -160,7 +160,7 @@ def test_zone_relation_child_is_single_valued_raises_for_two_zone_edges(empty_re
     empty_registry.commit()
 
     with pytest.raises(AssertionError, match="複数持っている"):
-        r01._assert_zone_relation_child_is_single_valued(empty_registry)
+        r01._assert_relation_child_is_single_valued(empty_registry, "sites.zone", "ゾーン")
 
 
 def test_zone_relation_child_is_single_valued_ignores_non_zone_within_edges(empty_registry):
@@ -173,7 +173,7 @@ def test_zone_relation_child_is_single_valued_ignores_non_zone_within_edges(empt
     _insert_place_relation(empty_registry, "watershed1", "s1")  # ゾーンではない
     empty_registry.commit()
 
-    r01._assert_zone_relation_child_is_single_valued(empty_registry)  # 例外を投げなければOK
+    r01._assert_relation_child_is_single_valued(empty_registry, "sites.zone", "ゾーン")  # 例外を投げなければOK
 
 
 def test_zone_external_key_is_numeric_passes_for_digit_strings(empty_registry):
@@ -212,3 +212,136 @@ def test_place_source_ref_uniqueness_raises_for_duplicate_place_source_pair(empt
 
     with pytest.raises(AssertionError, match="一意ではない"):
         r01._assert_id_uniqueness(empty_registry)
+
+
+# ---------------------------------------------------------------------------
+# 流域関連の不変条件（Phase B `phase-b/place-attributes`、P-1a。
+# ゾーン関連の不変条件（上）と同じ流儀の流域版）
+# ---------------------------------------------------------------------------
+
+def test_watershed_relation_child_is_single_valued_passes_for_single_watershed_edge(empty_registry):
+    _insert_place_source_ref(empty_registry, "ws1", "83032-0024", "watershed_meta.watershed_id")
+    _insert_place_relation(empty_registry, "ws1", "s1")
+    empty_registry.commit()
+
+    r01._assert_relation_child_is_single_valued(empty_registry, "watershed_meta.watershed_id", "流域")  # 例外を投げなければOK
+
+
+def test_watershed_relation_child_is_single_valued_raises_for_two_watershed_edges(empty_registry):
+    """同じ地点(child_id)が2つの流域(parent_id)への 'within' 辺を持っていれば止める
+    （v1 の sites.watershed は単一列なので、地点は必ず1つの流域にしか属さない）。
+    """
+    _insert_place_source_ref(empty_registry, "ws1", "83032-0024", "watershed_meta.watershed_id")
+    _insert_place_source_ref(empty_registry, "ws2", "83032-0099", "watershed_meta.watershed_id")
+    _insert_place_relation(empty_registry, "ws1", "s1")
+    _insert_place_relation(empty_registry, "ws2", "s1")  # 同じ地点が2つ目の流域にも
+    empty_registry.commit()
+
+    with pytest.raises(AssertionError, match="複数持っている"):
+        r01._assert_relation_child_is_single_valued(empty_registry, "watershed_meta.watershed_id", "流域")
+
+
+def test_watershed_relation_child_is_single_valued_ignores_non_watershed_within_edges(empty_registry):
+    """流域以外の 'within' 辺（parent が watershed_meta.watershed_id の
+    place_source_ref を持たない。例: 地点→ゾーン）は対象外——地点が流域への辺1本と、
+    それ以外への辺を両方持っていても、流域の辺自体が1本なら通る。
+    """
+    _insert_place_source_ref(empty_registry, "ws1", "83032-0024", "watershed_meta.watershed_id")
+    _insert_place_relation(empty_registry, "ws1", "s1")
+    _insert_place_relation(empty_registry, "zone1", "s1")  # 流域ではない
+    empty_registry.commit()
+
+    r01._assert_relation_child_is_single_valued(empty_registry, "watershed_meta.watershed_id", "流域")  # 例外を投げなければOK
+
+
+def test_relation_single_valued_checks_declares_zone_and_watershed(empty_registry):
+    """`RELATION_SINGLE_VALUED_CHECKS`（code-review 指摘7: ゾーン/流域の重複コードを
+    1つの宣言リスト＋共通関数に集約した）が両方を宣言していること、および
+    `_assert_all_relation_single_valued_checks()` がそれを1つずつ回して両方とも
+    検証することを確認する。
+    """
+    assert dict(r01.RELATION_SINGLE_VALUED_CHECKS) == {
+        "sites.zone": "ゾーン",
+        "watershed_meta.watershed_id": "流域",
+    }
+
+    r01._assert_all_relation_single_valued_checks(empty_registry)  # 空でも例外を投げない
+
+    _insert_place_source_ref(empty_registry, "zone1", "1", "sites.zone")
+    _insert_place_source_ref(empty_registry, "zone2", "2", "sites.zone")
+    _insert_place_relation(empty_registry, "zone1", "s1")
+    _insert_place_relation(empty_registry, "zone2", "s1")  # 地点が2つのゾーンへの辺を持つ
+    empty_registry.commit()
+
+    with pytest.raises(AssertionError, match="複数持っている"):
+        r01._assert_all_relation_single_valued_checks(empty_registry)
+
+
+def test_site_with_both_zone_and_watershed_edges_passes_both_checks(empty_registry):
+    """実データでは278地点が地点→ゾーンと地点→流域の辺を両方持つ（sites.zone/
+    sites.watershed がどちらも非NULL）。片方の辺の存在がもう片方の検証を
+    誤って巻き込まないことを確認する（従来のテストは ref 行の無い parent を
+    「ゾーン以外」の代役にしていたが、実データの形——両方の辺を実際に持つ子——を
+    再現するテストが無かった。code-review 指摘10）。
+    """
+    _insert_place_source_ref(empty_registry, "zone1", "1", "sites.zone")
+    _insert_place_source_ref(empty_registry, "ws1", "83032-0024", "watershed_meta.watershed_id")
+    _insert_place_relation(empty_registry, "zone1", "s1")  # s1: ゾーンへの辺
+    _insert_place_relation(empty_registry, "ws1", "s1")  # s1: 流域への辺も
+    empty_registry.commit()
+
+    r01._assert_all_relation_single_valued_checks(empty_registry)  # 例外を投げなければOK
+
+
+# ---------------------------------------------------------------------------
+# watershed place の属性完全性（Phase B `phase-b/place-attributes`、P-1a）
+# ---------------------------------------------------------------------------
+
+def _insert_watershed_place(conn, place_id):
+    conn.execute(
+        "INSERT INTO place (place_id, region_id, place_kind, status) VALUES (?, ?, 'watershed', 'ok')",
+        (place_id, None),
+    )
+
+
+def _insert_place_watershed(conn, place_id):
+    conn.execute("INSERT INTO place_watershed (place_id, data_year) VALUES (?, 1977)", (place_id,))
+
+
+def test_watershed_place_has_attributes_and_source_ref_passes_when_both_present(empty_registry):
+    _insert_watershed_place(empty_registry, "ws1")
+    _insert_place_watershed(empty_registry, "ws1")
+    _insert_place_source_ref(empty_registry, "ws1", "83032-0024", "watershed_meta.watershed_id")
+    empty_registry.commit()
+
+    r01._assert_watershed_place_has_attributes_and_source_ref(empty_registry)  # 例外を投げなければOK
+
+
+def test_watershed_place_has_attributes_and_source_ref_raises_when_place_watershed_missing(empty_registry):
+    """`place_watershed` に行が無ければ止める（欠けていると
+    `b11_project_place_v1.py` の INNER JOIN がその place を黙って落とす）。
+    """
+    _insert_watershed_place(empty_registry, "ws1")
+    _insert_place_source_ref(empty_registry, "ws1", "83032-0024", "watershed_meta.watershed_id")
+    empty_registry.commit()
+
+    with pytest.raises(AssertionError, match="place_watershed に行が無い"):
+        r01._assert_watershed_place_has_attributes_and_source_ref(empty_registry)
+
+
+def test_watershed_place_has_attributes_and_source_ref_raises_when_source_ref_missing(empty_registry):
+    _insert_watershed_place(empty_registry, "ws1")
+    _insert_place_watershed(empty_registry, "ws1")
+    empty_registry.commit()
+
+    with pytest.raises(AssertionError, match="place_source_ref"):
+        r01._assert_watershed_place_has_attributes_and_source_ref(empty_registry)
+
+
+def test_watershed_place_has_attributes_and_source_ref_ignores_other_kinds(empty_registry):
+    """place_kind が 'watershed' 以外（例: site）は対象外——place_watershed/
+    watershed_meta.watershed_id の逆引きを持たなくても止めない。"""
+    _insert_place(empty_registry, "jp-14:place:site.s1", "jp-14")
+    empty_registry.commit()
+
+    r01._assert_watershed_place_has_attributes_and_source_ref(empty_registry)  # 例外を投げなければOK

@@ -279,7 +279,9 @@ ADR-0011「粒度をまたぐ再集計をしない」）。月・年セルの `n
 - **`scripts/r01_build_registry.py`（レジストリの不変条件。既存の
   `ID_UNIQUENESS_CHECKS`/`_assert_region_id_scope_invariant` と同じ置き場）**:
   (i) 地点がゾーンへの `'within'` 辺を高々1本しか持たない
-  （`_assert_zone_relation_child_is_single_valued`）、(ii) `sites.zone` の
+  （当時は `_assert_zone_relation_child_is_single_valued`。`phase-b/place-attributes`
+  で流域版と統合し `_assert_relation_child_is_single_valued` に改名済み）、
+  (ii) `sites.zone` の
   `external_key` が数字だけの文字列（`_assert_zone_external_key_is_numeric`）、
   (iii) `place_source_ref(place_id, source_id)` の一意性（実データで全
   `source_id` について重複0件を確認したため `ID_UNIQUENESS_CHECKS` に汎用に
