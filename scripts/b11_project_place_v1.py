@@ -77,28 +77,17 @@ WHERE p.place_kind = 'watershed'
 """
 
 
-def _assert_place_watershed_table_exists(work: sqlite3.Connection) -> None:
-    """`reg.place_watershed` テーブルが存在することを確認する（無いと素の
-    `sqlite3.OperationalError`（no such table）になり原因が分かりにくいため。
-    `scripts/b05_project_v1.py` の `_assert_place_relation_table_exists()` と
-    同じ形）。Phase B `phase-b/place-attributes`（P-1a）で新設されたテーブルなので、
-    それより前にビルドした古い registry.sqlite には無い。
-    """
-    row = work.execute(
-        "SELECT 1 FROM reg.sqlite_master WHERE type = 'table' AND name = 'place_watershed'"
-    ).fetchone()
-    if row is None:
-        raise common.MigrationError(
-            "registry.sqlite に place_watershed テーブルが無い（Phase B "
-            "`phase-b/place-attributes` で新設されたテーブルなので、それより前に"
-            "ビルドした古い registry.sqlite には無い）。"
-            "scripts/r01_build_registry.py で registry.sqlite を作り直すこと。"
-        )
+# 「テーブルの存在確認」「GROUP BY での重複検出」はどちらも
+# `scripts/b05_project_v1.py`/`scripts/b08_project_occurrence_v1.py` と同型の
+# 検証だったため、共通ヘルパ（`scripts/migrate/common.py` の
+# `assert_attached_table_exists`/`raise_on_group_by_duplicates`）を呼ぶだけにした
+# （main へのリベースで O-1b がこれらの共通ヘルパを追加済みのため移した。
+# 以前はこのモジュールに専用関数を2つ持っていた）。
 
 
-def _assert_no_duplicate_watershed_source_ref_per_place(work: sqlite3.Connection) -> None:
+def _duplicate_watershed_source_ref_message(dup: list) -> str:
     """`place_source_ref(source_id='watershed_meta.watershed_id')` が `place_id`
-    について単射であることを検証する（射影固有の防御）。
+    について単射でないときのメッセージを組み立てる。
 
     同じ place に対応する行が2つあると、`_INSERT_WATERSHED_META_SQL` の
     `JOIN reg.place_source_ref psr ON psr.place_id = p.place_id AND ...` が
@@ -107,24 +96,14 @@ def _assert_no_duplicate_watershed_source_ref_per_place(work: sqlite3.Connection
     `external_key` で GROUP BY しており、この水増しを検出できていなかった）。
     `(place_id, source_id)` の一意性自体は r01 の `ID_UNIQUENESS_CHECKS` が
     build_place.py の出力に対して保証済みだが（レジストリ全体の不変条件）、
-    射影する側でも独立に確かめる（`scripts/b05_project_v1.py` の
-    `_assert_site_maps_to_at_most_one_zone` 等と同じ、射影固有の防御）。
+    射影する側でも独立に確かめる（射影固有の防御）。
     """
-    dup = work.execute(
-        """
-        SELECT psr.place_id, COUNT(*) AS n FROM reg.place_source_ref psr
-        WHERE psr.source_id = 'watershed_meta.watershed_id'
-        GROUP BY psr.place_id HAVING COUNT(*) > 1
-        LIMIT 5
-        """
-    ).fetchall()
-    if dup:
-        raise common.MigrationError(
-            "place_source_ref(source_id='watershed_meta.watershed_id') が place_id に"
-            f"ついて単射でない（同じ place に複数の external_key が対応している）: {dup}\n"
-            "watershed_meta への射影が行を水増しする。scripts/registry/build_place.py の "
-            "watershed 節、または r01 の ID_UNIQUENESS_CHECKS を確認すること。"
-        )
+    return (
+        "place_source_ref(source_id='watershed_meta.watershed_id') が place_id に"
+        f"ついて単射でない（同じ place に複数の external_key が対応している）: {dup}\n"
+        "watershed_meta への射影が行を水増しする。scripts/registry/build_place.py の "
+        "watershed 節、または r01 の ID_UNIQUENESS_CHECKS を確認すること。"
+    )
 
 
 def _validate_registry(registry_db) -> None:
@@ -134,8 +113,25 @@ def _validate_registry(registry_db) -> None:
     work = sqlite3.connect(":memory:", uri=True)
     try:
         common.attach_readonly(work, registry_db, "reg")
-        _assert_place_watershed_table_exists(work)
-        _assert_no_duplicate_watershed_source_ref_per_place(work)
+        common.assert_attached_table_exists(
+            work, "reg", "place_watershed",
+            hint=(
+                "Phase B `phase-b/place-attributes` で新設されたテーブルなので、それより前に"
+                "ビルドした古い registry.sqlite には無い。"
+                "scripts/r01_build_registry.py で registry.sqlite を作り直すこと。"
+            ),
+        )
+        common.raise_on_group_by_duplicates(
+            work,
+            """
+            SELECT psr.place_id, COUNT(*) AS n FROM reg.place_source_ref psr
+            WHERE psr.source_id = 'watershed_meta.watershed_id'
+            GROUP BY psr.place_id HAVING COUNT(*) > 1
+            LIMIT 5
+            """,
+            (),
+            _duplicate_watershed_source_ref_message,
+        )
     finally:
         work.close()
 

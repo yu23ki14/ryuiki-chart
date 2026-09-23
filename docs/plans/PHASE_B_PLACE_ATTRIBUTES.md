@@ -225,17 +225,20 @@ CLAUDE.md の規約どおり、`data/db/ryuiki.sqlite`/`cells.sqlite`（原本�
 ## 9. 設計からの逸脱・未決・既知の負債
 
 - **watershed_rollup は今回はやらない**（brief の指示どおりスコープ外。P-1a の
-  次に着手する候補——`docs/plans/PHASE_B_RECONCILIATION.md` 残り21テーブルの1つ）。
+  次に着手する候補——`docs/plans/PHASE_B_RECONCILIATION.md` 残り11テーブルの1つ）。
 - **main_rivers・水系コード等の watershed 固有語彙は `place_watershed` に列として
   そのまま置いた**（ADR-0006 追記のとおり、水系を独立した place にする設計は
   見送った）。
-- **b11 の `_assert_no_duplicate_watershed_source_ref_per_place`/
-  `_assert_place_watershed_table_exists` は `scripts/b05_project_v1.py` の
-  `_raise_on_group_by_duplicates`/`_assert_place_relation_table_exists` と同型だが、
-  共通ヘルパ（`scripts/migrate/common.py`）への切り出しは今回やらない**——同じ
-  作業を O-1b（`phase-b/occurrence-cube`）の PR が担当しており、同じファイルを
-  2つの PR で触ると衝突するため。O-1b がマージされたら、b11 のこの2つの検証を
-  共通ヘルパに寄せる。
+- ~~b11 の `_assert_no_duplicate_watershed_source_ref_per_place`/
+  `_assert_place_watershed_table_exists` を共通ヘルパに寄せる~~ **解消済み**:
+  main へのリベース時に O-1b がマージ済みで `scripts/migrate/common.py` に
+  `raise_on_group_by_duplicates`/`assert_dimension_key_unique`/
+  `assert_grouped_totals_match` が入っていた。前者は既存のものをそのまま呼ぶだけ
+  で済んだ。テーブル存在チェックの共通ヘルパ（`assert_attached_table_exists`）は
+  まだ無かったため、`scripts/b05_project_v1.py` の
+  `_assert_place_relation_table_exists` と同型の検証として新設し、b11 側を
+  それに置き換えた（`scripts/b05_project_v1.py` 自体はこの PR のスコープ外
+  なので変更していない——まだ独自実装のまま）。
 - **CI への部分ゲートの配線**（`watershed_meta` を含む。`docs/plans/PHASE_B_RECONCILIATION.md`
   §8参照）は今回やらない。1表のための汎用の対応表（テーブル名→射影スクリプト・
   candidate ファイル）も作らない——過剰。2つ目の `b1x` 系射影スクリプトが出た時点で
