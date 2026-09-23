@@ -1,0 +1,32 @@
+# occurrence_place（scripts/b09_build_occurrence_place.py）の機械検証が読む宣言
+# （ADR-0026、O-2a）。形式は occurrence_cube_declarations.yaml と同じ
+# （name -> {expected_row_count, note}）。scripts/migrate/period.py の
+# required_keys_problems/entries_with_required_keys/validate_expected_row_count を
+# そのまま再利用する。宣言された名前の集合が下の3件と過不足なく一致することも
+# b09 が検証する。
+#
+# 実測（data/db/ryuiki.sqlite / data/processed/nlni_w12_watersheds.geojson、
+# 2026-09-23）: occurrence（座標のある823,692行全件）を W12 流域ポリゴン
+# （377面）へ純 Python の even-odd 点内包判定で直接解決した結果。
+# 823,692 − 86,285 = 737,407（b09 が起動のたびに検算する）。
+
+n_watershed_polygons:
+  expected_row_count: 377
+  note: >
+    data/processed/nlni_w12_watersheds.geojson の feature 数。registry の
+    place_source_ref(source_id='watershed_meta.watershed_id') の external_key 数
+    （= place_watershed の行数）と一致することを別途検証する。
+
+place_id_null_count:
+  expected_row_count: 86285
+  note: >
+    座標はあるがどの流域ポリゴン（377面）にも入らない occurrence 記録の数
+    （point_in_polygon の一致ポリゴン数が0）。occurrence_place.place_id が
+    NULL になる行数と一致する。
+
+resolved_count:
+  expected_row_count: 737407
+  note: >
+    ちょうど1つの流域ポリゴンに解決できた occurrence 記録の数。
+    823,692（occurrence の座標あり行数） − 86,285（place_id_null_count）と
+    一致する（b09 が起動のたびに検算する）。

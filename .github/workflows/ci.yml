@@ -13,6 +13,7 @@ name: CI
 #   scripts/b02_derived_compare.py / scripts/b03_build_observation.py /
 #   scripts/b04_build_cube.py / scripts/b05_project_v1.py / scripts/b06_build_occurrence.py /
 #   scripts/b07_build_occurrence_cube.py / scripts/b08_project_occurrence_v1.py /
+#   scripts/b09_build_occurrence_place.py /
 #   scripts/reconcile/*.py / scripts/migrate/*.py）のフィクスチャテストと、以下の構造検証
 #   （いずれも data/db/*.sqlite・data/db/derived.sqlite を一切必要としない）:
 #     - reports/derived_baseline.json がコミットされ、schema_version が一致すること。
@@ -40,6 +41,14 @@ name: CI
 #       expected_row_count が整数で、宣言名の集合が `leaf_cell_source_rows` 1件と
 #       過不足なく一致すること（`b07_build_occurrence_cube.
 #       validate_cube_declarations_shape`）。
+#     - scripts/migrate/occurrence_place_declarations.yaml（O-2a。ポリゴン数・
+#       NULL件数・解決件数の宣言）が読めて、必須キーを持ち、expected_row_count が
+#       整数で、宣言名の集合が3件と過不足なく一致すること
+#       （`b09_build_occurrence_place.validate_place_declarations_shape`）。
+#     - scripts/migrate/occurrence_watershed_v1_declarations.yaml（O-2a。v1のメモ化と
+#       正確な結果の食い違い〔記録単位〕の宣言）が読めて、必須キーを持ち、
+#       `memo_moved_records.breakdown` の3値の合計が `expected_count` と一致すること
+#       （`b08_project_occurrence_v1.validate_watershed_declarations_shape`）。
 #   docs/plans/PHASE_B_RECONCILIATION.md §5「CI の限界」で明言しているとおり、
 #   このジョブが保証するのはハーネス自体の正しさとこれらの構造検証だけ。実データ
 #   （data/db/derived.sqlite、14GB）に対する b01 の再実行や b02 の完全モード突合は、
@@ -204,6 +213,8 @@ jobs:
 
           sys.path.insert(0, "scripts")
           import b07_build_occurrence_cube as b07
+          import b08_project_occurrence_v1 as b08
+          import b09_build_occurrence_place as b09
           from migrate import occurrence_period, period, source_regions
           from reconcile import common
 
@@ -249,4 +260,19 @@ jobs:
           cube_declarations_path = pathlib.Path("scripts/migrate/occurrence_cube_declarations.yaml")
           b07.validate_cube_declarations_shape(cube_declarations_path)
           print(f"OK: {cube_declarations_path}")
+
+          # occurrence_place_declarations.yaml（O-2a。scripts/b09_build_occurrence_place.py
+          # が読む、ポリゴン数・NULL件数・解決件数の宣言）も同じ流儀で検証する。
+          place_declarations_path = pathlib.Path("scripts/migrate/occurrence_place_declarations.yaml")
+          b09.validate_place_declarations_shape(place_declarations_path)
+          print(f"OK: {place_declarations_path}")
+
+          # occurrence_watershed_v1_declarations.yaml（O-2a。scripts/b08_project_occurrence_v1.py
+          # が読む、v1のメモ化と正確な結果の食い違い〔記録単位〕の宣言）も検証する
+          # （構造が occurrence_cube_declarations.yaml 等とは違う専用の検証関数）。
+          watershed_declarations_path = pathlib.Path(
+              "scripts/migrate/occurrence_watershed_v1_declarations.yaml"
+          )
+          b08.validate_watershed_declarations_shape(watershed_declarations_path)
+          print(f"OK: {watershed_declarations_path}")
           PY

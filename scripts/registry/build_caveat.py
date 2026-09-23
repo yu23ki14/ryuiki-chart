@@ -149,6 +149,11 @@ ORGANISM_TABLES = [
     "species_year2",
     "species_month",
     "effort_year",
+    # occurrence_place（O-2a、v2.sqlite のL2サテライト表。scripts/b09_build_occurrence_place.py）
+    # は v1 の derived.sqlite には存在しない新設テーブルだが、organismSite（W12 1977年版の
+    # 点内包判定）の注記が指す「流域への割り当て」を実際に行っている表そのものなので、
+    # org_watershed/org_watershed_year と同じスコープに含める（ADR-0026）。
+    "occurrence_place",
 ]
 
 MESH_CAVEATS = ["share", "effort"]

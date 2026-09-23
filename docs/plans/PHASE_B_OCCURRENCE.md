@@ -1196,3 +1196,126 @@ scripts/b08_project_occurrence_v1.py    30.5s（10テーブル合計1,289,968行
 scripts/tests 全体: 358件成功（O-1b 初回実装時の345件 + 本ラウンドで追加した13件）
 原本の無い一時 clone + requirements.txt だけの venv（Python 3.13.7）でも358件成功
 ```
+
+## 15. O-2a（点→流域の解決 `occurrence_place` ＋ v1 互換射影2表）実装・実測（`phase-b/occurrence-watershed`）
+
+設計の決定は [ADR-0026](../adr/0026-occurrence-place-watershed.md)（D1〜D3。
+ADR-0006 規約2の改定を含む）に切り出した。ここには実装したファイルと実測値
+だけを記録する。O-2 の対象は F3（流域への点内包判定）——§3「F3: 流域」・
+§4「縦線の切り方」で「O-2 の対象。この PR では着手しない」としていた部分。
+
+### 構成
+
+| ファイル | 役割 |
+|---|---|
+| `scripts/migrate/point_in_polygon.py`（新規） | `web/scripts/build-geo.mjs:112-165` の純 Python 移植（0.02度 bbox グリッド → even-odd → 穴、MultiPolygon）。shapely は使わない |
+| `scripts/b09_build_occurrence_place.py`（新規） | `occurrence`（L2）の座標を W12 流域ポリゴンへ直接解決し、`data/db/v2.sqlite` に `occurrence_place` を作る。実行順は b06 → **b09** → b07 → b08 |
+| `scripts/migrate/occurrence_place_declarations.yaml`（新規） | ポリゴン数・NULL件数・解決件数の宣言 |
+| `scripts/migrate/occurrence_watershed_v1_declarations.yaml`（新規） | v1 のメモ化と正確な結果の食い違い（記録単位）の宣言 |
+| `scripts/b08_project_occurrence_v1.py`（拡張） | `org_watershed_year`/`org_watershed` を追加（`occurrence`+`occurrence_place` から。`occurrence_agg` は使わない）。出力は既存の `data/db/v1_projection_occurrence.sqlite` に2表追加（12テーブル） |
+| `scripts/registry/build_caveat.py`（拡張） | `ORGANISM_TABLES` に `occurrence_place` を追加（`organismSite` 注記のスコープ。`org_watershed`/`org_watershed_year` は元から含まれていた） |
+| `scripts/tests/occurrence_fixtures.py`（拡張） | `occurrence_place`/watershed 宣言YAML/GeoJSON/`sites`のフィクスチャヘルパを追加 |
+| `scripts/tests/test_migrate_point_in_polygon.py`・`test_b09_build_occurrence_place.py`・`test_b08_watershed_projections.py`（新規） | PIP の単体テスト・b09 の統合テスト（宣言不一致・2面一致・sites突合の失敗系を含む）・b08 の統合テスト（代表選定の母集団・バケット結合・保存則） |
+
+### 実測（`data/db/ryuiki.sqlite`/`registry.sqlite`/
+`data/processed/nlni_w12_watersheds.geojson`、2026-09-23。ローカル実行）
+
+```
+occurrence_place
+  母集団（座標あり occurrence）  823,692
+  解決                          737,407
+  NULL                           86,285
+  2つ以上に一致                       0
+  際どい交差（要 Fraction 再判定）      0（最短の余裕 約4.4e-9度）
+  site→watershed 辺との突き合わせ  352地点、食い違い0
+  distinct 座標                 224,282
+  b09 実行時間                  約21〜22秒
+
+org_watershed_year          10,699行（v1 と一致）
+org_watershed                   287行（v1 と一致）
+memo_moved_records            11,306（ws_to_ws 9,428 / v1_assigned_exact_unassigned 622 /
+                                       v1_unassigned_exact_assigned 1,256）
+memo_mixed_buckets                741
+org_watershed_year_keys_changed_vs_exact  1,091
+保存則: 732,707 + 1,256 − 622 = 733,341（occurrence_placeの実測と一致）
+```
+
+`org_watershed_year`/`org_watershed` は**宣言済み差分なしで完全一致**
+（`org_norm`/`species2` の `cls` 1件のような既知の食い違いが無い——F2 の
+分類補完タイブレークは流域の集計には影響しないため）。
+
+### 受け入れ基準1（`scripts/b02_derived_compare.py --tables ...,org_watershed,org_watershed_year`）
+
+```
+$ .venv/bin/python3 scripts/b02_derived_compare.py \
+    --candidate data/db/v1_projection_occurrence.sqlite \
+    --tables org_norm,org_group_year,effort_year,species2,species_year2,species_month,mesh_year,mesh_all,mesh_species,species_mesh_year,org_watershed,org_watershed_year
+一致: 10 / 宣言済み差分のみ: 2 / 不一致: 0
+EXIT=0
+```
+
+「一致10」は既存8表（O-1a/O-1b で宣言なし完全一致だった6表 + `org_norm` は
+宣言あり側）＋ `org_watershed`/`org_watershed_year`（本PRで新たに完全一致）。
+「宣言済み差分のみ2」は `org_norm.cls`/`species2.cls`（F2、既存のまま。本PR
+では増やしていない）。
+
+### 既存テーブル・O-1a/O-1b のゲートが変わらないことの確認（受け入れ基準2）
+
+```
+occurrence（823,692行）・occurrence_agg（471,060行）: 行数不変（b09 は
+  occurrence_place だけを作り、occurrence/occurrence_agg には一切触れない）
+b03→b04→b05（既存11表）: 一致5 / 宣言済み差分のみ6 / 不一致0（変更なし）
+```
+
+### b09 の機械検証1〜5・b08 の6〜8（受け入れ基準3）
+
+すべて実データで通った（上記「実測」節の数値がそのまま検証結果）。
+**5（浮動小数点の曖昧さ）は実際に厳密判定に落ちる点が0件**だった——
+even-odd の交差判定で `|x-x_cross|<1e-9` になった distinct 座標が実データに
+存在しなかった（最短の余裕は約4.4e-9度で、閾値1e-9の4倍以上離れている）。
+`fractions.Fraction` による厳密再判定のコードパス自体は
+`scripts/tests/test_migrate_point_in_polygon.py::
+test_near_threshold_crossing_is_flagged_and_exact_recheck_agrees` が
+フィクスチャで踏んで確認している。
+
+### b09 の実行時間（受け入れ基準5）
+
+```
+scripts/b09_build_occurrence_place.py   約21〜22秒
+  （うち PIP 本体: distinct 座標224,282件に対し約9〜11秒。目安どおり）
+```
+
+### pytest（受け入れ基準4）
+
+```
+scripts/tests 全体: 432件成功（O-1b までの412件 + 本PRで追加した20件
+  〔test_migrate_point_in_polygon.py 8件・test_b09_build_occurrence_place.py 7件・
+  test_b08_watershed_projections.py 5件〕）
+古い SQLite（システム既定 python3、sqlite3モジュール3.37.2）の venv でも
+  336件成功・96件スキップ（合計432。3.43未満をスキップする既存テストに
+  b08 の watershed テストが追加でスキップ対象に入っただけで、失敗は0件）
+原本の無い一時 clone + requirements.txt だけの venv（Python 3.13、CIと同じ）
+  でも全件成功（詳細は本PRの実装報告参照）
+```
+
+### 設計からの逸脱
+
+なし（ADR-0026 の決定どおりに実装でき、実測がすべて期待値と一致した）。
+
+### 未決
+
+なし。
+
+### 既知の負債
+
+- **O-2b（キューブに `place_kind='watershed'` のセルを足す）は本PRでは
+  着手していない**（ADR-0025 D2 が先取りで `occurrence_agg.place_kind` を
+  鍵に持たせてあるので、O-2b はスキーマ変更なしで着手できる）。
+- `place_kind='grid01'` の解決は `occurrence` 本体の列（ADR-0025 D1）、
+  `place_kind='watershed'` の解決は `occurrence_place` サテライト表、という
+  置き場の非対称性が残る（ADR-0026「影響」節に明記）。将来 site/municipality
+  等が増えたときにこの非対称性をどう扱うかは未検討。
+- `occurrence_watershed_v1_declarations.yaml` に書いた実測値（`memo_moved_records`
+  等）は `organism_records` の rowid（原本のスナップショット）に固有——原本を
+  `VACUUM` 等で書き換えたら実測し直して更新する必要がある（宣言YAMLのnoteに
+  明記済み）。
