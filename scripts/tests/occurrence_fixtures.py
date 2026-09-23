@@ -160,7 +160,7 @@ def make_organism_records_db(path, rows=None) -> None:
 # taxon_assessment（P-2）の列（scripts/schema_registry.sql と同じ順）。
 TAXON_ASSESSMENT_COLUMNS = (
     "assessment_id", "list_id", "list_year", "taxon_id",
-    "scientific_name_raw", "vernacular_name_ja_raw",
+    "scientific_name_raw", "vernacular_name_ja_raw", "vernacular_name_ja_resolved",
     "taxon_group_ja", "taxon_subgroup_ja", "family_ja",
     "category_raw", "category_code",
     "prev_category_raw", "prev_category_code",
@@ -208,21 +208,6 @@ def make_occurrence_registry_db(path, taxa=None, places=None, place_refs=None, t
             conn.executemany(
                 f"INSERT INTO taxon_assessment VALUES ({placeholders})", taxon_assessments,
             )
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def make_ryuiki_taxa_db(path, taxa_rows=None) -> None:
-    """`ias_species`（P-2）が `taxa.vernacular_name_ja` を読むための最小限の
-    ryuiki.sqlite 相当フィクスチャ。`taxa_rows` は `(taxon_id, vernacular_name_ja)`
-    のタプル列（既定は空——`ias_species` を使わないテストは呼ばなくてよい）。
-    """
-    conn = sqlite3.connect(str(path))
-    try:
-        conn.execute("CREATE TABLE taxa (taxon_id TEXT PRIMARY KEY, vernacular_name_ja TEXT)")
-        if taxa_rows:
-            conn.executemany("INSERT INTO taxa VALUES (?,?)", taxa_rows)
         conn.commit()
     finally:
         conn.close()

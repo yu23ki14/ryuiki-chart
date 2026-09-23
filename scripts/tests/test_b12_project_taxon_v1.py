@@ -21,7 +21,7 @@ def _ta_row(
 ):
     return (
         assessment_id, list_id, list_year, None,
-        "Foo bar", "テスト和名",
+        "Foo bar", "テスト和名", None,  # vernacular_name_ja_resolved（redlist側は常にNULL）
         "維管束植物", "シダ植物", "テスト科",
         category_raw, category_code,
         prev_category_raw, prev_category_code,
@@ -104,6 +104,42 @@ def test_direction_worse_better_flat_and_not_listed(tmp_path):
     assert prev_label is None
     assert prev_code is None
     assert prev_rank is None
+
+
+def test_cur_side_null_falls_back_to_flat(tmp_path):
+    """v1 の SQL は `cm.rank`（今回）が NULL のとき `NULL > x`/`NULL < x` が
+    どちらも偽になり `'横ばい'` に落ちる（3値論理）。Python 版が
+    `cur_rank is None` を見落とすと `TypeError` になる（/code-review
+    指摘1b）。"""
+    row = _ta_row(
+        "rl2020_00001", category_code=None, category_raw=None,
+        prev_category_code="EX", prev_category_raw="絶滅",
+    )
+    registry_db = _build_registry(tmp_path, [row])
+    out = tmp_path / "out.sqlite"
+    b12.build_projections(registry_db, out)
+    result = _redlist_change(out, "rl2020_00001")
+    prev_label, prev_code, prev_rank, cur_label, cur_code, cur_rank, direction = result
+    assert direction == "横ばい"
+    assert cur_label is None and cur_code is None and cur_rank is None
+
+
+def test_cur_side_not_listed_resets_symmetrically_with_prev_side(tmp_path):
+    """`not_listed`（v1 に無かったコード）を NULL に戻す変換は、prev側だけで
+    なく cur側にも対称に適用される（/code-review 指摘2: 以前は出力行の
+    組み立てで `prev_code` だけ個別にガードし、`cur_code` は
+    `category_code` を素通ししていた）。"""
+    row = _ta_row(
+        "rl2020_00001", category_code="not_listed", category_raw="―",
+        prev_category_code="EX", prev_category_raw="絶滅",
+    )
+    registry_db = _build_registry(tmp_path, [row])
+    out = tmp_path / "out.sqlite"
+    b12.build_projections(registry_db, out)
+    result = _redlist_change(out, "rl2020_00001")
+    prev_label, prev_code, prev_rank, cur_label, cur_code, cur_rank, direction = result
+    assert cur_label is None and cur_code is None and cur_rank is None
+    assert direction == "横ばい"  # prev は非NULL・cur が NULL のケース
 
 
 def test_list_name_and_year_come_from_assessment_list_yaml(tmp_path):

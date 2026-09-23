@@ -29,7 +29,6 @@ from .occurrence_fixtures import (
     make_occurrence_cube_declarations_yaml,
     make_occurrence_registry_db,
     make_occurrence_watershed_v1_declarations_yaml,
-    make_ryuiki_taxa_db,
     make_taxon_group_yaml,
     make_v2_db_with_occurrence,
     make_v2_db_with_occurrence_and_agg,
@@ -497,8 +496,6 @@ def test_build_all_projections_writes_org_norm_and_eleven_more_tables(tmp_path):
     # 座標はどの流域にも解決しない（place_id=None）——単純な最小フィクスチャ。
     _add_occurrence_place(cube_db, [occurrence_place_row("gbif__1", None)])
     registry_db, taxon_group_yaml = _setup_registry(tmp_path)
-    ryuiki_db = tmp_path / "ryuiki.sqlite"
-    make_ryuiki_taxa_db(ryuiki_db)
     watershed_decl = tmp_path / "occurrence_watershed_v1_declarations.yaml"
     make_occurrence_watershed_v1_declarations_yaml(
         watershed_decl, moved=0, ws_to_ws=0, v1_assigned_exact_unassigned=0,
@@ -506,7 +503,7 @@ def test_build_all_projections_writes_org_norm_and_eleven_more_tables(tmp_path):
     )
     out = tmp_path / "out.sqlite"
     counts, diagnostics = b08.build_all_projections(
-        cube_db, registry_db, out, taxon_group_yaml, watershed_decl, ryuiki_db,
+        cube_db, registry_db, out, taxon_group_yaml, watershed_decl,
     )
     _table_keys = {
         "org_norm", "org_group_year", "effort_year", "species2", "species_year2",

@@ -32,12 +32,16 @@ LEFT JOIN が一致しないことで「前回記載なし」を導いていた�
 `taxon_assessment.prev_category_code` は `'―'`（247行）を `'not_listed'` として
 明示的に持つ（登録時に黙って落とさない。P-2決定1）。v1 の `redlist_change` は
 この247行で `prev_label`/`prev_code`/`prev_rank` がすべて `NULL`
-（`LEFT JOIN redlist_map` が一致しなかったため）——`_v1_compat_code()` が
-`not_listed` を出力直前に `None` に戻すことでこれを再現する。**`rank` の値
-そのもの（`not_listed` は `rank: null`）は元から `NULL` なので、`direction`
-（`前回記載なし`）の判定はこの変換の有無に関わらず一致する——変換が必要なのは
-`prev_label`/`prev_code` という「v1 には無かった値」を出力に漏らさないため
-だけ**（モジュールdocstring外の詳細は `registry/taxon/redlist_category.yaml`・
+（`LEFT JOIN redlist_map` が一致しなかったため）——`_v1_compat()` が
+`not_listed` を `(None, None, None)` に戻すことでこれを再現する。**cur側・
+prev側どちらにも同じ `_v1_compat()` を通す**（以前は出力行の組み立てで
+`prev_code` だけ個別にガードし、`cur_code` は `category_code` を素通しして
+いた。今回側に `'―'` が0件のため実害は無かったが、対称性が崩れていた。
+/code-review 指摘2）。`rank` の値そのもの（`not_listed` は `rank: null`）は
+元から `NULL` なので、`direction`（`前回記載なし`）の判定はこの変換の有無に
+関わらず一致する——変換が必要なのは `prev_label`/`prev_code`/`cur_label`/
+`cur_code` という「v1 には無かった値」を出力に漏らさないためだけ
+（モジュールdocstring外の詳細は `registry/taxon/redlist_category.yaml`・
 `scripts/registry/build_taxon_assessment.py` のコメント参照）。
 
 ## 小さい表なので SQL の `INSERT ... SELECT` ではなく Python で組み立てる
@@ -71,8 +75,6 @@ REDLIST_CATEGORY_YAML = ROOT / "registry" / "taxon" / "redlist_category.yaml"
 # v1 に無かったコード（P-2決定1）。redlist_map には出さず、redlist_change の
 # 出力列（prev/cur の label・code）では NULL に戻す。
 _NOT_LISTED_CODE = "not_listed"
-
-_REDLIST_LIST_IDS = ("rl2020", "rdb2022p", "rl2026")
 
 _REDLIST_MAP_COLUMNS = ("raw", "label", "code", "rank")
 _CREATE_REDLIST_MAP_SQL = """
@@ -151,19 +153,46 @@ def _build_redlist_map_rows(
 # redlist_change（2,884行）
 # ---------------------------------------------------------------------------
 
-def _v1_compat(code: str | None, category_info: dict[str, tuple[str, int | None]]) -> tuple[str | None, int | None]:
-    """`code` から (label, rank) を求める。`not_listed`（v1 に無かったコード。
-    モジュール docstring参照）は NULL に戻す。"""
+def _v1_compat(
+    code: str | None, category_info: dict[str, tuple[str, int | None]]
+) -> tuple[str | None, str | None, int | None]:
+    """`code` から (code, label, rank) を求める。`not_listed`（v1 に無かった
+    コード。モジュール docstring参照）は3つとも NULL に戻す。**cur/prev
+    どちらの側にも同じ関数を通す**——以前は出力行の組み立て時に `prev_code`
+    だけ `prev_category_code if prev_category_code != _NOT_LISTED_CODE else
+    None` という個別のガードを持ち、`cur_code` は `category_code` を素通し
+    していた（今回側に `'―'`（not_listed）が0件のため気づかず通っていた
+    ——/code-review 指摘2）。戻り値の `code` 自体も含めて両側を同じ経路に
+    揃えることで、今後どちらの側に not_listed が現れても対称に扱う。
+    """
     if code is None or code == _NOT_LISTED_CODE:
-        return None, None
+        return None, None, None
     label, rank = category_info[code]
-    return label, rank
+    return code, label, rank
 
 
 def _direction(cur_rank: int | None, prev_rank: int | None) -> str:
-    """v1（web/scripts/build-biota.mjs 300-303行）の CASE 式そのまま。"""
+    """v1（web/scripts/build-biota.mjs 300-303行）の CASE 式そのまま
+    （SQL の3値論理を明示的に再現する。/code-review 指摘1b）:
+
+    ```sql
+    CASE WHEN pm.rank IS NULL THEN '前回記載なし'
+         WHEN cm.rank > pm.rank THEN '悪化'
+         WHEN cm.rank < pm.rank THEN '改善'
+         ELSE '横ばい' END
+    ```
+
+    `cm.rank`（今回）が NULL のとき、SQL の `NULL > x`/`NULL < x` はどちらも
+    NULL（偽扱い）になるため ELSE の `'横ばい'` に落ちる——`prev_rank is None`
+    を先に見る一方、`cur_rank is None` を見落とすと Python では
+    `TypeError`（`None > int`）になる。実データでは `category_code` は常に
+    解決されるため `cur_rank` が NULL になることは無いが、v1 の SQL と
+    1対1で対応させるため明示的に分岐する。
+    """
     if prev_rank is None:
         return "前回記載なし"
+    if cur_rank is None:
+        return "横ばい"
     if cur_rank > prev_rank:
         return "悪化"
     if cur_rank < prev_rank:
@@ -175,6 +204,7 @@ def _build_redlist_change_rows(
     conn: sqlite3.Connection,
     assessment_lists: dict[str, dict],
     category_info: dict[str, tuple[str, int | None]],
+    redlist_ids: list[str],
 ) -> list[tuple]:
     rows = []
     cur = conn.execute(
@@ -185,8 +215,8 @@ def _build_redlist_change_rows(
         FROM reg.taxon_assessment
         WHERE list_id IN ({})
         ORDER BY assessment_id
-        """.format(",".join("?" for _ in _REDLIST_LIST_IDS)),
-        _REDLIST_LIST_IDS,
+        """.format(",".join("?" for _ in redlist_ids)),
+        redlist_ids,
     )
     for row in cur:
         (
@@ -195,14 +225,13 @@ def _build_redlist_change_rows(
             national_category_ja, category_code, prev_category_code,
         ) = row
         list_name = assessment_lists[list_id]["name"]
-        cur_label, cur_rank = _v1_compat(category_code, category_info)
-        prev_label, prev_rank = _v1_compat(prev_category_code, category_info)
+        cur_code, cur_label, cur_rank = _v1_compat(category_code, category_info)
+        prev_code, prev_label, prev_rank = _v1_compat(prev_category_code, category_info)
         direction = _direction(cur_rank, prev_rank)
         rows.append((
             assessment_id, list_name, list_year, taxon_group_ja, taxon_subgroup_ja,
             family_ja, vernacular_name_ja, scientific_name, national_category_ja,
-            prev_label, prev_category_code if prev_category_code != _NOT_LISTED_CODE else None,
-            prev_rank, cur_label, category_code, cur_rank, direction,
+            prev_label, prev_code, prev_rank, cur_label, cur_code, cur_rank, direction,
         ))
     return rows
 
@@ -243,10 +272,17 @@ def build_projections(registry_db, out_path) -> dict[str, int]:
 
     redlist_map_rows = _build_redlist_map_rows(alias, category_info)
 
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from registry import build_taxon_assessment as ta
+
+    redlist_ids = ta.redlist_list_ids(assessment_lists)
+
     conn = common.fresh_sqlite(out_path)
     try:
         common.attach_readonly(conn, registry_db, "reg")
-        redlist_change_rows = _build_redlist_change_rows(conn, assessment_lists, category_info)
+        redlist_change_rows = _build_redlist_change_rows(
+            conn, assessment_lists, category_info, redlist_ids,
+        )
 
         conn.execute(_CREATE_REDLIST_MAP_SQL)
         conn.executemany(

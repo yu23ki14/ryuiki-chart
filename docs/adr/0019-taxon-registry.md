@@ -123,8 +123,48 @@ taxon_assessment  assessment_id（PK）, list_id, list_year, taxon_id（NULL可�
   `taxon_assessment.taxon_id` は`occurrence`のような`status`列を持たず、単に
   NULL のまま残す——v1 の射影（`redlist_change`/`ias_species`）はどちらも
   名前を文字列で運ぶため、Phase B の再現には不要な診断用の列である。
+- **`category_code`/`prev_category_code` が未知の原表記に遭遇したらビルド
+  全体を止める。これは決定2「正規化できないものは `category_code=NULL`・
+  `status='needs_review'` として可視化し、推測で埋めない」からの意図的な
+  逸脱である**（/code-review 指摘11）。決定2は `taxon`（分類群そのもの）の
+  分類補完について書かれたもので、`taxon.status` という「可視化のための
+  状態列」を前提にしている。`taxon_assessment` にはその種の状態列が無く、
+  かつ対象は44+1種という有限で把握済みの語彙（`redlist_category.yaml` +
+  `redlist_category_alias.csv`）である。この語彙に対して未知の値が来ることは
+  「原本 or 語彙のどちらかが実際に壊れている」ことを意味するとみなし、
+  `taxon`/`place` の不変条件と同じ「黙って進めない」方針を、`needs_review`
+  による可視化より優先した。
 
 実測・実装ファイルの詳細は `docs/plans/PHASE_B_TAXON_ASSESSMENT.md` 参照。
+
+**2026-09-24 追記（`phase-b/taxon-assessment` /code-review 15件対応）**:
+上記追記時点の実装に4点の設計変更を行った（値・受け入れ基準は1ビットも
+変えていない——実測は `docs/plans/PHASE_B_TAXON_ASSESSMENT.md` 参照）。
+
+1. **和名の畳み込み（v1 の `taxa` が3出典をまたいで行う「同じ学名の最初の
+   非空和名が勝つ」畳み込み）を、射影（`scripts/b08_project_occurrence_v1.py`）
+   ではなくレジストリのビルド（`scripts/registry/build_taxon_assessment.py`）
+   側に移した。** 射影は「`registry.sqlite` だけを読み、原本
+   （`ryuiki.sqlite`）には一切触れない」という Phase B 全体の層分けを守る
+   ため（以前は b08 が `ryuiki.sqlite` を直接 ATTACH しており、`b10` の
+   前例に倣ったつもりが実際には射影の層に原本を持ち込む設計逸脱だった）。
+   `taxon_assessment` に `vernacular_name_ja_resolved` 列を新設し、
+   moe_ias_2015 の行だけこの畳み込み結果を持つ（redlist 側は常に NULL）。
+2. **二名法（binom）は `taxa.scientific_name`（v1 が実際に使う綴り）と
+   `moe_ias_list.csv` 自身の `scientific_name_raw` が一致することを機械
+   検証する**ようにした（実測: 429行すべて一致。食い違えば止める）——
+   これにより射影側は `scientific_name_raw` から作った binom をそのまま
+   使ってよいことが保証される。
+3. **外来種の `assessment_id` を、CSV の行順（`moe_ias_2015_00001`...）
+   から、内容（学名の正規化＋区分＋和名の組）から決まる ID に変えた**
+   （ADR-0004 規約2「ID は不変」に合わせる。行順ベースの ID は CSV に
+   行の追加・削除があると既存行の連番がずれ、同じ ID が別の種を指す
+   欠陥があった）。
+4. **`assessment_list.yaml` の `codelist`/`region`、`redlist_category.yaml`
+   の `scope` を、実際にビルドが読んで分岐・検証する形にした**（以前は
+   宣言されているだけで参照されていなかった）。`codelist` はカテゴリーの
+   コード化経路を決定するデータ駆動の分岐に、`region`/`scope` は既知の
+   地域ID（ADR-0002）に対する検証に使う。
 
 ## 背景（実測）
 

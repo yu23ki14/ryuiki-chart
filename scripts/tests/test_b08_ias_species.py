@@ -1,10 +1,22 @@
-"""scripts/b08_project_occurrence_v1.py の `ias_species`（P-2）のテスト。
+"""scripts/b08_project_occurrence_v1.py の `ias_species`（P-2。/code-review
+対応、2026-09-23）のテスト。
 
 本物の `data/db/*.sqlite`/`registry/taxon/*` を要さず、
 `scripts/tests/occurrence_fixtures.py` の小さな自作 sqlite だけで完結する。
 `registry/taxon/assessment_scope_exclusions.yaml`（7種の除外宣言。手書きの
 正本で Git 管理下）だけは実物を読む（`test_registry_taxon.py` が
 `registry/taxon/vernacular_ja.csv` を実物のまま読むのと同じ扱い）。
+
+**この射影（b08）は `registry.sqlite` だけを読み、`ryuiki.sqlite` には一切
+触れない**（/code-review 指摘1。和名の解決〔taxa の畳み込み〕は
+`scripts/registry/build_taxon_assessment.py` 側の責務——そちらのテストは
+`test_registry_taxon_assessment.py`）ため、フィクスチャは
+`taxon_assessment.vernacular_name_ja_resolved` に直接、解決済みの値を書く。
+
+`ias_species` の経路は `FULL OUTER JOIN`/`AVG()`/`SUM()`（3.43以降が前提の
+機能）を使わないため、**古い SQLite でもスキップせず実行する**（/code-review
+指摘14: 受け入れ基準の「古い SQLite でも失敗0」をスキップで満たすのは
+筋が悪い）。
 """
 import sqlite3
 
@@ -15,15 +27,9 @@ from migrate import common
 
 from .occurrence_fixtures import (
     make_occurrence_registry_db,
-    make_ryuiki_taxa_db,
     make_taxon_group_yaml,
     make_v2_db_with_occurrence,
     occurrence_row,
-)
-
-pytestmark = pytest.mark.skipif(
-    sqlite3.sqlite_version_info < common.MIN_SQLITE_VERSION,
-    reason=f"SQLite {common.MIN_SQLITE_VERSION} 未満（実際: {sqlite3.sqlite_version}）",
 )
 
 _TAXON_FOO = (
@@ -36,7 +42,7 @@ _TAXON_EXCLUDED = (
 )
 
 
-def _setup(tmp_path, *, occurrence_rows, taxon_assessments, taxa_rows=()):
+def _setup(tmp_path, *, occurrence_rows, taxon_assessments):
     d = tmp_path
     cube_db = d / "v2.sqlite"
     make_v2_db_with_occurrence(cube_db, occurrence_rows)
@@ -51,19 +57,25 @@ def _setup(tmp_path, *, occurrence_rows, taxon_assessments, taxa_rows=()):
     taxon_group_yaml = d / "taxon_group.yaml"
     make_taxon_group_yaml(taxon_group_yaml, "未判定")
 
-    ryuiki_db = d / "ryuiki.sqlite"
-    make_ryuiki_taxa_db(ryuiki_db, taxa_rows)
-
-    return cube_db, registry_db, taxon_group_yaml, ryuiki_db
+    return cube_db, registry_db, taxon_group_yaml
 
 
 def _ta_row(
-    assessment_id, scientific_name_raw, vernacular_name_ja_raw, category_raw, origin="国外由来の外来種",
+    assessment_id, scientific_name_raw, vernacular_name_ja_resolved, category_raw,
+    origin="国外由来の外来種", vernacular_name_ja_raw=None,
 ):
-    """taxon_assessment の1行（moe_ias_2015、ias_species が使う列だけ埋める）。"""
+    """taxon_assessment の1行（moe_ias_2015、ias_species が使う列だけ埋める）。
+    `vernacular_name_ja_resolved` は `build_taxon_assessment.py` が taxa の
+    畳み込みを経て解決済みの想定で直接渡す（このモジュール自身は解決しない
+    ——モジュール docstring参照）。`vernacular_name_ja_raw`（未指定なら
+    `vernacular_name_ja_resolved` と同じ）は診断列で ias_species の値には
+    影響しない。
+    """
     return (
         assessment_id, "moe_ias_2015", 2015, None,
-        scientific_name_raw, vernacular_name_ja_raw,
+        scientific_name_raw,
+        vernacular_name_ja_raw if vernacular_name_ja_raw is not None else vernacular_name_ja_resolved,
+        vernacular_name_ja_resolved,
         None, None, None,
         category_raw, None,
         None, None,
@@ -71,9 +83,9 @@ def _ta_row(
     )
 
 
-def _run(cube_db, registry_db, taxon_group_yaml, ryuiki_db, tmp_path):
+def _run(cube_db, registry_db, taxon_group_yaml, tmp_path):
     out = tmp_path / "out.sqlite"
-    return b08.build_ias_species_projection(cube_db, registry_db, out, taxon_group_yaml, ryuiki_db), out
+    return b08.build_ias_species_projection(cube_db, registry_db, out, taxon_group_yaml), out
 
 
 def _read_ias_species(out_path):
@@ -98,10 +110,12 @@ def test_ias_species_joins_org_norm_by_binom(tmp_path):
         occurrence_row("r2", "common:taxon:gbif.1001", "2021-06-01", "2021-06-01", "2021-06-01", scientific_name="Foo bar"),
     ]
     ta = [_ta_row("moe_ias_2015_00001", "Foo bar", "フーバー", "その他の総合対策外来種")]
-    cube_db, registry_db, taxon_group_yaml, ryuiki_db = _setup(tmp_path, occurrence_rows=rows, taxon_assessments=ta)
-    result, out = _run(cube_db, registry_db, taxon_group_yaml, ryuiki_db, tmp_path)
+    cube_db, registry_db, taxon_group_yaml = _setup(tmp_path, occurrence_rows=rows, taxon_assessments=ta)
+    (table_counts, diagnostics), out = _run(cube_db, registry_db, taxon_group_yaml, tmp_path)
 
-    assert result["ias_species"] == 1
+    # (table_counts, diagnostics) の2要素タプル（/code-review指摘13。兄弟関数
+    # と同じ形）。
+    assert table_counts == {"ias_species": 1}
     species = _read_ias_species(out)
     key = ("その他の総合対策外来種", "Foo bar")
     assert key in species
@@ -109,6 +123,7 @@ def test_ias_species_joins_org_norm_by_binom(tmp_path):
     assert n == 2
     assert y_from == 2019 and y_to == 2021
     assert n_since_2020 == 1  # 2021のみ
+    assert diagnostics["delta_binoms"] == []
 
 
 def test_hardcoded_exclusion_removes_declared_species(tmp_path):
@@ -123,43 +138,72 @@ def test_hardcoded_exclusion_removes_declared_species(tmp_path):
         ),
     ]
     ta = [_ta_row("moe_ias_2015_00001", "Nyctereutes procyonoides", "タヌキ", "重点対策外来種", origin="国内由来の外来種")]
-    cube_db, registry_db, taxon_group_yaml, ryuiki_db = _setup(tmp_path, occurrence_rows=rows, taxon_assessments=ta)
-    result, out = _run(cube_db, registry_db, taxon_group_yaml, ryuiki_db, tmp_path)
+    cube_db, registry_db, taxon_group_yaml = _setup(tmp_path, occurrence_rows=rows, taxon_assessments=ta)
+    (table_counts, diagnostics), out = _run(cube_db, registry_db, taxon_group_yaml, tmp_path)
 
-    assert result["ias_species"] == 0
+    assert table_counts == {"ias_species": 0}
     assert _read_ias_species(out) == {}
-    assert "Nyctereutes procyonoides" in result["hardcoded_exclusion_binoms"]
+    assert "Nyctereutes procyonoides" in diagnostics["hardcoded_exclusion_binoms"]
 
 
-def test_name_ja_comes_from_taxa_not_raw_max(tmp_path):
-    """v1 の `MAX(vernacular_name_ja)`（ias_species）は、`taxa`
-    （3出典をまたいだ畳み込み済みの和名）の上で計算される——
-    `taxon_assessment.vernacular_name_ja_raw`（moe_ias_list.csv 単体の生の
-    和名）の文字列に直接 MAX を取ると v1 と食い違う（実測1件、
-    *Coreoperca kawamebari* オヤニラミ。docs/plans/PHASE_B_TAXON_ASSESSMENT.md
-    参照）。ここでは2つの moe_ias_2015 行が同じ binom・同じ category に
-    畳まれるとき、`vernacular_name_ja_raw` を文字列比較で MAX すれば
-    'Zebra...'（アルファベット順で最後）が勝つはずだが、実際に出力される
-    name_ja は `taxa.vernacular_name_ja`（正しい和名）であることを確認する。
+def test_max_of_resolved_vernacular_names_when_multiple_rows_share_group(tmp_path):
+    """`(binom, ias_category)` が同じ複数の `taxon_assessment` 行がある場合、
+    `vernacular_name_ja_resolved` の `MAX()`（v1 の `MAX(vernacular_name_ja)`
+    と同じ規則）を取る。和名の畳み込み自体（どちらの行の和名が
+    `vernacular_name_ja_resolved` として正しいか）はレジストリ側の責務
+    （`test_registry_taxon_assessment.py`）なので、ここでは既に解決済みの
+    値に対する集約規則だけを確認する。
     """
     rows = [
         occurrence_row("r1", "common:taxon:gbif.1001", "2020-01-01", "2020-01-01", "2020-01-01", scientific_name="Foo bar"),
     ]
     ta = [
-        _ta_row("moe_ias_2015_00001", "Foo bar", "Zebra alias name（文字列としては最大）", "その他の総合対策外来種"),
-        _ta_row("moe_ias_2015_00002", "Foo bar", "Apple alias name", "その他の総合対策外来種"),
+        _ta_row("moe_ias_2015_00001", "Foo bar", "Zebra name", "その他の総合対策外来種"),
+        _ta_row("moe_ias_2015_00002", "Foo bar", "Apple name", "その他の総合対策外来種"),
     ]
-    cube_db, registry_db, taxon_group_yaml, ryuiki_db = _setup(
-        tmp_path, occurrence_rows=rows, taxon_assessments=ta,
-        taxa_rows=[("foo bar", "正しい和名（taxaの畳み込み結果）")],
-    )
-    result, out = _run(cube_db, registry_db, taxon_group_yaml, ryuiki_db, tmp_path)
+    cube_db, registry_db, taxon_group_yaml = _setup(tmp_path, occurrence_rows=rows, taxon_assessments=ta)
+    (table_counts, _diagnostics), out = _run(cube_db, registry_db, taxon_group_yaml, tmp_path)
 
-    assert result["ias_species"] == 1
+    assert table_counts == {"ias_species": 1}
     species = _read_ias_species(out)
     key = ("その他の総合対策外来種", "Foo bar")
-    name_ja = species[key][0]
-    assert name_ja == "正しい和名（taxaの畳み込み結果）"
+    assert species[key][0] == "Zebra name"  # MAX()
+
+
+def test_null_resolved_vernacular_stays_null_not_empty_string(tmp_path):
+    """`vernacular_name_ja_resolved` が NULL の行しか無い場合、`name_ja` は
+    `""` ではなく NULL のまま（/code-review 指摘4。SQL の `MAX()` は全部NULL
+    なら NULL を返す）。
+    """
+    rows = [
+        occurrence_row("r1", "common:taxon:gbif.1001", "2020-01-01", "2020-01-01", "2020-01-01", scientific_name="Foo bar"),
+    ]
+    ta = [_ta_row("moe_ias_2015_00001", "Foo bar", None, "その他の総合対策外来種")]
+    cube_db, registry_db, taxon_group_yaml = _setup(tmp_path, occurrence_rows=rows, taxon_assessments=ta)
+    (table_counts, _diagnostics), out = _run(cube_db, registry_db, taxon_group_yaml, tmp_path)
+
+    assert table_counts == {"ias_species": 1}
+    species = _read_ias_species(out)
+    key = ("その他の総合対策外来種", "Foo bar")
+    assert species[key][0] is None
+
+
+def test_empty_category_raw_is_excluded(tmp_path):
+    """v1 の `WHERE ias_category IS NOT NULL AND ias_category <> ''` と同じ
+    条件で、`category_raw` が空/NULL の行を除く（/code-review 指摘3）。
+    """
+    rows = [
+        occurrence_row("r1", "common:taxon:gbif.1001", "2020-01-01", "2020-01-01", "2020-01-01", scientific_name="Foo bar"),
+    ]
+    ta = [
+        _ta_row("moe_ias_2015_00001", "Foo bar", "和名", ""),  # 空文字の区分
+        _ta_row("moe_ias_2015_00002", "Foo bar", "和名2", None),  # NULLの区分
+    ]
+    cube_db, registry_db, taxon_group_yaml = _setup(tmp_path, occurrence_rows=rows, taxon_assessments=ta)
+    (table_counts, _diagnostics), out = _run(cube_db, registry_db, taxon_group_yaml, tmp_path)
+
+    assert table_counts == {"ias_species": 0}
+    assert _read_ias_species(out) == {}
 
 
 def test_taxon_assessment_empty_yields_zero_rows(tmp_path):
@@ -169,10 +213,10 @@ def test_taxon_assessment_empty_yields_zero_rows(tmp_path):
     rows = [
         occurrence_row("r1", "common:taxon:gbif.1001", "2020-01-01", "2020-01-01", "2020-01-01", scientific_name="Foo bar"),
     ]
-    cube_db, registry_db, taxon_group_yaml, ryuiki_db = _setup(tmp_path, occurrence_rows=rows, taxon_assessments=[])
-    result, out = _run(cube_db, registry_db, taxon_group_yaml, ryuiki_db, tmp_path)
-    assert result["ias_species"] == 0
-    assert result["delta_binoms"] == []
+    cube_db, registry_db, taxon_group_yaml = _setup(tmp_path, occurrence_rows=rows, taxon_assessments=[])
+    (table_counts, diagnostics), out = _run(cube_db, registry_db, taxon_group_yaml, tmp_path)
+    assert table_counts == {"ias_species": 0}
+    assert diagnostics["delta_binoms"] == []
 
 
 def test_missing_taxon_assessment_table_raises(tmp_path):
@@ -198,10 +242,8 @@ def test_missing_taxon_assessment_table_raises(tmp_path):
     conn.commit()
     conn.close()
 
-    ryuiki_db = tmp_path / "ryuiki.sqlite"
-    make_ryuiki_taxa_db(ryuiki_db)
     taxon_group_yaml = tmp_path / "taxon_group.yaml"
     make_taxon_group_yaml(taxon_group_yaml, "未判定")
 
     with pytest.raises(common.MigrationError, match="taxon_assessment"):
-        _run(cube_db, registry_db, taxon_group_yaml, ryuiki_db, tmp_path)
+        _run(cube_db, registry_db, taxon_group_yaml, tmp_path)

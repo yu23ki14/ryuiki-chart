@@ -155,10 +155,13 @@ REDLIST_ASSESSMENT_COLUMNS = (
 )
 
 
-def make_ryuiki_redlist_db(path, redlist_rows=()) -> None:
+def make_ryuiki_redlist_db(path, redlist_rows=(), taxa_rows=()) -> None:
     """scripts/registry/build_taxon_assessment.py 用の最小限フィクスチャ
-    （`redlist_assessments` だけを持つ。`redlist_rows` は
-    `REDLIST_ASSESSMENT_COLUMNS` の順のタプル列）。
+    （`redlist_assessments`＋`taxa`。`redlist_rows` は
+    `REDLIST_ASSESSMENT_COLUMNS` の順のタプル列。`taxa_rows` は
+    `(taxon_id, scientific_name, vernacular_name_ja)` の列——`build()` は
+    moe_ias 行の有無に関わらず常に `taxa` を読む（`_load_taxa_lookup()`）ため、
+    `taxa` テーブル自体は常に作る（空でもよい）。
     """
     conn = sqlite3.connect(str(path))
     try:
@@ -167,8 +170,12 @@ def make_ryuiki_redlist_db(path, redlist_rows=()) -> None:
                 {", ".join(REDLIST_ASSESSMENT_COLUMNS)}
             )"""
         )
+        conn.execute(
+            "CREATE TABLE taxa (taxon_id TEXT PRIMARY KEY, scientific_name TEXT, vernacular_name_ja TEXT)"
+        )
         placeholders = ",".join("?" for _ in REDLIST_ASSESSMENT_COLUMNS)
         conn.executemany(f"INSERT INTO redlist_assessments VALUES ({placeholders})", redlist_rows)
+        conn.executemany("INSERT INTO taxa VALUES (?,?,?)", taxa_rows)
         conn.commit()
     finally:
         conn.close()

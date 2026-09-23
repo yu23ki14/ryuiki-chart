@@ -147,18 +147,33 @@ origin基準（origin_jaに「国内由来」を含む行をbinom単位で全行
 Pelodiscus sinensis（ニホンスッポン）・Sus scrofa（イノシシ）は同じbinomに国外由来の
 別掲載があるため、origin基準でも除外されない（brief記載どおりの実測結果）。
 
-**「11」との差についての注記**: `p2_brief.md`の「origin を基準にすると v1 には
-誤って残る行が11ある」は、この機能に着手する前の探索段階（Fableサブエージェントに
-よる見積もり）の数値。実装時に実際にビルドして計測したところ**10**だった
-（本ドキュメントの数値が実測の正）。10件全種がorg_normに記録を持ち候補になっており、
-brief記載の4種（Pseudorasbora parva/Plestiodon japonicus/Bufo japonicus/
-Mustela itatsi）を含むため、見積もり時と実装時で対象集合の認識自体は一致している
-——差は「org_normに実際に記録があるものだけを数える」という本実装の絞り込み
-（`_measure_ias_origin_delta()`のdocstring参照。記録が無ければorigin基準に
-変えてもias_speciesの行として現れようがないため）に由来すると推測されるが、
-見積もり時の計算過程が残っていないため確証はない。除外リストそのものは
-変えていないため、この差はどちらの数字でも受け入れ基準・ias_speciesの出力に
-影響しない。
+**「11」との差についての注記（/code-review 指摘15。2026-09-24訂正）**:
+`p2_brief.md`の「origin を基準にすると v1 には誤って残る行が11ある」は、
+この機能に着手する前の探索段階（Fableサブエージェントによる見積もり）の数値。
+**実装時に実際にビルドして計測した結果は10であり、これが正しい**
+（以前の版はここで「11との差はorg_normの絞り込みに由来すると推測される」と
+書いていたが、これは検証していない当て推量だった——/code-review で指摘され、
+下記のとおり数え方の変種を機械的に総当たりしたが、どの変種でも11にはならない
+ことを確認したため、推測の記述を削除する）。
+
+「国内由来」の判定基準・集計範囲を変えた4通りの数え方（`org_norm`/
+`taxon_assessment` の実データに対する機械集計、2026-09-24実測）:
+
+| 数え方 | 件数 |
+|---|---:|
+| moe_ias_2015 の全binomのうち、**全行**が国内由来（org_normの記録有無を問わない） | 27 |
+| ↑のうち固定7種の外 | 21 |
+| moe_ias_2015 の全binomのうち、全行が国内由来 **かつ org_norm に記録がある** | 16 |
+| ↑のうち固定7種の外（=`delta_binoms`、実装値） | **10** |
+| moe_ias_2015 の全binomのうち、**いずれか1行でも**国内由来（org_normの記録有無を問わない） | 30 |
+| ↑のうち org_norm に記録がある | 18 |
+| ↑のうち固定7種の外 | 12 |
+
+**11になる規則は存在しない**（10と12の間に「11」を作る自然な境界が無い）。
+除外リストそのものは変えていないため、どの数字を使っても受け入れ基準・
+`ias_species`の出力（受け入れ基準2）には影響しない——このレポート
+（`reports/phase_b_taxon_assessment.md`）は診断専用であり、実装が採用する
+基準は「全行が国内由来 かつ org_norm に記録がある」（10）で一貫している。
 
 ## 5. r01 の不変条件（`scripts/r01_build_registry.py`）
 
@@ -190,15 +205,16 @@ EXIT=0
 
 ## 7. pytest（受け入れ基準5）
 
-新規23件（`test_registry_taxon_assessment.py` 14件・`test_b12_project_taxon_v1.py`
-4件・`test_b08_ias_species.py` 5件）+ 既存438件 = **461件**。
+`/code-review` 対応後の件数（§11参照）。
 
 ```
-scripts/tests 全体（.venv、SQLite 3.49.1）: 461件成功
+scripts/tests 全体（.venv、SQLite 3.49.1）: 475件成功
 原本の無い一時 clone（.gitignore済み data/db 無し）+ requirements.txtだけの
-  venv（Python 3.13.7、CIと同じ）: 461件成功
-古いSQLite（システム既定 python3.10、sqlite3モジュール3.37.2）の同clone: 358件
-  成功・103件スキップ（3.43未満をスキップする既存の仕組みのまま。失敗0）
+  venv（Python 3.13.7、CIと同じ）: 475件成功
+古いSQLite（システム既定 python3.10、sqlite3モジュール3.37.2）の同clone: 失敗0
+  （`ias_species`はFULL OUTER JOIN/AVG()/SUM()を使わないため3.43未満でも
+  スキップせず実行する——/code-review指摘14。それ以外の3.43依存テストは
+  従来どおりスキップ）
 `scripts/r01_build_registry.py --files-only`・`web/scripts/build-registry-ts.mjs`
   も同clone環境で成功、generated.ts/generated-client.tsのgit diff 0行
 ```
@@ -211,14 +227,11 @@ CI（`.github/workflows/ci.yml`のreconcileジョブ）に、`taxon_assessment`�
 
 ## 8. 設計からの逸脱
 
-- **§4に記載した`ryuiki.sqlite`への新規ATTACH**（`ias_species`の表示名解決）。
-  brief決定3は「入力は`ryuiki.taxa`ではなく`moe_ias_list.csv`」としていたが、
-  これは`origin_ja`（除外の根拠）の出所についての決定であり、v1互換の表示名
-  （3出典の畳み込み結果）まで`moe_ias_list.csv`単体で再現できるとは想定して
-  いなかった。`taxa.vernacular_name_ja`を読み手として引用するのみで、
-  `taxon_assessment`の構築（`build_taxon_assessment.py`）は引き続き
-  `moe_ias_list.csv`を直接読み、`taxa`を経由しない——decision3の核（origin_jaの
-  出所）は変えていない。
+`/code-review`対応（§11）で当初の設計から変更した4点は、そちらに逸脱として
+記録した（ADR-0019 2026-09-24追記と同内容）。初回実装時点で唯一あった逸脱
+（`ryuiki.sqlite`への直接ATTACHをb08に持たせたこと）は、§11の対応1で
+解消済み（射影はレジストリだけを読む設計に戻した）——現時点で残る設計からの
+逸脱は無い。
 
 ## 9. 未決
 
@@ -230,12 +243,91 @@ CI（`.github/workflows/ci.yml`のreconcileジョブ）に、`taxon_assessment`�
   まだ無い（Phase Bの再現には不要）。将来taxon_idベースの分析が必要になったら、
   現在の「完全一致→二名法一致、曖昧なら解決しない」という保守的な規則を
   見直す余地がある（ambiguousな候補から件数最多を選ぶ等）。
-- `scripts/b08_project_occurrence_v1.py`の`_binom()`/`_c25_norm_id()`は
-  `scripts/registry/build_taxon.py`/`build_taxon_assessment.py`の同名規則と
-  意図的に重複させた（呼び出し側パッケージを跨いだ共有ヘルパ化は本PRのスコープ外。
-  3箇所目の重複が出たら共通化を検討する）。
-- origin基準の「11」と実測「10」の差（§4末尾）は、見積もり時の計算過程が
-  残っていないため完全な説明ができていない。除外リストの是正自体が
-  ADR-0016の順序で後回しになっているため、実害は無い。
+- `binom_of()`（`scripts/registry/build_taxon_assessment.py`。b08 が import
+  して使う——/code-review指摘12で一本化済み）と
+  `scripts/registry/build_taxon.py._binom()`は、同じ規則の意図的な重複の
+  ままである（レジストリのビルド時パッケージ内で完結させるため。3箇所目の
+  重複が出たら共通化を検討する）。
 - 残り3テーブル（`watershed_rollup`・`landuse_watershed`/`landuse_change`、
   P-1b）は本PRのスコープ外（`docs/plans/PHASE_B_RECONCILIATION.md` §8参照）。
+
+## 11. `/code-review` 15件の反映（`phase-b/taxon-assessment`、2026-09-24）
+
+初回実装（§1〜10、HEAD `7b9db7e`）に `/code-review` をかけて15件の指摘を
+受け、すべて反映した。**3表（`redlist_map`/`redlist_change`/`ias_species`）
+と既存12表（`org_norm`等occurrence系10表・`org_watershed`/`org_watershed_year`）
+の値は1ビットも変わっていない**——修正後に同じ実データからビルドし直し、
+`scripts/b02_derived_compare.py`が修正前と同じ「一致2/宣言済み差分0」
+（redlist_map/redlist_change）・「一致11/宣言済み差分のみ2/不一致0」（13表）
+を返すことを確認した（行数もテーブルごとに完全一致）。既存の観測系11表・
+`watershed_meta`のゲートも不変（`scripts/b03〜b05`/`b11`は本ラウンドで
+一切変更していない）。
+
+### 反映した指摘（要約）
+
+1. **和名の畳み込みをレジストリ側に移した**（§8「設計からの逸脱」参照。
+   `taxon_assessment.vernacular_name_ja_resolved`列を新設、b08は
+   `ryuiki.sqlite`へのATTACHをやめてレジストリだけを読む）。
+2. **`redlist_change`の`not_listed`→NULL変換を cur側・prev側で対称にした**
+   （`scripts/b12_project_taxon_v1.py._v1_compat()`が`(code, label, rank)`の
+   3つ組を返すように変更。以前は出力行の組み立てで`prev_code`だけ個別に
+   ガードしており、`cur_code`は素通ししていた。実データでは今回側に
+   `'―'`が0件のため出力は変わらない）。
+3. **`ias_species`の`WHERE category_raw IS NOT NULL AND category_raw <> ''`
+   フィルタを追加**（v1の`WHERE ias_category IS NOT NULL AND
+   ias_category<>''`と同じ条件。実データでは空の区分が0件のため出力は
+   変わらない）。
+4. **taxaに対応する行が無い／`vernacular_name_ja`がNULLのケースを明示的に
+   扱う**: 対応が無ければ止める（黙って空文字に丸めない）、NULLなら
+   `vernacular_name_ja_resolved`もNULLのまま（`""`に丸めない）。実データでは
+   429行全件でtaxa照合が成功し全件非NULLのため、この分岐は将来データの
+   防御（実測は§2参照）。
+5. **除外宣言の`scientific_name`が二名法（空白区切り2語）であることを
+   検証する**ようにした（`load_assessment_scope_exclusions()`）。実物の
+   7種はすべて2語のため出力は変わらない。
+6. **除外宣言の`list_id`が`assessment_list.yaml`に実在することを検証する**
+   ようにした。実物の7種はすべて`moe_ias_2015`のため出力は変わらない。
+7. **外来種の`assessment_id`をCSV行順から内容（学名の正規化＋区分＋和名の
+   組。sha256先頭12桁を添える）由来に変えた**（`_ias_assessment_id()`）。
+   `assessment_id`はredlist_map/redlist_change/ias_speciesのどの出力列にも
+   現れないため、この変更は3表の値に一切影響しない。
+8. **`redlist_list_ids()`を`assessment_list.yaml`の`kind='red_list'`から
+   導出する**共有関数にし、`build_taxon_assessment.py`と`b12`の両方の
+   ハードコードされた3件のタプルを置き換えた。
+9. **`assessment_list.yaml`の`codelist`を実際の分岐（`_category_code_for_list()`）
+   に、`region`/`redlist_category.yaml`の`scope`を既知の地域ID集合に対する
+   検証に使うようにした**。実データではredlistの3リストは`codelist:
+   redlist_category`・moe_ias_2015は`codelist: null`、scope/regionは
+   すべて`common`/`jp-14`/`jp`のいずれかのため出力は変わらない。
+10. **二名法の出どころ（`taxa.scientific_name` vs `moe_ias_list.csv`自身の
+    `scientific_name`）が一致することを機械検証する**ようにした（実測:
+    429行全件一致。§2参照）。
+11. **未知の原表記でビルド全体を止める判断（ADR-0019決定2からの意図的な
+    逸脱）を、ADR-0019の追記に明記した**（2026-09-24追記）。
+12. **`binom_of()`をb08から`registry.build_taxon_assessment`のものへ一本化した**
+    （3つ目の複製を作らない）。
+13. **`build_ias_species_projection()`の戻り値を`(table_counts, diagnostics)`
+    の2要素タプルに変えた**（兄弟関数と同じ形。以前は行数と診断値を1つの
+    dictに混ぜていた）。
+14. **`test_b08_ias_species.py`のSQLiteバージョンによるスキップを外した**
+    （`ias_species`の経路は`FULL OUTER JOIN`/`AVG()`/`SUM()`を使わないため、
+    3.43未満でも実際に走ることを確認した）。
+15. **origin基準との差「11」と実測「10」の食い違いについて、根拠のない
+    推測（「org_normの絞り込みに由来すると推測される」）を削除し、4通りの
+    数え方を実測で総当たりした結果（27/21/16/10/30/18/12）に置き換えた**
+    （§4「受け入れ基準6」参照。11になる数え方は存在しない）。
+
+### 実測（`data/db/ryuiki.sqlite`/`registry.sqlite`/`v2.sqlite`、2026-09-24）
+
+```
+taxon_assessment: 3,313行（redlist 2,884 / moe_ias_2015 429、不変）
+  moe_ias_2015: 429/429行がtaxaと学名一致（vernacular_name_ja_resolvedを解決）
+redlist_map: 44行（不変） / redlist_change: 2,884行（不変） / ias_species: 173行（不変）
+
+b02 --tables redlist_map,redlist_change: 一致2 / 宣言済み差分0 / 不一致0（不変）
+b02 --tables (13表): 一致11 / 宣言済み差分のみ2 / 不一致0（不変）
+既存11表・watershed_metaのゲート: 不変
+r01 full build・--check-fresh: fresh（EXIT=0）
+generated.ts/generated-client.ts: git diff 0行
+pytest: 475件成功（原本の無い一時clone・古いSQLiteどちらも失敗0）
+```
