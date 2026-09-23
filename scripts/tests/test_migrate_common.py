@@ -88,3 +88,41 @@ def test_staged_table_failure_between_drop_and_rename_preserves_previous_table(t
     assert tables == ["foo"], "本番テーブルが消えたまま、あるいは作業用テーブルが残っている"
     assert after == before, "前回の本番テーブルが変わってしまった"
     conn.close()
+
+
+def test_fresh_sqlite_rejects_a_path_that_resolves_to_a_protected_source_db(tmp_path, monkeypatch):
+    """コードレビュー指摘: `fresh_sqlite(path)` は既存ファイル・WAL/SHM側車を
+    先に `unlink()` する。`--out` に読み取り専用の原本
+    （`data/db/ryuiki.sqlite`/`cells.sqlite`/`derived.sqlite`）そのものを渡すと、
+    100MB超で再生成できない原本を消してから書き込みに失敗する事故になる
+    （worktree ではこれらは symlink なので、パス文字列ではなく
+    `os.path.realpath` で解決した実体を比べる必要がある）。
+    """
+    monkeypatch.setattr(common, "ROOT", tmp_path)
+    real_db_dir = tmp_path / "data" / "db"
+    real_db_dir.mkdir(parents=True)
+    protected = real_db_dir / "ryuiki.sqlite"
+    protected.write_bytes(b"not a real sqlite file, just a stand-in")
+
+    # worktree の運用どおり、symlink 越しに同じ実体を指す。
+    link = tmp_path / "ryuiki_via_symlink.sqlite"
+    link.symlink_to(protected)
+
+    with pytest.raises(common.MigrationError, match="ryuiki.sqlite"):
+        common.fresh_sqlite(link)
+
+    assert protected.exists(), "原本が消されてしまった"
+    assert protected.read_bytes() == b"not a real sqlite file, just a stand-in"
+
+
+def test_fresh_sqlite_still_works_for_an_ordinary_output_path(tmp_path, monkeypatch):
+    """通常の出力パス（原本と無関係）は今まで通り作り直せる（回帰）。"""
+    monkeypatch.setattr(common, "ROOT", tmp_path)
+    (tmp_path / "data" / "db").mkdir(parents=True)
+
+    out = tmp_path / "data" / "db" / "v1_projection_documents.sqlite"
+    conn = common.fresh_sqlite(out)
+    conn.execute("CREATE TABLE t (a INTEGER)")
+    conn.commit()
+    conn.close()
+    assert out.exists()

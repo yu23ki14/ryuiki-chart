@@ -1,4 +1,5 @@
 """scripts/reconcile/common.py の単体テスト（キー自動導出・指紋計算）。"""
+import json
 import pathlib
 
 import pytest
@@ -9,6 +10,7 @@ from .fixtures import make_fixture_db, make_null_key_fixture_db
 
 _REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 _DESTINATIONS_YAML = _REPO_ROOT / "scripts" / "reconcile" / "adr0011_destinations.yaml"
+_DERIVED_BASELINE_JSON = _REPO_ROOT / "reports" / "derived_baseline.json"
 
 
 @pytest.fixture()
@@ -306,3 +308,18 @@ def test_load_destinations_document_and_quality_tables_are_not_cube_observation(
     assert flat["doc_series"]["category"] == "document_provenance"
     assert flat["doc_series_meta"]["category"] == "document_provenance"
     assert flat["quality_monthly"]["category"] == "quality_workflow_log"
+
+
+def test_load_destinations_table_names_match_derived_baseline_exactly():
+    """`adr0011_destinations.yaml` のテーブル名の集合が、実データから作った
+    `reports/derived_baseline.json`（正）の33テーブルの集合と完全に一致する
+    ことを確認する（コードレビュー指摘: 合計が33でも、打ち間違えた名前と
+    書き漏らした名前が1対1で相殺すれば `len(flat) == 33` は通ってしまう。
+    `b01_derived_baseline.py` の `render_markdown` は宣言に無いテーブルを
+    黙って「（未分類）」にするだけで検出しない——このテストが唯一の歯止め）。
+    `reports/derived_baseline.json` はコミット済みなので原本DBが無い環境
+    （CI）でも読める。
+    """
+    flat = common.load_destinations(_DESTINATIONS_YAML)
+    baseline = json.loads(_DERIVED_BASELINE_JSON.read_text(encoding="utf-8"))
+    assert set(flat) == set(baseline["tables"])

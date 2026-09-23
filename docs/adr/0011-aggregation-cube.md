@@ -68,6 +68,16 @@ quality_monthly    : month                                -> ...
 この形のままだと *データ種類 × 集計軸 × 画面* でテーブルが増え続け、
 可視化をシビックテックに開くほど破綻する（可視化の自由度＝集計軸の自由度だから）。
 
+（**2026-09-22 追記**: 「骨格が同じに見える」ことと「同じキューブの1セルとして表せる」
+ことは別だった。「33テーブルの行き先」表のとおり、実際にキューブへ入るのは23表
+（`cube_observation` 12 + `cube_occurrence` 11）で、残り10表は `variable` レジストリ・
+`place` の属性・`taxon`/`taxon_assessment`・L2 ファクト本体・`document`/`cell` の証跡層・
+ADR-0017 書き込み系ログのような、キューブ以外の行き先に整理される。`quality_monthly`
+は上の例で「同じ骨格」の実例として挙げているとおり見た目はキューブのセルに見えるが、
+実際の入力は `observation` ではなく書き込み系ログで、判定基準（ADR-0007）を満たさない
+——P-3 でこの区別が実例として見つかった。詳細は下記「33テーブルの行き先」表と
+その直前の追記。）
+
 ## 決定
 
 **L3 を単一の `observation_agg` キューブ1本にし、どの集計を作るかは宣言的な
@@ -131,11 +141,16 @@ observation_agg
 | キューブ（入力 `observation`） | meas_daily, meas_month, meas_year, meas_clim, zone_year, zone_clim, sensor_daily, sensor_hour_month, rain_daily, landuse_watershed, landuse_change, site_var | 12 |
 | キューブ（入力 `occurrence`） | mesh_year, mesh_all, mesh_species, species_mesh_year, species_month, species_year2, species2, org_watershed, org_watershed_year, org_group_year, effort_year | 11 |
 | `variable` レジストリ | var_catalog | 1 |
-| `place` の属性（`watershed_rollup` は D10 型の結合射影。キューブのセルにしない） | watershed_meta, watershed_rollup | 2 |
+| `place` の属性 | watershed_meta, watershed_rollup | 2 |
 | `taxon` / `taxon_assessment`（ADR-0019） | redlist_map, redlist_change, ias_species | 3 |
 | L2 のファクト本体に統合 | org_norm（`occurrence` に吸収） | 1 |
 | `document`/`cell` の証跡層からの射影（cells.sqlite。v1 表のまま持ち越し） | doc_series, doc_series_meta | 2 |
 | ADR-0017 書き込み系ログの射影（quality_transitions。v1 表のまま持ち越し） | quality_monthly | 1 |
+
+`watershed_rollup` は宣言（`place_attribute`）を動かしていないが、D10型の結合射影
+（`watershed_meta`/`org_watershed`/`site_var`/`landuse_watershed` の4表を組み合わせる
+だけで、独立したキューブのセルにはしない）であることに注記しておく
+（`scripts/reconcile/adr0011_destinations.yaml` のコメント参照）。
 
 ## 影響
 

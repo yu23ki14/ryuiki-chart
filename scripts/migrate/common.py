@@ -1,11 +1,19 @@
-"""b03/b04/b05（Phase B ファクトとキューブ）が共有する薄い土台。
+"""b03/b04/b05/b10（Phase B ファクトとキューブ、および文書/品質ワークフローの
+v1射影）が共有する薄い土台。
 
 - 読み取り専用オープンと YAML 読み込みは `scripts/reconcile/common.open_readonly`/
   `load_yaml` をそのまま使う（同じ規約を2箇所に書かない。既に b01/b02 が
   使っている実装。`scripts/migrate/period.py` はここから `load_yaml` を引く）。
 - 出力 sqlite は毎回ゼロから作り直す（`fresh_sqlite`）。前回実行の残骸（WAL/SHM
   側車ファイルを含む）が残ったまま次の実行が古い行を引きずる事故を避ける。
+  ただし `--out` に読み取り専用の原本（`data/db/ryuiki.sqlite`/`cells.sqlite`/
+  `derived.sqlite`）そのものを指すパスを渡された場合は、消す前に拒む
+  （`_reject_protected_source_db` 参照。100MB超で再生成できない原本を
+  `unlink()` してから失敗する事故を防ぐ）。
 - 実行時間とテーブルごとの行数を `[12.3s] ラベル / N行` の形で出す（`timed_step`）。
+- `AVG()`/`SUM()` を使うスクリプト（b04・b10）は `require_sqlite_version()` を
+  モジュール読み込み時点で呼ぶ（SQLite 3.43 未満では加算アルゴリズムが変わり、
+  平均値が黙って変わる行がある）。
 """
 from __future__ import annotations
 
@@ -21,21 +29,75 @@ _SCRIPTS = ROOT / "scripts"
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
-from reconcile.common import load_yaml, open_readonly  # noqa: E402,F401  (b03/b04/b05 から re-export)
+from reconcile.common import load_yaml, open_readonly  # noqa: E402,F401  (b03/b04/b05/b10 から re-export)
 
 # b04 の observation_agg / b05 の射影が `built_from` / `spec_version` に書く定数。
 # バージョンを上げるのはこのパッケージの変換ロジックそのものを変えたとき
 # （キーの構成や集計方法が変わる＝過去に作った observation_agg と比較できなくなるとき）。
 SPEC_VERSION = "phase-b-fact-slice/v1"
 
+# SQLite 3.43 で AVG()/SUM() の加算アルゴリズムが Kahan-Babuška-Neumaier に変わった。
+# それより前のバージョンでは平均が黙って壊れる。元は b04（キューブの AVG）だけに
+# 書かれていたが、b10（doc_series の AVG）でも実データで再現した
+# （コードレビュー指摘: SQLite 3.37.2 で doc_series の10グループが最下位ビットずれ、
+# b02 が不一致2・終了コード1 になることを実測で確認済み）ため、共通ヘルパへ切り出した。
+MIN_SQLITE_VERSION = (3, 43, 0)
+
+
+def require_sqlite_version(min_version: tuple[int, int, int] = MIN_SQLITE_VERSION) -> None:
+    """`sqlite3.sqlite_version_info` が `min_version` 未満なら `SystemExit` で止まる。
+
+    呼び出し側（b04/b10）はモジュール読み込み時点（トップレベル、`AVG()`/`SUM()`
+    を実行する前）でこれを呼ぶこと。`assert` にしない理由は `python -O`/
+    `PYTHONOPTIMIZE=1` では `assert` が丸ごと消え、まさにこのガードが要る場面
+    （古い SQLite で平均値が黙って変わる）で無効化されてしまうため
+    （`scripts/tests/test_b04_build_cube.py::test_min_sqlite_version_guard_is_systemexit_not_assert`
+    参照）。
+    """
+    if sqlite3.sqlite_version_info < min_version:
+        raise SystemExit(
+            f"sqlite3（Python 同梱、バージョン {sqlite3.sqlite_version}）が古すぎる。"
+            f"SQLite {'.'.join(map(str, min_version))} 以降が必要——それより前は "
+            "AVG()/SUM() が Kahan-Babuška-Neumaier 加算ではなく素朴な左→右加算に落ち、"
+            "平均値が変わる行がある（アドバイザー実測: b04 の meas_year(kind='daily')で"
+            "3,176/15,836グループ・20%。b10 の doc_series でも実測でグループの値が変わる"
+            "ことを確認済み）。sqlite3 CLI のバージョンではなく、この Python が import する "
+            "sqlite3 モジュール（標準ライブラリに静的リンクされた版）のバージョンを見ている。"
+        )
+
 
 class MigrationError(Exception):
-    """b03/b04/b05 が「黙って捨てず・黙って推測せず」止まるときに投げる例外。
+    """b03/b04/b05/b10 が「黙って捨てず・黙って推測せず」止まるときに投げる例外。
 
     データの中身に起因する想定外（alias/place が解決できない、value_grain と
     period_grain が宣言されていない食い違い方をしている等）はすべてこれを使う。
     プログラムのバグ（引数の誤り等）は通常の例外のままにして区別する。
     """
+
+
+# `fresh_sqlite` が unlink してはいけない読み取り専用の原本（`--out` に誤って
+# これらのパスを渡されたときに拒む。`_reject_protected_source_db` 参照）。
+_PROTECTED_SOURCE_DB_NAMES = ("ryuiki.sqlite", "cells.sqlite", "derived.sqlite")
+
+
+def _reject_protected_source_db(path: pathlib.Path) -> None:
+    """`path` が `data/db/ryuiki.sqlite`/`cells.sqlite`/`derived.sqlite`
+    （symlink 越しも含む）と同じ実体を指していたら `MigrationError` で止まる。
+
+    worktree ではこれらは symlink（CLAUDE.md「worktree の運用」）なので、
+    パス文字列の比較ではなく `os.path.realpath`（symlink を解決した実パス）
+    で比べる。ファイルが存在しない場合でも `realpath` は正規化したパスを返す
+    ため、原本がまだ無い環境（CI 等）でも判定できる。
+    """
+    resolved = os.path.realpath(str(path))
+    for name in _PROTECTED_SOURCE_DB_NAMES:
+        protected = os.path.realpath(str(ROOT / "data" / "db" / name))
+        if resolved == protected:
+            raise MigrationError(
+                f"{path} は読み取り専用の原本（{protected}）と同じ実体を指している。"
+                "fresh_sqlite() はこのパスを unlink してから書き込むため、再生成できない"
+                "原本を消してしまう。出力先（--out）に原本のパスを渡していないか確認すること。"
+            )
 
 
 @contextlib.contextmanager
@@ -65,8 +127,15 @@ def fresh_sqlite(path) -> sqlite3.Connection:
     「たまたま同じ内容が残っていただけ」で偽陽性になりうるため、必ずゼロから作る。
     `uri=True` で開く（ATTACH で読み取り専用 DB を `file:...?mode=ro` として
     付けられるようにする。`open_attached_readonly` 参照）。
+
+    **`path` が読み取り専用の原本（`data/db/ryuiki.sqlite`/`cells.sqlite`/
+    `derived.sqlite`）そのものを指していたら、消す前に `MigrationError` で拒む**
+    （`_reject_protected_source_db` 参照。`--out` に原本のパスを誤って渡すと、
+    以降の `unlink()` が100MB超で再生成できない原本を消してから失敗する
+    ——コードレビュー指摘）。
     """
     p = pathlib.Path(path)
+    _reject_protected_source_db(p)
     p.parent.mkdir(parents=True, exist_ok=True)
     for suffix in ("", "-shm", "-wal"):
         sidecar = pathlib.Path(str(p) + suffix)

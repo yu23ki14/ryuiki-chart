@@ -137,6 +137,12 @@ b03/b04/b05 が実際に使うのは **Python 同梱の `sqlite3` モジュー�
 （例: `observation (sqlite=3.49.1)`）、後から「どの SQLite で計算されたキューブか」を追跡できる
 ようにする。
 
+**2026-09-23 追記**: このガードは `scripts/migrate/common.py` の `require_sqlite_version()`
+へ切り出し、`scripts/b04_build_cube.py` と `scripts/b10_project_documents_v1.py`
+（`doc_series` の `AVG()`）の両方がモジュール読み込み時点で呼ぶ共通ヘルパにした
+（コードレビュー指摘: SQLite 3.37.2 で `doc_series` を作ると10グループで最下位ビットが
+ずれ、`b02_derived_compare.py` が不一致2・終了コード1になることを実測で確認した）。
+
 ## 影響
 
 - **良い**: v1 の `meas_year.kind`（どの経路で作った値か）がモデルに載る。出典が直接配った集計値と
