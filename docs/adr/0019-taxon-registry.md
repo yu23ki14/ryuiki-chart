@@ -102,9 +102,9 @@ taxon_assessment  assessment_id（PK）, list_id, list_year, taxon_id（NULL可�
   「前回の区分が何だったか」という情報は**その版の文書自身が `category_prev_ja`
   として書いている**ので、これを `prev_category_raw` にそのまま転記すれば
   情報は失われない——JOIN で導けないことは「前回が無い」ことを意味しない。
-  `'―'`（前回に247件。辞書に無い原表記）は黙って NULL に落とさず、
+  `'―'`（辞書に無い原表記）は黙って NULL に落とさず、
   `prev_category_code='not_listed'` として明示的に持つ（v1 は LEFT JOIN の
-  不一致で暗黙に「前回記載なし」を導いていた。実測・詳細は
+  不一致で暗黙に「前回記載なし」を導いていた。実測件数・詳細は
   `docs/plans/PHASE_B_TAXON_ASSESSMENT.md`）。
 - **除外の宣言ファイル**: v1 の `ias_species`（外来種）は二名法（binom）の
   誤ヒットを避けるため7種をハードコードで除外していた（国内の別地域個体群が

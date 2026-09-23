@@ -23,6 +23,7 @@ from __future__ import annotations
 import sqlite3
 
 from migrate import occurrence_period as _occurrence_period
+from registry.build_taxon_assessment import TAXON_ASSESSMENT_COLUMNS
 
 # 既定のフィクスチャ: 12形すべてを1行ずつ（gbif 11行・inat 1行）。
 # gbif__1（day, taxon_key あり）と inat__1（instant_minute_z, taxon_key 無し
@@ -155,17 +156,6 @@ def make_organism_records_db(path, rows=None) -> None:
         conn.commit()
     finally:
         conn.close()
-
-
-# taxon_assessment（P-2）の列（scripts/schema_registry.sql と同じ順）。
-TAXON_ASSESSMENT_COLUMNS = (
-    "assessment_id", "list_id", "list_year", "taxon_id",
-    "scientific_name_raw", "vernacular_name_ja_raw", "vernacular_name_ja_resolved",
-    "taxon_group_ja", "taxon_subgroup_ja", "family_ja",
-    "category_raw", "category_code",
-    "prev_category_raw", "prev_category_code",
-    "national_category_raw", "origin", "source_id",
-)
 
 
 def make_occurrence_registry_db(path, taxa=None, places=None, place_refs=None, taxon_assessments=None) -> None:

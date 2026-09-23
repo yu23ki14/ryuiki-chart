@@ -47,9 +47,8 @@ v1 の `ias_species.name_ja`（`MAX(vernacular_name_ja) FROM r.taxa ...`）は�
 `moe_redlist.csv`〔国レッドリスト、このモジュールの対象外〕→
 `moe_ias_list.csv` の順、`scripts/c25_taxa_table.py`）をまたいだ「同じ学名の
 最初の非空和名が勝つ」畳み込みの結果**を読んでいる。`moe_ias_list.csv` 単体の
-`vernacular_name_ja` だけでは再現できない（実測1件、*Coreoperca kawamebari*
-オヤニラミ。moe_ias_list.csv 単体の和名は「近畿地方以東のオヤニラミ」だが、
-v1 は国レッドリストの「オヤニラミ」を先に採用していた）。
+`vernacular_name_ja` だけでは再現できない（実測の具体例・件数は
+`docs/plans/PHASE_B_TAXON_ASSESSMENT.md` 参照）。
 
 **この畳み込みの再現は、射影（`scripts/b08_project_occurrence_v1.py`）ではなく
 ここ（レジストリのビルド）で行う**——射影は「`registry.sqlite` だけを読み、
@@ -59,7 +58,12 @@ b08 が `ryuiki.sqlite` を直接 ATTACH していたが、これは射影の層
 を学名の正規化キー（`_norm_id()` = `scripts/c25_taxa_table.py.norm_id()` と
 同じ規則）で引き、`taxon_assessment.vernacular_name_ja_resolved` に持たせる
 （moe_ias_2015 の行だけ。redlist 側は常に NULL——v1 の `redlist_change` は
-taxa を経由しないため）。
+taxa を経由しないため）。**`vernacular_name_ja_resolved` は今のところ
+消費者が `ias_species`（moe_ias_2015 の行だけ）1つだけの、list 固有の狭い列
+である——2つ目の消費者（例: redlist側にも和名の畳み込みが要る場面）が
+出てきたら、list ごとの列を増やすのではなく `taxon_id`（または学名の
+正規化キー）をキーにした汎用の和名解決テーブルに昇格させること**
+（申し送り。/simplify 指摘8）。
 
 **`taxa` に対応する行が無い場合は止める**（黙って空文字や NULL に落とさない。
 /code-review 指摘4）: `scripts/c25_taxa_table.py` は moe_ias_list.csv の
@@ -93,31 +97,24 @@ NULL/空文字の場合はそのまま NULL を持たせる（`"" ` に丸めな
 のまま（専用のコードリストを持たない。P-2決定3）。
 
 **正規化（改行・半角/全角空白の除去）は alias を引くキーにだけ使い、`*_raw` 列は
-原表記を無加工で残す**（実測: 正規化で変わる行は今回側0・前回側8。
-`docs/plans/PHASE_B_TAXON_ASSESSMENT.md` 参照）。`'―'`（前回に247件）は
-v1 では「redlist_map に無い raw -> LEFT JOIN で一致なし -> prev_rank IS NULL
--> 前回記載なし」に落ちる。ここでは `redlist_category_alias.csv` に
-`'―' -> not_listed` を明示的に宣言し、黙って未知の値として落とさない
-（`registry/taxon/redlist_category.yaml` の `not_listed`（rank=null）を参照）。
-v1 互換の射影（`scripts/b12_project_taxon_v1.py`）は `not_listed` を出力直前に
-NULL へ戻す——**v1 が実際に一致なしだった事実は、projection 側の「v1 互換に
-戻す」変換として残す**（このモジュール〔registry〕の責務は「'―' を黙って
-落とさない」ところまで、b12 の責務は「v1 のバイト列を再現する」ところ）。
+原表記を無加工で残す**（実測: `docs/plans/PHASE_B_TAXON_ASSESSMENT.md` 参照）。
+`'―'` は v1 では「redlist_map に無い raw -> LEFT JOIN で一致なし ->
+prev_rank IS NULL -> 前回記載なし」に落ちる。ここでは
+`redlist_category_alias.csv` に `'―' -> not_listed` を明示的に宣言し、黙って
+未知の値として落とさない（`registry/taxon/redlist_category.yaml` の
+`not_listed`（rank=null）を参照）。v1 互換の射影
+（`scripts/b12_project_taxon_v1.py`）は `not_listed` を出力直前に NULL へ
+戻す——**v1 が実際に一致なしだった事実は、projection 側の「v1 互換に戻す」
+変換として残す**（このモジュール〔registry〕の責務は「'―' を黙って落とさない」
+ところまで、b12 の責務は「v1 のバイト列を再現する」ところ）。
 `national_category_raw` は v1（redlist_change の SELECT）も一切正規化・
 コード化していないため、ここでも無加工のまま carry する（`（ハマカキラン：
 \n絶滅危惧Ⅱ類）` のような自由記述も混ざるため、これをコード化しようとすること
 自体が誤り）。
 
-**未知の原表記でビルド全体を止める判断は、ADR-0019 決定2
-（正規化できないものは `category_code=NULL`・`status='needs_review'` として
-可視化し、推測で埋めない）からの意図的な逸脱である**——決定2は taxon（分類群
-そのもの）の分類補完について書かれたもので、`taxon_assessment.category_code`
-は独立した列（`taxon.status` のような可視化用の状態フラグを持たない）なので、
-同じ「可視化して先に進む」設計をそのまま持ち込めない。44+1種という有限で
-把握済みの語彙に対して、未知の値が来ることは「原本 or 語彙のどちらかが実際に
-壊れている」ことを意味するとみなし、レビュー・不変条件と同じ「黙って進めない」
-方針を優先した。理由・経緯は `docs/adr/0019-taxon-registry.md` の追記にも
-明記する（/code-review 指摘11）。
+**未知の原表記でビルド全体を止めるのは、ADR-0019 決定2からの意図的な逸脱
+である。** 理由・経緯は `docs/adr/0019-taxon-registry.md` の2026-09-23追記に
+一本化した（/code-review 指摘11）。
 
 ## taxon_id 解決
 
@@ -191,30 +188,42 @@ _EXPECTED_EXCLUSION_REASON_COUNTS = {"domestic_origin": 6, "subspecies_binomial_
 # ---------------------------------------------------------------------------
 # 語彙の読み込み・構造検証
 # ---------------------------------------------------------------------------
+#
+# 重複検査（`common.assert_unique`）は `scripts/registry/common.py` にある
+# 共通実装を使う（/simplify 指摘2: `build_unit_variable.py`/`build_taxon.py`/
+# `build_caveat.py` にもそれぞれ私有の同名関数があったが、このモジュールで
+# 5個目の複製になった時点で共通化した。既存4箇所は本PRのスコープ外）。
 
-def _assert_unique(keys: list, label: str) -> None:
-    dupes = sorted({k for k in keys if keys.count(k) > 1})
-    assert not dupes, f"{label} が重複している: {dupes}"
-
-
-def load_redlist_category_codes() -> set[str]:
+def load_redlist_categories() -> dict[str, dict]:
+    """`registry/taxon/redlist_category.yaml` を code をキーにした辞書で返す
+    （code の重複・scope の既知性を検証済み）。`scripts/b12_project_taxon_v1.py`
+    もこの関数から label_ja/rank を取る——以前はこのモジュールと b12 がこの
+    YAML を別々にパースしており、2つの結果が食い違っていないかを実行時
+    assert で検出する形になっていた（正が2つある状態。/simplify 指摘5）。
+    """
     with REDLIST_CATEGORY_YAML.open(encoding="utf-8") as f:
         doc = yaml.safe_load(f)
     entries = doc["categories"]
-    _assert_unique([e["code"] for e in entries], f"{REDLIST_CATEGORY_YAML} の code")
+    common.assert_unique([e["code"] for e in entries], f"{REDLIST_CATEGORY_YAML} の code")
     for e in entries:
         scope = e.get("scope") or "common"
         assert scope in _KNOWN_REGIONS, (
             f"{REDLIST_CATEGORY_YAML}: 未知の scope={scope!r} code={e['code']!r}"
             f"（コードリスト: {sorted(_KNOWN_REGIONS)}）"
         )
-    return {e["code"] for e in entries}
+    return {e["code"]: e for e in entries}
+
+
+def load_redlist_category_codes() -> set[str]:
+    """`load_redlist_categories()` の code 集合だけを返す薄いラッパー
+    （r01 の不変条件チェック等、code の集合だけで足りる呼び出し元向け）。"""
+    return set(load_redlist_categories())
 
 
 def load_redlist_category_alias() -> dict[str, str]:
     with REDLIST_CATEGORY_ALIAS_CSV.open(encoding="utf-8", newline="") as f:
         rows = list(csv.DictReader(f))
-    _assert_unique([r["raw"] for r in rows], f"{REDLIST_CATEGORY_ALIAS_CSV} の raw")
+    common.assert_unique([r["raw"] for r in rows], f"{REDLIST_CATEGORY_ALIAS_CSV} の raw")
     codes = load_redlist_category_codes()
     unknown = sorted({r["code"] for r in rows} - codes)
     assert not unknown, (
@@ -227,7 +236,7 @@ def load_assessment_lists() -> dict[str, dict]:
     with ASSESSMENT_LIST_YAML.open(encoding="utf-8") as f:
         doc = yaml.safe_load(f)
     entries = doc["lists"]
-    _assert_unique([e["list_id"] for e in entries], f"{ASSESSMENT_LIST_YAML} の list_id")
+    common.assert_unique([e["list_id"] for e in entries], f"{ASSESSMENT_LIST_YAML} の list_id")
     for e in entries:
         assert e["kind"] in _KNOWN_LIST_KINDS, (
             f"{ASSESSMENT_LIST_YAML}: 未知の kind={e['kind']!r} list_id={e['list_id']!r}"
@@ -260,7 +269,7 @@ def load_assessment_scope_exclusions(path=ASSESSMENT_SCOPE_EXCLUSIONS_YAML) -> l
     with path.open(encoding="utf-8") as f:
         doc = yaml.safe_load(f)
     entries = doc["exclusions"]
-    _assert_unique(
+    common.assert_unique(
         [(e["list_id"], e["scientific_name"]) for e in entries],
         f"{path} の (list_id, scientific_name)",
     )
@@ -327,6 +336,13 @@ def _category_code_for(raw: str | None, alias: dict[str, str], *, context: str) 
     return code
 
 
+# 実在するコード体系は現状 'redlist_category' の1つだけ。`codelist` 宣言は
+# 「この list がコード化されるかどうか」の名前の妥当性検証はするが、
+# コード体系そのものを切り替える仕組みはまだ無い（`_category_code_for()` が
+# `redlist_category_alias.csv`〔正準の alias〕を決め打ちで使う）。**2つ目の
+# コード体系（例: 別の地域の独自リスト）が実際に増えたら、`_category_code_for_list()`
+# に「codelist名 -> aliasの読み込み関数」の対応表を持たせ、alias の選び方を
+# 引数化すること**（申し送り。/simplify 指摘7）。
 _KNOWN_CODELISTS = frozenset({"redlist_category"})
 
 
@@ -339,7 +355,9 @@ def _category_code_for_list(
     「redlist系はコード化・moe_ias系はNone決め打ち」という分岐がコードに
     ハードコードされ、`codelist` 宣言自体は読まれていなかった）。`codelist`
     が null の list は常に `category_code=None`（moe_ias_2015 は専用の
-    コードリストを持たない。P-2決定3）。
+    コードリストを持たない。P-2決定3）。**現状はコード体系が1つしか無いため
+    `alias`〔呼び出し元が渡す `redlist_category_alias.csv`〕を素通しするだけの
+    実質1択の分岐——`_KNOWN_CODELISTS` 直前のコメント参照。**
     """
     codelist = assessment_lists[list_id]["codelist"]
     if codelist is None:

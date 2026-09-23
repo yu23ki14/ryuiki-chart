@@ -449,8 +449,17 @@ v1 側を直すまで v2 のゲートが恒久的に赤いままになる。ADR-
   --tables watershed_meta`。11テーブル分とは candidate ファイルが別——
   `v1_projection.sqlite` ではなく `v1_projection_place.sqlite`）も CI には
   配線されていない（§9参照。「テーブル名→(射影スクリプト, candidateファイル)」の
-  対応表を持って全ゲートをまとめて回す仕組みは、1表のためには過剰なので作らない。
-  2つ目の `b1x` 系射影スクリプトが出た時点で着手する）
+  対応表を持って全ゲートをまとめて回す仕組みは、1表のためには過剰なので作らない、
+  という判断だった。**2026-09-24更新（/simplify 指摘10）: この「着手する」の
+  閾値はもう超えている**——`b1x` 系の射影スクリプトは `b10`（documents）・
+  `b11`（place）・`b12`（taxon）の3本になり、candidate ファイルも
+  `v1_projection.sqlite`（observation、11表）・`v1_projection_place.sqlite`
+  （watershed_meta）・`v1_projection_documents.sqlite`（3表）・
+  `v1_projection_occurrence.sqlite`（occurrence系13表）・
+  `v1_projection_taxon.sqlite`（2表）の5つに増えている。**ゲートの統合
+  （対応表を持って全ゲートをまとめて回す仕組み）は、残りの表（`watershed_rollup`・
+  `landuse_watershed`/`landuse_change`、P-1b）が終わった時点で、独立した1本の
+  PR として行う——この PR ではやらない。**）
 
 ## 9. `watershed_meta`（`phase-b/place-attributes`、P-1a）
 

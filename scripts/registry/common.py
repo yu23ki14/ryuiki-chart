@@ -227,6 +227,18 @@ def count_and_breakdown(
     return total, breakdown
 
 
+def assert_unique(keys: list, label: str) -> None:
+    """`keys` に重複が無いことを検証する（手書き語彙ファイルの主キー列の
+    一意性チェック）。`build_unit_variable.py`/`build_taxon.py`/
+    `build_caveat.py`/`build_taxon_assessment.py` がそれぞれ同名の私有関数を
+    持っていた（P-2、`build_taxon_assessment.py` で5個目の複製になった時点で
+    ここに1つ集約した。/simplify 指摘2）。既存4箇所のリファクタは本PRの
+    スコープ外——`build_taxon_assessment.py` だけがここから import する。
+    """
+    dupes = sorted({k for k in keys if keys.count(k) > 1})
+    assert not dupes, f"{label} が重複している: {dupes}"
+
+
 # ---------------------------------------------------------------------------
 # ビルドの指紋（`registry_build` テーブル。phase-b/registry-atomic）
 # ---------------------------------------------------------------------------

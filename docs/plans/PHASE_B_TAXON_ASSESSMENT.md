@@ -250,6 +250,11 @@ CI（`.github/workflows/ci.yml`のreconcileジョブ）に、`taxon_assessment`�
   重複が出たら共通化を検討する）。
 - 残り3テーブル（`watershed_rollup`・`landuse_watershed`/`landuse_change`、
   P-1b）は本PRのスコープ外（`docs/plans/PHASE_B_RECONCILIATION.md` §8参照）。
+- `taxon_assessment` は list の種類ごとに使われない列が増える形になっている
+  （`origin` は`moe_ias_2015`だけ、`prev_category_*`/`national_category_*`は
+  redlist系3リストだけが持つ）。現状は「redlist系」「外来種系」の2種類なので
+  実害は無いが、**3つ目の種類（例: 別の評価体系）が来たら、共通列＋種類別の
+  拡張テーブルに分けることを検討する基準**にする（申し送り。/simplify 指摘9）。
 
 ## 11. `/code-review` 15件の反映（`phase-b/taxon-assessment`、2026-09-24）
 

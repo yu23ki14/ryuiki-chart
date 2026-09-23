@@ -204,16 +204,11 @@ CREATE INDEX IF NOT EXISTS ix_taxon_binomial ON taxon(canonical_binomial);
 -- origin_ja。レッドリスト側の行は常に NULL)。
 --
 -- vernacular_name_ja_resolved (P-2、/code-review 対応、2026-09-23):
--- moe_ias_2015 の行だけが持つ、v1 の `taxa.vernacular_name_ja` 相当(ryuiki.taxa
--- から学名の正規化キーで引いた値。NULL もありうる——v1 と同じく空文字に丸めない)。
--- v1(taxa)は kanagawa_redlist.csv → moe_redlist.csv(国レッドリスト、本テーブルの
--- 対象外) → moe_ias_list.csv の順で「同じ学名の最初の非空和名が勝つ」畳み込みを
--- 行っており、moe_ias_list.csv 単体の vernacular_name_ja_raw だけでは再現できない
--- (実測1件、Coreoperca kawamebari オヤニラミ)。畳み込みは射影(b08)ではなく
--- ここ(レジストリのビルド、scripts/registry/build_taxon_assessment.py)で行う
--- ——射影は原本(ryuiki.sqlite)を読まずレジストリだけを読む、という既存の層分け
--- を保つため。redlist側の行は常に NULL(v1のredlist_changeはtaxaを経由しない)。
--- 詳細は docs/plans/PHASE_B_TAXON_ASSESSMENT.md。
+-- moe_ias_2015 の行だけが持つ、v1 の `taxa.vernacular_name_ja`(3出典をまたいだ
+-- 畳み込み済みの和名)相当。NULL もありうる(空文字に丸めない)。redlist側の行は
+-- 常に NULL。背景・実測・畳み込みの詳細は
+-- scripts/registry/build_taxon_assessment.py のモジュール docstring「和名の解決」・
+-- docs/plans/PHASE_B_TAXON_ASSESSMENT.md 参照。
 CREATE TABLE IF NOT EXISTS taxon_assessment (
   assessment_id TEXT PRIMARY KEY,
   list_id TEXT NOT NULL,

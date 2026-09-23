@@ -70,8 +70,6 @@ from migrate import common  # noqa: E402
 DEFAULT_REGISTRY_DB = ROOT / "data" / "db" / "registry.sqlite"
 DEFAULT_OUT = ROOT / "data" / "db" / "v1_projection_taxon.sqlite"
 
-REDLIST_CATEGORY_YAML = ROOT / "registry" / "taxon" / "redlist_category.yaml"
-
 # v1 に無かったコード（P-2決定1）。redlist_map には出さず、redlist_change の
 # 出力列（prev/cur の label・code）では NULL に戻す。
 _NOT_LISTED_CODE = "not_listed"
@@ -97,45 +95,34 @@ CREATE TABLE redlist_change (
 
 
 # ---------------------------------------------------------------------------
-# 語彙の読み込み（scripts/registry/build_taxon_assessment.py と同じ検証を
-# 再利用する——正はそちら1箇所）。
+# 語彙の読み込み（scripts/registry/build_taxon_assessment.py と同じ検証・
+# 同じパースを再利用する——正はそちら1箇所）。
 # ---------------------------------------------------------------------------
 
 def _load_vocab():
     """`registry.build_taxon_assessment` の検証済みローダーをそのまま使う
     （`scripts/registry` は `scripts/` から見えるパッケージ。b08 が `registry`
     パッケージ外の YAML を `migrate.common.load_yaml` で読むのとは違い、ここは
-    構造検証込みのローダーがそのまま要る——`_assert_unique`/`_assert_...` を
-    ここで再実装しない）。
+    構造検証込みのローダーがそのまま要る——検証を再実装しない）。
+    `categories` は `{code: {label_ja, rank, scope, ...}}`——以前はこのモジュール
+    が `redlist_category.yaml` を独自にもう一度パースしており（`_load_category_info()`）、
+    2つの結果が食い違っていないかを実行時 assert で確かめていた（正が2つある
+    状態だった。/simplify 指摘5）。
     """
     sys.path.insert(0, str(ROOT / "scripts"))
     from registry import build_taxon_assessment as ta
 
-    category_codes = ta.load_redlist_category_codes()
+    categories = ta.load_redlist_categories()
     alias = ta.load_redlist_category_alias()
     assessment_lists = ta.load_assessment_lists()
-    return category_codes, alias, assessment_lists
-
-
-def _load_category_info() -> dict[str, tuple[str, int | None]]:
-    """code -> (label_ja, rank)。`registry/taxon/redlist_category.yaml` から
-    直接読む（`ta.load_redlist_category_codes()` はコードの集合しか返さない
-    ため、label_ja/rank も要るここだけ生の YAML を読む）。
-    """
-    import yaml
-
-    with REDLIST_CATEGORY_YAML.open(encoding="utf-8") as f:
-        doc = yaml.safe_load(f)
-    return {e["code"]: (e["label_ja"], e["rank"]) for e in doc["categories"]}
+    return categories, alias, assessment_lists
 
 
 # ---------------------------------------------------------------------------
 # redlist_map（44行。taxon_assessment を経由しない）
 # ---------------------------------------------------------------------------
 
-def _build_redlist_map_rows(
-    alias: dict[str, str], category_info: dict[str, tuple[str, int | None]]
-) -> list[tuple]:
+def _build_redlist_map_rows(alias: dict[str, str], categories: dict[str, dict]) -> list[tuple]:
     """`alias`（`registry.build_taxon_assessment.load_redlist_category_alias()` が
     構造検証済みの raw -> code）から組み立てる。`not_listed` は除く
     （モジュール docstring「redlist_map は taxon_assessment を経由しない」参照）。
@@ -144,8 +131,8 @@ def _build_redlist_map_rows(
     for raw, code in alias.items():
         if code == _NOT_LISTED_CODE:
             continue
-        label, rank = category_info[code]
-        rows.append((raw, label, code, rank))
+        entry = categories[code]
+        rows.append((raw, entry["label_ja"], code, entry["rank"]))
     return rows
 
 
@@ -154,7 +141,7 @@ def _build_redlist_map_rows(
 # ---------------------------------------------------------------------------
 
 def _v1_compat(
-    code: str | None, category_info: dict[str, tuple[str, int | None]]
+    code: str | None, categories: dict[str, dict]
 ) -> tuple[str | None, str | None, int | None]:
     """`code` から (code, label, rank) を求める。`not_listed`（v1 に無かった
     コード。モジュール docstring参照）は3つとも NULL に戻す。**cur/prev
@@ -167,8 +154,8 @@ def _v1_compat(
     """
     if code is None or code == _NOT_LISTED_CODE:
         return None, None, None
-    label, rank = category_info[code]
-    return code, label, rank
+    entry = categories[code]
+    return code, entry["label_ja"], entry["rank"]
 
 
 def _direction(cur_rank: int | None, prev_rank: int | None) -> str:
@@ -203,7 +190,7 @@ def _direction(cur_rank: int | None, prev_rank: int | None) -> str:
 def _build_redlist_change_rows(
     conn: sqlite3.Connection,
     assessment_lists: dict[str, dict],
-    category_info: dict[str, tuple[str, int | None]],
+    categories: dict[str, dict],
     redlist_ids: list[str],
 ) -> list[tuple]:
     rows = []
@@ -225,8 +212,8 @@ def _build_redlist_change_rows(
             national_category_ja, category_code, prev_category_code,
         ) = row
         list_name = assessment_lists[list_id]["name"]
-        cur_code, cur_label, cur_rank = _v1_compat(category_code, category_info)
-        prev_code, prev_label, prev_rank = _v1_compat(prev_category_code, category_info)
+        cur_code, cur_label, cur_rank = _v1_compat(category_code, categories)
+        prev_code, prev_label, prev_rank = _v1_compat(prev_category_code, categories)
         direction = _direction(cur_rank, prev_rank)
         rows.append((
             assessment_id, list_name, list_year, taxon_group_ja, taxon_subgroup_ja,
@@ -240,37 +227,31 @@ def _build_redlist_change_rows(
 # 組み立て・書き出し
 # ---------------------------------------------------------------------------
 
-def _assert_prerequisites(registry_db) -> None:
-    registry_path = pathlib.Path(registry_db)
-    if not registry_path.exists():
-        raise common.MigrationError(
-            f"{registry_path} が無い。先に scripts/r01_build_registry.py を実行すること。"
-        )
-    conn = sqlite3.connect(f"file:{registry_path}?mode=ro", uri=True)
+def _validate_registry(registry_db) -> None:
+    """`registry_db` を読み取り専用の一時コネクションで検証する
+    （`scripts/b11_project_place_v1.py._validate_registry()` と同じ形。
+    /simplify 指摘1: 以前は生の `sqlite_master` クエリで書き直しており、
+    `registry.sqlite` を2回〔検証用・本番書き込み用〕開いていた）。
+    """
+    work = sqlite3.connect(":memory:", uri=True)
     try:
-        has_table = conn.execute(
-            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='taxon_assessment'"
-        ).fetchone()[0]
-    finally:
-        conn.close()
-    if not has_table:
-        raise common.MigrationError(
-            f"{registry_path} に taxon_assessment テーブルが無い。"
-            "scripts/r01_build_registry.py で registry.sqlite を作り直すこと"
-            "（taxon_assessment (P-2) が新設されたのはこの PR）。"
+        common.attach_readonly(work, registry_db, "reg")
+        common.assert_attached_table_exists(
+            work, "reg", "taxon_assessment",
+            hint=(
+                "taxon_assessment (P-2) が新設されたのはこの PR。"
+                "scripts/r01_build_registry.py で registry.sqlite を作り直すこと。"
+            ),
         )
+    finally:
+        work.close()
 
 
 def build_projections(registry_db, out_path) -> dict[str, int]:
-    _assert_prerequisites(registry_db)
-    category_codes, alias, assessment_lists = _load_vocab()
-    category_info = _load_category_info()
-    assert set(category_info) == category_codes, (
-        f"redlist_category.yaml（{sorted(category_info)}）と "
-        f"load_redlist_category_codes()（{sorted(category_codes)}）の集合が食い違う"
-    )
+    _validate_registry(registry_db)
+    categories, alias, assessment_lists = _load_vocab()
 
-    redlist_map_rows = _build_redlist_map_rows(alias, category_info)
+    redlist_map_rows = _build_redlist_map_rows(alias, categories)
 
     sys.path.insert(0, str(ROOT / "scripts"))
     from registry import build_taxon_assessment as ta
@@ -281,7 +262,7 @@ def build_projections(registry_db, out_path) -> dict[str, int]:
     try:
         common.attach_readonly(conn, registry_db, "reg")
         redlist_change_rows = _build_redlist_change_rows(
-            conn, assessment_lists, category_info, redlist_ids,
+            conn, assessment_lists, categories, redlist_ids,
         )
 
         conn.execute(_CREATE_REDLIST_MAP_SQL)
