@@ -194,9 +194,8 @@ place_relation(parent_id=流域のplace_id, child_id=地点のplace_id,
 一意性は DDL の `UNIQUE` 制約ではなく r01 の `ID_UNIQUENESS_CHECKS`（Python 表明）で
 検証する（`ID_REFERENCE_CHECKS` に `place_relation.parent_id`/`child_id` ->
 `place.place_id` もある）。「地点はゾーン・流域それぞれへの `within` 辺を高々1本」も
-r01 が機械検証する（`_assert_zone_relation_child_is_single_valued`/
-`_assert_watershed_relation_child_is_single_valued`、実体は
-`RELATION_SINGLE_VALUED_CHECKS` から回す共通関数）。`source_edition_id`
+r01 が機械検証する（`RELATION_SINGLE_VALUED_CHECKS`（宣言）から
+`_assert_relation_child_is_single_valued()`（共通実装）を回す）。`source_edition_id`
 （ADR-0006 が挙げる列）はまだ持たない。
 
 `place_relation` はまだ `web/src/db/schema-registry.ts`（D1）に無い。地域・ゾーン単位の
@@ -214,9 +213,8 @@ ADR-0006「place の属性」（ADR-0011 の `place_attribute` カテゴリの�
 main_rivers, data_year)`。`place_kind='watershed'` の place（377件）に対して
 `build_place.py` がちょうど1行ずつ作る（r01 の `_assert_watershed_place_has_attributes_and_source_ref`
 が機械検証する）。`place_relation`/`place_watershed` とも D1 にはまだ載せない
-（同じ理由）。`water_system_code`（v1 の水系コード）を親 place（`water_system`
-という新しい `place_kind`）＋ `place_relation` にする案も検討したが、v1 の再現には
-過剰な設計であり見送った（ADR-0006 追記）。
+（同じ理由）。却下案（親 place＋`place_relation` にする）の理由は ADR-0006 の
+追記を正とする。
 
 ### watershed の入力（Phase B `phase-b/place-attributes`、P-1a）
 

@@ -25,7 +25,8 @@ else
   echo "✔ 集計 DB あり"
 fi
 
-# 1.5. 語彙レジストリ。ryuiki/cells/derived を読み取り専用で読んで作る（scripts/r01_build_registry.py）
+# 1.5. 語彙レジストリ。ryuiki/cells を読み取り専用で読んで作る（derived は読まない。
+# 経緯は registry/README.md 参照。scripts/r01_build_registry.py）
 # 「指紋が古ければ作り直す」判定は db:setup の predb:setup フックと共通（scripts/ensure-registry.sh）
 scripts/ensure-registry.sh
 

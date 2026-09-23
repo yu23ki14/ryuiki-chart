@@ -337,8 +337,8 @@ def test_unresolvable_watershed_value_raises(tmp_path, monkeypatch):
 def test_site_has_at_most_one_watershed_edge_by_construction(tmp_path, monkeypatch):
     """`sites.watershed` は単一列なので、build_place.py が組み立てる地点->流域の
     辺は地点ごとに高々1本になる（r01 側の機械検証
-    `_assert_watershed_relation_child_is_single_valued()` が独立に保証する不変条件の、
-    build_place.py 側からの裏付け）。
+    `_assert_relation_child_is_single_valued(conn, "watershed_meta.watershed_id", ...)`
+    が独立に保証する不変条件の、build_place.py 側からの裏付け）。
     """
     row2 = dict(_WATERSHED_ROW_FULL, watershed_id="83032-0099")
     sites_rows = [

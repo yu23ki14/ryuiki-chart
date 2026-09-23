@@ -411,6 +411,13 @@ v1 側を直すまで v2 のゲートが恒久的に赤いままになる。ADR-
 - `.github/workflows/` への `phase-b/fact-slice` の11テーブル部分ゲートの配線（CI ワークフロー
   自体は `phase-b/alias-source-key` で新設済みだが、`--tables` オプションでの実行はまだ
   ジョブに組み込まれていない）
+- 同様に、`phase-b/place-attributes` が足した `watershed_meta` の部分ゲート
+  （`scripts/b02_derived_compare.py --candidate data/db/v1_projection_place.sqlite
+  --tables watershed_meta`。11テーブル分とは candidate ファイルが別——
+  `v1_projection.sqlite` ではなく `v1_projection_place.sqlite`）も CI には
+  配線されていない（§9参照。「テーブル名→(射影スクリプト, candidateファイル)」の
+  対応表を持って全ゲートをまとめて回す仕組みは、1表のためには過剰なので作らない。
+  2つ目の `b1x` 系射影スクリプトが出た時点で着手する）
 
 ## 9. `watershed_meta`（`phase-b/place-attributes`、P-1a）
 

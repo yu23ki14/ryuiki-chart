@@ -76,11 +76,10 @@ CREATE TABLE place_watershed (
 ```
 
 `place` 本体には従来どおり5列（`name_ja`/`lat`/`lon`/`area_km2`/`definition_ref`）
-だけを持たせる。`water_system_code` を親 place（`water_system` という新しい
-`place_kind`）＋ `place_relation` にする案も検討したが、v1 の再現（`watershed_meta`
-を1テーブルへ射影し直すだけ）には過剰な設計であり、今回は単純に列として持たせた
-（ADR-0006 追記に明記）。D1（`web/src/db/schema-registry.ts`）には載せない
-（`place_relation` と同じ判断——消費者がまだ無い）。
+だけを持たせる。却下案（`water_system_code` を親 place＋`place_relation` にする）の
+理由は ADR-0006 の追記を正とする（ここでは繰り返さない）。D1
+（`web/src/db/schema-registry.ts`）には載せない（`place_relation` と同じ判断——
+消費者がまだ無い）。
 
 ## 5. place_relation: 地点 -> 流域
 
@@ -93,9 +92,8 @@ CREATE TABLE place_watershed (
 `watershed_meta.watershed_id`（377件のいずれか）に解決できる（欠落0件、
 distinct 110種の流域を参照）。
 
-r01 の不変条件に「地点は流域への `within` 辺を高々1本」を追加した
-（`_assert_watershed_relation_child_is_single_valued()`。既存の
-`_assert_zone_relation_child_is_single_valued()` と同じ流儀）。
+r01 の不変条件に「地点は流域への `within` 辺を高々1本」を追加した（既存の
+ゾーン版と同じ流儀。実装は §10-7 で共通関数に統合済み）。
 
 ## 6. b11_project_place_v1.py
 
@@ -111,8 +109,8 @@ r01 の不変条件に「地点は流域への `within` 辺を高々1本」を�
 明示した1文。§10-8）で組み立てる。出力は `data/db/v1_projection_place.sqlite`
 （毎回ゼロから作り直す。`.gitignore` 済み）。
 
-「レジストリの不変条件」と「射影固有の防御」を分ける（`_assert_zone_relation_child_is_single_valued`
-と `b05` の関係と同じ考え方）。`place_kind='watershed'` の各 place が
+「レジストリの不変条件」と「射影固有の防御」を分ける（ゾーンの「地点はゾーンへの
+辺を高々1本」と `b05` の関係と同じ考え方）。`place_kind='watershed'` の各 place が
 `place_watershed`・`place_source_ref(source_id='watershed_meta.watershed_id')` を
 それぞれちょうど1件持つことは**レジストリの不変条件**として r01 側
 （`_assert_watershed_place_has_attributes_and_source_ref()`）が保証し、b11 は
@@ -231,6 +229,17 @@ CLAUDE.md の規約どおり、`data/db/ryuiki.sqlite`/`cells.sqlite`（原本�
 - **main_rivers・水系コード等の watershed 固有語彙は `place_watershed` に列として
   そのまま置いた**（ADR-0006 追記のとおり、水系を独立した place にする設計は
   見送った）。
+- **b11 の `_assert_no_duplicate_watershed_source_ref_per_place`/
+  `_assert_place_watershed_table_exists` は `scripts/b05_project_v1.py` の
+  `_raise_on_group_by_duplicates`/`_assert_place_relation_table_exists` と同型だが、
+  共通ヘルパ（`scripts/migrate/common.py`）への切り出しは今回やらない**——同じ
+  作業を O-1b（`phase-b/occurrence-cube`）の PR が担当しており、同じファイルを
+  2つの PR で触ると衝突するため。O-1b がマージされたら、b11 のこの2つの検証を
+  共通ヘルパに寄せる。
+- **CI への部分ゲートの配線**（`watershed_meta` を含む。`docs/plans/PHASE_B_RECONCILIATION.md`
+  §8参照）は今回やらない。1表のための汎用の対応表（テーブル名→射影スクリプト・
+  candidate ファイル）も作らない——過剰。2つ目の `b1x` 系射影スクリプトが出た時点で
+  着手する。
 
 （初回実装時点の負債「`derived.sqlite` が full ビルドで無条件に開かれる」は
 コードレビュー対応で解消した。§10-5 参照。）
@@ -351,23 +360,27 @@ b11 が独自に行っていた「`place_kind='watershed'` の各 place が
 
 ### 10-7. ゾーンと流域の3対のコピペを1つの宣言駆動の実装に集約
 
-- `scripts/r01_build_registry.py`: `_assert_zone_relation_child_is_single_valued`/
-  `_assert_watershed_relation_child_is_single_valued` の中身を
+- `scripts/r01_build_registry.py`: ゾーン版・流域版それぞれの検証関数の中身を
   `RELATION_SINGLE_VALUED_CHECKS = [("sites.zone", "ゾーン"),
   ("watershed_meta.watershed_id", "流域")]` から回す共通実装
   `_assert_relation_child_is_single_valued(conn, source_id, label)` に集約した。
-  既存テストがこの2つの関数名を直接呼んでいるため、薄いラッパとして名前を残した
-  （メッセージ・挙動は変えていない）。`main()` は宣言を全部回す
-  `_assert_all_relation_single_valued_checks()` を呼ぶ。
+  `main()` は宣言を全部回す `_assert_all_relation_single_valued_checks()` を呼ぶ。
+  **`/simplify` 対応（同じPR内）で、本番からは呼ばれなくなっていた薄いラッパ2つ
+  （テストのためだけに名前を残していたもの）を削除した**——テスト側を
+  `_assert_relation_child_is_single_valued(conn, source_id, label)` の直接呼び出しに
+  書き換えた（メッセージ・挙動は変えていない）。
 - `scripts/registry/build_place.py`: `_zone_relation_rows`/`_watershed_relation_rows`
   の中身を共通実装 `_relation_rows(pairs, place_id_by_external_key, *, basis,
   not_found_message)` に集約した（`not_found_message` はメッセージ文言だけを
   呼び出し側から渡す）。2つの外部キー→place_id の辞書内包も
-  `_place_id_by_external_key(ref_rows, source_id)` の1関数に集約した。
+  `_place_id_by_external_key(ref_rows, source_id)` の1関数に集約した
+  （こちらは `build()` からしか呼ばれない内部関数のままで、テスト用の名前を
+  残す必要が無いのでラッパは作っていない）。
 
 実測: 既存テスト（`test_zone_relation_child_is_single_valued_*`・
-`test_watershed_relation_child_is_single_valued_*`）を1つも変えずに全緑
-（メッセージ文言・挙動が完全に保たれている証拠）。新しいテストとして、
+`test_watershed_relation_child_is_single_valued_*`）を、呼び出し先を
+`_assert_relation_child_is_single_valued(conn, source_id, label)` に変えただけで
+（メッセージの検証・挙動は1つも変えず）全緑にできることを確認した。新しいテストとして、
 「地点がゾーンと流域の両方への辺を持つ」（実データでは278地点が両方持つ）ケースで
 両方の不変条件が独立に通ることを確認した
 （`test_site_with_both_zone_and_watershed_edges_passes_both_checks`）。

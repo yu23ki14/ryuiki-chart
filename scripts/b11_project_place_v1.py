@@ -11,36 +11,16 @@ docs/plans/PHASE_B_PLACE_ATTRIBUTES.md）。
 の記録と完全に一致させてある（`scripts/b02_derived_compare.py --candidate ...
 --tables watershed_meta` がそのまま突き合わせられるように）。
 
-## `observation`/`observation_agg`（v2.sqlite）を経由しない
+`observation`/`observation_agg`（v2.sqlite）は経由しない（watershed_meta は
+observation を一切経由しない静的な地理データの転記——`docs/plans/PHASE_B_FACT_SLICE.md`
+D10 と同じ「キューブのセルにしない」対象。`--cube-db` のような引数は無い）。
 
-`scripts/b05_project_v1.py`（measurements/sensor_timeseries 由来）は L2/キューブ
-から射影するが、watershed_meta は observation を一切経由しない静的な地理データの
-転記（`docs/plans/PHASE_B_FACT_SLICE.md` D10 と同じ「キューブのセルにしない」対象の
-一種）。このスクリプトは `registry.sqlite` だけを読む——`--cube-db` のような引数は
-無い。
-
-## `INSERT ... SELECT` の1文で組み立てる（列名は明示する）
-
-`scripts/b05_project_v1.py` は行を一旦 Python のタプル列に読み出してから
-`executemany()` で書き戻すが、この射影は行変換（結合・列の並べ替え）以外の
-集計・ピボットが無い単純な JOIN なので、`CREATE TABLE`（v1 の宣言型で）に続けて
-`INSERT INTO watershed_meta (列名...) SELECT ... FROM reg.place ...` を1文で
-実行するだけで足りる（余計な中間テーブル・Python 側のバッファを持たない）。
-`INSERT` 側の列名を明示するのは、`CREATE TABLE` の列順と `SELECT` の列順という
-2つの離れたリテラルを手で揃える形になっており、どちらかを並べ替えたときに
-（同じ TEXT 型どうしなら）誰も気づけないため（code-review 指摘）。
-
-## 検証してから書く（読み取り専用パスと書き込みパスを分ける）
-
-`registry.sqlite` に対する検証（下記2関数）は、出力ファイルに一切触れない
-読み取り専用の一時コネクション（`:memory:` に `reg` を ATTACH しただけ）で行う。
-`common.fresh_sqlite(out_path)`（既存の出力ファイル・WAL/SHM を削除してから開く）は
-その検証が**全部通ったあと**にしか呼ばない——先に呼んで書き込みを始めてから検証に
-失敗すると、前回の正しい出力が消えたまま空/半端なファイルが残る
-（`scripts/b05_project_v1.py` は検証を先に済ませてから `write_projections()` で
-書き出す構成になっており、同じ順序をここでも守る。`common.fresh_sqlite` 自体が
-原本（ryuiki/cells/derived）を誤って消せる問題は P-3 側の PR で `fresh_sqlite`
-共通実装に対応するため、ここでは触れない）。
+検証（`_validate_registry()`。出力ファイルに一切触れない読み取り専用の一時
+コネクションで行う）が全部通ってから `common.fresh_sqlite(out_path)` で書き出す。
+設計根拠（`INSERT ... SELECT` を1文にする理由・列名を明示する理由・検証と書き込みを
+分ける理由）は `docs/plans/PHASE_B_PLACE_ATTRIBUTES.md` §6・§10 参照（ここでは
+再掲しない）。`common.fresh_sqlite` 自体が原本を誤って消せる問題は P-3 側の PR の
+担当（このブランチでは触れない）。
 """
 from __future__ import annotations
 
@@ -73,8 +53,9 @@ CREATE TABLE watershed_meta (
 )
 """
 
-# INSERT 側にも列名を明示する（上記 docstring「INSERT ... SELECT の1文で組み立てる」
-# 参照。`_WATERSHED_META_COLUMNS` と SELECT の AS 別名の並びを一致させること）。
+# INSERT 側にも列名を明示する（理由はモジュール docstring・
+# docs/plans/PHASE_B_PLACE_ATTRIBUTES.md §10-8 参照。`_WATERSHED_META_COLUMNS` と
+# SELECT の AS 別名の並びを一致させること）。
 _INSERT_WATERSHED_META_SQL = f"""
 INSERT INTO watershed_meta ({", ".join(_WATERSHED_META_COLUMNS)})
 SELECT
@@ -148,7 +129,7 @@ def _assert_no_duplicate_watershed_source_ref_per_place(work: sqlite3.Connection
 
 def _validate_registry(registry_db) -> None:
     """`registry_db` を読み取り専用の一時コネクションで検証する。出力ファイルには
-    一切触れない（`build_projections()` の docstring「検証してから書く」参照）。
+    一切触れない（モジュール docstring参照）。
     """
     work = sqlite3.connect(":memory:", uri=True)
     try:
@@ -164,7 +145,7 @@ def build_projections(registry_db, out_path) -> dict[str, int]:
     `watershed_meta` を書き、テーブルごとの行数を返す（ログ表示用）。
 
     検証が1つでも失敗すれば `out_path` には一切触れない（前回の正しい出力が
-    残る。docstring「検証してから書く」参照）。
+    残る。モジュール docstring参照）。
     """
     _validate_registry(registry_db)
 

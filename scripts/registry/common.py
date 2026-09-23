@@ -33,16 +33,13 @@ REGISTRY_DB = DB_DIR / "registry.sqlite"
 FILES_ONLY_REGISTRY_DB = DB_DIR / "registry_files_only.sqlite"
 
 # registry ビルド（build_unit_variable.py/build_place.py/build_taxon.py/
-# build_caveat.py）が実際に読む原本。`derived.sqlite` は Phase B
-# `phase-b/place-attributes`（P-1a）でここから外れた: build_place.py の
-# watershed 節が `derived.watershed_meta` ではなく L1
-# （`data/processed/nlni_w12_watersheds.jsonl`、`WATERSHED_JSONL_RELPATH`）を
-# 直読みするようになり、registry ビルドが `derived.sqlite` を読む箇所が
-# 無くなった（`grep -rn 'src\[.derived.\]' scripts/registry/*.py` で確認済み・
-# 0件）。これにより **full ビルドに `derived.sqlite`（`pnpm run build:derived`
-# の成果物）はもう要らない**——`open_sources()` が無条件に開いていたのを
-# やめたことで、無い環境でも `r01_build_registry.py` のフルビルドが通る
-# （実測は docs/plans/PHASE_B_PLACE_ATTRIBUTES.md）。
+# build_caveat.py）が実際に読む原本。**`derived.sqlite` がここから外れた経緯
+# （watershed の入力を L1 の直読みに切り替え、registry ビルドが derived.sqlite
+# を読む箇所自体が無くなったこと。実測は docs/plans/PHASE_B_PLACE_ATTRIBUTES.md）
+# は、このモジュール内ではここに1箇所だけ書く**（他のコメントはここを参照する）。
+# 結果として **full ビルドに `derived.sqlite`（`pnpm run build:derived` の成果物）
+# はもう要らない**——`open_sources()` が無条件に開いていたのをやめたことで、
+# 無い環境でも `r01_build_registry.py` のフルビルドが通る。
 # `open_source("derived")` で個別に開くことは引き続きできる（将来また
 # derived.sqlite の特定テーブルを読むモジュールが増えたときのため。
 # `DB_DIR / "derived.sqlite"` が実際に存在する限り動く）——ここから外したのは
@@ -244,30 +241,18 @@ MODE_FILES_ONLY = "files_only"
 # 「読み取り専用だが値が変わりうる」入力（data/processed/ の収集物）。ビルド側
 # （build_place.py の WATERSHED_JSONL / build_taxon.py の CROSSWALK_CSV）と指紋計算
 # （_hash_optional_file 呼び出し側）がこの宣言を共有する（指紋の対象とビルドが実際に
-# 読むファイルがずれる穴を防ぐため）。
-#
-# `derived.sqlite` は Phase B `phase-b/place-attributes`（P-1a）でこのモジュールの
-# 指紋対象から外れた: 以前は build_place.py の watershed 節が `derived.watershed_meta`
-# （v1 の派生表）を読んでいたため `DERIVED_TABLES_READ`/`_hash_derived_tables()` という
-# 専用の仕組みがあったが、watershed の入力を L1 の `nlni_w12_watersheds.jsonl`
-# （下記 WATERSHED_JSONL_RELPATH）直読みに切り替えたことで、registry ビルドが
-# `derived.sqlite` を読む箇所が無くなった（grid01 が `derived.mesh_all` から
-# `ryuiki.organism_records` に切り替わったのと同じ理由・同じ手順。
-# docs/plans/PHASE_B_PLACE_ATTRIBUTES.md 参照）。`derived.sqlite` 由来のテーブルを
-# 指紋に混ぜる仕組み自体（`DERIVED_TABLES_READ`/`_hash_derived_tables()`）は
-# 対象が空になったため削除した——将来また derived.sqlite の特定テーブルを読むように
-# なったら、この `_hash_optional_file()` ベースの仕組み（1ファイル単位）か、当時の
-# `_hash_derived_tables()`（1テーブル単位、`ORDER BY rowid` で SELECT した中身を
-# 混ぜる）のどちらか適切な方を復元すること。
+# 読むファイルがずれる穴を防ぐため）。derived.sqlite がここに無い経緯は `SOURCE_NAMES`
+# 直前のコメント参照。旧 `DERIVED_TABLES_READ`/`_hash_derived_tables()`（derived.sqlite
+# の特定テーブルの中身を1テーブル単位で指紋に混ぜる仕組み）は対象が空になったため
+# 削除した——将来また derived.sqlite の特定テーブルを読むようになったら、この
+# `_hash_optional_file()` ベースの仕組み（1ファイル単位）かそちらを復元すること。
 TAXON_CROSSWALK_CSV_RELPATH = pathlib.PurePosixPath("data/processed/taxon_crosswalk.csv")
 
 # build_place.py の watershed 節が読む L1（国土数値情報 W12 流域界 1977年版、377面）。
-# 実測: 旧 `derived.watershed_meta`（`web/scripts/build-geo.mjs` が同じ JSONL から作る
-# v1 の派生表）と、この JSONL を Python で直読みした値は377行×9列（watershed_id を除く
-# 全列）で diff 0件（型・NULL・丸めの差も無し。docs/plans/PHASE_B_PLACE_ATTRIBUTES.md
-# 参照）。`ryuiki.sqlite`/`cells.sqlite` と違い、この1ファイルは読み取り専用の配布物
-# だが「原本」（scripts/m0x_*.py が書く3ファイル）ではないので、内容ハッシュを
-# 指紋に混ぜてよい（taxon_crosswalk.csv と同じ扱い）。
+# 経緯・実測（旧 derived.watershed_meta との値の一致確認を含む）は
+# docs/plans/PHASE_B_PLACE_ATTRIBUTES.md 参照。`ryuiki.sqlite`/`cells.sqlite` と違い、
+# この1ファイルは読み取り専用の配布物だが「原本」（scripts/m0x_*.py が書く3ファイル）
+# ではないので、内容ハッシュを指紋に混ぜてよい（taxon_crosswalk.csv と同じ扱い）。
 WATERSHED_JSONL_RELPATH = pathlib.PurePosixPath("data/processed/nlni_w12_watersheds.jsonl")
 
 # grid01（build_place.py）の入力が derived.mesh_all から ryuiki.organism_records の
@@ -309,9 +294,8 @@ def _fingerprint_source_paths(root: pathlib.Path) -> list[pathlib.Path]:
     対象は「ビルドの論理（コード）」と「手書きの入力（registry/ 配下）」:
     scripts/schema_registry.sql・scripts/r01_build_registry.py・
     scripts/taxon_namespaces.py・scripts/registry/*.py・registry/ 配下の全ファイル。
-    ここでは常にこの集合だけを扱う（derived.sqlite の一部テーブルと
-    taxon_crosswalk.csv は `compute_input_fingerprint()` 側が mode に応じて
-    別途混ぜる。後述）。
+    ここでは常にこの集合だけを扱う（watershed の JSONL と taxon_crosswalk.csv は
+    `compute_input_fingerprint()` 側が mode に応じて別途混ぜる。後述）。
 
     `scripts/taxon_namespaces.py`（build_taxon.py が読む `TAXON_KEY_SOURCE_NAMESPACE`
     の正。`scripts/registry/` の外にあるため `*.py` の glob には乗らない）を
@@ -386,10 +370,7 @@ def compute_input_fingerprint(
     いずれも build_place.py / build_taxon.py が読むのに以前は指紋に入っていなかった）:
 
     - `data/processed/nlni_w12_watersheds.jsonl`（build_place.py の `WATERSHED_JSONL`）
-      の中身。**Phase B `phase-b/place-attributes` で `derived.sqlite` の
-      `DERIVED_TABLES_READ`（旧 `watershed_meta`）から切り替えた**——watershed の
-      入力を L1 直読みにしたので `derived.sqlite` を読む箇所が無くなった
-      （`TAXON_CROSSWALK_CSV_RELPATH` の下のコメント参照）。
+      の中身。
     - `data/processed/taxon_crosswalk.csv`（build_taxon.py の `CROSSWALK_CSV`）の中身。
     - `ryuiki.sqlite` の `organism_records` の軽い代理指標（行数・最大rowid、
       `_hash_organism_records_freshness()`）。grid01（build_place.py）の入力に
@@ -399,7 +380,7 @@ def compute_input_fingerprint(
     build_place.py/build_taxon.py 自体を呼ばないので、CI のように watershed の
     JSONL も taxon_crosswalk.csv も ryuiki.sqlite も存在しない環境でも指紋計算が
     要件どおり動く）。**`derived.sqlite` は mode に関わらず指紋に一切触れない**
-    ——registry ビルドがこのファイルを読む箇所が無くなったため（上記）。
+    （理由は `SOURCE_NAMES` 直前のコメント参照）。
 
     **`ryuiki.sqlite` / `cells.sqlite` の内容全体は mode に関わらず指紋に含めない。**
     読み取り専用で扱ってはいるが、書き手は `scripts/m0x_*.py` に限られる

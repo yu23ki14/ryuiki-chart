@@ -82,29 +82,24 @@ watershed / grid01 は scope=`common`（県境をまたぐ流域・独自グリ�
 ## watershed（Phase B `phase-b/place-attributes`、P-1a。入力を `derived.watershed_meta`
 ## から `data/processed/nlni_w12_watersheds.jsonl` の直読みに切り替えた）
 
-以前は `derived.watershed_meta`（v1 の派生表、`web/scripts/build-geo.mjs` が
-`nlni_w12_watersheds.jsonl` から作る）を読んでいたが、これは「v2 の registry を
-v1 の出力（derived.sqlite）から作る」循環になっていた（P-1a の致命的な前提。
-`docs/plans/PHASE_B_PLACE_ATTRIBUTES.md` 参照）。grid01 を `derived.mesh_all` から
-`organism_records` に切り替えた前例（上記「grid01 の入力を...」節）と同じ理由・
-同じ手順で、L1 の JSONL を直読みするように変えた。
+以前は `derived.watershed_meta`（v1 の派生表）を読んでいたため、「v2 の registry を
+v1 の出力（derived.sqlite）から作る」循環になっていた。grid01 を `derived.mesh_all`
+から `organism_records` に切り替えた前例（上記「grid01 の入力を...」節）と同じ
+理由・同じ手順で、L1 の JSONL を直読みするように変えた。切り替えの経緯、値が
+1ビットも変わらないことの実測（377行×9列 diff 0件）は
+`docs/plans/PHASE_B_PLACE_ATTRIBUTES.md` 参照（ここでは再掲しない）。
 
-**切り替えても値は1ビットも変わらない**（実測: 旧 `derived.watershed_meta` と
-JSONL を Python で直読みした値を377行×9列（`watershed_id` を除く全列）で突き合わせ、
-diff 0件。型・NULL・丸めの差も無い。詳細・突き合わせの再現手順は
-`docs/plans/PHASE_B_PLACE_ATTRIBUTES.md`）。`place`/`place_source_ref` に載せる5列
-（`name_ja`=`water_system_name_ja_estimated`、`lat`/`lon`=`centroid_lat`/`centroid_lon`、
-`area_km2`、`definition_ref`=`source_ref`）は今まで通り。
-
-残り4列（`water_system_code_old`・`water_system_category_ja`・`main_river_names_ja`・
-`data_year`）は `place` 本体の列を増やさず、watershed 専用の属性サテライト
-`place_watershed(place_id PK, water_system_code, water_system_category, main_rivers,
-data_year)` に置く（ADR-0006「place の属性」節。ADR-0011 の `place_attribute`
-カテゴリの具体形）。実測（377件）: `main_rivers` は234/377件が非空文字列
-（v1・JSONL とも空文字列で持ち、NULLではない。空文字列をNULLに丸めない——main_rivers
-だけ v1側のJS実装が `??`（nullish coalescing）を使っており `||` ではないため）。
-`data_year` は377件全件が`1977`。`place_watershed` は D1（`web/src/db/schema-registry.ts`）
-には載せない（`place_relation` と同じ判断。消費者が現れたら足す）。
+`place`/`place_source_ref` に載せる5列（`name_ja`=`water_system_name_ja_estimated`、
+`lat`/`lon`=`centroid_lat`/`centroid_lon`、`area_km2`、`definition_ref`=`source_ref`）
+は今まで通り。残り4列（`water_system_code_old`・`water_system_category_ja`・
+`main_river_names_ja`・`data_year`）は `place` 本体の列を増やさず、watershed 専用の
+属性サテライト `place_watershed(place_id PK, water_system_code, water_system_category,
+main_rivers, data_year)` に置く（ADR-0006「place の属性」節。ADR-0011 の
+`place_attribute` カテゴリの具体形。却下案の理由も ADR-0006 参照）。`main_rivers` は
+v1 側の JS 実装が `??`（nullish coalescing）を使っているのに合わせ、空文字列のまま
+持つ（NULL に丸めない。実測は plan 文書参照）。`place_watershed` は D1
+（`web/src/db/schema-registry.ts`）には載せない（`place_relation` と同じ判断。
+消費者が現れたら足す）。
 
 ## `place_source_ref.external_key` の合成規則（v1 側の識別子との接続点）
 
@@ -200,10 +195,10 @@ ID を機械的に作っていたが、レビューで「ID は不変（ADR-0004
 
 どちらも `fraction` は NOT NULL・常に `1.0`（地点は1つのゾーン・1つの流域に完全に
 含まれる。`sites.watershed` は単一列なので地点はゾーンと同様に流域への `within` 辺も
-高々1本しか持たない——`scripts/r01_build_registry.py`
-`_assert_watershed_relation_child_is_single_valued()` が機械検証する。
-`_assert_zone_relation_child_is_single_valued()` と同じ不変条件をkindを変えて
-2つ持つ形）。`source_edition_id`（ADR-0006 の列）はまだ持たない。
+高々1本しか持たない——`scripts/r01_build_registry.py` の
+`RELATION_SINGLE_VALUED_CHECKS`（宣言）と `_assert_relation_child_is_single_valued()`
+（共通実装）がゾーン・流域どちらも機械検証する）。`source_edition_id`
+（ADR-0006 の列）はまだ持たない。
 """
 import csv
 import json

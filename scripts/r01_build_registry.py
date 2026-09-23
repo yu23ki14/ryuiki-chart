@@ -351,16 +351,6 @@ def _assert_all_relation_single_valued_checks(conn) -> None:
         _assert_relation_child_is_single_valued(conn, source_id, label)
 
 
-# 既存テスト（scripts/tests/test_r01_invariants.py）が関数名で直接呼んでいるため、
-# 薄いラッパとして名前を残す（メッセージ・挙動は共通実装のまま変わらない）。
-def _assert_zone_relation_child_is_single_valued(conn) -> None:
-    _assert_relation_child_is_single_valued(conn, "sites.zone", "ゾーン")
-
-
-def _assert_watershed_relation_child_is_single_valued(conn) -> None:
-    _assert_relation_child_is_single_valued(conn, "watershed_meta.watershed_id", "流域")
-
-
 # watershed の属性完全性（Phase B `phase-b/place-attributes`、P-1a。上の
 # 「地点は X への辺が高々1本」と同じ「レジストリの不変条件はここで1回だけ保証し、
 # 消費側は信用してよい」という考え方——b11_project_place_v1.py がこれを信用して

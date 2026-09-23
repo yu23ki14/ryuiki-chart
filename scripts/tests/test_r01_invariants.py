@@ -146,7 +146,7 @@ def test_zone_relation_child_is_single_valued_passes_for_single_zone_edge(empty_
     _insert_place_relation(empty_registry, "zone1", "s1")
     empty_registry.commit()
 
-    r01._assert_zone_relation_child_is_single_valued(empty_registry)  # 例外を投げなければOK
+    r01._assert_relation_child_is_single_valued(empty_registry, "sites.zone", "ゾーン")  # 例外を投げなければOK
 
 
 def test_zone_relation_child_is_single_valued_raises_for_two_zone_edges(empty_registry):
@@ -160,7 +160,7 @@ def test_zone_relation_child_is_single_valued_raises_for_two_zone_edges(empty_re
     empty_registry.commit()
 
     with pytest.raises(AssertionError, match="複数持っている"):
-        r01._assert_zone_relation_child_is_single_valued(empty_registry)
+        r01._assert_relation_child_is_single_valued(empty_registry, "sites.zone", "ゾーン")
 
 
 def test_zone_relation_child_is_single_valued_ignores_non_zone_within_edges(empty_registry):
@@ -173,7 +173,7 @@ def test_zone_relation_child_is_single_valued_ignores_non_zone_within_edges(empt
     _insert_place_relation(empty_registry, "watershed1", "s1")  # ゾーンではない
     empty_registry.commit()
 
-    r01._assert_zone_relation_child_is_single_valued(empty_registry)  # 例外を投げなければOK
+    r01._assert_relation_child_is_single_valued(empty_registry, "sites.zone", "ゾーン")  # 例外を投げなければOK
 
 
 def test_zone_external_key_is_numeric_passes_for_digit_strings(empty_registry):
@@ -224,7 +224,7 @@ def test_watershed_relation_child_is_single_valued_passes_for_single_watershed_e
     _insert_place_relation(empty_registry, "ws1", "s1")
     empty_registry.commit()
 
-    r01._assert_watershed_relation_child_is_single_valued(empty_registry)  # 例外を投げなければOK
+    r01._assert_relation_child_is_single_valued(empty_registry, "watershed_meta.watershed_id", "流域")  # 例外を投げなければOK
 
 
 def test_watershed_relation_child_is_single_valued_raises_for_two_watershed_edges(empty_registry):
@@ -238,7 +238,7 @@ def test_watershed_relation_child_is_single_valued_raises_for_two_watershed_edge
     empty_registry.commit()
 
     with pytest.raises(AssertionError, match="複数持っている"):
-        r01._assert_watershed_relation_child_is_single_valued(empty_registry)
+        r01._assert_relation_child_is_single_valued(empty_registry, "watershed_meta.watershed_id", "流域")
 
 
 def test_watershed_relation_child_is_single_valued_ignores_non_watershed_within_edges(empty_registry):
@@ -251,7 +251,7 @@ def test_watershed_relation_child_is_single_valued_ignores_non_watershed_within_
     _insert_place_relation(empty_registry, "zone1", "s1")  # 流域ではない
     empty_registry.commit()
 
-    r01._assert_watershed_relation_child_is_single_valued(empty_registry)  # 例外を投げなければOK
+    r01._assert_relation_child_is_single_valued(empty_registry, "watershed_meta.watershed_id", "流域")  # 例外を投げなければOK
 
 
 def test_relation_single_valued_checks_declares_zone_and_watershed(empty_registry):
