@@ -212,3 +212,43 @@ def test_place_source_ref_uniqueness_raises_for_duplicate_place_source_pair(empt
 
     with pytest.raises(AssertionError, match="一意ではない"):
         r01._assert_id_uniqueness(empty_registry)
+
+
+# ---------------------------------------------------------------------------
+# 流域関連の不変条件（Phase B `phase-b/place-attributes`、P-1a。
+# ゾーン関連の不変条件（上）と同じ流儀の流域版）
+# ---------------------------------------------------------------------------
+
+def test_watershed_relation_child_is_single_valued_passes_for_single_watershed_edge(empty_registry):
+    _insert_place_source_ref(empty_registry, "ws1", "83032-0024", "watershed_meta.watershed_id")
+    _insert_place_relation(empty_registry, "ws1", "s1")
+    empty_registry.commit()
+
+    r01._assert_watershed_relation_child_is_single_valued(empty_registry)  # 例外を投げなければOK
+
+
+def test_watershed_relation_child_is_single_valued_raises_for_two_watershed_edges(empty_registry):
+    """同じ地点(child_id)が2つの流域(parent_id)への 'within' 辺を持っていれば止める
+    （v1 の sites.watershed は単一列なので、地点は必ず1つの流域にしか属さない）。
+    """
+    _insert_place_source_ref(empty_registry, "ws1", "83032-0024", "watershed_meta.watershed_id")
+    _insert_place_source_ref(empty_registry, "ws2", "83032-0099", "watershed_meta.watershed_id")
+    _insert_place_relation(empty_registry, "ws1", "s1")
+    _insert_place_relation(empty_registry, "ws2", "s1")  # 同じ地点が2つ目の流域にも
+    empty_registry.commit()
+
+    with pytest.raises(AssertionError, match="複数持っている"):
+        r01._assert_watershed_relation_child_is_single_valued(empty_registry)
+
+
+def test_watershed_relation_child_is_single_valued_ignores_non_watershed_within_edges(empty_registry):
+    """流域以外の 'within' 辺（parent が watershed_meta.watershed_id の
+    place_source_ref を持たない。例: 地点→ゾーン）は対象外——地点が流域への辺1本と、
+    それ以外への辺を両方持っていても、流域の辺自体が1本なら通る。
+    """
+    _insert_place_source_ref(empty_registry, "ws1", "83032-0024", "watershed_meta.watershed_id")
+    _insert_place_relation(empty_registry, "ws1", "s1")
+    _insert_place_relation(empty_registry, "zone1", "s1")  # 流域ではない
+    empty_registry.commit()
+
+    r01._assert_watershed_relation_child_is_single_valued(empty_registry)  # 例外を投げなければOK

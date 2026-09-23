@@ -2,8 +2,8 @@
 -- web/src/db/schema-registry.ts の drizzle 定義から生成した web/drizzle/migrations/ 配下の
 -- マイグレーションと列・索引を一致させてある。
 -- スキーマを変えるときは両方を更新すること(正は drizzle 側。ここは追随する)。
--- 例外: place_relation(下記)はまだ web/src/db/schema-registry.ts に無い。D1 に載せる
--- 消費者がまだ無いため意図的に見送っている(ADR-0022)。
+-- 例外: place_relation・place_watershed(いずれも下記)はまだ web/src/db/schema-registry.ts
+-- に無い。D1 に載せる消費者がまだ無いため意図的に見送っている(ADR-0022, ADR-0006)。
 --
 -- scripts/r01_build_registry.py が起動時にこれを流して data/db/registry.sqlite を作る。
 -- CREATE TABLE IF NOT EXISTS なので再実行しても安全。中身(行)は scripts/registry/build_*.py
@@ -117,6 +117,23 @@ CREATE TABLE IF NOT EXISTS place_source_ref (
 );
 CREATE INDEX IF NOT EXISTS ix_place_source_ref_external ON place_source_ref(external_key);
 CREATE INDEX IF NOT EXISTS ix_place_source_ref_place ON place_source_ref(place_id);
+
+-- kind 固有の属性サテライト(ADR-0006 §「place の属性」、ADR-0011「place_attribute」
+-- カテゴリの具体形、Phase B `phase-b/place-attributes`)。place 本体の列は増やさず、
+-- watershed だけが持つ属性(旧 derived.watershed_meta の残り4列)をここに置く。
+-- water_system_code は v1 の水系コード(旧コード、10桁未満)をそのまま文字列で持つ
+-- (親 place(water_system)+place_relation にする案は今回の再現には過剰なので採用しない。
+-- ADR-0006 追記参照)。main_rivers は主要河川が無い流域(143/377)向けの空文字列を
+-- そのまま持つ(JSONL の生値・v1 とも NULL ではなく空文字列。丸めない)。
+-- 1 place_id につき高々1行(1:1)。place と同様に web の D1(schema.ts/schema-registry.ts)
+-- にはまだ載せない: place_relation と同じ理由で、消費者がまだ無い。
+CREATE TABLE IF NOT EXISTS place_watershed (
+  place_id TEXT PRIMARY KEY,
+  water_system_code TEXT,
+  water_system_category TEXT,
+  main_rivers TEXT,
+  data_year INTEGER
+);
 
 -- 分類群レジストリ(ADR-0019。taxon_id の名前空間分割・分類補完は Phase B
 -- phase-b/occurrence-registry。決定と理由の正は ADR-0019 の日付付き追記、

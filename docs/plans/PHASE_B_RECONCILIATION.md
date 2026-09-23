@@ -393,12 +393,15 @@ v1 側を直すまで v2 のゲートが恒久的に赤いままになる。ADR-
 
 ## 8. やっていないこと（このPRのスコープ外）
 
-- 残り12テーブル（ADR-0011「33テーブルの行き先」参照。`meas_clim`/`site_var`/`var_catalog` は
+- 残り11テーブル（ADR-0011「33テーブルの行き先」参照。`meas_clim`/`site_var`/`var_catalog` は
   `phase-b/meas-remainder`、`sensor_daily`/`rain_daily`/`sensor_hour_month` は
   `phase-b/sensor-slice`、`zone_year`/`zone_clim` は `phase-b/zone-slice`、`org_norm` は
   `phase-b/occurrence-l2`（O-1a）、年キー8表・`species_month` は `phase-b/occurrence-cube`
-  （O-1b）で済んだ——`occurrence` を入力にする生物系10テーブルはこれで揃った。
-  流域の2表（`org_watershed*`。O-2）ほか、まだ縦線を通していないテーブルが残っている）
+  （O-1b、`occurrence` を入力にする生物系10テーブルはこれで揃った）、`watershed_meta` は
+  `phase-b/place-attributes`（§9参照）で済んだ。流域の2表（`org_watershed*`。O-2）・
+  `doc_series`/`doc_series_meta`/`ias_species`/`landuse_change`/`landuse_watershed`/
+  `quality_monthly`/`redlist_change`/`redlist_map`/`watershed_rollup` の残り9表ほか、
+  まだ縦線を通していないテーブルが残っている）
 - `imputation='lod'` 併記（ADR-0009 決定4。今回は `zero` のみ）
 - 正準単位の併記（ADR-0023。方針は決定済みだが未実装）
 - Parquet 化（ADR-0001）
@@ -408,3 +411,19 @@ v1 側を直すまで v2 のゲートが恒久的に赤いままになる。ADR-
 - `.github/workflows/` への `phase-b/fact-slice` の11テーブル部分ゲートの配線（CI ワークフロー
   自体は `phase-b/alias-source-key` で新設済みだが、`--tables` オプションでの実行はまだ
   ジョブに組み込まれていない）
+
+## 9. `watershed_meta`（`phase-b/place-attributes`、P-1a）
+
+`observation`/`occurrence`（キューブ）を経由しない `place` の属性（ADR-0011
+「place の属性」カテゴリ）の最初の例。`scripts/b11_project_place_v1.py`（新規）が
+`registry.sqlite` の `place`/`place_watershed`/`place_source_ref` から直接射影する。
+設計・実測の詳細は
+[docs/plans/PHASE_B_PLACE_ATTRIBUTES.md](PHASE_B_PLACE_ATTRIBUTES.md)。
+
+```
+$ .venv/bin/python3 scripts/b02_derived_compare.py \
+    --candidate data/db/v1_projection_place.sqlite --tables watershed_meta
+一致: 1 / 宣言済み差分のみ: 0 / 不一致: 0（終了コード0）
+```
+
+宣言済み差分0件——v1 とビット一致した。

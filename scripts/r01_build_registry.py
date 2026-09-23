@@ -77,18 +77,23 @@ try で囲んであり、スキーマ流し込みの失敗でも一時ファイ�
 一瞬だけ開く（次の段落参照。実測で合計約5ms）。`web/scripts/ensure-registry.sh` は
 ファイルの有無ではなくこの終了コードで作り直すかどうかを決める。
 
-**`derived.sqlite`/`ryuiki.sqlite` は例外。** `full` モードの指紋には、build_place.py
-が実際に読むテーブル（`common.DERIVED_TABLES_READ`）の中身、
-`data/processed/taxon_crosswalk.csv` の中身、`ryuiki.organism_records` の軽い代理指標
-（行数・最大rowid。grid01 の入力が `derived.mesh_all` から `organism_records` に
-変わったための追加。`common.py` の `_hash_organism_records_freshness()` docstring
-参照）も混ぜる（fix 2、phase-b/occurrence-registry）。いずれも「読み取り専用だが
-再生成・追記すれば値が変わりうる」入力であり、以前は指紋の対象外だったため、
-これらだけを更新してもレジストリが「新鮮」のまま固まってしまっていた。ただし
-`derived.sqlite`/`ryuiki.sqlite` の**ファイル全体**は開かない・ハッシュしない
-（449MB/828MB。読むのは `derived.sqlite` の2テーブルの SELECT 結果と、
-`ryuiki.sqlite` の軽い集約2つだけ）。`--files-only` はこの3つのどれも開かない
-（`build_place.py`/`build_taxon.py` 自体を呼ばないため。CI が原本無しで動く要件を保つ）。
+**`ryuiki.sqlite` は例外。** `full` モードの指紋には、
+`data/processed/nlni_w12_watersheds.jsonl`（build_place.py の watershed 節が読む
+L1。Phase B `phase-b/place-attributes` で `derived.watershed_meta` から切り替えた）
+の中身、`data/processed/taxon_crosswalk.csv` の中身、`ryuiki.organism_records` の
+軽い代理指標（行数・最大rowid。grid01 の入力が `derived.mesh_all` から
+`organism_records` に変わったための追加。`common.py` の
+`_hash_organism_records_freshness()` docstring 参照）を混ぜる（fix 2、
+phase-b/occurrence-registry）。いずれも「読み取り専用だが再生成・追記すれば値が
+変わりうる」入力であり、以前は指紋の対象外だったため、これらだけを更新しても
+レジストリが「新鮮」のまま固まってしまっていた。`ryuiki.sqlite` の**ファイル全体**は
+開かない・ハッシュしない（828MB。読むのは軽い集約2つだけ）。**`derived.sqlite` は
+mode に関わらず一切開かない**——`phase-b/place-attributes` で watershed の入力を
+L1 直読みに切り替えたことで、registry ビルドがこのファイルを読む箇所が無くなった
+（`scripts/registry/common.py` の `WATERSHED_JSONL_RELPATH` 定義直前のコメント参照）。
+`--files-only` は watershed の JSONL・taxon_crosswalk.csv・ryuiki.sqlite のどれも
+開かない（`build_place.py`/`build_taxon.py` 自体を呼ばないため。CI が原本無しで
+動く要件を保つ）。
 
 **終了コードは3種類を区別する**（`web/scripts/ensure-registry.sh` がこれを読む）:
 
@@ -196,6 +201,10 @@ ID_UNIQUENESS_CHECKS = [
     # sites.zone/watershed_meta.watershed_id/organism_records.lat_lon）なので、
     # sites.zone に限定せず汎用にここへ入れる。
     ("place_source_ref", ("place_id", "source_id")),
+    # place_watershed は place_id が PRIMARY KEY（Phase B `phase-b/place-attributes`、
+    # P-1a）。SQLite が挿入時点で保証済みだが、他の PK 列（place/taxon/caveat）と
+    # 同じく統合作業の受け入れ基準として明示的にも検証する。
+    ("place_watershed", "place_id"),
 ]
 
 
@@ -237,6 +246,7 @@ ID_REFERENCE_CHECKS = [
     ("place_source_ref", "place_id", "place", "place_id"),
     ("place_relation", "parent_id", "place", "place_id"),
     ("place_relation", "child_id", "place", "place_id"),
+    ("place_watershed", "place_id", "place", "place_id"),
 ]
 
 
@@ -318,6 +328,43 @@ def _assert_zone_relation_child_is_single_valued(conn) -> None:
     print(f"  地点→ゾーンの辺は単射OK: {n:,} 件")
 
 
+# 流域関連の不変条件（Phase B `phase-b/place-attributes`、P-1a。ゾーンの不変条件
+# （上）と同じ流儀——「レジストリの不変条件」はここで1回だけ保証し、消費側
+# （b11_project_place_v1.py 等）は結果を信用してよい。docs/plans/
+# PHASE_B_PLACE_ATTRIBUTES.md 参照。
+def _assert_watershed_relation_child_is_single_valued(conn) -> None:
+    """地点（`place_relation.child_id`）が、流域（`place_source_ref
+    (source_id='watershed_meta.watershed_id')` を持つ place を `parent_id` とする
+    `'within'` 辺）を高々1本しか持たないことを検証する。v1 の `sites.watershed` は
+    単一列であり、地点は必ず1つの流域にしか属さないため
+    （`_assert_zone_relation_child_is_single_valued()` の流域版）。
+    """
+    dup = conn.execute(
+        """
+        SELECT pr.child_id, COUNT(*) AS n
+        FROM place_relation pr
+        JOIN place_source_ref wref
+          ON wref.place_id = pr.parent_id AND wref.source_id = 'watershed_meta.watershed_id'
+        WHERE pr.relation = 'within'
+        GROUP BY pr.child_id
+        HAVING n > 1
+        """
+    ).fetchall()
+    if dup:
+        raise AssertionError(
+            f"地点が流域への 'within' 辺を複数持っている（child_id, 本数）: {dup[:10]}"
+        )
+    n = conn.execute(
+        """
+        SELECT COUNT(*) FROM place_relation pr
+        JOIN place_source_ref wref
+          ON wref.place_id = pr.parent_id AND wref.source_id = 'watershed_meta.watershed_id'
+        WHERE pr.relation = 'within'
+        """
+    ).fetchone()[0]
+    print(f"  地点→流域の辺は単射OK: {n:,} 件")
+
+
 def _assert_zone_external_key_is_numeric(conn) -> None:
     """`place_source_ref(source_id='sites.zone').external_key`（ゾーン番号）が
     数字だけの文字列であることを検証する。消費側（`b05_project_v1.py`）が
@@ -353,7 +400,7 @@ EXIT_STALE = 10
 # 人間が読める形で残しておかないと再ビルドのトリガーがブラックボックスになる）。
 def _check_fresh(target_db: pathlib.Path, expected_mode: str) -> int:
     """`target_db` が「今の入力（コード + registry/ 配下 + [full モードのみ]
-    derived.sqlite の一部テーブル・taxon_crosswalk.csv・ryuiki.organism_records の
+    nlni_w12_watersheds.jsonl・taxon_crosswalk.csv・ryuiki.organism_records の
     軽い代理指標）」と `expected_mode` から作ったものと一致するかだけを判定する。
     `cells` は一切開かない。`ryuiki` は full モードのときだけ軽い集約2つのために
     一瞬だけ開く（実測で合計約5ms。`common._hash_organism_records_freshness()`
@@ -402,7 +449,7 @@ def _check_fresh(target_db: pathlib.Path, expected_mode: str) -> int:
     if fingerprint != expected_fingerprint:
         print(
             "指紋が今の入力と一致しない（コード・registry/ 配下・"
-            "[full モードのみ] derived.sqlite/taxon_crosswalk.csv/"
+            "[full モードのみ] nlni_w12_watersheds.jsonl/taxon_crosswalk.csv/"
             "ryuiki.organism_records が変わった）: "
             f"{target_db}（登録済み {fingerprint}、現在 {expected_fingerprint}）",
             file=sys.stderr,
@@ -432,7 +479,7 @@ def main() -> None:
         help=(
             "ビルドせず、対象レジストリ（RYUIKI_REGISTRY_DB があればそれ、無ければ "
             "--files-only の有無で決まる既定パス）が今の入力から作ったものかだけを判定する。"
-            "cells は開かない（full モードでは derived.sqlite の一部テーブルと "
+            "cells は開かない（full モードでは nlni_w12_watersheds.jsonl と "
             "taxon_crosswalk.csv、ryuiki.organism_records の軽い代理指標だけ読む。"
             "PyYAML は import しない）。一致すれば終了コード "
             f"{EXIT_FRESH}、古ければ{EXIT_STALE}、判定できなければそれ以外"
@@ -504,6 +551,7 @@ def main() -> None:
         _assert_region_id_scope_invariant(conn)
         _assert_zone_relation_child_is_single_valued(conn)
         _assert_zone_external_key_is_numeric(conn)
+        _assert_watershed_relation_child_is_single_valued(conn)
 
         conn.execute("DELETE FROM registry_build")
         conn.execute(
