@@ -244,7 +244,7 @@ def make_taxon_group_yaml(path, default_label_ja: str = "未判定") -> None:
 # テスト用: `occurrence_agg` のスキーマは `_CREATE_OCCURRENCE_AGG_SQL` 1箇所が正
 # （同じ考え方。b07 の DIM_COLUMNS の並びで列を持つ）。
 _OCCURRENCE_AGG_COLUMNS = (
-    "region_id", "source_id", "place_id", "taxon_id", "grain", "period_start", "period_end",
+    "region_id", "source_id", "place_id", "place_kind", "taxon_id", "grain", "period_start", "period_end",
     "n", "n_red_list", "built_from", "spec_version",
 )
 

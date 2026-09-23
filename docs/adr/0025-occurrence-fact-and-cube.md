@@ -99,10 +99,18 @@ ADR-0011 は入力を `observation` と `occurrence` の2つに決めている�
 `occurrence` のキューブは `occurrence_agg`（`scripts/b07_build_occurrence_cube.py`、
 番号は本 ADR の時点で予約済み・未実装）になる。
 
-- 鍵: `region_id, source_id, place_id, taxon_id, grain, period_start, period_end`。
+- 鍵: `region_id, source_id, place_id, place_kind, taxon_id, grain, period_start, period_end`。
   値: `n`・`n_red_list`（RL 原表記が空でない記録数）。`n_distinct_taxon` は
   taxon 粒度で非加法なので持たない。`taxon_id` が `NULL` のセルも持つ（データを
-  落とさない）。
+  落とさない）。`place_kind` は ADR-0011「事前計算は `place_kind ∈ {site,
+  watershed, mesh3}`」・`observation_agg` が既に鍵に持つ列に合わせたもの
+  （place_id の直後。O-1b 実装時点では常に `'grid01'`——occurrence が grid01
+  経由でしか場所を解決しないため。O-2 で `place_kind='watershed'` の
+  ロールアップセルを同じ `occurrence_agg` に足す計画があるため、O-1b の
+  時点で鍵に先取りで入れてある。射影（`scripts/b08_project_occurrence_v1.py`）
+  は `place_kind='grid01'` に明示的に絞って年キー8表を作り、未知の
+  `place_kind` があれば止める——O-2 が `'watershed'` を追加するまでは
+  `'grid01'` 以外が現れないはずという前提を機械的に守る）。
 - **`grain ∈ {year, survey_period}`**（month は使う側が現れるまで後回し。
   ADR-0011 の `biota_by_mesh` も `periods: [year]`）。
   - `year` セル: 期間が1つの暦年に収まる記録（day/instant/month/year と、
