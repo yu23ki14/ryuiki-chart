@@ -203,7 +203,8 @@ CLAUDE.md の規約どおり、`data/db/ryuiki.sqlite`/`cells.sqlite`（原本�
 コミットメッセージ・PR 説明に実測ログを残す。確認したこと:
 
 - `python3 -m venv` + `pip install -r requirements.txt`（PyYAML・pytest のみ）
-  だけの Python 3.13 相当の venv で `python3 -m pytest -q` が全緑
+  だけの Python 3.13.7（CI の `PYTHON_VERSION: "3.13"` と同じメジャー系列）venv で
+  `python3 -m pytest -q` が264件全緑
 - 同じ venv で `RYUIKI_REGISTRY_DB=<tmp>/registry_files_only.sqlite
   python3 scripts/r01_build_registry.py --files-only` が成功
   （`place`/`place_relation`/`place_watershed`/`taxon` は空のまま——
