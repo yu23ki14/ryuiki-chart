@@ -23,9 +23,14 @@ Phase A（`docs/plans/PHASE_A.md`, ADR-0016）の成果物。v1 のファクト�
 
 **生成物はここには置かない。** `data/db/registry.sqlite`（gitignore 済み）が唯一の生成物で、
 `scripts/r01_build_registry.py` が上記の手書きファイルと、読み取り専用の原本
-（`data/db/ryuiki.sqlite` / `cells.sqlite` / `derived.sqlite`）から毎回ゼロから作り直す。
-`registry.sqlite` の中身に対して「これが正しい」という判断はしない。正は常にこのディレクトリと
-原本側。ADR-0001 の「D1 はいつ捨てて作り直してもよい」がレジストリにも適用される。
+（`data/db/ryuiki.sqlite` / `cells.sqlite`）、および読み取り専用の配布物
+（`data/processed/nlni_w12_watersheds.jsonl`・`taxon_crosswalk.csv`）から毎回ゼロから
+作り直す。`derived.sqlite`（`pnpm run build:derived` の成果物）は**読まない**——
+Phase B `phase-b/place-attributes`（P-1a）で watershed の入力を
+`nlni_w12_watersheds.jsonl` の直読みに切り替え、registry ビルドが `derived.sqlite`
+を読む箇所が無くなった（後述「watershed の入力」）。`registry.sqlite` の中身に対して
+「これが正しい」という判断はしない。正は常にこのディレクトリと原本側。ADR-0001 の
+「D1 はいつ捨てて作り直してもよい」がレジストリにも適用される。
 
 ## 再構築の手順
 
@@ -45,8 +50,10 @@ pnpm run db:setup                        # migrate + seed。registry.sqlite も4
 （後述「ビルドの指紋と `--check-fresh`」）を見て、古ければ同じ `build:registry` を走らせる
 （`web/scripts/ensure-registry.sh`）。
 
-`r01_build_registry.py` は原本3ファイル（ryuiki / cells / derived）を読み取り専用で開き、
-一切書き換えない。実行時間は実測で約6秒（9テーブル・52,505行）。2回連続で実行しても
+`r01_build_registry.py` は原本（ryuiki / cells）を読み取り専用で開き、一切書き換えない
+（`derived.sqlite` は開かない——上記参照）。実行時間は実測で約39秒（10テーブル・
+53,178行。大半は taxon ステップの分類多数決集計。内訳は
+`docs/plans/PHASE_B_OCCURRENCE.md` 参照）。2回連続で実行しても
 `registry.sqlite` の中身（テーブルごとの行数・全行を安定な順序で並べたハッシュ）は同一になる
 （決定論的な再生成）。書き込みは同じディレクトリの一時ファイル（`registry.sqlite.tmp-<pid>`）に
 行い、全ステップとチェックが通ってから `os.replace()` で正規パスへ原子的に置き換える。途中で
@@ -67,22 +74,30 @@ pnpm run db:setup                        # migrate + seed。registry.sqlite も4
 1. ビルドの論理（`scripts/schema_registry.sql` / `scripts/r01_build_registry.py` /
    `scripts/taxon_namespaces.py` / `scripts/registry/*.py`）と手書きの入力
    （`registry/` 配下の全ファイル）。`mode` に関わらず対象。
-2. **`mode='full'` のときだけ**、追加で3つ: `derived.sqlite` のうち build_place.py が実際に
-   読むテーブル（`common.DERIVED_TABLES_READ` = `watershed_meta`。ファイル全体
-   449MB はハッシュせず、決まった順の SELECT 結果だけを混ぜる。`mesh_all` は
-   Phase B `phase-b/occurrence-registry` で外した——grid01 の入力が `derived.mesh_all`
-   から `ryuiki.organism_records` の座標に変わり、`build_place.py` がもう
-   `derived.mesh_all` を読まなくなったため）、build_taxon.py が読む
-   `data/processed/taxon_crosswalk.csv` の中身、そして **`ryuiki.organism_records`
-   の軽い代理指標（行数・最大rowid）**（3つ目は同じ Phase B PR で追加。grid01 の入力が
-   `derived.mesh_all` から `organism_records` に変わったことで、鮮度検知の経路
-   （後述）が一つ抜けたのを塞ぐため）。3つとも「読み取り専用だが再生成・追記すれば
-   値が変わりうる」入力で、以前は指紋の対象外だったため、これらだけを更新しても
-   レジストリが「新鮮」のまま固まってしまっていた。`--files-only` はどれも開かない
-   （build_place.py/build_taxon.py 自体を呼ばないため。CI に原本が無くても動く要件を保つ）。
-   `full` モードで `derived.sqlite`/`ryuiki.sqlite` が無い場合はクラッシュせず
-   「無い」ことを指紋に混ぜる——以前の指紋（中身がある状態で計算済み）とは必ず食い違うので
+2. **`mode='full'` のときだけ**、追加で3つ: build_place.py の watershed 節が読む
+   `data/processed/nlni_w12_watersheds.jsonl`（L1、`common.WATERSHED_JSONL_RELPATH`）
+   の中身、build_taxon.py が読む `data/processed/taxon_crosswalk.csv` の中身、
+   そして **`ryuiki.organism_records` の軽い代理指標（行数・最大rowid）**
+   （grid01 の入力が `derived.mesh_all` から `organism_records` に変わったことで、
+   鮮度検知の経路が一つ抜けたのを塞ぐため。Phase B `phase-b/occurrence-registry`）。
+   3つとも「読み取り専用だが再生成・追記すれば値が変わりうる」入力で、以前は
+   指紋の対象外だったため、これらだけを更新してもレジストリが「新鮮」のまま
+   固まってしまっていた。`--files-only` はどれも開かない（build_place.py/
+   build_taxon.py 自体を呼ばないため。CI に原本が無くても動く要件を保つ）。
+   `full` モードでこれらのファイルが無い場合はクラッシュせず「無い」ことを
+   指紋に混ぜる——以前の指紋（中身がある状態で計算済み）とは必ず食い違うので
    「古い」と判定され、実際のビルドに進んで分かりやすいエラーで止まる。
+
+   **`derived.sqlite` は `mode` に関わらず指紋計算が一切開かない。** 以前は
+   build_place.py の watershed 節が `derived.watershed_meta`（v1 の派生表）を
+   読んでいたため、`common.DERIVED_TABLES_READ`/`_hash_derived_tables()` という
+   専用の仕組みでその中身を指紋に混ぜていたが、Phase B `phase-b/place-attributes`
+   （P-1a）で watershed の入力を上記 JSONL の直読みに切り替えたことで
+   registry ビルドが `derived.sqlite` を読む箇所自体が無くなり、この仕組みは
+   削除した。**full ビルドに `derived.sqlite`（`pnpm run build:derived` の成果物）
+   はもう要らない**（`common.open_sources()` が既定で開くのも `ryuiki`/`cells` の
+   2つだけになった。`scripts/registry/common.py` の `SOURCE_NAMES`/
+   `DEFAULT_SOURCES` 参照）。
 
 **`ryuiki.sqlite` / `cells.sqlite` の内容全体は `mode` に関わらず指紋に含めない**
 （`organism_records` の行数・最大rowidだけは例外。前段落参照）。理由は
@@ -111,15 +126,18 @@ pnpm run db:setup                        # migrate + seed。registry.sqlite も4
 
 ## テーブルとID規約（ADR-0004 の Phase A での具体形）
 
-9テーブル：`unit` / `variable` / `variable_alias` / `place` / `place_source_ref` /
-`place_relation` / `taxon` / `caveat` / `caveat_scope`。DDL は `scripts/schema_registry.sql`
-（= `web/src/db/schema-registry.ts` の drizzle 定義から生成。ただし `place_relation` は
-まだ drizzle 側に無い。後述「`place.region_id` と `place_relation`」参照）。
+10テーブル：`unit` / `variable` / `variable_alias` / `place` / `place_source_ref` /
+`place_relation` / `place_watershed` / `taxon` / `caveat` / `caveat_scope`。DDL は
+`scripts/schema_registry.sql`（= `web/src/db/schema-registry.ts` の drizzle 定義から生成。
+ただし `place_relation`/`place_watershed` はまだ drizzle 側に無い。後述
+「`place.region_id` と `place_relation`」「kind 固有の属性サテライト」参照）。
 
 計画時点（PHASE_A.md §A-1）は `caveat` 単体7テーブル構成だったが、実装時に「1つの注記が
 複数テーブルに掛かる」ことが分かり、スコープを `caveat_scope` に切り出して8テーブルにした
 （1:N を表現するため。詳細は `scripts/registry/build_caveat.py` のdocstring）。Phase B
-（`phase-b/region-scope`, ADR-0022）で `place_relation` を新設し9テーブルになった。
+（`phase-b/region-scope`, ADR-0022）で `place_relation` を新設し9テーブルに、
+Phase B `phase-b/place-attributes`（P-1a）で `place_watershed` を新設し10テーブルに
+なった。
 
 | entity | ID の形 | 例 |
 |---|---|---|
@@ -152,24 +170,66 @@ PRIMARY KEY 制約により挿入時点でも保証されるが、4モジュー�
 検証する。実測: `common -> NULL` 4,460件（grid01 4,083 + watershed 377）、
 `jp-14 -> jp-14` 500件（site 495 + zone 5）。
 
-「所在」は `region_id` 列ではなく `place_relation` の辺で表す。Phase B で作った最初の
-辺は地点→ゾーンだけ（290件 = `sites.zone IS NOT NULL` の地点数）:
+「所在」は `region_id` 列ではなく `place_relation` の辺で表す。Phase B で作った辺は
+2種類。地点→ゾーン（290件 = `sites.zone IS NOT NULL` の地点数）:
 
 ```
 place_relation(parent_id=ゾーンのplace_id, child_id=地点のplace_id,
                 relation='within', fraction=1.0, basis=<zone.yamlの定義を指す文字列>)
 ```
 
-`fraction` は NOT NULL・常に `1.0`。`(parent_id, child_id, relation)` の一意性は DDL の
-`UNIQUE` 制約ではなく r01 の `ID_UNIQUENESS_CHECKS`（Python 表明）で検証する
-（`ID_REFERENCE_CHECKS` に `place_relation.parent_id`/`child_id` -> `place.place_id` も
-ある）。`source_edition_id`（ADR-0006 が挙げる列）はまだ持たない。
+地点→流域（278件 = `sites.watershed IS NOT NULL` の地点数。Phase B
+`phase-b/place-attributes`、P-1a）:
+
+```
+place_relation(parent_id=流域のplace_id, child_id=地点のplace_id,
+                relation='within', fraction=1.0,
+                basis=<m01_sites.py の点内包判定を指す文字列>)
+```
+
+`sites.watershed` は `sites.zone` と違い申告値ではなく、`scripts/m01_sites.py:110-128`
+が `nlni_w12_watersheds.geojson` への点内包判定（shapely）で機械的に決定した値。
+
+どちらも `fraction` は NOT NULL・常に `1.0`。`(parent_id, child_id, relation)` の
+一意性は DDL の `UNIQUE` 制約ではなく r01 の `ID_UNIQUENESS_CHECKS`（Python 表明）で
+検証する（`ID_REFERENCE_CHECKS` に `place_relation.parent_id`/`child_id` ->
+`place.place_id` もある）。「地点はゾーン・流域それぞれへの `within` 辺を高々1本」も
+r01 が機械検証する（`_assert_zone_relation_child_is_single_valued`/
+`_assert_watershed_relation_child_is_single_valued`、実体は
+`RELATION_SINGLE_VALUED_CHECKS` から回す共通関数）。`source_edition_id`
+（ADR-0006 が挙げる列）はまだ持たない。
 
 `place_relation` はまだ `web/src/db/schema-registry.ts`（D1）に無い。地域・ゾーン単位の
 ロールアップ集計のような消費者がまだ無いため、載せる判断を先送りしている
 （ADR-0001: D1 は捨てて作り直せる配信キャッシュ）。`web/scripts/seed-d1-local.mjs` は
 D1 側に既に存在するテーブルだけをシードするので、この先送りはローカル D1 のシードを
 壊さない。
+
+### kind 固有の属性サテライト: `place_watershed`（Phase B `phase-b/place-attributes`、P-1a）
+
+ADR-0006「place の属性」（ADR-0011 の `place_attribute` カテゴリの具体形）の実装。
+`place` 本体には kind をまたいで共通する列（`name_ja`/`lat`/`lon`/`area_km2`/
+`definition_ref`）だけを置き、kind 固有の属性は `place_<kind>` という別表に置く。
+最初の例が `place_watershed(place_id PK, water_system_code, water_system_category,
+main_rivers, data_year)`。`place_kind='watershed'` の place（377件）に対して
+`build_place.py` がちょうど1行ずつ作る（r01 の `_assert_watershed_place_has_attributes_and_source_ref`
+が機械検証する）。`place_relation`/`place_watershed` とも D1 にはまだ載せない
+（同じ理由）。`water_system_code`（v1 の水系コード）を親 place（`water_system`
+という新しい `place_kind`）＋ `place_relation` にする案も検討したが、v1 の再現には
+過剰な設計であり見送った（ADR-0006 追記）。
+
+### watershed の入力（Phase B `phase-b/place-attributes`、P-1a）
+
+`build_place.py` の watershed 節は `data/processed/nlni_w12_watersheds.jsonl`
+（L1、国土数値情報 W12 流域界 1977年版、377面）を直読みする。以前は
+`derived.watershed_meta`（v1 の派生表、`web/scripts/build-geo.mjs` が同じ JSONL
+から作る）を読んでいたが、これは「v1 の出力から registry を作り、v1 に射影し直す
+だけ」の循環になっていた——grid01 が `derived.mesh_all` を経由していた問題
+（後述「grid01 の入力を `derived.mesh_all` から `organism_records` の座標に変える」
+節）と同型。切り替えても
+`place`/`place_source_ref` の watershed 行は1ビットも変わらない（実測: 切り替え前後で
+377行×9列の diff 0件、正準化 sha256 も完全一致。詳細は
+`docs/plans/PHASE_B_PLACE_ATTRIBUTES.md`）。
 
 ### `variable_alias.csv` の列（Phase B: 出典 × 表記で解決する）
 

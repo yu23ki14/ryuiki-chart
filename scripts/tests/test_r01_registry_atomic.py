@@ -77,15 +77,25 @@ def test_atomic_failure_preserves_previous_registry(
 
 
 # ---------------------------------------------------------------------------
-# 2. 決定論: --files-only を2回走らせても9テーブル＋registry_build の中身が一致する
+# 2. 決定論: --files-only を2回走らせても全テーブル＋registry_build の中身が一致する
 #    （フルビルドでの2回一致は受け入れ基準3で手動確認する。828MBの原本が要るため
 #    pytest では回さない）
 # ---------------------------------------------------------------------------
 
-_ALL_TABLES = (
-    "unit", "variable", "variable_alias", "place", "place_source_ref",
-    "place_relation", "taxon", "caveat", "caveat_scope", "registry_build",
-)
+
+def _all_table_names(conn: sqlite3.Connection) -> list[str]:
+    """`sqlite_master` から通常テーブル名を集める（`sqlite_%` を除く、名前順）。
+    ハードコードした表の一覧だと、`schema_registry.sql` に表が増えたときにこの
+    テストが追随せず決定性を見落とす（code-review 指摘9: 実際に `place_watershed`
+    が漏れていた）。ビルド結果そのものから導出することで、表が増えても腐らない。
+    """
+    return [
+        r[0]
+        for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' "
+            "ORDER BY name"
+        )
+    ]
 
 
 def test_files_only_build_is_deterministic_across_two_runs(monkeypatch, tmp_path):
@@ -98,7 +108,9 @@ def test_files_only_build_is_deterministic_across_two_runs(monkeypatch, tmp_path
     conn_a = sqlite3.connect(target_a)
     conn_b = sqlite3.connect(target_b)
     try:
-        for table in _ALL_TABLES:
+        tables_a = _all_table_names(conn_a)
+        assert tables_a == _all_table_names(conn_b)  # スキーマ自体も一致すること
+        for table in tables_a:
             rows_a = conn_a.execute(f"SELECT * FROM {table} ORDER BY rowid").fetchall()
             rows_b = conn_b.execute(f"SELECT * FROM {table} ORDER BY rowid").fetchall()
             assert rows_a == rows_b, f"{table} が2回のビルドで一致しない"

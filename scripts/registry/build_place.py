@@ -226,9 +226,30 @@ PLACE_DIR = pathlib.Path(__file__).resolve().parents[2] / "registry" / "place"
 # 同じ流儀）。
 WATERSHED_JSONL = common.ROOT / common.WATERSHED_JSONL_RELPATH
 
+# watershed 節（build()）が実際に読むキー（10列すべて。watershed_id を含む）。
+# `_load_watershed_jsonl()` がここに宣言したキー全部の存在を1行ずつ検査する
+# ——検査せず `o.get(...)` で読むと、入力側でキーが消えた・改名されたときに
+# 全377行が黙って NULL 埋めされ、r01 は「377行できた」と出して通ってしまう
+# （place/place_watershed の lat/lon/area_km2 等に NOT NULL も参照整合性も無いため
+# 検出できない。code-review 指摘）。検査を1回済ませたあとは `build()` 側で
+# `o["key"]` の直接添字で読む（`.get()` を使わない）。
+WATERSHED_JSONL_REQUIRED_KEYS = (
+    "watershed_id",
+    "water_system_code_old",
+    "water_system_name_ja_estimated",
+    "water_system_category_ja",
+    "main_river_names_ja",
+    "area_km2",
+    "centroid_lat",
+    "centroid_lon",
+    "data_year",
+    "source_ref",
+)
+
 
 def _load_watershed_jsonl() -> list[dict]:
-    """`WATERSHED_JSONL` を1行1レコードの JSON として読む。
+    """`WATERSHED_JSONL` を1行1レコードの JSON として読み、各行が
+    `WATERSHED_JSONL_REQUIRED_KEYS` を全部持つことを検査する。
 
     以前は `derived.watershed_meta`（v1 の派生表）を読んでいたが、これは
     「v2 の registry を v1 の出力から作る」循環になっていた（モジュール
@@ -243,11 +264,19 @@ def _load_watershed_jsonl() -> list[dict]:
         )
     rows: list[dict] = []
     with WATERSHED_JSONL.open(encoding="utf-8") as f:
-        for line in f:
+        for lineno, line in enumerate(f, start=1):
             line = line.strip()
             if not line:
                 continue
-            rows.append(json.loads(line))
+            row = json.loads(line)
+            missing = [k for k in WATERSHED_JSONL_REQUIRED_KEYS if k not in row]
+            if missing:
+                raise ValueError(
+                    f"{WATERSHED_JSONL} の {lineno} 行目に必須キーが無い: {missing}\n"
+                    "入力の列名が変わった可能性がある。黙って NULL 埋めしない"
+                    "（scripts/registry/build_place.py の watershed 節を確認すること）。"
+                )
+            rows.append(row)
     return rows
 
 
@@ -314,6 +343,38 @@ def _load_zone_yaml() -> list[dict]:
     return items
 
 
+def _relation_rows(
+    pairs: list[tuple[str, object]],
+    place_id_by_external_key: dict[str, str],
+    *,
+    basis: str,
+    not_found_message,
+) -> list[tuple]:
+    """place_relation の地点->X の `within` 辺を組み立てる共通実装。
+
+    `_zone_relation_rows()`（sites.zone 由来）と `_watershed_relation_rows()`
+    （sites.watershed 由来）は「(地点, 外部キー) のペアを回し、外部キーを
+    place_id に引き、解決できなければ例外を投げる」という同じ形だったものを
+    ここに集約した（code-review 指摘。辺の種類が増えたら、この関数を呼ぶ薄い
+    ラッパをもう1つ足すだけでよい）。
+
+    `pairs`: (地点の place_id, 外部キーの生値) のペア。`str()` を通してから
+    `place_id_by_external_key` を引く（`sites.zone` は INTEGER、
+    `sites.watershed` は TEXT なので、ここで型を揃える）。
+    `not_found_message(raw_key, site_pid) -> str`: 解決できなかったときの
+    `ValueError` のメッセージ（辺の種類ごとに文言が違うため呼び出し側が組み立てる）。
+    `fraction` は常に `1.0`（地点は1つの X に完全に含まれる。「NULL=全体」の
+    ような暗黙の意味を持たせない——ADR-0022 決定2）。
+    """
+    rows: list[tuple] = []
+    for site_pid, raw_key in pairs:
+        parent_pid = place_id_by_external_key.get(str(raw_key))
+        if parent_pid is None:
+            raise ValueError(not_found_message(raw_key, site_pid))
+        rows.append((parent_pid, site_pid, "within", 1.0, basis))
+    return rows
+
+
 def _zone_relation_rows(
     site_zone_pairs: list[tuple[str, int]],
     zone_place_id_by_external_key: dict[str, str],
@@ -326,27 +387,21 @@ def _zone_relation_rows(
     `zone_place_id_by_external_key`: ゾーン番号(文字列) -> place_id
     （place_source_ref(source_id='sites.zone') 相当の対応）。
     `registry/place/zone.yaml` に無いゾーン番号が現れたら、黙って捨てず例外を投げる。
-
-    place_relation の辺の種類が増えたときは、この関数と同じ単一責務の
-    `_xxx_relation_rows()` を足して build() から呼ぶ形に揃える（地点->流域
-    （`_watershed_relation_rows()`）で実際にこの形で1種類増やした）。
     """
     basis = (
         "sites.zone（Ridge to Reef ゾーン1-5、registry/place/zone.yaml の操作的定義。"
         "標高・海岸線からの距離のみに基づく操作的区分であり、公式の行政区分・学術区分ではない）"
         "の値から機械的に生成。"
     )
-    rows: list[tuple] = []
-    for site_pid, zone in site_zone_pairs:
-        zone_key = str(zone)
-        zone_pid = zone_place_id_by_external_key.get(zone_key)
-        if zone_pid is None:
-            raise ValueError(
-                f"sites.zone={zone!r}（地点 place_id={site_pid!r}）を解決できるゾーンが "
-                "registry/place/zone.yaml に無い（黙って捨てない。ADR-0022 決定2）。"
-            )
-        rows.append((zone_pid, site_pid, "within", 1.0, basis))
-    return rows
+    return _relation_rows(
+        site_zone_pairs,
+        zone_place_id_by_external_key,
+        basis=basis,
+        not_found_message=lambda zone, site_pid: (
+            f"sites.zone={zone!r}（地点 place_id={site_pid!r}）を解決できるゾーンが "
+            "registry/place/zone.yaml に無い（黙って捨てない。ADR-0022 決定2）。"
+        ),
+    )
 
 
 def _watershed_relation_rows(
@@ -371,25 +426,40 @@ def _watershed_relation_rows(
         "(国土数値情報W12, 1977年版) への点内包判定で機械的に決定。地点の属性を"
         "そのまま転記した値ではない）から機械的に生成。"
     )
-    rows: list[tuple] = []
-    for site_pid, watershed_id in site_watershed_pairs:
-        watershed_pid = watershed_place_id_by_external_key.get(watershed_id)
-        if watershed_pid is None:
-            raise ValueError(
-                f"sites.watershed={watershed_id!r}（地点 place_id={site_pid!r}）を解決できる"
-                "流域が place に無い（黙って捨てない。sites.watershed が指す "
-                "watershed_meta.watershed_id と、watershed 節が nlni_w12_watersheds.jsonl "
-                "から作った place_source_ref が食い違っている可能性がある）。"
-            )
-        rows.append((watershed_pid, site_pid, "within", 1.0, basis))
-    return rows
+    return _relation_rows(
+        site_watershed_pairs,
+        watershed_place_id_by_external_key,
+        basis=basis,
+        not_found_message=lambda watershed_id, site_pid: (
+            f"sites.watershed={watershed_id!r}（地点 place_id={site_pid!r}）を解決できる"
+            "流域が place に無い（黙って捨てない。sites.watershed が指す "
+            "watershed_meta.watershed_id と、watershed 節が nlni_w12_watersheds.jsonl "
+            "から作った place_source_ref が食い違っている可能性がある）。"
+        ),
+    )
+
+
+def _place_id_by_external_key(ref_rows: list[tuple], source_id: str) -> dict[str, str]:
+    """`ref_rows`（`(place_id, external_key, source_id)` のタプル列。`build()` が
+    `place_source_ref` へ積む行そのもの）から、`source_id` に絞った
+    `external_key -> place_id` の対応表を作る。`_zone_relation_rows()`/
+    `_watershed_relation_rows()` に渡す辞書がどちらも同じ形の内包表記だったのを
+    1つの関数に集約した（code-review 指摘）。
+    """
+    return {
+        external_key: place_id
+        for place_id, external_key, sid in ref_rows
+        if sid == source_id
+    }
 
 
 def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[str, int]:
     """conn: registry.sqlite への書き込み用コネクション。
-    src: {'ryuiki': ..., 'cells': ..., 'derived': ...} の読み取り専用コネクション
-    （このモジュールは 'derived' を使わない。watershed の入力は WATERSHED_JSONL の
-    直読みに切り替え済み——モジュール docstring「watershed」節参照）。
+    src: {'ryuiki': ..., 'cells': ...} の読み取り専用コネクション（'derived' は
+    `common.open_sources()` の既定の集合から外れている——watershed の入力は
+    WATERSHED_JSONL の直読みに切り替え済み・このモジュールは 'derived' を一切
+    使わない。モジュール docstring「watershed」節、`common.py` の
+    `SOURCE_NAMES`/`DEFAULT_SOURCES` のコメント参照）。
     戻り値: {テーブル名: 挿入した行数}（ログ表示用）。
     """
     ryuiki = src["ryuiki"]
@@ -467,20 +537,23 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     # （None に丸めない）。
     watershed_attr_rows: list[tuple] = []
     for o in _load_watershed_jsonl():
+        # _load_watershed_jsonl() が WATERSHED_JSONL_REQUIRED_KEYS の存在を
+        # 行ごとに検査済みなので、ここでは `.get()` ではなく直接添字で読む
+        # （キーが消えたときに黙って NULL 埋めしない。code-review 指摘）。
         pid = common.place_id("watershed", "nlni", o["watershed_id"], scope="common", seen=place_id_seen)
         place_rows.append((
             pid, common.region_id_for_scoped_id(pid), "watershed",
-            o.get("water_system_name_ja_estimated") or None,
-            o.get("centroid_lat"), o.get("centroid_lon"), None, o.get("area_km2"),
-            o.get("source_ref"), "ok",
+            o["water_system_name_ja_estimated"] or None,
+            o["centroid_lat"], o["centroid_lon"], None, o["area_km2"],
+            o["source_ref"], "ok",
         ))
         ref_rows.append((pid, o["watershed_id"], "watershed_meta.watershed_id"))
         watershed_attr_rows.append((
             pid,
-            o.get("water_system_code_old"),
-            o.get("water_system_category_ja"),
-            o.get("main_river_names_ja"),
-            o.get("data_year"),
+            o["water_system_code_old"],
+            o["water_system_category_ja"],
+            o["main_river_names_ja"],
+            o["data_year"],
         ))
 
     # --- grid01: ryuiki.organism_records の座標（4,087件） -------------------
@@ -543,24 +616,16 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
 
     # --- place_relation: 地点 -> ゾーン（sites.zone 由来。ADR-0022 決定2） ------
     # ゾーン番号(文字列) -> place_id を ref_rows から引く（source_id='sites.zone' は
-    # 上の zone loop が積んだ行だけなので、zone_place_id_by_number のような専用の
-    # 対応表を別途維持しなくても ref_rows 一本から求まる）。
-    zone_place_id_by_external_key = {
-        external_key: place_id
-        for place_id, external_key, source_id in ref_rows
-        if source_id == "sites.zone"
-    }
+    # 上の zone loop が積んだ行だけなので、専用の対応表を別途維持しなくても
+    # ref_rows 一本から求まる。`_place_id_by_external_key()` 参照）。
+    zone_place_id_by_external_key = _place_id_by_external_key(ref_rows, "sites.zone")
     zone_relation_rows = _zone_relation_rows(site_zone_pairs, zone_place_id_by_external_key)
 
     # --- place_relation: 地点 -> 流域（sites.watershed 由来。Phase B
     # `phase-b/place-attributes`、P-1a） ---------------------------------------
-    # 流域ID(文字列) -> place_id を ref_rows から引く（source_id=
-    # 'watershed_meta.watershed_id' は上の watershed loop が積んだ行だけ）。
-    watershed_place_id_by_external_key = {
-        external_key: place_id
-        for place_id, external_key, source_id in ref_rows
-        if source_id == "watershed_meta.watershed_id"
-    }
+    watershed_place_id_by_external_key = _place_id_by_external_key(
+        ref_rows, "watershed_meta.watershed_id"
+    )
     watershed_relation_rows = _watershed_relation_rows(
         site_watershed_pairs, watershed_place_id_by_external_key
     )

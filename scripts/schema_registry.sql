@@ -82,14 +82,16 @@ CREATE TABLE IF NOT EXISTS place (
 CREATE INDEX IF NOT EXISTS ix_place_kind ON place(place_kind);
 
 -- 空間単位どうしの関係(ADR-0006)。Phase B(phase-b/region-scope, ADR-0022)で新設。
--- 最初に作る辺は「地点 -> ゾーン」1種類だけ(parent_id=ゾーンの place_id,
--- child_id=地点の place_id, relation='within')。fraction は NOT NULL とし、
--- 全体を含む関係には 1.0 を入れる("NULL=全体"のような暗黙の意味を持たせない。
--- ADR-0011 の「fraction があるものは加重する」を常に同じ式で書けるようにするため)。
--- ADR-0006 が挙げる source_edition_id 列はまだ持たない: 出典の版管理
--- (source_registry/source_edition, ADR-0005)自体が Phase C の仕事で、いま作る唯一の
--- 辺(地点->ゾーン)の出典は registry/place/zone.yaml という手書きファイル1つに
--- 固定されており、版を切り替える必要が今は無い(ADR-0022 決定3)。
+-- 最初に作った辺は「地点 -> ゾーン」(parent_id=ゾーンの place_id, child_id=地点の
+-- place_id, relation='within')。Phase B `phase-b/place-attributes`(P-1a)で
+-- 「地点 -> 流域」(sites.watershed 由来)を追加し、現在は2種類。fraction は
+-- NOT NULL とし、全体を含む関係には 1.0 を入れる("NULL=全体"のような暗黙の意味を
+-- 持たせない。ADR-0011 の「fraction があるものは加重する」を常に同じ式で書ける
+-- ようにするため)。ADR-0006 が挙げる source_edition_id 列はまだ持たない: 出典の
+-- 版管理(source_registry/source_edition, ADR-0005)自体が Phase C の仕事で、いま
+-- 作っている辺(地点->ゾーンは registry/place/zone.yaml、地点->流域は
+-- data/processed/nlni_w12_watersheds.jsonl)の出典はそれぞれ単一の手書き/配布
+-- ファイルに固定されており、版を切り替える必要が今は無い(ADR-0022 決定3)。
 -- (parent_id, child_id, relation) の一意性は DDL の UNIQUE 制約ではなく
 -- scripts/r01_build_registry.py 側の Python 表明で検証する(variable_alias の
 -- (dataset, alias, source_id) 一意性と同じ流儀。registry/README.md 参照)。

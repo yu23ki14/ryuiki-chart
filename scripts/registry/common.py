@@ -1,7 +1,7 @@
 """レジストリビルドの共通ヘルパ。
 
 - ID 生成（docs/adr/0004-identifiers.md 準拠、Phase A で使う具体形）
-- 原本 3 ファイル（ryuiki / cells / derived）を読み取り専用で開く
+- 原本（ryuiki / cells）を読み取り専用で開く
 - registry.sqlite の新規作成（DDL は scripts/schema_registry.sql）と書き込みユーティリティ
 - ビルドの指紋（`registry_build` テーブル。phase-b/registry-atomic）: 「在る」ことと
   「正しい」ことを区別するため、`scripts/r01_build_registry.py --check-fresh` が
@@ -32,7 +32,25 @@ REGISTRY_DB = DB_DIR / "registry.sqlite"
 # 154 alias だけのスタブに壊れて消える。実害あり・独立レビューで実際に踏まれた事故）。
 FILES_ONLY_REGISTRY_DB = DB_DIR / "registry_files_only.sqlite"
 
+# registry ビルド（build_unit_variable.py/build_place.py/build_taxon.py/
+# build_caveat.py）が実際に読む原本。`derived.sqlite` は Phase B
+# `phase-b/place-attributes`（P-1a）でここから外れた: build_place.py の
+# watershed 節が `derived.watershed_meta` ではなく L1
+# （`data/processed/nlni_w12_watersheds.jsonl`、`WATERSHED_JSONL_RELPATH`）を
+# 直読みするようになり、registry ビルドが `derived.sqlite` を読む箇所が
+# 無くなった（`grep -rn 'src\[.derived.\]' scripts/registry/*.py` で確認済み・
+# 0件）。これにより **full ビルドに `derived.sqlite`（`pnpm run build:derived`
+# の成果物）はもう要らない**——`open_sources()` が無条件に開いていたのを
+# やめたことで、無い環境でも `r01_build_registry.py` のフルビルドが通る
+# （実測は docs/plans/PHASE_B_PLACE_ATTRIBUTES.md）。
+# `open_source("derived")` で個別に開くことは引き続きできる（将来また
+# derived.sqlite の特定テーブルを読むモジュールが増えたときのため。
+# `DB_DIR / "derived.sqlite"` が実際に存在する限り動く）——ここから外したのは
+# `open_sources()`（既定で開く集合）だけ。
 SOURCE_NAMES = ("ryuiki", "cells", "derived")
+
+# `open_sources()` が既定で開く原本（registry ビルドが実際に使うものだけ）。
+DEFAULT_SOURCES = ("ryuiki", "cells")
 
 
 # ---------------------------------------------------------------------------
@@ -59,8 +77,11 @@ def open_source(name: str) -> sqlite3.Connection:
 
 
 def open_sources() -> dict[str, sqlite3.Connection]:
-    """3 原本すべてを読み取り専用で開いて返す。"""
-    return {name: open_source(name) for name in SOURCE_NAMES}
+    """registry ビルドが実際に使う原本（`DEFAULT_SOURCES`）だけを読み取り専用で
+    開いて返す。`derived.sqlite` は含まない（上記 `SOURCE_NAMES` のコメント参照。
+    個別に要る場合は `open_source("derived")` を呼ぶこと）。
+    """
+    return {name: open_source(name) for name in DEFAULT_SOURCES}
 
 
 # ---------------------------------------------------------------------------

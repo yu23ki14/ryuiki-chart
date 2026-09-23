@@ -19,13 +19,28 @@ docs/plans/PHASE_B_PLACE_ATTRIBUTES.md）。
 一種）。このスクリプトは `registry.sqlite` だけを読む——`--cube-db` のような引数は
 無い。
 
-## `INSERT ... SELECT` の1文で組み立てる
+## `INSERT ... SELECT` の1文で組み立てる（列名は明示する）
 
 `scripts/b05_project_v1.py` は行を一旦 Python のタプル列に読み出してから
 `executemany()` で書き戻すが、この射影は行変換（結合・列の並べ替え）以外の
 集計・ピボットが無い単純な JOIN なので、`CREATE TABLE`（v1 の宣言型で）に続けて
-`INSERT INTO watershed_meta SELECT ... FROM reg.place ...` を1文で実行するだけで
-足りる（余計な中間テーブル・Python 側のバッファを持たない）。
+`INSERT INTO watershed_meta (列名...) SELECT ... FROM reg.place ...` を1文で
+実行するだけで足りる（余計な中間テーブル・Python 側のバッファを持たない）。
+`INSERT` 側の列名を明示するのは、`CREATE TABLE` の列順と `SELECT` の列順という
+2つの離れたリテラルを手で揃える形になっており、どちらかを並べ替えたときに
+（同じ TEXT 型どうしなら）誰も気づけないため（code-review 指摘）。
+
+## 検証してから書く（読み取り専用パスと書き込みパスを分ける）
+
+`registry.sqlite` に対する検証（下記2関数）は、出力ファイルに一切触れない
+読み取り専用の一時コネクション（`:memory:` に `reg` を ATTACH しただけ）で行う。
+`common.fresh_sqlite(out_path)`（既存の出力ファイル・WAL/SHM を削除してから開く）は
+その検証が**全部通ったあと**にしか呼ばない——先に呼んで書き込みを始めてから検証に
+失敗すると、前回の正しい出力が消えたまま空/半端なファイルが残る
+（`scripts/b05_project_v1.py` は検証を先に済ませてから `write_projections()` で
+書き出す構成になっており、同じ順序をここでも守る。`common.fresh_sqlite` 自体が
+原本（ryuiki/cells/derived）を誤って消せる問題は P-3 側の PR で `fresh_sqlite`
+共通実装に対応するため、ここでは触れない）。
 """
 from __future__ import annotations
 
@@ -44,6 +59,12 @@ DEFAULT_OUT = ROOT / "data" / "db" / "v1_projection_place.sqlite"
 
 # v1（`web/scripts/build-geo.mjs`、`reports/derived_baseline.json`）と列名・列順・
 # 宣言型を完全に一致させる。
+_WATERSHED_META_COLUMNS = (
+    "watershed_id", "water_system_code", "water_system_name",
+    "water_system_category", "main_rivers", "area_km2",
+    "centroid_lat", "centroid_lon", "data_year", "source_ref",
+)
+
 _CREATE_WATERSHED_META_SQL = """
 CREATE TABLE watershed_meta (
   watershed_id TEXT, water_system_code TEXT, water_system_name TEXT,
@@ -52,8 +73,10 @@ CREATE TABLE watershed_meta (
 )
 """
 
-_INSERT_WATERSHED_META_SQL = """
-INSERT INTO watershed_meta
+# INSERT 側にも列名を明示する（上記 docstring「INSERT ... SELECT の1文で組み立てる」
+# 参照。`_WATERSHED_META_COLUMNS` と SELECT の AS 別名の並びを一致させること）。
+_INSERT_WATERSHED_META_SQL = f"""
+INSERT INTO watershed_meta ({", ".join(_WATERSHED_META_COLUMNS)})
 SELECT
   psr.external_key AS watershed_id,
   pw.water_system_code AS water_system_code,
@@ -73,83 +96,81 @@ WHERE p.place_kind = 'watershed'
 """
 
 
-def _assert_every_watershed_place_has_attrs_and_ref(work: sqlite3.Connection) -> None:
-    """`place_kind='watershed'` の各行が、`place_watershed`（属性サテライト）と
-    `place_source_ref(source_id='watershed_meta.watershed_id')`（v1 の watershed_id
-    への逆引き）をそれぞれちょうど1件ずつ持つことを検証する。
+def _assert_place_watershed_table_exists(work: sqlite3.Connection) -> None:
+    """`reg.place_watershed` テーブルが存在することを確認する（無いと素の
+    `sqlite3.OperationalError`（no such table）になり原因が分かりにくいため。
+    `scripts/b05_project_v1.py` の `_assert_place_relation_table_exists()` と
+    同じ形）。Phase B `phase-b/place-attributes`（P-1a）で新設されたテーブルなので、
+    それより前にビルドした古い registry.sqlite には無い。
+    """
+    row = work.execute(
+        "SELECT 1 FROM reg.sqlite_master WHERE type = 'table' AND name = 'place_watershed'"
+    ).fetchone()
+    if row is None:
+        raise common.MigrationError(
+            "registry.sqlite に place_watershed テーブルが無い（Phase B "
+            "`phase-b/place-attributes` で新設されたテーブルなので、それより前に"
+            "ビルドした古い registry.sqlite には無い）。"
+            "scripts/r01_build_registry.py で registry.sqlite を作り直すこと。"
+        )
 
-    どちらか欠けている place があると `_INSERT_WATERSHED_META_SQL` の INNER JOIN が
-    その行を黙って落とす（"欠落した行が出力に現れない"という一番気づきにくい壊れ方）。
-    複数件あると逆に行が水増しされる。どちらも `place`/`place_watershed`/
-    `place_source_ref` を作る `scripts/registry/build_place.py` 側の不変条件だが、
-    射影する側でも独立に確かめておく（`scripts/b05_project_v1.py` の
+
+def _assert_no_duplicate_watershed_source_ref_per_place(work: sqlite3.Connection) -> None:
+    """`place_source_ref(source_id='watershed_meta.watershed_id')` が `place_id`
+    について単射であることを検証する（射影固有の防御）。
+
+    同じ place に対応する行が2つあると、`_INSERT_WATERSHED_META_SQL` の
+    `JOIN reg.place_source_ref psr ON psr.place_id = p.place_id AND ...` が
+    その place を2回ヒットさせ、377件が378件に水増しされる——一番気づきにくい
+    壊れ方（行数だけを見ていると気づけない。code-review 指摘: 以前は
+    `external_key` で GROUP BY しており、この水増しを検出できていなかった）。
+    `(place_id, source_id)` の一意性自体は r01 の `ID_UNIQUENESS_CHECKS` が
+    build_place.py の出力に対して保証済みだが（レジストリ全体の不変条件）、
+    射影する側でも独立に確かめる（`scripts/b05_project_v1.py` の
     `_assert_site_maps_to_at_most_one_zone` 等と同じ、射影固有の防御）。
     """
-    n_watershed_places = work.execute(
-        "SELECT COUNT(*) FROM reg.place WHERE place_kind = 'watershed'"
-    ).fetchone()[0]
-
-    missing_attrs = work.execute(
+    dup = work.execute(
         """
-        SELECT p.place_id FROM reg.place p
-        WHERE p.place_kind = 'watershed'
-          AND NOT EXISTS (SELECT 1 FROM reg.place_watershed pw WHERE pw.place_id = p.place_id)
+        SELECT psr.place_id, COUNT(*) AS n FROM reg.place_source_ref psr
+        WHERE psr.source_id = 'watershed_meta.watershed_id'
+        GROUP BY psr.place_id HAVING COUNT(*) > 1
         LIMIT 5
         """
     ).fetchall()
-    if missing_attrs:
+    if dup:
         raise common.MigrationError(
-            f"place_kind='watershed' なのに place_watershed に行が無い place がある"
-            f"（例: {[r[0] for r in missing_attrs]}）。"
-            "scripts/registry/build_place.py の watershed 節を確認すること。"
+            "place_source_ref(source_id='watershed_meta.watershed_id') が place_id に"
+            f"ついて単射でない（同じ place に複数の external_key が対応している）: {dup}\n"
+            "watershed_meta への射影が行を水増しする。scripts/registry/build_place.py の "
+            "watershed 節、または r01 の ID_UNIQUENESS_CHECKS を確認すること。"
         )
 
-    missing_ref = work.execute(
-        """
-        SELECT p.place_id FROM reg.place p
-        WHERE p.place_kind = 'watershed'
-          AND NOT EXISTS (
-            SELECT 1 FROM reg.place_source_ref psr
-            WHERE psr.place_id = p.place_id AND psr.source_id = 'watershed_meta.watershed_id'
-          )
-        LIMIT 5
-        """
-    ).fetchall()
-    if missing_ref:
-        raise common.MigrationError(
-            "place_kind='watershed' なのに "
-            "place_source_ref(source_id='watershed_meta.watershed_id') が無い place がある"
-            f"（例: {[r[0] for r in missing_ref]}）。"
-            "scripts/registry/build_place.py の watershed 節を確認すること。"
-        )
 
-    # (place_id, source_id) の一意性は r01 の ID_UNIQUENESS_CHECKS が全体として
-    # 保証済みだが、"watershed_meta.watershed_id" だけに絞った関数性
-    # （watershed_id → place_id が1対1）もここで独立に確認する。
-    dup_ref = work.execute(
-        """
-        SELECT external_key, COUNT(*) AS n FROM reg.place_source_ref
-        WHERE source_id = 'watershed_meta.watershed_id'
-        GROUP BY external_key HAVING n > 1
-        LIMIT 5
-        """
-    ).fetchall()
-    if dup_ref:
-        raise common.MigrationError(
-            f"watershed_meta.watershed_id が複数の place_id に対応している: {dup_ref}"
-        )
-
-    print(f"  watershed place の属性/逆引きOK: {n_watershed_places:,} 件")
+def _validate_registry(registry_db) -> None:
+    """`registry_db` を読み取り専用の一時コネクションで検証する。出力ファイルには
+    一切触れない（`build_projections()` の docstring「検証してから書く」参照）。
+    """
+    work = sqlite3.connect(":memory:", uri=True)
+    try:
+        common.attach_readonly(work, registry_db, "reg")
+        _assert_place_watershed_table_exists(work)
+        _assert_no_duplicate_watershed_source_ref_per_place(work)
+    finally:
+        work.close()
 
 
 def build_projections(registry_db, out_path) -> dict[str, int]:
-    """`data/db/v1_projection_place.sqlite` に `watershed_meta` を書き、
-    テーブルごとの行数を返す（ログ表示用）。
+    """`registry_db` を検証してから `data/db/v1_projection_place.sqlite` に
+    `watershed_meta` を書き、テーブルごとの行数を返す（ログ表示用）。
+
+    検証が1つでも失敗すれば `out_path` には一切触れない（前回の正しい出力が
+    残る。docstring「検証してから書く」参照）。
     """
+    _validate_registry(registry_db)
+
     work = common.fresh_sqlite(out_path)
     try:
         common.attach_readonly(work, registry_db, "reg")
-        _assert_every_watershed_place_has_attrs_and_ref(work)
         work.execute(_CREATE_WATERSHED_META_SQL)
         work.execute(_INSERT_WATERSHED_META_SQL)
         work.commit()

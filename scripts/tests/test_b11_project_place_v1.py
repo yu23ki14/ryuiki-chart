@@ -63,6 +63,15 @@ def _make_registry_db(path, watershed_rows=()) -> None:
         conn.close()
 
 
+def test_insert_sql_declares_explicit_column_list():
+    """`_INSERT_WATERSHED_META_SQL` が `INSERT INTO watershed_meta (列名...)` の形で
+    列名を明示していること（code-review 指摘8: CREATE の列順と SELECT の列順という
+    2つの離れたリテラルを手で揃える暗黙の位置合わせにしない）。
+    """
+    expected = f"INSERT INTO watershed_meta ({', '.join(b11._WATERSHED_META_COLUMNS)})"
+    assert expected in b11._INSERT_WATERSHED_META_SQL
+
+
 def test_projects_watershed_meta_with_v1_column_order_and_types(tmp_path):
     """列名・列順・値が v1（`reports/derived_baseline.json` の `watershed_meta`
     エントリ）と一致すること（受け入れ条件1の単体版）。
@@ -156,57 +165,57 @@ def test_ignores_non_watershed_places(tmp_path):
     assert counts == {"watershed_meta": 1}
 
 
-def test_missing_place_watershed_row_raises(tmp_path):
-    """place_kind='watershed' なのに place_watershed に行が無ければ例外で止まる
-    （欠落した行が INNER JOIN で黙って落ちる——一番気づきにくい壊れ方——のを防ぐ）。
+def test_missing_place_watershed_table_raises_clear_error(tmp_path):
+    """`place_watershed` テーブル自体が無い（P-1a より前にビルドした古い
+    registry.sqlite を渡した）場合、素の `sqlite3.OperationalError`（no such table）
+    ではなく「r01 を実行し直せ」と分かる `MigrationError` で止まる
+    （`scripts/b05_project_v1.py` の `_assert_place_relation_table_exists` と同じ形）。
     """
     registry_db = tmp_path / "registry.sqlite"
     conn = registry_common.create_registry_db(registry_db)
     try:
-        conn.execute(
-            "INSERT INTO place (place_id, region_id, place_kind, status) VALUES (?,?,?,?)",
-            ("common:place:watershed.nlni-x", None, "watershed", "ok"),
-        )
+        conn.execute("DROP TABLE place_watershed")
+        conn.commit()
+    finally:
+        conn.close()
+
+    out_db = tmp_path / "v1_projection_place.sqlite"
+    with pytest.raises(migrate_common.MigrationError, match="place_watershed テーブルが無い"):
+        b11.build_projections(registry_db, out_db)
+
+
+def test_duplicate_source_ref_per_place_raises_and_does_not_inflate_rows(tmp_path):
+    """同じ place に `place_source_ref(source_id='watershed_meta.watershed_id')` の
+    行が2つあると、INNER JOIN がその place を2回ヒットさせて行が水増しされる
+    （377→378 のような一番気づきにくい壊れ方）。これを `place_id` で GROUP BY して
+    検出する（code-review 指摘: 以前は `external_key` で GROUP BY しており、この
+    水増しを検出できていなかった——同じ external_key が別々の place に対応する
+    ケース（`external_key` 側の重複）は水増しを起こさないので誤検出だった）。
+    """
+    registry_db = tmp_path / "registry.sqlite"
+    conn = registry_common.create_registry_db(registry_db)
+    try:
+        _insert_watershed_place(conn, _WATERSHED_ROW)
+        # 同じ place_id にもう1件、別の external_key で place_source_ref を足す
+        # （水増しの原因になる本物の重複）。
         conn.execute(
             "INSERT INTO place_source_ref (place_id, external_key, source_id) VALUES (?,?,?)",
-            ("common:place:watershed.nlni-x", "x", "watershed_meta.watershed_id"),
+            (_WATERSHED_ROW["place_id"], "83032-0024-dup", "watershed_meta.watershed_id"),
         )
         conn.commit()
     finally:
         conn.close()
-
     out_db = tmp_path / "v1_projection_place.sqlite"
-    with pytest.raises(migrate_common.MigrationError, match="place_watershed に行が無い"):
+
+    with pytest.raises(migrate_common.MigrationError, match="place_id について単射でない"):
         b11.build_projections(registry_db, out_db)
 
 
-def test_missing_place_source_ref_raises(tmp_path):
-    """place_kind='watershed' なのに
-    place_source_ref(source_id='watershed_meta.watershed_id') が無ければ例外で止まる。
-    """
-    registry_db = tmp_path / "registry.sqlite"
-    conn = registry_common.create_registry_db(registry_db)
-    try:
-        conn.execute(
-            "INSERT INTO place (place_id, region_id, place_kind, status) VALUES (?,?,?,?)",
-            ("common:place:watershed.nlni-x", None, "watershed", "ok"),
-        )
-        conn.execute(
-            "INSERT INTO place_watershed (place_id, data_year) VALUES (?,?)",
-            ("common:place:watershed.nlni-x", 1977),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-    out_db = tmp_path / "v1_projection_place.sqlite"
-    with pytest.raises(migrate_common.MigrationError, match="place_source_ref"):
-        b11.build_projections(registry_db, out_db)
-
-
-def test_duplicate_watershed_id_reference_raises(tmp_path):
-    """watershed_meta.watershed_id が複数の place_id に対応していれば例外で止まる
-    （v1 の watershed_id への逆引きが一意でなくなる）。
+def test_two_places_sharing_the_same_external_key_is_not_flagged_as_inflation(tmp_path):
+    """2つの異なる place が同じ v1 の watershed_id（external_key）を指していても、
+    それぞれの place 自身は `place_source_ref` を1件しか持たないので、行の水増し
+    （b11 が独立に防ぐ対象）は起きない——このケースを誤って止めない
+    （旧実装は `external_key` で GROUP BY しており、このケースを誤検出していた）。
     """
     row_a = dict(_WATERSHED_ROW, place_id="common:place:watershed.nlni-a")
     row_b = dict(_WATERSHED_ROW, place_id="common:place:watershed.nlni-b")  # 同じ watershed_id
@@ -214,8 +223,36 @@ def test_duplicate_watershed_id_reference_raises(tmp_path):
     _make_registry_db(registry_db, [row_a, row_b])
     out_db = tmp_path / "v1_projection_place.sqlite"
 
-    with pytest.raises(migrate_common.MigrationError, match="複数の place_id"):
+    counts = b11.build_projections(registry_db, out_db)
+    assert counts == {"watershed_meta": 2}
+
+
+def test_failed_validation_does_not_touch_previous_output(tmp_path):
+    """検証（`_validate_registry`）が失敗したときは `common.fresh_sqlite(out_path)`
+    を一切呼ばない——前回の正しい出力ファイルがバイト単位で残る（code-review
+    指摘4: 以前は `fresh_sqlite(out)` を検証より先に呼んでおり、検証失敗時に
+    前回の出力が消えて空/半端なファイルが残っていた）。
+    """
+    registry_db = tmp_path / "registry.sqlite"
+    _make_registry_db(registry_db, [_WATERSHED_ROW])
+    out_db = tmp_path / "v1_projection_place.sqlite"
+
+    b11.build_projections(registry_db, out_db)  # 1回目: 正しい出力を作る
+    before = out_db.read_bytes()
+
+    # 2回目の直前に registry.sqlite を壊す（place_watershed テーブルを消す）。
+    conn = sqlite3.connect(registry_db)
+    try:
+        conn.execute("DROP TABLE place_watershed")
+        conn.commit()
+    finally:
+        conn.close()
+
+    with pytest.raises(migrate_common.MigrationError):
         b11.build_projections(registry_db, out_db)
+
+    after = out_db.read_bytes()
+    assert after == before  # 前回の出力が1バイトも変わっていない
 
 
 def test_output_is_rebuilt_from_scratch_each_run(tmp_path):

@@ -353,3 +353,34 @@ def test_site_has_at_most_one_watershed_edge_by_construction(tmp_path, monkeypat
         "WHERE pr.relation = 'within' AND pr.child_id = 'jp-14:place:site.jma-s1'"
     ).fetchone()[0]
     assert n == 1
+
+
+# ---------------------------------------------------------------------------
+# _load_watershed_jsonl() の防御（code-review 指摘1・11）
+# ---------------------------------------------------------------------------
+
+def test_load_watershed_jsonl_raises_file_not_found_when_missing(tmp_path, monkeypatch):
+    """`data/processed/nlni_w12_watersheds.jsonl` が無いと分かりやすいエラーで
+    止まる（worktree で symlink を張り忘れたときに必ず踏む経路。CLAUDE.md の
+    worktree 運用の symlink 手順参照）。
+    """
+    monkeypatch.setattr(
+        build_place_module, "WATERSHED_JSONL", tmp_path / "does_not_exist.jsonl"
+    )
+    with pytest.raises(FileNotFoundError, match="流域界の原本が無い"):
+        build_place_module._load_watershed_jsonl()
+
+
+def test_load_watershed_jsonl_raises_on_missing_required_key(tmp_path, monkeypatch):
+    """JSONL の1行に必須キーが無ければ、黙って NULL 埋めせず例外で止まる
+    （code-review 指摘1: `.get()` で読むと、入力側でキーが消えた・改名された
+    ときに全行が黙って NULL になり、r01 は「377行できた」と出して通ってしまう）。
+    """
+    jsonl_path = tmp_path / "nlni_w12_watersheds.jsonl"
+    row = dict(_WATERSHED_ROW_FULL)
+    del row["area_km2"]  # 必須キーを1つ欠かす
+    write_watershed_jsonl(jsonl_path, [row])
+    monkeypatch.setattr(build_place_module, "WATERSHED_JSONL", jsonl_path)
+
+    with pytest.raises(ValueError, match="必須キーが無い"):
+        build_place_module._load_watershed_jsonl()
