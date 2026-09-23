@@ -18,8 +18,15 @@
 `phase-b/occurrence-watershed`（O-2a、`scripts/b09_build_occurrence_place.py` で
 記録×流域の直接解決 `occurrence_place` を作り、`scripts/b08_project_occurrence_v1.py`
 に `org_watershed_year`/`org_watershed` を追加——§10参照）で流域2表を実データで通した
-（一致2、宣言済み差分0で完全一致）。
-**33テーブル中27テーブルが済み、残り6テーブルは未着手**
+（一致2、宣言済み差分0で完全一致）。`phase-b/taxon-assessment`（P-2、
+`scripts/registry/build_taxon_assessment.py` で `taxon_assessment` を新設し、
+`scripts/b12_project_taxon_v1.py` に `redlist_map`/`redlist_change` を、
+`scripts/b08_project_occurrence_v1.py` に `ias_species` を追加——
+`docs/plans/PHASE_B_TAXON_ASSESSMENT.md` 参照）で taxon/レッドリスト系3表を
+実データで通した（`redlist_map`/`redlist_change`: 一致2、宣言済み差分0。
+`ias_species` を含む13表の突合: 一致11、宣言済み差分のみ2〔既存の `org_norm`/
+`species2` の `cls` 1行——§6参照〕、不一致0）。
+**33テーブル中30テーブルが済み、残り3テーブルは未着手**
 作成: 2026-09-07 / 更新: 2026-09-23
 
 **このドキュメントが説明するのはゲートの仕組みと、実データで実行した結果（§6・宣言済み差分の節）。
@@ -414,7 +421,7 @@ v1 側を直すまで v2 のゲートが恒久的に赤いままになる。ADR-
 
 ## 8. やっていないこと（このPRのスコープ外）
 
-- 残り6テーブル（ADR-0011「33テーブルの行き先」参照。当初の残り12テーブルのうち、
+- 残り3テーブル（ADR-0011「33テーブルの行き先」参照。当初の残り12テーブルのうち、
   `meas_clim`/`site_var`/`var_catalog` は `phase-b/meas-remainder`、`sensor_daily`/
   `rain_daily`/`sensor_hour_month` は `phase-b/sensor-slice`、`zone_year`/`zone_clim` は
   `phase-b/zone-slice`、`org_norm` は `phase-b/occurrence-l2`（O-1a）、年キー8表・
@@ -423,10 +430,11 @@ v1 側を直すまで v2 のゲートが恒久的に赤いままになる。ADR-
   （P-1a、§9参照）、`doc_series`/`doc_series_meta`/`quality_monthly` は
   `phase-b/documents`（P-3）、`org_watershed`/`org_watershed_year` は
   `phase-b/occurrence-watershed`（O-2a、§10参照。生物系はこれで12テーブル全て
-  揃った）で済んだ。残り6テーブル（`watershed_rollup`〔流域のロールアップ〕・
-  `landuse_watershed`/`landuse_change`〔土地利用、P-1b〕・`redlist_map`/
-  `redlist_change`/`ias_species`〔taxon/レッドリスト系、P-2〕）はまだ縦線を
-  通していない）
+  揃った）、`redlist_map`/`redlist_change`/`ias_species` は
+  `phase-b/taxon-assessment`（P-2、`docs/plans/PHASE_B_TAXON_ASSESSMENT.md` 参照。
+  taxon/レッドリスト系はこれで3テーブル全て揃った）で済んだ。残り3テーブル
+  （`watershed_rollup`〔流域のロールアップ〕・`landuse_watershed`/`landuse_change`
+  〔土地利用、P-1b〕）はまだ縦線を通していない）
 - `imputation='lod'` 併記（ADR-0009 決定4。今回は `zero` のみ）
 - 正準単位の併記（ADR-0023。方針は決定済みだが未実装）
 - Parquet 化（ADR-0001）

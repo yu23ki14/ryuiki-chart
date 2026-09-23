@@ -90,6 +90,19 @@
   ATTACH、`observation` は経由しない）が `data/db/v1_projection_documents.sqlite`
   （`doc_series`/`doc_series_meta`/`quality_monthly` の3テーブル、`.gitignore` 済み）を作る。
   設計・実測は `docs/plans/PHASE_B_DOCUMENTS.md`。
+- レッドリスト・外来種の評価（`taxon_assessment`、P-2）は
+  `scripts/registry/build_taxon_assessment.py`（`ryuiki.redlist_assessments`
+  〔3版〕と `data/processed/moe_ias_list.csv`〔外来種、`ryuiki.taxa` ではなく
+  L1 を直読み〕→ `registry.sqlite` の `taxon_assessment`。**D1 には載せない**）
+  が r01 の `taxon`（A-4）の直後に作る。v1形への射影は2本に分かれる:
+  `scripts/b12_project_taxon_v1.py`（`taxon_assessment` → `redlist_map`/
+  `redlist_change`、出力 `data/db/v1_projection_taxon.sqlite`）と、
+  `scripts/b08_project_occurrence_v1.py` に足した `ias_species`
+  （`org_norm` の binom と結合するため occurrence の縦線側に同居。表示名の
+  解決に `ryuiki.sqlite` の `taxa.vernacular_name_ja` を直接 ATTACH で読む
+  ——`b10` と同じ前例）。除外7種の宣言は
+  `registry/taxon/assessment_scope_exclusions.yaml`。設計・実測は
+  `docs/plans/PHASE_B_TAXON_ASSESSMENT.md`。
 - **`+09:00` 付きの時刻文字列に SQLite の日時関数（`date`/`datetime`/`strftime`）を使わない**
   （UTC に正規化されて日付が1日ずれる。`observation.period_start` は時刻帯なしのローカル時刻で
   持つ。詳細は `docs/adr/0024-local-time-and-time-labels.md`）。
