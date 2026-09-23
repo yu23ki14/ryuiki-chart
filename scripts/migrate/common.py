@@ -400,6 +400,39 @@ def assert_dimension_key_unique(
         conn.execute(f'DROP INDEX IF EXISTS "{index_name}"')
 
 
+@contextlib.contextmanager
+def _materialized_join_tables(conn: sqlite3.Connection, left_sql: str, right_sql: str, key_columns: list[str]):
+    """`left_sql`/`right_sql`（それぞれ `key_columns + value_columns` の並びで
+    `GROUP BY` 済みの行を返す `SELECT` 文字列）の結果を一時テーブルに実体化し、
+    結合キー（`key_columns` を `COALESCE` で NULL 安全にしてから `'|'` で
+    連結した1列 `__k`）に `UNIQUE INDEX` を張る。`with` を抜けるときに一時
+    テーブルを必ず消す。戻り値は一時テーブル名のペア `("__agtm_l", "__agtm_r")`。
+
+    `assert_grouped_totals_match()`/`count_grouped_totals_mismatches()` が
+    共有する「一時テーブル＋一意索引」の安全策（/simplify 指摘5）。**最初の
+    実装は `WITH` 句のサブクエリを複数列の `IS`（NULL-safe）条件で直接
+    `FULL OUTER JOIN` していたが、SQLite のクエリプランナは `IS` を使う JOIN
+    条件にインデックスを使わず、ネストループ（両側とも約32,000行なら最大
+    約10億回の比較）に落ちる**——実測で2分経っても終わらず、明確な性能事故に
+    なった（`scripts/b05_project_v1.py` の `_alias_lookup_sql` が「NULL を
+    含みうる列を `IS` で JOIN すると自動インデックスが効かない」と書いている
+    問題と同じ根）。単一の計算済み列への通常の `=` ならインデックスを使う
+    （実測: 実データ約32,000行×32,000行で0.15秒）。
+    """
+    key_expr = " || '|' || ".join(f"COALESCE({c}, '')" for c in key_columns)
+    conn.execute("DROP TABLE IF EXISTS __agtm_l")
+    conn.execute("DROP TABLE IF EXISTS __agtm_r")
+    try:
+        conn.execute(f"CREATE TEMP TABLE __agtm_l AS SELECT {key_expr} AS __k, sub.* FROM ({left_sql}) sub")
+        conn.execute(f"CREATE TEMP TABLE __agtm_r AS SELECT {key_expr} AS __k, sub.* FROM ({right_sql}) sub")
+        conn.execute("CREATE UNIQUE INDEX __agtm_l_key ON __agtm_l (__k)")
+        conn.execute("CREATE UNIQUE INDEX __agtm_r_key ON __agtm_r (__k)")
+        yield "__agtm_l", "__agtm_r"
+    finally:
+        conn.execute("DROP TABLE IF EXISTS __agtm_l")
+        conn.execute("DROP TABLE IF EXISTS __agtm_r")
+
+
 def assert_grouped_totals_match(
     conn: sqlite3.Connection,
     left_sql: str,
@@ -431,44 +464,49 @@ def assert_grouped_totals_match(
     壊れ方（ある系列の分が別の系列に付け替わり、全体の合計は変わらない）を
     検出できなくなるのを避けるため。
 
-    **両側を一時テーブルに実体化し、結合キー（`key_columns` を `COALESCE` で
-    NULL 安全にしてから `'|'` で連結した1列）に `UNIQUE INDEX` を張ってから
-    等値 JOIN する。** 最初の実装は `WITH` 句のサブクエリを複数列の `IS`
-    （NULL-safe）条件で直接 `FULL OUTER JOIN` していたが、SQLite の
-    クエリプランナは `IS` を使う JOIN 条件にインデックスを使わず、
-    ネストループ（両側とも約32,000行なら最大 約10億回の比較）に落ちる
-    ——実測で2分経っても終わらず、明確な性能事故になった
-    （`scripts/b05_project_v1.py` の `_alias_lookup_sql` が「NULL を含みうる
-    列を `IS` で JOIN すると自動インデックスが効かない」と書いている問題と
-    同じ根）。単一の計算済み列への通常の `=` ならインデックスを使う
-    （実測: 実データ約32,000行×32,000行で0.15秒）。
-
-    キーの比較は NULL 安全（`taxon_id` 等が NULL を取りうるため、素の `=`
-    では NULL 同士が一致しない）。`build_message(rows)` の `rows` は
-    `(key_columns..., <value>_l, <value>_r 各 value_columns ごと)` の並びの
-    タプルのリスト（片側にしか無いキーは無い方の値が `None`）。
+    「一時テーブル＋一意索引」の実体化は `_materialized_join_tables()` に
+    集約してある。キーの比較は NULL 安全（`taxon_id` 等が NULL を取りうる
+    ため、素の `=` では NULL 同士が一致しない）。`build_message(rows)` の
+    `rows` は `(key_columns..., <value>_l, <value>_r 各 value_columns ごと)`
+    の並びのタプルのリスト（片側にしか無いキーは無い方の値が `None`）。
     """
-    key_expr = " || '|' || ".join(f"COALESCE({c}, '')" for c in key_columns)
-    key_select = ", ".join(f"COALESCE(l.{c}, r.{c}) AS {c}" for c in key_columns)
-    value_select = ", ".join(f"l.{c} AS {c}_l, r.{c} AS {c}_r" for c in value_columns)
-    mismatch_cond = " OR ".join(f"l.{c} IS NOT r.{c}" for c in value_columns)
-
-    conn.execute("DROP TABLE IF EXISTS __agtm_l")
-    conn.execute("DROP TABLE IF EXISTS __agtm_r")
-    try:
-        conn.execute(f"CREATE TEMP TABLE __agtm_l AS SELECT {key_expr} AS __k, sub.* FROM ({left_sql}) sub")
-        conn.execute(f"CREATE TEMP TABLE __agtm_r AS SELECT {key_expr} AS __k, sub.* FROM ({right_sql}) sub")
-        conn.execute("CREATE UNIQUE INDEX __agtm_l_key ON __agtm_l (__k)")
-        conn.execute("CREATE UNIQUE INDEX __agtm_r_key ON __agtm_r (__k)")
+    with _materialized_join_tables(conn, left_sql, right_sql, key_columns) as (lt, rt):
+        key_select = ", ".join(f"COALESCE(l.{c}, r.{c}) AS {c}" for c in key_columns)
+        value_select = ", ".join(f"l.{c} AS {c}_l, r.{c} AS {c}_r" for c in value_columns)
+        mismatch_cond = " OR ".join(f"l.{c} IS NOT r.{c}" for c in value_columns)
         sql = f"""
         SELECT {key_select}, {value_select}
-        FROM __agtm_l l FULL OUTER JOIN __agtm_r r ON l.__k = r.__k
+        FROM {lt} l FULL OUTER JOIN {rt} r ON l.__k = r.__k
         WHERE ({mismatch_cond}) OR l.__k IS NULL OR r.__k IS NULL
         LIMIT {sample_limit}
         """
         rows = conn.execute(sql).fetchall()
-    finally:
-        conn.execute("DROP TABLE IF EXISTS __agtm_l")
-        conn.execute("DROP TABLE IF EXISTS __agtm_r")
     if rows:
         raise MigrationError(build_message(rows))
+
+
+def count_grouped_totals_mismatches(
+    conn: sqlite3.Connection,
+    left_sql: str,
+    right_sql: str,
+    key_columns: list[str],
+    value_columns: list[str],
+) -> int:
+    """`assert_grouped_totals_match()` と同じ「一時テーブル＋一意索引」の
+    安全な `FULL OUTER JOIN`（`_materialized_join_tables()` を共有）で、
+    片方にしかないキー・値が食い違うキーの**総数**を返す（/simplify 指摘5）。
+
+    `assert_grouped_totals_match()` は最大 `sample_limit` 件で打ち切って
+    無条件に `MigrationError` を投げるのに対し、こちらは「ある個数だけ
+    食い違いが発生する」ことを織り込んだ検証（宣言済みの期待値と実測件数を
+    突き合わせる）に使う——`scripts/b08_project_occurrence_v1.py` の
+    `_measure_keys_changed_vs_exact`（`org_watershed_year` と
+    `org_watershed_year_exact` の突合、宣言値 1,091）が最初の呼び出し元。
+    """
+    with _materialized_join_tables(conn, left_sql, right_sql, key_columns) as (lt, rt):
+        mismatch_cond = " OR ".join(f"l.{c} IS NOT r.{c}" for c in value_columns)
+        sql = f"""
+        SELECT COUNT(*) FROM {lt} l FULL OUTER JOIN {rt} r ON l.__k = r.__k
+        WHERE ({mismatch_cond}) OR l.__k IS NULL OR r.__k IS NULL
+        """
+        return conn.execute(sql).fetchone()[0]

@@ -20,7 +20,7 @@ from .occurrence_fixtures import (
     make_occurrence_watershed_v1_declarations_yaml,
     make_v2_db_with_occurrence_and_place,
     occurrence_place_row,
-    occurrence_row_at,
+    occurrence_row,
 )
 
 pytestmark = pytest.mark.skipif(
@@ -66,18 +66,21 @@ def test_representative_requires_dated_population_and_moved_records_are_measured
     代表 B の正確な解決（W2）が、バケット全体（B・C・E）の「メモの流域」になる。
     """
     occurrence_rows = [
-        occurrence_row_at("A", 35.0096, 139.0096, source_row_id=1, period_raw=None),
-        occurrence_row_at(
-            "B", 35.0104, 139.0104, source_row_id=2,
-            period_start="2020-05-01", period_end="2020-05-01", period_raw="2020-05-01",
+        occurrence_row("A", None, None, None, None, source_row_id=1, lat=35.0096, lon=139.0096),
+        occurrence_row(
+            "B", None,
+            "2020-05-01", "2020-05-01", "2020-05-01",
+            source_row_id=2, lat=35.0104, lon=139.0104,
         ),
-        occurrence_row_at(
-            "C", 35.0100, 139.0100, source_row_id=3,
-            period_start="2021-06-01", period_end="2021-06-01", period_raw="2021-06-01",
+        occurrence_row(
+            "C", None,
+            "2021-06-01", "2021-06-01", "2021-06-01",
+            source_row_id=3, lat=35.0100, lon=139.0100,
         ),
-        occurrence_row_at(
-            "E", 35.0102, 139.0101, source_row_id=4,
-            period_start="2022-07-01", period_end="2022-07-01", period_raw="2022-07-01",
+        occurrence_row(
+            "E", None,
+            "2022-07-01", "2022-07-01", "2022-07-01",
+            source_row_id=4, lat=35.0102, lon=139.0101,
         ),
     ]
     occurrence_place_rows = [
@@ -133,13 +136,15 @@ def test_floor_half_up_boundary_merges_into_same_bucket(tmp_path):
     assert int(lon_c * 1000) != bx_target  # truncate なら別バケットになる（丸め方の違いが効く値であることの確認）
     assert round(lon_c * 1000) != bx_target  # round()（銀行丸め）でも別バケットになる
     occurrence_rows = [
-        occurrence_row_at(
-            "B", 35.0100, lon_b, source_row_id=1,
-            period_start="2020-01-01", period_end="2020-01-01", period_raw="2020-01-01",
+        occurrence_row(
+            "B", None,
+            "2020-01-01", "2020-01-01", "2020-01-01",
+            source_row_id=1, lat=35.0100, lon=lon_b,
         ),
-        occurrence_row_at(
-            "C", 35.0100, lon_c, source_row_id=2,
-            period_start="2020-02-01", period_end="2020-02-01", period_raw="2020-02-01",
+        occurrence_row(
+            "C", None,
+            "2020-02-01", "2020-02-01", "2020-02-01",
+            source_row_id=2, lat=35.0100, lon=lon_c,
         ),
     ]
     occurrence_place_rows = [
@@ -171,17 +176,20 @@ def test_floor_half_up_boundary_merges_into_same_bucket(tmp_path):
 
 def test_org_watershed_rolls_up_from_org_watershed_year(tmp_path):
     occurrence_rows = [
-        occurrence_row_at(
-            "A", 35.0100, 139.0100, source_row_id=1,
-            period_start="2019-01-01", period_end="2019-01-01", period_raw="2019-01-01",
+        occurrence_row(
+            "A", None,
+            "2019-01-01", "2019-01-01", "2019-01-01",
+            source_row_id=1, lat=35.0100, lon=139.0100,
         ),
-        occurrence_row_at(
-            "B", 35.0100, 139.0101, source_row_id=2,
-            period_start="2019-02-01", period_end="2019-02-01", period_raw="2019-02-01",
+        occurrence_row(
+            "B", None,
+            "2019-02-01", "2019-02-01", "2019-02-01",
+            source_row_id=2, lat=35.0100, lon=139.0101,
         ),
-        occurrence_row_at(
-            "C", 35.0300, 139.0300, source_row_id=3,
-            period_start="2021-01-01", period_end="2021-01-01", period_raw="2021-01-01",
+        occurrence_row(
+            "C", None,
+            "2021-01-01", "2021-01-01", "2021-01-01",
+            source_row_id=3, lat=35.0300, lon=139.0300,
         ),
     ]
     occurrence_place_rows = [
@@ -207,9 +215,10 @@ def test_org_watershed_rolls_up_from_org_watershed_year(tmp_path):
 
 def test_declaration_mismatch_halts(tmp_path):
     occurrence_rows = [
-        occurrence_row_at(
-            "A", 35.0100, 139.0100, source_row_id=1,
-            period_start="2019-01-01", period_end="2019-01-01", period_raw="2019-01-01",
+        occurrence_row(
+            "A", None,
+            "2019-01-01", "2019-01-01", "2019-01-01",
+            source_row_id=1, lat=35.0100, lon=139.0100,
         ),
     ]
     occurrence_place_rows = [occurrence_place_row("A", _W1_PLACE_ID)]
@@ -232,9 +241,10 @@ def test_unresolvable_place_id_halts(tmp_path):
     と同じ考え方）。
     """
     occurrence_rows = [
-        occurrence_row_at(
-            "A", 35.0100, 139.0100, source_row_id=1,
-            period_start="2019-01-01", period_end="2019-01-01", period_raw="2019-01-01",
+        occurrence_row(
+            "A", None,
+            "2019-01-01", "2019-01-01", "2019-01-01",
+            source_row_id=1, lat=35.0100, lon=139.0100,
         ),
     ]
     # registry の place_refs（_PLACE_REFS）に無い place_id を指す。
@@ -258,13 +268,15 @@ def test_population_record_missing_from_occurrence_place_halts(tmp_path):
     と区別が付かなかった。
     """
     occurrence_rows = [
-        occurrence_row_at(
-            "A", 35.0100, 139.0100, source_row_id=1,
-            period_start="2019-01-01", period_end="2019-01-01", period_raw="2019-01-01",
+        occurrence_row(
+            "A", None,
+            "2019-01-01", "2019-01-01", "2019-01-01",
+            source_row_id=1, lat=35.0100, lon=139.0100,
         ),
-        occurrence_row_at(
-            "B", 35.0100, 139.0101, source_row_id=2,
-            period_start="2019-02-01", period_end="2019-02-01", period_raw="2019-02-01",
+        occurrence_row(
+            "B", None,
+            "2019-02-01", "2019-02-01", "2019-02-01",
+            source_row_id=2, lat=35.0100, lon=139.0101,
         ),
     ]
     # B の occurrence_place 行が無い（occurrence_place が古い・部分的な状況を模す）。

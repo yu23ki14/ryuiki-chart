@@ -250,12 +250,17 @@ def occurrence_row(
     source_id="gbif_kanagawa_occurrences", region_id="jp-14",
     place_id=DEFAULT_GRID01_PLACE_ID, place_kind="grid01",
     source_row_id=1, red_list_category="",
+    lat=35.505, lon=139.005, scientific_name="Foo bar", is_alien=0,
 ) -> tuple:
     """`_OCCURRENCE_COLUMNS`（≡ `scripts/b06_build_occurrence.py` の
     `_CREATE_OCCURRENCE_SQL`）の並びで `occurrence` の1行を組み立てる
     （/simplify 指摘7: `test_b07_build_occurrence_cube.py` の `_row`・
     `test_b08_occurrence_cube_projections.py` の `_dated_row`/`_occ_row` の
-    3通りに分かれていたものを1つに集約した）。
+    3通りに分かれていたものを1つに集約した。`lat`/`lon`/`scientific_name`/
+    `is_alien` は既定値が従来の固定値のままの追加キーワード引数——O-2a の
+    `occurrence_place`/`org_watershed_year` のテストが座標を変えた複数の記録を
+    要るために足した。以前は `occurrence_row_at()` という別名の関数がほぼ
+    同じ22列タプルを複製していた。/simplify 指摘6）。
 
     `period_start`/`period_end` は b06 が展開済みの形で渡す（'YYYY/YYYY' 区間
     なら実際の年境界。b07 のテストで使う）。`period_start=None,
@@ -264,29 +269,9 @@ def occurrence_row(
     """
     return (
         record_id, "organism_records", source_row_id, source_id, region_id, taxon_id,
-        place_id, place_kind, None, 35.505, 139.005,
-        "day", period_start, period_end, period_raw,
-        "Foo bar", "フーバー", "SPECIES", red_list_category, 0, "CC-BY", "公開",
-    )
-
-
-def occurrence_row_at(
-    record_id, lat, lon, *,
-    source_row_id=1, period_start=None, period_end=None, period_raw=None,
-    taxon_id=None, source_id="gbif_kanagawa_occurrences", region_id="jp-14",
-    place_id=None, place_kind=None, scientific_name="Foo bar", is_alien=0, red_list_category="",
-) -> tuple:
-    """`occurrence_row()` と同じ列順だが、`lat`/`lon`/`scientific_name`/
-    `is_alien`/`red_list_category` も呼び出し側が指定できる版（O-2a の
-    `occurrence_place`/`org_watershed_year` のテストは座標を変えた複数の記録を
-    要るため。既存の `occurrence_row()` は座標を固定〔grid01 テスト用〕にして
-    あるので、そちらは変更しない）。
-    """
-    return (
-        record_id, "organism_records", source_row_id, source_id, region_id, taxon_id,
         place_id, place_kind, None, lat, lon,
-        "day" if period_start else None, period_start, period_end, period_raw,
-        scientific_name, "", "SPECIES", red_list_category, is_alien, "CC-BY", "公開",
+        "day", period_start, period_end, period_raw,
+        scientific_name, "フーバー", "SPECIES", red_list_category, is_alien, "CC-BY", "公開",
     )
 
 
@@ -312,6 +297,21 @@ def occurrence_place_row(record_id, place_id, *, place_kind="watershed") -> tupl
     return (record_id, place_kind, place_id, "point_in_polygon:even_odd", "テスト用", "テスト用/v1")
 
 
+def add_occurrence_place_table(conn: sqlite3.Connection, rows: list[tuple]) -> None:
+    """開いている接続 `conn`（`occurrence` を持つ v2.sqlite）に
+    `occurrence_place`（O-2a）テーブルを作って `rows` を入れる（コミットは
+    呼び出し側の責務）。`make_v2_db_with_occurrence_and_place()`
+    （ここから接続を開いて呼ぶ）と `test_b08_occurrence_cube_projections.py`
+    の `_add_occurrence_place()`（既存の db に後付けで足す）が共有する
+    （/simplify 指摘7）。
+    """
+    import b09_build_occurrence_place as b09
+
+    conn.execute(b09._CREATE_OCCURRENCE_PLACE_SQL.format(table="occurrence_place"))
+    placeholders = ", ".join("?" for _ in _OCCURRENCE_PLACE_COLUMNS)
+    conn.executemany(f"INSERT INTO occurrence_place VALUES ({placeholders})", rows)
+
+
 def make_v2_db_with_occurrence_and_place(
     path, occurrence_rows: list[tuple], occurrence_place_rows: list[tuple],
 ) -> None:
@@ -320,17 +320,13 @@ def make_v2_db_with_occurrence_and_place(
     `_build_watershed` は両方を読む）。
     """
     import b06_build_occurrence as b06
-    import b09_build_occurrence_place as b09
 
     conn = sqlite3.connect(f"file:{path}", uri=True)
     try:
         conn.execute(b06._CREATE_OCCURRENCE_SQL.format(table="occurrence"))
         placeholders = ", ".join("?" for _ in _OCCURRENCE_COLUMNS)
         conn.executemany(f"INSERT INTO occurrence VALUES ({placeholders})", occurrence_rows)
-
-        conn.execute(b09._CREATE_OCCURRENCE_PLACE_SQL.format(table="occurrence_place"))
-        place_placeholders = ", ".join("?" for _ in _OCCURRENCE_PLACE_COLUMNS)
-        conn.executemany(f"INSERT INTO occurrence_place VALUES ({place_placeholders})", occurrence_place_rows)
+        add_occurrence_place_table(conn, occurrence_place_rows)
         conn.commit()
     finally:
         conn.close()

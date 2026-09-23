@@ -6,64 +6,59 @@
 （実測: 224,282 distinct 座標で GEOS と不一致0、約9秒。CI は `requirements.txt`
 〔PyYAML・pytest だけ〕しか入れないため、shapely への依存を持ち込まない）。
 
-**v1 の 0.001度メモ化はここでは行わない。** v1（`web/scripts/build-geo.mjs:166-175`）は
-座標を 0.001度に丸めたバケットで判定結果をメモ化し、「バケットに最初に来た記録の
-実座標の判定結果」を同じバケットの全記録に配る——走査順（≒rowid順）に依存する近似
-（`docs/plans/PHASE_B_OCCURRENCE.md` F3）。このモジュールが提供するのは**正確な**
-点内包判定であり、v1 の癖の再現は射影側（`scripts/b08_project_occurrence_v1.py`）の
-責務（ADR-0024/0025 と同じ「v1 の癖はキューブ/レジストリに焼き込まない」原則）。
+**v1 の 0.001度メモ化はここでは行わない。** このモジュールが提供するのは**正確な**
+点内包判定であり、v1 の癖（走査順依存のメモ化）の再現は射影側
+（`scripts/b08_project_occurrence_v1.py`）の責務（ADR-0024/0025 と同じ「v1 の癖は
+キューブ/レジストリに焼き込まない」原則。経緯・実測は
+`docs/plans/PHASE_B_OCCURRENCE.md` F3・§15・§16）。
 
 各点について候補ポリゴン**全部**を判定し、実際に一致したポリゴンの id を全部返す
 （v1 の `locate()` のように最初の1件で打ち切らない——複数面への帰属や境界上の
 判定の際どさを検出するのがこのモジュールの仕事。呼び出し側〔`scripts/b09_build_occurrence_place.py`〕
 が「ちょうど1つに一致」だけを解決とみなす）。
 
-## 浮動小数点の曖昧さと境界上の点（ADR-0026・コードレビュー対応）
+## 際どい判定と境界上の点（ADR-0026 D1）
 
-`near`（際どい判定）は **点から候補ポリゴンの辺（外環・穴のどの辺も、頂点上を含む）
-までの距離**が閾値（既定 `DEFAULT_NEAR_THRESHOLD=1e-9`）未満かどうかで判定する
-（`_point_in_ring` が辺ごとに判定し、even-odd の交差判定とは独立に行う）。
-
-**この形にした理由（コードレビュー指摘1・7）**: 当初は even-odd の交差判定
-（`x < x_cross`）の中でだけ「際どさ」を見ていたが、この判定は `(yi > y) != (yj > y)`
-が成り立つ辺（レイと交差しうる辺）にしか実行されない。**点の y がちょうど頂点の y と
-一致する場合（水平な辺・頂点そのものに乗っている場合を含む）、この条件は常に不成立
-になり、辺の存在自体が判定から漏れる**（隣接する2つの正方形で実際に再現した:
-共有する垂直辺 `x=1` 上の点は両方の交差判定に乗って `near` が立つが、共有する水平辺
-`y=1` 上の点はどちらの正方形でも交差判定の対象外になり、`near` が立たないまま
-「どちらにも属さない」という誤った結果になる）。点から辺までの幾何的な距離を直接
-測る現在の実装は、辺の向きに関わらずこの穴を塞ぐ。
+`near`（際どい判定）は**点から候補ポリゴンの辺（外環・穴のどの辺も、頂点上を含む）
+までの距離**が閾値（既定 `DEFAULT_NEAR_THRESHOLD=1e-9`）未満かどうかで、even-odd の
+交差判定とは独立に全ての辺について行う（`_point_in_ring`。この形にした理由・
+以前の実装の穴は `docs/plans/PHASE_B_OCCURRENCE.md` §16 参照——ここでは繰り返さない）。
 
 `near=True` の distinct 座標は、呼び出し側が2段階で確認する:
 
 1. **厳密な境界判定**（`polygon_boundary_contains_exact()`/`on_boundary()`。
    `fractions.Fraction` で「点が辺〔頂点を含む〕の上に厳密に乗っているか」を判定）。
-   乗っていれば**ADR-0026 D1 の「境界上」に該当し、呼び出し側は無条件に止める**
+   乗っていれば ADR-0026 D1 の「境界上」に該当し、呼び出し側は無条件に止める
    （推測で割り当てない）。
 2. 厳密には乗っていない（float の近さだけだった）場合は `locate_exact()`
    （厳密有理数演算によるフルの点内包判定）で float 版の結果と一致するかを確認する
-   （ADR-0026 機械検証2。食い違えば呼び出し側が止める）。
+   （食い違えば呼び出し側が止める）。
 
 実測（`data/db/ryuiki.sqlite` 全 distinct 座標 224,282件、2026-09-23）では
-際どい判定・境界上の点のどちらも0件だった（最短の余裕は 4.4e-9度）。
+際どい判定・境界上の点のどちらも0件だった（最短の余裕は 4.4e-9度。この0件が
+今回のデータ〔流域どうしの隣接が疎〕に固有であることは ADR-0026「影響」節参照）。
 
-MultiPolygon・穴の判定は**全ての環を見てから返す**（コードレビュー指摘7: 以前は
-最初に一致した部分ポリゴン・最初に一致した穴で早期 return/break していたため、
-残りの環の際どさが握り潰されていた）。
+## 辺の bbox は `Polygon` 構築時に1回だけ前計算する
+
+`Polygon.ring_edges`（`__post_init__` で `rings` から自動的に作る）が、辺ごとの
+`(xi, yi, xj, yj, 辺のbbox)` を持つ。`_point_in_ring` はこれを読むだけで、
+点ごとに `min()`/`max()` を計算し直さない（効率。distinct 座標224,282件に対する
+実測で約52%短縮——`docs/plans/PHASE_B_OCCURRENCE.md` §17）。even-odd・`Fraction`・
+境界判定のロジック自体はこの前計算の前後で変えていない。
 """
 from __future__ import annotations
 
 import json
 import math
 import pathlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from fractions import Fraction
 
 # v1（`web/scripts/build-geo.mjs:117`）と同じグリッドセル幅。
 CELL = 0.02
 
 # 点から辺までの距離がこの閾値未満なら「際どい」とみなす（モジュール docstring
-# 「浮動小数点の曖昧さと境界上の点」参照）。実測の最短余裕（4.4e-9度）より1桁
+# 「際どい判定と境界上の点」参照）。実測の最短余裕（4.4e-9度）より1桁
 # 近い値にしてある——閾値を実測の余裕ぎりぎりに置くと、次にデータが増えたときに
 # 際どい判定が「たまたま」閾値のすぐ外側に来て検知漏れになりかねないため、
 # 余裕を持たせて早めに拾う。
@@ -75,6 +70,28 @@ Ring = list[Point]
 # （rings[0] が外環、rings[1:] が穴）。
 PolygonCoordinates = list[Ring]
 
+# 辺1本の前計算済みデータ: (xi, yi, xj, yj, 辺のbboxのmin_x, max_x, min_y, max_y)。
+# `_point_in_ring` が呼び出しのたびに `min()`/`max()` を計算し直さないためのキャッシュ
+# （モジュール docstring「辺の bbox は Polygon 構築時に1回だけ前計算する」参照）。
+Edge = tuple[float, float, float, float, float, float, float, float]
+RingEdges = list[Edge]
+
+
+def _edges_of_ring(ring: Ring) -> RingEdges:
+    edges: RingEdges = []
+    n = len(ring)
+    j = n - 1
+    for i in range(n):
+        xi, yi = ring[i]
+        xj, yj = ring[j]
+        edges.append((
+            xi, yi, xj, yj,
+            xi if xi < xj else xj, xi if xi > xj else xj,
+            yi if yi < yj else yj, yi if yi > yj else yj,
+        ))
+        j = i
+    return edges
+
 
 @dataclass(frozen=True)
 class Polygon:
@@ -82,11 +99,22 @@ class Polygon:
     複数要素の）`rings` を持つ。JS 版 `polys.push({id, rings, bbox})` の
     `rings`（`Polygon` なら `[geometry.coordinates]`、`MultiPolygon` なら
     `geometry.coordinates` の各要素を展開したもの）と同じ形。
+
+    `ring_edges` は `rings` と同じ入れ子構造で、辺ごとの前計算済みデータ
+    （`Edge`）を持つ——`__post_init__` が `rings` から自動的に作るので、
+    呼び出し側（`load_polygons()`・テスト）は `rings`/`bbox` だけ渡せばよい。
     """
 
     id: str
     rings: list[PolygonCoordinates]
     bbox: tuple[float, float, float, float]
+    ring_edges: list[list[RingEdges]] = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "ring_edges",
+            [[_edges_of_ring(ring) for ring in poly] for poly in self.rings],
+        )
 
 
 def _bbox_of(rings: list[PolygonCoordinates]) -> tuple[float, float, float, float]:
@@ -107,13 +135,8 @@ def _bbox_of(rings: list[PolygonCoordinates]) -> tuple[float, float, float, floa
 
 
 def _as_xy(coord) -> Point:
-    """GeoJSON の1点（`[x, y]` または `[x, y, z]`）から `(x, y)` を取り出す。
-
-    コードレビュー指摘15: v1（JS）は配列の先頭2要素だけを使い、標高等の3要素目が
-    あっても無視する（`for (const [x, y] of ring)` の分割代入は3要素目を黙って
-    捨てる）。こちらは `for x, y in ring` のタプル分割だと3要素の座標で
-    `ValueError` になっていたため、明示的に先頭2要素だけを取る形にして
-    v1 と同じ寛容さに合わせた。
+    """GeoJSON の1点（`[x, y]` または `[x, y, z]`）から `(x, y)` を取り出す
+    （v1〔JS の分割代入 `[x, y]`〕と同じく3要素目〔標高等〕があっても無視する）。
     """
     return (coord[0], coord[1])
 
@@ -123,8 +146,7 @@ def load_polygons(geojson_path, id_property: str = "watershed_id") -> list[Polyg
 
     `web/scripts/build-geo.mjs:120-136` の移植。Polygon/MultiPolygon 以外の
     geometry type は v1 と同じく黙ってスキップする（実データには現れない
-    ——実測: 377 feature 全件が Polygon）。各点は `_as_xy()` で `(x, y)` に
-    正規化する（3要素目〔標高等〕があっても無視する）。
+    ——実測: 377 feature 全件が Polygon）。
     """
     data = json.loads(pathlib.Path(geojson_path).read_text(encoding="utf-8"))
     polys: list[Polygon] = []
@@ -164,16 +186,6 @@ def build_grid(polys: list[Polygon], cell: float = CELL) -> Grid:
     return grid
 
 
-def _segment_bbox_reject(x: float, y: float, x1: float, y1: float, x2: float, y2: float, threshold: float) -> bool:
-    """線分の bbox を `threshold` ぶん広げた矩形の外に `(x, y)` があれば True
-    （距離計算を省く早期棄却）。"""
-    if x < min(x1, x2) - threshold or x > max(x1, x2) + threshold:
-        return True
-    if y < min(y1, y2) - threshold or y > max(y1, y2) + threshold:
-        return True
-    return False
-
-
 def _dist_sq_point_to_segment(x: float, y: float, x1: float, y1: float, x2: float, y2: float) -> float:
     """点 `(x, y)` から線分 `(x1,y1)-(x2,y2)` までの最短距離の2乗（float）。"""
     dx, dy = x2 - x1, y2 - y1
@@ -191,29 +203,28 @@ def _dist_sq_point_to_segment(x: float, y: float, x1: float, y1: float, x2: floa
     return ex * ex + ey * ey
 
 
-def _point_in_ring(x: float, y: float, ring: Ring, threshold: float) -> tuple[bool, bool]:
+def _point_in_ring(x: float, y: float, edges: RingEdges, threshold: float) -> tuple[bool, bool]:
     """`web/scripts/build-geo.mjs:147-154` の even-odd 判定の移植
     （`inside` の計算はそのまま）＋ 辺までの距離による `near` 判定（モジュール
     docstring 参照。even-odd の交差判定とは独立に、全ての辺で行う）。
+
+    `edges` は `Polygon.ring_edges` の1環ぶん（辺の bbox を前計算済み）。
 
     戻り値: `(内側か, 辺までの距離が閾値未満の辺が1つでもあったか)`。
     """
     inside = False
     near = False
     thr2 = threshold * threshold
-    n = len(ring)
-    j = n - 1
-    for i in range(n):
-        xi, yi = ring[i]
-        xj, yj = ring[j]
+    for xi, yi, xj, yj, lo_x, hi_x, lo_y, hi_y in edges:
         if (yi > y) != (yj > y):
             x_cross = (xj - xi) * (y - yi) / (yj - yi) + xi
             if x < x_cross:
                 inside = not inside
-        if not near and not _segment_bbox_reject(x, y, xi, yi, xj, yj, threshold):
+        if not near and not (
+            x < lo_x - threshold or x > hi_x + threshold or y < lo_y - threshold or y > hi_y + threshold
+        ):
             if _dist_sq_point_to_segment(x, y, xi, yi, xj, yj) < thr2:
                 near = True
-        j = i
     return inside, near
 
 
@@ -239,9 +250,9 @@ def point_in_polygon(
 ) -> tuple[bool, bool]:
     """`web/scripts/build-geo.mjs:155-165` の移植（穴あり、MultiPolygon 対応）。
 
-    **全ての部分ポリゴン・全ての穴を見てから返す**（コードレビュー指摘7:
-    以前は最初に一致した部分ポリゴンで即座に `return`、最初に一致した穴で
-    `break` していたため、残りの環の `near` 情報が失われていた）。
+    **全ての部分ポリゴン・全ての穴を見てから返す**（早期 return/break すると
+    残りの環の `near` 情報を取りこぼす。経緯は
+    `docs/plans/PHASE_B_OCCURRENCE.md` §16）。
 
     戻り値: `(poly に含まれるか, 際どい辺が1つでもあったか)`。
     """
@@ -250,13 +261,12 @@ def point_in_polygon(
         return False, False
     near_any = False
     inside_any = False
-    for rings in poly.rings:
-        outer = rings[0]
-        in_outer, near = _point_in_ring(x, y, outer, threshold)
+    for edges_per_ring in poly.ring_edges:
+        in_outer, near = _point_in_ring(x, y, edges_per_ring[0], threshold)
         near_any = near_any or near
         in_hole = False
-        for h in range(1, len(rings)):
-            ih, nearh = _point_in_ring(x, y, rings[h], threshold)
+        for h in range(1, len(edges_per_ring)):
+            ih, nearh = _point_in_ring(x, y, edges_per_ring[h], threshold)
             near_any = near_any or nearh
             in_hole = in_hole or ih
         if in_outer and not in_hole:
@@ -320,7 +330,7 @@ def _ring_boundary_contains_exact(px: Fraction, py: Fraction, ring: Ring) -> boo
 def polygon_boundary_contains_exact(x: float, y: float, poly: Polygon) -> bool:
     """点 `(x, y)` が `poly` の境界（外環・穴のどの辺上、頂点上を含む）に
     厳密に乗っているかを `Fraction` の厳密演算で判定する（ADR-0026 D1
-    「2つ以上・境界上は止める」の「境界上」の実体。コードレビュー指摘1）。
+    「2つ以上・境界上は止める」の「境界上」の実体）。
 
     全ての環（外環・穴）を見る（`point_in_polygon_exact` と違い、1つ見つかれば
     即座に返してよい——「境界上かどうか」は1件見つかった時点で確定する単純な

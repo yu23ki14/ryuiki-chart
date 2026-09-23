@@ -203,7 +203,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import b07_build_occurrence_cube as b07  # noqa: E402  (GRAIN_VALUES を共有する。/simplify 指摘5)
-from migrate import common  # noqa: E402
+from migrate import common, period  # noqa: E402
 
 DEFAULT_CUBE_DB = ROOT / "data" / "db" / "v2.sqlite"
 DEFAULT_REGISTRY_DB = ROOT / "data" / "db" / "registry.sqlite"
@@ -1153,6 +1153,13 @@ FROM watershed_record_enriched
 WHERE exact_watershed_id IS NOT NULL
 GROUP BY exact_watershed_id, year
 """
+# `org_watershed_year` 側の `ix_owy` と対にする（効率。コードレビュー指摘1:
+# 索引が無いと `_measure_keys_changed_vs_exact` の FULL OUTER JOIN がネスト
+# ループになる——実測 31.2秒 → 索引ありで0.034秒、約900倍。値〔1,091〕は
+# 変わらない）。
+_CREATE_INDEX_ORG_WATERSHED_YEAR_EXACT_SQL = (
+    "CREATE INDEX ix_owy_exact ON org_watershed_year_exact(watershed_id, year)"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -1167,12 +1174,6 @@ _WATERSHED_DECLARATION_NAMES = frozenset({
 _MOVED_BREAKDOWN_KEYS = ("ws_to_ws", "v1_assigned_exact_unassigned", "v1_unassigned_exact_assigned")
 
 
-def _int_problem(label: str, value) -> str | None:
-    if isinstance(value, bool) or not isinstance(value, int):
-        return f"{label} が整数でない（実際: {value!r}）"
-    return None
-
-
 def load_and_validate_watershed_declarations(path=DEFAULT_WATERSHED_DECLARATIONS_YAML) -> dict:
     """`occurrence_watershed_v1_declarations.yaml` を読み、構造を検証してから
     返す。3つの宣言名（`_WATERSHED_DECLARATION_NAMES`）と過不足なく一致し、
@@ -1183,12 +1184,7 @@ def load_and_validate_watershed_declarations(path=DEFAULT_WATERSHED_DECLARATIONS
     if not isinstance(raw, dict):
         raise common.MigrationError(f"{path} がマッピングになっていない（実際の型: {type(raw).__name__}）")
 
-    declared_names = frozenset(raw)
-    if declared_names != _WATERSHED_DECLARATION_NAMES:
-        raise common.MigrationError(
-            f"{path} の宣言名が想定と一致しない（期待: {sorted(_WATERSHED_DECLARATION_NAMES)}、"
-            f"実際: {sorted(declared_names)}）"
-        )
+    period.assert_declared_names_match(raw, _WATERSHED_DECLARATION_NAMES, path)
 
     problems: list[str] = []
     for name in ("memo_mixed_buckets", "org_watershed_year_keys_changed_vs_exact"):
@@ -1196,7 +1192,7 @@ def load_and_validate_watershed_declarations(path=DEFAULT_WATERSHED_DECLARATIONS
         if not isinstance(spec, dict) or not spec.get("note"):
             problems.append(f"{name}: note が無い（または空）")
             continue
-        p = _int_problem(f"{name}.expected_count", spec.get("expected_count"))
+        p = period.non_negative_int_problem(f"{name}.expected_count", spec.get("expected_count"))
         if p:
             problems.append(p)
 
@@ -1204,7 +1200,7 @@ def load_and_validate_watershed_declarations(path=DEFAULT_WATERSHED_DECLARATIONS
     if not isinstance(moved, dict) or not moved.get("note"):
         problems.append("memo_moved_records: note が無い（または空）")
     else:
-        p = _int_problem("memo_moved_records.expected_count", moved.get("expected_count"))
+        p = period.non_negative_int_problem("memo_moved_records.expected_count", moved.get("expected_count"))
         if p:
             problems.append(p)
         breakdown = moved.get("breakdown")
@@ -1214,7 +1210,10 @@ def load_and_validate_watershed_declarations(path=DEFAULT_WATERSHED_DECLARATIONS
                 f"（実際: {sorted(breakdown) if isinstance(breakdown, dict) else breakdown!r}）"
             )
         else:
-            bp = [_int_problem(f"memo_moved_records.breakdown.{k}", breakdown[k]) for k in _MOVED_BREAKDOWN_KEYS]
+            bp = [
+                period.non_negative_int_problem(f"memo_moved_records.breakdown.{k}", breakdown[k])
+                for k in _MOVED_BREAKDOWN_KEYS
+            ]
             problems.extend(p for p in bp if p)
             if not problems and isinstance(moved.get("expected_count"), int):
                 total = sum(breakdown[k] for k in _MOVED_BREAKDOWN_KEYS)
@@ -1279,21 +1278,20 @@ def _measure_keys_changed_vs_exact(conn) -> int:
     構築済み）と `org_watershed_year_exact`（比較専用の一時テーブル）を
     `(watershed_id, year)` で突き合わせ、キーが片方にしか無い、または
     4値のいずれかが違う、のどちらかに該当するキー数を返す。
+
+    比較そのものは `common.count_grouped_totals_mismatches()`（`assert_
+    grouped_totals_match()` と同じ「一時テーブル＋一意索引」の安全な
+    `FULL OUTER JOIN`）に寄せてある（/simplify 指摘5: 以前は手書きの
+    `FULL OUTER JOIN` で、`org_watershed_year_exact` に索引が無いとネスト
+    ループに落ちる穴があった）。
     """
-    return conn.execute(
-        """
-        SELECT COUNT(*) FROM (
-          SELECT m.watershed_id AS mw, e.watershed_id AS ew,
-                 m.n AS mn, e.n AS en, m.species_n AS msn, e.species_n AS esn,
-                 m.alien_n AS man, e.alien_n AS ean, m.redlist_n AS mrn, e.redlist_n AS ern
-          FROM org_watershed_year m
-          FULL OUTER JOIN org_watershed_year_exact e
-            ON m.watershed_id = e.watershed_id AND m.year = e.year
-        )
-        WHERE mw IS NULL OR ew IS NULL
-           OR mn IS NOT en OR msn IS NOT esn OR man IS NOT ean OR mrn IS NOT ern
-        """
-    ).fetchone()[0]
+    return common.count_grouped_totals_mismatches(
+        conn,
+        "SELECT watershed_id, year, n, species_n, alien_n, redlist_n FROM org_watershed_year",
+        "SELECT watershed_id, year, n, species_n, alien_n, redlist_n FROM org_watershed_year_exact",
+        key_columns=["watershed_id", "year"],
+        value_columns=["n", "species_n", "alien_n", "redlist_n"],
+    )
 
 
 def _assert_watershed_declarations_match(conn, declarations: dict, declarations_yaml) -> dict:
@@ -1406,6 +1404,7 @@ def _build_watershed(
     conn.execute(_CREATE_INDEX_ORG_WATERSHED_SQL)
 
     conn.execute(_ORG_WATERSHED_YEAR_EXACT_SQL)
+    conn.execute(_CREATE_INDEX_ORG_WATERSHED_YEAR_EXACT_SQL)
     moved = _assert_watershed_declarations_match(conn, declarations, declarations_yaml)
     conservation = _assert_watershed_conservation(conn, moved)
 

@@ -21,11 +21,11 @@ import pytest
 
 import b07_build_occurrence_cube as b07
 import b08_project_occurrence_v1 as b08
-import b09_build_occurrence_place as b09
 from migrate import common
 
 from .occurrence_fixtures import (
     DEFAULT_GRID01_PLACE_ID,
+    add_occurrence_place_table,
     make_occurrence_cube_declarations_yaml,
     make_occurrence_registry_db,
     make_occurrence_watershed_v1_declarations_yaml,
@@ -112,13 +112,13 @@ def _add_occurrence_place(db_path, rows) -> None:
     （O-2a）テーブルを追加で作る（`build_all_projections`/
     `build_watershed_projections` が要求するため）。`rows` は
     `occurrence_fixtures.occurrence_place_row()` で組み立てたタプル列。
-    スキーマは `b09._CREATE_OCCURRENCE_PLACE_SQL` 1箇所が正（O-2a の
-    コードレビュー指摘13: 手書きで複製すると NOT NULL 等がずれる）。
+    テーブルの作り方自体は `occurrence_fixtures.add_occurrence_place_table()`
+    （`make_v2_db_with_occurrence_and_place()` と共有。/simplify 指摘7）に
+    委ねる——ここでは「既存の db を開いて追加する」薄い接続管理だけを持つ。
     """
     conn = sqlite3.connect(f"file:{db_path}", uri=True)
     try:
-        conn.execute(b09._CREATE_OCCURRENCE_PLACE_SQL.format(table="occurrence_place"))
-        conn.executemany("INSERT INTO occurrence_place VALUES (?,?,?,?,?,?)", rows)
+        add_occurrence_place_table(conn, rows)
         conn.commit()
     finally:
         conn.close()

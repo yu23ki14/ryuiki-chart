@@ -16,68 +16,42 @@ ADR-0006 規約2の改定・ADR-0026）。
 〔`occurrence`〕だけに依存し、b07/b08 に依存されない——O-2b でキューブに
 `place_kind='watershed'` のセルを足すときに `occurrence_place` を読む計画）。
 
-## D1: `occurrence_place`（ADR-0026）
+## D1: `occurrence_place`
 
     occurrence_place(record_id, place_kind, place_id NULL可, method, built_from, spec_version)
     UNIQUE (record_id, place_kind)
 
-母集団は**座標のある全記録**（`occurrence.lat IS NOT NULL AND lon IS NOT NULL`。
-日付の無い記録も含む——ADR-0007 原則1）。実測では `occurrence` 823,692行全件に
-座標があるため、全件が対象になる（座標の無い記録は将来そうなっても行を
-持たないだけで、ここでは異常として扱わない）。
-
-**解決規則**: 点が入るポリゴンがちょうど1つ → 解決（そのポリゴンに対応する
-watershed の `place_id`）。0 → `place_id=NULL` の行（座標はあるがどの流域にも
-入らない）。**2つ以上、または浮動小数点で判定が際どい（境界上）→ 止める**
-（推測で割り当てない）。`coordinate_uncertainty_m` は解決の条件にしない
-（F4・ADR-0006 規約4の改定と同じ判断）。
-
-`method='point_in_polygon:even_odd'`、`built_from` はポリゴン版の指紋
-（`f"occurrence+nlni_w12_watersheds.geojson@sha256:{digest16}"`。`digest16` は
-GeoJSON バイト列の sha256 先頭16桁）。
-
-## PIP: 純 Python（`scripts/migrate/point_in_polygon.py`）
-
-`web/scripts/build-geo.mjs:112-165` の移植。0.02度 bbox グリッドで候補を絞り込み、
-外環の even-odd 判定→穴、MultiPolygon 対応。shapely は使わない（実測: distinct
-座標224,282件で GEOS と不一致0、約9秒）。**v1 と違って 0.001度メモ化はしない**
-——ここで作るのは「正確な」解決。v1 のメモ化の癖の再現は射影側
-（`scripts/b08_project_occurrence_v1.py`）の責務（ADR-0024/0025 と同じ「v1 の
-癖はキューブ/レジストリに焼き込まない」原則）。
-
-`occurrence`（823,692行）のうち distinct な `(lat, lon)` だけを PIP にかけ
-（実測224,282組）、結果を record 単位に配り直す——同じ座標を持つ記録は
-必ず同じ判定になるため、これは近似ではなく厳密な最適化（v1 の 0.001度
-メモ化〔丸めてから代表だけ判定する近似〕とは異なる）。
+母集団・解決規則・PIP の実装（`scripts/migrate/point_in_polygon.py`。v1 と
+違い 0.001度メモ化はしない）の詳細は ADR-0026 D1・実測節参照。ここでは
+要点だけ: 座標のある全記録が対象（ADR-0007 原則1）、点が入るポリゴンが
+ちょうど1つなら解決・0なら `place_id=NULL`・2つ以上または境界上なら
+無条件に止める（推測で割り当てない）。`coordinate_uncertainty_m` は解決の
+条件にしない。
 
 ## 機械検証（1つでも失敗すれば `common.MigrationError` で止まる）
 
-1. **GeoJSON の `watershed_id` の集合**が、registry の
+各項目の実測値は ADR-0026 実測節・`docs/plans/PHASE_B_OCCURRENCE.md` §15
+参照（すべて期待どおりだったことのみここに記す）。
+
+1. GeoJSON の `watershed_id` 集合と registry の
    `place_source_ref(source_id='watershed_meta.watershed_id')` の
-   `external_key` 集合と一致する（実測377=377）。食い違えば、レジストリと
-   GeoJSON の版がずれている可能性があるため止まる。`external_key` 自体が
-   一意であることも確認する（重複があると `watershed_id -> place_id` の
-   辞書が後勝ちで黙って潰れるため）。
-2. **境界上の点**（ADR-0026 D1）: 点から辺（頂点上を含む）までの距離が
-   1e-9度未満だった distinct 座標は、`fractions.Fraction` で「実際に辺の上に
-   厳密に乗っているか」を再判定する。乗っていれば無条件に止まる（実測: 0件）。
-3. **浮動小数点の曖昧さ**（ADR-0026）: 2 で「境界上」ではなかった際どい座標は、
-   `locate_exact()`（フルの厳密判定）で float 版の一致ポリゴン集合と厳密版が
-   食い違えば止まる（実測: 該当自体が0件）。
-4. **解決規則**: 一致ポリゴンが2つ以上の distinct 座標が1件でもあれば止まる
-   （宣言値ではなく無条件の停止条件。実測0件）。
+   `external_key` 集合が一致すること・`external_key` 自体が一意であること。
+2. **境界上の点**（ADR-0026 D1）: 際どい座標（点から辺までの距離が
+   1e-9度未満）のうち、`fractions.Fraction` で実際に辺〔頂点上を含む〕に
+   厳密に乗っているものが無いこと（無条件の停止条件）。
+3. **浮動小数点の曖昧さ**: 2 で境界上ではなかった際どい座標は、
+   `locate_exact()`（フルの厳密判定）が float 版と一致すること。
+4. **解決規則**: 一致ポリゴンが2つ以上の distinct 座標が無いこと（宣言値では
+   なく無条件の停止条件）。
 5. **宣言**（`scripts/migrate/occurrence_place_declarations.yaml`）:
-   ポリゴン数（377）・`place_id` が NULL になった記録数（86,285）・解決した
-   記録数（737,407）を実測件数と突き合わせる。式の検算
-   （823,692 − 86,285 = 737,407）も行う。
-6. **記録×place の一意性**: 座標のある全記録にちょうど1行
-   （`UNIQUE(record_id, place_kind)`、行数 = 座標あり行数。
-   `scripts/migrate/common.assert_dimension_key_unique` で検証）。
+   ポリゴン数・`place_id` NULL の記録数・解決した記録数が実測と一致すること
+   （式の検算も行う）。
+6. **記録×place の一意性**: `UNIQUE(record_id, place_kind)`
+   （`scripts/migrate/common.assert_dimension_key_unique` で検証）。
 7. **P-1a が入れた site→watershed の辺との突き合わせ**: `sites`（座標を持つ
-   352地点）に対して同じ PIP 関数を直接実行し、結果が `sites.watershed` 列
-   （`scripts/m01_sites.py:110-128` が shapely の `contains`/`intersects` で
-   機械的に決定した値。P-1a の `place_relation` の地点→流域の辺278件の元に
-   なった値）と一致することを確認する。食い違えば止まる。
+   全地点）に同じ PIP 関数を直接実行し、`sites.watershed` 列
+   （`scripts/m01_sites.py:110-128` が shapely で機械的に決定した値）と
+   一致すること。
 """
 from __future__ import annotations
 
@@ -156,13 +130,7 @@ def load_and_validate_place_declarations(path=DEFAULT_DECLARATIONS_YAML) -> dict
     if problems:
         raise common.MigrationError(f"{path} の形が不正:\n- " + "\n- ".join(problems))
 
-    declared_names = frozenset(raw)
-    expected_names = frozenset(_DECLARATION_NAMES)
-    if declared_names != expected_names:
-        raise common.MigrationError(
-            f"{path} の宣言名が想定と一致しない（期待: {sorted(expected_names)}、"
-            f"実際: {sorted(declared_names)}）"
-        )
+    period.assert_declared_names_match(raw, _DECLARATION_NAMES, path)
     return raw
 
 
@@ -375,6 +343,17 @@ def build_and_write_occurrence_place(
     try:
         common.attach_readonly(conn, registry_db, "reg")
         common.attach_readonly(conn, ryuiki_db, "ryuiki")
+        # ATTACH 直後に表の有無を確認する（/simplify 指摘8: 無いまま SELECT
+        # すると生の OperationalError になる。scripts/b11_project_place_v1.py の
+        # `_validate_registry` と同じ流儀）。
+        common.assert_attached_table_exists(
+            conn, "reg", "place_source_ref",
+            hint="scripts/r01_build_registry.py で registry.sqlite を作り直すこと。",
+        )
+        common.assert_attached_table_exists(
+            conn, "ryuiki", "sites",
+            hint="ryuiki.sqlite（原本）が壊れている、または版が古い可能性がある。",
+        )
 
         _assert_polygon_set_matches_registry(polys, conn)
         _assert_watershed_external_key_unique(conn)

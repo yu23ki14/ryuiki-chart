@@ -1414,3 +1414,72 @@ build_caveat.py` の `ORGANISM_TABLES`（本PR以前から存在、`caveats.ts` 
 既存マッピングの複製）にすでに含まれていたものであり、本PRの範囲外として
 変更していない。5件すべてが2表に妥当かどうかは、v1 の `caveats.ts` 側の
 設計判断そのものの見直しになるため、別途の検討課題として申し送る。
+
+## 17. O-2a に `/simplify` の指摘を反映（`phase-b/occurrence-watershed`）
+
+実データの値（`occurrence`・`occurrence_agg`・`occurrence_place`・v1射影12表）は
+**1ビットも変わっていない**（修正前後を正準化 sha256 で全15表突き合わせて確認）。
+
+### 効率（両方とも実測つき）
+
+- `org_watershed_year_exact`（比較専用の一時テーブル）に `ix_owy` と対の索引
+  `ix_owy_exact` を追加。`_measure_keys_changed_vs_exact` の突合が索引無しで
+  ネストループに落ちていた（実測 31.2秒）のを解消——実際にはこの回の
+  もう1つの指摘（下記「再利用」）で使う `common.count_grouped_totals_mismatches`
+  が自前の一時テーブル＋一意索引で安全に組んでいるため、実測では既に
+  0.077秒（索引の有無で差はほぼ無い）。索引自体は `org_watershed_year`
+  との対称性として残す。
+- `scripts/migrate/point_in_polygon.py`: 辺ごとの bbox を `Polygon` 構築時に
+  前計算してキャッシュ（`ring_edges`）。distinct 座標224,282件の実データで
+  b09 全体が約40秒→約23秒（前回のコードレビュー対応で境界検出を追加した後
+  より高速——むしろ境界検出を追加する前の約22秒と同程度まで戻った）。
+  20,000点の直接比較では51.8%短縮、結果は全点一致。
+
+### 再利用
+
+- 宣言名の集合検査（b07/b08/b09 で複製）を `period.assert_declared_names_match()`
+  に、整数検査（b08 の `_int_problem` に負数チェックが無かった）を
+  `period.non_negative_int_problem()` に統合。
+- `common.assert_grouped_totals_match()` の「一時テーブル＋一意索引」を
+  `_materialized_join_tables()` に切り出し、件数だけを返す
+  `common.count_grouped_totals_mismatches()` を追加。b08 の
+  `_measure_keys_changed_vs_exact` の手書き `FULL OUTER JOIN` をこれに置き換え。
+- テストの `occurrence_row_at`（22列タプルの複製）を廃止し、`occurrence_row`
+  に `lat`/`lon`/`scientific_name`/`is_alien` キーワード引数を追加して統合。
+- `test_b08_occurrence_cube_projections.py` の `_add_occurrence_place` と
+  `occurrence_fixtures.make_v2_db_with_occurrence_and_place` の重複を
+  `occurrence_fixtures.add_occurrence_place_table()` に集約。
+- b09 の ATTACH 直後に `common.assert_attached_table_exists`（b11 と同じ流儀）
+  を追加し、表が無いときに生の `OperationalError` ではなく案内付きで止まるように。
+
+### 単純化
+
+- F3 の実測値（28%/54%/20.0%/7.7%/6,056行）が ADR-0026 に3回・ADR-0006の
+  追記に1回写っていたのを、ADR-0026「背景」節に1回だけ書き、他は参照にした。
+- b09 のモジュール docstring・`point_in_polygon.py` のモジュール docstring
+  を、ADR-0026・本ドキュメント§16への参照に絞り、逐語的な複製を削った。
+- `occurrence_place_declarations.yaml` の検算式の重複をヘッダ1箇所に。
+
+### 深さ（申し送り、ADR-0026「影響」節に追記）
+
+- 境界上0件は今回のデータ（流域どうしの隣接が疎）に固有——市区町村のように
+  面が辺を共有するデータでは止まりうる。復旧方針は O-2b 以降で決める。
+- v1 の JS 版（`web/scripts/build-geo.mjs`）は照合相手として残り続け、境界
+  判定・厳密判定は Python 側にしか無いため両者はさらに離れる。収束時期は
+  v1 パイプライン廃止計画（未策定）に委ねる。
+
+### 受け入れ（実測）
+
+```
+b02 --tables (12表): 一致10 / 宣言済み差分のみ2 / 不一致0（B02_EXIT=0、不変）
+既存11表のゲート: 一致5 / 宣言済み差分のみ6 / 不一致0（不変）
+occurrence/occurrence_agg/occurrence_place/v1射影12表: 全15表が修正前と
+  正準化sha256で完全一致
+b09実行時間: 約40秒 → 約23秒（PIP本体の前計算キャッシュにより）
+b08実行時間: 約107〜134秒 → 約80秒（org_watershed_year_exact索引＋
+  count_grouped_totals_mismatches の再利用により）
+_measure_keys_changed_vs_exact: 索引無し・手書きJOIN 31.2秒 →
+  common.count_grouped_totals_mismatches 経由で0.077秒
+pytest: 438件成功（件数は前回と同じ——本ラウンドは内部リファクタのみで
+  テストの追加/削除なし）
+```

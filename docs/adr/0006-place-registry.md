@@ -34,10 +34,8 @@ data_year)`（watershed だけが持つ4列。`place` 本体には `name_ja`/`la
 下記「点→place の解決規約」2は「解決の最小単位は3次メッシュ（`mesh3`）。より細かい
 単位に勝手に丸めない。流域・行政区は `place_relation` を辿って導く」としていたが、
 これを grid01→流域の `place_relation`（セル中心規則・多数決等のロールアップ）で
-近似しようとすると著しい精度劣化になることが分かった（実測: 4,086セル中1,145
-〔28%〕が2流域以上にまたがり記録の54%を含む。セル中心で20.0%、多数決で7.7%が
-別流域、`species_n` は10,699行中6,056行が変わる。`docs/plans/PHASE_B_OCCURRENCE.md`
-F3参照）。**ポリゴンで定義される面の place（watershed、将来の municipality/
+近似しようとすると著しい精度劣化になることが分かった（実測は ADR-0026「背景」節
+参照）。**ポリゴンで定義される面の place（watershed、将来の municipality/
 town_block）には、座標から点内包判定で直接解決してよい**に改定した。対応は
 記録×place のサテライト（`occurrence_place`、place_kind ごとに高々1面）に持ち、
 解決に使ったポリゴンの版を規約3の `basis` として記録する（`scripts/

@@ -27,6 +27,5 @@ place_id_null_count:
 resolved_count:
   expected_row_count: 737407
   note: >
-    ちょうど1つの流域ポリゴンに解決できた occurrence 記録の数。
-    823,692（occurrence の座標あり行数） − 86,285（place_id_null_count）と
-    一致する（b09 が起動のたびに検算する）。
+    ちょうど1つの流域ポリゴンに解決できた occurrence 記録の数
+    （検算式はファイル冒頭のコメント参照。b09 が起動のたびに検算する）。

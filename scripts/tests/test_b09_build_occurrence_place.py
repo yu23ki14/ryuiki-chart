@@ -15,7 +15,7 @@ from .occurrence_fixtures import (
     make_occurrence_registry_db,
     make_ryuiki_sites_db,
     make_v2_db_with_occurrence,
-    occurrence_row_at,
+    occurrence_row,
     write_watershed_geojson,
 )
 
@@ -58,8 +58,8 @@ def _declarations(tmp_path, **kwargs):
 
 def test_resolved_and_null_rows(tmp_path):
     rows = [
-        occurrence_row_at("r1", 35.05, 139.05, source_row_id=1),  # W1 の中
-        occurrence_row_at("r2", 50.0, 200.0, source_row_id=2),  # どの面にも入らない
+        occurrence_row("r1", None, None, None, None, source_row_id=1, lat=35.05, lon=139.05),  # W1 の中
+        occurrence_row("r2", None, None, None, None, source_row_id=2, lat=50.0, lon=200.0),  # どの面にも入らない
     ]
     v2_db, ryuiki_db, registry_db, geojson = _setup(
         tmp_path,
@@ -87,8 +87,8 @@ def test_records_without_coordinates_get_no_row(tmp_path):
     （母集団は「座標のある全記録」）。
     """
     rows = [
-        occurrence_row_at("r1", 35.05, 139.05, source_row_id=1),
-        occurrence_row_at("r2", None, None, source_row_id=2),
+        occurrence_row("r1", None, None, None, None, source_row_id=1, lat=35.05, lon=139.05),
+        occurrence_row("r2", None, None, None, None, source_row_id=2, lat=None, lon=None),
     ]
     v2_db, ryuiki_db, registry_db, geojson = _setup(
         tmp_path,
@@ -107,7 +107,7 @@ def test_records_without_coordinates_get_no_row(tmp_path):
 
 
 def test_two_overlapping_polygons_halts(tmp_path):
-    rows = [occurrence_row_at("r1", 35.075, 139.075, source_row_id=1)]  # W1 と W2 の両方に入る
+    rows = [occurrence_row("r1", None, None, None, None, source_row_id=1, lat=35.075, lon=139.075)]  # W1 と W2 の両方に入る
     v2_db, ryuiki_db, registry_db, geojson = _setup(
         tmp_path,
         occurrence_rows=rows,
@@ -131,7 +131,7 @@ def test_point_on_shared_edge_boundary_halts(tmp_path):
     `_assert_no_multi_match`（一致が2つ以上）ではなく、専用の境界検証で
     無条件に止まる。
     """
-    rows = [occurrence_row_at("r1", 35.05, 139.1, source_row_id=1)]  # W1/W3 共有辺のちょうど上
+    rows = [occurrence_row("r1", None, None, None, None, source_row_id=1, lat=35.05, lon=139.1)]  # W1/W3 共有辺のちょうど上
     v2_db, ryuiki_db, registry_db, geojson = _setup(
         tmp_path,
         occurrence_rows=rows,
@@ -153,7 +153,7 @@ def test_watershed_external_key_duplicate_halts(tmp_path):
     `watershed_id -> place_id` の辞書が後勝ちで黙って潰れる——事前に
     一意性を検証して止める（コードレビュー指摘5）。
     """
-    rows = [occurrence_row_at("r1", 35.05, 139.05, source_row_id=1)]
+    rows = [occurrence_row("r1", None, None, None, None, source_row_id=1, lat=35.05, lon=139.05)]
     other_place_id = "common:place:watershed.w1-dup"
     v2_db, ryuiki_db, registry_db, geojson = _setup(
         tmp_path,
@@ -172,7 +172,7 @@ def test_watershed_external_key_duplicate_halts(tmp_path):
 
 
 def test_geojson_registry_set_mismatch_halts(tmp_path):
-    rows = [occurrence_row_at("r1", 35.05, 139.05, source_row_id=1)]
+    rows = [occurrence_row("r1", None, None, None, None, source_row_id=1, lat=35.05, lon=139.05)]
     v2_db, ryuiki_db, registry_db, geojson = _setup(
         tmp_path,
         occurrence_rows=rows,
@@ -187,7 +187,7 @@ def test_geojson_registry_set_mismatch_halts(tmp_path):
 
 
 def test_declaration_count_mismatch_halts(tmp_path):
-    rows = [occurrence_row_at("r1", 35.05, 139.05, source_row_id=1)]
+    rows = [occurrence_row("r1", None, None, None, None, source_row_id=1, lat=35.05, lon=139.05)]
     v2_db, ryuiki_db, registry_db, geojson = _setup(
         tmp_path,
         occurrence_rows=rows,
@@ -202,7 +202,7 @@ def test_declaration_count_mismatch_halts(tmp_path):
 
 
 def test_site_watershed_edge_mismatch_halts(tmp_path):
-    rows = [occurrence_row_at("r1", 35.05, 139.05, source_row_id=1)]
+    rows = [occurrence_row("r1", None, None, None, None, source_row_id=1, lat=35.05, lon=139.05)]
     v2_db, ryuiki_db, registry_db, geojson = _setup(
         tmp_path,
         occurrence_rows=rows,
@@ -223,7 +223,7 @@ def test_empty_population_does_not_crash_on_sum(tmp_path):
     `None:,` の書式化が `TypeError` になっていた（コードレビュー指摘11）。
     `COALESCE(..., 0)` で空でも 0 として扱われることを確認する。
     """
-    rows = [occurrence_row_at("r1", None, None, source_row_id=1)]  # 座標なし=母集団から除外
+    rows = [occurrence_row("r1", None, None, None, None, source_row_id=1, lat=None, lon=None)]  # 座標なし=母集団から除外
     v2_db, ryuiki_db, registry_db, geojson = _setup(
         tmp_path,
         occurrence_rows=rows,
@@ -239,7 +239,7 @@ def test_empty_population_does_not_crash_on_sum(tmp_path):
 
 
 def test_site_watershed_edge_matches_passes(tmp_path):
-    rows = [occurrence_row_at("r1", 35.05, 139.05, source_row_id=1)]
+    rows = [occurrence_row("r1", None, None, None, None, source_row_id=1, lat=35.05, lon=139.05)]
     v2_db, ryuiki_db, registry_db, geojson = _setup(
         tmp_path,
         occurrence_rows=rows,

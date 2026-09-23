@@ -297,13 +297,7 @@ def load_and_validate_cube_declarations(path=DEFAULT_DECLARATIONS_YAML) -> dict:
     if problems:
         raise common.MigrationError(f"{path} の形が不正:\n- " + "\n- ".join(problems))
 
-    declared_names = frozenset(raw)
-    expected_names = frozenset({_LEAF_DECLARATION_NAME})
-    if declared_names != expected_names:
-        raise common.MigrationError(
-            f"{path} の宣言名が想定と一致しない（期待: {sorted(expected_names)}、"
-            f"実際: {sorted(declared_names)}）"
-        )
+    period.assert_declared_names_match(raw, {_LEAF_DECLARATION_NAME}, path)
     return raw
 
 
