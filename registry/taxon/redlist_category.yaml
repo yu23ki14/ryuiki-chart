@@ -1,0 +1,77 @@
+# 県レッドリスト/レッドデータブックのカテゴリー・コードリスト（ADR-0019 決定2 と
+# 2026-09-23 追記〔P-2〕）。
+#
+# v1（web/scripts/build-biota.mjs:262-289 の redlist_map、44行の手書き辞書）の
+# 「原表記(raw) -> label/code/rank」を、正準（このファイル）＋出典表記
+# （redlist_category_alias.csv）の二層に分けたもの。variable/variable_alias
+# （registry/variable.yaml・registry/variable_alias.csv）と同じ形。
+#
+# rank は「悪化/改善」を比較するための順序（v1 の redlist_map.rank をそのまま
+# 引き継いだ整数。値が大きいほど深刻）。redlist_change の direction
+# （scripts/b12_project_taxon_v1.py）が cur_rank/prev_rank の大小で
+# 悪化/改善/横ばいを判定する。
+#
+# scope: 'common' は IUCN 準拠のコード（絶滅=EX、野生絶滅=EW、絶滅危惧IA類=CR、
+# 絶滅危惧I類（未分割）=CR+EN、絶滅危惧IB類=EN、絶滅危惧II類=VU、準絶滅危惧=NT、
+# 情報不足=DD）と、複数の都道府県レッドリストで一般的な「地域個体群」=LP。
+# 'jp-14' は RA（希少種、2006年版）・AT（注目種/要注意種）——IUCN 準拠のコード
+# リストに無い神奈川県独自の区分（ADR-0002「地域固有語彙はコードリストの拡張」、
+# ADR-0019 2026-09-23 追記）。
+#
+# not_listed は v1 の redlist_map に無かったコード（v1 は category_prev_ja='―'
+# を LEFT JOIN で「一致なし」に落とし、prev_rank IS NULL から「前回記載なし」を
+# 導いていた）。ここでは「'―' という原表記が存在すること」自体を alias に
+# 明示的に宣言する（黙って落とさない。decisions #1「'―' の扱い」参照）ための
+# コードで、rank は意図的に null（cur_rank/prev_rank どちらで見ても
+# 「ランクを持たない」——v1 の「一致なし」と同じ扱いを redlist_change の
+# direction 判定で再現できる。b12 側は not_listed を v1 互換の出力列では
+# NULL に戻す——scripts/b12_project_taxon_v1.py のコメント参照）。
+categories:
+  - code: EX
+    label_ja: "絶滅"
+    rank: 70
+    scope: common
+  - code: EW
+    label_ja: "野生絶滅"
+    rank: 65
+    scope: common
+  - code: CR
+    label_ja: "絶滅危惧IA類"
+    rank: 60
+    scope: common
+  - code: "CR+EN"
+    label_ja: "絶滅危惧I類"
+    rank: 55
+    scope: common
+  - code: EN
+    label_ja: "絶滅危惧IB類"
+    rank: 50
+    scope: common
+  - code: VU
+    label_ja: "絶滅危惧II類"
+    rank: 40
+    scope: common
+  - code: LP
+    label_ja: "地域個体群"
+    rank: 35
+    scope: common
+  - code: NT
+    label_ja: "準絶滅危惧"
+    rank: 30
+    scope: common
+  - code: RA
+    label_ja: "希少種（2006年版）"
+    rank: 25
+    scope: jp-14
+  - code: AT
+    label_ja: "注目種"
+    rank: 20
+    scope: jp-14
+  - code: DD
+    label_ja: "情報不足"
+    rank: 10
+    scope: common
+  - code: not_listed
+    label_ja: "前回記載なし"
+    rank: null
+    scope: common

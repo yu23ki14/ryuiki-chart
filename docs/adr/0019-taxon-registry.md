@@ -64,6 +64,68 @@ taxon_key ごとの代表選びの同数で分類には無関係な表記ゆれ�
 （`docs/plans/PHASE_B_OCCURRENCE.md` §8）。「レジストリのパッケージの外の1箇所」
 という意図・値は変えていない。
 
+**2026-09-23 追記（P-2、レッドリストと外来種の評価 `taxon_assessment`、
+`phase-b/taxon-assessment`）**: 決定5「最新の評価はビューで表す」で構想していた
+`taxon_assessment` を、v1 の `redlist_map`/`redlist_change`（神奈川県レッドリスト
+2020・レッドデータブック2022・レッドリスト2026の3版、2,884行）と `ias_species`
+（環境省 生態系被害防止外来種リスト、429行）の最小形として実装した。
+
+```
+taxon_assessment  assessment_id（PK）, list_id, list_year, taxon_id（NULL可）,
+                  scientific_name_raw, vernacular_name_ja_raw, taxon_group_ja,
+                  taxon_subgroup_ja, family_ja, category_raw, category_code,
+                  prev_category_raw, prev_category_code, national_category_raw,
+                  origin, source_id
+```
+
+`registry.sqlite` にのみ持ち、**D1（`web/src/db/schema-registry.ts`）には載せない**
+——`taxon` の分類補完列（kingdom/phylum/…）を D1 に足さなかったのと同じ判断
+（使う側〔web〕がまだ無い。`registry/README.md`「`place.region_id` と
+`place_relation`」参照）。
+
+- **カテゴリーのコードリストは `registry/taxon/redlist_category.yaml` +
+  `redlist_category_alias.csv` に分けた**（`variable`/`variable_alias` と同じ
+  「正準＋出典表記」の二層）。**RA（希少種、2006年版）・AT（注目種/要注意種）は、
+  決定2の IUCN 準拠コードリスト（CR/EN/VU/NT/DD/LC/EX/EW/LP/NA）には無い、
+  神奈川県独自の区分**として `scope: jp-14` で登録した（ADR-0002「地域固有語彙は
+  コードリストの拡張として表現する」の具体化。共通語の意味を地域が上書きしない、
+  という同 ADR の禁則にも抵触しない——RA/AT はそもそも共通コードリストに存在
+  しないコードの追加であって上書きではない）。
+- **`prev_category_raw`（前回区分）は版間の JOIN で導かない。その版の文書自身が
+  書いている値をそのまま持つ**——決定5「最新の評価はビューで表す」は「評価が
+  版で変わったこと自体が分析対象」という前提で書いたが、実装時に判明した
+  制約により、版どうしを機械的に JOIN して「前回」を導出することはできない
+  （例外として記録する）: (1) 2022年版（レッドデータブック植物編）は原資料に
+  学名が無く（1,033行中1,033行で `scientific_name` NULL）、学名でも和名でも
+  版をまたいだ同定ができない。(2) 2020年版が書く「前回」は2006年版（RA/AT の
+  出どころ）を指すが、2006年版のレコード自体は本基盤に無い。両方とも、
+  「前回の区分が何だったか」という情報は**その版の文書自身が `category_prev_ja`
+  として書いている**ので、これを `prev_category_raw` にそのまま転記すれば
+  情報は失われない——JOIN で導けないことは「前回が無い」ことを意味しない。
+  `'―'`（前回に247件。辞書に無い原表記）は黙って NULL に落とさず、
+  `prev_category_code='not_listed'` として明示的に持つ（v1 は LEFT JOIN の
+  不一致で暗黙に「前回記載なし」を導いていた。実測・詳細は
+  `docs/plans/PHASE_B_TAXON_ASSESSMENT.md`）。
+- **除外の宣言ファイル**: v1 の `ias_species`（外来種）は二名法（binom）の
+  誤ヒットを避けるため7種をハードコードで除外していた（国内の別地域個体群が
+  同じ学名で神奈川県内の在来個体群にも誤ヒットする等）。この除外を
+  `registry/taxon/assessment_scope_exclusions.yaml`（`list_id`,
+  `scientific_name`, `reasons`）に宣言化し、v1 を完全に再現した
+  （オーナー決定A。「宣言済み差分 > データを曲げる」——除外という判断を
+  データから消さず、理由つきで残す）。`origin_ja`（moe_ias_list.csv。
+  `taxa.ias_category` は落としている値）を基準にした場合との差（v1に
+  誤って残っている行）は宣言を増やさず、ビルド時レポート
+  （`reports/phase_b_taxon_assessment.md`）に実測を出すだけに留めた
+  （直すのは別の意図的な変更として申し送り。ADR-0016「再現してから変える」
+  の順序）。
+- **`taxon_id` は解決できる分だけ埋める**（学名の完全一致 → 二名法一致の順、
+  曖昧なら NULL）。決定4「照合できないことをデータとして残す」の延長だが、
+  `taxon_assessment.taxon_id` は`occurrence`のような`status`列を持たず、単に
+  NULL のまま残す——v1 の射影（`redlist_change`/`ias_species`）はどちらも
+  名前を文字列で運ぶため、Phase B の再現には不要な診断用の列である。
+
+実測・実装ファイルの詳細は `docs/plans/PHASE_B_TAXON_ASSESSMENT.md` 参照。
+
 ## 背景（実測）
 
 生物データはこの基盤で最大のファクト（`occurrence` 823,692行）であり、

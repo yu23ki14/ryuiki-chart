@@ -86,7 +86,9 @@ L1。Phase B `phase-b/place-attributes` で `derived.watershed_meta` から切�
 の中身、`data/processed/taxon_crosswalk.csv` の中身、`ryuiki.organism_records` の
 軽い代理指標（行数・最大rowid。grid01 の入力が `derived.mesh_all` から
 `organism_records` に変わったための追加。`common.py` の
-`_hash_organism_records_freshness()` docstring 参照）を混ぜる（fix 2、
+`_hash_organism_records_freshness()` docstring 参照）、`data/processed/moe_ias_list.csv`
+の中身（P-2、2026-09-23。`build_taxon_assessment.py` の `moe_ias_2015` 節が
+`ryuiki.taxa` ではなくこの L1 を直読みするための追加）を混ぜる（fix 2、
 phase-b/occurrence-registry）。いずれも「読み取り専用だが再生成・追記すれば値が
 変わりうる」入力であり、以前は指紋の対象外だったため、これらだけを更新しても
 レジストリが「新鮮」のまま固まってしまっていた。`ryuiki.sqlite` の**ファイル全体**は
@@ -94,9 +96,9 @@ phase-b/occurrence-registry）。いずれも「読み取り専用だが再生�
 mode に関わらず一切開かない**——`phase-b/place-attributes` で watershed の入力を
 L1 直読みに切り替えたことで、registry ビルドがこのファイルを読む箇所が無くなった
 （`scripts/registry/common.py` の `WATERSHED_JSONL_RELPATH` 定義直前のコメント参照）。
-`--files-only` は watershed の JSONL・taxon_crosswalk.csv・ryuiki.sqlite のどれも
-開かない（`build_place.py`/`build_taxon.py` 自体を呼ばないため。CI が原本無しで
-動く要件を保つ）。
+`--files-only` は watershed の JSONL・taxon_crosswalk.csv・moe_ias_list.csv・
+ryuiki.sqlite のどれも開かない（`build_place.py`/`build_taxon.py`/
+`build_taxon_assessment.py` 自体を呼ばないため。CI が原本無しで動く要件を保つ）。
 
 **終了コードは3種類を区別する**（`web/scripts/ensure-registry.sh` がこれを読む）:
 
@@ -168,6 +170,7 @@ def _load_build_steps() -> None:
     from registry.build_unit_variable import build as build_unit_variable
     from registry.build_place import build as build_place
     from registry.build_taxon import build as build_taxon
+    from registry.build_taxon_assessment import build as build_taxon_assessment
     from registry.build_caveat import build as build_caveat, build_from_files as build_caveat_from_files
 
     if STEPS is None:
@@ -175,6 +178,11 @@ def _load_build_steps() -> None:
             ("unit/variable/variable_alias (A-2)", build_unit_variable),
             ("place/place_source_ref (A-3)", build_place),
             ("taxon (A-4)", build_taxon),
+            # taxon_assessment (P-2) は taxon (A-4) の直後に置く: taxon_id の
+            # 解決に taxon テーブル（この時点で既に commit 済み）を読む
+            # （scripts/registry/build_taxon_assessment.py モジュール docstring
+            # 「taxon_id 解決」参照）。
+            ("taxon_assessment (P-2)", build_taxon_assessment),
             ("caveat (A-5)", build_caveat),
         ]
     if FILES_ONLY_STEPS is None:
@@ -208,6 +216,10 @@ ID_UNIQUENESS_CHECKS = [
     # P-1a）。SQLite が挿入時点で保証済みだが、他の PK 列（place/taxon/caveat）と
     # 同じく統合作業の受け入れ基準として明示的にも検証する。
     ("place_watershed", "place_id"),
+    # taxon_assessment (P-2、2026-09-23)。assessment_id は redlist_assessments 側
+    # （rl2020/rdb2022p/rl2026）は原本の主キーをそのまま流用し、moe_ias_2015 側は
+    # このビルダーが発行する連番——両者が衝突しないことを明示的にも検証する。
+    ("taxon_assessment", "assessment_id"),
 ]
 
 
@@ -401,6 +413,53 @@ def _assert_watershed_place_has_attributes_and_source_ref(conn) -> None:
     print(f"  watershed place の属性/逆引きOK: {n:,} 件")
 
 
+def _assert_taxon_assessment_invariants(conn) -> None:
+    """taxon_assessment (P-2、2026-09-23) の不変条件: `list_id` は
+    `registry/taxon/assessment_list.yaml` に、`category_code`/`prev_category_code`
+    は（NULL でなければ）`registry/taxon/redlist_category.yaml` にあること。
+
+    `scripts/registry/build_taxon_assessment.py` 自体が構築時にこれらを検証済み
+    だが（`_category_code_for()` は未知の raw で例外を投げる、`_list_id_for_redlist_row()`
+    は未知の接頭辞で例外を投げる）、他の書き手（将来の別モジュール・手動の
+    INSERT）がこの不変条件を破っていないかを、生成後の DB に対しても機械的に
+    検証する（`_assert_region_id_scope_invariant()` と同じ「レジストリ全体の
+    受け入れ基準として再確認する」考え方）。
+    """
+    from registry.build_taxon_assessment import load_assessment_lists, load_redlist_category_codes
+
+    known_list_ids = set(load_assessment_lists())
+    bad_list_ids = sorted({
+        row[0] for row in conn.execute(
+            "SELECT DISTINCT list_id FROM taxon_assessment"
+        ).fetchall()
+        if row[0] not in known_list_ids
+    })
+    if bad_list_ids:
+        raise AssertionError(
+            f"taxon_assessment.list_id に registry/taxon/assessment_list.yaml に無い値がある: "
+            f"{bad_list_ids}"
+        )
+
+    known_codes = load_redlist_category_codes()
+    bad_codes = sorted({
+        row[0]
+        for row in conn.execute(
+            "SELECT DISTINCT category_code FROM taxon_assessment WHERE category_code IS NOT NULL "
+            "UNION SELECT DISTINCT prev_category_code FROM taxon_assessment "
+            "WHERE prev_category_code IS NOT NULL"
+        ).fetchall()
+        if row[0] not in known_codes
+    })
+    if bad_codes:
+        raise AssertionError(
+            f"taxon_assessment.category_code/prev_category_code に "
+            f"registry/taxon/redlist_category.yaml に無い値がある: {bad_codes}"
+        )
+
+    n = conn.execute("SELECT COUNT(*) FROM taxon_assessment").fetchone()[0]
+    print(f"  taxon_assessment 不変条件OK: list_id/category_code とも既知の語彙内（{n:,} 件）")
+
+
 def _assert_zone_external_key_is_numeric(conn) -> None:
     """`place_source_ref(source_id='sites.zone').external_key`（ゾーン番号）が
     数字だけの文字列であることを検証する。消費側（`b05_project_v1.py`）が
@@ -588,6 +647,7 @@ def main() -> None:
         _assert_all_relation_single_valued_checks(conn)
         _assert_zone_external_key_is_numeric(conn)
         _assert_watershed_place_has_attributes_and_source_ref(conn)
+        _assert_taxon_assessment_invariants(conn)
 
         conn.execute("DELETE FROM registry_build")
         conn.execute(

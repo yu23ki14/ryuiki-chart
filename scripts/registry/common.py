@@ -248,6 +248,14 @@ MODE_FILES_ONLY = "files_only"
 # `_hash_optional_file()` ベースの仕組み（1ファイル単位）かそちらを復元すること。
 TAXON_CROSSWALK_CSV_RELPATH = pathlib.PurePosixPath("data/processed/taxon_crosswalk.csv")
 
+# build_taxon_assessment.py の moe_ias_2015 節が読む L1（環境省 生態系被害防止外来種
+# リスト。scripts/c21_moe_ias_list.py の成果物）。taxon_crosswalk.csv と同じ扱い
+# （読み取り専用の配布物だが「原本」ではないので内容ハッシュを指紋に混ぜてよい）。
+# P-2、2026-09-23。ryuiki.taxa.ias_category ではなくこのファイルを直接読む理由
+# （taxa 側は origin_ja を落としている）は scripts/registry/build_taxon_assessment.py
+# のモジュール docstring 参照。
+MOE_IAS_LIST_CSV_RELPATH = pathlib.PurePosixPath("data/processed/moe_ias_list.csv")
+
 # build_place.py の watershed 節が読む L1（国土数値情報 W12 流域界 1977年版、377面）。
 # 経緯・実測（旧 derived.watershed_meta との値の一致確認を含む）は
 # docs/plans/PHASE_B_PLACE_ATTRIBUTES.md 参照。`ryuiki.sqlite`/`cells.sqlite` と違い、
@@ -365,9 +373,10 @@ def compute_input_fingerprint(
     リネームも検知する。実行時刻は入れない（決定論。scripts/b01_derived_baseline.py /
     scripts/b04_build_cube.py と同じ理由）。
 
-    `mode=MODE_FULL`（既定）のときだけ、追加で3つの入力を混ぜる（fix 2,
-    phase-b/registry-atomic。3つ目は phase-b/occurrence-registry で追加。
-    いずれも build_place.py / build_taxon.py が読むのに以前は指紋に入っていなかった）:
+    `mode=MODE_FULL`（既定）のときだけ、追加で4つの入力を混ぜる（fix 2,
+    phase-b/registry-atomic。3つ目は phase-b/occurrence-registry、4つ目は
+    P-2（2026-09-23）で追加。いずれも build_place.py / build_taxon.py /
+    build_taxon_assessment.py が読むのに以前は指紋に入っていなかった）:
 
     - `data/processed/nlni_w12_watersheds.jsonl`（build_place.py の `WATERSHED_JSONL`）
       の中身。
@@ -375,6 +384,8 @@ def compute_input_fingerprint(
     - `ryuiki.sqlite` の `organism_records` の軽い代理指標（行数・最大rowid、
       `_hash_organism_records_freshness()`）。grid01（build_place.py）の入力に
       なったための例外（次の段落参照）。
+    - `data/processed/moe_ias_list.csv`（build_taxon_assessment.py の
+      `MOE_IAS_LIST_CSV_RELPATH`）の中身。
 
     `mode=MODE_FILES_ONLY` のときはどれにも触れない（`--files-only` は
     build_place.py/build_taxon.py 自体を呼ばないので、CI のように watershed の
@@ -413,6 +424,9 @@ def compute_input_fingerprint(
         )
         _hash_optional_file(
             h, TAXON_CROSSWALK_CSV_RELPATH.as_posix(), base / TAXON_CROSSWALK_CSV_RELPATH
+        )
+        _hash_optional_file(
+            h, MOE_IAS_LIST_CSV_RELPATH.as_posix(), base / MOE_IAS_LIST_CSV_RELPATH
         )
         _hash_organism_records_freshness(h, base / "data" / "db" / "ryuiki.sqlite")
 

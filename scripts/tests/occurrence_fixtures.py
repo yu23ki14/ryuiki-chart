@@ -157,7 +157,25 @@ def make_organism_records_db(path, rows=None) -> None:
         conn.close()
 
 
-def make_occurrence_registry_db(path, taxa=None, places=None, place_refs=None) -> None:
+# taxon_assessment（P-2）の列（scripts/schema_registry.sql と同じ順）。
+TAXON_ASSESSMENT_COLUMNS = (
+    "assessment_id", "list_id", "list_year", "taxon_id",
+    "scientific_name_raw", "vernacular_name_ja_raw",
+    "taxon_group_ja", "taxon_subgroup_ja", "family_ja",
+    "category_raw", "category_code",
+    "prev_category_raw", "prev_category_code",
+    "national_category_raw", "origin", "source_id",
+)
+
+
+def make_occurrence_registry_db(path, taxa=None, places=None, place_refs=None, taxon_assessments=None) -> None:
+    """`taxon_assessments`（既定 空リスト）は P-2（`ias_species`）が要る
+    `taxon_assessment` テーブル。`scripts/b08_project_occurrence_v1.py` の
+    `_assert_prerequisites(need_taxon_assessment=True)` はテーブルの存在
+    だけを確かめる（中身が空でも `build_all_projections` は通り、
+    `ias_species` は0行になる——このテーブル自体を要らないテストが大半の
+    ため、既定は空にしてある）。
+    """
     conn = sqlite3.connect(str(path))
     try:
         conn.execute(
@@ -170,6 +188,11 @@ def make_occurrence_registry_db(path, taxa=None, places=None, place_refs=None) -
         conn.execute(
             "CREATE TABLE place_source_ref (place_id TEXT, external_key TEXT, source_id TEXT)"
         )
+        conn.execute(
+            f"""CREATE TABLE taxon_assessment (
+                {", ".join(f'"{c}"' for c in TAXON_ASSESSMENT_COLUMNS)}
+            )"""
+        )
         conn.executemany(
             "INSERT INTO taxon VALUES (?,?,?,?,?,?,?,?,?)", taxa if taxa is not None else DEFAULT_TAXA
         )
@@ -180,6 +203,26 @@ def make_occurrence_registry_db(path, taxa=None, places=None, place_refs=None) -
             "INSERT INTO place_source_ref VALUES (?,?,?)",
             place_refs if place_refs is not None else DEFAULT_PLACE_SOURCE_REF,
         )
+        if taxon_assessments:
+            placeholders = ",".join("?" for _ in TAXON_ASSESSMENT_COLUMNS)
+            conn.executemany(
+                f"INSERT INTO taxon_assessment VALUES ({placeholders})", taxon_assessments,
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def make_ryuiki_taxa_db(path, taxa_rows=None) -> None:
+    """`ias_species`（P-2）が `taxa.vernacular_name_ja` を読むための最小限の
+    ryuiki.sqlite 相当フィクスチャ。`taxa_rows` は `(taxon_id, vernacular_name_ja)`
+    のタプル列（既定は空——`ias_species` を使わないテストは呼ばなくてよい）。
+    """
+    conn = sqlite3.connect(str(path))
+    try:
+        conn.execute("CREATE TABLE taxa (taxon_id TEXT PRIMARY KEY, vernacular_name_ja TEXT)")
+        if taxa_rows:
+            conn.executemany("INSERT INTO taxa VALUES (?,?)", taxa_rows)
         conn.commit()
     finally:
         conn.close()

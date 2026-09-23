@@ -140,3 +140,78 @@ def open_places_src(ryuiki_path) -> dict:
     conn = sqlite3.connect(str(ryuiki_path))
     conn.row_factory = sqlite3.Row
     return {"ryuiki": conn}
+
+
+# ---------------------------------------------------------------------------
+# scripts/registry/build_taxon_assessment.py（P-2）用
+# ---------------------------------------------------------------------------
+
+# ryuiki.redlist_assessments の列（scripts/registry/build_taxon_assessment.py
+# ._load_redlist_assessment_rows() が実際に SELECT する列だけ）。
+REDLIST_ASSESSMENT_COLUMNS = (
+    "assessment_id", "list_name", "list_year", "taxon_group_ja", "taxon_subgroup_ja",
+    "family_ja", "vernacular_name_ja", "scientific_name",
+    "category_ja", "category_prev_ja", "national_category_ja", "source_id",
+)
+
+
+def make_ryuiki_redlist_db(path, redlist_rows=()) -> None:
+    """scripts/registry/build_taxon_assessment.py 用の最小限フィクスチャ
+    （`redlist_assessments` だけを持つ。`redlist_rows` は
+    `REDLIST_ASSESSMENT_COLUMNS` の順のタプル列）。
+    """
+    conn = sqlite3.connect(str(path))
+    try:
+        conn.execute(
+            f"""CREATE TABLE redlist_assessments (
+                {", ".join(REDLIST_ASSESSMENT_COLUMNS)}
+            )"""
+        )
+        placeholders = ",".join("?" for _ in REDLIST_ASSESSMENT_COLUMNS)
+        conn.executemany(f"INSERT INTO redlist_assessments VALUES ({placeholders})", redlist_rows)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def open_taxon_assessment_src(ryuiki_path) -> dict:
+    """build_taxon_assessment.build(conn, src) の src 引数を作る
+    （'ryuiki' キーだけを使う）。"""
+    conn = sqlite3.connect(str(ryuiki_path))
+    conn.row_factory = sqlite3.Row
+    return {"ryuiki": conn}
+
+
+def write_moe_ias_list_csv(path, rows) -> None:
+    """`data/processed/moe_ias_list.csv` 相当のテスト用フィクスチャを書く。
+    `rows` は dict のリスト。build_taxon_assessment.py が実際に読む列だけを
+    持たせればよい（`category_ja`/`origin_ja`/`taxon_group_ja`/`family_ja`/
+    `scientific_name`/`vernacular_name_ja`/`source_id`）。
+    """
+    import csv
+
+    fieldnames = [
+        "category_ja", "category_parent_ja", "origin_ja", "taxon_group_ja", "family_ja",
+        "scientific_name", "vernacular_name_ja", "ias_law_status_ja", "establishment_stage_ja",
+        "selection_reason_ja", "problem_area_ja", "kingdom_sheet_ja", "note_ja",
+        "source_id", "source_ref",
+    ]
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames)
+        w.writeheader()
+        for row in rows:
+            full = {k: "" for k in fieldnames}
+            full.update(row)
+            w.writerow(full)
+
+
+def insert_taxon_rows(registry_conn, taxon_rows) -> None:
+    """`registry_conn`（`common.create_registry_db()` で作った書き込み用接続）の
+    `taxon` テーブルに、taxon_id 解決テスト用の最小限の行を入れる。
+    `taxon_rows` は `(taxon_id, scientific_name, canonical_binomial)` の列
+    （他の列は NULL のままで taxon_id 解決には影響しない）。
+    """
+    registry_conn.executemany(
+        "INSERT INTO taxon (taxon_id, scientific_name, canonical_binomial) VALUES (?, ?, ?)",
+        taxon_rows,
+    )

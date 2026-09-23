@@ -1,0 +1,47 @@
+# taxon_assessment.list_id のコードリスト（P-2、2026-09-23。ADR-0019「最新の評価は
+# ビューで表す」の版そのものを列挙する台帳）。scripts/registry/build_taxon_assessment.py
+# が list_id の妥当性検証・list_year の突き合わせに使う。
+#
+# 3件（rl2020/rdb2022p/rl2026）は `ryuiki.redlist_assessments` の
+# assessment_id の接頭辞（'_'区切りの先頭語）をそのまま list_id にした
+# （list_name/list_year は redlist_assessments の実データと一致することを
+# ビルド時に検証する）。moe_ias_2015 は `data/processed/moe_ias_list.csv`
+# （環境省 生態系被害防止外来種リスト）に新設した list_id。
+#
+# kind: 'red_list'（レッドリスト/レッドデータブック）| 'invasive'（外来種リスト）。
+# region: そのリストが対象とする地域スコープ（ADR-0002）。神奈川県の3レッドリストは
+# 'jp-14'。環境省の外来種リストは全国版の国の制度文書なので 'jp'
+# （region_id そのものではなく、リストの対象範囲を表す注記。taxon_assessment の
+# 行は region_id 列を持たない——評価対象の分類群は region に紐づかない
+# （ADR-0019 決定1）ため、ここに書くのは「リストの性格」の説明であり、
+# データの主語ではない）。
+# codelist: そのリストの category_raw を正規化するコードリストの参照名。
+# 'redlist_category'（registry/taxon/redlist_category.yaml）は3つの
+# レッドリストが共有する。外来種リストは v1（ias_species）が category_raw を
+# そのまま使い正規化しないため null（このリストにはコードリストを新設しない
+# ——P-2決定3）。
+lists:
+  - list_id: rl2020
+    name: "神奈川県レッドリスト2020（植物編CSV）"
+    year: 2020
+    kind: red_list
+    region: jp-14
+    codelist: redlist_category
+  - list_id: rdb2022p
+    name: "神奈川県レッドデータブック2022（植物編）"
+    year: 2022
+    kind: red_list
+    region: jp-14
+    codelist: redlist_category
+  - list_id: rl2026
+    name: "神奈川県レッドリスト2026（昆虫類・クモ類）"
+    year: 2026
+    kind: red_list
+    region: jp-14
+    codelist: redlist_category
+  - list_id: moe_ias_2015
+    name: "環境省 生態系被害防止外来種リスト"
+    year: 2015
+    kind: invasive
+    region: jp
+    codelist: null
