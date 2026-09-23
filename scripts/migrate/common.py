@@ -1,11 +1,23 @@
-"""b03/b04/b05（Phase B ファクトとキューブ）が共有する薄い土台。
+"""b03/b04/b05/b10（Phase B ファクトとキューブ、および文書/品質ワークフローの
+v1射影）が共有する薄い土台。
 
 - 読み取り専用オープンと YAML 読み込みは `scripts/reconcile/common.open_readonly`/
   `load_yaml` をそのまま使う（同じ規約を2箇所に書かない。既に b01/b02 が
   使っている実装。`scripts/migrate/period.py` はここから `load_yaml` を引く）。
 - 出力 sqlite は毎回ゼロから作り直す（`fresh_sqlite`）。前回実行の残骸（WAL/SHM
   側車ファイルを含む）が残ったまま次の実行が古い行を引きずる事故を避ける。
+  `fresh_sqlite` は書き込み先が読み取り専用の原本そのものでないことも検査する
+  （`reject_protected_source_db` 参照）。**b03/b04 は `--out` を `sqlite3.connect`
+  で直接開き `fresh_sqlite` を経由しない**ため、それぞれの `main()` が引数
+  パース直後に同じ検査を個別に呼ぶ。
 - 実行時間とテーブルごとの行数を `[12.3s] ラベル / N行` の形で出す（`timed_step`）。
+- `AVG()`/`SUM()`（b04・b05・b10）または `FULL OUTER JOIN`（`assert_grouped_totals_match`
+  経由。b07・b08）を使うスクリプトは、どちらも SQLite 3.43 以降が前提
+  （`AVG()`/`SUM()` は加算アルゴリズムの正しさ、`FULL OUTER JOIN` は機能自体の
+  対応のため——3.39で足りる `FULL OUTER JOIN` 単体の最小版ではなく、他の
+  スクリプトと同じ3.43に揃える）。`require_sqlite_version()` を**各スクリプトの
+  構築関数の先頭**で呼ぶ（モジュール読み込み時点ではない——
+  `require_sqlite_version` の docstring 参照）。
 """
 from __future__ import annotations
 
@@ -21,21 +33,98 @@ _SCRIPTS = ROOT / "scripts"
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
-from reconcile.common import load_yaml, open_readonly  # noqa: E402,F401  (b03/b04/b05 から re-export)
+from reconcile.common import load_yaml, open_readonly  # noqa: E402,F401  (b03/b04/b05/b10 から re-export)
 
 # b04 の observation_agg / b05 の射影が `built_from` / `spec_version` に書く定数。
 # バージョンを上げるのはこのパッケージの変換ロジックそのものを変えたとき
 # （キーの構成や集計方法が変わる＝過去に作った observation_agg と比較できなくなるとき）。
 SPEC_VERSION = "phase-b-fact-slice/v1"
 
+# SQLite 3.43 未満では2つの理由でパイプラインが壊れる: (1) AVG()/SUM() の
+# 加算アルゴリズムが素朴な左→右加算に落ち、平均が黙って壊れる（b04・b05・
+# b10）。(2) FULL OUTER JOIN（`assert_grouped_totals_match` が使う。SQLite
+# 3.39 で追加）自体が使えず `sqlite3.OperationalError` で落ちる（b07・b08）。
+# 元は b04 だけに書かれていたが、他のスクリプトでも同じ「3.43 以降が前提」
+# というリスクがあるため共通ヘルパへ切り出した。3.39 で足りる FULL OUTER
+# JOIN 単体の最小版ではなく、AVG()/SUM() の要件に合わせて 3.43 で統一する
+# （パイプライン全体を1つの基準で揃える）。バージョン・件数の実測は
+# docs/plans/PHASE_B_DOCUMENTS.md §2 の1箇所にまとめてある（ここでは繰り返さない）。
+MIN_SQLITE_VERSION = (3, 43, 0)
+
+
+def require_sqlite_version(min_version: tuple[int, int, int] = MIN_SQLITE_VERSION) -> None:
+    """`sqlite3.sqlite_version_info` が `min_version` 未満なら `SystemExit` で止まる。
+
+    **呼び出し側（b04/b05/b07/b08/b10）は各スクリプトの構築・射影関数の先頭
+    （`build_cube`/`build_projections`/`build_documents_projection`/
+    `build_org_norm_projection`/`build_occurrence_cube_projections`/
+    `build_all_projections`）でこれを呼ぶこと。モジュール読み込み時点
+    （トップレベル）では呼ばない。** 古い SQLite の環境で `import` した瞬間に
+    `SystemExit` が飛ぶと、`pytest` は複数のテストファイルを import してから
+    収集するため、無関係な1ファイルの import 失敗がスイート全体の収集を
+    止めてしまう（守りたい状況（古い環境）でこそ壊れる形だった——コード
+    レビュー指摘。実測は `docs/plans/PHASE_B_DOCUMENTS.md` §2 参照）。関数の
+    先頭で呼べば、CLI からの実行でも関数の直接呼び出しでも同じガードが効き、
+    `import` 自体は安全になる。
+
+    `assert` にしない理由は `python -O`/`PYTHONOPTIMIZE=1` では `assert` が
+    丸ごと消え、まさにこのガードが要る場面で無効化されてしまうため
+    （`scripts/tests/test_b04_build_cube.py::test_min_sqlite_version_guard_is_systemexit_not_assert`
+    参照）。
+    """
+    if sqlite3.sqlite_version_info < min_version:
+        raise SystemExit(
+            f"sqlite3（Python 同梱、バージョン {sqlite3.sqlite_version}）が古すぎる。"
+            f"SQLite {'.'.join(map(str, min_version))} 以降が必要——それより前は "
+            "AVG()/SUM() が Kahan-Babuška-Neumaier 加算ではなく素朴な左→右加算に落ちて"
+            "平均値が黙って変わる（b04/b05/b10）、または FULL OUTER JOIN 自体が使えず"
+            "OperationalError で落ちる（b07/b08）。実測は docs/plans/PHASE_B_DOCUMENTS.md "
+            "§2 参照。sqlite3 CLI のバージョンではなく、この Python が import する "
+            "sqlite3 モジュール（標準ライブラリに静的リンクされた版）のバージョンを見ている。"
+        )
+
 
 class MigrationError(Exception):
-    """b03/b04/b05 が「黙って捨てず・黙って推測せず」止まるときに投げる例外。
+    """b03/b04/b05/b10 が「黙って捨てず・黙って推測せず」止まるときに投げる例外。
 
     データの中身に起因する想定外（alias/place が解決できない、value_grain と
     period_grain が宣言されていない食い違い方をしている等）はすべてこれを使う。
     プログラムのバグ（引数の誤り等）は通常の例外のままにして区別する。
     """
+
+
+# `reject_protected_source_db` が保護する読み取り専用の原本（`--out` に誤って
+# これらのパスを渡されたときに拒む）。
+_PROTECTED_SOURCE_DB_NAMES = ("ryuiki.sqlite", "cells.sqlite", "derived.sqlite")
+
+
+def reject_protected_source_db(path: pathlib.Path) -> None:
+    """`path`（書き込み先として使うつもりのパス）が `data/db/ryuiki.sqlite`/
+    `cells.sqlite`/`derived.sqlite`（symlink 越しも含む）と同じ実体を指して
+    いたら `MigrationError` で止まる。
+
+    **この検査は書き込み先のパスに対する検査であり、読み取り専用で開く経路
+    （`attach_readonly`・`open_readonly`）は対象外**（読み取り専用で開くこと
+    自体は原本を傷つけない）。`fresh_sqlite` は内部でこれを呼ぶので、`--out`
+    が `fresh_sqlite` を経由するスクリプトは自動的に保護される。**b03/b04 は
+    `--out` を `sqlite3.connect` で直接開き `fresh_sqlite` を経由しないため、
+    それぞれの `main()` が引数パース直後にこれを個別に呼ぶ**（コードレビュー
+    指摘: `fresh_sqlite` 経由だけでは b03/b04 の `--out` が保護されておらず、
+    原本に直接書き込む事故が起こりうる状態だった）。
+
+    worktree ではこれらは symlink（CLAUDE.md「worktree の運用」）なので、
+    パス文字列の比較ではなく `os.path.realpath`（symlink を解決した実パス）
+    で比べる。ファイルが存在しない場合でも `realpath` は正規化したパスを返す
+    ため、原本がまだ無い環境（CI 等）でも判定できる。
+    """
+    resolved = os.path.realpath(str(path))
+    for name in _PROTECTED_SOURCE_DB_NAMES:
+        protected = os.path.realpath(str(ROOT / "data" / "db" / name))
+        if resolved == protected:
+            raise MigrationError(
+                f"{path} は読み取り専用の原本（{protected}）と同じ実体を指している。"
+                "書き込み先（--out）に原本のパスを渡していないか確認すること。"
+            )
 
 
 @contextlib.contextmanager
@@ -65,8 +154,14 @@ def fresh_sqlite(path) -> sqlite3.Connection:
     「たまたま同じ内容が残っていただけ」で偽陽性になりうるため、必ずゼロから作る。
     `uri=True` で開く（ATTACH で読み取り専用 DB を `file:...?mode=ro` として
     付けられるようにする。`open_attached_readonly` 参照）。
+
+    **`path` が読み取り専用の原本そのものを指していたら、消す前に
+    `MigrationError` で拒む**（`reject_protected_source_db` 参照。`--out` に
+    原本のパスを誤って渡すと、以降の `unlink()` が100MB超で再生成できない
+    原本を消してから失敗する——コードレビュー指摘）。
     """
     p = pathlib.Path(path)
+    reject_protected_source_db(p)
     p.parent.mkdir(parents=True, exist_ok=True)
     for suffix in ("", "-shm", "-wal"):
         sidecar = pathlib.Path(str(p) + suffix)

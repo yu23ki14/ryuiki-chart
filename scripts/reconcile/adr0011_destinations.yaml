@@ -2,11 +2,23 @@
 #
 # scripts/b01_derived_baseline.py はこのファイルを読むだけで、どのテーブルが
 # ADR-0011 のどの行き先（キューブ observation / キューブ occurrence / variable
-# レジストリ / place の属性 / taxon / L2 ファクト本体 / メタ）に対応するかを
-# derived_baseline.md に併記する。テーブルごとの分岐はコード側に書かない。
+# レジストリ / place の属性 / taxon / L2 ファクト本体 / document-cell 証跡層 /
+# 書き込み系ログ）に対応するかを derived_baseline.md に併記する。テーブルごとの
+# 分岐はコード側に書かない。
 #
-# 33テーブルの内訳（ADR-0011 表と一致することを scripts/tests で確認）:
-#   14 + 11 + 1 + 2 + 3 + 1 + 1 = 33
+# scripts/tests/test_common.py が機械的に確認しているのは次の3点だけ
+# （ADR-0011 の Markdown 本文とこの YAML が一致することまでは確認していない
+# ——本文はここへの手作業の転記であり、ずれたら人が気づいて直す前提）:
+#   1. 全カテゴリのテーブル数の合計が 33（12+11+1+2+3+1+2+1）。
+#   2. 同じテーブル名が複数カテゴリに重複していない。
+#   3. テーブル名の集合が reports/derived_baseline.json（実データ由来。正）の
+#      33テーブルと完全一致（名前の打ち間違い・書き漏らしが1対1で相殺して
+#      1の合計チェックをすり抜ける事故を防ぐ）。
+#
+# 2026-09-22 改訂（P-3）: doc_series/quality_monthly を cube_observation から
+# document_provenance/quality_workflow_log（新設）へ移した。旧 doc_meta は
+# document_provenance に吸収。理由は docs/adr/0011-aggregation-cube.md の
+# 2026-09-22追記・docs/plans/PHASE_B_DOCUMENTS.md §1 参照（ここでは繰り返さない）。
 
 cube_observation:
   label_ja: "キューブ（入力 observation）"
@@ -22,8 +34,6 @@ cube_observation:
     - rain_daily
     - landuse_watershed
     - landuse_change
-    - quality_monthly
-    - doc_series
     - site_var
 
 cube_occurrence:
@@ -50,6 +60,9 @@ place_attribute:
   label_ja: "place の属性"
   tables:
     - watershed_meta
+    # watershed_rollup: D10型の結合射影（watershed_meta/org_watershed/site_var/
+    # landuse_watershed の4表を組み合わせるだけで、独立したキューブのセルには
+    # しない。docs/adr/0011-aggregation-cube.md 参照）。
     - watershed_rollup
 
 taxon_registry:
@@ -64,7 +77,13 @@ fact_body:
   tables:
     - org_norm
 
-doc_meta:
-  label_ja: "document / variable のメタ"
+document_provenance:
+  label_ja: "document/cell の証跡層からの射影"
   tables:
+    - doc_series
     - doc_series_meta
+
+quality_workflow_log:
+  label_ja: "ADR-0017 書き込み系ログの射影"
+  tables:
+    - quality_monthly

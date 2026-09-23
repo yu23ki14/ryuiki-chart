@@ -1,9 +1,16 @@
 """scripts/reconcile/common.py の単体テスト（キー自動導出・指紋計算）。"""
+import json
+import pathlib
+
 import pytest
 
 from reconcile import common, datasource
 
 from .fixtures import make_fixture_db, make_null_key_fixture_db
+
+_REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+_DESTINATIONS_YAML = _REPO_ROOT / "scripts" / "reconcile" / "adr0011_destinations.yaml"
+_DERIVED_BASELINE_JSON = _REPO_ROOT / "reports" / "derived_baseline.json"
 
 
 @pytest.fixture()
@@ -275,3 +282,66 @@ def test_validate_expected_diffs_empty_required_value_raises():
             {"t_pk": {"key": ["raw"]}},
             "expected_diffs.yaml",
         )
+
+
+def test_load_destinations_covers_exactly_33_tables_with_no_duplicates():
+    """ADR-0011「33テーブルの行き先」表の転記（`scripts/reconcile/
+    adr0011_destinations.yaml`）が合計33件・重複無しであることを確認する
+    （docs/plans/PHASE_B_DOCUMENTS.md の P-3 改訂で document_provenance/
+    quality_workflow_log の2カテゴリを新設した後も合計が変わらないことの回帰。
+    改訂前はこの合計を確かめる自動テストが無かった）。
+    """
+    flat = common.load_destinations(_DESTINATIONS_YAML)
+    assert len(flat) == 33
+
+    raw = common.load_yaml(_DESTINATIONS_YAML)
+    all_tables = [t for spec in raw.values() for t in spec.get("tables", [])]
+    assert len(all_tables) == len(set(all_tables)), "同じテーブル名が複数カテゴリに重複している"
+
+
+def test_load_destinations_document_and_quality_tables_are_not_cube_observation():
+    """P-3 決定: doc_series/doc_series_meta/quality_monthly の実際の入力は
+    `observation` ではない（cells.sqlite/quality_transitions）ため、
+    `cube_observation` から新設カテゴリへ移した（docs/plans/PHASE_B_DOCUMENTS.md）。
+    """
+    flat = common.load_destinations(_DESTINATIONS_YAML)
+    assert flat["doc_series"]["category"] == "document_provenance"
+    assert flat["doc_series_meta"]["category"] == "document_provenance"
+    assert flat["quality_monthly"]["category"] == "quality_workflow_log"
+
+
+def test_load_destinations_table_names_match_derived_baseline_exactly():
+    """`adr0011_destinations.yaml` のテーブル名の集合が、実データから作った
+    `reports/derived_baseline.json`（正）の33テーブルの集合と完全に一致する
+    ことを確認する（コードレビュー指摘: 合計が33でも、打ち間違えた名前と
+    書き漏らした名前が1対1で相殺すれば `len(flat) == 33` は通ってしまう。
+    `b01_derived_baseline.py` の `render_markdown` は宣言に無いテーブルを
+    黙って「（未分類）」にするだけで検出しない——このテストが唯一の歯止め）。
+    `reports/derived_baseline.json` はコミット済みなので原本DBが無い環境
+    （CI）でも読める。
+    """
+    flat = common.load_destinations(_DESTINATIONS_YAML)
+    baseline = json.loads(_DERIVED_BASELINE_JSON.read_text(encoding="utf-8"))
+    assert set(flat) == set(baseline["tables"])
+
+
+def test_load_destinations_category_counts_match_the_declared_breakdown():
+    """テーブル名の集合一致（前テスト）だけでは「正しい名前が誤ったカテゴリに
+    入っている」事故を検出できない（集合演算はカテゴリをまたいで同じテーブル
+    名を数える）。カテゴリごとの件数をヘッダコメントの内訳
+    （12+11+1+2+3+1+2+1=33）と突き合わせる（コードレビュー指摘）。
+    ラベル文言の一致までは見ない（YAML のヘッダコメントに明記のとおり、
+    ADR-0011 の Markdown 本文との一致は対象外）。
+    """
+    raw = common.load_yaml(_DESTINATIONS_YAML)
+    counts = {category: len(spec.get("tables", [])) for category, spec in raw.items()}
+    assert counts == {
+        "cube_observation": 12,
+        "cube_occurrence": 11,
+        "variable_registry": 1,
+        "place_attribute": 2,
+        "taxon_registry": 3,
+        "fact_body": 1,
+        "document_provenance": 2,
+        "quality_workflow_log": 1,
+    }

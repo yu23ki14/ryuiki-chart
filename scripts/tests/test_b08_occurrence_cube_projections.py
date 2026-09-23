@@ -33,6 +33,16 @@ from .occurrence_fixtures import (
     occurrence_row,
 )
 
+# b07/b08 は `assert_grouped_totals_match`（FULL OUTER JOIN、SQLite 3.39以降）
+# を使うため `common.require_sqlite_version()` で古い SQLite を拒む
+# （`scripts/migrate/common.py` 参照）。この版のガード自体の単体テストは
+# `scripts/tests/test_migrate_common.py`。ここでは環境の SQLite が実際に
+# 古いとき、意味の無い失敗の山を作らずスキップする。
+pytestmark = pytest.mark.skipif(
+    sqlite3.sqlite_version_info < common.MIN_SQLITE_VERSION,
+    reason=f"SQLite {common.MIN_SQLITE_VERSION} 未満（実際: {sqlite3.sqlite_version}）",
+)
+
 # 2つの taxon_id（GBIF由来・iNat由来）が同じ binom（canonical_binomial）に
 # 対応するシナリオ（O-1b brief: 「species_mesh_year・mesh_species の DISTINCT
 # が複数 taxon_id → 同じ binom で正しく数えられる」の fixture）。

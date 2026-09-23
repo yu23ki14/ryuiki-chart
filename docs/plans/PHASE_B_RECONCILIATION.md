@@ -5,8 +5,18 @@
 `zone_clim`）を通した（`phase-b/fact-slice` + `phase-b/meas-remainder` + `phase-b/sensor-slice`
 + `phase-b/zone-slice`。部分ゲート＝33テーブル中11テーブルだけの合格で、全体の合格ではない。
 前6テーブルは宣言済み差分のみで一致、センサー由来の3テーブルとゾーン由来の2テーブルは
-宣言済み差分0で完全一致。残り22テーブルは未着手）**
-作成: 2026-09-07 / 更新: 2026-09-22
+宣言済み差分0で完全一致）**。続けて `phase-b/occurrence-l2` + `phase-b/occurrence-cube`
+（O-1a/O-1b。`occurrence` を入力に生物系10テーブル `org_norm`/`org_group_year`/`effort_year`/
+`species2`/`species_year2`/`mesh_year`/`mesh_all`/`mesh_species`/`species_mesh_year`/
+`species_month` を通した。一致8・宣言済み差分のみ2——`org_norm`/`species2` の `cls` 列
+1行だけ。§6参照）。`phase-b/place-attributes`（P-1a、`scripts/b11_project_place_v1.py`。
+`observation`/`occurrence` を経由しない別枠——§9参照）で `watershed_meta` を通した
+（一致1、宣言済み差分0で完全一致）。加えて `phase-b/documents`（P-3、
+`scripts/b10_project_documents_v1.py`。`observation`/`occurrence` を経由しない別枠——
+`docs/plans/PHASE_B_DOCUMENTS.md` 参照）で `doc_series`/`doc_series_meta`/
+`quality_monthly` の3テーブルを実データで通した（宣言済み差分0で完全一致）。
+**33テーブル中25テーブルが済み、残り8テーブルは未着手**
+作成: 2026-09-07 / 更新: 2026-09-23
 
 **このドキュメントが説明するのはゲートの仕組みと、実データで実行した結果（§6・宣言済み差分の節）。
 `observation`/`occurrence` の作成とキューブ本体の設計・実測は
@@ -317,6 +327,13 @@ v1 側のバグだと確定できたため、`scripts/reconcile/expected_diffs.y
 species_month,mesh_year,mesh_all,mesh_species,species_mesh_year` は終了コード0（宣言済み差分は
 `org_norm`・`species2` の2件だけ）。
 
+`phase-b/documents`（P-3。`scripts/b10_project_documents_v1.py`）は `doc_series`/
+`doc_series_meta`/`quality_monthly` を通したが、**`observation`/`occurrence` を経由しない**
+別枠であることに注意（実際の入力が `cells.sqlite`/`quality_transitions` であり、そもそも
+`b03`〜`b05` の対象外）。v1 の SQL をそのまま再実行するだけなので `--no-expected-diffs` でも
+差分0（宣言なし）で完全一致する。このゲートの性格（v1 表の持ち越しを確かめるだけで v2 の
+変換の正しさは確かめない）は `docs/plans/PHASE_B_DOCUMENTS.md` 冒頭参照。
+
 ## 7. 宣言済み差分（`expected_diffs.yaml`）
 
 ADR-0016 の受け入れ基準は「`imputation='zero'` の系列で v1 の派生テーブルの値が再現できること」
@@ -393,15 +410,17 @@ v1 側を直すまで v2 のゲートが恒久的に赤いままになる。ADR-
 
 ## 8. やっていないこと（このPRのスコープ外）
 
-- 残り11テーブル（ADR-0011「33テーブルの行き先」参照。`meas_clim`/`site_var`/`var_catalog` は
-  `phase-b/meas-remainder`、`sensor_daily`/`rain_daily`/`sensor_hour_month` は
-  `phase-b/sensor-slice`、`zone_year`/`zone_clim` は `phase-b/zone-slice`、`org_norm` は
-  `phase-b/occurrence-l2`（O-1a）、年キー8表・`species_month` は `phase-b/occurrence-cube`
-  （O-1b、`occurrence` を入力にする生物系10テーブルはこれで揃った）、`watershed_meta` は
-  `phase-b/place-attributes`（§9参照）で済んだ。流域の2表（`org_watershed*`。O-2）・
-  `doc_series`/`doc_series_meta`/`ias_species`/`landuse_change`/`landuse_watershed`/
-  `quality_monthly`/`redlist_change`/`redlist_map`/`watershed_rollup` の残り9表ほか、
-  まだ縦線を通していないテーブルが残っている）
+- 残り8テーブル（ADR-0011「33テーブルの行き先」参照。当初の残り12テーブルのうち、
+  `meas_clim`/`site_var`/`var_catalog` は `phase-b/meas-remainder`、`sensor_daily`/
+  `rain_daily`/`sensor_hour_month` は `phase-b/sensor-slice`、`zone_year`/`zone_clim` は
+  `phase-b/zone-slice`、`org_norm` は `phase-b/occurrence-l2`（O-1a）、年キー8表・
+  `species_month` は `phase-b/occurrence-cube`（O-1b、`occurrence` を入力にする
+  生物系10テーブルはこれで揃った）、`watershed_meta` は `phase-b/place-attributes`
+  （P-1a、§9参照）、`doc_series`/`doc_series_meta`/`quality_monthly` は
+  `phase-b/documents`（P-3）で済んだ。残り8テーブル（`watershed_rollup`/
+  `landuse_watershed`/`landuse_change`/`org_watershed`/`org_watershed_year`
+  〔流域系、O-2〕・`redlist_map`/`redlist_change`/`ias_species`〔taxon/レッドリスト系〕）
+  はまだ縦線を通していない）
 - `imputation='lod'` 併記（ADR-0009 決定4。今回は `zero` のみ）
 - 正準単位の併記（ADR-0023。方針は決定済みだが未実装）
 - Parquet 化（ADR-0001）

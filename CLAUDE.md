@@ -76,13 +76,24 @@
   （`registry.sqlite` の `place`/`place_watershed`/`place_source_ref` → v1形）。
   出力は `data/db/v1_projection_place.sqlite`（`.gitignore` 済み・捨てて作り直せる）。
   設計・実測は `docs/plans/PHASE_B_PLACE_ATTRIBUTES.md`。
+  別枠で `scripts/b10_project_documents_v1.py`（`cells.sqlite`/`ryuiki.sqlite` を直接
+  ATTACH、`observation` は経由しない）が `data/db/v1_projection_documents.sqlite`
+  （`doc_series`/`doc_series_meta`/`quality_monthly` の3テーブル、`.gitignore` 済み）を作る。
+  設計・実測は `docs/plans/PHASE_B_DOCUMENTS.md`。
 - **`+09:00` 付きの時刻文字列に SQLite の日時関数（`date`/`datetime`/`strftime`）を使わない**
   （UTC に正規化されて日付が1日ずれる。`observation.period_start` は時刻帯なしのローカル時刻で
   持つ。詳細は `docs/adr/0024-local-time-and-time-labels.md`）。
-- **キューブ（`observation_agg`）を作るのは SQLite 3.43 以降でなければならない**
-  （`b04_build_cube.py` が起動時に検証して止める。`AVG()`/`SUM()` の加算アルゴリズムが
-  3.43 で変わり、それより前だと平均値が黙って変わる行がある。見るのは `sqlite3` CLI では
-  なく Python 同梱の `sqlite3` モジュールのバージョン。詳細は `docs/adr/0021-observation-grain-and-cube-key.md`）。
+- **キューブ（`observation_agg`/`occurrence_agg`）・v1形への射影・`doc_series`
+  （`AVG()`/`SUM()`、または `occurrence_agg` 側は `FULL OUTER JOIN`
+  〔`assert_grouped_totals_match`〕を使う）を作るのは SQLite 3.43 以降でなければ
+  ならない**（`b04_build_cube.py`/`b05_project_v1.py`/`b07_build_occurrence_cube.py`/
+  `b08_project_occurrence_v1.py`/`b10_project_documents_v1.py` それぞれの
+  構築・射影関数の先頭（モジュール読み込み時点ではない）で `scripts/migrate/common.py` の
+  `require_sqlite_version()` を呼んで検証する。加算アルゴリズムが3.43で変わり、
+  それより前だと平均値が黙って変わる行がある（`FULL OUTER JOIN` は3.39未満だと
+  そもそも使えない）。見るのは
+  `sqlite3` CLI ではなく Python 同梱の `sqlite3` モジュールのバージョン。詳細は
+  `docs/adr/0021-observation-grain-and-cube-key.md`）。
 
 ## 開発フロー
 

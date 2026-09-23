@@ -137,6 +137,15 @@ b03/b04/b05 が実際に使うのは **Python 同梱の `sqlite3` モジュー�
 （例: `observation (sqlite=3.49.1)`）、後から「どの SQLite で計算されたキューブか」を追跡できる
 ようにする。
 
+**2026-09-23 追記**: このガードは `scripts/migrate/common.py` の `require_sqlite_version()`
+へ切り出し、`scripts/b04_build_cube.py`・`scripts/b05_project_v1.py`・
+`scripts/b10_project_documents_v1.py` の3本が共有する（`doc_series`（b10）でも
+実データで同型のリスクを確認した）。**呼ぶ場所もモジュール読み込み時点から各スクリプトの
+構築関数の先頭に変更した**——モジュール読み込み時点のままだと、古い SQLite の環境で
+`import` した瞬間に `SystemExit` が飛び、`pytest` の収集自体が止まってスイート全体が
+動かなくなる事故があったため（守りたい状況でこそ壊れる形。コードレビュー指摘）。
+実測は `docs/plans/PHASE_B_DOCUMENTS.md` §2・§4 参照。
+
 ## 影響
 
 - **良い**: v1 の `meas_year.kind`（どの経路で作った値か）がモデルに載る。出典が直接配った集計値と

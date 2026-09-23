@@ -691,6 +691,11 @@ def main() -> None:
     parser.add_argument("--report", default=str(DEFAULT_REPORT))
     args = parser.parse_args()
 
+    # `--out` を `sqlite3.connect` で直接開く（`fresh_sqlite` を経由しない）ため、
+    # ここで個別に検査する（`scripts/migrate/common.py` の
+    # `reject_protected_source_db` の docstring 参照）。
+    common.reject_protected_source_db(pathlib.Path(args.out))
+
     registry_db = common.resolve_registry_db(args.registry_db, DEFAULT_REGISTRY_DB)
 
     print(f"▶ 読み取り専用で開く: {args.ryuiki_db}")
