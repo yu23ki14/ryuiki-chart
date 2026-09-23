@@ -63,15 +63,25 @@
   （11テーブル: `meas_daily`/`meas_month`/`meas_year`/`meas_clim`/`site_var`/`var_catalog`/
   `sensor_daily`/`rain_daily`/`sensor_hour_month`/`zone_year`/`zone_clim`）で、どちらも
   `.gitignore` 済み・捨てて作り直せる。設計・実測は `docs/plans/PHASE_B_FACT_SLICE.md`。
-  生物の出現（occurrence、O-1a/O-1b）は別の縦線: `scripts/b06_build_occurrence.py`
-  （`organism_records`→`occurrence`。`data/db/v2.sqlite` に `observation`/`observation_agg`
-  と同居）/ `scripts/b07_build_occurrence_cube.py`（`occurrence`→キューブ
+  生物の出現（occurrence、O-1a/O-1b/O-2a）は別の縦線。**実行順は
+  b06 → b09 → b07 → b08**（b09/b07 は互いに依存しないので入れ替え可能）:
+  `scripts/b06_build_occurrence.py`（`organism_records`→`occurrence`。
+  `data/db/v2.sqlite` に `observation`/`observation_agg` と同居）/
+  `scripts/b09_build_occurrence_place.py`（O-2a。`occurrence` の座標を
+  `data/processed/nlni_w12_watersheds.geojson`〔W12流域、377面〕へ純 Python の
+  点内包判定〔`scripts/migrate/point_in_polygon.py`〕で直接解決し、記録×place の
+  サテライト `occurrence_place` を作る。同じ `data/db/v2.sqlite` に同居）/
+  `scripts/b07_build_occurrence_cube.py`（`occurrence`→キューブ
   `occurrence_agg`。同じ `data/db/v2.sqlite` に同居）/
-  `scripts/b08_project_occurrence_v1.py`（`occurrence`/`occurrence_agg`→v1形10テーブル:
-  `org_norm`・`org_group_year`・`effort_year`・`species2`・`species_year2`・
-  `species_month`・`mesh_year`・`mesh_all`・`mesh_species`・`species_mesh_year`、出力
-  `data/db/v1_projection_occurrence.sqlite`）の3本。設計・実測は
-  `docs/plans/PHASE_B_OCCURRENCE.md`・`docs/adr/0025-occurrence-fact-and-cube.md`。
+  `scripts/b08_project_occurrence_v1.py`（`occurrence`/`occurrence_agg`/
+  `occurrence_place`→v1形12テーブル: `org_norm`・`org_group_year`・
+  `effort_year`・`species2`・`species_year2`・`species_month`・`mesh_year`・
+  `mesh_all`・`mesh_species`・`species_mesh_year`・`org_watershed_year`・
+  `org_watershed`〔後者2つは O-2a、`occurrence`+`occurrence_place` だけから
+  ——`occurrence_agg` は経由しない〕、出力 `data/db/v1_projection_occurrence.sqlite`）
+  の4本。設計・実測は `docs/plans/PHASE_B_OCCURRENCE.md`・
+  `docs/adr/0025-occurrence-fact-and-cube.md`・
+  `docs/adr/0026-occurrence-place-watershed.md`。
 - watershed の属性（`watershed_meta`）は `scripts/b11_project_place_v1.py`
   （`registry.sqlite` の `place`/`place_watershed`/`place_source_ref` → v1形）。
   出力は `data/db/v1_projection_place.sqlite`（`.gitignore` 済み・捨てて作り直せる）。

@@ -250,12 +250,17 @@ def occurrence_row(
     source_id="gbif_kanagawa_occurrences", region_id="jp-14",
     place_id=DEFAULT_GRID01_PLACE_ID, place_kind="grid01",
     source_row_id=1, red_list_category="",
+    lat=35.505, lon=139.005, scientific_name="Foo bar", is_alien=0,
 ) -> tuple:
     """`_OCCURRENCE_COLUMNS`（≡ `scripts/b06_build_occurrence.py` の
     `_CREATE_OCCURRENCE_SQL`）の並びで `occurrence` の1行を組み立てる
     （/simplify 指摘7: `test_b07_build_occurrence_cube.py` の `_row`・
     `test_b08_occurrence_cube_projections.py` の `_dated_row`/`_occ_row` の
-    3通りに分かれていたものを1つに集約した）。
+    3通りに分かれていたものを1つに集約した。`lat`/`lon`/`scientific_name`/
+    `is_alien` は既定値が従来の固定値のままの追加キーワード引数——O-2a の
+    `occurrence_place`/`org_watershed_year` のテストが座標を変えた複数の記録を
+    要るために足した。以前は `occurrence_row_at()` という別名の関数がほぼ
+    同じ22列タプルを複製していた。/simplify 指摘6）。
 
     `period_start`/`period_end` は b06 が展開済みの形で渡す（'YYYY/YYYY' 区間
     なら実際の年境界。b07 のテストで使う）。`period_start=None,
@@ -264,9 +269,9 @@ def occurrence_row(
     """
     return (
         record_id, "organism_records", source_row_id, source_id, region_id, taxon_id,
-        place_id, place_kind, None, 35.505, 139.005,
+        place_id, place_kind, None, lat, lon,
         "day", period_start, period_end, period_raw,
-        "Foo bar", "フーバー", "SPECIES", red_list_category, 0, "CC-BY", "公開",
+        scientific_name, "フーバー", "SPECIES", red_list_category, is_alien, "CC-BY", "公開",
     )
 
 
@@ -283,6 +288,50 @@ def make_v2_db_with_occurrence(path, rows: list[tuple]) -> None:
         conn.close()
 
 
+# occurrence_place（O-2a、scripts/b09_build_occurrence_place.py）のスキーマは
+# `_CREATE_OCCURRENCE_PLACE_SQL` 1箇所が正（同じ考え方）。
+_OCCURRENCE_PLACE_COLUMNS = ("record_id", "place_kind", "place_id", "method", "built_from", "spec_version")
+
+
+def occurrence_place_row(record_id, place_id, *, place_kind="watershed") -> tuple:
+    return (record_id, place_kind, place_id, "point_in_polygon:even_odd", "テスト用", "テスト用/v1")
+
+
+def add_occurrence_place_table(conn: sqlite3.Connection, rows: list[tuple]) -> None:
+    """開いている接続 `conn`（`occurrence` を持つ v2.sqlite）に
+    `occurrence_place`（O-2a）テーブルを作って `rows` を入れる（コミットは
+    呼び出し側の責務）。`make_v2_db_with_occurrence_and_place()`
+    （ここから接続を開いて呼ぶ）と `test_b08_occurrence_cube_projections.py`
+    の `_add_occurrence_place()`（既存の db に後付けで足す）が共有する
+    （/simplify 指摘7）。
+    """
+    import b09_build_occurrence_place as b09
+
+    conn.execute(b09._CREATE_OCCURRENCE_PLACE_SQL.format(table="occurrence_place"))
+    placeholders = ", ".join("?" for _ in _OCCURRENCE_PLACE_COLUMNS)
+    conn.executemany(f"INSERT INTO occurrence_place VALUES ({placeholders})", rows)
+
+
+def make_v2_db_with_occurrence_and_place(
+    path, occurrence_rows: list[tuple], occurrence_place_rows: list[tuple],
+) -> None:
+    """`occurrence`（L2）と `occurrence_place`（O-2a サテライト）の両方を持つ
+    v2.sqlite 相当を作る（`scripts/b08_project_occurrence_v1.py` の
+    `_build_watershed` は両方を読む）。
+    """
+    import b06_build_occurrence as b06
+
+    conn = sqlite3.connect(f"file:{path}", uri=True)
+    try:
+        conn.execute(b06._CREATE_OCCURRENCE_SQL.format(table="occurrence"))
+        placeholders = ", ".join("?" for _ in _OCCURRENCE_COLUMNS)
+        conn.executemany(f"INSERT INTO occurrence VALUES ({placeholders})", occurrence_rows)
+        add_occurrence_place_table(conn, occurrence_place_rows)
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def make_taxon_group_yaml(path, default_label_ja: str = "未判定") -> None:
     path.write_text(f'default_label_ja: "{default_label_ja}"\nrules: []\n', encoding="utf-8")
 
@@ -294,6 +343,99 @@ _OCCURRENCE_AGG_COLUMNS = (
     "region_id", "source_id", "place_id", "place_kind", "taxon_id", "grain", "period_start", "period_end",
     "n", "n_red_list", "built_from", "spec_version",
 )
+
+
+# O-2a（scripts/b09_build_occurrence_place.py・scripts/b08_project_occurrence_v1.py
+# の org_watershed_year/org_watershed）のテスト用フィクスチャ。
+
+def make_ryuiki_sites_db(path, sites_rows) -> None:
+    """b09 の site→watershed 突き合わせ（`sites.watershed` との比較）用の、
+    `sites` テーブルだけを持つ `ryuiki.sqlite` 相当。`sites_rows` は
+    `(site_id, lat, lon, watershed)` の列。
+    """
+    conn = sqlite3.connect(str(path))
+    try:
+        conn.execute(
+            "CREATE TABLE sites (site_id TEXT PRIMARY KEY, lat REAL, lon REAL, watershed TEXT)"
+        )
+        conn.executemany("INSERT INTO sites VALUES (?,?,?,?)", sites_rows)
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def write_watershed_geojson(path, features) -> None:
+    """`data/processed/nlni_w12_watersheds.geojson` 相当のテスト用フィクスチャ。
+
+    `features` は `(watershed_id, rings)` のリスト（`rings` は
+    `[[[x,y], ...], ...]`——外環+穴のリング列。単純な矩形なら外環1つだけでよい）。
+    すべて `geometry.type='Polygon'` として書く（MultiPolygon が要るテストは
+    直接 `Polygon`/`build_grid` を組み立てる `test_migrate_point_in_polygon.py`
+    側でカバーする）。
+    """
+    import json
+
+    geojson = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": {"watershed_id": wid},
+                "geometry": {"type": "Polygon", "coordinates": rings},
+            }
+            for wid, rings in features
+        ],
+    }
+    path.write_text(json.dumps(geojson), encoding="utf-8")
+
+
+def occurrence_place_declarations_yaml_text(
+    n_watershed_polygons: int, place_id_null_count: int, resolved_count: int,
+) -> str:
+    return (
+        f"n_watershed_polygons:\n  expected_row_count: {n_watershed_polygons}\n  note: テスト用\n"
+        f"place_id_null_count:\n  expected_row_count: {place_id_null_count}\n  note: テスト用\n"
+        f"resolved_count:\n  expected_row_count: {resolved_count}\n  note: テスト用\n"
+    )
+
+
+def make_occurrence_place_declarations_yaml(
+    path, *, n_watershed_polygons: int, place_id_null_count: int, resolved_count: int, text: str | None = None,
+) -> None:
+    path.write_text(
+        text if text is not None else occurrence_place_declarations_yaml_text(
+            n_watershed_polygons, place_id_null_count, resolved_count,
+        ),
+        encoding="utf-8",
+    )
+
+
+def occurrence_watershed_v1_declarations_yaml_text(
+    *, moved: int, ws_to_ws: int, v1_assigned_exact_unassigned: int, v1_unassigned_exact_assigned: int,
+    mixed_buckets: int, keys_changed: int,
+) -> str:
+    return (
+        "memo_moved_records:\n"
+        f"  expected_count: {moved}\n"
+        "  breakdown:\n"
+        f"    ws_to_ws: {ws_to_ws}\n"
+        f"    v1_assigned_exact_unassigned: {v1_assigned_exact_unassigned}\n"
+        f"    v1_unassigned_exact_assigned: {v1_unassigned_exact_assigned}\n"
+        "  note: テスト用\n"
+        "memo_mixed_buckets:\n"
+        f"  expected_count: {mixed_buckets}\n"
+        "  note: テスト用\n"
+        "org_watershed_year_keys_changed_vs_exact:\n"
+        f"  expected_count: {keys_changed}\n"
+        "  note: テスト用\n"
+    )
+
+
+def make_occurrence_watershed_v1_declarations_yaml(path, text: str | None = None, **kwargs) -> None:
+    path.write_text(
+        text if text is not None else occurrence_watershed_v1_declarations_yaml_text(**kwargs),
+        encoding="utf-8",
+    )
 
 
 def make_v2_db_with_occurrence_and_agg(

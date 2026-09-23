@@ -158,18 +158,48 @@ def entries_with_required_keys(entries: dict, required_keys: tuple[str, ...]) ->
     }
 
 
+def non_negative_int_problem(label: str, value) -> str | None:
+    """`value` が非負整数であることを検証する。問題が無ければ `None`、あれば
+    `"{label} が整数でない/負の数（実際: ...）"` の理由文字列を返す（`bool` は
+    `int` のサブクラスだが整数として扱わない）。`label` は呼び出し側が
+    メッセージに出したいフィールドの表示名をそのまま渡す。
+
+    `validate_expected_row_count()`（下記）と
+    `scripts/b08_project_occurrence_v1.py` の宣言値検証（`expected_count`・
+    `breakdown` の各値）が共有する下請け（/simplify 指摘4: 後者は以前
+    「整数でない」だけを見て「負の数」を検査していなかった）。
+    """
+    if isinstance(value, bool) or not isinstance(value, int):
+        return f"{label} が整数でない（実際: {value!r}）"
+    if value < 0:
+        return f"{label} が負の数（実際: {value!r}）"
+    return None
+
+
 def validate_expected_row_count(label: str, spec: dict) -> str | None:
     """`spec["expected_row_count"]` が「非負整数」であることを検証する。問題が
     無ければ `None`、あれば理由の文字列を返す（`.get()` で黙って検査を外さない。
     `scripts/migrate/occurrence_period.py`・`scripts/migrate/source_regions.py`
     が同じ検証を別々に持っていたのを統合した。/simplify 指摘5）。
     """
-    value = spec.get("expected_row_count")
-    if isinstance(value, bool) or not isinstance(value, int):
-        return f"{label}: expected_row_count が整数でない（実際: {value!r}）"
-    if value < 0:
-        return f"{label}: expected_row_count が負の数（実際: {value!r}）"
-    return None
+    return non_negative_int_problem(f"{label}: expected_row_count", spec.get("expected_row_count"))
+
+
+def assert_declared_names_match(raw: dict, expected_names, path) -> None:
+    """宣言 YAML のトップレベルキー集合（`raw`）が `expected_names` と過不足
+    なく一致することを確認する。食い違えば `MigrationError`（`path` を
+    メッセージに含める）。`scripts/b07_build_occurrence_cube.py`・
+    `scripts/b08_project_occurrence_v1.py`・
+    `scripts/b09_build_occurrence_place.py` が同じ約10行を別々に持っていたのを
+    1箇所に集約した（/simplify 指摘3）。
+    """
+    declared_names = frozenset(raw)
+    expected_names = frozenset(expected_names)
+    if declared_names != expected_names:
+        raise MigrationError(
+            f"{path} の宣言名が想定と一致しない（期待: {sorted(expected_names)}、"
+            f"実際: {sorted(declared_names)}）"
+        )
 
 
 def _validate_shape(path, required_keys: tuple[str, ...]) -> None:

@@ -223,6 +223,7 @@ export const GENERATED_CAVEAT_SCOPE: readonly GeneratedCaveatScope[] = [
   { scopeKind: "table", scopeRef: "measurements", caveatKey: "censored", sortOrder: 1, priority: 0 },
   { scopeKind: "table", scopeRef: "measurements", caveatKey: "duplicates", sortOrder: 2, priority: 0 },
   { scopeKind: "table", scopeRef: "observers", caveatKey: "synthetic", sortOrder: 0, priority: 1 },
+  { scopeKind: "table", scopeRef: "occurrence_place", caveatKey: "organismSite", sortOrder: 0, priority: 0 },
   { scopeKind: "table", scopeRef: "org_group_year", caveatKey: "organismSite", sortOrder: 0, priority: 0 },
   { scopeKind: "table", scopeRef: "org_group_year", caveatKey: "effort", sortOrder: 1, priority: 0 },
   { scopeKind: "table", scopeRef: "org_group_year", caveatKey: "regimes", sortOrder: 2, priority: 0 },

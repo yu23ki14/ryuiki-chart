@@ -1,0 +1,53 @@
+# org_watershed_year/org_watershed（scripts/b08_project_occurrence_v1.py）の
+# 機械検証が読む宣言（ADR-0026、O-2a）。v1（web/scripts/build-geo.mjs）は座標を
+# 0.001度に丸めたバケットでメモ化し、「バケットに最初に来た記録（v1 の母集団
+# ＝ period_raw IS NOT NULL AND lat IS NOT NULL の中で source_row_id が最小の
+# 記録）の正確な点内包判定結果」を同じバケットの全記録に配る、走査順依存の
+# 近似をしている。b08 はこの癖を順序に依らない式（バケット代表の
+# occurrence_place〔O-2a、正確な解決〕を引く）で再現する。
+#
+# ここに書く数はすべて、v1 の母集団（バケット代表の選定に使う
+# `MIN(source_row_id)`）が「メモの結果（バケット代表が解決した流域）」と
+# 「正確な結果（各記録自身の occurrence_place の解決）」で異なる記録・
+# バケット・集計キーの実測値。**これらの数は原本のスナップショットに固有**
+# （`source_row_id` は `organism_records.rowid` で、`VACUUM` 等で行が
+# 詰め直されると変わりうる——原本を書き換えたら実測し直して更新すること）。
+# b08 は起動のたびにこれらを実測し、宣言値と食い違えば止める
+# （`scripts/reconcile/expected_diffs.yaml` のようなキー1件ずつの宣言済み差分
+# にはしない——1,091件のキーを列挙してもレビューできるゴミ箱にしかならない。
+# `docs/plans/PHASE_B_OCCURRENCE.md` O-2a節「宣言済み差分にしなかった理由」参照）。
+
+memo_moved_records:
+  expected_count: 11306
+  breakdown:
+    # メモの結果・正確な結果のどちらも流域に解決したが、値（watershed_id）が
+    # 違う記録数。
+    ws_to_ws: 9428
+    # メモは流域に解決したが、その記録自身の正確な結果は NULL（どの流域にも
+    # 入らない）だった記録数。
+    v1_assigned_exact_unassigned: 622
+    # メモは NULL（バケット代表がどの流域にも入らなかった）だが、その記録
+    # 自身の正確な結果は流域に解決した記録数。
+    v1_unassigned_exact_assigned: 1256
+  note: >
+    v1 の母集団（816,856行）のうち、バケット代表のメモ結果と記録自身の
+    occurrence_place の結果が食い違う記録の総数と内訳。
+    ws_to_ws + v1_assigned_exact_unassigned + v1_unassigned_exact_assigned が
+    合計と一致することを b08 が検算する。
+
+memo_mixed_buckets:
+  expected_count: 741
+  note: >
+    v1 の母集団（バケット単位）のうち、バケット内の記録が自分自身の正確な
+    occurrence_place の結果で2種類以上の値（NULL を含む）に分かれるバケット数
+    （= 代表以外の少なくとも1件が代表と違う正確な結果を持つバケット）。
+
+org_watershed_year_keys_changed_vs_exact:
+  expected_count: 1091
+  note: >
+    メモ方式で作った org_watershed_year（(watershed_id, year) キー、
+    n/species_n/alien_n/redlist_n の4値）と、記録自身の正確な
+    occurrence_place だけを使って同じ式で集計し直した「正確な」
+    org_watershed_year 相当を突き合わせ、キーが片方にしか無い、または
+    キーは両方にあるが4値のいずれかが違う、のどちらかに該当する
+    (watershed_id, year) キーの数（10,699キー中）。

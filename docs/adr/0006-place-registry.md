@@ -30,6 +30,21 @@ data_year)`（watershed だけが持つ4列。`place` 本体には `name_ja`/`la
 需要が増えたら（例: 水系単位のロールアップが要る）見直す。詳細・実測は
 `docs/plans/PHASE_B_PLACE_ATTRIBUTES.md`。
 
+**2026-09-23 追記（規約2の改定。O-2a、[ADR-0026](0026-occurrence-place-watershed.md)）**:
+下記「点→place の解決規約」2は「解決の最小単位は3次メッシュ（`mesh3`）。より細かい
+単位に勝手に丸めない。流域・行政区は `place_relation` を辿って導く」としていたが、
+これを grid01→流域の `place_relation`（セル中心規則・多数決等のロールアップ）で
+近似しようとすると著しい精度劣化になることが分かった（実測は ADR-0026「背景」節
+参照）。**ポリゴンで定義される面の place（watershed、将来の municipality/
+town_block）には、座標から点内包判定で直接解決してよい**に改定した。対応は
+記録×place のサテライト（`occurrence_place`、place_kind ごとに高々1面）に持ち、
+解決に使ったポリゴンの版を規約3の `basis` として記録する（`scripts/
+b09_build_occurrence_place.py` で実装。詳細は ADR-0026）。**grid01 経由の
+`place_relation` で近似しない**——`place_relation` は place どうしの関係（地点→
+ゾーン・地点→流域）に限り、ADR-0011 の `roll_up_to` も面→面の関係だけに適用する。
+`place_kind` のコードリストに `grid01` を正式に追加した（下記コードリスト参照。
+`docs/plans/PHASE_B_INTAKE.md` #11/#16 を閉じる）。
+
 ## 背景
 
 現行では「場所」が5種類以上の別々の形で表現されている。
@@ -70,7 +85,10 @@ place_source_ref place_id, source_edition_id, external_key   -- 出典側の識�
 ```
 
 - `place_kind` はコードリスト（ADR-0010 と同じ管理）: `site` / `watershed` / `mesh3` /
-  `municipality` / `town_block` / `zone` / `river_segment` / `prefecture` / `water_service_area`。
+  `municipality` / `town_block` / `zone` / `river_segment` / `prefecture` / `water_service_area` /
+  `grid01`（**2026-09-23追記**: 本アプリ独自の0.01度グリッド。`mesh3`〔標準地域メッシュ〕
+  とは実体が違うため正式に追加した。経緯は `scripts/registry/build_place.py` docstring・
+  `registry/README.md` 参照）。
   **新しい空間単位の追加はコードリストへの1行**であり、テーブル追加ではない。
 - **操作的定義は `definition_ref` で明示する。** `zone` は place の一種として地域ごとに
   定義され、閾値と出典を持つ。「公式区分ではない」がデータに載る。

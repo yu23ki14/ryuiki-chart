@@ -25,11 +25,14 @@ from migrate import common
 
 from .occurrence_fixtures import (
     DEFAULT_GRID01_PLACE_ID,
+    add_occurrence_place_table,
     make_occurrence_cube_declarations_yaml,
     make_occurrence_registry_db,
+    make_occurrence_watershed_v1_declarations_yaml,
     make_taxon_group_yaml,
     make_v2_db_with_occurrence,
     make_v2_db_with_occurrence_and_agg,
+    occurrence_place_row,
     occurrence_row,
 )
 
@@ -102,6 +105,23 @@ def _build_cube_via_b07(tmp_path, occurrence_rows, *, leaf_expected: int, dirnam
     finally:
         conn.close()
     return db_path
+
+
+def _add_occurrence_place(db_path, rows) -> None:
+    """`db_path`（`occurrence` を持つ v2.sqlite）に `occurrence_place`
+    （O-2a）テーブルを追加で作る（`build_all_projections`/
+    `build_watershed_projections` が要求するため）。`rows` は
+    `occurrence_fixtures.occurrence_place_row()` で組み立てたタプル列。
+    テーブルの作り方自体は `occurrence_fixtures.add_occurrence_place_table()`
+    （`make_v2_db_with_occurrence_and_place()` と共有。/simplify 指摘7）に
+    委ねる——ここでは「既存の db を開いて追加する」薄い接続管理だけを持つ。
+    """
+    conn = sqlite3.connect(f"file:{db_path}", uri=True)
+    try:
+        add_occurrence_place_table(conn, rows)
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def _setup_registry(tmp_path, *, taxa=None, default_label_ja="未判定", dirname="registry"):
@@ -466,20 +486,37 @@ def test_missing_cube_db_file_stops_with_friendly_message_before_wiping_output(t
 # 全体の組み立て
 # ===========================================================================
 
-def test_build_all_projections_writes_org_norm_and_nine_more_tables(tmp_path):
-    """`build_all_projections` は `org_norm` と年キー8表・`species_month` を
-    同じファイルに一緒に書く（`main()` が使う経路）。
+def test_build_all_projections_writes_org_norm_and_eleven_more_tables(tmp_path):
+    """`build_all_projections` は `org_norm`・年キー8表・`species_month`・
+    `org_watershed_year`/`org_watershed`（O-2a）を同じファイルに一緒に書く
+    （`main()` が使う経路）。
     """
     rows = [occurrence_row("gbif__1", "common:taxon:gbif.1001", "2020-01-05", "2020-01-05", "2020-01-05")]
     cube_db = _build_cube_via_b07(tmp_path, rows, leaf_expected=0)
+    # 座標はどの流域にも解決しない（place_id=None）——単純な最小フィクスチャ。
+    _add_occurrence_place(cube_db, [occurrence_place_row("gbif__1", None)])
     registry_db, taxon_group_yaml = _setup_registry(tmp_path)
+    watershed_decl = tmp_path / "occurrence_watershed_v1_declarations.yaml"
+    make_occurrence_watershed_v1_declarations_yaml(
+        watershed_decl, moved=0, ws_to_ws=0, v1_assigned_exact_unassigned=0,
+        v1_unassigned_exact_assigned=0, mixed_buckets=0, keys_changed=0,
+    )
     out = tmp_path / "out.sqlite"
-    counts = b08.build_all_projections(cube_db, registry_db, out, taxon_group_yaml)
-    assert set(counts) == {
+    counts, watershed_diagnostics = b08.build_all_projections(
+        cube_db, registry_db, out, taxon_group_yaml, watershed_decl
+    )
+    _table_keys = {
         "org_norm", "org_group_year", "effort_year", "species2", "species_year2",
         "mesh_year", "mesh_all", "mesh_species", "species_mesh_year", "species_month",
+        "org_watershed_year", "org_watershed",
     }
+    # `counts` はテーブル行数だけを持つ（コードレビュー指摘2・12: 統計値
+    # 〔memo_moved_records 等〕を混ぜない）——完全一致で確認する。
+    assert set(counts) == _table_keys
     assert counts["org_norm"] == 1
+    assert counts["org_watershed_year"] == 0  # place_id=None なのでどの流域にも入らない
+    assert counts["org_watershed"] == 0
+    assert watershed_diagnostics["memo_moved_records"] == 0
 
     conn = sqlite3.connect(f"file:{out}?mode=ro", uri=True)
     try:
@@ -488,4 +525,4 @@ def test_build_all_projections_writes_org_norm_and_nine_more_tables(tmp_path):
         }
     finally:
         conn.close()
-    assert tables == set(counts)
+    assert tables == _table_keys
