@@ -330,10 +330,9 @@ species_month,mesh_year,mesh_all,mesh_species,species_mesh_year` は終了コー
 `phase-b/documents`（P-3。`scripts/b10_project_documents_v1.py`）は `doc_series`/
 `doc_series_meta`/`quality_monthly` を通したが、**`observation`/`occurrence` を経由しない**
 別枠であることに注意（実際の入力が `cells.sqlite`/`quality_transitions` であり、そもそも
-`b03`〜`b05` の対象外——ADR-0011 の「行き先」改訂、`docs/plans/PHASE_B_DOCUMENTS.md` 参照）。
-v1 の SQL をそのまま再実行するだけなので `--no-expected-diffs` でも差分0（宣言なし）で
-完全一致し、**このゲートは v1 表の持ち越しを確かめるだけで、v2 の変換の正しさを確かめる
-ものではない**。
+`b03`〜`b05` の対象外）。v1 の SQL をそのまま再実行するだけなので `--no-expected-diffs` でも
+差分0（宣言なし）で完全一致する。このゲートの性格（v1 表の持ち越しを確かめるだけで v2 の
+変換の正しさは確かめない）は `docs/plans/PHASE_B_DOCUMENTS.md` 冒頭参照。
 
 ## 7. 宣言済み差分（`expected_diffs.yaml`）
 

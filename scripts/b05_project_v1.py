@@ -867,7 +867,15 @@ def verify_hourly_daily_rollup(work: sqlite3.Connection, sample_limit: int = 20)
 def build_projections(
     cube_db, registry_db, baseline_json=DEFAULT_BASELINE_JSON
 ) -> dict[str, list[tuple]]:
-    """11テーブルぶんの `(columns, rows)` を返す（ファイルには書かない）。"""
+    """11テーブルぶんの `(columns, rows)` を返す（ファイルには書かない）。
+
+    `meas_clim`/`site_var`/`var_catalog`/`zone_year`/`zone_clim`（`meas_year`/
+    `meas_month` からの再集計）と `sensor_daily`/`rain_daily`/
+    `sensor_hour_month`（L2 の直接集計）が `AVG()`/`SUM()` を使うため、
+    先頭で `common.require_sqlite_version()` を呼ぶ
+    （`scripts/migrate/common.py`。b04・b10 と共有するガード）。
+    """
+    common.require_sqlite_version()
     work = sqlite3.connect(":memory:", uri=True)
     try:
         common.attach_readonly(work, cube_db, "cube")

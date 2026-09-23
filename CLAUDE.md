@@ -83,10 +83,12 @@
 - **`+09:00` 付きの時刻文字列に SQLite の日時関数（`date`/`datetime`/`strftime`）を使わない**
   （UTC に正規化されて日付が1日ずれる。`observation.period_start` は時刻帯なしのローカル時刻で
   持つ。詳細は `docs/adr/0024-local-time-and-time-labels.md`）。
-- **キューブ（`observation_agg`）や `doc_series`（`AVG()` を使う）を作るのは SQLite 3.43
-  以降でなければならない**（`b04_build_cube.py`/`b10_project_documents_v1.py` が起動時に
-  `scripts/migrate/common.py` の `require_sqlite_version()` で検証して止める。`AVG()`/`SUM()`
-  の加算アルゴリズムが3.43で変わり、それより前だと平均値が黙って変わる行がある。見るのは
+- **キューブ（`observation_agg`）・v1形への射影・`doc_series`（どれも `AVG()`/`SUM()` を
+  使う）を作るのは SQLite 3.43 以降でなければならない**（`b04_build_cube.py`/
+  `b05_project_v1.py`/`b10_project_documents_v1.py` それぞれの構築関数の先頭
+  （モジュール読み込み時点ではない）で `scripts/migrate/common.py` の
+  `require_sqlite_version()` を呼んで検証する。加算アルゴリズムが3.43で変わり、
+  それより前だと平均値が黙って変わる行がある。見るのは
   `sqlite3` CLI ではなく Python 同梱の `sqlite3` モジュールのバージョン。詳細は
   `docs/adr/0021-observation-grain-and-cube-key.md`）。
 

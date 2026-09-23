@@ -25,11 +25,9 @@ ADR-0011「33テーブルの行き先」表は当初この3テーブルを `cube
   `target_id LIKE 'SYN-MEAS-%'` の合成データ）。place も variable も無い。
 
 そのため v2 に対応するファクトを新設せず、**cells.sqlite/ryuiki.sqlite を
-直接 ATTACH して v1 と同じ SQL を再実行する射影**にする。このゲートは
-「v1 表をそのまま持ち越せる（＝原本が変わっていない）」ことを確かめるだけで、
-v2 変換の正しさを確かめるものではない（ADR-0017 原則4「デモの合成分は
-当面 L2 の一部として扱う」と同じ扱い。org_norm や meas_year のような
-`observation`/`occurrence` 経由の射影とは性格が違う）。
+直接 ATTACH して v1 と同じ SQL を再実行する射影**にする（このゲートの性格
+——v1 表の持ち越しを確かめるだけで v2 変換の正しさは確かめない——は
+`docs/plans/PHASE_B_DOCUMENTS.md` 冒頭参照）。
 
 ## SQL は v1（`web/scripts/build-derived.mjs:272-323`）と一字一句同じ
 
@@ -45,52 +43,24 @@ v2 変換の正しさを確かめるものではない（ADR-0017 原則4「デ�
    してあるので、SQL 文字列は v1 からコピーしただけで一字一句変えていない
    （`web/scripts/build-derived.mjs` の該当行を参照すれば照合できる）。
 
-## v1 の癖として温存し、記録するもの（宣言済み差分ではない。同じ SQL で
-完全再現するので b02 の差分としては出ない。実測は
-`docs/plans/PHASE_B_DOCUMENTS.md` 参照）
+## v1 の癖として温存するもの
 
-- **`row_key` に `|` が2個以上あると `label` が誤る**: `label` の式は
-  「最初の `|` より後ろから、末尾の `|` の直後まで」を切り出すバグを持つ
-  （意図は「最後の `|` より後ろ（末尾トークン）」だが実装が違う）。実測:
-  `cells`（集約前）で328行、`doc_series`（集約後）で289行が該当し、うち7行は
-  `label` が `|` で始まる（例: `'山北町|三保|入猟者数'` → `'保|入猟者数'`）。
-- **`doc_series_meta.n_warnings` は doc 単位の相関サブクエリ**（`table_id`/
-  `row_key` で絞らない）: 同じ `doc_id` の全 `doc_series_meta` 行に、その文書
-  全体の `notes.blocks_timeseries=1` 件数がそのまま重複して入る。実測:
-  13文書・378行（`doc_series_meta` 470行中）が対象。
-- **`doc_series_meta` の `HAVING n_years >= 3`**: 画面側（`web/src/lib/
-  queries.ts` の `docSeriesList`）は既定 `minYears=4` で読むため、
-  `n_years==3` の行（実測36行）はテーブルには残るが既定表示では見えない。
-- **別年の値が1つの `fiscal_year` に潰れて平均される**: `num` の `GROUP BY
-  doc_id, table_id, row_key, fiscal_year` に `col_key` が入っていない
-  （仕組みそのもの）。`col_key` に複数年度が連結された出典（例
-  `'H25 H26 H27 H28 H29 H30'`）が単一の `fiscal_year` に丸められている場合、
-  `AVG(v)` が本来別々の年の値を平均する。実測: `n_cells > 1` の344グループ中
-  336グループで実際に値が異なる（`choju_higai_gaiyou_2019`/`p1_t4` で確認済み）。
-- **`doc_series.page_no`/`unit` は `GROUP BY` に無い裸の列**（SQLite の拡張。
-  「グループ内の任意の1行の値」が入る——標準SQLならエラーになる書き方）。
-  実測: 1グループ内で `page_no`・`unit` が2値以上になる組み合わせは0件
-  （`data/db/cells.sqlite` 実データで確認）。**いま値が一意に決まって見える
-  のはデータの性質であって、SQL がそれを保証しているわけではない**（将来
-  1グループに複数の `page_no`/`unit` が混在するデータが入れば、v1・この
-  射影のどちらも「どの値が採用されるか」は sqlite の内部実装（走査順）に
-  依存する）。
+宣言済み差分ではない（同じ SQL で完全再現するので b02 の差分としては出ない）。
+label のバグ・`n_warnings` の相関サブクエリ・`HAVING n_years >= 3` の境界・
+fiscal_year の潰れ・`page_no`/`unit` の裸列の5つ。実測は
+`docs/plans/PHASE_B_DOCUMENTS.md` §3 にまとめてある（ここでは繰り返さない）。
 
 ## 3値の語彙（暫定/検証済/公開済）の正
 
 `quality_monthly` の CASE 式が参照する3値の正は `web/src/lib/quality.ts` の
 `QUALITY_STAGES`（このコメントは参照だけ。ここに新しい宣言ファイルは作らない）。
 
-## SQLite の版を守る（b04 と共有。コードレビュー指摘で発覚）
+## SQLite の版を守る
 
-`doc_series` は `AVG()` を使う。SQLite 3.43 未満では `AVG()`/`SUM()` の加算が
-Kahan-Babuška-Neumaier ではなく素朴な左→右加算に落ち、平均値が変わる
-——`scripts/b04_build_cube.py` と同じ理由（そちらのモジュール docstring
-「SQLite の版を守る」参照）。実測: この環境の `sqlite3` **CLI**（3.37.2）で
-`doc_series` を作ると10グループで最下位ビットがずれ、`b02_derived_compare.py`
-が不一致2・終了コード1になる。`common.require_sqlite_version()`
-（`scripts/migrate/common.py`。元は b04 だけに書かれていたヘルパ）を
-モジュール読み込み時点で呼び、満たさなければ `SystemExit` で止まる。
+`doc_series` は `AVG()` を使う。`build_documents_projection()` の先頭で
+`common.require_sqlite_version()`（`scripts/migrate/common.py`。b04・b05 と
+共有するガード。なぜモジュール読み込み時点で呼ばないかはそちらの docstring
+参照）を呼ぶ。実測は `docs/plans/PHASE_B_DOCUMENTS.md` §2 参照。
 """
 from __future__ import annotations
 
@@ -102,8 +72,6 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from migrate import common  # noqa: E402
-
-common.require_sqlite_version()
 
 DEFAULT_CELLS_DB = ROOT / "data" / "db" / "cells.sqlite"
 DEFAULT_RYUIKI_DB = ROOT / "data" / "db" / "ryuiki.sqlite"
@@ -172,7 +140,11 @@ def build_documents_projection(cells_db, ryuiki_db, out_path) -> dict[str, int]:
     書き終えたら3表とも0行でないことを確認する（`MigrationError`）。入力の
     スキーマ・運用が変わって `num`（`WHERE`）が1行も拾わなくなったとき、
     0行・終了コード0で黙って通るのを防ぐ（コードレビュー指摘）。
+
+    `AVG()` を実行する前に `common.require_sqlite_version()` を呼ぶ
+    （モジュール docstring「SQLite の版を守る」参照）。
     """
+    common.require_sqlite_version()
     conn = common.fresh_sqlite(out_path)
     try:
         common.attach_readonly(conn, ryuiki_db, "r")

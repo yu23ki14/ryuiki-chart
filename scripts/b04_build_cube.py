@@ -118,18 +118,13 @@ ADR-0011 が定義するキューブの列は `unit_id` までで、`unit_raw`�
 ## SQLite の版を守る（アドバイザー指摘・オーナー採用）
 
 **平均は SQLite の `AVG()` で計算する。pandas/numpy/Python の素朴な加算で計算し
-直さない。** SQLite 3.43 以降は `AVG()`/`SUM()` に Kahan-Babuška-Neumaier 加算
-（丸め誤差を補正しながら足す）を使うが、それより前のバージョンは素朴な
-左→右加算に落ちる。アドバイザーの実測では、素朴な加算だと
-`meas_year(kind='daily')` の3,176/15,836グループ（20%）で平均値がベースライン
-と食い違う。この環境の `sqlite3` **CLI** は 3.37.2（条件を満たさない）だが、
-b04 が実際に使うのは **Python 同梱の `sqlite3` モジュール**（3.49.1、条件を
-満たす）——モジュール読み込み時点で `common.require_sqlite_version()`
-（`scripts/migrate/common.py`。`sqlite3.sqlite_version_info >= (3, 43, 0)` を
-検証し、満たさなければ `raise SystemExit` で止まる。`assert` にしない理由は
-そちらの docstring 参照）を呼ぶ。**このチェックは `scripts/b10_project_documents_v1.py`
-（`doc_series` の `AVG()`）と共有**（同じ理由で同じ事故が実データで再現したため
-切り出した）。`observation_agg.built_from` にも版を記録する。
+直さない。** SQLite 3.43 未満だと `AVG()`/`SUM()` の加算アルゴリズムが違い、
+平均値が黙って変わる行がある（実測は `docs/plans/PHASE_B_DOCUMENTS.md` §2
+参照）。`build_cube()` の先頭で `common.require_sqlite_version()`
+（`scripts/migrate/common.py`。b05・`scripts/b10_project_documents_v1.py`
+と共有するガード——切り出した理由・**なぜモジュール読み込み時点で呼ばないか**
+はそちらの docstring 参照）を呼ぶ。`observation_agg.built_from` にも
+実際に使った SQLite の版を記録する。
 """
 from __future__ import annotations
 
@@ -145,14 +140,6 @@ from migrate import censoring, common  # noqa: E402
 
 DEFAULT_DB = ROOT / "data" / "db" / "v2.sqlite"
 DEFAULT_REGISTRY_DB = ROOT / "data" / "db" / "registry.sqlite"
-
-# SQLite 3.43 未満では AVG()/SUM() の加算が素朴な左→右加算に落ち、平均が黙って
-# 壊れる（上のモジュール docstring「SQLite の版を守る」参照）。黙って進まず、
-# モジュール読み込み時点で止める（`common.require_sqlite_version` は `assert`
-# ではなく明示的な `raise SystemExit` にしている——レビュー指摘: `python -O`/
-# `PYTHONOPTIMIZE=1` では `assert` が丸ごと消え、チェックそのものが消えてよい
-# 理由が無い）。
-common.require_sqlite_version()
 
 # `observation_agg.built_from` の既定値。SQLite の版を埋め込み、後から
 # 「どの版の SQLite で AVG() を計算したキューブか」を追跡できるようにする。
@@ -415,7 +402,11 @@ def build_cube(
     ——検証（次元キーの一意性）まで全部通ってから本番名に差し替える。
 
     戻り値はレポート用の統計（経路ごとの行数）。
+
+    `AVG()`/`SUM()` を実行する前に `common.require_sqlite_version()` を呼ぶ
+    （モジュール docstring「SQLite の版を守る」参照）。
     """
+    common.require_sqlite_version()
     params = (built_from, spec_version)
     common.attach_readonly(conn, registry_db, "reg")
     conn.execute(_CREATE_OBS_ZERO_VIEW_SQL)
@@ -501,6 +492,10 @@ def main() -> None:
     registry_db = common.resolve_registry_db(args.registry_db, DEFAULT_REGISTRY_DB)
 
     db_path = pathlib.Path(args.out)
+    # `--out` を `sqlite3.connect` で直接開く（`fresh_sqlite` を経由しない）ため、
+    # ここで個別に検査する（`scripts/migrate/common.py` の
+    # `reject_protected_source_db` の docstring 参照）。
+    common.reject_protected_source_db(db_path)
     if not db_path.exists():
         sys.exit(
             f"{db_path} が無い。先に `.venv/bin/python3 scripts/b03_build_observation.py` を実行すること。"

@@ -323,3 +323,25 @@ def test_load_destinations_table_names_match_derived_baseline_exactly():
     flat = common.load_destinations(_DESTINATIONS_YAML)
     baseline = json.loads(_DERIVED_BASELINE_JSON.read_text(encoding="utf-8"))
     assert set(flat) == set(baseline["tables"])
+
+
+def test_load_destinations_category_counts_match_the_declared_breakdown():
+    """テーブル名の集合一致（前テスト）だけでは「正しい名前が誤ったカテゴリに
+    入っている」事故を検出できない（集合演算はカテゴリをまたいで同じテーブル
+    名を数える）。カテゴリごとの件数をヘッダコメントの内訳
+    （12+11+1+2+3+1+2+1=33）と突き合わせる（コードレビュー指摘）。
+    ラベル文言の一致までは見ない（YAML のヘッダコメントに明記のとおり、
+    ADR-0011 の Markdown 本文との一致は対象外）。
+    """
+    raw = common.load_yaml(_DESTINATIONS_YAML)
+    counts = {category: len(spec.get("tables", [])) for category, spec in raw.items()}
+    assert counts == {
+        "cube_observation": 12,
+        "cube_occurrence": 11,
+        "variable_registry": 1,
+        "place_attribute": 2,
+        "taxon_registry": 3,
+        "fact_body": 1,
+        "document_provenance": 2,
+        "quality_workflow_log": 1,
+    }

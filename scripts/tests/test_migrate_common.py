@@ -3,11 +3,16 @@
 `scripts/tests/test_common.py` は `scripts/reconcile/common.py`（同名だが別モジュール）の
 テストなので、`migrate/common.py` 用にこのファイルを分けている。
 """
+import pathlib
 import sqlite3
+import subprocess
+import sys
 
 import pytest
 
 from migrate import common
+
+_ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 
 class _FailOnSQL:
@@ -126,3 +131,65 @@ def test_fresh_sqlite_still_works_for_an_ordinary_output_path(tmp_path, monkeypa
     conn.commit()
     conn.close()
     assert out.exists()
+
+
+def test_reject_protected_source_db_is_public_and_usable_standalone(tmp_path, monkeypatch):
+    """`fresh_sqlite` を経由しないスクリプト（b03/b04 は `--out` を
+    `sqlite3.connect` で直接開く）でも同じ検査を呼べるように、
+    `reject_protected_source_db` は公開名で単体呼び出しできる
+    （コードレビュー指摘: `fresh_sqlite` 経由だけでは b03/b04 の `--out` が
+    保護されていなかった）。
+    """
+    monkeypatch.setattr(common, "ROOT", tmp_path)
+    real_db_dir = tmp_path / "data" / "db"
+    real_db_dir.mkdir(parents=True)
+    protected = real_db_dir / "cells.sqlite"
+    protected.write_bytes(b"stand-in")
+
+    with pytest.raises(common.MigrationError, match="cells.sqlite"):
+        common.reject_protected_source_db(protected)
+
+    # 無関係な出力パスは通る（何も起きない）。
+    common.reject_protected_source_db(tmp_path / "data" / "db" / "v2.sqlite")
+
+
+def test_require_sqlite_version_passes_when_version_is_new_enough():
+    """`min_version` を実行環境の実際の SQLite より確実に低くすれば、
+    ホストの SQLite バージョンに関係なく必ず通る（環境依存にしない）。"""
+    common.require_sqlite_version(min_version=(0, 0, 0))  # 例外を投げなければ良い
+
+
+def test_require_sqlite_version_raises_when_too_old(monkeypatch):
+    monkeypatch.setattr(common.sqlite3, "sqlite_version_info", (3, 42, 0))
+    monkeypatch.setattr(common.sqlite3, "sqlite_version", "3.42.0")
+    with pytest.raises(SystemExit, match="古すぎる"):
+        common.require_sqlite_version()
+
+
+def test_require_sqlite_version_raises_systemexit_even_under_dash_o():
+    """`assert` ではなく明示的な `SystemExit` であることを、`python -O`
+    （`assert` を丸ごと消すモード）下でも実際に止まることで確認する。
+    `assert` のままなら `-O` で消え、古い SQLite（`AVG()`/`SUM()` の加算
+    アルゴリズムが変わり平均値が黙って変わる版）を検出できなくなる
+    （コードレビュー指摘: 以前は `import` 時点でこの確認をしていたが、それだと
+    古い環境で `import` した瞬間に `pytest` の収集自体が止まる事故になるため、
+    ここでは `common.require_sqlite_version()` の**呼び出し**だけを `-O` 下で
+    確認する——`import migrate.common` 自体は版を問わず常に安全）。
+    """
+    script = (
+        "import sys\n"
+        "sys.path.insert(0, 'scripts')\n"
+        "import sqlite3\n"
+        "sqlite3.sqlite_version_info = (3, 42, 0)\n"
+        "sqlite3.sqlite_version = '3.42.0'\n"
+        "from migrate import common\n"
+        "common.require_sqlite_version()\n"
+        "print('UNREACHABLE')\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-O", "-c", script],
+        capture_output=True, text=True, cwd=str(_ROOT),
+    )
+    assert result.returncode != 0
+    assert "UNREACHABLE" not in result.stdout
+    assert "古すぎる" in result.stderr

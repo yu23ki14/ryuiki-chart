@@ -15,11 +15,10 @@
 #      33テーブルと完全一致（名前の打ち間違い・書き漏らしが1対1で相殺して
 #      1の合計チェックをすり抜ける事故を防ぐ）。
 #
-# 2026-09-22 改訂（P-3、docs/plans/PHASE_B_DOCUMENTS.md）: doc_series/
-# quality_monthly は cube_observation ではなかった（実際の入力は observation
-# ではなく cells.sqlite/quality_transitions）。document_provenance/
-# quality_workflow_log の2カテゴリを新設し、旧 doc_meta（doc_series_meta の
-# みを持っていた）は document_provenance に吸収した。
+# 2026-09-22 改訂（P-3）: doc_series/quality_monthly を cube_observation から
+# document_provenance/quality_workflow_log（新設）へ移した。旧 doc_meta は
+# document_provenance に吸収。理由は docs/adr/0011-aggregation-cube.md の
+# 2026-09-22追記・docs/plans/PHASE_B_DOCUMENTS.md §1 参照（ここでは繰り返さない）。
 
 cube_observation:
   label_ja: "キューブ（入力 observation）"

@@ -21,6 +21,15 @@ from .migrate_fixtures import (
     make_time_label_conventions_yaml,
 )
 
+# b04/b05 は AVG()/SUM() を使うため `common.require_sqlite_version()` で
+# 古い SQLite を拒む（`scripts/migrate/common.py` 参照）。この版のガード自体の
+# 単体テストは `scripts/tests/test_migrate_common.py`。ここでは環境の SQLite が
+# 実際に古いとき、意味の無い失敗の山を作らずスキップする。
+pytestmark = pytest.mark.skipif(
+    sqlite3.sqlite_version_info < common.MIN_SQLITE_VERSION,
+    reason=f"SQLite {common.MIN_SQLITE_VERSION} 未満（実際: {sqlite3.sqlite_version}）",
+)
+
 
 def _run_b03_b04(measurements_db, registry_db, tmp_path, sensor_rows=None):
     """b03（`observation` 生成）→ b04（キューブ）を通しで実行し、b05 の入力に

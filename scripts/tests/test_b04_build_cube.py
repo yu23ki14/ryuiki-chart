@@ -4,8 +4,6 @@
 `_CREATE_OBSERVATION_SQL` をそのまま使う（スキーマの正を1箇所に保つ）。
 """
 import sqlite3
-import subprocess
-import sys
 
 import pytest
 
@@ -14,6 +12,15 @@ import b04_build_cube as b04
 from migrate import common
 
 from .migrate_fixtures import make_registry_db, make_v2_db_with_observation
+
+# b04 は AVG()/SUM() を使うため `common.require_sqlite_version()` で古い
+# SQLite を拒む（`scripts/migrate/common.py` 参照）。この版のガード自体の
+# 単体テストは `scripts/tests/test_migrate_common.py`。ここでは環境の SQLite
+# が実際に古いとき、意味の無い失敗の山を作らずスキップする。
+pytestmark = pytest.mark.skipif(
+    sqlite3.sqlite_version_info < common.MIN_SQLITE_VERSION,
+    reason=f"SQLite {common.MIN_SQLITE_VERSION} 未満（実際: {sqlite3.sqlite_version}）",
+)
 
 
 def _row(
@@ -393,25 +400,25 @@ def test_a1_running_twice_successfully_does_not_collide_on_index_name(tmp_path):
     assert stats["n_total"] > 0
 
 
-def test_min_sqlite_version_guard_is_systemexit_not_assert(tmp_path):
-    """SQLite バージョンガードが `assert` ではなく明示的な `SystemExit`
-    であることを、`python -O`（`assert` を丸ごと消すモード）下でも実際に
-    止まることで確認する。`assert` のままなら `-O` で消え、古い SQLite
-    （`meas_year(kind='daily')` の約20%が黙って変わる版）を検出できなくなる。
+def test_build_cube_calls_the_shared_sqlite_version_guard(tmp_path, monkeypatch):
+    """`build_cube()` の先頭で `common.require_sqlite_version()`（b04・b05・b10
+    が共有するガード）を呼ぶことを確認する（コードレビュー指摘: 以前はこの
+    ガードをモジュール読み込み時点で呼んでいたため、古い SQLite の環境では
+    `import b04_build_cube` した瞬間に `SystemExit` が飛び、`pytest` の収集
+    自体が止まっていた——守りたい状況でこそ壊れる形だった。関数の先頭に
+    移したことで `import` は安全になり、実行時にだけ止まる。
+    `-O` での assert 無効化への対処自体は `require_sqlite_version` 側のテスト
+    ——`scripts/tests/test_migrate_common.py`
+    ::test_require_sqlite_version_raises_systemexit_even_under_dash_o
+    ——で確認する）。
     """
-    script = (
-        "import sys\n"
-        "sys.path.insert(0, 'scripts')\n"
-        "import sqlite3\n"
-        "sqlite3.sqlite_version_info = (3, 42, 0)\n"
-        "sqlite3.sqlite_version = '3.42.0'\n"
-        "import b04_build_cube\n"
-        "print('UNREACHABLE')\n"
-    )
-    result = subprocess.run(
-        [sys.executable, "-O", "-c", script],
-        capture_output=True, text=True, cwd=str(b04.ROOT),
-    )
-    assert result.returncode != 0
-    assert "UNREACHABLE" not in result.stdout
-    assert "古すぎる" in result.stderr
+    monkeypatch.setattr(common.sqlite3, "sqlite_version_info", (3, 42, 0))
+    rows = [_row("measurements", "m1", "2020-01-01", "2020-01-01", 1.0, "1.0", "none")]
+    db_path = tmp_path / "v2.sqlite"
+    registry_db = _registry_db(tmp_path)
+    conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
+    try:
+        with pytest.raises(SystemExit, match="古すぎる"):
+            b04.build_cube(conn, registry_db)
+    finally:
+        conn.close()

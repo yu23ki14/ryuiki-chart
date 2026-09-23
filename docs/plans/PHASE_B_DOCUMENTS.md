@@ -72,15 +72,29 @@ SQL 文字列は `build-derived.mjs` の該当行からコピーしただけで�
 **書き込み前後のガード（コードレビュー対応、3表の値・SQLは1ビットも変えない）**:
 
 - **SQLite の版**: `doc_series` は `AVG()` を使うため、`scripts/migrate/common.py` の
-  `require_sqlite_version()`（元は `b04_build_cube.py` だけに書かれていたヘルパを共通化した）
-  をモジュール読み込み時点で呼ぶ。実測: この環境の `sqlite3` CLI（3.37.2）で `doc_series` を
-  作ると10グループで最下位ビットがずれ、`b02` が不一致2・終了コード1になる——Python 同梱の
-  `sqlite3`（3.49.1）なら起きない。ガードは古い版で**止める**だけで、値のずれた出力を作らない。
+  `require_sqlite_version()`（元は `b04_build_cube.py` だけに書かれていたヘルパを、
+  `b05_project_v1.py`・`b10_project_documents_v1.py` も共有する形に切り出した）を、
+  各スクリプトの**構築関数の先頭**（`build_cube`/`build_projections`/
+  `build_documents_projection`。**モジュール読み込み時点ではない**）で呼ぶ。
+  実測: この環境の `sqlite3` CLI（3.37.2）で `doc_series` を作ると10グループで
+  最下位ビットがずれ、`b02` が不一致2・終了コード1になる——Python 同梱の `sqlite3`
+  （3.49.1）なら起きない。ガードは古い版で**止める**だけで、値のずれた出力を作らない。
+  呼ぶ場所を関数の先頭にしたのは、モジュール読み込み時点（トップレベル）で呼んでいた
+  当初の実装が別の事故を起こしたため——**古い SQLite の環境で `pytest` を実行すると、
+  b04/b05/b10 を `import` した時点で `SystemExit` が飛び、`pytest` の収集自体が
+  止まってスイート全体が動かなくなった**（守りたい状況（古い環境）でこそ壊れる形。
+  コードレビュー指摘。実測: 収集が `Interrupted: N errors during collection` で
+  中断し終了コード2。関数の先頭に移してからは、同じ古い環境で `pytest` を実行しても
+  収集は止まらず、対象の3テストファイルだけが `pytest.mark.skipif` で適切にスキップ
+  され、無関係な残りは全緑のまま——実測で確認済み）。
 - **`fresh_sqlite` が原本を消せる事故の防止**: `--out` に `data/db/ryuiki.sqlite`/
   `cells.sqlite`/`derived.sqlite` そのもの（symlink 越しも含む。`os.path.realpath` で解決）
   を指すパスを渡すと、`fresh_sqlite` が既存ファイルを `unlink()` してから書き込みに失敗する
   ——100MB超で再生成できない原本が消える。`scripts/migrate/common.py` の `fresh_sqlite` 自体
-  （b10 だけでなく b03〜b05 も使う共通関数）に拒否ロジックを入れた。
+  （b10 だけでなく b03〜b05 も使う共通関数）に拒否ロジックを入れた。**`b03`/`b04` は
+  `--out` を `sqlite3.connect` で直接開き `fresh_sqlite` を経由しないため、この保護が
+  届かない**（コードレビュー指摘）。そのため `reject_protected_source_db()` を公開名にし、
+  b03/b04 それぞれの `main()` が引数パース直後に個別に呼ぶ形にした。
 - **0行のまま黙って通らない**: 3表のどれかが0行になったら `MigrationError` で止める。
   `cells.sqlite`/`ryuiki.sqlite` のスキーマ・運用が変わって `WHERE` 句が1行も拾わなくなった
   とき、0行・終了コード0で黙って通るのを防ぐ。
@@ -128,40 +142,46 @@ SQL 文字列は `build-derived.mjs` の該当行からコピーしただけで�
 
 1. **b02（`--candidate data/db/v1_projection_documents.sqlite --tables
    doc_series,doc_series_meta,quality_monthly`）の終了コードそのものが 0、一致3。**
-   実測（2026-09-22、実データ）:
+   実測:
    ```
    一致: 3 / 宣言済み差分のみ: 0 / 不一致: 0
    EXIT_CODE=0
    ```
    `--no-expected-diffs`（宣言を一切読まない）でも同じ結果——v1 と同じ SQL をそのまま
-   再実行しているので、そもそも宣言する差分が無い。
-   コードレビュー対応（§2「書き込み前後のガード」）の前後で `content_hash`/`PRAGMA
-   table_info` が3表とも1ビットも変わらないことを実測で確認した（対応前のビルド結果を
-   一時ファイルに退避し、対応後のビルド結果と `scripts/reconcile/common.compute_fingerprint`
-   で直接突き合わせた）。
-   SQLite版ガードが実際に効くことも実測で確認した: 古い `sqlite3`（システムの `python3`、
-   3.10.12/SQLite 3.37.2）で `b10` を実行すると、出力ファイルを一切作らずに終了コード1で
-   止まる（`sqlite3（Python 同梱、バージョン 3.37.2）が古すぎる。` というメッセージのみ）。
-   `.venv/bin/python3`（3.13.7/SQLite 3.49.1）では正常に完了する。
-2. **既存のゲートが変わらない。** main の `b03`→`b05`（`scripts/r01_build_registry.py` →
-   `b03_build_observation.py` → `b04_build_cube.py` → `b05_project_v1.py`、11テーブル）を
-   このブランチのワークツリーで再実行し、b02 で突合した:
+   再実行しているので、そもそも宣言する差分が無い。コードレビュー対応（§2「書き込み
+   前後のガード」）の前後で `content_hash`/`PRAGMA table_info` が3表とも1ビットも
+   変わらないことを実測で確認した（対応前のビルド結果を一時ファイルに退避し、対応後の
+   ビルド結果と `scripts/reconcile/common.compute_fingerprint` で直接突き合わせた）。
+2. **b05 の実測（SQLite版ガードを追加した影響が無いこと）。** b03→b04→b05 を再実行し、
+   ガード追加前に退避しておいた `v1_projection.sqlite` と `content_hash` で11表すべて
+   突き合わせて1ビットも変わらないことを確認、続けて b02 で突合:
    ```
    一致: 5 / 宣言済み差分のみ: 6 / 不一致: 0
    適用した宣言済み差分: 18件
    EXIT_CODE=0
    ```
    `phase-b/zone-slice`（main）時点の実測と同じ内訳（一致5・宣言済み差分のみ6）。
-   `b10` は `b03`/`b04`/`b05`/`scripts/reconcile/expected_diffs.yaml` のどれにも触れていない。
-3. **pytest 全緑。** 実測: 262件全緑（`scripts/tests/test_b10_project_documents_v1.py` 13件、
-   `scripts/tests/test_common.py` の `adr0011_destinations.yaml` 検証3件、
-   `scripts/tests/test_migrate_common.py` の `fresh_sqlite` 原本保護2件を含む）。
+   `b10`/このコードレビュー対応は `b03`/`b04`/`scripts/reconcile/expected_diffs.yaml`
+   のどれにも触れていない。
+3. **SQLite版ガードの実測（コードレビュー指摘・修正後）。** 古い `sqlite3`
+   （システムの `python3`、3.10.12/SQLite 3.37.2）で:
+   - `pytest` 実行 → **収集は中断せず**、`b04`/`b05`/`b10` を使う3テストファイル
+     （58件）が `pytest.mark.skipif` で適切にスキップされ、残り209件は**全緑**
+     （`209 passed, 58 skipped`）。ガードをモジュール読み込み時点から各構築関数の
+     先頭に移す前は、`import` した瞬間に `SystemExit` が飛んで収集自体が止まって
+     いた（`Interrupted: N errors during collection`・終了コード2）。
+   - `b10_project_documents_v1.py`/`b05_project_v1.py` を直接実行 → 出力ファイルを
+     一切作らず終了コード1で止まる（`sqlite3（Python 同梱、バージョン 3.37.2）が
+     古すぎる。` というメッセージのみ）。
+   `.venv/bin/python3`（3.13.7/SQLite 3.49.1）では `pytest` は267件全緑、
+   `b04`/`b05`/`b10` は正常に完了する。
+4. **pytest 全緑。** 実測（`.venv/bin/python3`）: 267件全緑。
    `documents_fixtures.py`（自作の小さな `cells`/`ryuiki` フィクスチャ sqlite）だけで完結し、
    原本を要さない——一時ディレクトリへの `git clone` でも同じ集合が緑になる（原本DB非依存の
    フィクスチャ方式は `scripts/tests/migrate_fixtures.py` と同じ考え方）。
    CI（`.github/workflows/ci.yml` の `reconcile` ジョブ、`pytest` を無条件に実行）が
    新しいテストをそのまま拾う。
-4. **実行時間。** `b10_project_documents_v1.py`: 0.3秒（4,099行を書き出し）。
+5. **実行時間。** `b10_project_documents_v1.py`: 0.3秒（4,099行を書き出し）。
    `b02_derived_compare.py --tables doc_series,doc_series_meta,quality_monthly`: 1秒未満。
    参考: 同じワークツリーでの `r01_build_registry.py`（registry.sqlite 再構築、約20秒）→
    `b03_build_observation.py`（20.4秒）→ `b04_build_cube.py`（37.0秒）→

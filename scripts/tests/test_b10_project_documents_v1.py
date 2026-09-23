@@ -30,13 +30,24 @@
 import json
 import pathlib
 import sqlite3
+from types import SimpleNamespace
 
 import pytest
 
 import b10_project_documents_v1 as b10
 from migrate import common as migrate_common
+from reconcile import common as reconcile_common
 
 from .documents_fixtures import make_cells_db, make_ryuiki_db
+
+# b10 は AVG() を使うため require_sqlite_version() で古い SQLite を拒む
+# （scripts/migrate/common.py 参照）。この版のガード自体の単体テストは
+# scripts/tests/test_migrate_common.py。ここでは環境の SQLite が実際に古い
+# とき、意味の無い失敗の山を作らずスキップする。
+pytestmark = pytest.mark.skipif(
+    sqlite3.sqlite_version_info < migrate_common.MIN_SQLITE_VERSION,
+    reason=f"SQLite {migrate_common.MIN_SQLITE_VERSION} 未満（実際: {sqlite3.sqlite_version}）",
+)
 
 _REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 _DERIVED_BASELINE_JSON = _REPO_ROOT / "reports" / "derived_baseline.json"
@@ -125,30 +136,38 @@ def _read(out_path, table, columns, order_by):
         conn.close()
 
 
-def test_build_returns_row_counts_matching_v1_grouping(tmp_path):
+@pytest.fixture()
+def built(tmp_path):
+    """既定フィクスチャ（`_CELLS`/`_DOCUMENTS`/`_NOTES`/`_QUALITY_TRANSITIONS`）
+    から3表を作り、`.cells_db`/`.ryuiki_db`/`.out`/`.counts` を持つオブジェクトを
+    返す（`_setup` → 出力パス決定 → `build_documents_projection` の3行が
+    ほとんどのテストでコピペになっていたのをまとめた）。
+
+    カスタムな入力が要るテスト（再構築の確認・0行検査）はこのフィクスチャを
+    使わず、`_setup`/`build_documents_projection` を直接呼ぶ。
+    """
     cells_db, ryuiki_db = _setup(tmp_path)
     out = tmp_path / "v1_projection_documents.sqlite"
     counts = b10.build_documents_projection(cells_db, ryuiki_db, out)
+    return SimpleNamespace(cells_db=cells_db, ryuiki_db=ryuiki_db, out=out, counts=counts)
 
+
+def test_build_returns_row_counts_matching_v1_grouping(built):
     # rowA(3年) + rowB(2年) + 山北町...(3年) + rowC(3年) + AAA|BBB(3年) = 14
-    assert counts["doc_series"] == 14
+    assert built.counts["doc_series"] == 14
     # HAVING n_years>=3 で rowB(2年)だけ落ちる: rowA/山北町/rowC/AAA|BBB の4件
-    assert counts["doc_series_meta"] == 4
+    assert built.counts["doc_series_meta"] == 4
     # 月2つ（2024-01, 2024-02）
-    assert counts["quality_monthly"] == 2
+    assert built.counts["quality_monthly"] == 2
 
 
-def test_doc_series_filters_noise_rows_and_averages_correctly(tmp_path):
+def test_doc_series_filters_noise_rows_and_averages_correctly(built):
     """is_total=1 / superseded=1 / value_type='text' / value IS NULL の行は
     `num` CTE の WHERE で除外され、同じグループの平均値に影響しない。"""
-    cells_db, ryuiki_db = _setup(tmp_path)
-    out = tmp_path / "v1_projection_documents.sqlite"
-    b10.build_documents_projection(cells_db, ryuiki_db, out)
-
     rows = {
         (r["row_key"], r["fiscal_year"]): r
         for r in _read(
-            out, "doc_series",
+            built.out, "doc_series",
             ["row_key", "fiscal_year", "value", "n_cells", "unit", "page_no"],
             "doc_id, table_id, row_key, fiscal_year",
         )
@@ -166,7 +185,7 @@ def test_doc_series_filters_noise_rows_and_averages_correctly(tmp_path):
     rows_b = {
         r["fiscal_year"]: r
         for r in _read(
-            out, "doc_series",
+            built.out, "doc_series",
             ["row_key", "fiscal_year", "value", "n_cells"],
             "doc_id, table_id, row_key, fiscal_year",
         )
@@ -176,25 +195,21 @@ def test_doc_series_filters_noise_rows_and_averages_correctly(tmp_path):
     assert rows_b[2018]["n_cells"] == 1  # value IS NULL の行は除外
 
 
-def test_doc_series_where_excludes_null_fiscal_year_and_null_or_empty_row_key(tmp_path):
+def test_doc_series_where_excludes_null_fiscal_year_and_null_or_empty_row_key(built):
     """`num` CTE の `WHERE fiscal_year IS NOT NULL AND row_key IS NOT NULL AND
     row_key <> ''` の3つの述語をそれぞれ個別に踏むノイズ行（fixture の
     `fiscal_year IS NULL`/`row_key IS NULL`/`row_key = ''` 行）が実際に除外
     されていることを確認する。述語のどれか1つでも外れれば、ここで NULL/空
     文字キーの行が `doc_series` に現れる。
     """
-    cells_db, ryuiki_db = _setup(tmp_path)
-    out = tmp_path / "v1_projection_documents.sqlite"
-    b10.build_documents_projection(cells_db, ryuiki_db, out)
-
-    rows = _read(out, "doc_series", ["row_key", "fiscal_year"], "doc_id, table_id, row_key, fiscal_year")
+    rows = _read(built.out, "doc_series", ["row_key", "fiscal_year"], "doc_id, table_id, row_key, fiscal_year")
     assert not any(r["fiscal_year"] is None for r in rows)
     assert not any(r["row_key"] is None for r in rows)
     assert not any(r["row_key"] == "" for r in rows)
     assert len(rows) == 14  # ノイズ3行はどれも新しいグループを作らない（総数は変わらない）
 
 
-def test_doc_series_collapse_is_caused_by_col_key_absent_from_group_by(tmp_path):
+def test_doc_series_collapse_is_caused_by_col_key_absent_from_group_by(built):
     """「別年の値が1つの fiscal_year に潰れて平均される」v1 の癖の仕組みを
     直接確認する: `num` の `GROUP BY` は `doc_id, table_id, row_key,
     fiscal_year` だけで `col_key` を含まない。そのため `rowA`/2020 の
@@ -202,13 +217,9 @@ def test_doc_series_collapse_is_caused_by_col_key_absent_from_group_by(tmp_path)
     `GROUP BY` に足した集計（v1 の SQL ではなく、この仕組みを確かめるためだけ
     の対照クエリ）だと2行に分かれることで、原因が `col_key` の欠落だと示す。
     """
-    cells_db, ryuiki_db = _setup(tmp_path)
-    out = tmp_path / "v1_projection_documents.sqlite"
-    b10.build_documents_projection(cells_db, ryuiki_db, out)
-
     # b10 の実際の出力: col_key が GROUP BY に無いので1行に潰れる。
     rows = _read(
-        out, "doc_series", ["row_key", "fiscal_year", "n_cells"],
+        built.out, "doc_series", ["row_key", "fiscal_year", "n_cells"],
         "doc_id, table_id, row_key, fiscal_year",
     )
     collapsed = next(r for r in rows if r["row_key"] == "rowA" and r["fiscal_year"] == 2020)
@@ -216,7 +227,7 @@ def test_doc_series_collapse_is_caused_by_col_key_absent_from_group_by(tmp_path)
 
     # 対照クエリ: col_key を GROUP BY に足すと2行に分かれる
     # （＝現状の SQL は col_key の違いを無視しているという仕組みの直接確認）。
-    conn = sqlite3.connect(f"file:{cells_db}?mode=ro", uri=True)
+    conn = sqlite3.connect(f"file:{built.cells_db}?mode=ro", uri=True)
     try:
         n_groups_with_col_key = conn.execute(
             """
@@ -236,15 +247,11 @@ def test_doc_series_collapse_is_caused_by_col_key_absent_from_group_by(tmp_path)
     assert n_groups_with_col_key == 2  # col_key を足せば本来の2行に分かれる
 
 
-def test_doc_series_label_bug_for_two_or_more_pipes(tmp_path):
+def test_doc_series_label_bug_for_two_or_more_pipes(built):
     """v1 の label バグ（`|` が2個以上だと「最後のトークン」ではなく
     ずれた部分文字列になる）をそのまま再現する。ここで直さない。"""
-    cells_db, ryuiki_db = _setup(tmp_path)
-    out = tmp_path / "v1_projection_documents.sqlite"
-    b10.build_documents_projection(cells_db, ryuiki_db, out)
-
     rows = _read(
-        out, "doc_series", ["row_key", "label", "fiscal_year"],
+        built.out, "doc_series", ["row_key", "label", "fiscal_year"],
         "doc_id, table_id, row_key, fiscal_year",
     )
     by_key = {(r["row_key"], r["fiscal_year"]): r["label"] for r in rows}
@@ -253,28 +260,20 @@ def test_doc_series_label_bug_for_two_or_more_pipes(tmp_path):
     assert by_key[("山北町|三保|入猟者数", 2018)] == "保|入猟者数"
 
 
-def test_doc_series_label_is_correct_for_a_single_pipe(tmp_path):
+def test_doc_series_label_is_correct_for_a_single_pipe(built):
     """対照例: `|` が1個だけなら label は正しく最後のトークンになる。"""
-    cells_db, ryuiki_db = _setup(tmp_path)
-    out = tmp_path / "v1_projection_documents.sqlite"
-    b10.build_documents_projection(cells_db, ryuiki_db, out)
-
     rows = _read(
-        out, "doc_series", ["row_key", "label", "fiscal_year"],
+        built.out, "doc_series", ["row_key", "label", "fiscal_year"],
         "doc_id, table_id, row_key, fiscal_year",
     )
     by_key = {(r["row_key"], r["fiscal_year"]): r["label"] for r in rows}
     assert by_key[("AAA|BBB", 2018)] == "BBB"
 
 
-def test_doc_series_meta_having_boundary_excludes_two_year_series(tmp_path):
+def test_doc_series_meta_having_boundary_excludes_two_year_series(built):
     """`HAVING n_years >= 3` の境界: 2年度(rowB)は落ち、3年度(rowA等)は残る。"""
-    cells_db, ryuiki_db = _setup(tmp_path)
-    out = tmp_path / "v1_projection_documents.sqlite"
-    b10.build_documents_projection(cells_db, ryuiki_db, out)
-
     rows = _read(
-        out, "doc_series_meta", ["doc_id", "row_key", "n_years"],
+        built.out, "doc_series_meta", ["doc_id", "row_key", "n_years"],
         "doc_id, table_id, row_key",
     )
     keys = {(r["doc_id"], r["row_key"]) for r in rows}
@@ -284,16 +283,12 @@ def test_doc_series_meta_having_boundary_excludes_two_year_series(tmp_path):
     assert n_years_by_key[("docA", "rowA")] == 3
 
 
-def test_doc_series_meta_n_warnings_is_duplicated_at_doc_level(tmp_path):
+def test_doc_series_meta_n_warnings_is_duplicated_at_doc_level(built):
     """`n_warnings` の相関サブクエリは `doc_id` だけで絞り `table_id`/`row_key`
     で絞らないため、同じ doc の全 row_key に同じ件数が重複して入る
     （v1 の癖。ここで直さない）。"""
-    cells_db, ryuiki_db = _setup(tmp_path)
-    out = tmp_path / "v1_projection_documents.sqlite"
-    b10.build_documents_projection(cells_db, ryuiki_db, out)
-
     rows = _read(
-        out, "doc_series_meta", ["doc_id", "row_key", "n_warnings"],
+        built.out, "doc_series_meta", ["doc_id", "row_key", "n_warnings"],
         "doc_id, table_id, row_key",
     )
     by_key = {(r["doc_id"], r["row_key"]): r["n_warnings"] for r in rows}
@@ -307,13 +302,9 @@ def test_doc_series_meta_n_warnings_is_duplicated_at_doc_level(tmp_path):
     assert by_key[("docC", "AAA|BBB")] == 0
 
 
-def test_doc_series_meta_min_max_and_years(tmp_path):
-    cells_db, ryuiki_db = _setup(tmp_path)
-    out = tmp_path / "v1_projection_documents.sqlite"
-    b10.build_documents_projection(cells_db, ryuiki_db, out)
-
+def test_doc_series_meta_min_max_and_years(built):
     rows = _read(
-        out, "doc_series_meta",
+        built.out, "doc_series_meta",
         ["doc_id", "row_key", "y_from", "y_to", "v_min", "v_max", "doc_title", "publisher"],
         "doc_id, table_id, row_key",
     )
@@ -326,13 +317,9 @@ def test_doc_series_meta_min_max_and_years(tmp_path):
     assert row_a["publisher"] == "A発行者"
 
 
-def test_quality_monthly_counts_each_transition_kind_by_month(tmp_path):
-    cells_db, ryuiki_db = _setup(tmp_path)
-    out = tmp_path / "v1_projection_documents.sqlite"
-    b10.build_documents_projection(cells_db, ryuiki_db, out)
-
+def test_quality_monthly_counts_each_transition_kind_by_month(built):
     rows = _read(
-        out, "quality_monthly", ["ym", "submitted", "verified", "published", "returned"], "ym"
+        built.out, "quality_monthly", ["ym", "submitted", "verified", "published", "returned"], "ym"
     )
     by_month = {r["ym"]: r for r in rows}
 
@@ -348,73 +335,39 @@ def test_quality_monthly_counts_each_transition_kind_by_month(tmp_path):
     # 検証済→検証済 はどの区分にも当たらないので4列とも増えない
 
 
-# フォールバック期待値（`reports/derived_baseline.json` が読めない環境用）。
-# 実データの `derived.sqlite` に対する `PRAGMA table_info` の実測そのもの
-# （`.venv/bin/python3` で `data/db/derived.sqlite`（mode=ro）を読んで確認済み）。
-# `reports/derived_baseline.json` はコミット済みなので、通常はそちらを正として使う
-# （`b01_derived_baseline.py` が同じ実測から機械的に作ったもので、二重管理を避けたい
-# が、そのファイル自体が万一読めない場合に備えて明示しておく）。
-_FALLBACK_EXPECTED_COLUMNS = {
-    "doc_series": [
-        ("doc_id", "TEXT"), ("table_id", "TEXT"), ("page_no", "INT"), ("row_key", "TEXT"),
-        ("label", ""), ("fiscal_year", "INT"), ("value", ""), ("n_cells", ""), ("unit", ""),
-    ],
-    "doc_series_meta": [
-        ("doc_id", "TEXT"), ("table_id", "TEXT"), ("row_key", "TEXT"), ("label", ""),
-        ("page_no", ""), ("n_years", ""), ("y_from", ""), ("y_to", ""), ("unit", ""),
-        ("v_min", ""), ("v_max", ""), ("doc_title", "TEXT"), ("publisher", "TEXT"),
-        ("url", "TEXT"), ("license", "TEXT"), ("n_warnings", ""),
-    ],
-    "quality_monthly": [
-        ("ym", ""), ("submitted", ""), ("verified", ""), ("published", ""), ("returned", ""),
-    ],
-}
-
-
-def test_declared_columns_and_order_match_v1_baseline_exactly(tmp_path):
+def test_declared_columns_and_order_match_v1_baseline_exactly(built):
     """`CREATE TABLE ... AS SELECT` をそのまま使っているので、v1 と同様に
     計算列（label/value/n_cells/unit 等）は宣言型を持たない
     （`PRAGMA table_info` の type が空文字になる）。列順・列名も v1 と完全に
     一致するはずなので、`reports/derived_baseline.json`（`b01_derived_baseline.py`
     が実データの `derived.sqlite` から作った記録。コミット済みなので原本DBが
-    無い環境でも読める）の列名・列順・宣言型とそのまま突き合わせる
-    （読めない場合だけ `_FALLBACK_EXPECTED_COLUMNS` を使う）。
+    無い環境でも読める。git 管理下にあり読めない状況は想定しない——読めなければ
+    このテストがそのまま落ちて気づける）の列名・列順・宣言型とそのまま突き合わせる。
 
     `scripts/b02_derived_compare.py` は列を**集合**で比較する
     （`candidate_columns = set(...)`）ため、列順が壊れてもb02は検出できない
     ——列順を守るのはこのテストの役目。
     """
-    cells_db, ryuiki_db = _setup(tmp_path)
-    out = tmp_path / "v1_projection_documents.sqlite"
-    b10.build_documents_projection(cells_db, ryuiki_db, out)
+    baseline = json.loads(_DERIVED_BASELINE_JSON.read_text(encoding="utf-8"))
 
-    if _DERIVED_BASELINE_JSON.exists():
-        baseline = json.loads(_DERIVED_BASELINE_JSON.read_text(encoding="utf-8"))
-        expected_by_table = {
-            table: [(c["name"], c["type"]) for c in baseline["tables"][table]["columns"]]
-            for table in _FALLBACK_EXPECTED_COLUMNS
-        }
-    else:
-        expected_by_table = _FALLBACK_EXPECTED_COLUMNS
-
-    conn = sqlite3.connect(f"file:{out}?mode=ro", uri=True)
+    conn = sqlite3.connect(f"file:{built.out}?mode=ro", uri=True)
     try:
-        for table, expected in expected_by_table.items():
-            actual = [(r[1], r[2]) for r in conn.execute(f'PRAGMA table_info("{table}")')]
+        for table in ("doc_series", "doc_series_meta", "quality_monthly"):
+            expected = [(c["name"], c["type"]) for c in baseline["tables"][table]["columns"]]
+            actual = [(r[1], r[2]) for r in reconcile_common.table_info(conn, table)]
             assert actual == expected, f"{table}: 列名・列順・宣言型がずれている"
     finally:
         conn.close()
 
 
-def test_rebuilds_from_scratch_each_run(tmp_path):
+def test_rebuilds_from_scratch_each_run(built, tmp_path):
     """`fresh_sqlite` で毎回作り直すので、前回実行の内容を引きずらない。
 
     2回目の入力は3表とも0行にならない最小限の形にする（0行チェック
     （`test_build_raises_when_a_table_ends_up_empty`）と両立させるため）。
     """
-    cells_db, ryuiki_db = _setup(tmp_path)
-    out = tmp_path / "v1_projection_documents.sqlite"
-    b10.build_documents_projection(cells_db, ryuiki_db, out)
+    # 1回目は `built` フィクスチャ（既定の docA/docB/docC）。
+    out = built.out
 
     # 入力を docA/docB/docC から docX 1件だけに差し替えて再実行
     # → 前回の doc_id が残らないことを確認する。
