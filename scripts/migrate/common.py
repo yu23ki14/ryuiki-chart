@@ -221,3 +221,140 @@ def resolve_registry_db(cli_value: str | None, default: pathlib.Path) -> pathlib
     if env:
         return pathlib.Path(env)
     return default
+
+
+def raise_on_group_by_duplicates(conn: sqlite3.Connection, sql: str, params: tuple, build_message) -> None:
+    """`GROUP BY ... HAVING <集計> > 1` の形で重複を検出する `sql` を実行し、
+    1行でも返れば `build_message(dup_rows)` が組み立てた文言で
+    `MigrationError` を投げる（`scripts/b05_project_v1.py` の
+    `place_lookup`/`site_zone_lookup` の一意性検証・ゾーン番号の衝突検証・
+    `assert_alias_is_function` 等と、`scripts/b08_project_occurrence_v1.py` の
+    `place_mesh_lookup` の単射検証はどれもこの同じ形——クエリを実行し、重複が
+    見つかったら特定の文言で止める——だったものを1箇所に集約した
+    （/simplify 指摘2）。
+
+    サンプル件数の絞り込み（`LIMIT n`）を入れるかどうか・`COUNT(*)` か
+    `COUNT(DISTINCT ...)` か・メッセージの文言は、すべて呼び出し側に委ねる
+    （呼び出し元それぞれの検証は意味も重要度も違うため、文言を1つの
+    テンプレートに揃えない——既存テストが見ているメッセージはこの関数を
+    導入しても1文字も変わらない）。
+    """
+    dup = conn.execute(sql, params).fetchall()
+    if dup:
+        raise MigrationError(build_message(dup))
+
+
+def assert_dimension_key_unique(
+    conn: sqlite3.Connection, staging: str, dim_columns: list[str], *,
+    index_name: str, table_label: str, cause_hint: str,
+) -> None:
+    """`staging`（`staged_table` の作業用テーブル）に `dim_columns` の
+    `COALESCE(col, '')` 式で `CREATE UNIQUE INDEX` を張り、次元キーの一意性を
+    確認する（`scripts/b04_build_cube.py`〔C-3〕と `scripts/b07_build_occurrence_cube.py`
+    がほぼ一字一句同じ実装を持っていたものを1箇所に集約した。/simplify 指摘1）。
+
+    索引は検証用の使い捨て——成功しても検証後に `DROP INDEX` する（固定名の
+    索引を本番テーブルまで残すと、次回実行が同じ固定名で索引を作ろうとした
+    ときに名前衝突で壊れる）。重複が無ければ索引の作成が成功するだけで済み、
+    `GROUP BY` で全行を読み直すより速い（b04 実測: 約12.9秒。モジュール
+    docstring 以上の詳細は `scripts/b04_build_cube.py` の「次元キーの一意性
+    検証（C-3）」節参照——ここでは実装だけを持つ）。
+
+    **`dim_columns` の生の列に索引を張ってはいけない**。NULL がありうる列
+    （`obs_stat`/`taxon_id` 等）に対して、SQL の一意制約は NULL 同士を
+    「等しくない」と扱うため、`col IS NULL` の行が2つあっても
+    `CREATE UNIQUE INDEX` は重複として検出しない——`GROUP BY`（NULL 同士を
+    同じグループにまとめる）となら検出結果が食い違う。`COALESCE(col, '')`
+    で NULL を空文字に正準化した式に索引を張ることで、`GROUP BY` と同じ
+    「NULL 同士は同じ値」という扱いに揃える。
+
+    `index_name` は呼び出し元ごとに別の固定名にすること（同じ接続で複数の
+    `staged_table` を並行して扱う場合の名前衝突を避ける）。`table_label`/
+    `cause_hint` はエラーメッセージに使う（`table_label` の次元キーが一意で
+    ない旨＋`cause_hint`〔原因の手がかり〕）。
+    """
+    key_cols = ", ".join(dim_columns)
+    key_exprs = ", ".join(f"COALESCE({c}, '')" for c in dim_columns)
+    try:
+        conn.execute(f'CREATE UNIQUE INDEX {index_name} ON "{staging}" ({key_exprs})')
+    except sqlite3.IntegrityError:
+        dup = conn.execute(
+            f'SELECT {key_cols}, COUNT(*) c FROM "{staging}" GROUP BY {key_exprs} HAVING c > 1 LIMIT 5'
+        ).fetchall()
+        raise MigrationError(f"{table_label} の次元キーが一意でない行がある（例: {dup}）。{cause_hint}")
+    else:
+        conn.execute(f'DROP INDEX IF EXISTS "{index_name}"')
+
+
+def assert_grouped_totals_match(
+    conn: sqlite3.Connection,
+    left_sql: str,
+    right_sql: str,
+    key_columns: list[str],
+    value_columns: list[str],
+    build_message,
+    *,
+    sample_limit: int = 20,
+) -> None:
+    """`left_sql`/`right_sql`（それぞれ `key_columns + value_columns` の並びで
+    `GROUP BY` 済みの行を返す `SELECT` 文字列）を SQL の `FULL OUTER JOIN` で
+    直接突き合わせ、キーの欠落・値の食い違いを最大 `sample_limit` 件だけ
+    `build_message` に渡して `MigrationError` にする（SQLite 3.43 以降が前提。
+    CLAUDE.md の「キューブは SQLite 3.43 以降」参照——`FULL OUTER JOIN` 自体は
+    3.39 で入ったが、このコードベースの前提バージョンはそれより新しい）。
+
+    `scripts/b07_build_occurrence_cube.py` の系列ごとの Σn 突合と
+    `scripts/b08_project_occurrence_v1.py` の「キューブが今の L2 の分割か」の
+    突合はどちらも「2つの GROUP BY 結果を比べ、系列（複数列のキー）ごとの
+    粒度で食い違いをサンプルする」という同型の処理だった。以前はどちらも
+    両方の GROUP BY 結果を Python の `dict` に展開してから `set` 演算で
+    突き合わせており、系列数が約32,000にもなると Python 側の実行時間が
+    支配的だった（/simplify 実測: この Python 側だけで b07 約3.6秒・b08
+    約2.4秒）。比較そのものを SQL 側で行うことで、Python 側は食い違った行
+    （最大 `sample_limit` 件）の整形だけになる（/simplify 指摘3）。
+
+    系列の粒度はそのまま保つ（合計だけを比べない）——系列間で数字が入れ替わる
+    壊れ方（ある系列の分が別の系列に付け替わり、全体の合計は変わらない）を
+    検出できなくなるのを避けるため。
+
+    **両側を一時テーブルに実体化し、結合キー（`key_columns` を `COALESCE` で
+    NULL 安全にしてから `'|'` で連結した1列）に `UNIQUE INDEX` を張ってから
+    等値 JOIN する。** 最初の実装は `WITH` 句のサブクエリを複数列の `IS`
+    （NULL-safe）条件で直接 `FULL OUTER JOIN` していたが、SQLite の
+    クエリプランナは `IS` を使う JOIN 条件にインデックスを使わず、
+    ネストループ（両側とも約32,000行なら最大 約10億回の比較）に落ちる
+    ——実測で2分経っても終わらず、明確な性能事故になった
+    （`scripts/b05_project_v1.py` の `_alias_lookup_sql` が「NULL を含みうる
+    列を `IS` で JOIN すると自動インデックスが効かない」と書いている問題と
+    同じ根）。単一の計算済み列への通常の `=` ならインデックスを使う
+    （実測: 実データ約32,000行×32,000行で0.15秒）。
+
+    キーの比較は NULL 安全（`taxon_id` 等が NULL を取りうるため、素の `=`
+    では NULL 同士が一致しない）。`build_message(rows)` の `rows` は
+    `(key_columns..., <value>_l, <value>_r 各 value_columns ごと)` の並びの
+    タプルのリスト（片側にしか無いキーは無い方の値が `None`）。
+    """
+    key_expr = " || '|' || ".join(f"COALESCE({c}, '')" for c in key_columns)
+    key_select = ", ".join(f"COALESCE(l.{c}, r.{c}) AS {c}" for c in key_columns)
+    value_select = ", ".join(f"l.{c} AS {c}_l, r.{c} AS {c}_r" for c in value_columns)
+    mismatch_cond = " OR ".join(f"l.{c} IS NOT r.{c}" for c in value_columns)
+
+    conn.execute("DROP TABLE IF EXISTS __agtm_l")
+    conn.execute("DROP TABLE IF EXISTS __agtm_r")
+    try:
+        conn.execute(f"CREATE TEMP TABLE __agtm_l AS SELECT {key_expr} AS __k, sub.* FROM ({left_sql}) sub")
+        conn.execute(f"CREATE TEMP TABLE __agtm_r AS SELECT {key_expr} AS __k, sub.* FROM ({right_sql}) sub")
+        conn.execute("CREATE UNIQUE INDEX __agtm_l_key ON __agtm_l (__k)")
+        conn.execute("CREATE UNIQUE INDEX __agtm_r_key ON __agtm_r (__k)")
+        sql = f"""
+        SELECT {key_select}, {value_select}
+        FROM __agtm_l l FULL OUTER JOIN __agtm_r r ON l.__k = r.__k
+        WHERE ({mismatch_cond}) OR l.__k IS NULL OR r.__k IS NULL
+        LIMIT {sample_limit}
+        """
+        rows = conn.execute(sql).fetchall()
+    finally:
+        conn.execute("DROP TABLE IF EXISTS __agtm_l")
+        conn.execute("DROP TABLE IF EXISTS __agtm_r")
+    if rows:
+        raise MigrationError(build_message(rows))

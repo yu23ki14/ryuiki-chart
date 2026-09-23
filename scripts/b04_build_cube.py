@@ -388,46 +388,23 @@ def _year_source_expand_sql(stat: str, value_column: str) -> str:
 # day/month(day側/出典側)/year(day側/出典側) の5経路は grain/input_grain/stat
 # の値で互いに排他のはずだが、それが崩れていないことを実測で確認する。
 #
-# 以前は全13列の GROUP BY（約22秒）で確認していた。ここでは代わりに、作業用
-# テーブルに13列の `CREATE UNIQUE INDEX` を張ることで検証する——重複が無ければ
-# 索引の作成が成功するだけで済み（実測 約12.9秒。区切り文字を連結して
-# `COUNT(DISTINCT ...)` で比べる案は15.7秒で候補になったが、列値が区切り文字を
-# 含むと衝突しうるため採らない）、GROUP BY で全行を読み直すより速い。重複が
-# あれば `CREATE UNIQUE INDEX` 自体が `sqlite3.IntegrityError` で失敗するので、
-# そのときだけ GROUP BY で実例を取る。
-#
-# 索引は検証用の使い捨て——成功しても検証後に `DROP INDEX` する
-# （`scripts/b03_build_observation.py` の `_CREATE_OBSERVATION_INDEX_SQL` の
-# コメントと同じ理由: 固定名の索引を本番テーブルまで残すと、次回実行が同じ
-# 固定名で索引を作ろうとしたときに名前衝突で壊れる）。
-#
-# **`DIM_COLUMNS` の生の列に索引を張ってはいけない**（レビューで実際に踏んだ）。
-# `obs_stat`/`unit_id` は NULL がありうるが、SQL の一意制約は NULL 同士を
-# 「等しくない」と扱うため、`obs_stat IS NULL` の行が2つあっても
-# `CREATE UNIQUE INDEX` は重複として検出しない——GROUP BY（NULL 同士を
-# 同じグループにまとめる）となら検出結果が食い違う、という「厳密さ」自体が
-# 崩れる壊れ方。列を `COALESCE(col, '')` で包んで NULL を空文字に正準化した
-# 式に索引を張ることで、GROUP BY と同じ「NULL 同士は同じ値」という扱いに揃える
-# （`scripts/b05_project_v1.py` の `_AKEY_EXPR` 等、この文脈で NULL を空文字に
-# 正準化するのはこのコードベース全体の既存の慣習）。
+# 以前は全13列の GROUP BY（約22秒）で確認していた。いまは作業用テーブルに
+# 13列の `CREATE UNIQUE INDEX` を張ることで検証する——重複が無ければ索引の
+# 作成が成功するだけで済み（実測 約12.9秒）、GROUP BY で全行を読み直すより
+# 速い。実装（NULL の扱い・索引の使い捨て等）は `scripts/b07_build_occurrence_cube.py`
+# とほぼ一字一句同じだったため、`scripts/migrate/common.assert_dimension_key_unique`
+# に集約した（/simplify 指摘1）。ここでは `DIM_COLUMNS`・索引名・メッセージの
+# 文言（b04 固有）だけを渡す薄い呼び出しにしてある。
 _DIM_KEY_INDEX_NAME = "observation_agg_dim_key"
 
 
 def _assert_dimension_key_unique(conn: sqlite3.Connection, staging: str) -> None:
-    key_cols = ", ".join(DIM_COLUMNS)
-    key_exprs = ", ".join(f"COALESCE({c}, '')" for c in DIM_COLUMNS)
-    try:
-        conn.execute(f'CREATE UNIQUE INDEX {_DIM_KEY_INDEX_NAME} ON "{staging}" ({key_exprs})')
-    except sqlite3.IntegrityError:
-        dup = conn.execute(
-            f'SELECT {key_cols}, COUNT(*) c FROM "{staging}" GROUP BY {key_exprs} HAVING c > 1 LIMIT 5'
-        ).fetchall()
-        raise common.MigrationError(
-            "observation_agg の次元キーが一意でない行がある"
-            f"（例: {dup}）。day/month/year の集計経路が重なっている可能性がある。"
-        )
-    else:
-        conn.execute(f'DROP INDEX IF EXISTS "{_DIM_KEY_INDEX_NAME}"')
+    common.assert_dimension_key_unique(
+        conn, staging, DIM_COLUMNS,
+        index_name=_DIM_KEY_INDEX_NAME,
+        table_label="observation_agg",
+        cause_hint="day/month/year の集計経路が重なっている可能性がある。",
+    )
 
 
 def build_cube(

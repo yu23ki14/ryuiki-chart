@@ -168,24 +168,12 @@ def _sql_in_clause(values: tuple[str, ...]) -> str:
     return ", ".join(f"'{v}'" for v in values)
 
 
-def _raise_on_group_by_duplicates(work: sqlite3.Connection, sql: str, params: tuple, build_message) -> None:
-    """`GROUP BY ... HAVING <集計> > 1` の形で重複を検出する `sql` を実行し、
-    1行でも返れば `build_message(dup_rows)` が組み立てた文言で
-    `MigrationError` を投げる（/simplify 指摘: `place_lookup`/
-    `site_zone_lookup` の一意性検証・ゾーン番号の衝突検証・
-    `assert_alias_is_function`/`assert_alias_tuple_maps_to_single_dataset`/
-    `assert_unit_raw_is_function` はどれもこの同じ形——クエリを実行し、
-    重複が見つかったら特定の文言で止める——だったものを1箇所に集約した）。
-
-    サンプル件数の絞り込み（`LIMIT n`）を入れるかどうか・`COUNT(*)` か
-    `COUNT(DISTINCT ...)` か・メッセージの文言は、すべて呼び出し側に委ねる
-    （このモジュールの検証はそれぞれ意味も重要度も違うため、文言を1つの
-    テンプレートに揃えない——既存テストが見ているメッセージはこの関数を
-    導入しても1文字も変わらない）。
-    """
-    dup = work.execute(sql, params).fetchall()
-    if dup:
-        raise common.MigrationError(build_message(dup))
+# `scripts/migrate/common.raise_on_group_by_duplicates` への薄いエイリアス
+# （/simplify 指摘2: `scripts/b08_project_occurrence_v1.py` の
+# `place_mesh_lookup` の単射検証と実装がほぼ一字一句同じだったため集約した。
+# このモジュール内の6箇所の呼び出しは `work`/`_raise_on_group_by_duplicates`
+# という名前のまま変わらない）。
+_raise_on_group_by_duplicates = common.raise_on_group_by_duplicates
 
 
 def _alias_lookup_sql(dataset: str) -> str:

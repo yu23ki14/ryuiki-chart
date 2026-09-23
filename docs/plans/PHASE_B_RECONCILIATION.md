@@ -301,6 +301,22 @@ v1 側のバグだと確定できたため、`scripts/reconcile/expected_diffs.y
 `org_norm` の値へ影響したのはこの1 taxon だけ）を、O-1a でゲートに通して
 再確認したもの。新しい原因は無い。
 
+続く `phase-b/occurrence-cube`（`occurrence` を入力にキューブ `occurrence_agg`（b07）を作り、
+年キー8表（`org_group_year`/`effort_year`/`species2`/`species_year2`/`mesh_year`/`mesh_all`/
+`mesh_species`/`species_mesh_year`）と `species_month` の計9テーブルを通した。O-1b）では、
+**org_norm と全く同じ原因からもう1件だけ**再現できない列が見つかった。
+
+| テーブル | 発見日 | 症状 | 原因 | 対応 |
+|---|---|---|---|---|
+| `species2` | 2026-09-22 | `binom='Sirosporium celtidis'` の `cls` 列が v1 と食い違う（1行1列。他23,617行・他の全列は完全一致） | `org_norm` の宣言と**同一の原因**（上の表参照。属 *Sirosporium* の class 多数決の同数タイブレークが taxon レジストリと v1 で異なる）。`species2.cls` は `MAX(taxon.class)`（binom ごと）なので、taxon 単位の食い違いがそのまま1行の食い違いとして波及する | `scripts/reconcile/expected_diffs.yaml` の `species2:` にキーを1件宣言（`kind: value_diff`, `columns: [cls]`） |
+
+年キー8表のうち残り7表（`org_group_year`/`effort_year`/`species_year2`/`mesh_year`/`mesh_all`/
+`mesh_species`/`species_mesh_year`）と `species_month` は、宣言なしで全数値列が完全一致した
+（`--no-expected-diffs` で実測。`reports/derived_reconciliation.md` 2026-09-22実測、
+「一致したテーブル」）。`b02 --tables org_norm,org_group_year,effort_year,species2,species_year2,
+species_month,mesh_year,mesh_all,mesh_species,species_mesh_year` は終了コード0（宣言済み差分は
+`org_norm`・`species2` の2件だけ）。
+
 ## 7. 宣言済み差分（`expected_diffs.yaml`）
 
 ADR-0016 の受け入れ基準は「`imputation='zero'` の系列で v1 の派生テーブルの値が再現できること」
@@ -377,10 +393,12 @@ v1 側を直すまで v2 のゲートが恒久的に赤いままになる。ADR-
 
 ## 8. やっていないこと（このPRのスコープ外）
 
-- 残り22テーブル（ADR-0011「33テーブルの行き先」参照。`occurrence` を入力にする
-  生物系11テーブルほか。`meas_clim`/`site_var`/`var_catalog` は `phase-b/meas-remainder`、
-  `sensor_daily`/`rain_daily`/`sensor_hour_month` は `phase-b/sensor-slice`、
-  `zone_year`/`zone_clim` は `phase-b/zone-slice` で済んだ）
+- 残り12テーブル（ADR-0011「33テーブルの行き先」参照。`meas_clim`/`site_var`/`var_catalog` は
+  `phase-b/meas-remainder`、`sensor_daily`/`rain_daily`/`sensor_hour_month` は
+  `phase-b/sensor-slice`、`zone_year`/`zone_clim` は `phase-b/zone-slice`、`org_norm` は
+  `phase-b/occurrence-l2`（O-1a）、年キー8表・`species_month` は `phase-b/occurrence-cube`
+  （O-1b）で済んだ——`occurrence` を入力にする生物系10テーブルはこれで揃った。
+  流域の2表（`org_watershed*`。O-2）ほか、まだ縦線を通していないテーブルが残っている）
 - `imputation='lod'` 併記（ADR-0009 決定4。今回は `zero` のみ）
 - 正準単位の併記（ADR-0023。方針は決定済みだが未実装）
 - Parquet 化（ADR-0001）

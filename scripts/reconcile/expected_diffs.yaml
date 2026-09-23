@@ -238,3 +238,25 @@ org_norm:
       変わらない。
     found_on: 2026-09-22
     record: "docs/plans/PHASE_B_OCCURRENCE.md §3「F2: 分類の補完」"
+
+# 経緯（変更4・2026-09-22）: O-1b（`occurrence_agg`→年キー8表、
+# scripts/b07_build_occurrence_cube.py・scripts/b08_project_occurrence_v1.py）で
+# 年キー8表を実データで突合した結果、org_norm と全く同じ原因（Sirosporium属の
+# class 多数決の同数タイブレーク）が species2.cls に1件だけ波及した（species2.cls
+# は taxon.class の binom ごとの MAX() なので、taxon 単位の食い違いがそのまま
+# 1行の食い違いとして現れる）。他の8表（org_group_year/effort_year/
+# species_year2/species_month/mesh_year/mesh_all/mesh_species/species_mesh_year）
+# は宣言なしで全数値列が完全一致した。
+
+species2:
+  - key: ["Sirosporium celtidis"]
+    kind: value_diff
+    columns: [cls]
+    reason: >
+      org_norm の宣言と同じ原因（属 Sirosporium の class 多数決が同数で、
+      taxon レジストリの決定論的タイブレークが v1 の実装依存の暗黙順と食い違う）。
+      species2.cls は MAX(taxon.class)（binom ごと）なので、taxon 単位の
+      食い違いがそのまま1行の食い違いとして現れる。taxon_group（菌類）は
+      両候補とも同じなので変わらない。
+    found_on: 2026-09-22
+    record: "docs/plans/PHASE_B_OCCURRENCE.md §3「F2: 分類の補完」"
