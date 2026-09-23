@@ -12,8 +12,8 @@
 
 | テーブル | 行数 | キー | キーの由来 | 行き先（ADR-0011） | 内容ハッシュ（先頭12桁） |
 |---|---:|---|---|---|---|
-| `doc_series` | 3,590 | `doc_id`, `table_id`, `row_key`, `fiscal_year` | auto | キューブ（入力 observation） | `96ae6c398ae0…` |
-| `doc_series_meta` | 470 | `doc_id`, `table_id`, `row_key` | auto | document / variable のメタ | `202705d0b57d…` |
+| `doc_series` | 3,590 | `doc_id`, `table_id`, `row_key`, `fiscal_year` | auto | document/cell の証跡層からの射影 | `96ae6c398ae0…` |
+| `doc_series_meta` | 470 | `doc_id`, `table_id`, `row_key` | auto | document/cell の証跡層からの射影 | `202705d0b57d…` |
 | `effort_year` | 57 | `year` | auto | キューブ（入力 occurrence） | `a01031c1c9b3…` |
 | `ias_species` | 173 | `ias_category`, `binom` | auto | taxon / taxon_assessment（ADR-0019） | `88cbdb76b28c…` |
 | `landuse_change` | 2,904 | `watershed_id`, `landuse_name` | auto | キューブ（入力 observation） | `a594cefb0c43…` |
@@ -29,7 +29,7 @@
 | `org_norm` | 816,856 | `record_id` | auto | L2 のファクト本体に統合 | `5f250f1e4d91…` |
 | `org_watershed` | 287 | `watershed_id` | auto | キューブ（入力 occurrence） | `eacafbea90c0…` |
 | `org_watershed_year` | 10,699 | `watershed_id`, `year` | auto | キューブ（入力 occurrence） | `fc10b0e61c6a…` |
-| `quality_monthly` | 39 | `ym` | auto | キューブ（入力 observation） | `2f3ba74296da…` |
+| `quality_monthly` | 39 | `ym` | auto | ADR-0017 書き込み系ログの射影 | `2f3ba74296da…` |
 | `rain_daily` | 3,654 | `d` | auto | キューブ（入力 observation） | `a7790e2f73f2…` |
 | `redlist_change` | 2,884 | `assessment_id` | auto | taxon / taxon_assessment（ADR-0019） | `10177e492532…` |
 | `redlist_map` | 44 | `raw` | pk | taxon / taxon_assessment（ADR-0019） | `62b0d97d1281…` |

@@ -1,9 +1,14 @@
 """scripts/reconcile/common.py の単体テスト（キー自動導出・指紋計算）。"""
+import pathlib
+
 import pytest
 
 from reconcile import common, datasource
 
 from .fixtures import make_fixture_db, make_null_key_fixture_db
+
+_REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
+_DESTINATIONS_YAML = _REPO_ROOT / "scripts" / "reconcile" / "adr0011_destinations.yaml"
 
 
 @pytest.fixture()
@@ -275,3 +280,29 @@ def test_validate_expected_diffs_empty_required_value_raises():
             {"t_pk": {"key": ["raw"]}},
             "expected_diffs.yaml",
         )
+
+
+def test_load_destinations_covers_exactly_33_tables_with_no_duplicates():
+    """ADR-0011「33テーブルの行き先」表の転記（`scripts/reconcile/
+    adr0011_destinations.yaml`）が合計33件・重複無しであることを確認する
+    （docs/plans/PHASE_B_DOCUMENTS.md の P-3 改訂で document_provenance/
+    quality_workflow_log の2カテゴリを新設した後も合計が変わらないことの回帰。
+    改訂前はこの合計を確かめる自動テストが無かった）。
+    """
+    flat = common.load_destinations(_DESTINATIONS_YAML)
+    assert len(flat) == 33
+
+    raw = common.load_yaml(_DESTINATIONS_YAML)
+    all_tables = [t for spec in raw.values() for t in spec.get("tables", [])]
+    assert len(all_tables) == len(set(all_tables)), "同じテーブル名が複数カテゴリに重複している"
+
+
+def test_load_destinations_document_and_quality_tables_are_not_cube_observation():
+    """P-3 決定: doc_series/doc_series_meta/quality_monthly の実際の入力は
+    `observation` ではない（cells.sqlite/quality_transitions）ため、
+    `cube_observation` から新設カテゴリへ移した（docs/plans/PHASE_B_DOCUMENTS.md）。
+    """
+    flat = common.load_destinations(_DESTINATIONS_YAML)
+    assert flat["doc_series"]["category"] == "document_provenance"
+    assert flat["doc_series_meta"]["category"] == "document_provenance"
+    assert flat["quality_monthly"]["category"] == "quality_workflow_log"

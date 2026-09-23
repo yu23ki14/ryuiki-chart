@@ -23,6 +23,19 @@
 `occurrence_agg`）とし、鍵の規律（`staged_table`・`COALESCE(c,'')` の
 `UNIQUE INDEX`・`built_from`/`spec_version`）は両者で共通にする、と明確化した。
 
+**2026-09-22 追記（P-3、`docs/plans/PHASE_B_DOCUMENTS.md`）**: `doc_series`/`quality_monthly`
+を「キューブ（入力 `observation`）」に分類していたのは誤りだった。実際の入力は
+`observation` ではなく、`doc_series`/`doc_series_meta` は `cells.sqlite`（ADR README §4 の
+`document`/`cell` エンティティの v1 実体）、`quality_monthly` は `ryuiki.sqlite` の
+`quality_transitions`（ADR-0017 が読み取り基盤の対象外とする書き込み系ログ）。どちらも
+主語が place ではなく、ADR-0007 の observation の判定基準を満たさない。この2表を
+「`document`/`cell` の証跡層からの射影」（旧 `doc_meta` を吸収）と「ADR-0017 書き込み系
+ログの射影」の2カテゴリへ切り出した（下表・`scripts/reconcile/adr0011_destinations.yaml`）。
+`cells`/`quality_transitions` は v2 の新しいファクトに変換せず、**v1 の表のまま L2 に
+持ち越す**（ADR-0017 原則4「デモに含まれる合成の可変データは当面 L2 の一部として扱う」と
+同じ書き方。射影は `scripts/b10_project_documents_v1.py` が cells.sqlite/ryuiki.sqlite を
+読み取り専用で ATTACH し、v1 と同じ SQL をそのまま再実行する）。
+
 ## 背景（実測）
 
 `derived.sqlite` の**33テーブル**は、画面・AIツール・チャート部品ごとに個別対応で作られている。
@@ -115,13 +128,14 @@ observation_agg
 
 | 行き先 | 現行テーブル | 数 |
 |---|---|---|
-| キューブ（入力 `observation`） | meas_daily, meas_month, meas_year, meas_clim, zone_year, zone_clim, sensor_daily, sensor_hour_month, rain_daily, landuse_watershed, landuse_change, quality_monthly, doc_series, site_var | 14 |
+| キューブ（入力 `observation`） | meas_daily, meas_month, meas_year, meas_clim, zone_year, zone_clim, sensor_daily, sensor_hour_month, rain_daily, landuse_watershed, landuse_change, site_var | 12 |
 | キューブ（入力 `occurrence`） | mesh_year, mesh_all, mesh_species, species_mesh_year, species_month, species_year2, species2, org_watershed, org_watershed_year, org_group_year, effort_year | 11 |
 | `variable` レジストリ | var_catalog | 1 |
-| `place` の属性 | watershed_meta, watershed_rollup | 2 |
+| `place` の属性（`watershed_rollup` は D10 型の結合射影。キューブのセルにしない） | watershed_meta, watershed_rollup | 2 |
 | `taxon` / `taxon_assessment`（ADR-0019） | redlist_map, redlist_change, ias_species | 3 |
 | L2 のファクト本体に統合 | org_norm（`occurrence` に吸収） | 1 |
-| `document` / `variable` のメタ | doc_series_meta | 1 |
+| `document`/`cell` の証跡層からの射影（cells.sqlite。v1 表のまま持ち越し） | doc_series, doc_series_meta | 2 |
+| ADR-0017 書き込み系ログの射影（quality_transitions。v1 表のまま持ち越し） | quality_monthly | 1 |
 
 ## 影響
 

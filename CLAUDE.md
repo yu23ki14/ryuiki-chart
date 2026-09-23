@@ -76,6 +76,10 @@
   （`registry.sqlite` の `place`/`place_watershed`/`place_source_ref` → v1形）。
   出力は `data/db/v1_projection_place.sqlite`（`.gitignore` 済み・捨てて作り直せる）。
   設計・実測は `docs/plans/PHASE_B_PLACE_ATTRIBUTES.md`。
+  別枠で `scripts/b10_project_documents_v1.py`（`cells.sqlite`/`ryuiki.sqlite` を直接
+  ATTACH、`observation` は経由しない）が `data/db/v1_projection_documents.sqlite`
+  （`doc_series`/`doc_series_meta`/`quality_monthly` の3テーブル、`.gitignore` 済み）を作る。
+  設計・実測は `docs/plans/PHASE_B_DOCUMENTS.md`。
 - **`+09:00` 付きの時刻文字列に SQLite の日時関数（`date`/`datetime`/`strftime`）を使わない**
   （UTC に正規化されて日付が1日ずれる。`observation.period_start` は時刻帯なしのローカル時刻で
   持つ。詳細は `docs/adr/0024-local-time-and-time-labels.md`）。
