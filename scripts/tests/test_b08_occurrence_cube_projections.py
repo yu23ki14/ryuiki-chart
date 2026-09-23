@@ -24,10 +24,13 @@ import b08_project_occurrence_v1 as b08
 from migrate import common
 
 from .occurrence_fixtures import (
+    DEFAULT_GRID01_PLACE_ID,
+    make_occurrence_cube_declarations_yaml,
     make_occurrence_registry_db,
     make_taxon_group_yaml,
     make_v2_db_with_occurrence,
     make_v2_db_with_occurrence_and_agg,
+    occurrence_row,
 )
 
 # 2つの taxon_id（GBIF由来・iNat由来）が同じ binom（canonical_binomial）に
@@ -44,30 +47,18 @@ _TAXA = [
     ),
 ]
 
-_PLACE = [("common:place:grid01.3550_13900", None, "grid01")]
-_PLACE_SOURCE_REF = [("common:place:grid01.3550_13900", "grid01:3550,13900", "organism_records.lat_lon")]
+_PLACE = [(DEFAULT_GRID01_PLACE_ID, None, "grid01")]
+_PLACE_SOURCE_REF = [(DEFAULT_GRID01_PLACE_ID, "grid01:3550,13900", "organism_records.lat_lon")]
 
-_PLACE_ID = "common:place:grid01.3550_13900"
+_PLACE_ID = DEFAULT_GRID01_PLACE_ID
 
 
 # ---------------------------------------------------------------------------
-# 実際に b07 を通してキューブを作る側（本物のロジックから値が出る）
+# 実際に b07 を通してキューブを作る側（本物のロジックから値が出る。行の
+# 組み立ては `occurrence_fixtures.occurrence_row` に集約——/simplify 指摘7:
+# 以前は `_row`〔test_b07〕・`_dated_row`〔ここ〕・`_occ_row`〔下〕の3通りに
+# 分かれていた）。
 # ---------------------------------------------------------------------------
-
-def _dated_row(
-    record_id, taxon_id, period_start, period_end, period_raw, *,
-    source_id="gbif_kanagawa_occurrences", region_id="jp-14", place_id=_PLACE_ID,
-    source_row_id=1, red_list_category="",
-):
-    """b07 が読む `occurrence` の1行（period_start/period_end は b06 が展開
-    済みの形——'YYYY/YYYY' 区間なら実際の年境界を入れる）。"""
-    return (
-        record_id, "organism_records", source_row_id, source_id, region_id, taxon_id,
-        place_id, "grid01", None, 35.505, 139.005,
-        "day", period_start, period_end, period_raw,
-        "Foo bar", "フーバー", "SPECIES", red_list_category, 0, "CC-BY", "公開",
-    )
-
 
 def _bulk_dated_rows(taxon_id, source_id, date_str, count, *, prefix=None, start_source_row_id=1):
     """同じ日付（`date_str`）を持つ、日付ありの `occurrence` 行を `count` 件
@@ -76,7 +67,7 @@ def _bulk_dated_rows(taxon_id, source_id, date_str, count, *, prefix=None, start
     """
     prefix = prefix or f"{source_id}__{taxon_id}__{date_str}"
     return [
-        _dated_row(
+        occurrence_row(
             f"{prefix}__{i}", taxon_id, date_str, date_str, date_str,
             source_id=source_id, source_row_id=start_source_row_id + i,
         )
@@ -94,10 +85,7 @@ def _build_cube_via_b07(tmp_path, occurrence_rows, *, leaf_expected: int, dirnam
     make_v2_db_with_occurrence(db_path, occurrence_rows)
     conn = sqlite3.connect(f"file:{db_path}", uri=True)
     decl_path = d / "occurrence_cube_declarations.yaml"
-    decl_path.write_text(
-        f"leaf_cell_source_rows:\n  expected_row_count: {leaf_expected}\n  note: テスト用\n",
-        encoding="utf-8",
-    )
+    make_occurrence_cube_declarations_yaml(decl_path, expected_row_count=leaf_expected)
     try:
         b07.build_cube(conn, decl_path)
         conn.commit()
@@ -151,12 +139,12 @@ def _occ_row(record_id, taxon_id, period_raw, source_id="gbif_kanagawa_occurrenc
     `occurrence` 行。`period_start`/`period_end` はこの用途では使わない列
     （NULL でよい）——`species2` の L2 由来列・`species_month` が読むのは
     `taxon_id`/`period_raw`/`vernacular_name`/`red_list_category` だけ。
+    `occurrence_row` に `period_start=None, period_end=None` を渡すだけの
+    薄い呼び出し（/simplify 指摘7）。
     """
-    return (
-        record_id, "organism_records", record_id_suffix, source_id, "jp-14", taxon_id,
-        _PLACE_ID, "grid01", None, 35.505, 139.005,
-        "day", None, None, period_raw,
-        "Foo bar", "フーバー", "SPECIES", "LC", 0, "CC-BY", "公開",
+    return occurrence_row(
+        record_id, taxon_id, None, None, period_raw,
+        source_id=source_id, source_row_id=record_id_suffix, red_list_category="LC",
     )
 
 
@@ -168,7 +156,7 @@ def test_leaf_cell_is_attributed_to_its_start_year(tmp_path):
     """年キーの表は leaf セル（grain='survey_period'。年をまたぐ区間）を、
     セルの period_start の年（＝記録の開始年）に入れる（ADR-0025 D3）。
     """
-    rows = [_dated_row(
+    rows = [occurrence_row(
         "gbif__leaf", "common:taxon:gbif.1001", "1990-01-01", "1992-12-31", "1990/1992",
         red_list_category="LC",
     )]
@@ -192,7 +180,7 @@ def test_year_cell_uses_its_own_calendar_year(tmp_path):
     """grain='year' セルは（暦年境界へ丸められた）自身の period_start の年に
     入る。
     """
-    rows = [_dated_row("gbif__year", "common:taxon:gbif.1001", "2020-01-05", "2020-01-05", "2020-01-05")]
+    rows = [occurrence_row("gbif__year", "common:taxon:gbif.1001", "2020-01-05", "2020-01-05", "2020-01-05")]
     cube_db = _build_cube_via_b07(tmp_path, rows, leaf_expected=0)
     registry_db, taxon_group_yaml = _setup_registry(tmp_path)
     out = tmp_path / "out.sqlite"
@@ -217,11 +205,11 @@ def test_full_pipeline_collapses_taxon_ids_and_reproduces_species_month_quirk(tm
     # 年をまたぐ区間2件（leaf。1990/1992 は yr<2018 で species_month の対象外、
     # 2018/2020 は yr>=2018 で対象——substr(raw,6,2) が「月」ではない値になる
     # v1 の癖をここで再現する: mo=CAST('20')=20）。
-    leaf_old = _dated_row(
+    leaf_old = occurrence_row(
         "gbif__leaf_old", "common:taxon:gbif.1001", "1990-01-01", "1992-12-31", "1990/1992",
         source_row_id=2001, red_list_category="LC",
     )
-    leaf_recent = _dated_row(
+    leaf_recent = occurrence_row(
         "gbif__leaf_recent", "common:taxon:gbif.1001", "2018-01-01", "2020-12-31", "2018/2020",
         source_row_id=2002,
     )
@@ -256,7 +244,7 @@ def test_full_pipeline_collapses_taxon_ids_and_reproduces_species_month_quirk(tm
 
 def test_species_month_excludes_years_before_2018(tmp_path):
     bulk = _bulk_dated_rows("common:taxon:gbif.1001", "gbif_kanagawa_occurrences", "2020-01-05", 80)
-    old = _dated_row(
+    old = occurrence_row(
         "gbif__old", "common:taxon:gbif.1001", "2010-05-01", "2010-05-01", "2010-05-01", source_row_id=9001,
     )
     cube_db = _build_cube_via_b07(tmp_path, bulk + [old], leaf_expected=0)
@@ -287,7 +275,7 @@ def test_taxon_id_null_cell_uses_default_label_and_is_excluded_from_species_tabl
     `species2`/`species_mesh_year`/`mesh_species` の DISTINCT（`binom` 基準）
     からは除外される。
     """
-    rows = [_dated_row("gbif__unresolved", None, "2020-01-05", "2020-01-05", "2020-01-05")]
+    rows = [occurrence_row("gbif__unresolved", None, "2020-01-05", "2020-01-05", "2020-01-05")]
     cube_db = _build_cube_via_b07(tmp_path, rows, leaf_expected=0)
     registry_db, taxon_group_yaml = _setup_registry(tmp_path, default_label_ja="未判定")
     out = tmp_path / "out.sqlite"
@@ -352,6 +340,26 @@ def test_grain_month_cell_stops_projection(tmp_path):
         b08.build_occurrence_cube_projections(cube_db, registry_db, out, taxon_group_yaml)
 
 
+def test_unknown_place_kind_stops_projection(tmp_path):
+    """`occurrence_agg.place_kind` が既知の値（`'grid01'`/`'watershed'`）以外
+    だと、年キー8表を作る前に止まる（/simplify 指摘9:
+    `_assert_known_place_kinds` に対応するテストが無かった）。
+    """
+    occurrence_rows = [_occ_row("gbif__1", "common:taxon:gbif.1001", "2020-01-05")]
+    occurrence_agg_rows = [
+        _agg_row(
+            "common:taxon:gbif.1001", "year", "2020-01-01", "2020-12-31", n=1,
+            place_kind="mesh3",  # ADR-0011 の語彙にはあるが _KNOWN_PLACE_KINDS には無い
+        ),
+    ]
+    cube_db = tmp_path / "v2.sqlite"
+    make_v2_db_with_occurrence_and_agg(cube_db, occurrence_rows, occurrence_agg_rows)
+    registry_db, taxon_group_yaml = _setup_registry(tmp_path)
+    out = tmp_path / "out.sqlite"
+    with pytest.raises(common.MigrationError, match="place_kind が想定外の値を持つ"):
+        b08.build_occurrence_cube_projections(cube_db, registry_db, out, taxon_group_yaml)
+
+
 def test_l2_cube_mismatch_stops_projection(tmp_path):
     """`occurrence_agg` の `Σn` が `occurrence`（L2）の日付あり行数と食い違うと
     （＝キューブが『今の occurrence の分割』になっていない）、年キー8表を
@@ -399,7 +407,7 @@ def test_stale_taxon_id_in_occurrence_agg_raises(tmp_path):
     指摘7）。メッセージは文脈（occurrence_agg）に応じて b06→b07 の再実行を
     案内する。
     """
-    rows = [_dated_row("gbif__ghost", "common:taxon:gbif.9999", "2020-01-05", "2020-01-05", "2020-01-05")]
+    rows = [occurrence_row("gbif__ghost", "common:taxon:gbif.9999", "2020-01-05", "2020-01-05", "2020-01-05")]
     cube_db = _build_cube_via_b07(tmp_path, rows, leaf_expected=0)
     registry_db, taxon_group_yaml = _setup_registry(tmp_path)  # registry には gbif.9999 が無い
     out = tmp_path / "out.sqlite"
@@ -423,7 +431,7 @@ def test_missing_occurrence_agg_table_stops_before_wiping_output(tmp_path):
     """
     cube_db = tmp_path / "v2.sqlite"
     make_v2_db_with_occurrence(
-        cube_db, [_dated_row("gbif__1", "common:taxon:gbif.1001", "2020-01-05", "2020-01-05", "2020-01-05")],
+        cube_db, [occurrence_row("gbif__1", "common:taxon:gbif.1001", "2020-01-05", "2020-01-05", "2020-01-05")],
     )
     # occurrence_agg はまだ作っていない。
     registry_db, taxon_group_yaml = _setup_registry(tmp_path)
@@ -452,7 +460,7 @@ def test_build_all_projections_writes_org_norm_and_nine_more_tables(tmp_path):
     """`build_all_projections` は `org_norm` と年キー8表・`species_month` を
     同じファイルに一緒に書く（`main()` が使う経路）。
     """
-    rows = [_dated_row("gbif__1", "common:taxon:gbif.1001", "2020-01-05", "2020-01-05", "2020-01-05")]
+    rows = [occurrence_row("gbif__1", "common:taxon:gbif.1001", "2020-01-05", "2020-01-05", "2020-01-05")]
     cube_db = _build_cube_via_b07(tmp_path, rows, leaf_expected=0)
     registry_db, taxon_group_yaml = _setup_registry(tmp_path)
     out = tmp_path / "out.sqlite"

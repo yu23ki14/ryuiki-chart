@@ -1126,23 +1126,20 @@ period_end が同じ年に収まっている行が1件ある。
 
 ### `occurrence_agg` に `place_kind` 鍵を追加（O-2 の先取り。追加指示）
 
-ADR-0011「事前計算は `place_kind ∈ {site, watershed, mesh3}`」・`observation_agg`
-が既に鍵に持つ列に合わせ、`occurrence_agg` の鍵に `place_kind` を追加した
-（`region_id, source_id, place_id, place_kind, taxon_id, grain, period_start,
-period_end`。ADR-0025 D2 を更新）。O-2 で `place_kind='watershed'` のロールアップ
-セルを同じ表に足す計画があるため、O-1b の時点で鍵に先取りで入れてある。
+鍵に `place_kind` を追加した（`region_id, source_id, place_id, place_kind, taxon_id,
+grain, period_start, period_end`）。理由は ADR-0025 D2 参照
+（`docs/adr/0025-occurrence-fact-and-cube.md`。ADR-0011・`observation_agg` との
+関係・O-2 との関係をそこに一本化した）。
 
+- 触ったファイル: `scripts/b07_build_occurrence_cube.py`（`DIM_COLUMNS`・
+  `_assert_series_totals_match_l2`・`_assert_cube_partition_and_shape` を
+  `place_kind` ごとに）、`scripts/b08_project_occurrence_v1.py`
+  （`_MESH_PLACE_KIND`/`_KNOWN_PLACE_KINDS`/`_assert_known_place_kinds`
+  を新設し、`occ_agg_enriched`・`_assert_cube_is_current_l2_partition` を
+  `place_kind='grid01'` に絞る）、`docs/adr/0025-occurrence-fact-and-cube.md`
+  （D2 の鍵の記述を更新）。
 - 実測: `occurrence.place_kind` は現状すべて `'grid01'`（823,692行中823,692行。
   b06 が grid01 経由でしか場所を解決しないため）。
-- b07: 系列ごとの Σn 検証・grain ごとの件数検証を `place_kind` ごとに行う形にした
-  （`_assert_series_totals_match_l2` が `(place_kind, source_id, taxon_id)` で
-  グループ化、`_assert_cube_partition_and_shape` が `place_kind='grid01'` に
-  絞って宣言値と突き合わせる）。grain の語彙検査・年/leaf セルの形の検査は
-  `place_kind` に関わらず共通のまま。
-- b08: `occ_agg_enriched` と、キューブ-L2 の突き合わせ（`_assert_cube_is_current_l2_partition`）
-  を `WHERE place_kind='grid01'` で明示的に絞った（`_MESH_PLACE_KIND` 定数）。
-  `occurrence_agg.place_kind` が既知の値（`'grid01'`/`'watershed'`）以外なら
-  `_assert_known_place_kinds` が止める。
 - **値は1ビットも変わらない**（`place_kind` は列が1つ増えるだけで、既存の全列の値は
   変わらない——下記「値の不変性」参照）。
 

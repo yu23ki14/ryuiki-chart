@@ -122,6 +122,15 @@ ADR-0011 は入力を `observation` と `occurrence` の2つに決めている�
   - この2つの `grain` で、**観測日のある全記録がちょうど1つのセルに入る**
     （キューブ＝L2 の分割）。
 
+**O-2 への申し送り**: leaf セルの元記録数の宣言（`scripts/migrate/occurrence_cube_declarations.yaml`）は
+今のところ `place_kind='grid01'` 分の単一の値（`leaf_cell_source_rows`。スカラーの
+`expected_row_count`）しか持たない。O-2 で `place_kind='watershed'` の leaf 相当が
+増えたら、`scripts/b07_build_occurrence_cube.py` の `_LEAF_DECLARATION_NAME`
+（単一の宣言名）・宣言名の完全一致検査（`load_and_validate_cube_declarations` の
+`declared_names != expected_names`）・`leaf_expected`（スカラー、
+`_assert_cube_partition_and_shape` に渡す）は `place_kind` ごとの複数値を持てる
+形にコードを変える必要がある。
+
 ### D3. v1 互換の射影（O-1a で `org_norm` を実装。年キー8表・species_month は O-1b）
 
 `scripts/b08_project_occurrence_v1.py` が `occurrence`（L2）から `org_norm` を

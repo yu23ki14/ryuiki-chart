@@ -104,14 +104,18 @@ DEFAULT_TAXA = [
     ),
 ]
 
+# O-1b（b07・b08）のテスト用フィクスチャが共有する grid01 の place_id
+# （/simplify 指摘7: 複数のテストファイルに同じ文字列リテラルが散っていた）。
+DEFAULT_GRID01_PLACE_ID = "common:place:grid01.3550_13900"
+
 DEFAULT_PLACE = [
     # place_id, region_id, place_kind
-    ("common:place:grid01.3550_13900", None, "grid01"),
+    (DEFAULT_GRID01_PLACE_ID, None, "grid01"),
 ]
 
 DEFAULT_PLACE_SOURCE_REF = [
     # place_id, external_key, source_id
-    ("common:place:grid01.3550_13900", "grid01:3550,13900", "organism_records.lat_lon"),
+    (DEFAULT_GRID01_PLACE_ID, "grid01:3550,13900", "organism_records.lat_lon"),
 ]
 
 # 既定フィクスチャの出典別件数（gbif 11行・inat 1行。`DEFAULT_ORGANISM_RECORDS`
@@ -210,6 +214,24 @@ def make_period_shapes_yaml(path, text: str | None = None, counts: dict[str, int
         path.write_text(period_shapes_yaml_text(counts), encoding="utf-8")
 
 
+# scripts/b07_build_occurrence_cube.py（occurrence_cube_declarations.yaml。leaf
+# セルの元記録数の宣言）用。`make_period_shapes_yaml`/`make_source_regions_yaml`
+# と同じ形（/simplify 指摘4: test_b07_build_occurrence_cube.py・
+# test_b08_occurrence_cube_projections.py がそれぞれ同じテキストを組み立てて
+# いたものを1箇所に集約）。
+def occurrence_cube_declarations_yaml_text(expected_row_count: int = 1191) -> str:
+    return f"leaf_cell_source_rows:\n  expected_row_count: {expected_row_count}\n  note: テスト用\n"
+
+
+def make_occurrence_cube_declarations_yaml(
+    path, text: str | None = None, expected_row_count: int = 1191,
+) -> None:
+    path.write_text(
+        text if text is not None else occurrence_cube_declarations_yaml_text(expected_row_count),
+        encoding="utf-8",
+    )
+
+
 # b08（射影）のテスト用: occurrence テーブルだけを持つ v2.sqlite 相当。スキーマの
 # 正は `scripts/b06_build_occurrence.py` の `_CREATE_OCCURRENCE_SQL` 1箇所
 # （`scripts/tests/migrate_fixtures.py` の `make_v2_db_with_observation` と
@@ -221,6 +243,31 @@ _OCCURRENCE_COLUMNS = (
     "scientific_name", "vernacular_name", "taxon_rank",
     "red_list_category", "is_alien", "license_class", "publication_scope",
 )
+
+
+def occurrence_row(
+    record_id, taxon_id, period_start, period_end, period_raw, *,
+    source_id="gbif_kanagawa_occurrences", region_id="jp-14",
+    place_id=DEFAULT_GRID01_PLACE_ID, place_kind="grid01",
+    source_row_id=1, red_list_category="",
+) -> tuple:
+    """`_OCCURRENCE_COLUMNS`（≡ `scripts/b06_build_occurrence.py` の
+    `_CREATE_OCCURRENCE_SQL`）の並びで `occurrence` の1行を組み立てる
+    （/simplify 指摘7: `test_b07_build_occurrence_cube.py` の `_row`・
+    `test_b08_occurrence_cube_projections.py` の `_dated_row`/`_occ_row` の
+    3通りに分かれていたものを1つに集約した）。
+
+    `period_start`/`period_end` は b06 が展開済みの形で渡す（'YYYY/YYYY' 区間
+    なら実際の年境界。b07 のテストで使う）。`period_start=None,
+    period_end=None` を渡せば b08 のテスト（`species2`/`species_month` の
+    L2 由来列だけを使い、`occurrence_agg` は別途手で作る）向けの薄い行になる。
+    """
+    return (
+        record_id, "organism_records", source_row_id, source_id, region_id, taxon_id,
+        place_id, place_kind, None, 35.505, 139.005,
+        "day", period_start, period_end, period_raw,
+        "Foo bar", "フーバー", "SPECIES", red_list_category, 0, "CC-BY", "公開",
+    )
 
 
 def make_v2_db_with_occurrence(path, rows: list[tuple]) -> None:

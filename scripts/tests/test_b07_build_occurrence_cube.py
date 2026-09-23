@@ -12,32 +12,31 @@ import pytest
 import b07_build_occurrence_cube as b07
 from migrate import common
 
-from .occurrence_fixtures import make_v2_db_with_occurrence
-
-_DECLARATIONS_YAML_TEXT = (
-    "leaf_cell_source_rows:\n"
-    "  expected_row_count: {n}\n"
-    "  note: テスト用\n"
+from .occurrence_fixtures import (
+    make_occurrence_cube_declarations_yaml,
+    make_v2_db_with_occurrence,
+    occurrence_row,
 )
 
 
 def _write_declarations_yaml(tmp_path, expected_row_count: int):
     path = tmp_path / "occurrence_cube_declarations.yaml"
-    path.write_text(_DECLARATIONS_YAML_TEXT.format(n=expected_row_count), encoding="utf-8")
+    make_occurrence_cube_declarations_yaml(path, expected_row_count=expected_row_count)
     return path
 
 
 def _row(
-    record_id, period_start, period_end, period_raw,
+    record_id, period_start, period_end, period_raw, *,
     source_id="gbif_kanagawa_occurrences", region_id="jp-14",
-    taxon_id="common:taxon:gbif.1001", place_id="common:place:grid01.3550_13900",
-    red_list_category="",
+    taxon_id="common:taxon:gbif.1001", red_list_category="",
 ):
-    return (
-        record_id, "organism_records", 1, source_id, region_id, taxon_id,
-        place_id, "grid01", None, 35.505, 139.005,
-        "day", period_start, period_end, period_raw,
-        "Foo bar", "", "SPECIES", red_list_category, 0, "CC-BY", "公開",
+    """`occurrence_fixtures.occurrence_row` への薄い呼び出し——引数の並びだけ
+    この既存テストの慣習（`record_id, period_start, period_end, period_raw`
+    の順）に合わせてある（/simplify 指摘7: 行の組み立て自体は1箇所に集約）。
+    """
+    return occurrence_row(
+        record_id, taxon_id, period_start, period_end, period_raw,
+        source_id=source_id, region_id=region_id, red_list_category=red_list_category,
     )
 
 
@@ -212,8 +211,9 @@ def test_series_totals_mismatch_is_detected(tmp_path):
         "'common:taxon:gbif.1001', 5, 1)"
     )
     conn.commit()
+    l2_series_table = b07._materialize_l2_series_totals(conn)
     with pytest.raises(common.MigrationError, match="Σn/Σn_red_list"):
-        b07._assert_series_totals_match_l2(conn, "staging")
+        b07._assert_series_totals_match_l2(conn, "staging", l2_series_table)
 
 
 def _make_staging(conn, rows):

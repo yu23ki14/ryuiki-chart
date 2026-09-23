@@ -31,15 +31,11 @@
 作る（`occurrence`（L2）を読まない。例外は `species2.en_name`/
 `red_list_category` だけ——後述）。
 
-- **`occurrence_agg.place_kind = 'grid01'` に明示的に絞る**（追加指示。
-  `occurrence_agg` の鍵は O-2 の先取りで `place_kind` を持つ——
-  `scripts/b07_build_occurrence_cube.py` のモジュール docstring参照。今は
-  常に `'grid01'` だが、O-2 で `place_kind='watershed'` のロールアップセルが
-  同じ表に増えても、mesh（`mlat`/`mlon`）前提のこの8表が二重に数えたり
-  watershed の `place_id` を grid01 用の `place_mesh_lookup` に誤って
-  引かせたりしないようにする。`place_kind` が既知の値
-  （`'grid01'`/`'watershed'`）以外なら止める
-  （`_assert_known_place_kinds`）。
+- **`occurrence_agg.place_kind = 'grid01'` に明示的に絞る**（`place_kind`
+  を鍵に持つ理由・O-2 との関係は ADR-0025 D2 参照。この8表は mesh
+  〔`mlat`/`mlon`〕前提のため、`'watershed'` 等の他の `place_kind` は対象外
+  にする。既知の値〔`'grid01'`/`'watershed'`〕以外なら
+  `_assert_known_place_kinds` が止める）。
 - **v1 の「年」はキューブのセルの `period_start` から**: `CAST(substr(period_start,1,4)
   AS INT)`。`year` セルも `survey_period`（leaf）セルも同じ式（year セルは
   `period_start` が暦年境界へ丸め済み、leaf セルは記録自身の区間の開始その
@@ -169,6 +165,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
+import b07_build_occurrence_cube as b07  # noqa: E402  (GRAIN_VALUES を共有する。/simplify 指摘5)
 from migrate import common  # noqa: E402
 
 DEFAULT_CUBE_DB = ROOT / "data" / "db" / "v2.sqlite"
@@ -421,6 +418,12 @@ def build_org_norm_projection(
 # O-1b: 年キー8表（occurrence_agg だけから）＋ species_month（occurrence＝L2 から）
 # ---------------------------------------------------------------------------
 
+# grain の語彙は b07 の `GRAIN_VALUES` を正として import する（/simplify
+# 指摘5。以前は b07・b08 それぞれが `'year', 'survey_period'` を直書きして
+# いて、O-2 で grain を足すときに2箇所を直す必要があった）。
+_GRAIN_VALUES_SQL_LIST = ", ".join(repr(g) for g in b07.GRAIN_VALUES)
+_GRAIN_VALUES_LABEL = "/".join(repr(g) for g in b07.GRAIN_VALUES)
+
 # 年キー8表が対象にする place_kind（O-2 で 'watershed' が増える計画。
 # `_assert_known_place_kinds`/`_OCC_AGG_ENRICHED_SQL` が参照する）。
 _KNOWN_PLACE_KINDS = frozenset({"grid01", "watershed"})
@@ -467,40 +470,40 @@ def _assert_known_place_kinds(conn) -> None:
 
 
 def _assert_cube_is_current_l2_partition(conn) -> None:
-    """`occurrence_agg` の grain が `{'year','survey_period'}` 以外を含んで
-    いない（新しい grain を黙って絞り込みで捨てない）こと、`place_kind` が
-    既知の値だけであること、`place_kind='grid01'` に絞った系列
+    """`occurrence_agg` の grain が `b07.GRAIN_VALUES` 以外を含んでいない
+    （新しい grain を黙って絞り込みで捨てない）こと、`place_kind` が既知の
+    値だけであること、`place_kind='grid01'` に絞った系列
     （source_id, taxon_id）ごとの `SUM(occurrence_agg.n)` が `occurrence`
     （L2、日付あり行、同じく `place_kind='grid01'`）の件数と一致することを
     確認する。崩れていれば「b06 の後に b07 を再実行せよ」と案内して止める
-    （コードレビュー指摘2）。
+    （コードレビュー指摘2）。比較そのものは SQL 側で行う
+    （`common.assert_grouped_totals_match`。/simplify 指摘3——実測ではこの
+    Python 側の突合だけで約2.4秒かかっていた）。
     """
     bad_grain = conn.execute(
-        "SELECT DISTINCT grain FROM cube.occurrence_agg WHERE grain NOT IN ('year', 'survey_period')"
+        f"SELECT DISTINCT grain FROM cube.occurrence_agg WHERE grain NOT IN ({_GRAIN_VALUES_SQL_LIST})"
     ).fetchall()
     if bad_grain:
         raise common.MigrationError(
-            f"occurrence_agg: grain が 'year'/'survey_period' 以外の値を持つ（{[r[0] for r in bad_grain]}）。"
+            f"occurrence_agg: grain が {_GRAIN_VALUES_LABEL} 以外の値を持つ（{[r[0] for r in bad_grain]}）。"
             "年キー8表の射影（このファイル）はこの2つの grain だけを前提にしているため、"
             "新しい grain を足すならこの検証と射影の両方を見直すこと。"
         )
     _assert_known_place_kinds(conn)
 
-    l2_totals = {(r[0], r[1]): r[2] for r in conn.execute(_L2_DATED_SERIES_TOTALS_SQL)}
-    cube_totals = {(r[0], r[1]): r[2] for r in conn.execute(_CUBE_SERIES_TOTALS_SQL)}
-    mismatches = [
-        (key, l2_totals.get(key), cube_totals.get(key))
-        for key in sorted(set(l2_totals) | set(cube_totals), key=lambda k: (k[0], k[1] or ""))
-        if l2_totals.get(key) != cube_totals.get(key)
-    ][:_SAMPLE_LIMIT]
-    if mismatches:
-        raise common.MigrationError(
+    common.assert_grouped_totals_match(
+        conn, _L2_DATED_SERIES_TOTALS_SQL, _CUBE_SERIES_TOTALS_SQL,
+        key_columns=["source_id", "taxon_id"],
+        value_columns=["n"],
+        build_message=lambda rows: (
             f"occurrence_agg: place_kind='{_MESH_PLACE_KIND}' に絞った系列（source_id, taxon_id）"
             "ごとの Σn が occurrence（L2、同じく grid01）と食い違う（occurrence_agg が「今の"
             " occurrence の分割」になっていない）。scripts/b06_build_occurrence.py の後に"
             " scripts/b07_build_occurrence_cube.py を再実行すること。"
-            f"（例（上限{_SAMPLE_LIMIT}件、(source_id, taxon_id), L2側n, キューブ側n）: {mismatches}）"
-        )
+            f"（例（上限{_SAMPLE_LIMIT}件、(source_id, taxon_id, n_l2, n_cube)）: {rows}）"
+        ),
+        sample_limit=_SAMPLE_LIMIT,
+    )
 
 
 # place_id -> (mlat, mlon)。`registry/build_place.py` が
@@ -568,17 +571,38 @@ def _assert_all_places_resolve_to_mesh(conn) -> None:
 
 def _assert_place_mesh_lookup_is_function(conn) -> None:
     """`place_mesh_lookup` が `place_id` について単射であることを確認する
-    （`scripts/b05_project_v1.py` の `place_lookup` の重複検証と同じ考え方）。
+    （`scripts/b05_project_v1.py` の `place_lookup` の重複検証と同じ考え方。
+    実装は `scripts/migrate/common.raise_on_group_by_duplicates` に集約
+    ——/simplify 指摘2）。
     """
-    dup = conn.execute(
-        "SELECT place_id, COUNT(*) AS c FROM place_mesh_lookup GROUP BY place_id HAVING c > 1 LIMIT 5"
-    ).fetchall()
-    if dup:
-        raise common.MigrationError(
+    common.raise_on_group_by_duplicates(
+        conn,
+        "SELECT place_id, COUNT(*) AS c FROM place_mesh_lookup GROUP BY place_id HAVING c > 1 LIMIT 5",
+        (),
+        lambda dup: (
             "place_source_ref（source_id='organism_records.lat_lon'）が place_id について"
             f"単射でない（同じ place_id に複数の external_key が対応している。例: {dup}）。"
             "occurrence_agg の place_id から mlat/mlon を一意に復元できない。"
-        )
+        ),
+    )
+
+
+# 年キー8表の SQL で繰り返し使う述語・式を1箇所にする（/simplify 指摘6。
+# `scripts/b07_build_occurrence_cube.py` の `_SAME_YEAR_EXPR`/`_CROSS_YEAR_EXPR`
+# と同じ流儀）。
+_YEAR_RANGE_EXPR = "year BETWEEN 1970 AND 2026"
+
+
+def _binom_nonempty_expr(prefix: str = "") -> str:
+    """`binom` の原表記が NULL でも '' でもない、の判定式（列参照に `prefix`
+    〔例: `"e."`〕を付けられる）。"""
+    return f"{prefix}binom IS NOT NULL AND {prefix}binom <> ''"
+
+
+def _mesh_n_expr(prefix: str = "") -> str:
+    """`COUNT(DISTINCT mlat||'_'||mlon) AS mesh_n`（列参照に `prefix` を
+    付けられる）。"""
+    return f"COUNT(DISTINCT {prefix}mlat || '_' || {prefix}mlon) AS mesh_n"
 
 
 # `species2.en_name`/`red_list_category`（例外。モジュール docstring 参照）と
@@ -600,13 +624,13 @@ WHERE o.period_raw IS NOT NULL
 
 # species2.en_name/red_list_category の例外（`l2_taxon_enriched` を binom
 # ごとに集計するだけ。L2 を再度読まない）。
-_SPECIES2_L2_EXTRAS_SQL = """
+_SPECIES2_L2_EXTRAS_SQL = f"""
 CREATE TEMP TABLE species2_l2_extras AS
 SELECT binom,
        MAX(COALESCE(NULLIF(vernacular_name, ''), '')) AS en_name,
        MAX(COALESCE(red_list_category, '')) AS red_list_category
 FROM l2_taxon_enriched
-WHERE binom IS NOT NULL AND binom <> ''
+WHERE {_binom_nonempty_expr()}
 GROUP BY binom
 """
 
@@ -620,26 +644,26 @@ GROUP BY binom
 # 列に型を宣言してもしなくても格納される値は変わらない——修正前後で
 # 正準化 sha256 が完全一致することを実測で確認済み）。
 _CREATE_ORG_GROUP_YEAR_SQL = "CREATE TABLE org_group_year (year INT, taxon_group, source_id TEXT, n, species_n, mesh_n)"
-_ORG_GROUP_YEAR_INSERT_SQL = """
+_ORG_GROUP_YEAR_INSERT_SQL = f"""
 INSERT INTO org_group_year (year, taxon_group, source_id, n, species_n, mesh_n)
 SELECT year, taxon_group, source_id, SUM(n) AS n,
        COUNT(DISTINCT binom) AS species_n,
-       COUNT(DISTINCT mlat || '_' || mlon) AS mesh_n
+       {_mesh_n_expr()}
 FROM occ_agg_enriched
-WHERE year BETWEEN 1970 AND 2026
+WHERE {_YEAR_RANGE_EXPR}
 GROUP BY year, taxon_group, source_id
 """
 
 _CREATE_EFFORT_YEAR_SQL = "CREATE TABLE effort_year (year INT, n, species_n, mesh_n, n_inat, n_gbif)"
-_EFFORT_YEAR_INSERT_SQL = """
+_EFFORT_YEAR_INSERT_SQL = f"""
 INSERT INTO effort_year (year, n, species_n, mesh_n, n_inat, n_gbif)
 SELECT year, SUM(n) AS n,
        COUNT(DISTINCT binom) AS species_n,
-       COUNT(DISTINCT mlat || '_' || mlon) AS mesh_n,
+       {_mesh_n_expr()},
        SUM(CASE WHEN source_id = 'inaturalist_kanagawa' THEN n ELSE 0 END) AS n_inat,
        SUM(CASE WHEN source_id = 'gbif_kanagawa_occurrences' THEN n ELSE 0 END) AS n_gbif
 FROM occ_agg_enriched
-WHERE year BETWEEN 1970 AND 2026
+WHERE {_YEAR_RANGE_EXPR}
 GROUP BY year
 """
 
@@ -648,17 +672,17 @@ _CREATE_SPECIES2_SQL = (
     "n, y_from, y_to, n_years, mesh_n)"
 )
 # 全年・全記録が対象（v1 のとおり年フィルタが無い。O-1b brief 参照）。
-_SPECIES2_INSERT_SQL = """
+_SPECIES2_INSERT_SQL = f"""
 INSERT INTO species2 (binom, taxon_group, cls, family, en_name, red_list_category,
                        n, y_from, y_to, n_years, mesh_n)
 SELECT e.binom, MAX(e.taxon_group) AS taxon_group, MAX(e.cls) AS cls, MAX(e.family) AS family,
        x.en_name AS en_name, x.red_list_category AS red_list_category,
        SUM(e.n) AS n, MIN(e.year) AS y_from, MAX(e.year) AS y_to,
        COUNT(DISTINCT e.year) AS n_years,
-       COUNT(DISTINCT e.mlat || '_' || e.mlon) AS mesh_n
+       {_mesh_n_expr("e.")}
 FROM occ_agg_enriched e
 LEFT JOIN species2_l2_extras x ON x.binom = e.binom
-WHERE e.binom IS NOT NULL AND e.binom <> ''
+WHERE {_binom_nonempty_expr("e.")}
 GROUP BY e.binom
 """
 _SPECIES2_MISSING_L2_EXTRAS_SQL = (
@@ -666,11 +690,11 @@ _SPECIES2_MISSING_L2_EXTRAS_SQL = (
 )
 
 _CREATE_SPECIES_YEAR2_SQL = "CREATE TABLE species_year2 (binom, year INT, n, mesh_n)"
-_SPECIES_YEAR2_INSERT_SQL = """
+_SPECIES_YEAR2_INSERT_SQL = f"""
 INSERT INTO species_year2 (binom, year, n, mesh_n)
-SELECT binom, year, SUM(n) AS n, COUNT(DISTINCT mlat || '_' || mlon) AS mesh_n
+SELECT binom, year, SUM(n) AS n, {_mesh_n_expr()}
 FROM occ_agg_enriched
-WHERE binom IS NOT NULL AND binom <> '' AND year BETWEEN 1970 AND 2026
+WHERE {_binom_nonempty_expr()} AND {_YEAR_RANGE_EXPR}
 GROUP BY binom, year
 """
 
@@ -680,11 +704,11 @@ _CREATE_MESH_YEAR_SQL = "CREATE TABLE mesh_year (mlat INT, mlon INT, year INT, n
 # `place_id` で書く——後者は「座標があるのに mesh 解決に失敗した」異常な
 # NULL まで一緒くたに黙って落としてしまう。異常は
 # `_assert_all_places_resolve_to_mesh` が別途止める）。
-_MESH_YEAR_INSERT_SQL = """
+_MESH_YEAR_INSERT_SQL = f"""
 INSERT INTO mesh_year (mlat, mlon, year, n, species_n, rl_n)
 SELECT mlat, mlon, year, SUM(n) AS n, COUNT(DISTINCT binom) AS species_n, SUM(n_red_list) AS rl_n
 FROM occ_agg_enriched
-WHERE place_id IS NOT NULL AND year BETWEEN 1970 AND 2026
+WHERE place_id IS NOT NULL AND {_YEAR_RANGE_EXPR}
 GROUP BY mlat, mlon, year
 """
 
@@ -708,22 +732,22 @@ FROM occ_agg_enriched
 GROUP BY mlat, mlon, binom
 """
 _CREATE_MESH_SPECIES_SQL = "CREATE TABLE mesh_species (mlat INT, mlon INT, species_n, rl_species_n)"
-_MESH_SPECIES_INSERT_SQL = """
+_MESH_SPECIES_INSERT_SQL = f"""
 INSERT INTO mesh_species (mlat, mlon, species_n, rl_species_n)
 SELECT mlat, mlon,
-       COUNT(DISTINCT CASE WHEN binom IS NOT NULL AND binom <> '' THEN binom END) AS species_n,
-       COUNT(DISTINCT CASE WHEN binom IS NOT NULL AND binom <> '' AND rl_n > 0 THEN binom END) AS rl_species_n
+       COUNT(DISTINCT CASE WHEN {_binom_nonempty_expr()} THEN binom END) AS species_n,
+       COUNT(DISTINCT CASE WHEN {_binom_nonempty_expr()} AND rl_n > 0 THEN binom END) AS rl_species_n
 FROM mesh_species_agg
 GROUP BY mlat, mlon
 """
 
 _CREATE_SPECIES_MESH_YEAR_SQL = "CREATE TABLE species_mesh_year (binom, year INT, mlat INT, mlon INT, n)"
 # 主要種（species2.n >= 80。全年・全記録で判定済みの本物の species2 を読む）。
-_SPECIES_MESH_YEAR_INSERT_SQL = """
+_SPECIES_MESH_YEAR_INSERT_SQL = f"""
 INSERT INTO species_mesh_year (binom, year, mlat, mlon, n)
 SELECT binom, year, mlat, mlon, SUM(n) AS n
 FROM occ_agg_enriched
-WHERE binom IN (SELECT binom FROM species2 WHERE n >= 80) AND year BETWEEN 1970 AND 2026
+WHERE binom IN (SELECT binom FROM species2 WHERE n >= 80) AND {_YEAR_RANGE_EXPR}
 GROUP BY binom, year, mlat, mlon
 """
 

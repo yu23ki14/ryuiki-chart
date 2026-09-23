@@ -15,18 +15,13 @@ v2.sqlite をファイルごと作り直さない——テーブル単位で `mi
 `occurrence.period_raw IS NOT NULL` の816,856行だけがキューブに入る。日付の
 無い6,836行はキューブの対象外（L2 にはそのまま残る。ADR-0007 原則1）。
 
-## 鍵と値（ADR-0025 D2・O-1 設計 v2 D2。`place_kind` は O-2 先取りで追加）
+## 鍵と値（ADR-0025 D2・O-1 設計 v2 D2）
 
     region_id, source_id, place_id, place_kind, taxon_id, grain, period_start, period_end
 
-`place_kind` は ADR-0011「事前計算は `place_kind ∈ {site, watershed, mesh3}`」・
-`observation_agg` が既に鍵に持つ列に合わせたもの（O-2 で `place_kind='watershed'`
-のセルを同じ `occurrence_agg` に足す計画があるため、O-1b の時点で鍵に入れて
-おく）。今は `occurrence.place_kind` が常に `'grid01'`（grid01 経由でしか
-解決しないため）なので、実際のセルはすべて `place_kind='grid01'` になる
-——値そのものは変わらない（`region_id`/`source_id`/`place_id`/`taxon_id`/
-`grain`/`period_start`/`period_end`/`n`/`n_red_list` は O-2 対応前と1ビットも
-変わらない。列が1つ増えるだけ）。
+`place_kind` を鍵に持つ理由・O-2 との関係は ADR-0025 D2 参照（`occurrence.place_kind`
+は今のところ常に `'grid01'` なので、この列を鍵に足しても他の列の値は1ビットも
+変わらない）。
 
 値は `n`（記録数）・`n_red_list`（`red_list_category` の原表記が NULL でも
 `''` でもない記録の数。v1 の `mesh_year.rl_n`・`mesh_species.rl_species_n` と
@@ -86,11 +81,17 @@ b06 が保証済みのはずだが、b07 自身も入力を信用せず確かめ
   （`_assert_series_totals_match_l2`。**`place_kind` を系列の一部に含める**
   ——O-2 で `place_kind='watershed'` のセルが増えても、`place_kind` の違う
   セルどうしを1つの系列に混ぜて合計しない。今は `place_kind` が常に
-  `'grid01'` なので、この変更自体は実測値に影響しない）。ここで得た
-  「`place_kind` ごとの日付あり行数」を (ii)(iii) にそのまま使う——`occurrence`
-  を再度フルスキャンしない（以前は `_DATED_ROW_COUNT_SQL`/
-  `_YEAR_SOURCE_ROW_COUNT_SQL` で `occurrence` を2回余分に読んでいた。
-  実測で約6.4秒の短縮）。
+  `'grid01'` なので、この変更自体は実測値に影響しない）。`occurrence`
+  （816,856行）に対する `GROUP BY` は `_materialize_l2_series_totals` が
+  最初に1回だけ行い、結果（約32,000行）を一時テーブルに残す——比較
+  （`scripts/migrate/common.assert_grouped_totals_match` が SQL の
+  `FULL OUTER JOIN` で行う。/simplify 指摘3: 系列数が約32,000にもなると、
+  両側を Python の `dict` に展開して `set` 演算で突き合わせる実装は Python
+  側の実行時間が支配的だった——実測 約3.6秒）・検証した系列数・
+  `place_kind` ごとの日付あり行数（(ii)(iii) が使う）は、すべてこの一時
+  テーブルを読むだけで済ませ、`occurrence` を何度もフルスキャンしない
+  （以前は `_DATED_ROW_COUNT_SQL`/`_YEAR_SOURCE_ROW_COUNT_SQL` で
+  `occurrence` を2回余分に読んでいた。実測で約6.4秒の短縮）。
 - (ii)(iii) `_assert_cube_partition_and_shape`（**staging に対して**。
   `place_kind` ごとに行う——今は `'grid01'` だけ。O-2 で `'watershed'` が
   増えたら、この検証もその宣言値ぶん拡張すること）:
@@ -141,9 +142,14 @@ DIM_COLUMNS = [
 ]
 
 # `staging` が実際に持ってよい grain の語彙（ADR-0025 D2）。将来 month セル等を
-# 足すときは、ここと年キー8表の射影（scripts/b08_project_occurrence_v1.py）を
-# 合わせて見直すこと——黙って絞り込みで捨てない（コードレビュー指摘2）。
+# 足すときは、ここと年キー8表の射影（scripts/b08_project_occurrence_v1.py。
+# `GRAIN_VALUES` をこのモジュールから import して使う）を合わせて見直すこと
+# ——黙って絞り込みで捨てない（コードレビュー指摘2）。1箇所で済むよう、
+# SQL の `IN (...)` 句・メッセージの語彙表記もここから組み立てる
+# （/simplify 指摘5: `_KNOWN_PLACE_KINDS` と同じ書き方）。
 GRAIN_VALUES = ("year", "survey_period")
+_GRAIN_VALUES_SQL_LIST = ", ".join(repr(g) for g in GRAIN_VALUES)
+_GRAIN_VALUES_LABEL = "/".join(repr(g) for g in GRAIN_VALUES)  # 例: "'year'/'survey_period'"
 
 REQUIRED_DECLARATION_KEYS = ("expected_row_count", "note")
 _LEAF_DECLARATION_NAME = "leaf_cell_source_rows"
@@ -298,40 +304,65 @@ def validate_cube_declarations_shape(path=DEFAULT_DECLARATIONS_YAML) -> None:
 # (i) 系列ごとの Σn/Σn_red_list（occurrence=L2 と staging を突き合わせる）
 # ---------------------------------------------------------------------------
 
-def _assert_series_totals_match_l2(conn: sqlite3.Connection, staging: str) -> tuple[int, dict[str, int]]:
+_L2_SERIES_TOTALS_TABLE = "__l2_series_totals"
+
+
+def _materialize_l2_series_totals(conn: sqlite3.Connection) -> str:
+    """`occurrence`（日付あり行）を系列（place_kind, source_id, taxon_id）
+    ごとに集計した一時テーブルを作り、そのテーブル名を返す。
+
+    `occurrence`（816,856行）の `GROUP BY` はこの1回だけ行う——後続の3つの
+    用途（キューブとの突合・検証した系列数・`place_kind` ごとの日付あり
+    行数）は、すべてこの集計結果（約32,000行）を読むだけで済ませる
+    （呼び出し元がこれらを別々のクエリで `occurrence` に対して再実行すると、
+    同じ高コストな `GROUP BY` を複数回行うことになる——実装時に実際に踏んだ
+    非効率）。呼び出し元が使い終わったら `DROP TABLE` すること。
+    """
+    conn.execute(f'DROP TABLE IF EXISTS "{_L2_SERIES_TOTALS_TABLE}"')
+    conn.execute(f'CREATE TEMP TABLE "{_L2_SERIES_TOTALS_TABLE}" AS {_L2_SERIES_TOTALS_SQL}')
+    return _L2_SERIES_TOTALS_TABLE
+
+
+def _assert_series_totals_match_l2(conn: sqlite3.Connection, staging: str, l2_series_table: str) -> int:
     """(i): 系列（place_kind, source_id, taxon_id。taxon_id IS NULL を含む）
     ごとに Σn(year+leaf) = occurrence の日付あり行数、Σn_red_list も同様。
     `place_kind` を系列の一部に含める（O-2 の先取り。モジュール docstring
-    参照）。
+    参照）。比較そのものは SQL 側で行う（`common.assert_grouped_totals_match`。
+    /simplify 指摘3: 系列数が約32,000にもなると、両側を Python の `dict` に
+    展開して `set` 演算で突き合わせる実装は Python 側の実行時間が支配的だった
+    ——実測 約3.6秒。系列の粒度はそのまま保つ〔合計だけを比べない〕）。
 
-    戻り値 `(検証した系列数, {place_kind: 日付あり行数の合計})`——後者を
-    (ii)(iii) の `_assert_cube_partition_and_shape` にそのまま使い、
-    `occurrence` のフルスキャンを1回で済ませる（モジュール docstring参照）。
+    `l2_series_table`（`_materialize_l2_series_totals` が作った一時テーブル）
+    を読むだけで、`occurrence` を再度スキャンしない。戻り値は検証した系列数
+    （レポート用）。
     """
-    l2_totals = {(r[0], r[1], r[2]): (r[3], r[4]) for r in conn.execute(_L2_SERIES_TOTALS_SQL)}
-    cube_totals = {
-        (r[0], r[1], r[2]): (r[3], r[4])
-        for r in conn.execute(
-            f'SELECT place_kind, source_id, taxon_id, SUM(n) AS n, SUM(n_red_list) AS n_red_list '
-            f'FROM "{staging}" GROUP BY place_kind, source_id, taxon_id'
-        )
-    }
-    mismatches = [
-        (key, l2_totals.get(key), cube_totals.get(key))
-        for key in sorted(set(l2_totals) | set(cube_totals), key=lambda k: (k[0] or "", k[1], k[2] or ""))
-        if l2_totals.get(key) != cube_totals.get(key)
-    ][:_SAMPLE_LIMIT]
-    if mismatches:
-        raise common.MigrationError(
+    common.assert_grouped_totals_match(
+        conn,
+        f'SELECT place_kind, source_id, taxon_id, n, n_red_list FROM "{l2_series_table}"',
+        f'SELECT place_kind, source_id, taxon_id, SUM(n) AS n, SUM(n_red_list) AS n_red_list '
+        f'FROM "{staging}" GROUP BY place_kind, source_id, taxon_id',
+        key_columns=["place_kind", "source_id", "taxon_id"],
+        value_columns=["n", "n_red_list"],
+        build_message=lambda rows: (
             "occurrence_agg: 系列（place_kind, source_id, taxon_id）ごとの Σn/Σn_red_list が "
-            "occurrence（L2）と食い違う（キューブが記録を漏らす・二重に数えている"
-            f"可能性がある。例（上限{_SAMPLE_LIMIT}件、(place_kind, source_id, taxon_id), "
-            f"L2側(n,n_red_list), キューブ側(n,n_red_list)）: {mismatches}）。"
-        )
-    n_dated_by_place_kind: dict[str, int] = {}
-    for (place_kind, _source_id, _taxon_id), (n, _n_red_list) in l2_totals.items():
-        n_dated_by_place_kind[place_kind] = n_dated_by_place_kind.get(place_kind, 0) + n
-    return len(l2_totals), n_dated_by_place_kind
+            "occurrence（L2）と食い違う（キューブが記録を漏らす・二重に数えている可能性がある。"
+            f"例（上限{_SAMPLE_LIMIT}件、(place_kind, source_id, taxon_id, n_l2, n_red_list_l2, "
+            f"n_cube, n_red_list_cube)）: {rows}）。"
+        ),
+        sample_limit=_SAMPLE_LIMIT,
+    )
+    return conn.execute(f'SELECT COUNT(*) FROM "{l2_series_table}"').fetchone()[0]
+
+
+def _l2_dated_count_by_place_kind(conn: sqlite3.Connection, l2_series_table: str) -> dict[str, int]:
+    """`occurrence`（日付あり行）の `place_kind` ごとの件数。
+    `_assert_cube_partition_and_shape` が「`place_kind='grid01'` の日付あり
+    行数」として使う。`l2_series_table` を読むだけの軽いクエリ
+    （`place_kind` の種類数——今は1——ぶんしか行が無い集計に対する集計）。
+    """
+    return dict(
+        conn.execute(f'SELECT place_kind, SUM(n) FROM "{l2_series_table}" GROUP BY place_kind')
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -362,11 +393,11 @@ def _assert_cube_partition_and_shape(
       いる（`_CROSS_YEAR_EXPR`）。
     """
     bad_grain = conn.execute(
-        f'SELECT DISTINCT grain FROM "{staging}" WHERE grain NOT IN (\'year\', \'survey_period\')'
+        f'SELECT DISTINCT grain FROM "{staging}" WHERE grain NOT IN ({_GRAIN_VALUES_SQL_LIST})'
     ).fetchall()
     if bad_grain:
         raise common.MigrationError(
-            "occurrence_agg: grain が 'year'/'survey_period' 以外の値を持つ行がある"
+            f"occurrence_agg: grain が {_GRAIN_VALUES_LABEL} 以外の値を持つ行がある"
             f"（{[r[0] for r in bad_grain]}）。ADR-0025 D2 はこの2つの grain だけを決めている"
             "——新しい grain を足すなら、この検証と年キー8表の射影（scripts/b08_project_occurrence_v1.py）"
             "を合わせて見直すこと。"
@@ -423,27 +454,20 @@ def _assert_cube_partition_and_shape(
         )
 
 
-# `scripts/b04_build_cube.py` の `_assert_dimension_key_unique` と同じ考え方
-# （NULL を COALESCE で正準化した式に UNIQUE INDEX を張る。生の列に張ると
-# NULL 同士が「等しくない」と扱われ GROUP BY と食い違う検出結果になる）。
+# `scripts/b04_build_cube.py` と実装がほぼ一字一句同じだったため、
+# `scripts/migrate/common.assert_dimension_key_unique` に集約した
+# （/simplify 指摘1）。ここでは `DIM_COLUMNS`・索引名・メッセージの文言
+# （b07 固有）だけを渡す薄い呼び出しにしてある。
 _DIM_KEY_INDEX_NAME = "occurrence_agg_dim_key"
 
 
 def _assert_dimension_key_unique(conn: sqlite3.Connection, staging: str) -> None:
-    key_cols = ", ".join(DIM_COLUMNS)
-    key_exprs = ", ".join(f"COALESCE({c}, '')" for c in DIM_COLUMNS)
-    try:
-        conn.execute(f'CREATE UNIQUE INDEX {_DIM_KEY_INDEX_NAME} ON "{staging}" ({key_exprs})')
-    except sqlite3.IntegrityError:
-        dup = conn.execute(
-            f'SELECT {key_cols}, COUNT(*) c FROM "{staging}" GROUP BY {key_exprs} HAVING c > 1 LIMIT 5'
-        ).fetchall()
-        raise common.MigrationError(
-            f"occurrence_agg の次元キーが一意でない行がある（例: {dup}）。"
-            "year/leaf の集計経路が重なっている可能性がある。"
-        )
-    else:
-        conn.execute(f'DROP INDEX IF EXISTS "{_DIM_KEY_INDEX_NAME}"')
+    common.assert_dimension_key_unique(
+        conn, staging, DIM_COLUMNS,
+        index_name=_DIM_KEY_INDEX_NAME,
+        table_label="occurrence_agg",
+        cause_hint="year/leaf の集計経路が重なっている可能性がある。",
+    )
 
 
 def build_cube(
@@ -470,7 +494,12 @@ def build_cube(
         n_year = conn.execute(insert_sql + _YEAR_CELLS_SQL, params).rowcount
         n_leaf = conn.execute(insert_sql + _LEAF_CELLS_SQL, params).rowcount
 
-        n_series, n_dated_by_place_kind = _assert_series_totals_match_l2(conn, staging)
+        l2_series_table = _materialize_l2_series_totals(conn)
+        try:
+            n_series = _assert_series_totals_match_l2(conn, staging, l2_series_table)
+            n_dated_by_place_kind = _l2_dated_count_by_place_kind(conn, l2_series_table)
+        finally:
+            conn.execute(f'DROP TABLE IF EXISTS "{l2_series_table}"')
         _assert_cube_partition_and_shape(conn, staging, leaf_expected, n_dated_by_place_kind, declarations_yaml)
         _assert_dimension_key_unique(conn, staging)
 
