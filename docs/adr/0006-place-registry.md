@@ -8,6 +8,16 @@
 `fraction` は常に NOT NULL）を実装した。地域そのものを表す place と `common:` place →
 地域の空間的な所在の辺は、使う側が現れるまで見送る。詳細は [ADR-0022](0022-place-region-scope.md)。
 
+**2026-09-22 追記（規約4の改定。F4、[ADR-0025](0025-occurrence-fact-and-cube.md) D1）**:
+下記「点→place の解決規約」4は「精度が粗い／不明な座標は、その単位に解決しない」と
+書いていたが、これを機械グリッド（grid01）に文字どおり適用すると、
+`coordinate_uncertainty_m` が75%欠測の `organism_records` では大半が解決不能になる
+（実測は `docs/plans/PHASE_B_OCCURRENCE.md` F4）。**機械グリッドには常に解決し、
+`coordinate_uncertainty_m` は occurrence 側に運んで、使う側が精度で絞れるようにする**
+に改定した（`scripts/b06_build_occurrence.py` で実装）。規約4の「精度が粗ければ
+解決しない」という文字どおりの適用は、地点のような細かい単位への解決と、公開時の
+一般化（ADR-0018）に限る。
+
 ## 背景
 
 現行では「場所」が5種類以上の別々の形で表現されている。

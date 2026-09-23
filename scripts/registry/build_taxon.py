@@ -85,7 +85,7 @@ import sqlite3
 
 import yaml
 
-from taxon_namespaces import TAXON_KEY_SOURCE_NAMESPACE
+from taxon_namespaces import TAXON_KEY_SOURCE_NAMESPACE, assert_known_source_ids
 from registry import common
 
 CROSSWALK_CSV = common.ROOT / common.TAXON_CROSSWALK_CSV_RELPATH
@@ -181,17 +181,15 @@ def _assert_known_source_ids(ryuiki: sqlite3.Connection) -> None:
     無い値を含んでいたら止める（F1）。ここで止めないと `_load_occurrence_representatives()`
     の SQL の CASE 式が未知の source_id を黙って ns=NULL に落とし、taxon_id が組み立て
     られず後段で分かりにくいエラーになる。
+
+    実際の検査（重複除去・None-safe なソート・例外送出）は
+    `taxon_namespaces.assert_known_source_ids()` に一本化してある——
+    `scripts/b06_build_occurrence.py` の同じ検査と重複させない（/simplify 指摘1）。
     """
     rows = ryuiki.execute(
         "SELECT DISTINCT source_id FROM organism_records WHERE taxon_key IS NOT NULL AND taxon_key <> ''"
     ).fetchall()
-    unknown = sorted(r[0] for r in rows if r[0] not in TAXON_KEY_SOURCE_NAMESPACE)
-    if unknown:
-        raise ValueError(
-            "organism_records に taxon_id の名前空間が未定義の source_id がある"
-            f"（scripts/taxon_namespaces.py の TAXON_KEY_SOURCE_NAMESPACE に"
-            f"追記すること）: {unknown}"
-        )
+    assert_known_source_ids(r[0] for r in rows)
 
 
 def _binom(name: str | None) -> str | None:

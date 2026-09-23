@@ -329,27 +329,6 @@ def _problems_from_stats(stats: dict) -> list[str]:
     return problems
 
 
-def _declaration_problems(usage: period._EntryUsage, yaml_label: str) -> list[str]:
-    """宣言表の使用状況（`usage`。`PeriodExceptionUsage`/`TimeLabelConventionUsage`
-    ——B-3 で同じクラスになった）から、「1件も該当しなかったエントリ」「実測件数が
-    `expected_row_count` と食い違うエントリ」の問題メッセージを作る（b03 が
-    `period_exceptions.yaml`/`time_label_conventions.yaml` の両方に対して同型の
-    チェックを4ブロック持っていたものを1つに集約。B-3）。`yaml_label` は
-    メッセージに出すファイル名の表示用ラベル。
-    """
-    problems: list[str] = []
-    unused = usage.unused_entries()
-    if unused:
-        problems.append(f"{yaml_label} に宣言されているが1件も該当しなかったエントリ: {unused}")
-    mismatched = usage.mismatched_expected_counts()
-    if mismatched:
-        problems.append(
-            f"{yaml_label} の expected_row_count と実測件数が食い違う: "
-            f"{mismatched}（宣言 (expected, actual) の順）"
-        )
-    return problems
-
-
 def _process_row(
     stats: dict,
     seen_ids: set,
@@ -586,9 +565,9 @@ def build_and_write_observation(
             # 両方の出典を処理し終えてから検証する（前者は measurements、
             # 後者は sensor_timeseries の value_grain='hour' からしか使われない
             # ため、片方の出典だけを見て判定すると腐った宣言を見逃す。B-3）。
-            declaration_problems = _declaration_problems(
+            declaration_problems = period.declaration_problems(
                 usage, "period_exceptions.yaml"
-            ) + _declaration_problems(time_usage, "time_label_conventions.yaml")
+            ) + period.declaration_problems(time_usage, "time_label_conventions.yaml")
             if declaration_problems:
                 raise common.MigrationError(
                     "observation の構築を中止した（両出典の取り込み自体は成功したが、"

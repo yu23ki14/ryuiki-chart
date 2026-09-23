@@ -11,7 +11,8 @@ name: CI
 #   ここでも --files-only で registry.sqlite を用意する）。
 # - reconcile: Phase B 突合ハーネス（scripts/b01_derived_baseline.py /
 #   scripts/b02_derived_compare.py / scripts/b03_build_observation.py /
-#   scripts/b04_build_cube.py / scripts/b05_project_v1.py / scripts/reconcile/*.py /
+#   scripts/b04_build_cube.py / scripts/b05_project_v1.py / scripts/b06_build_occurrence.py /
+#   scripts/b08_project_occurrence_v1.py / scripts/reconcile/*.py /
 #   scripts/migrate/*.py）のフィクスチャテストと、以下の構造検証（いずれも
 #   data/db/*.sqlite・data/db/derived.sqlite を一切必要としない）:
 #     - reports/derived_baseline.json がコミットされ、schema_version が一致すること。
@@ -23,6 +24,17 @@ name: CI
 #     - scripts/migrate/period_exceptions.yaml が読めて、各エントリが
 #       period_grain_override/expected_row_count/reason/restoration_plan を持つこと
 #       （`migrate.period.validate_period_exceptions_shape`）。
+#     - scripts/migrate/source_regions.yaml（O-1a。出典→region、region→utc_offset）が
+#       読めて、各エントリが必須キーを持ち、utc_offset が `^[+-][0-9]{2}:[0-9]{2}$`
+#       の形で、expected_row_count が整数であること
+#       （`migrate.source_regions.validate_source_regions_shape`）。
+#     - scripts/migrate/occurrence_period_shapes.yaml（O-1a。observed_on の12形の宣言。
+#       形の定義自体——正規表現・period_grain・展開規則——はコード
+#       〔scripts/migrate/occurrence_period.py の `_SHAPE_DEFS`〕が正で、この YAML には
+#       expected_row_count/note しか持たない）が読めて、各エントリが必須キーを持ち、
+#       expected_row_count が整数で、宣言された形の名前の集合がコードの12形と
+#       過不足なく一致すること（`migrate.occurrence_period.
+#       validate_occurrence_period_shapes_shape`）。
 #   docs/plans/PHASE_B_RECONCILIATION.md §5「CI の限界」で明言しているとおり、
 #   このジョブが保証するのはハーネス自体の正しさとこれらの構造検証だけ。実データ
 #   （data/db/derived.sqlite、14GB）に対する b01 の再実行や b02 の完全モード突合は、
@@ -178,7 +190,7 @@ jobs:
           print(f"OK: {path} (schema_version={data['schema_version']}, tables={data['table_count']})")
           PY
 
-      - name: 宣言ファイル（expected_diffs.yaml / period_exceptions.yaml）の構造検証（原本DBは使わない）
+      - name: 宣言ファイル（expected_diffs.yaml / period_exceptions.yaml / time_label_conventions.yaml / source_regions.yaml / occurrence_period_shapes.yaml）の構造検証（原本DBは使わない）
         run: |
           python3 - <<'PY'
           import json
@@ -186,7 +198,7 @@ jobs:
           import sys
 
           sys.path.insert(0, "scripts")
-          from migrate import period
+          from migrate import occurrence_period, period, source_regions
           from reconcile import common
 
           baseline = json.loads(pathlib.Path("reports/derived_baseline.json").read_text(encoding="utf-8"))
@@ -213,4 +225,16 @@ jobs:
           period.validate_time_label_conventions_shape(conventions_path)
           conventions = period.load_time_label_conventions(conventions_path)
           print(f"OK: {conventions_path}（{len(conventions)}件の宣言）")
+
+          # source_regions.yaml / occurrence_period_shapes.yaml（O-1a。
+          # scripts/b06_build_occurrence.py が読む）も同じ流儀で検証する。
+          source_regions_path = pathlib.Path("scripts/migrate/source_regions.yaml")
+          source_regions.validate_source_regions_shape(source_regions_path)
+          sources, regions = source_regions.load_source_regions(source_regions_path)
+          print(f"OK: {source_regions_path}（出典{len(sources)}件・region{len(regions)}件）")
+
+          period_shapes_path = pathlib.Path("scripts/migrate/occurrence_period_shapes.yaml")
+          occurrence_period.validate_occurrence_period_shapes_shape(period_shapes_path)
+          shapes = occurrence_period.load_period_shapes(period_shapes_path)
+          print(f"OK: {period_shapes_path}（{len(shapes)}形の宣言）")
           PY

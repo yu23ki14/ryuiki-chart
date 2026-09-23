@@ -114,6 +114,64 @@ def load_period_exceptions(path=DEFAULT_EXCEPTIONS_YAML) -> dict[str, PeriodExce
 REQUIRED_EXCEPTION_KEYS = ("period_grain_override", "expected_row_count", "reason", "restoration_plan")
 
 
+def required_keys_problems(
+    entries: dict, required_keys: tuple[str, ...], label_prefix: str = ""
+) -> list[str]:
+    """`entries`（`{名前: {...}, ...}` という、既に読み込んだ生の YAML dict）の
+    各エントリが `required_keys` をすべて持つことを検証し、問題があれば理由の
+    文字列のリストを返す（無ければ空リスト）。
+
+    「宣言 YAML の各エントリが必須キーを持つか」という同じ形の検証を
+    `period_exceptions.yaml`/`time_label_conventions.yaml`（このモジュール、
+    `source_id -> エントリ` の1階層）と `source_regions.yaml`
+    （`scripts/migrate/source_regions.py`、`sources:`/`regions:` の2階層）が
+    別々に持っていたのを、**生の dict を受け取る部分**として1つに集約した
+    （/simplify 指摘6）。ファイルを読む部分（`_validate_shape`）とは責務を分けて
+    ある——呼び出し側がどの階層のどの辞書を渡すか決められるようにするため。
+    `label_prefix` はエラーメッセージの接頭辞（`source_regions.py` が
+    `"sources."`/`"regions."` を渡す。`period_exceptions.yaml` 等は不要なので
+    既定の空文字のまま）。
+    """
+    problems: list[str] = []
+    for name, spec in entries.items():
+        label = f"{label_prefix}{name}"
+        if not isinstance(spec, dict):
+            problems.append(f"{label}: エントリがマッピングになっていない（実際の型: {type(spec).__name__}）")
+            continue
+        missing = [k for k in required_keys if spec.get(k) in (None, "")]
+        if missing:
+            problems.append(f"{label}: 必須キーが欠けている（または空）: {missing}")
+    return problems
+
+
+def entries_with_required_keys(entries: dict, required_keys: tuple[str, ...]) -> dict:
+    """`entries` のうち、`required_keys` をすべて持つ（かつ値が dict である）
+    ものだけを返す。`required_keys_problems()` が既に報告した壊れたエントリを、
+    後続の追加検証（型・形式チェック等）が二重に触らないようにするための
+    フィルタ（`scripts/migrate/source_regions.py` が `sources`/`regions` の
+    それぞれで使う）。
+    """
+    return {
+        name: spec
+        for name, spec in entries.items()
+        if isinstance(spec, dict) and all(spec.get(k) not in (None, "") for k in required_keys)
+    }
+
+
+def validate_expected_row_count(label: str, spec: dict) -> str | None:
+    """`spec["expected_row_count"]` が「非負整数」であることを検証する。問題が
+    無ければ `None`、あれば理由の文字列を返す（`.get()` で黙って検査を外さない。
+    `scripts/migrate/occurrence_period.py`・`scripts/migrate/source_regions.py`
+    が同じ検証を別々に持っていたのを統合した。/simplify 指摘5）。
+    """
+    value = spec.get("expected_row_count")
+    if isinstance(value, bool) or not isinstance(value, int):
+        return f"{label}: expected_row_count が整数でない（実際: {value!r}）"
+    if value < 0:
+        return f"{label}: expected_row_count が負の数（実際: {value!r}）"
+    return None
+
+
 def _validate_shape(path, required_keys: tuple[str, ...]) -> None:
     """宣言 YAML（`source_id -> エントリ`の形）の各エントリが `required_keys` を
     すべて持つことを検証する（原本DBを一切必要としない構造検証。CI 用。B-3:
@@ -121,16 +179,12 @@ def _validate_shape(path, required_keys: tuple[str, ...]) -> None:
     が持っていた同型の検証ループを1つに集約したもの——違いは呼び出し側が渡す
     `required_keys` だけ）。1つでも欠けていれば、どのエントリの何が足りないかを
     まとめて示して `MigrationError` で止まる。
+
+    「パスを読む」部分と「生の dict の必須キーを検査する」部分を分けてある
+    （/simplify 指摘6）——後者は `required_keys_problems()`。
     """
     raw = _load_raw(path)
-    problems: list[str] = []
-    for source_id, spec in raw.items():
-        if not isinstance(spec, dict):
-            problems.append(f"{source_id}: エントリがマッピングになっていない（実際の型: {type(spec).__name__}）")
-            continue
-        missing = [k for k in required_keys if spec.get(k) in (None, "")]
-        if missing:
-            problems.append(f"{source_id}: 必須キーが欠けている（または空）: {missing}")
+    problems = required_keys_problems(raw, required_keys)
     if problems:
         raise MigrationError(
             f"{path} の形が不正:\n- " + "\n- ".join(problems)
@@ -238,6 +292,30 @@ class _EntryUsage:
         return mismatched
 
 
+def declaration_problems(usage: _EntryUsage, yaml_label: str) -> list[str]:
+    """`usage`（`EntryUsage`）の「1件も該当しなかったエントリ」「実測件数が
+    `expected_row_count` と食い違うエントリ」を問題メッセージのリストにする。
+
+    `scripts/b03_build_observation.py`（`period_exceptions.yaml`/
+    `time_label_conventions.yaml`）と `scripts/b06_build_occurrence.py`
+    （`source_regions.yaml`/`occurrence_period_shapes.yaml`）が同一の関数を
+    それぞれ持っていたのを、`EntryUsage` の隣（このモジュール）に1つだけ
+    置くように統合した（/simplify 指摘4）。`yaml_label` はメッセージに出す
+    宣言表の表示名。
+    """
+    problems: list[str] = []
+    unused = usage.unused_entries()
+    if unused:
+        problems.append(f"{yaml_label} に宣言されているが1件も該当しなかったエントリ: {unused}")
+    mismatched = usage.mismatched_expected_counts()
+    if mismatched:
+        problems.append(
+            f"{yaml_label} の expected_row_count と実測件数が食い違う: "
+            f"{mismatched}（宣言 (expected, actual) の順）"
+        )
+    return problems
+
+
 TimeLabelConventionUsage = _EntryUsage
 
 
@@ -285,6 +363,15 @@ class PeriodMismatchError(MigrationError):
 # への別名（B-3。上の `TimeLabelConventionUsage` と同じクラスだった）。
 PeriodExceptionUsage = _EntryUsage
 
+# `_EntryUsage` は「`source_id`（や任意のキー文字列）->宣言」の使用状況を追跡する
+# 汎用トラッカーで、measurements/sensor_timeseries 固有ではない。occurrence の縦線
+# （scripts/migrate/source_regions.py・scripts/migrate/occurrence_period.py）も同じ
+# 形の宣言表（出典→region、期間の形→期待件数）を持つため、同じ実装をここから公開名
+# で再利用する（B-3 と同じ判断: 同じ形のトラッカーを2つ目書かない）。measurements 用の
+# 2エイリアス（`PeriodExceptionUsage`/`TimeLabelConventionUsage`）は呼び出し側の型名を
+# 変えないためにそのまま残す。
+EntryUsage = _EntryUsage
+
 
 def _year_bounds(year: int) -> tuple[str, str]:
     """暦年（1/1〜12/31。ADR-0008）。"""
@@ -324,6 +411,15 @@ def _month_bounds(measured_on7: str) -> tuple[str, str]:
     return start, end.isoformat()
 
 
+# 公開名（B-3・EntryUsage と同じ判断）。`scripts/migrate/occurrence_period.py` の
+# 'year'/'month' 形（区間の両端の計算を含む）が同じ規則を要るため、ここから
+# 再利用する（二重実装を避ける）。measurements 側の呼び出し（`_bounds_for_grain`
+# 等）は引き続き private 名 `_year_bounds`/`_month_bounds` を直接使い、
+# 挙動は一切変えない。
+year_bounds = _year_bounds
+month_bounds = _month_bounds
+
+
 def _strip_tz(label: str, source_id: str | None) -> str:
     """25桁の `'YYYY-MM-DDTHH:MM:SS+09:00'` から時刻帯を落として、19桁の
     時刻帯なしローカル時刻にする（T1: `period_start`/`period_end` は時刻帯を
@@ -339,6 +435,23 @@ def _strip_tz(label: str, source_id: str | None) -> str:
             f"{label!r}（source_id={source_id!r}）。実データでは起きないはずの形。"
         )
     return label[:19]
+
+
+def _parse_utc_offset(utc_offset: str) -> datetime.timedelta:
+    """`'+09:00'`/`'-05:30'` のような表記を `timedelta` にする。時刻帯の扱いを
+    1か所にまとめる（ADR-0024。/simplify 指摘2。旧 `occurrence_period.py`
+    private 実装をここへ移設——`scripts/migrate/occurrence_period.py` から
+    公開名 `parse_utc_offset` で再利用する）。呼び出し側
+    （`scripts/migrate/source_regions.py` の `load_source_regions()`）が
+    `^[+-][0-9]{2}:[0-9]{2}$` で検証済みの値を渡す前提で、ここでは二重に
+    検証しない。
+    """
+    sign = 1 if utc_offset[0] == "+" else -1
+    hh, mm = utc_offset[1:].split(":")
+    return sign * datetime.timedelta(hours=int(hh), minutes=int(mm))
+
+
+parse_utc_offset = _parse_utc_offset
 
 
 def _hour_ending_bounds(label19: str) -> tuple[str, str]:

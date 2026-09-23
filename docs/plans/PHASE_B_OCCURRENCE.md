@@ -566,9 +566,12 @@ scripts/r01_build_registry.py --files-only` が通ることを確認した（実
 
 ## 9. 再現の壁・申し送り
 
-- **O-1/O-2 はまだ設計のみ**（本ドキュメント §4 の切り方の記述だけで、実装は
-  無い）。`occurrence` テーブルの DDL・キューブ拡張（`source_id` を次元に追加）・
-  射影の設計は O-1 着手時に別ドキュメントで詳細化する。
+- **O-1a（`occurrence` ＋ `org_norm`）は実装済み**（`phase-b/occurrence-l2`。
+  詳細・実測は §10）。**O-1b（`occurrence_agg` ＋ 年キー8表 ＋
+  `species_month`）と O-2（流域2表）はまだ設計のみ**（本ドキュメント §4 の
+  切り方の記述だけで、実装は無い）。キューブ拡張（`occurrence_agg`、
+  `source_id` を次元に追加）・年キー8表・`species_month` の射影の詳細は
+  O-1b 着手時に詰める。
 - **F3（流域の点内包判定）は本 PR で一切触れていない。** ADR-0006 規約2の改定
   （複数面への直接解決）は O-2 で ADR 追記とセットで行う。
 - **taxon の `parent_taxon_id`（ADR-0019 の図にはあるが実装に無い）は本 PR でも
@@ -580,3 +583,332 @@ scripts/r01_build_registry.py --files-only` が通ることを確認した（実
   ADR-0006のコードリストに無い）は本 PR のスコープ外のまま（#11 は grid01 の
   **入力**を変えただけで、コードリストからの逸脱自体は解消していない。詳細は
   `docs/plans/PHASE_B_INTAKE.md` #16）。
+
+## 10. O-1a（`occurrence` ＋ `org_norm`）実装・実測（`phase-b/occurrence-l2`）
+
+設計の決定は [ADR-0025](../adr/0025-occurrence-fact-and-cube.md)（D1〜D4）に切り出した。
+ここには実装したファイルと実測値だけを記録する。
+
+### 構成
+
+| ファイル | 役割 |
+|---|---|
+| `scripts/b06_build_occurrence.py` | `organism_records`（823,692行）から `data/db/v2.sqlite` の `occurrence` を作る（`observation`/`observation_agg` と同居） |
+| `scripts/migrate/source_regions.py` / `source_regions.yaml` | 出典 → region、region → utc_offset の宣言（未知の出典・未使用宣言・件数不一致で止める） |
+| `scripts/migrate/occurrence_period.py` / `occurrence_period_shapes.yaml` | `observed_on` の12形の宣言・展開・'Z' 変換（未知の形・件数不一致で止める） |
+| `scripts/b08_project_occurrence_v1.py` | `occurrence` から `org_norm` を `data/db/v1_projection_occurrence.sqlite` に射影する（番号 b07 は O-1b のキューブ用に空けてある） |
+| `scripts/reconcile/expected_diffs.yaml`（`org_norm:` 節） | *Sirosporium celtidis* の `cls` 1キーの宣言 |
+| `scripts/tests/occurrence_fixtures.py` / `test_migrate_occurrence_period.py` / `test_migrate_source_regions.py` / `test_b06_build_occurrence.py` / `test_b08_project_occurrence_v1.py` | フィクスチャ sqlite だけで完結するテスト（原本不要） |
+
+### 実測（`data/db/ryuiki.sqlite`/`registry.sqlite`、2026-09-22。ローカル実行）
+
+```
+occurrence 総行数            823,692
+  日付あり（period_raw NOT NULL）  816,856
+  taxon_id NULL               853（うち日付あり 775。775 は「日付ありの母集団
+                               （org_norm と同じ）」での実測、853 はそれに日付
+                               無し78行を加えた全体——taxon_key='' の記録に
+                               日付の有無は関係しないため、両方が正しい実測）
+  region 内訳                 jp-14 823,692（全行）
+  期間の形（12形）             day 740,323 / day_interval 3,723 /
+                               instant_millisecond_z 800 / instant_minute 26,042 /
+                               instant_minute_z 958 / instant_minute_z_interval 57 /
+                               instant_second 40,633 / instant_second_z 143 /
+                               month 1,320 / month_interval 14 / year 1,797 /
+                               year_interval 1,046（すべて宣言の expected_row_count
+                               と一致）
+  'Z' → ローカル時刻の変換件数   1,958（期待どおり）
+  変換で日が変わった件数        221（期待どおり）
+  変換で月が変わった件数        10（期待どおり）
+  変換で年が変わった件数        0（1件でもあれば構築が止まる設計。実測どおり0）
+```
+
+`org_norm` 射影（`scripts/b08_project_occurrence_v1.py`）: **816,856行**
+（v1 と一致。母集団は `occurrence.period_raw IS NOT NULL`）。
+
+### 受け入れ基準1（`scripts/b02_derived_compare.py --tables org_norm`）
+
+```
+$ .venv/bin/python3 scripts/b02_derived_compare.py \
+    --candidate data/db/v1_projection_occurrence.sqlite --tables org_norm
+一致: 0 / 宣言済み差分のみ: 1 / 不一致: 0
+適用した宣言済み差分: 1件
+EXIT=0
+```
+
+宣言なし（`--no-expected-diffs`）で実行すると、不一致は `org_norm` の `cls` 列
+**1行だけ**（`gbif_kanagawa_occurrences__1829967465`、*Sirosporium celtidis*）で、
+数値列（`is_alien`/`lat`/`lon`/`mlat`/`mlon`/`mo`/`yr`）は816,856行全件で
+差分0（実測。`docs/adr/0025-occurrence-fact-and-cube.md` D3・D1 の「実測」節
+参照）。
+
+### 既存9テーブルのゲートが動かないことの確認（受け入れ基準2）
+
+同じ worktree で `b03`→`b04`→`b05` を実行し直しても（`b06`/`b08` の追加後）:
+
+```
+observation: 1,041,003件（323,164 + 717,839。measurements/sensor_timeseries と一致）
+observation_agg: 構築成功（v2.sqlite に occurrence と同居していても b04 は
+  observation/observation_agg だけを作り直す——staged_table のテーブル単位の
+  分離どおり）
+v1_projection.sqlite: 749,300件（9テーブル合計。既存の実測値と一致）
+b02 --tables meas_daily,meas_month,meas_year,meas_clim,site_var,var_catalog,
+  sensor_daily,sensor_hour_month,rain_daily: 一致3 / 宣言済み差分のみ6 / 不一致0
+  （既存の実測どおり）
+```
+
+`scripts/migrate/period.py` には `EntryUsage`（`_EntryUsage` の公開名。
+`source_regions.py`/`occurrence_period.py` が再利用するための1行の追加のみ）
+だけを足した。`b03` の出力（`observation` 1,041,003行）・既存テストは無変更
+（`test_migrate_period.py`/`test_b03_build_observation.py` 全件成功）。
+
+### 実行時間（初回実装時点）
+
+```
+scripts/b06_build_occurrence.py    23.2s（occurrence 823,692行の構築）
+scripts/b08_project_occurrence_v1.py
+  org_norm へ射影                  15.1s
+  v1_projection_occurrence.sqlite に書き出し  4.1s
+```
+
+### この PR での設計からの逸脱・申し送り（初回実装時点。§11 の修正で解消したものは打消し線）
+
+- `occurrence` は ADR-0007 が挙げる `observation` の列（`quality_stage`/
+  `is_synthetic`/`source_ref`/`event_id`/`method_id`/`instrument_id`/
+  `observer_id`）を持たない。`organism_records.is_synthetic` は全行0で、
+  他の列も v1 のどの派生テーブルからも参照されないため、O-1 設計 v2 D1 が
+  明示した列（F6 の原表記の旗＋識別子＋region/taxon/place/期間）だけに絞った
+  （ADR-0025「影響」節に明記）。将来これらの列を使う消費者が現れたら追加する。
+- ~~`org_norm.rank_l` を `taxon.rank`（taxon の属性）ではなく `lower(記録の
+  taxon_rank)`（記録の原表記）から計算していた~~（§11 で修正。design v2 D3 は
+  `rank_l` を `binom`/`cls`/`kdm`/`phy`/`ord`/`family`/`taxon_group` と同列の
+  「taxon の属性」として挙げているが、初回実装はこの分類を見落とし、F6の
+  「記録の原表記」側の列と誤って同じ扱いにしていた）。
+
+## 11. 独立レビュー（`/code-review`）を受けた修正と実測
+
+O-1a（HEAD `54b459f`）に `/code-review` をかけて15件の指摘（コードレビュー
+指摘1〜15）を受け、すべて反映した。**実測どおり、`occurrence`/`org_norm` の
+値は（指摘5の型変更を除き）1ビットも変わっていない**——修正前後でそれぞれ
+実データからビルドし、正準化した sha256 で突き合わせて確認した（下記「値の
+不変性を確認した方法」参照）。
+
+### 反映した指摘（要約）
+
+1. **`utc_offset` の厳密な検証**: `scripts/migrate/source_regions.py` の
+   `load_source_regions()`/`validate_source_regions_shape()` に
+   `UTC_OFFSET_PATTERN`（`^[+-][0-9]{2}:[0-9]{2}$`）を追加。符号無し
+   （`"09:00"`）等を読み込み時点で拒否する（`_parse_utc_offset` の
+   `sign = 1 if s[0]=='+' else -1` が黙って負に倒れる事故を防ぐ）。
+2. **`\d` を `[0-9]` に**: `scripts/migrate/occurrence_period.py` の
+   `_SHAPE_DEFS` の正規表現をすべて `[0-9]` に変更（Python の `\d` は既定で
+   全角数字にもマッチする——実測で確認済み、`test_classify_shape_rejects_
+   fullwidth_digits` で固定）。
+3. **両端の実在検証**: `expand_period()` が全形で
+   `datetime.date.fromisoformat`/`datetime.datetime.fromisoformat` を通し、
+   `2020-02-30`・月13・`T24:00` 等を `InvalidPeriodValueError`（値と
+   `record_id` を含む）で止める。区間は両端とも検証する。`b06` の T1 検査も
+   `period_end` の `date()` 一致を見るようにした。
+4. **形の定義はコードが正**: `occurrence_period_shapes.yaml` から `length`/
+   `period_grain` を削除し、`expected_row_count`/`note` だけにした。
+   `assert_declared_shapes_match_code()`（`b06` が実行時に呼ぶ）と
+   `validate_occurrence_period_shapes_shape()`（CI）が、宣言された形の名前が
+   コード（`_SHAPE_DEFS`）の12形と過不足なく一致することを検証する。
+6. **`expected_row_count` を実行時にも検証**: `b06` が
+   `validate_source_regions_shape()`/`validate_occurrence_period_shapes_shape()`
+   を実行時にも呼ぶ。`expected_row_count` が整数であることを型で検証する
+   （`.get()` で黙って検査を外さない）。
+9. **形の分類は正規表現を順に試す**: `_SHAPE_BY_LENGTH`（文字数で決め打ち）を
+   廃止し、`_SHAPE_DEFS` を全部試して一致した形を集める方式にした。2つ以上の
+   形に同時に一致したら `AmbiguousPeriodShapeError`。**実行時間への影響は
+   実測で誤差の範囲**（後述「実行時間（修正後）」）。
+11. **`_assert_known_source_ids` の `sorted()` 修正**: `key=lambda v:
+    (v is None, v)` で `None`/`str` 混在でも例外にならないようにした。
+14. **座標の無い行を落とさない**: `occurrence.place_id`/`lat`/`lon` を
+    NULLABLE にし、座標が無い行は `place_id`/`place_kind` を NULL のまま
+    保持する（ADR-0007 原則1）。止めるのは「座標があるのに grid01 に解決
+    しない」行だけ。実測: `organism_records` は全行に座標があるため
+    `no_coordinate_count` は0（レポートにログ出力）。
+7. **b08: 古い registry を検出**: `occurrence.taxon_id IS NOT NULL AND
+   t.taxon_id IS NULL`（registry に taxon が無い＝registry が入れ替わった
+   疑い）が1件でもあれば止める。
+8. / 10. **b08: 1文の `INSERT ... SELECT`**: 出力ファイルを書き込み用に開いた
+   接続に `cube`/`reg` を読み取り専用で ATTACH し、`INSERT INTO org_norm
+   (<列名を明示>) SELECT ...` を1文で実行する形に書き換えた。以前の
+   「`work` で SELECT → Python の `list[tuple]` → 別接続へ位置指定
+   `executemany`」（最大約1GBを同時に保持しうる・列順が2箇所で一致している
+   前提に依存）をやめた。
+5. **`source_row_id` を INTEGER に**: `occurrence.source_row_id`
+   （`organism_records.rowid`）を `TEXT`（`str(rowid)`）から `INTEGER` に
+   変更（`ORDER BY` が辞書順になっていた——例えば `'10' < '2'`）。docstring に
+   「rowid は原本のスナップショットに固有（`VACUUM` 等で変わりうる）。v1 も
+   同じスナップショットを走査するので、O-2 の走査順の再現には同じ
+   スナップショットの中でだけ使う。恒久的な識別子は `record_id`」と明記した。
+12. **再利用**: `scripts/migrate/period.py` に `year_bounds`/`month_bounds`
+    （`_year_bounds`/`_month_bounds` の公開名）を追加し、
+    `occurrence_period.py` から再利用した（`period.py` の他の関数・挙動・
+    `b03` の出力は無変更）。`scripts/b06_build_occurrence.py` の taxon_id は
+    `scripts/registry/common.py` の `taxon_id_gbif`/`taxon_id_inat`
+    （taxon レジストリのビルドが実際に ID を発行するのと同じ関数）から作る
+    ように書き換えた（SQL の CASE 式でハードコードしていた ID の書式を
+    やめ、taxon 解決を Python 側の `set` 参照に変更——副次的に約4〜5秒速く
+    なった。後述）。`b08` の既定 `taxon_group` は `migrate.common.load_yaml`
+    （`reconcile.common.load_yaml` の re-export）を使うように整理した
+    （`scripts/registry/build_taxon.py` の読み込み関数は使わなかった——
+    「使わなかったものと理由」参照）。
+13. **単純化**: `_PROBLEM_SPECS` の使われない `sample_limit` 次元、
+    `occurrence_period.py`/`source_regions.py` の `_load_raw` 薄いラッパ、
+    `source_regions.py` の `_validate_section_shape` の未使用 `path` 引数を
+    削除した。
+15. **ドキュメント**: `ci.yml` のコメント・ステップ名を実態に合わせて更新、
+    `occurrence_period.py` の docstring を `period.py` 再利用の実態に合わせて
+    修正、`render_report` の「期待 1,958/221/10」という検証していない数字の
+    直書きを削除（実測値だけを出す）。`rank_l` は `registry.taxon.rank` と
+    `lower(記録の taxon_rank)` が全816,856行で一致することを実測で確認し、
+    design v2 D3 どおり taxon の属性（`t.rank`）から取るように修正した
+    （§10「設計からの逸脱」に取消線で記録）。
+
+### 使わなかったものと理由（指摘12）
+
+`scripts/registry/build_taxon.py` の `_load_taxon_group_rules()`
+（`default_label_ja` と `rules` を両方返す）は使わなかった。`b08` が必要なのは
+`default_label_ja` だけで、`_load_taxon_group_rules()` はレジストリのビルド
+文脈に閉じた private 関数（`rules` 側の重複検知等、`b08` には不要な責務まで
+背負っている）。`migrate.common.load_yaml`（`reconcile.common.load_yaml` の
+re-export、既に `b08` が import 済み）で `default_label_ja` 1個だけを読む方が
+単純で、依存も増えない（`build_taxon.py` の import 自体は `requirements.txt`
+だけの venv で通ることを確認済み——`csv`/`sqlite3`/`yaml`/`taxon_namespaces`/
+`registry.common` のみ、`requests` 等の重い依存は無い。使わなかったのは
+「通らないから」ではなく「責務が合わないから」）。
+
+### 値の不変性を確認した方法
+
+1. 修正前（HEAD `54b459f`）の `scripts/b06_build_occurrence.py`・
+   `scripts/migrate/occurrence_period.py`・`scripts/migrate/source_regions.py`
+   等一式を `git archive 54b459f` で別ディレクトリに展開し、同じ実データ
+   （`data/db/ryuiki.sqlite`/`registry.sqlite`）に対して実行 → `v2_old.sqlite`。
+2. 修正後のコードを同じ実データに対して実行 → `data/db/v2.sqlite`。
+3. 両方の `occurrence` テーブルを `record_id` 順に読み、`source_row_id` だけ
+   `int()` に正準化してから全21列を `repr()` で連結し sha256 を取ったところ、
+   **完全一致**（823,692行）。
+4. 同様に `org_norm`（`scripts/b08_project_occurrence_v1.py` の出力）も
+   `record_id` 順・全21列で sha256 を取り、**完全一致**（816,856行、`rank_l`
+   の実装変更を含めて1ビットも変わらない——`registry.taxon.rank` と
+   `lower(記録のtaxon_rank)` が全行一致するため）。
+5. `scripts/b02_derived_compare.py --candidate data/db/v1_projection_occurrence.sqlite
+   --tables org_norm` は修正後も exit 0・宣言済み差分のみ1・不一致0のまま。
+
+### 実行時間（修正後。複数回実行し変動あり）
+
+```
+scripts/b06_build_occurrence.py    19.2〜26.0s（修正前23.2s。実行のたびに
+  ±5秒程度ぶれるが、修正前と比べて明確に遅くなってはいない——taxon 解決を
+  SQL の LEFT JOIN から Python の set 参照に変えたことが、正規表現を全部
+  試す形（指摘9）による増加分を相殺している）
+scripts/b08_project_occurrence_v1.py へ射影して書き出し  7.8〜11.1s（修正前
+  15.1s+4.1s=19.2s。fetchall+位置指定executemanyの2段階から、ATTACHした
+  1本のINSERT...SELECTに変えたことで明確に速くなった）
+```
+
+## 12. 独立レビュー（`/simplify`）を受けた修正と実測
+
+§11（HEAD `57bf83b`）に `/simplify` をかけて12件の指摘（深さ2件・再利用3件・
+単純化4件・効率2件＋どちらにも数えない1件）を受け、すべて反映した。**実測どおり、
+`occurrence`・`org_norm`・`observation` の値は完全に不変**——修正前
+（`57bf83b`）のコード一式を `git archive` で復元して同じ実データからビルドし、
+正準化した sha256 で突き合わせて確認した（§11と同じ方法）。
+
+### 反映した指摘（要約）
+
+- **深さ1**: `scripts/b06_build_occurrence.py` の `_assert_known_source_ids` と
+  `scripts/registry/build_taxon.py` の同名関数が同じ検査（重複除去・
+  None-safe なソート・例外送出）を別々に持っていたのを、依存の無い
+  `scripts/taxon_namespaces.py` の `assert_known_source_ids(source_ids,
+  error_cls=ValueError)` に一本化した。`error_cls` で呼び出し側が投げたい
+  例外の型を選べる（`build_taxon.py` は既定の `ValueError`、`b06` は
+  `common.MigrationError`）——既存テストが見ている例外の型・メッセージは
+  変えていない。
+- **深さ2**: `_parse_utc_offset` を `scripts/migrate/occurrence_period.py` から
+  `scripts/migrate/period.py`（`_strip_tz` の隣）に移設し、公開名
+  `parse_utc_offset` で再利用する形にした（時刻帯の扱いを1か所に。ADR-0024）。
+- **深さ3**: ADR-0025 D1 に「`source_regions.yaml` の `regions:`（地域の属性。
+  将来 `observation` も読みうる）と `sources:`（occurrence の出典ごとの
+  行数検証）は意味が違う」という1文を追記した。
+- **再利用4**: `_declaration_problems`（b03・b06 で同一実装）を
+  `scripts/migrate/period.py` の `EntryUsage` の隣に `declaration_problems()`
+  として1つだけ置き、両方から呼ぶ形にした。
+- **再利用5**: `_validate_expected_row_count`（`occurrence_period.py`・
+  `source_regions.py` で同一）を `period.validate_expected_row_count()` に統合。
+- **再利用6**: `period._validate_shape` を「パスを読む部分」（`_validate_shape`
+  のまま）と「生の dict の必須キーを検査する部分」（新設
+  `required_keys_problems()`）に分割し、後者と新設のフィルタ
+  `entries_with_required_keys()` を `occurrence_period.py`/`source_regions.py`
+  のセクションごとの検証（`sources:`/`regions:`/形の宣言）から使うようにした。
+  `period_exceptions.yaml`・`time_label_conventions.yaml` の検証結果は
+  変えていない（`validate_period_exceptions_shape`/
+  `validate_time_label_conventions_shape` は無変更のまま `_validate_shape` を
+  呼ぶ）。
+- **単純化7**: `_ingest()` の使われない引数 `shapes` を削除。
+- **単純化8**: `scripts/tests/occurrence_fixtures.py` の12形の名前を、
+  `migrate.occurrence_period._SHAPE_NAMES`（正）から導出する形にし、リテラルの
+  重複を無くした。
+- **単純化9**: `occurrence_period_shapes.yaml` の `note` を「どの原表記か」の
+  識別だけに削ぎ落とし、展開規則の文章は削除した（正はコード、説明は
+  ADR-0025 D1 の表の1か所だけに集約）。
+- **単純化10**: `EntryUsage` の別名（`PeriodShapeUsage`・`SourceRegionUsage`・
+  `RegionUsage`）を廃止し、呼び出し側（`b06`）は `period.EntryUsage` を直接
+  使うようにした。
+- **効率11**: `ExpandedPeriod`（1行に1個、823,692回作られるホットパス）を
+  `@dataclass(frozen=True)` から `typing.NamedTuple` に変更した（属性参照は
+  変わらない。実測 約0.9秒短縮）。
+- **効率12**: `b08` の古い registry 検出を、`occurrence.taxon_id` を1行ずつ
+  JOIN する形から、distinct 値（実測 約33,613種）だけを `reg.taxon` と
+  突き合わせる形に変えた。メッセージも「行が何件」ではなく「taxon_id が
+  何種」に合わせた。
+- **`classify_shape` の docstring 修正**: 「実測頻度の降順」という記述が、
+  全形を毎回試す実装（正しさも速さも並び順に依存しない）と矛盾して見える
+  との指摘を受け、「並びは読みやすさのためだけ」と明記した。
+
+### 見送った指摘（オーナー判断。理由は前回の指示メッセージのまま）
+
+- 形の判定を文字数で絞る高速化（実測 約2.3秒）: `/code-review` 指摘9で
+  意図的に外した特例を戻すことになるため見送り。
+- `source_id` の二重走査の畳み込み（実測 約0.47秒）: 「1行も処理する前に
+  全件を診断する」という `_assert_known_source_ids`/宣言表検証の設計を
+  優先し見送り。
+- 例外クラスの使われない属性の整理: 既存の `PeriodMismatchError` 等と同じ
+  流儀のまま。全体を揃えるなら別途。
+
+### 値の不変性を確認した方法（§11と同じ手法）
+
+`git archive 57bf83b` で修正前のコード一式を復元し、同じ実データ
+（`data/db/ryuiki.sqlite`/`registry.sqlite`）に対して実行して `v2_old.sqlite`/
+`v1_projection_occurrence_old.sqlite` を作り、現在のコードの出力と
+`record_id` 順・正準化 sha256 で突き合わせた。
+
+```
+occurrence（823,692行、全22列。source_row_id は int() 正準化）: 完全一致
+org_norm（816,856行、全21列）: 完全一致
+```
+
+`observation` は main（`22138f2`）のコード一式を同様に復元して突き合わせ、
+**完全一致**（1,041,003行、全21列）を確認した。
+
+### 受け入れ基準（実測）
+
+```
+b06 → b08 → b02 --tables org_norm: exit 0、宣言済み差分のみ1・不一致0
+既存9表のゲート（b03→b04→b05）: 一致3・宣言済み差分のみ6・不一致0（変更なし）
+r01 のフルビルド（worktree の registry.sqlite）: taxon 41,454・place 4,964 等、
+  すべて修正前と同じ件数
+web/src/lib/registry/generated.ts・generated-client.ts の再生成: git diff 0行
+pytest: 308件成功（原本の無い一時 clone + requirements.txt だけの venv でも
+  308件成功）
+```
+
+### 実行時間（`/simplify` 反映後）
+
+```
+scripts/b06_build_occurrence.py    19.2s
+scripts/b08_project_occurrence_v1.py へ射影して書き出し  7.8s
+```

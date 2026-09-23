@@ -97,6 +97,16 @@ ADR-0006 が定義した `place_relation` を実装する。本 PR で作る辺�
 **この PR ではコードを変えない。** 既知の結合（今は結果が一致するが、いずれ直す必要がある
 接続点）として、ここに明記するだけにとどめる。
 
+**2026-09-22 追記（occurrence で先に実装。[ADR-0025](0025-occurrence-fact-and-cube.md) D1）**:
+`scripts/b06_build_occurrence.py`（`occurrence`）は、本決定が予告したとおり
+出典（`organism_records.source_id`）から `region_id` を決める最初の実装になった
+（`scripts/migrate/source_regions.py`・`source_regions.yaml`。ADR-0012 のマニフェストが
+本来持つべき `region:` 欄を、この宣言ファイルとして先取りしている）。**`observation`
+（`scripts/b03_build_observation.py`）側は変更していない**——地点に紐づく観測だけを
+扱っているあいだは `place` 経由の結果が一致するため、直す理由が今は無い（この段落が
+明記した「既知の結合」はそのまま残っている）。両者を将来1本の経路（ADR-0012 マニフェスト
+本体）に揃えるかどうかは別途判断する。
+
 ### 4. 地域そのものを表す place、および `common:` place → 地域の空間的な所在の辺は作らない
 
 `prefecture` のような「地域そのもの」を表す `place_kind` も、`common:` の place

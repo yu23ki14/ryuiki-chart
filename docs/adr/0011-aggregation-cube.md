@@ -17,6 +17,12 @@
 （`observation`）から直接作ることがある——本節が既に許している「事前計算しなかった軸は `dist/`
 の Parquet への直クエリに任せる」と同じ考え方を、v1 互換の射影という形で先取りしたもの。
 
+**2026-09-22 追記（[ADR-0025](0025-occurrence-fact-and-cube.md) D2）**: 本 ADR の
+「入力は `observation` と `occurrence` の2つ」は物理表を1つに限っていない。
+**1ファクト＝1キューブ表**（`observation` → `observation_agg`、`occurrence` →
+`occurrence_agg`）とし、鍵の規律（`staged_table`・`COALESCE(c,'')` の
+`UNIQUE INDEX`・`built_from`/`spec_version`）は両者で共通にする、と明確化した。
+
 ## 背景（実測）
 
 `derived.sqlite` の**33テーブル**は、画面・AIツール・チャート部品ごとに個別対応で作られている。

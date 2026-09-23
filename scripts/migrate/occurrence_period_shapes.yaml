@@ -1,0 +1,72 @@
+# organism_records.observed_on の形の宣言（scripts/migrate/occurrence_period.py が
+# 読む。O-1 設計 v2 D1）。
+#
+# **形の定義そのもの（正規表現・period_grain・展開規則）の正はコード
+# （scripts/migrate/occurrence_period.py の `_SHAPE_DEFS`）。展開規則の説明は
+# docs/adr/0025-occurrence-fact-and-cube.md D1 の表を参照（ここでは繰り返さない）。**
+# ここは形の名前ごとに `expected_row_count`/`note` だけを持つ——`length`/
+# `period_grain` を二重に持つと食い違う余地が生まれるため。
+# `occurrence_period.assert_declared_shapes_match_code()` が、ここに書いた形の
+# 名前の集合がコードの `_SHAPE_DEFS` と過不足なく一致することを起動のたびに
+# 検証する（名前を書き間違えた・コード側の形を追加してここを更新し忘れた、を
+# 両方とも即座に検出する）。
+#
+# `observed_on` は実測で12種類の「形」を持つ（すべて GBIF 経由。docs/plans/
+# PHASE_B_OCCURRENCE.md / O-1 設計 v2「実測」節）。NULL 6,836行は形を持たない別扱いで、
+# ここには宣言しない——scripts/b06_build_occurrence.py は観測日の無い記録も落とさず、
+# period_grain/period_start/period_end/period_raw を NULL のまま保持する。
+#
+# 各エントリ:
+#   expected_row_count:  実測件数（data/db/ryuiki.sqlite、2026-09-22）。
+#                        scripts/b06_build_occurrence.py が実行のたびに検証する。
+#                        整数であること（欠落・空・非整数は構造検証で止める）。
+#   note:                原表記がどの形かの識別だけ（展開規則は書かない。正は
+#                        ADR-0025 D1）。
+
+year:
+  expected_row_count: 1797
+  note: "'YYYY'（暦年）。"
+
+month:
+  expected_row_count: 1320
+  note: "'YYYY-MM'（暦月）。"
+
+year_interval:
+  expected_row_count: 1046
+  note: "'YYYY/YYYY'（調査期間の開始年/終了年）。"
+
+day:
+  expected_row_count: 740323
+  note: "'YYYY-MM-DD'（検体日）。"
+
+month_interval:
+  expected_row_count: 14
+  note: "'YYYY-MM/YYYY-MM'（調査期間の開始月/終了月）。"
+
+instant_minute:
+  expected_row_count: 26042
+  note: "'YYYY-MM-DDTHH:MM'（秒なし・時刻帯なし）。"
+
+instant_minute_z:
+  expected_row_count: 958
+  note: "'YYYY-MM-DDTHH:MMZ'（秒なし・UTC）。"
+
+instant_second:
+  expected_row_count: 40633
+  note: "'YYYY-MM-DDTHH:MM:SS'（時刻帯なし）。"
+
+instant_second_z:
+  expected_row_count: 143
+  note: "'YYYY-MM-DDTHH:MM:SSZ'（UTC）。"
+
+day_interval:
+  expected_row_count: 3723
+  note: "'YYYY-MM-DD/YYYY-MM-DD'（調査期間の開始日/終了日）。"
+
+instant_millisecond_z:
+  expected_row_count: 800
+  note: "'YYYY-MM-DDTHH:MM:SS.sssZ'（ミリ秒付き・UTC）。"
+
+instant_minute_z_interval:
+  expected_row_count: 57
+  note: "'YYYY-MM-DDTHH:MMZ/YYYY-MM-DDTHH:MMZ'（区間の両端とも秒なし・UTC の瞬時）。"

@@ -211,3 +211,30 @@ var_catalog:
       n_annual・n_censored に反映される。
     found_on: 2026-09-15
     record: docs/plans/PHASE_B_RECONCILIATION.md 「再現できなかった箇所の記録」
+
+# 経緯（変更3・2026-09-22）: O-1a（`occurrence`→`org_norm`、
+# scripts/b06_build_occurrence.py・scripts/b08_project_occurrence_v1.py）で
+# org_norm（816,856行）を実データで突合した結果、1行1列（cls）だけ再現できない
+# taxon が見つかった。属単位の多数決（genus_match）が同数だった
+# Sirosporium 属で、v1（web/scripts/build-biota.mjs、`ROW_NUMBER() OVER (...
+# ORDER BY COUNT(*) DESC)`、同数時の順序は実装依存の暗黙順）は
+# 'Sordariomycetes' を選んでいたが、taxon レジストリのビルダー
+# （scripts/registry/build_taxon.py、`_majority_vote()`）は明示規則
+# （件数降順・同数なら値の昇順）で 'Dothideomycetes' を選ぶ——どちらも
+# 「正しい」多数決の結果であり、taxon_group（菌類）はどちらでも変わらない。
+# 詳細は docs/plans/PHASE_B_OCCURRENCE.md §3「F2: 分類の補完」・
+# scripts/registry/build_taxon.py の docstring。
+
+org_norm:
+  - key: ["gbif_kanagawa_occurrences__1829967465"]
+    kind: value_diff
+    columns: [cls]
+    reason: >
+      Sirosporium celtidis（GBIF taxon_key 由来、own class は NULL）。属
+      Sirosporium の class 多数決が同数（Dothideomycetes と Sordariomycetes が
+      同数）で、v1 は実装依存の暗黙順で 'Sordariomycetes' を選んでいたが、
+      taxon レジストリは決定論的なタイブレーク（件数降順・同数なら値の昇順）で
+      'Dothideomycetes' を選ぶ。taxon_group（菌類）は両候補とも同じなので
+      変わらない。
+    found_on: 2026-09-22
+    record: "docs/plans/PHASE_B_OCCURRENCE.md §3「F2: 分類の補完」"
