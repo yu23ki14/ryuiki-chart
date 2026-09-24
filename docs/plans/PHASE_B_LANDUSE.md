@@ -121,7 +121,10 @@ CSV の `source_id` 列と同じ定数。`stat="sum"`, `grain="year"`。
 （P-1b オーナー決定3・`source_regions.py` モジュール docstring 参照）。
 `b06_build_occurrence.py` の呼び出しは `consumer="occurrence"` を明示する
 ように変更した（挙動は変わらない。実データで823,692行が変わらず通ることを
-確認済み——§6）。
+確認済み——§6）。**`sources` を消費者ごとにネストする案は採らない**——1つの
+出典が将来2つ目の消費者にも流れるようになったとき、宣言を複製することに
+なるため。いまの「出典1件の属性として `consumer` を持たせ、読む側が絞り込む」
+形を保つ。
 
 ### `scripts/b03_build_observation.py` に `_ingest_landuse`（3本目の取り込み）
 
@@ -335,6 +338,74 @@ Python 3.10.12・SQLite 3.37.2の新規venvを`requirements.txt`だけで構築�
 CI相当の宣言ファイル構造検証（`source_regions.yaml`含む全8ファイル、
 `source_regions.yaml`は`sources=3, regions=1, consumers=['observation',
 'occurrence']`で読めることを確認）すべてOKだった。
+
+### 6.2 Round 3（`/simplify`。2026-09-24実測）
+
+/simplify（再利用・単純化・深さ）指摘6件を反映した:
+
+1. **`_ingest_landuse` が `_process_row` を経由しないため `grain_mismatch_count`
+   の計上だけが構造的に欠けていた**（レポートは3出典共通で出すのに土地利用
+   だけ常に0になっていた）。`_process_row` を「重複キーの判定」
+   （`_check_duplicate`）と「alias/place の解決＋期間の計算＋grain の計上」
+   （`_resolve_and_compute_period`）に分割し、後者を3出典で共有する形にした
+   （土地利用固有の「1行→2行」の展開・業務キーでの重複検出は
+   `_ingest_landuse` に残す）。テスト
+   `test_landuse_declared_grain_mismatch_is_counted`
+   （`scripts/tests/test_b03_build_observation.py`）を追加し、宣言表
+   （`period_exceptions.yaml`）でカバーされた grain の食い違いが土地利用でも
+   計上され、かつ例外にならないことを確認した。実データでは landuse の
+   grain 食い違いは0件のまま（`reports/phase_b_fact_slice.md`）——このバグは
+   実測値には影響していなかったが、将来 grain 違いの区分を足したときに
+   黙って見逃す経路だった。
+2. `scripts/b03_build_observation.py` の `_load_watershed_place_lookup` に
+   `external_key`（watershed_id）の一意性検証を足した
+   （`common.raise_on_group_by_duplicates`。`scripts/b09_build_occurrence_place.py`
+   の `_assert_watershed_external_key_unique` と同型）。実データでは重複0件
+   （確認済み）。
+3. `scripts/b05_project_v1.py` に `_place_lookup_sql(source_id)` を切り出し、
+   `place_lookup`/`watershed_place_lookup` の両方をこれで作るようにした
+   （`_alias_lookup_sql`/`_unit_lookup_sql` と同じ流儀。生成される SQL 文字列は
+   変更前とバイト単位で同一）。
+4. `registry/variable_alias.csv` の土地利用46行（コピペで同一文だった note）を
+   `P-1b（docs/plans/PHASE_B_LANDUSE.md §2/§3参照）。` に短縮した。
+   `note` 列はどの画面・APIからも読まれない（`VARIABLE_NOTE` は
+   `variable.description_ja` から作られ、`variable_alias.note` は経由しない）
+   ため、`generated.ts`/`generated-client.ts` の再生成は無変更
+   （`git diff --exit-code` で確認済み）。
+5. `scripts/migrate/source_regions.py` の `load_source_regions()` docstring
+   （もう存在しない `_DEFAULT_CONSUMER`/`spec.get(...)` を使った説明）と
+   `docs/plans/PHASE_B_INTAKE.md`（「省略時の既定は occurrence、後方互換」と
+   書かれ、本ドキュメントの「後方互換は撤回した」と食い違っていた記述）を、
+   どちらも「`consumer` は必須」に直した（INTAKE.md 側は本ドキュメントへの
+   参照1行に圧縮）。
+6. `scripts/tests/test_b03_build_observation.py` の `build_observation(` 呼び出し
+   11箇所で、以前の一括置換（`tmp_path,` を機械的に挿入した際の跡）による
+   インデント崩れ（後続の引数行より浅いインデントのまま残っていた）を、
+   継続行の慣例的な深さに揃えた。
+
+**見送った2件**（理由）:
+- `render_report` の出典ごとの分岐を設定テーブルにする案: 文言が出典ごとに
+  本質的に違い、3出典のいまは分岐のままで許容範囲。4つ目の出典が来たときに
+  改めて検討する。
+- **`source_regions.yaml` の `sources` を消費者ごとにネストする案は採らない**
+  ——1つの出典が将来2つ目の消費者にも流れるようになったとき、宣言を複製
+  することになるため。いまの「出典1件の属性として `consumer` を持たせ、
+  読む側が絞り込む」形を保つ（§3.2 にも同じ理由を残した）。
+
+**再検証（実データ・実行順は§6.1と同じ）**: 5系統のゲートすべてで
+b02自身の終了コード**0**、内訳は§6/§6.1と完全に同一
+（observation 13表 一致7/宣言済み差分のみ6/不一致0、occurrence 13表
+一致11/宣言済み差分のみ2/不一致0、文書3表 一致3、watershed_meta 一致1、
+レッドリスト2表 一致2）。`observation`/`observation_agg`/v1形の行数も
+§6.1と1件も変わらず（1,050,719 / 2,022,964 / 761,391）。`_place_lookup_sql`
+の抽出は生成 SQL がバイト単位で同一、`_load_watershed_place_lookup`の
+一意性検証は実データで重複0件（追加した検証は実行を止めない）、
+`_ingest_landuse`の並び替え（重複判定→alias/place解決→期間計算の順に
+他の2出典と揃えた）も実データでは unresolved/重複が0件のため出力に影響
+しない——以上より、既存11表・occurrence13表・文書3表・watershed_meta・
+レッドリスト2表の値は変わっていないと判断した。pytest は
+`.venv/bin/python3 -m pytest scripts/tests` で**500件全緑**
+（Round 2の499件＋今回追加した1件）。
 
 ## 7. 既知の負債・未決
 

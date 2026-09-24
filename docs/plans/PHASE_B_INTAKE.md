@@ -231,10 +231,6 @@ ADR-0005「同じ出典に複数版が同居する」は `source`/`source_editio
 
 occurrence（`scripts/b06_build_occurrence.py`）専用だった
 `source_regions.yaml` を、observation（`scripts/b03_build_observation.py`）
-の土地利用取り込みも共有するようになった。`sources.<id>.consumer`
-（`occurrence`|`observation`。省略時の既定は `occurrence`、後方互換）を足し、
-`load_source_regions(path, consumer=...)` で消費者ごとに絞り込む——絞り込みが
-無いと、ある消費者が「自分が使わない他消費者向けの宣言」を未使用宣言として
-誤検出してしまう（`docs/plans/PHASE_B_LANDUSE.md` 参照）。3つ目の消費者が
-現れたら `CONSUMER_CODES`（`scripts/migrate/source_regions.py`）にコードを
-足すこと。
+の土地利用取り込みも共有するようになった。設計・`consumer`（必須キー。
+省略時に既定値へ落ちる設計は採らない）の詳細は `docs/plans/PHASE_B_LANDUSE.md`
+参照。

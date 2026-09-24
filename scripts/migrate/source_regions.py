@@ -112,13 +112,13 @@ def load_source_regions(
     宣言されていることと、`regions` の `utc_offset` が `UTC_OFFSET_PATTERN`
     に一致することをここで検証する（黙って `KeyError` や符号違いの値を通さない）。
 
-    `consumer` を渡すと、`sources` を `spec.get("consumer", _DEFAULT_CONSUMER)
-    == consumer` の行だけに絞り込み、`regions` もその絞り込んだ `sources` が
-    実際に参照する `region_id` だけに絞る（モジュール docstring「consumer」節）。
-    `consumer=None`（既定）なら絞り込まず、ファイル全体をそのまま返す
-    （呼び出し側で `EntryUsage` の対象を消費者ごとに正しく分けられるように
-    するための機能で、`consumer` を渡さない既存の呼び出し・既存のテストの
-    挙動は一切変えない）。
+    `consumer` を渡すと、`sources` を `s.consumer == consumer`（`consumer` は
+    必須キーなので `SourceRegion.consumer` に必ず値がある）の行だけに絞り込み、
+    `regions` もその絞り込んだ `sources` が実際に参照する `region_id` だけに絞る
+    （モジュール docstring「consumer」節）。`consumer=None`（既定）なら絞り込まず、
+    ファイル全体をそのまま返す（呼び出し側で `EntryUsage` の対象を消費者ごとに
+    正しく分けられるようにするための機能で、`consumer` を渡さない既存の
+    呼び出し・既存のテストの挙動は一切変えない）。
     """
     raw = load_yaml(path)
     sources_raw = raw.get("sources") or {}

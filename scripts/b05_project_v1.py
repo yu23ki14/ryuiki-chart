@@ -200,6 +200,17 @@ def _alias_lookup_sql(dataset: str) -> str:
     """
 
 
+def _place_lookup_sql(source_id: str) -> str:
+    """`place_id -> v1 の外部キー`の逆引き元 SQL（`place_source_ref.source_id`
+    で絞る）。`place_lookup`（`source_id='sites.site_id'`）と
+    `watershed_place_lookup`（`source_id='watershed_meta.watershed_id'`、
+    P-1b）の両方をこの関数で作る——以前は後者が前者のブロックをほぼ丸写し
+    していたものを、`_alias_lookup_sql`/`_unit_lookup_sql` と同じ「引数だけ
+    違う SQL 生成関数」という既存の流儀に揃えた（/simplify 指摘3）。
+    """
+    return f"SELECT place_id, external_key FROM reg.place_source_ref WHERE source_id = '{source_id}'"
+
+
 def _unit_lookup_sql(source_table: str) -> str:
     """`(variable_id, value_grain, obs_stat, unit_id) → unit_raw` の逆引き元
     SQL（`source_table`——`observation.source_table` の値——で絞る）。
@@ -701,10 +712,7 @@ def _materialize_lookup_tables(work: sqlite3.Connection, landuse_years: list[str
     work.execute(_label25_obs_keyed_sql())
     work.execute("CREATE INDEX label25_obs_keyed_akey ON label25_obs_keyed (akey)")
 
-    work.execute(
-        "CREATE TEMP TABLE place_lookup AS "
-        "SELECT place_id, external_key FROM reg.place_source_ref WHERE source_id = 'sites.site_id'"
-    )
+    work.execute(f"CREATE TEMP TABLE place_lookup AS {_place_lookup_sql('sites.site_id')}")
     _raise_on_group_by_duplicates(
         work,
         "SELECT place_id, COUNT(*) AS n FROM place_lookup GROUP BY place_id HAVING n > 1 LIMIT 5",
@@ -729,11 +737,10 @@ def _materialize_lookup_tables(work: sqlite3.Connection, landuse_years: list[str
     work.execute("CREATE UNIQUE INDEX site_zone_lookup_site_id ON site_zone_lookup (site_id)")
 
     # 土地利用（P-1b）。watershed の place_id -> v1 の watershed_id
-    # （`place_lookup` の site 版と同じ流儀。`source_id` が違うだけ）。
+    # （`_place_lookup_sql` は `place_lookup` と同じ関数——`source_id` が違うだけ）。
     work.execute(
-        "CREATE TEMP TABLE watershed_place_lookup AS "
-        "SELECT place_id, external_key FROM reg.place_source_ref "
-        "WHERE source_id = 'watershed_meta.watershed_id'"
+        f"CREATE TEMP TABLE watershed_place_lookup AS "
+        f"{_place_lookup_sql('watershed_meta.watershed_id')}"
     )
     _raise_on_group_by_duplicates(
         work,

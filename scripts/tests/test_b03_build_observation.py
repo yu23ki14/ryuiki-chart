@@ -155,7 +155,7 @@ def test_hour_grain_without_time_label_convention_raises(tmp_path):
 
     with pytest.raises(Exception) as excinfo:
         build_observation(
-        tmp_path,
+            tmp_path,
             measurements_db, registry_db, _no_exceptions_path(tmp_path), empty_conventions, tmp_path / "v2.sqlite"
         )
     from migrate import period as period_mod
@@ -175,7 +175,7 @@ def test_time_label_convention_unused_entry_raises(tmp_path):
 
     with pytest.raises(common.MigrationError, match="1件も該当しなかった"):
         build_observation(
-        tmp_path,
+            tmp_path,
             measurements_db, registry_db, _no_exceptions_path(tmp_path), conventions, tmp_path / "v2.sqlite"
         )
 
@@ -193,7 +193,7 @@ def test_time_label_convention_expected_row_count_mismatch_raises(tmp_path):
 
     with pytest.raises(common.MigrationError, match="expected_row_count と実測件数が食い違う"):
         build_observation(
-        tmp_path,
+            tmp_path,
             measurements_db, registry_db, _no_exceptions_path(tmp_path), conventions, tmp_path / "v2.sqlite"
         )
 
@@ -210,7 +210,7 @@ def test_unresolved_alias_raises_with_count_and_example(tmp_path):
 
     with pytest.raises(common.MigrationError, match="variable_alias で解決できない"):
         build_observation(
-        tmp_path,
+            tmp_path,
             measurements_db, registry_db, _no_exceptions_path(tmp_path), _no_conventions_path(tmp_path),
             tmp_path / "v2.sqlite",
         )
@@ -227,7 +227,7 @@ def test_unresolved_place_raises(tmp_path):
 
     with pytest.raises(common.MigrationError, match="place_source_ref で解決できない"):
         build_observation(
-        tmp_path,
+            tmp_path,
             measurements_db, registry_db, _no_exceptions_path(tmp_path), _no_conventions_path(tmp_path),
             tmp_path / "v2.sqlite",
         )
@@ -247,7 +247,7 @@ def test_period_mismatch_without_declared_exception_raises(tmp_path):
 
     with pytest.raises(common.MigrationError, match="value_grain と period_grain が食い違い"):
         build_observation(
-        tmp_path,
+            tmp_path,
             measurements_db, registry_db, _no_exceptions_path(tmp_path), _no_conventions_path(tmp_path),
             tmp_path / "v2.sqlite",
         )
@@ -297,7 +297,7 @@ def test_exception_entry_never_matched_raises(tmp_path):
 
     with pytest.raises(common.MigrationError, match="1件も該当しなかった"):
         build_observation(
-        tmp_path,
+            tmp_path,
             measurements_db, registry_db, exceptions_yaml, _no_conventions_path(tmp_path), tmp_path / "v2.sqlite"
         )
 
@@ -322,7 +322,7 @@ def test_expected_row_count_mismatch_raises(tmp_path):
 
     with pytest.raises(common.MigrationError, match="expected_row_count と実測件数が食い違う"):
         build_observation(
-        tmp_path,
+            tmp_path,
             measurements_db, registry_db, exceptions_yaml, _no_conventions_path(tmp_path), tmp_path / "v2.sqlite"
         )
 
@@ -460,7 +460,7 @@ def test_a1_declaration_failure_preserves_previous_observation(tmp_path):
     )
     with pytest.raises(common.MigrationError, match="1件も該当しなかった"):
         build_observation(
-        tmp_path,
+            tmp_path,
             measurements_db, registry_db, exceptions_yaml, _no_conventions_path(tmp_path), out
         )
 
@@ -499,7 +499,7 @@ def test_a1_t1_invariant_failure_preserves_previous_observation(tmp_path, monkey
 
     with pytest.raises(common.MigrationError, match="T1"):
         build_observation(
-        tmp_path,
+            tmp_path,
             measurements_db, registry_db, _no_exceptions_path(tmp_path), _no_conventions_path(tmp_path), out
         )
 
@@ -557,7 +557,7 @@ def test_a2_duplicate_rows_raise_migration_error_with_count_and_examples(tmp_pat
 
     with pytest.raises(common.MigrationError, match=r"source_row_id が複数行にマッチした.*2件.*m1.*m2"):
         build_observation(
-        tmp_path,
+            tmp_path,
             measurements_db, registry_db, _no_exceptions_path(tmp_path), _no_conventions_path(tmp_path),
             tmp_path / "v2.sqlite",
         )
@@ -795,6 +795,86 @@ def test_landuse_value_grain_mismatch_raises(tmp_path):
     )
     with pytest.raises(common.MigrationError, match="value_grain"):
         _build_landuse(tmp_path, registry_db, landuse_csv=csv_path, source_regions_yaml=yaml_path)
+
+
+def test_landuse_declared_grain_mismatch_is_counted(tmp_path):
+    """/code-review「_process_row を分割」指摘1: `_ingest_landuse` は
+    `_process_row` を経由しないため、以前は `grain_mismatch_count` の計上
+    だけが構造的に欠けていた（レポートは3出典共通で出すのに、土地利用だけ
+    常に0になっていた）。`_resolve_and_compute_period`（3出典で共有）経由に
+    なったいま、`period_exceptions.yaml` でカバーされた grain の食い違いが
+    土地利用でもちゃんと計上され、かつ（宣言があるので）例外にはならない
+    ことを確認する（`test_landuse_value_grain_mismatch_raises`——宣言が無い
+    場合——と対、`test_period_mismatch_covered_by_exception_succeeds`——
+    measurements 版——とも対）。
+    """
+    registry_db = tmp_path / "registry.sqlite"
+    make_registry_db(
+        registry_db,
+        aliases=DEFAULT_ALIASES + [
+            ("nlni_l03b_landuse_by_watershed@2006", "1:area_km2", LANDUSE_SOURCE_ID,
+             "common:variable:landuse.paddy", "common:unit:km2", "sum", "day"),  # year/fiscal_year 以外
+            ("nlni_l03b_landuse_by_watershed@2006", "1:n_cells", LANDUSE_SOURCE_ID,
+             "common:variable:landuse.paddy_n_cells", "common:unit:count", "sum", "day"),
+        ],
+        places=DEFAULT_PLACES + DEFAULT_WATERSHED_PLACES,
+        place_refs=DEFAULT_PLACE_REFS + DEFAULT_WATERSHED_PLACE_REFS,
+        variables=DEFAULT_LANDUSE_VARIABLES,
+    )
+    csv_path = tmp_path / "landuse.csv"
+    make_landuse_csv(csv_path, rows=[
+        (LANDUSE_SOURCE_ID, "ref2006", 2006, "W1", "OLD1", "水系1", "1", "田", 10, 1.5),
+    ])
+    yaml_path = tmp_path / "source_regions.yaml"
+    make_landuse_source_regions_yaml(
+        yaml_path,
+        text=(
+            "sources:\n"
+            f"  {LANDUSE_SOURCE_ID}:\n"
+            "    region_id: jp-14\n"
+            "    consumer: observation\n"
+            "    expected_row_count: 1\n"
+            "    evidence: テスト用\n"
+            "regions:\n  jp-14:\n    utc_offset: \"+09:00\"\n    evidence: テスト用\n"
+        ),
+    )
+    # value_grain='day' に対する宣言を足す（period_grain_override='year'）。
+    # area_km2/n_cells の2候補がどちらもこの1エントリを使うため
+    # expected_row_count=2。
+    exceptions_yaml = tmp_path / "exceptions.yaml"
+    exceptions_yaml.write_text(
+        f"{LANDUSE_SOURCE_ID}:\n"
+        "  period_grain_override: year\n"
+        "  expected_row_count: 2\n"
+        "  reason: テスト\n"
+        "  restoration_plan: テスト\n",
+        encoding="utf-8",
+    )
+    measurements_db = tmp_path / "ryuiki.sqlite"
+    make_measurements_db(measurements_db, rows=[])
+    out = tmp_path / "v2.sqlite"
+
+    all_stats = b03.build_and_write_observation(
+        measurements_db, registry_db, exceptions_yaml, _no_conventions_path(tmp_path), out,
+        yaml_path, csv_path,
+    )
+
+    stats = all_stats[b03.LANDUSE_SOURCE_ID]
+    assert stats["n_observation"] == 2  # area_km2 + n_cells とも例外でカバーされ成功
+    # 修正前はここが常に 0 だった（_ingest_landuse が _process_row を経由せず、
+    # grain_mismatch_count を計上する経路自体が無かったため）。
+    assert stats["grain_mismatch_count"] == 2
+
+    conn = sqlite3.connect(f"file:{out}?mode=ro", uri=True)
+    rows = conn.execute(
+        f"SELECT value_grain, period_grain FROM observation "
+        f"WHERE source_table='{b03.LANDUSE_SOURCE_ID}'"
+    ).fetchall()
+    conn.close()
+    assert len(rows) == 2
+    for value_grain, period_grain in rows:
+        assert value_grain == "day"
+        assert period_grain == "year"
 
 
 def test_landuse_unknown_source_id_raises_immediately(tmp_path):

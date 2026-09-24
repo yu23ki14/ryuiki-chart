@@ -340,6 +340,96 @@ def _problems_from_stats(stats: dict) -> list[str]:
     return problems
 
 
+def _check_duplicate(stats: dict, seen: set, key) -> bool:
+    """`key` が既に `seen` にあれば `dup_ids_count` を計上して `True` を返す
+    （呼び出し側はこの行/この observation 候補をスキップする。A-2: 数えるだけで
+    `seen` には足さないループへは進めない＝挿入を試みない。以前は数えた後も
+    挿入していて主キー違反の `IntegrityError` に化けていた）。無ければ `seen`
+    に足して `False` を返す。
+
+    `key` の意味は呼び出し側ごとに違う——`measurements`/`sensor_timeseries`
+    は `source_row_id`（技術的な連番）、土地利用は `(watershed_id, data_year,
+    landuse_code_raw, 種別)` という業務キー（CSV の行番号は行ごとに必ず一意に
+    なるため、それを鍵にした重複検査は原理的に発火しない。コードレビュー
+    指摘2）——だが判定自体（集合の所属テスト）は3出典で同じロジックのため
+    ここに集約する（/code-review「_process_row を分割」指摘1）。
+    """
+    if key in seen:
+        stats["dup_ids_count"] += 1
+        if len(stats["dup_ids_sample"]) < _SAMPLE_LIMIT:
+            stats["dup_ids_sample"].append(key)
+        return True
+    seen.add(key)
+    return False
+
+
+def _resolve_and_compute_period(
+    stats: dict,
+    variable_id,
+    place_id,
+    period_raw: str,
+    value_grain: str,
+    source_id,
+    exceptions,
+    usage,
+    unresolved_alias_sample_value,
+    unresolved_place_sample_value,
+    period_mismatch_sample_value,
+    time_conventions=None,
+    time_usage=None,
+):
+    """3出典（`measurements`/`sensor_timeseries`/土地利用）で共通の
+    「alias/place が解決できているかの確認→期間の計算→grain の食い違いの
+    計上」（以前は `_process_row` が重複判定と一緒に持っていたが、土地利用
+    〔3出典目〕は「1行→2行」という別の形の重複判定〔`_check_duplicate` 参照〕
+    を持つため、ここで分離した——このブロックだけが3出典で完全に同じ形。
+    /code-review「_process_row を分割」指摘1）。
+
+    `variable_id`/`place_id` は呼び出し側が出典ごとの方法（`measurements`/
+    `sensor_timeseries` は SQL の LEFT JOIN、土地利用は `variable_alias`/
+    `place_source_ref` の Python 辞書引き）で解決を試みた結果（解決できな
+    かった場合は `None`）を渡す——ここでは「`None` でないか」だけを見る。
+    サンプル（`unresolved_alias_sample_value` 等）の形は出典ごとに違う
+    （例: 土地利用は面積/セル数どちらの alias が欠けているかまで含む4要素
+    タプル）ため、組み立て済みの値を呼び出し側から受け取る。
+
+    行を捨てるべきとき（alias/place 未解決・宣言に無い期間の食い違い）は
+    `None` を返す——呼び出し側はこの行を挿入せず次へ進む。それ以外は
+    `(period_grain, period_start, period_end)` を返す——呼び出し側が出典固有の
+    列（検閲の分類・挿入するタプル）を組み立てる。
+
+    `UnknownTimeLabelConventionError`（`time_conventions` に無い
+    `value_grain='hour'` の出典）はここで捕まえない——per-row の問題ではなく
+    構造的な設定不足なので、呼び出し側まで即座に伝播させる
+    （`scripts/migrate/period.py` の当該クラスの docstring 参照）。
+    """
+    if variable_id is None:
+        stats["unresolved_alias_count"] += 1
+        if len(stats["unresolved_alias_sample"]) < _SAMPLE_LIMIT:
+            stats["unresolved_alias_sample"].append(unresolved_alias_sample_value)
+        return None
+    if place_id is None:
+        stats["unresolved_place_count"] += 1
+        if len(stats["unresolved_place_sample"]) < _SAMPLE_LIMIT:
+            stats["unresolved_place_sample"].append(unresolved_place_sample_value)
+        return None
+
+    try:
+        period_grain, period_start, period_end = period.compute_period(
+            period_raw, value_grain, source_id, exceptions, usage, time_conventions, time_usage,
+        )
+    except period.PeriodMismatchError:
+        stats["period_mismatch_count"] += 1
+        if len(stats["period_mismatch_sample"]) < _SAMPLE_LIMIT:
+            stats["period_mismatch_sample"].append(period_mismatch_sample_value)
+        return None
+
+    if period_grain != value_grain:
+        stats["grain_mismatch_count"] += 1
+
+    return period_grain, period_start, period_end
+
+
 def _process_row(
     stats: dict,
     seen_ids: set,
@@ -358,54 +448,29 @@ def _process_row(
 ):
     """1行ぶんの共通検証（B-1: `_ingest_measurements`/`_ingest_sensor_timeseries`
     が個別に持っていた「重複検出→alias解決→place解決→`compute_period`→grainの
-    食い違い集計」の5ブロックを1つに集約したもの）。
+    食い違い集計」を1つに集約したもの。重複判定は `_check_duplicate`、
+    残りは `_resolve_and_compute_period` に委譲する——3出典目の土地利用
+    〔`_ingest_landuse`〕は重複判定の形が違う〔業務キー・「1行→2行」〕ため
+    `_process_row` 自体は使わず、この2つの共有関数を直接呼ぶ）。
 
     行を捨てるべきとき（重複・alias/place 未解決・宣言に無い期間の食い違い）は
-    `None` を返す——呼び出し側はこの行を挿入せず次の行へ進む（A-2: 重複を
-    見つけても、ここでは数えるだけで `seen_ids` に足さないループへは進めない
-    ＝挿入を試みない。以前は数えた後も挿入していて主キー違反の `IntegrityError`
-    に化けていた）。それ以外は `(period_grain, period_start, period_end)` を
-    返す——呼び出し側が出典固有の列（検閲の分類・挿入するタプル）を組み立てる。
-
-    `UnknownTimeLabelConventionError`（`time_conventions` に無い
-    `value_grain='hour'` の出典）はここで捕まえない——per-row の問題ではなく
-    構造的な設定不足なので、呼び出し側まで即座に伝播させる
-    （`scripts/migrate/period.py` の当該クラスの docstring 参照）。
+    `None` を返す——呼び出し側はこの行を挿入せず次の行へ進む。それ以外は
+    `(period_grain, period_start, period_end)` を返す——呼び出し側が出典固有の
+    列（検閲の分類・挿入するタプル）を組み立てる。
     """
     stats["total"] += 1
 
-    if row_id in seen_ids:
-        stats["dup_ids_count"] += 1
-        if len(stats["dup_ids_sample"]) < _SAMPLE_LIMIT:
-            stats["dup_ids_sample"].append(row_id)
-        return None
-    seen_ids.add(row_id)
-
-    if variable_id is None:
-        stats["unresolved_alias_count"] += 1
-        if len(stats["unresolved_alias_sample"]) < _SAMPLE_LIMIT:
-            stats["unresolved_alias_sample"].append((row_id, variable_label, source_id))
-        return None
-    if place_id is None:
-        stats["unresolved_place_count"] += 1
-        if len(stats["unresolved_place_sample"]) < _SAMPLE_LIMIT:
-            stats["unresolved_place_sample"].append((row_id, site_id))
+    if _check_duplicate(stats, seen_ids, row_id):
         return None
 
-    try:
-        period_grain, period_start, period_end = period.compute_period(
-            measured_on, value_grain, source_id, exceptions, usage, time_conventions, time_usage,
-        )
-    except period.PeriodMismatchError:
-        stats["period_mismatch_count"] += 1
-        if len(stats["period_mismatch_sample"]) < _SAMPLE_LIMIT:
-            stats["period_mismatch_sample"].append((row_id, source_id, measured_on, value_grain))
-        return None
-
-    if period_grain != value_grain:
-        stats["grain_mismatch_count"] += 1
-
-    return period_grain, period_start, period_end
+    return _resolve_and_compute_period(
+        stats, variable_id, place_id, measured_on, value_grain, source_id, exceptions, usage,
+        unresolved_alias_sample_value=(row_id, variable_label, source_id),
+        unresolved_place_sample_value=(row_id, site_id),
+        period_mismatch_sample_value=(row_id, source_id, measured_on, value_grain),
+        time_conventions=time_conventions,
+        time_usage=time_usage,
+    )
 
 
 def _ingest_measurements(work: sqlite3.Connection, dest: sqlite3.Connection, insert_table: str, exceptions, usage) -> dict:
@@ -511,7 +576,26 @@ def _load_watershed_place_lookup(work: sqlite3.Connection) -> dict[str, tuple[st
     ハードコードしない——`measurements`/`sensor_timeseries` が地点の place を
     解決するのと同じ流儀。P-1a（`scripts/registry/build_place.py`）が
     既に登録済みの watershed place をここで再利用するだけで、新規には作らない）。
+
+    `external_key`（watershed_id）が一意であることを先に確認する
+    （/simplify 指摘2）——重複があると、辞書内包表記が後勝ちで黙って別の
+    watershed の place_id に束ねてしまう。
+    `scripts/b09_build_occurrence_place.py` の
+    `_assert_watershed_external_key_unique` と同型の検証で、同じ
+    `common.raise_on_group_by_duplicates` を使う。
     """
+    common.raise_on_group_by_duplicates(
+        work,
+        "SELECT external_key, COUNT(*) AS c FROM reg.place_source_ref "
+        "WHERE source_id = 'watershed_meta.watershed_id' GROUP BY external_key HAVING c > 1 LIMIT 5",
+        (),
+        lambda dup: (
+            "observation（土地利用）: place_source_ref"
+            "（source_id='watershed_meta.watershed_id'）の external_key が一意でない"
+            f"（同じ watershed_id に複数の place_id が対応している。例: {dup}）。"
+            "watershed_id -> place_id の辞書を一意に構築できない。"
+        ),
+    )
     rows = work.execute(
         "SELECT psr.external_key, psr.place_id, p.place_kind "
         "FROM reg.place_source_ref psr "
@@ -583,6 +667,12 @@ def _ingest_landuse(
     per-row の集計を経由せず即座に `UnknownSourceRegionError` で止まる
     （`scripts/b06_build_occurrence.py` の `_ingest` と同じ判断）。
 
+    place（watershed）の解決は CSV の1行につき1回だけ行う（面積・セル数の
+    2つの候補で同じ watershed_id を共有するため）。重複の検査
+    （`_check_duplicate`）と、alias 解決＋期間の計算＋grain の計上
+    （`_resolve_and_compute_period`。3出典で共有——B-1/コードレビュー
+    「_process_row を分割」指摘1）は、面積・セル数それぞれの候補ごとに行う。
+
     重複の検査は `(watershed_id, data_year, landuse_code_raw, 種別)` という
     **業務キー**で行う（`source_row_id`——CSV の行番号由来——は行ごとに
     必ず一意になるため、それを鍵にした重複検査は原理的に発火しない。
@@ -591,10 +681,14 @@ def _ingest_landuse(
     （INTEGER）は丸め・切り捨てまで起きる——気づかれない値の破損になる。
 
     `value_grain` は各指標（面積・セル数）の `variable_alias` の宣言値を
-    そのまま `period.compute_period()` に渡す（`"year"` を直書きしない。
-    コードレビュー指摘6）——`value_grain` と `measured_on` の桁数が矛盾する
-    行を検出する既存の仕組み（`period_exceptions.yaml`）が、土地利用でも
-    他の2出典と同じように機能するようにするため。
+    そのまま `period.compute_period()`（`_resolve_and_compute_period` 経由）に
+    渡す（`"year"` を直書きしない。コードレビュー指摘6）——`value_grain` と
+    `measured_on` の桁数が矛盾する行を検出する既存の仕組み
+    （`period_exceptions.yaml`）が、土地利用でも他の2出典と同じように
+    機能するようにするため。同じ理由で `period_grain != value_grain` の
+    `grain_mismatch_count` も他の2出典と同じ経路（`_resolve_and_compute_period`）
+    で計上する——以前は土地利用だけがこの計上を持たず、常に0のまま
+    レポートに出ていた（/code-review「_process_row を分割」指摘1）。
     """
     stats = _empty_stats(LANDUSE_SOURCE_ID)
     watershed_place = _load_watershed_place_lookup(work)
@@ -627,44 +721,31 @@ def _ingest_landuse(
                 data_year = row["data_year"]
                 code = row["landuse_code_raw"]
                 dataset = f"{LANDUSE_SOURCE_ID}@{data_year}"
-                alias_area = f"{code}:area_km2"
-                alias_ncells = f"{code}:n_cells"
-                area_entry = alias_map.get((dataset, alias_area, source_id))
-                ncells_entry = alias_map.get((dataset, alias_ncells, source_id))
-                if area_entry is None or ncells_entry is None:
-                    stats["unresolved_alias_count"] += 1
-                    if len(stats["unresolved_alias_sample"]) < _SAMPLE_LIMIT:
-                        missing_alias = alias_area if area_entry is None else alias_ncells
-                        stats["unresolved_alias_sample"].append((row_number, dataset, missing_alias, source_id))
-                    continue
-
                 source_ref = row["source_ref"]
 
-                for suffix, entry, value_str in (
-                    ("area_km2", area_entry, row["area_km2"]),
-                    ("n_cells", ncells_entry, row["n_cells"]),
+                for suffix, alias, value_str in (
+                    ("area_km2", f"{code}:area_km2", row["area_km2"]),
+                    ("n_cells", f"{code}:n_cells", row["n_cells"]),
                 ):
-                    variable_id, unit_id, obs_stat, value_grain = entry
-
                     business_key = (watershed_id, data_year, code, suffix)
-                    if business_key in seen_business_keys:
-                        stats["dup_ids_count"] += 1
-                        if len(stats["dup_ids_sample"]) < _SAMPLE_LIMIT:
-                            stats["dup_ids_sample"].append(business_key)
+                    if _check_duplicate(stats, seen_business_keys, business_key):
                         continue
-                    seen_business_keys.add(business_key)
 
-                    try:
-                        period_grain, period_start, period_end = period.compute_period(
-                            data_year, value_grain, source_id, exceptions, usage,
-                        )
-                    except period.PeriodMismatchError:
-                        stats["period_mismatch_count"] += 1
-                        if len(stats["period_mismatch_sample"]) < _SAMPLE_LIMIT:
-                            stats["period_mismatch_sample"].append(
-                                (row_number, source_id, data_year, value_grain)
-                            )
+                    entry = alias_map.get((dataset, alias, source_id))
+                    if entry is None:
+                        variable_id = unit_id = obs_stat = value_grain = None
+                    else:
+                        variable_id, unit_id, obs_stat, value_grain = entry
+
+                    result = _resolve_and_compute_period(
+                        stats, variable_id, place_id, data_year, value_grain, source_id, exceptions, usage,
+                        unresolved_alias_sample_value=(row_number, dataset, alias, source_id),
+                        unresolved_place_sample_value=(row_number, watershed_id),
+                        period_mismatch_sample_value=(row_number, source_id, data_year, value_grain),
+                    )
+                    if result is None:
                         continue
+                    period_grain, period_start, period_end = result
 
                     source_row_id = f"{row_number}:{suffix}"
                     stats["n_observation"] += 1
