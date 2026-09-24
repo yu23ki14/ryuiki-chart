@@ -799,3 +799,96 @@ sqlite3モジュール3.37.2の venv）でも **408 passed / 130 skipped / 失�
 系のテストファイルと同じく古い SQLite では丸ごと skip される側に移ったため
 （対応前は b11 にこのガードが無く、フィクスチャだけで完結するテストは
 古い SQLite でも普通に実行・合格していた）。
+
+### `/simplify` 対応（6件）と実測
+
+コードレビュー対応後の状態に `/simplify`（再利用・単純化・深さ）をかけて
+6件出た。**33表の値は1ビットも変えていない**（引き続き検証・引数定義・
+テストの形だけを直している）。
+
+1. **b11 の docstring から「コードレビュー対応」節を削除**した。同じ経緯が
+   本ドキュメントの§12と2か所にあったため、経緯は本ドキュメント（この
+   セクション）の1か所に置き、`scripts/b11_project_place_v1.py` の docstring
+   は個々の検証関数の docstring と同じ「何をするか」だけの形に揃えた。
+2. **argparse の共通オプションを切り出した**。`--baseline-json`/
+   `--baseline-data`/`--tolerance`/`--out-md`/`--reduced`/`--expected-diffs`/
+   `--no-expected-diffs` の7つが `scripts/b02_derived_compare.py`・
+   `scripts/b02_run_all_gates.py` にコピーされ、`--reduced`/`--baseline-data`
+   の説明文が食い違っていた（統合ゲート側だけ短い文言になっていた）。
+   `b02_derived_compare.py` に `_add_shared_compare_args(parser, *,
+   default_out_md)` を新設し（`--out-md` の既定値だけはファイルごとに違う
+   ため引数で受ける）、両方の `main()` から呼ぶようにした。`--candidate`/
+   `--tables`（`b02_derived_compare.py` 専用）・`--manifest`/`--data-dir`
+   （統合ゲート専用）は各自のまま。実測: `b02_derived_compare.py --help` の
+   全オプション名・説明文を対応前後で突き合わせ、**内容は1文字も変わらず
+   順序だけが変わった**ことを確認した（`--candidate`/`--tables` が先頭側に
+   移動）。
+3. **統合ゲートのループの入れ子を1段減らした**。「1つの candidate を開いて
+   `compare_all` で比べ、必ず閉じる」を `_compare_one_candidate()` に
+   切り出し、`ExpectedDiffError` の捕捉・`sys.exit` はループ側に残した
+   （以前は `for` の中に `try/finally` が `try/except` を包む2段の入れ子が
+   あった）。
+4. **パスの実体比較を共通ヘルパへ集約した**。`common.reject_protected_source_db`
+   （原本3ファイルの保護）と b11 の `_assert_out_path_distinct_from_inputs`
+   （射影の入力2ファイルの保護）が、どちらも同じ「`os.path.realpath` で
+   比べて一致したら `MigrationError`」を別々に実装していた。
+   `common.assert_distinct_realpaths(path, protected: dict[label, path], *,
+   message_for)` に集約し、両方がこれを呼ぶ形にした（`protected` の中身——
+   固定3ファイルか可変2ファイルか——だけが呼び出し側で違う）。
+5. **CLAUDE.md に b11 の実行順を1行追記**した。「b11 はこの縦線で初めて
+   別系統（observation・occurrence）の出力を読むので、実行順は r01 の後、
+   b05・b08 を先に（互いに依存しない）」——occurrence 系（b06→b09→b07→b08）
+   と同じ書き方に揃えた。
+6. **同型の複製テストを `pytest.mark.parametrize` にまとめた**。古さの検査
+   3件（`site_var`/`landuse_watershed`/`org_watershed`、それぞれ
+   `test_stale_*_raises_and_names_b0*` という別関数だった）を
+   `test_stale_ids_raise_and_name_the_script_to_rerun`
+   （`rollup_kwarg`/`stale_row`/`expected_script` でパラメータ化）に、
+   出力先の検査2件を `test_out_path_same_as_an_input_raises_and_preserves_it`
+   （`kwargs_key` でパラメータ化）にまとめた。pytest が数えるテストケース数
+   自体は変わらない（`pytest --collect-only` で `[site_var]`/
+   `[landuse_watershed]`/`[org_watershed]`・`[v1_projection_db]`/
+   `[v1_projection_occurrence_db]` の5ケースが引き続き個別に見えることを確認）。
+
+**見送った項目**（オーナー判断）: `projection_manifest.yaml`/
+`adr0011_destinations.yaml`/`derived_baseline.json` の「33テーブルの一覧が
+3か所にある」は**役割が違う**ため統合しない——`projection_manifest.yaml` は
+「テーブル→(射影スクリプト, candidate ファイル)」という実行時の対応表、
+`adr0011_destinations.yaml` は ADR-0011 の意味的な分類、`derived_baseline.json`
+は実データから作った指紋そのもの。3つとも独立に `derived_baseline.json`
+（実データ由来。正）と突き合わされて機械検証されている形（`scripts/tests/
+test_common.py` の `test_load_destinations_table_names_match_derived_baseline_
+exactly`/`test_load_projection_manifest_table_set_matches_derived_baseline_
+exactly`）を保つ。
+
+**実測**（このマシン、原本あり、完全モード）:
+
+```
+$ .venv/bin/python3 scripts/b02_run_all_gates.py
+→ reports/derived_reconciliation_all.md
+33表中 一致: 25 / 宣言済み差分のみ: 8 / 不一致: 0 / 対象外: 0
+適用した宣言済み差分: 20件
+```
+
+終了コード0（`real 1m9.3s`）。5系統の個別ゲートも変更前と1件も変わらず
+（`v1_projection.sqlite`: 一致7/差分6、`v1_projection_occurrence.sqlite`:
+一致11/差分2、`v1_projection_documents.sqlite`: 一致3、
+`v1_projection_place.sqlite`: 一致2、`v1_projection_taxon.sqlite`: 一致2。
+合計 一致25・宣言済み差分のみ8）。`pytest`: 538件全緑（`/simplify` 前後で
+件数不変——テストケース数はそのまま、関数定義だけ集約した）。原本の無い
+環境（一時 clone、システム既定 python3.10.12・sqlite3モジュール3.37.2）でも
+408 passed / 130 skipped / 失敗0、`--files-only` も成功（`/code-review`
+対応後の実測と同一）。
+
+---
+
+## Phase B（ADR-0016）の全体の合格
+
+**v1 の派生33テーブルすべてを、`scripts/b02_run_all_gates.py` 1コマンドで
+再現できることを確認した**: 一致25 / 宣言済み差分のみ8（v1 側の既知のバグに
+由来、内訳は§6・§7参照）/ 不一致0 / 対象外0、終了コード0、実行時間 約69秒
+（このマシン、原本あり、完全モード。`watershed_rollup` を含めた5つの
+candidate ファイルを1回ずつ突き合わせた合計）。これは Phase B の全ての
+縦線（observation・occurrence・place・documents・taxon）が揃い、ADR-0016
+の受け入れ基準「`imputation='zero'` の系列で v1 の派生テーブルの値が再現
+できること」を33テーブル全数で満たしたことを意味する。
