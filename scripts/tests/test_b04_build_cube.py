@@ -10,10 +10,8 @@ import pytest
 import b03_build_observation as b03
 import b04_build_cube as b04
 from migrate import common
-from reconcile import common as reconcile_common
-from reconcile import datasource
 
-from .migrate_fixtures import make_registry_db, make_v2_db_with_observation
+from .migrate_fixtures import make_registry_db, make_v2_db_with_observation, table_content_hash
 
 # b04 は AVG()/SUM() を使うため `common.require_sqlite_version()` で古い
 # SQLite を拒む（`scripts/migrate/common.py` 参照）。この版のガード自体の
@@ -227,34 +225,6 @@ def test_negative_values_with_not_detected_reverse_the_inequality(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# /code-review 指摘5: below_lod なのに censoring_limit が NULL の入力を
-# build_cube() の先頭（入力検証）で拒む。
-# ---------------------------------------------------------------------------
-
-def test_below_lod_without_censoring_limit_is_rejected(tmp_path):
-    """censoring='below_lod' なのに censoring_limit が NULL の行があると、
-    `_VALUE_LOD_CASE` の代入結果が NULL になり、value_lod の平均から
-    黙って消える（below_lod なのに非メンバー扱いになる）——3つの機械検証を
-    すべてすり抜ける。b03 は必ず censoring_limit を埋めるため実データでは
-    起きないが、入力検証（`_assert_below_lod_has_censoring_limit`）が
-    集計を始める前に止める。
-    """
-    rows = [
-        _row(
-            "measurements", "m1", "2020-01-01", "2020-01-01", None, "<0.5", "below_lod",
-            censoring_limit=None,
-        ),
-    ]
-    db_path = tmp_path / "v2.sqlite"
-    conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
-    try:
-        with pytest.raises(common.MigrationError, match="censoring_limit が NULL"):
-            b04.build_cube(conn, _registry_db(tmp_path))
-    finally:
-        conn.close()
-
-
-# ---------------------------------------------------------------------------
 # /code-review 指摘4: 新しい3つの機械検証それぞれに「わざと壊すと止まる」
 # ネガティブテスト（既存の一意性検証にはあったが、value_zero/value_lod の
 # 3検証には無かった——述語のタイポで空回りしても pytest は全部緑のまま
@@ -268,62 +238,64 @@ _STAGING_DIM = (
 )
 
 
-def _make_staging_with_row(conn, row):
+def _make_staging_with_rows(conn, rows):
     """`_CREATE_OBSERVATION_AGG_SQL` と同じ形の `staging` テーブルを作り、
-    `row`（`DIM_COLUMNS` + value_zero/value_lod/n/n_censored/n_not_detected/
-    n_places/built_from/spec_version の並び、1行だけ）を入れる。
+    `rows`（各要素が `DIM_COLUMNS` + value_zero/value_lod/n/n_censored/
+    n_not_detected/n_places/built_from/spec_version の並び）を入れる
+    （/simplify 指摘10: `test_assert_dimension_key_unique_raises_with_examples`
+    と3つのネガティブテストが同じ処理をそれぞれ別に書いていたので、複数行を
+    入れられる形に一般化して両方から使う）。
     """
     conn.execute(b04._CREATE_OBSERVATION_AGG_SQL.format(table='"staging"'))
     cols = ", ".join(
         b04.DIM_COLUMNS
         + ["value_zero", "value_lod", "n", "n_censored", "n_not_detected", "n_places", "built_from", "spec_version"]
     )
-    placeholders = ", ".join("?" for _ in row)
-    conn.execute(f'INSERT INTO "staging" ({cols}) VALUES ({placeholders})', row)
+    placeholders = ", ".join("?" for _ in rows[0])
+    conn.executemany(f'INSERT INTO "staging" ({cols}) VALUES ({placeholders})', rows)
     conn.commit()
 
 
-def test_assert_value_zero_lod_invariants_check1_raises_on_leaf_unit_mismatch(tmp_path):
-    """検証1（葉の格）をわざと壊す: value_lod が NULL なのに n_not_detected
-    （0）が n（1）と一致しない葉の格（grain='day'=input_grain）を仕込むと
-    `MigrationError` になる。
+@pytest.mark.parametrize(
+    "row, match",
+    [
+        pytest.param(
+            (*_STAGING_DIM, 1.0, None, 1, 0, 0, 1, "bf", "sv"),
+            "value_lod IS NULL の条件が崩れている",
+            id="check1_leaf_unit_mismatch",
+        ),
+        pytest.param(
+            (*_STAGING_DIM, 1.0, 2.0, 1, 0, 0, 1, "bf", "sv"),
+            "ビット一致しない",
+            id="check2_bit_mismatch",
+        ),
+        pytest.param(
+            (*_STAGING_DIM, 5.0, 3.0, 1, 1, 0, 1, "bf", "sv"),
+            "value_lod が value_zero を下回る",
+            id="check3_inequality_violation",
+        ),
+    ],
+)
+def test_assert_value_zero_lod_invariants_raises_when_deliberately_broken(tmp_path, row, match):
+    """検証1/2/3それぞれをわざと壊すと `MigrationError` になる（/code-review
+    指摘4: 既存の一意性検証にはあったが value_zero/value_lod の3検証には
+    無かった——述語のタイポで空回りしても pytest は全部緑のままだった。
+    /simplify 指摘8: 値と期待メッセージ以外まったく同じ形の3本を、
+    `test_r01_registry_atomic.py` にある先例と同じく `parametrize` で
+    1本にまとめた）。
+
+    - check1: 葉の格（grain='day'=input_grain）で value_lod が NULL なのに
+      n_not_detected（0）が n（1）と一致しない。
+    - check2: 検閲の無いセル（n_censored=0, n_not_detected=0）なのに
+      value_zero と value_lod が異なる。
+    - check3: not_detected を含まないセル（n_not_detected=0）で value_lod
+      が value_zero を下回る。
     """
     db_path = tmp_path / "t.sqlite"
     conn = sqlite3.connect(f"file:{db_path}", uri=True)
-    row = (*_STAGING_DIM, 1.0, None, 1, 0, 0, 1, "bf", "sv")
-    _make_staging_with_row(conn, row)
+    _make_staging_with_rows(conn, [row])
     try:
-        with pytest.raises(common.MigrationError, match="value_lod IS NULL の条件が崩れている"):
-            b04._assert_value_zero_lod_invariants(conn, "staging")
-    finally:
-        conn.close()
-
-
-def test_assert_value_zero_lod_invariants_check2_raises_on_bit_mismatch(tmp_path):
-    """検証2をわざと壊す: 検閲の無いセル（n_censored=0, n_not_detected=0）
-    なのに value_zero と value_lod が異なると `MigrationError` になる。
-    """
-    db_path = tmp_path / "t.sqlite"
-    conn = sqlite3.connect(f"file:{db_path}", uri=True)
-    row = (*_STAGING_DIM, 1.0, 2.0, 1, 0, 0, 1, "bf", "sv")
-    _make_staging_with_row(conn, row)
-    try:
-        with pytest.raises(common.MigrationError, match="ビット一致しない"):
-            b04._assert_value_zero_lod_invariants(conn, "staging")
-    finally:
-        conn.close()
-
-
-def test_assert_value_zero_lod_invariants_check3_raises_on_inequality_violation(tmp_path):
-    """検証3をわざと壊す: not_detected を含まないセル（n_not_detected=0）
-    で value_lod が value_zero を下回ると `MigrationError` になる。
-    """
-    db_path = tmp_path / "t.sqlite"
-    conn = sqlite3.connect(f"file:{db_path}", uri=True)
-    row = (*_STAGING_DIM, 5.0, 3.0, 1, 1, 0, 1, "bf", "sv")
-    _make_staging_with_row(conn, row)
-    try:
-        with pytest.raises(common.MigrationError, match="value_lod が value_zero を下回る"):
+        with pytest.raises(common.MigrationError, match=match):
             b04._assert_value_zero_lod_invariants(conn, "staging")
     finally:
         conn.close()
@@ -583,19 +555,8 @@ def test_assert_dimension_key_unique_raises_with_examples(tmp_path):
     """
     db_path = tmp_path / "t.sqlite"
     conn = sqlite3.connect(f"file:{db_path}", uri=True)
-    conn.execute(b04._CREATE_OBSERVATION_AGG_SQL.format(table='"staging"'))
-    cols = ", ".join(
-        b04.DIM_COLUMNS
-        + ["value_zero", "value_lod", "n", "n_censored", "n_not_detected", "n_places", "built_from", "spec_version"]
-    )
-    row = (
-        "jp-14", "place_s1", "site", "common:variable:water.bod", None, "common:unit:mg_per_l",
-        "day", "2020-01-01", "2020-01-01", "day", "day", "mean",
-        1.0, 1.0, 1, 0, 0, 1, "bf", "sv",
-    )
-    placeholders = ", ".join("?" for _ in row)
-    conn.executemany(f'INSERT INTO "staging" ({cols}) VALUES ({placeholders})', [row, row])
-    conn.commit()
+    row = (*_STAGING_DIM, 1.0, 1.0, 1, 0, 0, 1, "bf", "sv")
+    _make_staging_with_rows(conn, [row, row])
     try:
         with pytest.raises(common.MigrationError, match="次元キーが一意でない"):
             b04._assert_dimension_key_unique(conn, "staging")
@@ -707,13 +668,7 @@ def test_running_twice_yields_identical_observation_agg_content_hash(tmp_path):
         return db_path
 
     def fingerprint(path):
-        conn = reconcile_common.open_readonly(path)
-        src = datasource.SqliteSource(conn)
-        columns = src.columns("observation_agg")
-        numeric = reconcile_common.numeric_columns_of(conn, "observation_agg", columns)
-        fp = reconcile_common.compute_fingerprint(src, "observation_agg", columns, b04.DIM_COLUMNS, numeric)
-        conn.close()
-        return fp["content_hash"]
+        return table_content_hash(path, "observation_agg", b04.DIM_COLUMNS)
 
     out1 = build("v2_1.sqlite")
     out2 = build("v2_2.sqlite")

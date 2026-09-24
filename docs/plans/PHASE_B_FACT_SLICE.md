@@ -148,16 +148,10 @@ ADR-0011 の対象は33テーブル。これを一度に全部揃えようとす
 適用範囲の訂正」は `PHASE_B_INTAKE.md` に転記済み）。この変更の結果、`unknown` が実データに
 対して1件も出ない（実測: 0件）。
 
-`imputation='zero'`（`observation_agg.value_zero`）は `below_lod`/`not_detected` にだけ
-0.0 を代入する。`above_lod` に 0 を入れない（0 は上限ではない。`>3.2` の 3.2 は
-「これより大きい」という下限情報であり、逆転する）。
-`n_censored`（キューブ）は `below_lod` の数、`n_not_detected` は別に数える（ADR-0009 決定2）。
-
-**2026-09-24 追記（D12・ADR-0009 決定4で `lod` を併記）**: `imputation='lod'`
-（`observation_agg.value_lod`）は非対称——`below_lod` には `censoring_limit`
-（定量下限値）を代入するが、`not_detected` は**代入せず平均から除外する**
-（本来の決定2の規定どおり）。`above_lod` はどちらの系列でも非メンバーのまま。
-実装・実測件数は D12 参照。
+`imputation='zero'`/`'lod'`（`observation_agg.value_zero`/`value_lod`）の代入規則
+（どちらに何を入れるか・非対称である理由）は ADR-0009 決定2（2026-09-24追記含む）
+を正とする（本書では繰り返さない）。`n_censored`（キューブ）は `below_lod` の数、
+`n_not_detected` は別に数える。実装・実測件数は D12 参照。
 
 ### D3. observation は原表記を残す
 
@@ -368,6 +362,15 @@ tie を等号（`>=`）で明示的に許容している。
   ASCII 表記と扱いが違う（v1 の `value_raw LIKE '<%'` が `未満` を拾わず、かつ `value` も
   `NULL` なので `AVG(value)` から自然に除外されていた＝v1 が「たまたま」正しく除外していた
   ケース）。
+- **`value_zero` が `not_detected` を 0 とみなすのは、v1 再現のためだけの例外**
+  （ADR-0009 決定2 の本来の規定は「代入せず、平均から除外」。`value_lod` はこの規定
+  どおりに実装したが、`value_zero` だけは v1 の `AVG(value)` が ND 行を 0 として
+  含めているのに合わせた。ADR-0009 の2026-09-24追記参照）。**撤去するとき何が変わるか**:
+  (1) `scripts/migrate/censoring.py` の `ZERO_IMPUTED_CENSORING` を `below_lod` だけに
+  する、(2) b04 の検証1（`value_lod IS NULL` = `n_not_detected=n`。葉/積み上げの区別を
+  含む）と同じ形の検証を `value_zero` 側にも足す、(3) `b05` の v1 射影の値が変わり、
+  ADR-0016 の受け入れ基準（`imputation='zero'` で v1 を誤差0で再現する）を満たさなく
+  なる——撤去するならその時点で ADR-0016 の受け入れ基準ごと見直しが要る。
 - **`kanagawa_jiban_chinka` の年次 `n=2` グループ 1,625件がすべて同値ペア（`min=max`、
   `value_raw` も完全一致）。二重投入の疑いを実測で確認した。** 例:
   `地下水位(年平均)` の `site_id='kanagawa_jiban_chinka__1'`・`measured_on='1980'` は

@@ -16,33 +16,19 @@ ADR-0016・ADR-0009 決定4）。`data/db/v2.sqlite` に `observation_agg` テ�
 `value` 列（`below_lod`/`not_detected` に 0.0 を代入した後の値）だけを持つ
 1系列だった。今回、`lod`（`below_lod` に `censoring_limit` を代入した系列）を
 併記するにあたり、**次元キーから `imputation` を外し、`value` を
-`value_zero`/`value_lod` の2列に分ける**（次元キーは13列→12列）。
+`value_zero`/`value_lod` の2列に分ける**（次元キーは13列→12列）。理由は
+本ファイルでは繰り返さず ADR-0009 決定4 を正とする。
 
-理由（ADR-0009 決定4・オーナー決定）:
-1. `imputation` はファクト行を分割する次元ではない——`zero`/`lod` の2系列は
-   同じセルのメンバー（`n`/`n_censored`/`n_not_detected`/`n_places` はどちらも
-   同じ）で、変わるのは代入する値だけ。次元キーに入れると「同じメンバーの
-   セルが2行に分かれる」という誤ったモデルになる。
-2. 全セル二重化（次元キーに残したまま `imputation` の値を増やす）は
-   +462MB、列追加は +16MB で済む（実測は `docs/adr/0009-censored-values.md`
-   決定4）。
-3. 列にすることで「`lod` で引いたのに無い」が構造的に起きない
-   （`zero`/`lod` は常に同じ行の2列として一緒に存在する）。
+## `value_lod` の代入規則（非対称に実装。規則は ADR-0009 決定2 参照）
 
-## `value_lod` の代入規則（ADR-0009 決定2・非対称）
-
-- `value_zero`: `below_lod`/`not_detected` を 0.0 として平均に含める
-  （**v1 の再現のため**。v1 は `value=0.0` の ND 行を `AVG`/`COUNT` に含めている）。
-- `value_lod`: `below_lod` は `censoring_limit`（定量下限値）を代入するが、
-  `not_detected` は**限界値が無いため代入せず、平均から除外する**
-  （ADR-0009 決定2 の本来の規定）。`above_lod`/`unknown` はどちらの系列でも
-  非メンバーのまま（0 を代入しない——0 は上限ではない。`unknown` は
-  意味が分からない値を推測しないため）。
-- 実装は「ND だけの格では `AVG` が NULL を返す」という一般形で書く
-  （`CASE WHEN censoring = 'not_detected' THEN NULL ELSE ... END` を
-  `AVG`/`MIN`/`MAX` に渡すだけで、SQL の NULL 無視の集約規則がそのまま
-  「ND だけの格は NULL、1件でも非 ND があれば非 ND 分だけで計算」を実現する
-  ——「ND を含むセルは全て 100% ND」という実データの性質には依存しない）。
+below_lod/not_detected の扱いは `value_zero`/`value_lod` で非対称——
+どちらの系列に何が入るか・`above_lod`/`unknown` が非メンバーである理由は
+本ファイルでは繰り返さず ADR-0009 決定2（`value_zero` が v1 再現のための
+時限的な例外である旨の2026-09-24追記を含む）を正とする。実装は「ND だけの
+格では `AVG` が NULL を返す」という一般形（`CASE WHEN censoring=
+'not_detected' THEN NULL ELSE ... END` を `AVG`/`MIN`/`MAX` に渡すだけ）で
+書き、**「ND を含むセルは全て 100% ND」という実データの性質には依存しない**
+（この性質は機械検証にだけ使う）。
 
 ## 入出力について（design.md D8 と「共通」節の折り合い）
 
@@ -145,18 +131,12 @@ ADR-0011 が定義するキューブの列は `unit_id` までで、`unit_raw`�
 - `n_places`: この縦線はロールアップしない（次元キーに `place_id` が必ず
   入る）ため、常に `1`。
 
-## 入力検証: `below_lod` は `censoring_limit` を必ず持つ（/code-review 指摘5）
-
-`build_cube()` の先頭、`observation`（入力）に対して `_assert_below_lod_has_censoring_limit`
-を呼ぶ。`censoring='below_lod' AND censoring_limit IS NULL` の行が1つでもあると、
-`_VALUE_LOD_CASE` の代入（below_lod → censoring_limit）が NULL になり、その行は
-**value_lod の平均から黙って消える**（below_lod なのに非メンバー扱いになる）——
-下記の3つの機械検証はどれもこれを検出できない（value_lod が NULL になった
-「理由」が not_detected なのか censoring_limit 欠損なのかを区別しないため）。
-b03（`scripts/migrate/censoring.py` の `_parse_limit`）は below_lod の
-`censoring_limit` を必ず埋めるため実データでは起きないが、別出典や将来の
-取り込み経路がこの前提を破る可能性があるため、キューブを作る前に入力側で
-明示的に検証する。
+`censoring='below_lod'` が `censoring_limit` を必ず持つことは `observation`
+自身の不変条件として `scripts/b03_build_observation.py`（T1 不変条件の検査）
+が保証済み（/simplify 指摘2: 「検証は書き手の不変条件と消費者固有の前提を
+分ける・書き手が1回だけ保証する」という既存の分担にならう。
+`docs/plans/PHASE_B_FACT_SLICE.md` D11 の `site_zone_lookup` の節参照）。
+b04 側では検証しない。
 
 ## 機械検証: `value_zero`/`value_lod` の関係（ADR-0009 決定4）
 
@@ -519,35 +499,6 @@ def _assert_dimension_key_unique(conn: sqlite3.Connection, staging: str) -> None
 
 
 # ---------------------------------------------------------------------------
-# 入力検証: below_lod は censoring_limit を必ず持つ（/code-review 指摘5。
-# モジュール docstring「入力検証」節参照）
-# ---------------------------------------------------------------------------
-
-def _assert_below_lod_has_censoring_limit(conn: sqlite3.Connection) -> None:
-    """`observation`（入力）に `censoring='below_lod' AND censoring_limit IS NULL`
-    の行が無いことを確認する。1行でもあれば、その行は `_VALUE_LOD_CASE` の
-    代入結果が NULL になり、value_lod の平均から**黙って**消える（below_lod
-    なのに非メンバー扱いになる）——下記の3つの機械検証はどれもこれを検出
-    できない（value_lod が NULL な理由が not_detected か censoring_limit
-    欠損かを区別しないため）。b03 は必ず埋めるため実データでは起きないが、
-    将来・別出典の取り込み経路がこの前提を破りうるため、キューブを作る前に
-    入力側で明示的に止める。
-    """
-    bad = conn.execute(
-        "SELECT source_table, source_row_id, value_raw FROM observation "
-        f"WHERE censoring = '{censoring.CENSORING_BELOW_LOD}' AND censoring_limit IS NULL LIMIT 5"
-    ).fetchall()
-    if bad:
-        raise common.MigrationError(
-            "observation: censoring='below_lod' なのに censoring_limit が NULL の行がある"
-            f"（例（source_table, source_row_id, value_raw）: {bad}）。value_lod の代入規則"
-            "（below_lod → censoring_limit）が計算できず、これらの行は value_lod の平均から"
-            "黙って消える（below_lod なのに非メンバー扱いになる）。"
-            "scripts/migrate/censoring.py の censoring_limit 解決を確認すること。"
-        )
-
-
-# ---------------------------------------------------------------------------
 # value_zero / value_lod の関係の検証（ADR-0009 決定4。モジュール docstring
 # 「機械検証」節参照）
 # ---------------------------------------------------------------------------
@@ -684,9 +635,7 @@ def build_cube(
     （モジュール docstring「SQLite の版を守る」参照）。
     """
     common.require_sqlite_version()
-    # 入力検証（/code-review 指摘5）: below_lod が censoring_limit を必ず持つこと。
-    # 集計を始める前、`observation` に対して直接検証する。
-    _assert_below_lod_has_censoring_limit(conn)
+    # below_lod が censoring_limit を必ず持つことは b03 が保証済み（/simplify 指摘2）。
     params = (built_from, spec_version)
     common.attach_readonly(conn, registry_db, "reg")
     conn.execute(_CREATE_OBS_IMPUTED_VIEW_SQL)
