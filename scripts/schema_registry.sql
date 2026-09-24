@@ -180,6 +180,57 @@ CREATE TABLE IF NOT EXISTS taxon (
 CREATE INDEX IF NOT EXISTS ix_taxon_gbif_key ON taxon(gbif_taxon_key);
 CREATE INDEX IF NOT EXISTS ix_taxon_binomial ON taxon(canonical_binomial);
 
+-- 版ごとの分類群の評価(ADR-0019 の最小形。P-2、2026-09-23追記。
+-- docs/adr/0019-taxon-registry.md の日付付き追記 / docs/plans/PHASE_B_TAXON_ASSESSMENT.md)。
+-- v1 の redlist_assessments(2,884行、rl2020/rdb2022p/rl2026 の3版)と
+-- taxa.ias_category 由来の外来種評価(moe_ias_2015、v1 は data/processed/moe_ias_list.csv
+-- 由来)を、同じ「あるリストがある分類群に付けた評価」という構造に統合したもの。
+-- D1(web/src/db/schema-registry.ts)には載せない(taxon の分類列と同じ判断。
+-- 使う側〔web〕がまだ無い——registry/README.md「place.region_id と place_relation」
+-- と同じ理由)。
+--
+-- list_id は registry/taxon/assessment_list.yaml のコードリスト。
+-- category_code/prev_category_code は registry/taxon/redlist_category.yaml +
+-- redlist_category_alias.csv で正規化したコード(list_id='moe_ias_2015' の行は
+-- 専用のコードリストを持たないため常に NULL。category_raw だけを持つ)。
+-- category_raw/prev_category_raw/national_category_raw は原表記を無加工で残す
+-- (正規化は alias を引くキーにだけ使う。category_raw 自体は改行・空白を含め
+-- そのまま)。prev はその版の文書が自分で書いている「前回区分」の原表記であり、
+-- 版どうしを JOIN して導いたものではない(ADR-0019 決定5への例外。理由は
+-- docs/adr/0019-taxon-registry.md 追記参照)。
+-- taxon_id は解決できた分だけ埋める(学名の完全一致 → 二名法一致の順。
+-- 解決できない行は NULL のまま——Phase B の再現(v1は名前を文字列で運ぶ)には
+-- 不要な診断用の列)。origin は外来種リストの由来区分(moe_ias_list.csv の
+-- origin_ja。レッドリスト側の行は常に NULL)。
+--
+-- vernacular_name_ja_resolved (P-2、/code-review 対応、2026-09-23):
+-- moe_ias_2015 の行だけが持つ、v1 の `taxa.vernacular_name_ja`(3出典をまたいだ
+-- 畳み込み済みの和名)相当。NULL もありうる(空文字に丸めない)。redlist側の行は
+-- 常に NULL。背景・実測・畳み込みの詳細は
+-- scripts/registry/build_taxon_assessment.py のモジュール docstring「和名の解決」・
+-- docs/plans/PHASE_B_TAXON_ASSESSMENT.md 参照。
+CREATE TABLE IF NOT EXISTS taxon_assessment (
+  assessment_id TEXT PRIMARY KEY,
+  list_id TEXT NOT NULL,
+  list_year INTEGER,
+  taxon_id TEXT,
+  scientific_name_raw TEXT,
+  vernacular_name_ja_raw TEXT,
+  vernacular_name_ja_resolved TEXT,
+  taxon_group_ja TEXT,
+  taxon_subgroup_ja TEXT,
+  family_ja TEXT,
+  category_raw TEXT,
+  category_code TEXT,
+  prev_category_raw TEXT,
+  prev_category_code TEXT,
+  national_category_raw TEXT,
+  origin TEXT,
+  source_id TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_taxon_assessment_list ON taxon_assessment(list_id);
+CREATE INDEX IF NOT EXISTS ix_taxon_assessment_taxon ON taxon_assessment(taxon_id);
+
 -- 注意事項(ADR-0013)。caveat_id は web/src/lib/ai/caveats.ts が今返しているキー文字列を
 -- そのまま使う(common:caveat:<key>)。cells.notes 由来は common:caveat:cells.<note の主キー>。
 --

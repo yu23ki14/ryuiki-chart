@@ -49,6 +49,15 @@ name: CI
 #       正確な結果の食い違い〔記録単位〕の宣言）が読めて、必須キーを持ち、
 #       `memo_moved_records.breakdown` の3値の合計が `expected_count` と一致すること
 #       （`b08_project_occurrence_v1.validate_watershed_declarations_shape`）。
+#     - registry/taxon/redlist_category.yaml・redlist_category_alias.csv・
+#       assessment_list.yaml・assessment_scope_exclusions.yaml（P-2。taxon_assessment の
+#       語彙4ファイル）が読めて、code/list_id/(list_id,scientific_name) の重複が無く、
+#       alias の code・除外の reasons が語彙に実在し、除外の実測件数（7種、
+#       domestic_origin 6件・subspecies_binomial_contraction 2件）と一致すること
+#       （`registry.build_taxon_assessment` の `load_redlist_category_codes`/
+#       `load_redlist_category_alias`/`load_assessment_lists`/
+#       `load_assessment_scope_exclusions`。原本DB・moe_ias_list.csvは使わない
+#       ——taxon_assessment テーブル自体の構築は `--files-only` の対象外のまま）。
 #   docs/plans/PHASE_B_RECONCILIATION.md §5「CI の限界」で明言しているとおり、
 #   このジョブが保証するのはハーネス自体の正しさとこれらの構造検証だけ。実データ
 #   （data/db/derived.sqlite、14GB）に対する b01 の再実行や b02 の完全モード突合は、
@@ -275,4 +284,30 @@ jobs:
           )
           b08.validate_watershed_declarations_shape(watershed_declarations_path)
           print(f"OK: {watershed_declarations_path}")
+          PY
+
+      - name: taxon_assessment（P-2）の語彙4ファイルの構造検証（原本DBは使わない）
+        run: |
+          python3 - <<'PY'
+          import sys
+
+          sys.path.insert(0, "scripts")
+          from registry import build_taxon_assessment as ta
+
+          # registry/taxon/redlist_category.yaml + redlist_category_alias.csv
+          # （code の重複・alias の code が語彙に実在すること）。
+          codes = ta.load_redlist_category_codes()
+          alias = ta.load_redlist_category_alias()
+          print(f"OK: {ta.REDLIST_CATEGORY_YAML}（{len(codes)}コード）")
+          print(f"OK: {ta.REDLIST_CATEGORY_ALIAS_CSV}（{len(alias)}件のalias）")
+
+          # registry/taxon/assessment_list.yaml（list_id の重複・kind が既知の値）。
+          lists = ta.load_assessment_lists()
+          print(f"OK: {ta.ASSESSMENT_LIST_YAML}（{len(lists)}件のlist）")
+
+          # registry/taxon/assessment_scope_exclusions.yaml（(list_id,
+          # scientific_name) の重複・reasons が既知の値・実測件数〔7種、
+          # domestic_origin 6件・subspecies_binomial_contraction 2件〕と一致）。
+          exclusions = ta.load_assessment_scope_exclusions()
+          print(f"OK: {ta.ASSESSMENT_SCOPE_EXCLUSIONS_YAML}（{len(exclusions)}件の除外）")
           PY

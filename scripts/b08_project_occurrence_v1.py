@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """`occurrence`（L2）・`occurrence_agg`（キューブ。b07）・`occurrence_place`
-（O-2a、b09）から v1 の12テーブル（`org_norm`・年キー8表・`species_month`・
-`org_watershed_year`/`org_watershed`）に射影する（ADR-0016 Phase B
-「ファクトとキューブ」O-1a/O-1b/O-2a。O-1 設計 v2 D3・D4・ADR-0025 D3・
-ADR-0026。番号 b07 は O-1b のキューブ用だった）。
+（O-2a、b09）・`registry.taxon_assessment`（P-2）から v1 の13テーブル
+（`org_norm`・年キー8表・`species_month`・`org_watershed_year`/
+`org_watershed`・`ias_species`）に射影する（ADR-0016 Phase B
+「ファクトとキューブ」O-1a/O-1b/O-2a/P-2。O-1 設計 v2 D3・D4・ADR-0025 D3・
+ADR-0026、`docs/plans/PHASE_B_TAXON_ASSESSMENT.md`。番号 b07 は O-1b の
+キューブ用だった）。
 
     .venv/bin/python3 scripts/b08_project_occurrence_v1.py
 
 `data/db/v1_projection_occurrence.sqlite`（毎回ゼロから作り直す、専用の出力
-ファイル。b05 の `v1_projection.sqlite` とは別ファイル——D3参照）に12テーブル
+ファイル。b05 の `v1_projection.sqlite` とは別ファイル——D3参照）に13テーブル
 （`org_norm`・`org_group_year`・`effort_year`・`species2`・`species_year2`・
 `species_month`・`mesh_year`・`mesh_all`・`mesh_species`・`species_mesh_year`・
-`org_watershed_year`・`org_watershed`）を書く。列名・列順は
+`org_watershed_year`・`org_watershed`・`ias_species`）を書く。列名・列順は
 `reports/derived_baseline.json`／実物の `data/db/derived.sqlite`
 （`PRAGMA table_info`）と一致させてある（`scripts/b02_derived_compare.py
 --candidate ... --tables ...` がそのまま突き合わせられるように）。**`b02` 自身は
@@ -42,6 +44,27 @@ v1（`web/scripts/build-geo.mjs:112-225`）は座標を0.001度に丸めたバ�
 設計・規則は変更なし（`_build_org_norm`/`build_org_norm_projection`。旧版の
 振る舞いをそのまま維持——値は1ビットも変えない）。射影の規則は
 `_ORG_NORM_SELECT_EXPRS` の直前にまとめてある。
+
+## P-2: `ias_species`（`org_norm` + `registry.taxon_assessment` から）
+
+v1（`web/scripts/build-biota.mjs:234-257`）は `taxa.ias_category` を二名法
+（binom）で `org_norm` に結合していたが、`taxa` は `moe_ias_list.csv` の
+`origin_ja`（国内由来/国外由来の区別）を落としているため、この射影は
+`registry.taxon_assessment(list_id='moe_ias_2015')`（`data/processed/
+moe_ias_list.csv` を直読みして作った。`scripts/registry/
+build_taxon_assessment.py`）から結合する。除外7種は
+`registry/taxon/assessment_scope_exclusions.yaml`（P-2 オーナー決定A、
+v1 の静的な7種除外をそのまま宣言化したもの）から読む。`_build_ias_species()`/
+`_ias_species_insert_sql()` 参照。origin を基準にした場合との差（受け入れ
+基準6）は `reports/phase_b_taxon_assessment.md` に実測を書く
+（`_measure_ias_origin_delta()`/`render_ias_origin_delta_report()`）——
+除外リストそのものはこの PR では変えない。**このモジュール（射影）は
+`registry.sqlite` だけを読み、原本（`ryuiki.sqlite`）には一切触れない**——
+`name_ja`（表示名）は `taxon_assessment.vernacular_name_ja_resolved`
+（`scripts/registry/build_taxon_assessment.py` が `ryuiki.taxa` から
+既に解決・畳み込み済みの和名）をそのまま使う（/code-review 指摘1。以前は
+このモジュールが `ryuiki.sqlite` を直接 ATTACH していたが、射影の層に
+原本が入り込む設計逸脱だったため、レジストリのビルド側に移した）。
 
 ## O-1b: 年キー8表は `occurrence_agg`（キューブ）だけから（ADR-0025 D3）
 
@@ -204,6 +227,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import b07_build_occurrence_cube as b07  # noqa: E402  (GRAIN_VALUES を共有する。/simplify 指摘5)
 from migrate import common, period  # noqa: E402
+from registry.build_taxon_assessment import binom_of  # noqa: E402  (P-2: ias_species の binom 計算。/code-review 指摘12)
 
 DEFAULT_CUBE_DB = ROOT / "data" / "db" / "v2.sqlite"
 DEFAULT_REGISTRY_DB = ROOT / "data" / "db" / "registry.sqlite"
@@ -229,7 +253,9 @@ def _existing_tables(db_path) -> set[str]:
 
 
 def _assert_prerequisites(
-    cube_db, registry_db, *, need_occurrence_agg: bool, need_occurrence_place: bool = False,
+    cube_db, registry_db, *,
+    need_occurrence_agg: bool, need_occurrence_place: bool = False,
+    need_taxon_assessment: bool = False,
 ) -> None:
     """`cube_db`/`registry_db` が存在し、必要なテーブルを持つことを
     `common.fresh_sqlite(out_path)`（既存の出力を即座に消す）より前に
@@ -239,7 +265,11 @@ def _assert_prerequisites(
 
     `need_occurrence_place`（O-2a、`org_watershed`/`org_watershed_year` の
     射影が要る）は `occurrence_place`（`scripts/b09_build_occurrence_place.py`
-    が作るサテライト表）の有無も確かめる。
+    が作るサテライト表）の有無も確かめる。`need_taxon_assessment`
+    （P-2、`ias_species` の射影が要る）は `registry.sqlite` の
+    `taxon_assessment` テーブルの有無を確かめる（`vernacular_name_ja_resolved`
+    の解決は `scripts/registry/build_taxon_assessment.py` の責務なので、
+    ここでは `ryuiki.sqlite` を見ない——/code-review 指摘1）。
     """
     cube_path = pathlib.Path(cube_db)
     if not cube_path.exists():
@@ -271,10 +301,16 @@ def _assert_prerequisites(
             f"{cube_path} に {names} テーブルが無い。先に {scripts} を実行すること。"
         )
 
-    if "taxon" not in _existing_tables(registry_path):
+    registry_tables = _existing_tables(registry_path)
+    if "taxon" not in registry_tables:
         raise common.MigrationError(
             f"{registry_path} に `taxon` テーブルが無い。scripts/r01_build_registry.py を"
             "実行すること。"
+        )
+    if need_taxon_assessment and "taxon_assessment" not in registry_tables:
+        raise common.MigrationError(
+            f"{registry_path} に `taxon_assessment` テーブルが無い（P-2 で新設）。"
+            "scripts/r01_build_registry.py で registry.sqlite を作り直すこと。"
         )
 
 
@@ -465,6 +501,219 @@ def build_org_norm_projection(
         n = _build_org_norm(conn, default_taxon_group)
         conn.commit()
         return {"n": n}
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# P-2: ias_species（org_norm の binom と registry.taxon_assessment を二名法で
+# 結合。O-1b マージ後の位置に置く——org_norm が既に構築済みであることに依存
+# する。決定・実測は docs/plans/PHASE_B_TAXON_ASSESSMENT.md 決定3参照）
+# ---------------------------------------------------------------------------
+
+_IAS_LIST_ID = "moe_ias_2015"
+
+
+def _load_ias_lookup(conn) -> list[tuple[str, str, str | None]]:
+    """`reg.taxon_assessment(list_id='moe_ias_2015')` の (binom, ias_category)
+    ごとに v1 の `ias` CTE と同じ `MAX(name_ja)` を計算する。
+
+    **v1 の `WHERE ias_category IS NOT NULL AND ias_category <> ''` と同じ
+    条件で `category_raw` が空の行を除く**（/code-review 指摘3。以前はこの
+    フィルタが無く、実データで空の区分が0件だったため気づかず通っていた）。
+
+    `name_ja` は `taxon_assessment.vernacular_name_ja_resolved`
+    （`scripts/registry/build_taxon_assessment.py` が `ryuiki.taxa` から
+    既に解決・畳み込み済みの和名。射影であるこのモジュールは原本
+    〔`ryuiki.sqlite`〕を一切読まない——/code-review 指摘1）をそのまま使う。
+    `MAX()` は SQL と同じ「NULL は無視、全部NULLならNULL」の規則で Python
+    側で計算する（`vernacular_name_ja_resolved` は NULL のままの行もありうる
+    ——`or ""` で空文字に丸めない。/code-review 指摘4）。
+
+    実データでは moe_ias_list.csv 内で学名が重複するのは1組
+    （`'Bufo spp.'`。同じ category・同じ `vernacular_name_ja_resolved`
+    ——taxa の畳み込みが正規化学名単位のため）だけであり、(binom, category)
+    で素直に GROUP BY するだけで v1 と一致する（`c25_taxa_table.py.touch()`
+    の「最後に処理した行の category が勝つ」という規則を b08 側で別途
+    再現する必要は無い——実測が示すとおり、taxa 由来の畳み込みが既にこの
+    ケースを吸収している）。戻り値は `[(binom, ias_category, name_ja), ...]`。
+    """
+    rows = conn.execute(
+        "SELECT scientific_name_raw, category_raw, vernacular_name_ja_resolved "
+        "FROM reg.taxon_assessment "
+        "WHERE list_id = ? AND scientific_name_raw IS NOT NULL AND scientific_name_raw <> '' "
+        "AND category_raw IS NOT NULL AND category_raw <> ''",
+        (_IAS_LIST_ID,),
+    ).fetchall()
+
+    groups: dict[tuple[str, str], list[str | None]] = {}
+    for sci, category, name in rows:
+        binom = binom_of(sci)
+        if not binom:
+            continue
+        groups.setdefault((binom, category), []).append(name)
+
+    result = []
+    for (binom, category), names in groups.items():
+        non_null = [n for n in names if n is not None]
+        name_ja = max(non_null) if non_null else None  # SQL の MAX() と同じ規則
+        result.append((binom, category, name_ja))
+    return result
+
+
+_CREATE_IAS_SPECIES_SQL = """
+CREATE TABLE ias_species (
+  ias_category TEXT, binom TEXT, name_ja TEXT, taxon_group TEXT, en_name TEXT,
+  n INTEGER, mesh_n INTEGER, y_from INTEGER, y_to INTEGER, n_since_2020 INTEGER
+)
+"""
+
+_CREATE_IAS_LOOKUP_TEMP_SQL = "CREATE TEMP TABLE ias_lookup (binom TEXT, ias_category TEXT, name_ja TEXT)"
+
+
+def _ias_species_insert_sql(n_exclusions: int) -> str:
+    """v1（web/scripts/build-biota.mjs 234-257行）の SQL と同じ規則:
+    `(binom, ias_category)` で GROUP BY・`MAX(vernacular_name_ja)`（`ias_lookup`
+    ——`_load_ias_lookup()` が taxa 相当の畳み込みを経て Python 側で計算済み。
+    上のコメント参照）・除外種は `WHERE o.binom NOT IN (...)`
+    （`registry/taxon/assessment_scope_exclusions.yaml`、P-2 オーナー決定A）。
+    """
+    placeholders = ", ".join("?" for _ in range(n_exclusions))
+    return f"""
+    INSERT INTO ias_species (
+      ias_category, binom, name_ja, taxon_group, en_name, n, mesh_n, y_from, y_to, n_since_2020
+    )
+    SELECT i.ias_category, o.binom, i.name_ja,
+           MAX(o.taxon_group),
+           MAX(COALESCE(NULLIF(o.vernacular_name, ''), '')),
+           COUNT(*),
+           COUNT(DISTINCT o.mlat || '_' || o.mlon),
+           MIN(o.yr),
+           MAX(o.yr),
+           SUM(CASE WHEN o.yr >= 2020 THEN 1 ELSE 0 END)
+    FROM org_norm o
+    JOIN temp.ias_lookup i ON i.binom = o.binom
+    WHERE o.binom NOT IN ({placeholders})
+    GROUP BY i.ias_category, o.binom
+    """
+
+
+def _load_ias_exclusion_binoms() -> list[str]:
+    """`registry.build_taxon_assessment.load_assessment_scope_exclusions()`
+    （構造・実測件数を検証済み。P-2 オーナー決定A）から、`moe_ias_2015` の
+    除外 binom（学名の二名法。7種）を取り出す。
+    """
+    from registry.build_taxon_assessment import load_assessment_scope_exclusions
+
+    entries = load_assessment_scope_exclusions()
+    return [e["scientific_name"] for e in entries if e["list_id"] == _IAS_LIST_ID]
+
+
+_IAS_ORIGIN_DOMESTIC_LIKE = "%国内由来%"
+
+
+def _measure_ias_origin_delta(conn, exclusion_binoms: list[str]) -> dict:
+    """受け入れ基準6: `origin`（moe_ias_list.csv の origin_ja）を基準にした
+    場合（『国内由来』を含む origin をすべて除外する規則）と、v1 互換の
+    固定7種除外との差を実測する。**宣言済み差分にはしない・除外リストは
+    変えない**——この差はビルド時レポート（`reports/phase_b_taxon_assessment.md`）
+    に出すだけ（ADR-0016「再現してから変える」の順序。P-2決定A）。
+
+    「同じ binom の taxon_assessment 行が1つでも国内由来でない origin を
+    持つなら、その binom は origin 基準でも除外しない」（`MIN(...)` で
+    『全ての行が国内由来』を判定する——Pelodiscus sinensis/Sus scrofa が
+    国外由来の別掲載を持つため origin 基準でも ias_species に残る、という
+    実測事実を再現するため。P-2決定A「(A) の判断」参照）。候補は
+    `org_norm` に実際に現れる binom（記録が無ければ origin 基準に変えても
+    ias_species の行として現れようがないため）に絞る。binom は `binom_of()`
+    （Python側。`_load_ias_lookup()` と同じ規則）で求める——この診断は
+    レポート専用で `ias_species` の出力そのものには影響しないため、
+    moe_ias_list.csv 内の学名重複（`'Bufo spp.'`）を畳み込まずそのまま
+    `origin` を見る（畳み込みの有無で「全行が国内由来か」の判定が変わる
+    行は実測で0件——`'Bufo spp.'` は国内由来の掲載を持たない）。
+    """
+    rows = conn.execute(
+        "SELECT scientific_name_raw, origin FROM reg.taxon_assessment "
+        "WHERE list_id = ? AND scientific_name_raw IS NOT NULL AND scientific_name_raw <> ''",
+        (_IAS_LIST_ID,),
+    ).fetchall()
+    domestic_needle = _IAS_ORIGIN_DOMESTIC_LIKE.strip("%")
+    all_domestic_by_binom: dict[str, bool] = {}
+    for sci, origin in rows:
+        binom = binom_of(sci)
+        if not binom:
+            continue
+        is_domestic = bool(origin) and (domestic_needle in origin)
+        all_domestic_by_binom[binom] = all_domestic_by_binom.get(binom, True) and is_domestic
+
+    org_norm_counts = dict(conn.execute("SELECT binom, COUNT(*) FROM org_norm GROUP BY binom").fetchall())
+    origin_excluded = {
+        binom: org_norm_counts[binom]
+        for binom, all_domestic in all_domestic_by_binom.items()
+        if all_domestic and binom in org_norm_counts
+    }
+    exclusion_set = set(exclusion_binoms)
+    delta = sorted(
+        ((binom, n) for binom, n in origin_excluded.items() if binom not in exclusion_set),
+        key=lambda kv: (-kv[1], kv[0]),
+    )
+    return {
+        "hardcoded_exclusion_binoms": sorted(exclusion_set),
+        "origin_domestic_binoms_in_org_norm": len(origin_excluded),
+        "delta_binoms": delta,
+    }
+
+
+def _build_ias_species(conn) -> tuple[int, dict]:
+    """`conn`（org_norm 構築済み・`reg` ATTACH 済みの書き込み用接続）に
+    `ias_species` を作り、(行数, 診断dict) を返す。診断は
+    `_measure_ias_origin_delta()` の戻り値（origin 基準との差分レポート用）。
+    `reg`（`registry.sqlite`）だけを読み、原本（`ryuiki.sqlite`）には触れない
+    ——`vernacular_name_ja_resolved` の解決は
+    `scripts/registry/build_taxon_assessment.py` が既に済ませている
+    （/code-review 指摘1）。
+
+    `ias_lookup`（`_load_ias_lookup()` が Python 側で計算した
+    (binom, ias_category, name_ja)）を一時テーブルに積んでから `org_norm` と
+    JOIN する——429行と小さいため Python 側で組み立てるが、`org_norm`
+    （816,856行）とのJOIN・集約自体は SQL に任せる（意図的なハイブリッド。
+    理由は `_load_ias_lookup()` のコメント参照）。
+    """
+    exclusion_binoms = _load_ias_exclusion_binoms()
+    ias_lookup_rows = _load_ias_lookup(conn)
+
+    conn.execute(_CREATE_IAS_SPECIES_SQL)
+    conn.execute(_CREATE_IAS_LOOKUP_TEMP_SQL)
+    conn.executemany("INSERT INTO temp.ias_lookup (binom, ias_category, name_ja) VALUES (?, ?, ?)", ias_lookup_rows)
+    conn.execute(_ias_species_insert_sql(len(exclusion_binoms)), exclusion_binoms)
+    n = conn.execute("SELECT COUNT(*) FROM ias_species").fetchone()[0]
+    diagnostics = _measure_ias_origin_delta(conn, exclusion_binoms)
+    return n, diagnostics
+
+
+def build_ias_species_projection(
+    cube_db, registry_db, out_path, taxon_group_yaml=DEFAULT_TAXON_GROUP_YAML,
+) -> tuple[dict[str, int], dict]:
+    """`ias_species` だけを単独で `out_path` に書く（`org_norm` を先に作る
+    必要がある——テスト・単体検証用のエントリポイント。`main()` は13
+    テーブルまとめて書く `build_all_projections` を使う）。戻り値は
+    `(table_counts, diagnostics)` の2要素タプル——`build_all_projections`/
+    `build_watershed_projections` 等の兄弟関数と同じ形（/code-review 指摘13:
+    以前は行数と診断値を1つの dict に混ぜて返しており、
+    `sum(counts.values())` のような「行数だけを合計する」呼び出し側の前提を
+    崩しうる〔O-2aで実際に踏まれた「合計件数が統計値で水増しされる」事故と
+    同じ形〕）。`table_counts` は `{"ias_species": 行数}` の1キーだけを持つ。
+    """
+    _assert_prerequisites(cube_db, registry_db, need_occurrence_agg=False, need_taxon_assessment=True)
+    default_taxon_group = _load_default_taxon_group(taxon_group_yaml)
+    conn = common.fresh_sqlite(out_path)
+    try:
+        common.attach_readonly(conn, cube_db, "cube")
+        common.attach_readonly(conn, registry_db, "reg")
+        _build_org_norm(conn, default_taxon_group)
+        n, diagnostics = _build_ias_species(conn)
+        conn.commit()
+        return {"ias_species": n}, diagnostics
     finally:
         conn.close()
 
@@ -1417,7 +1666,7 @@ def build_watershed_projections(
     cube_db, registry_db, out_path, declarations_yaml=DEFAULT_WATERSHED_DECLARATIONS_YAML,
 ) -> tuple[dict[str, int], dict]:
     """`org_watershed_year`/`org_watershed` だけを単独で `out_path` に書く
-    （既存テスト・単体検証用のエントリポイント——`main()` は12テーブルまとめて
+    （既存テスト・単体検証用のエントリポイント——`main()` は13テーブルまとめて
     書く `build_all_projections` を使う）。戻り値は `_build_watershed()` と
     同じ `(table_counts, diagnostics)`。
 
@@ -1438,7 +1687,7 @@ def build_watershed_projections(
 
 
 # ---------------------------------------------------------------------------
-# 12テーブルまとめて1ファイルに書く（main() が使う）
+# 13テーブルまとめて1ファイルに書く（main() が使う）
 # ---------------------------------------------------------------------------
 
 def build_all_projections(
@@ -1446,17 +1695,19 @@ def build_all_projections(
     watershed_declarations_yaml=DEFAULT_WATERSHED_DECLARATIONS_YAML,
 ) -> tuple[dict[str, int], dict]:
     """`org_norm` ＋ 年キー8表 ＋ `species_month` ＋ `org_watershed_year`/
-    `org_watershed`（O-2a）の12テーブルを、1つの `fresh_sqlite` 接続で
-    `out_path` に書く（`org_norm` を先に作ってから年キー8表・
-    `species_month` を作る——後者が `species2` を読むため、かつ
-    `occurrence_agg` に対する古い taxon 検査を重ねがけしないため。モジュール
-    docstring参照）。
+    `org_watershed`（O-2a）＋ `ias_species`（P-2）の13テーブルを、1つの
+    `fresh_sqlite` 接続で `out_path` に書く（`org_norm` を先に作ってから
+    年キー8表・`species_month`・`ias_species` を作る——後者が
+    `species2`/`org_norm` を読むため、かつ `occurrence_agg` に対する古い
+    taxon 検査を重ねがけしないため。モジュール docstring参照）。
 
-    戻り値は `(table_counts, watershed_diagnostics)` の2要素タプル
-    （コードレビュー指摘2・12）。`table_counts` はこの12テーブルの行数**だけ**
-    を持つ dict（`set(table_counts) == {12テーブル名}` が常に成り立つ——
+    戻り値は `(table_counts, diagnostics)` の2要素タプル（コードレビュー
+    指摘2・12）。`table_counts` はこの13テーブルの行数**だけ**を持つ dict
+    （`set(table_counts) == {13テーブル名}` が常に成り立つ——
     `memo_moved_records` のような行数ではない機械検証の実測値は混ぜない）。
-    `watershed_diagnostics` は `_build_watershed()` の2つ目の戻り値そのもの。
+    `diagnostics` は `_build_watershed()` の2つ目の戻り値（watershed 節）に
+    `ias_species` の `_measure_ias_origin_delta()` の結果を `ias_origin_delta`
+    キーで足したもの。
 
     `_assert_cube_is_current_l2_partition`/`_measure_keys_changed_vs_exact` が
     `FULL OUTER JOIN` を使うため、その前に `common.require_sqlite_version()`
@@ -1464,7 +1715,8 @@ def build_all_projections(
     """
     common.require_sqlite_version()
     _assert_prerequisites(
-        cube_db, registry_db, need_occurrence_agg=True, need_occurrence_place=True,
+        cube_db, registry_db,
+        need_occurrence_agg=True, need_occurrence_place=True, need_taxon_assessment=True,
     )
     default_taxon_group = _load_default_taxon_group(taxon_group_yaml)
     conn = common.fresh_sqlite(out_path)
@@ -1474,11 +1726,65 @@ def build_all_projections(
         n_org_norm = _build_org_norm(conn, default_taxon_group)
         counts = _build_cube_projections(conn, default_taxon_group, check_stale_taxon=False)
         watershed_table_counts, watershed_diagnostics = _build_watershed(conn, watershed_declarations_yaml)
+        n_ias_species, ias_origin_delta = _build_ias_species(conn)
         conn.commit()
-        table_counts = {"org_norm": n_org_norm, **counts, **watershed_table_counts}
-        return table_counts, watershed_diagnostics
+        table_counts = {
+            "org_norm": n_org_norm, **counts, **watershed_table_counts,
+            "ias_species": n_ias_species,
+        }
+        diagnostics = {**watershed_diagnostics, "ias_origin_delta": ias_origin_delta}
+        return table_counts, diagnostics
     finally:
         conn.close()
+
+
+def render_ias_origin_delta_report(ias_origin_delta: dict) -> str:
+    """受け入れ基準6のレポート（`reports/phase_b_taxon_assessment.md`）。
+    origin 基準（『国内由来』を含む origin をすべて除外）と v1 互換の固定7種
+    除外との差を実測どおりに書く（レポートは実測、除外リストそのものは
+    `registry/taxon/assessment_scope_exclusions.yaml` のまま変えない）。
+    """
+    lines: list[str] = []
+    a = lines.append
+    a("# P-2 taxon_assessment — ias_species の除外規則: origin 基準との差（受け入れ基準6）")
+    a("")
+    a(
+        "`scripts/b08_project_occurrence_v1.py` の `_measure_ias_origin_delta()` が "
+        "`ias_species` 構築時に実測した値。除外規則は "
+        "`registry/taxon/assessment_scope_exclusions.yaml`（v1 互換の固定7種）のままで、"
+        "このレポートは「origin_ja に『国内由来』を含む行をすべて除外する規則に変えたら"
+        "どうなるか」を実測しただけ——ias_species の出力は変えない"
+        "（ADR-0016「再現してから変える」の順序。P-2 オーナー決定A）。"
+    )
+    a("")
+    a(f"- v1 互換の固定7種（除外済み）: `{', '.join(ias_origin_delta['hardcoded_exclusion_binoms'])}`")
+    a(
+        "- origin 基準（`origin LIKE '%国内由来%'` を binom 単位で全行に適用。"
+        "同じ binom に国外由来の別掲載が1件でもあれば除外しない）で除外される "
+        "distinct binom（`org_norm` に記録があるものだけ）: "
+        f"**{ias_origin_delta['origin_domestic_binoms_in_org_norm']}**"
+    )
+    delta = ias_origin_delta["delta_binoms"]
+    a(
+        f"- 差分（origin 基準では除外されるが、v1 互換の固定7種には無い＝v1 に"
+        f"誤って残っている行）: **{len(delta)}**"
+    )
+    a("")
+    a("| binom | org_norm 件数(n) |")
+    a("|---|---:|")
+    for binom, n in delta:
+        a(f"| {binom} | {n:,} |")
+    a("")
+    a(
+        "Pelodiscus sinensis（ニホンスッポン）・Sus scrofa（イノシシ）は origin 基準でも"
+        "除外されない（同じ binom に国外由来の別掲載があるため、上記の "
+        "`MIN(...)` 判定が「全行が国内由来」にならない）。"
+    )
+    a("")
+    return "\n".join(lines) + "\n"
+
+
+DEFAULT_IAS_REPORT = ROOT / "reports" / "phase_b_taxon_assessment.md"
 
 
 def main() -> None:
@@ -1491,14 +1797,15 @@ def main() -> None:
     parser.add_argument("--taxon-group-yaml", default=str(DEFAULT_TAXON_GROUP_YAML))
     parser.add_argument("--watershed-declarations-yaml", default=str(DEFAULT_WATERSHED_DECLARATIONS_YAML))
     parser.add_argument("--out", default=str(DEFAULT_OUT))
+    parser.add_argument("--ias-report", default=str(DEFAULT_IAS_REPORT))
     args = parser.parse_args()
 
     registry_db = common.resolve_registry_db(args.registry_db, DEFAULT_REGISTRY_DB)
     print(f"▶ 読み取り専用で開く: {args.cube_db}")
     print(f"▶ 読み取り専用で開く: {registry_db}")
 
-    with common.timed_step("v1 形（12テーブル）へ射影して書き出し") as info:
-        counts, watershed_diagnostics = build_all_projections(
+    with common.timed_step("v1 形（13テーブル）へ射影して書き出し") as info:
+        counts, diagnostics = build_all_projections(
             args.cube_db, registry_db, args.out, args.taxon_group_yaml, args.watershed_declarations_yaml,
         )
         # `counts` はテーブル行数だけを持つ（コードレビュー指摘2・12）ので、
@@ -1508,15 +1815,25 @@ def main() -> None:
     for table, n in sorted(counts.items()):
         print(f"  {table}: {n:,}行")
     print(
-        f"  [org_watershed] memo_moved_records={watershed_diagnostics['memo_moved_records']:,} "
-        f"(ws_to_ws={watershed_diagnostics['ws_to_ws']:,} / "
-        f"v1_assigned_exact_unassigned={watershed_diagnostics['v1_assigned_exact_unassigned']:,} / "
-        f"v1_unassigned_exact_assigned={watershed_diagnostics['v1_unassigned_exact_assigned']:,}) / "
-        f"memo_mixed_buckets={watershed_diagnostics['memo_mixed_buckets']:,} / "
-        f"keys_changed_vs_exact={watershed_diagnostics['org_watershed_year_keys_changed_vs_exact']:,} / "
-        f"保存則: sum_n={watershed_diagnostics['sum_n']:,} / "
-        f"exact_resolved_dated={watershed_diagnostics['exact_resolved_dated']:,}"
+        f"  [org_watershed] memo_moved_records={diagnostics['memo_moved_records']:,} "
+        f"(ws_to_ws={diagnostics['ws_to_ws']:,} / "
+        f"v1_assigned_exact_unassigned={diagnostics['v1_assigned_exact_unassigned']:,} / "
+        f"v1_unassigned_exact_assigned={diagnostics['v1_unassigned_exact_assigned']:,}) / "
+        f"memo_mixed_buckets={diagnostics['memo_mixed_buckets']:,} / "
+        f"keys_changed_vs_exact={diagnostics['org_watershed_year_keys_changed_vs_exact']:,} / "
+        f"保存則: sum_n={diagnostics['sum_n']:,} / "
+        f"exact_resolved_dated={diagnostics['exact_resolved_dated']:,}"
     )
+
+    ias_origin_delta = diagnostics["ias_origin_delta"]
+    print(
+        f"  [ias_species] origin基準で除外されるbinom={ias_origin_delta['origin_domestic_binoms_in_org_norm']:,} / "
+        f"v1互換7種との差={len(ias_origin_delta['delta_binoms']):,}"
+    )
+    report_path = pathlib.Path(args.ias_report)
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(render_ias_origin_delta_report(ias_origin_delta), encoding="utf-8")
+    print(f"→ {report_path}")
 
 
 if __name__ == "__main__":

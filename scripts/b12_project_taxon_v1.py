@@ -1,0 +1,307 @@
+#!/usr/bin/env python3
+"""`registry.sqlite` の `taxon_assessment`（P-2、レッドリスト3版分、2,884行）を
+v1 の派生表 `redlist_map`（44行、原表記の辞書）・`redlist_change`（2,884行、
+版間比較）の形に射影する（ADR-0016 Phase B「ファクトとキューブ」P-2、
+`docs/plans/PHASE_B_TAXON_ASSESSMENT.md`）。
+
+    .venv/bin/python3 scripts/b12_project_taxon_v1.py
+
+`data/db/v1_projection_taxon.sqlite`（毎回ゼロから作り直す、専用の出力ファイル）に
+2テーブルを書く。列名・列順・宣言型は `reports/derived_baseline.json` の記録
+（`data/db/derived.sqlite` の実物）と一致させてある。`ias_species`（外来種、
+173行）はここではなく `scripts/b08_project_occurrence_v1.py`
+（`org_norm` の binom と結合する必要があるため、occurrence の縦線側に置く。
+`docs/plans/PHASE_B_TAXON_ASSESSMENT.md` 決定3参照）。
+
+## `redlist_map` は `taxon_assessment` を経由しない
+
+v1 の `redlist_map`（44行）は `registry/taxon/redlist_category.yaml`（正準:
+code/label_ja/rank）＋ `redlist_category_alias.csv`（出典表記: raw -> code）の
+2ファイルを突き合わせるだけで再構成できる、静的な語彙そのものである
+（`taxon_assessment` の実データ行数には依存しない）。**`not_listed`
+（`'―'` の alias。P-2決定1、v1 には無かったコード）は除いて44行にする**
+——v1 の `redlist_map` は `'―'` を1行も持たず、`redlist_change` 側で
+LEFT JOIN が一致しないことで「前回記載なし」を導いていた。`not_listed` は
+`registry/taxon/redlist_category.yaml` で意図的に `rank: null` にしてあるので、
+`redlist_change` 側で `not_listed` を素通りさせても `rank IS NULL` の分岐は
+一致するが（下記参照）、`redlist_map` の行として出すと v1 に無い45行目になり
+`scripts/b02_derived_compare.py` が不一致を検出する。
+
+## `redlist_change` の `not_listed` を v1 互換に戻す
+
+`taxon_assessment.prev_category_code` は `'―'`（247行）を `'not_listed'` として
+明示的に持つ（登録時に黙って落とさない。P-2決定1）。v1 の `redlist_change` は
+この247行で `prev_label`/`prev_code`/`prev_rank` がすべて `NULL`
+（`LEFT JOIN redlist_map` が一致しなかったため）——`_v1_compat()` が
+`not_listed` を `(None, None, None)` に戻すことでこれを再現する。**cur側・
+prev側どちらにも同じ `_v1_compat()` を通す**（以前は出力行の組み立てで
+`prev_code` だけ個別にガードし、`cur_code` は `category_code` を素通しして
+いた。今回側に `'―'` が0件のため実害は無かったが、対称性が崩れていた。
+/code-review 指摘2）。`rank` の値そのもの（`not_listed` は `rank: null`）は
+元から `NULL` なので、`direction`（`前回記載なし`）の判定はこの変換の有無に
+関わらず一致する——変換が必要なのは `prev_label`/`prev_code`/`cur_label`/
+`cur_code` という「v1 には無かった値」を出力に漏らさないためだけ
+（モジュールdocstring外の詳細は `registry/taxon/redlist_category.yaml`・
+`scripts/registry/build_taxon_assessment.py` のコメント参照）。
+
+## 小さい表なので SQL の `INSERT ... SELECT` ではなく Python で組み立てる
+
+`scripts/b08_project_occurrence_v1.py`/`b11_project_place_v1.py` は数十万行の
+表を1本の `INSERT ... SELECT` で書く（Python 側に行のリストを保持しないため）。
+この2表は合計2,928行（44+2,884）と小さく、かつ `list_name`（`assessment_list.yaml`）・
+`label_ja`/`rank`（`redlist_category.yaml`）という**SQLite の外（YAML）にある
+語彙**を引く必要があるため、素直に Python の dict で引いてから
+`executemany()` で書く（YAML を一時テーブルに読み込んで SQL 側で JOIN する
+遠回りをしない）。意図的な設計判断——行数が3桁〜4桁のオーダーを超えて増える
+なら SQL 側に寄せることを検討する。
+"""
+from __future__ import annotations
+
+import argparse
+import pathlib
+import sqlite3
+import sys
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from migrate import common  # noqa: E402
+
+DEFAULT_REGISTRY_DB = ROOT / "data" / "db" / "registry.sqlite"
+DEFAULT_OUT = ROOT / "data" / "db" / "v1_projection_taxon.sqlite"
+
+# v1 に無かったコード（P-2決定1）。redlist_map には出さず、redlist_change の
+# 出力列（prev/cur の label・code）では NULL に戻す。
+_NOT_LISTED_CODE = "not_listed"
+
+_REDLIST_MAP_COLUMNS = ("raw", "label", "code", "rank")
+_CREATE_REDLIST_MAP_SQL = """
+CREATE TABLE redlist_map (raw TEXT PRIMARY KEY, label TEXT, code TEXT, rank INTEGER)
+"""
+
+_REDLIST_CHANGE_COLUMNS = (
+    "assessment_id", "list_name", "list_year", "taxon_group_ja", "taxon_subgroup_ja",
+    "family_ja", "vernacular_name_ja", "scientific_name", "national_category_ja",
+    "prev_label", "prev_code", "prev_rank", "cur_label", "cur_code", "cur_rank", "direction",
+)
+_CREATE_REDLIST_CHANGE_SQL = """
+CREATE TABLE redlist_change (
+  assessment_id TEXT, list_name TEXT, list_year INT, taxon_group_ja TEXT,
+  taxon_subgroup_ja TEXT, family_ja TEXT, vernacular_name_ja TEXT, scientific_name TEXT,
+  national_category_ja TEXT, prev_label TEXT, prev_code TEXT, prev_rank INT,
+  cur_label TEXT, cur_code TEXT, cur_rank INT, direction
+)
+"""
+
+
+# ---------------------------------------------------------------------------
+# 語彙の読み込み（scripts/registry/build_taxon_assessment.py と同じ検証・
+# 同じパースを再利用する——正はそちら1箇所）。
+# ---------------------------------------------------------------------------
+
+def _load_vocab():
+    """`registry.build_taxon_assessment` の検証済みローダーをそのまま使う
+    （`scripts/registry` は `scripts/` から見えるパッケージ。b08 が `registry`
+    パッケージ外の YAML を `migrate.common.load_yaml` で読むのとは違い、ここは
+    構造検証込みのローダーがそのまま要る——検証を再実装しない）。
+    `categories` は `{code: {label_ja, rank, scope, ...}}`——以前はこのモジュール
+    が `redlist_category.yaml` を独自にもう一度パースしており（`_load_category_info()`）、
+    2つの結果が食い違っていないかを実行時 assert で確かめていた（正が2つある
+    状態だった。/simplify 指摘5）。
+    """
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from registry import build_taxon_assessment as ta
+
+    categories = ta.load_redlist_categories()
+    alias = ta.load_redlist_category_alias()
+    assessment_lists = ta.load_assessment_lists()
+    return categories, alias, assessment_lists
+
+
+# ---------------------------------------------------------------------------
+# redlist_map（44行。taxon_assessment を経由しない）
+# ---------------------------------------------------------------------------
+
+def _build_redlist_map_rows(alias: dict[str, str], categories: dict[str, dict]) -> list[tuple]:
+    """`alias`（`registry.build_taxon_assessment.load_redlist_category_alias()` が
+    構造検証済みの raw -> code）から組み立てる。`not_listed` は除く
+    （モジュール docstring「redlist_map は taxon_assessment を経由しない」参照）。
+    """
+    rows = []
+    for raw, code in alias.items():
+        if code == _NOT_LISTED_CODE:
+            continue
+        entry = categories[code]
+        rows.append((raw, entry["label_ja"], code, entry["rank"]))
+    return rows
+
+
+# ---------------------------------------------------------------------------
+# redlist_change（2,884行）
+# ---------------------------------------------------------------------------
+
+def _v1_compat(
+    code: str | None, categories: dict[str, dict]
+) -> tuple[str | None, str | None, int | None]:
+    """`code` から (code, label, rank) を求める。`not_listed`（v1 に無かった
+    コード。モジュール docstring参照）は3つとも NULL に戻す。**cur/prev
+    どちらの側にも同じ関数を通す**——以前は出力行の組み立て時に `prev_code`
+    だけ `prev_category_code if prev_category_code != _NOT_LISTED_CODE else
+    None` という個別のガードを持ち、`cur_code` は `category_code` を素通し
+    していた（今回側に `'―'`（not_listed）が0件のため気づかず通っていた
+    ——/code-review 指摘2）。戻り値の `code` 自体も含めて両側を同じ経路に
+    揃えることで、今後どちらの側に not_listed が現れても対称に扱う。
+    """
+    if code is None or code == _NOT_LISTED_CODE:
+        return None, None, None
+    entry = categories[code]
+    return code, entry["label_ja"], entry["rank"]
+
+
+def _direction(cur_rank: int | None, prev_rank: int | None) -> str:
+    """v1（web/scripts/build-biota.mjs 300-303行）の CASE 式そのまま
+    （SQL の3値論理を明示的に再現する。/code-review 指摘1b）:
+
+    ```sql
+    CASE WHEN pm.rank IS NULL THEN '前回記載なし'
+         WHEN cm.rank > pm.rank THEN '悪化'
+         WHEN cm.rank < pm.rank THEN '改善'
+         ELSE '横ばい' END
+    ```
+
+    `cm.rank`（今回）が NULL のとき、SQL の `NULL > x`/`NULL < x` はどちらも
+    NULL（偽扱い）になるため ELSE の `'横ばい'` に落ちる——`prev_rank is None`
+    を先に見る一方、`cur_rank is None` を見落とすと Python では
+    `TypeError`（`None > int`）になる。実データでは `category_code` は常に
+    解決されるため `cur_rank` が NULL になることは無いが、v1 の SQL と
+    1対1で対応させるため明示的に分岐する。
+    """
+    if prev_rank is None:
+        return "前回記載なし"
+    if cur_rank is None:
+        return "横ばい"
+    if cur_rank > prev_rank:
+        return "悪化"
+    if cur_rank < prev_rank:
+        return "改善"
+    return "横ばい"
+
+
+def _build_redlist_change_rows(
+    conn: sqlite3.Connection,
+    assessment_lists: dict[str, dict],
+    categories: dict[str, dict],
+    redlist_ids: list[str],
+) -> list[tuple]:
+    rows = []
+    cur = conn.execute(
+        """
+        SELECT assessment_id, list_id, list_year, taxon_group_ja, taxon_subgroup_ja,
+               family_ja, vernacular_name_ja_raw, scientific_name_raw,
+               national_category_raw, category_code, prev_category_code
+        FROM reg.taxon_assessment
+        WHERE list_id IN ({})
+        ORDER BY assessment_id
+        """.format(",".join("?" for _ in redlist_ids)),
+        redlist_ids,
+    )
+    for row in cur:
+        (
+            assessment_id, list_id, list_year, taxon_group_ja, taxon_subgroup_ja,
+            family_ja, vernacular_name_ja, scientific_name,
+            national_category_ja, category_code, prev_category_code,
+        ) = row
+        list_name = assessment_lists[list_id]["name"]
+        cur_code, cur_label, cur_rank = _v1_compat(category_code, categories)
+        prev_code, prev_label, prev_rank = _v1_compat(prev_category_code, categories)
+        direction = _direction(cur_rank, prev_rank)
+        rows.append((
+            assessment_id, list_name, list_year, taxon_group_ja, taxon_subgroup_ja,
+            family_ja, vernacular_name_ja, scientific_name, national_category_ja,
+            prev_label, prev_code, prev_rank, cur_label, cur_code, cur_rank, direction,
+        ))
+    return rows
+
+
+# ---------------------------------------------------------------------------
+# 組み立て・書き出し
+# ---------------------------------------------------------------------------
+
+def _validate_registry(registry_db) -> None:
+    """`registry_db` を読み取り専用の一時コネクションで検証する
+    （`scripts/b11_project_place_v1.py._validate_registry()` と同じ形。
+    /simplify 指摘1: 以前は生の `sqlite_master` クエリで書き直しており、
+    `registry.sqlite` を2回〔検証用・本番書き込み用〕開いていた）。
+    """
+    work = sqlite3.connect(":memory:", uri=True)
+    try:
+        common.attach_readonly(work, registry_db, "reg")
+        common.assert_attached_table_exists(
+            work, "reg", "taxon_assessment",
+            hint=(
+                "taxon_assessment (P-2) が新設されたのはこの PR。"
+                "scripts/r01_build_registry.py で registry.sqlite を作り直すこと。"
+            ),
+        )
+    finally:
+        work.close()
+
+
+def build_projections(registry_db, out_path) -> dict[str, int]:
+    _validate_registry(registry_db)
+    categories, alias, assessment_lists = _load_vocab()
+
+    redlist_map_rows = _build_redlist_map_rows(alias, categories)
+
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from registry import build_taxon_assessment as ta
+
+    redlist_ids = ta.redlist_list_ids(assessment_lists)
+
+    conn = common.fresh_sqlite(out_path)
+    try:
+        common.attach_readonly(conn, registry_db, "reg")
+        redlist_change_rows = _build_redlist_change_rows(
+            conn, assessment_lists, categories, redlist_ids,
+        )
+
+        conn.execute(_CREATE_REDLIST_MAP_SQL)
+        conn.executemany(
+            f"INSERT INTO redlist_map ({', '.join(_REDLIST_MAP_COLUMNS)}) VALUES (?,?,?,?)",
+            redlist_map_rows,
+        )
+        conn.execute(_CREATE_REDLIST_CHANGE_SQL)
+        placeholders = ",".join("?" for _ in _REDLIST_CHANGE_COLUMNS)
+        conn.executemany(
+            f"INSERT INTO redlist_change ({', '.join(_REDLIST_CHANGE_COLUMNS)}) VALUES ({placeholders})",
+            redlist_change_rows,
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return {"redlist_map": len(redlist_map_rows), "redlist_change": len(redlist_change_rows)}
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--registry-db", default=None,
+        help=f"既定は RYUIKI_REGISTRY_DB 環境変数、それも無ければ {DEFAULT_REGISTRY_DB}",
+    )
+    parser.add_argument("--out", default=str(DEFAULT_OUT))
+    args = parser.parse_args()
+
+    registry_db = common.resolve_registry_db(args.registry_db, DEFAULT_REGISTRY_DB)
+    print(f"▶ 読み取り専用で開く: {registry_db}")
+
+    with common.timed_step(f"v1 形（2テーブル）へ射影して {args.out} に書き出し") as info:
+        counts = build_projections(registry_db, args.out)
+        info["n"] = sum(counts.values())
+
+    for table, n in sorted(counts.items()):
+        print(f"  {table}: {n:,}行")
+
+
+if __name__ == "__main__":
+    main()

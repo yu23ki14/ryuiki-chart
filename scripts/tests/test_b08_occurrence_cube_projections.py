@@ -502,13 +502,13 @@ def test_build_all_projections_writes_org_norm_and_eleven_more_tables(tmp_path):
         v1_unassigned_exact_assigned=0, mixed_buckets=0, keys_changed=0,
     )
     out = tmp_path / "out.sqlite"
-    counts, watershed_diagnostics = b08.build_all_projections(
-        cube_db, registry_db, out, taxon_group_yaml, watershed_decl
+    counts, diagnostics = b08.build_all_projections(
+        cube_db, registry_db, out, taxon_group_yaml, watershed_decl,
     )
     _table_keys = {
         "org_norm", "org_group_year", "effort_year", "species2", "species_year2",
         "mesh_year", "mesh_all", "mesh_species", "species_mesh_year", "species_month",
-        "org_watershed_year", "org_watershed",
+        "org_watershed_year", "org_watershed", "ias_species",
     }
     # `counts` はテーブル行数だけを持つ（コードレビュー指摘2・12: 統計値
     # 〔memo_moved_records 等〕を混ぜない）——完全一致で確認する。
@@ -516,7 +516,9 @@ def test_build_all_projections_writes_org_norm_and_eleven_more_tables(tmp_path):
     assert counts["org_norm"] == 1
     assert counts["org_watershed_year"] == 0  # place_id=None なのでどの流域にも入らない
     assert counts["org_watershed"] == 0
-    assert watershed_diagnostics["memo_moved_records"] == 0
+    assert counts["ias_species"] == 0  # taxon_assessment が空のフィクスチャ
+    assert diagnostics["memo_moved_records"] == 0
+    assert diagnostics["ias_origin_delta"]["delta_binoms"] == []
 
     conn = sqlite3.connect(f"file:{out}?mode=ro", uri=True)
     try:

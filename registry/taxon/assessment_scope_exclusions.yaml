@@ -1,0 +1,60 @@
+# v1（web/scripts/build-biota.mjs の ias_species、234-257行）が二名法(binom)の
+# 誤ヒットを防ぐためにハードコードしていた7種の除外を宣言化したもの
+# （P-2 オーナー決定A。「宣言済み差分 > データを曲げる」——除外は消して忘れる
+# のではなく、理由つきで残す）。scripts/b08_project_occurrence_v1.py の
+# ias_species 射影がこれを読み、list_id='moe_ias_2015' の外来種リストで
+# v1 と同じ7種の binom を除外する（org_norm.binom と一致する行を除く）。
+#
+# 除外の理由は2種類あり、重なる種がある（下記 reasons は1件で複数持ちうる）:
+#
+# - domestic_origin: moe_ias_list.csv の origin_ja が「国内由来の外来種」を含む。
+#   国内の別地域個体群（例: 奥尻島・屋久島のタヌキ）が、掲載学名の二名法(binom)
+#   だけで結合すると、神奈川県内在来個体群の記録（同じ学名の別亜種/別個体群）に
+#   まで誤ヒットする。
+# - subspecies_binomial_contraction: moe_ias_list.csv の掲載学名が亜種（3語）で、
+#   二名法（先頭2語への縮約）を取ると、掲載されていない別亜種（神奈川県内の在来
+#   個体群を含む）にも誤ヒットする。Apis mellifera（掲載学名 Apis mellifera
+#   scutellata、origin_ja は「国外由来の外来種」——domestic_origin では
+#   説明できない）はこちらのみ該当する。
+#
+# 実測: reasons に domestic_origin を含む行 6件・subspecies_binomial_contraction
+# を含む行 2件（Trypoxylus dichotomus は両方に該当するため、distinct 種は
+# 6+2-1=7件。scripts/registry/build_taxon_assessment.py がこの実測件数を
+# ビルド時に検証する）。
+#
+# origin_ja を機械的な基準にした場合（この7種の宣言をやめて
+# 「origin_ja に'国内由来'を含む行をすべて除外する」規則に変えた場合）との差
+# （v1 には誤って残っている11行）は、docs/plans/PHASE_B_TAXON_ASSESSMENT.md の
+# ビルドレポート参照。今回はこの7種の再現に留め、11行の是正は別途の意図的な
+# 変更として申し送る（ADR-0016 の「再現してから変える」の順序）。
+exclusions:
+  - list_id: moe_ias_2015
+    scientific_name: "Nyctereutes procyonoides"
+    vernacular_name_ja: "奥尻島・屋久島のタヌキ"
+    reasons: [domestic_origin]
+  - list_id: moe_ias_2015
+    scientific_name: "Plantago asiatica"
+    vernacular_name_ja: "高山帯のオオバコ"
+    reasons: [domestic_origin]
+  - list_id: moe_ias_2015
+    scientific_name: "Trypoxylus dichotomus"
+    vernacular_name_ja: "北海道・沖縄のカブトムシ本土亜種"
+    reasons: [domestic_origin, subspecies_binomial_contraction]
+    note: "掲載学名は亜種 Trypoxylus dichotomus septentrionalis"
+  - list_id: moe_ias_2015
+    scientific_name: "Morus australis"
+    vernacular_name_ja: "小笠原諸島などのシマグワ"
+    reasons: [domestic_origin]
+  - list_id: moe_ias_2015
+    scientific_name: "Apis mellifera"
+    vernacular_name_ja: "アフリカミツバチとアフリカ化ミツバチ"
+    reasons: [subspecies_binomial_contraction]
+    note: "掲載学名は亜種 Apis mellifera scutellata。origin_ja は「国外由来の外来種」（domestic_origin では説明できない）"
+  - list_id: moe_ias_2015
+    scientific_name: "Cervus nippon"
+    vernacular_name_ja: "新島などのニホンジカ"
+    reasons: [domestic_origin]
+  - list_id: moe_ias_2015
+    scientific_name: "Rumex japonicus"
+    vernacular_name_ja: "山地のギシギシ"
+    reasons: [domestic_origin]
