@@ -327,6 +327,15 @@ dataset自体が検証の対象外になり、土地利用と他出典が万一�
 watershed_meta・レッドリスト2表のいずれの値も変えていないと判断した
 （b02の「一致」判定自体が正準化sha256での行レベル比較であるため）。
 
+**古いSQLite・原本の無い環境**（`git clone`で一時ディレクトリに複製、
+Python 3.10.12・SQLite 3.37.2の新規venvを`requirements.txt`だけで構築）
+も再実行し、**395件pass・104件skip（バージョンゲートの対象）・失敗0**
+（395+104=499で全件を説明できる）、`r01 --files-only`成功（指紋
+`ee35c7d018ee6c8dd7ea2284e3c75bc6888ae7f4d7ebe071f37dbef1e18e6a04`）、
+CI相当の宣言ファイル構造検証（`source_regions.yaml`含む全8ファイル、
+`source_regions.yaml`は`sources=3, regions=1, consumers=['observation',
+'occurrence']`で読めることを確認）すべてOKだった。
+
 ## 7. 既知の負債・未決
 
 - **`n_cells`/面積の`variable`命名**（`landuse.<slug>`/`landuse.<slug>
