@@ -1,0 +1,76 @@
+# v1 派生33テーブル → (射影スクリプト, candidate ファイル) の宣言的な対応表。
+#
+# scripts/b02_run_all_gates.py はこのファイルを読むだけで、どの candidate
+# ファイル（すべて data/db/ 直下、それぞれの b1x スクリプトが毎回ゼロから
+# 作り直す出力）に対して `scripts/b02_derived_compare.py` の突合ロジック
+# （`compare_all`/`render_markdown`）を何回呼べばよいかを決める。テーブルごとの
+# 分岐はコード側に書かない——`scripts/reconcile/adr0011_destinations.yaml`
+# （ADR-0011「33テーブルの行き先」表）と同じ流儀。
+#
+# scripts/tests/test_common.py の
+# test_load_projection_manifest_table_set_matches_derived_baseline_exactly が、
+# このファイルの33テーブルの集合が reports/derived_baseline.json（実データ由来。
+# 正）の33テーブルと過不足なく一致することを機械検証している
+# （adr0011_destinations.yaml の「テーブル名の打ち間違い・書き漏らしが1対1で
+# 相殺する」事故への対策と同じ発想）。
+#
+# `script` は candidate ファイルが無い/古いときに「先に何を実行すべきか」を
+# 案内する表示用の文字列（scripts/b02_run_all_gates.py は射影スクリプトを
+# 自動実行しない。docs/plans/PHASE_B_RECONCILIATION.md「全体の合格」参照）。
+#
+# 2026-09-24: `watershed_rollup`（P-1a が「後で同じ b11 に足す」と書いた最後の
+# 1表）が揃ったので、この対応表と統合ゲート（本ファイル・b02_run_all_gates.py）
+# を新設した。
+
+v1_projection.sqlite:
+  script: scripts/b05_project_v1.py
+  tables:
+    - meas_daily
+    - meas_month
+    - meas_year
+    - meas_clim
+    - site_var
+    - var_catalog
+    - sensor_daily
+    - rain_daily
+    - sensor_hour_month
+    - zone_year
+    - zone_clim
+    - landuse_watershed
+    - landuse_change
+
+v1_projection_occurrence.sqlite:
+  script: scripts/b08_project_occurrence_v1.py
+  tables:
+    - org_norm
+    - org_group_year
+    - effort_year
+    - species2
+    - species_year2
+    - species_month
+    - mesh_year
+    - mesh_all
+    - mesh_species
+    - species_mesh_year
+    - org_watershed
+    - org_watershed_year
+    - ias_species
+
+v1_projection_documents.sqlite:
+  script: scripts/b10_project_documents_v1.py
+  tables:
+    - doc_series
+    - doc_series_meta
+    - quality_monthly
+
+v1_projection_place.sqlite:
+  script: scripts/b11_project_place_v1.py
+  tables:
+    - watershed_meta
+    - watershed_rollup
+
+v1_projection_taxon.sqlite:
+  script: scripts/b12_project_taxon_v1.py
+  tables:
+    - redlist_map
+    - redlist_change

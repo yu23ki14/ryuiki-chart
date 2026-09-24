@@ -30,7 +30,16 @@
 `v1_projection.sqlite` に `landuse_watershed`/`landuse_change` の2表を足した
 （`b04`/観測系9表は無変更）——§11参照）で土地利用2表を実データで通した
 （一致2、宣言済み差分0で完全一致。`--tolerance` は使わず一致した）。
-**33テーブル中32テーブルが済み、残り1テーブル（`watershed_rollup`）は未着手**
+`phase-b/rollup-and-gate`（P-1a の続き、`scripts/b11_project_place_v1.py` に
+`watershed_rollup`——D10型の結合射影、4つの射影出力〔`watershed_meta`・
+`org_watershed`・`site_var`・`landuse_watershed`〕を結合するだけでキューブの
+セルにはしない——を追加）で最後の1テーブルを実データで通した（一致1、宣言済み
+差分0で完全一致。§12参照）。あわせて、5つに分かれていたゲート（candidate
+ファイルごとの個別実行）を `scripts/b02_run_all_gates.py` + `scripts/reconcile/
+projection_manifest.yaml` で統合し、**33テーブルすべてを1コマンドで突き合わせられる
+ようになった**（§12）。
+**33テーブル全てが揃い、統合ゲートで全体の合格を1コマンドで確認できる
+（一致25 / 宣言済み差分のみ8 / 不一致0 / 対象外0、終了コード0）**
 作成: 2026-09-07 / 更新: 2026-09-24
 
 **このドキュメントが説明するのはゲートの仕組みと、実データで実行した結果（§6・宣言済み差分の節）。
@@ -438,7 +447,8 @@ v1 側を直すまで v2 のゲートが恒久的に赤いままになる。ADR-
   `phase-b/taxon-assessment`（P-2、`docs/plans/PHASE_B_TAXON_ASSESSMENT.md` 参照。
   taxon/レッドリスト系はこれで3テーブル全て揃った）、`landuse_watershed`/
   `landuse_change` は `phase-b/landuse`（P-1b、§11参照）で済んだ。残り1テーブル
-  （`watershed_rollup`〔流域のロールアップ〕）はまだ縦線を通していない）
+  （`watershed_rollup`〔流域のロールアップ〕）は `phase-b/rollup-and-gate` で済んだ
+  ——これで33テーブル全て揃った。§12参照）
 - `imputation='lod'` 併記（ADR-0009 決定4。今回は `zero` のみ）
 - 正準単位の併記（ADR-0023。方針は決定済みだが未実装）
 - Parquet 化（ADR-0001）
@@ -448,23 +458,18 @@ v1 側を直すまで v2 のゲートが恒久的に赤いままになる。ADR-
 - `.github/workflows/` への `phase-b/fact-slice` の11テーブル部分ゲートの配線（CI ワークフロー
   自体は `phase-b/alias-source-key` で新設済みだが、`--tables` オプションでの実行はまだ
   ジョブに組み込まれていない）
-- 同様に、`phase-b/place-attributes` が足した `watershed_meta` の部分ゲート
-  （`scripts/b02_derived_compare.py --candidate data/db/v1_projection_place.sqlite
-  --tables watershed_meta`。11テーブル分とは candidate ファイルが別——
-  `v1_projection.sqlite` ではなく `v1_projection_place.sqlite`）も CI には
-  配線されていない（§9参照。「テーブル名→(射影スクリプト, candidateファイル)」の
-  対応表を持って全ゲートをまとめて回す仕組みは、1表のためには過剰なので作らない、
-  という判断だった。**2026-09-24更新（/simplify 指摘10）: この「着手する」の
-  閾値はもう超えている**——`b1x` 系の射影スクリプトは `b10`（documents）・
-  `b11`（place）・`b12`（taxon）の3本になり、candidate ファイルも
-  `v1_projection.sqlite`（observation、11表）・`v1_projection_place.sqlite`
-  （watershed_meta）・`v1_projection_documents.sqlite`（3表）・
-  `v1_projection_occurrence.sqlite`（occurrence系13表）・
-  `v1_projection_taxon.sqlite`（2表）の5つに増えている。`landuse_watershed`/
-  `landuse_change`（P-1b）は既存の `v1_projection.sqlite`（observation 系）に
-  足しただけなので、candidate ファイルの数自体は増えていない。**ゲートの統合
-  （対応表を持って全ゲートをまとめて回す仕組み）は、残りの表（`watershed_rollup`）
-  が終わった時点で、独立した1本の PR として行う——この PR ではやらない。**）
+- 同様に、5つの個別ゲート（`v1_projection.sqlite`/`v1_projection_occurrence.sqlite`/
+  `v1_projection_documents.sqlite`/`v1_projection_place.sqlite`/
+  `v1_projection_taxon.sqlite`、それぞれの `--tables ...` 実行）も、`phase-b/
+  rollup-and-gate` で新設した統合ゲート（`scripts/b02_run_all_gates.py`、§12）も、
+  どちらも `.github/workflows/` にはまだ配線されていない（原本DBが要るので、
+  CI では今後もそのままでは動かない。実行できるのは原本のある環境だけ）。
+  「テーブル名 → (射影スクリプト, candidate ファイル) の対応表を持って全ゲートを
+  まとめて回す仕組み」自体は、2026-09-24 の `phase-b/rollup-and-gate` で作った
+  （§12。以前この節に書いていた「1表のためには過剰」という判断は、`b1x` 系の
+  射影スクリプトが5本・candidate ファイルが5つに増えた時点で `/simplify` 指摘
+  どおり超えたと判断し、着手した）。ここに残っているのは CI ワークフローへの配線
+  だけ。
 
 ## 9. `watershed_meta`（`phase-b/place-attributes`、P-1a）
 
@@ -547,3 +552,343 @@ integer 506・real 2398）・`km2_2016`（同 integer 444・real 2460）・
 以来の値と完全一致。`reconcile.common.compute_fingerprint` で
 `--source-regions-yaml`/`--landuse-csv` を空フィクスチャにした候補と実データの
 候補を突き合わせて確認した）。
+
+## 12. 全体の合格（`watershed_rollup` + 33テーブルの統合ゲート、`phase-b/rollup-and-gate`）
+
+Phase B（ADR-0016）の最後の1本。残っていた `watershed_rollup`（1表）を通し、
+5つに分かれていたゲートを1コマンドに統合した。これで
+**「v1 の33テーブルすべてを v2 から再現できる」ことの全体の合格**が
+1コマンド・1つの終了コードで確認できる。
+
+### watershed_rollup
+
+v1（`web/scripts/build-geo.mjs:227-251`）は4つの入力の結合:
+`watershed_meta`（P-1a）・`org_watershed`（O-2a、v1 のメモ化の癖を再現した
+射影値——キューブの正確な値ではない）・`site_var`（observation 系）・
+`landuse_watershed`（P-1b）。**独立したキューブのセルにはしない**（D10と同型の
+「結合射影」。ADR-0011 の宣言も `place_attribute` のまま動かさない）。
+
+置き場は P-1a が予告したとおり `scripts/b11_project_place_v1.py`
+（`build_projections()` に `watershed_rollup` を追加）。`v1_projection.sqlite`
+（b05。`site_var`/`landuse_watershed`）と `v1_projection_occurrence.sqlite`
+（b08。`org_watershed`）を読み取り専用で ATTACH する——**b11 が他の b1x
+スクリプトの出力を読む最初の例**。どちらかが無い/テーブルが欠けていれば、
+「先に b05/b08 を実行せよ」と名指しして止まる
+（`_assert_rollup_prerequisites`）。
+
+`site_n`/`site_var_n` は **`sites.watershed` の直接一致**であり点内包判定では
+ない。P-1a が入れた地点→流域の `place_relation`（`relation='within'`、278件）
+から `site_watershed_lookup`（`site_id -> watershed_id`）を組み立てて引く
+（`scripts/b05_project_v1.py` の `site_zone_lookup` と同じ形）。実測:
+`site_n` の合計は278（`place_relation` の辺の総数と一致）、`site_var_n`
+（地点×変数の件数。地点数ではない）の合計は5,799——どちらも v1 の実測値
+（`data/db/derived.sqlite`）と完全一致。
+
+列名・列順・**型宣言（storage class）**は v1 の実物と一致させた。v1 は
+`CREATE TABLE watershed_rollup AS SELECT ...`（CTAS）で作っており、b11 側でも
+同じ CTAS を使う（型を手で宣言しない）ことで、直接の列参照5列（`watershed_id`/
+`water_system_name`/`area_km2`/`centroid_lat`/`centroid_lon`、TEXT/REAL）と
+無型の11列（集計式・相関サブクエリ、v1でも `type: ""`）の両方を、型を1文字も
+手で書かずに揃えた（P-1b の `landuse_change` が踏んだ「型を宣言すると INSERT
+時に強制変換されて storage class がずれる」を CTAS で回避）。
+
+実測（`.venv/bin/python3 scripts/b02_derived_compare.py --candidate
+data/db/v1_projection_place.sqlite --tables watershed_meta,watershed_rollup`）:
+
+```
+一致: 2 / 宣言済み差分のみ: 0 / 不一致: 0（終了コード0）
+```
+
+`PRAGMA table_info`・`typeof()` の実測（377行、16列）で v1 とのビット一致を
+確認済み（列の宣言型・全列の storage class 分布〔`integer`/`real`/`null`〕が
+1つ残らず一致）。
+
+### ゲートの統合
+
+いままで candidate ファイルが5つ（`v1_projection.sqlite`/
+`v1_projection_occurrence.sqlite`/`v1_projection_documents.sqlite`/
+`v1_projection_place.sqlite`/`v1_projection_taxon.sqlite`）に分かれ、`--tables`
+を手で並べて `scripts/b02_derived_compare.py` を5回回していた
+（§8参照。プロジェクト自身が決めていた「2本目の `b1x` 系射影スクリプトが
+出た時点で着手する」という閾値は、実際には5本になるまで超えられていなかった
+——`/simplify` 指摘で気づき、この PR で着手した）。
+
+**対応表**: `scripts/reconcile/projection_manifest.yaml` に、33テーブルすべて
+（candidate ファイル名 → `{script, tables}`）を宣言した。テーブルごとの分岐は
+コードに書かない——`scripts/reconcile/adr0011_destinations.yaml` と同じ流儀。
+`scripts/tests/test_common.py` の
+`test_load_projection_manifest_table_set_matches_derived_baseline_exactly` が、
+この33テーブルの集合が `reports/derived_baseline.json`（実データ由来。正）の
+33テーブルと過不足なく一致することを機械検証している（`adr0011_destinations.yaml`
+の検証テストと同じ流儀）。`test_load_projection_manifest_candidate_file_counts_
+match_the_declared_breakdown` がファイルごとの内訳（13+13+3+2+2=33）も確認する。
+
+**実行**: 新しい入口 `scripts/b02_run_all_gates.py` を新設した（`scripts/
+b02_derived_compare.py` は1行も変更していない）。`projection_manifest.yaml` の
+candidate ファイルごとに、`b02_derived_compare.compare_all()`/`render_markdown()`
+を import して呼ぶだけの薄いオーケストレータで、結果をマージして1つのレポート
+にまとめる。射影スクリプトは自動実行しない（原本DBが要るので CI では動かない。
+このゲートは「既にある candidate を突き合わせる」だけ）——candidate ファイルが
+1つでも無ければ、`projection_manifest.yaml` の `script` を名指しして即座に止まる。
+
+**判断（呼び出し元の確認を経ていない、2点。理由付き）**:
+
+1. **新しい入口 vs `b02_derived_compare.py` への `--manifest` 追加**:
+   新しい入口（`b02_run_all_gates.py`）を選んだ。`b02_derived_compare.py` は
+   「ベースライン1つ・候補1つ」を突き合わせるという一貫した設計で、複数
+   candidate ファイルを読んで結果をマージするロジックを持ち込むと、CLI引数の
+   意味（`--candidate` が単数か複数か）から変わってしまい、単一ファイル用途の
+   可読性を損なう。`compare_all`/`render_markdown` はどちらも純粋な関数として
+   既に切り出されており、新しい入口から import して複数回呼ぶだけで済んだ
+   （`b02_derived_compare.py` の変更行数0）。5系統の個別ゲートの使い方
+   （`--candidate <1つ> --tables <その分だけ>`）も一切変わらない。
+2. **レポートの出力先**: `reports/derived_reconciliation.md`（個別ゲートの既定
+   出力）とは別のファイル名 `reports/derived_reconciliation_all.md` にした。
+   個別ゲート・統合ゲートのどちらを先に／後に実行しても互いの結果を上書きし
+   合わないようにするため（「5本のゲートを同時に回すと既存レポートが上書き
+   され合う」という `/simplify` 指摘と同根の問題を、ファイル名を分けることで
+   避けた）。`.gitignore` に追記済み（既存の `derived_reconciliation.md` と
+   同じ理由——実行のたびに書き直す成果物で、コミット対象ではない）。
+
+**実測**（このマシン、原本あり、完全モード）:
+
+```
+$ .venv/bin/python3 scripts/b02_run_all_gates.py
+→ reports/derived_reconciliation_all.md
+33表中 一致: 25 / 宣言済み差分のみ: 8 / 不一致: 0 / 対象外: 0
+適用した宣言済み差分: 20件
+```
+
+終了コード0。実行時間 約70秒（このマシン。r01/b03〜b12 の再実行は含まない
+——既にある5つの candidate ファイルを読むだけ）。宣言済み差分の内訳は
+§6・§7の18件（measurements の '1未満' 検閲）+ §6の2件（`org_norm`/`species2`
+の `cls` タイブレーク）＝ 20件で、この PR で新たに増えた宣言は0件
+（`watershed_rollup` は宣言済み差分なしの完全一致）。
+
+既存5系統の個別ゲートは変更なく動く（本セクション冒頭の `watershed_rollup`
+実測、および §6・§9・§10・§11 の各実測を参照。このPRで再実測しても値は
+1ビットも変わらない）。
+
+### 設計からの逸脱・未決・既知の負債
+
+- CI ワークフローへの配線（個別ゲート・統合ゲートのどちらも）は引き続き
+  やっていない（§8参照。原本DBが要るので、CI では今後もそのままでは動かない）。
+- `scripts/b02_run_all_gates.py` はテーブル単位の並列化をしない
+  （§4「テーブル単位の並列化は採らない」と同じ判断——統合しても実行頻度・
+  実測時間〔約70秒〕から見て見合わない）。
+- `--tables` に相当する「統合ゲートの中で一部の candidate だけを対象にする」
+  絞り込みオプションは付けていない（個別ゲート側の `--tables` がその役目を
+  引き続き担う。統合ゲートの存在理由は「33表全部を1回で」なので、絞り込みは
+  スコープ外と判断した）。
+
+### コードレビュー対応（`/code-review` 15件）と実測
+
+初回実装（本セクション冒頭の設計・実測）に `/code-review` をかけて15件出た。
+**33テーブルの値は1ビットも変えない**という制約のもとで対応した——値を作る
+SQL（`_INSERT_WATERSHED_META_SQL`/`_CREATE_WATERSHED_ROLLUP_SQL`/`compare_all`
+の集計ロジック）は1文字も変えておらず、検証・エラー処理・レポートの体裁だけを
+直している。
+
+**止まるべき場面で黙って進む／壊す**（`scripts/b11_project_place_v1.py`）:
+
+1. `site_watershed_lookup` の一意性検査を `common.fresh_sqlite(out_path)` の
+   前（`_validate_registry()`）へ移した。以前は後にあり、失敗すると前回の
+   正しい出力が消えたまま中途半端な状態が残っていた。実測: 検査を失敗させる
+   フィクスチャ（地点が2つの流域への辺を持つ）で、1回目の正しい出力が
+   1バイトも変わらないことを確認（`test_duplicate_site_watershed_edge_does_
+   not_touch_previous_output`）。
+2. `build_projections()` の先頭で `common.require_sqlite_version()` を呼ぶ
+   （`watershed_rollup` が `SUM(area_km2)` を6つ使うため）。実測: SQLite
+   バージョンを 3.42.0 に偽装すると `SystemExit`（「古すぎる」）で即座に止まり、
+   出力ファイルにも一切触れないことを確認
+   （`test_build_projections_calls_the_shared_sqlite_version_guard`）。
+4. `site_var`/`landuse_watershed`（b05）・`org_watershed`（b08）の
+   site_id/watershed_id が「今の registry.sqlite」に実在することを確認する
+   `_assert_no_stale_watershed_or_site_ids` を追加した（`scripts/
+   b08_project_occurrence_v1.py` の `_assert_no_stale_taxon_ids` と同じ流儀。
+   文脈ごとに b05/b08 のどちらを再実行すべきか名指しする）。**実データでは
+   古さ0件**（`org_watershed`/`site_var`/`landuse_watershed` はいずれも今回
+   同じ `registry.sqlite` から作った）。実測: 各テーブルを個別に古くした
+   フィクスチャ3種（`test_stale_site_var_raises_and_names_b05` 等）で、それぞれ
+   正しいスクリプト名を出して止まり、出力ファイルには触れないことを確認。
+15. `--out` が入力2つ（`v1_projection_db`/`v1_projection_occurrence_db`）と
+    同じ実体（symlink 越しも `os.path.realpath` で解決）でないことを確認する
+    `_assert_out_path_distinct_from_inputs` を追加した。実測: `--out
+    data/db/v1_projection.sqlite`（b05 の出力そのもの、80MB）を指定すると、
+    `fresh_sqlite` が消す前に `MigrationError` で止まり、そのファイルの中身が
+    1バイトも変わらないことを確認（実データ・テスト双方）。
+
+**統合ゲートの穴**（`scripts/b02_run_all_gates.py`・`scripts/b02_derived_compare.py`）:
+
+3. `missing_in_candidate`（候補側にこのテーブルが無い）の行に、そのテーブルの
+   射影スクリプト名が出るようにした（10と同じ仕組みで、全テーブルの notes に
+   `candidate ファイル: ...（射影スクリプト: ...）` を追加する形で実現——
+   ファイルが無い場合だけでなく表だけ足りない場合もカバーする）。
+5. candidate ファイルの存在確認を、比較を1件も始める前に5ファイルぶんまとめて
+   行うようにした（`_assert_all_candidates_exist`）。足りないものは全部
+   `script` 付きで1回のエラーに並べる。
+6. `load_projection_manifest` が存在しないパスを `load_yaml` の「無ければ
+   空」に頼らず、明示的に止まるようにした（`--manifest` の打ち間違いが
+   「33表と一致しない」という無関係なエラーに化けるのを防ぐ）。
+7. `load_projection_manifest` が `tables`/`script` の値の型（非空の文字列の
+   リスト／非空の文字列）まで検証するようにした（`tables:` が値なし・文字列
+   だと `flatten_projection_manifest` が生の `TypeError`／1文字ずつ回る、を
+   防ぐ）。
+10. 統合レポートに、統合ゲートであること・33表を5candidateファイルで見た
+    ことを見出し直後に明記し（`render_markdown` の新オプション引数
+    `integrated_note`）、テーブルごとの詳細節に candidate ファイルと射影
+    スクリプト名を、不一致サマリの表にも candidate ファイル列を追加した
+    （`table_candidate`）。どちらも既定値 `None` で、渡さなければ
+    `b02_derived_compare.py` 自身の出力は1バイトも変わらない
+    （`scripts/tests/test_b02_compare.py` 38件で確認）。
+14. `candidate_source` を `try/finally` の中で開閉するようにし、`compare_all`
+    が `ExpectedDiffError` で例外を投げても必ず閉じられるようにした。
+    `_assert_manifest_matches_baseline` の戻り値（表→candidate ファイル）を
+    10の表示に使うようにした（以前は捨てていた）。
+
+**重複・不要なもの**:
+
+11. `b02_derived_compare.py` に `load_baseline_json`/`resolve_expected_diffs`/
+    `resolve_baseline_data_path`/`guard_reduced_mode_restrictions`/
+    `open_baseline_source_for_mode`/`summarize_results` を切り出し、
+    `b02_derived_compare.py`・`scripts/b02_run_all_gates.py` の両方の `main()`
+    から呼ぶようにした（以前は約60行がそのままコピーされ、文言だけ微妙に
+    違っていた）。`b02_derived_compare.py` の CLI としての振る舞いは1ビットも
+    変えていない（`scripts/tests/test_b02_compare.py` 38件が引き続き全緑）。
+12. `_existing_tables`（`scripts/b08_project_occurrence_v1.py`・
+    `scripts/b11_project_place_v1.py` に同型の実装が別々にあった）を
+    `scripts/migrate/common.py` の `existing_tables` に集約した。
+13. `watershed_rollup` の相関サブクエリ2つ（`site_n`/`site_var_n`）は
+    どちらも `watershed_id` で絞っており、`site_id` の索引は実測で参照
+    されないため、未使用だった `CREATE UNIQUE INDEX
+    site_watershed_lookup_site_id` を削除した（一意性は指摘1の検査が担保）。
+
+**ドキュメント**:
+
+8. `CLAUDE.md` の「watershed の属性」段落と「統合ゲート」段落の順序を入れ替え、
+   `別枠で b10 が…` の続きが統合ゲート側の文として読める状態を直した。
+9. `docs/plans/PHASE_B_PLACE_ATTRIBUTES.md`（CLAUDE.md が b11 の設計として
+   指しているドキュメント）の「watershed_rollup は未着手・スコープ外」を
+   実態（このセクションで完了）に更新した。
+
+**受け入れの実測**（コードレビュー対応後の最終状態）:
+
+```
+$ .venv/bin/python3 scripts/b02_run_all_gates.py
+→ reports/derived_reconciliation_all.md
+33表中 一致: 25 / 宣言済み差分のみ: 8 / 不一致: 0 / 対象外: 0
+適用した宣言済み差分: 20件
+```
+
+終了コード0（`real 1m12.6s`。このマシン、原本あり、完全モード）。値は
+コードレビュー対応の前後で1ビットも変わっていない——31表は今回一切
+再生成していない（同じファイルのまま）、`watershed_meta`/`watershed_rollup`
+（`scripts/b11_project_place_v1.py` を再実行して作り直した2表）も v1 の
+ベースラインに対して宣言済み差分なしの完全一致（`一致: 2`）のまま。
+
+`pytest`: 538件全緑（対応前521件から17件増。内訳: `test_migrate_common.py`
++1〔`existing_tables`〕、`test_common.py` +3〔`load_projection_manifest` の
+形の検証〕、`test_b02_run_all_gates.py` +4〔指摘3・5・10・14〕、
+`test_b11_project_place_v1.py` +9〔指摘1・2・4×4・15×3〕）。
+
+原本の無い環境（`git clone` した一時ディレクトリ、システム既定 python3.10.12・
+sqlite3モジュール3.37.2の venv）でも **408 passed / 130 skipped / 失敗0**
+（`--files-only` registry ビルドも成功）。skip が26件増えたのは
+`scripts/tests/test_b11_project_place_v1.py`（26件全部）が新たに
+`require_sqlite_version` ガード対象の `pytestmark` を持ち、他の `b04`/`b05`
+系のテストファイルと同じく古い SQLite では丸ごと skip される側に移ったため
+（対応前は b11 にこのガードが無く、フィクスチャだけで完結するテストは
+古い SQLite でも普通に実行・合格していた）。
+
+### `/simplify` 対応（6件）と実測
+
+コードレビュー対応後の状態に `/simplify`（再利用・単純化・深さ）をかけて
+6件出た。**33表の値は1ビットも変えていない**（引き続き検証・引数定義・
+テストの形だけを直している）。
+
+1. **b11 の docstring から「コードレビュー対応」節を削除**した。同じ経緯が
+   本ドキュメントの§12と2か所にあったため、経緯は本ドキュメント（この
+   セクション）の1か所に置き、`scripts/b11_project_place_v1.py` の docstring
+   は個々の検証関数の docstring と同じ「何をするか」だけの形に揃えた。
+2. **argparse の共通オプションを切り出した**。`--baseline-json`/
+   `--baseline-data`/`--tolerance`/`--out-md`/`--reduced`/`--expected-diffs`/
+   `--no-expected-diffs` の7つが `scripts/b02_derived_compare.py`・
+   `scripts/b02_run_all_gates.py` にコピーされ、`--reduced`/`--baseline-data`
+   の説明文が食い違っていた（統合ゲート側だけ短い文言になっていた）。
+   `b02_derived_compare.py` に `_add_shared_compare_args(parser, *,
+   default_out_md)` を新設し（`--out-md` の既定値だけはファイルごとに違う
+   ため引数で受ける）、両方の `main()` から呼ぶようにした。`--candidate`/
+   `--tables`（`b02_derived_compare.py` 専用）・`--manifest`/`--data-dir`
+   （統合ゲート専用）は各自のまま。実測: `b02_derived_compare.py --help` の
+   全オプション名・説明文を対応前後で突き合わせ、**内容は1文字も変わらず
+   順序だけが変わった**ことを確認した（`--candidate`/`--tables` が先頭側に
+   移動）。
+3. **統合ゲートのループの入れ子を1段減らした**。「1つの candidate を開いて
+   `compare_all` で比べ、必ず閉じる」を `_compare_one_candidate()` に
+   切り出し、`ExpectedDiffError` の捕捉・`sys.exit` はループ側に残した
+   （以前は `for` の中に `try/finally` が `try/except` を包む2段の入れ子が
+   あった）。
+4. **パスの実体比較を共通ヘルパへ集約した**。`common.reject_protected_source_db`
+   （原本3ファイルの保護）と b11 の `_assert_out_path_distinct_from_inputs`
+   （射影の入力2ファイルの保護）が、どちらも同じ「`os.path.realpath` で
+   比べて一致したら `MigrationError`」を別々に実装していた。
+   `common.assert_distinct_realpaths(path, protected: dict[label, path], *,
+   message_for)` に集約し、両方がこれを呼ぶ形にした（`protected` の中身——
+   固定3ファイルか可変2ファイルか——だけが呼び出し側で違う）。
+5. **CLAUDE.md に b11 の実行順を1行追記**した。「b11 はこの縦線で初めて
+   別系統（observation・occurrence）の出力を読むので、実行順は r01 の後、
+   b05・b08 を先に（互いに依存しない）」——occurrence 系（b06→b09→b07→b08）
+   と同じ書き方に揃えた。
+6. **同型の複製テストを `pytest.mark.parametrize` にまとめた**。古さの検査
+   3件（`site_var`/`landuse_watershed`/`org_watershed`、それぞれ
+   `test_stale_*_raises_and_names_b0*` という別関数だった）を
+   `test_stale_ids_raise_and_name_the_script_to_rerun`
+   （`rollup_kwarg`/`stale_row`/`expected_script` でパラメータ化）に、
+   出力先の検査2件を `test_out_path_same_as_an_input_raises_and_preserves_it`
+   （`kwargs_key` でパラメータ化）にまとめた。pytest が数えるテストケース数
+   自体は変わらない（`pytest --collect-only` で `[site_var]`/
+   `[landuse_watershed]`/`[org_watershed]`・`[v1_projection_db]`/
+   `[v1_projection_occurrence_db]` の5ケースが引き続き個別に見えることを確認）。
+
+**見送った項目**（オーナー判断）: `projection_manifest.yaml`/
+`adr0011_destinations.yaml`/`derived_baseline.json` の「33テーブルの一覧が
+3か所にある」は**役割が違う**ため統合しない——`projection_manifest.yaml` は
+「テーブル→(射影スクリプト, candidate ファイル)」という実行時の対応表、
+`adr0011_destinations.yaml` は ADR-0011 の意味的な分類、`derived_baseline.json`
+は実データから作った指紋そのもの。3つとも独立に `derived_baseline.json`
+（実データ由来。正）と突き合わされて機械検証されている形（`scripts/tests/
+test_common.py` の `test_load_destinations_table_names_match_derived_baseline_
+exactly`/`test_load_projection_manifest_table_set_matches_derived_baseline_
+exactly`）を保つ。
+
+**実測**（このマシン、原本あり、完全モード）:
+
+```
+$ .venv/bin/python3 scripts/b02_run_all_gates.py
+→ reports/derived_reconciliation_all.md
+33表中 一致: 25 / 宣言済み差分のみ: 8 / 不一致: 0 / 対象外: 0
+適用した宣言済み差分: 20件
+```
+
+終了コード0（`real 1m9.3s`）。5系統の個別ゲートも変更前と1件も変わらず
+（`v1_projection.sqlite`: 一致7/差分6、`v1_projection_occurrence.sqlite`:
+一致11/差分2、`v1_projection_documents.sqlite`: 一致3、
+`v1_projection_place.sqlite`: 一致2、`v1_projection_taxon.sqlite`: 一致2。
+合計 一致25・宣言済み差分のみ8）。`pytest`: 538件全緑（`/simplify` 前後で
+件数不変——テストケース数はそのまま、関数定義だけ集約した）。原本の無い
+環境（一時 clone、システム既定 python3.10.12・sqlite3モジュール3.37.2）でも
+408 passed / 130 skipped / 失敗0、`--files-only` も成功（`/code-review`
+対応後の実測と同一）。
+
+---
+
+## Phase B（ADR-0016）の全体の合格
+
+**v1 の派生33テーブルすべてを、`scripts/b02_run_all_gates.py` 1コマンドで
+再現できることを確認した**: 一致25 / 宣言済み差分のみ8（v1 側の既知のバグに
+由来、内訳は§6・§7参照）/ 不一致0 / 対象外0、終了コード0、実行時間 約69秒
+（このマシン、原本あり、完全モード。`watershed_rollup` を含めた5つの
+candidate ファイルを1回ずつ突き合わせた合計）。これは Phase B の全ての
+縦線（observation・occurrence・place・documents・taxon）が揃い、ADR-0016
+の受け入れ基準「`imputation='zero'` の系列で v1 の派生テーブルの値が再現
+できること」を33テーブル全数で満たしたことを意味する。

@@ -836,7 +836,21 @@ def render_markdown(
     extra_tables: list[str] | None = None,
     partial_tables: list[str] | None = None,
     total_baseline_tables: int | None = None,
+    *,
+    integrated_note: str | None = None,
+    table_candidate: dict[str, str] | None = None,
 ) -> str:
+    """`integrated_note`/`table_candidate` は `scripts/b02_run_all_gates.py`
+    （33表の統合ゲート）専用のオプション引数（コードレビュー指摘10: 統合
+    レポートが個別レポートと見分けがつかなかった）。どちらも既定値 `None` で、
+    渡さなければ `scripts/b02_derived_compare.py` 自身の出力は1バイトも変わらない
+    （`scripts/tests/test_b02_compare.py` で確認済み）。
+    - `integrated_note`: 見出し直後に挿入する説明文（「統合ゲートである」
+      「33表を5ファイルで見た」等）。
+    - `table_candidate`: テーブル名 -> candidate ファイル名。渡すと「不一致の
+      テーブル」表に candidate ファイル列を足す（不一致のとき何を作り直せば
+      よいか分かるように）。
+    """
     lines: list[str] = []
     a = lines.append
 
@@ -847,6 +861,9 @@ def render_markdown(
         "（v1 派生テーブルの指紋）と候補側を突き合わせた結果。"
     )
     a("")
+    if integrated_note is not None:
+        a(integrated_note)
+        a("")
     if partial_tables is not None:
         excluded_count = (total_baseline_tables or 0) - len(partial_tables)
         a(
@@ -896,11 +913,22 @@ def render_markdown(
     if mismatched:
         a("**不一致のテーブル**:")
         a("")
-        a("| テーブル | 状態 | 行数差 |")
-        a("|---|---|---:|")
-        for t in mismatched:
-            r = results[t]
-            a(f"| `{t}` | {STATUS_LABEL.get(r['status'], r['status'])} | {r.get('row_count_diff', 'n/a')} |")
+        if table_candidate is not None:
+            a("| テーブル | 状態 | 行数差 | candidate ファイル |")
+            a("|---|---|---:|---|")
+            for t in mismatched:
+                r = results[t]
+                cand = table_candidate.get(t, "")
+                a(
+                    f"| `{t}` | {STATUS_LABEL.get(r['status'], r['status'])} | "
+                    f"{r.get('row_count_diff', 'n/a')} | `{cand}` |"
+                )
+        else:
+            a("| テーブル | 状態 | 行数差 |")
+            a("|---|---|---:|")
+            for t in mismatched:
+                r = results[t]
+                a(f"| `{t}` | {STATUS_LABEL.get(r['status'], r['status'])} | {r.get('row_count_diff', 'n/a')} |")
         a("")
 
     if extra_tables:
@@ -990,11 +1018,132 @@ def render_markdown(
 
 
 # ---------------------------------------------------------------------------
+# main() のうち scripts/b02_run_all_gates.py（33表の統合ゲート）とも共有する部分
+# （コードレビュー指摘: 以前は約60行がそのままコピーされ、文言だけ微妙に違って
+# いた——ベースラインの読み込み・schema_version 検証・宣言済み差分の読み込みと
+# 検証・縮退モードの判定・要約の集計。ここに1つ置き、この関数の main() と
+# scripts/b02_run_all_gates.py の main() の両方から呼ぶ。`main()` 自身の
+# 振る舞い・出力は1ビットも変えていない——`scripts/tests/test_b02_compare.py`
+# が実行結果を文字列で確認している）。
+# ---------------------------------------------------------------------------
+
+def load_baseline_json(path) -> dict:
+    """`--baseline-json` を読み、存在確認と `schema_version` の検証をする。"""
+    baseline_json_path = pathlib.Path(path)
+    if not baseline_json_path.exists():
+        sys.exit(
+            f"ベースラインが無い: {baseline_json_path}\n"
+            "先に `.venv/bin/python3 scripts/b01_derived_baseline.py` を実行すること。"
+        )
+    baseline_json = json.loads(baseline_json_path.read_text(encoding="utf-8"))
+    if baseline_json.get("schema_version") != common.SCHEMA_VERSION:
+        sys.exit(
+            f"{baseline_json_path} の schema_version が想定と異なる"
+            f"（期待 {common.SCHEMA_VERSION}、実際 {baseline_json.get('schema_version')!r}）。"
+            "scripts/b01_derived_baseline.py を実行して作り直すこと。"
+        )
+    return baseline_json
+
+
+def resolve_expected_diffs(path, baseline_tables: dict, *, skip: bool) -> dict[str, list[dict]]:
+    """`--expected-diffs`/`--no-expected-diffs` の読み込みと構造検証をまとめる。
+    `skip=True`（`--no-expected-diffs`）なら宣言を一切読まず空辞書を返す。
+    """
+    if skip:
+        return {}
+    expected_diffs_by_table = common.load_expected_diffs(path)
+    common.validate_expected_diffs(expected_diffs_by_table, baseline_tables, str(path))
+    return expected_diffs_by_table
+
+
+def resolve_baseline_data_path(*, reduced: bool, baseline_data, default_baseline_db: pathlib.Path):
+    """`--reduced` > `--baseline-data` > 既定DBの存在、の優先順位で解決する。
+    戻り値が `None` なら縮退モード。
+    """
+    if reduced:
+        return None
+    if baseline_data is not None:
+        return baseline_data
+    if default_baseline_db.exists():
+        return str(default_baseline_db)
+    return None
+
+
+def guard_reduced_mode_restrictions(
+    baseline_data_path, expected_diffs_by_table: dict[str, list[dict]],
+    target_tables: set[str], tolerance: float,
+) -> None:
+    """縮退モード（ベースライン実データ無し）では宣言済み差分・許容誤差の
+    どちらも適用できない——黙って無視せず明示的に落とす（`main()` が従来
+    呼んでいたのと同じ2つの検証）。
+    """
+    tables_with_declared_diffs_in_scope = sorted(
+        t for t, diffs in expected_diffs_by_table.items() if diffs and t in target_tables
+    )
+    if baseline_data_path is None and tables_with_declared_diffs_in_scope:
+        sys.exit(
+            "縮退モード（--baseline-data 無し・ベースライン実データ無し）では宣言済み差分"
+            "（expected_diffs.yaml）を適用できない（行レベルの差分を見られないので、宣言が"
+            f"実際に差分になっているか検証できない）。対象テーブルに宣言がある: "
+            f"{tables_with_declared_diffs_in_scope}\n"
+            "縮退モードで動かしたいなら --no-expected-diffs を付けること。"
+        )
+    if baseline_data_path is None and tolerance > 0:
+        sys.exit(
+            "縮退モード（--baseline-data 無し）では --tolerance は使えない。"
+            "content_hash 同士の比較に許容誤差の概念が無く、適用したふりをしない。"
+            "行レベルの許容誤差比較には --baseline-data が要る。"
+        )
+
+
+def open_baseline_source_for_mode(baseline_data_path):
+    """`baseline_data_path` があれば `(DataSource, \"full\")`、無ければ
+    `(None, \"reduced\")`（縮退モードである旨を標準出力に出す）。
+    """
+    if baseline_data_path is not None:
+        return datasource.open_source(baseline_data_path), "full"
+    print(
+        "▶ ベースラインの実データが無いので縮退モードで実行する"
+        "（行レベルの内訳は出せない。docs/plans/PHASE_B_RECONCILIATION.md 参照）"
+    )
+    return None, "reduced"
+
+
+def summarize_results(results: dict[str, dict]) -> dict[str, int]:
+    """一致/宣言済み差分のみ/不一致/適用した宣言済み差分、それぞれの件数を
+    計算する（print はしない——呼び出し側〔`main()`／`scripts/b02_run_all_gates.py`〕
+    が自分の文脈に合った文言で出す。計算ロジックだけを共有する）。
+    """
+    n_mismatch = sum(1 for r in results.values() if r["status"] not in ("match", "declared_diffs_only"))
+    n_declared_only = sum(1 for r in results.values() if r["status"] == "declared_diffs_only")
+    n_match = len(results) - n_mismatch - n_declared_only
+    n_applied = sum(len(r.get("declared_diffs_applied", [])) for r in results.values())
+    return {
+        "n_match": n_match,
+        "n_declared_only": n_declared_only,
+        "n_mismatch": n_mismatch,
+        "n_applied": n_applied,
+    }
+
+
+# ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+def _add_shared_compare_args(parser: argparse.ArgumentParser, *, default_out_md) -> None:
+    """`b02_derived_compare.py`・`scripts/b02_run_all_gates.py` の両方が持つ
+    7引数（`--baseline-json`/`--baseline-data`/`--tolerance`/`--out-md`/
+    `--reduced`/`--expected-diffs`/`--no-expected-diffs`）を1箇所で登録する
+    （コードレビュー指摘: 2ファイルにコピーされ、`--reduced`/`--baseline-data`
+    の説明文が食い違っていた）。`--candidate`/`--tables`（`b02_derived_compare.py`
+    専用）・`--manifest`/`--data-dir`（統合ゲート専用）は呼び出し側がそれぞれ
+    追加する。
+
+    `--out-md` の既定値だけは呼び出し側で違う（`b02_derived_compare.py` は
+    `reports/derived_reconciliation.md`、統合ゲートは
+    `reports/derived_reconciliation_all.md`——個別ゲートと統合ゲートが互いの
+    レポートを上書きし合わないための意図的な違い。§12参照）ため、引数で受ける。
+    """
     parser.add_argument("--baseline-json", default=str(DEFAULT_BASELINE_JSON))
     parser.add_argument(
         "--baseline-data",
@@ -1002,17 +1151,8 @@ def main() -> int:
         help="ベースライン側の実データ（sqlite または .json）。省略時は "
         f"{DEFAULT_BASELINE_DB} があれば使い、無ければ縮退モードにする。",
     )
-    parser.add_argument("--candidate", required=True, help="候補側（sqlite または .json）")
     parser.add_argument("--tolerance", type=float, default=0.0)
-    parser.add_argument(
-        "--tables",
-        default=None,
-        help="カンマ区切りでテーブル名を絞り込む（例: meas_daily,meas_month,meas_year）。"
-        "省略時はベースラインの全テーブルが対象（従来通り）。指定した名前が"
-        "derived_baseline.json に無ければ、その名前を挙げて即座に終了する"
-        "（黙って無視しない。タイポで『0件を突合して緑』になるのが最悪の失敗のため）。",
-    )
-    parser.add_argument("--out-md", default=str(DEFAULT_OUT_MD))
+    parser.add_argument("--out-md", default=str(default_out_md))
     parser.add_argument(
         "--reduced",
         action="store_true",
@@ -1033,21 +1173,23 @@ def main() -> int:
         help="宣言済み差分を一切読まずに実行する（--expected-diffs の値も無視する）。"
         "『宣言なしで何が赤くなるか』を見たいときに使う。",
     )
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--candidate", required=True, help="候補側（sqlite または .json）")
+    parser.add_argument(
+        "--tables",
+        default=None,
+        help="カンマ区切りでテーブル名を絞り込む（例: meas_daily,meas_month,meas_year）。"
+        "省略時はベースラインの全テーブルが対象（従来通り）。指定した名前が"
+        "derived_baseline.json に無ければ、その名前を挙げて即座に終了する"
+        "（黙って無視しない。タイポで『0件を突合して緑』になるのが最悪の失敗のため）。",
+    )
+    _add_shared_compare_args(parser, default_out_md=DEFAULT_OUT_MD)
     args = parser.parse_args()
 
-    baseline_json_path = pathlib.Path(args.baseline_json)
-    if not baseline_json_path.exists():
-        sys.exit(
-            f"ベースラインが無い: {baseline_json_path}\n"
-            "先に `.venv/bin/python3 scripts/b01_derived_baseline.py` を実行すること。"
-        )
-    baseline_json = json.loads(baseline_json_path.read_text(encoding="utf-8"))
-    if baseline_json.get("schema_version") != common.SCHEMA_VERSION:
-        sys.exit(
-            f"{baseline_json_path} の schema_version が想定と異なる"
-            f"（期待 {common.SCHEMA_VERSION}、実際 {baseline_json.get('schema_version')!r}）。"
-            "scripts/b01_derived_baseline.py を実行して作り直すこと。"
-        )
+    baseline_json = load_baseline_json(args.baseline_json)
 
     selected_tables: set[str] | None = None
     if args.tables is not None:
@@ -1083,63 +1225,22 @@ def main() -> int:
     # （CI の宣言ファイル構造検証ステップと同じ関数を呼び、検証ロジックを2箇所に
     # 書かない）。「宣言したキーが実際に差分になっているか」は行レベルの突合を
     # しないと判定できないので、`_compare_full` 側（`ExpectedDiffError`）で検証する。
-    if args.no_expected_diffs:
-        expected_diffs_by_table: dict[str, list[dict]] = {}
-    else:
-        expected_diffs_by_table = common.load_expected_diffs(args.expected_diffs)
-        common.validate_expected_diffs(
-            expected_diffs_by_table, baseline_json["tables"], str(args.expected_diffs)
-        )
+    expected_diffs_by_table = resolve_expected_diffs(
+        args.expected_diffs, baseline_json["tables"], skip=args.no_expected_diffs
+    )
 
-    if args.reduced:
-        baseline_data_path = None
-    else:
-        baseline_data_path = args.baseline_data
-        if baseline_data_path is None and DEFAULT_BASELINE_DB.exists():
-            baseline_data_path = str(DEFAULT_BASELINE_DB)
+    baseline_data_path = resolve_baseline_data_path(
+        reduced=args.reduced, baseline_data=args.baseline_data, default_baseline_db=DEFAULT_BASELINE_DB
+    )
 
     # 縮退モード（ベースライン実データ無し）では、宣言が実際に差分になっているかを
     # 行レベルで検証できない。--tolerance を縮退モードで拒否しているのと同じ考え方で、
     # 黙って無視せず明示的に落とす（対象＝今回突合する範囲に宣言があるときだけ）。
     target_tables = selected_tables if selected_tables is not None else set(baseline_json["tables"].keys())
-    tables_with_declared_diffs_in_scope = sorted(
-        t for t, diffs in expected_diffs_by_table.items() if diffs and t in target_tables
-    )
-    if baseline_data_path is None and tables_with_declared_diffs_in_scope:
-        sys.exit(
-            "縮退モード（--baseline-data 無し・ベースライン実データ無し）では宣言済み差分"
-            "（expected_diffs.yaml）を適用できない（行レベルの差分を見られないので、宣言が"
-            f"実際に差分になっているか検証できない）。対象テーブルに宣言がある: "
-            f"{tables_with_declared_diffs_in_scope}\n"
-            "縮退モードで動かしたいなら --no-expected-diffs を付けること。"
-        )
-
-    if baseline_data_path is None and args.tolerance > 0:
-        # 縮退モードは content_hash 同士の完全一致と numeric_stats の厳密一致
-        # しか見ておらず、許容誤差を適用する手段が原理的に無い（行レベルの値を
-        # 持っていないため）。黙って無視するのではなく、ここで明示的に落とす
-        # （レビュー指摘: `--tolerance 1e-6` を付けた CI が無警告でゼロ寛容に
-        # なっていた）。#4 でハッシュ側の数値表現を正準化したので、表現差による
-        # 偽の不一致はそもそも起きなくなっており、縮退モードで許容誤差を
-        # 別途サポートする理由も無い。
-        sys.exit(
-            "縮退モード（--baseline-data 無し）では --tolerance は使えない。"
-            "content_hash 同士の比較に許容誤差の概念が無く、適用したふりをしない。"
-            "行レベルの許容誤差比較には --baseline-data が要る。"
-        )
+    guard_reduced_mode_restrictions(baseline_data_path, expected_diffs_by_table, target_tables, args.tolerance)
 
     candidate_source = datasource.open_source(args.candidate)
-
-    if baseline_data_path is not None:
-        baseline_source = datasource.open_source(baseline_data_path)
-        mode = "full"
-    else:
-        baseline_source = None
-        mode = "reduced"
-        print(
-            "▶ ベースラインの実データが無いので縮退モードで実行する"
-            "（行レベルの内訳は出せない。docs/plans/PHASE_B_RECONCILIATION.md 参照）"
-        )
+    baseline_source, mode = open_baseline_source_for_mode(baseline_data_path)
 
     try:
         results, extra_tables = compare_all(
@@ -1176,13 +1277,13 @@ def main() -> int:
     out_md.write_text(md, encoding="utf-8")
     print(f"→ {out_md}")
 
-    n_mismatch = sum(1 for r in results.values() if r["status"] not in ("match", "declared_diffs_only"))
-    n_declared_only = sum(1 for r in results.values() if r["status"] == "declared_diffs_only")
-    n_match = len(results) - n_mismatch - n_declared_only
-    print(f"一致: {n_match} / 宣言済み差分のみ: {n_declared_only} / 不一致: {n_mismatch}")
-    n_applied = sum(len(r.get("declared_diffs_applied", [])) for r in results.values())
-    if n_applied:
-        print(f"適用した宣言済み差分: {n_applied}件")
+    summary = summarize_results(results)
+    print(
+        f"一致: {summary['n_match']} / 宣言済み差分のみ: {summary['n_declared_only']} / "
+        f"不一致: {summary['n_mismatch']}"
+    )
+    if summary["n_applied"]:
+        print(f"適用した宣言済み差分: {summary['n_applied']}件")
 
     if is_partial:
         excluded_count = len(baseline_json["tables"]) - len(selected_tables)
@@ -1195,7 +1296,7 @@ def main() -> int:
     if stale_tables:
         print(f"ベースラインが実データと食い違うテーブル: {stale_tables}", file=sys.stderr)
         return 1
-    return 1 if n_mismatch > 0 else 0
+    return 1 if summary["n_mismatch"] > 0 else 0
 
 
 if __name__ == "__main__":

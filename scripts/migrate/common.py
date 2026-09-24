@@ -98,33 +98,52 @@ class MigrationError(Exception):
 _PROTECTED_SOURCE_DB_NAMES = ("ryuiki.sqlite", "cells.sqlite", "derived.sqlite")
 
 
+def assert_distinct_realpaths(path, protected: dict[str, object], *, message_for) -> None:
+    """`path` の実パス（`os.path.realpath`、symlink を解決済み）が
+    `protected`（ラベル -> パス）のどれとも一致しないことを確認する。一致すれば
+    `message_for(label, resolved_other_path)` が組み立てた文言で `MigrationError`
+    を投げる。
+
+    **書き込み先のパスに対する検査であり、読み取り専用で開く経路
+    （`attach_readonly`・`open_readonly`）は対象外**（読み取り専用で開くこと
+    自体は他方を傷つけない）。`reject_protected_source_db`（原本3つ、固定の
+    ファイル名）と `scripts/b11_project_place_v1.py` の
+    `_assert_out_path_distinct_from_inputs`（射影の入力2つ、呼び出し側が渡す
+    可変のパス）が、どちらもこのヘルパを呼ぶ（コードレビュー指摘: 同じ
+    realpath 比較のロジックが2か所に別々にあった）。
+
+    worktree ではこれらは symlink（CLAUDE.md「worktree の運用」）なので、
+    パス文字列の比較ではなく実パスで比べる。ファイルが存在しない場合でも
+    `realpath` は正規化したパスを返すため、原本がまだ無い環境（CI 等）でも
+    判定できる。
+    """
+    resolved = os.path.realpath(str(path))
+    for label, other in protected.items():
+        other_resolved = os.path.realpath(str(other))
+        if resolved == other_resolved:
+            raise MigrationError(message_for(label, other_resolved))
+
+
 def reject_protected_source_db(path: pathlib.Path) -> None:
     """`path`（書き込み先として使うつもりのパス）が `data/db/ryuiki.sqlite`/
     `cells.sqlite`/`derived.sqlite`（symlink 越しも含む）と同じ実体を指して
     いたら `MigrationError` で止まる。
 
-    **この検査は書き込み先のパスに対する検査であり、読み取り専用で開く経路
-    （`attach_readonly`・`open_readonly`）は対象外**（読み取り専用で開くこと
-    自体は原本を傷つけない）。`fresh_sqlite` は内部でこれを呼ぶので、`--out`
-    が `fresh_sqlite` を経由するスクリプトは自動的に保護される。**b03/b04 は
-    `--out` を `sqlite3.connect` で直接開き `fresh_sqlite` を経由しないため、
-    それぞれの `main()` が引数パース直後にこれを個別に呼ぶ**（コードレビュー
-    指摘: `fresh_sqlite` 経由だけでは b03/b04 の `--out` が保護されておらず、
-    原本に直接書き込む事故が起こりうる状態だった）。
-
-    worktree ではこれらは symlink（CLAUDE.md「worktree の運用」）なので、
-    パス文字列の比較ではなく `os.path.realpath`（symlink を解決した実パス）
-    で比べる。ファイルが存在しない場合でも `realpath` は正規化したパスを返す
-    ため、原本がまだ無い環境（CI 等）でも判定できる。
+    `fresh_sqlite` は内部でこれを呼ぶので、`--out` が `fresh_sqlite` を経由する
+    スクリプトは自動的に保護される。**b03/b04 は `--out` を `sqlite3.connect`
+    で直接開き `fresh_sqlite` を経由しないため、それぞれの `main()` が引数
+    パース直後にこれを個別に呼ぶ**（コードレビュー指摘: `fresh_sqlite` 経由
+    だけでは b03/b04 の `--out` が保護されておらず、原本に直接書き込む事故が
+    起こりうる状態だった）。
     """
-    resolved = os.path.realpath(str(path))
-    for name in _PROTECTED_SOURCE_DB_NAMES:
-        protected = os.path.realpath(str(ROOT / "data" / "db" / name))
-        if resolved == protected:
-            raise MigrationError(
-                f"{path} は読み取り専用の原本（{protected}）と同じ実体を指している。"
-                "書き込み先（--out）に原本のパスを渡していないか確認すること。"
-            )
+    protected = {name: ROOT / "data" / "db" / name for name in _PROTECTED_SOURCE_DB_NAMES}
+    assert_distinct_realpaths(
+        path, protected,
+        message_for=lambda _label, other: (
+            f"{path} は読み取り専用の原本（{other}）と同じ実体を指している。"
+            "書き込み先（--out）に原本のパスを渡していないか確認すること。"
+        ),
+    )
 
 
 @contextlib.contextmanager
@@ -301,6 +320,22 @@ def attach_readonly(conn: sqlite3.Connection, path, alias: str) -> None:
     if not p.exists():
         raise FileNotFoundError(f"sqlite ファイルが無い: {p}")
     conn.execute(f"ATTACH DATABASE 'file:{p}?mode=ro' AS {alias}")
+
+
+def existing_tables(db_path) -> set[str]:
+    """`db_path`（sqlite ファイル）が持つテーブル名の集合を、読み取り専用の
+    新規接続で返す。`scripts/b08_project_occurrence_v1.py`・
+    `scripts/b11_project_place_v1.py` がそれぞれ同型の実装を別々に持っていた
+    もの（`_assert_prerequisites`/`_assert_rollup_prerequisites` が「必要な
+    テーブルが有るか」を `fresh_sqlite` の前に確かめるのに使う）を1箇所に
+    集約した（コードレビュー指摘。`attach_readonly`/`assert_attached_table_exists`
+    と同じ「同型の検証は共通ヘルパに寄せる」方針）。
+    """
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    try:
+        return {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    finally:
+        conn.close()
 
 
 def assert_attached_table_exists(conn: sqlite3.Connection, alias: str, table: str, *, hint: str) -> None:

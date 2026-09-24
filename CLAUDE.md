@@ -88,14 +88,23 @@
   の4本。設計・実測は `docs/plans/PHASE_B_OCCURRENCE.md`・
   `docs/adr/0025-occurrence-fact-and-cube.md`・
   `docs/adr/0026-occurrence-place-watershed.md`。
-- watershed の属性（`watershed_meta`）は `scripts/b11_project_place_v1.py`
-  （`registry.sqlite` の `place`/`place_watershed`/`place_source_ref` → v1形）。
-  出力は `data/db/v1_projection_place.sqlite`（`.gitignore` 済み・捨てて作り直せる）。
+- watershed の属性（`watershed_meta`・`watershed_rollup`）は
+  `scripts/b11_project_place_v1.py`（`watershed_rollup` は
+  `v1_projection.sqlite`〔b05〕/`v1_projection_occurrence.sqlite`〔b08〕を
+  ATTACH して結合するだけの D10型の射影。キューブのセルにはしない）。
+  **b11 はこの縦線で初めて別系統（observation・occurrence）の出力を読むので、
+  実行順は r01 の後、b05・b08 を先に済ませてから b11**（b05・b08 は互いに
+  依存しないので入れ替え可能）。出力は `data/db/v1_projection_place.sqlite`
+  （`.gitignore` 済み・捨てて作り直せる）。
   設計・実測は `docs/plans/PHASE_B_PLACE_ATTRIBUTES.md`。
   別枠で `scripts/b10_project_documents_v1.py`（`cells.sqlite`/`ryuiki.sqlite` を直接
   ATTACH、`observation` は経由しない）が `data/db/v1_projection_documents.sqlite`
   （`doc_series`/`doc_series_meta`/`quality_monthly` の3テーブル、`.gitignore` 済み）を作る。
   設計・実測は `docs/plans/PHASE_B_DOCUMENTS.md`。
+- Phase B の v1 派生33表**全て**の突合を1コマンドで確認するゲートは
+  `scripts/b02_run_all_gates.py`（`scripts/reconcile/projection_manifest.yaml`
+  の対応表を読んで5つの candidate ファイルを回す。`b02_derived_compare.py` 自体は無変更）。
+  設計・実測は `docs/plans/PHASE_B_RECONCILIATION.md` §12。
 - レッドリスト・外来種の評価（`taxon_assessment`、P-2）は
   `scripts/registry/build_taxon_assessment.py`（`ryuiki.redlist_assessments`
   〔3版〕と `data/processed/moe_ias_list.csv`〔外来種、`ryuiki.taxa` ではなく
@@ -164,6 +173,8 @@
         <worktree>/data/processed/nlni_w12_watersheds.geojson
   ln -s /home/yu23ki14/cfj/ryuiki-demo/data/processed/nlni_l03b_landuse_by_watershed.csv \
         <worktree>/data/processed/nlni_l03b_landuse_by_watershed.csv
+  ln -s /home/yu23ki14/cfj/ryuiki-demo/data/processed/moe_ias_list.csv \
+        <worktree>/data/processed/moe_ias_list.csv
   ```
   レジストリのビルド先を明示したいときは `RYUIKI_REGISTRY_DB=<worktree の絶対パス>/data/db/registry.sqlite`
   （`scripts/r01_build_registry.py` / `web/scripts/build-registry-ts.mjs` /

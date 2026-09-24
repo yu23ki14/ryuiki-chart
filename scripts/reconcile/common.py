@@ -408,6 +408,71 @@ def load_destinations(path) -> dict[str, dict]:
     return flat
 
 
+def load_projection_manifest(path) -> dict[str, dict]:
+    """`projection_manifest.yaml`（v1 派生33テーブル -> (射影スクリプト,
+    candidate ファイル) の宣言的な対応表。`scripts/b02_run_all_gates.py` が
+    使う）を読み、candidate ファイル名 -> `{"script": ..., "tables": [...]}`
+    の辞書として返す。中身の意味的な検証——テーブル名の集合が
+    `derived_baseline.json` と一致するか等——は呼び出し側〔`scripts/tests/
+    test_common.py`・`scripts/b02_run_all_gates.py`〕の責務だが、**ここでは
+    形（マッピング・キーの有無・値の型）まで検証する**（コードレビュー指摘）:
+
+    - `load_yaml` は存在しないパスを黙って `{}` として返す（`derived_keys.yaml`/
+      `expected_diffs.yaml` はそれが正しい既定動作）が、`--manifest` の打ち
+      間違いを `{}` のまま通すと「33表と一致しない」という無関係なエラーに
+      化けて原因が分かりにくい。ここでは存在しないパスをそう言って明示的に
+      止める。
+    - `tables` が `None`（YAML の `tables:` に値が無い）だと
+      `flatten_projection_manifest` の `for table in spec["tables"]` が生の
+      `TypeError` になり、文字列（`tables: t_pk` のような書き間違い）だと
+      1文字ずつ回ってしまう（`load_expected_diffs` が「宣言のリストに
+      なっているか」を検証するのと同じ理由で、ここで要素の型まで確認する）。
+    """
+    p = pathlib.Path(path)
+    if not p.exists():
+        raise SystemExit(f"{p} が無い（--manifest の指定を確認すること）。")
+    raw = load_yaml(p)
+    if not isinstance(raw, dict):
+        raise SystemExit(f"{p} のトップレベルがマッピングになっていない（実際の型: {type(raw).__name__}）。")
+    for candidate, spec in raw.items():
+        if not isinstance(spec, dict) or "script" not in spec or "tables" not in spec:
+            raise SystemExit(
+                f"{p} の {candidate!r} が「script/tables を持つマッピング」に"
+                f"なっていない（実際の型: {type(spec).__name__}）。"
+            )
+        if not isinstance(spec["script"], str) or not spec["script"]:
+            raise SystemExit(
+                f"{p} の {candidate!r}.script が非空の文字列になっていない"
+                f"（実際の型: {type(spec['script']).__name__}）。"
+            )
+        tables = spec["tables"]
+        if not isinstance(tables, list) or not tables or not all(
+            isinstance(t, str) and t for t in tables
+        ):
+            raise SystemExit(
+                f"{p} の {candidate!r}.tables が「非空の文字列のリスト」になっていない"
+                f"（実際の値: {tables!r}）。"
+            )
+    return raw
+
+
+def flatten_projection_manifest(manifest: dict[str, dict]) -> dict[str, str]:
+    """`load_projection_manifest` が返す辞書を、テーブル名 -> candidate ファイル名の
+    フラットな辞書に変換する。同じテーブル名が複数の candidate に重複して
+    宣言されていたら（コピペミス等）黙って後勝ちにせず例外を投げる。
+    """
+    flat: dict[str, str] = {}
+    for candidate, spec in manifest.items():
+        for table in spec.get("tables", []):
+            if table in flat:
+                raise SystemExit(
+                    f"projection_manifest.yaml: テーブル {table!r} が {flat[table]!r} と "
+                    f"{candidate!r} の両方に重複して宣言されている。"
+                )
+            flat[table] = candidate
+    return flat
+
+
 # `expected_diffs.yaml`（b02 の「宣言済み差分」）の kind の語彙。ここに書けるのは
 # 常に「v1 を再現できないが、原因が判明していて v1 側のバグだと確定しているもの」の
 # キー1件ずつであり、テーブル単位・ワイルドカードの免除は書けない

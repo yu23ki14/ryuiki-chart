@@ -31,8 +31,10 @@ __pycache__/
 # 書く「正」でコミット対象（ADR-0016 の受け入れゲート）。一方
 # reports/derived_reconciliation.md は scripts/b02_derived_compare.py が
 # 候補と突き合わせるたびに書き直す成果物（ADR-0016 の言う「CI の成果物」）
-# なので、コミットしない。
+# なので、コミットしない。reports/derived_reconciliation_all.md は
+# scripts/b02_run_all_gates.py（33表の統合ゲート）が同じ理由で書き直す成果物。
 reports/derived_reconciliation.md
+reports/derived_reconciliation_all.md
 
 # ---------------------------------------------------------------
 # Node / Next.js / Cloudflare

@@ -244,14 +244,6 @@ _SAMPLE_LIMIT = 20
 # 前提の確認（出力ファイルを消す前に。コードレビュー指摘6）
 # ---------------------------------------------------------------------------
 
-def _existing_tables(db_path) -> set[str]:
-    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-    try:
-        return {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    finally:
-        conn.close()
-
-
 def _assert_prerequisites(
     cube_db, registry_db, *,
     need_occurrence_agg: bool, need_occurrence_place: bool = False,
@@ -286,7 +278,7 @@ def _assert_prerequisites(
             f"{registry_path} が無い。先に scripts/r01_build_registry.py を実行すること。"
         )
 
-    cube_tables = _existing_tables(cube_path)
+    cube_tables = common.existing_tables(cube_path)
     missing = []
     if "occurrence" not in cube_tables:
         missing.append(("occurrence", "scripts/b06_build_occurrence.py"))
@@ -301,7 +293,7 @@ def _assert_prerequisites(
             f"{cube_path} に {names} テーブルが無い。先に {scripts} を実行すること。"
         )
 
-    registry_tables = _existing_tables(registry_path)
+    registry_tables = common.existing_tables(registry_path)
     if "taxon" not in registry_tables:
         raise common.MigrationError(
             f"{registry_path} に `taxon` テーブルが無い。scripts/r01_build_registry.py を"
