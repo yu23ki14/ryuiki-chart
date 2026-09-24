@@ -789,8 +789,13 @@ $ .venv/bin/python3 scripts/b02_run_all_gates.py
 `pytest`: 538件全緑（対応前521件から17件増。内訳: `test_migrate_common.py`
 +1〔`existing_tables`〕、`test_common.py` +3〔`load_projection_manifest` の
 形の検証〕、`test_b02_run_all_gates.py` +4〔指摘3・5・10・14〕、
-`test_b11_project_place_v1.py` +9〔指摘1・2・4×4・15×3〕）。古い SQLite
-（システム既定 python3.10、sqlite3モジュール3.37.2）の一時 clone でも
-417 passed / 104 skipped / 失敗0（`scripts/tests/test_b11_project_place_v1.py`
-が新たに `require_sqlite_version` ガード対象になり、他の `b04`/`b05` 系と
-同じく skip される側に移った）。
+`test_b11_project_place_v1.py` +9〔指摘1・2・4×4・15×3〕）。
+
+原本の無い環境（`git clone` した一時ディレクトリ、システム既定 python3.10.12・
+sqlite3モジュール3.37.2の venv）でも **408 passed / 130 skipped / 失敗0**
+（`--files-only` registry ビルドも成功）。skip が26件増えたのは
+`scripts/tests/test_b11_project_place_v1.py`（26件全部）が新たに
+`require_sqlite_version` ガード対象の `pytestmark` を持ち、他の `b04`/`b05`
+系のテストファイルと同じく古い SQLite では丸ごと skip される側に移ったため
+（対応前は b11 にこのガードが無く、フィクスチャだけで完結するテストは
+古い SQLite でも普通に実行・合格していた）。
