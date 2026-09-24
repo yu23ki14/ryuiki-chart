@@ -3,16 +3,19 @@
 - 状態: 提案中 / 日付: 2026-09-06
 - 関連: ADR-0005（ライセンス）, ADR-0008（時間）, ADR-0009（検閲）, ADR-0011（キューブ）, ADR-0013（caveat）
 
-**2026-09-24 追記（ADR-0009 決定4。方針のみ、応答の実装はまだ無い）**:
+**2026-09-24 追記（ADR-0009 決定4。方針のみ、応答の実装はまだ無い。
+2026-09-25 訂正: 下記の例に `n_not_detected` が無かったので足した——
+/code-review 指摘7）**:
 `observation_agg` が `value_zero`/`value_lod` を併記するようになったので、
 将来この封筒を実装するときは、`coverage` に `n_censored`/`n_not_detected`
-を含め（下記の例に既に入っている）、`columns` には `value_zero`/`value_lod`
-を**それぞれ単位つきで両方**出す。単一の `value` 列を返すのは、呼び出し側が
+を両方含め、`columns` には `value_zero`/`value_lod` を**それぞれ単位つきで
+両方**出す。単一の `value` 列を返すのは、呼び出し側が
 `imputation`（`zero`/`lod`/`half_lod` 等）を明示したときだけにする——
 `half_lod` は保存された列ではなく `(value_zero + value_lod) / 2` で導出する
-（ADR-0009 決定4）。**この節はまだコード化されていない**（`/api/*` にも
-MCP ツールにも `get_observations` 相当の実装は無い）。方針だけをここに残し、
-実装は最初の消費者が現れたときの別 PR で行う（ADR-0023 決定4と同じ扱い）。
+（`n_not_detected = 0` のセットに限る。ADR-0009 決定4）。**この節はまだ
+コード化されていない**（`/api/*` にも MCP ツールにも `get_observations`
+相当の実装は無い）。方針だけをここに残し、実装は最初の消費者が現れたとき
+の別 PR で行う（ADR-0023 決定4と同じ扱い）。
 
 ## 背景
 
@@ -39,7 +42,7 @@ MCP を出すにあたり、この構成には2つの問題がある。
   "query":    { /* 受け取った条件のエコー。既定値も明示 */ },
   "columns":  [ { "name":"value", "type":"number", "unit":"mg/L", "ucum":"mg/L" } ],
   "rows":     [ /* ... */ ],
-  "coverage": { "n_rows": 1240, "n_places": 32, "n_censored": 291,
+  "coverage": { "n_rows": 1240, "n_places": 32, "n_censored": 291, "n_not_detected": 4,
                 "period": {"start":"2015-04-01","end":"2024-03-31","grain":"fiscal_year"},
                 "imputation": "half_lod" },
   "provenance": [ { "source_edition_id":"...", "name":"...", "publisher":"...",

@@ -56,6 +56,15 @@
 # 書き方）に変えること。ADR-0009 の2026-09-24追記にも同じ申し送りを残した。
 #
 # web/src/lib/ai/caveats.test.ts の該当3ケース・スナップショットも合わせて更新済み。
+#
+# aboveLod（ADR-0009 決定4-C、2026-09-24、/code-review 指摘3）は censored に続く
+# 2件目の新規注記（上記「新しい注記はここに足していない」への2件目の例外）。
+# `water.transparency`（透明度）の定量上限超え（`>1.4`〜`>28`、26行）は、
+# `value_zero`/`value_lod` のどちらの列も作らない（`n`/`n_censored` を含む
+# あらゆる集計から丸ごと落ちる——ADR-0009 決定4-C「above_lod は今回も
+# 非メンバーのまま」）。列を作らない代わりに注記で伝える、という設計上の
+# 取引なので、この注記が無いと上限側の検閲がどこにも残らない。scope は
+# censored と同じ MEASURE_TABLES（`scripts/registry/build_caveat.py`）。
 
 caveats:
 - key: measuredOn
@@ -69,6 +78,12 @@ caveats:
   kind: censoring
   title_ja: null
   body_ja: 全体の約24%は定量下限未満（原表記が「<0.5」など）。この画面の値は定量下限未満を 0 とみなして集計している。折れ線では中抜きの点で示し、「0 が観測された」とは読まないこと。
+  quote: null
+- key: aboveLod
+  severity: blocking
+  kind: censoring
+  title_ja: null
+  body_ja: 透明度の定量上限超え（原表記が「>1.4」〜「>28」など、26行）は、上限がどこまでか分からないという性質上、集計方法によらず値に含められない。件数（n）にも入らないため、他の期間・地点と単純に比較しないこと。
   quote: null
 - key: duplicates
   severity: null

@@ -97,7 +97,7 @@ ADR-0007 の全列のうち埋まるのは次のとおり。
     `sensor_timeseries` に検閲の概念は無い——`censoring` は常に `'none'`、
     `value_raw` は常に NULL、`value_num` は `sensor_timeseries.result` を
     そのまま運ぶ（`result IS NULL` の行はそのまま NULL。b04 の
-    `WHERE v IS NOT NULL` で自然にキューブから外れる。design.md T3）。
+    `WHERE v_zero IS NOT NULL` で自然にキューブから外れる。design.md T3）。
   - `quality_stage` / `is_synthetic` / `source_ref` / `event_id` — 既にある
     列からの素の carry-over。`sensor_timeseries` にはこのうち `is_synthetic`
     しか対応する列が無いため、`quality_stage`/`source_ref`/`event_id` は
@@ -558,7 +558,7 @@ def _ingest_sensor_timeseries(
             # センサーに検閲の概念は無い（design.md T3）。value_raw は持たず、
             # censoring は常に 'none'。value_num は result をそのまま運ぶ
             # （result IS NULL の行はそのまま NULL のまま運び、b04 の
-            # `WHERE v IS NOT NULL` で自然にキューブから外れる）。
+            # `WHERE v_zero IS NOT NULL` で自然にキューブから外れる）。
             yield (
                 "sensor_timeseries", row_id_str, region_id, place_id, place_kind, variable_id, obs_stat,
                 unit_id, unit, value_grain, period_grain, period_start, period_end, phenomenon_time,
@@ -990,7 +990,7 @@ def render_report(all_stats: dict[str, dict]) -> str:
             a(
                 "センサーに検閲の概念は無い（design.md T3）。`censoring` は常に "
                 "`'none'`・`value_raw` は常に NULL。`sensor_timeseries.result IS NULL` の"
-                "行はそのまま `value_num=NULL` で運び、b04 の `WHERE v IS NOT NULL` で"
+                "行はそのまま `value_num=NULL` で運び、b04 の `WHERE v_zero IS NOT NULL` で"
                 "キューブから自然に除外される。"
             )
         else:

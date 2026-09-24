@@ -71,10 +71,11 @@ describe.skipIf(!hasRegistryDb)("build:registry:ts は再生成しても差分�
  * 生成物の形の健全性（regenerate できない環境でも実行できる、軽い形チェック）。
  */
 describe("generated.ts / generated-client.ts の形", () => {
-  it("caveat は cells.notes 由来（207件）を含まない15件のまま", () => {
+  it("caveat は cells.notes 由来（207件）を含まない16件のまま", () => {
     // P-1b（土地利用）で Phase A 以降初めて新規の注記（landuseDefinitionChange）を
-    // 1件足した（14→15）。registry/caveat.yaml 冒頭コメント参照。
-    expect(GENERATED_CAVEATS).toHaveLength(15);
+    // 1件足した（14→15）。さらに ADR-0009 決定4-C（above_lod、/code-review 指摘3）で
+    // aboveLod を1件足した（15→16）。registry/caveat.yaml 冒頭コメント参照。
+    expect(GENERATED_CAVEATS).toHaveLength(16);
     expect(GENERATED_CAVEATS.every((c) => !c.key.startsWith("cells."))).toBe(true);
   });
 

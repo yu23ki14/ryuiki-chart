@@ -145,20 +145,71 @@ ADR-0011 が定義するキューブの列は `unit_id` までで、`unit_raw`�
 - `n_places`: この縦線はロールアップしない（次元キーに `place_id` が必ず
   入る）ため、常に `1`。
 
+## 入力検証: `below_lod` は `censoring_limit` を必ず持つ（/code-review 指摘5）
+
+`build_cube()` の先頭、`observation`（入力）に対して `_assert_below_lod_has_censoring_limit`
+を呼ぶ。`censoring='below_lod' AND censoring_limit IS NULL` の行が1つでもあると、
+`_VALUE_LOD_CASE` の代入（below_lod → censoring_limit）が NULL になり、その行は
+**value_lod の平均から黙って消える**（below_lod なのに非メンバー扱いになる）——
+下記の3つの機械検証はどれもこれを検出できない（value_lod が NULL になった
+「理由」が not_detected なのか censoring_limit 欠損なのかを区別しないため）。
+b03（`scripts/migrate/censoring.py` の `_parse_limit`）は below_lod の
+`censoring_limit` を必ず埋めるため実データでは起きないが、別出典や将来の
+取り込み経路がこの前提を破る可能性があるため、キューブを作る前に入力側で
+明示的に検証する。
+
 ## 機械検証: `value_zero`/`value_lod` の関係（ADR-0009 決定4）
 
 `_assert_dimension_key_unique` の直後、同じ `with staged_table(...)` ブロック
-内で `_assert_value_zero_lod_invariants` を呼ぶ。破れれば `staged_table` が
-前回の `observation_agg` を残したまま止まる（A-1 と同じ安全策）。
+内で `_assert_value_zero_lod_invariants`（検証のみ・戻り値なし）を呼ぶ。
+レポート用の実測件数（検証4）は別関数 `_collect_value_zero_lod_stats` が返す
+（/code-review 指摘13: 検証と統計収集を1つの関数に混ぜると、検証を外したときに
+戻り値のキーが黙って消える——両者は目的も呼び出しタイミングも別)。
+破れれば `staged_table` が前回の `observation_agg` を残したまま止まる
+（A-1 と同じ安全策）。
 
-1. `(value_lod IS NULL) = (n_not_detected = n)`（ND だけの格でのみ NULL）。
+**「葉の格」と「積み上げの格」で条件が違う**（/code-review 指摘1）。
+`_IS_LEAF_SQL`（`grain = 'day' OR grain = input_grain`）で判定する——day セルは
+`grain='day'` で常に葉（`input_grain` が day/hour/instant のどれでも `obs_imputed`
+から直接作るため）。月次・年次の出典配布セルは `grain = input_grain`
+（= `period_grain`）。積み上げ（月次・年次を日次セルから作る側）だけが
+`grain != 'day' AND grain != input_grain` になる（`input_grain` は日次セルの
+`input_grain`=day/hour/instant を引き継ぐため、`'month'`/`'year'` である
+`grain` と一致しない）。
+
+1. **葉の格**: `(value_lod IS NULL) = (n_not_detected = n)`（`n`/`n_not_detected`
+   がどちらも `obs_imputed`〔観測行〕の個数なので単位が揃っている）。
+   **積み上げの格**: `n_not_detected = 0 ⇒ value_lod IS NOT NULL`
+   （片方向のみ）。積み上げの格の `n` は寄与した**日次セルの個数**、
+   `n_not_detected` はその日次セルたちの `n_not_detected` の**和**（観測行の
+   個数）で単位が違うため、`n_not_detected = n` を直接比べられない
+   （/code-review 指摘1。実データでは ND が全部 fiscal_year の出典配布行に
+   限られ日次の積み上げに乗らないため、単位混在の等式でもたまたま通っていた
+   ——指示書が禁じた「現データの性質への依存」そのものだった）。値そのものの
+   性質（積み上げの `value_lod` は、寄与した日次セルの `value_lod` が
+   **全部** NULL のときだけ NULL になる）から、単位を混ぜずに導ける条件は
+   「ND 観測が1件も無ければ全ND日は存在しえない」という片方向の含意だけ
+   ——逆方向（`value_lod IS NULL ⇒ n_not_detected=0` にならない、程度の
+   弱い言明）は、日次セルごとの ND 充足状況を追加で持たないと判定できない
+   （ADR-0009 決定4・2026-09-25追記参照）。
 2. `n_censored = 0 AND n_not_detected = 0` ⇒ `value_lod IS value_zero`
    （ビット一致。検閲の無いセルでは代入の余地が無いので両系列は同じ値になる
    はず——day_stats/month_source_stats/year_source_stats がどちらも同じ
    `GROUP BY` の1パスで `AVG(v_zero)`/`AVG(v_lod)` 等を並べて計算しており、
-   加算順序は自動的に揃っている）。
-3. 両方が非 NULL ⇒ `value_lod >= value_zero`（`censoring_limit` は正なので、
-   検閲行を1件でも含む格は `value_lod` が `value_zero` 以上になるはず）。
+   加算順序は自動的に揃っている。積み上げの格でも、寄与する日次セルが全部
+   この条件を満たすなら同じ値の列を同じ順序で `AVG` するだけなのでビット
+   一致が伝播する）。
+3. **`n_not_detected = 0` のセルに限り**、両方が非 NULL ⇒
+   `value_lod >= value_zero`（/code-review 指摘2: 「値は非負」という宣言していない
+   前提に乗っていた——ND は zero 側で0・lod 側で除外なので、実測値が負の
+   変数〔河川水位・地下水位・気温・流量・PM2.5 等、実測75,871セル〕だと
+   ND を含むセルでは逆転しうる。below_lod だけなら `censoring_limit` は正なので、
+   他のメンバーの符号によらず `value_lod >= value_zero` が成り立つ——below_lod の
+   行は zero 側で0、lod 側で正の値に置き換わるだけで、他のメンバーの寄与は
+   両系列で同一だから。ND を含むセルは「0 で埋める」（zero）と「その行ごと
+   除外する」（lod）で分母・分子の構成そのものが変わるため、この論法が
+   成り立たない——除外後の残りが負の値ばかりだと lod 側の平均がより低くなる
+   ことがある。ND を含むセルにはこの不等式を課さない）。
 
 ## SQLite の版を守る（アドバイザー指摘・オーナー採用）
 
@@ -447,8 +498,9 @@ def _year_source_expand_sql(stat: str, value_zero_column: str, value_lod_column:
 # day/month(day側/出典側)/year(day側/出典側) の5経路は grain/input_grain/stat
 # の値で互いに排他のはずだが、それが崩れていないことを実測で確認する。
 #
-# 以前は全13列の GROUP BY（約22秒）で確認していた。いまは作業用テーブルに
-# 13列の `CREATE UNIQUE INDEX` を張ることで検証する——重複が無ければ索引の
+# 以前は全13列（現在は `imputation` を外した12列。ADR-0009 決定4）の
+# GROUP BY（約22秒）で確認していた。いまは作業用テーブルに
+# `DIM_COLUMNS`（12列）の `CREATE UNIQUE INDEX` を張ることで検証する——重複が無ければ索引の
 # 作成が成功するだけで済み（実測 約12.9秒）、GROUP BY で全行を読み直すより
 # 速い。実装（NULL の扱い・索引の使い捨て等）は `scripts/b07_build_occurrence_cube.py`
 # とほぼ一字一句同じだったため、`scripts/migrate/common.assert_dimension_key_unique`
@@ -467,64 +519,146 @@ def _assert_dimension_key_unique(conn: sqlite3.Connection, staging: str) -> None
 
 
 # ---------------------------------------------------------------------------
+# 入力検証: below_lod は censoring_limit を必ず持つ（/code-review 指摘5。
+# モジュール docstring「入力検証」節参照）
+# ---------------------------------------------------------------------------
+
+def _assert_below_lod_has_censoring_limit(conn: sqlite3.Connection) -> None:
+    """`observation`（入力）に `censoring='below_lod' AND censoring_limit IS NULL`
+    の行が無いことを確認する。1行でもあれば、その行は `_VALUE_LOD_CASE` の
+    代入結果が NULL になり、value_lod の平均から**黙って**消える（below_lod
+    なのに非メンバー扱いになる）——下記の3つの機械検証はどれもこれを検出
+    できない（value_lod が NULL な理由が not_detected か censoring_limit
+    欠損かを区別しないため）。b03 は必ず埋めるため実データでは起きないが、
+    将来・別出典の取り込み経路がこの前提を破りうるため、キューブを作る前に
+    入力側で明示的に止める。
+    """
+    bad = conn.execute(
+        "SELECT source_table, source_row_id, value_raw FROM observation "
+        f"WHERE censoring = '{censoring.CENSORING_BELOW_LOD}' AND censoring_limit IS NULL LIMIT 5"
+    ).fetchall()
+    if bad:
+        raise common.MigrationError(
+            "observation: censoring='below_lod' なのに censoring_limit が NULL の行がある"
+            f"（例（source_table, source_row_id, value_raw）: {bad}）。value_lod の代入規則"
+            "（below_lod → censoring_limit）が計算できず、これらの行は value_lod の平均から"
+            "黙って消える（below_lod なのに非メンバー扱いになる）。"
+            "scripts/migrate/censoring.py の censoring_limit 解決を確認すること。"
+        )
+
+
+# ---------------------------------------------------------------------------
 # value_zero / value_lod の関係の検証（ADR-0009 決定4。モジュール docstring
 # 「機械検証」節参照）
 # ---------------------------------------------------------------------------
 
-def _assert_value_zero_lod_invariants(conn: sqlite3.Connection, staging: str) -> dict:
+# 「葉の格」（obs_imputed から直接作る格）の判定式。day セルは grain='day'
+# （常に葉——input_grain が day/hour/instant のどれでも葉）。月次・年次の
+# 出典配布セルは grain=input_grain（=period_grain）。積み上げ（月次・年次を
+# 日次セルから作る側）だけが grain != 'day' かつ grain != input_grain になる
+# （モジュール docstring「機械検証」節参照）。
+_IS_LEAF_SQL = "(grain = 'day' OR grain = input_grain)"
+
+# 検証1: 葉の格では単位が揃った等式、積み上げの格では単位を混ぜない片方向の
+# 含意だけを課す（/code-review 指摘1）。
+_CHECK1_LEAF_VIOLATION_SQL = f"({_IS_LEAF_SQL} AND (value_lod IS NULL) != (n_not_detected = n))"
+_CHECK1_ROLLUP_VIOLATION_SQL = f"(NOT {_IS_LEAF_SQL} AND n_not_detected = 0 AND value_lod IS NULL)"
+_CHECK1_VIOLATION_SQL = f"({_CHECK1_LEAF_VIOLATION_SQL} OR {_CHECK1_ROLLUP_VIOLATION_SQL})"
+
+# 検証2: 検閲の無いセル（葉・積み上げどちらも）は両系列がビット一致するはず。
+_CHECK2_VIOLATION_SQL = "(n_censored = 0 AND n_not_detected = 0 AND value_lod IS NOT value_zero)"
+
+# 検証3: n_not_detected=0 のセルに限る（/code-review 指摘2。モジュール
+# docstring「機械検証」節参照——ND を含むセルは実測値が負だと不等式が逆転しうる）。
+_CHECK3_VIOLATION_SQL = (
+    "(n_not_detected = 0 AND value_zero IS NOT NULL AND value_lod IS NOT NULL "
+    "AND value_lod < value_zero)"
+)
+
+
+def _assert_value_zero_lod_invariants(conn: sqlite3.Connection, staging: str) -> None:
     """`staging`（`staged_table` の作業用テーブル）に対して、`value_zero`/
-    `value_lod` の3つの不変条件を検証する。戻り値はレポート用の実測件数
-    （検証4）。いずれかが崩れていれば `common.MigrationError` で例外の
+    `value_lod` の3つの不変条件を検証する（検証のみ。レポート用の実測件数は
+    `_collect_value_zero_lod_stats` が別に返す——/code-review 指摘13: 検証と
+    統計収集を1つの関数に混ぜると、検証を外したときに戻り値のキーが黙って
+    消える）。いずれかが崩れていれば `common.MigrationError` で例外の
     サンプル行つきで止まる。
+
+    3つの違反条件を1回の SELECT でまとめて数える（/code-review 指摘12:
+    以前は LIMIT 5 の探索クエリを3本、200万行を3回スキャンしていた）。
+    違反が1件も無ければこの1クエリだけで終わる——サンプル行を取るための
+    2つ目のクエリは、実際に違反があった検証についてだけ実行する。
     """
+    n_bad1, n_bad2, n_bad3 = conn.execute(
+        f"""
+        SELECT
+          SUM(CASE WHEN {_CHECK1_VIOLATION_SQL} THEN 1 ELSE 0 END),
+          SUM(CASE WHEN {_CHECK2_VIOLATION_SQL} THEN 1 ELSE 0 END),
+          SUM(CASE WHEN {_CHECK3_VIOLATION_SQL} THEN 1 ELSE 0 END)
+        FROM "{staging}"
+        """
+    ).fetchone()
+
     dim_cols = ", ".join(DIM_COLUMNS)
 
-    bad1 = conn.execute(
-        f'SELECT {dim_cols}, value_lod, n_not_detected, n FROM "{staging}" '
-        "WHERE (value_lod IS NULL) != (n_not_detected = n) LIMIT 5"
-    ).fetchall()
-    if bad1:
+    if n_bad1:
+        bad1 = conn.execute(
+            f'SELECT {dim_cols}, grain, input_grain, value_lod, n_not_detected, n FROM "{staging}" '
+            f"WHERE {_CHECK1_VIOLATION_SQL} LIMIT 5"
+        ).fetchall()
         raise common.MigrationError(
-            "observation_agg: value_lod IS NULL が n_not_detected=n と一致しない行がある"
-            f"（例: {bad1}）。ADR-0009 決定4「value_lod は not_detected だけの格でのみ "
-            "NULL になる」が崩れている。"
+            "observation_agg: value_lod IS NULL の条件が崩れている行がある"
+            f"（例: {bad1}）。葉の格（grain='day' または grain=input_grain）では "
+            "value_lod IS NULL は n_not_detected=n（ND だけの格）と一致するはず。"
+            "積み上げの格（月次・年次を日次セルから作る側）は n（日次セルの個数）と "
+            "n_not_detected（観測行の個数）の単位が違うため同じ式は使えず、"
+            "n_not_detected=0 ならば value_lod は NULL にならない、という片方向の"
+            "条件だけを課している——それが崩れている。"
         )
-
-    bad2 = conn.execute(
-        f'SELECT {dim_cols}, value_zero, value_lod FROM "{staging}" '
-        "WHERE n_censored = 0 AND n_not_detected = 0 AND value_lod IS NOT value_zero LIMIT 5"
-    ).fetchall()
-    if bad2:
+    if n_bad2:
+        bad2 = conn.execute(
+            f'SELECT {dim_cols}, value_zero, value_lod FROM "{staging}" '
+            f"WHERE {_CHECK2_VIOLATION_SQL} LIMIT 5"
+        ).fetchall()
         raise common.MigrationError(
             "observation_agg: 検閲を含まないセル（n_censored=0 AND n_not_detected=0）で "
             f"value_lod と value_zero がビット一致しない行がある（例: {bad2}）。"
             "ADR-0009 決定4「検閲の無いセルは両系列が同じ値」が崩れている。"
         )
-
-    bad3 = conn.execute(
-        f'SELECT {dim_cols}, value_zero, value_lod FROM "{staging}" '
-        "WHERE value_zero IS NOT NULL AND value_lod IS NOT NULL AND value_lod < value_zero LIMIT 5"
-    ).fetchall()
-    if bad3:
+    if n_bad3:
+        bad3 = conn.execute(
+            f'SELECT {dim_cols}, value_zero, value_lod, n_censored FROM "{staging}" '
+            f"WHERE {_CHECK3_VIOLATION_SQL} LIMIT 5"
+        ).fetchall()
         raise common.MigrationError(
-            "observation_agg: value_lod が value_zero を下回るセルがある"
-            f"（例: {bad3}）。censoring_limit は正のはずなので、両方が非 NULL な格の "
+            "observation_agg: not_detected を含まないセル（n_not_detected=0）で "
+            f"value_lod が value_zero を下回る行がある（例: {bad3}）。censoring_limit は"
+            "正なので、below_lod だけを含むセルでは他のメンバーの符号によらず "
             "value_lod は value_zero 以上になるはず（below_lod の限界値が0以下、"
-            "または符号の取り違えの疑い）。"
+            "または符号の取り違えの疑い）。n_not_detected>0 のセルにはこの不等式を"
+            "課していない（ND を0とみなす側と除外する側で分母・分子の構成が変わり、"
+            "実測値が負だと逆転しうるため。ADR-0009 決定4参照）。"
         )
 
-    # `!=`（SQL の3値論理。NULL を含む比較は NULL＝真でも偽でもない）で数える
-    # ——`value_lod IS NULL` の格（ND だけの格）は自動的にこのカウントから
-    # 除外される。「IS NOT」（NULL-safe、NULL を「異なる」として数える）にすると
-    # 両者の集合が重なってしまい、`n_value_lod_null` と足し合わせて報告する
-    # 意味が無くなる（設計ブリーフ 検証4「重なり0」の前提）。
-    n_value_lod_differs = conn.execute(
-        f'SELECT COUNT(*) FROM "{staging}" WHERE value_lod != value_zero'
-    ).fetchone()[0]
-    n_value_lod_null = conn.execute(
-        f'SELECT COUNT(*) FROM "{staging}" WHERE value_lod IS NULL'
-    ).fetchone()[0]
-    return {"n_value_lod_differs": n_value_lod_differs, "n_value_lod_null": n_value_lod_null}
+
+def _collect_value_zero_lod_stats(conn: sqlite3.Connection, staging: str) -> dict:
+    """レポート用の実測件数（検証4）を返す。検証（`_assert_value_zero_lod_invariants`）
+    とは別関数にする（/code-review 指摘13）。2つの COUNT を1回の SELECT に
+    まとめる（/code-review 指摘12）。
+
+    `!=`（SQL の3値論理。NULL を含む比較は NULL＝真でも偽でもない）で数える
+    ——`value_lod IS NULL` の格（ND だけの格）は自動的にこのカウントから
+    除外される。「IS NOT」（NULL-safe、NULL を「異なる」として数える）にすると
+    両者の集合が重なってしまい、`n_value_lod_null` と足し合わせて報告する
+    意味が無くなる（設計ブリーフ 検証4「重なり0」の前提）。
+    """
+    n_value_lod_differs, n_value_lod_null = conn.execute(
+        f'SELECT SUM(value_lod != value_zero), SUM(value_lod IS NULL) FROM "{staging}"'
+    ).fetchone()
+    return {
+        "n_value_lod_differs": n_value_lod_differs or 0,
+        "n_value_lod_null": n_value_lod_null or 0,
+    }
 
 
 def build_cube(
@@ -550,6 +684,9 @@ def build_cube(
     （モジュール docstring「SQLite の版を守る」参照）。
     """
     common.require_sqlite_version()
+    # 入力検証（/code-review 指摘5）: below_lod が censoring_limit を必ず持つこと。
+    # 集計を始める前、`observation` に対して直接検証する。
+    _assert_below_lod_has_censoring_limit(conn)
     params = (built_from, spec_version)
     common.attach_readonly(conn, registry_db, "reg")
     conn.execute(_CREATE_OBS_IMPUTED_VIEW_SQL)
@@ -611,8 +748,10 @@ def build_cube(
         # （C-3）。ここで失敗すれば staged_table が作業用テーブルを破棄し、
         # 前回の observation_agg がそのまま残る（A-1）。
         _assert_dimension_key_unique(conn, staging)
-        # value_zero/value_lod の3つの不変条件（ADR-0009 決定4）。
-        value_stats = _assert_value_zero_lod_invariants(conn, staging)
+        # value_zero/value_lod の3つの不変条件（ADR-0009 決定4）。検証と
+        # 統計収集を分ける（/code-review 指摘13）。
+        _assert_value_zero_lod_invariants(conn, staging)
+        value_stats = _collect_value_zero_lod_stats(conn, staging)
 
     return {
         "n_day": n_day,

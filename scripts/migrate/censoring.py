@@ -56,7 +56,7 @@ ALL_CENSORING_VALUES = (
 # という「仕様の Python 版」があり、専用のテストがそれ自身を確認するだけで、
 # キューブに実際に入る値の正しさは1ミリも保証していなかった。b04 の SQL が
 # 正しく 0 を代入していること自体は
-# `scripts/tests/test_b04_build_cube.py::test_zero_imputation_includes_below_lod_and_excludes_above_lod`
+# `scripts/tests/test_b04_build_cube.py::test_zero_and_lod_series_per_censoring_branch`
 # がキューブ経由（`observation_agg` を実際に読む）で確認する——こちらが本物のテスト）。
 ZERO_IMPUTED_CENSORING = (CENSORING_BELOW_LOD, CENSORING_NOT_DETECTED)
 

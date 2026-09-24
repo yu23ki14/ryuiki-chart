@@ -930,10 +930,6 @@ def test_verify_hourly_daily_rollup_function_directly():
         "CREATE TABLE label25_obs_keyed (region_id, place_id, place_kind, variable_id, obs_stat, "
         "unit_id, value_grain, period_raw, value_num, akey)"
     )
-    work.execute(
-        "CREATE TABLE cube_observation_agg (region_id, place_id, place_kind, variable_id, obs_stat, "
-        "unit_id, value_grain, period_start, period_end, grain, input_grain, stat, value, n)"
-    )
     # cube.observation_agg として参照できるよう ATTACH のかわりに VIEW を張る
     # （このテストでは cube スキーマを別ファイルにする必要が無いので、
     # ATTACH の代わりに同一接続内でエイリアスする）。
