@@ -12,9 +12,21 @@ from migrate import common
 from reconcile import common as reconcile_common
 from reconcile import datasource
 
+from migrate import source_regions
+
 from .migrate_fixtures import (
     DEFAULT_ALIASES,
+    DEFAULT_LANDUSE_ALIASES,
+    DEFAULT_LANDUSE_CSV_ROWS,
+    DEFAULT_LANDUSE_VARIABLES,
+    DEFAULT_PLACE_REFS,
+    DEFAULT_PLACES,
     DEFAULT_SENSOR_ROWS,
+    DEFAULT_WATERSHED_PLACE_REFS,
+    DEFAULT_WATERSHED_PLACES,
+    LANDUSE_SOURCE_ID,
+    make_landuse_csv,
+    make_landuse_source_regions_yaml,
     make_measurements_db,
     make_registry_db,
     make_time_label_conventions_yaml,
@@ -27,6 +39,27 @@ def _no_exceptions_path(tmp_path):
 
 def _no_conventions_path(tmp_path):
     return tmp_path / "no_conventions.yaml"
+
+
+# P-1b（土地利用）より前に書かれた既存テストは土地利用を検証しないため、
+# `DEFAULT_LANDUSE_CSV`/`DEFAULT_SOURCE_REGIONS_YAML` を「0行になる」空の
+# フィクスチャに autouse で差し替える（本物の data/processed/... を読みに
+# 行かせない）。`build_and_write_observation` がこの2引数を `None` の
+# ときだけモジュール変数から解決する設計にしてあるのは、この monkeypatch を
+# 効かせるため（`b03_build_observation.build_and_write_observation` の
+# docstring参照）。
+@pytest.fixture(autouse=True)
+def _empty_landuse_defaults(tmp_path, monkeypatch):
+    csv_path = tmp_path / "_empty_landuse.csv"
+    csv_path.write_text(
+        "source_id,source_ref,data_year,watershed_id,water_system_code_old,"
+        "water_system_name_ja_estimated,landuse_code_raw,landuse_name_ja,n_cells,area_km2\n",
+        encoding="utf-8",
+    )
+    yaml_path = tmp_path / "_empty_source_regions.yaml"
+    yaml_path.write_text("sources: {}\nregions: {}\n", encoding="utf-8")
+    monkeypatch.setattr(b03, "DEFAULT_LANDUSE_CSV", csv_path)
+    monkeypatch.setattr(b03, "DEFAULT_SOURCE_REGIONS_YAML", yaml_path)
 
 
 def test_normal_case_resolves_all_rows_and_maps_censoring(tmp_path):
@@ -524,3 +557,245 @@ def test_a2_duplicate_rows_raise_migration_error_with_count_and_examples(tmp_pat
             measurements_db, registry_db, _no_exceptions_path(tmp_path), _no_conventions_path(tmp_path),
             tmp_path / "v2.sqlite",
         )
+
+
+# ---------------------------------------------------------------------------
+# P-1b: 土地利用（`_ingest_landuse`）
+# ---------------------------------------------------------------------------
+
+def _make_landuse_registry_db(registry_db) -> None:
+    make_registry_db(
+        registry_db,
+        aliases=DEFAULT_ALIASES + DEFAULT_LANDUSE_ALIASES,
+        places=DEFAULT_PLACES + DEFAULT_WATERSHED_PLACES,
+        place_refs=DEFAULT_PLACE_REFS + DEFAULT_WATERSHED_PLACE_REFS,
+        variables=DEFAULT_LANDUSE_VARIABLES,
+    )
+
+
+def _build_landuse(tmp_path, registry_db, landuse_csv=None, source_regions_yaml=None):
+    measurements_db = tmp_path / "ryuiki.sqlite"
+    make_measurements_db(measurements_db, rows=[])
+    if landuse_csv is None:
+        landuse_csv = tmp_path / "landuse.csv"
+        make_landuse_csv(landuse_csv)
+    if source_regions_yaml is None:
+        source_regions_yaml = tmp_path / "source_regions.yaml"
+        make_landuse_source_regions_yaml(source_regions_yaml)
+    out = tmp_path / "v2.sqlite"
+    all_stats = b03.build_and_write_observation(
+        measurements_db, registry_db, _no_exceptions_path(tmp_path), _no_conventions_path(tmp_path), out,
+        source_regions_yaml, landuse_csv,
+    )
+    return out, all_stats
+
+
+def test_landuse_row_makes_two_observation_rows_area_and_n_cells(tmp_path):
+    """P-1b オーナー決定1: CSVの1行（watershed×year×landuse_code）から、
+    区分の面積（area_km2）とセル数（n_cells）という2つの observation 行が
+    作られる。region は source_regions.yaml（consumer='observation'）から、
+    place は watershed の place_source_ref から解決する（ハードコードしない）。
+    """
+    registry_db = tmp_path / "registry.sqlite"
+    _make_landuse_registry_db(registry_db)
+    out, all_stats = _build_landuse(tmp_path, registry_db)
+
+    # `all_stats`/`observation.source_table` のキーは b03 側の固定ラベル
+    # `b03.LANDUSE_SOURCE_ID`（実データでは CSV の `source_id` 列と同じ文字列に
+    # なるが、コード上は別物——CSV の `source_id`（`LANDUSE_SOURCE_ID`、
+    # このフィクスチャではあえて違う値にしてある）は alias/region の解決キー
+    # としてだけ使われる。混同していないことをこのテスト自体が示す）。
+    stats = all_stats[b03.LANDUSE_SOURCE_ID]
+    assert stats["total"] == len(DEFAULT_LANDUSE_CSV_ROWS)
+    assert stats["n_observation"] == len(DEFAULT_LANDUSE_CSV_ROWS) * 2
+
+    conn = sqlite3.connect(f"file:{out}?mode=ro", uri=True)
+    rows = {
+        r[0]: r
+        for r in conn.execute(
+            "SELECT source_row_id, region_id, place_id, place_kind, variable_id, obs_stat, unit_id, "
+            "value_grain, period_grain, period_start, period_end, period_raw, value_num, censoring, "
+            "unit_raw, value_raw, source_ref "
+            f"FROM observation WHERE source_table='{b03.LANDUSE_SOURCE_ID}'"
+        )
+    }
+    conn.close()
+    assert len(rows) == 10
+
+    # CSV 1行目: W1, 2006年版, code='1'（田）, area_km2=1.5, n_cells=10。
+    area = rows["1:area_km2"]
+    (
+        _sid, region_id, place_id, place_kind, variable_id, obs_stat, unit_id,
+        value_grain, period_grain, period_start, period_end, period_raw, value_num,
+        censoring_value, unit_raw, value_raw, source_ref,
+    ) = area
+    assert region_id == "jp-14"  # place.region_id 経由ではなく source_regions.yaml から
+    assert place_id == "place_w1"
+    assert place_kind == "watershed"
+    assert variable_id == "common:variable:landuse.paddy"
+    assert obs_stat == "sum"
+    assert unit_id == "common:unit:km2"
+    assert value_grain == "year"
+    assert period_grain == "year"
+    assert (period_start, period_end) == ("2006-01-01", "2006-12-31")
+    assert period_raw == "2006"
+    assert value_num == 1.5
+    assert censoring_value == "none"
+    assert unit_raw is None
+    assert value_raw is None
+    assert source_ref == "ref2006"
+
+    n_cells = rows["1:n_cells"]
+    assert n_cells[4] == "common:variable:landuse.paddy_n_cells"
+    assert n_cells[6] == "common:unit:count"
+    assert n_cells[12] == 10.0
+
+    # 5行目: W2, 2016年版, code='0100'（田。2006の code='1' と同じ variable_id
+    # を共有する——landuse_change が年をまたいで同一区分として比較できるように
+    # するため。P-1b オーナー決定2）。
+    area_2016 = rows["5:area_km2"]
+    assert area_2016[4] == "common:variable:landuse.paddy"
+    assert area_2016[9:12] == ("2016-01-01", "2016-12-31", "2016")
+
+
+def test_landuse_unresolved_watershed_raises(tmp_path):
+    """CSV の watershed_id が place_source_ref に無ければ、黙って捨てず
+    MigrationError で止まる（unresolved_place_count）。"""
+    registry_db = tmp_path / "registry.sqlite"
+    _make_landuse_registry_db(registry_db)
+    csv_path = tmp_path / "landuse.csv"
+    make_landuse_csv(csv_path, rows=[
+        (LANDUSE_SOURCE_ID, "ref2006", 2006, "UNKNOWN_WS", "OLD9", "水系9", "1", "田", 1, 0.1),
+    ])
+    yaml_path = tmp_path / "source_regions.yaml"
+    make_landuse_source_regions_yaml(
+        yaml_path,
+        text=(
+            "sources:\n"
+            f"  {LANDUSE_SOURCE_ID}:\n"
+            "    region_id: jp-14\n"
+            "    consumer: observation\n"
+            "    expected_row_count: 1\n"
+            "    evidence: テスト用\n"
+            "regions:\n  jp-14:\n    utc_offset: \"+09:00\"\n    evidence: テスト用\n"
+        ),
+    )
+    with pytest.raises(common.MigrationError, match="place_source_ref で解決できない"):
+        _build_landuse(tmp_path, registry_db, landuse_csv=csv_path, source_regions_yaml=yaml_path)
+
+
+def test_landuse_unresolved_alias_raises(tmp_path):
+    """CSV の landuse_code_raw に対応する variable_alias が無ければ
+    MigrationError で止まる（unresolved_alias_count）。"""
+    registry_db = tmp_path / "registry.sqlite"
+    _make_landuse_registry_db(registry_db)
+    csv_path = tmp_path / "landuse.csv"
+    make_landuse_csv(csv_path, rows=[
+        # code='9'（幹線交通用地相当）は _make_landuse_registry_db が登録していない。
+        (LANDUSE_SOURCE_ID, "ref2006", 2006, "W1", "OLD1", "水系1", "9", "幹線交通用地", 1, 0.1),
+    ])
+    yaml_path = tmp_path / "source_regions.yaml"
+    make_landuse_source_regions_yaml(
+        yaml_path,
+        text=(
+            "sources:\n"
+            f"  {LANDUSE_SOURCE_ID}:\n"
+            "    region_id: jp-14\n"
+            "    consumer: observation\n"
+            "    expected_row_count: 1\n"
+            "    evidence: テスト用\n"
+            "regions:\n  jp-14:\n    utc_offset: \"+09:00\"\n    evidence: テスト用\n"
+        ),
+    )
+    with pytest.raises(common.MigrationError, match="variable_alias で解決できない"):
+        _build_landuse(tmp_path, registry_db, landuse_csv=csv_path, source_regions_yaml=yaml_path)
+
+
+def test_landuse_unknown_source_id_raises_immediately(tmp_path):
+    """CSV の source_id が source_regions.yaml に無ければ、per-row の集計を
+    経由せず即座に `UnknownSourceRegionError` で止まる
+    （`scripts/b06_build_occurrence.py` の `_ingest` と同じ判断）。"""
+    registry_db = tmp_path / "registry.sqlite"
+    _make_landuse_registry_db(registry_db)
+    csv_path = tmp_path / "landuse.csv"
+    make_landuse_csv(csv_path, rows=[
+        ("unknown_source", "ref2006", 2006, "W1", "OLD1", "水系1", "1", "田", 10, 1.5),
+    ])
+    yaml_path = tmp_path / "source_regions.yaml"
+    make_landuse_source_regions_yaml(yaml_path, text="sources: {}\nregions: {}\n")
+    with pytest.raises(source_regions.UnknownSourceRegionError, match="unknown_source"):
+        _build_landuse(tmp_path, registry_db, landuse_csv=csv_path, source_regions_yaml=yaml_path)
+
+
+def test_landuse_unused_source_declaration_raises(tmp_path):
+    """source_regions.yaml（consumer='observation'）に宣言されているのに
+    CSV に1行も現れない source_id は「未使用宣言」として止まる
+    （period.declaration_problems 経由。scripts/migrate/period_exceptions.yaml
+    と同じ流儀）。"""
+    registry_db = tmp_path / "registry.sqlite"
+    _make_landuse_registry_db(registry_db)
+    csv_path = tmp_path / "landuse.csv"
+    make_landuse_csv(csv_path, rows=[])
+    yaml_path = tmp_path / "source_regions.yaml"
+    make_landuse_source_regions_yaml(yaml_path)  # LANDUSE_SOURCE_ID を宣言するが、CSV は空
+    with pytest.raises(common.MigrationError, match="1件も該当しなかった"):
+        _build_landuse(tmp_path, registry_db, landuse_csv=csv_path, source_regions_yaml=yaml_path)
+
+
+def test_landuse_expected_row_count_mismatch_raises(tmp_path):
+    """source_regions.yaml の expected_row_count と実測件数が食い違えば止まる。"""
+    registry_db = tmp_path / "registry.sqlite"
+    _make_landuse_registry_db(registry_db)
+    yaml_path = tmp_path / "source_regions.yaml"
+    make_landuse_source_regions_yaml(
+        yaml_path,
+        text=(
+            "sources:\n"
+            f"  {LANDUSE_SOURCE_ID}:\n"
+            "    region_id: jp-14\n"
+            "    consumer: observation\n"
+            "    expected_row_count: 999\n"
+            "    evidence: テスト用\n"
+            "regions:\n  jp-14:\n    utc_offset: \"+09:00\"\n    evidence: テスト用\n"
+        ),
+    )
+    with pytest.raises(common.MigrationError, match="expected_row_count と実測件数が食い違う"):
+        _build_landuse(tmp_path, registry_db, source_regions_yaml=yaml_path)
+
+
+def test_landuse_does_not_affect_measurements_rows(tmp_path):
+    """土地利用の取り込みが既存の measurements/sensor_timeseries 由来の行を
+    一切変えないことを確認する（P-1b 受け入れ基準2）。"""
+    registry_db = tmp_path / "registry.sqlite"
+    make_registry_db(
+        registry_db,
+        aliases=DEFAULT_ALIASES + DEFAULT_LANDUSE_ALIASES,
+        places=DEFAULT_PLACES + DEFAULT_WATERSHED_PLACES,
+        place_refs=DEFAULT_PLACE_REFS + DEFAULT_WATERSHED_PLACE_REFS,
+        variables=DEFAULT_LANDUSE_VARIABLES,
+    )
+    measurements_db = tmp_path / "ryuiki.sqlite"
+    make_measurements_db(measurements_db)  # 既定の measurements 3行を使う
+    landuse_csv = tmp_path / "landuse.csv"
+    make_landuse_csv(landuse_csv)
+    yaml_path = tmp_path / "source_regions.yaml"
+    make_landuse_source_regions_yaml(yaml_path)
+    out = tmp_path / "v2.sqlite"
+
+    all_stats = b03.build_and_write_observation(
+        measurements_db, registry_db, _no_exceptions_path(tmp_path), _no_conventions_path(tmp_path), out,
+        yaml_path, landuse_csv,
+    )
+    assert all_stats["measurements"]["n_observation"] == 3
+    assert all_stats[b03.LANDUSE_SOURCE_ID]["n_observation"] == len(DEFAULT_LANDUSE_CSV_ROWS) * 2
+
+    conn = sqlite3.connect(f"file:{out}?mode=ro", uri=True)
+    n_measurements = conn.execute(
+        "SELECT COUNT(*) FROM observation WHERE source_table='measurements'"
+    ).fetchone()[0]
+    n_landuse = conn.execute(
+        f"SELECT COUNT(*) FROM observation WHERE source_table='{b03.LANDUSE_SOURCE_ID}'"
+    ).fetchone()[0]
+    conn.close()
+    assert n_measurements == 3
+    assert n_landuse == len(DEFAULT_LANDUSE_CSV_ROWS) * 2

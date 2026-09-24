@@ -32,7 +32,7 @@ export type CaveatScopeKind = "table" | "table_prefix";
  * 呼ぶときの型で、存在しないキーはここでコンパイルエラーになる（旧 domain.ts の
  * mustCaveatBody() は実行時例外だった）。
  */
-export type CaveatKey = "censored" | "duplicates" | "effort" | "fishClass" | "gbifCutoff" | "inatBackfill" | "isAlien" | "measuredOn" | "municipality" | "organismSite" | "regimes" | "share" | "synthetic" | "zone";
+export type CaveatKey = "censored" | "duplicates" | "effort" | "fishClass" | "gbifCutoff" | "inatBackfill" | "isAlien" | "landuseDefinitionChange" | "measuredOn" | "municipality" | "organismSite" | "regimes" | "share" | "synthetic" | "zone";
 
 export interface GeneratedCaveat {
   key: string;
@@ -181,6 +181,7 @@ export const GENERATED_CAVEATS: readonly GeneratedCaveat[] = [
   { key: "gbifCutoff", severity: "blocking", kind: "coverage_gap", bodyJa: "GBIF 側の取り込みは 2024年12月で実質途切れている（2025年1月に月8,750件→399件）。鳥類の2025年以降の減少はデータの都合であり、生きものの減少ではない。" },
   { key: "inatBackfill", severity: null, kind: "method_change", bodyJa: "iNaturalist 由来の 165,332 件は分類階級が空だったため、学名の先頭2語をキーに GBIF 側の分類を引き当てて補完している（96%が解決）。" },
   { key: "isAlien", severity: "blocking", kind: "known_error", bodyJa: "原本の is_alien フラグは同一種の中で 1 と 0 が混在し、オオクチバスやウシガエルが 0 件になるなど信頼できない。外来種の判定には環境省の生態系被害防止外来種リスト（taxa.ias_category）を学名で結合した結果を使っている。" },
+  { key: "landuseDefinitionChange", severity: null, kind: "definition_change", bodyJa: "土地利用の区分は2006年調査と2016年調査で定義が違う。2006年の「幹線交通用地」は2016年調査で「道路」「鉄道」に分割されており、同じ区分として比較できない。この2区分が2006年→2016年で全減・全増に見えるのは、実際の土地利用の変化ではなく調査区分の定義変更による見かけ上の増減である。" },
   { key: "measuredOn", severity: null, kind: null, bodyJa: "measurements.measured_on には「2015-04-08」形式（検体値・216,990行）と「2015」形式（年度集計値・98,328行）が混在する。年度集計値は日本の年度（4月〜翌3月）を指す。この画面では両者を kind で区別している。" },
   { key: "municipality", severity: null, kind: null, bodyJa: "sites.municipality は出典によって中身が違う。環境省 公共用水域の290地点では水域名（河川名・湖沼名）が入り、それ以外の62地点では市区町村名が入る。列名と中身が一致していないため、この画面では「水域・地域」と呼ぶ。" },
   { key: "organismSite", severity: null, kind: null, bodyJa: "生物レコードには site_id が無い（原本で全件 NULL）。流域への割り当ては緯度経度と国土数値情報 W12（1977年版）ポリゴンの点内包判定によるもので、原本の属性ではない。" },
@@ -207,6 +208,8 @@ export const GENERATED_CAVEAT_SCOPE: readonly GeneratedCaveatScope[] = [
   { scopeKind: "table", scopeRef: "event_observers", caveatKey: "synthetic", sortOrder: 0, priority: 1 },
   { scopeKind: "table", scopeRef: "ias_species", caveatKey: "isAlien", sortOrder: 0, priority: 0 },
   { scopeKind: "table", scopeRef: "interventions", caveatKey: "synthetic", sortOrder: 0, priority: 1 },
+  { scopeKind: "table", scopeRef: "landuse_change", caveatKey: "landuseDefinitionChange", sortOrder: 0, priority: 0 },
+  { scopeKind: "table", scopeRef: "landuse_watershed", caveatKey: "landuseDefinitionChange", sortOrder: 0, priority: 0 },
   { scopeKind: "table", scopeRef: "meas_clim", caveatKey: "measuredOn", sortOrder: 0, priority: 0 },
   { scopeKind: "table", scopeRef: "meas_clim", caveatKey: "censored", sortOrder: 1, priority: 0 },
   { scopeKind: "table", scopeRef: "meas_clim", caveatKey: "duplicates", sortOrder: 2, priority: 0 },

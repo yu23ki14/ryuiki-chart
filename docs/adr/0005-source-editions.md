@@ -3,6 +3,13 @@
 - 状態: 提案中 / 日付: 2026-09-06
 - 関連: ADR-0001（原本）, ADR-0004（識別子）, ADR-0013（caveat）
 
+**2026-09-24 追記（P-1b、`docs/plans/PHASE_B_LANDUSE.md`）**: 「同じ出典に
+複数版が同居する」の最初の実例が土地利用（国土数値情報 L03-b、2006年版/
+2016年版でコード体系が違う）で実際に起きた。正式な `source`/`source_edition`
+分割（Phase C）より前に、`registry/variable_alias.csv` の `dataset` 列を
+`<source>@<year>` の形にする暫定策で対応した（`docs/plans/PHASE_B_INTAKE.md`
+に接続点として記録。恒久設計ではない）。
+
 ## 背景
 
 `source_registry`（124行）は取得元・ライセンス・再配布可否・取得日・件数を持っており、

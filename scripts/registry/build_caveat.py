@@ -173,6 +173,13 @@ MESH_TABLES_EXTRA = ["species_mesh_year"]
 IAS_CAVEATS = ["isAlien"]
 IAS_TABLE = "ias_species"
 
+# P-1b（土地利用、docs/plans/PHASE_B_LANDUSE.md）。Phase A 以降で初めて足した
+# 新規の注記（registry/caveat.yaml 冒頭コメント参照）。scope は v1 の
+# landuse_watershed/landuse_change の2表——`caveats.ts` に対応物が無い
+# 新設テーブルなので、既存の add_table_group 呼び出しをそのまま真似た形で足す。
+LANDUSE_CAVEATS = ["landuseDefinitionChange"]
+LANDUSE_TABLES = ["landuse_watershed", "landuse_change"]
+
 SYNTHETIC_CAVEATS = ["synthetic"]
 SYNTHETIC_TABLES = [
     "observers",
@@ -233,6 +240,7 @@ def _build_table_scope_rows() -> list[tuple]:
     add_table_group([OCCURRENCE_PLACE_TABLE], OCCURRENCE_PLACE_CAVEATS)
     add_table_group(MESH_TABLES_EXTRA, MESH_CAVEATS)
     add_table_group([IAS_TABLE], IAS_CAVEATS)
+    add_table_group(LANDUSE_TABLES, LANDUSE_CAVEATS)
     add_table_group(SYNTHETIC_TABLES, SYNTHETIC_CAVEATS, priority=SYNTHETIC_PRIORITY)
 
     # mesh_ 接頭辞は個別テーブル名ではなくパターンなので table_prefix で1回だけ持つ。

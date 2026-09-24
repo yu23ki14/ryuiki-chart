@@ -377,7 +377,11 @@ def build_and_write_occurrence(
     source_regions.validate_source_regions_shape(source_regions_yaml)
     occurrence_period.validate_occurrence_period_shapes_shape(period_shapes_yaml)
 
-    sources, regions = source_regions.load_source_regions(source_regions_yaml)
+    # consumer="occurrence": P-1b で source_regions.yaml に土地利用
+    # （consumer="observation"）の宣言が同居するようになったため、b06 が
+    # 自分の使わない宣言を「未使用宣言」として誤検出しないように絞り込む
+    # （scripts/migrate/source_regions.py モジュール docstring「consumer」節）。
+    sources, regions = source_regions.load_source_regions(source_regions_yaml, consumer="occurrence")
     source_usage = period.EntryUsage(sources)
     region_usage = period.EntryUsage(regions)
     shapes = occurrence_period.load_period_shapes(period_shapes_yaml)

@@ -25,9 +25,13 @@
 `docs/plans/PHASE_B_TAXON_ASSESSMENT.md` 参照）で taxon/レッドリスト系3表を
 実データで通した（`redlist_map`/`redlist_change`: 一致2、宣言済み差分0。
 `ias_species` を含む13表の突合: 一致11、宣言済み差分のみ2〔既存の `org_norm`/
-`species2` の `cls` 1行——§6参照〕、不一致0）。
-**33テーブル中30テーブルが済み、残り3テーブルは未着手**
-作成: 2026-09-07 / 更新: 2026-09-23
+`species2` の `cls` 1行——§6参照〕、不一致0）。`phase-b/landuse`（P-1b、
+`scripts/b03_build_observation.py` に `_ingest_landuse` を追加し、既存の
+`v1_projection.sqlite` に `landuse_watershed`/`landuse_change` の2表を足した
+（`b04`/観測系9表は無変更）——§11参照）で土地利用2表を実データで通した
+（一致2、宣言済み差分0で完全一致。`--tolerance` は使わず一致した）。
+**33テーブル中32テーブルが済み、残り1テーブル（`watershed_rollup`）は未着手**
+作成: 2026-09-07 / 更新: 2026-09-24
 
 **このドキュメントが説明するのはゲートの仕組みと、実データで実行した結果（§6・宣言済み差分の節）。
 `observation`/`occurrence` の作成とキューブ本体の設計・実測は
@@ -432,9 +436,9 @@ v1 側を直すまで v2 のゲートが恒久的に赤いままになる。ADR-
   `phase-b/occurrence-watershed`（O-2a、§10参照。生物系はこれで12テーブル全て
   揃った）、`redlist_map`/`redlist_change`/`ias_species` は
   `phase-b/taxon-assessment`（P-2、`docs/plans/PHASE_B_TAXON_ASSESSMENT.md` 参照。
-  taxon/レッドリスト系はこれで3テーブル全て揃った）で済んだ。残り3テーブル
-  （`watershed_rollup`〔流域のロールアップ〕・`landuse_watershed`/`landuse_change`
-  〔土地利用、P-1b〕）はまだ縦線を通していない）
+  taxon/レッドリスト系はこれで3テーブル全て揃った）、`landuse_watershed`/
+  `landuse_change` は `phase-b/landuse`（P-1b、§11参照）で済んだ。残り1テーブル
+  （`watershed_rollup`〔流域のロールアップ〕）はまだ縦線を通していない）
 - `imputation='lod'` 併記（ADR-0009 決定4。今回は `zero` のみ）
 - 正準単位の併記（ADR-0023。方針は決定済みだが未実装）
 - Parquet 化（ADR-0001）
@@ -456,10 +460,11 @@ v1 側を直すまで v2 のゲートが恒久的に赤いままになる。ADR-
   `v1_projection.sqlite`（observation、11表）・`v1_projection_place.sqlite`
   （watershed_meta）・`v1_projection_documents.sqlite`（3表）・
   `v1_projection_occurrence.sqlite`（occurrence系13表）・
-  `v1_projection_taxon.sqlite`（2表）の5つに増えている。**ゲートの統合
-  （対応表を持って全ゲートをまとめて回す仕組み）は、残りの表（`watershed_rollup`・
-  `landuse_watershed`/`landuse_change`、P-1b）が終わった時点で、独立した1本の
-  PR として行う——この PR ではやらない。**）
+  `v1_projection_taxon.sqlite`（2表）の5つに増えている。`landuse_watershed`/
+  `landuse_change`（P-1b）は既存の `v1_projection.sqlite`（observation 系）に
+  足しただけなので、candidate ファイルの数自体は増えていない。**ゲートの統合
+  （対応表を持って全ゲートをまとめて回す仕組み）は、残りの表（`watershed_rollup`）
+  が終わった時点で、独立した1本の PR として行う——この PR ではやらない。**）
 
 ## 9. `watershed_meta`（`phase-b/place-attributes`、P-1a）
 
@@ -498,3 +503,36 @@ $ .venv/bin/python3 scripts/b02_derived_compare.py \
 `org_watershed`/`org_watershed_year` は宣言済み差分なしで完全一致（既存の
 「一致8+宣言済み差分のみ2」から「一致10+宣言済み差分のみ2」に増えた——
 新たに増えた宣言済み差分は0件）。
+
+## 11. `landuse_watershed`/`landuse_change`（`phase-b/landuse`、P-1b）
+
+既存の `v1_projection.sqlite`（observation 系11表）に2表を足した（新しい
+`b1x` スクリプト・新しい candidate ファイルは無し）。入力は `observation`/
+`observation_agg`——国土数値情報 L03-b 土地利用（流域別、2006/2016年版、
+`data/processed/nlni_l03b_landuse_by_watershed.csv`）を `scripts/
+b03_build_observation.py` の `_ingest_landuse`（3本目の取り込み）が
+`observation` に流し込み、`b04`（キューブ）は無変更で既存の出典配布の
+年次セル経路（`period_grain='year'`）をそのまま通る。設計・実測の詳細は
+[docs/plans/PHASE_B_LANDUSE.md](PHASE_B_LANDUSE.md)。
+
+```
+$ .venv/bin/python3 scripts/b02_derived_compare.py \
+    --candidate data/db/v1_projection.sqlite \
+    --tables meas_daily,meas_month,meas_year,meas_clim,site_var,var_catalog,sensor_daily,sensor_hour_month,rain_daily,zone_year,zone_clim,landuse_watershed,landuse_change
+一致: 7 / 宣言済み差分のみ: 6 / 不一致: 0（終了コード0）
+```
+
+`landuse_watershed`/`landuse_change` は宣言済み差分なしで完全一致（既存の
+「一致5+宣言済み差分のみ6」から「一致7+宣言済み差分のみ6」に増えた——新たに
+増えた宣言済み差分は0件）。`landuse_change.delta_km2` の合計は v1 でも
+厳密に0にならない（実測 `sum=-0.000020`、`derived_baseline.json`）が、
+`area_km2` の値そのものが CSV から observation・キューブを経て1ビットも
+変わらず運ばれるため、`delta_km2`（`SUM(CASE...)` の差）も v1 と完全一致し、
+`--tolerance` は使わなかった（実測: `max絶対差=0`、全数値列）。
+
+既存11表（`meas_*`/`site_var`/`var_catalog`/`sensor_*`/`zone_*`）の指紋
+（全列・全行を `ORDER BY` で正準化した sha256）は、土地利用を足す前後で
+1ビットも変わらない（`meas_daily=700094a0f8f2b...` 等、`phase-b/sensor-slice`
+以来の値と完全一致。`reconcile.common.compute_fingerprint` で
+`--source-regions-yaml`/`--landuse-csv` を空フィクスチャにした候補と実データの
+候補を突き合わせて確認した）。

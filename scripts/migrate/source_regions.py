@@ -1,13 +1,34 @@
-"""occurrence の region_id を出典（マニフェスト）から決める（`source_regions.yaml`。
+"""出典（マニフェスト）から region_id を決める（`source_regions.yaml`。
 ADR-0022 決定3・O-1 設計 v2 D1）。
 
-`scripts/b03_build_observation.py` は `place_source_ref(source_id='sites.site_id')` →
-`place.region_id` の経路で `observation.region_id` を決めている。occurrence は
-`place` が `grid01`（県境という概念を持たない機械グリッド）にしか解決できないため、
-同じ経路では region_id を決められない（ADR-0022 決定3が明記する既知の結合）。
-そこで occurrence だけは出典（`organism_records.source_id`）から直接 region_id を
+`scripts/b03_build_observation.py` の `measurements`/`sensor_timeseries` は
+`place_source_ref(source_id='sites.site_id')` → `place.region_id` の経路で
+`observation.region_id` を決めている。occurrence（grid01。県境という概念を
+持たない機械グリッド）や、P-1b で足した土地利用（watershed。common スコープ
+なので `place.region_id` は常に NULL）は、この経路では region_id を決められない
+（ADR-0022 決定3が明記する既知の結合）。そこでこの2つは出典
+（`organism_records.source_id`/CSV の `source_id`）から直接 region_id を
 決める——`scripts/migrate/period_exceptions.yaml`/`time_label_conventions.yaml` と
 同じ「宣言表 + 使用状況の追跡」の流儀（未知の出典・未使用宣言・件数不一致で止める）。
+
+## consumer（P-1b で追加）
+
+`source_regions.yaml` の `sources:` は複数の消費者（occurrence=
+`scripts/b06_build_occurrence.py`、observation=`scripts/b03_build_observation.py`）が
+同じファイルを共有する。各消費者は自分が使う出典だけを見たいが、
+`period.EntryUsage`／`declaration_problems()` は「宣言されているのに1件も
+使われなかったエントリ」を機械的に検出する仕組みを持つ——ある消費者が
+**他の消費者向けの宣言**まで見てしまうと、その宣言を自分が使わないことを
+「未使用宣言」の異常として誤検出してしまう。
+
+`load_source_regions(path, consumer=...)` の `consumer` 引数は、返す
+`sources`（と、それが参照する `regions` のうち実際に使われる分）を
+その消費者向けの宣言だけに絞り込む。`sources.<id>.consumer` を省略した
+エントリは `_DEFAULT_CONSUMER`（`"occurrence"`。最初の消費者だったため）
+として扱う——既存の宣言・既存のテストフィクスチャに `consumer` を書き足す
+義務を課さないための後方互換。`consumer=None`（既定）を渡した場合は
+絞り込みをしない（ファイル全体をそのまま返す。CI の構造検証や、
+消費者を問わない一覧が要る場面向け）。
 """
 from __future__ import annotations
 
@@ -22,6 +43,15 @@ DEFAULT_SOURCE_REGIONS_YAML = pathlib.Path(__file__).resolve().parent / "source_
 
 REQUIRED_SOURCE_KEYS = ("region_id", "expected_row_count", "evidence")
 REQUIRED_REGION_KEYS = ("utc_offset", "evidence")
+
+# `sources.<id>.consumer` の既定値（省略時）。occurrence が最初の消費者だった
+# ため、後方互換としてこれを既定にする（モジュール docstring「consumer」節）。
+_DEFAULT_CONSUMER = "occurrence"
+
+# `consumer` が取りうる値のコードリスト（`scripts/registry/build_unit_variable.py`
+# の `GRAIN_CODES`/`STAT_CODES` と同じ考え方——このリストに無い値が来たら
+# ビルドを落とす）。
+CONSUMER_CODES = frozenset({"occurrence", "observation"})
 
 # `'+09:00'`/`'-05:30'` の形だけを許す（コードレビュー指摘1）。`period._parse_utc_offset`
 # （時刻帯の扱いは `scripts/migrate/period.py` の `_strip_tz` の隣に集約。
@@ -59,22 +89,38 @@ class Region:
 
 def load_source_regions(
     path=DEFAULT_SOURCE_REGIONS_YAML,
+    consumer: str | None = None,
 ) -> tuple[dict[str, SourceRegion], dict[str, Region]]:
     """`(sources, regions)` を返す。`sources` の全 `region_id` が `regions` に
     宣言されていることと、`regions` の `utc_offset` が `UTC_OFFSET_PATTERN`
     に一致することをここで検証する（黙って `KeyError` や符号違いの値を通さない）。
+
+    `consumer` を渡すと、`sources` を `spec.get("consumer", _DEFAULT_CONSUMER)
+    == consumer` の行だけに絞り込み、`regions` もその絞り込んだ `sources` が
+    実際に参照する `region_id` だけに絞る（モジュール docstring「consumer」節）。
+    `consumer=None`（既定）なら絞り込まず、ファイル全体をそのまま返す
+    （呼び出し側で `EntryUsage` の対象を消費者ごとに正しく分けられるように
+    するための機能で、`consumer` を渡さない既存の呼び出し・既存のテストの
+    挙動は一切変えない）。
     """
     raw = load_yaml(path)
     sources_raw = raw.get("sources") or {}
     regions_raw = raw.get("regions") or {}
 
+    if consumer is not None:
+        sources_raw = {
+            source_id: spec
+            for source_id, spec in sources_raw.items()
+            if spec.get("consumer", _DEFAULT_CONSUMER) == consumer
+        }
+
     bad_offsets: list[tuple[str, str]] = []
-    regions: dict[str, Region] = {}
+    all_regions: dict[str, Region] = {}
     for region_id, spec in regions_raw.items():
         utc_offset = spec["utc_offset"]
         if not UTC_OFFSET_PATTERN.fullmatch(utc_offset):
             bad_offsets.append((region_id, utc_offset))
-        regions[region_id] = Region(
+        all_regions[region_id] = Region(
             region_id=region_id,
             utc_offset=utc_offset,
             evidence=spec.get("evidence", ""),
@@ -95,12 +141,22 @@ def load_source_regions(
         for source_id, spec in sources_raw.items()
     }
 
-    missing_regions = sorted({s.region_id for s in sources.values()} - set(regions))
+    missing_regions = sorted({s.region_id for s in sources.values()} - set(all_regions))
     if missing_regions:
         raise MigrationError(
             f"{path} の sources が参照する region_id が regions に宣言されていない: "
             f"{missing_regions}"
         )
+
+    if consumer is None:
+        regions = all_regions
+    else:
+        # 絞り込んだ sources が実際に参照する region だけに絞る——他の消費者
+        # 向けの region まで渡すと、この consumer の EntryUsage がそれを
+        # 「未使用宣言」として誤検出してしまう（モジュール docstring 参照）。
+        used_region_ids = {s.region_id for s in sources.values()}
+        regions = {rid: r for rid, r in all_regions.items() if rid in used_region_ids}
+
     return sources, regions
 
 
@@ -114,6 +170,10 @@ def validate_source_regions_shape(path=DEFAULT_SOURCE_REGIONS_YAML) -> None:
     必須キーが揃ったエントリ（`period.entries_with_required_keys()`）だけに
     行う——必須キー自体が欠けているエントリを二重に報告しないため
     （/simplify 指摘6）。
+
+    `consumer` は必須キーにしていない（省略時は `_DEFAULT_CONSUMER` として
+    扱う。後方互換）が、書かれているなら `CONSUMER_CODES` の値でなければ
+    ならない（推測で新しい消費者名を発明させない）。
     """
     raw = load_yaml(path)
     problems: list[str] = []
@@ -129,6 +189,11 @@ def validate_source_regions_shape(path=DEFAULT_SOURCE_REGIONS_YAML) -> None:
         count_problem = period.validate_expected_row_count(f"sources.{source_id}", spec)
         if count_problem:
             problems.append(count_problem)
+        if "consumer" in spec and spec["consumer"] not in CONSUMER_CODES:
+            problems.append(
+                f"sources.{source_id}.consumer が未知の値: {spec['consumer']!r}"
+                f"（コードリスト: {sorted(CONSUMER_CODES)}）"
+            )
 
     regions = raw.get("regions")
     if regions is None:
