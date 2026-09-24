@@ -531,7 +531,7 @@ def build_cube(
     conn,
     registry_db=DEFAULT_REGISTRY_DB,
     built_from: str = DEFAULT_BUILT_FROM,
-    spec_version: str = common.SPEC_VERSION,
+    spec_version: str = common.OBSERVATION_AGG_SPEC_VERSION,
 ) -> dict:
     """`conn`（`observation` を持つ読み書き可能な接続）に `observation_agg` を作る。
 

@@ -174,7 +174,7 @@ export const NAME_JA: Readonly<Record<string, string>> = {
  * （web/src/lib/ai/caveats.ts が今返しているキー文字列と同じ）。
  */
 export const GENERATED_CAVEATS: readonly GeneratedCaveat[] = [
-  { key: "censored", severity: "blocking", kind: "censoring", bodyJa: "全体の約24%は定量下限未満（原表記が「<0.5」など）。値の扱いは代入方式によって変わる（0とみなす方式／定量下限値とみなす方式）。折れ線では中抜きの点で示し、いずれの方式でも「0 が観測された」とは読まないこと。" },
+  { key: "censored", severity: "blocking", kind: "censoring", bodyJa: "全体の約24%は定量下限未満（原表記が「<0.5」など）。この画面の値は定量下限未満を 0 とみなして集計している。折れ線では中抜きの点で示し、「0 が観測された」とは読まないこと。" },
   { key: "duplicates", severity: null, kind: null, bodyJa: "同一の地点・日・項目に複数行あるのは、原本が採水時刻を落としているため。ここでは日ごとに平均して1点にまとめている。" },
   { key: "effort", severity: "blocking", kind: null, bodyJa: "生物観察の件数は観察努力（記録した人の数）に強く影響される。件数の増加をそのまま「生物が増えた」と読んではいけない。" },
   { key: "fishClass", severity: null, kind: "definition_change", bodyJa: "魚類は class 列に現れない（Actinopterygii が入っておらず空になっている）。門が Chordata で綱が空のものを魚類として扱っている。" },

@@ -482,7 +482,7 @@ def build_cube(
     conn: sqlite3.Connection,
     declarations_yaml=DEFAULT_DECLARATIONS_YAML,
     built_from: str = DEFAULT_BUILT_FROM,
-    spec_version: str = common.SPEC_VERSION,
+    spec_version: str = common.OCCURRENCE_SPEC_VERSION,
 ) -> dict:
     """`conn`（`occurrence` を持つ読み書き可能な接続）に `occurrence_agg` を作る。
 
