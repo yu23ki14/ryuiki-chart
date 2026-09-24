@@ -407,6 +407,13 @@ b02自身の終了コード**0**、内訳は§6/§6.1と完全に同一
 `.venv/bin/python3 -m pytest scripts/tests` で**500件全緑**
 （Round 2の499件＋今回追加した1件）。
 
+**古いSQLite・原本の無い環境**（`git clone`で一時ディレクトリに複製、
+Python 3.10.12・SQLite 3.37.2の新規venvを`requirements.txt`だけで構築）も
+再実行し、**396件pass・104件skip（バージョンゲートの対象）・失敗0**
+（396+104=500で全件を説明できる）、`r01 --files-only`成功（`variable_alias.
+note`短縮分だけ指紋が変わる。構造検証には影響しない）、CI相当の宣言ファイル
+構造検証（`source_regions.yaml`含む全8ファイル）すべてOKだった。
+
 ## 7. 既知の負債・未決
 
 - **`n_cells`/面積の`variable`命名**（`landuse.<slug>`/`landuse.<slug>
