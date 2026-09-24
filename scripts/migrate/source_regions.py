@@ -29,6 +29,15 @@ ADR-0022 決定3・O-1 設計 v2 D1）。
 義務を課さないための後方互換。`consumer=None`（既定）を渡した場合は
 絞り込みをしない（ファイル全体をそのまま返す。CI の構造検証や、
 消費者を問わない一覧が要る場面向け）。
+
+**「どの sources からも参照されない region」の検査は consumer で絞らない**
+（コードレビュー指摘3）。`sources` を consumer で絞り込むと、ある consumer の
+視点からは「参照していない region」がその consumer 自身の未使用宣言としては
+見えるが、**全 consumer をまたいで一度も参照されない孤児の region**は、
+どの consumer の呼び出しからも「自分の担当外」として素通りされ、検出する
+経路が無くなってしまう。そのため、この検査だけは常に**絞り込み前の全
+`sources`** に対して行う——`consumer` を指定した呼び出しでも、指定しない
+呼び出しでも同じ孤児が同じように検出される。
 """
 from __future__ import annotations
 
@@ -107,13 +116,6 @@ def load_source_regions(
     sources_raw = raw.get("sources") or {}
     regions_raw = raw.get("regions") or {}
 
-    if consumer is not None:
-        sources_raw = {
-            source_id: spec
-            for source_id, spec in sources_raw.items()
-            if spec.get("consumer", _DEFAULT_CONSUMER) == consumer
-        }
-
     bad_offsets: list[tuple[str, str]] = []
     all_regions: dict[str, Region] = {}
     for region_id, spec in regions_raw.items():
@@ -131,7 +133,9 @@ def load_source_regions(
             f"（'+HH:MM'/'-HH:MM' のみ対応）: {bad_offsets}"
         )
 
-    sources: dict[str, SourceRegion] = {
+    # consumer で絞る前の全 sources（missing_regions・孤児 region の検査は
+    # 常にこちらに対して行う。モジュール docstring 参照）。
+    all_sources: dict[str, SourceRegion] = {
         source_id: SourceRegion(
             source_id=source_id,
             region_id=spec["region_id"],
@@ -141,19 +145,37 @@ def load_source_regions(
         for source_id, spec in sources_raw.items()
     }
 
-    missing_regions = sorted({s.region_id for s in sources.values()} - set(all_regions))
+    missing_regions = sorted({s.region_id for s in all_sources.values()} - set(all_regions))
     if missing_regions:
         raise MigrationError(
             f"{path} の sources が参照する region_id が regions に宣言されていない: "
             f"{missing_regions}"
         )
 
+    # 孤児の region（宣言されているが、どの consumer の sources からも
+    # 参照されない）を全体に対して検査する（コードレビュー指摘3）。
+    region_ids_used_by_any_source = {s.region_id for s in all_sources.values()}
+    orphan_regions = sorted(set(all_regions) - region_ids_used_by_any_source)
+    if orphan_regions:
+        raise MigrationError(
+            f"{path} の regions に、どの sources からも参照されていないエントリがある: "
+            f"{orphan_regions}"
+        )
+
     if consumer is None:
+        sources = all_sources
         regions = all_regions
     else:
+        sources = {
+            source_id: s
+            for source_id, s in all_sources.items()
+            if sources_raw[source_id].get("consumer", _DEFAULT_CONSUMER) == consumer
+        }
         # 絞り込んだ sources が実際に参照する region だけに絞る——他の消費者
         # 向けの region まで渡すと、この consumer の EntryUsage がそれを
         # 「未使用宣言」として誤検出してしまう（モジュール docstring 参照）。
+        # 孤児の検査自体は上で全体に対してすでに済んでいるので、ここでの
+        # 絞り込みは EntryUsage の対象範囲を分けるためだけのもの。
         used_region_ids = {s.region_id for s in sources.values()}
         regions = {rid: r for rid, r in all_regions.items() if rid in used_region_ids}
 

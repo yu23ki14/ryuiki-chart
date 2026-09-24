@@ -525,11 +525,17 @@ def _load_landuse_alias_map(work: sqlite3.Connection) -> dict[tuple[str, str, st
     """`(dataset, alias, source_id) -> (variable_id, unit_id, stat, grain)` を返す
     （`dataset` が `f"{LANDUSE_SOURCE_ID}@"` で始まる行だけ。P-1b オーナー決定2:
     土地利用は2006/2016でコード体系が違うため `dataset` を版付きにしてある）。
+
+    前方一致は `substr(dataset, 1, ?) = ?` で取る（`LIKE` は `_` を1文字
+    ワイルドカードとして解釈してしまい、`LANDUSE_SOURCE_ID` に含まれる
+    アンダースコアが誤って任意の1文字にマッチしうるため使わない。
+    コードレビュー指摘7）。
     """
+    prefix = f"{LANDUSE_SOURCE_ID}@"
     rows = work.execute(
         "SELECT dataset, alias, source_id, variable_id, unit_id, stat, grain "
-        "FROM reg.variable_alias WHERE dataset LIKE ?",
-        (f"{LANDUSE_SOURCE_ID}@%",),
+        "FROM reg.variable_alias WHERE substr(dataset, 1, ?) = ?",
+        (len(prefix), prefix),
     ).fetchall()
     return {
         (dataset, alias, source_id): (variable_id, unit_id, stat, grain)
@@ -576,11 +582,24 @@ def _ingest_landuse(
     1行だけの問題ではなく構造的な設定不足なので、`_process_row` と違って
     per-row の集計を経由せず即座に `UnknownSourceRegionError` で止まる
     （`scripts/b06_build_occurrence.py` の `_ingest` と同じ判断）。
+
+    重複の検査は `(watershed_id, data_year, landuse_code_raw, 種別)` という
+    **業務キー**で行う（`source_row_id`——CSV の行番号由来——は行ごとに
+    必ず一意になるため、それを鍵にした重複検査は原理的に発火しない。
+    コードレビュー指摘2）。この業務キーが重複している行が黙って通ると、
+    キューブ（b04）が同じ次元キーの2つの値を平均してしまい、`n_cells`
+    （INTEGER）は丸め・切り捨てまで起きる——気づかれない値の破損になる。
+
+    `value_grain` は各指標（面積・セル数）の `variable_alias` の宣言値を
+    そのまま `period.compute_period()` に渡す（`"year"` を直書きしない。
+    コードレビュー指摘6）——`value_grain` と `measured_on` の桁数が矛盾する
+    行を検出する既存の仕組み（`period_exceptions.yaml`）が、土地利用でも
+    他の2出典と同じように機能するようにするため。
     """
     stats = _empty_stats(LANDUSE_SOURCE_ID)
     watershed_place = _load_watershed_place_lookup(work)
     alias_map = _load_landuse_alias_map(work)
-    seen_ids: set[str] = set()
+    seen_business_keys: set[tuple] = set()
 
     def rows():
         with open(csv_path, encoding="utf-8", newline="") as f:
@@ -619,9 +638,6 @@ def _ingest_landuse(
                         stats["unresolved_alias_sample"].append((row_number, dataset, missing_alias, source_id))
                     continue
 
-                period_grain, period_start, period_end = period.compute_period(
-                    data_year, "year", source_id, exceptions, usage,
-                )
                 source_ref = row["source_ref"]
 
                 for suffix, entry, value_str in (
@@ -629,13 +645,28 @@ def _ingest_landuse(
                     ("n_cells", ncells_entry, row["n_cells"]),
                 ):
                     variable_id, unit_id, obs_stat, value_grain = entry
-                    source_row_id = f"{row_number}:{suffix}"
-                    if source_row_id in seen_ids:
+
+                    business_key = (watershed_id, data_year, code, suffix)
+                    if business_key in seen_business_keys:
                         stats["dup_ids_count"] += 1
                         if len(stats["dup_ids_sample"]) < _SAMPLE_LIMIT:
-                            stats["dup_ids_sample"].append(source_row_id)
+                            stats["dup_ids_sample"].append(business_key)
                         continue
-                    seen_ids.add(source_row_id)
+                    seen_business_keys.add(business_key)
+
+                    try:
+                        period_grain, period_start, period_end = period.compute_period(
+                            data_year, value_grain, source_id, exceptions, usage,
+                        )
+                    except period.PeriodMismatchError:
+                        stats["period_mismatch_count"] += 1
+                        if len(stats["period_mismatch_sample"]) < _SAMPLE_LIMIT:
+                            stats["period_mismatch_sample"].append(
+                                (row_number, source_id, data_year, value_grain)
+                            )
+                        continue
+
+                    source_row_id = f"{row_number}:{suffix}"
                     stats["n_observation"] += 1
                     yield (
                         LANDUSE_SOURCE_ID, source_row_id, region_id, place_id, place_kind,
@@ -655,8 +686,8 @@ def build_and_write_observation(
     exceptions_yaml=DEFAULT_EXCEPTIONS_YAML,
     time_conventions_yaml=DEFAULT_TIME_LABEL_CONVENTIONS_YAML,
     out_path=DEFAULT_OUT,
-    source_regions_yaml=None,
-    landuse_csv=None,
+    source_regions_yaml=DEFAULT_SOURCE_REGIONS_YAML,
+    landuse_csv=DEFAULT_LANDUSE_CSV,
 ) -> dict[str, dict]:
     """`observation` を構築し、`out_path` の `observation` テーブルに書き込む
     （`out_path` の他のテーブルは触らない。モジュール docstring 参照）。
@@ -668,20 +699,14 @@ def build_and_write_observation(
     `migrate.common.staged_table` の `with` ブロックの中で行うため、失敗すれば
     本番の `observation` には一切触れずに終わる。
 
-    `source_regions_yaml`/`landuse_csv` の既定は `None`（呼び出し側で
-    `DEFAULT_SOURCE_REGIONS_YAML`/`DEFAULT_LANDUSE_CSV` をここで解決する）。
-    直接デフォルト値にせず、モジュールレベル変数への遅延参照にしてある
-    ——`scripts/tests/test_b03_build_observation.py` の既存テスト（P-1b より
-    前に書かれ、この2引数を渡さない）が `monkeypatch.setattr(b03,
-    "DEFAULT_LANDUSE_CSV", ...)` でこの既定を差し替えられるようにするため
-    （関数定義時に束縛される素のデフォルト引数だと、インポート後の
-    monkeypatch が効かない）。
+    `source_regions_yaml`/`landuse_csv` は他の3引数（`exceptions_yaml` 等）と
+    同じ、素のデフォルト引数（`main()` が明示的に渡す値と同じ既定値）。
+    テストで既定を差し替えたい場合は monkeypatch ではなく、呼び出し側が
+    明示的にこの2引数を渡すこと（`scripts/tests/migrate_fixtures.py` の
+    `build_observation()` を使う——コードレビュー指摘10: 以前は `None` 番兵に
+    してテストからの monkeypatch を前提にした設計だったが、本番の `main()`
+    はこの2引数を常に明示的に渡すため、その経路が実質テストされていなかった）。
     """
-    if source_regions_yaml is None:
-        source_regions_yaml = DEFAULT_SOURCE_REGIONS_YAML
-    if landuse_csv is None:
-        landuse_csv = DEFAULT_LANDUSE_CSV
-
     exceptions = period.load_period_exceptions(exceptions_yaml)
     usage = period.PeriodExceptionUsage(exceptions)
     time_conventions = period.load_time_label_conventions(time_conventions_yaml)
@@ -817,10 +842,23 @@ def render_report(all_stats: dict[str, dict]) -> str:
         "`docs/plans/PHASE_B_LANDUSE.md`（土地利用の縦線）参照。"
     )
     a("")
+    # コードレビュー指摘12: 「入力総行数」と「observation 総行数」は、以前は
+    # 2つの見出しの数だけを並べていたため、土地利用（CSVの1行→面積・セル数の
+    # 2 observation 行）を足した後は「一目で一致するはずの数」に見えなくなった
+    # （measurements/sensor_timeseries は 1 入力行→高々1 observation 行のまま
+    # だが、土地利用だけ 1→2 になるため、全体の合計同士は単純には一致しない）。
+    # 出典ごとの内訳をここに明示し、「土地利用は CSV行数 × 2」という関係を
+    # 見出しの時点で分かるようにする。
     total = sum(s["total"] for s in all_stats.values())
     total_obs = sum(s["n_observation"] for s in all_stats.values())
+    breakdown = ", ".join(
+        f"{source_table}={stats['total']:,}→{stats['n_observation']:,}"
+        for source_table, stats in sorted(all_stats.items())
+    )
     a(f"- 入力（`measurements`+`sensor_timeseries`+土地利用CSV）総行数: **{total:,}**")
-    a(f"- `observation` 総行数: **{total_obs:,}**")
+    a(f"- `observation` 総行数: **{total_obs:,}**（出典ごとの 入力行数→observation行数: {breakdown}。"
+      "土地利用だけ CSV の1行が面積・セル数の2 observation 行になるため、"
+      "入力行数と observation 行数が1:1にならない）")
     a("")
 
     for source_table in ("measurements", "sensor_timeseries", LANDUSE_SOURCE_ID):

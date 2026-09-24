@@ -216,6 +216,39 @@ def test_source_region_expected_row_count_mismatch_raises(tmp_path):
         _build(tmp_path, source_regions_text=text)
 
 
+def test_b06_succeeds_when_source_regions_yaml_also_has_landuse_declarations(tmp_path):
+    """P-1b コードレビュー指摘8: `source_regions.yaml` に土地利用
+    （consumer='observation'）の宣言が同居していても、b06（consumer で
+    'occurrence' だけに絞り込む）は「使っていない宣言」として誤検出せず
+    成功する（`consumer` 省略時の既定が 'occurrence' の occurrence 側2件は
+    そのまま検証され、observation 側の1件は無視される）。
+    """
+    text = (
+        "sources:\n"
+        "  gbif_kanagawa_occurrences:\n"
+        "    region_id: jp-14\n"
+        "    consumer: occurrence\n"
+        "    expected_row_count: 11\n"
+        "    evidence: テスト用\n"
+        "  inaturalist_kanagawa:\n"
+        "    region_id: jp-14\n"
+        "    consumer: occurrence\n"
+        "    expected_row_count: 1\n"
+        "    evidence: テスト用\n"
+        "  nlni_l03b_landuse_by_watershed:\n"  # b06 は使わない（consumer=observation）
+        "    region_id: jp-14\n"
+        "    consumer: observation\n"
+        "    expected_row_count: 4858\n"
+        "    evidence: テスト用\n"
+        "regions:\n"
+        "  jp-14:\n"
+        "    utc_offset: \"+09:00\"\n"
+        "    evidence: テスト用\n"
+    )
+    stats, _out = _build(tmp_path, source_regions_text=text)  # 例外を投げなければ良い
+    assert stats["total"] == len(DEFAULT_ORGANISM_RECORDS)
+
+
 def test_period_shapes_yaml_missing_one_shape_raises(tmp_path):
     """コードレビュー指摘4: `occurrence_period_shapes.yaml` の形の名前が
     コードの12形と過不足なく一致しないと即座に止まる（データの中身を見る前）。"""

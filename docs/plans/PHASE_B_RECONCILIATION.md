@@ -530,6 +530,17 @@ $ .venv/bin/python3 scripts/b02_derived_compare.py \
 変わらず運ばれるため、`delta_km2`（`SUM(CASE...)` の差）も v1 と完全一致し、
 `--tolerance` は使わなかった（実測: `max絶対差=0`、全数値列）。
 
+**値の一致（b02 の数値比較）と storage class の一致は別物**（コードレビュー
+指摘5）。`landuse_change` の `km2_2006`/`km2_2016`/`delta_km2` は v1 が
+`CREATE TABLE ... AS SELECT`（型無し宣言）で作っているため、該当年に区分が
+無い（`SUM(CASE...ELSE 0)` が整数リテラル 0 だけを合計する）行は `typeof()`
+が `integer` になる——`REAL` と型を宣言すると INSERT 時に強制変換されて
+storage class が v1 とずれる。`_CREATE_SQL["landuse_change"]` も型を宣言
+しない形に直し、`typeof()` を実測で突き合わせた: `km2_2006`（v1/候補とも
+integer 506・real 2398）・`km2_2016`（同 integer 444・real 2460）・
+`delta_km2`（同 real 2904）——2,904行全件で一致（不一致0件）。詳細は
+`docs/plans/PHASE_B_LANDUSE.md` §6。
+
 既存11表（`meas_*`/`site_var`/`var_catalog`/`sensor_*`/`zone_*`）の指紋
 （全列・全行を `ORDER BY` で正準化した sha256）は、土地利用を足す前後で
 1ビットも変わらない（`meas_daily=700094a0f8f2b...` 等、`phase-b/sensor-slice`

@@ -208,63 +208,82 @@ watershed版）と、年版ごとの`landuse_alias_lookup_{year}`（`_alias_look
 | v1形テーブル数 | 11 | 13 | +2 |
 | v1形テーブル行数合計 | 753,629 | 761,391 | +7,762（`landuse_watershed`4,858 + `landuse_change`2,904） |
 
-## 6. 受け入れ結果（実測）
+## 6. 受け入れ結果（実測。/code-review 12件の反映後に5系統のゲートを再実行）
 
-1. **突合ゲート**: `b02_derived_compare.py --candidate data/db/v1_projection.sqlite
-   --tables meas_daily,meas_month,meas_year,meas_clim,site_var,var_catalog,
-   sensor_daily,sensor_hour_month,rain_daily,zone_year,zone_clim,
-   landuse_watershed,landuse_change` → **終了コード0、一致7 / 宣言済み差分
-   のみ6 / 不一致0**（宣言済み差分は既存の18キーのまま、増減0）。
-   `landuse_watershed`/`landuse_change`はどちらも**完全一致**（全数値列
-   `max絶対差=0`）——`--tolerance`は使わなかった。`delta_km2`の合計が
-   v1でも厳密に0にならない（`sum=-0.000020`）のは**入力データそのものの
-   性質**（2006年版と2016年版で測量方法が異なることに由来する実測値の
-   食い違いで、集計順序による丸め誤差ではない）であり、CSVの値を
-   bit-for-bitのまま運ぶ設計（`observation.value_num` ← `float(area_km2)`、
-   キューブのAVG/MIN/MAXはn=1の自明な集計）なら、v1と同じ浮動小数点値を
-   同じ順序で再現でき、`--tolerance`が要らなかった。
-2. **既存11表が1ビットも変わらない**: `reconcile.common.compute_fingerprint`
-   で、`--source-regions-yaml`/`--landuse-csv`を空フィクスチャにした
-   候補（土地利用なし）と実データの候補（土地利用あり）の全11表を
-   正準化sha256で突き合わせ、**全表で完全一致**を確認した（§詳細は
-   `PHASE_B_RECONCILIATION.md` §11）。`observation`の総行数も
-   1,041,003（測定+センサー）で変わらないことを確認済み。
-3. **occurrence系13表・watershed_meta・文書3表・レッドリスト2表のゲート**:
-   本タスクでコードを変更したのは`scripts/b06_build_occurrence.py`の
-   1箇所（`load_source_regions`の呼び出しに`consumer="occurrence"`を
-   明示）のみで、`b07`/`b08`/`b09`/`b10`/`b11`/`b12`は無変更。実データで
-   `b06`を再実行し、`occurrence`が823,692行（変更前と同じ）で、
-   `observation`/`observation_agg`（土地利用あり）と同じ`v2.sqlite`に
-   問題なく同居することを確認した。`b07`〜`b12`は本タスクでは再実行して
-   いない（コード無変更・入力〔registry.sqlite の place/taxon/
-   taxon_assessment、cells.sqlite、ryuiki.sqlite〕も無変更のため、
-   出力が変わる経路が無いと判断した——**未実施の再実行は既知の負債として
-   §7に記載**）。
-4. **r01のfull buildと`--check-fresh`**: 実データで実行し、どちらも成功
-   （`registry: 111 variables / 200 variable_alias / 222 caveat`）。
+1. **observation系13表**: `b02_derived_compare.py --candidate
+   data/db/v1_projection.sqlite --tables meas_daily,meas_month,meas_year,
+   meas_clim,site_var,var_catalog,sensor_daily,sensor_hour_month,rain_daily,
+   zone_year,zone_clim,landuse_watershed,landuse_change` →
+   **b02自身の終了コード0**（パイプを経由せず直接確認）、**一致7 / 宣言済み
+   差分のみ6 / 不一致0**（宣言済み差分は既存の18キーのまま、増減0）。
+2. **occurrence系13表**: `b08`（`b06→b09→b07→b08`の順で実データを再実行）
+   → `--candidate data/db/v1_projection_occurrence.sqlite --tables
+   org_norm,org_group_year,effort_year,species2,species_year2,species_month,
+   mesh_year,mesh_all,mesh_species,species_mesh_year,org_watershed,
+   org_watershed_year,ias_species` → **終了コード0、一致11 / 宣言済み差分
+   のみ2 / 不一致0**（既存の宣言のまま）。
+3. **文書3表**: `b10` → `--candidate data/db/v1_projection_documents.sqlite
+   --tables doc_series,doc_series_meta,quality_monthly` →
+   **終了コード0、一致3**。
+4. **watershed_meta**: `b11` → `--candidate data/db/v1_projection_place.sqlite
+   --tables watershed_meta` → **終了コード0、一致1**。
+5. **レッドリスト2表**: `b12` → `--candidate data/db/v1_projection_taxon.sqlite
+   --tables redlist_map,redlist_change` → **終了コード0、一致2**。
+6. **`landuse_watershed`/`landuse_change`は値もstorage classもv1と完全一致**:
+   `PRAGMA table_info`の宣言型は両テーブルとも v1 と1列ずつ完全一致（`landuse_
+   change`の`km2_2006`/`km2_2016`/`delta_km2`は**型を宣言しない**——v1が
+   `CREATE TABLE ... AS SELECT`〔型無し宣言〕で作っているため。REALと宣言
+   すると INSERT 時に強制変換され、storage classがv1とずれる、というのが
+   `/code-review` 指摘5。`scripts/b05_project_v1.py`の`_CREATE_SQL
+   ["landuse_change"]`のコメント参照）。**値の一致**
+   （b02が見る数値比較。`typeof()`の違いは吸収して比較する）と**storage
+   classの一致**は別の検証で、後者は`typeof()`を直接比較した:
+   `km2_2006`（v1: integer 506 / real 2398、候補: 同じ）・`km2_2016`
+   （v1: integer 444 / real 2460、候補: 同じ）・`delta_km2`（v1/候補とも
+   real 2904）——**2,904行全件で`typeof()`が一致**（JOINして直接比較、
+   不一致0件）。`km2_2006`/`km2_2016`のinteger行は「その年に該当区分の
+   行が1件も無いため`SUM(CASE...ELSE 0)`が整数リテラルの0だけを合計する」
+   ケース（§1決定6・§2）。`--tolerance`は使わず、数値・storage classとも
+   完全一致した。
+7. **既存11表・occurrence13表・文書3表・watershed_meta・レッドリスト2表の
+   値は正準化sha256で完全一致**: 観測系11表は
+   `reconcile.common.compute_fingerprint`で「土地利用なし」候補（`--source-
+   regions-yaml`/`--landuse-csv`を空フィクスチャにして再実行）と「土地利用
+   あり」候補を突き合わせ、**全11表で完全一致**（`meas_daily=
+   700094a0f8f2b...`等、`phase-b/sensor-slice`以来の値とも一致）。
+   occurrence13表・文書3表・watershed_meta・レッドリスト2表は、
+   `/code-review`対応で`scripts/b06_build_occurrence.py`の`consumer=
+   "occurrence"`明示以外のコード変更が無いこと（`b07`/`b08`/`b09`/`b10`/
+   `b11`/`b12`は無変更）を確認したうえで、上記1〜5の各ゲートが**v1
+   （`derived.sqlite`）と行レベルで完全一致**することを実データで確認した
+   ——b02の「一致」判定自体が正準化sha256での行レベル比較であり、v1と
+   一致していれば「変更前のこのタスクの状態」とも一致している。
+8. **r01のfull buildと`--check-fresh`**: 実データで実行し、どちらも成功
+   （`registry: 111 variables / 200 variable_alias / 222 caveat`。
+   `--files-only`でも同じ111/200/15〔cells.notes分を除く〕）。
    `web/scripts/build-registry-ts.mjs`で`generated.ts`/`generated-client.ts`
    を再生成し、diffが意図どおり（26変数・46 alias・1 caveat・2
    caveat_scopeの追加のみ、既存行は1行も変わらず）であることを確認した。
    `web/src/lib/registry/generated.test.ts`のハードコード件数
-   （`caveat`14→15）と`web/src/lib/ai/caveats.test.ts`のインライン
-   スナップショットを更新し、`pnpm test`で71件全緑を確認した。
-5. **pytest全緑**: `.venv/bin/python3 -m pytest scripts/tests`で
-   **485件全緑**（既存475件＋本タスクで足した10件〔b03側7件・b05側3件〕）。
-   `--check-fresh`同様、古いSQLiteのpython・原本の無い環境については
-   §7参照（本タスクでは個別に再検証していない——既存の仕組み
-   〔`require_sqlite_version()`・`r01 --files-only`〕をそのまま使うだけで、
-   このタスクが変えた範囲に影響しないため）。
-6. **b03/b04/b05の実行時間**: §5参照。
+   （`caveat`14→15）・`web/src/lib/ai/caveats.test.ts`のインライン
+   スナップショット・`web/src/lib/ai/prompt.ts`の`CaveatKey`網羅チェック
+   （`satisfies Record<CaveatKey, true>`、新規caveatキーの追加漏れを
+   コンパイル時に検出——実際にここで検出して直した）を更新し、
+   `pnpm test`（71件）・`pnpm exec tsc --noEmit`・`pnpm run lint`
+   （既存の無関係な警告3件のみ、エラー0）で確認した。
+9. **pytest全緑**: `.venv/bin/python3 -m pytest scripts/tests`で
+   **499件全緑**（既存475件＋本タスクで足した24件）。
+10. **古いSQLite・原本の無い環境**: `git clone`で一時ディレクトリに複製し、
+    Python 3.10.12（本機に3.13が無かったため。SQLite同梱バージョンは
+    3.37.2で`MIN_SQLITE_VERSION`〔3.43〕未満——「古いSQLite」と「原本
+    無し」を同時に検証できた）のフレッシュvenv（`requirements.txt`のみ）で
+    実行し、**384件pass・101件skip（バージョンゲートの対象）・失敗0**、
+    `r01 --files-only`成功、CI相当の宣言ファイル構造検証（`source_regions.
+    yaml`含む）すべてOK、`generated.ts`の`git diff --exit-code`も0。
+11. **b03/b04/b05の実行時間**: §5参照（`/code-review`対応後も有意差なし）。
 
 ## 7. 既知の負債・未決
 
-- **b07〜b12の実データ再実行は本タスクでは行っていない**（§6-3参照）。
-  コード・入力とも無変更なので出力は変わらないはずだが、機械的な確認は
-  していない。次にこれらの縦線を触るPRで、通しの再実行を一度行っておく
-  ことが望ましい。
-- **古いSQLite・原本の無い環境での個別検証は本タスクでは行っていない**
-  （§6-5参照）。既存のCI・`require_sqlite_version()`の仕組みを変えて
-  いないため実害は無いと判断したが、明示的な確認ではない。
 - **`n_cells`/面積の`variable`命名**（`landuse.<slug>`/`landuse.<slug>
   _n_cells`という接尾辞規則、`alias`の`"<code>:area_km2"`/`"<code>:n_cells"`
   という区切り文字規則）は、この実装で新規に決めた命名規則であり、
@@ -273,3 +292,8 @@ watershed版）と、年版ごとの`landuse_alias_lookup_{year}`（`_alias_look
   パターンは、`docs/plans/PHASE_B_INTAKE.md`に暫定の接続点として記録
   した**（ADR-0005が「同じ出典に複数版が同居する」ケースの正式な設計を
   Phase C まで持ち越しているため、恒久的な設計ではない）。
+- **`source_regions.yaml`の`consumer`は必須キーにしていない**（省略時は
+  後方互換のため`occurrence`扱い。`validate_source_regions_shape`は
+  書かれている場合だけ`CONSUMER_CODES`の値を強制する）。3つ目の消費者を
+  足す人が`consumer`を書き忘れると、既定の`occurrence`に紛れ込む——
+  YAMLのヘッダで明示的に警告しているが、機械的には強制していない。

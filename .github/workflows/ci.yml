@@ -25,9 +25,12 @@ name: CI
 #     - scripts/migrate/period_exceptions.yaml が読めて、各エントリが
 #       period_grain_override/expected_row_count/reason/restoration_plan を持つこと
 #       （`migrate.period.validate_period_exceptions_shape`）。
-#     - scripts/migrate/source_regions.yaml（O-1a。出典→region、region→utc_offset）が
-#       読めて、各エントリが必須キーを持ち、utc_offset が `^[+-][0-9]{2}:[0-9]{2}$`
-#       の形で、expected_row_count が整数であること
+#     - scripts/migrate/source_regions.yaml（出典→region、region→utc_offset。
+#       consumer ごとに複数のスクリプトが共有する——occurrence
+#       〔scripts/b06_build_occurrence.py、O-1a〕と土地利用
+#       〔scripts/b03_build_observation.py、P-1b〕）が読めて、各エントリが
+#       必須キーを持ち、utc_offset が `^[+-][0-9]{2}:[0-9]{2}$` の形で、
+#       expected_row_count が整数であること
 #       （`migrate.source_regions.validate_source_regions_shape`）。
 #     - scripts/migrate/occurrence_period_shapes.yaml（O-1a。observed_on の12形の宣言。
 #       形の定義自体——正規表現・period_grain・展開規則——はコード
@@ -252,8 +255,11 @@ jobs:
           conventions = period.load_time_label_conventions(conventions_path)
           print(f"OK: {conventions_path}（{len(conventions)}件の宣言）")
 
-          # source_regions.yaml / occurrence_period_shapes.yaml（O-1a。
-          # scripts/b06_build_occurrence.py が読む）も同じ流儀で検証する。
+          # source_regions.yaml（occurrence〔scripts/b06_build_occurrence.py〕と
+          # 土地利用〔scripts/b03_build_observation.py、P-1b〕が consumer ごとに
+          # 共有。ここでは consumer を指定せずファイル全体を検証する）/
+          # occurrence_period_shapes.yaml（O-1a。scripts/b06_build_occurrence.py
+          # が読む）も同じ流儀で検証する。
           source_regions_path = pathlib.Path("scripts/migrate/source_regions.yaml")
           source_regions.validate_source_regions_shape(source_regions_path)
           sources, regions = source_regions.load_source_regions(source_regions_path)

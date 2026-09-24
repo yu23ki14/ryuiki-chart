@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import sqlite3
 
+import b03_build_observation as b03  # scripts/ が sys.path にある前提（scripts/tests/__init__.py 参照）
+
 # 既定の2地点×2変数（水質っぽい1変数・気温っぽい1変数）。alias/place は全行解決する
 # 「正常系」のベースライン。個々のテストはこれを土台に、崩したい部分だけ差し替える。
 DEFAULT_MEASUREMENTS = [
@@ -310,6 +312,54 @@ def make_landuse_source_regions_yaml(path, text: str | None = None) -> None:
     """
     path.write_text(
         text if text is not None else DEFAULT_LANDUSE_SOURCE_REGIONS_YAML_TEXT, encoding="utf-8"
+    )
+
+
+def make_landuse_registry_db(registry_db) -> None:
+    """土地利用（面積・セル数）を検証するテスト用の registry フィクスチャ
+    （`test_b03_build_observation.py`・`test_b05_project_v1.py` の両方が使う
+    共通ヘルパ。コードレビュー指摘9: 以前は2ファイルにほぼ同じ関数が
+    重複して定義され、しかも `variables` の中身が食い違っていた
+    ——b03 側は `DEFAULT_LANDUSE_VARIABLES` のみ、b05 側は
+    `DEFAULT_VARIABLES + DEFAULT_LANDUSE_VARIABLES`。後者（より実データに
+    近い、base の4変数も含む形）を正として統合した。`_ingest_landuse`
+    （b03）自体は `variable` テーブルを読まないため、b03 側のテストの
+    挙動はどちらの `variables` でも変わらない）。
+    """
+    make_registry_db(
+        registry_db,
+        aliases=DEFAULT_ALIASES + DEFAULT_LANDUSE_ALIASES,
+        places=DEFAULT_PLACES + DEFAULT_WATERSHED_PLACES,
+        place_refs=DEFAULT_PLACE_REFS + DEFAULT_WATERSHED_PLACE_REFS,
+        variables=DEFAULT_VARIABLES + DEFAULT_LANDUSE_VARIABLES,
+    )
+
+
+def build_observation(
+    tmp_path, measurements_db, registry_db, exceptions_yaml, time_conventions_yaml, out,
+    *, landuse_csv_rows=None, source_regions_yaml_text=None,
+):
+    """`b03.build_and_write_observation` を、P-1b の土地利用2引数
+    （`source_regions_yaml`/`landuse_csv`）を明示的に補って呼ぶ共通ヘルパ
+    （`test_b03_build_observation.py`・`test_b05_project_v1.py` の両方が使う。
+    コードレビュー指摘9・10）。
+
+    `landuse_csv_rows`/`source_regions_yaml_text` を渡さなければ「土地利用
+    0行」の空フィクスチャを使う——土地利用を検証しない既存のテストは
+    そのまま動く。本番の `main()` と同じ「明示的に渡す」経路をテストでも
+    通す（`build_and_write_observation` の既定値を monkeypatch で差し替える
+    設計はやめた。理由はそちらの docstring 参照）。
+    """
+    landuse_csv = tmp_path / "_landuse.csv"
+    make_landuse_csv(landuse_csv, rows=landuse_csv_rows if landuse_csv_rows is not None else [])
+    source_regions_yaml = tmp_path / "_source_regions.yaml"
+    make_landuse_source_regions_yaml(
+        source_regions_yaml,
+        text=source_regions_yaml_text if source_regions_yaml_text is not None else "sources: {}\nregions: {}\n",
+    )
+    return b03.build_and_write_observation(
+        measurements_db, registry_db, exceptions_yaml, time_conventions_yaml, out,
+        source_regions_yaml, landuse_csv,
     )
 
 

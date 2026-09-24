@@ -3,7 +3,7 @@
 `scripts/b03_build_observation.py` が `data/db/ryuiki.sqlite` の `measurements`・`sensor_timeseries` と `data/processed/nlni_l03b_landuse_by_watershed.csv`（土地利用、P-1b）から `data/db/v2.sqlite` の `observation` を作った結果の要約。設計判断は `docs/plans/PHASE_B_FACT_SLICE.md`（measurements の縦線）と「センサーの縦線 設計 v2」オーナー決定・関連 ADR（`docs/adr/0023-*`・`0024-*`）、`docs/plans/PHASE_B_LANDUSE.md`（土地利用の縦線）参照。
 
 - 入力（`measurements`+`sensor_timeseries`+土地利用CSV）総行数: **1,045,861**
-- `observation` 総行数: **1,050,719**
+- `observation` 総行数: **1,050,719**（出典ごとの 入力行数→observation行数: measurements=323,164→323,164, nlni_l03b_landuse_by_watershed=4,858→9,716, sensor_timeseries=717,839→717,839。土地利用だけ CSV の1行が面積・セル数の2 observation 行になるため、入力行数と observation 行数が1:1にならない）
 
 ## 出典: `measurements`
 

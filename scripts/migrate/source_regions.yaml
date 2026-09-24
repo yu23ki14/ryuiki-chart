@@ -1,10 +1,19 @@
-# occurrence（organism_records）の region_id を出典（マニフェスト）から決める宣言
-# （scripts/migrate/source_regions.py が読む。ADR-0022 決定3・O-1 設計 v2 D1）。
+# 出典（マニフェスト）から region_id を決める宣言（scripts/migrate/
+# source_regions.py が読む。ADR-0022 決定3・O-1 設計 v2 D1）。
+# consumer（下記）ごとに複数のスクリプトがこの同じファイルを共有する
+# ——occurrence（organism_records、scripts/b06_build_occurrence.py）が最初の
+# 消費者、土地利用（observation、scripts/b03_build_observation.py）が2番目
+# （P-1b）。**新しい出典を足す人へ: `sources.<id>.consumer` を必ず明示する
+# こと**（省略時は後方互換のため 'occurrence' として扱われる——2番目以降の
+# 消費者の出典に書き忘れると、その消費者からは永遠に「宣言されていない
+# 出典」として `UnknownSourceRegionError` になるか、occurrence 側からは
+# 逆に「未使用宣言」として誤検出されるかのどちらかになる）。
 #
-# occurrence は `place`（grid01。県境という概念を持たない機械グリッド）経由では
-# region_id を決められない（ADR-0022 決定3が明記する「既知の結合」）。そこで
-# ADR-0012 のマニフェストが本来持つべき `region:` 欄を、この宣言ファイルとして
-# 先に実装する（マニフェスト本体は Phase C）。
+# occurrence は `place`（grid01。県境という概念を持たない機械グリッド）
+# 経由では、土地利用は `place`（watershed。common スコープ）経由では、
+# それぞれ region_id を決められない（ADR-0022 決定3が明記する「既知の
+# 結合」）。そこで ADR-0012 のマニフェストが本来持つべき `region:` 欄を、
+# この宣言ファイルとして先に実装する（マニフェスト本体は Phase C）。
 #
 # sources: <出典の source_id> -> region_id。未知の source_id・
 #   宣言はあるが1行も現れなかった source_id（未使用宣言）・実測件数が

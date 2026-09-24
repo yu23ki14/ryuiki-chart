@@ -104,6 +104,170 @@ def test_utc_offset_pattern_matches_examples():
 
 
 # ---------------------------------------------------------------------------
+# 孤児の region（コードレビュー指摘3）: 消費者で絞っても検査は全体に効くこと
+# ---------------------------------------------------------------------------
+
+def test_orphan_region_raises_without_consumer(tmp_path):
+    """どの sources からも参照されない region は `consumer` を渡さない
+    呼び出しでも検出される。"""
+    yaml_path = tmp_path / "source_regions.yaml"
+    yaml_path.write_text(
+        "sources:\n"
+        "  src_a:\n"
+        "    region_id: jp-14\n"
+        "    expected_row_count: 1\n"
+        "    evidence: テスト\n"
+        "regions:\n"
+        "  jp-14:\n"
+        "    utc_offset: \"+09:00\"\n"
+        "    evidence: テスト\n"
+        "  jp-99:\n"  # どの source からも参照されない孤児
+        "    utc_offset: \"+09:00\"\n"
+        "    evidence: テスト\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(sr.MigrationError, match="jp-99"):
+        sr.load_source_regions(yaml_path)
+
+
+def test_orphan_region_raises_even_when_consumer_filters_sources(tmp_path):
+    """`consumer` で sources を絞り込んでも、孤児 region の検査は絞り込み前の
+    全 sources に対して行われる——ある consumer には無関係な孤児でも検出する
+    （P-1b コードレビュー指摘3: 消費者ごとに regions まで絞ると、どの
+    consumer からも孤児が見えなくなって検査が空振りする、という回帰）。
+    """
+    yaml_path = tmp_path / "source_regions.yaml"
+    yaml_path.write_text(
+        "sources:\n"
+        "  occ_src:\n"
+        "    region_id: jp-14\n"
+        "    consumer: occurrence\n"
+        "    expected_row_count: 1\n"
+        "    evidence: テスト\n"
+        "regions:\n"
+        "  jp-14:\n"
+        "    utc_offset: \"+09:00\"\n"
+        "    evidence: テスト\n"
+        "  jp-99:\n"  # occurrence からは無関係で、observation の sources も無い孤児
+        "    utc_offset: \"+09:00\"\n"
+        "    evidence: テスト\n",
+        encoding="utf-8",
+    )
+    # consumer="occurrence" で呼んでも、consumer="observation" で呼んでも、
+    # consumer 無指定で呼んでも、同じ孤児が検出される。
+    for consumer in (None, "occurrence", "observation"):
+        with pytest.raises(sr.MigrationError, match="jp-99"):
+            sr.load_source_regions(yaml_path, consumer=consumer)
+
+
+def test_no_orphan_region_when_all_referenced_across_consumers(tmp_path):
+    """複数の consumer にまたがれば region が「参照されている」と判定される
+    （孤児ではない）ことの正常系。"""
+    yaml_path = tmp_path / "source_regions.yaml"
+    yaml_path.write_text(
+        "sources:\n"
+        "  occ_src:\n"
+        "    region_id: jp-14\n"
+        "    consumer: occurrence\n"
+        "    expected_row_count: 1\n"
+        "    evidence: テスト\n"
+        "  obs_src:\n"
+        "    region_id: jp-99\n"
+        "    consumer: observation\n"
+        "    expected_row_count: 1\n"
+        "    evidence: テスト\n"
+        "regions:\n"
+        "  jp-14:\n"
+        "    utc_offset: \"+09:00\"\n"
+        "    evidence: テスト\n"
+        "  jp-99:\n"
+        "    utc_offset: \"+09:00\"\n"
+        "    evidence: テスト\n",
+        encoding="utf-8",
+    )
+    sources, regions = sr.load_source_regions(yaml_path)  # 例外を投げなければ良い
+    assert set(sources) == {"occ_src", "obs_src"}
+    assert set(regions) == {"jp-14", "jp-99"}
+
+
+# ---------------------------------------------------------------------------
+# consumer による絞り込み（P-1b）
+# ---------------------------------------------------------------------------
+
+_CONSUMER_SPLIT_YAML_TEXT = (
+    "sources:\n"
+    "  occ_src:\n"
+    "    region_id: jp-14\n"
+    "    consumer: occurrence\n"
+    "    expected_row_count: 1\n"
+    "    evidence: テスト\n"
+    "  obs_src_default:\n"  # consumer 省略 → 既定で occurrence 扱い
+    "    region_id: jp-14\n"
+    "    expected_row_count: 1\n"
+    "    evidence: テスト\n"
+    "  landuse_src:\n"
+    "    region_id: jp-99\n"
+    "    consumer: observation\n"
+    "    expected_row_count: 1\n"
+    "    evidence: テスト\n"
+    "regions:\n"
+    "  jp-14:\n"
+    "    utc_offset: \"+09:00\"\n"
+    "    evidence: テスト\n"
+    "  jp-99:\n"
+    "    utc_offset: \"+09:00\"\n"
+    "    evidence: テスト\n"
+)
+
+
+def test_consumer_none_returns_everything_unfiltered(tmp_path):
+    yaml_path = tmp_path / "source_regions.yaml"
+    yaml_path.write_text(_CONSUMER_SPLIT_YAML_TEXT, encoding="utf-8")
+    sources, regions = sr.load_source_regions(yaml_path)
+    assert set(sources) == {"occ_src", "obs_src_default", "landuse_src"}
+    assert set(regions) == {"jp-14", "jp-99"}
+
+
+def test_consumer_occurrence_includes_entries_with_omitted_consumer(tmp_path):
+    """`consumer` 省略時の既定値が `occurrence` であることの直接のテスト
+    （後方互換。コードレビュー指摘8）。"""
+    yaml_path = tmp_path / "source_regions.yaml"
+    yaml_path.write_text(_CONSUMER_SPLIT_YAML_TEXT, encoding="utf-8")
+    sources, regions = sr.load_source_regions(yaml_path, consumer="occurrence")
+    assert set(sources) == {"occ_src", "obs_src_default"}
+    assert set(regions) == {"jp-14"}
+
+
+def test_consumer_observation_excludes_occurrence_entries(tmp_path):
+    yaml_path = tmp_path / "source_regions.yaml"
+    yaml_path.write_text(_CONSUMER_SPLIT_YAML_TEXT, encoding="utf-8")
+    sources, regions = sr.load_source_regions(yaml_path, consumer="observation")
+    assert set(sources) == {"landuse_src"}
+    assert set(regions) == {"jp-99"}
+
+
+def test_validate_source_regions_shape_rejects_unknown_consumer(tmp_path):
+    """`consumer` に `CONSUMER_CODES` 外の値があれば構造検証で落ちる
+    （コードレビュー指摘8）。"""
+    yaml_path = tmp_path / "source_regions.yaml"
+    yaml_path.write_text(
+        "sources:\n"
+        "  src_a:\n"
+        "    region_id: jp-14\n"
+        "    consumer: bogus\n"
+        "    expected_row_count: 1\n"
+        "    evidence: テスト\n"
+        "regions:\n"
+        "  jp-14:\n"
+        "    utc_offset: \"+09:00\"\n"
+        "    evidence: テスト\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(sr.MigrationError, match="bogus"):
+        sr.validate_source_regions_shape(yaml_path)
+
+
+# ---------------------------------------------------------------------------
 # validate_source_regions_shape（CI の構造検証。原本DBを必要としない）
 # ---------------------------------------------------------------------------
 
