@@ -350,13 +350,47 @@ def test_load_destinations_category_counts_match_the_declared_breakdown():
 
 def test_load_projection_manifest_rejects_entry_without_script_or_tables(tmp_path):
     """`load_projection_manifest` は candidate ファイルごとの値が
-    `{script, tables}` を持つマッピングになっていることだけを検証する
-    （`load_expected_diffs` が「宣言のリストになっているか」だけ検証するのと
-    同じ、形だけの薄い検証）。
+    `{script, tables}` を持つマッピングになっていることを検証する。
     """
     bad = tmp_path / "bad_manifest.yaml"
     bad.write_text("v1_projection.sqlite:\n  tables: [meas_daily]\n", encoding="utf-8")
     with pytest.raises(SystemExit, match="script/tables を持つマッピング"):
+        common.load_projection_manifest(bad)
+
+
+def test_load_projection_manifest_missing_file_raises_clearly(tmp_path):
+    """`--manifest` の打ち間違いで存在しないパスを渡したときは、
+    `load_yaml` の「無ければ空を返す」に頼らず、そう言って明示的に止まる
+    （コードレビュー指摘: 黙って `{}` を返すと『33表と一致しない』という
+    無関係なエラーに化けて原因が分かりにくい）。
+    """
+    missing = tmp_path / "does-not-exist.yaml"
+    with pytest.raises(SystemExit, match=r"does-not-exist\.yaml.*無い"):
+        common.load_projection_manifest(missing)
+
+
+def test_load_projection_manifest_rejects_tables_with_no_value(tmp_path):
+    """`tables:`（値が無い、YAML では `None`）だと `flatten_projection_manifest`
+    の `for table in spec["tables"]` が生の `TypeError` になる——ここで
+    弾いて分かるメッセージにする（コードレビュー指摘）。
+    """
+    bad = tmp_path / "bad_manifest.yaml"
+    bad.write_text("v1_projection.sqlite:\n  script: scripts/b05_project_v1.py\n  tables:\n", encoding="utf-8")
+    with pytest.raises(SystemExit, match="tables"):
+        common.load_projection_manifest(bad)
+
+
+def test_load_projection_manifest_rejects_tables_as_a_bare_string(tmp_path):
+    """`tables: meas_daily`（リストではなく1つの文字列）だと
+    `for table in "meas_daily"` が1文字ずつ回ってしまう——ここで弾く
+    （コードレビュー指摘）。
+    """
+    bad = tmp_path / "bad_manifest.yaml"
+    bad.write_text(
+        "v1_projection.sqlite:\n  script: scripts/b05_project_v1.py\n  tables: meas_daily\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(SystemExit, match="tables"):
         common.load_projection_manifest(bad)
 
 

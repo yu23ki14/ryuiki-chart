@@ -45,16 +45,45 @@ b05）の4つの射影出力を読み取り専用で ATTACH して結合する�
 「型を宣言すると INSERT 時に強制変換されて storage class が v1 とずれる」を
 CTAS で丸ごと回避する）。
 
-検証（`_validate_registry()`・`_assert_rollup_prerequisites()`。どちらも出力
-ファイルに一切触れない）が全部通ってから `common.fresh_sqlite(out_path)` で
-書き出す。設計根拠（`INSERT ... SELECT` を1文にする理由・列名を明示する理由・
+検証（`_validate_registry()`・`_assert_rollup_prerequisites()`・
+`_assert_out_path_distinct_from_inputs()`・`_assert_no_stale_watershed_or_site_ids()`。
+どれも出力ファイルに一切触れない）が全部通ってから `common.fresh_sqlite(out_path)`
+で書き出す。設計根拠（`INSERT ... SELECT` を1文にする理由・列名を明示する理由・
 検証と書き込みを分ける理由）は `docs/plans/PHASE_B_PLACE_ATTRIBUTES.md` §6・§10
 参照（ここでは再掲しない）。`common.fresh_sqlite` 自体が原本を誤って消せる問題は
 P-3 側の PR の担当（このブランチでは触れない）。
+
+## コードレビュー対応（`/code-review` 15件のうち b11 分）
+
+- **site_watershed_lookup の一意性検査を `_validate_registry()` へ移した**
+  （指摘1）。以前は `build_projections()` の中、`common.fresh_sqlite(out_path)`
+  の後にあり、失敗すると前回の正しい出力が消えたまま中途半端な状態が残って
+  いた（docstring が約束する不変条件に反していた）。
+- **`common.require_sqlite_version()` を呼ぶ**（指摘2）。`watershed_rollup` の
+  土地利用の相関サブクエリが `SUM(area_km2)` を6つ使うため、`b04`/`b05`/
+  `b07`/`b08`/`b10` と同じ理由で古い SQLite（3.43未満）を拒む。
+- **`site_var`/`landuse_watershed`/`org_watershed` の古さを検査する**
+  （指摘4、`_assert_no_stale_watershed_or_site_ids`）。古い出力（別の
+  `registry.sqlite` に対して作られたもの）を渡すと、該当する流域/地点が
+  `LEFT JOIN`・相関サブクエリで黙って 0/減少して現れる——`_assert_rollup_
+  prerequisites`（テーブルの有無だけ見る）では検出できない壊れ方。実データ
+  では0件（PR 説明参照）。
+- **`--out` が入力2つ（`v1_projection_db`/`v1_projection_occurrence_db`）と
+  同じ実体でないことを確認する**（指摘15、`_assert_out_path_distinct_
+  from_inputs`）。`--out data/db/v1_projection.sqlite` のように渡すと、
+  `fresh_sqlite` が b05 の出力を消してから ATTACH に失敗し、正しい出力が
+  失われていた。
+- **未使用の `CREATE UNIQUE INDEX site_watershed_lookup_site_id` を削除した**
+  （指摘13）。`site_n`/`site_var_n` の相関サブクエリはどちらも `watershed_id`
+  で絞っており、`site_id` の索引は実測で参照されない（一意性は指摘1の検査が
+  担保する）。
+- `_existing_tables` を `scripts/migrate/common.py` の `existing_tables`
+  （`scripts/b08_project_occurrence_v1.py` と共通化）に寄せた（指摘12）。
 """
 from __future__ import annotations
 
 import argparse
+import os
 import pathlib
 import sqlite3
 import sys
@@ -129,8 +158,14 @@ _WATERSHED_ROLLUP_COLUMNS = (
 # ゾーンと違い、watershed 側は独立した「sites.watershed」名前空間の
 # place_source_ref を持たない——`watershed_meta.watershed_id` の逆引きをそのまま
 # 親側の解決に使う。docs/plans/PHASE_B_PLACE_ATTRIBUTES.md §10-7参照）。
-_CREATE_SITE_WATERSHED_LOOKUP_SQL = """
-CREATE TEMP TABLE site_watershed_lookup AS
+#
+# 裸の SELECT（`FROM`/`JOIN` 部分だけ）として持ち、`_validate_registry()`
+# （一意性の検証。`reg` だけを ATTACH した読み取り専用の一時コネクション）と
+# `build_projections()`（実際に `CREATE TEMP TABLE` する書き込み用コネクション）
+# の両方から同じ1つの定義を参照する（コードレビュー指摘: 以前はこの一意性検査が
+# `fresh_sqlite` の**後**にあり、失敗すると前回の正しい出力が消えたまま
+# 中途半端な状態が残っていた）。
+_SITE_WATERSHED_LOOKUP_SELECT_SQL = """
 SELECT site_ref.external_key AS site_id, watershed_ref.external_key AS watershed_id
 FROM reg.place_relation pr
 JOIN reg.place_source_ref site_ref
@@ -139,6 +174,10 @@ JOIN reg.place_source_ref watershed_ref
   ON watershed_ref.place_id = pr.parent_id AND watershed_ref.source_id = 'watershed_meta.watershed_id'
 WHERE pr.relation = 'within'
 """
+
+_CREATE_SITE_WATERSHED_LOOKUP_SQL = (
+    f"CREATE TEMP TABLE site_watershed_lookup AS {_SITE_WATERSHED_LOOKUP_SELECT_SQL}"
+)
 
 
 def _duplicate_site_watershed_message(dup: list) -> str:
@@ -258,19 +297,21 @@ def _validate_registry(registry_db) -> None:
                 "registry.sqlite を作り直すこと。"
             ),
         )
+        # site_watershed_lookup（watershed_rollup の site_n/site_var_n が使う）の
+        # 一意性を、出力ファイルに触れる前にここで確かめる（コードレビュー指摘1:
+        # 以前はこの検査が `common.fresh_sqlite(out_path)` の**後**にあり、
+        # 失敗すると前回の正しい出力が消えたまま中途半端な状態が残っていた。
+        # `place_relation`/`place_source_ref` の存在は直前で確認済みなので、
+        # ここで安全に `_SITE_WATERSHED_LOOKUP_SELECT_SQL` を実行できる）。
+        common.raise_on_group_by_duplicates(
+            work,
+            f"SELECT site_id, COUNT(*) AS n FROM ({_SITE_WATERSHED_LOOKUP_SELECT_SQL}) "
+            "GROUP BY site_id HAVING COUNT(*) > 1 LIMIT 5",
+            (),
+            _duplicate_site_watershed_message,
+        )
     finally:
         work.close()
-
-
-def _existing_tables(db_path) -> set[str]:
-    """`db_path`（sqlite ファイル）が持つテーブル名の集合を読み取り専用で返す。"""
-    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-    try:
-        return {
-            r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
-        }
-    finally:
-        conn.close()
 
 
 def _assert_rollup_prerequisites(v1_projection_db, v1_projection_occurrence_db) -> None:
@@ -287,7 +328,9 @@ def _assert_rollup_prerequisites(v1_projection_db, v1_projection_occurrence_db) 
             f"{proj_path} が無い。watershed_rollup（site_var/landuse_watershed を読む）の"
             "ために先に scripts/b05_project_v1.py を実行すること。"
         )
-    missing_proj = [t for t in ("site_var", "landuse_watershed") if t not in _existing_tables(proj_path)]
+    missing_proj = [
+        t for t in ("site_var", "landuse_watershed") if t not in common.existing_tables(proj_path)
+    ]
     if missing_proj:
         names = "・".join(f"`{t}`" for t in missing_proj)
         raise common.MigrationError(
@@ -302,11 +345,113 @@ def _assert_rollup_prerequisites(v1_projection_db, v1_projection_occurrence_db) 
             "scripts/b08_project_occurrence_v1.py を実行すること"
             "（実行順は b06 → b09 → b07 → b08）。"
         )
-    if "org_watershed" not in _existing_tables(occ_path):
+    if "org_watershed" not in common.existing_tables(occ_path):
         raise common.MigrationError(
             f"{occ_path} に `org_watershed` テーブルが無い。先に "
             "scripts/b08_project_occurrence_v1.py を実行すること。"
         )
+
+
+def _assert_out_path_distinct_from_inputs(out_path, v1_projection_db, v1_projection_occurrence_db) -> None:
+    """`--out` が `v1_projection_db`/`v1_projection_occurrence_db`（b11 が
+    ATTACH で読む2つの入力）と同じ実体を指していないことを、symlink を解決
+    した実パス（`os.path.realpath`）で確認する（コードレビュー指摘15）。
+
+    `common.fresh_sqlite(out_path)` は `out_path` を検証より前に即座に消す
+    ため、`--out data/db/v1_projection.sqlite` のように入力の1つと同じパスを
+    渡すと、b05 の出力を消してから ATTACH に失敗する——前回の正しい出力
+    （v1_projection.sqlite）が復元できない形で失われる、この検証群の中で
+    唯一「他スクリプトの正しい出力を壊す」壊れ方。`common.reject_protected_source_db`
+    が原本3つ（ryuiki/cells/derived）を保護するのと同じ考え方だが、こちらは
+    このスクリプトが新たに ATTACH する2つの入力を保護する。
+    """
+    out_real = os.path.realpath(str(out_path))
+    inputs = {
+        "v1_projection_db（scripts/b05_project_v1.py の出力）": v1_projection_db,
+        "v1_projection_occurrence_db（scripts/b08_project_occurrence_v1.py の出力）": (
+            v1_projection_occurrence_db
+        ),
+    }
+    for label, path in inputs.items():
+        if os.path.realpath(str(path)) == out_real:
+            raise common.MigrationError(
+                f"--out（{out_path}）が入力 {label}（{path}）と同じ実体を指している。"
+                "このまま実行すると common.fresh_sqlite が入力を消してから ATTACH に"
+                "失敗し、b05/b08 の正しい出力が失われる。--out に別のパスを指定すること。"
+            )
+
+
+# 地点/流域IDの「古さ」検査（コードレビュー指摘4。scripts/b08_project_occurrence_v1.py
+# の `_assert_no_stale_taxon_ids` と同じ流儀）: `site_var`/`landuse_watershed`
+# （b05）・`org_watershed`（b08）が「今の registry.sqlite」に対して作られたもの
+# であることを確認する。古いままだと、該当する流域/地点が watershed_rollup の
+# LEFT JOIN・相関サブクエリで**黙って** 0/減少して現れる（org_n=0 になる、
+# site_var_n が実際より少なくなる等）——行数は変わらないので `_assert_rollup_
+# prerequisites`（テーブルの有無だけを見る）では検出できない。
+_STALE_ID_REBUILD_GUIDANCE = {
+    "site_var": "scripts/b05_project_v1.py",
+    "landuse_watershed": "scripts/b05_project_v1.py",
+    "org_watershed": "scripts/b08_project_occurrence_v1.py（実行順は b06 → b09 → b07 → b08）",
+}
+
+
+def _stale_id_count_sql(table_ref: str, id_column: str, source_id: str) -> str:
+    """`table_ref`（ATTACH 済みのテーブル、例 `'proj.landuse_watershed'`）の
+    `id_column`（distinct・NOT NULL）のうち、現在の registry の
+    `place_source_ref(source_id=<source_id>)` に無い値の件数を数える SQL
+    （`scripts/b08_project_occurrence_v1.py` の `_stale_taxon_count_sql` と
+    同じ、LEFT JOIN で不一致を数える形）。
+    """
+    return f"""
+    SELECT COUNT(*) FROM (
+      SELECT DISTINCT {id_column} AS id FROM {table_ref} WHERE {id_column} IS NOT NULL
+    ) d
+    LEFT JOIN reg.place_source_ref ref
+      ON ref.external_key = d.id AND ref.source_id = '{source_id}'
+    WHERE ref.external_key IS NULL
+    """
+
+
+def _assert_no_stale_ids(conn, *, table_ref: str, id_column: str, source_id: str, context: str) -> None:
+    stale = conn.execute(_stale_id_count_sql(table_ref, id_column, source_id)).fetchone()[0]
+    if stale:
+        rebuild = _STALE_ID_REBUILD_GUIDANCE[context]
+        raise common.MigrationError(
+            f"{table_ref}.{id_column} に、今の registry.sqlite の "
+            f"place_source_ref(source_id='{source_id}') に無い値が{stale}件ある"
+            f"（{table_ref} が構築された後に registry.sqlite が入れ替わった疑いがある）。"
+            f"同じ registry.sqlite で {rebuild} を再実行してから watershed_rollup を"
+            "作り直すこと。"
+        )
+
+
+def _assert_no_stale_watershed_or_site_ids(
+    registry_db, v1_projection_db, v1_projection_occurrence_db
+) -> None:
+    """`site_var`/`landuse_watershed`（b05）・`org_watershed`（b08）の
+    site_id/watershed_id が、今の `registry.sqlite` に実在することを
+    確かめる（コードレビュー指摘4）。出力ファイルには一切触れない読み取り
+    専用の一時コネクションで、書き込みの前に確かめる。
+    """
+    work = sqlite3.connect(":memory:", uri=True)
+    try:
+        common.attach_readonly(work, registry_db, "reg")
+        common.attach_readonly(work, v1_projection_db, "proj")
+        common.attach_readonly(work, v1_projection_occurrence_db, "occ")
+        _assert_no_stale_ids(
+            work, table_ref="proj.site_var", id_column="site_id",
+            source_id="sites.site_id", context="site_var",
+        )
+        _assert_no_stale_ids(
+            work, table_ref="proj.landuse_watershed", id_column="watershed_id",
+            source_id="watershed_meta.watershed_id", context="landuse_watershed",
+        )
+        _assert_no_stale_ids(
+            work, table_ref="occ.org_watershed", id_column="watershed_id",
+            source_id="watershed_meta.watershed_id", context="org_watershed",
+        )
+    finally:
+        work.close()
 
 
 def build_projections(
@@ -320,11 +465,24 @@ def build_projections(
     してから `data/db/v1_projection_place.sqlite` に `watershed_meta`・
     `watershed_rollup` を書き、テーブルごとの行数を返す（ログ表示用）。
 
+    `watershed_rollup` は `SUM(area_km2)` を6つ使う（土地利用の相関サブクエリ）
+    ため、先頭で `common.require_sqlite_version()` を呼ぶ（コードレビュー
+    指摘2。`scripts/b04_build_cube.py`/`scripts/b05_project_v1.py` 等と同じ
+    位置・同じ理由。モジュール読み込み時点では呼ばない——古い環境で `import`
+    した瞬間に落ちて `pytest` の収集自体が止まる事故を避ける）。
+
     検証が1つでも失敗すれば `out_path` には一切触れない（前回の正しい出力が
-    残る。モジュール docstring参照）。
+    残る。モジュール docstring参照）。`_validate_registry`/
+    `_assert_rollup_prerequisites`/`_assert_out_path_distinct_from_inputs`/
+    `_assert_no_stale_watershed_or_site_ids` はどれも出力ファイルに一切
+    触れない読み取り専用の検証で、`common.fresh_sqlite(out_path)`（既存の
+    出力を即座に消す）より前にすべて終える。
     """
+    common.require_sqlite_version()
     _validate_registry(registry_db)
     _assert_rollup_prerequisites(v1_projection_db, v1_projection_occurrence_db)
+    _assert_out_path_distinct_from_inputs(out_path, v1_projection_db, v1_projection_occurrence_db)
+    _assert_no_stale_watershed_or_site_ids(registry_db, v1_projection_db, v1_projection_occurrence_db)
 
     work = common.fresh_sqlite(out_path)
     try:
@@ -335,17 +493,11 @@ def build_projections(
         work.execute(_CREATE_WATERSHED_META_SQL)
         work.execute(_INSERT_WATERSHED_META_SQL)
 
+        # site_watershed_lookup の一意性は _validate_registry() で検証済み
+        # （コードレビュー指摘1）。CREATE UNIQUE INDEX は無い——2つの相関
+        # サブクエリ（site_n/site_var_n）はどちらも watershed_id で絞るので
+        # site_id の索引は実測で参照されない（コードレビュー指摘13）。
         work.execute(_CREATE_SITE_WATERSHED_LOOKUP_SQL)
-        common.raise_on_group_by_duplicates(
-            work,
-            "SELECT site_id, COUNT(*) AS n FROM site_watershed_lookup "
-            "GROUP BY site_id HAVING n > 1 LIMIT 5",
-            (),
-            _duplicate_site_watershed_message,
-        )
-        work.execute(
-            "CREATE UNIQUE INDEX site_watershed_lookup_site_id ON site_watershed_lookup (site_id)"
-        )
 
         work.execute(_CREATE_WATERSHED_ROLLUP_SQL)
 

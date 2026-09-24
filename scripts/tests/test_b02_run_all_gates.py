@@ -16,7 +16,10 @@ import json
 import subprocess
 import sys
 
+import pytest
+
 import b01_derived_baseline as b01
+import b02_run_all_gates as run_all
 
 from .fixtures import dump_all_tables_as_json, make_fixture_db
 
@@ -264,3 +267,143 @@ def test_declared_diffs_only_table_does_not_count_as_mismatch(tmp_path):
     assert result.returncode == 0, result.stdout + result.stderr
     assert "宣言済み差分のみ: 1" in result.stdout
     assert "一致: 1" in result.stdout
+
+
+def test_multiple_missing_candidate_files_are_all_named_at_once(tmp_path):
+    """candidate ファイルが2つとも無ければ、1つ目が見つからない時点で止まる
+    のではなく、比較を1件も始める前に両方まとめて（`script` 付きで）1回の
+    エラーで示す（コードレビュー指摘5: 以前は比較ループの中で1つずつ確かめて
+    おり、既に終えた分の比較〔完全モードで実測1分超〕が無駄になっていた）。
+    """
+    db_path, baseline_json, _ = _make_baseline(tmp_path)
+    dump = dump_all_tables_as_json(db_path)
+    data_dir = _write_split_candidates(tmp_path, dump)
+    (data_dir / "cand_a.json").unlink()
+    (data_dir / "cand_b.json").unlink()
+    manifest = _write_manifest(tmp_path)
+    out_md = tmp_path / "all.md"
+
+    result = _run_cli(baseline_json, db_path, manifest, data_dir, out_md)
+
+    assert result.returncode != 0
+    combined = result.stdout + result.stderr
+    assert "scripts/fake_a.py" in combined
+    assert "scripts/fake_b.py" in combined
+    assert "2件無い" in combined
+    assert not out_md.exists()
+
+
+def test_missing_table_within_an_existing_candidate_file_names_its_script(tmp_path):
+    """candidate ファイル自体はあるが、manifest が言うテーブルの一部を
+    持たない（古い candidate。`missing_in_candidate` になる、表だけ足りない
+    壊れ方）場合、レポートにそのテーブルを作る射影スクリプト名が出る
+    （コードレビュー指摘3: 以前はファイルが無い場合だけ名指ししていた。
+    表だけ足りない方が起きやすい壊れ方だと指摘された）。
+    """
+    db_path, baseline_json, _ = _make_baseline(tmp_path)
+    dump = dump_all_tables_as_json(db_path)
+    data_dir = tmp_path / "data_dir"
+    data_dir.mkdir()
+    # t_dims だけを持つ candidate ファイル（manifest 上は t_pk もこのファイルの
+    # 分だと宣言するが、実ファイルには無い——「表だけ足りない」ケース）。
+    (data_dir / "cand_b.json").write_text(json.dumps({"t_dims": dump["t_dims"]}), encoding="utf-8")
+    manifest = _write_manifest(tmp_path, tables_a=None, tables_b=("t_pk", "t_dims"))
+    out_md = tmp_path / "all.md"
+
+    result = _run_cli(baseline_json, db_path, manifest, data_dir, out_md)
+
+    assert result.returncode != 0
+    text = out_md.read_text(encoding="utf-8")
+    assert "候補側にこのテーブルが無い" in text
+    assert "scripts/fake_b.py" in text
+
+
+def test_integrated_report_is_distinguishable_from_a_single_candidate_report(tmp_path):
+    """統合レポートが「統合ゲートである」ことと、各テーブルがどの candidate
+    ファイルの分かを明示する（コードレビュー指摘10: 個別ゲートのレポートと
+    見分けがつかなかった）。不一致のテーブルには candidate ファイル
+    （と再実行すべきスクリプト）が summary の表にも出る。
+    """
+    db_path, baseline_json, _ = _make_baseline(tmp_path)
+    dump = dump_all_tables_as_json(db_path)
+    for row in dump["t_dims"]["rows"]:
+        if row[0] == "s1" and row[1] == 2020 and row[2] == "daily":
+            row[4] = 9.99
+    data_dir = _write_split_candidates(tmp_path, dump)
+    manifest = _write_manifest(tmp_path)
+    out_md = tmp_path / "all.md"
+
+    result = _run_cli(baseline_json, db_path, manifest, data_dir, out_md)
+
+    assert result.returncode != 0
+    text = out_md.read_text(encoding="utf-8")
+    assert "統合ゲート" in text
+    assert "scripts/b02_run_all_gates.py" in text
+    # 一致した t_pk の詳細節にも candidate ファイルが出る（全テーブル共通）。
+    assert "candidate ファイル: `cand_a.json`" in text
+    # 不一致の t_dims: サマリの表にも candidate ファイル（＋スクリプト）が出る。
+    assert "cand_b.json" in text
+    assert "scripts/fake_b.py" in text
+
+
+def test_candidate_source_is_closed_even_when_expected_diff_error_is_raised(tmp_path, monkeypatch):
+    """`compare_all` が `ExpectedDiffError`（腐った宣言）で例外を投げても、
+    開いた `candidate_source` が必ず閉じられる（コードレビュー指摘14: 以前は
+    `try/finally` の外で開いており、この経路でファイルハンドルが残っていた）。
+    """
+    db_path, baseline_json, _ = _make_baseline(tmp_path)
+    dump = dump_all_tables_as_json(db_path)
+    data_dir = _write_split_candidates(tmp_path, dump)
+    manifest = _write_manifest(tmp_path)
+
+    # 「腐った宣言」: t_pk は候補と完全一致するのに、value_diff を宣言する
+    # ——_apply_expected_diffs が「実際には差分になっていない」として
+    # ExpectedDiffError を投げる。
+    expected_diffs_path = tmp_path / "expected_diffs.yaml"
+    expected_diffs_path.write_text(
+        "t_pk:\n"
+        "  - key: [a]\n"
+        "    kind: value_diff\n"
+        "    columns: [label]\n"
+        '    reason: "腐った宣言（テスト用）"\n'
+        '    found_on: "2026-09-24"\n'
+        '    record: "test"\n',
+        encoding="utf-8",
+    )
+
+    closed_paths: list[str] = []
+    real_open_source = run_all.datasource.open_source
+
+    class _SpySource:
+        def __init__(self, inner):
+            self._inner = inner
+
+        def __getattr__(self, name):
+            return getattr(self._inner, name)
+
+        def close(self):
+            closed_paths.append(True)
+            self._inner.close()
+
+    def spy_open_source(path):
+        return _SpySource(real_open_source(path))
+
+    monkeypatch.setattr(run_all.datasource, "open_source", spy_open_source)
+    monkeypatch.setattr(
+        sys, "argv",
+        [
+            "b02_run_all_gates.py",
+            "--baseline-json", str(baseline_json),
+            "--baseline-data", str(db_path),
+            "--manifest", str(manifest),
+            "--data-dir", str(data_dir),
+            "--out-md", str(tmp_path / "all.md"),
+            "--expected-diffs", str(expected_diffs_path),
+        ],
+    )
+
+    with pytest.raises(SystemExit):
+        run_all.main()
+
+    # cand_a.json（t_pk を含む）を開いたぶんは少なくとも閉じられている。
+    assert closed_paths

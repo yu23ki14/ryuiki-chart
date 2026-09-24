@@ -13,6 +13,16 @@ import b11_project_place_v1 as b11
 from migrate import common as migrate_common
 from registry import common as registry_common
 
+# watershed_rollup の土地利用の相関サブクエリが SUM(area_km2) を6つ使うため、
+# build_projections() の先頭で common.require_sqlite_version() を呼ぶ
+# （コードレビュー指摘2。scripts/tests/test_b04_build_cube.py 等と同じ流儀。
+# この版のガード自体の単体テストは scripts/tests/test_migrate_common.py）。
+# 環境の SQLite が実際に古いとき、意味の無い失敗の山を作らずスキップする。
+pytestmark = pytest.mark.skipif(
+    sqlite3.sqlite_version_info < migrate_common.MIN_SQLITE_VERSION,
+    reason=f"SQLite {migrate_common.MIN_SQLITE_VERSION} 未満（実際: {sqlite3.sqlite_version}）",
+)
+
 _WATERSHED_ROW = {
     "place_id": "common:place:watershed.nlni-83032-0024",
     "watershed_id": "83032-0024",
@@ -337,12 +347,13 @@ def test_output_is_rebuilt_from_scratch_each_run(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def _insert_site_place_with_watershed_edge(conn, *, site_place_id, site_id, watershed_place_id) -> None:
-    """地点 place を作り、`place_source_ref(source_id='sites.site_id')` と
-    `place_relation`（地点→流域、`relation='within'`）の辺を張る
-    （`scripts/registry/build_place.py` の `_watershed_relation_rows` が
-    実データで作る形と同じ。`test_ignores_non_watershed_places` の site 挿入と
-    同じ最小列）。
+def _insert_site_place(conn, *, site_place_id, site_id) -> None:
+    """地点 place を作り、`place_source_ref(source_id='sites.site_id')` だけを
+    張る（流域への辺は無し。`test_ignores_non_watershed_places` の site 挿入と
+    同じ最小列）。実データでも「地点は登録されているが `sites.watershed` は
+    NULL（どの流域にも属さない）」地点は普通にある——`_assert_no_stale_
+    watershed_or_site_ids` はこの状態を「古さ」とは見なさない
+    （`site_var.site_id` が `place_source_ref` に実在しさえすれば良い）。
     """
     conn.execute(
         "INSERT INTO place (place_id, region_id, place_kind, name_ja, status) VALUES (?,?,?,?,?)",
@@ -352,10 +363,23 @@ def _insert_site_place_with_watershed_edge(conn, *, site_place_id, site_id, wate
         "INSERT INTO place_source_ref (place_id, external_key, source_id) VALUES (?,?,?)",
         (site_place_id, site_id, "sites.site_id"),
     )
+
+
+def _insert_watershed_edge(conn, *, site_place_id, watershed_place_id) -> None:
+    """地点→流域の `place_relation`（`relation='within'`）の辺を張る
+    （`scripts/registry/build_place.py` の `_watershed_relation_rows` が
+    実データで作る形と同じ）。"""
     conn.execute(
         "INSERT INTO place_relation (parent_id, child_id, relation, fraction, basis) VALUES (?,?,?,?,?)",
         (watershed_place_id, site_place_id, "within", 1.0, "test"),
     )
+
+
+def _insert_site_place_with_watershed_edge(conn, *, site_place_id, site_id, watershed_place_id) -> None:
+    """`_insert_site_place` + `_insert_watershed_edge`（地点→流域の辺まで
+    張る、これまでのテストが使っていた組み合わせ）。"""
+    _insert_site_place(conn, site_place_id=site_place_id, site_id=site_id)
+    _insert_watershed_edge(conn, site_place_id=site_place_id, watershed_place_id=watershed_place_id)
 
 
 def test_watershed_rollup_column_order_and_types_match_v1(tmp_path):
@@ -407,6 +431,12 @@ def test_watershed_rollup_aggregates_org_watershed_site_var_and_landuse(tmp_path
             conn, site_place_id="jp-14:place:site.s1", site_id="site-1",
             watershed_place_id=row["place_id"],
         )
+        # site-2 は登録されている地点だが、どの流域にも属さない
+        # （sites.watershed が NULL＝place_relation に辺が無い、実データにも
+        # 普通にある状態）。「古い（未登録の）site_id」とは違うことに注意
+        # ——_assert_no_stale_watershed_or_site_ids はこの地点を古さとは
+        # 見なさない。
+        _insert_site_place(conn, site_place_id="jp-14:place:site.s2", site_id="site-2")
         conn.commit()
     finally:
         conn.close()
@@ -578,3 +608,185 @@ def test_missing_place_relation_table_raises_clear_error(tmp_path):
 
     with pytest.raises(migrate_common.MigrationError, match="place_relation テーブルが無い"):
         b11.build_projections(registry_db, out_db, **_rollup_kwargs(tmp_path))
+
+
+# ---------------------------------------------------------------------------
+# コードレビュー対応（指摘1・2・4・15）
+# ---------------------------------------------------------------------------
+
+
+def test_duplicate_site_watershed_edge_does_not_touch_previous_output(tmp_path):
+    """指摘1: `site_watershed_lookup` の一意性検査は `_validate_registry()`
+    （`common.fresh_sqlite(out_path)` より前）に移した。失敗しても前回の
+    正しい出力が1バイトも変わらないことを確認する
+    （`test_failed_validation_does_not_touch_previous_output` と同じ形を、
+    この検査専用に確かめる——以前はこの検査が `fresh_sqlite` の後にあり、
+    このテスト自体が無かった）。
+    """
+    row = dict(_WATERSHED_ROW, place_id="common:place:watershed.nlni-a", watershed_id="a")
+    registry_db = tmp_path / "registry.sqlite"
+    _make_registry_db(registry_db, [row])
+    out_db = tmp_path / "v1_projection_place.sqlite"
+    kwargs = _rollup_kwargs(tmp_path)
+
+    # 1回目: 正しい出力を作る。
+    b11.build_projections(registry_db, out_db, **kwargs)
+    before = out_db.read_bytes()
+
+    # 2回目の直前に、同じ地点から2つの流域への within 辺を追加して壊す。
+    row_b = dict(_WATERSHED_ROW, place_id="common:place:watershed.nlni-b", watershed_id="b")
+    conn = sqlite3.connect(registry_db)
+    try:
+        _insert_watershed_place(conn, row_b)
+        conn.execute(
+            "INSERT INTO place (place_id, region_id, place_kind, name_ja, status) VALUES (?,?,?,?,?)",
+            ("jp-14:place:site.s1", "jp-14", "site", "地点", "ok"),
+        )
+        conn.execute(
+            "INSERT INTO place_source_ref (place_id, external_key, source_id) VALUES (?,?,?)",
+            ("jp-14:place:site.s1", "site-1", "sites.site_id"),
+        )
+        conn.execute(
+            "INSERT INTO place_relation (parent_id, child_id, relation, fraction, basis) "
+            "VALUES (?,?,?,?,?)",
+            (row["place_id"], "jp-14:place:site.s1", "within", 1.0, "test"),
+        )
+        conn.execute(
+            "INSERT INTO place_relation (parent_id, child_id, relation, fraction, basis) "
+            "VALUES (?,?,?,?,?)",
+            (row_b["place_id"], "jp-14:place:site.s1", "within", 1.0, "test"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    with pytest.raises(migrate_common.MigrationError, match="site_id が単射でない"):
+        b11.build_projections(registry_db, out_db, **kwargs)
+
+    after = out_db.read_bytes()
+    assert after == before  # 前回の出力が1バイトも変わっていない
+
+
+def test_build_projections_calls_the_shared_sqlite_version_guard(monkeypatch, tmp_path):
+    """指摘2: `build_projections()` の先頭で `common.require_sqlite_version()`
+    （b04・b05・b07・b08・b10 と共有するガード）を呼ぶことを確認する
+    （`scripts/tests/test_b04_build_cube.py::
+    test_build_cube_calls_the_shared_sqlite_version_guard` と同じ形）。
+    実際の環境の SQLite バージョンに関わらず、常に古いバージョンを装って
+    確認する。
+    """
+    monkeypatch.setattr(migrate_common.sqlite3, "sqlite_version_info", (3, 42, 0))
+    registry_db = tmp_path / "registry.sqlite"
+    _make_registry_db(registry_db, [_WATERSHED_ROW])
+    out_db = tmp_path / "v1_projection_place.sqlite"
+
+    with pytest.raises(SystemExit, match="古すぎる"):
+        b11.build_projections(registry_db, out_db, **_rollup_kwargs(tmp_path))
+    assert not out_db.exists()  # fresh_sqlite にすら到達していない
+
+
+def test_stale_site_var_raises_and_names_b05(tmp_path):
+    """指摘4: `site_var.site_id` が今の registry に無ければ、b05 の再実行を
+    名指しする `MigrationError` で止まる（出力ファイルには触れない）。
+    """
+    registry_db = tmp_path / "registry.sqlite"
+    _make_registry_db(registry_db, [_WATERSHED_ROW])
+    out_db = tmp_path / "v1_projection_place.sqlite"
+    kwargs = _rollup_kwargs(tmp_path, site_var_rows=[("stale-site", "水温", "daily", 1, 2020, 2020, 1.0, "℃")])
+
+    with pytest.raises(migrate_common.MigrationError, match="scripts/b05_project_v1.py"):
+        b11.build_projections(registry_db, out_db, **kwargs)
+    assert not out_db.exists()
+
+
+def test_stale_landuse_watershed_raises_and_names_b05(tmp_path):
+    """指摘4: `landuse_watershed.watershed_id` が今の registry に無ければ、
+    b05 の再実行を名指しする `MigrationError` で止まる。
+    """
+    registry_db = tmp_path / "registry.sqlite"
+    _make_registry_db(registry_db, [_WATERSHED_ROW])
+    out_db = tmp_path / "v1_projection_place.sqlite"
+    kwargs = _rollup_kwargs(
+        tmp_path, landuse_rows=[("stale-watershed", 2016, "05", "建物用地", 1, 1.0)]
+    )
+
+    with pytest.raises(migrate_common.MigrationError, match="scripts/b05_project_v1.py"):
+        b11.build_projections(registry_db, out_db, **kwargs)
+    assert not out_db.exists()
+
+
+def test_stale_org_watershed_raises_and_names_b08(tmp_path):
+    """指摘4: `org_watershed.watershed_id` が今の registry に無ければ、b08 の
+    再実行を名指しする `MigrationError` で止まる（実行順 b06→b09→b07→b08 も
+    案内する）。
+    """
+    registry_db = tmp_path / "registry.sqlite"
+    _make_registry_db(registry_db, [_WATERSHED_ROW])
+    out_db = tmp_path / "v1_projection_place.sqlite"
+    kwargs = _rollup_kwargs(tmp_path, org_watershed_rows=[("stale-watershed", 1, 0, 0, 2020, 2020)])
+
+    with pytest.raises(migrate_common.MigrationError, match="scripts/b08_project_occurrence_v1.py"):
+        b11.build_projections(registry_db, out_db, **kwargs)
+    assert not out_db.exists()
+
+
+def test_stale_ids_check_does_not_flag_a_watershed_with_no_occurrences_or_landuse(tmp_path):
+    """指摘4の回帰: 「今の registry には実在するがまだ occurrence/土地利用の
+    行が無い流域」を誤って古さと判定しない（`org_watershed`/
+    `landuse_watershed` に一切行が無くても、distinct 値の集合が空なので
+    stale 件数は常に0）。
+    """
+    registry_db = tmp_path / "registry.sqlite"
+    _make_registry_db(registry_db, [_WATERSHED_ROW])
+    out_db = tmp_path / "v1_projection_place.sqlite"
+
+    counts = b11.build_projections(registry_db, out_db, **_rollup_kwargs(tmp_path))
+    assert counts == {"watershed_meta": 1, "watershed_rollup": 1}
+
+
+def test_out_path_same_as_v1_projection_db_raises_and_preserves_it(tmp_path):
+    """指摘15: `--out` が `v1_projection_db`（b05 の出力）と同じ実体だと、
+    `fresh_sqlite` が入力を消す前に `MigrationError` で止まり、入力の中身は
+    1バイトも変わらない。
+    """
+    registry_db = tmp_path / "registry.sqlite"
+    _make_registry_db(registry_db, [_WATERSHED_ROW])
+    kwargs = _rollup_kwargs(tmp_path)
+    proj_db = kwargs["v1_projection_db"]
+    before = proj_db.read_bytes()
+
+    with pytest.raises(migrate_common.MigrationError, match="v1_projection_db"):
+        b11.build_projections(registry_db, proj_db, **kwargs)
+
+    assert proj_db.read_bytes() == before
+
+
+def test_out_path_same_as_v1_projection_occurrence_db_raises_and_preserves_it(tmp_path):
+    """指摘15: `--out` が `v1_projection_occurrence_db`（b08 の出力）と同じ
+    実体でも同様に止まる。
+    """
+    registry_db = tmp_path / "registry.sqlite"
+    _make_registry_db(registry_db, [_WATERSHED_ROW])
+    kwargs = _rollup_kwargs(tmp_path)
+    occ_db = kwargs["v1_projection_occurrence_db"]
+    before = occ_db.read_bytes()
+
+    with pytest.raises(migrate_common.MigrationError, match="v1_projection_occurrence_db"):
+        b11.build_projections(registry_db, occ_db, **kwargs)
+
+    assert occ_db.read_bytes() == before
+
+
+def test_out_path_via_symlink_to_an_input_is_still_caught(tmp_path):
+    """指摘15の念押し: symlink 越しでも `os.path.realpath` で解決して検出する
+    （worktree で `data/db/*.sqlite` が symlink である運用を踏まえる）。
+    """
+    registry_db = tmp_path / "registry.sqlite"
+    _make_registry_db(registry_db, [_WATERSHED_ROW])
+    kwargs = _rollup_kwargs(tmp_path)
+    proj_db = kwargs["v1_projection_db"]
+    alias = tmp_path / "alias.sqlite"
+    alias.symlink_to(proj_db)
+
+    with pytest.raises(migrate_common.MigrationError, match="v1_projection_db"):
+        b11.build_projections(registry_db, alias, **kwargs)

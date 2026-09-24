@@ -1,10 +1,14 @@
 # Phase B P-1a: 流域の属性（watershed_meta）— place の属性サテライトと循環の解消
 
-対象: ADR-0016 の Phase B / 状態: **完了（watershed_meta 1テーブル。`data/db/derived.sqlite`
-残り12表のうちの1本。watershed_rollup は未着手）**
+対象: ADR-0016 の Phase B / 状態: **完了（watershed_meta 1テーブル。`watershed_rollup`
+は本文書が「後で同じ b11 に足す」と書いたとおり `phase-b/rollup-and-gate` で
+`scripts/b11_project_place_v1.py` に追加済み——設計・実測は
+`docs/plans/PHASE_B_RECONCILIATION.md` §12 参照。Phase B の v1 派生33表は
+これで全て揃った）**
 作成: 2026-09-23 / 関連: ADR-0006（place）、ADR-0011（キューブ・place の属性）、
 ADR-0022（region_id・place_relation）、`docs/plans/PHASE_B_OCCURRENCE.md`（grid01 の
-入力切り替えの前例）、`docs/plans/PHASE_B_RECONCILIATION.md`（突合ゲートの仕組み）
+入力切り替えの前例）、`docs/plans/PHASE_B_RECONCILIATION.md`（突合ゲートの仕組み・
+§12 が `watershed_rollup` と統合ゲートの設計・実測の正）
 
 ## 1. 致命的な前提: 循環を断つ
 
@@ -224,8 +228,9 @@ CLAUDE.md の規約どおり、`data/db/ryuiki.sqlite`/`cells.sqlite`（原本�
 
 ## 9. 設計からの逸脱・未決・既知の負債
 
-- **watershed_rollup は今回はやらない**（brief の指示どおりスコープ外。P-1a の
-  次に着手する候補——`docs/plans/PHASE_B_RECONCILIATION.md` 残り11テーブルの1つ）。
+- ~~watershed_rollup は今回はやらない~~ **解消済み**: `phase-b/rollup-and-gate`
+  で `scripts/b11_project_place_v1.py` に追加した（`docs/plans/
+  PHASE_B_RECONCILIATION.md` §12 参照。Phase B の v1 派生33表はこれで全て揃った）。
 - **main_rivers・水系コード等の watershed 固有語彙は `place_watershed` に列として
   そのまま置いた**（ADR-0006 追記のとおり、水系を独立した place にする設計は
   見送った）。
@@ -240,9 +245,12 @@ CLAUDE.md の規約どおり、`data/db/ryuiki.sqlite`/`cells.sqlite`（原本�
   それに置き換えた（`scripts/b05_project_v1.py` 自体はこの PR のスコープ外
   なので変更していない——まだ独自実装のまま）。
 - **CI への部分ゲートの配線**（`watershed_meta` を含む。`docs/plans/PHASE_B_RECONCILIATION.md`
-  §8参照）は今回やらない。1表のための汎用の対応表（テーブル名→射影スクリプト・
-  candidate ファイル）も作らない——過剰。2つ目の `b1x` 系射影スクリプトが出た時点で
-  着手する。
+  §8参照）は今回（P-1a 時点）はやらない。1表のための汎用の対応表（テーブル名→射影
+  スクリプト・candidate ファイル）も作らない——過剰。2つ目の `b1x` 系射影スクリプトが
+  出た時点で着手する。**2026-09-24更新**: この対応表・統合ゲート自体は
+  `phase-b/rollup-and-gate` で作った（`docs/plans/PHASE_B_RECONCILIATION.md` §12）。
+  ただし CI ワークフローへの配線はまだ——原本DBが要るので CI では動かせないため、
+  引き続きスコープ外のまま。
 
 （初回実装時点の負債「`derived.sqlite` が full ビルドで無条件に開かれる」は
 コードレビュー対応で解消した。§10-5 参照。）

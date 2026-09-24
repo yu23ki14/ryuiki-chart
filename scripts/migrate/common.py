@@ -303,6 +303,22 @@ def attach_readonly(conn: sqlite3.Connection, path, alias: str) -> None:
     conn.execute(f"ATTACH DATABASE 'file:{p}?mode=ro' AS {alias}")
 
 
+def existing_tables(db_path) -> set[str]:
+    """`db_path`（sqlite ファイル）が持つテーブル名の集合を、読み取り専用の
+    新規接続で返す。`scripts/b08_project_occurrence_v1.py`・
+    `scripts/b11_project_place_v1.py` がそれぞれ同型の実装を別々に持っていた
+    もの（`_assert_prerequisites`/`_assert_rollup_prerequisites` が「必要な
+    テーブルが有るか」を `fresh_sqlite` の前に確かめるのに使う）を1箇所に
+    集約した（コードレビュー指摘。`attach_readonly`/`assert_attached_table_exists`
+    と同じ「同型の検証は共通ヘルパに寄せる」方針）。
+    """
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    try:
+        return {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    finally:
+        conn.close()
+
+
 def assert_attached_table_exists(conn: sqlite3.Connection, alias: str, table: str, *, hint: str) -> None:
     """`ATTACH`（`attach_readonly` 等）した `alias` に `table` が存在することを
     確認する。無いと素の `sqlite3.OperationalError`（no such table）になり原因が
