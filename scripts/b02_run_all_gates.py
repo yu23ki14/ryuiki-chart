@@ -108,6 +108,24 @@ def _candidate_note(candidate_name: str, script: str) -> str:
     return f"candidate ファイル: `{candidate_name}`（射影スクリプト: `{script}`）"
 
 
+def _compare_one_candidate(
+    candidate_path, baseline_json, baseline_source, tolerance, tables, expected_diffs_by_table,
+):
+    """1つの candidate ファイルを開いて `compare_all` で突き合わせ、必ず閉じる
+    （`compare_all` が `ExpectedDiffError` を投げても、ここで確実に
+    `candidate_source.close()` する。宣言の例外そのものの捕捉・`sys.exit` は
+    呼び出し側〔ループ〕の責務のまま——コードレビュー指摘: ループの入れ子を
+    1段減らす）。
+    """
+    candidate_source = datasource.open_source(candidate_path)
+    try:
+        return b02.compare_all(
+            baseline_json, baseline_source, candidate_source, tolerance, tables, expected_diffs_by_table,
+        )
+    finally:
+        candidate_source.close()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", default=str(DEFAULT_MANIFEST))
@@ -115,19 +133,7 @@ def main() -> int:
         "--data-dir", default=str(DEFAULT_DATA_DIR),
         help="candidate ファイル（projection_manifest.yaml のキー）を探すディレクトリ",
     )
-    parser.add_argument("--baseline-json", default=str(b02.DEFAULT_BASELINE_JSON))
-    parser.add_argument(
-        "--baseline-data", default=None,
-        help=f"既定は {b02.DEFAULT_BASELINE_DB} があれば使い、無ければ縮退モードにする。",
-    )
-    parser.add_argument("--tolerance", type=float, default=0.0)
-    parser.add_argument("--out-md", default=str(DEFAULT_OUT_MD))
-    parser.add_argument(
-        "--reduced", action="store_true",
-        help="縮退モードを強制する（scripts/b02_derived_compare.py と同じ意味）。",
-    )
-    parser.add_argument("--expected-diffs", default=str(b02.DEFAULT_EXPECTED_DIFFS))
-    parser.add_argument("--no-expected-diffs", action="store_true")
+    b02._add_shared_compare_args(parser, default_out_md=DEFAULT_OUT_MD)
     args = parser.parse_args()
 
     baseline_json = b02.load_baseline_json(args.baseline_json)
@@ -158,27 +164,14 @@ def main() -> int:
     try:
         for candidate_name in sorted(manifest):
             spec = manifest[candidate_name]
-            candidate_path = data_dir / candidate_name
-            # 存在は _assert_all_candidates_exist で確認済み。
-            candidate_source = datasource.open_source(candidate_path)
+            candidate_path = data_dir / candidate_name  # 存在は _assert_all_candidates_exist で確認済み
             try:
-                try:
-                    results, extra_tables = b02.compare_all(
-                        baseline_json,
-                        baseline_source,
-                        candidate_source,
-                        args.tolerance,
-                        set(spec["tables"]),
-                        expected_diffs_by_table,
-                    )
-                except b02.ExpectedDiffError as e:
-                    sys.exit(str(e))
-            finally:
-                # 検証（compare_all/宣言済み差分）が例外で落ちても、開いた
-                # candidate_source を必ず閉じる（コードレビュー指摘: 以前は
-                # try/finally の外で開いており、ExpectedDiffError で
-                # sys.exit するとファイルハンドルが閉じられずに終了していた）。
-                candidate_source.close()
+                results, extra_tables = _compare_one_candidate(
+                    candidate_path, baseline_json, baseline_source, args.tolerance,
+                    set(spec["tables"]), expected_diffs_by_table,
+                )
+            except b02.ExpectedDiffError as e:
+                sys.exit(str(e))
 
             note = _candidate_note(candidate_name, spec["script"])
             for table in results:

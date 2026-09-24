@@ -49,41 +49,14 @@ CTAS で丸ごと回避する）。
 `_assert_out_path_distinct_from_inputs()`・`_assert_no_stale_watershed_or_site_ids()`。
 どれも出力ファイルに一切触れない）が全部通ってから `common.fresh_sqlite(out_path)`
 で書き出す。設計根拠（`INSERT ... SELECT` を1文にする理由・列名を明示する理由・
-検証と書き込みを分ける理由）は `docs/plans/PHASE_B_PLACE_ATTRIBUTES.md` §6・§10
-参照（ここでは再掲しない）。`common.fresh_sqlite` 自体が原本を誤って消せる問題は
-P-3 側の PR の担当（このブランチでは触れない）。
-
-## コードレビュー対応（`/code-review` 15件のうち b11 分）
-
-- **site_watershed_lookup の一意性検査を `_validate_registry()` へ移した**
-  （指摘1）。以前は `build_projections()` の中、`common.fresh_sqlite(out_path)`
-  の後にあり、失敗すると前回の正しい出力が消えたまま中途半端な状態が残って
-  いた（docstring が約束する不変条件に反していた）。
-- **`common.require_sqlite_version()` を呼ぶ**（指摘2）。`watershed_rollup` の
-  土地利用の相関サブクエリが `SUM(area_km2)` を6つ使うため、`b04`/`b05`/
-  `b07`/`b08`/`b10` と同じ理由で古い SQLite（3.43未満）を拒む。
-- **`site_var`/`landuse_watershed`/`org_watershed` の古さを検査する**
-  （指摘4、`_assert_no_stale_watershed_or_site_ids`）。古い出力（別の
-  `registry.sqlite` に対して作られたもの）を渡すと、該当する流域/地点が
-  `LEFT JOIN`・相関サブクエリで黙って 0/減少して現れる——`_assert_rollup_
-  prerequisites`（テーブルの有無だけ見る）では検出できない壊れ方。実データ
-  では0件（PR 説明参照）。
-- **`--out` が入力2つ（`v1_projection_db`/`v1_projection_occurrence_db`）と
-  同じ実体でないことを確認する**（指摘15、`_assert_out_path_distinct_
-  from_inputs`）。`--out data/db/v1_projection.sqlite` のように渡すと、
-  `fresh_sqlite` が b05 の出力を消してから ATTACH に失敗し、正しい出力が
-  失われていた。
-- **未使用の `CREATE UNIQUE INDEX site_watershed_lookup_site_id` を削除した**
-  （指摘13）。`site_n`/`site_var_n` の相関サブクエリはどちらも `watershed_id`
-  で絞っており、`site_id` の索引は実測で参照されない（一意性は指摘1の検査が
-  担保する）。
-- `_existing_tables` を `scripts/migrate/common.py` の `existing_tables`
-  （`scripts/b08_project_occurrence_v1.py` と共通化）に寄せた（指摘12）。
+検証と書き込みを分ける理由・各検証関数が何を防ぐか）は
+`docs/plans/PHASE_B_PLACE_ATTRIBUTES.md` §6・§10・`docs/plans/
+PHASE_B_RECONCILIATION.md` §12 参照（ここでは再掲しない）。`common.fresh_sqlite`
+自体が原本を誤って消せる問題は P-3 側の PR の担当（このブランチでは触れない）。
 """
 from __future__ import annotations
 
 import argparse
-import os
 import pathlib
 import sqlite3
 import sys
@@ -354,31 +327,31 @@ def _assert_rollup_prerequisites(v1_projection_db, v1_projection_occurrence_db) 
 
 def _assert_out_path_distinct_from_inputs(out_path, v1_projection_db, v1_projection_occurrence_db) -> None:
     """`--out` が `v1_projection_db`/`v1_projection_occurrence_db`（b11 が
-    ATTACH で読む2つの入力）と同じ実体を指していないことを、symlink を解決
-    した実パス（`os.path.realpath`）で確認する（コードレビュー指摘15）。
+    ATTACH で読む2つの入力）と同じ実体を指していないことを確認する。
 
     `common.fresh_sqlite(out_path)` は `out_path` を検証より前に即座に消す
     ため、`--out data/db/v1_projection.sqlite` のように入力の1つと同じパスを
     渡すと、b05 の出力を消してから ATTACH に失敗する——前回の正しい出力
     （v1_projection.sqlite）が復元できない形で失われる、この検証群の中で
-    唯一「他スクリプトの正しい出力を壊す」壊れ方。`common.reject_protected_source_db`
-    が原本3つ（ryuiki/cells/derived）を保護するのと同じ考え方だが、こちらは
-    このスクリプトが新たに ATTACH する2つの入力を保護する。
+    唯一「他スクリプトの正しい出力を壊す」壊れ方。`common.assert_distinct_
+    realpaths`（`common.reject_protected_source_db` が原本3つを保護するのと
+    同じ realpath 比較ヘルパ）を、こちらはこのスクリプトが新たに ATTACH する
+    可変の2つの入力に対して呼ぶ。
     """
-    out_real = os.path.realpath(str(out_path))
     inputs = {
         "v1_projection_db（scripts/b05_project_v1.py の出力）": v1_projection_db,
         "v1_projection_occurrence_db（scripts/b08_project_occurrence_v1.py の出力）": (
             v1_projection_occurrence_db
         ),
     }
-    for label, path in inputs.items():
-        if os.path.realpath(str(path)) == out_real:
-            raise common.MigrationError(
-                f"--out（{out_path}）が入力 {label}（{path}）と同じ実体を指している。"
-                "このまま実行すると common.fresh_sqlite が入力を消してから ATTACH に"
-                "失敗し、b05/b08 の正しい出力が失われる。--out に別のパスを指定すること。"
-            )
+    common.assert_distinct_realpaths(
+        out_path, inputs,
+        message_for=lambda label, other: (
+            f"--out（{out_path}）が入力 {label}（{other}）と同じ実体を指している。"
+            "このまま実行すると common.fresh_sqlite が入力を消してから ATTACH に"
+            "失敗し、b05/b08 の正しい出力が失われる。--out に別のパスを指定すること。"
+        ),
+    )
 
 
 # 地点/流域IDの「古さ」検査（コードレビュー指摘4。scripts/b08_project_occurrence_v1.py

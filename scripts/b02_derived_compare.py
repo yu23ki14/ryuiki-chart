@@ -1130,8 +1130,20 @@ def summarize_results(results: dict[str, dict]) -> dict[str, int]:
 # main
 # ---------------------------------------------------------------------------
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+def _add_shared_compare_args(parser: argparse.ArgumentParser, *, default_out_md) -> None:
+    """`b02_derived_compare.py`・`scripts/b02_run_all_gates.py` の両方が持つ
+    7引数（`--baseline-json`/`--baseline-data`/`--tolerance`/`--out-md`/
+    `--reduced`/`--expected-diffs`/`--no-expected-diffs`）を1箇所で登録する
+    （コードレビュー指摘: 2ファイルにコピーされ、`--reduced`/`--baseline-data`
+    の説明文が食い違っていた）。`--candidate`/`--tables`（`b02_derived_compare.py`
+    専用）・`--manifest`/`--data-dir`（統合ゲート専用）は呼び出し側がそれぞれ
+    追加する。
+
+    `--out-md` の既定値だけは呼び出し側で違う（`b02_derived_compare.py` は
+    `reports/derived_reconciliation.md`、統合ゲートは
+    `reports/derived_reconciliation_all.md`——個別ゲートと統合ゲートが互いの
+    レポートを上書きし合わないための意図的な違い。§12参照）ため、引数で受ける。
+    """
     parser.add_argument("--baseline-json", default=str(DEFAULT_BASELINE_JSON))
     parser.add_argument(
         "--baseline-data",
@@ -1139,17 +1151,8 @@ def main() -> int:
         help="ベースライン側の実データ（sqlite または .json）。省略時は "
         f"{DEFAULT_BASELINE_DB} があれば使い、無ければ縮退モードにする。",
     )
-    parser.add_argument("--candidate", required=True, help="候補側（sqlite または .json）")
     parser.add_argument("--tolerance", type=float, default=0.0)
-    parser.add_argument(
-        "--tables",
-        default=None,
-        help="カンマ区切りでテーブル名を絞り込む（例: meas_daily,meas_month,meas_year）。"
-        "省略時はベースラインの全テーブルが対象（従来通り）。指定した名前が"
-        "derived_baseline.json に無ければ、その名前を挙げて即座に終了する"
-        "（黙って無視しない。タイポで『0件を突合して緑』になるのが最悪の失敗のため）。",
-    )
-    parser.add_argument("--out-md", default=str(DEFAULT_OUT_MD))
+    parser.add_argument("--out-md", default=str(default_out_md))
     parser.add_argument(
         "--reduced",
         action="store_true",
@@ -1170,6 +1173,20 @@ def main() -> int:
         help="宣言済み差分を一切読まずに実行する（--expected-diffs の値も無視する）。"
         "『宣言なしで何が赤くなるか』を見たいときに使う。",
     )
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--candidate", required=True, help="候補側（sqlite または .json）")
+    parser.add_argument(
+        "--tables",
+        default=None,
+        help="カンマ区切りでテーブル名を絞り込む（例: meas_daily,meas_month,meas_year）。"
+        "省略時はベースラインの全テーブルが対象（従来通り）。指定した名前が"
+        "derived_baseline.json に無ければ、その名前を挙げて即座に終了する"
+        "（黙って無視しない。タイポで『0件を突合して緑』になるのが最悪の失敗のため）。",
+    )
+    _add_shared_compare_args(parser, default_out_md=DEFAULT_OUT_MD)
     args = parser.parse_args()
 
     baseline_json = load_baseline_json(args.baseline_json)

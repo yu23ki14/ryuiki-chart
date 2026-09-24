@@ -92,7 +92,10 @@
   `scripts/b11_project_place_v1.py`（`watershed_rollup` は
   `v1_projection.sqlite`〔b05〕/`v1_projection_occurrence.sqlite`〔b08〕を
   ATTACH して結合するだけの D10型の射影。キューブのセルにはしない）。
-  出力は `data/db/v1_projection_place.sqlite`（`.gitignore` 済み・捨てて作り直せる）。
+  **b11 はこの縦線で初めて別系統（observation・occurrence）の出力を読むので、
+  実行順は r01 の後、b05・b08 を先に済ませてから b11**（b05・b08 は互いに
+  依存しないので入れ替え可能）。出力は `data/db/v1_projection_place.sqlite`
+  （`.gitignore` 済み・捨てて作り直せる）。
   設計・実測は `docs/plans/PHASE_B_PLACE_ATTRIBUTES.md`。
   別枠で `scripts/b10_project_documents_v1.py`（`cells.sqlite`/`ryuiki.sqlite` を直接
   ATTACH、`observation` は経由しない）が `data/db/v1_projection_documents.sqlite`

@@ -685,47 +685,40 @@ def test_build_projections_calls_the_shared_sqlite_version_guard(monkeypatch, tm
     assert not out_db.exists()  # fresh_sqlite にすら到達していない
 
 
-def test_stale_site_var_raises_and_names_b05(tmp_path):
-    """指摘4: `site_var.site_id` が今の registry に無ければ、b05 の再実行を
-    名指しする `MigrationError` で止まる（出力ファイルには触れない）。
+@pytest.mark.parametrize(
+    "rollup_kwarg, stale_row, expected_script",
+    [
+        pytest.param(
+            "site_var_rows",
+            ("stale-site", "水温", "daily", 1, 2020, 2020, 1.0, "℃"),
+            "scripts/b05_project_v1.py",
+            id="site_var",
+        ),
+        pytest.param(
+            "landuse_rows",
+            ("stale-watershed", 2016, "05", "建物用地", 1, 1.0),
+            "scripts/b05_project_v1.py",
+            id="landuse_watershed",
+        ),
+        pytest.param(
+            "org_watershed_rows",
+            ("stale-watershed", 1, 0, 0, 2020, 2020),
+            "scripts/b08_project_occurrence_v1.py",
+            id="org_watershed",
+        ),
+    ],
+)
+def test_stale_ids_raise_and_name_the_script_to_rerun(tmp_path, rollup_kwarg, stale_row, expected_script):
+    """指摘4: `site_var`/`landuse_watershed`（b05）・`org_watershed`（b08）の
+    site_id/watershed_id が今の registry に無ければ、それぞれ正しい再実行
+    スクリプトを名指しする `MigrationError` で止まる（出力ファイルには触れない）。
     """
     registry_db = tmp_path / "registry.sqlite"
     _make_registry_db(registry_db, [_WATERSHED_ROW])
     out_db = tmp_path / "v1_projection_place.sqlite"
-    kwargs = _rollup_kwargs(tmp_path, site_var_rows=[("stale-site", "水温", "daily", 1, 2020, 2020, 1.0, "℃")])
+    kwargs = _rollup_kwargs(tmp_path, **{rollup_kwarg: [stale_row]})
 
-    with pytest.raises(migrate_common.MigrationError, match="scripts/b05_project_v1.py"):
-        b11.build_projections(registry_db, out_db, **kwargs)
-    assert not out_db.exists()
-
-
-def test_stale_landuse_watershed_raises_and_names_b05(tmp_path):
-    """指摘4: `landuse_watershed.watershed_id` が今の registry に無ければ、
-    b05 の再実行を名指しする `MigrationError` で止まる。
-    """
-    registry_db = tmp_path / "registry.sqlite"
-    _make_registry_db(registry_db, [_WATERSHED_ROW])
-    out_db = tmp_path / "v1_projection_place.sqlite"
-    kwargs = _rollup_kwargs(
-        tmp_path, landuse_rows=[("stale-watershed", 2016, "05", "建物用地", 1, 1.0)]
-    )
-
-    with pytest.raises(migrate_common.MigrationError, match="scripts/b05_project_v1.py"):
-        b11.build_projections(registry_db, out_db, **kwargs)
-    assert not out_db.exists()
-
-
-def test_stale_org_watershed_raises_and_names_b08(tmp_path):
-    """指摘4: `org_watershed.watershed_id` が今の registry に無ければ、b08 の
-    再実行を名指しする `MigrationError` で止まる（実行順 b06→b09→b07→b08 も
-    案内する）。
-    """
-    registry_db = tmp_path / "registry.sqlite"
-    _make_registry_db(registry_db, [_WATERSHED_ROW])
-    out_db = tmp_path / "v1_projection_place.sqlite"
-    kwargs = _rollup_kwargs(tmp_path, org_watershed_rows=[("stale-watershed", 1, 0, 0, 2020, 2020)])
-
-    with pytest.raises(migrate_common.MigrationError, match="scripts/b08_project_occurrence_v1.py"):
+    with pytest.raises(migrate_common.MigrationError, match=expected_script):
         b11.build_projections(registry_db, out_db, **kwargs)
     assert not out_db.exists()
 
@@ -744,37 +737,23 @@ def test_stale_ids_check_does_not_flag_a_watershed_with_no_occurrences_or_landus
     assert counts == {"watershed_meta": 1, "watershed_rollup": 1}
 
 
-def test_out_path_same_as_v1_projection_db_raises_and_preserves_it(tmp_path):
-    """指摘15: `--out` が `v1_projection_db`（b05 の出力）と同じ実体だと、
+@pytest.mark.parametrize("kwargs_key", ["v1_projection_db", "v1_projection_occurrence_db"])
+def test_out_path_same_as_an_input_raises_and_preserves_it(tmp_path, kwargs_key):
+    """指摘15: `--out` が `v1_projection_db`（b05 の出力）/
+    `v1_projection_occurrence_db`（b08 の出力）のどちらと同じ実体でも、
     `fresh_sqlite` が入力を消す前に `MigrationError` で止まり、入力の中身は
     1バイトも変わらない。
     """
     registry_db = tmp_path / "registry.sqlite"
     _make_registry_db(registry_db, [_WATERSHED_ROW])
     kwargs = _rollup_kwargs(tmp_path)
-    proj_db = kwargs["v1_projection_db"]
-    before = proj_db.read_bytes()
+    target = kwargs[kwargs_key]
+    before = target.read_bytes()
 
-    with pytest.raises(migrate_common.MigrationError, match="v1_projection_db"):
-        b11.build_projections(registry_db, proj_db, **kwargs)
+    with pytest.raises(migrate_common.MigrationError, match=kwargs_key):
+        b11.build_projections(registry_db, target, **kwargs)
 
-    assert proj_db.read_bytes() == before
-
-
-def test_out_path_same_as_v1_projection_occurrence_db_raises_and_preserves_it(tmp_path):
-    """指摘15: `--out` が `v1_projection_occurrence_db`（b08 の出力）と同じ
-    実体でも同様に止まる。
-    """
-    registry_db = tmp_path / "registry.sqlite"
-    _make_registry_db(registry_db, [_WATERSHED_ROW])
-    kwargs = _rollup_kwargs(tmp_path)
-    occ_db = kwargs["v1_projection_occurrence_db"]
-    before = occ_db.read_bytes()
-
-    with pytest.raises(migrate_common.MigrationError, match="v1_projection_occurrence_db"):
-        b11.build_projections(registry_db, occ_db, **kwargs)
-
-    assert occ_db.read_bytes() == before
+    assert target.read_bytes() == before
 
 
 def test_out_path_via_symlink_to_an_input_is_still_caught(tmp_path):
