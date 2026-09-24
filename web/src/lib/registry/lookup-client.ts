@@ -40,7 +40,7 @@ export function tryCaveatBody(key: string): string | undefined {
 }
 
 /**
- * 既知の caveat キー（`CaveatKey`。build-registry-ts.mjs が生成する union、14件）専用の引き。
+ * 既知の caveat キー（`CaveatKey`。build-registry-ts.mjs が生成する union、15件）専用の引き。
  * 存在しないキーは呼び出し側でコンパイルエラーになる（旧 domain.ts の DATA_CAVEATS /
  * BIOTA_CAVEATS 経由の mustCaveatBody() は実行時例外だった。docs/plans/PHASE_B_INTAKE.md #6）。
  * 画面・prompt.ts はこれを直接呼ぶ。

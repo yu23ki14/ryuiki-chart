@@ -31,12 +31,14 @@ function schemaOrigins(): string {
  *
  * 画面の注記用に選んだ13件（旧 domain.ts の DATA_CAVEATS / BIOTA_CAVEATS。
  * Phase B で撤去。docs/plans/PHASE_B_INTAKE.md #6）に municipality を足した14件が
- * registry/caveat.yaml の全件（cells.notes 由来を除く）。並び順は旧実装のまま変えない
- * （ここを変えるのは構造の変更ではなく、モデルへの入力を変える意図的な変更になるため）。
+ * registry/caveat.yaml の全件（cells.notes 由来を除く）だった。P-1b で
+ * landuseDefinitionChange（Phase A 以降初めての新規注記）が増え15件になった。
+ * 既存14件の並び順は変えず、新規分は末尾に足す（旧実装のまま変えないという方針を、
+ * 増分にまで遡って適用する理由が無いため）。
  * 本文は `caveatBody`（レジストリ由来）から引き、直書きしない
  * （レジストリと文言がずれる「二重の真実」を防ぐ）。
  *
- * `satisfies Record<CaveatKey, true>` で「registry/caveat.yaml の14件ちょうどと
+ * `satisfies Record<CaveatKey, true>` で「registry/caveat.yaml の全件と
  * 過不足なく一致する」ことをコンパイル時に強制する（キーが1つ欠けても、
  * CaveatKey に無い誤ったキーがあっても、ここで型エラーになる）。
  * 実行時にレジストリと突き合わせて例外を投げる形（旧 domain.ts の mustCaveatBody と
@@ -58,6 +60,7 @@ const CAVEAT_KEY_ORDER = {
   fishClass: true,
   isAlien: true,
   municipality: true,
+  landuseDefinitionChange: true,
 } satisfies Record<CaveatKey, true>;
 const CAVEAT_KEYS = Object.keys(CAVEAT_KEY_ORDER) as CaveatKey[];
 
