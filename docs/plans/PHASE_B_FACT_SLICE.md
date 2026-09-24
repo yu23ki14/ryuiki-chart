@@ -148,9 +148,16 @@ ADR-0011 の対象は33テーブル。これを一度に全部揃えようとす
 適用範囲の訂正」は `PHASE_B_INTAKE.md` に転記済み）。この変更の結果、`unknown` が実データに
 対して1件も出ない（実測: 0件）。
 
-`imputation='zero'` は `below_lod`/`not_detected` にだけ 0.0 を代入する。`above_lod` に 0 を
-入れない（0 は上限ではない。`>3.2` の 3.2 は「これより大きい」という下限情報であり、逆転する）。
+`imputation='zero'`（`observation_agg.value_zero`）は `below_lod`/`not_detected` にだけ
+0.0 を代入する。`above_lod` に 0 を入れない（0 は上限ではない。`>3.2` の 3.2 は
+「これより大きい」という下限情報であり、逆転する）。
 `n_censored`（キューブ）は `below_lod` の数、`n_not_detected` は別に数える（ADR-0009 決定2）。
+
+**2026-09-24 追記（D12・ADR-0009 決定4で `lod` を併記）**: `imputation='lod'`
+（`observation_agg.value_lod`）は非対称——`below_lod` には `censoring_limit`
+（定量下限値）を代入するが、`not_detected` は**代入せず平均から除外する**
+（本来の決定2の規定どおり）。`above_lod` はどちらの系列でも非メンバーのまま。
+実装・実測件数は D12 参照。
 
 ### D3. observation は原表記を残す
 
@@ -306,6 +313,40 @@ ADR-0011「粒度をまたぐ再集計をしない」）。月・年セルの `n
 すると番号が衝突しうる）。根本は ADR-0022 の place のキー設計側の課題として
 `docs/add_area.md` に申し送った（本書では対応しない）。
 
+### D12. 検閲値の `zero`/`lod` 併記（ADR-0009 決定4、2026-09-24）
+
+`observation_agg` の次元キーから `imputation` を外し（13列→12列）、
+`value` 列を `value_zero`/`value_lod` の2列に分けた。設計・機械検証・
+実測値の詳細は ADR-0009 決定4（導出式含む）・`scripts/b04_build_cube.py`
+のモジュール docstring。ここでは実測だけを記録する。
+
+| 実測 | 値 |
+|---|---:|
+| `observation_agg` セル数（変化なし） | 2,022,964 |
+| `value_lod IS NULL`（`n_not_detected = n` の格） | 3,201 |
+| `value_lod != value_zero`（below_lod を含む格。ties を除く） | 241,063 |
+| `n_censored > 0` の格（上と一致しない理由は下記） | 243,686 |
+| うち `value_lod = value_zero`（タイ。`stat='max'` 2,552 + `stat='min'` 71） | 2,623 |
+| `observation_agg` ファイルサイズ（dbstat） | 444.4MB（旧: 461.9MB。**設計時の見込み +16MB に反して減った**——13列目〔`imputation`、常に `'zero'` の TEXT〕を1本消した分が `value_lod`（REAL、3,201セルは NULL）を1本足した分を上回った） |
+| b04 実行時間 | 45.0〜47.9秒（変更前の実測53〜64秒の範囲内。統計3種→両系列の同時計算にしても悪化していない） |
+| b05 実行時間（変更なしの確認） | 43.8〜44.7秒（変更前の実測と同程度） |
+| 統合ゲート（33表） | 終了コード0・一致25／宣言済み差分のみ8／不一致0／対象外0（main と1ビットも変わらず） |
+
+**`n_censored>0` の格数（243,686）と `value_lod != value_zero` の格数
+（241,063）が一致しない理由**: below_lod の限界値（`censoring_limit`）を
+代入しても、その格の `MIN`/`MAX` が別の非検閲メンバーで決まっていれば
+値そのものは変わらない（例: `MAX` の格で censoring_limit より大きい
+非検閲値がすでに存在する場合、censoring_limit を混ぜても `MAX` は動かない）。
+`mean`/`sum` は検閲行1件でも合計が動くため tie は0件、`min`/`max` だけに
+tie が生じる（実測: `max` 77,090格中2,552タイ・`min` 77,090格中71タイ・
+`mean` 89,506格中0タイ）。`max` の tie は「格内の非検閲メンバーの最大値が
+censoring_limit を上回っている」場合に起きる（想定どおり多い）。`min` の
+tie（71件）は「真の0（below_lod ではない実測値0.0）が同じ格に同居し、
+zero 側・lod 側どちらの `MIN` も0で一致する」稀なケース——ADR-0009 背景の
+実測（v1 全体で「本当の0」は153行だけ）と整合する。b04 の機械検証3
+（両方が非 NULL なら `value_lod >= value_zero`）はこの `min`/`max` の
+tie を等号（`>=`）で明示的に許容している。
+
 ## 6. 移行で温存した v1 の癖（ゲートが緑のうちは直さない）
 
 - **`ノニルフェノール` の `value_raw='0.00006'` 等 69行**が v1 で `value IS NULL`（パース失敗＝
@@ -424,7 +465,6 @@ ADR-0011「粒度をまたぐ再集計をしない」）。月・年セルの `n
 - `occurrence` を入力にする縦線（生物系11テーブル）
 - キューブのゾーンのロールアップセル（ADR-0011 の `roll_up_to`。D11参照。使う側が
   現れたら作る。作るなら系列ごと・`n_places` 付き）
-- `imputation='lod'` 併記（ADR-0009 決定4。今回は `zero` のみ）
 - 正準単位の併記（ADR-0023。方針は決定済みだが未実装）
 - 時刻帯の実データ結線（ADR-0024。`region_id` から実際のUTCオフセットを引く仕組みは
   未実装。応答封筒〔ADR-0014〕の実装より前に要る）

@@ -36,6 +36,15 @@
 # 初めて新規に足した注記（上記「新しい注記はここに足していない」は Phase A 時点の
 # 記述で、この1件だけ例外）。scope は landuse_watershed/landuse_change の2表
 # （scripts/registry/build_caveat.py の LANDUSE_TABLES）。
+#
+# censored（ADR-0009 決定4、2026-09-24）は Phase A 以降で本文を変えた唯一の例外
+# （上記「body_ja は1文字も変えていない」への2件目の例外）。旧本文「value 列には
+# 0 が入っている」は、キューブが zero/lod の2系列を併記するようになった時点で
+# 偽になる（value 列という単一の列自体が無くなり、value_zero/value_lod に分かれた
+# うえ、value_lod には 0 ではなく定量下限値が入る）。どちらの系列を見ているかは
+# 応答側が言う、注意書きはサーバと UI が機械的に付ける、という既存の原則（AI アシスタントの
+# 設計）に合わせ、本文を「0 が入っている」という特定の実装に依存しない書き方に直した。
+# web/src/lib/ai/caveats.test.ts の該当3ケース・スナップショットも合わせて更新済み。
 
 caveats:
 - key: measuredOn
@@ -48,7 +57,7 @@ caveats:
   severity: blocking
   kind: censoring
   title_ja: null
-  body_ja: 全体の約24%は定量下限未満（原表記が「<0.5」など）で、value 列には 0 が入っている。折れ線では中抜きの点で示し、平均には含めるが「0 が観測された」とは読まないこと。
+  body_ja: 全体の約24%は定量下限未満（原表記が「<0.5」など）。値の扱いは代入方式によって変わる（0とみなす方式／定量下限値とみなす方式）。折れ線では中抜きの点で示し、いずれの方式でも「0 が観測された」とは読まないこと。
   quote: null
 - key: duplicates
   severity: null

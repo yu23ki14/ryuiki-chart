@@ -1,7 +1,16 @@
 # ADR-0009: 定量下限未満を 0 で表さず、検閲を明示的に持つ
 
 - 状態: 提案中 / 日付: 2026-09-06
-- 関連: ADR-0007（observation）, ADR-0013（caveat）, ADR-0014（応答）
+- 関連: ADR-0007（observation）, ADR-0011（キューブ）, ADR-0013（caveat）, ADR-0014（応答）,
+  ADR-0021（キューブの鍵）
+
+**2026-09-24 追記（実装。ADR-0016 Phase B「ファクトとキューブ」で `imputation='zero'`
+のみ実装したのに続く最初の意図的な変更）**: 決定2・決定4を実装した。要点は決定2・決定4
+それぞれの本文に追記した。実装は `scripts/b04_build_cube.py`（`observation_agg`
+の `value_zero`/`value_lod` 列）・`scripts/migrate/censoring.py`（`ZERO_IMPUTED_CENSORING`
+等の唯一の定義）。実測: `observation_agg` 2,022,964セル（変化なし。決定4のとおり
+セル数は増えない）、`value_lod` が `value_zero` と食い違うセル 241,063、
+`value_lod IS NULL`（`n_not_detected = n` の格）3,201。
 
 ## 背景（実測）
 
@@ -55,6 +64,20 @@ value_raw        原表記（'<0.5'）を必ず残す
    限界値が無いので half_lod のような代入は計算できない。
    集計では **`n_not_detected` として別に数え、平均には含めない**（含めるなら
    `imputation` の指定が必要）。
+
+   **2026-09-24 追記（実装。`zero`/`lod` で非対称）**: `not_detected` の扱いは
+   系列によって非対称にする。
+   - `value_zero`: 0 として平均に含める（**v1 の再現のため**——v1 は
+     `value=0.0` の ND 行を `AVG`/`COUNT` に含めている。ADR-0016 の受け入れ
+     基準「`imputation='zero'` で v1 の値を誤差0で再現する」を満たすには、
+     ここだけは本節の本来の規定（代入しない）から外れる）。
+   - `value_lod`: 本節の規定どおり、限界値が無いので**代入せず、平均から
+     除外する**。
+   - 実装（`scripts/b04_build_cube.py`）は「ND だけの格では `AVG` が NULL を
+     返す」という一般形（`CASE WHEN censoring='not_detected' THEN NULL ELSE
+     ... END` を `AVG`/`MIN`/`MAX` に渡すだけ）で書き、**「ND を含むセルは
+     すべて100% ND」という実データの性質には依存しない**（この性質は機械
+     検証にだけ使う。決定4の「機械検証」参照）。
 3. **`detection_flag` は捨てない**。出典コードとして `source_flag_raw` に退避し、
    意味が判明した出典についてのみ `censoring` へのマッピングをマニフェストに書く。
    意味が不明なものは `censoring='unknown'` とし、**推測でマッピングしない**。
@@ -67,6 +90,36 @@ value_raw        原表記（'<0.5'）を必ず残す
    「妥当な既定」として黙って適用してよいものではない。
    応答は原則として **`lod` と `zero` の両方（上限と下限）を併記**し、
    単一値が必要な場合のみ利用側が方式を選ぶ。
+
+   **2026-09-24 追記（実装。併記は列で持つ）**: `imputation` は**論理的な軸**
+   （クエリのパラメータ）だが、`observation_agg`（ADR-0011 のキューブ）では
+   **次元キーではなく列**として持つ（`value_zero`/`value_lod` の2列。
+   `imputation ∈ {zero, lod}` は次元キーから外れ、12列になった。詳細は
+   ADR-0011・ADR-0021 の追記）。理由:
+   1. `imputation` は同じセルのメンバーを分割しない——`zero`/`lod` の2系列は
+      `n`/`n_censored`/`n_not_detected`/`n_places` が同一で、変わるのは
+      代入する値だけ。次元キーに残すと「同じメンバーのセルが2行に分かれる」
+      という誤ったモデルになる。
+   2. 全セル二重化（次元キーに残したまま `imputation` の値を増やす）は
+      +462MB 相当、列を2本足す方式は +16MB 程度で済む見込みだった（設計時の
+      試算）。実装後の実測では `observation_agg`（dbstat）は 444.4MB
+      （旧: 461.9MB）と、むしろ**減った**——13列目（`imputation`、常に
+      `'zero'` の TEXT 列）を1本消した分が、`value_lod` 列（REAL、うち
+      3,201セルは NULL）を1本足した分を上回った。
+   3. 列にすることで「`lod` で引いたのに無い」が構造的に起きない（`zero`/
+      `lod` は常に同じ行の2列として一緒に存在する）。
+   4. `half_lod` の平均や「検閲を除外した平均」は**保存せず、式で導出する**:
+      - `half_lod` の平均 = `(value_zero + value_lod) / 2`
+      - 検閲を除外した平均 = `value_zero × n / (n − n_censored − n_not_detected)`
+        （`value_zero` は below_lod/not_detected を 0 として計算した平均なので、
+        `× n` で合計に戻し、検閲行の数を引いた件数で割り直せば「検閲行を
+        除いた平均」になる。`n − n_censored − n_not_detected = 0` の格は
+        定義できない——全件が検閲されている格）。
+   5. ADR-0023 の正準単位も同じ形（列）で並存できるので、キューブを二度
+      作り直さずに済む。
+   却下した案は決定4本文のとおり（全セル二重化・差の出るセルだけ持つ案）。
+   実装・機械検証・実測件数は `scripts/b04_build_cube.py` のモジュール
+   docstring「機械検証」節参照。
 5. **応答には常に `censoring` / `n_censored` / `n_not_detected` / `imputation` を含める**（ADR-0014）。
 
 ## 影響

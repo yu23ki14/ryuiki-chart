@@ -4,6 +4,11 @@ domain.ts の DATA_CAVEATS（7件）・BIOTA_CAVEATS（6件）・MUNICIPALITY_LA
 caveats.ts のテーブル→注記マッピング、cells.notes（207行）を caveat に移す。
 文言は変えない（変えると web/src/lib/ai/caveats.test.ts の回帰テストが意味を失う）。
 新しい注記は書き足さない。
+**例外（2026-09-24、ADR-0009 決定4）**: `censored` の本文だけは変えた
+——検閲値の zero/lod 併記でキューブに単一の `value` 列が無くなり、旧本文
+「value 列には 0 が入っている」が偽になったため。`registry/caveat.yaml` の
+`censored` エントリ直前のコメント参照。`caveats.test.ts` 側も対応する3ケースを
+新しい本文に更新済み。
 
 ## スキーマの逸脱（計画の7テーブル→8テーブル）
 

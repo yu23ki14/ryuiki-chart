@@ -38,7 +38,13 @@ from reconcile.common import load_yaml, open_readonly  # noqa: E402,F401  (b03/b
 # b04 の observation_agg / b05 の射影が `built_from` / `spec_version` に書く定数。
 # バージョンを上げるのはこのパッケージの変換ロジックそのものを変えたとき
 # （キーの構成や集計方法が変わる＝過去に作った observation_agg と比較できなくなるとき）。
-SPEC_VERSION = "phase-b-fact-slice/v1"
+# 2026-09-24: ADR-0009 決定4（検閲値の zero/lod 併記）で `observation_agg` の
+# 次元キーから `imputation` を外し（13列→12列）、`value` を `value_zero`/
+# `value_lod` の2列に分けた。過去のキーとは比較できないため v2 に上げる
+# （`b07_build_occurrence_cube.py`/`b09_build_occurrence_place.py` の
+# `occurrence_agg`/`occurrence_place` はこの変更の影響を受けないが、
+# `spec_version` はパッケージ共通の1つの版番号として運用する）。
+SPEC_VERSION = "phase-b-fact-slice/v2"
 
 # SQLite 3.43 未満では2つの理由でパイプラインが壊れる: (1) AVG()/SUM() の
 # 加算アルゴリズムが素朴な左→右加算に落ち、平均が黙って壊れる（b04・b05・

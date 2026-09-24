@@ -3,6 +3,17 @@
 - 状態: 提案中 / 日付: 2026-09-06
 - 関連: ADR-0005（ライセンス）, ADR-0008（時間）, ADR-0009（検閲）, ADR-0011（キューブ）, ADR-0013（caveat）
 
+**2026-09-24 追記（ADR-0009 決定4。方針のみ、応答の実装はまだ無い）**:
+`observation_agg` が `value_zero`/`value_lod` を併記するようになったので、
+将来この封筒を実装するときは、`coverage` に `n_censored`/`n_not_detected`
+を含め（下記の例に既に入っている）、`columns` には `value_zero`/`value_lod`
+を**それぞれ単位つきで両方**出す。単一の `value` 列を返すのは、呼び出し側が
+`imputation`（`zero`/`lod`/`half_lod` 等）を明示したときだけにする——
+`half_lod` は保存された列ではなく `(value_zero + value_lod) / 2` で導出する
+（ADR-0009 決定4）。**この節はまだコード化されていない**（`/api/*` にも
+MCP ツールにも `get_observations` 相当の実装は無い）。方針だけをここに残し、
+実装は最初の消費者が現れたときの別 PR で行う（ADR-0023 決定4と同じ扱い）。
+
 ## 背景
 
 現行の API は画面ごとに生えている（`/api/timeseries` `/api/biota` `/api/nature?kind=`

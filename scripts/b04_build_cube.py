@@ -1,12 +1,48 @@
 #!/usr/bin/env python3
 """`observation`（`data/db/v2.sqlite`、b03 が作ったもの）から、ADR-0011 のキューブ
-`observation_agg`（ADR-0021・「センサーの縦線 設計 v2」T4 で拡張したキー）を作る
+`observation_agg`（ADR-0021・「センサーの縦線 設計 v2」T4 で拡張したキー、
+ADR-0009 決定4で `imputation` を列（`value_zero`/`value_lod`）に変えた形）を作る
 （ADR-0016 Phase B「ファクトとキューブ」）。
 
     .venv/bin/python3 scripts/b04_build_cube.py
 
-`imputation='zero'` の系列だけを作る（design.md 5. 受け入れ条件・ADR-0016）。
-`data/db/v2.sqlite` に `observation_agg` テーブルを（作り直して）追加する。
+`value_zero`/`value_lod` の2系列を常に併記する（design.md 5. 受け入れ条件・
+ADR-0016・ADR-0009 決定4）。`data/db/v2.sqlite` に `observation_agg` テーブルを
+（作り直して）追加する。
+
+## `imputation` は論理的な軸であり、物理的には列で持つ（ADR-0009 決定4）
+
+以前の `observation_agg` は次元キーに `imputation ∈ {'zero'}` を持ち、
+`value` 列（`below_lod`/`not_detected` に 0.0 を代入した後の値）だけを持つ
+1系列だった。今回、`lod`（`below_lod` に `censoring_limit` を代入した系列）を
+併記するにあたり、**次元キーから `imputation` を外し、`value` を
+`value_zero`/`value_lod` の2列に分ける**（次元キーは13列→12列）。
+
+理由（ADR-0009 決定4・オーナー決定）:
+1. `imputation` はファクト行を分割する次元ではない——`zero`/`lod` の2系列は
+   同じセルのメンバー（`n`/`n_censored`/`n_not_detected`/`n_places` はどちらも
+   同じ）で、変わるのは代入する値だけ。次元キーに入れると「同じメンバーの
+   セルが2行に分かれる」という誤ったモデルになる。
+2. 全セル二重化（次元キーに残したまま `imputation` の値を増やす）は
+   +462MB、列追加は +16MB で済む（実測は `docs/adr/0009-censored-values.md`
+   決定4）。
+3. 列にすることで「`lod` で引いたのに無い」が構造的に起きない
+   （`zero`/`lod` は常に同じ行の2列として一緒に存在する）。
+
+## `value_lod` の代入規則（ADR-0009 決定2・非対称）
+
+- `value_zero`: `below_lod`/`not_detected` を 0.0 として平均に含める
+  （**v1 の再現のため**。v1 は `value=0.0` の ND 行を `AVG`/`COUNT` に含めている）。
+- `value_lod`: `below_lod` は `censoring_limit`（定量下限値）を代入するが、
+  `not_detected` は**限界値が無いため代入せず、平均から除外する**
+  （ADR-0009 決定2 の本来の規定）。`above_lod`/`unknown` はどちらの系列でも
+  非メンバーのまま（0 を代入しない——0 は上限ではない。`unknown` は
+  意味が分からない値を推測しないため）。
+- 実装は「ND だけの格では `AVG` が NULL を返す」という一般形で書く
+  （`CASE WHEN censoring = 'not_detected' THEN NULL ELSE ... END` を
+  `AVG`/`MIN`/`MAX` に渡すだけで、SQL の NULL 無視の集約規則がそのまま
+  「ND だけの格は NULL、1件でも非 ND があれば非 ND 分だけで計算」を実現する
+  ——「ND を含むセルは全て 100% ND」という実データの性質には依存しない）。
 
 ## 入出力について（design.md D8 と「共通」節の折り合い）
 
@@ -28,14 +64,18 @@ design.md D8 は `observation` と `observation_agg` を同じ `data/db/v2.sqlit
 `sqlite3` は DDL の前に暗黙コミットしない）が、それより後に `conn.commit()`
 を呼んでいたため、**一意性検証に失敗しても、それより前に確定した
 `observation_agg` の中身は元に戻せなかった**（バグ）。今は
-`migrate.common.staged_table` を使い、一意性検証（下記 C-3）まで含めて
+`migrate.common.staged_table` を使い、一意性検証（下記 C-3）・
+`value_zero`/`value_lod` の関係の検証（下記「機械検証」節）まで含めて
 全部通ってから本番名 `observation_agg` に差し替える。失敗すれば作業用
 テーブルを `DROP` するだけで済み、前回の `observation_agg` はそのまま残る。
 
-## キューブの次元キー（design.md D5・ADR-0011・ADR-0021）
+## キューブの次元キー（design.md D5・ADR-0011・ADR-0021・ADR-0009 決定4）
 
     region_id, place_id, place_kind, variable_id, obs_stat, unit_id, value_grain,
-    period_start, period_end, grain, input_grain, stat, imputation
+    period_start, period_end, grain, input_grain, stat
+
+（旧キーから `imputation` を外した12列。`value_zero`/`value_lod` は次元では
+なく値の列——「機械検証」節参照。）
 
 - `obs_stat`: `observation` 側の統計量（alias が言う。例: pH の最大値/最小値を
   別々に配る出典では `obs_stat='max'`/`'min'` になる）。
@@ -88,16 +128,6 @@ design.md D8 は `observation` と `observation_agg` を同じ `data/db/v2.sqlit
    （`input_grain <> 'day'` という以前の条件は、月次の出典配布セル
    （`input_grain='month'`）まで年次として数えてしまうため使えない）。
 
-## imputation='zero'（design.md D2・b04 仕様）
-
-`below_lod`/`not_detected` にだけ 0.0 を代入する。`above_lod`/`unknown` には
-代入しない——`observation.value_num` は既に検閲行では NULL
-（`scripts/migrate/censoring.resolve_value_num`）なので、この2つは
-「代入しない」を「NULL のまま」で表せる。`n_censored` は `below_lod` の数、
-`n_not_detected` は `not_detected` の数を別に持つ（ADR-0009 決定2）。
-`sensor_timeseries` 由来の行は `censoring` が常に `'none'`
-（`scripts/b03_build_observation.py`）なので、この分岐の影響を受けない。
-
 ## unit_raw をキューブに持たない（B-1・レビュー指摘）
 
 ADR-0011 が定義するキューブの列は `unit_id` までで、`unit_raw`（原表記の単位
@@ -114,6 +144,21 @@ ADR-0011 が定義するキューブの列は `unit_id` までで、`unit_raw`�
   content_hash バイト一致が崩れるため）。
 - `n_places`: この縦線はロールアップしない（次元キーに `place_id` が必ず
   入る）ため、常に `1`。
+
+## 機械検証: `value_zero`/`value_lod` の関係（ADR-0009 決定4）
+
+`_assert_dimension_key_unique` の直後、同じ `with staged_table(...)` ブロック
+内で `_assert_value_zero_lod_invariants` を呼ぶ。破れれば `staged_table` が
+前回の `observation_agg` を残したまま止まる（A-1 と同じ安全策）。
+
+1. `(value_lod IS NULL) = (n_not_detected = n)`（ND だけの格でのみ NULL）。
+2. `n_censored = 0 AND n_not_detected = 0` ⇒ `value_lod IS value_zero`
+   （ビット一致。検閲の無いセルでは代入の余地が無いので両系列は同じ値になる
+   はず——day_stats/month_source_stats/year_source_stats がどちらも同じ
+   `GROUP BY` の1パスで `AVG(v_zero)`/`AVG(v_lod)` 等を並べて計算しており、
+   加算順序は自動的に揃っている）。
+3. 両方が非 NULL ⇒ `value_lod >= value_zero`（`censoring_limit` は正なので、
+   検閲行を1件でも含む格は `value_lod` が `value_zero` 以上になるはず）。
 
 ## SQLite の版を守る（アドバイザー指摘・オーナー採用）
 
@@ -148,10 +193,11 @@ DEFAULT_REGISTRY_DB = ROOT / "data" / "db" / "registry.sqlite"
 DEFAULT_BUILT_FROM = f"observation (sqlite={sqlite3.sqlite_version})"
 
 # ADR-0011 の次元キー（design.md D5）。列順はそのまま `observation_agg` の
-# 列順の先頭に使う。
+# 列順の先頭に使う。ADR-0009 決定4: `imputation` は次元キーから外し、
+# `value_zero`/`value_lod` の2列に分けた（モジュール docstring 参照）。
 DIM_COLUMNS = [
     "region_id", "place_id", "place_kind", "variable_id", "obs_stat", "unit_id",
-    "value_grain", "period_start", "period_end", "grain", "input_grain", "stat", "imputation",
+    "value_grain", "period_start", "period_end", "grain", "input_grain", "stat",
 ]
 
 # `{table}` プレースホルダに本番名（`observation_agg`）または作業用テーブル名を
@@ -159,7 +205,8 @@ DIM_COLUMNS = [
 _CREATE_OBSERVATION_AGG_SQL = f"""
 CREATE TABLE {{table}} (
   {", ".join(f'{c} TEXT' for c in DIM_COLUMNS)},
-  value REAL,
+  value_zero REAL,
+  value_lod REAL,
   n INTEGER NOT NULL,
   n_censored INTEGER NOT NULL,
   n_not_detected INTEGER NOT NULL,
@@ -169,15 +216,27 @@ CREATE TABLE {{table}} (
 )
 """
 
-# `obs_zero`: `imputation='zero'` を適用した後の値（`v`）を作る SQL。
-# 0 を代入する censoring の値は `censoring.ZERO_IMPUTED_CENSORING`
-# （唯一の定義）から組み立てる。`sensor_timeseries` 由来の行は censoring が
-# 常に 'none' なので、この CASE の対象にならず `value_num` がそのまま通る。
+# `obs_imputed`: `value_zero`/`value_lod` の両方を1回の VIEW 定義で持つ
+# （ADR-0009 決定4「同じ GROUP BY の1パスで並べて計算する」）。0 を代入する
+# censoring の値は `censoring.ZERO_IMPUTED_CENSORING`（唯一の定義）から組み
+# 立てる。`value_lod` の代入規則は `censoring.CENSORING_BELOW_LOD`/
+# `CENSORING_NOT_DETECTED`（唯一の定義）から組み立てる——「below_lod は
+# censoring_limit、not_detected は NULL（限界値が無いので代入せず除外）、
+# それ以外（none/above_lod/unknown）は value_num」の3分岐（モジュール
+# docstring「value_lod の代入規則」参照）。`sensor_timeseries` 由来の行は
+# censoring が常に 'none' なので、どちらの CASE でも `value_num` がそのまま
+# 通る。
 _ZERO_IMPUTED_IN_CLAUSE = ", ".join(f"'{c}'" for c in censoring.ZERO_IMPUTED_CENSORING)
-_CREATE_OBS_ZERO_VIEW_SQL = f"""
-CREATE TEMP VIEW obs_zero AS
+_VALUE_LOD_CASE = (
+    f"CASE WHEN censoring = '{censoring.CENSORING_BELOW_LOD}' THEN censoring_limit "
+    f"WHEN censoring = '{censoring.CENSORING_NOT_DETECTED}' THEN NULL "
+    "ELSE value_num END"
+)
+_CREATE_OBS_IMPUTED_VIEW_SQL = f"""
+CREATE TEMP VIEW obs_imputed AS
 SELECT *,
-       CASE WHEN censoring IN ({_ZERO_IMPUTED_IN_CLAUSE}) THEN 0.0 ELSE value_num END AS v
+       CASE WHEN censoring IN ({_ZERO_IMPUTED_IN_CLAUSE}) THEN 0.0 ELSE value_num END AS v_zero,
+       {_VALUE_LOD_CASE} AS v_lod
 FROM observation
 """
 
@@ -190,7 +249,13 @@ _BUILT_FROM_SELECT = "? AS built_from, ? AS spec_version"
 
 # B-4: `stat`/値列の組は4箇所（日次・年次(day側)・月次(出典側)・年次(出典側)の
 # それぞれの展開ループ）で同じ3つ組を使っていた。ここに1つ宣言する。
-_STAT_VALUE_COLUMNS = (("mean", "v_mean"), ("min", "v_min"), ("max", "v_max"))
+# ADR-0009 決定4: 各 stat について value_zero 側・value_lod 側それぞれの列名を
+# 持つ3つ組に拡張した。
+_STAT_VALUE_COLUMNS = (
+    ("mean", "vz_mean", "vl_mean"),
+    ("min", "vz_min", "vl_min"),
+    ("max", "vz_max", "vl_max"),
+)
 
 # B-4: INSERT 列の末尾（`n, n_censored, n_not_detected, 1 AS n_places,
 # built_from, spec_version`）は5つの展開 SQL（日次×2・年次(day側)・
@@ -211,29 +276,36 @@ _CENSORED_COUNTS_SELECT = (
 # 観測（period_grain IN ('day','hour','instant')）を「日」の格へ積み上げる。
 # 日付は substr(period_start,1,10)（区間の始まりの日付。hour_ending の場合は
 # b03 が既にラベル-1時間を計算済みなので、ここでの substr で正しい日になる。
-# T4-1・T6）。mean/min/max/sum の4通りをここで一度に計算してから
-# （C-2 と同じ考え方: 同じ GROUP BY を4回叩き直さない）、stat ごとに展開する。
+# T4-1・T6）。mean/min/max/sum の4通り × value_zero/value_lod の2系列を
+# ここで一度に計算してから（C-2 と同じ考え方: 同じ GROUP BY を何度も叩き
+# 直さない）、stat ごとに展開する。
+#
+# `WHERE v_zero IS NOT NULL` で絞る観測の集合（above_lod/unknown を除く）は
+# 旧実装の `WHERE v IS NOT NULL` と同じ——`value_zero`/`value_lod` は
+# 「どちらの系列も同じセルのメンバー」（ADR-0009 決定4 決定1）なので、
+# メンバーシップは value_zero 側の非 NULL 性だけで決める。
 
 def _day_stats_sql() -> str:
     return f"""
     SELECT {_DIM_SELECT}, period_grain,
            substr(period_start, 1, 10) AS period_start,
            substr(period_start, 1, 10) AS period_end,
-           AVG(v) AS v_mean, MIN(v) AS v_min, MAX(v) AS v_max, SUM(v) AS v_sum,
+           AVG(v_zero) AS vz_mean, MIN(v_zero) AS vz_min, MAX(v_zero) AS vz_max, SUM(v_zero) AS vz_sum,
+           AVG(v_lod) AS vl_mean, MIN(v_lod) AS vl_min, MAX(v_lod) AS vl_max, SUM(v_lod) AS vl_sum,
            COUNT(*) AS n,
            {_CENSORED_COUNTS_SELECT}
-    FROM obs_zero
-    WHERE period_grain IN ('day', 'hour', 'instant') AND v IS NOT NULL
+    FROM obs_imputed
+    WHERE period_grain IN ('day', 'hour', 'instant') AND v_zero IS NOT NULL
     GROUP BY {_DIM_SELECT}, period_grain, substr(period_start, 1, 10)
     """
 
 
-def _day_expand_sql(stat: str, value_column: str) -> str:
-    # `stat`/`value_column` は呼び出し側の固定引数（ユーザー入力ではない）。
+def _day_expand_sql(stat: str, value_zero_column: str, value_lod_column: str) -> str:
+    # `stat`/`value_*_column` は呼び出し側の固定引数（ユーザー入力ではない）。
     return f"""
     SELECT {_DIM_SELECT}, period_start, period_end,
-           'day' AS grain, period_grain AS input_grain, '{stat}' AS stat, 'zero' AS imputation,
-           {value_column} AS value, {_AGG_TAIL_SELECT}
+           'day' AS grain, period_grain AS input_grain, '{stat}' AS stat,
+           {value_zero_column} AS value_zero, {value_lod_column} AS value_lod, {_AGG_TAIL_SELECT}
     FROM day_stats
     """
 
@@ -244,8 +316,8 @@ def _day_sum_expand_sql() -> str:
     # している系列（obs_stat='max_10min' 等）には合計をかけない。
     return f"""
     SELECT {_DIM_SELECT}, period_start, period_end,
-           'day' AS grain, period_grain AS input_grain, 'sum' AS stat, 'zero' AS imputation,
-           v_sum AS value, {_AGG_TAIL_SELECT}
+           'day' AS grain, period_grain AS input_grain, 'sum' AS stat,
+           vz_sum AS value_zero, vl_sum AS value_lod, {_AGG_TAIL_SELECT}
     FROM day_stats
     WHERE variable_id IN (SELECT variable_id FROM reg.variable WHERE default_stat = 'sum')
       AND (obs_stat IS NULL OR obs_stat = 'sum')
@@ -272,14 +344,19 @@ def _day_sum_expand_sql() -> str:
 # WHERE ...` という自己参照は SQLite が単一の SELECT 実行中は安定したスナップ
 # ショットを読むため安全（挿入した 'month'/'year' 行が同じ WHERE 句に
 # 再マッチすることはない。実測で確認済み）。
+#
+# ADR-0009 決定4: `value_zero`/`value_lod` それぞれを AVG() する
+# （`AVG(value_lod)` は日次セルの `value_lod` が NULL の日〔100% ND の日〕を
+# 自動的に無視する——SQL の集約関数の NULL 無視規則がそのまま「ND だけの
+# 日次セルは月次平均から除外する」を実現する。特別扱いのコードは不要）。
 
 def _month_from_day_sql(staging: str) -> str:
     return f"""
     SELECT {_DIM_SELECT},
            date(period_start, 'start of month') AS period_start,
            date(period_start, 'start of month', '+1 month', '-1 day') AS period_end,
-           'month' AS grain, input_grain, 'mean' AS stat, 'zero' AS imputation,
-           AVG(value) AS value,
+           'month' AS grain, input_grain, 'mean' AS stat,
+           AVG(value_zero) AS value_zero, AVG(value_lod) AS value_lod,
            COUNT(*) AS n, SUM(n_censored) AS n_censored, SUM(n_not_detected) AS n_not_detected,
            1 AS n_places, {_BUILT_FROM_SELECT}
     FROM "{staging}"
@@ -293,7 +370,8 @@ def _year_from_day_stats_sql(staging: str) -> str:
     SELECT {_DIM_SELECT}, input_grain,
            date(period_start, 'start of year') AS period_start,
            date(period_start, 'start of year', '+1 year', '-1 day') AS period_end,
-           AVG(value) AS v_mean, MIN(value) AS v_min, MAX(value) AS v_max,
+           AVG(value_zero) AS vz_mean, MIN(value_zero) AS vz_min, MAX(value_zero) AS vz_max,
+           AVG(value_lod) AS vl_mean, MIN(value_lod) AS vl_min, MAX(value_lod) AS vl_max,
            COUNT(*) AS n, SUM(n_censored) AS n_censored, SUM(n_not_detected) AS n_not_detected
     FROM "{staging}"
     WHERE grain = 'day' AND stat = 'mean'
@@ -301,11 +379,11 @@ def _year_from_day_stats_sql(staging: str) -> str:
     """
 
 
-def _year_from_day_expand_sql(stat: str, value_column: str) -> str:
+def _year_from_day_expand_sql(stat: str, value_zero_column: str, value_lod_column: str) -> str:
     return f"""
     SELECT {_DIM_SELECT}, period_start, period_end,
-           'year' AS grain, input_grain, '{stat}' AS stat, 'zero' AS imputation,
-           {value_column} AS value, {_AGG_TAIL_SELECT}
+           'year' AS grain, input_grain, '{stat}' AS stat,
+           {value_zero_column} AS value_zero, {value_lod_column} AS value_lod, {_AGG_TAIL_SELECT}
     FROM year_from_day_stats
     """
 
@@ -321,20 +399,21 @@ def _year_from_day_expand_sql(stat: str, value_column: str) -> str:
 def _month_source_stats_sql() -> str:
     return f"""
     SELECT {_DIM_SELECT}, period_start, period_end,
-           AVG(v) AS v_mean, MIN(v) AS v_min, MAX(v) AS v_max,
+           AVG(v_zero) AS vz_mean, MIN(v_zero) AS vz_min, MAX(v_zero) AS vz_max,
+           AVG(v_lod) AS vl_mean, MIN(v_lod) AS vl_min, MAX(v_lod) AS vl_max,
            COUNT(*) AS n,
            {_CENSORED_COUNTS_SELECT}
-    FROM obs_zero
-    WHERE period_grain = 'month' AND v IS NOT NULL
+    FROM obs_imputed
+    WHERE period_grain = 'month' AND v_zero IS NOT NULL
     GROUP BY {_DIM_SELECT}, period_start, period_end
     """
 
 
-def _month_source_expand_sql(stat: str, value_column: str) -> str:
+def _month_source_expand_sql(stat: str, value_zero_column: str, value_lod_column: str) -> str:
     return f"""
     SELECT {_DIM_SELECT}, period_start, period_end,
-           'month' AS grain, 'month' AS input_grain, '{stat}' AS stat, 'zero' AS imputation,
-           {value_column} AS value, {_AGG_TAIL_SELECT}
+           'month' AS grain, 'month' AS input_grain, '{stat}' AS stat,
+           {value_zero_column} AS value_zero, {value_lod_column} AS value_lod, {_AGG_TAIL_SELECT}
     FROM month_source_stats
     """
 
@@ -342,21 +421,22 @@ def _month_source_expand_sql(stat: str, value_column: str) -> str:
 def _year_source_stats_sql() -> str:
     return f"""
     SELECT {_DIM_SELECT}, period_start, period_end, period_grain,
-           AVG(v) AS v_mean, MIN(v) AS v_min, MAX(v) AS v_max,
+           AVG(v_zero) AS vz_mean, MIN(v_zero) AS vz_min, MAX(v_zero) AS vz_max,
+           AVG(v_lod) AS vl_mean, MIN(v_lod) AS vl_min, MAX(v_lod) AS vl_max,
            COUNT(*) AS n,
            {_CENSORED_COUNTS_SELECT}
-    FROM obs_zero
-    WHERE period_grain IN ('year', 'fiscal_year') AND v IS NOT NULL
+    FROM obs_imputed
+    WHERE period_grain IN ('year', 'fiscal_year') AND v_zero IS NOT NULL
     GROUP BY {_DIM_SELECT}, period_start, period_end, period_grain
     """
 
 
-def _year_source_expand_sql(stat: str, value_column: str) -> str:
+def _year_source_expand_sql(stat: str, value_zero_column: str, value_lod_column: str) -> str:
     return f"""
     SELECT {_DIM_SELECT}, period_start, period_end,
            period_grain AS grain, period_grain AS input_grain,
-           '{stat}' AS stat, 'zero' AS imputation,
-           {value_column} AS value, {_AGG_TAIL_SELECT}
+           '{stat}' AS stat,
+           {value_zero_column} AS value_zero, {value_lod_column} AS value_lod, {_AGG_TAIL_SELECT}
     FROM year_source_stats
     """
 
@@ -386,6 +466,67 @@ def _assert_dimension_key_unique(conn: sqlite3.Connection, staging: str) -> None
     )
 
 
+# ---------------------------------------------------------------------------
+# value_zero / value_lod の関係の検証（ADR-0009 決定4。モジュール docstring
+# 「機械検証」節参照）
+# ---------------------------------------------------------------------------
+
+def _assert_value_zero_lod_invariants(conn: sqlite3.Connection, staging: str) -> dict:
+    """`staging`（`staged_table` の作業用テーブル）に対して、`value_zero`/
+    `value_lod` の3つの不変条件を検証する。戻り値はレポート用の実測件数
+    （検証4）。いずれかが崩れていれば `common.MigrationError` で例外の
+    サンプル行つきで止まる。
+    """
+    dim_cols = ", ".join(DIM_COLUMNS)
+
+    bad1 = conn.execute(
+        f'SELECT {dim_cols}, value_lod, n_not_detected, n FROM "{staging}" '
+        "WHERE (value_lod IS NULL) != (n_not_detected = n) LIMIT 5"
+    ).fetchall()
+    if bad1:
+        raise common.MigrationError(
+            "observation_agg: value_lod IS NULL が n_not_detected=n と一致しない行がある"
+            f"（例: {bad1}）。ADR-0009 決定4「value_lod は not_detected だけの格でのみ "
+            "NULL になる」が崩れている。"
+        )
+
+    bad2 = conn.execute(
+        f'SELECT {dim_cols}, value_zero, value_lod FROM "{staging}" '
+        "WHERE n_censored = 0 AND n_not_detected = 0 AND value_lod IS NOT value_zero LIMIT 5"
+    ).fetchall()
+    if bad2:
+        raise common.MigrationError(
+            "observation_agg: 検閲を含まないセル（n_censored=0 AND n_not_detected=0）で "
+            f"value_lod と value_zero がビット一致しない行がある（例: {bad2}）。"
+            "ADR-0009 決定4「検閲の無いセルは両系列が同じ値」が崩れている。"
+        )
+
+    bad3 = conn.execute(
+        f'SELECT {dim_cols}, value_zero, value_lod FROM "{staging}" '
+        "WHERE value_zero IS NOT NULL AND value_lod IS NOT NULL AND value_lod < value_zero LIMIT 5"
+    ).fetchall()
+    if bad3:
+        raise common.MigrationError(
+            "observation_agg: value_lod が value_zero を下回るセルがある"
+            f"（例: {bad3}）。censoring_limit は正のはずなので、両方が非 NULL な格の "
+            "value_lod は value_zero 以上になるはず（below_lod の限界値が0以下、"
+            "または符号の取り違えの疑い）。"
+        )
+
+    # `!=`（SQL の3値論理。NULL を含む比較は NULL＝真でも偽でもない）で数える
+    # ——`value_lod IS NULL` の格（ND だけの格）は自動的にこのカウントから
+    # 除外される。「IS NOT」（NULL-safe、NULL を「異なる」として数える）にすると
+    # 両者の集合が重なってしまい、`n_value_lod_null` と足し合わせて報告する
+    # 意味が無くなる（設計ブリーフ 検証4「重なり0」の前提）。
+    n_value_lod_differs = conn.execute(
+        f'SELECT COUNT(*) FROM "{staging}" WHERE value_lod != value_zero'
+    ).fetchone()[0]
+    n_value_lod_null = conn.execute(
+        f'SELECT COUNT(*) FROM "{staging}" WHERE value_lod IS NULL'
+    ).fetchone()[0]
+    return {"n_value_lod_differs": n_value_lod_differs, "n_value_lod_null": n_value_lod_null}
+
+
 def build_cube(
     conn,
     registry_db=DEFAULT_REGISTRY_DB,
@@ -399,9 +540,11 @@ def build_cube(
     ためだけに使う。T4-2）は読み取り専用で ATTACH する。ここでは `observation`
     を変更する SQL を一切実行しない（`SELECT`/一時 VIEW・TEMP TABLE の作成のみ）。
     `observation_agg` 本体は `migrate.common.staged_table`（A-1）で作り直す
-    ——検証（次元キーの一意性）まで全部通ってから本番名に差し替える。
+    ——検証（次元キーの一意性・`value_zero`/`value_lod` の関係）まで全部通って
+    から本番名に差し替える。
 
-    戻り値はレポート用の統計（経路ごとの行数）。
+    戻り値はレポート用の統計（経路ごとの行数・`value_zero`/`value_lod` の
+    差分件数）。
 
     `AVG()`/`SUM()` を実行する前に `common.require_sqlite_version()` を呼ぶ
     （モジュール docstring「SQLite の版を守る」参照）。
@@ -409,11 +552,12 @@ def build_cube(
     common.require_sqlite_version()
     params = (built_from, spec_version)
     common.attach_readonly(conn, registry_db, "reg")
-    conn.execute(_CREATE_OBS_ZERO_VIEW_SQL)
+    conn.execute(_CREATE_OBS_IMPUTED_VIEW_SQL)
 
     with common.staged_table(conn, "observation_agg", _CREATE_OBSERVATION_AGG_SQL) as staging:
         insert_cols = ", ".join(
-            DIM_COLUMNS + ["value", "n", "n_censored", "n_not_detected", "n_places", "built_from", "spec_version"]
+            DIM_COLUMNS
+            + ["value_zero", "value_lod", "n", "n_censored", "n_not_detected", "n_places", "built_from", "spec_version"]
         )
         insert_sql = f'INSERT INTO "{staging}" ({insert_cols}) '
 
@@ -421,8 +565,8 @@ def build_cube(
         # cursor.rowcount を積み上げて件数にする。
         common.replace_table(conn, "day_stats", f"CREATE TEMP TABLE day_stats AS {_day_stats_sql()}")
         n_day = 0
-        for stat, value_column in _STAT_VALUE_COLUMNS:
-            cur = conn.execute(insert_sql + _day_expand_sql(stat, value_column), params)
+        for stat, vz_col, vl_col in _STAT_VALUE_COLUMNS:
+            cur = conn.execute(insert_sql + _day_expand_sql(stat, vz_col, vl_col), params)
             n_day += cur.rowcount
         n_day += conn.execute(insert_sql + _day_sum_expand_sql(), params).rowcount
 
@@ -436,8 +580,8 @@ def build_cube(
             f"CREATE TEMP TABLE year_from_day_stats AS {_year_from_day_stats_sql(staging)}",
         )
         n_year_from_day = 0
-        for stat, value_column in _STAT_VALUE_COLUMNS:
-            cur = conn.execute(insert_sql + _year_from_day_expand_sql(stat, value_column), params)
+        for stat, vz_col, vl_col in _STAT_VALUE_COLUMNS:
+            cur = conn.execute(insert_sql + _year_from_day_expand_sql(stat, vz_col, vl_col), params)
             n_year_from_day += cur.rowcount
 
         # 月次（出典配布側。jma_monthly。年次の出典配布セルと対称）。
@@ -445,8 +589,8 @@ def build_cube(
             conn, "month_source_stats", f"CREATE TEMP TABLE month_source_stats AS {_month_source_stats_sql()}"
         )
         n_month_source = 0
-        for stat, value_column in _STAT_VALUE_COLUMNS:
-            cur = conn.execute(insert_sql + _month_source_expand_sql(stat, value_column), params)
+        for stat, vz_col, vl_col in _STAT_VALUE_COLUMNS:
+            cur = conn.execute(insert_sql + _month_source_expand_sql(stat, vz_col, vl_col), params)
             n_month_source += cur.rowcount
 
         # 年次（出典配布側）。
@@ -454,19 +598,21 @@ def build_cube(
             conn, "year_source_stats", f"CREATE TEMP TABLE year_source_stats AS {_year_source_stats_sql()}"
         )
         n_year_source = 0
-        for stat, value_column in _STAT_VALUE_COLUMNS:
-            cur = conn.execute(insert_sql + _year_source_expand_sql(stat, value_column), params)
+        for stat, vz_col, vl_col in _STAT_VALUE_COLUMNS:
+            cur = conn.execute(insert_sql + _year_source_expand_sql(stat, vz_col, vl_col), params)
             n_year_source += cur.rowcount
 
         # B-4: 一時テーブルの DROP をループに（cube_day は C-1 で無くなった）。
         for t in ("day_stats", "year_from_day_stats", "month_source_stats", "year_source_stats"):
             conn.execute(f'DROP TABLE IF EXISTS "{t}"')
-        conn.execute("DROP VIEW IF EXISTS obs_zero")
+        conn.execute("DROP VIEW IF EXISTS obs_imputed")
 
         # 次元キーが本当に一意か（同じキーの行が複数できていないか）を確認する
         # （C-3）。ここで失敗すれば staged_table が作業用テーブルを破棄し、
         # 前回の observation_agg がそのまま残る（A-1）。
         _assert_dimension_key_unique(conn, staging)
+        # value_zero/value_lod の3つの不変条件（ADR-0009 決定4）。
+        value_stats = _assert_value_zero_lod_invariants(conn, staging)
 
     return {
         "n_day": n_day,
@@ -475,6 +621,7 @@ def build_cube(
         "n_year_from_day": n_year_from_day,
         "n_year_source": n_year_source,
         "n_total": n_day + n_month_from_day + n_month_source + n_year_from_day + n_year_source,
+        **value_stats,
     }
 
 
@@ -521,6 +668,10 @@ def main() -> None:
         f"  内訳: day={stats['n_day']:,} / "
         f"month(day側)={stats['n_month_from_day']:,} / month(出典側)={stats['n_month_source']:,} / "
         f"year(day側)={stats['n_year_from_day']:,} / year(出典側)={stats['n_year_source']:,}"
+    )
+    print(
+        f"  value_zero/value_lod: 食い違うセル={stats['n_value_lod_differs']:,} / "
+        f"value_lod が NULL のセル={stats['n_value_lod_null']:,}"
     )
 
 
