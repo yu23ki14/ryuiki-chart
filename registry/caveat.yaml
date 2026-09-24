@@ -31,6 +31,11 @@
 # scripts/registry/build_caveat.py がテーブル名の集合をコードに埋め込んで caveat_scope に書く
 # （マッピング自体は web/src/lib/ai/caveats.ts の SITES_CAVEATS 等の再現であり、
 # データというよりロジックの複製にあたるため。理由は build_caveat.py の docstring）。
+#
+# landuseDefinitionChange（P-1b、docs/plans/PHASE_B_LANDUSE.md）は Phase A 以降
+# 初めて新規に足した注記（上記「新しい注記はここに足していない」は Phase A 時点の
+# 記述で、この1件だけ例外）。scope は landuse_watershed/landuse_change の2表
+# （scripts/registry/build_caveat.py の LANDUSE_TABLES）。
 
 caveats:
 - key: measuredOn
@@ -116,4 +121,10 @@ caveats:
   kind: null
   title_ja: null
   body_ja: sites.municipality は出典によって中身が違う。環境省 公共用水域の290地点では水域名（河川名・湖沼名）が入り、それ以外の62地点では市区町村名が入る。列名と中身が一致していないため、この画面では「水域・地域」と呼ぶ。
+  quote: null
+- key: landuseDefinitionChange
+  severity: null
+  kind: definition_change
+  title_ja: null
+  body_ja: 土地利用の区分は2006年調査と2016年調査で定義が違う。2006年の「幹線交通用地」は2016年調査で「道路」「鉄道」に分割されており、同じ区分として比較できない。この2区分が2006年→2016年で全減・全増に見えるのは、実際の土地利用の変化ではなく調査区分の定義変更による見かけ上の増減である。
   quote: null

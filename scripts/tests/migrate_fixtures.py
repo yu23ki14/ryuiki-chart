@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import sqlite3
 
+import b03_build_observation as b03  # scripts/ が sys.path にある前提（scripts/tests/__init__.py 参照）
+
 # 既定の2地点×2変数（水質っぽい1変数・気温っぽい1変数）。alias/place は全行解決する
 # 「正常系」のベースライン。個々のテストはこれを土台に、崩したい部分だけ差し替える。
 DEFAULT_MEASUREMENTS = [
@@ -97,15 +99,17 @@ DEFAULT_PLACE_RELATIONS = [
 PLACES_WITH_ZONE = DEFAULT_PLACES + DEFAULT_ZONE_PLACES
 PLACE_REFS_WITH_ZONE = DEFAULT_PLACE_REFS + DEFAULT_ZONE_PLACE_REFS
 
-# `variable.default_stat`（b04 の T4-2「sum」の絞り込みが読む）。
+# `variable.default_stat`（b04 の T4-2「sum」の絞り込みが読む）・`name_ja`
+# （P-1b の landuse_watershed/landuse_change が `reg.variable.name_ja` を
+# landuse_name として読む。既存の4変数はどれも landuse ではないので None のまま）。
 # weather.precipitation だけ 'sum' にしておくと、RAIN（sensor 側）の日次セルに
 # sum 行が足されることをテストできる。
 DEFAULT_VARIABLES = [
-    # variable_id, default_stat
-    ("common:variable:water.bod", None),
-    ("common:variable:weather.air_temp", None),
-    ("common:variable:weather.precipitation", "sum"),
-    ("common:variable:water.water_temp", None),
+    # variable_id, default_stat, name_ja
+    ("common:variable:water.bod", None, None),
+    ("common:variable:weather.air_temp", None, None),
+    ("common:variable:weather.precipitation", "sum", None),
+    ("common:variable:water.water_temp", None, None),
 ]
 
 # `time_label_conventions.yaml` 相当（T2）。既定フィクスチャの `src_hourly`
@@ -185,7 +189,9 @@ def make_registry_db(
             "parent_id TEXT NOT NULL, child_id TEXT NOT NULL, relation TEXT NOT NULL, "
             "fraction REAL NOT NULL, basis TEXT)"
         )
-        conn.execute("CREATE TABLE variable (variable_id TEXT PRIMARY KEY, default_stat TEXT)")
+        conn.execute(
+            "CREATE TABLE variable (variable_id TEXT PRIMARY KEY, default_stat TEXT, name_ja TEXT)"
+        )
         conn.executemany(
             "INSERT INTO variable_alias VALUES (?,?,?,?,?,?,?)",
             aliases if aliases is not None else DEFAULT_ALIASES,
@@ -203,12 +209,158 @@ def make_registry_db(
             place_relations if place_relations is not None else [],
         )
         conn.executemany(
-            "INSERT INTO variable VALUES (?,?)",
+            "INSERT INTO variable VALUES (?,?,?)",
             variables if variables is not None else DEFAULT_VARIABLES,
         )
         conn.commit()
     finally:
         conn.close()
+
+
+# P-1b（土地利用、docs/plans/PHASE_B_LANDUSE.md）。`scripts/b03_build_observation.py`
+# の `_ingest_landuse`/`scripts/b05_project_v1.py` の landuse_watershed/
+# landuse_change 用フィクスチャ。実データと同じ列レイアウト（CSVヘッダ）・
+# 同じ「2006/2016でコード体系が違う」「同じ日本語名の区分は年をまたいで同じ
+# variable_id を共有する」構造を、2流域×最小限の区分数で再現する:
+#   - W1: 2006に paddy(コード'1')・forest(コード'5') の2区分、2016は paddy
+#     (コード'0100')だけ（forest が年をまたがない区分の再現。landuse_change の
+#     km2_2016=0 の経路を踏む）。
+#   - W2: 2006/2016とも paddy のみ（複数流域の再現）。
+LANDUSE_SOURCE_ID = "test_landuse_source"
+
+LANDUSE_CSV_HEADER = (
+    "source_id,source_ref,data_year,watershed_id,water_system_code_old,"
+    "water_system_name_ja_estimated,landuse_code_raw,landuse_name_ja,n_cells,area_km2\n"
+)
+
+DEFAULT_LANDUSE_CSV_ROWS = [
+    # source_id, source_ref, data_year, watershed_id, water_system_code_old,
+    # water_system_name_ja_estimated, landuse_code_raw, landuse_name_ja, n_cells, area_km2
+    (LANDUSE_SOURCE_ID, "ref2006", 2006, "W1", "OLD1", "水系1", "1", "田", 10, 1.5),
+    (LANDUSE_SOURCE_ID, "ref2006", 2006, "W1", "OLD1", "水系1", "5", "森林", 20, 2.0),
+    (LANDUSE_SOURCE_ID, "ref2006", 2006, "W2", "OLD2", "水系2", "1", "田", 30, 3.0),
+    (LANDUSE_SOURCE_ID, "ref2016", 2016, "W1", "OLD1", "水系1", "0100", "田", 12, 1.8),
+    (LANDUSE_SOURCE_ID, "ref2016", 2016, "W2", "OLD2", "水系2", "0100", "田", 32, 3.5),
+]
+
+DEFAULT_WATERSHED_PLACES = [
+    # place_id, region_id, place_kind（common スコープなので region_id=NULL。
+    # ADR-0022 決定1）
+    ("place_w1", None, "watershed"),
+    ("place_w2", None, "watershed"),
+]
+
+DEFAULT_WATERSHED_PLACE_REFS = [
+    # place_id, external_key, source_id
+    ("place_w1", "W1", "watershed_meta.watershed_id"),
+    ("place_w2", "W2", "watershed_meta.watershed_id"),
+]
+
+DEFAULT_LANDUSE_ALIASES = [
+    # dataset, alias, source_id, variable_id, unit_id, stat, grain
+    ("nlni_l03b_landuse_by_watershed@2006", "1:area_km2", LANDUSE_SOURCE_ID,
+     "common:variable:landuse.paddy", "common:unit:km2", "sum", "year"),
+    ("nlni_l03b_landuse_by_watershed@2006", "1:n_cells", LANDUSE_SOURCE_ID,
+     "common:variable:landuse.paddy_n_cells", "common:unit:count", "sum", "year"),
+    ("nlni_l03b_landuse_by_watershed@2006", "5:area_km2", LANDUSE_SOURCE_ID,
+     "common:variable:landuse.forest", "common:unit:km2", "sum", "year"),
+    ("nlni_l03b_landuse_by_watershed@2006", "5:n_cells", LANDUSE_SOURCE_ID,
+     "common:variable:landuse.forest_n_cells", "common:unit:count", "sum", "year"),
+    ("nlni_l03b_landuse_by_watershed@2016", "0100:area_km2", LANDUSE_SOURCE_ID,
+     "common:variable:landuse.paddy", "common:unit:km2", "sum", "year"),
+    ("nlni_l03b_landuse_by_watershed@2016", "0100:n_cells", LANDUSE_SOURCE_ID,
+     "common:variable:landuse.paddy_n_cells", "common:unit:count", "sum", "year"),
+]
+
+# `variable.default_stat`/`name_ja`（landuse 分。DEFAULT_VARIABLES に連結して
+# 渡す）。`name_ja` は `scripts/b05_project_v1.py` の landuse_watershed が
+# CSV の landuse_name_ja をそのまま復元するのに使う値（P-1b オーナー決定2）。
+DEFAULT_LANDUSE_VARIABLES = [
+    ("common:variable:landuse.paddy", "sum", "田"),
+    ("common:variable:landuse.paddy_n_cells", "sum", "田（セル数）"),
+    ("common:variable:landuse.forest", "sum", "森林"),
+    ("common:variable:landuse.forest_n_cells", "sum", "森林（セル数）"),
+]
+
+DEFAULT_LANDUSE_SOURCE_REGIONS_YAML_TEXT = (
+    "sources:\n"
+    f"  {LANDUSE_SOURCE_ID}:\n"
+    "    region_id: jp-14\n"
+    "    consumer: observation\n"
+    f"    expected_row_count: {len(DEFAULT_LANDUSE_CSV_ROWS)}\n"
+    "    evidence: テスト用\n"
+    "regions:\n"
+    "  jp-14:\n"
+    "    utc_offset: \"+09:00\"\n"
+    "    evidence: テスト用\n"
+)
+
+
+def make_landuse_csv(path, rows=None) -> None:
+    """`data/processed/nlni_l03b_landuse_by_watershed.csv` 相当のテスト用
+    フィクスチャを書く（既定は `DEFAULT_LANDUSE_CSV_ROWS`）。
+    """
+    lines = [LANDUSE_CSV_HEADER]
+    for row in rows if rows is not None else DEFAULT_LANDUSE_CSV_ROWS:
+        lines.append(",".join(str(v) for v in row) + "\n")
+    path.write_text("".join(lines), encoding="utf-8")
+
+
+def make_landuse_source_regions_yaml(path, text: str | None = None) -> None:
+    """`source_regions.yaml`（consumer='observation' の土地利用宣言）相当の
+    テスト用フィクスチャを書く（既定は `DEFAULT_LANDUSE_SOURCE_REGIONS_YAML_TEXT`）。
+    """
+    path.write_text(
+        text if text is not None else DEFAULT_LANDUSE_SOURCE_REGIONS_YAML_TEXT, encoding="utf-8"
+    )
+
+
+def make_landuse_registry_db(registry_db) -> None:
+    """土地利用（面積・セル数）を検証するテスト用の registry フィクスチャ
+    （`test_b03_build_observation.py`・`test_b05_project_v1.py` の両方が使う
+    共通ヘルパ。コードレビュー指摘9: 以前は2ファイルにほぼ同じ関数が
+    重複して定義され、しかも `variables` の中身が食い違っていた
+    ——b03 側は `DEFAULT_LANDUSE_VARIABLES` のみ、b05 側は
+    `DEFAULT_VARIABLES + DEFAULT_LANDUSE_VARIABLES`。後者（より実データに
+    近い、base の4変数も含む形）を正として統合した。`_ingest_landuse`
+    （b03）自体は `variable` テーブルを読まないため、b03 側のテストの
+    挙動はどちらの `variables` でも変わらない）。
+    """
+    make_registry_db(
+        registry_db,
+        aliases=DEFAULT_ALIASES + DEFAULT_LANDUSE_ALIASES,
+        places=DEFAULT_PLACES + DEFAULT_WATERSHED_PLACES,
+        place_refs=DEFAULT_PLACE_REFS + DEFAULT_WATERSHED_PLACE_REFS,
+        variables=DEFAULT_VARIABLES + DEFAULT_LANDUSE_VARIABLES,
+    )
+
+
+def build_observation(
+    tmp_path, measurements_db, registry_db, exceptions_yaml, time_conventions_yaml, out,
+    *, landuse_csv_rows=None, source_regions_yaml_text=None,
+):
+    """`b03.build_and_write_observation` を、P-1b の土地利用2引数
+    （`source_regions_yaml`/`landuse_csv`）を明示的に補って呼ぶ共通ヘルパ
+    （`test_b03_build_observation.py`・`test_b05_project_v1.py` の両方が使う。
+    コードレビュー指摘9・10）。
+
+    `landuse_csv_rows`/`source_regions_yaml_text` を渡さなければ「土地利用
+    0行」の空フィクスチャを使う——土地利用を検証しない既存のテストは
+    そのまま動く。本番の `main()` と同じ「明示的に渡す」経路をテストでも
+    通す（`build_and_write_observation` の既定値を monkeypatch で差し替える
+    設計はやめた。理由はそちらの docstring 参照）。
+    """
+    landuse_csv = tmp_path / "_landuse.csv"
+    make_landuse_csv(landuse_csv, rows=landuse_csv_rows if landuse_csv_rows is not None else [])
+    source_regions_yaml = tmp_path / "_source_regions.yaml"
+    make_landuse_source_regions_yaml(
+        source_regions_yaml,
+        text=source_regions_yaml_text if source_regions_yaml_text is not None else "sources: {}\nregions: {}\n",
+    )
+    return b03.build_and_write_observation(
+        measurements_db, registry_db, exceptions_yaml, time_conventions_yaml, out,
+        source_regions_yaml, landuse_csv,
+    )
 
 
 def make_time_label_conventions_yaml(path, text: str | None = None) -> None:

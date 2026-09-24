@@ -10,12 +10,23 @@ from migrate import common
 
 from .migrate_fixtures import (
     DEFAULT_ALIASES,
+    DEFAULT_LANDUSE_ALIASES,
+    DEFAULT_LANDUSE_CSV_ROWS,
+    DEFAULT_LANDUSE_SOURCE_REGIONS_YAML_TEXT,
+    DEFAULT_LANDUSE_VARIABLES,
     DEFAULT_PLACE_REFS,
     DEFAULT_PLACES,
     DEFAULT_PLACE_RELATIONS,
     DEFAULT_SENSOR_ROWS,
+    DEFAULT_VARIABLES,
+    DEFAULT_WATERSHED_PLACE_REFS,
+    DEFAULT_WATERSHED_PLACES,
     PLACE_REFS_WITH_ZONE,
     PLACES_WITH_ZONE,
+    build_observation,
+    make_landuse_csv,
+    make_landuse_registry_db,
+    make_landuse_source_regions_yaml,
     make_measurements_db,
     make_registry_db,
     make_time_label_conventions_yaml,
@@ -43,8 +54,8 @@ def _run_b03_b04(measurements_db, registry_db, tmp_path, sensor_rows=None):
     conventions_path = tmp_path / "conventions.yaml" if sensor_rows else tmp_path / "no_conventions.yaml"
     if sensor_rows:
         make_time_label_conventions_yaml(conventions_path)
-    b03.build_and_write_observation(
-        measurements_db, registry_db, tmp_path / "no_exceptions.yaml", conventions_path, v2_db
+    build_observation(
+        tmp_path, measurements_db, registry_db, tmp_path / "no_exceptions.yaml", conventions_path, v2_db
     )
     conn = sqlite3.connect(f"file:{v2_db}", uri=True)
     try:
@@ -52,6 +63,31 @@ def _run_b03_b04(measurements_db, registry_db, tmp_path, sensor_rows=None):
     finally:
         conn.close()
     return v2_db, stats
+
+
+def _run_b03_b04_landuse(tmp_path, registry_db, landuse_csv_rows=None, source_regions_text=None):
+    """P-1b: 土地利用（既定 `DEFAULT_LANDUSE_CSV_ROWS`）だけを通しで実行し、
+    b05 の入力になる v2_db のパスを返す（`_run_b03_b04` の土地利用版。
+    `build_observation`（共通ヘルパ）に明示的な `landuse_csv_rows`/
+    `source_regions_yaml_text` を渡す。
+    """
+    measurements_db = tmp_path / "ryuiki.sqlite"
+    make_measurements_db(measurements_db, rows=[])
+    v2_db = tmp_path / "v2.sqlite"
+    build_observation(
+        tmp_path, measurements_db, registry_db, tmp_path / "no_exceptions.yaml", tmp_path / "no_conventions.yaml",
+        v2_db,
+        landuse_csv_rows=landuse_csv_rows if landuse_csv_rows is not None else DEFAULT_LANDUSE_CSV_ROWS,
+        source_regions_yaml_text=(
+            source_regions_text if source_regions_text is not None else DEFAULT_LANDUSE_SOURCE_REGIONS_YAML_TEXT
+        ),
+    )
+    conn = sqlite3.connect(f"file:{v2_db}", uri=True)
+    try:
+        b04.build_cube(conn, registry_db)
+    finally:
+        conn.close()
+    return v2_db
 
 
 def test_assert_alias_is_function_raises_on_collision(tmp_path):
@@ -100,7 +136,7 @@ def test_assert_alias_tuple_maps_to_single_dataset_raises_on_cross_dataset_colli
     work = sqlite3.connect("file::memory:?cache=shared", uri=True)
     common.attach_readonly(work, registry_db, "reg")
     try:
-        with pytest.raises(common.MigrationError, match="複数の dataset にまたがっている"):
+        with pytest.raises(common.MigrationError, match="複数の出典.*にまたがっている"):
             b05.assert_alias_tuple_maps_to_single_dataset(work)
     finally:
         work.close()
@@ -113,6 +149,55 @@ def test_assert_alias_tuple_maps_to_single_dataset_passes_on_default_fixture(tmp
     common.attach_readonly(work, registry_db, "reg")
     try:
         b05.assert_alias_tuple_maps_to_single_dataset(work)  # 例外を投げなければ良い
+    finally:
+        work.close()
+
+
+def test_assert_alias_tuple_maps_to_single_dataset_allows_landuse_year_sharing(tmp_path):
+    """P-1b コードレビュー指摘4: 土地利用の版付き dataset
+    （`<source>@2006`/`@2016`）が同じ (variable_id, grain, stat, unit_id) を
+    共有していても、正規化後は同じ出典名になるため誤検出しない（正常系）。
+    """
+    registry_db = tmp_path / "registry.sqlite"
+    make_registry_db(
+        registry_db,
+        aliases=[
+            ("nlni_l03b_landuse_by_watershed@2006", "1:area_km2", "src",
+             "common:variable:landuse.paddy", "common:unit:km2", "sum", "year"),
+            ("nlni_l03b_landuse_by_watershed@2016", "0100:area_km2", "src",
+             "common:variable:landuse.paddy", "common:unit:km2", "sum", "year"),
+        ],
+    )
+    work = sqlite3.connect("file::memory:?cache=shared", uri=True)
+    common.attach_readonly(work, registry_db, "reg")
+    try:
+        b05.assert_alias_tuple_maps_to_single_dataset(work)  # 例外を投げなければ良い
+    finally:
+        work.close()
+
+
+def test_assert_alias_tuple_maps_to_single_dataset_still_detects_landuse_vs_measurements_collision(tmp_path):
+    """P-1b コードレビュー指摘4: 正規化は土地利用の年版どうしの共有だけを
+    許し、土地利用と measurements/sensor_timeseries が同じ tuple を持てば
+    （出典本体の名前が違うので正規化しても別のまま）引き続き検出する
+    ——「除外」ではなく「正規化」にしたことで保護範囲が狭まっていないことの
+    回帰テスト。
+    """
+    registry_db = tmp_path / "registry.sqlite"
+    make_registry_db(
+        registry_db,
+        aliases=[
+            ("measurements", "水温っぽい何か", "src_a",
+             "common:variable:landuse.paddy", "common:unit:km2", "sum", "year"),
+            ("nlni_l03b_landuse_by_watershed@2006", "1:area_km2", "src_b",
+             "common:variable:landuse.paddy", "common:unit:km2", "sum", "year"),
+        ],
+    )
+    work = sqlite3.connect("file::memory:?cache=shared", uri=True)
+    common.attach_readonly(work, registry_db, "reg")
+    try:
+        with pytest.raises(common.MigrationError, match="複数の出典.*にまたがっている"):
+            b05.assert_alias_tuple_maps_to_single_dataset(work)
     finally:
         work.close()
 
@@ -919,3 +1004,154 @@ def test_label25_obs_keyed_sql_where_matches_declared_grains():
     assert f"value_grain IN ({b05._sql_in_clause(b05._LABEL25_VALUE_GRAINS)})" in sql
     for grain in b05._LABEL25_VALUE_GRAINS:
         assert f"'{grain}'" in sql
+
+
+# ---------------------------------------------------------------------------
+# P-1b: 土地利用（landuse_watershed / landuse_change）
+# ---------------------------------------------------------------------------
+
+def _landuse_watershed_rows(projections) -> dict[tuple, tuple]:
+    columns, rows = projections["landuse_watershed"]
+    idx = {c: i for i, c in enumerate(columns)}
+    return {
+        (r[idx["watershed_id"]], r[idx["year"]], r[idx["landuse_code"]]): r
+        for r in rows
+    }
+
+
+def test_landuse_watershed_reproduces_csv_rows_with_correct_code_per_year(tmp_path):
+    """P-1b: `landuse_watershed` が CSV の1行ごとに1行（面積・セル数を1つに
+    まとめた行）を作ること、2006/2016で区分コードの書式が違うことを確認する
+    （オーナー決定2）。年をまたいで同じ variable_id を共有する `田`
+    （2006='1' / 2016='0100'）が、それぞれ正しい年のコード・値に解決される
+    ことを検証する——`assert_alias_tuple_maps_to_single_dataset` の除外が
+    誤って年を混同していないことの回帰テストを兼ねる。
+    """
+    registry_db = tmp_path / "registry.sqlite"
+    make_landuse_registry_db(registry_db)
+    v2_db = _run_b03_b04_landuse(tmp_path, registry_db)
+
+    projections = b05.build_projections(v2_db, registry_db)
+    columns, rows = projections["landuse_watershed"]
+    assert columns == ["watershed_id", "year", "landuse_code", "landuse_name", "n_cells", "area_km2"]
+    assert len(rows) == len(DEFAULT_LANDUSE_CSV_ROWS)
+
+    by_key = _landuse_watershed_rows(projections)
+    # W1, 2006, code='1'（田）: area=1.5, n_cells=10。
+    assert by_key[("W1", 2006, "1")][3:] == ("田", 10, 1.5)
+    # W1, 2006, code='5'（森林。2016には無い区分）: area=2.0, n_cells=20。
+    assert by_key[("W1", 2006, "5")][3:] == ("森林", 20, 2.0)
+    # W1, 2016, code='0100'（田。2006の '1' と同じ variable_id を共有するが、
+    # 年ごとに正しいコード・値へ解決されている）: area=1.8, n_cells=12。
+    assert by_key[("W1", 2016, "0100")][3:] == ("田", 12, 1.8)
+    # W2, 2006/2016 とも田のみ。
+    assert by_key[("W2", 2006, "1")][3:] == ("田", 30, 3.0)
+    assert by_key[("W2", 2016, "0100")][3:] == ("田", 32, 3.5)
+
+
+def test_landuse_watershed_discovers_a_third_year_version_dynamically(tmp_path):
+    """P-1b コードレビュー指摘1: b05 は `_LANDUSE_YEARS` のようなタプルを
+    直書きしていない——`variable_alias.dataset` に3つ目の年版
+    （`@2020`）が現れれば、コードを変えずに `landuse_watershed` へ反映される
+    ことを確認する。
+    """
+    registry_db = tmp_path / "registry.sqlite"
+    # 2020年版は独自のコード体系（'9001'）を持つ想定にする——'1'（2006）や
+    # '0100'（2016）を使い回すと (watershed_id, landuse_code) の v1 キーで
+    # 衝突する（実データでは年をまたいでコード文字列が重複しないのと同じ
+    # 前提。derived_baseline.json のキー定義参照）。
+    aliases = list(DEFAULT_ALIASES) + list(DEFAULT_LANDUSE_ALIASES) + [
+        ("nlni_l03b_landuse_by_watershed@2020", "9001:area_km2", "test_landuse_source",
+         "common:variable:landuse.paddy", "common:unit:km2", "sum", "year"),
+        ("nlni_l03b_landuse_by_watershed@2020", "9001:n_cells", "test_landuse_source",
+         "common:variable:landuse.paddy_n_cells", "common:unit:count", "sum", "year"),
+    ]
+    make_registry_db(
+        registry_db,
+        aliases=aliases,
+        places=DEFAULT_PLACES + DEFAULT_WATERSHED_PLACES,
+        place_refs=DEFAULT_PLACE_REFS + DEFAULT_WATERSHED_PLACE_REFS,
+        variables=DEFAULT_VARIABLES + DEFAULT_LANDUSE_VARIABLES,
+    )
+    csv_rows = list(DEFAULT_LANDUSE_CSV_ROWS) + [
+        ("test_landuse_source", "ref2020", 2020, "W1", "OLD1", "水系1", "9001", "田", 9, 1.9),
+    ]
+    source_regions_text = (
+        "sources:\n"
+        "  test_landuse_source:\n"
+        "    region_id: jp-14\n"
+        "    consumer: observation\n"
+        f"    expected_row_count: {len(csv_rows)}\n"
+        "    evidence: テスト用\n"
+        "regions:\n"
+        "  jp-14:\n"
+        "    utc_offset: \"+09:00\"\n"
+        "    evidence: テスト用\n"
+    )
+    v2_db = _run_b03_b04_landuse(
+        tmp_path, registry_db, landuse_csv_rows=csv_rows, source_regions_text=source_regions_text
+    )
+
+    projections = b05.build_projections(v2_db, registry_db)
+    by_key = _landuse_watershed_rows(projections)
+    assert by_key[("W1", 2020, "9001")][3:] == ("田", 9, 1.9)
+    assert len(projections["landuse_watershed"][1]) == len(csv_rows)
+
+
+def test_landuse_change_pivots_by_watershed_and_name_and_handles_missing_year(tmp_path):
+    """P-1b: `landuse_change` が v1 と同じ SUM(CASE...) を watershed_id・
+    landuse_name でグループ化する。`森林`（W1、2006のみ）は km2_2016=0・
+    delta_km2 が負になる（v1 と同じ「見かけ上の全減」。registry/caveat.yaml
+    の definition_change caveat が説明する現象と同型）。
+    """
+    registry_db = tmp_path / "registry.sqlite"
+    make_landuse_registry_db(registry_db)
+    v2_db = _run_b03_b04_landuse(tmp_path, registry_db)
+
+    projections = b05.build_projections(v2_db, registry_db)
+    columns, rows = projections["landuse_change"]
+    assert columns == ["watershed_id", "landuse_name", "km2_2006", "km2_2016", "delta_km2"]
+    by_key = {(r[0], r[1]): r[2:] for r in rows}
+
+    assert by_key[("W1", "田")] == pytest.approx((1.5, 1.8, 1.8 - 1.5))
+    assert by_key[("W1", "森林")] == pytest.approx((2.0, 0.0, -2.0))
+    assert by_key[("W2", "田")] == pytest.approx((3.0, 3.5, 3.5 - 3.0))
+    assert len(rows) == 3  # (W1,田) (W1,森林) (W2,田) の3グループ
+
+
+def test_landuse_does_not_affect_existing_tables_or_cube(tmp_path):
+    """P-1b 受け入れ基準2: 土地利用を足しても、既存の measurements 由来の
+    テーブル・`observation`/`observation_agg` の既存セルが変わらないこと。
+    """
+    registry_db = tmp_path / "registry.sqlite"
+    make_registry_db(
+        registry_db,
+        aliases=DEFAULT_ALIASES + DEFAULT_LANDUSE_ALIASES,
+        places=DEFAULT_PLACES + DEFAULT_WATERSHED_PLACES,
+        place_refs=DEFAULT_PLACE_REFS + DEFAULT_WATERSHED_PLACE_REFS,
+        variables=DEFAULT_VARIABLES + DEFAULT_LANDUSE_VARIABLES,
+    )
+    measurements_db = tmp_path / "ryuiki.sqlite"
+    make_measurements_db(measurements_db)  # 既定の measurements 3行
+    landuse_csv = tmp_path / "landuse.csv"
+    make_landuse_csv(landuse_csv)
+    source_regions_yaml = tmp_path / "source_regions.yaml"
+    make_landuse_source_regions_yaml(source_regions_yaml)
+    v2_db = tmp_path / "v2.sqlite"
+    b03.build_and_write_observation(
+        measurements_db, registry_db, tmp_path / "no_exceptions.yaml", tmp_path / "no_conventions.yaml",
+        v2_db, source_regions_yaml, landuse_csv,
+    )
+    conn = sqlite3.connect(f"file:{v2_db}", uri=True)
+    try:
+        b04.build_cube(conn, registry_db)
+    finally:
+        conn.close()
+
+    projections = b05.build_projections(v2_db, registry_db)
+    # meas_daily は測定値3行分のまま（imputation='zero' で below_lod の m2 も
+    # value=0.0 として日次セルに残る。土地利用を足す前と同じ行数・値になる、
+    # という既存テストの回帰）。
+    assert len(projections["meas_daily"][1]) == 3
+    assert len(projections["landuse_watershed"][1]) == len(DEFAULT_LANDUSE_CSV_ROWS)
+    assert len(projections["landuse_change"][1]) == 3

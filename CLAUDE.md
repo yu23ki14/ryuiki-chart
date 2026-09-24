@@ -56,13 +56,19 @@
   経緯は `docs/COLLECTOR_CONTRACT.md` の追記を読むこと。
 - 新しいエリア（東京都・沖縄県・兵庫県など）を足すときは `docs/add_area.md` の手順に従う。
   方式（単一 D1 + `region_id`）は `docs/adr/0002-multi-region.md` で決定済みで蒸し返さない。
-- Phase B（ADR-0016）の縦に薄い1本は `scripts/b03_build_observation.py`（`measurements`と
-  `sensor_timeseries`の両方→`observation`）/ `scripts/b04_build_cube.py`（`observation`→
-  キューブ `observation_agg`）/ `scripts/b05_project_v1.py`（キューブ→v1形）の3本。出力は
+- Phase B（ADR-0016）の縦に薄い1本は `scripts/b03_build_observation.py`（`measurements`・
+  `sensor_timeseries`・土地利用CSV〔P-1b、`data/processed/nlni_l03b_landuse_by_watershed.csv`、
+  `_ingest_landuse`〕の3出典→`observation`）/ `scripts/b04_build_cube.py`（`observation`→
+  キューブ `observation_agg`。土地利用を足しても無変更）/ `scripts/b05_project_v1.py`
+  （キューブ→v1形）の3本。出力は
   `data/db/v2.sqlite`（`observation`/`observation_agg`）と `data/db/v1_projection.sqlite`
-  （11テーブル: `meas_daily`/`meas_month`/`meas_year`/`meas_clim`/`site_var`/`var_catalog`/
-  `sensor_daily`/`rain_daily`/`sensor_hour_month`/`zone_year`/`zone_clim`）で、どちらも
-  `.gitignore` 済み・捨てて作り直せる。設計・実測は `docs/plans/PHASE_B_FACT_SLICE.md`。
+  （13テーブル: `meas_daily`/`meas_month`/`meas_year`/`meas_clim`/`site_var`/`var_catalog`/
+  `sensor_daily`/`rain_daily`/`sensor_hour_month`/`zone_year`/`zone_clim`/
+  `landuse_watershed`/`landuse_change`）で、どちらも
+  `.gitignore` 済み・捨てて作り直せる。設計・実測は `docs/plans/PHASE_B_FACT_SLICE.md`
+  （土地利用は `docs/plans/PHASE_B_LANDUSE.md`）。土地利用は区分ごとの面積・セル数を
+  別々の variable にし、region は `scripts/migrate/source_regions.yaml`
+  （`consumer='observation'`。occurrence 側〔下記〕と consumer で宣言を分ける）から決める。
   生物の出現（occurrence、O-1a/O-1b/O-2a）は別の縦線。**実行順は
   b06 → b09 → b07 → b08**（b09/b07 は互いに依存しないので入れ替え可能）:
   `scripts/b06_build_occurrence.py`（`organism_records`→`occurrence`。

@@ -105,9 +105,11 @@ def test_row_without_coordinates_is_kept_with_null_place(tmp_path):
         source_regions_text=(
             "sources:\n"
             "  gbif_kanagawa_occurrences:\n"
-            "    region_id: jp-14\n    expected_row_count: 12\n    evidence: テスト用\n"
+            "    region_id: jp-14\n    consumer: occurrence\n"
+            "    expected_row_count: 12\n    evidence: テスト用\n"
             "  inaturalist_kanagawa:\n"
-            "    region_id: jp-14\n    expected_row_count: 1\n    evidence: テスト用\n"
+            "    region_id: jp-14\n    consumer: occurrence\n"
+            "    expected_row_count: 1\n    evidence: テスト用\n"
             "regions:\n  jp-14:\n    utc_offset: \"+09:00\"\n    evidence: テスト用\n"
         ),
         period_shapes_counts={"day": 2},
@@ -177,14 +179,17 @@ def test_unused_source_region_declaration_raises(tmp_path):
         "sources:\n"
         "  gbif_kanagawa_occurrences:\n"
         "    region_id: jp-14\n"
+        "    consumer: occurrence\n"
         "    expected_row_count: 11\n"
         "    evidence: テスト\n"
         "  inaturalist_kanagawa:\n"
         "    region_id: jp-14\n"
+        "    consumer: occurrence\n"
         "    expected_row_count: 1\n"
         "    evidence: テスト\n"
         "  never_used_source:\n"
         "    region_id: jp-14\n"
+        "    consumer: occurrence\n"
         "    expected_row_count: 1\n"
         "    evidence: テスト\n"
         "regions:\n"
@@ -201,10 +206,12 @@ def test_source_region_expected_row_count_mismatch_raises(tmp_path):
         "sources:\n"
         "  gbif_kanagawa_occurrences:\n"
         "    region_id: jp-14\n"
+        "    consumer: occurrence\n"
         "    expected_row_count: 5\n"
         "    evidence: テスト\n"
         "  inaturalist_kanagawa:\n"
         "    region_id: jp-14\n"
+        "    consumer: occurrence\n"
         "    expected_row_count: 1\n"
         "    evidence: テスト\n"
         "regions:\n"
@@ -214,6 +221,40 @@ def test_source_region_expected_row_count_mismatch_raises(tmp_path):
     )
     with pytest.raises(common.MigrationError, match="expected_row_count"):
         _build(tmp_path, source_regions_text=text)
+
+
+def test_b06_succeeds_when_source_regions_yaml_also_has_landuse_declarations(tmp_path):
+    """P-1b コードレビュー指摘8: `source_regions.yaml` に土地利用
+    （consumer='observation'）の宣言が同居していても、b06（consumer で
+    'occurrence' だけに絞り込む）は「使っていない宣言」として誤検出せず
+    成功する（occurrence 側2件は consumer を明示して検証され、
+    observation 側の1件は無視される。`consumer` は必須キーで、
+    省略時に既定値へ落ちる設計は採らない）。
+    """
+    text = (
+        "sources:\n"
+        "  gbif_kanagawa_occurrences:\n"
+        "    region_id: jp-14\n"
+        "    consumer: occurrence\n"
+        "    expected_row_count: 11\n"
+        "    evidence: テスト用\n"
+        "  inaturalist_kanagawa:\n"
+        "    region_id: jp-14\n"
+        "    consumer: occurrence\n"
+        "    expected_row_count: 1\n"
+        "    evidence: テスト用\n"
+        "  nlni_l03b_landuse_by_watershed:\n"  # b06 は使わない（consumer=observation）
+        "    region_id: jp-14\n"
+        "    consumer: observation\n"
+        "    expected_row_count: 4858\n"
+        "    evidence: テスト用\n"
+        "regions:\n"
+        "  jp-14:\n"
+        "    utc_offset: \"+09:00\"\n"
+        "    evidence: テスト用\n"
+    )
+    stats, _out = _build(tmp_path, source_regions_text=text)  # 例外を投げなければ良い
+    assert stats["total"] == len(DEFAULT_ORGANISM_RECORDS)
 
 
 def test_period_shapes_yaml_missing_one_shape_raises(tmp_path):

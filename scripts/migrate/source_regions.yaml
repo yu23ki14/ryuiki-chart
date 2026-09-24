@@ -1,23 +1,40 @@
-# occurrence（organism_records）の region_id を出典（マニフェスト）から決める宣言
-# （scripts/migrate/source_regions.py が読む。ADR-0022 決定3・O-1 設計 v2 D1）。
+# 出典（マニフェスト）から region_id を決める宣言（scripts/migrate/
+# source_regions.py が読む。ADR-0022 決定3・O-1 設計 v2 D1）。
+# consumer（下記）ごとに複数のスクリプトがこの同じファイルを共有する
+# ——occurrence（organism_records、scripts/b06_build_occurrence.py）が最初の
+# 消費者、土地利用（observation、scripts/b03_build_observation.py）が2番目
+# （P-1b）。**新しい出典を足す人へ: `sources.<id>.consumer` は必須キー**
+# （オーナー決定。省略すると `validate_source_regions_shape()` が構造検証で
+# 止める——宣言ファイルは小さく、書き忘れが黙って特定の consumer 扱いに
+# なる方が、都度エラーで気づけるより危険なため、省略時に既定値へ落ちる
+# 設計は採らない）。
 #
-# occurrence は `place`（grid01。県境という概念を持たない機械グリッド）経由では
-# region_id を決められない（ADR-0022 決定3が明記する「既知の結合」）。そこで
-# ADR-0012 のマニフェストが本来持つべき `region:` 欄を、この宣言ファイルとして
-# 先に実装する（マニフェスト本体は Phase C）。
+# occurrence は `place`（grid01。県境という概念を持たない機械グリッド）
+# 経由では、土地利用は `place`（watershed。common スコープ）経由では、
+# それぞれ region_id を決められない（ADR-0022 決定3が明記する「既知の
+# 結合」）。そこで ADR-0012 のマニフェストが本来持つべき `region:` 欄を、
+# この宣言ファイルとして先に実装する（マニフェスト本体は Phase C）。
 #
-# sources: organism_records.source_id -> region_id。未知の source_id・
+# sources: <出典の source_id> -> region_id。未知の source_id・
 #   宣言はあるが1行も現れなかった source_id（未使用宣言）・実測件数が
-#   expected_row_count と食い違う場合はいずれも scripts/b06_build_occurrence.py を
+#   expected_row_count と食い違う場合はいずれも、その出典を読む b0x スクリプトを
 #   止める（scripts/migrate/period_exceptions.yaml と同じ流儀）。
 # regions: region_id -> utc_offset（'Z' 表記の時刻をローカル時刻に直すのに使う。
-#   ADR-0024。「+09:00 を b06 に直書きしない」ための唯一の置き場）。
+#   ADR-0024。「+09:00 を直書きしない」ための唯一の置き場）。
 #   宣言されているのに sources のどれからも参照されない region_id（未使用宣言）は
 #   同様に止める。
+#
+# consumer: この宣言を実際に消費するスクリプト（occurrence=scripts/b06_build_
+#   occurrence.py、observation=scripts/b03_build_observation.py）。**必須**。
+#   scripts/migrate/source_regions.load_source_regions(path, consumer=...) は
+#   `consumer` を指定すると、その値に一致する source だけを返す。この絞り込みが
+#   無いと、P-1b で足した landuse の宣言を b06 が「自分が使っていない宣言」として
+#   誤検出し、未使用宣言エラーで止まってしまう（P-1b オーナー決定 #3）。
 
 sources:
   gbif_kanagawa_occurrences:
     region_id: jp-14
+    consumer: occurrence
     # 実測（data/db/ryuiki.sqlite、2026-09-22）: organism_records の
     # source_id 別件数。
     expected_row_count: 658360
@@ -26,10 +43,23 @@ sources:
       対象地域を神奈川県（ADR-0002 jp-14）に絞って収集しているため region_id=jp-14。
   inaturalist_kanagawa:
     region_id: jp-14
+    consumer: occurrence
     expected_row_count: 165332
     evidence: >
       iNaturalist 経由で取得した神奈川県内の観測（収集は scripts/c03_inaturalist.py）。
       同じく対象地域を神奈川県に絞って収集しているため region_id=jp-14。
+  nlni_l03b_landuse_by_watershed:
+    region_id: jp-14
+    consumer: observation
+    # 実測（data/processed/nlni_l03b_landuse_by_watershed.csv、2026-09-24）:
+    # ヘッダを除いた全行数（2006年版2,398行 + 2016年版2,460行）。
+    expected_row_count: 4858
+    evidence: >
+      国土数値情報 L03-b 土地利用（流域別、2006/2016年版、前処理は
+      data/processed/nlni_l03b_landuse_by_watershed.csv）。神奈川県内の流域に
+      絞って前処理しているため region_id=jp-14。place（watershed。common スコープ）
+      の region_id は常に NULL（ADR-0022 決定1）なので、observation 側で
+      初めて出典由来の region を使う（ADR-0022 決定3・P-1b オーナー決定）。
 
 regions:
   jp-14:

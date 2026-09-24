@@ -975,3 +975,309 @@ variables:
     higher_is_worse: null
     description_ja: null
     status: ok
+
+  # --- landuse（P-1b、docs/plans/PHASE_B_LANDUSE.md）---------------------
+  # 国土数値情報 L03-b 土地利用（流域別、2006/2016年版、data/processed/
+  # nlni_l03b_landuse_by_watershed.csv）。ADR-0007 原則2「出典が既に集計値を
+  # 配っている場合は variable/grain/stat に分解する」に従い、区分ごとの面積
+  # （unit=km2）とセル数（n_cells。unit=count。observation に「n」の列が
+  # 無いため別の変数にする＝発明が少ない、というオーナー決定）をそれぞれ
+  # 独立した variable にした。
+  #
+  # 2006（11区分: 1/2/5/6/7/9/A/B/E/F/G）と2016（12区分:
+  # 0100/0200/0500/0600/0700/0901/0902/1000/1100/1400/1500/1600）は
+  # コード体系が違う。同じ日本語表記（landuse_name_ja）を持つ10区分は
+  # 年をまたいで同じ variable_id を共有させ（landuse_change の
+  # SUM(CASE...) GROUP BY watershed_id, landuse_name が年をまたいで
+  # 同一区分として比較できるようにするため）、`9 幹線交通用地`（2006のみ）と
+  # `0901 道路`/`0902 鉄道`（2016のみ）は年をまたがず別の variable にした
+  # （registry/caveat.yaml の definition_change 参照）。
+  #
+  # name_ja は CSV の landuse_name_ja を1文字も変えずに転記した
+  # （landuse_change の GROUP BY がこの文字列そのものをキーにするため）。
+  - variable_id: common:variable:landuse.paddy
+    code: landuse.paddy
+    name_ja: "田"
+    name_en: null
+    theme: landuse
+    unit_id: common:unit:km2
+    value_type: num
+    default_stat: "sum"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:landuse.paddy_n_cells
+    code: landuse.paddy_n_cells
+    name_ja: "田（セル数）"
+    name_en: null
+    theme: landuse
+    unit_id: common:unit:count
+    value_type: num
+    default_stat: "sum"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:landuse.other_agricultural_land
+    code: landuse.other_agricultural_land
+    name_ja: "その他の農用地"
+    name_en: null
+    theme: landuse
+    unit_id: common:unit:km2
+    value_type: num
+    default_stat: "sum"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:landuse.other_agricultural_land_n_cells
+    code: landuse.other_agricultural_land_n_cells
+    name_ja: "その他の農用地（セル数）"
+    name_en: null
+    theme: landuse
+    unit_id: common:unit:count
+    value_type: num
+    default_stat: "sum"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:landuse.forest
+    code: landuse.forest
+    name_ja: "森林"
+    name_en: null
+    theme: landuse
+    unit_id: common:unit:km2
+    value_type: num
+    default_stat: "sum"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:landuse.forest_n_cells
+    code: landuse.forest_n_cells
+    name_ja: "森林（セル数）"
+    name_en: null
+    theme: landuse
+    unit_id: common:unit:count
+    value_type: num
+    default_stat: "sum"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:landuse.wasteland
+    code: landuse.wasteland
+    name_ja: "荒地"
+    name_en: null
+    theme: landuse
+    unit_id: common:unit:km2
+    value_type: num
+    default_stat: "sum"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:landuse.wasteland_n_cells
+    code: landuse.wasteland_n_cells
+    name_ja: "荒地（セル数）"
+    name_en: null
+    theme: landuse
+    unit_id: common:unit:count
+    value_type: num
+    default_stat: "sum"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:landuse.building_land
+    code: landuse.building_land
+    name_ja: "建物用地"
+    name_en: null
+    theme: landuse
+    unit_id: common:unit:km2
+    value_type: num
+    default_stat: "sum"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:landuse.building_land_n_cells
+    code: landuse.building_land_n_cells
+    name_ja: "建物用地（セル数）"
+    name_en: null
+    theme: landuse
+    unit_id: common:unit:count
+    value_type: num
+    default_stat: "sum"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:landuse.arterial_transport_land
+    code: landuse.arterial_transport_land
+    name_ja: "幹線交通用地"
+    name_en: null
+    theme: landuse
+    unit_id: common:unit:km2
+    value_type: num
+    default_stat: "sum"
+    higher_is_worse: null
+    description_ja: "2006年調査のみの区分。2016年調査では「道路」「鉄道」に分割されている（registry/caveat.yaml の definition_change 参照）"
+    status: ok
+  - variable_id: common:variable:landuse.arterial_transport_land_n_cells
+    code: landuse.arterial_transport_land_n_cells
+    name_ja: "幹線交通用地（セル数）"
+    name_en: null
+    theme: landuse
+    unit_id: common:unit:count
+    value_type: num
+    default_stat: "sum"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:landuse.road
+    code: landuse.road
+    name_ja: "道路"
+    name_en: null
+    theme: landuse
+    unit_id: common:unit:km2
+    value_type: num
+    default_stat: "sum"
+    higher_is_worse: null
+    description_ja: "2016年調査のみの区分。2006年調査では「幹線交通用地」に含まれていた（registry/caveat.yaml の definition_change 参照）"
+    status: ok
+  - variable_id: common:variable:landuse.road_n_cells
+    code: landuse.road_n_cells
+    name_ja: "道路（セル数）"
+    name_en: null
+    theme: landuse
+    unit_id: common:unit:count
+    value_type: num
+    default_stat: "sum"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:landuse.railway
+    code: landuse.railway
+    name_ja: "鉄道"
+    name_en: null
+    theme: landuse
+    unit_id: common:unit:km2
+    value_type: num
+    default_stat: "sum"
+    higher_is_worse: null
+    description_ja: "2016年調査のみの区分。2006年調査では「幹線交通用地」に含まれていた（registry/caveat.yaml の definition_change 参照）"
+    status: ok
+  - variable_id: common:variable:landuse.railway_n_cells
+    code: landuse.railway_n_cells
+    name_ja: "鉄道（セル数）"
+    name_en: null
+    theme: landuse
+    unit_id: common:unit:count
+    value_type: num
+    default_stat: "sum"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:landuse.other_land
+    code: landuse.other_land
+    name_ja: "その他の用地"
+    name_en: null
+    theme: landuse
+    unit_id: common:unit:km2
+    value_type: num
+    default_stat: "sum"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:landuse.other_land_n_cells
+    code: landuse.other_land_n_cells
+    name_ja: "その他の用地（セル数）"
+    name_en: null
+    theme: landuse
+    unit_id: common:unit:count
+    value_type: num
+    default_stat: "sum"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:landuse.river_and_lake
+    code: landuse.river_and_lake
+    name_ja: "河川地及び湖沼"
+    name_en: null
+    theme: landuse
+    unit_id: common:unit:km2
+    value_type: num
+    default_stat: "sum"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:landuse.river_and_lake_n_cells
+    code: landuse.river_and_lake_n_cells
+    name_ja: "河川地及び湖沼（セル数）"
+    name_en: null
+    theme: landuse
+    unit_id: common:unit:count
+    value_type: num
+    default_stat: "sum"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:landuse.beach
+    code: landuse.beach
+    name_ja: "海浜"
+    name_en: null
+    theme: landuse
+    unit_id: common:unit:km2
+    value_type: num
+    default_stat: "sum"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:landuse.beach_n_cells
+    code: landuse.beach_n_cells
+    name_ja: "海浜（セル数）"
+    name_en: null
+    theme: landuse
+    unit_id: common:unit:count
+    value_type: num
+    default_stat: "sum"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:landuse.sea_water
+    code: landuse.sea_water
+    name_ja: "海水域"
+    name_en: null
+    theme: landuse
+    unit_id: common:unit:km2
+    value_type: num
+    default_stat: "sum"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:landuse.sea_water_n_cells
+    code: landuse.sea_water_n_cells
+    name_ja: "海水域（セル数）"
+    name_en: null
+    theme: landuse
+    unit_id: common:unit:count
+    value_type: num
+    default_stat: "sum"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:landuse.golf_course
+    code: landuse.golf_course
+    name_ja: "ゴルフ場"
+    name_en: null
+    theme: landuse
+    unit_id: common:unit:km2
+    value_type: num
+    default_stat: "sum"
+    higher_is_worse: null
+    description_ja: null
+    status: ok
+  - variable_id: common:variable:landuse.golf_course_n_cells
+    code: landuse.golf_course_n_cells
+    name_ja: "ゴルフ場（セル数）"
+    name_en: null
+    theme: landuse
+    unit_id: common:unit:count
+    value_type: num
+    default_stat: "sum"
+    higher_is_worse: null
+    description_ja: null
+    status: ok

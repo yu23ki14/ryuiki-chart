@@ -207,3 +207,30 @@ build_unit_variable.py` の `GRAIN_CODES` にはまだ入っていなかった�
 `grain` を読む消費者は無く、今回の変更で `web/`（`lookup.ts`/`lookup-client.ts` は
 `stat`/`grain` の値そのものを呼び出し側に返さない設計）・AIツール・`scripts/b0*` の
 挙動は変わらない。`sensor_timeseries` の縦線を作るときに、この宣言が効いてくる。
+
+## Phase B 土地利用（`phase-b/landuse`、P-1b）で分かった新しい事実
+
+### `variable_alias.csv` の `dataset` が版付き（`<source>@<year>`）になる暫定の接続点
+
+ADR-0005「同じ出典に複数版が同居する」は `source`/`source_edition` という
+正式なテーブル分割を Phase C の仕事として予告しているが、それより前に
+`variable_alias.csv` の `dataset` 列で**版を区別する必要**が実際に生じた
+（国土数値情報 L03-b 土地利用が2006年版・2016年版でコード体系が違う。
+`docs/plans/PHASE_B_LANDUSE.md` §2）。`dataset` を
+`nlni_l03b_landuse_by_watershed@2006`/`@2016` のように `@<year>` を後置する
+形にし、`source_id` 列（CSVの `source_id` そのもの、版に依存しない定数）とは
+別に持つことで、`(dataset, alias, source_id)` の一意性を保ったまま
+「同じ区分コード文字列が年によって意味が違う」を表現した。**これは
+`source_edition`（ADR-0005）の正式な実装ではない**——`dataset` は元々
+`measurements`/`sensor_timeseries` という「原本テーブル名」を表す列で、
+版の概念を持たせる設計にはなっていなかった。Phase C で `source_edition_id`
+を正式導入するときは、この `@<year>` サフィックスを `source_edition_id`
+参照に置き換える必要がある（`variable_alias` のスキーマ変更を伴う）。
+
+### `scripts/migrate/source_regions.yaml` の `consumer` 分離
+
+occurrence（`scripts/b06_build_occurrence.py`）専用だった
+`source_regions.yaml` を、observation（`scripts/b03_build_observation.py`）
+の土地利用取り込みも共有するようになった。設計・`consumer`（必須キー。
+省略時に既定値へ落ちる設計は採らない）の詳細は `docs/plans/PHASE_B_LANDUSE.md`
+参照。

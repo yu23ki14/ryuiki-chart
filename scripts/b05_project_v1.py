@@ -2,15 +2,16 @@
 """`observation_agg`（`data/db/v2.sqlite`、b04 が作ったキューブ）を v1 の派生
 テーブル形（`meas_daily`/`meas_month`/`meas_year`/`meas_clim`/`site_var`/
 `var_catalog`/`sensor_daily`/`rain_daily`/`sensor_hour_month`/`zone_year`/
-`zone_clim`）に射影する（ADR-0016 Phase B「ファクトとキューブ」縦に薄い1本。
-センサーの縦線の設計は「センサーの縦線 設計 v2」オーナー決定・ADR-0023・
-ADR-0024、ゾーンの縦線は `docs/plans/PHASE_B_FACT_SLICE.md`（D11）・
-ADR-0022 参照）。
+`zone_clim`/`landuse_watershed`/`landuse_change`）に射影する
+（ADR-0016 Phase B「ファクトとキューブ」縦に薄い1本。センサーの縦線の設計は
+「センサーの縦線 設計 v2」オーナー決定・ADR-0023・ADR-0024、ゾーンの縦線は
+`docs/plans/PHASE_B_FACT_SLICE.md`（D11）・ADR-0022、土地利用の縦線（P-1b）は
+`docs/plans/PHASE_B_LANDUSE.md` 参照）。
 
     .venv/bin/python3 scripts/b05_project_v1.py
 
 `data/db/v1_projection.sqlite`（毎回ゼロから作り直す、専用の出力ファイル）に
-11テーブルを書く。列名・列順は `reports/derived_baseline.json` の記録と完全に
+13テーブルを書く。列名・列順は `reports/derived_baseline.json` の記録と完全に
 一致させてある（`scripts/b02_derived_compare.py --tables ...` がそのまま
 突き合わせられるように）。
 
@@ -199,6 +200,17 @@ def _alias_lookup_sql(dataset: str) -> str:
     """
 
 
+def _place_lookup_sql(source_id: str) -> str:
+    """`place_id -> v1 の外部キー`の逆引き元 SQL（`place_source_ref.source_id`
+    で絞る）。`place_lookup`（`source_id='sites.site_id'`）と
+    `watershed_place_lookup`（`source_id='watershed_meta.watershed_id'`、
+    P-1b）の両方をこの関数で作る——以前は後者が前者のブロックをほぼ丸写し
+    していたものを、`_alias_lookup_sql`/`_unit_lookup_sql` と同じ「引数だけ
+    違う SQL 生成関数」という既存の流儀に揃えた（/simplify 指摘3）。
+    """
+    return f"SELECT place_id, external_key FROM reg.place_source_ref WHERE source_id = '{source_id}'"
+
+
 def _unit_lookup_sql(source_table: str) -> str:
     """`(variable_id, value_grain, obs_stat, unit_id) → unit_raw` の逆引き元
     SQL（`source_table`——`observation.source_table` の値——で絞る）。
@@ -359,6 +371,126 @@ GROUP BY sz.zone, m.variable, m.month
 """
 
 # ---------------------------------------------------------------------------
+# 土地利用2テーブル（P-1b、docs/plans/PHASE_B_LANDUSE.md）。observation の
+# 出典配布の年次セル（b04 は無変更。ADR-0011「事前計算は place_kind IN
+# {site,watershed,mesh3}」の watershed に既に該当し、既存の年次出典配布の
+# 経路（`_year_source_stats_sql`/`_year_source_expand_sql`）をそのまま通る）
+# から作る。`observation`/`observation_agg` の既存の行・セルには一切触れない
+# （新しい variable_id・新しい place_kind='watershed' のセルが増えるだけ）。
+# ---------------------------------------------------------------------------
+
+# b03 の `LANDUSE_SOURCE_ID`（`scripts/b03_build_observation.py`）と同じ文字列。
+# b05 は b03 の Python モジュールに依存しない（v2.sqlite/registry.sqlite という
+# ファイルだけを読む設計）ため、ここでも定数として持つ（2箇所に文字列リテラルを
+# 散らさないための唯一の置き場）。
+_LANDUSE_SOURCE_ID = "nlni_l03b_landuse_by_watershed"
+_LANDUSE_DATASET_PREFIX = f"{_LANDUSE_SOURCE_ID}@"
+
+
+def _landuse_dataset(year: str) -> str:
+    return f"{_LANDUSE_DATASET_PREFIX}{year}"
+
+
+def _discover_landuse_years(work: sqlite3.Connection) -> list[str]:
+    """`reg.variable_alias.dataset` の `nlni_l03b_landuse_by_watershed@<年>`
+    という接頭辞から、実際に登録されている年版を導出する（コードレビュー
+    指摘1: 年版のタプルを直書きすると、3つ目の版を variable_alias.csv に
+    足したときに b03 は取り込むのに b05 の射影からは黙って落ちる）。
+
+    `substr(dataset, 1, ?) = ?` で前方一致を取る（`LIKE` は `_` を1文字
+    ワイルドカードとして解釈してしまい、`nlni_l03b_landuse_by_watershed` の
+    アンダースコアが誤って任意の1文字にマッチしうるため使わない。
+    コードレビュー指摘7）。
+
+    1件も見つからなければ空リストを返す（エラーにしない）——本物の
+    `registry.sqlite` には常に土地利用の alias が登録されているはずだが、
+    土地利用を検証しない既存のフィクスチャ（`measurements`/`sensor_timeseries`
+    だけの最小 `variable_alias`）は landuse の行を持たない。空リストなら
+    `_landuse_watershed_sql([])` が0行の `landuse_watershed`（正しい列だけの
+    空テーブル）を作り、`landuse_watershed`/`landuse_change` は空のまま
+    通る——zone（`place_relation` が空でも `zone_year`/`zone_clim` が
+    空のまま通る、D11 と同じ考え方）。
+    """
+    prefix_len = len(_LANDUSE_DATASET_PREFIX)
+    rows = work.execute(
+        "SELECT DISTINCT substr(dataset, ?) AS year_suffix "
+        "FROM reg.variable_alias WHERE substr(dataset, 1, ?) = ? "
+        "ORDER BY year_suffix",
+        (prefix_len + 1, prefix_len, _LANDUSE_DATASET_PREFIX),
+    ).fetchall()
+    return [r[0] for r in rows]
+
+
+# 区分の面積（area_km2）とセル数（n_cells）は、CSVの1行から作られた別々の
+# variable（P-1b オーナー決定1）。alias 文字列は `f"{landuse_code_raw}:area_km2"`/
+# `f"{landuse_code_raw}:n_cells"`（`scripts/b03_build_observation.py` の
+# `_ingest_landuse` と同じ形）なので、`substr(alias, 1, instr(alias, ':') - 1)`
+# で元の landuse_code_raw を、`substr(alias, instr(alias, ':') + 1)` で
+# 指標名（`'area_km2'`/`'n_cells'`）を復元できる——CSVの `landuse_code_raw` を
+# レジストリの別テーブルに複製せず、alias 文字列自身から引き戻す。
+# 指標名の一致は `LIKE '%:n_cells'` ではなく `substr(...) = 'n_cells'` の
+# **完全一致**にしてある（`n_cells` のアンダースコアが `LIKE` の1文字
+# ワイルドカードと衝突するため。コードレビュー指摘7）。
+def _landuse_watershed_year_sql(year: str) -> str:
+    lookup = f"landuse_alias_lookup_{year}"
+    return f"""
+    SELECT wpl.external_key AS watershed_id, {year} AS year,
+           substr(aal.alias, 1, instr(aal.alias, ':') - 1) AS landuse_code,
+           v.name_ja AS landuse_name,
+           CAST(ncell.value AS INTEGER) AS n_cells,
+           area.value AS area_km2
+    FROM obs_agg_keyed area
+    JOIN {lookup} aal
+      ON aal.akey = area.akey
+     AND substr(aal.alias, instr(aal.alias, ':') + 1) = 'area_km2'
+    JOIN reg.variable v ON v.variable_id = area.variable_id
+    JOIN watershed_place_lookup wpl ON wpl.place_id = area.place_id
+    JOIN obs_agg_keyed ncell
+      ON ncell.place_id = area.place_id
+     AND ncell.period_start = area.period_start
+     AND ncell.grain = area.grain AND ncell.stat = area.stat
+    JOIN {lookup} nal
+      ON nal.akey = ncell.akey
+     AND substr(nal.alias, instr(nal.alias, ':') + 1) = 'n_cells'
+     AND substr(nal.alias, 1, instr(nal.alias, ':') - 1) = substr(aal.alias, 1, instr(aal.alias, ':') - 1)
+    WHERE area.grain = 'year' AND area.stat = 'mean' AND area.place_kind = 'watershed'
+      AND area.period_start = '{year}-01-01'
+    """
+
+
+# `area.period_start = '{year}-01-01'` の絞り込みが無いと、10区分は2006/2016
+# 両方の年で同じ variable_id を共有する（P-1b オーナー決定2）ため、
+# `landuse_alias_lookup_2006` が2016年のセルにも（akey が同じという理由だけで）
+# 一致してしまい、2016年の面積に2006年の landuse_code を誤って付けてしまう
+# （値そのものは変わらないが、行が指す年と landuse_code の対応が壊れる）。
+def _landuse_watershed_sql(years: list[str]) -> str:
+    if not years:
+        # 土地利用の alias が1件も無いフィクスチャ用（`_discover_landuse_years`
+        # 参照）。列だけ揃った0行の SELECT にする（`UNION ALL` に空リストを
+        # 渡すと SQL 構文として空文字列になってしまうため）。
+        return (
+            "SELECT NULL AS watershed_id, NULL AS year, NULL AS landuse_code, "
+            "NULL AS landuse_name, NULL AS n_cells, NULL AS area_km2 WHERE 0"
+        )
+    return "\nUNION ALL\n".join(_landuse_watershed_year_sql(year) for year in years)
+
+# v1（`web/scripts/build-geo.mjs:100-110`）と同じ SQL（SUM(CASE...) を
+# landuse_name でグループ化）。同じ日本語名を持つ10区分は年をまたいで同じ
+# variable_id を共有しているため（P-1b オーナー決定2）、v1 と同じ GROUP BY で
+# 同じ行の集合になる。`幹線交通用地`（2006のみ）・`道路`/`鉄道`（2016のみ）は
+# 年をまたがない別の variable_id のままなので、v1 と同じく「全減」「全増」に
+# なる（registry/caveat.yaml の definition_change caveat 参照）。
+_LANDUSE_CHANGE_SQL = """
+SELECT watershed_id, landuse_name,
+       SUM(CASE WHEN year = 2006 THEN area_km2 ELSE 0 END) AS km2_2006,
+       SUM(CASE WHEN year = 2016 THEN area_km2 ELSE 0 END) AS km2_2016,
+       SUM(CASE WHEN year = 2016 THEN area_km2 ELSE 0 END)
+         - SUM(CASE WHEN year = 2006 THEN area_km2 ELSE 0 END) AS delta_km2
+FROM landuse_watershed
+GROUP BY watershed_id, landuse_name
+"""
+
+# ---------------------------------------------------------------------------
 # sensor_timeseries 由来 3テーブル（T5）
 # ---------------------------------------------------------------------------
 
@@ -436,6 +568,8 @@ _TABLE_SQL = {
     "sensor_hour_month": _SENSOR_HOUR_MONTH_SQL,
     "zone_year": _ZONE_YEAR_SQL,
     "zone_clim": _ZONE_CLIM_SQL,
+    "landuse_watershed": "SELECT * FROM landuse_watershed",
+    "landuse_change": _LANDUSE_CHANGE_SQL,
 }
 
 
@@ -547,12 +681,15 @@ def _assert_site_maps_to_at_most_one_zone(work: sqlite3.Connection) -> None:
     )
 
 
-def _materialize_lookup_tables(work: sqlite3.Connection) -> None:
+def _materialize_lookup_tables(work: sqlite3.Connection, landuse_years: list[str]) -> None:
     """自動インデックスの効かない `IS`（NULL-safe）JOIN を、実体化した一時
     テーブル＋インデックスの通常の等値 JOIN に置き換える。`measurements`/
     `sensor_timeseries` の両方ぶんの逆引きテーブルと、`place_lookup` の
     直後に地点→ゾーンの対応（`site_zone_lookup`。`zone_year`/`zone_clim` が
     使う。ADR-0022 決定2の最初の消費者）をここで作る。
+
+    `landuse_years`（`_discover_landuse_years()` が導出した年版の一覧。
+    コードレビュー指摘1）ごとに土地利用の alias 逆引きテーブルを作る。
     """
     work.execute(_OBS_AGG_KEYED_VIEW_SQL)
 
@@ -575,10 +712,7 @@ def _materialize_lookup_tables(work: sqlite3.Connection) -> None:
     work.execute(_label25_obs_keyed_sql())
     work.execute("CREATE INDEX label25_obs_keyed_akey ON label25_obs_keyed (akey)")
 
-    work.execute(
-        "CREATE TEMP TABLE place_lookup AS "
-        "SELECT place_id, external_key FROM reg.place_source_ref WHERE source_id = 'sites.site_id'"
-    )
+    work.execute(f"CREATE TEMP TABLE place_lookup AS {_place_lookup_sql('sites.site_id')}")
     _raise_on_group_by_duplicates(
         work,
         "SELECT place_id, COUNT(*) AS n FROM place_lookup GROUP BY place_id HAVING n > 1 LIMIT 5",
@@ -602,8 +736,33 @@ def _materialize_lookup_tables(work: sqlite3.Connection) -> None:
     _assert_site_maps_to_at_most_one_zone(work)
     work.execute("CREATE UNIQUE INDEX site_zone_lookup_site_id ON site_zone_lookup (site_id)")
 
+    # 土地利用（P-1b）。watershed の place_id -> v1 の watershed_id
+    # （`_place_lookup_sql` は `place_lookup` と同じ関数——`source_id` が違うだけ）。
+    work.execute(
+        f"CREATE TEMP TABLE watershed_place_lookup AS "
+        f"{_place_lookup_sql('watershed_meta.watershed_id')}"
+    )
+    _raise_on_group_by_duplicates(
+        work,
+        "SELECT place_id, COUNT(*) AS n FROM watershed_place_lookup GROUP BY place_id HAVING n > 1 LIMIT 5",
+        (),
+        lambda dup: (
+            "place_source_ref（source_id='watershed_meta.watershed_id'）が place_id に"
+            f"ついて単射でない（例: {dup}）。landuse_watershed の射影が決まらない。"
+        ),
+    )
+    work.execute("CREATE UNIQUE INDEX watershed_place_lookup_place_id ON watershed_place_lookup (place_id)")
 
-def _materialize_projection_tables(work: sqlite3.Connection) -> None:
+    # 版付き dataset（`nlni_l03b_landuse_by_watershed@<year>`）ごとの alias 逆引き
+    # （`_alias_lookup_sql` は既存の measurements/sensor_timeseries と同じ関数を
+    # 再利用する——dataset が違うだけ）。
+    for year in landuse_years:
+        lookup = f"landuse_alias_lookup_{year}"
+        work.execute(f"CREATE TEMP TABLE {lookup} AS {_alias_lookup_sql(_landuse_dataset(year))}")
+        work.execute(f"CREATE UNIQUE INDEX {lookup}_akey ON {lookup} (akey)")
+
+
+def _materialize_projection_tables(work: sqlite3.Connection, landuse_years: list[str]) -> None:
     """逆引き済みの `meas_daily`/`meas_month`/`meas_year` をそれぞれ1回だけ
     一時テーブルに実体化する（`meas_clim`/`site_var`/`var_catalog` は
     `meas_daily`/`meas_year` から、`zone_year`/`zone_clim` は
@@ -613,6 +772,8 @@ def _materialize_projection_tables(work: sqlite3.Connection) -> None:
     work.execute(f"CREATE TEMP TABLE meas_daily AS {_MEAS_DAILY_SQL}")
     work.execute(f"CREATE TEMP TABLE meas_month AS {_MEAS_MONTH_SQL}")
     work.execute(f"CREATE TEMP TABLE meas_year AS {_MEAS_YEAR_SQL}")
+    # landuse_change（`_LANDUSE_CHANGE_SQL`）が読むため実体化する（P-1b）。
+    work.execute(f"CREATE TEMP TABLE landuse_watershed AS {_landuse_watershed_sql(landuse_years)}")
 
 
 def assert_alias_is_function(work, dataset: str = "measurements", grains: tuple[str, ...] | None = None) -> None:
@@ -659,30 +820,53 @@ def assert_alias_is_function(work, dataset: str = "measurements", grains: tuple[
 
 
 def assert_alias_tuple_maps_to_single_dataset(work) -> None:
-    """`(variable_id, grain, stat, unit_id)` が `measurements` と
-    `sensor_timeseries` の両方の alias に対応していないことを確認する
-    （設計 v2 T5）。崩れていると、同じキューブのセルが `meas_*` と
-    `sensor_*` の両方の出力テーブルに二重に現れる——各テーブルの逆引き JOIN
-    は `dataset` ごとに絞っているだけで、tuple 自体が2つの dataset に
-    またがらないことまでは保証していないため。実測では衝突0件だが、
+    """`(variable_id, grain, stat, unit_id)` が `measurements`/
+    `sensor_timeseries`/土地利用（本体の出典名。版のサフィックスは正規化して
+    落とす）の間でまたがっていないことを確認する（設計 v2 T5）。崩れていると、
+    同じキューブのセルが複数の出力テーブルに二重に現れる——各テーブルの
+    逆引き JOIN は `dataset` ごとに絞っているだけで、tuple 自体が2つの
+    dataset にまたがらないことまでは保証していないため。実測では衝突0件だが、
     `assert_alias_is_function` が捕まえる壊れ方（順方向の衝突）とは別の
     壊れ方なので、そのまま残す。
+
+    **版付き dataset（`<source>@<year>`。ADR-0005「同じ出典に複数版が
+    同居する」実例、土地利用 P-1b）は `@` より前（出典本体）に正規化してから
+    比較する**——土地利用は同じ (variable_id, grain, stat, unit_id) を意図して
+    複数の年版にまたがって再利用する（例: `田` は2006/2016のどちらも
+    `variable_id=landuse.paddy, grain=year, stat=sum, unit_id=km2`。P-1b
+    オーナー決定2「同じ日本語名の区分は年をまたいで同じ variable_id を
+    共有する」）ため、正規化しないと版の数だけ誤検出してしまう。正規化後は
+    `nlni_l03b_landuse_by_watershed@2006`/`@2016` はどちらも
+    `nlni_l03b_landuse_by_watershed` という**同じ**出典名になるので
+    `COUNT(DISTINCT ...)` は1のまま——一方で `measurements`/
+    `sensor_timeseries` はそもそも `@` を含まないため正規化の影響を受けず、
+    これらと土地利用側の tuple が衝突すれば正規化後も別の出典名のまま
+    残るので、引き続き検出できる（コードレビュー指摘4:
+    「除外」ではなく「正規化して比較」にすることで、この検証本来の保護範囲を
+    狭めない）。
     """
     _raise_on_group_by_duplicates(
         work,
         """
         SELECT variable_id, grain, stat, unit_id,
-               COUNT(DISTINCT dataset) AS n_dataset, GROUP_CONCAT(DISTINCT dataset) AS datasets
-        FROM reg.variable_alias
+               COUNT(DISTINCT base_dataset) AS n_dataset,
+               GROUP_CONCAT(DISTINCT base_dataset) AS datasets
+        FROM (
+            SELECT variable_id, grain, stat, unit_id,
+                   CASE WHEN instr(dataset, '@') > 0
+                        THEN substr(dataset, 1, instr(dataset, '@') - 1)
+                        ELSE dataset END AS base_dataset
+            FROM reg.variable_alias
+        )
         GROUP BY variable_id, grain, stat, unit_id
         HAVING n_dataset > 1
         """,
         (),
         lambda dup: (
-            "(variable_id, grain, stat, unit_id) が複数の dataset にまたがっている"
-            f"（同じキューブのセルが meas_* と sensor_* の両方の出力テーブルに二重に現れる"
-            f"恐れがある）: {dup}\nvariable_alias 側で tuple が dataset をまたいで重複しない"
-            "ようにしてから再実行すること。"
+            "(variable_id, grain, stat, unit_id) が複数の出典（版のサフィックスを"
+            f"正規化した後）にまたがっている（同じキューブのセルが複数の出力テーブルに"
+            f"二重に現れる恐れがある）: {dup}\nvariable_alias 側で tuple が出典をまたいで"
+            "重複しないようにしてから再実行すること。"
         ),
     )
 
@@ -867,7 +1051,7 @@ def verify_hourly_daily_rollup(work: sqlite3.Connection, sample_limit: int = 20)
 def build_projections(
     cube_db, registry_db, baseline_json=DEFAULT_BASELINE_JSON
 ) -> dict[str, list[tuple]]:
-    """11テーブルぶんの `(columns, rows)` を返す（ファイルには書かない）。
+    """13テーブルぶんの `(columns, rows)` を返す（ファイルには書かない）。
 
     `meas_clim`/`site_var`/`var_catalog`/`zone_year`/`zone_clim`（`meas_year`/
     `meas_month` からの再集計）と `sensor_daily`/`rain_daily`/
@@ -887,13 +1071,21 @@ def build_projections(
         # docstring 参照。jma_monthly の積雪3変数にある month 限定の alias
         # 重複は射影対象外なので見ない）。
         assert_alias_is_function(work, "sensor_timeseries", grains=_SENSOR_ALIAS_GRAINS)
+        # 土地利用（P-1b）: 版付き dataset（年）ごとに関数性を検証する
+        # （`assert_alias_is_function` は dataset を1つ受け取る既存の関数を
+        # そのまま再利用——年ごとに独立して「区分コード -> variable_id」が
+        # 一意であることを確認する）。年の一覧はレジストリから動的に導出する
+        # （コードレビュー指摘1。`_LANDUSE_YEARS` の直書きをやめた）。
+        landuse_years = _discover_landuse_years(work)
+        for year in landuse_years:
+            assert_alias_is_function(work, _landuse_dataset(year))
         assert_alias_tuple_maps_to_single_dataset(work)
         assert_unit_raw_is_function(work)
         # ゾーン（place_relation）の射影固有の検証は _materialize_lookup_tables
         # の中、site_zone_lookup を実体化した直後で行う（D11参照。レジストリの
         # 不変条件は r01 側で保証済み）。
-        _materialize_lookup_tables(work)
-        _materialize_projection_tables(work)
+        _materialize_lookup_tables(work, landuse_years)
+        _materialize_projection_tables(work, landuse_years)
         verify_hourly_daily_rollup(work)
         out = {}
         for table, sql in _TABLE_SQL.items():
@@ -947,6 +1139,26 @@ _CREATE_SQL = {
     "zone_clim": (
         "CREATE TABLE zone_clim (zone INTEGER, variable TEXT, month INTEGER, "
         "n_sites INTEGER, n INTEGER, avg REAL, unit TEXT)"
+    ),
+    "landuse_watershed": (
+        "CREATE TABLE landuse_watershed (watershed_id TEXT, year INTEGER, landuse_code TEXT, "
+        "landuse_name TEXT, n_cells INTEGER, area_km2 REAL)"
+    ),
+    # km2_2006/km2_2016/delta_km2 は型を宣言しない（コードレビュー指摘5）。
+    # v1（`web/scripts/build-geo.mjs`）は `CREATE TABLE landuse_change AS
+    # SELECT ...` という CTAS で、集計式の列には型が宣言されない
+    # （`reports/derived_baseline.json` の該当3列も `type: ""`）。
+    # `SUM(CASE WHEN year=2006 THEN area_km2 ELSE 0 END)` は、該当年の行が
+    # 1件も無いグループでは全項が整数リテラル `0` になり、SQLite の SUM()
+    # は整数だけを足した結果を INTEGER の 0 で返す——型を REAL と宣言すると
+    # INSERT 時に REAL へ強制変換されてしまい、v1 の storage class
+    # （INTEGER 0 のままの行がある）と食い違う。型を宣言しなければ、
+    # SELECT が計算した storage class（INTEGER か REAL か）がそのまま
+    # 保持される。数値としての値は REAL 宣言でも型無し宣言でも変わらない
+    # ——ここで直すのは storage class（`typeof()`）の一致だけ。
+    "landuse_change": (
+        "CREATE TABLE landuse_change (watershed_id TEXT, landuse_name TEXT, "
+        "km2_2006, km2_2016, delta_km2)"
     ),
 }
 

@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """`data/db/ryuiki.sqlite`（読み取り専用）の `measurements` と
-`sensor_timeseries` を、単一の縦持ちファクト `observation`（ADR-0007）にする
+`sensor_timeseries`、および `data/processed/nlni_l03b_landuse_by_watershed.csv`
+（土地利用、L1）を、単一の縦持ちファクト `observation`（ADR-0007）にする
 （ADR-0016 Phase B「ファクトとキューブ」。`measurements` だけの縦線は
 `docs/plans/PHASE_B_FACT_SLICE.md`、`sensor_timeseries` を足したセンサーの
-縦線の設計は「センサーの縦線 設計 v2」オーナー決定・ADR-0023・ADR-0024 参照）。
+縦線の設計は「センサーの縦線 設計 v2」オーナー決定・ADR-0023・ADR-0024、
+土地利用の縦線（P-1b）の設計は `docs/plans/PHASE_B_LANDUSE.md` 参照）。
 
     .venv/bin/python3 scripts/b03_build_observation.py
 
 `data/db/v2.sqlite` の `observation` テーブルだけを作り直す
 （`scripts/migrate/common.staged_table`。ファイル全体を作り直さない —
 「ファイルではなくテーブル単位」節を参照）。`reports/phase_b_fact_slice.md` に
-出典ごとの節を持つ人が読む要約を書く。**入力（`ryuiki.sqlite`/`registry.sqlite`）
-は読み取り専用でしか開かない。**
+出典ごとの節を持つ人が読む要約を書く。**入力（`ryuiki.sqlite`/`registry.sqlite`/
+土地利用CSV）は読み取り専用でしか開かない。**
 
 ## ファイルではなくテーブル単位で作り直す
 
@@ -148,6 +150,7 @@ from __future__ import annotations
 
 import argparse
 import collections
+import csv
 import functools
 import pathlib
 import sqlite3
@@ -156,14 +159,22 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from migrate import censoring, common, period  # noqa: E402
+from migrate import censoring, common, period, source_regions  # noqa: E402
 
 DEFAULT_RYUIKI_DB = ROOT / "data" / "db" / "ryuiki.sqlite"
 DEFAULT_REGISTRY_DB = ROOT / "data" / "db" / "registry.sqlite"
 DEFAULT_EXCEPTIONS_YAML = ROOT / "scripts" / "migrate" / "period_exceptions.yaml"
 DEFAULT_TIME_LABEL_CONVENTIONS_YAML = ROOT / "scripts" / "migrate" / "time_label_conventions.yaml"
+DEFAULT_SOURCE_REGIONS_YAML = ROOT / "scripts" / "migrate" / "source_regions.yaml"
+DEFAULT_LANDUSE_CSV = ROOT / "data" / "processed" / "nlni_l03b_landuse_by_watershed.csv"
 DEFAULT_OUT = ROOT / "data" / "db" / "v2.sqlite"
 DEFAULT_REPORT = ROOT / "reports" / "phase_b_fact_slice.md"
+
+# P-1b（土地利用、docs/plans/PHASE_B_LANDUSE.md）。CSV の source_id 列は全行
+# この定数値（`data/processed/nlni_l03b_landuse_by_watershed.csv` を実測して
+# 確認済み）。source_regions.yaml の sources キー・observation.source_table・
+# variable_alias.csv の dataset 接頭辞のすべてがこの文字列を共有する。
+LANDUSE_SOURCE_ID = "nlni_l03b_landuse_by_watershed"
 
 _SAMPLE_LIMIT = 20
 
@@ -329,6 +340,96 @@ def _problems_from_stats(stats: dict) -> list[str]:
     return problems
 
 
+def _check_duplicate(stats: dict, seen: set, key) -> bool:
+    """`key` が既に `seen` にあれば `dup_ids_count` を計上して `True` を返す
+    （呼び出し側はこの行/この observation 候補をスキップする。A-2: 数えるだけで
+    `seen` には足さないループへは進めない＝挿入を試みない。以前は数えた後も
+    挿入していて主キー違反の `IntegrityError` に化けていた）。無ければ `seen`
+    に足して `False` を返す。
+
+    `key` の意味は呼び出し側ごとに違う——`measurements`/`sensor_timeseries`
+    は `source_row_id`（技術的な連番）、土地利用は `(watershed_id, data_year,
+    landuse_code_raw, 種別)` という業務キー（CSV の行番号は行ごとに必ず一意に
+    なるため、それを鍵にした重複検査は原理的に発火しない。コードレビュー
+    指摘2）——だが判定自体（集合の所属テスト）は3出典で同じロジックのため
+    ここに集約する（/code-review「_process_row を分割」指摘1）。
+    """
+    if key in seen:
+        stats["dup_ids_count"] += 1
+        if len(stats["dup_ids_sample"]) < _SAMPLE_LIMIT:
+            stats["dup_ids_sample"].append(key)
+        return True
+    seen.add(key)
+    return False
+
+
+def _resolve_and_compute_period(
+    stats: dict,
+    variable_id,
+    place_id,
+    period_raw: str,
+    value_grain: str,
+    source_id,
+    exceptions,
+    usage,
+    unresolved_alias_sample_value,
+    unresolved_place_sample_value,
+    period_mismatch_sample_value,
+    time_conventions=None,
+    time_usage=None,
+):
+    """3出典（`measurements`/`sensor_timeseries`/土地利用）で共通の
+    「alias/place が解決できているかの確認→期間の計算→grain の食い違いの
+    計上」（以前は `_process_row` が重複判定と一緒に持っていたが、土地利用
+    〔3出典目〕は「1行→2行」という別の形の重複判定〔`_check_duplicate` 参照〕
+    を持つため、ここで分離した——このブロックだけが3出典で完全に同じ形。
+    /code-review「_process_row を分割」指摘1）。
+
+    `variable_id`/`place_id` は呼び出し側が出典ごとの方法（`measurements`/
+    `sensor_timeseries` は SQL の LEFT JOIN、土地利用は `variable_alias`/
+    `place_source_ref` の Python 辞書引き）で解決を試みた結果（解決できな
+    かった場合は `None`）を渡す——ここでは「`None` でないか」だけを見る。
+    サンプル（`unresolved_alias_sample_value` 等）の形は出典ごとに違う
+    （例: 土地利用は面積/セル数どちらの alias が欠けているかまで含む4要素
+    タプル）ため、組み立て済みの値を呼び出し側から受け取る。
+
+    行を捨てるべきとき（alias/place 未解決・宣言に無い期間の食い違い）は
+    `None` を返す——呼び出し側はこの行を挿入せず次へ進む。それ以外は
+    `(period_grain, period_start, period_end)` を返す——呼び出し側が出典固有の
+    列（検閲の分類・挿入するタプル）を組み立てる。
+
+    `UnknownTimeLabelConventionError`（`time_conventions` に無い
+    `value_grain='hour'` の出典）はここで捕まえない——per-row の問題ではなく
+    構造的な設定不足なので、呼び出し側まで即座に伝播させる
+    （`scripts/migrate/period.py` の当該クラスの docstring 参照）。
+    """
+    if variable_id is None:
+        stats["unresolved_alias_count"] += 1
+        if len(stats["unresolved_alias_sample"]) < _SAMPLE_LIMIT:
+            stats["unresolved_alias_sample"].append(unresolved_alias_sample_value)
+        return None
+    if place_id is None:
+        stats["unresolved_place_count"] += 1
+        if len(stats["unresolved_place_sample"]) < _SAMPLE_LIMIT:
+            stats["unresolved_place_sample"].append(unresolved_place_sample_value)
+        return None
+
+    try:
+        period_grain, period_start, period_end = period.compute_period(
+            period_raw, value_grain, source_id, exceptions, usage, time_conventions, time_usage,
+        )
+    except period.PeriodMismatchError:
+        stats["period_mismatch_count"] += 1
+        if len(stats["period_mismatch_sample"]) < _SAMPLE_LIMIT:
+            stats["period_mismatch_sample"].append(period_mismatch_sample_value)
+        return None
+
+    if period_grain != value_grain:
+        stats["grain_mismatch_count"] += 1
+
+    return period_grain, period_start, period_end
+
+
 def _process_row(
     stats: dict,
     seen_ids: set,
@@ -347,54 +448,29 @@ def _process_row(
 ):
     """1行ぶんの共通検証（B-1: `_ingest_measurements`/`_ingest_sensor_timeseries`
     が個別に持っていた「重複検出→alias解決→place解決→`compute_period`→grainの
-    食い違い集計」の5ブロックを1つに集約したもの）。
+    食い違い集計」を1つに集約したもの。重複判定は `_check_duplicate`、
+    残りは `_resolve_and_compute_period` に委譲する——3出典目の土地利用
+    〔`_ingest_landuse`〕は重複判定の形が違う〔業務キー・「1行→2行」〕ため
+    `_process_row` 自体は使わず、この2つの共有関数を直接呼ぶ）。
 
     行を捨てるべきとき（重複・alias/place 未解決・宣言に無い期間の食い違い）は
-    `None` を返す——呼び出し側はこの行を挿入せず次の行へ進む（A-2: 重複を
-    見つけても、ここでは数えるだけで `seen_ids` に足さないループへは進めない
-    ＝挿入を試みない。以前は数えた後も挿入していて主キー違反の `IntegrityError`
-    に化けていた）。それ以外は `(period_grain, period_start, period_end)` を
-    返す——呼び出し側が出典固有の列（検閲の分類・挿入するタプル）を組み立てる。
-
-    `UnknownTimeLabelConventionError`（`time_conventions` に無い
-    `value_grain='hour'` の出典）はここで捕まえない——per-row の問題ではなく
-    構造的な設定不足なので、呼び出し側まで即座に伝播させる
-    （`scripts/migrate/period.py` の当該クラスの docstring 参照）。
+    `None` を返す——呼び出し側はこの行を挿入せず次の行へ進む。それ以外は
+    `(period_grain, period_start, period_end)` を返す——呼び出し側が出典固有の
+    列（検閲の分類・挿入するタプル）を組み立てる。
     """
     stats["total"] += 1
 
-    if row_id in seen_ids:
-        stats["dup_ids_count"] += 1
-        if len(stats["dup_ids_sample"]) < _SAMPLE_LIMIT:
-            stats["dup_ids_sample"].append(row_id)
-        return None
-    seen_ids.add(row_id)
-
-    if variable_id is None:
-        stats["unresolved_alias_count"] += 1
-        if len(stats["unresolved_alias_sample"]) < _SAMPLE_LIMIT:
-            stats["unresolved_alias_sample"].append((row_id, variable_label, source_id))
-        return None
-    if place_id is None:
-        stats["unresolved_place_count"] += 1
-        if len(stats["unresolved_place_sample"]) < _SAMPLE_LIMIT:
-            stats["unresolved_place_sample"].append((row_id, site_id))
+    if _check_duplicate(stats, seen_ids, row_id):
         return None
 
-    try:
-        period_grain, period_start, period_end = period.compute_period(
-            measured_on, value_grain, source_id, exceptions, usage, time_conventions, time_usage,
-        )
-    except period.PeriodMismatchError:
-        stats["period_mismatch_count"] += 1
-        if len(stats["period_mismatch_sample"]) < _SAMPLE_LIMIT:
-            stats["period_mismatch_sample"].append((row_id, source_id, measured_on, value_grain))
-        return None
-
-    if period_grain != value_grain:
-        stats["grain_mismatch_count"] += 1
-
-    return period_grain, period_start, period_end
+    return _resolve_and_compute_period(
+        stats, variable_id, place_id, measured_on, value_grain, source_id, exceptions, usage,
+        unresolved_alias_sample_value=(row_id, variable_label, source_id),
+        unresolved_place_sample_value=(row_id, site_id),
+        period_mismatch_sample_value=(row_id, source_id, measured_on, value_grain),
+        time_conventions=time_conventions,
+        time_usage=time_usage,
+    )
 
 
 def _ingest_measurements(work: sqlite3.Connection, dest: sqlite3.Connection, insert_table: str, exceptions, usage) -> dict:
@@ -494,26 +570,238 @@ def _ingest_sensor_timeseries(
     return stats
 
 
+def _load_watershed_place_lookup(work: sqlite3.Connection) -> dict[str, tuple[str, str]]:
+    """`watershed_id -> (place_id, place_kind)` を返す
+    （`place_source_ref(source_id='watershed_meta.watershed_id')` 経由。
+    ハードコードしない——`measurements`/`sensor_timeseries` が地点の place を
+    解決するのと同じ流儀。P-1a（`scripts/registry/build_place.py`）が
+    既に登録済みの watershed place をここで再利用するだけで、新規には作らない）。
+
+    `external_key`（watershed_id）が一意であることを先に確認する
+    （/simplify 指摘2）——重複があると、辞書内包表記が後勝ちで黙って別の
+    watershed の place_id に束ねてしまう。
+    `scripts/b09_build_occurrence_place.py` の
+    `_assert_watershed_external_key_unique` と同型の検証で、同じ
+    `common.raise_on_group_by_duplicates` を使う。
+    """
+    common.raise_on_group_by_duplicates(
+        work,
+        "SELECT external_key, COUNT(*) AS c FROM reg.place_source_ref "
+        "WHERE source_id = 'watershed_meta.watershed_id' GROUP BY external_key HAVING c > 1 LIMIT 5",
+        (),
+        lambda dup: (
+            "observation（土地利用）: place_source_ref"
+            "（source_id='watershed_meta.watershed_id'）の external_key が一意でない"
+            f"（同じ watershed_id に複数の place_id が対応している。例: {dup}）。"
+            "watershed_id -> place_id の辞書を一意に構築できない。"
+        ),
+    )
+    rows = work.execute(
+        "SELECT psr.external_key, psr.place_id, p.place_kind "
+        "FROM reg.place_source_ref psr "
+        "JOIN reg.place p ON p.place_id = psr.place_id "
+        "WHERE psr.source_id = 'watershed_meta.watershed_id'"
+    ).fetchall()
+    return {external_key: (place_id, place_kind) for external_key, place_id, place_kind in rows}
+
+
+def _load_landuse_alias_map(work: sqlite3.Connection) -> dict[tuple[str, str, str], tuple]:
+    """`(dataset, alias, source_id) -> (variable_id, unit_id, stat, grain)` を返す
+    （`dataset` が `f"{LANDUSE_SOURCE_ID}@"` で始まる行だけ。P-1b オーナー決定2:
+    土地利用は2006/2016でコード体系が違うため `dataset` を版付きにしてある）。
+
+    前方一致は `substr(dataset, 1, ?) = ?` で取る（`LIKE` は `_` を1文字
+    ワイルドカードとして解釈してしまい、`LANDUSE_SOURCE_ID` に含まれる
+    アンダースコアが誤って任意の1文字にマッチしうるため使わない。
+    コードレビュー指摘7）。
+    """
+    prefix = f"{LANDUSE_SOURCE_ID}@"
+    rows = work.execute(
+        "SELECT dataset, alias, source_id, variable_id, unit_id, stat, grain "
+        "FROM reg.variable_alias WHERE substr(dataset, 1, ?) = ?",
+        (len(prefix), prefix),
+    ).fetchall()
+    return {
+        (dataset, alias, source_id): (variable_id, unit_id, stat, grain)
+        for dataset, alias, source_id, variable_id, unit_id, stat, grain in rows
+    }
+
+
+def _ingest_landuse(
+    work: sqlite3.Connection,
+    dest: sqlite3.Connection,
+    insert_table: str,
+    exceptions,
+    usage,
+    csv_path,
+    landuse_sources: dict,
+    source_usage,
+    region_usage,
+) -> dict:
+    """`csv_path`（既定 `data/processed/nlni_l03b_landuse_by_watershed.csv`。
+    国土数値情報 L03-b 土地利用、流域別・2006/2016年版に前処理済みのCSV、L1）を
+    1行ずつ読み、`insert_table` へ `executemany` でストリーム挿入する
+    （`_ingest_measurements`/`_ingest_sensor_timeseries` と同じくジェネレータを
+    直接渡す。C-5）。
+
+    第三の出典（`ryuiki.sqlite` のテーブルではなく CSV）なので `work` の
+    `src`（ryuiki_db）は使わない——`reg`（registry_db）だけを読む。
+
+    CSV の1行（watershed × year × landuse_code）から、区分の**面積**と
+    **セル数**という2つの observation 行を作る（P-1b オーナー決定1:
+    observation に「n」の列が無いため、セル数は面積とは別の variable にする。
+    それぞれの `variable_id`/`unit_id`/`obs_stat`/`value_grain` は
+    `variable_alias`（`dataset` は `f"{LANDUSE_SOURCE_ID}@{data_year}"` で
+    版付き。2006/2016でコード体系が違う——`assert_grain_and_stat_codes` 等が
+    書き手側で既に検証済み）から引く。
+
+    `region_id` は `source_regions.yaml`（consumer='observation'。
+    `landuse_sources`/`source_usage`/`region_usage` は呼び出し側
+    `build_and_write_observation` が `consumer='observation'` で絞り込んで
+    渡す）から決める——watershed の place は `common` スコープで
+    `place.region_id` が常に NULL（ADR-0022 決定1）なので、place 経由では
+    決められない（ADR-0022 決定3・P-1b オーナー決定3）。
+
+    未知の `source_id`（CSV の `source_id` 列が `landuse_sources` に無い）は
+    1行だけの問題ではなく構造的な設定不足なので、`_process_row` と違って
+    per-row の集計を経由せず即座に `UnknownSourceRegionError` で止まる
+    （`scripts/b06_build_occurrence.py` の `_ingest` と同じ判断）。
+
+    place（watershed）の解決は CSV の1行につき1回だけ行う（面積・セル数の
+    2つの候補で同じ watershed_id を共有するため）。重複の検査
+    （`_check_duplicate`）と、alias 解決＋期間の計算＋grain の計上
+    （`_resolve_and_compute_period`。3出典で共有——B-1/コードレビュー
+    「_process_row を分割」指摘1）は、面積・セル数それぞれの候補ごとに行う。
+
+    重複の検査は `(watershed_id, data_year, landuse_code_raw, 種別)` という
+    **業務キー**で行う（`source_row_id`——CSV の行番号由来——は行ごとに
+    必ず一意になるため、それを鍵にした重複検査は原理的に発火しない。
+    コードレビュー指摘2）。この業務キーが重複している行が黙って通ると、
+    キューブ（b04）が同じ次元キーの2つの値を平均してしまい、`n_cells`
+    （INTEGER）は丸め・切り捨てまで起きる——気づかれない値の破損になる。
+
+    `value_grain` は各指標（面積・セル数）の `variable_alias` の宣言値を
+    そのまま `period.compute_period()`（`_resolve_and_compute_period` 経由）に
+    渡す（`"year"` を直書きしない。コードレビュー指摘6）——`value_grain` と
+    `measured_on` の桁数が矛盾する行を検出する既存の仕組み
+    （`period_exceptions.yaml`）が、土地利用でも他の2出典と同じように
+    機能するようにするため。同じ理由で `period_grain != value_grain` の
+    `grain_mismatch_count` も他の2出典と同じ経路（`_resolve_and_compute_period`）
+    で計上する——以前は土地利用だけがこの計上を持たず、常に0のまま
+    レポートに出ていた（/code-review「_process_row を分割」指摘1）。
+    """
+    stats = _empty_stats(LANDUSE_SOURCE_ID)
+    watershed_place = _load_watershed_place_lookup(work)
+    alias_map = _load_landuse_alias_map(work)
+    seen_business_keys: set[tuple] = set()
+
+    def rows():
+        with open(csv_path, encoding="utf-8", newline="") as f:
+            reader = csv.DictReader(f)
+            for row_number, row in enumerate(reader, start=1):
+                stats["total"] += 1
+                source_id = row["source_id"]
+
+                source_region = landuse_sources.get(source_id)
+                if source_region is None:
+                    raise source_regions.UnknownSourceRegionError(source_id)
+                source_usage.mark_used(source_id)
+                region_id = source_region.region_id
+                region_usage.mark_used(region_id)
+
+                watershed_id = row["watershed_id"]
+                place = watershed_place.get(watershed_id)
+                if place is None:
+                    stats["unresolved_place_count"] += 1
+                    if len(stats["unresolved_place_sample"]) < _SAMPLE_LIMIT:
+                        stats["unresolved_place_sample"].append((row_number, watershed_id))
+                    continue
+                place_id, place_kind = place
+
+                data_year = row["data_year"]
+                code = row["landuse_code_raw"]
+                dataset = f"{LANDUSE_SOURCE_ID}@{data_year}"
+                source_ref = row["source_ref"]
+
+                for suffix, alias, value_str in (
+                    ("area_km2", f"{code}:area_km2", row["area_km2"]),
+                    ("n_cells", f"{code}:n_cells", row["n_cells"]),
+                ):
+                    business_key = (watershed_id, data_year, code, suffix)
+                    if _check_duplicate(stats, seen_business_keys, business_key):
+                        continue
+
+                    entry = alias_map.get((dataset, alias, source_id))
+                    if entry is None:
+                        variable_id = unit_id = obs_stat = value_grain = None
+                    else:
+                        variable_id, unit_id, obs_stat, value_grain = entry
+
+                    result = _resolve_and_compute_period(
+                        stats, variable_id, place_id, data_year, value_grain, source_id, exceptions, usage,
+                        unresolved_alias_sample_value=(row_number, dataset, alias, source_id),
+                        unresolved_place_sample_value=(row_number, watershed_id),
+                        period_mismatch_sample_value=(row_number, source_id, data_year, value_grain),
+                    )
+                    if result is None:
+                        continue
+                    period_grain, period_start, period_end = result
+
+                    source_row_id = f"{row_number}:{suffix}"
+                    stats["n_observation"] += 1
+                    yield (
+                        LANDUSE_SOURCE_ID, source_row_id, region_id, place_id, place_kind,
+                        variable_id, obs_stat, unit_id, None, value_grain, period_grain,
+                        period_start, period_end, data_year,
+                        float(value_str), None, censoring.CENSORING_NONE, None,
+                        None, 0, source_ref, None,
+                    )
+
+    dest.executemany(_INSERT_SQL.format(table=f'"{insert_table}"'), rows())
+    return stats
+
+
 def build_and_write_observation(
     ryuiki_db,
     registry_db,
     exceptions_yaml=DEFAULT_EXCEPTIONS_YAML,
     time_conventions_yaml=DEFAULT_TIME_LABEL_CONVENTIONS_YAML,
     out_path=DEFAULT_OUT,
+    source_regions_yaml=DEFAULT_SOURCE_REGIONS_YAML,
+    landuse_csv=DEFAULT_LANDUSE_CSV,
 ) -> dict[str, dict]:
     """`observation` を構築し、`out_path` の `observation` テーブルに書き込む
     （`out_path` の他のテーブルは触らない。モジュール docstring 参照）。
 
-    戻り値は出典ごとの統計（`{"measurements": {...}, "sensor_timeseries": {...}}`）。
-    問題が見つかった出典・宣言表・T1 不変条件があれば、その時点で
-    `common.MigrationError` を投げる（呼び出し側は捕まえず素通しする前提）。
-    A-1: いずれの検証も `migrate.common.staged_table` の `with` ブロックの中で
-    行うため、失敗すれば本番の `observation` には一切触れずに終わる。
+    戻り値は出典ごとの統計（`{"measurements": {...}, "sensor_timeseries": {...},
+    "nlni_l03b_landuse_by_watershed": {...}}`）。問題が見つかった出典・宣言表・
+    T1 不変条件があれば、その時点で `common.MigrationError` を投げる
+    （呼び出し側は捕まえず素通しする前提）。A-1: いずれの検証も
+    `migrate.common.staged_table` の `with` ブロックの中で行うため、失敗すれば
+    本番の `observation` には一切触れずに終わる。
+
+    `source_regions_yaml`/`landuse_csv` は他の3引数（`exceptions_yaml` 等）と
+    同じ、素のデフォルト引数（`main()` が明示的に渡す値と同じ既定値）。
+    テストで既定を差し替えたい場合は monkeypatch ではなく、呼び出し側が
+    明示的にこの2引数を渡すこと（`scripts/tests/migrate_fixtures.py` の
+    `build_observation()` を使う——コードレビュー指摘10: 以前は `None` 番兵に
+    してテストからの monkeypatch を前提にした設計だったが、本番の `main()`
+    はこの2引数を常に明示的に渡すため、その経路が実質テストされていなかった）。
     """
     exceptions = period.load_period_exceptions(exceptions_yaml)
     usage = period.PeriodExceptionUsage(exceptions)
     time_conventions = period.load_time_label_conventions(time_conventions_yaml)
     time_usage = period.TimeLabelConventionUsage(time_conventions)
+
+    # P-1b（土地利用）: consumer='observation' で自分の宣言だけに絞り込む
+    # （scripts/migrate/source_regions.py モジュール docstring「consumer」節。
+    # b06_build_occurrence.py が consumer='occurrence' で絞り込むのと対称）。
+    source_regions.validate_source_regions_shape(source_regions_yaml)
+    landuse_sources, landuse_regions = source_regions.load_source_regions(
+        source_regions_yaml, consumer="observation"
+    )
+    landuse_source_usage = period.EntryUsage(landuse_sources)
+    landuse_region_usage = period.EntryUsage(landuse_regions)
 
     # B-2: 出典ごとに違う追加引数（`sensor_timeseries` だけが要る
     # `time_conventions`/`time_usage`）は、呼び出し側の `if source_table ==
@@ -525,6 +813,11 @@ def build_and_write_observation(
         "sensor_timeseries": functools.partial(
             _ingest_sensor_timeseries, exceptions=exceptions, usage=usage,
             time_conventions=time_conventions, time_usage=time_usage,
+        ),
+        LANDUSE_SOURCE_ID: functools.partial(
+            _ingest_landuse, exceptions=exceptions, usage=usage,
+            csv_path=landuse_csv, landuse_sources=landuse_sources,
+            source_usage=landuse_source_usage, region_usage=landuse_region_usage,
         ),
     }
 
@@ -561,16 +854,25 @@ def build_and_write_observation(
             dest.execute(_CREATE_OBSERVATION_INDEX_SQL.format(table=f'"{staging}"'))
             dest.execute(_DROP_OBSERVATION_INDEX_SQL)
 
-            # 宣言表（period_exceptions.yaml / time_label_conventions.yaml）は
-            # 両方の出典を処理し終えてから検証する（前者は measurements、
-            # 後者は sensor_timeseries の value_grain='hour' からしか使われない
-            # ため、片方の出典だけを見て判定すると腐った宣言を見逃す。B-3）。
-            declaration_problems = period.declaration_problems(
-                usage, "period_exceptions.yaml"
-            ) + period.declaration_problems(time_usage, "time_label_conventions.yaml")
+            # 宣言表（period_exceptions.yaml / time_label_conventions.yaml /
+            # source_regions.yaml）は全出典を処理し終えてから検証する
+            # （period_exceptions.yaml は measurements、time_label_conventions.yaml
+            # は sensor_timeseries の value_grain='hour'、source_regions.yaml
+            # （consumer='observation'）は土地利用からしか使われないため、
+            # 1つの出典だけを見て判定すると腐った宣言を見逃す。B-3）。
+            declaration_problems = (
+                period.declaration_problems(usage, "period_exceptions.yaml")
+                + period.declaration_problems(time_usage, "time_label_conventions.yaml")
+                + period.declaration_problems(
+                    landuse_source_usage, "source_regions.yaml (sources, consumer=observation)"
+                )
+                + period.declaration_problems(
+                    landuse_region_usage, "source_regions.yaml (regions, consumer=observation)"
+                )
+            )
             if declaration_problems:
                 raise common.MigrationError(
-                    "observation の構築を中止した（両出典の取り込み自体は成功したが、"
+                    "observation の構築を中止した（全出典の取り込み自体は成功したが、"
                     "宣言表の検証に失敗した）。以下を解消してから再実行すること:\n- "
                     + "\n- ".join(declaration_problems)
                 )
@@ -613,19 +915,34 @@ def render_report(all_stats: dict[str, dict]) -> str:
     a("")
     a(
         "`scripts/b03_build_observation.py` が `data/db/ryuiki.sqlite` の "
-        "`measurements`・`sensor_timeseries` から `data/db/v2.sqlite` の "
-        "`observation` を作った結果の要約。設計判断は "
+        "`measurements`・`sensor_timeseries` と "
+        "`data/processed/nlni_l03b_landuse_by_watershed.csv`（土地利用、P-1b）から "
+        "`data/db/v2.sqlite` の `observation` を作った結果の要約。設計判断は "
         "`docs/plans/PHASE_B_FACT_SLICE.md`（measurements の縦線）と「センサーの"
-        "縦線 設計 v2」オーナー決定・関連 ADR（`docs/adr/0023-*`・`0024-*`）参照。"
+        "縦線 設計 v2」オーナー決定・関連 ADR（`docs/adr/0023-*`・`0024-*`）、"
+        "`docs/plans/PHASE_B_LANDUSE.md`（土地利用の縦線）参照。"
     )
     a("")
+    # コードレビュー指摘12: 「入力総行数」と「observation 総行数」は、以前は
+    # 2つの見出しの数だけを並べていたため、土地利用（CSVの1行→面積・セル数の
+    # 2 observation 行）を足した後は「一目で一致するはずの数」に見えなくなった
+    # （measurements/sensor_timeseries は 1 入力行→高々1 observation 行のまま
+    # だが、土地利用だけ 1→2 になるため、全体の合計同士は単純には一致しない）。
+    # 出典ごとの内訳をここに明示し、「土地利用は CSV行数 × 2」という関係を
+    # 見出しの時点で分かるようにする。
     total = sum(s["total"] for s in all_stats.values())
     total_obs = sum(s["n_observation"] for s in all_stats.values())
-    a(f"- 入力（`measurements`+`sensor_timeseries`）総行数: **{total:,}**")
-    a(f"- `observation` 総行数: **{total_obs:,}**")
+    breakdown = ", ".join(
+        f"{source_table}={stats['total']:,}→{stats['n_observation']:,}"
+        for source_table, stats in sorted(all_stats.items())
+    )
+    a(f"- 入力（`measurements`+`sensor_timeseries`+土地利用CSV）総行数: **{total:,}**")
+    a(f"- `observation` 総行数: **{total_obs:,}**（出典ごとの 入力行数→observation行数: {breakdown}。"
+      "土地利用だけ CSV の1行が面積・セル数の2 observation 行になるため、"
+      "入力行数と observation 行数が1:1にならない）")
     a("")
 
-    for source_table in ("measurements", "sensor_timeseries"):
+    for source_table in ("measurements", "sensor_timeseries", LANDUSE_SOURCE_ID):
         stats = all_stats.get(source_table)
         if stats is None:
             continue
@@ -633,16 +950,27 @@ def render_report(all_stats: dict[str, dict]) -> str:
         a("")
         a(f"- `{source_table}` 総行数: **{stats['total']:,}**")
         a(f"- `observation` 行数: **{stats['n_observation']:,}**")
-        a(
-            "- alias（variable_alias）解決率: "
-            f"{stats['n_observation']:,} / {stats['total']:,} "
-            "（全行解決。1行でも未解決なら、このレポート自体が作られず b03 が例外で止まる）"
-        )
-        a(
-            "- place（place_source_ref）解決率: "
-            f"{stats['n_observation']:,} / {stats['total']:,} "
-            "（同上。全行解決）"
-        )
+        if source_table == LANDUSE_SOURCE_ID:
+            # 土地利用は1行（watershed×year×landuse_code）から面積・セル数の
+            # 2つの observation 行を作るため（P-1b オーナー決定1）、他2出典と
+            # 違って「1:1」の解決率という表現にならない。
+            a(
+                "- alias（variable_alias）/ place（place_source_ref）解決率: "
+                f"{stats['n_observation']:,} / {stats['total'] * 2:,} "
+                "（CSV1行→面積・セル数の2 observation 行。全行解決。1行でも未解決なら、"
+                "このレポート自体が作られず b03 が例外で止まる）"
+            )
+        else:
+            a(
+                "- alias（variable_alias）解決率: "
+                f"{stats['n_observation']:,} / {stats['total']:,} "
+                "（全行解決。1行でも未解決なら、このレポート自体が作られず b03 が例外で止まる）"
+            )
+            a(
+                "- place（place_source_ref）解決率: "
+                f"{stats['n_observation']:,} / {stats['total']:,} "
+                "（同上。全行解決）"
+            )
         a("")
         if source_table == "measurements":
             a("### censoring の内訳（ADR-0009・design.md D2）")
@@ -658,12 +986,19 @@ def render_report(all_stats: dict[str, dict]) -> str:
                 f"**{stats['zero_imputed_count']:,}行**"
                 "（`above_lod`/`unknown` には代入しない。design.md D2）。"
             )
-        else:
+        elif source_table == "sensor_timeseries":
             a(
                 "センサーに検閲の概念は無い（design.md T3）。`censoring` は常に "
                 "`'none'`・`value_raw` は常に NULL。`sensor_timeseries.result IS NULL` の"
                 "行はそのまま `value_num=NULL` で運び、b04 の `WHERE v IS NOT NULL` で"
                 "キューブから自然に除外される。"
+            )
+        else:
+            a(
+                "検閲の概念は無い（`censoring` は常に `'none'`）。区分の面積（km2）と"
+                "セル数（count）をそれぞれ別の variable として持つ（P-1b オーナー決定1）。"
+                "region は `source_regions.yaml`（consumer='observation'）の宣言から決める"
+                "（ADR-0022 決定3・P-1b オーナー決定3）。"
             )
         a("")
         a(
@@ -689,6 +1024,14 @@ def main() -> None:
     parser.add_argument("--time-conventions-yaml", default=str(DEFAULT_TIME_LABEL_CONVENTIONS_YAML))
     parser.add_argument("--out", default=str(DEFAULT_OUT))
     parser.add_argument("--report", default=str(DEFAULT_REPORT))
+    parser.add_argument(
+        "--source-regions-yaml", default=str(DEFAULT_SOURCE_REGIONS_YAML),
+        help="土地利用（consumer='observation'）の region 宣言（P-1b）",
+    )
+    parser.add_argument(
+        "--landuse-csv", default=str(DEFAULT_LANDUSE_CSV),
+        help="国土数値情報 L03-b 土地利用（流域別、2006/2016年版）のCSV（P-1b）",
+    )
     args = parser.parse_args()
 
     # `--out` を `sqlite3.connect` で直接開く（`fresh_sqlite` を経由しない）ため、
@@ -700,10 +1043,12 @@ def main() -> None:
 
     print(f"▶ 読み取り専用で開く: {args.ryuiki_db}")
     print(f"▶ 読み取り専用で開く: {registry_db}")
+    print(f"▶ 読み取り専用で読む: {args.landuse_csv}")
 
     with common.timed_step("observation を構築して書き出し") as info:
         all_stats = build_and_write_observation(
-            args.ryuiki_db, registry_db, args.exceptions_yaml, args.time_conventions_yaml, args.out
+            args.ryuiki_db, registry_db, args.exceptions_yaml, args.time_conventions_yaml, args.out,
+            args.source_regions_yaml, args.landuse_csv,
         )
         info["n"] = sum(s["n_observation"] for s in all_stats.values())
 
