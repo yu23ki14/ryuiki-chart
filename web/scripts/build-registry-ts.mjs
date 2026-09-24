@@ -28,7 +28,7 @@
  *   - `generated-client.ts`（クライアント安全）: VARIABLE_SHORT / VARIABLE_NOTE /
  *     HIGHER_IS_WORSE / VARIABLE_UNIT_FALLBACK / NAME_JA（旧 domain.ts が実際に使っていた、
  *     派生済みの4+1個の Record）、ZONE_INFO・CaveatKey（Phase B で旧 domain.ts から
- *     移設。docs/plans/PHASE_B_INTAKE.md #6）と、caveat 14件・caveat_scope
+ *     移設。docs/plans/PHASE_B_INTAKE.md #6）と、caveat 16件・caveat_scope
  *     （小さいので両方に置いて問題ない）。生の variable / alias テーブルはここには載せない。
  *
  * 派生値の組み立てロジック（元は domain.ts が実行時に primaryAlias() 経由で
@@ -144,7 +144,7 @@ const variableAliases = db
     grain: r.grain,
   }));
 
-// cells.notes 由来（common:caveat:cells.*）は除く。14件のみ。
+// cells.notes 由来（common:caveat:cells.*）は除く。16件のみ。
 const CAVEAT_ID_PREFIX = "common:caveat:";
 const CELLS_PREFIX = `${CAVEAT_ID_PREFIX}cells.`;
 const caveats = db
@@ -371,7 +371,7 @@ export interface GeneratedVernacular {
 export type CaveatScopeKind = "table" | "table_prefix";
 
 /**
- * caveat の既知のキー14件の union（docs/plans/PHASE_B_INTAKE.md #6）。
+ * caveat の既知のキー16件の union（docs/plans/PHASE_B_INTAKE.md #6）。
  * 画面・\`web/src/lib/ai/prompt.ts\` が \`caveatBody(key)\`（lookup-client.ts）を直接
  * 呼ぶときの型で、存在しないキーはここでコンパイルエラーになる（旧 domain.ts の
  * mustCaveatBody() は実行時例外だった）。
@@ -427,7 +427,7 @@ export const VARIABLE_UNIT_FALLBACK: Readonly<Record<string, string>> = ${emitRe
 export const NAME_JA: Readonly<Record<string, string>> = ${emitRecord(nameJa)};
 
 /**
- * 注記14件（registry/caveat.yaml）。cells.notes 由来（207件）は含めない。
+ * 注記16件（registry/caveat.yaml）。cells.notes 由来（207件）は含めない。
  * key は caveat_id から "common:caveat:" を外したもの
  * （web/src/lib/ai/caveats.ts が今返しているキー文字列と同じ）。
  */

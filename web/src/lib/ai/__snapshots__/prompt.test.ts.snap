@@ -77,6 +77,7 @@ species_year2 / species_month / effort_year などの derived テーブルを使
 - [isAlien] 原本の is_alien フラグは同一種の中で 1 と 0 が混在し、オオクチバスやウシガエルが 0 件になるなど信頼できない。外来種の判定には環境省の生態系被害防止外来種リスト（taxa.ias_category）を学名で結合した結果を使っている。
 - [municipality] sites.municipality は出典によって中身が違う。環境省 公共用水域の290地点では水域名（河川名・湖沼名）が入り、それ以外の62地点では市区町村名が入る。列名と中身が一致していないため、この画面では「水域・地域」と呼ぶ。
 - [landuseDefinitionChange] 土地利用の区分は2006年調査と2016年調査で定義が違う。2006年の「幹線交通用地」は2016年調査で「道路」「鉄道」に分割されており、同じ区分として比較できない。この2区分が2006年→2016年で全減・全増に見えるのは、実際の土地利用の変化ではなく調査区分の定義変更による見かけ上の増減である。
+- [aboveLod] 透明度の定量上限超え（原表記が「>1.4」〜「>28」など、26行）は、上限がどこまでか分からないという性質上、集計方法によらず値に含められない。件数（n）にも入らないため、他の期間・地点と単純に比較しないこと。
 
 ## 指標の正準ID（variableId）
 get_timeseries・get_seasonality・list_catalog(what='variables')・get_sites の結果には variableId（レジストリの正準の指標ID。例: "common:variable:water.bod"）と、その中身を引く共有辞書 registry（キーが variableId、値が nameJa/unit/higherIsWorse/descriptionJa 等）が付くことがある。出典側の表記（水質項目名など）は同じ量でも出典ごとに違うことがあるが、variableId が同じなら同じ量を指す。ただし単位・スケールは出典ごとに違いうる（例: air.co は0.1ppm刻みの原表記）ので、値を比較するときは必ずツール結果の registry[variableId].unit を見ること。名前の文字列一致ではなく variableId の一致で「同じ指標か」を判断すること。

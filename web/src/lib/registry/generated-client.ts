@@ -27,7 +27,7 @@ export interface GeneratedVernacular {
 export type CaveatScopeKind = "table" | "table_prefix";
 
 /**
- * caveat の既知のキー14件の union（docs/plans/PHASE_B_INTAKE.md #6）。
+ * caveat の既知のキー16件の union（docs/plans/PHASE_B_INTAKE.md #6）。
  * 画面・`web/src/lib/ai/prompt.ts` が `caveatBody(key)`（lookup-client.ts）を直接
  * 呼ぶときの型で、存在しないキーはここでコンパイルエラーになる（旧 domain.ts の
  * mustCaveatBody() は実行時例外だった）。
@@ -169,7 +169,7 @@ export const NAME_JA: Readonly<Record<string, string>> = {
 };
 
 /**
- * 注記14件（registry/caveat.yaml）。cells.notes 由来（207件）は含めない。
+ * 注記16件（registry/caveat.yaml）。cells.notes 由来（207件）は含めない。
  * key は caveat_id から "common:caveat:" を外したもの
  * （web/src/lib/ai/caveats.ts が今返しているキー文字列と同じ）。
  */
