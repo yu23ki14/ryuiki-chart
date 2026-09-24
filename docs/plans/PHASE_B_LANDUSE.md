@@ -106,9 +106,14 @@ CSV の `source_id` 列と同じ定数。`stat="sum"`, `grain="year"`。
 
 ### `scripts/migrate/source_regions.yaml` の `consumer` 分離
 
-`sources:` の各エントリに `consumer`（`occurrence`|`observation`）を足した
-（省略時の既定は `occurrence`。後方互換）。`nlni_l03b_landuse_by_watershed`
-（region_id=jp-14, expected_row_count=4858, consumer=observation）を追加。
+`sources:` の各エントリに `consumer`（`occurrence`|`observation`）を足した。
+**`consumer` は必須キー**（オーナー決定。当初は省略時に `occurrence` へ
+落ちる後方互換の既定値を持たせていたが、「宣言ファイルは小さく、書き忘れが
+黙って特定の consumer 扱いになる方が危険」という指摘で撤回した——省略すると
+`validate_source_regions_shape()` が構造検証で止める）。既存の
+`gbif_kanagawa_occurrences`/`inaturalist_kanagawa` にも
+`consumer: occurrence` を明示し、`nlni_l03b_landuse_by_watershed`
+（region_id=jp-14, expected_row_count=4858, consumer=observation）を追加した。
 `scripts/migrate/source_regions.py` の `load_source_regions(path, consumer=...)`
 がこの値で `sources`/`regions` を絞り込む——**この絞り込みが無いと、
 `scripts/b06_build_occurrence.py`（occurrence 側の消費者）が「自分が使って
@@ -164,12 +169,19 @@ watershed版）と、年版ごとの`landuse_alias_lookup_{year}`（`_alias_look
 
 `assert_alias_tuple_maps_to_single_dataset`（既存の検証。同じ
 `(variable_id, grain, stat, unit_id)`が`measurements`と`sensor_timeseries`
-の両方のaliasに対応していないことを確認する）は、土地利用の版付きdataset
-を**意図的に除外**するオプション（`dataset_exclude_prefix`）を足した——
-土地利用は同じtupleを2006/2016の2つのdatasetにまたがって**意図的に**
-再利用する設計（区分の共有）であり、この検証が守るべき不変条件ではない
-ため。除外しても、この検証の本来の目的（measurements/sensor_timeseries
-間の排他）は変わらず働く。
+の両方のaliasに対応していないことを確認する）は、`dataset`を
+`CASE WHEN instr(dataset,'@')>0 THEN substr(dataset,1,instr(dataset,'@')-1)
+ELSE dataset END`で正規化（`@<年>`のサフィックスを外す）してから
+グループ化するように変更した（/code-review指摘2。当初は`dataset_
+exclude_prefix`という除外オプションだったが、これだと土地利用の
+dataset自体が検証の対象外になり、土地利用と他出典が万一衝突しても
+検出できない、という穴があった）。土地利用は同じtupleを2006/2016の
+2つのdataset（`nlni_l03b_landuse_by_watershed@2006`/`@2016`）にまたがって
+**意図的に**再利用する設計（区分の共有）だが、正規化後は両方とも同じ
+`base_dataset`（サフィックス無しの`nlni_l03b_landuse_by_watershed`）に
+畳み込まれるため、この意図した再利用を誤検出しない。一方で
+`measurements`/`sensor_timeseries`間の排他という本来の目的は
+そのまま働く。
 
 ### `registry/caveat.yaml` に definition_change を1件（Phase A 以降初めての新規注記）
 
@@ -282,6 +294,39 @@ watershed版）と、年版ごとの`landuse_alias_lookup_{year}`（`_alias_look
     yaml`含む）すべてOK、`generated.ts`の`git diff --exit-code`も0。
 11. **b03/b04/b05の実行時間**: §5参照（`/code-review`対応後も有意差なし）。
 
+### 6.1 Round 2 再検証（`consumer`必須化後、2026-09-24実測）
+
+`source_regions.yaml`の`consumer`を必須キーにした変更（§3.2）はYAML読み込み
+時の検証ロジックだけに触れ、`observation`/`occurrence`等のデータ変換経路には
+触れていない。本番の`source_regions.yaml`は既に全エントリへ`consumer`を
+明示していた（§3.2）ため、変換結果は変わらないはずという想定のもと、
+5系統のゲートを`.venv/bin/python3`（SQLite 3.49.1）で実データに対して
+フルに再実行し、確認した:
+
+- **r01フルビルドと`--check-fresh`**: いずれも終了コード0（指紋
+  `b265492c5404a5148dd601584a0f041e4e3e548195434eb5f243524bd4a0c2b2`）。
+- **b03→b04→b05**（observation系13表）: 終了コード0、行数
+  `observation`1,050,719／`observation_agg`2,022,964／v1形761,391（内訳は
+  §5と1件も変わらず）。`b02 --tables meas_daily,...,landuse_watershed,
+  landuse_change` → **終了コード0、一致7 / 宣言済み差分のみ6 / 不一致0**
+  （上記1と完全一致）。
+- **b06→b09→b07→b08**（occurrence系13表）: 終了コード0、`occurrence`
+  823,692行／`occurrence_agg`471,060行／v1形（13表）1,301,127行——いずれも
+  §6の1回目の実測と1件も変わらず。`b02 --tables org_norm,...,ias_species`
+  → **終了コード0、一致11 / 宣言済み差分のみ2 / 不一致0**（上記2と完全一致）。
+- **b10**（文書3表）→ `b02` → **終了コード0、一致3**（上記3と完全一致）。
+- **b11**（watershed_meta）→ `b02` → **終了コード0、一致1**（上記4と完全一致）。
+- **b12**（レッドリスト2表）→ `b02` → **終了コード0、一致2**（上記5と完全一致）。
+- **pytest**: `.venv/bin/python3 -m pytest scripts/tests` で
+  **499件全緑**（既存475件＋P-1b全体で足した24件——`consumer`必須化に伴い
+  「省略時は`occurrence`扱い」という後方互換のテストを1本、「キーが無いと
+  構造検証で止まる」テストに置き換えたため、本数の純増減は0）。
+
+5系統すべてが1回目の実測（§6の1〜5）と完全に同じ終了コード・内訳になった
+ことから、`consumer`必須化は既存11表・occurrence13表・文書3表・
+watershed_meta・レッドリスト2表のいずれの値も変えていないと判断した
+（b02の「一致」判定自体が正準化sha256での行レベル比較であるため）。
+
 ## 7. 既知の負債・未決
 
 - **`n_cells`/面積の`variable`命名**（`landuse.<slug>`/`landuse.<slug>
@@ -292,8 +337,7 @@ watershed版）と、年版ごとの`landuse_alias_lookup_{year}`（`_alias_look
   パターンは、`docs/plans/PHASE_B_INTAKE.md`に暫定の接続点として記録
   した**（ADR-0005が「同じ出典に複数版が同居する」ケースの正式な設計を
   Phase C まで持ち越しているため、恒久的な設計ではない）。
-- **`source_regions.yaml`の`consumer`は必須キーにしていない**（省略時は
-  後方互換のため`occurrence`扱い。`validate_source_regions_shape`は
-  書かれている場合だけ`CONSUMER_CODES`の値を強制する）。3つ目の消費者を
-  足す人が`consumer`を書き忘れると、既定の`occurrence`に紛れ込む——
-  YAMLのヘッダで明示的に警告しているが、機械的には強制していない。
+- ~~`source_regions.yaml`の`consumer`は必須キーにしていない~~ **解決済み**
+  （オーナー決定。`consumer`を`REQUIRED_SOURCE_KEYS`に足し、省略すると
+  `validate_source_regions_shape`が構造検証で止めるようにした。省略時に
+  既定値〔`occurrence`〕へ黙って落ちる後方互換の挙動は撤回した。§6参照）。

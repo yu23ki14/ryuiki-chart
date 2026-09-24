@@ -3,11 +3,11 @@
 # consumer（下記）ごとに複数のスクリプトがこの同じファイルを共有する
 # ——occurrence（organism_records、scripts/b06_build_occurrence.py）が最初の
 # 消費者、土地利用（observation、scripts/b03_build_observation.py）が2番目
-# （P-1b）。**新しい出典を足す人へ: `sources.<id>.consumer` を必ず明示する
-# こと**（省略時は後方互換のため 'occurrence' として扱われる——2番目以降の
-# 消費者の出典に書き忘れると、その消費者からは永遠に「宣言されていない
-# 出典」として `UnknownSourceRegionError` になるか、occurrence 側からは
-# 逆に「未使用宣言」として誤検出されるかのどちらかになる）。
+# （P-1b）。**新しい出典を足す人へ: `sources.<id>.consumer` は必須キー**
+# （オーナー決定。省略すると `validate_source_regions_shape()` が構造検証で
+# 止める——宣言ファイルは小さく、書き忘れが黙って特定の consumer 扱いに
+# なる方が、都度エラーで気づけるより危険なため、省略時に既定値へ落ちる
+# 設計は採らない）。
 #
 # occurrence は `place`（grid01。県境という概念を持たない機械グリッド）
 # 経由では、土地利用は `place`（watershed。common スコープ）経由では、
@@ -25,14 +25,11 @@
 #   同様に止める。
 #
 # consumer: この宣言を実際に消費するスクリプト（occurrence=scripts/b06_build_
-#   occurrence.py、observation=scripts/b03_build_observation.py）。
+#   occurrence.py、observation=scripts/b03_build_observation.py）。**必須**。
 #   scripts/migrate/source_regions.load_source_regions(path, consumer=...) は
-#   `consumer` を指定すると、その値に一致する source だけを返す（省略時の既定は
-#   'occurrence'。既存の occurrence 宣言はこの既定に合わせているため
-#   consumer キー自体は省略しても動くが、複数の消費者が同じファイルを読む今は
-#   明示するほうが読みやすい）。この絞り込みが無いと、P-1b で足した landuse の
-#   宣言を b06 が「自分が使っていない宣言」として誤検出し、未使用宣言エラーで
-#   止まってしまう（P-1b オーナー決定 #3）。
+#   `consumer` を指定すると、その値に一致する source だけを返す。この絞り込みが
+#   無いと、P-1b で足した landuse の宣言を b06 が「自分が使っていない宣言」として
+#   誤検出し、未使用宣言エラーで止まってしまう（P-1b オーナー決定 #3）。
 
 sources:
   gbif_kanagawa_occurrences:

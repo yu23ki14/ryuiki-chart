@@ -23,12 +23,17 @@ ADR-0022 決定3・O-1 設計 v2 D1）。
 
 `load_source_regions(path, consumer=...)` の `consumer` 引数は、返す
 `sources`（と、それが参照する `regions` のうち実際に使われる分）を
-その消費者向けの宣言だけに絞り込む。`sources.<id>.consumer` を省略した
-エントリは `_DEFAULT_CONSUMER`（`"occurrence"`。最初の消費者だったため）
-として扱う——既存の宣言・既存のテストフィクスチャに `consumer` を書き足す
-義務を課さないための後方互換。`consumer=None`（既定）を渡した場合は
+その消費者向けの宣言だけに絞り込む。`consumer=None`（既定）を渡した場合は
 絞り込みをしない（ファイル全体をそのまま返す。CI の構造検証や、
 消費者を問わない一覧が要る場面向け）。
+
+**`sources.<id>.consumer` は必須**（オーナー決定。省略時に既定値へ黙って
+落ちる設計は採らない）。宣言ファイルは小さく、書き忘れが黙って特定の
+consumer 扱いになる方が、都度エラーで気づけるより危険——過去に
+`_DEFAULT_CONSUMER`（省略時 `"occurrence"`）という後方互換の既定値を
+持たせたことがあったが、これは撤回した。省略されたエントリは
+`validate_source_regions_shape()` が構造検証の時点で止める
+（`CONSUMER_CODES` 外の値と同じ扱い）。
 
 **「どの sources からも参照されない region」の検査は consumer で絞らない**
 （コードレビュー指摘3）。`sources` を consumer で絞り込むと、ある consumer の
@@ -50,12 +55,8 @@ from .common import MigrationError, load_yaml
 
 DEFAULT_SOURCE_REGIONS_YAML = pathlib.Path(__file__).resolve().parent / "source_regions.yaml"
 
-REQUIRED_SOURCE_KEYS = ("region_id", "expected_row_count", "evidence")
+REQUIRED_SOURCE_KEYS = ("region_id", "consumer", "expected_row_count", "evidence")
 REQUIRED_REGION_KEYS = ("utc_offset", "evidence")
-
-# `sources.<id>.consumer` の既定値（省略時）。occurrence が最初の消費者だった
-# ため、後方互換としてこれを既定にする（モジュール docstring「consumer」節）。
-_DEFAULT_CONSUMER = "occurrence"
 
 # `consumer` が取りうる値のコードリスト（`scripts/registry/build_unit_variable.py`
 # の `GRAIN_CODES`/`STAT_CODES` と同じ考え方——このリストに無い値が来たら
@@ -73,10 +74,17 @@ UTC_OFFSET_PATTERN = re.compile(r"^[+-][0-9]{2}:[0-9]{2}$")
 
 @dataclass(frozen=True)
 class SourceRegion:
-    """`sources:` の1エントリ。"""
+    """`sources:` の1エントリ。`consumer` は必須（オーナー決定。省略時に
+    既定値へ落ちる設計は採らない）——`region_id`/`expected_row_count` と
+    同じく、ここでは `spec["consumer"]` を直接引く（欠けていれば
+    `KeyError`。フレンドリーな構造検証は `validate_source_regions_shape()`
+    が先に行う想定だが、`load_source_regions()` 単体を呼んだ場合も
+    黙って通さない）。
+    """
 
     source_id: str
     region_id: str
+    consumer: str
     expected_row_count: int
     evidence: str
 
@@ -134,11 +142,14 @@ def load_source_regions(
         )
 
     # consumer で絞る前の全 sources（missing_regions・孤児 region の検査は
-    # 常にこちらに対して行う。モジュール docstring 参照）。
+    # 常にこちらに対して行う。モジュール docstring 参照）。`consumer` は
+    # `spec["consumer"]` で直接引く（必須。欠けていれば KeyError——
+    # `region_id`/`expected_row_count` と同じ扱い）。
     all_sources: dict[str, SourceRegion] = {
         source_id: SourceRegion(
             source_id=source_id,
             region_id=spec["region_id"],
+            consumer=spec["consumer"],
             expected_row_count=spec["expected_row_count"],
             evidence=spec.get("evidence", ""),
         )
@@ -169,7 +180,7 @@ def load_source_regions(
         sources = {
             source_id: s
             for source_id, s in all_sources.items()
-            if sources_raw[source_id].get("consumer", _DEFAULT_CONSUMER) == consumer
+            if s.consumer == consumer
         }
         # 絞り込んだ sources が実際に参照する region だけに絞る——他の消費者
         # 向けの region まで渡すと、この consumer の EntryUsage がそれを
@@ -193,9 +204,11 @@ def validate_source_regions_shape(path=DEFAULT_SOURCE_REGIONS_YAML) -> None:
     行う——必須キー自体が欠けているエントリを二重に報告しないため
     （/simplify 指摘6）。
 
-    `consumer` は必須キーにしていない（省略時は `_DEFAULT_CONSUMER` として
-    扱う。後方互換）が、書かれているなら `CONSUMER_CODES` の値でなければ
-    ならない（推測で新しい消費者名を発明させない）。
+    `consumer` は `REQUIRED_SOURCE_KEYS` に含まれる必須キー（オーナー決定。
+    省略時に既定値へ黙って落ちる設計は採らない）——欠けているエントリは
+    `period.required_keys_problems()` がここで検出する。書かれている場合は
+    さらに `CONSUMER_CODES` の値でなければならない（推測で新しい消費者名を
+    発明させない）。
     """
     raw = load_yaml(path)
     problems: list[str] = []
@@ -211,7 +224,7 @@ def validate_source_regions_shape(path=DEFAULT_SOURCE_REGIONS_YAML) -> None:
         count_problem = period.validate_expected_row_count(f"sources.{source_id}", spec)
         if count_problem:
             problems.append(count_problem)
-        if "consumer" in spec and spec["consumer"] not in CONSUMER_CODES:
+        if spec["consumer"] not in CONSUMER_CODES:
             problems.append(
                 f"sources.{source_id}.consumer が未知の値: {spec['consumer']!r}"
                 f"（コードリスト: {sorted(CONSUMER_CODES)}）"

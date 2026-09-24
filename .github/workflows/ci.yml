@@ -29,9 +29,10 @@ name: CI
 #       consumer ごとに複数のスクリプトが共有する——occurrence
 #       〔scripts/b06_build_occurrence.py、O-1a〕と土地利用
 #       〔scripts/b03_build_observation.py、P-1b〕）が読めて、各エントリが
-#       必須キーを持ち、utc_offset が `^[+-][0-9]{2}:[0-9]{2}$` の形で、
-#       expected_row_count が整数であること
-#       （`migrate.source_regions.validate_source_regions_shape`）。
+#       必須キー（`consumer` を含む——省略すると構造検証で止める。オーナー
+#       決定: 省略時に既定値へ黙って落ちる設計は採らない）を持ち、
+#       utc_offset が `^[+-][0-9]{2}:[0-9]{2}$` の形で、expected_row_count
+#       が整数であること（`migrate.source_regions.validate_source_regions_shape`）。
 #     - scripts/migrate/occurrence_period_shapes.yaml（O-1a。observed_on の12形の宣言。
 #       形の定義自体——正規表現・period_grain・展開規則——はコード
 #       〔scripts/migrate/occurrence_period.py の `_SHAPE_DEFS`〕が正で、この YAML には

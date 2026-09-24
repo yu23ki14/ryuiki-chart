@@ -10,6 +10,7 @@ def test_load_source_regions_from_yaml(tmp_path):
         "sources:\n"
         "  src_a:\n"
         "    region_id: jp-14\n"
+        "    consumer: occurrence\n"
         "    expected_row_count: 2\n"
         "    evidence: テスト\n"
         "regions:\n"
@@ -21,6 +22,7 @@ def test_load_source_regions_from_yaml(tmp_path):
     sources, regions = sr.load_source_regions(yaml_path)
     assert set(sources) == {"src_a"}
     assert sources["src_a"].region_id == "jp-14"
+    assert sources["src_a"].consumer == "occurrence"
     assert sources["src_a"].expected_row_count == 2
     assert set(regions) == {"jp-14"}
     assert regions["jp-14"].utc_offset == "+09:00"
@@ -40,6 +42,7 @@ def test_load_source_regions_source_with_undeclared_region_raises(tmp_path):
         "sources:\n"
         "  src_a:\n"
         "    region_id: jp-99\n"
+        "    consumer: occurrence\n"
         "    expected_row_count: 1\n"
         "    evidence: テスト\n"
         "regions: {}\n",
@@ -84,6 +87,7 @@ def test_load_source_regions_accepts_negative_utc_offset(tmp_path):
         "sources:\n"
         "  src_a:\n"
         "    region_id: us-west\n"
+        "    consumer: occurrence\n"
         "    expected_row_count: 1\n"
         "    evidence: テスト\n"
         "regions:\n"
@@ -115,6 +119,7 @@ def test_orphan_region_raises_without_consumer(tmp_path):
         "sources:\n"
         "  src_a:\n"
         "    region_id: jp-14\n"
+        "    consumer: occurrence\n"
         "    expected_row_count: 1\n"
         "    evidence: テスト\n"
         "regions:\n"
@@ -201,10 +206,6 @@ _CONSUMER_SPLIT_YAML_TEXT = (
     "    consumer: occurrence\n"
     "    expected_row_count: 1\n"
     "    evidence: テスト\n"
-    "  obs_src_default:\n"  # consumer 省略 → 既定で occurrence 扱い
-    "    region_id: jp-14\n"
-    "    expected_row_count: 1\n"
-    "    evidence: テスト\n"
     "  landuse_src:\n"
     "    region_id: jp-99\n"
     "    consumer: observation\n"
@@ -224,18 +225,8 @@ def test_consumer_none_returns_everything_unfiltered(tmp_path):
     yaml_path = tmp_path / "source_regions.yaml"
     yaml_path.write_text(_CONSUMER_SPLIT_YAML_TEXT, encoding="utf-8")
     sources, regions = sr.load_source_regions(yaml_path)
-    assert set(sources) == {"occ_src", "obs_src_default", "landuse_src"}
+    assert set(sources) == {"occ_src", "landuse_src"}
     assert set(regions) == {"jp-14", "jp-99"}
-
-
-def test_consumer_occurrence_includes_entries_with_omitted_consumer(tmp_path):
-    """`consumer` 省略時の既定値が `occurrence` であることの直接のテスト
-    （後方互換。コードレビュー指摘8）。"""
-    yaml_path = tmp_path / "source_regions.yaml"
-    yaml_path.write_text(_CONSUMER_SPLIT_YAML_TEXT, encoding="utf-8")
-    sources, regions = sr.load_source_regions(yaml_path, consumer="occurrence")
-    assert set(sources) == {"occ_src", "obs_src_default"}
-    assert set(regions) == {"jp-14"}
 
 
 def test_consumer_observation_excludes_occurrence_entries(tmp_path):
@@ -267,6 +258,29 @@ def test_validate_source_regions_shape_rejects_unknown_consumer(tmp_path):
         sr.validate_source_regions_shape(yaml_path)
 
 
+def test_validate_source_regions_shape_rejects_missing_consumer_key(tmp_path):
+    """`consumer` は必須キー（オーナー決定。省略時に既定値へ黙って落ちる
+    設計は採らない）。他の必須キーが揃っていても `consumer` だけが無ければ
+    構造検証で止まる——`CONSUMER_CODES` 外の値で止まるのと同じ扱い
+    （過去に存在した `_DEFAULT_CONSUMER` という後方互換の既定値は撤回した）。
+    """
+    yaml_path = tmp_path / "source_regions.yaml"
+    yaml_path.write_text(
+        "sources:\n"
+        "  src_a:\n"
+        "    region_id: jp-14\n"
+        "    expected_row_count: 1\n"
+        "    evidence: テスト\n"
+        "regions:\n"
+        "  jp-14:\n"
+        "    utc_offset: \"+09:00\"\n"
+        "    evidence: テスト\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(sr.MigrationError, match="src_a"):
+        sr.validate_source_regions_shape(yaml_path)
+
+
 # ---------------------------------------------------------------------------
 # validate_source_regions_shape（CI の構造検証。原本DBを必要としない）
 # ---------------------------------------------------------------------------
@@ -277,6 +291,7 @@ def test_validate_source_regions_shape_accepts_complete_entries(tmp_path):
         "sources:\n"
         "  src_a:\n"
         "    region_id: jp-14\n"
+        "    consumer: occurrence\n"
         "    expected_row_count: 1\n"
         "    evidence: テスト\n"
         "regions:\n"
@@ -314,7 +329,8 @@ def test_validate_source_regions_shape_rejects_non_integer_expected_row_count(tm
     """コードレビュー指摘6: expected_row_count は整数必須。"""
     yaml_path = tmp_path / "source_regions.yaml"
     yaml_path.write_text(
-        "sources:\n  src_a:\n    region_id: jp-14\n    expected_row_count: \"1\"\n    evidence: テスト\n"
+        "sources:\n  src_a:\n    region_id: jp-14\n    consumer: occurrence\n"
+        "    expected_row_count: \"1\"\n    evidence: テスト\n"
         "regions:\n  jp-14:\n    utc_offset: \"+09:00\"\n    evidence: テスト\n",
         encoding="utf-8",
     )
@@ -343,7 +359,10 @@ def test_validate_source_regions_shape_missing_file_is_allowed(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_source_region_usage_reports_unused_and_mismatched():
-    src = sr.SourceRegion(source_id="src_a", region_id="jp-14", expected_row_count=3, evidence="テスト")
+    src = sr.SourceRegion(
+        source_id="src_a", region_id="jp-14", consumer="occurrence",
+        expected_row_count=3, evidence="テスト",
+    )
     usage = period.EntryUsage({"src_a": src})
     assert usage.unused_entries() == ["src_a"]
     usage.mark_used("src_a")
