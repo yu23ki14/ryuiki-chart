@@ -30,7 +30,16 @@
 `v1_projection.sqlite` に `landuse_watershed`/`landuse_change` の2表を足した
 （`b04`/観測系9表は無変更）——§11参照）で土地利用2表を実データで通した
 （一致2、宣言済み差分0で完全一致。`--tolerance` は使わず一致した）。
-**33テーブル中32テーブルが済み、残り1テーブル（`watershed_rollup`）は未着手**
+`phase-b/rollup-and-gate`（P-1a の続き、`scripts/b11_project_place_v1.py` に
+`watershed_rollup`——D10型の結合射影、4つの射影出力〔`watershed_meta`・
+`org_watershed`・`site_var`・`landuse_watershed`〕を結合するだけでキューブの
+セルにはしない——を追加）で最後の1テーブルを実データで通した（一致1、宣言済み
+差分0で完全一致。§12参照）。あわせて、5つに分かれていたゲート（candidate
+ファイルごとの個別実行）を `scripts/b02_run_all_gates.py` + `scripts/reconcile/
+projection_manifest.yaml` で統合し、**33テーブルすべてを1コマンドで突き合わせられる
+ようになった**（§12）。
+**33テーブル全てが揃い、統合ゲートで全体の合格を1コマンドで確認できる
+（一致25 / 宣言済み差分のみ8 / 不一致0 / 対象外0、終了コード0）**
 作成: 2026-09-07 / 更新: 2026-09-24
 
 **このドキュメントが説明するのはゲートの仕組みと、実データで実行した結果（§6・宣言済み差分の節）。
@@ -438,7 +447,8 @@ v1 側を直すまで v2 のゲートが恒久的に赤いままになる。ADR-
   `phase-b/taxon-assessment`（P-2、`docs/plans/PHASE_B_TAXON_ASSESSMENT.md` 参照。
   taxon/レッドリスト系はこれで3テーブル全て揃った）、`landuse_watershed`/
   `landuse_change` は `phase-b/landuse`（P-1b、§11参照）で済んだ。残り1テーブル
-  （`watershed_rollup`〔流域のロールアップ〕）はまだ縦線を通していない）
+  （`watershed_rollup`〔流域のロールアップ〕）は `phase-b/rollup-and-gate` で済んだ
+  ——これで33テーブル全て揃った。§12参照）
 - `imputation='lod'` 併記（ADR-0009 決定4。今回は `zero` のみ）
 - 正準単位の併記（ADR-0023。方針は決定済みだが未実装）
 - Parquet 化（ADR-0001）
@@ -448,23 +458,18 @@ v1 側を直すまで v2 のゲートが恒久的に赤いままになる。ADR-
 - `.github/workflows/` への `phase-b/fact-slice` の11テーブル部分ゲートの配線（CI ワークフロー
   自体は `phase-b/alias-source-key` で新設済みだが、`--tables` オプションでの実行はまだ
   ジョブに組み込まれていない）
-- 同様に、`phase-b/place-attributes` が足した `watershed_meta` の部分ゲート
-  （`scripts/b02_derived_compare.py --candidate data/db/v1_projection_place.sqlite
-  --tables watershed_meta`。11テーブル分とは candidate ファイルが別——
-  `v1_projection.sqlite` ではなく `v1_projection_place.sqlite`）も CI には
-  配線されていない（§9参照。「テーブル名→(射影スクリプト, candidateファイル)」の
-  対応表を持って全ゲートをまとめて回す仕組みは、1表のためには過剰なので作らない、
-  という判断だった。**2026-09-24更新（/simplify 指摘10）: この「着手する」の
-  閾値はもう超えている**——`b1x` 系の射影スクリプトは `b10`（documents）・
-  `b11`（place）・`b12`（taxon）の3本になり、candidate ファイルも
-  `v1_projection.sqlite`（observation、11表）・`v1_projection_place.sqlite`
-  （watershed_meta）・`v1_projection_documents.sqlite`（3表）・
-  `v1_projection_occurrence.sqlite`（occurrence系13表）・
-  `v1_projection_taxon.sqlite`（2表）の5つに増えている。`landuse_watershed`/
-  `landuse_change`（P-1b）は既存の `v1_projection.sqlite`（observation 系）に
-  足しただけなので、candidate ファイルの数自体は増えていない。**ゲートの統合
-  （対応表を持って全ゲートをまとめて回す仕組み）は、残りの表（`watershed_rollup`）
-  が終わった時点で、独立した1本の PR として行う——この PR ではやらない。**）
+- 同様に、5つの個別ゲート（`v1_projection.sqlite`/`v1_projection_occurrence.sqlite`/
+  `v1_projection_documents.sqlite`/`v1_projection_place.sqlite`/
+  `v1_projection_taxon.sqlite`、それぞれの `--tables ...` 実行）も、`phase-b/
+  rollup-and-gate` で新設した統合ゲート（`scripts/b02_run_all_gates.py`、§12）も、
+  どちらも `.github/workflows/` にはまだ配線されていない（原本DBが要るので、
+  CI では今後もそのままでは動かない。実行できるのは原本のある環境だけ）。
+  「テーブル名 → (射影スクリプト, candidate ファイル) の対応表を持って全ゲートを
+  まとめて回す仕組み」自体は、2026-09-24 の `phase-b/rollup-and-gate` で作った
+  （§12。以前この節に書いていた「1表のためには過剰」という判断は、`b1x` 系の
+  射影スクリプトが5本・candidate ファイルが5つに増えた時点で `/simplify` 指摘
+  どおり超えたと判断し、着手した）。ここに残っているのは CI ワークフローへの配線
+  だけ。
 
 ## 9. `watershed_meta`（`phase-b/place-attributes`、P-1a）
 
@@ -547,3 +552,131 @@ integer 506・real 2398）・`km2_2016`（同 integer 444・real 2460）・
 以来の値と完全一致。`reconcile.common.compute_fingerprint` で
 `--source-regions-yaml`/`--landuse-csv` を空フィクスチャにした候補と実データの
 候補を突き合わせて確認した）。
+
+## 12. 全体の合格（`watershed_rollup` + 33テーブルの統合ゲート、`phase-b/rollup-and-gate`）
+
+Phase B（ADR-0016）の最後の1本。残っていた `watershed_rollup`（1表）を通し、
+5つに分かれていたゲートを1コマンドに統合した。これで
+**「v1 の33テーブルすべてを v2 から再現できる」ことの全体の合格**が
+1コマンド・1つの終了コードで確認できる。
+
+### watershed_rollup
+
+v1（`web/scripts/build-geo.mjs:227-251`）は4つの入力の結合:
+`watershed_meta`（P-1a）・`org_watershed`（O-2a、v1 のメモ化の癖を再現した
+射影値——キューブの正確な値ではない）・`site_var`（observation 系）・
+`landuse_watershed`（P-1b）。**独立したキューブのセルにはしない**（D10と同型の
+「結合射影」。ADR-0011 の宣言も `place_attribute` のまま動かさない）。
+
+置き場は P-1a が予告したとおり `scripts/b11_project_place_v1.py`
+（`build_projections()` に `watershed_rollup` を追加）。`v1_projection.sqlite`
+（b05。`site_var`/`landuse_watershed`）と `v1_projection_occurrence.sqlite`
+（b08。`org_watershed`）を読み取り専用で ATTACH する——**b11 が他の b1x
+スクリプトの出力を読む最初の例**。どちらかが無い/テーブルが欠けていれば、
+「先に b05/b08 を実行せよ」と名指しして止まる
+（`_assert_rollup_prerequisites`）。
+
+`site_n`/`site_var_n` は **`sites.watershed` の直接一致**であり点内包判定では
+ない。P-1a が入れた地点→流域の `place_relation`（`relation='within'`、278件）
+から `site_watershed_lookup`（`site_id -> watershed_id`）を組み立てて引く
+（`scripts/b05_project_v1.py` の `site_zone_lookup` と同じ形）。実測:
+`site_n` の合計は278（`place_relation` の辺の総数と一致）、`site_var_n`
+（地点×変数の件数。地点数ではない）の合計は5,799——どちらも v1 の実測値
+（`data/db/derived.sqlite`）と完全一致。
+
+列名・列順・**型宣言（storage class）**は v1 の実物と一致させた。v1 は
+`CREATE TABLE watershed_rollup AS SELECT ...`（CTAS）で作っており、b11 側でも
+同じ CTAS を使う（型を手で宣言しない）ことで、直接の列参照5列（`watershed_id`/
+`water_system_name`/`area_km2`/`centroid_lat`/`centroid_lon`、TEXT/REAL）と
+無型の11列（集計式・相関サブクエリ、v1でも `type: ""`）の両方を、型を1文字も
+手で書かずに揃えた（P-1b の `landuse_change` が踏んだ「型を宣言すると INSERT
+時に強制変換されて storage class がずれる」を CTAS で回避）。
+
+実測（`.venv/bin/python3 scripts/b02_derived_compare.py --candidate
+data/db/v1_projection_place.sqlite --tables watershed_meta,watershed_rollup`）:
+
+```
+一致: 2 / 宣言済み差分のみ: 0 / 不一致: 0（終了コード0）
+```
+
+`PRAGMA table_info`・`typeof()` の実測（377行、16列）で v1 とのビット一致を
+確認済み（列の宣言型・全列の storage class 分布〔`integer`/`real`/`null`〕が
+1つ残らず一致）。
+
+### ゲートの統合
+
+いままで candidate ファイルが5つ（`v1_projection.sqlite`/
+`v1_projection_occurrence.sqlite`/`v1_projection_documents.sqlite`/
+`v1_projection_place.sqlite`/`v1_projection_taxon.sqlite`）に分かれ、`--tables`
+を手で並べて `scripts/b02_derived_compare.py` を5回回していた
+（§8参照。プロジェクト自身が決めていた「2本目の `b1x` 系射影スクリプトが
+出た時点で着手する」という閾値は、実際には5本になるまで超えられていなかった
+——`/simplify` 指摘で気づき、この PR で着手した）。
+
+**対応表**: `scripts/reconcile/projection_manifest.yaml` に、33テーブルすべて
+（candidate ファイル名 → `{script, tables}`）を宣言した。テーブルごとの分岐は
+コードに書かない——`scripts/reconcile/adr0011_destinations.yaml` と同じ流儀。
+`scripts/tests/test_common.py` の
+`test_load_projection_manifest_table_set_matches_derived_baseline_exactly` が、
+この33テーブルの集合が `reports/derived_baseline.json`（実データ由来。正）の
+33テーブルと過不足なく一致することを機械検証している（`adr0011_destinations.yaml`
+の検証テストと同じ流儀）。`test_load_projection_manifest_candidate_file_counts_
+match_the_declared_breakdown` がファイルごとの内訳（13+13+3+2+2=33）も確認する。
+
+**実行**: 新しい入口 `scripts/b02_run_all_gates.py` を新設した（`scripts/
+b02_derived_compare.py` は1行も変更していない）。`projection_manifest.yaml` の
+candidate ファイルごとに、`b02_derived_compare.compare_all()`/`render_markdown()`
+を import して呼ぶだけの薄いオーケストレータで、結果をマージして1つのレポート
+にまとめる。射影スクリプトは自動実行しない（原本DBが要るので CI では動かない。
+このゲートは「既にある candidate を突き合わせる」だけ）——candidate ファイルが
+1つでも無ければ、`projection_manifest.yaml` の `script` を名指しして即座に止まる。
+
+**判断（呼び出し元の確認を経ていない、2点。理由付き）**:
+
+1. **新しい入口 vs `b02_derived_compare.py` への `--manifest` 追加**:
+   新しい入口（`b02_run_all_gates.py`）を選んだ。`b02_derived_compare.py` は
+   「ベースライン1つ・候補1つ」を突き合わせるという一貫した設計で、複数
+   candidate ファイルを読んで結果をマージするロジックを持ち込むと、CLI引数の
+   意味（`--candidate` が単数か複数か）から変わってしまい、単一ファイル用途の
+   可読性を損なう。`compare_all`/`render_markdown` はどちらも純粋な関数として
+   既に切り出されており、新しい入口から import して複数回呼ぶだけで済んだ
+   （`b02_derived_compare.py` の変更行数0）。5系統の個別ゲートの使い方
+   （`--candidate <1つ> --tables <その分だけ>`）も一切変わらない。
+2. **レポートの出力先**: `reports/derived_reconciliation.md`（個別ゲートの既定
+   出力）とは別のファイル名 `reports/derived_reconciliation_all.md` にした。
+   個別ゲート・統合ゲートのどちらを先に／後に実行しても互いの結果を上書きし
+   合わないようにするため（「5本のゲートを同時に回すと既存レポートが上書き
+   され合う」という `/simplify` 指摘と同根の問題を、ファイル名を分けることで
+   避けた）。`.gitignore` に追記済み（既存の `derived_reconciliation.md` と
+   同じ理由——実行のたびに書き直す成果物で、コミット対象ではない）。
+
+**実測**（このマシン、原本あり、完全モード）:
+
+```
+$ .venv/bin/python3 scripts/b02_run_all_gates.py
+→ reports/derived_reconciliation_all.md
+33表中 一致: 25 / 宣言済み差分のみ: 8 / 不一致: 0 / 対象外: 0
+適用した宣言済み差分: 20件
+```
+
+終了コード0。実行時間 約70秒（このマシン。r01/b03〜b12 の再実行は含まない
+——既にある5つの candidate ファイルを読むだけ）。宣言済み差分の内訳は
+§6・§7の18件（measurements の '1未満' 検閲）+ §6の2件（`org_norm`/`species2`
+の `cls` タイブレーク）＝ 20件で、この PR で新たに増えた宣言は0件
+（`watershed_rollup` は宣言済み差分なしの完全一致）。
+
+既存5系統の個別ゲートは変更なく動く（本セクション冒頭の `watershed_rollup`
+実測、および §6・§9・§10・§11 の各実測を参照。このPRで再実測しても値は
+1ビットも変わらない）。
+
+### 設計からの逸脱・未決・既知の負債
+
+- CI ワークフローへの配線（個別ゲート・統合ゲートのどちらも）は引き続き
+  やっていない（§8参照。原本DBが要るので、CI では今後もそのままでは動かない）。
+- `scripts/b02_run_all_gates.py` はテーブル単位の並列化をしない
+  （§4「テーブル単位の並列化は採らない」と同じ判断——統合しても実行頻度・
+  実測時間〔約70秒〕から見て見合わない）。
+- `--tables` に相当する「統合ゲートの中で一部の candidate だけを対象にする」
+  絞り込みオプションは付けていない（個別ゲート側の `--tables` がその役目を
+  引き続き担う。統合ゲートの存在理由は「33表全部を1回で」なので、絞り込みは
+  スコープ外と判断した）。

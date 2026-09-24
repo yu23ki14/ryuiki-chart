@@ -408,6 +408,42 @@ def load_destinations(path) -> dict[str, dict]:
     return flat
 
 
+def load_projection_manifest(path) -> dict[str, dict]:
+    """`projection_manifest.yaml`（v1 派生33テーブル -> (射影スクリプト,
+    candidate ファイル) の宣言的な対応表。`scripts/b02_run_all_gates.py` が
+    使う）を読み、candidate ファイル名 -> `{"script": ..., "tables": [...]}`
+    の辞書として返す（`load_destinations` と同じ「形だけ検証して返す薄い
+    ラッパ」。中身の意味的な検証——テーブル名の集合が `derived_baseline.json`
+    と一致するか等——は呼び出し側〔`scripts/tests/test_common.py`・
+    `scripts/b02_run_all_gates.py`〕の責務）。
+    """
+    raw = load_yaml(path)
+    for candidate, spec in raw.items():
+        if not isinstance(spec, dict) or "script" not in spec or "tables" not in spec:
+            raise SystemExit(
+                f"{path} の {candidate!r} が「script/tables を持つマッピング」に"
+                f"なっていない（実際の型: {type(spec).__name__}）。"
+            )
+    return raw
+
+
+def flatten_projection_manifest(manifest: dict[str, dict]) -> dict[str, str]:
+    """`load_projection_manifest` が返す辞書を、テーブル名 -> candidate ファイル名の
+    フラットな辞書に変換する。同じテーブル名が複数の candidate に重複して
+    宣言されていたら（コピペミス等）黙って後勝ちにせず例外を投げる。
+    """
+    flat: dict[str, str] = {}
+    for candidate, spec in manifest.items():
+        for table in spec.get("tables", []):
+            if table in flat:
+                raise SystemExit(
+                    f"projection_manifest.yaml: テーブル {table!r} が {flat[table]!r} と "
+                    f"{candidate!r} の両方に重複して宣言されている。"
+                )
+            flat[table] = candidate
+    return flat
+
+
 # `expected_diffs.yaml`（b02 の「宣言済み差分」）の kind の語彙。ここに書けるのは
 # 常に「v1 を再現できないが、原因が判明していて v1 側のバグだと確定しているもの」の
 # キー1件ずつであり、テーブル単位・ワイルドカードの免除は書けない

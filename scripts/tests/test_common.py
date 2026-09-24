@@ -11,6 +11,7 @@ from .fixtures import make_fixture_db, make_null_key_fixture_db
 _REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 _DESTINATIONS_YAML = _REPO_ROOT / "scripts" / "reconcile" / "adr0011_destinations.yaml"
 _DERIVED_BASELINE_JSON = _REPO_ROOT / "reports" / "derived_baseline.json"
+_PROJECTION_MANIFEST_YAML = _REPO_ROOT / "scripts" / "reconcile" / "projection_manifest.yaml"
 
 
 @pytest.fixture()
@@ -345,3 +346,79 @@ def test_load_destinations_category_counts_match_the_declared_breakdown():
         "document_provenance": 2,
         "quality_workflow_log": 1,
     }
+
+
+def test_load_projection_manifest_rejects_entry_without_script_or_tables(tmp_path):
+    """`load_projection_manifest` は candidate ファイルごとの値が
+    `{script, tables}` を持つマッピングになっていることだけを検証する
+    （`load_expected_diffs` が「宣言のリストになっているか」だけ検証するのと
+    同じ、形だけの薄い検証）。
+    """
+    bad = tmp_path / "bad_manifest.yaml"
+    bad.write_text("v1_projection.sqlite:\n  tables: [meas_daily]\n", encoding="utf-8")
+    with pytest.raises(SystemExit, match="script/tables を持つマッピング"):
+        common.load_projection_manifest(bad)
+
+
+def test_flatten_projection_manifest_raises_on_duplicate_table():
+    """同じテーブル名が2つの candidate ファイルに重複して宣言されていたら、
+    黙って後勝ちにせず例外を投げる（コピペミスの検出。`b02_run_all_gates.py`
+    が同じ candidate を2回突き合わせて片方の結果を握りつぶす事故を防ぐ）。
+    """
+    manifest = {
+        "a.sqlite": {"script": "scripts/x.py", "tables": ["t1", "t2"]},
+        "b.sqlite": {"script": "scripts/y.py", "tables": ["t2"]},
+    }
+    with pytest.raises(SystemExit, match="t2.*重複"):
+        common.flatten_projection_manifest(manifest)
+
+
+def test_load_projection_manifest_covers_exactly_33_tables_with_no_duplicates():
+    """`scripts/reconcile/projection_manifest.yaml`（33テーブル → (射影
+    スクリプト, candidate ファイル) の対応表）が合計33件・重複無しであることを
+    確認する（`test_load_destinations_covers_exactly_33_tables_with_no_duplicates`
+    と同じ形）。
+    """
+    manifest = common.load_projection_manifest(_PROJECTION_MANIFEST_YAML)
+    flat = common.flatten_projection_manifest(manifest)
+    assert len(flat) == 33
+
+
+def test_load_projection_manifest_table_set_matches_derived_baseline_exactly():
+    """`projection_manifest.yaml` のテーブル名の集合が、実データから作った
+    `reports/derived_baseline.json`（正）の33テーブルの集合と完全に一致する
+    ことを確認する（`test_load_destinations_table_names_match_derived_baseline_exactly`
+    と同じ形・同じ理由: 打ち間違えた名前と書き漏らした名前が1対1で相殺すれば
+    件数一致だけのテストは通ってしまう）。
+    """
+    manifest = common.load_projection_manifest(_PROJECTION_MANIFEST_YAML)
+    flat = common.flatten_projection_manifest(manifest)
+    baseline = json.loads(_DERIVED_BASELINE_JSON.read_text(encoding="utf-8"))
+    assert set(flat) == set(baseline["tables"])
+
+
+def test_load_projection_manifest_candidate_file_counts_match_the_declared_breakdown():
+    """candidate ファイルごとのテーブル数を、既知の内訳
+    （13+13+3+2+2=33）と突き合わせる（`test_load_destinations_category_counts_
+    match_the_declared_breakdown` と同じ考え方。正しいテーブル名が誤った
+    candidate ファイルに入っている事故は、集合一致（前テスト）だけでは
+    検出できない）。
+    """
+    manifest = common.load_projection_manifest(_PROJECTION_MANIFEST_YAML)
+    counts = {candidate: len(spec.get("tables", [])) for candidate, spec in manifest.items()}
+    assert counts == {
+        "v1_projection.sqlite": 13,
+        "v1_projection_occurrence.sqlite": 13,
+        "v1_projection_documents.sqlite": 3,
+        "v1_projection_place.sqlite": 2,
+        "v1_projection_taxon.sqlite": 2,
+    }
+
+
+def test_load_projection_manifest_watershed_rollup_is_in_place_projection():
+    """`watershed_rollup`（Phase B 最後の1表）が `v1_projection_place.sqlite`
+    （`scripts/b11_project_place_v1.py`）に宣言されていることの回帰。
+    """
+    manifest = common.load_projection_manifest(_PROJECTION_MANIFEST_YAML)
+    assert manifest["v1_projection_place.sqlite"]["script"] == "scripts/b11_project_place_v1.py"
+    assert "watershed_rollup" in manifest["v1_projection_place.sqlite"]["tables"]
