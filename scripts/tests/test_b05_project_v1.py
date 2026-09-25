@@ -6,7 +6,7 @@ import pytest
 import b03_build_observation as b03
 import b04_build_cube as b04
 import b05_project_v1 as b05
-from migrate import common
+from migrate import common, v1_projection_checks
 
 from .migrate_fixtures import (
     DEFAULT_ALIASES,
@@ -104,7 +104,7 @@ def test_assert_alias_is_function_raises_on_collision(tmp_path):
     common.attach_readonly(work, registry_db, "reg")
     try:
         with pytest.raises(common.MigrationError, match="関数になっていない"):
-            b05.assert_alias_is_function(work)
+            v1_projection_checks.assert_alias_is_function(work)
     finally:
         work.close()
 
@@ -115,8 +115,8 @@ def test_assert_alias_is_function_passes_when_unique(tmp_path):
     work = sqlite3.connect("file::memory:?cache=shared", uri=True)
     common.attach_readonly(work, registry_db, "reg")
     try:
-        b05.assert_alias_is_function(work)  # 例外を投げなければ良い
-        b05.assert_alias_is_function(work, "sensor_timeseries", grains=("day", "hour", "instant"))
+        v1_projection_checks.assert_alias_is_function(work)  # 例外を投げなければ良い
+        v1_projection_checks.assert_alias_is_function(work, "sensor_timeseries", grains=("day", "hour", "instant"))
     finally:
         work.close()
 
@@ -137,7 +137,7 @@ def test_assert_alias_tuple_maps_to_single_dataset_raises_on_cross_dataset_colli
     common.attach_readonly(work, registry_db, "reg")
     try:
         with pytest.raises(common.MigrationError, match="複数の出典.*にまたがっている"):
-            b05.assert_alias_tuple_maps_to_single_dataset(work)
+            v1_projection_checks.assert_alias_tuple_maps_to_single_dataset(work)
     finally:
         work.close()
 
@@ -148,7 +148,7 @@ def test_assert_alias_tuple_maps_to_single_dataset_passes_on_default_fixture(tmp
     work = sqlite3.connect("file::memory:?cache=shared", uri=True)
     common.attach_readonly(work, registry_db, "reg")
     try:
-        b05.assert_alias_tuple_maps_to_single_dataset(work)  # 例外を投げなければ良い
+        v1_projection_checks.assert_alias_tuple_maps_to_single_dataset(work)  # 例外を投げなければ良い
     finally:
         work.close()
 
@@ -171,7 +171,7 @@ def test_assert_alias_tuple_maps_to_single_dataset_allows_landuse_year_sharing(t
     work = sqlite3.connect("file::memory:?cache=shared", uri=True)
     common.attach_readonly(work, registry_db, "reg")
     try:
-        b05.assert_alias_tuple_maps_to_single_dataset(work)  # 例外を投げなければ良い
+        v1_projection_checks.assert_alias_tuple_maps_to_single_dataset(work)  # 例外を投げなければ良い
     finally:
         work.close()
 
@@ -197,7 +197,7 @@ def test_assert_alias_tuple_maps_to_single_dataset_still_detects_landuse_vs_meas
     common.attach_readonly(work, registry_db, "reg")
     try:
         with pytest.raises(common.MigrationError, match="複数の出典.*にまたがっている"):
-            b05.assert_alias_tuple_maps_to_single_dataset(work)
+            v1_projection_checks.assert_alias_tuple_maps_to_single_dataset(work)
     finally:
         work.close()
 
@@ -389,7 +389,7 @@ def test_assert_v1_keys_are_unique_detects_duplicate_in_new_tables():
     }
     keys_by_table = {"var_catalog": ["variable"]}
     with pytest.raises(common.MigrationError, match="v1 のキー"):
-        b05.assert_v1_keys_are_unique(projections, keys_by_table)
+        v1_projection_checks.assert_v1_keys_are_unique(projections, keys_by_table)
 
     projections2 = {
         "sensor_daily": (
@@ -399,7 +399,7 @@ def test_assert_v1_keys_are_unique_detects_duplicate_in_new_tables():
     }
     keys_by_table2 = {"sensor_daily": ["site_id", "datastream", "d"]}
     with pytest.raises(common.MigrationError, match="v1 のキー"):
-        b05.assert_v1_keys_are_unique(projections2, keys_by_table2)
+        v1_projection_checks.assert_v1_keys_are_unique(projections2, keys_by_table2)
 
 
 def test_place_lookup_non_injective_place_id_raises_migration_error(tmp_path):
@@ -972,7 +972,7 @@ def test_verify_hourly_daily_rollup_function_directly():
             (*dim, "2020-01-01", "2020-01-01", "day", "hour", "max", 4.0, 4),
         ],
     )
-    stats = b05.verify_hourly_daily_rollup(work)
+    stats = v1_projection_checks.verify_hourly_daily_rollup(work)
     assert stats["n_series_days_checked"] >= 1
 
 

@@ -462,14 +462,16 @@ def _assert_rollup_input_fingerprints_fresh(
     `occurrence_place` 自身の自己指紋（生データは読まない安い参照）と
     突き合わせる。
 
-    **検証範囲の明示（コードレビュー指摘への回答）**: `cube_db` が渡され、
-    かつファイルが実在する場合だけ ATTACH して (b) を有効にする——
-    watershed_rollup の SQL 自体は v2.sqlite を一切読まない設計
-    （モジュール docstring「経由しない」）を保つため、`cube_db` を必須の
-    ATTACH にはしない。`cube_db` が無い/渡されない場合は (b) を行わず
-    (a) だけに留める（`main()` は常に既定パス `DEFAULT_CUBE_DB` を渡すため、
-    Phase B を実行順どおり通した実運用では常に (b) も効く。`cube_db` 無しで
-    呼ぶのは、v2.sqlite を必要としない既存の単体テストのため）。
+    **検証範囲の明示（コードレビュー指摘への回答）**: `cube_db` が渡された
+    場合は実在しなければならない——他の `--*-db` 引数（`_assert_rollup_
+    prerequisites` 参照）と同じ扱いで、無ければ `MigrationError` で止める
+    （/simplify 指摘: 以前は無言で (b) を諦めていたため、`--cube-db` の
+    誤字・環境の取り違えを気づかせずに (a) だけの弱い検証で通してしまう
+    穴があった）。`cube_db is None`（呼び出し側が引数を**渡さなかった**
+    ときだけ）は (b) を行わず (a) だけに留める——`main()` は常に既定パス
+    `DEFAULT_CUBE_DB` を渡すため、Phase B を実行順どおり通した実運用では
+    常に (b) も効く。`None` のまま呼ぶのは、v2.sqlite を必要としない既存の
+    単体テストのため（テスト分離の逃げ道として残す）。
 
     出力ファイルには一切触れない読み取り専用の一時コネクションで、
     `common.fresh_sqlite(out_path)`（既存の出力を即座に消す）より前に行う
@@ -481,7 +483,15 @@ def _assert_rollup_input_fingerprints_fresh(
     try:
         common.attach_readonly(work, v1_projection_db, "proj")
         common.attach_readonly(work, v1_projection_occurrence_db, "occ")
-        cube_attached = cube_db is not None and pathlib.Path(cube_db).exists()
+        if cube_db is not None and not pathlib.Path(cube_db).exists():
+            raise common.MigrationError(
+                f"{cube_db} が無い（--cube-db に指定された）。watershed_rollup の (b) "
+                "系譜チェックのために v2.sqlite が要る。scripts/b06_build_occurrence.py "
+                "の後に scripts/b09_build_occurrence_place.py・"
+                "scripts/b07_build_occurrence_cube.py を実行するか、"
+                "存在する v2.sqlite のパスを --cube-db に指定すること。"
+            )
+        cube_attached = cube_db is not None
         if cube_attached:
             common.attach_readonly(work, cube_db, "cube_v2")
         # "observation" は b05 が `observation_agg` 経由の系譜（`site_var` の
@@ -499,22 +509,22 @@ def _assert_rollup_input_fingerprints_fresh(
             }
             if cube_attached else None
         )
+        # rebuild_hint は `_STALE_ID_REBUILD_GUIDANCE`（上の「地点/流域IDの
+        # 『古さ』検査」節）を再利用する——同じ「どの b0x を再実行するか」を
+        # 手打ちで重複させない（/simplify 指摘）。
         site_var_fp = common.assert_stage_fingerprint_fresh(
             work, "site_var", schema="proj",
-            rebuild_hint="scripts/b05_project_v1.py を再実行すること。",
+            rebuild_hint=f"{_STALE_ID_REBUILD_GUIDANCE['site_var']} を再実行すること。",
             upstream_schemas=upstream_schemas,
         )
         landuse_watershed_fp = common.assert_stage_fingerprint_fresh(
             work, "landuse_watershed", schema="proj",
-            rebuild_hint="scripts/b05_project_v1.py を再実行すること。",
+            rebuild_hint=f"{_STALE_ID_REBUILD_GUIDANCE['landuse_watershed']} を再実行すること。",
             upstream_schemas=upstream_schemas,
         )
         org_watershed_fp = common.assert_stage_fingerprint_fresh(
             work, "org_watershed", schema="occ",
-            rebuild_hint=(
-                "scripts/b08_project_occurrence_v1.py を再実行すること"
-                "（実行順は b06 → b09 → b07 → b08）。"
-            ),
+            rebuild_hint=f"{_STALE_ID_REBUILD_GUIDANCE['org_watershed']} を再実行すること。",
             upstream_schemas=upstream_schemas,
         )
         return {
@@ -566,16 +576,25 @@ def build_projections(
         common.attach_readonly(work, v1_projection_db, "proj")
         common.attach_readonly(work, v1_projection_occurrence_db, "occ")
 
-        work.execute(_CREATE_WATERSHED_META_SQL)
-        work.execute(_INSERT_WATERSHED_META_SQL)
+        with common.track_reads(work) as reads:
+            work.execute(_CREATE_WATERSHED_META_SQL)
+            work.execute(_INSERT_WATERSHED_META_SQL)
 
-        # site_watershed_lookup の一意性は _validate_registry() で検証済み
-        # （コードレビュー指摘1）。CREATE UNIQUE INDEX は無い——2つの相関
-        # サブクエリ（site_n/site_var_n）はどちらも watershed_id で絞るので
-        # site_id の索引は実測で参照されない（コードレビュー指摘13）。
-        work.execute(_CREATE_SITE_WATERSHED_LOOKUP_SQL)
+            # site_watershed_lookup の一意性は _validate_registry() で検証済み
+            # （コードレビュー指摘1）。CREATE UNIQUE INDEX は無い——2つの相関
+            # サブクエリ（site_n/site_var_n）はどちらも watershed_id で絞るので
+            # site_id の索引は実測で参照されない（コードレビュー指摘13）。
+            work.execute(_CREATE_SITE_WATERSHED_LOOKUP_SQL)
 
-        work.execute(_CREATE_WATERSHED_ROLLUP_SQL)
+            work.execute(_CREATE_WATERSHED_ROLLUP_SQL)
+
+        # 読み取りの機械監査（Issue #37 #1、Tier 1。/simplify 指摘A）:
+        # `verified_fingerprints`（`_assert_rollup_input_fingerprints_fresh` が
+        # (a) で確認済みの表の集合）以外に、proj/occ から読んだ表が無いかを
+        # 確認する（reg は registry_build という別機構を持つため自動的に対象外）。
+        common.assert_all_reads_verified(
+            work, reads, set(verified_fingerprints), context="b11_project_place_v1.build_projections",
+        )
 
         # 段階間の指紋（Issue #37 #1）: 全段の出力に指紋を持たせる方針どおり、
         # このファイルの2テーブル両方に記録する（現時点でこれらを読む後続の
@@ -617,7 +636,8 @@ def main() -> None:
             "段階間の指紋の系譜チェック専用（Issue #37 #1）。site_var/landuse_watershed/"
             "org_watershed が今の observation_agg/occurrence/occurrence_place から作られたかを"
             "確かめるためだけに ATTACH する（watershed_rollup の SQL 自体はこのファイルを"
-            "読まない）。無い/存在しない場合は (b) の系譜チェックだけを省略して続行する。"
+            "読まない）。他の --*-db 引数と同じく、指定した以上は実在しなければならない"
+            "（無ければエラー）。"
         ),
     )
     parser.add_argument("--out", default=str(DEFAULT_OUT))

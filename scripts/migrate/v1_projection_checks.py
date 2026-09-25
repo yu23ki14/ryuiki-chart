@@ -1,22 +1,7 @@
-"""`scripts/b05_project_v1.py`（`observation_agg` → v1形13テーブルの射影）が
-使う検証関数群（`PHASE_B_FACT_SLICE.md:457-459` 決定: 「次に出典固有の検証
-関数を足す時点で、検証関数群を別モジュールに分ける」を実施したもの——振る舞い
-は変えない純粋な移動）。
-
-`scripts/b05_project_v1.py` は `from migrate import v1_projection_checks` で
-このモジュールを import し、`v1_projection_checks.assert_alias_is_function(...)`
-のように呼ぶ（`scripts/migrate/period.py`/`occurrence_period.py` を b03/b06 が
-モジュールごと import して `period.func()` の形で呼ぶのと同じ流儀）。既存の
-呼び出し側（`scripts/b05_project_v1.py` 自身の内部呼び出し、
-`scripts/tests/test_b05_project_v1.py` の `b05.関数名(...)` という既存の
-呼び出し）は、`b05_project_v1.py` 側に張った再エクスポート（同名の
-モジュール変数への代入）でそのまま動く——このモジュールへの分割で
-外部から見た `b05_project_v1` の API は1つも変わらない。
-
-ここに置くのは「`work`（`cube`/`reg` を ATTACH 済みの一時接続）の中身を検証
-するだけの関数」（副作用は無い、`common.MigrationError` を投げるかどうか
-だけ）。SQL を組み立てて実際にテーブルを作る側（`_materialize_lookup_tables`
-等）は `b05_project_v1.py` に残す——このモジュールは検証専用。
+"""`scripts/b05_project_v1.py` が使う検証関数群（`work`＝`cube`/`reg` を
+ATTACH 済みの一時接続の中身を検証するだけ、副作用は無い）。呼び出し側は
+`period.py`/`occurrence_period.py` と同じ流儀で
+`v1_projection_checks.関数名(...)` と呼ぶ（再エクスポートしない）。
 """
 from __future__ import annotations
 

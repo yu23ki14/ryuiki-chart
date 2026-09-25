@@ -118,22 +118,11 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from migrate import common, v1_projection_checks  # noqa: E402
 
 # `PHASE_B_FACT_SLICE.md:457-459` の決定（検証関数群を別モジュールに分ける）
-# で `scripts/migrate/v1_projection_checks.py` に移した検証関数群の再エクスポート
-# ——`scripts/b05_project_v1.py` 内部の呼び出し（`_materialize_lookup_tables`
-# 等）と、既存のテスト（`b05.assert_alias_is_function(...)` のように
-# モジュール変数として呼ぶ）の両方が、このファイルの API を1つも変えずに
-# そのまま動く。実装は `v1_projection_checks.py` 側だけを見ればよい。
-_assert_place_relation_table_exists = v1_projection_checks._assert_place_relation_table_exists
-_assert_zone_numbers_do_not_collide_across_zone_places = (
-    v1_projection_checks._assert_zone_numbers_do_not_collide_across_zone_places
-)
-_assert_zone_edges_have_fraction_one = v1_projection_checks._assert_zone_edges_have_fraction_one
-_assert_site_maps_to_at_most_one_zone = v1_projection_checks._assert_site_maps_to_at_most_one_zone
-assert_alias_is_function = v1_projection_checks.assert_alias_is_function
-assert_alias_tuple_maps_to_single_dataset = v1_projection_checks.assert_alias_tuple_maps_to_single_dataset
-assert_unit_raw_is_function = v1_projection_checks.assert_unit_raw_is_function
-assert_v1_keys_are_unique = v1_projection_checks.assert_v1_keys_are_unique
-verify_hourly_daily_rollup = v1_projection_checks.verify_hourly_daily_rollup
+# で `scripts/migrate/v1_projection_checks.py` に移した検証関数群は、
+# `occurrence_period`/`period` と同じ流儀で `v1_projection_checks.関数名(...)`
+# のままモジュール参照で呼ぶ（/simplify 指摘: 以前はここに同名のモジュール
+# 変数として再エクスポートしていたが、実体を持たない別名の分だけ経路が
+# 増えるだけだった）。
 
 DEFAULT_CUBE_DB = ROOT / "data" / "db" / "v2.sqlite"
 DEFAULT_REGISTRY_DB = ROOT / "data" / "db" / "registry.sqlite"
@@ -676,11 +665,11 @@ def _materialize_lookup_tables(work: sqlite3.Connection, landuse_years: list[str
     # 地点→ゾーン（site_zone_lookup。`place_lookup` に依存するため、この直後で
     # 作る）。検証は射影固有の前提だけ（D11参照。レジストリの不変条件は
     # scripts/r01_build_registry.py 側に移設済み）。
-    _assert_place_relation_table_exists(work)
+    v1_projection_checks._assert_place_relation_table_exists(work)
     work.execute(_SITE_ZONE_LOOKUP_SQL)
-    _assert_zone_numbers_do_not_collide_across_zone_places(work)
-    _assert_zone_edges_have_fraction_one(work)
-    _assert_site_maps_to_at_most_one_zone(work)
+    v1_projection_checks._assert_zone_numbers_do_not_collide_across_zone_places(work)
+    v1_projection_checks._assert_zone_edges_have_fraction_one(work)
+    v1_projection_checks._assert_site_maps_to_at_most_one_zone(work)
     work.execute("CREATE UNIQUE INDEX site_zone_lookup_site_id ON site_zone_lookup (site_id)")
 
     # 土地利用（P-1b）。watershed の place_id -> v1 の watershed_id
@@ -748,68 +737,80 @@ def build_projections(
     try:
         common.attach_readonly(work, cube_db, "cube")
         common.attach_readonly(work, registry_db, "reg")
-        # 段階間の指紋（Issue #37 #1）: b04 が最後に記録した observation_agg の
-        # 指紋と、今 ATTACH した cube_db の内容が一致することを、射影を始める
-        # 前に確認する。`upstream_schemas={"observation": "cube"}`
-        # （コードレビュー指摘: (a) の自己一致だけでは「observation_agg 自身は
-        # 無傷だが、b03 だけ作り直されて b04 が再実行されていない」壊れ方を
-        # 検出できない。observation_agg が記録した系譜〔消費した observation
-        # の指紋〕と、observation 自身が今記録している自己指紋を突き合わせる
-        # (b) を有効にする——observation は observation_agg と同じ v2.sqlite
-        # 〔ここでは "cube" 別名〕にあるので、上流の生データを読み直さず安く
-        # 確認できる）。
-        common.assert_stage_fingerprint_fresh(
-            work, "observation_agg", schema="cube",
-            rebuild_hint="scripts/b04_build_cube.py を再実行すること。",
-            upstream_schemas={"observation": "cube"},
-        )
-        # 段階間の指紋（Issue #37 #1。/code-review 指摘の穴埋め）: b05 は
-        # `observation_agg` だけでなく `cube.observation` 自体も直接読む
-        # （`_unit_lookup_sql`——meas_daily/meas_month/meas_year 等の unit_raw
-        # 逆引き——と `_label25_obs_keyed_sql`——sensor_daily/rain_daily/
-        # sensor_hour_month が使う `label25_obs_keyed`）。上の
-        # `observation_agg` の (b) は「`observation_agg` が消費した時点の
-        # observation の指紋」と「observation 自身の今の自己申告」を比べる
-        # だけで、**observation 自身の現在のバイト列**は見ていない
-        # （b03 の `staged_table` の差し替えと `record_stage_fingerprint`
-        # が同じトランザクションになった今も、原理上は別の経路で
-        # `observation` が直接改変される可能性が残るため、b05 が実際に
-        # 読む対象には独立した (a) を掛ける）。`observation` は基底テーブル
-        # （系譜を持たない）なので `upstream_schemas` は渡さない。
-        common.assert_stage_fingerprint_fresh(
-            work, "observation", schema="cube",
-            rebuild_hint="scripts/b03_build_observation.py を再実行すること。",
-        )
-        assert_alias_is_function(work, "measurements")
-        # b05 が実際に消費する grain（B-6: `_SENSOR_ALIAS_GRAINS`。
-        # day_keyed の input_grain 範囲と label25_obs_keyed の value_grain
-        # 範囲を合わせたもの）だけに絞る（assert_alias_is_function の
-        # docstring 参照。jma_monthly の積雪3変数にある month 限定の alias
-        # 重複は射影対象外なので見ない）。
-        assert_alias_is_function(work, "sensor_timeseries", grains=_SENSOR_ALIAS_GRAINS)
-        # 土地利用（P-1b）: 版付き dataset（年）ごとに関数性を検証する
-        # （`assert_alias_is_function` は dataset を1つ受け取る既存の関数を
-        # そのまま再利用——年ごとに独立して「区分コード -> variable_id」が
-        # 一意であることを確認する）。年の一覧はレジストリから動的に導出する
-        # （コードレビュー指摘1。`_LANDUSE_YEARS` の直書きをやめた）。
-        landuse_years = _discover_landuse_years(work)
-        for year in landuse_years:
-            assert_alias_is_function(work, _landuse_dataset(year))
-        assert_alias_tuple_maps_to_single_dataset(work)
-        assert_unit_raw_is_function(work)
-        # ゾーン（place_relation）の射影固有の検証は _materialize_lookup_tables
-        # の中、site_zone_lookup を実体化した直後で行う（D11参照。レジストリの
-        # 不変条件は r01 側で保証済み）。
-        _materialize_lookup_tables(work, landuse_years)
-        _materialize_projection_tables(work, landuse_years)
-        verify_hourly_daily_rollup(work)
-        out = {}
-        for table, sql in _TABLE_SQL.items():
-            cur = work.execute(sql)
-            columns = [d[0] for d in cur.description]
-            out[table] = (columns, cur.fetchall())
-        assert_v1_keys_are_unique(out, _load_v1_keys(baseline_json))
-        return out
+        with common.track_reads(work) as reads:
+            # 段階間の指紋（Issue #37 #1）: b04 が最後に記録した observation_agg の
+            # 指紋と、今 ATTACH した cube_db の内容が一致することを、射影を始める
+            # 前に確認する。`upstream_schemas={"observation": "cube"}`
+            # （コードレビュー指摘: (a) の自己一致だけでは「observation_agg 自身は
+            # 無傷だが、b03 だけ作り直されて b04 が再実行されていない」壊れ方を
+            # 検出できない。observation_agg が記録した系譜〔消費した observation
+            # の指紋〕と、observation 自身が今記録している自己指紋を突き合わせる
+            # (b) を有効にする——observation は observation_agg と同じ v2.sqlite
+            # 〔ここでは "cube" 別名〕にあるので、上流の生データを読み直さず安く
+            # 確認できる）。
+            common.assert_stage_fingerprint_fresh(
+                work, "observation_agg", schema="cube",
+                rebuild_hint="scripts/b04_build_cube.py を再実行すること。",
+                upstream_schemas={"observation": "cube"},
+            )
+            # 段階間の指紋（Issue #37 #1。/code-review 指摘の穴埋め）: b05 は
+            # `observation_agg` だけでなく `cube.observation` 自体も直接読む
+            # （`_unit_lookup_sql`——meas_daily/meas_month/meas_year 等の unit_raw
+            # 逆引き——と `_label25_obs_keyed_sql`——sensor_daily/rain_daily/
+            # sensor_hour_month が使う `label25_obs_keyed`）。上の
+            # `observation_agg` の (b) は「`observation_agg` が消費した時点の
+            # observation の指紋」と「observation 自身の今の自己申告」を比べる
+            # だけで、**observation 自身の現在のバイト列**は見ていない
+            # （b03 の `staged_table` の差し替えと `record_stage_fingerprint`
+            # が同じトランザクションになった今も、原理上は別の経路で
+            # `observation` が直接改変される可能性が残るため、b05 が実際に
+            # 読む対象には独立した (a) を掛ける）。`observation` は基底テーブル
+            # （系譜を持たない）なので `upstream_schemas` は渡さない。
+            common.assert_stage_fingerprint_fresh(
+                work, "observation", schema="cube",
+                rebuild_hint="scripts/b03_build_observation.py を再実行すること。",
+            )
+            v1_projection_checks.assert_alias_is_function(work, "measurements")
+            # b05 が実際に消費する grain（B-6: `_SENSOR_ALIAS_GRAINS`。
+            # day_keyed の input_grain 範囲と label25_obs_keyed の value_grain
+            # 範囲を合わせたもの）だけに絞る（assert_alias_is_function の
+            # docstring 参照。jma_monthly の積雪3変数にある month 限定の alias
+            # 重複は射影対象外なので見ない）。
+            v1_projection_checks.assert_alias_is_function(work, "sensor_timeseries", grains=_SENSOR_ALIAS_GRAINS)
+            # 土地利用（P-1b）: 版付き dataset（年）ごとに関数性を検証する
+            # （`assert_alias_is_function` は dataset を1つ受け取る既存の関数を
+            # そのまま再利用——年ごとに独立して「区分コード -> variable_id」が
+            # 一意であることを確認する）。年の一覧はレジストリから動的に導出する
+            # （コードレビュー指摘1。`_LANDUSE_YEARS` の直書きをやめた）。
+            landuse_years = _discover_landuse_years(work)
+            for year in landuse_years:
+                v1_projection_checks.assert_alias_is_function(work, _landuse_dataset(year))
+            v1_projection_checks.assert_alias_tuple_maps_to_single_dataset(work)
+            v1_projection_checks.assert_unit_raw_is_function(work)
+            # ゾーン（place_relation）の射影固有の検証は _materialize_lookup_tables
+            # の中、site_zone_lookup を実体化した直後で行う（D11参照。レジストリの
+            # 不変条件は r01 側で保証済み）。
+            _materialize_lookup_tables(work, landuse_years)
+            _materialize_projection_tables(work, landuse_years)
+            v1_projection_checks.verify_hourly_daily_rollup(work)
+            out = {}
+            for table, sql in _TABLE_SQL.items():
+                cur = work.execute(sql)
+                columns = [d[0] for d in cur.description]
+                out[table] = (columns, cur.fetchall())
+            v1_projection_checks.assert_v1_keys_are_unique(out, _load_v1_keys(baseline_json))
+            # 読み取りの機械監査（Issue #37 #1、Tier 1。/simplify 指摘A）:
+            # この関数が実際に ATTACH 先（cube/reg）から読んだ表のうち、
+            # 指紋機構の対象（reg は registry_build という別機構を持つため
+            # 自動的に対象外）が、上の2つの `assert_stage_fingerprint_fresh`
+            # で検証した表（`declared`）に含まれることを確認する——新しい
+            # JOIN・SELECT を足したのに検証を足し忘れた見落としを機械的に
+            # 検出する。
+            common.assert_all_reads_verified(
+                work, reads, {"observation", "observation_agg"},
+                context="b05_project_v1.build_projections",
+            )
+            return out
     finally:
         work.close()
 
@@ -924,16 +925,15 @@ def write_projections(
             conn.executemany(f'INSERT INTO "{table}" VALUES ({placeholders})', rows)
         # 段階間の指紋（Issue #37 #1）: 全段の出力に指紋を持たせる方針どおり、
         # 13テーブル全てに記録する（b11 が site_var/landuse_watershed を読む前に
-        # 検証する）。
-        inputs_with_obs = None
-        if agg_fingerprint:
-            inputs_with_obs = {"observation_agg": agg_fingerprint}
-            if obs_fingerprint:
-                inputs_with_obs["observation"] = obs_fingerprint
-        inputs_without_obs = {"observation_agg": agg_fingerprint} if agg_fingerprint else None
-        for table in projections:
-            inputs = inputs_without_obs if table in _TABLES_WITHOUT_OBSERVATION_DEPENDENCY else inputs_with_obs
-            common.record_stage_fingerprint(conn, table, inputs=inputs)
+        # 検証する。/simplify 指摘: ループ本体の分岐を無くし、表ごとの系譜を
+        # 先に1つの dict にまとめてから `record_stage_fingerprints` に渡す）。
+        without_obs = {"observation_agg": agg_fingerprint} if agg_fingerprint else {}
+        with_obs = {**without_obs, "observation": obs_fingerprint} if obs_fingerprint else without_obs
+        lineage = {
+            table: (without_obs if table in _TABLES_WITHOUT_OBSERVATION_DEPENDENCY else with_obs)
+            for table in projections
+        }
+        common.record_stage_fingerprints(conn, projections, lineage=lineage)
         conn.commit()
     finally:
         conn.close()

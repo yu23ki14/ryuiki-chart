@@ -357,10 +357,7 @@ def build_and_write_occurrence_place(
         # 段階間の指紋（Issue #37 #1）: b06 が最後に記録した occurrence の指紋と
         # 今の occurrence の内容が一致することを、座標を読む前に確認する。
         # 戻り値は occurrence_place の系譜に使う。
-        occurrence_fingerprint = common.assert_stage_fingerprint_fresh(
-            conn, "occurrence",
-            rebuild_hint="scripts/b06_build_occurrence.py を再実行すること。",
-        )
+        occurrence_fingerprint = common.assert_occurrence_fingerprint_fresh(conn)
 
         _assert_polygon_set_matches_registry(polys, conn)
         _assert_watershed_external_key_unique(conn)

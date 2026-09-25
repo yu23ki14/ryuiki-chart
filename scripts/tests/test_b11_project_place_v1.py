@@ -1019,9 +1019,9 @@ def test_build_projections_halts_when_observation_rebuilt_two_hops_away_via_pure
         )
 
 
-def test_build_projections_lineage_check_is_skipped_when_cube_db_missing(tmp_path):
-    """`cube_db` を渡さない（または存在しない）場合、(b) 系譜チェックは
-    黙って省略され、(a) だけで判断する——`watershed_rollup` の SQL 自体は
+def test_build_projections_lineage_check_is_skipped_when_cube_db_not_given(tmp_path):
+    """`cube_db` を渡さない（既定 `None`）場合、(b) 系譜チェックは黙って
+    省略され、(a) だけで判断する——`watershed_rollup` の SQL 自体は
     v2.sqlite を読まない設計を保つ（モジュール docstring 参照）。既存の
     フィクスチャ（系譜無し）は今までどおり動くことの確認を兼ねる。
     """
@@ -1032,3 +1032,19 @@ def test_build_projections_lineage_check_is_skipped_when_cube_db_missing(tmp_pat
     # cube_db を渡さない（既定 None）——例外を投げなければ良い。
     counts = b11.build_projections(registry_db, out_db, **kwargs)
     assert counts == {"watershed_meta": 1, "watershed_rollup": 1}
+
+
+def test_build_projections_raises_when_cube_db_given_but_missing(tmp_path):
+    """`cube_db` に**パスを指定した**のにファイルが実在しない場合は、
+    他の `--*-db` 引数（`_assert_rollup_prerequisites`）と同じ扱いで
+    `MigrationError` になる——`None`（未指定）の場合とは違い、黙って (b) を
+    諦めない（/simplify 指摘: 以前はここも無言でスキップしていたため、
+    `--cube-db` の誤字や環境の取り違えに気づけなかった）。
+    """
+    registry_db = tmp_path / "registry.sqlite"
+    _make_registry_db(registry_db, [_WATERSHED_ROW])
+    out_db = tmp_path / "v1_projection_place.sqlite"
+    kwargs = _rollup_kwargs(tmp_path)
+    missing_cube_db = tmp_path / "does_not_exist.sqlite"
+    with pytest.raises(migrate_common.MigrationError, match=r"does_not_exist\.sqlite.*無い"):
+        b11.build_projections(registry_db, out_db, cube_db=missing_cube_db, **kwargs)

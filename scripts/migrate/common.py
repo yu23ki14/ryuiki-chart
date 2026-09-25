@@ -18,10 +18,11 @@ v1射影）が共有する薄い土台。
   スクリプトと同じ3.43に揃える）。`require_sqlite_version()` を**各スクリプトの
   構築関数の先頭**で呼ぶ（モジュール読み込み時点ではない——
   `require_sqlite_version` の docstring 参照）。
-- 段階間の指紋（`record_stage_fingerprint`/`assert_stage_fingerprint_fresh`。
-  Issue #37 #1）: あるテーブルが「今の上流テーブルから作られた状態」である
-  ことを、次の段が読み込み時に機械で確認する。詳細は両関数の直前の
-  モジュールコメント参照。
+- 段階間の指紋（`record_stage_fingerprint`/`assert_stage_fingerprint_fresh`/
+  `track_reads`/`assert_all_reads_verified`。Issue #37 #1）: あるテーブルが
+  「今の上流テーブルから作られた状態」であることと、「実際に読んだ表を
+  検証し忘れていないか」を、次の段が読み込み時に機械で確認する。詳細は
+  各関数の直前のモジュールコメント参照。
 """
 from __future__ import annotations
 
@@ -364,6 +365,18 @@ def existing_tables(db_path) -> set[str]:
         conn.close()
 
 
+def _table_exists(conn: sqlite3.Connection, table: str, *, schema: str | None = None) -> bool:
+    """`table`（`schema` が None なら `conn` 自身、そうでなければ ATTACH 済みの
+    別名 `schema` 越し）が存在するかどうか。`assert_attached_table_exists`
+    （無ければ即エラーにする版）と `_read_pipeline_fingerprint_row`（無くても
+    エラーにせず `None` を返す版）が共有する（/simplify 指摘: 同型の存在確認が
+    複数箇所に別々にあった）。
+    """
+    master = f"{schema}.sqlite_master" if schema else "sqlite_master"
+    row = conn.execute(f"SELECT 1 FROM {master} WHERE type = 'table' AND name = ?", (table,)).fetchone()
+    return row is not None
+
+
 def assert_attached_table_exists(conn: sqlite3.Connection, alias: str, table: str, *, hint: str) -> None:
     """`ATTACH`（`attach_readonly` 等）した `alias` に `table` が存在することを
     確認する。無いと素の `sqlite3.OperationalError`（no such table）になり原因が
@@ -376,10 +389,7 @@ def assert_attached_table_exists(conn: sqlite3.Connection, alias: str, table: st
     文言が違うため呼び出し側から渡す。`raise_on_group_by_duplicates` の
     `build_message` と同じ、文言を1つのテンプレートに揃えない方針）。
     """
-    row = conn.execute(
-        f"SELECT 1 FROM {alias}.sqlite_master WHERE type = 'table' AND name = ?", (table,)
-    ).fetchone()
-    if row is None:
+    if not _table_exists(conn, table, schema=alias):
         raise MigrationError(f"{alias} に {table} テーブルが無い。{hint}")
 
 
@@ -690,10 +700,19 @@ def compute_table_fingerprint(conn: sqlite3.Connection, table: str, *, schema: s
     hasher = hashlib.sha256()
     n = 0
     for row in conn.execute(f"SELECT {col_list} FROM {qualified}"):
-        for value in row:
-            hasher.update(b"\x00" if value is None else str(value).encode("utf-8", "surrogatepass"))
-            hasher.update(b"\x1f")  # 列区切り（Unit Separator）
-        hasher.update(b"\x1e")  # 行区切り（Record Separator）
+        # 1行分をまとめて1つの bytes にしてから hasher.update() を1回だけ呼ぶ
+        # （/simplify 指摘D: 以前は列ごとに update() を呼んでいた。バイト列・
+        # ハッシュ結果は変えない——列区切り〔Unit Separator〕を各値の後に、
+        # 行区切り〔Record Separator〕を最後に置く並びは今までどおり。
+        # `bytes.join()`（リスト内包表記）で組み立てるのが最速だった——
+        # ジェネレータ式や `bytearray` への逐次 `+=` は Python 側のオーバー
+        # ヘッドで元の列ごと update() より遅くなる実測結果が出たため使わない。
+        # 0列の行（実運用では起きない）は `parts` が空になり `\x1f` を挟む
+        # 相手が無いので分岐する。実測はモジュール docstring「フル走査の
+        # コスト」参照）。
+        parts = [b"\x00" if value is None else str(value).encode("utf-8", "surrogatepass") for value in row]
+        row_bytes = (b"\x1f".join(parts) + b"\x1f\x1e") if parts else b"\x1e"
+        hasher.update(row_bytes)
         n += 1
     return f"sha256:{hasher.hexdigest()}:{n}"
 
@@ -707,48 +726,45 @@ def _schema_is_attached(conn: sqlite3.Connection, schema: str) -> bool:
     return any(row[1] == schema for row in conn.execute("PRAGMA database_list"))
 
 
-def read_recorded_fingerprint(conn: sqlite3.Connection, table: str, *, schema: str | None = None) -> str | None:
-    """`table`（`schema` 越し）が自分自身について最後に記録した指紋を読むだけの
-    安い操作（`table` の生データは一切読まない）。`pipeline_fingerprint`
-    メタ表が無い・`schema` が ATTACH されていない・該当行が無い、のいずれでも
-    `None` を返す（例外を投げない——呼び出し側が「見つからない」を判断材料に
-    する）。
+def _read_pipeline_fingerprint_row(
+    conn: sqlite3.Connection, table: str, *, schema: str | None = None,
+) -> tuple[str, str] | None:
+    """`table` の `pipeline_fingerprint` 行を `(fingerprint, inputs の JSON
+    文字列)` で返す。`schema` が ATTACH されていない・メタ表が無い・該当行が
+    無い、のいずれでも `None`（例外を投げない）。`read_recorded_fingerprint`/
+    `read_recorded_inputs`/`assert_stage_fingerprint_fresh` の (a) が共有する
+    （/simplify 指摘: 「`pipeline_fingerprint` の有無を確かめて1行読む」処理が
+    3箇所に別々にあった）。存在確認は `_table_exists` を再利用する。
     """
     if schema is not None and not _schema_is_attached(conn, schema):
         return None
-    meta_prefix = f"{schema}." if schema else ""
-    master = f"{schema}.sqlite_master" if schema else "sqlite_master"
-    has_meta = conn.execute(
-        f"SELECT 1 FROM {master} WHERE type = 'table' AND name = ?", (PIPELINE_FINGERPRINT_TABLE,)
-    ).fetchone()
-    if has_meta is None:
+    if not _table_exists(conn, PIPELINE_FINGERPRINT_TABLE, schema=schema):
         return None
+    meta_prefix = f"{schema}." if schema else ""
     row = conn.execute(
-        f"SELECT fingerprint FROM {meta_prefix}{PIPELINE_FINGERPRINT_TABLE} WHERE table_name = ?", (table,)
+        f"SELECT fingerprint, inputs FROM {meta_prefix}{PIPELINE_FINGERPRINT_TABLE} WHERE table_name = ?", (table,)
     ).fetchone()
+    return row if row else None
+
+
+def read_recorded_fingerprint(conn: sqlite3.Connection, table: str, *, schema: str | None = None) -> str | None:
+    """`table`（`schema` 越し）が自分自身について最後に記録した指紋を読むだけの
+    安い操作（`table` の生データは一切読まない）。見つからなければ `None`
+    （例外を投げない——呼び出し側が「見つからない」を判断材料にする）。
+    """
+    row = _read_pipeline_fingerprint_row(conn, table, schema=schema)
     return row[0] if row else None
 
 
 def read_recorded_inputs(conn: sqlite3.Connection, table: str, *, schema: str | None = None) -> dict[str, str]:
     """`table` が自分自身について記録した系譜（`{上流テーブル名: 消費時点の
-    上流指紋}`）を読む。行・列が無ければ `{}`（呼び出し側の呼び出し順次第
-    では「まだ何も記録されていない」ことがあるため、例外にはしない）。
+    上流指紋}`）を読む。見つからなければ `{}`（呼び出し側の呼び出し順次第では
+    「まだ何も記録されていない」ことがあるため、例外にはしない）。
     """
-    if schema is not None and not _schema_is_attached(conn, schema):
+    row = _read_pipeline_fingerprint_row(conn, table, schema=schema)
+    if row is None or not row[1]:
         return {}
-    meta_prefix = f"{schema}." if schema else ""
-    master = f"{schema}.sqlite_master" if schema else "sqlite_master"
-    has_meta = conn.execute(
-        f"SELECT 1 FROM {master} WHERE type = 'table' AND name = ?", (PIPELINE_FINGERPRINT_TABLE,)
-    ).fetchone()
-    if has_meta is None:
-        return {}
-    row = conn.execute(
-        f"SELECT inputs FROM {meta_prefix}{PIPELINE_FINGERPRINT_TABLE} WHERE table_name = ?", (table,)
-    ).fetchone()
-    if row is None or not row[0]:
-        return {}
-    return json.loads(row[0])
+    return json.loads(row[1])
 
 
 def record_stage_fingerprint(
@@ -783,6 +799,24 @@ def record_stage_fingerprint(
         (table, fingerprint, spec_version, inputs_json),
     )
     return fingerprint
+
+
+def record_stage_fingerprints(
+    conn: sqlite3.Connection, tables, *,
+    spec_version: str = SPEC_VERSION, lineage: dict[str, dict[str, str]] | None = None,
+) -> dict[str, str]:
+    """`tables`（テーブル名のイテラブル）それぞれについて `record_stage_fingerprint`
+    を呼ぶバッチ版（/simplify 指摘: 「作った表を1つずつ回して記録する」ループが
+    `scripts/b05_project_v1.py` に1つ・`scripts/b08_project_occurrence_v1.py`
+    に3つ、別々にあった）。`lineage`（`{表名: inputs}`）を渡すと、対応する表は
+    その `inputs` で記録する——`lineage` に無い（または渡さなかった）表は
+    `inputs=None`（系譜無し）。戻り値は `{表名: 記録した指紋}`。
+    """
+    lineage = lineage or {}
+    return {
+        table: record_stage_fingerprint(conn, table, spec_version=spec_version, inputs=lineage.get(table))
+        for table in tables
+    }
 
 
 def assert_stage_fingerprint_fresh(
@@ -831,22 +865,14 @@ def assert_stage_fingerprint_fresh(
       または系譜に記録した消費時点の値と食い違う（その上流が作り直された
       後、その下流の再構築が行われていない疑いがある）。
     """
-    meta_prefix = f"{schema}." if schema else ""
-    master = f"{schema}.sqlite_master" if schema else "sqlite_master"
     qualified = f"{schema}.{table}" if schema else table
-    has_meta = conn.execute(
-        f"SELECT 1 FROM {master} WHERE type = 'table' AND name = ?", (PIPELINE_FINGERPRINT_TABLE,)
-    ).fetchone()
-    if has_meta is None:
-        raise MigrationError(
-            f"{qualified} に指紋の記録（{PIPELINE_FINGERPRINT_TABLE}）が無い"
-            "（この機構が入る前に作られた古い出力の可能性がある）。" + rebuild_hint
-        )
-    row = conn.execute(
-        f"SELECT fingerprint, inputs FROM {meta_prefix}{PIPELINE_FINGERPRINT_TABLE} WHERE table_name = ?", (table,)
-    ).fetchone()
+    row = _read_pipeline_fingerprint_row(conn, table, schema=schema)
     if row is None:
-        raise MigrationError(f"{qualified} の指紋が記録されていない。" + rebuild_hint)
+        raise MigrationError(
+            f"{qualified} の指紋が記録されていない"
+            f"（{PIPELINE_FINGERPRINT_TABLE} が無い、この機構が入る前に作られた古い出力、"
+            "または ATTACH されていない可能性がある）。" + rebuild_hint
+        )
     recorded, inputs_json = row
     current = compute_table_fingerprint(conn, table, schema=schema)
     if current != recorded:
@@ -905,3 +931,134 @@ def _assert_lineage_fresh(
             _assert_lineage_fresh(
                 conn, qualified_upstream, upstream_inputs, upstream_schema, upstream_schemas, rebuild_hint, visited,
             )
+
+
+# ---------------------------------------------------------------------------
+# occurrence の縦線（b07/b08/b09）が共有する指紋チェック（/simplify 指摘:
+# b07・b09 が一字一句同じ `assert_stage_fingerprint_fresh(conn, "occurrence",
+# ...)` 呼び出しを別々に持っていた）。`occurrence` は基底テーブル（系譜を
+# 持たない）なので `upstream_schemas` は渡さない。
+# ---------------------------------------------------------------------------
+
+def assert_occurrence_fingerprint_fresh(conn: sqlite3.Connection, *, schema: str | None = None) -> str:
+    """`occurrence`（`schema` が None なら `conn` 自身、b08 のように ATTACH
+    済みの別名越しなら `schema="cube"` 等）の (a) 自己一致を確認し、現在の
+    指紋を返す。`b06_build_occurrence.py` を再実行するよう案内する。
+    """
+    return assert_stage_fingerprint_fresh(
+        conn, "occurrence", schema=schema,
+        rebuild_hint="scripts/b06_build_occurrence.py を再実行すること。",
+    )
+
+
+# ---------------------------------------------------------------------------
+# 読み取りの機械監査（Issue #37 #1、Tier 1。/simplify 指摘A）: 段階間の
+# 指紋（上）は「検証した表が新鮮か」を確認するが、「その段が実際に読んだ
+# 表**全部**を検証したか」は、これまで人が SQL を目で追って `_assert_
+# prerequisites`/`assert_stage_fingerprint_fresh` の呼び出しを書き足す
+# 前提に頼っていた。b05 が `cube.observation` を検証せずに読んでいた
+# コードレビュー指摘（Issue #37、Turn3）は、まさにこの「新しい JOIN を
+# 足したのに検証を足し忘れる」形の見落としだった。`track_reads`/
+# `assert_all_reads_verified` はこれを機械的に検出する——ATTACH 先の
+# 実表を実際に SELECT した瞬間を `sqlite3.Connection.set_authorizer` で
+# 捕まえ、`declared`（その段が検証済みとして宣言する表名の集合）に
+# 無ければ止める。
+#
+# **粒度は表単位ではなく段単位**（`declared` はその段が書く出力全体で
+# 共有する1つの集合）。出力テーブルごとに「どの入力を読んだか」を
+# 正確に対応づけるのは、複数の出力を1つの接続・1回の走査で作る
+# 現状の構造（例: b05 の13テーブル、b08 の10テーブル）とは相性が悪く、
+# 非現実的（per-table 精度が要るなら、まず出力ごとに接続を分けるという
+# 大きな構造変更が要る）。段単位の粗さで十分——「検証していない表を
+# 読んでいる」という見落としそのものは、どの出力テーブルの分か特定
+# できなくても検出できれば実害を防げる。per-table の自動導出（Tier 2）は
+# 別 Issue に切り出す（`docs/plans/PHASE_B_FACT_SLICE.md` 該当項目参照）。
+#
+# **対象外の自動判定**: `schema` が `main`（自分自身の出力ファイル。
+# 一時テーブルも含む）の読み取りは対象外。ATTACH 先のスキーマは、その
+# ファイルが `pipeline_fingerprint` テーブルを持つ（=この指紋機構の
+# 対象）ときだけ検査する——原本（`ryuiki.sqlite`/`cells.sqlite`）と
+# `registry.sqlite`（`registry_build` という別の一括指紋機構を持つ。
+# `scripts/r01_build_registry.py`）はどちらも `pipeline_fingerprint` を
+# 持たないため、ハードコードした除外リストを書かなくても自動的に
+# 対象外になる。
+# ---------------------------------------------------------------------------
+
+@contextlib.contextmanager
+def track_reads(conn: sqlite3.Connection):
+    """`with track_reads(conn) as reads:` の間に `conn` がコンパイルする
+    SQL 文が実際に読む `(schema, table)` の組を `reads`（集合）に集める。
+
+    `sqlite3.Connection.set_authorizer` の `SQLITE_READ` イベントを使う——
+    文の**コンパイル時**に発火する（実行時に行ごとに発火するのではない。
+    同じ文を何度実行しても1回しか記録されない代わり、`EXPLAIN` のように
+    実行されない文でも記録されうる。ここでは「build 関数の本体が読みうる
+    表の集合」を知りたいだけなので十分）。`CREATE TEMP TABLE x AS SELECT
+    ... FROM cube.observation` のように一時テーブルを作る文も、その
+    `SELECT` が参照する実表への読み取りとして記録される——一時テーブルを
+    経由して間接的に読んだ実表も、依存グラフを個別に手で追わずに拾える
+    （この機構の要）。
+
+    `with` を抜けると authorizer は `None`（既定）に戻す。ネストして
+    呼ばない前提（authorizer は接続に1つしか設定できない）。
+    """
+    reads: set[tuple[str, str]] = set()
+
+    def authorizer(action, arg1, arg2, db_name, _trigger_or_view):
+        if action == sqlite3.SQLITE_READ:
+            reads.add((db_name or "main", arg1))
+        return sqlite3.SQLITE_OK
+
+    conn.set_authorizer(authorizer)
+    try:
+        yield reads
+    finally:
+        conn.set_authorizer(None)
+
+
+_SQLITE_CATALOG_TABLES = frozenset({"sqlite_master", "sqlite_temp_master", "sqlite_schema"})
+
+
+def assert_all_reads_verified(
+    conn: sqlite3.Connection, reads: set[tuple[str, str]], declared: set[str], *, context: str,
+) -> None:
+    """`track_reads` が集めた `reads` のうち、`main`（自分自身の出力
+    ファイル）以外で、かつ ATTACH 先が `pipeline_fingerprint` を持つ
+    （=この指紋機構の対象）表が、`declared`（その段が (a) を検証済みとして
+    渡す表名の集合。`pipeline_fingerprint` 自身は除く）に含まれることを
+    確認する。含まれない表があれば、検証を足し忘れている疑いとして
+    `MigrationError` で止める（`context` は診断メッセージに出す段の名前、
+    例 `"b05_project_v1.build_projections"`）。
+
+    `sqlite_master` 等の SQLite カタログ表（`_SQLITE_CATALOG_TABLES`）は
+    常に対象外——`_table_exists`/`assert_stage_fingerprint_fresh` 自身が
+    テーブルの有無を確かめるのに読む（検証対象のデータそのものではない。
+    `track_reads` は「検証中に発生した読み取り」も一緒に拾ってしまうため、
+    ここで弾く）。
+
+    **呼び出し順の注意**: `with track_reads(conn) as reads:` を抜ける前に
+    この関数を呼ぶ場合、authorizer はまだ有効なので、この関数自身の
+    `_table_exists` 呼び出しが新たな `SQLITE_READ` を発生させ、`reads`
+    （元の集合そのもの）に書き足す——それを同じ集合に対して走査すると
+    `RuntimeError: Set changed size during iteration` になる（実測で踏んだ）。
+    そのため最初に `reads` をコピーしてから走査する。
+    """
+    reads = set(reads)
+    undeclared = sorted(
+        (schema, table)
+        for schema, table in reads
+        if schema != "main"
+        and table != PIPELINE_FINGERPRINT_TABLE
+        and table not in _SQLITE_CATALOG_TABLES
+        and _table_exists(conn, PIPELINE_FINGERPRINT_TABLE, schema=schema)
+        and table not in declared
+    )
+    if undeclared:
+        names = "、".join(f"{schema}.{table}" for schema, table in undeclared)
+        raise MigrationError(
+            f"{context}: {names} を読んでいるが、(a) の検証済み表として宣言されて"
+            "いない（新しい JOIN・SELECT を足したのに、対応する検証か `declared` への"
+            "追加を忘れた可能性がある）。assert_stage_fingerprint_fresh 等で検証してから"
+            "declared に加えるか、意図的に対象外にするならその理由をコードのコメントに"
+            "書いた上で declared に加えること。"
+        )

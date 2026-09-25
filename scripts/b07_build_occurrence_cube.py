@@ -499,10 +499,7 @@ def build_cube(
     # 段階間の指紋（Issue #37 #1）: b06 が最後に記録した occurrence の指紋と
     # 今の occurrence の内容が一致することを、集計を始める前に確認する。
     # 戻り値（occurrence の現在の指紋）は occurrence_agg の系譜に使う。
-    occurrence_fingerprint = common.assert_stage_fingerprint_fresh(
-        conn, "occurrence",
-        rebuild_hint="scripts/b06_build_occurrence.py を再実行すること。",
-    )
+    occurrence_fingerprint = common.assert_occurrence_fingerprint_fresh(conn)
     declarations = load_and_validate_cube_declarations(declarations_yaml)
     leaf_expected = declarations[_LEAF_DECLARATION_NAME]["expected_row_count"]
     _assert_t1_invariant(conn)

@@ -377,7 +377,7 @@ def test_assert_stage_fingerprint_fresh_raises_when_no_meta_table_exists(tmp_pat
     db_path = tmp_path / "t.sqlite"
     conn = _make_t_db(db_path)
     conn.commit()
-    with pytest.raises(common.MigrationError, match="指紋の記録.*無い"):
+    with pytest.raises(common.MigrationError, match="指紋が記録されていない"):
         common.assert_stage_fingerprint_fresh(conn, "t", rebuild_hint="scripts/b03_build_observation.py を再実行すること。")
 
 
@@ -619,3 +619,116 @@ def test_read_recorded_inputs_round_trips(tmp_path):
     conn, up_fp = _make_upstream_and_downstream(tmp_path)
     assert common.read_recorded_inputs(conn, "down") == {"up": up_fp}
     conn.close()
+
+
+# ---------------------------------------------------------------------------
+# 読み取りの機械監査（Issue #37 #1、Tier 1。/simplify 指摘A）: `track_reads`/
+# `assert_all_reads_verified`。b05 が `cube.observation` を検証せずに読んで
+# いたコードレビュー指摘（新しい JOIN を足したのに検証を足し忘れる）を、
+# 機械的に検出できることを確かめる。
+# ---------------------------------------------------------------------------
+
+def _make_tracked_db_with_two_tables(path):
+    """`pipeline_fingerprint` を持つ（=指紋機構の対象）ファイルに、`t`・`u`
+    の2表を作る。`u` だけ指紋を記録する（`t` は「検証していない表」役）。
+    """
+    conn = sqlite3.connect(f"file:{path}", uri=True)
+    conn.execute("CREATE TABLE t (a INTEGER)")
+    conn.execute("INSERT INTO t VALUES (1)")
+    conn.execute("CREATE TABLE u (b INTEGER)")
+    conn.execute("INSERT INTO u VALUES (2)")
+    common.record_stage_fingerprint(conn, "u")
+    conn.commit()
+    return conn
+
+
+def test_track_reads_collects_attached_table_reads(tmp_path):
+    """ATTACH 済みの別名越しに読んだ実表が `(schema, table)` で集まる。
+    一時テーブルを介した間接的な読み取り（`CREATE TEMP TABLE ... AS SELECT
+    ... FROM other.t`）も、その元になった実表として拾える（この機構の要）。
+    """
+    db_path = tmp_path / "other.sqlite"
+    _make_tracked_db_with_two_tables(db_path).close()
+
+    work = sqlite3.connect(":memory:", uri=True)
+    try:
+        common.attach_readonly(work, db_path, "other")
+        with common.track_reads(work) as reads:
+            work.execute("CREATE TEMP TABLE snapshot AS SELECT * FROM other.t")
+        assert ("other", "t") in reads
+    finally:
+        work.close()
+
+
+def test_assert_all_reads_verified_passes_when_all_reads_declared(tmp_path):
+    db_path = tmp_path / "other.sqlite"
+    _make_tracked_db_with_two_tables(db_path).close()
+
+    work = sqlite3.connect(":memory:", uri=True)
+    try:
+        common.attach_readonly(work, db_path, "other")
+        with common.track_reads(work) as reads:
+            work.execute("SELECT * FROM other.u").fetchall()
+        common.assert_all_reads_verified(work, reads, {"u"}, context="test")
+    finally:
+        work.close()
+
+
+def test_assert_all_reads_verified_raises_on_undeclared_join(tmp_path):
+    """`u` だけを検証・宣言したのに、SQL が `t` も JOIN で読んでいれば
+    `MigrationError` で止まる——「新しい JOIN を足したのに検証を足し忘れる」
+    見落とし（b05 が `cube.observation` を検証せずに読んでいたのと同じ形）を
+    機械的に検出できることの確認（/simplify 指摘Aで要求されたテスト）。
+    """
+    db_path = tmp_path / "other.sqlite"
+    _make_tracked_db_with_two_tables(db_path).close()
+
+    work = sqlite3.connect(":memory:", uri=True)
+    try:
+        common.attach_readonly(work, db_path, "other")
+        with common.track_reads(work) as reads:
+            # u だけ検証したつもりが、SQL は t も JOIN している
+            # （検証を足し忘れた新しい JOIN の再現）。
+            work.execute("SELECT u.b FROM other.u JOIN other.t ON t.a = u.b").fetchall()
+        with pytest.raises(common.MigrationError, match=r"other\.t"):
+            common.assert_all_reads_verified(work, reads, {"u"}, context="test_stage")
+    finally:
+        work.close()
+
+
+def test_assert_all_reads_verified_ignores_files_without_pipeline_fingerprint(tmp_path):
+    """`pipeline_fingerprint` を持たないファイル（原本・registry.sqlite 相当）
+    からの読み取りは、`declared` に無くても自動的に対象外になる——ハード
+    コードした除外リストを個別に持たなくてよい設計の確認。
+    """
+    db_path = tmp_path / "raw_source.sqlite"
+    conn = sqlite3.connect(f"file:{db_path}", uri=True)
+    conn.execute("CREATE TABLE raw (a INTEGER)")
+    conn.execute("INSERT INTO raw VALUES (1)")
+    conn.commit()
+    conn.close()
+
+    work = sqlite3.connect(":memory:", uri=True)
+    try:
+        common.attach_readonly(work, db_path, "src")
+        with common.track_reads(work) as reads:
+            work.execute("SELECT * FROM src.raw").fetchall()
+        # declared が空でも、src に pipeline_fingerprint が無いので落ちない。
+        common.assert_all_reads_verified(work, reads, set(), context="test")
+    finally:
+        work.close()
+
+
+def test_assert_all_reads_verified_ignores_own_main_schema(tmp_path):
+    """自分自身の出力ファイル（`main` スキーマ）への読み取りは対象外
+    ——一時テーブルや、書いた直後に読み返す行は検証の対象ではない。
+    """
+    work = sqlite3.connect(":memory:", uri=True)
+    try:
+        work.execute("CREATE TABLE own (a INTEGER)")
+        work.execute("INSERT INTO own VALUES (1)")
+        with common.track_reads(work) as reads:
+            work.execute("SELECT * FROM own").fetchall()
+        common.assert_all_reads_verified(work, reads, set(), context="test")
+    finally:
+        work.close()
