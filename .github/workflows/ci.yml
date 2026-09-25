@@ -2,7 +2,8 @@ name: CI
 
 # docs/plans/PHASE_B_INTAKE.md #7。原本 3 ファイル（ryuiki/cells/derived, data/db/ に置く。
 # .gitignore で除外されているため CI には無い）を必要とせず、`registry/` 配下の手書き
-# ファイルとリポジトリのコードだけで完結する3ジョブ。
+# ファイルとリポジトリのコードだけで完結する3ジョブ。Issue #29「縮小サンプル＋実行証明」で
+# `sample-gate`・`full-gate-proof-check` の2ジョブを追加した（後述）。
 #
 # - registry: `scripts/r01_build_registry.py --files-only` で作った registry.sqlite から
 #   generated.ts / generated-client.ts を再生成し、コミット済みの内容と一致するかを
@@ -318,3 +319,150 @@ jobs:
           exclusions = ta.load_assessment_scope_exclusions()
           print(f"OK: {ta.ASSESSMENT_SCOPE_EXCLUSIONS_YAML}（{len(exclusions)}件の除外）")
           PY
+
+  sample-gate:
+    name: sample-gate (v1+v2 pipeline reconciliation on the reduced sample)
+    # Issue #29「縮小サンプル＋実行証明」A-4。data/sample/（コミット済みのテキスト、
+    # 原本ではない）を使い捨ての checkout の中で正規のパス（data/db/・data/processed/）に
+    # 展開し、v1（build-derived.mjs・build-geo.mjs・build-biota.mjs。build-water-geo.mjs は
+    # サンプルに無い入力を要求するため対象外）と v2（r01、b03〜b12）の両方を回して、
+    # 33表を scripts/b02_run_all_gates.py で b02 と同じように突き合わせる。
+    #
+    # これが保証すること: 「v1 と一致しているか」を毎回のCIで確かめる（サンプル規模で）。
+    # これが保証しないこと: サンプルに無い行・癖・出典への挙動。サンプルの件数の宣言
+    # （data/sample/declaration_counts.yaml）が原本の件数を語ること。HEAD の全量で v1 と
+    # v2 が一致すること（`full-gate-proof-check` が別に保証しようとするのは「証明が今の
+    # コードに対応しているか」までで、真偽そのものは確かめられない）。
+    # 詳細は docs/plans/PHASE_B_RECONCILIATION.md §5「保証すること・しないこと」参照。
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RYUIKI_REGISTRY_DB: ${{ github.workspace }}/data/db/registry.sqlite
+      SCRATCH: /tmp/sample-gate-reports
+      # 以前は下の "v2 パイプラインを構築" ステップの5つの --count-overlay に
+      # このパスを直書きしていた（code-review 指摘: 同じ文字列の繰り返し）。
+      COUNT_OVERLAY: data/sample/declaration_counts.yaml
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: サンプルを正規のパスへ展開（data/db/*.sqlite・data/processed/*）
+        # GITHUB_ACTIONS 環境変数（値 'true'）が既に立っているので、CI ではこれだけで
+        # 動く（--i-am-in-a-throwaway-clone は手元の一時 clone で試すときに使う）。
+        run: python3 scripts/s02_materialize_sample.py
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install web deps
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+
+      - name: better-sqlite3 のネイティブバインディングをビルド
+        # pnpm 10 は既定でサードパーティの postinstall スクリプトを実行しない
+        # （`Ignored build scripts` 警告）。build-derived.mjs 等が
+        # `require("better-sqlite3")` するのに必要なので、明示的にビルドする。
+        working-directory: web
+        run: pnpm rebuild better-sqlite3
+
+      - name: v1 を構築（build-derived / build-geo / build-biota）
+        working-directory: web
+        run: |
+          node scripts/build-derived.mjs
+          node scripts/build-geo.mjs
+          node scripts/build-biota.mjs
+
+      - name: v2 レジストリを構築（r01。--files-only ではないフルビルド）
+        run: python3 scripts/r01_build_registry.py
+
+      - name: v2 パイプラインを構築（b03〜b12。--count-overlay でサンプルの件数を使う）
+        run: |
+          mkdir -p "$SCRATCH"
+          python3 scripts/b03_build_observation.py \
+            --count-overlay "$COUNT_OVERLAY" \
+            --report "$SCRATCH/phase_b_fact_slice.md"
+          python3 scripts/b04_build_cube.py
+          python3 scripts/b05_project_v1.py --out data/db/v1_projection.sqlite
+          python3 scripts/b06_build_occurrence.py \
+            --count-overlay "$COUNT_OVERLAY" \
+            --report "$SCRATCH/phase_b_occurrence.md"
+          python3 scripts/b09_build_occurrence_place.py \
+            --count-overlay "$COUNT_OVERLAY"
+          python3 scripts/b07_build_occurrence_cube.py \
+            --out data/db/v2.sqlite \
+            --count-overlay "$COUNT_OVERLAY"
+          python3 scripts/b08_project_occurrence_v1.py \
+            --cube-db data/db/v2.sqlite \
+            --out data/db/v1_projection_occurrence.sqlite \
+            --count-overlay "$COUNT_OVERLAY" \
+            --ias-report "$SCRATCH/phase_b_taxon_assessment.md"
+          python3 scripts/b10_project_documents_v1.py
+          python3 scripts/b11_project_place_v1.py --out data/db/v1_projection_place.sqlite
+          python3 scripts/b12_project_taxon_v1.py --out data/db/v1_projection_taxon.sqlite
+
+      - name: サンプルの成果物を作り直し、コミット済みのものと一致することを確認
+        # scripts/s03_verify_sample_artifacts.py は原本を一切開かない（材料化済みの
+        # data/db/ryuiki.sqlite＝サンプルそのものと、コミット済みの
+        # reports/derived_baseline.json だけを読む）。v1 のスクリプトを触ると
+        # derived_baseline.json/.md の差分として、v2 がずれると次のゲートの不一致として見える。
+        run: |
+          python3 scripts/s03_verify_sample_artifacts.py
+          git diff --exit-code \
+            data/sample/declaration_counts.yaml data/sample/derived_keys.yaml \
+            data/sample/derived_baseline.json data/sample/derived_baseline.md
+
+      - name: 33表の統合ゲート（宣言済み差分20件、一致+宣言済み差分=33、不一致0）
+        # --expected-diffs は正本（scripts/reconcile/expected_diffs.yaml）をそのまま使う。
+        # サンプル専用の免除ファイルは持たない（org_norm/species2 の Sirosporium
+        # タイブレークもサンプル規模で再現することを確認済み。属の投票元3行を
+        # 漏らさず閉包に入れれば、正本の20キー全部がサンプルでも適用される）。
+        run: |
+          python3 scripts/b02_run_all_gates.py \
+            --baseline-json data/sample/derived_baseline.json \
+            --expected-diffs scripts/reconcile/expected_diffs.yaml \
+            --out-md "$SCRATCH/derived_reconciliation_all.md" \
+            | tee "$SCRATCH/gate_summary.txt"
+
+      - name: 空振りしていないことを数値で確かめる（一致+宣言済み差分=33、不一致=0、対象外=0、適用した宣言=20）
+        # scripts/s05_check_sample_gate_summary.py を呼ぶだけ（ロジックは
+        # scripts/tests/test_s05_check_sample_gate_summary.py で検証済み。
+        # ワークフローに直接埋め込んだ Python はテストされないため——レビュー指摘）。
+        run: python3 scripts/s05_check_sample_gate_summary.py --summary-file "$SCRATCH/gate_summary.txt"
+
+  full-gate-proof-check:
+    name: full-gate-proof-check (reports/full_gate_proof.json is current)
+    # Issue #29「縮小サンプル＋実行証明」B。原本のある手元で回した
+    # scripts/b00_run_full_gate.py の証明（reports/full_gate_proof.json、コミット済み）が
+    # 「今の HEAD のパイプラインコード」に対応しているかを確かめる。**証明が本物である
+    # ことまでは確かめられない**（手で書ける値でもある）——確かめられるのは「パイプラインの
+    # パスの tree/blob ハッシュが証明に書かれた値と一致するか」「data/sample/manifest.json
+    # の原本 sha256 が証明の原本 sha256 と一致するか（サンプルと全量の証明が同じ
+    # スナップショットに由来すること）」の2点だけ。原本は要らない（証明の JSON と
+    # コミット済みのコードだけで完結する）。
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 証明ファイルがコミットされていることを確認
+        run: test -f reports/full_gate_proof.json
+
+      - name: パイプラインのパスの tree/blob ハッシュを HEAD で計算し直し、証明と突き合わせる
+        # scripts/s04_check_full_gate_proof.py を呼ぶだけ（ロジックは
+        # scripts/tests/test_s04_check_full_gate_proof.py で検証済み。
+        # ワークフローに直接埋め込んだ Python はテストされないため——レビュー指摘。
+        # 実際に、原本キーの付け方が manifest.json と証明で食い違ったまま
+        # KeyError で落ちる不具合が、埋め込みコードのまま気づかれずに残っていた）。
+        run: python3 scripts/s04_check_full_gate_proof.py

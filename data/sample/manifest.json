@@ -1,0 +1,29 @@
+{
+  "generated_at": "2026-09-25T14:18:00+00:00",
+  "generated_by": "scripts/s01_build_sample.py",
+  "source_files": {
+    "data/db/ryuiki.sqlite": "554b41a03dd5ca7753aaf813691a9008c9c5c06de3d61262cbca0095399039d4",
+    "data/db/cells.sqlite": "0668ae12ee127b3638cbdf52a75d6ba7dd96252e04dd928242224e704fe646c5",
+    "data/processed/nlni_w12_watersheds.geojson": "0fdb4360f1a1d0f8473a0d5b9b9a16f1cc42420312f654781a5dfd66b0aa56f7",
+    "data/processed/nlni_w12_watersheds.jsonl": "901924abd35592a6a1a570864ed6b1843755070490ea39cc16f6a3114a5c492d",
+    "data/processed/nlni_l03b_landuse_by_watershed.csv": "ec71d28f382785af6ef7ed588350f67537f96d356d1d73c541522a74421cb644",
+    "data/processed/moe_ias_list.csv": "54a3261737bc72b84910d75d78a7da7beee067c5b78581c9b2522627b7bffb41",
+    "data/processed/taxon_crosswalk.csv": "cde56ea81743f7790a04ac9c7e5fd9dc47699edd56c8c9fcfe70c3eea6a74e52"
+  },
+  "row_counts": {
+    "cells.cells": 286,
+    "cells.documents": 98,
+    "cells.notes": 207,
+    "cells.vocab_areas": 408,
+    "cells.vocab_eras": 143,
+    "cells.vocab_indicators": 236,
+    "cells.vocab_units": 124,
+    "measurements": 39434,
+    "organism_records": 2519,
+    "quality_transitions": 3372,
+    "redlist_assessments": 2884,
+    "sensor_timeseries": 6770,
+    "sites": 352,
+    "taxa": 8585
+  }
+}

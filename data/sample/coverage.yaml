@@ -1,0 +1,419 @@
+# 縮小サンプル（Issue #29「縮小サンプル＋実行証明」A-1）の選択条件の宣言。
+#
+# 何を含めるかはここ（宣言）、どう閉包を取るかはコード（scripts/s01_build_sample.py）が持つ。
+# scripts/s01_build_sample.py はこのファイルを選択条件として使い、
+# scripts/tests/test_sample_coverage.py は検証として使う（各 predicate が
+# 材料化したサンプルで min_rows 以上あること）。同じ宣言から出すので
+# 「入れたつもりが入っていない」が起きない。
+#
+# 対象は v1（web/scripts/build-derived.mjs・build-geo.mjs・build-biota.mjs）と
+# v2（scripts/r01_build_registry.py・scripts/b03〜b12_*.py）が実際に読む表だけに
+# 絞ってある（`grep -oE '\br\.[a-z_]+|\bc\.[a-z_]+' web/scripts/build-{derived,geo,biota}.mjs`
+# で実測: r.measurements/r.sensor_timeseries/r.organism_records/r.sites/r.taxa/
+# r.redlist_assessments/r.quality_transitions/c.cells/c.documents/c.notes の10表）。
+# `data/db/ryuiki.sqlite` の他の19表（decisions・event_observers・events・
+# instruments・interventions・mammal_mesh・observers・protected_areas・
+# protocols・river_segments・source_registry・vegetation_polygons・
+# water_facility・water_flow_edge・water_source・water_source_doc・
+# water_utility・water_zone・water_zone_assignment・water_zone_source_share・
+# wildlife_sightings）は Tier1 API 等 v1/v2 Phase B ゲートの対象外の画面が
+# 使うもので、このゲートの対象（33表の突合）には出てこないためサンプルに
+# 含めない（スコープの意図的な絞り込み。b00_run_full_gate.py が確認する
+# パイプラインのパスにもこれらのテーブルへの依存は無い）。
+#
+# 決定論: 述語＋`ORDER BY rowid`＋固定の上限（`limit`）で選ぶ。乱数は使わない。
+# `limit` を省略した predicate は `default_limit` を使う。`full_closures`/
+# `wholesale_*` に上限は無い（全部入れる）。
+
+version: 1
+default_limit: 20
+
+# ---------------------------------------------------------------------------
+# narrowed テーブル（measurements / sensor_timeseries / organism_records）の
+# 選択条件。`table` + `where`（SQL の WHERE 句、ryuiki.sqlite に対して評価）+
+# `limit`（`ORDER BY rowid LIMIT` の上限）+ `min_rows`（材料化後のサンプルで
+# この predicate の where に一致する行がこれ以上あることをテストで確認する）。
+# ---------------------------------------------------------------------------
+predicates:
+  # --- 定量下限・検出限界の表記（scripts/migrate/censoring.py の全分岐） ---
+  - name: censoring_below_lod_ascii
+    table: measurements
+    where: "value_raw LIKE '<%'"
+    limit: 20
+    min_rows: 20
+  - name: censoring_below_lod_japanese
+    table: measurements
+    where: "value_raw LIKE '%未満'"
+    limit: 20
+    min_rows: 12  # 全量でも12行しか無い（宣言済み差分18キーの由来）。closures.nakatsugawa_ss で全部入る。
+  - name: censoring_not_detected
+    table: measurements
+    where: "value_raw = 'ND'"
+    limit: 20
+    min_rows: 20
+  - name: censoring_above_lod
+    table: measurements
+    where: "value_raw LIKE '>%'"
+    limit: 20
+    min_rows: 20
+
+  # --- 厚木の4桁の measured_on（scripts/migrate/period_exceptions.yaml） ---
+  - name: atsugi_four_digit_measured_on
+    table: measurements
+    where: "source_id = 'atsugi_river_water_quality' AND length(measured_on) = 4"
+    limit: 20
+    min_rows: 20
+
+  # --- 負の値の変数（地下水位・気温） ---
+  - name: negative_value_measurements
+    table: measurements
+    where: "value < 0"
+    limit: 15
+    min_rows: 15
+
+  # --- measurements の source_id 網羅（jiban_chinka/atsugi は上・下の closures/
+  #     predicates で既に入る。残り2つ + NULL を明示的に拾う） ---
+  - name: measurements_source_env_kousui_sample
+    table: measurements
+    where: "source_id = 'env_kousui_sample_kanagawa'"
+    limit: 10
+    min_rows: 10
+  - name: measurements_source_env_kousui_annual
+    table: measurements
+    where: "source_id = 'env_kousui_annual_kanagawa'"
+    limit: 10
+    min_rows: 10
+  - name: measurements_source_null
+    table: measurements
+    where: "source_id IS NULL"
+    limit: 10
+    min_rows: 10
+
+  # --- sensor_timeseries: 出典ごとに1地点の丸1か月分（時間値は約720〜3,700行
+  #     ＝複数 datastream 分、日値は約450〜550行、月値は約1年分）を入れる。
+  #     rowid が地点内で時系列順（実測で確認済み）なので、site_id を固定して
+  #     `ORDER BY rowid LIMIT n` で決定論的に「最初の約1か月分」が選べる。
+  #     これにより sensor_daily/rain_daily/sensor_hour_month（時刻×月の
+  #     ヒートマップ）の集計列（n）が2以上になる（1件をそのまま写すだけの
+  #     空振りを防ぐ。coverage.yaml の代わりに scripts/tests/
+  #     test_sample_aggregation_is_not_degenerate.py が実測で確認する）。
+  #
+  #     `+09:00` 付き時刻ラベルの3出典（phenomenon_time が25桁）は
+  #     sagamihara_taiki_hourly/soramame_hourly_kanagawa/synthetic_sensor。
+  - name: sensor_timezone_sagamihara
+    # site 'sagamihara_taiki_stations__sagamihara_101' の OX/RAIN 2系列、
+    # 2015-04-01始まりの約31日分（24h×2系列×31日=1,488行）。RAIN があることで
+    # rain_daily（v1: `datastream = 'RAIN'` でしか埋まらない）が空振りしない。
+    table: sensor_timeseries
+    where: "site_id = 'sagamihara_taiki_stations__sagamihara_101'"
+    limit: 1500
+    min_rows: 1500
+  - name: sensor_timezone_soramame
+    # site 'soramame_stations_kanagawa__soramame_14206010' の5系列
+    # （NO2/Ox/PM2.5/SO2/SPM）、2025-08-01始まりの約31日分。
+    table: sensor_timeseries
+    where: "site_id = 'soramame_stations_kanagawa__soramame_14206010'"
+    limit: 3700
+    min_rows: 3700
+  - name: sensor_timezone_synthetic
+    # site 'env_kousui_stations_kanagawa__kousui_1410170'（6時間おき）の
+    # 約1か月分。
+    table: sensor_timeseries
+    where: "site_id = 'env_kousui_stations_kanagawa__kousui_1410170'"
+    limit: 250
+    min_rows: 100
+
+  # --- sensor_timeseries の source_id 網羅（残り4つ、いずれも1地点1か月分） ---
+  - name: sensor_source_hiratsuka
+    # site 'hiratsuka_taiki_stations__hiratsuka_101' の日値、約15系列×30日。
+    table: sensor_timeseries
+    where: "site_id = 'hiratsuka_taiki_stations__hiratsuka_101'"
+    limit: 460
+    min_rows: 460
+  - name: sensor_source_yokohama_waterlevel
+    # site 'yokohama_river_waterlevel__546601' の日平均/日最高の2系列×30日。
+    table: sensor_timeseries
+    where: "site_id = 'yokohama_river_waterlevel__546601'"
+    limit: 60
+    min_rows: 60
+  - name: sensor_source_jma_daily
+    # site 'jma_stations_kanagawa__jma_47670'（横浜、唯一の地点）の日値、
+    # 約18系列×30日。
+    table: sensor_timeseries
+    where: "site_id = 'jma_stations_kanagawa__jma_47670'"
+    limit: 550
+    min_rows: 550
+  - name: sensor_source_jma_monthly
+    # site 'jma_stations_kanagawa__jma_0387' の月値、約1年分
+    # （複数系列×12か月）。
+    table: sensor_timeseries
+    where: "site_id = 'jma_stations_kanagawa__jma_0387'"
+    limit: 250
+    min_rows: 100
+
+  # --- occurrence の12形（scripts/migrate/occurrence_period_shapes.yaml）。
+  #     分類の正は正規表現——コード側〔scripts/migrate/occurrence_period.py〕
+  #     の `classify_shape()`。以前はここを `length(observed_on) = N`
+  #     （12形の文字数がたまたま全部異なる: 4/7/9/10/15/16/17/19/20/21/24/35。
+  #     という前提の近似）で選んでいたが、将来2形が同じ文字数を持つように
+  #     なると黙って誤分類する恐れがあった（code-review 指摘）。
+  #     `scripts/s01_build_sample.py` の `_open_ro` が `classify_shape` を
+  #     SQL 関数として登録しており、ここでは実際の分類関数をそのまま呼ぶ。 ---
+  - name: occurrence_shape_year
+    table: organism_records
+    where: "classify_shape(observed_on) = 'year'"
+    limit: 10
+    min_rows: 10
+  - name: occurrence_shape_month
+    table: organism_records
+    where: "classify_shape(observed_on) = 'month'"
+    limit: 10
+    min_rows: 10
+  - name: occurrence_shape_year_interval
+    table: organism_records
+    where: "classify_shape(observed_on) = 'year_interval'"
+    limit: 10
+    min_rows: 10
+  - name: occurrence_shape_day
+    table: organism_records
+    where: "classify_shape(observed_on) = 'day'"
+    limit: 15
+    min_rows: 15
+  - name: occurrence_shape_month_interval
+    table: organism_records
+    where: "classify_shape(observed_on) = 'month_interval'"
+    limit: 10
+    min_rows: 10
+  - name: occurrence_shape_instant_minute
+    table: organism_records
+    where: "classify_shape(observed_on) = 'instant_minute'"
+    limit: 10
+    min_rows: 10
+  - name: occurrence_shape_instant_minute_z
+    table: organism_records
+    where: "classify_shape(observed_on) = 'instant_minute_z'"
+    limit: 10
+    min_rows: 10
+  - name: occurrence_shape_instant_second
+    table: organism_records
+    where: "classify_shape(observed_on) = 'instant_second'"
+    limit: 10
+    min_rows: 10
+  - name: occurrence_shape_instant_second_z
+    table: organism_records
+    where: "classify_shape(observed_on) = 'instant_second_z'"
+    limit: 10
+    min_rows: 10
+  - name: occurrence_shape_day_interval
+    table: organism_records
+    where: "classify_shape(observed_on) = 'day_interval'"
+    limit: 10
+    min_rows: 10
+  - name: occurrence_shape_instant_millisecond_z
+    table: organism_records
+    where: "classify_shape(observed_on) = 'instant_millisecond_z'"
+    limit: 10
+    min_rows: 10
+  - name: occurrence_shape_instant_minute_z_interval
+    table: organism_records
+    where: "classify_shape(observed_on) = 'instant_minute_z_interval'"
+    limit: 10
+    min_rows: 10
+  - name: occurrence_observed_on_null
+    table: organism_records
+    where: "observed_on IS NULL"
+    limit: 10
+    min_rows: 10
+
+  # --- 集計が「1件をそのまま写す」空振りにならないための密度確保
+  #     （mesh_year/mesh_all/mesh_species/species_mesh_year/org_group_year/
+  #     org_watershed_year/species_year2/effort_year の n・n_raw 等の列が
+  #     2以上になること。scripts/tests/test_sample_aggregation_is_not_degenerate.py
+  #     が実測で確認する）。 ---
+  - name: occurrence_dense_mesh_cluster
+    # 0.01度メッシュ (mlat=3534, mlon=13940) の2021年。実測でこのメッシュ×年に
+    # 9種以上、種ごとに250件超が集まる都市部のバードウォッチング密集地——
+    # メッシュ×種×年（mesh_species/mesh_year/species_mesh_year）にも種×年
+    # （species_year2/org_group_year）にも、同じ流域内に複数種がいること
+    # （org_watershed_year）にも、まとめて効く一箇所。
+    table: organism_records
+    where: >
+      CAST(FLOOR(lat*100) AS INT) = 3534 AND CAST(FLOOR(lon*100) AS INT) = 13940
+      AND substr(observed_on,1,4) = '2021'
+    limit: 1500
+    min_rows: 1500
+  - name: occurrence_species_spanning_many_years
+    # 'Dryopteris erythrosora'（オオベニシダ）: 実測で81年分・1,033件を持つ
+    # 種。年をまたいだ集計（effort_year/species_year2/org_watershed_year）の
+    # 「同じ種が複数年にまたがる」を満たす。
+    table: organism_records
+    where: "scientific_name = 'Dryopteris erythrosora (D.C.Eaton) Kuntze'"
+    limit: 800
+    min_rows: 800
+
+  # --- 'Z' 付き observed_on（ADR-0024）: 上の4つの instant_*_z / interval 形の
+  #     predicate の和集合で必ず満たされる（実測: 958+143+800+57=1958=Z件数の
+  #     全量と一致）。個別の predicate は持たず、この事実をテストで確認する。
+
+  # --- 流域外の座標（occurrence_place が NULL になる）。point_in_polygon で
+  #     実測して確認済みの10件（rowid 16-25、全部 inaturalist_kanagawa）。 ---
+  - name: occurrence_outside_all_watersheds
+    table: organism_records
+    where: >
+      record_id IN (
+        'inaturalist_kanagawa__667269', 'inaturalist_kanagawa__1126515',
+        'inaturalist_kanagawa__1126523', 'inaturalist_kanagawa__1126567',
+        'inaturalist_kanagawa__1126635', 'inaturalist_kanagawa__1128158',
+        'inaturalist_kanagawa__1128176', 'inaturalist_kanagawa__1128218',
+        'inaturalist_kanagawa__1130241', 'inaturalist_kanagawa__1130245'
+      )
+    limit: 10
+    min_rows: 10
+
+  # --- O-2a のメモ化の癖が効くバケット（memo_mixed_buckets が1以上になること）。
+  #     0.001度バケット (35.306, 139.482) に3記録あり、うち2件が
+  #     watershed_id='83267-0001' に、1件がどの流域にも入らない（実測。
+  #     scripts/migrate/point_in_polygon.load_polygons/build_grid/locate で
+  #     確認済み）。 ---
+  - name: occurrence_memo_mixed_bucket
+    table: organism_records
+    where: >
+      record_id IN (
+        'inaturalist_kanagawa__2875893', 'inaturalist_kanagawa__319107227',
+        'gbif_kanagawa_occurrences__4766435295'
+      )
+    limit: 3
+    min_rows: 3
+
+  # --- レッドリスト種 ---
+  - name: occurrence_redlist_species
+    table: organism_records
+    where: "red_list_category IS NOT NULL AND red_list_category != ''"
+    limit: 15
+    min_rows: 15
+
+  # --- 除外されない外来種（is_alien=1 かつ除外7種に含まれない） ---
+  - name: occurrence_alien_not_excluded
+    table: organism_records
+    where: >
+      is_alien = 1 AND scientific_name NOT IN (
+        'Nyctereutes procyonoides', 'Plantago asiatica', 'Trypoxylus dichotomus',
+        'Morus australis', 'Apis mellifera', 'Cervus nippon', 'Rumex japonicus'
+      )
+    limit: 15
+    min_rows: 15
+
+  # --- 除外7種（registry/taxon/assessment_scope_exclusions.yaml）の記録。
+  #     Morus australis は実データで0件（除外7種のうち唯一 organism_records に
+  #     現れない——moe_ias_list.csv 側の学名一致のみで、occurrence には出現しない）
+  #     ため、残り6種だけを対象にする。 ---
+  - name: occurrence_excluded_species
+    table: organism_records
+    where: >
+      scientific_name IN (
+        'Nyctereutes procyonoides', 'Plantago asiatica', 'Trypoxylus dichotomus',
+        'Apis mellifera', 'Cervus nippon', 'Rumex japonicus'
+      )
+    limit: 30
+    min_rows: 6
+
+  # --- organism_records の source_id 網羅 ---
+  - name: occurrence_source_gbif
+    table: organism_records
+    where: "source_id = 'gbif_kanagawa_occurrences'"
+    limit: 10
+    min_rows: 10
+  - name: occurrence_source_inaturalist
+    table: organism_records
+    where: "source_id = 'inaturalist_kanagawa'"
+    limit: 10
+    min_rows: 10
+
+# ---------------------------------------------------------------------------
+# 全部入れる「閉包」（宣言済み差分の再現に要るもの、および全量で明示された
+# データ品質の癖）。`limit` は無い（where に一致する全行）。
+# ---------------------------------------------------------------------------
+full_closures:
+  # scripts/reconcile/expected_diffs.yaml の18キー（meas_daily/meas_month/
+  # meas_year/meas_clim/site_var/var_catalog）の由来——
+  # atsugi_river_water_quality の '1未満'（浮遊物質量 SS）12行。全地点・
+  # 全期間の SS を入れることで、meas_clim/var_catalog のような全地点集計も
+  # サンプルで同じ値になる（中津川だけに絞ると全地点集計が一致しなくなる）。
+  - name: nakatsugawa_ss_full_history
+    reason: "expected_diffs.yaml の18キー（measurements/meas_*系6表）の由来を再現するための全地点・全期間閉包"
+    table: measurements
+    where: "variable = '浮遊物質量 SS'"
+  # scripts/reconcile/expected_diffs.yaml の org_norm/species2 の2キーの由来
+  # ——属 Sirosporium の class 多数決タイブレーク。実データでは属の全記録が
+  # 1件だけ（Sirosporium celtidis 自身）。
+  # 属単位の class 多数決（org_norm/species2 の `cls`）は `organism_records.genus`
+  # 列ではなく、`scientific_name` から取った binom（先頭2語）の先頭語で決まる
+  # （web/scripts/build-biota.mjs の `gc` CTE・scripts/registry/build_taxon.py の
+  # `_genus(_binom(scientific_name))`。どちらも `genus` 列は見ない）。実測
+  # （2026-09-25、コードレビュー指摘で発覚）: `genus = 'Sirosporium'` は1行
+  # （rowid 327026、学名自身が属名）しか拾わず、投票元の残り2行
+  # （rowid 326795 `Sirosporium mori...`〔own genus 列は `Clasterosporium`〕・
+  # rowid 326911 `Sirosporium celtidis...`〔own genus 列は `Helicoceras`〕—
+  # どちらも学名の先頭語は "Sirosporium" だが own genus 列は別属）が漏れていた。
+  # `scientific_name LIKE 'Sirosporium%'` で3行とも拾う（`genus = 'Sirosporium'`
+  # も併記——学名の表記が変わっても own genus 列で拾えるケースを取りこぼさない
+  # ための保険。実データでは3行の集合は変わらない）。
+  - name: sirosporium_genus_full_records
+    reason: "expected_diffs.yaml の org_norm/species2 の2キーの由来を再現するための属の全記録閉包（投票元は学名の binom 先頭語。genus 列ではない）"
+    table: organism_records
+    where: "genus = 'Sirosporium' OR scientific_name LIKE 'Sirosporium%'"
+  # 地盤沈下の r5/r6 重複（docs/plans/DATA_QUALITY_BACKLOG.md §1）。全3,286行
+  # だけで完結する小さな出典なので、丸ごと入れる。
+  - name: jiban_chinka_full_source
+    reason: "地盤沈下の r5/r6 重複（同じ年の値が2つの報告書年度から重複収集されている）を再現するための出典全体閉包"
+    table: measurements
+    where: "source_id = 'kanagawa_jiban_chinka'"
+
+# ---------------------------------------------------------------------------
+# 文書単位の閉包（cells.sqlite）: `cells` は doc_id で丸ごと入れる。
+# 小さい文書を選び、複数年度（choju_kyugo_jisseki の年次系列）を含めることで
+# doc_series/doc_series_meta の年またぎ集計も検証できるようにした
+# （実測: 7文書で cells 合計286行）。
+# ---------------------------------------------------------------------------
+document_closure:
+  doc_ids:
+    - choju_kyugo_jisseki_2010
+    - choju_kyugo_jisseki_2011
+    - choju_kyugo_jisseki_2012
+    - choju_kyugo_jisseki_2020
+    - choju_kyugo_jisseki_2022
+    - kanagawa_river_monitoring_syokubutu
+    - kanagawa_river_monitoring_anzen
+  min_documents: 7
+
+# ---------------------------------------------------------------------------
+# 丸ごと入れる ryuiki.sqlite のテーブル（十分小さい・v1/v2 が読む）。
+# ---------------------------------------------------------------------------
+wholesale_ryuiki_tables:
+  - sites
+  - taxa
+  - redlist_assessments
+  - quality_transitions
+
+# ---------------------------------------------------------------------------
+# 丸ごと入れる cells.sqlite のテーブル（`cells` 自身は document_closure が
+# 別途扱う。ここは documents/notes/vocab_* の4つ）。
+# ---------------------------------------------------------------------------
+wholesale_cells_tables:
+  - documents
+  - notes
+  - vocab_areas
+  - vocab_eras
+  - vocab_indicators
+  - vocab_units
+
+# ---------------------------------------------------------------------------
+# 丸ごとコピーする data/processed の入力ファイル（v1・v2 のどちらかが読む。
+# W12流域の GeoJSON・JSONL、土地利用CSV、外来種リスト、taxon crosswalk）。
+# ---------------------------------------------------------------------------
+wholesale_processed_files:
+  - nlni_w12_watersheds.geojson
+  - nlni_w12_watersheds.jsonl
+  - nlni_l03b_landuse_by_watershed.csv
+  - moe_ias_list.csv
+  - taxon_crosswalk.csv

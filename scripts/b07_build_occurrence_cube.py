@@ -276,7 +276,7 @@ def _assert_t1_invariant(conn: sqlite3.Connection) -> None:
 # 宣言 YAML（1回だけ読む。コードレビュー指摘12）
 # ---------------------------------------------------------------------------
 
-def load_and_validate_cube_declarations(path=DEFAULT_DECLARATIONS_YAML) -> dict:
+def load_and_validate_cube_declarations(path=DEFAULT_DECLARATIONS_YAML, count_overlay=None) -> dict:
     """`occurrence_cube_declarations.yaml` を読み、構造を検証してから返す
     （`occurrence_period_shapes.yaml` の `validate_occurrence_period_shapes_shape()`
     と同じ流儀——必須キーの検査は `period.required_keys_problems()`、整数検査は
@@ -285,8 +285,13 @@ def load_and_validate_cube_declarations(path=DEFAULT_DECLARATIONS_YAML) -> dict:
 
     `build_cube()` はここが返した dict から値を直接取り出す——構造検証用と
     値取得用でファイルを2回読まない（コードレビュー指摘12）。
+
+    `count_overlay`（既定 None）は `expected_row_count` だけを差し替える
+    （`period.apply_count_overlay()`。Issue #29「縮小サンプル」）。
     """
     raw = common.load_yaml(path)
+    if count_overlay:
+        raw = period.apply_count_overlay(raw, count_overlay)
     if not isinstance(raw, dict):
         raise common.MigrationError(f"{path} がマッピングになっていない（実際の型: {type(raw).__name__}）")
     problems = period.required_keys_problems(raw, REQUIRED_DECLARATION_KEYS)
@@ -483,6 +488,7 @@ def build_cube(
     declarations_yaml=DEFAULT_DECLARATIONS_YAML,
     built_from: str = DEFAULT_BUILT_FROM,
     spec_version: str = common.OCCURRENCE_SPEC_VERSION,
+    count_overlay: dict[str, int] | None = None,
 ) -> dict:
     """`conn`（`occurrence` を持つ読み書き可能な接続）に `occurrence_agg` を作る。
 
@@ -500,7 +506,7 @@ def build_cube(
     # 今の occurrence の内容が一致することを、集計を始める前に確認する。
     # 戻り値（occurrence の現在の指紋）は occurrence_agg の系譜に使う。
     occurrence_fingerprint = common.assert_occurrence_fingerprint_fresh(conn)
-    declarations = load_and_validate_cube_declarations(declarations_yaml)
+    declarations = load_and_validate_cube_declarations(declarations_yaml, count_overlay=count_overlay)
     leaf_expected = declarations[_LEAF_DECLARATION_NAME]["expected_row_count"]
     _assert_t1_invariant(conn)
     params = (built_from, spec_version)
@@ -549,6 +555,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", default=str(DEFAULT_DB), help="occurrence を持つ v2.sqlite（読み書き）")
     parser.add_argument("--declarations-yaml", default=str(DEFAULT_DECLARATIONS_YAML))
+    parser.add_argument(
+        "--count-overlay", default=None,
+        help="data/sample/declaration_counts.yaml のようなファイル。既定は使わない（本番の実行では"
+        "常に None のまま、正本の expected_row_count で検証する。Issue #29「縮小サンプル」）",
+    )
     args = parser.parse_args()
 
     db_path = pathlib.Path(args.out)
@@ -557,12 +568,14 @@ def main() -> None:
             f"{db_path} が無い。先に `.venv/bin/python3 scripts/b06_build_occurrence.py` を実行すること。"
         )
 
+    count_overlay = period.resolve_count_overlay(args.count_overlay, "occurrence_cube_declarations.yaml")
+
     conn = sqlite3.connect(f"file:{db_path}", uri=True)
     try:
         n_occurrence = conn.execute("SELECT COUNT(*) FROM occurrence").fetchone()[0]
         print(f"▶ 読み書き可能で開く（occurrence は変更しない）: {db_path} / occurrence {n_occurrence:,}行")
         with common.timed_step("occurrence_agg を構築") as info:
-            stats = build_cube(conn, args.declarations_yaml)
+            stats = build_cube(conn, args.declarations_yaml, count_overlay=count_overlay)
             info["n"] = stats["n_total_cells"]
     finally:
         conn.close()

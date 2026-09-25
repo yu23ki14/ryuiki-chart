@@ -36,6 +36,7 @@
 """
 from __future__ import annotations
 
+import copy
 import datetime
 import pathlib
 from dataclasses import dataclass
@@ -92,9 +93,164 @@ def _load_raw(path) -> dict:
     return load_yaml(path)
 
 
-def load_period_exceptions(path=DEFAULT_EXCEPTIONS_YAML) -> dict[str, PeriodException]:
-    """例外表を読む。空（`{}`）でもよい——その場合は一切の食い違いを許さない。"""
+# ---------------------------------------------------------------------------
+# 件数の宣言の上書き（Issue #29「縮小サンプル＋実行証明」A-2）。
+#
+# 原本の件数に合わせて書いた宣言（`expected_row_count`/`expected_count`/
+# `breakdown.*`）は、縮小サンプルでは合わない。かといって宣言ファイル自体を
+# サンプル用に複製すると「原本用と宣言が2つに増え、どちらが正か」という
+# 別の問題を作る。そこで**数値だけ**を差し替える薄い上書き層をここに置く
+# （reason/evidence/note のような意味の情報は宣言ファイル1つにしか持たせない）。
+#
+# 上書き元は `data/sample/declaration_counts.yaml`（1ファイルだけ）。キーは
+# `<宣言ファイル名>:<エントリ名>[.<内訳キー>]`、値は整数だけ
+# （`load_count_overlay_file` がファイル名でグルーピングし、各 `load_*` 関数は
+# 自分のファイル名の分だけを `apply_count_overlay()` に渡す）。
+# ---------------------------------------------------------------------------
+
+def apply_count_overlay(entries: dict, overlay: dict[str, int]) -> dict:
+    """`entries`（宣言 YAML を読んだままの「フラットな名前 -> スペック」の
+    dict。`source_regions.yaml` なら `raw["sources"]` を渡す）に対し、
+    `overlay`（`"名前"` または `"名前.内訳キー"` -> 新しい整数値）で
+    `expected_row_count`/`expected_count`/`breakdown.<内訳キー>` だけを
+    差し替えたコピーを返す。`reason`/`evidence`/`note` 等、意味の情報は
+    一切書き換えない。
+
+    `overlay` が指す名前・内訳キーが `entries` に実在しなければ `KeyError` で
+    止まる（黙って無視すると、正本に新しいエントリが増えたのにサンプル側の
+    宣言を更新し忘れたことに気づけなくなる）。
+    """
+    result = copy.deepcopy(entries)
+    for flat_key, value in overlay.items():
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise TypeError(f"count overlay: {flat_key!r} の値は整数でなければならない（実際: {value!r}）")
+        name, _, subkey = flat_key.partition(".")
+        if name not in result or not isinstance(result[name], dict):
+            raise KeyError(f"count overlay: エントリ {name!r} が宣言に無い（overlay キー: {flat_key!r}）")
+        spec = result[name]
+        if not subkey:
+            if "expected_row_count" in spec:
+                spec["expected_row_count"] = value
+            elif "expected_count" in spec:
+                spec["expected_count"] = value
+            else:
+                raise KeyError(
+                    f"count overlay: エントリ {name!r} に expected_row_count/expected_count が無い"
+                    f"（overlay キー: {flat_key!r}）"
+                )
+        else:
+            breakdown = spec.get("breakdown")
+            if not isinstance(breakdown, dict) or subkey not in breakdown:
+                raise KeyError(
+                    f"count overlay: エントリ {name!r} の breakdown に {subkey!r} が無い"
+                    f"（overlay キー: {flat_key!r}）"
+                )
+            breakdown[subkey] = value
+    return result
+
+
+def load_count_overlay_file(path) -> dict[str, dict[str, int]]:
+    """`data/sample/declaration_counts.yaml`（フラットな
+    `"<宣言ファイル名>:<エントリ名>[.<内訳キー>]"` -> 整数 のマッピング、
+    1ファイルにすべての宣言ファイル分をまとめて持つ）を読み、宣言ファイル名で
+    グルーピングして返す（`{"period_exceptions.yaml": {"atsugi_river_water_quality":
+    123}, ...}`）。各 `load_*`/`load_and_validate_*` 呼び出し側は、自分の
+    宣言ファイル名に対応する部分辞書だけを `apply_count_overlay()` に渡す。
+
+    キーに `:` が無ければ「`<ファイル名>:<エントリ名>` の形でない」として
+    `MigrationError` で止まる。
+    """
+    raw = load_yaml(path)
+    if not isinstance(raw, dict):
+        raise MigrationError(f"{path} がマッピングになっていない（実際の型: {type(raw).__name__}）")
+    grouped: dict[str, dict[str, int]] = {}
+    for flat_key, value in raw.items():
+        if ":" not in flat_key:
+            raise MigrationError(
+                f"{path} のキーの形が不正（'<宣言ファイル名>:<エントリ名>[.<内訳キー>]' の形でない）: {flat_key!r}"
+            )
+        filename, _, rest = flat_key.partition(":")
+        grouped.setdefault(filename, {})[rest] = value
+    return grouped
+
+
+def declared_overlay_keys(entries: dict) -> set[str]:
+    """`entries`（宣言 YAML を読んだままの「フラットな名前 -> スペック」の
+    dict、`apply_count_overlay()` の第1引数と同じ形。`source_regions.yaml`
+    なら `raw["sources"]` を渡す）から、`apply_count_overlay()` が受け付ける
+    有効なオーバーレイキー（`"名前"` または `"名前.内訳キー"`）の集合を計算する。
+
+    判定条件は `apply_count_overlay()` 自身が使っているのと同じもの
+    （`expected_row_count`/`expected_count` の有無で `"名前"` が、`breakdown`
+    の有無で `"名前.内訳キー"` が有効になる）をそのまま踏襲するだけで、
+    別の判断基準を持ち込まない——`scripts/tests/test_sample_coverage.py` が
+    `data/sample/declaration_counts.yaml` のキー集合を7つの宣言ファイルそれぞれと
+    突き合わせるのに使う。以前はこの7ファイル分を手で書き写した
+    `_flat_keys_for_*` をテスト側が個別に持っており、正本にキーの種類が
+    増えても追従し忘れる余地があった（code-review 指摘対応）。
+    """
+    keys: set[str] = set()
+    for name, spec in entries.items():
+        if not isinstance(spec, dict):
+            continue
+        if "expected_row_count" in spec or "expected_count" in spec:
+            keys.add(name)
+        breakdown = spec.get("breakdown")
+        if isinstance(breakdown, dict):
+            keys.update(f"{name}.{subkey}" for subkey in breakdown)
+    return keys
+
+
+def resolve_count_overlay(count_overlay_path, filename: str) -> dict[str, int] | None:
+    """`--count-overlay` CLI 引数（None なら「使わない」——本番の既定運用）から、
+    `filename`（例 `"period_exceptions.yaml"`）分の上書きだけを取り出す。
+
+    `count_overlay_path` が None なら `load_count_overlay_file()` 自体を呼ばず
+    `None` を返す（サンプル用のファイルを本番実行で探しにいかない）。呼び出し側
+    （各 b0x スクリプトの `main()`）はこの戻り値をそのまま各 `load_*` 関数の
+    `count_overlay=` に渡す。
+    """
+    if count_overlay_path is None:
+        return None
+    grouped = load_count_overlay_file(count_overlay_path)
+    return grouped.get(filename, {})
+
+
+def resolve_count_overlays(
+    count_overlay_path, filenames: tuple[str, ...],
+) -> dict[str, dict[str, int] | None]:
+    """`resolve_count_overlay()` の複数ファイル版。1本のスクリプトが複数の
+    宣言ファイルを読む（`scripts/b03_build_observation.py`:
+    `period_exceptions.yaml`/`time_label_conventions.yaml`/`source_regions.yaml`、
+    `scripts/b06_build_occurrence.py`: `source_regions.yaml`/
+    `occurrence_period_shapes.yaml`）ときに使う。`filenames` それぞれについて
+    `resolve_count_overlay()` を呼んだのと同じ結果を、`load_count_overlay_file()`
+    は1回だけ呼んで返す。
+
+    以前は b03/b06 がここと同じロジック（`load_count_overlay_file` を
+    `--count-overlay` があるときだけ呼び、無ければ `None`）をそれぞれ
+    独自にインライン実装しており、b07/b08/b09 の `resolve_count_overlay()`
+    と流儀が分かれていた（code-review 指摘対応）。
+    """
+    if count_overlay_path is None:
+        return {name: None for name in filenames}
+    grouped = load_count_overlay_file(count_overlay_path)
+    return {name: grouped.get(name, {}) for name in filenames}
+
+
+def load_period_exceptions(
+    path=DEFAULT_EXCEPTIONS_YAML, count_overlay: dict[str, int] | None = None,
+) -> dict[str, PeriodException]:
+    """例外表を読む。空（`{}`）でもよい——その場合は一切の食い違いを許さない。
+
+    `count_overlay`（既定 None）を渡すと、`apply_count_overlay()` で
+    `expected_row_count` だけを差し替えてから読む（Issue #29「縮小サンプル」。
+    `--count-overlay` を渡さない本番の実行では常に None のまま——挙動は
+    1ビットも変わらない）。
+    """
     raw = _load_raw(path)
+    if count_overlay:
+        raw = apply_count_overlay(raw, count_overlay)
     out: dict[str, PeriodException] = {}
     for source_id, spec in raw.items():
         out[source_id] = PeriodException(
@@ -247,12 +403,17 @@ _SUPPORTED_TIME_LABEL_CONVENTIONS = ("hour_ending",)
 
 def load_time_label_conventions(
     path=DEFAULT_TIME_LABEL_CONVENTIONS_YAML,
+    count_overlay: dict[str, int] | None = None,
 ) -> dict[str, TimeLabelConvention]:
     """`time_label_conventions.yaml` を読む。空（`{}`）でもよい——その場合は
     `value_grain='hour'` の行に一切出会えない（出会えば
     `UnknownTimeLabelConventionError`）。
+
+    `count_overlay` は `load_period_exceptions()` と同じ（Issue #29）。
     """
     raw = _load_raw(path)
+    if count_overlay:
+        raw = apply_count_overlay(raw, count_overlay)
     out: dict[str, TimeLabelConvention] = {}
     for source_id, spec in raw.items():
         convention = spec["convention"]

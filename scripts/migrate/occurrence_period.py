@@ -121,12 +121,19 @@ class PeriodShape:
     note: str
 
 
-def load_period_shapes(path=DEFAULT_SHAPES_YAML) -> dict[str, PeriodShape]:
+def load_period_shapes(
+    path=DEFAULT_SHAPES_YAML, count_overlay: dict[str, int] | None = None,
+) -> dict[str, PeriodShape]:
     """宣言表を読む。空（`{}`）でもよい——その場合は
     `assert_declared_shapes_match_code()` が「コードの12形が1つも宣言されて
     いない」として即座に止める。
+
+    `count_overlay`（既定 None）は `migrate.period.apply_count_overlay()` に
+    渡し、`expected_row_count` だけを差し替える（Issue #29「縮小サンプル」）。
     """
     raw = load_yaml(path)
+    if count_overlay:
+        raw = period.apply_count_overlay(raw, count_overlay)
     out: dict[str, PeriodShape] = {}
     for name, spec in raw.items():
         out[name] = PeriodShape(

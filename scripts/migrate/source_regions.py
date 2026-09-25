@@ -107,6 +107,7 @@ class Region:
 def load_source_regions(
     path=DEFAULT_SOURCE_REGIONS_YAML,
     consumer: str | None = None,
+    count_overlay: dict[str, int] | None = None,
 ) -> tuple[dict[str, SourceRegion], dict[str, Region]]:
     """`(sources, regions)` を返す。`sources` の全 `region_id` が `regions` に
     宣言されていることと、`regions` の `utc_offset` が `UTC_OFFSET_PATTERN`
@@ -119,10 +120,16 @@ def load_source_regions(
     ファイル全体をそのまま返す（呼び出し側で `EntryUsage` の対象を消費者ごとに
     正しく分けられるようにするための機能で、`consumer` を渡さない既存の
     呼び出し・既存のテストの挙動は一切変えない）。
+
+    `count_overlay`（既定 None）は `sources.<id>.expected_row_count` だけを
+    差し替える（`period.apply_count_overlay()` に `sources_raw` を渡す。
+    `regions` には件数の宣言が無いので対象外。Issue #29「縮小サンプル」）。
     """
     raw = load_yaml(path)
     sources_raw = raw.get("sources") or {}
     regions_raw = raw.get("regions") or {}
+    if count_overlay:
+        sources_raw = period.apply_count_overlay(sources_raw, count_overlay)
 
     bad_offsets: list[tuple[str, str]] = []
     all_regions: dict[str, Region] = {}

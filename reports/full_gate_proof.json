@@ -1,0 +1,255 @@
+{
+  "candidates": {
+    "v1_projection.sqlite": {
+      "pipeline_fingerprint_rows": [
+        {
+          "fingerprint": "sha256:8f247d6cfedd48f30cd40a37fd71eb550029d217ef576145cd05a55952787b7c:2904",
+          "inputs": "{\"observation_agg\": \"sha256:933c1cfff38f87a332c48016dd425121fc9b187ca3f3d5cbd0523026e315b616:2022964\"}",
+          "spec_version": "phase-b-fact-slice/v1",
+          "table_name": "landuse_change"
+        },
+        {
+          "fingerprint": "sha256:e4b2f9f177a8cc99e995573a745b3e69ee4c411accc4ac39b43aa6b45cab4154:4858",
+          "inputs": "{\"observation_agg\": \"sha256:933c1cfff38f87a332c48016dd425121fc9b187ca3f3d5cbd0523026e315b616:2022964\"}",
+          "spec_version": "phase-b-fact-slice/v1",
+          "table_name": "landuse_watershed"
+        },
+        {
+          "fingerprint": "sha256:62b95d26a9b08364a64179d6851f549936d33a2d52dfb3901cf4f1c55cafce08:192",
+          "inputs": "{\"observation\": \"sha256:950620998618e268ff88e09afe0fa4663cbce29dc3f2dd12d08c95cef58b42e7:1050719\", \"observation_agg\": \"sha256:933c1cfff38f87a332c48016dd425121fc9b187ca3f3d5cbd0523026e315b616:2022964\"}",
+          "spec_version": "phase-b-fact-slice/v1",
+          "table_name": "meas_clim"
+        },
+        {
+          "fingerprint": "sha256:816b4470ffcf9c620650d8e4f1538b070b97de367d575c8764bc03ced8a3f7b5:139532",
+          "inputs": "{\"observation\": \"sha256:950620998618e268ff88e09afe0fa4663cbce29dc3f2dd12d08c95cef58b42e7:1050719\", \"observation_agg\": \"sha256:933c1cfff38f87a332c48016dd425121fc9b187ca3f3d5cbd0523026e315b616:2022964\"}",
+          "spec_version": "phase-b-fact-slice/v1",
+          "table_name": "meas_daily"
+        },
+        {
+          "fingerprint": "sha256:cc28914d5a7200a69d7b146f6f32226851a9578df5f8db7431747a2eeaac410f:127493",
+          "inputs": "{\"observation\": \"sha256:950620998618e268ff88e09afe0fa4663cbce29dc3f2dd12d08c95cef58b42e7:1050719\", \"observation_agg\": \"sha256:933c1cfff38f87a332c48016dd425121fc9b187ca3f3d5cbd0523026e315b616:2022964\"}",
+          "spec_version": "phase-b-fact-slice/v1",
+          "table_name": "meas_month"
+        },
+        {
+          "fingerprint": "sha256:5cf35987875686ebbf2f087ca7b965ac201c2e3985e91f4270faae7f76776d04:116076",
+          "inputs": "{\"observation\": \"sha256:950620998618e268ff88e09afe0fa4663cbce29dc3f2dd12d08c95cef58b42e7:1050719\", \"observation_agg\": \"sha256:933c1cfff38f87a332c48016dd425121fc9b187ca3f3d5cbd0523026e315b616:2022964\"}",
+          "spec_version": "phase-b-fact-slice/v1",
+          "table_name": "meas_year"
+        },
+        {
+          "fingerprint": "sha256:fa0fc0fe776c695dec2c39d72b9183cdcadc74604221d16cdb9302cb7f67d34c:3654",
+          "inputs": "{\"observation\": \"sha256:950620998618e268ff88e09afe0fa4663cbce29dc3f2dd12d08c95cef58b42e7:1050719\", \"observation_agg\": \"sha256:933c1cfff38f87a332c48016dd425121fc9b187ca3f3d5cbd0523026e315b616:2022964\"}",
+          "spec_version": "phase-b-fact-slice/v1",
+          "table_name": "rain_daily"
+        },
+        {
+          "fingerprint": "sha256:3854dbad303d730b8253e007a747483f849cde474b709502d96ac065c2129479:352043",
+          "inputs": "{\"observation\": \"sha256:950620998618e268ff88e09afe0fa4663cbce29dc3f2dd12d08c95cef58b42e7:1050719\", \"observation_agg\": \"sha256:933c1cfff38f87a332c48016dd425121fc9b187ca3f3d5cbd0523026e315b616:2022964\"}",
+          "spec_version": "phase-b-fact-slice/v1",
+          "table_name": "sensor_daily"
+        },
+        {
+          "fingerprint": "sha256:8feb0645e2d16eba226c233639b382d1ec0aa4c7e729a79e8335dd0760b81d16:2112",
+          "inputs": "{\"observation\": \"sha256:950620998618e268ff88e09afe0fa4663cbce29dc3f2dd12d08c95cef58b42e7:1050719\", \"observation_agg\": \"sha256:933c1cfff38f87a332c48016dd425121fc9b187ca3f3d5cbd0523026e315b616:2022964\"}",
+          "spec_version": "phase-b-fact-slice/v1",
+          "table_name": "sensor_hour_month"
+        },
+        {
+          "fingerprint": "sha256:ae4ab5784cd68e98bc1f9d915f9d63e0819abbeb261ec4b3daaac84fcba07c80:8140",
+          "inputs": "{\"observation\": \"sha256:950620998618e268ff88e09afe0fa4663cbce29dc3f2dd12d08c95cef58b42e7:1050719\", \"observation_agg\": \"sha256:933c1cfff38f87a332c48016dd425121fc9b187ca3f3d5cbd0523026e315b616:2022964\"}",
+          "spec_version": "phase-b-fact-slice/v1",
+          "table_name": "site_var"
+        },
+        {
+          "fingerprint": "sha256:fc528d636c9532b3f75b00626cf77bc8d40f18f554eb36683cd5e604577425b3:58",
+          "inputs": "{\"observation\": \"sha256:950620998618e268ff88e09afe0fa4663cbce29dc3f2dd12d08c95cef58b42e7:1050719\", \"observation_agg\": \"sha256:933c1cfff38f87a332c48016dd425121fc9b187ca3f3d5cbd0523026e315b616:2022964\"}",
+          "spec_version": "phase-b-fact-slice/v1",
+          "table_name": "var_catalog"
+        },
+        {
+          "fingerprint": "sha256:b49f46f1ca83862d97cd343d051d80102beb335cae37bc71ae9e28995dc27bcc:619",
+          "inputs": "{\"observation\": \"sha256:950620998618e268ff88e09afe0fa4663cbce29dc3f2dd12d08c95cef58b42e7:1050719\", \"observation_agg\": \"sha256:933c1cfff38f87a332c48016dd425121fc9b187ca3f3d5cbd0523026e315b616:2022964\"}",
+          "spec_version": "phase-b-fact-slice/v1",
+          "table_name": "zone_clim"
+        },
+        {
+          "fingerprint": "sha256:633fec49acff6e6044d8add91acfb44aa5fec254286e85d18d628226d5c31621:3710",
+          "inputs": "{\"observation\": \"sha256:950620998618e268ff88e09afe0fa4663cbce29dc3f2dd12d08c95cef58b42e7:1050719\", \"observation_agg\": \"sha256:933c1cfff38f87a332c48016dd425121fc9b187ca3f3d5cbd0523026e315b616:2022964\"}",
+          "spec_version": "phase-b-fact-slice/v1",
+          "table_name": "zone_year"
+        }
+      ],
+      "sha256": "6954229634bc51b955a3bc4eec4dc4803d186ccef21c00a219ee151dd37e9278"
+    },
+    "v1_projection_documents.sqlite": {
+      "pipeline_fingerprint_rows": null,
+      "sha256": "e3244c68b9a51c7f5d451cda073285aa44dc94b79bde5fae0412c503b416a9e6"
+    },
+    "v1_projection_occurrence.sqlite": {
+      "pipeline_fingerprint_rows": [
+        {
+          "fingerprint": "sha256:c07153d6e65f5d1d9d932a0fe7ca808f9297b75e3c19eb71b058407f61bd3ce9:57",
+          "inputs": "{}",
+          "spec_version": "phase-b-fact-slice/v1",
+          "table_name": "effort_year"
+        },
+        {
+          "fingerprint": "sha256:1bfe8b87aadecbcb5077fc7f3735b53c115aaf6f90337554cffa46ba10f4f8c7:173",
+          "inputs": "{}",
+          "spec_version": "phase-b-fact-slice/v1",
+          "table_name": "ias_species"
+        },
+        {
+          "fingerprint": "sha256:4f7dd59ef6d27e55bf194337b98f74e2839c340a3b40f5e14694c9cfc2da4e34:4083",
+          "inputs": "{}",
+          "spec_version": "phase-b-fact-slice/v1",
+          "table_name": "mesh_all"
+        },
+        {
+          "fingerprint": "sha256:643af09fc5477cb7d80c9f3e7b1de339eb5fdaf83bbab57a1f413135fd82417c:4086",
+          "inputs": "{}",
+          "spec_version": "phase-b-fact-slice/v1",
+          "table_name": "mesh_species"
+        },
+        {
+          "fingerprint": "sha256:de921363a4ce8473664ead2402d183235274e69d64dfb03020ce23075975e337:37043",
+          "inputs": "{}",
+          "spec_version": "phase-b-fact-slice/v1",
+          "table_name": "mesh_year"
+        },
+        {
+          "fingerprint": "sha256:60c2851417031cac185e2282dab9746456dfc6329909f0a2dd3354e8c93a0c6f:1166",
+          "inputs": "{}",
+          "spec_version": "phase-b-fact-slice/v1",
+          "table_name": "org_group_year"
+        },
+        {
+          "fingerprint": "sha256:521afe744bcf51e93e95889cdd0a500427e37a70a3fa56e612c3be9338e42e7f:816856",
+          "inputs": "{\"occurrence\": \"sha256:62e97db56e1fd4d5bcf6ad05dab1b0e4edb9e701f1f330ad838a4fc895a0859f:823692\"}",
+          "spec_version": "phase-b-fact-slice/v1",
+          "table_name": "org_norm"
+        },
+        {
+          "fingerprint": "sha256:d3853bf5bcf8bb0c0325ca3f97c91c12450754f0a8b0924b2467e13f51834964:287",
+          "inputs": "{\"occurrence\": \"sha256:62e97db56e1fd4d5bcf6ad05dab1b0e4edb9e701f1f330ad838a4fc895a0859f:823692\", \"occurrence_place\": \"sha256:d7b2fa5aa620fb0f853a5a460f3e0450d2292cc26a9c3c943d308033d3206743:823692\"}",
+          "spec_version": "phase-b-fact-slice/v1",
+          "table_name": "org_watershed"
+        },
+        {
+          "fingerprint": "sha256:b9f774ccb58afc0acb3ac462dfac63879aef6d3f3637b3e15cc510a534a76061:10699",
+          "inputs": "{\"occurrence\": \"sha256:62e97db56e1fd4d5bcf6ad05dab1b0e4edb9e701f1f330ad838a4fc895a0859f:823692\", \"occurrence_place\": \"sha256:d7b2fa5aa620fb0f853a5a460f3e0450d2292cc26a9c3c943d308033d3206743:823692\"}",
+          "spec_version": "phase-b-fact-slice/v1",
+          "table_name": "org_watershed_year"
+        },
+        {
+          "fingerprint": "sha256:8a7bd916981553530a495b38f06b06c3bd6fe4f0f14efcf17653cb08264c99ab:23618",
+          "inputs": "{}",
+          "spec_version": "phase-b-fact-slice/v1",
+          "table_name": "species2"
+        },
+        {
+          "fingerprint": "sha256:8da08c4c6c5aac0fe62b7cf3e1dc73e0da31b012a6baca80d377e2e49490da08:276163",
+          "inputs": "{}",
+          "spec_version": "phase-b-fact-slice/v1",
+          "table_name": "species_mesh_year"
+        },
+        {
+          "fingerprint": "sha256:dc865ec8a63f443a8c3bc626b82da1f6a2d4582cbdec5c1be238104a7d2db340:9997",
+          "inputs": "{}",
+          "spec_version": "phase-b-fact-slice/v1",
+          "table_name": "species_month"
+        },
+        {
+          "fingerprint": "sha256:228dd5f78570e836d9d55cc6a3eb1804b957032b2dece84add973f122883eefc:116899",
+          "inputs": "{}",
+          "spec_version": "phase-b-fact-slice/v1",
+          "table_name": "species_year2"
+        }
+      ],
+      "sha256": "a7e8b880468c095d1f833d1433ffc8eac53479b5a7cf1030a620f0a4bb379dc5"
+    },
+    "v1_projection_place.sqlite": {
+      "pipeline_fingerprint_rows": [
+        {
+          "fingerprint": "sha256:de6e98c4c0c877a4222014b7889bc369b1a3c9122862ed28c3816ca89739f163:377",
+          "inputs": "{}",
+          "spec_version": "phase-b-fact-slice/v1",
+          "table_name": "watershed_meta"
+        },
+        {
+          "fingerprint": "sha256:5d4a1e4d24b05dd3520863378b4f219b2cdb6dfdec72eaa788cebc518f765370:377",
+          "inputs": "{\"landuse_watershed\": \"sha256:e4b2f9f177a8cc99e995573a745b3e69ee4c411accc4ac39b43aa6b45cab4154:4858\", \"org_watershed\": \"sha256:d3853bf5bcf8bb0c0325ca3f97c91c12450754f0a8b0924b2467e13f51834964:287\", \"site_var\": \"sha256:ae4ab5784cd68e98bc1f9d915f9d63e0819abbeb261ec4b3daaac84fcba07c80:8140\"}",
+          "spec_version": "phase-b-fact-slice/v1",
+          "table_name": "watershed_rollup"
+        }
+      ],
+      "sha256": "a86aeb27ff8a379f2e605a80030a756bb8465d09d6dd1a06734c7248ae046e1b"
+    },
+    "v1_projection_taxon.sqlite": {
+      "pipeline_fingerprint_rows": null,
+      "sha256": "5c6fd091de7742cdea2c0da9d2775d35f561da217f9fb4784eca3029237b99ff"
+    }
+  },
+  "created_at": "2026-09-25T15:34:02+00:00",
+  "derived_reconciliation_all_md_sha256": "40d76c0e8c4abf1c8e9a740a29524741fc4744c01d74532d0d09742849526d72",
+  "environment": {
+    "better_sqlite3_sqlite_version": "3.53.4",
+    "node_version": "v22.22.2",
+    "python_sqlite3_version": "3.49.1",
+    "python_version": "3.13.7"
+  },
+  "gate_summary": {
+    "n_applied": 20,
+    "n_declared_only": 8,
+    "n_excluded": 0,
+    "n_match": 25,
+    "n_mismatch": 0,
+    "total": 33
+  },
+  "git_head": "1da05cfc8c89b3e8607ff578eccea5db55a97698",
+  "pipeline_path_hashes": {
+    "registry": "8497514d612f1783930455036a64fdf77b082b70",
+    "reports/derived_baseline.json": "9448ea15f7e0340d98a9523be728606ecd774a0a",
+    "requirements.txt": "204126f99a90855c9bfd80b00f08e8dcdf089eea",
+    "scripts/b00_run_full_gate.py": "2b3d370d9451e5b443daea582e65e4fc6b546785",
+    "scripts/b01_derived_baseline.py": "171d3f6ba836ba77bfcd885f43c2632f43301c02",
+    "scripts/b02_derived_compare.py": "511dcef4fd8a7d32a4ae775452efc3da472bfdfc",
+    "scripts/b02_run_all_gates.py": "b79ca126ea0d6022e85d31418d165d3c39eccdc5",
+    "scripts/b03_build_observation.py": "83b4e5d2208b947442ab1b94091cc98b86b0bc21",
+    "scripts/b04_build_cube.py": "503736261cc9c528358dd3eda392da53dc389b25",
+    "scripts/b05_project_v1.py": "971253771392b40790953ec1e1dad5b2d5063b14",
+    "scripts/b06_build_occurrence.py": "e8d87f35fc23403da14486449ca520259a6e3512",
+    "scripts/b07_build_occurrence_cube.py": "fcf7641d50402c06ee8e7226817008fb2c5843a0",
+    "scripts/b08_project_occurrence_v1.py": "9de19d9efc339d603712571575483ee97506480d",
+    "scripts/b09_build_occurrence_place.py": "b18948c63393625ff967b783dd64d4af650e972d",
+    "scripts/b10_project_documents_v1.py": "d7b620581ed237b1253ab044b8277b81162f2eb1",
+    "scripts/b11_project_place_v1.py": "4977bdc14b614eff5f11a4946b57a46d64211587",
+    "scripts/b12_project_taxon_v1.py": "3a7d5f6f4276b8682185afc92214275e6fd6b843",
+    "scripts/migrate": "99bbd9fb712d72102a6fe79aebb6b8e050a4da6b",
+    "scripts/pipeline_inputs.py": "26f0f1aa956493afa09db0fcab69bc939933b42a",
+    "scripts/r01_build_registry.py": "4e4cebd61c8cfda48c67fc0ecc8f0cf9b474a686",
+    "scripts/reconcile": "1d5a039bbbff33cce47801b8620d2959d411bbd7",
+    "scripts/registry": "bda9fc3012b3fefa43a3e9ebcbc6069b78823efd",
+    "scripts/s05_check_sample_gate_summary.py": "45b1da2aa3a583f393ddfe8704e2fc6e6c98eab5",
+    "scripts/schema_registry.sql": "a65037f8b4275bbf3f938671457e8f22fa534245",
+    "scripts/taxon_namespaces.py": "56651e8f89085ad95c225643177c17a4098021c3",
+    "web/package.json": "9281c6699199a639247e084fba6fb7b0d114455f",
+    "web/pnpm-lock.yaml": "ab7675c6f8c746085ac7bcf5d7c7602227975d40",
+    "web/scripts/build-biota.mjs": "cac46966587f26e6abd2a6c247d273b800ace929",
+    "web/scripts/build-derived.mjs": "c67cd97a35f62f545cf729dec666158cc67403ef",
+    "web/scripts/build-geo.mjs": "b195f50d898b1dd999d5751fe4ce50ed118b627b",
+    "web/scripts/lib/csv.mjs": "2d1fa1614b795cc6b3501f25afadddb30403afe2"
+  },
+  "schema_version": 1,
+  "source_hashes": {
+    "data/db/cells.sqlite": "0668ae12ee127b3638cbdf52a75d6ba7dd96252e04dd928242224e704fe646c5",
+    "data/db/ryuiki.sqlite": "554b41a03dd5ca7753aaf813691a9008c9c5c06de3d61262cbca0095399039d4",
+    "data/processed/moe_ias_list.csv": "54a3261737bc72b84910d75d78a7da7beee067c5b78581c9b2522627b7bffb41",
+    "data/processed/nlni_l03b_landuse_by_watershed.csv": "ec71d28f382785af6ef7ed588350f67537f96d356d1d73c541522a74421cb644",
+    "data/processed/nlni_w12_watersheds.geojson": "0fdb4360f1a1d0f8473a0d5b9b9a16f1cc42420312f654781a5dfd66b0aa56f7",
+    "data/processed/nlni_w12_watersheds.jsonl": "901924abd35592a6a1a570864ed6b1843755070490ea39cc16f6a3114a5c492d",
+    "data/processed/taxon_crosswalk.csv": "cde56ea81743f7790a04ac9c7e5fd9dc47699edd56c8c9fcfe70c3eea6a74e52"
+  }
+}

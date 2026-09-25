@@ -1,0 +1,2467 @@
+{
+  "schema_version": 1,
+  "source_db": "derived.sqlite",
+  "table_count": 33,
+  "tables": {
+    "doc_series": {
+      "columns": [
+        {
+          "name": "doc_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "table_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "page_no",
+          "type": "INT"
+        },
+        {
+          "name": "row_key",
+          "type": "TEXT"
+        },
+        {
+          "name": "label",
+          "type": ""
+        },
+        {
+          "name": "fiscal_year",
+          "type": "INT"
+        },
+        {
+          "name": "value",
+          "type": ""
+        },
+        {
+          "name": "n_cells",
+          "type": ""
+        },
+        {
+          "name": "unit",
+          "type": ""
+        }
+      ],
+      "content_hash": "sha256:0a6217da96b90ba36fbc9c76bb272f216be44ac35f390e6d5a619cf44e5fb726",
+      "key": [
+        "doc_id",
+        "table_id",
+        "row_key",
+        "fiscal_year"
+      ],
+      "key_note": "sample: \u5168\u91cf\u30d9\u30fc\u30b9\u30e9\u30a4\u30f3\uff08reports/derived_baseline.json\uff09\u306e\u81ea\u52d5\u5c0e\u51fa\u30ad\u30fc\u3092\u305d\u306e\u307e\u307e\u5ba3\u8a00\u5316\u3002\u30b5\u30f3\u30d7\u30eb\u3067\u306f\u884c\u6570\u304c\u5c11\u306a\u3044\u305f\u3081\u3001\u63a2\u7d22A/B\u306b\u4efb\u305b\u308b\u3068\u5225\u306e\u77ed\u3044\u7d44\u307f\u5408\u308f\u305b\u3067\u5076\u7136\u4e00\u610f\u306b\u306a\u308a\u3046\u308b\u3002",
+      "key_source": "declared",
+      "numeric_columns": {
+        "fiscal_year": {
+          "max": "2022.000000",
+          "min": "2016.000000",
+          "non_null": 115,
+          "sum": "232160.000000"
+        },
+        "n_cells": {
+          "max": "3.000000",
+          "min": "1.000000",
+          "non_null": 115,
+          "sum": "155.000000"
+        },
+        "page_no": {
+          "max": "4.000000",
+          "min": "1.000000",
+          "non_null": 115,
+          "sum": "400.000000"
+        },
+        "unit": {
+          "max": null,
+          "min": null,
+          "non_null": 0,
+          "sum": "0.000000"
+        },
+        "value": {
+          "max": "1217.000000",
+          "min": "0.000000",
+          "non_null": 115,
+          "sum": "12765.000000"
+        }
+      },
+      "row_count": 115
+    },
+    "doc_series_meta": {
+      "columns": [
+        {
+          "name": "doc_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "table_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "row_key",
+          "type": "TEXT"
+        },
+        {
+          "name": "label",
+          "type": ""
+        },
+        {
+          "name": "page_no",
+          "type": ""
+        },
+        {
+          "name": "n_years",
+          "type": ""
+        },
+        {
+          "name": "y_from",
+          "type": ""
+        },
+        {
+          "name": "y_to",
+          "type": ""
+        },
+        {
+          "name": "unit",
+          "type": ""
+        },
+        {
+          "name": "v_min",
+          "type": ""
+        },
+        {
+          "name": "v_max",
+          "type": ""
+        },
+        {
+          "name": "doc_title",
+          "type": "TEXT"
+        },
+        {
+          "name": "publisher",
+          "type": "TEXT"
+        },
+        {
+          "name": "url",
+          "type": "TEXT"
+        },
+        {
+          "name": "license",
+          "type": "TEXT"
+        },
+        {
+          "name": "n_warnings",
+          "type": ""
+        }
+      ],
+      "content_hash": "sha256:0ba4658fe26d56ba83d0e304b66fa51bf32190832ef1d646509cb6156bdab08c",
+      "key": [
+        "doc_id",
+        "table_id",
+        "row_key"
+      ],
+      "key_note": "sample: \u5168\u91cf\u30d9\u30fc\u30b9\u30e9\u30a4\u30f3\uff08reports/derived_baseline.json\uff09\u306e\u81ea\u52d5\u5c0e\u51fa\u30ad\u30fc\u3092\u305d\u306e\u307e\u307e\u5ba3\u8a00\u5316\u3002\u30b5\u30f3\u30d7\u30eb\u3067\u306f\u884c\u6570\u304c\u5c11\u306a\u3044\u305f\u3081\u3001\u63a2\u7d22A/B\u306b\u4efb\u305b\u308b\u3068\u5225\u306e\u77ed\u3044\u7d44\u307f\u5408\u308f\u305b\u3067\u5076\u7136\u4e00\u610f\u306b\u306a\u308a\u3046\u308b\u3002",
+      "key_source": "declared",
+      "numeric_columns": {
+        "n_warnings": {
+          "max": "0.000000",
+          "min": "0.000000",
+          "non_null": 23,
+          "sum": "0.000000"
+        },
+        "n_years": {
+          "max": "5.000000",
+          "min": "5.000000",
+          "non_null": 23,
+          "sum": "115.000000"
+        },
+        "page_no": {
+          "max": "4.000000",
+          "min": "1.000000",
+          "non_null": 23,
+          "sum": "80.000000"
+        },
+        "unit": {
+          "max": null,
+          "min": null,
+          "non_null": 0,
+          "sum": "0.000000"
+        },
+        "v_max": {
+          "max": "1217.000000",
+          "min": "0.000000",
+          "non_null": 23,
+          "sum": "3284.566667"
+        },
+        "v_min": {
+          "max": "690.000000",
+          "min": "0.000000",
+          "non_null": 23,
+          "sum": "1577.933333"
+        },
+        "y_from": {
+          "max": "2018.000000",
+          "min": "2016.000000",
+          "non_null": 23,
+          "sum": "46386.000000"
+        },
+        "y_to": {
+          "max": "2022.000000",
+          "min": "2020.000000",
+          "non_null": 23,
+          "sum": "46478.000000"
+        }
+      },
+      "row_count": 23
+    },
+    "effort_year": {
+      "columns": [
+        {
+          "name": "year",
+          "type": "INT"
+        },
+        {
+          "name": "n",
+          "type": ""
+        },
+        {
+          "name": "species_n",
+          "type": ""
+        },
+        {
+          "name": "mesh_n",
+          "type": ""
+        },
+        {
+          "name": "n_inat",
+          "type": ""
+        },
+        {
+          "name": "n_gbif",
+          "type": ""
+        }
+      ],
+      "content_hash": "sha256:12281beea8a8515be63b5bd4d7185ce00698eaf83c7df1ab27db269c2b13114f",
+      "key": [
+        "year"
+      ],
+      "key_note": "sample: \u5168\u91cf\u30d9\u30fc\u30b9\u30e9\u30a4\u30f3\uff08reports/derived_baseline.json\uff09\u306e\u81ea\u52d5\u5c0e\u51fa\u30ad\u30fc\u3092\u305d\u306e\u307e\u307e\u5ba3\u8a00\u5316\u3002\u30b5\u30f3\u30d7\u30eb\u3067\u306f\u884c\u6570\u304c\u5c11\u306a\u3044\u305f\u3081\u3001\u63a2\u7d22A/B\u306b\u4efb\u305b\u308b\u3068\u5225\u306e\u77ed\u3044\u7d44\u307f\u5408\u308f\u305b\u3067\u5076\u7136\u4e00\u610f\u306b\u306a\u308a\u3046\u308b\u3002",
+      "key_source": "declared",
+      "numeric_columns": {
+        "mesh_n": {
+          "max": "44.000000",
+          "min": "1.000000",
+          "non_null": 52,
+          "sum": "543.000000"
+        },
+        "n": {
+          "max": "1525.000000",
+          "min": "1.000000",
+          "non_null": 52,
+          "sum": "2444.000000"
+        },
+        "n_gbif": {
+          "max": "1520.000000",
+          "min": "1.000000",
+          "non_null": 52,
+          "sum": "2359.000000"
+        },
+        "n_inat": {
+          "max": "20.000000",
+          "min": "0.000000",
+          "non_null": 52,
+          "sum": "85.000000"
+        },
+        "species_n": {
+          "max": "42.000000",
+          "min": "1.000000",
+          "non_null": 52,
+          "sum": "209.000000"
+        },
+        "year": {
+          "max": "2026.000000",
+          "min": "1971.000000",
+          "non_null": 52,
+          "sum": "103957.000000"
+        }
+      },
+      "row_count": 52
+    },
+    "ias_species": {
+      "columns": [
+        {
+          "name": "ias_category",
+          "type": "TEXT"
+        },
+        {
+          "name": "binom",
+          "type": ""
+        },
+        {
+          "name": "name_ja",
+          "type": ""
+        },
+        {
+          "name": "taxon_group",
+          "type": ""
+        },
+        {
+          "name": "en_name",
+          "type": ""
+        },
+        {
+          "name": "n",
+          "type": ""
+        },
+        {
+          "name": "mesh_n",
+          "type": ""
+        },
+        {
+          "name": "y_from",
+          "type": ""
+        },
+        {
+          "name": "y_to",
+          "type": ""
+        },
+        {
+          "name": "n_since_2020",
+          "type": ""
+        }
+      ],
+      "content_hash": "sha256:8cd31d9760a86c10bda1beda6ccbf4c1b934c3cac16993004d964adb76dfbba0",
+      "key": [
+        "ias_category",
+        "binom"
+      ],
+      "key_note": "sample: \u5168\u91cf\u30d9\u30fc\u30b9\u30e9\u30a4\u30f3\uff08reports/derived_baseline.json\uff09\u306e\u81ea\u52d5\u5c0e\u51fa\u30ad\u30fc\u3092\u305d\u306e\u307e\u307e\u5ba3\u8a00\u5316\u3002\u30b5\u30f3\u30d7\u30eb\u3067\u306f\u884c\u6570\u304c\u5c11\u306a\u3044\u305f\u3081\u3001\u63a2\u7d22A/B\u306b\u4efb\u305b\u308b\u3068\u5225\u306e\u77ed\u3044\u7d44\u307f\u5408\u308f\u305b\u3067\u5076\u7136\u4e00\u610f\u306b\u306a\u308a\u3046\u308b\u3002",
+      "key_source": "declared",
+      "numeric_columns": {
+        "mesh_n": {
+          "max": "5.000000",
+          "min": "1.000000",
+          "non_null": 12,
+          "sum": "17.000000"
+        },
+        "n": {
+          "max": "5.000000",
+          "min": "1.000000",
+          "non_null": 12,
+          "sum": "19.000000"
+        },
+        "n_since_2020": {
+          "max": "2.000000",
+          "min": "0.000000",
+          "non_null": 12,
+          "sum": "2.000000"
+        },
+        "y_from": {
+          "max": "2022.000000",
+          "min": "1976.000000",
+          "non_null": 12,
+          "sum": "24158.000000"
+        },
+        "y_to": {
+          "max": "2022.000000",
+          "min": "1976.000000",
+          "non_null": 12,
+          "sum": "24160.000000"
+        }
+      },
+      "row_count": 12
+    },
+    "landuse_change": {
+      "columns": [
+        {
+          "name": "watershed_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "landuse_name",
+          "type": "TEXT"
+        },
+        {
+          "name": "km2_2006",
+          "type": ""
+        },
+        {
+          "name": "km2_2016",
+          "type": ""
+        },
+        {
+          "name": "delta_km2",
+          "type": ""
+        }
+      ],
+      "content_hash": "sha256:a594cefb0c43d5e6e437b29ebc1c89123fa8883109b2b5a6c5132577424ec38b",
+      "key": [
+        "watershed_id",
+        "landuse_name"
+      ],
+      "key_note": "sample: \u5168\u91cf\u30d9\u30fc\u30b9\u30e9\u30a4\u30f3\uff08reports/derived_baseline.json\uff09\u306e\u81ea\u52d5\u5c0e\u51fa\u30ad\u30fc\u3092\u305d\u306e\u307e\u307e\u5ba3\u8a00\u5316\u3002\u30b5\u30f3\u30d7\u30eb\u3067\u306f\u884c\u6570\u304c\u5c11\u306a\u3044\u305f\u3081\u3001\u63a2\u7d22A/B\u306b\u4efb\u305b\u308b\u3068\u5225\u306e\u77ed\u3044\u7d44\u307f\u5408\u308f\u305b\u3067\u5076\u7136\u4e00\u610f\u306b\u306a\u308a\u3046\u308b\u3002",
+      "key_source": "declared",
+      "numeric_columns": {
+        "delta_km2": {
+          "max": "5.920715",
+          "min": "-5.544351",
+          "non_null": 2904,
+          "sum": "-0.000020"
+        },
+        "km2_2006": {
+          "max": "49.093042",
+          "min": "0.000000",
+          "non_null": 2904,
+          "sum": "3116.889276"
+        },
+        "km2_2016": {
+          "max": "55.013757",
+          "min": "0.000000",
+          "non_null": 2904,
+          "sum": "3116.889256"
+        }
+      },
+      "row_count": 2904
+    },
+    "landuse_watershed": {
+      "columns": [
+        {
+          "name": "watershed_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "year",
+          "type": "INTEGER"
+        },
+        {
+          "name": "landuse_code",
+          "type": "TEXT"
+        },
+        {
+          "name": "landuse_name",
+          "type": "TEXT"
+        },
+        {
+          "name": "n_cells",
+          "type": "INTEGER"
+        },
+        {
+          "name": "area_km2",
+          "type": "REAL"
+        }
+      ],
+      "content_hash": "sha256:db04b41e73242a872f1838435d6637eca5a8c015bbc6b90ff9c478738823b6e9",
+      "key": [
+        "watershed_id",
+        "landuse_code"
+      ],
+      "key_note": "sample: \u5168\u91cf\u30d9\u30fc\u30b9\u30e9\u30a4\u30f3\uff08reports/derived_baseline.json\uff09\u306e\u81ea\u52d5\u5c0e\u51fa\u30ad\u30fc\u3092\u305d\u306e\u307e\u307e\u5ba3\u8a00\u5316\u3002\u30b5\u30f3\u30d7\u30eb\u3067\u306f\u884c\u6570\u304c\u5c11\u306a\u3044\u305f\u3081\u3001\u63a2\u7d22A/B\u306b\u4efb\u305b\u308b\u3068\u5225\u306e\u77ed\u3044\u7d44\u307f\u5408\u308f\u305b\u3067\u5076\u7136\u4e00\u610f\u306b\u306a\u308a\u3046\u308b\u3002",
+      "key_source": "declared",
+      "numeric_columns": {
+        "area_km2": {
+          "max": "55.013757",
+          "min": "0.010454",
+          "non_null": 4858,
+          "sum": "6233.778532"
+        },
+        "n_cells": {
+          "max": "5250.000000",
+          "min": "1.000000",
+          "non_null": 4858,
+          "sum": "594170.000000"
+        },
+        "year": {
+          "max": "2016.000000",
+          "min": "2006.000000",
+          "non_null": 4858,
+          "sum": "9769748.000000"
+        }
+      },
+      "row_count": 4858
+    },
+    "meas_clim": {
+      "columns": [
+        {
+          "name": "variable",
+          "type": "TEXT"
+        },
+        {
+          "name": "month",
+          "type": "INT"
+        },
+        {
+          "name": "n",
+          "type": ""
+        },
+        {
+          "name": "avg",
+          "type": ""
+        },
+        {
+          "name": "min",
+          "type": ""
+        },
+        {
+          "name": "max",
+          "type": ""
+        },
+        {
+          "name": "unit",
+          "type": ""
+        }
+      ],
+      "content_hash": "sha256:b04b32e7d7e32ee37a187b091617af430ea58a2cb80801605d7fa53adc80dd2a",
+      "key": [
+        "variable",
+        "month"
+      ],
+      "key_note": "sample: \u5168\u91cf\u30d9\u30fc\u30b9\u30e9\u30a4\u30f3\uff08reports/derived_baseline.json\uff09\u306e\u81ea\u52d5\u5c0e\u51fa\u30ad\u30fc\u3092\u305d\u306e\u307e\u307e\u5ba3\u8a00\u5316\u3002\u30b5\u30f3\u30d7\u30eb\u3067\u306f\u884c\u6570\u304c\u5c11\u306a\u3044\u305f\u3081\u3001\u63a2\u7d22A/B\u306b\u4efb\u305b\u308b\u3068\u5225\u306e\u77ed\u3044\u7d44\u307f\u5408\u308f\u305b\u3067\u5076\u7136\u4e00\u610f\u306b\u306a\u308a\u3046\u308b\u3002",
+      "key_source": "declared",
+      "numeric_columns": {
+        "avg": {
+          "max": "35455.777778",
+          "min": "0.000000",
+          "non_null": 148,
+          "sum": "190991.726938"
+        },
+        "max": {
+          "max": "110000.000000",
+          "min": "0.000000",
+          "non_null": 148,
+          "sum": "611766.357700"
+        },
+        "min": {
+          "max": "280.000000",
+          "min": "-10.000000",
+          "non_null": 148,
+          "sum": "553.920600"
+        },
+        "month": {
+          "max": "12.000000",
+          "min": "1.000000",
+          "non_null": 148,
+          "sum": "956.000000"
+        },
+        "n": {
+          "max": "1223.000000",
+          "min": "1.000000",
+          "non_null": 148,
+          "sum": "18823.000000"
+        }
+      },
+      "row_count": 148
+    },
+    "meas_daily": {
+      "columns": [
+        {
+          "name": "site_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "variable",
+          "type": "TEXT"
+        },
+        {
+          "name": "d",
+          "type": "TEXT"
+        },
+        {
+          "name": "value",
+          "type": ""
+        },
+        {
+          "name": "n_raw",
+          "type": ""
+        },
+        {
+          "name": "n_censored",
+          "type": ""
+        },
+        {
+          "name": "unit",
+          "type": ""
+        }
+      ],
+      "content_hash": "sha256:a7593c18a0b753ef0718254acf30e33f5703c31a2080f07798e93f0f299824ef",
+      "key": [
+        "site_id",
+        "variable",
+        "d"
+      ],
+      "key_note": "sample: \u5168\u91cf\u30d9\u30fc\u30b9\u30e9\u30a4\u30f3\uff08reports/derived_baseline.json\uff09\u306e\u81ea\u52d5\u5c0e\u51fa\u30ad\u30fc\u3092\u305d\u306e\u307e\u307e\u5ba3\u8a00\u5316\u3002\u30b5\u30f3\u30d7\u30eb\u3067\u306f\u884c\u6570\u304c\u5c11\u306a\u3044\u305f\u3081\u3001\u63a2\u7d22A/B\u306b\u4efb\u305b\u308b\u3068\u5225\u306e\u77ed\u3044\u7d44\u307f\u5408\u308f\u305b\u3067\u5076\u7136\u4e00\u610f\u306b\u306a\u308a\u3046\u308b\u3002",
+      "key_source": "declared",
+      "numeric_columns": {
+        "n_censored": {
+          "max": "3.000000",
+          "min": "0.000000",
+          "non_null": 18823,
+          "sum": "3235.000000"
+        },
+        "n_raw": {
+          "max": "3.000000",
+          "min": "1.000000",
+          "non_null": 18823,
+          "sum": "29383.000000"
+        },
+        "value": {
+          "max": "110000.000000",
+          "min": "-10.000000",
+          "non_null": 18823,
+          "sum": "2168272.619067"
+        }
+      },
+      "row_count": 18823
+    },
+    "meas_month": {
+      "columns": [
+        {
+          "name": "site_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "variable",
+          "type": "TEXT"
+        },
+        {
+          "name": "ym",
+          "type": ""
+        },
+        {
+          "name": "year",
+          "type": "INT"
+        },
+        {
+          "name": "month",
+          "type": "INT"
+        },
+        {
+          "name": "n",
+          "type": ""
+        },
+        {
+          "name": "avg",
+          "type": ""
+        },
+        {
+          "name": "unit",
+          "type": ""
+        }
+      ],
+      "content_hash": "sha256:0aee543cf3b48ea3b8081a26914fa3ce0b4faa961c0b3eb471d5be69d90b58b6",
+      "key": [
+        "site_id",
+        "variable",
+        "year",
+        "month"
+      ],
+      "key_note": "sample: \u5168\u91cf\u30d9\u30fc\u30b9\u30e9\u30a4\u30f3\uff08reports/derived_baseline.json\uff09\u306e\u81ea\u52d5\u5c0e\u51fa\u30ad\u30fc\u3092\u305d\u306e\u307e\u307e\u5ba3\u8a00\u5316\u3002\u30b5\u30f3\u30d7\u30eb\u3067\u306f\u884c\u6570\u304c\u5c11\u306a\u3044\u305f\u3081\u3001\u63a2\u7d22A/B\u306b\u4efb\u305b\u308b\u3068\u5225\u306e\u77ed\u3044\u7d44\u307f\u5408\u308f\u305b\u3067\u5076\u7136\u4e00\u610f\u306b\u306a\u308a\u3046\u308b\u3002",
+      "key_source": "declared",
+      "numeric_columns": {
+        "avg": {
+          "max": "110000.000000",
+          "min": "-10.000000",
+          "non_null": 16300,
+          "sum": "2154169.241067"
+        },
+        "month": {
+          "max": "12.000000",
+          "min": "1.000000",
+          "non_null": 16300,
+          "sum": "106054.000000"
+        },
+        "n": {
+          "max": "3.000000",
+          "min": "1.000000",
+          "non_null": 16300,
+          "sum": "18823.000000"
+        },
+        "year": {
+          "max": "2026.000000",
+          "min": "2002.000000",
+          "non_null": 16300,
+          "sum": "32918620.000000"
+        }
+      },
+      "row_count": 16300
+    },
+    "meas_year": {
+      "columns": [
+        {
+          "name": "site_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "variable",
+          "type": "TEXT"
+        },
+        {
+          "name": "kind",
+          "type": ""
+        },
+        {
+          "name": "year",
+          "type": "NUM"
+        },
+        {
+          "name": "n",
+          "type": ""
+        },
+        {
+          "name": "avg",
+          "type": ""
+        },
+        {
+          "name": "min",
+          "type": ""
+        },
+        {
+          "name": "max",
+          "type": ""
+        },
+        {
+          "name": "n_censored",
+          "type": ""
+        },
+        {
+          "name": "unit",
+          "type": ""
+        }
+      ],
+      "content_hash": "sha256:25372127021d5f2e8d22e1d455b0012fc78bed1a58bf7dc0588c170cf4bd11d0",
+      "key": [
+        "site_id",
+        "variable",
+        "year",
+        "kind"
+      ],
+      "key_note": "sample: \u5168\u91cf\u30d9\u30fc\u30b9\u30e9\u30a4\u30f3\uff08reports/derived_baseline.json\uff09\u306e\u81ea\u52d5\u5c0e\u51fa\u30ad\u30fc\u3092\u305d\u306e\u307e\u307e\u5ba3\u8a00\u5316\u3002\u30b5\u30f3\u30d7\u30eb\u3067\u306f\u884c\u6570\u304c\u5c11\u306a\u3044\u305f\u3081\u3001\u63a2\u7d22A/B\u306b\u4efb\u305b\u308b\u3068\u5225\u306e\u77ed\u3044\u7d44\u307f\u5408\u308f\u305b\u3067\u5076\u7136\u4e00\u610f\u306b\u306a\u308a\u3046\u308b\u3002",
+      "key_source": "declared",
+      "numeric_columns": {
+        "avg": {
+          "max": "140000.000000",
+          "min": "-18.830000",
+          "non_null": 6915,
+          "sum": "958342.736081"
+        },
+        "max": {
+          "max": "140000.000000",
+          "min": "-18.830000",
+          "non_null": 6915,
+          "sum": "1357848.861733"
+        },
+        "min": {
+          "max": "140000.000000",
+          "min": "-18.830000",
+          "non_null": 6915,
+          "sum": "791382.329433"
+        },
+        "n": {
+          "max": "24.000000",
+          "min": "1.000000",
+          "non_null": 6915,
+          "sum": "28834.000000"
+        },
+        "n_censored": {
+          "max": "24.000000",
+          "min": "0.000000",
+          "non_null": 6915,
+          "sum": "3658.000000"
+        },
+        "year": {
+          "max": "2026.000000",
+          "min": "1973.000000",
+          "non_null": 6915,
+          "sum": "13919879.000000"
+        }
+      },
+      "row_count": 6915
+    },
+    "mesh_all": {
+      "columns": [
+        {
+          "name": "mlat",
+          "type": "INT"
+        },
+        {
+          "name": "mlon",
+          "type": "INT"
+        },
+        {
+          "name": "n",
+          "type": ""
+        },
+        {
+          "name": "rl_n",
+          "type": ""
+        },
+        {
+          "name": "y_from",
+          "type": ""
+        },
+        {
+          "name": "y_to",
+          "type": ""
+        }
+      ],
+      "content_hash": "sha256:888a33fc596ed6ff63989fb66fb329dec70c0762b86ba22cd4af7f86aa2c57a0",
+      "key": [
+        "mlat",
+        "mlon"
+      ],
+      "key_note": "sample: \u5168\u91cf\u30d9\u30fc\u30b9\u30e9\u30a4\u30f3\uff08reports/derived_baseline.json\uff09\u306e\u81ea\u52d5\u5c0e\u51fa\u30ad\u30fc\u3092\u305d\u306e\u307e\u307e\u5ba3\u8a00\u5316\u3002\u30b5\u30f3\u30d7\u30eb\u3067\u306f\u884c\u6570\u304c\u5c11\u306a\u3044\u305f\u3081\u3001\u63a2\u7d22A/B\u306b\u4efb\u305b\u308b\u3068\u5225\u306e\u77ed\u3044\u7d44\u307f\u5408\u308f\u305b\u3067\u5076\u7136\u4e00\u610f\u306b\u306a\u308a\u3046\u308b\u3002",
+      "key_source": "declared",
+      "numeric_columns": {
+        "mlat": {
+          "max": "3565.000000",
+          "min": "3513.000000",
+          "non_null": 391,
+          "sum": "1385222.000000"
+        },
+        "mlon": {
+          "max": "13975.000000",
+          "min": "13897.000000",
+          "non_null": 391,
+          "sum": "5448607.000000"
+        },
+        "n": {
+          "max": "1500.000000",
+          "min": "1.000000",
+          "non_null": 391,
+          "sum": "2444.000000"
+        },
+        "rl_n": {
+          "max": "3.000000",
+          "min": "0.000000",
+          "non_null": 391,
+          "sum": "29.000000"
+        },
+        "y_from": {
+          "max": "2026.000000",
+          "min": "1971.000000",
+          "non_null": 391,
+          "sum": "781212.000000"
+        },
+        "y_to": {
+          "max": "2026.000000",
+          "min": "1971.000000",
+          "non_null": 391,
+          "sum": "782781.000000"
+        }
+      },
+      "row_count": 391
+    },
+    "mesh_species": {
+      "columns": [
+        {
+          "name": "mlat",
+          "type": "INT"
+        },
+        {
+          "name": "mlon",
+          "type": "INT"
+        },
+        {
+          "name": "species_n",
+          "type": ""
+        },
+        {
+          "name": "rl_species_n",
+          "type": ""
+        }
+      ],
+      "content_hash": "sha256:7bac410b2813ae366d24bae2e004ca1dce0decb71882993472a25e98665ba44f",
+      "key": [
+        "mlat",
+        "mlon"
+      ],
+      "key_note": "sample: \u5168\u91cf\u30d9\u30fc\u30b9\u30e9\u30a4\u30f3\uff08reports/derived_baseline.json\uff09\u306e\u81ea\u52d5\u5c0e\u51fa\u30ad\u30fc\u3092\u305d\u306e\u307e\u307e\u5ba3\u8a00\u5316\u3002\u30b5\u30f3\u30d7\u30eb\u3067\u306f\u884c\u6570\u304c\u5c11\u306a\u3044\u305f\u3081\u3001\u63a2\u7d22A/B\u306b\u4efb\u305b\u308b\u3068\u5225\u306e\u77ed\u3044\u7d44\u307f\u5408\u308f\u305b\u3067\u5076\u7136\u4e00\u610f\u306b\u306a\u308a\u3046\u308b\u3002",
+      "key_source": "declared",
+      "numeric_columns": {
+        "mlat": {
+          "max": "3565.000000",
+          "min": "3513.000000",
+          "non_null": 400,
+          "sum": "1417027.000000"
+        },
+        "mlon": {
+          "max": "13975.000000",
+          "min": "13897.000000",
+          "non_null": 400,
+          "sum": "5574083.000000"
+        },
+        "rl_species_n": {
+          "max": "1.000000",
+          "min": "0.000000",
+          "non_null": 400,
+          "sum": "25.000000"
+        },
+        "species_n": {
+          "max": "32.000000",
+          "min": "1.000000",
+          "non_null": 400,
+          "sum": "529.000000"
+        }
+      },
+      "row_count": 400
+    },
+    "mesh_year": {
+      "columns": [
+        {
+          "name": "mlat",
+          "type": "INT"
+        },
+        {
+          "name": "mlon",
+          "type": "INT"
+        },
+        {
+          "name": "year",
+          "type": "INT"
+        },
+        {
+          "name": "n",
+          "type": ""
+        },
+        {
+          "name": "species_n",
+          "type": ""
+        },
+        {
+          "name": "rl_n",
+          "type": ""
+        }
+      ],
+      "content_hash": "sha256:426c8ebad89fd1ce554b4e938ca1d7530d9f4cd5e31482b0d118718d21efa58c",
+      "key": [
+        "mlat",
+        "mlon",
+        "year"
+      ],
+      "key_note": "sample: \u5168\u91cf\u30d9\u30fc\u30b9\u30e9\u30a4\u30f3\uff08reports/derived_baseline.json\uff09\u306e\u81ea\u52d5\u5c0e\u51fa\u30ad\u30fc\u3092\u305d\u306e\u307e\u307e\u5ba3\u8a00\u5316\u3002\u30b5\u30f3\u30d7\u30eb\u3067\u306f\u884c\u6570\u304c\u5c11\u306a\u3044\u305f\u3081\u3001\u63a2\u7d22A/B\u306b\u4efb\u305b\u308b\u3068\u5225\u306e\u77ed\u3044\u7d44\u307f\u5408\u308f\u305b\u3067\u5076\u7136\u4e00\u610f\u306b\u306a\u308a\u3046\u308b\u3002",
+      "key_source": "declared",
+      "numeric_columns": {
+        "mlat": {
+          "max": "3565.000000",
+          "min": "3513.000000",
+          "non_null": 543,
+          "sum": "1924755.000000"
+        },
+        "mlon": {
+          "max": "13975.000000",
+          "min": "13897.000000",
+          "non_null": 543,
+          "sum": "7568471.000000"
+        },
+        "n": {
+          "max": "1500.000000",
+          "min": "1.000000",
+          "non_null": 543,
+          "sum": "2444.000000"
+        },
+        "rl_n": {
+          "max": "3.000000",
+          "min": "0.000000",
+          "non_null": 543,
+          "sum": "29.000000"
+        },
+        "species_n": {
+          "max": "32.000000",
+          "min": "1.000000",
+          "non_null": 543,
+          "sum": "637.000000"
+        },
+        "year": {
+          "max": "2026.000000",
+          "min": "1971.000000",
+          "non_null": 543,
+          "sum": "1085647.000000"
+        }
+      },
+      "row_count": 543
+    },
+    "org_group_year": {
+      "columns": [
+        {
+          "name": "year",
+          "type": "INT"
+        },
+        {
+          "name": "taxon_group",
+          "type": ""
+        },
+        {
+          "name": "source_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "n",
+          "type": ""
+        },
+        {
+          "name": "species_n",
+          "type": ""
+        },
+        {
+          "name": "mesh_n",
+          "type": ""
+        }
+      ],
+      "content_hash": "sha256:4d2908e4a61d6a7d651c56c93b9c62180849d3db06c74bd554422e56c77ce190",
+      "key": [
+        "year",
+        "source_id",
+        "taxon_group"
+      ],
+      "key_note": "sample: \u5168\u91cf\u30d9\u30fc\u30b9\u30e9\u30a4\u30f3\uff08reports/derived_baseline.json\uff09\u306e\u81ea\u52d5\u5c0e\u51fa\u30ad\u30fc\u3092\u305d\u306e\u307e\u307e\u5ba3\u8a00\u5316\u3002\u30b5\u30f3\u30d7\u30eb\u3067\u306f\u884c\u6570\u304c\u5c11\u306a\u3044\u305f\u3081\u3001\u63a2\u7d22A/B\u306b\u4efb\u305b\u308b\u3068\u5225\u306e\u77ed\u3044\u7d44\u307f\u5408\u308f\u305b\u3067\u5076\u7136\u4e00\u610f\u306b\u306a\u308a\u3046\u308b\u3002",
+      "key_source": "declared",
+      "numeric_columns": {
+        "mesh_n": {
+          "max": "44.000000",
+          "min": "1.000000",
+          "non_null": 85,
+          "sum": "551.000000"
+        },
+        "n": {
+          "max": "1513.000000",
+          "min": "1.000000",
+          "non_null": 85,
+          "sum": "2444.000000"
+        },
+        "species_n": {
+          "max": "33.000000",
+          "min": "1.000000",
+          "non_null": 85,
+          "sum": "209.000000"
+        },
+        "year": {
+          "max": "2026.000000",
+          "min": "1971.000000",
+          "non_null": 85,
+          "sum": "170484.000000"
+        }
+      },
+      "row_count": 85
+    },
+    "org_norm": {
+      "columns": [
+        {
+          "name": "record_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "source_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "yr",
+          "type": "INT"
+        },
+        {
+          "name": "mo",
+          "type": ""
+        },
+        {
+          "name": "binom",
+          "type": ""
+        },
+        {
+          "name": "scientific_name",
+          "type": "TEXT"
+        },
+        {
+          "name": "vernacular_name",
+          "type": "TEXT"
+        },
+        {
+          "name": "rank_l",
+          "type": ""
+        },
+        {
+          "name": "cls",
+          "type": ""
+        },
+        {
+          "name": "kdm",
+          "type": ""
+        },
+        {
+          "name": "phy",
+          "type": ""
+        },
+        {
+          "name": "ord",
+          "type": ""
+        },
+        {
+          "name": "family",
+          "type": ""
+        },
+        {
+          "name": "lat",
+          "type": "REAL"
+        },
+        {
+          "name": "lon",
+          "type": "REAL"
+        },
+        {
+          "name": "mlat",
+          "type": "INT"
+        },
+        {
+          "name": "mlon",
+          "type": "INT"
+        },
+        {
+          "name": "red_list_category",
+          "type": "TEXT"
+        },
+        {
+          "name": "license_class",
+          "type": "TEXT"
+        },
+        {
+          "name": "is_alien",
+          "type": "INT"
+        },
+        {
+          "name": "taxon_group",
+          "type": ""
+        }
+      ],
+      "content_hash": "sha256:64eaf50efd023317bcd7a5c68c8a63ae072977246524754af9592bd1a1dbb261",
+      "key": [
+        "record_id"
+      ],
+      "key_note": "sample: \u5168\u91cf\u30d9\u30fc\u30b9\u30e9\u30a4\u30f3\uff08reports/derived_baseline.json\uff09\u306e\u81ea\u52d5\u5c0e\u51fa\u30ad\u30fc\u3092\u305d\u306e\u307e\u307e\u5ba3\u8a00\u5316\u3002\u30b5\u30f3\u30d7\u30eb\u3067\u306f\u884c\u6570\u304c\u5c11\u306a\u3044\u305f\u3081\u3001\u63a2\u7d22A/B\u306b\u4efb\u305b\u308b\u3068\u5225\u306e\u77ed\u3044\u7d44\u307f\u5408\u308f\u305b\u3067\u5076\u7136\u4e00\u610f\u306b\u306a\u308a\u3046\u308b\u3002",
+      "key_source": "declared",
+      "numeric_columns": {
+        "is_alien": {
+          "max": "1.000000",
+          "min": "0.000000",
+          "non_null": 2509,
+          "sum": "36.000000"
+        },
+        "lat": {
+          "max": "35.650540",
+          "min": "35.133668",
+          "non_null": 2509,
+          "sum": "88797.083149"
+        },
+        "lon": {
+          "max": "139.759051",
+          "min": "138.977800",
+          "non_null": 2509,
+          "sum": "349790.097671"
+        },
+        "mlat": {
+          "max": "3565.000000",
+          "min": "3513.000000",
+          "non_null": 2509,
+          "sum": "8878006.000000"
+        },
+        "mlon": {
+          "max": "13975.000000",
+          "min": "13897.000000",
+          "non_null": 2509,
+          "sum": "34977073.000000"
+        },
+        "mo": {
+          "max": "20.000000",
+          "min": "1.000000",
+          "non_null": 2492,
+          "sum": "15337.000000"
+        },
+        "yr": {
+          "max": "2026.000000",
+          "min": "1862.000000",
+          "non_null": 2509,
+          "sum": "5044624.000000"
+        }
+      },
+      "row_count": 2509
+    },
+    "org_watershed": {
+      "columns": [
+        {
+          "name": "watershed_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "n",
+          "type": ""
+        },
+        {
+          "name": "alien_n",
+          "type": ""
+        },
+        {
+          "name": "redlist_n",
+          "type": ""
+        },
+        {
+          "name": "y_from",
+          "type": ""
+        },
+        {
+          "name": "y_to",
+          "type": ""
+        }
+      ],
+      "content_hash": "sha256:b954b9234a69687d68dc3ed77f9262b125b3147e0e96555456a59646c1b6dd7a",
+      "key": [
+        "watershed_id"
+      ],
+      "key_note": "sample: \u5168\u91cf\u30d9\u30fc\u30b9\u30e9\u30a4\u30f3\uff08reports/derived_baseline.json\uff09\u306e\u81ea\u52d5\u5c0e\u51fa\u30ad\u30fc\u3092\u305d\u306e\u307e\u307e\u5ba3\u8a00\u5316\u3002\u30b5\u30f3\u30d7\u30eb\u3067\u306f\u884c\u6570\u304c\u5c11\u306a\u3044\u305f\u3081\u3001\u63a2\u7d22A/B\u306b\u4efb\u305b\u308b\u3068\u5225\u306e\u77ed\u3044\u7d44\u307f\u5408\u308f\u305b\u3067\u5076\u7136\u4e00\u610f\u306b\u306a\u308a\u3046\u308b\u3002",
+      "key_source": "declared",
+      "numeric_columns": {
+        "alien_n": {
+          "max": "6.000000",
+          "min": "0.000000",
+          "non_null": 141,
+          "sum": "35.000000"
+        },
+        "n": {
+          "max": "1500.000000",
+          "min": "1.000000",
+          "non_null": 141,
+          "sum": "2422.000000"
+        },
+        "redlist_n": {
+          "max": "3.000000",
+          "min": "0.000000",
+          "non_null": 141,
+          "sum": "26.000000"
+        },
+        "y_from": {
+          "max": "2026.000000",
+          "min": "1862.000000",
+          "non_null": 141,
+          "sum": "280009.000000"
+        },
+        "y_to": {
+          "max": "2026.000000",
+          "min": "1956.000000",
+          "non_null": 141,
+          "sum": "282924.000000"
+        }
+      },
+      "row_count": 141
+    },
+    "org_watershed_year": {
+      "columns": [
+        {
+          "name": "watershed_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "year",
+          "type": "INTEGER"
+        },
+        {
+          "name": "n",
+          "type": "INTEGER"
+        },
+        {
+          "name": "species_n",
+          "type": "INTEGER"
+        },
+        {
+          "name": "alien_n",
+          "type": "INTEGER"
+        },
+        {
+          "name": "redlist_n",
+          "type": "INTEGER"
+        }
+      ],
+      "content_hash": "sha256:00ceae54d547ca6c0aaebde769f02c809641977c31fa554dd86f2f35802e1ca9",
+      "key": [
+        "watershed_id",
+        "year"
+      ],
+      "key_note": "sample: \u5168\u91cf\u30d9\u30fc\u30b9\u30e9\u30a4\u30f3\uff08reports/derived_baseline.json\uff09\u306e\u81ea\u52d5\u5c0e\u51fa\u30ad\u30fc\u3092\u305d\u306e\u307e\u307e\u5ba3\u8a00\u5316\u3002\u30b5\u30f3\u30d7\u30eb\u3067\u306f\u884c\u6570\u304c\u5c11\u306a\u3044\u305f\u3081\u3001\u63a2\u7d22A/B\u306b\u4efb\u305b\u308b\u3068\u5225\u306e\u77ed\u3044\u7d44\u307f\u5408\u308f\u305b\u3067\u5076\u7136\u4e00\u610f\u306b\u306a\u308a\u3046\u308b\u3002",
+      "key_source": "declared",
+      "numeric_columns": {
+        "alien_n": {
+          "max": "6.000000",
+          "min": "0.000000",
+          "non_null": 414,
+          "sum": "35.000000"
+        },
+        "n": {
+          "max": "1500.000000",
+          "min": "1.000000",
+          "non_null": 414,
+          "sum": "2422.000000"
+        },
+        "redlist_n": {
+          "max": "3.000000",
+          "min": "0.000000",
+          "non_null": 414,
+          "sum": "26.000000"
+        },
+        "species_n": {
+          "max": "32.000000",
+          "min": "1.000000",
+          "non_null": 414,
+          "sum": "513.000000"
+        },
+        "year": {
+          "max": "2026.000000",
+          "min": "1862.000000",
+          "non_null": 414,
+          "sum": "826035.000000"
+        }
+      },
+      "row_count": 414
+    },
+    "quality_monthly": {
+      "columns": [
+        {
+          "name": "ym",
+          "type": ""
+        },
+        {
+          "name": "submitted",
+          "type": ""
+        },
+        {
+          "name": "verified",
+          "type": ""
+        },
+        {
+          "name": "published",
+          "type": ""
+        },
+        {
+          "name": "returned",
+          "type": ""
+        }
+      ],
+      "content_hash": "sha256:2f3ba74296daf8bc1c3614c748a65cd9923f69851529c4ecc05181180b5f8200",
+      "key": [
+        "ym"
+      ],
+      "key_note": "sample: \u5168\u91cf\u30d9\u30fc\u30b9\u30e9\u30a4\u30f3\uff08reports/derived_baseline.json\uff09\u306e\u81ea\u52d5\u5c0e\u51fa\u30ad\u30fc\u3092\u305d\u306e\u307e\u307e\u5ba3\u8a00\u5316\u3002\u30b5\u30f3\u30d7\u30eb\u3067\u306f\u884c\u6570\u304c\u5c11\u306a\u3044\u305f\u3081\u3001\u63a2\u7d22A/B\u306b\u4efb\u305b\u308b\u3068\u5225\u306e\u77ed\u3044\u7d44\u307f\u5408\u308f\u305b\u3067\u5076\u7136\u4e00\u610f\u306b\u306a\u308a\u3046\u308b\u3002",
+      "key_source": "declared",
+      "numeric_columns": {
+        "published": {
+          "max": "17.000000",
+          "min": "0.000000",
+          "non_null": 39,
+          "sum": "344.000000"
+        },
+        "returned": {
+          "max": "10.000000",
+          "min": "0.000000",
+          "non_null": 39,
+          "sum": "133.000000"
+        },
+        "submitted": {
+          "max": "92.000000",
+          "min": "0.000000",
+          "non_null": 39,
+          "sum": "2265.000000"
+        },
+        "verified": {
+          "max": "27.000000",
+          "min": "0.000000",
+          "non_null": 39,
+          "sum": "630.000000"
+        }
+      },
+      "row_count": 39
+    },
+    "rain_daily": {
+      "columns": [
+        {
+          "name": "d",
+          "type": ""
+        },
+        {
+          "name": "mm",
+          "type": ""
+        },
+        {
+          "name": "n_hours",
+          "type": ""
+        }
+      ],
+      "content_hash": "sha256:49844799e890898bbb425c8b6f8cd4ea1aac7451c945d152edd7f3d7a39e9345",
+      "key": [
+        "d"
+      ],
+      "key_note": "sample: \u5168\u91cf\u30d9\u30fc\u30b9\u30e9\u30a4\u30f3\uff08reports/derived_baseline.json\uff09\u306e\u81ea\u52d5\u5c0e\u51fa\u30ad\u30fc\u3092\u305d\u306e\u307e\u307e\u5ba3\u8a00\u5316\u3002\u30b5\u30f3\u30d7\u30eb\u3067\u306f\u884c\u6570\u304c\u5c11\u306a\u3044\u305f\u3081\u3001\u63a2\u7d22A/B\u306b\u4efb\u305b\u308b\u3068\u5225\u306e\u77ed\u3044\u7d44\u307f\u5408\u308f\u305b\u3067\u5076\u7136\u4e00\u610f\u306b\u306a\u308a\u3046\u308b\u3002",
+      "key_source": "declared",
+      "numeric_columns": {
+        "mm": {
+          "max": "71.500000",
+          "min": "0.000000",
+          "non_null": 63,
+          "sum": "229.500000"
+        },
+        "n_hours": {
+          "max": "24.000000",
+          "min": "13.000000",
+          "non_null": 63,
+          "sum": "1500.000000"
+        }
+      },
+      "row_count": 63
+    },
+    "redlist_change": {
+      "columns": [
+        {
+          "name": "assessment_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "list_name",
+          "type": "TEXT"
+        },
+        {
+          "name": "list_year",
+          "type": "INT"
+        },
+        {
+          "name": "taxon_group_ja",
+          "type": "TEXT"
+        },
+        {
+          "name": "taxon_subgroup_ja",
+          "type": "TEXT"
+        },
+        {
+          "name": "family_ja",
+          "type": "TEXT"
+        },
+        {
+          "name": "vernacular_name_ja",
+          "type": "TEXT"
+        },
+        {
+          "name": "scientific_name",
+          "type": "TEXT"
+        },
+        {
+          "name": "national_category_ja",
+          "type": "TEXT"
+        },
+        {
+          "name": "prev_label",
+          "type": "TEXT"
+        },
+        {
+          "name": "prev_code",
+          "type": "TEXT"
+        },
+        {
+          "name": "prev_rank",
+          "type": "INT"
+        },
+        {
+          "name": "cur_label",
+          "type": "TEXT"
+        },
+        {
+          "name": "cur_code",
+          "type": "TEXT"
+        },
+        {
+          "name": "cur_rank",
+          "type": "INT"
+        },
+        {
+          "name": "direction",
+          "type": ""
+        }
+      ],
+      "content_hash": "sha256:10177e492532e07e0a5d73f7d32907aae34ebde10df499d44dcddf674a8d3a1e",
+      "key": [
+        "assessment_id"
+      ],
+      "key_note": "sample: \u5168\u91cf\u30d9\u30fc\u30b9\u30e9\u30a4\u30f3\uff08reports/derived_baseline.json\uff09\u306e\u81ea\u52d5\u5c0e\u51fa\u30ad\u30fc\u3092\u305d\u306e\u307e\u307e\u5ba3\u8a00\u5316\u3002\u30b5\u30f3\u30d7\u30eb\u3067\u306f\u884c\u6570\u304c\u5c11\u306a\u3044\u305f\u3081\u3001\u63a2\u7d22A/B\u306b\u4efb\u305b\u308b\u3068\u5225\u306e\u77ed\u3044\u7d44\u307f\u5408\u308f\u305b\u3067\u5076\u7136\u4e00\u610f\u306b\u306a\u308a\u3046\u308b\u3002",
+      "key_source": "declared",
+      "numeric_columns": {
+        "cur_rank": {
+          "max": "70.000000",
+          "min": "10.000000",
+          "non_null": 2884,
+          "sum": "129930.000000"
+        },
+        "list_year": {
+          "max": "2026.000000",
+          "min": "2020.000000",
+          "non_null": 2884,
+          "sum": "5832666.000000"
+        },
+        "prev_rank": {
+          "max": "70.000000",
+          "min": "10.000000",
+          "non_null": 2040,
+          "sum": "99440.000000"
+        }
+      },
+      "row_count": 2884
+    },
+    "redlist_map": {
+      "columns": [
+        {
+          "name": "raw",
+          "type": "TEXT"
+        },
+        {
+          "name": "label",
+          "type": "TEXT"
+        },
+        {
+          "name": "code",
+          "type": "TEXT"
+        },
+        {
+          "name": "rank",
+          "type": "INTEGER"
+        }
+      ],
+      "content_hash": "sha256:62b0d97d1281cb45dd85e8f55a0e2f4baa90cc4bc14639c7d7dde991b296cf28",
+      "key": [
+        "raw"
+      ],
+      "key_note": null,
+      "key_source": "pk",
+      "numeric_columns": {
+        "rank": {
+          "max": "70.000000",
+          "min": "10.000000",
+          "non_null": 44,
+          "sum": "1945.000000"
+        }
+      },
+      "row_count": 44
+    },
+    "sensor_daily": {
+      "columns": [
+        {
+          "name": "site_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "datastream",
+          "type": "TEXT"
+        },
+        {
+          "name": "d",
+          "type": ""
+        },
+        {
+          "name": "n",
+          "type": ""
+        },
+        {
+          "name": "avg",
+          "type": ""
+        },
+        {
+          "name": "min",
+          "type": ""
+        },
+        {
+          "name": "max",
+          "type": ""
+        },
+        {
+          "name": "unit",
+          "type": ""
+        }
+      ],
+      "content_hash": "sha256:5896a5cd542ec8c2ea40dc6ff17026861cb24a754f18a46c1b57bea765100080",
+      "key": [
+        "site_id",
+        "datastream",
+        "d"
+      ],
+      "key_note": "sample: \u5168\u91cf\u30d9\u30fc\u30b9\u30e9\u30a4\u30f3\uff08reports/derived_baseline.json\uff09\u306e\u81ea\u52d5\u5c0e\u51fa\u30ad\u30fc\u3092\u305d\u306e\u307e\u307e\u5ba3\u8a00\u5316\u3002\u30b5\u30f3\u30d7\u30eb\u3067\u306f\u884c\u6570\u304c\u5c11\u306a\u3044\u305f\u3081\u3001\u63a2\u7d22A/B\u306b\u4efb\u305b\u308b\u3068\u5225\u306e\u77ed\u3044\u7d44\u307f\u5408\u308f\u305b\u3067\u5076\u7136\u4e00\u610f\u306b\u306a\u308a\u3046\u308b\u3002",
+      "key_source": "declared",
+      "numeric_columns": {
+        "avg": {
+          "max": "1028.100000",
+          "min": "0.000000",
+          "non_null": 1133,
+          "sum": "62489.762176"
+        },
+        "max": {
+          "max": "1028.100000",
+          "min": "0.000000",
+          "non_null": 1133,
+          "sum": "63472.731506"
+        },
+        "min": {
+          "max": "1028.100000",
+          "min": "0.000000",
+          "non_null": 1133,
+          "sum": "62120.636506"
+        },
+        "n": {
+          "max": "24.000000",
+          "min": "1.000000",
+          "non_null": 1133,
+          "sum": "6280.000000"
+        }
+      },
+      "row_count": 1133
+    },
+    "sensor_hour_month": {
+      "columns": [
+        {
+          "name": "datastream",
+          "type": "TEXT"
+        },
+        {
+          "name": "month",
+          "type": "INT"
+        },
+        {
+          "name": "hour",
+          "type": "INT"
+        },
+        {
+          "name": "n",
+          "type": ""
+        },
+        {
+          "name": "avg",
+          "type": ""
+        },
+        {
+          "name": "max",
+          "type": ""
+        }
+      ],
+      "content_hash": "sha256:369b160d25f01bf06b02108073e8c1d8ecc46befae8580f870918c0de9a6c989",
+      "key": [
+        "datastream",
+        "month",
+        "hour"
+      ],
+      "key_note": "sample: \u5168\u91cf\u30d9\u30fc\u30b9\u30e9\u30a4\u30f3\uff08reports/derived_baseline.json\uff09\u306e\u81ea\u52d5\u5c0e\u51fa\u30ad\u30fc\u3092\u305d\u306e\u307e\u307e\u5ba3\u8a00\u5316\u3002\u30b5\u30f3\u30d7\u30eb\u3067\u306f\u884c\u6570\u304c\u5c11\u306a\u3044\u305f\u3081\u3001\u63a2\u7d22A/B\u306b\u4efb\u305b\u308b\u3068\u5225\u306e\u77ed\u3044\u7d44\u307f\u5408\u308f\u305b\u3067\u5076\u7136\u4e00\u610f\u306b\u306a\u308a\u3046\u308b\u3002",
+      "key_source": "declared",
+      "numeric_columns": {
+        "avg": {
+          "max": "16.000000",
+          "min": "0.000000",
+          "non_null": 204,
+          "sum": "557.235710"
+        },
+        "hour": {
+          "max": "23.000000",
+          "min": "0.000000",
+          "non_null": 204,
+          "sum": "2316.000000"
+        },
+        "max": {
+          "max": "225.000000",
+          "min": "0.000000",
+          "non_null": 204,
+          "sum": "2520.974000"
+        },
+        "month": {
+          "max": "8.000000",
+          "min": "1.000000",
+          "non_null": 204,
+          "sum": "1344.000000"
+        },
+        "n": {
+          "max": "31.000000",
+          "min": "1.000000",
+          "non_null": 204,
+          "sum": "5428.000000"
+        }
+      },
+      "row_count": 204
+    },
+    "site_var": {
+      "columns": [
+        {
+          "name": "site_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "variable",
+          "type": "TEXT"
+        },
+        {
+          "name": "kind",
+          "type": ""
+        },
+        {
+          "name": "n",
+          "type": ""
+        },
+        {
+          "name": "y_from",
+          "type": ""
+        },
+        {
+          "name": "y_to",
+          "type": ""
+        },
+        {
+          "name": "avg",
+          "type": ""
+        },
+        {
+          "name": "unit",
+          "type": ""
+        }
+      ],
+      "content_hash": "sha256:9f72bdcf91d5e1b1cc02d6de241889b5dfb83f61c1169b801c7ad902565ece47",
+      "key": [
+        "site_id",
+        "variable",
+        "kind"
+      ],
+      "key_note": "sample: \u5168\u91cf\u30d9\u30fc\u30b9\u30e9\u30a4\u30f3\uff08reports/derived_baseline.json\uff09\u306e\u81ea\u52d5\u5c0e\u51fa\u30ad\u30fc\u3092\u305d\u306e\u307e\u307e\u5ba3\u8a00\u5316\u3002\u30b5\u30f3\u30d7\u30eb\u3067\u306f\u884c\u6570\u304c\u5c11\u306a\u3044\u305f\u3081\u3001\u63a2\u7d22A/B\u306b\u4efb\u305b\u308b\u3068\u5225\u306e\u77ed\u3044\u7d44\u307f\u5408\u308f\u305b\u3067\u5076\u7136\u4e00\u610f\u306b\u306a\u308a\u3046\u308b\u3002",
+      "key_source": "declared",
+      "numeric_columns": {
+        "avg": {
+          "max": "29582.352941",
+          "min": "-5.907041",
+          "non_null": 519,
+          "sum": "66994.384013"
+        },
+        "n": {
+          "max": "228.000000",
+          "min": "2.000000",
+          "non_null": 519,
+          "sum": "28834.000000"
+        },
+        "y_from": {
+          "max": "2023.000000",
+          "min": "1973.000000",
+          "non_null": 519,
+          "sum": "1042542.000000"
+        },
+        "y_to": {
+          "max": "2026.000000",
+          "min": "1973.000000",
+          "non_null": 519,
+          "sum": "1049047.000000"
+        }
+      },
+      "row_count": 519
+    },
+    "species2": {
+      "columns": [
+        {
+          "name": "binom",
+          "type": ""
+        },
+        {
+          "name": "taxon_group",
+          "type": ""
+        },
+        {
+          "name": "cls",
+          "type": ""
+        },
+        {
+          "name": "family",
+          "type": ""
+        },
+        {
+          "name": "en_name",
+          "type": ""
+        },
+        {
+          "name": "red_list_category",
+          "type": ""
+        },
+        {
+          "name": "n",
+          "type": ""
+        },
+        {
+          "name": "y_from",
+          "type": ""
+        },
+        {
+          "name": "y_to",
+          "type": ""
+        },
+        {
+          "name": "n_years",
+          "type": ""
+        },
+        {
+          "name": "mesh_n",
+          "type": ""
+        }
+      ],
+      "content_hash": "sha256:42fdfa7d35a49e496f4a8df6d70e440d444e5710c72f70206750d984c29bf113",
+      "key": [
+        "binom"
+      ],
+      "key_note": "sample: \u5168\u91cf\u30d9\u30fc\u30b9\u30e9\u30a4\u30f3\uff08reports/derived_baseline.json\uff09\u306e\u81ea\u52d5\u5c0e\u51fa\u30ad\u30fc\u3092\u305d\u306e\u307e\u307e\u5ba3\u8a00\u5316\u3002\u30b5\u30f3\u30d7\u30eb\u3067\u306f\u884c\u6570\u304c\u5c11\u306a\u3044\u305f\u3081\u3001\u63a2\u7d22A/B\u306b\u4efb\u305b\u308b\u3068\u5225\u306e\u77ed\u3044\u7d44\u307f\u5408\u308f\u305b\u3067\u5076\u7136\u4e00\u610f\u306b\u306a\u308a\u3046\u308b\u3002",
+      "key_source": "declared",
+      "numeric_columns": {
+        "mesh_n": {
+          "max": "333.000000",
+          "min": "1.000000",
+          "non_null": 153,
+          "sum": "529.000000"
+        },
+        "n": {
+          "max": "800.000000",
+          "min": "1.000000",
+          "non_null": 153,
+          "sum": "2509.000000"
+        },
+        "n_years": {
+          "max": "72.000000",
+          "min": "1.000000",
+          "non_null": 153,
+          "sum": "240.000000"
+        },
+        "y_from": {
+          "max": "2026.000000",
+          "min": "1862.000000",
+          "non_null": 153,
+          "sum": "307066.000000"
+        },
+        "y_to": {
+          "max": "2026.000000",
+          "min": "1909.000000",
+          "non_null": 153,
+          "sum": "307292.000000"
+        }
+      },
+      "row_count": 153
+    },
+    "species_mesh_year": {
+      "columns": [
+        {
+          "name": "binom",
+          "type": ""
+        },
+        {
+          "name": "year",
+          "type": "INT"
+        },
+        {
+          "name": "mlat",
+          "type": "INT"
+        },
+        {
+          "name": "mlon",
+          "type": "INT"
+        },
+        {
+          "name": "n",
+          "type": ""
+        }
+      ],
+      "content_hash": "sha256:197fcf742ab076a0c3bd71ee7e805c1e34abd24028f3e05163922c39279a5891",
+      "key": [
+        "year",
+        "mlat",
+        "mlon",
+        "binom"
+      ],
+      "key_note": "sample: \u5168\u91cf\u30d9\u30fc\u30b9\u30e9\u30a4\u30f3\uff08reports/derived_baseline.json\uff09\u306e\u81ea\u52d5\u5c0e\u51fa\u30ad\u30fc\u3092\u305d\u306e\u307e\u307e\u5ba3\u8a00\u5316\u3002\u30b5\u30f3\u30d7\u30eb\u3067\u306f\u884c\u6570\u304c\u5c11\u306a\u3044\u305f\u3081\u3001\u63a2\u7d22A/B\u306b\u4efb\u305b\u308b\u3068\u5225\u306e\u77ed\u3044\u7d44\u307f\u5408\u308f\u305b\u3067\u5076\u7136\u4e00\u610f\u306b\u306a\u308a\u3046\u308b\u3002",
+      "key_source": "declared",
+      "numeric_columns": {
+        "mlat": {
+          "max": "3565.000000",
+          "min": "3514.000000",
+          "non_null": 473,
+          "sum": "1676899.000000"
+        },
+        "mlon": {
+          "max": "13975.000000",
+          "min": "13897.000000",
+          "non_null": 473,
+          "sum": "6592556.000000"
+        },
+        "n": {
+          "max": "121.000000",
+          "min": "1.000000",
+          "non_null": 473,
+          "sum": "1985.000000"
+        },
+        "year": {
+          "max": "2026.000000",
+          "min": "1971.000000",
+          "non_null": 473,
+          "sum": "944449.000000"
+        }
+      },
+      "row_count": 473
+    },
+    "species_month": {
+      "columns": [
+        {
+          "name": "binom",
+          "type": ""
+        },
+        {
+          "name": "month",
+          "type": ""
+        },
+        {
+          "name": "n",
+          "type": ""
+        }
+      ],
+      "content_hash": "sha256:f67f92c92ea5cff32b170c690a85c46d630e3cbeaadf9b1af6c479db539a6564",
+      "key": [
+        "binom",
+        "month"
+      ],
+      "key_note": "sample: \u5168\u91cf\u30d9\u30fc\u30b9\u30e9\u30a4\u30f3\uff08reports/derived_baseline.json\uff09\u306e\u81ea\u52d5\u5c0e\u51fa\u30ad\u30fc\u3092\u305d\u306e\u307e\u307e\u5ba3\u8a00\u5316\u3002\u30b5\u30f3\u30d7\u30eb\u3067\u306f\u884c\u6570\u304c\u5c11\u306a\u3044\u305f\u3081\u3001\u63a2\u7d22A/B\u306b\u4efb\u305b\u308b\u3068\u5225\u306e\u77ed\u3044\u7d44\u307f\u5408\u308f\u305b\u3067\u5076\u7136\u4e00\u610f\u306b\u306a\u308a\u3046\u308b\u3002",
+      "key_source": "declared",
+      "numeric_columns": {
+        "month": {
+          "max": "12.000000",
+          "min": "1.000000",
+          "non_null": 67,
+          "sum": "389.000000"
+        },
+        "n": {
+          "max": "28.000000",
+          "min": "1.000000",
+          "non_null": 67,
+          "sum": "1271.000000"
+        }
+      },
+      "row_count": 67
+    },
+    "species_year2": {
+      "columns": [
+        {
+          "name": "binom",
+          "type": ""
+        },
+        {
+          "name": "year",
+          "type": "INT"
+        },
+        {
+          "name": "n",
+          "type": ""
+        },
+        {
+          "name": "mesh_n",
+          "type": ""
+        }
+      ],
+      "content_hash": "sha256:7cf604ef295250aebbc9d73c95eb60df0b4e5a29dddf088b8bdfb5bfd4aa55b3",
+      "key": [
+        "year",
+        "binom"
+      ],
+      "key_note": "sample: \u5168\u91cf\u30d9\u30fc\u30b9\u30e9\u30a4\u30f3\uff08reports/derived_baseline.json\uff09\u306e\u81ea\u52d5\u5c0e\u51fa\u30ad\u30fc\u3092\u305d\u306e\u307e\u307e\u5ba3\u8a00\u5316\u3002\u30b5\u30f3\u30d7\u30eb\u3067\u306f\u884c\u6570\u304c\u5c11\u306a\u3044\u305f\u3081\u3001\u63a2\u7d22A/B\u306b\u4efb\u305b\u308b\u3068\u5225\u306e\u77ed\u3044\u7d44\u307f\u5408\u308f\u305b\u3067\u5076\u7136\u4e00\u610f\u306b\u306a\u308a\u3046\u308b\u3002",
+      "key_source": "declared",
+      "numeric_columns": {
+        "mesh_n": {
+          "max": "44.000000",
+          "min": "1.000000",
+          "non_null": 209,
+          "sum": "637.000000"
+        },
+        "n": {
+          "max": "123.000000",
+          "min": "1.000000",
+          "non_null": 209,
+          "sum": "2444.000000"
+        },
+        "year": {
+          "max": "2026.000000",
+          "min": "1971.000000",
+          "non_null": 209,
+          "sum": "420181.000000"
+        }
+      },
+      "row_count": 209
+    },
+    "var_catalog": {
+      "columns": [
+        {
+          "name": "variable",
+          "type": "TEXT"
+        },
+        {
+          "name": "unit",
+          "type": ""
+        },
+        {
+          "name": "n",
+          "type": ""
+        },
+        {
+          "name": "n_sites",
+          "type": ""
+        },
+        {
+          "name": "y_from",
+          "type": ""
+        },
+        {
+          "name": "y_to",
+          "type": ""
+        },
+        {
+          "name": "n_daily",
+          "type": ""
+        },
+        {
+          "name": "n_annual",
+          "type": ""
+        },
+        {
+          "name": "n_censored",
+          "type": ""
+        }
+      ],
+      "content_hash": "sha256:62f855bc45c25385f1bef1895ad42819443b75318d9a88ca074488f347e68410",
+      "key": [
+        "variable"
+      ],
+      "key_note": "sample: \u5168\u91cf\u30d9\u30fc\u30b9\u30e9\u30a4\u30f3\uff08reports/derived_baseline.json\uff09\u306e\u81ea\u52d5\u5c0e\u51fa\u30ad\u30fc\u3092\u305d\u306e\u307e\u307e\u5ba3\u8a00\u5316\u3002\u30b5\u30f3\u30d7\u30eb\u3067\u306f\u884c\u6570\u304c\u5c11\u306a\u3044\u305f\u3081\u3001\u63a2\u7d22A/B\u306b\u4efb\u305b\u308b\u3068\u5225\u306e\u77ed\u3044\u7d44\u307f\u5408\u308f\u305b\u3067\u5076\u7136\u4e00\u610f\u306b\u306a\u308a\u3046\u308b\u3002",
+      "key_source": "declared",
+      "numeric_columns": {
+        "n": {
+          "max": "16048.000000",
+          "min": "20.000000",
+          "non_null": 25,
+          "sum": "28834.000000"
+        },
+        "n_annual": {
+          "max": "2886.000000",
+          "min": "0.000000",
+          "non_null": 25,
+          "sum": "10011.000000"
+        },
+        "n_censored": {
+          "max": "2040.000000",
+          "min": "0.000000",
+          "non_null": 25,
+          "sum": "3658.000000"
+        },
+        "n_daily": {
+          "max": "13162.000000",
+          "min": "0.000000",
+          "non_null": 25,
+          "sum": "18823.000000"
+        },
+        "n_sites": {
+          "max": "125.000000",
+          "min": "1.000000",
+          "non_null": 25,
+          "sum": "354.000000"
+        },
+        "y_from": {
+          "max": "2022.000000",
+          "min": "1973.000000",
+          "non_null": 25,
+          "sum": "49948.000000"
+        },
+        "y_to": {
+          "max": "2026.000000",
+          "min": "2022.000000",
+          "non_null": 25,
+          "sum": "50616.000000"
+        }
+      },
+      "row_count": 25
+    },
+    "watershed_meta": {
+      "columns": [
+        {
+          "name": "watershed_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "water_system_code",
+          "type": "TEXT"
+        },
+        {
+          "name": "water_system_name",
+          "type": "TEXT"
+        },
+        {
+          "name": "water_system_category",
+          "type": "TEXT"
+        },
+        {
+          "name": "main_rivers",
+          "type": "TEXT"
+        },
+        {
+          "name": "area_km2",
+          "type": "REAL"
+        },
+        {
+          "name": "centroid_lat",
+          "type": "REAL"
+        },
+        {
+          "name": "centroid_lon",
+          "type": "REAL"
+        },
+        {
+          "name": "data_year",
+          "type": "INTEGER"
+        },
+        {
+          "name": "source_ref",
+          "type": "TEXT"
+        }
+      ],
+      "content_hash": "sha256:f92c68ed26daeb7168413b06ca418ffc83148d6a40d5abd0b56176d8b54f69df",
+      "key": [
+        "watershed_id"
+      ],
+      "key_note": null,
+      "key_source": "pk",
+      "numeric_columns": {
+        "area_km2": {
+          "max": "68.391762",
+          "min": "0.017499",
+          "non_null": 377,
+          "sum": "3116.050730"
+        },
+        "centroid_lat": {
+          "max": "35.746214",
+          "min": "35.091323",
+          "non_null": 377,
+          "sum": "13358.998373"
+        },
+        "centroid_lon": {
+          "max": "139.731281",
+          "min": "138.872824",
+          "non_null": 377,
+          "sum": "52489.161141"
+        },
+        "data_year": {
+          "max": "1977.000000",
+          "min": "1977.000000",
+          "non_null": 377,
+          "sum": "745329.000000"
+        }
+      },
+      "row_count": 377
+    },
+    "watershed_rollup": {
+      "columns": [
+        {
+          "name": "watershed_id",
+          "type": "TEXT"
+        },
+        {
+          "name": "water_system_name",
+          "type": "TEXT"
+        },
+        {
+          "name": "area_km2",
+          "type": "REAL"
+        },
+        {
+          "name": "centroid_lat",
+          "type": "REAL"
+        },
+        {
+          "name": "centroid_lon",
+          "type": "REAL"
+        },
+        {
+          "name": "org_n",
+          "type": ""
+        },
+        {
+          "name": "org_alien_n",
+          "type": ""
+        },
+        {
+          "name": "org_redlist_n",
+          "type": ""
+        },
+        {
+          "name": "site_n",
+          "type": ""
+        },
+        {
+          "name": "site_var_n",
+          "type": ""
+        },
+        {
+          "name": "built_km2_2016",
+          "type": ""
+        },
+        {
+          "name": "built_km2_2006",
+          "type": ""
+        },
+        {
+          "name": "forest_km2_2016",
+          "type": ""
+        },
+        {
+          "name": "forest_km2_2006",
+          "type": ""
+        },
+        {
+          "name": "paddy_km2_2016",
+          "type": ""
+        },
+        {
+          "name": "paddy_km2_2006",
+          "type": ""
+        }
+      ],
+      "content_hash": "sha256:7965471d6a67eb9b713381e5e771a63c7ecf9ab50273779d19bc13b81ff3ab76",
+      "key": [
+        "watershed_id"
+      ],
+      "key_note": "sample: \u5168\u91cf\u30d9\u30fc\u30b9\u30e9\u30a4\u30f3\uff08reports/derived_baseline.json\uff09\u306e\u81ea\u52d5\u5c0e\u51fa\u30ad\u30fc\u3092\u305d\u306e\u307e\u307e\u5ba3\u8a00\u5316\u3002\u30b5\u30f3\u30d7\u30eb\u3067\u306f\u884c\u6570\u304c\u5c11\u306a\u3044\u305f\u3081\u3001\u63a2\u7d22A/B\u306b\u4efb\u305b\u308b\u3068\u5225\u306e\u77ed\u3044\u7d44\u307f\u5408\u308f\u305b\u3067\u5076\u7136\u4e00\u610f\u306b\u306a\u308a\u3046\u308b\u3002",
+      "key_source": "declared",
+      "numeric_columns": {
+        "area_km2": {
+          "max": "68.391762",
+          "min": "0.017499",
+          "non_null": 377,
+          "sum": "3116.050730"
+        },
+        "built_km2_2006": {
+          "max": "49.093042",
+          "min": "0.010454",
+          "non_null": 341,
+          "sum": "927.026505"
+        },
+        "built_km2_2016": {
+          "max": "55.013757",
+          "min": "0.010455",
+          "non_null": 346,
+          "sum": "1047.739935"
+        },
+        "centroid_lat": {
+          "max": "35.746214",
+          "min": "35.091323",
+          "non_null": 377,
+          "sum": "13358.998373"
+        },
+        "centroid_lon": {
+          "max": "139.731281",
+          "min": "138.872824",
+          "non_null": 377,
+          "sum": "52489.161141"
+        },
+        "forest_km2_2006": {
+          "max": "40.250677",
+          "min": "0.010465",
+          "non_null": 344,
+          "sum": "1398.148525"
+        },
+        "forest_km2_2016": {
+          "max": "40.670351",
+          "min": "0.010469",
+          "non_null": 363,
+          "sum": "1476.154338"
+        },
+        "org_alien_n": {
+          "max": "6.000000",
+          "min": "0.000000",
+          "non_null": 377,
+          "sum": "35.000000"
+        },
+        "org_n": {
+          "max": "1500.000000",
+          "min": "0.000000",
+          "non_null": 377,
+          "sum": "2422.000000"
+        },
+        "org_redlist_n": {
+          "max": "3.000000",
+          "min": "0.000000",
+          "non_null": 377,
+          "sum": "26.000000"
+        },
+        "paddy_km2_2006": {
+          "max": "4.967612",
+          "min": "0.010464",
+          "non_null": 227,
+          "sum": "111.274474"
+        },
+        "paddy_km2_2016": {
+          "max": "4.242948",
+          "min": "0.010464",
+          "non_null": 211,
+          "sum": "87.462694"
+        },
+        "site_n": {
+          "max": "12.000000",
+          "min": "0.000000",
+          "non_null": 377,
+          "sum": "278.000000"
+        },
+        "site_var_n": {
+          "max": "19.000000",
+          "min": "0.000000",
+          "non_null": 377,
+          "sum": "345.000000"
+        }
+      },
+      "row_count": 377
+    },
+    "zone_clim": {
+      "columns": [
+        {
+          "name": "zone",
+          "type": "INT"
+        },
+        {
+          "name": "variable",
+          "type": "TEXT"
+        },
+        {
+          "name": "month",
+          "type": "INT"
+        },
+        {
+          "name": "n_sites",
+          "type": ""
+        },
+        {
+          "name": "n",
+          "type": ""
+        },
+        {
+          "name": "avg",
+          "type": ""
+        },
+        {
+          "name": "unit",
+          "type": ""
+        }
+      ],
+      "content_hash": "sha256:5ee6e843129eeedadbeb5a0bf8ec49766cb487ad18e6fd94216bd8af20ee83fa",
+      "key": [
+        "zone",
+        "variable",
+        "month"
+      ],
+      "key_note": "sample: \u5168\u91cf\u30d9\u30fc\u30b9\u30e9\u30a4\u30f3\uff08reports/derived_baseline.json\uff09\u306e\u81ea\u52d5\u5c0e\u51fa\u30ad\u30fc\u3092\u305d\u306e\u307e\u307e\u5ba3\u8a00\u5316\u3002\u30b5\u30f3\u30d7\u30eb\u3067\u306f\u884c\u6570\u304c\u5c11\u306a\u3044\u305f\u3081\u3001\u63a2\u7d22A/B\u306b\u4efb\u305b\u308b\u3068\u5225\u306e\u77ed\u3044\u7d44\u307f\u5408\u308f\u305b\u3067\u5076\u7136\u4e00\u610f\u306b\u306a\u308a\u3046\u308b\u3002",
+      "key_source": "declared",
+      "numeric_columns": {
+        "avg": {
+          "max": "35455.777778",
+          "min": "0.000000",
+          "non_null": 328,
+          "sum": "192857.692787"
+        },
+        "month": {
+          "max": "12.000000",
+          "min": "1.000000",
+          "non_null": 328,
+          "sum": "2122.000000"
+        },
+        "n": {
+          "max": "668.000000",
+          "min": "1.000000",
+          "non_null": 328,
+          "sum": "17080.000000"
+        },
+        "n_sites": {
+          "max": "57.000000",
+          "min": "1.000000",
+          "non_null": 328,
+          "sum": "2395.000000"
+        },
+        "zone": {
+          "max": "5.000000",
+          "min": "2.000000",
+          "non_null": 328,
+          "sum": "1262.000000"
+        }
+      },
+      "row_count": 328
+    },
+    "zone_year": {
+      "columns": [
+        {
+          "name": "zone",
+          "type": "INT"
+        },
+        {
+          "name": "variable",
+          "type": "TEXT"
+        },
+        {
+          "name": "kind",
+          "type": ""
+        },
+        {
+          "name": "year",
+          "type": "NUM"
+        },
+        {
+          "name": "n_sites",
+          "type": ""
+        },
+        {
+          "name": "n",
+          "type": ""
+        },
+        {
+          "name": "avg",
+          "type": ""
+        },
+        {
+          "name": "unit",
+          "type": ""
+        }
+      ],
+      "content_hash": "sha256:87079799051db9544bbdca89a18e206dcce4ff1659d17d8c699795793543d947",
+      "key": [
+        "zone",
+        "variable",
+        "year",
+        "kind"
+      ],
+      "key_note": "sample: \u5168\u91cf\u30d9\u30fc\u30b9\u30e9\u30a4\u30f3\uff08reports/derived_baseline.json\uff09\u306e\u81ea\u52d5\u5c0e\u51fa\u30ad\u30fc\u3092\u305d\u306e\u307e\u307e\u5ba3\u8a00\u5316\u3002\u30b5\u30f3\u30d7\u30eb\u3067\u306f\u884c\u6570\u304c\u5c11\u306a\u3044\u305f\u3081\u3001\u63a2\u7d22A/B\u306b\u4efb\u305b\u308b\u3068\u5225\u306e\u77ed\u3044\u7d44\u307f\u5408\u308f\u305b\u3067\u5076\u7136\u4e00\u610f\u306b\u306a\u308a\u3046\u308b\u3002",
+      "key_source": "declared",
+      "numeric_columns": {
+        "avg": {
+          "max": "96000.000000",
+          "min": "0.000000",
+          "non_null": 611,
+          "sum": "425190.622893"
+        },
+        "n": {
+          "max": "850.000000",
+          "min": "1.000000",
+          "non_null": 611,
+          "sum": "19595.000000"
+        },
+        "n_sites": {
+          "max": "57.000000",
+          "min": "1.000000",
+          "non_null": 611,
+          "sum": "4260.000000"
+        },
+        "year": {
+          "max": "2026.000000",
+          "min": "2005.000000",
+          "non_null": 611,
+          "sum": "1232761.000000"
+        },
+        "zone": {
+          "max": "5.000000",
+          "min": "2.000000",
+          "non_null": 611,
+          "sum": "2474.000000"
+        }
+      },
+      "row_count": 611
+    }
+  },
+  "total_rows": 62139
+}

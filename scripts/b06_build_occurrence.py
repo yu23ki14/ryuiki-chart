@@ -361,6 +361,7 @@ def build_and_write_occurrence(
     source_regions_yaml=DEFAULT_SOURCE_REGIONS_YAML,
     period_shapes_yaml=DEFAULT_PERIOD_SHAPES_YAML,
     out_path=DEFAULT_OUT,
+    count_overlay_by_file: dict[str, dict[str, int]] | None = None,
 ) -> dict:
     """`occurrence` を構築し、`out_path` の `occurrence` テーブルに書き込む
     （`out_path` の他のテーブル——`observation`/`observation_agg`——は触らない）。
@@ -381,10 +382,17 @@ def build_and_write_occurrence(
     # （consumer="observation"）の宣言が同居するようになったため、b06 が
     # 自分の使わない宣言を「未使用宣言」として誤検出しないように絞り込む
     # （scripts/migrate/source_regions.py モジュール docstring「consumer」節）。
-    sources, regions = source_regions.load_source_regions(source_regions_yaml, consumer="occurrence")
+    # `count_overlay_by_file`（既定 None）は Issue #29「縮小サンプル」用——
+    # `--count-overlay` を渡さない本番の実行では常に None のまま。
+    overlay = count_overlay_by_file or {}
+    sources, regions = source_regions.load_source_regions(
+        source_regions_yaml, consumer="occurrence", count_overlay=overlay.get("source_regions.yaml")
+    )
     source_usage = period.EntryUsage(sources)
     region_usage = period.EntryUsage(regions)
-    shapes = occurrence_period.load_period_shapes(period_shapes_yaml)
+    shapes = occurrence_period.load_period_shapes(
+        period_shapes_yaml, count_overlay=overlay.get("occurrence_period_shapes.yaml")
+    )
     # `validate_occurrence_period_shapes_shape()` は生の YAML dict に対して
     # 同じ名前集合の一致を既に検証済みだが、ここでは `load_period_shapes()` が
     # 実際に作った `PeriodShape` の集合に対して独立にもう一度確認する
@@ -529,6 +537,11 @@ def main() -> None:
     parser.add_argument("--period-shapes-yaml", default=str(DEFAULT_PERIOD_SHAPES_YAML))
     parser.add_argument("--out", default=str(DEFAULT_OUT))
     parser.add_argument("--report", default=str(DEFAULT_REPORT))
+    parser.add_argument(
+        "--count-overlay", default=None,
+        help="data/sample/declaration_counts.yaml のようなファイル。既定は使わない（本番の実行では"
+        "常に None のまま、正本の expected_row_count で検証する。Issue #29「縮小サンプル」）",
+    )
     args = parser.parse_args()
 
     registry_db = common.resolve_registry_db(args.registry_db, DEFAULT_REGISTRY_DB)
@@ -536,9 +549,14 @@ def main() -> None:
     print(f"▶ 読み取り専用で開く: {args.ryuiki_db}")
     print(f"▶ 読み取り専用で開く: {registry_db}")
 
+    count_overlay_by_file = period.resolve_count_overlays(
+        args.count_overlay, ("source_regions.yaml", "occurrence_period_shapes.yaml"),
+    )
+
     with common.timed_step("occurrence を構築して書き出し") as info:
         stats = build_and_write_occurrence(
-            args.ryuiki_db, registry_db, args.source_regions_yaml, args.period_shapes_yaml, args.out
+            args.ryuiki_db, registry_db, args.source_regions_yaml, args.period_shapes_yaml, args.out,
+            count_overlay_by_file,
         )
         info["n"] = stats["total"]
 

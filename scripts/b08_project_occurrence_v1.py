@@ -1506,15 +1506,21 @@ _WATERSHED_DECLARATION_NAMES = frozenset({
 _MOVED_BREAKDOWN_KEYS = ("ws_to_ws", "v1_assigned_exact_unassigned", "v1_unassigned_exact_assigned")
 
 
-def load_and_validate_watershed_declarations(path=DEFAULT_WATERSHED_DECLARATIONS_YAML) -> dict:
+def load_and_validate_watershed_declarations(path=DEFAULT_WATERSHED_DECLARATIONS_YAML, count_overlay=None) -> dict:
     """`occurrence_watershed_v1_declarations.yaml` を読み、構造を検証してから
     返す。3つの宣言名（`_WATERSHED_DECLARATION_NAMES`）と過不足なく一致し、
     `memo_moved_records` は `breakdown` の3値の合計が `expected_count` と
     一致することも確認する（宣言ファイル自体の自己矛盾を防ぐ）。
+
+    `count_overlay`（既定 None）は `expected_count`/`breakdown.*` だけを
+    差し替える（`period.apply_count_overlay()`。Issue #29「縮小サンプル」）。
+    合計の自己矛盾チェックは上書き後の値に対して行う。
     """
     raw = common.load_yaml(path)
     if not isinstance(raw, dict):
         raise common.MigrationError(f"{path} がマッピングになっていない（実際の型: {type(raw).__name__}）")
+    if count_overlay:
+        raw = period.apply_count_overlay(raw, count_overlay)
 
     period.assert_declared_names_match(raw, _WATERSHED_DECLARATION_NAMES, path)
 
@@ -1702,7 +1708,8 @@ def _assert_watershed_conservation(conn, moved: dict) -> dict:
 
 
 def _build_watershed(
-    conn, declarations_yaml=DEFAULT_WATERSHED_DECLARATIONS_YAML, *, occurrence_fingerprint: str | None = None,
+    conn, declarations_yaml=DEFAULT_WATERSHED_DECLARATIONS_YAML, *,
+    occurrence_fingerprint: str | None = None, count_overlay: dict[str, int] | None = None,
 ) -> tuple[dict[str, int], dict, str, str]:
     """`conn`（`cube`/`reg` を ATTACH 済みの書き込み用接続）に
     `org_watershed_year`/`org_watershed` を作る。`_build_org_norm`/
@@ -1725,7 +1732,7 @@ def _build_watershed(
     末尾2つの指紋は Issue #37 #1 で追加——呼び出し側が
     `org_watershed_year`/`org_watershed` の系譜〔`inputs`〕に使う）。
     """
-    declarations = load_and_validate_watershed_declarations(declarations_yaml)
+    declarations = load_and_validate_watershed_declarations(declarations_yaml, count_overlay=count_overlay)
 
     if occurrence_fingerprint is None:
         occurrence_fingerprint = _assert_occurrence_fingerprint_fresh(conn)
@@ -1759,6 +1766,7 @@ def _build_watershed(
 
 def build_watershed_projections(
     cube_db, registry_db, out_path, declarations_yaml=DEFAULT_WATERSHED_DECLARATIONS_YAML,
+    count_overlay: dict[str, int] | None = None,
 ) -> tuple[dict[str, int], dict]:
     """`org_watershed_year`/`org_watershed` だけを単独で `out_path` に書く
     （既存テスト・単体検証用のエントリポイント——`main()` は13テーブルまとめて
@@ -1775,7 +1783,9 @@ def build_watershed_projections(
         common.attach_readonly(conn, cube_db, "cube")
         common.attach_readonly(conn, registry_db, "reg")
         with common.track_reads(conn) as reads:
-            table_counts, diagnostics, occ_fp, place_fp = _build_watershed(conn, declarations_yaml)
+            table_counts, diagnostics, occ_fp, place_fp = _build_watershed(
+                conn, declarations_yaml, count_overlay=count_overlay,
+            )
             # 読み取りの機械監査（Issue #37 #1、Tier 1。/simplify 指摘A）。
             common.assert_all_reads_verified(
                 conn, reads, {"occurrence", "occurrence_place"},
@@ -1799,6 +1809,7 @@ def build_watershed_projections(
 def build_all_projections(
     cube_db, registry_db, out_path, taxon_group_yaml=DEFAULT_TAXON_GROUP_YAML,
     watershed_declarations_yaml=DEFAULT_WATERSHED_DECLARATIONS_YAML,
+    count_overlay: dict[str, int] | None = None,
 ) -> tuple[dict[str, int], dict]:
     """`org_norm` ＋ 年キー8表 ＋ `species_month` ＋ `org_watershed_year`/
     `org_watershed`（O-2a）＋ `ias_species`（P-2）の13テーブルを、1つの
@@ -1834,6 +1845,7 @@ def build_all_projections(
             counts = _build_cube_projections(conn, default_taxon_group, verify_occurrence_freshness=False)
             watershed_table_counts, watershed_diagnostics, occ_fp, place_fp = _build_watershed(
                 conn, watershed_declarations_yaml, occurrence_fingerprint=occurrence_fingerprint,
+                count_overlay=count_overlay,
             )
             n_ias_species, ias_origin_delta = _build_ias_species(conn)
             table_counts = {
@@ -1927,15 +1939,24 @@ def main() -> None:
     parser.add_argument("--watershed-declarations-yaml", default=str(DEFAULT_WATERSHED_DECLARATIONS_YAML))
     parser.add_argument("--out", default=str(DEFAULT_OUT))
     parser.add_argument("--ias-report", default=str(DEFAULT_IAS_REPORT))
+    parser.add_argument(
+        "--count-overlay", default=None,
+        help="data/sample/declaration_counts.yaml のようなファイル。既定は使わない（Issue #29「縮小サンプル」）",
+    )
     args = parser.parse_args()
 
     registry_db = common.resolve_registry_db(args.registry_db, DEFAULT_REGISTRY_DB)
     print(f"▶ 読み取り専用で開く: {args.cube_db}")
     print(f"▶ 読み取り専用で開く: {registry_db}")
 
+    count_overlay = period.resolve_count_overlay(
+        args.count_overlay, "occurrence_watershed_v1_declarations.yaml"
+    )
+
     with common.timed_step("v1 形（13テーブル）へ射影して書き出し") as info:
         counts, diagnostics = build_all_projections(
             args.cube_db, registry_db, args.out, args.taxon_group_yaml, args.watershed_declarations_yaml,
+            count_overlay=count_overlay,
         )
         # `counts` はテーブル行数だけを持つ（コードレビュー指摘2・12）ので、
         # 除外リストなしでそのまま合計できる。
