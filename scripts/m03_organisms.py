@@ -9,11 +9,14 @@
   一致した場合のみ red_list_category / is_alien を埋める。一致しない場合は
   red_list_category=NULL, is_alien=0（デフォルト）のままにする。学名の推測補完はしない。
 - publication_scope: レッドリスト掲載種(red_list_category が非NULL) -> '限定共有'、
-  それ以外 -> '全公開'（要求定義書 FR-4.5）。
+  それ以外 -> '全公開'（要求定義書 FR-4.5）。値は出典側の旗としてそのまま持たせるだけで、
+  これを根拠に出力を絞ることはしない（ADR-0028）。
 - quality_stage: iNaturalist の quality_grade=='research' -> '検証済'、それ以外 -> '暫定'。
   GBIF -> '公開済'（GBIF自体が公開済データベースであるため）。
-- 座標の丸め（希少種の位置情報を粗くする）はアプリ表示層の責務とし、ここでは元座標を
-  そのまま保持する（iNaturalist側でgeoprivacy設定により既に難読化されている場合はその値のまま）。
+- 座標は一般化・秘匿しない。元座標をそのまま保持する（iNaturalist側でgeoprivacy設定により
+  既に難読化されている場合はその値のまま）。FR-4.5 が定めていた希少種座標の一般化は
+  ADR-0028 により撤回された（旧実装は `scripts/x01_dwca.py` の DwC-A 出力時に丸めていたが、
+  現在は丸めない）。
 
 --- レコード単位ライセンス (record_license / license_class / commercial_ok) ---
 iNaturalist・GBIFはソース単位のredistributableフラグだけでは再配布可否を判定できず、

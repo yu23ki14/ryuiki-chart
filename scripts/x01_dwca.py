@@ -146,12 +146,12 @@ def build(include_noncommercial=False):
               "『未登録=除外扱い』となる。GBIF収集完了後、source_registryへのregister後に再実行すること。")
 
     stats = {"n_events": 0, "n_occ": 0, "n_emof": 0,
-              "n_occ_excluded_source": 0, "n_meas_excluded_source": 0,
-              "n_occ_excluded_license_class": 0,
-              "n_blank_sciname": 0, "excluded_source_ids": {},
-              "excluded_license_class_counts": {},
-              "included_license_class_counts": {},
-              "include_noncommercial_flag": include_noncommercial}
+             "n_occ_excluded_source": 0, "n_meas_excluded_source": 0,
+             "n_occ_excluded_license_class": 0,
+             "n_blank_sciname": 0, "excluded_source_ids": {},
+             "excluded_license_class_counts": {},
+             "included_license_class_counts": {},
+             "include_noncommercial_flag": include_noncommercial}
     written_event_ids = set()
 
     ev_path, occ_path, emof_path = OUT/"event.txt", OUT/"occurrence.txt", OUT/"extendedmeasurementorfact.txt"

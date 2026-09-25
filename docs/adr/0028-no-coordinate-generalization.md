@@ -33,8 +33,13 @@
   一般化時に合成していた `10000` を使わず、原本の `coordinate_uncertainty_m` をそのまま出す。
   `informationWithheld`/`dataGeneralizations`（Darwin Core の標準語彙としては列を残すが、
   値は常に空文字列）と、統計 `stats['n_gen']` を削除した。
-- `scripts/x03_verify_dwca.py`: 一般化件数のチェックを「FR-4.5 の実効性を測る」ものから
-  「ADR-0028 により常に 0 であることを確認する回帰検知」に変更した。
+- `scripts/x03_verify_dwca.py`: `dataGeneralizations`/`informationWithheld` 非空件数の
+  チェックを「FR-4.5 の実効性を測る」ものから「ADR-0028 により常に 0 であることを確認する
+  回帰検知」に変更し、`fail` に算入するようにした。
+- `scripts/m03_organisms.py`・`scripts/c28_redlist_assessments.py` のコメント: 「座標の丸めは
+  アプリ表示層の責務」「学名結合できない2022年版は FR-4.5 の希少種座標一般化に効かない」など、
+  座標一般化が存在する前提の記述を、撤回済み（本 ADR）である旨に合わせて書き直した
+  （`publication_scope`/`red_list_category` を旗として付与する記述自体は変更していない）。
 
 ## 見つけたが変更していないもの（棚卸し）
 
@@ -62,6 +67,17 @@
 - `docs/REBUILD.md`「座標一般化（FR-4.5）件数 | 27 | 2,080」の行、`docs/FINAL_REPORT.md` §4
   「FR-4.5（希少種位置一般化）検証結果」は、いずれも実行日時点のスナップショット（歴史的記録）
   であり、`docs/adr/status-review-2026-09-25.md` と同じ理由で書き換えない。
+- `app_description.md`（要求定義書 v0.1）の FR-4.5 の行自体は書き換えない。要求定義書は
+  「元の要求」の記録であり、それを覆す決定は ADR 側（本 ADR）に置く運用（他の ADR も
+  要求定義書本文を直接編集していない）。
+- `docs/adr/0006-place-registry.md`・`docs/adr/0025-occurrence-fact-and-cube.md` にある
+  「公開時の一般化は ADR-0018 に限る」という趣旨のスコープ注記は、ADR-0018 を名指しした
+  素通しの参照であり、ADR-0018 側が `置換済(→ADR-0028)` に更新済みのため参照をたどれば
+  矛盾しない。ADR 本文は決定を覆すときに書き換えない運用（`docs/adr/README.md` 冒頭）に
+  従い、これらのファイルの本文は変更していない。
+- `docs/plans/PHASE_B_OCCURRENCE.md`（2026-09-22 時点のオーナー決定記録）の F4 の行
+  「規約4は…公開時の一般化（ADR-0018）に適用」は、O-1 以降で一般化を実装する計画と
+  誤読されうるため、本文は書き換えず 1 行の追記（→本 ADR）だけを足した。
 
 ## 決定
 

@@ -12,8 +12,9 @@ GBIF完走後の再検証にあたってスクリプトとして固定した。�
   3. occurrence.txt / extendedmeasurementorfact.txt の eventID が event.txt に存在するか
   4. event.txt の eventDate の ISO 8601 適合性
   5. occurrence.txt の scientificName 空欄件数・license 列空欄件数
-  6. dataGeneralizations が常に空欄であること（ADR-0028: 座標は一般化しない。旧 FR-4.5 の
-     座標一般化は ADR-0018 とともに撤回されたため、非空の行があれば回帰として検出する）
+  6. dataGeneralizations / informationWithheld が常に空欄であること（ADR-0028: 座標は
+     一般化しない。旧 FR-4.5 の座標一般化は ADR-0018 とともに撤回されたため、非空の行が
+     あれば回帰として検出する）
 
 eventDate について: Darwin Core の `eventDate` は ISO 8601-1:2019 の
 date / dateTime に加えて「開始/終了」の**区間**表記を許容する
@@ -93,8 +94,9 @@ def main():
     cols = header_cols(D / "occurrence.txt")
     i_ev, i_sci = cols.index("eventID"), cols.index("scientificName")
     i_gen = cols.index("dataGeneralizations") if "dataGeneralizations" in cols else None
+    i_wh = cols.index("informationWithheld") if "informationWithheld" in cols else None
     i_lic = cols.index("license") if "license" in cols else None
-    n_oc = bad_oc = miss_ev = blank_sci = n_gen = blank_lic = 0
+    n_oc = bad_oc = miss_ev = blank_sci = n_gen = n_wh = blank_lic = 0
     with open(D / "occurrence.txt", encoding="utf-8") as f:
         f.readline()
         for line in f:
@@ -109,15 +111,19 @@ def main():
                 blank_sci += 1
             if i_gen is not None and p[i_gen].strip() != "":
                 n_gen += 1
+            if i_wh is not None and p[i_wh].strip() != "":
+                n_wh += 1
             if i_lic is not None and p[i_lic].strip() == "":
                 blank_lic += 1
-    fail += bad_oc + miss_ev + n_gen
+    fail += bad_oc + miss_ev + n_gen + n_wh
     print(f"\n=== 3. occurrence.txt ===")
     print(f"  行数={n_oc}  列数不整合={bad_oc}")
     print(f"  eventID が event.txt に存在しない件数={miss_ev}")
     print(f"  scientificName 空欄={blank_sci}（原資料に学名が無いレコード。推測で埋めていない）")
     print(f"  license 列 空欄={blank_lic}")
     print(f"  座標一般化済み(dataGeneralizations非空)={n_gen}  "
+          f"← ADR-0028で撤去済み。0でなければ回帰")
+    print(f"  座標秘匿済み(informationWithheld非空)={n_wh}  "
           f"← ADR-0028で撤去済み。0でなければ回帰")
 
     # ---- eMoF ----
