@@ -51,6 +51,7 @@ Architecture Decision Record。1ファイル＝1決定。**背景・決定・根
 | [0024](0024-local-time-and-time-labels.md) | 時刻は時刻帯なしのローカル時刻で持ち、時刻ラベルの意味は出典ごとに宣言する | 承認済（一部未実装） |
 | [0025](0025-occurrence-fact-and-cube.md) | occurrence ファクトとキューブの設計（region は出典から・期間は12形の宣言・1ファクト＝1キューブ表） | 承認済（一部未実装） |
 | [0026](0026-occurrence-place-watershed.md) | 点→流域の解決は記録×placeのサテライトに直接持ち、v1のメモ化の癖は射影の式で再現する | 承認済（一部未実装） |
+| [0027](0027-test-and-verification-strategy.md) | テスト・検証戦略は4層（フィクスチャ・縮小サンプル・全量の実行証明・段階間の指紋）に分け、層ごとに保証範囲を分担する | 承認済 |
 
 > ADR-0017（書き込み系ストアの設計）はこのプロジェクトの範囲外とし、シビックテック側に委ねる
 > （2026-09-25 追記、ADR-0017 本文参照）。
@@ -61,7 +62,6 @@ Architecture Decision Record。1ファイル＝1決定。**背景・決定・根
 |---|---|---|---|
 | バージョニングと後方互換 | L2スキーマ・キューブ・MCPツール署名・公開URI の変更方針と非推奨化 | Phase C（#39） | このプロジェクト（オーナー＋Claude） |
 | アクセス制御・レート制限・コスト上限 | 公開 MCP は LLM エージェントが高頻度で叩く。D1 rows_read / R2 egress の上限 | Phase D（#40）、公開 MCP を出す前 | このプロジェクト（オーナー＋Claude） |
-| テスト・検証戦略 | L2→L3 の決定性、v1 との照合、マニフェスト checks、ゴールデンクエリ | #29（突合ゲートの継続実行）と一緒に | このプロジェクト（オーナー＋Claude） |
 | 削除・訂正・撤回（takedown） | moni1000 の前例、公開 Parquet の差し替え、GBIF 側への撤回伝播 | Phase D（#40） | このプロジェクト（オーナー＋Claude） |
 | 語彙ガバナンスと命名規約 | 誰が code を承認するか、`variable.code` の命名、日英の扱い | Phase C（#39）。ID の区切り文字（ADR-0004）と土地利用の命名（`PHASE_B_LANDUSE.md`）を入力にする | このプロジェクト（オーナー＋Claude） |
 | ジオメトリ配信形式 | GeoJSON / PMTiles / FlatGeobuf、簡略化段階、`geometry_ref` の実体 | Phase D（#40）。e-Stat 小地域境界の PMTiles 要否（#38 項目8）もここで判断 | このプロジェクト（オーナー＋Claude） |

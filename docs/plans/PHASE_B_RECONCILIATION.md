@@ -233,25 +233,104 @@ sqlite/JSON を受ける汎用インタフェースにする」は候補側に�
 ## 5. CI の限界（正直に書く）
 
 原本（`data/db/ryuiki.sqlite` / `cells.sqlite` / `derived.sqlite`、合計 14GB）は
-git に置けない。したがって:
+git に置けない。Issue #29「縮小サンプル＋実行証明」で、この制約の中で「33表の
+突合が壊れたときに CI が気づける」ようにする方式を決めた:**(A) 固定の縮小
+サンプルをリポジトリにコミットし、CI はそのサンプルで v1・v2 の両方を毎回
+回して突き合わせる（`sample-gate` ジョブ）**。**(B) 全量のゲートは手元で回し、
+結果の証明ファイル（`reports/full_gate_proof.json`）をコミットする。CI は、
+その証明が今のコードに対応しているかを確かめる（`full-gate-proof-check`
+ジョブ）**。以下、この2ジョブが実際に保証すること・しないことを正直に書く。
 
-- **CI が保証するのは次の2点だけ**:
-  1. **ハーネス自体が正しく動くこと**（`scripts/tests/` のフィクスチャテスト。
-     小さな自前の sqlite で「決定論（2回実行がバイト一致）」「値が1つ変わった
-     候補を検出して非0で落ちる」「行の追加・削除を検出する」「テキスト列の
-     変化も検出する」「宣言的キーが優先されること」「宣言的キーが無いのに
-     自動導出が失敗したら例外で止まること」を確認している）。
-  2. **`reports/derived_baseline.json` がコミットされていること**
-     （このファイル自体は小さいので git 管理下にある）。
-- **CI ができないこと**: 実際の `data/db/derived.sqlite` に対する `b01` の
-  再実行、および実データに対する `b02` の完全モード突合。これらは**原本の
-  ある環境**（ローカル開発機、または原本をマウントできる別ジョブ）でしか
-  走らない。
+### 5.1 `sample-gate`（A）が保証すること
 
-CI ワークフロー（`.github/workflows/ci.yml`）は `phase-b/alias-source-key` で新設済み
-（[docs/plans/PHASE_B_INTAKE.md](PHASE_B_INTAKE.md) の#7参照）。`reconcile` ジョブが
-保証するのは上記の2点だけで、実データに対する突合は依然として原本のある環境でしか
-走らない——このワークフローが新設されたことは「CI ができないこと」の範囲を変えていない。
+- **CI が保証すること**:
+  1. `data/sample/`（`scripts/s01_build_sample.py` が原本から切り出した、
+     テキストでコミット済みの縮小サンプル。`data/sample/coverage.yaml` の
+     宣言に基づく）を使い捨ての checkout に展開し、v1
+     （`web/scripts/build-derived.mjs`・`build-geo.mjs`・`build-biota.mjs`）と
+     v2（`scripts/r01_build_registry.py`・`scripts/b03_build_observation.py`〜
+     `scripts/b12_project_taxon_v1.py`）の両方をゼロから構築できること。
+  2. サンプル規模で構築した v1・v2 が、`scripts/b02_run_all_gates.py`
+     （サンプル専用の `data/sample/expected_diffs.yaml`——正本の20キーのうち
+     属 Sirosporium の class タイブレークに由来する2キーはサンプル規模では
+     再現しないため外してある。理由は同ファイルのコメント参照）で33表とも
+     「一致」または「宣言済み差分のみ」になり、不一致・対象外が無いこと。
+  3. **空振りしていないこと**を数値で確かめる（一致+宣言済み差分のみ=33、
+     不一致=0、対象外=0、適用した宣言済み差分=18件——20件からサンプル専用に
+     外した2件を引いた数）。この数値が変われば、v1 側のスクリプトを触った
+     ことが `data/sample/derived_baseline.json`/`.md` の差分として、v2 側が
+     ずれたことが33表の突合結果として、どちらも CI に現れる。
+  4. `data/sample/declaration_counts.yaml`・`derived_keys.yaml`・
+     `derived_baseline.json`/`.md` が、コミット済みのサンプル本体
+     （`data/sample/ryuiki/*.sql` 等）とパイプラインのコードから実際に
+     再現できること（`scripts/s03_verify_sample_artifacts.py` で作り直し、
+     `git diff --exit-code` で比べる。原本を使わない——材料化済みのサンプル
+     そのものと `reports/derived_baseline.json`〔全量の33表のキー、正本〕
+     だけから計算できる）。
+- **CI ができないこと（サンプルの限界）**:
+  - **サンプルに無い行・癖・出典への挙動は確認できない。**
+    `data/sample/coverage.yaml` が宣言する範囲（定量下限の各表記・厚木の
+    4桁の測定日・地盤沈下の r5/r6 重複・負の値・センサーの時刻帯・occurrence
+    の12形・流域外の座標・年をまたぐ区間・除外7種と外来種・レッドリスト種・
+    同じ日の重複・全 source_id）だけが対象で、それ以外の未知の癖がサンプルに
+    無ければ検出しようが無い。
+  - **サンプルの件数の宣言（`declaration_counts.yaml`）が原本の件数を語ると
+    誤読しないこと。** これはサンプル規模で実測した値であり、原本
+    （`scripts/migrate/*.yaml` 等の正本）の `expected_row_count` とは別物。
+  - **HEAD の全量で v1 と v2 が一致することは、`sample-gate` だけでは
+    分からない。** サンプルで一致していても、サンプルに無い行の集計で
+    全量が食い違っている可能性はゼロにならない（全量の合否は §5.2 の B、
+    すなわち手元での実行に依存する）。
+
+### 5.2 `full-gate-proof-check`（B）が保証すること
+
+- **CI が保証すること**: `reports/full_gate_proof.json`（原本のある手元で
+  `scripts/b00_run_full_gate.py` を実行して作る、コミット済みの証明）が
+  記録するパイプラインのパス（`scripts/b0*.py`・`scripts/b1*.py`・
+  `scripts/r01_build_registry.py`・`scripts/registry/`・`scripts/migrate/`・
+  `scripts/reconcile/`・`registry/`・`reports/derived_baseline.json`・
+  `web/scripts/build-{derived,biota,geo}.mjs`・`requirements.txt`・
+  `web/package.json`・`web/pnpm-lock.yaml`）の git tree/blob ハッシュが、
+  **今の HEAD** で計算し直しても1つ残らず一致すること。1つでも食い違えば、
+  「証明を取ったときと今のコードが違う」ことが分かり、CI が非0で落ちる
+  （案内文が `scripts/b00_run_full_gate.py` の再実行を促す）。あわせて、
+  `data/sample/manifest.json` の原本の sha256（`ryuiki.sqlite`/`cells.sqlite`）
+  が証明の原本の sha256 と一致すること（サンプルと全量の証明が同じ原本の
+  スナップショットに由来することの確認）も見る。
+- **CI ができないこと（証明の限界。正直に書く）**:
+  - **証明が本物であることは確かめられない。** `reports/full_gate_proof.json`
+    は手で書ける値でしかない——CI が確認できるのは「証明に書かれたパスの
+    ハッシュが今の HEAD と一致するか」という一貫性だけで、「本当にそのハッシュの
+    コードを回して33表が緑になったか」は申告を信じるしかない
+    （手元で実際に回したことは、レビューでの信頼に依存する）。
+  - **B は「過去に回した」という申告であり、CI がその時点の真偽を今
+    確かめ直すことはできない。** 原本自体（`ryuiki.sqlite`/`cells.sqlite`）が
+    CI に無いため、CI 自身が全量の33表を再現することは今回も引き続きできない。
+  - **原本のスナップショットが変わっていないことは、sha256 の記録以上には
+    確かめられない。** 原本を差し替えても、証明を取り直さない限り検出できない
+    （sha256 自体は記録されるので、証明を取り直したときには気づける）。
+
+### 5.3 運用
+
+- **パイプラインのパス（§5.2 の一覧）に触る PR は、手元で
+  `scripts/b00_run_full_gate.py` を回して証明を更新する必要がある。**
+  原本（`ryuiki.sqlite` 828MB・`cells.sqlite` 42MB）を持たない人はパイプラインの
+  PR をマージできない——この制約自体は Issue #29 が解決しようとした問題では
+  ない（原本を持たない人でも「壊れていないか」を CI で機械的に確認できる
+  ようにするのが `sample-gate` の役目で、`full-gate-proof-check` は「証明が
+  古くないか」だけを見る）。
+- サンプル本体（`data/sample/`）の展開スクリプト（`scripts/s02_materialize_sample.py`）は
+  **手元の本物のチェックアウト・worktree では絶対に実行しない**（CLAUDE.md
+  「worktree の運用」。安全装置——展開先に既存ファイルがあれば拒否・
+  `GITHUB_ACTIONS` か `--i-am-in-a-throwaway-clone` が無ければ拒否——があっても、
+  再生成できない原本を上書きする経路を自分から開かない）。手元で試すときは
+  一時ディレクトリへの `git clone` で行う。
+- サンプル自体を作り直す・広げる（`data/sample/coverage.yaml` に述語を足す等）
+  ときは `scripts/s01_build_sample.py` を原本のある環境（worktree に原本を
+  1ファイルずつ symlink した状態）で実行し、`data/sample/` 配下を丸ごと
+  コミットし直す。設計・実測（サンプルのサイズ・CI のジョブの所要時間・
+  宣言済み差分の内訳）は本ドキュメントの付録ではなく、Issue #29 の PR 本文に
+  実測値として書く（このドキュメントは仕組みの説明に留める）。
 
 ## 6. 再現できない箇所が出たときの扱い
 

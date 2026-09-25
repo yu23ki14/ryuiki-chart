@@ -1,0 +1,280 @@
+"""縮小サンプル（Issue #29「縮小サンプル＋実行証明」）の成果物
+（`data/sample/coverage.yaml`・`declaration_counts.yaml`・`derived_keys.yaml`・
+`manifest.json`・`expected_diffs.yaml`）の構造検証と、コミット済みのサンプル
+本体（`data/sample/ryuiki/*.sql`・`cells/*.sql`）に対する「宣言どおりに入って
+いるか」の検証（A-1「pytest は検証として使う」）。
+
+**原本DB（data/db/*.sqlite、14GB）は一切使わない**——ここで使うのはすべて
+コミット済みのテキスト（`data/sample/`）と、`scripts/reconcile/*.yaml`/
+`scripts/migrate/*.yaml`（正本の宣言。小さい・原本を必要としない）だけ。
+`s02_materialize_sample.py` で一時ディレクトリに材料化した sqlite に対して
+実際に SQL を投げて検証する。
+"""
+from __future__ import annotations
+
+import json
+import pathlib
+import sqlite3
+import sys
+
+import pytest
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+SAMPLE_DIR = ROOT / "data" / "sample"
+
+sys.path.insert(0, str(ROOT / "scripts"))
+
+import s02_materialize_sample as s02  # noqa: E402
+from migrate import period  # noqa: E402
+from reconcile.common import load_yaml  # noqa: E402
+
+
+pytestmark = pytest.mark.skipif(
+    not (SAMPLE_DIR / "coverage.yaml").exists(),
+    reason="data/sample/ が無い（まだ scripts/s01_build_sample.py を実行していない環境）",
+)
+
+
+@pytest.fixture(scope="module")
+def coverage() -> dict:
+    return load_yaml(SAMPLE_DIR / "coverage.yaml")
+
+
+@pytest.fixture(scope="module")
+def materialized_db(tmp_path_factory) -> pathlib.Path:
+    """`data/sample/` をコミット済みのまま一時ディレクトリに材料化する
+    （module スコープ: このファイル内の全テストで1回だけ作る。原本は使わない）。
+    """
+    tmp_dir = tmp_path_factory.mktemp("sample_materialize")
+    data_db_dir = tmp_dir / "data" / "db"
+    processed_dir = tmp_dir / "data" / "processed"
+    s02.materialize(SAMPLE_DIR, data_db_dir, processed_dir)
+    return data_db_dir / "ryuiki.sqlite"
+
+
+@pytest.fixture(scope="module")
+def conn(materialized_db) -> sqlite3.Connection:
+    c = sqlite3.connect(f"file:{materialized_db}?mode=ro", uri=True)
+    yield c
+    c.close()
+
+
+# ---------------------------------------------------------------------------
+# coverage.yaml の構造
+# ---------------------------------------------------------------------------
+
+
+def test_predicates_have_required_fields(coverage):
+    for pred in coverage["predicates"]:
+        assert set(pred) >= {"name", "table", "where", "min_rows"}
+        assert isinstance(pred["min_rows"], int) and pred["min_rows"] > 0
+        assert pred["table"] in ("measurements", "sensor_timeseries", "organism_records")
+
+
+def test_predicate_names_are_unique(coverage):
+    names = [p["name"] for p in coverage["predicates"]]
+    assert len(names) == len(set(names))
+
+
+def test_full_closures_have_required_fields(coverage):
+    for closure in coverage["full_closures"]:
+        assert set(closure) >= {"name", "table", "where", "reason"}
+
+
+def test_document_closure_meets_min_documents(coverage):
+    dc = coverage["document_closure"]
+    assert len(dc["doc_ids"]) >= dc["min_documents"]
+    assert len(dc["doc_ids"]) == len(set(dc["doc_ids"]))
+
+
+def test_wholesale_lists_are_non_empty(coverage):
+    assert coverage["wholesale_ryuiki_tables"]
+    assert coverage["wholesale_cells_tables"]
+    assert coverage["wholesale_processed_files"]
+
+
+# ---------------------------------------------------------------------------
+# 「入れたつもりが入っていない」が起きないことの検証（A-1）:
+# coverage.yaml の predicates/full_closures を、材料化したサンプルに対して
+# 実際に評価し、min_rows 以上（full_closures は1件以上）あることを確認する。
+# ---------------------------------------------------------------------------
+
+
+def test_predicates_are_satisfied_in_materialized_sample(conn, coverage):
+    problems = []
+    for pred in coverage["predicates"]:
+        n = conn.execute(f'SELECT COUNT(*) FROM "{pred["table"]}" WHERE {pred["where"]}').fetchone()[0]
+        if n < pred["min_rows"]:
+            problems.append(f"{pred['name']}: {n}行（min_rows={pred['min_rows']}）")
+    assert not problems, "predicate が min_rows を満たさない:\n" + "\n".join(problems)
+
+
+def test_full_closures_are_non_empty_in_materialized_sample(conn, coverage):
+    problems = []
+    for closure in coverage["full_closures"]:
+        n = conn.execute(f'SELECT COUNT(*) FROM "{closure["table"]}" WHERE {closure["where"]}').fetchone()[0]
+        if n < 1:
+            problems.append(closure["name"])
+    assert not problems, "full_closures が1件も無い:\n" + "\n".join(problems)
+
+
+def test_wholesale_ryuiki_tables_have_rows(conn, coverage):
+    for table in coverage["wholesale_ryuiki_tables"]:
+        n = conn.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]
+        assert n > 0, f"{table} が0行（丸ごと入れるはずのテーブル）"
+
+
+# ---------------------------------------------------------------------------
+# declaration_counts.yaml: 上書きのキーの集合が正本のエントリの集合と
+# 過不足なく一致すること（A-2 のオーナー要件）。
+# ---------------------------------------------------------------------------
+
+
+def _flat_keys_for_period_exceptions() -> set[str]:
+    raw = load_yaml(ROOT / "scripts" / "migrate" / "period_exceptions.yaml")
+    return set(raw)
+
+
+def _flat_keys_for_time_label_conventions() -> set[str]:
+    raw = load_yaml(ROOT / "scripts" / "migrate" / "time_label_conventions.yaml")
+    return set(raw)
+
+
+def _flat_keys_for_source_regions() -> set[str]:
+    raw = load_yaml(ROOT / "scripts" / "migrate" / "source_regions.yaml")
+    return set(raw.get("sources") or {})
+
+
+def _flat_keys_for_occurrence_period_shapes() -> set[str]:
+    raw = load_yaml(ROOT / "scripts" / "migrate" / "occurrence_period_shapes.yaml")
+    return set(raw)
+
+
+def _flat_keys_for_occurrence_cube_declarations() -> set[str]:
+    raw = load_yaml(ROOT / "scripts" / "migrate" / "occurrence_cube_declarations.yaml")
+    return set(raw)
+
+
+def _flat_keys_for_occurrence_place_declarations() -> set[str]:
+    raw = load_yaml(ROOT / "scripts" / "migrate" / "occurrence_place_declarations.yaml")
+    return set(raw)
+
+
+def _flat_keys_for_occurrence_watershed_v1_declarations() -> set[str]:
+    raw = load_yaml(ROOT / "scripts" / "migrate" / "occurrence_watershed_v1_declarations.yaml")
+    keys = set()
+    for name, spec in raw.items():
+        keys.add(name)
+        breakdown = spec.get("breakdown")
+        if isinstance(breakdown, dict):
+            keys.update(f"{name}.{k}" for k in breakdown)
+    return keys
+
+
+_DECLARATION_FILE_KEY_BUILDERS = {
+    "period_exceptions.yaml": _flat_keys_for_period_exceptions,
+    "time_label_conventions.yaml": _flat_keys_for_time_label_conventions,
+    "source_regions.yaml": _flat_keys_for_source_regions,
+    "occurrence_period_shapes.yaml": _flat_keys_for_occurrence_period_shapes,
+    "occurrence_cube_declarations.yaml": _flat_keys_for_occurrence_cube_declarations,
+    "occurrence_place_declarations.yaml": _flat_keys_for_occurrence_place_declarations,
+    "occurrence_watershed_v1_declarations.yaml": _flat_keys_for_occurrence_watershed_v1_declarations,
+}
+
+
+@pytest.mark.parametrize("filename", sorted(_DECLARATION_FILE_KEY_BUILDERS))
+def test_declaration_counts_keys_match_declared_entries_exactly(filename):
+    grouped = period.load_count_overlay_file(SAMPLE_DIR / "declaration_counts.yaml")
+    overlay_keys = set(grouped.get(filename, {}))
+    declared_keys = _DECLARATION_FILE_KEY_BUILDERS[filename]()
+    missing = declared_keys - overlay_keys
+    extra = overlay_keys - declared_keys
+    assert not missing and not extra, (
+        f"{filename}: declaration_counts.yaml のキーが正本のエントリと一致しない"
+        f"（不足: {sorted(missing)} / 余分: {sorted(extra)}）"
+    )
+
+
+def test_declaration_counts_values_are_non_negative_ints():
+    grouped = period.load_count_overlay_file(SAMPLE_DIR / "declaration_counts.yaml")
+    for filename, entries in grouped.items():
+        for name, value in entries.items():
+            assert isinstance(value, int) and not isinstance(value, bool) and value >= 0, (
+                f"{filename}:{name} の値が非負整数でない: {value!r}"
+            )
+
+
+# ---------------------------------------------------------------------------
+# derived_keys.yaml: サンプルのキーが全量ベースラインの33表と過不足なく一致すること（A-3）。
+# ---------------------------------------------------------------------------
+
+
+def test_derived_keys_yaml_matches_full_baseline_exactly():
+    baseline_path = ROOT / "reports" / "derived_baseline.json"
+    if not baseline_path.exists():
+        pytest.skip("reports/derived_baseline.json が無い")
+    baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+    sample_keys = load_yaml(SAMPLE_DIR / "derived_keys.yaml")
+
+    missing = set(baseline["tables"]) - set(sample_keys)
+    extra = set(sample_keys) - set(baseline["tables"])
+    assert not missing and not extra, (
+        f"derived_keys.yaml のテーブル集合が derived_baseline.json と一致しない"
+        f"（不足: {sorted(missing)} / 余分: {sorted(extra)}）"
+    )
+    mismatched = {
+        table: (baseline["tables"][table]["key"], sample_keys[table]["key"])
+        for table in baseline["tables"]
+        if baseline["tables"][table]["key"] != sample_keys[table]["key"]
+    }
+    assert not mismatched, f"key が全量ベースラインと食い違うテーブル: {mismatched}"
+
+
+# ---------------------------------------------------------------------------
+# derived_baseline.json（サンプル自身のベースライン。s03 が原本無しで作り直せる）
+# ---------------------------------------------------------------------------
+
+
+def test_sample_derived_baseline_json_has_33_tables():
+    path = SAMPLE_DIR / "derived_baseline.json"
+    if not path.exists():
+        pytest.skip("data/sample/derived_baseline.json が無い")
+    baseline = json.loads(path.read_text(encoding="utf-8"))
+    assert baseline["table_count"] == 33
+    assert len(baseline["tables"]) == 33
+
+
+# ---------------------------------------------------------------------------
+# manifest.json
+# ---------------------------------------------------------------------------
+
+
+def test_manifest_json_has_required_fields():
+    manifest = json.loads((SAMPLE_DIR / "manifest.json").read_text(encoding="utf-8"))
+    assert set(manifest) >= {"source_files", "row_counts"}
+    assert "ryuiki.sqlite" in manifest["source_files"]
+    assert "cells.sqlite" in manifest["source_files"]
+    for name, digest in manifest["source_files"].items():
+        assert len(digest) == 64, f"{name} の sha256 の桁数が64でない: {digest!r}"
+
+
+# ---------------------------------------------------------------------------
+# expected_diffs.yaml（サンプル専用）
+# ---------------------------------------------------------------------------
+
+
+def test_sample_expected_diffs_is_subset_of_real_expected_diffs():
+    """サンプル専用の expected_diffs.yaml は、正本のキーを増やしたり書き換えたり
+    しない——外す（org_norm/species2 の2件）だけであることを確認する。
+    """
+    real = load_yaml(ROOT / "scripts" / "reconcile" / "expected_diffs.yaml")
+    sample = load_yaml(SAMPLE_DIR / "expected_diffs.yaml")
+
+    assert set(sample) <= set(real), "サンプル専用の expected_diffs.yaml に正本に無いテーブルがある"
+    for table, sample_entries in sample.items():
+        real_entries = real[table]
+        assert sample_entries == real_entries, f"{table}: サンプル専用ファイルの内容が正本と食い違う"
+
+    real_key_count = sum(len(v) for v in real.values())
+    sample_key_count = sum(len(v) for v in sample.values())
+    assert sample_key_count < real_key_count, "サンプル専用ファイルは正本よりキー数が少ないはず"

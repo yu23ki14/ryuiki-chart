@@ -142,6 +142,15 @@
   確認し、崩れていれば止まる。設計・実測は `docs/plans/PHASE_B_FACT_SLICE.md` 参照。
 - `b05_project_v1.py` の出典固有の検証関数群は
   `scripts/migrate/v1_projection_checks.py`（`v1_projection_checks.関数名(...)` で呼ぶ）。
+- テスト・検証戦略は4層（フィクスチャ・縮小サンプル・全量の実行証明・段階間の指紋）。
+  詳細は `docs/adr/0027-test-and-verification-strategy.md`。パイプラインのパス
+  （`scripts/b0*.py`/`b1*.py`・`scripts/migrate/`・`scripts/reconcile/`・`scripts/registry/`
+  等、`scripts/b00_run_full_gate.py` の `PIPELINE_*` 参照）を触ったら、原本のある手元で
+  `.venv/bin/python3 scripts/b00_run_full_gate.py` を回して `reports/full_gate_proof.json`
+  を更新し、一緒にコミットすること（CI の `full-gate-proof-check` が鮮度を検査する）。
+  サンプルの展開スクリプト（`scripts/s02_materialize_sample.py`）は手元の本物の
+  チェックアウト・worktree では絶対に実行しない（安全装置はあるが、CLAUDE.md
+  「worktree の運用」に従い一時ディレクトリへの git clone で試すこと）。
 
 ## 開発フロー
 

@@ -397,14 +397,21 @@ def build_declaration_counts(conn: sqlite3.Connection, ryuiki_selected: dict[str
 
     _temp_ready: set[str] = set()
 
-    def count(table: str, where: str) -> int:
-        rowids = ryuiki_selected.get(table, set())
-        if not rowids:
-            return 0
+    def _ensure_temp(table: str) -> str:
+        """`table` 用の rowid 一時テーブルを（空でも）必ず作ってその名前を返す。
+        `rowids` が空でも一時テーブル自体は作る——`count()` の早期リターンに
+        頼ると、後段（`org_rows` の取得等）が無条件に参照する一時テーブルが
+        1回も作られないまま残る事故になる（coverage.yaml が
+        `organism_records` を一切選ばない構成でも安全に動くようにする）。
+        """
         temp_name = f"__s01_{table}_rowids"
         if table not in _temp_ready:
-            _create_rowid_temp_table(conn, temp_name, rowids)
+            _create_rowid_temp_table(conn, temp_name, ryuiki_selected.get(table, set()))
             _temp_ready.add(table)
+        return temp_name
+
+    def count(table: str, where: str) -> int:
+        temp_name = _ensure_temp(table)
         sql = (
             f'SELECT COUNT(*) FROM "{table}" t '
             f'JOIN temp.{temp_name} s ON t.rowid = s.rowid_value WHERE ({where})'
@@ -412,9 +419,9 @@ def build_declaration_counts(conn: sqlite3.Connection, ryuiki_selected: dict[str
         return conn.execute(sql).fetchone()[0]
 
     # organism_records の一覧は後段（occurrence_cube/place/watershed）でも
-    # 使うため、ここで temp table を確定させておく（count() の遅延生成に任せる
-    # と `LEFT JOIN` 順で先に触られない限り作られない）。
-    count("organism_records", "1 = 1")
+    # 使うため、ここで一時テーブルを確定させておく（0件でも作る。上の
+    # `_ensure_temp` docstring 参照）。
+    _ensure_temp("organism_records")
 
     # period_exceptions.yaml
     out["period_exceptions.yaml:atsugi_river_water_quality"] = count(
