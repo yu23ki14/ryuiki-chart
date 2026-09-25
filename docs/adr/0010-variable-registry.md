@@ -1,6 +1,7 @@
 # ADR-0010: 指標レジストリを設け、出典別名をエイリアスで束ねる
 
-- 状態: 提案中 / 日付: 2026-09-06
+- 状態: 承認済（`registry/variable.yaml`/`variable_alias` として実装、`generated.test.ts` と
+  Phase B 各縦線のゲートで検証済み） / 日付: 2026-09-06
 - 関連: ADR-0002（多地域）, ADR-0007（observation）, ADR-0012（マニフェスト）
 
 **2026-09-24 追記（P-1b、`docs/plans/PHASE_B_LANDUSE.md`）**: 決定1「出典が

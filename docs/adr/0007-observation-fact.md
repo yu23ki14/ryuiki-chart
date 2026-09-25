@@ -1,6 +1,7 @@
 # ADR-0007: 観測値を単一の縦持ちファクト `observation` に集約する
 
-- 状態: 提案中 / 日付: 2026-09-06
+- 状態: 承認済（`scripts/b03_build_observation.py` が実装、`docs/plans/PHASE_B_FACT_SLICE.md` で
+  実データのゲートにより検証済み） / 日付: 2026-09-06
 - 関連: ADR-0003（標準）, ADR-0008（時間）, ADR-0009（検閲）, ADR-0010（指標）, ADR-0011（キューブ）
 
 ## 背景

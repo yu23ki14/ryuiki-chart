@@ -1,6 +1,8 @@
 # ADR-0019: 分類群レジストリと、分類カテゴリの表記ゆれの扱い
 
-- 状態: 提案中 / 日付: 2026-09-06
+- 状態: 承認済（`scripts/registry/build_taxon.py`/`build_taxon_assessment.py` で実装、
+  `docs/plans/PHASE_B_TAXON_ASSESSMENT.md`・`PHASE_B_OCCURRENCE.md` の実データ検証で確認済み）
+  / 日付: 2026-09-06
 - 関連: ADR-0004（ID）, ADR-0010（語彙）, ADR-0018（公開範囲）
 
 **2026-09-22 追記（生物の出現の縦線 Slice 0、`phase-b/occurrence-registry`）**:

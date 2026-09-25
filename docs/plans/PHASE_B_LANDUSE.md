@@ -416,10 +416,15 @@ note`短縮分だけ指紋が変わる。構造検証には影響しない）、
 
 ## 7. 既知の負債・未決
 
-- **`n_cells`/面積の`variable`命名**（`landuse.<slug>`/`landuse.<slug>
+- ~~**`n_cells`/面積の`variable`命名**（`landuse.<slug>`/`landuse.<slug>
   _n_cells`という接尾辞規則、`alias`の`"<code>:area_km2"`/`"<code>:n_cells"`
   という区切り文字規則）は、この実装で新規に決めた命名規則であり、
-  ブリーフに明示されていない実装細部。オーナー未確認。
+  ブリーフに明示されていない実装細部。オーナー未確認。~~ **解決済み（オーナー承認済み、
+  2026-09-25）**: `landuse.<slug>`/`landuse.<slug>_n_cells`の接尾辞規則、および
+  aliasの`"<code>:area_km2"`/`"<code>:n_cells"`という区切り文字規則を、実装のまま
+  採用することをオーナーが確認した。命名規則自体を変える理由が無い限りこのまま固定する。
+  未着手の「語彙ガバナンスと命名規約」ADR（`docs/adr/README.md`の未着手表、Phase C・#39）
+  を書くときの入力の1つとする。
 - **variable_alias.csvの`dataset`が版付き（`<source>@<year>`）になる
   パターンは、`docs/plans/PHASE_B_INTAKE.md`に暫定の接続点として記録
   した**（ADR-0005が「同じ出典に複数版が同居する」ケースの正式な設計を

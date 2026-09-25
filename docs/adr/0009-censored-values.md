@@ -1,6 +1,8 @@
 # ADR-0009: 定量下限未満を 0 で表さず、検閲を明示的に持つ
 
-- 状態: 提案中 / 日付: 2026-09-06
+- 状態: 承認済（一部未実装: 決定4の `lod` 併記は #30 で未着手。`imputation='zero'` は
+  `scripts/migrate/censoring.py`/`b03_build_observation.py`/`b04_build_cube.py` で実装・
+  実データのゲートで検証済み） / 日付: 2026-09-06
 - 関連: ADR-0007（observation）, ADR-0013（caveat）, ADR-0014（応答）
 
 ## 背景（実測）
