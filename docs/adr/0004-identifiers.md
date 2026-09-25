@@ -1,18 +1,8 @@
 # ADR-0004: 識別子はスコープ付きの安定IDとし、既定を `common` にする
 
-- 状態: 承認済（一部未実装。規約0・1（common既定・namespace付きlocal_key）は
-  place/taxon/variable/unitで実装・検証済みだが、規約2（`superseded_by`によるID変更の追跡）・
-  規約4（公開URIへの解決）・規約5（`synthetic.`名前空間）はコード上に実装が見つからない。
-  さらに`observation_id`自体の採番は`scripts/b03_build_observation.py:107`
-  「Phase Cの仕事」と明記されたまま未着手。`occurrence`の主キー`record_id`も
-  `scripts/b06_build_occurrence.py:157`が`o.record_id`をそのまま選択しているだけで、
-  出どころは`scripts/m03_organisms.py`（Phase A、v1era）の`organism_records.record_id`
-  ——`<scope>:<entity>:<local_key>`形式のスコープ付きIDへの変換は行われていない。
-  ADR-0004は「すべてのコアエンティティ」に適用すると書いているが、現状は registry 系
-  エンティティ（place/taxon/variable/unit）止まりで、ファクト（observation/occurrence、
-  合計100万行超）には及んでいない。
-  規約1の区切り文字の曖昧さは Phase C で本 ADR を改定。下記2026-09-25追記参照）
-  / 日付: 2026-09-06
+- 状態: 承認済（一部未実装: 規約1の区切り文字〔Phase C、下記追記参照〕、規約2
+  `superseded_by`、規約4 公開URI解決、規約5 `synthetic.`名前空間、
+  `observation_id`/`occurrence.record_id`のスコープ付きID化） / 日付: 2026-09-06
 - 関連: ADR-0002（多地域）, ADR-0005（版）, ADR-0006（place）
 
 **2026-09-15 追記（ADR-0022 で明確化）**: 規約0の「地域は `region_id`（ファクトの

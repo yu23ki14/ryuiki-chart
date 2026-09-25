@@ -1,12 +1,7 @@
 # ADR-0006: 空間単位を単一の `place` レジストリに統合する
 
-- 状態: 承認済（一部未実装: `feature` エンティティへの統合〔`protected_areas` 等は個別テーブルの
-  まま〕、`sites.municipality` の水域名混入の解消は未着手。加えて `place_source_ref.source_id`
-  が決定の列定義どおりの `source_edition_id` ではなく、`'sites.site_id'` のような文字列
-  リテラルのまま（`docs/plans/PHASE_B_INTAKE.md:27` #9。ADR-0005 `source_edition` 未実装が
-  原因で、ADR-0010の`variable_alias`にも同型の逸脱がある）。#11
-  （`place_kind='grid01'`がコードリストに無い件）は本ファイルの2026-09-23追記が既に解決済み
-  として記録しているため、ここには追加しない）
+- 状態: 承認済（一部未実装: `feature` エンティティへの統合、`sites.municipality` 混入の解消は
+  未着手、`place_source_ref.source_id` が `source_edition_id` ではなく文字列〔#9〕）
   / 日付: 2026-09-06
 - 関連: ADR-0002（多地域）, ADR-0004（識別子）, ADR-0007（observation）, ADR-0011（キューブ）
 
