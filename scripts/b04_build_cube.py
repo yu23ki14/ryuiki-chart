@@ -410,7 +410,10 @@ def build_cube(
     # 段階間の指紋（Issue #37 #1）: b03 が最後に記録した observation の指紋と
     # 今の observation の内容が一致することを、集計を始める前に確認する
     # （b03 が別内容で再実行された後、b04 が再実行されていない事故を検出する）。
-    common.assert_stage_fingerprint_fresh(
+    # 戻り値（observation の現在の指紋）は observation_agg の系譜（inputs）に
+    # そのまま使う——ここで確認済みの値を再利用するだけで、observation を
+    # もう一度読み直しはしない。
+    observation_fingerprint = common.assert_stage_fingerprint_fresh(
         conn, "observation",
         rebuild_hint="scripts/b03_build_observation.py を再実行すること。",
     )
@@ -477,8 +480,12 @@ def build_cube(
 
     # 段階間の指紋（Issue #37 #1）: b05 が「今の observation_agg から作った
     # v1_projection.sqlite か」を検証できるよう、確定した observation_agg の
-    # 内容を記録する。
-    common.record_stage_fingerprint(conn, "observation_agg")
+    # 内容と系譜（消費した observation の指紋）を記録する（コードレビュー
+    # 指摘: 系譜が無いと「observation_agg 自身は無傷だが、古い observation
+    # から作られたまま」という壊れ方を下流が検出できない）。
+    common.record_stage_fingerprint(
+        conn, "observation_agg", inputs={"observation": observation_fingerprint},
+    )
     conn.commit()
 
     return {

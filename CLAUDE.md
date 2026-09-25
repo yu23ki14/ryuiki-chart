@@ -138,10 +138,15 @@
 - **段階間の指紋**（`scripts/migrate/common.py` の `record_stage_fingerprint`/
   `assert_stage_fingerprint_fresh`）: `b04`/`b05`/`b07`/`b09`/`b08`/`b11` は、
   上流の段（`b03`/`b06`/`b04`/`b08`）が最後に書いた出力の内容が今も一致するかを
-  読み込み時に検証し、食い違えば次に何を再実行すべきかを案内して止まる（上流を
-  別内容で再実行したのに下流を再実行し忘れる事故を検出する）。`b08` の
-  `occurrence_agg`（`_assert_cube_is_current_l2_partition`。`FULL OUTER JOIN` で
-  `occurrence` と直接突き合わせる、より強い検証）はこの機構と二重化しない。
+  読み込み時に検証し（(a)）、食い違えば次に何を再実行すべきかを案内して止まる
+  （上流を別内容で再実行したのに下流を再実行し忘れる事故を検出する）。**それに
+  加えて系譜（`inputs` 列）**——各段が「作るときに読んだ上流の、その時点の
+  指紋」も記録し、消費側は上流テーブル自身の**今の**自己指紋と突き合わせる
+  （(b)。上流の生データは読み直さない安い参照）——これが無いと「table 自身は
+  無傷だが、2段階前の入力から古いまま作られている」壊れ方（例: b03 だけ
+  作り直し b04 を忘れて b05 を実行）を見逃す。`b08` の `occurrence_agg`
+  （`_assert_cube_is_current_l2_partition`。`FULL OUTER JOIN` で `occurrence`
+  と直接突き合わせる、より強い検証）はこの機構と二重化しない。
   設計・実測は `docs/plans/PHASE_B_FACT_SLICE.md` 該当項目参照。
 - `b05_project_v1.py` の出典固有の検証関数群（`assert_alias_is_function` 等・
   D11のゾーン検証・T6の `verify_hourly_daily_rollup`）は

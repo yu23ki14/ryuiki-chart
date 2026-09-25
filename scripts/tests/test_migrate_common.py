@@ -345,3 +345,155 @@ def test_record_stage_fingerprint_upserts_on_rerecording(tmp_path):
     ).fetchall()
     assert rows == [(fp2,)]
     conn.close()
+
+
+# ---------------------------------------------------------------------------
+# 系譜（(b)）: コードレビュー指摘の穴埋め——「table 自身は無傷だが、記録した
+# 系譜（inputs）の上流が作り直された後、table の再構築が行われていない」
+# （下流が古い上流から作られたまま）を検出する。
+# ---------------------------------------------------------------------------
+
+def _make_upstream_and_downstream(tmp_path):
+    """`up`（上流。基底テーブル、系譜を持たない）と `down`（`up` を消費した
+    体で `inputs={"up": <upの指紋>}` を持つ）の両方を同じ sqlite に作る。
+    """
+    db_path = tmp_path / "t.sqlite"
+    conn = sqlite3.connect(f"file:{db_path}", uri=True)
+    conn.execute("CREATE TABLE up (a INTEGER)")
+    conn.executemany("INSERT INTO up VALUES (?)", [(1,), (2,)])
+    up_fp = common.record_stage_fingerprint(conn, "up")
+    conn.execute("CREATE TABLE down (a INTEGER)")
+    conn.executemany("INSERT INTO down VALUES (?)", [(10,)])
+    common.record_stage_fingerprint(conn, "down", inputs={"up": up_fp})
+    conn.commit()
+    return conn, up_fp
+
+
+def test_lineage_check_passes_when_upstream_unchanged(tmp_path):
+    conn, _ = _make_upstream_and_downstream(tmp_path)
+    # (a)+(b) とも問題無し——例外を投げなければ良い。
+    common.assert_stage_fingerprint_fresh(
+        conn, "down", rebuild_hint="再実行すること。", upstream_schemas={},
+    )
+    conn.close()
+
+
+def test_lineage_check_detects_upstream_rebuilt_without_downstream_rerun(tmp_path):
+    """**コードレビュー指摘が指した穴そのものの再現**: `down` 自身の内容は
+    無傷（(a) は通る）だが、上流 `up` が「別内容で作り直された」（`up` 自身の
+    自己指紋が更新された）のに `down` が再構築されていない——`down` の系譜に
+    残る古い `up` の指紋と、`up` の今の自己指紋が食い違うことで (b) が検出する。
+
+    b03（`observation`）だけ作り直して b04（`observation_agg`）を忘れ、
+    b05 を実行する具体例と同じ形。
+    """
+    conn, _ = _make_upstream_and_downstream(tmp_path)
+    # up を「別内容で作り直す」（b03 の再実行を模す）。down には一切触れない。
+    conn.execute("DELETE FROM up")
+    conn.executemany("INSERT INTO up VALUES (?)", [(1,), (2,), (3,)])
+    common.record_stage_fingerprint(conn, "up")  # up 自身は正しく指紋を更新する
+    conn.commit()
+
+    with pytest.raises(common.MigrationError, match="上流 up の指紋"):
+        common.assert_stage_fingerprint_fresh(
+            conn, "down", rebuild_hint="down を再実行すること。", upstream_schemas={},
+        )
+    conn.close()
+
+
+def test_lineage_check_is_skipped_when_upstream_schemas_is_none(tmp_path):
+    """`upstream_schemas=None`（既定）なら (b) を行わない——呼び出し側が
+    上流ファイルを開いていない等の理由で検証範囲外にした場合の明示的な
+    opt-out。`down` 自身は無傷なので (a) は通り、例外を投げない。
+    """
+    conn, _ = _make_upstream_and_downstream(tmp_path)
+    conn.execute("DELETE FROM up")
+    conn.executemany("INSERT INTO up VALUES (?)", [(1,), (2,), (3,)])
+    common.record_stage_fingerprint(conn, "up")
+    conn.commit()
+
+    common.assert_stage_fingerprint_fresh(conn, "down", rebuild_hint="再実行すること。")
+    conn.close()
+
+
+def test_lineage_check_resolves_upstream_via_attached_schema(tmp_path):
+    """`up` が `down` と**別ファイル**にある場合、`upstream_schemas` で
+    ATTACH 済みの別名を指定すれば、上流の生データを読まずに自己指紋だけを
+    参照できる（b11 が v2.sqlite を ATTACH して observation_agg/occurrence の
+    自己指紋を読む経路と同じ形）。
+    """
+    up_path = tmp_path / "up.sqlite"
+    up_conn = sqlite3.connect(f"file:{up_path}", uri=True)
+    up_conn.execute("CREATE TABLE up (a INTEGER)")
+    up_conn.executemany("INSERT INTO up VALUES (?)", [(1,), (2,)])
+    up_fp = common.record_stage_fingerprint(up_conn, "up")
+    up_conn.commit()
+    up_conn.close()
+
+    down_path = tmp_path / "down.sqlite"
+    down_conn = sqlite3.connect(f"file:{down_path}", uri=True)
+    down_conn.execute("CREATE TABLE down (a INTEGER)")
+    down_conn.executemany("INSERT INTO down VALUES (?)", [(10,)])
+    common.record_stage_fingerprint(down_conn, "down", inputs={"up": up_fp})
+    down_conn.commit()
+    down_conn.close()
+
+    work = sqlite3.connect(":memory:", uri=True)
+    try:
+        common.attach_readonly(work, down_path, "d")
+        common.attach_readonly(work, up_path, "u")
+        # 一致するケース: 例外を投げない。
+        common.assert_stage_fingerprint_fresh(
+            work, "down", schema="d", rebuild_hint="再実行すること。",
+            upstream_schemas={"up": "u"},
+        )
+    finally:
+        work.close()
+
+    # up を作り直す（別接続で）。
+    up_conn2 = sqlite3.connect(f"file:{up_path}", uri=True)
+    up_conn2.execute("DELETE FROM up")
+    up_conn2.executemany("INSERT INTO up VALUES (?)", [(1,), (2,), (3,)])
+    common.record_stage_fingerprint(up_conn2, "up")
+    up_conn2.commit()
+    up_conn2.close()
+
+    work2 = sqlite3.connect(":memory:", uri=True)
+    try:
+        common.attach_readonly(work2, down_path, "d")
+        common.attach_readonly(work2, up_path, "u")
+        with pytest.raises(common.MigrationError, match="上流 up の指紋"):
+            common.assert_stage_fingerprint_fresh(
+                work2, "down", schema="d", rebuild_hint="down を再実行すること。",
+                upstream_schemas={"up": "u"},
+            )
+    finally:
+        work2.close()
+
+
+def test_lineage_check_raises_when_upstream_schema_not_attached(tmp_path):
+    """`upstream_schemas` に別名を指定したのに、その別名が ATTACH されて
+    いない（呼び出し側のバグ、または `cube_db` が渡されなかったのに
+    `upstream_schemas` を有効にしてしまった等）場合、素の
+    `sqlite3.OperationalError` ではなく `MigrationError` になる。
+    """
+    conn, _ = _make_upstream_and_downstream(tmp_path)
+    with pytest.raises(common.MigrationError, match="上流 up.*指紋が見つからない"):
+        common.assert_stage_fingerprint_fresh(
+            conn, "down", rebuild_hint="再実行すること。",
+            upstream_schemas={"up": "not_attached"},
+        )
+    conn.close()
+
+
+def test_read_recorded_inputs_returns_empty_dict_when_nothing_recorded(tmp_path):
+    db_path = tmp_path / "t.sqlite"
+    conn = _make_t_db(db_path)
+    assert common.read_recorded_inputs(conn, "t") == {}
+    conn.close()
+
+
+def test_read_recorded_inputs_round_trips(tmp_path):
+    conn, up_fp = _make_upstream_and_downstream(tmp_path)
+    assert common.read_recorded_inputs(conn, "down") == {"up": up_fp}
+    conn.close()

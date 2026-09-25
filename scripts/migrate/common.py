@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
+import json
 import os
 import pathlib
 import sqlite3
@@ -560,6 +561,18 @@ def count_grouped_totals_mismatches(
 # `occurrence_agg`/`occurrence_place`・`observation_agg`/`site_var` 等 →
 # v1_projection*.sqlite の各テーブル）にも広げられる形に一般化したもの。
 #
+# **設計の穴とその修正（コードレビュー指摘）**: 当初の実装は「`table` 自身の
+# 現在の内容が、`table` 自身が最後に記録した指紋と一致するか」（以下 (a)）
+# だけを見ていた。これは「壊れた/指紋を記録する前に落ちた入力」は検出するが、
+# 「**下流が古い上流から作られたまま**」（例: b03 だけ作り直し、b04 を
+# 忘れて b05 を実行——b05 は `observation_agg` 自身の指紋とは一致するので
+# (a) だけでは通ってしまう。`observation_agg` が古い `observation` から
+# 作られたままなのに）を検出できない。これを塞ぐため、各段は「そのテーブルを
+# 作るときに読んだ上流テーブルの、その時点の指紋」も**系譜**として記録し
+# （`inputs` 列、`{上流テーブル名: 指紋}` の JSON）、消費側は (a) に加えて
+# (b)「系譜に記録された各上流の指紋が、**上流テーブル自身が今記録している
+# 自己指紋**と一致するか」も確認する。
+#
 # 設計判断（`docs/plans/PHASE_B_FACT_SLICE.md` 該当項目参照）:
 # - `_assert_cube_is_current_l2_partition` 自体（occurrence_agg ⇔ occurrence の
 #   Σn 突合）は**そのまま残す**——集計の正しさまで検証する、ここより強い
@@ -582,6 +595,18 @@ def count_grouped_totals_mismatches(
 #   `observation`/`observation_agg`（さらに `occurrence`/`occurrence_agg`/
 #   `occurrence_place`）を同じファイルに同居させるため、行の主キーをファイル
 #   単位ではなく**テーブル単位**にした。
+# - **(b) の系譜チェックは上流テーブルの生データを再走査しない**——上流
+#   テーブル自身の `pipeline_fingerprint` 行（自己指紋）を読むだけの安い
+#   操作（`read_recorded_fingerprint`）。上流の内容が変わっていれば、上流
+#   自身が次に読まれたとき（あるいは既に）その差分が検出されるので、
+#   ここでは「上流の自己申告どうしが食い違っていないか」だけを確かめれば
+#   十分——実測は `docs/plans/PHASE_B_FACT_SLICE.md` 該当項目参照（(a) の
+#   全件走査だけがコストで、(b) は無視できる）。
+# - 系譜の上流テーブルがどの schema にあるかは `upstream_schemas`
+#   （`{上流テーブル名: schema}`。未指定のキーは `table` と同じ schema と
+#   みなす）で呼び出し側が指定する。`upstream_schemas=None` を渡すと (b) 自体を
+#   行わない（呼び出し側が上流ファイルを開いていない等の理由で検証範囲外に
+#   したことを明示する——`b0X` 各ファイルの呼び出し箇所のコメント参照）。
 # - 検証は「次にそのテーブルを読む段の先頭」で行う（b04 が `observation` を、
 #   b05 が ATTACH した `cube.observation_agg` を、というように）。記録が
 #   無ければ「この機構より前に作られた出力」として、内容が食い違っていれば
@@ -597,7 +622,8 @@ _CREATE_PIPELINE_FINGERPRINT_SQL = f"""
 CREATE TABLE IF NOT EXISTS {PIPELINE_FINGERPRINT_TABLE} (
   table_name TEXT PRIMARY KEY,
   fingerprint TEXT NOT NULL,
-  spec_version TEXT NOT NULL
+  spec_version TEXT NOT NULL,
+  inputs TEXT NOT NULL DEFAULT '{{}}'
 )
 """
 
@@ -625,6 +651,9 @@ def compute_table_fingerprint(conn: sqlite3.Connection, table: str, *, schema: s
     （行数を末尾に持つことで、内容が同じでも行の重複/欠落だけで変わる
     ケースを取りこぼさない——ハッシュ自体も行区切りの制御文字を挟むため
     既に行数に敏感だが、念のため人が読んでも分かる形で残す）。
+
+    **フルスキャンする（(a) のコスト）。系譜チェック（(b)）はこの関数を
+    呼ばない**——`read_recorded_fingerprint` が代わりに使われる。
     """
     columns = _fingerprint_table_columns(conn, table, schema)
     qualified = f"{schema}.{table}" if schema else table
@@ -640,10 +669,73 @@ def compute_table_fingerprint(conn: sqlite3.Connection, table: str, *, schema: s
     return f"sha256:{hasher.hexdigest()}:{n}"
 
 
-def record_stage_fingerprint(conn: sqlite3.Connection, table: str, *, spec_version: str = SPEC_VERSION) -> str:
+def _schema_is_attached(conn: sqlite3.Connection, schema: str) -> bool:
+    """`schema` という別名が `conn` に ATTACH 済みかどうか。`PRAGMA database_list`
+    で確認する——ATTACH されていない別名に対して `SELECT ... FROM
+    <別名>.sqlite_master` を投げると素の `sqlite3.OperationalError`
+    （`unknown database`）になるため、事前にここで弾く。
+    """
+    return any(row[1] == schema for row in conn.execute("PRAGMA database_list"))
+
+
+def read_recorded_fingerprint(conn: sqlite3.Connection, table: str, *, schema: str | None = None) -> str | None:
+    """`table`（`schema` 越し）が自分自身について最後に記録した指紋を読むだけの
+    安い操作（`table` の生データは一切読まない）。`pipeline_fingerprint`
+    メタ表が無い・`schema` が ATTACH されていない・該当行が無い、のいずれでも
+    `None` を返す（例外を投げない——呼び出し側が「見つからない」を判断材料に
+    する）。
+    """
+    if schema is not None and not _schema_is_attached(conn, schema):
+        return None
+    meta_prefix = f"{schema}." if schema else ""
+    master = f"{schema}.sqlite_master" if schema else "sqlite_master"
+    has_meta = conn.execute(
+        f"SELECT 1 FROM {master} WHERE type = 'table' AND name = ?", (PIPELINE_FINGERPRINT_TABLE,)
+    ).fetchone()
+    if has_meta is None:
+        return None
+    row = conn.execute(
+        f"SELECT fingerprint FROM {meta_prefix}{PIPELINE_FINGERPRINT_TABLE} WHERE table_name = ?", (table,)
+    ).fetchone()
+    return row[0] if row else None
+
+
+def read_recorded_inputs(conn: sqlite3.Connection, table: str, *, schema: str | None = None) -> dict[str, str]:
+    """`table` が自分自身について記録した系譜（`{上流テーブル名: 消費時点の
+    上流指紋}`）を読む。行・列が無ければ `{}`（呼び出し側の呼び出し順次第
+    では「まだ何も記録されていない」ことがあるため、例外にはしない）。
+    """
+    if schema is not None and not _schema_is_attached(conn, schema):
+        return {}
+    meta_prefix = f"{schema}." if schema else ""
+    master = f"{schema}.sqlite_master" if schema else "sqlite_master"
+    has_meta = conn.execute(
+        f"SELECT 1 FROM {master} WHERE type = 'table' AND name = ?", (PIPELINE_FINGERPRINT_TABLE,)
+    ).fetchone()
+    if has_meta is None:
+        return {}
+    row = conn.execute(
+        f"SELECT inputs FROM {meta_prefix}{PIPELINE_FINGERPRINT_TABLE} WHERE table_name = ?", (table,)
+    ).fetchone()
+    if row is None or not row[0]:
+        return {}
+    return json.loads(row[0])
+
+
+def record_stage_fingerprint(
+    conn: sqlite3.Connection, table: str, *,
+    spec_version: str = SPEC_VERSION, inputs: dict[str, str] | None = None,
+) -> str:
     """`table`（`conn` 自身が開いているファイルの本番テーブル）の指紋を計算し、
     同じファイルの `pipeline_fingerprint` メタ表（無ければ作る）に記録する
     （`table_name` で upsert）。戻り値は計算した指紋。
+
+    `inputs`（`{上流テーブル名: そのテーブルを作るときに読んだ上流の指紋}`）は
+    系譜——省略時は `{}`（上流を持たない基底テーブル。`observation`/
+    `occurrence` のように原本 DB から直接作るもの）。ここに書く指紋の値は
+    「消費した時点で確認できていた上流の指紋」であればよく、呼び出し側は
+    通常 `assert_stage_fingerprint_fresh()` の戻り値（(a) で確認済みの現在値）
+    をそのまま渡す——ここで改めて上流を読み直す必要は無い。
 
     呼び出し側（b03/b04/b06/b07/b09/b05/b08/b11）は、そのテーブルへの本番の
     書き込みが確定した**後**（`staged_table` の `with` ブロックの外、または
@@ -653,29 +745,54 @@ def record_stage_fingerprint(conn: sqlite3.Connection, table: str, *, spec_versi
     """
     conn.execute(_CREATE_PIPELINE_FINGERPRINT_SQL)
     fingerprint = compute_table_fingerprint(conn, table)
+    inputs_json = json.dumps(inputs or {}, sort_keys=True, ensure_ascii=False)
     conn.execute(
-        f"INSERT INTO {PIPELINE_FINGERPRINT_TABLE} (table_name, fingerprint, spec_version) VALUES (?, ?, ?) "
+        f"INSERT INTO {PIPELINE_FINGERPRINT_TABLE} (table_name, fingerprint, spec_version, inputs) "
+        "VALUES (?, ?, ?, ?) "
         "ON CONFLICT(table_name) DO UPDATE SET fingerprint = excluded.fingerprint, "
-        "spec_version = excluded.spec_version",
-        (table, fingerprint, spec_version),
+        "spec_version = excluded.spec_version, inputs = excluded.inputs",
+        (table, fingerprint, spec_version, inputs_json),
     )
     return fingerprint
 
 
 def assert_stage_fingerprint_fresh(
-    conn: sqlite3.Connection, table: str, *, schema: str | None = None, rebuild_hint: str,
-) -> None:
+    conn: sqlite3.Connection, table: str, *,
+    schema: str | None = None, rebuild_hint: str,
+    upstream_schemas: dict[str, str] | None = None,
+) -> str:
     """`table`（`schema` が None なら `conn` 自身、そうでなければ ATTACH 済みの
-    別名 `schema` 越し）の**現在の**内容が、そのテーブルを持つ出力ファイルに
-    `record_stage_fingerprint` が記録した指紋と一致することを確認する。
+    別名 `schema` 越し）が「今の上流から作られた状態」であることを確認する。
+    戻り値は (a) で確認した `table` 自身の現在の指紋
+    （呼び出し側が自分の出力の `inputs` に再利用できる——上流を読み直させない
+    ため）。
 
-    以下のどちらでも `MigrationError` で止まる（`rebuild_hint` に案内する
+    (a) `table` の現在の内容が、`table` 自身が最後に記録した指紋と一致するか
+        （フルスキャン。以前からの検証）。
+    (b) `table` が記録した系譜（`inputs`、`record_stage_fingerprint` 参照）の
+        各上流について、**上流テーブル自身が今記録している自己指紋**
+        （生データは読まない安い参照）と、`inputs` に記録された消費時点の値が
+        一致するか——上流が `table` の構築後に作り直されたのに `table` が
+        再構築されていない、というコードレビュー指摘の穴を塞ぐ。
+        `upstream_schemas`（`{上流テーブル名: schema}`）で上流テーブルの
+        居場所を指定する（未指定のキーは `table` と同じ `schema`——同一
+        ファイル内で完結する対はこれで足りる）。**`upstream_schemas` が
+        `None` なら (b) 自体を行わない**——上流ファイルを呼び出し側が
+        開いていない等の理由で検証範囲外にした場合に明示的に使う（各
+        呼び出し箇所のコメントに理由を書くこと）。`inputs` が空（系譜が
+        無い基底テーブル）なら `upstream_schemas` を渡していても何もしない。
+
+    以下のいずれでも `MigrationError` で止まる（`rebuild_hint` に案内する
     再実行手順を続ける）:
     - `pipeline_fingerprint` メタ表自体が無い（この機構が入る前に作られた
       出力、または指紋を記録する前にプロセスが落ちた壊れた出力）。
-    - `table_name` の行が無い、または記録済みの指紋と現在の指紋が食い違う
-      （このテーブルが作り直された後、それを消費する側の再実行が漏れている
-      疑いがある）。
+    - `table_name` の行が無い、または (a) 記録済みの指紋と現在の指紋が
+      食い違う（このテーブルが作り直された後、それを消費する側の再実行が
+      漏れている疑いがある）。
+    - (b) 系譜上の上流の自己指紋が見つからない（上流に指紋の記録が無い、
+      または `upstream_schemas` の指定先が ATTACH されていない）、または
+      系譜に記録した消費時点の値と食い違う（上流が作り直された後、`table`
+      の再構築が行われていない疑いがある）。
     """
     meta_prefix = f"{schema}." if schema else ""
     master = f"{schema}.sqlite_master" if schema else "sqlite_master"
@@ -689,11 +806,11 @@ def assert_stage_fingerprint_fresh(
             "（この機構が入る前に作られた古い出力の可能性がある）。" + rebuild_hint
         )
     row = conn.execute(
-        f"SELECT fingerprint FROM {meta_prefix}{PIPELINE_FINGERPRINT_TABLE} WHERE table_name = ?", (table,)
+        f"SELECT fingerprint, inputs FROM {meta_prefix}{PIPELINE_FINGERPRINT_TABLE} WHERE table_name = ?", (table,)
     ).fetchone()
     if row is None:
         raise MigrationError(f"{qualified} の指紋が記録されていない。" + rebuild_hint)
-    recorded = row[0]
+    recorded, inputs_json = row
     current = compute_table_fingerprint(conn, table, schema=schema)
     if current != recorded:
         raise MigrationError(
@@ -701,3 +818,24 @@ def assert_stage_fingerprint_fresh(
             f"{table} が作り直された後、それを消費する側の再実行が漏れている可能性がある。"
             + rebuild_hint
         )
+
+    if upstream_schemas is not None:
+        inputs = json.loads(inputs_json) if inputs_json else {}
+        for upstream_table, consumed_fp in inputs.items():
+            upstream_schema = upstream_schemas.get(upstream_table, schema)
+            upstream_current = read_recorded_fingerprint(conn, upstream_table, schema=upstream_schema)
+            if upstream_current is None:
+                where = f"（schema={upstream_schema}）" if upstream_schema else ""
+                raise MigrationError(
+                    f"{qualified} の系譜（inputs）に記録された上流 {upstream_table}{where} 自身の"
+                    "指紋が見つからない（ATTACH されていない、または指紋がまだ記録されていない）。"
+                    + rebuild_hint
+                )
+            if upstream_current != consumed_fp:
+                raise MigrationError(
+                    f"{qualified} は上流 {upstream_table} の指紋 {consumed_fp} を消費した状態のまま"
+                    f"だが、{upstream_table} は現在 {upstream_current} を自己申告している"
+                    f"（{upstream_table} が作り直された後、{table} の再構築が行われていない可能性が"
+                    "ある）。" + rebuild_hint
+                )
+    return current

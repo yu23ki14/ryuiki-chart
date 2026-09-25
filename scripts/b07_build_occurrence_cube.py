@@ -498,7 +498,8 @@ def build_cube(
     common.require_sqlite_version()
     # 段階間の指紋（Issue #37 #1）: b06 が最後に記録した occurrence の指紋と
     # 今の occurrence の内容が一致することを、集計を始める前に確認する。
-    common.assert_stage_fingerprint_fresh(
+    # 戻り値（occurrence の現在の指紋）は occurrence_agg の系譜に使う。
+    occurrence_fingerprint = common.assert_stage_fingerprint_fresh(
         conn, "occurrence",
         rebuild_hint="scripts/b06_build_occurrence.py を再実行すること。",
     )
@@ -527,8 +528,10 @@ def build_cube(
     # （`_assert_cube_is_current_l2_partition`）が occurrence_agg 自体の集計
     # 正しさを検証するため、ここでの記録は他段（将来 occurrence_agg を読む
     # かもしれない別スクリプト）向けの一貫性維持——「全段の出力に指紋を持たせる」
-    # 方針どおり記録する。
-    common.record_stage_fingerprint(conn, "occurrence_agg")
+    # 方針どおり記録する（系譜＝消費した occurrence の指紋も記録する）。
+    common.record_stage_fingerprint(
+        conn, "occurrence_agg", inputs={"occurrence": occurrence_fingerprint},
+    )
     conn.commit()
 
     n_dated_grid01 = n_dated_by_place_kind.get("grid01", 0)

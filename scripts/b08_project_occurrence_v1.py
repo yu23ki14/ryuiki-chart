@@ -353,20 +353,33 @@ def _assert_no_stale_taxon_ids(conn, table: str, context: str) -> None:
 # 指紋と、今 ATTACH している cube.sqlite の内容を突き合わせる。
 # ---------------------------------------------------------------------------
 
-def _assert_occurrence_fingerprint_fresh(conn) -> None:
-    common.assert_stage_fingerprint_fresh(
+def _assert_occurrence_fingerprint_fresh(conn) -> str:
+    """`occurrence` 自身の自己一致（(a)）を確認し、現在の指紋を返す
+    （`occurrence` は基底テーブル——`upstream_schemas` は渡さない。系譜
+    〔`inputs`〕自体を持たないので (b) は元々何もしない）。
+    """
+    return common.assert_stage_fingerprint_fresh(
         conn, "occurrence", schema="cube",
         rebuild_hint="scripts/b06_build_occurrence.py を再実行すること。",
     )
 
 
-def _assert_occurrence_place_fingerprint_fresh(conn) -> None:
-    common.assert_stage_fingerprint_fresh(
+def _assert_occurrence_place_fingerprint_fresh(conn) -> str:
+    """`occurrence_place` の (a) 自己一致に加え、(b) 系譜チェック（記録済みの
+    `inputs["occurrence"]` が `occurrence` 自身の今の自己指紋と一致するか）も
+    行う——コードレビュー指摘: (a) だけでは「occurrence_place 自身は無傷だが、
+    occurrence が作り直された後 b09 が再実行されていない」壊れ方
+    （b06 だけ再実行して b09 を忘れる）を検出できない。`occurrence` は
+    `occurrence_place` と同じ v2.sqlite（"cube"）にあるので安く確認できる。
+    現在の指紋を返す。
+    """
+    return common.assert_stage_fingerprint_fresh(
         conn, "occurrence_place", schema="cube",
         rebuild_hint=(
             "scripts/b06_build_occurrence.py の後に scripts/b09_build_occurrence_place.py を"
             "再実行すること。"
         ),
+        upstream_schemas={"occurrence": "cube"},
     )
 
 
@@ -479,22 +492,26 @@ def _build_org_norm_insert_sql() -> str:
     """
 
 
-def _build_org_norm(conn, default_taxon_group: str) -> int:
+def _build_org_norm(conn, default_taxon_group: str) -> tuple[int, str]:
     """`conn`（`cube`/`reg` を ATTACH 済みの書き込み用接続）に `org_norm` を
-    作り、行数を返す。O-1a の実装からロジックは変更していない
-    （`build_org_norm_projection` が自前で開いていた接続を、複数テーブルを
-    1つのファイルに書く `build_all_projections` とも共有できるように
-    切り出しただけ）。**この呼び出しが `occurrence.taxon_id` 全体の新鮮さを
-    検証するため、`build_all_projections` が `_build_org_norm` を先に呼べば、
-    後続の `_build_cube_projections` は `occurrence_agg` に対する同じ検査を
-    重ねがけしなくてよい**（モジュール docstring「キューブが『今の
+    作り、`(行数, occurrence の指紋)` を返す。O-1a の実装からロジックは
+    変更していない（`build_org_norm_projection` が自前で開いていた接続を、
+    複数テーブルを1つのファイルに書く `build_all_projections` とも共有できる
+    ように切り出しただけ）。**この呼び出しが `occurrence.taxon_id` 全体の
+    新鮮さを検証するため、`build_all_projections` が `_build_org_norm` を
+    先に呼べば、後続の `_build_cube_projections` は `occurrence_agg` に対する
+    同じ検査を重ねがけしなくてよい**（モジュール docstring「キューブが『今の
     occurrence の分割』であることを確かめてから使う」参照）。
+
+    戻り値の指紋（Issue #37 #1）は呼び出し側が `org_norm` の系譜
+    （`inputs={"occurrence": ...}`）に使う。
     """
-    _assert_occurrence_fingerprint_fresh(conn)
+    occurrence_fingerprint = _assert_occurrence_fingerprint_fresh(conn)
     _assert_no_stale_taxon_ids(conn, "cube.occurrence", "occurrence")
     conn.execute(_CREATE_ORG_NORM_SQL)
     conn.execute(_build_org_norm_insert_sql(), {"default_taxon_group": default_taxon_group})
-    return conn.execute("SELECT COUNT(*) FROM org_norm").fetchone()[0]
+    n = conn.execute("SELECT COUNT(*) FROM org_norm").fetchone()[0]
+    return n, occurrence_fingerprint
 
 
 def build_org_norm_projection(
@@ -516,10 +533,12 @@ def build_org_norm_projection(
     try:
         common.attach_readonly(conn, cube_db, "cube")
         common.attach_readonly(conn, registry_db, "reg")
-        n = _build_org_norm(conn, default_taxon_group)
+        n, occurrence_fingerprint = _build_org_norm(conn, default_taxon_group)
         # 段階間の指紋（Issue #37 #1）: 全段の出力に指紋を持たせる方針どおり、
-        # このエントリポイントが単独で作った org_norm にも記録する。
-        common.record_stage_fingerprint(conn, "org_norm")
+        # このエントリポイントが単独で作った org_norm にも系譜つきで記録する。
+        common.record_stage_fingerprint(
+            conn, "org_norm", inputs={"occurrence": occurrence_fingerprint},
+        )
         conn.commit()
         return {"n": n}
     finally:
@@ -731,12 +750,14 @@ def build_ias_species_projection(
     try:
         common.attach_readonly(conn, cube_db, "cube")
         common.attach_readonly(conn, registry_db, "reg")
-        _build_org_norm(conn, default_taxon_group)
+        _, occurrence_fingerprint = _build_org_norm(conn, default_taxon_group)
         n, diagnostics = _build_ias_species(conn)
         # 段階間の指紋（Issue #37 #1）: 全段の出力に指紋を持たせる方針どおり、
         # ここで作った2テーブル（org_norm は ias_species の踏み台として作った
         # だけだが、出力ファイルに実在するテーブルではある）両方に記録する。
-        common.record_stage_fingerprint(conn, "org_norm")
+        common.record_stage_fingerprint(
+            conn, "org_norm", inputs={"occurrence": occurrence_fingerprint},
+        )
         common.record_stage_fingerprint(conn, "ias_species")
         conn.commit()
         return {"ias_species": n}, diagnostics
@@ -1652,23 +1673,25 @@ def _assert_watershed_conservation(conn, moved: dict) -> dict:
 
 def _build_watershed(
     conn, declarations_yaml=DEFAULT_WATERSHED_DECLARATIONS_YAML,
-) -> tuple[dict[str, int], dict]:
+) -> tuple[dict[str, int], dict, str, str]:
     """`conn`（`cube`/`reg` を ATTACH 済みの書き込み用接続）に
     `org_watershed_year`/`org_watershed` を作る。`_build_org_norm`/
     `_build_cube_projections` と独立に呼べる（`occurrence`/`occurrence_place`
     だけに依存し、`occurrence_agg` は読まない）。
 
-    戻り値は `(table_counts, diagnostics)` の2要素タプル
-    （コードレビュー指摘2・12: 以前はテーブル行数と機械検証の実測値
-    〔`memo_moved_records` 等、行数ではない統計値〕を同じ dict に混ぜていた
-    ため、`main()`/呼び出し側が `sum(counts.values())`・`set(counts)` を
-    テーブル行数だけの集合として扱えなかった。`table_counts` は
-    `{"org_watershed_year": n, "org_watershed": n}` の2キーだけを持つ）。
+    戻り値は `(table_counts, diagnostics, occurrence の指紋, occurrence_place
+    の指紋)` の4要素タプル（コードレビュー指摘2・12: 以前はテーブル行数と
+    機械検証の実測値〔`memo_moved_records` 等、行数ではない統計値〕を同じ
+    dict に混ぜていたため、`main()`/呼び出し側が `sum(counts.values())`・
+    `set(counts)` をテーブル行数だけの集合として扱えなかった。`table_counts`
+    は `{"org_watershed_year": n, "org_watershed": n}` の2キーだけを持つ。
+    末尾2つの指紋は Issue #37 #1 で追加——呼び出し側が
+    `org_watershed_year`/`org_watershed` の系譜〔`inputs`〕に使う）。
     """
     declarations = load_and_validate_watershed_declarations(declarations_yaml)
 
-    _assert_occurrence_fingerprint_fresh(conn)
-    _assert_occurrence_place_fingerprint_fresh(conn)
+    occurrence_fingerprint = _assert_occurrence_fingerprint_fresh(conn)
+    occurrence_place_fingerprint = _assert_occurrence_place_fingerprint_fresh(conn)
     conn.execute(_PLACE_WATERSHED_LOOKUP_SQL, (_WATERSHED_SOURCE_ID,))
     _assert_place_watershed_lookup_is_function(conn)
     _assert_all_watershed_places_resolve(conn)
@@ -1693,7 +1716,7 @@ def _build_watershed(
 
     table_counts = {"org_watershed_year": n_org_watershed_year, "org_watershed": n_org_watershed}
     diagnostics = {**moved, **conservation}
-    return table_counts, diagnostics
+    return table_counts, diagnostics, occurrence_fingerprint, occurrence_place_fingerprint
 
 
 def build_watershed_projections(
@@ -1713,11 +1736,13 @@ def build_watershed_projections(
     try:
         common.attach_readonly(conn, cube_db, "cube")
         common.attach_readonly(conn, registry_db, "reg")
-        table_counts, diagnostics = _build_watershed(conn, declarations_yaml)
-        # 段階間の指紋（Issue #37 #1）: 全段の出力に指紋を持たせる方針どおり
-        # 記録する（b11 が org_watershed を読む前に検証する）。
+        table_counts, diagnostics, occ_fp, place_fp = _build_watershed(conn, declarations_yaml)
+        # 段階間の指紋（Issue #37 #1）: 全段の出力に指紋を持たせる方針どおり、
+        # 系譜（消費した occurrence/occurrence_place の指紋）つきで記録する
+        # （b11 が org_watershed を読む前に検証する）。
+        lineage_inputs = {"occurrence": occ_fp, "occurrence_place": place_fp}
         for table in table_counts:
-            common.record_stage_fingerprint(conn, table)
+            common.record_stage_fingerprint(conn, table, inputs=lineage_inputs)
         conn.commit()
         return table_counts, diagnostics
     finally:
@@ -1761,9 +1786,11 @@ def build_all_projections(
     try:
         common.attach_readonly(conn, cube_db, "cube")
         common.attach_readonly(conn, registry_db, "reg")
-        n_org_norm = _build_org_norm(conn, default_taxon_group)
+        n_org_norm, occurrence_fingerprint = _build_org_norm(conn, default_taxon_group)
         counts = _build_cube_projections(conn, default_taxon_group, check_stale_taxon=False)
-        watershed_table_counts, watershed_diagnostics = _build_watershed(conn, watershed_declarations_yaml)
+        watershed_table_counts, watershed_diagnostics, occ_fp, place_fp = _build_watershed(
+            conn, watershed_declarations_yaml,
+        )
         n_ias_species, ias_origin_delta = _build_ias_species(conn)
         table_counts = {
             "org_norm": n_org_norm, **counts, **watershed_table_counts,
@@ -1771,8 +1798,18 @@ def build_all_projections(
         }
         # 段階間の指紋（Issue #37 #1）: 全段の出力に指紋を持たせる方針どおり、
         # この13テーブル全てに記録する（b11 が org_watershed を読む前に検証する）。
+        # `org_norm`/`org_watershed_year`/`org_watershed` には系譜（inputs）も
+        # 添える——`counts`（年キー8表・species_month）・`ias_species` は
+        # 現時点で消費側を持たないため系譜を記録しない（コードレビュー
+        # 対応時の scope 判断。occurrence_agg 自体の集計正しさは既存の
+        # `_assert_cube_is_current_l2_partition` が別途保証する）。
+        lineage: dict[str, dict[str, str]] = {
+            "org_norm": {"occurrence": occurrence_fingerprint},
+            "org_watershed_year": {"occurrence": occ_fp, "occurrence_place": place_fp},
+            "org_watershed": {"occurrence": occ_fp, "occurrence_place": place_fp},
+        }
         for table in table_counts:
-            common.record_stage_fingerprint(conn, table)
+            common.record_stage_fingerprint(conn, table, inputs=lineage.get(table))
         conn.commit()
         diagnostics = {**watershed_diagnostics, "ias_origin_delta": ias_origin_delta}
         return table_counts, diagnostics

@@ -356,7 +356,8 @@ def build_and_write_occurrence_place(
         )
         # 段階間の指紋（Issue #37 #1）: b06 が最後に記録した occurrence の指紋と
         # 今の occurrence の内容が一致することを、座標を読む前に確認する。
-        common.assert_stage_fingerprint_fresh(
+        # 戻り値は occurrence_place の系譜に使う。
+        occurrence_fingerprint = common.assert_stage_fingerprint_fresh(
             conn, "occurrence",
             rebuild_hint="scripts/b06_build_occurrence.py を再実行すること。",
         )
@@ -447,8 +448,10 @@ def build_and_write_occurrence_place(
 
         # 段階間の指紋（Issue #37 #1）: b08 が「今の occurrence から作った
         # occurrence_place か」を検証できるよう、確定した occurrence_place の
-        # 内容を記録する。
-        common.record_stage_fingerprint(conn, "occurrence_place")
+        # 内容と系譜（消費した occurrence の指紋）を記録する。
+        common.record_stage_fingerprint(
+            conn, "occurrence_place", inputs={"occurrence": occurrence_fingerprint},
+        )
         conn.commit()
     except BaseException:
         conn.close()

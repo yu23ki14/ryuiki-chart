@@ -750,10 +750,18 @@ def build_projections(
         common.attach_readonly(work, registry_db, "reg")
         # 段階間の指紋（Issue #37 #1）: b04 が最後に記録した observation_agg の
         # 指紋と、今 ATTACH した cube_db の内容が一致することを、射影を始める
-        # 前に確認する。
+        # 前に確認する。`upstream_schemas={"observation": "cube"}`
+        # （コードレビュー指摘: (a) の自己一致だけでは「observation_agg 自身は
+        # 無傷だが、b03 だけ作り直されて b04 が再実行されていない」壊れ方を
+        # 検出できない。observation_agg が記録した系譜〔消費した observation
+        # の指紋〕と、observation 自身が今記録している自己指紋を突き合わせる
+        # (b) を有効にする——observation は observation_agg と同じ v2.sqlite
+        # 〔ここでは "cube" 別名〕にあるので、上流の生データを読み直さず安く
+        # 確認できる）。
         common.assert_stage_fingerprint_fresh(
             work, "observation_agg", schema="cube",
             rebuild_hint="scripts/b04_build_cube.py を再実行すること。",
+            upstream_schemas={"observation": "cube"},
         )
         assert_alias_is_function(work, "measurements")
         # b05 が実際に消費する grain（B-6: `_SENSOR_ALIAS_GRAINS`。
@@ -854,9 +862,27 @@ _CREATE_SQL = {
 }
 
 
-def write_projections(projections: dict[str, tuple[list[str], list[tuple]]], out_path) -> None:
+def write_projections(
+    projections: dict[str, tuple[list[str], list[tuple]]], out_path, cube_db=None,
+) -> None:
+    """13テーブルを書き、それぞれの指紋を記録する（Issue #37 #1）。
+
+    `cube_db`（`build_projections()` が既に新鮮さを確認済みの、`observation_agg`
+    を持つ v2.sqlite）を渡すと、`observation_agg` 自身の**自己指紋**（生データは
+    読み直さない安い参照。`common.read_recorded_fingerprint`）を読み、13
+    テーブル全ての系譜（`inputs={"observation_agg": ...}`）に記録する——b11 が
+    `site_var`/`landuse_watershed` を読む前に「今の observation_agg から
+    作られたものか」を確かめられるようにするため（コードレビュー指摘: 系譜が
+    無いと、b04 は再実行されたのに b05 が再実行されていない壊れ方を b11 が
+    検出できない）。`cube_db` を省略した場合は系譜を記録しない
+    （`build_projections()` を経由しない単体呼び出し用——`main()` は常に渡す）。
+    """
+    agg_fingerprint = None
     conn = common.fresh_sqlite(out_path)
     try:
+        if cube_db is not None:
+            common.attach_readonly(conn, cube_db, "cube")
+            agg_fingerprint = common.read_recorded_fingerprint(conn, "observation_agg", schema="cube")
         for table, (columns, rows) in projections.items():
             conn.execute(_CREATE_SQL[table])
             placeholders = ", ".join("?" for _ in columns)
@@ -864,8 +890,9 @@ def write_projections(projections: dict[str, tuple[list[str], list[tuple]]], out
         # 段階間の指紋（Issue #37 #1）: 全段の出力に指紋を持たせる方針どおり、
         # 13テーブル全てに記録する（b11 が site_var/landuse_watershed を読む前に
         # 検証する）。
+        inputs = {"observation_agg": agg_fingerprint} if agg_fingerprint else None
         for table in projections:
-            common.record_stage_fingerprint(conn, table)
+            common.record_stage_fingerprint(conn, table, inputs=inputs)
         conn.commit()
     finally:
         conn.close()
@@ -896,7 +923,7 @@ def main() -> None:
         info["n"] = sum(len(rows) for _, rows in projections.values())
 
     with common.timed_step(f"{args.out} に書き出し") as info:
-        write_projections(projections, args.out)
+        write_projections(projections, args.out, args.cube_db)
         info["n"] = sum(len(rows) for _, rows in projections.values())
 
     for table, (_, rows) in sorted(projections.items()):

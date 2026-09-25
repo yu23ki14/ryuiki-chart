@@ -1161,3 +1161,45 @@ def test_landuse_does_not_affect_existing_tables_or_cube(tmp_path):
     assert len(projections["meas_daily"][1]) == 3
     assert len(projections["landuse_watershed"][1]) == len(DEFAULT_LANDUSE_CSV_ROWS)
     assert len(projections["landuse_change"][1]) == 3
+
+
+# ---------------------------------------------------------------------------
+# 段階間の指紋・系譜（Issue #37 #1。コードレビュー指摘の穴埋め）
+# ---------------------------------------------------------------------------
+
+def test_build_projections_halts_when_observation_rebuilt_without_rerunning_b04(tmp_path):
+    """**コードレビュー指摘が指した穴そのものの再現**（Issue #37 受け入れ
+    基準）: b03→b04 を通しで実行した後、b03 だけを**別内容**で作り直す
+    （＝`observation` は新しい指紋を自己申告するが、`observation_agg` は
+    古いまま——b04 を忘れた状態）。`observation_agg` 自身の内容は無傷なので
+    (a) の自己一致チェックは通るが、系譜チェック (b) が `observation_agg` の
+    `inputs["observation"]`（古い指紋）と `observation` の今の自己指紋
+    （新しい）の食い違いを検出し、`scripts/b04_build_cube.py を再実行する
+    こと` と案内する `MigrationError` で b05 が止まる。
+    """
+    measurements_db = tmp_path / "ryuiki.sqlite"
+    registry_db = tmp_path / "registry.sqlite"
+    make_measurements_db(
+        measurements_db,
+        rows=[("m1", "S1", "2020-01-01", "BOD", "src_a", 1.0, "1.0", "mg/L", "公開済", 0, "ref1", "ev1")],
+    )
+    make_registry_db(registry_db)
+
+    v2_db, _ = _run_b03_b04(measurements_db, registry_db, tmp_path)
+
+    # b03 だけを別内容（測定値を1件追加）で作り直す。b04 は再実行しない。
+    measurements_db2 = tmp_path / "ryuiki2.sqlite"
+    make_measurements_db(
+        measurements_db2,
+        rows=[
+            ("m1", "S1", "2020-01-01", "BOD", "src_a", 1.0, "1.0", "mg/L", "公開済", 0, "ref1", "ev1"),
+            ("m2", "S1", "2020-06-01", "BOD", "src_a", 9.0, "9.0", "mg/L", "公開済", 0, "ref1", "ev1"),
+        ],
+    )
+    build_observation(
+        tmp_path, measurements_db2, registry_db, tmp_path / "no_exceptions2.yaml",
+        tmp_path / "no_conventions2.yaml", v2_db,
+    )
+
+    with pytest.raises(common.MigrationError, match=r"scripts/b04_build_cube\.py を再実行すること"):
+        b05.build_projections(v2_db, registry_db)

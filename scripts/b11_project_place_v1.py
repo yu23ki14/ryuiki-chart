@@ -17,7 +17,15 @@ docs/plans/PHASE_B_PLACE_ATTRIBUTES.md）。あわせて `watershed_rollup`
 `observation`/`observation_agg`（v2.sqlite）は経由しない（`watershed_meta`/
 `watershed_rollup` はどちらも observation を一切経由しない静的な地理データの
 結合射影——`docs/plans/PHASE_B_FACT_SLICE.md` D10 と同じ「キューブのセルにしない」
-対象。`--cube-db` のような引数は無い）。
+対象。`watershed_rollup` の**SQL自体**は v2.sqlite を一切参照しない）。
+
+**例外的に `--cube-db`（既定 `data/db/v2.sqlite`）を1つだけ持つ**（Issue #37
+#1、コードレビュー指摘）。これは `site_var`/`landuse_watershed`/`org_watershed`
+が記録した系譜（`observation_agg`/`occurrence`/`occurrence_place` の指紋）を、
+それら自身の**今の**自己指紋と突き合わせるためだけの ATTACH で、生データは
+一切読まない（`_assert_rollup_input_fingerprints_fresh`）。無ければこの
+系譜チェックだけを省略して続行する——`watershed_rollup` を作るのに
+v2.sqlite は要らないという設計原則は変えていない。
 
 ## watershed_rollup（v1: `web/scripts/build-geo.mjs:227-251`）
 
@@ -72,6 +80,13 @@ DEFAULT_OUT = ROOT / "data" / "db" / "v1_projection_place.sqlite"
 # watershed_rollup が読む、他の2本の射影スクリプトの出力（読み取り専用で ATTACH する）。
 DEFAULT_V1_PROJECTION_DB = ROOT / "data" / "db" / "v1_projection.sqlite"
 DEFAULT_V1_PROJECTION_OCCURRENCE_DB = ROOT / "data" / "db" / "v1_projection_occurrence.sqlite"
+# 段階間の指紋（Issue #37 #1）の系譜チェック専用（`_assert_rollup_input_fingerprints_fresh`
+# 参照）。watershed_rollup 自体の SQL は v2.sqlite を一切参照しない
+# （モジュール docstring「経由しない」参照）——ここで ATTACH するのは
+# `site_var`/`landuse_watershed`/`org_watershed` が記録した系譜
+# （`inputs`）の上流（`observation_agg`/`occurrence`/`occurrence_place`）
+# 自身の自己指紋を安く読むためだけで、生データは一切読まない。
+DEFAULT_CUBE_DB = ROOT / "data" / "db" / "v2.sqlite"
 
 # v1（`web/scripts/build-geo.mjs`、`reports/derived_baseline.json`）と列名・列順・
 # 宣言型を完全に一致させる。
@@ -428,37 +443,74 @@ def _assert_no_stale_watershed_or_site_ids(
         work.close()
 
 
-def _assert_rollup_input_fingerprints_fresh(v1_projection_db, v1_projection_occurrence_db) -> None:
+def _assert_rollup_input_fingerprints_fresh(
+    v1_projection_db, v1_projection_occurrence_db, cube_db=None,
+) -> dict[str, str]:
     """`site_var`/`landuse_watershed`（b05）・`org_watershed`（b08）の内容が、
     それぞれの構築スクリプトが最後に記録した指紋と一致することを確認する
-    （Issue #37 #1。`_assert_no_stale_watershed_or_site_ids` は watershed_id/
-    site_id の**実在**だけを見るため、id 集合が変わらないまま値だけが
-    変わった再構築（例: 集計元の v2.sqlite が入れ替わったのに b05/b08 が
-    再実行されていない）は検出できない——指紋はその隙間を埋める）。
+    （(a)。Issue #37 #1。`_assert_no_stale_watershed_or_site_ids` は
+    watershed_id/site_id の**実在**だけを見るため、id 集合が変わらないまま
+    値だけが変わった再構築は検出できない——指紋はその隙間を埋める）。
+
+    **(b) 系譜チェック（コードレビュー指摘の穴埋め）**: (a) だけでは
+    「site_var 自身は無傷だが、その系譜先（`observation_agg`）が作り直された
+    後 b05 が再実行されていない」壊れ方（b03/b04 だけ再実行して b05 を
+    忘れる）を検出できない。`site_var`/`landuse_watershed` の系譜
+    （`inputs["observation_agg"]`）・`org_watershed` の系譜
+    （`inputs["occurrence"]`/`inputs["occurrence_place"]`）を、`cube_db`
+    （`v2.sqlite`）に ATTACH した `observation_agg`/`occurrence`/
+    `occurrence_place` 自身の自己指紋（生データは読まない安い参照）と
+    突き合わせる。
+
+    **検証範囲の明示（コードレビュー指摘への回答）**: `cube_db` が渡され、
+    かつファイルが実在する場合だけ ATTACH して (b) を有効にする——
+    watershed_rollup の SQL 自体は v2.sqlite を一切読まない設計
+    （モジュール docstring「経由しない」）を保つため、`cube_db` を必須の
+    ATTACH にはしない。`cube_db` が無い/渡されない場合は (b) を行わず
+    (a) だけに留める（`main()` は常に既定パス `DEFAULT_CUBE_DB` を渡すため、
+    Phase B を実行順どおり通した実運用では常に (b) も効く。`cube_db` 無しで
+    呼ぶのは、v2.sqlite を必要としない既存の単体テストのため）。
 
     出力ファイルには一切触れない読み取り専用の一時コネクションで、
     `common.fresh_sqlite(out_path)`（既存の出力を即座に消す）より前に行う
-    （`_assert_no_stale_watershed_or_site_ids` と同じ位置づけ）。
+    （`_assert_no_stale_watershed_or_site_ids` と同じ位置づけ）。戻り値は
+    (a) で確認した3テーブルの現在の指紋（呼び出し側が `watershed_rollup` の
+    系譜に使う）。
     """
     work = sqlite3.connect(":memory:", uri=True)
     try:
         common.attach_readonly(work, v1_projection_db, "proj")
         common.attach_readonly(work, v1_projection_occurrence_db, "occ")
-        common.assert_stage_fingerprint_fresh(
+        cube_attached = cube_db is not None and pathlib.Path(cube_db).exists()
+        if cube_attached:
+            common.attach_readonly(work, cube_db, "cube_v2")
+        upstream_schemas = (
+            {"observation_agg": "cube_v2", "occurrence": "cube_v2", "occurrence_place": "cube_v2"}
+            if cube_attached else None
+        )
+        site_var_fp = common.assert_stage_fingerprint_fresh(
             work, "site_var", schema="proj",
             rebuild_hint="scripts/b05_project_v1.py を再実行すること。",
+            upstream_schemas=upstream_schemas,
         )
-        common.assert_stage_fingerprint_fresh(
+        landuse_watershed_fp = common.assert_stage_fingerprint_fresh(
             work, "landuse_watershed", schema="proj",
             rebuild_hint="scripts/b05_project_v1.py を再実行すること。",
+            upstream_schemas=upstream_schemas,
         )
-        common.assert_stage_fingerprint_fresh(
+        org_watershed_fp = common.assert_stage_fingerprint_fresh(
             work, "org_watershed", schema="occ",
             rebuild_hint=(
                 "scripts/b08_project_occurrence_v1.py を再実行すること"
                 "（実行順は b06 → b09 → b07 → b08）。"
             ),
+            upstream_schemas=upstream_schemas,
         )
+        return {
+            "site_var": site_var_fp,
+            "landuse_watershed": landuse_watershed_fp,
+            "org_watershed": org_watershed_fp,
+        }
     finally:
         work.close()
 
@@ -469,6 +521,7 @@ def build_projections(
     *,
     v1_projection_db=DEFAULT_V1_PROJECTION_DB,
     v1_projection_occurrence_db=DEFAULT_V1_PROJECTION_OCCURRENCE_DB,
+    cube_db=None,
 ) -> dict[str, int]:
     """`registry_db`・`v1_projection_db`・`v1_projection_occurrence_db` を検証
     してから `data/db/v1_projection_place.sqlite` に `watershed_meta`・
@@ -492,7 +545,9 @@ def build_projections(
     _assert_rollup_prerequisites(v1_projection_db, v1_projection_occurrence_db)
     _assert_out_path_distinct_from_inputs(out_path, v1_projection_db, v1_projection_occurrence_db)
     _assert_no_stale_watershed_or_site_ids(registry_db, v1_projection_db, v1_projection_occurrence_db)
-    _assert_rollup_input_fingerprints_fresh(v1_projection_db, v1_projection_occurrence_db)
+    verified_fingerprints = _assert_rollup_input_fingerprints_fresh(
+        v1_projection_db, v1_projection_occurrence_db, cube_db,
+    )
 
     work = common.fresh_sqlite(out_path)
     try:
@@ -513,9 +568,11 @@ def build_projections(
 
         # 段階間の指紋（Issue #37 #1）: 全段の出力に指紋を持たせる方針どおり、
         # このファイルの2テーブル両方に記録する（現時点でこれらを読む後続の
-        # 段は無いが、将来のために一貫して記録する）。
+        # 段は無いが、将来のために一貫して記録する）。`watershed_rollup` には
+        # 系譜（`_assert_rollup_input_fingerprints_fresh` が (a) で確認済みの
+        # site_var/landuse_watershed/org_watershed の指紋）も添える。
         common.record_stage_fingerprint(work, "watershed_meta")
-        common.record_stage_fingerprint(work, "watershed_rollup")
+        common.record_stage_fingerprint(work, "watershed_rollup", inputs=verified_fingerprints)
 
         work.commit()
         n_meta = work.execute("SELECT COUNT(*) FROM watershed_meta").fetchone()[0]
@@ -542,6 +599,16 @@ def main() -> None:
         default=str(DEFAULT_V1_PROJECTION_OCCURRENCE_DB),
         help="watershed_rollup が読む org_watershed（scripts/b08_project_occurrence_v1.py の出力）",
     )
+    parser.add_argument(
+        "--cube-db",
+        default=str(DEFAULT_CUBE_DB),
+        help=(
+            "段階間の指紋の系譜チェック専用（Issue #37 #1）。site_var/landuse_watershed/"
+            "org_watershed が今の observation_agg/occurrence/occurrence_place から作られたかを"
+            "確かめるためだけに ATTACH する（watershed_rollup の SQL 自体はこのファイルを"
+            "読まない）。無い/存在しない場合は (b) の系譜チェックだけを省略して続行する。"
+        ),
+    )
     parser.add_argument("--out", default=str(DEFAULT_OUT))
     args = parser.parse_args()
 
@@ -554,6 +621,7 @@ def main() -> None:
             args.out,
             v1_projection_db=args.v1_projection_db,
             v1_projection_occurrence_db=args.v1_projection_occurrence_db,
+            cube_db=args.cube_db,
         )
         info["n"] = sum(counts.values())
 
