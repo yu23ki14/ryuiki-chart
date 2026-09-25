@@ -4,6 +4,11 @@ domain.ts の DATA_CAVEATS（7件）・BIOTA_CAVEATS（6件）・MUNICIPALITY_LA
 caveats.ts のテーブル→注記マッピング、cells.notes（207行）を caveat に移す。
 文言は変えない（変えると web/src/lib/ai/caveats.test.ts の回帰テストが意味を失う）。
 新しい注記は書き足さない。
+**例外（2026-09-24、ADR-0009 決定4）**: `censored` の本文だけは変えた
+——検閲値の zero/lod 併記でキューブに単一の `value` 列が無くなり、旧本文
+「value 列には 0 が入っている」が偽になったため。`registry/caveat.yaml` の
+`censored` エントリ直前のコメント参照。`caveats.test.ts` 側も対応する3ケースを
+新しい本文に更新済み。
 
 ## スキーマの逸脱（計画の7テーブル→8テーブル）
 
@@ -180,6 +185,17 @@ IAS_TABLE = "ias_species"
 LANDUSE_CAVEATS = ["landuseDefinitionChange"]
 LANDUSE_TABLES = ["landuse_watershed", "landuse_change"]
 
+# ADR-0009 決定4-C（2026-09-24、/code-review 指摘3）。Phase A 以降で
+# `landuseDefinitionChange` に続いて3件目に足した新規の注記
+# （registry/caveat.yaml 冒頭コメント・aboveLod エントリ直前のコメント参照）。
+# `water.transparency`（透明度）の above_lod（定量上限超え、26行）は
+# value_zero/value_lod のどちらにも入らない（列を作らない代わりに注記で
+# 伝える、という設計上の取引）。scope は `censored` と同じ既存の
+# MEASURE_TABLES を再利用する（`caveats.ts` の既存マッピングの複製ではない
+# 新規注記なので、MEASURE_CAVEATS〔複製リスト〕には足さず、LANDUSE_CAVEATS と
+# 同じ「専用リスト＋既存/専用テーブル一覧」の形にする）。
+ABOVE_LOD_CAVEATS = ["aboveLod"]
+
 SYNTHETIC_CAVEATS = ["synthetic"]
 SYNTHETIC_TABLES = [
     "observers",
@@ -228,14 +244,19 @@ def _build_table_scope_rows() -> list[tuple]:
     rows: list[tuple] = []
 
     def add_table_group(
-        tables: list[str], keys: list[str], priority: int = DEFAULT_PRIORITY
+        tables: list[str], keys: list[str], priority: int = DEFAULT_PRIORITY, start: int = 0
     ) -> None:
         for t in tables:
-            for i, key in enumerate(keys):
+            for i, key in enumerate(keys, start=start):
                 rows.append((common.caveat_id(key), "table", t, i, priority))
 
     add_table_group(["sites"], SITES_CAVEATS)
     add_table_group(MEASURE_TABLES, MEASURE_CAVEATS)
+    # ABOVE_LOD_CAVEATS は MEASURE_CAVEATS と同じ MEASURE_TABLES に掛かる別呼び
+    # 出し（MEASURE_CAVEATS を「caveats.ts の複製」のまま変えないため）。
+    # sort_order が 0 から振り直されて MEASURE_CAVEATS と衝突しないよう、
+    # `len(MEASURE_CAVEATS)` から続きで採番する。
+    add_table_group(MEASURE_TABLES, ABOVE_LOD_CAVEATS, start=len(MEASURE_CAVEATS))
     add_table_group(ORGANISM_TABLES, ORGANISM_CAVEATS)
     add_table_group([OCCURRENCE_PLACE_TABLE], OCCURRENCE_PLACE_CAVEATS)
     add_table_group(MESH_TABLES_EXTRA, MESH_CAVEATS)

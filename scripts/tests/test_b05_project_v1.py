@@ -930,17 +930,13 @@ def test_verify_hourly_daily_rollup_function_directly():
         "CREATE TABLE label25_obs_keyed (region_id, place_id, place_kind, variable_id, obs_stat, "
         "unit_id, value_grain, period_raw, value_num, akey)"
     )
-    work.execute(
-        "CREATE TABLE cube_observation_agg (region_id, place_id, place_kind, variable_id, obs_stat, "
-        "unit_id, value_grain, period_start, period_end, grain, input_grain, stat, value, n)"
-    )
     # cube.observation_agg として参照できるよう ATTACH のかわりに VIEW を張る
     # （このテストでは cube スキーマを別ファイルにする必要が無いので、
     # ATTACH の代わりに同一接続内でエイリアスする）。
     work.execute("ATTACH DATABASE ':memory:' AS cube")
     work.execute(
         "CREATE TABLE cube.observation_agg (region_id, place_id, place_kind, variable_id, obs_stat, "
-        "unit_id, value_grain, period_start, period_end, grain, input_grain, stat, value, n)"
+        "unit_id, value_grain, period_start, period_end, grain, input_grain, stat, value_zero, n)"
     )
     dim = ("jp-14", "place_s1", "site", "v1", None, "u1", "hour")
     # 2020-01-01 に3件、2020-01-02T00:00（24時ラベル）に1件。
@@ -1155,3 +1151,49 @@ def test_landuse_does_not_affect_existing_tables_or_cube(tmp_path):
     assert len(projections["meas_daily"][1]) == 3
     assert len(projections["landuse_watershed"][1]) == len(DEFAULT_LANDUSE_CSV_ROWS)
     assert len(projections["landuse_change"][1]) == 3
+
+
+# ---------------------------------------------------------------------------
+# ADR-0009 決定4: b05 は value_lod を一度も読まない（設計ブリーフ 検証5・毒入れ
+# テスト）
+# ---------------------------------------------------------------------------
+
+def test_b05_ignores_value_lod_poison_test(tmp_path):
+    """`observation_agg` の全セルで `value_lod = value_zero + 1000` に書き換えて
+    (毒を入れて) も、`build_projections()` の13表の出力が1ビットも変わらない
+    ことを確認する——b05 が `value_lod` を一度も読んでいないことの機械保証
+    （設計ブリーフ 検証5）。below_lod/not_detected を含むフィクスチャ
+    （`DEFAULT_ALIASES`/`DEFAULT_SENSOR_ROWS` を使う既定の end-to-end 経路）で
+    確認する。
+    """
+    measurements_db = tmp_path / "ryuiki.sqlite"
+    registry_db = tmp_path / "registry.sqlite"
+    make_measurements_db(
+        measurements_db,
+        rows=[
+            ("m1", "S1", "2020-01-01", "BOD", "src_a", 1.2, "1.2", "mg/L", "公開済", 0, "ref1", "ev1"),
+            ("m2", "S1", "2020-01-02", "BOD", "src_a", None, "<0.5", "mg/L", "公開済", 0, "ref1", "ev1"),
+            ("m3", "S1", "2020-01-03", "BOD", "src_a", None, "ND", "mg/L", "公開済", 0, "ref1", "ev1"),
+            ("m4", "S2", "2020-01-01", "kion", "src_a", 12.3, "12.3", "degC", "公開済", 0, "ref1", None),
+        ],
+        sensor_rows=DEFAULT_SENSOR_ROWS,
+    )
+    make_registry_db(registry_db)
+
+    v2_db, _ = _run_b03_b04(measurements_db, registry_db, tmp_path, sensor_rows=DEFAULT_SENSOR_ROWS)
+    baseline = b05.build_projections(v2_db, registry_db)
+
+    conn = sqlite3.connect(str(v2_db))
+    n_updated = conn.execute("UPDATE observation_agg SET value_lod = value_zero + 1000").rowcount
+    conn.commit()
+    conn.close()
+    assert n_updated > 0  # 毒を入れる対象のセルが実際にあること（空振り防止）
+
+    poisoned = b05.build_projections(v2_db, registry_db)
+
+    assert set(baseline) == set(poisoned)
+    for table in baseline:
+        base_columns, base_rows = baseline[table]
+        poison_columns, poison_rows = poisoned[table]
+        assert poison_columns == base_columns, table
+        assert poison_rows == base_rows, table

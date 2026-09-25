@@ -17,6 +17,8 @@ from __future__ import annotations
 import sqlite3
 
 import b03_build_observation as b03  # scripts/ が sys.path にある前提（scripts/tests/__init__.py 参照）
+from reconcile import common as reconcile_common
+from reconcile import datasource
 
 # 既定の2地点×2変数（水質っぽい1変数・気温っぽい1変数）。alias/place は全行解決する
 # 「正常系」のベースライン。個々のテストはこれを土台に、崩したい部分だけ差し替える。
@@ -391,3 +393,23 @@ def make_v2_db_with_observation(path, create_sql: str, rows: list[tuple]) -> sql
     conn.executemany(f"INSERT INTO observation VALUES ({placeholders})", rows)
     conn.commit()
     return conn
+
+
+def table_content_hash(path, table: str, key_columns: list[str]) -> str:
+    """`path`（sqlite ファイル）の `table` の content_hash（sha256）を返す。
+
+    「同じ入力を2回ビルドしてバイト一致を確認する」決定論テストで
+    `test_b03_build_observation.py`（`observation`、鍵 `source_table`/
+    `source_row_id`）・`test_b04_build_cube.py`（`observation_agg`、鍵
+    `b04.DIM_COLUMNS`）の両方が使う（/simplify 指摘9: 同じ実装をそれぞれが
+    別々に持っていたものを1つに集約した）。
+    """
+    conn = reconcile_common.open_readonly(path)
+    try:
+        src = datasource.SqliteSource(conn)
+        columns = src.columns(table)
+        numeric = reconcile_common.numeric_columns_of(conn, table, columns)
+        fp = reconcile_common.compute_fingerprint(src, table, columns, key_columns, numeric)
+        return fp["content_hash"]
+    finally:
+        conn.close()

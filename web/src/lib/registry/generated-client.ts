@@ -27,12 +27,12 @@ export interface GeneratedVernacular {
 export type CaveatScopeKind = "table" | "table_prefix";
 
 /**
- * caveat の既知のキー14件の union（docs/plans/PHASE_B_INTAKE.md #6）。
+ * caveat の既知のキー16件の union（docs/plans/PHASE_B_INTAKE.md #6）。
  * 画面・`web/src/lib/ai/prompt.ts` が `caveatBody(key)`（lookup-client.ts）を直接
  * 呼ぶときの型で、存在しないキーはここでコンパイルエラーになる（旧 domain.ts の
  * mustCaveatBody() は実行時例外だった）。
  */
-export type CaveatKey = "censored" | "duplicates" | "effort" | "fishClass" | "gbifCutoff" | "inatBackfill" | "isAlien" | "landuseDefinitionChange" | "measuredOn" | "municipality" | "organismSite" | "regimes" | "share" | "synthetic" | "zone";
+export type CaveatKey = "aboveLod" | "censored" | "duplicates" | "effort" | "fishClass" | "gbifCutoff" | "inatBackfill" | "isAlien" | "landuseDefinitionChange" | "measuredOn" | "municipality" | "organismSite" | "regimes" | "share" | "synthetic" | "zone";
 
 export interface GeneratedCaveat {
   key: string;
@@ -169,12 +169,13 @@ export const NAME_JA: Readonly<Record<string, string>> = {
 };
 
 /**
- * 注記14件（registry/caveat.yaml）。cells.notes 由来（207件）は含めない。
+ * 注記16件（registry/caveat.yaml）。cells.notes 由来（207件）は含めない。
  * key は caveat_id から "common:caveat:" を外したもの
  * （web/src/lib/ai/caveats.ts が今返しているキー文字列と同じ）。
  */
 export const GENERATED_CAVEATS: readonly GeneratedCaveat[] = [
-  { key: "censored", severity: "blocking", kind: "censoring", bodyJa: "全体の約24%は定量下限未満（原表記が「<0.5」など）で、value 列には 0 が入っている。折れ線では中抜きの点で示し、平均には含めるが「0 が観測された」とは読まないこと。" },
+  { key: "aboveLod", severity: "blocking", kind: "censoring", bodyJa: "透明度の定量上限超え（原表記が「>1.4」〜「>28」など、26行）は、上限がどこまでか分からないという性質上、集計方法によらず値に含められない。件数（n）にも入らないため、他の期間・地点と単純に比較しないこと。" },
+  { key: "censored", severity: "blocking", kind: "censoring", bodyJa: "全体の約24%は定量下限未満（原表記が「<0.5」など）。この画面の値は定量下限未満を 0 とみなして集計している。折れ線では中抜きの点で示し、「0 が観測された」とは読まないこと。" },
   { key: "duplicates", severity: null, kind: null, bodyJa: "同一の地点・日・項目に複数行あるのは、原本が採水時刻を落としているため。ここでは日ごとに平均して1点にまとめている。" },
   { key: "effort", severity: "blocking", kind: null, bodyJa: "生物観察の件数は観察努力（記録した人の数）に強く影響される。件数の増加をそのまま「生物が増えた」と読んではいけない。" },
   { key: "fishClass", severity: null, kind: "definition_change", bodyJa: "魚類は class 列に現れない（Actinopterygii が入っておらず空になっている）。門が Chordata で綱が空のものを魚類として扱っている。" },
@@ -213,18 +214,23 @@ export const GENERATED_CAVEAT_SCOPE: readonly GeneratedCaveatScope[] = [
   { scopeKind: "table", scopeRef: "meas_clim", caveatKey: "measuredOn", sortOrder: 0, priority: 0 },
   { scopeKind: "table", scopeRef: "meas_clim", caveatKey: "censored", sortOrder: 1, priority: 0 },
   { scopeKind: "table", scopeRef: "meas_clim", caveatKey: "duplicates", sortOrder: 2, priority: 0 },
+  { scopeKind: "table", scopeRef: "meas_clim", caveatKey: "aboveLod", sortOrder: 3, priority: 0 },
   { scopeKind: "table", scopeRef: "meas_daily", caveatKey: "measuredOn", sortOrder: 0, priority: 0 },
   { scopeKind: "table", scopeRef: "meas_daily", caveatKey: "censored", sortOrder: 1, priority: 0 },
   { scopeKind: "table", scopeRef: "meas_daily", caveatKey: "duplicates", sortOrder: 2, priority: 0 },
+  { scopeKind: "table", scopeRef: "meas_daily", caveatKey: "aboveLod", sortOrder: 3, priority: 0 },
   { scopeKind: "table", scopeRef: "meas_month", caveatKey: "measuredOn", sortOrder: 0, priority: 0 },
   { scopeKind: "table", scopeRef: "meas_month", caveatKey: "censored", sortOrder: 1, priority: 0 },
   { scopeKind: "table", scopeRef: "meas_month", caveatKey: "duplicates", sortOrder: 2, priority: 0 },
+  { scopeKind: "table", scopeRef: "meas_month", caveatKey: "aboveLod", sortOrder: 3, priority: 0 },
   { scopeKind: "table", scopeRef: "meas_year", caveatKey: "measuredOn", sortOrder: 0, priority: 0 },
   { scopeKind: "table", scopeRef: "meas_year", caveatKey: "censored", sortOrder: 1, priority: 0 },
   { scopeKind: "table", scopeRef: "meas_year", caveatKey: "duplicates", sortOrder: 2, priority: 0 },
+  { scopeKind: "table", scopeRef: "meas_year", caveatKey: "aboveLod", sortOrder: 3, priority: 0 },
   { scopeKind: "table", scopeRef: "measurements", caveatKey: "measuredOn", sortOrder: 0, priority: 0 },
   { scopeKind: "table", scopeRef: "measurements", caveatKey: "censored", sortOrder: 1, priority: 0 },
   { scopeKind: "table", scopeRef: "measurements", caveatKey: "duplicates", sortOrder: 2, priority: 0 },
+  { scopeKind: "table", scopeRef: "measurements", caveatKey: "aboveLod", sortOrder: 3, priority: 0 },
   { scopeKind: "table", scopeRef: "observers", caveatKey: "synthetic", sortOrder: 0, priority: 1 },
   { scopeKind: "table", scopeRef: "occurrence_place", caveatKey: "organismSite", sortOrder: 0, priority: 0 },
   { scopeKind: "table", scopeRef: "org_group_year", caveatKey: "organismSite", sortOrder: 0, priority: 0 },
@@ -257,6 +263,7 @@ export const GENERATED_CAVEAT_SCOPE: readonly GeneratedCaveatScope[] = [
   { scopeKind: "table", scopeRef: "site_var", caveatKey: "measuredOn", sortOrder: 0, priority: 0 },
   { scopeKind: "table", scopeRef: "site_var", caveatKey: "censored", sortOrder: 1, priority: 0 },
   { scopeKind: "table", scopeRef: "site_var", caveatKey: "duplicates", sortOrder: 2, priority: 0 },
+  { scopeKind: "table", scopeRef: "site_var", caveatKey: "aboveLod", sortOrder: 3, priority: 0 },
   { scopeKind: "table", scopeRef: "sites", caveatKey: "zone", sortOrder: 0, priority: 0 },
   { scopeKind: "table", scopeRef: "sites", caveatKey: "municipality", sortOrder: 1, priority: 0 },
   { scopeKind: "table", scopeRef: "species2", caveatKey: "organismSite", sortOrder: 0, priority: 0 },
@@ -279,12 +286,15 @@ export const GENERATED_CAVEAT_SCOPE: readonly GeneratedCaveatScope[] = [
   { scopeKind: "table", scopeRef: "var_catalog", caveatKey: "measuredOn", sortOrder: 0, priority: 0 },
   { scopeKind: "table", scopeRef: "var_catalog", caveatKey: "censored", sortOrder: 1, priority: 0 },
   { scopeKind: "table", scopeRef: "var_catalog", caveatKey: "duplicates", sortOrder: 2, priority: 0 },
+  { scopeKind: "table", scopeRef: "var_catalog", caveatKey: "aboveLod", sortOrder: 3, priority: 0 },
   { scopeKind: "table", scopeRef: "zone_clim", caveatKey: "measuredOn", sortOrder: 0, priority: 0 },
   { scopeKind: "table", scopeRef: "zone_clim", caveatKey: "censored", sortOrder: 1, priority: 0 },
   { scopeKind: "table", scopeRef: "zone_clim", caveatKey: "duplicates", sortOrder: 2, priority: 0 },
+  { scopeKind: "table", scopeRef: "zone_clim", caveatKey: "aboveLod", sortOrder: 3, priority: 0 },
   { scopeKind: "table", scopeRef: "zone_year", caveatKey: "measuredOn", sortOrder: 0, priority: 0 },
   { scopeKind: "table", scopeRef: "zone_year", caveatKey: "censored", sortOrder: 1, priority: 0 },
   { scopeKind: "table", scopeRef: "zone_year", caveatKey: "duplicates", sortOrder: 2, priority: 0 },
+  { scopeKind: "table", scopeRef: "zone_year", caveatKey: "aboveLod", sortOrder: 3, priority: 0 },
   { scopeKind: "table_prefix", scopeRef: "mesh_", caveatKey: "share", sortOrder: 0, priority: 0 },
   { scopeKind: "table_prefix", scopeRef: "mesh_", caveatKey: "effort", sortOrder: 1, priority: 0 },
 ];

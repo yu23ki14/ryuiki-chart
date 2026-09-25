@@ -389,7 +389,7 @@ def build_and_write_occurrence_place(
                     "WHERE lat IS NOT NULL AND lon IS NOT NULL"
                 ):
                     place_id = coord_place_id[(lat, lon)]
-                    yield (record_id, PLACE_KIND, place_id, METHOD, built_from, common.SPEC_VERSION)
+                    yield (record_id, PLACE_KIND, place_id, METHOD, built_from, common.OCCURRENCE_SPEC_VERSION)
 
             conn.executemany(_INSERT_SQL.format(table=f'"{staging}"'), rows())
             # 検証6: UNIQUE(record_id, place_kind)（コードレビュー指摘10:

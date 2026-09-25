@@ -15,6 +15,17 @@
 一致させてある（`scripts/b02_derived_compare.py --tables ...` がそのまま
 突き合わせられるように）。
 
+## ADR-0009 決定4: `observation_agg.value` は `value_zero`/`value_lod` に分かれた
+
+v1 の13テーブルはすべて `imputation='zero'` 系列（旧 `value` 列、いまの
+`value_zero`）の再現が対象。**このファイルは `value_zero` だけを読み、
+`value_lod` は一度も読まない**——`value` → `value_zero` という列名の改称
+そのものが「読み落とし」に対する機械保証になる（うっかり `value` を読む
+コードが残っていれば `sqlite3.OperationalError: no such column` で必ず
+止まる）。加えて `test_b05_ignores_value_lod_poison_test`
+（`scripts/tests/test_b05_project_v1.py`）が、`value_lod` をどんな値に
+書き換えても13テーブルの出力が1ビットも変わらないことを実際に確認する。
+
 ## `meas_clim`/`site_var`/`var_catalog` はキューブのセルにしない（オーナー決定）
 
 `docs/plans/PHASE_B_FACT_SLICE.md` D10 参照（変更なし。この3テーブルは
@@ -239,9 +250,14 @@ FROM cube.observation_agg
 # measurements 由来 6テーブル（変更点: meas_daily/meas_month に stat='mean' を追加）
 # ---------------------------------------------------------------------------
 
+# ADR-0009 決定4: `observation_agg` の `value` は `value_zero`/`value_lod` の
+# 2列に分かれた。v1 の全13テーブルは `imputation='zero'` の系列（旧 `value`
+# 列）だけを再現する対象なので、ここでは `value_zero` だけを読む
+# （`value_lod` は一度も読まない——毒入れテスト
+# `test_b05_ignores_value_lod_poison_test` がこれを保証する）。
 _MEAS_DAILY_SQL = """
 SELECT psr.external_key AS site_id, al.alias AS variable, c.period_start AS d,
-       c.value AS value, c.n AS n_raw, c.n_censored AS n_censored, ul.unit_raw AS unit
+       c.value_zero AS value, c.n AS n_raw, c.n_censored AS n_censored, ul.unit_raw AS unit
 FROM obs_agg_keyed c
 JOIN place_lookup psr ON psr.place_id = c.place_id
 JOIN alias_lookup al ON al.akey = c.akey
@@ -254,7 +270,7 @@ SELECT psr.external_key AS site_id, al.alias AS variable,
        substr(c.period_start, 1, 7) AS ym,
        CAST(substr(c.period_start, 1, 4) AS INT) AS year,
        CAST(substr(c.period_start, 6, 2) AS INT) AS month,
-       c.n AS n, c.value AS avg, ul.unit_raw AS unit
+       c.n AS n, c.value_zero AS avg, ul.unit_raw AS unit
 FROM obs_agg_keyed c
 JOIN place_lookup psr ON psr.place_id = c.place_id
 JOIN alias_lookup al ON al.akey = c.akey
@@ -268,7 +284,7 @@ WHERE c.grain = 'month' AND c.stat = 'mean'
 # する——で、`table`（`year_keyed`/`day_keyed`）・`alias_lookup`/`unit_lookup`
 # のテーブル名・`al.alias` の出力列名・テーブル固有の追加列だけが違う。
 # `extra_head`（`al.alias AS ...` の直後、`m.n` の前に足す列）・`extra_tail`
-# （`mx.value AS max` の直後、`unit` の前に足す列）で差分を表す。
+# （`mx.value_zero AS max` の直後、`unit` の前に足す列）で差分を表す。
 def _pivot_mean_min_max_sql(
     table: str, alias_lookup: str, unit_lookup: str, alias_column: str,
     extra_head: str = "", extra_tail: str = "",
@@ -277,7 +293,8 @@ def _pivot_mean_min_max_sql(
     tail = f"{extra_tail}, " if extra_tail else ""
     return f"""
     SELECT psr.external_key AS site_id, al.alias AS {alias_column},
-           {head}m.n AS n, m.value AS avg, mn.value AS min, mx.value AS max, {tail}ul.unit_raw AS unit
+           {head}m.n AS n, m.value_zero AS avg, mn.value_zero AS min, mx.value_zero AS max,
+           {tail}ul.unit_raw AS unit
     FROM {table} m
     JOIN {table} mn ON mn.gkey = m.gkey AND mn.stat = 'min'
     JOIN {table} mx ON mx.gkey = m.gkey AND mx.stat = 'max'
@@ -437,8 +454,8 @@ def _landuse_watershed_year_sql(year: str) -> str:
     SELECT wpl.external_key AS watershed_id, {year} AS year,
            substr(aal.alias, 1, instr(aal.alias, ':') - 1) AS landuse_code,
            v.name_ja AS landuse_name,
-           CAST(ncell.value AS INTEGER) AS n_cells,
-           area.value AS area_km2
+           CAST(ncell.value_zero AS INTEGER) AS n_cells,
+           area.value_zero AS area_km2
     FROM obs_agg_keyed area
     JOIN {lookup} aal
       ON aal.akey = area.akey
@@ -1018,12 +1035,16 @@ def verify_hourly_daily_rollup(work: sqlite3.Connection, sample_limit: int = 20)
 
     # 系列ごとの全期間の Σn・min・max が一致すること。L2 側（`l2_by_key`）は
     # 上で日次から再集計済み（C-4）——ここで label25_obs_keyed を読み直さない。
+    # ADR-0009 決定4: `value` は `value_zero`/`value_lod` に分かれた。この検証
+    # は `sensor_timeseries`（censoring は常に 'none'）だけを対象にするため
+    # `value_zero`（旧 `value` の改称）と `value_lod` は常に同じ値——ここでは
+    # 旧実装と同じ `value_zero` を読む。
     cube_totals = work.execute(
         f"""
         SELECT {_HOUR_SERIES_DIM},
                SUM(CASE WHEN stat = 'mean' THEN n END) AS n,
-               MIN(CASE WHEN stat = 'min' THEN value END) AS vmin,
-               MAX(CASE WHEN stat = 'max' THEN value END) AS vmax
+               MIN(CASE WHEN stat = 'min' THEN value_zero END) AS vmin,
+               MAX(CASE WHEN stat = 'max' THEN value_zero END) AS vmax
         FROM cube.observation_agg
         WHERE grain = 'day' AND input_grain = 'hour'
         GROUP BY {_HOUR_SERIES_DIM}
