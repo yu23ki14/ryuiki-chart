@@ -26,6 +26,7 @@ SAMPLE_DIR = ROOT / "data" / "sample"
 
 sys.path.insert(0, str(ROOT / "scripts"))
 
+import pipeline_inputs  # noqa: E402
 import s02_materialize_sample as s02  # noqa: E402
 from migrate import period  # noqa: E402
 from reconcile.common import load_yaml  # noqa: E402
@@ -254,8 +255,10 @@ def test_sample_derived_baseline_json_has_33_tables():
 def test_manifest_json_has_required_fields():
     manifest = json.loads((SAMPLE_DIR / "manifest.json").read_text(encoding="utf-8"))
     assert set(manifest) >= {"source_files", "row_counts"}
-    assert "ryuiki.sqlite" in manifest["source_files"]
-    assert "cells.sqlite" in manifest["source_files"]
+    # キーの形は pipeline_inputs.SOURCE_FILE_KEYS（"data/db/ryuiki.sqlite" 形）で
+    # 統一する（scripts/b00_run_full_gate.py の source_hashes() と共通。
+    # レビュー指摘: 以前はここだけ "ryuiki.sqlite" 形で、証明側と食い違っていた）。
+    assert set(manifest["source_files"]) == set(pipeline_inputs.SOURCE_FILE_KEYS)
     for name, digest in manifest["source_files"].items():
         assert len(digest) == 64, f"{name} の sha256 の桁数が64でない: {digest!r}"
 

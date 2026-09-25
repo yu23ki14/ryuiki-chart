@@ -55,7 +55,6 @@ from __future__ import annotations
 
 import argparse
 import datetime
-import hashlib
 import json
 import pathlib
 import shutil
@@ -66,6 +65,7 @@ from collections import defaultdict
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
+import pipeline_inputs  # noqa: E402
 from migrate import point_in_polygon as pip  # noqa: E402
 from reconcile.common import load_yaml  # noqa: E402
 
@@ -86,14 +86,6 @@ def _open_ro(path) -> sqlite3.Connection:
     conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
     return conn
-
-
-def _sha256_file(path) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
 
 
 def _sql_literal(value) -> str:
@@ -586,12 +578,8 @@ def main() -> int:
     processed_dir = pathlib.Path(args.processed_dir)
     processed_out = out_dir / "processed"
     processed_out.mkdir(parents=True, exist_ok=True)
-    processed_hashes = {}
     for name in coverage.get("wholesale_processed_files", []):
-        src = processed_dir / name
-        dst = processed_out / name
-        shutil.copyfile(src, dst)
-        processed_hashes[name] = _sha256_file(src)
+        shutil.copyfile(processed_dir / name, processed_out / name)
 
     # --- declaration_counts.yaml ---
     geojson_path = pathlib.Path(args.processed_dir) / "nlni_w12_watersheds.geojson"
@@ -602,14 +590,17 @@ def main() -> int:
     (out_dir / "derived_keys.yaml").write_text(build_derived_keys_yaml(args.baseline_json), encoding="utf-8")
 
     # --- manifest.json ---
+    # source_files のキーの形（"data/db/ryuiki.sqlite" 等）は pipeline_inputs.py
+    # が一元管理する（scripts/b00_run_full_gate.py の source_hashes() と同じ
+    # 関数・同じ定数を使うことで、キーの形が2箇所で食い違う事故を防ぐ。
+    # レビュー指摘: 以前はこのスクリプトが独自に "ryuiki.sqlite"/"processed/<name>"
+    # という別のキー形式を使っており、CI の full-gate-proof-check が
+    # KeyError で落ちる不具合になっていた）。
+    source_hashes = pipeline_inputs.compute_source_hashes(args.ryuiki_db, args.cells_db, args.processed_dir)
     manifest = {
         "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
         "generated_by": "scripts/s01_build_sample.py",
-        "source_files": {
-            "ryuiki.sqlite": _sha256_file(args.ryuiki_db),
-            "cells.sqlite": _sha256_file(args.cells_db),
-            **{f"processed/{name}": h for name, h in sorted(processed_hashes.items())},
-        },
+        "source_files": source_hashes,
         "row_counts": dict(sorted(row_counts.items())),
     }
     (out_dir / "manifest.json").write_text(

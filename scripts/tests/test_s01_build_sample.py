@@ -175,6 +175,13 @@ def test_end_to_end_determinism_on_fixture_db(tmp_path):
     # --processed-dir は tmp_path なので、そこに W12 相当のフィクスチャを置く
     # （0件の organism_records でも build_declaration_counts が読みに行くため）。
     (tmp_path / "nlni_w12_watersheds.geojson").write_text(_EMPTY_GEOJSON, encoding="utf-8")
+    # manifest.json の source_files（pipeline_inputs.SOURCE_FILE_KEYS）は
+    # data/processed の5ファイルすべての実在を要求するので、残り4つもダミーで置く。
+    for name in (
+        "nlni_w12_watersheds.jsonl", "nlni_l03b_landuse_by_watershed.csv",
+        "moe_ias_list.csv", "taxon_crosswalk.csv",
+    ):
+        (tmp_path / name).write_text("dummy", encoding="utf-8")
 
     baseline_json = tmp_path / "derived_baseline.json"
     baseline_json.write_text('{"tables": {}}', encoding="utf-8")

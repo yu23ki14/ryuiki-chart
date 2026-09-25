@@ -31,7 +31,6 @@ CLAUDE.md の実行順（r01 → b03→b04→b05、b06→b09→b07→b08、b10�
 from __future__ import annotations
 
 import datetime
-import hashlib
 import json
 import pathlib
 import platform
@@ -40,6 +39,9 @@ import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts"))
+
+import pipeline_inputs  # noqa: E402
 
 DEFAULT_OUT = ROOT / "reports" / "full_gate_proof.json"
 
@@ -49,6 +51,7 @@ DEFAULT_OUT = ROOT / "reports" / "full_gate_proof.json"
 PIPELINE_FILE_GLOBS = ("scripts/b0*.py", "scripts/b1*.py")
 PIPELINE_EXPLICIT_FILES = (
     "scripts/r01_build_registry.py",
+    "scripts/pipeline_inputs.py",
     "reports/derived_baseline.json",
     "web/scripts/build-derived.mjs",
     "web/scripts/build-biota.mjs",
@@ -74,16 +77,6 @@ PIPELINE_STEPS = (
     "scripts/b12_project_taxon_v1.py",
 )
 
-SOURCE_FILES = (
-    "data/db/ryuiki.sqlite",
-    "data/db/cells.sqlite",
-    "data/processed/nlni_w12_watersheds.geojson",
-    "data/processed/nlni_w12_watersheds.jsonl",
-    "data/processed/nlni_l03b_landuse_by_watershed.csv",
-    "data/processed/moe_ias_list.csv",
-    "data/processed/taxon_crosswalk.csv",
-)
-
 CANDIDATE_FILES = (
     "v1_projection.sqlite",
     "v1_projection_occurrence.sqlite",
@@ -96,14 +89,6 @@ CANDIDATE_FILES = (
 def _run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
     print(f"$ {' '.join(cmd)}")
     return subprocess.run(cmd, cwd=str(ROOT), **kwargs)
-
-
-def _sha256_file(path: pathlib.Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
 
 
 def collect_pipeline_paths() -> list[str]:
@@ -137,13 +122,19 @@ def git_path_hashes(paths: list[str]) -> dict[str, str]:
 
 
 def source_hashes() -> dict[str, str]:
-    out: dict[str, str] = {}
-    for rel in SOURCE_FILES:
-        path = ROOT / rel
-        if not path.exists():
-            sys.exit(f"原本が無い: {path}（CLAUDE.md「worktree の運用」に従い1ファイルずつ symlink すること）")
-        out[rel] = _sha256_file(path)
-    return out
+    """`pipeline_inputs.SOURCE_FILE_KEYS` をキーにした sha256（キーの形は
+    `scripts/s01_build_sample.py` の `manifest.json["source_files"]` と
+    共通——レビュー指摘対応。両方とも `pipeline_inputs.compute_source_hashes()`
+    しか呼ばない）。
+    """
+    try:
+        return pipeline_inputs.compute_source_hashes(
+            ROOT / "data" / "db" / "ryuiki.sqlite",
+            ROOT / "data" / "db" / "cells.sqlite",
+            ROOT / "data" / "processed",
+        )
+    except FileNotFoundError as e:
+        sys.exit(f"{e}（CLAUDE.md「worktree の運用」に従い1ファイルずつ symlink すること）")
 
 
 def detect_environment() -> dict[str, str]:
@@ -222,7 +213,7 @@ def main() -> int:
     for name in CANDIDATE_FILES:
         db_path = ROOT / "data" / "db" / name
         candidates[name] = {
-            "sha256": _sha256_file(db_path),
+            "sha256": pipeline_inputs.sha256_file(db_path),
             "pipeline_fingerprint_rows": read_pipeline_fingerprint_rows(db_path),
         }
 
@@ -234,7 +225,7 @@ def main() -> int:
         "source_hashes": src_hashes,
         "environment": detect_environment(),
         "gate_summary": gate_summary,
-        "derived_reconciliation_all_md_sha256": _sha256_file(gate_out_md),
+        "derived_reconciliation_all_md_sha256": pipeline_inputs.sha256_file(gate_out_md),
         "candidates": candidates,
     }
 

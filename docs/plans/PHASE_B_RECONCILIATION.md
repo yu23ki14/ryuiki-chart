@@ -312,13 +312,24 @@ git に置けない。Issue #29「縮小サンプル＋実行証明」で、こ�
   `scripts/r01_build_registry.py`・`scripts/registry/`・`scripts/migrate/`・
   `scripts/reconcile/`・`registry/`・`reports/derived_baseline.json`・
   `web/scripts/build-{derived,biota,geo}.mjs`・`requirements.txt`・
-  `web/package.json`・`web/pnpm-lock.yaml`）の git tree/blob ハッシュが、
-  **今の HEAD** で計算し直しても1つ残らず一致すること。1つでも食い違えば、
-  「証明を取ったときと今のコードが違う」ことが分かり、CI が非0で落ちる
-  （案内文が `scripts/b00_run_full_gate.py` の再実行を促す）。あわせて、
-  `data/sample/manifest.json` の原本の sha256（`ryuiki.sqlite`/`cells.sqlite`）
-  が証明の原本の sha256 と一致すること（サンプルと全量の証明が同じ原本の
-  スナップショットに由来することの確認）も見る。
+  `web/package.json`・`web/pnpm-lock.yaml`・`scripts/pipeline_inputs.py`）の
+  git tree/blob ハッシュが、**今の HEAD** で計算し直しても1つ残らず一致する
+  こと。1つでも食い違えば、「証明を取ったときと今のコードが違う」ことが
+  分かり、CI が非0で落ちる（案内文が `scripts/b00_run_full_gate.py` の
+  再実行を促す）。あわせて、`data/sample/manifest.json` の `source_files`
+  （原本・入力ファイルの sha256）が証明の `source_hashes` と、**両方が持つ
+  キーすべて**で一致すること（サンプルと全量の証明が同じ原本のスナップショット
+  に由来することの確認）も見る。キーの形（`"data/db/ryuiki.sqlite"` の形）は
+  `scripts/pipeline_inputs.py` の `SOURCE_FILE_KEYS` に一本化してある——
+  以前は `scripts/s01_build_sample.py`（manifest.json）と
+  `scripts/b00_run_full_gate.py`（証明）が別々にキーの形を決めていたため
+  （`"ryuiki.sqlite"` 形と `"data/db/ryuiki.sqlite"` 形）、この突き合わせが
+  変更を一切加えていない状態でも `KeyError` で落ちる不具合になっていた
+  （レビュー指摘・実際に一時 clone でワークフローの手順を流して発覚。
+  この検査ロジック自体もワークフローの heredoc から
+  `scripts/s04_check_full_gate_proof.py` に切り出し、
+  `scripts/tests/test_s04_check_full_gate_proof.py` で検証している——
+  埋め込んだコードはテストされない、という教訓による）。
 - **CI ができないこと（証明の限界。正直に書く）**:
   - **証明が本物であることは確かめられない。** `reports/full_gate_proof.json`
     は手で書ける値でしかない——CI が確認できるのは「証明に書かれたパスの
