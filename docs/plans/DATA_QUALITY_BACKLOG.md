@@ -88,21 +88,77 @@ r6由来行は別々の `measurement_id` を持ち、`INSERT OR REPLACE` で衝�
   プロジェクトには既に同種の宣言的除外の前例が2つある: `scripts/migrate/period_exceptions.yaml`
   （`source_id` ごとに理由と `expected_row_count` を書き、b03 が実測件数と食い違えば例外を
   投げて止まる）と `registry/taxon/assessment_scope_exclusions.yaml`（除外する種と理由を
-  宣言し、`b08` が読む）。同じ形式で
-  `kanagawa_jiban_chinka` の重複ペアを `(well_id, variable_ja, fiscal_year)` 単位で宣言し、
-  「`r5table.xlsx` と `r6table.xlsx` の両方に同じ値がある場合は新しい方（`r6table.xlsx`）を
-  残し古い方を除外する」というルールを b03 の `_ingest_*` 相当の関数に実装する。除外件数
+  宣言し、`b08` が読む）。
+
+  **除外キーの訂正**: `(well_id, variable_ja, fiscal_year)` は
+  `data/processed/kanagawa_jiban_chinka.csv`（`c84_jiban_chinka.py:375` の `fields`）の
+  列名であり、b03 が読む `ryuiki.sqlite` の `measurements` にはこの列は無い
+  （`m05_tier1.py` の `load_measurements_csv` を経た後は `site_id`/`variable`/
+  `measured_on` になる。`well_id` は `site_id` の一部に埋め込まれるだけで独立した列では
+  ない）。実際に突き合わせたキーは `measurements` に実在する
+  **`(site_id, variable, measured_on)`** である。宣言するルールは「このキーで
+  `source_ref` に `r5table.xlsx` を含む行と `r6table.xlsx` を含む行が両方存在する場合、
+  `r6table.xlsx` を含む方を残し `r5table.xlsx` を含む方を除外する」。除外件数
   （現在1,625件）を宣言ファイルに明記し、実測と食い違えば `MigrationError` で止める
   （原本が更新されて重複パターンが変わったときに黙って通さない）。
   - `ryuiki.sqlite`/`measurements` 自体は触らない（読み取り専用の原則を守り、v1 の
     再現には影響しない）ので、影響は `observation`/`observation_agg`/
     `v1_projection.sqlite` の地盤沈下系列だけに限定できる。
-  - v1（重複を含んだまま集計している）との間に意図的な差分が生じるので、
-    `scripts/reconcile/expected_diffs.yaml`（`meas_year`/`site_var`/`var_catalog` 等、
-    地盤沈下の変数が影響する行）に `row_only_in_baseline` として宣言し、b02 ゲートで
-    「宣言どおりの差分になっているか」を機械検証する。これは #27 が言う
-    「そのうえで: 意図的な変更（値が動くもの。ゲートで差分を確認しながら）」に正確に
-    対応する。
+
+- **影響の種類の訂正**: 1,625組は全て `value`/`value_raw` が完全一致するペアなので、
+  r5側の1行を除外しても r6側の1行は残る。**`meas_year` 等の行そのものは消えない**
+  （`row_only_in_baseline` ではない）。動くのは「重複していた分の件数（n）」だけで、
+  `avg`/`min`/`max` は変わらない。`web/scripts/build-derived.mjs` と
+  `scripts/b05_project_v1.py` の実際の式を読み、v1派生33表のうちどれが・どの列が・
+  何行動くかを実測した:
+
+  | v1テーブル | 影響列 | 影響行数 | 根拠 |
+  |---|---|---:|---|
+  | `meas_year`（`build-derived.mjs:72-77` の annual 分岐／`b05` の `_MEAS_YEAR_SQL`、`b05_project_v1.py:293-300`） | `n`（`COUNT(*)`、`build-derived.mjs:73`）のみ | **1,625行**（`kind='annual'` の重複年グループ全て） | `avg`/`min`/`max`（同じく73行目）は value 完全一致のため不変。`n_censored`（74行目）も対象1,625組の `value_raw` に `LIKE '<%'` が0件（実測）のため不変 |
+  | `site_var`（`build-derived.mjs:143-149`／`b05` の `_SITE_VAR_SQL`、`b05_project_v1.py:323-328`。`meas_year` から `SUM(n)`） | `n`（`build-derived.mjs:145`）のみ | **82行**（影響を受ける `(site_id, variable, kind='annual')` の組。1,625件の年グループがこの82行に配分される。実測: `site_id,variable` の distinct 組数） | `avg`（146行目、`AVG(y.avg)`=年ごとの平均の単純平均）は各年の avg 自体が不変なので不変 |
+  | `var_catalog`（`build-derived.mjs:127-138`／`b05` の `_VAR_CATALOG_SQL`、`b05_project_v1.py:310-319`。`meas_year` から `SUM(n)`） | `n`（132行目）・`n_annual`（136行目） | **8行**（影響を受ける8変数全て。実測: `地下水位(年平均)`等8変数はいずれも `source_id='kanagawa_jiban_chinka'` からしか出現しない＝他ソースと混ざらない） | `n_sites`（133行目）/`y_from`/`y_to`（134行目）/`n_daily`（135行目）/`n_censored`（137行目）は不変（対象 site_id は行ごと消えず、年の範囲も変わらず、daily側は無関係、below_lod行は0件） |
+  | `meas_daily`/`meas_month`/`meas_clim` | 影響なし | 0 | `kanagawa_jiban_chinka` の `measured_on` は全行 `LENGTH=4`（年度番号）で、`LENGTH(measured_on)=10` を要求する `meas_daily`（`build-derived.mjs:47-61`、条件は57行目）に入らない。`meas_month`/`meas_clim` は `meas_daily` から作るため連動して無関係 |
+  | `zone_year`/`zone_clim` | 影響なし | 0 | `kanagawa_jiban_chinka` の site_id は `sites` テーブルに1件も存在しない（実測: `select count(*) from sites where site_id like 'kanagawa_jiban_chinka%'` → 0件）。`zone_year`/`zone_clim` は `meas_year`/`meas_month` を `sites` と `JOIN` するため、この JOIN で最初から除外される |
+  | `sensor_daily`/`rain_daily`/`sensor_hour_month`/`landuse_watershed`/`landuse_change` | 影響なし | 0 | `measurements` ではなく `sensor_timeseries`／土地利用CSV由来で無関係 |
+
+  `b05_project_v1.py` の `_SITE_VAR_SQL`/`_VAR_CATALOG_SQL`（310-328行）は
+  `build-derived.mjs` の `var_catalog`/`site_var` と SQL が実質一致するため、
+  v1（`derived.sqlite`）と v2射影（`v1_projection.sqlite`）のどちらでも同じ影響になる。
+
+  したがって、この修正を実装した場合に `scripts/reconcile/expected_diffs.yaml` へ書く
+  宣言は `row_only_in_baseline` ではなく**`value_diff`**（`columns` が必須。
+  `docs/plans/PHASE_B_RECONCILIATION.md` §7 参照）にする。既存の書き方
+  （`expected_diffs.yaml` の `meas_year`/`site_var`/`var_catalog` セクションの形式）に
+  合わせると、例えば `meas_year` は次の形になる（実装時に生成する1例。実際の
+  `reason` に前後の数値は書かない、という同ファイルの規約に従う）:
+
+  ```yaml
+  meas_year:
+    - key: ["kanagawa_jiban_chinka__1", "地下水位(年平均)", 1980, "annual"]
+      kind: value_diff
+      columns: [n]
+      reason: >
+        r5table.xlsx由来行とr6table.xlsx由来行の重複除外（新しい方=r6table.xlsxを
+        残す）により、重複していた年のCOUNT(*)が2から1になる。avg/min/maxは
+        重複ペアの値が完全一致するため変わらない。
+      found_on: <実装時の日付>
+      record: docs/plans/DATA_QUALITY_BACKLOG.md §1
+  ```
+
+  `key` の列順は `reports/derived_baseline.json` の `key` に合わせる（実測で確認）:
+  `meas_year`=`[site_id, variable, year, kind]`、`site_var`=`[site_id, variable, kind]`、
+  `var_catalog`=`[variable]`。
+
+  **規模の注記**: `docs/plans/PHASE_B_RECONCILIATION.md` §7 は「書けるのはキーを
+  1件ずつ列挙したものだけ。ワイルドカード・テーブル単位の免除は書けない」と明記して
+  いる。この修正を実装すると `meas_year` 1,625キー・`site_var` 82キー・`var_catalog`
+  8キー、計1,715キーの `value_diff` 宣言が必要になる。手で書き下ろす規模ではないため、
+  実装時は除外リスト（上記 `(site_id, variable, measured_on)` の宣言ファイル）から
+  `expected_diffs.yaml` の該当ブロックを機械的に生成するスクリプトを合わせて用意する
+  ことを推奨する（これも実装であり、このIssueでは行わない）。
+
+  これは #27 が言う「そのうえで: 意図的な変更（値が動くもの。ゲートで差分を確認
+  しながら）」に対応する。
 
 ### 着手条件
 
@@ -143,7 +199,7 @@ sum(expect) - sum(got) = 898,776 - 897,725 = 1,051  (= 93 + 958、負のdiffは�
 ```
 
 とあり、スクリプト自身が「diff=1039」と「内訳93+958」を並べて書いているが、
-**93+958=1,051 であり 1,039 とは一致しない（12件の差）**。`scripts/m99_validate.py:161-163`
+**93+958=1,051 であり 1,039 とは一致しない（12件の差）**。`scripts/m99_validate.py:163-164`
 （およびこのIssue本文）の「1,039件（93+958）」という記述は、このログの矛盾をそのまま
 引き継いだもの。`data/logs/gbif_partition_report.csv` 自体の実測（上記）は一貫して
 1,051件（93+958）を示しており、1,039 という数字は「jsonl行数(658,360) と GBIF側の
@@ -189,7 +245,7 @@ GBIF API で日付なし記録を別条件で取れるかの調査（WebSearch�
 
 ### 実測・調査（WebSearch/WebFetch、2026-09-25）
 
-既存の記録（`scripts/m99_validate.py:168-174`）は「そらまめ君の公開CSVに緯度経度は
+既存の記録（`scripts/m99_validate.py:169-175`）は「そらまめ君の公開CSVに緯度経度は
 含まれない」という収集エージェントのコード上のコメントのみを根拠にしている。今回、
 独立した一次資料・第三者資料で裏付けを試みた:
 
@@ -215,7 +271,7 @@ GBIF API で日付なし記録を別条件で取れるかの調査（WebSearch�
 （トップ・apiManual）、そらまめ君の第三者パーサー（GitHub c9s/soramame）、相模原市
 「大気の状況」ページ、相模原市年次報告書「さがみはらの環境」令和5年度版PDF、神奈川県
 大気汚染常時監視ページ。検索日: 2026-09-25。設計（`sites` に緯度経度が判明すれば
-追加登録できる構造、`m99_validate.py:172`）は変更不要。
+追加登録できる構造、`m99_validate.py:175`）は変更不要。
 
 ### 着手条件
 
@@ -228,7 +284,7 @@ GBIF API で日付なし記録を別条件で取れるかの調査（WebSearch�
 ### 実測・調査（WebSearch/WebFetch、2026-09-25）
 
 `scripts/m02_measurements.py:12`「相模原市大気データは unit=NULL のまま」、
-`scripts/m99_validate.py:175`「公開元に単位の記載が無いため `unit=NULL` のまま。
+`scripts/m99_validate.py:177`「公開元に単位の記載が無いため `unit=NULL` のまま。
 推測していない。」という既存の扱いに対し、追加の一次資料を探した。
 
 - 相模原市「大気の状況」ページ: 測定局数（7局、一般環境大気5・自動車排出ガス2）は
