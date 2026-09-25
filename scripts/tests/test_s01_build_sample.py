@@ -110,6 +110,15 @@ def test_apply_quality_transitions_closure_pulls_in_referenced_measurements():
 
 _EMPTY_GEOJSON = '{"type": "FeatureCollection", "features": []}'
 
+# `build_declaration_counts` の既定引数 `landuse_csv_path=DEFAULT_LANDUSE_CSV`
+# は正規のパス（`data/processed/nlni_l03b_landuse_by_watershed.csv`）を指す。
+# 原本の無い環境（CI の `reconcile` ジョブ）では実在しないため、`geojson_path`
+# と同じく、このテスト専用の一時ファイルを明示的に渡す（実測で FileNotFoundError
+# を確認済み——このテストが worktree で「たまたま」通っていたのは、原本
+# symlink 越しに本物のCSVが存在していたため。CI の実際の失敗で発覚）。
+# 値そのものはこのテストの検証対象ではないので、ヘッダ+1行の最小構成でよい。
+_MINIMAL_LANDUSE_CSV = "watershed_id,year,landuse_code,area_ha,n_cells\nW001,2016,100,1.0,1\n"
+
 
 def test_build_declaration_counts_atsugi_predicate(tmp_path):
     conn = sqlite3.connect(":memory:")
@@ -127,7 +136,9 @@ def test_build_declaration_counts_atsugi_predicate(tmp_path):
     selected = {"measurements": {1, 2, 3}, "organism_records": set(), "sensor_timeseries": set()}
     geojson_path = tmp_path / "watersheds.geojson"
     geojson_path.write_text(_EMPTY_GEOJSON, encoding="utf-8")
-    counts = s01.build_declaration_counts(conn, selected, geojson_path)
+    landuse_csv_path = tmp_path / "landuse.csv"
+    landuse_csv_path.write_text(_MINIMAL_LANDUSE_CSV, encoding="utf-8")
+    counts = s01.build_declaration_counts(conn, selected, geojson_path, landuse_csv_path)
     assert counts["period_exceptions.yaml:atsugi_river_water_quality"] == 1
 
 
