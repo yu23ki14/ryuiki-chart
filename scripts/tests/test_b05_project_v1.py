@@ -913,6 +913,12 @@ def test_verify_hourly_daily_rollup_detects_broken_day_bucketing(tmp_path):
         "UPDATE observation_agg SET n = n + 100 "
         "WHERE grain='day' AND input_grain='hour' AND stat='mean'"
     )
+    # 段階間の指紋（Issue #37 #1）: この改変は「b04 が壊れた日割りで
+    # observation_agg を作った」ことを模すもの（b04 が別内容で再実行された後
+    # b05 が再実行されていない、という別の壊れ方ではない）。指紋を改変後の
+    # 内容で再記録し、T6（`verify_hourly_daily_rollup`）だけが検出することを
+    # 確かめる——指紋チェックとの二重検出にしない。
+    common.record_stage_fingerprint(conn, "observation_agg")
     conn.commit()
     conn.close()
 

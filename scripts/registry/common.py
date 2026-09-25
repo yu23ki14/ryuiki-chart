@@ -227,15 +227,22 @@ def count_and_breakdown(
     return total, breakdown
 
 
-def assert_unique(keys: list, label: str) -> None:
+def assert_unique(keys: list, label: str, *, sort_key=None) -> None:
     """`keys` に重複が無いことを検証する（手書き語彙ファイルの主キー列の
     一意性チェック）。`build_unit_variable.py`/`build_taxon.py`/
-    `build_caveat.py`/`build_taxon_assessment.py` がそれぞれ同名の私有関数を
-    持っていた（P-2、`build_taxon_assessment.py` で5個目の複製になった時点で
-    ここに1つ集約した。/simplify 指摘2）。既存4箇所のリファクタは本PRの
-    スコープ外——`build_taxon_assessment.py` だけがここから import する。
+    `build_caveat.py`/`build_place.py`/`build_taxon_assessment.py` が
+    それぞれ同型の私有ロジック（`dupes = sorted({k for k in keys if
+    keys.count(k) > 1}); assert not dupes, ...`）を持っていた（P-2、
+    `build_taxon_assessment.py` で5個目の複製になった時点でここに1つ
+    集約した。/simplify 指摘2）。**残り4箇所は Issue #37 #4 で寄せた**
+    （数え直した結果は `docs/plans/PHASE_B_FACT_SLICE.md` 該当項目参照）。
+
+    `sort_key` は `build_taxon.py` の `_load_taxon_group_rules()` が
+    `taxon_group.yaml` の `match`（タプルを含みうる、直接比較できない値）を
+    `key=repr` でソートしていたのに合わせるための任意引数——他の3箇所は
+    文字列/整数の単純なキーなので既定（`None`、素の `sorted()`）のままでよい。
     """
-    dupes = sorted({k for k in keys if keys.count(k) > 1})
+    dupes = sorted({k for k in keys if keys.count(k) > 1}, key=sort_key)
     assert not dupes, f"{label} が重複している: {dupes}"
 
 

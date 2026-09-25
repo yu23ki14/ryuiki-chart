@@ -642,8 +642,10 @@ def _load_taxon_group_rules() -> tuple[list[dict], str]:
         doc = yaml.safe_load(f)
     rules = doc["rules"]
     keys = [_match_key(rule["match"]) for rule in rules]
-    dupes = sorted({k for k in keys if keys.count(k) > 1}, key=repr)
-    assert not dupes, f"registry/taxon/taxon_group.yaml の match が重複している: {dupes}"
+    # `match` はタプルを含みうる（直接比較できない値がある）ため `sort_key=repr`
+    # を渡す（Issue #37 #4: common.assert_unique に寄せた。他の3箇所と違う
+    # 唯一の理由——common.assert_unique の docstring 参照）。
+    common.assert_unique(keys, "registry/taxon/taxon_group.yaml の match", sort_key=repr)
     return rules, doc["default_label_ja"]
 
 

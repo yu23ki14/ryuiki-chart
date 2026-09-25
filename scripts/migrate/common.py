@@ -18,10 +18,15 @@ v1射影）が共有する薄い土台。
   スクリプトと同じ3.43に揃える）。`require_sqlite_version()` を**各スクリプトの
   構築関数の先頭**で呼ぶ（モジュール読み込み時点ではない——
   `require_sqlite_version` の docstring 参照）。
+- 段階間の指紋（`record_stage_fingerprint`/`assert_stage_fingerprint_fresh`。
+  Issue #37 #1）: あるテーブルが「今の上流テーブルから作られた状態」である
+  ことを、次の段が読み込み時に機械で確認する。詳細は両関数の直前の
+  モジュールコメント参照。
 """
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import os
 import pathlib
 import sqlite3
@@ -545,3 +550,154 @@ def count_grouped_totals_mismatches(
         WHERE ({mismatch_cond}) OR l.__k IS NULL OR r.__k IS NULL
         """
         return conn.execute(sql).fetchone()[0]
+
+
+# ---------------------------------------------------------------------------
+# 段階間の指紋（Issue #37 #1。`scripts/b08_project_occurrence_v1.py` の
+# `_assert_cube_is_current_l2_partition`——`occurrence_agg` が「今の occurrence
+# の分割」であることを SQL の集計突合で直接確かめる仕組み——を、集計関係が
+# 無いテーブル対（`observation` → `observation_agg`・`occurrence` →
+# `occurrence_agg`/`occurrence_place`・`observation_agg`/`site_var` 等 →
+# v1_projection*.sqlite の各テーブル）にも広げられる形に一般化したもの。
+#
+# 設計判断（`docs/plans/PHASE_B_FACT_SLICE.md` 該当項目参照）:
+# - `_assert_cube_is_current_l2_partition` 自体（occurrence_agg ⇔ occurrence の
+#   Σn 突合）は**そのまま残す**——集計の正しさまで検証する、ここより強い
+#   チェックなので二重化しない。ここで足すのは「集計関係が無い、あるいは
+#   別ファイルに分かれているテーブル対」を埋める汎用の指紋機構。
+# - 指紋の中身は「`table`（`schema` が付けば ATTACH 済みの別名越し）の全列・
+#   全行を rowid の物理順のまま読み、行区切り・列区切りの制御文字を挟んで
+#   sha256 に畳み込んだもの」。`scripts/reconcile/common.compute_fingerprint`
+#   （b01/b02 が使う、sqlite/JSON 両対応でキー列ソート込みの全行正準化ハッシュ）
+#   を再利用しない——あちらは異なるフォーマット間の比較のための数値許容誤差・
+#   キー順ソートまで持つ重い実装で、207万行規模で数十秒かかる（同モジュール
+#   ベンチ参照）。ここは常に「同じ sqlite ファイルを、直前に自分が書いたのと
+#   同じ接続」で読み直すだけなので、ソートも数値の正準化も要らない——
+#   `staged_table`/`fresh_sqlite` がテーブルを毎回まるごと作り直す（インクリ
+#   メンタルな追記が無い）という既存の前提により、物理走査順は同じビルド
+#   ロジックに対して安定する。
+# - 保存場所は「テーブルを持つ出力ファイルそのものの中」の `pipeline_fingerprint`
+#   メタ表（`table_name` を主キーに1行）。`scripts/r01_build_registry.py` の
+#   `registry_build`（ファイル1つに1行）と同じ発想だが、`v2.sqlite` は
+#   `observation`/`observation_agg`（さらに `occurrence`/`occurrence_agg`/
+#   `occurrence_place`）を同じファイルに同居させるため、行の主キーをファイル
+#   単位ではなく**テーブル単位**にした。
+# - 検証は「次にそのテーブルを読む段の先頭」で行う（b04 が `observation` を、
+#   b05 が ATTACH した `cube.observation_agg` を、というように）。記録が
+#   無ければ「この機構より前に作られた出力」として、内容が食い違っていれば
+#   「作り直された後、消費側が再実行されていない」として、どちらも
+#   `MigrationError` で止める——`rebuild_hint` に次に実行すべきスクリプトを
+#   案内する（既存の `_assert_prerequisites`/`_assert_no_stale_taxon_ids` 等と
+#   同じ文言の作法）。
+# ---------------------------------------------------------------------------
+
+PIPELINE_FINGERPRINT_TABLE = "pipeline_fingerprint"
+
+_CREATE_PIPELINE_FINGERPRINT_SQL = f"""
+CREATE TABLE IF NOT EXISTS {PIPELINE_FINGERPRINT_TABLE} (
+  table_name TEXT PRIMARY KEY,
+  fingerprint TEXT NOT NULL,
+  spec_version TEXT NOT NULL
+)
+"""
+
+
+def _fingerprint_table_columns(conn: sqlite3.Connection, table: str, schema: str | None) -> list[str]:
+    pragma_db = f"{schema}." if schema else ""
+    columns = [r[1] for r in conn.execute(f"PRAGMA {pragma_db}table_info({table})")]
+    if not columns:
+        qualified = f"{schema}.{table}" if schema else table
+        raise MigrationError(f"{qualified} が無い（指紋を計算できない）。")
+    return columns
+
+
+def compute_table_fingerprint(conn: sqlite3.Connection, table: str, *, schema: str | None = None) -> str:
+    """`table`（`schema` が None なら `conn` 自身が開いているファイル、そうで
+    なければ ATTACH 済みの別名 `schema` 越し）の全列・全行から軽量な内容指紋を
+    計算する（上のモジュールコメント参照）。
+
+    `PRAGMA table_info` で列名を毎回発見する（呼び出し側に列名の宣言を持たせ
+    ない——将来テーブルに列が増えても、この関数はそのテーブルの現在の全列を
+    自動的に指紋に含める）。行は `SELECT <全列> FROM <table>` の物理走査順
+    （`ORDER BY` を付けない）のまま読む——`staged_table`/`fresh_sqlite` が
+    テーブルを毎回まるごと作り直す設計のため、同じビルドロジックに対しては
+    安定する（ソートのコストを払わない）。戻り値は `"sha256:<hex>:<行数>"`
+    （行数を末尾に持つことで、内容が同じでも行の重複/欠落だけで変わる
+    ケースを取りこぼさない——ハッシュ自体も行区切りの制御文字を挟むため
+    既に行数に敏感だが、念のため人が読んでも分かる形で残す）。
+    """
+    columns = _fingerprint_table_columns(conn, table, schema)
+    qualified = f"{schema}.{table}" if schema else table
+    col_list = ", ".join(columns)
+    hasher = hashlib.sha256()
+    n = 0
+    for row in conn.execute(f"SELECT {col_list} FROM {qualified}"):
+        for value in row:
+            hasher.update(b"\x00" if value is None else str(value).encode("utf-8", "surrogatepass"))
+            hasher.update(b"\x1f")  # 列区切り（Unit Separator）
+        hasher.update(b"\x1e")  # 行区切り（Record Separator）
+        n += 1
+    return f"sha256:{hasher.hexdigest()}:{n}"
+
+
+def record_stage_fingerprint(conn: sqlite3.Connection, table: str, *, spec_version: str = SPEC_VERSION) -> str:
+    """`table`（`conn` 自身が開いているファイルの本番テーブル）の指紋を計算し、
+    同じファイルの `pipeline_fingerprint` メタ表（無ければ作る）に記録する
+    （`table_name` で upsert）。戻り値は計算した指紋。
+
+    呼び出し側（b03/b04/b06/b07/b09/b05/b08/b11）は、そのテーブルへの本番の
+    書き込みが確定した**後**（`staged_table` の `with` ブロックの外、または
+    `fresh_sqlite` で全テーブルを書き終えた後）に呼び、続けて `conn.commit()`
+    すること（`staged_table` 自身の内部コミットとは別に、この INSERT 自体の
+    コミットが要る）。
+    """
+    conn.execute(_CREATE_PIPELINE_FINGERPRINT_SQL)
+    fingerprint = compute_table_fingerprint(conn, table)
+    conn.execute(
+        f"INSERT INTO {PIPELINE_FINGERPRINT_TABLE} (table_name, fingerprint, spec_version) VALUES (?, ?, ?) "
+        "ON CONFLICT(table_name) DO UPDATE SET fingerprint = excluded.fingerprint, "
+        "spec_version = excluded.spec_version",
+        (table, fingerprint, spec_version),
+    )
+    return fingerprint
+
+
+def assert_stage_fingerprint_fresh(
+    conn: sqlite3.Connection, table: str, *, schema: str | None = None, rebuild_hint: str,
+) -> None:
+    """`table`（`schema` が None なら `conn` 自身、そうでなければ ATTACH 済みの
+    別名 `schema` 越し）の**現在の**内容が、そのテーブルを持つ出力ファイルに
+    `record_stage_fingerprint` が記録した指紋と一致することを確認する。
+
+    以下のどちらでも `MigrationError` で止まる（`rebuild_hint` に案内する
+    再実行手順を続ける）:
+    - `pipeline_fingerprint` メタ表自体が無い（この機構が入る前に作られた
+      出力、または指紋を記録する前にプロセスが落ちた壊れた出力）。
+    - `table_name` の行が無い、または記録済みの指紋と現在の指紋が食い違う
+      （このテーブルが作り直された後、それを消費する側の再実行が漏れている
+      疑いがある）。
+    """
+    meta_prefix = f"{schema}." if schema else ""
+    master = f"{schema}.sqlite_master" if schema else "sqlite_master"
+    qualified = f"{schema}.{table}" if schema else table
+    has_meta = conn.execute(
+        f"SELECT 1 FROM {master} WHERE type = 'table' AND name = ?", (PIPELINE_FINGERPRINT_TABLE,)
+    ).fetchone()
+    if has_meta is None:
+        raise MigrationError(
+            f"{qualified} に指紋の記録（{PIPELINE_FINGERPRINT_TABLE}）が無い"
+            "（この機構が入る前に作られた古い出力の可能性がある）。" + rebuild_hint
+        )
+    row = conn.execute(
+        f"SELECT fingerprint FROM {meta_prefix}{PIPELINE_FINGERPRINT_TABLE} WHERE table_name = ?", (table,)
+    ).fetchone()
+    if row is None:
+        raise MigrationError(f"{qualified} の指紋が記録されていない。" + rebuild_hint)
+    recorded = row[0]
+    current = compute_table_fingerprint(conn, table, schema=schema)
+    if current != recorded:
+        raise MigrationError(
+            f"{qualified} の内容が記録済みの指紋と一致しない（記録={recorded}, 現在={current}）。"
+            f"{table} が作り直された後、それを消費する側の再実行が漏れている可能性がある。"
+            + rebuild_hint
+        )

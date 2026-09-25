@@ -210,3 +210,138 @@ def test_require_sqlite_version_raises_systemexit_even_under_dash_o():
     assert result.returncode != 0
     assert "UNREACHABLE" not in result.stdout
     assert "古すぎる" in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# 段階間の指紋（Issue #37 #1）: compute_table_fingerprint/
+# record_stage_fingerprint/assert_stage_fingerprint_fresh
+# ---------------------------------------------------------------------------
+
+def _make_t_db(path, rows=((1, "a"),)):
+    conn = sqlite3.connect(f"file:{path}", uri=True)
+    conn.execute("CREATE TABLE t (a INTEGER, b TEXT)")
+    conn.executemany("INSERT INTO t VALUES (?, ?)", rows)
+    conn.commit()
+    return conn
+
+
+def test_compute_table_fingerprint_is_deterministic_across_two_connections(tmp_path):
+    """同じ内容を2つの別接続で読んでも同じ指紋になる（決定論）。"""
+    db_path = tmp_path / "t.sqlite"
+    conn1 = _make_t_db(db_path)
+    fp1 = common.compute_table_fingerprint(conn1, "t")
+    conn1.close()
+
+    conn2 = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    fp2 = common.compute_table_fingerprint(conn2, "t")
+    conn2.close()
+    assert fp1 == fp2
+
+
+def test_compute_table_fingerprint_changes_when_a_single_value_changes(tmp_path):
+    db_path = tmp_path / "t.sqlite"
+    conn = _make_t_db(db_path)
+    before = common.compute_table_fingerprint(conn, "t")
+
+    conn.execute("UPDATE t SET b = 'changed' WHERE a = 1")
+    conn.commit()
+    after = common.compute_table_fingerprint(conn, "t")
+    conn.close()
+    assert before != after
+
+
+def test_compute_table_fingerprint_changes_when_a_row_is_added(tmp_path):
+    db_path = tmp_path / "t.sqlite"
+    conn = _make_t_db(db_path)
+    before = common.compute_table_fingerprint(conn, "t")
+
+    conn.execute("INSERT INTO t VALUES (2, 'b')")
+    conn.commit()
+    after = common.compute_table_fingerprint(conn, "t")
+    conn.close()
+    assert before != after
+
+
+def test_compute_table_fingerprint_reads_through_an_attached_schema(tmp_path):
+    """`schema` を渡すと ATTACH 済みの別名越しに読める（b05/b08/b11 が
+    ATTACH した相手側のテーブルを検証するのに使う経路）。
+    """
+    db_path = tmp_path / "t.sqlite"
+    conn = _make_t_db(db_path)
+    direct = common.compute_table_fingerprint(conn, "t")
+    conn.close()
+
+    work = sqlite3.connect(":memory:", uri=True)
+    try:
+        common.attach_readonly(work, db_path, "other")
+        via_attach = common.compute_table_fingerprint(work, "t", schema="other")
+    finally:
+        work.close()
+    assert direct == via_attach
+
+
+def test_record_and_assert_stage_fingerprint_fresh_round_trip(tmp_path):
+    db_path = tmp_path / "t.sqlite"
+    conn = _make_t_db(db_path)
+    common.record_stage_fingerprint(conn, "t")
+    conn.commit()
+    # 記録した直後は、同じ内容に対する検証が例外を投げない。
+    common.assert_stage_fingerprint_fresh(conn, "t", rebuild_hint="再実行すること。")
+    conn.close()
+
+
+def test_assert_stage_fingerprint_fresh_raises_when_no_meta_table_exists(tmp_path):
+    """`pipeline_fingerprint` メタ表自体が無い（この機構より前に作られた出力）
+    場合、`rebuild_hint` を含む `MigrationError` で止まる。
+    """
+    db_path = tmp_path / "t.sqlite"
+    conn = _make_t_db(db_path)
+    conn.commit()
+    with pytest.raises(common.MigrationError, match="指紋の記録.*無い"):
+        common.assert_stage_fingerprint_fresh(conn, "t", rebuild_hint="scripts/b03_build_observation.py を再実行すること。")
+
+
+def test_assert_stage_fingerprint_fresh_raises_when_table_row_missing(tmp_path):
+    """メタ表はあるが、対象テーブルの行が記録されていない場合も止まる。"""
+    db_path = tmp_path / "t.sqlite"
+    conn = _make_t_db(db_path)
+    conn.execute(common._CREATE_PIPELINE_FINGERPRINT_SQL)
+    conn.commit()
+    with pytest.raises(common.MigrationError, match="指紋が記録されていない"):
+        common.assert_stage_fingerprint_fresh(conn, "t", rebuild_hint="再実行すること。")
+
+
+def test_assert_stage_fingerprint_fresh_raises_when_content_changed_since_recording(tmp_path):
+    """**壊れた/古い上流出力で止まることの実測**（Issue #37 受け入れ基準）:
+    `t` の指紋を記録した後、内容だけを直接書き換える（=次の段を再実行し
+    忘れた状態を模す）と、`rebuild_hint` を含む `MigrationError` で止まる。
+    """
+    db_path = tmp_path / "t.sqlite"
+    conn = _make_t_db(db_path)
+    common.record_stage_fingerprint(conn, "t")
+    conn.commit()
+
+    conn.execute("UPDATE t SET b = 'tampered' WHERE a = 1")
+    conn.commit()
+
+    with pytest.raises(common.MigrationError, match="scripts/b99_example.py を再実行すること"):
+        common.assert_stage_fingerprint_fresh(conn, "t", rebuild_hint="scripts/b99_example.py を再実行すること。")
+    conn.close()
+
+
+def test_record_stage_fingerprint_upserts_on_rerecording(tmp_path):
+    """同じテーブルに対して2回記録しても（`table_name` が主キーの）1行のまま
+    最新の指紋に更新される。
+    """
+    db_path = tmp_path / "t.sqlite"
+    conn = _make_t_db(db_path)
+    fp1 = common.record_stage_fingerprint(conn, "t")
+    conn.execute("INSERT INTO t VALUES (2, 'b')")
+    fp2 = common.record_stage_fingerprint(conn, "t")
+    conn.commit()
+    assert fp1 != fp2
+    rows = conn.execute(
+        f"SELECT fingerprint FROM {common.PIPELINE_FINGERPRINT_TABLE} WHERE table_name = 't'"
+    ).fetchall()
+    assert rows == [(fp2,)]
+    conn.close()

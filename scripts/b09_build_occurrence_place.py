@@ -354,6 +354,12 @@ def build_and_write_occurrence_place(
             conn, "ryuiki", "sites",
             hint="ryuiki.sqlite（原本）が壊れている、または版が古い可能性がある。",
         )
+        # 段階間の指紋（Issue #37 #1）: b06 が最後に記録した occurrence の指紋と
+        # 今の occurrence の内容が一致することを、座標を読む前に確認する。
+        common.assert_stage_fingerprint_fresh(
+            conn, "occurrence",
+            rebuild_hint="scripts/b06_build_occurrence.py を再実行すること。",
+        )
 
         _assert_polygon_set_matches_registry(polys, conn)
         _assert_watershed_external_key_unique(conn)
@@ -438,6 +444,12 @@ def build_and_write_occurrence_place(
                     f"座標あり行数 {n_with_coords:,}）。"
                 )
             # ここまで来たら with ブロックを正常に抜け、staged_table が本番名に差し替える。
+
+        # 段階間の指紋（Issue #37 #1）: b08 が「今の occurrence から作った
+        # occurrence_place か」を検証できるよう、確定した occurrence_place の
+        # 内容を記録する。
+        common.record_stage_fingerprint(conn, "occurrence_place")
+        conn.commit()
     except BaseException:
         conn.close()
         raise

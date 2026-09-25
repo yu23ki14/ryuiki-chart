@@ -332,9 +332,7 @@ def _load_zone_yaml() -> list[dict]:
     with path.open(encoding="utf-8") as f:
         items = yaml.safe_load(f)
     # 件数のハードコード assert ではなく、zone 番号の一意性チェックにする（/simplify 修正5）。
-    zones = [item["zone"] for item in items]
-    dupes = sorted({z for z in zones if zones.count(z) > 1})
-    assert not dupes, f"registry/place/zone.yaml の zone が重複している: {dupes}"
+    common.assert_unique([item["zone"] for item in items], "registry/place/zone.yaml の zone")  # Issue #37 #4
     return items
 
 

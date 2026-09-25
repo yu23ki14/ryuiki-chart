@@ -901,6 +901,12 @@ def build_and_write_observation(
                 )
             # ここまで来たら with ブロックを正常に抜け、staged_table が
             # 作業用テーブルを本番名 "observation" に差し替える（A-1）。
+
+        # 段階間の指紋（Issue #37 #1）: b04 が「今の observation から作った
+        # observation_agg か」を検証できるよう、確定した observation の内容を
+        # 記録する（scripts/migrate/common.py の該当コメント参照）。
+        common.record_stage_fingerprint(dest, "observation")
+        dest.commit()
     except BaseException:
         dest.close()
         raise

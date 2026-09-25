@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from migrate import occurrence_period as _occurrence_period
+from migrate import common, occurrence_period as _occurrence_period
 from registry.build_taxon_assessment import TAXON_ASSESSMENT_COLUMNS
 
 # 既定のフィクスチャ: 12形すべてを1行ずつ（gbif 11行・inat 1行）。
@@ -296,6 +296,12 @@ def occurrence_row(
 
 
 def make_v2_db_with_occurrence(path, rows: list[tuple]) -> None:
+    """段階間の指紋（Issue #37 #1）: `scripts/b06_build_occurrence.py` が本物の
+    実行の最後に記録するのと同じ `pipeline_fingerprint` を、ここでも記録する
+    （b07/b09/b08 のうち occurrence の新鮮さを検証する経路が、本物の b06 を
+    経由しないこのフィクスチャで「指紋が記録されていない」と止まらないように
+    するため）。
+    """
     import b06_build_occurrence as b06
 
     conn = sqlite3.connect(f"file:{path}", uri=True)
@@ -303,6 +309,7 @@ def make_v2_db_with_occurrence(path, rows: list[tuple]) -> None:
         conn.execute(b06._CREATE_OCCURRENCE_SQL.format(table="occurrence"))
         placeholders = ", ".join("?" for _ in _OCCURRENCE_COLUMNS)
         conn.executemany(f"INSERT INTO occurrence VALUES ({placeholders})", rows)
+        common.record_stage_fingerprint(conn, "occurrence")
         conn.commit()
     finally:
         conn.close()
@@ -330,6 +337,10 @@ def add_occurrence_place_table(conn: sqlite3.Connection, rows: list[tuple]) -> N
     conn.execute(b09._CREATE_OCCURRENCE_PLACE_SQL.format(table="occurrence_place"))
     placeholders = ", ".join("?" for _ in _OCCURRENCE_PLACE_COLUMNS)
     conn.executemany(f"INSERT INTO occurrence_place VALUES ({placeholders})", rows)
+    # 段階間の指紋（Issue #37 #1）: `scripts/b09_build_occurrence_place.py` が
+    # 本物の実行の最後に記録するのと同じ指紋をここでも記録する（コミットは
+    # 呼び出し側の責務——docstring参照）。
+    common.record_stage_fingerprint(conn, "occurrence_place")
 
 
 def make_v2_db_with_occurrence_and_place(
@@ -346,6 +357,7 @@ def make_v2_db_with_occurrence_and_place(
         conn.execute(b06._CREATE_OCCURRENCE_SQL.format(table="occurrence"))
         placeholders = ", ".join("?" for _ in _OCCURRENCE_COLUMNS)
         conn.executemany(f"INSERT INTO occurrence VALUES ({placeholders})", occurrence_rows)
+        common.record_stage_fingerprint(conn, "occurrence")  # Issue #37 #1
         add_occurrence_place_table(conn, occurrence_place_rows)
         conn.commit()
     finally:
@@ -475,6 +487,7 @@ def make_v2_db_with_occurrence_and_agg(
         conn.execute(b06._CREATE_OCCURRENCE_SQL.format(table="occurrence"))
         placeholders = ", ".join("?" for _ in _OCCURRENCE_COLUMNS)
         conn.executemany(f"INSERT INTO occurrence VALUES ({placeholders})", occurrence_rows)
+        common.record_stage_fingerprint(conn, "occurrence")  # Issue #37 #1
 
         conn.execute(b07._CREATE_OCCURRENCE_AGG_SQL.format(table="occurrence_agg"))
         agg_placeholders = ", ".join("?" for _ in _OCCURRENCE_AGG_COLUMNS)

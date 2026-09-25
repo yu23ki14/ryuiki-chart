@@ -461,6 +461,12 @@ def build_and_write_occurrence(
                 )
             # ここまで来たら with ブロックを正常に抜け、staged_table が
             # 作業用テーブルを本番名 "occurrence" に差し替える（A-1）。
+
+        # 段階間の指紋（Issue #37 #1）: b07/b09/b08 が「今の occurrence から
+        # 作った出力か」を検証できるよう、確定した occurrence の内容を記録する
+        # （scripts/migrate/common.py の該当コメント参照）。
+        common.record_stage_fingerprint(dest, "occurrence")
+        dest.commit()
     except BaseException:
         dest.close()
         raise

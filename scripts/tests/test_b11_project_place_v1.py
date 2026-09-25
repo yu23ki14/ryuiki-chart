@@ -80,6 +80,12 @@ def _make_v1_projection_db(path, site_var_rows=(), landuse_rows=()) -> None:
     """`site_var`/`landuse_watershed` だけを持つ最小の `v1_projection.sqlite`
     フィクスチャ（`scripts/b05_project_v1.py` の出力の代わり）。列名・列順は
     `scripts/b05_project_v1.py` の `_CREATE_SQL` と一致させてある。
+
+    段階間の指紋（Issue #37 #1）: `scripts/b05_project_v1.py` が本物の実行の
+    最後に記録するのと同じ指紋を、この2テーブルにも記録する（b11 が
+    `_assert_rollup_input_fingerprints_fresh` で検証するため、記録が無いと
+    本物の b05 を経由しないこのフィクスチャの全テストが「指紋が記録されて
+    いない」で落ちてしまう）。
     """
     conn = sqlite3.connect(path)
     try:
@@ -88,11 +94,13 @@ def _make_v1_projection_db(path, site_var_rows=(), landuse_rows=()) -> None:
             "y_from INTEGER, y_to INTEGER, avg REAL, unit TEXT)"
         )
         conn.executemany("INSERT INTO site_var VALUES (?,?,?,?,?,?,?,?)", list(site_var_rows))
+        migrate_common.record_stage_fingerprint(conn, "site_var")
         conn.execute(
             "CREATE TABLE landuse_watershed (watershed_id TEXT, year INTEGER, landuse_code TEXT, "
             "landuse_name TEXT, n_cells INTEGER, area_km2 REAL)"
         )
         conn.executemany("INSERT INTO landuse_watershed VALUES (?,?,?,?,?,?)", list(landuse_rows))
+        migrate_common.record_stage_fingerprint(conn, "landuse_watershed")
         conn.commit()
     finally:
         conn.close()
@@ -101,6 +109,7 @@ def _make_v1_projection_db(path, site_var_rows=(), landuse_rows=()) -> None:
 def _make_v1_projection_occurrence_db(path, org_watershed_rows=()) -> None:
     """`org_watershed` だけを持つ最小の `v1_projection_occurrence.sqlite`
     フィクスチャ（`scripts/b08_project_occurrence_v1.py` の出力の代わり）。
+    段階間の指紋（Issue #37 #1）の記録は `_make_v1_projection_db` と同じ理由。
     """
     conn = sqlite3.connect(path)
     try:
@@ -108,6 +117,7 @@ def _make_v1_projection_occurrence_db(path, org_watershed_rows=()) -> None:
             "CREATE TABLE org_watershed (watershed_id TEXT, n, alien_n, redlist_n, y_from, y_to)"
         )
         conn.executemany("INSERT INTO org_watershed VALUES (?,?,?,?,?,?)", list(org_watershed_rows))
+        migrate_common.record_stage_fingerprint(conn, "org_watershed")
         conn.commit()
     finally:
         conn.close()
@@ -769,3 +779,40 @@ def test_out_path_via_symlink_to_an_input_is_still_caught(tmp_path):
 
     with pytest.raises(migrate_common.MigrationError, match="v1_projection_db"):
         b11.build_projections(registry_db, alias, **kwargs)
+
+
+# ---------------------------------------------------------------------------
+# 段階間の指紋（Issue #37 #1。scripts/migrate/common.py 参照）
+# ---------------------------------------------------------------------------
+
+def test_build_projections_halts_when_landuse_watershed_changed_since_b05_recorded_it(tmp_path):
+    """**壊れた/古い上流出力で止まることの実測**（Issue #37 受け入れ基準。
+    クロスファイル版——v2.sqlite ではなく、b05/b08 それぞれ別ファイルの
+    出力を b11 が ATTACH で読む経路）: `landuse_watershed`（b05 の出力）の
+    内容を b05 を経由せず直接書き換える（＝b05 が別内容で再実行されたのに
+    b11 が再実行されていない状態を模す）と、`scripts/b05_project_v1.py を
+    再実行すること` と案内する `MigrationError` で止まる。
+
+    `_WATERSHED_ROW`（registry に既に登録済みの watershed_id）を使う
+    ——`site_var`（site_id 版）だと `_assert_no_stale_watershed_or_site_ids`
+    が site_id 未登録で先に止まってしまうため、watershed_id 版で確かめる。
+    """
+    registry_db = tmp_path / "registry.sqlite"
+    _make_registry_db(registry_db, [_WATERSHED_ROW])
+    out_db = tmp_path / "v1_projection_place.sqlite"
+    watershed_id = _WATERSHED_ROW["watershed_id"]
+    kwargs = _rollup_kwargs(
+        tmp_path, landuse_rows=[(watershed_id, 2016, "05", "建物用地", 1, 1.0)],
+    )
+
+    # 1回目: 正しい出力を作る。
+    b11.build_projections(registry_db, out_db, **kwargs)
+
+    # b05 を経由せず landuse_watershed の内容を直接書き換える（b05 の再実行を模す）。
+    proj_conn = sqlite3.connect(kwargs["v1_projection_db"])
+    proj_conn.execute(f"UPDATE landuse_watershed SET area_km2 = 99.9 WHERE watershed_id = '{watershed_id}'")
+    proj_conn.commit()
+    proj_conn.close()
+
+    with pytest.raises(migrate_common.MigrationError, match="scripts/b05_project_v1.py を再実行すること"):
+        b11.build_projections(registry_db, out_db, **kwargs)

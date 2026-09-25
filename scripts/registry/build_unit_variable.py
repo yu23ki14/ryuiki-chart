@@ -37,19 +37,11 @@ VARIABLE_YAML = common.ROOT / "registry" / "variable.yaml"
 VARIABLE_ALIAS_CSV = common.ROOT / "registry" / "variable_alias.csv"
 
 
-def _assert_unique(keys: list, label: str) -> None:
-    """件数のハードコード assert ではなく、キーの一意性チェックにする（/simplify 修正5）。
-    語彙が増減しても中身が壊れていなければ通る。中身（重複）が壊れていれば必ず落ちる。
-    """
-    dupes = sorted({k for k in keys if keys.count(k) > 1})
-    assert not dupes, f"{label} が重複している: {dupes}"
-
-
 def _load_unit_yaml() -> list[dict]:
     with UNIT_YAML.open(encoding="utf-8") as f:
         doc = yaml.safe_load(f)
     entries = doc["units"]
-    _assert_unique([e["unit_id"] for e in entries], "registry/unit.yaml の unit_id")
+    common.assert_unique([e["unit_id"] for e in entries], "registry/unit.yaml の unit_id")
     _assert_quantity_kind_codes(entries)
     return entries
 
@@ -58,7 +50,7 @@ def _load_variable_yaml() -> list[dict]:
     with VARIABLE_YAML.open(encoding="utf-8") as f:
         doc = yaml.safe_load(f)
     entries = doc["variables"]
-    _assert_unique([e["variable_id"] for e in entries], "registry/variable.yaml の variable_id")
+    common.assert_unique([e["variable_id"] for e in entries], "registry/variable.yaml の variable_id")
     return entries
 
 
@@ -172,7 +164,7 @@ def _load_variable_alias_csv() -> list[dict]:
     # (dataset, alias, source_id) の組で見る（source_id が空の行＝出典未記録も
     # Python 側で明示的に None として扱い、SQLite の「NULL は互いに異なる」に
     # 頼らない。web/src/db/schema-registry.ts の variableAlias 参照）。
-    _assert_unique(
+    common.assert_unique(
         [(r["dataset"] or None, r["alias"], r.get("source_id") or None) for r in rows],
         "registry/variable_alias.csv の (dataset, alias, source_id)",
     )

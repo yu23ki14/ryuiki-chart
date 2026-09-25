@@ -407,6 +407,13 @@ def build_cube(
     （モジュール docstring「SQLite の版を守る」参照）。
     """
     common.require_sqlite_version()
+    # 段階間の指紋（Issue #37 #1）: b03 が最後に記録した observation の指紋と
+    # 今の observation の内容が一致することを、集計を始める前に確認する
+    # （b03 が別内容で再実行された後、b04 が再実行されていない事故を検出する）。
+    common.assert_stage_fingerprint_fresh(
+        conn, "observation",
+        rebuild_hint="scripts/b03_build_observation.py を再実行すること。",
+    )
     params = (built_from, spec_version)
     common.attach_readonly(conn, registry_db, "reg")
     conn.execute(_CREATE_OBS_ZERO_VIEW_SQL)
@@ -467,6 +474,12 @@ def build_cube(
         # （C-3）。ここで失敗すれば staged_table が作業用テーブルを破棄し、
         # 前回の observation_agg がそのまま残る（A-1）。
         _assert_dimension_key_unique(conn, staging)
+
+    # 段階間の指紋（Issue #37 #1）: b05 が「今の observation_agg から作った
+    # v1_projection.sqlite か」を検証できるよう、確定した observation_agg の
+    # 内容を記録する。
+    common.record_stage_fingerprint(conn, "observation_agg")
+    conn.commit()
 
     return {
         "n_day": n_day,

@@ -46,7 +46,8 @@ b05）の4つの射影出力を読み取り専用で ATTACH して結合する�
 CTAS で丸ごと回避する）。
 
 検証（`_validate_registry()`・`_assert_rollup_prerequisites()`・
-`_assert_out_path_distinct_from_inputs()`・`_assert_no_stale_watershed_or_site_ids()`。
+`_assert_out_path_distinct_from_inputs()`・`_assert_no_stale_watershed_or_site_ids()`・
+`_assert_rollup_input_fingerprints_fresh()`（段階間の指紋、Issue #37 #1）。
 どれも出力ファイルに一切触れない）が全部通ってから `common.fresh_sqlite(out_path)`
 で書き出す。設計根拠（`INSERT ... SELECT` を1文にする理由・列名を明示する理由・
 検証と書き込みを分ける理由・各検証関数が何を防ぐか）は
@@ -427,6 +428,41 @@ def _assert_no_stale_watershed_or_site_ids(
         work.close()
 
 
+def _assert_rollup_input_fingerprints_fresh(v1_projection_db, v1_projection_occurrence_db) -> None:
+    """`site_var`/`landuse_watershed`（b05）・`org_watershed`（b08）の内容が、
+    それぞれの構築スクリプトが最後に記録した指紋と一致することを確認する
+    （Issue #37 #1。`_assert_no_stale_watershed_or_site_ids` は watershed_id/
+    site_id の**実在**だけを見るため、id 集合が変わらないまま値だけが
+    変わった再構築（例: 集計元の v2.sqlite が入れ替わったのに b05/b08 が
+    再実行されていない）は検出できない——指紋はその隙間を埋める）。
+
+    出力ファイルには一切触れない読み取り専用の一時コネクションで、
+    `common.fresh_sqlite(out_path)`（既存の出力を即座に消す）より前に行う
+    （`_assert_no_stale_watershed_or_site_ids` と同じ位置づけ）。
+    """
+    work = sqlite3.connect(":memory:", uri=True)
+    try:
+        common.attach_readonly(work, v1_projection_db, "proj")
+        common.attach_readonly(work, v1_projection_occurrence_db, "occ")
+        common.assert_stage_fingerprint_fresh(
+            work, "site_var", schema="proj",
+            rebuild_hint="scripts/b05_project_v1.py を再実行すること。",
+        )
+        common.assert_stage_fingerprint_fresh(
+            work, "landuse_watershed", schema="proj",
+            rebuild_hint="scripts/b05_project_v1.py を再実行すること。",
+        )
+        common.assert_stage_fingerprint_fresh(
+            work, "org_watershed", schema="occ",
+            rebuild_hint=(
+                "scripts/b08_project_occurrence_v1.py を再実行すること"
+                "（実行順は b06 → b09 → b07 → b08）。"
+            ),
+        )
+    finally:
+        work.close()
+
+
 def build_projections(
     registry_db,
     out_path,
@@ -447,15 +483,16 @@ def build_projections(
     検証が1つでも失敗すれば `out_path` には一切触れない（前回の正しい出力が
     残る。モジュール docstring参照）。`_validate_registry`/
     `_assert_rollup_prerequisites`/`_assert_out_path_distinct_from_inputs`/
-    `_assert_no_stale_watershed_or_site_ids` はどれも出力ファイルに一切
-    触れない読み取り専用の検証で、`common.fresh_sqlite(out_path)`（既存の
-    出力を即座に消す）より前にすべて終える。
+    `_assert_no_stale_watershed_or_site_ids`/`_assert_rollup_input_fingerprints_fresh`
+    はどれも出力ファイルに一切触れない読み取り専用の検証で、
+    `common.fresh_sqlite(out_path)`（既存の出力を即座に消す）より前にすべて終える。
     """
     common.require_sqlite_version()
     _validate_registry(registry_db)
     _assert_rollup_prerequisites(v1_projection_db, v1_projection_occurrence_db)
     _assert_out_path_distinct_from_inputs(out_path, v1_projection_db, v1_projection_occurrence_db)
     _assert_no_stale_watershed_or_site_ids(registry_db, v1_projection_db, v1_projection_occurrence_db)
+    _assert_rollup_input_fingerprints_fresh(v1_projection_db, v1_projection_occurrence_db)
 
     work = common.fresh_sqlite(out_path)
     try:
@@ -473,6 +510,12 @@ def build_projections(
         work.execute(_CREATE_SITE_WATERSHED_LOOKUP_SQL)
 
         work.execute(_CREATE_WATERSHED_ROLLUP_SQL)
+
+        # 段階間の指紋（Issue #37 #1）: 全段の出力に指紋を持たせる方針どおり、
+        # このファイルの2テーブル両方に記録する（現時点でこれらを読む後続の
+        # 段は無いが、将来のために一貫して記録する）。
+        common.record_stage_fingerprint(work, "watershed_meta")
+        common.record_stage_fingerprint(work, "watershed_rollup")
 
         work.commit()
         n_meta = work.execute("SELECT COUNT(*) FROM watershed_meta").fetchone()[0]

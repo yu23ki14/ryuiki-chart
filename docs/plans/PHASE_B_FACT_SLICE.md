@@ -1,7 +1,8 @@
 # Phase B 縦に薄い1本 — `measurements`/`sensor_timeseries` → `observation` → キューブ → v1形
 
 対象: ADR-0016 の Phase B / 状態: **実データで一度緑になった（部分ゲート。33テーブル中11テーブル）**
-作成: 2026-09-08 / 更新: 2026-09-22 / 関連: ADR-0007, 0008, 0009, 0010, 0011, 0016, 0021, 0022, 0023, 0024
+作成: 2026-09-08 / 更新: 2026-09-25（Issue #37: 段階間の指紋・staged_table原子性の確認・
+b05検証関数群の分割） / 関連: ADR-0007, 0008, 0009, 0010, 0011, 0016, 0021, 0022, 0023, 0024
 
 このドキュメントは `docs/plans/PHASE_B_RECONCILIATION.md`（突合ゲートの仕組み）と対になる、
 **縦に薄い1本の設計と実測**の記録。`b03_build_observation.py` / `b04_build_cube.py` /
@@ -443,20 +444,76 @@ ADR-0011「粒度をまたぐ再集計をしない」）。月・年セルの `n
   「先に消してから作る」非原子は `observation`/`observation_agg` については解消済み）。
   `b05_project_v1.py`（`v1_projection.sqlite` を `fresh_sqlite` でファイルごと作り直す）は
   元々「メモリ上で全検証→書き出し」の設計のため対象外（変更なし）。
-  **残っている負債は2つ**: (1) 段の間で、前の段が検証を通った状態を次の段が機械的に
-  確かめる仕組みが無い（例: `b04` は `observation` テーブルが存在すれば読めてしまい、
-  それが `b03` の全検証を通った状態か、`b03` が古いバージョンで作った・別の経路で
-  壊れたものかを区別しない——各段の出力に指紋を持たせて次の段が検証する、のような
-  仕組みが要る）。(2) ファイル単位の原子性（`staged_table` の差し替え自体
-  ——`DROP TABLE`→`ALTER TABLE RENAME` は SQLite の DDL で、片方だけ確定した状態で
-  プロセスが落ちる窓が理論上残る。頻度・実害は小さいが「無い」わけではない）。
-  どちらも `v2.sqlite` を複数の段（`b03`/`b04`）で共有する設計と絡むため、このタスクの
-  スコープには含めず後に回す（語彙レジストリの一時ファイル＋`os.replace()` による原子化
-  〔PR #11〕とは別の対象——`registry.sqlite` は単一の書き手が単一ファイルを作り直すのに
-  対し、`v2.sqlite` は複数スクリプトがテーブル単位で共有する構造が違う）。
+  **以下2点は Issue #37（親 #27）で解決済み**:
+  1. **段階間の指紋**（`scripts/migrate/common.py` の `record_stage_fingerprint`/
+     `assert_stage_fingerprint_fresh`/`compute_table_fingerprint`）。O-2a の b08 が
+     既に持っていた「キューブが今の L2 の分割か」を確かめる仕組み
+     （`_assert_cube_is_current_l2_partition`。`occurrence_agg` と `occurrence` を
+     `FULL OUTER JOIN` で直接突き合わせる、集計関係がある対専用の強い検証）とは
+     別に、**集計関係が無い、あるいは別ファイルに分かれているテーブル対**を埋める
+     汎用の指紋機構を新設した（設計判断は `scripts/migrate/common.py` の
+     `record_stage_fingerprint`/`assert_stage_fingerprint_fresh` 直前のモジュール
+     コメントに書いた——ここでは要点だけ記す）。
+     - **指紋の中身**: `table`（ATTACH 済み別名越しも可）の全列・全行を物理走査順
+       のまま読み、行・列の区切りに制御文字を挟んで sha256 に畳み込んだもの
+       （`"sha256:<hex>:<行数>"`）。`scripts/reconcile/common.compute_fingerprint`
+       （b01/b02 が使う、数値許容誤差・キー順ソート込みの重い正準化ハッシュ）は
+       再利用しない——ここは常に「同じ sqlite ファイルを同じビルドロジックで
+       読み直すだけ」なので、ソートも数値の正準化も要らない（`staged_table`/
+       `fresh_sqlite` がテーブルを毎回まるごと作り直す前提により、物理走査順は
+       安定する）。
+     - **保存場所**: テーブルを持つ出力ファイルそのものの中に置く
+       `pipeline_fingerprint` メタ表（`table_name` を主キーに1行）。
+       `scripts/r01_build_registry.py` の `registry_build`（ファイル1つに1行）と
+       同じ発想だが、`v2.sqlite` は `observation`/`observation_agg`（さらに
+       `occurrence`/`occurrence_agg`/`occurrence_place`）を同じファイルに同居
+       させるため、主キーをファイル単位ではなく**テーブル単位**にした。
+     - **適用範囲**（「上流の出力を読む段」だけに絞った）: `b04`→`observation`
+       （同一ファイル）／`b05`→ ATTACH した `cube.observation_agg`／`b07`・`b09`→
+       `occurrence`（同一ファイル）／`b08`→ ATTACH した `cube.occurrence`・
+       `cube.occurrence_place`（`occurrence_agg` 自体は既存の
+       `_assert_cube_is_current_l2_partition` の方が強いので二重化しない）／
+       `b11`→ ATTACH した `proj.site_var`・`proj.landuse_watershed`・
+       `occ.org_watershed`。**b10 は `ryuiki.sqlite`/`cells.sqlite`（原本）を
+       直接読むだけで Phase B の上流出力を経由しないため対象外、`b12` は
+       `registry.sqlite` だけを読むが、そちらは既に r01 自身の
+       `registry_build.input_fingerprint`/`--check-fresh` で管理されており
+       （他の registry.sqlite 消費者〔b03/b05/b06/b08/b11〕も個別には
+       `--check-fresh` を呼ばない既存方針）、二重の機構を持ち込まない。**
+       全段の出力（b03〜b11 が書く各テーブル）には「全段の出力に指紋を持たせる」
+       方針どおり記録するが、まだ検証側を持たない出力（`watershed_meta`/
+       `watershed_rollup`/`ias_species` 等）もある——将来の消費者が現れたら
+       `assert_stage_fingerprint_fresh` を呼ぶだけで済む。
+     - 壊れた/古い上流出力で実際に止まることは、`scripts/tests/test_migrate_common.py`
+       の単体テストに加え、`test_b04_build_cube.py`
+       （`test_build_cube_halts_when_observation_changed_since_b03_recorded_it`）・
+       `test_b07_build_occurrence_cube.py`
+       （`test_build_cube_halts_when_occurrence_changed_since_b06_recorded_it`）・
+       `test_b11_project_place_v1.py`
+       （`test_build_projections_halts_when_landuse_watershed_changed_since_b05_recorded_it`、
+       クロスファイル版）で実測した。
+  2. **`staged_table` の差し替え（`DROP TABLE`→`ALTER TABLE RENAME`）の原子性**は、
+     実装を確認したところ**既に解決済みだった**（コミット `45181b2`
+     「staged_table: 差し替え（DROP+RENAME）を明示トランザクションで原子化」——この
+     文書のこの節が古いままだった）。`scripts/migrate/common.py` の `staged_table`
+     は差し替えの2文を明示の `BEGIN`〜`COMMIT` で1トランザクションに包んでおり
+     （`conn.commit()` の直後は開いているトランザクションが無いため、裸の DDL のまま
+     では `DROP` が確定した直後にプロセスが死ぬと本番テーブルが消えたまま戻らない
+     ——明示トランザクションに包めば未コミットのまま自動的に巻き戻る）、途中で
+     例外が起きても本番テーブルを元に戻し作業用テーブルも残さない。**判断: 直す
+     （既に直っている）**。`scripts/tests/test_migrate_common.py` の
+     `test_staged_table_failure_between_drop_and_rename_preserves_previous_table`
+     （`ALTER TABLE` の直前で例外を起こすプロキシで再現）が既にこれを確認している。
   **もう1つ、既知の判断として**: `scripts/b05_project_v1.py` は v1 互換の射影の置き場
-  として線形に増え続けている（現在11テーブル）。次に T6 級（出典固有の Python 検証関数）
-  を足す時点で、検証関数群を別モジュールに分けること。
+  として線形に増え続けている（現在13テーブル）。次に T6 級（出典固有の Python 検証関数）
+  を足す時点で、検証関数群を別モジュールに分けること——**これも Issue #37（#3）で実施
+  済み**。`assert_alias_is_function`/`assert_alias_tuple_maps_to_single_dataset`/
+  `assert_unit_raw_is_function`/`assert_v1_keys_are_unique`/`verify_hourly_daily_rollup`・
+  D11のゾーン固有の4検証関数を `scripts/migrate/v1_projection_checks.py` に移した
+  （振る舞いは変えない純粋な移動——`scripts/b05_project_v1.py` は同名のモジュール変数
+  として再エクスポートするため、内部の呼び出し・既存テスト〔`b05.assert_alias_is_function(...)`
+  等〕は1つも変えていない。実測: 移動前後で `test_b05_project_v1.py` の37件がそのまま
+  変わらず成功）。
 
 ## 8. 次の一手（オーナーの方針）
 
