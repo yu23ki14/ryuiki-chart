@@ -722,7 +722,8 @@ def _load_v1_keys(baseline_json_path) -> dict[str, list[str]]:
 
 
 def build_projections(
-    cube_db, registry_db, baseline_json=DEFAULT_BASELINE_JSON
+    cube_db, registry_db, baseline_json=DEFAULT_BASELINE_JSON, *,
+    verified_fingerprints_out: dict[str, str] | None = None,
 ) -> dict[str, list[tuple]]:
     """13テーブルぶんの `(columns, rows)` を返す（ファイルには書かない）。
 
@@ -731,6 +732,19 @@ def build_projections(
     `sensor_hour_month`（L2 の直接集計）が `AVG()`/`SUM()` を使うため、
     先頭で `common.require_sqlite_version()` を呼ぶ
     （`scripts/migrate/common.py`。b04・b10 と共有するガード）。
+
+    `verified_fingerprints_out`（省略可、`main()` が渡す）: 渡すと、この関数が
+    下の (a) チェックで実際に検証した `observation`/`observation_agg` の
+    **その時点の**指紋を書き込む。呼び出し側はこれを `write_projections()`
+    にそのまま渡す（/code-review 指摘の根本対応: 以前は `write_projections`
+    が `cube_db` を**改めて開いて**指紋を読み直していたため、この関数の
+    検証と `write_projections` の書き込みの間に b04 が `cube_db` を作り直して
+    コミットすると、「検証した時点の値」ではなく「今読み直した新しい値」が
+    系譜として記録され、実際にはその指紋が指す内容とは違う〔古い〕データから
+    作った射影に、新しい指紋を系譜として紐付けてしまう——b11 の (b) 検査を
+    すり抜ける。検証した値をそのまま運ぶことでこの穴を塞ぐ）。この関数の
+    戻り値（`projections` dict）は既存の呼び出し・テスト〔27箇所〕と
+    互換のまま変えない——追加情報はこのキーワード専用引数でだけ渡す。
     """
     common.require_sqlite_version()
     work = sqlite3.connect(":memory:", uri=True)
@@ -747,8 +761,9 @@ def build_projections(
             # の指紋〕と、observation 自身が今記録している自己指紋を突き合わせる
             # (b) を有効にする——observation は observation_agg と同じ v2.sqlite
             # 〔ここでは "cube" 別名〕にあるので、上流の生データを読み直さず安く
-            # 確認できる）。
-            common.assert_stage_fingerprint_fresh(
+            # 確認できる）。戻り値（検証した時点の自己指紋）を捕まえておく
+            # ——`write_projections` がこれとは別に読み直さないようにするため。
+            agg_fingerprint = common.assert_stage_fingerprint_fresh(
                 work, "observation_agg", schema="cube",
                 rebuild_hint="scripts/b04_build_cube.py を再実行すること。",
                 upstream_schemas={"observation": "cube"},
@@ -766,10 +781,13 @@ def build_projections(
             # `observation` が直接改変される可能性が残るため、b05 が実際に
             # 読む対象には独立した (a) を掛ける）。`observation` は基底テーブル
             # （系譜を持たない）なので `upstream_schemas` は渡さない。
-            common.assert_stage_fingerprint_fresh(
+            obs_fingerprint = common.assert_stage_fingerprint_fresh(
                 work, "observation", schema="cube",
                 rebuild_hint="scripts/b03_build_observation.py を再実行すること。",
             )
+            if verified_fingerprints_out is not None:
+                verified_fingerprints_out["observation_agg"] = agg_fingerprint
+                verified_fingerprints_out["observation"] = obs_fingerprint
             v1_projection_checks.assert_alias_is_function(work, "measurements")
             # b05 が実際に消費する grain（B-6: `_SENSOR_ALIAS_GRAINS`。
             # day_keyed の input_grain 範囲と label25_obs_keyed の value_grain
@@ -893,32 +911,37 @@ _TABLES_WITHOUT_OBSERVATION_DEPENDENCY = frozenset({"landuse_watershed", "landus
 
 
 def write_projections(
-    projections: dict[str, tuple[list[str], list[tuple]]], out_path, cube_db=None,
+    projections: dict[str, tuple[list[str], list[tuple]]], out_path, *,
+    verified_fingerprints: dict[str, str] | None = None,
 ) -> None:
     """13テーブルを書き、それぞれの指紋を記録する（Issue #37 #1）。
 
-    `cube_db`（`build_projections()` が既に新鮮さを確認済みの、`observation`/
-    `observation_agg` を持つ v2.sqlite）を渡すと、両テーブルの**自己指紋**
-    （生データは読み直さない安い参照。`common.read_recorded_fingerprint`）を
-    読み、13テーブルの系譜に記録する——b11 が `site_var`/`landuse_watershed`
-    を読む前に「今の observation_agg（さらにその系譜を辿って observation）
-    から作られたものか」を確かめられるようにするため（コードレビュー指摘:
-    系譜が無いと、b04 は再実行されたのに b05 が再実行されていない壊れ方を
-    b11 が検出できない）。`observation` は `landuse_watershed`/
-    `landuse_change` 以外の11テーブルの系譜にだけ加える
-    （`_TABLES_WITHOUT_OBSERVATION_DEPENDENCY` 参照——この2つは
-    `observation_agg` だけから作るため）。`cube_db` を省略した場合は系譜を
+    `verified_fingerprints`（`build_projections()` の
+    `verified_fingerprints_out` で得た、`observation`/`observation_agg` の
+    **検証した時点の**自己指紋）を渡すと、13テーブルの系譜に記録する——
+    b11 が `site_var`/`landuse_watershed` を読む前に「今の observation_agg
+    （さらにその系譜を辿って observation）から作られたものか」を確かめられる
+    ようにするため（コードレビュー指摘: 系譜が無いと、b04 は再実行された
+    のに b05 が再実行されていない壊れ方を b11 が検出できない）。
+    `observation` は `landuse_watershed`/`landuse_change` 以外の11テーブルの
+    系譜にだけ加える（`_TABLES_WITHOUT_OBSERVATION_DEPENDENCY` 参照——
+    この2つは `observation_agg` だけから作るため）。省略した場合は系譜を
     記録しない（`build_projections()` を経由しない単体呼び出し用——`main()`
     は常に渡す）。
+
+    **`cube_db` を受け取って改めて開き、指紋を読み直すことはしない**
+    （/code-review 指摘の根本対応。以前はここで `cube_db` を再度 ATTACH して
+    `read_recorded_fingerprint` していたため、`build_projections()` の (a)
+    検証と、ここでの読み直しの間に b04 が `cube_db` を作り直してコミットする
+    と、「検証した時点の値」ではなく「今読み直した新しい値」を系譜に記録
+    してしまい、実際には古い内容から作った射影に新しい指紋を紐付ける
+    ——b11 の (b) 検査をすり抜ける穴になっていた。呼び出し側
+    〔`build_projections()`〕が検証した値をそのまま渡すことでこの穴を塞ぐ）。
     """
-    agg_fingerprint = None
-    obs_fingerprint = None
+    agg_fingerprint = (verified_fingerprints or {}).get("observation_agg")
+    obs_fingerprint = (verified_fingerprints or {}).get("observation")
     conn = common.fresh_sqlite(out_path)
     try:
-        if cube_db is not None:
-            common.attach_readonly(conn, cube_db, "cube")
-            agg_fingerprint = common.read_recorded_fingerprint(conn, "observation_agg", schema="cube")
-            obs_fingerprint = common.read_recorded_fingerprint(conn, "observation", schema="cube")
         for table, (columns, rows) in projections.items():
             conn.execute(_CREATE_SQL[table])
             placeholders = ", ".join("?" for _ in columns)
@@ -959,12 +982,18 @@ def main() -> None:
     print(f"▶ 読み取り専用で開く: {args.cube_db}")
     print(f"▶ 読み取り専用で開く: {registry_db}")
 
+    # 検証した時点の指紋をここで受け取り、write_projections にそのまま渡す
+    # （/code-review 指摘の根本対応: cube_db を改めて開いて読み直さない）。
+    verified_fingerprints: dict[str, str] = {}
     with common.timed_step("v1 形へ射影") as info:
-        projections = build_projections(args.cube_db, registry_db, args.baseline_json)
+        projections = build_projections(
+            args.cube_db, registry_db, args.baseline_json,
+            verified_fingerprints_out=verified_fingerprints,
+        )
         info["n"] = sum(len(rows) for _, rows in projections.values())
 
     with common.timed_step(f"{args.out} に書き出し") as info:
-        write_projections(projections, args.out, args.cube_db)
+        write_projections(projections, args.out, verified_fingerprints=verified_fingerprints)
         info["n"] = sum(len(rows) for _, rows in projections.values())
 
     for table, (_, rows) in sorted(projections.items()):

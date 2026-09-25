@@ -999,8 +999,19 @@ def track_reads(conn: sqlite3.Connection):
     経由して間接的に読んだ実表も、依存グラフを個別に手で追わずに拾える
     （この機構の要）。
 
-    `with` を抜けると authorizer は `None`（既定）に戻す。ネストして
-    呼ばない前提（authorizer は接続に1つしか設定できない）。
+    `with` を抜けると authorizer を解除する。ネストして呼ばない前提
+    （authorizer は接続に1つしか設定できない）。
+
+    **Python 3.10 以下では `set_authorizer(None)` で解除できない**
+    （/code-review 指摘。`None` を渡して解除する対応は Python 3.11 で
+    追加された——それより前は `None` がそのままコールバックとして
+    登録され、以後そのコネクションで実行する文が全て
+    `sqlite3.DatabaseError: not authorized` になる。実測: システムの
+    Python 3.10.12〔SQLite 3.37.2〕で再現・確認した。3.10 以下では
+    代わりに「常に許可する」コールバックに差し替える——「原本の無い
+    環境」の受け入れ基準（pass/skip だけになる）に、SQLite 3.10 系の
+    venv も含まれるため、ここで壊すと以降の全クエリが失敗し `pytest`
+    が大量に落ちる）。
     """
     reads: set[tuple[str, str]] = set()
 
@@ -1013,7 +1024,10 @@ def track_reads(conn: sqlite3.Connection):
     try:
         yield reads
     finally:
-        conn.set_authorizer(None)
+        if sys.version_info >= (3, 11):
+            conn.set_authorizer(None)
+        else:
+            conn.set_authorizer(lambda *_args: sqlite3.SQLITE_OK)
 
 
 _SQLITE_CATALOG_TABLES = frozenset({"sqlite_master", "sqlite_temp_master", "sqlite_schema"})

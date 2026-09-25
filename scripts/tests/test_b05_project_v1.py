@@ -1240,3 +1240,55 @@ def test_build_projections_halts_when_observation_tampered_without_updating_its_
 
     with pytest.raises(common.MigrationError, match=r"scripts/b03_build_observation\.py を再実行すること"):
         b05.build_projections(v2_db, registry_db)
+
+
+def test_write_projections_records_the_fingerprint_verified_at_build_time_not_a_reread(tmp_path):
+    """**/code-review 指摘の再現**: `build_projections()` が (a) を検証した
+    **後**、`write_projections()` が書き込む**前**に、`observation_agg` が
+    別内容で作り直されてコミットされた場合、系譜に記録される指紋は
+    「検証した時点の値」でなければならない——ここで新しく読み直した値では
+    ない（読み直すと、実際には古い〔検証済みの〕データから作った射影に、
+    新しい指紋を系譜として紐付けてしまい、実体と系譜が食い違う。b11 の
+    (b) 検査をすり抜ける穴になる）。
+
+    `verified_fingerprints_out`/`verified_fingerprints` で値を運ぶ経路
+    （`cube_db` を`write_projections`が改めて開いて読み直さない設計）が
+    このレースを塞いでいることを確認する。
+    """
+    measurements_db = tmp_path / "ryuiki.sqlite"
+    registry_db = tmp_path / "registry.sqlite"
+    make_measurements_db(
+        measurements_db,
+        rows=[("m1", "S1", "2020-01-01", "BOD", "src_a", 1.0, "1.0", "mg/L", "公開済", 0, "ref1", "ev1")],
+    )
+    make_registry_db(registry_db)
+
+    v2_db, _ = _run_b03_b04(measurements_db, registry_db, tmp_path)
+
+    verified: dict[str, str] = {}
+    projections = b05.build_projections(v2_db, registry_db, verified_fingerprints_out=verified)
+    verified_agg_fingerprint = verified["observation_agg"]
+    assert verified_agg_fingerprint
+
+    # build_projections() の検証が終わった**後**に、b04 が observation_agg を
+    # 別内容で作り直して新しい自己指紋をコミットした状況を再現する
+    # （write_projections() を呼ぶ**前**——検証と書き込みの間のレース窓）。
+    conn = sqlite3.connect(str(v2_db))
+    conn.execute("UPDATE observation_agg SET n = n + 1 WHERE rowid = 1")
+    new_agg_fingerprint = common.record_stage_fingerprint(
+        conn, "observation_agg", inputs=common.read_recorded_inputs(conn, "observation_agg"),
+    )
+    conn.commit()
+    conn.close()
+    assert new_agg_fingerprint != verified_agg_fingerprint
+
+    out_path = tmp_path / "v1_projection.sqlite"
+    b05.write_projections(projections, out_path, verified_fingerprints=verified)
+
+    out_conn = sqlite3.connect(str(out_path))
+    recorded_inputs = common.read_recorded_inputs(out_conn, "site_var")
+    out_conn.close()
+    # 検証した時点の指紋（verified_agg_fingerprint）が系譜に残る——
+    # レース中に生まれた新しい指紋（new_agg_fingerprint）ではない。
+    assert recorded_inputs["observation_agg"] == verified_agg_fingerprint
+    assert recorded_inputs["observation_agg"] != new_agg_fingerprint
