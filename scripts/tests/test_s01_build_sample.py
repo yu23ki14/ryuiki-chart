@@ -108,6 +108,9 @@ def test_apply_quality_transitions_closure_pulls_in_referenced_measurements():
     assert closed == {1, 3}
 
 
+_EMPTY_GEOJSON = '{"type": "FeatureCollection", "features": []}'
+
+
 def test_build_declaration_counts_atsugi_predicate(tmp_path):
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
@@ -122,7 +125,9 @@ def test_build_declaration_counts_atsugi_predicate(tmp_path):
         "CREATE TABLE sensor_timeseries (source_id TEXT);"
     )
     selected = {"measurements": {1, 2, 3}, "organism_records": set(), "sensor_timeseries": set()}
-    counts = s01.build_declaration_counts(conn, selected)
+    geojson_path = tmp_path / "watersheds.geojson"
+    geojson_path.write_text(_EMPTY_GEOJSON, encoding="utf-8")
+    counts = s01.build_declaration_counts(conn, selected, geojson_path)
     assert counts["period_exceptions.yaml:atsugi_river_water_quality"] == 1
 
 
@@ -166,6 +171,10 @@ def test_end_to_end_determinism_on_fixture_db(tmp_path):
 
     coverage_yaml = tmp_path / "coverage.yaml"
     _write_fixture_coverage_yaml(coverage_yaml)
+
+    # --processed-dir は tmp_path なので、そこに W12 相当のフィクスチャを置く
+    # （0件の organism_records でも build_declaration_counts が読みに行くため）。
+    (tmp_path / "nlni_w12_watersheds.geojson").write_text(_EMPTY_GEOJSON, encoding="utf-8")
 
     baseline_json = tmp_path / "derived_baseline.json"
     baseline_json.write_text('{"tables": {}}', encoding="utf-8")

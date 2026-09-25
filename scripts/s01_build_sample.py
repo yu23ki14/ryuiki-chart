@@ -389,7 +389,9 @@ def _create_rowid_temp_table(conn: sqlite3.Connection, name: str, rowids: set[in
     conn.executemany(f"INSERT INTO temp.{name} (rowid_value) VALUES (?)", [(r,) for r in rowids])
 
 
-def build_declaration_counts(conn: sqlite3.Connection, ryuiki_selected: dict[str, set[int]]) -> dict[str, int]:
+def build_declaration_counts(
+    conn: sqlite3.Connection, ryuiki_selected: dict[str, set[int]], geojson_path=DEFAULT_GEOJSON,
+) -> dict[str, int]:
     """`data/sample/declaration_counts.yaml` の中身（フラットな
     `"<宣言ファイル名>:<エントリ名>[.<内訳キー>]"` -> 整数）を実測する。
     """
@@ -469,7 +471,7 @@ def build_declaration_counts(conn: sqlite3.Connection, ryuiki_selected: dict[str
     out["occurrence_cube_declarations.yaml:leaf_cell_source_rows"] = compute_leaf_cell_source_rows(org_rows)
 
     # occurrence_place_declarations.yaml / occurrence_watershed_v1_declarations.yaml
-    stats = compute_occurrence_place_and_watershed_stats(org_rows, DEFAULT_GEOJSON)
+    stats = compute_occurrence_place_and_watershed_stats(org_rows, geojson_path)
     out["occurrence_place_declarations.yaml:n_watershed_polygons"] = 377
     out["occurrence_place_declarations.yaml:place_id_null_count"] = stats["place_id_null_count"]
     out["occurrence_place_declarations.yaml:resolved_count"] = stats["resolved_count"]
@@ -592,7 +594,8 @@ def main() -> int:
         processed_hashes[name] = _sha256_file(src)
 
     # --- declaration_counts.yaml ---
-    counts = build_declaration_counts(ryuiki_conn, selected)
+    geojson_path = pathlib.Path(args.processed_dir) / "nlni_w12_watersheds.geojson"
+    counts = build_declaration_counts(ryuiki_conn, selected, geojson_path)
     (out_dir / "declaration_counts.yaml").write_text(_dump_declaration_counts_yaml(counts), encoding="utf-8")
 
     # --- derived_keys.yaml ---
