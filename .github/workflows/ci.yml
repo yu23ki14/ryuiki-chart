@@ -463,4 +463,3 @@ jobs:
         # 実際に、原本キーの付け方が manifest.json と証明で食い違ったまま
         # KeyError で落ちる不具合が、埋め込みコードのまま気づかれずに残っていた）。
         run: python3 scripts/s04_check_full_gate_proof.py
-          PY
