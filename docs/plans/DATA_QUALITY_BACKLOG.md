@@ -12,9 +12,9 @@
 
 1項目1節。各節に現状の実測・根拠（ファイル:行、SQL と結果）・判断・着手条件を書く。
 
-すべての実測は `ryuiki.sqlite`/`cells.sqlite` を `file:...?mode=ro` の読み取り専用で開いて行った
-（本ドキュメント末尾「原本の非改変の確認」参照）。worktree には
-`data/db/{ryuiki,cells,derived}.sqlite` を原本へのシンボリックリンクとして用意した。
+すべての実測は `ryuiki.sqlite`/`cells.sqlite` を `file:...?mode=ro` の読み取り専用で開いて行った。
+調査は全体を通じて原本を読み取り専用でのみ開き、作業前後で sha256・mtime が一致した
+（変更なし。ハッシュ値そのものは本PRの本文に記載する）。
 
 ---
 
@@ -54,14 +54,9 @@ n=1 の36グループは**全件 `measured_on='2024'`**で、**全件 `source_re
 報告書（過去分の再掲）から重複して収集されている」という仮説を実証できた**。値が食い違う
 ペア・3件以上のグループ・r5/r6以外の組み合わせは1件も無く、例外は無い。
 
-収集スクリプト `scripts/c84_jiban_chinka.py` 自身がこの重複を予期して設計されている
-（8-26行のdocstring）:
-
-> r5table.xlsx と r6table.xlsx は両方とも「主データ」として指示されているため両方処理する。
-> （中略）表4/表9/表11-xの経年系列は r6 が r5 の完全上位互換（略）。それでも両ファイルを
-> 重複除去せずにそのまま出力する（重複判定・優先順位付けはローダー側の仕事、という
-> このプロジェクトの一貫した方針に従う）。source_ref でどちらのファイル由来かは常に
-> 判別できる。
+収集スクリプト `scripts/c84_jiban_chinka.py:20-26` 自身がこの重複を予期して設計されている
+——r5/r6を両方処理し、重複除去は「ローダー側の仕事」という方針で意図的にしないと明記
+している（要旨。原文は同ファイル参照）。
 
 続く「L2化」の `scripts/m05_tier1.py:295-336`（`load_measurements_csv`、厚木市・横浜市など
 複数ソースが共有する汎用ローダー）も重複排除をしない。`measurement_id` は
@@ -70,8 +65,17 @@ r6由来行は別々の `measurement_id` を持ち、`INSERT OR REPLACE` で衝�
 
 ### 判断
 
-**3つの候補（収集 c8*／L2化 m0x／b03 の宣言的除外）を比較し、b03（Phase B のファクト
-スライス構築）での宣言的除外を推奨する。**
+**根本は「同じ出典に複数の版（報告年度）が同居する」問題そのものであり、これは
+ADR-0005（`source`/`source_edition`＋`superseded_by`、Phase C）が扱う領域。本筋は
+Phase C で解く。** 同型の実例は他に2つある: 土地利用 L03-b（2006年版/2016年版、
+`docs/plans/PHASE_B_LANDUSE.md`。ADR-0005 の2026-09-24追記が最初の実例として記録済み）と、
+GBIF の再取得（本書§2。ADR-0005 自身の「背景」節が `gbif_kanagawa`→`gbif_kanagawa_occurrences`
+の例で既に挙げている）。地盤沈下の r5/r6 重複は3件目の実例であり、Phase C で
+`source_edition.superseded_by` により「新しい版が古い版を置き換える」ことを構造的に
+表現すれば、この種の問題全てが同じ仕組みで解ける（ADR-0005 本体に追記済み。後述）。
+
+以下は候補の比較（収集 c8*／L2化 m0x／b03 の宣言的除外／Phase C）と、Phase C 以前に
+手を付ける場合の実装形の検討:
 
 - **収集（`c84_jiban_chinka.py`）で除外しない。** 重複排除をしないことは、このスクリプト
   自身が明言している設計判断（「重複判定・優先順位付けはローダー側の仕事」）。この方針を
@@ -84,33 +88,26 @@ r6由来行は別々の `measurement_id` を持ち、`INSERT OR REPLACE` で衝�
   重複判定ロジックを汎用ローダーに埋め込むと、単一責任が崩れるうえ、他ソースへの
   意図しない副作用のリスクを持つ。また、ここで除外すると上記と同じく `measurements`
   自体が変わり、v1 の再現に影響する。
-- **推奨: b03（`scripts/b03_build_observation.py`）で宣言的に除外する。** この
-  プロジェクトには既に同種の宣言的除外の前例が2つある: `scripts/migrate/period_exceptions.yaml`
-  （`source_id` ごとに理由と `expected_row_count` を書き、b03 が実測件数と食い違えば例外を
-  投げて止まる）と `registry/taxon/assessment_scope_exclusions.yaml`（除外する種と理由を
-  宣言し、`b08` が読む）。
-
-  **除外キーの訂正**: `(well_id, variable_ja, fiscal_year)` は
+- **Phase C より前に暫定でやる場合の除外の形**: `(site_id, variable, measured_on)` を
+  1,625件並べるのではなく、`scripts/migrate/period_exceptions.yaml`（仕組みは
+  `docs/adr/0021-observation-grain-and-cube-key.md` 参照。`source_id` ごとに1ルール＋
+  `expected_row_count` を実測件数と突き合わせる）や
+  `registry/taxon/assessment_scope_exclusions.yaml`（仕組みは
+  `docs/plans/PHASE_B_TAXON_ASSESSMENT.md:76-83` 参照）と同型の
+  **`source_id` 単位の1ルール**にする: 「`kanagawa_jiban_chinka` は自然キー
+  `(site_id, variable, measured_on)` が衝突したら `source_ref` のファイル名が新しい方
+  （`r6table.xlsx`）を残す」＋件数検証（現在1,625件、食い違えば `MigrationError` で
+  止める）。`(well_id, variable_ja, fiscal_year)` は
   `data/processed/kanagawa_jiban_chinka.csv`（`c84_jiban_chinka.py:375` の `fields`）の
-  列名であり、b03 が読む `ryuiki.sqlite` の `measurements` にはこの列は無い
-  （`m05_tier1.py` の `load_measurements_csv` を経た後は `site_id`/`variable`/
-  `measured_on` になる。`well_id` は `site_id` の一部に埋め込まれるだけで独立した列では
-  ない）。実際に突き合わせたキーは `measurements` に実在する
-  **`(site_id, variable, measured_on)`** である。宣言するルールは「このキーで
-  `source_ref` に `r5table.xlsx` を含む行と `r6table.xlsx` を含む行が両方存在する場合、
-  `r6table.xlsx` を含む方を残し `r5table.xlsx` を含む方を除外する」。除外件数
-  （現在1,625件）を宣言ファイルに明記し、実測と食い違えば `MigrationError` で止める
-  （原本が更新されて重複パターンが変わったときに黙って通さない）。
-  - `ryuiki.sqlite`/`measurements` 自体は触らない（読み取り専用の原則を守り、v1 の
-    再現には影響しない）ので、影響は `observation`/`observation_agg`/
-    `v1_projection.sqlite` の地盤沈下系列だけに限定できる。
+  列名で、b03 が読む `measurements` には存在しない（`m05_tier1.py` を経た後は
+  `site_id`/`variable`/`measured_on`）。
 
-- **影響の種類の訂正**: 1,625組は全て `value`/`value_raw` が完全一致するペアなので、
-  r5側の1行を除外しても r6側の1行は残る。**`meas_year` 等の行そのものは消えない**
-  （`row_only_in_baseline` ではない）。動くのは「重複していた分の件数（n）」だけで、
-  `avg`/`min`/`max` は変わらない。`web/scripts/build-derived.mjs` と
-  `scripts/b05_project_v1.py` の実際の式を読み、v1派生33表のうちどれが・どの列が・
-  何行動くかを実測した:
+- **この暫定策には規模の問題がある。** 1,625組は全て `value`/`value_raw` が完全一致する
+  ペアなので、r5側の1行を除外しても r6側の1行は残り、**`meas_year` 等の行そのものは
+  消えない**（`row_only_in_baseline` ではない）。動くのは「重複していた分の件数（n）」
+  だけで、`avg`/`min`/`max` は変わらない。`web/scripts/build-derived.mjs` と
+  `scripts/b05_project_v1.py` の実際の式を読み、v1派生33表への影響を実測した
+  （判断材料として残す）:
 
   | v1テーブル | 影響列 | 影響行数 | 根拠 |
   |---|---|---:|---|
@@ -122,48 +119,44 @@ r6由来行は別々の `measurement_id` を持ち、`INSERT OR REPLACE` で衝�
   | `sensor_daily`/`rain_daily`/`sensor_hour_month`/`landuse_watershed`/`landuse_change` | 影響なし | 0 | `measurements` ではなく `sensor_timeseries`／土地利用CSV由来で無関係 |
 
   `b05_project_v1.py` の `_SITE_VAR_SQL`/`_VAR_CATALOG_SQL`（310-328行）は
-  `build-derived.mjs` の `var_catalog`/`site_var` と SQL が実質一致するため、
-  v1（`derived.sqlite`）と v2射影（`v1_projection.sqlite`）のどちらでも同じ影響になる。
+  `build-derived.mjs` の `var_catalog`/`site_var` と SQL が実質一致するため、v1
+  （`derived.sqlite`）と v2射影（`v1_projection.sqlite`）のどちらでも同じ影響になる。
 
-  したがって、この修正を実装した場合に `scripts/reconcile/expected_diffs.yaml` へ書く
-  宣言は `row_only_in_baseline` ではなく**`value_diff`**（`columns` が必須。
-  `docs/plans/PHASE_B_RECONCILIATION.md` §7 参照）にする。既存の書き方
-  （`expected_diffs.yaml` の `meas_year`/`site_var`/`var_catalog` セクションの形式）に
-  合わせると、例えば `meas_year` は次の形になる（実装時に生成する1例。実際の
-  `reason` に前後の数値は書かない、という同ファイルの規約に従う）:
+  b03 だけを直した場合、v1（`derived.sqlite`）は重複を含んだまま・v2は含まないまま
+  になるため、`scripts/reconcile/expected_diffs.yaml` に `value_diff`（`row_only_in_baseline`
+  ではない。`columns: [n]` 等）を `meas_year` 1,625キー・`site_var` 82キー・
+  `var_catalog` 8キー、**計1,715キー**宣言する必要が生じる。だが
+  `docs/plans/PHASE_B_RECONCILIATION.md`「危うさ」節は、既存の宣言済み差分が
+  現状「6テーブルで18キー（1つの原因）」の規模であることを踏まえ、「この件数が増え続ける
+  ようなら、免除ではなく v1/v2 双方の是正を優先すべき兆候として扱う」と明記している。
+  1,715キーは18キーの約95倍であり、この基準に照らして**宣言では対応しない**。
 
-  ```yaml
-  meas_year:
-    - key: ["kanagawa_jiban_chinka__1", "地下水位(年平均)", 1980, "annual"]
-      kind: value_diff
-      columns: [n]
-      reason: >
-        r5table.xlsx由来行とr6table.xlsx由来行の重複除外（新しい方=r6table.xlsxを
-        残す）により、重複していた年のCOUNT(*)が2から1になる。avg/min/maxは
-        重複ペアの値が完全一致するため変わらない。
-      found_on: <実装時の日付>
-      record: docs/plans/DATA_QUALITY_BACKLOG.md §1
-  ```
-
-  `key` の列順は `reports/derived_baseline.json` の `key` に合わせる（実測で確認）:
-  `meas_year`=`[site_id, variable, year, kind]`、`site_var`=`[site_id, variable, kind]`、
-  `var_catalog`=`[variable]`。
-
-  **規模の注記**: `docs/plans/PHASE_B_RECONCILIATION.md` §7 は「書けるのはキーを
-  1件ずつ列挙したものだけ。ワイルドカード・テーブル単位の免除は書けない」と明記して
-  いる。この修正を実装すると `meas_year` 1,625キー・`site_var` 82キー・`var_catalog`
-  8キー、計1,715キーの `value_diff` 宣言が必要になる。手で書き下ろす規模ではないため、
-  実装時は除外リスト（上記 `(site_id, variable, measured_on)` の宣言ファイル）から
-  `expected_diffs.yaml` の該当ブロックを機械的に生成するスクリプトを合わせて用意する
-  ことを推奨する（これも実装であり、このIssueでは行わない）。
-
-  これは #27 が言う「そのうえで: 意図的な変更（値が動くもの。ゲートで差分を確認
-  しながら）」に対応する。
+  **推奨: b03 だけでなく `build-derived.mjs` にも同じ `source_id` 単位のルールを入れ、
+  `derived.sqlite` を作り直してゲートの差分をゼロに保つ。** 比較した代替案:
+  - **（推奨）v1（`build-derived.mjs`）にも同じルールを入れる**: 現在の本番は
+    `derived.sqlite`（v1パイプライン）をそのまま D1 に流している（#28 未着手のため）。
+    v2側だけ直しても本番の重複カウントは直らない。両方に同じルールを入れれば
+    本番のバグも直り、ゲートは宣言なしでゼロ差分のまま保てる。コストは v1側
+    （まもなく廃止予定のコード）に手を入れることだが、`meas_year`/`site_var`/
+    `var_catalog` の該当 `FROM r.measurements` に同じ重複排除の CTE を足すだけの
+    小さな変更で足りる。
+  - **（見送り）v1 の廃止（#41）後に入れる**: v1 に触れずに済むが、#41 は #28（本番の
+    v2 接続）に依存しており、本番の重複カウントが直るまでの期間が長い（#29→#28→#41
+    の順）。**Phase C（本筋）が先に来る可能性もあり、その場合はこの暫定策自体が
+    不要になる**ため、v1 側を直す投資すら不要になりうる。
+  - 選定理由: 本番影響（重複カウントされたままの `n`/`地下水位` 等の件数表示）を
+    早く止めたいなら前者、Phase C を待てるなら後者もしくは何もしない、という
+    トレードオフ。今回は**「本筋は Phase C」を最優先の推奨とし、それより前に何かを
+    急ぐ理由（本番影響の大きさ）が無ければ、暫定策そのものを実施しない**ことを
+    合わせて推奨する（`kanagawa_jiban_chinka` は地点あたりの件数表示に影響するのみで、
+    集計値・平均値は変わらないため、緊急性は低いと判断）。
 
 ### 着手条件
 
-#29（33表突合ゲートの継続実行）が入った後、ゲートで差分件数（1,625件から動く重複ペアの
-影響行数）を確認しながら着手する。**このIssueでは実装しない。**
+**Phase C（ADR-0005 の `source_edition`＋`superseded_by` の実装）。** それより前に
+暫定策（v1/v2 双方への `source_id` 単位ルールの追加）を急ぐ必要が生じた場合のみ、
+#29（33表突合ゲートの継続実行）が入った後、ゲート差分がゼロのままであることを
+確認しながら実施する。**このIssueでは実装しない。**
 
 ---
 
@@ -219,6 +212,18 @@ GBIF API で日付なし記録を別条件で取れるかの調査（WebSearch�
 `scripts/c02_gbif.py:26-27`・`scripts/c02_gbif_repair.py` のdocstringが明記するとおり
 このプロジェクトはこれまで意図的に使っていない。
 
+**再取得が旧登録を上書きする実例（ADR-0005 の問題そのもの）**: `scripts/common.py:72-76`
+の `register()` は `source_registry`（`source_id` が主キー、
+`web/drizzle/migrations/0000_init.sql:565-578` で確認）へ `INSERT OR REPLACE` するだけで、
+版の概念が無い。実際に `c02_gbif.py`（初回取得）と `c02_gbif_repair.py`（429対策の再取得）
+は両方とも `source_id="gbif_kanagawa_occurrences"` で `register()` を呼んでおり
+（`c02_gbif.py:391`・`c02_gbif_repair.py:404`）、`ryuiki.sqlite` を実測すると
+`source_registry` にはこの `source_id` の行が1件（`fetched_at='2026-08-29T18:46:34'`、
+`access_method` に「429対策で再取得済み」の文言、`record_count=658360`）しか無く、
+初回取得時の `access_method`/`record_count`/`fetched_at` は**復元不能な形で消えている**。
+ADR-0005 が挙げる「同一出典の再取得が旧行を上書きするか、別IDの行として増えるかが
+一貫しない」「数値の再現ができない」という問題の実例そのもの。
+
 ### 判断
 
 **現時点では再収集しない。** 理由:
@@ -270,7 +275,7 @@ GBIF API で日付なし記録を別条件で取れるかの調査（WebSearch�
 **一次資料で座標を確認できなかった。空のままにする。** 探した場所: そらまめ君公式サイト
 （トップ・apiManual）、そらまめ君の第三者パーサー（GitHub c9s/soramame）、相模原市
 「大気の状況」ページ、相模原市年次報告書「さがみはらの環境」令和5年度版PDF、神奈川県
-大気汚染常時監視ページ。検索日: 2026-09-25。設計（`sites` に緯度経度が判明すれば
+大気汚染常時監視ページ。設計（`sites` に緯度経度が判明すれば
 追加登録できる構造、`m99_validate.py:175`）は変更不要。
 
 ### 着手条件
@@ -354,11 +359,10 @@ APIの列レイアウト説明書には到達できなかった。**新しい一
 同委員会の議事録）を確認したが、この資料5への直接リンクは確認できず、`env.go.jp`
 ドメイン上の原本URLへは到達できていない（長野県のミラーコピーのみ確認）。
 
-**留保**: これは §2.3（水生生物保全項目）と同じ構造の留保が付く。上記は「環境基準の
-評価方法」の確定であり、`env_kousui_annual_kanagawa`（`zip_create` API）の実CSV列が
-この計算結果と同一のものを格納していると直接記載した資料ではない。「高確度の一致」
-候補として記録するに留め、**今回はレジストリへの反映（stat='min' の記入）はしない**
-（このタスクは調査と記録が主で値を動かさない、という方針のため）。
+**留保**: `docs/plans/PHASE_B_ALIAS_STAT_SOURCES.md` §2.3（水生生物保全項目）と同じ理由
+（環境基準の「評価方法」の確定であって、`zip_create` API の実CSV列が同一のものを
+格納していると直接記載した資料ではない）。「高確度の一致」候補として記録するに留め、
+レジストリへの反映（`stat='min'` の記入）は今回は行わない。
 
 ### 判断
 
@@ -379,12 +383,11 @@ APIの列レイアウト説明書には到達できなかった。**新しい一
 
 ### 実測
 
-`docs/plans/PHASE_B_INTAKE.md:99-106` と `docs/plans/PHASE_B_ALIAS_STAT_SOURCES.md`
-§3.2（232-249行）が既に一次資料（MK_manu.pdf「６．コード表 (4)調査区分コード」）で
-確認済み: 検体値ファイルは仕様上「通常の採水（点観測）」だけでなく「水質自動モニターの
-日間平均値」（調査区分コード5/6）も同じレコード形式で混在しうるが、実際に収集した
-`kosui_k02`/`kosui_k08` の生CSV列には調査区分コードに相当する列が存在しない
-（実列名: `RECORDID, ZETTAICODE, ..., NENDO, FISCALYEAR, MONTH, DAYTIME, ...`）。
+背景（一次資料での確認済み事項）は `docs/plans/PHASE_B_INTAKE.md:99-106` と
+`docs/plans/PHASE_B_ALIAS_STAT_SOURCES.md` §3.2（232-249行）参照——検体値ファイルは
+仕様上、調査区分コード5/6（水質自動モニターの日間平均値）が通常の点観測と同じレコード
+形式で混在しうるが、実際に収集した生CSV列には調査区分コードに相当する列が存在しない、
+という既存の結論。
 
 今回追加で `water-pub.env.go.jp`（水環境総合情報サイト、`zip_create` APIの配布元）を
 再確認したが、文字コードの問題（Shift_JIS想定）でページ本文が読めず、調査区分列の
@@ -440,6 +443,15 @@ group by datastream
 残る）、m02で `value_raw` を伝播する経路が無いため最終的に消える。`sensor_timeseries`
 のスキーマ自体に文字列用のカラムが無いことが、m02側で直せない構造的な理由。
 
+**受け皿は既にある**: `observation`（ADR-0007、`docs/adr/0007-observation-fact.md:32`）は
+`value_text` 列を最初から持っている。`b03_build_observation.py:117-119` が埋めない理由は
+「どちらの出典も値は常に量的でテキスト値を持つ観測が無い」と書いているが、これは
+`sensor_timeseries` 自体に文字列を運ぶ列が無い（本節の実測どおり）ことの帰結であり、
+`observation.value_text` という設計が無いわけではない。したがって将来の対応は**新しい
+設計を要らない**——`sensor_timeseries` にテキスト列を足し、`m02` がそこに `value_raw`
+（文字列側）を流し、`b03` がそれを `observation.value_text` に流す、という**配管を戻す**
+だけで済む。
+
 ### 判断
 
 修正しない（`sensor_timeseries` にテキスト用カラムを足す、または `m02` が `value_raw` を
@@ -474,23 +486,3 @@ group by datastream
 ジオメトリ配信形式の判断は、Phase D（マニフェスト・配布物・公開、Issue #40）の
 ジオメトリ配信形式ADRで行う。
 
----
-
-## 原本の非改変の確認
-
-原本 `data/db/ryuiki.sqlite`・`data/db/cells.sqlite` は本タスクの調査全体を通じて
-`file:...?mode=ro` の読み取り専用でのみ開いた。作業開始時点の `ls -la`（mtime:
-`ryuiki.sqlite` 2026-09-05 23:37 / `cells.sqlite` 2026-08-29 19:01）と、調査完了後の
-sha256・mtimeを比較し、一致することを確認した（変更なし）。
-
-```
-$ sha256sum /home/yu23ki14/cfj/ryuiki-demo/data/db/ryuiki.sqlite /home/yu23ki14/cfj/ryuiki-demo/data/db/cells.sqlite
-554b41a03dd5ca7753aaf813691a9008c9c5c06de3d61262cbca0095399039d4  ryuiki.sqlite
-0668ae12ee127b3638cbdf52a75d6ba7dd96252e04dd928242224e704fe646c5  cells.sqlite
-
-$ stat -c '%y %s %n' /home/yu23ki14/cfj/ryuiki-demo/data/db/ryuiki.sqlite /home/yu23ki14/cfj/ryuiki-demo/data/db/cells.sqlite
-2026-09-05 23:37:09  828592128 bytes  ryuiki.sqlite   (作業開始時と同一 mtime・サイズ)
-2026-08-29 19:01:57  42561536 bytes   cells.sqlite    (作業開始時と同一 mtime・サイズ)
-```
-
-原本は一切書き換えていない。

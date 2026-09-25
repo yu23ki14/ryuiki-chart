@@ -10,6 +10,17 @@
 `<source>@<year>` の形にする暫定策で対応した（`docs/plans/PHASE_B_INTAKE.md`
 に接続点として記録。恒久設計ではない）。
 
+**2026-09-25 追記（Issue #38、`docs/plans/DATA_QUALITY_BACKLOG.md` §1・§2）**: 同型の
+実例をさらに2件確認した。(1) 地盤沈下（`kanagawa_jiban_chinka`）: 神奈川県の年次報告書
+r5table.xlsx（令和5年度版）と r6table.xlsx（令和6年度版）が同じ年の値を再掲しており、
+両方を収集した結果 `measurements` に1,625組の重複が生じている。(2) GBIF の再取得
+（`gbif_kanagawa_occurrences`）: 本文中で既に挙げた例そのものだが、`scripts/common.py`
+の `register()` が `source_registry` を `source_id` 単位で `INSERT OR REPLACE` するため、
+429対策の再取得（`c02_gbif_repair.py`）が初回取得（`c02_gbif.py`）の `record_count`/
+`notes`/`fetched_at` を上書きし、取得回ごとの数値が復元不能になっていることを実測で
+確認した。どちらも本ADRの `source_edition`＋`superseded_by`（Phase C）で解く領域。
+決定は変えない。
+
 ## 背景
 
 `source_registry`（124行）は取得元・ライセンス・再配布可否・取得日・件数を持っており、
