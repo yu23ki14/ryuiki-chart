@@ -54,6 +54,7 @@ test_s01_build_sample.py::test_determinism`）。挿入順は原本の rowid 順
 from __future__ import annotations
 
 import argparse
+import csv
 import datetime
 import json
 import pathlib
@@ -66,6 +67,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import pipeline_inputs  # noqa: E402
+from migrate import occurrence_period  # noqa: E402
 from migrate import point_in_polygon as pip  # noqa: E402
 from reconcile.common import load_yaml  # noqa: E402
 
@@ -76,15 +78,44 @@ DEFAULT_COVERAGE_YAML = ROOT / "data" / "sample" / "coverage.yaml"
 DEFAULT_BASELINE_JSON = ROOT / "reports" / "derived_baseline.json"
 DEFAULT_OUT_DIR = ROOT / "data" / "sample"
 DEFAULT_GEOJSON = ROOT / "data" / "processed" / "nlni_w12_watersheds.geojson"
+DEFAULT_LANDUSE_CSV = ROOT / "data" / "processed" / "nlni_l03b_landuse_by_watershed.csv"
 
 # ---------------------------------------------------------------------------
 # 小さなユーティリティ
 # ---------------------------------------------------------------------------
 
 
+def _sql_classify_shape(value: str | None) -> str | None:
+    """`data/sample/coverage.yaml` の `classify_shape(observed_on) = '...'`
+    述語・`build_declaration_counts` の実測の両方から呼ぶ、`occurrence_period.
+    classify_shape` の SQL 関数ラッパ。NULL は「形が無い」として NULL を返す
+    （`length(observed_on) = N` の頃と同じく、NULL はどの形にも一致しない）。
+    それ以外はそのまま呼ぶ——形を1つに決められない値（`UnknownPeriodShapeError`/
+    `AmbiguousPeriodShapeError`）を黙って握りつぶさない（code-review 指摘: 文字数
+    だけで決め打つと将来の衝突を見逃す、への対応そのものなので、ここでも
+    エラーを飲み込まない）。
+    """
+    if value is None:
+        return None
+    return occurrence_period.classify_shape(value)
+
+
+def register_classify_shape(conn: sqlite3.Connection) -> None:
+    """`conn` に `classify_shape(observed_on)` を SQL 関数として登録する。
+    `data/sample/coverage.yaml` の predicate（`select_ryuiki_rowids` 経由）と
+    `build_declaration_counts` の両方が呼ぶ前提——`_open_ro` から自動的に
+    登録されるが、テストのようにこの関数を経由せず自前で `sqlite3.connect()`
+    する場合は呼び出し側が明示的に呼ぶ（`scripts/tests/test_s01_build_sample.py`・
+    `scripts/tests/test_sample_coverage.py` 参照）。何度呼んでも安全（sqlite3 は
+    同名関数の再登録を単に上書きする）。
+    """
+    conn.create_function("classify_shape", 1, _sql_classify_shape)
+
+
 def _open_ro(path) -> sqlite3.Connection:
     conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
+    register_classify_shape(conn)
     return conn
 
 
@@ -272,7 +303,8 @@ def compute_leaf_cell_source_rows(rows: list[sqlite3.Row]) -> int:
 
 
 def compute_occurrence_place_and_watershed_stats(rows: list[sqlite3.Row], geojson_path) -> dict:
-    """`occurrence_place_declarations.yaml`（n_watershed_polygons 以外の2件）と
+    """`occurrence_place_declarations.yaml`（3件。`n_watershed_polygons` は
+    読み込んだ `polys` からそのまま数える）と
     `occurrence_watershed_v1_declarations.yaml`（3件）をサンプルに対して実測する。
 
     v1 のメモ化（0.001度バケット、`MIN(source_row_id)` を代表とする）を
@@ -359,6 +391,12 @@ def compute_occurrence_place_and_watershed_stats(rows: list[sqlite3.Row], geojso
             keys_changed += 1
 
     return {
+        # `polys` は既にこの関数が読み込み済みの流域ポリゴン一覧
+        # （feature 1件 = Polygon 1件。`point_in_polygon.load_polygons`
+        # docstring「実測: 377 feature 全件が Polygon」参照）。ここから
+        # 数えることで、ハードコードした 377 を実測値に置き換える
+        # （code-review 指摘対応）。
+        "n_watershed_polygons": len(polys),
         "place_id_null_count": n_null,
         "resolved_count": n_resolved,
         "memo_moved_records": {
@@ -381,12 +419,30 @@ def _create_rowid_temp_table(conn: sqlite3.Connection, name: str, rowids: set[in
     conn.executemany(f"INSERT INTO temp.{name} (rowid_value) VALUES (?)", [(r,) for r in rowids])
 
 
+def count_csv_data_rows(csv_path) -> int:
+    """`csv_path`（ヘッダ1行 + データ行）のデータ行数を数える。土地利用CSVは
+    `wholesale_processed_files`（coverage.yaml）で丸ごとコピーするだけなので、
+    サンプルの件数は原本の行数と同じになる——ハードコードした 4,858 を
+    実測値に置き換える（code-review 指摘対応）。
+    """
+    with open(csv_path, newline="", encoding="utf-8") as f:
+        return sum(1 for _ in csv.reader(f)) - 1
+
+
 def build_declaration_counts(
-    conn: sqlite3.Connection, ryuiki_selected: dict[str, set[int]], geojson_path=DEFAULT_GEOJSON,
+    conn: sqlite3.Connection,
+    ryuiki_selected: dict[str, set[int]],
+    geojson_path=DEFAULT_GEOJSON,
+    landuse_csv_path=DEFAULT_LANDUSE_CSV,
 ) -> dict[str, int]:
     """`data/sample/declaration_counts.yaml` の中身（フラットな
     `"<宣言ファイル名>:<エントリ名>[.<内訳キー>]"` -> 整数）を実測する。
     """
+    # occurrence_period_shapes.yaml の実測が classify_shape(observed_on) を
+    # 使うため、呼び出し側が `_open_ro` を経由していない（テストが自前で
+    # `sqlite3.connect()` した）場合に備えてここでも登録しておく（何度
+    # 呼んでも安全。register_classify_shape docstring 参照）。
+    register_classify_shape(conn)
     out: dict[str, int] = {}
 
     _temp_ready: set[str] = set()
@@ -438,19 +494,20 @@ def build_declaration_counts(
     out["source_regions.yaml:inaturalist_kanagawa"] = count(
         "organism_records", "source_id = 'inaturalist_kanagawa'"
     )
-    # 土地利用CSVは丸ごとコピーするので件数は原本と同じ（4,858）。
-    out["source_regions.yaml:nlni_l03b_landuse_by_watershed"] = 4858
+    # 土地利用CSVは丸ごとコピーする（coverage.yaml の wholesale_processed_files）
+    # ので、サンプルの件数は原本の行数と同じ（実測: count_csv_data_rows 参照）。
+    out["source_regions.yaml:nlni_l03b_landuse_by_watershed"] = count_csv_data_rows(landuse_csv_path)
 
-    # occurrence_period_shapes.yaml（12形。文字数で正確に対応する。coverage.yaml 参照）
-    shape_lengths = {
-        "year": 4, "month": 7, "year_interval": 9, "day": 10, "month_interval": 15,
-        "instant_minute": 16, "instant_minute_z": 17, "instant_second": 19,
-        "instant_second_z": 20, "day_interval": 21, "instant_millisecond_z": 24,
-        "instant_minute_z_interval": 35,
-    }
-    for name, length in shape_lengths.items():
+    # occurrence_period_shapes.yaml。形の名前は宣言ファイル（コードの
+    # `_SHAPE_DEFS` と過不足なく一致することを `assert_declared_shapes_match_code`
+    # が検証済み）からそのまま読む——手で列挙すると形が増えたときに追従し忘れる
+    # 余地が生まれる。分類そのものは `classify_shape`（SQL 関数として
+    # `_open_ro` が登録済み）を使う（以前の `length(observed_on) = N` は
+    # 「12形の文字数がたまたま全部異なる」という前提の近似だった。
+    # code-review 指摘対応。coverage.yaml も同じ関数に揃えてある）。
+    for name in sorted(occurrence_period.load_period_shapes()):
         out[f"occurrence_period_shapes.yaml:{name}"] = count(
-            "organism_records", f"length(observed_on) = {length}"
+            "organism_records", f"classify_shape(observed_on) = '{name}'"
         )
 
     # occurrence_cube_declarations.yaml
@@ -464,7 +521,7 @@ def build_declaration_counts(
 
     # occurrence_place_declarations.yaml / occurrence_watershed_v1_declarations.yaml
     stats = compute_occurrence_place_and_watershed_stats(org_rows, geojson_path)
-    out["occurrence_place_declarations.yaml:n_watershed_polygons"] = 377
+    out["occurrence_place_declarations.yaml:n_watershed_polygons"] = stats["n_watershed_polygons"]
     out["occurrence_place_declarations.yaml:place_id_null_count"] = stats["place_id_null_count"]
     out["occurrence_place_declarations.yaml:resolved_count"] = stats["resolved_count"]
 
@@ -583,7 +640,8 @@ def main() -> int:
 
     # --- declaration_counts.yaml ---
     geojson_path = pathlib.Path(args.processed_dir) / "nlni_w12_watersheds.geojson"
-    counts = build_declaration_counts(ryuiki_conn, selected, geojson_path)
+    landuse_csv_path = pathlib.Path(args.processed_dir) / "nlni_l03b_landuse_by_watershed.csv"
+    counts = build_declaration_counts(ryuiki_conn, selected, geojson_path, landuse_csv_path)
     (out_dir / "declaration_counts.yaml").write_text(_dump_declaration_counts_yaml(counts), encoding="utf-8")
 
     # --- derived_keys.yaml ---

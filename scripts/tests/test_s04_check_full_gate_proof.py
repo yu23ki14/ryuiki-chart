@@ -61,7 +61,7 @@ def test_check_pipeline_path_hashes_no_problems_against_head(real_proof):
     （実際に git rev-parse を呼ぶ——`scripts/b00_run_full_gate.py` を
     パイプラインのファイルを触った後に回し直し忘れていないかの本物の検査）。
     """
-    problems = s04.check_pipeline_path_hashes(real_proof, ROOT)
+    problems = s04.check_pipeline_path_hashes(real_proof)
     assert problems == []
 
 
@@ -88,7 +88,7 @@ def test_pipeline_path_hash_mismatch_is_detected(real_proof):
     mutated = copy.deepcopy(real_proof)
     a_path = next(iter(mutated["pipeline_path_hashes"]))
     mutated["pipeline_path_hashes"][a_path] = "0" * 40
-    problems = s04.check_pipeline_path_hashes(mutated, ROOT)
+    problems = s04.check_pipeline_path_hashes(mutated)
     assert problems
     assert any(a_path in p for p in problems)
 

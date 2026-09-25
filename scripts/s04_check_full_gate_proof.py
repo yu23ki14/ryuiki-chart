@@ -32,7 +32,6 @@ from __future__ import annotations
 import argparse
 import json
 import pathlib
-import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -50,9 +49,13 @@ def _require_keys(data: dict, keys: tuple[str, ...], *, label: str) -> None:
         sys.exit(f"{label} に必須キーが無い（形が壊れている）: {missing}")
 
 
-def check_pipeline_path_hashes(proof: dict, root: pathlib.Path) -> list[str]:
+def check_pipeline_path_hashes(proof: dict) -> list[str]:
     """証明の `pipeline_path_hashes` が今の HEAD と一致するか。問題があれば、
     それを説明する行のリスト（人が読む1行ずつ）を返す（空なら問題無し）。
+
+    git rev-parse の実行そのものは `scripts/b00_run_full_gate.py` の
+    `git_path_hashes` を再利用する（D3。以前はここに同じループを別実装して
+    おり、二重に持つと片方だけ直して食い違う余地があった）。
     """
     expected_paths = b00.collect_pipeline_paths()
     proof_paths = sorted(proof["pipeline_path_hashes"])
@@ -64,15 +67,11 @@ def check_pipeline_path_hashes(proof: dict, root: pathlib.Path) -> list[str]:
             f"（証明にしか無い: {extra_in_proof} / 今のコードにしか無い: {missing_in_proof}）"
         ]
 
-    problems = []
+    hashes, problems = b00.git_path_hashes(expected_paths)
     for path in expected_paths:
-        result = subprocess.run(
-            ["git", "rev-parse", f"HEAD:{path}"], capture_output=True, text=True, cwd=str(root),
-        )
-        if result.returncode != 0:
-            problems.append(f"git rev-parse HEAD:{path} に失敗した: {result.stderr.strip()}")
-            continue
-        actual = result.stdout.strip()
+        actual = hashes.get(path)
+        if actual is None:
+            continue  # git_path_hashes が既に problems に理由を積んでいる
         expected = proof["pipeline_path_hashes"][path]
         if actual != expected:
             problems.append(f"{path}: 証明={expected} / HEAD={actual}")
@@ -113,7 +112,7 @@ def main() -> int:
     proof = json.loads(proof_path.read_text(encoding="utf-8"))
     _require_keys(proof, ("pipeline_path_hashes", "source_hashes"), label=str(proof_path))
 
-    path_problems = check_pipeline_path_hashes(proof, ROOT)
+    path_problems = check_pipeline_path_hashes(proof)
     if path_problems:
         sys.exit(
             f"パイプラインのパスが証明と食い違う（{len(path_problems)}件）。原本のある手元で "

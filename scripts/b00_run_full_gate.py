@@ -42,6 +42,8 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import pipeline_inputs  # noqa: E402
+import s05_check_sample_gate_summary as s05  # noqa: E402
+from reconcile import common as reconcile_common  # noqa: E402
 
 DEFAULT_OUT = ROOT / "reports" / "full_gate_proof.json"
 
@@ -52,10 +54,24 @@ PIPELINE_FILE_GLOBS = ("scripts/b0*.py", "scripts/b1*.py")
 PIPELINE_EXPLICIT_FILES = (
     "scripts/r01_build_registry.py",
     "scripts/pipeline_inputs.py",
+    # scripts/b00_run_full_gate.py 自身（このファイル）が import する
+    # （b02 の出力の要約パースを重複させず s05 を再利用する。D1）。b00 は
+    # `scripts/b0*.py` に一致して証明の対象パスに入るが、s05 は "s05" で
+    # 始まるためそのグロブに一致しない——単体ファイルとして明示する。
+    "scripts/s05_check_sample_gate_summary.py",
+    # scripts/b06_build_occurrence.py・scripts/registry/build_taxon.py が import
+    # する（scripts/ 直下の単体ファイルで、b0*/b1* にも scripts/registry/ にも
+    # マッチしない。code-review 指摘）。
+    "scripts/taxon_namespaces.py",
+    # scripts/registry/common.py が SCHEMA_SQL として読む（同じく scripts/ 直下の
+    # 単体ファイル。code-review 指摘）。
+    "scripts/schema_registry.sql",
     "reports/derived_baseline.json",
     "web/scripts/build-derived.mjs",
     "web/scripts/build-biota.mjs",
     "web/scripts/build-geo.mjs",
+    # web/scripts/build-geo.mjs が import する（code-review 指摘）。
+    "web/scripts/lib/csv.mjs",
     "requirements.txt",
     "web/package.json",
     "web/pnpm-lock.yaml",
@@ -77,13 +93,17 @@ PIPELINE_STEPS = (
     "scripts/b12_project_taxon_v1.py",
 )
 
-CANDIDATE_FILES = (
-    "v1_projection.sqlite",
-    "v1_projection_occurrence.sqlite",
-    "v1_projection_documents.sqlite",
-    "v1_projection_place.sqlite",
-    "v1_projection_taxon.sqlite",
-)
+DEFAULT_PROJECTION_MANIFEST = ROOT / "scripts" / "reconcile" / "projection_manifest.yaml"
+
+
+def default_candidate_files() -> tuple[str, ...]:
+    """5つの candidate ファイル名を `scripts/reconcile/projection_manifest.yaml`
+    （正本、`scripts/b02_run_all_gates.py` が読むのと同じファイル）から読む。
+    以前はここに5つを手で書き写しており、正本に candidate が増減しても
+    追従し忘れる余地があった（code-review 指摘）。
+    """
+    manifest = reconcile_common.load_projection_manifest(DEFAULT_PROJECTION_MANIFEST)
+    return tuple(sorted(manifest))
 
 
 def _run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
@@ -111,14 +131,26 @@ def assert_paths_clean(paths: list[str]) -> None:
         )
 
 
-def git_path_hashes(paths: list[str]) -> dict[str, str]:
+def git_path_hashes(paths: list[str]) -> tuple[dict[str, str], list[str]]:
+    """`paths`（HEAD からの相対パス）それぞれの git tree/blob ハッシュ
+    （`git rev-parse HEAD:<path>`）を引く。
+
+    **ここでは `sys.exit` しない**——`scripts/s04_check_full_gate_proof.py` の
+    `check_pipeline_path_hashes` がこの関数をそのまま再利用し、失敗を
+    「証明と食い違う」問題の一覧（人が読む1行ずつ）の一部としてまとめて
+    返す必要があるため（D3。以前は s04 が同じ git rev-parse ループを
+    別実装していた）。戻り値は `(取得できたパスのハッシュ, 失敗した行の説明)`
+    ——このファイルの `main()` は `problems` があれば自分で `sys.exit` する。
+    """
     hashes: dict[str, str] = {}
+    problems: list[str] = []
     for path in paths:
         result = _run(["git", "rev-parse", f"HEAD:{path}"], capture_output=True, text=True)
         if result.returncode != 0:
-            sys.exit(f"git rev-parse HEAD:{path} に失敗した: {result.stderr}")
+            problems.append(f"git rev-parse HEAD:{path} に失敗した: {result.stderr.strip()}")
+            continue
         hashes[path] = result.stdout.strip()
-    return hashes
+    return hashes, problems
 
 
 def source_hashes() -> dict[str, str]:
@@ -174,7 +206,12 @@ def main() -> int:
     pipeline_paths = collect_pipeline_paths()
     assert_paths_clean(pipeline_paths)
     head = _run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
-    path_hashes = git_path_hashes(pipeline_paths)
+    path_hashes, hash_problems = git_path_hashes(pipeline_paths)
+    if hash_problems:
+        sys.exit(
+            "パイプラインのパスの git ハッシュ取得に失敗した（"
+            f"{len(hash_problems)}件）:\n" + "\n".join(f"  - {p}" for p in hash_problems)
+        )
     src_hashes = source_hashes()
 
     for step in PIPELINE_STEPS:
@@ -191,26 +228,15 @@ def main() -> int:
     if gate_result.returncode != 0:
         sys.exit(f"scripts/b02_run_all_gates.py が非0で終了した（{gate_result.returncode}）。証明は書かない。")
 
-    import re
-
-    summary_match = re.search(
-        r"(\d+)表中 一致: (\d+) / 宣言済み差分のみ: (\d+) / 不一致: (\d+) / 対象外: (\d+)",
-        gate_result.stdout,
-    )
-    if not summary_match:
-        sys.exit("b02_run_all_gates.py の出力からサマリ行を抽出できなかった。証明は書かない。")
-    applied_match = re.search(r"適用した宣言済み差分: (\d+)件", gate_result.stdout)
-    gate_summary = {
-        "total": int(summary_match.group(1)),
-        "n_match": int(summary_match.group(2)),
-        "n_declared_only": int(summary_match.group(3)),
-        "n_mismatch": int(summary_match.group(4)),
-        "n_excluded": int(summary_match.group(5)),
-        "n_applied": int(applied_match.group(1)) if applied_match else 0,
-    }
+    # b02 の出力の要約パースは scripts/s05_check_sample_gate_summary.py と
+    # 同じ正規表現・同じ辞書の形が要る（CI の sample-gate ジョブが同じ出力を
+    # 読む）。二重に持って食い違う余地を無くすため、そちらの `parse_summary`
+    # をそのまま呼ぶ（D1）。抽出できなければ `parse_summary` 自身が
+    # `sys.exit` する。
+    gate_summary = s05.parse_summary(gate_result.stdout)
 
     candidates = {}
-    for name in CANDIDATE_FILES:
+    for name in default_candidate_files():
         db_path = ROOT / "data" / "db" / name
         candidates[name] = {
             "sha256": pipeline_inputs.sha256_file(db_path),

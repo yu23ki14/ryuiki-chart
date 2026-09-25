@@ -1094,8 +1094,9 @@ def main() -> None:
     print(f"▶ 読み取り専用で開く: {registry_db}")
     print(f"▶ 読み取り専用で読む: {args.landuse_csv}")
 
-    count_overlay_by_file = (
-        period.load_count_overlay_file(args.count_overlay) if args.count_overlay else None
+    count_overlay_by_file = period.resolve_count_overlays(
+        args.count_overlay,
+        ("period_exceptions.yaml", "time_label_conventions.yaml", "source_regions.yaml"),
     )
 
     with common.timed_step("observation を構築して書き出し") as info:

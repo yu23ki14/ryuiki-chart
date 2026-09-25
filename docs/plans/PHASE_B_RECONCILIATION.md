@@ -364,6 +364,20 @@ git に置けない。Issue #29「縮小サンプル＋実行証明」で、こ�
   コミットし直す。設計・実測（サンプルのサイズ・CI のジョブの所要時間・
   宣言済み差分の内訳）は本ドキュメントの付録ではなく、Issue #29 の PR 本文に
   実測値として書く（このドキュメントは仕組みの説明に留める）。
+- **見送った簡素化（`/simplify` 指摘、意図的に反映しない）**:
+  - count-overlay の差し替えを1か所の入口（環境変数等）に一括で集約する案は
+    見送った。暗黙の状態になり、`count_overlay=` を呼び出し側が明示的に渡す
+    このコードベースの流儀（`scripts/migrate/period.py` の
+    `resolve_count_overlay`/`resolve_count_overlays`）に反するため。次に
+    宣言のローダーを新しく足すときに改めて検討する。
+  - `data/sample/coverage.yaml` の `occurrence_outside_all_watersheds`・
+    `occurrence_memo_mixed_bucket`（`record_id IN (...)` を直接列挙する2述語）を
+    点内包判定（`scripts/migrate/point_in_polygon.py`）ベースの述語に書き換える
+    案も見送った。書き換えると `organism_records` 全件を走査することになり
+    やりすぎ（この2件は原本で稀にしか出ない条件で、`record_id` 列挙のほうが
+    安く済む。原本の該当行が消えれば `scripts/s01_build_sample.py` の
+    `select_ryuiki_rowids` が「1行も一致しなかった」で即座に止まるため、
+    黙って選択漏れにはならない）。
 
 ## 6. 再現できない箇所が出たときの扱い
 

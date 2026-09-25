@@ -174,6 +174,33 @@ def load_count_overlay_file(path) -> dict[str, dict[str, int]]:
     return grouped
 
 
+def declared_overlay_keys(entries: dict) -> set[str]:
+    """`entries`（宣言 YAML を読んだままの「フラットな名前 -> スペック」の
+    dict、`apply_count_overlay()` の第1引数と同じ形。`source_regions.yaml`
+    なら `raw["sources"]` を渡す）から、`apply_count_overlay()` が受け付ける
+    有効なオーバーレイキー（`"名前"` または `"名前.内訳キー"`）の集合を計算する。
+
+    判定条件は `apply_count_overlay()` 自身が使っているのと同じもの
+    （`expected_row_count`/`expected_count` の有無で `"名前"` が、`breakdown`
+    の有無で `"名前.内訳キー"` が有効になる）をそのまま踏襲するだけで、
+    別の判断基準を持ち込まない——`scripts/tests/test_sample_coverage.py` が
+    `data/sample/declaration_counts.yaml` のキー集合を7つの宣言ファイルそれぞれと
+    突き合わせるのに使う。以前はこの7ファイル分を手で書き写した
+    `_flat_keys_for_*` をテスト側が個別に持っており、正本にキーの種類が
+    増えても追従し忘れる余地があった（code-review 指摘対応）。
+    """
+    keys: set[str] = set()
+    for name, spec in entries.items():
+        if not isinstance(spec, dict):
+            continue
+        if "expected_row_count" in spec or "expected_count" in spec:
+            keys.add(name)
+        breakdown = spec.get("breakdown")
+        if isinstance(breakdown, dict):
+            keys.update(f"{name}.{subkey}" for subkey in breakdown)
+    return keys
+
+
 def resolve_count_overlay(count_overlay_path, filename: str) -> dict[str, int] | None:
     """`--count-overlay` CLI 引数（None なら「使わない」——本番の既定運用）から、
     `filename`（例 `"period_exceptions.yaml"`）分の上書きだけを取り出す。
@@ -187,6 +214,28 @@ def resolve_count_overlay(count_overlay_path, filename: str) -> dict[str, int] |
         return None
     grouped = load_count_overlay_file(count_overlay_path)
     return grouped.get(filename, {})
+
+
+def resolve_count_overlays(
+    count_overlay_path, filenames: tuple[str, ...],
+) -> dict[str, dict[str, int] | None]:
+    """`resolve_count_overlay()` の複数ファイル版。1本のスクリプトが複数の
+    宣言ファイルを読む（`scripts/b03_build_observation.py`:
+    `period_exceptions.yaml`/`time_label_conventions.yaml`/`source_regions.yaml`、
+    `scripts/b06_build_occurrence.py`: `source_regions.yaml`/
+    `occurrence_period_shapes.yaml`）ときに使う。`filenames` それぞれについて
+    `resolve_count_overlay()` を呼んだのと同じ結果を、`load_count_overlay_file()`
+    は1回だけ呼んで返す。
+
+    以前は b03/b06 がここと同じロジック（`load_count_overlay_file` を
+    `--count-overlay` があるときだけ呼び、無ければ `None`）をそれぞれ
+    独自にインライン実装しており、b07/b08/b09 の `resolve_count_overlay()`
+    と流儀が分かれていた（code-review 指摘対応）。
+    """
+    if count_overlay_path is None:
+        return {name: None for name in filenames}
+    grouped = load_count_overlay_file(count_overlay_path)
+    return {name: grouped.get(name, {}) for name in filenames}
 
 
 def load_period_exceptions(

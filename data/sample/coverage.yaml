@@ -152,68 +152,71 @@ predicates:
     min_rows: 100
 
   # --- occurrence の12形（scripts/migrate/occurrence_period_shapes.yaml）。
-  #     12形は文字数がすべて異なる（実測: 4/7/9/10/15/16/17/19/20/21/24/35）ため
-  #     length(observed_on) で正確に選べる（分類自体の正は正規表現——コード側
-  #     〔scripts/migrate/occurrence_period.py〕。ここは選択のためだけの近似で、
-  #     実際の形の判定は b06 が正規表現で行う）。 ---
+  #     分類の正は正規表現——コード側〔scripts/migrate/occurrence_period.py〕
+  #     の `classify_shape()`。以前はここを `length(observed_on) = N`
+  #     （12形の文字数がたまたま全部異なる: 4/7/9/10/15/16/17/19/20/21/24/35。
+  #     という前提の近似）で選んでいたが、将来2形が同じ文字数を持つように
+  #     なると黙って誤分類する恐れがあった（code-review 指摘）。
+  #     `scripts/s01_build_sample.py` の `_open_ro` が `classify_shape` を
+  #     SQL 関数として登録しており、ここでは実際の分類関数をそのまま呼ぶ。 ---
   - name: occurrence_shape_year
     table: organism_records
-    where: "length(observed_on) = 4"
+    where: "classify_shape(observed_on) = 'year'"
     limit: 10
     min_rows: 10
   - name: occurrence_shape_month
     table: organism_records
-    where: "length(observed_on) = 7"
+    where: "classify_shape(observed_on) = 'month'"
     limit: 10
     min_rows: 10
   - name: occurrence_shape_year_interval
     table: organism_records
-    where: "length(observed_on) = 9"
+    where: "classify_shape(observed_on) = 'year_interval'"
     limit: 10
     min_rows: 10
   - name: occurrence_shape_day
     table: organism_records
-    where: "length(observed_on) = 10"
+    where: "classify_shape(observed_on) = 'day'"
     limit: 15
     min_rows: 15
   - name: occurrence_shape_month_interval
     table: organism_records
-    where: "length(observed_on) = 15"
+    where: "classify_shape(observed_on) = 'month_interval'"
     limit: 10
     min_rows: 10
   - name: occurrence_shape_instant_minute
     table: organism_records
-    where: "length(observed_on) = 16"
+    where: "classify_shape(observed_on) = 'instant_minute'"
     limit: 10
     min_rows: 10
   - name: occurrence_shape_instant_minute_z
     table: organism_records
-    where: "length(observed_on) = 17"
+    where: "classify_shape(observed_on) = 'instant_minute_z'"
     limit: 10
     min_rows: 10
   - name: occurrence_shape_instant_second
     table: organism_records
-    where: "length(observed_on) = 19"
+    where: "classify_shape(observed_on) = 'instant_second'"
     limit: 10
     min_rows: 10
   - name: occurrence_shape_instant_second_z
     table: organism_records
-    where: "length(observed_on) = 20"
+    where: "classify_shape(observed_on) = 'instant_second_z'"
     limit: 10
     min_rows: 10
   - name: occurrence_shape_day_interval
     table: organism_records
-    where: "length(observed_on) = 21"
+    where: "classify_shape(observed_on) = 'day_interval'"
     limit: 10
     min_rows: 10
   - name: occurrence_shape_instant_millisecond_z
     table: organism_records
-    where: "length(observed_on) = 24"
+    where: "classify_shape(observed_on) = 'instant_millisecond_z'"
     limit: 10
     min_rows: 10
   - name: occurrence_shape_instant_minute_z_interval
     table: organism_records
-    where: "length(observed_on) = 35"
+    where: "classify_shape(observed_on) = 'instant_minute_z_interval'"
     limit: 10
     min_rows: 10
   - name: occurrence_observed_on_null

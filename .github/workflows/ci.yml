@@ -339,6 +339,9 @@ jobs:
     env:
       RYUIKI_REGISTRY_DB: ${{ github.workspace }}/data/db/registry.sqlite
       SCRATCH: /tmp/sample-gate-reports
+      # 以前は下の "v2 パイプラインを構築" ステップの5つの --count-overlay に
+      # このパスを直書きしていた（code-review 指摘: 同じ文字列の繰り返し）。
+      COUNT_OVERLAY: data/sample/declaration_counts.yaml
     steps:
       - uses: actions/checkout@v4
 
@@ -389,22 +392,22 @@ jobs:
         run: |
           mkdir -p "$SCRATCH"
           python3 scripts/b03_build_observation.py \
-            --count-overlay data/sample/declaration_counts.yaml \
+            --count-overlay "$COUNT_OVERLAY" \
             --report "$SCRATCH/phase_b_fact_slice.md"
           python3 scripts/b04_build_cube.py
           python3 scripts/b05_project_v1.py --out data/db/v1_projection.sqlite
           python3 scripts/b06_build_occurrence.py \
-            --count-overlay data/sample/declaration_counts.yaml \
+            --count-overlay "$COUNT_OVERLAY" \
             --report "$SCRATCH/phase_b_occurrence.md"
           python3 scripts/b09_build_occurrence_place.py \
-            --count-overlay data/sample/declaration_counts.yaml
+            --count-overlay "$COUNT_OVERLAY"
           python3 scripts/b07_build_occurrence_cube.py \
             --out data/db/v2.sqlite \
-            --count-overlay data/sample/declaration_counts.yaml
+            --count-overlay "$COUNT_OVERLAY"
           python3 scripts/b08_project_occurrence_v1.py \
             --cube-db data/db/v2.sqlite \
             --out data/db/v1_projection_occurrence.sqlite \
-            --count-overlay data/sample/declaration_counts.yaml \
+            --count-overlay "$COUNT_OVERLAY" \
             --ias-report "$SCRATCH/phase_b_taxon_assessment.md"
           python3 scripts/b10_project_documents_v1.py
           python3 scripts/b11_project_place_v1.py --out data/db/v1_projection_place.sqlite

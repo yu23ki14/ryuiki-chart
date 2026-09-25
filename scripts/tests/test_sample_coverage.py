@@ -27,6 +27,7 @@ SAMPLE_DIR = ROOT / "data" / "sample"
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import pipeline_inputs  # noqa: E402
+import s01_build_sample as s01  # noqa: E402
 import s02_materialize_sample as s02  # noqa: E402
 from migrate import period  # noqa: E402
 from reconcile.common import load_yaml  # noqa: E402
@@ -58,6 +59,11 @@ def materialized_db(tmp_path_factory) -> pathlib.Path:
 @pytest.fixture(scope="module")
 def conn(materialized_db) -> sqlite3.Connection:
     c = sqlite3.connect(f"file:{materialized_db}?mode=ro", uri=True)
+    # coverage.yaml の occurrence_shape_* predicate が classify_shape(observed_on)
+    # を使う（s01_build_sample._open_ro が本番で登録するのと同じ関数。
+    # code-review 指摘対応: length(observed_on) の近似をやめて実際の
+    # 分類関数に揃えた）。
+    s01.register_classify_shape(c)
     yield c
     c.close()
 
@@ -133,63 +139,41 @@ def test_wholesale_ryuiki_tables_have_rows(conn, coverage):
 # ---------------------------------------------------------------------------
 
 
-def _flat_keys_for_period_exceptions() -> set[str]:
-    raw = load_yaml(ROOT / "scripts" / "migrate" / "period_exceptions.yaml")
-    return set(raw)
-
-
-def _flat_keys_for_time_label_conventions() -> set[str]:
-    raw = load_yaml(ROOT / "scripts" / "migrate" / "time_label_conventions.yaml")
-    return set(raw)
-
-
-def _flat_keys_for_source_regions() -> set[str]:
-    raw = load_yaml(ROOT / "scripts" / "migrate" / "source_regions.yaml")
-    return set(raw.get("sources") or {})
-
-
-def _flat_keys_for_occurrence_period_shapes() -> set[str]:
-    raw = load_yaml(ROOT / "scripts" / "migrate" / "occurrence_period_shapes.yaml")
-    return set(raw)
-
-
-def _flat_keys_for_occurrence_cube_declarations() -> set[str]:
-    raw = load_yaml(ROOT / "scripts" / "migrate" / "occurrence_cube_declarations.yaml")
-    return set(raw)
-
-
-def _flat_keys_for_occurrence_place_declarations() -> set[str]:
-    raw = load_yaml(ROOT / "scripts" / "migrate" / "occurrence_place_declarations.yaml")
-    return set(raw)
-
-
-def _flat_keys_for_occurrence_watershed_v1_declarations() -> set[str]:
-    raw = load_yaml(ROOT / "scripts" / "migrate" / "occurrence_watershed_v1_declarations.yaml")
-    keys = set()
-    for name, spec in raw.items():
-        keys.add(name)
-        breakdown = spec.get("breakdown")
-        if isinstance(breakdown, dict):
-            keys.update(f"{name}.{k}" for k in breakdown)
-    return keys
-
-
-_DECLARATION_FILE_KEY_BUILDERS = {
-    "period_exceptions.yaml": _flat_keys_for_period_exceptions,
-    "time_label_conventions.yaml": _flat_keys_for_time_label_conventions,
-    "source_regions.yaml": _flat_keys_for_source_regions,
-    "occurrence_period_shapes.yaml": _flat_keys_for_occurrence_period_shapes,
-    "occurrence_cube_declarations.yaml": _flat_keys_for_occurrence_cube_declarations,
-    "occurrence_place_declarations.yaml": _flat_keys_for_occurrence_place_declarations,
-    "occurrence_watershed_v1_declarations.yaml": _flat_keys_for_occurrence_watershed_v1_declarations,
+# 7つの宣言ファイルのパス。以前はファイルごとに手で書き写した
+# `_flat_keys_for_*`（7個）を個別に持っており、キーの有効性判定
+# （`expected_row_count`/`expected_count`/`breakdown` の見方）を
+# `scripts/migrate/period.py` の `apply_count_overlay()` と2箇所で
+# 重複させていた——正本にキーの種類が増えても追従し忘れる余地があった
+# （code-review 指摘対応）。今は判定条件そのものを持つ
+# `period.declared_overlay_keys()` を呼ぶだけにし、ここではファイルの
+# パスと「YAML のどこが entries か」（`source_regions.yaml` だけ
+# `raw["sources"]`）だけを持つ。
+_DECLARATION_FILE_PATHS = {
+    name: ROOT / "scripts" / "migrate" / name
+    for name in (
+        "period_exceptions.yaml",
+        "time_label_conventions.yaml",
+        "source_regions.yaml",
+        "occurrence_period_shapes.yaml",
+        "occurrence_cube_declarations.yaml",
+        "occurrence_place_declarations.yaml",
+        "occurrence_watershed_v1_declarations.yaml",
+    )
 }
 
 
-@pytest.mark.parametrize("filename", sorted(_DECLARATION_FILE_KEY_BUILDERS))
+def _declared_entries_for(filename: str) -> dict:
+    raw = load_yaml(_DECLARATION_FILE_PATHS[filename])
+    if filename == "source_regions.yaml":
+        return raw.get("sources") or {}
+    return raw
+
+
+@pytest.mark.parametrize("filename", sorted(_DECLARATION_FILE_PATHS))
 def test_declaration_counts_keys_match_declared_entries_exactly(filename):
     grouped = period.load_count_overlay_file(SAMPLE_DIR / "declaration_counts.yaml")
     overlay_keys = set(grouped.get(filename, {}))
-    declared_keys = _DECLARATION_FILE_KEY_BUILDERS[filename]()
+    declared_keys = period.declared_overlay_keys(_declared_entries_for(filename))
     missing = declared_keys - overlay_keys
     extra = overlay_keys - declared_keys
     assert not missing and not extra, (

@@ -43,6 +43,11 @@ SOURCE_FILE_KEYS: tuple[str, ...] = (
 
 
 def sha256_file(path) -> str:
+    # scripts/common.py にも同じロジックの sha256() があるが、あちらは
+    # モジュール先頭で `import requests` する（CI が入れるのは PyYAML・pytest
+    # だけなので ModuleNotFoundError になる——taxon_namespaces.py を切り出した
+    # のと同じ理由。code-review 指摘対応）。このモジュールは CI から
+    # 依存無しで呼べる必要があるため、あえて再実装する。
     h = hashlib.sha256()
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(1 << 20), b""):
