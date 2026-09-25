@@ -334,6 +334,7 @@ ADR-0011「粒度をまたぐ再集計をしない」）。月・年セルの `n
   もう一方は `r6table.xlsx`（令和6年度版報告書）から来ている——**同じ1980年の値が、
   異なる年度の報告書（過去分を再掲する仕様）から重複して収集されている。**
   データ収集（`scripts/c8*` 系）側の課題であり、この縦線（`b03`〜`b05`）の実装の問題ではない。
+  全数実測・除外先の比較・推奨は `docs/plans/DATA_QUALITY_BACKLOG.md` §1 参照（Issue #38）。
 - **`meas_year` は `kind='annual'` が `kind='daily'` の約6.3倍**（実測: `annual` 100,240行 /
   `daily` 15,836行。`data/db/derived.sqlite` と `data/db/v1_projection.sqlite` の両方で一致）。
 - **`meas_clim`（月別平年値）は、同じ alias 文字列を持つ `obs_stat`（入力側の統計量）の
@@ -410,7 +411,8 @@ ADR-0011「粒度をまたぐ再集計をしない」）。月・年セルの `n
   `天気概況_昼`/`天気概況_夜`/`風向・風速_最大瞬間風速_風向`/`風向・風速_最大風速_風向`
   の4系列、各971行、全行 `result IS NULL`）。`value_text` は上流の `m02` で既に消えて
   いるため、このセンサーの縦線では文字列値を持つ観測が無い（§9 T3）。負債として記録
-  のみ、この縦線では対応しない。
+  のみ、この縦線では対応しない。上流のどこで文字列が消えるかのコード特定は
+  `docs/plans/DATA_QUALITY_BACKLOG.md` §7 参照（Issue #38）。
 - **`soramame_hourly_kanagawa` の hour_ending という前提は一次資料未確認**（ADR-0024
   T2）。収集スクリプトの記載（`scripts/c11_soramame.py`・`scripts/c13_sagamihara_taiki.py`
   の「そらまめ君同様」という伝聞）のみを根拠に採用している。環境省の一次資料を
