@@ -36,6 +36,38 @@
 # 初めて新規に足した注記（上記「新しい注記はここに足していない」は Phase A 時点の
 # 記述で、この1件だけ例外）。scope は landuse_watershed/landuse_change の2表
 # （scripts/registry/build_caveat.py の LANDUSE_TABLES）。
+#
+# censored（ADR-0009 決定4、2026-09-24）は Phase A 以降で本文を変えた唯一の例外
+# （上記「body_ja は1文字も変えていない」への2件目の例外）。旧本文「value 列には
+# 0 が入っている」は、キューブが zero/lod の2系列を併記するようになった時点で
+# 偽になる（value 列という単一の列自体が無くなり、value_zero/value_lod に分かれた
+# うえ、value_lod には 0 ではなく定量下限値が入る）。
+#
+# 本文は「系列に依らない書き方」にはしなかった（オーナー判断）。いま画面が読んで
+# いるのは v1 の派生表（`meas_*` 等。b05 が `value_zero` だけを射影したもの＝
+# zero の系列）だけなので、「代入方式によって変わる」のような系列に依らない
+# 書き方にすると、読者は自分が見ている値がどちらの系列か分からないまま放置される。
+# 「いま見えているものを名指しする」方が正直、という判断で「この画面の値は
+# 定量下限未満を 0 とみなして集計している」と、zero 系列であることを明示した。
+#
+# **申し送り**: `lod` の系列を画面（または応答封筒 ADR-0014）に出す段——v2
+# （observation_agg）を直読みして系列を選べるようにする最初の消費者が現れたとき
+# ——には本文を見直すこと。**この注記の仕組みは caveat_id（key）ごとに静的な
+# 1本の文を持つ形**（build_caveat.py・generated-client.ts）なので、系列ごとに
+# 本文を動的に差し替えるより、`aboveLod` を独立した key にしたのと同じやり方
+# （例: `censoredZero`/`censoredLod` のように key ごと分ける）の方が既存設計と
+# 噛み合う。ADR-0009 の2026-09-24追記にも同じ申し送りを残した。
+#
+# web/src/lib/ai/caveats.test.ts の該当3ケース・スナップショットも合わせて更新済み。
+#
+# aboveLod（ADR-0009 決定4-C、2026-09-24、/code-review 指摘3）は censored に続く
+# 2件目の新規注記（上記「新しい注記はここに足していない」への2件目の例外）。
+# `water.transparency`（透明度）の定量上限超え（`>1.4`〜`>28`、26行）は、
+# `value_zero`/`value_lod` のどちらの列も作らない（`n`/`n_censored` を含む
+# あらゆる集計から丸ごと落ちる——ADR-0009 決定4-C「above_lod は今回も
+# 非メンバーのまま」）。列を作らない代わりに注記で伝える、という設計上の
+# 取引なので、この注記が無いと上限側の検閲がどこにも残らない。scope は
+# censored と同じ MEASURE_TABLES（`scripts/registry/build_caveat.py`）。
 
 caveats:
 - key: measuredOn
@@ -48,7 +80,13 @@ caveats:
   severity: blocking
   kind: censoring
   title_ja: null
-  body_ja: 全体の約24%は定量下限未満（原表記が「<0.5」など）で、value 列には 0 が入っている。折れ線では中抜きの点で示し、平均には含めるが「0 が観測された」とは読まないこと。
+  body_ja: 全体の約24%は定量下限未満（原表記が「<0.5」など）。この画面の値は定量下限未満を 0 とみなして集計している。折れ線では中抜きの点で示し、「0 が観測された」とは読まないこと。
+  quote: null
+- key: aboveLod
+  severity: blocking
+  kind: censoring
+  title_ja: null
+  body_ja: 透明度の定量上限超え（原表記が「>1.4」〜「>28」など、26行）は、上限がどこまでか分からないという性質上、集計方法によらず値に含められない。件数（n）にも入らないため、他の期間・地点と単純に比較しないこと。
   quote: null
 - key: duplicates
   severity: null

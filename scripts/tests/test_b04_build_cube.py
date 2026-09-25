@@ -11,7 +11,7 @@ import b03_build_observation as b03
 import b04_build_cube as b04
 from migrate import common
 
-from .migrate_fixtures import make_registry_db, make_v2_db_with_observation
+from .migrate_fixtures import make_registry_db, make_v2_db_with_observation, table_content_hash
 
 # b04 は AVG()/SUM() を使うため `common.require_sqlite_version()` で古い
 # SQLite を拒む（`scripts/migrate/common.py` 参照）。この版のガード自体の
@@ -46,29 +46,257 @@ def _registry_db(tmp_path):
     return registry_db
 
 
-def test_zero_imputation_includes_below_lod_and_excludes_above_lod(tmp_path):
-    """imputation='zero' が below_lod/not_detected を 0.0 として平均に含め、
-    above_lod/unknown を除外することを、実際の集計結果（AVG/n）で確認する。
+def test_zero_and_lod_series_per_censoring_branch(tmp_path):
+    """ADR-0009 決定4: `value_zero`/`value_lod` を4つの検閲区分（none/below_lod/
+    not_detected/above_lod）それぞれについて格ごとに確認する（設計ブリーフ
+    検証7の実測）。
+
+    - `none`（2.0）: 両系列とも 2.0（代入の余地が無い）。
+    - `below_lod`（<0.5）: value_zero=0.0（v1再現）・value_lod=0.5（censoring_limit）。
+    - `not_detected`（ND）: value_zero=0.0（v1再現）・value_lod=NULL（限界値が
+      無いため代入せず、平均から除外する一般形）。
+    - `above_lod`（>9.0）: value_num が NULL（D2）のまま、どちらの系列でも
+      代入されないので `v_zero IS NOT NULL` の絞り込みで日次セル自体ができない
+      （非メンバーのまま。ADR-0009 決定4-C）。
     """
     rows = [
         _row("measurements", "m1", "2020-01-01", "2020-01-01", 2.0, "2.0", "none"),
         _row("measurements", "m2", "2020-01-02", "2020-01-02", None, "<0.5", "below_lod", censoring_limit=0.5),
-        _row("measurements", "m3", "2020-01-03", "2020-01-03", None, ">9.0", "above_lod", censoring_limit=9.0),
+        _row("measurements", "m3", "2020-01-03", "2020-01-03", None, "ND", "not_detected"),
+        _row("measurements", "m4", "2020-01-04", "2020-01-04", None, ">9.0", "above_lod", censoring_limit=9.0),
     ]
     db_path = tmp_path / "v2.sqlite"
     conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
     try:
         stats = b04.build_cube(conn, _registry_db(tmp_path))
-        # above_lod（m3）は value_num が NULL（D2）のまま imputation='zero' でも
-        # 代入されないので、`v IS NOT NULL` の絞り込みで日次セル自体ができない。
         day_rows = conn.execute(
-            "SELECT period_start, value, n, n_censored FROM observation_agg "
+            "SELECT period_start, value_zero, value_lod, n, n_censored, n_not_detected FROM observation_agg "
             "WHERE grain='day' AND stat='mean' ORDER BY period_start"
         ).fetchall()
-        assert stats["n_day"] == 6  # mean/min/max の3行 × 2日（above_lodの日は無い）
-        assert ("2020-01-01", 2.0, 1, 0) in day_rows
-        assert ("2020-01-02", 0.0, 1, 1) in day_rows
-        assert all(r[0] != "2020-01-03" for r in day_rows)
+        assert stats["n_day"] == 9  # mean/min/max の3行 × 3日（above_lodの日は無い）
+        assert ("2020-01-01", 2.0, 2.0, 1, 0, 0) in day_rows
+        assert ("2020-01-02", 0.0, 0.5, 1, 1, 0) in day_rows
+        assert ("2020-01-03", 0.0, None, 1, 0, 1) in day_rows
+        assert all(r[0] != "2020-01-04" for r in day_rows)
+        # 検証1: value_lod が NULL になるのは 2020-01-03（n_not_detected=n=1）
+        # の日次セルだけ（`day_rows` は stat='mean' に絞っているので1行）。
+        null_rows = [r for r in day_rows if r[2] is None]
+        assert {r[0] for r in null_rows} == {"2020-01-03"}
+        assert len(null_rows) == 1
+    finally:
+        conn.close()
+
+
+def test_value_lod_report_counts(tmp_path):
+    """`build_cube()` が返すレポート件数（`n_value_lod_differs`/
+    `n_value_lod_null`。設計ブリーフ 検証4）を、月・年のロールアップに
+    巻き込まれない出典配布セル（`period_grain='fiscal_year'`）だけの小さな
+    フィクスチャで検証する（day セルは月・年へロールアップされるため、
+    件数の手計算が煩雑になる。ここでは意図的にそれを避け、系列（variable_id）
+    を分けて互いにロールアップで混ざらないようにする）。
+    """
+    rows = [
+        _row(
+            "measurements", "m1", "2020-04-01", "2021-03-31", 2.0, "2.0", "none",
+            variable_id="common:variable:water.bod", value_grain="fiscal_year", period_grain="fiscal_year",
+        ),
+        _row(
+            "measurements", "m2", "2020-04-01", "2021-03-31", None, "<0.5", "below_lod", censoring_limit=0.5,
+            variable_id="common:variable:water.cod", value_grain="fiscal_year", period_grain="fiscal_year",
+        ),
+        _row(
+            "measurements", "m3", "2020-04-01", "2021-03-31", None, "ND", "not_detected",
+            variable_id="common:variable:water.ph", value_grain="fiscal_year", period_grain="fiscal_year",
+        ),
+    ]
+    db_path = tmp_path / "v2.sqlite"
+    conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
+    try:
+        stats = b04.build_cube(conn, _registry_db(tmp_path))
+        # 各系列は独立（variable_id が違う）なので互いにロールアップで混ざらない。
+        # stat ∈ {mean, min, max} の3行 × 3系列 = 9行。
+        assert stats["n_year_source"] == 9
+        # none（m1）は3行とも差なし。below_lod（m2）は3行（mean/min/max）とも
+        # 差あり。not_detected（m3）は3行とも value_lod が NULL——`!=` は
+        # NULL を含む比較を「異なる」として数えない（SQL の3値論理）ので
+        # n_value_lod_differs には入らず、n_value_lod_null 側だけに数えられる
+        # （設計ブリーフ 検証4「重なり0」）。
+        assert stats["n_value_lod_differs"] == 3  # below_lod の3行のみ
+        assert stats["n_value_lod_null"] == 3  # not_detected の3行
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# /code-review 指摘1・指摘2: 検証1・検証3が「葉の格」と「積み上げの格」を
+# 区別しない・「値は非負」を仮定していたバグの回帰テスト。
+#
+# ここに挙げる3つの fixture（指摘1: 「ND2行の日」＋「有値1行の日」・
+# 「ND1行の日」＋「ND2行の日」、指摘2: 負の実測値＋ND）は、いずれも
+# 修正前の実装（検証1: 葉・積み上げを区別せず (value_lod IS NULL) =
+# (n_not_detected = n) を課す。検証3: n_not_detected の値によらず両方
+# 非NULLなら value_lod >= value_zero を課す）に対して実行すると
+# `common.MigrationError` で止まっていたことを、このタスク中に実際に
+# 確認した（`_CHECK1_VIOLATION_SQL`/`_CHECK3_VIOLATION_SQL` を手元で
+# 一時的に修正前の式へ差し替えて3つとも再実行し、それぞれ例外が起きる
+# ことを確認済み）。修正後の実装ではどれも例外を投げずに通ることを、
+# ここで実測として固定する。
+# ---------------------------------------------------------------------------
+
+def test_month_rollup_allows_all_nd_day_mixed_with_valid_day(tmp_path):
+    """/code-review 指摘1（1つ目の形）: 同じ月に「ND 2行の日」と「有値1行の日」
+    が混じると、月セルの n（日次セルの個数=2）と n_not_detected（ND 観測の
+    個数の和=2）がたまたま一致するが、value_lod は NULL ではない
+    （AVG(NULL, 5.0)=5.0）。旧検証1（単位を混ぜた等式）はこれを
+    「value_lod IS NULL と n_not_detected=n が食い違う」と誤検出していた。
+    """
+    rows = [
+        _row("measurements", "m1", "2020-01-01", "2020-01-01", None, "ND", "not_detected"),
+        _row("measurements", "m2", "2020-01-01", "2020-01-01", None, "ND", "not_detected"),
+        _row("measurements", "m3", "2020-01-02", "2020-01-02", 5.0, "5.0", "none"),
+    ]
+    db_path = tmp_path / "v2.sqlite"
+    conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
+    try:
+        b04.build_cube(conn, _registry_db(tmp_path))  # 例外を投げなければ良い
+        month_row = conn.execute(
+            "SELECT value_zero, value_lod, n, n_not_detected FROM observation_agg "
+            "WHERE grain='month' AND stat='mean'"
+        ).fetchone()
+        # 日次セル: 01-01(n=2,n_not_detected=2,value_zero=0.0,value_lod=NULL) /
+        # 01-02(n=1,n_not_detected=0,value_zero=5.0,value_lod=5.0)。
+        # 月セル: n=2（日次セルの個数）, n_not_detected=2（0+2）,
+        # value_zero=AVG(0.0,5.0)=2.5, value_lod=AVG(NULL,5.0)=5.0。
+        assert month_row == (2.5, 5.0, 2, 2)
+    finally:
+        conn.close()
+
+
+def test_month_rollup_allows_two_all_nd_days(tmp_path):
+    """/code-review 指摘1（2つ目の形）: 同じ月に「ND 1行の日」と「ND 2行の日」
+    （どちらも100% ND）が混じると、月セルは n=2（日次セルの個数）・
+    n_not_detected=3（1+2）で一致しないが、value_lod は正しく NULL
+    （全部NDの日だけで構成される月）。旧検証1はこれも
+    「n_not_detected=n が食い違う」として誤検出していた。
+    """
+    rows = [
+        _row("measurements", "m1", "2020-02-01", "2020-02-01", None, "ND", "not_detected"),
+        _row("measurements", "m2", "2020-02-02", "2020-02-02", None, "ND", "not_detected"),
+        _row("measurements", "m3", "2020-02-02", "2020-02-02", None, "ND", "not_detected"),
+    ]
+    db_path = tmp_path / "v2.sqlite"
+    conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
+    try:
+        b04.build_cube(conn, _registry_db(tmp_path))  # 例外を投げなければ良い
+        month_row = conn.execute(
+            "SELECT value_zero, value_lod, n, n_not_detected FROM observation_agg "
+            "WHERE grain='month' AND stat='mean'"
+        ).fetchone()
+        assert month_row == (0.0, None, 2, 3)
+    finally:
+        conn.close()
+
+
+def test_negative_values_with_not_detected_reverse_the_inequality(tmp_path):
+    """/code-review 指摘2: 実測値が負の変数（河川水位等）で not_detected が
+    混じると value_lod（ND除外平均）が value_zero（ND=0平均）を下回る
+    （[-10.0, ND] は zero側平均-5.0・lod側平均-10.0）。旧検証3
+    （n_not_detected の値によらず両方非NULLなら value_lod>=value_zero を
+    課す）はこれを誤検出していた。below_lod の限界値が正であることに
+    依拠する不等式を、not_detected を含むセルには課さないように直したので
+    このフィクスチャは例外を投げずに通る。
+    """
+    rows = [
+        _row("measurements", "m1", "2020-01-01", "2020-01-01", -10.0, "-10.0", "none"),
+        _row("measurements", "m2", "2020-01-01", "2020-01-01", None, "ND", "not_detected"),
+    ]
+    db_path = tmp_path / "v2.sqlite"
+    conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
+    try:
+        b04.build_cube(conn, _registry_db(tmp_path))  # 例外を投げなければ良い
+        day_row = conn.execute(
+            "SELECT value_zero, value_lod, n, n_not_detected FROM observation_agg "
+            "WHERE grain='day' AND stat='mean'"
+        ).fetchone()
+        assert day_row == (-5.0, -10.0, 2, 1)
+        assert day_row[1] < day_row[0]  # value_lod < value_zero（逆転そのものを確認）
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# /code-review 指摘4: 新しい3つの機械検証それぞれに「わざと壊すと止まる」
+# ネガティブテスト（既存の一意性検証にはあったが、value_zero/value_lod の
+# 3検証には無かった——述語のタイポで空回りしても pytest は全部緑のまま
+# だった）。`_assert_dimension_key_unique_raises_with_examples` と同じ流儀
+# （手作りの staging テーブルに直接壊れた行を入れ、検証関数を直接呼ぶ）。
+# ---------------------------------------------------------------------------
+
+_STAGING_DIM = (
+    "jp-14", "place_s1", "site", "common:variable:water.bod", None, "common:unit:mg_per_l",
+    "day", "2020-01-01", "2020-01-01", "day", "day", "mean",
+)
+
+
+def _make_staging_with_rows(conn, rows):
+    """`_CREATE_OBSERVATION_AGG_SQL` と同じ形の `staging` テーブルを作り、
+    `rows`（各要素が `DIM_COLUMNS` + value_zero/value_lod/n/n_censored/
+    n_not_detected/n_places/built_from/spec_version の並び）を入れる
+    （/simplify 指摘10: `test_assert_dimension_key_unique_raises_with_examples`
+    と3つのネガティブテストが同じ処理をそれぞれ別に書いていたので、複数行を
+    入れられる形に一般化して両方から使う）。
+    """
+    conn.execute(b04._CREATE_OBSERVATION_AGG_SQL.format(table='"staging"'))
+    cols = ", ".join(
+        b04.DIM_COLUMNS
+        + ["value_zero", "value_lod", "n", "n_censored", "n_not_detected", "n_places", "built_from", "spec_version"]
+    )
+    placeholders = ", ".join("?" for _ in rows[0])
+    conn.executemany(f'INSERT INTO "staging" ({cols}) VALUES ({placeholders})', rows)
+    conn.commit()
+
+
+@pytest.mark.parametrize(
+    "row, match",
+    [
+        pytest.param(
+            (*_STAGING_DIM, 1.0, None, 1, 0, 0, 1, "bf", "sv"),
+            "value_lod IS NULL の条件が崩れている",
+            id="check1_leaf_unit_mismatch",
+        ),
+        pytest.param(
+            (*_STAGING_DIM, 1.0, 2.0, 1, 0, 0, 1, "bf", "sv"),
+            "ビット一致しない",
+            id="check2_bit_mismatch",
+        ),
+        pytest.param(
+            (*_STAGING_DIM, 5.0, 3.0, 1, 1, 0, 1, "bf", "sv"),
+            "value_lod が value_zero を下回る",
+            id="check3_inequality_violation",
+        ),
+    ],
+)
+def test_assert_value_zero_lod_invariants_raises_when_deliberately_broken(tmp_path, row, match):
+    """検証1/2/3それぞれをわざと壊すと `MigrationError` になる（/code-review
+    指摘4: 既存の一意性検証にはあったが value_zero/value_lod の3検証には
+    無かった——述語のタイポで空回りしても pytest は全部緑のままだった。
+    /simplify 指摘8: 値と期待メッセージ以外まったく同じ形の3本を、
+    `test_r01_registry_atomic.py` にある先例と同じく `parametrize` で
+    1本にまとめた）。
+
+    - check1: 葉の格（grain='day'=input_grain）で value_lod が NULL なのに
+      n_not_detected（0）が n（1）と一致しない。
+    - check2: 検閲の無いセル（n_censored=0, n_not_detected=0）なのに
+      value_zero と value_lod が異なる。
+    - check3: not_detected を含まないセル（n_not_detected=0）で value_lod
+      が value_zero を下回る。
+    """
+    db_path = tmp_path / "t.sqlite"
+    conn = sqlite3.connect(f"file:{db_path}", uri=True)
+    _make_staging_with_rows(conn, [row])
+    try:
+        with pytest.raises(common.MigrationError, match=match):
+            b04._assert_value_zero_lod_invariants(conn, "staging")
     finally:
         conn.close()
 
@@ -85,7 +313,7 @@ def test_day_cell_has_mean_min_max_for_every_variable(tmp_path):
         b04.build_cube(conn, _registry_db(tmp_path))
         got = dict(
             conn.execute(
-                "SELECT stat, value FROM observation_agg WHERE grain='day' ORDER BY stat"
+                "SELECT stat, value_zero FROM observation_agg WHERE grain='day' ORDER BY stat"
             ).fetchall()
         )
         assert got == {"max": 3.0, "mean": 2.0, "min": 1.0}
@@ -122,7 +350,7 @@ def test_day_cell_sum_only_for_default_stat_sum_variables_matching_obs_stat(tmp_
     try:
         b04.build_cube(conn, _registry_db(tmp_path))
         sum_rows = conn.execute(
-            "SELECT variable_id, obs_stat, value, n FROM observation_agg WHERE grain='day' AND stat='sum'"
+            "SELECT variable_id, obs_stat, value_zero, n FROM observation_agg WHERE grain='day' AND stat='sum'"
         ).fetchall()
         assert sum_rows == [("common:variable:weather.precipitation", None, 3.0, 2)]
     finally:
@@ -151,14 +379,14 @@ def test_hour_and_instant_grain_roll_up_into_day_cell_with_correct_input_grain(t
     try:
         b04.build_cube(conn, _registry_db(tmp_path))
         hour_day = conn.execute(
-            "SELECT period_start, period_end, input_grain, value, n FROM observation_agg "
+            "SELECT period_start, period_end, input_grain, value_zero, n FROM observation_agg "
             "WHERE grain='day' AND stat='mean' AND variable_id='common:variable:weather.precipitation'"
         ).fetchall()
         # 区間の始まり（23:00 の日付＝2020-01-01）が日次セルの日になる（正しい日割り）。
         assert hour_day == [("2020-01-01", "2020-01-01", "hour", 4.0, 1)]
 
         instant_day = conn.execute(
-            "SELECT period_start, input_grain, value FROM observation_agg "
+            "SELECT period_start, input_grain, value_zero FROM observation_agg "
             "WHERE grain='day' AND stat='mean' AND variable_id='common:variable:water.water_temp'"
         ).fetchall()
         assert instant_day == [("2020-01-03", "instant", 6.0)]
@@ -185,7 +413,7 @@ def test_month_source_cell_is_symmetric_with_year_source_cell(tmp_path):
         assert stats["n_month_source"] == 3
         assert stats["n_day"] == 0
         month_rows = conn.execute(
-            "SELECT grain, input_grain, stat, value, n FROM observation_agg WHERE grain='month' ORDER BY stat"
+            "SELECT grain, input_grain, stat, value_zero, n FROM observation_agg WHERE grain='month' ORDER BY stat"
         ).fetchall()
         assert month_rows == [
             ("month", "month", "max", 10.0, 1),
@@ -240,19 +468,19 @@ def test_month_and_year_from_day_inherit_input_grain_and_filter_mean(tmp_path):
     try:
         b04.build_cube(conn, _registry_db(tmp_path))
         month = conn.execute(
-            "SELECT n, value, input_grain FROM observation_agg WHERE grain='month'"
+            "SELECT n, value_zero, input_grain FROM observation_agg WHERE grain='month'"
         ).fetchall()
         assert month == [(3, 3.0, "day")]  # n=3（日次セル3個）, avg=(1+3+5)/3=3.0, min/maxは混ざらない
 
         year_mean = conn.execute(
-            "SELECT n, value, input_grain FROM observation_agg WHERE grain='year' AND stat='mean'"
+            "SELECT n, value_zero, input_grain FROM observation_agg WHERE grain='year' AND stat='mean'"
         ).fetchall()
         assert year_mean == [(3, 3.0, "day")]
         year_min = conn.execute(
-            "SELECT value FROM observation_agg WHERE grain='year' AND stat='min'"
+            "SELECT value_zero FROM observation_agg WHERE grain='year' AND stat='min'"
         ).fetchall()
         year_max = conn.execute(
-            "SELECT value FROM observation_agg WHERE grain='year' AND stat='max'"
+            "SELECT value_zero FROM observation_agg WHERE grain='year' AND stat='max'"
         ).fetchall()
         assert year_min == [(1.0,)]
         assert year_max == [(5.0,)]
@@ -277,7 +505,7 @@ def test_annual_direct_row_bypasses_day_month_cells(tmp_path):
         assert stats["n_day"] == 0
         assert stats["n_month_from_day"] == 0
         annual = conn.execute(
-            "SELECT grain, input_grain, stat, value, n FROM observation_agg ORDER BY stat"
+            "SELECT grain, input_grain, stat, value_zero, n FROM observation_agg ORDER BY stat"
         ).fetchall()
         assert annual == [
             ("fiscal_year", "fiscal_year", "max", 4.0, 1),
@@ -327,18 +555,8 @@ def test_assert_dimension_key_unique_raises_with_examples(tmp_path):
     """
     db_path = tmp_path / "t.sqlite"
     conn = sqlite3.connect(f"file:{db_path}", uri=True)
-    conn.execute(b04._CREATE_OBSERVATION_AGG_SQL.format(table='"staging"'))
-    cols = ", ".join(
-        b04.DIM_COLUMNS + ["value", "n", "n_censored", "n_not_detected", "n_places", "built_from", "spec_version"]
-    )
-    row = (
-        "jp-14", "place_s1", "site", "common:variable:water.bod", None, "common:unit:mg_per_l",
-        "day", "2020-01-01", "2020-01-01", "day", "day", "mean", "zero",
-        1.0, 1, 0, 0, 1, "bf", "sv",
-    )
-    placeholders = ", ".join("?" for _ in row)
-    conn.executemany(f'INSERT INTO "staging" ({cols}) VALUES ({placeholders})', [row, row])
-    conn.commit()
+    row = (*_STAGING_DIM, 1.0, 1.0, 1, 0, 0, 1, "bf", "sv")
+    _make_staging_with_rows(conn, [row, row])
     try:
         with pytest.raises(common.MigrationError, match="次元キーが一意でない"):
             b04._assert_dimension_key_unique(conn, "staging")
@@ -479,3 +697,36 @@ def test_build_cube_halts_when_observation_has_no_recorded_fingerprint(tmp_path)
             b04.build_cube(conn, registry_db)
     finally:
         conn.close()
+
+
+def test_running_twice_yields_identical_observation_agg_content_hash(tmp_path):
+    """決定論: 同じ `observation` に対して `build_cube()` を2回実行すると
+    `observation_agg` の content_hash がバイト一致する（設計ブリーフ 検証8。
+    `scripts/tests/test_b03_build_observation.py::test_running_twice_yields_identical_content_hash`
+    と同じ流儀）。値の異なる4区分（none/below_lod/not_detected/above_lod）を
+    混ぜたフィクスチャで確認する——`value_zero`/`value_lod` のどちらも
+    決定論が崩れていないことの回帰。
+    """
+    rows = [
+        _row("measurements", "m1", "2020-01-01", "2020-01-01", 2.0, "2.0", "none"),
+        _row("measurements", "m2", "2020-01-02", "2020-01-02", None, "<0.5", "below_lod", censoring_limit=0.5),
+        _row("measurements", "m3", "2020-01-03", "2020-01-03", None, "ND", "not_detected"),
+        _row("measurements", "m4", "2020-01-04", "2020-01-04", None, ">9.0", "above_lod", censoring_limit=9.0),
+    ]
+    registry_db = _registry_db(tmp_path)
+
+    def build(db_name):
+        db_path = tmp_path / db_name
+        conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
+        try:
+            b04.build_cube(conn, registry_db)
+        finally:
+            conn.close()
+        return db_path
+
+    def fingerprint(path):
+        return table_content_hash(path, "observation_agg", b04.DIM_COLUMNS)
+
+    out1 = build("v2_1.sqlite")
+    out2 = build("v2_2.sqlite")
+    assert fingerprint(out1) == fingerprint(out2)

@@ -343,12 +343,16 @@ def verify_hourly_daily_rollup(work: sqlite3.Connection, sample_limit: int = 20)
 
     # 系列ごとの全期間の Σn・min・max が一致すること。L2 側（`l2_by_key`）は
     # 上で日次から再集計済み（C-4）——ここで label25_obs_keyed を読み直さない。
+    # ADR-0009 決定4: `value` は `value_zero`/`value_lod` に分かれた。この検証
+    # は `sensor_timeseries`（censoring は常に 'none'）だけを対象にするため
+    # `value_zero`（旧 `value` の改称）と `value_lod` は常に同じ値——ここでは
+    # 旧実装と同じ `value_zero` を読む。
     cube_totals = work.execute(
         f"""
         SELECT {_HOUR_SERIES_DIM},
                SUM(CASE WHEN stat = 'mean' THEN n END) AS n,
-               MIN(CASE WHEN stat = 'min' THEN value END) AS vmin,
-               MAX(CASE WHEN stat = 'max' THEN value END) AS vmax
+               MIN(CASE WHEN stat = 'min' THEN value_zero END) AS vmin,
+               MAX(CASE WHEN stat = 'max' THEN value_zero END) AS vmax
         FROM cube.observation_agg
         WHERE grain = 'day' AND input_grain = 'hour'
         GROUP BY {_HOUR_SERIES_DIM}

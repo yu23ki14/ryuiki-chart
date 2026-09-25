@@ -33,7 +33,7 @@ value_grain != period_grain（食い違う行。宣言表でカバーされて�
 - alias（variable_alias）解決率: 717,839 / 717,839 （全行解決。1行でも未解決なら、このレポート自体が作られず b03 が例外で止まる）
 - place（place_source_ref）解決率: 717,839 / 717,839 （同上。全行解決）
 
-センサーに検閲の概念は無い（design.md T3）。`censoring` は常に `'none'`・`value_raw` は常に NULL。`sensor_timeseries.result IS NULL` の行はそのまま `value_num=NULL` で運び、b04 の `WHERE v IS NOT NULL` でキューブから自然に除外される。
+センサーに検閲の概念は無い（design.md T3）。`censoring` は常に `'none'`・`value_raw` は常に NULL。`sensor_timeseries.result IS NULL` の行はそのまま `value_num=NULL` で運び、b04 の `WHERE v_zero IS NOT NULL` でキューブから自然に除外される。
 
 value_grain != period_grain（食い違う行。宣言表でカバーされている分のみ許される）: **0行**
 

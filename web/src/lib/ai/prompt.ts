@@ -32,9 +32,10 @@ function schemaOrigins(): string {
  * 画面の注記用に選んだ13件（旧 domain.ts の DATA_CAVEATS / BIOTA_CAVEATS。
  * Phase B で撤去。docs/plans/PHASE_B_INTAKE.md #6）に municipality を足した14件が
  * registry/caveat.yaml の全件（cells.notes 由来を除く）だった。P-1b で
- * landuseDefinitionChange（Phase A 以降初めての新規注記）が増え15件になった。
- * 既存14件の並び順は変えず、新規分は末尾に足す（旧実装のまま変えないという方針を、
- * 増分にまで遡って適用する理由が無いため）。
+ * landuseDefinitionChange（Phase A 以降初めての新規注記）が増え15件、
+ * ADR-0009 決定4-C（water.transparency の above_lod、/code-review 指摘3）で
+ * aboveLod が増え16件になった。既存分の並び順は変えず、新規分は末尾に足す
+ * （旧実装のまま変えないという方針を、増分にまで遡って適用する理由が無いため）。
  * 本文は `caveatBody`（レジストリ由来）から引き、直書きしない
  * （レジストリと文言がずれる「二重の真実」を防ぐ）。
  *
@@ -61,6 +62,7 @@ const CAVEAT_KEY_ORDER = {
   isAlien: true,
   municipality: true,
   landuseDefinitionChange: true,
+  aboveLod: true,
 } satisfies Record<CaveatKey, true>;
 const CAVEAT_KEYS = Object.keys(CAVEAT_KEY_ORDER) as CaveatKey[];
 

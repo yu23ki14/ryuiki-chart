@@ -389,6 +389,7 @@ def build_and_write_occurrence_place(
         with common.staged_table(
             conn, "occurrence_place", _CREATE_OCCURRENCE_PLACE_SQL,
             fingerprint_inputs={"occurrence": occurrence_fingerprint},
+            fingerprint_spec_version=common.OCCURRENCE_SPEC_VERSION,
         ) as staging:
             def rows():
                 for record_id, lat, lon in conn.execute(
@@ -396,7 +397,7 @@ def build_and_write_occurrence_place(
                     "WHERE lat IS NOT NULL AND lon IS NOT NULL"
                 ):
                     place_id = coord_place_id[(lat, lon)]
-                    yield (record_id, PLACE_KIND, place_id, METHOD, built_from, common.SPEC_VERSION)
+                    yield (record_id, PLACE_KIND, place_id, METHOD, built_from, common.OCCURRENCE_SPEC_VERSION)
 
             conn.executemany(_INSERT_SQL.format(table=f'"{staging}"'), rows())
             # 検証6: UNIQUE(record_id, place_kind)（コードレビュー指摘10:

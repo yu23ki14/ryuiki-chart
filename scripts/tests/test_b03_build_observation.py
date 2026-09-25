@@ -10,8 +10,6 @@ import pytest
 
 import b03_build_observation as b03
 from migrate import common
-from reconcile import common as reconcile_common
-from reconcile import datasource
 
 from migrate import source_regions
 
@@ -33,6 +31,7 @@ from .migrate_fixtures import (
     make_measurements_db,
     make_registry_db,
     make_time_label_conventions_yaml,
+    table_content_hash,
 )
 
 
@@ -356,6 +355,40 @@ def test_t1_invariant_holds_for_all_grains(tmp_path):
     assert bad == 0
 
 
+def test_below_lod_without_censoring_limit_raises(tmp_path, monkeypatch):
+    """/simplify 指摘2: `censoring='below_lod'` なのに `censoring_limit` が
+    NULL の行があると、observation の不変条件検証（T1 と同じ場所）で b03 が
+    `MigrationError` で止まる——この検証は `observation_agg`（b04）ではなく
+    `observation` の書き手（b03）が1回だけ保証する（モジュール docstring
+    「T1 不変条件」節参照）。実データでは `censoring.py` の `_parse_limit` が
+    below_lod の `censoring_limit` を必ず埋めるため起きないが、将来・別出典の
+    取り込み経路がこの前提を破る可能性を想定し、`classify_censoring` を
+    モンキーパッチして below_lod の `censoring_limit` を欠落させる
+    （`DEFAULT_MEASUREMENTS` の `m2` が `<0.5` の below_lod 行）。
+    """
+    measurements_db = tmp_path / "ryuiki.sqlite"
+    registry_db = tmp_path / "registry.sqlite"
+    make_measurements_db(measurements_db)
+    make_registry_db(registry_db)
+    out = tmp_path / "v2.sqlite"
+
+    orig_classify_censoring = b03.censoring.classify_censoring
+
+    def broken_classify_censoring(value_raw):
+        cens, limit = orig_classify_censoring(value_raw)
+        if cens == b03.censoring.CENSORING_BELOW_LOD:
+            return cens, None
+        return cens, limit
+
+    monkeypatch.setattr(b03.censoring, "classify_censoring", broken_classify_censoring)
+
+    with pytest.raises(common.MigrationError, match="censoring_limit が NULL"):
+        build_observation(
+            tmp_path,
+            measurements_db, registry_db, _no_exceptions_path(tmp_path), _no_conventions_path(tmp_path), out
+        )
+
+
 def test_replace_table_does_not_touch_other_tables(tmp_path):
     """`observation` の作り直しはテーブル単位（`replace_table`）で行われ、
     同じ `v2.sqlite` に既にある別テーブル（将来の `occurrence` 相当）を
@@ -407,15 +440,7 @@ def test_running_twice_yields_identical_content_hash(tmp_path):
     )
 
     def fingerprint(path):
-        conn = reconcile_common.open_readonly(path)
-        src = datasource.SqliteSource(conn)
-        columns = src.columns("observation")
-        numeric = reconcile_common.numeric_columns_of(conn, "observation", columns)
-        fp = reconcile_common.compute_fingerprint(
-            src, "observation", columns, ["source_table", "source_row_id"], numeric
-        )
-        conn.close()
-        return fp["content_hash"]
+        return table_content_hash(path, "observation", ["source_table", "source_row_id"])
 
     assert fingerprint(out1) == fingerprint(out2)
 

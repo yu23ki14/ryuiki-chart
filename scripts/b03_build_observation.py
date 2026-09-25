@@ -97,7 +97,7 @@ ADR-0007 の全列のうち埋まるのは次のとおり。
     `sensor_timeseries` に検閲の概念は無い——`censoring` は常に `'none'`、
     `value_raw` は常に NULL、`value_num` は `sensor_timeseries.result` を
     そのまま運ぶ（`result IS NULL` の行はそのまま NULL。b04 の
-    `WHERE v IS NOT NULL` で自然にキューブから外れる。design.md T3）。
+    `WHERE v_zero IS NOT NULL` で自然にキューブから外れる。design.md T3）。
   - `quality_stage` / `is_synthetic` / `source_ref` / `event_id` — 既にある
     列からの素の carry-over。`sensor_timeseries` にはこのうち `is_synthetic`
     しか対応する列が無いため、`quality_stage`/`source_ref`/`event_id` は
@@ -145,6 +145,17 @@ ADR-0007 の全列のうち埋まるのは次のとおり。
 （SQLite の `date()` 関数が時刻帯付き文字列を UTC 側に正規化してしまわない
 こと）を、書き出した実際のテーブルに対して検証する（`scripts/migrate/period.py`
 が時刻帯を落として計算しているはずだが、それを実行のたびに確かめる）。
+
+**`censoring='below_lod'` は `censoring_limit` を必ず持つ**（ADR-0009）ことも
+ここで検証する（/simplify 指摘2: この不変条件は `observation`（キューブ側の
+消費者ではなく書き手）自身の性質なので、`observation_agg`（b04）ではなく
+書き手（b03）が1回だけ保証する——「レジストリの不変条件は書き手側、消費者側は
+射影固有の前提だけ」という既存の分担と同じ。`docs/plans/PHASE_B_FACT_SLICE.md`
+D11 の `site_zone_lookup` の節参照）。`censoring.py` の `_parse_limit` は
+`below_lod` の `censoring_limit` を必ず埋めるため実データでは起きないが、
+別出典や将来の取り込み経路がこの前提を破る可能性がある。破れると、b04 の
+`value_lod`（below_lod → censoring_limit の代入）が計算できず、その行が
+value_lod の平均から黙って消える（3つの機械検証もすり抜ける）。
 """
 from __future__ import annotations
 
@@ -558,7 +569,7 @@ def _ingest_sensor_timeseries(
             # センサーに検閲の概念は無い（design.md T3）。value_raw は持たず、
             # censoring は常に 'none'。value_num は result をそのまま運ぶ
             # （result IS NULL の行はそのまま NULL のまま運び、b04 の
-            # `WHERE v IS NOT NULL` で自然にキューブから外れる）。
+            # `WHERE v_zero IS NOT NULL` で自然にキューブから外れる）。
             yield (
                 "sensor_timeseries", row_id_str, region_id, place_id, place_kind, variable_id, obs_stat,
                 unit_id, unit, value_grain, period_grain, period_start, period_end, phenomenon_time,
@@ -883,23 +894,39 @@ def build_and_write_observation(
             # かつ date(period_start) が period_start 自身の日付部分と一致する
             # （SQLite の date() は '+09:00' 付き文字列を UTC 側に正規化してしまう
             # ため、この不変条件が崩れていれば date() 系の SQL が黙って壊れる）。
+            # below_lod は censoring_limit を必ず持つ（ADR-0009。/simplify 指摘2:
+            # observation_agg（b04）ではなく observation 自身の不変条件として
+            # ここで1回だけ保証する。モジュール docstring「T1 不変条件」節参照）。
             # 書き出した実際のテーブル（作業用テーブル。A-1）に対して、全行を
-            # 対象に検証する。
-            bad = dest.execute(
+            # 対象に、同じ SELECT で2つとも検証する。
+            n_t1_bad, n_below_lod_bad = dest.execute(
                 f"""
-                SELECT COUNT(*) FROM "{staging}"
-                WHERE period_start LIKE '%+%' OR period_start LIKE '%Z%'
-                   OR period_end LIKE '%+%' OR period_end LIKE '%Z%'
-                   OR date(period_start) IS NULL
-                   OR date(period_start) <> substr(period_start, 1, 10)
+                SELECT
+                  SUM(CASE WHEN period_start LIKE '%+%' OR period_start LIKE '%Z%'
+                         OR period_end LIKE '%+%' OR period_end LIKE '%Z%'
+                         OR date(period_start) IS NULL
+                         OR date(period_start) <> substr(period_start, 1, 10)
+                       THEN 1 ELSE 0 END),
+                  SUM(CASE WHEN censoring = '{censoring.CENSORING_BELOW_LOD}'
+                         AND censoring_limit IS NULL
+                       THEN 1 ELSE 0 END)
+                FROM "{staging}"
                 """
-            ).fetchone()[0]
-            if bad:
+            ).fetchone()
+            if n_t1_bad:
                 raise common.MigrationError(
                     f"T1 の不変条件（period_start/period_end が時刻帯を持たない・"
                     "date(period_start) が period_start の日付部分と一致する）が崩れている行が"
-                    f"{bad}件ある。scripts/migrate/period.py の時刻帯除去（_strip_tz）が"
+                    f"{n_t1_bad}件ある。scripts/migrate/period.py の時刻帯除去（_strip_tz）が"
                     "正しく効いているか確認すること。"
+                )
+            if n_below_lod_bad:
+                raise common.MigrationError(
+                    f"observation: censoring='below_lod' なのに censoring_limit が NULL の行が"
+                    f"{n_below_lod_bad}件ある。b04 の value_lod の代入（below_lod →"
+                    " censoring_limit）が計算できず、これらの行は value_lod の平均から黙って"
+                    "消える（below_lod なのに非メンバー扱いになる）。"
+                    "scripts/migrate/censoring.py の censoring_limit 解決を確認すること。"
                 )
             # ここまで来たら with ブロックを正常に抜け、staged_table が
             # 作業用テーブルを本番名 "observation" に差し替え、同じ
@@ -998,7 +1025,7 @@ def render_report(all_stats: dict[str, dict]) -> str:
             a(
                 "センサーに検閲の概念は無い（design.md T3）。`censoring` は常に "
                 "`'none'`・`value_raw` は常に NULL。`sensor_timeseries.result IS NULL` の"
-                "行はそのまま `value_num=NULL` で運び、b04 の `WHERE v IS NOT NULL` で"
+                "行はそのまま `value_num=NULL` で運び、b04 の `WHERE v_zero IS NOT NULL` で"
                 "キューブから自然に除外される。"
             )
         else:

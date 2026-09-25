@@ -42,10 +42,42 @@ if str(_SCRIPTS) not in sys.path:
 
 from reconcile.common import load_yaml, open_readonly  # noqa: E402,F401  (b03/b04/b05/b10 から re-export)
 
-# b04 の observation_agg / b05 の射影が `built_from` / `spec_version` に書く定数。
-# バージョンを上げるのはこのパッケージの変換ロジックそのものを変えたとき
-# （キーの構成や集計方法が変わる＝過去に作った observation_agg と比較できなくなるとき）。
-SPEC_VERSION = "phase-b-fact-slice/v1"
+# `built_from` / `spec_version` に書く定数。**成果物ごとに別の定数を持つ**
+# （2026-09-24 コードレビュー指摘: 以前は `SPEC_VERSION` という1つの定数を
+# `b04_build_cube.py`（`observation_agg`）・`b07_build_occurrence_cube.py`
+# （`occurrence_agg`）・`b09_build_occurrence_place.py`（`occurrence_place`）の
+# 3本が共有していた。`observation_agg` の次元キーだけが変わったときにこの
+# 定数を上げると、スキーマの変わっていない `occurrence_agg`/`occurrence_place`
+# の行にも「版が上がった」という事実と違う記録が付いてしまう）。
+# バージョンを上げるのは、その成果物自身の変換ロジック（キーの構成や
+# 集計方法）を変えたとき＝過去に作ったものと比較できなくなるとき。
+
+# `scripts/b04_build_cube.py`（`observation_agg`）専用。2026-09-24:
+# ADR-0009 決定4（検閲値の zero/lod 併記）で次元キーから `imputation` を
+# 外し（13列→12列）、`value` を `value_zero`/`value_lod` の2列に分けた。
+# 過去のキーとは比較できないため v2 に上げた。
+OBSERVATION_AGG_SPEC_VERSION = "phase-b-fact-slice/v2"
+
+# `scripts/b07_build_occurrence_cube.py`（`occurrence_agg`）・
+# `scripts/b09_build_occurrence_place.py`（`occurrence_place`）専用。
+# どちらも今回のキー変更の対象外なので v1 のまま据え置く。
+OCCURRENCE_SPEC_VERSION = "phase-b-fact-slice/v1"
+
+# `record_stage_fingerprint`/`record_stage_fingerprints`（段階間の指紋、
+# Issue #37 #1）の `spec_version` 引数の既定値。**成果物ごとの `built_from`/
+# `spec_version`（上の2定数）とは別の軸**——`pipeline_fingerprint.spec_version`
+# は「指紋機構そのものの記述用メタデータ」で、どの機械検証にも使わない
+# （2026-09-25 現在。読むのは人だけ）。`observation`/`occurrence`（基底表）・
+# `scripts/b05_project_v1.py`/`scripts/b08_project_occurrence_v1.py`/
+# `scripts/b11_project_place_v1.py` の v1 射影各表のように、自分の行に
+# `spec_version` 列を埋め込まない表はこの既定値のまま記録する。
+# **`observation_agg`/`occurrence_agg`/`occurrence_place` のように自分の行に
+# `spec_version` を埋め込む表は、ここではなく成果物ごとの値
+# （`OBSERVATION_AGG_SPEC_VERSION`/`OCCURRENCE_SPEC_VERSION`）を呼び出し側が
+# 明示的に渡す**（2026-09-25 main マージ時の判断: 「成果物ごとの版番号を
+# そのまま使う」——`observation_agg` の指紋だけが空 v1 の既定値のまま取り
+# 残されて実際の v2 と食い違って見える、という事態を避ける）。
+FINGERPRINT_SPEC_VERSION = "phase-b-fact-slice/v1"
 
 # SQLite 3.43 未満では2つの理由でパイプラインが壊れる: (1) AVG()/SUM() の
 # 加算アルゴリズムが素朴な左→右加算に落ち、平均が黙って壊れる（b04・b05・
@@ -206,6 +238,7 @@ def _staging_table_name(table: str) -> str:
 def staged_table(
     conn: sqlite3.Connection, table: str, create_sql: str, params=(), *,
     fingerprint_inputs: dict[str, str] | None = None,
+    fingerprint_spec_version: str = FINGERPRINT_SPEC_VERSION,
 ):
     """`table`（`observation`/`observation_agg` のような本番テーブル）を
     「作業用テーブルに作る → 呼び出し側が全部挿入・検証する → 本番名に差し替える」
@@ -216,13 +249,21 @@ def staged_table(
     ブロックの外で別途 `record_stage_fingerprint()` を呼ぶ設計のまま）。
     **辞書（空 `{}` でもよい）を渡すと、差し替え（DROP+RENAME）と同じ明示
     トランザクション内で `record_stage_fingerprint(conn, table,
-    inputs=fingerprint_inputs)` も実行し、1つの `conn.commit()` で確定する**
-    ——「表の差し替えのコミットと指紋の記録が別コミットなので、その間で
-    プロセスが落ちると『内容は新しいが指紋は古い（前回のまま）』状態が
-    残ってしまう」という穴（/code-review 指摘）をこれで塞ぐ。差し替えの
-    DDL と指紋の記録がどちらも成功しないとコミットされない（片方が失敗
-    すればロールバックで本番テーブルも元に戻る——`with` ブロック内の検証
-    失敗時と同じ「本番はそのまま」を保つ）。
+    spec_version=fingerprint_spec_version, inputs=fingerprint_inputs)` も
+    実行し、1つの `conn.commit()` で確定する**——「表の差し替えのコミットと
+    指紋の記録が別コミットなので、その間でプロセスが落ちると『内容は新しいが
+    指紋は古い（前回のまま）』状態が残ってしまう」という穴（/code-review
+    指摘）をこれで塞ぐ。差し替えの DDL と指紋の記録がどちらも成功しないと
+    コミットされない（片方が失敗すればロールバックで本番テーブルも元に戻る
+    ——`with` ブロック内の検証失敗時と同じ「本番はそのまま」を保つ）。
+
+    `fingerprint_spec_version`（既定 `FINGERPRINT_SPEC_VERSION`）: `table` が
+    自分の行に `spec_version`/`built_from` 列を埋め込む成果物（`observation_agg`
+    → `OBSERVATION_AGG_SPEC_VERSION`、`occurrence_agg`/`occurrence_place` →
+    `OCCURRENCE_SPEC_VERSION`）なら、呼び出し側がその値をそのまま渡すこと
+    （2026-09-25 main マージ時の判断。`FINGERPRINT_SPEC_VERSION` 定義の
+    コメント参照——「成果物ごとの版番号をそのまま使う」）。埋め込み列を
+    持たない基底テーブル（`observation`/`occurrence`）は既定のままでよい。
 
     以前の b03/b04 は `replace_table`（DROP+CREATE、本番名に対して実行）を検証
     より先に呼んでいた。`dest.commit()` を出典ごと・ステップごとに呼んでいた
@@ -308,7 +349,9 @@ def staged_table(
         if fingerprint_inputs is not None:
             # 差し替えと同じトランザクション内で指紋も記録する（上の
             # docstring 参照）。RENAME 直後なので `table` は既に本番名。
-            record_stage_fingerprint(conn, table, inputs=fingerprint_inputs)
+            record_stage_fingerprint(
+                conn, table, spec_version=fingerprint_spec_version, inputs=fingerprint_inputs,
+            )
     except BaseException:
         conn.rollback()  # 本番テーブル（と指紋）を元に戻す（まだ確定していない）
         conn.execute(f'DROP TABLE IF EXISTS "{staging}"')  # 作業用テーブルも残さない
@@ -769,7 +812,7 @@ def read_recorded_inputs(conn: sqlite3.Connection, table: str, *, schema: str | 
 
 def record_stage_fingerprint(
     conn: sqlite3.Connection, table: str, *,
-    spec_version: str = SPEC_VERSION, inputs: dict[str, str] | None = None,
+    spec_version: str = FINGERPRINT_SPEC_VERSION, inputs: dict[str, str] | None = None,
 ) -> str:
     """`table`（`conn` 自身が開いているファイルの本番テーブル）の指紋を計算し、
     同じファイルの `pipeline_fingerprint` メタ表（無ければ作る）に記録する
@@ -803,7 +846,7 @@ def record_stage_fingerprint(
 
 def record_stage_fingerprints(
     conn: sqlite3.Connection, tables, *,
-    spec_version: str = SPEC_VERSION, lineage: dict[str, dict[str, str]] | None = None,
+    spec_version: str = FINGERPRINT_SPEC_VERSION, lineage: dict[str, dict[str, str]] | None = None,
 ) -> dict[str, str]:
     """`tables`（テーブル名のイテラブル）それぞれについて `record_stage_fingerprint`
     を呼ぶバッチ版（/simplify 指摘: 「作った表を1つずつ回して記録する」ループが
