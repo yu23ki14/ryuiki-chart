@@ -38,6 +38,9 @@
   `coordinate_uncertainty_m` を occurrence に運ぶ。規約4は地点のような細かい単位への
   解決と、公開時の一般化（ADR-0018）に適用**（O-1。**この PR では grid01 の place だけ
   先に整える**）
+  （2026-09-25 追記: 「公開時の一般化」自体は `docs/adr/0028-no-coordinate-generalization.md`
+  によりオーナー判断で撤回された。`coordinate_uncertainty_m` を occurrence に運ぶことは
+  変わらないが、それを使って座標を一般化する処理は O-1 以降も作らない）
 - （設計者が推奨どおり決定）F2 分類の補完は taxon レジストリの属性＋
   `registry/taxon/taxon_group.yaml`／F5 occurrence キューブは `source_id` を次元に持つ
   （O-1）／F6 記録の旗（RL 原表記・is_alien・license_class・vernacular_name）は
