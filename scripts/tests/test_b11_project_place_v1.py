@@ -76,23 +76,49 @@ def _make_registry_db(path, watershed_rows=()) -> None:
 # --- watershed_rollup が ATTACH する2つの射影出力の最小フィクスチャ ---------
 
 
-def _make_v1_projection_db(path, site_var_rows=(), landuse_rows=()) -> None:
+def _make_v1_projection_db(
+    path, site_var_rows=(), landuse_rows=(), observation_agg_fingerprint=None, observation_fingerprint=None,
+) -> None:
     """`site_var`/`landuse_watershed` だけを持つ最小の `v1_projection.sqlite`
     フィクスチャ（`scripts/b05_project_v1.py` の出力の代わり）。列名・列順は
     `scripts/b05_project_v1.py` の `_CREATE_SQL` と一致させてある。
+
+    段階間の指紋（Issue #37 #1）: `scripts/b05_project_v1.py` が本物の実行の
+    最後に記録するのと同じ指紋を、この2テーブルにも記録する（b11 が
+    `_assert_rollup_input_fingerprints_fresh` で検証するため、記録が無いと
+    本物の b05 を経由しないこのフィクスチャの全テストが「指紋が記録されて
+    いない」で落ちてしまう）。
+
+    `observation_agg_fingerprint` を渡すと、本物の b05 が記録するのと同じ
+    系譜（`inputs={"observation_agg": ...}`）も両テーブルに記録する
+    （コードレビュー指摘の穴埋め: (b) 系譜チェックを試すテスト専用。省略時は
+    系譜無し＝既存のテストは今までどおり (a) だけを見る）。`observation_fingerprint`
+    も渡すと、本物の b05（`cube.observation` を直接読む11テーブルの inputs に
+    `observation` も直接含める——/code-review 指摘）と同じく **`site_var` の
+    系譜にだけ** `observation` も直接足す（`landuse_watershed` は
+    `observation_agg` だけから作るため、本物の b05 と同じく含めない。
+    b11 実データで実際に踏んだ回帰——`upstream_schemas` に "observation" の
+    対応が無いと、この直接参照が `site_var` と同じ schema にフォールバック
+    して壊れる）。
     """
     conn = sqlite3.connect(path)
     try:
+        site_var_inputs = {"observation_agg": observation_agg_fingerprint} if observation_agg_fingerprint else None
+        if site_var_inputs is not None and observation_fingerprint:
+            site_var_inputs["observation"] = observation_fingerprint
+        landuse_inputs = {"observation_agg": observation_agg_fingerprint} if observation_agg_fingerprint else None
         conn.execute(
             "CREATE TABLE site_var (site_id TEXT, variable TEXT, kind TEXT, n INTEGER, "
             "y_from INTEGER, y_to INTEGER, avg REAL, unit TEXT)"
         )
         conn.executemany("INSERT INTO site_var VALUES (?,?,?,?,?,?,?,?)", list(site_var_rows))
+        migrate_common.record_stage_fingerprint(conn, "site_var", inputs=site_var_inputs)
         conn.execute(
             "CREATE TABLE landuse_watershed (watershed_id TEXT, year INTEGER, landuse_code TEXT, "
             "landuse_name TEXT, n_cells INTEGER, area_km2 REAL)"
         )
         conn.executemany("INSERT INTO landuse_watershed VALUES (?,?,?,?,?,?)", list(landuse_rows))
+        migrate_common.record_stage_fingerprint(conn, "landuse_watershed", inputs=landuse_inputs)
         conn.commit()
     finally:
         conn.close()
@@ -101,6 +127,7 @@ def _make_v1_projection_db(path, site_var_rows=(), landuse_rows=()) -> None:
 def _make_v1_projection_occurrence_db(path, org_watershed_rows=()) -> None:
     """`org_watershed` だけを持つ最小の `v1_projection_occurrence.sqlite`
     フィクスチャ（`scripts/b08_project_occurrence_v1.py` の出力の代わり）。
+    段階間の指紋（Issue #37 #1）の記録は `_make_v1_projection_db` と同じ理由。
     """
     conn = sqlite3.connect(path)
     try:
@@ -108,6 +135,7 @@ def _make_v1_projection_occurrence_db(path, org_watershed_rows=()) -> None:
             "CREATE TABLE org_watershed (watershed_id TEXT, n, alien_n, redlist_n, y_from, y_to)"
         )
         conn.executemany("INSERT INTO org_watershed VALUES (?,?,?,?,?,?)", list(org_watershed_rows))
+        migrate_common.record_stage_fingerprint(conn, "org_watershed")
         conn.commit()
     finally:
         conn.close()
@@ -769,3 +797,254 @@ def test_out_path_via_symlink_to_an_input_is_still_caught(tmp_path):
 
     with pytest.raises(migrate_common.MigrationError, match="v1_projection_db"):
         b11.build_projections(registry_db, alias, **kwargs)
+
+
+# ---------------------------------------------------------------------------
+# 段階間の指紋（Issue #37 #1。scripts/migrate/common.py 参照）
+# ---------------------------------------------------------------------------
+
+def test_build_projections_halts_when_landuse_watershed_changed_since_b05_recorded_it(tmp_path):
+    """**壊れた/古い上流出力で止まることの実測**（Issue #37 受け入れ基準。
+    クロスファイル版——v2.sqlite ではなく、b05/b08 それぞれ別ファイルの
+    出力を b11 が ATTACH で読む経路）: `landuse_watershed`（b05 の出力）の
+    内容を b05 を経由せず直接書き換える（＝b05 が別内容で再実行されたのに
+    b11 が再実行されていない状態を模す）と、`scripts/b05_project_v1.py を
+    再実行すること` と案内する `MigrationError` で止まる。
+
+    `_WATERSHED_ROW`（registry に既に登録済みの watershed_id）を使う
+    ——`site_var`（site_id 版）だと `_assert_no_stale_watershed_or_site_ids`
+    が site_id 未登録で先に止まってしまうため、watershed_id 版で確かめる。
+    """
+    registry_db = tmp_path / "registry.sqlite"
+    _make_registry_db(registry_db, [_WATERSHED_ROW])
+    out_db = tmp_path / "v1_projection_place.sqlite"
+    watershed_id = _WATERSHED_ROW["watershed_id"]
+    kwargs = _rollup_kwargs(
+        tmp_path, landuse_rows=[(watershed_id, 2016, "05", "建物用地", 1, 1.0)],
+    )
+
+    # 1回目: 正しい出力を作る。
+    b11.build_projections(registry_db, out_db, **kwargs)
+
+    # b05 を経由せず landuse_watershed の内容を直接書き換える（b05 の再実行を模す）。
+    proj_conn = sqlite3.connect(kwargs["v1_projection_db"])
+    proj_conn.execute(f"UPDATE landuse_watershed SET area_km2 = 99.9 WHERE watershed_id = '{watershed_id}'")
+    proj_conn.commit()
+    proj_conn.close()
+
+    with pytest.raises(migrate_common.MigrationError, match="scripts/b05_project_v1.py を再実行すること"):
+        b11.build_projections(registry_db, out_db, **kwargs)
+
+
+def test_build_projections_halts_when_observation_agg_rebuilt_without_rerunning_b05(tmp_path):
+    """**コードレビュー指摘が指した穴そのものの再現**（Issue #37 受け入れ
+    基準。b03 系を作り直して b11 を確かめる具体例——クロスファイル系譜版）:
+    `site_var`/`landuse_watershed`（b05 の出力）自身の内容は無傷（(a) の
+    自己一致は通る）だが、その系譜（`inputs["observation_agg"]`）に記録
+    された指紋が古いまま——`observation_agg`（v2.sqlite、b04 の出力）が
+    **b03/b04 の再実行で作り直され**、b05 だけが再実行されていない状態を
+    模す。`--cube-db` に v2.sqlite を渡すと (b) 系譜チェックが有効になり、
+    `observation_agg` 自身の今の自己指紋（新しい）と `site_var` が消費時点で
+    記録した指紋（古い）の食い違いを検出して `scripts/b05_project_v1.py を
+    再実行すること` と案内する `MigrationError` で止まる。
+    """
+    registry_db = tmp_path / "registry.sqlite"
+    _make_registry_db(registry_db, [_WATERSHED_ROW])
+    watershed_id = _WATERSHED_ROW["watershed_id"]
+    out_db = tmp_path / "v1_projection_place.sqlite"
+
+    # v2.sqlite: observation_agg を b04 が最初に作った状態（古い指紋）を模す。
+    cube_db = tmp_path / "v2.sqlite"
+    cube_conn = sqlite3.connect(cube_db)
+    cube_conn.execute("CREATE TABLE observation_agg (variable_id TEXT, value REAL)")
+    cube_conn.executemany("INSERT INTO observation_agg VALUES (?,?)", [("weather.precipitation", 1.0)])
+    old_agg_fp = migrate_common.record_stage_fingerprint(cube_conn, "observation_agg")
+    cube_conn.commit()
+    cube_conn.close()
+
+    # site_var/landuse_watershed（b05 の出力）: 古い observation_agg の指紋を
+    # 消費時点の系譜として記録する（=正しく b05 が実行された、直後の状態）。
+    proj_db = tmp_path / "v1_projection.sqlite"
+    _make_v1_projection_db(
+        proj_db,
+        landuse_rows=[(watershed_id, 2016, "05", "建物用地", 1, 1.0)],
+        observation_agg_fingerprint=old_agg_fp,
+    )
+    occ_db = tmp_path / "v1_projection_occurrence.sqlite"
+    _make_v1_projection_occurrence_db(occ_db)
+
+    # ここまでは全て整合している——1回目は成功するはず。
+    b11.build_projections(
+        registry_db, out_db,
+        v1_projection_db=proj_db, v1_projection_occurrence_db=occ_db, cube_db=cube_db,
+    )
+
+    # b03/b04 を再実行した体で observation_agg を作り直す（別内容・別指紋）。
+    # site_var/landuse_watershed（v1_projection.sqlite）には一切触れない
+    # ——b05 を再実行し忘れた状態そのもの。
+    cube_conn2 = sqlite3.connect(cube_db)
+    cube_conn2.execute("DELETE FROM observation_agg")
+    cube_conn2.executemany(
+        "INSERT INTO observation_agg VALUES (?,?)", [("weather.precipitation", 2.0), ("weather.precipitation", 3.0)]
+    )
+    migrate_common.record_stage_fingerprint(cube_conn2, "observation_agg")
+    cube_conn2.commit()
+    cube_conn2.close()
+
+    with pytest.raises(migrate_common.MigrationError, match="scripts/b05_project_v1.py を再実行すること"):
+        b11.build_projections(
+            registry_db, out_db,
+            v1_projection_db=proj_db, v1_projection_occurrence_db=occ_db, cube_db=cube_db,
+        )
+
+
+def test_build_projections_halts_when_observation_rebuilt_two_hops_away_without_rerunning_b04_or_b05(tmp_path):
+    """**/code-review 指摘の穴そのものの再現**（b11 が1段しかさかのぼらない）:
+    b03→b04→b05→b11 を回した後、**b03（`observation`）だけ**を別内容で
+    作り直し、b04・b05 は一切実行しない。`observation_agg` 自身の内容・自己
+    指紋は無傷のまま（b04 を再実行していないので）——`site_var` が記録する
+    `observation_agg` の指紋は、まだ変わっていない `observation_agg` 自身の
+    自己申告と一致してしまうため、**`observation_agg` の指紋だけの比較では
+    通ってしまう**。本物の b05（`_TABLES_WITHOUT_OBSERVATION_DEPENDENCY` 外の
+    /code-review 対応）は `site_var` の系譜に `observation` 自身も直接
+    含めるため、このテストは実際には**1段目（`site_var`→`observation` 直接）**
+    で検出される——`observation_agg` を経由した2段目の再帰そのものは
+    `test_build_projections_halts_when_observation_rebuilt_two_hops_away_via_pure_recursion`
+    （`site_var` の系譜に `observation_agg` しか無い、より古い/最小限の
+    状況）で別途確認する。どちらのテストも、`observation` を直接読む表の
+    系譜に `observation` が無い実装だと通ってしまう、という同じ穴を別の
+    角度から再現している。
+    """
+    registry_db = tmp_path / "registry.sqlite"
+    _make_registry_db(registry_db, [_WATERSHED_ROW])
+    watershed_id = _WATERSHED_ROW["watershed_id"]
+    out_db = tmp_path / "v1_projection_place.sqlite"
+
+    # v2.sqlite: b03（observation）→ b04（observation_agg）を通しで模す。
+    cube_db = tmp_path / "v2.sqlite"
+    cube_conn = sqlite3.connect(cube_db)
+    cube_conn.execute("CREATE TABLE observation (source_row_id TEXT, value_num REAL)")
+    cube_conn.executemany("INSERT INTO observation VALUES (?,?)", [("m1", 1.0), ("m2", 2.0)])
+    obs_fp = migrate_common.record_stage_fingerprint(cube_conn, "observation")
+    cube_conn.execute("CREATE TABLE observation_agg (variable_id TEXT, value REAL)")
+    cube_conn.executemany("INSERT INTO observation_agg VALUES (?,?)", [("weather.precipitation", 1.5)])
+    agg_fp = migrate_common.record_stage_fingerprint(cube_conn, "observation_agg", inputs={"observation": obs_fp})
+    cube_conn.commit()
+    cube_conn.close()
+
+    # site_var/landuse_watershed（b05 の出力）: 正しく b04 直後に実行された
+    # 状態（observation_agg の今の指紋を系譜として記録）を模す。
+    proj_db = tmp_path / "v1_projection.sqlite"
+    _make_v1_projection_db(
+        proj_db,
+        landuse_rows=[(watershed_id, 2016, "05", "建物用地", 1, 1.0)],
+        observation_agg_fingerprint=agg_fp,
+        observation_fingerprint=obs_fp,
+    )
+    occ_db = tmp_path / "v1_projection_occurrence.sqlite"
+    _make_v1_projection_occurrence_db(occ_db)
+
+    # ここまでは全て整合している——1回目は成功するはず。
+    b11.build_projections(
+        registry_db, out_db,
+        v1_projection_db=proj_db, v1_projection_occurrence_db=occ_db, cube_db=cube_db,
+    )
+
+    # b03 だけを別内容で作り直す（b03 の再実行を模す）。observation_agg には
+    # 一切触れない——b04・b05 の両方を忘れた状態そのもの。
+    cube_conn2 = sqlite3.connect(cube_db)
+    cube_conn2.execute("DELETE FROM observation")
+    cube_conn2.executemany("INSERT INTO observation VALUES (?,?)", [("m1", 1.0), ("m2", 2.0), ("m3", 3.0)])
+    migrate_common.record_stage_fingerprint(cube_conn2, "observation")
+    cube_conn2.commit()
+    cube_conn2.close()
+
+    with pytest.raises(migrate_common.MigrationError, match=r"site_var は上流 .*observation の指紋"):
+        b11.build_projections(
+            registry_db, out_db,
+            v1_projection_db=proj_db, v1_projection_occurrence_db=occ_db, cube_db=cube_db,
+        )
+
+
+def test_build_projections_halts_when_observation_rebuilt_two_hops_away_via_pure_recursion(tmp_path):
+    """**b11 自身の再帰能力の直接確認**（上のテストは b05 が `observation` を
+    `site_var` の系譜に直接も含める——/code-review 対応——ため1段目で
+    検出されてしまう。ここでは `site_var` の系譜に `observation_agg` **しか**
+    無い状況を意図的に作り、b11 が2段目（`observation_agg`→`observation`）
+    まで再帰的にたどって初めて検出できることを確認する）。
+    """
+    registry_db = tmp_path / "registry.sqlite"
+    _make_registry_db(registry_db, [_WATERSHED_ROW])
+    watershed_id = _WATERSHED_ROW["watershed_id"]
+    out_db = tmp_path / "v1_projection_place.sqlite"
+
+    cube_db = tmp_path / "v2.sqlite"
+    cube_conn = sqlite3.connect(cube_db)
+    cube_conn.execute("CREATE TABLE observation (source_row_id TEXT, value_num REAL)")
+    cube_conn.executemany("INSERT INTO observation VALUES (?,?)", [("m1", 1.0), ("m2", 2.0)])
+    obs_fp = migrate_common.record_stage_fingerprint(cube_conn, "observation")
+    cube_conn.execute("CREATE TABLE observation_agg (variable_id TEXT, value REAL)")
+    cube_conn.executemany("INSERT INTO observation_agg VALUES (?,?)", [("weather.precipitation", 1.5)])
+    agg_fp = migrate_common.record_stage_fingerprint(cube_conn, "observation_agg", inputs={"observation": obs_fp})
+    cube_conn.commit()
+    cube_conn.close()
+
+    # site_var の系譜には observation_agg しか無い（observation を直接は
+    # 持たない、意図的な最小限のフィクスチャ）。
+    proj_db = tmp_path / "v1_projection.sqlite"
+    _make_v1_projection_db(
+        proj_db,
+        landuse_rows=[(watershed_id, 2016, "05", "建物用地", 1, 1.0)],
+        observation_agg_fingerprint=agg_fp,
+    )
+    occ_db = tmp_path / "v1_projection_occurrence.sqlite"
+    _make_v1_projection_occurrence_db(occ_db)
+
+    b11.build_projections(
+        registry_db, out_db,
+        v1_projection_db=proj_db, v1_projection_occurrence_db=occ_db, cube_db=cube_db,
+    )
+
+    cube_conn2 = sqlite3.connect(cube_db)
+    cube_conn2.execute("DELETE FROM observation")
+    cube_conn2.executemany("INSERT INTO observation VALUES (?,?)", [("m1", 1.0), ("m2", 2.0), ("m3", 3.0)])
+    migrate_common.record_stage_fingerprint(cube_conn2, "observation")
+    cube_conn2.commit()
+    cube_conn2.close()
+
+    with pytest.raises(migrate_common.MigrationError, match=r"observation_agg は上流 .*observation の指紋"):
+        b11.build_projections(
+            registry_db, out_db,
+            v1_projection_db=proj_db, v1_projection_occurrence_db=occ_db, cube_db=cube_db,
+        )
+
+
+def test_build_projections_lineage_check_is_skipped_when_cube_db_not_given(tmp_path):
+    """`cube_db` を渡さない（既定 `None`）場合、(b) 系譜チェックは黙って
+    省略され、(a) だけで判断する——`watershed_rollup` の SQL 自体は
+    v2.sqlite を読まない設計を保つ（モジュール docstring 参照）。既存の
+    フィクスチャ（系譜無し）は今までどおり動くことの確認を兼ねる。
+    """
+    registry_db = tmp_path / "registry.sqlite"
+    _make_registry_db(registry_db, [_WATERSHED_ROW])
+    out_db = tmp_path / "v1_projection_place.sqlite"
+    kwargs = _rollup_kwargs(tmp_path)
+    # cube_db を渡さない（既定 None）——例外を投げなければ良い。
+    counts = b11.build_projections(registry_db, out_db, **kwargs)
+    assert counts == {"watershed_meta": 1, "watershed_rollup": 1}
+
+
+def test_build_projections_raises_when_cube_db_given_but_missing(tmp_path):
+    """`cube_db` に**パスを指定した**のにファイルが実在しない場合は、
+    他の `--*-db` 引数（`_assert_rollup_prerequisites`）と同じ扱いで
+    `MigrationError` になる——`None`（未指定）の場合とは違い、黙って (b) を
+    諦めない（/simplify 指摘: 以前はここも無言でスキップしていたため、
+    `--cube-db` の誤字や環境の取り違えに気づけなかった）。
+    """
+    registry_db = tmp_path / "registry.sqlite"
+    _make_registry_db(registry_db, [_WATERSHED_ROW])
+    out_db = tmp_path / "v1_projection_place.sqlite"
+    kwargs = _rollup_kwargs(tmp_path)
+    missing_cube_db = tmp_path / "does_not_exist.sqlite"
+    with pytest.raises(migrate_common.MigrationError, match=r"does_not_exist\.sqlite.*無い"):
+        b11.build_projections(registry_db, out_db, cube_db=missing_cube_db, **kwargs)

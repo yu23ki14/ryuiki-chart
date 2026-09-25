@@ -217,9 +217,7 @@ def _load_caveat_yaml() -> list[dict]:
     with CAVEAT_YAML.open(encoding="utf-8") as f:
         doc = yaml.safe_load(f)
     entries = doc["caveats"]
-    keys = [e["key"] for e in entries]
-    dupes = sorted({k for k in keys if keys.count(k) > 1})
-    assert not dupes, f"registry/caveat.yaml の key が重複している: {dupes}"
+    common.assert_unique([e["key"] for e in entries], "registry/caveat.yaml の key")  # Issue #37 #4
     return entries
 
 

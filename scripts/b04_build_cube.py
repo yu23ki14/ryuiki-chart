@@ -635,12 +635,26 @@ def build_cube(
     （モジュール docstring「SQLite の版を守る」参照）。
     """
     common.require_sqlite_version()
+    # 段階間の指紋（Issue #37 #1）: b03 が最後に記録した observation の指紋と
+    # 今の observation の内容が一致することを、集計を始める前に確認する
+    # （b03 が別内容で再実行された後、b04 が再実行されていない事故を検出する）。
+    # 戻り値（observation の現在の指紋）は observation_agg の系譜（inputs）に
+    # そのまま使う——ここで確認済みの値を再利用するだけで、observation を
+    # もう一度読み直しはしない。
+    observation_fingerprint = common.assert_stage_fingerprint_fresh(
+        conn, "observation",
+        rebuild_hint="scripts/b03_build_observation.py を再実行すること。",
+    )
     # below_lod が censoring_limit を必ず持つことは b03 が保証済み（/simplify 指摘2）。
     params = (built_from, spec_version)
     common.attach_readonly(conn, registry_db, "reg")
     conn.execute(_CREATE_OBS_IMPUTED_VIEW_SQL)
 
-    with common.staged_table(conn, "observation_agg", _CREATE_OBSERVATION_AGG_SQL) as staging:
+    with common.staged_table(
+        conn, "observation_agg", _CREATE_OBSERVATION_AGG_SQL,
+        fingerprint_inputs={"observation": observation_fingerprint},
+        fingerprint_spec_version=spec_version,
+    ) as staging:
         insert_cols = ", ".join(
             DIM_COLUMNS
             + ["value_zero", "value_lod", "n", "n_censored", "n_not_detected", "n_places", "built_from", "spec_version"]
@@ -697,10 +711,16 @@ def build_cube(
         # （C-3）。ここで失敗すれば staged_table が作業用テーブルを破棄し、
         # 前回の observation_agg がそのまま残る（A-1）。
         _assert_dimension_key_unique(conn, staging)
+
         # value_zero/value_lod の3つの不変条件（ADR-0009 決定4）。検証と
         # 統計収集を分ける（/code-review 指摘13）。
         _assert_value_zero_lod_invariants(conn, staging)
         value_stats = _collect_value_zero_lod_stats(conn, staging)
+    # ここまで来たら staged_table が観測差し替えと同じトランザクションで
+    # observation_agg の指紋・系譜（消費した observation の指紋）も記録済み
+    # （Issue #37 #1・/code-review 指摘の根本対応。「内容は新しいが指紋は
+    # 古い」状態を作れなくする）。b05 はこの指紋を見て「今の observation_agg
+    # から作った v1_projection.sqlite か」を検証する。
 
     return {
         "n_day": n_day,

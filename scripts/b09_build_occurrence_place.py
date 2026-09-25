@@ -354,6 +354,10 @@ def build_and_write_occurrence_place(
             conn, "ryuiki", "sites",
             hint="ryuiki.sqlite（原本）が壊れている、または版が古い可能性がある。",
         )
+        # 段階間の指紋（Issue #37 #1）: b06 が最後に記録した occurrence の指紋と
+        # 今の occurrence の内容が一致することを、座標を読む前に確認する。
+        # 戻り値は occurrence_place の系譜に使う。
+        occurrence_fingerprint = common.assert_occurrence_fingerprint_fresh(conn)
 
         _assert_polygon_set_matches_registry(polys, conn)
         _assert_watershed_external_key_unique(conn)
@@ -382,7 +386,11 @@ def build_and_write_occurrence_place(
 
         n_checked_sites = _assert_matches_site_watershed_edges(conn, polys, grid)
 
-        with common.staged_table(conn, "occurrence_place", _CREATE_OCCURRENCE_PLACE_SQL) as staging:
+        with common.staged_table(
+            conn, "occurrence_place", _CREATE_OCCURRENCE_PLACE_SQL,
+            fingerprint_inputs={"occurrence": occurrence_fingerprint},
+            fingerprint_spec_version=common.OCCURRENCE_SPEC_VERSION,
+        ) as staging:
             def rows():
                 for record_id, lat, lon in conn.execute(
                     "SELECT record_id, lat, lon FROM occurrence "
@@ -437,7 +445,11 @@ def build_and_write_occurrence_place(
                     f"occurrence_place: 検算に失敗（NULL {n_null:,} + 解決 {n_resolved:,} != "
                     f"座標あり行数 {n_with_coords:,}）。"
                 )
-            # ここまで来たら with ブロックを正常に抜け、staged_table が本番名に差し替える。
+            # ここまで来たら with ブロックを正常に抜け、staged_table が本番名に
+            # 差し替え、同じトランザクションで指紋・系譜（消費した occurrence
+            # の指紋）も記録する（Issue #37 #1・/code-review 指摘の根本対応）。
+            # b08 はこの指紋を見て「今の occurrence から作った occurrence_place
+            # か」を検証する。
     except BaseException:
         conn.close()
         raise

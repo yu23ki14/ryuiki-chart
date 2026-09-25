@@ -450,8 +450,16 @@ def test_running_twice_yields_identical_content_hash(tmp_path):
 # ---------------------------------------------------------------------------
 
 def _observation_tables_and_rows(out_path):
+    """`observation`（本番テーブル）以外に、作業用テーブル（`__building`）が
+    残っていないことを見るためのヘルパ。`pipeline_fingerprint`（Issue #37 #1、
+    段階間の指紋のメタ表）は本番/作業用の区別とは無関係な実装詳細なので
+    除外する（このヘルパの関心事は「本番に正しく差し替わったか」だけ）。
+    """
     conn = sqlite3.connect(f"file:{out_path}?mode=ro", uri=True)
-    tables = sorted(r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'"))
+    tables = sorted(
+        r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        if r[0] != common.PIPELINE_FINGERPRINT_TABLE
+    )
     rows = conn.execute("SELECT source_row_id FROM observation ORDER BY source_row_id").fetchall()
     conn.close()
     return tables, rows

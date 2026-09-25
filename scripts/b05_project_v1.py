@@ -119,16 +119,21 @@ v1形（L2 のラベル日割り）から期待される値と一致すること
 from __future__ import annotations
 
 import argparse
-import json
 import pathlib
 import sqlite3
 import sys
-from datetime import date, timedelta
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from migrate import common  # noqa: E402
+from migrate import common, v1_projection_checks  # noqa: E402
+
+# `PHASE_B_FACT_SLICE.md:457-459` の決定（検証関数群を別モジュールに分ける）
+# で `scripts/migrate/v1_projection_checks.py` に移した検証関数群は、
+# `occurrence_period`/`period` と同じ流儀で `v1_projection_checks.関数名(...)`
+# のままモジュール参照で呼ぶ（/simplify 指摘: 以前はここに同名のモジュール
+# 変数として再エクスポートしていたが、実体を持たない別名の分だけ経路が
+# 増えるだけだった）。
 
 DEFAULT_CUBE_DB = ROOT / "data" / "db" / "v2.sqlite"
 DEFAULT_REGISTRY_DB = ROOT / "data" / "db" / "registry.sqlite"
@@ -629,75 +634,6 @@ def _label25_obs_keyed_sql() -> str:
     """
 
 
-def _assert_place_relation_table_exists(work: sqlite3.Connection) -> None:
-    """`reg.place_relation` テーブルが存在することを確認する（無いと素の
-    `sqlite3.OperationalError` になり原因が分かりにくいため）。理由は D11。
-    """
-    row = work.execute(
-        "SELECT 1 FROM reg.sqlite_master WHERE type = 'table' AND name = 'place_relation'"
-    ).fetchone()
-    if row is None:
-        raise common.MigrationError(
-            "registry.sqlite に place_relation テーブルが無い（ADR-0022 決定2で新設された"
-            "テーブルなので、それより前にビルドした古い registry.sqlite には無い）。"
-            "scripts/r01_build_registry.py で registry.sqlite を作り直すこと。"
-        )
-
-
-def _assert_zone_numbers_do_not_collide_across_zone_places(work: sqlite3.Connection) -> None:
-    """異なる place のゾーンが同じゾーン番号（`zone_raw`）に解決されていない
-    ことを確認する（b05 が place_id ではなく番号だけでゾーンを区別すること
-    から生じる、射影固有の前提）。理由は D11。
-    """
-    _raise_on_group_by_duplicates(
-        work,
-        "SELECT zone_raw, COUNT(DISTINCT zone_place_id) AS n_places, "
-        "GROUP_CONCAT(DISTINCT zone_place_id) AS zone_place_ids "
-        "FROM site_zone_lookup GROUP BY zone_raw HAVING n_places > 1 LIMIT 5",
-        (),
-        lambda dup: (
-            f"異なるゾーンの place が同じゾーン番号に解決されている: {dup}\n"
-            "zone_year/zone_clim はゾーン番号（整数）だけを鍵にしているため、"
-            "由来の違うゾーンが1行に混ざる前に止める。"
-        ),
-    )
-
-
-def _assert_zone_edges_have_fraction_one(work: sqlite3.Connection) -> None:
-    """`site_zone_lookup` の `fraction` が全行1.0であることを確認する
-    （v1 を非加重で再現するという b05 固有の前提。レジストリ全体の不変条件
-    ではない）。理由は D11。
-    """
-    bad = work.execute(
-        "SELECT site_id, zone_place_id, fraction FROM site_zone_lookup "
-        "WHERE fraction <> 1.0 LIMIT 5"
-    ).fetchall()
-    if bad:
-        raise common.MigrationError(
-            "地点→ゾーンの辺（place_relation, relation='within'、sites.zone に解決"
-            f"できたもの）に fraction が1.0でないものがある（例（site_id, zone_place_id, "
-            f"fraction）: {bad}）。zone_year/zone_clim の射影は非加重の前提（v1 と同じ"
-            " AVG()）で書かれており、この前提が崩れている。"
-        )
-
-
-def _assert_site_maps_to_at_most_one_zone(work: sqlite3.Connection) -> None:
-    """`site_zone_lookup` で1つの地点が複数行を持たないことを確認する
-    （結合そのものの安全性。r01 がレジストリ側で既に保証しているが、b05側の
-    防御としても残す）。理由は D11。
-    """
-    _raise_on_group_by_duplicates(
-        work,
-        "SELECT site_id, COUNT(*) AS n FROM site_zone_lookup GROUP BY site_id HAVING n > 1 LIMIT 5",
-        (),
-        lambda dup: (
-            f"複数のゾーンに属する（またはゾーンへの辺が重複している）地点がある: {dup}\n"
-            "v1 の sites.zone は単一列であり、zone_year/zone_clim は地点が1つの"
-            "ゾーンにのみ、1本の辺で対応することを前提にしている。"
-        ),
-    )
-
-
 def _materialize_lookup_tables(work: sqlite3.Connection, landuse_years: list[str]) -> None:
     """自動インデックスの効かない `IS`（NULL-safe）JOIN を、実体化した一時
     テーブル＋インデックスの通常の等値 JOIN に置き換える。`measurements`/
@@ -746,11 +682,11 @@ def _materialize_lookup_tables(work: sqlite3.Connection, landuse_years: list[str
     # 地点→ゾーン（site_zone_lookup。`place_lookup` に依存するため、この直後で
     # 作る）。検証は射影固有の前提だけ（D11参照。レジストリの不変条件は
     # scripts/r01_build_registry.py 側に移設済み）。
-    _assert_place_relation_table_exists(work)
+    v1_projection_checks._assert_place_relation_table_exists(work)
     work.execute(_SITE_ZONE_LOOKUP_SQL)
-    _assert_zone_numbers_do_not_collide_across_zone_places(work)
-    _assert_zone_edges_have_fraction_one(work)
-    _assert_site_maps_to_at_most_one_zone(work)
+    v1_projection_checks._assert_zone_numbers_do_not_collide_across_zone_places(work)
+    v1_projection_checks._assert_zone_edges_have_fraction_one(work)
+    v1_projection_checks._assert_site_maps_to_at_most_one_zone(work)
     work.execute("CREATE UNIQUE INDEX site_zone_lookup_site_id ON site_zone_lookup (site_id)")
 
     # 土地利用（P-1b）。watershed の place_id -> v1 の watershed_id
@@ -793,284 +729,18 @@ def _materialize_projection_tables(work: sqlite3.Connection, landuse_years: list
     work.execute(f"CREATE TEMP TABLE landuse_watershed AS {_landuse_watershed_sql(landuse_years)}")
 
 
-def assert_alias_is_function(work, dataset: str = "measurements", grains: tuple[str, ...] | None = None) -> None:
-    """`(variable_id, grain, stat, unit_id) → alias` が `dataset` 内で関数で
-    あることを確認する。衝突があれば、どの組が何個の alias に割れているかを
-    示して止まる——`MIN(alias)` 等で黙って1つを選ばない。
-
-    `grains` を渡すと、その grain（`value_grain`）だけに絞って検証する。
-    実データで `sensor_timeseries`/`jma_monthly_kanagawa` の積雪関連3変数
-    （`weather.snow_depth_max`/`snowfall_depth_total`/
-    `snowfall_depth_max_daily`）に、CSV の列名が年度によって揺れている
-    らしく同じ `(variable_id, grain='month', stat, unit_id)` に2つの alias
-    文字列（例: `'雪_最深 積雪'`／`'雪_最深積雪'`。全角スペースの有無だけの
-    違い）が対応していることが実測で判明した。`sensor_daily`/`rain_daily`/
-    `sensor_hour_month`（T5）はどれも `value_grain IN ('day','hour','instant')`
-    しか消費せず、`grain='month'`（jma_monthly の出典配布月次値。design.md
-    実測の要点「v1 の射影対象外」）は射影しない——この重複は b05 が実際に
-    読む範囲の外にあるので、呼び出し側が `grains` で消費範囲だけに絞って
-    検証する（月次の重複自体は登録の負債として残るが、機能には影響しない）。
-    """
-    grain_filter = ""
-    params: tuple = (dataset,)
-    if grains is not None:
-        placeholders = ", ".join("?" for _ in grains)
-        grain_filter = f" AND grain IN ({placeholders})"
-        params = (dataset, *grains)
-    _raise_on_group_by_duplicates(
-        work,
-        f"""
-        SELECT variable_id, grain, stat, unit_id, COUNT(DISTINCT alias) AS n_alias
-        FROM reg.variable_alias
-        WHERE dataset = ?{grain_filter}
-        GROUP BY variable_id, grain, stat, unit_id
-        HAVING n_alias > 1
-        """,
-        params,
-        lambda dup: (
-            f"({dataset}) (variable_id, grain, stat, unit_id) -> alias が関数になっていない"
-            f"（同じ組に複数の alias がある）: {dup}\n"
-            "b05 は『どちらの alias を v1 の variable/datastream 名として使うか』を推測できない"
-            "ため、variable_alias 側の重複を解消してから再実行すること。"
-        ),
-    )
-
-
-def assert_alias_tuple_maps_to_single_dataset(work) -> None:
-    """`(variable_id, grain, stat, unit_id)` が `measurements`/
-    `sensor_timeseries`/土地利用（本体の出典名。版のサフィックスは正規化して
-    落とす）の間でまたがっていないことを確認する（設計 v2 T5）。崩れていると、
-    同じキューブのセルが複数の出力テーブルに二重に現れる——各テーブルの
-    逆引き JOIN は `dataset` ごとに絞っているだけで、tuple 自体が2つの
-    dataset にまたがらないことまでは保証していないため。実測では衝突0件だが、
-    `assert_alias_is_function` が捕まえる壊れ方（順方向の衝突）とは別の
-    壊れ方なので、そのまま残す。
-
-    **版付き dataset（`<source>@<year>`。ADR-0005「同じ出典に複数版が
-    同居する」実例、土地利用 P-1b）は `@` より前（出典本体）に正規化してから
-    比較する**——土地利用は同じ (variable_id, grain, stat, unit_id) を意図して
-    複数の年版にまたがって再利用する（例: `田` は2006/2016のどちらも
-    `variable_id=landuse.paddy, grain=year, stat=sum, unit_id=km2`。P-1b
-    オーナー決定2「同じ日本語名の区分は年をまたいで同じ variable_id を
-    共有する」）ため、正規化しないと版の数だけ誤検出してしまう。正規化後は
-    `nlni_l03b_landuse_by_watershed@2006`/`@2016` はどちらも
-    `nlni_l03b_landuse_by_watershed` という**同じ**出典名になるので
-    `COUNT(DISTINCT ...)` は1のまま——一方で `measurements`/
-    `sensor_timeseries` はそもそも `@` を含まないため正規化の影響を受けず、
-    これらと土地利用側の tuple が衝突すれば正規化後も別の出典名のまま
-    残るので、引き続き検出できる（コードレビュー指摘4:
-    「除外」ではなく「正規化して比較」にすることで、この検証本来の保護範囲を
-    狭めない）。
-    """
-    _raise_on_group_by_duplicates(
-        work,
-        """
-        SELECT variable_id, grain, stat, unit_id,
-               COUNT(DISTINCT base_dataset) AS n_dataset,
-               GROUP_CONCAT(DISTINCT base_dataset) AS datasets
-        FROM (
-            SELECT variable_id, grain, stat, unit_id,
-                   CASE WHEN instr(dataset, '@') > 0
-                        THEN substr(dataset, 1, instr(dataset, '@') - 1)
-                        ELSE dataset END AS base_dataset
-            FROM reg.variable_alias
-        )
-        GROUP BY variable_id, grain, stat, unit_id
-        HAVING n_dataset > 1
-        """,
-        (),
-        lambda dup: (
-            "(variable_id, grain, stat, unit_id) が複数の出典（版のサフィックスを"
-            f"正規化した後）にまたがっている（同じキューブのセルが複数の出力テーブルに"
-            f"二重に現れる恐れがある）: {dup}\nvariable_alias 側で tuple が出典をまたいで"
-            "重複しないようにしてから再実行すること。"
-        ),
-    )
-
-
-def assert_unit_raw_is_function(work) -> None:
-    """`(variable_id, value_grain, obs_stat, unit_id) → unit_raw` が関数で
-    あることを確認する（B-1）。`cube.observation`（ファクト）全体——
-    `measurements`/`sensor_timeseries` の両方——を見る。実測では衝突0件
-    （1つの系列は1種類の単位しか持たない）だが、将来2種以上の unit_raw を
-    持つ系列が現れたら、どの組が何種に割れているかを示して止まる。
-    """
-    _raise_on_group_by_duplicates(
-        work,
-        """
-        SELECT variable_id, value_grain, obs_stat, unit_id, COUNT(DISTINCT unit_raw) AS n_unit_raw
-        FROM cube.observation
-        GROUP BY variable_id, value_grain, obs_stat, unit_id
-        HAVING n_unit_raw > 1
-        """,
-        (),
-        lambda dup: (
-            "(variable_id, value_grain, obs_stat, unit_id) -> unit_raw が関数になっていない"
-            f"（同じ系列に複数の unit_raw がある）: {dup}\n"
-            "b05 は『どの unit_raw を v1 の unit 表記として使うか』を推測できないため、"
-            "該当する系列の unit_raw の食い違いを解消してから再実行すること。"
-        ),
-    )
-
-
 def _load_v1_keys(baseline_json_path) -> dict[str, list[str]]:
-    data = json.loads(pathlib.Path(baseline_json_path).read_text(encoding="utf-8"))
-    return {table: list(data["tables"][table]["key"]) for table in _TABLE_SQL}
-
-
-def assert_v1_keys_are_unique(
-    projections: dict[str, tuple[list[str], list[tuple]]], keys_by_table: dict[str, list[str]]
-) -> None:
-    """射影したテーブルそれぞれについて、v1（`derived_baseline.json`）のキー列
-    で行が一意であることを確認する（アドバイザー指摘・オーナー採用）。
+    """`v1_projection_checks.load_v1_keys` の薄いラッパ（テーブル名の集合を
+    `_TABLE_SQL` から渡す）。既存の呼び出し側・テスト（`b05._load_v1_keys(path)`）
+    はこのシグネチャのまま動く（PHASE_B_FACT_SLICE.md:457-459、検証関数群の
+    分割）。
     """
-    for table, (columns, rows) in projections.items():
-        key_cols = keys_by_table[table]
-        idx = [columns.index(c) for c in key_cols]
-        counts: dict[tuple, int] = {}
-        for row in rows:
-            k = tuple(row[i] for i in idx)
-            counts[k] = counts.get(k, 0) + 1
-        dup = [(k, n) for k, n in counts.items() if n > 1][:5]
-        if dup:
-            raise common.MigrationError(
-                f"{table}: v1 のキー {key_cols} が一意でない行がある（例（キー, 件数）: {dup}）。"
-                "alias が複数の (variable_id, value_grain, obs_stat, unit_id) に対応している"
-                "ため v1 の GROUP BY を復元できない。variable_alias 側で alias を出典ごとに"
-                "分けるなど、v1 の1グループに対応する alias を1つに絞ってから再実行すること。"
-            )
-
-
-# ---------------------------------------------------------------------------
-# T6: 毎時→日次の正しさの機械検証
-# ---------------------------------------------------------------------------
-
-_HOUR_SERIES_DIM = "region_id, place_id, place_kind, variable_id, obs_stat, unit_id, value_grain"
-
-
-def verify_hourly_daily_rollup(work: sqlite3.Connection, sample_limit: int = 20) -> dict:
-    """`value_grain='hour'` の各系列・各日 D について、
-    **キューブの日次セルの n = v1形（L2 のラベル日割り）の日 D の n
-    − (日 D のラベル 00 時の件数) + (日 D+1 のラベル 00 時の件数)**
-    が全日で成り立つことを検証する（T6）。あわせて、系列ごとの全期間の
-    Σn・min・max がキューブの日次セルと L2 で一致することも確認する。
-
-    どちらか一方でも崩れていれば `common.MigrationError` で止まる。
-    戻り値は検証した件数（レポート用）。`_materialize_lookup_tables` の後
-    （`label25_obs_keyed`/`day_keyed` を使う）に呼ぶ。
-
-    C-4: `value_grain='hour'` の絞り込み（`label25_obs_keyed`）は以前、
-    日ごとの件数（v1形）用と系列ごとの全期間 Σn・min・max 用の2つの別クエリで
-    2回スキャンしていた。日ごとの集計に `MIN`/`MAX` を足して1回のスキャンで
-    済ませ、系列ごとの合計（Σn・min・max）はその日次結果から Python で
-    再集計する（Σn は日ごとの n の和、min/max は日ごとの min/max の
-    min/max——どちらも再スキャンせず正確に求まる。MIN/MAX は選択演算であり
-    加算のような丸め誤差が無いため、日次から再集計しても全期間を直接
-    スキャンした場合とビット単位で一致する）。
-    """
-    # 日ごとの v1形の件数・「ラベルが00:00:00（日をまたぐ24時ラベル）の件数」・
-    # min/max を同じクエリで求める（C-4: 1回のスキャン）。
-    v1_daily = work.execute(
-        f"""
-        SELECT {_HOUR_SERIES_DIM}, substr(period_raw, 1, 10) AS d,
-               COUNT(*) AS n,
-               SUM(CASE WHEN substr(period_raw, 12, 8) = '00:00:00' THEN 1 ELSE 0 END) AS n_midnight,
-               MIN(value_num) AS vmin, MAX(value_num) AS vmax
-        FROM label25_obs_keyed
-        WHERE value_grain = 'hour' AND value_num IS NOT NULL
-        GROUP BY {_HOUR_SERIES_DIM}, d
-        """
-    ).fetchall()
-
-    # キューブの日次セル（stat='mean'。n は mean/min/max のどれでも同じ値）。
-    # day_keyed は value_grain IN ('day','instant') のみに絞って作られている
-    # ため（`_materialize_lookup_tables`）、ここでは observation_agg を直接見る。
-    cube_daily = work.execute(
-        f"""
-        SELECT {_HOUR_SERIES_DIM}, period_start AS d, n
-        FROM cube.observation_agg
-        WHERE grain = 'day' AND input_grain = 'hour' AND stat = 'mean'
-        """
-    ).fetchall()
-
-    v1_n: dict[tuple, int] = {}
-    v1_midnight: dict[tuple, int] = {}
-    # C-4: 系列ごとの全期間 Σn・min・max を、日次の行から再集計しながら作る
-    # （l2_totals を別クエリで取り直さない）。
-    l2_n: dict[tuple, int] = {}
-    l2_min: dict[tuple, float] = {}
-    l2_max: dict[tuple, float] = {}
-    for row in v1_daily:
-        key = row[:7]
-        d = row[7]
-        n, n_midnight, vmin, vmax = row[8], row[9], row[10], row[11]
-        v1_n[(key, d)] = n
-        v1_midnight[(key, d)] = n_midnight
-        l2_n[key] = l2_n.get(key, 0) + n
-        l2_min[key] = vmin if key not in l2_min else min(l2_min[key], vmin)
-        l2_max[key] = vmax if key not in l2_max else max(l2_max[key], vmax)
-
-    cube_n: dict[tuple, int] = {}
-    for row in cube_daily:
-        key = row[:7]
-        d = row[7]
-        cube_n[(key, d)] = row[8]
-
-    all_days = set(v1_n) | set(cube_n)
-    mismatches: list[tuple] = []
-    for key, d in all_days:
-        d_next = (date.fromisoformat(d) + timedelta(days=1)).isoformat()
-        expected = v1_n.get((key, d), 0) - v1_midnight.get((key, d), 0) + v1_midnight.get((key, d_next), 0)
-        actual = cube_n.get((key, d), 0)
-        if expected != actual:
-            mismatches.append((key, d, expected, actual))
-    if mismatches:
-        raise common.MigrationError(
-            "T6: キューブの日次セルの n が v1形のラベル日割りから期待される値と"
-            f"食い違う日がある（{len(mismatches)}件。例（上限{sample_limit}件、"
-            f"(次元キー, 日, 期待値, 実際の値)）: {mismatches[:sample_limit]}）。"
-            "scripts/migrate/period.py の hour_ending 変換（ラベル-1時間）または"
-            "scripts/b04_build_cube.py の日割り（substr(period_start,1,10)）を確認すること。"
-        )
-
-    # 系列ごとの全期間の Σn・min・max が一致すること。L2 側（`l2_by_key`）は
-    # 上で日次から再集計済み（C-4）——ここで label25_obs_keyed を読み直さない。
-    # ADR-0009 決定4: `value` は `value_zero`/`value_lod` に分かれた。この検証
-    # は `sensor_timeseries`（censoring は常に 'none'）だけを対象にするため
-    # `value_zero`（旧 `value` の改称）と `value_lod` は常に同じ値——ここでは
-    # 旧実装と同じ `value_zero` を読む。
-    cube_totals = work.execute(
-        f"""
-        SELECT {_HOUR_SERIES_DIM},
-               SUM(CASE WHEN stat = 'mean' THEN n END) AS n,
-               MIN(CASE WHEN stat = 'min' THEN value_zero END) AS vmin,
-               MAX(CASE WHEN stat = 'max' THEN value_zero END) AS vmax
-        FROM cube.observation_agg
-        WHERE grain = 'day' AND input_grain = 'hour'
-        GROUP BY {_HOUR_SERIES_DIM}
-        """
-    ).fetchall()
-    l2_by_key = {key: (l2_n[key], l2_min[key], l2_max[key]) for key in l2_n}
-    cube_by_key = {row[:7]: row[7:] for row in cube_totals}
-    total_mismatches = []
-    for key in set(l2_by_key) | set(cube_by_key):
-        l2_vals = l2_by_key.get(key)
-        cube_vals = cube_by_key.get(key)
-        if l2_vals != cube_vals:
-            total_mismatches.append((key, l2_vals, cube_vals))
-    if total_mismatches:
-        raise common.MigrationError(
-            "T6: 系列ごとの全期間の Σn・min・max が L2 とキューブの日次セルで食い違う"
-            f"（{len(total_mismatches)}件。例（上限{sample_limit}件、"
-            f"(次元キー, L2側(n,min,max), キューブ側(n,min,max))）: "
-            f"{total_mismatches[:sample_limit]}）。"
-        )
-
-    return {"n_series_days_checked": len(all_days), "n_series_checked": len(set(l2_by_key) | set(cube_by_key))}
+    return v1_projection_checks.load_v1_keys(baseline_json_path, _TABLE_SQL)
 
 
 def build_projections(
-    cube_db, registry_db, baseline_json=DEFAULT_BASELINE_JSON
+    cube_db, registry_db, baseline_json=DEFAULT_BASELINE_JSON, *,
+    verified_fingerprints_out: dict[str, str] | None = None,
 ) -> dict[str, list[tuple]]:
     """13テーブルぶんの `(columns, rows)` を返す（ファイルには書かない）。
 
@@ -1079,42 +749,103 @@ def build_projections(
     `sensor_hour_month`（L2 の直接集計）が `AVG()`/`SUM()` を使うため、
     先頭で `common.require_sqlite_version()` を呼ぶ
     （`scripts/migrate/common.py`。b04・b10 と共有するガード）。
+
+    `verified_fingerprints_out`（省略可、`main()` が渡す）: 渡すと、この関数が
+    下の (a) チェックで実際に検証した `observation`/`observation_agg` の
+    **その時点の**指紋を書き込む。呼び出し側はこれを `write_projections()`
+    にそのまま渡す（/code-review 指摘の根本対応: 以前は `write_projections`
+    が `cube_db` を**改めて開いて**指紋を読み直していたため、この関数の
+    検証と `write_projections` の書き込みの間に b04 が `cube_db` を作り直して
+    コミットすると、「検証した時点の値」ではなく「今読み直した新しい値」が
+    系譜として記録され、実際にはその指紋が指す内容とは違う〔古い〕データから
+    作った射影に、新しい指紋を系譜として紐付けてしまう——b11 の (b) 検査を
+    すり抜ける。検証した値をそのまま運ぶことでこの穴を塞ぐ）。この関数の
+    戻り値（`projections` dict）は既存の呼び出し・テスト〔27箇所〕と
+    互換のまま変えない——追加情報はこのキーワード専用引数でだけ渡す。
     """
     common.require_sqlite_version()
     work = sqlite3.connect(":memory:", uri=True)
     try:
         common.attach_readonly(work, cube_db, "cube")
         common.attach_readonly(work, registry_db, "reg")
-        assert_alias_is_function(work, "measurements")
-        # b05 が実際に消費する grain（B-6: `_SENSOR_ALIAS_GRAINS`。
-        # day_keyed の input_grain 範囲と label25_obs_keyed の value_grain
-        # 範囲を合わせたもの）だけに絞る（assert_alias_is_function の
-        # docstring 参照。jma_monthly の積雪3変数にある month 限定の alias
-        # 重複は射影対象外なので見ない）。
-        assert_alias_is_function(work, "sensor_timeseries", grains=_SENSOR_ALIAS_GRAINS)
-        # 土地利用（P-1b）: 版付き dataset（年）ごとに関数性を検証する
-        # （`assert_alias_is_function` は dataset を1つ受け取る既存の関数を
-        # そのまま再利用——年ごとに独立して「区分コード -> variable_id」が
-        # 一意であることを確認する）。年の一覧はレジストリから動的に導出する
-        # （コードレビュー指摘1。`_LANDUSE_YEARS` の直書きをやめた）。
-        landuse_years = _discover_landuse_years(work)
-        for year in landuse_years:
-            assert_alias_is_function(work, _landuse_dataset(year))
-        assert_alias_tuple_maps_to_single_dataset(work)
-        assert_unit_raw_is_function(work)
-        # ゾーン（place_relation）の射影固有の検証は _materialize_lookup_tables
-        # の中、site_zone_lookup を実体化した直後で行う（D11参照。レジストリの
-        # 不変条件は r01 側で保証済み）。
-        _materialize_lookup_tables(work, landuse_years)
-        _materialize_projection_tables(work, landuse_years)
-        verify_hourly_daily_rollup(work)
-        out = {}
-        for table, sql in _TABLE_SQL.items():
-            cur = work.execute(sql)
-            columns = [d[0] for d in cur.description]
-            out[table] = (columns, cur.fetchall())
-        assert_v1_keys_are_unique(out, _load_v1_keys(baseline_json))
-        return out
+        with common.track_reads(work) as reads:
+            # 段階間の指紋（Issue #37 #1）: b04 が最後に記録した observation_agg の
+            # 指紋と、今 ATTACH した cube_db の内容が一致することを、射影を始める
+            # 前に確認する。`upstream_schemas={"observation": "cube"}`
+            # （コードレビュー指摘: (a) の自己一致だけでは「observation_agg 自身は
+            # 無傷だが、b03 だけ作り直されて b04 が再実行されていない」壊れ方を
+            # 検出できない。observation_agg が記録した系譜〔消費した observation
+            # の指紋〕と、observation 自身が今記録している自己指紋を突き合わせる
+            # (b) を有効にする——observation は observation_agg と同じ v2.sqlite
+            # 〔ここでは "cube" 別名〕にあるので、上流の生データを読み直さず安く
+            # 確認できる）。戻り値（検証した時点の自己指紋）を捕まえておく
+            # ——`write_projections` がこれとは別に読み直さないようにするため。
+            agg_fingerprint = common.assert_stage_fingerprint_fresh(
+                work, "observation_agg", schema="cube",
+                rebuild_hint="scripts/b04_build_cube.py を再実行すること。",
+                upstream_schemas={"observation": "cube"},
+            )
+            # 段階間の指紋（Issue #37 #1。/code-review 指摘の穴埋め）: b05 は
+            # `observation_agg` だけでなく `cube.observation` 自体も直接読む
+            # （`_unit_lookup_sql`——meas_daily/meas_month/meas_year 等の unit_raw
+            # 逆引き——と `_label25_obs_keyed_sql`——sensor_daily/rain_daily/
+            # sensor_hour_month が使う `label25_obs_keyed`）。上の
+            # `observation_agg` の (b) は「`observation_agg` が消費した時点の
+            # observation の指紋」と「observation 自身の今の自己申告」を比べる
+            # だけで、**observation 自身の現在のバイト列**は見ていない
+            # （b03 の `staged_table` の差し替えと `record_stage_fingerprint`
+            # が同じトランザクションになった今も、原理上は別の経路で
+            # `observation` が直接改変される可能性が残るため、b05 が実際に
+            # 読む対象には独立した (a) を掛ける）。`observation` は基底テーブル
+            # （系譜を持たない）なので `upstream_schemas` は渡さない。
+            obs_fingerprint = common.assert_stage_fingerprint_fresh(
+                work, "observation", schema="cube",
+                rebuild_hint="scripts/b03_build_observation.py を再実行すること。",
+            )
+            if verified_fingerprints_out is not None:
+                verified_fingerprints_out["observation_agg"] = agg_fingerprint
+                verified_fingerprints_out["observation"] = obs_fingerprint
+            v1_projection_checks.assert_alias_is_function(work, "measurements")
+            # b05 が実際に消費する grain（B-6: `_SENSOR_ALIAS_GRAINS`。
+            # day_keyed の input_grain 範囲と label25_obs_keyed の value_grain
+            # 範囲を合わせたもの）だけに絞る（assert_alias_is_function の
+            # docstring 参照。jma_monthly の積雪3変数にある month 限定の alias
+            # 重複は射影対象外なので見ない）。
+            v1_projection_checks.assert_alias_is_function(work, "sensor_timeseries", grains=_SENSOR_ALIAS_GRAINS)
+            # 土地利用（P-1b）: 版付き dataset（年）ごとに関数性を検証する
+            # （`assert_alias_is_function` は dataset を1つ受け取る既存の関数を
+            # そのまま再利用——年ごとに独立して「区分コード -> variable_id」が
+            # 一意であることを確認する）。年の一覧はレジストリから動的に導出する
+            # （コードレビュー指摘1。`_LANDUSE_YEARS` の直書きをやめた）。
+            landuse_years = _discover_landuse_years(work)
+            for year in landuse_years:
+                v1_projection_checks.assert_alias_is_function(work, _landuse_dataset(year))
+            v1_projection_checks.assert_alias_tuple_maps_to_single_dataset(work)
+            v1_projection_checks.assert_unit_raw_is_function(work)
+            # ゾーン（place_relation）の射影固有の検証は _materialize_lookup_tables
+            # の中、site_zone_lookup を実体化した直後で行う（D11参照。レジストリの
+            # 不変条件は r01 側で保証済み）。
+            _materialize_lookup_tables(work, landuse_years)
+            _materialize_projection_tables(work, landuse_years)
+            v1_projection_checks.verify_hourly_daily_rollup(work)
+            out = {}
+            for table, sql in _TABLE_SQL.items():
+                cur = work.execute(sql)
+                columns = [d[0] for d in cur.description]
+                out[table] = (columns, cur.fetchall())
+            v1_projection_checks.assert_v1_keys_are_unique(out, _load_v1_keys(baseline_json))
+            # 読み取りの機械監査（Issue #37 #1、Tier 1。/simplify 指摘A）:
+            # この関数が実際に ATTACH 先（cube/reg）から読んだ表のうち、
+            # 指紋機構の対象（reg は registry_build という別機構を持つため
+            # 自動的に対象外）が、上の2つの `assert_stage_fingerprint_fresh`
+            # で検証した表（`declared`）に含まれることを確認する——新しい
+            # JOIN・SELECT を足したのに検証を足し忘れた見落としを機械的に
+            # 検出する。
+            common.assert_all_reads_verified(
+                work, reads, {"observation", "observation_agg"},
+                context="b05_project_v1.build_projections",
+            )
+            return out
     finally:
         work.close()
 
@@ -1184,13 +915,65 @@ _CREATE_SQL = {
 }
 
 
-def write_projections(projections: dict[str, tuple[list[str], list[tuple]]], out_path) -> None:
+
+# `landuse_watershed`/`landuse_change`（P-1b）は `cube.observation_agg`
+# （`obs_agg_keyed`）だけから作る——`cube.observation` を直接読む
+# `_unit_lookup_sql`/`_label25_obs_keyed_sql` はどちらも通らない（`unit`
+# 列自体を持たない。CLAUDE.md の CREATE 文参照）。残り11テーブルは
+# `unit_lookup`/`sensor_unit_lookup`（`_unit_lookup_sql` 経由）または
+# `label25_obs_keyed`（`_label25_obs_keyed_sql` 経由）のどちらかを介して
+# `cube.observation` の内容に依存するため、系譜に `observation` も含める
+# （/code-review 指摘: 直接読んでいるのに inputs に入っていなかった穴）。
+_TABLES_WITHOUT_OBSERVATION_DEPENDENCY = frozenset({"landuse_watershed", "landuse_change"})
+
+
+def write_projections(
+    projections: dict[str, tuple[list[str], list[tuple]]], out_path, *,
+    verified_fingerprints: dict[str, str] | None = None,
+) -> None:
+    """13テーブルを書き、それぞれの指紋を記録する（Issue #37 #1）。
+
+    `verified_fingerprints`（`build_projections()` の
+    `verified_fingerprints_out` で得た、`observation`/`observation_agg` の
+    **検証した時点の**自己指紋）を渡すと、13テーブルの系譜に記録する——
+    b11 が `site_var`/`landuse_watershed` を読む前に「今の observation_agg
+    （さらにその系譜を辿って observation）から作られたものか」を確かめられる
+    ようにするため（コードレビュー指摘: 系譜が無いと、b04 は再実行された
+    のに b05 が再実行されていない壊れ方を b11 が検出できない）。
+    `observation` は `landuse_watershed`/`landuse_change` 以外の11テーブルの
+    系譜にだけ加える（`_TABLES_WITHOUT_OBSERVATION_DEPENDENCY` 参照——
+    この2つは `observation_agg` だけから作るため）。省略した場合は系譜を
+    記録しない（`build_projections()` を経由しない単体呼び出し用——`main()`
+    は常に渡す）。
+
+    **`cube_db` を受け取って改めて開き、指紋を読み直すことはしない**
+    （/code-review 指摘の根本対応。以前はここで `cube_db` を再度 ATTACH して
+    `read_recorded_fingerprint` していたため、`build_projections()` の (a)
+    検証と、ここでの読み直しの間に b04 が `cube_db` を作り直してコミットする
+    と、「検証した時点の値」ではなく「今読み直した新しい値」を系譜に記録
+    してしまい、実際には古い内容から作った射影に新しい指紋を紐付ける
+    ——b11 の (b) 検査をすり抜ける穴になっていた。呼び出し側
+    〔`build_projections()`〕が検証した値をそのまま渡すことでこの穴を塞ぐ）。
+    """
+    agg_fingerprint = (verified_fingerprints or {}).get("observation_agg")
+    obs_fingerprint = (verified_fingerprints or {}).get("observation")
     conn = common.fresh_sqlite(out_path)
     try:
         for table, (columns, rows) in projections.items():
             conn.execute(_CREATE_SQL[table])
             placeholders = ", ".join("?" for _ in columns)
             conn.executemany(f'INSERT INTO "{table}" VALUES ({placeholders})', rows)
+        # 段階間の指紋（Issue #37 #1）: 全段の出力に指紋を持たせる方針どおり、
+        # 13テーブル全てに記録する（b11 が site_var/landuse_watershed を読む前に
+        # 検証する。/simplify 指摘: ループ本体の分岐を無くし、表ごとの系譜を
+        # 先に1つの dict にまとめてから `record_stage_fingerprints` に渡す）。
+        without_obs = {"observation_agg": agg_fingerprint} if agg_fingerprint else {}
+        with_obs = {**without_obs, "observation": obs_fingerprint} if obs_fingerprint else without_obs
+        lineage = {
+            table: (without_obs if table in _TABLES_WITHOUT_OBSERVATION_DEPENDENCY else with_obs)
+            for table in projections
+        }
+        common.record_stage_fingerprints(conn, projections, lineage=lineage)
         conn.commit()
     finally:
         conn.close()
@@ -1216,12 +999,18 @@ def main() -> None:
     print(f"▶ 読み取り専用で開く: {args.cube_db}")
     print(f"▶ 読み取り専用で開く: {registry_db}")
 
+    # 検証した時点の指紋をここで受け取り、write_projections にそのまま渡す
+    # （/code-review 指摘の根本対応: cube_db を改めて開いて読み直さない）。
+    verified_fingerprints: dict[str, str] = {}
     with common.timed_step("v1 形へ射影") as info:
-        projections = build_projections(args.cube_db, registry_db, args.baseline_json)
+        projections = build_projections(
+            args.cube_db, registry_db, args.baseline_json,
+            verified_fingerprints_out=verified_fingerprints,
+        )
         info["n"] = sum(len(rows) for _, rows in projections.values())
 
     with common.timed_step(f"{args.out} に書き出し") as info:
-        write_projections(projections, args.out)
+        write_projections(projections, args.out, verified_fingerprints=verified_fingerprints)
         info["n"] = sum(len(rows) for _, rows in projections.values())
 
     for table, (_, rows) in sorted(projections.items()):

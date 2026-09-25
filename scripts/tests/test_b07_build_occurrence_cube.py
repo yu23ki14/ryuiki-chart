@@ -420,3 +420,30 @@ def test_dimension_key_unique_raises_with_examples(tmp_path):
             b07._assert_dimension_key_unique(conn, "staging")
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# 段階間の指紋（Issue #37 #1。scripts/migrate/common.py 参照）
+# ---------------------------------------------------------------------------
+
+def test_build_cube_halts_when_occurrence_changed_since_b06_recorded_it(tmp_path):
+    """**壊れた/古い上流出力で止まることの実測**（Issue #37 受け入れ基準）:
+    b07 を1回成功させた後、`occurrence`（b06 の出力）の内容を b06 を経由せず
+    直接書き換える（＝b06 が別内容で再実行されたのに b07 が再実行されて
+    いない状態を模す）と、2回目の `build_cube` は集計を始める前に
+    `scripts/b06_build_occurrence.py を再実行すること` と案内する
+    `MigrationError` で止まる。
+    """
+    rows = [_row("gbif__day", "2020-01-05", "2020-01-05", "2020-01-05")]
+    conn, decl = _build(tmp_path, rows)
+    try:
+        b07.build_cube(conn, decl)
+
+        # b06 を経由せず occurrence の内容を直接書き換える（b06 の再実行を模す）。
+        conn.execute("UPDATE occurrence SET taxon_id = 'common:taxon:gbif.9999' WHERE record_id = 'gbif__day'")
+        conn.commit()
+
+        with pytest.raises(common.MigrationError, match="scripts/b06_build_occurrence.py を再実行すること"):
+            b07.build_cube(conn, decl)
+    finally:
+        conn.close()

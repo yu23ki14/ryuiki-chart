@@ -17,6 +17,7 @@ from __future__ import annotations
 import sqlite3
 
 import b03_build_observation as b03  # scripts/ が sys.path にある前提（scripts/tests/__init__.py 参照）
+from migrate import common
 from reconcile import common as reconcile_common
 from reconcile import datasource
 
@@ -386,11 +387,18 @@ def make_v2_db_with_observation(path, create_sql: str, rows: list[tuple]) -> sql
     `uri=True` で開く（`b04_build_cube.build_cube` が `registry_db` を
     `file:...?mode=ro` として ATTACH するのに必要。実データで踏んだのと同じ
     理由——`scripts/b04_build_cube.py` の `main()` のコメント参照）。
+
+    段階間の指紋（Issue #37 #1）: `scripts/b03_build_observation.py` が本物の
+    実行の最後に記録するのと同じ `pipeline_fingerprint` を、ここでも記録する
+    （b04 が `build_cube()` の先頭で `common.assert_stage_fingerprint_fresh` を
+    呼ぶため、これが無いと本物の b03 を経由しないこのフィクスチャの
+    全テストが「指紋が記録されていない」で落ちてしまう）。
     """
     conn = sqlite3.connect(f"file:{path}", uri=True)
     conn.execute(create_sql.format(table="observation"))
     placeholders = ", ".join("?" for _ in rows[0])
     conn.executemany(f"INSERT INTO observation VALUES ({placeholders})", rows)
+    common.record_stage_fingerprint(conn, "observation")
     conn.commit()
     return conn
 

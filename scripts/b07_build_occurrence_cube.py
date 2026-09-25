@@ -496,12 +496,20 @@ def build_cube(
     3.43以降が前提」参照）。
     """
     common.require_sqlite_version()
+    # 段階間の指紋（Issue #37 #1）: b06 が最後に記録した occurrence の指紋と
+    # 今の occurrence の内容が一致することを、集計を始める前に確認する。
+    # 戻り値（occurrence の現在の指紋）は occurrence_agg の系譜に使う。
+    occurrence_fingerprint = common.assert_occurrence_fingerprint_fresh(conn)
     declarations = load_and_validate_cube_declarations(declarations_yaml)
     leaf_expected = declarations[_LEAF_DECLARATION_NAME]["expected_row_count"]
     _assert_t1_invariant(conn)
     params = (built_from, spec_version)
 
-    with common.staged_table(conn, "occurrence_agg", _CREATE_OCCURRENCE_AGG_SQL) as staging:
+    with common.staged_table(
+        conn, "occurrence_agg", _CREATE_OCCURRENCE_AGG_SQL,
+        fingerprint_inputs={"occurrence": occurrence_fingerprint},
+        fingerprint_spec_version=spec_version,
+    ) as staging:
         insert_cols = ", ".join(_INSERT_COLUMNS)
         insert_sql = f'INSERT INTO "{staging}" ({insert_cols}) '
 
@@ -516,6 +524,13 @@ def build_cube(
             conn.execute(f'DROP TABLE IF EXISTS "{l2_series_table}"')
         _assert_cube_partition_and_shape(conn, staging, leaf_expected, n_dated_by_place_kind, declarations_yaml)
         _assert_dimension_key_unique(conn, staging)
+    # ここまで来たら staged_table が差し替えと同じトランザクションで
+    # occurrence_agg の指紋・系譜（消費した occurrence の指紋）も記録済み
+    # （Issue #37 #1・/code-review 指摘の根本対応）。b08 の既存チェック
+    # （`_assert_cube_is_current_l2_partition`）が occurrence_agg 自体の集計
+    # 正しさを検証するため、この指紋自体は他段（将来 occurrence_agg を読む
+    # かもしれない別スクリプト）向けの一貫性維持——「全段の出力に指紋を
+    # 持たせる」方針どおり記録している。
 
     n_dated_grid01 = n_dated_by_place_kind.get("grid01", 0)
     return {

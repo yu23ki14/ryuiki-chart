@@ -1,7 +1,11 @@
 # Phase B 縦に薄い1本 — `measurements`/`sensor_timeseries` → `observation` → キューブ → v1形
 
 対象: ADR-0016 の Phase B / 状態: **実データで一度緑になった（部分ゲート。33テーブル中11テーブル）**
-作成: 2026-09-08 / 更新: 2026-09-22 / 関連: ADR-0007, 0008, 0009, 0010, 0011, 0016, 0021, 0022, 0023, 0024
+作成: 2026-09-08 / 更新: 2026-09-25（Issue #37: 段階間の指紋・staged_table原子性の確認・
+b05検証関数群の分割、/code-review 指摘2件の対応〔系譜の再帰化・b05のobservation
+直接読み取りの検証漏れと指紋記録の原子性の根本対応〕、/simplify（4観点）反映
+〔読み取りの機械監査Tier 1・b08の重複排除・b11の--cube-db検証・指紋計算の高速化ほか〕） /
+関連: ADR-0007, 0008, 0009, 0010, 0011, 0016, 0021, 0022, 0023, 0024
 
 このドキュメントは `docs/plans/PHASE_B_RECONCILIATION.md`（突合ゲートの仕組み）と対になる、
 **縦に薄い1本の設計と実測**の記録。`b03_build_observation.py` / `b04_build_cube.py` /
@@ -488,20 +492,126 @@ tie を等号（`>=`）で明示的に許容している。
   「先に消してから作る」非原子は `observation`/`observation_agg` については解消済み）。
   `b05_project_v1.py`（`v1_projection.sqlite` を `fresh_sqlite` でファイルごと作り直す）は
   元々「メモリ上で全検証→書き出し」の設計のため対象外（変更なし）。
-  **残っている負債は2つ**: (1) 段の間で、前の段が検証を通った状態を次の段が機械的に
-  確かめる仕組みが無い（例: `b04` は `observation` テーブルが存在すれば読めてしまい、
-  それが `b03` の全検証を通った状態か、`b03` が古いバージョンで作った・別の経路で
-  壊れたものかを区別しない——各段の出力に指紋を持たせて次の段が検証する、のような
-  仕組みが要る）。(2) ファイル単位の原子性（`staged_table` の差し替え自体
-  ——`DROP TABLE`→`ALTER TABLE RENAME` は SQLite の DDL で、片方だけ確定した状態で
-  プロセスが落ちる窓が理論上残る。頻度・実害は小さいが「無い」わけではない）。
-  どちらも `v2.sqlite` を複数の段（`b03`/`b04`）で共有する設計と絡むため、このタスクの
-  スコープには含めず後に回す（語彙レジストリの一時ファイル＋`os.replace()` による原子化
-  〔PR #11〕とは別の対象——`registry.sqlite` は単一の書き手が単一ファイルを作り直すのに
-  対し、`v2.sqlite` は複数スクリプトがテーブル単位で共有する構造が違う）。
+  **以下2点は Issue #37（親 #27）で解決済み**:
+  1. **段階間の指紋**（`scripts/migrate/common.py` の `record_stage_fingerprint`/
+     `assert_stage_fingerprint_fresh`/`compute_table_fingerprint`/
+     `read_recorded_fingerprint`/`read_recorded_inputs`/`track_reads`/
+     `assert_all_reads_verified`）。**設計の正は `scripts/migrate/common.py`
+     の該当関数群の直前のモジュールコメント**（指紋の中身・保存場所・
+     (a)/(b) の別・(b) の再帰・読み取りの機械監査〔Tier 1〕の設計判断は
+     すべてそこに書いてある。ここでは繰り返さない）。以下はこの文書に残す
+     測定値・受け入れ基準・段ごとの対応表だけ。
+     - **段ごとの読み取り→検証の対応表**（各段の SQL が ATTACH 先のどの表を
+       読んでいるかを grep で確認した結果。`declared` は `track_reads`/
+       `assert_all_reads_verified`〔Tier 1、段単位の粗さ——per-table 精度の
+       自動導出は Tier 2 として別 Issue に切り出す。下記「次の一手」参照〕に
+       渡す宣言集合）:
+
+       | 段 | ATTACH 先で読む表 | (a) 自己一致チェック | (b)/系譜 | Tier 1 機械監査 |
+       |---|---|---|---|---|
+       | b04 | 自ファイルの `observation` | 済 | `observation_agg.inputs={"observation":...}` | 未適用（同一ファイル・単純） |
+       | b05 | `cube.observation`・`cube.observation_agg` | 両方済 | 11/13表に `observation`+`observation_agg`、`landuse_*` 2表は `observation_agg` のみ（`_TABLES_WITHOUT_OBSERVATION_DEPENDENCY`。per-table 精度は Tier 1 の段単位の粗さでは代替できないため手書きのまま維持） | `declared={"observation","observation_agg"}` |
+       | b07 | 自ファイルの `occurrence` | 済 | `occurrence_agg.inputs={"occurrence":...}` | 未適用 |
+       | b08 | `cube.occurrence`（3経路）・`cube.occurrence_agg`（`_assert_cube_is_current_l2_partition` が直接突合）・`cube.occurrence_place` | `occurrence`: 済／`occurrence_agg`: 集計突合が代替／`occurrence_place`: 済 | `org_norm`/`org_watershed*` に系譜を記録。年キー8表・`species_month`・`ias_species` は消費側が無いため `inputs={}` | 5エントリポイントそれぞれに `declared`（`occurrence`・`occurrence_agg`・`occurrence_place` の要る組み合わせ。`occurrence_agg` は L2 突合で検証済み扱い） |
+       | b09 | 自ファイルの `occurrence`・`ryuiki.sites`（原本、対象外） | 済 | `occurrence_place.inputs={"occurrence":...}` | 未適用 |
+       | b11 | `proj.site_var`・`proj.landuse_watershed`・`occ.org_watershed`／`cube_v2.*` は系譜チェック専用 | 3表とも済 | 再帰で `observation`/`observation_agg`/`occurrence`/`occurrence_place` まで到達 | `declared=set(verified_fingerprints)`（site_var/landuse_watershed/org_watershed） |
+       | b03/b06 | `src.*`（`ryuiki.sqlite`、原本） | 対象外 | 出力は基底テーブルとして `inputs={}` | 対象外（原本は `pipeline_fingerprint` を持たないため自動除外） |
+       | b10 | `ryuiki.*`/`cells.*`（原本） | 対象外 | Phase B の上流出力を経由しない | 対象外 |
+       | b12 | `registry.sqlite`（別系統） | 対象外 | r01 自身の `registry_build` 指紋で管理済み | 対象外（`registry.sqlite` は `pipeline_fingerprint` を持たないため自動除外） |
+     - **次の一手（Tier 2、別 Issue）**: 今回（Tier 1）は段単位の粗さ
+       （`declared` を呼び出し側が手で列挙する）に留めた。出力テーブルごとに
+       正確な入力集合を自動導出する（per-table 精度、`declared` の手書きを
+       無くす）には、1接続・1回の走査で複数出力を作る現状の構造を
+       テーブルごとに分ける設計変更が要る——着手しない。
+     - **壊れた/古い上流出力で実際に止まることの実測**（受け入れ基準。単体
+       テストに加え、worktree 内の実データ〔`/tmp` のスクラッチコピー、
+       元チェックアウトの `data/db` は無傷〕でも確認した）:
+       - b03→b04→b05: b03 だけ作り直し b04 を忘れて b05 を実行 →
+         「`observation_agg` は上流 observation の指紋...を消費した状態の
+         ままだが、observation は現在...を自己申告している」で b05 が停止
+         （`scripts/b04_build_cube.py を再実行すること`）。単体テストは
+         `test_migrate_common.py`（`test_lineage_check_detects_upstream_
+         rebuilt_without_downstream_rerun` 等）・`test_b05_project_v1.py`
+         （`test_build_projections_halts_when_observation_rebuilt_without_
+         rerunning_b04`）。
+       - b03→b05（`observation` を直接改変・自己指紋は更新しない）:
+         `observation_agg` の系譜チェックでは検出できない改変
+         （`observation` の自己申告自体は変えていないため）でも、`observation`
+         自身への独立した (a) が検出して b05 が停止する
+         （`scripts/b03_build_observation.py を再実行すること`）。単体テストは
+         `test_b05_project_v1.py::
+         test_build_projections_halts_when_observation_tampered_without_
+         updating_its_own_fingerprint`。
+       - b06→b07→b08: b06 だけ作り直し（occurrence に1行追加）b07 を忘れて
+         b08 を実行 → 既存の `_assert_cube_is_current_l2_partition`
+         （このタスクでは変更していない）が「occurrence_agg が『今の
+         occurrence の分割』になっていない」で停止（`scripts/
+         b07_build_occurrence_cube.py を再実行すること`）——この経路は
+         集計突合という別の（より強い）機構が既に塞いでいたことを実データで
+         再確認した。既存の単体テストは
+         `test_b08_occurrence_cube_projections.py::
+         test_l2_cube_mismatch_stops_projection`。
+       - b03（**だけ**）・b11: b03 だけ別内容で作り直し、b04・b05 は一切
+         実行しない（`observation_agg` は無傷のまま）→ **再帰で2段たどって
+         初めて**「`site_var` は上流 observation の指紋...を消費した状態の
+         ままだが、observation は現在...を自己申告している」で b11 が停止
+         （`scripts/b05_project_v1.py を再実行すること`。これが1段しか
+         遡らない実装で通ってしまっていた、今回の穴そのもの）。単体テストは
+         `test_b11_project_place_v1.py::
+         test_build_projections_halts_when_observation_rebuilt_two_hops_away_*`
+         （2本——`site_var` が `observation` を直接持つ本物の b05 と同じ
+         経路の版と、`observation_agg` だけを持つ最小限のフィクスチャで
+         純粋に再帰能力だけを確かめる版）。
+       - b05・b11（`observation_agg` だけ作り直し）: b03/b04 を作り直し
+         （`observation_agg` が新しい自己指紋を持つ）b05 を忘れて b11 を
+         実行 → 「`site_var` は上流 observation_agg の指紋...を消費した
+         状態のままだが、observation_agg は現在...を自己申告している」で
+         b11 が停止（`scripts/b05_project_v1.py を再実行すること`）。単体
+         テストは `test_b11_project_place_v1.py::
+         test_build_projections_halts_when_observation_agg_rebuilt_without_
+         rerunning_b05`。
+       - 指紋の記録の原子性: `staged_table` の差し替えと指紋の記録の間に
+         人為的に例外を起こすと、差し替えごと（指紋も含めて）巻き戻り、
+         前回の本番テーブルと前回の指紋がどちらもそのまま残ることを確認した
+         （`test_migrate_common.py::
+         test_staged_table_fingerprint_inputs_is_committed_atomically_with_the_swap`）。
+         対比として、差し替えと指紋の記録を**別々に**呼ぶ（直す前の書き方）
+         と実際に「内容は新しいが指紋は古い」状態が作れてしまうことも
+         再現した（`test_migrate_common.py::
+         test_recording_fingerprint_separately_from_the_swap_can_leave_it_stale`）。
+       - 読み取りの機械監査（Tier 1）: `declared` に無い表を JOIN で読むと
+         `assert_all_reads_verified` が止まることを確認した
+         （`test_migrate_common.py::
+         test_assert_all_reads_verified_raises_on_undeclared_join`——
+         これが b05 の `cube.observation` 検証漏れと同じ形の見落としを
+         機械的に検出できることの確認）。
+  2. **`staged_table` の差し替え（`DROP TABLE`→`ALTER TABLE RENAME`）の原子性**は、
+     実装を確認したところ**既に解決済みだった**（コミット `45181b2`
+     「staged_table: 差し替え（DROP+RENAME）を明示トランザクションで原子化」——この
+     文書のこの節が古いままだった）。`scripts/migrate/common.py` の `staged_table`
+     は差し替えの2文を明示の `BEGIN`〜`COMMIT` で1トランザクションに包んでおり
+     （`conn.commit()` の直後は開いているトランザクションが無いため、裸の DDL のまま
+     では `DROP` が確定した直後にプロセスが死ぬと本番テーブルが消えたまま戻らない
+     ——明示トランザクションに包めば未コミットのまま自動的に巻き戻る）、途中で
+     例外が起きても本番テーブルを元に戻し作業用テーブルも残さない。**判断: 直す
+     （既に直っている）**。`scripts/tests/test_migrate_common.py` の
+     `test_staged_table_failure_between_drop_and_rename_preserves_previous_table`
+     （`ALTER TABLE` の直前で例外を起こすプロキシで再現）が既にこれを確認している。
+     **その後（2回目の /code-review 指摘）**: DDL の差し替え自体は atomic
+     でも、指紋の記録（`record_stage_fingerprint`）が**別コミット**のままでは
+     「内容は新しいが指紋は古い」状態が原理上残ることが分かり、上の系譜の
+     項目にまとめたとおり `fingerprint_inputs` 引数で同じトランザクションに
+     統合した。
   **もう1つ、既知の判断として**: `scripts/b05_project_v1.py` は v1 互換の射影の置き場
-  として線形に増え続けている（現在11テーブル）。次に T6 級（出典固有の Python 検証関数）
-  を足す時点で、検証関数群を別モジュールに分けること。
+  として線形に増え続けている（現在13テーブル）。次に T6 級（出典固有の Python 検証関数）
+  を足す時点で、検証関数群を別モジュールに分けること——**これも Issue #37（#3）で実施
+  済み**。`assert_alias_is_function`/`assert_alias_tuple_maps_to_single_dataset`/
+  `assert_unit_raw_is_function`/`assert_v1_keys_are_unique`/`verify_hourly_daily_rollup`・
+  D11のゾーン固有の4検証関数を `scripts/migrate/v1_projection_checks.py` に移した
+  （振る舞いは変えない純粋な移動——`scripts/b05_project_v1.py` は同名のモジュール変数
+  として再エクスポートするため、内部の呼び出し・既存テスト〔`b05.assert_alias_is_function(...)`
+  等〕は1つも変えていない。実測: 移動前後で `test_b05_project_v1.py` の37件がそのまま
+  変わらず成功）。
 
 ## 8. 次の一手（オーナーの方針）
 

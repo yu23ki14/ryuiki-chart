@@ -135,6 +135,13 @@
   そもそも使えない）。見るのは
   `sqlite3` CLI ではなく Python 同梱の `sqlite3` モジュールのバージョン。詳細は
   `docs/adr/0021-observation-grain-and-cube-key.md`）。
+- **段階間の指紋**（`scripts/migrate/common.py` の `record_stage_fingerprint`/
+  `assert_stage_fingerprint_fresh`/`track_reads`）: `b04`/`b05`/`b07`/`b09`/
+  `b08`/`b11` は上流の段の出力が今も一致するか（(a)、系譜を再帰的に(b)）・
+  実際に読んだ表を検証し忘れていないか（読み取りの機械監査）を読み込み時に
+  確認し、崩れていれば止まる。設計・実測は `docs/plans/PHASE_B_FACT_SLICE.md` 参照。
+- `b05_project_v1.py` の出典固有の検証関数群は
+  `scripts/migrate/v1_projection_checks.py`（`v1_projection_checks.関数名(...)` で呼ぶ）。
 
 ## 開発フロー
 

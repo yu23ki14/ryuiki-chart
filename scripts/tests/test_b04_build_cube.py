@@ -589,7 +589,12 @@ def test_a1_uniqueness_failure_preserves_previous_observation_agg(tmp_path, monk
         with pytest.raises(common.MigrationError, match="テスト用に強制した一意性違反"):
             b04.build_cube(conn2, registry_db)
 
-        tables = sorted(r[0] for r in conn2.execute("SELECT name FROM sqlite_master WHERE type='table'"))
+        # `pipeline_fingerprint`（Issue #37 #1、段階間の指紋のメタ表）は本番/
+        # 作業用の区別とは無関係な実装詳細なので除外する。
+        tables = sorted(
+            r[0] for r in conn2.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            if r[0] != common.PIPELINE_FINGERPRINT_TABLE
+        )
         after = conn2.execute("SELECT * FROM observation_agg ORDER BY stat").fetchall()
     finally:
         conn2.close()
@@ -637,6 +642,58 @@ def test_build_cube_calls_the_shared_sqlite_version_guard(tmp_path, monkeypatch)
     conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
     try:
         with pytest.raises(SystemExit, match="古すぎる"):
+            b04.build_cube(conn, registry_db)
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# 段階間の指紋（Issue #37 #1。scripts/migrate/common.py 参照）
+# ---------------------------------------------------------------------------
+
+def test_build_cube_halts_when_observation_changed_since_b03_recorded_it(tmp_path):
+    """**壊れた/古い上流出力で止まることの実測**（Issue #37 受け入れ基準）:
+    b04 を1回成功させた後、`observation`（b03 の出力）の内容を b03 を経由せず
+    直接書き換える（＝b03 が別内容で再実行されたのに b04 が再実行されて
+    いない状態を模す）と、2回目の `build_cube` は集計を始める前に
+    `scripts/b03_build_observation.py を再実行すること` と案内する
+    `MigrationError` で止まる。
+    """
+    rows = [_row("measurements", "m1", "2020-01-01", "2020-01-01", 1.0, "1.0", "none")]
+    db_path = tmp_path / "v2.sqlite"
+    registry_db = _registry_db(tmp_path)
+    conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
+    b04.build_cube(conn, registry_db)
+    conn.close()
+
+    # b03 を経由せず observation の内容を直接書き換える（b03 の再実行を模す）。
+    conn2 = sqlite3.connect(f"file:{db_path}", uri=True)
+    conn2.execute("UPDATE observation SET value_num = 999.0 WHERE source_row_id = 'm1'")
+    conn2.commit()
+    conn2.close()
+
+    conn3 = sqlite3.connect(f"file:{db_path}", uri=True)
+    try:
+        with pytest.raises(common.MigrationError, match="scripts/b03_build_observation.py を再実行すること"):
+            b04.build_cube(conn3, registry_db)
+    finally:
+        conn3.close()
+
+
+def test_build_cube_halts_when_observation_has_no_recorded_fingerprint(tmp_path):
+    """`pipeline_fingerprint` メタ表自体が無い（この機構より前に作られた古い
+    v2.sqlite、または b03 を経由せず直接組み立てたフィクスチャ）場合も、
+    `observation` を読む前に案内付きの `MigrationError` で止まる。
+    """
+    rows = [_row("measurements", "m1", "2020-01-01", "2020-01-01", 1.0, "1.0", "none")]
+    db_path = tmp_path / "v2.sqlite"
+    registry_db = _registry_db(tmp_path)
+    conn = sqlite3.connect(f"file:{db_path}", uri=True)
+    conn.execute(b03._CREATE_OBSERVATION_SQL.format(table="observation"))
+    conn.executemany(f"INSERT INTO observation VALUES ({', '.join('?' for _ in rows[0])})", rows)
+    conn.commit()  # record_stage_fingerprint を呼ばない（指紋を記録しない）
+    try:
+        with pytest.raises(common.MigrationError, match="scripts/b03_build_observation.py を再実行すること"):
             b04.build_cube(conn, registry_db)
     finally:
         conn.close()

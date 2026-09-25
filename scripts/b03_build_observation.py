@@ -837,7 +837,9 @@ def build_and_write_observation(
     dest = sqlite3.connect(f"file:{out_path}", uri=True)
     dest.execute("PRAGMA journal_mode=DELETE")
     try:
-        with common.staged_table(dest, "observation", _CREATE_OBSERVATION_SQL) as staging:
+        with common.staged_table(
+            dest, "observation", _CREATE_OBSERVATION_SQL, fingerprint_inputs={},
+        ) as staging:
             all_stats: dict[str, dict] = {}
             for source_table, ingest in ingest_funcs.items():
                 work = sqlite3.connect(":memory:", uri=True)
@@ -927,7 +929,13 @@ def build_and_write_observation(
                     "scripts/migrate/censoring.py の censoring_limit 解決を確認すること。"
                 )
             # ここまで来たら with ブロックを正常に抜け、staged_table が
-            # 作業用テーブルを本番名 "observation" に差し替える（A-1）。
+            # 作業用テーブルを本番名 "observation" に差し替え、同じ
+            # トランザクションで指紋も記録する（Issue #37 #1・/code-review
+            # 指摘の根本対応: `fingerprint_inputs={}` を渡したことで、
+            # 差し替えのコミットと指紋の記録が同じコミットになり、
+            # 「内容は新しいが指紋は古い」状態が原理的に作れなくなる。
+            # `observation` は基底テーブルなので系譜は空）。b04 はこの指紋を
+            # 見て「今の observation から作った observation_agg か」を検証する。
     except BaseException:
         dest.close()
         raise

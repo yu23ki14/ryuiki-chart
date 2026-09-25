@@ -6,7 +6,7 @@ import pytest
 import b03_build_observation as b03
 import b04_build_cube as b04
 import b05_project_v1 as b05
-from migrate import common
+from migrate import common, v1_projection_checks
 
 from .migrate_fixtures import (
     DEFAULT_ALIASES,
@@ -104,7 +104,7 @@ def test_assert_alias_is_function_raises_on_collision(tmp_path):
     common.attach_readonly(work, registry_db, "reg")
     try:
         with pytest.raises(common.MigrationError, match="関数になっていない"):
-            b05.assert_alias_is_function(work)
+            v1_projection_checks.assert_alias_is_function(work)
     finally:
         work.close()
 
@@ -115,8 +115,8 @@ def test_assert_alias_is_function_passes_when_unique(tmp_path):
     work = sqlite3.connect("file::memory:?cache=shared", uri=True)
     common.attach_readonly(work, registry_db, "reg")
     try:
-        b05.assert_alias_is_function(work)  # 例外を投げなければ良い
-        b05.assert_alias_is_function(work, "sensor_timeseries", grains=("day", "hour", "instant"))
+        v1_projection_checks.assert_alias_is_function(work)  # 例外を投げなければ良い
+        v1_projection_checks.assert_alias_is_function(work, "sensor_timeseries", grains=("day", "hour", "instant"))
     finally:
         work.close()
 
@@ -137,7 +137,7 @@ def test_assert_alias_tuple_maps_to_single_dataset_raises_on_cross_dataset_colli
     common.attach_readonly(work, registry_db, "reg")
     try:
         with pytest.raises(common.MigrationError, match="複数の出典.*にまたがっている"):
-            b05.assert_alias_tuple_maps_to_single_dataset(work)
+            v1_projection_checks.assert_alias_tuple_maps_to_single_dataset(work)
     finally:
         work.close()
 
@@ -148,7 +148,7 @@ def test_assert_alias_tuple_maps_to_single_dataset_passes_on_default_fixture(tmp
     work = sqlite3.connect("file::memory:?cache=shared", uri=True)
     common.attach_readonly(work, registry_db, "reg")
     try:
-        b05.assert_alias_tuple_maps_to_single_dataset(work)  # 例外を投げなければ良い
+        v1_projection_checks.assert_alias_tuple_maps_to_single_dataset(work)  # 例外を投げなければ良い
     finally:
         work.close()
 
@@ -171,7 +171,7 @@ def test_assert_alias_tuple_maps_to_single_dataset_allows_landuse_year_sharing(t
     work = sqlite3.connect("file::memory:?cache=shared", uri=True)
     common.attach_readonly(work, registry_db, "reg")
     try:
-        b05.assert_alias_tuple_maps_to_single_dataset(work)  # 例外を投げなければ良い
+        v1_projection_checks.assert_alias_tuple_maps_to_single_dataset(work)  # 例外を投げなければ良い
     finally:
         work.close()
 
@@ -197,7 +197,7 @@ def test_assert_alias_tuple_maps_to_single_dataset_still_detects_landuse_vs_meas
     common.attach_readonly(work, registry_db, "reg")
     try:
         with pytest.raises(common.MigrationError, match="複数の出典.*にまたがっている"):
-            b05.assert_alias_tuple_maps_to_single_dataset(work)
+            v1_projection_checks.assert_alias_tuple_maps_to_single_dataset(work)
     finally:
         work.close()
 
@@ -389,7 +389,7 @@ def test_assert_v1_keys_are_unique_detects_duplicate_in_new_tables():
     }
     keys_by_table = {"var_catalog": ["variable"]}
     with pytest.raises(common.MigrationError, match="v1 のキー"):
-        b05.assert_v1_keys_are_unique(projections, keys_by_table)
+        v1_projection_checks.assert_v1_keys_are_unique(projections, keys_by_table)
 
     projections2 = {
         "sensor_daily": (
@@ -399,7 +399,7 @@ def test_assert_v1_keys_are_unique_detects_duplicate_in_new_tables():
     }
     keys_by_table2 = {"sensor_daily": ["site_id", "datastream", "d"]}
     with pytest.raises(common.MigrationError, match="v1 のキー"):
-        b05.assert_v1_keys_are_unique(projections2, keys_by_table2)
+        v1_projection_checks.assert_v1_keys_are_unique(projections2, keys_by_table2)
 
 
 def test_place_lookup_non_injective_place_id_raises_migration_error(tmp_path):
@@ -913,6 +913,12 @@ def test_verify_hourly_daily_rollup_detects_broken_day_bucketing(tmp_path):
         "UPDATE observation_agg SET n = n + 100 "
         "WHERE grain='day' AND input_grain='hour' AND stat='mean'"
     )
+    # 段階間の指紋（Issue #37 #1）: この改変は「b04 が壊れた日割りで
+    # observation_agg を作った」ことを模すもの（b04 が別内容で再実行された後
+    # b05 が再実行されていない、という別の壊れ方ではない）。指紋を改変後の
+    # 内容で再記録し、T6（`verify_hourly_daily_rollup`）だけが検出することを
+    # 確かめる——指紋チェックとの二重検出にしない。
+    common.record_stage_fingerprint(conn, "observation_agg")
     conn.commit()
     conn.close()
 
@@ -962,7 +968,7 @@ def test_verify_hourly_daily_rollup_function_directly():
             (*dim, "2020-01-01", "2020-01-01", "day", "hour", "max", 4.0, 4),
         ],
     )
-    stats = b05.verify_hourly_daily_rollup(work)
+    stats = v1_projection_checks.verify_hourly_daily_rollup(work)
     assert stats["n_series_days_checked"] >= 1
 
 
@@ -1154,6 +1160,137 @@ def test_landuse_does_not_affect_existing_tables_or_cube(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# 段階間の指紋・系譜（Issue #37 #1。コードレビュー指摘の穴埋め）
+# ---------------------------------------------------------------------------
+
+def test_build_projections_halts_when_observation_rebuilt_without_rerunning_b04(tmp_path):
+    """**コードレビュー指摘が指した穴そのものの再現**（Issue #37 受け入れ
+    基準）: b03→b04 を通しで実行した後、b03 だけを**別内容**で作り直す
+    （＝`observation` は新しい指紋を自己申告するが、`observation_agg` は
+    古いまま——b04 を忘れた状態）。`observation_agg` 自身の内容は無傷なので
+    (a) の自己一致チェックは通るが、系譜チェック (b) が `observation_agg` の
+    `inputs["observation"]`（古い指紋）と `observation` の今の自己指紋
+    （新しい）の食い違いを検出し、`scripts/b04_build_cube.py を再実行する
+    こと` と案内する `MigrationError` で b05 が止まる。
+    """
+    measurements_db = tmp_path / "ryuiki.sqlite"
+    registry_db = tmp_path / "registry.sqlite"
+    make_measurements_db(
+        measurements_db,
+        rows=[("m1", "S1", "2020-01-01", "BOD", "src_a", 1.0, "1.0", "mg/L", "公開済", 0, "ref1", "ev1")],
+    )
+    make_registry_db(registry_db)
+
+    v2_db, _ = _run_b03_b04(measurements_db, registry_db, tmp_path)
+
+    # b03 だけを別内容（測定値を1件追加）で作り直す。b04 は再実行しない。
+    measurements_db2 = tmp_path / "ryuiki2.sqlite"
+    make_measurements_db(
+        measurements_db2,
+        rows=[
+            ("m1", "S1", "2020-01-01", "BOD", "src_a", 1.0, "1.0", "mg/L", "公開済", 0, "ref1", "ev1"),
+            ("m2", "S1", "2020-06-01", "BOD", "src_a", 9.0, "9.0", "mg/L", "公開済", 0, "ref1", "ev1"),
+        ],
+    )
+    build_observation(
+        tmp_path, measurements_db2, registry_db, tmp_path / "no_exceptions2.yaml",
+        tmp_path / "no_conventions2.yaml", v2_db,
+    )
+
+    with pytest.raises(common.MigrationError, match=r"scripts/b04_build_cube\.py を再実行すること"):
+        b05.build_projections(v2_db, registry_db)
+
+
+def test_build_projections_halts_when_observation_tampered_without_updating_its_own_fingerprint(tmp_path):
+    """**/code-review 指摘の穴そのものの再現**（b05 が `cube.observation` を
+    直接読んでいるのに検証していなかった）: `observation`（`_unit_lookup_sql`/
+    `_label25_obs_keyed_sql` 経由で meas_daily 等・sensor_daily 等が直接読む）
+    の内容だけを、自己指紋を更新せずに書き換える（`observation_agg` には
+    一切触れない——`observation_agg` 自身の内容・系譜はどちらも無傷）。
+
+    この改変は `observation_agg` の系譜チェック（(b)、observation_agg が
+    消費した時点の observation 指紋と、observation 自身の**自己申告**を
+    比べるだけ）では検出できない——observation は自己申告を更新していない
+    （＝自己申告はまだ元のまま）ため、(b) は一致してしまう。`observation`
+    自身に対する独立した (a)（現在のバイト列そのものを自己申告と比べる
+    フルスキャン）があって初めて検出できる。
+    """
+    measurements_db = tmp_path / "ryuiki.sqlite"
+    registry_db = tmp_path / "registry.sqlite"
+    make_measurements_db(
+        measurements_db,
+        rows=[("m1", "S1", "2020-01-01", "BOD", "src_a", 1.0, "1.0", "mg/L", "公開済", 0, "ref1", "ev1")],
+    )
+    make_registry_db(registry_db)
+
+    v2_db, _ = _run_b03_b04(measurements_db, registry_db, tmp_path)
+
+    # observation の内容だけを直接改変する（自己指紋は更新しない——
+    # b03の staged_table の差し替えと record_stage_fingerprint が同じ
+    # トランザクションでコミットされるようになった後でも、原理上はこの
+    # ような直接改変が起こりうるので、b05 側の独立した (a) で塞ぐ）。
+    conn = sqlite3.connect(str(v2_db))
+    conn.execute("UPDATE observation SET value_num = 999.0 WHERE source_row_id = 'm1'")
+    conn.commit()
+    conn.close()
+
+    with pytest.raises(common.MigrationError, match=r"scripts/b03_build_observation\.py を再実行すること"):
+        b05.build_projections(v2_db, registry_db)
+
+
+def test_write_projections_records_the_fingerprint_verified_at_build_time_not_a_reread(tmp_path):
+    """**/code-review 指摘の再現**: `build_projections()` が (a) を検証した
+    **後**、`write_projections()` が書き込む**前**に、`observation_agg` が
+    別内容で作り直されてコミットされた場合、系譜に記録される指紋は
+    「検証した時点の値」でなければならない——ここで新しく読み直した値では
+    ない（読み直すと、実際には古い〔検証済みの〕データから作った射影に、
+    新しい指紋を系譜として紐付けてしまい、実体と系譜が食い違う。b11 の
+    (b) 検査をすり抜ける穴になる）。
+
+    `verified_fingerprints_out`/`verified_fingerprints` で値を運ぶ経路
+    （`cube_db` を`write_projections`が改めて開いて読み直さない設計）が
+    このレースを塞いでいることを確認する。
+    """
+    measurements_db = tmp_path / "ryuiki.sqlite"
+    registry_db = tmp_path / "registry.sqlite"
+    make_measurements_db(
+        measurements_db,
+        rows=[("m1", "S1", "2020-01-01", "BOD", "src_a", 1.0, "1.0", "mg/L", "公開済", 0, "ref1", "ev1")],
+    )
+    make_registry_db(registry_db)
+
+    v2_db, _ = _run_b03_b04(measurements_db, registry_db, tmp_path)
+
+    verified: dict[str, str] = {}
+    projections = b05.build_projections(v2_db, registry_db, verified_fingerprints_out=verified)
+    verified_agg_fingerprint = verified["observation_agg"]
+    assert verified_agg_fingerprint
+
+    # build_projections() の検証が終わった**後**に、b04 が observation_agg を
+    # 別内容で作り直して新しい自己指紋をコミットした状況を再現する
+    # （write_projections() を呼ぶ**前**——検証と書き込みの間のレース窓）。
+    conn = sqlite3.connect(str(v2_db))
+    conn.execute("UPDATE observation_agg SET n = n + 1 WHERE rowid = 1")
+    new_agg_fingerprint = common.record_stage_fingerprint(
+        conn, "observation_agg", inputs=common.read_recorded_inputs(conn, "observation_agg"),
+    )
+    conn.commit()
+    conn.close()
+    assert new_agg_fingerprint != verified_agg_fingerprint
+
+    out_path = tmp_path / "v1_projection.sqlite"
+    b05.write_projections(projections, out_path, verified_fingerprints=verified)
+
+    out_conn = sqlite3.connect(str(out_path))
+    recorded_inputs = common.read_recorded_inputs(out_conn, "site_var")
+    out_conn.close()
+    # 検証した時点の指紋（verified_agg_fingerprint）が系譜に残る——
+    # レース中に生まれた新しい指紋（new_agg_fingerprint）ではない。
+    assert recorded_inputs["observation_agg"] == verified_agg_fingerprint
+    assert recorded_inputs["observation_agg"] != new_agg_fingerprint
+
+
+# ---------------------------------------------------------------------------
 # ADR-0009 決定4: b05 は value_lod を一度も読まない（設計ブリーフ 検証5・毒入れ
 # テスト）
 # ---------------------------------------------------------------------------
@@ -1185,9 +1322,18 @@ def test_b05_ignores_value_lod_poison_test(tmp_path):
 
     conn = sqlite3.connect(str(v2_db))
     n_updated = conn.execute("UPDATE observation_agg SET value_lod = value_zero + 1000").rowcount
+    assert n_updated > 0  # 毒を入れる対象のセルが実際にあること（空振り防止）
+    # 段階間の指紋（Issue #37 #1）: 直接 UPDATE で observation_agg の内容を
+    # 変えたので、自己指紋を更新しないと次の build_projections() が「作り
+    # 直された後、再実行が漏れている」と（正しく）止まってしまう。この
+    # テストの関心は「b05 が value_lod を読むかどうか」だけなので、系譜
+    # （inputs、upstream の observation 自体は変えていない）はそのまま
+    # 引き継いで自己指紋だけ更新する。
+    common.record_stage_fingerprint(
+        conn, "observation_agg", inputs=common.read_recorded_inputs(conn, "observation_agg"),
+    )
     conn.commit()
     conn.close()
-    assert n_updated > 0  # 毒を入れる対象のセルが実際にあること（空振り防止）
 
     poisoned = b05.build_projections(v2_db, registry_db)
 

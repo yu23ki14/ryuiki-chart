@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from migrate import occurrence_period as _occurrence_period
+from migrate import common, occurrence_period as _occurrence_period
 from registry.build_taxon_assessment import TAXON_ASSESSMENT_COLUMNS
 
 # 既定のフィクスチャ: 12形すべてを1行ずつ（gbif 11行・inat 1行）。
@@ -295,14 +295,28 @@ def occurrence_row(
     )
 
 
-def make_v2_db_with_occurrence(path, rows: list[tuple]) -> None:
+def _create_and_fill_occurrence(conn: sqlite3.Connection, rows: list[tuple]) -> None:
+    """開いている接続 `conn` に `occurrence` テーブルを作って `rows` を入れ、
+    `scripts/b06_build_occurrence.py` が本物の実行の最後に記録するのと同じ
+    `pipeline_fingerprint`（Issue #37 #1）を記録する（コミットは呼び出し側の
+    責務）。`make_v2_db_with_occurrence`/`make_v2_db_with_occurrence_and_place`/
+    `make_v2_db_with_occurrence_and_agg` の3つが個別に持っていた同じ手順を
+    1つに集約した（/simplify 指摘7。b07/b09/b08 のうち occurrence の新鮮さを
+    検証する経路が、本物の b06 を経由しないこのフィクスチャで「指紋が
+    記録されていない」と止まらないようにするため、指紋の記録は必須）。
+    """
     import b06_build_occurrence as b06
 
+    conn.execute(b06._CREATE_OCCURRENCE_SQL.format(table="occurrence"))
+    placeholders = ", ".join("?" for _ in _OCCURRENCE_COLUMNS)
+    conn.executemany(f"INSERT INTO occurrence VALUES ({placeholders})", rows)
+    common.record_stage_fingerprint(conn, "occurrence")
+
+
+def make_v2_db_with_occurrence(path, rows: list[tuple]) -> None:
     conn = sqlite3.connect(f"file:{path}", uri=True)
     try:
-        conn.execute(b06._CREATE_OCCURRENCE_SQL.format(table="occurrence"))
-        placeholders = ", ".join("?" for _ in _OCCURRENCE_COLUMNS)
-        conn.executemany(f"INSERT INTO occurrence VALUES ({placeholders})", rows)
+        _create_and_fill_occurrence(conn, rows)
         conn.commit()
     finally:
         conn.close()
@@ -330,6 +344,10 @@ def add_occurrence_place_table(conn: sqlite3.Connection, rows: list[tuple]) -> N
     conn.execute(b09._CREATE_OCCURRENCE_PLACE_SQL.format(table="occurrence_place"))
     placeholders = ", ".join("?" for _ in _OCCURRENCE_PLACE_COLUMNS)
     conn.executemany(f"INSERT INTO occurrence_place VALUES ({placeholders})", rows)
+    # 段階間の指紋（Issue #37 #1）: `scripts/b09_build_occurrence_place.py` が
+    # 本物の実行の最後に記録するのと同じ指紋をここでも記録する（コミットは
+    # 呼び出し側の責務——docstring参照）。
+    common.record_stage_fingerprint(conn, "occurrence_place")
 
 
 def make_v2_db_with_occurrence_and_place(
@@ -339,13 +357,9 @@ def make_v2_db_with_occurrence_and_place(
     v2.sqlite 相当を作る（`scripts/b08_project_occurrence_v1.py` の
     `_build_watershed` は両方を読む）。
     """
-    import b06_build_occurrence as b06
-
     conn = sqlite3.connect(f"file:{path}", uri=True)
     try:
-        conn.execute(b06._CREATE_OCCURRENCE_SQL.format(table="occurrence"))
-        placeholders = ", ".join("?" for _ in _OCCURRENCE_COLUMNS)
-        conn.executemany(f"INSERT INTO occurrence VALUES ({placeholders})", occurrence_rows)
+        _create_and_fill_occurrence(conn, occurrence_rows)
         add_occurrence_place_table(conn, occurrence_place_rows)
         conn.commit()
     finally:
@@ -467,14 +481,11 @@ def make_v2_db_with_occurrence_and_agg(
     だけから、`species2.en_name`/`red_list_category` と `species_month` は
     `occurrence` から）。
     """
-    import b06_build_occurrence as b06
     import b07_build_occurrence_cube as b07
 
     conn = sqlite3.connect(f"file:{path}", uri=True)
     try:
-        conn.execute(b06._CREATE_OCCURRENCE_SQL.format(table="occurrence"))
-        placeholders = ", ".join("?" for _ in _OCCURRENCE_COLUMNS)
-        conn.executemany(f"INSERT INTO occurrence VALUES ({placeholders})", occurrence_rows)
+        _create_and_fill_occurrence(conn, occurrence_rows)
 
         conn.execute(b07._CREATE_OCCURRENCE_AGG_SQL.format(table="occurrence_agg"))
         agg_placeholders = ", ".join("?" for _ in _OCCURRENCE_AGG_COLUMNS)

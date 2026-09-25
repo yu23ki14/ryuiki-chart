@@ -522,8 +522,11 @@ def test_build_all_projections_writes_org_norm_and_eleven_more_tables(tmp_path):
 
     conn = sqlite3.connect(f"file:{out}?mode=ro", uri=True)
     try:
+        # `pipeline_fingerprint`（Issue #37 #1、段階間の指紋のメタ表）は
+        # v1テーブルとは無関係な実装詳細なので除外する。
         tables = {
             r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            if r[0] != common.PIPELINE_FINGERPRINT_TABLE
         }
     finally:
         conn.close()
