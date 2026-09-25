@@ -1,7 +1,12 @@
 # ADR-0007: 観測値を単一の縦持ちファクト `observation` に集約する
 
-- 状態: 承認済（`scripts/b03_build_observation.py` が実装、`docs/plans/PHASE_B_FACT_SLICE.md` で
-  実データのゲートにより検証済み） / 日付: 2026-09-06
+- 状態: 承認済（一部未実装。`scripts/b03_build_observation.py` が `measurements`/
+  `sensor_timeseries`/土地利用CSVの統合を実装し、`docs/plans/PHASE_B_FACT_SLICE.md` で
+  実データのゲートにより検証済み。一方、原則4「`grain`/`region_id`でParquetパーティションする」
+  はParquet層自体が存在せず未実装（ADR-0001が提案中のままである理由と同じ）。また背景で
+  「`mammal_mesh`は専用テーブルを要さない」としていたが、`web/src/db/schema.ts:873`の
+  `mammalMesh`は現在も個別テーブルのままで、`b03`は`mammal_mesh`を取り込んでいない）
+  / 日付: 2026-09-06
 - 関連: ADR-0003（標準）, ADR-0008（時間）, ADR-0009（検閲）, ADR-0010（指標）, ADR-0011（キューブ）
 
 ## 背景

@@ -27,14 +27,14 @@ Architecture Decision Record。1ファイル＝1決定。**背景・決定・根
 | [0001](0001-storage-layers.md) | 原本を Parquet に置き、D1 は再構築可能な配信キャッシュとする | 提案中 |
 | [0002](0002-multi-region.md) | 多地域前提でモデリングし、地域固有語彙をコードリストの拡張として扱う | 提案中 |
 | [0003](0003-standards-at-the-boundary.md) | 外部標準（DwC-A / SensorThings / DCAT）は境界のアダプタで満たす | 提案中 |
-| [0004](0004-identifiers.md) | 識別子はスコープ付きの安定IDとし、既定を `common` にする | 承認済（一部未実装: `local_key` の区切り文字問題は Phase C で ADR-0004 改定、追記参照） |
+| [0004](0004-identifiers.md) | 識別子はスコープ付きの安定IDとし、既定を `common` にする | 承認済（一部未実装: `local_key` の区切り文字問題〔規約1〕、`superseded_by`〔規約2〕・公開URI解決〔規約4〕・`synthetic.`名前空間〔規約5〕、`observation_id`の採番・`occurrence.record_id`のスコープ付きID化はいずれも未実装。詳細は status-review・追記参照） |
 | [0005](0005-source-editions.md) | 出典を版管理し、ライセンスを行単位で解決可能にする | 提案中 |
-| [0006](0006-place-registry.md) | 空間単位を単一の `place` レジストリに統合する | 承認済（一部未実装: `feature` への統合、`sites.municipality` 混入の解消は未着手） |
-| [0007](0007-observation-fact.md) | 観測値を単一の縦持ちファクト `observation` に集約する | 承認済 |
+| [0006](0006-place-registry.md) | 空間単位を単一の `place` レジストリに統合する | 承認済（一部未実装: `feature` への統合・`sites.municipality` 混入の解消は未着手、`place_source_ref.source_id` が規約どおりの `source_edition_id` ではなく文字列リテラル〔PHASE_B_INTAKE #9〕） |
+| [0007](0007-observation-fact.md) | 観測値を単一の縦持ちファクト `observation` に集約する | 承認済（一部未実装: 原則4のParquet分割〔grain/region_id〕は未実装、`mammal_mesh`が専用テーブルのまま`observation`に統合されていない） |
 | [0008](0008-time-representation.md) | 時間は「区間＋粒度」の3点セットで表す | 承認済 |
 | [0009](0009-censored-values.md) | 定量下限未満を 0 で表さず、検閲を明示的に持つ | 承認済（一部未実装: lod 併記は #30 で未着手） |
-| [0010](0010-variable-registry.md) | 指標レジストリを設け、出典別名をエイリアスで束ねる | 承認済 |
-| [0011](0011-aggregation-cube.md) | 派生33テーブルを単一キューブ＋宣言的集計定義に置き換える | 承認済 |
+| [0010](0010-variable-registry.md) | 指標レジストリを設け、出典別名をエイリアスで束ねる | 承認済（一部未実装: `variable_alias.source_edition_id` が実際には `source_id`〔文字列〕のまま。ADR-0005未実装のため） |
+| [0011](0011-aggregation-cube.md) | 派生33テーブルを単一キューブ＋宣言的集計定義に置き換える | 提案中（決定の中核である「宣言的集計定義〔YAML〕でテーブルを手書きしない」が未実装。詳細は status-review） |
 | [0012](0012-source-manifests.md) | L1→L2 でソース固有コードを書かない（マニフェスト＋共通ライブラリ） | 提案中 |
 | [0013](0013-caveats.md) | 注意事項（caveat）を一級エンティティにし、応答に必ず同梱する | 提案中 |
 | [0014](0014-response-envelope.md) | データインターフェースの共通レスポンス封筒と MCP ツール群 | 提案中 |
@@ -42,7 +42,7 @@ Architecture Decision Record。1ファイル＝1決定。**背景・決定・根
 | [0016](0016-migration-plan.md) | 移行は4段階に分け、v1 の数値を再現できることを受け入れ基準にする | 承認済（一部未実装: Phase C・D は未着手） |
 | [0017](0017-write-path-scope.md) | 本 ADR 群は読み取り基盤に限る。書き込み経路と可変データの所在を分ける | 提案中 |
 | [0018](0018-publication-scope.md) | 公開範囲と座標の一般化をデータとして持ち、公開経路で強制する | 提案中 |
-| [0019](0019-taxon-registry.md) | 分類群レジストリと分類カテゴリの表記ゆれの扱い | 承認済 |
+| [0019](0019-taxon-registry.md) | 分類群レジストリと分類カテゴリの表記ゆれの扱い | 承認済（一部未実装: 決定3に反し`occurrence`が`red_list_category`等の原表記を保持している、決定5「最新の評価はビューで表す」のVIEW未実装、`accepted_taxon_id`全行NULL、`taxon_name`テーブル未実装） |
 | [0020](0020-freshness-rebuild.md) | 更新方式・鮮度・再ビルド運用 | 提案中 |
 | [0021](0021-observation-grain-and-cube-key.md) | 粒度は「値の粒度」と「日付の精度」に分け、キューブは入力の統計量と粒度を鍵に含める | 承認済 |
 | [0022](0022-place-region-scope.md) | `place.region_id` は ID のスコープと一致させ、所在は `place_relation` の辺で表す | 承認済（一部未実装: 決定3〔observation側のregion決定経路の統一〕・決定4〔地域そのものを表すplace〕は見送り。決定3はPhase Dで判断、追記参照） |

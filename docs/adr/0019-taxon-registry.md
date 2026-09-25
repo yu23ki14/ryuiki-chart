@@ -1,8 +1,17 @@
 # ADR-0019: 分類群レジストリと、分類カテゴリの表記ゆれの扱い
 
-- 状態: 承認済（`scripts/registry/build_taxon.py`/`build_taxon_assessment.py` で実装、
-  `docs/plans/PHASE_B_TAXON_ASSESSMENT.md`・`PHASE_B_OCCURRENCE.md` の実データ検証で確認済み）
-  / 日付: 2026-09-06
+- 状態: 承認済（一部未実装。`scripts/registry/build_taxon.py`/`build_taxon_assessment.py` で
+  taxon の ID 化・カテゴリの正規化（決定1・2）を実装、`docs/plans/PHASE_B_TAXON_ASSESSMENT.md`・
+  `PHASE_B_OCCURRENCE.md` の実データ検証で確認済み。一方、決定3「ファクトはカテゴリ文字列を
+  持たない。`occurrence`は`taxon_id`だけを持ち…」には反し、`scripts/b06_build_occurrence.py:190`
+  の`occurrence`は`red_list_category`/`vernacular_name`/`license_class`等の原表記列を
+  そのまま保持し、`scripts/b08_project_occurrence_v1.py`がそれを直接読んでいる
+  （ADR-0025 D3が意図的にv1互換のため設計した仕様で、ADR-0019の決定3とは食い違ったまま）。
+  決定5「最新の評価はビューで表す」も、`taxon_assessment`は版を保持する通常のテーブルの
+  ままで`CREATE VIEW`のような「最新」だけを返す仕組みは実装されていない。
+  `scripts/registry/build_taxon.py:80`が明記するとおり`accepted_taxon_id`は全行NULL
+  （`docs/plans/PHASE_B_INTAKE.md:26` #8）。決定の列挙にある`taxon_name`テーブルも
+  未実装（`taxon`本体に統合されたまま）） / 日付: 2026-09-06
 - 関連: ADR-0004（ID）, ADR-0010（語彙）, ADR-0018（公開範囲）
 
 **2026-09-22 追記（生物の出現の縦線 Slice 0、`phase-b/occurrence-registry`）**:

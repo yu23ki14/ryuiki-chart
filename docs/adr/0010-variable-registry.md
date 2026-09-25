@@ -1,7 +1,10 @@
 # ADR-0010: 指標レジストリを設け、出典別名をエイリアスで束ねる
 
-- 状態: 承認済（`registry/variable.yaml`/`variable_alias` として実装、`generated.test.ts` と
-  Phase B 各縦線のゲートで検証済み） / 日付: 2026-09-06
+- 状態: 承認済（一部未実装。`registry/variable.yaml`/`variable_alias` として実装、
+  `generated.test.ts` と Phase B 各縦線のゲートで検証済み。ただし決定1が列挙する
+  `variable_alias`の`source_edition_id`は、実装（`registry/variable_alias.csv`のヘッダ）
+  では`source_id`という文字列のまま——ADR-0005の`source_edition`が未実装のため、
+  ADR-0006の`place_source_ref`と同型の逸脱が残っている） / 日付: 2026-09-06
 - 関連: ADR-0002（多地域）, ADR-0007（observation）, ADR-0012（マニフェスト）
 
 **2026-09-24 追記（P-1b、`docs/plans/PHASE_B_LANDUSE.md`）**: 決定1「出典が
