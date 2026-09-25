@@ -25,6 +25,16 @@
 `occurrence_agg`）とし、鍵の規律（`staged_table`・`COALESCE(c,'')` の
 `UNIQUE INDEX`・`built_from`/`spec_version`）は両者で共通にする、と明確化した。
 
+**2026-09-24 追記（ADR-0009 決定4。検閲値の zero/lod 併記）**: `observation_agg`
+の次元キーは `imputation` を含まない**12列**になった（`region_id, place_id,
+place_kind, variable_id, obs_stat, unit_id, value_grain, period_start,
+period_end, grain, input_grain, stat`）。`imputation` は論理的な軸のままだが、
+物理的には次元キーではなく `value_zero`/`value_lod` という**値の列**として
+持つ——ファクト行を分割する軸（次元）と、行を分割しない軸（列の宣言）を
+区別した。理由・機械検証は ADR-0009 決定4・`scripts/b04_build_cube.py` の
+モジュール docstring参照。`occurrence_agg`（下記2026-09-22追記）はこの変更の
+対象外（`occurrence` に検閲の概念は無い）。
+
 **2026-09-22 追記（P-3、`docs/plans/PHASE_B_DOCUMENTS.md`）**: `doc_series`/`quality_monthly`
 を「キューブ（入力 `observation`）」に分類していたのは誤りだった。実際の入力は
 `observation` ではなく、`doc_series`/`doc_series_meta` は `cells.sqlite`（ADR README §4 の

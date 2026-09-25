@@ -35,10 +35,26 @@ if str(_SCRIPTS) not in sys.path:
 
 from reconcile.common import load_yaml, open_readonly  # noqa: E402,F401  (b03/b04/b05/b10 から re-export)
 
-# b04 の observation_agg / b05 の射影が `built_from` / `spec_version` に書く定数。
-# バージョンを上げるのはこのパッケージの変換ロジックそのものを変えたとき
-# （キーの構成や集計方法が変わる＝過去に作った observation_agg と比較できなくなるとき）。
-SPEC_VERSION = "phase-b-fact-slice/v1"
+# `built_from` / `spec_version` に書く定数。**成果物ごとに別の定数を持つ**
+# （2026-09-24 コードレビュー指摘: 以前は `SPEC_VERSION` という1つの定数を
+# `b04_build_cube.py`（`observation_agg`）・`b07_build_occurrence_cube.py`
+# （`occurrence_agg`）・`b09_build_occurrence_place.py`（`occurrence_place`）の
+# 3本が共有していた。`observation_agg` の次元キーだけが変わったときにこの
+# 定数を上げると、スキーマの変わっていない `occurrence_agg`/`occurrence_place`
+# の行にも「版が上がった」という事実と違う記録が付いてしまう）。
+# バージョンを上げるのは、その成果物自身の変換ロジック（キーの構成や
+# 集計方法）を変えたとき＝過去に作ったものと比較できなくなるとき。
+
+# `scripts/b04_build_cube.py`（`observation_agg`）専用。2026-09-24:
+# ADR-0009 決定4（検閲値の zero/lod 併記）で次元キーから `imputation` を
+# 外し（13列→12列）、`value` を `value_zero`/`value_lod` の2列に分けた。
+# 過去のキーとは比較できないため v2 に上げた。
+OBSERVATION_AGG_SPEC_VERSION = "phase-b-fact-slice/v2"
+
+# `scripts/b07_build_occurrence_cube.py`（`occurrence_agg`）・
+# `scripts/b09_build_occurrence_place.py`（`occurrence_place`）専用。
+# どちらも今回のキー変更の対象外なので v1 のまま据え置く。
+OCCURRENCE_SPEC_VERSION = "phase-b-fact-slice/v1"
 
 # SQLite 3.43 未満では2つの理由でパイプラインが壊れる: (1) AVG()/SUM() の
 # 加算アルゴリズムが素朴な左→右加算に落ち、平均が黙って壊れる（b04・b05・

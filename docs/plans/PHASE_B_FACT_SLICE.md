@@ -148,9 +148,10 @@ ADR-0011 の対象は33テーブル。これを一度に全部揃えようとす
 適用範囲の訂正」は `PHASE_B_INTAKE.md` に転記済み）。この変更の結果、`unknown` が実データに
 対して1件も出ない（実測: 0件）。
 
-`imputation='zero'` は `below_lod`/`not_detected` にだけ 0.0 を代入する。`above_lod` に 0 を
-入れない（0 は上限ではない。`>3.2` の 3.2 は「これより大きい」という下限情報であり、逆転する）。
-`n_censored`（キューブ）は `below_lod` の数、`n_not_detected` は別に数える（ADR-0009 決定2）。
+`imputation='zero'`/`'lod'`（`observation_agg.value_zero`/`value_lod`）の代入規則
+（どちらに何を入れるか・非対称である理由）は ADR-0009 決定2（2026-09-24追記含む）
+を正とする（本書では繰り返さない）。`n_censored`（キューブ）は `below_lod` の数、
+`n_not_detected` は別に数える。実装・実測件数は D12 参照。
 
 ### D3. observation は原表記を残す
 
@@ -306,6 +307,40 @@ ADR-0011「粒度をまたぐ再集計をしない」）。月・年セルの `n
 すると番号が衝突しうる）。根本は ADR-0022 の place のキー設計側の課題として
 `docs/add_area.md` に申し送った（本書では対応しない）。
 
+### D12. 検閲値の `zero`/`lod` 併記（ADR-0009 決定4、2026-09-24）
+
+`observation_agg` の次元キーから `imputation` を外し（13列→12列）、
+`value` 列を `value_zero`/`value_lod` の2列に分けた。設計・機械検証・
+実測値の詳細は ADR-0009 決定4（導出式含む）・`scripts/b04_build_cube.py`
+のモジュール docstring。ここでは実測だけを記録する。
+
+| 実測 | 値 |
+|---|---:|
+| `observation_agg` セル数（変化なし） | 2,022,964 |
+| `value_lod IS NULL`（`n_not_detected = n` の格） | 3,201 |
+| `value_lod != value_zero`（below_lod を含む格。ties を除く） | 241,063 |
+| `n_censored > 0` の格（上と一致しない理由は下記） | 243,686 |
+| うち `value_lod = value_zero`（タイ。`stat='max'` 2,552 + `stat='min'` 71） | 2,623 |
+| `observation_agg` ファイルサイズ（dbstat） | 444.4MB（旧: 461.9MB。**設計時の見込み +16MB に反して減った**——13列目〔`imputation`、常に `'zero'` の TEXT〕を1本消した分が `value_lod`（REAL、3,201セルは NULL）を1本足した分を上回った） |
+| b04 実行時間 | 45.0〜47.9秒（変更前の実測53〜64秒より速い。両系列を同じ `GROUP BY` の1パスで計算しており、悪化していない） |
+| b05 実行時間（変更なしの確認） | 43.8〜44.7秒（変更前の実測と同程度） |
+| 統合ゲート（33表） | 終了コード0・一致25／宣言済み差分のみ8／不一致0／対象外0（main と1ビットも変わらず） |
+
+**`n_censored>0` の格数（243,686）と `value_lod != value_zero` の格数
+（241,063）が一致しない理由**: below_lod の限界値（`censoring_limit`）を
+代入しても、その格の `MIN`/`MAX` が別の非検閲メンバーで決まっていれば
+値そのものは変わらない（例: `MAX` の格で censoring_limit より大きい
+非検閲値がすでに存在する場合、censoring_limit を混ぜても `MAX` は動かない）。
+`mean`/`sum` は検閲行1件でも合計が動くため tie は0件、`min`/`max` だけに
+tie が生じる（実測: `max` 77,090格中2,552タイ・`min` 77,090格中71タイ・
+`mean` 89,506格中0タイ）。`max` の tie は「格内の非検閲メンバーの最大値が
+censoring_limit を上回っている」場合に起きる（想定どおり多い）。`min` の
+tie（71件）は「真の0（below_lod ではない実測値0.0）が同じ格に同居し、
+zero 側・lod 側どちらの `MIN` も0で一致する」稀なケース——ADR-0009 背景の
+実測（v1 全体で「本当の0」は153行だけ）と整合する。b04 の機械検証3
+（両方が非 NULL なら `value_lod >= value_zero`）はこの `min`/`max` の
+tie を等号（`>=`）で明示的に許容している。
+
 ## 6. 移行で温存した v1 の癖（ゲートが緑のうちは直さない）
 
 - **`ノニルフェノール` の `value_raw='0.00006'` 等 69行**が v1 で `value IS NULL`（パース失敗＝
@@ -327,6 +362,15 @@ ADR-0011「粒度をまたぐ再集計をしない」）。月・年セルの `n
   ASCII 表記と扱いが違う（v1 の `value_raw LIKE '<%'` が `未満` を拾わず、かつ `value` も
   `NULL` なので `AVG(value)` から自然に除外されていた＝v1 が「たまたま」正しく除外していた
   ケース）。
+- **`value_zero` が `not_detected` を 0 とみなすのは、v1 再現のためだけの例外**
+  （ADR-0009 決定2 の本来の規定は「代入せず、平均から除外」。`value_lod` はこの規定
+  どおりに実装したが、`value_zero` だけは v1 の `AVG(value)` が ND 行を 0 として
+  含めているのに合わせた。ADR-0009 の2026-09-24追記参照）。**撤去するとき何が変わるか**:
+  (1) `scripts/migrate/censoring.py` の `ZERO_IMPUTED_CENSORING` を `below_lod` だけに
+  する、(2) b04 の検証1（`value_lod IS NULL` = `n_not_detected=n`。葉/積み上げの区別を
+  含む）と同じ形の検証を `value_zero` 側にも足す、(3) `b05` の v1 射影の値が変わり、
+  ADR-0016 の受け入れ基準（`imputation='zero'` で v1 を誤差0で再現する）を満たさなく
+  なる——撤去するならその時点で ADR-0016 の受け入れ基準ごと見直しが要る。
 - **`kanagawa_jiban_chinka` の年次 `n=2` グループ 1,625件がすべて同値ペア（`min=max`、
   `value_raw` も完全一致）。二重投入の疑いを実測で確認した。** 例:
   `地下水位(年平均)` の `site_id='kanagawa_jiban_chinka__1'`・`measured_on='1980'` は
@@ -334,6 +378,7 @@ ADR-0011「粒度をまたぐ再集計をしない」）。月・年セルの `n
   もう一方は `r6table.xlsx`（令和6年度版報告書）から来ている——**同じ1980年の値が、
   異なる年度の報告書（過去分を再掲する仕様）から重複して収集されている。**
   データ収集（`scripts/c8*` 系）側の課題であり、この縦線（`b03`〜`b05`）の実装の問題ではない。
+  全数実測・除外先の比較・推奨は `docs/plans/DATA_QUALITY_BACKLOG.md` §1 参照（Issue #38）。
 - **`meas_year` は `kind='annual'` が `kind='daily'` の約6.3倍**（実測: `annual` 100,240行 /
   `daily` 15,836行。`data/db/derived.sqlite` と `data/db/v1_projection.sqlite` の両方で一致）。
 - **`meas_clim`（月別平年値）は、同じ alias 文字列を持つ `obs_stat`（入力側の統計量）の
@@ -410,7 +455,8 @@ ADR-0011「粒度をまたぐ再集計をしない」）。月・年セルの `n
   `天気概況_昼`/`天気概況_夜`/`風向・風速_最大瞬間風速_風向`/`風向・風速_最大風速_風向`
   の4系列、各971行、全行 `result IS NULL`）。`value_text` は上流の `m02` で既に消えて
   いるため、このセンサーの縦線では文字列値を持つ観測が無い（§9 T3）。負債として記録
-  のみ、この縦線では対応しない。
+  のみ、この縦線では対応しない。上流のどこで文字列が消えるかのコード特定は
+  `docs/plans/DATA_QUALITY_BACKLOG.md` §7 参照（Issue #38）。
 - **`soramame_hourly_kanagawa` の hour_ending という前提は一次資料未確認**（ADR-0024
   T2）。収集スクリプトの記載（`scripts/c11_soramame.py`・`scripts/c13_sagamihara_taiki.py`
   の「そらまめ君同様」という伝聞）のみを根拠に採用している。環境省の一次資料を
@@ -424,7 +470,6 @@ ADR-0011「粒度をまたぐ再集計をしない」）。月・年セルの `n
 - `occurrence` を入力にする縦線（生物系11テーブル）
 - キューブのゾーンのロールアップセル（ADR-0011 の `roll_up_to`。D11参照。使う側が
   現れたら作る。作るなら系列ごと・`n_places` 付き）
-- `imputation='lod'` 併記（ADR-0009 決定4。今回は `zero` のみ）
 - 正準単位の併記（ADR-0023。方針は決定済みだが未実装）
 - 時刻帯の実データ結線（ADR-0024。`region_id` から実際のUTCオフセットを引く仕組みは
   未実装。応答封筒〔ADR-0014〕の実装より前に要る）

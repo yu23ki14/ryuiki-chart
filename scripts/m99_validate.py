@@ -163,7 +163,8 @@ def main():
   最終突合では GBIF側 count=659,399 に対し 1,039件（区画取得不能93件＋日付フィールド欠損による
   分割不能958件）が未取得のまま残っており、区画別の内訳は `data/logs/gbif_partition_report.csv`
   に記録済み。`scripts/m03_organisms.py` は record_id をキーに INSERT ... ON CONFLICT DO UPDATE
-  するため冪等であり、再実行しても重複せず既存行のライセンス3列だけが最新化される。""")
+  するため冪等であり、再実行しても重複せず既存行のライセンス3列だけが最新化される。
+  内訳の実測・GBIF APIでの追加取得可否の調査は `docs/plans/DATA_QUALITY_BACKLOG.md` §2 参照（Issue #38）。""")
     lines.append("""
 - **そらまめ君（大気）・相模原市大気局**: station master に緯度経度が一切収録されておらず
   （収集エージェントのコード上のコメントで「そらまめ君の公開CSVに緯度経度は含まれない」と明記）、
@@ -172,7 +173,9 @@ def main():
   そのままロードしている。そのため `sensor_timeseries.site_id` は `soramame_stations_kanagawa__*` /
   `sagamihara_taiki_stations__*` という形式のIDを持つが、対応する `sites` 行は存在しない
   （＝意図的な孤児。上記セクション8参照）。緯度経度が判明すれば `sites` に追加登録できる設計にしてある。
+  追加調査は `docs/plans/DATA_QUALITY_BACKLOG.md` §3 参照（Issue #38）。
 - **相模原市大気データの単位**: 公開元に単位の記載が無いため `unit=NULL` のまま。推測していない。
+  追加調査は `docs/plans/DATA_QUALITY_BACKLOG.md` §4 参照（Issue #38）。
 - **県民参加型 河川モニタリング調査地点**: 収集済みデータは年度別の集計値（参加人数・捕獲調査地点数
   など5行のみ）であり、地点別の緯度経度・個別測定値は収集されていない。そのため `sites` にも
   `measurements` にも地点単位のレコードは作成していない。

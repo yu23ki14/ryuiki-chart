@@ -104,6 +104,7 @@ Phase A の判断が誤りだったという意味ではない——**計画ど�
 実データの列に調査区分コードが無く、行ごとに区別する情報が残っていない
 （`docs/plans/PHASE_B_ALIAS_STAT_SOURCES.md` §3.2）。データ品質の改善タスクとして
 起票できるが、原本側に区別情報が無いため収集スクリプトを直しても解決しない可能性が高い。
+追加調査は `docs/plans/DATA_QUALITY_BACKLOG.md` §6 参照（Issue #38）。
 
 ### 健康項目27種の列レイアウトが未確認（`cn` は特に要注意）
 
@@ -114,6 +115,7 @@ Phase A の判断が誤りだったという意味ではない——**計画ど�
 ある可能性が高いが、確認できていないため `stat` は空のまま維持した
 （`docs/plans/PHASE_B_ALIAS_STAT_SOURCES.md` §2.4）。列レイアウトを確認できる一次資料
 （`zip_create` API 自体のドキュメント等）が見つかれば、Phase B 以降で埋められる。
+追加調査は `docs/plans/DATA_QUALITY_BACKLOG.md` §5a 参照（Issue #38）。
 
 ### `common:variable:hydro.flow`（`流量関連（公式定義未確認のため原表記のまま）`）の公式定義が判明 **解決済み（`phase-b/variable-flow`）**
 
