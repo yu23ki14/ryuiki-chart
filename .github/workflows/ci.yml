@@ -421,15 +421,19 @@ jobs:
             data/sample/declaration_counts.yaml data/sample/derived_keys.yaml \
             data/sample/derived_baseline.json data/sample/derived_baseline.md
 
-      - name: 33表の統合ゲート（宣言済み差分18件、一致+宣言済み差分=33、不一致0）
+      - name: 33表の統合ゲート（宣言済み差分20件、一致+宣言済み差分=33、不一致0）
+        # --expected-diffs は正本（scripts/reconcile/expected_diffs.yaml）をそのまま使う。
+        # サンプル専用の免除ファイルは持たない（org_norm/species2 の Sirosporium
+        # タイブレークもサンプル規模で再現することを確認済み。属の投票元3行を
+        # 漏らさず閉包に入れれば、正本の20キー全部がサンプルでも適用される）。
         run: |
           python3 scripts/b02_run_all_gates.py \
             --baseline-json data/sample/derived_baseline.json \
-            --expected-diffs data/sample/expected_diffs.yaml \
+            --expected-diffs scripts/reconcile/expected_diffs.yaml \
             --out-md "$SCRATCH/derived_reconciliation_all.md" \
             | tee "$SCRATCH/gate_summary.txt"
 
-      - name: 空振りしていないことを数値で確かめる（一致+宣言済み差分=33、不一致=0、対象外=0、適用した宣言=18）
+      - name: 空振りしていないことを数値で確かめる（一致+宣言済み差分=33、不一致=0、対象外=0、適用した宣言=20）
         run: |
           python3 - <<'PY'
           import os
@@ -456,10 +460,8 @@ jobs:
               problems.append(f"不一致が0ではない: {n_mismatch}")
           if n_excluded != 0:
               problems.append(f"対象外が0ではない: {n_excluded}")
-          if n_applied != 18:
-              problems.append(
-                  f"適用した宣言済み差分が18（正本20件-サンプル専用で外した2件）ではない: {n_applied}"
-              )
+          if n_applied != 20:
+              problems.append(f"適用した宣言済み差分が20（正本の全件）ではない: {n_applied}")
           if problems:
               sys.exit("空振りしていないことの確認に失敗した:\n- " + "\n- ".join(problems))
           print(f"OK: 一致={n_match} / 宣言済み差分のみ={n_declared} / 不一致={n_mismatch} / "

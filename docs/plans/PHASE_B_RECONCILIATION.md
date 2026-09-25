@@ -251,15 +251,24 @@ git に置けない。Issue #29「縮小サンプル＋実行証明」で、こ�
      v2（`scripts/r01_build_registry.py`・`scripts/b03_build_observation.py`〜
      `scripts/b12_project_taxon_v1.py`）の両方をゼロから構築できること。
   2. サンプル規模で構築した v1・v2 が、`scripts/b02_run_all_gates.py`
-     （サンプル専用の `data/sample/expected_diffs.yaml`——正本の20キーのうち
-     属 Sirosporium の class タイブレークに由来する2キーはサンプル規模では
-     再現しないため外してある。理由は同ファイルのコメント参照）で33表とも
+     （宣言済み差分は**正本の `scripts/reconcile/expected_diffs.yaml` を
+     そのまま使う**。サンプル専用の免除ファイルは持たない）で33表とも
      「一致」または「宣言済み差分のみ」になり、不一致・対象外が無いこと。
+     属 Sirosporium の class タイブレーク（org_norm/species2、§6参照）も
+     サンプル規模で再現する——`data/sample/coverage.yaml` の
+     `sirosporium_genus_full_records` 閉包は、投票元（属の class 多数決に
+     実際に使われる3レコード。web/scripts/build-biota.mjs の `gc` CTE・
+     `scripts/registry/build_taxon.py` の `_genus(_binom(scientific_name))`
+     ——どちらも `organism_records.genus` 列ではなく学名の binom 先頭語で
+     属を決める）を漏れなく含めることで実現した（初版は `genus` 列だけで
+     選んでおり、学名の binom 先頭語が "Sirosporium" でも own genus 列が
+     別属（`Clasterosporium`/`Helicoceras`）の2レコードを取りこぼしていた
+     ——コードレビュー指摘で発覚・修正）。
   3. **空振りしていないこと**を数値で確かめる（一致+宣言済み差分のみ=33、
-     不一致=0、対象外=0、適用した宣言済み差分=18件——20件からサンプル専用に
-     外した2件を引いた数）。この数値が変われば、v1 側のスクリプトを触った
-     ことが `data/sample/derived_baseline.json`/`.md` の差分として、v2 側が
-     ずれたことが33表の突合結果として、どちらも CI に現れる。
+     不一致=0、対象外=0、適用した宣言済み差分=20件——正本と同じ件数。
+     この数値が変われば、v1 側のスクリプトを触ったことが
+     `data/sample/derived_baseline.json`/`.md` の差分として、v2 側が
+     ずれたことが33表の突合結果として、どちらも CI に現れる）。
   4. `data/sample/declaration_counts.yaml`・`derived_keys.yaml`・
      `derived_baseline.json`/`.md` が、コミット済みのサンプル本体
      （`data/sample/ryuiki/*.sql` 等）とパイプラインのコードから実際に
@@ -267,6 +276,19 @@ git に置けない。Issue #29「縮小サンプル＋実行証明」で、こ�
      `git diff --exit-code` で比べる。原本を使わない——材料化済みのサンプル
      そのものと `reports/derived_baseline.json`〔全量の33表のキー、正本〕
      だけから計算できる）。
+  5. **集計が空振りしていないこと**を機械で確かめる
+     （`scripts/tests/test_sample_aggregation_is_not_degenerate.py`。
+     `pytest`、原本不要——コミット済みの `derived_baseline.json` を読むだけ）。
+     `n`/`n_raw`/`n_hours`（集計対象の生レコード数を意味する列。`species_n`/
+     `mesh_n`/`n_sites` のような distinct 系の別次元件数は対象外）を持つ表
+     すべてで最大値が2以上であることを確認する——1以下なら「1件をそのまま
+     写しただけ」で、v1・v2 の集計方法の違いを一度も試していないことになる。
+     初版は sensor_timeseries が70行・organism_records が217行しか無く、
+     `sensor_hour_month`/`species_month` 等が事実上1件コピーになっていた
+     （コードレビュー指摘で発覚）。`coverage.yaml` に「出典ごとに1地点の
+     丸1か月分（時間値は約720〜3,700行、日値は約450〜550行、月値は約1年分）」
+     と「密なメッシュ×年クラスタ・81年分の記録を持つ種」の predicate を足し、
+     sensor_timeseries 6,770行・organism_records 2,519行に増やして解消した。
 - **CI ができないこと（サンプルの限界）**:
   - **サンプルに無い行・癖・出典への挙動は確認できない。**
     `data/sample/coverage.yaml` が宣言する範囲（定量下限の各表記・厚木の

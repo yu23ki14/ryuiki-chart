@@ -4,7 +4,7 @@
 
 再生成: `.venv/bin/python3 scripts/b01_derived_baseline.py`
 
-テーブル数 **33** / 総行数 **56,282**（`data/db/derived.sqlite` より）。
+テーブル数 **33** / 総行数 **62,139**（`data/db/derived.sqlite` より）。
 
 「行き先」列は `docs/adr/0011-aggregation-cube.md` の「33テーブルの行き先」表（`scripts/reconcile/adr0011_destinations.yaml` にデータとして持つ）。
 
@@ -14,7 +14,7 @@
 |---|---:|---|---|---|---|
 | `doc_series` | 115 | `doc_id`, `table_id`, `row_key`, `fiscal_year` | declared | document/cell の証跡層からの射影 | `0a6217da96b9…` |
 | `doc_series_meta` | 23 | `doc_id`, `table_id`, `row_key` | declared | document/cell の証跡層からの射影 | `0ba4658fe26d…` |
-| `effort_year` | 21 | `year` | declared | キューブ（入力 occurrence） | `c382e59a5d74…` |
+| `effort_year` | 52 | `year` | declared | キューブ（入力 occurrence） | `12281beea8a8…` |
 | `ias_species` | 12 | `ias_category`, `binom` | declared | taxon / taxon_assessment（ADR-0019） | `8cd31d9760a8…` |
 | `landuse_change` | 2,904 | `watershed_id`, `landuse_name` | declared | キューブ（入力 observation） | `a594cefb0c43…` |
 | `landuse_watershed` | 4,858 | `watershed_id`, `landuse_code` | declared | キューブ（入力 observation） | `db04b41e7324…` |
@@ -22,27 +22,27 @@
 | `meas_daily` | 18,823 | `site_id`, `variable`, `d` | declared | キューブ（入力 observation） | `a7593c18a0b7…` |
 | `meas_month` | 16,300 | `site_id`, `variable`, `year`, `month` | declared | キューブ（入力 observation） | `0aee543cf3b4…` |
 | `meas_year` | 6,915 | `site_id`, `variable`, `year`, `kind` | declared | キューブ（入力 observation） | `25372127021d…` |
-| `mesh_all` | 87 | `mlat`, `mlon` | declared | キューブ（入力 occurrence） | `a4595aa2e563…` |
-| `mesh_species` | 89 | `mlat`, `mlon` | declared | キューブ（入力 occurrence） | `7b818167d435…` |
-| `mesh_year` | 92 | `mlat`, `mlon`, `year` | declared | キューブ（入力 occurrence） | `41f485fcfbf4…` |
-| `org_group_year` | 36 | `year`, `source_id`, `taxon_group` | declared | キューブ（入力 occurrence） | `74952d63456d…` |
-| `org_norm` | 207 | `record_id` | declared | L2 のファクト本体に統合 | `5a2502161505…` |
-| `org_watershed` | 52 | `watershed_id` | declared | キューブ（入力 occurrence） | `b6dc2aec2a16…` |
-| `org_watershed_year` | 70 | `watershed_id`, `year` | declared | キューブ（入力 occurrence） | `dbcd3dc77ddd…` |
+| `mesh_all` | 391 | `mlat`, `mlon` | declared | キューブ（入力 occurrence） | `888a33fc596e…` |
+| `mesh_species` | 400 | `mlat`, `mlon` | declared | キューブ（入力 occurrence） | `7bac410b2813…` |
+| `mesh_year` | 543 | `mlat`, `mlon`, `year` | declared | キューブ（入力 occurrence） | `426c8ebad89f…` |
+| `org_group_year` | 85 | `year`, `source_id`, `taxon_group` | declared | キューブ（入力 occurrence） | `4d2908e4a61d…` |
+| `org_norm` | 2,509 | `record_id` | declared | L2 のファクト本体に統合 | `64eaf50efd02…` |
+| `org_watershed` | 141 | `watershed_id` | declared | キューブ（入力 occurrence） | `b954b9234a69…` |
+| `org_watershed_year` | 414 | `watershed_id`, `year` | declared | キューブ（入力 occurrence） | `00ceae54d547…` |
 | `quality_monthly` | 39 | `ym` | declared | ADR-0017 書き込み系ログの射影 | `2f3ba74296da…` |
-| `rain_daily` | 1 | `d` | declared | キューブ（入力 observation） | `81c589e45653…` |
+| `rain_daily` | 63 | `d` | declared | キューブ（入力 observation） | `49844799e890…` |
 | `redlist_change` | 2,884 | `assessment_id` | declared | taxon / taxon_assessment（ADR-0019） | `10177e492532…` |
 | `redlist_map` | 44 | `raw` | pk | taxon / taxon_assessment（ADR-0019） | `62b0d97d1281…` |
-| `sensor_daily` | 39 | `site_id`, `datastream`, `d` | declared | キューブ（入力 observation） | `4f4c50f4d06d…` |
-| `sensor_hour_month` | 24 | `datastream`, `month`, `hour` | declared | キューブ（入力 observation） | `107cded1f0ad…` |
+| `sensor_daily` | 1,133 | `site_id`, `datastream`, `d` | declared | キューブ（入力 observation） | `5896a5cd542e…` |
+| `sensor_hour_month` | 204 | `datastream`, `month`, `hour` | declared | キューブ（入力 observation） | `369b160d25f0…` |
 | `site_var` | 519 | `site_id`, `variable`, `kind` | declared | キューブ（入力 observation） | `9f72bdcf91d5…` |
-| `species2` | 129 | `binom` | declared | キューブ（入力 occurrence） | `bae00385a6a6…` |
-| `species_mesh_year` | 0 | `year`, `mlat`, `mlon`, `binom` | declared | キューブ（入力 occurrence） | `e3b0c44298fc…` |
-| `species_month` | 0 | `binom`, `month` | declared | キューブ（入力 occurrence） | `e3b0c44298fc…` |
-| `species_year2` | 133 | `year`, `binom` | declared | キューブ（入力 occurrence） | `d8990c7e2368…` |
+| `species2` | 153 | `binom` | declared | キューブ（入力 occurrence） | `42fdfa7d35a4…` |
+| `species_mesh_year` | 473 | `year`, `mlat`, `mlon`, `binom` | declared | キューブ（入力 occurrence） | `197fcf742ab0…` |
+| `species_month` | 67 | `binom`, `month` | declared | キューブ（入力 occurrence） | `f67f92c92ea5…` |
+| `species_year2` | 209 | `year`, `binom` | declared | キューブ（入力 occurrence） | `7cf604ef2952…` |
 | `var_catalog` | 25 | `variable` | declared | variable レジストリ | `62f855bc45c2…` |
 | `watershed_meta` | 377 | `watershed_id` | pk | place の属性 | `f92c68ed26da…` |
-| `watershed_rollup` | 377 | `watershed_id` | declared | place の属性 | `769a82a3d6e6…` |
+| `watershed_rollup` | 377 | `watershed_id` | declared | place の属性 | `7965471d6a67…` |
 | `zone_clim` | 328 | `zone`, `variable`, `month` | declared | キューブ（入力 observation） | `5ee6e843129e…` |
 | `zone_year` | 611 | `zone`, `variable`, `year`, `kind` | declared | キューブ（入力 observation） | `87079799051d…` |
 
@@ -117,8 +117,8 @@
 | `sensor_hour_month` | 5 |
 | `site_var` | 4 |
 | `species2` | 5 |
-| `species_mesh_year` | 5 |
-| `species_month` | 3 |
+| `species_mesh_year` | 4 |
+| `species_month` | 2 |
 | `species_year2` | 3 |
 | `var_catalog` | 7 |
 | `watershed_meta` | 4 |

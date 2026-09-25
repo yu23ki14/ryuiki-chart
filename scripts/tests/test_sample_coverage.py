@@ -1,8 +1,10 @@
 """縮小サンプル（Issue #29「縮小サンプル＋実行証明」）の成果物
 （`data/sample/coverage.yaml`・`declaration_counts.yaml`・`derived_keys.yaml`・
-`manifest.json`・`expected_diffs.yaml`）の構造検証と、コミット済みのサンプル
-本体（`data/sample/ryuiki/*.sql`・`cells/*.sql`）に対する「宣言どおりに入って
-いるか」の検証（A-1「pytest は検証として使う」）。
+`manifest.json`）の構造検証と、コミット済みのサンプル本体
+（`data/sample/ryuiki/*.sql`・`cells/*.sql`）に対する「宣言どおりに入っているか」
+の検証（A-1「pytest は検証として使う」）。宣言済み差分（`expected_diffs.yaml`）は
+サンプル専用ファイルを持たず、正本（`scripts/reconcile/expected_diffs.yaml`）を
+そのまま使う（下の該当節参照）。
 
 **原本DB（data/db/*.sqlite、14GB）は一切使わない**——ここで使うのはすべて
 コミット済みのテキスト（`data/sample/`）と、`scripts/reconcile/*.yaml`/
@@ -259,22 +261,17 @@ def test_manifest_json_has_required_fields():
 
 
 # ---------------------------------------------------------------------------
-# expected_diffs.yaml（サンプル専用）
+# expected_diffs.yaml: サンプルは正本（scripts/reconcile/expected_diffs.yaml）を
+# そのまま使う（レビュー対応で sample 専用ファイルを廃止した——閉包の取り方
+# （Sirosporium の投票元3行）を直した結果、正本の20キー全部がサンプル規模でも
+# 再現するようになったため、免除を維持する理由が無くなった。宣言済み差分>
+# データを曲げる、の原則どおり「サンプルに合わせて宣言を弱める」のではなく
+# 「サンプル側を正しく作る」を選んだ）。
 # ---------------------------------------------------------------------------
 
 
-def test_sample_expected_diffs_is_subset_of_real_expected_diffs():
-    """サンプル専用の expected_diffs.yaml は、正本のキーを増やしたり書き換えたり
-    しない——外す（org_norm/species2 の2件）だけであることを確認する。
+def test_no_sample_specific_expected_diffs_file_exists():
+    """`data/sample/expected_diffs.yaml` を復活させていないことを確認する
+    （復活させたくなったら、まずこのテストと本ファイルの上のコメントを読むこと）。
     """
-    real = load_yaml(ROOT / "scripts" / "reconcile" / "expected_diffs.yaml")
-    sample = load_yaml(SAMPLE_DIR / "expected_diffs.yaml")
-
-    assert set(sample) <= set(real), "サンプル専用の expected_diffs.yaml に正本に無いテーブルがある"
-    for table, sample_entries in sample.items():
-        real_entries = real[table]
-        assert sample_entries == real_entries, f"{table}: サンプル専用ファイルの内容が正本と食い違う"
-
-    real_key_count = sum(len(v) for v in real.values())
-    sample_key_count = sum(len(v) for v in sample.values())
-    assert sample_key_count < real_key_count, "サンプル専用ファイルは正本よりキー数が少ないはず"
+    assert not (SAMPLE_DIR / "expected_diffs.yaml").exists()
