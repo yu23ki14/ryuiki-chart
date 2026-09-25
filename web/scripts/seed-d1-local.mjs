@@ -35,7 +35,94 @@ const SOURCES = [
   { alias: "cells", file: "cells.sqlite", required: true },
   { alias: "derived", file: "derived.sqlite", required: true },
   { alias: "registry", file: "registry.sqlite", required: true },
+  // Issue #48 PR-0: キューブ（observation_agg/occurrence_agg）の入力。v2.sqlite には
+  // L2（observation/occurrence/occurrence_place）も同居しているが、D1 のスキーマ
+  // （schema-cube.ts）がキューブ2表しか宣言していないので、下の owner map 経由で
+  // 自動的にキューブだけが対象になる（D1 に無いテーブル名は targets に現れない）。
+  { alias: "v2", file: "v2.sqlite", required: true },
 ];
+
+/**
+ * `observation_agg`/`occurrence_agg` の pipeline_fingerprint.spec_version（
+ * `scripts/migrate/common.py` の `OBSERVATION_AGG_SPEC_VERSION`/`OCCURRENCE_SPEC_VERSION`
+ * と同じ値。値を変えたらそちらも変えること）。
+ */
+const V2_SPEC_VERSIONS = {
+  observation_agg: "phase-b-fact-slice/v2",
+  occurrence_agg: "phase-b-fact-slice/v1",
+};
+
+/**
+ * `observation_agg`/`occurrence_agg` の列集合（`web/src/db/schema-cube.ts` と同じ値。
+ * スキーマを変えたら両方を更新すること。正は schema-cube.ts、ここは追随する）。
+ */
+const V2_CUBE_COLUMNS = {
+  observation_agg: [
+    "region_id", "place_id", "place_kind", "variable_id", "obs_stat", "unit_id",
+    "value_grain", "period_start", "period_end", "grain", "input_grain", "stat",
+    "value_zero", "value_lod", "n", "n_censored", "n_not_detected", "n_places",
+    "built_from", "spec_version",
+  ],
+  occurrence_agg: [
+    "region_id", "source_id", "place_id", "place_kind", "taxon_id", "grain",
+    "period_start", "period_end", "n", "n_red_list", "built_from", "spec_version",
+  ],
+};
+
+const V2_REBUILD_HINT = "`pnpm run build:v2`（r01→b03→b04→b06→b09→b07）で作り直すこと。";
+
+/**
+ * `v2.sqlite`（開いたばかりの読み取り専用接続）が「今のキューブの形」であることを
+ * 確認する。**古い v2.sqlite を拒否する**（Issue #48「見落としそうな危険」4:
+ * 手元の `data/db/v2.sqlite` が PR #26 より前の13列キー（`imputation`/`value` 列を
+ * 持ち、`value_zero`/`value_lod` を持たない旧形）のまま放置されていることがある。
+ * 気づかずシードすると、D1 のキューブが黙って旧形の値で埋まる）。
+ *
+ * `scripts/b04_build_cube.py`/`scripts/b07_build_occurrence_cube.py` 側にはまだ
+ * `scripts/r01_build_registry.py --check-fresh` 相当（原本との内容照合）が無いため、
+ * ここでは「pipeline_fingerprint の記録が今の spec_version と一致するか」
+ * 「列集合が schema-cube.ts と一致するか」という最小の形状チェックにとどめる
+ * （原本〔ryuiki/cells〕から見て古いかどうかまでは確認しない。そちらは
+ * `scripts/ensure-v2.sh` が mtime で判定する）。
+ */
+function assertV2Fresh(conn, v2Path) {
+  const hasPipelineFingerprint = conn
+    .prepare("SELECT count(*) n FROM sqlite_master WHERE type='table' AND name='pipeline_fingerprint'")
+    .get().n;
+  if (!hasPipelineFingerprint) {
+    throw new Error(
+      `${v2Path} が古い形式（pipeline_fingerprint 表が無い。段階間の指紋が導入される前の出力）。` +
+        V2_REBUILD_HINT,
+    );
+  }
+  for (const [table, expectedSpecVersion] of Object.entries(V2_SPEC_VERSIONS)) {
+    const row = conn
+      .prepare("SELECT spec_version FROM pipeline_fingerprint WHERE table_name = ?")
+      .get(table);
+    if (!row) {
+      throw new Error(`${v2Path} が古い（pipeline_fingerprint に ${table} の記録が無い）。` + V2_REBUILD_HINT);
+    }
+    if (row.spec_version !== expectedSpecVersion) {
+      throw new Error(
+        `${v2Path} が古い（${table}.spec_version = "${row.spec_version}"、期待値 "${expectedSpecVersion}"）。` +
+          V2_REBUILD_HINT,
+      );
+    }
+    const actualColumns = conn.prepare(`PRAGMA table_info(${qi(table)})`).all().map((c) => c.name);
+    const expectedColumns = V2_CUBE_COLUMNS[table];
+    const actualSet = new Set(actualColumns);
+    const sameSet =
+      actualSet.size === expectedColumns.length && expectedColumns.every((c) => actualSet.has(c));
+    if (!sameSet) {
+      throw new Error(
+        `${v2Path} が古い（${table} の列集合が web/src/db/schema-cube.ts と一致しない。` +
+          `実際: [${actualColumns.join(", ")}] / 期待: [${expectedColumns.join(", ")}]。` +
+          "PR #26 以前の13列キー〔imputation/value 列〕の可能性がある）。" +
+          V2_REBUILD_HINT,
+      );
+    }
+  }
+}
 
 /** マイグレーションと wrangler / miniflare の管理テーブル。シードの対象外。 */
 const SKIP_TABLES = new Set(["d1_migrations", "_seed_state"]);
@@ -112,7 +199,9 @@ function fingerprint() {
             ? "集計 DB は `npm run build:derived` で作る（初回のみ・約1分）。"
             : s.file === "registry.sqlite"
               ? "語彙レジストリは `npm run build:registry` で作る（scripts/r01_build_registry.py）。"
-              : "data/db/ に原本を置く。"),
+              : s.file === "v2.sqlite"
+                ? "v2（observation_agg/occurrence_agg のキューブ）は `npm run build:v2` で作る。"
+                : "data/db/ に原本を置く。"),
       );
     }
     const st = fs.statSync(p);
@@ -148,6 +237,7 @@ function main() {
     const p = path.join(DB_DIR, s.file);
     if (!fs.existsSync(p)) continue;
     src[s.alias] = new Database(p, { readonly: true, fileMustExist: true });
+    if (s.alias === "v2") assertV2Fresh(src[s.alias], p);
   }
 
   /** テーブル名 -> どの原本にあるか */
