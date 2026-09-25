@@ -6,6 +6,12 @@
   ADR-0013（caveat）, ADR-0022（place.region_id）, ADR-0024（時刻帯・時刻ラベル）,
   ADR-0025（occurrence ファクトとキューブ）
 
+**2026-09-26 追記（Issue #48）**: D4 で送った O-2b（`occurrence_agg` への
+`place_kind='watershed'` セルの反映）は `docs/plans/V2_SERVING.md` PR-3a で着手する。
+D1 に置く軽量な裏付け表 `place_watershed` は [ADR-0030](0030-d1-serving-schema.md) D2
+（提案中）。流域のメモ化の癖（1,091キー）は v1 撤去後の差分カウントでも既知の系統として
+扱う（[ADR-0029](0029-v1-removal-and-verification-handoff.md)、提案中）。本文は変えない。
+
 ## 背景
 
 `docs/plans/PHASE_B_OCCURRENCE.md` F3 が実測したとおり、v1
