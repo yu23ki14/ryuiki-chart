@@ -16,6 +16,9 @@ const eslintConfig = defineConfig([
     "worker-configuration.d.ts",
     ".open-next/**",
     "dist/**",
+    // vendor 生成物（`prepare:maplibre` が node_modules からコピーする。web/.gitignore 済み）。
+    // 手で直せない・直さないコードなので lint 対象から外す（docs/plans/PHASE_B_INTAKE.md #14）
+    "public/maplibre/**",
   ]),
 ]);
 

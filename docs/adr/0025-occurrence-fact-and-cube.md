@@ -1,6 +1,7 @@
 # ADR-0025: occurrence ファクトとキューブの設計（region は出典から・期間は12形の宣言・1ファクト＝1キューブ表）
 
-- 状態: 提案中 / 日付: 2026-09-22
+- 状態: 承認済（一部未実装: D4〔`occurrence_agg`へのwatershedセル追加〕はO-2bへ）
+  / 日付: 2026-09-22
 - 関連: ADR-0006（place）, ADR-0007（observation/occurrence の分離）, ADR-0008（時間の3点セット）,
   ADR-0011（キューブ）, ADR-0016（移行計画）, ADR-0019（taxon）, ADR-0021（キューブの鍵）,
   ADR-0022（place.region_id とスコープ）, ADR-0024（時刻帯・時刻ラベル）

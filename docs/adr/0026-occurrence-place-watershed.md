@@ -1,6 +1,7 @@
 # ADR-0026: 点→流域の解決は記録×place のサテライトに直接持ち、v1 のメモ化の癖は射影の式で再現する
 
-- 状態: 提案中 / 日付: 2026-09-23
+- 状態: 承認済（一部未実装: D4〔`occurrence_agg`への反映〕は0025と同じくO-2bへ）
+  / 日付: 2026-09-23
 - 関連: ADR-0006（place）, ADR-0007（observation/occurrence）, ADR-0011（キューブ）,
   ADR-0013（caveat）, ADR-0022（place.region_id）, ADR-0024（時刻帯・時刻ラベル）,
   ADR-0025（occurrence ファクトとキューブ）
