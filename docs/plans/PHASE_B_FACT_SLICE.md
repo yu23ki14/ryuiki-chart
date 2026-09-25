@@ -2,7 +2,9 @@
 
 対象: ADR-0016 の Phase B / 状態: **実データで一度緑になった（部分ゲート。33テーブル中11テーブル）**
 作成: 2026-09-08 / 更新: 2026-09-25（Issue #37: 段階間の指紋・staged_table原子性の確認・
-b05検証関数群の分割） / 関連: ADR-0007, 0008, 0009, 0010, 0011, 0016, 0021, 0022, 0023, 0024
+b05検証関数群の分割、および /code-review 指摘2件の対応〔系譜の再帰化・b05のobservation
+直接読み取りの検証漏れと指紋記録の原子性の根本対応〕） /
+関連: ADR-0007, 0008, 0009, 0010, 0011, 0016, 0021, 0022, 0023, 0024
 
 このドキュメントは `docs/plans/PHASE_B_RECONCILIATION.md`（突合ゲートの仕組み）と対になる、
 **縦に薄い1本の設計と実測**の記録。`b03_build_observation.py` / `b04_build_cube.py` /
@@ -540,6 +542,58 @@ ADR-0011「粒度をまたぐ再集計をしない」）。月・年セルの `n
        b04（(a)）で2回、`observation_agg` は b04（記録）・b05（(a)）で2回
        フルスキャンされる——これは (b) を足す前から変わらないコストで、
        (b) の追加分はゼロに近い。
+     - **(b) は再帰的に上流の上流もたどる**（2回目の /code-review 指摘の穴埋め:
+       初回実装は1段しか遡らず、「2段以上前の入力から古いまま作られている」
+       を見逃していた——具体例: b03→b04→b05→b11 を通しで回した後、
+       **b03（`observation`）だけ**を別内容で作り直し、b04・b05 は一切
+       実行しない。`observation_agg` 自身の内容・自己指紋は無傷のまま
+       （b04 を再実行していないので）——`site_var` が記録する
+       `observation_agg` の指紋は、まだ変わっていない `observation_agg`
+       自身の自己申告と一致してしまうため、1段だけの比較では通ってしまう。
+       `assert_stage_fingerprint_fresh` の (b) を `_assert_lineage_fresh`
+       として再帰化し、系譜の系譜（`inputs` の `inputs`）も同じ「上流自身の
+       自己指紋を読むだけの安い参照」でたどるようにした（`visited` 集合で
+       同じノードを2度たどらない）。個別に `cube_v2.observation` を b11 の
+       ATTACH に足すのではなく、既存の `upstream_schemas` の仕組みを
+       そのまま再帰にも使う設計にしたことで、b05・b08 も同じ関数を呼ぶだけで
+       同じ穴を塞げる。
+     - **b05 が `cube.observation` を直接読んでいるのに検証していなかった**
+       （もう1つの /code-review 指摘）: `_unit_lookup_sql`（meas_daily 等が
+       使う `unit_lookup`/`sensor_unit_lookup`）と `_label25_obs_keyed_sql`
+       （sensor_daily/rain_daily/sensor_hour_month が使う
+       `label25_obs_keyed`）はどちらも `cube.observation` を直接読むが、
+       `observation` 自身への (a) チェックが無く、13表の `inputs` にも
+       `observation` が入っていなかった。`build_projections()` の先頭で
+       `observation_agg` のチェックに続けて `observation` 自身にも独立した
+       (a) を掛け、`write_projections()` で `landuse_watershed`/
+       `landuse_change`（`observation_agg` だけから作る。`_TABLES_WITHOUT_
+       OBSERVATION_DEPENDENCY`）を除く11テーブルの `inputs` に `observation`
+       も直接含めるようにした。
+     - **根本原因（`staged_table` の差し替えと `record_stage_fingerprint` が
+       別コミット）も直した**: `staged_table()` に `fingerprint_inputs`
+       引数を追加し、渡すと差し替え（DROP+RENAME）と同じ明示トランザクション
+       内で指紋も記録・コミットする（`b03`/`b04`/`b06`/`b07`/`b09` の全てで
+       これに切り替えた）。これで「内容は新しいが指紋は古い（前回のまま）」
+       状態が原理的に作れなくなった。`b05`/`b08`/`b11`（`fresh_sqlite` で
+       ファイル全体を作り直す設計）はそもそも全テーブルの書き込みと指紋の
+       記録を1つの最終 `conn.commit()` にまとめているため**元から atomic**
+       ——追加の対応は不要（`fresh_sqlite` が毎回ファイルを空にしてから作る
+       ため、「前回の正しい状態が中途半端に壊れる」窓自体が無い）。
+     - **見落としの洗い出し**（「消費側が読んでいるのに検証も `inputs` への
+       記録もしていない表」が他に無いか、各段の SQL が ATTACH 先のどの表を
+       読んでいるかを grep で確認した結果）:
+
+       | 段 | ATTACH 先で読む表 | (a) 自己一致チェック | (b)/系譜 |
+       |---|---|---|---|
+       | b04 | 自ファイルの `observation` | 済（既存） | `observation_agg.inputs={"observation":...}` |
+       | b05 | `cube.observation`・`cube.observation_agg` | 両方済（`observation` は今回追加） | 11/13表に `observation`+`observation_agg`、`landuse_*` 2表は `observation_agg` のみ（依存が無いため） |
+       | b07 | 自ファイルの `occurrence` | 済（既存） | `occurrence_agg.inputs={"occurrence":...}` |
+       | b08 | `cube.occurrence`（`_build_org_norm`/`_build_watershed`/`_build_cube_projections` の3経路）・`cube.occurrence_agg`（`_assert_cube_is_current_l2_partition` が直接突合）・`cube.occurrence_place` | `occurrence`: 3経路とも済（`_build_cube_projections` 単独呼び出し向けの `check_occurrence_fingerprint` を今回追加。`build_all_projections` からは二重走査を避けて `False`）／`occurrence_agg`: 集計突合が代替／`occurrence_place`: 済（既存） | `org_norm`/`org_watershed*` に系譜を記録。年キー8表・`species_month`・`ias_species` は消費側が無いため `inputs={}` のまま（判断・理由を明記） |
+       | b09 | 自ファイルの `occurrence`・`ryuiki.sites`（原本、対象外） | `occurrence` 済（既存） | `occurrence_place.inputs={"occurrence":...}` |
+       | b11 | `proj.site_var`・`proj.landuse_watershed`・`occ.org_watershed`（実際の `watershed_rollup` SQL はここまで）／`cube_v2.*` は系譜チェック専用（`--cube-db`、実データ未使用） | 3表とも済（既存） | 再帰で `observation`/`observation_agg`/`occurrence`/`occurrence_place` まで到達（`upstream_schemas` に `observation` も追加——`site_var.inputs` が `observation` を直接持つ経路と、`observation_agg` 経由で再帰する経路の両方を解決できるようにした。実データのフルパイプライン再構築で「`proj.observation` が見つからない」という実際の回帰を踏んで修正） |
+       | b03/b06 | `src.*`（`ryuiki.sqlite`、原本） | 対象外（原本は指紋の対象にしない） | 出力（`observation`/`occurrence`）は基底テーブルとして `inputs={}` |
+       | b10 | `ryuiki.*`/`cells.*`（原本） | 対象外 | Phase B の上流出力を経由しない |
+       | b12 | `registry.sqlite`（別系統） | 対象外 | r01 自身の `registry_build` 指紋で管理済み（二重化しない） |
      - **壊れた/古い上流出力で実際に止まることの実測**（受け入れ基準。単体
        テストに加え、worktree 内の実データ〔`/tmp` のスクラッチコピー、
        元チェックアウトの `data/db` は無傷〕でも確認した）:
@@ -551,6 +605,14 @@ ADR-0011「粒度をまたぐ再集計をしない」）。月・年セルの `n
          rebuilt_without_downstream_rerun` 等）・`test_b05_project_v1.py`
          （`test_build_projections_halts_when_observation_rebuilt_without_
          rerunning_b04`）。
+       - b03→b05（`observation` を直接改変・自己指紋は更新しない）:
+         `observation_agg` の系譜チェックでは検出できない改変
+         （`observation` の自己申告自体は変えていないため）でも、`observation`
+         自身への独立した (a) が検出して b05 が停止する
+         （`scripts/b03_build_observation.py を再実行すること`）。単体テストは
+         `test_b05_project_v1.py::
+         test_build_projections_halts_when_observation_tampered_without_
+         updating_its_own_fingerprint`。
        - b06→b07→b08: b06 だけ作り直し（occurrence に1行追加）b07 を忘れて
          b08 を実行 → 既存の `_assert_cube_is_current_l2_partition`
          （このタスクでは変更していない）が「occurrence_agg が『今の
@@ -560,14 +622,34 @@ ADR-0011「粒度をまたぐ再集計をしない」）。月・年セルの `n
          再確認した。既存の単体テストは
          `test_b08_occurrence_cube_projections.py::
          test_l2_cube_mismatch_stops_projection`。
-       - b05・b11: b03/b04 を作り直し（`observation_agg` が新しい自己指紋を
-         持つ）b05 を忘れて b11 を実行 → 「`site_var` は上流
-         observation_agg の指紋...を消費した状態のままだが、
-         observation_agg は現在...を自己申告している」で b11 が停止
-         （`scripts/b05_project_v1.py を再実行すること`）。単体テストは
+       - b03（**だけ**）・b11: b03 だけ別内容で作り直し、b04・b05 は一切
+         実行しない（`observation_agg` は無傷のまま）→ **再帰で2段たどって
+         初めて**「`site_var` は上流 observation の指紋...を消費した状態の
+         ままだが、observation は現在...を自己申告している」で b11 が停止
+         （`scripts/b05_project_v1.py を再実行すること`。これが1段しか
+         遡らない実装で通ってしまっていた、今回の穴そのもの）。単体テストは
          `test_b11_project_place_v1.py::
+         test_build_projections_halts_when_observation_rebuilt_two_hops_away_*`
+         （2本——`site_var` が `observation` を直接持つ本物の b05 と同じ
+         経路の版と、`observation_agg` だけを持つ最小限のフィクスチャで
+         純粋に再帰能力だけを確かめる版）。
+       - b05・b11（`observation_agg` だけ作り直し）: b03/b04 を作り直し
+         （`observation_agg` が新しい自己指紋を持つ）b05 を忘れて b11 を
+         実行 → 「`site_var` は上流 observation_agg の指紋...を消費した
+         状態のままだが、observation_agg は現在...を自己申告している」で
+         b11 が停止（`scripts/b05_project_v1.py を再実行すること`）。単体
+         テストは `test_b11_project_place_v1.py::
          test_build_projections_halts_when_observation_agg_rebuilt_without_
          rerunning_b05`。
+       - 指紋の記録の原子性: `staged_table` の差し替えと指紋の記録の間に
+         人為的に例外を起こすと、差し替えごと（指紋も含めて）巻き戻り、
+         前回の本番テーブルと前回の指紋がどちらもそのまま残ることを確認した
+         （`test_migrate_common.py::
+         test_staged_table_fingerprint_inputs_is_committed_atomically_with_the_swap`）。
+         対比として、差し替えと指紋の記録を**別々に**呼ぶ（直す前の書き方）
+         と実際に「内容は新しいが指紋は古い」状態が作れてしまうことも
+         再現した（`test_migrate_common.py::
+         test_recording_fingerprint_separately_from_the_swap_can_leave_it_stale`）。
   2. **`staged_table` の差し替え（`DROP TABLE`→`ALTER TABLE RENAME`）の原子性**は、
      実装を確認したところ**既に解決済みだった**（コミット `45181b2`
      「staged_table: 差し替え（DROP+RENAME）を明示トランザクションで原子化」——この
@@ -580,6 +662,11 @@ ADR-0011「粒度をまたぐ再集計をしない」）。月・年セルの `n
      （既に直っている）**。`scripts/tests/test_migrate_common.py` の
      `test_staged_table_failure_between_drop_and_rename_preserves_previous_table`
      （`ALTER TABLE` の直前で例外を起こすプロキシで再現）が既にこれを確認している。
+     **その後（2回目の /code-review 指摘）**: DDL の差し替え自体は atomic
+     でも、指紋の記録（`record_stage_fingerprint`）が**別コミット**のままでは
+     「内容は新しいが指紋は古い」状態が原理上残ることが分かり、上の系譜の
+     項目にまとめたとおり `fingerprint_inputs` 引数で同じトランザクションに
+     統合した。
   **もう1つ、既知の判断として**: `scripts/b05_project_v1.py` は v1 互換の射影の置き場
   として線形に増え続けている（現在13テーブル）。次に T6 級（出典固有の Python 検証関数）
   を足す時点で、検証関数群を別モジュールに分けること——**これも Issue #37（#3）で実施

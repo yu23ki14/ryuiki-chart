@@ -484,8 +484,19 @@ def _assert_rollup_input_fingerprints_fresh(
         cube_attached = cube_db is not None and pathlib.Path(cube_db).exists()
         if cube_attached:
             common.attach_readonly(work, cube_db, "cube_v2")
+        # "observation" は b05 が `observation_agg` 経由の系譜（`site_var` の
+        # inputs から `observation_agg` を辿った先）だけでなく、`site_var`
+        # 自身の inputs にも直接持たせている（b05 側の /code-review 対応
+        # ——`cube.observation` を直接読む表の inputs に observation 自身も
+        # 含めた）。両方の経路から解決できるよう明示しておく（無いと、
+        # `site_var.inputs["observation"]` を直接たどる1段目では `schema`
+        # の既定値〔`table` 自身と同じ "proj"〕にフォールバックしてしまい、
+        # 実在しない `proj.observation` を探して壊れる——実測で踏んだ）。
         upstream_schemas = (
-            {"observation_agg": "cube_v2", "occurrence": "cube_v2", "occurrence_place": "cube_v2"}
+            {
+                "observation_agg": "cube_v2", "observation": "cube_v2",
+                "occurrence": "cube_v2", "occurrence_place": "cube_v2",
+            }
             if cube_attached else None
         )
         site_var_fp = common.assert_stage_fingerprint_fresh(

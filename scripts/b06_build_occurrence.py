@@ -398,7 +398,9 @@ def build_and_write_occurrence(
     dest = sqlite3.connect(f"file:{out_path}", uri=True)
     dest.execute("PRAGMA journal_mode=DELETE")
     try:
-        with common.staged_table(dest, "occurrence", _CREATE_OCCURRENCE_SQL) as staging:
+        with common.staged_table(
+            dest, "occurrence", _CREATE_OCCURRENCE_SQL, fingerprint_inputs={},
+        ) as staging:
             work = sqlite3.connect(":memory:", uri=True)
             try:
                 common.attach_readonly(work, ryuiki_db, "src")
@@ -460,13 +462,11 @@ def build_and_write_occurrence(
                     "確認すること。"
                 )
             # ここまで来たら with ブロックを正常に抜け、staged_table が
-            # 作業用テーブルを本番名 "occurrence" に差し替える（A-1）。
-
-        # 段階間の指紋（Issue #37 #1）: b07/b09/b08 が「今の occurrence から
-        # 作った出力か」を検証できるよう、確定した occurrence の内容を記録する
-        # （scripts/migrate/common.py の該当コメント参照）。
-        common.record_stage_fingerprint(dest, "occurrence")
-        dest.commit()
+            # 作業用テーブルを本番名 "occurrence" に差し替え、同じ
+            # トランザクションで指紋も記録する（Issue #37 #1・/code-review
+            # 指摘の根本対応。`fingerprint_inputs={}`——`occurrence` は基底
+            # テーブルなので系譜は空）。b07/b09/b08 はこの指紋を見て「今の
+            # occurrence から作った出力か」を検証する。
     except BaseException:
         dest.close()
         raise

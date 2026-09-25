@@ -95,6 +95,86 @@ def test_staged_table_failure_between_drop_and_rename_preserves_previous_table(t
     conn.close()
 
 
+def test_staged_table_fingerprint_inputs_is_committed_atomically_with_the_swap(tmp_path):
+    """**/code-review 指摘の根本対応の直接確認**: `fingerprint_inputs` を渡すと、
+    表の差し替え（DROP+RENAME）と指紋の記録が**同じ**明示トランザクションで
+    コミットされる——差し替え後・指紋の記録の途中で失敗しても、差し替え
+    ごと巻き戻り、前回の本番テーブルと前回の指紋がどちらもそのまま残る
+    （「内容は新しいが指紋は古い」という中間状態が原理的に作れない）。
+    """
+    db_path = tmp_path / "t.sqlite"
+    conn = sqlite3.connect(f"file:{db_path}", uri=True)
+    conn.execute("PRAGMA journal_mode=DELETE")
+
+    # 1回目: 正常に成功させ、「前回の本番テーブル＋前回の指紋」を作る。
+    with common.staged_table(conn, "foo", "CREATE TABLE {table} (a INTEGER)", fingerprint_inputs={}) as staging:
+        conn.executemany(f'INSERT INTO "{staging}" VALUES (?)', [(1,), (2,)])
+    before_rows = conn.execute("SELECT * FROM foo ORDER BY a").fetchall()
+    before_fp = common.read_recorded_fingerprint(conn, "foo")
+    assert before_fp is not None
+
+    # 2回目: 差し替え（DROP+RENAME）自体は成功させ、指紋の記録（INSERT INTO
+    # pipeline_fingerprint）の途中で失敗させる——「差し替えは終わったが指紋の
+    # 記録がまだ」という、直したかった穴そのものを再現する箇所。
+    proxy = _FailOnSQL(conn, f"INSERT INTO {common.PIPELINE_FINGERPRINT_TABLE}", RuntimeError("boom mid-fingerprint"))
+    with pytest.raises(RuntimeError, match="boom mid-fingerprint"):
+        with common.staged_table(
+            proxy, "foo", "CREATE TABLE {table} (a INTEGER)", fingerprint_inputs={},
+        ) as staging:
+            conn.executemany(f'INSERT INTO "{staging}" VALUES (?)', [(9,), (8,), (7,)])
+
+    tables = sorted(r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'"))
+    after_rows = conn.execute("SELECT * FROM foo ORDER BY a").fetchall()
+    after_fp = common.read_recorded_fingerprint(conn, "foo")
+    assert tables == ["foo", common.PIPELINE_FINGERPRINT_TABLE], "本番テーブルが消えたまま、あるいは作業用テーブルが残っている"
+    assert after_rows == before_rows, "指紋の記録に失敗したのに本番テーブルの中身が変わってしまった（差し替えが巻き戻っていない）"
+    assert after_fp == before_fp, "指紋の記録に失敗したのに指紋が更新されてしまった（『内容は新しいが指紋は古い』とは逆の中途半端な状態）"
+    conn.close()
+
+
+def test_recording_fingerprint_separately_from_the_swap_can_leave_it_stale(tmp_path):
+    """**穴の再現（`fingerprint_inputs` を使わない、直した前の書き方）**:
+    差し替え（`staged_table`）と指紋の記録（`record_stage_fingerprint`）を
+    別々に呼ぶと、差し替えは確定したのに指紋の記録だけが失敗する窓が
+    実際に生まれる——「内容は新しいが指紋は古い」状態を再現する。これが
+    b03（Issue #37 のコードレビュー指摘）で実際に起きていた形。
+    `fingerprint_inputs` を渡す新しい書き方（上のテスト）ではこの窓が
+    無いことと対比する。
+    """
+    db_path = tmp_path / "t.sqlite"
+    conn = sqlite3.connect(f"file:{db_path}", uri=True)
+    conn.execute("PRAGMA journal_mode=DELETE")
+
+    # 1回目: 差し替えと指紋の記録を別々に呼ぶ（直す前の書き方）。
+    with common.staged_table(conn, "foo", "CREATE TABLE {table} (a INTEGER)") as staging:
+        conn.executemany(f'INSERT INTO "{staging}" VALUES (?)', [(1,), (2,)])
+    common.record_stage_fingerprint(conn, "foo")
+    conn.commit()
+    first_fp = common.read_recorded_fingerprint(conn, "foo")
+
+    # 2回目: 差し替え自体は成功して確定する（staged_table 内の別トランザクション
+    # で既にコミット済み）が、その**後**の指紋の記録が失敗する
+    # （プロセスが落ちる代わりに例外で模す）。
+    with common.staged_table(conn, "foo", "CREATE TABLE {table} (a INTEGER)") as staging:
+        conn.executemany(f'INSERT INTO "{staging}" VALUES (?)', [(9,), (8,), (7,)])
+    # ここまでで差し替えは既に確定済み（新しい内容が読める）。
+    new_rows = conn.execute("SELECT * FROM foo ORDER BY a").fetchall()
+    assert new_rows == [(7,), (8,), (9,)], "差し替え自体は確定しているはず"
+
+    proxy = _FailOnSQL(conn, f"INSERT INTO {common.PIPELINE_FINGERPRINT_TABLE}", RuntimeError("boom"))
+    with pytest.raises(RuntimeError, match="boom"):
+        common.record_stage_fingerprint(proxy, "foo")
+        conn.commit()
+
+    # 「内容は新しいが指紋は古い」状態が実際にできてしまっている——
+    # これが直したかった穴そのもの。
+    stale_fp = common.read_recorded_fingerprint(conn, "foo")
+    assert stale_fp == first_fp, "指紋は前回（古い内容）のまま残っている"
+    current_fp = common.compute_table_fingerprint(conn, "foo")
+    assert current_fp != stale_fp, "内容は新しいのに、記録された指紋は古い内容のまま——これが穴"
+    conn.close()
+
+
 def test_fresh_sqlite_rejects_a_path_that_resolves_to_a_protected_source_db(tmp_path, monkeypatch):
     """コードレビュー指摘: `fresh_sqlite(path)` は既存ファイル・WAL/SHM側車を
     先に `unlink()` する。`--out` に読み取り専用の原本
@@ -401,6 +481,48 @@ def test_lineage_check_detects_upstream_rebuilt_without_downstream_rerun(tmp_pat
     conn.close()
 
 
+def test_lineage_check_recurses_two_hops_up(tmp_path):
+    """**/code-review 指摘の穴そのものの再現**: `top`→`mid`→`base` の3段の
+    系譜で、`base` だけを別内容で作り直し（`mid` は一切触れない——`mid` 自身の
+    内容も、`mid` が記録した「消費時点の `base` 指紋」も古いまま）、`top` を
+    検証すると、1段目（`top`↔`mid`）は一致するが**2段目（`mid`↔`base`）で
+    食い違う**ことを検出する。b03 だけ作り直し、b04・b05 を忘れて b11 を
+    実行する具体例（`site_var`→`observation_agg`→`observation`）と同じ形。
+    """
+    db_path = tmp_path / "t.sqlite"
+    conn = sqlite3.connect(f"file:{db_path}", uri=True)
+    conn.execute("CREATE TABLE base (a INTEGER)")
+    conn.executemany("INSERT INTO base VALUES (?)", [(1,), (2,)])
+    base_fp = common.record_stage_fingerprint(conn, "base")
+    conn.execute("CREATE TABLE mid (a INTEGER)")
+    conn.executemany("INSERT INTO mid VALUES (?)", [(10,)])
+    mid_fp = common.record_stage_fingerprint(conn, "mid", inputs={"base": base_fp})
+    conn.execute("CREATE TABLE top (a INTEGER)")
+    conn.executemany("INSERT INTO top VALUES (?)", [(100,)])
+    common.record_stage_fingerprint(conn, "top", inputs={"mid": mid_fp})
+    conn.commit()
+
+    # 1段目（top↔mid）は無傷のまま通ることを先に確認する（回帰: 再帰導入で
+    # 1段目のチェック自体が壊れていないか）。
+    common.assert_stage_fingerprint_fresh(conn, "top", rebuild_hint="再実行すること。", upstream_schemas={})
+
+    # base だけを「別内容で作り直す」（b03 の再実行を模す）。mid には一切触れない
+    # ——mid 自身の内容も、mid が記録した「消費時点の base 指紋」も古いまま。
+    conn.execute("DELETE FROM base")
+    conn.executemany("INSERT INTO base VALUES (?)", [(1,), (2,), (3,)])
+    common.record_stage_fingerprint(conn, "base")
+    conn.commit()
+
+    # 1段しか遡らない実装なら、top の系譜（mid の指紋）は mid 自身の自己申告と
+    # まだ一致する（mid は変わっていない）ため、ここで例外が飛ばないと壊れて
+    # いる。2段目（mid↔base）まで辿って初めて食い違いを検出できるはず。
+    with pytest.raises(common.MigrationError, match=r"mid は上流 base の指紋"):
+        common.assert_stage_fingerprint_fresh(
+            conn, "top", rebuild_hint="mid の後に top を再実行すること。", upstream_schemas={},
+        )
+    conn.close()
+
+
 def test_lineage_check_is_skipped_when_upstream_schemas_is_none(tmp_path):
     """`upstream_schemas=None`（既定）なら (b) を行わない——呼び出し側が
     上流ファイルを開いていない等の理由で検証範囲外にした場合の明示的な
@@ -462,7 +584,7 @@ def test_lineage_check_resolves_upstream_via_attached_schema(tmp_path):
     try:
         common.attach_readonly(work2, down_path, "d")
         common.attach_readonly(work2, up_path, "u")
-        with pytest.raises(common.MigrationError, match="上流 up の指紋"):
+        with pytest.raises(common.MigrationError, match=r"上流 u\.up の指紋"):
             common.assert_stage_fingerprint_fresh(
                 work2, "down", schema="d", rebuild_hint="down を再実行すること。",
                 upstream_schemas={"up": "u"},
@@ -478,7 +600,7 @@ def test_lineage_check_raises_when_upstream_schema_not_attached(tmp_path):
     `sqlite3.OperationalError` ではなく `MigrationError` になる。
     """
     conn, _ = _make_upstream_and_downstream(tmp_path)
-    with pytest.raises(common.MigrationError, match="上流 up.*指紋が見つからない"):
+    with pytest.raises(common.MigrationError, match=r"上流 not_attached\.up.*指紋が見つからない"):
         common.assert_stage_fingerprint_fresh(
             conn, "down", rebuild_hint="再実行すること。",
             upstream_schemas={"up": "not_attached"},

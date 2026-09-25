@@ -421,7 +421,10 @@ def build_cube(
     common.attach_readonly(conn, registry_db, "reg")
     conn.execute(_CREATE_OBS_ZERO_VIEW_SQL)
 
-    with common.staged_table(conn, "observation_agg", _CREATE_OBSERVATION_AGG_SQL) as staging:
+    with common.staged_table(
+        conn, "observation_agg", _CREATE_OBSERVATION_AGG_SQL,
+        fingerprint_inputs={"observation": observation_fingerprint},
+    ) as staging:
         insert_cols = ", ".join(
             DIM_COLUMNS + ["value", "n", "n_censored", "n_not_detected", "n_places", "built_from", "spec_version"]
         )
@@ -477,16 +480,11 @@ def build_cube(
         # （C-3）。ここで失敗すれば staged_table が作業用テーブルを破棄し、
         # 前回の observation_agg がそのまま残る（A-1）。
         _assert_dimension_key_unique(conn, staging)
-
-    # 段階間の指紋（Issue #37 #1）: b05 が「今の observation_agg から作った
-    # v1_projection.sqlite か」を検証できるよう、確定した observation_agg の
-    # 内容と系譜（消費した observation の指紋）を記録する（コードレビュー
-    # 指摘: 系譜が無いと「observation_agg 自身は無傷だが、古い observation
-    # から作られたまま」という壊れ方を下流が検出できない）。
-    common.record_stage_fingerprint(
-        conn, "observation_agg", inputs={"observation": observation_fingerprint},
-    )
-    conn.commit()
+    # ここまで来たら staged_table が観測差し替えと同じトランザクションで
+    # observation_agg の指紋・系譜（消費した observation の指紋）も記録済み
+    # （Issue #37 #1・/code-review 指摘の根本対応。「内容は新しいが指紋は
+    # 古い」状態を作れなくする）。b05 はこの指紋を見て「今の observation_agg
+    # から作った v1_projection.sqlite か」を検証する。
 
     return {
         "n_day": n_day,

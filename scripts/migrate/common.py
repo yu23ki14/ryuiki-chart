@@ -202,10 +202,26 @@ def _staging_table_name(table: str) -> str:
 
 
 @contextlib.contextmanager
-def staged_table(conn: sqlite3.Connection, table: str, create_sql: str, params=()):
+def staged_table(
+    conn: sqlite3.Connection, table: str, create_sql: str, params=(), *,
+    fingerprint_inputs: dict[str, str] | None = None,
+):
     """`table`（`observation`/`observation_agg` のような本番テーブル）を
     「作業用テーブルに作る → 呼び出し側が全部挿入・検証する → 本番名に差し替える」
     の手順で作り直す（A-1）。
+
+    `fingerprint_inputs`（Issue #37 #1・/code-review 指摘の根本対応）:
+    `None`（既定）なら今までどおり指紋の記録はしない（呼び出し側が `with`
+    ブロックの外で別途 `record_stage_fingerprint()` を呼ぶ設計のまま）。
+    **辞書（空 `{}` でもよい）を渡すと、差し替え（DROP+RENAME）と同じ明示
+    トランザクション内で `record_stage_fingerprint(conn, table,
+    inputs=fingerprint_inputs)` も実行し、1つの `conn.commit()` で確定する**
+    ——「表の差し替えのコミットと指紋の記録が別コミットなので、その間で
+    プロセスが落ちると『内容は新しいが指紋は古い（前回のまま）』状態が
+    残ってしまう」という穴（/code-review 指摘）をこれで塞ぐ。差し替えの
+    DDL と指紋の記録がどちらも成功しないとコミットされない（片方が失敗
+    すればロールバックで本番テーブルも元に戻る——`with` ブロック内の検証
+    失敗時と同じ「本番はそのまま」を保つ）。
 
     以前の b03/b04 は `replace_table`（DROP+CREATE、本番名に対して実行）を検証
     より先に呼んでいた。`dest.commit()` を出典ごと・ステップごとに呼んでいた
@@ -288,8 +304,12 @@ def staged_table(conn: sqlite3.Connection, table: str, create_sql: str, params=(
     try:
         conn.execute(f'DROP TABLE IF EXISTS "{table}"')
         conn.execute(f'ALTER TABLE "{staging}" RENAME TO "{table}"')
+        if fingerprint_inputs is not None:
+            # 差し替えと同じトランザクション内で指紋も記録する（上の
+            # docstring 参照）。RENAME 直後なので `table` は既に本番名。
+            record_stage_fingerprint(conn, table, inputs=fingerprint_inputs)
     except BaseException:
-        conn.rollback()  # 本番テーブルを元に戻す（DROP をまだ確定していない）
+        conn.rollback()  # 本番テーブル（と指紋）を元に戻す（まだ確定していない）
         conn.execute(f'DROP TABLE IF EXISTS "{staging}"')  # 作業用テーブルも残さない
         conn.commit()
         raise
@@ -602,6 +622,15 @@ def count_grouped_totals_mismatches(
 #   ここでは「上流の自己申告どうしが食い違っていないか」だけを確かめれば
 #   十分——実測は `docs/plans/PHASE_B_FACT_SLICE.md` 該当項目参照（(a) の
 #   全件走査だけがコストで、(b) は無視できる）。
+# - **(b) は再帰的に上流の上流もたどる**（/code-review 指摘: 1段しか遡らない
+#   と「2段以上前の入力から古いまま作られている」を見逃す——例: b03 だけ
+#   別内容で作り直し、b04・b05 を忘れて b11 を実行すると、`site_var` が記録
+#   した `observation_agg` の指紋は、まだ作り直されていない `observation_agg`
+#   自身の自己申告とは一致してしまうため、1段だけの比較では通ってしまう）。
+#   `_assert_lineage_fresh` が `inputs` を辿りながら、各上流の `inputs` を
+#   さらに辿る——`visited` 集合で同じノードを2度たどらない。各段は安い参照
+#   （上流の生データは読まない）のままなので、チェーンが何段あってもコストは
+#   ほぼ変わらない。
 # - 系譜の上流テーブルがどの schema にあるかは `upstream_schemas`
 #   （`{上流テーブル名: schema}`。未指定のキーは `table` と同じ schema と
 #   みなす）で呼び出し側が指定する。`upstream_schemas=None` を渡すと (b) 自体を
@@ -769,30 +798,38 @@ def assert_stage_fingerprint_fresh(
 
     (a) `table` の現在の内容が、`table` 自身が最後に記録した指紋と一致するか
         （フルスキャン。以前からの検証）。
-    (b) `table` が記録した系譜（`inputs`、`record_stage_fingerprint` 参照）の
-        各上流について、**上流テーブル自身が今記録している自己指紋**
-        （生データは読まない安い参照）と、`inputs` に記録された消費時点の値が
-        一致するか——上流が `table` の構築後に作り直されたのに `table` が
-        再構築されていない、というコードレビュー指摘の穴を塞ぐ。
+    (b) `table` が記録した系譜（`inputs`、`record_stage_fingerprint` 参照）を
+        **再帰的に**たどり、途中のどの上流についても「上流テーブル自身が今
+        記録している自己指紋」（生データは読まない安い参照）と、その下流が
+        消費時点に記録した値が一致するかを確認する（`_assert_lineage_fresh`）
+        ——上流が `table` の構築後に作り直されたのに `table` が再構築されて
+        いない、という穴を塞ぐ。**1段だけでなく系譜の系譜も辿る**——/code-review
+        指摘: 1段しか遡らないと「2段以上前の入力から古いまま作られている」
+        （例: b03 だけ作り直し、b04・b05 を忘れて b11 を実行）を見逃す。
         `upstream_schemas`（`{上流テーブル名: schema}`）で上流テーブルの
-        居場所を指定する（未指定のキーは `table` と同じ `schema`——同一
-        ファイル内で完結する対はこれで足りる）。**`upstream_schemas` が
-        `None` なら (b) 自体を行わない**——上流ファイルを呼び出し側が
+        居場所を指定する（未指定のキーは、その上流を記録した段と同じ
+        `schema`——同一ファイル内で完結する対はこれで足りる）。**`upstream_schemas`
+        が `None` なら (b) 自体を行わない**——上流ファイルを呼び出し側が
         開いていない等の理由で検証範囲外にした場合に明示的に使う（各
         呼び出し箇所のコメントに理由を書くこと）。`inputs` が空（系譜が
-        無い基底テーブル）なら `upstream_schemas` を渡していても何もしない。
+        無い基底テーブル、またはチェーンの末端）なら、そこで再帰は自然に
+        止まる。
 
     以下のいずれでも `MigrationError` で止まる（`rebuild_hint` に案内する
-    再実行手順を続ける）:
+    再実行手順を続ける——系譜の途中で見つかった食い違いも同じ `rebuild_hint`
+    を使う。呼び出し側は「このチェーン全体を作り直す正しい手順」を渡すこと
+    〔例: b11 の `site_var` チェックなら「b04 の後に b05 を再実行すること」
+    ——実際に古かったのが `observation`↔`observation_agg` の1段目でも
+    `observation_agg`↔`site_var` の2段目でも、この手順で直る〕）:
     - `pipeline_fingerprint` メタ表自体が無い（この機構が入る前に作られた
       出力、または指紋を記録する前にプロセスが落ちた壊れた出力）。
     - `table_name` の行が無い、または (a) 記録済みの指紋と現在の指紋が
       食い違う（このテーブルが作り直された後、それを消費する側の再実行が
       漏れている疑いがある）。
-    - (b) 系譜上の上流の自己指紋が見つからない（上流に指紋の記録が無い、
-      または `upstream_schemas` の指定先が ATTACH されていない）、または
-      系譜に記録した消費時点の値と食い違う（上流が作り直された後、`table`
-      の再構築が行われていない疑いがある）。
+    - (b) 系譜上のどこかの上流の自己指紋が見つからない（上流に指紋の記録が
+      無い、または `upstream_schemas` の指定先が ATTACH されていない）、
+      または系譜に記録した消費時点の値と食い違う（その上流が作り直された
+      後、その下流の再構築が行われていない疑いがある）。
     """
     meta_prefix = f"{schema}." if schema else ""
     master = f"{schema}.sqlite_master" if schema else "sqlite_master"
@@ -821,21 +858,50 @@ def assert_stage_fingerprint_fresh(
 
     if upstream_schemas is not None:
         inputs = json.loads(inputs_json) if inputs_json else {}
-        for upstream_table, consumed_fp in inputs.items():
-            upstream_schema = upstream_schemas.get(upstream_table, schema)
-            upstream_current = read_recorded_fingerprint(conn, upstream_table, schema=upstream_schema)
-            if upstream_current is None:
-                where = f"（schema={upstream_schema}）" if upstream_schema else ""
-                raise MigrationError(
-                    f"{qualified} の系譜（inputs）に記録された上流 {upstream_table}{where} 自身の"
-                    "指紋が見つからない（ATTACH されていない、または指紋がまだ記録されていない）。"
-                    + rebuild_hint
-                )
-            if upstream_current != consumed_fp:
-                raise MigrationError(
-                    f"{qualified} は上流 {upstream_table} の指紋 {consumed_fp} を消費した状態のまま"
-                    f"だが、{upstream_table} は現在 {upstream_current} を自己申告している"
-                    f"（{upstream_table} が作り直された後、{table} の再構築が行われていない可能性が"
-                    "ある）。" + rebuild_hint
-                )
+        _assert_lineage_fresh(
+            conn, qualified, inputs, schema, upstream_schemas, rebuild_hint, visited={(schema, table)},
+        )
     return current
+
+
+def _assert_lineage_fresh(
+    conn: sqlite3.Connection, current_qualified: str, inputs: dict[str, str], current_schema: str | None,
+    upstream_schemas: dict[str, str], rebuild_hint: str, visited: set[tuple[str | None, str]],
+) -> None:
+    """`current_qualified`（`inputs` を記録したテーブルの表示用の名前）が
+    記録した系譜 `inputs` の各上流について (b) を確認し、**上流自身の系譜も
+    再帰的にたどる**（`assert_stage_fingerprint_fresh` の docstring 参照。
+    /code-review 指摘: 1段しか遡らないと2段以上前の入力の古さを見逃す）。
+
+    上流の生データは一切読まない——`read_recorded_fingerprint`/
+    `read_recorded_inputs` がそれぞれ上流自身の `pipeline_fingerprint` 行を
+    読むだけの安い参照。`visited`（`(schema, table)` の集合）で同じノードを
+    2度たどらない（多重参照での重複チェックを避ける。循環は本来起きない
+    はずだが、`visited` があるので万一あっても無限再帰しない）。
+    """
+    for upstream_table, consumed_fp in inputs.items():
+        upstream_schema = upstream_schemas.get(upstream_table, current_schema)
+        key = (upstream_schema, upstream_table)
+        qualified_upstream = f"{upstream_schema}.{upstream_table}" if upstream_schema else upstream_table
+        upstream_current = read_recorded_fingerprint(conn, upstream_table, schema=upstream_schema)
+        if upstream_current is None:
+            raise MigrationError(
+                f"{current_qualified} の系譜（inputs）に記録された上流 {qualified_upstream} 自身の"
+                "指紋が見つからない（ATTACH されていない、または指紋がまだ記録されていない）。"
+                + rebuild_hint
+            )
+        if upstream_current != consumed_fp:
+            raise MigrationError(
+                f"{current_qualified} は上流 {qualified_upstream} の指紋 {consumed_fp} を消費した"
+                f"状態のままだが、{qualified_upstream} は現在 {upstream_current} を自己申告している"
+                f"（{qualified_upstream} が作り直された後、{current_qualified} 以降の再構築が"
+                "行われていない可能性がある）。" + rebuild_hint
+            )
+        if key in visited:
+            continue
+        visited.add(key)
+        upstream_inputs = read_recorded_inputs(conn, upstream_table, schema=upstream_schema)
+        if upstream_inputs:
+            _assert_lineage_fresh(
+                conn, qualified_upstream, upstream_inputs, upstream_schema, upstream_schemas, rebuild_hint, visited,
+            )

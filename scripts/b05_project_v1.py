@@ -763,6 +763,23 @@ def build_projections(
             rebuild_hint="scripts/b04_build_cube.py を再実行すること。",
             upstream_schemas={"observation": "cube"},
         )
+        # 段階間の指紋（Issue #37 #1。/code-review 指摘の穴埋め）: b05 は
+        # `observation_agg` だけでなく `cube.observation` 自体も直接読む
+        # （`_unit_lookup_sql`——meas_daily/meas_month/meas_year 等の unit_raw
+        # 逆引き——と `_label25_obs_keyed_sql`——sensor_daily/rain_daily/
+        # sensor_hour_month が使う `label25_obs_keyed`）。上の
+        # `observation_agg` の (b) は「`observation_agg` が消費した時点の
+        # observation の指紋」と「observation 自身の今の自己申告」を比べる
+        # だけで、**observation 自身の現在のバイト列**は見ていない
+        # （b03 の `staged_table` の差し替えと `record_stage_fingerprint`
+        # が同じトランザクションになった今も、原理上は別の経路で
+        # `observation` が直接改変される可能性が残るため、b05 が実際に
+        # 読む対象には独立した (a) を掛ける）。`observation` は基底テーブル
+        # （系譜を持たない）なので `upstream_schemas` は渡さない。
+        common.assert_stage_fingerprint_fresh(
+            work, "observation", schema="cube",
+            rebuild_hint="scripts/b03_build_observation.py を再実行すること。",
+        )
         assert_alias_is_function(work, "measurements")
         # b05 が実際に消費する grain（B-6: `_SENSOR_ALIAS_GRAINS`。
         # day_keyed の input_grain 範囲と label25_obs_keyed の value_grain
@@ -862,27 +879,45 @@ _CREATE_SQL = {
 }
 
 
+
+# `landuse_watershed`/`landuse_change`（P-1b）は `cube.observation_agg`
+# （`obs_agg_keyed`）だけから作る——`cube.observation` を直接読む
+# `_unit_lookup_sql`/`_label25_obs_keyed_sql` はどちらも通らない（`unit`
+# 列自体を持たない。CLAUDE.md の CREATE 文参照）。残り11テーブルは
+# `unit_lookup`/`sensor_unit_lookup`（`_unit_lookup_sql` 経由）または
+# `label25_obs_keyed`（`_label25_obs_keyed_sql` 経由）のどちらかを介して
+# `cube.observation` の内容に依存するため、系譜に `observation` も含める
+# （/code-review 指摘: 直接読んでいるのに inputs に入っていなかった穴）。
+_TABLES_WITHOUT_OBSERVATION_DEPENDENCY = frozenset({"landuse_watershed", "landuse_change"})
+
+
 def write_projections(
     projections: dict[str, tuple[list[str], list[tuple]]], out_path, cube_db=None,
 ) -> None:
     """13テーブルを書き、それぞれの指紋を記録する（Issue #37 #1）。
 
-    `cube_db`（`build_projections()` が既に新鮮さを確認済みの、`observation_agg`
-    を持つ v2.sqlite）を渡すと、`observation_agg` 自身の**自己指紋**（生データは
-    読み直さない安い参照。`common.read_recorded_fingerprint`）を読み、13
-    テーブル全ての系譜（`inputs={"observation_agg": ...}`）に記録する——b11 が
-    `site_var`/`landuse_watershed` を読む前に「今の observation_agg から
-    作られたものか」を確かめられるようにするため（コードレビュー指摘: 系譜が
-    無いと、b04 は再実行されたのに b05 が再実行されていない壊れ方を b11 が
-    検出できない）。`cube_db` を省略した場合は系譜を記録しない
-    （`build_projections()` を経由しない単体呼び出し用——`main()` は常に渡す）。
+    `cube_db`（`build_projections()` が既に新鮮さを確認済みの、`observation`/
+    `observation_agg` を持つ v2.sqlite）を渡すと、両テーブルの**自己指紋**
+    （生データは読み直さない安い参照。`common.read_recorded_fingerprint`）を
+    読み、13テーブルの系譜に記録する——b11 が `site_var`/`landuse_watershed`
+    を読む前に「今の observation_agg（さらにその系譜を辿って observation）
+    から作られたものか」を確かめられるようにするため（コードレビュー指摘:
+    系譜が無いと、b04 は再実行されたのに b05 が再実行されていない壊れ方を
+    b11 が検出できない）。`observation` は `landuse_watershed`/
+    `landuse_change` 以外の11テーブルの系譜にだけ加える
+    （`_TABLES_WITHOUT_OBSERVATION_DEPENDENCY` 参照——この2つは
+    `observation_agg` だけから作るため）。`cube_db` を省略した場合は系譜を
+    記録しない（`build_projections()` を経由しない単体呼び出し用——`main()`
+    は常に渡す）。
     """
     agg_fingerprint = None
+    obs_fingerprint = None
     conn = common.fresh_sqlite(out_path)
     try:
         if cube_db is not None:
             common.attach_readonly(conn, cube_db, "cube")
             agg_fingerprint = common.read_recorded_fingerprint(conn, "observation_agg", schema="cube")
+            obs_fingerprint = common.read_recorded_fingerprint(conn, "observation", schema="cube")
         for table, (columns, rows) in projections.items():
             conn.execute(_CREATE_SQL[table])
             placeholders = ", ".join("?" for _ in columns)
@@ -890,8 +925,14 @@ def write_projections(
         # 段階間の指紋（Issue #37 #1）: 全段の出力に指紋を持たせる方針どおり、
         # 13テーブル全てに記録する（b11 が site_var/landuse_watershed を読む前に
         # 検証する）。
-        inputs = {"observation_agg": agg_fingerprint} if agg_fingerprint else None
+        inputs_with_obs = None
+        if agg_fingerprint:
+            inputs_with_obs = {"observation_agg": agg_fingerprint}
+            if obs_fingerprint:
+                inputs_with_obs["observation"] = obs_fingerprint
+        inputs_without_obs = {"observation_agg": agg_fingerprint} if agg_fingerprint else None
         for table in projections:
+            inputs = inputs_without_obs if table in _TABLES_WITHOUT_OBSERVATION_DEPENDENCY else inputs_with_obs
             common.record_stage_fingerprint(conn, table, inputs=inputs)
         conn.commit()
     finally:

@@ -508,7 +508,10 @@ def build_cube(
     _assert_t1_invariant(conn)
     params = (built_from, spec_version)
 
-    with common.staged_table(conn, "occurrence_agg", _CREATE_OCCURRENCE_AGG_SQL) as staging:
+    with common.staged_table(
+        conn, "occurrence_agg", _CREATE_OCCURRENCE_AGG_SQL,
+        fingerprint_inputs={"occurrence": occurrence_fingerprint},
+    ) as staging:
         insert_cols = ", ".join(_INSERT_COLUMNS)
         insert_sql = f'INSERT INTO "{staging}" ({insert_cols}) '
 
@@ -523,16 +526,13 @@ def build_cube(
             conn.execute(f'DROP TABLE IF EXISTS "{l2_series_table}"')
         _assert_cube_partition_and_shape(conn, staging, leaf_expected, n_dated_by_place_kind, declarations_yaml)
         _assert_dimension_key_unique(conn, staging)
-
-    # 段階間の指紋（Issue #37 #1）: b08 の既存チェック
+    # ここまで来たら staged_table が差し替えと同じトランザクションで
+    # occurrence_agg の指紋・系譜（消費した occurrence の指紋）も記録済み
+    # （Issue #37 #1・/code-review 指摘の根本対応）。b08 の既存チェック
     # （`_assert_cube_is_current_l2_partition`）が occurrence_agg 自体の集計
-    # 正しさを検証するため、ここでの記録は他段（将来 occurrence_agg を読む
-    # かもしれない別スクリプト）向けの一貫性維持——「全段の出力に指紋を持たせる」
-    # 方針どおり記録する（系譜＝消費した occurrence の指紋も記録する）。
-    common.record_stage_fingerprint(
-        conn, "occurrence_agg", inputs={"occurrence": occurrence_fingerprint},
-    )
-    conn.commit()
+    # 正しさを検証するため、この指紋自体は他段（将来 occurrence_agg を読む
+    # かもしれない別スクリプト）向けの一貫性維持——「全段の出力に指紋を
+    # 持たせる」方針どおり記録している。
 
     n_dated_grid01 = n_dated_by_place_kind.get("grid01", 0)
     return {

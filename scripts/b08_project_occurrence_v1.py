@@ -1115,7 +1115,7 @@ GROUP BY binom, month
 
 
 def _build_cube_projections(
-    conn, default_taxon_group: str, *, check_stale_taxon: bool = True,
+    conn, default_taxon_group: str, *, check_stale_taxon: bool = True, check_occurrence_fingerprint: bool = True,
 ) -> dict[str, int]:
     """`conn`（`cube`/`reg` を ATTACH 済みの書き込み用接続）に、年キー8表と
     `species_month` を作る。`species2` を先に作り終えてから
@@ -1129,8 +1129,24 @@ def _build_cube_projections(
     （モジュール docstring 参照）。単独で年キー8表だけを作る
     `build_occurrence_cube_projections` は既定（`True`）のまま呼ぶ。
 
+    `check_occurrence_fingerprint=False`（`build_all_projections` が渡す）も
+    同じ理由——`species2.en_name`/`red_list_category`・`species_month` は
+    `l2_taxon_enriched`（`cube.occurrence` を直接読む。`_L2_TAXON_ENRICHED_SQL`）
+    経由で `cube.occurrence` に依存するが（/code-review 指摘: 消費側が
+    読んでいるのに検証していない見落としの洗い出しで見つかった）、
+    `build_all_projections` では直前に `_build_org_norm` が
+    `_assert_occurrence_fingerprint_fresh`（(a) の全件走査）を既に済ませて
+    いるため、ここで同じ約82万行を二重に走査しない。単独の
+    `build_occurrence_cube_projections` は既定（`True`）のまま呼ぶ
+    ——`_assert_cube_is_current_l2_partition` は `occurrence_agg` が
+    `occurrence` の忠実な分割であることは検証するが、`occurrence` 自身の
+    内容がその自己申告した指紋と一致するか（(a)）までは見ないため、これが
+    無いと同じ穴が残る。
+
     戻り値はテーブルごとの行数。
     """
+    if check_occurrence_fingerprint:
+        _assert_occurrence_fingerprint_fresh(conn)
     _assert_cube_is_current_l2_partition(conn)
     if check_stale_taxon:
         _assert_no_stale_taxon_ids(conn, "cube.occurrence_agg", "occurrence_agg")
@@ -1787,7 +1803,9 @@ def build_all_projections(
         common.attach_readonly(conn, cube_db, "cube")
         common.attach_readonly(conn, registry_db, "reg")
         n_org_norm, occurrence_fingerprint = _build_org_norm(conn, default_taxon_group)
-        counts = _build_cube_projections(conn, default_taxon_group, check_stale_taxon=False)
+        counts = _build_cube_projections(
+            conn, default_taxon_group, check_stale_taxon=False, check_occurrence_fingerprint=False,
+        )
         watershed_table_counts, watershed_diagnostics, occ_fp, place_fp = _build_watershed(
             conn, watershed_declarations_yaml,
         )

@@ -1203,3 +1203,40 @@ def test_build_projections_halts_when_observation_rebuilt_without_rerunning_b04(
 
     with pytest.raises(common.MigrationError, match=r"scripts/b04_build_cube\.py を再実行すること"):
         b05.build_projections(v2_db, registry_db)
+
+
+def test_build_projections_halts_when_observation_tampered_without_updating_its_own_fingerprint(tmp_path):
+    """**/code-review 指摘の穴そのものの再現**（b05 が `cube.observation` を
+    直接読んでいるのに検証していなかった）: `observation`（`_unit_lookup_sql`/
+    `_label25_obs_keyed_sql` 経由で meas_daily 等・sensor_daily 等が直接読む）
+    の内容だけを、自己指紋を更新せずに書き換える（`observation_agg` には
+    一切触れない——`observation_agg` 自身の内容・系譜はどちらも無傷）。
+
+    この改変は `observation_agg` の系譜チェック（(b)、observation_agg が
+    消費した時点の observation 指紋と、observation 自身の**自己申告**を
+    比べるだけ）では検出できない——observation は自己申告を更新していない
+    （＝自己申告はまだ元のまま）ため、(b) は一致してしまう。`observation`
+    自身に対する独立した (a)（現在のバイト列そのものを自己申告と比べる
+    フルスキャン）があって初めて検出できる。
+    """
+    measurements_db = tmp_path / "ryuiki.sqlite"
+    registry_db = tmp_path / "registry.sqlite"
+    make_measurements_db(
+        measurements_db,
+        rows=[("m1", "S1", "2020-01-01", "BOD", "src_a", 1.0, "1.0", "mg/L", "公開済", 0, "ref1", "ev1")],
+    )
+    make_registry_db(registry_db)
+
+    v2_db, _ = _run_b03_b04(measurements_db, registry_db, tmp_path)
+
+    # observation の内容だけを直接改変する（自己指紋は更新しない——
+    # b03の staged_table の差し替えと record_stage_fingerprint が同じ
+    # トランザクションでコミットされるようになった後でも、原理上はこの
+    # ような直接改変が起こりうるので、b05 側の独立した (a) で塞ぐ）。
+    conn = sqlite3.connect(str(v2_db))
+    conn.execute("UPDATE observation SET value_num = 999.0 WHERE source_row_id = 'm1'")
+    conn.commit()
+    conn.close()
+
+    with pytest.raises(common.MigrationError, match=r"scripts/b03_build_observation\.py を再実行すること"):
+        b05.build_projections(v2_db, registry_db)
