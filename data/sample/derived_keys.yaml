@@ -1,0 +1,107 @@
+# scripts/s01_build_sample.py が reports/derived_baseline.json（原本由来。正）から
+# 生成した、サンプル用の宣言的キー（Issue #29 A-3）。手で編集しない。
+#
+# サンプルでは行数が少なく、全量とは別の（より短い）列の組み合わせでも偶然一意に
+# なりうる。scripts/reconcile/common.derive_key の自動探索に任せず、全量ベース
+# ラインが実際に使ったキーをそのまま強制することで、サンプルの b01 が全量と
+# 違うキーで指紋を計算してしまう事故を防ぐ。
+
+doc_series:
+  key: ["doc_id", "table_id", "row_key", "fiscal_year"]
+  reason: "sample: 全量ベースライン（reports/derived_baseline.json）の自動導出キーをそのまま宣言化。サンプルでは行数が少ないため、探索A/Bに任せると別の短い組み合わせで偶然一意になりうる。"
+doc_series_meta:
+  key: ["doc_id", "table_id", "row_key"]
+  reason: "sample: 全量ベースライン（reports/derived_baseline.json）の自動導出キーをそのまま宣言化。サンプルでは行数が少ないため、探索A/Bに任せると別の短い組み合わせで偶然一意になりうる。"
+effort_year:
+  key: ["year"]
+  reason: "sample: 全量ベースライン（reports/derived_baseline.json）の自動導出キーをそのまま宣言化。サンプルでは行数が少ないため、探索A/Bに任せると別の短い組み合わせで偶然一意になりうる。"
+ias_species:
+  key: ["ias_category", "binom"]
+  reason: "sample: 全量ベースライン（reports/derived_baseline.json）の自動導出キーをそのまま宣言化。サンプルでは行数が少ないため、探索A/Bに任せると別の短い組み合わせで偶然一意になりうる。"
+landuse_change:
+  key: ["watershed_id", "landuse_name"]
+  reason: "sample: 全量ベースライン（reports/derived_baseline.json）の自動導出キーをそのまま宣言化。サンプルでは行数が少ないため、探索A/Bに任せると別の短い組み合わせで偶然一意になりうる。"
+landuse_watershed:
+  key: ["watershed_id", "landuse_code"]
+  reason: "sample: 全量ベースライン（reports/derived_baseline.json）の自動導出キーをそのまま宣言化。サンプルでは行数が少ないため、探索A/Bに任せると別の短い組み合わせで偶然一意になりうる。"
+meas_clim:
+  key: ["variable", "month"]
+  reason: "sample: 全量ベースライン（reports/derived_baseline.json）の自動導出キーをそのまま宣言化。サンプルでは行数が少ないため、探索A/Bに任せると別の短い組み合わせで偶然一意になりうる。"
+meas_daily:
+  key: ["site_id", "variable", "d"]
+  reason: "sample: 全量ベースライン（reports/derived_baseline.json）の自動導出キーをそのまま宣言化。サンプルでは行数が少ないため、探索A/Bに任せると別の短い組み合わせで偶然一意になりうる。"
+meas_month:
+  key: ["site_id", "variable", "year", "month"]
+  reason: "sample: 全量ベースライン（reports/derived_baseline.json）の自動導出キーをそのまま宣言化。サンプルでは行数が少ないため、探索A/Bに任せると別の短い組み合わせで偶然一意になりうる。"
+meas_year:
+  key: ["site_id", "variable", "year", "kind"]
+  reason: "sample: 全量ベースライン（reports/derived_baseline.json）の自動導出キーをそのまま宣言化。サンプルでは行数が少ないため、探索A/Bに任せると別の短い組み合わせで偶然一意になりうる。"
+mesh_all:
+  key: ["mlat", "mlon"]
+  reason: "sample: 全量ベースライン（reports/derived_baseline.json）の自動導出キーをそのまま宣言化。サンプルでは行数が少ないため、探索A/Bに任せると別の短い組み合わせで偶然一意になりうる。"
+mesh_species:
+  key: ["mlat", "mlon"]
+  reason: "sample: 全量ベースライン（reports/derived_baseline.json）の自動導出キーをそのまま宣言化。サンプルでは行数が少ないため、探索A/Bに任せると別の短い組み合わせで偶然一意になりうる。"
+mesh_year:
+  key: ["mlat", "mlon", "year"]
+  reason: "sample: 全量ベースライン（reports/derived_baseline.json）の自動導出キーをそのまま宣言化。サンプルでは行数が少ないため、探索A/Bに任せると別の短い組み合わせで偶然一意になりうる。"
+org_group_year:
+  key: ["year", "source_id", "taxon_group"]
+  reason: "sample: 全量ベースライン（reports/derived_baseline.json）の自動導出キーをそのまま宣言化。サンプルでは行数が少ないため、探索A/Bに任せると別の短い組み合わせで偶然一意になりうる。"
+org_norm:
+  key: ["record_id"]
+  reason: "sample: 全量ベースライン（reports/derived_baseline.json）の自動導出キーをそのまま宣言化。サンプルでは行数が少ないため、探索A/Bに任せると別の短い組み合わせで偶然一意になりうる。"
+org_watershed:
+  key: ["watershed_id"]
+  reason: "sample: 全量ベースライン（reports/derived_baseline.json）の自動導出キーをそのまま宣言化。サンプルでは行数が少ないため、探索A/Bに任せると別の短い組み合わせで偶然一意になりうる。"
+org_watershed_year:
+  key: ["watershed_id", "year"]
+  reason: "sample: 全量ベースライン（reports/derived_baseline.json）の自動導出キーをそのまま宣言化。サンプルでは行数が少ないため、探索A/Bに任せると別の短い組み合わせで偶然一意になりうる。"
+quality_monthly:
+  key: ["ym"]
+  reason: "sample: 全量ベースライン（reports/derived_baseline.json）の自動導出キーをそのまま宣言化。サンプルでは行数が少ないため、探索A/Bに任せると別の短い組み合わせで偶然一意になりうる。"
+rain_daily:
+  key: ["d"]
+  reason: "sample: 全量ベースライン（reports/derived_baseline.json）の自動導出キーをそのまま宣言化。サンプルでは行数が少ないため、探索A/Bに任せると別の短い組み合わせで偶然一意になりうる。"
+redlist_change:
+  key: ["assessment_id"]
+  reason: "sample: 全量ベースライン（reports/derived_baseline.json）の自動導出キーをそのまま宣言化。サンプルでは行数が少ないため、探索A/Bに任せると別の短い組み合わせで偶然一意になりうる。"
+redlist_map:
+  key: ["raw"]
+  reason: "sample: 全量ベースライン（reports/derived_baseline.json）の自動導出キーをそのまま宣言化。サンプルでは行数が少ないため、探索A/Bに任せると別の短い組み合わせで偶然一意になりうる。"
+sensor_daily:
+  key: ["site_id", "datastream", "d"]
+  reason: "sample: 全量ベースライン（reports/derived_baseline.json）の自動導出キーをそのまま宣言化。サンプルでは行数が少ないため、探索A/Bに任せると別の短い組み合わせで偶然一意になりうる。"
+sensor_hour_month:
+  key: ["datastream", "month", "hour"]
+  reason: "sample: 全量ベースライン（reports/derived_baseline.json）の自動導出キーをそのまま宣言化。サンプルでは行数が少ないため、探索A/Bに任せると別の短い組み合わせで偶然一意になりうる。"
+site_var:
+  key: ["site_id", "variable", "kind"]
+  reason: "sample: 全量ベースライン（reports/derived_baseline.json）の自動導出キーをそのまま宣言化。サンプルでは行数が少ないため、探索A/Bに任せると別の短い組み合わせで偶然一意になりうる。"
+species2:
+  key: ["binom"]
+  reason: "sample: 全量ベースライン（reports/derived_baseline.json）の自動導出キーをそのまま宣言化。サンプルでは行数が少ないため、探索A/Bに任せると別の短い組み合わせで偶然一意になりうる。"
+species_mesh_year:
+  key: ["year", "mlat", "mlon", "binom"]
+  reason: "sample: 全量ベースライン（reports/derived_baseline.json）の自動導出キーをそのまま宣言化。サンプルでは行数が少ないため、探索A/Bに任せると別の短い組み合わせで偶然一意になりうる。"
+species_month:
+  key: ["binom", "month"]
+  reason: "sample: 全量ベースライン（reports/derived_baseline.json）の自動導出キーをそのまま宣言化。サンプルでは行数が少ないため、探索A/Bに任せると別の短い組み合わせで偶然一意になりうる。"
+species_year2:
+  key: ["year", "binom"]
+  reason: "sample: 全量ベースライン（reports/derived_baseline.json）の自動導出キーをそのまま宣言化。サンプルでは行数が少ないため、探索A/Bに任せると別の短い組み合わせで偶然一意になりうる。"
+var_catalog:
+  key: ["variable"]
+  reason: "sample: 全量ベースライン（reports/derived_baseline.json）の自動導出キーをそのまま宣言化。サンプルでは行数が少ないため、探索A/Bに任せると別の短い組み合わせで偶然一意になりうる。"
+watershed_meta:
+  key: ["watershed_id"]
+  reason: "sample: 全量ベースライン（reports/derived_baseline.json）の自動導出キーをそのまま宣言化。サンプルでは行数が少ないため、探索A/Bに任せると別の短い組み合わせで偶然一意になりうる。"
+watershed_rollup:
+  key: ["watershed_id"]
+  reason: "sample: 全量ベースライン（reports/derived_baseline.json）の自動導出キーをそのまま宣言化。サンプルでは行数が少ないため、探索A/Bに任せると別の短い組み合わせで偶然一意になりうる。"
+zone_clim:
+  key: ["zone", "variable", "month"]
+  reason: "sample: 全量ベースライン（reports/derived_baseline.json）の自動導出キーをそのまま宣言化。サンプルでは行数が少ないため、探索A/Bに任せると別の短い組み合わせで偶然一意になりうる。"
+zone_year:
+  key: ["zone", "variable", "year", "kind"]
+  reason: "sample: 全量ベースライン（reports/derived_baseline.json）の自動導出キーをそのまま宣言化。サンプルでは行数が少ないため、探索A/Bに任せると別の短い組み合わせで偶然一意になりうる。"

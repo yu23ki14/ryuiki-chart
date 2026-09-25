@@ -13,6 +13,11 @@
 data/*
 !data/vocab/
 !data/water/
+# Issue #29「縮小サンプル＋実行証明」の縮小サンプル。scripts/s01_build_sample.py が
+# 書くテキスト（CREATE/INSERT の .sql・coverage.yaml・manifest.json・
+# declaration_counts.yaml・derived_keys.yaml）で、sqlite バイナリは含まない
+# （data/vocab/ と同じ流儀。docs/plans/PHASE_B_RECONCILIATION.md §5）。
+!data/sample/
 
 # ---------------------------------------------------------------
 # Python

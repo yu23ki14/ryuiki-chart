@@ -1,0 +1,356 @@
+# 縮小サンプル（Issue #29「縮小サンプル＋実行証明」A-1）の選択条件の宣言。
+#
+# 何を含めるかはここ（宣言）、どう閉包を取るかはコード（scripts/s01_build_sample.py）が持つ。
+# scripts/s01_build_sample.py はこのファイルを選択条件として使い、
+# scripts/tests/test_sample_coverage.py は検証として使う（各 predicate が
+# 材料化したサンプルで min_rows 以上あること）。同じ宣言から出すので
+# 「入れたつもりが入っていない」が起きない。
+#
+# 対象は v1（web/scripts/build-derived.mjs・build-geo.mjs・build-biota.mjs）と
+# v2（scripts/r01_build_registry.py・scripts/b03〜b12_*.py）が実際に読む表だけに
+# 絞ってある（`grep -oE '\br\.[a-z_]+|\bc\.[a-z_]+' web/scripts/build-{derived,geo,biota}.mjs`
+# で実測: r.measurements/r.sensor_timeseries/r.organism_records/r.sites/r.taxa/
+# r.redlist_assessments/r.quality_transitions/c.cells/c.documents/c.notes の10表）。
+# `data/db/ryuiki.sqlite` の他の19表（decisions・event_observers・events・
+# instruments・interventions・mammal_mesh・observers・protected_areas・
+# protocols・river_segments・source_registry・vegetation_polygons・
+# water_facility・water_flow_edge・water_source・water_source_doc・
+# water_utility・water_zone・water_zone_assignment・water_zone_source_share・
+# wildlife_sightings）は Tier1 API 等 v1/v2 Phase B ゲートの対象外の画面が
+# 使うもので、このゲートの対象（33表の突合）には出てこないためサンプルに
+# 含めない（スコープの意図的な絞り込み。b00_run_full_gate.py が確認する
+# パイプラインのパスにもこれらのテーブルへの依存は無い）。
+#
+# 決定論: 述語＋`ORDER BY rowid`＋固定の上限（`limit`）で選ぶ。乱数は使わない。
+# `limit` を省略した predicate は `default_limit` を使う。`full_closures`/
+# `wholesale_*` に上限は無い（全部入れる）。
+
+version: 1
+default_limit: 20
+
+# ---------------------------------------------------------------------------
+# narrowed テーブル（measurements / sensor_timeseries / organism_records）の
+# 選択条件。`table` + `where`（SQL の WHERE 句、ryuiki.sqlite に対して評価）+
+# `limit`（`ORDER BY rowid LIMIT` の上限）+ `min_rows`（材料化後のサンプルで
+# この predicate の where に一致する行がこれ以上あることをテストで確認する）。
+# ---------------------------------------------------------------------------
+predicates:
+  # --- 定量下限・検出限界の表記（scripts/migrate/censoring.py の全分岐） ---
+  - name: censoring_below_lod_ascii
+    table: measurements
+    where: "value_raw LIKE '<%'"
+    limit: 20
+    min_rows: 20
+  - name: censoring_below_lod_japanese
+    table: measurements
+    where: "value_raw LIKE '%未満'"
+    limit: 20
+    min_rows: 12  # 全量でも12行しか無い（宣言済み差分18キーの由来）。closures.nakatsugawa_ss で全部入る。
+  - name: censoring_not_detected
+    table: measurements
+    where: "value_raw = 'ND'"
+    limit: 20
+    min_rows: 20
+  - name: censoring_above_lod
+    table: measurements
+    where: "value_raw LIKE '>%'"
+    limit: 20
+    min_rows: 20
+
+  # --- 厚木の4桁の measured_on（scripts/migrate/period_exceptions.yaml） ---
+  - name: atsugi_four_digit_measured_on
+    table: measurements
+    where: "source_id = 'atsugi_river_water_quality' AND length(measured_on) = 4"
+    limit: 20
+    min_rows: 20
+
+  # --- 負の値の変数（地下水位・気温） ---
+  - name: negative_value_measurements
+    table: measurements
+    where: "value < 0"
+    limit: 15
+    min_rows: 15
+
+  # --- measurements の source_id 網羅（jiban_chinka/atsugi は上・下の closures/
+  #     predicates で既に入る。残り2つ + NULL を明示的に拾う） ---
+  - name: measurements_source_env_kousui_sample
+    table: measurements
+    where: "source_id = 'env_kousui_sample_kanagawa'"
+    limit: 10
+    min_rows: 10
+  - name: measurements_source_env_kousui_annual
+    table: measurements
+    where: "source_id = 'env_kousui_annual_kanagawa'"
+    limit: 10
+    min_rows: 10
+  - name: measurements_source_null
+    table: measurements
+    where: "source_id IS NULL"
+    limit: 10
+    min_rows: 10
+
+  # --- sensor_timeseries の `+09:00` 付き時刻ラベル（出典ごと。実測:
+  #     phenomenon_time が25桁＝`+09:00`付きなのはこの3出典だけ） ---
+  - name: sensor_timezone_sagamihara
+    table: sensor_timeseries
+    where: "source_id = 'sagamihara_taiki_hourly'"
+    limit: 10
+    min_rows: 10
+  - name: sensor_timezone_soramame
+    table: sensor_timeseries
+    where: "source_id = 'soramame_hourly_kanagawa'"
+    limit: 10
+    min_rows: 10
+  - name: sensor_timezone_synthetic
+    table: sensor_timeseries
+    where: "source_id = 'synthetic_sensor'"
+    limit: 10
+    min_rows: 10
+
+  # --- sensor_timeseries の source_id 網羅（残り4つ） ---
+  - name: sensor_source_hiratsuka
+    table: sensor_timeseries
+    where: "source_id = 'hiratsuka_taiki'"
+    limit: 10
+    min_rows: 10
+  - name: sensor_source_yokohama_waterlevel
+    table: sensor_timeseries
+    where: "source_id = 'yokohama_river_waterlevel'"
+    limit: 10
+    min_rows: 10
+  - name: sensor_source_jma_daily
+    table: sensor_timeseries
+    where: "source_id = 'jma_daily_yokohama'"
+    limit: 10
+    min_rows: 10
+  - name: sensor_source_jma_monthly
+    table: sensor_timeseries
+    where: "source_id = 'jma_monthly_kanagawa'"
+    limit: 10
+    min_rows: 10
+
+  # --- occurrence の12形（scripts/migrate/occurrence_period_shapes.yaml）。
+  #     12形は文字数がすべて異なる（実測: 4/7/9/10/15/16/17/19/20/21/24/35）ため
+  #     length(observed_on) で正確に選べる（分類自体の正は正規表現——コード側
+  #     〔scripts/migrate/occurrence_period.py〕。ここは選択のためだけの近似で、
+  #     実際の形の判定は b06 が正規表現で行う）。 ---
+  - name: occurrence_shape_year
+    table: organism_records
+    where: "length(observed_on) = 4"
+    limit: 10
+    min_rows: 10
+  - name: occurrence_shape_month
+    table: organism_records
+    where: "length(observed_on) = 7"
+    limit: 10
+    min_rows: 10
+  - name: occurrence_shape_year_interval
+    table: organism_records
+    where: "length(observed_on) = 9"
+    limit: 10
+    min_rows: 10
+  - name: occurrence_shape_day
+    table: organism_records
+    where: "length(observed_on) = 10"
+    limit: 15
+    min_rows: 15
+  - name: occurrence_shape_month_interval
+    table: organism_records
+    where: "length(observed_on) = 15"
+    limit: 10
+    min_rows: 10
+  - name: occurrence_shape_instant_minute
+    table: organism_records
+    where: "length(observed_on) = 16"
+    limit: 10
+    min_rows: 10
+  - name: occurrence_shape_instant_minute_z
+    table: organism_records
+    where: "length(observed_on) = 17"
+    limit: 10
+    min_rows: 10
+  - name: occurrence_shape_instant_second
+    table: organism_records
+    where: "length(observed_on) = 19"
+    limit: 10
+    min_rows: 10
+  - name: occurrence_shape_instant_second_z
+    table: organism_records
+    where: "length(observed_on) = 20"
+    limit: 10
+    min_rows: 10
+  - name: occurrence_shape_day_interval
+    table: organism_records
+    where: "length(observed_on) = 21"
+    limit: 10
+    min_rows: 10
+  - name: occurrence_shape_instant_millisecond_z
+    table: organism_records
+    where: "length(observed_on) = 24"
+    limit: 10
+    min_rows: 10
+  - name: occurrence_shape_instant_minute_z_interval
+    table: organism_records
+    where: "length(observed_on) = 35"
+    limit: 10
+    min_rows: 10
+  - name: occurrence_observed_on_null
+    table: organism_records
+    where: "observed_on IS NULL"
+    limit: 10
+    min_rows: 10
+
+  # --- 'Z' 付き observed_on（ADR-0024）: 上の4つの instant_*_z / interval 形の
+  #     predicate の和集合で必ず満たされる（実測: 958+143+800+57=1958=Z件数の
+  #     全量と一致）。個別の predicate は持たず、この事実をテストで確認する。
+
+  # --- 流域外の座標（occurrence_place が NULL になる）。point_in_polygon で
+  #     実測して確認済みの10件（rowid 16-25、全部 inaturalist_kanagawa）。 ---
+  - name: occurrence_outside_all_watersheds
+    table: organism_records
+    where: >
+      record_id IN (
+        'inaturalist_kanagawa__667269', 'inaturalist_kanagawa__1126515',
+        'inaturalist_kanagawa__1126523', 'inaturalist_kanagawa__1126567',
+        'inaturalist_kanagawa__1126635', 'inaturalist_kanagawa__1128158',
+        'inaturalist_kanagawa__1128176', 'inaturalist_kanagawa__1128218',
+        'inaturalist_kanagawa__1130241', 'inaturalist_kanagawa__1130245'
+      )
+    limit: 10
+    min_rows: 10
+
+  # --- O-2a のメモ化の癖が効くバケット（memo_mixed_buckets が1以上になること）。
+  #     0.001度バケット (35.306, 139.482) に3記録あり、うち2件が
+  #     watershed_id='83267-0001' に、1件がどの流域にも入らない（実測。
+  #     scripts/migrate/point_in_polygon.load_polygons/build_grid/locate で
+  #     確認済み）。 ---
+  - name: occurrence_memo_mixed_bucket
+    table: organism_records
+    where: >
+      record_id IN (
+        'inaturalist_kanagawa__2875893', 'inaturalist_kanagawa__319107227',
+        'gbif_kanagawa_occurrences__4766435295'
+      )
+    limit: 3
+    min_rows: 3
+
+  # --- レッドリスト種 ---
+  - name: occurrence_redlist_species
+    table: organism_records
+    where: "red_list_category IS NOT NULL AND red_list_category != ''"
+    limit: 15
+    min_rows: 15
+
+  # --- 除外されない外来種（is_alien=1 かつ除外7種に含まれない） ---
+  - name: occurrence_alien_not_excluded
+    table: organism_records
+    where: >
+      is_alien = 1 AND scientific_name NOT IN (
+        'Nyctereutes procyonoides', 'Plantago asiatica', 'Trypoxylus dichotomus',
+        'Morus australis', 'Apis mellifera', 'Cervus nippon', 'Rumex japonicus'
+      )
+    limit: 15
+    min_rows: 15
+
+  # --- 除外7種（registry/taxon/assessment_scope_exclusions.yaml）の記録。
+  #     Morus australis は実データで0件（除外7種のうち唯一 organism_records に
+  #     現れない——moe_ias_list.csv 側の学名一致のみで、occurrence には出現しない）
+  #     ため、残り6種だけを対象にする。 ---
+  - name: occurrence_excluded_species
+    table: organism_records
+    where: >
+      scientific_name IN (
+        'Nyctereutes procyonoides', 'Plantago asiatica', 'Trypoxylus dichotomus',
+        'Apis mellifera', 'Cervus nippon', 'Rumex japonicus'
+      )
+    limit: 30
+    min_rows: 6
+
+  # --- organism_records の source_id 網羅 ---
+  - name: occurrence_source_gbif
+    table: organism_records
+    where: "source_id = 'gbif_kanagawa_occurrences'"
+    limit: 10
+    min_rows: 10
+  - name: occurrence_source_inaturalist
+    table: organism_records
+    where: "source_id = 'inaturalist_kanagawa'"
+    limit: 10
+    min_rows: 10
+
+# ---------------------------------------------------------------------------
+# 全部入れる「閉包」（宣言済み差分の再現に要るもの、および全量で明示された
+# データ品質の癖）。`limit` は無い（where に一致する全行）。
+# ---------------------------------------------------------------------------
+full_closures:
+  # scripts/reconcile/expected_diffs.yaml の18キー（meas_daily/meas_month/
+  # meas_year/meas_clim/site_var/var_catalog）の由来——
+  # atsugi_river_water_quality の '1未満'（浮遊物質量 SS）12行。全地点・
+  # 全期間の SS を入れることで、meas_clim/var_catalog のような全地点集計も
+  # サンプルで同じ値になる（中津川だけに絞ると全地点集計が一致しなくなる）。
+  - name: nakatsugawa_ss_full_history
+    reason: "expected_diffs.yaml の18キー（measurements/meas_*系6表）の由来を再現するための全地点・全期間閉包"
+    table: measurements
+    where: "variable = '浮遊物質量 SS'"
+  # scripts/reconcile/expected_diffs.yaml の org_norm/species2 の2キーの由来
+  # ——属 Sirosporium の class 多数決タイブレーク。実データでは属の全記録が
+  # 1件だけ（Sirosporium celtidis 自身）。
+  - name: sirosporium_genus_full_records
+    reason: "expected_diffs.yaml の org_norm/species2 の2キーの由来を再現するための属の全記録閉包"
+    table: organism_records
+    where: "genus = 'Sirosporium'"
+  # 地盤沈下の r5/r6 重複（docs/plans/DATA_QUALITY_BACKLOG.md §1）。全3,286行
+  # だけで完結する小さな出典なので、丸ごと入れる。
+  - name: jiban_chinka_full_source
+    reason: "地盤沈下の r5/r6 重複（同じ年の値が2つの報告書年度から重複収集されている）を再現するための出典全体閉包"
+    table: measurements
+    where: "source_id = 'kanagawa_jiban_chinka'"
+
+# ---------------------------------------------------------------------------
+# 文書単位の閉包（cells.sqlite）: `cells` は doc_id で丸ごと入れる。
+# 小さい文書を選び、複数年度（choju_kyugo_jisseki の年次系列）を含めることで
+# doc_series/doc_series_meta の年またぎ集計も検証できるようにした
+# （実測: 7文書で cells 合計286行）。
+# ---------------------------------------------------------------------------
+document_closure:
+  doc_ids:
+    - choju_kyugo_jisseki_2010
+    - choju_kyugo_jisseki_2011
+    - choju_kyugo_jisseki_2012
+    - choju_kyugo_jisseki_2020
+    - choju_kyugo_jisseki_2022
+    - kanagawa_river_monitoring_syokubutu
+    - kanagawa_river_monitoring_anzen
+  min_documents: 7
+
+# ---------------------------------------------------------------------------
+# 丸ごと入れる ryuiki.sqlite のテーブル（十分小さい・v1/v2 が読む）。
+# ---------------------------------------------------------------------------
+wholesale_ryuiki_tables:
+  - sites
+  - taxa
+  - redlist_assessments
+  - quality_transitions
+
+# ---------------------------------------------------------------------------
+# 丸ごと入れる cells.sqlite のテーブル（`cells` 自身は document_closure が
+# 別途扱う。ここは documents/notes/vocab_* の4つ）。
+# ---------------------------------------------------------------------------
+wholesale_cells_tables:
+  - documents
+  - notes
+  - vocab_areas
+  - vocab_eras
+  - vocab_indicators
+  - vocab_units
+
+# ---------------------------------------------------------------------------
+# 丸ごとコピーする data/processed の入力ファイル（v1・v2 のどちらかが読む。
+# W12流域の GeoJSON・JSONL、土地利用CSV、外来種リスト、taxon crosswalk）。
+# ---------------------------------------------------------------------------
+wholesale_processed_files:
+  - nlni_w12_watersheds.geojson
+  - nlni_w12_watersheds.jsonl
+  - nlni_l03b_landuse_by_watershed.csv
+  - moe_ias_list.csv
+  - taxon_crosswalk.csv

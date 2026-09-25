@@ -112,14 +112,19 @@ VALUES (?, ?, ?, ?, ?, ?)
 # 宣言 YAML（occurrence_cube_declarations.yaml と同じ流儀）
 # ---------------------------------------------------------------------------
 
-def load_and_validate_place_declarations(path=DEFAULT_DECLARATIONS_YAML) -> dict:
+def load_and_validate_place_declarations(path=DEFAULT_DECLARATIONS_YAML, count_overlay=None) -> dict:
     """`occurrence_place_declarations.yaml` を読み、構造を検証してから返す。
 
     宣言された名前の集合が `_DECLARATION_NAMES` と過不足なく一致することも
     確認する（`scripts/b07_build_occurrence_cube.py` の
     `load_and_validate_cube_declarations()` と同じ流儀）。
+
+    `count_overlay`（既定 None）は `expected_row_count` だけを差し替える
+    （`period.apply_count_overlay()`。Issue #29「縮小サンプル」）。
     """
     raw = common.load_yaml(path)
+    if count_overlay:
+        raw = period.apply_count_overlay(raw, count_overlay)
     if not isinstance(raw, dict):
         raise common.MigrationError(f"{path} がマッピングになっていない（実際の型: {type(raw).__name__}）")
     problems = period.required_keys_problems(raw, REQUIRED_DECLARATION_KEYS)
@@ -320,12 +325,16 @@ def build_and_write_occurrence_place(
     registry_db,
     geojson_path=DEFAULT_GEOJSON,
     declarations_yaml=DEFAULT_DECLARATIONS_YAML,
+    count_overlay: dict[str, int] | None = None,
 ) -> dict:
     """`v2_db`（`occurrence` を持つ、読み書き可能な v2.sqlite）に
     `occurrence_place` を作る。`occurrence` を変更する SQL は一切実行しない
     （`SELECT` のみ）。戻り値はレポート用の統計。
+
+    `count_overlay`（既定 None）は Issue #29「縮小サンプル」用（`expected_row_count`
+    だけを差し替える）。
     """
-    declarations = load_and_validate_place_declarations(declarations_yaml)
+    declarations = load_and_validate_place_declarations(declarations_yaml, count_overlay=count_overlay)
 
     polys = pip.load_polygons(geojson_path)
     grid = pip.build_grid(polys)
@@ -477,6 +486,10 @@ def main() -> None:
     )
     parser.add_argument("--geojson", default=str(DEFAULT_GEOJSON))
     parser.add_argument("--declarations-yaml", default=str(DEFAULT_DECLARATIONS_YAML))
+    parser.add_argument(
+        "--count-overlay", default=None,
+        help="data/sample/declaration_counts.yaml のようなファイル。既定は使わない（Issue #29「縮小サンプル」）",
+    )
     args = parser.parse_args()
 
     db_path = pathlib.Path(args.v2_db)
@@ -497,9 +510,12 @@ def main() -> None:
     print(f"▶ 読み取り専用で開く: {registry_db}")
     print(f"▶ 読み取り専用で開く: {args.geojson}")
 
+    count_overlay = period.resolve_count_overlay(args.count_overlay, "occurrence_place_declarations.yaml")
+
     with common.timed_step("occurrence_place を構築") as info:
         stats = build_and_write_occurrence_place(
-            args.v2_db, args.ryuiki_db, registry_db, args.geojson, args.declarations_yaml
+            args.v2_db, args.ryuiki_db, registry_db, args.geojson, args.declarations_yaml,
+            count_overlay=count_overlay,
         )
         info["n"] = stats["n_total"]
 

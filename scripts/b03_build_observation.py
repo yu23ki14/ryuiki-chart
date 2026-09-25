@@ -780,6 +780,7 @@ def build_and_write_observation(
     out_path=DEFAULT_OUT,
     source_regions_yaml=DEFAULT_SOURCE_REGIONS_YAML,
     landuse_csv=DEFAULT_LANDUSE_CSV,
+    count_overlay_by_file: dict[str, dict[str, int]] | None = None,
 ) -> dict[str, dict]:
     """`observation` を構築し、`out_path` の `observation` テーブルに書き込む
     （`out_path` の他のテーブルは触らない。モジュール docstring 参照）。
@@ -799,9 +800,17 @@ def build_and_write_observation(
     してテストからの monkeypatch を前提にした設計だったが、本番の `main()`
     はこの2引数を常に明示的に渡すため、その経路が実質テストされていなかった）。
     """
-    exceptions = period.load_period_exceptions(exceptions_yaml)
+    # `count_overlay_by_file`（既定 None）は Issue #29「縮小サンプル」用——
+    # `--count-overlay` を渡さない本番の実行では常に None のまま、各 `.get()`
+    # も None を返すので、下の3つの `load_*` 呼び出しの挙動は1ビットも変わらない。
+    overlay = count_overlay_by_file or {}
+    exceptions = period.load_period_exceptions(
+        exceptions_yaml, count_overlay=overlay.get("period_exceptions.yaml")
+    )
     usage = period.PeriodExceptionUsage(exceptions)
-    time_conventions = period.load_time_label_conventions(time_conventions_yaml)
+    time_conventions = period.load_time_label_conventions(
+        time_conventions_yaml, count_overlay=overlay.get("time_label_conventions.yaml")
+    )
     time_usage = period.TimeLabelConventionUsage(time_conventions)
 
     # P-1b（土地利用）: consumer='observation' で自分の宣言だけに絞り込む
@@ -809,7 +818,7 @@ def build_and_write_observation(
     # b06_build_occurrence.py が consumer='occurrence' で絞り込むのと対称）。
     source_regions.validate_source_regions_shape(source_regions_yaml)
     landuse_sources, landuse_regions = source_regions.load_source_regions(
-        source_regions_yaml, consumer="observation"
+        source_regions_yaml, consumer="observation", count_overlay=overlay.get("source_regions.yaml")
     )
     landuse_source_usage = period.EntryUsage(landuse_sources)
     landuse_region_usage = period.EntryUsage(landuse_regions)
@@ -1067,6 +1076,11 @@ def main() -> None:
         "--landuse-csv", default=str(DEFAULT_LANDUSE_CSV),
         help="国土数値情報 L03-b 土地利用（流域別、2006/2016年版）のCSV（P-1b）",
     )
+    parser.add_argument(
+        "--count-overlay", default=None,
+        help="data/sample/declaration_counts.yaml のようなファイル。既定は使わない（本番の実行では"
+        "常に None のまま、正本の expected_row_count で検証する。Issue #29「縮小サンプル」）",
+    )
     args = parser.parse_args()
 
     # `--out` を `sqlite3.connect` で直接開く（`fresh_sqlite` を経由しない）ため、
@@ -1080,10 +1094,14 @@ def main() -> None:
     print(f"▶ 読み取り専用で開く: {registry_db}")
     print(f"▶ 読み取り専用で読む: {args.landuse_csv}")
 
+    count_overlay_by_file = (
+        period.load_count_overlay_file(args.count_overlay) if args.count_overlay else None
+    )
+
     with common.timed_step("observation を構築して書き出し") as info:
         all_stats = build_and_write_observation(
             args.ryuiki_db, registry_db, args.exceptions_yaml, args.time_conventions_yaml, args.out,
-            args.source_regions_yaml, args.landuse_csv,
+            args.source_regions_yaml, args.landuse_csv, count_overlay_by_file,
         )
         info["n"] = sum(s["n_observation"] for s in all_stats.values())
 
