@@ -89,45 +89,67 @@ predicates:
     limit: 10
     min_rows: 10
 
-  # --- sensor_timeseries の `+09:00` 付き時刻ラベル（出典ごと。実測:
-  #     phenomenon_time が25桁＝`+09:00`付きなのはこの3出典だけ） ---
+  # --- sensor_timeseries: 出典ごとに1地点の丸1か月分（時間値は約720〜3,700行
+  #     ＝複数 datastream 分、日値は約450〜550行、月値は約1年分）を入れる。
+  #     rowid が地点内で時系列順（実測で確認済み）なので、site_id を固定して
+  #     `ORDER BY rowid LIMIT n` で決定論的に「最初の約1か月分」が選べる。
+  #     これにより sensor_daily/rain_daily/sensor_hour_month（時刻×月の
+  #     ヒートマップ）の集計列（n）が2以上になる（1件をそのまま写すだけの
+  #     空振りを防ぐ。coverage.yaml の代わりに scripts/tests/
+  #     test_sample_aggregation_is_not_degenerate.py が実測で確認する）。
+  #
+  #     `+09:00` 付き時刻ラベルの3出典（phenomenon_time が25桁）は
+  #     sagamihara_taiki_hourly/soramame_hourly_kanagawa/synthetic_sensor。
   - name: sensor_timezone_sagamihara
+    # site 'sagamihara_taiki_stations__sagamihara_101' の OX/RAIN 2系列、
+    # 2015-04-01始まりの約31日分（24h×2系列×31日=1,488行）。RAIN があることで
+    # rain_daily（v1: `datastream = 'RAIN'` でしか埋まらない）が空振りしない。
     table: sensor_timeseries
-    where: "source_id = 'sagamihara_taiki_hourly'"
-    limit: 10
-    min_rows: 10
+    where: "site_id = 'sagamihara_taiki_stations__sagamihara_101'"
+    limit: 1500
+    min_rows: 1500
   - name: sensor_timezone_soramame
+    # site 'soramame_stations_kanagawa__soramame_14206010' の5系列
+    # （NO2/Ox/PM2.5/SO2/SPM）、2025-08-01始まりの約31日分。
     table: sensor_timeseries
-    where: "source_id = 'soramame_hourly_kanagawa'"
-    limit: 10
-    min_rows: 10
+    where: "site_id = 'soramame_stations_kanagawa__soramame_14206010'"
+    limit: 3700
+    min_rows: 3700
   - name: sensor_timezone_synthetic
+    # site 'env_kousui_stations_kanagawa__kousui_1410170'（6時間おき）の
+    # 約1か月分。
     table: sensor_timeseries
-    where: "source_id = 'synthetic_sensor'"
-    limit: 10
-    min_rows: 10
+    where: "site_id = 'env_kousui_stations_kanagawa__kousui_1410170'"
+    limit: 250
+    min_rows: 100
 
-  # --- sensor_timeseries の source_id 網羅（残り4つ） ---
+  # --- sensor_timeseries の source_id 網羅（残り4つ、いずれも1地点1か月分） ---
   - name: sensor_source_hiratsuka
+    # site 'hiratsuka_taiki_stations__hiratsuka_101' の日値、約15系列×30日。
     table: sensor_timeseries
-    where: "source_id = 'hiratsuka_taiki'"
-    limit: 10
-    min_rows: 10
+    where: "site_id = 'hiratsuka_taiki_stations__hiratsuka_101'"
+    limit: 460
+    min_rows: 460
   - name: sensor_source_yokohama_waterlevel
+    # site 'yokohama_river_waterlevel__546601' の日平均/日最高の2系列×30日。
     table: sensor_timeseries
-    where: "source_id = 'yokohama_river_waterlevel'"
-    limit: 10
-    min_rows: 10
+    where: "site_id = 'yokohama_river_waterlevel__546601'"
+    limit: 60
+    min_rows: 60
   - name: sensor_source_jma_daily
+    # site 'jma_stations_kanagawa__jma_47670'（横浜、唯一の地点）の日値、
+    # 約18系列×30日。
     table: sensor_timeseries
-    where: "source_id = 'jma_daily_yokohama'"
-    limit: 10
-    min_rows: 10
+    where: "site_id = 'jma_stations_kanagawa__jma_47670'"
+    limit: 550
+    min_rows: 550
   - name: sensor_source_jma_monthly
+    # site 'jma_stations_kanagawa__jma_0387' の月値、約1年分
+    # （複数系列×12か月）。
     table: sensor_timeseries
-    where: "source_id = 'jma_monthly_kanagawa'"
-    limit: 10
-    min_rows: 10
+    where: "site_id = 'jma_stations_kanagawa__jma_0387'"
+    limit: 250
+    min_rows: 100
 
   # --- occurrence の12形（scripts/migrate/occurrence_period_shapes.yaml）。
   #     12形は文字数がすべて異なる（実測: 4/7/9/10/15/16/17/19/20/21/24/35）ため
@@ -199,6 +221,32 @@ predicates:
     where: "observed_on IS NULL"
     limit: 10
     min_rows: 10
+
+  # --- 集計が「1件をそのまま写す」空振りにならないための密度確保
+  #     （mesh_year/mesh_all/mesh_species/species_mesh_year/org_group_year/
+  #     org_watershed_year/species_year2/effort_year の n・n_raw 等の列が
+  #     2以上になること。scripts/tests/test_sample_aggregation_is_not_degenerate.py
+  #     が実測で確認する）。 ---
+  - name: occurrence_dense_mesh_cluster
+    # 0.01度メッシュ (mlat=3534, mlon=13940) の2021年。実測でこのメッシュ×年に
+    # 9種以上、種ごとに250件超が集まる都市部のバードウォッチング密集地——
+    # メッシュ×種×年（mesh_species/mesh_year/species_mesh_year）にも種×年
+    # （species_year2/org_group_year）にも、同じ流域内に複数種がいること
+    # （org_watershed_year）にも、まとめて効く一箇所。
+    table: organism_records
+    where: >
+      CAST(FLOOR(lat*100) AS INT) = 3534 AND CAST(FLOOR(lon*100) AS INT) = 13940
+      AND substr(observed_on,1,4) = '2021'
+    limit: 1500
+    min_rows: 1500
+  - name: occurrence_species_spanning_many_years
+    # 'Dryopteris erythrosora'（オオベニシダ）: 実測で81年分・1,033件を持つ
+    # 種。年をまたいだ集計（effort_year/species_year2/org_watershed_year）の
+    # 「同じ種が複数年にまたがる」を満たす。
+    table: organism_records
+    where: "scientific_name = 'Dryopteris erythrosora (D.C.Eaton) Kuntze'"
+    limit: 800
+    min_rows: 800
 
   # --- 'Z' 付き observed_on（ADR-0024）: 上の4つの instant_*_z / interval 形の
   #     predicate の和集合で必ず満たされる（実測: 958+143+800+57=1958=Z件数の
@@ -295,10 +343,22 @@ full_closures:
   # scripts/reconcile/expected_diffs.yaml の org_norm/species2 の2キーの由来
   # ——属 Sirosporium の class 多数決タイブレーク。実データでは属の全記録が
   # 1件だけ（Sirosporium celtidis 自身）。
+  # 属単位の class 多数決（org_norm/species2 の `cls`）は `organism_records.genus`
+  # 列ではなく、`scientific_name` から取った binom（先頭2語）の先頭語で決まる
+  # （web/scripts/build-biota.mjs の `gc` CTE・scripts/registry/build_taxon.py の
+  # `_genus(_binom(scientific_name))`。どちらも `genus` 列は見ない）。実測
+  # （2026-09-25、コードレビュー指摘で発覚）: `genus = 'Sirosporium'` は1行
+  # （rowid 327026、学名自身が属名）しか拾わず、投票元の残り2行
+  # （rowid 326795 `Sirosporium mori...`〔own genus 列は `Clasterosporium`〕・
+  # rowid 326911 `Sirosporium celtidis...`〔own genus 列は `Helicoceras`〕—
+  # どちらも学名の先頭語は "Sirosporium" だが own genus 列は別属）が漏れていた。
+  # `scientific_name LIKE 'Sirosporium%'` で3行とも拾う（`genus = 'Sirosporium'`
+  # も併記——学名の表記が変わっても own genus 列で拾えるケースを取りこぼさない
+  # ための保険。実データでは3行の集合は変わらない）。
   - name: sirosporium_genus_full_records
-    reason: "expected_diffs.yaml の org_norm/species2 の2キーの由来を再現するための属の全記録閉包"
+    reason: "expected_diffs.yaml の org_norm/species2 の2キーの由来を再現するための属の全記録閉包（投票元は学名の binom 先頭語。genus 列ではない）"
     table: organism_records
-    where: "genus = 'Sirosporium'"
+    where: "genus = 'Sirosporium' OR scientific_name LIKE 'Sirosporium%'"
   # 地盤沈下の r5/r6 重複（docs/plans/DATA_QUALITY_BACKLOG.md §1）。全3,286行
   # だけで完結する小さな出典なので、丸ごと入れる。
   - name: jiban_chinka_full_source

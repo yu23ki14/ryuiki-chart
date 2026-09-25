@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-25T12:54:27+00:00",
+  "generated_at": "2026-09-25T13:47:56+00:00",
   "generated_by": "scripts/s01_build_sample.py",
   "source_files": {
     "ryuiki.sqlite": "554b41a03dd5ca7753aaf813691a9008c9c5c06de3d61262cbca0095399039d4",
@@ -19,10 +19,10 @@
     "cells.vocab_indicators": 236,
     "cells.vocab_units": 124,
     "measurements": 39434,
-    "organism_records": 217,
+    "organism_records": 2519,
     "quality_transitions": 3372,
     "redlist_assessments": 2884,
-    "sensor_timeseries": 70,
+    "sensor_timeseries": 6770,
     "sites": 352,
     "taxa": 8585
   }
