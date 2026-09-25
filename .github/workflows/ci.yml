@@ -368,6 +368,13 @@ jobs:
         working-directory: web
         run: pnpm install --frozen-lockfile
 
+      - name: better-sqlite3 のネイティブバインディングをビルド
+        # pnpm 10 は既定でサードパーティの postinstall スクリプトを実行しない
+        # （`Ignored build scripts` 警告）。build-derived.mjs 等が
+        # `require("better-sqlite3")` するのに必要なので、明示的にビルドする。
+        working-directory: web
+        run: pnpm rebuild better-sqlite3
+
       - name: v1 を構築（build-derived / build-geo / build-biota）
         working-directory: web
         run: |
