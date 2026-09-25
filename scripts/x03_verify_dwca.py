@@ -12,7 +12,8 @@ GBIF完走後の再検証にあたってスクリプトとして固定した。�
   3. occurrence.txt / extendedmeasurementorfact.txt の eventID が event.txt に存在するか
   4. event.txt の eventDate の ISO 8601 適合性
   5. occurrence.txt の scientificName 空欄件数・license 列空欄件数
-  6. 座標を一般化した（dataGeneralizations が非空の）occurrence 件数（FR-4.5）
+  6. dataGeneralizations が常に空欄であること（ADR-0028: 座標は一般化しない。旧 FR-4.5 の
+     座標一般化は ADR-0018 とともに撤回されたため、非空の行があれば回帰として検出する）
 
 eventDate について: Darwin Core の `eventDate` は ISO 8601-1:2019 の
 date / dateTime に加えて「開始/終了」の**区間**表記を許容する
@@ -110,13 +111,14 @@ def main():
                 n_gen += 1
             if i_lic is not None and p[i_lic].strip() == "":
                 blank_lic += 1
-    fail += bad_oc + miss_ev
+    fail += bad_oc + miss_ev + n_gen
     print(f"\n=== 3. occurrence.txt ===")
     print(f"  行数={n_oc}  列数不整合={bad_oc}")
     print(f"  eventID が event.txt に存在しない件数={miss_ev}")
     print(f"  scientificName 空欄={blank_sci}（原資料に学名が無いレコード。推測で埋めていない）")
     print(f"  license 列 空欄={blank_lic}")
-    print(f"  座標一般化済み(dataGeneralizations非空)={n_gen}  ← FR-4.5")
+    print(f"  座標一般化済み(dataGeneralizations非空)={n_gen}  "
+          f"← ADR-0028で撤去済み。0でなければ回帰")
 
     # ---- eMoF ----
     cols = header_cols(D / "extendedmeasurementorfact.txt")

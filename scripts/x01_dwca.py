@@ -1,5 +1,6 @@
 """FR-4.1/4.2: organism_records + measurements → Darwin Core Archive (Event core + Occurrence + eMoF)
-GBIF/JBIF へそのまま投入できる構造にする。希少種の位置は FR-4.5 に従い粗く丸める。
+GBIF/JBIF へそのまま投入できる構造にする。座標は一般化せず、原本の値をそのまま出す
+（ADR-0028。旧 FR-4.5 の希少種座標丸めは ADR-0018 とともに撤回された）。
 
 本版はストリーミング実装（45万件超の organism_records を全件メモリに載せない）。
 - event.txt / occurrence.txt / extendedmeasurementorfact.txt は行を読みながらそのまま書き出す。
@@ -27,30 +28,6 @@ OUT = ROOT/"data/dwca"; OUT.mkdir(parents=True, exist_ok=True)
 
 GBIF_ALIAS = {"gbif_kanagawa_occurrences": "gbif_kanagawa"}
 EXCLUDED_LICENSE_CLASSES_DEFAULT = {"noncommercial", "unknown"}
-
-# --- FR-4.5 希少種の位置の一般化 ---
-# 【重要・修正済みバグ】旧実装は red_list_category の原表記全体（例:「絶滅危惧Ⅱ類（VU）」）が
-# SENSITIVE 集合の要素（"CR"等の記号単体、または全角ローマ数字を含まない「絶滅危惧II類」等の文字列）
-# と "完全一致" するかだけを見ていた。しかし実データのカテゴリ表記は「絶滅危惧ⅠＡ類（CR）」のように
-# 全角ローマ数字(Ⅰ/Ⅱ、半角と字形が異なるUnicode文字)＋全角括弧を伴うため、どの実データも完全一致
-# せず、n_gen は常に 0 だった（本タスクで実データを流して検証した際に判明）。
-# 修正: 末尾の（半角/全角）括弧内のコード（CR/EN/VU/EX/EW/CR+EN）だけを抽出して判定する
-# （準絶滅危惧(NT)・情報不足(DD)・絶滅のおそれのある地域個体群(LP)・「注目種」等、元々
-# SENSITIVE集合に含まれる意図のなかったカテゴリを誤って拾わないようにするため）。
-SENSITIVE_CODES = {"CR", "EN", "VU", "EX", "EW", "CR+EN"}
-_CODE_RE = re.compile(r"[（(]([^）)]+)[）)]\s*$")
-def is_sensitive(redlist):
-    if not redlist: return False
-    m = _CODE_RE.search(str(redlist).strip())
-    if not m: return False
-    return m.group(1).strip() in SENSITIVE_CODES
-
-def generalize(lat, lon, redlist):
-    """希少種は約10km(0.1度)グリッドの中心に丸め、不確実性を明示する"""
-    if lat is None or lon is None: return None, None, None, 0
-    if is_sensitive(redlist):
-        return round(round(lat/0.1)*0.1, 4), round(round(lon/0.1)*0.1, 4), 10000, 1
-    return lat, lon, None, 0
 
 EVENT_COLS = ["eventID","parentEventID","eventDate","year","month","day","samplingProtocol",
   "sampleSizeValue","sampleSizeUnit","locationID","locality","stateProvince","county",
@@ -168,7 +145,7 @@ def build(include_noncommercial=False):
         print("  !! gbif_kanagawa は source_registry に未登録。gbif_kanagawa_occurrences 由来行は"
               "『未登録=除外扱い』となる。GBIF収集完了後、source_registryへのregister後に再実行すること。")
 
-    stats = {"n_events": 0, "n_occ": 0, "n_emof": 0, "n_gen": 0,
+    stats = {"n_events": 0, "n_occ": 0, "n_emof": 0,
               "n_occ_excluded_source": 0, "n_meas_excluded_source": 0,
               "n_occ_excluded_license_class": 0,
               "n_blank_sciname": 0, "excluded_source_ids": {},
@@ -216,8 +193,7 @@ def build(include_noncommercial=False):
         stats["included_license_class_counts"][lic_class] = \
             stats["included_license_class_counts"].get(lic_class, 0) + 1
         eid = r["event_id"] or f"ev_{r['record_id']}"
-        lat, lon, unc, gen = generalize(r["lat"], r["lon"], r["red_list_category"])
-        stats["n_gen"] += gen
+        lat, lon = r["lat"], r["lon"]
         d = r["observed_on"] or ""
         write_event_once(eid, {
           "eventID": eid, "parentEventID": r["site_id"] or "",
@@ -228,7 +204,8 @@ def build(include_noncommercial=False):
           "decimalLatitude": lat if lat is not None else "",
           "decimalLongitude": lon if lon is not None else "",
           "geodeticDatum": "WGS84",
-          "coordinateUncertaintyInMeters": unc or (r["coordinate_uncertainty_m"] or ""),
+          # 座標は一般化しない（ADR-0028）。coordinateUncertaintyInMeters は原本の値をそのまま出す。
+          "coordinateUncertaintyInMeters": r["coordinate_uncertainty_m"] or "",
           "country": "Japan", "countryCode": "JP", "minimumElevationInMeters": "",
           "recordedBy": "", "eventRemarks": "synthetic" if r["is_synthetic"] else ""})
         sci = r["scientific_name"] or ""
@@ -252,8 +229,9 @@ def build(include_noncommercial=False):
           "identificationVerificationStatus": r["quality_stage"] or "",
           "recordedBy": "", "institutionCode": "", "collectionCode": "",
           "catalogNumber": "", "license": r["record_license"] or "", "rightsHolder": "",
-          "informationWithheld": "coordinates generalized to 0.1 degree (sensitive taxon)" if gen else "",
-          "dataGeneralizations": "rounded to 0.1 degree grid" if gen else "",
+          # 座標を一般化しないため常に空文字（Darwin Core の標準語彙として列は残す。ADR-0028）。
+          "informationWithheld": "",
+          "dataGeneralizations": "",
           "occurrenceRemarks": "synthetic" if r["is_synthetic"] else "",
           "associatedReferences": r["source_ref"] or ""}.items()})
         stats["n_occ"] += 1
@@ -331,7 +309,7 @@ def build(include_noncommercial=False):
     write_excluded_license_md(stats, include_noncommercial)
 
     print(f"DwC-A: events={stats['n_events']} occurrences={stats['n_occ']} eMoF={stats['n_emof']} "
-          f"generalized={stats['n_gen']} blank_scientificName={stats['n_blank_sciname']}\n"
+          f"blank_scientificName={stats['n_blank_sciname']}\n"
           f"  excluded by source_registry.redistributable=0 / 未登録ソース: "
           f"occurrence={stats['n_occ_excluded_source']} measurement={stats['n_meas_excluded_source']} "
           f"by_source={stats['excluded_source_ids']}\n"
