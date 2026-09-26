@@ -669,6 +669,144 @@ describe("classifyDiff: lod_imputation（design §3 #1・--imputation lod）", (
   });
 });
 
+describe("classifyDiff: 行変異への耐性（v2TrueByKey/v2TrueZeroByKey、Issue #48 PR-2 統合後 修正C）", () => {
+  // 実データ（`--only year_series_site,year_series_water --mutate swap_kind
+  // --v1compat-db data/db/v2_v1compat.sqlite`）で、`synthetic_excluded` が
+  // 「v1==compat かつ compat≠v2」だけを見ていたために、行変異で書き換えた
+  // 45,335 件の value_diff（実際に合成データの影響を受ける24地点をはるかに
+  // 超える210地点に及んだ）を「合成データの除外」として誤って説明していた。
+  // `v2TrueByKey`（行変異を当てる前の生の v2 行）が無ければ、この誤りを
+  // classify.ts 単体では再現できない——ここではその状況をフィクスチャで固定する。
+
+  it("diff.v2 が v2TrueByKey と食い違えば synthetic_excluded にならない（swap_kind/lod_instead_of_zero 相当）", () => {
+    const v1 = rowsByKey(toNormRows([{ y: 1, n: 10 }], ["y"], ["n"], []));
+    // v2 側は行変異で n:999 に書き換えられている。
+    const v2 = rowsByKey(toNormRows([{ y: 1, n: 999 }], ["y"], ["n"], []));
+    const v2Compat = rowsByKey(toNormRows([{ y: 1, n: 10 }], ["y"], ["n"], []));
+    // 行変異を当てる前の、v2 が実際に計算していた値（v1と一致——合成データの影響も無い）。
+    const v2True = rowsByKey(toNormRows([{ y: 1, n: 10 }], ["y"], ["n"], []));
+    const diffs = compareRuns(v1, v2);
+    const ctx = ctxBase({
+      known: new Set(["synthetic_excluded"]),
+      v2CompatByKey: v2Compat,
+      v2TrueByKey: v2True,
+    });
+    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+  });
+
+  it("v2TrueByKey が diff.v2 と一致していれば（行変異が無ければ）これまでどおり synthetic_excluded", () => {
+    const v1 = rowsByKey(toNormRows([{ y: 1, n: 10 }], ["y"], ["n"], []));
+    const v2 = rowsByKey(toNormRows([{ y: 1, n: 8 }], ["y"], ["n"], []));
+    const v2Compat = rowsByKey(toNormRows([{ y: 1, n: 10 }], ["y"], ["n"], []));
+    const v2True = rowsByKey(toNormRows([{ y: 1, n: 8 }], ["y"], ["n"], [])); // 変異なし＝v2そのもの
+    const diffs = compareRuns(v1, v2);
+    const ctx = ctxBase({
+      known: new Set(["synthetic_excluded"]),
+      v2CompatByKey: v2Compat,
+      v2TrueByKey: v2True,
+    });
+    expect(classifyDiff(diffs[0], ctx).rule).toBe("synthetic_excluded");
+  });
+
+  it("row_only_in_v1: v2TrueByKey にまだ行が残っていれば（drop_series 等で消しただけ）synthetic_excluded にならない", () => {
+    const v1 = rowsByKey(toNormRows([{ y: 1, n: 5 }], ["y"], ["n"], []));
+    const v2 = rowsByKey(toNormRows([], ["y"], ["n"], [])); // 行変異で消された
+    const v2Compat = rowsByKey(toNormRows([{ y: 1, n: 5 }], ["y"], ["n"], []));
+    const v2True = rowsByKey(toNormRows([{ y: 1, n: 5 }], ["y"], ["n"], [])); // 本当はまだ存在する
+    const diffs = compareRuns(v1, v2);
+    const ctx = ctxBase({
+      known: new Set(["synthetic_excluded"]),
+      v2CompatByKey: v2Compat,
+      v2TrueByKey: v2True,
+    });
+    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+  });
+
+  it("row_only_in_v1: v2TrueByKey が渡されていなければ（既存の挙動どおり）これまでどおり synthetic_excluded", () => {
+    const v1 = rowsByKey(toNormRows([{ y: 1, n: 5 }], ["y"], ["n"], []));
+    const v2 = rowsByKey(toNormRows([], ["y"], ["n"], []));
+    const v2Compat = rowsByKey(toNormRows([{ y: 1, n: 5 }], ["y"], ["n"], []));
+    const diffs = compareRuns(v1, v2);
+    const ctx = ctxBase({ known: new Set(["synthetic_excluded"]), v2CompatByKey: v2Compat });
+    expect(classifyDiff(diffs[0], ctx).rule).toBe("synthetic_excluded");
+  });
+
+  it("純粋な zero→lod の差（合成データの影響が無い地点）は synthetic_excluded で説明しない——lod_imputation が有効なら lod_imputation が説明する", () => {
+    const v1 = rowsByKey(toNormRows([{ y: 1, avg: 1.0, n_censored: 3 }], ["y"], ["avg", "n_censored"], []));
+    const v2 = rowsByKey(toNormRows([{ y: 1, avg: 1.5, n_censored: 3 }], ["y"], ["avg", "n_censored"], []));
+    // この地点は合成データの影響が無いので、compat（合成込み・zero）は
+    // 「本当にzeroなら」の値（v2TrueZeroByKey）と同じ。
+    const v2Compat = rowsByKey(toNormRows([{ y: 1, avg: 1.0, n_censored: 3 }], ["y"], ["avg", "n_censored"], []));
+    const v2TrueZero = rowsByKey(toNormRows([{ y: 1, avg: 1.0, n_censored: 3 }], ["y"], ["avg", "n_censored"], []));
+    const diffs = compareRuns(v1, v2);
+    const ctx = ctxBase({
+      known: new Set(["synthetic_excluded", "lod_imputation"]),
+      v2CompatByKey: v2Compat,
+      v2ZeroByKey: v2TrueZero,
+      v2TrueZeroByKey: v2TrueZero,
+    });
+    expect(classifyDiff(diffs[0], ctx).rule).toBe("lod_imputation");
+  });
+
+  it("...--mutate lod_rule_off 相当: 合成データの影響が無い地点なら synthetic_excluded が肩代わりせず unexplained に落ちる（lod_rule_off が検出できなかった実際の原因）", () => {
+    const v1 = rowsByKey(toNormRows([{ y: 1, avg: 1.0, n_censored: 3 }], ["y"], ["avg", "n_censored"], []));
+    const v2 = rowsByKey(toNormRows([{ y: 1, avg: 1.5, n_censored: 3 }], ["y"], ["avg", "n_censored"], []));
+    const v2Compat = rowsByKey(toNormRows([{ y: 1, avg: 1.0, n_censored: 3 }], ["y"], ["avg", "n_censored"], []));
+    const v2TrueZero = rowsByKey(toNormRows([{ y: 1, avg: 1.0, n_censored: 3 }], ["y"], ["avg", "n_censored"], []));
+    const diffs = compareRuns(v1, v2);
+    const ctx = ctxBase({
+      known: new Set(["synthetic_excluded", "lod_imputation"]),
+      v2CompatByKey: v2Compat,
+      v2ZeroByKey: v2TrueZero,
+      v2TrueZeroByKey: v2TrueZero,
+      disabledRules: new Set(["lod_imputation"]),
+    });
+    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+  });
+
+  it("合成データの影響も受けている地点（compatがv2TrueZeroByKeyと食い違う）なら、lod_rule_off でも synthetic_excluded が両方まとめて説明する（意図した重なりの挙動は壊さない）", () => {
+    const v1 = rowsByKey(toNormRows([{ y: 1, avg: 1.0 }], ["y"], ["avg"], []));
+    const v2 = rowsByKey(toNormRows([{ y: 1, avg: 1.5 }], ["y"], ["avg"], []));
+    const v2Compat = rowsByKey(toNormRows([{ y: 1, avg: 1.0 }], ["y"], ["avg"], []));
+    // 合成データを除いた「本当の zero」値は compat（合成込み）と食い違う
+    // ＝この行は実際に合成データの影響を受けている。
+    const v2TrueZero = rowsByKey(toNormRows([{ y: 1, avg: 0.9 }], ["y"], ["avg"], []));
+    const diffs = compareRuns(v1, v2);
+    const ctx = ctxBase({
+      known: new Set(["synthetic_excluded", "lod_imputation"]),
+      v2CompatByKey: v2Compat,
+      v2TrueZeroByKey: v2TrueZero,
+      disabledRules: new Set(["lod_imputation"]),
+    });
+    expect(classifyDiff(diffs[0], ctx).rule).toBe("synthetic_excluded");
+  });
+
+  it("v2TrueZeroByKey が渡されていなければ（既存の挙動どおり）これまでどおり synthetic_excluded", () => {
+    const v1 = rowsByKey(toNormRows([{ y: 1, avg: 1.0 }], ["y"], ["avg"], []));
+    const v2 = rowsByKey(toNormRows([{ y: 1, avg: 1.5 }], ["y"], ["avg"], []));
+    const v2Compat = rowsByKey(toNormRows([{ y: 1, avg: 1.0 }], ["y"], ["avg"], []));
+    const diffs = compareRuns(v1, v2);
+    const ctx = ctxBase({ known: new Set(["synthetic_excluded"]), v2CompatByKey: v2Compat });
+    expect(classifyDiff(diffs[0], ctx).rule).toBe("synthetic_excluded");
+  });
+
+  it("diff.v2 が v2TrueByKey と食い違えば lod_imputation にならない（lod_instead_of_zero 相当、--imputation lod）", () => {
+    const v1 = rowsByKey(toNormRows([{ y: 1, avg: 1.0, n_censored: 3 }], ["y"], ["avg", "n_censored"], []));
+    // v2 側（--imputation lod の本番行）は行変異でさらに書き換えられている。
+    const v2 = rowsByKey(toNormRows([{ y: 1, avg: 1000001.5, n_censored: 3 }], ["y"], ["avg", "n_censored"], []));
+    const v2Zero = rowsByKey(toNormRows([{ y: 1, avg: 1.0, n_censored: 3 }], ["y"], ["avg", "n_censored"], []));
+    // 行変異を当てる前の、本当の lod 値（v1とはずれるが、これが正しい zero→lod の差）。
+    const v2True = rowsByKey(toNormRows([{ y: 1, avg: 1.5, n_censored: 3 }], ["y"], ["avg", "n_censored"], []));
+    const diffs = compareRuns(v1, v2);
+    const ctx = ctxBase({
+      known: new Set(["lod_imputation"]),
+      v2ZeroByKey: v2Zero,
+      v2TrueByKey: v2True,
+    });
+    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+  });
+});
+
 describe("優先順位", () => {
   it("declaredが最優先（day_splitにも当てはまりうる状況でdeclaredを選ぶ）", () => {
     const onlyLabelEvent: RainL2Row[] = [

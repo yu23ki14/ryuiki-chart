@@ -280,7 +280,7 @@ export interface ClassifyContext {
   params: Readonly<Record<string, ScalarParam>>;
   /** この問い合わせに当てはまりうる既知の系統（`serving_queries.yaml` の `known`）。 */
   known: ReadonlySet<KnownRule>;
-  /** `--mutate rain_no_div10_rule` / `day_split_rule_off` 用に規則を丸ごと無効化する。 */
+  /** `--mutate day_split_rule_off` 等、規則を丸ごと無効化する。 */
   disabledRules?: ReadonlySet<KnownRule>;
   /** rain 系の3問い合わせだけが使う。日付キーは `diff.key` の最初の要素
    *  （`rain_daily`/`rain_monthly_clim` は `d`/`month`、`rain_top_days` は `label.d`）。 */
@@ -313,6 +313,44 @@ export interface ClassifyContext {
    * 常に undefined（そもそも lod 診断は行わない）。
    */
   v2ZeroByKey?: ReadonlyMap<string, NormRow>;
+  /**
+   * `serving-diff.mts` が行変異（`--mutate lod_instead_of_zero`/`swap_kind` 等）を
+   * 適用する**前**に、この問い合わせ・この params・現在の imputation でそのまま
+   * 引いた v2 の生の行（キー文字列→`NormRow`）。`diff.v2` が本当に v2 が計算した
+   * 値かどうか（＝行変異で書き換えられていないか）を確かめるためだけに使う
+   * （`v2MatchesTrueRow`）。無ければ（既存の単体テスト・v1-only 相当のフィクスチャ）
+   * 検証をスキップしてこれまでどおり信頼する。
+   *
+   * Issue #48 PR-2 統合後 修正C: これが無いと、`synthetic_excluded`/`lod_imputation`
+   * は「`compatRow`（または `v2ZeroByKey`）と `v1` が一致し、`diff.v2` がそれと
+   * 食い違う」ことしか見ていない——行変異が `diff.v2` を任意の値に書き換えても
+   * 同じ条件を満たしてしまい、`swap_kind`/`lod_instead_of_zero` を「合成データの
+   * 除外」や「zero→lod」で説明したことにして見逃していた（実測: `--only
+   * year_series_site,year_series_water --mutate swap_kind` で 45,335 件が
+   * 誤って `synthetic_excluded` に落ちていた。対象の site_id は210件に及び、
+   * 実際に合成データの影響を受ける24地点をはるかに超える——規則が「本当に
+   * 合成データが原因か」を一切確かめていなかった証拠）。
+   */
+  v2TrueByKey?: ReadonlyMap<string, NormRow>;
+  /**
+   * `v2TrueByKey` と同じ「行変異適用前の生の v2 行」だが、常に `imputation=zero`
+   * で引いたもの（`--imputation zero` 実行では `v2TrueByKey` と同一の行、
+   * `--imputation lod` 実行では `v2ZeroByKey` と同一の行——どちらも
+   * `serving-diff.mts` が計算するだけで、追加の DB 問い合わせは増えない）。
+   *
+   * `hasGenuineSyntheticEvidence` が使う: `compatRow`（合成込み・zero）と
+   * この「本当に合成を除いた場合の zero 値」を比べて、この行が実際に合成データの
+   * 除外で変わっている証拠があるかを確かめる。無ければ（合成の影響が無い地点の
+   * 純粋な zero→lod 由来の差分）、`synthetic_excluded` はこの行を説明しない
+   * ——`lod_imputation`（有効なら）に任せる。
+   *
+   * Issue #48 PR-2 統合後 修正C: これが無いと、`--imputation lod` 実行で
+   * `compatRow`（常に zero）と `diff.v2`（現在の imputation）を直接比べるだけなので、
+   * 合成データの影響が一切無い地点の「zero→lod」の差分まで `synthetic_excluded` が
+   * 説明してしまう。結果、`--mutate lod_rule_off` で `lod_imputation` を無効化しても
+   * `synthetic_excluded` が肩代わりしてしまい、unexplained が1件も出なかった。
+   */
+  v2TrueZeroByKey?: ReadonlyMap<string, NormRow>;
   /** `--mutate declared_rot` */
   declaredRot?: DeclaredRotOptions;
   /**
@@ -536,12 +574,45 @@ function rowsMatchOnAllColumns(a: NormRow, b: NormRow, tol = 1e-9): boolean {
 }
 
 /**
+ * `diff.v2` が本当に v2 が計算した値そのものか（`serving-diff.mts` の行変異で
+ * 書き換えられていないか）を確かめる（`ClassifyContext.v2TrueByKey` docstring参照）。
+ * `ctx.v2TrueByKey` が無い/該当キーが無ければ検証できないので、これまでどおり
+ * 信頼する（`true` を返す）——既存の単体テスト・v1-only 相当のフィクスチャは
+ * この場を渡さない。
+ */
+function v2MatchesTrueRow(diff: RowDiff, ctx: ClassifyContext): boolean {
+  if (!ctx.v2TrueByKey || !diff.v2) return true;
+  const trueRow = ctx.v2TrueByKey.get(keyString(diff.key));
+  if (!trueRow) return true;
+  return rowsMatchOnAllColumns(diff.v2, trueRow);
+}
+
+/**
+ * `compatRow`（合成込み・zero）と「本当に合成を除いた場合の zero 値」
+ * （`ctx.v2TrueZeroByKey` docstring参照）を比べ、この行の食い違いのうち少なくとも
+ * 1列は実際に合成データの除外で動いていることを確かめる。`ctx.v2TrueZeroByKey`
+ * が無い/該当キーが無ければ検証できないので、これまでどおり通す（`true`）。
+ */
+function hasGenuineSyntheticEvidence(
+  columns: readonly string[],
+  key: readonly ScalarParam[],
+  ctx: ClassifyContext,
+  compatRow: NormRow,
+): boolean {
+  if (!ctx.v2TrueZeroByKey) return true;
+  const trueZero = ctx.v2TrueZeroByKey.get(keyString(key));
+  if (!trueZero) return true;
+  return columns.some((c) => numbersDiffer(compatRow.numeric[c] ?? null, trueZero.numeric[c] ?? null, 1e-9));
+}
+
+/**
  * design §1「診断用 v1互換キューブ」の差分の差分。`ctx.v2CompatByKey`
  * （`--v1compat-db` で開いた、合成データを除外**しない** `v2_v1compat.sqlite` に
  * 同じ問い合わせを常に `imputation=zero` で流した行——`ClassifyContext.v2CompatByKey`
  * docstring参照）と突き合わせる:
  * - `row_only_in_v1`（v2 本番に無い）→ 同じキーが v2compat に存在し、v1 と
- *   （許容誤差内で）一致すれば「合成データが除かれて消えた行」として説明できる。
+ *   （許容誤差内で）一致し、かつ本当に（行変異ではなく）v2 本番から消えていれば
+ *   （`v2TrueByKey` にも無ければ）「合成データが除かれて消えた行」として説明できる。
  * - `value_diff` → 列を `SYNTHETIC_EXCLUDED_VALUE_COLUMNS` に絞り、v1 == v2compat
  *   （合成込み・zero 相当の値は元々 v1 と一致していた）かつ v2compat ≠ v2 本番
  *   （現在の imputation で見て実際に値が動いた）であれば説明できる。`v2compat`
@@ -549,7 +620,13 @@ function rowsMatchOnAllColumns(a: NormRow, b: NormRow, tol = 1e-9): boolean {
  *   なので、`--imputation lod` 実行時はこの1つの比較で「合成データの除外」と
  *   「zero→lod」の両方が重なった差分もまとめて説明できる（`diff.v1 !== diff.v2`
  *   は `RowDiff` の定義上すでに真なので、`v2compat ≠ v2` は追加の条件を要らずに
- *   automatically 成り立つ——Issue #48 PR-2 統合後 修正B）。
+ *   automatically 成り立つ——Issue #48 PR-2 統合後 修正B）。**ただし**この「まとめて
+ *   説明できる」が成り立つのは実際に合成データの影響を受けている行だけ
+ *   （`hasGenuineSyntheticEvidence`）で、かつ `diff.v2` が行変異で書き換えられて
+ *   いない（`v2MatchesTrueRow`）ときに限る——どちらもIssue #48 PR-2 統合後 修正C
+ *   で追加した。無ければ、合成データを一切含まない地点の純粋な zero→lod の
+ *   差分や、`swap_kind`/`lod_instead_of_zero` が書き換えた任意の値まで、この
+ *   規則が「合成データの除外」として誤って説明してしまう。
  * - `row_only_in_v2` は対象外（合成データを除いて行が増えることは無い——常に
  *   unexplained）。
  */
@@ -562,6 +639,8 @@ function classifySyntheticExcludedV1Compat(diff: RowDiff, ctx: ClassifyContext):
 
   if (diff.kind === "row_only_in_v1") {
     if (!diff.v1) return false;
+    // 本当は消えていない（行変異で v2ByKey から消しただけの）行は対象外。
+    if (ctx.v2TrueByKey?.has(keyString(diff.key))) return false;
     return rowsMatchOnAllColumns(diff.v1, compatRow);
   }
 
@@ -572,6 +651,8 @@ function classifySyntheticExcludedV1Compat(diff: RowDiff, ctx: ClassifyContext):
     if (numbersDiffer(diff.v1.numeric[c], compatRow.numeric[c] ?? null, 1e-9)) return false; // v1 == v2compat
     if (!numbersDiffer(compatRow.numeric[c] ?? null, diff.v2.numeric[c], 0)) return false; // v2compat ≠ v2(本番)
   }
+  if (!v2MatchesTrueRow(diff, ctx)) return false;
+  if (!hasGenuineSyntheticEvidence(diff.columns, diff.key, ctx, compatRow)) return false;
   return true;
 }
 
@@ -649,6 +730,8 @@ function classifyDeclaredWithSyntheticRemainder(diff: RowDiff, ctx: ClassifyCont
         if (numbersDiffer(diff.v1.numeric[c], compatRow.numeric[c] ?? null, 1e-9)) { ok = false; break; } // v1 == v2compat
         if (!numbersDiffer(compatRow.numeric[c] ?? null, diff.v2.numeric[c], 0)) { ok = false; break; } // v2compat ≠ v2(本番)
       }
+      if (ok && !v2MatchesTrueRow(diff, ctx)) ok = false;
+      if (ok && !hasGenuineSyntheticEvidence(remaining, diff.key, ctx, compatRow)) ok = false;
       if (ok) return { rule: "declared", declaredMatch: { table, entry } };
     }
   }
@@ -664,6 +747,12 @@ function classifyDeclaredWithSyntheticRemainder(diff: RowDiff, ctx: ClassifyCont
  * `climatology`/`zone_climatology`/`site_variables`/`longitudinal_highlight`
  * 等——は b04 が全セルで検証済みの不変条件「`value_zero≠value_lod` ⇒
  * `n_censored>0 or n_not_detected>0`」に依拠し、ここでは確認しない）。
+ *
+ * `v2MatchesTrueRow`（Issue #48 PR-2 統合後 修正C）: `diff.v1 == zeroRow` と
+ * `n_censored>0` だけでは「`diff.v2` が実際に正しい lod 値か」を一切確かめて
+ * いない——`--mutate lod_instead_of_zero` が検閲セルの値を書き換えても、この
+ * 2条件はどちらも影響を受けないため、書き換えた値をそのまま「zero→lod のせい」
+ * として説明してしまっていた。
  */
 const LOD_IMPUTATION_VALUE_COLUMNS = new Set(["avg", "min", "max", "value"]);
 
@@ -677,6 +766,7 @@ function classifyLodImputation(diff: RowDiff, ctx: ClassifyContext): boolean {
   for (const c of diff.columns) {
     if (numbersDiffer(diff.v1.numeric[c], zeroRow.numeric[c] ?? null, 1e-9)) return false; // v1 == v2(zero)
   }
+  if (!v2MatchesTrueRow(diff, ctx)) return false;
   // b04 の不変条件は「value_zero≠value_lod ⇒ n_censored>0 **or** n_not_detected>0」
   // という OR（CLAUDE.md 参照）。v1 の meas_year 系の表は `n_censored` しか
   // 持たず `n_not_detected`（不検出・定量下限未満とは別に「検出されなかった」

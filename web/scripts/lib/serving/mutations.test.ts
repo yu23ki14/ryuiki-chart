@@ -41,6 +41,22 @@ describe("行変異は unexplained > 0 で必ず落ちる", () => {
     expect(unexplainedCount(v1, mutated)).toBeGreaterThan(0);
   });
 
+  it("lod_instead_of_zero: synthetic_excluded/lod_imputation が有効な現実的な known でも拾われる（Issue #48 PR-2 統合後 修正C。実データでは synthetic_excluded に飲み込まれ NG だった）", () => {
+    const v1 = toNormRows([{ y: 2020, n_censored: 3, avg: 1.0 }], ["y"], ["n_censored", "avg"], []);
+    const v2raw = toNormRows([{ y: 2020, n_censored: 3, avg: 1.0 }], ["y"], ["n_censored", "avg"], []);
+    const v2TrueByKey = rowsByKey(v2raw); // 行変異を当てる前の、本当の v2 の値（v1と一致）
+    const v2Compat = rowsByKey(toNormRows([{ y: 2020, n_censored: 3, avg: 1.0 }], ["y"], ["n_censored", "avg"], []));
+    const mutated = applyRowMutation("lod_instead_of_zero", "year_series_site", v2raw);
+    expect(
+      unexplainedCount(v1, mutated, {
+        known: new Set(["declared", "synthetic_excluded", "lod_imputation"]),
+        v2CompatByKey: v2Compat,
+        v2TrueByKey,
+        v2TrueZeroByKey: v2Compat, // この地点は合成データの影響が無い
+      }),
+    ).toBeGreaterThan(0);
+  });
+
   it("lod_instead_of_zero: 検閲されていないセルはそもそも変わらない（no-op）", () => {
     const rows = toNormRows([{ y: 2020, n_censored: 0, avg: 1.0 }], ["y"], ["n_censored", "avg"], []);
     const mutated = applyRowMutation("lod_instead_of_zero", "year_series_site", rows);
@@ -73,6 +89,24 @@ describe("行変異は unexplained > 0 で必ず落ちる", () => {
     );
     const mutated = applyRowMutation("swap_kind", "year_series_site", v1);
     expect(unexplainedCount(v1, mutated)).toBeGreaterThan(0);
+  });
+
+  it("swap_kind: synthetic_excluded が有効な現実的な known でも拾われる（Issue #48 PR-2 統合後 修正C。実データでは210地点・45,335件が synthetic_excluded に飲み込まれ NG だった）", () => {
+    const v1raw = [
+      { y: 1, n: 10 },
+      { y: 2, n: 20 },
+    ];
+    const v1 = toNormRows(v1raw, ["y"], ["n"], []);
+    const v2TrueByKey = rowsByKey(toNormRows(v1raw, ["y"], ["n"], [])); // 行変異前は v1 と一致（合成の影響も無い）
+    const v2Compat = rowsByKey(toNormRows(v1raw, ["y"], ["n"], []));
+    const mutated = applyRowMutation("swap_kind", "year_series_site", toNormRows(v1raw, ["y"], ["n"], []));
+    expect(
+      unexplainedCount(v1, mutated, {
+        known: new Set(["declared", "synthetic_excluded"]),
+        v2CompatByKey: v2Compat,
+        v2TrueByKey,
+      }),
+    ).toBeGreaterThan(0);
   });
 
   it("swap_kind: 無関係な問い合わせには効かない（no-op）", () => {
@@ -149,6 +183,24 @@ describe("分類器変異", () => {
         known: new Set(["lod_imputation"]),
         disabledRules: opts.disabledRules,
         v2ZeroByKey: v2Zero,
+      }),
+    ).toBeGreaterThan(0);
+  });
+
+  it("lod_rule_off: synthetic_excluded が有効な現実的な known でも、合成データの影響が無い地点なら肩代わりせず拾われる（Issue #48 PR-2 統合後 修正C。実データでは NG だった）", () => {
+    const opts = applyClassifyMutation("lod_rule_off");
+    const v1 = toNormRows([{ y: 1, avg: 1.0, n_censored: 3 }], ["y"], ["avg", "n_censored"], []);
+    const v2 = toNormRows([{ y: 1, avg: 1.5, n_censored: 3 }], ["y"], ["avg", "n_censored"], []);
+    // compat（合成込み・zero）はこの地点では合成の影響が無いので、真のzero値と同じ。
+    const v2Compat = rowsByKey(toNormRows([{ y: 1, avg: 1.0, n_censored: 3 }], ["y"], ["avg", "n_censored"], []));
+    const v2Zero = rowsByKey(toNormRows([{ y: 1, avg: 1.0, n_censored: 3 }], ["y"], ["avg", "n_censored"], []));
+    expect(
+      unexplainedCount(v1, v2, {
+        known: new Set(["declared", "synthetic_excluded", "lod_imputation"]),
+        disabledRules: opts.disabledRules,
+        v2CompatByKey: v2Compat,
+        v2ZeroByKey: v2Zero,
+        v2TrueZeroByKey: v2Zero,
       }),
     ).toBeGreaterThan(0);
   });

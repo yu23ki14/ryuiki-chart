@@ -492,6 +492,20 @@ async function main() {
           exceptions.push({ id: def.id, params, message: `v2: ${e instanceof Error ? e.message : e}` });
           continue;
         }
+        // `classify.ts` の `v2TrueByKey`（Issue #48 PR-2 統合後 修正C）用:
+        // 行変異（`--mutate lod_instead_of_zero`/`swap_kind` 等）を適用する**前**の
+        // 生の v2 行をキー化して控えておく。`synthetic_excluded`/`lod_imputation` が
+        // 「`diff.v2` は本当に v2 が計算した値か（行変異で書き換えられていないか）」
+        // を確かめるためだけに使う——本体の突き合わせ（`v2ByKey`/`diffs`）は
+        // これまでどおり変異後の `v2Rows` から作る。診断専用なので、万一
+        // （変異前の）重複キーで例外になっても本体の突き合わせは続行する
+        // （`v2TrueByKey` 抜きの安全側フォールバックは classify.ts 側に既にある）。
+        let v2TrueByKey: ReadonlyMap<string, NormRow> | undefined;
+        try {
+          v2TrueByKey = rowsByKey(v2Rows);
+        } catch (e) {
+          console.error(`v2TrueByKey: [${def.id}] ${JSON.stringify(params)}: ${e instanceof Error ? e.message : e}`);
+        }
         if (rowMutationName && isRowMutation(rowMutationName) && rowMutationAppliesTo(rowMutationName, def.id)) {
           v2Rows = applyRowMutation(rowMutationName, def.id, v2Rows);
         }
@@ -548,6 +562,17 @@ async function main() {
           }
         }
 
+        // `classify.ts` の `v2TrueZeroByKey`（Issue #48 PR-2 統合後 修正C）用:
+        // 「行変異が無い・zero 相当の」v2 の正しい値。`--imputation lod` 実行では
+        // 上で引いた `v2ZeroByKey`（別クエリなので行変異の影響を受けない）と
+        // 同じもの、`--imputation zero` 実行では現在の問い合わせ自体が既に
+        // zero なので `v2TrueByKey`（行変異を当てる前の控え）と同じもの——
+        // どちらも追加の DB 問い合わせを増やさない。`hasGenuineSyntheticEvidence`
+        // が「compat（合成込み・zero）とこの値が食い違うか」を見て、
+        // `synthetic_excluded` が本当に合成データの影響を受けた行だけを
+        // 説明するようにする。
+        const v2TrueZeroByKey: ReadonlyMap<string, NormRow> | undefined = IMPUTATION === "lod" ? v2ZeroByKey : v2TrueByKey;
+
         // `rowsByKey` は同じキーの行が2つあれば例外にする（design: 「片方を捨てると
         // 診断が壊れる」）。これは serving-diff 自身の設計上の保護であって v1/v2 の
         // 例外ではないが、`--mutate include_watershed_cells`（行を複製する変異）が
@@ -583,6 +608,8 @@ async function main() {
           rainGrain: def.id === "rain_monthly_clim" ? "month" : "day",
           v2CompatByKey,
           v2ZeroByKey,
+          v2TrueByKey,
+          v2TrueZeroByKey,
           declaredRot: classifyMutation?.declaredRot,
           expectedUnitSymbol,
           byVariableDeclared: byVariableDeclaredFor(def, params),
