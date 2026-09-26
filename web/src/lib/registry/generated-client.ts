@@ -27,12 +27,12 @@ export interface GeneratedVernacular {
 export type CaveatScopeKind = "table" | "table_prefix" | "dataset" | "place_kind" | "source_id" | "variable_theme" | "variable";
 
 /**
- * caveat の既知のキー16件の union（docs/plans/PHASE_B_INTAKE.md #6）。
+ * caveat の既知のキー18件の union（docs/plans/PHASE_B_INTAKE.md #6）。
  * 画面・`web/src/lib/ai/prompt.ts` が `caveatBody(key)`（lookup-client.ts）を直接
  * 呼ぶときの型で、存在しないキーはここでコンパイルエラーになる（旧 domain.ts の
  * mustCaveatBody() は実行時例外だった）。
  */
-export type CaveatKey = "aboveLod" | "censored" | "duplicates" | "effort" | "fishClass" | "gbifCutoff" | "inatBackfill" | "isAlien" | "landuseDefinitionChange" | "measuredOn" | "municipality" | "organismSite" | "regimes" | "share" | "synthetic" | "zone";
+export type CaveatKey = "aboveLod" | "censored" | "censoredLod" | "duplicates" | "effort" | "fishClass" | "gbifCutoff" | "inatBackfill" | "isAlien" | "landuseDefinitionChange" | "measuredOn" | "municipality" | "organismSite" | "regimes" | "share" | "synthetic" | "unitUnknown" | "zone";
 
 export interface GeneratedCaveat {
   key: string;
@@ -57,6 +57,13 @@ export interface GeneratedZone {
   zone: number;
   label: string;
   cond: string;
+}
+
+/** `VARIABLE_LABEL` の1エントリ（Issue #48 PR-2、docs/plans/V2_SERVING_PR2.md §5）。 */
+export interface GeneratedVariableLabel {
+  short: string;
+  note: string | null;
+  higherIsWorse: boolean | null;
 }
 
 /**
@@ -105,6 +112,69 @@ export const VARIABLE_UNIT_FALLBACK: Readonly<Record<string, string>> = {
   "pH": "",
   "pH（最大値）": "",
   "pH（最小値）": "",
+};
+
+/**
+ * `variable_id` キーの表示ラベル（Issue #48 PR-2、docs/plans/V2_SERVING_PR2.md §5）。
+ * `name_ja` が NULL の variable も代表エイリアスの表記へ落として必ず持つ
+ * （上の VARIABLE_SHORT 等——alias キー版——とは選定規則が違う。
+ * `web/scripts/lib/registry-codegen.mjs` の `buildVariableLabelMap()` docstring参照）。
+ * 対象は dataset='measurements' の alias を1つ以上持つ variable のみ。
+ */
+export const VARIABLE_LABEL: Readonly<Record<string, GeneratedVariableLabel>> = {
+  "common:variable:hydro.flow": { short: "流量", note: "河川の流量。感潮域では潮汐による逆流で負の値になる", higherIsWorse: null },
+  "common:variable:hydro.groundwater_level": { short: "地下水位(年平均)", note: null, higherIsWorse: null },
+  "common:variable:land.benchmark_count_settled_1_2cm": { short: "沈下水準点数(1cm以上2cm未満)", note: null, higherIsWorse: null },
+  "common:variable:land.benchmark_count_settled_2cm_plus": { short: "沈下水準点数(2cm以上)", note: null, higherIsWorse: null },
+  "common:variable:land.benchmark_count_valid": { short: "有効水準点数", note: null, higherIsWorse: null },
+  "common:variable:land.max_subsidence": { short: "最大沈下量(基準点)", note: null, higherIsWorse: null },
+  "common:variable:land.subsidence_area_1_2cm": { short: "沈下面積(1cm以上2cm未満)", note: null, higherIsWorse: null },
+  "common:variable:land.subsidence_area_2cm_plus": { short: "沈下面積(2cm以上)", note: null, higherIsWorse: null },
+  "common:variable:land.survey_area": { short: "調査面積", note: null, higherIsWorse: null },
+  "common:variable:water.111_trichloroethane": { short: "1,1,1-トリクロロエタン", note: null, higherIsWorse: null },
+  "common:variable:water.112_trichloroethane": { short: "1,1,2-トリクロロエタン", note: null, higherIsWorse: null },
+  "common:variable:water.11_dichloroethylene": { short: "1,1-ジクロロエチレン", note: null, higherIsWorse: null },
+  "common:variable:water.12_dichloroethane": { short: "1,2-ジクロロエタン", note: null, higherIsWorse: null },
+  "common:variable:water.13_dichloropropene": { short: "1,3-ジクロロプロペン", note: null, higherIsWorse: null },
+  "common:variable:water.14_dioxane": { short: "1,4-ジオキサン", note: null, higherIsWorse: null },
+  "common:variable:water.alkyl_mercury": { short: "アルキル水銀", note: null, higherIsWorse: null },
+  "common:variable:water.arsenic": { short: "砒素", note: null, higherIsWorse: null },
+  "common:variable:water.benzene": { short: "ベンゼン", note: null, higherIsWorse: null },
+  "common:variable:water.bod": { short: "BOD", note: "微生物が有機物を分解するのに使う酸素量。大きいほど有機汚濁が進んでいる", higherIsWorse: true },
+  "common:variable:water.boron": { short: "ホウ素", note: null, higherIsWorse: null },
+  "common:variable:water.cadmium": { short: "カドミウム", note: null, higherIsWorse: null },
+  "common:variable:water.carbon_tetrachloride": { short: "四塩化炭素", note: null, higherIsWorse: null },
+  "common:variable:water.cis12_dichloroethylene": { short: "シス-1,2-ジクロロエチレン", note: null, higherIsWorse: null },
+  "common:variable:water.cod": { short: "COD", note: "酸化剤で有機物を分解したときの消費酸素量。湖沼・海域の指標として使われる", higherIsWorse: true },
+  "common:variable:water.coliform_group": { short: "大腸菌群数", note: "し尿等による汚染の指標。2022年度以降は「大腸菌数」に移行しつつある", higherIsWorse: true },
+  "common:variable:water.cyanide": { short: "全シアン", note: null, higherIsWorse: null },
+  "common:variable:water.dichloromethane": { short: "ジクロロメタン", note: null, higherIsWorse: null },
+  "common:variable:water.do": { short: "DO", note: "水に溶けている酸素。小さいほど生き物が棲みにくい。水温が上がると下がる", higherIsWorse: false },
+  "common:variable:water.do_bottom": { short: "底層溶存酸素量", note: null, higherIsWorse: null },
+  "common:variable:water.ecoli": { short: "大腸菌数", note: null, higherIsWorse: true },
+  "common:variable:water.fluorine": { short: "ふっ素", note: null, higherIsWorse: null },
+  "common:variable:water.hexavalent_chromium": { short: "六価クロム", note: null, higherIsWorse: null },
+  "common:variable:water.las": { short: "LAS", note: null, higherIsWorse: null },
+  "common:variable:water.lead": { short: "鉛", note: null, higherIsWorse: null },
+  "common:variable:water.n_hexane_extract": { short: "n-ヘキサン抽出物質", note: null, higherIsWorse: null },
+  "common:variable:water.nitrate_nitrite_n": { short: "硝酸性窒素及び亜硝酸性窒素", note: null, higherIsWorse: null },
+  "common:variable:water.nonylphenol": { short: "ノニルフェノール", note: null, higherIsWorse: null },
+  "common:variable:water.pcb": { short: "PCB", note: null, higherIsWorse: null },
+  "common:variable:water.ph": { short: "pH", note: null, higherIsWorse: null },
+  "common:variable:water.selenium": { short: "セレン", note: null, higherIsWorse: null },
+  "common:variable:water.simazine": { short: "シマジン", note: null, higherIsWorse: null },
+  "common:variable:water.ss": { short: "SS", note: "水に浮いている細かい粒子の量。降雨で土砂が入ると上がる", higherIsWorse: true },
+  "common:variable:water.tetrachloroethylene": { short: "テトラクロロエチレン", note: null, higherIsWorse: null },
+  "common:variable:water.thiobencarb": { short: "チオベンカルブ", note: null, higherIsWorse: null },
+  "common:variable:water.thiuram": { short: "チウラム", note: null, higherIsWorse: null },
+  "common:variable:water.tn": { short: "全窒素 T-N", note: null, higherIsWorse: true },
+  "common:variable:water.total_mercury": { short: "総水銀", note: null, higherIsWorse: null },
+  "common:variable:water.total_zinc": { short: "全亜鉛", note: "水生生物の保全に係る環境基準項目", higherIsWorse: true },
+  "common:variable:water.tp": { short: "全燐 T-P", note: null, higherIsWorse: true },
+  "common:variable:water.transparency": { short: "透明度", note: "湖沼・海域で円板が見えなくなる深さ", higherIsWorse: false },
+  "common:variable:water.trichloroethylene": { short: "トリクロロエチレン", note: null, higherIsWorse: null },
+  "common:variable:water.water_temp": { short: "水温", note: "採水時の水温", higherIsWorse: null },
+  "common:variable:weather.air_temp": { short: "気温", note: null, higherIsWorse: null },
 };
 
 /**
@@ -169,13 +239,14 @@ export const NAME_JA: Readonly<Record<string, string>> = {
 };
 
 /**
- * 注記16件（registry/caveat.yaml）。cells.notes 由来（207件）は含めない。
+ * 注記18件（registry/caveat.yaml）。cells.notes 由来（207件）は含めない。
  * key は caveat_id から "common:caveat:" を外したもの
  * （web/src/lib/ai/caveats.ts が今返しているキー文字列と同じ）。
  */
 export const GENERATED_CAVEATS: readonly GeneratedCaveat[] = [
   { key: "aboveLod", severity: "blocking", kind: "censoring", bodyJa: "透明度の定量上限超え（原表記が「>1.4」〜「>28」など、26行）は、上限がどこまでか分からないという性質上、集計方法によらず値に含められない。件数（n）にも入らないため、他の期間・地点と単純に比較しないこと。" },
   { key: "censored", severity: "blocking", kind: "censoring", bodyJa: "全体の約24%は定量下限未満（原表記が「<0.5」など）。この画面の値は定量下限未満を 0 とみなして集計している。折れ線では中抜きの点で示し、「0 が観測された」とは読まないこと。" },
+  { key: "censoredLod", severity: "blocking", kind: "censoring", bodyJa: "全体の約24%は定量下限未満（原表記が「<0.5」など）。この画面の値は定量下限未満を定量下限値とみなして集計している（上限側の見積もり）。不検出（ND）は平均に含めない。折れ線では中抜きの点で示し、その定量下限値が実際に観測された値だとは読まないこと。" },
   { key: "duplicates", severity: null, kind: null, bodyJa: "同一の地点・日・項目に複数行あるのは、原本が採水時刻を落としているため。ここでは日ごとに平均して1点にまとめている。" },
   { key: "effort", severity: "blocking", kind: null, bodyJa: "生物観察の件数は観察努力（記録した人の数）に強く影響される。件数の増加をそのまま「生物が増えた」と読んではいけない。" },
   { key: "fishClass", severity: null, kind: "definition_change", bodyJa: "魚類は class 列に現れない（Actinopterygii が入っておらず空になっている）。門が Chordata で綱が空のものを魚類として扱っている。" },
@@ -189,6 +260,7 @@ export const GENERATED_CAVEATS: readonly GeneratedCaveat[] = [
   { key: "regimes", severity: "blocking", kind: "time_series_break", bodyJa: "記録の中身は年代で入れ替わっている。2013–2016 は標本由来の植物、2017–2024 は eBird 由来の鳥類、2025 以降は iNaturalist 由来の昆虫・植物・菌類が中心。分類群をまたいだ件数の比較はできない。" },
   { key: "share", severity: "blocking", kind: null, bodyJa: "件数そのものではなく、同じ分類群の中での割合（‰）で比べている。観察する人が増えれば件数は全種で一斉に増えるため、生の件数の増減には意味がない。" },
   { key: "synthetic", severity: "blocking", kind: "synthetic", bodyJa: "観測者・介入・意思決定・品質段階の遷移は合成データ（デモ用に生成したもの）。実在の公開データではない。" },
+  { key: "unitUnknown", severity: "blocking", kind: null, bodyJa: "この指標のうち、原本に単位の記載が無い出典は、レジストリでも単位を確定できていない。該当する値は原本の数値のまま示しており、推測で換算していない（相模原市の1時間値 RAIN は0.1mm刻みの可能性があるが未確定のまま）。単位が判明している出典の値と混同しないこと。" },
   { key: "zone", severity: null, kind: null, bodyJa: "ゾーンは標高と海岸線距離だけから機械的に付けた操作的定義であり、公式の区分ではない。zone 1（標高800m超）には水質データが無い。" },
 ];
 
@@ -197,15 +269,16 @@ export const GENERATED_CAVEATS: readonly GeneratedCaveat[] = [
  * ('table', 'table_prefix', 'dataset', 'place_kind', 'source_id', 'variable_theme', 'variable')）。
  * cell/cell_table（cells.notes 由来）は含めない。'table'/'table_prefix' は v1
  * （`caveatsForTables`、テーブル名で引く）、'dataset'/'place_kind'/'source_id'/
- * 'variable_theme' は v2（`lib/cube/caveats.ts` の `caveatsForFacets`、キューブの
- * セルから直接引く。Issue #48 PR-1b）。'variable' は行が無い予約枠。
+ * 'variable_theme'/'variable' は v2（`lib/cube/caveats.ts` の `caveatsForFacets`、
+ * キューブのセルから直接引く。Issue #48 PR-1b。'variable' の行は PR-2 で足した
+ * `unitUnknown` の scope_ref=variable_id）。
  * 同じ (scopeKind, scopeRef) の中の並びは sortOrder。scope 同士（渡されたテーブル間）の並びは
  * 呼び出し側がテーブル名を渡す順序と priority（既定0。synthetic だけ1で最優先）に従う
  * （scripts/registry/build_caveat.py の docstring参照）。
  */
 export const GENERATED_CAVEAT_SCOPE: readonly GeneratedCaveatScope[] = [
   { scopeKind: "dataset", scopeRef: "measurements", caveatKey: "measuredOn", sortOrder: 0, priority: 0 },
-  { scopeKind: "dataset", scopeRef: "measurements", caveatKey: "censored", sortOrder: 1, priority: 0 },
+  { scopeKind: "dataset", scopeRef: "measurements", caveatKey: "censoredLod", sortOrder: 1, priority: 0 },
   { scopeKind: "dataset", scopeRef: "measurements", caveatKey: "duplicates", sortOrder: 2, priority: 0 },
   { scopeKind: "dataset", scopeRef: "measurements", caveatKey: "aboveLod", sortOrder: 3, priority: 0 },
   { scopeKind: "dataset", scopeRef: "organism_records", caveatKey: "organismSite", sortOrder: 0, priority: 0 },
@@ -317,6 +390,14 @@ export const GENERATED_CAVEAT_SCOPE: readonly GeneratedCaveatScope[] = [
   { scopeKind: "table", scopeRef: "zone_year", caveatKey: "aboveLod", sortOrder: 3, priority: 0 },
   { scopeKind: "table_prefix", scopeRef: "mesh_", caveatKey: "share", sortOrder: 0, priority: 0 },
   { scopeKind: "table_prefix", scopeRef: "mesh_", caveatKey: "effort", sortOrder: 1, priority: 0 },
+  { scopeKind: "variable", scopeRef: "common:variable:air.photochemical_oxidant", caveatKey: "unitUnknown", sortOrder: 0, priority: 0 },
+  { scopeKind: "variable", scopeRef: "common:variable:hydro.flow", caveatKey: "unitUnknown", sortOrder: 0, priority: 0 },
+  { scopeKind: "variable", scopeRef: "common:variable:water.water_temp", caveatKey: "unitUnknown", sortOrder: 0, priority: 0 },
+  { scopeKind: "variable", scopeRef: "common:variable:weather.precipitation", caveatKey: "unitUnknown", sortOrder: 0, priority: 0 },
+  { scopeKind: "variable", scopeRef: "common:variable:weather.weather_summary_day", caveatKey: "unitUnknown", sortOrder: 0, priority: 0 },
+  { scopeKind: "variable", scopeRef: "common:variable:weather.weather_summary_night", caveatKey: "unitUnknown", sortOrder: 0, priority: 0 },
+  { scopeKind: "variable", scopeRef: "common:variable:weather.wind_direction_at_gust", caveatKey: "unitUnknown", sortOrder: 0, priority: 0 },
+  { scopeKind: "variable", scopeRef: "common:variable:weather.wind_direction_at_max", caveatKey: "unitUnknown", sortOrder: 0, priority: 0 },
   { scopeKind: "variable_theme", scopeRef: "landuse", caveatKey: "landuseDefinitionChange", sortOrder: 0, priority: 0 },
 ];
 

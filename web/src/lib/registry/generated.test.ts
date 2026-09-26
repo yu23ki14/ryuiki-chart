@@ -71,20 +71,22 @@ describe.skipIf(!hasRegistryDb)("build:registry:ts は再生成しても差分�
  * 生成物の形の健全性（regenerate できない環境でも実行できる、軽い形チェック）。
  */
 describe("generated.ts / generated-client.ts の形", () => {
-  it("caveat は cells.notes 由来（207件）を含まない16件のまま", () => {
+  it("caveat は cells.notes 由来（207件）を含まない18件のまま", () => {
     // P-1b（土地利用）で Phase A 以降初めて新規の注記（landuseDefinitionChange）を
     // 1件足した（14→15）。さらに ADR-0009 決定4-C（above_lod、/code-review 指摘3）で
-    // aboveLod を1件足した（15→16）。registry/caveat.yaml 冒頭コメント参照。
-    expect(GENERATED_CAVEATS).toHaveLength(16);
+    // aboveLod を1件足した（15→16）。Issue #48 PR-2 で censoredLod・unitUnknown の
+    // 2件を足した（16→18）。registry/caveat.yaml 冒頭コメント参照。
+    expect(GENERATED_CAVEATS).toHaveLength(18);
     expect(GENERATED_CAVEATS.every((c) => !c.key.startsWith("cells."))).toBe(true);
   });
 
   it("caveat_scope は既知の scope_kind のみ（優先度は scope_kind ではなく priority 列が持つ）", () => {
     // 'cell'/'cell_table'（cells.notes 由来）は含めない規約（build-registry-ts.mjs の
     // WHERE 句、scripts/registry/build_caveat.py の docstring）。'table'/'table_prefix' は
-    // v1（caveatsForTables）、'dataset'/'place_kind'/'source_id'/'variable_theme' は v2
-    // facet（`lib/cube/caveats.ts` の `caveatsForFacets`、Issue #48 PR-1b）。'variable' は
-    // PR-2 の unitUnknown/censoredLod 用の予約枠で、今は行を持たない。
+    // v1（caveatsForTables）、'dataset'/'place_kind'/'source_id'/'variable_theme'/'variable'
+    // は v2 facet（`lib/cube/caveats.ts` の `caveatsForFacets`、Issue #48 PR-1b）。
+    // 'variable' は PR-1 では型だけの予約枠だったが、PR-2 で unitUnknown の行ができた
+    // （scope_ref=variable_id）。
     const KNOWN_KINDS = new Set([
       "table",
       "table_prefix",
@@ -109,7 +111,7 @@ describe("generated.ts / generated-client.ts の形", () => {
           s.scopeKind === "variable_theme",
       ),
     ).toBe(true);
-    expect(GENERATED_CAVEAT_SCOPE.some((s) => s.scopeKind === "variable")).toBe(false);
+    expect(GENERATED_CAVEAT_SCOPE.some((s) => s.scopeKind === "variable")).toBe(true);
     expect(GENERATED_CAVEAT_SCOPE.some((s) => s.priority > 0)).toBe(true);
   });
 

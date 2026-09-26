@@ -101,12 +101,21 @@ ADR-0025 D2 が既に決定済み）は変えない。索引はその上に、�
 `quality_transitions`/`observers`/`events`/`event_observers`）も D1 に入れない（D1 の表、
 上表「書き込み系ログ・合成データ」行）。
 
+**2026-09-26 追記（Issue #48 PR-2 着手、U1b）**: この節が書いている `is_synthetic=1`
+除外と、`scripts/b03_build_observation.py --include-synthetic` による診断専用の
+v1互換キューブ（PR-2 の合成データ矛盾対応、[docs/plans/V2_SERVING_PR2.md](../plans/V2_SERVING_PR2.md)
+§1・D1）は、この追記の時点ではまだ実装していない——PR-2 のパイプライン単位（U1a）で
+実装予定。本節（D4）自体の決定は変えていない。
+
 ### D5. imputation の扱い
 
-- **画面は `value_lod` 固定**（定量下限の値を代入した系列）。注記
-  （`registry/caveat.yaml` の `censored`）も `value_lod` を名指しする文面に書き換える
-  （ADR-0009 の「いま見えているものを名指しする方が正直」という既定の方針をそのまま
-  `zero` 系列から `lod` 系列に付け替える）。
+- **画面は `value_lod` 固定**（定量下限の値を代入した系列）。注記は、**2026-09-26
+  追記（Issue #48 PR-2 着手、U1b）で訂正**: 当初この節が書いていた「`registry/caveat.yaml`
+  の `censored` を `value_lod` を名指しする文面に書き換える」は撤回した。ADR-0009 の
+  申し送りに従い、`censored` の本文・v1 scope は変えず、`lod` 系列向けの新キー
+  `censoredLod` を別に足す形で実装した（v2 facet `dataset='measurements'` だけが
+  `censoredLod` を返す。詳細は [ADR-0009](0009-censored-values.md) の同日追記・
+  [docs/plans/V2_SERVING_PR2.md](../plans/V2_SERVING_PR2.md) §6・D3）。
 - **AI/API の応答封筒（ADR-0014）は `value_zero`/`value_lod` の両方を返す。**
   単一の `value` を返すのは呼び出し側が `imputation` を明示したときだけ（ADR-0014 決定1）。
 - **`half_lod` は出さない**（保存された列ではなく `(value_zero + value_lod) / 2`

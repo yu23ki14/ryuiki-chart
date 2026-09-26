@@ -63,6 +63,8 @@ const CAVEAT_KEY_ORDER = {
   municipality: true,
   landuseDefinitionChange: true,
   aboveLod: true,
+  censoredLod: true,
+  unitUnknown: true,
 } satisfies Record<CaveatKey, true>;
 const CAVEAT_KEYS = Object.keys(CAVEAT_KEY_ORDER) as CaveatKey[];
 

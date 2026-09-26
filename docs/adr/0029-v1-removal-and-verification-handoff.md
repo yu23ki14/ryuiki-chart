@@ -6,6 +6,13 @@
   ADR-0030（D1 の配信スキーマ。本 ADR と対で読む）,
   Issue #48（親 #27、対象 #28・#41）, [docs/plans/V2_SERVING.md](../plans/V2_SERVING.md)（移行計画本体）
 
+**2026-09-26 追記（Issue #48 PR-2 着手、U1b）**: PR-2 の合成データ除外（D4）に伴う
+「差分の差分」判定規則（`synthetic_excluded`。v1互換キューブとの二重比較で説明する）と、
+alias→variable_id の束ねに対応する `*_by_variable` 系の新規問い合わせ ID は、
+`docs/plans/V2_SERVING_PR2.md` §1・§3 で設計した。serving-diff（`web/scripts/serving-diff.mts`
+等）への実装は、この追記の時点ではまだ行っていない——PR-2 の serving-diff 単位（U4）で
+実装予定。本文は変えない。
+
 ## 背景
 
 [ADR-0027](0027-test-and-verification-strategy.md) の層2（縮小サンプル突合）・層3（全量の
