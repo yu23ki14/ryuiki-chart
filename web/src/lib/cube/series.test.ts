@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  basisFromValueGrain,
   basisOf,
+  basisOfCell,
   grainsForBasis,
   labelYear,
   representativeSeries,
@@ -11,6 +11,7 @@ import {
   seriesKeySql,
   seriesKeyString,
   withTheme,
+  yearCellFilterForBasis,
   type SeriesKey,
 } from "./series";
 
@@ -158,7 +159,7 @@ describe("representativeSeries（PR-2 §2.1、決定8/9）", () => {
   });
 });
 
-describe("basisOf / grainsForBasis / basisFromValueGrain", () => {
+describe("basisOf / grainsForBasis", () => {
   it("day を含む集合は basis='day'、grains=[year,month,day]", () => {
     const series: SeriesKey[] = [{ variableId: "x", obsStat: "mean", unitId: null, valueGrain: "day" }];
     expect(basisOf(series)).toEqual({ basis: "day", grains: ["year", "month", "day"] });
@@ -192,11 +193,41 @@ describe("basisOf / grainsForBasis / basisFromValueGrain", () => {
     expect(grainsForBasis("year")).toEqual(["year"]);
   });
 
-  it("basisFromValueGrain: 1行ずつの value_grain を basis に写す", () => {
-    expect(basisFromValueGrain("day")).toBe("day");
-    expect(basisFromValueGrain("fiscal_year")).toBe("fiscal_year");
-    expect(basisFromValueGrain("year")).toBe("year");
-    expect(basisFromValueGrain(null)).toBe("year");
+});
+
+describe("basisOfCell（セルの grain/input_grain から basis を決める。Issue #48 PR-2 統合後修正A #1）", () => {
+  it("input_grain='day' は grain によらず basis='day'", () => {
+    expect(basisOfCell({ grain: "year", inputGrain: "day" })).toBe("day");
+    expect(basisOfCell({ grain: "month", inputGrain: "day" })).toBe("day");
+  });
+
+  it("value_grain='day' として登録された系列でも、input_grain='fiscal_year' のセルは basis='fiscal_year'（実測: 中津川 BOD）", () => {
+    expect(basisOfCell({ grain: "fiscal_year", inputGrain: "fiscal_year" })).toBe("fiscal_year");
+  });
+
+  it("grain='year' かつ input_grain='year'（地盤沈下等の直接報告）は basis='year'", () => {
+    expect(basisOfCell({ grain: "year", inputGrain: "year" })).toBe("year");
+  });
+});
+
+describe("yearCellFilterForBasis（basisOfCell の逆写像。旧 seriesForBasis/inputGrainForBasis/cellGrainForBasis の統合）", () => {
+  it("day: (grain=year, inputGrain=day)", () => {
+    expect(yearCellFilterForBasis("day")).toEqual({ grain: "year", inputGrain: "day" });
+  });
+
+  it("fiscal_year: (grain=fiscal_year, inputGrain=same)", () => {
+    expect(yearCellFilterForBasis("fiscal_year")).toEqual({ grain: "fiscal_year", inputGrain: "same" });
+  });
+
+  it("year: (grain=year, inputGrain=same)", () => {
+    expect(yearCellFilterForBasis("year")).toEqual({ grain: "year", inputGrain: "same" });
+  });
+
+  it("basisOfCell と往復する（day/fiscal_year/year）", () => {
+    for (const basis of ["day", "fiscal_year", "year"] as const) {
+      const { grain, inputGrain } = yearCellFilterForBasis(basis);
+      expect(basisOfCell({ grain, inputGrain: inputGrain === "same" ? grain : inputGrain })).toBe(basis);
+    }
   });
 });
 

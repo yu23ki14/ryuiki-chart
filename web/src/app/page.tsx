@@ -5,7 +5,7 @@ import {
   redlistSummary,
   effortYears,
 } from "@/lib/queries";
-import { d1CubeDb, representativeSeries, basisOf, summarize, sitesInWaterBody, unitLabel } from "@/lib/cube";
+import { d1CubeDb, representativeSeries, basisOf, yearCellFilterForBasis, summarize, sitesInWaterBody, unitLabel } from "@/lib/cube";
 import { HomeHighlights } from "@/components/HomeHighlights";
 import { Stat, nf } from "@/components/ui";
 import { caveatBody } from "@/lib/registry/lookup-client";
@@ -75,17 +75,21 @@ const BOD_VARIABLE_ID = "common:variable:water.bod";
  */
 async function longitudinalHighlight(water = "境川（１）", variableId = BOD_VARIABLE_ID) {
   const db = await d1CubeDb();
-  const all = representativeSeries(variableId, DATASET);
-  const basis = basisOf(all).basis;
-  const series = all.filter((s) => s.valueGrain === basis);
+  // basis はセルの性質（grain/input_grain）であって系列の登録（value_grain）ではない
+  // ため、系列を basis で事前に絞り込まない（Issue #48 PR-2 統合後修正A #1）——
+  // `representativeSeries()` の全 value_grain をそのまま渡し、`yearCellFilterForBasis()`
+  // が返す grain/inputGrain でセル側から絞り込む。
+  const series = representativeSeries(variableId, DATASET);
+  const basis = basisOf(series).basis;
+  const { grain, inputGrain } = yearCellFilterForBasis(basis);
   const [placeRows, sites] = await Promise.all([
     summarize(
       db,
       {
         series,
         scope: { kind: "water", municipality: water },
-        grain: "year",
-        inputGrain: basis === "day" ? "day" : "same",
+        grain,
+        inputGrain,
         period: { from: "2020-01-01" },
         imputation: "lod",
       },

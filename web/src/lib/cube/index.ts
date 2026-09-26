@@ -26,8 +26,9 @@ export {
   seriesInfo,
   representativeSeries,
   basisOf,
+  basisOfCell,
   grainsForBasis,
-  basisFromValueGrain,
+  yearCellFilterForBasis,
   withTheme,
   labelYear,
 } from "./series";
@@ -81,4 +82,4 @@ export {
 } from "./catalog";
 
 export type { Envelope, EnvelopeColumn, EnvelopeCoverage, EnvelopeProvenance, EnvelopeExcluded } from "./envelope";
-export { buildEnvelope, ENVELOPE_SPEC_VERSION } from "./envelope";
+export { buildEnvelope, buildZoneEnvelope, ENVELOPE_SPEC_VERSION } from "./envelope";

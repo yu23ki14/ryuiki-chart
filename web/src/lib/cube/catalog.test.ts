@@ -72,18 +72,18 @@ describe("variableCatalog（既定 source='summary'。variable_id 単位に束�
   });
 });
 
-describe("siteVariables", () => {
-  it("fx_place_a は3系列（SS mean/day 年, SS mean/fiscal_year, BOD mean/day 年）を持つ", async () => {
-    const rows = await siteVariables(fx.db, FX.places.a, { imputation: "lod" });
+describe("siteVariables（第2引数は site_id。Issue #48 PR-2 統合後修正A #2）", () => {
+  it("fx_site_a は3系列以上（SS mean/day 年, SS mean/fiscal_year, BOD mean/day 年, BOD mean/day 年度）を持つ", async () => {
+    const rows = await siteVariables(fx.db, FX.sites.a, { imputation: "lod" });
     expect(rows.length).toBeGreaterThanOrEqual(3);
     const ssDaily = rows.find((r) => r.series.variableId === FX.variables.ss && r.grain === "year");
     expect(ssDaily).toBeDefined();
   });
 
   it("imputation='zero'/'lod' で avg が value_zero/value_lod に切り替わる（既定は置かず必須。design §0-3・U2）", async () => {
-    // fx_place_a の SS mean/day 年セルは value_zero=6.0・value_lod=8.0（cube-fixture.ts）。
-    const zeroRows = await siteVariables(fx.db, FX.places.a, { imputation: "zero" });
-    const lodRows = await siteVariables(fx.db, FX.places.a, { imputation: "lod" });
+    // fx_site_a の SS mean/day 年セルは value_zero=6.0・value_lod=8.0（cube-fixture.ts）。
+    const zeroRows = await siteVariables(fx.db, FX.sites.a, { imputation: "zero" });
+    const lodRows = await siteVariables(fx.db, FX.sites.a, { imputation: "lod" });
     const ssZero = zeroRows.find((r) => r.series.variableId === FX.variables.ss && r.grain === "year" && r.series.obsStat === "mean");
     const ssLod = lodRows.find((r) => r.series.variableId === FX.variables.ss && r.grain === "year" && r.series.obsStat === "mean");
     expect(ssZero!.avg).toBeCloseTo(6.0, 6);
@@ -91,8 +91,8 @@ describe("siteVariables", () => {
   });
 
   it.each(["zero", "lod"] as const)("source='summary'（既定）と source='live' は imputation='%s' で avg が一致する（フィクスチャ上の突合）", async (imputation) => {
-    const summaryRows = await siteVariables(fx.db, FX.places.a, { imputation, source: { kind: "summary" } });
-    const liveRows = await siteVariables(fx.db, FX.places.a, { imputation, source: { kind: "live" } });
+    const summaryRows = await siteVariables(fx.db, FX.sites.a, { imputation, source: { kind: "summary" } });
+    const liveRows = await siteVariables(fx.db, FX.sites.a, { imputation, source: { kind: "live" } });
     const byLive = new Map(liveRows.map((r) => [r.seriesKey, r]));
     for (const s of summaryRows) {
       const l = byLive.get(s.seriesKey)!;
@@ -102,13 +102,13 @@ describe("siteVariables", () => {
   });
 
   it("既定は source='summary'", async () => {
-    const defaultRows = await siteVariables(fx.db, FX.places.a, { imputation: "lod" });
-    const summaryRows = await siteVariables(fx.db, FX.places.a, { imputation: "lod", source: { kind: "summary" } });
+    const defaultRows = await siteVariables(fx.db, FX.sites.a, { imputation: "lod" });
+    const summaryRows = await siteVariables(fx.db, FX.sites.a, { imputation: "lod", source: { kind: "summary" } });
     expect(defaultRows).toEqual(summaryRows);
   });
 
-  it("存在しない place_id は空配列", async () => {
-    expect(await siteVariables(fx.db, "no-such-place", { imputation: "lod" })).toEqual([]);
+  it("存在しない site_id は空配列", async () => {
+    expect(await siteVariables(fx.db, "no-such-site", { imputation: "lod" })).toEqual([]);
   });
 });
 

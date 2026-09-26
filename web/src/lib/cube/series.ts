@@ -257,16 +257,42 @@ export function grainsForBasis(basis: "day" | "fiscal_year" | "year"): Grain[] {
 }
 
 /**
- * 単一の `value_grain`（DB の生値。`"day"`/`"fiscal_year"`/それ以外）から `basis` を
- * 決める（`catalog.ts` の `variableCatalog` の束ね（`nByBasis`）が、`basisOf`——複数系列
- * から優先順位で1つ選ぶ版——ではなく、1行ずつの `value_grain` をそのまま `basis` に
- * 振り分けるためにこちらを使う）。`"year"` 自体（地盤沈下等）も NULL もここでは同じ
- * `"year"` に落ちる（実データで day/fiscal_year 以外はすべて `"year"`）。
+ * **basis はセルの性質**（`grain`/`input_grain` の組）として決める——系列の登録
+ * （`value_grain`）では決めない（Issue #48 PR-2 統合後修正A #1）。`value_grain='day'`
+ * として登録された系列でも、出典が一部の年だけ年度値を直接報告していれば
+ * `grain='fiscal_year'`（`input_grain` も `'fiscal_year'`）のセルを持つことがある
+ * （実測: 厚木系の中津川 BOD、day 入力36件＋年度入力192件）——旧
+ * `basisFromValueGrain`（`value_grain` の登録値だけを見る）はこの地点で誤判定した。
+ *
+ * `scripts/lib/serving/adapters-v2.ts` の `siteSeriesBasis` と同じ判定基準
+ * （`input_grain==='day'`→day、それ以外は `grain==='year'`→year、それ以外→fiscal_year）。
+ * `catalog.ts` の `variableCatalog`（`nByBasis`）・`SiteDetail.tsx`（測定項目一覧の表示）が使う。
  */
-export function basisFromValueGrain(valueGrain: string | null): "day" | "fiscal_year" | "year" {
-  if (valueGrain === "day") return "day";
-  if (valueGrain === "fiscal_year") return "fiscal_year";
-  return "year";
+export function basisOfCell(cell: { grain: string; inputGrain: string }): "day" | "fiscal_year" | "year" {
+  if (cell.inputGrain === "day") return "day";
+  return cell.grain === "year" ? "year" : "fiscal_year";
+}
+
+/**
+ * `basis`（省略時は `basisOf` が選ぶ既定）から、年セルの問い合わせに使う単一の
+ * `grain` と `inputGrain` を決める（`basisOfCell` の逆写像。Issue #48 PR-2 統合後
+ * 修正A #1・#3）。`observation.ts` の `yearSeries`・`web/src/app/api/timeseries/route.ts`・
+ * `web/src/lib/ai/tools.ts`・`web/src/app/page.tsx`（home）が共有する——旧
+ * `seriesForBasis`/`inputGrainForBasis`/`cellGrainForBasis` の3重複箇所を統合した。
+ *
+ * `day`→(year, day)：検体値からの積み上げ。`fiscal_year`→(fiscal_year, same)：
+ * 出典が直接報告した年度値（`input_grain=grain='fiscal_year'`）。`year`→(year, same)：
+ * 出典が直接報告した暦年値（例: 地盤沈下。`input_grain=grain='year'`）。
+ *
+ * 呼び出し側は `series` に `representativeSeries()` の結果（全 `value_grain`）を
+ * そのまま渡し、`basis` の絞り込みはこの関数が返す `grain`/`inputGrain` を
+ * `CellSpec` に渡すことでセル側（`observation_agg` 自身の `grain`/`input_grain` 列）
+ * に行わせる——系列を `value_grain` で事前に絞り込まない。
+ */
+export function yearCellFilterForBasis(basis: "day" | "fiscal_year" | "year"): { grain: Grain; inputGrain: "day" | "same" } {
+  if (basis === "fiscal_year") return { grain: "fiscal_year", inputGrain: "same" };
+  if (basis === "year") return { grain: "year", inputGrain: "same" };
+  return { grain: "year", inputGrain: "day" };
 }
 
 const variableById = new Map(GENERATED_VARIABLES.map((v) => [v.variableId, v]));

@@ -3,6 +3,7 @@ import {
   d1CubeDb,
   representativeSeries,
   withTheme,
+  yearCellFilterForBasis,
   yearSeries,
   monthSeries,
   daySeries,
@@ -24,26 +25,6 @@ const DATASET = "measurements";
 
 type Basis = "day" | "fiscal_year" | "year";
 
-/**
- * `representativeSeries()` を `basis`（元データの粒度）で絞り込む。`lib/cube/observation.ts`
- * の非公開ヘルパ `seriesForBasis` と同じロジック（`yearSeries` 等が内部で使っているのと
- * 同じ組み立て）。`web/src/lib/ai/tools.ts` にも同じ複製がある——`lib/cube` にこの
- * 分解だけを返す公開関数が無かった（報告参照）。
- */
-function seriesForBasis(variableId: string, stat: string | undefined, basis: Basis) {
-  return representativeSeries(variableId, DATASET, stat ?? "representative").filter((s) => s.valueGrain === basis);
-}
-
-/** `basis` から `queryCells`/`summarize` に渡す `inputGrain`（day 基準だけ検体値からの積み上げに絞る）。 */
-function inputGrainForBasis(basis: Basis): "day" | "same" {
-  return basis === "day" ? "day" : "same";
-}
-
-/** ゾーン・季節図の grain（`basis='day'` は year セルへ積み上げたもの、それ以外は basis そのもの）。 */
-function cellGrainForBasis(basis: Basis): "year" | "fiscal_year" {
-  return basis === "fiscal_year" ? "fiscal_year" : "year";
-}
-
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const mode = sp.get("mode") ?? "water";
@@ -63,7 +44,9 @@ export async function GET(req: NextRequest) {
 
     if (mode === "water" || mode === "site") {
       const scope: Scope = mode === "water" ? { kind: "water", municipality: sp.get("water") ?? "" } : { kind: "site", siteId: sp.get("site") ?? "" };
-      const series = seriesForBasis(variableId, stat, basis);
+      // series は basis で絞り込まない（basis はセルの性質。Issue #48 PR-2 統合後修正A #1）。
+      // basis の絞り込みは `yearSeries`/`monthSeries`/`daySeries`（`lib/cube`）がセル側で行う。
+      const series = representativeSeries(variableId, DATASET, stat ?? "representative");
       const unit = unitLabel(series[0]?.unitId ?? null);
       const caveats = series.length ? caveatKeysForFacets(facetsForSeries(series.map((s) => withTheme(s)), scope)) : [];
       const sites = mode === "water" ? await sitesInWaterBody(db, sp.get("water") ?? "", { dataset: DATASET }) : undefined;
@@ -89,14 +72,14 @@ export async function GET(req: NextRequest) {
     }
 
     if (mode === "zone") {
-      const series = seriesForBasis(variableId, stat, basis);
+      const series = representativeSeries(variableId, DATASET, stat ?? "representative");
       const unit = unitLabel(series[0]?.unitId ?? null);
-      const cellGrain = cellGrainForBasis(basis);
+      const { grain: cellGrain, inputGrain } = yearCellFilterForBasis(basis);
       if (series.length === 0) {
         return NextResponse.json({ points: [], unit, grain: cellGrain, basis, stat: stat ?? "representative", caveats: [] });
       }
       const scope: Scope = { kind: "all_sites" };
-      const spec: CellSpec = { series, scope, grain: cellGrain, inputGrain: inputGrainForBasis(basis), imputation: "lod" };
+      const spec: CellSpec = { series, scope, grain: cellGrain, inputGrain, imputation: "lod" };
       const { rows: points } = await summarize(db, spec, "zone");
       const caveats = caveatKeysForFacets(facetsForSeries(series.map((s) => withTheme(s)), scope));
       return NextResponse.json({ points, unit, grain: cellGrain, basis, stat: stat ?? "representative", caveats });
@@ -104,7 +87,9 @@ export async function GET(req: NextRequest) {
 
     if (mode === "season") {
       // 季節性（月別）は検体値（basis='day'）だけが意味を持つ（v1 meas_clim/zone_clim と同じ前提）。
-      const series = representativeSeries(variableId, DATASET, stat ?? "representative").filter((s) => s.valueGrain === "day");
+      // series は value_grain で絞り込まない（day-registered 以外の系列は grain='day'/'month'
+      // のセル自体を持たないため、grain 指定だけで自然に day-input セルに絞り込まれる）。
+      const series = representativeSeries(variableId, DATASET, stat ?? "representative");
       const unit = unitLabel(series[0]?.unitId ?? null);
       const scope: Scope = { kind: "all_sites" };
       const [overall, byZone, rain] = await Promise.all([

@@ -10,6 +10,9 @@
  *     '浮遊物質量 SS'）＋ fiscal_year の3系列目
  *   - 日セル（検閲あり: value_zero ≠ value_lod、n_not_detected>0 で value_lod NULL）
  *   - 月・年（暦年 input=day）・年度（fiscal_year）セル
+ *   - `water.bod`（fx_site_a）に、`value_grain='day'` の系列の中に
+ *     `input_grain='fiscal_year'` のセルが混ざる厚木型のケース（Issue #48 PR-2
+ *     統合後修正A #1。basis はセルの性質であって系列の登録ではないことのテスト用）
  *   - `weather.precipitation` の hour→day sum セル（2ヶ月分、月別平年値のテスト用）
  *   - `unit_id` NULL のセル（water.ss・weather.precipitation）と NULL でないセル（water.bod）
  *   - レジストリ8表の必要行（`place_source_ref` の `sites.site_id`/`sites.zone`、
@@ -314,6 +317,30 @@ function seed(db: Database.Database): void {
   insertObsAgg(db, [
     { placeId: FX.places.a, variableId: FX.variables.bod, obsStat: "mean", unitId: FX.units.mgPerL, valueGrain: "day", grain: "day", inputGrain: "day", stat: "mean", periodStart: "2024-01-01", valueZero: 2.0, valueLod: 2.0, n: 1 },
     { placeId: FX.places.a, variableId: FX.variables.bod, obsStat: "mean", unitId: FX.units.mgPerL, valueGrain: "day", grain: "year", inputGrain: "day", stat: "mean", periodStart: "2024-01-01", periodEnd: "2024-12-31", valueZero: 2.0, valueLod: 2.0, n: 1 },
+  ]);
+
+  // --- water.bod: 厚木型（Issue #48 PR-2 統合後修正A #1の実測ケース。中津川 BOD）---
+  // `value_grain='day'` として登録された同じ系列（FX.series.bodMean）の中に、
+  // 出典が直接年度値を報告した年（`grain='fiscal_year'`・`input_grain='fiscal_year'`）
+  // のセルが混ざる地点。`basis` は登録（`value_grain`）ではなくこのセル自身の
+  // `grain`/`input_grain` から決まる（`series.ts` の `basisOfCell` 参照）ので、
+  // `yearSeries(..., { basis: "fiscal_year" })` でこの1件が出ることをテストする。
+  insertObsAgg(db, [
+    {
+      placeId: FX.places.a,
+      variableId: FX.variables.bod,
+      obsStat: "mean",
+      unitId: FX.units.mgPerL,
+      valueGrain: "day",
+      grain: "fiscal_year",
+      inputGrain: "fiscal_year",
+      stat: "mean",
+      periodStart: "2023-04-01",
+      periodEnd: "2024-03-31",
+      valueZero: 3.0,
+      valueLod: 3.0,
+      n: 1,
+    },
   ]);
 
   seedSummaryFromObsAgg(db);
