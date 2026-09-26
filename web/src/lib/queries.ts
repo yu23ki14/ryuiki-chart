@@ -37,19 +37,6 @@ export async function listSites(): Promise<SiteRow[]> {
   `);
 }
 
-export async function getSite(siteId: string): Promise<SiteRow | undefined> {
-  return queryOne<SiteRow>(
-    `SELECT s.*, w.water_system_name,
-            COALESCE(v.n,0) AS n_meas, COALESCE(v.k,0) AS n_var
-     FROM sites s
-     LEFT JOIN watershed_meta w ON w.watershed_id = s.watershed
-     LEFT JOIN (SELECT site_id, SUM(n) AS n, COUNT(DISTINCT variable) AS k FROM site_var GROUP BY site_id) v
-       ON v.site_id = s.site_id
-     WHERE s.site_id = ?`,
-    [siteId],
-  );
-}
-
 export interface SiteVariable {
   variable: string;
   kind: string;
@@ -231,34 +218,12 @@ export async function climatology(variable: string) {
 
 /* ------------------------------ 降雨 ------------------------------ */
 
-export async function rainDaily(from: string, to: string) {
-  return query<{ d: string; mm: number }>(
-    `SELECT d, mm FROM rain_daily WHERE d >= ? AND d <= ? ORDER BY d`,
-    [from, to],
-  );
-}
-
 export async function rainMonthlyClim() {
   return query<{ month: number; mm: number }>(`
     SELECT CAST(substr(d,6,2) AS INT) AS month,
            ROUND(SUM(mm) / COUNT(DISTINCT substr(d,1,4)), 1) AS mm
     FROM rain_daily GROUP BY month ORDER BY month`);
 }
-
-export async function rainTopDays(limit = 10) {
-  return query<{ d: string; mm: number }>(
-    `SELECT d, mm FROM rain_daily ORDER BY mm DESC LIMIT ?`,
-    [limit],
-  );
-}
-
-export async function sensorHourMonth(datastream: string) {
-  return query<{ month: number; hour: number; n: number; avg: number; max: number }>(
-    `SELECT month, hour, n, avg, max FROM sensor_hour_month WHERE datastream = ? ORDER BY month, hour`,
-    [datastream],
-  );
-}
-
 
 /* --------------------------- レッドリスト --------------------------- */
 
