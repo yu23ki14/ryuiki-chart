@@ -732,3 +732,95 @@ def test_assert_all_reads_verified_ignores_own_main_schema(tmp_path):
         common.assert_all_reads_verified(work, reads, set(), context="test")
     finally:
         work.close()
+
+
+# ---------------------------------------------------------------------------
+# check_v2_cube_spec_fresh / check_v2_cube_fresh（Issue #48 PR-0。
+# scripts/check_v2_fresh.py が公開する CLI の中身）
+# ---------------------------------------------------------------------------
+
+
+def _make_v2_like_db(tmp_path, name="v2.sqlite"):
+    """`observation_agg`/`occurrence_agg` に相当する最小のテーブルを持つ
+    v2.sqlite 風の DB を作って返す（`sqlite3.Connection`）。行の中身は
+    鮮度判定に無関係なので空のまま。
+    """
+    db_path = tmp_path / name
+    conn = sqlite3.connect(f"file:{db_path}", uri=True)
+    conn.execute("CREATE TABLE observation_agg (region_id TEXT, n INTEGER)")
+    conn.execute("CREATE TABLE occurrence_agg (region_id TEXT, n INTEGER)")
+    conn.commit()
+    return conn
+
+
+def test_check_v2_cube_spec_fresh_reports_missing_pipeline_fingerprint_table(tmp_path):
+    """PR #26 以前の実物と同じ形（pipeline_fingerprint 表そのものが無い）。"""
+    conn = _make_v2_like_db(tmp_path)
+    try:
+        problems = common.check_v2_cube_spec_fresh(conn, "observation_agg", common.OBSERVATION_AGG_SPEC_VERSION)
+        assert len(problems) == 1
+        assert common.PIPELINE_FINGERPRINT_TABLE in problems[0]
+        assert "無い" in problems[0]
+    finally:
+        conn.close()
+
+
+def test_check_v2_cube_spec_fresh_reports_missing_row_for_table(tmp_path):
+    """`pipeline_fingerprint` 表はあるが、対象テーブルの行が無い
+    （観測のキューブだけ作って生物出現のキューブをまだ作っていない、等）。"""
+    conn = _make_v2_like_db(tmp_path)
+    try:
+        common.record_stage_fingerprint(conn, "observation_agg", spec_version=common.OBSERVATION_AGG_SPEC_VERSION)
+        conn.commit()
+        problems = common.check_v2_cube_spec_fresh(conn, "occurrence_agg", common.OCCURRENCE_SPEC_VERSION)
+        assert len(problems) == 1
+        assert "occurrence_agg" in problems[0]
+        assert "記録が無い" in problems[0]
+    finally:
+        conn.close()
+
+
+def test_check_v2_cube_spec_fresh_reports_spec_version_mismatch(tmp_path):
+    """spec_version は記録されているが、今のパイプラインの値と違う
+    （b04 が次元キーを変えて spec_version を上げたのに、手元の v2.sqlite が
+    古いまま、というのがまさにこのケース）。"""
+    conn = _make_v2_like_db(tmp_path)
+    try:
+        common.record_stage_fingerprint(conn, "observation_agg", spec_version="phase-b-fact-slice/v1-old")
+        conn.commit()
+        problems = common.check_v2_cube_spec_fresh(conn, "observation_agg", common.OBSERVATION_AGG_SPEC_VERSION)
+        assert len(problems) == 1
+        assert "phase-b-fact-slice/v1-old" in problems[0]
+        assert common.OBSERVATION_AGG_SPEC_VERSION in problems[0]
+    finally:
+        conn.close()
+
+
+def test_check_v2_cube_spec_fresh_returns_empty_when_spec_version_matches(tmp_path):
+    conn = _make_v2_like_db(tmp_path)
+    try:
+        common.record_stage_fingerprint(conn, "observation_agg", spec_version=common.OBSERVATION_AGG_SPEC_VERSION)
+        conn.commit()
+        assert common.check_v2_cube_spec_fresh(conn, "observation_agg", common.OBSERVATION_AGG_SPEC_VERSION) == []
+    finally:
+        conn.close()
+
+
+def test_check_v2_cube_fresh_checks_both_cube_tables(tmp_path):
+    """`check_v2_cube_fresh` は `V2_CUBE_SPEC_VERSIONS`（observation_agg/
+    occurrence_agg）の両方を見る。片方だけ古ければ、その分の問題だけが返る。"""
+    conn = _make_v2_like_db(tmp_path)
+    try:
+        common.record_stage_fingerprint(conn, "observation_agg", spec_version=common.OBSERVATION_AGG_SPEC_VERSION)
+        common.record_stage_fingerprint(conn, "occurrence_agg", spec_version="stale-spec")
+        conn.commit()
+        problems = common.check_v2_cube_fresh(conn)
+        assert len(problems) == 1
+        assert "occurrence_agg" in problems[0]
+
+        # occurrence_agg も直せば新鮮になる。
+        common.record_stage_fingerprint(conn, "occurrence_agg", spec_version=common.OCCURRENCE_SPEC_VERSION)
+        conn.commit()
+        assert common.check_v2_cube_fresh(conn) == []
+    finally:
+        conn.close()

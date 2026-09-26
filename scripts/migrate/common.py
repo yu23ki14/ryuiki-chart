@@ -79,6 +79,26 @@ OCCURRENCE_SPEC_VERSION = "phase-b-fact-slice/v1"
 # 残されて実際の v2 と食い違って見える、という事態を避ける）。
 FINGERPRINT_SPEC_VERSION = "phase-b-fact-slice/v1"
 
+# v2 キューブ（`observation_agg`/`occurrence_agg`）の鮮度判定で使う CLI 終了コード
+# （`scripts/check_v2_fresh.py`。`scripts/r01_build_registry.py` の
+# `EXIT_FRESH`/`EXIT_STALE` と同じ流儀: 0=新鮮、10=古い、それ以外=判定不能）。
+# Issue #48 PR-0。
+V2_CHECK_EXIT_FRESH = 0
+V2_CHECK_EXIT_STALE = 10
+
+# D1 に載せるキューブ表と、それぞれの spec_version。値は上の
+# `OBSERVATION_AGG_SPEC_VERSION`/`OCCURRENCE_SPEC_VERSION` を直接引く——
+# ここで複製しない。`scripts/check_v2_fresh.py`・
+# `web/scripts/seed-d1-local.mjs`（Python の `scripts/check_v2_fresh.py` を
+# 子プロセスとして呼ぶ）が読む唯一の正本（コードレビュー指摘: 以前は
+# `web/scripts/seed-d1-local.mjs` にこの2値の手書きの写しを持っていたが、
+# b03/b04 が spec_version を上げても JS 側の写しは自動で追随しないため、
+# 黙ってずれた状態のまま「新鮮」と誤判定する穴があった）。
+V2_CUBE_SPEC_VERSIONS = {
+    "observation_agg": OBSERVATION_AGG_SPEC_VERSION,
+    "occurrence_agg": OCCURRENCE_SPEC_VERSION,
+}
+
 # SQLite 3.43 未満では2つの理由でパイプラインが壊れる: (1) AVG()/SUM() の
 # 加算アルゴリズムが素朴な左→右加算に落ち、平均が黙って壊れる（b04・b05・
 # b10）。(2) FULL OUTER JOIN（`assert_grouped_totals_match` が使う。SQLite
@@ -992,6 +1012,53 @@ def assert_occurrence_fingerprint_fresh(conn: sqlite3.Connection, *, schema: str
         conn, "occurrence", schema=schema,
         rebuild_hint="scripts/b06_build_occurrence.py を再実行すること。",
     )
+
+
+# ---------------------------------------------------------------------------
+# v2 キューブの鮮度判定（Issue #48 PR-0）。`scripts/check_v2_fresh.py`（CLI）が
+# 公開し、`web/scripts/seed-d1-local.mjs`（シード直前の拒否）・
+# `web/scripts/ensure-v2.sh`（db:setup/entrypoint の作り直し判定）が読む。
+#
+# **ここで見るのは `pipeline_fingerprint.spec_version` だけ**——`table` 自身の
+# 内容が記録済み指紋と一致するか（self-consistency）は見ない。それは
+# `assert_stage_fingerprint_fresh` の役目であり、そちらは「原本や上流表から
+# 見て古いか」という重い検証。こちらは「そもそも今のスキーマ・スペックで
+# 書かれた表か」という、軽いが PR #26 以前の13列キー（`pipeline_fingerprint`
+# 表自体が無い、または `spec_version` が古いまま）を確実に検出できる形の
+# 検査に絞る。列集合そのものもここでは見ない——D1 に実際に投入する側
+# （`web/src/db/schema-cube.ts`）と、シード先 D1 自身の `PRAGMA table_info`
+# を直接突き合わせるのは `web/scripts/seed-d1-local.mjs` の役目（Python 側は
+# D1 のスキーマを知らないし、知る必要も無い）。
+# ---------------------------------------------------------------------------
+
+def check_v2_cube_spec_fresh(conn: sqlite3.Connection, table: str, expected_spec_version: str) -> list[str]:
+    """`table`（`observation_agg`/`occurrence_agg`。`conn` は v2.sqlite 自身）の
+    `pipeline_fingerprint.spec_version` が `expected_spec_version`
+    （呼び出し元が `V2_CUBE_SPEC_VERSIONS` から渡す）と一致するか判定する。
+
+    戻り値: 問題点の一覧（1件1行、日本語）。空なら新鮮。
+    """
+    if not _table_exists(conn, PIPELINE_FINGERPRINT_TABLE):
+        return [f"{PIPELINE_FINGERPRINT_TABLE} 表が無い（段階間の指紋が導入される前の出力）"]
+    row = conn.execute(
+        f"SELECT spec_version FROM {PIPELINE_FINGERPRINT_TABLE} WHERE table_name = ?", (table,)
+    ).fetchone()
+    if row is None:
+        return [f"{PIPELINE_FINGERPRINT_TABLE} に {table!r} の記録が無い"]
+    (spec_version,) = row
+    if spec_version != expected_spec_version:
+        return [f"{table}.spec_version = {spec_version!r}、期待値 {expected_spec_version!r}"]
+    return []
+
+
+def check_v2_cube_fresh(conn: sqlite3.Connection) -> list[str]:
+    """`V2_CUBE_SPEC_VERSIONS` の全表について `check_v2_cube_spec_fresh` を行い、
+    問題点をまとめて返す（空なら新鮮）。`scripts/check_v2_fresh.py` が使う。
+    """
+    problems: list[str] = []
+    for table, expected_spec_version in V2_CUBE_SPEC_VERSIONS.items():
+        problems.extend(check_v2_cube_spec_fresh(conn, table, expected_spec_version))
+    return problems
 
 
 # ---------------------------------------------------------------------------

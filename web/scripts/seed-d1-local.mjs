@@ -19,6 +19,7 @@
  * `npm run db:export` で .sql を書き出して `wrangler d1 execute --remote --file` に渡す。
  */
 import Database from "better-sqlite3";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -47,77 +48,74 @@ const SOURCES = [
  * `scripts/migrate/common.py` の `OBSERVATION_AGG_SPEC_VERSION`/`OCCURRENCE_SPEC_VERSION`
  * と同じ値。値を変えたらそちらも変えること）。
  */
-const V2_SPEC_VERSIONS = {
-  observation_agg: "phase-b-fact-slice/v2",
-  occurrence_agg: "phase-b-fact-slice/v1",
-};
-
-/**
- * `observation_agg`/`occurrence_agg` の列集合（`web/src/db/schema-cube.ts` と同じ値。
- * スキーマを変えたら両方を更新すること。正は schema-cube.ts、ここは追随する）。
- */
-const V2_CUBE_COLUMNS = {
-  observation_agg: [
-    "region_id", "place_id", "place_kind", "variable_id", "obs_stat", "unit_id",
-    "value_grain", "period_start", "period_end", "grain", "input_grain", "stat",
-    "value_zero", "value_lod", "n", "n_censored", "n_not_detected", "n_places",
-    "built_from", "spec_version",
-  ],
-  occurrence_agg: [
-    "region_id", "source_id", "place_id", "place_kind", "taxon_id", "grain",
-    "period_start", "period_end", "n", "n_red_list", "built_from", "spec_version",
-  ],
-};
-
+const RUN_PYTHON = path.join(WEB, "scripts", "run-python.sh");
+const CHECK_V2_FRESH_PY = "scripts/check_v2_fresh.py";
 const V2_REBUILD_HINT = "`pnpm run build:v2`（r01→b03→b04→b06→b09→b07）で作り直すこと。";
 
 /**
- * `v2.sqlite`（開いたばかりの読み取り専用接続）が「今のキューブの形」であることを
- * 確認する。**古い v2.sqlite を拒否する**（Issue #48「見落としそうな危険」4:
- * 手元の `data/db/v2.sqlite` が PR #26 より前の13列キー（`imputation`/`value` 列を
- * 持ち、`value_zero`/`value_lod` を持たない旧形）のまま放置されていることがある。
+ * `v2.sqlite` の `observation_agg`/`occurrence_agg` が「今のパイプラインの spec」
+ * で書かれているかを Python 側（`scripts/check_v2_fresh.py`。正本は
+ * `scripts/migrate/common.py` の `V2_CUBE_SPEC_VERSIONS`）に判定させる。**古い
+ * v2.sqlite を拒否する**（Issue #48「見落としそうな危険」4: 手元の
+ * `data/db/v2.sqlite` が PR #26 より前の13列キー〔`imputation`/`value` 列を持ち
+ * `pipeline_fingerprint` 表自体が無い旧形〕のまま放置されていることがある。
  * 気づかずシードすると、D1 のキューブが黙って旧形の値で埋まる）。
  *
- * `scripts/b04_build_cube.py`/`scripts/b07_build_occurrence_cube.py` 側にはまだ
- * `scripts/r01_build_registry.py --check-fresh` 相当（原本との内容照合）が無いため、
- * ここでは「pipeline_fingerprint の記録が今の spec_version と一致するか」
- * 「列集合が schema-cube.ts と一致するか」という最小の形状チェックにとどめる
- * （原本〔ryuiki/cells〕から見て古いかどうかまでは確認しない。そちらは
- * `scripts/ensure-v2.sh` が mtime で判定する）。
+ * ここでは spec_version の値そのものを持たない（コードレビュー指摘: 以前は
+ * `V2_SPEC_VERSIONS` という手書きの写しをここに持っていたが、b03/b04 が
+ * spec_version を上げても JS 側の写しは自動で追随せず、黙ってずれる）。
+ * 判定は `scripts/check_v2_fresh.py`（`scripts/r01_build_registry.py
+ * --check-fresh` と同じ 0=新鮮/10=古い/それ以外=判定不能の終了コード）に
+ * 一本化し、ここでは**0以外を全部拒否する**——シードは「D1 に何を入れるか」の
+ * 最後の関門なので、判定不能（Python が起動できない等）を「古いかもしれないが
+ * 今回は見逃す」という寛容な扱いにはしない（`ensure-v2.sh` の自動再ビルド判断
+ * とは目的が違う。そちらは「余計な再ビルドを避ける」ための最適化なので判定
+ * できなければ既存ファイルを使い続ける寛容さでよいが、こちらは安全側に倒す）。
  */
-function assertV2Fresh(conn, v2Path) {
-  const hasPipelineFingerprint = conn
-    .prepare("SELECT count(*) n FROM sqlite_master WHERE type='table' AND name='pipeline_fingerprint'")
-    .get().n;
-  if (!hasPipelineFingerprint) {
+function assertV2SpecFresh(v2Path) {
+  const result = spawnSync(RUN_PYTHON, [CHECK_V2_FRESH_PY, "--v2-db", v2Path], { cwd: WEB, encoding: "utf8" });
+  if (result.error) {
     throw new Error(
-      `${v2Path} が古い形式（pipeline_fingerprint 表が無い。段階間の指紋が導入される前の出力）。` +
-        V2_REBUILD_HINT,
+      `v2.sqlite の鮮度判定（${CHECK_V2_FRESH_PY}）を起動できない: ${result.error.message}\n${V2_REBUILD_HINT}`,
     );
   }
-  for (const [table, expectedSpecVersion] of Object.entries(V2_SPEC_VERSIONS)) {
-    const row = conn
-      .prepare("SELECT spec_version FROM pipeline_fingerprint WHERE table_name = ?")
-      .get(table);
-    if (!row) {
-      throw new Error(`${v2Path} が古い（pipeline_fingerprint に ${table} の記録が無い）。` + V2_REBUILD_HINT);
-    }
-    if (row.spec_version !== expectedSpecVersion) {
-      throw new Error(
-        `${v2Path} が古い（${table}.spec_version = "${row.spec_version}"、期待値 "${expectedSpecVersion}"）。` +
-          V2_REBUILD_HINT,
-      );
-    }
-    const actualColumns = conn.prepare(`PRAGMA table_info(${qi(table)})`).all().map((c) => c.name);
-    const expectedColumns = V2_CUBE_COLUMNS[table];
-    const actualSet = new Set(actualColumns);
-    const sameSet =
-      actualSet.size === expectedColumns.length && expectedColumns.every((c) => actualSet.has(c));
+  if (result.status !== 0) {
+    const detail = (result.stderr || result.stdout || "").trim();
+    throw new Error(
+      `${v2Path} が古い（${CHECK_V2_FRESH_PY} の終了コード ${result.status}）。` +
+        (detail ? `\n${detail}` : "") +
+        `\n${V2_REBUILD_HINT}`,
+    );
+  }
+}
+
+/**
+ * `tables`（v2.sqlite が実際に供給する D1 のテーブル名——呼び出し元が owner map
+ * から求める。ハードコードした表名リストは持たない）それぞれについて、v2.sqlite
+ * の列集合を **シード先 D1 自身**（マイグレーション適用後の実物のスキーマ。
+ * `web/src/db/schema-cube.ts` から `drizzle-kit generate` が作った表）と突き
+ * 合わせる。不一致なら v2.sqlite が今の D1 スキーマと違う形（PR #26 以前の
+ * 13列キー等）で書かれている。
+ *
+ * `schema-cube.ts` の列を JS 側に書き写さない（コードレビュー指摘: 以前は
+ * `V2_CUBE_COLUMNS` という手書きの写しをここに持っていたが、schema-cube.ts を
+ * 変えても追随せず黙ってずれる。シードは D1 の表を宛先として既にここで
+ * 列挙しているので、D1 自身の `PRAGMA table_info` を正として直接比べれば
+ * 写しが要らない）。
+ */
+function assertV2ColumnsMatchD1(db, v2Conn, v2Path, tables) {
+  for (const table of tables) {
+    const d1Columns = db.prepare(`PRAGMA table_info(${qi(table)})`).all().map((c) => c.name);
+    const v2Columns = v2Conn.prepare(`PRAGMA table_info(${qi(table)})`).all().map((c) => c.name);
+    const v2Set = new Set(v2Columns);
+    const sameSet = d1Columns.length === v2Columns.length && d1Columns.every((c) => v2Set.has(c));
     if (!sameSet) {
       throw new Error(
-        `${v2Path} が古い（${table} の列集合が web/src/db/schema-cube.ts と一致しない。` +
-          `実際: [${actualColumns.join(", ")}] / 期待: [${expectedColumns.join(", ")}]。` +
-          "PR #26 以前の13列キー〔imputation/value 列〕の可能性がある）。" +
+        `${v2Path} の ${table} の列集合が D1（web/src/db/schema-cube.ts から生成したスキーマ）と` +
+          "一致しない。\n" +
+          `  D1:        [${d1Columns.join(", ")}]\n` +
+          `  v2.sqlite: [${v2Columns.join(", ")}]\n` +
+          "PR #26 以前の13列キー（imputation/value 列）の可能性がある。" +
           V2_REBUILD_HINT,
       );
     }
@@ -237,8 +235,8 @@ function main() {
     const p = path.join(DB_DIR, s.file);
     if (!fs.existsSync(p)) continue;
     src[s.alias] = new Database(p, { readonly: true, fileMustExist: true });
-    if (s.alias === "v2") assertV2Fresh(src[s.alias], p);
   }
+  if (src.v2) assertV2SpecFresh(path.join(DB_DIR, "v2.sqlite"));
 
   /** テーブル名 -> どの原本にあるか */
   const owner = new Map();
@@ -258,6 +256,13 @@ function main() {
 
   const missing = targets.filter((t) => !owner.has(t));
   if (missing.length) log(`⚠ 原本に無いテーブル（空のまま）: ${missing.join(", ")}`);
+
+  // v2.sqlite が実際に供給する D1 のテーブル（今は observation_agg/occurrence_agg。
+  // ハードコードしない——owner map から実際に求める）の列集合を D1 自身と突き合わせる。
+  if (src.v2) {
+    const v2Tables = targets.filter((t) => owner.get(t) === "v2");
+    assertV2ColumnsMatchD1(db, src.v2, path.join(DB_DIR, "v2.sqlite"), v2Tables);
+  }
 
   // インデックスを外してから入れて、最後に張り直す。organism_records だけで数分変わる。
   const indexes = db
