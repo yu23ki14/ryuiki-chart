@@ -30,6 +30,46 @@ export interface CellSpec {
   /** `period_start` の範囲（文字列比較。日時関数は使わない: ADR-0024）。 */
   period?: { from?: string; to?: string };
   imputation: Imputation;
+  /** 返す行数の上限（既定 `DEFAULT_CELL_LIMIT`）。超えたら `truncated: true` を
+   *  返す（Issue #48 PR-1 §論点B。上限そのものを外したい呼び出し側は
+   *  `UNLIMITED_CELL_LIMIT` を明示する——`serving-diff` はこちらを使う）。 */
+  limit?: number;
+}
+
+/**
+ * `CellSpec.limit` の既定値（画面が使う想定の問い合わせ規模に十分な余裕を
+ * 持たせた上限）。実測で単発の問い合わせが最も大きいのは `rain_daily`
+ * （全地点・日次の3,654行）で、これより十分大きい値にしてある。
+ */
+export const DEFAULT_CELL_LIMIT = 20_000;
+
+/**
+ * 上限を掛けたくない呼び出し側（`serving-diff` 等、v1 との突合に全行が要る）が
+ * 明示的に渡す値。`LIMIT` に使うため有限の具体的な数値にする必要がある
+ * （`Infinity` は SQL パラメータにバインドできない）。実データのどの
+ * 問い合わせの行数よりも十分大きい。
+ */
+export const UNLIMITED_CELL_LIMIT = 1_000_000_000;
+
+function limitOf(spec: CellSpec): number {
+  return spec.limit ?? DEFAULT_CELL_LIMIT;
+}
+
+export interface LimitedRows<T> {
+  rows: T[];
+  truncated: boolean;
+}
+
+/**
+ * SQL 側で `LIMIT limit+1` を掛けた結果（`rows`）を、呼び出し側が指定した
+ * `limit` と比べる。`limit+1` 件返ってきていれば実際には上限を超えている
+ * ことが分かるので、末尾の1行を落として `truncated: true` にする。
+ */
+function applyLimit<T>(rows: T[], limit: number): LimitedRows<T> {
+  if (rows.length > limit) {
+    return { rows: rows.slice(0, limit), truncated: true };
+  }
+  return { rows, truncated: false };
 }
 
 export interface CellRow {
@@ -188,8 +228,9 @@ function toCellRow(r: RawCellRow, imputation: Imputation): CellRow {
  * `observation_agg` から未ピボットのセルを返す（1行 = 1 (place, series, period, stat)）。
  * mean/min/max のピボットは呼び出し側（JS）で行う（design §3.3。b05 の自己 JOIN は使わない）。
  */
-export async function queryCells(db: CubeDb, spec: CellSpec): Promise<CellRow[]> {
+export async function queryCells(db: CubeDb, spec: CellSpec): Promise<LimitedRows<CellRow>> {
   const { joins, wheres, params, siteIdExpr } = commonFilterSql(spec, OBS);
+  const limit = limitOf(spec);
 
   const sql = `
     SELECT ${OBS}.place_id AS place_id, ${siteIdExpr} AS site_id,
@@ -203,10 +244,11 @@ export async function queryCells(db: CubeDb, spec: CellSpec): Promise<CellRow[]>
     ${joins.join("\n    ")}
     ${whereSql(wheres)}
     ORDER BY ${OBS}.place_id, ${OBS}.period_start, ${OBS}.stat
+    LIMIT ?
   `;
 
-  const rows = await db.all<RawCellRow>(sql, params);
-  return rows.map((r) => toCellRow(r, spec.imputation));
+  const rows = await db.all<RawCellRow>(sql, [...params, limit + 1]);
+  return applyLimit(rows.map((r) => toCellRow(r, spec.imputation)), limit);
 }
 
 export type SummarizeBy = "place" | "zone" | "month_of_year" | "zone_month_of_year" | "series";
@@ -274,8 +316,9 @@ function valueExpr(imputation: Imputation, alias: string): string {
   throw new Error("summarize: imputation='both' は使えない（value_zero/value_lod のどちらかを選ぶ）");
 }
 
-async function summarizeMonthOfYear(db: CubeDb, spec: CellSpec, opt?: SummarizeOpt): Promise<MonthOfYearRow[]> {
+async function summarizeMonthOfYear(db: CubeDb, spec: CellSpec, opt?: SummarizeOpt): Promise<LimitedRows<MonthOfYearRow>> {
   const { joins, wheres, params } = commonFilterSql(spec, OBS);
+  const limit = limitOf(spec);
   const v = valueExpr(spec.imputation, OBS);
   const avgExpr =
     opt?.measure === "sum_per_year"
@@ -290,13 +333,18 @@ async function summarizeMonthOfYear(db: CubeDb, spec: CellSpec, opt?: SummarizeO
     ${whereSql(wheres)}
     GROUP BY CAST(substr(${OBS}.period_start,6,2) AS INTEGER)
     ORDER BY month
+    LIMIT ?
   `;
-  const rows = await db.all<{ month: number; n: number; avg: number | null; min: number | null; max: number | null }>(sql, params);
-  return rows;
+  const rows = await db.all<{ month: number; n: number; avg: number | null; min: number | null; max: number | null }>(sql, [
+    ...params,
+    limit + 1,
+  ]);
+  return applyLimit(rows, limit);
 }
 
-async function summarizeZone(db: CubeDb, spec: CellSpec): Promise<ZoneYearRow[]> {
+async function summarizeZone(db: CubeDb, spec: CellSpec): Promise<LimitedRows<ZoneYearRow>> {
   const { joins, wheres, params } = commonFilterSql(spec, OBS);
+  const limit = limitOf(spec);
   const v = valueExpr(spec.imputation, OBS);
 
   // `zg`/`zgz`（zone-group）: このゾーン集計自身が使うためだけの地点→ゾーンの JOIN
@@ -319,16 +367,21 @@ async function summarizeZone(db: CubeDb, spec: CellSpec): Promise<ZoneYearRow[]>
     ${whereSql(wheres)}
     GROUP BY zone, ${OBS}.grain, ${OBS}.input_grain, substr(${OBS}.period_start,1,4)
     ORDER BY zone, year
+    LIMIT ?
   `;
   const rows = await db.all<{ zone: number; grain: string; input_grain: string; year: number; n_sites: number; n: number; avg: number | null }>(
     sql,
-    params,
+    [...params, limit + 1],
   );
-  return rows.map((r) => ({ zone: r.zone, grain: r.grain as Grain, inputGrain: r.input_grain, year: r.year, nSites: r.n_sites, n: r.n, avg: r.avg }));
+  return applyLimit(
+    rows.map((r) => ({ zone: r.zone, grain: r.grain as Grain, inputGrain: r.input_grain, year: r.year, nSites: r.n_sites, n: r.n, avg: r.avg })),
+    limit,
+  );
 }
 
-async function summarizeZoneMonth(db: CubeDb, spec: CellSpec): Promise<ZoneMonthRow[]> {
+async function summarizeZoneMonth(db: CubeDb, spec: CellSpec): Promise<LimitedRows<ZoneMonthRow>> {
   const { joins, wheres, params } = commonFilterSql(spec, OBS);
+  const limit = limitOf(spec);
   const v = valueExpr(spec.imputation, OBS);
 
   // `zg`/`zgz` の別名の理由は `summarizeZone` のコメント参照
@@ -344,13 +397,18 @@ async function summarizeZoneMonth(db: CubeDb, spec: CellSpec): Promise<ZoneMonth
     ${whereSql(wheres)}
     GROUP BY zone, month
     ORDER BY zone, month
+    LIMIT ?
   `;
-  const rows = await db.all<{ zone: number; month: number; n_sites: number; n: number; avg: number | null }>(sql, params);
-  return rows.map((r) => ({ zone: r.zone, month: r.month, nSites: r.n_sites, n: r.n, avg: r.avg }));
+  const rows = await db.all<{ zone: number; month: number; n_sites: number; n: number; avg: number | null }>(sql, [...params, limit + 1]);
+  return applyLimit(
+    rows.map((r) => ({ zone: r.zone, month: r.month, nSites: r.n_sites, n: r.n, avg: r.avg })),
+    limit,
+  );
 }
 
-async function summarizePlace(db: CubeDb, spec: CellSpec): Promise<PlaceSummaryRow[]> {
+async function summarizePlace(db: CubeDb, spec: CellSpec): Promise<LimitedRows<PlaceSummaryRow>> {
   const { joins, wheres, params, siteIdExpr } = commonFilterSql(spec, OBS);
+  const limit = limitOf(spec);
   const v = valueExpr(spec.imputation, OBS);
 
   const sql = `
@@ -364,6 +422,7 @@ async function summarizePlace(db: CubeDb, spec: CellSpec): Promise<PlaceSummaryR
     ${whereSql(wheres)}
     GROUP BY ${OBS}.place_id, ${OBS}.grain, ${OBS}.input_grain
     ORDER BY ${OBS}.place_id
+    LIMIT ?
   `;
   const rows = await db.all<{
     place_id: string;
@@ -374,21 +433,25 @@ async function summarizePlace(db: CubeDb, spec: CellSpec): Promise<PlaceSummaryR
     y_from: number;
     y_to: number;
     avg: number | null;
-  }>(sql, params);
-  return rows.map((r) => ({
-    placeId: r.place_id,
-    siteId: r.site_id,
-    grain: r.grain as Grain,
-    inputGrain: r.input_grain,
-    n: r.n,
-    yFrom: r.y_from,
-    yTo: r.y_to,
-    avg: r.avg,
-  }));
+  }>(sql, [...params, limit + 1]);
+  return applyLimit(
+    rows.map((r) => ({
+      placeId: r.place_id,
+      siteId: r.site_id,
+      grain: r.grain as Grain,
+      inputGrain: r.input_grain,
+      n: r.n,
+      yFrom: r.y_from,
+      yTo: r.y_to,
+      avg: r.avg,
+    })),
+    limit,
+  );
 }
 
-async function summarizeSeries(db: CubeDb, spec: CellSpec): Promise<SeriesSummaryRow[]> {
+async function summarizeSeries(db: CubeDb, spec: CellSpec): Promise<LimitedRows<SeriesSummaryRow>> {
   const { joins, wheres, params } = commonFilterSql(spec, OBS);
+  const limit = limitOf(spec);
   const seriesKeySqlAlias = seriesKeySql(OBS);
 
   const sql = `
@@ -405,6 +468,7 @@ async function summarizeSeries(db: CubeDb, spec: CellSpec): Promise<SeriesSummar
     ${whereSql(wheres)}
     GROUP BY ${seriesKeySqlAlias}, ${OBS}.input_grain
     ORDER BY n DESC
+    LIMIT ?
   `;
   const rows = await db.all<{
     variable_id: string;
@@ -419,8 +483,8 @@ async function summarizeSeries(db: CubeDb, spec: CellSpec): Promise<SeriesSummar
     n_daily: number;
     n_annual: number;
     n_censored: number;
-  }>(sql, params);
-  return rows.map((r) => {
+  }>(sql, [...params, limit + 1]);
+  const mapped = rows.map((r) => {
     const series = seriesKeyFromRow(r);
     return {
       seriesKey: seriesKeyString(series),
@@ -435,15 +499,16 @@ async function summarizeSeries(db: CubeDb, spec: CellSpec): Promise<SeriesSummar
       nCensored: r.n_censored,
     };
   });
+  return applyLimit(mapped, limit);
 }
 
-export async function summarize(db: CubeDb, spec: CellSpec, by: "month_of_year", opt?: SummarizeOpt): Promise<MonthOfYearRow[]>;
-export async function summarize(db: CubeDb, spec: CellSpec, by: "zone", opt?: SummarizeOpt): Promise<ZoneYearRow[]>;
-export async function summarize(db: CubeDb, spec: CellSpec, by: "zone_month_of_year", opt?: SummarizeOpt): Promise<ZoneMonthRow[]>;
-export async function summarize(db: CubeDb, spec: CellSpec, by: "place", opt?: SummarizeOpt): Promise<PlaceSummaryRow[]>;
-export async function summarize(db: CubeDb, spec: CellSpec, by: "series", opt?: SummarizeOpt): Promise<SeriesSummaryRow[]>;
-export async function summarize(db: CubeDb, spec: CellSpec, by: SummarizeBy, opt?: SummarizeOpt): Promise<SummaryRow[]>;
-export async function summarize(db: CubeDb, spec: CellSpec, by: SummarizeBy, opt?: SummarizeOpt): Promise<SummaryRow[]> {
+export async function summarize(db: CubeDb, spec: CellSpec, by: "month_of_year", opt?: SummarizeOpt): Promise<LimitedRows<MonthOfYearRow>>;
+export async function summarize(db: CubeDb, spec: CellSpec, by: "zone", opt?: SummarizeOpt): Promise<LimitedRows<ZoneYearRow>>;
+export async function summarize(db: CubeDb, spec: CellSpec, by: "zone_month_of_year", opt?: SummarizeOpt): Promise<LimitedRows<ZoneMonthRow>>;
+export async function summarize(db: CubeDb, spec: CellSpec, by: "place", opt?: SummarizeOpt): Promise<LimitedRows<PlaceSummaryRow>>;
+export async function summarize(db: CubeDb, spec: CellSpec, by: "series", opt?: SummarizeOpt): Promise<LimitedRows<SeriesSummaryRow>>;
+export async function summarize(db: CubeDb, spec: CellSpec, by: SummarizeBy, opt?: SummarizeOpt): Promise<LimitedRows<SummaryRow>>;
+export async function summarize(db: CubeDb, spec: CellSpec, by: SummarizeBy, opt?: SummarizeOpt): Promise<LimitedRows<SummaryRow>> {
   switch (by) {
     case "month_of_year":
       return summarizeMonthOfYear(db, spec, opt);

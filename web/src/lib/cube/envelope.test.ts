@@ -51,7 +51,7 @@ describe("buildEnvelope", () => {
       grain: "day",
       imputation: "zero",
     };
-    const rows = await queryCells(fx.db, spec);
+    const { rows } = await queryCells(fx.db, spec);
     const env = await buildEnvelope(fx.db, spec, rows);
 
     expect(env.coverage.n_rows).toBe(3);
@@ -76,7 +76,7 @@ describe("buildEnvelope", () => {
       stats: ["sum"],
       imputation: "zero",
     };
-    const rows = await queryCells(fx.db, spec);
+    const { rows } = await queryCells(fx.db, spec);
     const env = await buildEnvelope(fx.db, spec, rows);
     const valueCol = env.columns.find((c) => c.name === "value")!;
     expect(valueCol.unit).toBeNull();
@@ -89,7 +89,7 @@ describe("buildEnvelope", () => {
       grain: "day",
       imputation: "zero",
     };
-    const rows = await queryCells(fx.db, spec);
+    const { rows } = await queryCells(fx.db, spec);
     const env = await buildEnvelope(fx.db, spec, rows);
     const valueCol = env.columns.find((c) => c.name === "value")!;
     expect(valueCol.unit).toBe(unitSymbol(FX.units.mgPerL));
@@ -102,7 +102,7 @@ describe("buildEnvelope", () => {
       grain: "day",
       imputation: "zero",
     };
-    const rows = await queryCells(fx.db, spec);
+    const { rows } = await queryCells(fx.db, spec);
     const env = await buildEnvelope(fx.db, spec, rows);
 
     // provenance は `series.ts`（実データの generated.ts）の `seriesInfo()` を経由するため、
@@ -148,7 +148,7 @@ describe("buildEnvelope", () => {
       grain: "day",
       imputation: "zero",
     };
-    const rows = await queryCells(fx.db, spec);
+    const { rows } = await queryCells(fx.db, spec);
     const env = await buildEnvelope(fx.db, spec, rows);
     expect(env.excluded.reasons).toContain("synthetic_included");
   });
@@ -160,7 +160,7 @@ describe("buildEnvelope", () => {
       grain: "day",
       imputation: "zero",
     };
-    const rows = await queryCells(fx.db, spec);
+    const { rows } = await queryCells(fx.db, spec);
     const caveats = [{ key: "common:caveat:fx_test", text: "テスト注記" }];
     const env = await buildEnvelope(fx.db, spec, rows, { caveats });
     expect(env.caveats).toEqual(caveats);
@@ -175,7 +175,7 @@ describe("buildEnvelope", () => {
       grain: "day",
       imputation: "zero",
     };
-    const rows = await queryCells(fx.db, spec);
+    const { rows } = await queryCells(fx.db, spec);
     expect(rows).toHaveLength(0);
     const env = await buildEnvelope(fx.db, spec, rows);
     expect(env.coverage.n_rows).toBe(0);

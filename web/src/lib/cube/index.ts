@@ -33,8 +33,9 @@ export type {
   ZoneMonthRow,
   PlaceSummaryRow,
   SeriesSummaryRow,
+  LimitedRows,
 } from "./observation";
-export { queryCells, summarize } from "./observation";
+export { queryCells, summarize, DEFAULT_CELL_LIMIT, UNLIMITED_CELL_LIMIT } from "./observation";
 
 export type { CatalogSource, SeriesCatalogRow, SiteSeriesRow, SiteRow2, WaterBodyRow } from "./catalog";
 export { variableCatalog, siteVariables, sites, sitesInWaterBody, waterBodies, YEAR_GRAINS_SQL, MEAN_STAT_SQL } from "./catalog";

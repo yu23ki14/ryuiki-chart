@@ -56,7 +56,7 @@ describe.skipIf(!hasRealDb)("実DB統合テスト: lib/cube と v1 (derived.sqli
     const series = seriesForAlias("measurements", "pH").filter((s) => s.obsStat === "mean" && s.valueGrain === "day");
     expect(series).toHaveLength(1);
 
-    const rows = await queryCells(cube, {
+    const { rows } = await queryCells(cube, {
       series,
       scope: { kind: "site", siteId: "atsugi_river_water_quality__中津川" },
       grain: "year",
@@ -84,7 +84,7 @@ describe.skipIf(!hasRealDb)("実DB統合テスト: lib/cube と v1 (derived.sqli
     expect(v1Rows.length).toBeGreaterThan(0);
 
     const series = seriesForAlias("measurements", "pH"); // 複数系列（mean/point）を混ぜる
-    const rows = await summarize(
+    const { rows } = await summarize(
       cube,
       {
         series,
@@ -117,7 +117,7 @@ describe.skipIf(!hasRealDb)("実DB統合テスト: lib/cube と v1 (derived.sqli
     const series = seriesForAlias("measurements", "BOD 75%値");
     expect(series).toHaveLength(1); // p75/fiscal_year の1系列だけ
 
-    const rows = await summarize(
+    const { rows } = await summarize(
       cube,
       {
         series,
@@ -148,7 +148,7 @@ describe.skipIf(!hasRealDb)("実DB統合テスト: lib/cube と v1 (derived.sqli
     const series = seriesForAlias("measurements", "BOD 75%値");
     expect(series).toHaveLength(1);
 
-    const rows = await summarize(
+    const { rows } = await summarize(
       cube,
       { series, scope: { kind: "all_sites" }, grain: ["year", "fiscal_year"], stats: ["mean"], imputation: "zero" },
       "series",
@@ -172,7 +172,7 @@ describe.skipIf(!hasRealDb)("実DB統合テスト: lib/cube と v1 (derived.sqli
     const series = seriesForAlias("sensor_timeseries", "RAIN");
     expect(series).toHaveLength(1);
 
-    const rows = await queryCells(cube, {
+    const { rows } = await queryCells(cube, {
       series,
       scope: { kind: "site", siteId: "sagamihara_taiki_stations__sagamihara_101" },
       grain: "day",

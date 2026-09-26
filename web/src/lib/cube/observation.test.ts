@@ -20,7 +20,7 @@ describe("queryCells: scope", () => {
       stats: ["mean"],
       imputation: "zero",
     };
-    const rows = await queryCells(fx.db, spec);
+    const { rows } = await queryCells(fx.db, spec);
     expect(rows).toHaveLength(3);
     expect(rows.every((r) => r.siteId === FX.sites.a)).toBe(true);
     expect(rows.map((r) => r.periodStart)).toEqual(["2024-01-01", "2024-01-02", "2024-01-03"]);
@@ -34,7 +34,7 @@ describe("queryCells: scope", () => {
       stats: ["mean"],
       imputation: "zero",
     };
-    const rows = await queryCells(fx.db, spec);
+    const { rows } = await queryCells(fx.db, spec);
     const siteIds = new Set(rows.map((r) => r.siteId));
     expect(siteIds).toEqual(new Set([FX.sites.a]));
   });
@@ -47,7 +47,7 @@ describe("queryCells: scope", () => {
       stats: ["mean"],
       imputation: "zero",
     };
-    const rows = await queryCells(fx.db, spec);
+    const { rows } = await queryCells(fx.db, spec);
     const placeIds = new Set(rows.map((r) => r.placeId));
     expect(placeIds).toEqual(new Set([FX.places.a, FX.places.c]));
     const cRow = rows.find((r) => r.placeId === FX.places.c)!;
@@ -61,7 +61,7 @@ describe("queryCells: scope", () => {
       grain: "day",
       imputation: "zero",
     };
-    const rows = await queryCells(fx.db, spec);
+    const { rows } = await queryCells(fx.db, spec);
     const placeIds = new Set(rows.map((r) => r.placeId));
     expect(placeIds).toEqual(new Set([FX.places.a, FX.places.b, FX.places.c]));
   });
@@ -74,7 +74,7 @@ describe("queryCells: scope", () => {
       stats: ["mean"],
       imputation: "zero",
     };
-    const rows = await queryCells(fx.db, spec);
+    const { rows } = await queryCells(fx.db, spec);
     expect(rows.every((r) => r.placeId === FX.places.a)).toBe(true);
     expect(rows.every((r) => r.siteId === FX.sites.a)).toBe(true);
   });
@@ -86,7 +86,9 @@ describe("queryCells: scope", () => {
       grain: "day",
       imputation: "zero",
     };
-    expect(await queryCells(fx.db, spec)).toHaveLength(0);
+    const { rows, truncated } = await queryCells(fx.db, spec);
+    expect(rows).toHaveLength(0);
+    expect(truncated).toBe(false);
   });
 });
 
@@ -98,7 +100,7 @@ describe("queryCells: variableId / series", () => {
       grain: "day",
       imputation: "zero",
     };
-    const rows = await queryCells(fx.db, spec);
+    const { rows } = await queryCells(fx.db, spec);
     expect(rows.every((r) => r.stat === "mean")).toBe(true);
     const obsStats = new Set(rows.map((r) => r.series.obsStat));
     expect(obsStats).toEqual(new Set(["mean", "point"]));
@@ -111,7 +113,7 @@ describe("queryCells: variableId / series", () => {
       grain: "day",
       imputation: "zero",
     };
-    const rows = await queryCells(fx.db, spec);
+    const { rows } = await queryCells(fx.db, spec);
     expect(rows.every((r) => r.series.obsStat === "point")).toBe(true);
     expect(rows).toHaveLength(2);
   });
@@ -137,7 +139,7 @@ describe("queryCells/summarize: variableId + water/places スコープ（バイ�
       stats: ["mean"],
       imputation: "zero",
     };
-    const rows = await queryCells(fx.db, spec);
+    const { rows } = await queryCells(fx.db, spec);
     const siteIds = new Set(rows.map((r) => r.siteId));
     expect(siteIds).toEqual(new Set([FX.sites.a, FX.sites.b]));
     expect(rows).toHaveLength(5); // fx_place_a の3日 + fx_place_b の2日
@@ -151,7 +153,7 @@ describe("queryCells/summarize: variableId + water/places スコープ（バイ�
       stats: ["mean"],
       imputation: "zero",
     };
-    const rows = await queryCells(fx.db, spec);
+    const { rows } = await queryCells(fx.db, spec);
     expect(rows.every((r) => r.placeId === FX.places.a)).toBe(true);
     expect(rows).toHaveLength(3);
   });
@@ -164,7 +166,7 @@ describe("queryCells/summarize: variableId + water/places スコープ（バイ�
       stats: ["mean"],
       imputation: "zero",
     };
-    const rows = await summarize(fx.db, spec, "month_of_year");
+    const { rows } = await summarize(fx.db, spec, "month_of_year");
     expect(rows).toHaveLength(1);
     expect(rows[0].month).toBe(1);
     expect(rows[0].n).toBe(5);
@@ -181,7 +183,7 @@ describe("queryCells/summarize: variableId + water/places スコープ（バイ�
       stats: ["mean"],
       imputation: "zero",
     };
-    const rows = await summarize(fx.db, spec, "zone");
+    const { rows } = await summarize(fx.db, spec, "zone");
     const zone3 = rows.filter((r) => r.zone === 3);
     expect(zone3).toHaveLength(1);
     expect(zone3[0].nSites).toBe(2);
@@ -197,7 +199,7 @@ describe("queryCells/summarize: variableId + water/places スコープ（バイ�
       stats: ["mean"],
       imputation: "zero",
     };
-    const rows = await summarize(fx.db, spec, "zone_month_of_year");
+    const { rows } = await summarize(fx.db, spec, "zone_month_of_year");
     expect(rows).toHaveLength(1);
     expect(rows[0].zone).toBe(3);
     expect(rows[0].month).toBe(1);
@@ -213,7 +215,7 @@ describe("queryCells/summarize: variableId + water/places スコープ（バイ�
       inputGrain: "day",
       imputation: "zero",
     };
-    const rows = await summarize(fx.db, spec, "place");
+    const { rows } = await summarize(fx.db, spec, "place");
     expect(rows).toHaveLength(1);
     expect(rows[0].placeId).toBe(FX.places.a);
     expect(rows[0].siteId).toBe(FX.sites.a);
@@ -229,7 +231,7 @@ describe("queryCells/summarize: variableId + water/places スコープ（バイ�
       stats: ["mean"],
       imputation: "zero",
     };
-    const rows = await summarize(fx.db, spec, "series");
+    const { rows } = await summarize(fx.db, spec, "series");
     expect(rows).toHaveLength(3); // a:mean/day, b:point/day, a:mean/fiscal_year
   });
 });
@@ -243,7 +245,7 @@ describe("queryCells: grain / inputGrain / period", () => {
       inputGrain: "day",
       imputation: "zero",
     };
-    const rows = await queryCells(fx.db, spec);
+    const { rows } = await queryCells(fx.db, spec);
     expect(rows).toHaveLength(1);
     expect(rows[0].periodStart).toBe("2024-01-01");
     expect(rows[0].n).toBe(3);
@@ -257,7 +259,7 @@ describe("queryCells: grain / inputGrain / period", () => {
       inputGrain: "same",
       imputation: "zero",
     };
-    const rows = await queryCells(fx.db, spec);
+    const { rows } = await queryCells(fx.db, spec);
     expect(rows).toHaveLength(1);
     expect(rows[0].periodStart).toBe("2024-04-01");
     expect(rows[0].value).toBe(11.0);
@@ -271,7 +273,7 @@ describe("queryCells: grain / inputGrain / period", () => {
       period: { from: "2024-01-02", to: "2024-01-02" },
       imputation: "zero",
     };
-    const rows = await queryCells(fx.db, spec);
+    const { rows } = await queryCells(fx.db, spec);
     expect(rows).toHaveLength(1);
     expect(rows[0].periodStart).toBe("2024-01-02");
   });
@@ -286,7 +288,7 @@ describe("queryCells: imputation（value_zero/value_lod、検閲・不検出）"
       period: { from: "2024-01-03", to: "2024-01-03" },
       imputation: "zero",
     };
-    const rows = await queryCells(fx.db, spec);
+    const { rows } = await queryCells(fx.db, spec);
     expect(rows[0].value).toBe(0.0);
     expect(rows[0].valueLod).toBeNull();
     expect(rows[0].nNotDetected).toBe(1);
@@ -300,7 +302,7 @@ describe("queryCells: imputation（value_zero/value_lod、検閲・不検出）"
       period: { from: "2024-01-03", to: "2024-01-03" },
       imputation: "lod",
     };
-    const rows = await queryCells(fx.db, spec);
+    const { rows } = await queryCells(fx.db, spec);
     expect(rows[0].value).toBeNull();
   });
 
@@ -312,7 +314,7 @@ describe("queryCells: imputation（value_zero/value_lod、検閲・不検出）"
       period: { from: "2024-01-02", to: "2024-01-02" },
       imputation: "both",
     };
-    const rows = await queryCells(fx.db, spec);
+    const { rows } = await queryCells(fx.db, spec);
     expect(rows[0].valueZero).toBe(8.0);
     expect(rows[0].valueLod).toBe(6.0);
     expect(rows[0].nCensored).toBe(1);
@@ -327,7 +329,7 @@ describe("summarize: month_of_year（climatology）", () => {
       grain: "day",
       imputation: "zero",
     };
-    const rows = await summarize(fx.db, spec, "month_of_year");
+    const { rows } = await summarize(fx.db, spec, "month_of_year");
     expect(rows).toHaveLength(1);
     expect(rows[0].month).toBe(1);
     expect(rows[0].n).toBe(3);
@@ -344,7 +346,7 @@ describe("summarize: month_of_year（climatology）", () => {
       stats: ["sum"],
       imputation: "zero",
     };
-    const rows = await summarize(fx.db, spec, "month_of_year", { measure: "sum_per_year" });
+    const { rows } = await summarize(fx.db, spec, "month_of_year", { measure: "sum_per_year" });
     const byMonth = new Map(rows.map((r) => [r.month, r]));
     expect(byMonth.get(1)!.avg).toBeCloseTo(5.0, 6); // (5+0)/1年
     expect(byMonth.get(2)!.avg).toBeCloseTo(12.0, 6); // 12/1年
@@ -359,7 +361,7 @@ describe("summarize: zone / zone_month_of_year", () => {
       grain: "day",
       imputation: "zero",
     };
-    const rows = await summarize(fx.db, spec, "zone");
+    const { rows } = await summarize(fx.db, spec, "zone");
     // fx_place_a(mean,3日) + fx_place_c(mean,1日) + fx_place_b(point,2日) が
     // 同じゾーン3・grain='day'・input_grain='day'・year=2024 のグループに混ざる。
     const zone3 = rows.filter((r) => r.zone === 3);
@@ -376,7 +378,7 @@ describe("summarize: zone / zone_month_of_year", () => {
       stats: ["mean"],
       imputation: "zero",
     };
-    const rows = await summarize(fx.db, spec, "zone_month_of_year");
+    const { rows } = await summarize(fx.db, spec, "zone_month_of_year");
     expect(rows).toHaveLength(1);
     expect(rows[0].zone).toBe(3);
     expect(rows[0].month).toBe(1);
@@ -395,7 +397,7 @@ describe("summarize: zone / zone_month_of_year", () => {
       stats: ["mean"],
       imputation: "zero",
     };
-    const yearRows = await summarize(fx.db, specYear, "zone");
+    const { rows: yearRows } = await summarize(fx.db, specYear, "zone");
     const zone3 = yearRows.filter((r) => r.zone === 3);
     expect(zone3).toHaveLength(1);
     expect(zone3[0].nSites).toBe(2); // fx_place_a, fx_place_c（site スコープの JOIN で絞られる）
@@ -407,7 +409,7 @@ describe("summarize: zone / zone_month_of_year", () => {
       stats: ["mean"],
       imputation: "zero",
     };
-    const monthRows = await summarize(fx.db, specMonth, "zone_month_of_year");
+    const { rows: monthRows } = await summarize(fx.db, specMonth, "zone_month_of_year");
     expect(monthRows.filter((r) => r.zone === 3)).toHaveLength(1);
   });
 });
@@ -421,7 +423,7 @@ describe("summarize: place（v1 site_var・longitudinal 相当）", () => {
       inputGrain: "day",
       imputation: "zero",
     };
-    const rows = await summarize(fx.db, spec, "place");
+    const { rows } = await summarize(fx.db, spec, "place");
     expect(rows).toHaveLength(1);
     expect(rows[0].placeId).toBe(FX.places.a);
     expect(rows[0].siteId).toBe(FX.sites.a);
@@ -462,7 +464,7 @@ describe("summarize: series（v1 var_catalog の系列版）", () => {
       stats: ["mean"],
       imputation: "zero",
     };
-    const rows = await summarize(fx.db, spec, "series");
+    const { rows } = await summarize(fx.db, spec, "series");
     const daily = rows.find((r) => r.inputGrain === "day");
     const annual = rows.find((r) => r.inputGrain === "fiscal_year");
     expect(daily).toBeDefined();
@@ -471,5 +473,77 @@ describe("summarize: series（v1 var_catalog の系列版）", () => {
     expect(annual).toBeDefined();
     expect(annual!.nAnnual).toBeGreaterThan(0);
     expect(annual!.nDaily).toBe(0);
+  });
+});
+
+describe("queryCells/summarize: limit/truncated（Issue #48 PR-1 §論点B）", () => {
+  it("queryCells: 上限ちょうど（3件中 limit=3）は truncated=false で全件返す", async () => {
+    const spec: CellSpec = {
+      series: [FX.series.ssMean],
+      scope: { kind: "site", siteId: FX.sites.a },
+      grain: "day",
+      stats: ["mean"],
+      imputation: "zero",
+      limit: 3,
+    };
+    const { rows, truncated } = await queryCells(fx.db, spec);
+    expect(rows).toHaveLength(3);
+    expect(truncated).toBe(false);
+  });
+
+  it("queryCells: 上限超過（3件中 limit=2）は先頭2件だけ返し truncated=true", async () => {
+    const spec: CellSpec = {
+      series: [FX.series.ssMean],
+      scope: { kind: "site", siteId: FX.sites.a },
+      grain: "day",
+      stats: ["mean"],
+      imputation: "zero",
+      limit: 2,
+    };
+    const { rows, truncated } = await queryCells(fx.db, spec);
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.periodStart)).toEqual(["2024-01-01", "2024-01-02"]);
+    expect(truncated).toBe(true);
+  });
+
+  it("queryCells: limit を省略すると DEFAULT_CELL_LIMIT が使われ、フィクスチャの行数では truncated=false", async () => {
+    const spec: CellSpec = {
+      series: [FX.series.ssMean],
+      scope: { kind: "site", siteId: FX.sites.a },
+      grain: "day",
+      stats: ["mean"],
+      imputation: "zero",
+    };
+    const { rows, truncated } = await queryCells(fx.db, spec);
+    expect(rows).toHaveLength(3);
+    expect(truncated).toBe(false);
+  });
+
+  it("summarize(by:'series'): 上限ちょうど（3件中 limit=3）は truncated=false", async () => {
+    const spec: CellSpec = {
+      variableId: FX.variables.ss,
+      scope: { kind: "water", municipality: FX.municipality },
+      grain: ["year", "fiscal_year"],
+      stats: ["mean"],
+      imputation: "zero",
+      limit: 3,
+    };
+    const { rows, truncated } = await summarize(fx.db, spec, "series");
+    expect(rows).toHaveLength(3);
+    expect(truncated).toBe(false);
+  });
+
+  it("summarize(by:'series'): 上限超過（3件中 limit=2）は先頭2件だけ返し truncated=true", async () => {
+    const spec: CellSpec = {
+      variableId: FX.variables.ss,
+      scope: { kind: "water", municipality: FX.municipality },
+      grain: ["year", "fiscal_year"],
+      stats: ["mean"],
+      imputation: "zero",
+      limit: 2,
+    };
+    const { rows, truncated } = await summarize(fx.db, spec, "series");
+    expect(rows).toHaveLength(2);
+    expect(truncated).toBe(true);
   });
 });
