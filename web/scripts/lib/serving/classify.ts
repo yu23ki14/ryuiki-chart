@@ -602,6 +602,12 @@ function classifySyntheticExcludedV1Compat(diff: RowDiff, ctx: ClassifyContext):
  * `ctx.byVariableDeclared` が持つ束ねエイリアス群を順に試す——`findDeclared`
  * 自体が使えない（`v1Table`/`builder` 無し）ため、この関数が唯一の declared
  * 経路になる。
+ *
+ * **PR-5 で消える一時的な特例**（ADR-0029 2026-09-27 追記・`docs/plans/V2_SERVING_PR2.md`
+ * §1）。serving-diff・v1 比較そのものが移行期間限定（ADR-0029）であり、この関数は
+ * その中でも「宣言だけでは説明しきれない重なり」を拾うためだけの追加の特例。
+ * 新しい重なりが見つかっても、ここに特例をもう1段積まない——`expected_diffs.yaml`
+ * の宣言粒度か `synthetic_excluded` 自体の判定式を見直す。
  */
 function classifyDeclaredWithSyntheticRemainder(diff: RowDiff, ctx: ClassifyContext): Classification | undefined {
   if (!ruleEnabled(ctx, "declared")) return undefined;

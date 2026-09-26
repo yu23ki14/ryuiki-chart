@@ -44,6 +44,8 @@
 - `row_only_in_v2` は説明不可（合成除外で行が増えることは無い）。
 既存の `SYNTHETIC_EXCLUDED_VALUE_COLUMNS`（列の絞り）はそのまま。`--pretend-synthetic-excluded`・`db-sqlite.ts` の `excludePlaceIds`・`computeSyntheticPlaceIds`・`siteIdsForPlaceIds` は削除。変異 `synthetic_rule_off`（規則を無効化→unexplained>0）を足す。
 
+**統合後 修正B（`classify.ts` の `classifyDeclaredWithSyntheticRemainder`）**: `declared`（`expected_diffs.yaml`）1つでは列を完全に覆えず、残りの列を `synthetic_excluded`（v1compat との差分の差分）で説明できる場合の組み合わせ判定。実測で `var_catalog`/`浮遊物質量 SS` 等、宣言済みバグ（below_lod 行の欠落）と合成データ除外の両方が同じ診断に重なるケースがあり、`findDeclared`（列を宣言が完全に覆う前提）・`classifySyntheticExcludedV1Compat`（全列で v1==compat を要求）のどちらか単体では説明できなかったため追加した。**これは ADR-0029 が言う「移行期間限定」の serving-diff 自身にすら重ねた一時的な特例であり、PR-5 で serving-diff・v1 比較が丸ごと消えるときに一緒に消える。** 新たな「宣言も規則も単体では説明できない重なり」が今後見つかっても、この関数に特例をもう1段積まない——`classify.ts` の判定優先順位（declared → rain_div10 → day_split → synthetic_excluded → 本関数 → lod_imputation → …）がこれ以上分岐すると「どの組み合わせがどの列を説明したか」を人が追えなくなる。その場合は `expected_diffs.yaml` の宣言粒度（列の絞り方）か `synthetic_excluded` 自体の判定式を見直す。
+
 ## 2. 対応表: v1 の呼び出し → `lib/cube`
 
 方針: **画面・API・AI・serving-diff の v2 アダプタは同じ `lib/cube` の公開関数を呼ぶ。** PR-1 のアダプタが持っていた変換のうち画面にも要るもの（年セルのピボット、系列の代表化、v1 `kind`⇔grain/input_grain、単位ラベル）は `lib/cube` に移す。アダプタ固有で残すのは「v1 の列名への付け替え」と「alias 単位への合流（v1 比較専用）」だけ。

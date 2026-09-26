@@ -111,6 +111,15 @@ PR-5 で v1（`web/src/lib/queries.ts` が読む派生33表）を撤去したあ
 比較先の v1 経路を失う。**PR-5 以降は動かさない**——削除はしないが（過去の切り替え差分の
 記録として残る）、CI では呼ばない。
 
+**2026-09-27 追記（Issue #48 PR-2 code-review。`web/scripts/lib/serving/classify.ts` の
+`classifyDeclaredWithSyntheticRemainder`）**: 宣言済み差分（`expected_diffs.yaml`）が
+診断の列を完全に覆わず、残りの列を `synthetic_excluded`（v1compat との差分の差分）で
+説明できる場合の組み合わせ判定を追加した。これは「移行期間限定」の serving-diff 自身に
+さらに重ねた一時的な特例で、PR-5 で serving-diff・v1 比較が丸ごと消えるときに一緒に消える。
+新たな「宣言も規則も単体では説明できない重なり」が見つかっても、この関数に特例を積み増さ
+ない——見つかったら `expected_diffs.yaml` の宣言粒度か `synthetic_excluded` の判定式自体を
+見直す（設計の詳細は `docs/plans/V2_SERVING_PR2.md` §1）。
+
 ## 根拠（却下した代替案）
 
 - **層2・層3を単純に廃止し、層1・層4だけで済ませる**: 却下。層1（フィクスチャ）は実データの
