@@ -732,7 +732,13 @@ export async function waterBodies(db: CubeDb, opt?: { series?: SeriesKey[]; data
   const alias = source.kind === "summary" ? "spv" : "obs";
   const params: SqlParam[] = [];
   const joins: string[] = [];
-  if (opt?.series && opt.series.length > 0) {
+  // `series` は `undefined`（指定なし＝絞り込まない）と `[]`（明示的に空——
+  // 呼び出し側〔`representativeSeries()` が該当する系列を1つも見つけられなかった
+  // 場合等〕が「対象が無い」と言っている）を区別する（Issue #48 PR-2 code-review
+  // #4）。以前は `opt.series && opt.series.length > 0` で `[]` も「指定なし」と
+  // 同じ扱いになり、絞り込み無しの全水域が返っていた。
+  if (opt?.series !== undefined) {
+    if (opt.series.length === 0) return [];
     if (opt.series.length > MAX_ID_LIST) throw new Error(`waterBodies: series が ${opt.series.length} 件で上限 ${MAX_ID_LIST} を超えている`);
     // `variable_id` 前段フィルタ込み（`sql.ts` の `seriesFilterSql` docstring 参照。
     // 索引の先頭列で絞り込んでから系列キーで仕上げる）。

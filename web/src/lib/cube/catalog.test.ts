@@ -185,6 +185,19 @@ describe("sitesInWaterBody / waterBodies", () => {
     expect(rows.find((r) => r.name === FX.municipality)).toBeUndefined();
   });
 
+  it("waterBodies({series: []}) は明示的な空配列を「絞り込み無し」と混同せず、空を返す（Issue #48 PR-2 code-review #4）", async () => {
+    // `representativeSeries()` が該当する系列を1つも見つけられなかった呼び出し側
+    // （`series: []` を渡す）は「絞り込みたい対象が無い」という意味であり、
+    // `series` 省略（絞り込み無し＝全水域）とは区別する。
+    const rows = await waterBodies(fx.db, { series: [] });
+    expect(rows).toEqual([]);
+  });
+
+  it("waterBodies({series: undefined}) は絞り込み無し（全水域）のまま", async () => {
+    const rows = await waterBodies(fx.db, { series: undefined });
+    expect(rows.find((r) => r.name === FX.municipality)).toBeDefined();
+  });
+
   it("source='live'/'summary' は n_meas が一致する（フィクスチャ上の突合）", async () => {
     const summaryRows = await waterBodies(fx.db, { source: { kind: "summary" } });
     const liveRows = await waterBodies(fx.db, { source: { kind: "live" } });
