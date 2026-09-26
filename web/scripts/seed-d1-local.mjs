@@ -30,38 +30,49 @@ const REPO = path.resolve(WEB, "..");
 const DB_DIR = process.env.RYUIKI_DB_DIR ?? path.join(REPO, "data", "db");
 const D1_STATE = path.join(WEB, ".wrangler", "state", "v3", "d1", "miniflare-D1DatabaseObject");
 
-/** 原本ファイルと、そこに入っているテーブルの引き当て */
+/**
+ * 原本ファイルと、そこに入っているテーブルの引き当て。`hint` はそのファイルが
+ * 無いときのエラーメッセージ（`fingerprint()` が使う。コードレビュー指摘: 以前は
+ * `fingerprint()` 側に入れ子の三項演算子でファイル名ごとの文言を持っていたが、
+ * `SOURCES` に要素を足すたびに追随し忘れる余地があった——ヒントも1つの要素の
+ * 中で完結させる）。
+ */
 const SOURCES = [
-  { alias: "ryuiki", file: "ryuiki.sqlite", required: true },
-  { alias: "cells", file: "cells.sqlite", required: true },
-  { alias: "derived", file: "derived.sqlite", required: true },
-  { alias: "registry", file: "registry.sqlite", required: true },
+  { alias: "ryuiki", file: "ryuiki.sqlite", required: true, hint: "data/db/ に原本を置く。" },
+  { alias: "cells", file: "cells.sqlite", required: true, hint: "data/db/ に原本を置く。" },
+  {
+    alias: "derived", file: "derived.sqlite", required: true,
+    hint: "集計 DB は `npm run build:derived` で作る（初回のみ・約1分）。",
+  },
+  {
+    alias: "registry", file: "registry.sqlite", required: true,
+    hint: "語彙レジストリは `npm run build:registry` で作る（scripts/r01_build_registry.py）。",
+  },
   // Issue #48 PR-0: キューブ（observation_agg/occurrence_agg）の入力。v2.sqlite には
   // L2（observation/occurrence/occurrence_place）も同居しているが、D1 のスキーマ
   // （schema-cube.ts）がキューブ2表しか宣言していないので、下の owner map 経由で
   // 自動的にキューブだけが対象になる（D1 に無いテーブル名は targets に現れない）。
-  { alias: "v2", file: "v2.sqlite", required: true },
+  {
+    alias: "v2", file: "v2.sqlite", required: true,
+    hint: "v2（observation_agg/occurrence_agg のキューブ）は `npm run build:v2` で作る。",
+  },
 ];
 
-/**
- * `observation_agg`/`occurrence_agg` の pipeline_fingerprint.spec_version（
- * `scripts/migrate/common.py` の `OBSERVATION_AGG_SPEC_VERSION`/`OCCURRENCE_SPEC_VERSION`
- * と同じ値。値を変えたらそちらも変えること）。
- */
 const RUN_PYTHON = path.join(WEB, "scripts", "run-python.sh");
 const CHECK_V2_FRESH_PY = "scripts/check_v2_fresh.py";
-const V2_REBUILD_HINT = "`pnpm run build:v2`（r01→b03→b04→b06→b09→b07）で作り直すこと。";
+const V2_REBUILD_HINT = "`pnpm run build:v2` で作り直すこと。";
 
 /**
- * `v2.sqlite` の `observation_agg`/`occurrence_agg` が「今のパイプラインの spec」
- * で書かれているかを Python 側（`scripts/check_v2_fresh.py`。正本は
- * `scripts/migrate/common.py` の `V2_CUBE_SPEC_VERSIONS`）に判定させる。**古い
- * v2.sqlite を拒否する**（Issue #48「見落としそうな危険」4: 手元の
+ * `v2.sqlite` が「今のパイプラインの spec で書かれ、かつ今の原本・入力・
+ * registry.sqlite・パイプラインのコードから作ったもの」かを Python 側
+ * （`scripts/check_v2_fresh.py`。正本は `scripts/migrate/common.py` の
+ * `V2_CUBE_SPEC_VERSIONS`・`compute_v2_input_fingerprint()`）に判定させる。
+ * **古い v2.sqlite を拒否する**（Issue #48「見落としそうな危険」4: 手元の
  * `data/db/v2.sqlite` が PR #26 より前の13列キー〔`imputation`/`value` 列を持ち
  * `pipeline_fingerprint` 表自体が無い旧形〕のまま放置されていることがある。
  * 気づかずシードすると、D1 のキューブが黙って旧形の値で埋まる）。
  *
- * ここでは spec_version の値そのものを持たない（コードレビュー指摘: 以前は
+ * ここでは判定に使う値そのものを持たない（コードレビュー指摘: 以前は
  * `V2_SPEC_VERSIONS` という手書きの写しをここに持っていたが、b03/b04 が
  * spec_version を上げても JS 側の写しは自動で追随せず、黙ってずれる）。
  * 判定は `scripts/check_v2_fresh.py`（`scripts/r01_build_registry.py
@@ -71,6 +82,9 @@ const V2_REBUILD_HINT = "`pnpm run build:v2`（r01→b03→b04→b06→b09→b07
  * 今回は見逃す」という寛容な扱いにはしない（`ensure-v2.sh` の自動再ビルド判断
  * とは目的が違う。そちらは「余計な再ビルドを避ける」ための最適化なので判定
  * できなければ既存ファイルを使い続ける寛容さでよいが、こちらは安全側に倒す）。
+ * 入力＋コードの指紋の計算はサブプロセスを1つ増やす程度のコストなので
+ * （`scripts/migrate/common.py` の実測: 1秒未満）、`ensure-v2.sh` 直後の
+ * 二重計算をここで避ける最適化はしない。
  */
 function assertV2SpecFresh(v2Path) {
   const result = spawnSync(RUN_PYTHON, [CHECK_V2_FRESH_PY, "--v2-db", v2Path], { cwd: WEB, encoding: "utf8" });
@@ -86,39 +100,6 @@ function assertV2SpecFresh(v2Path) {
         (detail ? `\n${detail}` : "") +
         `\n${V2_REBUILD_HINT}`,
     );
-  }
-}
-
-/**
- * `tables`（v2.sqlite が実際に供給する D1 のテーブル名——呼び出し元が owner map
- * から求める。ハードコードした表名リストは持たない）それぞれについて、v2.sqlite
- * の列集合を **シード先 D1 自身**（マイグレーション適用後の実物のスキーマ。
- * `web/src/db/schema-cube.ts` から `drizzle-kit generate` が作った表）と突き
- * 合わせる。不一致なら v2.sqlite が今の D1 スキーマと違う形（PR #26 以前の
- * 13列キー等）で書かれている。
- *
- * `schema-cube.ts` の列を JS 側に書き写さない（コードレビュー指摘: 以前は
- * `V2_CUBE_COLUMNS` という手書きの写しをここに持っていたが、schema-cube.ts を
- * 変えても追随せず黙ってずれる。シードは D1 の表を宛先として既にここで
- * 列挙しているので、D1 自身の `PRAGMA table_info` を正として直接比べれば
- * 写しが要らない）。
- */
-function assertV2ColumnsMatchD1(db, v2Conn, v2Path, tables) {
-  for (const table of tables) {
-    const d1Columns = db.prepare(`PRAGMA table_info(${qi(table)})`).all().map((c) => c.name);
-    const v2Columns = v2Conn.prepare(`PRAGMA table_info(${qi(table)})`).all().map((c) => c.name);
-    const v2Set = new Set(v2Columns);
-    const sameSet = d1Columns.length === v2Columns.length && d1Columns.every((c) => v2Set.has(c));
-    if (!sameSet) {
-      throw new Error(
-        `${v2Path} の ${table} の列集合が D1（web/src/db/schema-cube.ts から生成したスキーマ）と` +
-          "一致しない。\n" +
-          `  D1:        [${d1Columns.join(", ")}]\n` +
-          `  v2.sqlite: [${v2Columns.join(", ")}]\n` +
-          "PR #26 以前の13列キー（imputation/value 列）の可能性がある。" +
-          V2_REBUILD_HINT,
-      );
-    }
   }
 }
 
@@ -191,16 +172,7 @@ function fingerprint() {
     const p = path.join(DB_DIR, s.file);
     if (!fs.existsSync(p)) {
       if (!s.required) continue;
-      throw new Error(
-        `原本が無い: ${p}\n` +
-          (s.file === "derived.sqlite"
-            ? "集計 DB は `npm run build:derived` で作る（初回のみ・約1分）。"
-            : s.file === "registry.sqlite"
-              ? "語彙レジストリは `npm run build:registry` で作る（scripts/r01_build_registry.py）。"
-              : s.file === "v2.sqlite"
-                ? "v2（observation_agg/occurrence_agg のキューブ）は `npm run build:v2` で作る。"
-                : "data/db/ に原本を置く。"),
-      );
+      throw new Error(`原本が無い: ${p}\n${s.hint}`);
     }
     const st = fs.statSync(p);
     parts.push(`${s.file}:${st.size}:${Math.floor(st.mtimeMs)}`);
@@ -257,13 +229,6 @@ function main() {
   const missing = targets.filter((t) => !owner.has(t));
   if (missing.length) log(`⚠ 原本に無いテーブル（空のまま）: ${missing.join(", ")}`);
 
-  // v2.sqlite が実際に供給する D1 のテーブル（今は observation_agg/occurrence_agg。
-  // ハードコードしない——owner map から実際に求める）の列集合を D1 自身と突き合わせる。
-  if (src.v2) {
-    const v2Tables = targets.filter((t) => owner.get(t) === "v2");
-    assertV2ColumnsMatchD1(db, src.v2, path.join(DB_DIR, "v2.sqlite"), v2Tables);
-  }
-
   // インデックスを外してから入れて、最後に張り直す。organism_records だけで数分変わる。
   const indexes = db
     .prepare(
@@ -300,10 +265,32 @@ function main() {
       if (!alias) continue;
       const conn = src[alias];
       const cols = db.prepare(`PRAGMA table_info(${qi(table)})`).all().map((c) => c.name);
-      const srcCols = new Set(conn.prepare(`PRAGMA table_info(${qi(table)})`).all().map((c) => c.name));
+      const srcColsArr = conn.prepare(`PRAGMA table_info(${qi(table)})`).all().map((c) => c.name);
+      const srcCols = new Set(srcColsArr);
       const use = cols.filter((c) => srcCols.has(c));
       const dropped = cols.filter((c) => !srcCols.has(c));
-      if (dropped.length) log(`⚠ ${table}: 原本に無い列は NULL のまま: ${dropped.join(", ")}`);
+
+      if (alias === "v2") {
+        // v2 由来の表（observation_agg/occurrence_agg）は列集合の完全一致を
+        // 要求する（コードレビュー指摘: 以前は別関数 `assertV2ColumnsMatchD1` で
+        // 投入ループの前に同じ `PRAGMA table_info` の突き合わせを二重に持って
+        // いた。ここに一本化する——他の原本は列が欠けていても NULL のまま
+        // 続行してよいが、v2 だけは PR #26 以前の13列キー等を確実に検出する
+        // ため、不一致なら即エラーにする）。
+        const sameSet = dropped.length === 0 && srcColsArr.length === cols.length;
+        if (!sameSet) {
+          throw new Error(
+            `${table} の列集合が D1（web/src/db/schema-cube.ts から生成したスキーマ）と` +
+              "一致しない。\n" +
+              `  D1:        [${cols.join(", ")}]\n` +
+              `  v2.sqlite: [${srcColsArr.join(", ")}]\n` +
+              "PR #26 以前の13列キー（imputation/value 列）の可能性がある。" +
+              V2_REBUILD_HINT,
+          );
+        }
+      } else if (dropped.length) {
+        log(`⚠ ${table}: 原本に無い列は NULL のまま: ${dropped.join(", ")}`);
+      }
 
       const list = use.map(qi).join(",");
       const ins = db.prepare(`INSERT INTO ${qi(table)} (${list}) VALUES (${use.map(() => "?").join(",")})`);
