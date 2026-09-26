@@ -192,7 +192,7 @@
       "sha256": "5c6fd091de7742cdea2c0da9d2775d35f561da217f9fb4784eca3029237b99ff"
     }
   },
-  "created_at": "2026-09-25T15:34:02+00:00",
+  "created_at": "2026-09-26T03:37:03+00:00",
   "derived_reconciliation_all_md_sha256": "40d76c0e8c4abf1c8e9a740a29524741fc4744c01d74532d0d09742849526d72",
   "environment": {
     "better_sqlite3_sqlite_version": "3.53.4",
@@ -208,7 +208,7 @@
     "n_mismatch": 0,
     "total": 33
   },
-  "git_head": "1da05cfc8c89b3e8607ff578eccea5db55a97698",
+  "git_head": "c8bf34cb359d544589f7ddf673310b9fe09a0657",
   "pipeline_path_hashes": {
     "registry": "8497514d612f1783930455036a64fdf77b082b70",
     "reports/derived_baseline.json": "9448ea15f7e0340d98a9523be728606ecd774a0a",
@@ -217,17 +217,17 @@
     "scripts/b01_derived_baseline.py": "171d3f6ba836ba77bfcd885f43c2632f43301c02",
     "scripts/b02_derived_compare.py": "511dcef4fd8a7d32a4ae775452efc3da472bfdfc",
     "scripts/b02_run_all_gates.py": "b79ca126ea0d6022e85d31418d165d3c39eccdc5",
-    "scripts/b03_build_observation.py": "83b4e5d2208b947442ab1b94091cc98b86b0bc21",
+    "scripts/b03_build_observation.py": "38beef4c1b8a96efa615d0518fa27e1bd6dd54f5",
     "scripts/b04_build_cube.py": "503736261cc9c528358dd3eda392da53dc389b25",
     "scripts/b05_project_v1.py": "971253771392b40790953ec1e1dad5b2d5063b14",
-    "scripts/b06_build_occurrence.py": "e8d87f35fc23403da14486449ca520259a6e3512",
+    "scripts/b06_build_occurrence.py": "1ecd9ca63ff7d5a8747ed396568be52ef7817fec",
     "scripts/b07_build_occurrence_cube.py": "fcf7641d50402c06ee8e7226817008fb2c5843a0",
     "scripts/b08_project_occurrence_v1.py": "9de19d9efc339d603712571575483ee97506480d",
-    "scripts/b09_build_occurrence_place.py": "b18948c63393625ff967b783dd64d4af650e972d",
+    "scripts/b09_build_occurrence_place.py": "642ef7d233207304db6fce3c1a5574fcea5c7182",
     "scripts/b10_project_documents_v1.py": "d7b620581ed237b1253ab044b8277b81162f2eb1",
     "scripts/b11_project_place_v1.py": "4977bdc14b614eff5f11a4946b57a46d64211587",
     "scripts/b12_project_taxon_v1.py": "3a7d5f6f4276b8682185afc92214275e6fd6b843",
-    "scripts/migrate": "99bbd9fb712d72102a6fe79aebb6b8e050a4da6b",
+    "scripts/migrate": "7ad1adc8624d06f1ba75f43b86a6a51c617c283a",
     "scripts/pipeline_inputs.py": "26f0f1aa956493afa09db0fcab69bc939933b42a",
     "scripts/r01_build_registry.py": "4e4cebd61c8cfda48c67fc0ecc8f0cf9b474a686",
     "scripts/reconcile": "1d5a039bbbff33cce47801b8620d2959d411bbd7",
@@ -235,7 +235,7 @@
     "scripts/s05_check_sample_gate_summary.py": "45b1da2aa3a583f393ddfe8704e2fc6e6c98eab5",
     "scripts/schema_registry.sql": "a65037f8b4275bbf3f938671457e8f22fa534245",
     "scripts/taxon_namespaces.py": "56651e8f89085ad95c225643177c17a4098021c3",
-    "web/package.json": "9281c6699199a639247e084fba6fb7b0d114455f",
+    "web/package.json": "80631cd38d86b0a4188293bd9bd263fd083f6c0f",
     "web/pnpm-lock.yaml": "ab7675c6f8c746085ac7bcf5d7c7602227975d40",
     "web/scripts/build-biota.mjs": "cac46966587f26e6abd2a6c247d273b800ace929",
     "web/scripts/build-derived.mjs": "c67cd97a35f62f545cf729dec666158cc67403ef",
