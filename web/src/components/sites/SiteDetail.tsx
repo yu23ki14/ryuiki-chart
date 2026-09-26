@@ -65,14 +65,49 @@ function basisOfCell(cell: { grain: string; inputGrain: string }): Basis {
   return cell.grain === "year" ? "year" : "fiscal_year";
 }
 
+/** `series.ts` の `REPRESENTATIVE_OBS_STATS`（`[null, "mean", "point"]`）と同じ判定
+ *  （クライアント安全のため複製）。非代表（p75/p90/max/min 等）だけ `obsStat` を
+ *  そのまま `stat` クエリパラメータに使う（Issue #48 PR-2 code-review #2）。 */
+function isRepresentativeObsStat(obsStat: string | null): boolean {
+  return obsStat === null || obsStat === "mean" || obsStat === "point";
+}
+
+/** 「測定項目」一覧・選択状態の一意キー（`variableId`＋`obsStat`＋`grain`＋`inputGrain`）。
+ *  同じ variableId でも basis（年度集計値/検体値）や obsStat（代表/非代表）違いで
+ *  複数行になりうるため、選択の単位は variableId だけでは足りない（Issue #48 PR-2
+ *  code-review #2）。リストの `key` prop と同じ組み立てを共有する。 */
+function rowKey(v: { variableId: string; obsStat: string | null; grain: string; inputGrain: string }): string {
+  return v.variableId + (v.obsStat ?? "") + v.grain + v.inputGrain;
+}
+
 function variableLabel(variableId: string): string {
   return VARIABLE_LABEL[variableId]?.short ?? variableId;
 }
 
+/** `/api/timeseries?mode=site` の年セル応答（`lib/cube` の `YearPoint`、緩い受け）。 */
+interface YearApiPoint {
+  year: number;
+  n: number;
+  nCensored: number;
+  value: { mean: number | null; min: number | null; max: number | null };
+}
+/** 同 month/day セル応答（`lib/cube` の `SeriesPoint`、緩い受け）。 */
+interface SeriesApiPoint {
+  periodStart: string;
+  n: number;
+  nCensored: number;
+  value: number | null;
+}
+interface SiteTimeseriesResponse<P> {
+  points: P[];
+}
+
 export function SiteDetail({ site, variables }: { site: Site; variables: Variable[] }) {
-  const [variableId, setVariableId] = React.useState(variables[0]?.variableId ?? "");
-  const selected = variables.find((v) => v.variableId === variableId);
+  const [selectedKey, setSelectedKey] = React.useState(() => (variables[0] ? rowKey(variables[0]) : ""));
+  const selected = variables.find((v) => rowKey(v) === selectedKey);
+  const variableId = selected?.variableId ?? "";
   const basis: Basis = selected ? basisOfCell(selected) : "day";
+  const stat = selected ? (isRepresentativeObsStat(selected.obsStat) ? "representative" : selected.obsStat!) : "representative";
   const unit = selected?.unit ?? null;
   const [grainPref, setGrainPref] = React.useState<"day" | "month" | "year">("month");
   const grain = basis === "day" ? grainPref : "year";
@@ -86,26 +121,37 @@ export function SiteDetail({ site, variables }: { site: Site; variables: Variabl
     nMeas: site.nMeas,
   });
 
-  const { data, loading } = useJson<{
-    year: { year: number; n: number; nCensored: number; value: { mean: number | null; min: number | null; max: number | null } }[];
-    month: { periodStart: string; n: number; nCensored: number; value: number | null }[];
-    day: { periodStart: string; n: number; nCensored: number; value: number | null }[];
-  }>(
-    variableId
-      ? `/api/timeseries?mode=site&variable=${encodeURIComponent(variableId)}&site=${encodeURIComponent(site.siteId)}&basis=${basis}&stat=representative`
-      : "",
+  // `/api/timeseries?mode=site` は1回の応答につき1 grain しか返さない（design §0
+  // 決定4・§2.2）ので、grain ごとに別々に取る（Issue #48 PR-2 code-review #1）。
+  // 年セルは表（MiniTable）にも常に使うため grain の選択に関わらず常に取り、
+  // 月セルはヒートマップにも使うため basis='day' の間は常に取る。日セルは
+  // 実際に「日」表示を選んだときだけ取る。
+  const baseQs = variableId
+    ? `mode=site&variable=${encodeURIComponent(variableId)}&site=${encodeURIComponent(site.siteId)}&basis=${basis}&stat=${encodeURIComponent(stat)}`
+    : "";
+  const { data: yearData, loading: yearLoading } = useJson<SiteTimeseriesResponse<YearApiPoint>>(
+    baseQs ? `/api/timeseries?${baseQs}&grain=${basis === "day" ? "year" : basis}` : "",
+  );
+  const { data: monthData, loading: monthLoading } = useJson<SiteTimeseriesResponse<SeriesApiPoint>>(
+    baseQs && basis === "day" ? `/api/timeseries?${baseQs}&grain=month` : "",
+  );
+  const { data: dayData, loading: dayLoading } = useJson<SiteTimeseriesResponse<SeriesApiPoint>>(
+    baseQs && basis === "day" && grain === "day" ? `/api/timeseries?${baseQs}&grain=day` : "",
   );
 
+  const currentData = grain === "day" ? dayData : grain === "month" ? monthData : yearData;
+  const currentLoading = grain === "day" ? dayLoading : grain === "month" ? monthLoading : yearLoading;
+
   const series: LineSeries[] = React.useMemo(() => {
-    if (!data) return [];
     const label = variableLabel(variableId);
-    if (grain === "year")
+    if (grain === "year") {
+      if (!yearData) return [];
       return [
         {
           key: "y",
           label,
           color: SERIES[0],
-          points: data.year.map((p) => ({
+          points: yearData.points.map((p) => ({
             x: p.year,
             y: p.value.mean,
             n: p.n,
@@ -113,39 +159,44 @@ export function SiteDetail({ site, variables }: { site: Site; variables: Variabl
           })),
         },
       ];
-    if (grain === "month")
+    }
+    if (grain === "month") {
+      if (!monthData) return [];
       return [
         {
           key: "m",
           label,
           color: SERIES[0],
-          points: data.month.map((p) => ({ x: ymToX(p.periodStart.slice(0, 7)), y: p.value, n: p.n })),
+          points: monthData.points.map((p) => ({ x: ymToX(p.periodStart.slice(0, 7)), y: p.value, n: p.n })),
         },
       ];
+    }
+    if (!dayData) return [];
     return [
       {
         key: "d",
         label,
         color: SERIES[0],
-        points: data.day.map((p) => ({
+        points: dayData.points.map((p) => ({
           x: dayToX(p.periodStart),
           y: p.value,
           censored: (p.nCensored ?? 0) > 0,
         })),
       },
     ];
-  }, [data, grain, variableId]);
+  }, [yearData, monthData, dayData, grain, variableId]);
 
   const heat = React.useMemo(() => {
-    if (!data?.month.length) return { cells: [] as { x: number; y: number; v: number; n: number }[], years: [] as number[] };
-    const cells = data.month.filter((p) => typeof p.value === "number").map((p) => ({
+    const points = monthData?.points ?? [];
+    if (!points.length) return { cells: [] as { x: number; y: number; v: number; n: number }[], years: [] as number[] };
+    const cells = points.filter((p) => typeof p.value === "number").map((p) => ({
       x: Number(p.periodStart.slice(0, 4)),
       y: Number(p.periodStart.slice(5, 7)),
       v: p.value as number,
       n: p.n,
     }));
     return { years: [...new Set(cells.map((c) => c.x))].sort((a, b) => a - b), cells };
-  }, [data]);
+  }, [monthData]);
 
   const sources = React.useMemo(
     () => ({
@@ -249,7 +300,7 @@ export function SiteDetail({ site, variables }: { site: Site; variables: Variabl
             table={
               <MiniTable
                 columns={["年", `平均${unit ? `（${unit}）` : ""}`, "最小", "最大", "n", "下限未満"]}
-                rows={(data?.year ?? []).map((p) => [p.year, p.value.mean, p.value.min, p.value.max, p.n, p.nCensored])}
+                rows={(yearData?.points ?? []).map((p) => [p.year, p.value.mean, p.value.min, p.value.max, p.n, p.nCensored])}
               />
             }
             note={
@@ -258,7 +309,7 @@ export function SiteDetail({ site, variables }: { site: Site; variables: Variabl
               </>
             }
           >
-            {loading && !data ? (
+            {currentLoading && !currentData ? (
               <div className="p-8 text-center">
                 <Spinner label="読み込み中" />
               </div>
@@ -328,12 +379,13 @@ export function SiteDetail({ site, variables }: { site: Site; variables: Variabl
             <div className="max-h-[420px] overflow-y-auto thin-scroll">
               {variables.map((v) => {
                 const rowBasis = basisOfCell(v);
+                const key = rowKey(v);
                 return (
                   <button
-                    key={v.variableId + (v.obsStat ?? "") + v.grain + v.inputGrain}
-                    onClick={() => setVariableId(v.variableId)}
+                    key={key}
+                    onClick={() => setSelectedKey(key)}
                     className={`w-full text-left px-3 py-1.5 border-b border-line last:border-0 hover:bg-surface-2 ${
-                      variableId === v.variableId ? "bg-water-soft" : ""
+                      selectedKey === key ? "bg-water-soft" : ""
                     }`}
                   >
                     <div className="flex items-baseline gap-2">
@@ -342,6 +394,7 @@ export function SiteDetail({ site, variables }: { site: Site; variables: Variabl
                     </div>
                     <div className="text-[10px] text-muted tnum">
                       {v.yFrom}–{v.yTo}　{rowBasis === "day" ? "検体値" : rowBasis === "fiscal_year" ? "年度集計値" : "暦年値"}
+                      {!isRepresentativeObsStat(v.obsStat) ? `　統計量: ${v.obsStat}` : ""}
                       {v.unit ? `　平均 ${fmt(v.avg ?? 0, v.unit)}` : ""}
                     </div>
                   </button>
