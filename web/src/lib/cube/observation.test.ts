@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildCubeFixture, FX, type CubeFixture } from "./__fixtures__/cube-fixture";
-import { daySeries, monthSeries, queryCells, rainDaily, rainMonthlyClim, summarize, yearSeries } from "./observation";
-import type { CellSpec } from "./observation";
+import { daySeries, monthSeries, pivotYearCells, queryCells, rainDaily, rainMonthlyClim, summarize, yearSeries } from "./observation";
+import type { CellRow, CellSpec } from "./observation";
 
 let fx: CubeFixture;
 beforeEach(() => {
@@ -669,6 +669,56 @@ describe("yearSeries（PR-2 §2.1。representativeSeries + queryCells のピボ�
       imputation: "zero",
     });
     expect(rows).toHaveLength(0);
+  });
+});
+
+describe("pivotYearCells（Issue #48 PR-2 code-review #3: キーに系列を含め、代表系列が同居したら例外）", () => {
+  function cell(overrides: Partial<CellRow>): CellRow {
+    return {
+      placeId: FX.places.a,
+      siteId: FX.sites.a,
+      series: FX.series.ssMean,
+      inputGrain: "day",
+      grain: "year",
+      periodStart: "2024-01-01",
+      periodEnd: "2024-12-31",
+      stat: "mean",
+      value: 1,
+      valueZero: 1,
+      valueLod: 1,
+      n: 10,
+      nCensored: 0,
+      nNotDetected: 0,
+      nPlaces: 1,
+      ...overrides,
+    };
+  }
+
+  it("同じ系列の mean/min/max は1つの YearPoint にピボットされる", () => {
+    const rows = pivotYearCells([
+      cell({ stat: "mean", value: 5 }),
+      cell({ stat: "min", value: 1 }),
+      cell({ stat: "max", value: 9 }),
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].value).toEqual({ mean: 5, min: 1, max: 9 });
+  });
+
+  it("別の地点・別の期間の系列は別の YearPoint（衝突しない）", () => {
+    const rows = pivotYearCells([
+      cell({ placeId: FX.places.a, periodStart: "2024-01-01" }),
+      cell({ placeId: FX.places.b, periodStart: "2024-01-01" }),
+      cell({ placeId: FX.places.a, periodStart: "2025-01-01" }),
+    ]);
+    expect(rows).toHaveLength(3);
+  });
+
+  it("同じ地点・期間・grain に2つ以上の代表系列が同居すると例外にする（実測では0件の不変条件。黙って選ばない）", () => {
+    const rows = [
+      cell({ series: FX.series.ssMean, stat: "mean", value: 5 }),
+      cell({ series: FX.series.ssPoint, stat: "mean", value: 7 }),
+    ];
+    expect(() => pivotYearCells(rows)).toThrow(/複数の代表系列/);
   });
 });
 

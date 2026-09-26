@@ -621,11 +621,33 @@ export interface YearPoint {
  * stat ごとに別行（mean/min/max）なので、`(place_id, period_start)` でまとめてピボットする。
  * `n`/`n_censored`/`unit_id`/`site_id`/`grain` は同じキーの行なら stat によらず等しい
  * （同じ集計対象からの別の集計関数の値でしかないため）——最初に見た行の値を使う。
+ *
+ * ピボットのキーには**系列（`seriesKeyString`）も含める**（Issue #48 PR-2 code-review #3）。
+ * `(placeId, periodStart)` だけをキーにすると、別系列（`obs_stat`/`unit_id` 違い）が
+ * 同じ地点・期間に来たとき黙って1つの `YearPoint` に混ざる（後から来た系列の
+ * `mean`/`min`/`max` が先の系列の値を上書きする）。実測では代表系列が同じ
+ * (地点, 期間, grain) に2つ以上同居することは0件（design §0 決定4）——これを
+ * 崩れてはいけない不変条件として固定し、破れていれば（`(placeId, periodStart, grain)`
+ * に2つ以上の異なる系列が現れたら）例外にする。黙って選ばない。
  */
-function pivotYearCells(cells: readonly CellRow[]): YearPoint[] {
+export function pivotYearCells(cells: readonly CellRow[]): YearPoint[] {
   const byKey = new Map<string, YearPoint>();
+  const seriesByGroup = new Map<string, string>();
   for (const c of cells) {
-    const k = `${c.placeId}|${c.periodStart}`;
+    const seriesKey = seriesKeyString(c.series);
+    const groupKey = `${c.placeId}|${c.periodStart}|${c.grain}`;
+    const prevSeriesKey = seriesByGroup.get(groupKey);
+    if (prevSeriesKey === undefined) {
+      seriesByGroup.set(groupKey, seriesKey);
+    } else if (prevSeriesKey !== seriesKey) {
+      throw new Error(
+        `pivotYearCells: place_id=${c.placeId} period_start=${c.periodStart} grain=${c.grain} に` +
+          `複数の代表系列（${prevSeriesKey} と ${seriesKey}）が同居している。` +
+          `代表系列は同じ地点・期間・粒度で高々1つという不変条件（design §0 決定4）が破れている。`,
+      );
+    }
+
+    const k = `${groupKey}|${seriesKey}`;
     let row = byKey.get(k);
     if (!row) {
       row = {
