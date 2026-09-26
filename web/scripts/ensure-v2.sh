@@ -40,14 +40,22 @@ DB_DIR="${RYUIKI_DB_DIR:-$REPO_ROOT/data/db}"
 V2_FILE="$DB_DIR/v2.sqlite"
 
 # v2.sqlite が読み取る原本・入力・パイプラインのコード。b03/b04/b06/b07/b09 の
-# 実際の import（`from migrate import ...`・`from registry import common as
-# registry_common`・`from taxon_namespaces import ...`）を辿って列挙している
-# （scripts/migrate/ 配下は YAML 宣言〔source_regions.yaml 等〕も含めてまとめて
-# 1行で拾う）。registry.sqlite も入力に含める（b03/b06/b09 が ATTACH/読み取り
-# する——ensure-registry.sh が別途これを新鮮に保つ。scripts/registry/ 配下を
-# 丸ごとは含めない: b06 が使うのは registry.common だけで、r01 専用の
-# build_*.py 群は registry.sqlite 自身の入力であって v2 の直接の入力ではない）。
-# cells.sqlite は v2 パイプラインのどの段も読まないため含めない。
+# 実際の import を、それぞれが読み込む scripts/ 配下のモジュールまで推移的に
+# 辿って列挙している（`python3 -c` で各スクリプトを import し、新たに
+# sys.modules に載った scripts/ 配下のファイルを機械的に洗い出して確認済み）:
+# `from migrate import ...`・`from registry import common as registry_common`・
+# `from taxon_namespaces import ...`、そして migrate/common.py が
+# `from reconcile.common import load_yaml, open_readonly` で読み、
+# reconcile/common.py がさらに `from . import datasource` で読む
+# scripts/reconcile/{common,datasource}.py（scripts/migrate/ 配下は YAML 宣言
+# 〔source_regions.yaml 等〕も含めてまとめて1行で拾う）。registry.sqlite も
+# 入力に含める（b03/b06/b09 が ATTACH/読み取りする——ensure-registry.sh が
+# 別途これを新鮮に保つ。scripts/registry/・scripts/reconcile/ 配下を丸ごとは
+# 含めない: 実際に import されるのは registry/common.py・reconcile/{common,
+# datasource}.py だけで、r01 専用の build_*.py 群や b02 専用の reconcile の
+# YAML 宣言〔projection_manifest.yaml 等〕は registry.sqlite・reconcile ゲート
+# 自身の入力であって v2 の直接の入力ではない）。cells.sqlite は v2 パイプライン
+# のどの段も読まないため含めない。
 V2_INPUTS="
 $DB_DIR/ryuiki.sqlite
 $DB_DIR/registry.sqlite
@@ -61,14 +69,31 @@ $REPO_ROOT/scripts/b09_build_occurrence_place.py
 $REPO_ROOT/scripts/migrate
 $REPO_ROOT/scripts/taxon_namespaces.py
 $REPO_ROOT/scripts/registry/common.py
+$REPO_ROOT/scripts/reconcile/common.py
+$REPO_ROOT/scripts/reconcile/datasource.py
 "
 
+# 個々のファイルはそのまま `find $p -newer` で見るが、$p がディレクトリ
+# （scripts/migrate）のときは `-type f` かつ `__pycache__` 配下を除外する。
+# 素朴に `find "$p" -newer "$V2_FILE"` だけだと、ディレクトリを再帰する過程で
+# `__pycache__/*.pyc`（.py を import しただけで作られる／更新される）や
+# ディレクトリ自身の mtime（配下にファイルが増減すると更新される）まで拾って
+# しまい、ソースも入力 YAML も何も変えていないのに「古い」と誤判定して
+# build:v2（1.5GB の全量再ビルド）が走る。
 mtime_stale=0
 if [ ! -f "$V2_FILE" ]; then
   mtime_stale=1
 else
   for p in $V2_INPUTS; do
-    if [ -e "$p" ] && [ -n "$(find "$p" -newer "$V2_FILE" 2>/dev/null)" ]; then
+    if [ ! -e "$p" ]; then
+      continue
+    fi
+    if [ -d "$p" ]; then
+      newer="$(find "$p" -type f -not -path '*/__pycache__/*' -newer "$V2_FILE" 2>/dev/null)"
+    else
+      newer="$(find "$p" -newer "$V2_FILE" 2>/dev/null)"
+    fi
+    if [ -n "$newer" ]; then
       mtime_stale=1
       break
     fi

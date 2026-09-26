@@ -28,7 +28,9 @@
 - 原本は `data/db/ryuiki.sqlite` と `data/db/cells.sqlite`。**読み取り専用**で扱う
   （この規約は `web/` 側から見たものであり、書き手は `scripts/m0x_*.py` に限る）。
   集計は `data/db/derived.sqlite` に分けて書く（`cd web && pnpm run build:derived` で再生成）。
-  この 3 ファイルが D1 シードの入力になる（`web/scripts/seed-d1-local.mjs`）。
+  D1 シードの入力（`web/scripts/seed-d1-local.mjs` の `SOURCES`）はこの3ファイルに加えて
+  `registry.sqlite`（語彙レジストリ）・`v2.sqlite`（キューブ。上記の `ensure-v2.sh` が作る）
+  の計5ファイル。
 - 地図の GeoJSON は `web/public/geo/`。`data/processed` から `pnpm run prepare:geo` が写す生成物で、
   `predev` / `prebuild` に繋いである（`.gitignore` 済み）。Workers に fs は無いので `fs` で読まない。
   河川はブラウザが `/geo/rivers.geojson` を直接取り、流域界は `web/src/lib/geo.ts` が
