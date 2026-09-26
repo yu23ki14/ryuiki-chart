@@ -291,6 +291,8 @@ function WaterMode({
   const { data, loading, error } = useJson<{
     sites: Site[];
     points: (YearApiPoint | SeriesApiPoint)[];
+    /** 応答が実際に組み立てた grain（Issue #48 PR-2 code-review #6 参照）。 */
+    grain: Grain;
   }>(`/api/timeseries?mode=water&${qs}&grain=${grain}`);
 
   // 季節と経年を1枚で見るためのヒートマップ（水域内の全地点の平均、検体値〔basis=day〕のみ）
@@ -307,10 +309,15 @@ function WaterMode({
    * `data.points`（grain によって `YearApiPoint[]`／`SeriesApiPoint[]` と形が違う）を
    * `{siteId, year, x, y, n, nCensored}` の共通形に正規化する。以降の `series`/`profile`
    * はこの1つの配列だけを見ればよく、grain ごとの分岐を1箇所に集約できる。
+   *
+   * 形の分岐は**応答自身の `data.grain`** で決める（呼び出し元の `grain` prop では
+   * 決めない）。読み込み中は前回の応答（前の grain の形）を保持したまま `grain`
+   * prop だけ新しい値に切り替わるため、prop で分岐すると「新しい grain の形として
+   * 前回の応答を読む」ミスマッチが起きる（Issue #48 PR-2 code-review #6）。
    */
   const normalized = React.useMemo(() => {
     if (!data) return [] as { siteId: string; year: number; x: number; y: number | null; n: number; nCensored: number }[];
-    if (grain === "year" || grain === "fiscal_year") {
+    if (data.grain === "year" || data.grain === "fiscal_year") {
       return (data.points as YearApiPoint[]).map((p) => ({
         siteId: String(p.siteId),
         year: p.year,
@@ -323,12 +330,12 @@ function WaterMode({
     return (data.points as SeriesApiPoint[]).map((p) => ({
       siteId: String(p.siteId),
       year: Number(p.periodStart.slice(0, 4)),
-      x: grain === "month" ? ymToX(p.periodStart.slice(0, 7)) : Date.parse(p.periodStart),
+      x: data.grain === "month" ? ymToX(p.periodStart.slice(0, 7)) : Date.parse(p.periodStart),
       y: p.value,
       n: p.n,
       nCensored: p.nCensored,
     }));
-  }, [data, grain]);
+  }, [data]);
 
   /** この項目のデータを実際に持つ地点だけを、標高順に並べたもの */
   const withData = React.useMemo(() => {
