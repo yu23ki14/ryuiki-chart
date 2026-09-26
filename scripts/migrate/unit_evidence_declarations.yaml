@@ -1,0 +1,36 @@
+# 単位の証拠検査（Issue #48 PR-1b §3.7、docs/plans/V2_SERVING_PR1.md）が読む宣言。
+#
+# `scripts/b04_build_cube.py` の `_assert_unit_evidence()` が `observation`
+# （`unit_id IS NULL AND unit_raw IS NOT NULL` の行）を
+# (source_table, variable_id, obs_stat, value_grain) 単位で集計し、ここに列挙した
+# 系列の集合と**過不足なく**一致することを検証する:
+#   - ここに無い新しい欠落が実データに現れたら止まる（宣言忘れ・回帰の検出）。
+#   - 逆に、ここにある宣言が実データから消えたら止まる（解決済みの宣言を消し忘れて
+#     いる——CLAUDE.md「宣言済み差分 > データを曲げる」の「宣言は列挙して機械検証する」
+#     を、ここでは「宣言が腐ったら黙って見逃さない」という形で適用する）。
+#
+# D3（registry/variable_alias.csv、Issue #48 PR-1b）は「原本 measurements.unit
+# （unit_raw）とレジストリの unit.symbol が一致した measurements データセットの
+# alias 38行」だけを埋める、というオーナー決定の受け入れ条件どおりに実施した
+# （流量の1alias だけは原本にも単位が無いため NULL のまま）。この結果:
+#   - measurements データセットは `unit_id IS NULL AND unit_raw IS NOT NULL` の
+#     行が 0 になった（流量の alias は unit_raw 自体が NULL なのでこの集合に
+#     入らない）。
+#   - sensor_timeseries データセットは D3 のスコープ外だったため、以前から
+#     unit_id が NULL のまま原表記の単位を持つ1系列（下記）が未解決で残る。
+#
+# 埋めるならこの系列を registry/variable_alias.csv に足したうえで、この宣言を
+# 削除すること（推測ではなく実測した symbol 一致で埋める——D3 と同じ基準）。
+declared:
+  - source_table: sensor_timeseries
+    variable_id: common:variable:water.water_temp
+    obs_stat: null
+    value_grain: instant
+    reason: >
+      alias "water_temperature"（sensor_timeseries、source_id=synthetic_sensor、
+      合成データ）。原表記の単位 "degC" は該当 11,652 行すべてで一貫しており
+      common:unit:degc の symbol と一致することを実測済みだが、D3 の受け入れ
+      条件（measurements データセットの alias 38行のみ）の対象外のため今回は
+      埋めない。
+    found_on: 2026-09-26
+    record: docs/plans/V2_SERVING_PR1.md D3

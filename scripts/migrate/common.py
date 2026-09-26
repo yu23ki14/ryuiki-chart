@@ -536,6 +536,44 @@ def assert_dimension_key_unique(
         conn.execute(f'DROP INDEX IF EXISTS "{index_name}"')
 
 
+def create_indexes(
+    conn: sqlite3.Connection, table: str, indexes: "list[tuple[str, tuple[str, ...]]]",
+) -> None:
+    """`table`（`staged_table` の差し替えが終わった**あとの**本番テーブル名。
+    `observation_agg`/`occurrence_agg`）に `indexes`（`(name, columns)` の並び）で
+    索引を張る（Issue #48 PR-1 §1。索引の正は Drizzle
+    `web/src/db/schema-cube.ts`/`web/drizzle/migrations/*.sql`——名前・列は
+    そこと1文字も変えないこと。`scripts/tests/test_cube_index_parity.py` が
+    呼び出し側〔`b04_build_cube.OBSERVATION_AGG_INDEXES`/
+    `b07_build_occurrence_cube.OCCURRENCE_AGG_INDEXES`〕とマイグレーション SQL
+    から抜いた集合の一致を機械検証する）。
+
+    **`staged_table` の `with` ブロックの外（差し替え確定後）で呼ぶこと。**
+    索引名は本番テーブルに対して固定なので、`with` ブロック内（まだ
+    `f"{table}__building"` という作業用テーブルの段階）でこの名前で索引を
+    張ると、2回目以降の実行で名前衝突を起こす——直前の実行で本番テーブルが
+    既にその名前の索引を持ったまま生きているため（`assert_dimension_key_unique`
+    の使い捨て索引はここでは使わない。あちらは検証直後に `DROP INDEX` する
+    ことで同じ問題を避けている）。差し替え（`DROP TABLE IF EXISTS "{table}"`
+    → `ALTER TABLE ... RENAME`）が確定したあとに張れば、直前の `DROP TABLE`
+    で旧索引もテーブルごと消えているため、同じ名前を張り直しても衝突しない。
+
+    呼び出し側の `conn` に開いている未コミットのトランザクションが無い前提
+    （`staged_table` は `with` を抜ける時点で必ずコミット済み）。ここで新しく
+    明示トランザクションを開き、索引を全部張ってからコミットする
+    （`staged_table` の差し替えと同じ「途中で失敗したら丸ごと戻す」流儀）。
+    """
+    conn.execute("BEGIN")
+    try:
+        for name, columns in indexes:
+            cols_sql = ", ".join(columns)
+            conn.execute(f'CREATE INDEX "{name}" ON "{table}" ({cols_sql})')
+    except BaseException:
+        conn.rollback()
+        raise
+    conn.commit()
+
+
 @contextlib.contextmanager
 def _materialized_join_tables(conn: sqlite3.Connection, left_sql: str, right_sql: str, key_columns: list[str]):
     """`left_sql`/`right_sql`（それぞれ `key_columns + value_columns` の並びで

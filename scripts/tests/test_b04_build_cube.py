@@ -6,6 +6,7 @@
 import sqlite3
 
 import pytest
+import yaml
 
 import b03_build_observation as b03
 import b04_build_cube as b04
@@ -28,9 +29,19 @@ def _row(
     variable_id="common:variable:water.bod", obs_stat=None, unit_id="common:unit:mg_per_l",
     censoring_limit=None, value_grain="day", period_grain="day", period_raw=None,
 ):
+    # unit_raw: `unit_id` が付いているときだけ実測の生表記（"mg/L"）を持たせる。
+    # `unit_id=None` のケース（大半の一般テスト）は `unit_raw` も None にしておかないと、
+    # Issue #48 PR-1 §4（`make_registry_db()` に既定で `unit` 表を持たせた後）で
+    # `_assert_unit_evidence()` の検証2（`unit_id IS NULL AND unit_raw IS NOT NULL`
+    # の未宣言の欠落。宣言 YAML は本物の
+    # `scripts/migrate/unit_evidence_declarations.yaml` を見る）に、この項目とは
+    # 無関係な行まで引っかかってしまう。単位の証拠検査を明示的にテストする節
+    # （後方の `_assert_unit_evidence` 専用テスト）は `unit_raw` を自分で
+    # `UPDATE` して上書きするので、ここの既定には影響されない。
+    unit_raw = "mg/L" if unit_id is not None else None
     return (
         source_table, source_row_id, "jp-14", "place_s1", "site", variable_id, obs_stat,
-        unit_id, "mg/L", value_grain, period_grain, period_start, period_end,
+        unit_id, unit_raw, value_grain, period_grain, period_start, period_end,
         period_raw if period_raw is not None else period_start, value_num, value_raw, censoring, censoring_limit,
         "公開済", 0, "ref", "ev1",
     )
@@ -44,6 +55,12 @@ def _registry_db(tmp_path):
     registry_db = tmp_path / "registry.sqlite"
     make_registry_db(registry_db)
     return registry_db
+
+
+def _write_declarations(tmp_path, declared, name="unit_evidence_declarations.yaml"):
+    path = tmp_path / name
+    path.write_text(yaml.safe_dump({"declared": declared}, allow_unicode=True), encoding="utf-8")
+    return path
 
 
 def test_zero_and_lod_series_per_censoring_branch(tmp_path):
@@ -68,7 +85,7 @@ def test_zero_and_lod_series_per_censoring_branch(tmp_path):
     db_path = tmp_path / "v2.sqlite"
     conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
     try:
-        stats = b04.build_cube(conn, _registry_db(tmp_path))
+        stats = b04.build_cube(conn, _registry_db(tmp_path), unit_evidence_declarations_path=None)
         day_rows = conn.execute(
             "SELECT period_start, value_zero, value_lod, n, n_censored, n_not_detected FROM observation_agg "
             "WHERE grain='day' AND stat='mean' ORDER BY period_start"
@@ -112,7 +129,7 @@ def test_value_lod_report_counts(tmp_path):
     db_path = tmp_path / "v2.sqlite"
     conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
     try:
-        stats = b04.build_cube(conn, _registry_db(tmp_path))
+        stats = b04.build_cube(conn, _registry_db(tmp_path), unit_evidence_declarations_path=None)
         # 各系列は独立（variable_id が違う）なので互いにロールアップで混ざらない。
         # stat ∈ {mean, min, max} の3行 × 3系列 = 9行。
         assert stats["n_year_source"] == 9
@@ -158,7 +175,7 @@ def test_month_rollup_allows_all_nd_day_mixed_with_valid_day(tmp_path):
     db_path = tmp_path / "v2.sqlite"
     conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
     try:
-        b04.build_cube(conn, _registry_db(tmp_path))  # 例外を投げなければ良い
+        b04.build_cube(conn, _registry_db(tmp_path), unit_evidence_declarations_path=None)  # 例外を投げなければ良い
         month_row = conn.execute(
             "SELECT value_zero, value_lod, n, n_not_detected FROM observation_agg "
             "WHERE grain='month' AND stat='mean'"
@@ -187,7 +204,7 @@ def test_month_rollup_allows_two_all_nd_days(tmp_path):
     db_path = tmp_path / "v2.sqlite"
     conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
     try:
-        b04.build_cube(conn, _registry_db(tmp_path))  # 例外を投げなければ良い
+        b04.build_cube(conn, _registry_db(tmp_path), unit_evidence_declarations_path=None)  # 例外を投げなければ良い
         month_row = conn.execute(
             "SELECT value_zero, value_lod, n, n_not_detected FROM observation_agg "
             "WHERE grain='month' AND stat='mean'"
@@ -213,7 +230,7 @@ def test_negative_values_with_not_detected_reverse_the_inequality(tmp_path):
     db_path = tmp_path / "v2.sqlite"
     conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
     try:
-        b04.build_cube(conn, _registry_db(tmp_path))  # 例外を投げなければ良い
+        b04.build_cube(conn, _registry_db(tmp_path), unit_evidence_declarations_path=None)  # 例外を投げなければ良い
         day_row = conn.execute(
             "SELECT value_zero, value_lod, n, n_not_detected FROM observation_agg "
             "WHERE grain='day' AND stat='mean'"
@@ -310,7 +327,7 @@ def test_day_cell_has_mean_min_max_for_every_variable(tmp_path):
     db_path = tmp_path / "v2.sqlite"
     conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
     try:
-        b04.build_cube(conn, _registry_db(tmp_path))
+        b04.build_cube(conn, _registry_db(tmp_path), unit_evidence_declarations_path=None)
         got = dict(
             conn.execute(
                 "SELECT stat, value_zero FROM observation_agg WHERE grain='day' ORDER BY stat"
@@ -348,7 +365,7 @@ def test_day_cell_sum_only_for_default_stat_sum_variables_matching_obs_stat(tmp_
     db_path = tmp_path / "v2.sqlite"
     conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
     try:
-        b04.build_cube(conn, _registry_db(tmp_path))
+        b04.build_cube(conn, _registry_db(tmp_path), unit_evidence_declarations_path=None)
         sum_rows = conn.execute(
             "SELECT variable_id, obs_stat, value_zero, n FROM observation_agg WHERE grain='day' AND stat='sum'"
         ).fetchall()
@@ -377,7 +394,7 @@ def test_hour_and_instant_grain_roll_up_into_day_cell_with_correct_input_grain(t
     db_path = tmp_path / "v2.sqlite"
     conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
     try:
-        b04.build_cube(conn, _registry_db(tmp_path))
+        b04.build_cube(conn, _registry_db(tmp_path), unit_evidence_declarations_path=None)
         hour_day = conn.execute(
             "SELECT period_start, period_end, input_grain, value_zero, n FROM observation_agg "
             "WHERE grain='day' AND stat='mean' AND variable_id='common:variable:weather.precipitation'"
@@ -409,7 +426,7 @@ def test_month_source_cell_is_symmetric_with_year_source_cell(tmp_path):
     db_path = tmp_path / "v2.sqlite"
     conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
     try:
-        stats = b04.build_cube(conn, _registry_db(tmp_path))
+        stats = b04.build_cube(conn, _registry_db(tmp_path), unit_evidence_declarations_path=None)
         assert stats["n_month_source"] == 3
         assert stats["n_day"] == 0
         month_rows = conn.execute(
@@ -442,7 +459,7 @@ def test_year_source_cell_closed_to_year_and_fiscal_year_only(tmp_path):
     db_path = tmp_path / "v2.sqlite"
     conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
     try:
-        stats = b04.build_cube(conn, _registry_db(tmp_path))
+        stats = b04.build_cube(conn, _registry_db(tmp_path), unit_evidence_declarations_path=None)
         assert stats["n_month_source"] == 3
         assert stats["n_year_source"] == 3
         year_grains = conn.execute(
@@ -466,7 +483,7 @@ def test_month_and_year_from_day_inherit_input_grain_and_filter_mean(tmp_path):
     db_path = tmp_path / "v2.sqlite"
     conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
     try:
-        b04.build_cube(conn, _registry_db(tmp_path))
+        b04.build_cube(conn, _registry_db(tmp_path), unit_evidence_declarations_path=None)
         month = conn.execute(
             "SELECT n, value_zero, input_grain FROM observation_agg WHERE grain='month'"
         ).fetchall()
@@ -501,7 +518,7 @@ def test_annual_direct_row_bypasses_day_month_cells(tmp_path):
     db_path = tmp_path / "v2.sqlite"
     conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
     try:
-        stats = b04.build_cube(conn, _registry_db(tmp_path))
+        stats = b04.build_cube(conn, _registry_db(tmp_path), unit_evidence_declarations_path=None)
         assert stats["n_day"] == 0
         assert stats["n_month_from_day"] == 0
         annual = conn.execute(
@@ -525,7 +542,7 @@ def test_built_from_containing_apostrophe_does_not_break_sql(tmp_path):
     db_path = tmp_path / "v2.sqlite"
     conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
     try:
-        b04.build_cube(conn, _registry_db(tmp_path), built_from="o'brien's build", spec_version="v'1")
+        b04.build_cube(conn, _registry_db(tmp_path), built_from="o'brien's build", spec_version="v'1", unit_evidence_declarations_path=None)
         got = conn.execute("SELECT DISTINCT built_from, spec_version FROM observation_agg").fetchall()
         assert got == [("o'brien's build", "v'1")]
     finally:
@@ -542,7 +559,7 @@ def test_dimension_key_uniqueness_is_verified(tmp_path):
     db_path = tmp_path / "v2.sqlite"
     conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
     try:
-        b04.build_cube(conn, _registry_db(tmp_path))  # 例外を投げなければ良い
+        b04.build_cube(conn, _registry_db(tmp_path), unit_evidence_declarations_path=None)  # 例外を投げなければ良い
     finally:
         conn.close()
 
@@ -575,7 +592,7 @@ def test_a1_uniqueness_failure_preserves_previous_observation_agg(tmp_path, monk
     db_path = tmp_path / "v2.sqlite"
     registry_db = _registry_db(tmp_path)
     conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
-    b04.build_cube(conn, registry_db)
+    b04.build_cube(conn, registry_db, unit_evidence_declarations_path=None)
     before = conn.execute("SELECT * FROM observation_agg ORDER BY stat").fetchall()
     conn.close()
 
@@ -587,7 +604,7 @@ def test_a1_uniqueness_failure_preserves_previous_observation_agg(tmp_path, monk
     conn2 = sqlite3.connect(f"file:{db_path}", uri=True)
     try:
         with pytest.raises(common.MigrationError, match="テスト用に強制した一意性違反"):
-            b04.build_cube(conn2, registry_db)
+            b04.build_cube(conn2, registry_db, unit_evidence_declarations_path=None)
 
         # `pipeline_fingerprint`（Issue #37 #1、段階間の指紋のメタ表）は本番/
         # 作業用の区別とは無関係な実装詳細なので除外する。
@@ -612,12 +629,12 @@ def test_a1_running_twice_successfully_does_not_collide_on_index_name(tmp_path):
     db_path = tmp_path / "v2.sqlite"
     registry_db = _registry_db(tmp_path)
     conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
-    b04.build_cube(conn, registry_db)
+    b04.build_cube(conn, registry_db, unit_evidence_declarations_path=None)
     conn.close()
 
     conn2 = sqlite3.connect(f"file:{db_path}", uri=True)
     try:
-        stats = b04.build_cube(conn2, registry_db)
+        stats = b04.build_cube(conn2, registry_db, unit_evidence_declarations_path=None)
     finally:
         conn2.close()
     assert stats["n_total"] > 0
@@ -642,7 +659,7 @@ def test_build_cube_calls_the_shared_sqlite_version_guard(tmp_path, monkeypatch)
     conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
     try:
         with pytest.raises(SystemExit, match="古すぎる"):
-            b04.build_cube(conn, registry_db)
+            b04.build_cube(conn, registry_db, unit_evidence_declarations_path=None)
     finally:
         conn.close()
 
@@ -663,7 +680,7 @@ def test_build_cube_halts_when_observation_changed_since_b03_recorded_it(tmp_pat
     db_path = tmp_path / "v2.sqlite"
     registry_db = _registry_db(tmp_path)
     conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
-    b04.build_cube(conn, registry_db)
+    b04.build_cube(conn, registry_db, unit_evidence_declarations_path=None)
     conn.close()
 
     # b03 を経由せず observation の内容を直接書き換える（b03 の再実行を模す）。
@@ -675,7 +692,7 @@ def test_build_cube_halts_when_observation_changed_since_b03_recorded_it(tmp_pat
     conn3 = sqlite3.connect(f"file:{db_path}", uri=True)
     try:
         with pytest.raises(common.MigrationError, match="scripts/b03_build_observation.py を再実行すること"):
-            b04.build_cube(conn3, registry_db)
+            b04.build_cube(conn3, registry_db, unit_evidence_declarations_path=None)
     finally:
         conn3.close()
 
@@ -694,7 +711,7 @@ def test_build_cube_halts_when_observation_has_no_recorded_fingerprint(tmp_path)
     conn.commit()  # record_stage_fingerprint を呼ばない（指紋を記録しない）
     try:
         with pytest.raises(common.MigrationError, match="scripts/b03_build_observation.py を再実行すること"):
-            b04.build_cube(conn, registry_db)
+            b04.build_cube(conn, registry_db, unit_evidence_declarations_path=None)
     finally:
         conn.close()
 
@@ -719,7 +736,7 @@ def test_running_twice_yields_identical_observation_agg_content_hash(tmp_path):
         db_path = tmp_path / db_name
         conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
         try:
-            b04.build_cube(conn, registry_db)
+            b04.build_cube(conn, registry_db, unit_evidence_declarations_path=None)
         finally:
             conn.close()
         return db_path
@@ -730,3 +747,201 @@ def test_running_twice_yields_identical_observation_agg_content_hash(tmp_path):
     out1 = build("v2_1.sqlite")
     out2 = build("v2_2.sqlite")
     assert fingerprint(out1) == fingerprint(out2)
+
+
+# ---------------------------------------------------------------------------
+# 単位の証拠検査（Issue #48 PR-1b §3.7、D3。`b04._assert_unit_evidence()`）
+# ---------------------------------------------------------------------------
+
+
+def _registry_db_with_unit(tmp_path, units, name="registry.sqlite"):
+    """`make_registry_db()` の `unit` 表を、この検査が使う `(unit_id, symbol)` の
+    組だけに絞った registry.sqlite を作る（既定の `DEFAULT_UNITS` を使わず、
+    テストごとに意図した unit_id だけを持たせる——意図せぬ一致/不一致を防ぐ）。
+    """
+    registry_db = tmp_path / name
+    make_registry_db(registry_db, units=units)
+    return registry_db
+
+
+def _observation_conn_with_attached_registry(tmp_path, rows, registry_db, db_name="v2.sqlite"):
+    """`observation` だけを持つ v2.sqlite 相当のフィクスチャを作り、`reg` として
+    `registry_db` を ATTACH した接続を返す（`_assert_unit_evidence()` の前提と
+    同じ状態。呼び出し側が `close()` すること）。
+    """
+    conn = make_v2_db_with_observation(tmp_path / db_name, b03._CREATE_OBSERVATION_SQL, rows)
+    common.attach_readonly(conn, registry_db, "reg")
+    return conn
+
+
+def test_unit_evidence_runs_by_default_because_fixture_now_has_a_unit_table(tmp_path):
+    """Issue #48 PR-1 §4: `_assert_unit_evidence()` はもう `reg.unit` の有無で
+    素通りしない（`make_registry_db()` が既定で `unit` を持つようになったため、
+    そもそも「無い」経路には実運用でも通常のテストでも入らない）。既定の
+    `_registry_db()`（`DEFAULT_UNITS`＝`common:unit:mg_per_l`→"mg/L"）と
+    既定の `_row()`（`unit_id="common:unit:mg_per_l"` なら `unit_raw="mg/L"`）が
+    整合していることを確認する回帰テスト。
+    """
+    rows = [_row("measurements", "m1", "2020-01-01", "2020-01-01", 2.0, "2.0", "none")]
+    registry_db = _registry_db(tmp_path)  # 既定で unit テーブルあり（DEFAULT_UNITS）
+    conn = _observation_conn_with_attached_registry(tmp_path, rows, registry_db)
+    try:
+        stats = b04._assert_unit_evidence(conn, declarations_path=_write_declarations(tmp_path, []))
+        assert stats["n_unit_symbol_mismatch"] == 0
+    finally:
+        conn.close()
+
+
+def test_unit_evidence_passes_when_unit_raw_matches_symbol(tmp_path):
+    """`source_table='measurements'` で `unit_id` が埋まっている行の `unit_raw` が
+    `unit.symbol` と一致すれば通る（D3 の前提が保たれている状態）。
+    """
+    rows = [
+        _row(
+            "measurements", "m1", "2020-01-01", "2020-01-01", 2.0, "2.0", "none",
+            unit_id="common:unit:mg_per_l",
+        ),
+    ]
+    registry_db = _registry_db_with_unit(tmp_path, [("common:unit:mg_per_l", "mg/L")])
+    conn = _observation_conn_with_attached_registry(tmp_path, rows, registry_db)
+    try:
+        stats = b04._assert_unit_evidence(
+            conn, declarations_path=_write_declarations(tmp_path, [])
+        )
+        assert stats["n_unit_symbol_mismatch"] == 0
+    finally:
+        conn.close()
+
+
+def test_unit_evidence_raises_when_measurements_unit_raw_does_not_match_symbol(tmp_path):
+    """変異: `source_table='measurements'` の `unit_raw` がレジストリの `symbol`
+    と食い違う行を1つ混ぜると `_assert_unit_evidence()` が
+    `common.MigrationError` で止まる（D3 の前提が崩れたことを機械的に拾う）。
+    """
+    rows = [
+        _row(
+            "measurements", "m1", "2020-01-01", "2020-01-01", 2.0, "2.0", "none",
+            unit_id="common:unit:mg_per_l",
+        ),
+    ]
+    # symbol を "mg/L" ではなく別の値にして不一致を作る。
+    registry_db = _registry_db_with_unit(tmp_path, [("common:unit:mg_per_l", "mg/l")])
+    conn = _observation_conn_with_attached_registry(tmp_path, rows, registry_db)
+    try:
+        with pytest.raises(common.MigrationError, match="unit.symbol と一致しない"):
+            b04._assert_unit_evidence(conn, declarations_path=_write_declarations(tmp_path, []))
+    finally:
+        conn.close()
+
+
+def test_unit_evidence_ignores_sensor_timeseries_symbol_mismatch(tmp_path):
+    """検証1は `source_table='measurements'` に限る——`sensor_timeseries` の
+    表記ゆれ（実測: raw "μg/m3" vs registry symbol "ug/m3" 等、48,489件）は
+    D3 の対象外なので、ここで不一致があっても素通りする。
+    """
+    rows = [
+        _row(
+            "sensor_timeseries", "s1", "2020-01-01", "2020-01-01", 2.0, "2.0", "none",
+            unit_id="common:unit:ug_per_m3",
+        ),
+    ]
+    registry_db = _registry_db_with_unit(tmp_path, [("common:unit:ug_per_m3", "ug/m3")])
+    conn = _observation_conn_with_attached_registry(tmp_path, rows, registry_db)
+    conn.execute(
+        "UPDATE observation SET unit_raw = 'μg/m3' WHERE source_row_id = 's1'"
+    )
+    conn.commit()
+    try:
+        stats = b04._assert_unit_evidence(conn, declarations_path=_write_declarations(tmp_path, []))
+        assert stats["n_unit_symbol_mismatch"] == 0
+    finally:
+        conn.close()
+
+
+def test_unit_evidence_declared_gap_passes(tmp_path):
+    """`unit_id IS NULL AND unit_raw IS NOT NULL` の系列が、宣言 YAML の内容と
+    過不足なく一致すれば通る（D3 のスコープ外に残った既知の欠落、例:
+    `scripts/migrate/unit_evidence_declarations.yaml` の
+    sensor_timeseries/water_temp 系列と同じ形）。
+    """
+    rows = [
+        _row(
+            "sensor_timeseries", "s1", "2020-01-01", "2020-01-01", 12.3, "12.3", "none",
+            variable_id="common:variable:water.water_temp", unit_id=None, value_grain="instant",
+        ),
+    ]
+    registry_db = _registry_db_with_unit(tmp_path, [])
+    conn = _observation_conn_with_attached_registry(tmp_path, rows, registry_db)
+    conn.execute("UPDATE observation SET unit_raw = 'degC' WHERE source_row_id = 's1'")
+    conn.commit()
+    declarations_path = _write_declarations(
+        tmp_path,
+        [
+            {
+                "source_table": "sensor_timeseries",
+                "variable_id": "common:variable:water.water_temp",
+                "obs_stat": None,
+                "value_grain": "instant",
+            }
+        ],
+    )
+    try:
+        stats = b04._assert_unit_evidence(conn, declarations_path=declarations_path)
+        assert stats["n_unit_evidence_declared"] == 1
+    finally:
+        conn.close()
+
+
+def test_unit_evidence_raises_on_undeclared_gap(tmp_path):
+    """変異: 上と同じ欠落があるのに宣言 YAML が空だと、
+    `_assert_unit_evidence()` が「宣言されていない欠落」で止まる
+    （新しい欠落が黙って増えるのを防ぐ）。
+    """
+    rows = [
+        _row(
+            "sensor_timeseries", "s1", "2020-01-01", "2020-01-01", 12.3, "12.3", "none",
+            variable_id="common:variable:water.water_temp", unit_id=None, value_grain="instant",
+        ),
+    ]
+    registry_db = _registry_db_with_unit(tmp_path, [])
+    conn = _observation_conn_with_attached_registry(tmp_path, rows, registry_db)
+    conn.execute("UPDATE observation SET unit_raw = 'degC' WHERE source_row_id = 's1'")
+    conn.commit()
+    try:
+        with pytest.raises(common.MigrationError, match="宣言されていない欠落"):
+            b04._assert_unit_evidence(conn, declarations_path=_write_declarations(tmp_path, []))
+    finally:
+        conn.close()
+
+
+def test_unit_evidence_raises_on_stale_declaration(tmp_path):
+    """変異: 宣言 YAML に無くなった（解決済みの）系列が残っていると、
+    `_assert_unit_evidence()` が「宣言が腐っている」で止まる
+    （解決済みの宣言を消し忘れる退行を防ぐ。CLAUDE.md「宣言済み差分 >
+    データを曲げる」）。
+    """
+    rows = [
+        _row(
+            "measurements", "m1", "2020-01-01", "2020-01-01", 2.0, "2.0", "none",
+            unit_id="common:unit:mg_per_l",
+        ),
+    ]
+    registry_db = _registry_db_with_unit(tmp_path, [("common:unit:mg_per_l", "mg/L")])
+    conn = _observation_conn_with_attached_registry(tmp_path, rows, registry_db)
+    declarations_path = _write_declarations(
+        tmp_path,
+        [
+            {
+                # 実データにはもう存在しない、解決済みのはずの系列。
+                "source_table": "sensor_timeseries",
+                "variable_id": "common:variable:water.water_temp",
+                "obs_stat": None,
+                "value_grain": "instant",
+            }
+        ],
+    )
+    try:
+        with pytest.raises(common.MigrationError, match="宣言を削除すること"):
+            b04._assert_unit_evidence(conn, declarations_path=declarations_path)
+    finally:
+        conn.close()

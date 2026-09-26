@@ -4,84 +4,84 @@
       "pipeline_fingerprint_rows": [
         {
           "fingerprint": "sha256:8f247d6cfedd48f30cd40a37fd71eb550029d217ef576145cd05a55952787b7c:2904",
-          "inputs": "{\"observation_agg\": \"sha256:933c1cfff38f87a332c48016dd425121fc9b187ca3f3d5cbd0523026e315b616:2022964\"}",
+          "inputs": "{\"observation_agg\": \"sha256:7770764753a34ffb44c21881be4b033d8fcc2040421ca7d06164d09c6ac68b76:2022964\"}",
           "spec_version": "phase-b-fact-slice/v1",
           "table_name": "landuse_change"
         },
         {
           "fingerprint": "sha256:e4b2f9f177a8cc99e995573a745b3e69ee4c411accc4ac39b43aa6b45cab4154:4858",
-          "inputs": "{\"observation_agg\": \"sha256:933c1cfff38f87a332c48016dd425121fc9b187ca3f3d5cbd0523026e315b616:2022964\"}",
+          "inputs": "{\"observation_agg\": \"sha256:7770764753a34ffb44c21881be4b033d8fcc2040421ca7d06164d09c6ac68b76:2022964\"}",
           "spec_version": "phase-b-fact-slice/v1",
           "table_name": "landuse_watershed"
         },
         {
           "fingerprint": "sha256:62b95d26a9b08364a64179d6851f549936d33a2d52dfb3901cf4f1c55cafce08:192",
-          "inputs": "{\"observation\": \"sha256:950620998618e268ff88e09afe0fa4663cbce29dc3f2dd12d08c95cef58b42e7:1050719\", \"observation_agg\": \"sha256:933c1cfff38f87a332c48016dd425121fc9b187ca3f3d5cbd0523026e315b616:2022964\"}",
+          "inputs": "{\"observation\": \"sha256:cec276299de78f15eeacfd2f7657174f92eed9b683e63f44f1a86cb16c2136d3:1050719\", \"observation_agg\": \"sha256:7770764753a34ffb44c21881be4b033d8fcc2040421ca7d06164d09c6ac68b76:2022964\"}",
           "spec_version": "phase-b-fact-slice/v1",
           "table_name": "meas_clim"
         },
         {
           "fingerprint": "sha256:816b4470ffcf9c620650d8e4f1538b070b97de367d575c8764bc03ced8a3f7b5:139532",
-          "inputs": "{\"observation\": \"sha256:950620998618e268ff88e09afe0fa4663cbce29dc3f2dd12d08c95cef58b42e7:1050719\", \"observation_agg\": \"sha256:933c1cfff38f87a332c48016dd425121fc9b187ca3f3d5cbd0523026e315b616:2022964\"}",
+          "inputs": "{\"observation\": \"sha256:cec276299de78f15eeacfd2f7657174f92eed9b683e63f44f1a86cb16c2136d3:1050719\", \"observation_agg\": \"sha256:7770764753a34ffb44c21881be4b033d8fcc2040421ca7d06164d09c6ac68b76:2022964\"}",
           "spec_version": "phase-b-fact-slice/v1",
           "table_name": "meas_daily"
         },
         {
           "fingerprint": "sha256:cc28914d5a7200a69d7b146f6f32226851a9578df5f8db7431747a2eeaac410f:127493",
-          "inputs": "{\"observation\": \"sha256:950620998618e268ff88e09afe0fa4663cbce29dc3f2dd12d08c95cef58b42e7:1050719\", \"observation_agg\": \"sha256:933c1cfff38f87a332c48016dd425121fc9b187ca3f3d5cbd0523026e315b616:2022964\"}",
+          "inputs": "{\"observation\": \"sha256:cec276299de78f15eeacfd2f7657174f92eed9b683e63f44f1a86cb16c2136d3:1050719\", \"observation_agg\": \"sha256:7770764753a34ffb44c21881be4b033d8fcc2040421ca7d06164d09c6ac68b76:2022964\"}",
           "spec_version": "phase-b-fact-slice/v1",
           "table_name": "meas_month"
         },
         {
           "fingerprint": "sha256:5cf35987875686ebbf2f087ca7b965ac201c2e3985e91f4270faae7f76776d04:116076",
-          "inputs": "{\"observation\": \"sha256:950620998618e268ff88e09afe0fa4663cbce29dc3f2dd12d08c95cef58b42e7:1050719\", \"observation_agg\": \"sha256:933c1cfff38f87a332c48016dd425121fc9b187ca3f3d5cbd0523026e315b616:2022964\"}",
+          "inputs": "{\"observation\": \"sha256:cec276299de78f15eeacfd2f7657174f92eed9b683e63f44f1a86cb16c2136d3:1050719\", \"observation_agg\": \"sha256:7770764753a34ffb44c21881be4b033d8fcc2040421ca7d06164d09c6ac68b76:2022964\"}",
           "spec_version": "phase-b-fact-slice/v1",
           "table_name": "meas_year"
         },
         {
           "fingerprint": "sha256:fa0fc0fe776c695dec2c39d72b9183cdcadc74604221d16cdb9302cb7f67d34c:3654",
-          "inputs": "{\"observation\": \"sha256:950620998618e268ff88e09afe0fa4663cbce29dc3f2dd12d08c95cef58b42e7:1050719\", \"observation_agg\": \"sha256:933c1cfff38f87a332c48016dd425121fc9b187ca3f3d5cbd0523026e315b616:2022964\"}",
+          "inputs": "{\"observation\": \"sha256:cec276299de78f15eeacfd2f7657174f92eed9b683e63f44f1a86cb16c2136d3:1050719\", \"observation_agg\": \"sha256:7770764753a34ffb44c21881be4b033d8fcc2040421ca7d06164d09c6ac68b76:2022964\"}",
           "spec_version": "phase-b-fact-slice/v1",
           "table_name": "rain_daily"
         },
         {
           "fingerprint": "sha256:3854dbad303d730b8253e007a747483f849cde474b709502d96ac065c2129479:352043",
-          "inputs": "{\"observation\": \"sha256:950620998618e268ff88e09afe0fa4663cbce29dc3f2dd12d08c95cef58b42e7:1050719\", \"observation_agg\": \"sha256:933c1cfff38f87a332c48016dd425121fc9b187ca3f3d5cbd0523026e315b616:2022964\"}",
+          "inputs": "{\"observation\": \"sha256:cec276299de78f15eeacfd2f7657174f92eed9b683e63f44f1a86cb16c2136d3:1050719\", \"observation_agg\": \"sha256:7770764753a34ffb44c21881be4b033d8fcc2040421ca7d06164d09c6ac68b76:2022964\"}",
           "spec_version": "phase-b-fact-slice/v1",
           "table_name": "sensor_daily"
         },
         {
           "fingerprint": "sha256:8feb0645e2d16eba226c233639b382d1ec0aa4c7e729a79e8335dd0760b81d16:2112",
-          "inputs": "{\"observation\": \"sha256:950620998618e268ff88e09afe0fa4663cbce29dc3f2dd12d08c95cef58b42e7:1050719\", \"observation_agg\": \"sha256:933c1cfff38f87a332c48016dd425121fc9b187ca3f3d5cbd0523026e315b616:2022964\"}",
+          "inputs": "{\"observation\": \"sha256:cec276299de78f15eeacfd2f7657174f92eed9b683e63f44f1a86cb16c2136d3:1050719\", \"observation_agg\": \"sha256:7770764753a34ffb44c21881be4b033d8fcc2040421ca7d06164d09c6ac68b76:2022964\"}",
           "spec_version": "phase-b-fact-slice/v1",
           "table_name": "sensor_hour_month"
         },
         {
           "fingerprint": "sha256:ae4ab5784cd68e98bc1f9d915f9d63e0819abbeb261ec4b3daaac84fcba07c80:8140",
-          "inputs": "{\"observation\": \"sha256:950620998618e268ff88e09afe0fa4663cbce29dc3f2dd12d08c95cef58b42e7:1050719\", \"observation_agg\": \"sha256:933c1cfff38f87a332c48016dd425121fc9b187ca3f3d5cbd0523026e315b616:2022964\"}",
+          "inputs": "{\"observation\": \"sha256:cec276299de78f15eeacfd2f7657174f92eed9b683e63f44f1a86cb16c2136d3:1050719\", \"observation_agg\": \"sha256:7770764753a34ffb44c21881be4b033d8fcc2040421ca7d06164d09c6ac68b76:2022964\"}",
           "spec_version": "phase-b-fact-slice/v1",
           "table_name": "site_var"
         },
         {
           "fingerprint": "sha256:fc528d636c9532b3f75b00626cf77bc8d40f18f554eb36683cd5e604577425b3:58",
-          "inputs": "{\"observation\": \"sha256:950620998618e268ff88e09afe0fa4663cbce29dc3f2dd12d08c95cef58b42e7:1050719\", \"observation_agg\": \"sha256:933c1cfff38f87a332c48016dd425121fc9b187ca3f3d5cbd0523026e315b616:2022964\"}",
+          "inputs": "{\"observation\": \"sha256:cec276299de78f15eeacfd2f7657174f92eed9b683e63f44f1a86cb16c2136d3:1050719\", \"observation_agg\": \"sha256:7770764753a34ffb44c21881be4b033d8fcc2040421ca7d06164d09c6ac68b76:2022964\"}",
           "spec_version": "phase-b-fact-slice/v1",
           "table_name": "var_catalog"
         },
         {
           "fingerprint": "sha256:b49f46f1ca83862d97cd343d051d80102beb335cae37bc71ae9e28995dc27bcc:619",
-          "inputs": "{\"observation\": \"sha256:950620998618e268ff88e09afe0fa4663cbce29dc3f2dd12d08c95cef58b42e7:1050719\", \"observation_agg\": \"sha256:933c1cfff38f87a332c48016dd425121fc9b187ca3f3d5cbd0523026e315b616:2022964\"}",
+          "inputs": "{\"observation\": \"sha256:cec276299de78f15eeacfd2f7657174f92eed9b683e63f44f1a86cb16c2136d3:1050719\", \"observation_agg\": \"sha256:7770764753a34ffb44c21881be4b033d8fcc2040421ca7d06164d09c6ac68b76:2022964\"}",
           "spec_version": "phase-b-fact-slice/v1",
           "table_name": "zone_clim"
         },
         {
           "fingerprint": "sha256:633fec49acff6e6044d8add91acfb44aa5fec254286e85d18d628226d5c31621:3710",
-          "inputs": "{\"observation\": \"sha256:950620998618e268ff88e09afe0fa4663cbce29dc3f2dd12d08c95cef58b42e7:1050719\", \"observation_agg\": \"sha256:933c1cfff38f87a332c48016dd425121fc9b187ca3f3d5cbd0523026e315b616:2022964\"}",
+          "inputs": "{\"observation\": \"sha256:cec276299de78f15eeacfd2f7657174f92eed9b683e63f44f1a86cb16c2136d3:1050719\", \"observation_agg\": \"sha256:7770764753a34ffb44c21881be4b033d8fcc2040421ca7d06164d09c6ac68b76:2022964\"}",
           "spec_version": "phase-b-fact-slice/v1",
           "table_name": "zone_year"
         }
       ],
-      "sha256": "6954229634bc51b955a3bc4eec4dc4803d186ccef21c00a219ee151dd37e9278"
+      "sha256": "ee4fa32af7fedb5f8a64f5421993afbe9335c69ce50ff2ea92688c3d3c2e1d6f"
     },
     "v1_projection_documents.sqlite": {
       "pipeline_fingerprint_rows": null,
@@ -192,7 +192,7 @@
       "sha256": "5c6fd091de7742cdea2c0da9d2775d35f561da217f9fb4784eca3029237b99ff"
     }
   },
-  "created_at": "2026-09-26T03:37:03+00:00",
+  "created_at": "2026-09-26T12:29:41+00:00",
   "derived_reconciliation_all_md_sha256": "40d76c0e8c4abf1c8e9a740a29524741fc4744c01d74532d0d09742849526d72",
   "environment": {
     "better_sqlite3_sqlite_version": "3.53.4",
@@ -208,9 +208,9 @@
     "n_mismatch": 0,
     "total": 33
   },
-  "git_head": "c8bf34cb359d544589f7ddf673310b9fe09a0657",
+  "git_head": "b5c0ccd253393e275b4b3577e9905e6615a9fc13",
   "pipeline_path_hashes": {
-    "registry": "8497514d612f1783930455036a64fdf77b082b70",
+    "registry": "20e56e328fb8e9237c1cffccb70cfb1b2cda130a",
     "reports/derived_baseline.json": "9448ea15f7e0340d98a9523be728606ecd774a0a",
     "requirements.txt": "204126f99a90855c9bfd80b00f08e8dcdf089eea",
     "scripts/b00_run_full_gate.py": "2b3d370d9451e5b443daea582e65e4fc6b546785",
@@ -218,25 +218,25 @@
     "scripts/b02_derived_compare.py": "511dcef4fd8a7d32a4ae775452efc3da472bfdfc",
     "scripts/b02_run_all_gates.py": "b79ca126ea0d6022e85d31418d165d3c39eccdc5",
     "scripts/b03_build_observation.py": "38beef4c1b8a96efa615d0518fa27e1bd6dd54f5",
-    "scripts/b04_build_cube.py": "503736261cc9c528358dd3eda392da53dc389b25",
+    "scripts/b04_build_cube.py": "b4b56f4be3a3c532a6f630bd6e8ee0171cebdf85",
     "scripts/b05_project_v1.py": "971253771392b40790953ec1e1dad5b2d5063b14",
     "scripts/b06_build_occurrence.py": "1ecd9ca63ff7d5a8747ed396568be52ef7817fec",
-    "scripts/b07_build_occurrence_cube.py": "fcf7641d50402c06ee8e7226817008fb2c5843a0",
+    "scripts/b07_build_occurrence_cube.py": "257ff2f3a45806959eb404a2431ce0fb804ce489",
     "scripts/b08_project_occurrence_v1.py": "9de19d9efc339d603712571575483ee97506480d",
     "scripts/b09_build_occurrence_place.py": "642ef7d233207304db6fce3c1a5574fcea5c7182",
     "scripts/b10_project_documents_v1.py": "d7b620581ed237b1253ab044b8277b81162f2eb1",
     "scripts/b11_project_place_v1.py": "4977bdc14b614eff5f11a4946b57a46d64211587",
     "scripts/b12_project_taxon_v1.py": "3a7d5f6f4276b8682185afc92214275e6fd6b843",
-    "scripts/migrate": "7ad1adc8624d06f1ba75f43b86a6a51c617c283a",
+    "scripts/migrate": "75f564ffe2d70b4b64604dc0fe83236f4bd0877e",
     "scripts/pipeline_inputs.py": "26f0f1aa956493afa09db0fcab69bc939933b42a",
     "scripts/r01_build_registry.py": "4e4cebd61c8cfda48c67fc0ecc8f0cf9b474a686",
     "scripts/reconcile": "1d5a039bbbff33cce47801b8620d2959d411bbd7",
-    "scripts/registry": "bda9fc3012b3fefa43a3e9ebcbc6069b78823efd",
+    "scripts/registry": "59a2d715fe1cd8cf37c5e568e17160a26dfa6dfe",
     "scripts/s05_check_sample_gate_summary.py": "45b1da2aa3a583f393ddfe8704e2fc6e6c98eab5",
     "scripts/schema_registry.sql": "a65037f8b4275bbf3f938671457e8f22fa534245",
     "scripts/taxon_namespaces.py": "56651e8f89085ad95c225643177c17a4098021c3",
-    "web/package.json": "80631cd38d86b0a4188293bd9bd263fd083f6c0f",
-    "web/pnpm-lock.yaml": "ab7675c6f8c746085ac7bcf5d7c7602227975d40",
+    "web/package.json": "d16b29e85f5444a0ceb794be15198815be2e6e7d",
+    "web/pnpm-lock.yaml": "6ed023dae786be30e10835dd8a13d5af0bccd466",
     "web/scripts/build-biota.mjs": "cac46966587f26e6abd2a6c247d273b800ace929",
     "web/scripts/build-derived.mjs": "c67cd97a35f62f545cf729dec666158cc67403ef",
     "web/scripts/build-geo.mjs": "b195f50d898b1dd999d5751fe4ce50ed118b627b",

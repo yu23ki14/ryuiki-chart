@@ -190,7 +190,12 @@ ADR-0025 D2）。索引はこの上に問い合わせパターンに合わせて
 
 ### PR-1 問い合わせ層＋差分の道具（値は動かない）
 
-状態: 未着手
+状態: 進行中（設計は `docs/plans/V2_SERVING_PR1.md`。1b「caveat＋registry」着手済み:
+`scripts/registry/build_caveat.py` が v1 の table 行の隣に v2 facet 行（dataset・
+place_kind・source_id・variable_theme。variable は予約のみ）を追加し、
+`web/src/lib/cube/caveats.ts` の `caveatsForFacets`/`facetsForSeries` から引ける
+ようにした。既存の AI 注記（`caveatsForTables`・`CAVEAT_TEXT`・システムプロンプトの
+スナップショット）は無変更。1a「問い合わせ層」・1c「serving-diff」は未着手）
 
 - `web/src/lib/cube/*`（新設予定）、`web/serving_queries.yaml`（新設予定）、
   `web/scripts/serving-diff.mts`（新設予定）、vitest（`server-only` を alias で無効化）。

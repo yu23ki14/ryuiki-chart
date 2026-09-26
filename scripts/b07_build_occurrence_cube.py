@@ -473,6 +473,17 @@ def _assert_cube_partition_and_shape(
 # （b07 固有）だけを渡す薄い呼び出しにしてある。
 _DIM_KEY_INDEX_NAME = "occurrence_agg_dim_key"
 
+# Issue #48 PR-1 §1: `occurrence_agg` に張る永続索引。名前・列・列順は
+# Drizzle（`web/src/db/schema-cube.ts` → `web/drizzle/migrations/0005_overrated_venom.sql`）
+# が正——ここは写し。`scripts/tests/test_cube_index_parity.py` がマイグレーション SQL から
+# 抜いた集合とこの定数の一致を機械検証する（`scripts/b04_build_cube.py` の
+# `OBSERVATION_AGG_INDEXES` と同じ形）。`build_cube()` が `common.create_indexes()` 経由で
+# `staged_table` の差し替え確定後に張る。
+OCCURRENCE_AGG_INDEXES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("ix_occurrence_agg_taxon_period", ("taxon_id", "period_start")),
+    ("ix_occurrence_agg_place_period", ("place_id", "period_start")),
+)
+
 
 def _assert_dimension_key_unique(conn: sqlite3.Connection, staging: str) -> None:
     common.assert_dimension_key_unique(
@@ -537,6 +548,10 @@ def build_cube(
     # 正しさを検証するため、この指紋自体は他段（将来 occurrence_agg を読む
     # かもしれない別スクリプト）向けの一貫性維持——「全段の出力に指紋を
     # 持たせる」方針どおり記録している。
+
+    # Issue #48 PR-1 §1: 索引は差し替え確定後（本番テーブル名）に張る
+    # （`common.create_indexes` docstring 参照。`b04_build_cube.py` と同じ形）。
+    common.create_indexes(conn, "occurrence_agg", OCCURRENCE_AGG_INDEXES)
 
     n_dated_grid01 = n_dated_by_place_kind.get("grid01", 0)
     return {

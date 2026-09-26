@@ -1,0 +1,526 @@
+/**
+ * 観測キューブ（`observation_agg`）への問い合わせ（design §3.3）。
+ *
+ * `summarize()` の集計式は `scripts/b05_project_v1.py` の SQL を正にする（v1 との
+ * 一致仕様）。SQL 側で `AVG`/`SUM`/`COUNT` する（JS 側で再集計すると浮動小数の
+ * 加算順序が変わり b05 と一致しなくなりうるため——CLAUDE.md の SQLite 3.43 の注記と
+ * 同じ理由）。
+ */
+import type { CubeDb, SqlParam } from "./db";
+import { MAX_ID_LIST } from "./db";
+import { buildScopeSql, OBS, seriesFilterSql, zoneExprSql, type Scope } from "./sql";
+import { seriesKeyFromRow, seriesKeySql, seriesKeyString, type Grain, type SeriesKey } from "./series";
+
+export type { Scope } from "./sql";
+
+export type Stat = "mean" | "min" | "max" | "sum";
+export type Imputation = "zero" | "lod" | "both";
+
+export interface CellSpec {
+  /** 索引1 (variable_id, place_id, grain, stat, period_start) を使う主経路。 */
+  variableId?: string;
+  /** 省略時は variableId の全系列（フィルタしない）。 */
+  series?: SeriesKey[];
+  scope: Scope;
+  grain: Grain | Grain[];
+  /** 既定 ['mean']。 */
+  stats?: Stat[];
+  /** 'same' = 出典配布セル（input_grain = grain）。 */
+  inputGrain?: "day" | "hour" | "instant" | "same";
+  /** `period_start` の範囲（文字列比較。日時関数は使わない: ADR-0024）。 */
+  period?: { from?: string; to?: string };
+  imputation: Imputation;
+  /** 返す行数の上限（既定 `DEFAULT_CELL_LIMIT`）。超えたら `truncated: true` を
+   *  返す（Issue #48 PR-1 §論点B。上限そのものを外したい呼び出し側は
+   *  `UNLIMITED_CELL_LIMIT` を明示する——`serving-diff` はこちらを使う）。 */
+  limit?: number;
+}
+
+/**
+ * `CellSpec.limit` の既定値（画面が使う想定の問い合わせ規模に十分な余裕を
+ * 持たせた上限）。実測で単発の問い合わせが最も大きいのは `rain_daily`
+ * （全地点・日次の3,654行）で、これより十分大きい値にしてある。
+ */
+export const DEFAULT_CELL_LIMIT = 20_000;
+
+/**
+ * 上限を掛けたくない呼び出し側（`serving-diff` 等、v1 との突合に全行が要る）が
+ * 明示的に渡す値。`LIMIT` に使うため有限の具体的な数値にする必要がある
+ * （`Infinity` は SQL パラメータにバインドできない）。実データのどの
+ * 問い合わせの行数よりも十分大きい。
+ */
+export const UNLIMITED_CELL_LIMIT = 1_000_000_000;
+
+function limitOf(spec: CellSpec): number {
+  return spec.limit ?? DEFAULT_CELL_LIMIT;
+}
+
+export interface LimitedRows<T> {
+  rows: T[];
+  truncated: boolean;
+}
+
+/**
+ * SQL 側で `LIMIT limit+1` を掛けた結果（`rows`）を、呼び出し側が指定した
+ * `limit` と比べる。`limit+1` 件返ってきていれば実際には上限を超えている
+ * ことが分かるので、末尾の1行を落として `truncated: true` にする。
+ */
+function applyLimit<T>(rows: T[], limit: number): LimitedRows<T> {
+  if (rows.length > limit) {
+    return { rows: rows.slice(0, limit), truncated: true };
+  }
+  return { rows, truncated: false };
+}
+
+export interface CellRow {
+  placeId: string;
+  siteId: string | null;
+  series: SeriesKey;
+  inputGrain: string;
+  grain: Grain;
+  periodStart: string;
+  periodEnd: string;
+  stat: string;
+  value: number | null;
+  valueZero: number | null;
+  valueLod: number | null;
+  n: number;
+  nCensored: number;
+  nNotDetected: number;
+  nPlaces: number;
+}
+
+interface RawCellRow {
+  place_id: string;
+  site_id: string | null;
+  variable_id: string;
+  obs_stat: string | null;
+  unit_id: string | null;
+  value_grain: string | null;
+  input_grain: string;
+  grain: string;
+  period_start: string;
+  period_end: string;
+  stat: string;
+  value_zero: number | null;
+  value_lod: number | null;
+  n: number;
+  n_censored: number;
+  n_not_detected: number;
+  n_places: number;
+}
+
+function grainsOf(spec: CellSpec): Grain[] {
+  return Array.isArray(spec.grain) ? spec.grain : [spec.grain];
+}
+
+function statsOf(spec: CellSpec): Stat[] {
+  return spec.stats && spec.stats.length > 0 ? spec.stats : ["mean"];
+}
+
+function inClausePlaceholders(n: number): string {
+  return Array.from({ length: n }, () => "?").join(",");
+}
+
+/** `variableId`/`series` のどちらかを要求する共通フィルタ（`WHERE` 句1本 or `JOIN`）。 */
+function seriesOrVariableClause(spec: CellSpec, alias: string): { joins?: string[]; where?: string; params: SqlParam[] } {
+  if (spec.series && spec.series.length > 0) {
+    const f = seriesFilterSql(spec.series, alias);
+    return { joins: f!.joins, params: f!.params };
+  }
+  if (spec.variableId) {
+    return { where: `${alias}.variable_id = ?`, params: [spec.variableId] };
+  }
+  throw new Error("queryCells/summarize: variableId か series のどちらかが必要");
+}
+
+/**
+ * JOIN 節・WHERE 節それぞれのパラメータを別の配列で積み、最後に
+ * `[...joinParams, ...whereParams]` として連結する（Issue #48 PR-1 code-review #1）。
+ *
+ * 最終的な SQL は `FROM ... ${joins.join(...)} ${whereSql(wheres)}` という並び
+ * （JOIN 節がまとまって先、WHERE 節がまとまって後）で組み立てられる。この関数が
+ * 返す `params` の並びはその文字列上の `?` の出現順と一致していなければならない
+ * ——`variableId` 指定（`seriesOrVariableClause` が WHERE 句を返す）と
+ * `water`/`places` スコープ（`buildScopeSql` が JOIN 句を返す）を同時に使うと、
+ * 「WHERE 用のパラメータを先に積んでから JOIN 用のパラメータを積む」場当たりの
+ * 順番では JOIN 節の `?` に WHERE 用の値が入れ替わってバインドされてしまう
+ * （water は絞り込みが常に偽になって黙って0行、places は `json_each(?)` に
+ * 文字列以外が渡って例外になる。実測で発覚）。JOIN 用/WHERE 用を常に別配列で
+ * 持ち、両方が出揃ってから「JOIN 節の並び→WHERE 節の並び」の順で連結すれば、
+ * どの組み合わせで呼ばれても構造的にずれない。
+ */
+function commonFilterSql(spec: CellSpec, alias: string): { joins: string[]; wheres: string[]; params: SqlParam[]; siteIdExpr: string } {
+  const joins: string[] = [];
+  const wheres: string[] = [];
+  const joinParams: SqlParam[] = [];
+  const whereParams: SqlParam[] = [];
+
+  const sv = seriesOrVariableClause(spec, alias);
+  if (sv.joins) {
+    joins.push(...sv.joins);
+    joinParams.push(...sv.params);
+  }
+  if (sv.where) {
+    wheres.push(sv.where);
+    whereParams.push(...sv.params);
+  }
+
+  const scopeSql = buildScopeSql(spec.scope, alias);
+  joins.push(...scopeSql.joins);
+  joinParams.push(...scopeSql.joinParams);
+  wheres.push(...scopeSql.wheres);
+  whereParams.push(...scopeSql.whereParams);
+
+  const grains = grainsOf(spec);
+  wheres.push(`${alias}.grain IN (${inClausePlaceholders(grains.length)})`);
+  whereParams.push(...grains);
+
+  const stats = statsOf(spec);
+  wheres.push(`${alias}.stat IN (${inClausePlaceholders(stats.length)})`);
+  whereParams.push(...stats);
+
+  if (spec.inputGrain === "same") {
+    wheres.push(`${alias}.input_grain = ${alias}.grain`);
+  } else if (spec.inputGrain) {
+    wheres.push(`${alias}.input_grain = ?`);
+    whereParams.push(spec.inputGrain);
+  }
+
+  if (spec.period?.from) {
+    wheres.push(`${alias}.period_start >= ?`);
+    whereParams.push(spec.period.from);
+  }
+  if (spec.period?.to) {
+    wheres.push(`${alias}.period_start <= ?`);
+    whereParams.push(spec.period.to);
+  }
+
+  return { joins, wheres, params: [...joinParams, ...whereParams], siteIdExpr: scopeSql.siteIdExpr };
+}
+
+function whereSql(wheres: string[]): string {
+  return wheres.length ? `WHERE ${wheres.join(" AND ")}` : "";
+}
+
+function toCellRow(r: RawCellRow, imputation: Imputation): CellRow {
+  const value = imputation === "zero" ? r.value_zero : imputation === "lod" ? r.value_lod : null;
+  return {
+    placeId: r.place_id,
+    siteId: r.site_id,
+    series: seriesKeyFromRow(r),
+    inputGrain: r.input_grain,
+    grain: r.grain as Grain,
+    periodStart: r.period_start,
+    periodEnd: r.period_end,
+    stat: r.stat,
+    value,
+    valueZero: r.value_zero,
+    valueLod: r.value_lod,
+    n: r.n,
+    nCensored: r.n_censored,
+    nNotDetected: r.n_not_detected,
+    nPlaces: r.n_places,
+  };
+}
+
+/**
+ * `observation_agg` から未ピボットのセルを返す（1行 = 1 (place, series, period, stat)）。
+ * mean/min/max のピボットは呼び出し側（JS）で行う（design §3.3。b05 の自己 JOIN は使わない）。
+ */
+export async function queryCells(db: CubeDb, spec: CellSpec): Promise<LimitedRows<CellRow>> {
+  const { joins, wheres, params, siteIdExpr } = commonFilterSql(spec, OBS);
+  const limit = limitOf(spec);
+
+  const sql = `
+    SELECT ${OBS}.place_id AS place_id, ${siteIdExpr} AS site_id,
+           ${OBS}.variable_id AS variable_id, ${OBS}.obs_stat AS obs_stat, ${OBS}.unit_id AS unit_id,
+           ${OBS}.value_grain AS value_grain, ${OBS}.input_grain AS input_grain, ${OBS}.grain AS grain,
+           ${OBS}.period_start AS period_start, ${OBS}.period_end AS period_end, ${OBS}.stat AS stat,
+           ${OBS}.value_zero AS value_zero, ${OBS}.value_lod AS value_lod,
+           ${OBS}.n AS n, ${OBS}.n_censored AS n_censored, ${OBS}.n_not_detected AS n_not_detected,
+           ${OBS}.n_places AS n_places
+    FROM observation_agg ${OBS}
+    ${joins.join("\n    ")}
+    ${whereSql(wheres)}
+    ORDER BY ${OBS}.place_id, ${OBS}.period_start, ${OBS}.stat
+    LIMIT ?
+  `;
+
+  const rows = await db.all<RawCellRow>(sql, [...params, limit + 1]);
+  return applyLimit(rows.map((r) => toCellRow(r, spec.imputation)), limit);
+}
+
+export type SummarizeBy = "place" | "zone" | "month_of_year" | "zone_month_of_year" | "series";
+
+export interface SummarizeOpt {
+  /** 既定 "avg"。"sum_per_year" = SUM(v)/COUNT(DISTINCT 年)（雨量の月別平年）。 */
+  measure?: "avg" | "sum_per_year";
+}
+
+export interface MonthOfYearRow {
+  month: number;
+  n: number;
+  avg: number | null;
+  min: number | null;
+  max: number | null;
+}
+
+export interface ZoneYearRow {
+  zone: number;
+  grain: Grain;
+  inputGrain: string;
+  year: number;
+  nSites: number;
+  n: number;
+  avg: number | null;
+}
+
+export interface ZoneMonthRow {
+  zone: number;
+  month: number;
+  nSites: number;
+  n: number;
+  avg: number | null;
+}
+
+export interface PlaceSummaryRow {
+  placeId: string;
+  siteId: string | null;
+  grain: Grain;
+  inputGrain: string;
+  n: number;
+  yFrom: number;
+  yTo: number;
+  avg: number | null;
+}
+
+export interface SeriesSummaryRow {
+  seriesKey: string;
+  series: SeriesKey;
+  inputGrain: string;
+  n: number;
+  nPlaces: number;
+  yFrom: number;
+  yTo: number;
+  nDaily: number;
+  nAnnual: number;
+  nCensored: number;
+}
+
+export type SummaryRow = MonthOfYearRow | ZoneYearRow | ZoneMonthRow | PlaceSummaryRow | SeriesSummaryRow;
+
+function valueExpr(imputation: Imputation, alias: string): string {
+  if (imputation === "zero") return `${alias}.value_zero`;
+  if (imputation === "lod") return `${alias}.value_lod`;
+  throw new Error("summarize: imputation='both' は使えない（value_zero/value_lod のどちらかを選ぶ）");
+}
+
+async function summarizeMonthOfYear(db: CubeDb, spec: CellSpec, opt?: SummarizeOpt): Promise<LimitedRows<MonthOfYearRow>> {
+  const { joins, wheres, params } = commonFilterSql(spec, OBS);
+  const limit = limitOf(spec);
+  const v = valueExpr(spec.imputation, OBS);
+  const avgExpr =
+    opt?.measure === "sum_per_year"
+      ? `SUM(${v}) * 1.0 / COUNT(DISTINCT substr(${OBS}.period_start,1,4))`
+      : `AVG(${v})`;
+
+  const sql = `
+    SELECT CAST(substr(${OBS}.period_start,6,2) AS INTEGER) AS month,
+           COUNT(*) AS n, ${avgExpr} AS avg, MIN(${v}) AS min, MAX(${v}) AS max
+    FROM observation_agg ${OBS}
+    ${joins.join("\n    ")}
+    ${whereSql(wheres)}
+    GROUP BY CAST(substr(${OBS}.period_start,6,2) AS INTEGER)
+    ORDER BY month
+    LIMIT ?
+  `;
+  const rows = await db.all<{ month: number; n: number; avg: number | null; min: number | null; max: number | null }>(sql, [
+    ...params,
+    limit + 1,
+  ]);
+  return applyLimit(rows, limit);
+}
+
+async function summarizeZone(db: CubeDb, spec: CellSpec): Promise<LimitedRows<ZoneYearRow>> {
+  const { joins, wheres, params } = commonFilterSql(spec, OBS);
+  const limit = limitOf(spec);
+  const v = valueExpr(spec.imputation, OBS);
+
+  // `zg`/`zgz`（zone-group）: このゾーン集計自身が使うためだけの地点→ゾーンの JOIN
+  // （design が想定する主な呼び出し方——`scope: { kind: "all_sites" }` で呼び、
+  // ゾーンへの絞り込みは summarize 自身が行う——のときは commonFilterSql 側の
+  // joins にはゾーン関連の JOIN が無いので、これが唯一の経路になる）。
+  // `buildScopeSql` の "zone" スコープも同じ目的で `pr`/`zref` という別名を使うため、
+  // `spec.scope.kind === 'zone'` で呼ばれると別名が衝突する（実測: SQLite が
+  // "ambiguous column name" で拒む）。別名をここだけ変えて衝突を避ける——
+  // どちらのスコープで呼ばれても正しく動くようにする（地点→ゾーンの辺は単射
+  // なので、二重に JOIN しても行が増えることはない）。
+  const sql = `
+    SELECT ${zoneExprSql("zgz")} AS zone, ${OBS}.grain AS grain, ${OBS}.input_grain AS input_grain,
+           CAST(substr(${OBS}.period_start,1,4) AS INTEGER) AS year,
+           COUNT(DISTINCT ${OBS}.place_id) AS n_sites, SUM(${OBS}.n) AS n, AVG(${v}) AS avg
+    FROM observation_agg ${OBS}
+    JOIN place_relation zg ON zg.child_id = ${OBS}.place_id AND zg.relation = 'within'
+    JOIN place_source_ref zgz ON zgz.place_id = zg.parent_id AND zgz.source_id = 'sites.zone'
+    ${joins.join("\n    ")}
+    ${whereSql(wheres)}
+    GROUP BY zone, ${OBS}.grain, ${OBS}.input_grain, substr(${OBS}.period_start,1,4)
+    ORDER BY zone, year
+    LIMIT ?
+  `;
+  const rows = await db.all<{ zone: number; grain: string; input_grain: string; year: number; n_sites: number; n: number; avg: number | null }>(
+    sql,
+    [...params, limit + 1],
+  );
+  return applyLimit(
+    rows.map((r) => ({ zone: r.zone, grain: r.grain as Grain, inputGrain: r.input_grain, year: r.year, nSites: r.n_sites, n: r.n, avg: r.avg })),
+    limit,
+  );
+}
+
+async function summarizeZoneMonth(db: CubeDb, spec: CellSpec): Promise<LimitedRows<ZoneMonthRow>> {
+  const { joins, wheres, params } = commonFilterSql(spec, OBS);
+  const limit = limitOf(spec);
+  const v = valueExpr(spec.imputation, OBS);
+
+  // `zg`/`zgz` の別名の理由は `summarizeZone` のコメント参照
+  // （`buildScopeSql` の "zone" スコープが使う `pr`/`zref` との衝突を避ける）。
+  const sql = `
+    SELECT ${zoneExprSql("zgz")} AS zone,
+           CAST(substr(${OBS}.period_start,6,2) AS INTEGER) AS month,
+           COUNT(DISTINCT ${OBS}.place_id) AS n_sites, SUM(${OBS}.n) AS n, AVG(${v}) AS avg
+    FROM observation_agg ${OBS}
+    JOIN place_relation zg ON zg.child_id = ${OBS}.place_id AND zg.relation = 'within'
+    JOIN place_source_ref zgz ON zgz.place_id = zg.parent_id AND zgz.source_id = 'sites.zone'
+    ${joins.join("\n    ")}
+    ${whereSql(wheres)}
+    GROUP BY zone, month
+    ORDER BY zone, month
+    LIMIT ?
+  `;
+  const rows = await db.all<{ zone: number; month: number; n_sites: number; n: number; avg: number | null }>(sql, [...params, limit + 1]);
+  return applyLimit(
+    rows.map((r) => ({ zone: r.zone, month: r.month, nSites: r.n_sites, n: r.n, avg: r.avg })),
+    limit,
+  );
+}
+
+async function summarizePlace(db: CubeDb, spec: CellSpec): Promise<LimitedRows<PlaceSummaryRow>> {
+  const { joins, wheres, params, siteIdExpr } = commonFilterSql(spec, OBS);
+  const limit = limitOf(spec);
+  const v = valueExpr(spec.imputation, OBS);
+
+  const sql = `
+    SELECT ${OBS}.place_id AS place_id, ${siteIdExpr} AS site_id, ${OBS}.grain AS grain, ${OBS}.input_grain AS input_grain,
+           SUM(${OBS}.n) AS n,
+           MIN(CAST(substr(${OBS}.period_start,1,4) AS INTEGER)) AS y_from,
+           MAX(CAST(substr(${OBS}.period_start,1,4) AS INTEGER)) AS y_to,
+           AVG(${v}) AS avg
+    FROM observation_agg ${OBS}
+    ${joins.join("\n    ")}
+    ${whereSql(wheres)}
+    GROUP BY ${OBS}.place_id, ${OBS}.grain, ${OBS}.input_grain
+    ORDER BY ${OBS}.place_id
+    LIMIT ?
+  `;
+  const rows = await db.all<{
+    place_id: string;
+    site_id: string | null;
+    grain: string;
+    input_grain: string;
+    n: number;
+    y_from: number;
+    y_to: number;
+    avg: number | null;
+  }>(sql, [...params, limit + 1]);
+  return applyLimit(
+    rows.map((r) => ({
+      placeId: r.place_id,
+      siteId: r.site_id,
+      grain: r.grain as Grain,
+      inputGrain: r.input_grain,
+      n: r.n,
+      yFrom: r.y_from,
+      yTo: r.y_to,
+      avg: r.avg,
+    })),
+    limit,
+  );
+}
+
+async function summarizeSeries(db: CubeDb, spec: CellSpec): Promise<LimitedRows<SeriesSummaryRow>> {
+  const { joins, wheres, params } = commonFilterSql(spec, OBS);
+  const limit = limitOf(spec);
+  const seriesKeySqlAlias = seriesKeySql(OBS);
+
+  const sql = `
+    SELECT ${OBS}.variable_id AS variable_id, ${OBS}.obs_stat AS obs_stat, ${OBS}.unit_id AS unit_id, ${OBS}.value_grain AS value_grain,
+           ${OBS}.input_grain AS input_grain,
+           SUM(${OBS}.n) AS n, COUNT(DISTINCT ${OBS}.place_id) AS n_places,
+           MIN(CAST(substr(${OBS}.period_start,1,4) AS INTEGER)) AS y_from,
+           MAX(CAST(substr(${OBS}.period_start,1,4) AS INTEGER)) AS y_to,
+           SUM(CASE WHEN ${OBS}.input_grain = 'day' THEN ${OBS}.n ELSE 0 END) AS n_daily,
+           SUM(CASE WHEN ${OBS}.input_grain = ${OBS}.grain THEN ${OBS}.n ELSE 0 END) AS n_annual,
+           SUM(${OBS}.n_censored) AS n_censored
+    FROM observation_agg ${OBS}
+    ${joins.join("\n    ")}
+    ${whereSql(wheres)}
+    GROUP BY ${seriesKeySqlAlias}, ${OBS}.input_grain
+    ORDER BY n DESC
+    LIMIT ?
+  `;
+  const rows = await db.all<{
+    variable_id: string;
+    obs_stat: string | null;
+    unit_id: string | null;
+    value_grain: string | null;
+    input_grain: string;
+    n: number;
+    n_places: number;
+    y_from: number;
+    y_to: number;
+    n_daily: number;
+    n_annual: number;
+    n_censored: number;
+  }>(sql, [...params, limit + 1]);
+  const mapped = rows.map((r) => {
+    const series = seriesKeyFromRow(r);
+    return {
+      seriesKey: seriesKeyString(series),
+      series,
+      inputGrain: r.input_grain,
+      n: r.n,
+      nPlaces: r.n_places,
+      yFrom: r.y_from,
+      yTo: r.y_to,
+      nDaily: r.n_daily,
+      nAnnual: r.n_annual,
+      nCensored: r.n_censored,
+    };
+  });
+  return applyLimit(mapped, limit);
+}
+
+export async function summarize(db: CubeDb, spec: CellSpec, by: "month_of_year", opt?: SummarizeOpt): Promise<LimitedRows<MonthOfYearRow>>;
+export async function summarize(db: CubeDb, spec: CellSpec, by: "zone", opt?: SummarizeOpt): Promise<LimitedRows<ZoneYearRow>>;
+export async function summarize(db: CubeDb, spec: CellSpec, by: "zone_month_of_year", opt?: SummarizeOpt): Promise<LimitedRows<ZoneMonthRow>>;
+export async function summarize(db: CubeDb, spec: CellSpec, by: "place", opt?: SummarizeOpt): Promise<LimitedRows<PlaceSummaryRow>>;
+export async function summarize(db: CubeDb, spec: CellSpec, by: "series", opt?: SummarizeOpt): Promise<LimitedRows<SeriesSummaryRow>>;
+export async function summarize(db: CubeDb, spec: CellSpec, by: SummarizeBy, opt?: SummarizeOpt): Promise<LimitedRows<SummaryRow>>;
+export async function summarize(db: CubeDb, spec: CellSpec, by: SummarizeBy, opt?: SummarizeOpt): Promise<LimitedRows<SummaryRow>> {
+  switch (by) {
+    case "month_of_year":
+      return summarizeMonthOfYear(db, spec, opt);
+    case "zone":
+      return summarizeZone(db, spec);
+    case "zone_month_of_year":
+      return summarizeZoneMonth(db, spec);
+    case "place":
+      return summarizePlace(db, spec);
+    case "series":
+      return summarizeSeries(db, spec);
+  }
+}
+
+export { MAX_ID_LIST };

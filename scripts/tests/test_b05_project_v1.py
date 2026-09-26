@@ -59,7 +59,7 @@ def _run_b03_b04(measurements_db, registry_db, tmp_path, sensor_rows=None):
     )
     conn = sqlite3.connect(f"file:{v2_db}", uri=True)
     try:
-        stats = b04.build_cube(conn, registry_db)
+        stats = b04.build_cube(conn, registry_db, unit_evidence_declarations_path=None)
     finally:
         conn.close()
     return v2_db, stats
@@ -84,7 +84,7 @@ def _run_b03_b04_landuse(tmp_path, registry_db, landuse_csv_rows=None, source_re
     )
     conn = sqlite3.connect(f"file:{v2_db}", uri=True)
     try:
-        b04.build_cube(conn, registry_db)
+        b04.build_cube(conn, registry_db, unit_evidence_declarations_path=None)
     finally:
         conn.close()
     return v2_db
@@ -1146,7 +1146,7 @@ def test_landuse_does_not_affect_existing_tables_or_cube(tmp_path):
     )
     conn = sqlite3.connect(f"file:{v2_db}", uri=True)
     try:
-        b04.build_cube(conn, registry_db)
+        b04.build_cube(conn, registry_db, unit_evidence_declarations_path=None)
     finally:
         conn.close()
 

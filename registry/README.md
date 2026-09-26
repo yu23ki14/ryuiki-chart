@@ -161,6 +161,30 @@ assert する（`scripts/r01_build_registry.py` の `_assert_id_uniqueness`）�
 PRIMARY KEY 制約により挿入時点でも保証されるが、4モジュールが同じ DB に同居する統合作業の
 受け入れ基準として明示的に確認している。
 
+### `caveat_scope.scope_kind` の語彙（Issue #48 PR-1b で v2 facet を追加）
+
+`caveat_scope` は「どのスコープに注記が掛かるか」を `(scope_kind, scope_ref)` の組で持つ
+（1注記:Nスコープ。詳細は `scripts/registry/build_caveat.py` のモジュール docstring）。
+`scope_kind` は「一致方法」だけを表し、優先度は別の `priority` 列が持つ。
+
+| scope_kind | scope_ref の意味 | 消費者 |
+|---|---|---|
+| `table` | v1 のテーブル名の完全一致 | `web/src/lib/registry/lookup-client.ts` の `caveatsForTables()`（v1、既存の画面・AI ツール） |
+| `table_prefix` | v1 のテーブル名の前方一致パターン（`mesh_` のみ） | 同上 |
+| `cell` | `cells.sqlite` の `notes.doc_id` | 対象外（`caveatsForTables()` は見ない） |
+| `cell_table` | `notes.doc_id` + `notes.table_ids` の要素 | 対象外（同上） |
+| `dataset` | 論理データセット名（`measurements` / `organism_records`。`synthetic` は「系列の `source_id` が NULL」という規約上の記号で実在の dataset 値ではない） | `web/src/lib/cube/caveats.ts` の `caveatsForFacets()`（v2、Issue #48 PR-1b） |
+| `place_kind` | `place.place_kind` の値（`site` / `zone` / `grid01`） | 同上 |
+| `source_id` | 出典 ID（`isAlien` は `taxon_assessment.source_id='moe_ias_list'`） | 同上 |
+| `variable_theme` | `variable.theme` の値（`landuse`） | 同上 |
+| `variable` | （予約のみ。PR-2 で `unitUnknown`/`censoredLod` を足すまで対応する行は無い） | 同上（未使用） |
+
+`table`/`table_prefix` の行は v1 のもの（撤去は PR-5）で、`dataset`/`place_kind`/
+`source_id`/`variable_theme` の行はそれと**並存**する同じ意味の v2 facet
+（`scripts/registry/build_caveat.py` の `add_facet_group()` が、対応する `add_table_group()`
+呼び出しの直後に足すだけで、v1 側は1行も変えない）。`web/scripts/build-registry-ts.mjs` の
+`CAVEAT_SCOPE_KINDS` 定数がこの語彙の唯一の生成元（`CaveatScopeKind` 型も同じ配列から作る）。
+
 ### `place.region_id` と `place_relation`（Phase B `phase-b/region-scope`。理由・経緯は ADR-0022 参照）
 
 `place.region_id` は `place_id` のスコープと一致させる: `common` なら `region_id=NULL`、
@@ -263,6 +287,17 @@ ADR-0010 決定1「エイリアスは出典 × 表記で解決する」に沿っ
 責務ではない（原本 DB を開かないため）。`scripts/r02_resolution_report.py`（原本を読める側）
 が突合し、`reports/registry_resolution.md` §8 と `reports/registry_resolution/
 alias_source_pairs_{csv,data}_only.csv` に片方向ずつのズレを出す（0件が現状）。
+
+**`unit_id` の埋め方（D3、Issue #48 PR-1b）**: `dataset='measurements'` の alias で
+`unit_id` が空だった39行のうち38行は、原本 `measurements.unit`（unit_raw）を実測し、
+`(alias, source_id)` ごとに一貫した単位文字列がレジストリの `unit.symbol` と完全一致する
+ことを確認したうえで埋めた（推測でフォールバックしていない）。残り1行（流量、alias
+"流量関連（公式定義未確認のため原表記のまま）"）は原本にも単位が無いため NULL のまま。
+この不変条件（`unit_id` が埋まっている行は `unit_raw` と `symbol` が一致・埋まっていない
+行の一覧）は `scripts/b04_build_cube.py` の `_assert_unit_evidence()` が
+`data/db/v2.sqlite` の `observation`（`unit_raw` を持つ唯一の段）に対して機械的に検証する
+（`sensor_timeseries` は表記ゆれ（例: raw "μg/m3" vs symbol "ug/m3"）という別の既知の
+問題を抱えており対象外。宣言は `scripts/migrate/unit_evidence_declarations.yaml`）。
 
 ### `local_key` のスラッグ化（ADR-0004 規約4）
 
