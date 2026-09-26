@@ -26,6 +26,17 @@ import type { Scope } from "./sql";
  * organismSite 以外の4件（effort/regimes/gbifCutoff/share）も一緒に付いてしまう
  * （`build_caveat.py` のコメント参照）。この非対称は既知・意図どおりで、ここでは
  * 検証しない。
+ *
+ * **`censored`→`censoredLod`（Issue #48 PR-2、U1b、docs/plans/V2_SERVING_PR2.md §6・
+ * ADR-0009 決定4）**: v1 の `censored`（zero 系列を名指しした本文）は `caveats.ts`/
+ * `MEASURE_CAVEATS` のまま1行も変えていないが、v2 facet `dataset='measurements'` 側だけ
+ * `build_caveat.py` の `MEASURE_CAVEATS_V2` が `censoredLod`（lod 系列向けの本文）を
+ * 使う。これは意図した乖離であり、`MEASURE_DATASET_TABLES`（`build_caveat.py` の
+ * `MEASURE_TABLES` の複製）を含むテーブル組の期待値だけ、`withCensoredLod()` で
+ * `censored` を `censoredLod` に明示的に置き換える。他のテーブル組はそのまま
+ * `caveatKeysForTables` と一致させ続ける——ずれを一律に飲み込む緩和はしない
+ * （`withCensoredLod` は `censored` が無ければ例外を投げるので、対象外の組に
+ * 誤って使うと即座に失敗する）。
  */
 
 const TABLE_TO_FACET: Record<string, FacetRef> = {
@@ -86,10 +97,45 @@ function bridge(tables: readonly string[]): FacetRef[] {
 
 const ALL_BRIDGED_TABLES = Object.keys(TABLE_TO_FACET);
 
+/**
+ * v2 facet `dataset='measurements'` に束ねられる9表（`scripts/registry/build_caveat.py`
+ * の `MEASURE_TABLES` の複製。順序は無関係、集合として使う）。この組でだけ
+ * `censored`→`censoredLod` の意図した乖離が起きる（上のファイル冒頭コメント参照）。
+ */
+const MEASURE_DATASET_TABLES = new Set([
+  "measurements",
+  "meas_year",
+  "meas_month",
+  "meas_daily",
+  "meas_clim",
+  "zone_year",
+  "zone_clim",
+  "var_catalog",
+  "site_var",
+]);
+
+/**
+ * `censored` を `censoredLod` に1箇所だけ明示的に置き換えた期待値を作る。
+ * `MEASURE_DATASET_TABLES` を含むテーブル組の期待値にだけ使う（呼び出し側で絞る）。
+ * `censored` が見つからなければ例外を投げる——対象外の組に誤って使えば即座に失敗する
+ * ので、ずれを隠す汎用の緩和にはならない。
+ */
+function withCensoredLod(v1Keys: readonly string[]): string[] {
+  const i = v1Keys.indexOf("censored");
+  if (i === -1) {
+    throw new Error("withCensoredLod: 'censored' がv1のキーに無い（MEASURE_DATASET_TABLES を含まない組に使っていないか確認）");
+  }
+  const out = [...v1Keys];
+  out[i] = "censoredLod";
+  return out;
+}
+
 describe("caveatsForFacets — v1/v2 橋渡し（単一テーブル、全32表）", () => {
   for (const table of ALL_BRIDGED_TABLES) {
     it(table, () => {
-      expect(caveatKeysForFacets(bridge([table]))).toEqual(caveatKeysForTables([table]));
+      const v1Keys = caveatKeysForTables([table]);
+      const expected = MEASURE_DATASET_TABLES.has(table) ? withCensoredLod(v1Keys) : v1Keys;
+      expect(caveatKeysForFacets(bridge([table]))).toEqual(expected);
     });
   }
 });
@@ -116,7 +162,9 @@ describe("caveatsForFacets — v1/v2 橋渡し（tools.ts が渡す複合テー�
 
   for (const tables of COMPOSITES) {
     it(tables.join(" + "), () => {
-      expect(caveatKeysForFacets(bridge(tables))).toEqual(caveatKeysForTables(tables));
+      const v1Keys = caveatKeysForTables(tables);
+      const expected = tables.some((t) => MEASURE_DATASET_TABLES.has(t)) ? withCensoredLod(v1Keys) : v1Keys;
+      expect(caveatKeysForFacets(bridge(tables))).toEqual(expected);
     });
   }
 });
@@ -225,11 +273,11 @@ describe("facetsForSeries", () => {
     });
   });
 
-  it("caveatsForFacets(facetsForSeries(...)) が実際に measuredOn 等を引ける", () => {
+  it("caveatsForFacets(facetsForSeries(...)) が実際に measuredOn 等を引ける（dataset='measurements' なので censoredLod）", () => {
     const scope: Scope = { kind: "site", siteId: "s1" };
     const series = [measurementSeries("water", ["atsugi_river_water_quality"])];
     expect(caveatKeysForFacets(facetsForSeries(series, scope))).toEqual(
-      caveatKeysForTables(["measurements", "sites"]),
+      withCensoredLod(caveatKeysForTables(["measurements", "sites"])),
     );
   });
 });

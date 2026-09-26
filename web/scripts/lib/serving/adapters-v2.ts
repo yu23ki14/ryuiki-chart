@@ -405,7 +405,11 @@ async function fetchRawRows(db: CubeDb, id: string, params: Record<string, Scala
       const siteId = String(params.site_id);
       const placeId = await placeIdForSiteId(db, siteId);
       if (!placeId) return [];
-      const rows = await catalog.siteVariables(db, placeId, { dataset: "measurements" });
+      // `imputation` は他の問い合わせ（このファイルの他の case）と同じく "zero" 固定
+      // （U2 で `catalog.siteVariables` の `imputation` が必須になった。`--imputation`
+      // CLI フラグをアダプタへ配線するのは U4 の仕事——design §3「serving-diff を
+      // 2回回す」参照。ここではそれまでの間、ファイル内の他の hardcode と揃える）。
+      const rows = await catalog.siteVariables(db, placeId, { dataset: "measurements", imputation: "zero" });
       const out: RawRow[] = [];
       for (const r of rows) {
         const info = seriesInfo(r.series);

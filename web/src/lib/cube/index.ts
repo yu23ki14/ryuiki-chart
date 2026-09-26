@@ -66,7 +66,7 @@ export {
   rainMonthlyClim,
 } from "./observation";
 
-export type { CatalogSource, VariableCatalogRow, SiteSeriesRow, SiteRow2, WaterBodyRow, SiteSeriesCell, DatasetCell } from "./catalog";
+export type { CatalogSource, AvgImputation, VariableCatalogRow, SiteSeriesRow, SiteRow2, WaterBodyRow, SiteSeriesCell, DatasetCell } from "./catalog";
 export {
   variableCatalog,
   siteVariables,

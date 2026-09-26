@@ -387,16 +387,17 @@ function toSiteSeriesRow(r: RawSiteSeriesRow): SiteSeriesRow {
   };
 }
 
-async function siteVariablesLive(db: CubeDb, placeId: string, dataset?: string): Promise<SiteSeriesRow[]> {
+async function siteVariablesLive(db: CubeDb, placeId: string, imputation: AvgImputation, dataset?: string): Promise<SiteSeriesRow[]> {
   const filter = dataset ? await datasetFilterSql(db, dataset, "obs") : undefined;
   if (filter?.empty) return [];
 
+  const valueCol = imputation === "zero" ? "obs.value_zero" : "obs.value_lod";
   const sql = `
     SELECT obs.variable_id, obs.obs_stat, obs.unit_id, obs.value_grain, obs.grain, obs.input_grain,
            SUM(obs.n) AS n,
            MIN(CAST(substr(obs.period_start,1,4) AS INTEGER)) AS y_from,
            MAX(CAST(substr(obs.period_start,1,4) AS INTEGER)) AS y_to,
-           AVG(obs.value_zero) AS avg
+           AVG(${valueCol}) AS avg
     FROM observation_agg obs
     ${(filter?.joins ?? []).join("\n    ")}
     WHERE obs.place_id = ? AND obs.place_kind = 'site' AND ${YEAR_GRAINS_SQL} AND ${MEAN_STAT_SQL}
@@ -415,16 +416,17 @@ async function siteVariablesLive(db: CubeDb, placeId: string, dataset?: string):
  * `summary_place_variable` の行をそのまま素通しするのと同じであり、`SiteSeriesRow`
  * の形（系列＝tuple 単位）を壊さずに出典だけ summary に切り替えられる。
  */
-async function siteVariablesSummary(db: CubeDb, placeId: string, dataset?: string): Promise<SiteSeriesRow[]> {
+async function siteVariablesSummary(db: CubeDb, placeId: string, imputation: AvgImputation, dataset?: string): Promise<SiteSeriesRow[]> {
   const filter = dataset ? await datasetFilterSql(db, dataset, "spv") : undefined;
   if (filter?.empty) return [];
 
+  const valueCol = imputation === "zero" ? "spv.avg_zero" : "spv.avg_lod";
   const sql = `
     SELECT spv.variable_id, spv.obs_stat, spv.unit_id, spv.value_grain, spv.grain, spv.input_grain,
            SUM(spv.n) AS n,
            MIN(spv.y_from) AS y_from,
            MAX(spv.y_to) AS y_to,
-           AVG(spv.avg_lod) AS avg
+           AVG(${valueCol}) AS avg
     FROM summary_place_variable spv
     ${(filter?.joins ?? []).join("\n    ")}
     WHERE spv.place_id = ?
@@ -436,14 +438,31 @@ async function siteVariablesSummary(db: CubeDb, placeId: string, dataset?: strin
 }
 
 /**
+ * `avg` に使う値の選び方（design §2.2・§0-3）。`'zero'` は検閲値を0とみなす（v1 相当）、
+ * `'lod'` は定量下限値とみなす（画面の既定・D6）。`observation.ts` の `Imputation`
+ * （`'zero'|'lod'|'both'`）と違い `'both'` は無い——`avg` はスカラー1列なので選ぶしかない
+ * （`envelope.ts`/`observation.ts` の「value_zero/value_lod を両方返す」設計とは別軸）。
+ * 既定は置かない——呼び出し側（画面は `'lod'`、serving-diff の `--imputation zero` 実行は
+ * `'zero'`）に明示させる（design §3「serving-diff を2回回す」・CLAUDE.md 開発フロー）。
+ */
+export type AvgImputation = "zero" | "lod";
+
+/**
  * 索引2 (place_id, variable_id, grain) を使う経路。v1 `site_var` 相当（design §3.4）。
  * `dataset` を指定すると `datasetFilterSql`（`waterBodies`/`sites` と同じ仕組み）で
- * 絞り込む（Issue #48 PR-1 論点A）。`source` 既定は `summary`（design §4.3）——
- * `avg` は `value_lod`（D6）、`live` は `value_zero`（テスト専用、既存 PR-1 の挙動のまま）。
+ * 絞り込む（Issue #48 PR-1 論点A）。`source` 既定は `summary`（design §4.3）。`imputation`
+ * は必須（既定を置かない。上の `AvgImputation` docstring参照）——`avg` 列の意味その
+ * ものを決めるので、呼び出し側に選ばせる。
  */
-export async function siteVariables(db: CubeDb, placeId: string, opt?: { dataset?: string; source?: CatalogSource }): Promise<SiteSeriesRow[]> {
-  const source = opt?.source ?? DEFAULT_CATALOG_SOURCE;
-  return source.kind === "summary" ? siteVariablesSummary(db, placeId, opt?.dataset) : siteVariablesLive(db, placeId, opt?.dataset);
+export async function siteVariables(
+  db: CubeDb,
+  placeId: string,
+  opt: { imputation: AvgImputation; dataset?: string; source?: CatalogSource },
+): Promise<SiteSeriesRow[]> {
+  const source = opt.source ?? DEFAULT_CATALOG_SOURCE;
+  return source.kind === "summary"
+    ? siteVariablesSummary(db, placeId, opt.imputation, opt.dataset)
+    : siteVariablesLive(db, placeId, opt.imputation, opt.dataset);
 }
 
 export interface SiteRow2 {
