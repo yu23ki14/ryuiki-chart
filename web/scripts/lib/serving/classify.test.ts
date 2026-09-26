@@ -197,7 +197,10 @@ describe("classifyDiff: day_split", () => {
     ];
     const r = computeRainRecompute(mixedRows);
     const v1 = rowsByKey(toNormRows([{ d: "2020-01-01", mm: r.byLabelDay.get("2020-01-01") }], ["d"], ["mm"], []));
-    const v2 = rowsByKey(toNormRows([{ d: "2020-01-01", mm: r.byPeriodStartDay.get("2020-01-01") }], ["d"], ["mm"], []));
+    // v2 の `mm`（キューブの生の合計値）は `/10` していない（design §0 決定2・
+    // `rain_div10` 規則参照）。`byPeriodStartDay` は再計算のための `/10` 後の値
+    // なので、フィクスチャでも実際の v2 と同じ「生値」にして渡す（×10）。
+    const v2 = rowsByKey(toNormRows([{ d: "2020-01-01", mm: r.byPeriodStartDay.get("2020-01-01")! * 10 }], ["d"], ["mm"], []));
     const diffs = compareRuns(v1, v2);
     expect(diffs).toHaveLength(1);
     const ctx = ctxBase({ known: new Set(["day_split"]), rain: r });

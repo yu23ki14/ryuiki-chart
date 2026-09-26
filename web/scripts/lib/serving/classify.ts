@@ -188,6 +188,18 @@ export interface RainRecompute {
   byLabelDay: Map<string, number>;
   /** period_start の日割り（`substr(period_start,1,10)`）で Σvalue_num/10 を丸めた、日ごとの mm。 */
   byPeriodStartDay: Map<string, number>;
+  /**
+   * `rain_monthly_clim` の v1 側（`ROUND(SUM(mm)/COUNT(DISTINCT year), 1)`、
+   * ラベル日割りの月＝`substr(d,6,2)`）と同じ式で `byLabelDay` から作った月別平年値。
+   */
+  monthlyLabel: Map<number, number>;
+  /**
+   * `rain_monthly_clim` の v2 側（`summarize(..., "month_of_year", {measure:
+   * "sum_per_year"})`、period_start 日割りの月）と同じ式（生値・`/10` 前・未丸め）で
+   * `byPeriodStartDay` から作った月別平年値。`byPeriodStartDay` は既に `/10` 済みなので
+   * 生値に戻すため ×10 する（v2 の `mm` 列は `/10` していない——design §0 決定2）。
+   */
+  monthlyPeriodStartRaw: Map<number, number>;
 }
 
 function sumByDay(rows: readonly RainL2Row[], pick: (r: RainL2Row) => string): Map<string, number> {
@@ -201,11 +213,42 @@ function sumByDay(rows: readonly RainL2Row[], pick: (r: RainL2Row) => string): M
   return out;
 }
 
+/**
+ * 日ごとの mm（`sumByDay` の結果）を月別平年値に集約する。`scale` は日ごとの値に
+ * かける倍率（v2 側は `byPeriodStartDay` が既に `/10` 済みのため ×10 して生値に戻す）、
+ * `round1` は v1 の `ROUND(...,1)` を再現するかどうか。
+ */
+function monthlyClimFromDaily(dailyMm: ReadonlyMap<string, number>, opt: { scale: number; round1: boolean }): Map<number, number> {
+  const sums = new Map<number, number>();
+  const years = new Map<number, Set<number>>();
+  for (const [day, mm] of dailyMm) {
+    const month = Number.parseInt(day.slice(5, 7), 10);
+    const year = Number.parseInt(day.slice(0, 4), 10);
+    sums.set(month, (sums.get(month) ?? 0) + mm * opt.scale);
+    let yset = years.get(month);
+    if (!yset) {
+      yset = new Set<number>();
+      years.set(month, yset);
+    }
+    yset.add(year);
+  }
+  const out = new Map<number, number>();
+  for (const [month, sum] of sums) {
+    const v = sum / years.get(month)!.size;
+    out.set(month, opt.round1 ? Math.round(v * 10) / 10 : v);
+  }
+  return out;
+}
+
 /** `rain_daily`/`rain_monthly_clim`/`rain_top_days` の L2 再計算をまとめて作る。 */
 export function computeRainRecompute(rows: readonly RainL2Row[]): RainRecompute {
+  const byLabelDay = sumByDay(rows, (r) => r.periodRaw);
+  const byPeriodStartDay = sumByDay(rows, (r) => r.periodStart);
   return {
-    byLabelDay: sumByDay(rows, (r) => r.periodRaw),
-    byPeriodStartDay: sumByDay(rows, (r) => r.periodStart),
+    byLabelDay,
+    byPeriodStartDay,
+    monthlyLabel: monthlyClimFromDaily(byLabelDay, { scale: 1, round1: true }),
+    monthlyPeriodStartRaw: monthlyClimFromDaily(byPeriodStartDay, { scale: 10, round1: false }),
   };
 }
 
@@ -235,6 +278,10 @@ export interface ClassifyContext {
   /** `rain_top_days` は month/day 単位ではなく順位で比較するため、日付は
    *  `v1`/`v2` の `label.d` から取る（呼び出し側が rain も渡すこと）。 */
   rainDateFromLabel?: boolean;
+  /** `rain_monthly_clim` は `diff.key` が「月」（1..12）なので、日ごとではなく
+   *  月ごとに合流させた再計算（`RainRecompute.monthlyLabel`/`monthlyPeriodStartRaw`）を使う。
+   *  既定 `"day"`（`rain_daily`/`rain_top_days`）。 */
+  rainGrain?: "day" | "month";
   /** `--pretend-synthetic-excluded`（PR-2 準備）。PR-1 では既定で空集合＝常に不発。 */
   syntheticSiteIds?: ReadonlySet<string>;
   /** `--mutate declared_rot` */
@@ -266,23 +313,91 @@ function dayKeyOf(diff: RowDiff, ctx: ClassifyContext): string | undefined {
   return k === undefined ? undefined : String(k);
 }
 
-function classifyDaySplit(diff: RowDiff, ctx: ClassifyContext): boolean {
-  if (!ruleEnabled(ctx, "day_split") || !ctx.rain) return false;
-  const day = dayKeyOf(diff, ctx);
-  if (!day) return false;
-  const byLabel = ctx.rain.byLabelDay.get(day);
-  const byStart = ctx.rain.byPeriodStartDay.get(day);
-  if (diff.kind === "row_only_in_v1") {
-    // v1 側にしか無い日 = ラベル日割りにはあるが period_start 日割りには無い（またはその逆）。
-    return byLabel !== undefined && byStart === undefined;
-  }
-  if (diff.kind === "row_only_in_v2") {
-    return byStart !== undefined && byLabel === undefined;
-  }
+/**
+ * v1/v2 それぞれが指す「日」。`rain_top_days` は比較キーが順位（`d` はラベル列）
+ * なので、日割りの境界がずれると同じ順位でも v1/v2 で違う日を指しうる
+ * （`label_diff`＋`value_diff` が同じ key に同時に出る——`rain_daily`/`rain_monthly_clim`
+ * は比較キー自体が日付/月なので常に同じ日になる）。
+ */
+function dayKeyOfSide(diff: RowDiff, ctx: ClassifyContext, side: "v1" | "v2"): string | undefined {
+  if (ctx.rainDateFromLabel) return (side === "v1" ? diff.v1 : diff.v2)?.label.d ?? undefined;
+  return dayKeyOf(diff, ctx);
+}
+
+function monthKeyOf(diff: RowDiff): number | undefined {
+  const k = diff.key[0];
+  if (k === undefined) return undefined;
+  const n = Number(k);
+  return Number.isNaN(n) ? undefined : n;
+}
+
+/** 月別平年値（`rain_monthly_clim`）の day_split 判定。日ごとの判定と同じ形だが、
+ *  `monthlyLabel`/`monthlyPeriodStartRaw`（すでに月単位・v2 側は生値スケール）を使う。
+ *  月をまたいだ合算・年数での割り算を経由するため、丸め誤差ぶんだけ許容差を持たせる
+ *  （`numbersDiffer` を再利用。月別平年値どうしの比較なので `day_split`/`rain_div10` の
+ *  日次側の完全一致とは別に許容してよい——floating point の加算順序の違い）。 */
+function classifyDaySplitMonthly(diff: RowDiff, rain: RainRecompute): boolean {
+  const month = monthKeyOf(diff);
+  if (month === undefined) return false;
+  const byLabel = rain.monthlyLabel.get(month);
+  const byStart = rain.monthlyPeriodStartRaw.get(month);
+  if (diff.kind === "row_only_in_v1") return byLabel !== undefined && byStart === undefined;
+  if (diff.kind === "row_only_in_v2") return byStart !== undefined && byLabel === undefined;
   if (diff.kind === "value_diff" && diff.columns.includes("mm")) {
     const v1mm = diff.v1?.numeric.mm ?? null;
     const v2mm = diff.v2?.numeric.mm ?? null;
-    return v1mm !== null && v2mm !== null && byLabel === v1mm && byStart === v2mm;
+    if (v1mm === null || v2mm === null || byLabel === undefined || byStart === undefined) return false;
+    // 月別平年値は 12 ヶ月しかなく、日割りがずれた日を1つも含まない月は無い
+    // （実測: 549 日の日割りずれが12ヶ月全部に散らばっている）ので、day_split と
+    // rain_div10 の守備範囲分けは日次側だけで行う（月次側は分けても
+    // `--mutate rain_no_div10_rule` の検証対象が rain_daily/rain_top_days に
+    // 残るので、ここまで厳密にする必要はない）。
+    return !numbersDiffer(byLabel, v1mm, 1e-6) && !numbersDiffer(byStart, v2mm, 1e-6);
+  }
+  return false;
+}
+
+function classifyDaySplit(diff: RowDiff, ctx: ClassifyContext): boolean {
+  if (!ruleEnabled(ctx, "day_split") || !ctx.rain) return false;
+  if (ctx.rainGrain === "month") return classifyDaySplitMonthly(diff, ctx.rain);
+
+  const v1Day = dayKeyOfSide(diff, ctx, "v1");
+  const v2Day = dayKeyOfSide(diff, ctx, "v2");
+
+  if (diff.kind === "row_only_in_v1") {
+    // v1 側にしか無い日 = ラベル日割りにはあるが period_start 日割りには無い（またはその逆）。
+    if (!v1Day) return false;
+    return ctx.rain.byLabelDay.get(v1Day) !== undefined && ctx.rain.byPeriodStartDay.get(v1Day) === undefined;
+  }
+  if (diff.kind === "row_only_in_v2") {
+    if (!v2Day) return false;
+    return ctx.rain.byPeriodStartDay.get(v2Day) !== undefined && ctx.rain.byLabelDay.get(v2Day) === undefined;
+  }
+  if ((diff.kind === "value_diff" && diff.columns.includes("mm")) || diff.kind === "label_diff") {
+    // `rain_top_days`（`rainDateFromLabel`）は同じ順位でも v1Day !== v2Day になりうる
+    // （日割りの境界がずれて上位10件の顔ぶれ自体が変わるため。`label_diff`（d が違う）
+    // と `value_diff`（mm が違う）が同じ key に同時に出る——どちらも同じ理由で説明できる
+    // ので同じ判定にする）。
+    if (!v1Day || !v2Day) return false;
+    const v1mm = diff.v1?.numeric.mm ?? null;
+    const v2mm = diff.v2?.numeric.mm ?? null;
+    if (v1mm === null || v2mm === null) return false;
+    const byLabel = ctx.rain.byLabelDay.get(v1Day);
+    const byStart = ctx.rain.byPeriodStartDay.get(v2Day);
+    if (byLabel === undefined || byStart === undefined) return false;
+    // 実際に日の境界がずれた日だけを day_split とする（`rain_div10` と守備範囲を
+    // 分ける——`--mutate rain_no_div10_rule` で確かめている: day_split が
+    // ずれていない日まで拾うと rain_div10 を無効化しても常に day_split で
+    // 説明できてしまい、rain_div10 規則自体の検証にならない）。ずれていない日は
+    // v1Day===v2Day かつ「同じ日」をラベル日割り・period_start 日割りどちらで
+    // 見ても一致する（`byLabelDay.get(v1Day) === byPeriodStartDay.get(v1Day)`）。
+    if (v1Day === v2Day && ctx.rain.byLabelDay.get(v1Day) === ctx.rain.byPeriodStartDay.get(v1Day)) return false;
+    // `byLabelDay`/`byPeriodStartDay`（`computeRainRecompute`）はどちらも `/10` 後の
+    // 実 mm 値（`sumByDay` 参照）。v1 側の `mm` 列はすでに `/10` 済みなのでそのまま
+    // 比べられるが、v2 側（キューブの生の合計値）は `/10` していないので、比べる前に
+    // 同じ丸めをかける（`rain_div10` の丸めと同じ式）。
+    const v2mmDiv10 = Math.round((v2mm / 10) * 100) / 100;
+    return byLabel === v1mm && byStart === v2mmDiv10;
   }
   return false;
 }
@@ -301,9 +416,56 @@ function classifyFloatRounding(diff: RowDiff, ctx: ClassifyContext): boolean {
   return diff.columns.every((c) => numbersDiffer(diff.v1!.numeric[c], diff.v2!.numeric[c], 1e-9) === false);
 }
 
+/**
+ * `value_diff` で synthetic_excluded を許すのは、地点の合成データが抜けることで
+ * 実際に動きうる集計列だけに絞る（/code-review 指摘: 列を見ずに `value_diff` を
+ * 全部通すと、たまたま合成地点で起きた無関係な回帰まで「合成地点だから」で
+ * 隠してしまう）。PR-1 の測定値系の出力列はこの集合に尽きる。
+ */
+const SYNTHETIC_EXCLUDED_VALUE_COLUMNS = new Set([
+  "n",
+  "n_meas",
+  "n_var",
+  "n_sites",
+  "n_daily",
+  "n_annual",
+  "n_censored",
+  "avg",
+  "min",
+  "max",
+  "y_from",
+  "y_to",
+]);
+
+/**
+ * `--pretend-synthetic-excluded` 専用。地点1件に紐づく問い合わせ
+ * （`sites_list`/`sites_in_water_body`/`site_variables`/`year_series_site`/
+ * `month_series_site`/`day_series_site`/`year_series_water`）は、その地点が
+ * 合成地点なら `row_only_in_v1`（行ごと消える）にも `value_diff`（`sites_list`
+ * のように地点の行自体は LEFT JOIN で残り、集計列だけ 0 に落ちる）にもなりうる
+ * ——どちらも「この地点の行だから」で説明できる。
+ *
+ * ゾーン・alias・水域単位の集計（`zone_series`/`climatology`/`zone_climatology`/
+ * `variable_catalog`/`water_bodies`/`water_bodies_for_variable`）は複数地点の
+ * 合算なので、行自体に「どの地点由来か」が無く、ここでは判定しない
+ * （PR-1 は「合成地点の集合だけを確定させ、単一地点に閉じる問い合わせで
+ * unexplained 0 を確かめる」までが範囲——設計書 §9-4「PR-2 の予告」。
+ * 残りは PR-2 で合成データを実際に外すときに扱う）。
+ */
 function classifySyntheticExcluded(diff: RowDiff, ctx: ClassifyContext): boolean {
-  if (!ruleEnabled(ctx, "synthetic_excluded") || diff.kind !== "row_only_in_v1") return false;
-  const siteId = diff.v1?.label.site_id ?? (typeof diff.key[0] === "string" ? diff.key[0] : undefined);
+  if (!ruleEnabled(ctx, "synthetic_excluded")) return false;
+  if (diff.kind !== "row_only_in_v1" && diff.kind !== "value_diff") return false;
+  if (diff.kind === "value_diff" && !diff.columns.every((c) => SYNTHETIC_EXCLUDED_VALUE_COLUMNS.has(c))) return false;
+  // site_id は問い合わせによって置き場所が違う: params（1地点を固定して呼ぶ
+  // `site_variables`/`year_series_site`/`month_series_site`/`day_series_site`。
+  // これらは `key[0]` が年月日・alias 等の別の文字列なので必ず params を先に見る）、
+  // 出力の label 列（無い問い合わせが多い）、出力のキーの先頭
+  // （`sites_list`/`sites_in_water_body`/`year_series_water` は params に
+  // site_id が無いのでここまで落ちてくる）のいずれか。
+  const siteId =
+    (typeof ctx.params.site_id === "string" ? ctx.params.site_id : undefined) ??
+    diff.v1?.label.site_id ??
+    (typeof diff.key[0] === "string" ? diff.key[0] : undefined);
   return !!siteId && !!ctx.syntheticSiteIds?.has(siteId);
 }
 
