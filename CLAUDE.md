@@ -10,11 +10,14 @@
   （`db:setup` は `predb:setup` フックで語彙レジストリも v2 も「古ければ作り直す」。
   `web/scripts/ensure-registry.sh` が `scripts/r01_build_registry.py --check-fresh` を呼び、
   `web/scripts/ensure-v2.sh` が v2（`data/db/v2.sqlite`。`observation_agg`/`occurrence_agg` の
-  キューブ。Issue #48 PR-0）を「(1) mtime が、読み取る原本・入力・パイプラインのコードより
-  古い、または (2) `scripts/check_v2_fresh.py`（0=新鮮/10=古い。`pipeline_fingerprint.spec_version`
-  が今のパイプラインの spec と一致するか）が古いと言う」の**どちらか**で判定する（OR。
-  (1) だけでは mtime は新しいが中身が古い形式の v2.sqlite を見逃すため）。単体で作り直すだけなら
-  `cd web && pnpm run build:v2`（r01→b03→b04→b06→b09→b07 を順に回す）。
+  キューブ。Issue #48 PR-0）を `scripts/check_v2_fresh.py`（0=新鮮/10=古い/それ以外=判定不能）
+  一本で判定する——`pipeline_fingerprint.spec_version` の一致に加えて、読み取り専用の原本
+  4表（`measurements`/`sensor_timeseries`/`organism_records`/`sites`、代理指標）・
+  `data/processed` の入力2つ・`registry.sqlite` 自身の指紋・v2 パイプラインのコード
+  （import で機械的に洗い出す）の中身が「最後にビルドしたとき」と一致するかを見る
+  （`scripts/migrate/common.py` の `compute_v2_input_fingerprint()`/
+  `check_v2_pipeline_fresh()`。手書きの mtime 走査は撤去した）。単体で作り直すだけなら
+  `cd web && pnpm run build:v2`。
 - データの置き場所は **Cloudflare D1**（デプロイ先を Cloudflare 想定にしたため）。
   83 テーブル（`web/drizzle/migrations/` 適用後の実測。うちシード管理用の内部表
   `_seed_state` を除く82表が `web/scripts/seed-d1-local.mjs` のシード対象）を 1 つの D1 に

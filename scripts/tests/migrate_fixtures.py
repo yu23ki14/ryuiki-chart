@@ -14,6 +14,7 @@
 """
 from __future__ import annotations
 
+import pathlib
 import sqlite3
 
 import b03_build_observation as b03  # scripts/ が sys.path にある前提（scripts/tests/__init__.py 参照）
@@ -421,3 +422,44 @@ def table_content_hash(path, table: str, key_columns: list[str]) -> str:
         return fp["content_hash"]
     finally:
         conn.close()
+
+
+def make_v2_cube_tables(tmp_path, name: str = "v2.sqlite") -> sqlite3.Connection:
+    """`observation_agg`/`occurrence_agg` に相当する最小のテーブルだけを持つ、
+    v2.sqlite 風のフィクスチャ（`pipeline_fingerprint`/`pipeline_input_fingerprint`
+    はまだ記録しない、未コミットの `sqlite3.Connection`）。行の中身は鮮度判定に
+    無関係なので空のまま。
+
+    `scripts/tests/test_migrate_common.py`（`check_v2_cube_spec_fresh` の単体
+    テスト）と `scripts/tests/test_check_v2_fresh.py`（CLI 経由。
+    `make_fresh_v2_cube_db` 参照）が共有する（旧 `_make_v2_like_db`/
+    `_make_fresh_v2` の重複を解消。Issue #48 PR-0 /simplify 指摘4）。
+    """
+    db_path = tmp_path / name
+    conn = sqlite3.connect(f"file:{db_path}", uri=True)
+    conn.execute("CREATE TABLE observation_agg (region_id TEXT, n INTEGER)")
+    conn.execute("CREATE TABLE occurrence_agg (region_id TEXT, n INTEGER)")
+    conn.commit()
+    return conn
+
+
+def make_fresh_v2_cube_db(tmp_path, name: str = "v2.sqlite", **input_fingerprint_kwargs) -> pathlib.Path:
+    """`observation_agg`/`occurrence_agg` の spec_version と、v2 パイプラインの
+    入力＋コードの指紋（`common.compute_v2_input_fingerprint()`）の両方が
+    記録済みの、「新鮮」な v2.sqlite 風フィクスチャをファイルパスで返す
+    （`scripts/check_v2_fresh.py` の CLI テストが `--v2-db` に渡す形）。
+
+    `input_fingerprint_kwargs` は `compute_v2_input_fingerprint()` にそのまま
+    渡す（`ryuiki_db`/`registry_db`/`processed_dir`/`root`）——省略すると
+    リポジトリの既定パスを使う（テストが `--ryuiki-db` 等を明示しないときの
+    CLI の既定と揃える。原本の無い環境では両方とも `absent` 系の値になり
+    一致する）。
+    """
+    conn = make_v2_cube_tables(tmp_path, name)
+    common.record_stage_fingerprint(conn, "observation_agg", spec_version=common.OBSERVATION_AGG_SPEC_VERSION)
+    common.record_stage_fingerprint(conn, "occurrence_agg", spec_version=common.OCCURRENCE_SPEC_VERSION)
+    current = common.compute_v2_input_fingerprint(**input_fingerprint_kwargs)
+    common.record_v2_input_fingerprint(conn, current)
+    conn.commit()
+    conn.close()
+    return tmp_path / name
