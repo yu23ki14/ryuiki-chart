@@ -105,17 +105,21 @@ function mdEscape(v: unknown): string {
   return String(v).replace(/\|/g, "\\|");
 }
 
-function statsTableMd(stats: QueryStats[]): string {
-  const header = ["id", "runs", "rows_v1", "rows_v2", "matched", ...KNOWN_RULE_COLUMNS, "unexplained"];
+/** Markdown の表を1つ組み立てる（`report.ts` に4回複製されていた見出し行・区切り行・
+ *  データ行の組み立てを1つにまとめる）。 */
+function mdTable(header: readonly string[], rows: readonly (readonly unknown[])[]): string {
   const lines = [
     `| ${header.join(" | ")} |`,
     `| ${header.map(() => "---").join(" | ")} |`,
-    ...stats.map((s) => {
-      const row = [s.id, s.runs, s.rowsV1, s.rowsV2, s.matched, ...KNOWN_RULE_COLUMNS.map((c) => s[c]), s.unexplained];
-      return `| ${row.map(mdEscape).join(" | ")} |`;
-    }),
+    ...rows.map((row) => `| ${row.map(mdEscape).join(" | ")} |`),
   ];
   return lines.join("\n");
+}
+
+function statsTableMd(stats: QueryStats[]): string {
+  const header = ["id", "runs", "rows_v1", "rows_v2", "matched", ...KNOWN_RULE_COLUMNS, "unexplained"];
+  const rows = stats.map((s) => [s.id, s.runs, s.rowsV1, s.rowsV2, s.matched, ...KNOWN_RULE_COLUMNS.map((c) => s[c]), s.unexplained]);
+  return mdTable(header, rows);
 }
 
 function totalsOf(stats: QueryStats[]): QueryStats {
@@ -134,48 +138,24 @@ function totalsOf(stats: QueryStats[]): QueryStats {
 function unexplainedSampleMd(samples: UnexplainedSample[]): string {
   if (!samples.length) return "（無し）";
   const header = ["query", "params", "kind", "key", "columns"];
-  const lines = [
-    `| ${header.join(" | ")} |`,
-    `| ${header.map(() => "---").join(" | ")} |`,
-    ...samples
-      .slice(0, 20)
-      .map((s) =>
-        `| ${[s.queryId, JSON.stringify(s.params), s.kind, JSON.stringify(s.key), s.columns.join(",")]
-          .map(mdEscape)
-          .join(" | ")} |`,
-      ),
-  ];
-  return lines.join("\n");
+  const rows = samples
+    .slice(0, 20)
+    .map((s) => [s.queryId, JSON.stringify(s.params), s.kind, JSON.stringify(s.key), s.columns.join(",")]);
+  return mdTable(header, rows);
 }
 
 function rottenMd(rotten: RottenDeclaration[]): string {
   if (!rotten.length) return "（無し。宣言済み差分は全て少なくとも1回は使われた）";
   const header = ["table", "key", "kind"];
-  const lines = [
-    `| ${header.join(" | ")} |`,
-    `| ${header.map(() => "---").join(" | ")} |`,
-    ...rotten.map((r) => `| ${[r.table, JSON.stringify(r.key), r.kind].map(mdEscape).join(" | ")} |`),
-  ];
-  return lines.join("\n");
+  const rows = rotten.map((r) => [r.table, JSON.stringify(r.key), r.kind]);
+  return mdTable(header, rows);
 }
 
 function mutationsMd(results: MutationRunResult[] | undefined): string {
   if (!results || !results.length) return "";
   const header = ["mutation", "unexplained", "検出できたか"];
-  const lines = [
-    "",
-    "## 変異テスト（`--mutate`）",
-    "",
-    `| ${header.join(" | ")} |`,
-    `| ${header.map(() => "---").join(" | ")} |`,
-    ...results.map(
-      (r) =>
-        `| ${[r.name, r.unexplained, r.caughtAsExpected ? "OK" : "NG" + (r.note ? `（${r.note}）` : "")]
-          .map(mdEscape)
-          .join(" | ")} |`,
-    ),
-  ];
-  return lines.join("\n");
+  const rows = results.map((r) => [r.name, r.unexplained, r.caughtAsExpected ? "OK" : "NG" + (r.note ? `（${r.note}）` : "")]);
+  return ["", "## 変異テスト（`--mutate`）", "", mdTable(header, rows)].join("\n");
 }
 
 export function buildReportMarkdown(input: ReportInput): string {
