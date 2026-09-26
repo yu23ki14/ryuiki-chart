@@ -36,6 +36,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ——ここはビルドを早期に落とすための重複チェック。sqlite3 CLI ではなく、Python が
 # import する sqlite3 モジュール〔標準ライブラリに静的リンクされた版〕を見るのも
 # common.require_sqlite_version() と同じ観点）。
+# `scripts/migrate/common.py` の `MIN_SQLITE_VERSION` を変えたら、下の "3, 43, 0" も
+# 手で揃えて変えること（二重管理・自動追随ではない）。
 RUN python3 -c "import sqlite3; assert sqlite3.sqlite_version_info >= (3, 43, 0), f'sqlite3 (Python同梱、バージョン {sqlite3.sqlite_version}) が古すぎる。SQLite 3.43.0 以降が必要（scripts/migrate/common.py の MIN_SQLITE_VERSION）。base イメージを SQLite 3.43 以降を同梱するものに変えること。'"
 
 WORKDIR /app/web
