@@ -207,6 +207,22 @@ describe("queryCells/summarize: variableId + water/places スコープ（バイ�
     expect(rows[0].n).toBe(5);
   });
 
+  it("summarize zone_month_of_year: imputation='both' は avgZero/avgLod を1回のSQLで返す（Issue #48 PR-2 /simplify #11）", async () => {
+    const spec: CellSpec = {
+      variableId: FX.variables.ss,
+      scope: { kind: "water", municipality: FX.municipality },
+      grain: "day",
+      imputation: "both",
+    };
+    const { rows } = await summarize(fx.db, spec, "zone_month_of_year");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].nSites).toBe(2);
+    expect(rows[0].n).toBe(5);
+    expect(rows[0].avg).toBeNull();
+    expect(rows[0].avgZero).toBeCloseTo((10 + 8 + 0 + 15 + 17) / 5, 6);
+    expect(rows[0].avgLod).toBeCloseTo((10 + 6 + 15 + 17) / 4, 6); // fx_site_a 3日目は不検出で無視される
+  });
+
   it("summarize place: variableId + places（fx_place_a の年セル1件）", async () => {
     const spec: CellSpec = {
       variableId: FX.variables.ss,
@@ -351,6 +367,35 @@ describe("summarize: month_of_year（climatology）", () => {
     expect(byMonth.get(1)!.avg).toBeCloseTo(5.0, 6); // (5+0)/1年
     expect(byMonth.get(2)!.avg).toBeCloseTo(12.0, 6); // 12/1年
   });
+
+  it("imputation='both': avgZero/avgLod を1回のSQLで返す（min/max は常に value_lod 基準。Issue #48 PR-2 /simplify #11。zero/lod の2回叩きを撤去）", async () => {
+    const spec: CellSpec = {
+      series: [FX.series.ssMean],
+      scope: { kind: "site", siteId: FX.sites.a },
+      grain: "day",
+      imputation: "both",
+    };
+    const { rows } = await summarize(fx.db, spec, "month_of_year");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].month).toBe(1);
+    expect(rows[0].n).toBe(3);
+    expect(rows[0].avg).toBeNull();
+    expect(rows[0].avgZero).toBeCloseTo((10 + 8 + 0) / 3, 6);
+    expect(rows[0].avgLod).toBeCloseTo((10 + 6) / 2, 6); // 3日目は不検出（value_lod NULL）で無視される
+    expect(rows[0].min).toBe(6);
+    expect(rows[0].max).toBe(10);
+  });
+
+  it("imputation='both' かつ measure='sum_per_year' は例外（雨量は imputation='zero' 固定で呼ぶため未対応）", async () => {
+    const spec: CellSpec = {
+      series: [FX.series.rainSum],
+      scope: { kind: "all_sites" },
+      grain: "day",
+      stats: ["sum"],
+      imputation: "both",
+    };
+    await expect(summarize(fx.db, spec, "month_of_year", { measure: "sum_per_year" })).rejects.toThrow(/sum_per_year/);
+  });
 });
 
 describe("summarize: zone / zone_month_of_year", () => {
@@ -451,7 +496,12 @@ describe("summarize: place（v1 site_var・longitudinal 相当）", () => {
   });
 });
 
-describe("summarize: imputation='both' は AVG(v) を計算する by（place/zone/zone_month_of_year/month_of_year）では例外", () => {
+describe("summarize: imputation='both' は AVG(v) を単一の value 列で計算する by（place）では例外", () => {
+  // zone・zone_month_of_year・month_of_year は avg_zero/avg_lod を1回の SQL で
+  // 両方計算する形に対応済み（Issue #48 PR-2 統合後修正A #4・/simplify #11）。
+  // place（summarizePlace）と series（summarizeSeries とは別の意味で non-applicable）
+  // のうち、place だけが単一の value 式のまま（`v1_projection.sqlite` の
+  // `longitudinal_highlight` 相当で avg 列が1つしか無い）なので、今も例外にする。
   it("place", async () => {
     const spec: CellSpec = {
       series: [FX.series.ssMean],

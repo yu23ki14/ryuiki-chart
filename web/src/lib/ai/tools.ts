@@ -423,29 +423,28 @@ const get_seasonality = tool({
 
     const db = await d1CubeDb();
     const overallScope: Scope = { kind: "all_sites" };
-    const [overallLod, overallZero, zoneLod, zoneZero] = await Promise.all([
-      summarize(db, { series, scope: overallScope, grain: "day", imputation: "lod" }, "month_of_year"),
-      summarize(db, { series, scope: overallScope, grain: "day", imputation: "zero" }, "month_of_year"),
-      summarize(db, { series, scope: overallScope, grain: "month", imputation: "lod" }, "zone_month_of_year"),
-      summarize(db, { series, scope: overallScope, grain: "month", imputation: "zero" }, "zone_month_of_year"),
+    // zero/lod を1回の SQL で両方計算する（`summarizeZone` と同じ `imputation:'both'`
+    // 形。Issue #48 PR-2 /simplify #11）——以前は `imputation:'zero'`/`'lod'` を
+    // 2回ずつ叩いて JS 側でキーを合わせていた（4回→2回）。
+    const [overall_, zone_] = await Promise.all([
+      summarize(db, { series, scope: overallScope, grain: "day", imputation: "both" }, "month_of_year"),
+      summarize(db, { series, scope: overallScope, grain: "month", imputation: "both" }, "zone_month_of_year"),
     ]);
-    const overallZeroByMonth = new Map(overallZero.rows.map((r) => [r.month, r.avg]));
-    const overall = overallLod.rows.map((r) => ({
+    const overall = overall_.rows.map((r) => ({
       month: r.month,
       n: r.n,
       min: r.min,
       max: r.max,
-      valueLod: r.avg,
-      valueZero: overallZeroByMonth.get(r.month) ?? null,
+      valueLod: r.avgLod ?? null,
+      valueZero: r.avgZero ?? null,
     }));
-    const zoneZeroByKey = new Map(zoneZero.rows.map((r) => [`${r.zone}|${r.month}`, r.avg]));
-    const byZone = zoneLod.rows.map((r) => ({
+    const byZone = zone_.rows.map((r) => ({
       zone: r.zone,
       month: r.month,
       nSites: r.nSites,
       n: r.n,
-      valueLod: r.avg,
-      valueZero: zoneZeroByKey.get(`${r.zone}|${r.month}`) ?? null,
+      valueLod: r.avgLod ?? null,
+      valueZero: r.avgZero ?? null,
     }));
     const facets = facetsForSeries(series.map((s) => withTheme(s)), overallScope);
 

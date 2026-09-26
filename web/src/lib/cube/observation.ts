@@ -272,9 +272,15 @@ export interface SummarizeOpt {
 export interface MonthOfYearRow {
   month: number;
   n: number;
+  /** `spec.imputation` で選んだ値（`'both'` のときは null。`avgZero`/`avgLod` を見る）。 */
   avg: number | null;
+  /** `imputation:'both'` でも常に `value_lod` 基準（min/max は zero 側を別途持たない。
+   *  呼び出し側〔`get_seasonality`〕はこれで足りる）。 */
   min: number | null;
   max: number | null;
+  /** `imputation:'both'` のときだけ埋まる（それ以外は `undefined`）。 */
+  avgZero?: number | null;
+  avgLod?: number | null;
 }
 
 export interface ZoneYearRow {
@@ -297,7 +303,11 @@ export interface ZoneMonthRow {
   month: number;
   nSites: number;
   n: number;
+  /** `spec.imputation` で選んだ値（`'both'` のときは null。`avgZero`/`avgLod` を見る）。 */
   avg: number | null;
+  /** `imputation:'both'` のときだけ埋まる（それ以外は `undefined`）。 */
+  avgZero?: number | null;
+  avgLod?: number | null;
 }
 
 export interface PlaceSummaryRow {
@@ -335,6 +345,37 @@ function valueExpr(imputation: Imputation, alias: string): string {
 async function summarizeMonthOfYear(db: CubeDb, spec: CellSpec, opt?: SummarizeOpt): Promise<LimitedRows<MonthOfYearRow>> {
   const { joins, wheres, params } = commonFilterSql(spec, OBS);
   const limit = limitOf(spec);
+
+  // `imputation:'both'` は zero/lod の avg を1回の SQL で両方計算する（design 決定3・
+  // Issue #48 PR-2 /simplify #11）——以前は呼び出し側（`get_seasonality`）が
+  // `imputation:'zero'`/`'lod'` を2回叩いて JS 側でキーを合わせていた（`summarizeZone`
+  // と同じ簡易合成）。min/max は常に value_lod 基準（呼び出し側はこれしか使わない）。
+  if (spec.imputation === "both") {
+    if (opt?.measure === "sum_per_year") {
+      throw new Error("summarizeMonthOfYear: imputation='both' は measure='sum_per_year' 未対応（雨量は censored が無く imputation='zero' 固定で呼ぶため使っていない）");
+    }
+    const sql = `
+      SELECT CAST(substr(${OBS}.period_start,6,2) AS INTEGER) AS month,
+             COUNT(*) AS n,
+             AVG(${OBS}.value_zero) AS avg_zero, AVG(${OBS}.value_lod) AS avg_lod,
+             MIN(${OBS}.value_lod) AS min, MAX(${OBS}.value_lod) AS max
+      FROM observation_agg ${OBS}
+      ${joins.join("\n      ")}
+      ${whereSql(wheres)}
+      GROUP BY CAST(substr(${OBS}.period_start,6,2) AS INTEGER)
+      ORDER BY month
+      LIMIT ?
+    `;
+    const rows = await db.all<{ month: number; n: number; avg_zero: number | null; avg_lod: number | null; min: number | null; max: number | null }>(
+      sql,
+      [...params, limit + 1],
+    );
+    return applyLimit(
+      rows.map((r) => ({ month: r.month, n: r.n, avg: null, min: r.min, max: r.max, avgZero: r.avg_zero, avgLod: r.avg_lod })),
+      limit,
+    );
+  }
+
   const v = valueExpr(spec.imputation, OBS);
   const avgExpr =
     opt?.measure === "sum_per_year"
@@ -425,10 +466,37 @@ async function summarizeZone(db: CubeDb, spec: CellSpec): Promise<LimitedRows<Zo
 async function summarizeZoneMonth(db: CubeDb, spec: CellSpec): Promise<LimitedRows<ZoneMonthRow>> {
   const { joins, wheres, params } = commonFilterSql(spec, OBS);
   const limit = limitOf(spec);
-  const v = valueExpr(spec.imputation, OBS);
 
   // `zg`/`zgz` の別名の理由は `summarizeZone` のコメント参照
   // （`buildScopeSql` の "zone" スコープが使う `pr`/`zref` との衝突を避ける）。
+  // `imputation:'both'` は zero/lod の avg を1回の SQL で両方計算する（`summarizeZone`・
+  // `summarizeMonthOfYear` と同じ理由。Issue #48 PR-2 /simplify #11）。
+  if (spec.imputation === "both") {
+    const sql = `
+      SELECT ${zoneExprSql("zgz")} AS zone,
+             CAST(substr(${OBS}.period_start,6,2) AS INTEGER) AS month,
+             COUNT(DISTINCT ${OBS}.place_id) AS n_sites, SUM(${OBS}.n) AS n,
+             AVG(${OBS}.value_zero) AS avg_zero, AVG(${OBS}.value_lod) AS avg_lod
+      FROM observation_agg ${OBS}
+      JOIN place_relation zg ON zg.child_id = ${OBS}.place_id AND zg.relation = 'within'
+      JOIN place_source_ref zgz ON zgz.place_id = zg.parent_id AND zgz.source_id = 'sites.zone'
+      ${joins.join("\n      ")}
+      ${whereSql(wheres)}
+      GROUP BY zone, month
+      ORDER BY zone, month
+      LIMIT ?
+    `;
+    const rows = await db.all<{ zone: number; month: number; n_sites: number; n: number; avg_zero: number | null; avg_lod: number | null }>(
+      sql,
+      [...params, limit + 1],
+    );
+    return applyLimit(
+      rows.map((r) => ({ zone: r.zone, month: r.month, nSites: r.n_sites, n: r.n, avg: null, avgZero: r.avg_zero, avgLod: r.avg_lod })),
+      limit,
+    );
+  }
+
+  const v = valueExpr(spec.imputation, OBS);
   const sql = `
     SELECT ${zoneExprSql("zgz")} AS zone,
            CAST(substr(${OBS}.period_start,6,2) AS INTEGER) AS month,
