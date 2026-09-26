@@ -1,4 +1,9 @@
-import { shortVariable } from "@/lib/registry/lookup-client";
+import { VARIABLE_LABEL } from "@/lib/registry/generated-client";
+
+/** variable_id の表示名（`VARIABLE_LABEL`。無ければ variable_id をそのまま出す）。 */
+function variableLabel(variableId: string): string {
+  return VARIABLE_LABEL[variableId]?.short ?? variableId;
+}
 
 /**
  * 画面の「状態」のスナップショット。データそのもの（表示中の行や点列）は含めない。
@@ -14,13 +19,14 @@ export type PageContext =
       title: string;
       /** "water" | "zone" | "season" */
       mode: string;
-      variable: string;
+      /** variable_id（`common:variable:...`）。alias 文字列ではない（Issue #48 PR-2 design §5）。 */
+      variableId: string;
       /** 自動補正後の実効値（TimeseriesExplorer の water）。利用者の希望 waterPref ではない */
       water: string;
-      /** 今のモードで実際に使われている粒度。zone は常に year、season は月別なので "month" */
+      /** 今のモードで実際に使われている粒度。"year" | "fiscal_year" | "month" | "day" */
       grain: string;
-      /** 自動補正後の実効値（TimeseriesExplorer の kind）。利用者の希望 kindPref ではない */
-      kind: string;
+      /** 自動補正後の実効値（TimeseriesExplorer の basisPref）。"day" | "fiscal_year" | "year" */
+      basis: string;
     }
   | {
       route: "/biota";
@@ -64,12 +70,14 @@ export function describePageContext(ctx: PageContext): string {
   // "/timeseries" 等のどのリテラルとも両立してしまい、判別共用体として narrow されない。
   // 各分岐だけに存在するプロパティの有無（in 演算子）で判別する。
   if (ctx.route === "/") return "概況画面（トップページ）を見ている。";
-  if ("variable" in ctx) {
+  if ("variableId" in ctx) {
     const modeLabel = TIMESERIES_MODE_LABEL[ctx.mode] ?? ctx.mode;
-    const parts = [`時系列比較画面。${modeLabel}`, `項目「${ctx.variable}」`];
+    const parts = [`時系列比較画面。${modeLabel}`, `項目「${variableLabel(ctx.variableId)}」（variableId="${ctx.variableId}"）`];
     if (ctx.mode === "water" && ctx.water) parts.push(`水域「${ctx.water}」`);
-    parts.push(`粒度=${ctx.grain === "year" ? "年" : ctx.grain === "month" ? "月" : ctx.grain}`);
-    parts.push(`元データ=${ctx.kind === "daily" ? "検体値" : ctx.kind === "annual" ? "年度集計値" : ctx.kind}`);
+    const grainLabel =
+      ctx.grain === "year" ? "年（暦年）" : ctx.grain === "fiscal_year" ? "年度" : ctx.grain === "month" ? "月" : ctx.grain === "day" ? "日" : ctx.grain;
+    parts.push(`粒度=${grainLabel}`);
+    parts.push(`元データ=${ctx.basis === "day" ? "検体値" : ctx.basis === "fiscal_year" ? "年度集計値" : ctx.basis === "year" ? "暦年値" : ctx.basis}`);
     return parts.join("、") + "。";
   }
   if ("tab" in ctx) {
@@ -102,8 +110,8 @@ export function suggestedQuestions(ctx: PageContext | null): string[] {
   if (ctx.route === "/") {
     return ["このアプリにはどんなテーブルがある？", "流域ごとに生物記録が多いのはどこ？", "水質データで欠けているものは？"];
   }
-  if ("variable" in ctx) {
-    const v = shortVariable(ctx.variable);
+  if ("variableId" in ctx) {
+    const v = variableLabel(ctx.variableId);
     if (ctx.mode === "zone") {
       return [`${v}はゾーンによってどう違う？`, `${v}に季節性はある？`, "このアプリにはどんなテーブルがある？"];
     }

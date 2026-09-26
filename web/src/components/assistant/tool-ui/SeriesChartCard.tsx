@@ -7,7 +7,7 @@ import { Spinner } from "@/components/ui";
 import { LineChart, type LineSeries } from "@/components/viz/LineChart";
 import { ChartFrame } from "@/components/viz/ChartFrame";
 import { SERIES, ZONE_COLORS, ZONE_LABELS, INK } from "@/components/viz/palette";
-import { shortVariable } from "@/lib/registry/lookup-client";
+import { VARIABLE_LABEL } from "@/lib/registry/generated-client";
 import { timeseriesUrl } from "@/lib/ai/links";
 import { ProvenanceFooter, type Provenance } from "./ProvenanceFooter";
 import { TOOL_LABEL } from "./ToolResultCard";
@@ -15,6 +15,11 @@ import { TOOL_LABEL } from "./ToolResultCard";
 /**
  * get_timeseries だけの専用カード。既存の LineChart をそのまま使う（新しい作図コードは書かない）。
  * 証跡（SQL・件数・注記）は ToolResultCard と共通の ProvenanceFooter で、チャートの下に「そのまま」出す。
+ *
+ * Issue #48 PR-2: get_timeseries の戻り値が v1（meas_year 等の行）から `lib/cube` の
+ * 生セル（`CellRow` 相当。水域/地点スコープ）・ゾーン集計（ゾーンスコープ）に変わった
+ * （design §5「SeriesChartCard.tsx: TimeseriesData.grain に fiscal_year、kind→basis、
+ * y は value_lod（無ければ value_zero）、x は period_start から求める」）。
  */
 
 interface Scope {
@@ -23,31 +28,42 @@ interface Scope {
   siteId?: string;
 }
 interface SiteLite {
-  site_id: string;
-  name: string;
+  siteId: string;
+  name: string | null;
 }
-/** meas_year / meas_month / meas_daily / zone_year の行を緩くまとめて受ける（grain によってどの列が来るかが違う） */
-interface SeriesPoint {
-  site_id?: string;
-  zone?: number;
-  year?: number;
-  ym?: string;
-  month?: number;
-  d?: string;
+/** 水域/地点スコープの1点（`lib/cube` の CellRow 相当。stat ごとに別行 = mean/min/max）。 */
+interface CellPoint {
+  placeId: string;
+  siteId: string | null;
+  grain: string;
+  periodStart: string;
+  stat: string;
   n?: number;
-  avg?: number;
-  value?: number;
-  n_censored?: number;
-  unit?: string | null;
+  nCensored?: number;
+  valueZero: number | null;
+  valueLod: number | null;
 }
+/** ゾーンスコープの1点（get_timeseries が `summarize(...,'zone')` から組み立てる形）。 */
+interface ZonePoint {
+  zone: number;
+  grain: string;
+  year: number;
+  nSites?: number;
+  n?: number;
+  valueZero: number | null;
+  valueLod: number | null;
+}
+type Point = CellPoint | ZonePoint;
+
 interface TimeseriesData {
   scope: Scope;
   sites?: SiteLite[];
-  grain: "year" | "month" | "day";
-  kind?: "daily" | "annual";
-  /** var_catalog 由来。月次・日次の点列には unit が入っていないのでこちらを使う。 */
+  grain: "year" | "fiscal_year" | "month" | "day";
+  /** 元データの粒度（"day"=検体値／"fiscal_year"=年度集計値／"year"=暦年値）。 */
+  basis?: "day" | "fiscal_year" | "year";
+  stat?: string;
   unit?: string | null;
-  points: SeriesPoint[];
+  points: Point[];
 }
 interface ToolResultShape {
   data?: TimeseriesData;
@@ -56,9 +72,14 @@ interface ToolResultShape {
   truncated?: boolean;
   truncatedNote?: string;
 }
-/** get_timeseries の inputSchema（tools.ts）そのまま。variable は data 側に載らないので args から取る。 */
+/** get_timeseries の inputSchema（tools.ts）そのまま。variableId は data 側に載らないので args から取る。 */
 interface ToolArgs {
-  variable?: string;
+  variableId?: string;
+}
+
+/** variable_id の表示名（`VARIABLE_LABEL`。無ければ variable_id をそのまま出す）。 */
+function variableLabel(variableId: string): string {
+  return VARIABLE_LABEL[variableId]?.short ?? variableId;
 }
 
 export function SeriesChartCard(props: ToolCallMessagePartProps) {
@@ -78,7 +99,7 @@ export function SeriesChartCard(props: ToolCallMessagePartProps) {
   const data = r.data;
   const provenance = r.provenance;
   const caveats = r.caveats ?? [];
-  const variable = (args as ToolArgs | undefined)?.variable;
+  const variableId = (args as ToolArgs | undefined)?.variableId;
 
   // データが無い/エラーのときは無理にチャートを描かず、証跡カードだけを出す（他ツールと同じ体裁）。
   if (!data || isError) {
@@ -98,8 +119,8 @@ export function SeriesChartCard(props: ToolCallMessagePartProps) {
   }
 
   const { series, unit, xFormat } = buildSeries(data);
-  const link = variable
-    ? timeseriesUrl({ variable, scope: data.scope, grain: data.grain, kind: data.kind })
+  const link = variableId
+    ? timeseriesUrl({ variableId, scope: data.scope, grain: data.grain, basis: data.basis, stat: data.stat })
     : null;
 
   // ChartFrame をそのまま使う（新しい作図コードは書かない）。証跡は ChartFrame の note スロットに
@@ -116,10 +137,10 @@ export function SeriesChartCard(props: ToolCallMessagePartProps) {
         title={
           <>
             {scopeTitle(data.scope)}
-            {variable && <> の {shortVariable(variable)}</>}
+            {variableId && <> の {variableLabel(variableId)}</>}
           </>
         }
-        subtitle={`${grainLabel(data.grain)}${data.kind ? ` ・ ${data.kind === "daily" ? "検体値" : "年度集計値"}` : ""}`}
+        subtitle={`${grainLabel(data.grain)}${data.basis ? ` ・ ${basisLabel(data.basis)}` : ""}`}
         legend={series.map((s) => ({ label: s.label, color: s.color }))}
         height={190}
         note={
@@ -161,8 +182,19 @@ function scopeTitle(scope: Scope): string {
   return "ゾーン別";
 }
 
-function grainLabel(grain: "year" | "month" | "day"): string {
-  return grain === "year" ? "年平均" : grain === "month" ? "月平均" : "日次";
+function grainLabel(grain: "year" | "fiscal_year" | "month" | "day"): string {
+  return grain === "year" ? "年平均" : grain === "fiscal_year" ? "年度集計" : grain === "month" ? "月平均" : "日次";
+}
+
+function basisLabel(basis: "day" | "fiscal_year" | "year"): string {
+  return basis === "day" ? "検体値" : basis === "fiscal_year" ? "年度集計値" : "暦年値";
+}
+
+/** `period_start`（`YYYY-01-01`/`YYYY-04-01`）からラベル年を取り出す。`lib/cube/series.ts`
+ *  の `labelYear` と同じ式だが、そちらはサーバ専用の大きい generated.ts を経由するモジュール
+ *  なのでクライアントからは import しない（1行の式をここに複製する）。 */
+function labelYear(periodStart: string): number {
+  return Number.parseInt(periodStart.slice(0, 4), 10);
 }
 
 /** 'YYYY-MM' を「年 + 月/12」の数値に変換して連続軸に載せる（TimeseriesExplorer と同じ変換） */
@@ -177,18 +209,22 @@ function xToYm(x: number): string {
   return `${y}-${String(m).padStart(2, "0")}`;
 }
 
+function isZonePoint(p: Point): p is ZonePoint {
+  return "zone" in p;
+}
+
 function buildSeries(data: TimeseriesData): {
   series: LineSeries[];
   unit: string | null;
   xFormat: (x: number) => string;
 } {
   const { scope, grain, points } = data;
-  const unit = data.unit ?? points.find((p) => p.unit)?.unit ?? null;
+  const unit = data.unit ?? null;
 
   if (scope.type === "zone") {
-    const byZone = new Map<number, SeriesPoint[]>();
+    const byZone = new Map<number, ZonePoint[]>();
     for (const p of points) {
-      if (p.zone == null) continue;
+      if (!isZonePoint(p)) continue;
       if (!byZone.has(p.zone)) byZone.set(p.zone, []);
       byZone.get(p.zone)!.push(p);
     }
@@ -199,7 +235,7 @@ function buildSeries(data: TimeseriesData): {
         label: `${z}. ${ZONE_LABELS[z] ?? ""}`,
         color: ZONE_COLORS[z] ?? INK.muted,
         points: pts
-          .map((p) => ({ x: Number(p.year), y: typeof p.avg === "number" ? p.avg : null, n: p.n }))
+          .map((p) => ({ x: p.year, y: p.valueLod ?? p.valueZero, n: p.n }))
           .filter((p) => Number.isFinite(p.x))
           .sort((a, b) => a.x - b.x),
       }));
@@ -209,32 +245,32 @@ function buildSeries(data: TimeseriesData): {
   // water / site スコープ: 色は「地点という実体」に固定する（TimeseriesExplorer と同じ考え方）。
   // sites は water スコープのときだけ埋まっている（site スコープは siteId 直指定で sites に触れないため）。
   const siteOrder = data.sites ?? [];
-  const nameOf = (siteId: string) => siteOrder.find((s) => s.site_id === siteId)?.name ?? siteId;
+  const nameOf = (siteId: string) => siteOrder.find((s) => s.siteId === siteId)?.name ?? siteId;
   const colorOf = (siteId: string) => {
-    const i = siteOrder.findIndex((s) => s.site_id === siteId);
+    const i = siteOrder.findIndex((s) => s.siteId === siteId);
     return i >= 0 && i < SERIES.length ? SERIES[i] : INK.muted;
   };
 
-  const bySite = new Map<string, SeriesPoint[]>();
-  for (const p of points) {
-    if (!p.site_id) continue;
-    if (!bySite.has(p.site_id)) bySite.set(p.site_id, []);
-    bySite.get(p.site_id)!.push(p);
-  }
-  const order = siteOrder.length ? siteOrder.map((s) => s.site_id) : [...bySite.keys()];
+  // 年/年度グレインは stat ごとに別行（mean/min/max）で来る。チャートの折れ線は mean だけ使う
+  // （min/max は get_timeseries の envelope/表側の情報であり、線を複数引くと読みにくくなる）。
+  const cellPoints = points.filter((p): p is CellPoint => !isZonePoint(p) && (p.stat === undefined || p.stat === "mean"));
 
-  let toX: (p: SeriesPoint) => number;
-  let xFormat: (x: number) => string;
-  if (grain === "year") {
-    toX = (p) => Number(p.year);
-    xFormat = (x) => String(Math.round(x));
-  } else if (grain === "month") {
-    toX = (p) => ymToX(String(p.ym));
-    xFormat = (x) => xToYm(x);
-  } else {
-    toX = (p) => Date.parse(String(p.d));
-    xFormat = (x) => new Date(x).toISOString().slice(0, 10);
+  const bySite = new Map<string, CellPoint[]>();
+  for (const p of cellPoints) {
+    const key = p.siteId ?? p.placeId;
+    if (!key) continue;
+    if (!bySite.has(key)) bySite.set(key, []);
+    bySite.get(key)!.push(p);
   }
+  const order = siteOrder.length ? siteOrder.map((s) => s.siteId) : [...bySite.keys()];
+
+  const toX = (p: CellPoint): number => {
+    if (grain === "year" || grain === "fiscal_year") return labelYear(p.periodStart);
+    if (grain === "month") return ymToX(p.periodStart.slice(0, 7));
+    return Date.parse(p.periodStart);
+  };
+  const xFormat = (x: number) =>
+    grain === "year" || grain === "fiscal_year" ? String(Math.round(x)) : grain === "month" ? xToYm(x) : new Date(x).toISOString().slice(0, 10);
 
   const series: LineSeries[] = order
     .filter((id) => bySite.has(id))
@@ -246,12 +282,14 @@ function buildSeries(data: TimeseriesData): {
       points: bySite
         .get(id)!
         .map((p) => {
-          const yRaw = typeof p.avg === "number" ? p.avg : p.value;
+          const y = p.valueLod ?? p.valueZero;
+          const n = p.n ?? 0;
+          const nCensored = p.nCensored ?? 0;
           return {
             x: toX(p),
-            y: typeof yRaw === "number" && Number.isFinite(yRaw) ? yRaw : null,
-            n: p.n,
-            censored: grain === "day" ? (p.n_censored ?? 0) > 0 : (p.n_censored ?? 0) > 0 && p.n_censored === p.n,
+            y,
+            n,
+            censored: grain === "day" ? nCensored > 0 : nCensored > 0 && nCensored === n,
           };
         })
         .filter((p) => Number.isFinite(p.x))
