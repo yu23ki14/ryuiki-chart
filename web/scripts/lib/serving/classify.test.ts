@@ -229,11 +229,26 @@ describe("classifyDiff: day_split", () => {
 });
 
 describe("classifyDiff: unit_label_registry", () => {
-  it("v1がunit=NULL・v2が非NULLで、それ以外の列が一致すれば unit_label_registry", () => {
+  it("v1がunit=NULL・v2が非NULLで、それ以外の列が一致し、v2の単位がレジストリのsymbolと一致すれば unit_label_registry", () => {
     const v1 = rowsByKey(toNormRows([{ y: 1, n: 5, unit: null }], ["y"], ["n"], ["unit"]));
     const v2 = rowsByKey(toNormRows([{ y: 1, n: 5, unit: "mg/L" }], ["y"], ["n"], ["unit"]));
     const diffs = compareRuns(v1, v2);
-    const ctx = ctxBase({ known: new Set(["unit_label_registry"]) });
+    const ctx = ctxBase({
+      known: new Set(["unit_label_registry"]),
+      params: { alias: "変数X" },
+      expectedUnitSymbol: new Map([["変数X", "mg/L"]]),
+    });
+    expect(classifyDiff(diffs[0], ctx).rule).toBe("unit_label_registry");
+  });
+
+  it("alias が params に無ければ diff.key[0]（variable_catalog/site_variables の行キー）から解決する", () => {
+    const v1 = rowsByKey(toNormRows([{ alias: "変数X", n: 5, unit: null }], ["alias"], ["n"], ["unit"]));
+    const v2 = rowsByKey(toNormRows([{ alias: "変数X", n: 5, unit: "mg/L" }], ["alias"], ["n"], ["unit"]));
+    const diffs = compareRuns(v1, v2);
+    const ctx = ctxBase({
+      known: new Set(["unit_label_registry"]),
+      expectedUnitSymbol: new Map([["変数X", "mg/L"]]),
+    });
     expect(classifyDiff(diffs[0], ctx).rule).toBe("unit_label_registry");
   });
 
@@ -245,7 +260,11 @@ describe("classifyDiff: unit_label_registry", () => {
     expect(kinds).toContain("value_diff");
     expect(kinds).toContain("label_diff");
     const labelDiff = diffs.find((d) => d.kind === "label_diff")!;
-    const ctx = ctxBase({ known: new Set(["unit_label_registry"]) });
+    const ctx = ctxBase({
+      known: new Set(["unit_label_registry"]),
+      params: { alias: "変数X" },
+      expectedUnitSymbol: new Map([["変数X", "mg/L"]]),
+    });
     expect(classifyDiff(labelDiff, ctx).rule).toBe("unit_label_registry");
   });
 
@@ -253,7 +272,44 @@ describe("classifyDiff: unit_label_registry", () => {
     const v1 = rowsByKey(toNormRows([{ y: 1, unit: "mg/L" }], ["y"], [], ["unit"]));
     const v2 = rowsByKey(toNormRows([{ y: 1, unit: "mg/l" }], ["y"], [], ["unit"]));
     const diffs = compareRuns(v1, v2);
-    const ctx = ctxBase({ known: new Set(["unit_label_registry"]) });
+    const ctx = ctxBase({
+      known: new Set(["unit_label_registry"]),
+      params: { alias: "変数X" },
+      expectedUnitSymbol: new Map([["変数X", "mg/l"]]),
+    });
+    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+  });
+
+  it("known に unit_label_registry が無ければ、他の条件を満たしても適用しない（unexplained）", () => {
+    const v1 = rowsByKey(toNormRows([{ y: 1, n: 5, unit: null }], ["y"], ["n"], ["unit"]));
+    const v2 = rowsByKey(toNormRows([{ y: 1, n: 5, unit: "mg/L" }], ["y"], ["n"], ["unit"]));
+    const diffs = compareRuns(v1, v2);
+    const ctx = ctxBase({
+      known: new Set(), // unit_label_registry を許していない問い合わせ相当
+      params: { alias: "変数X" },
+      expectedUnitSymbol: new Map([["変数X", "mg/L"]]),
+    });
+    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+  });
+
+  it("v2の単位がその系列のレジストリsymbolと一致しなければ、非NULLでも unit_label_registry にならない", () => {
+    const v1 = rowsByKey(toNormRows([{ y: 1, n: 5, unit: null }], ["y"], ["n"], ["unit"]));
+    // v2 が非NULLではあるが、レジストリ上この alias の正しい symbol（mg/L）とは違う値。
+    const v2 = rowsByKey(toNormRows([{ y: 1, n: 5, unit: "kg" }], ["y"], ["n"], ["unit"]));
+    const diffs = compareRuns(v1, v2);
+    const ctx = ctxBase({
+      known: new Set(["unit_label_registry"]),
+      params: { alias: "変数X" },
+      expectedUnitSymbol: new Map([["変数X", "mg/L"]]),
+    });
+    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+  });
+
+  it("expectedUnitSymbol が渡されていなければ安全側に倒して unexplained", () => {
+    const v1 = rowsByKey(toNormRows([{ y: 1, n: 5, unit: null }], ["y"], ["n"], ["unit"]));
+    const v2 = rowsByKey(toNormRows([{ y: 1, n: 5, unit: "mg/L" }], ["y"], ["n"], ["unit"]));
+    const diffs = compareRuns(v1, v2);
+    const ctx = ctxBase({ known: new Set(["unit_label_registry"]), params: { alias: "変数X" } });
     expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
   });
 });

@@ -304,6 +304,23 @@ async function aliasCatalog(db: CubeDb): Promise<AliasCatalogEntry[]> {
 }
 
 /**
+ * measurements の alias ごとの、レジストリ上の正しい unit symbol（`series[0].unitId` の
+ * `unitSymbol()`——`variable_catalog`/`site_variables`/`zone_series` 等の `unit` 列と
+ * 同じ計算式）。DB を読まない（`seriesForAlias`/`unitSymbol` はどちらも registry の
+ * 生成物だけを見る）ので、`db` を開く前でも呼べる。`classify.ts` の
+ * `unit_label_registry` 規則が「v2 側の非NULL値なら何でも通す」のではなく、実際に
+ * その系列の `unit_id` の symbol と一致するかまで確かめるのに使う。
+ */
+export function expectedUnitSymbols(): ReadonlyMap<string, string | null> {
+  const out = new Map<string, string | null>();
+  for (const alias of MEASUREMENTS_ALIASES) {
+    const series = seriesForAlias("measurements", alias);
+    out.set(alias, unitLabel(series[0]?.unitId ?? null));
+  }
+  return out;
+}
+
+/**
  * `rain_daily`/`rain_monthly_clim`/`rain_top_days` の3問い合わせが共有する
  * spec（RAIN の全地点・日次 sum。`/simplify` 指摘: 3箇所に同じ組み立てが
  * コピペされていた）。

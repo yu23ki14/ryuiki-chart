@@ -286,6 +286,16 @@ export interface ClassifyContext {
   syntheticSiteIds?: ReadonlySet<string>;
   /** `--mutate declared_rot` */
   declaredRot?: DeclaredRotOptions;
+  /**
+   * alias（`ctx.params.alias` か、無ければ `diff.key[0]` から解決する——
+   * `variable_catalog`/`site_variables` は alias が行キー側にしか出ない）ごとの、
+   * レジストリ上の正しい unit symbol（`unitSymbol(seriesForAlias(alias)[0].unitId)`、
+   * `adapters-v2.ts` の `expectedUnitSymbols()`）。`unit_label_registry` 規則が
+   * 「v2 側が非NULLなら何でも通す」のではなく、実際にその系列の `unit_id` の
+   * symbol と一致するかまで確かめるのに使う。無ければ（テスト以外では常にある
+   * はずだが）この規則は安全側に倒して不発にする。
+   */
+  expectedUnitSymbol?: ReadonlyMap<string, string | null>;
 }
 
 export interface Classification {
@@ -407,13 +417,30 @@ function classifyDaySplit(diff: RowDiff, ctx: ClassifyContext): boolean {
   return false;
 }
 
-function classifyUnitLabelRegistry(diff: RowDiff): boolean {
-  if (diff.kind !== "label_diff" || !diff.columns.includes("unit")) return false;
+/** `unit_label_registry` の alias 解決: `params.alias` を優先し、無ければ
+ *  `diff.key[0]` が文字列のときだけそれを alias とみなす
+ *  （`variable_catalog`/`site_variables` は alias が行キー側にしか出ない）。 */
+function aliasKeyOf(diff: RowDiff, ctx: ClassifyContext): string | undefined {
+  if (typeof ctx.params.alias === "string") return ctx.params.alias;
+  return typeof diff.key[0] === "string" ? diff.key[0] : undefined;
+}
+
+function classifyUnitLabelRegistry(diff: RowDiff, ctx: ClassifyContext): boolean {
+  if (!ruleEnabled(ctx, "unit_label_registry") || diff.kind !== "label_diff" || !diff.columns.includes("unit")) return false;
   const v1Unit = diff.v1?.label.unit ?? null;
   const v2Unit = diff.v2?.label.unit ?? null;
   if (v1Unit !== null || v2Unit === null) return false;
   // unit 以外のラベル列・数値列は完全一致していること（この規則はラベルだけの差分に限る）。
-  return diff.columns.every((c) => c === "unit");
+  if (!diff.columns.every((c) => c === "unit")) return false;
+  // v2 側の単位が「任意の非NULL」ではなく、この系列のレジストリ上の正しい symbol と
+  // 一致することまで確かめる（alias の取り違え等でたまたま非NULLになっただけの
+  // ケースを誤って拾わないため——`ctx.expectedUnitSymbol` が無い/alias が解決できない
+  // ときは安全側に倒して unexplained にする）。
+  if (!ctx.expectedUnitSymbol) return false;
+  const alias = aliasKeyOf(diff, ctx);
+  if (alias === undefined) return false;
+  const expected = ctx.expectedUnitSymbol.get(alias);
+  return expected !== undefined && expected === v2Unit;
 }
 
 function classifyFloatRounding(diff: RowDiff, ctx: ClassifyContext): boolean {
@@ -487,7 +514,7 @@ export function classifyDiff(diff: RowDiff, ctx: ClassifyContext): Classificatio
   if (classifyRainDiv10(diff, ctx)) return { rule: "rain_div10" };
   if (classifyDaySplit(diff, ctx)) return { rule: "day_split" };
   if (classifySyntheticExcluded(diff, ctx)) return { rule: "synthetic_excluded" };
-  if (classifyUnitLabelRegistry(diff)) return { rule: "unit_label_registry" };
+  if (classifyUnitLabelRegistry(diff, ctx)) return { rule: "unit_label_registry" };
   if (classifyFloatRounding(diff, ctx)) return { rule: "float_rounding" };
   return { rule: "unexplained" };
 }

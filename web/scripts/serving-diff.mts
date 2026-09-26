@@ -118,7 +118,10 @@ const ONLY_IDS = argv.only ? new Set(String(argv.only).split(",").map((s) => s.t
 const MUTATE_NAMES = argv.mutate ? String(argv.mutate).split(",").map((s) => s.trim()) : [];
 const V1_SOURCE = (argv["v1-source"] as string) === "v1_projection" ? "v1_projection" : "derived";
 const PRETEND_SYNTHETIC_EXCLUDED = argv["pretend-synthetic-excluded"] === true;
-const OUT_MD = path.resolve(WEB_ROOT, String(argv.out));
+// `reports/serving_switch_diff.{md,json}` はリポジトリ直下（design: `docs/plans/V2_SERVING_PR1.md`・
+// `docs/adr/0029-v1-removal-and-verification-handoff.md`）。`--out` を明示すればそちらを
+// 優先するが、既定値・相対パスはどちらも REPO_ROOT からの相対として解決する。
+const OUT_MD = path.resolve(REPO_ROOT, String(argv.out));
 const OUT_JSON = OUT_MD.replace(/\.md$/, ".json");
 
 for (const name of MUTATE_NAMES) {
@@ -308,6 +311,11 @@ async function main() {
   if (ONLY_IDS) queryDefs = queryDefs.filter((q) => ONLY_IDS.has(q.id));
 
   const v2 = V1_ONLY ? null : await loadAdaptersV2();
+  // `unit_label_registry` 規則が「v2 側が非NULLなら何でも通す」のではなく、実際に
+  // その系列の unit_id のレジストリ symbol と一致するかまで確かめるための参照表
+  // （`ClassifyContext.expectedUnitSymbol`）。db を読まない純粋な計算なので、
+  // `--pretend-synthetic-excluded` で db を開き直す前に1回だけ作れば足りる。
+  const expectedUnitSymbol = v2 ? v2.expectedUnitSymbols() : undefined;
 
   // `--pretend-synthetic-excluded`（設計書 §9-4）: まず素の v2 で「地点の全セルが
   // 合成系列だけ」の place_id 集合を求め（`lib/cube` の `isSynthetic` 由来）、
@@ -425,6 +433,7 @@ async function main() {
           rainGrain: def.id === "rain_monthly_clim" ? "month" : "day",
           syntheticSiteIds,
           declaredRot: classifyMutation?.declaredRot,
+          expectedUnitSymbol,
         };
 
         for (const diff of diffs) {
