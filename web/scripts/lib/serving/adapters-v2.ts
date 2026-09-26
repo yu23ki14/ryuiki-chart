@@ -39,7 +39,7 @@ import {
 } from "@/lib/cube";
 import { GENERATED_VARIABLE_ALIASES, type GeneratedVariableAlias } from "@/lib/registry/generated";
 import { unitSymbol } from "@/lib/registry/lookup";
-import { toNormRows, type CompareSpec, type NormRow, type RawRow, type ScalarParam } from "./normalize";
+import { rankRainDays, toNormRows, type CompareSpec, type NormRow, type RawRow, type ScalarParam } from "./normalize";
 
 export interface V2Paths {
   v2: string;
@@ -553,11 +553,8 @@ async function fetchRawRows(db: CubeDb, id: string, params: Record<string, Scala
     case "rain_top_days": {
       const spec = rainDailySumSpec();
       const cells = await queryCells(db, spec);
-      const sorted = cells
-        .map((c) => ({ d: c.periodStart.slice(0, 10), mm: c.valueZero ?? 0 }))
-        .sort((a, b) => b.mm - a.mm || a.d.localeCompare(b.d))
-        .slice(0, RAIN_TOP_N * 4);
-      return sorted.slice(0, RAIN_TOP_N).map((r, i) => ({ rank: i + 1, d: r.d, mm: r.mm }));
+      const rows = cells.map((c) => ({ d: c.periodStart.slice(0, 10), mm: c.valueZero ?? 0 }));
+      return rankRainDays(rows, RAIN_TOP_N);
     }
     case "longitudinal_highlight": {
       const water =

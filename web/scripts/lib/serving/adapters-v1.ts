@@ -16,6 +16,7 @@
 import * as queries from "../../../src/lib/queries";
 import { query as v1RawQuery } from "../v1-db-shim";
 import {
+  rankRainDays,
   toNormRows,
   type CompareSpec,
   type DomainDef,
@@ -85,13 +86,6 @@ export async function enumerateParams(
 const RAIN_FROM = "0001-01-01";
 const RAIN_TO = "9999-12-31";
 const RAIN_TOP_N = 10;
-
-/** `rain_top_days` の順位付け（v1/v2 で ORDER BY のタイブレークが揺れないよう、
- *  mm 降順の後ろに日付昇順の副ソートを必ずかけてから rank を振る）。 */
-function rankRainDays(rows: { d: string; mm: number }[]): RawRow[] {
-  const sorted = [...rows].sort((a, b) => b.mm - a.mm || a.d.localeCompare(b.d));
-  return sorted.slice(0, RAIN_TOP_N).map((r, i) => ({ rank: i + 1, d: r.d, mm: r.mm }));
-}
 
 async function highlightParams(variant: ScalarParam): Promise<[string, string]> {
   if (variant === "representative") {
@@ -168,7 +162,7 @@ async function fetchRawRows(id: string, params: Record<string, ScalarParam>): Pr
     }
     case "rain_top_days": {
       const rows = await queries.rainTopDays(RAIN_TOP_N * 4);
-      return rankRainDays(rows);
+      return rankRainDays(rows, RAIN_TOP_N);
     }
     case "longitudinal_highlight": {
       const [water, alias] = await highlightParams(params.variant);

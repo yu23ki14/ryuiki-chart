@@ -107,6 +107,16 @@ export interface ServingQueriesConfig {
   queries: QueryDef[];
 }
 
+/**
+ * `rain_top_days` の順位付け（v1/v2 で共有: mm 降順の後ろに日付昇順の副ソートを
+ * 必ずかけてから rank を振る。タイブレークが v1/v2 で揺れないようにするため）。
+ * `adapters-v1.ts`/`adapters-v2.ts` に同じ並べ替えが複製されていたのをここに集約する。
+ */
+export function rankRainDays(rows: readonly { d: string; mm: number }[], topN: number): RawRow[] {
+  const sorted = [...rows].sort((a, b) => b.mm - a.mm || a.d.localeCompare(b.d));
+  return sorted.slice(0, topN).map((r, i) => ({ rank: i + 1, d: r.d, mm: r.mm }));
+}
+
 export function rowsByKey(rows: readonly NormRow[]): Map<string, NormRow> {
   const m = new Map<string, NormRow>();
   for (const r of rows) {
