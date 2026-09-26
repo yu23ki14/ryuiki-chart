@@ -512,6 +512,19 @@ def _year_source_expand_sql(stat: str, value_zero_column: str, value_lod_column:
 # 文言（b04 固有）だけを渡す薄い呼び出しにしてある。
 _DIM_KEY_INDEX_NAME = "observation_agg_dim_key"
 
+# Issue #48 PR-1 §1: `observation_agg` に張る永続索引。名前・列・列順は
+# Drizzle（`web/src/db/schema-cube.ts` → `web/drizzle/migrations/0005_overrated_venom.sql`）
+# が正——ここは写し。`scripts/tests/test_cube_index_parity.py` がマイグレーション SQL から
+# 抜いた集合とこの定数の一致を機械検証するので、手で同期を保つ必要はない
+# （ずれれば次の pytest 実行で落ちる）。`build_cube()` が `common.create_indexes()` 経由で
+# `staged_table` の差し替え確定後に張る（`create_indexes` docstring 参照——
+# 作業用テーブル段階で張ると2回目の実行が名前衝突を起こす）。
+OBSERVATION_AGG_INDEXES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("ix_observation_agg_variable_place_grain_stat_period",
+     ("variable_id", "place_id", "grain", "stat", "period_start")),
+    ("ix_observation_agg_place_variable_grain", ("place_id", "variable_id", "grain")),
+)
+
 
 def _assert_dimension_key_unique(conn: sqlite3.Connection, staging: str) -> None:
     common.assert_dimension_key_unique(
@@ -858,6 +871,10 @@ def build_cube(
     # （Issue #37 #1・/code-review 指摘の根本対応。「内容は新しいが指紋は
     # 古い」状態を作れなくする）。b05 はこの指紋を見て「今の observation_agg
     # から作った v1_projection.sqlite か」を検証する。
+
+    # Issue #48 PR-1 §1: 索引は差し替え確定後（本番テーブル名）に張る
+    # （`common.create_indexes` docstring 参照）。
+    common.create_indexes(conn, "observation_agg", OBSERVATION_AGG_INDEXES)
 
     return {
         "n_day": n_day,
