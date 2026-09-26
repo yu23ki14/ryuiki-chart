@@ -90,6 +90,40 @@ export interface CaveatRef {
 const TABLE_SCOPES = GENERATED_CAVEAT_SCOPE.filter((s) => s.scopeKind === "table");
 const TABLE_PREFIX_SCOPES = GENERATED_CAVEAT_SCOPE.filter((s) => s.scopeKind === "table_prefix");
 
+/** スコープ行1つと、それが一致した参照（テーブル名・facet 参照）の初出順。 */
+export interface ScopeMatch {
+  scope: GeneratedCaveatScope;
+  order: number;
+}
+
+/**
+ * `matches`（スコープ行＋その参照の初出順）から、決定論的な注記の並びを作る
+ * （`caveatsForTables` と `web/src/lib/cube/caveats.ts` の `caveatsForFacets` が
+ * 共有する一般規則。以前は同じソート＋重複排除がここと `caveatsForFacets` の
+ * 2箇所に複製されていた）:
+ *   1. `(priority 降順, order 昇順, sortOrder 昇順)` で並べる。`priority` は
+ *      `synthetic`（合成データ由来）のように「他のどの参照より先に出す」注記を
+ *      持つ scope 行だけが1で、他は既定の0（scope_kind に特殊な値を作らず、
+ *      この優先度専用の列で表す。詳細は `web/src/db/schema-registry.ts` の
+ *      `caveatScope` コメント）。
+ *   2. caveat の key で重複排除（先勝ち）。
+ */
+export function resolveCaveatRefs(matches: readonly ScopeMatch[]): CaveatRef[] {
+  const sorted = [...matches].sort((a, b) => {
+    if (a.scope.priority !== b.scope.priority) return b.scope.priority - a.scope.priority;
+    if (a.order !== b.order) return a.order - b.order;
+    return a.scope.sortOrder - b.scope.sortOrder;
+  });
+
+  const seen = new Map<string, CaveatRef>();
+  for (const { scope } of sorted) {
+    if (seen.has(scope.caveatKey)) continue;
+    seen.set(scope.caveatKey, { key: scope.caveatKey, text: tryCaveatBody(scope.caveatKey) ?? scope.caveatKey });
+  }
+
+  return [...seen.values()];
+}
+
 /**
  * ツールが触れたテーブル名から、該当する注記を決定論的に引く。
  *
@@ -98,12 +132,7 @@ const TABLE_PREFIX_SCOPES = GENERATED_CAVEAT_SCOPE.filter((s) => s.scopeKind ===
  *   1. 渡されたテーブルを順に見て、各テーブルについて table / table_prefix のスコープに
  *      一致する行をすべて集める（「このスコープ行がどのテーブル引数にマッチしたか」の
  *      インデックスを記録しておく）。
- *   2. 集めた行を `(priority 降順, マッチしたテーブルの呼び出し順 昇順, sortOrder 昇順)` で
- *      並べる。`priority` は `synthetic`（合成データ由来テーブル）のように「他のどの
- *      テーブルより先に出す」注記を持つ scope 行だけが1で、他は既定の0
- *      （scope_kind に特殊な値を作らず、この優先度専用の列で表す。詳細は
- *      `web/src/db/schema-registry.ts` の `caveatScope` コメント）。
- *   3. caveat の key で重複排除（先勝ち）。
+ *   2. `resolveCaveatRefs` で並べ替え・重複排除する。
  *
  * `scope_kind === 'table_synthetic'` のような特殊分岐は無い。「synthetic を最優先で
  * 先頭に置く」という以前の挙動は、synthetic のスコープ行だけが priority=1 を持つことから
@@ -116,7 +145,7 @@ export function caveatsForTables(tables: readonly string[]): CaveatRef[] {
     if (!tableOrder.has(t)) tableOrder.set(t, i);
   });
 
-  const matches: { scope: GeneratedCaveatScope; order: number }[] = [];
+  const matches: ScopeMatch[] = [];
   for (const t of tables) {
     const order = tableOrder.get(t)!;
     for (const s of TABLE_SCOPES) {
@@ -127,19 +156,7 @@ export function caveatsForTables(tables: readonly string[]): CaveatRef[] {
     }
   }
 
-  matches.sort((a, b) => {
-    if (a.scope.priority !== b.scope.priority) return b.scope.priority - a.scope.priority;
-    if (a.order !== b.order) return a.order - b.order;
-    return a.scope.sortOrder - b.scope.sortOrder;
-  });
-
-  const seen = new Map<string, CaveatRef>();
-  for (const { scope } of matches) {
-    if (seen.has(scope.caveatKey)) continue;
-    seen.set(scope.caveatKey, { key: scope.caveatKey, text: tryCaveatBody(scope.caveatKey) ?? scope.caveatKey });
-  }
-
-  return [...seen.values()];
+  return resolveCaveatRefs(matches);
 }
 
 export function caveatKeysForTables(tables: readonly string[]): string[] {

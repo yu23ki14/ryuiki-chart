@@ -16,7 +16,8 @@
  * `caveatsForFacets` は「順序付きの facet 参照の配列（`FacetRef[]`）」を受け取り、
  * `web/src/lib/registry/lookup-client.ts` の `caveatsForTables()` と全く同じ一般規則
  * （`(priority 降順, 初出順 昇順, sortOrder 昇順)` でソートし、caveat の key で先勝ち
- * 重複排除）で注記を引く。**facet の種類ごとにグループ化してから並べる、ということは
+ * 重複排除——`lookup-client.ts` の `resolveCaveatRefs()` を共有し、この並べ替え・
+ * 重複排除自体は1箇所にしかない）で注記を引く。**facet の種類ごとにグループ化してから並べる、ということは
  * しない**——`caveatsForTables` が「渡されたテーブル引数の出現順」をそのまま使うのと同じく、
  * `caveatsForFacets` も「渡された facet 参照の出現順」をそのまま使う。以前の実装は
  * `CaveatFacets`（`datasets`/`themes`/`placeKinds`/`sourceIds`/`tables` に分けたオブジェクト）
@@ -37,7 +38,7 @@
  * `SeriesFacetInput`（`SeriesInfo & { theme }`）として渡してもらう形にした。
  */
 import { GENERATED_CAVEAT_SCOPE, type GeneratedCaveatScope } from "@/lib/registry/generated-client";
-import { tryCaveatBody, type CaveatRef } from "@/lib/registry/lookup-client";
+import { resolveCaveatRefs, type CaveatRef, type ScopeMatch } from "@/lib/registry/lookup-client";
 import type { SeriesInfo } from "./series";
 import type { Scope } from "./sql";
 
@@ -83,7 +84,7 @@ export function caveatsForFacets(facets: readonly FacetRef[]): CaveatRef[] {
     if (!order.has(k)) order.set(k, i);
   });
 
-  const matches: { scope: GeneratedCaveatScope; order: number }[] = [];
+  const matches: ScopeMatch[] = [];
   for (const f of facets) {
     const idx = order.get(facetKey(f))!;
     for (const s of SCOPES_BY_KIND.get(f.kind) ?? []) {
@@ -96,18 +97,7 @@ export function caveatsForFacets(facets: readonly FacetRef[]): CaveatRef[] {
     }
   }
 
-  matches.sort((a, b) => {
-    if (a.scope.priority !== b.scope.priority) return b.scope.priority - a.scope.priority;
-    if (a.order !== b.order) return a.order - b.order;
-    return a.scope.sortOrder - b.scope.sortOrder;
-  });
-
-  const seen = new Map<string, CaveatRef>();
-  for (const { scope } of matches) {
-    if (seen.has(scope.caveatKey)) continue;
-    seen.set(scope.caveatKey, { key: scope.caveatKey, text: tryCaveatBody(scope.caveatKey) ?? scope.caveatKey });
-  }
-  return [...seen.values()];
+  return resolveCaveatRefs(matches);
 }
 
 export function caveatKeysForFacets(facets: readonly FacetRef[]): string[] {
@@ -143,7 +133,7 @@ export function facetsForSeries(series: readonly SeriesFacetInput[], scope: Scop
   const refs: FacetRef[] = [];
   const seen = new Set<string>();
   const push = (kind: FacetKind, ref: string) => {
-    const k = `${kind}\u0000${ref}`;
+    const k = facetKey({ kind, ref });
     if (seen.has(k)) return;
     seen.add(k);
     refs.push({ kind, ref });
