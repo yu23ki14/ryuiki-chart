@@ -11,7 +11,7 @@
 import type { CubeDb, SqlParam } from "./db";
 import { MAX_ID_LIST } from "./db";
 import { jsonEachParam, seriesFilterSql } from "./sql";
-import { basisFromValueGrain, seriesKeyFromRow, seriesKeySql, seriesKeyString, type SeriesKey } from "./series";
+import { basisOfCell, seriesKeyFromRow, seriesKeySql, seriesKeyString, type SeriesKey } from "./series";
 
 /**
  * データの出所（PR-2 design §4.3）。`summary`（既定）は `summary_variable_catalog`/
@@ -55,12 +55,19 @@ export interface VariableCatalogRow {
   stats: string[];
 }
 
-/** `variableCatalog`（live/summary 共通）が集計するための、系列×地点1行。 */
+/**
+ * `variableCatalog`（live/summary 共通）が集計するための、系列×地点1行。
+ *
+ * `grain`/`inputGrain`（セル自身の性質）を持つ——`nByBasis` の束ねは basis を
+ * これで決める（`value_grain` の登録値では決めない。Issue #48 PR-2 統合後
+ * 修正A #1・`series.ts` の `basisOfCell` docstring 参照）。
+ */
 interface CatalogCellAgg {
   variableId: string;
   obsStat: string | null;
   unitId: string | null;
-  valueGrain: string | null;
+  grain: string;
+  inputGrain: string;
   placeId: string;
   n: number;
   nCensored: number;
@@ -115,7 +122,7 @@ function bundleVariableCatalog(rows: Iterable<CatalogCellAgg>): VariableCatalogR
     g.unitCounts.set(r.unitId, (g.unitCounts.get(r.unitId) ?? 0) + r.n);
     if (r.yFrom < g.yFrom) g.yFrom = r.yFrom;
     if (r.yTo > g.yTo) g.yTo = r.yTo;
-    const basis = basisFromValueGrain(r.valueGrain);
+    const basis = basisOfCell(r);
     if (basis === "day") g.nByBasis.day += r.n;
     else if (basis === "fiscal_year") g.nByBasis.fiscalYear += r.n;
     else g.nByBasis.year += r.n;
@@ -145,7 +152,8 @@ interface RawLiveCatalogCell {
   variable_id: string;
   obs_stat: string | null;
   unit_id: string | null;
-  value_grain: string | null;
+  grain: string;
+  input_grain: string;
   place_id: string;
   period_start: string;
   n: number;
@@ -165,7 +173,8 @@ async function liveCatalogCells(db: CubeDb, dataset?: string): Promise<CatalogCe
       variableId: c.series.variableId,
       obsStat: c.series.obsStat,
       unitId: c.series.unitId,
-      valueGrain: c.series.valueGrain,
+      grain: c.grain,
+      inputGrain: c.inputGrain,
       placeId: c.placeId,
       n: c.n,
       nCensored: c.nCensored,
@@ -174,7 +183,7 @@ async function liveCatalogCells(db: CubeDb, dataset?: string): Promise<CatalogCe
     }));
   }
   const rows = await db.all<RawLiveCatalogCell>(
-    `SELECT obs.variable_id, obs.obs_stat, obs.unit_id, obs.value_grain, obs.place_id, obs.period_start, obs.n, obs.n_censored
+    `SELECT obs.variable_id, obs.obs_stat, obs.unit_id, obs.grain, obs.input_grain, obs.place_id, obs.period_start, obs.n, obs.n_censored
      FROM observation_agg obs
      WHERE obs.place_kind = 'site' AND ${YEAR_GRAINS_SQL} AND ${MEAN_STAT_SQL}`,
   );
@@ -182,7 +191,8 @@ async function liveCatalogCells(db: CubeDb, dataset?: string): Promise<CatalogCe
     variableId: r.variable_id,
     obsStat: r.obs_stat,
     unitId: r.unit_id,
-    valueGrain: r.value_grain,
+    grain: r.grain,
+    inputGrain: r.input_grain,
     placeId: r.place_id,
     n: r.n,
     nCensored: r.n_censored,
@@ -195,7 +205,8 @@ interface RawSummaryPlaceCell {
   variable_id: string;
   obs_stat: string | null;
   unit_id: string | null;
-  value_grain: string | null;
+  grain: string;
+  input_grain: string;
   place_id: string;
   n: number;
   n_censored: number;
@@ -215,7 +226,7 @@ async function summaryCatalogCells(db: CubeDb, dataset?: string): Promise<Catalo
   if (filter?.empty) return [];
 
   const sql = `
-    SELECT spv.variable_id, spv.obs_stat, spv.unit_id, spv.value_grain, spv.place_id,
+    SELECT spv.variable_id, spv.obs_stat, spv.unit_id, spv.grain, spv.input_grain, spv.place_id,
            spv.n, spv.n_censored, spv.y_from, spv.y_to
     FROM summary_place_variable spv
     ${(filter?.joins ?? []).join("\n    ")}
@@ -225,7 +236,8 @@ async function summaryCatalogCells(db: CubeDb, dataset?: string): Promise<Catalo
     variableId: r.variable_id,
     obsStat: r.obs_stat,
     unitId: r.unit_id,
-    valueGrain: r.value_grain,
+    grain: r.grain,
+    inputGrain: r.input_grain,
     placeId: r.place_id,
     n: r.n,
     nCensored: r.n_censored,
@@ -351,6 +363,16 @@ export async function datasetCells(db: CubeDb, dataset: string): Promise<Dataset
 
 export interface SiteSeriesRow {
   series: SeriesKey;
+  /**
+   * `series` の tuple 文字列（`seriesKeyString`）に `grain`/`inputGrain` を足した
+   * 一意キー（Issue #48 PR-2 統合後修正A #1）。**同じ tuple（`series`）が
+   * `grain`/`inputGrain` 違いで複数行になりうる**——実測: 厚木系の中津川 BOD は
+   * `value_grain='day'` の同じ tuple が `grain='year'・input_grain='day'`
+   * （basis='day'）と `grain='fiscal_year'・input_grain='fiscal_year'`
+   * （basis='fiscal_year'）の2行に分かれる。`seriesKeyString(series)` だけを
+   * キーにすると（旧実装）この2行が同じキーに衝突し、Map に入れると片方が
+   * 消える。
+   */
   seriesKey: string;
   grain: string;
   inputGrain: string;
@@ -377,7 +399,7 @@ function toSiteSeriesRow(r: RawSiteSeriesRow): SiteSeriesRow {
   const series = seriesKeyFromRow(r);
   return {
     series,
-    seriesKey: seriesKeyString(series),
+    seriesKey: `${seriesKeyString(series)}|${r.grain}|${r.input_grain}`,
     grain: r.grain,
     inputGrain: r.input_grain,
     n: r.n,
@@ -387,7 +409,13 @@ function toSiteSeriesRow(r: RawSiteSeriesRow): SiteSeriesRow {
   };
 }
 
-async function siteVariablesLive(db: CubeDb, placeId: string, imputation: AvgImputation, dataset?: string): Promise<SiteSeriesRow[]> {
+/**
+ * `siteId`（`sites.site_id`、外部キー）から `place_source_ref` 経由で解決する
+ * （Issue #48 PR-2 統合後修正A #2: 内部の `place_id` ではなく `site()`/`sites()`/
+ * `Scope{kind:'site'}` と同じ `site_id` を受ける——`resolvePlaceId()` の複製が
+ * `web/src/app/sites/[id]/page.tsx`・`web/src/lib/ai/tools.ts` にあったのをここに集約）。
+ */
+async function siteVariablesLive(db: CubeDb, siteId: string, imputation: AvgImputation, dataset?: string): Promise<SiteSeriesRow[]> {
   const filter = dataset ? await datasetFilterSql(db, dataset, "obs") : undefined;
   if (filter?.empty) return [];
 
@@ -399,12 +427,13 @@ async function siteVariablesLive(db: CubeDb, placeId: string, imputation: AvgImp
            MAX(CAST(substr(obs.period_start,1,4) AS INTEGER)) AS y_to,
            AVG(${valueCol}) AS avg
     FROM observation_agg obs
+    JOIN place_source_ref psr ON psr.place_id = obs.place_id AND psr.source_id = 'sites.site_id'
     ${(filter?.joins ?? []).join("\n    ")}
-    WHERE obs.place_id = ? AND obs.place_kind = 'site' AND ${YEAR_GRAINS_SQL} AND ${MEAN_STAT_SQL}
+    WHERE psr.external_key = ? AND obs.place_kind = 'site' AND ${YEAR_GRAINS_SQL} AND ${MEAN_STAT_SQL}
     GROUP BY obs.variable_id, obs.obs_stat, obs.unit_id, obs.value_grain, obs.grain, obs.input_grain
     ORDER BY n DESC
   `;
-  const rows = await db.all<RawSiteSeriesRow>(sql, [...(filter?.params ?? []), placeId]);
+  const rows = await db.all<RawSiteSeriesRow>(sql, [...(filter?.params ?? []), siteId]);
   return rows.map(toSiteSeriesRow);
 }
 
@@ -416,7 +445,7 @@ async function siteVariablesLive(db: CubeDb, placeId: string, imputation: AvgImp
  * `summary_place_variable` の行をそのまま素通しするのと同じであり、`SiteSeriesRow`
  * の形（系列＝tuple 単位）を壊さずに出典だけ summary に切り替えられる。
  */
-async function siteVariablesSummary(db: CubeDb, placeId: string, imputation: AvgImputation, dataset?: string): Promise<SiteSeriesRow[]> {
+async function siteVariablesSummary(db: CubeDb, siteId: string, imputation: AvgImputation, dataset?: string): Promise<SiteSeriesRow[]> {
   const filter = dataset ? await datasetFilterSql(db, dataset, "spv") : undefined;
   if (filter?.empty) return [];
 
@@ -428,12 +457,13 @@ async function siteVariablesSummary(db: CubeDb, placeId: string, imputation: Avg
            MAX(spv.y_to) AS y_to,
            AVG(${valueCol}) AS avg
     FROM summary_place_variable spv
+    JOIN place_source_ref psr ON psr.place_id = spv.place_id AND psr.source_id = 'sites.site_id'
     ${(filter?.joins ?? []).join("\n    ")}
-    WHERE spv.place_id = ?
+    WHERE psr.external_key = ?
     GROUP BY spv.variable_id, spv.obs_stat, spv.unit_id, spv.value_grain, spv.grain, spv.input_grain
     ORDER BY n DESC
   `;
-  const rows = await db.all<RawSiteSeriesRow>(sql, [...(filter?.params ?? []), placeId]);
+  const rows = await db.all<RawSiteSeriesRow>(sql, [...(filter?.params ?? []), siteId]);
   return rows.map(toSiteSeriesRow);
 }
 
@@ -453,16 +483,21 @@ export type AvgImputation = "zero" | "lod";
  * 絞り込む（Issue #48 PR-1 論点A）。`source` 既定は `summary`（design §4.3）。`imputation`
  * は必須（既定を置かない。上の `AvgImputation` docstring参照）——`avg` 列の意味その
  * ものを決めるので、呼び出し側に選ばせる。
+ *
+ * 第2引数は `site()`/`sites()`/`Scope{kind:'site'}` と同じ外部キーの `site_id`
+ * （`sites.site_id`）を受ける（Issue #48 PR-2 統合後修正A #2。以前は内部の
+ * `place_id` を要求しており、呼び出し側〔`web/src/app/sites/[id]/page.tsx`・
+ * `web/src/lib/ai/tools.ts`〕がそれぞれ `resolvePlaceId()` を複製していた）。
  */
 export async function siteVariables(
   db: CubeDb,
-  placeId: string,
+  siteId: string,
   opt: { imputation: AvgImputation; dataset?: string; source?: CatalogSource },
 ): Promise<SiteSeriesRow[]> {
   const source = opt.source ?? DEFAULT_CATALOG_SOURCE;
   return source.kind === "summary"
-    ? siteVariablesSummary(db, placeId, opt.imputation, opt.dataset)
-    : siteVariablesLive(db, placeId, opt.imputation, opt.dataset);
+    ? siteVariablesSummary(db, siteId, opt.imputation, opt.dataset)
+    : siteVariablesLive(db, siteId, opt.imputation, opt.dataset);
 }
 
 export interface SiteRow2 {
