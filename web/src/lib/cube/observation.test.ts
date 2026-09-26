@@ -270,6 +270,34 @@ describe("summarize: zone / zone_month_of_year", () => {
     expect(rows[0].month).toBe(1);
     expect(rows[0].nSites).toBe(2); // fx_place_a, fx_place_c
   });
+
+  it("回帰: scope: {kind:'zone'} で呼んでも二重 JOIN の別名が衝突しない（Issue #48 PR-1 統合で発見）", async () => {
+    // `buildScopeSql` の "zone" スコープ自身も地点→ゾーンの JOIN（`pr`/`zref`）を
+    // 持つため、`summarizeZone`/`summarizeZoneMonth` が同じ別名で独自の JOIN を
+    // 足すと "ambiguous column name" で落ちていた（実測。design の全テストは
+    // `scope: {kind:'all_sites'}` で呼んでいたため気づかれていなかった）。
+    const specYear: CellSpec = {
+      series: [FX.series.ssMean],
+      scope: { kind: "zone" },
+      grain: "day",
+      stats: ["mean"],
+      imputation: "zero",
+    };
+    const yearRows = await summarize(fx.db, specYear, "zone");
+    const zone3 = yearRows.filter((r) => r.zone === 3);
+    expect(zone3).toHaveLength(1);
+    expect(zone3[0].nSites).toBe(2); // fx_place_a, fx_place_c（site スコープの JOIN で絞られる）
+
+    const specMonth: CellSpec = {
+      series: [FX.series.ssMean],
+      scope: { kind: "zone" },
+      grain: "day",
+      stats: ["mean"],
+      imputation: "zero",
+    };
+    const monthRows = await summarize(fx.db, specMonth, "zone_month_of_year");
+    expect(monthRows.filter((r) => r.zone === 3)).toHaveLength(1);
+  });
 });
 
 describe("summarize: place（v1 site_var・longitudinal 相当）", () => {

@@ -281,13 +281,22 @@ async function summarizeZone(db: CubeDb, spec: CellSpec): Promise<ZoneYearRow[]>
   const { joins, wheres, params } = commonFilterSql(spec, OBS);
   const v = valueExpr(spec.imputation, OBS);
 
+  // `zg`/`zgz`（zone-group）: このゾーン集計自身が使うためだけの地点→ゾーンの JOIN
+  // （design が想定する主な呼び出し方——`scope: { kind: "all_sites" }` で呼び、
+  // ゾーンへの絞り込みは summarize 自身が行う——のときは commonFilterSql 側の
+  // joins にはゾーン関連の JOIN が無いので、これが唯一の経路になる）。
+  // `buildScopeSql` の "zone" スコープも同じ目的で `pr`/`zref` という別名を使うため、
+  // `spec.scope.kind === 'zone'` で呼ばれると別名が衝突する（実測: SQLite が
+  // "ambiguous column name" で拒む）。別名をここだけ変えて衝突を避ける——
+  // どちらのスコープで呼ばれても正しく動くようにする（地点→ゾーンの辺は単射
+  // なので、二重に JOIN しても行が増えることはない）。
   const sql = `
-    SELECT CAST(zref.external_key AS INTEGER) AS zone, ${OBS}.grain AS grain, ${OBS}.input_grain AS input_grain,
+    SELECT CAST(zgz.external_key AS INTEGER) AS zone, ${OBS}.grain AS grain, ${OBS}.input_grain AS input_grain,
            CAST(substr(${OBS}.period_start,1,4) AS INTEGER) AS year,
            COUNT(DISTINCT ${OBS}.place_id) AS n_sites, SUM(${OBS}.n) AS n, AVG(${v}) AS avg
     FROM observation_agg ${OBS}
-    JOIN place_relation pr ON pr.child_id = ${OBS}.place_id AND pr.relation = 'within'
-    JOIN place_source_ref zref ON zref.place_id = pr.parent_id AND zref.source_id = 'sites.zone'
+    JOIN place_relation zg ON zg.child_id = ${OBS}.place_id AND zg.relation = 'within'
+    JOIN place_source_ref zgz ON zgz.place_id = zg.parent_id AND zgz.source_id = 'sites.zone'
     ${joins.join("\n    ")}
     ${whereSql(wheres)}
     GROUP BY zone, ${OBS}.grain, ${OBS}.input_grain, substr(${OBS}.period_start,1,4)
@@ -304,13 +313,15 @@ async function summarizeZoneMonth(db: CubeDb, spec: CellSpec): Promise<ZoneMonth
   const { joins, wheres, params } = commonFilterSql(spec, OBS);
   const v = valueExpr(spec.imputation, OBS);
 
+  // `zg`/`zgz` の別名の理由は `summarizeZone` のコメント参照
+  // （`buildScopeSql` の "zone" スコープが使う `pr`/`zref` との衝突を避ける）。
   const sql = `
-    SELECT CAST(zref.external_key AS INTEGER) AS zone,
+    SELECT CAST(zgz.external_key AS INTEGER) AS zone,
            CAST(substr(${OBS}.period_start,6,2) AS INTEGER) AS month,
            COUNT(DISTINCT ${OBS}.place_id) AS n_sites, SUM(${OBS}.n) AS n, AVG(${v}) AS avg
     FROM observation_agg ${OBS}
-    JOIN place_relation pr ON pr.child_id = ${OBS}.place_id AND pr.relation = 'within'
-    JOIN place_source_ref zref ON zref.place_id = pr.parent_id AND zref.source_id = 'sites.zone'
+    JOIN place_relation zg ON zg.child_id = ${OBS}.place_id AND zg.relation = 'within'
+    JOIN place_source_ref zgz ON zgz.place_id = zg.parent_id AND zgz.source_id = 'sites.zone'
     ${joins.join("\n    ")}
     ${whereSql(wheres)}
     GROUP BY zone, month
