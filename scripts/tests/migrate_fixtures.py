@@ -116,6 +116,22 @@ DEFAULT_VARIABLES = [
     ("common:variable:water.water_temp", None, None),
 ]
 
+# `unit`（Issue #48 PR-1 §4。`scripts/b04_build_cube.py` の `_assert_unit_evidence()`
+# が ATTACH した registry に対して見る表）。実 registry.sqlite は
+# `scripts/registry/build_unit_variable.py` が必ず作るので、テストフィクスチャも
+# 既定で持たせる（無いと検証1・検証2が「reg.unit が無いので素通り」に落ちて
+# 何も検証しないまま緑になる——`test_b04_build_cube.py` の該当節参照）。
+# `common:unit:mg_per_l`/`"mg/L"` の1行だけを既定にする: `test_b04_build_cube.py`
+# の `_row()` ヘルパが `source_table='measurements'` の既定 `unit_id`（mg_per_l）に
+# 対して常に `unit_raw='mg/L'` を持たせる（`unit_id` が無ければ `unit_raw` も
+# 無い）ので、この1行だけで検証1（symbol 一致）が全既定テストで矛盾なく通る。
+# それ以外の unit_id（hpa/ug_per_m3 等）は個々のテストが必要に応じて
+# `units=` で明示的に渡す（意図せず一致/不一致を作らないため、既定には含めない）。
+DEFAULT_UNITS = [
+    # unit_id, symbol
+    ("common:unit:mg_per_l", "mg/L"),
+]
+
 # `time_label_conventions.yaml` 相当（T2）。既定フィクスチャの `src_hourly`
 # （RAIN、5行）だけを宣言する。
 DEFAULT_TIME_LABEL_CONVENTIONS_YAML_TEXT = (
@@ -166,6 +182,7 @@ def make_measurements_db(path, rows=None, sensor_rows=None) -> None:
 
 def make_registry_db(
     path, aliases=None, places=None, place_refs=None, variables=None, place_relations=None,
+    units=None,
 ) -> None:
     """`place_relations` の既定は空（ゾーンを持たないテストはそのまま動く。
     `phase-b/zone-slice` で `place_relation`（地点→ゾーンの辺、ADR-0022 決定2）
@@ -173,6 +190,12 @@ def make_registry_db(
     完全に一致させてある——`id INTEGER PRIMARY KEY AUTOINCREMENT` を含む6列。
     `place_relations` に渡す各要素は `id` を除いた
     `(parent_id, child_id, relation, fraction, basis)` の5つ組）。
+
+    `units`（Issue #48 PR-1 §4）: `(unit_id, symbol)` の並び。既定は
+    `DEFAULT_UNITS`（`common:unit:mg_per_l` の1行）。`[]` を渡すと空の `unit` 表
+    （`_assert_unit_evidence()` の検証1が何とも一致しない状態）になる——
+    `test_b04_build_cube.py` の `_registry_db_with_unit()` はこの経由で
+    使う unit_id の組だけを持つ registry を作る。
     """
     conn = sqlite3.connect(str(path))
     try:
@@ -196,6 +219,13 @@ def make_registry_db(
         conn.execute(
             "CREATE TABLE variable (variable_id TEXT PRIMARY KEY, default_stat TEXT, name_ja TEXT)"
         )
+        # `scripts/schema_registry.sql` の `unit` と同じ5列（本物の registry.sqlite
+        # に合わせる。`_assert_unit_evidence()` は symbol しか読まないが、列構成を
+        # 実物と揃えておく）。
+        conn.execute(
+            "CREATE TABLE unit (unit_id TEXT PRIMARY KEY, symbol TEXT, ucum TEXT, "
+            "name_ja TEXT, quantity_kind TEXT)"
+        )
         conn.executemany(
             "INSERT INTO variable_alias VALUES (?,?,?,?,?,?,?)",
             aliases if aliases is not None else DEFAULT_ALIASES,
@@ -215,6 +245,10 @@ def make_registry_db(
         conn.executemany(
             "INSERT INTO variable VALUES (?,?,?)",
             variables if variables is not None else DEFAULT_VARIABLES,
+        )
+        conn.executemany(
+            "INSERT INTO unit (unit_id, symbol) VALUES (?,?)",
+            units if units is not None else DEFAULT_UNITS,
         )
         conn.commit()
     finally:

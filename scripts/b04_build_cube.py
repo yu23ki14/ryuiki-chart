@@ -671,18 +671,33 @@ def _assert_unit_evidence(conn: sqlite3.Connection, declarations_path=UNIT_EVIDE
     検証する（D3、モジュール docstring「単位の証拠検査」節参照）。`conn` は
     `reg`（registry.sqlite）が ATTACH 済みであること。戻り値はレポート用の実測件数。
 
-    `reg.unit` テーブルが無ければ**何もせず**素通りする。この検査は本物の
-    `registry/unit.yaml` に対する実測（D3）と、それに紐づく宣言 YAML の突き合わせ
-    であり、`unit` テーブルを持たない縮小フィクスチャ（`scripts/tests/migrate_fixtures.py`
-    の `make_registry_db()`。`variable`/`variable_alias`/`place*` はあるが `unit` は元々
-    無い——T4-2 が読む `variable.default_stat` だけがフィクスチャの対象だったため）には
-    意味を持たない。本物の `registry.sqlite` は `scripts/registry/build_unit_variable.py`
-    が必ず `unit` を作るので、実運用ではこの分岐に入らない。
+    **`reg.unit` テーブルが無ければ止まる**（Issue #48 PR-1 §4。以前はここで
+    黙って素通りしていたため、`unit` を持たない縮小フィクスチャ
+    （`scripts/tests/migrate_fixtures.py` の `make_registry_db()`）を使うテストは
+    この検証（検証1・検証2とも）を一度も実行しないまま緑になっていた——
+    `scripts/tests/test_b04_build_cube.py` の該当節で発見。本物の `registry.sqlite`
+    は `scripts/registry/build_unit_variable.py` が必ず `unit` を作るので実運用では
+    元々このエラーに当たらない。`make_registry_db()` は既定で `unit` を持つ
+    （`DEFAULT_UNITS`）ので、テストも通常はここで止まらない）。検証1
+    （symbol 不一致）は `reg.unit` さえあれば常に行う。
+
+    `declarations_path=None`: 検証2（宣言されていない欠落／宣言の腐り）だけを
+    丸ごとスキップする（検証1は上記のとおり常に行う）。本物の宣言 YAML
+    （`UNIT_EVIDENCE_DECLARATIONS_YAML`）は実データ全体を前提にした宣言なので、
+    それとは無関係な小さな合成フィクスチャで `build_cube()` を呼ぶだけの
+    一般テストが「本物の宣言と自分のフィクスチャの中身が食い違う」で落ちるのを
+    避けるための逃げ道。`build_cube()` はこの属性を呼び出し時にモジュール
+    グローバルとして読むため、テストが `UNIT_EVIDENCE_DECLARATIONS_YAML` を
+    `None` に monkeypatch できる（`build_cube()` 内のコメント参照。
+    `scripts/tests/conftest.py` が全テスト共通でこれを行う）。単位の証拠検査
+    そのものを検証するテスト（`test_b04_build_cube.py` の該当節）は常に
+    実在する宣言ファイルを明示的に渡すので、この分岐には入らない。
     """
-    if conn.execute(
-        "SELECT 1 FROM reg.sqlite_master WHERE type='table' AND name='unit'"
-    ).fetchone() is None:
-        return {"n_unit_symbol_mismatch": 0, "n_unit_evidence_declared": 0}
+    common.assert_attached_table_exists(
+        conn, "reg", "unit",
+        hint="registry.sqlite に unit が無い。scripts/registry/build_unit_variable.py で作り直すこと"
+        "（テストなら scripts/tests/migrate_fixtures.make_registry_db の units 引数で持たせること）。",
+    )
 
     # 検証1は `measurements` データセットに限る（D3 の受け入れ条件・実測が
     # 「measurements の alias 38行」だけを対象にしたため）。`sensor_timeseries` は
@@ -715,6 +730,9 @@ def _assert_unit_evidence(conn: sqlite3.Connection, declarations_path=UNIT_EVIDE
             f"（例: {sample}）。D3（registry/variable_alias.csv の unit_id は実測した"
             "一致だけを埋める）の前提が崩れている。"
         )
+
+    if declarations_path is None:
+        return {"n_unit_symbol_mismatch": n_mismatch, "n_unit_evidence_declared": 0}
 
     rows = conn.execute(
         """
@@ -796,7 +814,18 @@ def build_cube(
     # 単位の証拠検査（D3、モジュール docstring「単位の証拠検査」節参照）。
     # observation_agg を作り始める前に確認する（observation_agg 自体は unit_raw を
     # 持たないため、この検証ができるのは observation を直接読めるここだけ）。
-    unit_evidence_stats = _assert_unit_evidence(conn)
+    # `declarations_path` を明示的に渡す（モジュールレベルの `UNIT_EVIDENCE_DECLARATIONS_YAML`
+    # をここで関数本体の中から参照することで、呼び出し時点の値を見る——
+    # `_assert_unit_evidence()` 自身のデフォルト引数は定義時に束縛されるため、
+    # テストが `b04.UNIT_EVIDENCE_DECLARATIONS_YAML` を monkeypatch しても
+    # そちらには反映されない。Issue #48 PR-1 §4: `scripts/tests/conftest.py` の
+    # autouse フィクスチャが全テスト共通でこの属性を `None` に monkeypatch し、
+    # 検証2（宣言の過不足）だけをスキップする——`build_cube()` を呼ぶだけの
+    # 一般テスト（単位の証拠そのものを検証する意図が無い大半のテスト）が、
+    # 本物の宣言 YAML（実データ全体が前提）と自分の小さな合成フィクスチャの
+    # 中身を突き合わせて落ちるのを防ぐ。検証1（symbol 不一致）はこの
+    # フィクスチャの有無に関わらず常に動く）。
+    unit_evidence_stats = _assert_unit_evidence(conn, declarations_path=UNIT_EVIDENCE_DECLARATIONS_YAML)
 
     conn.execute(_CREATE_OBS_IMPUTED_VIEW_SQL)
 

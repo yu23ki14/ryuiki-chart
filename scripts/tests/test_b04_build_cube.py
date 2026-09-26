@@ -29,9 +29,19 @@ def _row(
     variable_id="common:variable:water.bod", obs_stat=None, unit_id="common:unit:mg_per_l",
     censoring_limit=None, value_grain="day", period_grain="day", period_raw=None,
 ):
+    # unit_raw: `unit_id` が付いているときだけ実測の生表記（"mg/L"）を持たせる。
+    # `unit_id=None` のケース（大半の一般テスト）は `unit_raw` も None にしておかないと、
+    # Issue #48 PR-1 §4（`make_registry_db()` に既定で `unit` 表を持たせた後）で
+    # `_assert_unit_evidence()` の検証2（`unit_id IS NULL AND unit_raw IS NOT NULL`
+    # の未宣言の欠落。宣言 YAML は本物の
+    # `scripts/migrate/unit_evidence_declarations.yaml` を見る）に、この項目とは
+    # 無関係な行まで引っかかってしまう。単位の証拠検査を明示的にテストする節
+    # （後方の `_assert_unit_evidence` 専用テスト）は `unit_raw` を自分で
+    # `UPDATE` して上書きするので、ここの既定には影響されない。
+    unit_raw = "mg/L" if unit_id is not None else None
     return (
         source_table, source_row_id, "jp-14", "place_s1", "site", variable_id, obs_stat,
-        unit_id, "mg/L", value_grain, period_grain, period_start, period_end,
+        unit_id, unit_raw, value_grain, period_grain, period_start, period_end,
         period_raw if period_raw is not None else period_start, value_num, value_raw, censoring, censoring_limit,
         "公開済", 0, "ref", "ev1",
     )
@@ -45,6 +55,12 @@ def _registry_db(tmp_path):
     registry_db = tmp_path / "registry.sqlite"
     make_registry_db(registry_db)
     return registry_db
+
+
+def _write_declarations(tmp_path, declared, name="unit_evidence_declarations.yaml"):
+    path = tmp_path / name
+    path.write_text(yaml.safe_dump({"declared": declared}, allow_unicode=True), encoding="utf-8")
+    return path
 
 
 def test_zero_and_lod_series_per_censoring_branch(tmp_path):
@@ -739,22 +755,12 @@ def test_running_twice_yields_identical_observation_agg_content_hash(tmp_path):
 
 
 def _registry_db_with_unit(tmp_path, units, name="registry.sqlite"):
-    """`make_registry_db()`（`unit` テーブルを持たない既定フィクスチャ）に
-    `unit(unit_id, symbol)` を追加した registry.sqlite を作る。`units` は
-    `(unit_id, symbol)` のタプルのリスト。
+    """`make_registry_db()` の `unit` 表を、この検査が使う `(unit_id, symbol)` の
+    組だけに絞った registry.sqlite を作る（既定の `DEFAULT_UNITS` を使わず、
+    テストごとに意図した unit_id だけを持たせる——意図せぬ一致/不一致を防ぐ）。
     """
     registry_db = tmp_path / name
-    make_registry_db(registry_db)
-    conn = sqlite3.connect(str(registry_db))
-    try:
-        conn.execute(
-            "CREATE TABLE unit (unit_id TEXT PRIMARY KEY, symbol TEXT, ucum TEXT, "
-            "name_ja TEXT, quantity_kind TEXT)"
-        )
-        conn.executemany("INSERT INTO unit (unit_id, symbol) VALUES (?, ?)", units)
-        conn.commit()
-    finally:
-        conn.close()
+    make_registry_db(registry_db, units=units)
     return registry_db
 
 
@@ -768,23 +774,20 @@ def _observation_conn_with_attached_registry(tmp_path, rows, registry_db, db_nam
     return conn
 
 
-def _write_declarations(tmp_path, declared, name="unit_evidence_declarations.yaml"):
-    path = tmp_path / name
-    path.write_text(yaml.safe_dump({"declared": declared}, allow_unicode=True), encoding="utf-8")
-    return path
-
-
-def test_unit_evidence_skips_when_registry_has_no_unit_table(tmp_path):
-    """`unit` テーブルを持たない縮小フィクスチャ（既存の全テストが使う
-    `make_registry_db()`）では、この検査は何もせず素通りする（本物の
-    registry.sqlite は必ず `unit` を持つため実運用では起きない分岐）。
+def test_unit_evidence_runs_by_default_because_fixture_now_has_a_unit_table(tmp_path):
+    """Issue #48 PR-1 §4: `_assert_unit_evidence()` はもう `reg.unit` の有無で
+    素通りしない（`make_registry_db()` が既定で `unit` を持つようになったため、
+    そもそも「無い」経路には実運用でも通常のテストでも入らない）。既定の
+    `_registry_db()`（`DEFAULT_UNITS`＝`common:unit:mg_per_l`→"mg/L"）と
+    既定の `_row()`（`unit_id="common:unit:mg_per_l"` なら `unit_raw="mg/L"`）が
+    整合していることを確認する回帰テスト。
     """
     rows = [_row("measurements", "m1", "2020-01-01", "2020-01-01", 2.0, "2.0", "none")]
-    registry_db = _registry_db(tmp_path)  # unit テーブル無し
+    registry_db = _registry_db(tmp_path)  # 既定で unit テーブルあり（DEFAULT_UNITS）
     conn = _observation_conn_with_attached_registry(tmp_path, rows, registry_db)
     try:
-        stats = b04._assert_unit_evidence(conn)
-        assert stats == {"n_unit_symbol_mismatch": 0, "n_unit_evidence_declared": 0}
+        stats = b04._assert_unit_evidence(conn, declarations_path=_write_declarations(tmp_path, []))
+        assert stats["n_unit_symbol_mismatch"] == 0
     finally:
         conn.close()
 
