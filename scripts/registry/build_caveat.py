@@ -49,6 +49,32 @@ title_ja, body_ja, quote)` という単一テーブルだった。しかし実�
   `'table'` / `'table_prefix'` 側には絶対に混ぜない
   （混ぜると `caveats.test.ts` のスナップショットが壊れる）。
 
+### v2 facet（Issue #48 PR-1b、docs/plans/V2_SERVING_PR1.md §6.1）
+
+上記4種（v1、テーブル名で引く）に加えて、v2（`lib/cube`）がキューブのセルから
+直接引けるスコープを4種新設した。**v1 の `'table'`/`'table_prefix'` 行は1行も
+変えず、同じ caveat_id に対して新しい scope_kind の行を追加するだけ**（`_build_table_scope_rows()`
+の各 `add_table_group(...)` 呼び出しの直後に対応する `add_facet_group(...)` を置き、
+v1 行の「隣に」生成する）。`caveatsForTables()`（`lookup-client.ts`）は
+`scope_kind IN ('table','table_prefix')` でしかフィルタしないので、この追加は
+既存の注記の結果（`caveats.test.ts` の34ケース）を1文字も変えない。
+
+- `'dataset'`        — scope_ref は `variable_alias.dataset` 相当の論理データセット名
+                       (`'measurements'` / `'organism_records'`)。ただし `'synthetic'`
+                       だけは例外で、実在の dataset 値ではなく「系列の `source_id` が
+                       NULL（`is_synthetic=1`）」という規約を表す記号（D4）。
+- `'place_kind'`     — scope_ref は `place.place_kind` の値そのもの（`'site'` / `'zone'` /
+                       `'grid01'`）。
+- `'source_id'`      — scope_ref は出典 ID。`isAlien` は `taxon_assessment.source_id`
+                       の値 `'moe_ias_list'`（`taxon_assessment.list_id`
+                       の `'moe_ias_2015'` とは別物。実データで確認済み）。
+- `'variable_theme'` — scope_ref は `variable.theme` の値（`'landuse'`）。
+- `'variable'`       — **予約のみ、この PR では行を作らない**（PR-2 で
+                       `unitUnknown`/`censoredLod` を足すときに使う場所を型に確保するだけ。
+                       `web/scripts/build-registry-ts.mjs` の `CAVEAT_SCOPE_KINDS` に
+                       含めるが、対応する `caveat.yaml` のキーが無いのでここでは
+                       行を1つも生成しない）。
+
 **優先度は `scope_kind` ではなく `priority` 列（既定0）が持つ。** 以前は `synthetic`
 専用に `scope_kind='table_synthetic'` という一致方法を作り、「渡されたテーブルの中に
 1つでもあれば他のどのテーブルより先頭に置く」という優先規則をそこに乗せていた。
@@ -238,7 +264,11 @@ def _build_caveat_rows(entries: list[dict]) -> list[tuple]:
 
 
 def _build_table_scope_rows() -> list[tuple]:
-    """caveats.ts のテーブル→注記マッピングを caveat_scope の行として複製する。"""
+    """caveats.ts のテーブル→注記マッピング（v1、'table'/'table_prefix'）と、
+    v2（`lib/cube`）が引く facet（'dataset'/'place_kind'/'source_id'/'variable_theme'）を
+    caveat_scope の行として作る。v2 facet は同じ caveat_id の v1 'table' 行の直後に
+    足すだけで、v1 行自体は1行も変えない（このファイル冒頭の docstring「v2 facet」節参照）。
+    """
     rows: list[tuple] = []
 
     def add_table_group(
@@ -248,21 +278,57 @@ def _build_table_scope_rows() -> list[tuple]:
             for i, key in enumerate(keys, start=start):
                 rows.append((common.caveat_id(key), "table", t, i, priority))
 
+    def add_facet_group(
+        scope_kind: str, refs: list[str], keys: list[str], priority: int = DEFAULT_PRIORITY, start: int = 0
+    ) -> None:
+        for ref in refs:
+            for i, key in enumerate(keys, start=start):
+                rows.append((common.caveat_id(key), scope_kind, ref, i, priority))
+
     add_table_group(["sites"], SITES_CAVEATS)
+    # zone（SITES_CAVEATS[0]）は地点単位（place_kind='site'）にも流域集計
+    # （place_kind='zone'）にも掛かる。municipality（SITES_CAVEATS[1]）は地点固有の
+    # 属性（sites.municipality）なので place_kind='site' だけ。place_kind='site' での
+    # sort_order は v1（テーブル 'sites'）と同じ番号（zone=0, municipality=1）を保つよう
+    # municipality 側に `start=1` を明示する（2回の add_facet_group 呼び出しに分かれて
+    # いるため、どちらも既定の 0 から採番すると place_kind='site' 上で衝突する）。
+    add_facet_group("place_kind", ["site", "zone"], ["zone"])
+    add_facet_group("place_kind", ["site"], ["municipality"], start=1)
+
     add_table_group(MEASURE_TABLES, MEASURE_CAVEATS)
     # ABOVE_LOD_CAVEATS は MEASURE_CAVEATS と同じ MEASURE_TABLES に掛かる別呼び
     # 出し（MEASURE_CAVEATS を「caveats.ts の複製」のまま変えないため）。
     # sort_order が 0 から振り直されて MEASURE_CAVEATS と衝突しないよう、
     # `len(MEASURE_CAVEATS)` から続きで採番する。
     add_table_group(MEASURE_TABLES, ABOVE_LOD_CAVEATS, start=len(MEASURE_CAVEATS))
+    add_facet_group("dataset", ["measurements"], MEASURE_CAVEATS)
+    add_facet_group("dataset", ["measurements"], ABOVE_LOD_CAVEATS, start=len(MEASURE_CAVEATS))
+
     add_table_group(ORGANISM_TABLES, ORGANISM_CAVEATS)
+    add_facet_group("dataset", ["organism_records"], ORGANISM_CAVEATS)
+
     add_table_group([OCCURRENCE_PLACE_TABLE], OCCURRENCE_PLACE_CAVEATS)
+    # occurrence_place（O-2a）は organismSite のみを持ち、上の
+    # add_facet_group("dataset", ["organism_records"], ORGANISM_CAVEATS) が
+    # organismSite を含んでいるので、ここで別の facet 行は要らない。
+
     add_table_group(MESH_TABLES_EXTRA, MESH_CAVEATS)
+    add_facet_group("place_kind", ["grid01"], MESH_CAVEATS)
+
     add_table_group([IAS_TABLE], IAS_CAVEATS)
+    add_facet_group("source_id", ["moe_ias_list"], IAS_CAVEATS)
+
     add_table_group(LANDUSE_TABLES, LANDUSE_CAVEATS)
+    add_facet_group("variable_theme", ["landuse"], LANDUSE_CAVEATS)
+
     add_table_group(SYNTHETIC_TABLES, SYNTHETIC_CAVEATS, priority=SYNTHETIC_PRIORITY)
+    # 規約（D4）: 系列の source_id が NULL（is_synthetic=1）であることを
+    # dataset='synthetic' という記号で表す。実在の dataset 値ではない。
+    add_facet_group("dataset", ["synthetic"], SYNTHETIC_CAVEATS, priority=SYNTHETIC_PRIORITY)
 
     # mesh_ 接頭辞は個別テーブル名ではなくパターンなので table_prefix で1回だけ持つ。
+    # v2 側は place_kind='grid01' の facet 行（上）が mesh_ プレフィックスと
+    # species_mesh_year の両方をまとめて表すので、ここでは facet を重ねて足さない。
     for i, key in enumerate(MESH_CAVEATS):
         rows.append((common.caveat_id(key), "table_prefix", MESH_TABLE_PREFIX, i, DEFAULT_PRIORITY))
 

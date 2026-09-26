@@ -6,6 +6,7 @@
 import sqlite3
 
 import pytest
+import yaml
 
 import b03_build_observation as b03
 import b04_build_cube as b04
@@ -730,3 +731,214 @@ def test_running_twice_yields_identical_observation_agg_content_hash(tmp_path):
     out1 = build("v2_1.sqlite")
     out2 = build("v2_2.sqlite")
     assert fingerprint(out1) == fingerprint(out2)
+
+
+# ---------------------------------------------------------------------------
+# 単位の証拠検査（Issue #48 PR-1b §3.7、D3。`b04._assert_unit_evidence()`）
+# ---------------------------------------------------------------------------
+
+
+def _registry_db_with_unit(tmp_path, units, name="registry.sqlite"):
+    """`make_registry_db()`（`unit` テーブルを持たない既定フィクスチャ）に
+    `unit(unit_id, symbol)` を追加した registry.sqlite を作る。`units` は
+    `(unit_id, symbol)` のタプルのリスト。
+    """
+    registry_db = tmp_path / name
+    make_registry_db(registry_db)
+    conn = sqlite3.connect(str(registry_db))
+    try:
+        conn.execute(
+            "CREATE TABLE unit (unit_id TEXT PRIMARY KEY, symbol TEXT, ucum TEXT, "
+            "name_ja TEXT, quantity_kind TEXT)"
+        )
+        conn.executemany("INSERT INTO unit (unit_id, symbol) VALUES (?, ?)", units)
+        conn.commit()
+    finally:
+        conn.close()
+    return registry_db
+
+
+def _observation_conn_with_attached_registry(tmp_path, rows, registry_db, db_name="v2.sqlite"):
+    """`observation` だけを持つ v2.sqlite 相当のフィクスチャを作り、`reg` として
+    `registry_db` を ATTACH した接続を返す（`_assert_unit_evidence()` の前提と
+    同じ状態。呼び出し側が `close()` すること）。
+    """
+    conn = make_v2_db_with_observation(tmp_path / db_name, b03._CREATE_OBSERVATION_SQL, rows)
+    common.attach_readonly(conn, registry_db, "reg")
+    return conn
+
+
+def _write_declarations(tmp_path, declared, name="unit_evidence_declarations.yaml"):
+    path = tmp_path / name
+    path.write_text(yaml.safe_dump({"declared": declared}, allow_unicode=True), encoding="utf-8")
+    return path
+
+
+def test_unit_evidence_skips_when_registry_has_no_unit_table(tmp_path):
+    """`unit` テーブルを持たない縮小フィクスチャ（既存の全テストが使う
+    `make_registry_db()`）では、この検査は何もせず素通りする（本物の
+    registry.sqlite は必ず `unit` を持つため実運用では起きない分岐）。
+    """
+    rows = [_row("measurements", "m1", "2020-01-01", "2020-01-01", 2.0, "2.0", "none")]
+    registry_db = _registry_db(tmp_path)  # unit テーブル無し
+    conn = _observation_conn_with_attached_registry(tmp_path, rows, registry_db)
+    try:
+        stats = b04._assert_unit_evidence(conn)
+        assert stats == {"n_unit_symbol_mismatch": 0, "n_unit_evidence_declared": 0}
+    finally:
+        conn.close()
+
+
+def test_unit_evidence_passes_when_unit_raw_matches_symbol(tmp_path):
+    """`source_table='measurements'` で `unit_id` が埋まっている行の `unit_raw` が
+    `unit.symbol` と一致すれば通る（D3 の前提が保たれている状態）。
+    """
+    rows = [
+        _row(
+            "measurements", "m1", "2020-01-01", "2020-01-01", 2.0, "2.0", "none",
+            unit_id="common:unit:mg_per_l",
+        ),
+    ]
+    registry_db = _registry_db_with_unit(tmp_path, [("common:unit:mg_per_l", "mg/L")])
+    conn = _observation_conn_with_attached_registry(tmp_path, rows, registry_db)
+    try:
+        stats = b04._assert_unit_evidence(
+            conn, declarations_path=_write_declarations(tmp_path, [])
+        )
+        assert stats["n_unit_symbol_mismatch"] == 0
+    finally:
+        conn.close()
+
+
+def test_unit_evidence_raises_when_measurements_unit_raw_does_not_match_symbol(tmp_path):
+    """変異: `source_table='measurements'` の `unit_raw` がレジストリの `symbol`
+    と食い違う行を1つ混ぜると `_assert_unit_evidence()` が
+    `common.MigrationError` で止まる（D3 の前提が崩れたことを機械的に拾う）。
+    """
+    rows = [
+        _row(
+            "measurements", "m1", "2020-01-01", "2020-01-01", 2.0, "2.0", "none",
+            unit_id="common:unit:mg_per_l",
+        ),
+    ]
+    # symbol を "mg/L" ではなく別の値にして不一致を作る。
+    registry_db = _registry_db_with_unit(tmp_path, [("common:unit:mg_per_l", "mg/l")])
+    conn = _observation_conn_with_attached_registry(tmp_path, rows, registry_db)
+    try:
+        with pytest.raises(common.MigrationError, match="unit.symbol と一致しない"):
+            b04._assert_unit_evidence(conn, declarations_path=_write_declarations(tmp_path, []))
+    finally:
+        conn.close()
+
+
+def test_unit_evidence_ignores_sensor_timeseries_symbol_mismatch(tmp_path):
+    """検証1は `source_table='measurements'` に限る——`sensor_timeseries` の
+    表記ゆれ（実測: raw "μg/m3" vs registry symbol "ug/m3" 等、48,489件）は
+    D3 の対象外なので、ここで不一致があっても素通りする。
+    """
+    rows = [
+        _row(
+            "sensor_timeseries", "s1", "2020-01-01", "2020-01-01", 2.0, "2.0", "none",
+            unit_id="common:unit:ug_per_m3",
+        ),
+    ]
+    registry_db = _registry_db_with_unit(tmp_path, [("common:unit:ug_per_m3", "ug/m3")])
+    conn = _observation_conn_with_attached_registry(tmp_path, rows, registry_db)
+    conn.execute(
+        "UPDATE observation SET unit_raw = 'μg/m3' WHERE source_row_id = 's1'"
+    )
+    conn.commit()
+    try:
+        stats = b04._assert_unit_evidence(conn, declarations_path=_write_declarations(tmp_path, []))
+        assert stats["n_unit_symbol_mismatch"] == 0
+    finally:
+        conn.close()
+
+
+def test_unit_evidence_declared_gap_passes(tmp_path):
+    """`unit_id IS NULL AND unit_raw IS NOT NULL` の系列が、宣言 YAML の内容と
+    過不足なく一致すれば通る（D3 のスコープ外に残った既知の欠落、例:
+    `scripts/migrate/unit_evidence_declarations.yaml` の
+    sensor_timeseries/water_temp 系列と同じ形）。
+    """
+    rows = [
+        _row(
+            "sensor_timeseries", "s1", "2020-01-01", "2020-01-01", 12.3, "12.3", "none",
+            variable_id="common:variable:water.water_temp", unit_id=None, value_grain="instant",
+        ),
+    ]
+    registry_db = _registry_db_with_unit(tmp_path, [])
+    conn = _observation_conn_with_attached_registry(tmp_path, rows, registry_db)
+    conn.execute("UPDATE observation SET unit_raw = 'degC' WHERE source_row_id = 's1'")
+    conn.commit()
+    declarations_path = _write_declarations(
+        tmp_path,
+        [
+            {
+                "source_table": "sensor_timeseries",
+                "variable_id": "common:variable:water.water_temp",
+                "obs_stat": None,
+                "value_grain": "instant",
+            }
+        ],
+    )
+    try:
+        stats = b04._assert_unit_evidence(conn, declarations_path=declarations_path)
+        assert stats["n_unit_evidence_declared"] == 1
+    finally:
+        conn.close()
+
+
+def test_unit_evidence_raises_on_undeclared_gap(tmp_path):
+    """変異: 上と同じ欠落があるのに宣言 YAML が空だと、
+    `_assert_unit_evidence()` が「宣言されていない欠落」で止まる
+    （新しい欠落が黙って増えるのを防ぐ）。
+    """
+    rows = [
+        _row(
+            "sensor_timeseries", "s1", "2020-01-01", "2020-01-01", 12.3, "12.3", "none",
+            variable_id="common:variable:water.water_temp", unit_id=None, value_grain="instant",
+        ),
+    ]
+    registry_db = _registry_db_with_unit(tmp_path, [])
+    conn = _observation_conn_with_attached_registry(tmp_path, rows, registry_db)
+    conn.execute("UPDATE observation SET unit_raw = 'degC' WHERE source_row_id = 's1'")
+    conn.commit()
+    try:
+        with pytest.raises(common.MigrationError, match="宣言されていない欠落"):
+            b04._assert_unit_evidence(conn, declarations_path=_write_declarations(tmp_path, []))
+    finally:
+        conn.close()
+
+
+def test_unit_evidence_raises_on_stale_declaration(tmp_path):
+    """変異: 宣言 YAML に無くなった（解決済みの）系列が残っていると、
+    `_assert_unit_evidence()` が「宣言が腐っている」で止まる
+    （解決済みの宣言を消し忘れる退行を防ぐ。CLAUDE.md「宣言済み差分 >
+    データを曲げる」）。
+    """
+    rows = [
+        _row(
+            "measurements", "m1", "2020-01-01", "2020-01-01", 2.0, "2.0", "none",
+            unit_id="common:unit:mg_per_l",
+        ),
+    ]
+    registry_db = _registry_db_with_unit(tmp_path, [("common:unit:mg_per_l", "mg/L")])
+    conn = _observation_conn_with_attached_registry(tmp_path, rows, registry_db)
+    declarations_path = _write_declarations(
+        tmp_path,
+        [
+            {
+                # 実データにはもう存在しない、解決済みのはずの系列。
+                "source_table": "sensor_timeseries",
+                "variable_id": "common:variable:water.water_temp",
+                "obs_stat": None,
+                "value_grain": "instant",
+            }
+        ],
+    )
+    try:
+        with pytest.raises(common.MigrationError, match="宣言を削除すること"):
+            b04._assert_unit_evidence(conn, declarations_path=declarations_path)
+    finally:
+        conn.close()

@@ -24,7 +24,7 @@ export interface GeneratedVernacular {
   vernacularNameJa: string;
 }
 
-export type CaveatScopeKind = "table" | "table_prefix";
+export type CaveatScopeKind = "table" | "table_prefix" | "dataset" | "place_kind" | "source_id" | "variable_theme" | "variable";
 
 /**
  * caveat の既知のキー16件の union（docs/plans/PHASE_B_INTAKE.md #6）。
@@ -193,13 +193,33 @@ export const GENERATED_CAVEATS: readonly GeneratedCaveat[] = [
 ];
 
 /**
- * テーブル -> 注記キーのスコープ（caveat_scope の scope_kind in ('table','table_prefix')）。
- * cell/cell_table（cells.notes 由来）は含めない。
+ * テーブル/v2 facet -> 注記キーのスコープ（caveat_scope の scope_kind in
+ * ('table', 'table_prefix', 'dataset', 'place_kind', 'source_id', 'variable_theme', 'variable')）。
+ * cell/cell_table（cells.notes 由来）は含めない。'table'/'table_prefix' は v1
+ * （`caveatsForTables`、テーブル名で引く）、'dataset'/'place_kind'/'source_id'/
+ * 'variable_theme' は v2（`lib/cube/caveats.ts` の `caveatsForFacets`、キューブの
+ * セルから直接引く。Issue #48 PR-1b）。'variable' は行が無い予約枠。
  * 同じ (scopeKind, scopeRef) の中の並びは sortOrder。scope 同士（渡されたテーブル間）の並びは
  * 呼び出し側がテーブル名を渡す順序と priority（既定0。synthetic だけ1で最優先）に従う
  * （scripts/registry/build_caveat.py の docstring参照）。
  */
 export const GENERATED_CAVEAT_SCOPE: readonly GeneratedCaveatScope[] = [
+  { scopeKind: "dataset", scopeRef: "measurements", caveatKey: "measuredOn", sortOrder: 0, priority: 0 },
+  { scopeKind: "dataset", scopeRef: "measurements", caveatKey: "censored", sortOrder: 1, priority: 0 },
+  { scopeKind: "dataset", scopeRef: "measurements", caveatKey: "duplicates", sortOrder: 2, priority: 0 },
+  { scopeKind: "dataset", scopeRef: "measurements", caveatKey: "aboveLod", sortOrder: 3, priority: 0 },
+  { scopeKind: "dataset", scopeRef: "organism_records", caveatKey: "organismSite", sortOrder: 0, priority: 0 },
+  { scopeKind: "dataset", scopeRef: "organism_records", caveatKey: "effort", sortOrder: 1, priority: 0 },
+  { scopeKind: "dataset", scopeRef: "organism_records", caveatKey: "regimes", sortOrder: 2, priority: 0 },
+  { scopeKind: "dataset", scopeRef: "organism_records", caveatKey: "gbifCutoff", sortOrder: 3, priority: 0 },
+  { scopeKind: "dataset", scopeRef: "organism_records", caveatKey: "share", sortOrder: 4, priority: 0 },
+  { scopeKind: "dataset", scopeRef: "synthetic", caveatKey: "synthetic", sortOrder: 0, priority: 1 },
+  { scopeKind: "place_kind", scopeRef: "grid01", caveatKey: "share", sortOrder: 0, priority: 0 },
+  { scopeKind: "place_kind", scopeRef: "grid01", caveatKey: "effort", sortOrder: 1, priority: 0 },
+  { scopeKind: "place_kind", scopeRef: "site", caveatKey: "zone", sortOrder: 0, priority: 0 },
+  { scopeKind: "place_kind", scopeRef: "site", caveatKey: "municipality", sortOrder: 1, priority: 0 },
+  { scopeKind: "place_kind", scopeRef: "zone", caveatKey: "zone", sortOrder: 0, priority: 0 },
+  { scopeKind: "source_id", scopeRef: "moe_ias_list", caveatKey: "isAlien", sortOrder: 0, priority: 0 },
   { scopeKind: "table", scopeRef: "decisions", caveatKey: "synthetic", sortOrder: 0, priority: 1 },
   { scopeKind: "table", scopeRef: "effort_year", caveatKey: "organismSite", sortOrder: 0, priority: 0 },
   { scopeKind: "table", scopeRef: "effort_year", caveatKey: "effort", sortOrder: 1, priority: 0 },
@@ -297,6 +317,7 @@ export const GENERATED_CAVEAT_SCOPE: readonly GeneratedCaveatScope[] = [
   { scopeKind: "table", scopeRef: "zone_year", caveatKey: "aboveLod", sortOrder: 3, priority: 0 },
   { scopeKind: "table_prefix", scopeRef: "mesh_", caveatKey: "share", sortOrder: 0, priority: 0 },
   { scopeKind: "table_prefix", scopeRef: "mesh_", caveatKey: "effort", sortOrder: 1, priority: 0 },
+  { scopeKind: "variable_theme", scopeRef: "landuse", caveatKey: "landuseDefinitionChange", sortOrder: 0, priority: 0 },
 ];
 
 /** Ridge to Reef ゾーン(1-5)の定義（registry/place/zone.yaml、旧 domain.ts の ZONE_INFO）。 */

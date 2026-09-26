@@ -191,6 +191,30 @@ b04 側では検証しない。
    成り立たない——除外後の残りが負の値ばかりだと lod 側の平均がより低くなる
    ことがある。ND を含むセルにはこの不等式を課さない）。
 
+## 単位の証拠検査（Issue #48 PR-1b §3.7、D3。危険#5「単位」の機械検証）
+
+`registry/variable_alias.csv` の `unit_id` は「原本の `unit`（`unit_raw`）とレジストリの
+`unit.symbol` が一致することを実測した」行だけを埋める、というのが D3 の受け入れ条件
+（`docs/plans/V2_SERVING_PR1.md` D3。measurements データセットの alias 38行。流量の
+1alias は原本にも単位が無いため NULL のまま）。`observation` は `unit_id`/`unit_raw` の
+**両方**を持つ唯一の段（`observation_agg` は `unit_raw` を持たない。本ファイル冒頭の
+「unit_raw をキューブに持たない」節参照）なので、この前提を機械的に検証できるのは
+ここ（b04）だけ。`build_cube()` の先頭、ATTACH 直後に `_assert_unit_evidence()` を呼ぶ:
+
+1. `source_table='measurements'` かつ `unit_id IS NOT NULL` の行はすべて `unit_raw` が
+   `reg.unit.symbol` と一致すること（不一致0件）。D3 が実測に基づいて埋めたという
+   前提が崩れていないかの回帰ガード。`measurements` に限るのは D3 の受け入れ条件
+   自体が「measurements の alias 38行」だけを対象にしたため——`sensor_timeseries`
+   は raw の表記ゆれ（例: "μg/m3" vs registry の symbol "ug/m3"）という別の既知の
+   問題（実測48,489件）を抱えており、混ぜると検査が役に立たなくなる。
+2. `unit_id IS NULL AND unit_raw IS NOT NULL`（＝原本に単位はあるのにレジストリが
+   まだ解決していない）行を `(source_table, variable_id, obs_stat, value_grain)` 単位で
+   集計し、`scripts/migrate/unit_evidence_declarations.yaml` の宣言と**集合として**
+   一致すること。宣言に無い新しい欠落（未解決のまま増えた分）だけでなく、宣言はあるが
+   実データからは消えた分（解決済みなのに宣言を消し忘れている）も検出する
+   （CLAUDE.md「宣言済み差分 > データを曲げる」——ゲートを緑にするために宣言を
+   増やし続けるのではなく、宣言が腐ったら止める）。
+
 ## SQLite の版を守る（アドバイザー指摘・オーナー採用）
 
 **平均は SQLite の `AVG()` で計算する。pandas/numpy/Python の素朴な加算で計算し
@@ -612,6 +636,113 @@ def _collect_value_zero_lod_stats(conn: sqlite3.Connection, staging: str) -> dic
     }
 
 
+# ---------------------------------------------------------------------------
+# 単位の証拠検査（Issue #48 PR-1b §3.7、D3。モジュール docstring
+# 「単位の証拠検査」節参照）
+# ---------------------------------------------------------------------------
+
+UNIT_EVIDENCE_DECLARATIONS_YAML = ROOT / "scripts" / "migrate" / "unit_evidence_declarations.yaml"
+
+
+def _load_unit_evidence_declarations(path=UNIT_EVIDENCE_DECLARATIONS_YAML) -> set[tuple]:
+    doc = common.load_yaml(path)
+    entries = doc.get("declared") or []
+    return {
+        (e["source_table"], e["variable_id"], e.get("obs_stat"), e["value_grain"])
+        for e in entries
+    }
+
+
+def _assert_unit_evidence(conn: sqlite3.Connection, declarations_path=UNIT_EVIDENCE_DECLARATIONS_YAML) -> dict:
+    """`observation`（`unit_id`/`unit_raw` を両方持つ唯一の段）に対する単位の証拠を
+    検証する（D3、モジュール docstring「単位の証拠検査」節参照）。`conn` は
+    `reg`（registry.sqlite）が ATTACH 済みであること。戻り値はレポート用の実測件数。
+
+    `reg.unit` テーブルが無ければ**何もせず**素通りする。この検査は本物の
+    `registry/unit.yaml` に対する実測（D3）と、それに紐づく宣言 YAML の突き合わせ
+    であり、`unit` テーブルを持たない縮小フィクスチャ（`scripts/tests/migrate_fixtures.py`
+    の `make_registry_db()`。`variable`/`variable_alias`/`place*` はあるが `unit` は元々
+    無い——T4-2 が読む `variable.default_stat` だけがフィクスチャの対象だったため）には
+    意味を持たない。本物の `registry.sqlite` は `scripts/registry/build_unit_variable.py`
+    が必ず `unit` を作るので、実運用ではこの分岐に入らない。
+    """
+    if conn.execute(
+        "SELECT 1 FROM reg.sqlite_master WHERE type='table' AND name='unit'"
+    ).fetchone() is None:
+        return {"n_unit_symbol_mismatch": 0, "n_unit_evidence_declared": 0}
+
+    # 検証1は `measurements` データセットに限る（D3 の受け入れ条件・実測が
+    # 「measurements の alias 38行」だけを対象にしたため）。`sensor_timeseries` は
+    # 別の既知の問題（symbol の表記ゆれ。例: raw "μg/m3" vs registry symbol
+    # "ug/m3"、"0.1%" の全角/半角違い等。実測で 48,489 件、モジュール docstring
+    # §9-5 相当・設計書 D3 の対象外）を抱えており、ここに混ぜると D3 と無関係な
+    # 大量の不一致で検査そのものが役に立たなくなる。
+    n_mismatch = conn.execute(
+        """
+        SELECT COUNT(*) FROM observation o
+        JOIN reg.unit u ON u.unit_id = o.unit_id
+        WHERE o.unit_raw IS NOT NULL AND o.unit_raw <> u.symbol
+          AND o.source_table = 'measurements'
+        """
+    ).fetchone()[0]
+    if n_mismatch:
+        sample = conn.execute(
+            """
+            SELECT o.source_table, o.variable_id, o.unit_id, o.unit_raw, u.symbol
+            FROM observation o
+            JOIN reg.unit u ON u.unit_id = o.unit_id
+            WHERE o.unit_raw IS NOT NULL AND o.unit_raw <> u.symbol
+              AND o.source_table = 'measurements'
+            LIMIT 5
+            """
+        ).fetchall()
+        raise common.MigrationError(
+            f"observation（source_table='measurements'）: unit_id が埋まっている行の "
+            f"unit_raw が registry の unit.symbol と一致しない行が {n_mismatch:,} 件ある"
+            f"（例: {sample}）。D3（registry/variable_alias.csv の unit_id は実測した"
+            "一致だけを埋める）の前提が崩れている。"
+        )
+
+    rows = conn.execute(
+        """
+        SELECT DISTINCT source_table, variable_id, obs_stat, value_grain
+        FROM observation
+        WHERE unit_id IS NULL AND unit_raw IS NOT NULL
+        """
+    ).fetchall()
+    actual = {(r[0], r[1], r[2], r[3]) for r in rows}
+    declared = _load_unit_evidence_declarations(declarations_path)
+
+    missing = actual - declared
+    stale = declared - actual
+    if missing or stale:
+        # tuple の要素（obs_stat 等）に None と str が混在しうるため、文字列化してから
+        # ソートする（素の `sorted()` は比較不能で `TypeError` になりうる——エラー経路
+        # 自体が別の例外で落ちると原因が分かりにくくなる）。
+        if missing:
+            missing_str = sorted(str(t) for t in missing)
+        if stale:
+            stale_str = sorted(str(t) for t in stale)
+        parts = []
+        if missing:
+            parts.append(
+                f"宣言されていない欠落（unit_id NULL かつ unit_raw NOT NULL）が "
+                f"{len(missing):,} 系列ある: {missing_str}。"
+                f"{declarations_path} に列挙するか、registry/variable_alias.csv の "
+                "unit_id を実測に基づいて埋めて解決すること（推測で埋めない）。"
+            )
+        if stale:
+            parts.append(
+                f"{declarations_path} に宣言があるが実データにはもう存在しない"
+                f"（解決済みの）系列が {len(stale):,} 件ある: {stale_str}。"
+                "宣言を削除すること（宣言済み差分の腐り——CLAUDE.md「宣言済み差分 > "
+                "データを曲げる」）。"
+            )
+        raise common.MigrationError(" / ".join(parts))
+
+    return {"n_unit_symbol_mismatch": n_mismatch, "n_unit_evidence_declared": len(declared)}
+
+
 def build_cube(
     conn,
     registry_db=DEFAULT_REGISTRY_DB,
@@ -648,6 +779,12 @@ def build_cube(
     # below_lod が censoring_limit を必ず持つことは b03 が保証済み（/simplify 指摘2）。
     params = (built_from, spec_version)
     common.attach_readonly(conn, registry_db, "reg")
+
+    # 単位の証拠検査（D3、モジュール docstring「単位の証拠検査」節参照）。
+    # observation_agg を作り始める前に確認する（observation_agg 自体は unit_raw を
+    # 持たないため、この検証ができるのは observation を直接読めるここだけ）。
+    unit_evidence_stats = _assert_unit_evidence(conn)
+
     conn.execute(_CREATE_OBS_IMPUTED_VIEW_SQL)
 
     with common.staged_table(
@@ -730,6 +867,7 @@ def build_cube(
         "n_year_source": n_year_source,
         "n_total": n_day + n_month_from_day + n_month_source + n_year_from_day + n_year_source,
         **value_stats,
+        **unit_evidence_stats,
     }
 
 
