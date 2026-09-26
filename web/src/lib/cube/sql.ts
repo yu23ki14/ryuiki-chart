@@ -54,7 +54,10 @@ export function seriesFilterSql(series: readonly SeriesKey[] | undefined, alias 
 export interface ScopeSql {
   joins: string[];
   wheres: string[];
-  params: SqlParam[];
+  /** `joins` に埋め込んだ `?` のバインド値（JOIN 節の出現順）。 */
+  joinParams: SqlParam[];
+  /** `wheres` に埋め込んだ `?` のバインド値（WHERE 節の出現順）。 */
+  whereParams: SqlParam[];
   /** CellRow.siteId に使う SELECT 式（"NULL" または `<alias>.external_key`）。 */
   siteIdExpr: string;
 }
@@ -65,11 +68,18 @@ export interface ScopeSql {
  * `psr`（`place_source_ref`、`source_id='sites.site_id'`）は `all_sites` 以外は
  * INNER JOIN にする（design: 「psr は LEFT JOIN にしない」）。`all_sites` だけは
  * `sites` に無い地点（厚木の一部・地盤沈下観測点等）も含めるため psr を付けない。
+ *
+ * `joinParams`/`whereParams` を分けて返す（Issue #48 PR-1 code-review #1）: 呼び出し側
+ * （`observation.ts` の `commonFilterSql`）は他のフィルタ（`variableId`/`series`）の
+ * パラメータとここのパラメータを、最終的な SQL 文字列の並び（JOIN 節がまとまって先、
+ * WHERE 節がまとまって後）に合わせて連結する必要があるため、1本の `params` 配列に
+ * 混ぜて返すと呼び出し側でその境界が分からない。
  */
 export function buildScopeSql(scope: Scope, alias = OBS): ScopeSql {
   const joins: string[] = [];
   const wheres: string[] = [];
-  const params: SqlParam[] = [];
+  const joinParams: SqlParam[] = [];
+  const whereParams: SqlParam[] = [];
   let siteIdExpr = "NULL";
 
   switch (scope.kind) {
@@ -83,7 +93,7 @@ export function buildScopeSql(scope: Scope, alias = OBS): ScopeSql {
         break;
       }
       joins.push(`JOIN json_each(?) pid ON pid.value = ${alias}.place_id`);
-      params.push(jsonEachParam(scope.placeIds));
+      joinParams.push(jsonEachParam(scope.placeIds));
       joins.push(`JOIN place_source_ref psr ON psr.place_id = ${alias}.place_id AND psr.source_id = 'sites.site_id'`);
       siteIdExpr = "psr.external_key";
       break;
@@ -91,14 +101,14 @@ export function buildScopeSql(scope: Scope, alias = OBS): ScopeSql {
     case "site": {
       joins.push(`JOIN place_source_ref psr ON psr.place_id = ${alias}.place_id AND psr.source_id = 'sites.site_id'`);
       wheres.push("psr.external_key = ?");
-      params.push(scope.siteId);
+      whereParams.push(scope.siteId);
       siteIdExpr = "psr.external_key";
       break;
     }
     case "water": {
       joins.push(`JOIN place_source_ref psr ON psr.place_id = ${alias}.place_id AND psr.source_id = 'sites.site_id'`);
       joins.push(`JOIN sites s ON s.site_id = psr.external_key AND s.municipality = ?`);
-      params.push(scope.municipality);
+      joinParams.push(scope.municipality);
       siteIdExpr = "psr.external_key";
       break;
     }
@@ -108,7 +118,7 @@ export function buildScopeSql(scope: Scope, alias = OBS): ScopeSql {
       joins.push(`JOIN place_source_ref psr ON psr.place_id = ${alias}.place_id AND psr.source_id = 'sites.site_id'`);
       if (scope.zone !== undefined) {
         wheres.push("CAST(zref.external_key AS INTEGER) = ?");
-        params.push(scope.zone);
+        whereParams.push(scope.zone);
       }
       siteIdExpr = "psr.external_key";
       break;
@@ -122,7 +132,7 @@ export function buildScopeSql(scope: Scope, alias = OBS): ScopeSql {
   // 「地点」スコープはすべて site の観測に絞る（流域・グリッドのセルは混ぜない）。
   wheres.push(`${alias}.place_kind = 'site'`);
 
-  return { joins, wheres, params, siteIdExpr };
+  return { joins, wheres, joinParams, whereParams, siteIdExpr };
 }
 
 /** ゾーンの数値（`sites.zone` は "1".."5" の数字文字列）。 */

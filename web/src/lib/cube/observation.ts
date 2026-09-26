@@ -94,46 +94,69 @@ function seriesOrVariableClause(spec: CellSpec, alias: string): { joins?: string
   throw new Error("queryCells/summarize: variableId か series のどちらかが必要");
 }
 
+/**
+ * JOIN 節・WHERE 節それぞれのパラメータを別の配列で積み、最後に
+ * `[...joinParams, ...whereParams]` として連結する（Issue #48 PR-1 code-review #1）。
+ *
+ * 最終的な SQL は `FROM ... ${joins.join(...)} ${whereSql(wheres)}` という並び
+ * （JOIN 節がまとまって先、WHERE 節がまとまって後）で組み立てられる。この関数が
+ * 返す `params` の並びはその文字列上の `?` の出現順と一致していなければならない
+ * ——`variableId` 指定（`seriesOrVariableClause` が WHERE 句を返す）と
+ * `water`/`places` スコープ（`buildScopeSql` が JOIN 句を返す）を同時に使うと、
+ * 「WHERE 用のパラメータを先に積んでから JOIN 用のパラメータを積む」場当たりの
+ * 順番では JOIN 節の `?` に WHERE 用の値が入れ替わってバインドされてしまう
+ * （water は絞り込みが常に偽になって黙って0行、places は `json_each(?)` に
+ * 文字列以外が渡って例外になる。実測で発覚）。JOIN 用/WHERE 用を常に別配列で
+ * 持ち、両方が出揃ってから「JOIN 節の並び→WHERE 節の並び」の順で連結すれば、
+ * どの組み合わせで呼ばれても構造的にずれない。
+ */
 function commonFilterSql(spec: CellSpec, alias: string): { joins: string[]; wheres: string[]; params: SqlParam[] } {
   const joins: string[] = [];
   const wheres: string[] = [];
-  const params: SqlParam[] = [];
+  const joinParams: SqlParam[] = [];
+  const whereParams: SqlParam[] = [];
 
   const sv = seriesOrVariableClause(spec, alias);
-  if (sv.joins) joins.push(...sv.joins);
-  if (sv.where) wheres.push(sv.where);
-  params.push(...sv.params);
+  if (sv.joins) {
+    joins.push(...sv.joins);
+    joinParams.push(...sv.params);
+  }
+  if (sv.where) {
+    wheres.push(sv.where);
+    whereParams.push(...sv.params);
+  }
 
   const scopeSql = buildScopeSql(spec.scope, alias);
   joins.push(...scopeSql.joins);
+  joinParams.push(...scopeSql.joinParams);
   wheres.push(...scopeSql.wheres);
-  params.push(...scopeSql.params);
+  whereParams.push(...scopeSql.whereParams);
 
   const grains = grainsOf(spec);
   wheres.push(`${alias}.grain IN (${inClausePlaceholders(grains.length)})`);
-  params.push(...grains);
+  whereParams.push(...grains);
 
   const stats = statsOf(spec);
   wheres.push(`${alias}.stat IN (${inClausePlaceholders(stats.length)})`);
-  params.push(...stats);
+  whereParams.push(...stats);
 
   if (spec.inputGrain === "same") {
     wheres.push(`${alias}.input_grain = ${alias}.grain`);
   } else if (spec.inputGrain) {
     wheres.push(`${alias}.input_grain = ?`);
-    params.push(spec.inputGrain);
+    whereParams.push(spec.inputGrain);
   }
 
   if (spec.period?.from) {
     wheres.push(`${alias}.period_start >= ?`);
-    params.push(spec.period.from);
+    whereParams.push(spec.period.from);
   }
   if (spec.period?.to) {
     wheres.push(`${alias}.period_start <= ?`);
-    params.push(spec.period.to);
+    whereParams.push(spec.period.to);
   }
 
-  return { joins, wheres, params };
+  return { joins, wheres, params: [...joinParams, ...whereParams] };
 }
 
 function whereSql(wheres: string[]): string {

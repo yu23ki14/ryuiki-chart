@@ -122,6 +122,118 @@ describe("queryCells: variableId / series", () => {
   });
 });
 
+describe("queryCells/summarize: variableId + water/places スコープ（バインドパラメータの積み順。Issue #48 PR-1 code-review #1）", () => {
+  // `variableId` 指定（WHERE 句）と `water`/`places` スコープ（JOIN 句）を同時に使うと、
+  // JOIN 用と WHERE 用のパラメータが場当たりの順で積まれていた場合に SQL 文字列上の
+  // `?` の出現順とずれる（`water` は絞り込みが常に偽になり黙って0行、`places` は
+  // `json_each(?)` に variableId の文字列が渡って例外になる）。`series` 指定（JOIN 句のみ）
+  // では発現しないため、既存テストは全て `series` 指定で書かれていて気づかれていなかった。
+
+  it("queryCells: variableId + water（境川（１）は fx_site_a/b の2地点）", async () => {
+    const spec: CellSpec = {
+      variableId: FX.variables.ss,
+      scope: { kind: "water", municipality: FX.municipality },
+      grain: "day",
+      stats: ["mean"],
+      imputation: "zero",
+    };
+    const rows = await queryCells(fx.db, spec);
+    const siteIds = new Set(rows.map((r) => r.siteId));
+    expect(siteIds).toEqual(new Set([FX.sites.a, FX.sites.b]));
+    expect(rows).toHaveLength(5); // fx_place_a の3日 + fx_place_b の2日
+  });
+
+  it("queryCells: variableId + places（指定した place_id だけ、JSON パースエラーにならない）", async () => {
+    const spec: CellSpec = {
+      variableId: FX.variables.ss,
+      scope: { kind: "places", placeIds: [FX.places.a] },
+      grain: "day",
+      stats: ["mean"],
+      imputation: "zero",
+    };
+    const rows = await queryCells(fx.db, spec);
+    expect(rows.every((r) => r.placeId === FX.places.a)).toBe(true);
+    expect(rows).toHaveLength(3);
+  });
+
+  it("summarize month_of_year: variableId + places（fx_place_a/b の日セル5件がすべて1月に集計される）", async () => {
+    const spec: CellSpec = {
+      variableId: FX.variables.ss,
+      scope: { kind: "places", placeIds: [FX.places.a, FX.places.b] },
+      grain: "day",
+      stats: ["mean"],
+      imputation: "zero",
+    };
+    const rows = await summarize(fx.db, spec, "month_of_year");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].month).toBe(1);
+    expect(rows[0].n).toBe(5);
+    expect(rows[0].avg).toBeCloseTo((10 + 8 + 0 + 15 + 17) / 5, 6);
+    expect(rows[0].min).toBe(0);
+    expect(rows[0].max).toBe(17);
+  });
+
+  it("summarize zone: variableId + places（fx_place_a/b はゾーン3、nSites=2・n=5）", async () => {
+    const spec: CellSpec = {
+      variableId: FX.variables.ss,
+      scope: { kind: "places", placeIds: [FX.places.a, FX.places.b] },
+      grain: "day",
+      stats: ["mean"],
+      imputation: "zero",
+    };
+    const rows = await summarize(fx.db, spec, "zone");
+    const zone3 = rows.filter((r) => r.zone === 3);
+    expect(zone3).toHaveLength(1);
+    expect(zone3[0].nSites).toBe(2);
+    expect(zone3[0].n).toBe(5);
+    expect(zone3[0].avg).toBeCloseTo((10 + 8 + 0 + 15 + 17) / 5, 6);
+  });
+
+  it("summarize zone_month_of_year: variableId + water（fx_site_a/b、zone=3・month=1）", async () => {
+    const spec: CellSpec = {
+      variableId: FX.variables.ss,
+      scope: { kind: "water", municipality: FX.municipality },
+      grain: "day",
+      stats: ["mean"],
+      imputation: "zero",
+    };
+    const rows = await summarize(fx.db, spec, "zone_month_of_year");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].zone).toBe(3);
+    expect(rows[0].month).toBe(1);
+    expect(rows[0].nSites).toBe(2);
+    expect(rows[0].n).toBe(5);
+  });
+
+  it("summarize place: variableId + places（fx_place_a の年セル1件）", async () => {
+    const spec: CellSpec = {
+      variableId: FX.variables.ss,
+      scope: { kind: "places", placeIds: [FX.places.a] },
+      grain: "year",
+      inputGrain: "day",
+      imputation: "zero",
+    };
+    const rows = await summarize(fx.db, spec, "place");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].placeId).toBe(FX.places.a);
+    expect(rows[0].siteId).toBe(FX.sites.a);
+    expect(rows[0].n).toBe(3);
+    expect(rows[0].avg).toBe(6.0);
+  });
+
+  it("summarize series: variableId + water（fx_site_a/b の3系列組に分かれる）", async () => {
+    const spec: CellSpec = {
+      variableId: FX.variables.ss,
+      scope: { kind: "water", municipality: FX.municipality },
+      grain: ["year", "fiscal_year"],
+      stats: ["mean"],
+      imputation: "zero",
+    };
+    const rows = await summarize(fx.db, spec, "series");
+    expect(rows).toHaveLength(3); // a:mean/day, b:point/day, a:mean/fiscal_year
+  });
+});
+
 describe("queryCells: grain / inputGrain / period", () => {
   it("grain='year' は暦年セル1件（input_grain='day' = v1 の kind daily 相当）", async () => {
     const spec: CellSpec = {
