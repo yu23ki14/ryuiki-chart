@@ -5,10 +5,11 @@
 //   npx tsx --import ./scripts/lib/serving/register-aliases.mjs ./scripts/serving-diff.mts
 //
 // 何を差し替えるか（2つだけ）:
-//   1. bare specifier "server-only" -> 空モジュール（本物は index.js が常に throw する。
-//      Next.js の "react-server" 条件下だけ empty.js に切り替わるが、tsx で素の Node
-//      として走らせるとその条件が付かないため、放っておくと queries.ts の
-//      `import "server-only"` で即死ぬ）。
+//   1. bare specifier "server-only" -> node_modules/server-only/empty.js（本物の index.js は
+//      常に throw する。Next.js の "react-server" 条件下だけ empty.js に切り替わるが、
+//      tsx で素の Node として走らせるとその条件が付かないため、放っておくと queries.ts の
+//      `import "server-only"` で即死ぬ。vitest.config.ts の `resolve.alias` が使うのと
+//      同じファイルを指す——空モジュールを別々に2つ持たない）。
 //   2. `web/src/lib/db.ts` の絶対パス -> この隣の `v1-db-shim.ts`（better-sqlite3 で
 //      ryuiki/cells/derived を ATTACH し、`query`/`queryOne`/`queryChunked`/`ph` を
 //      同じシグネチャで実装したもの）。
@@ -33,7 +34,9 @@ import { fileURLToPath } from "node:url";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REAL_DB_ABS = path.resolve(HERE, "../../../src/lib/db.ts");
 const SHIM_DB_ABS = path.resolve(HERE, "../v1-db-shim.ts");
-const SHIM_SERVER_ONLY_ABS = path.resolve(HERE, "server-only-shim.ts");
+// vitest.config.ts の `resolve.alias["server-only"]` と同じファイル（`package.json` が
+// "react-server" 条件向けに同梱している空モジュール）を指す。
+const SHIM_SERVER_ONLY_ABS = path.resolve(HERE, "../../../node_modules/server-only/empty.js");
 
 const originalResolveFilename = Module._resolveFilename;
 
