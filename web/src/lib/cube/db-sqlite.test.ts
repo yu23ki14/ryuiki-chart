@@ -81,4 +81,26 @@ describe("sqliteCubeDb", () => {
       db.close();
     }
   });
+
+  it("excludePlaceIds: 指定した place_id を observation_agg から除いた TEMP VIEW で覆う（--pretend-synthetic-excluded 用）", async () => {
+    const db = sqliteCubeDb(paths, { excludePlaceIds: ["p1"] });
+    try {
+      const rows = await db.all<{ place_id: string }>("SELECT place_id FROM observation_agg");
+      expect(rows).toEqual([]);
+      // 読み取り専用のまま（TEMP VIEW を張っても query_only は効いている）。
+      await expect(db.all("INSERT INTO observation_agg VALUES ('p2','v1',2.0)")).rejects.toThrow();
+    } finally {
+      db.close();
+    }
+  });
+
+  it("excludePlaceIds を渡さなければ全件そのまま", async () => {
+    const db = sqliteCubeDb(paths, {});
+    try {
+      const rows = await db.all<{ place_id: string }>("SELECT place_id FROM observation_agg");
+      expect(rows).toEqual([{ place_id: "p1" }]);
+    } finally {
+      db.close();
+    }
+  });
 });

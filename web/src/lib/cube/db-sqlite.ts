@@ -38,15 +38,50 @@ export interface SqliteCubeDbPaths {
   ryuiki: string;
 }
 
+export interface SqliteCubeDbOptions {
+  /**
+   * serving-diff の `--pretend-synthetic-excluded`（Issue #48 PR-1 §9-4）専用:
+   * ここに挙げた `place_id` の観測を `observation_agg` から除いた「仮想の v2」を作る
+   * （PR-2 で合成データを実際に除いた後の見え方を事前に確かめるための道具。
+   * 値そのものは変えない・v2.sqlite も書き換えない）。
+   *
+   * 実装は `observation_agg` という名前の TEMP VIEW を張って本物のテーブルを覆う
+   * （SQLite の非修飾名の解決順は TEMP → main → ATTACH 順で、TEMP が勝つ——
+   * `observation.ts`/`catalog.ts` はテーブル名を非修飾で書いているので、
+   * この関数を呼んだこのコネクションに限って自動的に効く。恒久的な変更ではなく
+   * この接続を close() すれば消える）。
+   */
+  excludePlaceIds?: readonly string[];
+}
+
 function sqlString(path: string): string {
   return path.replace(/'/g, "''");
 }
 
-export function sqliteCubeDb(paths: SqliteCubeDbPaths): CubeDb & { close(): void } {
+export function sqliteCubeDb(paths: SqliteCubeDbPaths, opts?: SqliteCubeDbOptions): CubeDb & { close(): void } {
   const db = new Database(paths.v2, { readonly: true, fileMustExist: true });
-  db.pragma("query_only = ON");
   db.exec(`ATTACH DATABASE '${sqlString(paths.registry)}' AS reg`);
   db.exec(`ATTACH DATABASE '${sqlString(paths.ryuiki)}' AS r`);
+
+  if (opts?.excludePlaceIds && opts.excludePlaceIds.length > 0) {
+    // `query_only = ON`（下）より前に作る: `CREATE TEMP VIEW` は temp スキーマへの
+    // 書き込みなので、先に `query_only` を立てると（temp を含む全スキーマが対象）
+    // "attempt to write a readonly database" で失敗する（実測）。
+    //
+    // VIEW の定義はバインドパラメータを保持できない（`CREATE VIEW` は自分の
+    // SQL 文字列だけを持ち、実行時にパラメータを渡す仕組みが無い）ので、
+    // ここだけは JSON 配列リテラルを直接埋め込む（呼び出し側が組み立てた
+    // 内部の値——外部入力ではない——なので、他のクエリのように `json_each(?)`
+    // にできないのはこの1箇所だけの例外）。
+    const idsJson = sqlString(JSON.stringify(opts.excludePlaceIds));
+    db.exec(`
+      CREATE TEMP VIEW observation_agg AS
+      SELECT o.* FROM main.observation_agg o
+      WHERE o.place_id NOT IN (SELECT value FROM json_each('${idsJson}'))
+    `);
+  }
+
+  db.pragma("query_only = ON");
 
   return {
     kind: "sqlite",
