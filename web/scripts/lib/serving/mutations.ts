@@ -22,7 +22,19 @@ export type RowMutationName =
   | "month_off_by_one"
   | "include_watershed_cells";
 
-export type ClassifyMutationName = "rain_no_div10_rule" | "day_split_rule_off" | "declared_rot";
+export type ClassifyMutationName =
+  | "rain_no_div10_rule"
+  | "day_split_rule_off"
+  | "declared_rot"
+  | "synthetic_rule_off"
+  | "lod_rule_off";
+
+/** v1 側だけを狂わせる変異（design §8.1 U4「新しい変異 …merge_rule_off」）。
+ *  `merge-v1.ts` の alias→variable_id 束ねを止め、`*_by_variable` 問い合わせの
+ *  v1 側を alias 粒度のまま返す——v2 側は variable_id で束ねたままなのでキーが
+ *  食い違い、`row_only_in_v1`/`row_only_in_v2` が大量に出て必ず unexplained>0
+ *  （または `rowsByKey` の重複キー例外）になる。 */
+export type V1MutationName = "merge_rule_off";
 
 export const ROW_MUTATION_NAMES: readonly RowMutationName[] = [
   "lod_instead_of_zero",
@@ -37,9 +49,17 @@ export const CLASSIFY_MUTATION_NAMES: readonly ClassifyMutationName[] = [
   "rain_no_div10_rule",
   "day_split_rule_off",
   "declared_rot",
+  "synthetic_rule_off",
+  "lod_rule_off",
 ];
 
-export const ALL_MUTATION_NAMES: readonly string[] = [...ROW_MUTATION_NAMES, ...CLASSIFY_MUTATION_NAMES];
+export const V1_MUTATION_NAMES: readonly V1MutationName[] = ["merge_rule_off"];
+
+export const ALL_MUTATION_NAMES: readonly string[] = [
+  ...ROW_MUTATION_NAMES,
+  ...CLASSIFY_MUTATION_NAMES,
+  ...V1_MUTATION_NAMES,
+];
 
 export function isRowMutation(name: string): name is RowMutationName {
   return (ROW_MUTATION_NAMES as readonly string[]).includes(name);
@@ -47,6 +67,10 @@ export function isRowMutation(name: string): name is RowMutationName {
 
 export function isClassifyMutation(name: string): name is ClassifyMutationName {
   return (CLASSIFY_MUTATION_NAMES as readonly string[]).includes(name);
+}
+
+export function isV1Mutation(name: string): name is V1MutationName {
+  return (V1_MUTATION_NAMES as readonly string[]).includes(name);
 }
 
 /**
@@ -148,6 +172,10 @@ export function applyClassifyMutation(
       return { disabledRules: new Set<KnownRule>(["rain_div10"]) };
     case "day_split_rule_off":
       return { disabledRules: new Set<KnownRule>(["day_split"]) };
+    case "synthetic_rule_off":
+      return { disabledRules: new Set<KnownRule>(["synthetic_excluded"]) };
+    case "lod_rule_off":
+      return { disabledRules: new Set<KnownRule>(["lod_imputation"]) };
     case "declared_rot": {
       if (!opts.declaredRotTarget) {
         throw new Error("declared_rot には無視する宣言（table/key/kind）の指定が要る");

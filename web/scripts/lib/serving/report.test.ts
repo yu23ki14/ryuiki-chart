@@ -71,6 +71,20 @@ describe("buildReportMarkdown/buildReportJson", () => {
     expect(md).toContain("無し");
   });
 
+  it("imputation=lod のときだけ lod_moved の合計行を出す（design §3 の集計）", () => {
+    const s1 = emptyQueryStats("year_series_site_by_variable");
+    addClassification(s1, "lod_imputation");
+    addClassification(s1, "lod_imputation");
+
+    const lodHeader: ReportHeader = { ...header, imputation: "lod" };
+    const mdLod = buildReportMarkdown({ header: lodHeader, stats: [s1], unexplainedSamples: [], rottenDeclarations: [] });
+    expect(mdLod).toContain("lod_moved");
+    expect(mdLod).toContain("2");
+
+    const mdZero = buildReportMarkdown({ header, stats: [s1], unexplainedSamples: [], rottenDeclarations: [] });
+    expect(mdZero).not.toContain("lod_moved");
+  });
+
   it("変異結果があれば表を足す", () => {
     const md = buildReportMarkdown({
       header,

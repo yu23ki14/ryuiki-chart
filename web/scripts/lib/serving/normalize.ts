@@ -77,9 +77,11 @@ export interface CompareSpec {
 
 /** `serving_queries.yaml` の `domains:` の1エントリ。 */
 export interface DomainDef {
-  /** v1 db に対して実行し、最初の列を値の列にする（`db: v1` のとき必須）。 */
+  /** `db: v1` は derived.sqlite/ryuiki.sqlite に対して実行し最初の列を値の列にする。
+   *  `db: registry` は `registry.sqlite` に対して実行する（`variable_id` ドメイン
+   *  ——v1 db は variable_id を知らないため）。 */
   sql?: string;
-  db?: "v1";
+  db?: "v1" | "registry";
   /** リテラルの列挙（`sql` の代わり）。 */
   values?: ScalarParam[];
 }
