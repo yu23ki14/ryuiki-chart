@@ -48,7 +48,7 @@ queries:
       key: [alias]
       numeric: [n, n_sites, y_from, y_to, n_daily, n_annual, n_censored]
       label: [unit]
-    known: [unit_label_registry]
+    known: [declared, unit_label_registry]
 
   - id: sites_list
     v1_table: null
