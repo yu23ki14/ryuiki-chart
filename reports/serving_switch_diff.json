@@ -1,14 +1,14 @@
 {
   "header": {
-    "gitHead": "6566fb3906f43c166c841db249bc612e30293f3f",
+    "gitHead": "e34b4586977c7ea52e1af92b2550ab197e3a1ec2",
     "v2PipelineFingerprint": "phase-b-fact-slice/v1",
     "registryInputFingerprint": "0d15a54a95412137edefe9967a2add24f9f0e53fe06db8bdacb159c4d1e4abb3",
     "sqliteVersion": "3.53.4",
     "imputation": "zero",
     "expand": "all",
     "v1Source": "derived",
-    "generatedAt": "2026-09-26T12:10:32.987Z",
-    "elapsedMs": 620311
+    "generatedAt": "2026-09-26T12:43:07.132Z",
+    "elapsedMs": 573107
   },
   "stats": [
     {
