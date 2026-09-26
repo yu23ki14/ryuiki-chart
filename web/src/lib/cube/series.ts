@@ -44,6 +44,22 @@ export function seriesKeyString(k: SeriesKey): string {
   return `${k.variableId}|${norm(k.valueGrain)}|${norm(k.obsStat)}|${norm(k.unitId)}`;
 }
 
+/** `observation_agg` の生行が共通して持つ、系列を組み立てるのに要る4列（DB 列名）。 */
+export interface SeriesKeyRow {
+  variable_id: string;
+  obs_stat: string | null;
+  unit_id: string | null;
+  value_grain: string | null;
+}
+
+/**
+ * DB 行（`variable_id`/`obs_stat`/`unit_id`/`value_grain` の生列）から `SeriesKey` を
+ * 組み立てる（`observation.ts`/`catalog.ts` に5箇所あった同じ組み立てを1つにまとめる）。
+ */
+export function seriesKeyFromRow(r: SeriesKeyRow): SeriesKey {
+  return { variableId: r.variable_id, obsStat: r.obs_stat, unitId: r.unit_id, valueGrain: r.value_grain ?? "" };
+}
+
 /**
  * SQL 側で `seriesKeyString` と同じ式を組み立てる（`json_each(?)` の値と等値 JOIN する側）。
  * `alias` は FROM 句のテーブルエイリアス（`observation_agg` を指す）。

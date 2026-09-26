@@ -9,7 +9,7 @@
 import type { CubeDb, SqlParam } from "./db";
 import { MAX_ID_LIST } from "./db";
 import { buildScopeSql, OBS, seriesFilterSql, type Scope } from "./sql";
-import { seriesKeySql, seriesKeyString, type Grain, type SeriesKey } from "./series";
+import { seriesKeyFromRow, seriesKeySql, seriesKeyString, type Grain, type SeriesKey } from "./series";
 
 export type { Scope } from "./sql";
 
@@ -168,7 +168,7 @@ function toCellRow(r: RawCellRow, imputation: Imputation): CellRow {
   return {
     placeId: r.place_id,
     siteId: r.site_id,
-    series: { variableId: r.variable_id, obsStat: r.obs_stat, unitId: r.unit_id, valueGrain: r.value_grain ?? "" },
+    series: seriesKeyFromRow(r),
     inputGrain: r.input_grain,
     grain: r.grain as Grain,
     periodStart: r.period_start,
@@ -272,10 +272,6 @@ function valueExpr(imputation: Imputation, alias: string): string {
   if (imputation === "zero") return `${alias}.value_zero`;
   if (imputation === "lod") return `${alias}.value_lod`;
   throw new Error("summarize: imputation='both' は使えない（value_zero/value_lod のどちらかを選ぶ）");
-}
-
-function rowsToSeriesKey(r: { variable_id: string; obs_stat: string | null; unit_id: string | null; value_grain: string | null }): SeriesKey {
-  return { variableId: r.variable_id, obsStat: r.obs_stat, unitId: r.unit_id, valueGrain: r.value_grain ?? "" };
 }
 
 async function summarizeMonthOfYear(db: CubeDb, spec: CellSpec, opt?: SummarizeOpt): Promise<MonthOfYearRow[]> {
@@ -425,7 +421,7 @@ async function summarizeSeries(db: CubeDb, spec: CellSpec): Promise<SeriesSummar
     n_censored: number;
   }>(sql, params);
   return rows.map((r) => {
-    const series = rowsToSeriesKey(r);
+    const series = seriesKeyFromRow(r);
     return {
       seriesKey: seriesKeyString(series),
       series,

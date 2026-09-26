@@ -9,7 +9,7 @@
 import type { CubeDb, SqlParam } from "./db";
 import { MAX_ID_LIST } from "./db";
 import { jsonEachParam, seriesFilterSql } from "./sql";
-import { seriesKeySql, seriesKeyString, type SeriesKey } from "./series";
+import { seriesKeyFromRow, seriesKeySql, seriesKeyString, type SeriesKey } from "./series";
 
 export type CatalogSource = { kind: "live" } | { kind: "summary" };
 
@@ -48,7 +48,7 @@ interface CatalogRawRow {
 }
 
 function toSeriesCatalogRow(r: CatalogRawRow): SeriesCatalogRow {
-  const series: SeriesKey = { variableId: r.variable_id, obsStat: r.obs_stat, unitId: r.unit_id, valueGrain: r.value_grain ?? "" };
+  const series = seriesKeyFromRow(r);
   return {
     series,
     seriesKey: seriesKeyString(series),
@@ -159,7 +159,7 @@ async function variableCatalogByDataset(db: CubeDb, dataset: string): Promise<Se
     let group = groups.get(groupKey);
     if (!group) {
       group = {
-        series: { variableId: c.variable_id, obsStat: c.obs_stat, unitId: c.unit_id, valueGrain: g },
+        series: seriesKeyFromRow(c),
         inputGrain: c.input_grain,
         n: 0,
         places: new Set(),
@@ -235,7 +235,7 @@ export async function siteVariables(db: CubeDb, placeId: string): Promise<SiteSe
   }>(sql, [placeId]);
 
   return rows.map((r) => {
-    const series: SeriesKey = { variableId: r.variable_id, obsStat: r.obs_stat, unitId: r.unit_id, valueGrain: r.value_grain ?? "" };
+    const series = seriesKeyFromRow(r);
     return {
       series,
       seriesKey: seriesKeyString(series),
