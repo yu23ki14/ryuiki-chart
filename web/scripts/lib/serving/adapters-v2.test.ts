@@ -19,6 +19,21 @@ import { rowsByKey, toNormRows } from "./normalize";
 import { classifyDiff, compareRuns, type ClassifyContext } from "./classify";
 import { expectedUnitSymbols } from "./adapters-v2";
 
+/**
+ * design §8.4「検証が本番の経路を通っているか」の自動チェック1件:
+ * `adapters-v2.ts` は生 SQL を持たない（`@/lib/cube` の公開関数だけを呼ぶ）
+ * ——`observation_agg`/`summary_` という文字列そのものがソースに出てこないことで
+ * 確認する（キューブ・summary 2表のテーブル名は `lib/cube` 側にしか書かない）。
+ */
+describe("adapters-v2.ts は生 SQL を持たない（design §8.4）", () => {
+  it("ソースに observation_agg / summary_ という文字列が無い", () => {
+    const HERE = path.dirname(fileURLToPath(import.meta.url));
+    const src = fs.readFileSync(path.join(HERE, "adapters-v2.ts"), "utf8");
+    expect(src).not.toMatch(/observation_agg/);
+    expect(src).not.toMatch(/summary_/);
+  });
+});
+
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "..", "..", "..", "..");
 const DB_DIR = process.env.RYUIKI_DB_DIR ?? path.join(REPO_ROOT, "data", "db");
@@ -171,7 +186,7 @@ describe("variable_catalog（aliasCatalog）: n_sites の distinct 集計（Issu
       insertCell.run({ placeId: fx.places.c, variableId: FAKE_VARIABLE_ID, obsStat: "mean" });
 
       const compare = { key: ["alias"], numeric: ["n", "n_sites"], label: ["unit"] };
-      const rows = await runQuery(cube.db, "variable_catalog", {}, compare);
+      const rows = await runQuery(cube.db, "variable_catalog", {}, compare, "zero");
       const ss = rows.find((r) => r.key[0] === "テスト用SS");
       expect(ss).toBeDefined();
       // fx_place_a（mean/day + point/day 両方）・fx_place_b（point/day）・

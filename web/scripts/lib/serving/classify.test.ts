@@ -333,21 +333,162 @@ describe("classifyDiff: float_rounding", () => {
   });
 });
 
-describe("classifyDiff: synthetic_excluded", () => {
-  it("PR-1既定（syntheticSiteIds未指定）では不発", () => {
-    const v1 = rowsByKey(toNormRows([{ y: 1, site_id: "synthetic-1" }], ["y"], [], ["site_id"]));
-    const v2 = rowsByKey(toNormRows([], ["y"], [], ["site_id"]));
+describe("classifyDiff: synthetic_excluded（design §1「差分の差分」・v1互換キューブ）", () => {
+  it("v2CompatByKey 未指定では不発（--v1compat-db 未指定・v1-only 相当）", () => {
+    const v1 = rowsByKey(toNormRows([{ y: 1, n: 5 }], ["y"], ["n"], []));
+    const v2 = rowsByKey(toNormRows([], ["y"], ["n"], []));
     const diffs = compareRuns(v1, v2);
     const ctx = ctxBase({ known: new Set(["synthetic_excluded"]) });
     expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
   });
 
-  it("--pretend-synthetic-excluded 相当でsite_idが集合に入っていれば synthetic_excluded", () => {
-    const v1 = rowsByKey(toNormRows([{ y: 1, site_id: "synthetic-1" }], ["y"], [], ["site_id"]));
-    const v2 = rowsByKey(toNormRows([], ["y"], [], ["site_id"]));
+  it("row_only_in_v1: v2compat（合成込み）が v1 と一致すれば synthetic_excluded", () => {
+    const v1 = rowsByKey(toNormRows([{ y: 1, n: 5 }], ["y"], ["n"], []));
+    const v2 = rowsByKey(toNormRows([], ["y"], ["n"], []));
+    const v2Compat = rowsByKey(toNormRows([{ y: 1, n: 5 }], ["y"], ["n"], []));
     const diffs = compareRuns(v1, v2);
-    const ctx = ctxBase({ known: new Set(["synthetic_excluded"]), syntheticSiteIds: new Set(["synthetic-1"]) });
+    const ctx = ctxBase({ known: new Set(["synthetic_excluded"]), v2CompatByKey: v2Compat });
     expect(classifyDiff(diffs[0], ctx).rule).toBe("synthetic_excluded");
+  });
+
+  it("row_only_in_v1: v2compat の値が v1 と食い違えば unexplained（合成除外以外の理由で消えた行の疑い）", () => {
+    const v1 = rowsByKey(toNormRows([{ y: 1, n: 5 }], ["y"], ["n"], []));
+    const v2 = rowsByKey(toNormRows([], ["y"], ["n"], []));
+    const v2Compat = rowsByKey(toNormRows([{ y: 1, n: 999 }], ["y"], ["n"], []));
+    const diffs = compareRuns(v1, v2);
+    const ctx = ctxBase({ known: new Set(["synthetic_excluded"]), v2CompatByKey: v2Compat });
+    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+  });
+
+  it("value_diff: 許容列で v1==v2compat かつ v2compat≠v2(本番) なら synthetic_excluded", () => {
+    const v1 = rowsByKey(toNormRows([{ y: 1, n: 10 }], ["y"], ["n"], []));
+    const v2 = rowsByKey(toNormRows([{ y: 1, n: 8 }], ["y"], ["n"], []));
+    const v2Compat = rowsByKey(toNormRows([{ y: 1, n: 10 }], ["y"], ["n"], []));
+    const diffs = compareRuns(v1, v2);
+    const ctx = ctxBase({ known: new Set(["synthetic_excluded"]), v2CompatByKey: v2Compat });
+    expect(classifyDiff(diffs[0], ctx).rule).toBe("synthetic_excluded");
+  });
+
+  it("value_diff: v2compat と v2(本番) が同じ（合成除外の影響を受けていない）なら unexplained", () => {
+    const v1 = rowsByKey(toNormRows([{ y: 1, n: 10 }], ["y"], ["n"], []));
+    const v2 = rowsByKey(toNormRows([{ y: 1, n: 8 }], ["y"], ["n"], []));
+    const v2Compat = rowsByKey(toNormRows([{ y: 1, n: 8 }], ["y"], ["n"], []));
+    const diffs = compareRuns(v1, v2);
+    const ctx = ctxBase({ known: new Set(["synthetic_excluded"]), v2CompatByKey: v2Compat });
+    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+  });
+
+  it("value_diff: 許容列（SYNTHETIC_EXCLUDED_VALUE_COLUMNS）以外の列は対象外", () => {
+    const v1 = rowsByKey(toNormRows([{ y: 1, elev_max: 10 }], ["y"], ["elev_max"], []));
+    const v2 = rowsByKey(toNormRows([{ y: 1, elev_max: 8 }], ["y"], ["elev_max"], []));
+    const v2Compat = rowsByKey(toNormRows([{ y: 1, elev_max: 10 }], ["y"], ["elev_max"], []));
+    const diffs = compareRuns(v1, v2);
+    const ctx = ctxBase({ known: new Set(["synthetic_excluded"]), v2CompatByKey: v2Compat });
+    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+  });
+
+  it("row_only_in_v2 は対象外（合成除外で行が増えることは無い——常に unexplained）", () => {
+    const v1 = rowsByKey(toNormRows([], ["y"], ["n"], []));
+    const v2 = rowsByKey(toNormRows([{ y: 1, n: 5 }], ["y"], ["n"], []));
+    const v2Compat = rowsByKey(toNormRows([{ y: 1, n: 5 }], ["y"], ["n"], []));
+    const diffs = compareRuns(v1, v2);
+    const ctx = ctxBase({ known: new Set(["synthetic_excluded"]), v2CompatByKey: v2Compat });
+    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+  });
+
+  it("--mutate synthetic_rule_off 相当（disabledRules）は unexplained に落ちる", () => {
+    const v1 = rowsByKey(toNormRows([{ y: 1, n: 5 }], ["y"], ["n"], []));
+    const v2 = rowsByKey(toNormRows([], ["y"], ["n"], []));
+    const v2Compat = rowsByKey(toNormRows([{ y: 1, n: 5 }], ["y"], ["n"], []));
+    const diffs = compareRuns(v1, v2);
+    const ctx = ctxBase({
+      known: new Set(["synthetic_excluded"]),
+      v2CompatByKey: v2Compat,
+      disabledRules: new Set(["synthetic_excluded"]),
+    });
+    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+  });
+});
+
+describe("classifyDiff: lod_imputation（design §3 #1・--imputation lod）", () => {
+  it("v1==v2(zero) かつ許容列（avg）が食い違えば lod_imputation（n_censored>0）", () => {
+    const v1 = rowsByKey(toNormRows([{ y: 1, avg: 1.0, n_censored: 3 }], ["y"], ["avg", "n_censored"], []));
+    const v2 = rowsByKey(toNormRows([{ y: 1, avg: 1.5, n_censored: 3 }], ["y"], ["avg", "n_censored"], []));
+    const v2Zero = rowsByKey(toNormRows([{ y: 1, avg: 1.0, n_censored: 3 }], ["y"], ["avg", "n_censored"], []));
+    const diffs = compareRuns(v1, v2);
+    const ctx = ctxBase({ known: new Set(["lod_imputation"]), v2ZeroByKey: v2Zero });
+    expect(classifyDiff(diffs[0], ctx).rule).toBe("lod_imputation");
+  });
+
+  it("n_censored 列があり 0 なら lod_imputation にならない（検閲が無いのに値が動くのは別の原因）", () => {
+    const v1 = rowsByKey(toNormRows([{ y: 1, avg: 1.0, n_censored: 0 }], ["y"], ["avg", "n_censored"], []));
+    const v2 = rowsByKey(toNormRows([{ y: 1, avg: 1.5, n_censored: 0 }], ["y"], ["avg", "n_censored"], []));
+    const v2Zero = rowsByKey(toNormRows([{ y: 1, avg: 1.0, n_censored: 0 }], ["y"], ["avg", "n_censored"], []));
+    const diffs = compareRuns(v1, v2);
+    const ctx = ctxBase({ known: new Set(["lod_imputation"]), v2ZeroByKey: v2Zero });
+    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+  });
+
+  it("n_censored=0 でも lod 側がNULLになった（全件不検出）なら lod_imputation になる（実測: alias 'cn'/'pcb'）", () => {
+    // b04 の不変条件は「value_zero≠value_lod ⇒ n_censored>0 **or**
+    // n_not_detected>0」という OR（CLAUDE.md 参照）。v1 は n_not_detected を
+    // 区別できないので、lod 側の値が NULL になったことを不検出の代理指標として
+    // 認める（実測: シアン・PCB のような不検出だらけの項目で n_censored=0 の
+    // まま value_lod が NULL になる）。
+    const v1 = rowsByKey(toNormRows([{ y: 1, avg: 0.0, n_censored: 0 }], ["y"], ["avg", "n_censored"], []));
+    const v2 = rowsByKey(toNormRows([{ y: 1, avg: null, n_censored: 0 }], ["y"], ["avg", "n_censored"], []));
+    const v2Zero = rowsByKey(toNormRows([{ y: 1, avg: 0.0, n_censored: 0 }], ["y"], ["avg", "n_censored"], []));
+    const diffs = compareRuns(v1, v2);
+    const ctx = ctxBase({ known: new Set(["lod_imputation"]), v2ZeroByKey: v2Zero });
+    expect(classifyDiff(diffs[0], ctx).rule).toBe("lod_imputation");
+  });
+
+  it("n_censored 列が無い合算問い合わせ（zone/climatology 等）は b04 の不変条件に依拠し確認しない", () => {
+    const v1 = rowsByKey(toNormRows([{ y: 1, avg: 1.0 }], ["y"], ["avg"], []));
+    const v2 = rowsByKey(toNormRows([{ y: 1, avg: 1.5 }], ["y"], ["avg"], []));
+    const v2Zero = rowsByKey(toNormRows([{ y: 1, avg: 1.0 }], ["y"], ["avg"], []));
+    const diffs = compareRuns(v1, v2);
+    const ctx = ctxBase({ known: new Set(["lod_imputation"]), v2ZeroByKey: v2Zero });
+    expect(classifyDiff(diffs[0], ctx).rule).toBe("lod_imputation");
+  });
+
+  it("v2ZeroByKey 未指定（--imputation zero 実行）では不発", () => {
+    const v1 = rowsByKey(toNormRows([{ y: 1, avg: 1.0 }], ["y"], ["avg"], []));
+    const v2 = rowsByKey(toNormRows([{ y: 1, avg: 1.5 }], ["y"], ["avg"], []));
+    const diffs = compareRuns(v1, v2);
+    const ctx = ctxBase({ known: new Set(["lod_imputation"]) });
+    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+  });
+
+  it("v1 が v2(zero) と食い違っていれば（zero 自体に回帰があるので）lod_imputation にならない", () => {
+    const v1 = rowsByKey(toNormRows([{ y: 1, avg: 1.0 }], ["y"], ["avg"], []));
+    const v2 = rowsByKey(toNormRows([{ y: 1, avg: 1.5 }], ["y"], ["avg"], []));
+    const v2Zero = rowsByKey(toNormRows([{ y: 1, avg: 9.9 }], ["y"], ["avg"], []));
+    const diffs = compareRuns(v1, v2);
+    const ctx = ctxBase({ known: new Set(["lod_imputation"]), v2ZeroByKey: v2Zero });
+    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+  });
+
+  it("許容列（avg/min/max/value）以外は対象外", () => {
+    const v1 = rowsByKey(toNormRows([{ y: 1, n: 10 }], ["y"], ["n"], []));
+    const v2 = rowsByKey(toNormRows([{ y: 1, n: 8 }], ["y"], ["n"], []));
+    const v2Zero = rowsByKey(toNormRows([{ y: 1, n: 10 }], ["y"], ["n"], []));
+    const diffs = compareRuns(v1, v2);
+    const ctx = ctxBase({ known: new Set(["lod_imputation"]), v2ZeroByKey: v2Zero });
+    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+  });
+
+  it("--mutate lod_rule_off 相当（disabledRules）は unexplained に落ちる", () => {
+    const v1 = rowsByKey(toNormRows([{ y: 1, avg: 1.0, n_censored: 3 }], ["y"], ["avg", "n_censored"], []));
+    const v2 = rowsByKey(toNormRows([{ y: 1, avg: 1.5, n_censored: 3 }], ["y"], ["avg", "n_censored"], []));
+    const v2Zero = rowsByKey(toNormRows([{ y: 1, avg: 1.0, n_censored: 3 }], ["y"], ["avg", "n_censored"], []));
+    const diffs = compareRuns(v1, v2);
+    const ctx = ctxBase({
+      known: new Set(["lod_imputation"]),
+      v2ZeroByKey: v2Zero,
+      disabledRules: new Set(["lod_imputation"]),
+    });
+    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
   });
 });
 

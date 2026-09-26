@@ -12,6 +12,7 @@ import {
   applyRowMutation,
   isClassifyMutation,
   isRowMutation,
+  isV1Mutation,
   rowMutationAppliesTo,
 } from "./mutations";
 
@@ -126,6 +127,34 @@ describe("分類器変異", () => {
     expect(unexplainedCount(v1, v2, { disabledRules: opts.disabledRules })).toBeGreaterThan(0);
   });
 
+  it("synthetic_rule_off は synthetic_excluded を無効化する", () => {
+    const opts = applyClassifyMutation("synthetic_rule_off");
+    const v1 = toNormRows([{ y: 1, n: 5 }], ["y"], ["n"], []);
+    const v2 = toNormRows([], ["y"], ["n"], []);
+    const v2Compat = rowsByKey(toNormRows([{ y: 1, n: 5 }], ["y"], ["n"], []));
+    expect(
+      unexplainedCount(v1, v2, {
+        known: new Set(["synthetic_excluded"]),
+        disabledRules: opts.disabledRules,
+        v2CompatByKey: v2Compat,
+      }),
+    ).toBeGreaterThan(0);
+  });
+
+  it("lod_rule_off は lod_imputation を無効化する", () => {
+    const opts = applyClassifyMutation("lod_rule_off");
+    const v1 = toNormRows([{ y: 1, avg: 1.0, n_censored: 3 }], ["y"], ["avg", "n_censored"], []);
+    const v2 = toNormRows([{ y: 1, avg: 1.5, n_censored: 3 }], ["y"], ["avg", "n_censored"], []);
+    const v2Zero = rowsByKey(toNormRows([{ y: 1, avg: 1.0, n_censored: 3 }], ["y"], ["avg", "n_censored"], []));
+    expect(
+      unexplainedCount(v1, v2, {
+        known: new Set(["lod_imputation"]),
+        disabledRules: opts.disabledRules,
+        v2ZeroByKey: v2Zero,
+      }),
+    ).toBeGreaterThan(0);
+  });
+
   it("declared_rot は指定した宣言を無視させる（腐りとして検出できる）", () => {
     const expected: ExpectedDiffs = {
       meas_year: [{ key: ["a", "x", 2002, "daily"], kind: "value_diff", columns: ["n"] }],
@@ -156,9 +185,16 @@ describe("分類器変異", () => {
     expect(() => applyClassifyMutation("declared_rot")).toThrow();
   });
 
-  it("isClassifyMutation/isRowMutation は互いに排他", () => {
+  it("isRowMutation/isClassifyMutation/isV1Mutation は互いに排他（どれか1つだけに属する）", () => {
     for (const name of ALL_MUTATION_NAMES) {
-      expect(isRowMutation(name) !== isClassifyMutation(name)).toBe(true);
+      const flags = [isRowMutation(name), isClassifyMutation(name), isV1Mutation(name)];
+      expect(flags.filter(Boolean)).toHaveLength(1);
     }
+  });
+
+  it("merge_rule_off は V1 変異（v1 側の束ねを止める。design §8.1 U4）", () => {
+    expect(isV1Mutation("merge_rule_off")).toBe(true);
+    expect(isRowMutation("merge_rule_off")).toBe(false);
+    expect(isClassifyMutation("merge_rule_off")).toBe(false);
   });
 });
