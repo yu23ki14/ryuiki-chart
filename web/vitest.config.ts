@@ -17,6 +17,12 @@ import { defineConfig } from "vitest/config";
  * `empty.js` を使う）。`getD1()` を実行時に呼べば（Cloudflare コンテキストが無いので）
  * 落ちるが、`lib/cube` は `CubeDb` を引数で受ける設計にしてあるので、テストは
  * `db-sqlite.ts`/インメモリだけで動く（`getD1()` 自体は呼ばない）。
+ *
+ * `scripts/**\/*.test.ts` は Issue #48 PR-1（serving-diff、1c）が足した。
+ * `web/scripts/lib/serving/{classify,mutations,normalize,report}.test.ts` は
+ * フィクスチャだけで完結し DB を読まないので、`src/**` と同じ node 環境でそのまま動く。
+ * `adapters-v1.test.ts` は `web/src/lib/queries.ts` を import するので、同じ
+ * `server-only` alias に乗って空モジュールへ逃げる（1a と 1c は同じエイリアスを共有する）。
  */
 export default defineConfig({
   resolve: {
@@ -27,6 +33,6 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx", "scripts/**/*.test.ts"],
   },
 });

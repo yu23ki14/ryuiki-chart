@@ -1,0 +1,241 @@
+# serving-diff（`pnpm run serving:diff`）が回す問い合わせの一覧。
+#
+# 設計・経緯: Issue #48 PR-1 設計書（1c: serving-diff）§4「serving_queries.yaml と
+# 共通の行形」、`docs/plans/V2_SERVING_PR1.md`。PR-1 は測定値系（PR-2 が使うもの）
+# だけを対象にする（設計書 §0 要点1）。生物系（occurrence.ts）は PR-3a/3b、
+# 文書・概況・合成は PR-4 で足す。
+#
+# ここに SQL は書かない（`domains` の列挙 SQL だけが例外）。各問い合わせの実体
+# （v1 側は `web/src/lib/queries.ts` を無変更で呼ぶ・v2 側は `@/lib/cube` を呼ぶ）は
+# `web/scripts/lib/serving/adapters-v1.ts` / `adapters-v2.ts` が `id` ごとに持つ。
+# ここが持つのは「パラメータをどう列挙するか」「行をどの列で比較するか」
+# 「既知の系統のうちどれがこの問い合わせに当てはまりうるか」だけ。
+#
+# domains: パラメータの取りうる値の集合。`sql` は v1（derived.sqlite + ryuiki.sqlite）
+# に対して実行し、結果の最初の列を値の列とする。`values` は列挙のリテラル。
+version: 1
+
+domains:
+  alias:
+    sql: "SELECT variable FROM var_catalog ORDER BY variable"
+    db: v1
+  site_id:
+    sql: "SELECT DISTINCT site_id FROM site_var ORDER BY site_id"
+    db: v1
+  # `listWaterBodies()`（web/src/lib/queries.ts）と同じ絞り込み: site_var に
+  # 測定値集計を持つ地点が2つ以上ある municipality だけ（実測 26。単に sites 側
+  # だけで絞ると、site_var に一度も出てこない地点まで拾って 65 になる）。
+  water:
+    sql: >
+      SELECT s.municipality FROM sites s
+      JOIN (SELECT DISTINCT site_id FROM site_var) v ON v.site_id = s.site_id
+      WHERE s.municipality IS NOT NULL AND s.municipality <> ''
+      GROUP BY s.municipality HAVING COUNT(DISTINCT s.site_id) >= 2
+      ORDER BY s.municipality
+    db: v1
+  kind:
+    values: [daily, annual]
+  zone:
+    values: [1, 2, 3, 4, 5]
+  highlight_variant:
+    values: [default, representative]
+
+queries:
+  - id: variable_catalog
+    v1_table: var_catalog
+    params: {}
+    compare:
+      key: [alias]
+      numeric: [n, n_sites, y_from, y_to, n_daily, n_annual, n_censored]
+      label: [unit]
+    known: [unit_label_registry]
+
+  - id: sites_list
+    v1_table: null
+    params: {}
+    compare:
+      key: [site_id]
+      numeric: [n_meas, n_var]
+      label: []
+    known: []
+
+  - id: site_variables
+    v1_table: site_var
+    params:
+      site_id: { domain: site_id }
+    compare:
+      key: [alias, kind]
+      numeric: [n, y_from, y_to, avg]
+      label: [unit]
+    tolerance:
+      avg: 1.0e-9
+    known: [declared, unit_label_registry]
+
+  - id: water_bodies
+    v1_table: null
+    params: {}
+    compare:
+      key: [name]
+      numeric: [n_sites, n_meas, y_from, y_to, elev_min, elev_max, zone_min, zone_max]
+      label: []
+    known: []
+
+  - id: water_bodies_for_variable
+    v1_table: null
+    params:
+      alias: { domain: alias }
+    compare:
+      key: [name]
+      numeric: [n_sites, n, y_from, y_to, elev_max]
+      label: []
+    known: []
+
+  - id: sites_in_water_body
+    v1_table: null
+    params:
+      water: { domain: water }
+    compare:
+      key: [site_id]
+      numeric: [n_meas, n_var]
+      label: [municipality]
+    known: []
+
+  - id: year_series_site
+    v1_table: meas_year
+    params:
+      alias: { domain: alias }
+      site_id: { domain: site_id }
+      kind: { domain: kind }
+    only_existing: "SELECT site_id, variable AS alias, kind FROM site_var"
+    compare:
+      key: [year]
+      numeric: [n, avg, min, max, n_censored]
+      label: [unit]
+    known: [declared, unit_label_registry]
+
+  - id: month_series_site
+    v1_table: meas_month
+    params:
+      alias: { domain: alias }
+      site_id: { domain: site_id }
+    only_existing: "SELECT DISTINCT site_id, variable AS alias FROM meas_month"
+    compare:
+      key: [ym]
+      numeric: [n, avg]
+      label: []
+    tolerance:
+      avg: 1.0e-9
+    known: [declared, float_rounding]
+
+  - id: day_series_site
+    v1_table: meas_daily
+    params:
+      alias: { domain: alias }
+      site_id: { domain: site_id }
+    only_existing: "SELECT DISTINCT site_id, variable AS alias FROM meas_daily"
+    compare:
+      key: [d]
+      numeric: [value, n_censored]
+      label: []
+    known: [declared]
+
+  - id: year_series_water
+    v1_table: meas_year
+    params:
+      alias: { domain: alias }
+      water: { domain: water }
+      kind: { domain: kind }
+    only_existing: >
+      SELECT DISTINCT s.municipality AS water, sv.variable AS alias, sv.kind AS kind
+      FROM site_var sv JOIN sites s ON s.site_id = sv.site_id
+      WHERE s.municipality IN (
+        SELECT s2.municipality FROM sites s2
+        JOIN (SELECT DISTINCT site_id FROM site_var) v2 ON v2.site_id = s2.site_id
+        WHERE s2.municipality IS NOT NULL AND s2.municipality <> ''
+        GROUP BY s2.municipality HAVING COUNT(DISTINCT s2.site_id) >= 2
+      )
+    compare:
+      key: [site_id, year]
+      numeric: [n, avg, min, max, n_censored]
+      label: [unit]
+    known: [declared, unit_label_registry]
+
+  - id: zone_series
+    v1_table: zone_year
+    params:
+      alias: { domain: alias }
+      kind: { domain: kind }
+    only_existing: "SELECT DISTINCT variable AS alias, kind FROM zone_year"
+    compare:
+      key: [zone, year]
+      numeric: [n_sites, n, avg]
+      label: [unit]
+    tolerance:
+      avg: 1.0e-9
+    known: [unit_label_registry]
+
+  - id: climatology
+    v1_table: meas_clim
+    params:
+      alias: { domain: alias }
+    only_existing: "SELECT DISTINCT variable AS alias FROM meas_clim"
+    compare:
+      key: [month]
+      numeric: [n, avg, min, max]
+      label: [unit]
+    tolerance:
+      avg: 1.0e-9
+    known: [declared, unit_label_registry, float_rounding]
+
+  - id: zone_climatology
+    v1_table: zone_clim
+    params:
+      alias: { domain: alias }
+    only_existing: "SELECT DISTINCT variable AS alias FROM zone_clim"
+    compare:
+      key: [zone, month]
+      numeric: [n, avg]
+      label: [unit]
+    tolerance:
+      avg: 1.0e-9
+    known: [unit_label_registry]
+
+  - id: rain_daily
+    v1_table: rain_daily
+    params: {}
+    compare:
+      key: [d]
+      numeric: [mm]
+      label: []
+    known: [rain_div10, day_split]
+
+  - id: rain_monthly_clim
+    v1_table: null
+    params: {}
+    compare:
+      key: [month]
+      numeric: [mm]
+      label: []
+    known: [rain_div10, day_split]
+
+  - id: rain_top_days
+    v1_table: null
+    params: {}
+    compare:
+      key: [rank]
+      numeric: [mm]
+      label: [d]
+    known: [rain_div10, day_split]
+
+  - id: longitudinal_highlight
+    v1_table: null
+    params:
+      variant: { domain: highlight_variant }
+    compare:
+      key: [site_id]
+      numeric: [avg, n]
+      label: [unit]
+    # meas_year/sites の合成なので v1_table が無く、宣言済み差分の突き合わせ
+    # （キーの組み立て）先が無い。既知の系統は無し（unexplained になったら
+    # year_series_site/water 側の原因をそのまま引き継いでいる）。
+    known: []

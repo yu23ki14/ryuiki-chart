@@ -30,6 +30,7 @@
     "report:registry": "scripts/run-python.sh scripts/r02_resolution_report.py",
     "build:registry:ts": "node scripts/build-registry-ts.mjs",
     "build:v2": "scripts/ensure-registry.sh && scripts/run-python.sh scripts/b03_build_observation.py && scripts/run-python.sh scripts/b04_build_cube.py && scripts/run-python.sh scripts/b06_build_occurrence.py && scripts/run-python.sh scripts/b09_build_occurrence_place.py && scripts/run-python.sh scripts/b07_build_occurrence_cube.py",
+    "serving:diff": "tsx --import ./scripts/lib/serving/register-aliases.mjs ./scripts/serving-diff.mts",
     "test": "vitest run"
   },
   "dependencies": {
@@ -64,7 +65,7 @@
     "eslint-config-next": "16.3.3",
     "js-yaml": "^5.4.1",
     "tailwindcss": "^4",
-    "tsx": "^4.19.2",
+    "tsx": "^4.23.15",
     "typescript": "^5",
     "vitest": "^5.0.0",
     "wrangler": "^4.127.1"
