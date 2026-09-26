@@ -3,10 +3,20 @@
  * 素の食い違いを「既知の系統」に当てはめる（`classifyDiff`）のと、2つの役目を持つ。
  *
  * 設計書 §5.2「既知の系統の判定規則」をそのまま実装する。ここは v1/v2 の DB を
- * 直接読まない——読む必要がある規則（`day_split`/`rain_div10`）は、あらかじめ
+ * 直接読まない——読む必要がある規則（`day_split`）は、あらかじめ
  * 読んでおいた L2（`observation`）の行の配列や、宣言済み差分（`expected_diffs.yaml`）の
  * 索引を `ClassifyContext` として受け取る。これにより、フィクスチャ（DB 無し）だけで
  * 全規則をテストできる（`classify.test.ts`）。
+ *
+ * `rain_div10`（v2の`mm`を/10したものがv1と一致するか）は Issue #48 PR-2 で撤去した:
+ * `rain_daily`/`rain_top_days`（day 粒度の day_split が rain_div10 と守備範囲を分けて
+ * 判定していた唯一の問い合わせ）が読み手ゼロで削除され（design D5）、残る
+ * `rain_monthly_clim`（month 粒度）の `classifyDaySplitMonthly` は、そもそも
+ * 「rain_div10 と分けなくてよい」前提で書かれていた（549日の日割りずれが12ヶ月
+ * 全部に散らばっており、月次の再計算が /10 の換算を式に含んだまま v1/v2 の実値と
+ * 完全一致するため）。実測（`--only rain_monthly_clim --mutate rain_no_div10_rule`）で
+ * rain_div10 が実際に1件も選ばれない（day_split が全件を先に説明する）ことを確認して
+ * 撤去した。`day_split` 側の式自体は変えていない（Issue #48 PR-2 統合後 修正C）。
  */
 import { keyString, type NormRow, type QueryDef, type ScalarParam } from "./normalize";
 
@@ -173,7 +183,7 @@ export function declaredMatchTag(entry: DeclaredEntry): string {
 }
 
 /* ------------------------------------------------------------------ */
-/* L2（observation）の再計算（rain_div10 / day_split）                   */
+/* L2（observation）の再計算（day_split）                               */
 /* ------------------------------------------------------------------ */
 
 /** v2.sqlite の `observation`（L2）から RAIN（sagamihara の毎時降雨）だけを抜いた行。 */
@@ -258,7 +268,6 @@ export function computeRainRecompute(rows: readonly RainL2Row[]): RainRecompute 
 
 export type KnownRule =
   | "declared"
-  | "rain_div10"
   | "day_split"
   | "synthetic_excluded"
   | "unit_label_registry"
@@ -345,15 +354,6 @@ function ruleEnabled(ctx: ClassifyContext, rule: KnownRule): boolean {
   return ctx.known.has(rule) && !ctx.disabledRules?.has(rule);
 }
 
-function classifyRainDiv10(diff: RowDiff, ctx: ClassifyContext): boolean {
-  if (!ruleEnabled(ctx, "rain_div10") || diff.kind !== "value_diff" || !diff.columns.includes("mm")) return false;
-  if (!diff.v1 || !diff.v2) return false;
-  const v1mm = diff.v1.numeric.mm;
-  const v2mm = diff.v2.numeric.mm;
-  if (v1mm === null || v2mm === null) return false;
-  return Math.round((v2mm / 10) * 100) / 100 === v1mm;
-}
-
 function dayKeyOf(diff: RowDiff, ctx: ClassifyContext): string | undefined {
   if (ctx.rainDateFromLabel) return diff.v1?.label.d ?? diff.v2?.label.d ?? undefined;
   const k = diff.key[0];
@@ -390,8 +390,8 @@ function rowOnlySplitExplained(kind: "row_only_in_v1" | "row_only_in_v2", byLabe
 /** 月別平年値（`rain_monthly_clim`）の day_split 判定。日ごとの判定と同じ形だが、
  *  `monthlyLabel`/`monthlyPeriodStartRaw`（すでに月単位・v2 側は生値スケール）を使う。
  *  月をまたいだ合算・年数での割り算を経由するため、丸め誤差ぶんだけ許容差を持たせる
- *  （`numbersDiffer` を再利用。月別平年値どうしの比較なので `day_split`/`rain_div10` の
- *  日次側の完全一致とは別に許容してよい——floating point の加算順序の違い）。 */
+ *  （`numbersDiffer` を再利用。月別平年値どうしの比較なので、日次側の完全一致とは
+ *  別に許容してよい——floating point の加算順序の違い）。 */
 function classifyDaySplitMonthly(diff: RowDiff, rain: RainRecompute): boolean {
   const month = monthKeyOf(diff);
   if (month === undefined) return false;
@@ -403,10 +403,11 @@ function classifyDaySplitMonthly(diff: RowDiff, rain: RainRecompute): boolean {
     const v2mm = diff.v2?.numeric.mm ?? null;
     if (v1mm === null || v2mm === null || byLabel === undefined || byStart === undefined) return false;
     // 月別平年値は 12 ヶ月しかなく、日割りがずれた日を1つも含まない月は無い
-    // （実測: 549 日の日割りずれが12ヶ月全部に散らばっている）ので、day_split と
-    // rain_div10 の守備範囲分けは日次側だけで行う（月次側は分けても
-    // `--mutate rain_no_div10_rule` の検証対象が rain_daily/rain_top_days に
-    // 残るので、ここまで厳密にする必要はない）。
+    // （実測: 549 日の日割りずれが12ヶ月全部に散らばっている）ので、この月次判定は
+    // 「ずれていない月まで拾わない」よう絞り込む必要が無い（day_split が
+    // rain_monthly_clim の value_diff を常に完全に説明できる。かつて存在した
+    // `rain_div10` 規則がこの問い合わせで1件も選ばれなかったのはこのため——
+    // Issue #48 PR-2 統合後 修正C参照）。
     return !numbersDiffer(byLabel, v1mm, 1e-6) && !numbersDiffer(byStart, v2mm, 1e-6);
   }
   return false;
@@ -437,12 +438,10 @@ function classifyDaySplit(diff: RowDiff, ctx: ClassifyContext): boolean {
     const byLabel = ctx.rain.byLabelDay.get(v1Day);
     const byStart = ctx.rain.byPeriodStartDay.get(v2Day);
     if (byLabel === undefined || byStart === undefined) return false;
-    // 実際に日の境界がずれた日だけを day_split とする（`rain_div10` と守備範囲を
-    // 分ける——`--mutate rain_no_div10_rule` で確かめている: day_split が
-    // ずれていない日まで拾うと rain_div10 を無効化しても常に day_split で
-    // 説明できてしまい、rain_div10 規則自体の検証にならない）。ずれていない日は
-    // v1Day===v2Day かつ「同じ日」をラベル日割り・period_start 日割りどちらで
-    // 見ても一致する（`byLabelDay.get(v1Day) === byPeriodStartDay.get(v1Day)`）。
+    // 実際に日の境界がずれた日だけを day_split とする（ずれていない日まで拾うと、
+    // 本来別の原因で食い違っている行まで day_split が飲み込んでしまう）。
+    // ずれていない日は v1Day===v2Day かつ「同じ日」をラベル日割り・period_start
+    // 日割りどちらで見ても一致する（`byLabelDay.get(v1Day) === byPeriodStartDay.get(v1Day)`）。
     if (v1Day === v2Day && ctx.rain.byLabelDay.get(v1Day) === ctx.rain.byPeriodStartDay.get(v1Day)) return false;
     // `byLabelDay`/`byPeriodStartDay`（`computeRainRecompute`）はどちらも `/10` 後の
     // 実 mm 値（`sumByDay` 参照）。v1 側の `mm` 列はすでに `/10` 済みなのでそのまま
@@ -699,7 +698,7 @@ function classifyLodImputation(diff: RowDiff, ctx: ClassifyContext): boolean {
 
 /**
  * `RowDiff` を既知の系統に当てはめる。当てはまらなければ `{ rule: "unexplained" }`。
- * 判定の優先順位: declared -> rain_div10 -> day_split -> synthetic_excluded ->
+ * 判定の優先順位: declared -> day_split -> synthetic_excluded ->
  * declared+synthetic_excluded の組み合わせ（`classifyDeclaredWithSyntheticRemainder`。
  * by_variable の declared 経路もここ） -> lod_imputation -> unit_label_registry ->
  * float_rounding（設計書 §5.2 の表の順＋ PR-2 で追加した lod_imputation を
@@ -710,7 +709,6 @@ export function classifyDiff(diff: RowDiff, ctx: ClassifyContext): Classificatio
     const entry = findDeclared(ctx.expected, ctx.declared, ctx.params, diff, ctx.declaredRot);
     if (entry) return { rule: "declared", declaredMatch: { table: ctx.declared.v1Table!, entry } };
   }
-  if (classifyRainDiv10(diff, ctx)) return { rule: "rain_div10" };
   if (classifyDaySplit(diff, ctx)) return { rule: "day_split" };
   if (classifySyntheticExcludedV1Compat(diff, ctx)) return { rule: "synthetic_excluded" };
   const combo = classifyDeclaredWithSyntheticRemainder(diff, ctx);

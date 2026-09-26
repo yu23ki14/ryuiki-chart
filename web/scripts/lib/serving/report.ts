@@ -26,7 +26,6 @@ export interface QueryStats {
   rowsV2: number;
   matched: number;
   declared: number;
-  rain_div10: number;
   day_split: number;
   synthetic_excluded: number;
   lod_imputation: number;
@@ -43,7 +42,6 @@ export function emptyQueryStats(id: string): QueryStats {
     rowsV2: 0,
     matched: 0,
     declared: 0,
-    rain_div10: 0,
     day_split: 0,
     synthetic_excluded: 0,
     lod_imputation: 0,
@@ -96,7 +94,6 @@ export interface ReportInput {
 // 数値の加算が `never` に落ちて型検査が通らない）。
 const KNOWN_RULE_COLUMNS = [
   "declared",
-  "rain_div10",
   "day_split",
   "synthetic_excluded",
   "lod_imputation",

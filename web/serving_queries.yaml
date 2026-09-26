@@ -340,8 +340,16 @@ queries:
   # `rain_daily`/`rain_top_days`（v1 `rainDaily`/`rainTopDays`）は `/api/timeseries
   # ?mode=rain` 専用で、その API モード自体が読み手ゼロのため PR-2 で削除する
   # （design D5）。`rain_monthly_clim` だけ残す——季節図（`mode=season`）が
-  # `rainMonthlyClim` を引き続き使い、`/10` 撤去・日割り退役の検証対象として
+  # `rainMonthlyClim` を引き続き使い、日割り退役の検証対象として
   # 唯一残る rain 系の問い合わせになる（U4 の判断。PR 本文で報告）。
+  # `rain_div10`（`/10` 撤去の検証規則）は known から外した: この問い合わせは
+  # 月次（`classifyDaySplitMonthly`）でしか判定しておらず、その再計算式が
+  # もともと `/10` の換算を含んだまま v1/v2 の実値と完全一致する——実測
+  # （`--only rain_monthly_clim --mutate rain_no_div10_rule`）で rain_div10 が
+  # 1件も選ばれない（day_split が全12ヶ月を先に説明する）ことを確認した。
+  # `rain_daily`/`rain_top_days`（rain_div10 が唯一 day_split と守備範囲を
+  # 分けて判定できていた問い合わせ）を削除した時点で、この問い合わせにおける
+  # rain_div10 は実質的な検証を持たない免除だった（Issue #48 PR-2 統合後 修正C）。
   - id: rain_monthly_clim
     v1_table: null
     params: {}
@@ -349,7 +357,7 @@ queries:
       key: [month]
       numeric: [mm]
       label: []
-    known: [rain_div10, day_split]
+    known: [day_split]
 
   - id: longitudinal_highlight
     v1_table: null

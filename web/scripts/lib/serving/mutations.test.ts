@@ -21,7 +21,7 @@ function unexplainedCount(v1: NormRow[], v2: NormRow[], ctx: Partial<ClassifyCon
     expected: {},
     declared: { v1Table: null, builder: null },
     params: {},
-    known: new Set(["declared", "rain_div10", "day_split", "unit_label_registry", "float_rounding"]),
+    known: new Set(["declared", "day_split", "unit_label_registry", "float_rounding"]),
     ...ctx,
   };
   const diffs = compareRuns(rowsByKey(v1), rowsByKey(v2));
@@ -113,11 +113,9 @@ describe("行変異は unexplained > 0 で必ず落ちる", () => {
 });
 
 describe("分類器変異", () => {
-  it("rain_no_div10_rule は rain_div10 を無効化する", () => {
-    const opts = applyClassifyMutation("rain_no_div10_rule");
-    const v1 = toNormRows([{ d: "2020-01-01", mm: 1.23 }], ["d"], ["mm"], []);
-    const v2 = toNormRows([{ d: "2020-01-01", mm: 12.3 }], ["d"], ["mm"], []);
-    expect(unexplainedCount(v1, v2, { disabledRules: opts.disabledRules })).toBeGreaterThan(0);
+  it("rain_no_div10_rule / rain_div10 は撤去済み（Issue #48 PR-2 統合後 修正C: rain_monthly_clim では day_split が全件を先に説明し、rain_div10 は実質的な検証を持たなかった）", () => {
+    expect(ALL_MUTATION_NAMES).not.toContain("rain_no_div10_rule");
+    expect(() => applyClassifyMutation("rain_no_div10_rule" as never)).toThrow();
   });
 
   it("day_split_rule_off は day_split を無効化する", () => {

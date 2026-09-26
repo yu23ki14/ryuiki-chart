@@ -135,32 +135,6 @@ describe("classifyDiff: declared", () => {
   });
 });
 
-describe("classifyDiff: rain_div10", () => {
-  it("v2/10を丸めたものがv1と一致すれば rain_div10", () => {
-    const v1 = rowsByKey(toNormRows([{ d: "2020-01-01", mm: 1.23 }], ["d"], ["mm"], []));
-    const v2 = rowsByKey(toNormRows([{ d: "2020-01-01", mm: 12.3 }], ["d"], ["mm"], []));
-    const diffs = compareRuns(v1, v2);
-    const ctx = ctxBase({ known: new Set(["rain_div10"]) });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("rain_div10");
-  });
-
-  it("既定の丸め(2桁)から外れる差は rain_div10 にならない", () => {
-    const v1 = rowsByKey(toNormRows([{ d: "2020-01-01", mm: 1.23 }], ["d"], ["mm"], []));
-    const v2 = rowsByKey(toNormRows([{ d: "2020-01-01", mm: 20 }], ["d"], ["mm"], []));
-    const diffs = compareRuns(v1, v2);
-    const ctx = ctxBase({ known: new Set(["rain_div10"]) });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
-  });
-
-  it("--mutate rain_no_div10_rule 相当（disabledRulesで無効化）は unexplained に落ちる", () => {
-    const v1 = rowsByKey(toNormRows([{ d: "2020-01-01", mm: 1.23 }], ["d"], ["mm"], []));
-    const v2 = rowsByKey(toNormRows([{ d: "2020-01-01", mm: 12.3 }], ["d"], ["mm"], []));
-    const diffs = compareRuns(v1, v2);
-    const ctx = ctxBase({ known: new Set(["rain_div10"]), disabledRules: new Set(["rain_div10"]) });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
-  });
-});
-
 describe("classifyDiff: day_split", () => {
   // v1(ラベル日割り)は 23:00〜翌0:00 の1時間が「翌日」に入る、v2(period_start日割り)は
   // その1時間が「当日」に残る、という実際の癖を各テストの最小フィクスチャで再現する。
@@ -197,9 +171,9 @@ describe("classifyDiff: day_split", () => {
     ];
     const r = computeRainRecompute(mixedRows);
     const v1 = rowsByKey(toNormRows([{ d: "2020-01-01", mm: r.byLabelDay.get("2020-01-01") }], ["d"], ["mm"], []));
-    // v2 の `mm`（キューブの生の合計値）は `/10` していない（design §0 決定2・
-    // `rain_div10` 規則参照）。`byPeriodStartDay` は再計算のための `/10` 後の値
-    // なので、フィクスチャでも実際の v2 と同じ「生値」にして渡す（×10）。
+    // v2 の `mm`（キューブの生の合計値）は `/10` していない（design §0 決定2）。
+    // `byPeriodStartDay` は再計算のための `/10` 後の値なので、フィクスチャでも
+    // 実際の v2 と同じ「生値」にして渡す（×10）。
     const v2 = rowsByKey(toNormRows([{ d: "2020-01-01", mm: r.byPeriodStartDay.get("2020-01-01")! * 10 }], ["d"], ["mm"], []));
     const diffs = compareRuns(v1, v2);
     expect(diffs).toHaveLength(1);
@@ -224,6 +198,75 @@ describe("classifyDiff: day_split", () => {
     const v2 = rowsByKey(toNormRows([], ["d"], ["mm"], []));
     const diffs = compareRuns(v1, v2);
     const ctx = ctxBase({ known: new Set(["day_split"]), rain: r, disabledRules: new Set(["day_split"]) });
+    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+  });
+});
+
+describe("classifyDiff: day_split（月次・rain_monthly_clim、rainGrain:'month'）", () => {
+  // 本番で `rain_div10` が唯一残っていた `rain_monthly_clim` は月次
+  // （`classifyDaySplitMonthly`）でしか判定していない。ここまでの `day_split`
+  // describe ブロックは全て日次（既定の rainGrain）の経路しか通っておらず、
+  // 本番で実際に使われる月次の経路には1件もテストが無かった
+  // （Issue #48 PR-2 統合後 修正C で判明: `--only rain_monthly_clim --mutate
+  // rain_no_div10_rule` を実データで回すと rain_div10 が1件も選ばれず、
+  // 変異を検出できなかった）。
+
+  it("ラベル日にしか属さない月は row_only_in_v1 が day_split(月次) で説明できる", () => {
+    const onlyLabelEvent: RainL2Row[] = [
+      { periodRaw: "2020-02-01T00:30:00", periodStart: "2020-01-31T23:30:00", valueNum: 10 },
+    ];
+    const r = computeRainRecompute(onlyLabelEvent);
+    // ラベル日割りだと 2月、period_start 日割りだと 1月に属する→2月はv1にしか無い。
+    const v1 = rowsByKey(toNormRows([{ month: 2, mm: 1 }], ["month"], ["mm"], []));
+    const v2 = rowsByKey(toNormRows([], ["month"], ["mm"], []));
+    const diffs = compareRuns(v1, v2);
+    const ctx = ctxBase({ known: new Set(["day_split"]), rain: r, rainGrain: "month" });
+    expect(classifyDiff(diffs[0], ctx).rule).toBe("day_split");
+  });
+
+  it("period_start日にしか属さない月は row_only_in_v2 が day_split(月次) で説明できる", () => {
+    const onlyLabelEvent: RainL2Row[] = [
+      { periodRaw: "2020-02-01T00:30:00", periodStart: "2020-01-31T23:30:00", valueNum: 10 },
+    ];
+    const r = computeRainRecompute(onlyLabelEvent);
+    // 同じ1件の事象から、今度は1月（period_start側）を見る: v1に無く v2にだけ有る。
+    const v1 = rowsByKey(toNormRows([], ["month"], ["mm"], []));
+    const v2 = rowsByKey(toNormRows([{ month: 1, mm: 100 }], ["month"], ["mm"], []));
+    const diffs = compareRuns(v1, v2);
+    const ctx = ctxBase({ known: new Set(["day_split"]), rain: r, rainGrain: "month" });
+    expect(classifyDiff(diffs[0], ctx).rule).toBe("day_split");
+  });
+
+  it("日付境界のずれが無くても、/10 換算だけの差を day_split(月次) がそのまま説明する（rain_div10 を撤去した理由）", () => {
+    // ラベル日・period_start 日が完全に同じ日（境界をまたがない）事象だけで
+    // 月別平年値を作る——「日割りのずれ」は一切無い、純粋な /10 の差だけの状況。
+    const noBoundaryCross: RainL2Row[] = [
+      { periodRaw: "2020-03-15T10:00:00", periodStart: "2020-03-15T09:00:00", valueNum: 50 },
+    ];
+    const r = computeRainRecompute(noBoundaryCross);
+    const v1 = rowsByKey(toNormRows([{ month: 3, mm: r.monthlyLabel.get(3) }], ["month"], ["mm"], []));
+    // v2 の `mm`（キューブの生の合計値）は `/10` していない（design §0 決定2）。
+    const v2 = rowsByKey(toNormRows([{ month: 3, mm: r.monthlyPeriodStartRaw.get(3) }], ["month"], ["mm"], []));
+    const diffs = compareRuns(v1, v2);
+    expect(diffs).toHaveLength(1); // 日付境界のずれが無いのに、なお value_diff が出る（=純粋な /10 の差）
+    const ctx = ctxBase({ known: new Set(["day_split"]), rain: r, rainGrain: "month" });
+    expect(classifyDiff(diffs[0], ctx).rule).toBe("day_split");
+  });
+
+  it("--mutate day_split_rule_off 相当（月次）は unexplained に落ちる", () => {
+    const onlyLabelEvent: RainL2Row[] = [
+      { periodRaw: "2020-02-01T00:30:00", periodStart: "2020-01-31T23:30:00", valueNum: 10 },
+    ];
+    const r = computeRainRecompute(onlyLabelEvent);
+    const v1 = rowsByKey(toNormRows([{ month: 2, mm: 1 }], ["month"], ["mm"], []));
+    const v2 = rowsByKey(toNormRows([], ["month"], ["mm"], []));
+    const diffs = compareRuns(v1, v2);
+    const ctx = ctxBase({
+      known: new Set(["day_split"]),
+      rain: r,
+      rainGrain: "month",
+      disabledRules: new Set(["day_split"]),
+    });
     expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
   });
 });
@@ -627,17 +670,23 @@ describe("classifyDiff: lod_imputation（design §3 #1・--imputation lod）", (
 });
 
 describe("優先順位", () => {
-  it("declaredが最優先（他の規則にも当てはまりうる状況でdeclaredを選ぶ）", () => {
+  it("declaredが最優先（day_splitにも当てはまりうる状況でdeclaredを選ぶ）", () => {
+    const onlyLabelEvent: RainL2Row[] = [
+      { periodRaw: "2020-02-01T00:30:00", periodStart: "2020-01-31T23:30:00", valueNum: 10 },
+    ];
+    const r = computeRainRecompute(onlyLabelEvent);
     const expected: ExpectedDiffs = {
-      rain_daily: [{ key: ["2020-01-01"], kind: "value_diff", columns: ["mm"] }],
+      rain_monthly_clim: [{ key: [2], kind: "row_only_in_baseline" }],
     };
-    const v1 = rowsByKey(toNormRows([{ d: "2020-01-01", mm: 1.23 }], ["d"], ["mm"], []));
-    const v2 = rowsByKey(toNormRows([{ d: "2020-01-01", mm: 12.3 }], ["d"], ["mm"], []));
+    const v1 = rowsByKey(toNormRows([{ month: 2, mm: 1 }], ["month"], ["mm"], []));
+    const v2 = rowsByKey(toNormRows([], ["month"], ["mm"], []));
     const diffs = compareRuns(v1, v2);
     const ctx = ctxBase({
       expected,
-      declared: { v1Table: "rain_daily", builder: (_p, k) => [k[0]] },
-      known: new Set(["declared", "rain_div10"]),
+      declared: { v1Table: "rain_monthly_clim", builder: (_p, k) => [k[0]] },
+      known: new Set(["declared", "day_split"]),
+      rain: r,
+      rainGrain: "month",
     });
     expect(classifyDiff(diffs[0], ctx).rule).toBe("declared");
   });

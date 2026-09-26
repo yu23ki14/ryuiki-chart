@@ -24,9 +24,9 @@ describe("addClassification", () => {
     const s = emptyQueryStats("q1");
     addClassification(s, "declared");
     addClassification(s, "declared");
-    addClassification(s, "rain_div10");
+    addClassification(s, "day_split");
     expect(s.declared).toBe(2);
-    expect(s.rain_div10).toBe(1);
+    expect(s.day_split).toBe(1);
     expect(s.unexplained).toBe(0);
   });
 
@@ -91,9 +91,9 @@ describe("buildReportMarkdown/buildReportJson", () => {
       stats: [],
       unexplainedSamples: [],
       rottenDeclarations: [],
-      mutationResults: [{ name: "rain_no_div10_rule", unexplained: 3105, caughtAsExpected: true }],
+      mutationResults: [{ name: "day_split_rule_off", unexplained: 3105, caughtAsExpected: true }],
     });
     expect(md).toContain("変異テスト");
-    expect(md).toContain("rain_no_div10_rule");
+    expect(md).toContain("day_split_rule_off");
   });
 });

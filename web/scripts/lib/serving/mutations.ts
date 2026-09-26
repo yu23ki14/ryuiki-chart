@@ -23,7 +23,6 @@ export type RowMutationName =
   | "include_watershed_cells";
 
 export type ClassifyMutationName =
-  | "rain_no_div10_rule"
   | "day_split_rule_off"
   | "declared_rot"
   | "synthetic_rule_off"
@@ -46,7 +45,6 @@ export const ROW_MUTATION_NAMES: readonly RowMutationName[] = [
 ];
 
 export const CLASSIFY_MUTATION_NAMES: readonly ClassifyMutationName[] = [
-  "rain_no_div10_rule",
   "day_split_rule_off",
   "declared_rot",
   "synthetic_rule_off",
@@ -168,8 +166,6 @@ export function applyClassifyMutation(
   opts: { declaredRotTarget?: DeclaredRotOptions } = {},
 ): ClassifyMutationOptions {
   switch (name) {
-    case "rain_no_div10_rule":
-      return { disabledRules: new Set<KnownRule>(["rain_div10"]) };
     case "day_split_rule_off":
       return { disabledRules: new Set<KnownRule>(["day_split"]) };
     case "synthetic_rule_off":
