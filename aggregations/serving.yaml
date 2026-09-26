@@ -1,0 +1,57 @@
+# `observation_agg`（`scripts/b04_build_cube.py`）から、画面・API・AI が直接
+# 読む summary 2表（`scripts/b13_build_summary.py` が作る `summary_variable_catalog`/
+# `summary_place_variable`）を宣言する（Issue #48 PR-2 §4、ADR-0011）。
+#
+# `scripts/b13_build_summary.py` はこのファイルを読むだけで、どの列で GROUP BY
+# するか・どの測度（measure）を作るかを決める——テーブルごとの分岐はコード側に
+# 書かない（`scripts/reconcile/projection_manifest.yaml` と同じ流儀）。
+#
+# 語彙は閉じている（b13 が起動時に検証し、未知の語彙・列は止まる）:
+#   - `fn` ∈ {sum, count_distinct, min, max, avg}
+#   - `expr` ∈ {year_of_period_start}（`CAST(substr(period_start,1,4) AS INTEGER)`）
+#   - `filter`/`group_by`/`key` の列は `observation_agg` の次元キー
+#     （`scripts/b04_build_cube.py` の `DIM_COLUMNS`）のみ
+#   - 測度の `col` は次元キー、または `value_zero`/`value_lod`/`n`/`n_censored`/
+#     `n_not_detected`/`n_places`（`observation_agg` の測度列）
+#
+# `key` は必ず `group_by` と同じ集合にすること（summary は1グループ=1行の
+# ロールアップで、`key` がその一意性を保証する次元）。
+#
+# variable_id 単位への束ね・代表化は**ここに書かない**——それは問い合わせ層
+# （`web/src/lib/cube/catalog.ts`）の仕事。summary は系列単位（`obs_stat`/
+# `unit_id`/`value_grain` を保ったまま）のロールアップにとどめる
+# （`nPlaces` を alias/variable 単位に単純合算すると二重計上する、という
+# PR-1 の知見どおり）。
+
+version: 1
+spec_version: serving-summary/v1
+
+summaries:
+  summary_variable_catalog:
+    source: observation_agg
+    filter: { place_kind: site, grain: [year, fiscal_year], stat: mean }
+    group_by: [variable_id, obs_stat, unit_id, value_grain, grain, input_grain]
+    measures:
+      n:              { fn: sum, col: n }
+      n_places:       { fn: count_distinct, col: place_id }
+      y_from:         { fn: min, expr: year_of_period_start }
+      y_to:           { fn: max, expr: year_of_period_start }
+      n_censored:     { fn: sum, col: n_censored }
+      n_not_detected: { fn: sum, col: n_not_detected }
+    key: [variable_id, obs_stat, unit_id, value_grain, grain, input_grain]
+    indexes: [[variable_id]]
+
+  summary_place_variable:
+    source: observation_agg
+    filter: { place_kind: site, grain: [year, fiscal_year], stat: mean }
+    group_by: [place_id, variable_id, obs_stat, unit_id, value_grain, grain, input_grain]
+    measures:
+      n:              { fn: sum, col: n }
+      y_from:         { fn: min, expr: year_of_period_start }
+      y_to:           { fn: max, expr: year_of_period_start }
+      avg_zero:       { fn: avg, col: value_zero }
+      avg_lod:        { fn: avg, col: value_lod }
+      n_censored:     { fn: sum, col: n_censored }
+      n_not_detected: { fn: sum, col: n_not_detected }
+    key: [place_id, variable_id, obs_stat, unit_id, value_grain, grain, input_grain]
+    indexes: [[place_id], [variable_id]]

@@ -88,9 +88,20 @@ FINGERPRINT_SPEC_VERSION = "phase-b-fact-slice/v1"
 V2_CHECK_EXIT_FRESH = 0
 V2_CHECK_EXIT_STALE = 10
 
+# `scripts/b13_build_summary.py`（Issue #48 PR-2 §4）専用。`observation_agg`
+# から集計するだけの2表（`aggregations/serving.yaml` が宣言）——キー列や
+# 集計方法（`fn`/`expr`）を変えたら上げる（b13 自身が YAML の `spec_version`
+# とこの定数の一致を検証する）。
+SUMMARY_SPEC_VERSION = "serving-summary/v1"
+
+# D1 に載せる summary 表（`scripts/b13_build_summary.py` が作る）の名前。
+# `V2_CUBE_SPEC_VERSIONS` に SUMMARY_SPEC_VERSION 付きで足すのに使う——
+# ここで複製しない。
+V2_SUMMARY_TABLES = ("summary_variable_catalog", "summary_place_variable")
+
 # D1 に載せるキューブ表と、それぞれの spec_version。値は上の
-# `OBSERVATION_AGG_SPEC_VERSION`/`OCCURRENCE_SPEC_VERSION` を直接引く——
-# ここで複製しない。`scripts/check_v2_fresh.py`・
+# `OBSERVATION_AGG_SPEC_VERSION`/`OCCURRENCE_SPEC_VERSION`/`SUMMARY_SPEC_VERSION`
+# を直接引く——ここで複製しない。`scripts/check_v2_fresh.py`・
 # `web/scripts/seed-d1-local.mjs`（Python の `scripts/check_v2_fresh.py` を
 # 子プロセスとして呼ぶ）が読む唯一の正本（コードレビュー指摘: 以前は
 # `web/scripts/seed-d1-local.mjs` にこの2値の手書きの写しを持っていたが、
@@ -99,6 +110,7 @@ V2_CHECK_EXIT_STALE = 10
 V2_CUBE_SPEC_VERSIONS = {
     "observation_agg": OBSERVATION_AGG_SPEC_VERSION,
     "occurrence_agg": OCCURRENCE_SPEC_VERSION,
+    **{table: SUMMARY_SPEC_VERSION for table in V2_SUMMARY_TABLES},
 }
 
 # SQLite 3.43 未満では2つの理由でパイプラインが壊れる: (1) AVG()/SUM() の
@@ -1178,13 +1190,17 @@ V2_RYUIKI_TABLES = ("measurements", "sensor_timeseries", "organism_records", "si
 # b09: 流域 GeoJSON）。
 V2_PROCESSED_FILES = ("nlni_w12_watersheds.geojson", "nlni_l03b_landuse_by_watershed.csv")
 
-# v2 パイプラインの5段（`scripts/` 直下、モジュール名で import する）。
+# v2 パイプラインの6段（`scripts/` 直下、モジュール名で import する）。
+# `b13_build_summary`（Issue #48 PR-2）は `observation_agg` から summary 2表を
+# 作るだけで新しい外部入力は読まないが、`build:v2` の一部として実行される
+# ため、そのコード自体の変化は鮮度判定の対象に入れる。
 V2_PIPELINE_STAGE_MODULES = (
     "b03_build_observation",
     "b04_build_cube",
     "b06_build_occurrence",
     "b07_build_occurrence_cube",
     "b09_build_occurrence_place",
+    "b13_build_summary",
 )
 
 PIPELINE_INPUT_FINGERPRINT_TABLE = "pipeline_input_fingerprint"
@@ -1297,14 +1313,19 @@ print(json.dumps(sorted(files)))
 
 def _v2_pipeline_code_fingerprint(root: pathlib.Path) -> str:
     """v2 パイプラインのコードの中身の sha256——import で機械的に見つけた
-    `.py`（`_v2_pipeline_code_files()`）と、`scripts/migrate/*.yaml`（YAML 宣言、
-    glob。モジュールコメント参照）の両方を、決まった順（相対パス文字列で
-    ソート）で連結する（`scripts/registry/common.py` の
-    `compute_input_fingerprint()` と同じ形）。
+    `.py`（`_v2_pipeline_code_files()`）と、`scripts/migrate/*.yaml`・
+    `aggregations/*.yaml`（YAML 宣言、glob。モジュールコメント参照。
+    `aggregations/serving.yaml` は `scripts/b13_build_summary.py` の宣言
+    ——`scripts/migrate/*.yaml` と同じ理由で、import では見つからないため
+    別途 glob で足す）の両方を、決まった順（相対パス文字列でソート）で
+    連結する（`scripts/registry/common.py` の `compute_input_fingerprint()`
+    と同じ形）。
     """
     py_files = _v2_pipeline_code_files(root)
     yaml_files = [
         p.relative_to(root).as_posix() for p in sorted((root / "scripts" / "migrate").glob("*.yaml"))
+    ] + [
+        p.relative_to(root).as_posix() for p in sorted((root / "aggregations").glob("*.yaml"))
     ]
     h = hashlib.sha256()
     for rel in sorted(py_files + yaml_files):

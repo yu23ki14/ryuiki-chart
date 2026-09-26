@@ -18,6 +18,7 @@ from .migrate_fixtures import (
     DEFAULT_LANDUSE_ALIASES,
     DEFAULT_LANDUSE_CSV_ROWS,
     DEFAULT_LANDUSE_VARIABLES,
+    DEFAULT_MEASUREMENTS,
     DEFAULT_PLACE_REFS,
     DEFAULT_PLACES,
     DEFAULT_SENSOR_ROWS,
@@ -137,6 +138,98 @@ def test_sensor_rows_are_ingested_with_source_table_and_row_id(tmp_path):
     assert midnight_row[4:9] == (
         "hour", "hour", "2020-01-01T23:00:00", "2020-01-02T00:00:00", "2020-01-02T00:00:00+09:00",
     )
+
+
+def test_synthetic_rows_are_excluded_from_observation_by_default(tmp_path):
+    """Issue #48 PR-0/PR-2（オーナー決定: 合成データは本番に出さない）:
+    既定（`include_synthetic` を渡さない）では `is_synthetic=1` の行は
+    `measurements`/`sensor_timeseries` のどちらも `observation` に入らない。
+    `stats["total"]`（出典の生の行数）には数えるが、`stats["n_observation"]`
+    からは除かれ、`stats["synthetic_excluded_count"]` に計上される。
+    """
+    synthetic_measurement = (
+        "m4", "S1", "2020-01-03", "BOD", "src_a", 99.9, "99.9", "mg/L", "公開済", 1, "ref1", "ev1",
+    )
+    rows = list(DEFAULT_MEASUREMENTS) + [synthetic_measurement]
+    synthetic_sensor = ("S1", "TEMP_DAILY", "2020-01-03", 999.0, "degC", None, "src_daily", 1)
+    sensor_rows = list(DEFAULT_SENSOR_ROWS) + [synthetic_sensor]
+
+    measurements_db = tmp_path / "ryuiki.sqlite"
+    registry_db = tmp_path / "registry.sqlite"
+    make_measurements_db(measurements_db, rows=rows, sensor_rows=sensor_rows)
+    make_registry_db(registry_db)
+    make_time_label_conventions_yaml(tmp_path / "conventions.yaml")
+    out = tmp_path / "v2.sqlite"
+
+    all_stats = build_observation(
+        tmp_path,
+        measurements_db, registry_db, _no_exceptions_path(tmp_path), tmp_path / "conventions.yaml", out,
+    )
+
+    m_stats = all_stats["measurements"]
+    assert m_stats["total"] == 4  # 3 real + 1 synthetic。生の行数には合成データも数える。
+    assert m_stats["n_observation"] == 3  # 合成データを除いた行数
+    assert m_stats["synthetic_excluded_count"] == 1
+
+    s_stats = all_stats["sensor_timeseries"]
+    assert s_stats["total"] == len(DEFAULT_SENSOR_ROWS) + 1
+    assert s_stats["n_observation"] == len(DEFAULT_SENSOR_ROWS)
+    assert s_stats["synthetic_excluded_count"] == 1
+
+    conn = sqlite3.connect(f"file:{out}?mode=ro", uri=True)
+    # 合成の measurements 行（source_row_id='m4'）は observation に一切現れない。
+    assert conn.execute(
+        "SELECT COUNT(*) FROM observation WHERE source_table='measurements' AND source_row_id='m4'"
+    ).fetchone()[0] == 0
+    # 合成の sensor_timeseries 行（value_num=999.0 で識別）も現れない。
+    assert conn.execute("SELECT COUNT(*) FROM observation WHERE value_num = 999.0").fetchone()[0] == 0
+    # 非合成の行は普段どおり observation に入る。
+    assert conn.execute(
+        "SELECT COUNT(*) FROM observation WHERE source_table='measurements' AND source_row_id='m1'"
+    ).fetchone()[0] == 1
+    conn.close()
+
+
+def test_include_synthetic_keeps_synthetic_rows(tmp_path):
+    """`include_synthetic=True`（`--include-synthetic`。Issue #48 PR-2 §1、
+    診断専用の v1互換キューブ）を渡すと、既定の除外を行わず合成データも
+    `observation` に取り込む。`synthetic_excluded_count` は「実際に除外した
+    件数」なので、このときは0のまま（除外していないため）。
+    """
+    synthetic_measurement = (
+        "m4", "S1", "2020-01-03", "BOD", "src_a", 99.9, "99.9", "mg/L", "公開済", 1, "ref1", "ev1",
+    )
+    rows = list(DEFAULT_MEASUREMENTS) + [synthetic_measurement]
+
+    measurements_db = tmp_path / "ryuiki.sqlite"
+    registry_db = tmp_path / "registry.sqlite"
+    make_measurements_db(measurements_db, rows=rows)
+    make_registry_db(registry_db)
+    out = tmp_path / "v2_v1compat.sqlite"
+
+    all_stats = build_observation(
+        tmp_path,
+        measurements_db, registry_db, _no_exceptions_path(tmp_path), _no_conventions_path(tmp_path), out,
+        include_synthetic=True,
+    )
+
+    m_stats = all_stats["measurements"]
+    assert m_stats["total"] == 4
+    assert m_stats["n_observation"] == 4  # 合成データも取り込む
+    assert m_stats["synthetic_excluded_count"] == 0  # 除外していない
+
+    conn = sqlite3.connect(f"file:{out}?mode=ro", uri=True)
+    assert conn.execute(
+        "SELECT COUNT(*) FROM observation WHERE source_table='measurements' AND source_row_id='m4'"
+    ).fetchone()[0] == 1
+    # PR-2 §1: pipeline_input_fingerprint に synthetic_included=1 の印を書く
+    # （check_v2_fresh.py がこの印で古い扱いにする。scripts/tests/
+    # test_migrate_common.py 側でも diff_v2_input_fingerprint 単体の検証がある）。
+    marked = conn.execute(
+        "SELECT value FROM pipeline_input_fingerprint WHERE component = 'synthetic_included'"
+    ).fetchone()
+    assert marked == ("1",)
+    conn.close()
 
 
 def test_hour_grain_without_time_label_convention_raises(tmp_path):
@@ -1000,3 +1093,28 @@ def test_landuse_does_not_affect_measurements_rows(tmp_path):
     conn.close()
     assert n_measurements == 3
     assert n_landuse == len(DEFAULT_LANDUSE_CSV_ROWS) * 2
+
+
+def test_guard_include_synthetic_out_rejects_default_out():
+    """Issue #48 PR-2 §1: `--include-synthetic` は既定の `--out`
+    （`data/db/v2.sqlite`）を拒む——診断専用の v1互換キューブ用のフラグを、
+    誤って本番の v2.sqlite に使ってしまう事故を防ぐガード（モジュール
+    docstring「合成データを除く」節）。DB は一切開かない単体テスト。
+    """
+    with pytest.raises(SystemExit) as exc_info:
+        b03._guard_include_synthetic_out(True, str(b03.DEFAULT_OUT))
+    message = str(exc_info.value)
+    assert "--include-synthetic" in message
+    assert "v2.sqlite" in message
+
+
+def test_guard_include_synthetic_out_allows_explicit_out():
+    """`--out` を明示的に別ファイルへ変えていれば、ガードは発火しない。"""
+    b03._guard_include_synthetic_out(True, "/tmp/v2_v1compat.sqlite")  # 例外を投げなければ成功
+
+
+def test_guard_include_synthetic_out_allows_default_out_without_the_flag():
+    """`--include-synthetic` を渡していなければ、既定の --out でもガードは
+    発火しない（通常の本番実行がこのガードに巻き込まれないことの確認）。
+    """
+    b03._guard_include_synthetic_out(False, str(b03.DEFAULT_OUT))  # 例外を投げなければ成功
