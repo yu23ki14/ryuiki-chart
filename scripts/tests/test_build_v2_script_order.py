@@ -8,10 +8,12 @@
 `scripts/r01_build_registry.py --check-fresh`/`build:registry` を呼ぶだけ）→
 b03→b04→b06→b09→b07→b13 の7段。`PIPELINE_STEPS` は各要素が `(script, args)`
 の組で、素の並びは r01→b03→b04→b05→b06→b09→b07→b13→b08→b10→b11→b12→
-（Issue #48 PR-2 §1(d) の v1互換キューブ3段: b03→b04→b05、CLAUDE.md の実行順
-そのまま）なので、`build:v2` の並び（スクリプト名だけ、`args` は無視する）は
-その**部分列**（間に他の段が挟まってよいが、相対順序は保つ）であるべき——
-手で2箇所に同じ順序を書き、片方だけ変えて食い違う事故を防ぐ。
+（Issue #48 PR-2 §1(d) の v1互換キューブ5段: b03→b04→b13→b05→b11、統合後
+修正Bで b13 を追加。CLAUDE.md の実行順そのまま）なので、`build:v2` の並び
+（スクリプト名だけ、`args` は無視する）はその**部分列**（間に他の段が
+挟まってよいが、相対順序は保つ）であるべき——手で2箇所に同じ順序を書き、
+片方だけ変えて食い違う事故を防ぐ。`build:v2` 側の唯一の b13（最初の出現）が
+使われるので、v1互換段に2回目の b13 を足してもこの部分列判定には影響しない。
 """
 from __future__ import annotations
 
@@ -28,8 +30,8 @@ import b00_run_full_gate as b00  # noqa: E402
 
 def _pipeline_step_scripts() -> list[str]:
     """`PIPELINE_STEPS`（`(script, args)` の組の並び）からスクリプト名だけを
-    抜き出す（`args` は部分列の判定に関係ない）。v1互換キューブの3段で
-    b03/b04/b05 が2回ずつ現れるが、`_is_subsequence` は最初に一致した
+    抜き出す（`args` は部分列の判定に関係ない）。v1互換キューブの5段で
+    b03/b04/b13/b05/b11 が2回ずつ現れるが、`_is_subsequence` は最初に一致した
     出現から順に消費していくので、`build:v2`（v1互換キューブの段を含まない）
     との比較には影響しない。
     """

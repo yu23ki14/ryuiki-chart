@@ -414,7 +414,7 @@ jobs:
           python3 scripts/b11_project_place_v1.py --out data/db/v1_projection_place.sqlite
           python3 scripts/b12_project_taxon_v1.py --out data/db/v1_projection_taxon.sqlite
 
-      - name: 診断用の v1互換キューブを構築（Issue #48 PR-2 §1(d)。合成データを含めた b03〜b05・b11）
+      - name: 診断用の v1互換キューブを構築（Issue #48 PR-2 §1(d)。合成データを含めた b03〜b04→b13→b05・b11）
         # b03 の合成データ除外（既定 on）は data/db/v1_projection.sqlite を v1
         # （サンプルの derived_baseline、合成データを含む）と食い違わせる。ここで
         # `--include-synthetic` の別ファイル（v2_v1compat.sqlite）を作り、b05 を
@@ -436,6 +436,15 @@ jobs:
         # 落ちる（scripts/b00_run_full_gate.py の `_COPY_V2_FOR_V1COMPAT_BEFORE`
         # 定義のコメント参照）。
         #
+        # b04 の直後に b13（`--v2-db data/db/v2_v1compat.sqlite`）を挟み、
+        # summary_variable_catalog/summary_place_variable も「合成データ込み」の
+        # observation_agg から作り直す（Issue #48 PR-2 統合後 修正B）。これが無いと
+        # この2表は v2.sqlite を複製した時点の「合成データ除外後」の内容のまま残り、
+        # serving-diff の `--v1compat-db` 接続が既定の `source:'summary'` で読んだ
+        # ときに本番と同じ値しか返らず、synthetic_excluded 規則が summary 経由の
+        # 問い合わせ（sites_list 等）で機能しない
+        # （web/scripts/lib/serving/adapters-v2.ts の runV2Query docstring 参照）。
+        #
         # b11 も `--out` 無し（既定の data/db/v1_projection_place.sqlite）で
         # 回し、直前のステップが書いた `watershed_rollup`（合成データ除外後の
         # site_var から計算したもの）を「合成データを含む」内容へ上書きする——
@@ -452,6 +461,7 @@ jobs:
           python3 scripts/b04_build_cube.py \
             --out data/db/v2_v1compat.sqlite \
             --unit-evidence-declarations-yaml scripts/migrate/unit_evidence_declarations_v1compat.yaml
+          python3 scripts/b13_build_summary.py --v2-db data/db/v2_v1compat.sqlite
           python3 scripts/b05_project_v1.py --cube-db data/db/v2_v1compat.sqlite
           python3 scripts/b11_project_place_v1.py --cube-db data/db/v2_v1compat.sqlite
 

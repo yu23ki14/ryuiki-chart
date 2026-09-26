@@ -6,9 +6,9 @@
     .venv/bin/python3 scripts/b00_run_full_gate.py
 
 CLAUDE.md の実行順（r01 → b03→b04→b05、b06→b09→b07→b13→b08、b10、b11、b12、
-最後に Issue #48 PR-2 §1(d) の v1互換キューブ4段 b03→b04→b05→b11）で各段の
+最後に Issue #48 PR-2 §1(d) の v1互換キューブ5段 b03→b04→b13→b05→b11）で各段の
 スクリプトを呼び（`PIPELINE_STEPS` の `args`——大半は既定パスのまま引数無し、
-v1互換キューブの4段だけ `--include-synthetic`/`--out`/`--cube-db` を渡す）、
+v1互換キューブの5段だけ `--include-synthetic`/`--out`/`--cube-db` を渡す）、
 最後に `scripts/b02_run_all_gates.py` を呼ぶ。**このスクリプト自身はデータの
 値を一切作らない**——各段のスクリプトを順に呼ぶだけの薄いオーケストレータで、
 検証・変換ロジックは1行も持たない（唯一の例外が `data/db/v2.sqlite` →
@@ -24,6 +24,15 @@ data/db/v2_v1compat.sqlite`、`--out` は渡さないため既定の
 `b02_run_all_gates.py`（無変更）が実際には v1互換キューブ由来の内容を読み、
 v1（`derived.sqlite`）とそのまま一致する（`scripts/b03_build_observation.py`
 モジュール docstring「合成データを除く」節参照）。
+
+2本目の b05 の直前に挟む 2本目の b13（`--v2-db data/db/v2_v1compat.sqlite`）は、
+その直前の b04（`--out data/db/v2_v1compat.sqlite`）が差し替えた「合成データ込み」の
+`observation_agg` から `summary_variable_catalog`/`summary_place_variable` を作り直す
+（Issue #48 PR-2 統合後 修正B）。これが無いと、この2表は `v2.sqlite` を複製した
+時点の「合成データ除外後」の内容のまま残り、`serving-diff` の `--v1compat-db` 接続が
+`source:'summary'`（画面・API・AI と同じ既定）で読んだときに本番と同じ値しか返らず、
+`synthetic_excluded` 規則が summary 経由の問い合わせで機能しない
+（`web/scripts/lib/serving/adapters-v2.ts` の `runV2Query` docstring 参照）。
 
 2本目の b11 が `--cube-db` に必要とする `data/db/v2_v1compat.sqlite` は、
 `observation`/`observation_agg`（合成データ込み）だけでなく `occurrence`/
@@ -153,6 +162,12 @@ PIPELINE_STEPS: tuple[tuple[str, tuple[str, ...]], ...] = (
             "scripts/migrate/unit_evidence_declarations_v1compat.yaml",
         ),
     ),
+    # Issue #48 PR-2 統合後 修正B: summary 2表も合成データ込みの
+    # observation_agg から作り直す（`--v2-db data/db/v2_v1compat.sqlite`）。
+    # 上の b04 が直前で差し替えた observation_agg を読む（モジュール
+    # docstring「2本目の b13」節参照）。これが無いと serving-diff の
+    # `--v1compat-db` 接続が `source:'summary'` で本番と同じ値しか返さない。
+    ("scripts/b13_build_summary.py", ("--v2-db", "data/db/v2_v1compat.sqlite")),
     ("scripts/b05_project_v1.py", ("--cube-db", "data/db/v2_v1compat.sqlite")),
     # watershed_rollup（b11）は site_var（上の b05 が今書き換えた、合成データ
     # 込みの v1_projection.sqlite）と org_watershed（v1_projection_occurrence.sqlite、
