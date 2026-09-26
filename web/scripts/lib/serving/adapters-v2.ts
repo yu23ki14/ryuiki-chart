@@ -348,12 +348,7 @@ export function expectedUnitSymbols(registryDbPath: string): ReadonlyMap<string,
  * コピペされていた）。
  */
 function rainDailySumSpec(): CellSpec {
-  const series: SeriesKey[] = seriesForAlias("sensor_timeseries", "RAIN").map((s) => ({
-    variableId: s.variableId,
-    obsStat: s.obsStat,
-    unitId: s.unitId,
-    valueGrain: s.valueGrain,
-  }));
+  const series: SeriesKey[] = seriesForAlias("sensor_timeseries", "RAIN");
   return { series, scope: { kind: "all_sites" }, grain: "day", stats: ["sum"], imputation: "zero" };
 }
 
