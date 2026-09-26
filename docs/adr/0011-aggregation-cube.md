@@ -5,6 +5,12 @@
   / 日付: 2026-09-06
 - 関連: ADR-0006（place）, ADR-0007（observation）, ADR-0008（時間）, ADR-0009（検閲）
 
+**2026-09-26 追記（Issue #48、ADR-0030提案）**: 宣言的集計定義（本ADR未実装の中核）の
+最初の実装は `aggregations/serving.yaml` → `scripts/b13_build_summary.py` →
+summary 3表として、v1 撤去後の D1 配信スキーマ
+（[ADR-0030](0030-d1-serving-schema.md) D6、提案中）に組み込む。実装・機械検証が済み次第、
+本ADRの状態欄を更新する。本文は変えない。
+
 **2026-09-08 追記（ADR-0021 で拡張）**: 次元キーの `stat` だけでは、出典が既に別々の統計量として
 配っている系列（`pH（最大値）`/`pH（最小値）` 等）が同じ格に混ざることが Phase B の実装で判明した。
 `obs_stat`（入力側の統計量）・`value_grain`・`input_grain` を次元キーに追加している。詳細は

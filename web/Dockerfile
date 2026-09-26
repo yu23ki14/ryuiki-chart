@@ -4,15 +4,23 @@
 # 動く土台（workerd が要求する libc++）を入れておく。
 # 本番デプロイは `pnpm run deploy`（@opennextjs/cloudflare）で、このイメージは使わない。
 
-FROM node:22-bookworm-slim AS development
+# base は node:22-trixie-slim（Debian 13）。bookworm（Debian 12）は Python 3.11 に
+# SQLite 3.40.1 が同梱されており、Issue #48 で追加した v2 パイプライン
+# （scripts/b04_build_cube.py・scripts/b07_build_occurrence_cube.py 等）が
+# `scripts/migrate/common.py` の `require_sqlite_version()`（3.43 未満で SystemExit。
+# AVG()/SUM() の加算アルゴリズムが3.43で変わる・FULL OUTER JOIN が3.39未満で使えない）
+# に引っかかって止まる（実測: bookwormのpython3-yamlはPython 3.11/SQLite 3.40.1）。
+# trixie は Python 3.13 に SQLite 3.46.1 が同梱されており、これを満たす（実測）。
+FROM node:22-trixie-slim AS development
 
 # workerd は libc++ を要求する。better-sqlite3 はプリビルドが無い場合にビルドする。
-# python3-yaml はレジストリビルド（scripts/r01_build_registry.py が import する PyYAML）用。
-# リポジトリ直下の requirements.txt は `web/` の外（この Dockerfile のビルドコンテキストは
-# ./web）なので pip では入れず、Debian の配布パッケージで賄う。PyYAML のバージョンは
-# requirements.txt の固定値（6.0.3、ホストの .venv 用）とは厳密には一致しない
-# （bookworm は 6.0-3+b2 = PyYAML 6.0）が、ビルドスクリプト側は yaml.safe_load しか
-# 使わないので互換上の問題はない。COPY の手前（依存レイヤ）に置いてキャッシュを保つ。
+# python3-yaml はレジストリ・v2 パイプライン（scripts/r01_build_registry.py・
+# scripts/b0*.py が import する PyYAML）用。リポジトリ直下の requirements.txt は
+# `web/` の外（この Dockerfile のビルドコンテキストは ./web）なので pip では入れず、
+# Debian の配布パッケージで賄う。PyYAML のバージョンは requirements.txt の固定値
+# （6.0.3、ホストの .venv 用）とは厳密には一致しない（trixie は 6.0.2）が、
+# ビルドスクリプト側は yaml.safe_load しか使わないので互換上の問題はない。
+# COPY の手前（依存レイヤ）に置いてキャッシュを保つ。
 RUN apt-get update && apt-get install -y --no-install-recommends \
       libc++1 \
       ca-certificates \
@@ -21,6 +29,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       make \
       g++ \
     && rm -rf /var/lib/apt/lists/*
+
+# Issue #48「見落としそうな危険」3: base イメージの更新で SQLite が入れ替わっても
+# 気づけるよう、ビルド時に実際の版を検査してビルド自体を落とす
+# （scripts/migrate/common.py の MIN_SQLITE_VERSION と同じ閾値。判定はそちらが正
+# ——ここはビルドを早期に落とすための重複チェック。sqlite3 CLI ではなく、Python が
+# import する sqlite3 モジュール〔標準ライブラリに静的リンクされた版〕を見るのも
+# common.require_sqlite_version() と同じ観点）。
+# `scripts/migrate/common.py` の `MIN_SQLITE_VERSION` を変えたら、下の "3, 43, 0" も
+# 手で揃えて変えること（二重管理・自動追随ではない）。
+RUN python3 -c "import sqlite3; assert sqlite3.sqlite_version_info >= (3, 43, 0), f'sqlite3 (Python同梱、バージョン {sqlite3.sqlite_version}) が古すぎる。SQLite 3.43.0 以降が必要（scripts/migrate/common.py の MIN_SQLITE_VERSION）。base イメージを SQLite 3.43 以降を同梱するものに変えること。'"
 
 WORKDIR /app/web
 

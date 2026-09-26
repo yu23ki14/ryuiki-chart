@@ -945,6 +945,15 @@ def build_and_write_observation(
             # 「内容は新しいが指紋は古い」状態が原理的に作れなくなる。
             # `observation` は基底テーブルなので系譜は空）。b04 はこの指紋を
             # 見て「今の observation から作った observation_agg か」を検証する。
+        # v2 パイプラインの入力＋コードの指紋（Issue #48 PR-0 /simplify 指摘1）:
+        # ensure-v2.sh/check_v2_fresh.py が「observation を作ったときの入力・
+        # コードの中身」と「今の入力・コードの中身」を比べて鮮度判定するための
+        # 記録（`pipeline_fingerprint.inputs` の系譜とは別の表。
+        # `common.record_v2_input_fingerprint` の docstring 参照）。
+        common.record_v2_input_fingerprint(
+            dest, common.compute_v2_input_fingerprint(ryuiki_db=ryuiki_db, registry_db=registry_db),
+        )
+        dest.commit()
     except BaseException:
         dest.close()
         raise

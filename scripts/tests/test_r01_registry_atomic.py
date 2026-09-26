@@ -9,7 +9,6 @@ check-fresh は `--files-only` 経路（`registry/` 配下の手書きファイ�
 """
 import os
 import sqlite3
-import subprocess
 import sys
 import time
 
@@ -18,6 +17,7 @@ import pytest
 import r01_build_registry as r01
 from registry import common
 
+from .conftest import run_python_cli_isolated
 from .registry_fixtures import make_derived_places_db
 
 
@@ -277,12 +277,12 @@ def test_compute_input_fingerprint_ignores_files_outside_the_input_set(tmp_path)
 # ---------------------------------------------------------------------------
 
 
-def _run_check_fresh_subprocess(extra_argv: list[str], env_overrides: dict) -> subprocess.CompletedProcess:
-    script = str(common.ROOT / "scripts" / "r01_build_registry.py")
-    cmd = [sys.executable, "-I", "-S", script, *extra_argv]
-    env = dict(os.environ)
-    env.update(env_overrides)
-    return subprocess.run(cmd, cwd=str(common.ROOT), env=env, capture_output=True, text=True)
+def _run_check_fresh_subprocess(extra_argv: list[str], env_overrides: dict):
+    # `-I -S`（PyYAML 等サイトパッケージが無い環境を模す）でのサブプロセス起動は
+    # `scripts/tests/test_check_v2_fresh.py` と共有する（`conftest.py` の
+    # `run_python_cli_isolated`。旧・別々の実装を1箇所に集約した。/simplify 指摘4）。
+    script = common.ROOT / "scripts" / "r01_build_registry.py"
+    return run_python_cli_isolated(script, extra_argv, env_overrides=env_overrides, cwd=common.ROOT)
 
 
 def test_check_fresh_without_pyyaml_reports_stale_when_registry_missing(tmp_path):

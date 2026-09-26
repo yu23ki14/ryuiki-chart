@@ -32,6 +32,7 @@ import json
 import os
 import pathlib
 import sqlite3
+import subprocess
 import sys
 import time
 
@@ -41,6 +42,7 @@ if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
 from reconcile.common import load_yaml, open_readonly  # noqa: E402,F401  (b03/b04/b05/b10 から re-export)
+import pipeline_inputs  # noqa: E402  (v2 入力指紋が data/processed の sha256 を再利用する)
 
 # `built_from` / `spec_version` に書く定数。**成果物ごとに別の定数を持つ**
 # （2026-09-24 コードレビュー指摘: 以前は `SPEC_VERSION` という1つの定数を
@@ -78,6 +80,26 @@ OCCURRENCE_SPEC_VERSION = "phase-b-fact-slice/v1"
 # そのまま使う」——`observation_agg` の指紋だけが空 v1 の既定値のまま取り
 # 残されて実際の v2 と食い違って見える、という事態を避ける）。
 FINGERPRINT_SPEC_VERSION = "phase-b-fact-slice/v1"
+
+# v2 キューブ（`observation_agg`/`occurrence_agg`）の鮮度判定で使う CLI 終了コード
+# （`scripts/check_v2_fresh.py`。`scripts/r01_build_registry.py` の
+# `EXIT_FRESH`/`EXIT_STALE` と同じ流儀: 0=新鮮、10=古い、それ以外=判定不能）。
+# Issue #48 PR-0。
+V2_CHECK_EXIT_FRESH = 0
+V2_CHECK_EXIT_STALE = 10
+
+# D1 に載せるキューブ表と、それぞれの spec_version。値は上の
+# `OBSERVATION_AGG_SPEC_VERSION`/`OCCURRENCE_SPEC_VERSION` を直接引く——
+# ここで複製しない。`scripts/check_v2_fresh.py`・
+# `web/scripts/seed-d1-local.mjs`（Python の `scripts/check_v2_fresh.py` を
+# 子プロセスとして呼ぶ）が読む唯一の正本（コードレビュー指摘: 以前は
+# `web/scripts/seed-d1-local.mjs` にこの2値の手書きの写しを持っていたが、
+# b03/b04 が spec_version を上げても JS 側の写しは自動で追随しないため、
+# 黙ってずれた状態のまま「新鮮」と誤判定する穴があった）。
+V2_CUBE_SPEC_VERSIONS = {
+    "observation_agg": OBSERVATION_AGG_SPEC_VERSION,
+    "occurrence_agg": OCCURRENCE_SPEC_VERSION,
+}
 
 # SQLite 3.43 未満では2つの理由でパイプラインが壊れる: (1) AVG()/SUM() の
 # 加算アルゴリズムが素朴な左→右加算に落ち、平均が黙って壊れる（b04・b05・
@@ -992,6 +1014,373 @@ def assert_occurrence_fingerprint_fresh(conn: sqlite3.Connection, *, schema: str
         conn, "occurrence", schema=schema,
         rebuild_hint="scripts/b06_build_occurrence.py を再実行すること。",
     )
+
+
+# ---------------------------------------------------------------------------
+# v2 キューブの鮮度判定（Issue #48 PR-0）。`scripts/check_v2_fresh.py`（CLI）が
+# 公開し、`web/scripts/seed-d1-local.mjs`（シード直前の拒否）・
+# `web/scripts/ensure-v2.sh`（db:setup/entrypoint の作り直し判定）が読む。
+#
+# **ここで見るのは `pipeline_fingerprint.spec_version` だけ**——`table` 自身の
+# 内容が記録済み指紋と一致するか（self-consistency）は見ない。それは
+# `assert_stage_fingerprint_fresh` の役目であり、そちらは「原本や上流表から
+# 見て古いか」という重い検証。こちらは「そもそも今のスキーマ・スペックで
+# 書かれた表か」という、軽いが PR #26 以前の13列キー（`pipeline_fingerprint`
+# 表自体が無い、または `spec_version` が古いまま）を確実に検出できる形の
+# 検査に絞る。列集合そのものもここでは見ない——D1 に実際に投入する側
+# （`web/src/db/schema-cube.ts`）と、シード先 D1 自身の `PRAGMA table_info`
+# を直接突き合わせるのは `web/scripts/seed-d1-local.mjs` の役目（Python 側は
+# D1 のスキーマを知らないし、知る必要も無い）。
+#
+# **これだけでは「v2.sqlite の外側」の鮮度は分からない**——`spec_version` は
+# パイプラインの版が変わったときにしか上がらないため、原本・`data/processed`
+# の入力・パイプライン自身のコードだけが変わった場合はここでは検出できない
+# （以前の `web/scripts/ensure-v2.sh` はこの穴を手書きの `V2_INPUTS` の mtime
+# 走査で埋めていた——手書きゆえの漏れ・symlink の lstat mtime・「mtime は
+# 新しいが中身は古い」を見逃す弱点があった。/simplify 指摘1）。
+# `compute_v2_input_fingerprint()`/`check_v2_pipeline_fresh()`（下）が、
+# `scripts/registry/common.py` の `compute_input_fingerprint()`（レジストリの
+# `--check-fresh` が使う「ビルドの論理＋手書きの入力を決まった順で連結して
+# sha256」という発想）を v2 パイプライン（b03/b06/b09、外部入力を直接読む3段）
+# に適用したもの——mtime 走査をやめ、入力の中身の指紋一本に揃える。
+# ---------------------------------------------------------------------------
+
+def check_v2_cube_spec_fresh(conn: sqlite3.Connection, table: str, expected_spec_version: str) -> list[str]:
+    """`table`（`observation_agg`/`occurrence_agg`。`conn` は v2.sqlite 自身）の
+    `pipeline_fingerprint.spec_version` が `expected_spec_version`
+    （呼び出し元が `V2_CUBE_SPEC_VERSIONS` から渡す）と一致するか判定する。
+
+    戻り値: 問題点の一覧（1件1行、日本語）。空なら新鮮。
+    """
+    if not _table_exists(conn, PIPELINE_FINGERPRINT_TABLE):
+        return [f"{PIPELINE_FINGERPRINT_TABLE} 表が無い（段階間の指紋が導入される前の出力）"]
+    row = conn.execute(
+        f"SELECT spec_version FROM {PIPELINE_FINGERPRINT_TABLE} WHERE table_name = ?", (table,)
+    ).fetchone()
+    if row is None:
+        return [f"{PIPELINE_FINGERPRINT_TABLE} に {table!r} の記録が無い"]
+    (spec_version,) = row
+    if spec_version != expected_spec_version:
+        return [f"{table}.spec_version = {spec_version!r}、期待値 {expected_spec_version!r}"]
+    return []
+
+
+def check_v2_cube_fresh(conn: sqlite3.Connection) -> list[str]:
+    """`V2_CUBE_SPEC_VERSIONS` の全表について `check_v2_cube_spec_fresh` を行い、
+    問題点をまとめて返す（空なら新鮮）。`scripts/check_v2_fresh.py` が使う。
+    """
+    problems: list[str] = []
+    for table, expected_spec_version in V2_CUBE_SPEC_VERSIONS.items():
+        problems.extend(check_v2_cube_spec_fresh(conn, table, expected_spec_version))
+    return problems
+
+
+# ---------------------------------------------------------------------------
+# v2 パイプラインの「入力＋コードの中身」の指紋（Issue #48 PR-0 /simplify 指摘1）。
+#
+# 上の `check_v2_cube_fresh` は v2.sqlite 自身の中身（`pipeline_fingerprint.
+# spec_version`）だけを見る。ここで足すのは、v2.sqlite の**外側**——読み取り
+# 専用の原本（`ryuiki.sqlite`）・`data/processed` の入力・`registry.sqlite`・
+# v2 パイプライン自身のコード（段のスクリプトと、それが import する
+# `scripts/` 配下のモジュール・読む YAML 宣言）——が最後にビルドしたときから
+# 変わっていないかを見る指紋。
+#
+# **大きい原本（ryuiki.sqlite 828MB）はフルスキャンしない。**
+# `scripts/registry/common.py` の `_hash_organism_records_freshness()`
+# （organism_records に対して同じ判断を既にしている）に倣い、v2 が読む4表
+# （measurements・sensor_timeseries・organism_records・sites）はどれも
+# 「行数＋最大rowid」の軽い代理指標にする。実測（scripts/tests/test_migrate_common.py
+# のベンチ参照）: `compute_table_fingerprint()`（全内容ハッシュ、行ごとに
+# Python でハッシュに畳み込む）は measurements で約3.1秒・sensor_timeseries で
+# 約3.8秒かかる（organism_records は列名に SQL 予約語 `order` を含むため
+# そのままでは実行できない——量以前に使えない）。r01 が個々の起動のたびに
+# 828MB を読み直さない判断をしているのと同じ理由で、ここも代理指標に倒す
+# （代理指標は4表合計で約40ms）。`data/processed` の入力2つ（geojson・CSV）は
+# 数十MB以下なので `pipeline_inputs.sha256_file()`（`scripts/pipeline_inputs.py`。
+# 既存の実装をそのまま再利用——`scripts/b00_run_full_gate.py`/
+# `scripts/s01_build_sample.py` と同じキーの取り方に揃える理由でここでも
+# 使う）で内容ハッシュする。
+#
+# **registry.sqlite の内容も丸ごとはハッシュしない。** `scripts/r01_build_registry.py`
+# が既に `registry_build.input_fingerprint` として「レジストリ自身の入力の
+# 指紋」を記録済みなので、ここではその値を読むだけ（`_registry_input_fingerprint`。
+# `assert_stage_fingerprint_fresh` の (b) 系譜チェックが上流の自己申告値だけを
+# 読んで生データを読み直さないのと同じ発想）。
+#
+# **コードの対象ファイルは手書きの一覧にしない。** v2 パイプライン5段
+# （`V2_PIPELINE_STAGE_MODULES`）を実際に import し、その結果 `sys.modules` に
+# 載った `scripts/` 配下のファイルを機械的に洗い出す（`_v2_pipeline_code_files()`）
+# ——`scripts/migrate/*.py`・`scripts/registry/common.py`・
+# `scripts/reconcile/{common,datasource}.py`・`scripts/taxon_namespaces.py` が
+# 手書きの一覧を保守せずに漏れなく対象へ入る。**フレッシュなサブプロセス**
+# （`sys.executable -c ...`）で行う——同じプロセス内で `sys.modules` を見ると、
+# 呼び出し元自身（`check_v2_fresh.py` 等）や他のテストが先に import した
+# 無関係なモジュールまで拾ってしまい、ビルド時（b03/b06/b09 のいずれかの
+# プロセス内、`__main__` が違う）と鮮度確認時（`check_v2_fresh.py` プロセス内）
+# とで発見結果が食い違いうる。サブプロセスなら常に「指定した5モジュールと
+# その推移的な import だけ」に閉じるので決定論的（実測: `-I -S`〔サイト
+# パッケージ無し〕で約76ms、PyYAML 無しでも成功する——`scripts/reconcile/common.py`
+# が yaml を遅延 import する設計のおかげで、v2 パイプライン5段の import 自体は
+# PyYAML を要求しない。`scripts/tests/test_check_v2_fresh.py` の
+# `test_cli_does_not_import_yaml` がこれを壊さないことを確認する）。
+# YAML 宣言（`period_exceptions.yaml`・`source_regions.yaml` 等）は import では
+# 見つからない（実行時に `load_yaml()` でパスから読むだけ）ため、
+# `scripts/migrate/*.yaml` を丸ごと glob で足す（`occurrence_watershed_v1_declarations.yaml`
+# のような v1 専用の宣言も混じるが、v2 に無関係な宣言が変わったときに余計な
+# 作り直しが起きるだけで安全側——`scripts/registry/common.py` の
+# `_fingerprint_source_paths()` が `registry/` 配下を丸ごと対象にしているのと
+# 同じ判断）。
+# ---------------------------------------------------------------------------
+
+# v2 パイプラインが実際に読み取る ryuiki.sqlite の表（b03: measurements/
+# sensor_timeseries、b06: organism_records、b09: sites）。
+V2_RYUIKI_TABLES = ("measurements", "sensor_timeseries", "organism_records", "sites")
+
+# v2 パイプラインが実際に読み取る data/processed の入力（b03: 土地利用CSV、
+# b09: 流域 GeoJSON）。
+V2_PROCESSED_FILES = ("nlni_w12_watersheds.geojson", "nlni_l03b_landuse_by_watershed.csv")
+
+# v2 パイプラインの5段（`scripts/` 直下、モジュール名で import する）。
+V2_PIPELINE_STAGE_MODULES = (
+    "b03_build_observation",
+    "b04_build_cube",
+    "b06_build_occurrence",
+    "b07_build_occurrence_cube",
+    "b09_build_occurrence_place",
+)
+
+PIPELINE_INPUT_FINGERPRINT_TABLE = "pipeline_input_fingerprint"
+
+_CREATE_PIPELINE_INPUT_FINGERPRINT_SQL = f"""
+CREATE TABLE IF NOT EXISTS {PIPELINE_INPUT_FINGERPRINT_TABLE} (
+  component TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+)
+"""
+
+_ABSENT = "absent"
+
+
+def _ryuiki_table_proxy(ryuiki_db: pathlib.Path) -> dict[str, str]:
+    """`V2_RYUIKI_TABLES` それぞれの「行数＋最大rowid」の代理指標
+    （モジュールコメント「大きい原本はフルスキャンしない」参照）。
+    `ryuiki_db` が無ければ（原本の無い環境）各表を `_ABSENT` として返す
+    ——クラッシュしない。**表単位でも同様**——b03/b06/b09 それぞれのテストが
+    使う最小フィクスチャの `ryuiki.sqlite` は、そのテストが実際に読む表しか
+    持たない（例: b09 のフィクスチャは `sites` だけで `measurements` を
+    持たない）ため、ファイルはあっても個々の表が無いことがある。
+    """
+    if not ryuiki_db.exists():
+        return {f"ryuiki.{t}": _ABSENT for t in V2_RYUIKI_TABLES}
+    conn = sqlite3.connect(f"file:{ryuiki_db}?mode=ro", uri=True)
+    try:
+        out: dict[str, str] = {}
+        for t in V2_RYUIKI_TABLES:
+            if not _table_exists(conn, t):
+                out[f"ryuiki.{t}"] = _ABSENT
+                continue
+            count, max_rowid = conn.execute(f"SELECT COUNT(*), MAX(rowid) FROM {t}").fetchone()
+            out[f"ryuiki.{t}"] = f"count={count};max_rowid={max_rowid}"
+        return out
+    finally:
+        conn.close()
+
+
+def _processed_file_hashes(processed_dir: pathlib.Path) -> dict[str, str]:
+    """`V2_PROCESSED_FILES` それぞれの内容 sha256（`pipeline_inputs.sha256_file`
+    を再利用——キーの取り方は `data/processed/<name>` の `<name>` 部分だけ、
+    `pipeline_inputs.SOURCE_FILE_KEYS` とは別の名前空間でよい。ここでの用途は
+    「v2 が最後に読んだときと同じ中身か」の比較だけで、`full_gate_proof.json`
+    とキーを揃える必要が無いため）。ファイルが無ければ `_ABSENT`。
+    """
+    out: dict[str, str] = {}
+    for name in V2_PROCESSED_FILES:
+        p = processed_dir / name
+        out[f"processed.{name}"] = pipeline_inputs.sha256_file(p) if p.exists() else _ABSENT
+    return out
+
+
+def _registry_input_fingerprint(registry_db: pathlib.Path) -> str:
+    """`registry.sqlite` 自身が記録した `registry_build.input_fingerprint`
+    （`scripts/r01_build_registry.py` が書く）を読むだけ——registry.sqlite の
+    中身を読み直さない（モジュールコメント参照）。
+    """
+    if not registry_db.exists():
+        return _ABSENT
+    conn = sqlite3.connect(f"file:{registry_db}?mode=ro", uri=True)
+    try:
+        if not _table_exists(conn, "registry_build"):
+            return "no-registry_build-table"
+        row = conn.execute("SELECT input_fingerprint FROM registry_build").fetchone()
+        return row[0] if row else "no-registry_build-row"
+    finally:
+        conn.close()
+
+
+def _v2_pipeline_code_files(root: pathlib.Path) -> list[str]:
+    """v2 パイプライン5段（`V2_PIPELINE_STAGE_MODULES`）が実際に import する
+    `scripts/` 配下のファイルを、フレッシュなサブプロセスで機械的に洗い出す
+    （モジュールコメント参照）。戻り値は `root` からの相対パス文字列（`/` 区切り）
+    のソート済みリスト——`scripts/migrate/*.yaml`（YAML 宣言）は含まない
+    （呼び出し側の `_v2_pipeline_code_fingerprint()` が別途足す）。
+    """
+    scripts_dir = (root / "scripts").resolve()
+    probe = f"""
+import importlib, json, pathlib, sys
+sys.path.insert(0, {str(scripts_dir)!r})
+for name in {V2_PIPELINE_STAGE_MODULES!r}:
+    importlib.import_module(name)
+scripts_dir = pathlib.Path({str(scripts_dir)!r})
+files = set()
+for m in list(sys.modules.values()):
+    f = getattr(m, "__file__", None)
+    if not f:
+        continue
+    p = pathlib.Path(f).resolve()
+    try:
+        rel = p.relative_to(scripts_dir)
+    except ValueError:
+        continue
+    if "__pycache__" in p.parts:
+        continue
+    files.add(rel.as_posix())
+print(json.dumps(sorted(files)))
+"""
+    result = subprocess.run(
+        [sys.executable, "-I", "-S", "-c", probe], capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        raise MigrationError(
+            "v2 パイプラインのコード対象ファイルの機械的な洗い出しに失敗した"
+            f"（終了コード {result.returncode}）:\n{result.stderr}"
+        )
+    return [f"scripts/{rel}" for rel in json.loads(result.stdout)]
+
+
+def _v2_pipeline_code_fingerprint(root: pathlib.Path) -> str:
+    """v2 パイプラインのコードの中身の sha256——import で機械的に見つけた
+    `.py`（`_v2_pipeline_code_files()`）と、`scripts/migrate/*.yaml`（YAML 宣言、
+    glob。モジュールコメント参照）の両方を、決まった順（相対パス文字列で
+    ソート）で連結する（`scripts/registry/common.py` の
+    `compute_input_fingerprint()` と同じ形）。
+    """
+    py_files = _v2_pipeline_code_files(root)
+    yaml_files = [
+        p.relative_to(root).as_posix() for p in sorted((root / "scripts" / "migrate").glob("*.yaml"))
+    ]
+    h = hashlib.sha256()
+    for rel in sorted(py_files + yaml_files):
+        h.update(rel.encode("utf-8"))
+        h.update(b"\0")
+        h.update((root / rel).read_bytes())
+        h.update(b"\0")
+    return f"sha256:{h.hexdigest()}"
+
+
+def compute_v2_input_fingerprint(
+    *,
+    ryuiki_db: pathlib.Path | None = None,
+    registry_db: pathlib.Path | None = None,
+    processed_dir: pathlib.Path | None = None,
+    root: pathlib.Path | None = None,
+) -> dict[str, str]:
+    """v2 パイプライン（b03/b04/b06/b07/b09）の「外側」の入力＋コードの指紋を
+    ラベル付きの辞書で返す（モジュールコメント参照）。空でない値を返す各キーは
+    `diff_v2_input_fingerprint()` が個別に比較するので、どの入力が変わったかが
+    人にも分かる（1本のハッシュに潰さない）。
+
+    引数を省略するとリポジトリの既定パス（`root` 配下）を使う——`registry_db`
+    は `resolve_registry_db()` と同じ優先順位（明示 > `RYUIKI_REGISTRY_DB` 環境変数
+    > 既定）。テストは一時ディレクトリのパスを明示して渡すことで、原本や
+    registry.sqlite が無い環境でも決定論的に確認できる（渡したパスが実在
+    しなければ `_ABSENT` 系の値になり、記録時・確認時で同じ非存在パスを渡す
+    限り一致する）。
+    """
+    base = root or ROOT
+    ryuiki_db = pathlib.Path(ryuiki_db) if ryuiki_db is not None else base / "data" / "db" / "ryuiki.sqlite"
+    registry_db = (
+        pathlib.Path(registry_db) if registry_db is not None
+        else resolve_registry_db(None, base / "data" / "db" / "registry.sqlite")
+    )
+    processed_dir = pathlib.Path(processed_dir) if processed_dir is not None else base / "data" / "processed"
+
+    out: dict[str, str] = {}
+    out.update(_ryuiki_table_proxy(ryuiki_db))
+    out.update(_processed_file_hashes(processed_dir))
+    out["registry.input_fingerprint"] = _registry_input_fingerprint(registry_db)
+    out["code"] = _v2_pipeline_code_fingerprint(base)
+    return out
+
+
+def record_v2_input_fingerprint(conn: sqlite3.Connection, components: dict[str, str]) -> None:
+    """`compute_v2_input_fingerprint()` が返した辞書を `v2.sqlite` の
+    `pipeline_input_fingerprint` メタ表（無ければ作る）に upsert する。
+
+    **既存の `pipeline_fingerprint.inputs`（段階間の指紋の系譜）とは別の表に
+    する**——`inputs` は `_assert_lineage_fresh()` が「値=上流テーブル名」として
+    再帰的にたどる専用の形式で、ここに raw input/コードの指紋を紛れ込ませると
+    `scripts/b05_project_v1.py`/`scripts/b08_project_occurrence_v1.py`
+    （`upstream_schemas={"observation": "cube"}` 等で `observation`/`occurrence`
+    の `inputs` を再帰的にたどる）が `"ryuiki.measurements"` のようなキーを
+    上流テーブル名と誤認し、対応する `pipeline_fingerprint` 行が無いとして
+    `MigrationError` で落ちる（実際に踏んで気づいた設計ミス）。呼び出し側
+    （`b03_build_observation.py`/`b06_build_occurrence.py`/
+    `b09_build_occurrence_place.py`）は、本番テーブルへの差し替えが確定した
+    後（`staged_table` の `with` ブロックの外）にこれを呼び、`conn.commit()`
+    すること（`record_stage_fingerprint` と同じ利用規約）。
+    """
+    conn.execute(_CREATE_PIPELINE_INPUT_FINGERPRINT_SQL)
+    for component, value in components.items():
+        conn.execute(
+            f"INSERT INTO {PIPELINE_INPUT_FINGERPRINT_TABLE} (component, value) VALUES (?, ?) "
+            "ON CONFLICT(component) DO UPDATE SET value = excluded.value",
+            (component, value),
+        )
+
+
+def read_v2_input_fingerprint(conn: sqlite3.Connection) -> dict[str, str] | None:
+    """`pipeline_input_fingerprint` の内容を辞書で返す。表が無ければ `None`
+    （この機構が入る前の v2.sqlite、または PR #26 以前の13列キーの実物）。
+    """
+    if not _table_exists(conn, PIPELINE_INPUT_FINGERPRINT_TABLE):
+        return None
+    rows = conn.execute(f"SELECT component, value FROM {PIPELINE_INPUT_FINGERPRINT_TABLE}").fetchall()
+    return dict(rows)
+
+
+def diff_v2_input_fingerprint(recorded: dict[str, str] | None, current: dict[str, str]) -> list[str]:
+    """`recorded`（`read_v2_input_fingerprint()`）と `current`
+    （`compute_v2_input_fingerprint()` を今の入力で計算し直したもの）を
+    キーごとに比べ、食い違いを1件1行（日本語）で返す（空なら新鮮）。
+    """
+    if recorded is None:
+        return [f"{PIPELINE_INPUT_FINGERPRINT_TABLE} 表が無い（この機構が入る前の v2.sqlite）"]
+    problems: list[str] = []
+    for key in sorted(set(recorded) | set(current)):
+        rv, cv = recorded.get(key, "<記録なし>"), current.get(key, "<今回は対象外>")
+        if rv != cv:
+            problems.append(f"{key}: 記録={rv!r} / 現在={cv!r}")
+    return problems
+
+
+def check_v2_pipeline_fresh(
+    conn: sqlite3.Connection,
+    *,
+    ryuiki_db: pathlib.Path | None = None,
+    registry_db: pathlib.Path | None = None,
+    processed_dir: pathlib.Path | None = None,
+    root: pathlib.Path | None = None,
+) -> list[str]:
+    """`check_v2_cube_fresh()`（spec_version の一致）と、入力＋コードの指紋の
+    比較（`diff_v2_input_fingerprint()`）を合わせた、v2.sqlite の鮮度判定の
+    唯一の入口（`scripts/check_v2_fresh.py` が使う）。空なら新鮮。
+    """
+    problems = check_v2_cube_fresh(conn)
+    current = compute_v2_input_fingerprint(
+        ryuiki_db=ryuiki_db, registry_db=registry_db, processed_dir=processed_dir, root=root,
+    )
+    problems.extend(diff_v2_input_fingerprint(read_v2_input_fingerprint(conn), current))
+    return problems
 
 
 # ---------------------------------------------------------------------------

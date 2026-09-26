@@ -5,19 +5,35 @@
 - Web アプリは `web/`（Next.js 16 / App Router / TypeScript / Tailwind v4）。詳細は `web/README.md`。
 - デプロイ先は Cloudflare Workers（`@opennextjs/cloudflare`）。手順と未解決点は `DEPLOYMENT.md`。
 - 開発環境は `docker compose up`（リポジトリ直下）。起動時に「集計 DB 生成 → 語彙レジストリ生成 →
-  D1 マイグレーション → シード」を、まだのものだけ実行する。ホストで直接動かすときは
+  v2（キューブ）生成 → D1 マイグレーション → シード」を、まだのものだけ実行する。ホストで直接動かすときは
   `cd web && pnpm run build:derived && pnpm run db:setup && pnpm run dev`
-  （`db:setup` は `predb:setup` フックで語彙レジストリも「指紋が古ければ作り直す」。
-  `web/scripts/ensure-registry.sh` が `scripts/r01_build_registry.py --check-fresh` を呼ぶ）。
+  （`db:setup` は `predb:setup` フックで語彙レジストリも v2 も「古ければ作り直す」。
+  `web/scripts/ensure-registry.sh` が `scripts/r01_build_registry.py --check-fresh` を呼び、
+  `web/scripts/ensure-v2.sh` が v2（`data/db/v2.sqlite`。`observation_agg`/`occurrence_agg` の
+  キューブ。Issue #48 PR-0）を `scripts/check_v2_fresh.py`（0=新鮮/10=古い/それ以外=判定不能）
+  一本で判定する——`pipeline_fingerprint.spec_version` の一致に加えて、読み取り専用の原本
+  4表（`measurements`/`sensor_timeseries`/`organism_records`/`sites`、代理指標）・
+  `data/processed` の入力2つ・`registry.sqlite` 自身の指紋・v2 パイプラインのコード
+  （import で機械的に洗い出す）の中身が「最後にビルドしたとき」と一致するかを見る
+  （`scripts/migrate/common.py` の `compute_v2_input_fingerprint()`/
+  `check_v2_pipeline_fresh()`。手書きの mtime 走査は撤去した）。単体で作り直すだけなら
+  `cd web && pnpm run build:v2`。
 - データの置き場所は **Cloudflare D1**（デプロイ先を Cloudflare 想定にしたため）。
-  61 テーブルを 1 つの D1 に統合してある。D1 に `ATTACH` は無いので `d.` / `c.` の接頭辞は使わない。
+  83 テーブル（`web/drizzle/migrations/` 適用後の実測。うちシード管理用の内部表
+  `_seed_state` を除く82表が `web/scripts/seed-d1-local.mjs` のシード対象）を 1 つの D1 に
+  統合してある。D1 に `ATTACH` は無いので `d.` / `c.` の接頭辞は使わない。
   どの原本から来たテーブルかは `web/src/lib/table-meta.ts` の `TABLE_ORIGIN`。
-- D1 のスキーマは `web/src/db/schema.ts`（Drizzle）が原本。触ったら `pnpm run db:generate` で
-  `web/drizzle/migrations/` を作り直す。マイグレーション SQL を直接書き換えない。
+- D1 のスキーマは `web/src/db/schema.ts`（v1、既存表）・`web/src/db/schema-registry.ts`
+  （語彙レジストリ、Phase A）・`web/src/db/schema-cube.ts`（キューブ、Issue #48 PR-0）の
+  3ファイル（Drizzle。`web/drizzle.config.ts` の `schema` が3つとも読む）が原本。触ったら
+  `pnpm run db:generate` で `web/drizzle/migrations/` を作り直す。マイグレーション SQL を
+  直接書き換えない。
 - 原本は `data/db/ryuiki.sqlite` と `data/db/cells.sqlite`。**読み取り専用**で扱う
   （この規約は `web/` 側から見たものであり、書き手は `scripts/m0x_*.py` に限る）。
   集計は `data/db/derived.sqlite` に分けて書く（`cd web && pnpm run build:derived` で再生成）。
-  この 3 ファイルが D1 シードの入力になる（`web/scripts/seed-d1-local.mjs`）。
+  D1 シードの入力（`web/scripts/seed-d1-local.mjs` の `SOURCES`）はこの3ファイルに加えて
+  `registry.sqlite`（語彙レジストリ）・`v2.sqlite`（キューブ。上記の `ensure-v2.sh` が作る）
+  の計5ファイル。
 - 地図の GeoJSON は `web/public/geo/`。`data/processed` から `pnpm run prepare:geo` が写す生成物で、
   `predev` / `prebuild` に繋いである（`.gitignore` 済み）。Workers に fs は無いので `fs` で読まない。
   河川はブラウザが `/geo/rivers.geojson` を直接取り、流域界は `web/src/lib/geo.ts` が

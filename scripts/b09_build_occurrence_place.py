@@ -459,6 +459,14 @@ def build_and_write_occurrence_place(
             # の指紋）も記録する（Issue #37 #1・/code-review 指摘の根本対応）。
             # b08 はこの指紋を見て「今の occurrence から作った occurrence_place
             # か」を検証する。
+        # v2 パイプラインの入力＋コードの指紋（Issue #48 PR-0 /simplify 指摘1）:
+        # `common.record_v2_input_fingerprint` の docstring 参照（b03/b06 も同じ
+        # 全体像の辞書を同じ v2.sqlite に upsert する——3段のどれが最後に走っても
+        # 同じ内容になる、`pipeline_fingerprint.inputs` の系譜とは別の表）。
+        common.record_v2_input_fingerprint(
+            conn, common.compute_v2_input_fingerprint(ryuiki_db=ryuiki_db, registry_db=registry_db),
+        )
+        conn.commit()
     except BaseException:
         conn.close()
         raise

@@ -8,6 +8,11 @@
 - 関連: ADR-0007（observation）, ADR-0011（キューブ）, ADR-0013（caveat）, ADR-0014（応答）,
   ADR-0021（キューブの鍵）
 
+**2026-09-26 追記（Issue #48、ADR-0030提案）**: v1 撤去後、画面の既定代入方式は `zero`
+ではなく `value_lod` になる（[ADR-0030](0030-d1-serving-schema.md) D5、提案中）。
+決定4の `not_detected`/`value_zero` の時限的な例外自体は直ちには撤去せず、
+`docs/plans/V2_SERVING.md` PR-6 で扱う。本文は変えない。
+
 **2026-09-24 追記（実装。ADR-0016 Phase B「ファクトとキューブ」で `imputation='zero'`
 のみ実装したのに続く最初の意図的な変更）**: 決定2・決定4を実装した。要点は決定2・決定4
 それぞれの本文に追記した。実装は `scripts/b04_build_cube.py`（`observation_agg`

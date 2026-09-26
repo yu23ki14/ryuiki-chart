@@ -12,6 +12,8 @@ import pytest
 
 from migrate import common
 
+from . import migrate_fixtures
+
 _ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 
@@ -732,3 +734,361 @@ def test_assert_all_reads_verified_ignores_own_main_schema(tmp_path):
         common.assert_all_reads_verified(work, reads, set(), context="test")
     finally:
         work.close()
+
+
+# ---------------------------------------------------------------------------
+# check_v2_cube_spec_fresh / check_v2_cube_fresh（Issue #48 PR-0。
+# scripts/check_v2_fresh.py が公開する CLI の中身）
+# ---------------------------------------------------------------------------
+
+
+# `observation_agg`/`occurrence_agg` に相当する最小のテーブルを持つ v2.sqlite 風の
+# フィクスチャは `scripts/tests/migrate_fixtures.py` の `make_v2_cube_tables` を使う
+# （`scripts/tests/test_check_v2_fresh.py` と共有。旧 `_make_v2_like_db`/`_make_fresh_v2`
+# の重複を解消。Issue #48 PR-0 /simplify 指摘4）。
+_make_v2_like_db = migrate_fixtures.make_v2_cube_tables
+
+
+def test_check_v2_cube_spec_fresh_reports_missing_pipeline_fingerprint_table(tmp_path):
+    """PR #26 以前の実物と同じ形（pipeline_fingerprint 表そのものが無い）。"""
+    conn = _make_v2_like_db(tmp_path)
+    try:
+        problems = common.check_v2_cube_spec_fresh(conn, "observation_agg", common.OBSERVATION_AGG_SPEC_VERSION)
+        assert len(problems) == 1
+        assert common.PIPELINE_FINGERPRINT_TABLE in problems[0]
+        assert "無い" in problems[0]
+    finally:
+        conn.close()
+
+
+def test_check_v2_cube_spec_fresh_reports_missing_row_for_table(tmp_path):
+    """`pipeline_fingerprint` 表はあるが、対象テーブルの行が無い
+    （観測のキューブだけ作って生物出現のキューブをまだ作っていない、等）。"""
+    conn = _make_v2_like_db(tmp_path)
+    try:
+        common.record_stage_fingerprint(conn, "observation_agg", spec_version=common.OBSERVATION_AGG_SPEC_VERSION)
+        conn.commit()
+        problems = common.check_v2_cube_spec_fresh(conn, "occurrence_agg", common.OCCURRENCE_SPEC_VERSION)
+        assert len(problems) == 1
+        assert "occurrence_agg" in problems[0]
+        assert "記録が無い" in problems[0]
+    finally:
+        conn.close()
+
+
+def test_check_v2_cube_spec_fresh_reports_spec_version_mismatch(tmp_path):
+    """spec_version は記録されているが、今のパイプラインの値と違う
+    （b04 が次元キーを変えて spec_version を上げたのに、手元の v2.sqlite が
+    古いまま、というのがまさにこのケース）。"""
+    conn = _make_v2_like_db(tmp_path)
+    try:
+        common.record_stage_fingerprint(conn, "observation_agg", spec_version="phase-b-fact-slice/v1-old")
+        conn.commit()
+        problems = common.check_v2_cube_spec_fresh(conn, "observation_agg", common.OBSERVATION_AGG_SPEC_VERSION)
+        assert len(problems) == 1
+        assert "phase-b-fact-slice/v1-old" in problems[0]
+        assert common.OBSERVATION_AGG_SPEC_VERSION in problems[0]
+    finally:
+        conn.close()
+
+
+def test_check_v2_cube_spec_fresh_returns_empty_when_spec_version_matches(tmp_path):
+    conn = _make_v2_like_db(tmp_path)
+    try:
+        common.record_stage_fingerprint(conn, "observation_agg", spec_version=common.OBSERVATION_AGG_SPEC_VERSION)
+        conn.commit()
+        assert common.check_v2_cube_spec_fresh(conn, "observation_agg", common.OBSERVATION_AGG_SPEC_VERSION) == []
+    finally:
+        conn.close()
+
+
+def test_check_v2_cube_fresh_checks_both_cube_tables(tmp_path):
+    """`check_v2_cube_fresh` は `V2_CUBE_SPEC_VERSIONS`（observation_agg/
+    occurrence_agg）の両方を見る。片方だけ古ければ、その分の問題だけが返る。"""
+    conn = _make_v2_like_db(tmp_path)
+    try:
+        common.record_stage_fingerprint(conn, "observation_agg", spec_version=common.OBSERVATION_AGG_SPEC_VERSION)
+        common.record_stage_fingerprint(conn, "occurrence_agg", spec_version="stale-spec")
+        conn.commit()
+        problems = common.check_v2_cube_fresh(conn)
+        assert len(problems) == 1
+        assert "occurrence_agg" in problems[0]
+
+        # occurrence_agg も直せば新鮮になる。
+        common.record_stage_fingerprint(conn, "occurrence_agg", spec_version=common.OCCURRENCE_SPEC_VERSION)
+        conn.commit()
+        assert common.check_v2_cube_fresh(conn) == []
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# v2 パイプラインの入力＋コードの指紋（Issue #48 PR-0 /simplify 指摘1）。
+# ---------------------------------------------------------------------------
+
+
+def test_ryuiki_table_proxy_returns_absent_when_file_missing(tmp_path):
+    out = common._ryuiki_table_proxy(tmp_path / "no-such-ryuiki.sqlite")
+    assert set(out) == {f"ryuiki.{t}" for t in common.V2_RYUIKI_TABLES}
+    assert all(v == common._ABSENT for v in out.values())
+
+
+def test_ryuiki_table_proxy_reflects_row_count_and_max_rowid(tmp_path):
+    db_path = tmp_path / "ryuiki.sqlite"
+    conn = sqlite3.connect(f"file:{db_path}", uri=True)
+    for t in common.V2_RYUIKI_TABLES:
+        conn.execute(f"CREATE TABLE {t} (v INTEGER)")
+    conn.execute("INSERT INTO measurements VALUES (1)")
+    conn.execute("INSERT INTO measurements VALUES (2)")
+    conn.commit()
+    conn.close()
+
+    out = common._ryuiki_table_proxy(db_path)
+    assert out["ryuiki.measurements"] == "count=2;max_rowid=2"
+    assert out["ryuiki.sites"] == "count=0;max_rowid=None"
+
+
+def test_processed_file_hashes_absent_when_missing(tmp_path):
+    out = common._processed_file_hashes(tmp_path)
+    assert all(v == common._ABSENT for v in out.values())
+
+
+def test_processed_file_hashes_changes_with_content(tmp_path):
+    name = common.V2_PROCESSED_FILES[0]
+    (tmp_path / name).write_text("a", encoding="utf-8")
+    before = common._processed_file_hashes(tmp_path)[f"processed.{name}"]
+    (tmp_path / name).write_text("b", encoding="utf-8")
+    after = common._processed_file_hashes(tmp_path)[f"processed.{name}"]
+    assert before != after
+
+
+def test_registry_input_fingerprint_absent_when_file_missing(tmp_path):
+    assert common._registry_input_fingerprint(tmp_path / "no-such-registry.sqlite") == common._ABSENT
+
+
+def test_registry_input_fingerprint_reads_registry_build_row(tmp_path):
+    db_path = tmp_path / "registry.sqlite"
+    conn = sqlite3.connect(f"file:{db_path}", uri=True)
+    conn.execute("CREATE TABLE registry_build (input_fingerprint TEXT, mode TEXT)")
+    conn.execute("INSERT INTO registry_build VALUES ('abc123', 'full')")
+    conn.commit()
+    conn.close()
+    assert common._registry_input_fingerprint(db_path) == "abc123"
+
+
+def _write_minimal_v2_pipeline_tree(root: pathlib.Path) -> None:
+    """`common.V2_PIPELINE_STAGE_MODULES`（5段）が import さえ通ればよい最小限の
+    スタブ一式を `root` に作る。本物の b03〜b09 やその依存を書き換えずに、
+    「機械的な import 追跡で対象ファイルを決める」という仕組みそのもの
+    （`_v2_pipeline_code_files`/`_v2_pipeline_code_fingerprint`）を確認するため。
+    """
+    scripts_dir = root / "scripts"
+    migrate_dir = scripts_dir / "migrate"
+    migrate_dir.mkdir(parents=True)
+    (migrate_dir / "__init__.py").write_text("", encoding="utf-8")
+    (migrate_dir / "helper.py").write_text("VALUE = 1\n", encoding="utf-8")
+    (migrate_dir / "occurrence_cube_declarations.yaml").write_text("dummy: true\n", encoding="utf-8")
+    for name in common.V2_PIPELINE_STAGE_MODULES:
+        (scripts_dir / f"{name}.py").write_text("from migrate import helper\n", encoding="utf-8")
+
+
+def test_v2_pipeline_code_files_discovers_transitive_migrate_imports(tmp_path):
+    _write_minimal_v2_pipeline_tree(tmp_path)
+    files = common._v2_pipeline_code_files(tmp_path)
+    assert "scripts/migrate/helper.py" in files
+    for name in common.V2_PIPELINE_STAGE_MODULES:
+        assert f"scripts/{name}.py" in files
+    # YAML 宣言は import では見つからない——`_v2_pipeline_code_fingerprint` が
+    # 別途 glob で足す（下のテスト）。
+    assert "scripts/migrate/occurrence_cube_declarations.yaml" not in files
+
+
+def test_v2_pipeline_code_fingerprint_changes_when_transitive_dependency_changes(tmp_path):
+    _write_minimal_v2_pipeline_tree(tmp_path)
+    before = common._v2_pipeline_code_fingerprint(tmp_path)
+    (tmp_path / "scripts" / "migrate" / "helper.py").write_text("VALUE = 2\n", encoding="utf-8")
+    after = common._v2_pipeline_code_fingerprint(tmp_path)
+    assert before != after
+
+
+def test_v2_pipeline_code_fingerprint_ignores_unimported_new_file(tmp_path):
+    """手書きの一覧ではなく機械的な import 追跡で対象を決めているため、
+    どこからも import されない新しい `.py` を置いただけでは指紋が変わらない
+    （import されて初めて対象に入る——次のテストで確認する）。glob 方式を
+    選んだ場合はここが逆になる（受け入れ基準(d)参照。設計判断は
+    `scripts/migrate/common.py` のモジュールコメント）。
+    """
+    _write_minimal_v2_pipeline_tree(tmp_path)
+    before = common._v2_pipeline_code_fingerprint(tmp_path)
+    (tmp_path / "scripts" / "migrate" / "unused_helper.py").write_text("VALUE = 1\n", encoding="utf-8")
+    after = common._v2_pipeline_code_fingerprint(tmp_path)
+    assert after == before
+
+
+def test_v2_pipeline_code_fingerprint_changes_once_new_file_is_actually_imported(tmp_path):
+    _write_minimal_v2_pipeline_tree(tmp_path)
+    (tmp_path / "scripts" / "migrate" / "unused_helper.py").write_text("VALUE = 1\n", encoding="utf-8")
+    before = common._v2_pipeline_code_fingerprint(tmp_path)
+
+    stage0 = common.V2_PIPELINE_STAGE_MODULES[0]
+    (tmp_path / "scripts" / f"{stage0}.py").write_text(
+        "from migrate import helper, unused_helper\n", encoding="utf-8",
+    )
+    after = common._v2_pipeline_code_fingerprint(tmp_path)
+    assert after != before
+
+
+def test_v2_pipeline_code_fingerprint_changes_when_yaml_declaration_changes(tmp_path):
+    _write_minimal_v2_pipeline_tree(tmp_path)
+    before = common._v2_pipeline_code_fingerprint(tmp_path)
+    yaml_path = tmp_path / "scripts" / "migrate" / "occurrence_cube_declarations.yaml"
+    yaml_path.write_text("dummy: false\n", encoding="utf-8")
+    after = common._v2_pipeline_code_fingerprint(tmp_path)
+    assert after != before
+
+
+def test_v2_pipeline_code_files_cover_real_pipeline_imports():
+    """実物のリポジトリに対して、既知の依存（`scripts/migrate/` の主要モジュール・
+    `scripts/registry/common.py`・`scripts/reconcile/{common,datasource}.py`・
+    `scripts/taxon_namespaces.py`）が漏れなく含まれることを確認する
+    （「b03〜b09 が実際に import する scripts/ 配下のモジュールが漏れなく
+    対象に入っている」ことの機械検証。ここが崩れると、コードを変えても
+    鮮度判定が気づかなくなる）。
+    """
+    files = set(common._v2_pipeline_code_files(_ROOT))
+    expected_subset = {
+        "scripts/b03_build_observation.py",
+        "scripts/b04_build_cube.py",
+        "scripts/b06_build_occurrence.py",
+        "scripts/b07_build_occurrence_cube.py",
+        "scripts/b09_build_occurrence_place.py",
+        "scripts/migrate/common.py",
+        "scripts/migrate/period.py",
+        "scripts/migrate/censoring.py",
+        "scripts/migrate/source_regions.py",
+        "scripts/migrate/occurrence_period.py",
+        "scripts/migrate/point_in_polygon.py",
+        "scripts/registry/common.py",
+        "scripts/reconcile/common.py",
+        "scripts/reconcile/datasource.py",
+        "scripts/taxon_namespaces.py",
+    }
+    missing = expected_subset - files
+    assert not missing, f"import 追跡が既知の依存を見落としている: {missing}"
+
+
+def test_record_and_read_v2_input_fingerprint_round_trip(tmp_path):
+    conn = migrate_fixtures.make_v2_cube_tables(tmp_path)
+    components = {"a": "1", "b": "2"}
+    common.record_v2_input_fingerprint(conn, components)
+    conn.commit()
+    assert common.read_v2_input_fingerprint(conn) == components
+    conn.close()
+
+
+def test_record_v2_input_fingerprint_upserts_existing_component(tmp_path):
+    conn = migrate_fixtures.make_v2_cube_tables(tmp_path)
+    common.record_v2_input_fingerprint(conn, {"a": "1"})
+    common.record_v2_input_fingerprint(conn, {"a": "2", "b": "3"})
+    conn.commit()
+    assert common.read_v2_input_fingerprint(conn) == {"a": "2", "b": "3"}
+    conn.close()
+
+
+def test_read_v2_input_fingerprint_returns_none_when_table_missing(tmp_path):
+    conn = migrate_fixtures.make_v2_cube_tables(tmp_path)
+    assert common.read_v2_input_fingerprint(conn) is None
+    conn.close()
+
+
+def test_diff_v2_input_fingerprint_reports_missing_table_when_recorded_is_none():
+    problems = common.diff_v2_input_fingerprint(None, {"a": "1"})
+    assert len(problems) == 1
+    assert common.PIPELINE_INPUT_FINGERPRINT_TABLE in problems[0]
+
+
+def test_diff_v2_input_fingerprint_reports_changed_and_added_keys():
+    recorded = {"a": "1", "b": "2"}
+    current = {"a": "1", "b": "3", "c": "4"}
+    problems = common.diff_v2_input_fingerprint(recorded, current)
+    assert len(problems) == 2
+    joined = " ".join(problems)
+    assert "b:" in joined and "c:" in joined
+
+
+def test_diff_v2_input_fingerprint_empty_when_equal():
+    same = {"a": "1"}
+    assert common.diff_v2_input_fingerprint(dict(same), dict(same)) == []
+
+
+def test_compute_v2_input_fingerprint_is_deterministic_for_absent_inputs(tmp_path):
+    """原本・registry.sqlite・data/processed が無い環境（CI）でも、同じ
+    （存在しない）パスを渡す限り2回の呼び出しが一致する——コードの指紋だけは
+    実物のパイプラインコードを見るので固定値ではないが、2回とも同じ値になる。
+    """
+    kwargs = dict(
+        ryuiki_db=tmp_path / "no-ryuiki.sqlite",
+        registry_db=tmp_path / "no-registry.sqlite",
+        processed_dir=tmp_path,
+        root=_ROOT,
+    )
+    first = common.compute_v2_input_fingerprint(**kwargs)
+    second = common.compute_v2_input_fingerprint(**kwargs)
+    assert first == second
+    assert all(v == common._ABSENT for k, v in first.items() if k.startswith("ryuiki.") or k.startswith("processed."))
+    assert first["registry.input_fingerprint"] == common._ABSENT
+
+
+def test_check_v2_pipeline_fresh_flags_missing_input_fingerprint_table(tmp_path):
+    conn = migrate_fixtures.make_v2_cube_tables(tmp_path)
+    common.record_stage_fingerprint(conn, "observation_agg", spec_version=common.OBSERVATION_AGG_SPEC_VERSION)
+    common.record_stage_fingerprint(conn, "occurrence_agg", spec_version=common.OCCURRENCE_SPEC_VERSION)
+    conn.commit()
+    problems = common.check_v2_pipeline_fresh(conn, root=_ROOT)
+    assert any(common.PIPELINE_INPUT_FINGERPRINT_TABLE in p for p in problems)
+    conn.close()
+
+
+def test_check_v2_pipeline_fresh_empty_when_everything_matches(tmp_path):
+    conn = migrate_fixtures.make_v2_cube_tables(tmp_path)
+    common.record_stage_fingerprint(conn, "observation_agg", spec_version=common.OBSERVATION_AGG_SPEC_VERSION)
+    common.record_stage_fingerprint(conn, "occurrence_agg", spec_version=common.OCCURRENCE_SPEC_VERSION)
+    common.record_v2_input_fingerprint(conn, common.compute_v2_input_fingerprint(root=_ROOT))
+    conn.commit()
+    assert common.check_v2_pipeline_fresh(conn, root=_ROOT) == []
+    conn.close()
+
+
+def test_check_v2_pipeline_fresh_flags_when_a_raw_input_changes(tmp_path):
+    """原本の代理指標（行数・最大rowid）が変われば古いと判定される
+    ——受け入れ基準の実演(a)/(e)相当を関数レベルで確認する。"""
+    ryuiki_db = tmp_path / "ryuiki.sqlite"
+    conn_src = sqlite3.connect(f"file:{ryuiki_db}", uri=True)
+    for t in common.V2_RYUIKI_TABLES:
+        conn_src.execute(f"CREATE TABLE {t} (v INTEGER)")
+    conn_src.execute("INSERT INTO measurements VALUES (1)")
+    conn_src.commit()
+    conn_src.close()
+
+    conn = migrate_fixtures.make_v2_cube_tables(tmp_path, name="v2.sqlite")
+    common.record_stage_fingerprint(conn, "observation_agg", spec_version=common.OBSERVATION_AGG_SPEC_VERSION)
+    common.record_stage_fingerprint(conn, "occurrence_agg", spec_version=common.OCCURRENCE_SPEC_VERSION)
+    common.record_v2_input_fingerprint(
+        conn, common.compute_v2_input_fingerprint(root=_ROOT, ryuiki_db=ryuiki_db, registry_db=tmp_path / "no-registry.sqlite", processed_dir=tmp_path),
+    )
+    conn.commit()
+    assert common.check_v2_pipeline_fresh(
+        conn, root=_ROOT, ryuiki_db=ryuiki_db, registry_db=tmp_path / "no-registry.sqlite", processed_dir=tmp_path,
+    ) == []
+
+    # measurements にもう1行足す(=原本が更新された)。
+    conn_src = sqlite3.connect(f"file:{ryuiki_db}", uri=True)
+    conn_src.execute("INSERT INTO measurements VALUES (2)")
+    conn_src.commit()
+    conn_src.close()
+
+    problems = common.check_v2_pipeline_fresh(
+        conn, root=_ROOT, ryuiki_db=ryuiki_db, registry_db=tmp_path / "no-registry.sqlite", processed_dir=tmp_path,
+    )
+    assert any("ryuiki.measurements" in p for p in problems)
+    conn.close()
