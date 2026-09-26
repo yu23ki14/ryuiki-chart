@@ -288,7 +288,7 @@ function declaredLookupFor(def: QueryDef): DeclaredLookup {
 interface ByVariableDeclaredSpec {
   v1Table: string;
   variableIdOf: (params: Readonly<Record<string, ScalarParam>>, rowKey: readonly ScalarParam[]) => string;
-  aliasesOf: (variableId: string) => readonly string[];
+  aliasesOf: (variableId: string, params: Readonly<Record<string, ScalarParam>>) => readonly string[];
   buildKey: (alias: string, params: Readonly<Record<string, ScalarParam>>, rowKey: readonly ScalarParam[]) => ScalarParam[];
 }
 
@@ -304,6 +304,20 @@ const BY_VARIABLE_DECLARED_SPECS: Record<string, ByVariableDeclaredSpec> = {
     variableIdOf: (_p, k) => String(k[0]),
     aliasesOf: (variableId) => mergeV1.allAliasesFor(REGISTRY_DB_PATH, "measurements", variableId),
     buildKey: (alias, p, k) => [p.site_id, alias, k[1] === "day" ? "daily" : "annual"],
+  },
+  year_series_site_by_variable: {
+    // `year_series_site`（`DECLARED_KEY_BUILDERS.year_series_site`）と同じ v1 表・
+    // 同じキーの形（[site_id, alias, year, kind]）。束ねる前の alias 単位の問い合わせと
+    // 違い、`basis`（day/fiscal_year/year）が `compare.key` ではなく params に来るので
+    // `k[0]`（year）だけを行キーから取り、kind は params.basis から導く。alias の
+    // 絞り込みも params.basis に応じて `aliasesForBasis` を呼ぶ（`month`/`day`/
+    // `climatology` の各 spec は grain が basis='day' でしか意味を持たないので "day"
+    // 決め打ちで足りるが、year は day/fiscal_year/year のどの basis でも呼ばれるため
+    // 決め打ちできない——`byVariableDeclaredFor` が渡す `params` を使う）。
+    v1Table: "meas_year",
+    variableIdOf: (p) => String(p.variable_id),
+    aliasesOf: (variableId, p) => mergeV1.aliasesForBasis(REGISTRY_DB_PATH, "measurements", variableId, p.basis as mergeV1.Basis),
+    buildKey: (alias, p, k) => [p.site_id, alias, k[0], p.basis === "day" ? "daily" : "annual"],
   },
   month_series_site_by_variable: {
     v1Table: "meas_month",
@@ -336,7 +350,7 @@ function byVariableDeclaredFor(
   if (!spec) return undefined;
   return {
     v1Table: spec.v1Table,
-    aliasesFor: (rowKey) => spec.aliasesOf(spec.variableIdOf(params, rowKey)),
+    aliasesFor: (rowKey) => spec.aliasesOf(spec.variableIdOf(params, rowKey), params),
     buildKey: (alias, rowKey) => spec.buildKey(alias, params, rowKey),
   };
 }

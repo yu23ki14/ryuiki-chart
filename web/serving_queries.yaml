@@ -258,7 +258,10 @@ queries:
       key: [year]
       numeric: [n, avg, min, max, n_censored]
       label: [unit]
-    known: [unit_label_registry, synthetic_excluded, lod_imputation]
+    # `declared`: `ctx.byVariableDeclared` 経由（`meas_year`。Issue #48 PR-2 code-review #8:
+    # 以前は BY_VARIABLE_DECLARED_SPECS に対応が無く、宣言済みの中津川 SS 由来9件が
+    # unexplained になっていた）。
+    known: [declared, unit_label_registry, synthetic_excluded, lod_imputation]
 
   - id: month_series_site_by_variable
     v1_table: null
