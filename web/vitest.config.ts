@@ -21,8 +21,9 @@ import { defineConfig } from "vitest/config";
  * `scripts/**\/*.test.ts` は Issue #48 PR-1（serving-diff、1c）が足した。
  * `web/scripts/lib/serving/{classify,mutations,normalize,report}.test.ts` は
  * フィクスチャだけで完結し DB を読まないので、`src/**` と同じ node 環境でそのまま動く。
- * `adapters-v1.test.ts` は `web/src/lib/queries.ts` を import するので、同じ
- * `server-only` alias に乗って空モジュールへ逃げる（1a と 1c は同じエイリアスを共有する）。
+ * `adapters-v1.ts` は `web/src/lib/queries.ts`（`server-only` マーカー付き）を import
+ * するので、これを import するテストが将来足されたときも同じ `server-only` alias に
+ * 乗って空モジュールへ逃げる（1a と 1c は同じエイリアスを共有する）。
  */
 export default defineConfig({
   resolve: {

@@ -217,6 +217,10 @@ queries:
   - id: longitudinal_highlight … (params water×alias 既定1組＋代表; key [site_id]; numeric [avg, n])
 ```
 - **列挙は「全 site_var の組（8,140）を全部回す」**（`--expand all`、serving-diff の既定）。1 問い合わせ 2〜5 ms（better-sqlite3）で 2〜3 万問い合わせ、数分で終わる。スナップショット（PR-5、CI）は `snapshot_subset` の決定論的な部分集合（`every: k` は site_id を並べて k 個おき＋名指し）。両方が同じ YAML から出るので宣言漏れが二重にならない。
+  **PR-1 統合時点の状態**: `--expand snapshot`／YAML の `snapshot_subset` は実装が
+  「YAML を読まず `every:10` 決め打ちで間引くだけ」の簡略版のまま宣言（上）と食い違っていたため撤去した。
+  現状は `--expand all` の1本のみ（`--expand snapshot` を渡すとエラーで止まる）。
+  スナップショットは PR-5 で YAML の `snapshot_subset` を実際に読む形で作り直す。
 - YAML には SQL を書かない（`domains` の列挙 SQL だけ例外）。問い合わせ本体は **アダプタ（コード）** が `id` ごとに持つ。
 
 ### 4.2 共通の行形（正規化）

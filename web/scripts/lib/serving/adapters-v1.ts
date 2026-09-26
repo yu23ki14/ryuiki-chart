@@ -78,27 +78,6 @@ export async function enumerateParams(
   return cartesian(paramNames, values);
 }
 
-/**
- * 決定論的な部分集合（`--expand snapshot` / CI 用。設計書 §4.1「両方が同じ YAML から
- * 出るので宣言漏れが二重にならない」）。`every` 個おきに1つ＋`plus` を名指しで足す。
- * `only_existing`/直積のどちらで列挙した後の tuple 配列にも同じ規則でかけられるよう、
- * 各 tuple を JSON にした文字列で「名指し」を照合する。
- */
-export function snapshotSubset(
-  all: Record<string, ScalarParam>[],
-  opt: { every: number; plus?: Record<string, ScalarParam>[] },
-): Record<string, ScalarParam>[] {
-  const picked = all.filter((_, i) => i % opt.every === 0);
-  const pickedKeys = new Set(picked.map((p) => JSON.stringify(p)));
-  const extra = (opt.plus ?? []).filter((p) => {
-    const k = JSON.stringify(p);
-    if (pickedKeys.has(k)) return false;
-    pickedKeys.add(k);
-    return all.some((a) => JSON.stringify(a) === k);
-  });
-  return [...picked, ...extra];
-}
-
 /* ------------------------------------------------------------------ */
 /* 問い合わせ本体（id ごとに queries.ts を呼ぶ）                          */
 /* ------------------------------------------------------------------ */
