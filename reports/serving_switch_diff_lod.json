@@ -1,14 +1,14 @@
 {
   "header": {
-    "gitHead": "00daf69fed5dc07b7d980b2e56b7534b2956fde1",
+    "gitHead": "19d87fc7c18bb99a4d61c7a36c9cdc99aab8bd56",
     "v2PipelineFingerprint": "phase-b-fact-slice/v1",
     "registryInputFingerprint": "55a8c2c4c1409a691f31a2e25e21b4bd6d6db2b3fd0f7852837c7d6bd60613f2",
     "sqliteVersion": "3.53.4",
-    "imputation": "zero",
+    "imputation": "lod",
     "expand": "all",
     "v1Source": "derived",
-    "generatedAt": "2026-09-26T17:40:28.307Z",
-    "elapsedMs": 224992
+    "generatedAt": "2026-09-26T17:33:40.009Z",
+    "elapsedMs": 281458
   },
   "stats": [
     {
@@ -46,12 +46,12 @@
       "runs": 250,
       "rowsV1": 8140,
       "rowsV2": 8114,
-      "matched": 3927,
+      "matched": 3034,
       "declared": 2,
       "rain_div10": 0,
       "day_split": 0,
       "synthetic_excluded": 80,
-      "lod_imputation": 0,
+      "lod_imputation": 4407,
       "unit_label_registry": 4149,
       "float_rounding": 0,
       "unexplained": 0
@@ -106,12 +106,12 @@
       "runs": 8140,
       "rowsV1": 116076,
       "rowsV2": 115918,
-      "matched": 44614,
+      "matched": 37697,
       "declared": 9,
       "rain_div10": 0,
       "day_split": 0,
       "synthetic_excluded": 320,
-      "lod_imputation": 0,
+      "lod_imputation": 65656,
       "unit_label_registry": 71187,
       "float_rounding": 0,
       "unexplained": 0
@@ -121,12 +121,12 @@
       "runs": 1966,
       "rowsV1": 127491,
       "rowsV2": 126163,
-      "matched": 125489,
+      "matched": 113075,
       "declared": 2,
       "rain_div10": 0,
       "day_split": 0,
       "synthetic_excluded": 2002,
-      "lod_imputation": 0,
+      "lod_imputation": 12414,
       "unit_label_registry": 0,
       "float_rounding": 0,
       "unexplained": 0
@@ -136,12 +136,12 @@
       "runs": 1966,
       "rowsV1": 139530,
       "rowsV2": 137350,
-      "matched": 137327,
+      "matched": 124837,
       "declared": 2,
       "rain_div10": 0,
       "day_split": 0,
       "synthetic_excluded": 2203,
-      "lod_imputation": 0,
+      "lod_imputation": 12490,
       "unit_label_registry": 0,
       "float_rounding": 0,
       "unexplained": 0
@@ -151,12 +151,12 @@
       "runs": 1432,
       "rowsV1": 81286,
       "rowsV2": 81250,
-      "matched": 30743,
+      "matched": 25981,
       "declared": 0,
       "rain_div10": 0,
       "day_split": 0,
       "synthetic_excluded": 144,
-      "lod_imputation": 0,
+      "lod_imputation": 46184,
       "unit_label_registry": 50435,
       "float_rounding": 0,
       "unexplained": 0
@@ -166,45 +166,45 @@
       "runs": 61,
       "rowsV1": 3710,
       "rowsV2": 3692,
-      "matched": 1369,
+      "matched": 915,
       "declared": 0,
       "rain_div10": 0,
       "day_split": 0,
-      "synthetic_excluded": 72,
-      "lod_imputation": 0,
+      "synthetic_excluded": 63,
+      "lod_imputation": 2458,
       "unit_label_registry": 2281,
       "float_rounding": 0,
-      "unexplained": 0
+      "unexplained": 9
     },
     {
       "id": "climatology",
       "runs": 16,
       "rowsV1": 192,
       "rowsV2": 192,
-      "matched": 132,
-      "declared": 2,
+      "matched": 41,
+      "declared": 0,
       "rain_div10": 0,
       "day_split": 0,
-      "synthetic_excluded": 58,
-      "lod_imputation": 0,
+      "synthetic_excluded": 45,
+      "lod_imputation": 91,
       "unit_label_registry": 12,
       "float_rounding": 0,
-      "unexplained": 0
+      "unexplained": 15
     },
     {
       "id": "zone_climatology",
       "runs": 16,
       "rowsV1": 619,
       "rowsV2": 595,
-      "matched": 403,
+      "matched": 185,
       "declared": 0,
       "rain_div10": 0,
       "day_split": 0,
-      "synthetic_excluded": 216,
-      "lod_imputation": 0,
+      "synthetic_excluded": 180,
+      "lod_imputation": 218,
       "unit_label_registry": 40,
       "float_rounding": 0,
-      "unexplained": 0
+      "unexplained": 36
     },
     {
       "id": "variable_catalog_by_variable",
@@ -226,12 +226,12 @@
       "runs": 250,
       "rowsV1": 7573,
       "rowsV2": 7547,
-      "matched": 3519,
+      "matched": 2643,
       "declared": 0,
       "rain_div10": 0,
       "day_split": 0,
       "synthetic_excluded": 80,
-      "lod_imputation": 0,
+      "lod_imputation": 4390,
       "unit_label_registry": 3990,
       "float_rounding": 0,
       "unexplained": 2
@@ -241,12 +241,12 @@
       "runs": 7569,
       "rowsV1": 105164,
       "rowsV2": 104750,
-      "matched": 39465,
+      "matched": 32645,
       "declared": 0,
       "rain_div10": 0,
       "day_split": 0,
       "synthetic_excluded": 320,
-      "lod_imputation": 0,
+      "lod_imputation": 65559,
       "unit_label_registry": 65175,
       "float_rounding": 0,
       "unexplained": 258
@@ -256,12 +256,12 @@
       "runs": 1966,
       "rowsV1": 127491,
       "rowsV2": 126163,
-      "matched": 125489,
+      "matched": 113075,
       "declared": 0,
       "rain_div10": 0,
       "day_split": 0,
       "synthetic_excluded": 2002,
-      "lod_imputation": 0,
+      "lod_imputation": 12414,
       "unit_label_registry": 0,
       "float_rounding": 0,
       "unexplained": 2
@@ -271,12 +271,12 @@
       "runs": 1966,
       "rowsV1": 139530,
       "rowsV2": 137350,
-      "matched": 137327,
+      "matched": 124837,
       "declared": 0,
       "rain_div10": 0,
       "day_split": 0,
       "synthetic_excluded": 2203,
-      "lod_imputation": 0,
+      "lod_imputation": 12490,
       "unit_label_registry": 0,
       "float_rounding": 0,
       "unexplained": 2
@@ -286,45 +286,45 @@
       "runs": 159,
       "rowsV1": 3389,
       "rowsV2": 3371,
-      "matched": 1208,
+      "matched": 778,
       "declared": 0,
       "rain_div10": 0,
       "day_split": 0,
-      "synthetic_excluded": 72,
-      "lod_imputation": 0,
+      "synthetic_excluded": 63,
+      "lod_imputation": 2434,
       "unit_label_registry": 2121,
       "float_rounding": 0,
-      "unexplained": 0
+      "unexplained": 9
     },
     {
       "id": "climatology_by_variable",
       "runs": 53,
       "rowsV1": 192,
       "rowsV2": 192,
-      "matched": 132,
+      "matched": 41,
       "declared": 0,
       "rain_div10": 0,
       "day_split": 0,
-      "synthetic_excluded": 58,
-      "lod_imputation": 0,
+      "synthetic_excluded": 45,
+      "lod_imputation": 91,
       "unit_label_registry": 12,
       "float_rounding": 0,
-      "unexplained": 2
+      "unexplained": 15
     },
     {
       "id": "zone_climatology_by_variable",
       "runs": 53,
       "rowsV1": 619,
       "rowsV2": 595,
-      "matched": 403,
+      "matched": 185,
       "declared": 0,
       "rain_div10": 0,
       "day_split": 0,
-      "synthetic_excluded": 216,
-      "lod_imputation": 0,
+      "synthetic_excluded": 180,
+      "lod_imputation": 218,
       "unit_label_registry": 40,
       "float_rounding": 0,
-      "unexplained": 0
+      "unexplained": 36
     },
     {
       "id": "water_bodies_for_variable_by_variable",
@@ -377,15 +377,15 @@
     "runs": 26007,
     "rowsV1": 863723,
     "rowsV2": 855963,
-    "matched": 654121,
-    "declared": 17,
+    "matched": 582543,
+    "declared": 15,
     "rain_div10": 0,
     "day_split": 12,
-    "synthetic_excluded": 10119,
-    "lod_imputation": 0,
+    "synthetic_excluded": 10003,
+    "lod_imputation": 241514,
     "unit_label_registry": 199500,
     "float_rounding": 0,
-    "unexplained": 272
+    "unexplained": 390
   },
   "unexplainedSamples": [
     {
@@ -461,207 +461,266 @@
       ]
     },
     {
-      "queryId": "variable_catalog_by_variable",
-      "params": {},
-      "kind": "value_diff",
-      "key": [
-        "common:variable:water.ss"
-      ],
-      "columns": [
-        "n",
-        "n_places",
-        "y_to",
-        "n_censored"
-      ]
-    },
-    {
-      "queryId": "site_variables_by_variable",
+      "queryId": "zone_series",
       "params": {
-        "site_id": "atsugi_river_water_quality__中津川"
+        "alias": "浮遊物質量 SS",
+        "kind": "daily"
       },
       "kind": "value_diff",
       "key": [
-        "common:variable:water.ss",
-        "day"
+        3,
+        2023
       ],
       "columns": [
+        "n_sites",
         "n",
         "avg"
       ]
     },
     {
-      "queryId": "site_variables_by_variable",
+      "queryId": "zone_series",
       "params": {
-        "site_id": "atsugi_river_water_quality__中津川"
+        "alias": "浮遊物質量 SS",
+        "kind": "daily"
       },
       "kind": "value_diff",
       "key": [
-        "common:variable:water.ss",
-        "fiscal_year"
+        3,
+        2024
       ],
       "columns": [
+        "n_sites",
         "n",
         "avg"
       ]
     },
     {
-      "queryId": "year_series_site_by_variable",
+      "queryId": "zone_series",
       "params": {
-        "variable_id": "common:variable:water.cod",
-        "site_id": "atsugi_river_water_quality__中津川",
-        "basis": "fiscal_year"
+        "alias": "浮遊物質量 SS",
+        "kind": "daily"
       },
-      "kind": "row_only_in_v1",
+      "kind": "value_diff",
       "key": [
-        2005
+        3,
+        2025
       ],
-      "columns": []
+      "columns": [
+        "n_sites",
+        "n",
+        "avg"
+      ]
     },
     {
-      "queryId": "year_series_site_by_variable",
+      "queryId": "zone_series",
       "params": {
-        "variable_id": "common:variable:water.cod",
-        "site_id": "atsugi_river_water_quality__中津川",
-        "basis": "fiscal_year"
+        "alias": "浮遊物質量 SS",
+        "kind": "daily"
       },
-      "kind": "row_only_in_v1",
+      "kind": "value_diff",
       "key": [
-        2006
+        4,
+        2023
       ],
-      "columns": []
+      "columns": [
+        "n_sites",
+        "n",
+        "avg"
+      ]
     },
     {
-      "queryId": "year_series_site_by_variable",
+      "queryId": "zone_series",
       "params": {
-        "variable_id": "common:variable:water.cod",
-        "site_id": "atsugi_river_water_quality__中津川",
-        "basis": "fiscal_year"
+        "alias": "浮遊物質量 SS",
+        "kind": "daily"
       },
-      "kind": "row_only_in_v1",
+      "kind": "value_diff",
       "key": [
-        2007
+        4,
+        2024
       ],
-      "columns": []
+      "columns": [
+        "n_sites",
+        "n",
+        "avg"
+      ]
     },
     {
-      "queryId": "year_series_site_by_variable",
+      "queryId": "zone_series",
       "params": {
-        "variable_id": "common:variable:water.cod",
-        "site_id": "atsugi_river_water_quality__中津川",
-        "basis": "fiscal_year"
+        "alias": "浮遊物質量 SS",
+        "kind": "daily"
       },
-      "kind": "row_only_in_v1",
+      "kind": "value_diff",
       "key": [
-        2008
+        4,
+        2025
       ],
-      "columns": []
+      "columns": [
+        "n_sites",
+        "n",
+        "avg"
+      ]
     },
     {
-      "queryId": "year_series_site_by_variable",
+      "queryId": "zone_series",
       "params": {
-        "variable_id": "common:variable:water.cod",
-        "site_id": "atsugi_river_water_quality__中津川",
-        "basis": "fiscal_year"
+        "alias": "浮遊物質量 SS",
+        "kind": "daily"
       },
-      "kind": "row_only_in_v1",
+      "kind": "value_diff",
       "key": [
-        2009
+        5,
+        2023
       ],
-      "columns": []
+      "columns": [
+        "n_sites",
+        "n",
+        "avg"
+      ]
     },
     {
-      "queryId": "year_series_site_by_variable",
+      "queryId": "zone_series",
       "params": {
-        "variable_id": "common:variable:water.cod",
-        "site_id": "atsugi_river_water_quality__中津川",
-        "basis": "fiscal_year"
+        "alias": "浮遊物質量 SS",
+        "kind": "daily"
       },
-      "kind": "row_only_in_v1",
+      "kind": "value_diff",
       "key": [
-        2010
+        5,
+        2024
       ],
-      "columns": []
+      "columns": [
+        "n_sites",
+        "n",
+        "avg"
+      ]
     },
     {
-      "queryId": "year_series_site_by_variable",
+      "queryId": "zone_series",
       "params": {
-        "variable_id": "common:variable:water.cod",
-        "site_id": "atsugi_river_water_quality__中津川",
-        "basis": "fiscal_year"
+        "alias": "浮遊物質量 SS",
+        "kind": "daily"
       },
-      "kind": "row_only_in_v1",
+      "kind": "value_diff",
       "key": [
-        2011
+        5,
+        2025
       ],
-      "columns": []
+      "columns": [
+        "n_sites",
+        "n",
+        "avg"
+      ]
     },
     {
-      "queryId": "year_series_site_by_variable",
+      "queryId": "climatology",
       "params": {
-        "variable_id": "common:variable:water.cod",
-        "site_id": "atsugi_river_water_quality__中津川",
-        "basis": "fiscal_year"
+        "alias": "浮遊物質量 SS"
       },
-      "kind": "row_only_in_v1",
+      "kind": "value_diff",
       "key": [
-        2012
+        1
       ],
-      "columns": []
+      "columns": [
+        "n",
+        "avg",
+        "min"
+      ]
     },
     {
-      "queryId": "year_series_site_by_variable",
+      "queryId": "climatology",
       "params": {
-        "variable_id": "common:variable:water.cod",
-        "site_id": "atsugi_river_water_quality__中津川",
-        "basis": "fiscal_year"
+        "alias": "浮遊物質量 SS"
       },
-      "kind": "row_only_in_v1",
+      "kind": "value_diff",
       "key": [
-        2013
+        2
       ],
-      "columns": []
+      "columns": [
+        "n",
+        "avg",
+        "min"
+      ]
     },
     {
-      "queryId": "year_series_site_by_variable",
+      "queryId": "climatology",
       "params": {
-        "variable_id": "common:variable:water.cod",
-        "site_id": "atsugi_river_water_quality__中津川",
-        "basis": "fiscal_year"
+        "alias": "浮遊物質量 SS"
       },
-      "kind": "row_only_in_v1",
+      "kind": "value_diff",
       "key": [
-        2014
+        3
       ],
-      "columns": []
+      "columns": [
+        "n",
+        "avg",
+        "min"
+      ]
     },
     {
-      "queryId": "year_series_site_by_variable",
+      "queryId": "climatology",
       "params": {
-        "variable_id": "common:variable:water.cod",
-        "site_id": "atsugi_river_water_quality__中津川",
-        "basis": "fiscal_year"
+        "alias": "浮遊物質量 SS"
       },
-      "kind": "row_only_in_v1",
+      "kind": "value_diff",
       "key": [
-        2015
+        4
       ],
-      "columns": []
+      "columns": [
+        "n",
+        "avg",
+        "min"
+      ]
     },
     {
-      "queryId": "year_series_site_by_variable",
+      "queryId": "climatology",
       "params": {
-        "variable_id": "common:variable:water.cod",
-        "site_id": "atsugi_river_water_quality__中津川",
-        "basis": "fiscal_year"
+        "alias": "浮遊物質量 SS"
       },
-      "kind": "row_only_in_v1",
+      "kind": "value_diff",
       "key": [
-        2016
+        5
       ],
-      "columns": []
+      "columns": [
+        "n",
+        "avg",
+        "min"
+      ]
+    },
+    {
+      "queryId": "climatology",
+      "params": {
+        "alias": "浮遊物質量 SS"
+      },
+      "kind": "value_diff",
+      "key": [
+        6
+      ],
+      "columns": [
+        "n",
+        "avg",
+        "min"
+      ]
     }
   ],
   "rottenDeclarations": [
+    {
+      "table": "meas_clim",
+      "key": [
+        "浮遊物質量 SS",
+        10
+      ],
+      "kind": "value_diff"
+    },
+    {
+      "table": "meas_clim",
+      "key": [
+        "浮遊物質量 SS",
+        11
+      ],
+      "kind": "value_diff"
+    },
     {
       "table": "var_catalog",
       "key": [
