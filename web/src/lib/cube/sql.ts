@@ -38,6 +38,9 @@ export function jsonEachParam(values: readonly (string | number)[]): string {
  */
 export function seriesFilterSql(series: readonly SeriesKey[] | undefined, alias = OBS): { joins: string[]; params: SqlParam[] } | undefined {
   if (!series || series.length === 0) return undefined;
+  if (series.length > MAX_ID_LIST) {
+    throw new Error(`seriesFilterSql: series が ${series.length} 件で上限 ${MAX_ID_LIST} を超えている`);
+  }
   const variableIds = [...new Set(series.map((s) => s.variableId))];
   return {
     joins: [
