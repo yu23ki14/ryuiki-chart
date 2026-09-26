@@ -160,6 +160,13 @@ export function seriesForAlias(dataset: string, alias: string): SeriesInfo[] {
 
 const REPRESENTATIVE_OBS_STATS: readonly (string | null)[] = [null, "mean", "point"];
 
+/** `obsStat` が代表統計量（mean/point/NULL）かどうか。`catalog.ts` の
+ *  `bundleVariableCatalog`（`stats` に非代表だけを集める。Issue #48 PR-2
+ *  code-review #7）も同じ判定を使う。 */
+export function isRepresentativeObsStat(obsStat: string | null): boolean {
+  return REPRESENTATIVE_OBS_STATS.includes(obsStat);
+}
+
 export interface SeriesForVariableOpt {
   dataset?: string;
   /** 既定 "representative"（`obsStat` が mean/point/NULL のものだけ）。 */
@@ -174,7 +181,7 @@ export function seriesForVariable(variableId: string, opt?: SeriesForVariableOpt
     if (g.key.variableId !== variableId) continue;
     if (opt?.dataset !== undefined && norm(g.dataset) !== opt.dataset) continue;
     if (mode === "representative") {
-      if (!REPRESENTATIVE_OBS_STATS.includes(g.key.obsStat)) continue;
+      if (!isRepresentativeObsStat(g.key.obsStat)) continue;
     } else if (Array.isArray(mode)) {
       if (g.key.obsStat === null || !mode.includes(g.key.obsStat)) continue;
     }

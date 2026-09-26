@@ -11,7 +11,7 @@
 import type { CubeDb, SqlParam } from "./db";
 import { MAX_ID_LIST } from "./db";
 import { jsonEachParam, seriesFilterSql } from "./sql";
-import { basisOfCell, seriesKeyFromRow, seriesKeySql, seriesKeyString, type SeriesKey } from "./series";
+import { basisOfCell, isRepresentativeObsStat, seriesKeyFromRow, seriesKeySql, seriesKeyString, type SeriesKey } from "./series";
 
 /**
  * データの出所（PR-2 design §4.3）。`summary`（既定）は `summary_variable_catalog`/
@@ -51,7 +51,11 @@ export interface VariableCatalogRow {
   yTo: number;
   nByBasis: { day: number; fiscalYear: number; year: number };
   nCensored: number;
-  /** 束ねた中に現れる obs_stat（NULL を除く。ソート済み・重複無し）。 */
+  /** 束ねた中に現れる**非代表**の obs_stat（p75/p90/max/min 等。NULL・mean・point
+   *  ——代表統計量——は含めない。ソート済み・重複無し。D4「非代表統計量を stat
+   *  パラメータで選べるようにする」の選択肢そのもの。代表統計量まで含めると、
+   *  ほとんどの variable で「代表値（平均）」の選択肢と実質同じものが並んで
+   *  二重に見える（Issue #48 PR-2 code-review #7）。 */
   stats: string[];
 }
 
@@ -127,7 +131,7 @@ function bundleVariableCatalog(rows: Iterable<CatalogCellAgg>): VariableCatalogR
     else if (basis === "fiscal_year") g.nByBasis.fiscalYear += r.n;
     else g.nByBasis.year += r.n;
     g.nCensored += r.nCensored;
-    if (r.obsStat) g.stats.add(r.obsStat);
+    if (r.obsStat && !isRepresentativeObsStat(r.obsStat)) g.stats.add(r.obsStat);
   }
 
   const out: VariableCatalogRow[] = [];

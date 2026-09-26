@@ -27,6 +27,7 @@ export {
   representativeSeries,
   basisOf,
   basisOfCell,
+  isRepresentativeObsStat,
   grainsForBasis,
   yearCellFilterForBasis,
   withTheme,

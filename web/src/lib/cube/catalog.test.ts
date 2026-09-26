@@ -29,7 +29,9 @@ describe("variableCatalog（既定 source='summary'。variable_id 単位に束�
     // （fx_place_a は mean/day と mean/fiscal_year の両方に現れるが1と数える）。
     expect(ss.nPlaces).toBe(3);
     expect(ss.nByBasis).toEqual({ day: 3 + 1 + 2, fiscalYear: 1, year: 0 });
-    expect(ss.stats).toEqual(["mean", "point"]);
+    // `stats` は非代表の obs_stat だけを集める（Issue #48 PR-2 code-review #7）。
+    // フィクスチャの3系列は mean/point のみ（どちらも代表統計量）なので空になる。
+    expect(ss.stats).toEqual([]);
     expect(ss.yFrom).toBe(2024);
     expect(ss.yTo).toBe(2024);
   });

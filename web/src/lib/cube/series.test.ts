@@ -3,6 +3,7 @@ import {
   basisOf,
   basisOfCell,
   grainsForBasis,
+  isRepresentativeObsStat,
   labelYear,
   representativeSeries,
   seriesForAlias,
@@ -14,6 +15,20 @@ import {
   yearCellFilterForBasis,
   type SeriesKey,
 } from "./series";
+
+describe("isRepresentativeObsStat（Issue #48 PR-2 code-review #7: catalog.ts の非代表 stats 集計が使う判定）", () => {
+  it("NULL・mean・point は代表統計量", () => {
+    expect(isRepresentativeObsStat(null)).toBe(true);
+    expect(isRepresentativeObsStat("mean")).toBe(true);
+    expect(isRepresentativeObsStat("point")).toBe(true);
+  });
+  it("p75/p90/max/min 等は非代表", () => {
+    expect(isRepresentativeObsStat("p75")).toBe(false);
+    expect(isRepresentativeObsStat("p90")).toBe(false);
+    expect(isRepresentativeObsStat("max")).toBe(false);
+    expect(isRepresentativeObsStat("min")).toBe(false);
+  });
+});
 
 describe("seriesKeyString", () => {
   it("b05 の _AKEY_EXPR と同じ連結順・NULL の扱い（variable_id|value_grain|obs_stat|unit_id）", () => {
