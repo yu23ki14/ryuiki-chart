@@ -46,7 +46,8 @@ v1 の派生表（`web/scripts/build-derived.mjs` が書く `derived.sqlite`）�
    `observation_agg.value_lod`、ADR-0009 決定4）を見せる。注記（`registry/caveat.yaml` の
    `censored`）も系列に合わせて書き換える。
 3. **合成データ（`is_synthetic=1`）は本番に出さない。** v2 のファクトから除き、合成データ
-   しか表示しない画面（品質・介入・意思決定・ペア測定のデモ）は撤去する。
+   しか表示しない画面（品質・介入・意思決定・ペア測定のデモ）は撤去する。ファクトからの
+   除外自体の実装は PR-2 で行う（当初 PR-0 の予定だったが移した。理由・実測は §5 PR-2 節）。
 4. **本番（Cloudflare D1・Workers）への反映は最後にまとめて1回。** 途中の PR は main に
    入れるだけで本番には出さない——**移行が終わるまで main を本番にデプロイしない**
    （途中の main は本番 D1 に無い新しい表を読むため）。最後の PR（PR-5）に本番切り替えの
@@ -181,9 +182,11 @@ ADR-0025 D2）。索引はこの上に問い合わせパターンに合わせて
   `node:22-bookworm-slim` ベースで `python3`/`python3-yaml` を apt から入れており、
   bookworm の python3 に同梱される SQLite は 3.40 系——推測・高確度。3.43 未満だと
   b04/b07 が `require_sqlite_version()` で止まる、ADR-0021 D7）。
-- **`scripts/b03_build_observation.py`/`scripts/b06_build_occurrence.py`（既存）で
-  `is_synthetic=1` を除く**（合成データを出さない決定3）。
 - ADR-0029/0030 の草稿と、この設計の repo 内の文書（本ファイル）。
+
+> 合成データの除外（`is_synthetic=1`、`scripts/b03_build_observation.py`/
+> `scripts/b06_build_occurrence.py`）は当初この PR-0 に置いていたが、**PR-2 に移した**
+> （オーナー決定 2026-09-26）。理由・実測は PR-2 節参照。
 
 ### PR-1 問い合わせ層＋差分の道具（値は動かない）
 
@@ -204,6 +207,34 @@ ADR-0025 D2）。索引はこの上に問い合わせパターンに合わせて
 
 状態: 未着手
 
+- **`scripts/b03_build_observation.py`/`scripts/b06_build_occurrence.py`（既存）で
+  `is_synthetic=1` を除く**（合成データを出さない決定3）。**PR-0 からここに移した**
+  （オーナー決定 2026-09-26）。理由: v2 のファクトから `is_synthetic=1` を除くと、v1 との
+  突合ゲート `scripts/b02_run_all_gates.py` で10表に差分が出る。さらに縮小サンプル
+  （`data/sample/`）は合成行を全量含む一方、同じ組の非合成行は間引かれており
+  （`measurements` は80組中51組・`sensor_timeseries` は5組中4組がサンプルに非合成行が
+  無い）、全量で作った宣言済み差分がサンプルでは合わない。`b02` 自体は PR-5 で消えるため、
+  そのゲートへ宣言を書くのは使い捨てになる——PR-2 で画面をキューブ直読みに切り替えるときに
+  serving-diff の既知の系統「合成データの除外」（§4-4 の6系統の1つ）として数えるほうが
+  筋が良い。実装と調査スクリプト（`scripts/reconcile/build_synthetic_expected_diffs.py`）は
+  ローカルブランチ `wip/48-synthetic-exclusion`（commit `282d346`）に残してある。
+
+  全量の実測（v1表ごとの `row_only_in_baseline` / `value_diff`）:
+
+  | v1 表 | row_only_in_baseline | value_diff |
+  |---|---|---|
+  | `meas_daily` | 2,182 | 21 |
+  | `meas_month` | 1,330 | 672 |
+  | `meas_year`（daily） | 158 | 162 |
+  | `meas_clim` | 0 | 58〜60 |
+  | `site_var`（daily） | 26 | 54 |
+  | `var_catalog` | 0 | 4〜5 |
+  | `zone_year`（daily） | 18 | 54 |
+  | `zone_clim` | 24 | 192 |
+  | `sensor_daily` | 4,855 | 0 |
+  | `sensor_hour_month` | 96 | 0 |
+
+  `rain_daily` は無関係（差分なし）。
 - `/timeseries` / `/sites` / `/sites/[id]` / home、AI の `list_catalog` / `get_timeseries`
   / `get_seasonality` / `get_sites`（`web/src/lib/ai/tools.ts` 既存）を切り替える。
 - 既定を `lod` にし、注記は `censoredLod`（`registry/caveat.yaml` の `censored` エントリを

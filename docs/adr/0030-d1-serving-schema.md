@@ -88,6 +88,14 @@ ADR-0025 D2 が既に決定済み）は変えない。索引はその上に、�
 フィルタするのではなく、ファクトを作る時点で除く**——ADR-0017 原則4「デモに含まれる
 合成の可変データは当面 L2 の一部として扱う」は撤回し、合成データを配信対象外にする。
 
+この除外の実装時期は当初 PR-0 を予定していたが、**PR-2 に移した**（オーナー決定
+2026-09-26）。理由: v2 のファクトから `is_synthetic=1` を除くと、v1 との突合ゲート
+`scripts/b02_run_all_gates.py`（PR-5 で撤去予定）で10表に差分が出るうえ、縮小サンプル
+（`data/sample/`）は同じ組の非合成行が間引かれているため全量向けの宣言済み差分が
+サンプルでは合わない。PR-2 で画面をキューブ直読みに切り替えるときに serving-diff の
+既知の系統として数える（詳細・実測は
+[docs/plans/V2_SERVING.md](../plans/V2_SERVING.md) PR-2 節）。
+
 合成データしか表示しない画面（品質・介入・意思決定・ペア測定のデモ）は撤去する
 （`docs/plans/V2_SERVING.md` PR-4）。書き込み系ログの表（`decisions`/`interventions`/
 `quality_transitions`/`observers`/`events`/`event_observers`）も D1 に入れない（D1 の表、
@@ -179,5 +187,6 @@ ADR-0001 の原則をあらためて明文化する。`observation`/`occurrence`
 ## 状態
 
 提案中（オーナー承認待ち）。実装は `docs/plans/V2_SERVING.md` PR-0（`schema-cube.ts`・
-`schema-registry.ts` の追加）・PR-2/PR-3b（imputation の切り替え）・PR-4（合成データ
-画面の撤去）・PR-5（v1 表の DROP）・PR-6（`not_detected` 例外の撤去、任意）に分かれて進む。
+`schema-registry.ts` の追加）・PR-2（測定値系の imputation の切り替え、`is_synthetic=1` の
+ファクト除外〔D4〕）・PR-3b（生物系の imputation の切り替え）・PR-4（合成データ画面の撤去）・
+PR-5（v1 表の DROP）・PR-6（`not_detected` 例外の撤去、任意）に分かれて進む。

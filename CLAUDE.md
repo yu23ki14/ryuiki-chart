@@ -10,13 +10,21 @@
   （`db:setup` は `predb:setup` フックで語彙レジストリも v2 も「古ければ作り直す」。
   `web/scripts/ensure-registry.sh` が `scripts/r01_build_registry.py --check-fresh` を呼び、
   `web/scripts/ensure-v2.sh` が v2（`data/db/v2.sqlite`。`observation_agg`/`occurrence_agg` の
-  キューブ。Issue #48 PR-0）を mtime で判定する。単体で作り直すだけなら
+  キューブ。Issue #48 PR-0）を「(1) mtime が、読み取る原本・入力・パイプラインのコードより
+  古い、または (2) `scripts/check_v2_fresh.py`（0=新鮮/10=古い。`pipeline_fingerprint.spec_version`
+  が今のパイプラインの spec と一致するか）が古いと言う」の**どちらか**で判定する（OR。
+  (1) だけでは mtime は新しいが中身が古い形式の v2.sqlite を見逃すため）。単体で作り直すだけなら
   `cd web && pnpm run build:v2`（r01→b03→b04→b06→b09→b07 を順に回す）。
 - データの置き場所は **Cloudflare D1**（デプロイ先を Cloudflare 想定にしたため）。
-  61 テーブルを 1 つの D1 に統合してある。D1 に `ATTACH` は無いので `d.` / `c.` の接頭辞は使わない。
+  83 テーブル（`web/drizzle/migrations/` 適用後の実測。うちシード管理用の内部表
+  `_seed_state` を除く82表が `web/scripts/seed-d1-local.mjs` のシード対象）を 1 つの D1 に
+  統合してある。D1 に `ATTACH` は無いので `d.` / `c.` の接頭辞は使わない。
   どの原本から来たテーブルかは `web/src/lib/table-meta.ts` の `TABLE_ORIGIN`。
-- D1 のスキーマは `web/src/db/schema.ts`（Drizzle）が原本。触ったら `pnpm run db:generate` で
-  `web/drizzle/migrations/` を作り直す。マイグレーション SQL を直接書き換えない。
+- D1 のスキーマは `web/src/db/schema.ts`（v1、既存表）・`web/src/db/schema-registry.ts`
+  （語彙レジストリ、Phase A）・`web/src/db/schema-cube.ts`（キューブ、Issue #48 PR-0）の
+  3ファイル（Drizzle。`web/drizzle.config.ts` の `schema` が3つとも読む）が原本。触ったら
+  `pnpm run db:generate` で `web/drizzle/migrations/` を作り直す。マイグレーション SQL を
+  直接書き換えない。
 - 原本は `data/db/ryuiki.sqlite` と `data/db/cells.sqlite`。**読み取り専用**で扱う
   （この規約は `web/` 側から見たものであり、書き手は `scripts/m0x_*.py` に限る）。
   集計は `data/db/derived.sqlite` に分けて書く（`cd web && pnpm run build:derived` で再生成）。
