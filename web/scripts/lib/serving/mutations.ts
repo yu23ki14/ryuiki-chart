@@ -50,6 +50,25 @@ export function isClassifyMutation(name: string): name is ClassifyMutationName {
 }
 
 /**
+ * 「どの問い合わせ id にこの行変異が意味を持つか」の唯一の宣言表。`undefined`
+ * （表に無い名前）は「全問い合わせに効く」という意味（レコードの中身だけを見て
+ * 判定する変異は queryId を問わない）。`applyRowMutation`（変異の適用時）と
+ * `rowMutationAppliesTo`（`--mutate all` が回す対象を決めるとき）の両方が
+ * これを見る——以前はこのガードが2箇所（`applyRowMutation` 内の if 文と、
+ * この表が無かった頃の `rowMutationAppliesTo` 本体）に別々に書かれていた。
+ */
+const ROW_MUTATION_APPLIES_TO: Partial<Record<RowMutationName, readonly string[]>> = {
+  swap_kind: ["year_series_site", "year_series_water"],
+  month_off_by_one: ["month_series_site", "climatology", "zone_climatology"],
+};
+
+/** `--mutate all` 用に、対応するクエリ id 一覧を返す（無関係な id には no-op で効かない変異もある）。 */
+export function rowMutationAppliesTo(name: RowMutationName, queryId: string): boolean {
+  const ids = ROW_MUTATION_APPLIES_TO[name];
+  return ids === undefined || ids.includes(queryId);
+}
+
+/**
  * v2 側の行を書き換える。`queryId` によって意味が無い変異は素通りする
  * （例: `swap_kind` は年次系列にしか意味が無いので、他の問い合わせでは no-op）。
  * 実際の DB を読まない・触らないので、フィクスチャの `NormRow[]` にもそのまま使える。
@@ -77,7 +96,7 @@ export function applyRowMutation(name: RowMutationName, queryId: string, rows: r
       // （year_series_site/year_series_water のみ意味がある）。
       // 行キーは変えない——比較はキーで突き合わせる（配列の並び順には依らない）ので、
       // 配列を丸ごと reverse() するだけでは差分にならない。実際に値を取り違える。
-      if (queryId !== "year_series_site" && queryId !== "year_series_water") return [...rows];
+      if (!rowMutationAppliesTo(name, queryId)) return [...rows];
       const swapped = [...rows];
       for (let i = 0; i + 1 < swapped.length; i += 2) {
         const a = swapped[i];
@@ -90,7 +109,7 @@ export function applyRowMutation(name: RowMutationName, queryId: string, rows: r
     case "no_unit":
       return rows.map((r) => ("unit" in r.label ? { ...r, label: { ...r.label, unit: null } } : r));
     case "month_off_by_one":
-      if (queryId !== "month_series_site" && queryId !== "climatology" && queryId !== "zone_climatology") return [...rows];
+      if (!rowMutationAppliesTo(name, queryId)) return [...rows];
       return rows.map((r) => {
         if (r.key.length === 0) return r;
         const shifted = [...r.key];
@@ -140,13 +159,6 @@ export function applyClassifyMutation(
       throw new Error(`未知の分類器変異: ${exhaustive}`);
     }
   }
-}
-
-/** `--mutate all` 用に、対応するクエリ id 一覧を返す（無関係な id には no-op で効かない変異もある）。 */
-export function rowMutationAppliesTo(name: RowMutationName, queryId: string): boolean {
-  if (name === "swap_kind") return queryId === "year_series_site" || queryId === "year_series_water";
-  if (name === "month_off_by_one") return ["month_series_site", "climatology", "zone_climatology"].includes(queryId);
-  return true;
 }
 
 export type { ScalarParam };
