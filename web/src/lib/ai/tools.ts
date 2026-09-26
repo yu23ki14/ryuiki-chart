@@ -10,10 +10,12 @@ import {
   d1CubeDb,
   representativeSeries,
   basisOf,
+  yearCellFilterForBasis,
   withTheme,
   queryCells,
   summarize,
   buildEnvelope,
+  buildZoneEnvelope,
   unitLabel,
   variableCatalog,
   siteVariables,
@@ -23,7 +25,6 @@ import {
   waterBodies,
   type CellSpec,
   type Scope,
-  type SeriesInfo,
 } from "@/lib/cube";
 import { facetsForSeries, caveatKeysForFacets } from "@/lib/cube/caveats";
 import {
@@ -46,21 +47,6 @@ import {
 
 /** measurements データセット固定（PR-2 のスコープは測定値系。design §1.1 と同じ前提）。 */
 const DATASET = "measurements";
-
-/**
- * `catalog.siteVariables()` の第2引数は（`site()`/`sites()`/`Scope{kind:'site'}` と違い）
- * 外部キーの `site_id` ではなく内部の `place_id` を取る（`catalog.test.ts` が `FX.places.a`
- * を渡していることで確認済み）。`lib/cube` はこの2つを結ぶ関数を公開していない
- * （報告参照）ので、ここで `place_source_ref` を直接引く。`web/src/app/sites/[id]/page.tsx`
- * にも同じ複製がある。
- */
-async function resolvePlaceId(db: Awaited<ReturnType<typeof d1CubeDb>>, siteId: string): Promise<string | null> {
-  const rows = await db.all<{ place_id: string }>(
-    "SELECT place_id FROM place_source_ref WHERE source_id = 'sites.site_id' AND external_key = ?",
-    [siteId],
-  );
-  return rows[0]?.place_id ?? null;
-}
 
 /**
  * 意図レベルのツール10個。中身は queries.ts の合成で、新しい SQL はほぼ書かない
@@ -298,30 +284,6 @@ const scopeSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("zone") }),
 ]);
 
-/**
- * `representativeSeries()` を `basis`（元データの粒度）で絞り込む。`lib/cube/observation.ts`
- * の非公開ヘルパ `seriesForBasis` と同じロジック（`yearSeries`/`monthSeries`/`daySeries`
- * が内部で使っているのと同じ組み立て）——`queryCells`/`buildEnvelope` を直接使う
- * get_timeseries は絞り込んだ `series` 自体が要るため、ここで同じ形に複製している。
- * `lib/cube` にはこの分解だけを返す公開関数が無かった（report参照）。
- */
-function seriesForBasis(
-  variableId: string,
-  stat: string | undefined,
-  basis: "day" | "fiscal_year" | "year" | undefined,
-): { series: SeriesInfo[]; basis: "day" | "fiscal_year" | "year" } {
-  const all = representativeSeries(variableId, DATASET, stat ?? "representative");
-  const resolvedBasis = basis ?? basisOf(all).basis;
-  const series = all.filter((s) => s.valueGrain === resolvedBasis);
-  return { series, basis: resolvedBasis };
-}
-
-/** `basis` から `queryCells`/`summarize` に渡す `inputGrain`（`observation.ts` の非公開
- *  `inputGrainForBasis` と同じ: day 基準だけ検体値からの積み上げに絞る）。 */
-function inputGrainForBasis(basis: "day" | "fiscal_year" | "year"): "day" | "same" {
-  return basis === "day" ? "day" : "same";
-}
-
 const get_timeseries = tool({
   description:
     "ある測定項目の時系列を取る。scope で「水域の中の地点ごと」「1地点」「ゾーン平均」のどれで見るかを選ぶ。grain で粒度を選ぶ。",
@@ -348,16 +310,21 @@ const get_timeseries = tool({
   execute: async ({ variableId, scope, grain, stat, from, to }) => {
     const t0 = performance.now();
     const db = await d1CubeDb();
-    const requestedBasis: "day" | "fiscal_year" | "year" | undefined =
-      grain === "fiscal_year" ? "fiscal_year" : grain === "month" || grain === "day" ? "day" : undefined;
-    const { series, basis } = seriesForBasis(variableId, stat, requestedBasis);
-    const registry = registryFor(series.map((s) => ({ variableId: s.variableId, unitId: s.unitId })));
-    const unitIds = new Set(series.map((s) => s.unitId));
+    // series は basis で絞り込まない（basis はセルの性質であって系列の登録
+    // 〔value_grain〕ではない。Issue #48 PR-2 統合後修正A #1）——representativeSeries()
+    // の全 value_grain をそのまま渡し、basis の絞り込みは `yearCellFilterForBasis()`
+    // が返す grain/inputGrain でセル側（CellSpec）に行わせる。
+    const all = representativeSeries(variableId, DATASET, stat ?? "representative");
+    const basis: "day" | "fiscal_year" | "year" =
+      grain === "fiscal_year" ? "fiscal_year" : grain === "month" || grain === "day" ? "day" : all.length > 0 ? basisOf(all).basis : "day";
+    const registry = registryFor(all.map((s) => ({ variableId: s.variableId, unitId: s.unitId })));
+    const unitIds = new Set(all.map((s) => s.unitId));
     const unit = unitIds.size === 1 ? unitLabel([...unitIds][0]) : null;
     const period = from || to ? { from, to } : undefined;
-    const grains = grain === "year" || grain === "fiscal_year" ? (["year", "fiscal_year"] as const) : [grain];
+    const basisFilter = yearCellFilterForBasis(basis);
+    const cellGrain = grain === "year" || grain === "fiscal_year" ? [basisFilter.grain] : [grain];
 
-    if (series.length === 0) {
+    if (all.length === 0) {
       return makeResult({
         tool: "get_timeseries",
         tables: [],
@@ -368,26 +335,19 @@ const get_timeseries = tool({
     }
 
     if (scope.type === "zone") {
-      const specBase = { series, scope: { kind: "all_sites" } as Scope, grain: [...grains], inputGrain: inputGrainForBasis(basis), period };
-      const [lod, zero] = await Promise.all([
-        summarize(db, { ...specBase, imputation: "lod" }, "zone"),
-        summarize(db, { ...specBase, imputation: "zero" }, "zone"),
-      ]);
-      const zeroByKey = new Map(zero.rows.map((r) => [`${r.zone}|${r.grain}|${r.year}`, r.avg]));
-      const points = lod.rows.map((r) => ({
-        zone: r.zone,
-        grain: r.grain,
-        year: r.year,
-        nSites: r.nSites,
-        n: r.n,
-        valueLod: r.avg,
-        valueZero: zeroByKey.get(`${r.zone}|${r.grain}|${r.year}`) ?? null,
-      }));
-      const facets = facetsForSeries(series.map((s) => withTheme(s)), specBase.scope);
+      const zoneScope: Scope = { kind: "all_sites" };
+      const spec: CellSpec = { series: all, scope: zoneScope, grain: cellGrain, inputGrain: basisFilter.inputGrain, period, imputation: "both" };
+      // zero/lod を1回の SQL で両方計算する（`summarizeZone` 参照）——以前は
+      // `imputation:'zero'`/`'lod'` を2回叩いて JS 側でキーを合わせていた
+      // （Issue #48 PR-2 統合後修正A #4）。
+      const { rows, truncated } = await summarize(db, spec, "zone");
+      const points = rows.map((r) => ({ zone: r.zone, grain: r.grain, year: r.year, nSites: r.nSites, n: r.n, valueLod: r.avgLod, valueZero: r.avgZero }));
+      const facets = facetsForSeries(all.map((s) => withTheme(s)), zoneScope);
+      const envelope = await buildZoneEnvelope(db, spec, rows, { truncated });
       return makeResult({
         tool: "get_timeseries",
         tables: ["observation_agg"],
-        data: { scope, grain, basis, stat: stat ?? "representative", variableId, unit, registry, points, envelope: null },
+        data: { scope, grain, basis, stat: stat ?? "representative", variableId, unit, registry, points, envelope },
         rowCount: points.length,
         elapsedMs: performance.now() - t0,
         caveats: caveatKeysForFacets(facets),
@@ -398,16 +358,16 @@ const get_timeseries = tool({
     const sites = scope.type === "water" ? await sitesInWaterBody(db, scope.name, { dataset: DATASET }) : undefined;
 
     const spec: CellSpec = {
-      series,
+      series: all,
       scope: cubeScope,
-      grain: [...grains],
+      grain: cellGrain,
       stats: grain === "year" || grain === "fiscal_year" ? ["mean", "min", "max"] : ["mean"],
-      inputGrain: inputGrainForBasis(basis),
+      inputGrain: basisFilter.inputGrain,
       period,
       imputation: "both",
     };
     const { rows: cells, truncated } = await queryCells(db, spec);
-    const facets = facetsForSeries(series.map((s) => withTheme(s)), cubeScope);
+    const facets = facetsForSeries(all.map((s) => withTheme(s)), cubeScope);
     const envelope = await buildEnvelope(db, spec, cells, { truncated });
 
     return makeResult({
@@ -433,7 +393,10 @@ const get_seasonality = tool({
   execute: async ({ variableId }) => {
     const t0 = performance.now();
     // 月別集計は検体値（basis=day）からの積み上げだけが意味を持つ（v1 meas_clim/zone_clim と同じ前提）。
-    const series = representativeSeries(variableId, DATASET).filter((s) => s.valueGrain === "day");
+    // series は value_grain で絞り込まない——`grain: "day"`/`"month"` のセル自体が
+    // day-input の系列にしか存在しないため、grain 指定だけで自然に絞り込まれる
+    // （Issue #48 PR-2 統合後修正A #1。basis はセルの性質であって系列の登録ではない）。
+    const series = representativeSeries(variableId, DATASET);
     const registry = registryFor(series.map((s) => ({ variableId: s.variableId, unitId: s.unitId })));
 
     if (series.length === 0) {
@@ -502,8 +465,12 @@ const get_sites = tool({
     const t0 = performance.now();
     const db = await d1CubeDb();
     if (siteId) {
-      const [site, placeId] = await Promise.all([cubeSite(db, siteId, { dataset: DATASET }), resolvePlaceId(db, siteId)]);
-      const siteVars = placeId ? await siteVariables(db, placeId, { imputation: "lod", dataset: DATASET }) : [];
+      // `catalog.siteVariables()` は `site()` と同じ site_id を受ける（Issue #48
+      // PR-2 統合後修正A #2。内部の place_id への解決は `lib/cube` 側に集約した）。
+      const [site, siteVars] = await Promise.all([
+        cubeSite(db, siteId, { dataset: DATASET }),
+        siteVariables(db, siteId, { imputation: "lod", dataset: DATASET }),
+      ]);
       const registry = registryFor(siteVars.map((v) => ({ variableId: v.series.variableId, unitId: v.series.unitId })));
       return makeResult({
         tool: "get_sites",
