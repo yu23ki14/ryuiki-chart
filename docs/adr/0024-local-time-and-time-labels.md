@@ -5,6 +5,10 @@
 - 関連: ADR-0002（多地域）, ADR-0007（observation）, ADR-0008（時間の3点セット）,
   ADR-0011（キューブ）, ADR-0014（応答封筒）, ADR-0021（キューブの鍵）
 
+**2026-09-26 追記（Issue #48、ADR-0029提案）**: 決定2の時刻ラベル日割り（`sensor_daily`/
+`rain_daily`）は、v1 撤去後の差分カウント（serving-diff）でも既知の系統として扱い続ける
+（[ADR-0029](0029-v1-removal-and-verification-handoff.md)、提案中）。本文は変えない。
+
 ## 背景（実測）
 
 **SQLite の日時関数は `+09:00` 付きの文字列を UTC に正規化してから日付を取り出す。**
