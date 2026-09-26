@@ -198,33 +198,47 @@ describe.skipIf(!hasRealDb)("実DB統合テスト: lib/cube と v1 (derived.sqli
     "moni1000_sites__kn355413913",
   ];
 
-  it("catalog.sites({dataset:'measurements'}): measurements/sensor_timeseries を両方持つ5地点で n_meas が v1 site_var の SUM(n) と一致する", async () => {
-    const v1RowsBySite = new Map(
-      BOTH_DATASET_SITE_IDS.map((siteId) => [
-        siteId,
-        v1.prepare(`SELECT SUM(n) AS n_meas FROM site_var WHERE site_id = ?`).get(siteId) as { n_meas: number },
-      ]),
-    );
+  // 以下2件は実 DB（200万行超）への集計を複数回投げるため、フルスイート実行時の
+  // 負荷次第では既定の5秒タイムアウトを超えることがある（実測）ので明示的に長くする。
+  it(
+    "catalog.sites({dataset:'measurements'}): measurements/sensor_timeseries を両方持つ5地点で n_meas が v1 site_var の SUM(n) と一致する",
+    async () => {
+      const v1RowsBySite = new Map(
+        BOTH_DATASET_SITE_IDS.map((siteId) => [
+          siteId,
+          v1.prepare(`SELECT SUM(n) AS n_meas FROM site_var WHERE site_id = ?`).get(siteId) as { n_meas: number },
+        ]),
+      );
 
-    const v2Rows = await catalog.sites(cube, { dataset: "measurements" });
-    const v2BySite = new Map(v2Rows.map((r) => [r.siteId, r]));
+      const v2Rows = await catalog.sites(cube, { dataset: "measurements" });
+      const v2BySite = new Map(v2Rows.map((r) => [r.siteId, r]));
 
-    for (const siteId of BOTH_DATASET_SITE_IDS) {
-      const v1Row = v1RowsBySite.get(siteId)!;
-      const v2Row = v2BySite.get(siteId);
-      expect(v2Row, siteId).toBeDefined();
-      expect(v2Row!.nMeas, siteId).toBe(v1Row.n_meas);
-    }
-  });
+      for (const siteId of BOTH_DATASET_SITE_IDS) {
+        const v1Row = v1RowsBySite.get(siteId)!;
+        const v2Row = v2BySite.get(siteId);
+        expect(v2Row, siteId).toBeDefined();
+        expect(v2Row!.nMeas, siteId).toBe(v1Row.n_meas);
+      }
+    },
+    20_000,
+  );
 
-  it("catalog.sites(): dataset を省略すると measurements + sensor_timeseries を合算する（同じ5地点で n_meas が dataset:'measurements' より大きい）", async () => {
-    const measurementsOnly = await catalog.sites(cube, { dataset: "measurements" });
-    const unfiltered = await catalog.sites(cube);
-    const measBySite = new Map(measurementsOnly.map((r) => [r.siteId, r.nMeas]));
-    const allBySite = new Map(unfiltered.map((r) => [r.siteId, r.nMeas]));
+  it(
+    "catalog.sites(): dataset を省略すると measurements + sensor_timeseries を合算する（同じ5地点で n_meas が dataset:'measurements' より大きい）",
+    async () => {
+      // dataset 省略時は `sites()` が絞り込み無しの経路（`observation_agg` 全体への
+      // 索引なし集計）を通るため、実 DB に対しては特に時間がかかる（design §3.4
+      // 「dataset を指定したときは variable_id 前段フィルタ込みの索引が効く経路」の
+      // 裏返し——絞り込み無しは元々このコストがある）。
+      const measurementsOnly = await catalog.sites(cube, { dataset: "measurements" });
+      const unfiltered = await catalog.sites(cube);
+      const measBySite = new Map(measurementsOnly.map((r) => [r.siteId, r.nMeas]));
+      const allBySite = new Map(unfiltered.map((r) => [r.siteId, r.nMeas]));
 
-    for (const siteId of BOTH_DATASET_SITE_IDS) {
-      expect(allBySite.get(siteId)!, siteId).toBeGreaterThan(measBySite.get(siteId)!);
-    }
-  });
+      for (const siteId of BOTH_DATASET_SITE_IDS) {
+        expect(allBySite.get(siteId)!, siteId).toBeGreaterThan(measBySite.get(siteId)!);
+      }
+    },
+    20_000,
+  );
 });
