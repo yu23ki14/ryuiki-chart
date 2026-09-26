@@ -686,12 +686,15 @@ def _assert_unit_evidence(conn: sqlite3.Connection, declarations_path=UNIT_EVIDE
     （`UNIT_EVIDENCE_DECLARATIONS_YAML`）は実データ全体を前提にした宣言なので、
     それとは無関係な小さな合成フィクスチャで `build_cube()` を呼ぶだけの
     一般テストが「本物の宣言と自分のフィクスチャの中身が食い違う」で落ちるのを
-    避けるための逃げ道。`build_cube()` はこの属性を呼び出し時にモジュール
-    グローバルとして読むため、テストが `UNIT_EVIDENCE_DECLARATIONS_YAML` を
-    `None` に monkeypatch できる（`build_cube()` 内のコメント参照。
-    `scripts/tests/conftest.py` が全テスト共通でこれを行う）。単位の証拠検査
-    そのものを検証するテスト（`test_b04_build_cube.py` の該当節）は常に
-    実在する宣言ファイルを明示的に渡すので、この分岐には入らない。
+    避けるための逃げ道。`build_cube()` はこの値を `unit_evidence_declarations_path`
+    引数としてそのまま受け取り、テストは呼び出しごとに明示的に `None` を渡す
+    （`build_cube()` の docstring 参照。Issue #48 PR-1 §4: 以前は
+    `scripts/tests/conftest.py` の autouse フィクスチャが `UNIT_EVIDENCE_DECLARATIONS_YAML`
+    をモジュールグローバルごと monkeypatch していたが、本番の `main()` が
+    引数を渡し忘れても検査が黙って消えない設計に直すため引数化した）。
+    単位の証拠検査そのものを検証するテスト（`test_b04_build_cube.py` の
+    該当節）は常に実在する宣言ファイルを明示的に渡すので、この分岐には
+    入らない。
     """
     common.assert_attached_table_exists(
         conn, "reg", "unit",
@@ -779,6 +782,7 @@ def build_cube(
     registry_db=DEFAULT_REGISTRY_DB,
     built_from: str = DEFAULT_BUILT_FROM,
     spec_version: str = common.OBSERVATION_AGG_SPEC_VERSION,
+    unit_evidence_declarations_path=UNIT_EVIDENCE_DECLARATIONS_YAML,
 ) -> dict:
     """`conn`（`observation` を持つ読み書き可能な接続）に `observation_agg` を作る。
 
@@ -789,6 +793,20 @@ def build_cube(
     `observation_agg` 本体は `migrate.common.staged_table`（A-1）で作り直す
     ——検証（次元キーの一意性・`value_zero`/`value_lod` の関係）まで全部通って
     から本番名に差し替える。
+
+    `unit_evidence_declarations_path`（Issue #48 PR-1 §4。既定は実ファイル
+    `UNIT_EVIDENCE_DECLARATIONS_YAML`）: `_assert_unit_evidence()` の検証2
+    （宣言の過不足）に渡す宣言 YAML のパス。`None` は検証2を丸ごとスキップする
+    （`_assert_unit_evidence()` の docstring 参照）。**既定を実ファイルにしてある
+    のは、本番経路（`main()`）がこの引数を渡し忘れても検査が黙って消えないよう
+    にするため**——`None` を明示できるのはテストのフィクスチャ呼び出しだけ
+    （本物の宣言は実データ全体が前提のため、小さな合成フィクスチャでは
+    正しく判定できない。`scripts/tests/test_b04_build_cube.py`/
+    `test_b05_project_v1.py` の呼び出しを参照）。以前はモジュールレベルの
+    `UNIT_EVIDENCE_DECLARATIONS_YAML` を `scripts/tests/conftest.py` の
+    autouse フィクスチャで `None` に monkeypatch していたが、これだと
+    テストを1つも書かずに `build_cube()` を直接叩く経路（本番の `main()` も
+    含む）が検証2の無効化に気づけない構造だったため、引数化した。
 
     戻り値はレポート用の統計（経路ごとの行数・`value_zero`/`value_lod` の
     差分件数）。
@@ -814,18 +832,9 @@ def build_cube(
     # 単位の証拠検査（D3、モジュール docstring「単位の証拠検査」節参照）。
     # observation_agg を作り始める前に確認する（observation_agg 自体は unit_raw を
     # 持たないため、この検証ができるのは observation を直接読めるここだけ）。
-    # `declarations_path` を明示的に渡す（モジュールレベルの `UNIT_EVIDENCE_DECLARATIONS_YAML`
-    # をここで関数本体の中から参照することで、呼び出し時点の値を見る——
-    # `_assert_unit_evidence()` 自身のデフォルト引数は定義時に束縛されるため、
-    # テストが `b04.UNIT_EVIDENCE_DECLARATIONS_YAML` を monkeypatch しても
-    # そちらには反映されない。Issue #48 PR-1 §4: `scripts/tests/conftest.py` の
-    # autouse フィクスチャが全テスト共通でこの属性を `None` に monkeypatch し、
-    # 検証2（宣言の過不足）だけをスキップする——`build_cube()` を呼ぶだけの
-    # 一般テスト（単位の証拠そのものを検証する意図が無い大半のテスト）が、
-    # 本物の宣言 YAML（実データ全体が前提）と自分の小さな合成フィクスチャの
-    # 中身を突き合わせて落ちるのを防ぐ。検証1（symbol 不一致）はこの
-    # フィクスチャの有無に関わらず常に動く）。
-    unit_evidence_stats = _assert_unit_evidence(conn, declarations_path=UNIT_EVIDENCE_DECLARATIONS_YAML)
+    # 呼び出し側が渡した `unit_evidence_declarations_path`（既定は実ファイル。
+    # 上記 docstring 参照）をそのまま `_assert_unit_evidence()` に渡す。
+    unit_evidence_stats = _assert_unit_evidence(conn, declarations_path=unit_evidence_declarations_path)
 
     conn.execute(_CREATE_OBS_IMPUTED_VIEW_SQL)
 
@@ -951,7 +960,10 @@ def main() -> None:
         print(f"▶ 読み書き可能で開く（observation は変更しない）: {db_path} / observation {n_observation:,}行")
         print(f"▶ 読み取り専用で開く: {registry_db}")
         with common.timed_step("observation_agg を構築") as info:
-            stats = build_cube(conn, registry_db)
+            # 本番経路は実ファイルを明示的に渡す（既定と同じ値だが、渡し忘れて
+            # 検証2が黙って消える事故を機械的に防ぐため——build_cube() の
+            # docstring 参照）。
+            stats = build_cube(conn, registry_db, unit_evidence_declarations_path=UNIT_EVIDENCE_DECLARATIONS_YAML)
             info["n"] = stats["n_total"]
     finally:
         conn.close()
