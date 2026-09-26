@@ -108,3 +108,74 @@ describe("expectedUnitSymbols（registry.sqlite を直接 SQL で読む）", () 
     expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
   });
 });
+
+describe("variable_catalog（aliasCatalog）: n_sites の distinct 集計（Issue #48 PR-1 論点A）", () => {
+  afterEach(() => {
+    vi.doUnmock("@/lib/registry/generated");
+    vi.resetModules();
+  });
+
+  it("同じ alias の2 tuple（mean/day, point/day）を同じ地点が両方持っていても n_sites を二重計上しない", async () => {
+    // `series.ts` の `seriesInfo()`/`tupleGroups` はモジュール読み込み時に
+    // `GENERATED_VARIABLE_ALIASES`（実 registry の静的データ）から組み立てられる
+    // ——フィクスチャの `variable_alias` SQL テーブルは `catalog.ts` の dataset
+    // 絞り込み（`datasetCells` が読む変数一覧）専用で、alias 解決には使われない
+    // （`envelope.test.ts` の同種のコメント参照）。この2つを一致させて自己完結
+    // させるため、実データに存在しない架空の `variable_id`（衝突を避ける）を使い、
+    // `GENERATED_VARIABLE_ALIASES` をモックしてから動的 import し直す。
+    const FAKE_VARIABLE_ID = "common:variable:__pr1_test_fake__";
+    vi.resetModules();
+    vi.doMock("@/lib/registry/generated", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("@/lib/registry/generated")>();
+      const extra = [
+        { alias: "テスト用SS", dataset: "measurements", sourceId: "fx_test_mean", variableId: FAKE_VARIABLE_ID, unitId: null, stat: "mean", grain: "day" },
+        { alias: "テスト用SS", dataset: "measurements", sourceId: "fx_test_point", variableId: FAKE_VARIABLE_ID, unitId: null, stat: "point", grain: "day" },
+      ];
+      return { ...actual, GENERATED_VARIABLE_ALIASES: [...actual.GENERATED_VARIABLE_ALIASES, ...extra] };
+    });
+
+    const { buildCubeFixture: buildFixture, FX: fx } = await import("@/lib/cube/__fixtures__/cube-fixture");
+    const { runV2Query: runQuery } = await import("./adapters-v2");
+
+    const cube = buildFixture();
+    try {
+      // フィクスチャ側（`catalog.ts` の dataset 絞り込みが読む `variable_alias`）にも
+      // 同じ2 tuple を登録する。
+      const insertAlias = cube.raw.prepare(
+        `INSERT INTO variable_alias (alias, dataset, source_id, variable_id, unit_id, stat, grain)
+         VALUES (@alias,@dataset,@sourceId,@variableId,@unitId,@stat,@grain)`,
+      );
+      insertAlias.run({ alias: "テスト用SS", dataset: "measurements", sourceId: "fx_test_mean", variableId: FAKE_VARIABLE_ID, unitId: null, stat: "mean", grain: "day" });
+      insertAlias.run({ alias: "テスト用SS", dataset: "measurements", sourceId: "fx_test_point", variableId: FAKE_VARIABLE_ID, unitId: null, stat: "point", grain: "day" });
+
+      // 年セル（`variableCatalog`/`aliasCatalog` が見る grain='year'・stat='mean'）を
+      // 3地点に置く: fx_place_a は mean/day・point/day の**両方**（同じ地点が同じ
+      // alias の複数 tuple を持つ、実データ〔浮遊物質量 SS 等〕で実測したケースの
+      // 再現）、fx_place_b は point/day のみ、fx_place_c は mean/day のみ。
+      const insertCell = cube.raw.prepare(
+        `INSERT INTO observation_agg
+          (region_id, place_id, place_kind, variable_id, obs_stat, unit_id, value_grain,
+           period_start, period_end, grain, input_grain, stat, value_zero, value_lod,
+           n, n_censored, n_not_detected, n_places, built_from, spec_version)
+         VALUES ('kanagawa', @placeId, 'site', @variableId, @obsStat, NULL, 'day',
+                 '2024-01-01', '2024-12-31', 'year', 'day', 'mean', 1.0, 1.0, 1, 0, 0, 1, 'fixture:test', 'fixture@1')`,
+      );
+      insertCell.run({ placeId: fx.places.a, variableId: FAKE_VARIABLE_ID, obsStat: "mean" });
+      insertCell.run({ placeId: fx.places.a, variableId: FAKE_VARIABLE_ID, obsStat: "point" });
+      insertCell.run({ placeId: fx.places.b, variableId: FAKE_VARIABLE_ID, obsStat: "point" });
+      insertCell.run({ placeId: fx.places.c, variableId: FAKE_VARIABLE_ID, obsStat: "mean" });
+
+      const compare = { key: ["alias"], numeric: ["n", "n_sites"], label: ["unit"] };
+      const rows = await runQuery(cube.db, "variable_catalog", {}, compare);
+      const ss = rows.find((r) => r.key[0] === "テスト用SS");
+      expect(ss).toBeDefined();
+      // fx_place_a（mean/day + point/day 両方）・fx_place_b（point/day）・
+      // fx_place_c（mean/day）の3地点——tuple ごとの distinct 数を単純合算すると
+      // fx_place_a が2重に数えられて4になる。
+      expect(ss!.numeric.n_sites).toBe(3);
+      expect(ss!.numeric.n).toBe(4);
+    } finally {
+      cube.db.close();
+    }
+  });
+});

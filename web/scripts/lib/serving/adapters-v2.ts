@@ -26,11 +26,11 @@ import {
   summarize,
   seriesForAlias,
   seriesInfo,
-  seriesFilterSql,
   isSynthetic,
   labelYear,
   YEAR_GRAINS_SQL,
   MEAN_STAT_SQL,
+  UNLIMITED_CELL_LIMIT,
   type CubeDb,
   type CellSpec,
   type CellRow,
@@ -161,46 +161,89 @@ const MEASUREMENTS_ALIASES: readonly string[] = [
 interface SeriesYearlyTotal {
   n: number;
   nSites: number;
-  yFrom: number | null;
-  yTo: number | null;
+  yFrom: number;
+  yTo: number;
   nDaily: number;
   nAnnual: number;
   nCensored: number;
 }
 
+interface AliasCatalogEntry {
+  alias: string;
+  series: SeriesInfo[];
+  agg: SeriesYearlyTotal;
+}
+
+let aliasCatalogCache: AliasCatalogEntry[] | undefined;
+
 /**
- * alias に対応する系列集合（複数 tuple ありうる）を1つに合流させた年セル集計
- * （v1 `_VAR_CATALOG_SQL` の `GROUP BY variable` 相当——`kind`（daily/annual）も
- * またいで合流する）。`@/lib/cube` の `seriesFilterSql`（`variable_id` 前段フィルタ
- * 込み）を使い、`observation_agg` に直接問い合わせる。
+ * `variable_catalog` の中身（alias 単位に合流した年セル集計、n 降順）。
+ * `catalog.datasetCells(db, "measurements")`（1回の bulk 問い合わせ、
+ * `variable_id` 前段フィルタ込みで dataset 絞り込み——`catalog.ts` 参照）が返す
+ * 生セルを、alias 単位に合流させる純関数の変換（Issue #48 PR-1 論点A: 以前は
+ * alias ごとに別クエリを投げる N+1 だった）。
+ *
+ * `n_sites`（distinct 地点数）は `Set` で数える——同じ alias の複数 tuple
+ * （例: mean/point）が同じ地点に同時に現れることが実測である（`浮遊物質量 SS`
+ * 等）ため、tuple 単位に事前集計した distinct 地点数を単純合算すると二重計上
+ * する。`catalog.datasetCells()` が生セル（未集計）を返すのはこのため。
+ *
+ * `catalog.datasetCells()` は `place_kind='site'` の全セルを対象にし
+ * （`sites` への JOIN は無い）、`sites` に無い地点（厚木の一部・地盤沈下等）も
+ * 含む——`catalog.siteSeriesCells()`（`sites` に INNER JOIN する、
+ * `siteMeasurementRollup` 用）とは異なる集合なので使い分ける。
  */
-async function seriesYearlyTotal(db: CubeDb, series: readonly SeriesInfo[]): Promise<SeriesYearlyTotal | null> {
-  const alias = "obs";
-  const f = seriesFilterSql(series as readonly SeriesKey[], alias);
-  if (!f) return null;
-  const sql = `
-    SELECT SUM(${alias}.n) AS n, COUNT(DISTINCT ${alias}.place_id) AS n_sites,
-           MIN(CAST(substr(${alias}.period_start,1,4) AS INTEGER)) AS y_from,
-           MAX(CAST(substr(${alias}.period_start,1,4) AS INTEGER)) AS y_to,
-           SUM(CASE WHEN ${alias}.input_grain = 'day' THEN ${alias}.n ELSE 0 END) AS n_daily,
-           SUM(CASE WHEN ${alias}.input_grain = ${alias}.grain THEN ${alias}.n ELSE 0 END) AS n_annual,
-           SUM(${alias}.n_censored) AS n_censored
-    FROM observation_agg ${alias}
-    ${f.joins.join("\n    ")}
-    WHERE ${alias}.place_kind = 'site' AND ${YEAR_GRAINS_SQL} AND ${MEAN_STAT_SQL}
-  `;
-  const rows = await db.all<{
-    n: number | null;
-    n_sites: number;
-    y_from: number | null;
-    y_to: number | null;
-    n_daily: number;
-    n_annual: number;
-    n_censored: number;
-  }>(sql, f.params);
-  const r = rows[0];
-  if (!r || r.n === null) return null;
-  return { n: r.n, nSites: r.n_sites, yFrom: r.y_from, yTo: r.y_to, nDaily: r.n_daily, nAnnual: r.n_annual, nCensored: r.n_censored };
+async function aliasCatalog(db: CubeDb): Promise<AliasCatalogEntry[]> {
+  if (aliasCatalogCache) return aliasCatalogCache;
+  const cells = await catalog.datasetCells(db, "measurements");
+
+  interface Group {
+    series: SeriesInfo[];
+    n: number;
+    places: Set<string>;
+    yFrom: number;
+    yTo: number;
+    nDaily: number;
+    nAnnual: number;
+    nCensored: number;
+  }
+  const groups = new Map<string, Group>();
+  for (const c of cells) {
+    const info = seriesInfo(c.series);
+    const alias = info?.aliases[0];
+    if (!alias) continue;
+    let g = groups.get(alias);
+    if (!g) {
+      g = {
+        series: seriesForAlias("measurements", alias),
+        n: 0,
+        places: new Set(),
+        yFrom: Number.POSITIVE_INFINITY,
+        yTo: Number.NEGATIVE_INFINITY,
+        nDaily: 0,
+        nAnnual: 0,
+        nCensored: 0,
+      };
+      groups.set(alias, g);
+    }
+    g.n += c.n;
+    g.places.add(c.placeId);
+    const year = Number.parseInt(c.periodStart.slice(0, 4), 10);
+    if (year < g.yFrom) g.yFrom = year;
+    if (year > g.yTo) g.yTo = year;
+    if (c.inputGrain === "day") g.nDaily += c.n;
+    if (c.inputGrain === c.grain) g.nAnnual += c.n;
+    g.nCensored += c.nCensored;
+  }
+
+  const out: AliasCatalogEntry[] = [...groups.entries()].map(([alias, g]) => ({
+    alias,
+    series: g.series,
+    agg: { n: g.n, nSites: g.places.size, yFrom: g.yFrom, yTo: g.yTo, nDaily: g.nDaily, nAnnual: g.nAnnual, nCensored: g.nCensored },
+  }));
+  out.sort((a, b) => b.agg.n - a.agg.n);
+  aliasCatalogCache = out;
+  return out;
 }
 
 /* -------------------------------------------------------------------- */
@@ -222,44 +265,26 @@ let siteMeasurementRollupCache: Map<string, SiteRollup> | undefined;
  * 地点単位に合流させたもの。`aliases` は「distinct alias 数」（`catalog.ts` の
  * `nVariables`＝distinct variable_id 数でも `nSeries`＝distinct tuple 数でもない。
  * 1 alias が複数 tuple にまたがる場合も1と数える——design §0 決定2）を数えるのにも、
- * `site_variables` がこの地点で問い合わせるべき alias を列挙するのにも使う
- * （`catalog.siteVariables(db, placeId)` は `place_id` を取る関数で、v1 の
- * `site_id` 文字列をそのまま渡すと1件も一致しない——`place_source_ref` の
- * 逆引きが要る。ここは既に `psr.external_key`（site_id）で集計しているので
- * その問題が起きない）。
+ * `site_variables` がこの地点で問い合わせるべき alias を列挙するのにも使う。
+ *
+ * `catalog.siteSeriesCells(db, {dataset:"measurements"})`（1回の bulk 問い合わせ、
+ * `sites` に INNER JOIN 済み）を alias 単位に合流させる純関数の変換
+ * （Issue #48 PR-1 論点A: 生 SQL はここには無い）。
  */
 async function siteMeasurementRollup(db: CubeDb): Promise<Map<string, SiteRollup>> {
   if (siteMeasurementRollupCache) return siteMeasurementRollupCache;
-  const sql = `
-    SELECT psr.external_key AS site_id, obs.variable_id, obs.obs_stat, obs.unit_id, obs.value_grain,
-           SUM(obs.n) AS n
-    FROM observation_agg obs
-    JOIN place_source_ref psr ON psr.place_id = obs.place_id AND psr.source_id = 'sites.site_id'
-    WHERE obs.place_kind = 'site' AND ${YEAR_GRAINS_SQL} AND ${MEAN_STAT_SQL}
-    GROUP BY psr.external_key, obs.variable_id, obs.obs_stat, obs.unit_id, obs.value_grain
-  `;
-  const rows = await db.all<{
-    site_id: string;
-    variable_id: string;
-    obs_stat: string | null;
-    unit_id: string | null;
-    value_grain: string | null;
-    n: number;
-  }>(sql);
+  const cells = await catalog.siteSeriesCells(db, { dataset: "measurements" });
 
   const out = new Map<string, SiteRollup>();
-  for (const r of rows) {
-    const info = seriesInfo({ variableId: r.variable_id, obsStat: r.obs_stat, unitId: r.unit_id, valueGrain: r.value_grain ?? "" });
-    // v1 の site_var は measurements の alias にしか INNER JOIN しない
-    // （sensor_timeseries 由来のセルは対象外——上記コメント参照）。
-    if (!info || info.dataset !== "measurements") continue;
-    let e = out.get(r.site_id);
+  for (const c of cells) {
+    const info = seriesInfo(c.series);
+    let e = out.get(c.siteId);
     if (!e) {
       e = { nMeas: 0, aliases: new Set() };
-      out.set(r.site_id, e);
+      out.set(c.siteId, e);
     }
-    e.nMeas += r.n;
-    const a = info.aliases[0];
+    e.nMeas += c.n;
+    const a = info?.aliases[0];
     if (a) e.aliases.add(a);
   }
 
@@ -276,32 +301,16 @@ async function siteMunicipalities(db: CubeDb): Promise<Map<string, string | null
   return siteMunicipalityCache;
 }
 
-interface AliasCatalogEntry {
-  alias: string;
-  series: SeriesInfo[];
-  agg: SeriesYearlyTotal;
-}
-
-let aliasCatalogCache: AliasCatalogEntry[] | undefined;
-
 /**
- * `variable_catalog` の中身（alias 単位に合流した年セル集計、n 降順）。
- * `longitudinal_highlight` の `variant: representative` も同じ並び
- * （v1 の `queries.variableCatalog()` の `ORDER BY n DESC` と同じ意味）から
- * 「最も測定数が多い alias」を選ぶ。
+ * v1 の `site_id`（`sites.site_id`）から `catalog.siteVariables()` が取る
+ * `place_id` への逆引き（`place_source_ref` の `sites.site_id` 行）。
  */
-async function aliasCatalog(db: CubeDb): Promise<AliasCatalogEntry[]> {
-  if (aliasCatalogCache) return aliasCatalogCache;
-  const out: AliasCatalogEntry[] = [];
-  for (const alias of MEASUREMENTS_ALIASES) {
-    const series = seriesForAlias("measurements", alias);
-    const agg = await seriesYearlyTotal(db, series);
-    if (!agg) continue;
-    out.push({ alias, series, agg });
-  }
-  out.sort((a, b) => b.agg.n - a.agg.n);
-  aliasCatalogCache = out;
-  return out;
+async function placeIdForSiteId(db: CubeDb, siteId: string): Promise<string | undefined> {
+  const rows = await db.all<{ place_id: string }>(
+    `SELECT place_id FROM place_source_ref WHERE source_id = 'sites.site_id' AND external_key = ?`,
+    [siteId],
+  );
+  return rows[0]?.place_id;
 }
 
 /**
@@ -349,7 +358,7 @@ export function expectedUnitSymbols(registryDbPath: string): ReadonlyMap<string,
  */
 function rainDailySumSpec(): CellSpec {
   const series: SeriesKey[] = seriesForAlias("sensor_timeseries", "RAIN");
-  return { series, scope: { kind: "all_sites" }, grain: "day", stats: ["sum"], imputation: "zero" };
+  return { series, scope: { kind: "all_sites" }, grain: "day", stats: ["sum"], imputation: "zero", limit: UNLIMITED_CELL_LIMIT };
 }
 
 async function fetchRawRows(db: CubeDb, id: string, params: Record<string, ScalarParam>): Promise<RawRow[]> {
@@ -377,55 +386,43 @@ async function fetchRawRows(db: CubeDb, id: string, params: Record<string, Scala
       });
     }
     case "site_variables": {
+      // `catalog.siteVariables(placeId, {dataset:"measurements"})`（1回の
+      // 問い合わせ）が返す系列（tuple）単位の行を alias 単位に付け替える
+      // 純関数の変換（Issue #48 PR-1 論点A: 以前は地点にある alias ごとに
+      // summarize() を別々に呼ぶ N+1 だった）。
       const siteId = String(params.site_id);
-      const rollup = await siteMeasurementRollup(db);
-      const aliasSet = rollup.get(siteId)?.aliases ?? new Set<string>();
+      const placeId = await placeIdForSiteId(db, siteId);
+      if (!placeId) return [];
+      const rows = await catalog.siteVariables(db, placeId, { dataset: "measurements" });
       const out: RawRow[] = [];
-      for (const alias of aliasSet) {
-        const series = seriesForAlias("measurements", alias);
-        const unit = unitLabel(series[0]?.unitId ?? null);
-        const rows = await summarize(
-          db,
-          { series, scope: { kind: "site", siteId }, grain: ["year", "fiscal_year"], imputation: "zero" },
-          "place",
-        );
-        for (const r of rows) {
-          out.push({
-            alias,
-            // v1 の `kind`（`site_var.kind`）は daily/annual。`input_grain='day'` が
-            // 積み上げ（日次セルから）、それ以外は出典配布（design §3.2）。
-            kind: r.inputGrain === "day" ? "daily" : "annual",
-            n: r.n,
-            y_from: r.yFrom,
-            y_to: r.yTo,
-            avg: r.avg,
-            unit,
-          });
-        }
+      for (const r of rows) {
+        const info = seriesInfo(r.series);
+        const alias = info?.aliases[0];
+        if (!alias) continue;
+        out.push({
+          alias,
+          // v1 の `kind`（`site_var.kind`）は daily/annual。`input_grain='day'` が
+          // 積み上げ（日次セルから）、それ以外は出典配布（design §3.2）。
+          kind: r.inputGrain === "day" ? "daily" : "annual",
+          n: r.n,
+          y_from: r.yFrom,
+          y_to: r.yTo,
+          avg: r.avg,
+          unit: unitLabel(r.series.unitId),
+        });
       }
       return out;
     }
     case "water_bodies": {
-      const rows = await catalog.waterBodies(db);
-      // `catalog.waterBodies()`（無条件・series 指定なし）の `n_meas` は
-      // `dataset` を絞らず地点の全セルを SUM するため、その地点が
-      // sensor_timeseries（雨量等）のセルも同時に持っていると混入する。
       // v1 の `listWaterBodies()` は `site_var`（measurements の alias にしか
-      // INNER JOIN しない）経由なので、ここも `siteMeasurementRollup`
-      // （measurements だけに絞った地点別ロールアップ）で SUM し直す
-      // （`water_bodies_for_variable` は `series` を明示するので混入しない）。
-      const rollup = await siteMeasurementRollup(db);
-      const municipalities = await siteMunicipalities(db);
-      const nMeasByMunicipality = new Map<string, number>();
-      for (const [siteId, m] of rollup) {
-        const muni = municipalities.get(siteId);
-        if (!muni) continue;
-        nMeasByMunicipality.set(muni, (nMeasByMunicipality.get(muni) ?? 0) + m.nMeas);
-      }
+      // INNER JOIN しない）経由なので、`catalog.waterBodies` も
+      // `dataset: "measurements"` で絞り込む（Issue #48 PR-1 論点A。
+      // `water_bodies_for_variable` は `series` を明示するので別経路のまま）。
+      const rows = await catalog.waterBodies(db, { dataset: "measurements" });
       return rows.map((r) => ({
         name: r.name,
         n_sites: r.nSites,
-        n_meas: nMeasByMunicipality.get(r.name) ?? 0,
+        n_meas: r.nMeas,
         y_from: r.yFrom,
         y_to: r.yTo,
         elev_min: r.elevMin,
@@ -468,8 +465,9 @@ async function fetchRawRows(db: CubeDb, id: string, params: Record<string, Scala
         stats: ["mean", "min", "max"],
         inputGrain: params.kind === "daily" ? "day" : "same",
         imputation: "zero",
+        limit: UNLIMITED_CELL_LIMIT,
       };
-      const cells = await queryCells(db, spec);
+      const { rows: cells } = await queryCells(db, spec);
       return pivotYearCells(cells);
     }
     case "month_series_site": {
@@ -480,8 +478,9 @@ async function fetchRawRows(db: CubeDb, id: string, params: Record<string, Scala
         grain: "month" as CellSpec["grain"],
         stats: ["mean"],
         imputation: "zero",
+        limit: UNLIMITED_CELL_LIMIT,
       };
-      const cells = await queryCells(db, spec);
+      const { rows: cells } = await queryCells(db, spec);
       return cells.map((c) => ({ site_id: c.siteId, ym: c.periodStart.slice(0, 7), n: c.n, avg: c.valueZero }));
     }
     case "day_series_site": {
@@ -492,8 +491,9 @@ async function fetchRawRows(db: CubeDb, id: string, params: Record<string, Scala
         grain: "day",
         stats: ["mean"],
         imputation: "zero",
+        limit: UNLIMITED_CELL_LIMIT,
       };
-      const cells = await queryCells(db, spec);
+      const { rows: cells } = await queryCells(db, spec);
       return cells.map((c) => ({ site_id: c.siteId, d: c.periodStart.slice(0, 10), value: c.valueZero, n_censored: c.nCensored }));
     }
     case "zone_series": {
@@ -505,8 +505,9 @@ async function fetchRawRows(db: CubeDb, id: string, params: Record<string, Scala
         stats: ["mean"],
         inputGrain: params.kind === "daily" ? "day" : "same",
         imputation: "zero",
+        limit: UNLIMITED_CELL_LIMIT,
       };
-      const rows = await summarize(db, spec, "zone");
+      const { rows } = await summarize(db, spec, "zone");
       // `SummaryRow`（`zone` バリアント＝`ZoneYearRow`）は行ごとの系列情報を持たない
       // （`observation.ts` 参照——複数系列を1グループに混ぜて summarize するのが
       // 設計の前提のため）。呼び出し時に確定している `series`（1 alias 分）から
@@ -523,31 +524,37 @@ async function fetchRawRows(db: CubeDb, id: string, params: Record<string, Scala
     }
     case "climatology": {
       const series = seriesForAlias("measurements", String(params.alias));
-      const spec: CellSpec = { series, scope: { kind: "all_sites" }, grain: "day", imputation: "zero" };
-      const rows = await summarize(db, spec, "month_of_year");
+      const spec: CellSpec = { series, scope: { kind: "all_sites" }, grain: "day", imputation: "zero", limit: UNLIMITED_CELL_LIMIT };
+      const { rows } = await summarize(db, spec, "month_of_year");
       const unit = unitLabel(series[0]?.unitId ?? null);
       return rows.map((r) => ({ month: r.month, n: r.n, avg: r.avg, min: r.min, max: r.max, unit }));
     }
     case "zone_climatology": {
       const series = seriesForAlias("measurements", String(params.alias));
-      const spec: CellSpec = { series, scope: { kind: "zone" }, grain: "month" as CellSpec["grain"], imputation: "zero" };
-      const rows = await summarize(db, spec, "zone_month_of_year");
+      const spec: CellSpec = {
+        series,
+        scope: { kind: "zone" },
+        grain: "month" as CellSpec["grain"],
+        imputation: "zero",
+        limit: UNLIMITED_CELL_LIMIT,
+      };
+      const { rows } = await summarize(db, spec, "zone_month_of_year");
       const unit = unitLabel(series[0]?.unitId ?? null);
       return rows.map((r) => ({ zone: r.zone, month: r.month, n: r.n, avg: r.avg, unit }));
     }
     case "rain_daily": {
       const spec = rainDailySumSpec();
-      const cells = await queryCells(db, spec);
+      const { rows: cells } = await queryCells(db, spec);
       return cells.map((c) => ({ d: c.periodStart.slice(0, 10), mm: c.valueZero }));
     }
     case "rain_monthly_clim": {
       const spec = rainDailySumSpec();
-      const rows = await summarize(db, spec, "month_of_year", { measure: "sum_per_year" });
+      const { rows } = await summarize(db, spec, "month_of_year", { measure: "sum_per_year" });
       return rows.map((r) => ({ month: r.month, mm: r.avg }));
     }
     case "rain_top_days": {
       const spec = rainDailySumSpec();
-      const cells = await queryCells(db, spec);
+      const { rows: cells } = await queryCells(db, spec);
       const rows = cells.map((c) => ({ d: c.periodStart.slice(0, 10), mm: c.valueZero ?? 0 }));
       return rankRainDays(rows, RAIN_TOP_N);
     }
@@ -571,8 +578,9 @@ async function fetchRawRows(db: CubeDb, id: string, params: Record<string, Scala
         inputGrain: "day",
         period: { from: "2020-01-01" },
         imputation: "zero",
+        limit: UNLIMITED_CELL_LIMIT,
       };
-      const rows = await summarize(db, spec, "place");
+      const { rows } = await summarize(db, spec, "place");
       const unit = unitLabel(series[0]?.unitId ?? null);
       return rows.map((r) => ({ site_id: r.siteId, avg: r.avg, n: r.n, unit }));
     }

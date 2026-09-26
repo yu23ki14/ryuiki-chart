@@ -21,6 +21,7 @@ import type { CubeDb } from "./db";
 import { sqliteCubeDb } from "./db-sqlite";
 import { queryCells, summarize } from "./observation";
 import { seriesForAlias, seriesKeyString } from "./series";
+import * as catalog from "./catalog";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..", "..", "..", "..");
@@ -182,5 +183,48 @@ describe.skipIf(!hasRealDb)("実DB統合テスト: lib/cube と v1 (derived.sqli
     });
     expect(rows).toHaveLength(1);
     expect(Math.round((rows[0].value! / 10) * 100) / 100).toBeCloseTo(v1Row!.mm, 6);
+  });
+
+  // Issue #48 PR-1 論点A: catalog.sites()/waterBodies() の dataset 絞り込みが
+  // measurements データセットだけに絞れているかを、measurements と
+  // sensor_timeseries の両方を持つ実地点で固定する（`n_meas` が sensor_timeseries
+  // 分を混入させずに v1 の site_var と一致することを見る——`nVariables`
+  // は variable_id 単位で v1 の alias 単位の n_var とは別物なので比較しない）。
+  const BOTH_DATASET_SITE_IDS = [
+    "env_kousui_stations_kanagawa__kousui_1410170",
+    "env_kousui_stations_kanagawa__kousui_1410940",
+    "env_kousui_stations_kanagawa__kousui_1420190",
+    "moni1000_sites__kn355213932",
+    "moni1000_sites__kn355413913",
+  ];
+
+  it("catalog.sites({dataset:'measurements'}): measurements/sensor_timeseries を両方持つ5地点で n_meas が v1 site_var の SUM(n) と一致する", async () => {
+    const v1RowsBySite = new Map(
+      BOTH_DATASET_SITE_IDS.map((siteId) => [
+        siteId,
+        v1.prepare(`SELECT SUM(n) AS n_meas FROM site_var WHERE site_id = ?`).get(siteId) as { n_meas: number },
+      ]),
+    );
+
+    const v2Rows = await catalog.sites(cube, { dataset: "measurements" });
+    const v2BySite = new Map(v2Rows.map((r) => [r.siteId, r]));
+
+    for (const siteId of BOTH_DATASET_SITE_IDS) {
+      const v1Row = v1RowsBySite.get(siteId)!;
+      const v2Row = v2BySite.get(siteId);
+      expect(v2Row, siteId).toBeDefined();
+      expect(v2Row!.nMeas, siteId).toBe(v1Row.n_meas);
+    }
+  });
+
+  it("catalog.sites(): dataset を省略すると measurements + sensor_timeseries を合算する（同じ5地点で n_meas が dataset:'measurements' より大きい）", async () => {
+    const measurementsOnly = await catalog.sites(cube, { dataset: "measurements" });
+    const unfiltered = await catalog.sites(cube);
+    const measBySite = new Map(measurementsOnly.map((r) => [r.siteId, r.nMeas]));
+    const allBySite = new Map(unfiltered.map((r) => [r.siteId, r.nMeas]));
+
+    for (const siteId of BOTH_DATASET_SITE_IDS) {
+      expect(allBySite.get(siteId)!, siteId).toBeGreaterThan(measBySite.get(siteId)!);
+    }
   });
 });
