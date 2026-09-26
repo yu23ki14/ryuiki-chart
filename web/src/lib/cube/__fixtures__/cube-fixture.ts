@@ -64,7 +64,13 @@ export const FX = {
   },
   units: { mgPerL: "common:unit:mg_per_l" },
   series: {
-    ssMean: { variableId: "common:variable:water.ss", obsStat: "mean", unitId: null, valueGrain: "day" } as SeriesKey,
+    // `unitId`: 実 registry（`web/src/lib/registry/generated.ts`。Issue #48 PR-1b の
+    // D3 で `variable_alias` の unit_id を実測で埋めた後）は `common:variable:water.ss`
+    // の mean/day 組が `common:unit:mg_per_l` を持つ（null ではない）。`seriesInfo()`
+    // は実データの `generated.ts` を見るため、ここも合わせておかないと
+    // `envelope.test.ts` の provenance/synthetic 系のテスト（実 registry の
+    // sourceIds を引く）がヒットしない（この組にヒットさせるための一致）。
+    ssMean: { variableId: "common:variable:water.ss", obsStat: "mean", unitId: "common:unit:mg_per_l", valueGrain: "day" } as SeriesKey,
     ssPoint: { variableId: "common:variable:water.ss", obsStat: "point", unitId: null, valueGrain: "day" } as SeriesKey,
     ssAnnual: { variableId: "common:variable:water.ss", obsStat: "mean", unitId: null, valueGrain: "fiscal_year" } as SeriesKey,
     rainSum: { variableId: "common:variable:weather.precipitation", obsStat: "sum", unitId: null, valueGrain: "hour" } as SeriesKey,
@@ -175,8 +181,14 @@ function seed(db: Database.Database): void {
     `INSERT INTO variable_alias (alias, dataset, source_id, variable_id, unit_id, stat, grain)
      VALUES (@alias,@dataset,@sourceId,@variableId,@unitId,@stat,@grain)`,
   );
-  alias.run({ alias: "浮遊物質量 SS", dataset: "measurements", sourceId: null, variableId: FX.variables.ss, unitId: null, stat: "mean", grain: "day" });
-  alias.run({ alias: "浮遊物質量 SS", dataset: "measurements", sourceId: "fx_atsugi", variableId: FX.variables.ss, unitId: null, stat: "mean", grain: "day" });
+  // unitId: `FX.series.ssMean`/`ssPoint` の observation_agg セル（`FX.units.mgPerL`。
+  // 上のコメント参照）と揃える。`catalog.ts` の `variableCatalogByDataset` は
+  // このテーブル（`variable_alias`）の (variable_id, grain, stat, unit_id) の組と
+  // セル自身の組を突き合わせるため、ここがずれると該当セルが1件も拾えなくなる。
+  alias.run({ alias: "浮遊物質量 SS", dataset: "measurements", sourceId: null, variableId: FX.variables.ss, unitId: FX.units.mgPerL, stat: "mean", grain: "day" });
+  alias.run({ alias: "浮遊物質量 SS", dataset: "measurements", sourceId: "fx_atsugi", variableId: FX.variables.ss, unitId: FX.units.mgPerL, stat: "mean", grain: "day" });
+  // point/day（`FX.series.ssPoint`）は unitId を変えていない（fx_place_b のセルは
+  // 引き続き unit_id NULL のまま）ので、この alias 行も null のまま揃える。
   alias.run({ alias: "浮遊物質量 SS", dataset: "measurements", sourceId: "fx_env", variableId: FX.variables.ss, unitId: null, stat: "point", grain: "day" });
   alias.run({
     alias: "浮遊物質量 SS(年間)",
@@ -209,23 +221,25 @@ function seed(db: Database.Database): void {
   db.prepare(`INSERT INTO caveat_scope (caveat_id, scope_kind, scope_ref, sort_order, priority) VALUES ('common:caveat:fx_test','dataset','measurements',0,0)`).run();
 
   // --- water.ss: mean/day（合成 + atsugi。fx_place_a） ---
+  // `unitId: FX.units.mgPerL`: `FX.series.ssMean` と一致させる（上のコメント参照。
+  // 実 registry が mean/day 組に `common:unit:mg_per_l` を持つのに合わせてある）。
   insertObsAgg(db, [
     // 日セル（3日分。2日目は検閲〔value_zero≠value_lod〕、3日目は不検出〔value_lod NULL〕）
-    { placeId: FX.places.a, variableId: FX.variables.ss, obsStat: "mean", valueGrain: "day", grain: "day", inputGrain: "day", stat: "mean", periodStart: "2024-01-01", valueZero: 10.0, valueLod: 10.0, n: 1 },
-    { placeId: FX.places.a, variableId: FX.variables.ss, obsStat: "mean", valueGrain: "day", grain: "day", inputGrain: "day", stat: "mean", periodStart: "2024-01-02", valueZero: 8.0, valueLod: 6.0, n: 1, nCensored: 1 },
-    { placeId: FX.places.a, variableId: FX.variables.ss, obsStat: "mean", valueGrain: "day", grain: "day", inputGrain: "day", stat: "mean", periodStart: "2024-01-03", valueZero: 0.0, valueLod: null, n: 1, nCensored: 1, nNotDetected: 1 },
+    { placeId: FX.places.a, variableId: FX.variables.ss, obsStat: "mean", unitId: FX.units.mgPerL, valueGrain: "day", grain: "day", inputGrain: "day", stat: "mean", periodStart: "2024-01-01", valueZero: 10.0, valueLod: 10.0, n: 1 },
+    { placeId: FX.places.a, variableId: FX.variables.ss, obsStat: "mean", unitId: FX.units.mgPerL, valueGrain: "day", grain: "day", inputGrain: "day", stat: "mean", periodStart: "2024-01-02", valueZero: 8.0, valueLod: 6.0, n: 1, nCensored: 1 },
+    { placeId: FX.places.a, variableId: FX.variables.ss, obsStat: "mean", unitId: FX.units.mgPerL, valueGrain: "day", grain: "day", inputGrain: "day", stat: "mean", periodStart: "2024-01-03", valueZero: 0.0, valueLod: null, n: 1, nCensored: 1, nNotDetected: 1 },
     // 月セル（1月、上の3日の集計。SQLite の AVG は NULL を無視する実際の挙動に合わせてある）
-    { placeId: FX.places.a, variableId: FX.variables.ss, obsStat: "mean", valueGrain: "day", grain: "month", inputGrain: "day", stat: "mean", periodStart: "2024-01-01", periodEnd: "2024-01-31", valueZero: 6.0, valueLod: 8.0, n: 3, nCensored: 2, nNotDetected: 1 },
+    { placeId: FX.places.a, variableId: FX.variables.ss, obsStat: "mean", unitId: FX.units.mgPerL, valueGrain: "day", grain: "month", inputGrain: "day", stat: "mean", periodStart: "2024-01-01", periodEnd: "2024-01-31", valueZero: 6.0, valueLod: 8.0, n: 3, nCensored: 2, nNotDetected: 1 },
     // 年セル（暦年、input_grain='day' = v1 の kind='daily'）
-    { placeId: FX.places.a, variableId: FX.variables.ss, obsStat: "mean", valueGrain: "day", grain: "year", inputGrain: "day", stat: "mean", periodStart: "2024-01-01", periodEnd: "2024-12-31", valueZero: 6.0, valueLod: 8.0, n: 3, nCensored: 2, nNotDetected: 1 },
+    { placeId: FX.places.a, variableId: FX.variables.ss, obsStat: "mean", unitId: FX.units.mgPerL, valueGrain: "day", grain: "year", inputGrain: "day", stat: "mean", periodStart: "2024-01-01", periodEnd: "2024-12-31", valueZero: 6.0, valueLod: 8.0, n: 3, nCensored: 2, nNotDetected: 1 },
   ]);
 
   // fx_place_c（`sites` に無い地点）にも同じ mean/day 系列のセルを持たせる
   // （all_sites/zone スコープには入るが、water スコープ（`sites` JOIN）には入らないことを
   // テストするため）。
   insertObsAgg(db, [
-    { placeId: FX.places.c, variableId: FX.variables.ss, obsStat: "mean", valueGrain: "day", grain: "day", inputGrain: "day", stat: "mean", periodStart: "2024-01-01", valueZero: 5.0, valueLod: 5.0, n: 1 },
-    { placeId: FX.places.c, variableId: FX.variables.ss, obsStat: "mean", valueGrain: "day", grain: "year", inputGrain: "day", stat: "mean", periodStart: "2024-01-01", periodEnd: "2024-12-31", valueZero: 5.0, valueLod: 5.0, n: 1 },
+    { placeId: FX.places.c, variableId: FX.variables.ss, obsStat: "mean", unitId: FX.units.mgPerL, valueGrain: "day", grain: "day", inputGrain: "day", stat: "mean", periodStart: "2024-01-01", valueZero: 5.0, valueLod: 5.0, n: 1 },
+    { placeId: FX.places.c, variableId: FX.variables.ss, obsStat: "mean", unitId: FX.units.mgPerL, valueGrain: "day", grain: "year", inputGrain: "day", stat: "mean", periodStart: "2024-01-01", periodEnd: "2024-12-31", valueZero: 5.0, valueLod: 5.0, n: 1 },
   ]);
 
   // --- water.ss: point/day（env。fx_place_b） ---

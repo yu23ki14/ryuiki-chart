@@ -14,7 +14,7 @@ describe("variableCatalog", () => {
   it("dataset を指定しないと water.ss と water.bod の両方が出る（rain は year/fiscal_year セルを持たないので元々出ない。v1 の var_catalog も meas_year 由来で sensor_timeseries を含まない）", async () => {
     const rows = await variableCatalog(fx.db);
     const seriesKeys = rows.map((r) => r.seriesKey);
-    expect(seriesKeys).toContain(FX.series.ssMean.variableId + "|day|mean|");
+    expect(seriesKeys).toContain(FX.series.ssMean.variableId + "|day|mean|" + FX.series.ssMean.unitId);
     expect(rows.some((r) => r.series.variableId === FX.variables.bod)).toBe(true);
   });
 

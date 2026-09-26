@@ -36,10 +36,14 @@ describe("buildEnvelope", () => {
   });
 
   it("columns: unit_id が NULL の系列は unit が null", async () => {
+    // `FX.series.ssMean` は実 registry に合わせて unit_id を持つ（下の provenance
+    // テストのコメント参照）ため、ここでは `weather.precipitation`（RAIN。実 registry
+    // でも unit 未解決のまま——design §0 要点6「雨量は単位NULL＋注記」）を使う。
     const spec: CellSpec = {
-      series: [FX.series.ssMean],
-      scope: { kind: "site", siteId: FX.sites.a },
+      series: [FX.series.rainSum],
+      scope: { kind: "site", siteId: FX.sites.rain },
       grain: "day",
+      stats: ["sum"],
       imputation: "zero",
     };
     const rows = await queryCells(fx.db, spec);
