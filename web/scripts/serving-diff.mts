@@ -10,7 +10,13 @@
  *   cd web
  *   pnpm run serving:diff [--v1-only] [--imputation zero|lod]
  *     [--only <id,...>] [--mutate <name,...>] [--v1-source derived|v1_projection]
- *     [--pretend-synthetic-excluded] [--out reports/serving_switch_diff.md]
+ *     [--v1compat-db data/db/v2_v1compat.sqlite] [--out reports/serving_switch_diff.md]
+ *
+ * `--v1compat-db`（design §1「診断用 v1互換キューブ」）: 合成データを除外**しない**
+ * 第2の v2.sqlite（`scripts/b03_build_observation.py --include-synthetic` → b04 →
+ * `--out` で作る）を開き、本番の v2 接続と同じ問い合わせを流して
+ * `synthetic_excluded` 規則の「差分の差分」判定に使う。省略時はこの規則は不発
+ * （`v1-only`・レジストリ未整備の環境でも動かせるように必須にはしない）。
  *
  * `--expand`（`all` 固定・`snapshot` は撤去）: 設計書は「全 site_var の組を全部回す
  * (`all`) / 決定論的な部分集合で CI 用に回す (`snapshot`、`snapshot_subset` を
@@ -47,6 +53,7 @@ import {
   type ServingQueriesConfig,
 } from "./lib/serving/normalize";
 import { enumerateParams, runV1Query } from "./lib/serving/adapters-v1";
+import { openV1CompatDb } from "./lib/serving/v1-compat";
 import {
   compareRuns,
   classifyDiff,
@@ -68,6 +75,7 @@ import {
   applyRowMutation,
   isClassifyMutation,
   isRowMutation,
+  isV1Mutation,
   rowMutationAppliesTo,
   type ClassifyMutationOptions,
 } from "./lib/serving/mutations";
@@ -99,13 +107,18 @@ const { values: argv } = parseArgs({
     only: { type: "string" },
     mutate: { type: "string" },
     "v1-source": { type: "string", default: "derived" },
-    "pretend-synthetic-excluded": { type: "boolean", default: false },
+    "v1compat-db": { type: "string" },
     out: { type: "string", default: "reports/serving_switch_diff.md" },
   },
 });
 
 const V1_ONLY = argv["v1-only"] === true;
-const IMPUTATION = argv.imputation as string;
+const IMPUTATION_RAW = argv.imputation as string;
+if (IMPUTATION_RAW !== "zero" && IMPUTATION_RAW !== "lod") {
+  console.error(`--imputation ${IMPUTATION_RAW} は使えない（zero か lod のどちらか）。`);
+  process.exit(1);
+}
+const IMPUTATION: "zero" | "lod" = IMPUTATION_RAW;
 if (argv.expand !== undefined && argv.expand !== "all") {
   console.error(
     `--expand ${argv.expand} は使えない（\`snapshot\` は Issue #48 PR-1 統合で撤去した。` +
@@ -117,7 +130,7 @@ const EXPAND = "all" as const;
 const ONLY_IDS = argv.only ? new Set(String(argv.only).split(",").map((s) => s.trim())) : null;
 const MUTATE_NAMES = argv.mutate ? String(argv.mutate).split(",").map((s) => s.trim()) : [];
 const V1_SOURCE = (argv["v1-source"] as string) === "v1_projection" ? "v1_projection" : "derived";
-const PRETEND_SYNTHETIC_EXCLUDED = argv["pretend-synthetic-excluded"] === true;
+const V1COMPAT_DB = argv["v1compat-db"] ? path.resolve(REPO_ROOT, String(argv["v1compat-db"])) : undefined;
 // `reports/serving_switch_diff.{md,json}` はリポジトリ直下（design: `docs/plans/V2_SERVING_PR1.md`・
 // `docs/adr/0029-v1-removal-and-verification-handoff.md`）。`--out` を明示すればそちらを
 // 優先するが、既定値・相対パスはどちらも REPO_ROOT からの相対として解決する。
@@ -313,37 +326,28 @@ async function main() {
   const v2 = V1_ONLY ? null : await loadAdaptersV2();
   // `unit_label_registry` 規則が「v2 側が非NULLなら何でも通す」のではなく、実際に
   // その系列の unit_id のレジストリ symbol と一致するかまで確かめるための参照表
-  // （`ClassifyContext.expectedUnitSymbol`）。`registry.sqlite` を専用の別接続
-  // （`v2Db`/`--pretend-synthetic-excluded` の開き直しとは無関係）で直接読むだけ
-  // なので、`v2Db` を開く前に1回だけ作れば足りる（Issue #48 PR-1 code-review #3:
-  // 以前は `seriesForAlias` 経由——v2 側の unit 計算と同じ式——で「期待値」を
-  // 計算していて、常に一致してしまう見かけ上の検証だった）。
-  const expectedUnitSymbol = v2 ? v2.expectedUnitSymbols(REGISTRY_DB_PATH) : undefined;
+  // （`ClassifyContext.expectedUnitSymbol`）。`registry.sqlite` を専用の別接続で
+  // 直接読むだけなので、`v2Db` を開く前に1回だけ作れば足りる（Issue #48 PR-1
+  // code-review #3: 以前は `seriesForAlias` 経由——v2 側の unit 計算と同じ式——で
+  // 「期待値」を計算していて、常に一致してしまう見かけ上の検証だった）。
+  // alias 単位（既存の問い合わせ）と variable_id 単位（`*_by_variable`）の
+  // 期待値マップを1つに併せ持つ（`classify.ts` の `aliasKeyOf` docstring参照
+  // ——alias 文字列と `common:variable:...` は表記が衝突しない）。
+  const expectedUnitSymbol = v2
+    ? new Map([...v2.expectedUnitSymbols(REGISTRY_DB_PATH), ...v2.expectedUnitSymbolsByVariable(REGISTRY_DB_PATH)])
+    : undefined;
 
-  // `--pretend-synthetic-excluded`（設計書 §9-4）: まず素の v2 で「地点の全セルが
-  // 合成系列だけ」の place_id 集合を求め（`lib/cube` の `isSynthetic` 由来）、
-  // 一旦閉じてから、その place_id を `observation_agg` から除いた仮想の v2 で
-  // 開き直す（`db-sqlite.ts` の `excludePlaceIds`）。`ctx.syntheticSiteIds` には
-  // 対応する site_id を渡し、`classify.ts` の `synthetic_excluded` 規則を実際に働かせる。
-  let syntheticSiteIds: ReadonlySet<string> | undefined;
-  let v2Db: CubeDb | null = null;
-  if (v2) {
-    if (PRETEND_SYNTHETIC_EXCLUDED) {
-      const probeDb = v2.openV2Db({ v2: V2_DB_PATH, registry: REGISTRY_DB_PATH, ryuiki: RYUIKI_DB_PATH });
-      const syntheticPlaceIds = await v2.computeSyntheticPlaceIds(probeDb);
-      const siteIds = await v2.siteIdsForPlaceIds(probeDb, syntheticPlaceIds);
-      syntheticSiteIds = new Set(siteIds);
-      v2.closeV2Db();
-      console.log(
-        `--pretend-synthetic-excluded: 合成地点 ${syntheticPlaceIds.length} 件（うち site_id を持つもの ${siteIds.length} 件）を observation_agg から除いて開き直す`,
-      );
-      v2Db = v2.openV2Db(
-        { v2: V2_DB_PATH, registry: REGISTRY_DB_PATH, ryuiki: RYUIKI_DB_PATH },
-        { excludePlaceIds: syntheticPlaceIds },
-      );
-    } else {
-      v2Db = v2.openV2Db({ v2: V2_DB_PATH, registry: REGISTRY_DB_PATH, ryuiki: RYUIKI_DB_PATH });
-    }
+  const v2Db: CubeDb | null = v2 ? v2.openV2Db({ v2: V2_DB_PATH, registry: REGISTRY_DB_PATH, ryuiki: RYUIKI_DB_PATH }) : null;
+
+  // `--v1compat-db`（design §1「診断用 v1互換キューブ」）: 合成データを除外
+  // **しない** v2 を第2接続として開く。`synthetic_excluded` 規則の「差分の差分」
+  // 判定（`classify.ts`）専用で、本番の `v2Db` とは別のファイル・別の接続。
+  const v1CompatDb: CubeDb | null = v2 && V1COMPAT_DB ? openV1CompatDb({ v1compat: V1COMPAT_DB, registry: REGISTRY_DB_PATH, ryuiki: RYUIKI_DB_PATH }) : null;
+  if (!V1_ONLY && !v1CompatDb) {
+    console.error(
+      "--v1compat-db が指定されていない: synthetic_excluded 規則は不発になる（v1/v2 の食い違いが合成データ除外に" +
+        "由来する場合でも unexplained に数えられる）。",
+    );
   }
 
   const t0 = Date.now();
@@ -356,6 +360,7 @@ async function main() {
     const unexplained: UnexplainedSample[] = [];
     const matchedDeclared = new Map<string, Set<string>>();
     const exceptions: { id: string; params: Record<string, ScalarParam>; message: string }[] = [];
+    const mergeDisabled = !!rowMutationName && isV1Mutation(rowMutationName);
 
     for (const def of queryDefs) {
       const s = emptyQueryStats(def.id);
@@ -363,24 +368,19 @@ async function main() {
 
       let tuples: Record<string, ScalarParam>[];
       try {
-        tuples = await enumerateParams(def, config.domains);
+        tuples = await enumerateParams(def, config.domains, REGISTRY_DB_PATH);
       } catch (e) {
         exceptions.push({ id: def.id, params: {}, message: `enumerateParams: ${e instanceof Error ? e.message : e}` });
         continue;
       }
       const known = new Set(def.known as KnownRule[]);
-      // `--pretend-synthetic-excluded` は合成地点を含みうる問い合わせ全部に影響する
-      // （どの問い合わせが触れるかは合成地点がどの水域・ゾーンに属すかに依るので、
-      // YAML の `known` に問い合わせごと決め打ちしない——設計書 §9-4 の「PR-2 の予告」
-      // としてこのフラグが立っているときだけ全問い合わせに対して働かせる）。
-      if (PRETEND_SYNTHETIC_EXCLUDED) known.add("synthetic_excluded");
       const declaredLookup = declaredLookupFor(def);
 
       for (const params of tuples) {
         s.runs += 1;
         let v1Rows: NormRow[];
         try {
-          v1Rows = await runV1Query(def.id, params, def.compare);
+          v1Rows = await runV1Query(def.id, params, def.compare, REGISTRY_DB_PATH, { mergeDisabled });
         } catch (e) {
           exceptions.push({ id: def.id, params, message: e instanceof Error ? e.message : String(e) });
           continue;
@@ -391,7 +391,7 @@ async function main() {
 
         let v2Rows: NormRow[];
         try {
-          v2Rows = await v2!.runV2Query(v2Db!, def.id, params, def.compare);
+          v2Rows = await v2!.runV2Query(v2Db!, def.id, params, def.compare, IMPUTATION);
         } catch (e) {
           exceptions.push({ id: def.id, params, message: `v2: ${e instanceof Error ? e.message : e}` });
           continue;
@@ -400,6 +400,35 @@ async function main() {
           v2Rows = applyRowMutation(rowMutationName, def.id, v2Rows);
         }
         s.rowsV2 += v2Rows.length;
+
+        // `synthetic_excluded`（design §1「差分の差分」）用: 同じ問い合わせを
+        // v1compat 接続で流す。診断専用のため失敗しても本体の突き合わせは
+        // 続行する（この (id,params) では synthetic_excluded が不発になるだけ）。
+        let v2CompatByKey: ReadonlyMap<string, NormRow> | undefined;
+        if (v1CompatDb) {
+          try {
+            // `{kind:'live'}`（既定の summary ではなく）を明示: `v2_v1compat.sqlite` は
+            // observation_agg だけが --include-synthetic で差し替わっており、
+            // summary_* は本番のまま更新されない（`adapters-v2.ts` の `runV2Query`
+            // docstring参照）。summary のままだと本番と同じ値しか返らない。
+            const rows = await v2!.runV2Query(v1CompatDb, def.id, params, def.compare, IMPUTATION, { kind: "live" });
+            v2CompatByKey = rowsByKey(rows);
+          } catch (e) {
+            console.error(`v1compat: [${def.id}] ${JSON.stringify(params)}: ${e instanceof Error ? e.message : e}`);
+          }
+        }
+
+        // `lod_imputation`（design §3 #1）用: `--imputation lod` のときだけ、
+        // 同じ問い合わせを imputation=zero でも引く（v1 と比べる基準値）。
+        let v2ZeroByKey: ReadonlyMap<string, NormRow> | undefined;
+        if (IMPUTATION === "lod") {
+          try {
+            const zeroRows = await v2!.runV2Query(v2Db!, def.id, params, def.compare, "zero");
+            v2ZeroByKey = rowsByKey(zeroRows);
+          } catch (e) {
+            console.error(`v2(zero): [${def.id}] ${JSON.stringify(params)}: ${e instanceof Error ? e.message : e}`);
+          }
+        }
 
         // `rowsByKey` は同じキーの行が2つあれば例外にする（design: 「片方を捨てると
         // 診断が壊れる」）。これは serving-diff 自身の設計上の保護であって v1/v2 の
@@ -432,9 +461,10 @@ async function main() {
           known,
           disabledRules: classifyMutation?.disabledRules,
           rain,
-          rainDateFromLabel: def.id === "rain_top_days",
+          rainDateFromLabel: false, // `rain_top_days` は D5 で削除済み（PR-2）
           rainGrain: def.id === "rain_monthly_clim" ? "month" : "day",
-          syntheticSiteIds,
+          v2CompatByKey,
+          v2ZeroByKey,
           declaredRot: classifyMutation?.declaredRot,
           expectedUnitSymbol,
         };
@@ -470,7 +500,10 @@ async function main() {
   if (MUTATE_NAMES.length && !V1_ONLY) {
     mutationResults = [];
     for (const name of MUTATE_NAMES) {
-      const rowMutation = isRowMutation(name) ? name : undefined;
+      // `runOnce` の第2引数は「行変異名」だったが、`isV1Mutation`（`merge_rule_off`）
+      // も同じ引数に相乗りさせる（`runOnce` 内で `isRowMutation`/`isV1Mutation` は
+      // 排他的なので、どちらの変異名を渡しても意図した1箇所にしか効かない）。
+      const rowMutation = isRowMutation(name) || isV1Mutation(name) ? name : undefined;
       const classifyMutation = isClassifyMutation(name)
         ? applyClassifyMutation(name, name === "declared_rot" ? { declaredRotTarget: firstDeclaredTarget(expected) } : {})
         : undefined;
