@@ -1,0 +1,128 @@
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { unitSymbol } from "@/lib/registry/lookup";
+import { buildCubeFixture, FX, type CubeFixture } from "./__fixtures__/cube-fixture";
+import { queryCells } from "./observation";
+import type { CellSpec } from "./observation";
+import { buildEnvelope } from "./envelope";
+
+let fx: CubeFixture;
+beforeEach(() => {
+  fx = buildCubeFixture();
+});
+afterEach(() => {
+  fx.db.close();
+});
+
+describe("buildEnvelope", () => {
+  it("coverage: n_rows/n_places/n_censored/n_not_detected/period を rows から計算する", async () => {
+    const spec: CellSpec = {
+      series: [FX.series.ssMean],
+      scope: { kind: "site", siteId: FX.sites.a },
+      grain: "day",
+      imputation: "zero",
+    };
+    const rows = await queryCells(fx.db, spec);
+    const env = await buildEnvelope(fx.db, spec, rows);
+
+    expect(env.coverage.n_rows).toBe(3);
+    expect(env.coverage.n_places).toBe(1);
+    expect(env.coverage.n_censored).toBe(2);
+    expect(env.coverage.n_not_detected).toBe(1);
+    expect(env.coverage.period).toEqual({ start: "2024-01-01", end: "2024-01-03", grain: "day" });
+    expect(env.coverage.imputation).toBe("zero");
+    expect(env.spec_version).toBeTruthy();
+    expect(env.truncated).toBe(false);
+    expect(env.caveats).toEqual([]);
+  });
+
+  it("columns: unit_id が NULL の系列は unit が null", async () => {
+    const spec: CellSpec = {
+      series: [FX.series.ssMean],
+      scope: { kind: "site", siteId: FX.sites.a },
+      grain: "day",
+      imputation: "zero",
+    };
+    const rows = await queryCells(fx.db, spec);
+    const env = await buildEnvelope(fx.db, spec, rows);
+    const valueCol = env.columns.find((c) => c.name === "value")!;
+    expect(valueCol.unit).toBeNull();
+  });
+
+  it("columns: unit_id が NOT NULL の系列（BOD）は registry の symbol を解決する", async () => {
+    const spec: CellSpec = {
+      series: [FX.series.bodMean],
+      scope: { kind: "site", siteId: FX.sites.a },
+      grain: "day",
+      imputation: "zero",
+    };
+    const rows = await queryCells(fx.db, spec);
+    const env = await buildEnvelope(fx.db, spec, rows);
+    const valueCol = env.columns.find((c) => c.name === "value")!;
+    expect(valueCol.unit).toBe(unitSymbol(FX.units.mgPerL));
+  });
+
+  it("provenance: source_registry から name/license を解決する（複数出典の系列は両方に計上される）", async () => {
+    const spec: CellSpec = {
+      series: [FX.series.ssMean],
+      scope: { kind: "site", siteId: FX.sites.a },
+      grain: "day",
+      imputation: "zero",
+    };
+    const rows = await queryCells(fx.db, spec);
+    const env = await buildEnvelope(fx.db, spec, rows);
+
+    // provenance は `series.ts`（実データの generated.ts）の `seriesInfo()` を経由するため、
+    // `common:variable:water.ss` の mean/day 組の実際の sourceIds
+    // （[null, 'atsugi_river_water_quality']。合成 + atsugi の実データ）が使われる
+    // （フィクスチャ自身の variable_alias.source_id='fx_atsugi' は catalog.ts 用で、
+    // ここでは参照されない）。
+    const bySource = new Map(env.provenance.map((p) => [p.source_id, p]));
+    expect(bySource.get(null)?.n_rows).toBe(3);
+    expect(bySource.get("atsugi_river_water_quality")?.n_rows).toBe(3);
+    expect(bySource.get("atsugi_river_water_quality")?.name).toBe("厚木河川水質（実データ源）");
+    expect(bySource.get("atsugi_river_water_quality")?.license).toBe("CC-BY-FX");
+    expect(bySource.get(null)?.name).toBeUndefined();
+  });
+
+  it("excluded.reasons: 合成データを含む系列は synthetic_included を報告する", async () => {
+    const spec: CellSpec = {
+      series: [FX.series.ssMean],
+      scope: { kind: "site", siteId: FX.sites.a },
+      grain: "day",
+      imputation: "zero",
+    };
+    const rows = await queryCells(fx.db, spec);
+    const env = await buildEnvelope(fx.db, spec, rows);
+    expect(env.excluded.reasons).toContain("synthetic_included");
+  });
+
+  it("opt.caveats をそのまま caveats に渡す（envelope.ts 自身は caveat の解決ロジックに依存しない）", async () => {
+    const spec: CellSpec = {
+      series: [FX.series.bodMean],
+      scope: { kind: "site", siteId: FX.sites.a },
+      grain: "day",
+      imputation: "zero",
+    };
+    const rows = await queryCells(fx.db, spec);
+    const caveats = [{ key: "common:caveat:fx_test", text: "テスト注記" }];
+    const env = await buildEnvelope(fx.db, spec, rows, { caveats });
+    expect(env.caveats).toEqual(caveats);
+    // BOD は合成を含まないので reasons は空。
+    expect(env.excluded.reasons).toEqual([]);
+  });
+
+  it("空の rows でも例外にならない", async () => {
+    const spec: CellSpec = {
+      series: [FX.series.ssMean],
+      scope: { kind: "site", siteId: "no-such-site" },
+      grain: "day",
+      imputation: "zero",
+    };
+    const rows = await queryCells(fx.db, spec);
+    expect(rows).toHaveLength(0);
+    const env = await buildEnvelope(fx.db, spec, rows);
+    expect(env.coverage.n_rows).toBe(0);
+    expect(env.coverage.period).toEqual({ start: null, end: null, grain: "day" });
+    expect(env.provenance).toEqual([]);
+  });
+});
