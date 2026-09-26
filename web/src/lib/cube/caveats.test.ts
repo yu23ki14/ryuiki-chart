@@ -122,10 +122,14 @@ describe("caveatsForFacets — v1/v2 橋渡し（tools.ts が渡す複合テー�
 });
 
 describe("facetsForSeries", () => {
-  const measurementSeries = (theme: string | null, sourceIds: (string | null)[]): SeriesFacetInput => ({
+  // `unitId` は既定で非NULL（単位が判明している系列）にしてある——`variable` facet は
+  // `unitId===null` の系列だけに push する（統合後の追加決定。下の describe 参照）ので、
+  // 既存の dataset/theme/source_id の並びを確かめるテストが誤って variable facet の
+  // 有無に依存しないようにする。
+  const measurementSeries = (theme: string | null, sourceIds: (string | null)[], unitId: string | null = "common:unit:mg_per_l"): SeriesFacetInput => ({
     variableId: "common:variable:water.bod",
     obsStat: "mean",
-    unitId: "common:unit:mg_per_l",
+    unitId,
     valueGrain: "day",
     dataset: "measurements",
     aliases: ["生物化学的酸素要求量 BOD"],
@@ -133,7 +137,7 @@ describe("facetsForSeries", () => {
     theme,
   });
 
-  it("site スコープ: place_kind='site'、dataset/theme/source_id を初出順で返す", () => {
+  it("site スコープ: place_kind='site'、dataset/theme/source_id を初出順で返す（unitId 既知なので variable facet は付かない）", () => {
     const scope: Scope = { kind: "site", siteId: "s1" };
     const series = [measurementSeries("water", ["atsugi_river_water_quality"])];
     expect(facetsForSeries(series, scope)).toEqual([
@@ -161,13 +165,12 @@ describe("facetsForSeries", () => {
     },
   );
 
-  it("source_id が null を含む系列（合成データ）は dataset に 'synthetic' も足す", () => {
+  it("source_id が null（出典未記録）の系列でも 'synthetic' は足さない（PR-2 D2。b03 が合成行を除くため、除外後の observation_agg には現れない）", () => {
     const scope: Scope = { kind: "site", siteId: "s1" };
     const series = [measurementSeries("water", [null])];
     expect(facetsForSeries(series, scope)).toEqual([
       { kind: "dataset", ref: "measurements" },
       { kind: "variable_theme", ref: "water" },
-      { kind: "dataset", ref: "synthetic" },
       { kind: "place_kind", ref: "site" },
     ]);
   });
@@ -177,16 +180,49 @@ describe("facetsForSeries", () => {
     const series = [
       measurementSeries("water", ["atsugi_river_water_quality"]),
       measurementSeries("water", ["env_kousui_sample_kanagawa"]),
-      measurementSeries(null, [null]), // 合成: theme 無し、source_id 無し
+      measurementSeries(null, [null]), // theme 無し、source_id 無し
     ];
     expect(facetsForSeries(series, scope)).toEqual([
       { kind: "dataset", ref: "measurements" },
       { kind: "variable_theme", ref: "water" },
       { kind: "source_id", ref: "atsugi_river_water_quality" },
       { kind: "source_id", ref: "env_kousui_sample_kanagawa" },
-      { kind: "dataset", ref: "synthetic" },
       { kind: "place_kind", ref: "site" },
     ]);
+  });
+
+  describe("variable facet（unitId===null の系列だけに push する。統合後の追加決定）", () => {
+    it("unitId が null の系列は variable facet を push する（unitUnknown 用）", () => {
+      const scope: Scope = { kind: "site", siteId: "s1" };
+      const series = [measurementSeries("water", ["atsugi_river_water_quality"], null)];
+      expect(facetsForSeries(series, scope)).toEqual([
+        { kind: "dataset", ref: "measurements" },
+        { kind: "variable_theme", ref: "water" },
+        { kind: "source_id", ref: "atsugi_river_water_quality" },
+        { kind: "variable", ref: "common:variable:water.bod" },
+        { kind: "place_kind", ref: "site" },
+      ]);
+    });
+
+    it("unitId が既知の系列は variable facet を push しない（単位不明ではないため）", () => {
+      const scope: Scope = { kind: "site", siteId: "s1" };
+      const series = [measurementSeries("water", ["atsugi_river_water_quality"], "common:unit:mg_per_l")];
+      expect(facetsForSeries(series, scope).some((f) => f.kind === "variable")).toBe(false);
+    });
+
+    it("同じ variableId で unitId あり/なしの系列が混ざるとき、unitId ありだけを渡せば variable facet は付かない（water.water_temp のような混在ケース）", () => {
+      const scope: Scope = { kind: "site", siteId: "s1" };
+      const known = measurementSeries("water", ["atsugi_river_water_quality"], "common:unit:degc");
+      expect(facetsForSeries([known], scope).some((f) => f.kind === "variable")).toBe(false);
+    });
+
+    it("unitId が null の系列と既知の系列が混ざると、variable facet は1回だけ push する", () => {
+      const scope: Scope = { kind: "site", siteId: "s1" };
+      const unknown = measurementSeries("water", ["atsugi_river_water_quality"], null);
+      const known = measurementSeries("water", ["env_kousui_sample_kanagawa"], "common:unit:degc");
+      const refs = facetsForSeries([unknown, known], scope);
+      expect(refs.filter((f) => f.kind === "variable")).toEqual([{ kind: "variable", ref: "common:variable:water.bod" }]);
+    });
   });
 
   it("caveatsForFacets(facetsForSeries(...)) が実際に measuredOn 等を引ける", () => {

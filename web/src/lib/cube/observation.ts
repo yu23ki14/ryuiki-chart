@@ -9,7 +9,7 @@
 import type { CubeDb, SqlParam } from "./db";
 import { MAX_ID_LIST } from "./db";
 import { buildScopeSql, OBS, seriesFilterSql, zoneExprSql, type Scope } from "./sql";
-import { seriesKeyFromRow, seriesKeySql, seriesKeyString, type Grain, type SeriesKey } from "./series";
+import { basisOf, labelYear, representativeSeries, seriesKeyFromRow, seriesKeySql, seriesKeyString, type Grain, type SeriesInfo, type SeriesKey } from "./series";
 
 export type { Scope } from "./sql";
 
@@ -521,6 +521,249 @@ export async function summarize(db: CubeDb, spec: CellSpec, by: SummarizeBy, opt
     case "series":
       return summarizeSeries(db, spec);
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* 系列（代表系列・`basis`）に対する時系列の問い合わせ（PR-2 design §2.1・§2.2）        */
+/* ------------------------------------------------------------------ */
+
+const DEFAULT_DATASET = "measurements";
+
+/**
+ * `representativeSeries()` の結果を `basis`（`series.ts` の `basisOf` が決める
+ * `value_grain` の基準）で絞り込む。`yearSeries`/`monthSeries`/`daySeries` が共有する。
+ *
+ * `basis` を明示しない呼び出しは `basisOf()` の優先順位（day > fiscal_year > year）で
+ * 決まる既定の `basis` を使う。
+ */
+function seriesForBasis(
+  variableId: string,
+  stat: string | undefined,
+  basis: "day" | "fiscal_year" | "year" | undefined,
+): { series: SeriesInfo[]; basis: "day" | "fiscal_year" | "year" } {
+  const all = representativeSeries(variableId, DEFAULT_DATASET, stat ?? "representative");
+  const resolvedBasis = basis ?? basisOf(all).basis;
+  const valueGrain = resolvedBasis; // "day"/"fiscal_year"/"year" は value_grain の文字列そのもの。
+  const series = all.filter((s) => s.valueGrain === valueGrain);
+  if (series.length === 0) {
+    throw new Error(`seriesForBasis: variableId=${variableId} basis=${resolvedBasis} に該当する系列が無い`);
+  }
+  return { series, basis: resolvedBasis };
+}
+
+/** `basis` から `queryCells` に渡す `inputGrain` を決める（day 基準だけ積み上げ）。 */
+function inputGrainForBasis(basis: "day" | "fiscal_year" | "year"): "day" | "same" {
+  return basis === "day" ? "day" : "same";
+}
+
+export interface StatTriple {
+  mean: number | null;
+  min: number | null;
+  max: number | null;
+}
+
+export interface YearPoint {
+  placeId: string;
+  siteId: string | null;
+  /** `queryCells` が実際に返した grain（`'year'` または `'fiscal_year'`）。 */
+  grain: Grain;
+  periodStart: string;
+  /** `labelYear(periodStart)`（`fiscal_year` は年度の始まりの年）。 */
+  year: number;
+  n: number;
+  nCensored: number;
+  unitId: string | null;
+  /** `spec.imputation` で選んだ値（`'both'` のときは3つとも null。value_zero/value_lod を見る）。 */
+  value: StatTriple;
+  valueZero: StatTriple;
+  valueLod: StatTriple;
+}
+
+/**
+ * `adapters-v2.ts` の `pivotYearCells` の移設（design §2.1）。`observation_agg` の年セルは
+ * stat ごとに別行（mean/min/max）なので、`(place_id, period_start)` でまとめてピボットする。
+ * `n`/`n_censored`/`unit_id`/`site_id`/`grain` は同じキーの行なら stat によらず等しい
+ * （同じ集計対象からの別の集計関数の値でしかないため）——最初に見た行の値を使う。
+ */
+function pivotYearCells(cells: readonly CellRow[]): YearPoint[] {
+  const byKey = new Map<string, YearPoint>();
+  for (const c of cells) {
+    const k = `${c.placeId}|${c.periodStart}`;
+    let row = byKey.get(k);
+    if (!row) {
+      row = {
+        placeId: c.placeId,
+        siteId: c.siteId,
+        grain: c.grain,
+        periodStart: c.periodStart,
+        year: labelYear(c.periodStart),
+        n: c.n,
+        nCensored: c.nCensored,
+        unitId: c.series.unitId,
+        value: { mean: null, min: null, max: null },
+        valueZero: { mean: null, min: null, max: null },
+        valueLod: { mean: null, min: null, max: null },
+      };
+      byKey.set(k, row);
+    }
+    if (c.stat === "mean" || c.stat === "min" || c.stat === "max") {
+      row.value[c.stat] = c.value;
+      row.valueZero[c.stat] = c.valueZero;
+      row.valueLod[c.stat] = c.valueLod;
+    }
+  }
+  return [...byKey.values()];
+}
+
+export interface YearSeriesOpt {
+  variableId: string;
+  /** 既定 "representative"（`series.representativeSeries` と同じ既定）。 */
+  stat?: string;
+  /** 既定は `basisOf()` が選ぶ既定の基準（day 優先）。 */
+  basis?: "day" | "fiscal_year" | "year";
+  scope: Scope;
+  period?: { from?: string; to?: string };
+  imputation: Imputation;
+  limit?: number;
+}
+
+/**
+ * 年セル（`grain IN (year, fiscal_year)`、mean/min/max をピボット）。v1 `meas_year`/
+ * `zone_year`/`site_var` 相当の時系列問い合わせが共有する経路（design §2.1）。
+ */
+export async function yearSeries(db: CubeDb, opt: YearSeriesOpt): Promise<LimitedRows<YearPoint>> {
+  const { series, basis } = seriesForBasis(opt.variableId, opt.stat, opt.basis);
+  const spec: CellSpec = {
+    series,
+    scope: opt.scope,
+    grain: ["year", "fiscal_year"],
+    stats: ["mean", "min", "max"],
+    inputGrain: inputGrainForBasis(basis),
+    period: opt.period,
+    imputation: opt.imputation,
+    limit: opt.limit,
+  };
+  const { rows: cells, truncated } = await queryCells(db, spec);
+  return { rows: pivotYearCells(cells), truncated };
+}
+
+export interface SeriesPoint {
+  placeId: string;
+  siteId: string | null;
+  periodStart: string;
+  n: number;
+  nCensored: number;
+  unitId: string | null;
+  value: number | null;
+  valueZero: number | null;
+  valueLod: number | null;
+}
+
+function toSeriesPoint(c: CellRow): SeriesPoint {
+  return {
+    placeId: c.placeId,
+    siteId: c.siteId,
+    periodStart: c.periodStart,
+    n: c.n,
+    nCensored: c.nCensored,
+    unitId: c.series.unitId,
+    value: c.value,
+    valueZero: c.valueZero,
+    valueLod: c.valueLod,
+  };
+}
+
+export interface MonthDaySeriesOpt {
+  variableId: string;
+  stat?: string;
+  scope: Scope;
+  period?: { from?: string; to?: string };
+  imputation: Imputation;
+  limit?: number;
+}
+
+/**
+ * 月セル（`grain='month'`、`stat='mean'` のみ）。`basis='day'` の変数だけに対応する
+ * （月・日は検体値〔day〕を積み上げた粒度でしか意味を持たない——design §2.1「basis=day
+ * のみ許可、それ以外は例外」）。
+ */
+export async function monthSeries(db: CubeDb, opt: MonthDaySeriesOpt): Promise<LimitedRows<SeriesPoint>> {
+  // `basis` を明示せず（`undefined`）この変数の既定 basis を検出したうえで day 以外を
+  // 拒む——`seriesForBasis` に basis="day" を決め打ちで渡すと、day 系列が無い変数
+  // （例: `land.max_subsidence`＝year のみ）でも「該当する系列が無い」という
+  // basis 判定と無関係な例外になり、呼び出し側に「basis が違う」と伝わらない。
+  const { series, basis } = seriesForBasis(opt.variableId, opt.stat, undefined);
+  if (basis !== "day") throw new Error(`monthSeries: basis='day' の変数だけに対応する（この変数の既定 basis は '${basis}'）`);
+  const spec: CellSpec = {
+    series,
+    scope: opt.scope,
+    grain: "month",
+    stats: ["mean"],
+    period: opt.period,
+    imputation: opt.imputation,
+    limit: opt.limit,
+  };
+  const { rows: cells, truncated } = await queryCells(db, spec);
+  return { rows: cells.map(toSeriesPoint), truncated };
+}
+
+/** 日セル（`grain='day'`、`stat='mean'` のみ）。`monthSeries` と同じく basis='day' 限定。 */
+export async function daySeries(db: CubeDb, opt: MonthDaySeriesOpt): Promise<LimitedRows<SeriesPoint>> {
+  const { series, basis } = seriesForBasis(opt.variableId, opt.stat, undefined);
+  if (basis !== "day") throw new Error(`daySeries: basis='day' の変数だけに対応する（この変数の既定 basis は '${basis}'）`);
+  const spec: CellSpec = {
+    series,
+    scope: opt.scope,
+    grain: "day",
+    stats: ["mean"],
+    period: opt.period,
+    imputation: opt.imputation,
+    limit: opt.limit,
+  };
+  const { rows: cells, truncated } = await queryCells(db, spec);
+  return { rows: cells.map(toSeriesPoint), truncated };
+}
+
+/* ------------------------------------------------------------------ */
+/* 雨量（weather.precipitation、sensor_timeseries、hour→day sum）           */
+/* ------------------------------------------------------------------ */
+
+const RAIN_VARIABLE_ID = "common:variable:weather.precipitation";
+const RAIN_DATASET = "sensor_timeseries";
+
+function rainSeries(): SeriesInfo[] {
+  return representativeSeries(RAIN_VARIABLE_ID, RAIN_DATASET, "representative");
+}
+
+/**
+ * RAIN（`weather.precipitation`）の全地点・日次 sum セル。v1 は `/10` した上で
+ * ラベル日割りしていたが、`lib/cube` はどちらもしない（design §0 要点4「`/10` 撤去」・
+ * 危険#4）——呼び出し側が原表記の値のまま扱う（単位不明は `unitUnknown` 注記）。
+ */
+export async function rainDaily(db: CubeDb, opt?: { period?: { from?: string; to?: string }; limit?: number }): Promise<LimitedRows<SeriesPoint>> {
+  const spec: CellSpec = {
+    series: rainSeries(),
+    scope: { kind: "all_sites" },
+    grain: "day",
+    stats: ["sum"],
+    period: opt?.period,
+    imputation: "zero",
+    limit: opt?.limit,
+  };
+  const { rows: cells, truncated } = await queryCells(db, spec);
+  return { rows: cells.map(toSeriesPoint), truncated };
+}
+
+/** RAIN の月別平年値（`SUM(v)/COUNT(DISTINCT 年)`）。v1 の `/10` はしない（同上）。 */
+export async function rainMonthlyClim(db: CubeDb): Promise<LimitedRows<MonthOfYearRow>> {
+  const spec: CellSpec = {
+    series: rainSeries(),
+    scope: { kind: "all_sites" },
+    grain: "day",
+    stats: ["sum"],
+    imputation: "zero",
+  };
+  return summarize(db, spec, "month_of_year", { measure: "sum_per_year" });
 }
 
 export { MAX_ID_LIST };

@@ -23,6 +23,11 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "..", "..", "..", "..");
 const DB_DIR = process.env.RYUIKI_DB_DIR ?? path.join(REPO_ROOT, "data", "db");
 const REGISTRY_DB_PATH = process.env.RYUIKI_REGISTRY_DB ?? path.join(DB_DIR, "registry.sqlite");
+// `registry.sqlite` は生成物（`.gitignore` 済み）で、CLAUDE.md の worktree 運用上
+// symlink しない原則の対象。原本が無い worktree（CI 再現・並行 worktree）でも
+// `pnpm test` が落ちないよう、`web/src/lib/registry/generated.test.ts` と同じ
+// `skipIf` の流儀にする（このファイルが要るのは実 DB を直接読む2件だけ）。
+const hasRegistryDb = fs.existsSync(REGISTRY_DB_PATH);
 
 function ctxBase(overrides: Partial<ClassifyContext> = {}): ClassifyContext {
   return {
@@ -35,7 +40,7 @@ function ctxBase(overrides: Partial<ClassifyContext> = {}): ClassifyContext {
 }
 
 describe("expectedUnitSymbols（registry.sqlite を直接 SQL で読む）", () => {
-  it("実データ: BOD（3 alias とも unit_id が common:unit:mg_per_l で一致）は symbol 'mg/L' を返す", () => {
+  it.skipIf(!hasRegistryDb)("実データ: BOD（3 alias とも unit_id が common:unit:mg_per_l で一致）は symbol 'mg/L' を返す", () => {
     const map = expectedUnitSymbols(REGISTRY_DB_PATH);
     expect(map.get("生物化学的酸素要求量 BOD")).toBe("mg/L");
   });
@@ -73,7 +78,7 @@ describe("expectedUnitSymbols（registry.sqlite を直接 SQL で読む）", () 
     vi.resetModules();
   });
 
-  it("変異: seriesForAlias（generated.ts 由来）が BOD に別の unit_id を返しても、真の期待値（registry.sqlite 直読み）との食い違いを検出する（unexplained）", async () => {
+  it.skipIf(!hasRegistryDb)("変異: seriesForAlias（generated.ts 由来）が BOD に別の unit_id を返しても、真の期待値（registry.sqlite 直読み）との食い違いを検出する（unexplained）", async () => {
     // `@/lib/registry/generated` の `GENERATED_VARIABLE_ALIASES` を、BOD の
     // unit_id が気温（degC）になるよう書き換えてモックする（`seriesForAlias`
     // 自体・`generated.ts` の生成にバグがあった場合の再現）。

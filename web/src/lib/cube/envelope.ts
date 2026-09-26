@@ -13,7 +13,7 @@ import type { CaveatRef } from "@/lib/registry/lookup-client";
 import { unitSymbol } from "@/lib/registry/lookup";
 import type { CubeDb, SqlParam } from "./db";
 import { jsonEachParam } from "./sql";
-import { isSynthetic, seriesInfo, seriesKeyString, type Grain, type SeriesKey } from "./series";
+import { seriesInfo, type Grain } from "./series";
 import type { CellRow, CellSpec, Imputation } from "./observation";
 
 export const ENVELOPE_SPEC_VERSION = "cube-envelope@1";
@@ -57,15 +57,6 @@ export interface Envelope<R> {
   caveats: CaveatRef[];
   truncated: boolean;
   spec_version: string;
-}
-
-function distinctSeriesKeys(rows: readonly CellRow[]): SeriesKey[] {
-  const seen = new Map<string, SeriesKey>();
-  for (const r of rows) {
-    const k = seriesKeyString(r.series);
-    if (!seen.has(k)) seen.set(k, r.series);
-  }
-  return [...seen.values()];
 }
 
 function resolveUnitColumn(rows: readonly CellRow[]): { unit: string | null; ucum: string | null } {
@@ -138,18 +129,25 @@ export async function buildEnvelope<R extends CellRow>(
   }
   const { unit, ucum } = resolveUnitColumn(rows);
 
-  const columns: EnvelopeColumn[] = [
-    { name: "place_id", type: "string" },
-    { name: "period_start", type: "string" },
-    { name: "value", type: "number", unit, ucum },
-  ];
+  // `imputation:'both'` は `value_zero`/`value_lod` を単位付きで両方の列にする
+  // （design §2.1「`imputation:'both'` のとき columns に value_zero/value_lod を
+  // 単位付きで両方」）。`zero`/`lod` はこれまでどおり単一の `value` 列（PR-1 の
+  // 形をそのまま維持——既存の呼び出し側・テストを壊さない）。
+  const columns: EnvelopeColumn[] =
+    spec.imputation === "both"
+      ? [
+          { name: "place_id", type: "string" },
+          { name: "period_start", type: "string" },
+          { name: "value_zero", type: "number", unit, ucum },
+          { name: "value_lod", type: "number", unit, ucum },
+        ]
+      : [
+          { name: "place_id", type: "string" },
+          { name: "period_start", type: "string" },
+          { name: "value", type: "number", unit, ucum },
+        ];
 
   const provenance = await resolveProvenance(db, rows);
-
-  const synthetic = distinctSeriesKeys(rows).some((k) => {
-    const info = seriesInfo(k);
-    return info ? isSynthetic(info) : false;
-  });
 
   return {
     query: { ...spec },
@@ -164,7 +162,9 @@ export async function buildEnvelope<R extends CellRow>(
       imputation: spec.imputation,
     },
     provenance,
-    excluded: { by_license: 0, by_embargo: 0, reasons: synthetic ? ["synthetic_included"] : [] },
+    // `synthetic_included` は PR-2 で撤去した（D2。b03 が合成データを除くため、
+    // `observation_agg` に合成データはもう載らない——design §0-2・§2.1「envelope.buildEnvelope」）。
+    excluded: { by_license: 0, by_embargo: 0, reasons: [] },
     caveats: opt?.caveats ?? [],
     truncated: opt?.truncated ?? false,
     spec_version: ENVELOPE_SPEC_VERSION,

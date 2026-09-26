@@ -141,7 +141,7 @@ describe("buildEnvelope", () => {
     expect(env.provenance[0].n_rows).toBe(env.coverage.n_rows);
   });
 
-  it("excluded.reasons: 合成データを含む系列は synthetic_included を報告する", async () => {
+  it("excluded.reasons: PR-2 で撤去した synthetic_included はもう報告しない（D2。b03 が合成データを除くため）", async () => {
     const spec: CellSpec = {
       series: [FX.series.ssMean],
       scope: { kind: "site", siteId: FX.sites.a },
@@ -150,7 +150,24 @@ describe("buildEnvelope", () => {
     };
     const { rows } = await queryCells(fx.db, spec);
     const env = await buildEnvelope(fx.db, spec, rows);
-    expect(env.excluded.reasons).toContain("synthetic_included");
+    expect(env.excluded.reasons).toEqual([]);
+  });
+
+  it("imputation='both': columns に value_zero/value_lod を単位付きで両方持つ（value 列は無い）", async () => {
+    const spec: CellSpec = {
+      series: [FX.series.bodMean],
+      scope: { kind: "site", siteId: FX.sites.a },
+      grain: "day",
+      imputation: "both",
+    };
+    const { rows } = await queryCells(fx.db, spec);
+    const env = await buildEnvelope(fx.db, spec, rows);
+    expect(env.columns.map((c) => c.name)).toEqual(["place_id", "period_start", "value_zero", "value_lod"]);
+    const zeroCol = env.columns.find((c) => c.name === "value_zero")!;
+    const lodCol = env.columns.find((c) => c.name === "value_lod")!;
+    expect(zeroCol.unit).toBe(unitSymbol(FX.units.mgPerL));
+    expect(lodCol.unit).toBe(unitSymbol(FX.units.mgPerL));
+    expect(env.coverage.imputation).toBe("both");
   });
 
   it("opt.caveats をそのまま caveats に渡す（envelope.ts 自身は caveat の解決ロジックに依存しない）", async () => {

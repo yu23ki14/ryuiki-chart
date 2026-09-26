@@ -26,7 +26,6 @@ import {
   summarize,
   seriesForAlias,
   seriesInfo,
-  isSynthetic,
   labelYear,
   YEAR_GRAINS_SQL,
   MEAN_STAT_SQL,
@@ -37,6 +36,19 @@ import {
   type SeriesKey,
   type SeriesInfo,
 } from "@/lib/cube";
+
+/**
+ * `lib/cube` の `isSynthetic` は PR-2 で撤去された（D2。`series.ts` の synthetic
+ * 判定は b03 が合成データを除いた後の `observation_agg` には出典未記録の行が
+ * 現れない前提に変わったため——design §0-2）。この serving-diff の
+ * `--pretend-synthetic-excluded`（PR-5 で丸ごと削除予定。CLAUDE.md「速く回すための
+ * 規則」・タスク指示により中身の差し替えは U4 の仕事なので、ここでは最小限、
+ * 撤去前と同じ判定式をローカルに残すだけにする）は撤去前の `sourceIds` に
+ * null を含むかどうかの判定をそのまま使い続ける。
+ */
+function isSyntheticInfo(info: SeriesInfo): boolean {
+  return info.sourceIds.includes(null);
+}
 import { GENERATED_VARIABLE_ALIASES, type GeneratedVariableAlias } from "@/lib/registry/generated";
 import { unitSymbol } from "@/lib/registry/lookup";
 import { rankRainDays, toNormRows, type CompareSpec, type NormRow, type RawRow, type ScalarParam } from "./normalize";
@@ -91,7 +103,7 @@ export async function computeSyntheticPlaceIds(db: CubeDb): Promise<string[]> {
   const allSyntheticByPlace = new Map<string, boolean>();
   for (const r of rows) {
     const info = seriesInfo({ variableId: r.variable_id, obsStat: r.obs_stat, unitId: r.unit_id, valueGrain: r.value_grain ?? "" });
-    const synthetic = !!info && isSynthetic(info);
+    const synthetic = !!info && isSyntheticInfo(info);
     const prev = allSyntheticByPlace.get(r.place_id);
     allSyntheticByPlace.set(r.place_id, prev === undefined ? synthetic : prev && synthetic);
   }
