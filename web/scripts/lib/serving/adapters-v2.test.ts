@@ -198,4 +198,46 @@ describe("variable_catalog（aliasCatalog）: n_sites の distinct 集計（Issu
       cube.db.close();
     }
   });
+
+  it("同じプロセスで2つの CubeDb を順に問い合わせても、db ごとに別のキャッシュを引く（Issue #48 PR-2 統合後 修正B: aliasCatalogCache が db を無視していたバグの回帰）", async () => {
+    // serving-diff は本番 `v2Db` と `--v1compat-db` の2接続を同じプロセスで
+    // 順に開く（`synthetic_excluded` の差分の差分・design §1）。以前は
+    // `aliasCatalog()` の結果を `db` を無視した単一のモジュール変数にキャッシュ
+    // しており、1回目（`cubeA`）で埋めたキャッシュを2回目（`cubeB`）でもそのまま
+    // 返していた——`variable_catalog` の synthetic_excluded 判定が
+    // 「v2compat ≠ v2(本番)」を恒等的に満たせず不発になっていた
+    // （実測: DO/pH/SS/気温/水温が常に unexplained）。
+    const { buildCubeFixture: buildFixture, FX: fx } = await import("@/lib/cube/__fixtures__/cube-fixture");
+    const { runV2Query: runQuery } = await import("./adapters-v2");
+
+    const cubeA = buildFixture();
+    const cubeB = buildFixture();
+    try {
+      // cubeB だけ「浮遊物質量 SS」の year セルを1つ増やす（n が動く）。
+      // period_start は既存フィクスチャ行（2024年）と衝突しない年にする。
+      cubeB.raw
+        .prepare(
+          `INSERT INTO observation_agg
+            (region_id, place_id, place_kind, variable_id, obs_stat, unit_id, value_grain,
+             period_start, period_end, grain, input_grain, stat, value_zero, value_lod,
+             n, n_censored, n_not_detected, n_places, built_from, spec_version)
+           VALUES ('kanagawa', @placeId, 'site', 'common:variable:water.ss', 'mean', @unitId, 'day',
+                   '2030-01-01', '2030-12-31', 'year', 'day', 'mean', 1.0, 1.0, 1, 0, 0, 1, 'fixture:test', 'fixture@1')`,
+        )
+        .run({ placeId: fx.places.c, unitId: fx.units.mgPerL });
+
+      const compare = { key: ["alias"], numeric: ["n", "n_sites"], label: ["unit"] };
+      const rowsA = await runQuery(cubeA.db, "variable_catalog", {}, compare, "zero");
+      const rowsB = await runQuery(cubeB.db, "variable_catalog", {}, compare, "zero");
+      const ssA = rowsA.find((r) => r.key[0] === "浮遊物質量 SS");
+      const ssB = rowsB.find((r) => r.key[0] === "浮遊物質量 SS");
+      expect(ssA).toBeDefined();
+      expect(ssB).toBeDefined();
+      // cubeB の方が n が1つ多い（cubeA と同じ値を使い回していれば、ここが一致してしまう）。
+      expect(ssB!.numeric.n).toBe(Number(ssA!.numeric.n) + 1);
+    } finally {
+      cubeA.db.close();
+      cubeB.db.close();
+    }
+  });
 });

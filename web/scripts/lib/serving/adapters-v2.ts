@@ -62,9 +62,9 @@ export function openV2Db(paths: V2Paths): CubeDb & { close(): void } {
 }
 
 export function closeV2Db(): void {
+  if (sharedDb) aliasCatalogCache.delete(sharedDb);
   sharedDb?.close();
   sharedDb = undefined;
-  aliasCatalogCache = undefined;
 }
 
 function unitLabel(unitId: string | null): string | null {
@@ -172,7 +172,16 @@ interface AliasCatalogEntry {
   agg: SeriesYearlyTotal;
 }
 
-let aliasCatalogCache: AliasCatalogEntry[] | undefined;
+// `db`（`CubeDb`）ごとにキャッシュする——serving-diff は同じプロセス内で
+// 本番 `v2Db` と `--v1compat-db` の第2接続を両方開き、同じ問い合わせ id を
+// 両方の db に対して順に流す（design §1「差分の差分」）。以前は単一の
+// モジュール変数（`db` を無視）だったため、1回目の呼び出し（本番 `v2Db`）で
+// キャッシュを埋めると、2回目の呼び出し（v1compat 接続）が実際には
+// v1compat を1度も読まずキャッシュ（本番の値）をそのまま返していた——
+// `variable_catalog` の `synthetic_excluded` 判定が「v2compat ≠ v2(本番)」を
+// 恒等的に満たせず不発になり、DO/pH/SS/気温/水温（合成データを含む5項目）が
+// 常に unexplained になる原因だった（Issue #48 PR-2 統合後 修正B）。
+const aliasCatalogCache = new WeakMap<CubeDb, AliasCatalogEntry[]>();
 
 /**
  * `variable_catalog` の中身（alias 単位に合流した年セル集計、n 降順）。
@@ -192,7 +201,8 @@ let aliasCatalogCache: AliasCatalogEntry[] | undefined;
  * `siteMeasurementRollup` 用）とは異なる集合なので使い分ける。
  */
 async function aliasCatalog(db: CubeDb): Promise<AliasCatalogEntry[]> {
-  if (aliasCatalogCache) return aliasCatalogCache;
+  const cached = aliasCatalogCache.get(db);
+  if (cached) return cached;
   const cells = await catalog.datasetCells(db, "measurements");
 
   interface Group {
@@ -240,7 +250,7 @@ async function aliasCatalog(db: CubeDb): Promise<AliasCatalogEntry[]> {
     agg: { n: g.n, nSites: g.places.size, yFrom: g.yFrom, yTo: g.yTo, nDaily: g.nDaily, nAnnual: g.nAnnual, nCensored: g.nCensored },
   }));
   out.sort((a, b) => b.agg.n - a.agg.n);
-  aliasCatalogCache = out;
+  aliasCatalogCache.set(db, out);
   return out;
 }
 
@@ -726,22 +736,15 @@ async function fetchRawRows(
 }
 
 /**
- * `catalogSource`（既定 `{kind:'summary'}`——画面・API・AI と同じ経路）:
- * `--v1compat-db` の第2接続だけは呼び出し側（`serving-diff.mts`）が
- * `{kind:'live'}` を明示的に渡す。理由: `v2_v1compat.sqlite` は
- * `scripts/b00_run_full_gate.py` の `PIPELINE_STEPS` が観測キューブの生表
- * だけを `--include-synthetic` で差し替えたファイルで、事前集計の summary
- * 2表（b13、`v2.sqlite` をコピーした時点のまま）は**合成データ除外後の
- * 値のまま更新されない**（実測で確認済み）——`source:'summary'` のまま
- * v1compat を読むと、どのファイルを指しても常に本番と同じ値が返り、
- * `synthetic_excluded` 規則が `catalog.*` 経由の問い合わせ（`sites_list`/
- * `site_variables`/`water_bodies`/`water_bodies_for_variable`/
- * `sites_in_water_body`/`variable_catalog_by_variable`/
- * `site_variables_by_variable`/`water_bodies_for_variable_by_variable`）で
- * 機能しない。`{kind:'live'}` は観測キューブの生表を直接集計するので、
- * `v2_v1compat.sqlite` の差し替え済みの値を正しく反映する。lib/cube
- * 自体のバグではなく v1compat パイプライン（U1a）の既知の制約
- * ——詳細は U4 の報告参照。
+ * `catalogSource`（既定 `{kind:'summary'}`——画面・API・AI と同じ経路）。
+ * `--v1compat-db` の第2接続（`serving-diff.mts`）もこの既定のまま呼ぶ。
+ * `scripts/b00_run_full_gate.py` の `PIPELINE_STEPS`（CI `sample-gate` も同様）が
+ * v1互換段にも `scripts/b13_build_summary.py --v2-db data/db/v2_v1compat.sqlite`
+ * を足したため、`v2_v1compat.sqlite` の事前集計 summary 2表は
+ * `--include-synthetic` 後のキューブから作り直され、本番の `v2.sqlite` とは
+ * 別内容になっている（以前は `v2.sqlite` をコピーした時点のままで本番と
+ * 同じ値しか返らず、`{kind:'live'}` で観測キューブの生表を直接集計する
+ * 回避策が要った——その制約は解消済み）。
  */
 export async function runV2Query(
   db: CubeDb,
