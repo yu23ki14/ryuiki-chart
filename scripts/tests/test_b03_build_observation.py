@@ -1118,3 +1118,69 @@ def test_guard_include_synthetic_out_allows_default_out_without_the_flag():
     発火しない（通常の本番実行がこのガードに巻き込まれないことの確認）。
     """
     b03._guard_include_synthetic_out(False, str(b03.DEFAULT_OUT))  # 例外を投げなければ成功
+
+
+def test_guard_include_synthetic_report_rejects_default_report():
+    """`--include-synthetic` と明示的な `--report reports/phase_b_fact_slice.md`
+    の組み合わせを拒む——本番のレポート（コミット対象）が診断用の
+    「合成データの除外 0件」という中身で上書きされる事故を防ぐガード。
+    DB は一切開かない単体テスト。
+    """
+    with pytest.raises(SystemExit) as exc_info:
+        b03._guard_include_synthetic_report(True, str(b03.DEFAULT_REPORT))
+    message = str(exc_info.value)
+    assert "--include-synthetic" in message
+    assert "phase_b_fact_slice.md" in message
+
+
+def test_guard_include_synthetic_report_allows_explicit_report():
+    """`--report` を明示的に別ファイルへ変えていれば、ガードは発火しない。"""
+    b03._guard_include_synthetic_report(True, "/tmp/phase_b_fact_slice_v1compat.md")  # 例外を投げなければ成功
+
+
+def test_guard_include_synthetic_report_allows_default_report_without_the_flag():
+    """`--include-synthetic` を渡していなければ、既定の --report でもガードは
+    発火しない（通常の本番実行がこのガードに巻き込まれないことの確認）。
+    """
+    b03._guard_include_synthetic_report(False, str(b03.DEFAULT_REPORT))  # 例外を投げなければ成功
+
+
+def test_main_report_default_switches_to_v1compat_path_with_include_synthetic(tmp_path, monkeypatch):
+    """`main()` を通しで走らせ、`--report` を省略したときの既定の書き出し先が
+    `--include-synthetic` の有無で切り替わることを確認する（本物の
+    `data/db/ryuiki.sqlite` は使わず、フィクスチャの小さな自作 sqlite・
+    土地利用0行のフィクスチャで完結）。
+    """
+    measurements_db = tmp_path / "ryuiki.sqlite"
+    registry_db = tmp_path / "registry.sqlite"
+    make_measurements_db(measurements_db)
+    make_registry_db(registry_db)
+    landuse_csv = tmp_path / "landuse.csv"
+    make_landuse_csv(landuse_csv, rows=[])
+    source_regions_yaml = tmp_path / "source_regions.yaml"
+    make_landuse_source_regions_yaml(source_regions_yaml, text="sources: {}\nregions: {}\n")
+    exceptions_yaml = _no_exceptions_path(tmp_path)
+    conventions_yaml = _no_conventions_path(tmp_path)
+
+    out_path = tmp_path / "v2_v1compat.sqlite"
+    default_report = tmp_path / "reports" / "phase_b_fact_slice.md"
+    v1compat_report = tmp_path / "data" / "db" / "phase_b_fact_slice_v1compat.md"
+    monkeypatch.setattr(b03, "DEFAULT_REPORT", default_report)
+    monkeypatch.setattr(b03, "DEFAULT_REPORT_INCLUDE_SYNTHETIC", v1compat_report)
+
+    argv = [
+        "b03_build_observation.py",
+        "--ryuiki-db", str(measurements_db),
+        "--registry-db", str(registry_db),
+        "--exceptions-yaml", str(exceptions_yaml),
+        "--time-conventions-yaml", str(conventions_yaml),
+        "--source-regions-yaml", str(source_regions_yaml),
+        "--landuse-csv", str(landuse_csv),
+        "--include-synthetic",
+        "--out", str(out_path),
+    ]
+    monkeypatch.setattr("sys.argv", argv)
+    b03.main()
+
+    assert v1compat_report.exists()
+    assert not default_report.exists()

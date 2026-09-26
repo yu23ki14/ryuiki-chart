@@ -138,7 +138,14 @@ alias/place 解決や重複判定より前に、既定で弾く——`observatio
 serving-diff がこれと突き合わせることで、b03 の合成データ除外という新しい
 差分を「宣言済み差分を増やさずに」説明できる）専用で、**本番の `v2.sqlite`
 には絶対に使わない**。誤って本番へ書くことを防ぐため、`--include-synthetic`
-は既定の `--out`（`data/db/v2.sqlite`）を拒む（`main()` 参照）。さらに
+は既定の `--out`（`data/db/v2.sqlite`）を拒む（`main()` 参照）。同じ理由で
+`--report` を明示しない場合の既定の書き出し先も、コミット対象の
+`reports/phase_b_fact_slice.md` ではなく `DEFAULT_REPORT_INCLUDE_SYNTHETIC`
+（`data/db/phase_b_fact_slice_v1compat.md`。gitignore 済み）に切り替わる
+——さもないと `scripts/b00_run_full_gate.py`・CI の sample-gate が本番の b03
+の直後にこの診断段を回すたびに、本番のレポートが「合成データの除外 0件」
+の中身で上書きされてしまう（明示的に `--report reports/phase_b_fact_slice.md`
+を渡した場合は `_guard_include_synthetic_report` が拒む）。さらに
 `build_and_write_observation` は `pipeline_input_fingerprint` に
 `synthetic_included=1` の印を書く——`scripts/check_v2_fresh.py` はこの印が
 あるファイルを常に「古い」（`V2_CHECK_EXIT_STALE`）として扱う
@@ -215,6 +222,12 @@ DEFAULT_SOURCE_REGIONS_YAML = ROOT / "scripts" / "migrate" / "source_regions.yam
 DEFAULT_LANDUSE_CSV = ROOT / "data" / "processed" / "nlni_l03b_landuse_by_watershed.csv"
 DEFAULT_OUT = ROOT / "data" / "db" / "v2.sqlite"
 DEFAULT_REPORT = ROOT / "reports" / "phase_b_fact_slice.md"
+# `--include-synthetic`（診断専用の v1互換キューブ）が `--report` を明示しない
+# ときの既定の書き出し先。`DEFAULT_REPORT`（コミット対象のレポート）に
+# 「合成データの除外 0件」という診断用の中身で上書きされる事故を防ぐ
+# （`_guard_include_synthetic_report` 参照）。`data/*` は gitignore 済みなので
+# `data/db` に置く（`v2_v1compat.sqlite` と同じ置き場）。
+DEFAULT_REPORT_INCLUDE_SYNTHETIC = ROOT / "data" / "db" / "phase_b_fact_slice_v1compat.md"
 
 # P-1b（土地利用、docs/plans/PHASE_B_LANDUSE.md）。CSV の source_id 列は全行
 # この定数値（`data/processed/nlni_l03b_landuse_by_watershed.csv` を実測して
@@ -1182,6 +1195,27 @@ def _guard_include_synthetic_out(include_synthetic: bool, out: str) -> None:
         )
 
 
+def _guard_include_synthetic_report(include_synthetic: bool, report: str) -> None:
+    """`--include-synthetic` は既定の `--report`（`reports/phase_b_fact_slice.md`。
+    コミット対象のレポート）を明示的には拒む——`_guard_include_synthetic_out`
+    と同じ事故（診断専用の v1互換キューブ用の実行が、本番のレポートを
+    「合成データの除外 0件」という診断用の中身で上書きしてしまう）を防ぐ。
+    `--report` を明示しない場合はそもそも `main()` が既定の書き出し先を
+    `DEFAULT_REPORT_INCLUDE_SYNTHETIC` に切り替えるのでここには来ない
+    （`scripts/b00_run_full_gate.py` の診断段はこちら）。`main()` から、
+    その解決後の実際の書き出し先で呼ぶ——`argparse.Namespace` 全体では
+    なく2つのスカラ引数だけを受け取ることで、DB を一切開かずに単体
+    テストできる（`_guard_include_synthetic_out` と同じ流儀）。
+    """
+    if include_synthetic and report == str(DEFAULT_REPORT):
+        sys.exit(
+            f"--include-synthetic は既定の --report（{DEFAULT_REPORT}）には明示的に書けない。"
+            f"診断専用の別ファイル（既定は {DEFAULT_REPORT_INCLUDE_SYNTHETIC}。"
+            "--report を省略すれば自動的にそちらへ書く）を使うこと"
+            "（本番のレポートに合成データ込みの中身を紛れ込ませないためのガード）。"
+        )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -1196,7 +1230,13 @@ def main() -> None:
     parser.add_argument("--exceptions-yaml", default=str(DEFAULT_EXCEPTIONS_YAML))
     parser.add_argument("--time-conventions-yaml", default=str(DEFAULT_TIME_LABEL_CONVENTIONS_YAML))
     parser.add_argument("--out", default=str(DEFAULT_OUT))
-    parser.add_argument("--report", default=str(DEFAULT_REPORT))
+    parser.add_argument(
+        "--report", default=None,
+        help=f"既定は {DEFAULT_REPORT}。ただし --include-synthetic のときは"
+        f"（明示しない限り）{DEFAULT_REPORT_INCLUDE_SYNTHETIC} に切り替わる"
+        "（コミット対象のレポートを診断用の中身で上書きしないため。下の"
+        "_guard_include_synthetic_report 参照）。",
+    )
     parser.add_argument(
         "--source-regions-yaml", default=str(DEFAULT_SOURCE_REGIONS_YAML),
         help="土地利用（consumer='observation'）の region 宣言（P-1b）",
@@ -1225,6 +1265,18 @@ def main() -> None:
 
     _guard_include_synthetic_out(args.include_synthetic, args.out)
 
+    # `--report` を明示しなかった場合の既定は `--include-synthetic` の有無で
+    # 変わる（コミット対象のレポートを診断用の中身で上書きしないため）。
+    # 明示された場合はそのまま使うが、それが既定のコミット対象レポートと
+    # `--include-synthetic` の組み合わせなら拒む。
+    if args.report is not None:
+        report = args.report
+    elif args.include_synthetic:
+        report = str(DEFAULT_REPORT_INCLUDE_SYNTHETIC)
+    else:
+        report = str(DEFAULT_REPORT)
+    _guard_include_synthetic_report(args.include_synthetic, report)
+
     registry_db = common.resolve_registry_db(args.registry_db, DEFAULT_REGISTRY_DB)
 
     print(f"▶ 読み取り専用で開く: {args.ryuiki_db}")
@@ -1247,7 +1299,7 @@ def main() -> None:
         )
         info["n"] = sum(s["n_observation"] for s in all_stats.values())
 
-    report_path = pathlib.Path(args.report)
+    report_path = pathlib.Path(report)
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(render_report(all_stats), encoding="utf-8")
     print(f"→ {report_path}")
