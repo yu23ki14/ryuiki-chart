@@ -13,12 +13,21 @@
  * （`better-sqlite3/src/objects/database.cpp` の `JS_new`——`mask` に
  * `SQLITE_OPEN_URI` が無い）、ATTACH 文字列も URI として解釈されず、
  * "file:...?mode=ro" という文字列そのものをファイル名として開こうとして失敗する
- * （実測済み）。その代わり SQLite は既定で「ATTACH した DB は常に読み取り専用で
- * 開く」（`SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE` を明示的に有効にしないかぎり。
- * `sqlite3.c` の `attachFunc`: `if ((db->flags & SQLITE_AttachWrite)==0) flags
- * |= SQLITE_OPEN_READONLY`）ため、素のファイルパスで ATTACH するだけで読み取り
- * 専用の規約は自動的に守られる（`web/scripts/build-derived.mjs` 等、既存スクリプトの
- * ATTACH と同じ書き方）。
+ * （実測済み）。
+ *
+ * **ATTACH は既定で読み取り専用になるわけではない**——`SQLITE_AttachWrite`
+ * （`SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE`）は既定で ON であり、これは
+ * 「ATTACH した DB を main 接続の読み書きモードに合わせて開く」という意味
+ * （ON にしていても、main 自体が読み取り専用で開かれていれば ATTACH 先も
+ * 読み取り専用になる。無効化した場合だけ ATTACH 先を強制的に読み取り専用に
+ * 落とす、という向き）。ここで守りが効いているのは、main（`v2.sqlite`）を
+ * `{readonly: true}` で開いているため（＝`SQLITE_OPEN_READONLY`）——
+ * その読み書きモードを ATTACH した `registry`/`ryuiki` も継承する。
+ * さらに `query_only = ON` を張ることで、ATTACH の継承に頼らない二重の
+ * 書き込み拒否にしてある（`web/scripts/build-derived.mjs` 等、既存スクリプトの
+ * ATTACH と同じファイルパスの書き方だが、あちらは読み書き可能な main に
+ * ATTACH するため、この二重の読み取り専用化はここ〔serving-diff・テスト〕
+ * 固有の事情）。
  */
 import Database from "better-sqlite3";
 import { assertD1Compatible, type CubeDb, type Row, type SqlParam } from "./db";
