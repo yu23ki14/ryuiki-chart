@@ -244,8 +244,8 @@ export function aliasKindRoutes(registryDbPath: string, dataset: string): AliasK
       // tuple を持たない（day のみ）が、一部地点（atsugi 系）で同じ
       // value_grain='day' tuple の中に `input_grain='fiscal_year'` のセルが
       // 混ざる（出典が直接年度値だけを報告した年）。`site_variables_by_variable`
-      // の v2 側（`adapters-v2.ts` の `siteSeriesBasis`）はセル単位で
-      // `input_grain==='day'` か否かだけを見て basis を決める（alias に
+      // の v2 側（`adapters-v2.ts` が呼ぶ `@/lib/cube` の `basisOfCell`）は
+      // セル単位で `input_grain==='day'` か否かだけを見て basis を決める（alias に
       // 真の annual tuple が登録されているかは見ない）ため、v1 側もここで
       // 同じ「registration を問わない」判定に揃える——`hasAnnualGrain` で
       // 絞ると、v2 側が正しく 'day'/'fiscal_year' に分けているのに v1 側が

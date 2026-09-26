@@ -19,7 +19,6 @@
  * `@/lib/cube` は daily/annual という語を知らない。
  */
 import Database from "better-sqlite3";
-import { sqliteCubeDb } from "@/lib/cube/db-sqlite";
 import * as catalog from "@/lib/cube/catalog";
 import {
   queryCells,
@@ -30,19 +29,20 @@ import {
   seriesForAlias,
   representativeSeries,
   seriesInfo,
-  labelYear,
+  basisOfCell,
+  unitLabel,
+  pivotYearCells,
   UNLIMITED_CELL_LIMIT,
   type CubeDb,
   type CellSpec,
-  type CellRow,
   type SeriesKey,
   type SeriesInfo,
   type AvgImputation,
   type CatalogSource,
 } from "@/lib/cube";
 import { GENERATED_VARIABLE_ALIASES, type GeneratedVariableAlias } from "@/lib/registry/generated";
-import { unitSymbol } from "@/lib/registry/lookup";
 import { toNormRows, type CompareSpec, type NormRow, type RawRow, type ScalarParam } from "./normalize";
+import { createCubeDbSingleton } from "./cube-db-singleton";
 
 export interface V2Paths {
   v2: string;
@@ -50,59 +50,19 @@ export interface V2Paths {
   ryuiki: string;
 }
 
-let sharedDb: (CubeDb & { close(): void }) | undefined;
+// シングルトンの生成・破棄のパターンは `v1-compat.ts` の `openV1CompatDb`/
+// `closeV1CompatDb` と全く同じだったため `cube-db-singleton.ts` に集約した
+// （Issue #48 PR-2 /simplify #10）。`aliasCatalogCache` はこの下で `const`
+// 宣言されるが、閉じる（呼ばれる）のはモジュール評価が終わった後（外部からの
+// `closeV2Db()` 呼び出し時）なので参照して問題ない。
+const v2Singleton = createCubeDbSingleton((db) => aliasCatalogCache.delete(db));
 
 export function openV2Db(paths: V2Paths): CubeDb & { close(): void } {
-  if (!sharedDb) sharedDb = sqliteCubeDb(paths);
-  // `sharedDb` は module スコープの `let`（`closeV2Db` からも再代入される）ため、
-  // TypeScript は直前の代入によるナローイングをここでは効かせない
-  // （クロージャから書き換えられうる変数の narrowing 制限）。直前の if で
-  // 必ず代入済みなので non-null で問題ない。
-  return sharedDb!;
+  return v2Singleton.open(paths);
 }
 
 export function closeV2Db(): void {
-  if (sharedDb) aliasCatalogCache.delete(sharedDb);
-  sharedDb?.close();
-  sharedDb = undefined;
-}
-
-function unitLabel(unitId: string | null): string | null {
-  return unitSymbol(unitId);
-}
-
-/**
- * `year_series_site`/`year_series_water` が使う。キューブの年セルは
- * stat ごとに別行（`mean`/`min`/`max`）なので、`queryCells` は1 (place, period) につき
- * 最大3行を返す——`lib/cube` はここをピボットしない設計（design §3.3「mean/min/max の
- * ピボットは JS で行う（(place, series, period_start) でまとめる）。b05 の自己 JOIN は
- * 使わない」）ので、このアダプタでピボットする。
- *
- * 1つの (place, period_start) に2つ以上の系列（`series` に渡した複数 tuple のうち）が
- * 同時にセルを持つことは実データ上は起きない（各地点は1つの出典＝1つの系列にしか
- * 属さない。複数系列が混ざるのは「ゾーン」集計だけ——design §3.3「系列の混ぜ方」）。
- * 万一起きれば `stat==='mean'` の2つ目が最初の1つ目を上書きするのではなく、
- * 別の系列の値を静かに合成してしまう前に気づけるよう、ここでは検出しない
- * （`rowsByKey` が同じ (year) キーの重複行として例外にする——診断としては
- * 十分で、ここで無理に多系列対応するとかえって隠れたバグを見えなくする）。
- */
-function pivotYearCells(cells: readonly CellRow[]): RawRow[] {
-  const byKey = new Map<string, RawRow>();
-  for (const c of cells) {
-    const k = `${c.placeId}|${c.periodStart}`;
-    let row = byKey.get(k);
-    if (!row) {
-      row = { site_id: c.siteId, year: labelYear(c.periodStart), n: c.n, n_censored: c.nCensored, unit: unitLabel(c.series.unitId) };
-      byKey.set(k, row);
-    }
-    // `c.value` は `spec.imputation`（呼び出し側が渡した zero/lod）で選ばれた値
-    // （`toCellRow` 参照）。v1 比較は常に「今回の imputation で選んだ値」対
-    // 「今回の imputation で選んだ値」の突き合わせなので、`valueZero` 決め打ちにしない。
-    if (c.stat === "mean") row.avg = c.value;
-    else if (c.stat === "min") row.min = c.value;
-    else if (c.stat === "max") row.max = c.value;
-  }
-  return [...byKey.values()];
+  v2Singleton.close();
 }
 
 /** `representativeSeries()`/`seriesForAlias()` の結果から単位を1つ選ぶ
@@ -113,19 +73,6 @@ function pivotYearCells(cells: readonly CellRow[]): RawRow[] {
 function firstUnit(series: readonly SeriesInfo[]): string | null {
   for (const s of series) if (s.unitId) return s.unitId;
   return series[0]?.unitId ?? null;
-}
-
-/**
- * `SiteSeriesRow` から basis を決める。`series.ts` の `basisOf`/`basisFromValueGrain`
- * のように `value_grain`（登録された tuple）だけでは決まらない——同じ
- * value_grain='day' の tuple が、地点によっては `input_grain='fiscal_year'`
- * のセル（出典が直接年度値だけを報告した年）も持つ（実測: atsugi の一部地点。
- * `site_variables_by_variable` の case docstring参照）。v1 の `kind`
- * （`input_grain='day'` かどうかで決まる）と同じ判定基準に揃える。
- */
-function siteSeriesBasis(r: { inputGrain: string; grain: string }): "day" | "fiscal_year" | "year" {
-  if (r.inputGrain === "day") return "day";
-  return r.grain === "year" ? "year" : "fiscal_year";
 }
 
 /** `unitCounts`（unit_id → 束ねた中の重み合計）から非NULL・最大重みの unit_id を選ぶ
@@ -436,7 +383,21 @@ async function fetchRawRows(
         limit: UNLIMITED_CELL_LIMIT,
       };
       const { rows: cells } = await queryCells(db, spec);
-      return pivotYearCells(cells);
+      // ピボット（mean/min/max をまとめる）は `lib/cube/observation.ts` の
+      // `pivotYearCells` 1箇所だけで行う（画面・AI と共通。Issue #48 PR-2
+      // /simplify #10）。`c.value` は `spec.imputation`（呼び出し側が渡した
+      // zero/lod）で選ばれた値なので、v1 比較は常に「今回の imputation で
+      // 選んだ値」対「今回の imputation で選んだ値」の突き合わせになる。
+      return pivotYearCells(cells).map((p) => ({
+        site_id: p.siteId,
+        year: p.year,
+        n: p.n,
+        n_censored: p.nCensored,
+        unit: unitLabel(p.unitId),
+        avg: p.value.mean,
+        min: p.value.min,
+        max: p.value.max,
+      }));
     }
     case "month_series_site": {
       const series = seriesForAlias("measurements", String(params.alias));
@@ -576,10 +537,10 @@ async function fetchRawRows(
       // 192件）の**両方**のセルを持つ。v1 の `kind`（`_MEAS_YEAR_SQL` の
       // `CASE WHEN input_grain='day' THEN 'daily' ELSE 'annual' END`）は
       // value_grain ではなく input_grain で決まるので、こちら（v2）も
-      // `siteSeriesBasis()`（`inputGrain==='day'` か否か）で判定する
-      // ——`basisFromValueGrain(valueGrain)` だけで判定すると、上のケースで
-      // 本来 別basis（day と fiscal_year）になるはずの2グループを誤って
-      // 1つの 'day' に合流させてしまう（n・avg が両方とも v1 と食い違う）。
+      // `basisOfCell()`（`lib/cube/series.ts`。`inputGrain==='day'` か否か）で
+      // 判定する——`basisFromValueGrain(valueGrain)` だけで判定すると、上の
+      // ケースで本来 別basis（day と fiscal_year）になるはずの2グループを
+      // 誤って1つの 'day' に合流させてしまう（n・avg が両方とも v1 と食い違う）。
       const siteId = String(params.site_id);
       const rows = await catalog.siteVariables(db, siteId, { dataset: "measurements", imputation, source: catalogSource });
 
@@ -593,7 +554,7 @@ async function fetchRawRows(
       }
       const groups = new Map<string, { variableId: string; basis: string; g: StatGroup }>();
       for (const r of rows) {
-        const basis = siteSeriesBasis(r);
+        const basis = basisOfCell(r);
         const key = `${r.series.variableId}\u0000${basis}`;
         let entry = groups.get(key);
         if (!entry) {

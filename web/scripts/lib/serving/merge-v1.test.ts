@@ -138,8 +138,8 @@ describe("merge-v1", () => {
     const routes = aliasKindRoutes(dbPath, DATASET);
     // grain='day' しか登録が無くても、annual-kind 行は既定の annualBasis
     // （'fiscal_year'）に出す——`hasAnnualGrain`（真の annual tuple の登録）は
-    // 問わない。v2 側（`adapters-v2.ts` の `siteSeriesBasis`）もセル単位の
-    // input_grain で basis を決めており、alias の登録を見ないため
+    // 問わない。v2 側（`adapters-v2.ts` が呼ぶ `@/lib/cube` の `basisOfCell`）も
+    // セル単位の input_grain で basis を決めており、alias の登録を見ないため
     // （`aliasKindRoutes` の docstring 参照）。
     expect(routes).toEqual([
       { alias: "pH", kind: "daily", variableId: "v:ph", basis: "day" },

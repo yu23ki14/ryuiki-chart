@@ -8,9 +8,12 @@
  * `@/lib/cube/db-sqlite`（`sqliteCubeDb`）をそのまま使う——v1compat も
  * `registry.sqlite`/`ryuiki.sqlite` を ATTACH した通常の `CubeDb` で、
  * `adapters-v2.ts` の `runV2Query` を全く同じ形で呼べる（別ファイルを指すだけ）。
+ * シングルトンの生成・破棄は `cube-db-singleton.ts` に集約してある
+ * （`adapters-v2.ts` の `openV2Db`/`closeV2Db` と同じパターンだった。
+ * Issue #48 PR-2 /simplify #10）。
  */
 import type { CubeDb } from "@/lib/cube";
-import { sqliteCubeDb } from "@/lib/cube/db-sqlite";
+import { createCubeDbSingleton } from "./cube-db-singleton";
 
 export interface V1CompatPaths {
   v1compat: string;
@@ -18,16 +21,12 @@ export interface V1CompatPaths {
   ryuiki: string;
 }
 
-let sharedDb: (CubeDb & { close(): void }) | undefined;
+const singleton = createCubeDbSingleton();
 
 export function openV1CompatDb(paths: V1CompatPaths): CubeDb & { close(): void } {
-  if (!sharedDb) {
-    sharedDb = sqliteCubeDb({ v2: paths.v1compat, registry: paths.registry, ryuiki: paths.ryuiki });
-  }
-  return sharedDb;
+  return singleton.open({ v2: paths.v1compat, registry: paths.registry, ryuiki: paths.ryuiki });
 }
 
 export function closeV1CompatDb(): void {
-  sharedDb?.close();
-  sharedDb = undefined;
+  singleton.close();
 }

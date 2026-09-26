@@ -339,7 +339,7 @@ async function fetchRawRows(
       // v1 の `_MEAS_YEAR_SQL` 自身が `kind = CASE WHEN input_grain='day'
       // THEN 'daily' ELSE 'annual' END` で決めており、`adapters-v2.ts` 側も
       // `SiteSeriesRow.inputGrain`（=`day` かどうか）で同じ判定をする
-      // （`siteSeriesBasis` 参照）ので、alias 単位の kind→basis 対応で揃う。
+      // （`@/lib/cube` の `basisOfCell` 参照）ので、alias 単位の kind→basis 対応で揃う。
       const siteId = String(params.site_id);
       const routes: mergeV1.AliasKindRoute[] = mergeDisabled ? [] : mergeV1.aliasKindRoutes(registryDbPath, DATASET);
       if (routes.length === 0) return [];

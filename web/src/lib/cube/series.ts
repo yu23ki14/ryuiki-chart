@@ -271,9 +271,10 @@ export function grainsForBasis(basis: "day" | "fiscal_year" | "year"): Grain[] {
  * （実測: 厚木系の中津川 BOD、day 入力36件＋年度入力192件）——旧
  * `basisFromValueGrain`（`value_grain` の登録値だけを見る）はこの地点で誤判定した。
  *
- * `scripts/lib/serving/adapters-v2.ts` の `siteSeriesBasis` と同じ判定基準
- * （`input_grain==='day'`→day、それ以外は `grain==='year'`→year、それ以外→fiscal_year）。
- * `catalog.ts` の `variableCatalog`（`nByBasis`）・`SiteDetail.tsx`（測定項目一覧の表示）が使う。
+ * `catalog.ts` の `variableCatalog`（`nByBasis`）・`SiteDetail.tsx`（測定項目一覧の表示）・
+ * `scripts/lib/serving/adapters-v2.ts`（`site_variables_by_variable` の basis 束ね。
+ * 以前は `siteSeriesBasis` という同じ判定の複製を持っていたが、この関数を直接
+ * import する形に統合した。Issue #48 PR-2 /simplify #10）が使う。
  */
 export function basisOfCell(cell: { grain: string; inputGrain: string }): "day" | "fiscal_year" | "year" {
   if (cell.inputGrain === "day") return "day";

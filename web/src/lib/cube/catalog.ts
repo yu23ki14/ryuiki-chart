@@ -539,19 +539,19 @@ const WATER_SYSTEM_NAME_JOIN = `
 const WATER_SYSTEM_NAME_SELECT = "wp.name_ja AS water_system_name";
 
 /**
- * 地点ロールアップ（n_meas/n_series/n_variables）の派生表。`extraJoins`
- * （`datasetFilterSql` が返す JOIN 断片。呼び出し側が `source` に合わせたエイリアス
- * （`obs`/`spv`）で呼んでおくこと）を挟めば `dataset` で絞り込める（Issue #48 PR-1
- * 論点A。`extraJoins` 省略時は従来どおり全 dataset 合算）。`source:'summary'` は
- * `summary_place_variable`（すでに `place_kind='site'`・年グレイン・`stat='mean'`
- * に絞り込み済み——WHERE が要らない）を読む。
+ * `siteRollupSql`/`waterBodies` の内側 SELECT が共有する FROM/JOIN/WHERE/GROUP BY
+ * 骨格（summary/live で表・列名が違うだけ）。呼び出し側が要る SELECT 列
+ * （`measuresSql`。`site_id` 以外の集計列）だけを差し替える（Issue #48 PR-2
+ * /simplify #10）。`extraJoins`（`datasetFilterSql` が返す JOIN 断片。呼び出し側が
+ * `source` に合わせたエイリアス（`obs`/`spv`）で呼んでおくこと）を挟めば `dataset`
+ * で絞り込める（Issue #48 PR-1 論点A。省略時は従来どおり全 dataset 合算）。
+ * `source:'summary'` は `summary_place_variable`（すでに `place_kind='site'`・
+ * 年グレイン・`stat='mean'` に絞り込み済み——WHERE が要らない）を読む。
  */
-function siteRollupSql(source: CatalogSource, extraJoins: readonly string[] = []): string {
+function siteAggregateSql(source: CatalogSource, extraJoins: readonly string[], measuresSql: string): string {
   if (source.kind === "summary") {
     return `
-    SELECT psr.external_key AS site_id, SUM(spv.n) AS n_meas,
-           COUNT(DISTINCT (${seriesKeySql("spv")})) AS n_series,
-           COUNT(DISTINCT spv.variable_id) AS n_variables
+    SELECT psr.external_key AS site_id, ${measuresSql}
     FROM summary_place_variable spv
     JOIN place_source_ref psr ON psr.place_id = spv.place_id AND psr.source_id = 'sites.site_id'
     ${extraJoins.join("\n    ")}
@@ -559,15 +559,23 @@ function siteRollupSql(source: CatalogSource, extraJoins: readonly string[] = []
   `;
   }
   return `
-    SELECT psr.external_key AS site_id, SUM(obs.n) AS n_meas,
-           COUNT(DISTINCT (${seriesKeySql("obs")})) AS n_series,
-           COUNT(DISTINCT obs.variable_id) AS n_variables
+    SELECT psr.external_key AS site_id, ${measuresSql}
     FROM observation_agg obs
     JOIN place_source_ref psr ON psr.place_id = obs.place_id AND psr.source_id = 'sites.site_id'
     ${extraJoins.join("\n    ")}
     WHERE obs.place_kind = 'site' AND ${YEAR_GRAINS_SQL} AND ${MEAN_STAT_SQL}
     GROUP BY psr.external_key
   `;
+}
+
+/** 地点ロールアップ（n_meas/n_series/n_variables）の派生表。`sites()`/`site()`/
+ *  `sitesInWaterBody()` が使う。 */
+function siteRollupSql(source: CatalogSource, extraJoins: readonly string[] = []): string {
+  const measuresSql =
+    source.kind === "summary"
+      ? `SUM(spv.n) AS n_meas, COUNT(DISTINCT (${seriesKeySql("spv")})) AS n_series, COUNT(DISTINCT spv.variable_id) AS n_variables`
+      : `SUM(obs.n) AS n_meas, COUNT(DISTINCT (${seriesKeySql("obs")})) AS n_series, COUNT(DISTINCT obs.variable_id) AS n_variables`;
+  return siteAggregateSql(source, extraJoins, measuresSql);
 }
 
 function toSiteRow2(r: {
@@ -620,11 +628,18 @@ const SITE_COLUMNS_SQL = `s.site_id, s.name, s.name_en, s.watershed, ${WATER_SYS
            s.municipality, s.muni_code, s.treatment, s.established_on, s.operator, s.source_id, s.source_ref, s.is_synthetic`;
 
 /**
- * `sites` JOIN `place_source_ref` JOIN 年セル集計（design §3.4）。`dataset` を
- * 指定すると `datasetFilterSql` で絞り込む（Issue #48 PR-1 論点A）。`source` 既定は
+ * `sites()`/`site()` が共有する SQL 組み立て（Issue #48 PR-2 /simplify #10。
+ * `where`/`whereParams`/`orderBy` だけが呼び出し側で違う）。`dataset` を指定すると
+ * `datasetFilterSql` で絞り込む（Issue #48 PR-1 論点A）。`source` 既定は
  * `summary`（design §4.3）。
  */
-export async function sites(db: CubeDb, opt?: { dataset?: string; source?: CatalogSource }): Promise<SiteRow2[]> {
+async function siteRows(
+  db: CubeDb,
+  opt: { dataset?: string; source?: CatalogSource } | undefined,
+  where: string,
+  whereParams: readonly SqlParam[],
+  orderBy: string,
+): Promise<SiteRow2[]> {
   const source = opt?.source ?? DEFAULT_CATALOG_SOURCE;
   const alias = source.kind === "summary" ? "spv" : "obs";
   const filter = opt?.dataset ? await datasetFilterSql(db, opt.dataset, alias) : undefined;
@@ -635,7 +650,9 @@ export async function sites(db: CubeDb, opt?: { dataset?: string; source?: Catal
               0 AS n_meas, 0 AS n_series, 0 AS n_variables
        FROM sites s
        ${WATER_SYSTEM_NAME_JOIN}
-       ORDER BY s.zone, s.elevation_m DESC`,
+       ${where}
+       ${orderBy}`,
+      whereParams,
     );
     return rows.map(toSiteRow2);
   }
@@ -646,10 +663,18 @@ export async function sites(db: CubeDb, opt?: { dataset?: string; source?: Catal
     FROM sites s
     ${WATER_SYSTEM_NAME_JOIN}
     LEFT JOIN (${siteRollupSql(source, filter?.joins)}) v ON v.site_id = s.site_id
-    ORDER BY s.zone, s.elevation_m DESC
+    ${where}
+    ${orderBy}
   `;
-  const rows = await db.all<Parameters<typeof toSiteRow2>[0]>(sql, filter?.params ?? []);
+  const rows = await db.all<Parameters<typeof toSiteRow2>[0]>(sql, [...(filter?.params ?? []), ...whereParams]);
   return rows.map(toSiteRow2);
+}
+
+/**
+ * `sites` JOIN `place_source_ref` JOIN 年セル集計（design §3.4）。
+ */
+export async function sites(db: CubeDb, opt?: { dataset?: string; source?: CatalogSource }): Promise<SiteRow2[]> {
+  return siteRows(db, opt, "", [], "ORDER BY s.zone, s.elevation_m DESC");
 }
 
 /**
@@ -658,31 +683,8 @@ export async function sites(db: CubeDb, opt?: { dataset?: string; source?: Catal
  * `undefined`。
  */
 export async function site(db: CubeDb, siteId: string, opt?: { dataset?: string; source?: CatalogSource }): Promise<SiteRow2 | undefined> {
-  const source = opt?.source ?? DEFAULT_CATALOG_SOURCE;
-  const alias = source.kind === "summary" ? "spv" : "obs";
-  const filter = opt?.dataset ? await datasetFilterSql(db, opt.dataset, alias) : undefined;
-  if (filter?.empty) {
-    const rows = await db.all<Parameters<typeof toSiteRow2>[0]>(
-      `SELECT ${SITE_COLUMNS_SQL},
-              0 AS n_meas, 0 AS n_series, 0 AS n_variables
-       FROM sites s
-       ${WATER_SYSTEM_NAME_JOIN}
-       WHERE s.site_id = ?`,
-      [siteId],
-    );
-    return rows[0] ? toSiteRow2(rows[0]) : undefined;
-  }
-
-  const sql = `
-    SELECT ${SITE_COLUMNS_SQL},
-           COALESCE(v.n_meas, 0) AS n_meas, COALESCE(v.n_series, 0) AS n_series, COALESCE(v.n_variables, 0) AS n_variables
-    FROM sites s
-    ${WATER_SYSTEM_NAME_JOIN}
-    LEFT JOIN (${siteRollupSql(source, filter?.joins)}) v ON v.site_id = s.site_id
-    WHERE s.site_id = ?
-  `;
-  const rows = await db.all<Parameters<typeof toSiteRow2>[0]>(sql, [...(filter?.params ?? []), siteId]);
-  return rows[0] ? toSiteRow2(rows[0]) : undefined;
+  const rows = await siteRows(db, opt, "WHERE s.site_id = ?", [siteId], "");
+  return rows[0];
 }
 
 /**
@@ -756,26 +758,11 @@ export async function waterBodies(db: CubeDb, opt?: { series?: SeriesKey[]; data
     params.push(...filter.params);
   }
 
-  const innerSql =
+  const innerMeasuresSql =
     source.kind === "summary"
-      ? `
-      SELECT psr.external_key AS site_id, SUM(spv.n) AS n,
-             MIN(spv.y_from) AS y_from, MAX(spv.y_to) AS y_to
-      FROM summary_place_variable spv
-      JOIN place_source_ref psr ON psr.place_id = spv.place_id AND psr.source_id = 'sites.site_id'
-      ${joins.join("\n      ")}
-      GROUP BY psr.external_key
-    `
-      : `
-      SELECT psr.external_key AS site_id, SUM(obs.n) AS n,
-             MIN(CAST(substr(obs.period_start,1,4) AS INTEGER)) AS y_from,
-             MAX(CAST(substr(obs.period_start,1,4) AS INTEGER)) AS y_to
-      FROM observation_agg obs
-      JOIN place_source_ref psr ON psr.place_id = obs.place_id AND psr.source_id = 'sites.site_id'
-      ${joins.join("\n      ")}
-      WHERE obs.place_kind = 'site' AND ${YEAR_GRAINS_SQL} AND ${MEAN_STAT_SQL}
-      GROUP BY psr.external_key
-    `;
+      ? `SUM(spv.n) AS n, MIN(spv.y_from) AS y_from, MAX(spv.y_to) AS y_to`
+      : `SUM(obs.n) AS n, MIN(CAST(substr(obs.period_start,1,4) AS INTEGER)) AS y_from, MAX(CAST(substr(obs.period_start,1,4) AS INTEGER)) AS y_to`;
+  const innerSql = siteAggregateSql(source, joins, innerMeasuresSql);
 
   const sql = `
     SELECT s.municipality AS name,

@@ -747,22 +747,27 @@ export interface MonthDaySeriesOpt {
 }
 
 /**
- * 月セル（`grain='month'`、`stat='mean'` のみ）。`basis='day'` の変数だけに対応する
- * （月・日は検体値〔day〕を積み上げた粒度でしか意味を持たない——design §2.1「basis=day
- * のみ許可、それ以外は例外」）。
+ * `monthSeries`/`daySeries` が共有する実装（Issue #48 PR-2 /simplify #10。
+ * grain だけが違う同じ処理だったので1関数にまとめた）。`basis='day'` の
+ * 変数だけに対応する（月・日は検体値〔day〕を積み上げた粒度でしか意味を持たない
+ * ——design §2.1「basis=day のみ許可、それ以外は例外」）。
+ *
+ * この変数の既定 basis（登録から優先順位で決めた基準）を検出したうえで day 以外を
+ * 拒む——`basis="day"` を決め打ちで問い合わせると、day 系列が無い変数（例:
+ * `land.max_subsidence`＝year のみ）でも「セルが無いので0行」になってしまい、
+ * 呼び出し側に「basis が違う」と伝わらない。
  */
-export async function monthSeries(db: CubeDb, opt: MonthDaySeriesOpt): Promise<LimitedRows<SeriesPoint>> {
-  // この変数の既定 basis（登録から優先順位で決めた基準）を検出したうえで day 以外を
-  // 拒む——`basis="day"` を決め打ちで問い合わせると、day 系列が無い変数（例:
-  // `land.max_subsidence`＝year のみ）でも「セルが無いので0行」になってしまい、
-  // 呼び出し側に「basis が違う」と伝わらない。
+async function monthOrDaySeries(db: CubeDb, opt: MonthDaySeriesOpt, grain: "month" | "day"): Promise<LimitedRows<SeriesPoint>> {
   const series = representativeSeriesOrThrow(opt.variableId, opt.stat);
   const basis = basisOf(series).basis;
-  if (basis !== "day") throw new Error(`monthSeries: basis='day' の変数だけに対応する（この変数の既定 basis は '${basis}'）`);
+  if (basis !== "day") {
+    const fnName = grain === "month" ? "monthSeries" : "daySeries";
+    throw new Error(`${fnName}: basis='day' の変数だけに対応する（この変数の既定 basis は '${basis}'）`);
+  }
   const spec: CellSpec = {
     series,
     scope: opt.scope,
-    grain: "month",
+    grain,
     stats: ["mean"],
     period: opt.period,
     imputation: opt.imputation,
@@ -772,22 +777,14 @@ export async function monthSeries(db: CubeDb, opt: MonthDaySeriesOpt): Promise<L
   return { rows: cells.map(toSeriesPoint), truncated };
 }
 
+/** 月セル（`grain='month'`、`stat='mean'` のみ）。`monthOrDaySeries` 参照。 */
+export async function monthSeries(db: CubeDb, opt: MonthDaySeriesOpt): Promise<LimitedRows<SeriesPoint>> {
+  return monthOrDaySeries(db, opt, "month");
+}
+
 /** 日セル（`grain='day'`、`stat='mean'` のみ）。`monthSeries` と同じく basis='day' 限定。 */
 export async function daySeries(db: CubeDb, opt: MonthDaySeriesOpt): Promise<LimitedRows<SeriesPoint>> {
-  const series = representativeSeriesOrThrow(opt.variableId, opt.stat);
-  const basis = basisOf(series).basis;
-  if (basis !== "day") throw new Error(`daySeries: basis='day' の変数だけに対応する（この変数の既定 basis は '${basis}'）`);
-  const spec: CellSpec = {
-    series,
-    scope: opt.scope,
-    grain: "day",
-    stats: ["mean"],
-    period: opt.period,
-    imputation: opt.imputation,
-    limit: opt.limit,
-  };
-  const { rows: cells, truncated } = await queryCells(db, spec);
-  return { rows: cells.map(toSeriesPoint), truncated };
+  return monthOrDaySeries(db, opt, "day");
 }
 
 /* ------------------------------------------------------------------ */
