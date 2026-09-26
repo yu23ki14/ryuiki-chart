@@ -16,6 +16,8 @@ import {
   summarize,
   buildEnvelope,
   buildZoneEnvelope,
+  pivotYearCells,
+  toSeriesPoint,
   unitLabel,
   variableCatalog,
   siteVariables,
@@ -357,24 +359,34 @@ const get_timeseries = tool({
     const cubeScope: Scope = scope.type === "water" ? { kind: "water", municipality: scope.name } : { kind: "site", siteId: scope.siteId };
     const sites = scope.type === "water" ? await sitesInWaterBody(db, scope.name, { dataset: DATASET }) : undefined;
 
+    const isYearGrain = grain === "year" || grain === "fiscal_year";
     const spec: CellSpec = {
       series: all,
       scope: cubeScope,
       grain: cellGrain,
-      stats: grain === "year" || grain === "fiscal_year" ? ["mean", "min", "max"] : ["mean"],
+      stats: isYearGrain ? ["mean", "min", "max"] : ["mean"],
       inputGrain: basisFilter.inputGrain,
       period,
       imputation: "both",
     };
     const { rows: cells, truncated } = await queryCells(db, spec);
     const facets = facetsForSeries(all.map((s) => withTheme(s)), cubeScope);
-    const envelope = await buildEnvelope(db, spec, cells, { truncated });
+    // `envelope` の coverage/provenance（nNotDetected・出典の帰属）は生セル（`cells`）
+    // からでないと正しく計算できない（ピボット後は落ちる情報がある）ので、先に生
+    // セルで組み立ててから、`rows` だけ画面と同じピボット済みの点に差し替える
+    // （Issue #48 PR-2 code-review #5）。以前は `data.points`（生セル）と
+    // `envelope.rows`（同じ生セル）を別々に持っており、24KB の予算で独立に
+    // 間引かれて食い違いうる上、`data.points` の形も画面（yearSeries 等の
+    // ピボット済み点）と食い違っていた。
+    const points = isYearGrain ? pivotYearCells(cells) : cells.map(toSeriesPoint);
+    const rawEnvelope = await buildEnvelope(db, spec, cells, { truncated });
+    const envelope = { ...rawEnvelope, rows: points };
 
     return makeResult({
       tool: "get_timeseries",
       tables: ["observation_agg"],
-      data: { scope, sites, grain, basis, stat: stat ?? "representative", variableId, unit, registry, points: cells, envelope },
-      rowCount: cells.length,
+      data: { scope, sites, grain, basis, stat: stat ?? "representative", variableId, unit, registry, points, envelope },
+      rowCount: points.length,
       elapsedMs: performance.now() - t0,
       caveats: caveatKeysForFacets(facets),
     });

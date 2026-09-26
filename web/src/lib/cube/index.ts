@@ -66,6 +66,7 @@ export {
   rainDaily,
   rainMonthlyClim,
   pivotYearCells,
+  toSeriesPoint,
 } from "./observation";
 
 export type { CatalogSource, AvgImputation, VariableCatalogRow, SiteSeriesRow, SiteRow2, WaterBodyRow, SiteSeriesCell, DatasetCell } from "./catalog";

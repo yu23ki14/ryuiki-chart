@@ -720,7 +720,10 @@ export interface SeriesPoint {
   valueLod: number | null;
 }
 
-function toSeriesPoint(c: CellRow): SeriesPoint {
+/** month/day セル（1 (place, period) につき stat='mean' の1行）を `SeriesPoint` に
+ *  詰め替える。`pivotYearCells` と同様、`tools.ts` の `get_timeseries`（month/day
+ *  grain）が画面と同じ形の点を返すために export する（Issue #48 PR-2 code-review #5）。 */
+export function toSeriesPoint(c: CellRow): SeriesPoint {
   return {
     placeId: c.placeId,
     siteId: c.siteId,
