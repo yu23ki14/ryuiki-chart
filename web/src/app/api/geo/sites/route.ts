@@ -1,32 +1,38 @@
 import { NextResponse } from "next/server";
-import { listSites } from "@/lib/queries";
+import { d1CubeDb, sites } from "@/lib/cube";
 
 export const runtime = "nodejs";
 
+/** measurements データセット固定（PR-2 のスコープは測定値系。design §1.1 と同じ前提）。 */
+const DATASET = "measurements";
+
 export async function GET() {
-  const sites = await listSites();
+  const db = await d1CubeDb();
+  const rows = await sites(db, { dataset: DATASET });
   return NextResponse.json(
     {
       type: "FeatureCollection",
-      features: sites.map((s) => ({
-        type: "Feature",
-        geometry: { type: "Point", coordinates: [s.lon, s.lat] },
-        properties: {
-          site_id: s.site_id,
-          name: s.name,
-          zone: s.zone,
-          elevation_m: s.elevation_m,
-          municipality: s.municipality,
-          operator: s.operator,
-          source_id: s.source_id,
-          source_ref: s.source_ref,
-          watershed: s.watershed,
-          water_system_name: s.water_system_name,
-          n_meas: s.n_meas,
-          n_var: s.n_var,
-          treatment: s.treatment,
-        },
-      })),
+      features: rows
+        .filter((s) => s.lat != null && s.lon != null)
+        .map((s) => ({
+          type: "Feature",
+          geometry: { type: "Point", coordinates: [s.lon, s.lat] },
+          properties: {
+            site_id: s.siteId,
+            name: s.name,
+            zone: s.zone,
+            elevation_m: s.elevationM,
+            municipality: s.municipality,
+            operator: s.operator,
+            source_id: s.sourceId,
+            source_ref: s.sourceRef,
+            watershed: s.watershed,
+            water_system_name: s.waterSystemName,
+            n_meas: s.nMeas,
+            n_var: s.nVariables,
+            treatment: s.treatment,
+          },
+        })),
     },
     { headers: { "Cache-Control": "public, max-age=300" } },
   );

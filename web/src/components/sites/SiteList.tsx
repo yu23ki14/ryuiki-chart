@@ -8,39 +8,39 @@ import { caveatBody } from "@/lib/registry/lookup-client";
 import { MUNICIPALITY_LABEL } from "@/lib/municipality";
 
 interface Site {
-  site_id: string;
+  siteId: string;
   name: string | null;
   zone: number | null;
-  lat: number;
-  lon: number;
-  elevation_m: number | null;
+  lat: number | null;
+  lon: number | null;
+  elevationM: number | null;
   municipality: string | null;
   operator: string | null;
-  water_system_name: string | null;
-  source_id: string | null;
+  waterSystemName: string | null;
+  sourceId: string | null;
   treatment: string | null;
-  established_on: string | null;
-  n_meas: number;
-  n_var: number;
+  establishedOn: string | null;
+  nMeas: number;
+  nVariables: number;
 }
 
-type SortKey = "name" | "zone" | "elevation_m" | "n_meas" | "municipality";
+type SortKey = "name" | "zone" | "elevationM" | "nMeas" | "municipality";
 
 export function SiteList({ sites }: { sites: Site[] }) {
   const [q, setQ] = React.useState("");
   const [zone, setZone] = React.useState<number | null>(null);
   const [onlyData, setOnlyData] = React.useState(true);
-  const [sort, setSort] = React.useState<SortKey>("elevation_m");
+  const [sort, setSort] = React.useState<SortKey>("elevationM");
   const [desc, setDesc] = React.useState(true);
 
   const rows = React.useMemo(() => {
     const needle = q.trim();
     let r = sites.filter((s) => {
-      if (onlyData && s.n_meas === 0) return false;
+      if (onlyData && s.nMeas === 0) return false;
       if (zone !== null && s.zone !== zone) return false;
       if (
         needle &&
-        !`${s.name ?? ""} ${s.municipality ?? ""} ${s.water_system_name ?? ""} ${s.site_id}`.includes(needle)
+        !`${s.name ?? ""} ${s.municipality ?? ""} ${s.waterSystemName ?? ""} ${s.siteId}`.includes(needle)
       )
         return false;
       return true;
@@ -87,7 +87,7 @@ export function SiteList({ sites }: { sites: Site[] }) {
           <div>
             <h1 className="text-[15px] font-bold">地点カルテ</h1>
             <p className="text-[11px] text-muted">
-              観測地点 {nf(sites.length)} 件。うち測定値があるのは {nf(sites.filter((s) => s.n_meas > 0).length)} 件
+              観測地点 {nf(sites.length)} 件。うち測定値があるのは {nf(sites.filter((s) => s.nMeas > 0).length)} 件
             </p>
           </div>
           <input
@@ -124,10 +124,10 @@ export function SiteList({ sites }: { sites: Site[] }) {
             <tr>
               {th("name", "地点名")}
               {th("zone", "ゾーン")}
-              {th("elevation_m", "標高")}
+              {th("elevationM", "標高")}
               {th("municipality", MUNICIPALITY_LABEL)}
               <th>水系</th>
-              {th("n_meas", "測定値")}
+              {th("nMeas", "測定値")}
               <th>項目数</th>
               <th>運用</th>
               <th>設置</th>
@@ -136,10 +136,10 @@ export function SiteList({ sites }: { sites: Site[] }) {
           </thead>
           <tbody>
             {rows.map((s) => (
-              <tr key={s.site_id}>
+              <tr key={s.siteId}>
                 <td>
-                  <Link href={`/sites/${encodeURIComponent(s.site_id)}`} className="text-water-ink hover:underline">
-                    {s.name ?? s.site_id}
+                  <Link href={`/sites/${encodeURIComponent(s.siteId)}`} className="text-water-ink hover:underline">
+                    {s.name ?? s.siteId}
                   </Link>
                 </td>
                 <td>
@@ -152,13 +152,13 @@ export function SiteList({ sites }: { sites: Site[] }) {
                     <span className="text-muted">–</span>
                   )}
                 </td>
-                <td className="num">{s.elevation_m != null ? `${Math.round(s.elevation_m)} m` : "–"}</td>
+                <td className="num">{s.elevationM != null ? `${Math.round(s.elevationM)} m` : "–"}</td>
                 <td>{s.municipality ?? "–"}</td>
-                <td className="text-muted">{s.water_system_name ?? "–"}</td>
-                <td className="num">{nf(s.n_meas)}</td>
-                <td className="num">{s.n_var}</td>
+                <td className="text-muted">{s.waterSystemName ?? "–"}</td>
+                <td className="num">{nf(s.nMeas)}</td>
+                <td className="num">{s.nVariables}</td>
                 <td className="text-muted">{s.operator ?? "–"}</td>
-                <td className="num text-muted">{s.established_on ?? "–"}</td>
+                <td className="num text-muted">{s.establishedOn ?? "–"}</td>
                 <td>{s.treatment ?? ""}</td>
               </tr>
             ))}

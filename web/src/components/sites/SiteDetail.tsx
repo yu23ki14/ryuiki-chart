@@ -8,79 +8,100 @@ import { ChartFrame, MiniTable } from "@/components/viz/ChartFrame";
 import { MapCanvas } from "@/components/map/MapCanvas";
 import { SERIES, ZONE_COLORS, ZONE_LABELS, ZONE_ELEV } from "@/components/viz/palette";
 import { Btn, Stat, nf, Provenance, Spinner } from "@/components/ui";
-import { shortVariable, caveatBody } from "@/lib/registry/lookup-client";
-import { VARIABLE_NOTE } from "@/lib/registry/generated-client";
+import { caveatBody } from "@/lib/registry/lookup-client";
+import { VARIABLE_LABEL } from "@/lib/registry/generated-client";
 import { MUNICIPALITY_LABEL } from "@/lib/municipality";
 import { useJson } from "@/components/useJson";
 import { fmt } from "@/components/viz/scales";
 import { useSetPageContext } from "@/components/assistant/PageContextProvider";
 
 interface Site {
-  site_id: string;
+  siteId: string;
   name: string | null;
   zone: number | null;
-  lat: number;
-  lon: number;
-  elevation_m: number | null;
+  lat: number | null;
+  lon: number | null;
+  elevationM: number | null;
   municipality: string | null;
   operator: string | null;
-  water_system_name: string | null;
+  waterSystemName: string | null;
   watershed: string | null;
-  source_id: string | null;
-  source_ref: string | null;
+  sourceId: string | null;
+  sourceRef: string | null;
   treatment: string | null;
-  established_on: string | null;
-  n_meas: number;
-  n_var: number;
+  establishedOn: string | null;
+  nMeas: number;
+  nVariables: number;
 }
+/** `catalog.siteVariables()`（`SiteSeriesRow`）をクライアント向けに単位だけ解決した形
+ *  （page.tsx が `unitLabel(v.series.unitId)` で解決してから渡す。クライアントからは
+ *  `@/lib/registry/lookup`〔サーバ専用の大きい generated.ts を経由〕を呼ばないため）。 */
 interface Variable {
-  variable: string;
-  kind: string;
+  variableId: string;
+  obsStat: string | null;
+  valueGrain: string | null;
+  grain: string;
   n: number;
-  y_from: number;
-  y_to: number;
-  avg: number;
+  yFrom: number;
+  yTo: number;
+  avg: number | null;
   unit: string | null;
 }
 
+type Basis = "day" | "fiscal_year" | "year";
+
+/** `lib/cube/series.ts` の `basisFromValueGrain` と同じ式（クライアント安全のため複製）。 */
+function basisFromValueGrain(valueGrain: string | null): Basis {
+  if (valueGrain === "day") return "day";
+  if (valueGrain === "fiscal_year") return "fiscal_year";
+  return "year";
+}
+
+function variableLabel(variableId: string): string {
+  return VARIABLE_LABEL[variableId]?.short ?? variableId;
+}
+
 export function SiteDetail({ site, variables }: { site: Site; variables: Variable[] }) {
-  const [variable, setVariable] = React.useState(variables[0]?.variable ?? "");
-  const kind = (variables.find((v) => v.variable === variable)?.kind ?? "daily") as "daily" | "annual";
-  const unit = variables.find((v) => v.variable === variable)?.unit ?? null;
-  const [grain, setGrain] = React.useState<"day" | "month" | "year">("month");
+  const [variableId, setVariableId] = React.useState(variables[0]?.variableId ?? "");
+  const selected = variables.find((v) => v.variableId === variableId);
+  const basis: Basis = basisFromValueGrain(selected?.valueGrain ?? null);
+  const unit = selected?.unit ?? null;
+  const [grainPref, setGrainPref] = React.useState<"day" | "month" | "year">("month");
+  const grain = basis === "day" ? grainPref : "year";
 
   useSetPageContext({
     route: "/sites/[id]",
-    title: site.name ?? site.site_id,
-    siteId: site.site_id,
-    name: site.name ?? site.site_id,
+    title: site.name ?? site.siteId,
+    siteId: site.siteId,
+    name: site.name ?? site.siteId,
     zone: site.zone,
-    nMeas: site.n_meas,
+    nMeas: site.nMeas,
   });
 
   const { data, loading } = useJson<{
-    year: { year: number; n: number; avg: number; min: number; max: number; n_censored: number }[];
-    month: { ym: string; year: number; month: number; n: number; avg: number }[];
-    day: { d: string; value: number; n_censored: number }[];
+    year: { year: number; n: number; nCensored: number; value: { mean: number | null; min: number | null; max: number | null } }[];
+    month: { periodStart: string; n: number; nCensored: number; value: number | null }[];
+    day: { periodStart: string; n: number; nCensored: number; value: number | null }[];
   }>(
-    variable
-      ? `/api/timeseries?mode=site&variable=${encodeURIComponent(variable)}&site=${encodeURIComponent(site.site_id)}&kind=${kind}`
+    variableId
+      ? `/api/timeseries?mode=site&variable=${encodeURIComponent(variableId)}&site=${encodeURIComponent(site.siteId)}&basis=${basis}&stat=representative`
       : "",
   );
 
   const series: LineSeries[] = React.useMemo(() => {
     if (!data) return [];
+    const label = variableLabel(variableId);
     if (grain === "year")
       return [
         {
           key: "y",
-          label: shortVariable(variable),
+          label,
           color: SERIES[0],
           points: data.year.map((p) => ({
             x: p.year,
-            y: p.avg,
+            y: p.value.mean,
             n: p.n,
-            censored: p.n_censored > 0 && p.n_censored === p.n,
+            censored: p.nCensored > 0 && p.nCensored === p.n,
           })),
         },
       ];
@@ -88,31 +109,34 @@ export function SiteDetail({ site, variables }: { site: Site; variables: Variabl
       return [
         {
           key: "m",
-          label: shortVariable(variable),
+          label,
           color: SERIES[0],
-          points: data.month.map((p) => ({ x: p.year + (p.month - 0.5) / 12, y: p.avg, n: p.n })),
+          points: data.month.map((p) => ({ x: ymToX(p.periodStart.slice(0, 7)), y: p.value, n: p.n })),
         },
       ];
     return [
       {
         key: "d",
-        label: shortVariable(variable),
+        label,
         color: SERIES[0],
         points: data.day.map((p) => ({
-          x: dayToX(p.d),
+          x: dayToX(p.periodStart),
           y: p.value,
-          censored: p.n_censored > 0,
+          censored: (p.nCensored ?? 0) > 0,
         })),
       },
     ];
-  }, [data, grain, variable]);
+  }, [data, grain, variableId]);
 
   const heat = React.useMemo(() => {
-    if (!data?.month.length) return { cells: [], years: [] as number[] };
-    return {
-      years: [...new Set(data.month.map((p) => p.year))].sort((a, b) => a - b),
-      cells: data.month.map((p) => ({ x: p.year, y: p.month, v: p.avg, n: p.n })),
-    };
+    if (!data?.month.length) return { cells: [] as { x: number; y: number; v: number; n: number }[], years: [] as number[] };
+    const cells = data.month.filter((p) => typeof p.value === "number").map((p) => ({
+      x: Number(p.periodStart.slice(0, 4)),
+      y: Number(p.periodStart.slice(5, 7)),
+      v: p.value as number,
+      n: p.n,
+    }));
+    return { years: [...new Set(cells.map((c) => c.x))].sort((a, b) => a - b), cells };
   }, [data]);
 
   const sources = React.useMemo(
@@ -121,13 +145,16 @@ export function SiteDetail({ site, variables }: { site: Site; variables: Variabl
         type: "geojson" as const,
         data: {
           type: "FeatureCollection" as const,
-          features: [
-            {
-              type: "Feature" as const,
-              geometry: { type: "Point" as const, coordinates: [site.lon, site.lat] },
-              properties: {},
-            },
-          ],
+          features:
+            site.lon != null && site.lat != null
+              ? [
+                  {
+                    type: "Feature" as const,
+                    geometry: { type: "Point" as const, coordinates: [site.lon, site.lat] },
+                    properties: {},
+                  },
+                ]
+              : [],
         },
       },
     }),
@@ -152,7 +179,7 @@ export function SiteDetail({ site, variables }: { site: Site; variables: Variabl
     [site.zone],
   );
 
-  const url = site.source_ref?.startsWith("http") ? site.source_ref.split(" ")[0] : null;
+  const url = site.sourceRef?.startsWith("http") ? site.sourceRef.split(" ")[0] : null;
 
   return (
     <div className="flex-1 overflow-y-auto thin-scroll">
@@ -163,7 +190,7 @@ export function SiteDetail({ site, variables }: { site: Site; variables: Variabl
               <Link href="/sites" className="text-[11px] text-water hover:underline no-print">
                 ← 地点一覧
               </Link>
-              <h1 className="text-[18px] font-bold">{site.name ?? site.site_id}</h1>
+              <h1 className="text-[18px] font-bold">{site.name ?? site.siteId}</h1>
               {site.zone != null && (
                 <span
                   className="text-[10.5px] px-1.5 py-0.5 rounded text-white"
@@ -177,13 +204,13 @@ export function SiteDetail({ site, variables }: { site: Site; variables: Variabl
                 <span className="text-[10.5px] px-1.5 py-0.5 rounded border border-line">{site.treatment}</span>
               )}
             </div>
-            <p className="text-[11px] text-muted font-mono mt-0.5">{site.site_id}</p>
+            <p className="text-[11px] text-muted font-mono mt-0.5">{site.siteId}</p>
           </div>
           <div className="flex gap-6 ml-auto flex-wrap">
-            <Stat label="標高" value={site.elevation_m != null ? fmt(site.elevation_m) : "–"} unit="m" />
-            <Stat label="測定値" value={nf(site.n_meas)} unit="件" note={`${site.n_var} 項目`} />
+            <Stat label="標高" value={site.elevationM != null ? fmt(site.elevationM) : "–"} unit="m" />
+            <Stat label="測定値" value={nf(site.nMeas)} unit="件" note={`${site.nVariables} 項目`} />
             <Stat label={MUNICIPALITY_LABEL} value={<span className="text-[15px]">{site.municipality ?? "–"}</span>} />
-            <Stat label="水系" value={<span className="text-[15px]">{site.water_system_name ?? "–"}</span>} note={site.watershed ?? undefined} />
+            <Stat label="水系" value={<span className="text-[15px]">{site.waterSystemName ?? "–"}</span>} note={site.watershed ?? undefined} />
           </div>
         </div>
       </div>
@@ -191,21 +218,21 @@ export function SiteDetail({ site, variables }: { site: Site; variables: Variabl
       <div className="p-4 grid grid-cols-1 xl:grid-cols-3 gap-4">
         <div className="xl:col-span-2 space-y-4">
           <ChartFrame
-            title={`${shortVariable(variable)} の推移`}
-            subtitle={VARIABLE_NOTE[variable] ?? "この地点で記録されている値の推移"}
+            title={`${variableLabel(variableId)} の推移`}
+            subtitle={VARIABLE_LABEL[variableId]?.note ?? "この地点で記録されている値の推移"}
             right={
               <div className="flex gap-0.5">
-                {kind === "daily" && (
+                {basis === "day" && (
                   <>
-                    <Btn active={grain === "day"} onClick={() => setGrain("day")}>
+                    <Btn active={grain === "day"} onClick={() => setGrainPref("day")}>
                       日
                     </Btn>
-                    <Btn active={grain === "month"} onClick={() => setGrain("month")}>
+                    <Btn active={grain === "month"} onClick={() => setGrainPref("month")}>
                       月
                     </Btn>
                   </>
                 )}
-                <Btn active={grain === "year"} onClick={() => setGrain("year")}>
+                <Btn active={grain === "year"} onClick={() => setGrainPref("year")}>
                   年
                 </Btn>
               </div>
@@ -214,12 +241,12 @@ export function SiteDetail({ site, variables }: { site: Site; variables: Variabl
             table={
               <MiniTable
                 columns={["年", `平均${unit ? `（${unit}）` : ""}`, "最小", "最大", "n", "下限未満"]}
-                rows={(data?.year ?? []).map((p) => [p.year, p.avg, p.min, p.max, p.n, p.n_censored])}
+                rows={(data?.year ?? []).map((p) => [p.year, p.value.mean, p.value.min, p.value.max, p.n, p.nCensored])}
               />
             }
             note={
               <>
-                {caveatBody("duplicates")} {caveatBody("censored")}
+                {caveatBody("duplicates")} {caveatBody("censoredLod")}
               </>
             }
           >
@@ -240,14 +267,14 @@ export function SiteDetail({ site, variables }: { site: Site; variables: Variabl
             )}
           </ChartFrame>
 
-          {kind === "daily" && heat.cells.length > 0 && (
+          {basis === "day" && heat.cells.length > 0 && (
             <ChartFrame
               title="年 × 月のヒートマップ"
               subtitle="縦が月、横が年。季節の型と、それが崩れた年を同時に見る"
               table={
                 <MiniTable
                   columns={["年", "月", `平均${unit ? `（${unit}）` : ""}`, "n"]}
-                  rows={(data?.month ?? []).map((p) => [p.year, p.month, p.avg, p.n])}
+                  rows={heat.cells.map((c) => [c.x, c.y, c.v, c.n])}
                 />
               }
             >
@@ -267,16 +294,21 @@ export function SiteDetail({ site, variables }: { site: Site; variables: Variabl
         <div className="space-y-4">
           <div className="card overflow-hidden">
             <div className="px-3 py-2 border-b border-line text-[13px] font-semibold">位置</div>
-            <MapCanvas
-              sources={sources}
-              layers={layers}
-              center={[site.lon, site.lat]}
-              zoom={12}
-              className="relative h-56"
-            />
+            {site.lat != null && site.lon != null ? (
+              <MapCanvas
+                sources={sources}
+                layers={layers}
+                center={[site.lon, site.lat]}
+                zoom={12}
+                className="relative h-56"
+              />
+            ) : (
+              <p className="p-6 text-[12px] text-muted text-center">座標が未登録の地点です</p>
+            )}
             <div className="px-3 py-2 text-[11px] text-muted tnum">
-              {site.lat.toFixed(5)}, {site.lon.toFixed(5)}　運用: {site.operator ?? "–"}
-              {site.established_on && `　設置: ${site.established_on}`}
+              {site.lat != null && site.lon != null ? `${site.lat.toFixed(5)}, ${site.lon.toFixed(5)}` : "座標不明"}
+              　運用: {site.operator ?? "–"}
+              {site.establishedOn && `　設置: ${site.establishedOn}`}
             </div>
           </div>
 
@@ -288,19 +320,19 @@ export function SiteDetail({ site, variables }: { site: Site; variables: Variabl
             <div className="max-h-[420px] overflow-y-auto thin-scroll">
               {variables.map((v) => (
                 <button
-                  key={v.variable + v.kind}
-                  onClick={() => setVariable(v.variable)}
+                  key={v.variableId + (v.obsStat ?? "") + (v.valueGrain ?? "")}
+                  onClick={() => setVariableId(v.variableId)}
                   className={`w-full text-left px-3 py-1.5 border-b border-line last:border-0 hover:bg-surface-2 ${
-                    variable === v.variable ? "bg-water-soft" : ""
+                    variableId === v.variableId ? "bg-water-soft" : ""
                   }`}
                 >
                   <div className="flex items-baseline gap-2">
-                    <span className="text-[12px] truncate">{shortVariable(v.variable)}</span>
+                    <span className="text-[12px] truncate">{variableLabel(v.variableId)}</span>
                     <span className="ml-auto text-[10.5px] text-muted tnum shrink-0">{nf(v.n)}</span>
                   </div>
                   <div className="text-[10px] text-muted tnum">
-                    {v.y_from}–{v.y_to}　{v.kind === "annual" ? "年度集計値" : "検体値"}
-                    {v.unit ? `　平均 ${fmt(v.avg, v.unit)}` : ""}
+                    {v.yFrom}–{v.yTo}　{basisFromValueGrain(v.valueGrain) === "day" ? "検体値" : basisFromValueGrain(v.valueGrain) === "fiscal_year" ? "年度集計値" : "暦年値"}
+                    {v.unit ? `　平均 ${fmt(v.avg ?? 0, v.unit)}` : ""}
                   </div>
                 </button>
               ))}
@@ -312,7 +344,7 @@ export function SiteDetail({ site, variables }: { site: Site; variables: Variabl
 
           <div className="card p-3">
             <Provenance>
-              出典 ID: <code className="font-mono">{site.source_id ?? "–"}</code>
+              出典 ID: <code className="font-mono">{site.sourceId ?? "–"}</code>
               {url && (
                 <>
                   {" / "}
@@ -345,4 +377,9 @@ function xToYm(x: number): string {
   const y = Math.floor(x);
   const m = Math.min(12, Math.max(1, Math.round((x - y) * 12 + 0.5)));
   return `${y}-${String(m).padStart(2, "0")}`;
+}
+function ymToX(ym: string): number {
+  const y = Number(ym.slice(0, 4));
+  const m = Number(ym.slice(5, 7));
+  return y + (m - 0.5) / 12;
 }
