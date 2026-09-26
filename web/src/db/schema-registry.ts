@@ -10,7 +10,9 @@
  * `data/db/registry.sqlite` として生成し、`seed-d1-local.mjs` の4本目の
  * ソースとして他の3ファイルと同じ経路で D1 に乗る。
  *
- * `taxon_name` / `taxon_assessment`（ADR-0019）は Phase A では作らない。
+ * `taxon_name` / `taxon_assessment`（ADR-0019）は Phase A では作らない
+ * （Issue #48 PR-0 で `taxon_assessment`・`place_relation`・`place_watershed` を
+ * 追加した。理由・列の由来は各テーブルの定義コメント参照）。
  *
  * 既存の `schema.ts`（v1・69テーブル）とはあえてファイルを分けてある。
  * 「既存テーブルの定義には一切触れていない」ことを diff だけで機械的に示すため
@@ -135,6 +137,45 @@ export const placeSourceRef = sqliteTable("place_source_ref", {
 ]);
 
 /**
+ * 空間単位どうしの関係（ADR-0006・ADR-0022）。Phase B `phase-b/region-scope` で新設。
+ * 「地点 -> ゾーン」（`parent_id`=ゾーンの place_id, `child_id`=地点の place_id,
+ * `relation`='within'）と「地点 -> 流域」（`sites.watershed` 由来）の2種類を持つ
+ * （`scripts/registry/build_place.py`「place_relation」節）。`fraction` は
+ * NOT NULL とし、全体を含む関係には 1.0 を入れる。`(parent_id, child_id, relation)`
+ * の一意性は DDL の UNIQUE 制約ではなく `scripts/r01_build_registry.py` 側の
+ * Python 表明で検証する（`registry.sqlite` と同じ流儀）。
+ *
+ * Phase A/B 当初は「消費者がまだ無い」として D1 には載せていなかったが、
+ * Issue #48（PR-0）でゾーン・流域の JOIN が要る消費者ができたため追加した。
+ */
+export const placeRelation = sqliteTable("place_relation", {
+	id: integer().primaryKey({ autoIncrement: true }),
+	parentId: text("parent_id").notNull(),
+	childId: text("child_id").notNull(),
+	relation: text().notNull(),
+	fraction: real().notNull(),
+	basis: text(),
+},
+(table) => [
+	index("ix_place_relation_parent").on(table.parentId),
+	index("ix_place_relation_child").on(table.childId),
+]);
+
+/**
+ * `place_kind='watershed'` だけが持つ属性サテライト（旧 `derived.watershed_meta`
+ * の残り4列。`scripts/registry/build_place.py`「watershed」節）。1 place_id
+ * につき高々1行（1:1）。`main_rivers` は主要河川が無い流域向けの空文字列を
+ * そのまま持つ（NULL に丸めない）。Issue #48（PR-0）で D1 に追加。
+ */
+export const placeWatershed = sqliteTable("place_watershed", {
+	placeId: text("place_id").primaryKey(),
+	waterSystemCode: text("water_system_code"),
+	waterSystemCategory: text("water_system_category"),
+	mainRivers: text("main_rivers"),
+	dataYear: integer("data_year"),
+});
+
+/**
  * 分類群レジストリ（ADR-0019。taxon_id の名前空間分割・分類補完は Phase B
  * `phase-b/occurrence-registry`。決定と理由の正は ADR-0019 の日付付き追記、
  * 実測の正は `docs/plans/PHASE_B_OCCURRENCE.md`——ここには実装に必要な最小限だけ書く）。
@@ -152,18 +193,22 @@ export const placeSourceRef = sqliteTable("place_source_ref", {
  * `synonym` は無い。`accepted_taxon_id` は現状すべて NULL（`docs/plans/PHASE_B_INTAKE.md`
  * §8。`c24_taxon_crosswalk.py` の `accepted_scientific_name` を誤用しないこと）。
  *
- * **`kingdom`/`phylum`/`class`/`order`/`family`/`classification_basis`/
- * `canonical_binomial`/`taxon_group` は `scripts/schema_registry.sql` の
- * `registry.sqlite` 側にはあるが、意図的にここ（D1 側）には載せていない**
- * （オーナー決定。`place_relation` を D1 に載せなかったのと同じ判断——理由は
- * `registry/README.md`「taxon の名前空間分割と分類補完」参照）。
+ * `kingdom`/`phylum`/`order`/`classification_basis` は `scripts/schema_registry.sql` の
+ * `registry.sqlite` 側にはあるが、意図的にここ（D1 側）には載せていない
+ * （オーナー決定。`registry/README.md`「taxon の名前空間分割と分類補完」参照）。
+ * `canonical_binomial`/`class`/`family`/`taxon_group` は Issue #48（PR-0）で
+ * D1 の消費者ができたため追加した。`vernacular_name_en` はまだ無い（PR-3a の範囲）。
  * `status='needs_review'` は既存の `status` 列にそのまま乗るので、D1 側の
  * スキーマ変更なしで既にシードされている。
  */
 export const taxon = sqliteTable("taxon", {
 	taxonId: text("taxon_id").primaryKey(),
 	scientificName: text("scientific_name"),
+	canonicalBinomial: text("canonical_binomial"),
 	rank: text(),
+	class: text(),
+	family: text(),
+	taxonGroup: text("taxon_group"),
 	gbifTaxonKey: text("gbif_taxon_key"),
 	vernacularNameJa: text("vernacular_name_ja"),
 	status: text(),
@@ -171,6 +216,46 @@ export const taxon = sqliteTable("taxon", {
 },
 (table) => [
 	index("ix_taxon_gbif_key").on(table.gbifTaxonKey),
+	index("ix_taxon_binomial").on(table.canonicalBinomial),
+]);
+
+/**
+ * 版ごとの分類群の評価（ADR-0019 の最小形。P-2。v1 の `redlist_assessments`
+ * 〔3版〕と `taxa.ias_category` 由来の外来種評価を、同じ「あるリストがある
+ * 分類群に付けた評価」という構造に統合したもの。`scripts/registry/
+ * build_taxon_assessment.py`）。`list_id` は `registry/taxon/assessment_list.yaml`
+ * のコードリスト。`category_code`/`prev_category_code` は正規化したコード
+ * （`list_id='moe_ias_2015'` の行は専用のコードリストを持たないため常に NULL）。
+ * `*_raw` 列は原表記を無加工で残す。`taxon_id` は解決できた行だけ埋める
+ * （NULL もありうる）。`vernacular_name_ja_resolved` は `moe_ias_2015` の行だけが
+ * 持つ、v1 の `taxa.vernacular_name_ja`（3出典をまたいだ畳み込み済みの和名）相当。
+ *
+ * Phase A/B 当初は D1 の消費者が無いとして見送っていたが、Issue #48（PR-0）で
+ * D1 に追加した。`in_scope`（除外7種の宣言、`registry/taxon/
+ * assessment_scope_exclusions.yaml`）はまだ無い（PR-3a/3b の範囲）。
+ */
+export const taxonAssessment = sqliteTable("taxon_assessment", {
+	assessmentId: text("assessment_id").primaryKey(),
+	listId: text("list_id").notNull(),
+	listYear: integer("list_year"),
+	taxonId: text("taxon_id"),
+	scientificNameRaw: text("scientific_name_raw"),
+	vernacularNameJaRaw: text("vernacular_name_ja_raw"),
+	vernacularNameJaResolved: text("vernacular_name_ja_resolved"),
+	taxonGroupJa: text("taxon_group_ja"),
+	taxonSubgroupJa: text("taxon_subgroup_ja"),
+	familyJa: text("family_ja"),
+	categoryRaw: text("category_raw"),
+	categoryCode: text("category_code"),
+	prevCategoryRaw: text("prev_category_raw"),
+	prevCategoryCode: text("prev_category_code"),
+	nationalCategoryRaw: text("national_category_raw"),
+	origin: text(),
+	sourceId: text("source_id"),
+},
+(table) => [
+	index("ix_taxon_assessment_list").on(table.listId),
+	index("ix_taxon_assessment_taxon").on(table.taxonId),
 ]);
 
 /**

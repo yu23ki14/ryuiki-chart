@@ -1,8 +1,9 @@
 #!/bin/sh
 # コンテナ起動時に、必要な分だけ用意してから dev サーバを立てる。
-# 集計DB・マイグレーションは「無ければやる」。語彙レジストリだけは「指紋が古ければ
-# 作り直す」（判定は scripts/ensure-registry.sh）。いずれも 2 回目以降の
-# `docker compose up` は該当ステップを素通りする。
+# 集計DB・マイグレーションは「無ければやる」。語彙レジストリと v2（キューブ）は
+# 「古ければ作り直す」（判定はそれぞれ scripts/ensure-registry.sh・scripts/ensure-v2.sh。
+# 判定は1箇所だけに書き、predb:setup フックとここの両方から同じスクリプトを呼ぶ）。
+# いずれも 2 回目以降の `docker compose up` は該当ステップを素通りする。
 set -e
 
 cd /app/web
@@ -29,6 +30,10 @@ fi
 # 経緯は registry/README.md 参照。scripts/r01_build_registry.py）
 # 「指紋が古ければ作り直す」判定は db:setup の predb:setup フックと共通（scripts/ensure-registry.sh）
 scripts/ensure-registry.sh
+
+# 1.6. v2（observation_agg/occurrence_agg のキューブ。Issue #48 PR-0）。
+# 「古ければ作り直す」判定は db:setup の predb:setup フックと共通（scripts/ensure-v2.sh）
+scripts/ensure-v2.sh
 
 # 2. マイグレーション。適用済みのものは wrangler が d1_migrations を見て飛ばす
 echo "▶ D1 マイグレーション"

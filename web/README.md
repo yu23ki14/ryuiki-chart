@@ -17,7 +17,9 @@ docker compose up          # リポジトリ直下で
 # → http://localhost:3000
 ```
 
-起動時に「集計 DB の生成 → D1 マイグレーション → シード投入」を、まだのものだけ実行します。
+起動時に「集計 DB の生成 → 語彙レジストリの生成 → v2（キューブ）の生成 → D1 マイグレーション →
+シード投入」を、まだのものだけ実行します（語彙レジストリと v2 は「古ければ作り直す」判定。
+`scripts/ensure-registry.sh` / `scripts/ensure-v2.sh`）。
 初回は 3〜5 分。2 回目以降はローカル D1 が名前付きボリューム `d1-state` に残るので素通りします。
 入れ直したいときは `docker compose down -v`。
 
@@ -29,19 +31,30 @@ docker compose up          # リポジトリ直下で
 cd web
 pnpm install
 pnpm run build:derived   # 集計 DB (../data/db/derived.sqlite) を作る。初回のみ・約1分
-pnpm run db:setup        # D1 マイグレーション + シード投入（約1.5分）
+pnpm run db:setup        # 語彙レジストリ + v2（キューブ）+ D1 マイグレーション + シード投入
 pnpm run dev             # http://localhost:3000
 ```
 
-`build:derived` は原本を**読み取り専用**で開き、集計済みテーブルだけを別ファイルに書き出します。
-原本の `ryuiki.sqlite` / `cells.sqlite` は一切書き換えません。いつでも消して作り直せます。
+`db:setup` は `predb:setup` フックで、語彙レジストリ（`registry.sqlite`）と v2
+（`v2.sqlite`。`observation_agg`/`occurrence_agg` のキューブ）を「古ければ作り直す」
+（`scripts/ensure-registry.sh` / `scripts/ensure-v2.sh`。初回はそれぞれ数十秒〜数分）。
+v2 だけを作り直したいときは `pnpm run build:v2`
+（`scripts/r01_build_registry.py` → `scripts/b03_build_observation.py` →
+`scripts/b04_build_cube.py` → `scripts/b06_build_occurrence.py` →
+`scripts/b09_build_occurrence_place.py` → `scripts/b07_build_occurrence_cube.py` の順で回す）。
+
+`build:derived`/`build:v2` は原本を**読み取り専用**で開き、集計済み・キューブ済みのテーブルだけを
+別ファイルに書き出します。原本の `ryuiki.sqlite` / `cells.sqlite` は一切書き換えません。
+いつでも消して作り直せます。
 
 | スクリプト | 中身 |
 |---|---|
 | `scripts/build-derived.mjs` | 測定値・センサー・品質・行政文書の集計 |
 | `scripts/build-geo.mjs` | 流域界ポリゴンの属性、土地利用 2006/2016、生物レコードの流域への点内包判定 |
 | `scripts/build-biota.mjs` | 生物レコードの分類正規化（iNaturalist の欠損補完・魚類判定）と種別集計、レッドリスト版間比較 |
-| `scripts/seed-d1-local.mjs` | 原本 SQLite 3 ファイルの中身をローカル D1 に流し込む（開発専用） |
+| `scripts/ensure-registry.sh` | 語彙レジストリ（`../data/db/registry.sqlite`）が古ければ作り直す（`db:setup`/entrypoint 共通） |
+| `scripts/ensure-v2.sh` | v2（`../data/db/v2.sqlite`。キューブ）が古ければ作り直す（`db:setup`/entrypoint 共通） |
+| `scripts/seed-d1-local.mjs` | 原本 SQLite（ryuiki/cells/derived/registry/v2）の中身をローカル D1 に流し込む（開発専用） |
 | `scripts/copy-maplibre-worker.mjs` | MapLibre のワーカーを `public/` へ配置（`pnpm run dev` / `build` の前に自動実行） |
 | `scripts/copy-geo-assets.mjs` | 地図の GeoJSON を `../data/processed` から `public/geo/` へ配置（同上）。Workers に fs は無いので静的アセットで配る |
 | `scripts/export-d1-sql.mjs` | ローカル D1 の中身を本番 D1 に流せる .sql に書き出す（`dist/d1/`） |
@@ -52,11 +65,13 @@ package.json の `deploy` は動かないので、デプロイは必ず `pnpm ru
 
 | pnpm script | 中身 |
 |---|---|
-| `db:generate` | `src/db/schema.ts` から `drizzle/migrations/*.sql` を作る |
+| `db:generate` | `src/db/schema.ts`/`schema-registry.ts`/`schema-cube.ts` から `drizzle/migrations/*.sql` を作る |
 | `db:migrate` | ローカル D1 にマイグレーションを当てる（適用済みは飛ばす） |
 | `db:seed` | ローカル D1 にシードを入れる（原本に変化が無ければ飛ばす） |
-| `db:setup` | `db:migrate` + `db:seed` |
+| `db:setup` | （`predb:setup` で語彙レジストリ・v2 を鮮度確認）+ `db:migrate` + `db:seed` |
 | `db:reset` | ローカル D1 を捨てて作り直す |
+| `build:registry` | 語彙レジストリ（`../data/db/registry.sqlite`）を作る |
+| `build:v2` | v2（`../data/db/v2.sqlite`。`observation_agg`/`occurrence_agg` のキューブ）を作る |
 | `cf-typegen` | `wrangler.jsonc` から `worker-configuration.d.ts` を生成（`--env-interface CloudflareEnv` 必須） |
 | `prepare:geo` | 地図の GeoJSON を `public/geo/` へ配置 |
 | `db:migrate:remote` | 本番 D1 にマイグレーションを当てる |
