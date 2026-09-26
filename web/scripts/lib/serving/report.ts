@@ -29,6 +29,7 @@ export interface QueryStats {
   rain_div10: number;
   day_split: number;
   synthetic_excluded: number;
+  lod_imputation: number;
   unit_label_registry: number;
   float_rounding: number;
   unexplained: number;
@@ -45,6 +46,7 @@ export function emptyQueryStats(id: string): QueryStats {
     rain_div10: 0,
     day_split: 0,
     synthetic_excluded: 0,
+    lod_imputation: 0,
     unit_label_registry: 0,
     float_rounding: 0,
     unexplained: 0,
@@ -97,6 +99,7 @@ const KNOWN_RULE_COLUMNS = [
   "rain_div10",
   "day_split",
   "synthetic_excluded",
+  "lod_imputation",
   "unit_label_registry",
   "float_rounding",
 ] as const satisfies readonly (keyof QueryStats)[];
@@ -177,6 +180,9 @@ export function buildReportMarkdown(input: ReportInput): string {
     statsTableMd(stats),
     "",
     `合計: runs=${total.runs} rows_v1=${total.rowsV1} rows_v2=${total.rowsV2} matched=${total.matched} unexplained=${total.unexplained}`,
+    header.imputation === "lod"
+      ? `lod_moved（zero→lod で値が動いたと確認できたキー数の合計。上表の \`lod_imputation\` 列と同じ）: ${total.lod_imputation}`
+      : "",
     "",
     "## 宣言済み差分の腐り（対象問い合わせが1件も対応しなかった宣言）",
     "",

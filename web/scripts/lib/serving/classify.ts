@@ -8,7 +8,7 @@
  * 索引を `ClassifyContext` として受け取る。これにより、フィクスチャ（DB 無し）だけで
  * 全規則をテストできる（`classify.test.ts`）。
  */
-import type { NormRow, QueryDef, ScalarParam } from "./normalize";
+import { keyString, type NormRow, type QueryDef, type ScalarParam } from "./normalize";
 
 /* ------------------------------------------------------------------ */
 /* 素の食い違い（RowDiff）                                              */
@@ -262,7 +262,8 @@ export type KnownRule =
   | "day_split"
   | "synthetic_excluded"
   | "unit_label_registry"
-  | "float_rounding";
+  | "float_rounding"
+  | "lod_imputation";
 
 export interface ClassifyContext {
   expected: ExpectedDiffs;
@@ -282,8 +283,21 @@ export interface ClassifyContext {
    *  月ごとに合流させた再計算（`RainRecompute.monthlyLabel`/`monthlyPeriodStartRaw`）を使う。
    *  既定 `"day"`（`rain_daily`/`rain_top_days`）。 */
   rainGrain?: "day" | "month";
-  /** `--pretend-synthetic-excluded`（PR-2 準備）。PR-1 では既定で空集合＝常に不発。 */
-  syntheticSiteIds?: ReadonlySet<string>;
+  /**
+   * design §1「診断用 v1互換キューブ」の差分の差分: `--v1compat-db` で開いた
+   * 第2の v2 接続（合成データを除外**しない** `v2_v1compat.sqlite`）に、この
+   * 問い合わせと同じ params・compare で同じ行を流した結果（キー文字列
+   * （`normalize.ts` の `keyString`）→ `NormRow`）。無ければ（`--v1compat-db`
+   * 未指定・v1-only）この規則は常に不発。
+   */
+  v2CompatByKey?: ReadonlyMap<string, NormRow>;
+  /**
+   * `--imputation lod` 実行専用: 同じ問い合わせを `imputation=zero` でも
+   * 引いた結果（キー文字列→`NormRow`）。`lod_imputation` 規則が
+   * 「v1 == v2(zero)」を確かめるのに使う。`--imputation zero` 実行では
+   * 常に undefined（そもそも lod 診断は行わない）。
+   */
+  v2ZeroByKey?: ReadonlyMap<string, NormRow>;
   /** `--mutate declared_rot` */
   declaredRot?: DeclaredRotOptions;
   /**
@@ -420,8 +434,19 @@ function classifyDaySplit(diff: RowDiff, ctx: ClassifyContext): boolean {
 /** `unit_label_registry` の alias 解決: `params.alias` を優先し、無ければ
  *  `diff.key[0]` が文字列のときだけそれを alias とみなす
  *  （`variable_catalog`/`site_variables` は alias が行キー側にしか出ない）。 */
+/**
+ * `unit_label_registry` の期待値マップのキー解決。alias 単位の問い合わせは
+ * `params.alias`（無ければ行キー先頭）、`*_by_variable` 問い合わせは
+ * `params.variable_id`（無ければ行キー先頭——`variable_catalog_by_variable`/
+ * `site_variables_by_variable` は variable_id が行キー側にしか出ない）。
+ * `ctx.expectedUnitSymbol` は alias→symbol と variable_id→symbol の両方を
+ * 1つの Map に併せ持つ（`adapters-v2.ts` の `expectedUnitSymbols`/
+ * `expectedUnitSymbolsByVariable` を呼び出し側〔`serving-diff.mts`〕がマージする。
+ * alias 文字列と variable_id〔`common:variable:...`〕は表記が衝突しない）。
+ */
 function aliasKeyOf(diff: RowDiff, ctx: ClassifyContext): string | undefined {
   if (typeof ctx.params.alias === "string") return ctx.params.alias;
+  if (typeof ctx.params.variable_id === "string") return ctx.params.variable_id;
   return typeof diff.key[0] === "string" ? diff.key[0] : undefined;
 }
 
@@ -452,59 +477,122 @@ function classifyFloatRounding(diff: RowDiff, ctx: ClassifyContext): boolean {
  * `value_diff` で synthetic_excluded を許すのは、地点の合成データが抜けることで
  * 実際に動きうる集計列だけに絞る（/code-review 指摘: 列を見ずに `value_diff` を
  * 全部通すと、たまたま合成地点で起きた無関係な回帰まで「合成地点だから」で
- * 隠してしまう）。PR-1 の測定値系の出力列はこの集合に尽きる。
+ * 隠してしまう）。PR-1 の測定値系の出力列＋PR-2 の by_variable 問い合わせの
+ * 出力列（`n_places`）を尽くす。
  */
 const SYNTHETIC_EXCLUDED_VALUE_COLUMNS = new Set([
   "n",
   "n_meas",
   "n_var",
   "n_sites",
+  "n_places",
   "n_daily",
   "n_annual",
   "n_censored",
   "avg",
   "min",
   "max",
+  "value", // day_series_site_by_variable（single-value 列。PR-2 by_variable）
   "y_from",
   "y_to",
 ]);
 
 /**
- * `--pretend-synthetic-excluded` 専用。地点1件に紐づく問い合わせ
- * （`sites_list`/`sites_in_water_body`/`site_variables`/`year_series_site`/
- * `month_series_site`/`day_series_site`/`year_series_water`）は、その地点が
- * 合成地点なら `row_only_in_v1`（行ごと消える）にも `value_diff`（`sites_list`
- * のように地点の行自体は LEFT JOIN で残り、集計列だけ 0 に落ちる）にもなりうる
- * ——どちらも「この地点の行だから」で説明できる。
- *
- * ゾーン・alias・水域単位の集計（`zone_series`/`climatology`/`zone_climatology`/
- * `variable_catalog`/`water_bodies`/`water_bodies_for_variable`）は複数地点の
- * 合算なので、行自体に「どの地点由来か」が無く、ここでは判定しない
- * （PR-1 は「合成地点の集合だけを確定させ、単一地点に閉じる問い合わせで
- * unexplained 0 を確かめる」までが範囲——設計書 §9-4「PR-2 の予告」。
- * 残りは PR-2 で合成データを実際に外すときに扱う）。
+ * `row_only_in_v1` は `diff.columns` が空なので、突き合わせる列の集合を行
+ * そのものから取るしかない——数値列だけを見る（`SYNTHETIC_EXCLUDED_VALUE_COLUMNS`
+ * と同じ「数値だけ」の考え方。ラベル列（`unit`）は比べない: `unitSymbol()`
+ * が「登録はあるが symbol が無い」単位（例: dimensionless）に対して `null` では
+ * なく `""` を返すため、v1 の生 NULL と v2 側の `""` が同じ実体を指していても
+ * 文字列としては食い違う——`unit_label_registry` 規則が扱う対象であって、
+ * synthetic_excluded がここで再現する筋合いではない）。
  */
-function classifySyntheticExcluded(diff: RowDiff, ctx: ClassifyContext): boolean {
-  if (!ruleEnabled(ctx, "synthetic_excluded")) return false;
+function rowsMatchOnAllColumns(a: NormRow, b: NormRow, tol = 1e-9): boolean {
+  for (const c of Object.keys(a.numeric)) {
+    if (numbersDiffer(a.numeric[c], b.numeric[c] ?? null, tol)) return false;
+  }
+  return true;
+}
+
+/**
+ * design §1「診断用 v1互換キューブ」の差分の差分。`ctx.v2CompatByKey`
+ * （`--v1compat-db` で開いた、合成データを除外**しない** `v2_v1compat.sqlite` に
+ * 同じ問い合わせを流した行）と突き合わせる:
+ * - `row_only_in_v1`（v2 本番に無い）→ 同じキーが v2compat に存在し、v1 と
+ *   （許容誤差内で）一致すれば「合成データが除かれて消えた行」として説明できる。
+ * - `value_diff` → 列を `SYNTHETIC_EXCLUDED_VALUE_COLUMNS` に絞り、v1 == v2compat
+ *   （合成込みの値は元々 v1 と一致していた）かつ v2compat ≠ v2 本番
+ *   （除外後に実際に値が動いた）であれば説明できる。
+ * - `row_only_in_v2` は対象外（合成データを除いて行が増えることは無い——常に
+ *   unexplained）。
+ */
+function classifySyntheticExcludedV1Compat(diff: RowDiff, ctx: ClassifyContext): boolean {
+  if (!ruleEnabled(ctx, "synthetic_excluded") || !ctx.v2CompatByKey) return false;
   if (diff.kind !== "row_only_in_v1" && diff.kind !== "value_diff") return false;
-  if (diff.kind === "value_diff" && !diff.columns.every((c) => SYNTHETIC_EXCLUDED_VALUE_COLUMNS.has(c))) return false;
-  // site_id は問い合わせによって置き場所が違う: params（1地点を固定して呼ぶ
-  // `site_variables`/`year_series_site`/`month_series_site`/`day_series_site`。
-  // これらは `key[0]` が年月日・alias 等の別の文字列なので必ず params を先に見る）、
-  // 出力の label 列（無い問い合わせが多い）、出力のキーの先頭
-  // （`sites_list`/`sites_in_water_body`/`year_series_water` は params に
-  // site_id が無いのでここまで落ちてくる）のいずれか。
-  const siteId =
-    (typeof ctx.params.site_id === "string" ? ctx.params.site_id : undefined) ??
-    diff.v1?.label.site_id ??
-    (typeof diff.key[0] === "string" ? diff.key[0] : undefined);
-  return !!siteId && !!ctx.syntheticSiteIds?.has(siteId);
+
+  const compatRow = ctx.v2CompatByKey.get(keyString(diff.key));
+  if (!compatRow) return false;
+
+  if (diff.kind === "row_only_in_v1") {
+    if (!diff.v1) return false;
+    return rowsMatchOnAllColumns(diff.v1, compatRow);
+  }
+
+  // value_diff
+  if (!diff.v1 || !diff.v2) return false;
+  if (!diff.columns.every((c) => SYNTHETIC_EXCLUDED_VALUE_COLUMNS.has(c))) return false;
+  for (const c of diff.columns) {
+    if (numbersDiffer(diff.v1.numeric[c], compatRow.numeric[c] ?? null, 1e-9)) return false; // v1 == v2compat
+    if (!numbersDiffer(compatRow.numeric[c] ?? null, diff.v2.numeric[c], 0)) return false; // v2compat ≠ v2(本番)
+  }
+  return true;
+}
+
+/**
+ * `--imputation lod` 実行専用（design §3 #1）。`value_diff` の数値列が
+ * `LOD_IMPUTATION_VALUE_COLUMNS`（avg/min/max/value）に収まり、`ctx.v2ZeroByKey`
+ * （同じ問い合わせを imputation=zero で引いた行）と v1 が一致していれば
+ * 「値が動いたのは zero→lod の切り替えのせい」として説明できる。行に
+ * `n_censored` 列があれば `>0` を要求する（無い合算問い合わせ——`zone_series`/
+ * `climatology`/`zone_climatology`/`site_variables`/`longitudinal_highlight`
+ * 等——は b04 が全セルで検証済みの不変条件「`value_zero≠value_lod` ⇒
+ * `n_censored>0 or n_not_detected>0`」に依拠し、ここでは確認しない）。
+ */
+const LOD_IMPUTATION_VALUE_COLUMNS = new Set(["avg", "min", "max", "value"]);
+
+function classifyLodImputation(diff: RowDiff, ctx: ClassifyContext): boolean {
+  if (!ruleEnabled(ctx, "lod_imputation") || diff.kind !== "value_diff") return false;
+  if (!ctx.v2ZeroByKey || !diff.v1 || !diff.v2) return false;
+  if (!diff.columns.every((c) => LOD_IMPUTATION_VALUE_COLUMNS.has(c))) return false;
+
+  const zeroRow = ctx.v2ZeroByKey.get(keyString(diff.key));
+  if (!zeroRow) return false;
+  for (const c of diff.columns) {
+    if (numbersDiffer(diff.v1.numeric[c], zeroRow.numeric[c] ?? null, 1e-9)) return false; // v1 == v2(zero)
+  }
+  // b04 の不変条件は「value_zero≠value_lod ⇒ n_censored>0 **or** n_not_detected>0」
+  // という OR（CLAUDE.md 参照）。v1 の meas_year 系の表は `n_censored` しか
+  // 持たず `n_not_detected`（不検出・定量下限未満とは別に「検出されなかった」
+  // 件数）を区別できない——実測: alias 'cn'（シアン）/'pcb' のような不検出が
+  // 多い項目は `n_censored=0` のまま `value_lod` が NULL になる（不検出のみで
+  // 定量下限未満の値は無い年）。`n_censored>0` だけを要求すると、この
+  // 「不検出のみ」のケースを取りこぼす。v1 に `n_not_detected` が無い以上、
+  // 直接は確認できないので、代わりに「lod 側のその列の値が NULL になった」
+  // ことを不検出の代理指標として認める（`value_lod` が NULL なのは全件不検出の
+  // ときだけ——一部不検出なら AVG は NULL を無視して計算されるので非NULLのまま
+  //残る。その場合は `n_censored>0` 側でカバーされることを期待する）。
+  if ("n_censored" in diff.v1.numeric) {
+    const nCensored = diff.v1.numeric.n_censored ?? 0;
+    const anyColumnBecameNull = diff.columns.some((c) => diff.v2!.numeric[c] === null);
+    if (!(nCensored > 0 || anyColumnBecameNull)) return false;
+  }
+  return true;
 }
 
 /**
  * `RowDiff` を既知の系統に当てはめる。当てはまらなければ `{ rule: "unexplained" }`。
  * 判定の優先順位: declared -> rain_div10 -> day_split -> synthetic_excluded ->
- * unit_label_registry -> float_rounding（設計書 §5.2 の表の順）。
+ * lod_imputation -> unit_label_registry -> float_rounding（設計書 §5.2 の表の順
+ * ＋ PR-2 で追加した lod_imputation を synthetic_excluded の直後に挿入）。
  */
 export function classifyDiff(diff: RowDiff, ctx: ClassifyContext): Classification {
   if (ruleEnabled(ctx, "declared")) {
@@ -513,7 +601,8 @@ export function classifyDiff(diff: RowDiff, ctx: ClassifyContext): Classificatio
   }
   if (classifyRainDiv10(diff, ctx)) return { rule: "rain_div10" };
   if (classifyDaySplit(diff, ctx)) return { rule: "day_split" };
-  if (classifySyntheticExcluded(diff, ctx)) return { rule: "synthetic_excluded" };
+  if (classifySyntheticExcludedV1Compat(diff, ctx)) return { rule: "synthetic_excluded" };
+  if (classifyLodImputation(diff, ctx)) return { rule: "lod_imputation" };
   if (classifyUnitLabelRegistry(diff, ctx)) return { rule: "unit_label_registry" };
   if (classifyFloatRounding(diff, ctx)) return { rule: "float_rounding" };
   return { rule: "unexplained" };
