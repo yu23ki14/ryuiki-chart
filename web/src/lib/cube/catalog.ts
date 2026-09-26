@@ -13,8 +13,11 @@ import { seriesKeySql, seriesKeyString, type SeriesKey } from "./series";
 
 export type CatalogSource = { kind: "live" } | { kind: "summary" };
 
-const YEAR_GRAINS_SQL = "obs.grain IN ('year','fiscal_year')";
-const MEAN_STAT_SQL = "obs.stat = 'mean'";
+/** `serving-diff` の v2 アダプタ（`scripts/lib/serving/adapters-v2.ts`）も
+ *  同じ「年セル・mean 統計」の絞り込みを書く箇所があるため export する
+ *  （テーブルエイリアスは `obs` 決め打ち——`sql.ts` の `OBS` と同じ規約）。 */
+export const YEAR_GRAINS_SQL = "obs.grain IN ('year','fiscal_year')";
+export const MEAN_STAT_SQL = "obs.stat = 'mean'";
 
 export interface SeriesCatalogRow {
   series: SeriesKey;

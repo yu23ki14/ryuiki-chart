@@ -28,6 +28,8 @@ import {
   seriesFilterSql,
   isSynthetic,
   labelYear,
+  YEAR_GRAINS_SQL,
+  MEAN_STAT_SQL,
   type CubeDb,
   type CellSpec,
   type CellRow,
@@ -80,9 +82,10 @@ export async function computeSyntheticPlaceIds(db: CubeDb): Promise<string[]> {
     unit_id: string | null;
     value_grain: string | null;
   }>(
-    `SELECT DISTINCT place_id, variable_id, obs_stat, unit_id, value_grain
-     FROM observation_agg
-     WHERE place_kind = 'site' AND grain IN ('year','fiscal_year') AND stat = 'mean'`,
+    `SELECT DISTINCT obs.place_id AS place_id, obs.variable_id AS variable_id, obs.obs_stat AS obs_stat,
+            obs.unit_id AS unit_id, obs.value_grain AS value_grain
+     FROM observation_agg obs
+     WHERE obs.place_kind = 'site' AND ${YEAR_GRAINS_SQL} AND ${MEAN_STAT_SQL}`,
   );
   const allSyntheticByPlace = new Map<string, boolean>();
   for (const r of rows) {
@@ -171,7 +174,7 @@ interface SeriesYearlyTotal {
  * 込み）を使い、`observation_agg` に直接問い合わせる。
  */
 async function seriesYearlyTotal(db: CubeDb, series: readonly SeriesInfo[]): Promise<SeriesYearlyTotal | null> {
-  const alias = "sv";
+  const alias = "obs";
   const f = seriesFilterSql(series as readonly SeriesKey[], alias);
   if (!f) return null;
   const sql = `
@@ -183,7 +186,7 @@ async function seriesYearlyTotal(db: CubeDb, series: readonly SeriesInfo[]): Pro
            SUM(${alias}.n_censored) AS n_censored
     FROM observation_agg ${alias}
     ${f.joins.join("\n    ")}
-    WHERE ${alias}.place_kind = 'site' AND ${alias}.grain IN ('year','fiscal_year') AND ${alias}.stat = 'mean'
+    WHERE ${alias}.place_kind = 'site' AND ${YEAR_GRAINS_SQL} AND ${MEAN_STAT_SQL}
   `;
   const rows = await db.all<{
     n: number | null;
@@ -231,7 +234,7 @@ async function siteMeasurementRollup(db: CubeDb): Promise<Map<string, SiteRollup
            SUM(obs.n) AS n
     FROM observation_agg obs
     JOIN place_source_ref psr ON psr.place_id = obs.place_id AND psr.source_id = 'sites.site_id'
-    WHERE obs.place_kind = 'site' AND obs.grain IN ('year','fiscal_year') AND obs.stat = 'mean'
+    WHERE obs.place_kind = 'site' AND ${YEAR_GRAINS_SQL} AND ${MEAN_STAT_SQL}
     GROUP BY psr.external_key, obs.variable_id, obs.obs_stat, obs.unit_id, obs.value_grain
   `;
   const rows = await db.all<{
