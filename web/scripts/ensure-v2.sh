@@ -1,9 +1,10 @@
 #!/bin/sh
 # v2（../data/db/v2.sqlite。scripts/r01_build_registry.py -> scripts/b03_build_observation.py
 # -> scripts/b04_build_cube.py -> scripts/b06_build_occurrence.py ->
-# scripts/b09_build_occurrence_place.py -> scripts/b07_build_occurrence_cube.py が作る
-# observation_agg/occurrence_agg のキューブ）が「今の入力から作ったもの」でなければ
-# 作り直す（build:v2）。
+# scripts/b09_build_occurrence_place.py -> scripts/b07_build_occurrence_cube.py ->
+# scripts/b13_build_summary.py が作る observation_agg/occurrence_agg のキューブと
+# summary_variable_catalog/summary_place_variable）が「今の入力から作ったもの」で
+# なければ作り直す（build:v2）。
 #
 # scripts/ensure-registry.sh と同じ役割・同じ流儀（「作り直すか」の判定はここ1箇所
 # だけに書き、db:setup の predb:setup フックと docker-entrypoint.sh の両方から呼ぶ）。

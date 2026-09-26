@@ -68,6 +68,19 @@ NULL にするだけで扱えるようにしてある。座標があるのに gr
 `source_ref` は org_norm 等の v1 派生テーブルにも現れず、この O-1a の
 対象外——将来の消費者が現れたら別途追加を検討する）。
 
+## 合成データ（`is_synthetic=1`）を除く（Issue #48 PR-0 オーナー決定・PR-2 §1）
+
+合成データは本番に出さない——`scripts/b03_build_observation.py`（`measurements`/
+`sensor_timeseries`）と同じ決定を `organism_records` にも適用する。
+`organism_records.is_synthetic` は実測で全行0（合成の生物記録は無い）なので
+現状は no-op だが、`_ingest` は `is_synthetic=1` の行を alias/place 解決より
+前に明示的に弾く——将来合成の出現記録が足されても黙って `occurrence` に
+通さないための防御。除外した行数は `stats["synthetic_excluded_count"]` に
+積み、`reports/phase_b_occurrence.md` に出す。b03 と違い `--include-synthetic`
+は持たない——`organism_records` は診断用 v1互換キューブ（b03 §1(d)）の対象
+外（v1 の occurrence 系派生表は突合の宣言済み差分に合成データを含まない）
+なので、除外を切り替える必要が無い。
+
 ## 機械検証（1つでも失敗すれば `MigrationError`（のサブクラス）で止まる）
 
 - `source_regions.yaml`/`occurrence_period_shapes.yaml` の構造
@@ -158,7 +171,7 @@ SELECT
   o.lat, o.lon, o.coordinate_uncertainty_m,
   o.scientific_name, o.vernacular_name, o.taxon_rank,
   o.red_list_category, o.is_alien, o.license_class, o.publication_scope,
-  psr.place_id AS place_id, p.place_kind AS place_kind
+  psr.place_id AS place_id, p.place_kind AS place_kind, o.is_synthetic
 FROM src.organism_records o
 LEFT JOIN reg.place_source_ref psr
   ON psr.source_id = 'organism_records.lat_lon'
@@ -213,6 +226,7 @@ INSERT INTO {table} (
 def _empty_stats() -> dict:
     return {
         "total": 0,
+        "synthetic_excluded_count": 0,
         "n_dated": 0,
         "no_coordinate_count": 0,
         "unresolved_taxon_count": 0,
@@ -284,7 +298,7 @@ def _ingest(
                 lat, lon, coordinate_uncertainty_m,
                 scientific_name, vernacular_name, taxon_rank,
                 red_list_category, is_alien, license_class, publication_scope,
-                place_id, place_kind,
+                place_id, place_kind, is_synthetic,
             ) = row
 
             stats["total"] += 1
@@ -295,6 +309,17 @@ def _ingest(
             source_usage.mark_used(source_id)
             region_id = source_region.region_id
             region_usage.mark_used(region_id)
+
+            # Issue #48 PR-0 オーナー決定: 合成データは本番に出さない。
+            # source_regions.yaml の宣言使用マーキングは合成データの行でも
+            # 行った後（実測ではこの出典・region は全行非合成だが、将来
+            # source_id 丸ごとが合成データだけになっても「宣言未使用」の
+            # 誤検出にしないため）、region_counts への計上・alias/place 解決
+            # より前にこの行を弾く（モジュール docstring「合成データを除く」節）。
+            if is_synthetic == 1:
+                stats["synthetic_excluded_count"] += 1
+                continue
+
             stats["region_counts"][region_id] = stats["region_counts"].get(region_id, 0) + 1
             utc_offset = regions[region_id].utc_offset
 
@@ -500,8 +525,20 @@ def render_report(stats: dict) -> str:
         "要約。設計は `docs/plans/PHASE_B_OCCURRENCE.md`（O-1a節）参照。"
     )
     a("")
+    n_occurrence = stats["total"] - stats["synthetic_excluded_count"]
     a(f"- `organism_records` 総行数: **{stats['total']:,}**")
-    a(f"- `occurrence` 行数: **{stats['total']:,}**（全行取り込む。ADR-0007原則1）")
+    a(
+        f"- 合成データ（`is_synthetic=1`）を除外した行数: "
+        f"**{stats['synthetic_excluded_count']:,}**"
+        "（本番に出さない。Issue #48 PR-0 オーナー決定。実測では常に0——"
+        "`organism_records` に合成の出現記録は無い。将来行が増えても"
+        "黙って通さないための防御）"
+    )
+    a(
+        f"- `occurrence` 行数: **{n_occurrence:,}**"
+        "（合成データを除く全行を取り込む。ADR-0007原則1の例外——"
+        "Issue #48 PR-0 オーナー決定）"
+    )
     a(f"- 日付あり（`period_raw` NOT NULL）: **{stats['n_dated']:,}**")
     a(f"- 座標なし（`lat`/`lon` NULL）: **{stats['no_coordinate_count']:,}**")
     a(
@@ -565,13 +602,17 @@ def main() -> None:
             args.ryuiki_db, registry_db, args.source_regions_yaml, args.period_shapes_yaml, args.out,
             count_overlay_by_file,
         )
-        info["n"] = stats["total"]
+        info["n"] = stats["total"] - stats["synthetic_excluded_count"]
 
     report_path = pathlib.Path(args.report)
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(render_report(stats), encoding="utf-8")
     print(f"→ {report_path}")
-    print(f"  occurrence: {stats['total']:,}行（日付あり {stats['n_dated']:,}）")
+    n_occurrence = stats["total"] - stats["synthetic_excluded_count"]
+    print(
+        f"  occurrence: {n_occurrence:,}行（日付あり {stats['n_dated']:,}、"
+        f"合成データ除外 {stats['synthetic_excluded_count']:,}）"
+    )
 
 
 if __name__ == "__main__":

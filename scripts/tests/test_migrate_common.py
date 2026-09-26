@@ -804,10 +804,11 @@ def test_check_v2_cube_spec_fresh_returns_empty_when_spec_version_matches(tmp_pa
 
 def test_check_v2_cube_fresh_checks_both_cube_tables(tmp_path):
     """`check_v2_cube_fresh` は `V2_CUBE_SPEC_VERSIONS`（observation_agg/
-    occurrence_agg）の両方を見る。片方だけ古ければ、その分の問題だけが返る。"""
+    occurrence_agg/summary 2表）の全部を見る。1つだけ古ければ、その分の
+    問題だけが返る。"""
     conn = _make_v2_like_db(tmp_path)
     try:
-        common.record_stage_fingerprint(conn, "observation_agg", spec_version=common.OBSERVATION_AGG_SPEC_VERSION)
+        migrate_fixtures.record_all_v2_cube_fingerprints(conn)
         common.record_stage_fingerprint(conn, "occurrence_agg", spec_version="stale-spec")
         conn.commit()
         problems = common.check_v2_cube_fresh(conn)
@@ -1051,8 +1052,7 @@ def test_check_v2_pipeline_fresh_flags_missing_input_fingerprint_table(tmp_path)
 
 def test_check_v2_pipeline_fresh_empty_when_everything_matches(tmp_path):
     conn = migrate_fixtures.make_v2_cube_tables(tmp_path)
-    common.record_stage_fingerprint(conn, "observation_agg", spec_version=common.OBSERVATION_AGG_SPEC_VERSION)
-    common.record_stage_fingerprint(conn, "occurrence_agg", spec_version=common.OCCURRENCE_SPEC_VERSION)
+    migrate_fixtures.record_all_v2_cube_fingerprints(conn)
     common.record_v2_input_fingerprint(conn, common.compute_v2_input_fingerprint(root=_ROOT))
     conn.commit()
     assert common.check_v2_pipeline_fresh(conn, root=_ROOT) == []
@@ -1071,8 +1071,7 @@ def test_check_v2_pipeline_fresh_flags_when_a_raw_input_changes(tmp_path):
     conn_src.close()
 
     conn = migrate_fixtures.make_v2_cube_tables(tmp_path, name="v2.sqlite")
-    common.record_stage_fingerprint(conn, "observation_agg", spec_version=common.OBSERVATION_AGG_SPEC_VERSION)
-    common.record_stage_fingerprint(conn, "occurrence_agg", spec_version=common.OCCURRENCE_SPEC_VERSION)
+    migrate_fixtures.record_all_v2_cube_fingerprints(conn)
     common.record_v2_input_fingerprint(
         conn, common.compute_v2_input_fingerprint(root=_ROOT, ryuiki_db=ryuiki_db, registry_db=tmp_path / "no-registry.sqlite", processed_dir=tmp_path),
     )

@@ -125,6 +125,43 @@ def test_row_without_coordinates_is_kept_with_null_place(tmp_path):
     assert row == (None, None, None, None)
 
 
+def test_synthetic_row_is_excluded_from_occurrence(tmp_path):
+    """Issue #48 PR-0（オーナー決定: 合成データは本番に出さない）: `is_synthetic=1`
+    の行は `occurrence` に入らない。`organism_records` は実測で全行0だが、
+    将来合成の出現記録が増えても黙って通さないための防御（no-op を確認する
+    のではなく、15要素目に `is_synthetic=1` を明示した行が実際に除かれることを
+    確認する）。
+    """
+    synthetic_row = (
+        "gbif__synthetic", "gbif_kanagawa_occurrences", "2020-01-06", 35.505, 139.005, 10.0,
+        "Foo bar", "", "SPECIES", "1001", "", 0, "", "公開", 1,  # 15要素目 = is_synthetic
+    )
+    rows = list(DEFAULT_ORGANISM_RECORDS) + [synthetic_row]
+    stats, out = _build(
+        tmp_path, organism_rows=rows,
+        source_regions_text=(
+            "sources:\n"
+            "  gbif_kanagawa_occurrences:\n"
+            "    region_id: jp-14\n    consumer: occurrence\n"
+            "    expected_row_count: 12\n    evidence: テスト用\n"
+            "  inaturalist_kanagawa:\n"
+            "    region_id: jp-14\n    consumer: occurrence\n"
+            "    expected_row_count: 1\n    evidence: テスト用\n"
+            "regions:\n  jp-14:\n    utc_offset: \"+09:00\"\n    evidence: テスト用\n"
+        ),
+    )
+    assert stats["total"] == len(DEFAULT_ORGANISM_RECORDS) + 1  # 生の行数には合成データも数える
+    assert stats["synthetic_excluded_count"] == 1
+
+    conn = sqlite3.connect(f"file:{out}?mode=ro", uri=True)
+    assert conn.execute(
+        "SELECT COUNT(*) FROM occurrence WHERE record_id='gbif__synthetic'"
+    ).fetchone()[0] == 0
+    # 非合成の行は普段どおり occurrence に入る。
+    assert conn.execute("SELECT COUNT(*) FROM occurrence WHERE record_id='gbif__1'").fetchone()[0] == 1
+    conn.close()
+
+
 def test_unresolved_taxon_key_raises(tmp_path):
     """未解決の taxon_key を持つ行は `_problems_from_stats` が
     `period.declaration_problems`（宣言表の件数照合）より先に止めるため、

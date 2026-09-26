@@ -14,7 +14,7 @@ name: CI
 #   scripts/b02_derived_compare.py / scripts/b03_build_observation.py /
 #   scripts/b04_build_cube.py / scripts/b05_project_v1.py / scripts/b06_build_occurrence.py /
 #   scripts/b07_build_occurrence_cube.py / scripts/b08_project_occurrence_v1.py /
-#   scripts/b09_build_occurrence_place.py /
+#   scripts/b09_build_occurrence_place.py / scripts/b13_build_summary.py /
 #   scripts/reconcile/*.py / scripts/migrate/*.py）のフィクスチャテストと、以下の構造検証
 #   （いずれも data/db/*.sqlite・data/db/derived.sqlite を一切必要としない）:
 #     - reports/derived_baseline.json がコミットされ、schema_version が一致すること。
@@ -388,7 +388,7 @@ jobs:
       - name: v2 レジストリを構築（r01。--files-only ではないフルビルド）
         run: python3 scripts/r01_build_registry.py
 
-      - name: v2 パイプラインを構築（b03〜b12。--count-overlay でサンプルの件数を使う）
+      - name: v2 パイプラインを構築（b03〜b13。--count-overlay でサンプルの件数を使う）
         run: |
           mkdir -p "$SCRATCH"
           python3 scripts/b03_build_observation.py \
@@ -404,6 +404,7 @@ jobs:
           python3 scripts/b07_build_occurrence_cube.py \
             --out data/db/v2.sqlite \
             --count-overlay "$COUNT_OVERLAY"
+          python3 scripts/b13_build_summary.py
           python3 scripts/b08_project_occurrence_v1.py \
             --cube-db data/db/v2.sqlite \
             --out data/db/v1_projection_occurrence.sqlite \
@@ -412,6 +413,47 @@ jobs:
           python3 scripts/b10_project_documents_v1.py
           python3 scripts/b11_project_place_v1.py --out data/db/v1_projection_place.sqlite
           python3 scripts/b12_project_taxon_v1.py --out data/db/v1_projection_taxon.sqlite
+
+      - name: 診断用の v1互換キューブを構築（Issue #48 PR-2 §1(d)。合成データを含めた b03〜b05・b11）
+        # b03 の合成データ除外（既定 on）は data/db/v1_projection.sqlite を v1
+        # （サンプルの derived_baseline、合成データを含む）と食い違わせる。ここで
+        # `--include-synthetic` の別ファイル（v2_v1compat.sqlite）を作り、b05 を
+        # `--out` 無し（既定の data/db/v1_projection.sqlite）で回すことで、直前の
+        # ステップが書いた「合成データ除外後」の v1_projection.sqlite を
+        # 「合成データを含む」内容へ意図的に上書きする——次の33表ゲート
+        # （scripts/b02_run_all_gates.py、無変更）がこの内容を読み、
+        # 宣言済み差分20件のまま緑になる（scripts/b03_build_observation.py
+        # モジュール docstring「合成データを除く」節・scripts/b00_run_full_gate.py
+        # 参照）。
+        #
+        # v2_v1compat.sqlite は最初に v2.sqlite（observation/occurrence 両方の
+        # キューブが揃っている）を丸ごと複製してから作る——b03/b04 は
+        # `migrate.common.staged_table` で `observation`/`observation_agg` だけを
+        # 差し替えるため、複製した `occurrence`/`occurrence_place`/
+        # `occurrence_agg`（合成データの影響を受けない）はそのまま残る。これが
+        # 無いと、直後の b11（`--cube-db data/db/v2_v1compat.sqlite`）の (b) 系譜
+        # チェックが `org_watershed`（occurrence 系）の突き合わせ先を見つけられず
+        # 落ちる（scripts/b00_run_full_gate.py の `_COPY_V2_FOR_V1COMPAT_BEFORE`
+        # 定義のコメント参照）。
+        #
+        # b11 も `--out` 無し（既定の data/db/v1_projection_place.sqlite）で
+        # 回し、直前のステップが書いた `watershed_rollup`（合成データ除外後の
+        # site_var から計算したもの）を「合成データを含む」内容へ上書きする——
+        # site_var が変われば watershed_rollup の site_var_n 等も動くため、
+        # b05 だけを上書きしても不十分（実測で watershed_rollup が不一致になる
+        # ことを確認した）。
+        run: |
+          cp data/db/v2.sqlite data/db/v2_v1compat.sqlite
+          python3 scripts/b03_build_observation.py \
+            --include-synthetic \
+            --out data/db/v2_v1compat.sqlite \
+            --count-overlay "$COUNT_OVERLAY" \
+            --report "$SCRATCH/phase_b_fact_slice_v1compat.md"
+          python3 scripts/b04_build_cube.py \
+            --out data/db/v2_v1compat.sqlite \
+            --unit-evidence-declarations-yaml scripts/migrate/unit_evidence_declarations_v1compat.yaml
+          python3 scripts/b05_project_v1.py --cube-db data/db/v2_v1compat.sqlite
+          python3 scripts/b11_project_place_v1.py --cube-db data/db/v2_v1compat.sqlite
 
       - name: サンプルの成果物を作り直し、コミット済みのものと一致することを確認
         # scripts/s03_verify_sample_artifacts.py は原本を一切開かない（材料化済みの

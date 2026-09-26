@@ -3,7 +3,8 @@
 `scripts/b06_build_occurrence.py` が `data/db/ryuiki.sqlite` の `organism_records` から `data/db/v2.sqlite` の `occurrence` を作った結果の要約。設計は `docs/plans/PHASE_B_OCCURRENCE.md`（O-1a節）参照。
 
 - `organism_records` 総行数: **823,692**
-- `occurrence` 行数: **823,692**（全行取り込む。ADR-0007原則1）
+- 合成データ（`is_synthetic=1`）を除外した行数: **0**（本番に出さない。Issue #48 PR-0 オーナー決定。実測では常に0——`organism_records` に合成の出現記録は無い。将来行が増えても黙って通さないための防御）
+- `occurrence` 行数: **823,692**（合成データを除く全行を取り込む。ADR-0007原則1の例外——Issue #48 PR-0 オーナー決定）
 - 日付あり（`period_raw` NOT NULL）: **816,856**
 - 座標なし（`lat`/`lon` NULL）: **0**
 - `taxon_id` NULL: **853**（うち日付あり: 775）

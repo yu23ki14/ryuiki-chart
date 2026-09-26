@@ -16,21 +16,21 @@
 #   - measurements データセットは `unit_id IS NULL AND unit_raw IS NOT NULL` の
 #     行が 0 になった（流量の alias は unit_raw 自体が NULL なのでこの集合に
 #     入らない）。
-#   - sensor_timeseries データセットは D3 のスコープ外だったため、以前から
-#     unit_id が NULL のまま原表記の単位を持つ1系列（下記）が未解決で残る。
+#   - sensor_timeseries データセットは D3 のスコープ外だったため、以前は
+#     unit_id が NULL のまま原表記の単位を持つ1系列
+#     （sensor_timeseries/common:variable:water.water_temp/instant、alias
+#     "water_temperature"、source_id=synthetic_sensor）が未解決で残っていた。
 #
-# 埋めるならこの系列を registry/variable_alias.csv に足したうえで、この宣言を
-# 削除すること（推測ではなく実測した symbol 一致で埋める——D3 と同じ基準）。
-declared:
-  - source_table: sensor_timeseries
-    variable_id: common:variable:water.water_temp
-    obs_stat: null
-    value_grain: instant
-    reason: >
-      alias "water_temperature"（sensor_timeseries、source_id=synthetic_sensor、
-      合成データ）。原表記の単位 "degC" は該当 11,652 行すべてで一貫しており
-      common:unit:degc の symbol と一致することを実測済みだが、D3 の受け入れ
-      条件（measurements データセットの alias 38行のみ）の対象外のため今回は
-      埋めない。
-    found_on: 2026-09-26
-    record: docs/plans/V2_SERVING_PR1.md D3
+# **Issue #48 PR-2 §1: b03 が既定で合成データ（is_synthetic=1）を除外する
+# ようになったため、上記の未解決系列は該当行（11,652行、全て合成データ）が
+# `observation` から一切消え、この宣言自体が「実データにもう存在しない
+# （解決済みの）系列」の腐った宣言になった。CLAUDE.md「宣言済み差分 > データを
+# 曲げる」に従い削除した——declared は空になる。**
+#
+# 診断専用の「v1互換キューブ」（合成データを含む observation。
+# `scripts/b00_run_full_gate.py`/CI の `--include-synthetic` 段）は、この系列が
+# また現れるため、別ファイル
+# `scripts/migrate/unit_evidence_declarations_v1compat.yaml`（`--unit-evidence-
+# declarations-yaml` で明示的に渡す）を使う——ここには合流させない
+# （本番の declared を「今の observation と過不足なく一致」の状態に保つため）。
+declared: []
