@@ -370,6 +370,24 @@ describe("summarize: zone / zone_month_of_year", () => {
     expect(zone3[0].n).toBe(3 + 1 + 2);
   });
 
+  it("imputation='both': avgZero/avgLod と nCensored/nNotDetected を1回のSQLで返す（Issue #48 PR-2 統合後修正A #4。zero/lod の2回叩きを撤去）", async () => {
+    const spec: CellSpec = {
+      series: [FX.series.ssMean],
+      scope: { kind: "all_sites" },
+      grain: "day",
+      imputation: "both",
+    };
+    const { rows } = await summarize(fx.db, spec, "zone");
+    const zone3 = rows.filter((r) => r.zone === 3);
+    expect(zone3).toHaveLength(1);
+    expect(zone3[0].n).toBe(3 + 1); // fx_place_a(3日) + fx_place_c(1日)
+    expect(zone3[0].avg).toBeNull(); // 'both' のときは avgZero/avgLod を見る
+    expect(zone3[0].avgZero).toBeCloseTo((10 + 8 + 0 + 5) / 4, 6);
+    expect(zone3[0].avgLod).toBeCloseTo((10 + 6 + 5) / 3, 6); // 3日目は value_lod NULL（不検出）なので AVG から除外
+    expect(zone3[0].nCensored).toBe(2); // fx_place_a の2日目（検閲）・3日目（不検出も censored=1 で記録）
+    expect(zone3[0].nNotDetected).toBe(1); // fx_place_a の3日目のみ
+  });
+
   it("zone_month_of_year", async () => {
     const spec: CellSpec = {
       series: [FX.series.ssMean],
@@ -603,10 +621,41 @@ describe("yearSeries（PR-2 §2.1。representativeSeries + queryCells のピボ�
     expect(rows[0].valueLod.mean).toBeCloseTo(8.0, 6);
   });
 
-  it("該当する basis の系列が無いと例外", async () => {
+  it("basis はセルの性質: 該当するセルが無ければ0行（例外にしない。Issue #48 PR-2 統合後修正A #1）", async () => {
+    // water.ss は fiscal_year の登録系列があるが、grain='year'・input_grain='year'
+    // （basis='year'）のセルはフィクスチャに無い。系列自体は存在する（representativeSeries
+    // が空にならない）ので、`variableId` の誤りとは区別され、単に0行になる——basis の
+    // 有無は登録ではなく実際のセルから決まる、という設計どおり。
+    const { rows } = await yearSeries(fx.db, {
+      variableId: FX.variables.ss,
+      basis: "year",
+      scope: { kind: "site", siteId: FX.sites.a },
+      imputation: "zero",
+    });
+    expect(rows).toHaveLength(0);
+  });
+
+  it("存在しない variableId/stat の組は例外（representativeSeriesOrThrow）", async () => {
     await expect(
-      yearSeries(fx.db, { variableId: FX.variables.ss, basis: "year", scope: { kind: "site", siteId: FX.sites.a }, imputation: "zero" }),
+      yearSeries(fx.db, {
+        variableId: "common:variable:no.such.variable",
+        scope: { kind: "site", siteId: FX.sites.a },
+        imputation: "zero",
+      }),
     ).rejects.toThrow(/該当する系列が無い/);
+  });
+
+  it("Issue #48 PR-2 統合後修正A #1: value_grain='day' の系列内に input_grain='fiscal_year' のセルがある地点でも basis='fiscal_year' で出る（実測: 厚木系中津川 BOD）", async () => {
+    const { rows } = await yearSeries(fx.db, {
+      variableId: FX.variables.bod,
+      basis: "fiscal_year",
+      scope: { kind: "site", siteId: FX.sites.a },
+      imputation: "zero",
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].grain).toBe("fiscal_year");
+    expect(rows[0].periodStart).toBe("2023-04-01");
+    expect(rows[0].value.mean).toBeCloseTo(3.0, 6);
   });
 
   it("stat に非代表統計量を渡すとその系列だけで問い合わせる（BOD 75%値 = p75/fiscal_year、実データ）", async () => {

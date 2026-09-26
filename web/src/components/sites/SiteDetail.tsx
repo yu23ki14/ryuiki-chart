@@ -39,8 +39,8 @@ interface Site {
 interface Variable {
   variableId: string;
   obsStat: string | null;
-  valueGrain: string | null;
   grain: string;
+  inputGrain: string;
   n: number;
   yFrom: number;
   yTo: number;
@@ -50,11 +50,19 @@ interface Variable {
 
 type Basis = "day" | "fiscal_year" | "year";
 
-/** `lib/cube/series.ts` の `basisFromValueGrain` と同じ式（クライアント安全のため複製）。 */
-function basisFromValueGrain(valueGrain: string | null): Basis {
-  if (valueGrain === "day") return "day";
-  if (valueGrain === "fiscal_year") return "fiscal_year";
-  return "year";
+/**
+ * `lib/cube/series.ts` の `basisOfCell` と同じ式（クライアント安全のため複製——
+ * `series.ts` はサーバ専用の大きい `registry/generated.ts` を import するため、
+ * クライアントコンポーネントからは直接 import しない）。
+ *
+ * **basis はセルの性質**（`grain`/`inputGrain` の組）で決める——`value_grain`
+ * （系列の登録）では決めない（Issue #48 PR-2 統合後修正A #1）。`value_grain='day'`
+ * として登録された系列でも、出典が一部の年だけ年度値を直接報告していれば
+ * `grain='fiscal_year'` のセルを持つ（実測: 厚木系の中津川 BOD）。
+ */
+function basisOfCell(cell: { grain: string; inputGrain: string }): Basis {
+  if (cell.inputGrain === "day") return "day";
+  return cell.grain === "year" ? "year" : "fiscal_year";
 }
 
 function variableLabel(variableId: string): string {
@@ -64,7 +72,7 @@ function variableLabel(variableId: string): string {
 export function SiteDetail({ site, variables }: { site: Site; variables: Variable[] }) {
   const [variableId, setVariableId] = React.useState(variables[0]?.variableId ?? "");
   const selected = variables.find((v) => v.variableId === variableId);
-  const basis: Basis = basisFromValueGrain(selected?.valueGrain ?? null);
+  const basis: Basis = selected ? basisOfCell(selected) : "day";
   const unit = selected?.unit ?? null;
   const [grainPref, setGrainPref] = React.useState<"day" | "month" | "year">("month");
   const grain = basis === "day" ? grainPref : "year";
@@ -318,24 +326,27 @@ export function SiteDetail({ site, variables }: { site: Site; variables: Variabl
               <span className="ml-1.5 text-[10.5px] font-normal text-muted">クリックで切替</span>
             </div>
             <div className="max-h-[420px] overflow-y-auto thin-scroll">
-              {variables.map((v) => (
-                <button
-                  key={v.variableId + (v.obsStat ?? "") + (v.valueGrain ?? "")}
-                  onClick={() => setVariableId(v.variableId)}
-                  className={`w-full text-left px-3 py-1.5 border-b border-line last:border-0 hover:bg-surface-2 ${
-                    variableId === v.variableId ? "bg-water-soft" : ""
-                  }`}
-                >
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-[12px] truncate">{variableLabel(v.variableId)}</span>
-                    <span className="ml-auto text-[10.5px] text-muted tnum shrink-0">{nf(v.n)}</span>
-                  </div>
-                  <div className="text-[10px] text-muted tnum">
-                    {v.yFrom}–{v.yTo}　{basisFromValueGrain(v.valueGrain) === "day" ? "検体値" : basisFromValueGrain(v.valueGrain) === "fiscal_year" ? "年度集計値" : "暦年値"}
-                    {v.unit ? `　平均 ${fmt(v.avg ?? 0, v.unit)}` : ""}
-                  </div>
-                </button>
-              ))}
+              {variables.map((v) => {
+                const rowBasis = basisOfCell(v);
+                return (
+                  <button
+                    key={v.variableId + (v.obsStat ?? "") + v.grain + v.inputGrain}
+                    onClick={() => setVariableId(v.variableId)}
+                    className={`w-full text-left px-3 py-1.5 border-b border-line last:border-0 hover:bg-surface-2 ${
+                      variableId === v.variableId ? "bg-water-soft" : ""
+                    }`}
+                  >
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-[12px] truncate">{variableLabel(v.variableId)}</span>
+                      <span className="ml-auto text-[10.5px] text-muted tnum shrink-0">{nf(v.n)}</span>
+                    </div>
+                    <div className="text-[10px] text-muted tnum">
+                      {v.yFrom}–{v.yTo}　{rowBasis === "day" ? "検体値" : rowBasis === "fiscal_year" ? "年度集計値" : "暦年値"}
+                      {v.unit ? `　平均 ${fmt(v.avg ?? 0, v.unit)}` : ""}
+                    </div>
+                  </button>
+                );
+              })}
               {variables.length === 0 && (
                 <p className="p-3 text-[12px] text-muted">この地点には測定値がありません（地点マスタのみ）。</p>
               )}

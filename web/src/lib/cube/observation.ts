@@ -9,7 +9,18 @@
 import type { CubeDb, SqlParam } from "./db";
 import { MAX_ID_LIST } from "./db";
 import { buildScopeSql, OBS, seriesFilterSql, zoneExprSql, type Scope } from "./sql";
-import { basisOf, labelYear, representativeSeries, seriesKeyFromRow, seriesKeySql, seriesKeyString, type Grain, type SeriesInfo, type SeriesKey } from "./series";
+import {
+  basisOf,
+  labelYear,
+  representativeSeries,
+  seriesKeyFromRow,
+  seriesKeySql,
+  seriesKeyString,
+  yearCellFilterForBasis,
+  type Grain,
+  type SeriesInfo,
+  type SeriesKey,
+} from "./series";
 
 export type { Scope } from "./sql";
 
@@ -273,7 +284,12 @@ export interface ZoneYearRow {
   year: number;
   nSites: number;
   n: number;
+  nCensored: number;
+  nNotDetected: number;
+  /** `spec.imputation` で選んだ値（`'both'` のときは null。`avgZero`/`avgLod` を見る）。 */
   avg: number | null;
+  avgZero: number | null;
+  avgLod: number | null;
 }
 
 export interface ZoneMonthRow {
@@ -345,7 +361,6 @@ async function summarizeMonthOfYear(db: CubeDb, spec: CellSpec, opt?: SummarizeO
 async function summarizeZone(db: CubeDb, spec: CellSpec): Promise<LimitedRows<ZoneYearRow>> {
   const { joins, wheres, params } = commonFilterSql(spec, OBS);
   const limit = limitOf(spec);
-  const v = valueExpr(spec.imputation, OBS);
 
   // `zg`/`zgz`（zone-group）: このゾーン集計自身が使うためだけの地点→ゾーンの JOIN
   // （design が想定する主な呼び出し方——`scope: { kind: "all_sites" }` で呼び、
@@ -356,10 +371,18 @@ async function summarizeZone(db: CubeDb, spec: CellSpec): Promise<LimitedRows<Zo
   // "ambiguous column name" で拒む）。別名をここだけ変えて衝突を避ける——
   // どちらのスコープで呼ばれても正しく動くようにする（地点→ゾーンの辺は単射
   // なので、二重に JOIN しても行が増えることはない）。
+  //
+  // `value_zero`/`value_lod` の両方と `n_censored`/`n_not_detected` を常に1回の
+  // SQL で計算する（Issue #48 PR-2 統合後修正A #4）——呼び出し側が `imputation:'zero'`/
+  // `'lod'` を2回叩いて JS 側でキーを合わせていた簡易合成（旧 `get_timeseries` の
+  // zone 分岐）を撤去するため。`spec.imputation==='both'` のときは `avg` を null にし
+  // `avgZero`/`avgLod` を見させる（`observation_agg` の `imputation:'both'` と同じ約束）。
   const sql = `
     SELECT ${zoneExprSql("zgz")} AS zone, ${OBS}.grain AS grain, ${OBS}.input_grain AS input_grain,
            CAST(substr(${OBS}.period_start,1,4) AS INTEGER) AS year,
-           COUNT(DISTINCT ${OBS}.place_id) AS n_sites, SUM(${OBS}.n) AS n, AVG(${v}) AS avg
+           COUNT(DISTINCT ${OBS}.place_id) AS n_sites, SUM(${OBS}.n) AS n,
+           SUM(${OBS}.n_censored) AS n_censored, SUM(${OBS}.n_not_detected) AS n_not_detected,
+           AVG(${OBS}.value_zero) AS avg_zero, AVG(${OBS}.value_lod) AS avg_lod
     FROM observation_agg ${OBS}
     JOIN place_relation zg ON zg.child_id = ${OBS}.place_id AND zg.relation = 'within'
     JOIN place_source_ref zgz ON zgz.place_id = zg.parent_id AND zgz.source_id = 'sites.zone'
@@ -369,12 +392,32 @@ async function summarizeZone(db: CubeDb, spec: CellSpec): Promise<LimitedRows<Zo
     ORDER BY zone, year
     LIMIT ?
   `;
-  const rows = await db.all<{ zone: number; grain: string; input_grain: string; year: number; n_sites: number; n: number; avg: number | null }>(
-    sql,
-    [...params, limit + 1],
-  );
+  const rows = await db.all<{
+    zone: number;
+    grain: string;
+    input_grain: string;
+    year: number;
+    n_sites: number;
+    n: number;
+    n_censored: number;
+    n_not_detected: number;
+    avg_zero: number | null;
+    avg_lod: number | null;
+  }>(sql, [...params, limit + 1]);
   return applyLimit(
-    rows.map((r) => ({ zone: r.zone, grain: r.grain as Grain, inputGrain: r.input_grain, year: r.year, nSites: r.n_sites, n: r.n, avg: r.avg })),
+    rows.map((r) => ({
+      zone: r.zone,
+      grain: r.grain as Grain,
+      inputGrain: r.input_grain,
+      year: r.year,
+      nSites: r.n_sites,
+      n: r.n,
+      nCensored: r.n_censored,
+      nNotDetected: r.n_not_detected,
+      avg: spec.imputation === "zero" ? r.avg_zero : spec.imputation === "lod" ? r.avg_lod : null,
+      avgZero: r.avg_zero,
+      avgLod: r.avg_lod,
+    })),
     limit,
   );
 }
@@ -530,30 +573,24 @@ export async function summarize(db: CubeDb, spec: CellSpec, by: SummarizeBy, opt
 const DEFAULT_DATASET = "measurements";
 
 /**
- * `representativeSeries()` の結果を `basis`（`series.ts` の `basisOf` が決める
- * `value_grain` の基準）で絞り込む。`yearSeries`/`monthSeries`/`daySeries` が共有する。
+ * `variableId`/`stat` の代表系列一覧を解決する（`representativeSeries()` の薄い
+ * 包み）。空配列（該当する variableId・stat の組が登録に無い——呼び出し側の誤り）は
+ * ここで気づけるよう例外にする（`yearSeries`/`monthSeries`/`daySeries` が共有）。
  *
- * `basis` を明示しない呼び出しは `basisOf()` の優先順位（day > fiscal_year > year）で
- * 決まる既定の `basis` を使う。
+ * **`basis` では絞り込まない**（Issue #48 PR-2 統合後修正A #1）: basis はセルの性質
+ * （`grain`/`input_grain`）であり系列の登録（`value_grain`）ではないため、ここで
+ * `value_grain` によって系列を落とすと、`value_grain='day'` として登録された系列の
+ * 中に `input_grain='fiscal_year'` のセルがある地点（実測: 厚木系の中津川 BOD）の
+ * 年度値がどの basis 指定でも出てこなくなる。`representativeSeries()` の全
+ * `value_grain` をそのまま `CellSpec.series` に渡し、`basis` の絞り込みは
+ * `yearCellFilterForBasis()` が返す `grain`/`inputGrain` でセル側に行わせる。
  */
-function seriesForBasis(
-  variableId: string,
-  stat: string | undefined,
-  basis: "day" | "fiscal_year" | "year" | undefined,
-): { series: SeriesInfo[]; basis: "day" | "fiscal_year" | "year" } {
+function representativeSeriesOrThrow(variableId: string, stat: string | undefined): SeriesInfo[] {
   const all = representativeSeries(variableId, DEFAULT_DATASET, stat ?? "representative");
-  const resolvedBasis = basis ?? basisOf(all).basis;
-  const valueGrain = resolvedBasis; // "day"/"fiscal_year"/"year" は value_grain の文字列そのもの。
-  const series = all.filter((s) => s.valueGrain === valueGrain);
-  if (series.length === 0) {
-    throw new Error(`seriesForBasis: variableId=${variableId} basis=${resolvedBasis} に該当する系列が無い`);
+  if (all.length === 0) {
+    throw new Error(`variableId=${variableId} stat=${stat ?? "representative"} に該当する系列が無い`);
   }
-  return { series, basis: resolvedBasis };
-}
-
-/** `basis` から `queryCells` に渡す `inputGrain` を決める（day 基準だけ積み上げ）。 */
-function inputGrainForBasis(basis: "day" | "fiscal_year" | "year"): "day" | "same" {
-  return basis === "day" ? "day" : "same";
+  return all;
 }
 
 export interface StatTriple {
@@ -632,13 +669,15 @@ export interface YearSeriesOpt {
  * `zone_year`/`site_var` 相当の時系列問い合わせが共有する経路（design §2.1）。
  */
 export async function yearSeries(db: CubeDb, opt: YearSeriesOpt): Promise<LimitedRows<YearPoint>> {
-  const { series, basis } = seriesForBasis(opt.variableId, opt.stat, opt.basis);
+  const series = representativeSeriesOrThrow(opt.variableId, opt.stat);
+  const basis = opt.basis ?? basisOf(series).basis;
+  const { grain, inputGrain } = yearCellFilterForBasis(basis);
   const spec: CellSpec = {
     series,
     scope: opt.scope,
-    grain: ["year", "fiscal_year"],
+    grain,
     stats: ["mean", "min", "max"],
-    inputGrain: inputGrainForBasis(basis),
+    inputGrain,
     period: opt.period,
     imputation: opt.imputation,
     limit: opt.limit,
@@ -688,11 +727,12 @@ export interface MonthDaySeriesOpt {
  * のみ許可、それ以外は例外」）。
  */
 export async function monthSeries(db: CubeDb, opt: MonthDaySeriesOpt): Promise<LimitedRows<SeriesPoint>> {
-  // `basis` を明示せず（`undefined`）この変数の既定 basis を検出したうえで day 以外を
-  // 拒む——`seriesForBasis` に basis="day" を決め打ちで渡すと、day 系列が無い変数
-  // （例: `land.max_subsidence`＝year のみ）でも「該当する系列が無い」という
-  // basis 判定と無関係な例外になり、呼び出し側に「basis が違う」と伝わらない。
-  const { series, basis } = seriesForBasis(opt.variableId, opt.stat, undefined);
+  // この変数の既定 basis（登録から優先順位で決めた基準）を検出したうえで day 以外を
+  // 拒む——`basis="day"` を決め打ちで問い合わせると、day 系列が無い変数（例:
+  // `land.max_subsidence`＝year のみ）でも「セルが無いので0行」になってしまい、
+  // 呼び出し側に「basis が違う」と伝わらない。
+  const series = representativeSeriesOrThrow(opt.variableId, opt.stat);
+  const basis = basisOf(series).basis;
   if (basis !== "day") throw new Error(`monthSeries: basis='day' の変数だけに対応する（この変数の既定 basis は '${basis}'）`);
   const spec: CellSpec = {
     series,
@@ -709,7 +749,8 @@ export async function monthSeries(db: CubeDb, opt: MonthDaySeriesOpt): Promise<L
 
 /** 日セル（`grain='day'`、`stat='mean'` のみ）。`monthSeries` と同じく basis='day' 限定。 */
 export async function daySeries(db: CubeDb, opt: MonthDaySeriesOpt): Promise<LimitedRows<SeriesPoint>> {
-  const { series, basis } = seriesForBasis(opt.variableId, opt.stat, undefined);
+  const series = representativeSeriesOrThrow(opt.variableId, opt.stat);
+  const basis = basisOf(series).basis;
   if (basis !== "day") throw new Error(`daySeries: basis='day' の変数だけに対応する（この変数の既定 basis は '${basis}'）`);
   const spec: CellSpec = {
     series,
