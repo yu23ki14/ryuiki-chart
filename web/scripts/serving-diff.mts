@@ -313,9 +313,12 @@ async function main() {
   const v2 = V1_ONLY ? null : await loadAdaptersV2();
   // `unit_label_registry` 規則が「v2 側が非NULLなら何でも通す」のではなく、実際に
   // その系列の unit_id のレジストリ symbol と一致するかまで確かめるための参照表
-  // （`ClassifyContext.expectedUnitSymbol`）。db を読まない純粋な計算なので、
-  // `--pretend-synthetic-excluded` で db を開き直す前に1回だけ作れば足りる。
-  const expectedUnitSymbol = v2 ? v2.expectedUnitSymbols() : undefined;
+  // （`ClassifyContext.expectedUnitSymbol`）。`registry.sqlite` を専用の別接続
+  // （`v2Db`/`--pretend-synthetic-excluded` の開き直しとは無関係）で直接読むだけ
+  // なので、`v2Db` を開く前に1回だけ作れば足りる（Issue #48 PR-1 code-review #3:
+  // 以前は `seriesForAlias` 経由——v2 側の unit 計算と同じ式——で「期待値」を
+  // 計算していて、常に一致してしまう見かけ上の検証だった）。
+  const expectedUnitSymbol = v2 ? v2.expectedUnitSymbols(REGISTRY_DB_PATH) : undefined;
 
   // `--pretend-synthetic-excluded`（設計書 §9-4）: まず素の v2 で「地点の全セルが
   // 合成系列だけ」の place_id 集合を求め（`lib/cube` の `isSynthetic` 由来）、

@@ -18,6 +18,7 @@
  * `scripts/b05_project_v1.py` の `_MEAS_YEAR_SQL` と同じ式）でこのファイルに閉じる。
  * `@/lib/cube` は daily/annual という語を知らない。
  */
+import Database from "better-sqlite3";
 import { sqliteCubeDb, type SqliteCubeDbOptions } from "@/lib/cube/db-sqlite";
 import * as catalog from "@/lib/cube/catalog";
 import {
@@ -304,20 +305,41 @@ async function aliasCatalog(db: CubeDb): Promise<AliasCatalogEntry[]> {
 }
 
 /**
- * measurements の alias ごとの、レジストリ上の正しい unit symbol（`series[0].unitId` の
- * `unitSymbol()`——`variable_catalog`/`site_variables`/`zone_series` 等の `unit` 列と
- * 同じ計算式）。DB を読まない（`seriesForAlias`/`unitSymbol` はどちらも registry の
- * 生成物だけを見る）ので、`db` を開く前でも呼べる。`classify.ts` の
- * `unit_label_registry` 規則が「v2 側の非NULL値なら何でも通す」のではなく、実際に
- * その系列の `unit_id` の symbol と一致するかまで確かめるのに使う。
+ * measurements の alias ごとの、レジストリ上の正しい unit symbol。`registry.sqlite` の
+ * `variable_alias`/`unit` を **SQL で直接**読む（Issue #48 PR-1 code-review #3）。
+ *
+ * 以前は `unitLabel(seriesForAlias("measurements", alias)[0]?.unitId ?? null)`——
+ * `fetchRawRows` が v2 側の `unit` 列を計算するのと**全く同じ式**——で「期待値」を
+ * 計算していた。これだと `classify.ts` の `unit_label_registry` 規則の
+ * `expected === v2Unit` が構造的に常に真になり（両者が同じ入力から同じ式で
+ * 計算される以上、一致しないことがあり得ない）、`seriesForAlias`/`generated.ts`
+ * 側に実際にバグがあっても検出できない見かけ上の検証だった。
+ *
+ * ここでは `seriesForAlias`（`generated.ts` 経由）を一切使わず、`registry.sqlite`
+ * の生テーブルを別の接続で直接読む。ある alias の `variable_alias` 行の `unit_id`
+ * が（NULL を除いて）1種類に定まらない場合はこの alias を返り値に含めない
+ * （`classify.ts` 側は `expectedUnitSymbol.get(alias)` が `undefined` なら
+ * unexplained に倒す——「1つに定まらないなら期待値を主張しない」）。
  */
-export function expectedUnitSymbols(): ReadonlyMap<string, string | null> {
-  const out = new Map<string, string | null>();
-  for (const alias of MEASUREMENTS_ALIASES) {
-    const series = seriesForAlias("measurements", alias);
-    out.set(alias, unitLabel(series[0]?.unitId ?? null));
+export function expectedUnitSymbols(registryDbPath: string): ReadonlyMap<string, string | null> {
+  const db = new Database(registryDbPath, { readonly: true, fileMustExist: true });
+  try {
+    const distinctUnitIds = db.prepare(
+      `SELECT DISTINCT unit_id FROM variable_alias WHERE dataset = 'measurements' AND alias = ? AND unit_id IS NOT NULL`,
+    );
+    const unitSymbolById = db.prepare(`SELECT symbol FROM unit WHERE unit_id = ?`);
+
+    const out = new Map<string, string | null>();
+    for (const alias of MEASUREMENTS_ALIASES) {
+      const rows = distinctUnitIds.all(alias) as { unit_id: string }[];
+      if (rows.length !== 1) continue; // 0件（全行NULL）/2件以上（1つに定まらない）は期待値なし
+      const unitRow = unitSymbolById.get(rows[0].unit_id) as { symbol: string | null } | undefined;
+      out.set(alias, unitRow ? (unitRow.symbol ?? "") : null);
+    }
+    return out;
+  } finally {
+    db.close();
   }
-  return out;
 }
 
 /**
