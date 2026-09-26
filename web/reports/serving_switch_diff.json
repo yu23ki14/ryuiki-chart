@@ -1,0 +1,316 @@
+{
+  "header": {
+    "gitHead": "66f09897afd71e136d2a9cdea9407411cef3be40",
+    "v2PipelineFingerprint": "phase-b-fact-slice/v1",
+    "registryInputFingerprint": "0d15a54a95412137edefe9967a2add24f9f0e53fe06db8bdacb159c4d1e4abb3",
+    "sqliteVersion": "3.53.4",
+    "imputation": "zero",
+    "expand": "all",
+    "v1Source": "derived",
+    "generatedAt": "2026-09-26T09:42:48.115Z",
+    "elapsedMs": 854087
+  },
+  "stats": [
+    {
+      "id": "variable_catalog",
+      "runs": 1,
+      "rowsV1": 58,
+      "rowsV2": 58,
+      "matched": 27,
+      "declared": 1,
+      "rain_div10": 0,
+      "day_split": 0,
+      "synthetic_excluded": 0,
+      "unit_label_registry": 30,
+      "float_rounding": 0,
+      "unexplained": 0
+    },
+    {
+      "id": "sites_list",
+      "runs": 1,
+      "rowsV1": 352,
+      "rowsV2": 352,
+      "matched": 352,
+      "declared": 0,
+      "rain_div10": 0,
+      "day_split": 0,
+      "synthetic_excluded": 0,
+      "unit_label_registry": 0,
+      "float_rounding": 0,
+      "unexplained": 0
+    },
+    {
+      "id": "site_variables",
+      "runs": 250,
+      "rowsV1": 8140,
+      "rowsV2": 8140,
+      "matched": 3983,
+      "declared": 2,
+      "rain_div10": 0,
+      "day_split": 0,
+      "synthetic_excluded": 0,
+      "unit_label_registry": 4155,
+      "float_rounding": 0,
+      "unexplained": 0
+    },
+    {
+      "id": "water_bodies",
+      "runs": 1,
+      "rowsV1": 26,
+      "rowsV2": 26,
+      "matched": 26,
+      "declared": 0,
+      "rain_div10": 0,
+      "day_split": 0,
+      "synthetic_excluded": 0,
+      "unit_label_registry": 0,
+      "float_rounding": 0,
+      "unexplained": 0
+    },
+    {
+      "id": "water_bodies_for_variable",
+      "runs": 58,
+      "rowsV1": 1092,
+      "rowsV2": 1092,
+      "matched": 1092,
+      "declared": 0,
+      "rain_div10": 0,
+      "day_split": 0,
+      "synthetic_excluded": 0,
+      "unit_label_registry": 0,
+      "float_rounding": 0,
+      "unexplained": 0
+    },
+    {
+      "id": "sites_in_water_body",
+      "runs": 26,
+      "rowsV1": 127,
+      "rowsV2": 127,
+      "matched": 127,
+      "declared": 0,
+      "rain_div10": 0,
+      "day_split": 0,
+      "synthetic_excluded": 0,
+      "unit_label_registry": 0,
+      "float_rounding": 0,
+      "unexplained": 0
+    },
+    {
+      "id": "year_series_site",
+      "runs": 8140,
+      "rowsV1": 116076,
+      "rowsV2": 116076,
+      "matched": 44838,
+      "declared": 9,
+      "rain_div10": 0,
+      "day_split": 0,
+      "synthetic_excluded": 0,
+      "unit_label_registry": 71229,
+      "float_rounding": 0,
+      "unexplained": 0
+    },
+    {
+      "id": "month_series_site",
+      "runs": 1966,
+      "rowsV1": 127491,
+      "rowsV2": 127493,
+      "matched": 127491,
+      "declared": 2,
+      "rain_div10": 0,
+      "day_split": 0,
+      "synthetic_excluded": 0,
+      "unit_label_registry": 0,
+      "float_rounding": 0,
+      "unexplained": 0
+    },
+    {
+      "id": "day_series_site",
+      "runs": 1966,
+      "rowsV1": 139530,
+      "rowsV2": 139532,
+      "matched": 139530,
+      "declared": 2,
+      "rain_div10": 0,
+      "day_split": 0,
+      "synthetic_excluded": 0,
+      "unit_label_registry": 0,
+      "float_rounding": 0,
+      "unexplained": 0
+    },
+    {
+      "id": "year_series_water",
+      "runs": 1432,
+      "rowsV1": 81286,
+      "rowsV2": 81286,
+      "matched": 30839,
+      "declared": 0,
+      "rain_div10": 0,
+      "day_split": 0,
+      "synthetic_excluded": 0,
+      "unit_label_registry": 50447,
+      "float_rounding": 0,
+      "unexplained": 0
+    },
+    {
+      "id": "zone_series",
+      "runs": 61,
+      "rowsV1": 3710,
+      "rowsV2": 3710,
+      "matched": 1425,
+      "declared": 0,
+      "rain_div10": 0,
+      "day_split": 0,
+      "synthetic_excluded": 0,
+      "unit_label_registry": 2285,
+      "float_rounding": 0,
+      "unexplained": 0
+    },
+    {
+      "id": "climatology",
+      "runs": 16,
+      "rowsV1": 192,
+      "rowsV2": 192,
+      "matched": 178,
+      "declared": 2,
+      "rain_div10": 0,
+      "day_split": 0,
+      "synthetic_excluded": 0,
+      "unit_label_registry": 12,
+      "float_rounding": 0,
+      "unexplained": 0
+    },
+    {
+      "id": "zone_climatology",
+      "runs": 16,
+      "rowsV1": 619,
+      "rowsV2": 619,
+      "matched": 571,
+      "declared": 0,
+      "rain_div10": 0,
+      "day_split": 0,
+      "synthetic_excluded": 0,
+      "unit_label_registry": 48,
+      "float_rounding": 0,
+      "unexplained": 0
+    },
+    {
+      "id": "rain_daily",
+      "runs": 1,
+      "rowsV1": 3654,
+      "rowsV2": 3653,
+      "matched": 2456,
+      "declared": 0,
+      "rain_div10": 649,
+      "day_split": 549,
+      "synthetic_excluded": 0,
+      "unit_label_registry": 0,
+      "float_rounding": 0,
+      "unexplained": 0
+    },
+    {
+      "id": "rain_monthly_clim",
+      "runs": 1,
+      "rowsV1": 12,
+      "rowsV2": 12,
+      "matched": 0,
+      "declared": 0,
+      "rain_div10": 0,
+      "day_split": 12,
+      "synthetic_excluded": 0,
+      "unit_label_registry": 0,
+      "float_rounding": 0,
+      "unexplained": 0
+    },
+    {
+      "id": "rain_top_days",
+      "runs": 1,
+      "rowsV1": 10,
+      "rowsV2": 10,
+      "matched": 0,
+      "declared": 0,
+      "rain_div10": 1,
+      "day_split": 13,
+      "synthetic_excluded": 0,
+      "unit_label_registry": 0,
+      "float_rounding": 0,
+      "unexplained": 0
+    },
+    {
+      "id": "longitudinal_highlight",
+      "runs": 2,
+      "rowsV1": 23,
+      "rowsV2": 23,
+      "matched": 23,
+      "declared": 0,
+      "rain_div10": 0,
+      "day_split": 0,
+      "synthetic_excluded": 0,
+      "unit_label_registry": 0,
+      "float_rounding": 0,
+      "unexplained": 0
+    }
+  ],
+  "totals": {
+    "id": "total",
+    "runs": 13939,
+    "rowsV1": 482398,
+    "rowsV2": 482401,
+    "matched": 352958,
+    "declared": 18,
+    "rain_div10": 650,
+    "day_split": 574,
+    "synthetic_excluded": 0,
+    "unit_label_registry": 128206,
+    "float_rounding": 0,
+    "unexplained": 0
+  },
+  "unexplainedSamples": [],
+  "rottenDeclarations": [],
+  "mutationResults": [
+    {
+      "name": "lod_instead_of_zero",
+      "unexplained": 122525,
+      "caughtAsExpected": true
+    },
+    {
+      "name": "drop_series",
+      "unexplained": 239265,
+      "caughtAsExpected": true
+    },
+    {
+      "name": "swap_kind",
+      "unexplained": 77729,
+      "caughtAsExpected": true
+    },
+    {
+      "name": "no_unit",
+      "unexplained": 81232,
+      "caughtAsExpected": true
+    },
+    {
+      "name": "month_off_by_one",
+      "unexplained": 132730,
+      "caughtAsExpected": true
+    },
+    {
+      "name": "include_watershed_cells",
+      "unexplained": 0,
+      "caughtAsExpected": true
+    },
+    {
+      "name": "rain_no_div10_rule",
+      "unexplained": 650,
+      "caughtAsExpected": true
+    },
+    {
+      "name": "day_split_rule_off",
+      "unexplained": 574,
+      "caughtAsExpected": true
+    },
+    {
+      "name": "declared_rot",
+      "unexplained": 1,
+      "caughtAsExpected": true
+    }
+  ]
+}
