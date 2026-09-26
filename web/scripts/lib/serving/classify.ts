@@ -331,6 +331,15 @@ function monthKeyOf(diff: RowDiff): number | undefined {
   return Number.isNaN(n) ? undefined : n;
 }
 
+/**
+ * `row_only_in_v1`/`row_only_in_v2` の day_split 判定は日次・月次どちらも同じ形
+ * （ラベル側にしか無い/period_start 側にしか無い）なので共有する。
+ */
+function rowOnlySplitExplained(kind: "row_only_in_v1" | "row_only_in_v2", byLabel: number | undefined, byStart: number | undefined): boolean {
+  if (kind === "row_only_in_v1") return byLabel !== undefined && byStart === undefined;
+  return byStart !== undefined && byLabel === undefined;
+}
+
 /** 月別平年値（`rain_monthly_clim`）の day_split 判定。日ごとの判定と同じ形だが、
  *  `monthlyLabel`/`monthlyPeriodStartRaw`（すでに月単位・v2 側は生値スケール）を使う。
  *  月をまたいだ合算・年数での割り算を経由するため、丸め誤差ぶんだけ許容差を持たせる
@@ -341,8 +350,7 @@ function classifyDaySplitMonthly(diff: RowDiff, rain: RainRecompute): boolean {
   if (month === undefined) return false;
   const byLabel = rain.monthlyLabel.get(month);
   const byStart = rain.monthlyPeriodStartRaw.get(month);
-  if (diff.kind === "row_only_in_v1") return byLabel !== undefined && byStart === undefined;
-  if (diff.kind === "row_only_in_v2") return byStart !== undefined && byLabel === undefined;
+  if (diff.kind === "row_only_in_v1" || diff.kind === "row_only_in_v2") return rowOnlySplitExplained(diff.kind, byLabel, byStart);
   if (diff.kind === "value_diff" && diff.columns.includes("mm")) {
     const v1mm = diff.v1?.numeric.mm ?? null;
     const v2mm = diff.v2?.numeric.mm ?? null;
@@ -364,14 +372,11 @@ function classifyDaySplit(diff: RowDiff, ctx: ClassifyContext): boolean {
   const v1Day = dayKeyOfSide(diff, ctx, "v1");
   const v2Day = dayKeyOfSide(diff, ctx, "v2");
 
-  if (diff.kind === "row_only_in_v1") {
+  if (diff.kind === "row_only_in_v1" || diff.kind === "row_only_in_v2") {
     // v1 側にしか無い日 = ラベル日割りにはあるが period_start 日割りには無い（またはその逆）。
-    if (!v1Day) return false;
-    return ctx.rain.byLabelDay.get(v1Day) !== undefined && ctx.rain.byPeriodStartDay.get(v1Day) === undefined;
-  }
-  if (diff.kind === "row_only_in_v2") {
-    if (!v2Day) return false;
-    return ctx.rain.byPeriodStartDay.get(v2Day) !== undefined && ctx.rain.byLabelDay.get(v2Day) === undefined;
+    const day = diff.kind === "row_only_in_v1" ? v1Day : v2Day;
+    if (!day) return false;
+    return rowOnlySplitExplained(diff.kind, ctx.rain.byLabelDay.get(day), ctx.rain.byPeriodStartDay.get(day));
   }
   if ((diff.kind === "value_diff" && diff.columns.includes("mm")) || diff.kind === "label_diff") {
     // `rain_top_days`（`rainDateFromLabel`）は同じ順位でも v1Day !== v2Day になりうる
