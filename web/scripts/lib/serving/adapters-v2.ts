@@ -3,37 +3,45 @@
  * 呼び、v1 アダプタ（`adapters-v1.ts`）と同じ `id` ごとに、同じ列名の行を
  * `NormRow[]` として返す。
  *
- * **注意（1c 実装時点で 1a は未着手）**: このファイルは設計書（Issue #48 PR-1 設計、
- * §3「lib/cube の API」）に書かれている型・関数名だけを頼りに書いてある。
- * `@/lib/cube` はまだ存在しないため、`npx tsc --noEmit` はこのファイルで
- * `Cannot find module '@/lib/cube'` 系のエラーを出す（意図的にそのままにしてある。
- * 統合時に 1a の実装に合わせて調整すること——詳しくは 1c の報告を参照）。
+ * **1a の実 API に合わせてある（Issue #48 PR-1 統合時点）**:
+ *   - `sqliteCubeDb` は `@/lib/cube` からは re-export されない（index.ts のコメント
+ *     参照——アプリから誤って import されないよう、Node 専用の `db-sqlite.ts` を
+ *     直接 import する）。
+ *   - `catalog` は名前空間としては export されていない（`variableCatalog`/
+ *     `siteVariables`/`sites`/`sitesInWaterBody`/`waterBodies` が個別関数として
+ *     export されている）ので、`import * as catalog from "@/lib/cube/catalog"` で
+ *     名前空間に束ねる（呼び出し側の `catalog.xxx(...)` はそのまま）。
+ *   - `unitFor` は無い。単位のシンボル解決は `@/lib/registry/lookup` の
+ *     `unitSymbol(unitId)`（`web/src/lib/queries.ts` 等、v1 経路が使うのと同じ
+ *     レジストリの読み出し層）を使う。
+ *   - `SummaryRow` の各バリアント（`ZoneYearRow`/`MonthOfYearRow`/`ZoneMonthRow`/
+ *     `PlaceSummaryRow`）は行ごとの `series`/`periodStart` を持たない
+ *     （`SeriesSummaryRow` だけが持つ。`observation.ts` 参照）。`zone_series`/
+ *     `climatology`/`zone_climatology`/`longitudinal_highlight` は単位を
+ *     「その問い合わせに渡した `series`（呼び出し元で確定済みの1系列）」から
+ *     直接取る。`year` は `ZoneYearRow.year`（`labelYear` を経由しない実数）を
+ *     そのまま使う。
  *
- * 期待している `@/lib/cube` の形（設計書 §3 のまま。実装が違えばここを直す）:
- *   - `sqliteCubeDb({ v2, registry, ryuiki }): CubeDb & { close(): void }`
- *   - `queryCells(db, spec: CellSpec): Promise<CellRow[]>`
- *   - `summarize(db, spec: CellSpec, by, opt?): Promise<SummaryRow[]>`
- *   - `catalog.variableCatalog(db)` / `catalog.siteVariables(db, placeId)` /
- *     `catalog.sites(db)` / `catalog.waterBodies(db, opt?)` /
- *     `catalog.sitesInWaterBody(db, municipality)`
- *   - `seriesForAlias(dataset, alias): SeriesInfo[]`
- *   - `labelYear(periodStart): number`
- *   - `unitFor(unitId): string | null`（設計書 §3.2。無ければ `unitId` をそのまま
- *     ラベルとして使うのでも動く——ここでは `unitFor` が無いケースに備えて
- *     `?? unitId` にフォールバックしている）
+ * **既知の未整理点（次の担当が serving-diff を全量実行するときに見ること）**:
+ *   `variable_catalog`/`site_variables` は `catalog.ts` が「系列
+ *   （variable_id, obs_stat, unit_id, value_grain）」単位で返すのに対し、
+ *   v1 の `var_catalog`/`site_var` は「alias（表記）」単位の1行——同じ系列に
+ *   複数 alias が対応する場合はここでは `seriesInfo(series).aliases[0]`
+ *   （先頭の1つ）を使っている。alias 単位への正しい束ね直しは行っていない。
  */
+import { sqliteCubeDb } from "@/lib/cube/db-sqlite";
+import * as catalog from "@/lib/cube/catalog";
 import {
-  sqliteCubeDb,
   queryCells,
   summarize,
-  catalog,
   seriesForAlias,
+  seriesInfo,
   labelYear,
-  unitFor,
   type CubeDb,
   type CellSpec,
   type SeriesKey,
 } from "@/lib/cube";
+import { unitSymbol } from "@/lib/registry/lookup";
 import { toNormRows, type CompareSpec, type NormRow, type RawRow, type ScalarParam } from "./normalize";
 
 export interface V2Paths {
@@ -46,7 +54,11 @@ let sharedDb: (CubeDb & { close(): void }) | undefined;
 
 export function openV2Db(paths: V2Paths): CubeDb & { close(): void } {
   if (!sharedDb) sharedDb = sqliteCubeDb(paths);
-  return sharedDb;
+  // `sharedDb` は module スコープの `let`（`closeV2Db` からも再代入される）ため、
+  // TypeScript は直前の代入によるナローイングをここでは効かせない
+  // （クロージャから書き換えられうる変数の narrowing 制限）。直前の if で
+  // 必ず代入済みなので non-null で問題ない。
+  return sharedDb!;
 }
 
 export function closeV2Db(): void {
@@ -57,8 +69,7 @@ export function closeV2Db(): void {
 const RAIN_TOP_N = 10;
 
 function unitLabel(unitId: string | null): string | null {
-  if (unitId === null) return null;
-  return unitFor ? (unitFor(unitId) ?? unitId) : unitId;
+  return unitSymbol(unitId);
 }
 
 // v1 の `kind`（daily/annual）は queries.ts 側では行ごとの列だが、この設計では
@@ -72,10 +83,10 @@ async function fetchRawRows(db: CubeDb, id: string, params: Record<string, Scala
     case "variable_catalog": {
       const rows = await catalog.variableCatalog(db);
       return rows.map((r) => ({
-        alias: r.alias,
-        unit: unitLabel(r.unitId),
+        alias: seriesInfo(r.series)?.aliases[0] ?? r.series.variableId,
+        unit: unitLabel(r.series.unitId),
         n: r.n,
-        n_sites: r.nSites,
+        n_sites: r.nPlaces,
         y_from: r.yFrom,
         y_to: r.yTo,
         n_daily: r.nDaily,
@@ -85,24 +96,44 @@ async function fetchRawRows(db: CubeDb, id: string, params: Record<string, Scala
     }
     case "sites_list": {
       const rows = await catalog.sites(db);
-      return rows.map((r) => ({ site_id: r.siteId, n_meas: r.nMeas, n_var: r.nVar }));
+      return rows.map((r) => ({ site_id: r.siteId, n_meas: r.nMeas, n_var: r.nVariables }));
     }
     case "site_variables": {
       const rows = await catalog.siteVariables(db, String(params.site_id));
-      return rows.map((r) => ({ alias: r.alias, kind: r.kind, n: r.n, y_from: r.yFrom, y_to: r.yTo, avg: r.avg, unit: unitLabel(r.unitId) }));
+      return rows.map((r) => ({
+        alias: seriesInfo(r.series)?.aliases[0] ?? r.series.variableId,
+        // v1 の `kind`（`site_var.kind`）は daily/annual。`input_grain='day'` が
+        // 積み上げ（日次セルから）、それ以外は出典配布（design §3.2）。
+        kind: r.inputGrain === "day" ? "daily" : "annual",
+        n: r.n,
+        y_from: r.yFrom,
+        y_to: r.yTo,
+        avg: r.avg,
+        unit: unitLabel(r.series.unitId),
+      }));
     }
     case "water_bodies": {
       const rows = await catalog.waterBodies(db);
-      return rows.map((r) => ({ ...r }));
+      return rows.map((r) => ({
+        name: r.name,
+        n_sites: r.nSites,
+        n_meas: r.nMeas,
+        y_from: r.yFrom,
+        y_to: r.yTo,
+        elev_min: r.elevMin,
+        elev_max: r.elevMax,
+        zone_min: r.zoneMin,
+        zone_max: r.zoneMax,
+      }));
     }
     case "water_bodies_for_variable": {
       const series = seriesForAlias("measurements", String(params.alias));
       const rows = await catalog.waterBodies(db, { series });
-      return rows.map((r) => ({ ...r }));
+      return rows.map((r) => ({ name: r.name, n_sites: r.nSites, n: r.nMeas, y_from: r.yFrom, y_to: r.yTo, elev_max: r.elevMax }));
     }
     case "sites_in_water_body": {
       const rows = await catalog.sitesInWaterBody(db, String(params.water));
-      return rows.map((r) => ({ site_id: r.siteId, n_meas: r.nMeas, n_var: r.nVar, municipality: r.municipality }));
+      return rows.map((r) => ({ site_id: r.siteId, n_meas: r.nMeas, n_var: r.nVariables, municipality: r.municipality }));
     }
     case "year_series_site":
     case "year_series_water": {
@@ -166,26 +197,33 @@ async function fetchRawRows(db: CubeDb, id: string, params: Record<string, Scala
         imputation: "zero",
       };
       const rows = await summarize(db, spec, "zone");
+      // `SummaryRow`（`zone` バリアント＝`ZoneYearRow`）は行ごとの系列情報を持たない
+      // （`observation.ts` 参照——複数系列を1グループに混ぜて summarize するのが
+      // 設計の前提のため）。呼び出し時に確定している `series`（1 alias 分）から
+      // 単位を引く。
+      const unit = unitLabel(series[0]?.unitId ?? null);
       return rows.map((r) => ({
         zone: r.zone,
-        year: labelYear(r.periodStart),
+        year: r.year,
         n_sites: r.nSites,
         n: r.n,
         avg: r.avg,
-        unit: unitLabel(r.series?.unitId ?? null),
+        unit,
       }));
     }
     case "climatology": {
       const series = seriesForAlias("measurements", String(params.alias));
       const spec: CellSpec = { series, scope: { kind: "all_sites" }, grain: "day", imputation: "zero" };
       const rows = await summarize(db, spec, "month_of_year");
-      return rows.map((r) => ({ month: r.month, n: r.n, avg: r.avg, min: r.min, max: r.max, unit: unitLabel(r.series?.unitId ?? null) }));
+      const unit = unitLabel(series[0]?.unitId ?? null);
+      return rows.map((r) => ({ month: r.month, n: r.n, avg: r.avg, min: r.min, max: r.max, unit }));
     }
     case "zone_climatology": {
       const series = seriesForAlias("measurements", String(params.alias));
       const spec: CellSpec = { series, scope: { kind: "zone" }, grain: "month" as CellSpec["grain"], imputation: "zero" };
       const rows = await summarize(db, spec, "zone_month_of_year");
-      return rows.map((r) => ({ zone: r.zone, month: r.month, n: r.n, avg: r.avg, unit: unitLabel(r.series?.unitId ?? null) }));
+      const unit = unitLabel(series[0]?.unitId ?? null);
+      return rows.map((r) => ({ zone: r.zone, month: r.month, n: r.n, avg: r.avg, unit }));
     }
     case "rain_daily": {
       const series: SeriesKey[] = seriesForAlias("sensor_timeseries", "RAIN").map((s) => ({
@@ -227,10 +265,13 @@ async function fetchRawRows(db: CubeDb, id: string, params: Record<string, Scala
     case "longitudinal_highlight": {
       const water =
         params.variant === "representative" ? (await catalog.waterBodies(db))[0]?.name : "境川（１）";
-      const alias =
-        params.variant === "representative"
-          ? (await catalog.variableCatalog(db))[0]?.alias
-          : "生物化学的酸素要求量 BOD";
+      let alias: string;
+      if (params.variant === "representative") {
+        const top = (await catalog.variableCatalog(db))[0];
+        alias = top ? (seriesInfo(top.series)?.aliases[0] ?? top.series.variableId) : "生物化学的酸素要求量 BOD";
+      } else {
+        alias = "生物化学的酸素要求量 BOD";
+      }
       const series = seriesForAlias("measurements", String(alias));
       const siteIds = (await catalog.sitesInWaterBody(db, String(water))).map((r) => r.siteId);
       const spec: CellSpec = {
@@ -242,7 +283,8 @@ async function fetchRawRows(db: CubeDb, id: string, params: Record<string, Scala
         imputation: "zero",
       };
       const rows = await summarize(db, spec, "place");
-      return rows.map((r) => ({ site_id: r.placeId, avg: r.avg, n: r.n, unit: unitLabel(r.series?.unitId ?? null) }));
+      const unit = unitLabel(series[0]?.unitId ?? null);
+      return rows.map((r) => ({ site_id: r.placeId, avg: r.avg, n: r.n, unit }));
     }
     default:
       throw new Error(`v2 アダプタが未対応の問い合わせ id: ${id}`);
