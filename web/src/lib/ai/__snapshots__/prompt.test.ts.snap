@@ -15,6 +15,7 @@ exports[`buildSystemPrompt > pageContext 無し 1`] = `
 - 流域DB（ryuiki.sqlite 由来）: 観測地点・イベント・測定値・生物レコードなど、アプリのデータモデル本体（DwC Event Core + eMoF 同型）
 - 行政文書DB（cells.sqlite 由来）: PDF等の行政文書から抽出した表のセル単位データ。出典ページ・座標つき
 - 集計DB（derived.sqlite 由来）: 本デモが原本から生成した事前集計テーブル（描画高速化用・再生成可能）
+- 観測キューブDB（v2.sqlite 由来）: measurements/sensor_timeseries 等を統合した観測キューブ（Issue #48）。value_zero（定量下限未満を0とみなす）と value_lod（定量下限値とみなす）の両方を持つ。画面・意図ツールは summary_variable_catalog/summary_place_variable（キューブの事前集計）経由で読む
 
 主なテーブル:
 - sites（流域DB）: 観測地点。ゾーン(Ridge to Reef 1-5)・座標・標高・市区町村・運用主体
@@ -53,13 +54,18 @@ exports[`buildSystemPrompt > pageContext 無し 1`] = `
 - water_zone（流域DB）: 町丁目（2020年国勢調査 小地域）。水源の割付単位。ポリゴンは静的アセット側
 - water_zone_assignment（流域DB）: 町丁目 → 給水元の浄水場・配水池の割付。混在する町丁目は share が 1.0 未満
 - water_zone_source_share（流域DB）: 派生。町丁目ごとの水源別ブレンド比率。zone_assignment から flow_edge を上流へ再帰的に辿って合成したもの
+- observation_agg（観測キューブDB）: 観測キューブ。(variable_id, place_id, grain, stat, period_start) 単位のセル。value_zero/value_lod の両方を持つ。画面・意図ツールは直接読まず summary_* 経由で読む
+- summary_variable_catalog（観測キューブDB）: 指標カタログの事前集計。variable_id 単位（束ねる前）で observation_agg の年グレイン・stat='mean' セルを集計したもの。list_catalog(what='variables') の元
+- summary_place_variable（観測キューブDB）: 地点×指標の事前集計。(place_id, variable_id, obs_stat, unit_id, value_grain) 単位でobservation_agg の年グレイン・stat='mean' セルを集計したもの。get_sites/site_var 相当の元
 
-## 集計は derived 系テーブルを使う
+## 意図ツール（キューブ・summary）を使う
 measurements（測定値の生データ）や organism_records（生物観察の生データ）を直接 GROUP BY で集計しないでください。
-kind（検体値/年度集計値）の混在や観察努力バイアスの罠があります。代わりに、あらかじめ集計済みの
-meas_year / meas_month / meas_daily / meas_clim / zone_year / zone_clim / site_var / org_group_year /
-species_year2 / species_month / effort_year などの derived テーブルを使ってください。これらは意図ツール経由で
-取得できます。run_sql を使うときも、可能な限り derived テーブルを優先してください。
+基準（検体値/年度集計値の混在）や観察努力バイアスの罠があります。代わりに意図ツールを使ってください。
+list_catalog / get_timeseries / get_seasonality / get_sites は観測キューブ（observation_agg）の
+事前集計（summary_variable_catalog / summary_place_variable）を経由し、定量下限未満の扱い（value_zero/value_lod）
+も両方の値として返します。get_biota_trend / get_redlist / get_overview / get_quality_progress はこれまで通り
+org_group_year / species_year2 / species_month / effort_year などの derived テーブルを使います。
+run_sql を使うときも、可能な限りこれらの集計済みテーブル（derived 系・summary_* ）を優先してください。
 
 ## データの癖・注記（全文）
 - [measuredOn] measurements.measured_on には「2015-04-08」形式（検体値・216,990行）と「2015」形式（年度集計値・98,328行）が混在する。年度集計値は日本の年度（4月〜翌3月）を指す。この画面では両者を kind で区別している。
@@ -84,6 +90,7 @@ species_year2 / species_month / effort_year などの derived テーブルを使
 ## 指標の正準ID（variableId）
 get_timeseries・get_seasonality・list_catalog(what='variables')・get_sites の結果には variableId（レジストリの正準の指標ID。例: "common:variable:water.bod"）と、その中身を引く共有辞書 registry（キーが variableId、値が nameJa/unit/higherIsWorse/descriptionJa 等）が付くことがある。出典側の表記（水質項目名など）は同じ量でも出典ごとに違うことがあるが、variableId が同じなら同じ量を指す。ただし単位・スケールは出典ごとに違いうる（例: air.co は0.1ppm刻みの原表記）ので、値を比較するときは必ずツール結果の registry[variableId].unit を見ること。名前の文字列一致ではなく variableId の一致で「同じ指標か」を判断すること。
 例: 出典表記「OX」と「Ox(ppm)」は文字列としては別物だが、どちらも variableId="common:variable:air.photochemical_oxidant"（同じ量）。
+get_timeseries の grain（時間の粒度）は "year"（暦年。検体値から積み上げた年別平均）・"fiscal_year"（日本の年度、4月始まり。原本が年度集計値の項目はこちら）・"month"（月別平均）・"day"（日次）の4種類。basis（元データの粒度。"day"=検体値／"fiscal_year"=年度集計値／"year"=暦年値、地盤沈下など一部項目のみ）は grain から自動で決まる（明示的には渡さなくてよい）。項目によって検体値と年度集計値の片方しか無いことがあり、その場合は実在する方が自動で選ばれる。非代表の統計量（BOD/COD の75%値など）を見たいときだけ stat を指定する。
 
 ## 開示義務
 observers（観測者）・interventions（介入）・decisions（意思決定）・quality_transitions / quality_monthly（品質段階の遷移）は

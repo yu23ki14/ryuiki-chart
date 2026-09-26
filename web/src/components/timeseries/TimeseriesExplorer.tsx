@@ -8,42 +8,66 @@ import { BarChart, ColumnChart } from "@/components/viz/BarChart";
 import { ChartFrame, MiniTable } from "@/components/viz/ChartFrame";
 import { SERIES, ZONE_COLORS, ZONE_LABELS, INK } from "@/components/viz/palette";
 import { Btn, inputCls, Spinner, Provenance, nf } from "@/components/ui";
-import { shortVariable, caveatBody } from "@/lib/registry/lookup-client";
-import { VARIABLE_NOTE, HIGHER_IS_WORSE } from "@/lib/registry/generated-client";
+import { caveatBody } from "@/lib/registry/lookup-client";
+import { VARIABLE_LABEL } from "@/lib/registry/generated-client";
 import { MUNICIPALITY_LABEL } from "@/lib/municipality";
 import { useJson } from "@/components/useJson";
 import { useSetPageContext } from "@/components/assistant/PageContextProvider";
 
+type Basis = "day" | "fiscal_year" | "year";
+type Grain = "year" | "fiscal_year" | "month" | "day";
+
 interface WaterBody {
   name: string;
-  n_sites: number;
-  elev_min: number | null;
-  elev_max: number | null;
-  n_meas: number;
-  y_from: number | null;
-  y_to: number | null;
+  nSites: number;
+  elevMin: number | null;
+  elevMax: number | null;
+  nMeas: number;
+  yFrom: number | null;
+  yTo: number | null;
 }
 interface VarRow {
-  variable: string;
+  variableId: string;
+  /** 単位の表示記号（サーバ側で解決済み。unit_id そのものではない）。 */
   unit: string | null;
   n: number;
-  n_sites: number;
-  y_from: number;
-  y_to: number;
-  n_daily: number;
-  n_annual: number;
-  n_censored: number;
+  nPlaces: number;
+  yFrom: number;
+  yTo: number;
+  nByBasis: { day: number; fiscalYear: number; year: number };
+  nCensored: number;
+  /** 非代表の統計量（p75/p90/max/min 等）。空なら選択肢を出さない（D4）。 */
+  stats: string[];
 }
 interface Site {
-  site_id: string;
-  name: string;
+  siteId: string;
+  name: string | null;
   zone: number | null;
-  elevation_m: number | null;
-  lat: number;
-  lon: number;
+  elevationM: number | null;
+  lat: number | null;
+  lon: number | null;
 }
 
 type Mode = "water" | "zone" | "season";
+
+/** variable_id の表示名（`VARIABLE_LABEL`。無ければ variable_id をそのまま出す）。 */
+function variableLabel(variableId: string): string {
+  return VARIABLE_LABEL[variableId]?.short ?? variableId;
+}
+
+function basisLabel(basis: Basis): string {
+  return basis === "day" ? "検体値" : basis === "fiscal_year" ? "年度集計値" : "暦年値";
+}
+
+/** この項目が実際に持つ基準（元データの粒度）の一覧。day > fiscal_year > year の優先順で並ぶ。 */
+function availableBasesOf(v: VarRow | undefined): Basis[] {
+  if (!v) return [];
+  const out: Basis[] = [];
+  if (v.nByBasis.day > 0) out.push("day");
+  if (v.nByBasis.fiscalYear > 0) out.push("fiscal_year");
+  if (v.nByBasis.year > 0) out.push("year");
+  return out;
+}
 
 export function TimeseriesExplorer({ waters, vars }: { waters: WaterBody[]; vars: VarRow[] }) {
   // ディープリンク（AIのチャットカードの「時系列画面でこの表示を開く」など）用に、初期値だけ
@@ -54,24 +78,29 @@ export function TimeseriesExplorer({ waters, vars }: { waters: WaterBody[]; vars
     const m = sp.get("mode");
     return m === "zone" || m === "season" ? m : "water";
   });
-  const [variable, setVariable] = React.useState(() => sp.get("variable") ?? "生物化学的酸素要求量 BOD");
+  const [variableId, setVariableId] = React.useState(() => sp.get("variable") ?? "common:variable:water.bod");
   const [waterPref, setWater] = React.useState(() => sp.get("water") ?? "境川（１）");
-  const [grain, setGrain] = React.useState<"year" | "month">(() => (sp.get("grain") === "month" ? "month" : "year"));
-  const [kindPref, setKindPref] = React.useState<"daily" | "annual">(() => (sp.get("kind") === "annual" ? "annual" : "daily"));
+  const [grainPref, setGrainPref] = React.useState<"year" | "month">(() => (sp.get("grain") === "month" ? "month" : "year"));
+  const [basisPref, setBasisPref] = React.useState<Basis>(() => {
+    const b = sp.get("basis");
+    return b === "fiscal_year" || b === "year" ? b : "day";
+  });
+  const [statPref, setStatPref] = React.useState(() => sp.get("stat") ?? "representative");
   const [hidden, setHidden] = React.useState<Set<string>>(new Set());
 
-  const v = vars.find((x) => x.variable === variable);
-  const hasAnnual = (v?.n_annual ?? 0) > 0;
-  const hasDaily = (v?.n_daily ?? 0) > 0;
-
-  // 項目によっては検体値と年度集計値のどちらかしか無い。
-  // 状態を書き換えずに、描画時に「実際に使える方」へ寄せる。
-  const kind: "daily" | "annual" = !hasDaily ? "annual" : !hasAnnual ? "daily" : kindPref;
+  const v = vars.find((x) => x.variableId === variableId);
+  const availableBases = availableBasesOf(v);
+  // 項目によっては検体値・年度集計値・暦年値のうち1つしか無い。状態を書き換えずに、
+  // 描画時に「実際に使える方」へ寄せる（v1 の kind 自動補正と同じ考え方）。
+  const basis: Basis = availableBases.includes(basisPref) ? basisPref : (availableBases[0] ?? "day");
+  const grain: Grain = basis === "day" ? grainPref : basis;
+  const statOptions = v?.stats ?? [];
+  const stat = statPref !== "representative" && statOptions.includes(statPref) ? statPref : "representative";
 
   // 選んだ項目のデータを実際に持つ水域だけを選択肢にする。
   // 今の水域にその項目が無ければ、地点数が最も多い水域へ自動で移る。
   const waterOpts = useJson<{ waters: WaterBody[] }>(
-    `/api/timeseries?mode=waters&variable=${encodeURIComponent(variable)}`,
+    `/api/timeseries?mode=waters&variable=${encodeURIComponent(variableId)}&stat=${stat}`,
   );
   const availableWaters = waterOpts.data?.waters ?? waters;
   // 選んだ項目のデータが今の水域に無ければ、地点数が最も多い水域を既定にする（状態は書き換えない）
@@ -80,16 +109,16 @@ export function TimeseriesExplorer({ waters, vars }: { waters: WaterBody[]; vars
       ? waterPref
       : availableWaters[0].name;
 
-  // アシスタントに渡すのは「今実際に描画されている値」。waterPref/kindPref という利用者の希望ではなく、
-  // 上の自動補正を経た water/kind を渡す（ここを間違えると、画面に無いものをAIが語ることになる）。
+  // アシスタントに渡すのは「今実際に描画されている値」。waterPref/basisPref という利用者の希望ではなく、
+  // 上の自動補正を経た water/basis を渡す（ここを間違えると、画面に無いものをAIが語ることになる）。
   useSetPageContext({
     route: "/timeseries",
     title: "時系列比較",
     mode,
-    variable,
+    variableId,
     water,
-    grain: mode === "water" ? grain : mode === "season" ? "month" : "year",
-    kind,
+    grain: mode === "season" ? "month" : mode === "zone" ? (basis === "fiscal_year" ? "fiscal_year" : "year") : grain,
+    basis,
   });
 
   return (
@@ -112,10 +141,10 @@ export function TimeseriesExplorer({ waters, vars }: { waters: WaterBody[]; vars
 
         <label className="block">
           <span className="block text-[10.5px] text-muted mb-1">項目</span>
-          <select className={inputCls + " w-56"} value={variable} onChange={(e) => setVariable(e.target.value)}>
+          <select className={inputCls + " w-56"} value={variableId} onChange={(e) => setVariableId(e.target.value)}>
             {vars.map((x) => (
-              <option key={x.variable} value={x.variable}>
-                {shortVariable(x.variable)}（{nf(x.n)}）
+              <option key={x.variableId} value={x.variableId}>
+                {variableLabel(x.variableId)}（{nf(x.n)}）
               </option>
             ))}
           </select>
@@ -134,7 +163,7 @@ export function TimeseriesExplorer({ waters, vars }: { waters: WaterBody[]; vars
             >
               {availableWaters.map((w) => (
                 <option key={w.name} value={w.name}>
-                  {w.name}（{w.n_sites}地点 / {nf(w.n_meas ?? (w as unknown as { n: number }).n)}件）
+                  {w.name}（{w.nSites}地点 / {nf(w.nMeas)}件）
                 </option>
               ))}
             </select>
@@ -144,40 +173,56 @@ export function TimeseriesExplorer({ waters, vars }: { waters: WaterBody[]; vars
         {mode !== "season" && (
           <>
             <div>
-              <span className="block text-[10.5px] text-muted mb-1">粒度</span>
+              <span className="block text-[10.5px] text-muted mb-1">元データ</span>
               <div className="flex gap-0.5">
-                {mode === "water" && (
-                  <>
-                    <Btn active={grain === "year"} onClick={() => setGrain("year")}>
-                      年
-                    </Btn>
-                    <Btn active={grain === "month"} onClick={() => setGrain("month")}>
-                      月
-                    </Btn>
-                  </>
+                <Btn active={basis === "day"} disabled={!availableBases.includes("day")} onClick={() => setBasisPref("day")}>
+                  検体値
+                </Btn>
+                <Btn active={basis === "fiscal_year"} disabled={!availableBases.includes("fiscal_year")} onClick={() => setBasisPref("fiscal_year")}>
+                  年度集計値
+                </Btn>
+                {availableBases.includes("year") && (
+                  <Btn active={basis === "year"} onClick={() => setBasisPref("year")}>
+                    暦年値
+                  </Btn>
                 )}
               </div>
             </div>
-            <div>
-              <span className="block text-[10.5px] text-muted mb-1">元データ</span>
-              <div className="flex gap-0.5">
-                <Btn active={kind === "daily"} disabled={!hasDaily} onClick={() => setKindPref("daily")}>
-                  検体値
-                </Btn>
-                <Btn active={kind === "annual"} disabled={!hasAnnual} onClick={() => setKindPref("annual")}>
-                  年度集計値
-                </Btn>
+            {mode === "water" && basis === "day" && (
+              <div>
+                <span className="block text-[10.5px] text-muted mb-1">粒度</span>
+                <div className="flex gap-0.5">
+                  <Btn active={grainPref === "year"} onClick={() => setGrainPref("year")}>
+                    年
+                  </Btn>
+                  <Btn active={grainPref === "month"} onClick={() => setGrainPref("month")}>
+                    月
+                  </Btn>
+                </div>
               </div>
-            </div>
+            )}
+            {statOptions.length > 0 && (
+              <div>
+                <span className="block text-[10.5px] text-muted mb-1">統計量</span>
+                <select className={inputCls} value={stat} onChange={(e) => setStatPref(e.target.value)}>
+                  <option value="representative">代表値（平均）</option>
+                  {statOptions.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </>
         )}
 
         {v && (
           <p className="text-[10.5px] text-muted max-w-md ml-auto leading-snug">
-            {VARIABLE_NOTE[variable] ?? "　"}
+            {VARIABLE_LABEL[variableId]?.note ?? "　"}
             <br />
-            {nf(v.n)} 行 / {v.n_sites} 地点 / {v.y_from}–{v.y_to}
-            {v.n_censored > 0 && `　定量下限未満 ${((v.n_censored / v.n) * 100).toFixed(0)}%`}
+            {nf(v.n)} 行 / {v.nPlaces} 地点 / {v.yFrom}–{v.yTo}
+            {v.nCensored > 0 && `　定量下限未満 ${((v.nCensored / v.n) * 100).toFixed(0)}%`}
           </p>
         )}
       </div>
@@ -186,16 +231,17 @@ export function TimeseriesExplorer({ waters, vars }: { waters: WaterBody[]; vars
         {mode === "water" && (
           <WaterMode
             water={water}
-            variable={variable}
+            variableId={variableId}
             grain={grain}
-            kind={kind}
+            basis={basis}
+            stat={stat}
             unit={v?.unit ?? null}
             hidden={hidden}
             setHidden={setHidden}
           />
         )}
-        {mode === "zone" && <ZoneMode variable={variable} kind={kind} unit={v?.unit ?? null} />}
-        {mode === "season" && <SeasonMode variable={variable} unit={v?.unit ?? null} />}
+        {mode === "zone" && <ZoneMode variableId={variableId} basis={basis} stat={stat} unit={v?.unit ?? null} />}
+        {mode === "season" && <SeasonMode variableId={variableId} stat={stat} unit={v?.unit ?? null} />}
       </div>
     </div>
   );
@@ -205,121 +251,157 @@ export function TimeseriesExplorer({ waters, vars }: { waters: WaterBody[]; vars
 /* 水域の中で地点を比べる                                              */
 /* ------------------------------------------------------------------ */
 
+/** `lib/cube` の `YearPoint`（`imputation='lod'` で取ったときの緩い受け）。 */
+interface YearApiPoint {
+  siteId: string | null;
+  year: number;
+  n: number;
+  nCensored: number;
+  value: { mean: number | null; min: number | null; max: number | null };
+}
+/** `lib/cube` の `SeriesPoint`（month/day、緩い受け）。 */
+interface SeriesApiPoint {
+  siteId: string | null;
+  periodStart: string;
+  n: number;
+  nCensored: number;
+  value: number | null;
+}
+
 function WaterMode({
   water,
-  variable,
+  variableId,
   grain,
-  kind,
+  basis,
+  stat,
   unit,
   hidden,
   setHidden,
 }: {
   water: string;
-  variable: string;
-  grain: "year" | "month";
-  kind: "daily" | "annual";
+  variableId: string;
+  grain: Grain;
+  basis: Basis;
+  stat: string;
   unit: string | null;
   hidden: Set<string>;
   setHidden: (s: Set<string>) => void;
 }) {
+  const qs = `variable=${encodeURIComponent(variableId)}&water=${encodeURIComponent(water)}&basis=${basis}&stat=${stat}`;
   const { data, loading, error } = useJson<{
     sites: Site[];
-    points: Record<string, number | string>[];
-  }>(`/api/timeseries?mode=water&variable=${encodeURIComponent(variable)}&water=${encodeURIComponent(water)}&grain=${grain}&kind=${kind}`);
+    points: (YearApiPoint | SeriesApiPoint)[];
+  }>(`/api/timeseries?mode=water&${qs}&grain=${grain}`);
 
-  // 季節と経年を1枚で見るためのヒートマップ（水域内の全地点の平均）
-  const monthly = useJson<{ points: { site_id: string; ym: string; year: number; month: number; n: number; avg: number }[] }>(
-    kind === "daily"
-      ? `/api/timeseries?mode=water&variable=${encodeURIComponent(variable)}&water=${encodeURIComponent(water)}&grain=month&kind=daily`
-      : "",
+  // 季節と経年を1枚で見るためのヒートマップ（水域内の全地点の平均、検体値〔basis=day〕のみ）
+  const monthly = useJson<{ points: SeriesApiPoint[] }>(
+    basis === "day" ? `/api/timeseries?mode=water&${qs}&grain=month` : "",
   );
 
   const ordered = React.useMemo(
-    () => [...(data?.sites ?? [])].sort((a, b) => (b.elevation_m ?? -1) - (a.elevation_m ?? -1)),
+    () => [...(data?.sites ?? [])].sort((a, b) => (b.elevationM ?? -1) - (a.elevationM ?? -1)),
     [data],
   );
+
+  /**
+   * `data.points`（grain によって `YearApiPoint[]`／`SeriesApiPoint[]` と形が違う）を
+   * `{siteId, year, x, y, n, nCensored}` の共通形に正規化する。以降の `series`/`profile`
+   * はこの1つの配列だけを見ればよく、grain ごとの分岐を1箇所に集約できる。
+   */
+  const normalized = React.useMemo(() => {
+    if (!data) return [] as { siteId: string; year: number; x: number; y: number | null; n: number; nCensored: number }[];
+    if (grain === "year" || grain === "fiscal_year") {
+      return (data.points as YearApiPoint[]).map((p) => ({
+        siteId: String(p.siteId),
+        year: p.year,
+        x: p.year,
+        y: p.value.mean,
+        n: p.n,
+        nCensored: p.nCensored,
+      }));
+    }
+    return (data.points as SeriesApiPoint[]).map((p) => ({
+      siteId: String(p.siteId),
+      year: Number(p.periodStart.slice(0, 4)),
+      x: grain === "month" ? ymToX(p.periodStart.slice(0, 7)) : Date.parse(p.periodStart),
+      y: p.value,
+      n: p.n,
+      nCensored: p.nCensored,
+    }));
+  }, [data, grain]);
+
   /** この項目のデータを実際に持つ地点だけを、標高順に並べたもの */
   const withData = React.useMemo(() => {
-    const ids = new Set((data?.points ?? []).map((p) => String(p.site_id)));
-    return ordered.filter((s) => ids.has(s.site_id));
-  }, [ordered, data]);
+    const ids = new Set(normalized.map((p) => p.siteId));
+    return ordered.filter((s) => ids.has(s.siteId));
+  }, [ordered, normalized]);
   // 色は「地点という実体」に固定する。表示のオン/オフでは塗り替えない。
   const colorOf = React.useCallback(
     (id: string) => {
-      const i = withData.findIndex((s) => s.site_id === id);
+      const i = withData.findIndex((s) => s.siteId === id);
       return i >= 0 && i < SERIES.length ? SERIES[i] : INK.muted;
     },
     [withData],
   );
 
   const series: LineSeries[] = React.useMemo(() => {
-    if (!data) return [];
     const bySite = new Map<string, { x: number; y: number; n: number; censored: boolean }[]>();
-    for (const p of data.points) {
-      const id = String(p.site_id);
-      const x = grain === "year" ? Number(p.year) : ymToX(String(p.ym));
-      const y = Number(p.avg);
-      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
-      if (!bySite.has(id)) bySite.set(id, []);
-      bySite.get(id)!.push({
-        x,
-        y,
-        n: Number(p.n ?? 0),
-        censored: Number(p.n_censored ?? 0) > 0 && Number(p.n_censored) === Number(p.n),
-      });
+    for (const p of normalized) {
+      if (p.y === null || !Number.isFinite(p.x)) continue;
+      if (!bySite.has(p.siteId)) bySite.set(p.siteId, []);
+      bySite.get(p.siteId)!.push({ x: p.x, y: p.y, n: p.n, censored: p.nCensored > 0 && p.nCensored === p.n });
     }
     return withData
-      .filter((s) => bySite.has(s.site_id) && !hidden.has(s.site_id))
+      .filter((s) => bySite.has(s.siteId) && !hidden.has(s.siteId))
       .slice(0, 8)
       .map((s) => ({
-        key: s.site_id,
-        label: `${s.name}${s.elevation_m != null ? ` ${Math.round(s.elevation_m)}m` : ""}`,
-        color: colorOf(s.site_id),
-        points: bySite.get(s.site_id)!.map((p) => ({ x: p.x, y: p.y, n: p.n, censored: p.censored })),
+        key: s.siteId,
+        label: `${s.name}${s.elevationM != null ? ` ${Math.round(s.elevationM)}m` : ""}`,
+        color: colorOf(s.siteId),
+        points: bySite.get(s.siteId)!,
       }));
-  }, [data, withData, grain, hidden, colorOf]);
+  }, [normalized, withData, hidden, colorOf]);
 
   // 縦断プロファイル（最新年）
   const profile = React.useMemo(() => {
-    if (!data) return { year: null as number | null, rows: [] as { key: string; label: string; value: number; color: string }[] };
-    const years = data.points.map((p) => (grain === "year" ? Number(p.year) : Number(String(p.ym).slice(0, 4))));
-    const latest = years.length ? Math.max(...years) : null;
-    if (latest === null) return { year: null, rows: [] };
+    if (!normalized.length) return { year: null as number | null, rows: [] as { key: string; label: string; value: number; color: string }[] };
+    const latest = Math.max(...normalized.map((p) => p.year));
     const agg = new Map<string, { sum: number; n: number }>();
-    for (const p of data.points) {
-      const y = grain === "year" ? Number(p.year) : Number(String(p.ym).slice(0, 4));
-      if (y !== latest) continue;
-      const id = String(p.site_id);
-      const a = agg.get(id) ?? { sum: 0, n: 0 };
-      a.sum += Number(p.avg) * Number(p.n ?? 1);
-      a.n += Number(p.n ?? 1);
-      agg.set(id, a);
+    for (const p of normalized) {
+      if (p.year !== latest || p.y === null) continue;
+      const a = agg.get(p.siteId) ?? { sum: 0, n: 0 };
+      a.sum += p.y * (p.n || 1);
+      a.n += p.n || 1;
+      agg.set(p.siteId, a);
     }
     return {
       year: latest,
       rows: withData
-        .filter((s) => agg.has(s.site_id))
+        .filter((s) => agg.has(s.siteId))
         .map((s) => ({
-          key: s.site_id,
-          label: `${s.name}（${s.elevation_m != null ? Math.round(s.elevation_m) + "m" : "標高不明"}）`,
-          value: agg.get(s.site_id)!.sum / agg.get(s.site_id)!.n,
-          color: colorOf(s.site_id),
+          key: s.siteId,
+          label: `${s.name}（${s.elevationM != null ? Math.round(s.elevationM) + "m" : "標高不明"}）`,
+          value: agg.get(s.siteId)!.sum / agg.get(s.siteId)!.n,
+          color: colorOf(s.siteId),
         })),
     };
-  }, [data, withData, grain, colorOf]);
+  }, [normalized, withData, colorOf]);
 
   const heat = React.useMemo(() => {
     const pts = monthly.data?.points ?? [];
     if (!pts.length) return { cells: [] as { x: number; y: number; v: number; n: number }[], years: [] as number[] };
     const agg = new Map<string, { sum: number; n: number }>();
     for (const p of pts) {
-      const k = `${p.year}|${p.month}`;
+      if (typeof p.value !== "number") continue;
+      const year = Number(p.periodStart.slice(0, 4));
+      const month = Number(p.periodStart.slice(5, 7));
+      const k = `${year}|${month}`;
       const a = agg.get(k) ?? { sum: 0, n: 0 };
-      a.sum += p.avg * p.n;
+      a.sum += p.value * p.n;
       a.n += p.n;
       agg.set(k, a);
     }
-    const years = [...new Set(pts.map((p) => p.year))].sort((a, b) => a - b);
+    const years = [...new Set(pts.map((p) => Number(p.periodStart.slice(0, 4))))].sort((a, b) => a - b);
     return {
       years,
       cells: [...agg.entries()].map(([k, a]) => {
@@ -329,7 +411,7 @@ function WaterMode({
     };
   }, [monthly.data]);
 
-  const worse = HIGHER_IS_WORSE[variable];
+  const worse = VARIABLE_LABEL[variableId]?.higherIsWorse;
 
   if (loading && !data) return <Spinner label="読み込み中" />;
   if (error) return <p className="text-bad text-sm">{error}</p>;
@@ -338,7 +420,7 @@ function WaterMode({
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
       <div className="xl:col-span-2 space-y-4">
         <ChartFrame
-          title={`${water} の ${shortVariable(variable)}｜地点別${grain === "year" ? "年平均" : "月平均"}`}
+          title={`${water} の ${variableLabel(variableId)}｜地点別${grain === "month" ? "月平均" : "年平均"}`}
           subtitle={`線の色は地点。標高の高い順に色を固定してあるので、上から下へ川を下る並びになる。${
             worse === true ? "この項目は値が大きいほど汚れている。" : worse === false ? "この項目は値が小さいほど酸素が乏しい。" : ""
           }`}
@@ -346,11 +428,11 @@ function WaterMode({
           height={320}
           table={
             <MiniTable
-              columns={["地点", grain === "year" ? "年" : "年月", `平均${unit ? `（${unit}）` : ""}`, "n"]}
+              columns={["地点", grain === "month" ? "年月" : "年", `平均${unit ? `（${unit}）` : ""}`, "n"]}
               rows={series.flatMap((s) =>
                 s.points.map((p) => [
                   s.label,
-                  grain === "year" ? String(p.x) : xToYm(p.x),
+                  grain === "month" ? xToYm(p.x) : String(p.x),
                   p.y as number,
                   p.n ?? null,
                 ]),
@@ -359,8 +441,8 @@ function WaterMode({
           }
           note={
             <>
-              {caveatBody("duplicates")} {caveatBody("censored")}
-              {kind === "annual" && ` ${caveatBody("measuredOn")}`}
+              {caveatBody("duplicates")} {caveatBody("censoredLod")}
+              {basis === "fiscal_year" && ` ${caveatBody("measuredOn")}`}
             </>
           }
         >
@@ -368,7 +450,7 @@ function WaterMode({
             series={series}
             height={320}
             unit={unit}
-            xFormat={(x) => (grain === "year" ? String(Math.round(x)) : xToYm(x))}
+            xFormat={(x) => (grain === "month" ? xToYm(x) : String(Math.round(x)))}
             emptyMessage="この水域にこの項目のデータがありません"
           />
         </ChartFrame>
@@ -387,14 +469,14 @@ function WaterMode({
       </div>
 
       <div className="xl:col-span-2 order-last xl:order-none">
-        {kind === "daily" && (
+        {basis === "day" && (
         <ChartFrame
           title={`年 × 月のヒートマップ（${water} の全地点平均）`}
           subtitle="縦が月、横が年。季節の型が年をまたいで安定しているか、ある年だけ崩れているかを一枚で見る"
           table={
             <MiniTable
               columns={["年", "月", `平均${unit ? `（${unit}）` : ""}`, "n"]}
-              rows={(monthly.data?.points ?? []).map((p) => [p.year, p.month, p.avg, p.n])}
+              rows={heat.cells.map((c) => [c.x, c.y, c.v, c.n])}
             />
           }
           note="空白のセルはその月に採水が無かったことを示す。月1回の定期観測なので、欠けている月がある地点も多い。"
@@ -416,9 +498,9 @@ function WaterMode({
           )}
         </ChartFrame>
         )}
-        {kind === "annual" && (
+        {basis !== "day" && (
           <p className="text-[11.5px] text-muted card p-3 leading-relaxed">
-            年度集計値には月の情報がないため、年 × 月のヒートマップは出せない。
+            {basisLabel(basis)}には月の情報がないため、年 × 月のヒートマップは出せない。
             月別に見たい項目は「元データ: 検体値」に切り替えること。
           </p>
         )}
@@ -432,15 +514,15 @@ function WaterMode({
           </h3>
           <ul className="space-y-0.5">
             {withData.map((s, i) => {
-              const off = hidden.has(s.site_id);
+              const off = hidden.has(s.siteId);
               const over = i >= 8;
               return (
-                <li key={s.site_id}>
+                <li key={s.siteId}>
                   <button
                     onClick={() => {
                       const next = new Set(hidden);
-                      if (off) next.delete(s.site_id);
-                      else next.add(s.site_id);
+                      if (off) next.delete(s.siteId);
+                      else next.add(s.siteId);
                       setHidden(next);
                     }}
                     className={`w-full text-left flex items-center gap-2 px-1.5 py-1 rounded hover:bg-surface-2 ${
@@ -450,11 +532,11 @@ function WaterMode({
                   >
                     <span
                       className="w-2.5 h-2.5 rounded-full shrink-0 border"
-                      style={{ background: over ? "transparent" : colorOf(s.site_id), borderColor: INK.axis }}
+                      style={{ background: over ? "transparent" : colorOf(s.siteId), borderColor: INK.axis }}
                     />
                     <span className="text-[12px] truncate">{s.name}</span>
                     <span className="ml-auto text-[10.5px] text-muted tnum shrink-0">
-                      {s.elevation_m != null ? `${Math.round(s.elevation_m)}m` : "–"}
+                      {s.elevationM != null ? `${Math.round(s.elevationM)}m` : "–"}
                     </span>
                     {s.zone != null && (
                       <span
@@ -488,16 +570,16 @@ function WaterMode({
 /* ゾーン（Ridge to Reef）                                             */
 /* ------------------------------------------------------------------ */
 
-function ZoneMode({ variable, kind, unit }: { variable: string; kind: "daily" | "annual"; unit: string | null }) {
+function ZoneMode({ variableId, basis, stat, unit }: { variableId: string; basis: Basis; stat: string; unit: string | null }) {
   const { data, loading, error } = useJson<{
-    points: { zone: number; year: number; n_sites: number; n: number; avg: number }[];
-  }>(`/api/timeseries?mode=zone&variable=${encodeURIComponent(variable)}&kind=${kind}`);
+    points: { zone: number; year: number; nSites: number; n: number; avg: number | null }[];
+  }>(`/api/timeseries?mode=zone&variable=${encodeURIComponent(variableId)}&basis=${basis}&stat=${stat}`);
 
   const series: LineSeries[] = React.useMemo(() => {
     if (!data) return [];
     const byZone = new Map<number, { x: number; y: number; n: number }[]>();
     for (const p of data.points) {
-      if (p.zone == null) continue;
+      if (p.zone == null || typeof p.avg !== "number") continue;
       if (!byZone.has(p.zone)) byZone.set(p.zone, []);
       byZone.get(p.zone)!.push({ x: p.year, y: p.avg, n: p.n });
     }
@@ -517,12 +599,12 @@ function ZoneMode({ variable, kind, unit }: { variable: string; kind: "daily" | 
     return {
       year: y,
       rows: data.points
-        .filter((p) => p.year === y && p.zone != null)
+        .filter((p) => p.year === y && p.zone != null && typeof p.avg === "number")
         .sort((a, b) => a.zone - b.zone)
         .map((p) => ({
           key: "z" + p.zone,
-          label: `${p.zone}. ${ZONE_LABELS[p.zone]}（${p.n_sites}地点）`,
-          value: p.avg,
+          label: `${p.zone}. ${ZONE_LABELS[p.zone]}（${p.nSites}地点）`,
+          value: p.avg as number,
           color: ZONE_COLORS[p.zone],
         })),
     };
@@ -534,14 +616,14 @@ function ZoneMode({ variable, kind, unit }: { variable: string; kind: "daily" | 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       <ChartFrame
-        title={`ゾーン別の年平均｜${shortVariable(variable)}`}
+        title={`ゾーン別の${basis === "fiscal_year" ? "年度" : "年"}平均｜${variableLabel(variableId)}`}
         subtitle="尾根（1）から海（5）までの区分ごとに、その年の平均を並べたもの"
         legend={series.map((s) => ({ label: s.label, color: s.color }))}
         height={300}
         table={
           <MiniTable
             columns={["ゾーン", "年", `平均${unit ? `（${unit}）` : ""}`, "地点数"]}
-            rows={(data?.points ?? []).map((p) => [`${p.zone}. ${ZONE_LABELS[p.zone]}`, p.year, p.avg, p.n_sites])}
+            rows={(data?.points ?? []).map((p) => [`${p.zone}. ${ZONE_LABELS[p.zone]}`, p.year, p.avg, p.nSites])}
           />
         }
         note={caveatBody("zone")}
@@ -575,18 +657,18 @@ function ZoneMode({ variable, kind, unit }: { variable: string; kind: "daily" | 
 /* 季節                                                                */
 /* ------------------------------------------------------------------ */
 
-function SeasonMode({ variable, unit }: { variable: string; unit: string | null }) {
+function SeasonMode({ variableId, stat, unit }: { variableId: string; stat: string; unit: string | null }) {
   const { data, loading, error } = useJson<{
-    overall: { month: number; n: number; avg: number; min: number; max: number }[];
-    byZone: { zone: number; month: number; n: number; avg: number }[];
-    rain: { month: number; mm: number }[];
-  }>(`/api/timeseries?mode=season&variable=${encodeURIComponent(variable)}`);
+    overall: { month: number; n: number; avg: number | null; min: number | null; max: number | null }[];
+    byZone: { zone: number; month: number; n: number; avg: number | null }[];
+    rain: { month: number; n: number; avg: number | null }[];
+  }>(`/api/timeseries?mode=season&variable=${encodeURIComponent(variableId)}&stat=${stat}`);
 
   const zoneSeries: LineSeries[] = React.useMemo(() => {
     if (!data) return [];
     const byZone = new Map<number, { x: number; y: number; n: number }[]>();
     for (const p of data.byZone) {
-      if (p.zone == null) continue;
+      if (p.zone == null || typeof p.avg !== "number") continue;
       if (!byZone.has(p.zone)) byZone.set(p.zone, []);
       byZone.get(p.zone)!.push({ x: p.month, y: p.avg, n: p.n });
     }
@@ -608,7 +690,7 @@ function SeasonMode({ variable, unit }: { variable: string; unit: string | null 
   return (
     <div className="space-y-4">
       <ChartFrame
-        title={`月ごとの平均｜${shortVariable(variable)}（全期間・全地点）`}
+        title={`月ごとの平均｜${variableLabel(variableId)}（全期間・全地点）`}
         subtitle="ゾーンごとに月別平均を重ねる。上流ほど年間の振れ幅が小さいかどうかが読める"
         legend={zoneSeries.map((s) => ({ label: s.label, color: s.color }))}
         height={280}
@@ -632,13 +714,13 @@ function SeasonMode({ variable, unit }: { variable: string; unit: string | null 
       <ChartFrame
         title="同じ月の降水量（相模原・2015–2025 の月平均）"
         subtitle="水質の季節変化を読むときの背景。縦軸が違うので別の図として並べている（1枚に2つの軸を置かない）"
-        note="相模原市 大気汚染常時監視 1時間値の RAIN。原本に単位の記載がないが、年合計が神奈川の年降水量と整合するため 0.1mm 単位とみなして mm に換算している。観測点の緯度経度が公開されていないため地図には出せない。"
+        note={`相模原市 大気汚染常時監視 1時間値の RAIN。${caveatBody("unitUnknown")}観測点の緯度経度が公開されていないため地図には出せない。`}
       >
         <ColumnChart
-          data={rain.map((r) => ({ x: r.month, value: r.mm }))}
+          data={rain.map((r) => ({ x: r.month, value: r.avg ?? 0 }))}
           height={110}
           xFormat={(x) => `${Math.round(x)}月`}
-          unit="mm"
+          unit={null}
           xDomain={[1, 12]}
         />
       </ChartFrame>

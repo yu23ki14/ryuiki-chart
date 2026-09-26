@@ -20,6 +20,14 @@ export const SCHEMA_META: Record<string, { label: string; file: string; note: st
     file: "derived.sqlite 由来",
     note: "本デモが原本から生成した事前集計テーブル（描画高速化用・再生成可能）",
   },
+  v2: {
+    label: "観測キューブDB",
+    file: "v2.sqlite 由来",
+    note:
+      "measurements/sensor_timeseries 等を統合した観測キューブ（Issue #48）。" +
+      "value_zero（定量下限未満を0とみなす）と value_lod（定量下限値とみなす）の両方を持つ。" +
+      "画面・意図ツールは summary_variable_catalog/summary_place_variable（キューブの事前集計）経由で読む",
+  },
 };
 
 /** テーブル名 -> SCHEMA_META のキー。D1 に統合したので接頭辞からは分からない。 */
@@ -48,6 +56,8 @@ export const TABLE_ORIGIN: Record<string, string> = {
   sensor_daily: "d", sensor_hour_month: "d", site_var: "d", species2: "d",
   species_mesh_year: "d", species_month: "d", species_year2: "d", var_catalog: "d",
   watershed_meta: "d", watershed_rollup: "d", zone_clim: "d", zone_year: "d",
+  // v2.sqlite 由来（Issue #48 PR-2）
+  observation_agg: "v2", summary_variable_catalog: "v2", summary_place_variable: "v2",
 };
 
 export const TABLE_META: Record<string, string> = {
@@ -101,6 +111,15 @@ export const TABLE_META: Record<string, string> = {
   water_zone_source_share:
     "派生。町丁目ごとの水源別ブレンド比率。zone_assignment から flow_edge を" +
     "上流へ再帰的に辿って合成したもの",
+  observation_agg:
+    "観測キューブ。(variable_id, place_id, grain, stat, period_start) 単位のセル。" +
+    "value_zero/value_lod の両方を持つ。画面・意図ツールは直接読まず summary_* 経由で読む",
+  summary_variable_catalog:
+    "指標カタログの事前集計。variable_id 単位（束ねる前）で observation_agg の年グレイン・" +
+    "stat='mean' セルを集計したもの。list_catalog(what='variables') の元",
+  summary_place_variable:
+    "地点×指標の事前集計。(place_id, variable_id, obs_stat, unit_id, value_grain) 単位で" +
+    "observation_agg の年グレイン・stat='mean' セルを集計したもの。get_sites/site_var 相当の元",
 };
 
 export const SAMPLE_QUERIES: { title: string; note: string; sql: string }[] = [

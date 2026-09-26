@@ -99,7 +99,13 @@ function variableVocabNote(): string {
     `出典側の表記（水質項目名など）は同じ量でも出典ごとに違うことがあるが、variableId が同じなら同じ量を指す。` +
     `ただし単位・スケールは出典ごとに違いうる（例: air.co は0.1ppm刻みの原表記）ので、` +
     `値を比較するときは必ずツール結果の registry[variableId].unit を見ること。` +
-    `名前の文字列一致ではなく variableId の一致で「同じ指標か」を判断すること。${example}`
+    `名前の文字列一致ではなく variableId の一致で「同じ指標か」を判断すること。${example}\n` +
+    `get_timeseries の grain（時間の粒度）は "year"（暦年。検体値から積み上げた年別平均）・` +
+    `"fiscal_year"（日本の年度、4月始まり。原本が年度集計値の項目はこちら）・"month"（月別平均）・` +
+    `"day"（日次）の4種類。basis（元データの粒度。"day"=検体値／"fiscal_year"=年度集計値／"year"=暦年値、` +
+    `地盤沈下など一部項目のみ）は grain から自動で決まる（明示的には渡さなくてよい）。項目によって` +
+    `検体値と年度集計値の片方しか無いことがあり、その場合は実在する方が自動で選ばれる。` +
+    `非代表の統計量（BOD/COD の75%値など）を見たいときだけ stat を指定する。`
   );
 }
 
@@ -160,12 +166,14 @@ ${schemaOrigins()}
 主なテーブル:
 ${tableCatalog()}
 
-## 集計は derived 系テーブルを使う
+## 意図ツール（キューブ・summary）を使う
 measurements（測定値の生データ）や organism_records（生物観察の生データ）を直接 GROUP BY で集計しないでください。
-kind（検体値/年度集計値）の混在や観察努力バイアスの罠があります。代わりに、あらかじめ集計済みの
-meas_year / meas_month / meas_daily / meas_clim / zone_year / zone_clim / site_var / org_group_year /
-species_year2 / species_month / effort_year などの derived テーブルを使ってください。これらは意図ツール経由で
-取得できます。run_sql を使うときも、可能な限り derived テーブルを優先してください。
+基準（検体値/年度集計値の混在）や観察努力バイアスの罠があります。代わりに意図ツールを使ってください。
+list_catalog / get_timeseries / get_seasonality / get_sites は観測キューブ（observation_agg）の
+事前集計（summary_variable_catalog / summary_place_variable）を経由し、定量下限未満の扱い（value_zero/value_lod）
+も両方の値として返します。get_biota_trend / get_redlist / get_overview / get_quality_progress はこれまで通り
+org_group_year / species_year2 / species_month / effort_year などの derived テーブルを使います。
+run_sql を使うときも、可能な限りこれらの集計済みテーブル（derived 系・summary_* ）を優先してください。
 
 ## データの癖・注記（全文）
 ${allCaveats()}
