@@ -23,12 +23,28 @@ export function jsonEachParam(values: readonly (string | number)[]): string {
   return JSON.stringify(values);
 }
 
-/** 系列の集合（`SeriesKey[]`）を `json_each(?)` で `SERIES_KEY_SQL` と等値 JOIN する断片。 */
-export function seriesFilterSql(series: readonly SeriesKey[] | undefined, alias = OBS): { join: string; params: SqlParam[] } | undefined {
+/**
+ * 系列の集合（`SeriesKey[]`）を `json_each(?)` で `SERIES_KEY_SQL` と等値 JOIN する断片。
+ *
+ * **`variable_id` の前段フィルタを先に足す**（Issue #48 PR-1 §2。`catalog.ts` の
+ * `variableCatalogByDataset` と同型）: 系列キーの等値 JOIN だけだと、結合条件が
+ * `variable_id || '|' || ... ` という計算列（4列を連結した式）になり、
+ * `observation_agg` の索引1（`variable_id, place_id, grain, stat, period_start`）の
+ * 先頭列をクエリプランナが逆算できない——実測で「全地点の年系列」が索引ありでも
+ * 502ms かかっていたのはこれが原因（索引無しの全表スキャンに落ちていた）。
+ * 系列配列から重複排除した `variableId` の集合で `variable_id` 単体の等値 JOIN を
+ * 先に置くと、索引の先頭列でまず絞り込んでから系列キーで仕上げの絞り込みをする
+ * 計画になる（実測 1.4ms）。
+ */
+export function seriesFilterSql(series: readonly SeriesKey[] | undefined, alias = OBS): { joins: string[]; params: SqlParam[] } | undefined {
   if (!series || series.length === 0) return undefined;
+  const variableIds = [...new Set(series.map((s) => s.variableId))];
   return {
-    join: `JOIN json_each(?) sk ON sk.value = ${seriesKeySql(alias)}`,
-    params: [jsonEachParam(series.map(seriesKeyString))],
+    joins: [
+      `JOIN json_each(?) vid ON vid.value = ${alias}.variable_id`,
+      `JOIN json_each(?) sk ON sk.value = ${seriesKeySql(alias)}`,
+    ],
+    params: [jsonEachParam(variableIds), jsonEachParam(series.map(seriesKeyString))],
   };
 }
 

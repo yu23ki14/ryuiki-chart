@@ -83,10 +83,10 @@ function inClausePlaceholders(n: number): string {
 }
 
 /** `variableId`/`series` のどちらかを要求する共通フィルタ（`WHERE` 句1本 or `JOIN`）。 */
-function seriesOrVariableClause(spec: CellSpec, alias: string): { join?: string; where?: string; params: SqlParam[] } {
+function seriesOrVariableClause(spec: CellSpec, alias: string): { joins?: string[]; where?: string; params: SqlParam[] } {
   if (spec.series && spec.series.length > 0) {
     const f = seriesFilterSql(spec.series, alias);
-    return { join: f!.join, params: f!.params };
+    return { joins: f!.joins, params: f!.params };
   }
   if (spec.variableId) {
     return { where: `${alias}.variable_id = ?`, params: [spec.variableId] };
@@ -100,7 +100,7 @@ function commonFilterSql(spec: CellSpec, alias: string): { joins: string[]; wher
   const params: SqlParam[] = [];
 
   const sv = seriesOrVariableClause(spec, alias);
-  if (sv.join) joins.push(sv.join);
+  if (sv.joins) joins.push(...sv.joins);
   if (sv.where) wheres.push(sv.where);
   params.push(...sv.params);
 

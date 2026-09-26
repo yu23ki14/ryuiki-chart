@@ -8,7 +8,7 @@
  */
 import type { CubeDb, SqlParam } from "./db";
 import { MAX_ID_LIST } from "./db";
-import { jsonEachParam } from "./sql";
+import { jsonEachParam, seriesFilterSql } from "./sql";
 import { seriesKeySql, seriesKeyString, type SeriesKey } from "./series";
 
 export type CatalogSource = { kind: "live" } | { kind: "summary" };
@@ -370,8 +370,11 @@ export async function waterBodies(db: CubeDb, opt?: { series?: SeriesKey[] }): P
   const joins: string[] = [];
   if (opt?.series && opt.series.length > 0) {
     if (opt.series.length > MAX_ID_LIST) throw new Error(`waterBodies: series が ${opt.series.length} 件で上限 ${MAX_ID_LIST} を超えている`);
-    joins.push(`JOIN json_each(?) sk ON sk.value = ${seriesKeySql("obs")}`);
-    params.push(jsonEachParam(opt.series.map(seriesKeyString)));
+    // `variable_id` 前段フィルタ込み（`sql.ts` の `seriesFilterSql` docstring 参照。
+    // 索引の先頭列で絞り込んでから系列キーで仕上げる）。
+    const f = seriesFilterSql(opt.series, "obs")!;
+    joins.push(...f.joins);
+    params.push(...f.params);
   }
 
   const sql = `
