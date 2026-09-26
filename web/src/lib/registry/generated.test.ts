@@ -79,9 +79,37 @@ describe("generated.ts / generated-client.ts の形", () => {
     expect(GENERATED_CAVEATS.every((c) => !c.key.startsWith("cells."))).toBe(true);
   });
 
-  it("caveat_scope は table/table_prefix のみ（優先度は scope_kind ではなく priority 列が持つ）", () => {
+  it("caveat_scope は既知の scope_kind のみ（優先度は scope_kind ではなく priority 列が持つ）", () => {
+    // 'cell'/'cell_table'（cells.notes 由来）は含めない規約（build-registry-ts.mjs の
+    // WHERE 句、scripts/registry/build_caveat.py の docstring）。'table'/'table_prefix' は
+    // v1（caveatsForTables）、'dataset'/'place_kind'/'source_id'/'variable_theme' は v2
+    // facet（`lib/cube/caveats.ts` の `caveatsForFacets`、Issue #48 PR-1b）。'variable' は
+    // PR-2 の unitUnknown/censoredLod 用の予約枠で、今は行を持たない。
+    const KNOWN_KINDS = new Set([
+      "table",
+      "table_prefix",
+      "dataset",
+      "place_kind",
+      "source_id",
+      "variable_theme",
+      "variable",
+    ]);
     expect(GENERATED_CAVEAT_SCOPE.length).toBeGreaterThan(0);
-    expect(GENERATED_CAVEAT_SCOPE.every((s) => s.scopeKind === "table" || s.scopeKind === "table_prefix")).toBe(true);
+    expect(GENERATED_CAVEAT_SCOPE.every((s) => KNOWN_KINDS.has(s.scopeKind))).toBe(true);
+    // v1（table/table_prefix）は v2 facet を足しても1行も減らない（並存。撤去は PR-5）。
+    expect(GENERATED_CAVEAT_SCOPE.some((s) => s.scopeKind === "table" || s.scopeKind === "table_prefix")).toBe(
+      true,
+    );
+    expect(
+      GENERATED_CAVEAT_SCOPE.some(
+        (s) =>
+          s.scopeKind === "dataset" ||
+          s.scopeKind === "place_kind" ||
+          s.scopeKind === "source_id" ||
+          s.scopeKind === "variable_theme",
+      ),
+    ).toBe(true);
+    expect(GENERATED_CAVEAT_SCOPE.some((s) => s.scopeKind === "variable")).toBe(false);
     expect(GENERATED_CAVEAT_SCOPE.some((s) => s.priority > 0)).toBe(true);
   });
 

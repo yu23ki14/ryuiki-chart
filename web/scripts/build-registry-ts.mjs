@@ -144,6 +144,27 @@ const variableAliases = db
     grain: r.grain,
   }));
 
+// caveat_scope.scope_kind の既知の語彙（scripts/registry/build_caveat.py の
+// docstring「caveat_scope.scope_kind が取りうる値」参照）。'cell'/'cell_table'
+// （cells.notes 由来）はここに含めない——`caveatsForTables()` の対象外であり続ける
+// 規約（build_caveat.py 参照）を、生成物に混ぜないことでも保証するため。
+// 'table'/'table_prefix' は v1（テーブル名で引く）、'dataset'/'place_kind'/
+// 'source_id'/'variable_theme' は v2（`lib/cube` がキューブのセルから直接引く。
+// Issue #48 PR-1b）。'variable' は PR-2 の `unitUnknown`/`censoredLod` 用に
+// 型だけ予約している（この時点では対応する行は無い）。
+// `CaveatScopeKind` 型はこの配列から生成する（手書きしない。以前は
+// `"table" | "table_prefix"` を直書きしており、新しい kind を足すたびに
+// 型定義とクエリの WHERE 句を別々に直す必要があった）。
+const CAVEAT_SCOPE_KINDS = [
+  "table",
+  "table_prefix",
+  "dataset",
+  "place_kind",
+  "source_id",
+  "variable_theme",
+  "variable",
+];
+
 // cells.notes 由来（common:caveat:cells.*）は除く。16件のみ。
 const CAVEAT_ID_PREFIX = "common:caveat:";
 const CELLS_PREFIX = `${CAVEAT_ID_PREFIX}cells.`;
@@ -160,10 +181,11 @@ const caveats = db
     bodyJa: r.body_ja,
   }));
 
+const caveatScopeKindList = CAVEAT_SCOPE_KINDS.map((k) => `'${k}'`).join(", ");
 const caveatScope = db
   .prepare(
     `SELECT caveat_id, scope_kind, scope_ref, sort_order, priority FROM caveat_scope
-     WHERE scope_kind IN ('table', 'table_prefix')
+     WHERE scope_kind IN (${caveatScopeKindList})
      ORDER BY scope_kind, scope_ref, sort_order`,
   )
   .all()
@@ -368,7 +390,7 @@ export interface GeneratedVernacular {
   vernacularNameJa: string;
 }
 
-export type CaveatScopeKind = "table" | "table_prefix";
+export type CaveatScopeKind = ${CAVEAT_SCOPE_KINDS.map((k) => esc(k)).join(" | ")};
 
 /**
  * caveat の既知のキー16件の union（docs/plans/PHASE_B_INTAKE.md #6）。
@@ -439,8 +461,12 @@ export const GENERATED_CAVEATS: readonly GeneratedCaveat[] = ${emitObjectArray(c
 ])};
 
 /**
- * テーブル -> 注記キーのスコープ（caveat_scope の scope_kind in ('table','table_prefix')）。
- * cell/cell_table（cells.notes 由来）は含めない。
+ * テーブル/v2 facet -> 注記キーのスコープ（caveat_scope の scope_kind in
+ * (${CAVEAT_SCOPE_KINDS.map((k) => `'${k}'`).join(", ")})）。
+ * cell/cell_table（cells.notes 由来）は含めない。'table'/'table_prefix' は v1
+ * （\`caveatsForTables\`、テーブル名で引く）、'dataset'/'place_kind'/'source_id'/
+ * 'variable_theme' は v2（\`lib/cube/caveats.ts\` の \`caveatsForFacets\`、キューブの
+ * セルから直接引く。Issue #48 PR-1b）。'variable' は行が無い予約枠。
  * 同じ (scopeKind, scopeRef) の中の並びは sortOrder。scope 同士（渡されたテーブル間）の並びは
  * 呼び出し側がテーブル名を渡す順序と priority（既定0。synthetic だけ1で最優先）に従う
  * （scripts/registry/build_caveat.py の docstring参照）。
