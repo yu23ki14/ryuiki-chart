@@ -255,18 +255,6 @@ async function aliasCatalog(db: CubeDb): Promise<AliasCatalogEntry[]> {
 }
 
 /**
- * v1 の `site_id`（`sites.site_id`）から `catalog.siteVariables()` が取る
- * `place_id` への逆引き（`place_source_ref` の `sites.site_id` 行）。
- */
-async function placeIdForSiteId(db: CubeDb, siteId: string): Promise<string | undefined> {
-  const rows = await db.all<{ place_id: string }>(
-    `SELECT place_id FROM place_source_ref WHERE source_id = 'sites.site_id' AND external_key = ?`,
-    [siteId],
-  );
-  return rows[0]?.place_id;
-}
-
-/**
  * measurements の alias ごとの、レジストリ上の正しい unit symbol。`registry.sqlite` の
  * `variable_alias`/`unit` を **SQL で直接**読む（Issue #48 PR-1 code-review #3）。
  *
@@ -385,9 +373,7 @@ async function fetchRawRows(
       // 純関数の変換（Issue #48 PR-1 論点A: 以前は地点にある alias ごとに
       // summarize() を別々に呼ぶ N+1 だった）。
       const siteId = String(params.site_id);
-      const placeId = await placeIdForSiteId(db, siteId);
-      if (!placeId) return [];
-      const rows = await catalog.siteVariables(db, placeId, { dataset: "measurements", imputation, source: catalogSource });
+      const rows = await catalog.siteVariables(db, siteId, { dataset: "measurements", imputation, source: catalogSource });
       const out: RawRow[] = [];
       for (const r of rows) {
         const info = seriesInfo(r.series);
@@ -595,9 +581,7 @@ async function fetchRawRows(
       // 本来 別basis（day と fiscal_year）になるはずの2グループを誤って
       // 1つの 'day' に合流させてしまう（n・avg が両方とも v1 と食い違う）。
       const siteId = String(params.site_id);
-      const placeId = await placeIdForSiteId(db, siteId);
-      if (!placeId) return [];
-      const rows = await catalog.siteVariables(db, placeId, { dataset: "measurements", imputation, source: catalogSource });
+      const rows = await catalog.siteVariables(db, siteId, { dataset: "measurements", imputation, source: catalogSource });
 
       interface StatGroup {
         n: number;
@@ -689,7 +673,8 @@ async function fetchRawRows(
         // 絞る——絞らないと `inputGrain:'same'` は fiscal_year 基準でも year 基準
         // でも同じ式（input_grain=grain）になり、2つの basis が同じ行を返して
         // しまう（実測のバグ。`year_series_site_by_variable`/`observation.ts`
-        // の `yearSeries` は `seriesForBasis` が系列自体を value_grain で絞るので
+        // の `yearSeries` は `yearCellFilterForBasis` がセル自身の `grain`/
+        // `input_grain` で絞る（系列を `value_grain` で絞り込まない）ため、
         // この種の混同が起きない）。
         grain: basis === "day" ? ["year", "fiscal_year"] : [basis],
         stats: ["mean"],
