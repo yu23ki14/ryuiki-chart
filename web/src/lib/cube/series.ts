@@ -19,6 +19,7 @@
  */
 import {
   GENERATED_VARIABLE_ALIASES,
+  GENERATED_VARIABLES,
   type GeneratedVariableAlias,
 } from "@/lib/registry/generated";
 
@@ -183,9 +184,100 @@ export function seriesForVariable(variableId: string, opt?: SeriesForVariableOpt
   return out;
 }
 
-/** 合成データの系列か（`sourceIds` に出典未記録＝NULL を含む）。 */
-export function isSynthetic(s: SeriesInfo): boolean {
-  return s.sourceIds.includes(null);
+const DEFAULT_DATASET = "measurements";
+
+/**
+ * ある正準 variable_id の「代表系列」（PR-2 design §2.1・§0 決定4）。`seriesForVariable`
+ * の薄い包みで、既定 `stat="representative"` は `obsStat ∈ {mean, point, NULL}` の組
+ * （`seriesForVariable` の `obsStats: "representative"` と同じ）。`stat` に具体的な
+ * `obsStat`（`"p75"`/`"p90"`/`"max"`/`"min"` 等）を渡すと、その `obsStat` の組だけに絞る
+ * （D4: 非代表統計量を落とさず `stat` パラメータで選べるようにする）。
+ *
+ * **フォールバック**（design §9 危険3）: `stat="representative"`（既定）で該当する組が
+ * 1つも無い variable（例: `land.max_subsidence` は唯一の alias が `obsStat="max"` で、
+ * mean/point/NULL のどれにも当たらない）は、空配列を返す代わりに全系列
+ * （`obsStats: "all"`）にフォールバックする——「代表系列が無いので何も表示されない」
+ * という事故を避ける。
+ */
+export function representativeSeries(
+  variableId: string,
+  dataset: string = DEFAULT_DATASET,
+  stat: "representative" | string = "representative",
+): SeriesInfo[] {
+  if (stat === "representative") {
+    const rep = seriesForVariable(variableId, { dataset, obsStats: "representative" });
+    if (rep.length > 0) return rep;
+    return seriesForVariable(variableId, { dataset, obsStats: "all" });
+  }
+  return seriesForVariable(variableId, { dataset, obsStats: [stat] });
+}
+
+export interface BasisInfo {
+  basis: "day" | "fiscal_year" | "year";
+  /** この `basis` で表示できる粒度（`grain`）。「元データ」から決まる（design §2.1）。 */
+  grains: Grain[];
+}
+
+/**
+ * 系列の集合から「元データ」（`value_grain`）の基準（`basis`）と、そこから表示できる
+ * `grain` の一覧を決める（v1 `kind`（daily/annual）の後継。design §2.1・§5）。
+ *
+ * `day` → 検体値（日次観測）が元データ。年（暦年、`input_grain='day'` で積み上げ）・
+ * 月・日の3粒度で表示できる。`fiscal_year` → 年度集計値が元データ（日本の年度、
+ * 4月始まり）。表示できるのは年度だけ。`year` → 暦年の集計値が元データ（例:
+ * 地盤沈下。`input_grain='same'`）。表示できるのは年（暦年）だけ。
+ *
+ * `series` に複数の `valueGrain` が混ざっている場合（例: `representativeSeries` を
+ * `basis` で絞る前の BOD は day/mean・day/point・fiscal_year/mean の3系列にまたがる）は、
+ * 「もっとも粒度が細かい（データが多い）」優先順位 day > fiscal_year > year で
+ * 代表の1つを選ぶ——`basis` を省略した呼び出し側（`observation.ts` の
+ * `yearSeries`/`monthSeries`/`daySeries` 等）のデフォルト値を決めるためのもので、
+ * 実際にどの系列を問い合わせに使うかは呼び出し側が `basis` で明示的に絞り込む。
+ *
+ * 空配列（該当する系列が1つも無い）は呼び出し側の誤り（存在しない variableId・
+ * `stat` を渡した等）として例外にする——`null` を返して呼び出し側に握りつぶされる
+ * より、ここで気づける方がよい。
+ */
+export function basisOf(series: readonly SeriesKey[]): BasisInfo {
+  if (series.length === 0) {
+    throw new Error("basisOf: series が空（該当する系列が無い）");
+  }
+  const valueGrains = new Set(series.map((s) => s.valueGrain));
+  const basis: "day" | "fiscal_year" | "year" = valueGrains.has("day")
+    ? "day"
+    : valueGrains.has("fiscal_year")
+      ? "fiscal_year"
+      : "year";
+  return { basis, grains: grainsForBasis(basis) };
+}
+
+/** `basis` から表示できる `grain` の一覧（`basisOf` と `catalog.ts` の summary 束ねが共有）。 */
+export function grainsForBasis(basis: "day" | "fiscal_year" | "year"): Grain[] {
+  return basis === "day" ? ["year", "month", "day"] : basis === "fiscal_year" ? ["fiscal_year"] : ["year"];
+}
+
+/**
+ * 単一の `value_grain`（DB の生値。`"day"`/`"fiscal_year"`/それ以外）から `basis` を
+ * 決める（`catalog.ts` の `variableCatalog` の束ね（`nByBasis`）が、`basisOf`——複数系列
+ * から優先順位で1つ選ぶ版——ではなく、1行ずつの `value_grain` をそのまま `basis` に
+ * 振り分けるためにこちらを使う）。`"year"` 自体（地盤沈下等）も NULL もここでは同じ
+ * `"year"` に落ちる（実データで day/fiscal_year 以外はすべて `"year"`）。
+ */
+export function basisFromValueGrain(valueGrain: string | null): "day" | "fiscal_year" | "year" {
+  if (valueGrain === "day") return "day";
+  if (valueGrain === "fiscal_year") return "fiscal_year";
+  return "year";
+}
+
+const variableById = new Map(GENERATED_VARIABLES.map((v) => [v.variableId, v]));
+
+/**
+ * `SeriesInfo` に `variable.theme` を足す（`caveats.ts` の `SeriesFacetInput` 用）。
+ * `variable` の生テーブル（`generated.ts`、サーバ専用）を見るヘルパをこちらに置き、
+ * `caveats.ts` をクライアント安全なまま保つ（同ファイルの docstring 参照）。
+ */
+export function withTheme(series: SeriesInfo): SeriesInfo & { theme: string | null } {
+  return { ...series, theme: variableById.get(series.variableId)?.theme ?? null };
 }
 
 /**

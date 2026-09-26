@@ -44,8 +44,9 @@ import type { Scope } from "./sql";
 
 export type { CaveatRef };
 
-/** `caveat_scope.scope_kind`（v2 facet 行の種類。互換のための `table` も含む）。 */
-export type FacetKind = "dataset" | "variable_theme" | "place_kind" | "source_id" | "table";
+/** `caveat_scope.scope_kind`（v2 facet 行の種類。互換のための `table` も含む）。
+ *  `variable`（PR-2 で追加。§6・D3）は `variable_id` 単位の注記（`unitUnknown` 等）用。 */
+export type FacetKind = "dataset" | "variable_theme" | "place_kind" | "source_id" | "table" | "variable";
 
 /**
  * 1つの facet 参照。`kind="table"` は v1 のテーブル名（`caveatsForTables` と同じ一致方法。
@@ -113,18 +114,28 @@ export type SeriesFacetInput = SeriesInfo & {
   readonly theme: string | null;
 };
 
-/** ある系列が合成データか（`series.ts` の `isSynthetic` と同じ規約: sourceIds に null を含む）。 */
-function isSyntheticSeries(s: SeriesFacetInput): boolean {
-  return s.sourceIds.some((id) => id === null);
-}
-
 /**
- * 系列とスコープから facet 参照の並びを組み立てる（§3.6）。
- * 系列を順に見て、各系列について `dataset`→`variable_theme`→`source_id`（複数）の順に
- * 積む（合成データの系列——`isSynthetic`——は続けて `dataset='synthetic'` も積む。D4 の
- * 規約）。最後に scope から決まる `place_kind` を1つ積む（`'zone'` スコープだけ
- * `place_kind='zone'`、それ以外（site/water/places/all_sites）は `place_kind='site'`——
- * `scripts/registry/build_caveat.py` の facet 対応表どおり）。
+ * 系列とスコープから facet 参照の並びを組み立てる（§3.6、PR-2 で D2 の synthetic push を
+ * 撤去・`variable` facet を追加）。系列を順に見て、各系列について
+ * `dataset`→`variable_theme`→`source_id`（複数）→`variable`（`variableId`。**`unitId`
+ * が null の系列だけ**）の順に積む。最後に scope から決まる `place_kind` を1つ積む
+ * （`'zone'` スコープだけ `place_kind='zone'`、それ以外（site/water/places/all_sites）は
+ * `place_kind='site'`——`scripts/registry/build_caveat.py` の facet 対応表どおり）。
+ *
+ * **`variable` facet は `unitId===null` の系列だけに push する**（統合後の追加決定。
+ * `unitUnknown` の対象 variable_id——`hydro.flow`/`water.water_temp`/
+ * `air.photochemical_oxidant`/`weather.precipitation` 等8件——のうち `water.water_temp`
+ * のように単位が分かっている実データの系列も同じ variable_id に混在するものがある。
+ * variable_id 単位で無条件に push すると、単位が判明している系列にまで「単位不明」の
+ * 注記が誤って付く——合成データの誤爆（PR-2 で撤去した synthetic push）と同じ種類の
+ * 誤り。`unitId` が既知の系列は `variable` facet を push しない。
+ *
+ * **PR-2 で撤去**（design §0-2・D2）: 以前はここで合成データの系列（`sourceIds` に
+ * null を含む）に続けて `dataset='synthetic'` を積んでいたが、実測で「合成専用の
+ * 地点」ではなく実在地点に混在しており（例: SS/DO は atsugi の実データと同じ組を
+ * 共有）、除外後も実データの系列に「合成データ」注記を誤って付けてしまう不正確な
+ * 近似だった。b03 が合成行を除いた後の `observation_agg` には合成データが載らないため、
+ * この push 自体が不要になった。
  *
  * 同じ `(kind, ref)` の組は「初めて現れたところ」だけを残す（`caveatsForFacets` の
  * 初出順ソートに使うため）。
@@ -145,7 +156,7 @@ export function facetsForSeries(series: readonly SeriesFacetInput[], scope: Scop
     for (const id of s.sourceIds) {
       if (id !== null) push("source_id", id);
     }
-    if (isSyntheticSeries(s)) push("dataset", "synthetic");
+    if (s.unitId === null) push("variable", s.variableId);
   }
 
   push("place_kind", scope.kind === "zone" ? "zone" : "site");
