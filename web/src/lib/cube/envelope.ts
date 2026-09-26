@@ -13,7 +13,7 @@ import type { CaveatRef } from "@/lib/registry/lookup-client";
 import { unitSymbol } from "@/lib/registry/lookup";
 import type { CubeDb, SqlParam } from "./db";
 import { jsonEachParam } from "./sql";
-import { isSynthetic, seriesInfo, type Grain, type SeriesKey } from "./series";
+import { isSynthetic, seriesInfo, seriesKeyString, type Grain, type SeriesKey } from "./series";
 import type { CellRow, CellSpec, Imputation } from "./observation";
 
 export const ENVELOPE_SPEC_VERSION = "cube-envelope@1";
@@ -62,7 +62,7 @@ export interface Envelope<R> {
 function distinctSeriesKeys(rows: readonly CellRow[]): SeriesKey[] {
   const seen = new Map<string, SeriesKey>();
   for (const r of rows) {
-    const k = `${r.series.variableId}|${r.series.valueGrain}|${r.series.obsStat ?? ""}|${r.series.unitId ?? ""}`;
+    const k = seriesKeyString(r.series);
     if (!seen.has(k)) seen.set(k, r.series);
   }
   return [...seen.values()];
@@ -124,10 +124,18 @@ export async function buildEnvelope<R extends CellRow>(
   rows: R[],
   opt?: { caveats?: CaveatRef[]; truncated?: boolean },
 ): Promise<Envelope<R>> {
-  const nPlaces = new Set(rows.map((r) => r.placeId)).size;
-  const nCensored = rows.reduce((acc, r) => acc + r.nCensored, 0);
-  const nNotDetected = rows.reduce((acc, r) => acc + r.nNotDetected, 0);
-  const periods = rows.map((r) => r.periodStart).sort();
+  const placeIds = new Set<string>();
+  let nCensored = 0;
+  let nNotDetected = 0;
+  let periodStart: string | null = null;
+  let periodEnd: string | null = null;
+  for (const r of rows) {
+    placeIds.add(r.placeId);
+    nCensored += r.nCensored;
+    nNotDetected += r.nNotDetected;
+    if (periodStart === null || r.periodStart < periodStart) periodStart = r.periodStart;
+    if (periodEnd === null || r.periodStart > periodEnd) periodEnd = r.periodStart;
+  }
   const { unit, ucum } = resolveUnitColumn(rows);
 
   const columns: EnvelopeColumn[] = [
@@ -149,10 +157,10 @@ export async function buildEnvelope<R extends CellRow>(
     rows,
     coverage: {
       n_rows: rows.length,
-      n_places: nPlaces,
+      n_places: placeIds.size,
       n_censored: nCensored,
       n_not_detected: nNotDetected,
-      period: { start: periods[0] ?? null, end: periods[periods.length - 1] ?? null, grain: grainLabel(spec.grain) },
+      period: { start: periodStart, end: periodEnd, grain: grainLabel(spec.grain) },
       imputation: spec.imputation,
     },
     provenance,
