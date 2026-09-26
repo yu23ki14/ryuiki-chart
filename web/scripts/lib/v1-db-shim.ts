@@ -69,8 +69,10 @@ let sharedDb: Database.Database | undefined;
 /**
  * ryuiki.sqlite を本体に cells.sqlite（`c`）・derived.sqlite（`d`）を ATTACH した
  * 1つの接続を、プロセス内で使い回す（`--v1-only` の再実行やテストのために
- * 明示的に閉じたいときは `closeV1Db()`）。`paths` を省略すると
- * `configureV1Db()` で上書きした分を反映した既定パスを使う。
+ * 明示的に閉じたいときは `closeV1Db()`）。`paths` を省略すると `resolvePaths()`
+ * が呼び出し時点の `process.env`（`RYUIKI_DB_DIR`/`RYUIKI_V1_DERIVED_DB`）から
+ * 組み立てた既定パスを使う（上記モジュール docstring「関数呼び出しでの上書きに
+ * しない」理由の節参照。設定関数は無い）。
  */
 export function openV1Db(paths: V1DbPaths = resolvePaths()): Database.Database {
   if (sharedDb) return sharedDb;
