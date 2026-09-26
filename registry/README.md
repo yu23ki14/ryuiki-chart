@@ -19,7 +19,7 @@ Phase A（`docs/plans/PHASE_A.md`, ADR-0016）の成果物。v1 のファクト�
   明示の local を持たせる列（後述「空の局番コード」参照）。他の142行は空欄 |
 | `taxon/vernacular_ja.csv` | 人手確認済みの和名54件（`domain.ts` の `NAME_JA` の複製） |
 | `taxon/taxon_group.yaml` | 生物群の日本語ラベル（`taxon_group`）の先勝ちルール表。`web/scripts/build-biota.mjs` の `TAXON_GROUP` CASE式をデータ化したもの（Phase B `phase-b/occurrence-registry`、後述「taxon の分類補完」） |
-| `caveat.yaml` | 注記14件（`domain.ts` の `DATA_CAVEATS`/`BIOTA_CAVEATS` 等の移設） |
+| `caveat.yaml` | 注記18件（`domain.ts` の `DATA_CAVEATS`/`BIOTA_CAVEATS` 等の移設14件＋Phase B以降の新規4件: `landuseDefinitionChange`・`aboveLod`・`censoredLod`・`unitUnknown`） |
 
 **生成物はここには置かない。** `data/db/registry.sqlite`（gitignore 済み）が唯一の生成物で、
 `scripts/r01_build_registry.py` が上記の手書きファイルと、読み取り専用の原本
@@ -177,13 +177,18 @@ PRIMARY KEY 制約により挿入時点でも保証されるが、4モジュー�
 | `place_kind` | `place.place_kind` の値（`site` / `zone` / `grid01`） | 同上 |
 | `source_id` | 出典 ID（`isAlien` は `taxon_assessment.source_id='moe_ias_list'`） | 同上 |
 | `variable_theme` | `variable.theme` の値（`landuse`） | 同上 |
-| `variable` | （予約のみ。PR-2 で `unitUnknown`/`censoredLod` を足すまで対応する行は無い） | 同上（未使用） |
+| `variable` | `variable.variable_id`。PR-1 では型だけ予約し行を作らなかったが、Issue #48 PR-2 で `unitUnknown` が最初の消費者になった（refs は `registry/variable_alias.csv` の `unit_id` が空の行から機械導出。`scripts/registry/build_caveat.py` の `_unit_unknown_variable_refs()`） | 同上 |
 
 `table`/`table_prefix` の行は v1 のもの（撤去は PR-5）で、`dataset`/`place_kind`/
-`source_id`/`variable_theme` の行はそれと**並存**する同じ意味の v2 facet
+`source_id`/`variable_theme`/`variable` の行はそれと**並存**する同じ意味の v2 facet
 （`scripts/registry/build_caveat.py` の `add_facet_group()` が、対応する `add_table_group()`
 呼び出しの直後に足すだけで、v1 側は1行も変えない）。`web/scripts/build-registry-ts.mjs` の
 `CAVEAT_SCOPE_KINDS` 定数がこの語彙の唯一の生成元（`CaveatScopeKind` 型も同じ配列から作る）。
+
+**例外（Issue #48 PR-2）**: `censoredLod`/`unitUnknown` はどちらも v1 に対応物が無い
+新規注記なので、v2 facet だけを持ち v1 `table` 行は作らない。`censoredLod` は
+`dataset='measurements'` に乗る（`censored` の v1 `table` 行はそのまま変えていない
+——v1 経路がいま読んでいるのは zero 系列だけなので。`docs/plans/V2_SERVING_PR2.md` §6）。
 
 ### `place.region_id` と `place_relation`（Phase B `phase-b/region-scope`。理由・経緯は ADR-0022 参照）
 
@@ -298,6 +303,13 @@ alias_source_pairs_{csv,data}_only.csv` に片方向ずつのズレを出す（0
 `data/db/v2.sqlite` の `observation`（`unit_raw` を持つ唯一の段）に対して機械的に検証する
 （`sensor_timeseries` は表記ゆれ（例: raw "μg/m3" vs symbol "ug/m3"）という別の既知の
 問題を抱えており対象外。宣言は `scripts/migrate/unit_evidence_declarations.yaml`）。
+
+**`unitUnknown` 注記（Issue #48 PR-2）**: `dataset` を問わず `unit_id` が空のまま残る
+全行（測定10行: 流量関連1・sensor 9〔RAIN 含む〕）から、`scripts/registry/build_caveat.py`
+の `_unit_unknown_variable_refs()` が `variable_id` を機械導出し（8件に畳まれる）、
+`caveat_scope` に `scope_kind='variable'` の行として付ける（上記「`caveat_scope.scope_kind`
+の語彙」参照）。ハードコードしないので、`variable_alias.csv` の `unit_id` を今後埋めれば
+このリストも自動的に縮む。
 
 ### `local_key` のスラッグ化（ADR-0004 規約4）
 

@@ -9,6 +9,11 @@
 `rain_daily`）は、v1 撤去後の差分カウント（serving-diff）でも既知の系統として扱い続ける
 （[ADR-0029](0029-v1-removal-and-verification-handoff.md)、提案中）。本文は変えない。
 
+**2026-09-26 追記（Issue #48 PR-2 着手、U1b）**: `docs/plans/V2_SERVING.md` #32-1
+（ラベル日割りの退役。summary の2表を作る PR-2 の中で実現する予定、
+[docs/plans/V2_SERVING_PR2.md](../plans/V2_SERVING_PR2.md) §4）は、この追記の時点では
+まだ未実装——PR-2 のパイプライン単位（U1a）で実装予定。本文は変えない。
+
 ## 背景（実測）
 
 **SQLite の日時関数は `+09:00` 付きの文字列を UTC に正規化してから日付を取り出す。**

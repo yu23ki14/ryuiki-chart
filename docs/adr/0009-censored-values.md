@@ -13,6 +13,19 @@
 決定4の `not_detected`/`value_zero` の時限的な例外自体は直ちには撤去せず、
 `docs/plans/V2_SERVING.md` PR-6 で扱う。本文は変えない。
 
+**2026-09-26 追記（Issue #48 PR-2 着手、U1b）**: 上の「申し送り」（決定4本文の直後、
+「`lod` の系列を画面に出す最初の消費者が現れたら censoredZero/censoredLod のように
+key ごと分ける」）のとおり実装した。`censored` の本文・scope は1文字も変えず、`lod`
+系列向けの新キー `censoredLod` を別に足した（`registry/caveat.yaml`・
+`scripts/registry/build_caveat.py`。v2 facet `dataset='measurements'` は
+`censoredLod` を返し、v1 `table` scope は引き続き `censored` を返す——設計は
+[docs/plans/V2_SERVING_PR2.md](../plans/V2_SERVING_PR2.md) §6・D3）。
+**この決定により、ADR-0030 D5 の「注記（`censored`）も `value_lod` を名指しする
+文面に書き換える」という記述は古くなった**（書き換えではなく別キー追加。ADR-0030
+側にも訂正の追記あり）。画面が実際に `value_lod`/`censoredLod` へ切り替わる部分
+（`lib/cube`・画面コンポーネント）はこの追記の時点ではまだ未実装——PR-2 の他単位
+（U2・U3）で実装予定。
+
 **2026-09-24 追記（実装。ADR-0016 Phase B「ファクトとキューブ」で `imputation='zero'`
 のみ実装したのに続く最初の意図的な変更）**: 決定2・決定4を実装した。要点は決定2・決定4
 それぞれの本文に追記した。実装は `scripts/b04_build_cube.py`（`observation_agg`

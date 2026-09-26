@@ -28,8 +28,11 @@
  *   - `generated-client.ts`（クライアント安全）: VARIABLE_SHORT / VARIABLE_NOTE /
  *     HIGHER_IS_WORSE / VARIABLE_UNIT_FALLBACK / NAME_JA（旧 domain.ts が実際に使っていた、
  *     派生済みの4+1個の Record）、ZONE_INFO・CaveatKey（Phase B で旧 domain.ts から
- *     移設。docs/plans/PHASE_B_INTAKE.md #6）と、caveat 16件・caveat_scope
+ *     移設。docs/plans/PHASE_B_INTAKE.md #6）と、caveat 18件・caveat_scope
  *     （小さいので両方に置いて問題ない）。生の variable / alias テーブルはここには載せない。
+ *     VARIABLE_LABEL（variable_id キー。Issue #48 PR-2、docs/plans/V2_SERVING_PR2.md §5）
+ *     は上記5個とは別枠——alias キー版を置き換えるのではなく並存する（PR-5 で
+ *     alias キー版を落とすまで両方生きる）。
  *
  * 派生値の組み立てロジック（元は domain.ts が実行時に primaryAlias() 経由で
  * やっていた「代表エイリアスの選定」）は `web/scripts/lib/registry-codegen.mjs`
@@ -58,7 +61,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { load as loadYaml } from "js-yaml";
 import { parseCsvRecords } from "./lib/csv.mjs";
-import { buildClientVariableMaps } from "./lib/registry-codegen.mjs";
+import { buildClientVariableMaps, buildVariableLabelMap } from "./lib/registry-codegen.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB = path.resolve(__dirname, "..");
@@ -150,8 +153,8 @@ const variableAliases = db
 // 規約（build_caveat.py 参照）を、生成物に混ぜないことでも保証するため。
 // 'table'/'table_prefix' は v1（テーブル名で引く）、'dataset'/'place_kind'/
 // 'source_id'/'variable_theme' は v2（`lib/cube` がキューブのセルから直接引く。
-// Issue #48 PR-1b）。'variable' は PR-2 の `unitUnknown`/`censoredLod` 用に
-// 型だけ予約している（この時点では対応する行は無い）。
+// Issue #48 PR-1b）。'variable' も同じく v2（`unitUnknown` の scope_ref=variable_id。
+// PR-1 では型だけ予約していたが、Issue #48 PR-2 で最初の行ができた）。
 // `CaveatScopeKind` 型はこの配列から生成する（手書きしない。以前は
 // `"table" | "table_prefix"` を直書きしており、新しい kind を足すたびに
 // 型定義とクエリの WHERE 句を別々に直す必要があった）。
@@ -165,7 +168,7 @@ const CAVEAT_SCOPE_KINDS = [
   "variable",
 ];
 
-// cells.notes 由来（common:caveat:cells.*）は除く。16件のみ。
+// cells.notes 由来（common:caveat:cells.*）は除く。18件のみ。
 const CAVEAT_ID_PREFIX = "common:caveat:";
 const CELLS_PREFIX = `${CAVEAT_ID_PREFIX}cells.`;
 const caveats = db
@@ -248,6 +251,7 @@ const { variableShort, variableNote, higherIsWorse, variableUnitFallback } = bui
   variableAliases,
   units,
 );
+const variableLabel = buildVariableLabelMap(variables, variableAliases);
 const nameJa = Object.fromEntries(vernacular.map((v) => [v.scientificName, v.vernacularNameJa]));
 
 /* ------------------------------------------------------------------ */
@@ -275,6 +279,18 @@ function emitObjectArray(rows, fields) {
 /** `Record<string, ...>` リテラルを書き出す（キー順は入力オブジェクトの挿入順＝決定論的）。 */
 function emitRecord(obj) {
   const lines = Object.entries(obj).map(([k, v]) => `  ${esc(k)}: ${tsValue(v)},`);
+  return `{\n${lines.join("\n")}\n}`;
+}
+
+/**
+ * `Record<string, { field1, field2, ... }>` リテラルを書き出す（`VARIABLE_LABEL` 用。
+ * `emitRecord()` は値がスカラーの Record しか書けないため別関数にした）。
+ */
+function emitNestedRecord(obj, fields) {
+  const lines = Object.entries(obj).map(([k, row]) => {
+    const body = fields.map((f) => `${f}: ${tsValue(row[f])}`).join(", ");
+    return `  ${esc(k)}: { ${body} },`;
+  });
   return `{\n${lines.join("\n")}\n}`;
 }
 
@@ -393,7 +409,7 @@ export interface GeneratedVernacular {
 export type CaveatScopeKind = ${CAVEAT_SCOPE_KINDS.map((k) => esc(k)).join(" | ")};
 
 /**
- * caveat の既知のキー16件の union（docs/plans/PHASE_B_INTAKE.md #6）。
+ * caveat の既知のキー18件の union（docs/plans/PHASE_B_INTAKE.md #6）。
  * 画面・\`web/src/lib/ai/prompt.ts\` が \`caveatBody(key)\`（lookup-client.ts）を直接
  * 呼ぶときの型で、存在しないキーはここでコンパイルエラーになる（旧 domain.ts の
  * mustCaveatBody() は実行時例外だった）。
@@ -424,6 +440,13 @@ export interface GeneratedZone {
   label: string;
   cond: string;
 }
+
+/** \`VARIABLE_LABEL\` の1エントリ（Issue #48 PR-2、docs/plans/V2_SERVING_PR2.md §5）。 */
+export interface GeneratedVariableLabel {
+  short: string;
+  note: string | null;
+  higherIsWorse: boolean | null;
+}
 `;
 
 const clientOut = `${CLIENT_HEADER}
@@ -443,13 +466,25 @@ export const HIGHER_IS_WORSE: Readonly<Record<string, boolean>> = ${emitRecord(h
 export const VARIABLE_UNIT_FALLBACK: Readonly<Record<string, string>> = ${emitRecord(variableUnitFallback)};
 
 /**
+ * \`variable_id\` キーの表示ラベル（Issue #48 PR-2、docs/plans/V2_SERVING_PR2.md §5）。
+ * \`name_ja\` が NULL の variable も代表エイリアスの表記へ落として必ず持つ
+ * （上の VARIABLE_SHORT 等——alias キー版——とは選定規則が違う。
+ * \`web/scripts/lib/registry-codegen.mjs\` の \`buildVariableLabelMap()\` docstring参照）。
+ * 対象は dataset='measurements' の alias を1つ以上持つ variable のみ。
+ */
+export const VARIABLE_LABEL: Readonly<Record<string, GeneratedVariableLabel>> = ${emitNestedRecord(
+  variableLabel,
+  ["short", "note", "higherIsWorse"],
+)};
+
+/**
  * 和名54件（registry/taxon/vernacular_ja.csv、旧 domain.ts の NAME_JA をそのまま複製した台帳）。
  * taxon テーブル全体の vernacular_name_ja（8,324件、taxa 由来の別の母集団）とは別物。
  */
 export const NAME_JA: Readonly<Record<string, string>> = ${emitRecord(nameJa)};
 
 /**
- * 注記16件（registry/caveat.yaml）。cells.notes 由来（207件）は含めない。
+ * 注記18件（registry/caveat.yaml）。cells.notes 由来（207件）は含めない。
  * key は caveat_id から "common:caveat:" を外したもの
  * （web/src/lib/ai/caveats.ts が今返しているキー文字列と同じ）。
  */
@@ -465,8 +500,9 @@ export const GENERATED_CAVEATS: readonly GeneratedCaveat[] = ${emitObjectArray(c
  * (${CAVEAT_SCOPE_KINDS.map((k) => `'${k}'`).join(", ")})）。
  * cell/cell_table（cells.notes 由来）は含めない。'table'/'table_prefix' は v1
  * （\`caveatsForTables\`、テーブル名で引く）、'dataset'/'place_kind'/'source_id'/
- * 'variable_theme' は v2（\`lib/cube/caveats.ts\` の \`caveatsForFacets\`、キューブの
- * セルから直接引く。Issue #48 PR-1b）。'variable' は行が無い予約枠。
+ * 'variable_theme'/'variable' は v2（\`lib/cube/caveats.ts\` の \`caveatsForFacets\`、
+ * キューブのセルから直接引く。Issue #48 PR-1b。'variable' の行は PR-2 で足した
+ * \`unitUnknown\` の scope_ref=variable_id）。
  * 同じ (scopeKind, scopeRef) の中の並びは sortOrder。scope 同士（渡されたテーブル間）の並びは
  * 呼び出し側がテーブル名を渡す順序と priority（既定0。synthetic だけ1で最優先）に従う
  * （scripts/registry/build_caveat.py の docstring参照）。
@@ -491,6 +527,7 @@ console.log(
   `wrote ${path.relative(REPO, OUT_CLIENT)} ` +
     `(variableShort=${Object.keys(variableShort).length} variableNote=${Object.keys(variableNote).length} ` +
     `higherIsWorse=${Object.keys(higherIsWorse).length} variableUnitFallback=${Object.keys(variableUnitFallback).length} ` +
+    `variableLabel=${Object.keys(variableLabel).length} ` +
     `nameJa=${Object.keys(nameJa).length} caveats=${caveats.length} caveatScope=${caveatScope.length} ` +
     `zones=${zoneInfo.length})`,
 );

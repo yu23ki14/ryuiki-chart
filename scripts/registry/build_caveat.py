@@ -10,6 +10,11 @@ caveats.ts のテーブル→注記マッピング、cells.notes（207行）を 
 `censored` エントリ直前のコメント参照。`caveats.test.ts` 側も対応する3ケースを
 新しい本文に更新済み。
 
+**例外2（Issue #48 PR-2、`docs/plans/V2_SERVING_PR2.md` §6）**: `censoredLod`・
+`unitUnknown` の2件を新規に足した（`registry/caveat.yaml` の各エントリ直前の
+コメント参照）。`censored` の本文はこの PR でも変えていない（v1 の zero 系列を
+名指ししたまま）。v2 facet 側だけ `censoredLod` に差し替える。
+
 ## スキーマの逸脱（計画の7テーブル→8テーブル）
 
 PHASE_A.md §A-1 の計画では `caveat(caveat_id PK, scope_kind, scope_ref, severity, kind,
@@ -69,11 +74,13 @@ v1 行の「隣に」生成する）。`caveatsForTables()`（`lookup-client.ts`
                        の値 `'moe_ias_list'`（`taxon_assessment.list_id`
                        の `'moe_ias_2015'` とは別物。実データで確認済み）。
 - `'variable_theme'` — scope_ref は `variable.theme` の値（`'landuse'`）。
-- `'variable'`       — **予約のみ、この PR では行を作らない**（PR-2 で
-                       `unitUnknown`/`censoredLod` を足すときに使う場所を型に確保するだけ。
-                       `web/scripts/build-registry-ts.mjs` の `CAVEAT_SCOPE_KINDS` に
-                       含めるが、対応する `caveat.yaml` のキーが無いのでここでは
-                       行を1つも生成しない）。
+- `'variable'`       — scope_ref は `variable.variable_id`。**Issue #48 PR-2 で
+                       最初の消費者が現れた**（PR-1 では型だけ予約し行を作らなかった）。
+                       `unitUnknown` だけがこの kind を使う（`censoredLod` は
+                       `'dataset'` kind の `measurements` に乗る——下記参照）。
+                       refs（対象 variable_id）は `registry/variable_alias.csv` の
+                       `unit_id` が空の行から `_unit_unknown_variable_refs()` が
+                       機械的に導出する（ハードコードしない）。
 
 **優先度は `scope_kind` ではなく `priority` 列（既定0）が持つ。** 以前は `synthetic`
 専用に `scope_kind='table_synthetic'` という一致方法を作り、「渡されたテーブルの中に
@@ -142,6 +149,7 @@ cells.notes は `caveatsForTables()` の対象外なので、ここで作る `ca
 このファイルに直接書いた。`caveats.ts` の集合演算（`Set` とテーブル名前方一致）の
 複製であり、データというよりロジックの複製にあたるため。
 """
+import csv
 import json
 import pathlib
 import sqlite3
@@ -149,6 +157,7 @@ import sqlite3
 import yaml
 
 from . import common
+from .build_unit_variable import VARIABLE_ALIAS_CSV
 
 CAVEAT_YAML = common.ROOT / "registry" / "caveat.yaml"
 
@@ -168,6 +177,13 @@ MEASURE_TABLES = [
     "var_catalog",
     "site_var",
 ]
+
+# Issue #48 PR-2（docs/plans/V2_SERVING_PR2.md §6）。v1 の 'table' 行（MEASURE_TABLES）は
+# `censored`（zero 系列を名指し）のまま1行も変えない。v2 facet（dataset='measurements'）
+# 側だけ `censored` を `censoredLod` に差し替えた別リスト。他2キー（measuredOn/duplicates）
+# は系列に依らず両方に共通するのでそのまま。MEASURE_CAVEATS（v1 用）を書き換えると
+# `caveats.test.ts` の34ケースが壊れるため、必ず別リストとして持つこと。
+MEASURE_CAVEATS_V2 = ["measuredOn", "censoredLod", "duplicates"]
 
 ORGANISM_CAVEATS = ["organismSite", "effort", "regimes", "gbifCutoff", "share"]
 ORGANISM_TABLES = [
@@ -238,6 +254,33 @@ SYNTHETIC_TABLES = [
 SYNTHETIC_PRIORITY = 1
 DEFAULT_PRIORITY = 0
 
+# Issue #48 PR-2（docs/plans/V2_SERVING_PR2.md §6）。`unitUnknown` は v1 に対応物が無い
+# 新規注記で、v2 facet だけ（scope_kind='variable'、PR-1 で型だけ予約していた kind の
+# 最初の消費者）に付ける。v1 の 'table' 行は作らない。
+UNIT_UNKNOWN_CAVEATS = ["unitUnknown"]
+
+
+def _unit_unknown_variable_refs() -> list[str]:
+    """`unitUnknown` の refs（対象 variable_id）を `registry/variable_alias.csv` から
+    機械的に導出する（ハードコードしない）。`unit_id` 列が空の行を集め、`variable_id`
+    を出現順（CSV の行順）で重複排除する。原本 DB は開かない（`--files-only` 安全）。
+
+    実測（2026-09-26）: 10行（流量関連1・sensor 9〔RAIN 含む〕）が variable_id 8件
+    （流量1・水温1・光化学オキシダント1・降水量1・風向×2・天気概況×2）に畳まれる。
+    """
+    refs: list[str] = []
+    seen: set[str] = set()
+    with VARIABLE_ALIAS_CSV.open(encoding="utf-8", newline="") as f:
+        for row in csv.DictReader(f):
+            if row.get("unit_id"):
+                continue
+            variable_id = row.get("variable_id") or None
+            if variable_id is None or variable_id in seen:
+                continue
+            seen.add(variable_id)
+            refs.append(variable_id)
+    return refs
+
 
 def _load_caveat_yaml() -> list[dict]:
     with CAVEAT_YAML.open(encoding="utf-8") as f:
@@ -265,9 +308,12 @@ def _build_caveat_rows(entries: list[dict]) -> list[tuple]:
 
 def _build_table_scope_rows() -> list[tuple]:
     """caveats.ts のテーブル→注記マッピング（v1、'table'/'table_prefix'）と、
-    v2（`lib/cube`）が引く facet（'dataset'/'place_kind'/'source_id'/'variable_theme'）を
-    caveat_scope の行として作る。v2 facet は同じ caveat_id の v1 'table' 行の直後に
-    足すだけで、v1 行自体は1行も変えない（このファイル冒頭の docstring「v2 facet」節参照）。
+    v2（`lib/cube`）が引く facet（'dataset'/'place_kind'/'source_id'/'variable_theme'/
+    'variable'）を caveat_scope の行として作る。v2 facet は同じ caveat_id の v1
+    'table' 行の直後に足すだけで、v1 行自体は1行も変えない（このファイル冒頭の
+    docstring「v2 facet」節参照）。**例外は `censoredLod`/`unitUnknown`**（Issue #48
+    PR-2）: どちらも v1 に対応物が無い新規注記なので、v2 facet だけを作り v1 'table'
+    行は作らない。
     """
     rows: list[tuple] = []
 
@@ -301,8 +347,15 @@ def _build_table_scope_rows() -> list[tuple]:
     # sort_order が 0 から振り直されて MEASURE_CAVEATS と衝突しないよう、
     # `len(MEASURE_CAVEATS)` から続きで採番する。
     add_table_group(MEASURE_TABLES, ABOVE_LOD_CAVEATS, start=len(MEASURE_CAVEATS))
-    add_facet_group("dataset", ["measurements"], MEASURE_CAVEATS)
-    add_facet_group("dataset", ["measurements"], ABOVE_LOD_CAVEATS, start=len(MEASURE_CAVEATS))
+    # v2 facet だけ MEASURE_CAVEATS_V2（censored→censoredLod に差し替えた別リスト。
+    # Issue #48 PR-2）を使う。v1 'table' 行は上の MEASURE_CAVEATS のまま
+    # （censored を変えない）。start の基準は len(MEASURE_CAVEATS_V2) だが、
+    # 両リストは長さが同じ（3）なので v1 側と同じオフセットになる。
+    add_facet_group("dataset", ["measurements"], MEASURE_CAVEATS_V2)
+    add_facet_group("dataset", ["measurements"], ABOVE_LOD_CAVEATS, start=len(MEASURE_CAVEATS_V2))
+    # unitUnknown: v1 に対応物が無い新規注記（scope_kind='variable' の最初の消費者）。
+    # refs は registry/variable_alias.csv から機械導出する（ハードコードしない）。
+    add_facet_group("variable", _unit_unknown_variable_refs(), UNIT_UNKNOWN_CAVEATS)
 
     add_table_group(ORGANISM_TABLES, ORGANISM_CAVEATS)
     add_facet_group("dataset", ["organism_records"], ORGANISM_CAVEATS)
