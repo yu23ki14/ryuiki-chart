@@ -2,8 +2,38 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { unitSymbol } from "@/lib/registry/lookup";
 import { buildCubeFixture, FX, type CubeFixture } from "./__fixtures__/cube-fixture";
 import { queryCells } from "./observation";
-import type { CellSpec } from "./observation";
+import type { CellRow, CellSpec } from "./observation";
 import { buildEnvelope } from "./envelope";
+
+/** `resolveProvenance` のテスト用に手で組み立てた `CellRow`（`queryCells` を経由しない。
+ *  実データの `雪_最深 積雪`/`雪_最深積雪`〔同じ出典 jma_monthly_kanagawa の2 alias〕が
+ *  まとまる組を使う——フィクスチャの DB にはこの変数のセルは無いが、
+ *  `envelope.ts` の provenance 解決は `series.ts`（実データの generated.ts）の
+ *  `seriesInfo()` だけを見るので DB 行が無くても検証できる）。 */
+function fakeSnowCellRow(): CellRow {
+  return {
+    placeId: FX.places.rain,
+    siteId: FX.sites.rain,
+    series: {
+      variableId: "common:variable:weather.snow_depth_max",
+      obsStat: "max",
+      unitId: "common:unit:cm",
+      valueGrain: "month",
+    },
+    inputGrain: "month",
+    grain: "month",
+    periodStart: "2024-01-01",
+    periodEnd: "2024-01-31",
+    stat: "max",
+    value: 10,
+    valueZero: 10,
+    valueLod: 10,
+    n: 1,
+    nCensored: 0,
+    nNotDetected: 0,
+    nPlaces: 1,
+  };
+}
 
 let fx: CubeFixture;
 beforeEach(() => {
@@ -86,6 +116,29 @@ describe("buildEnvelope", () => {
     expect(bySource.get("atsugi_river_water_quality")?.name).toBe("厚木河川水質（実データ源）");
     expect(bySource.get("atsugi_river_water_quality")?.license).toBe("CC-BY-FX");
     expect(bySource.get(null)?.name).toBeUndefined();
+  });
+
+  it("provenance: 同じ出典の alias が2つある系列は n_rows を2重計上しない（Issue #48 PR-1 code-review #2）", async () => {
+    const spec: CellSpec = {
+      series: [
+        {
+          variableId: "common:variable:weather.snow_depth_max",
+          obsStat: "max",
+          unitId: "common:unit:cm",
+          valueGrain: "month",
+        },
+      ],
+      scope: { kind: "all_sites" },
+      grain: "month",
+      imputation: "zero",
+    };
+    const rows = [fakeSnowCellRow()];
+    const env = await buildEnvelope(fx.db, spec, rows);
+
+    expect(env.coverage.n_rows).toBe(1);
+    expect(env.provenance).toHaveLength(1);
+    expect(env.provenance[0].source_id).toBe("jma_monthly_kanagawa");
+    expect(env.provenance[0].n_rows).toBe(env.coverage.n_rows);
   });
 
   it("excluded.reasons: 合成データを含む系列は synthetic_included を報告する", async () => {

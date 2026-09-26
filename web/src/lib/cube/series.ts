@@ -63,7 +63,7 @@ export function seriesKeySql(alias: string): string {
 
 export interface SeriesInfo extends SeriesKey {
   dataset: string;
-  /** この組に登録されている出典（`variable_alias.source_id`）の一覧。NULL は出典未記録＝合成。 */
+  /** この組に登録されている出典（`variable_alias.source_id`）の一覧（重複なし）。NULL は出典未記録＝合成。 */
   sourceIds: (string | null)[];
   /** この組に登録されている出典表記（`variable_alias.alias`）の一覧（重複なし）。 */
   aliases: string[];
@@ -112,7 +112,13 @@ for (const a of GENERATED_VARIABLE_ALIASES as readonly GeneratedVariableAlias[])
         `（'${g.dataset}' と '${a.dataset}'）。b05 の T4 不変条件が破れている。`,
     );
   }
-  g.sourceIds.push(a.sourceId);
+  // 重複排除する（元の順序は保つ）: 同じ組に対応する alias が複数あり、それらが
+  // 同じ出典（`source_id`）を指すことがある（例: `雪_最深 積雪`/`雪_最深積雪` は
+  // 空白の有無が違うだけの2 alias で、どちらも jma_monthly_kanagawa。土地利用の
+  // `@2006`/`@2016` も同じ `source_id` を共有する）。重複排除しないと
+  // `envelope.ts` の `resolveProvenance`（`sourceIds` を1件ずつ数える）が同じ
+  // 出典の n_rows を alias の本数ぶん水増ししてしまう（Issue #48 PR-1 code-review #2）。
+  if (!g.sourceIds.includes(a.sourceId)) g.sourceIds.push(a.sourceId);
   if (!g.aliases.includes(a.alias)) g.aliases.push(a.alias);
 }
 

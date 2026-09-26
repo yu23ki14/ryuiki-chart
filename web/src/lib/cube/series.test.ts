@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isSynthetic, labelYear, seriesForAlias, seriesForVariable, seriesInfo, seriesKeySql, seriesKeyString } from "./series";
+import { isSynthetic, labelYear, seriesForAlias, seriesForVariable, seriesInfo, seriesKeySql, seriesKeyString, type SeriesKey } from "./series";
 
 describe("seriesKeyString", () => {
   it("b05 の _AKEY_EXPR と同じ連結順・NULL の扱い（variable_id|value_grain|obs_stat|unit_id）", () => {
@@ -39,6 +39,33 @@ describe("seriesForAlias（実データ: registry/variable_alias.csv 由来の g
 
   it("存在しない (dataset, alias) は空配列", () => {
     expect(seriesForAlias("measurements", "存在しないやつ")).toEqual([]);
+  });
+});
+
+describe("sourceIds は重複排除する（Issue #48 PR-1 code-review #2）", () => {
+  // `雪_最深 積雪`/`雪_最深積雪`（空白の有無違いの2 alias）は同じ組
+  // （weather.snow_depth_max・max/month）にまとまり、どちらも jma_monthly_kanagawa
+  // という同じ出典。重複排除しないと sourceIds が [jma_monthly_kanagawa, jma_monthly_kanagawa]
+  // になり、`envelope.ts` の `resolveProvenance` が同じ出典の n_rows を2倍に数えてしまう。
+  const snowDepthMax: SeriesKey = {
+    variableId: "common:variable:weather.snow_depth_max",
+    obsStat: "max",
+    unitId: "common:unit:cm",
+    valueGrain: "month",
+  };
+
+  it("seriesInfo: 同じ出典の alias が2つあっても sourceIds は1件（元の順序は保つ）", () => {
+    const info = seriesInfo(snowDepthMax);
+    expect(info).toBeDefined();
+    expect(info!.aliases).toEqual(["雪_最深 積雪", "雪_最深積雪"]);
+    expect(info!.sourceIds).toEqual(["jma_monthly_kanagawa"]);
+  });
+
+  it("seriesForVariable 経由でも同じ組は sourceIds が重複しない", () => {
+    const series = seriesForVariable("common:variable:weather.snow_depth_max", { obsStats: "all" });
+    const match = series.find((s) => s.obsStat === "max" && s.valueGrain === "month");
+    expect(match).toBeDefined();
+    expect(match!.sourceIds).toEqual(["jma_monthly_kanagawa"]);
   });
 });
 
