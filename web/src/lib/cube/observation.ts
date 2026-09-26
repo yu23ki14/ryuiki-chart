@@ -8,7 +8,7 @@
  */
 import type { CubeDb, SqlParam } from "./db";
 import { MAX_ID_LIST } from "./db";
-import { buildScopeSql, OBS, seriesFilterSql, type Scope } from "./sql";
+import { buildScopeSql, OBS, seriesFilterSql, zoneExprSql, type Scope } from "./sql";
 import { seriesKeyFromRow, seriesKeySql, seriesKeyString, type Grain, type SeriesKey } from "./series";
 
 export type { Scope } from "./sql";
@@ -309,7 +309,7 @@ async function summarizeZone(db: CubeDb, spec: CellSpec): Promise<ZoneYearRow[]>
   // どちらのスコープで呼ばれても正しく動くようにする（地点→ゾーンの辺は単射
   // なので、二重に JOIN しても行が増えることはない）。
   const sql = `
-    SELECT CAST(zgz.external_key AS INTEGER) AS zone, ${OBS}.grain AS grain, ${OBS}.input_grain AS input_grain,
+    SELECT ${zoneExprSql("zgz")} AS zone, ${OBS}.grain AS grain, ${OBS}.input_grain AS input_grain,
            CAST(substr(${OBS}.period_start,1,4) AS INTEGER) AS year,
            COUNT(DISTINCT ${OBS}.place_id) AS n_sites, SUM(${OBS}.n) AS n, AVG(${v}) AS avg
     FROM observation_agg ${OBS}
@@ -334,7 +334,7 @@ async function summarizeZoneMonth(db: CubeDb, spec: CellSpec): Promise<ZoneMonth
   // `zg`/`zgz` の別名の理由は `summarizeZone` のコメント参照
   // （`buildScopeSql` の "zone" スコープが使う `pr`/`zref` との衝突を避ける）。
   const sql = `
-    SELECT CAST(zgz.external_key AS INTEGER) AS zone,
+    SELECT ${zoneExprSql("zgz")} AS zone,
            CAST(substr(${OBS}.period_start,6,2) AS INTEGER) AS month,
            COUNT(DISTINCT ${OBS}.place_id) AS n_sites, SUM(${OBS}.n) AS n, AVG(${v}) AS avg
     FROM observation_agg ${OBS}

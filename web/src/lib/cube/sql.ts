@@ -117,7 +117,7 @@ export function buildScopeSql(scope: Scope, alias = OBS): ScopeSql {
       joins.push(`JOIN place_source_ref zref ON zref.place_id = pr.parent_id AND zref.source_id = 'sites.zone'`);
       joins.push(`JOIN place_source_ref psr ON psr.place_id = ${alias}.place_id AND psr.source_id = 'sites.site_id'`);
       if (scope.zone !== undefined) {
-        wheres.push("CAST(zref.external_key AS INTEGER) = ?");
+        wheres.push(`${zoneExprSql("zref")} = ?`);
         whereParams.push(scope.zone);
       }
       siteIdExpr = "psr.external_key";
@@ -135,7 +135,8 @@ export function buildScopeSql(scope: Scope, alias = OBS): ScopeSql {
   return { joins, wheres, joinParams, whereParams, siteIdExpr };
 }
 
-/** ゾーンの数値（`sites.zone` は "1".."5" の数字文字列）。 */
-export function zoneExprSql(): string {
-  return "CAST(zref.external_key AS INTEGER)";
+/** ゾーンの数値（`sites.zone` は "1".."5" の数字文字列）。`alias` は
+ *  `place_source_ref`（`source_id='sites.zone'`）を指すテーブルエイリアス。 */
+export function zoneExprSql(alias: string): string {
+  return `CAST(${alias}.external_key AS INTEGER)`;
 }
