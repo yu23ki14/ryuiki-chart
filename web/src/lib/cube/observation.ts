@@ -110,7 +110,7 @@ function seriesOrVariableClause(spec: CellSpec, alias: string): { joins?: string
  * 持ち、両方が出揃ってから「JOIN 節の並び→WHERE 節の並び」の順で連結すれば、
  * どの組み合わせで呼ばれても構造的にずれない。
  */
-function commonFilterSql(spec: CellSpec, alias: string): { joins: string[]; wheres: string[]; params: SqlParam[] } {
+function commonFilterSql(spec: CellSpec, alias: string): { joins: string[]; wheres: string[]; params: SqlParam[]; siteIdExpr: string } {
   const joins: string[] = [];
   const wheres: string[] = [];
   const joinParams: SqlParam[] = [];
@@ -156,7 +156,7 @@ function commonFilterSql(spec: CellSpec, alias: string): { joins: string[]; wher
     whereParams.push(spec.period.to);
   }
 
-  return { joins, wheres, params: [...joinParams, ...whereParams] };
+  return { joins, wheres, params: [...joinParams, ...whereParams], siteIdExpr: scopeSql.siteIdExpr };
 }
 
 function whereSql(wheres: string[]): string {
@@ -189,11 +189,10 @@ function toCellRow(r: RawCellRow, imputation: Imputation): CellRow {
  * mean/min/max のピボットは呼び出し側（JS）で行う（design §3.3。b05 の自己 JOIN は使わない）。
  */
 export async function queryCells(db: CubeDb, spec: CellSpec): Promise<CellRow[]> {
-  const { joins, wheres, params } = commonFilterSql(spec, OBS);
-  const scopeSql = buildScopeSql(spec.scope, OBS);
+  const { joins, wheres, params, siteIdExpr } = commonFilterSql(spec, OBS);
 
   const sql = `
-    SELECT ${OBS}.place_id AS place_id, ${scopeSql.siteIdExpr} AS site_id,
+    SELECT ${OBS}.place_id AS place_id, ${siteIdExpr} AS site_id,
            ${OBS}.variable_id AS variable_id, ${OBS}.obs_stat AS obs_stat, ${OBS}.unit_id AS unit_id,
            ${OBS}.value_grain AS value_grain, ${OBS}.input_grain AS input_grain, ${OBS}.grain AS grain,
            ${OBS}.period_start AS period_start, ${OBS}.period_end AS period_end, ${OBS}.stat AS stat,
@@ -355,12 +354,11 @@ async function summarizeZoneMonth(db: CubeDb, spec: CellSpec): Promise<ZoneMonth
 }
 
 async function summarizePlace(db: CubeDb, spec: CellSpec): Promise<PlaceSummaryRow[]> {
-  const { joins, wheres, params } = commonFilterSql(spec, OBS);
-  const scopeSql = buildScopeSql(spec.scope, OBS);
+  const { joins, wheres, params, siteIdExpr } = commonFilterSql(spec, OBS);
   const v = valueExpr(spec.imputation, OBS);
 
   const sql = `
-    SELECT ${OBS}.place_id AS place_id, ${scopeSql.siteIdExpr} AS site_id, ${OBS}.grain AS grain, ${OBS}.input_grain AS input_grain,
+    SELECT ${OBS}.place_id AS place_id, ${siteIdExpr} AS site_id, ${OBS}.grain AS grain, ${OBS}.input_grain AS input_grain,
            SUM(${OBS}.n) AS n,
            MIN(CAST(substr(${OBS}.period_start,1,4) AS INTEGER)) AS y_from,
            MAX(CAST(substr(${OBS}.period_start,1,4) AS INTEGER)) AS y_to,
