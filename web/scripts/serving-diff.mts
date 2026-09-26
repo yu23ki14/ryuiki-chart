@@ -8,9 +8,17 @@
  * `docs/plans/V2_SERVING_PR1.md`（1b がコミット）を参照。
  *
  *   cd web
- *   pnpm run serving:diff [--v1-only] [--imputation zero|lod] [--expand all|snapshot]
+ *   pnpm run serving:diff [--v1-only] [--imputation zero|lod]
  *     [--only <id,...>] [--mutate <name,...>] [--v1-source derived|v1_projection]
  *     [--pretend-synthetic-excluded] [--out reports/serving_switch_diff.md]
+ *
+ * `--expand`（`all` 固定・`snapshot` は撤去）: 設計書は「全 site_var の組を全部回す
+ * (`all`) / 決定論的な部分集合で CI 用に回す (`snapshot`、`snapshot_subset` を
+ * YAML で宣言)」の2本立てだったが、`snapshot` は「YAML の `snapshot_subset` を
+ * 読まず `every:10` 決め打ちで間引くだけ」の簡略実装で、宣言（設計書）と実装が
+ * 食い違っていたため Issue #48 PR-1 統合で削除した。スナップショット
+ * （CI 向けの決定論的部分集合）は PR-5 で YAML の `snapshot_subset` を実際に読む
+ * 形で作り直す。
  *
  * 実行のしかた（tsx を直接使うとき。package.json の `serving:diff` もこれと同じ）:
  *   npx tsx --import ./scripts/lib/serving/register-aliases.mjs ./scripts/serving-diff.mts
@@ -27,6 +35,7 @@ import { parseArgs } from "node:util";
 import { execFileSync, spawnSync } from "node:child_process";
 import { load as loadYaml } from "js-yaml";
 import Database from "better-sqlite3";
+import type { CubeDb } from "@/lib/cube";
 
 import {
   rowsByKey,
@@ -37,7 +46,7 @@ import {
   type ScalarParam,
   type ServingQueriesConfig,
 } from "./lib/serving/normalize";
-import { enumerateParams, runV1Query, snapshotSubset } from "./lib/serving/adapters-v1";
+import { enumerateParams, runV1Query } from "./lib/serving/adapters-v1";
 import {
   compareRuns,
   classifyDiff,
@@ -97,7 +106,14 @@ const { values: argv } = parseArgs({
 
 const V1_ONLY = argv["v1-only"] === true;
 const IMPUTATION = argv.imputation as string;
-const EXPAND = (argv.expand as string) === "snapshot" ? "snapshot" : "all";
+if (argv.expand !== undefined && argv.expand !== "all") {
+  console.error(
+    `--expand ${argv.expand} は使えない（\`snapshot\` は Issue #48 PR-1 統合で撤去した。` +
+      `YAML の snapshot_subset を読まない簡略実装のまま宣言と食い違っていたため。PR-5 で作り直す）。`,
+  );
+  process.exit(1);
+}
+const EXPAND = "all" as const;
 const ONLY_IDS = argv.only ? new Set(String(argv.only).split(",").map((s) => s.trim())) : null;
 const MUTATE_NAMES = argv.mutate ? String(argv.mutate).split(",").map((s) => s.trim()) : [];
 const V1_SOURCE = (argv["v1-source"] as string) === "v1_projection" ? "v1_projection" : "derived";
@@ -292,7 +308,32 @@ async function main() {
   if (ONLY_IDS) queryDefs = queryDefs.filter((q) => ONLY_IDS.has(q.id));
 
   const v2 = V1_ONLY ? null : await loadAdaptersV2();
-  const v2Db = v2 ? v2.openV2Db({ v2: V2_DB_PATH, registry: REGISTRY_DB_PATH, ryuiki: RYUIKI_DB_PATH }) : null;
+
+  // `--pretend-synthetic-excluded`（設計書 §9-4）: まず素の v2 で「地点の全セルが
+  // 合成系列だけ」の place_id 集合を求め（`lib/cube` の `isSynthetic` 由来）、
+  // 一旦閉じてから、その place_id を `observation_agg` から除いた仮想の v2 で
+  // 開き直す（`db-sqlite.ts` の `excludePlaceIds`）。`ctx.syntheticSiteIds` には
+  // 対応する site_id を渡し、`classify.ts` の `synthetic_excluded` 規則を実際に働かせる。
+  let syntheticSiteIds: ReadonlySet<string> | undefined;
+  let v2Db: CubeDb | null = null;
+  if (v2) {
+    if (PRETEND_SYNTHETIC_EXCLUDED) {
+      const probeDb = v2.openV2Db({ v2: V2_DB_PATH, registry: REGISTRY_DB_PATH, ryuiki: RYUIKI_DB_PATH });
+      const syntheticPlaceIds = await v2.computeSyntheticPlaceIds(probeDb);
+      const siteIds = await v2.siteIdsForPlaceIds(probeDb, syntheticPlaceIds);
+      syntheticSiteIds = new Set(siteIds);
+      v2.closeV2Db();
+      console.log(
+        `--pretend-synthetic-excluded: 合成地点 ${syntheticPlaceIds.length} 件（うち site_id を持つもの ${siteIds.length} 件）を observation_agg から除いて開き直す`,
+      );
+      v2Db = v2.openV2Db(
+        { v2: V2_DB_PATH, registry: REGISTRY_DB_PATH, ryuiki: RYUIKI_DB_PATH },
+        { excludePlaceIds: syntheticPlaceIds },
+      );
+    } else {
+      v2Db = v2.openV2Db({ v2: V2_DB_PATH, registry: REGISTRY_DB_PATH, ryuiki: RYUIKI_DB_PATH });
+    }
+  }
 
   const t0 = Date.now();
 
@@ -316,9 +357,12 @@ async function main() {
         exceptions.push({ id: def.id, params: {}, message: `enumerateParams: ${e instanceof Error ? e.message : e}` });
         continue;
       }
-      if (EXPAND === "snapshot") tuples = snapshotSubset(tuples, { every: 10 });
-
       const known = new Set(def.known as KnownRule[]);
+      // `--pretend-synthetic-excluded` は合成地点を含みうる問い合わせ全部に影響する
+      // （どの問い合わせが触れるかは合成地点がどの水域・ゾーンに属すかに依るので、
+      // YAML の `known` に問い合わせごと決め打ちしない——設計書 §9-4 の「PR-2 の予告」
+      // としてこのフラグが立っているときだけ全問い合わせに対して働かせる）。
+      if (PRETEND_SYNTHETIC_EXCLUDED) known.add("synthetic_excluded");
       const declaredLookup = declaredLookupFor(def);
 
       for (const params of tuples) {
@@ -346,9 +390,24 @@ async function main() {
         }
         s.rowsV2 += v2Rows.length;
 
-        const v1ByKey = rowsByKey(v1Rows);
-        const v2ByKey = rowsByKey(v2Rows);
-        const diffs: RowDiff[] = compareRuns(v1ByKey, v2ByKey, def.tolerance ?? {});
+        // `rowsByKey` は同じキーの行が2つあれば例外にする（design: 「片方を捨てると
+        // 診断が壊れる」）。これは serving-diff 自身の設計上の保護であって v1/v2 の
+        // 例外ではないが、`--mutate include_watershed_cells`（行を複製する変異）が
+        // これを実際に踏む——変異1つが工具全体を落として残りの変異を試せなくする
+        // のは本末転倒なので、他の2つの問い合わせ呼び出しと同じく「この (id,params)
+        // だけ例外として記録して続行」にする（`--mutate` の自己診断は
+        // `exceptions.length > 0` も「検出できた」に数える——serving-diff.mts 冒頭）。
+        let v1ByKey: ReadonlyMap<string, NormRow>;
+        let v2ByKey: ReadonlyMap<string, NormRow>;
+        let diffs: RowDiff[];
+        try {
+          v1ByKey = rowsByKey(v1Rows);
+          v2ByKey = rowsByKey(v2Rows);
+          diffs = compareRuns(v1ByKey, v2ByKey, def.tolerance ?? {});
+        } catch (e) {
+          exceptions.push({ id: def.id, params, message: e instanceof Error ? e.message : String(e) });
+          continue;
+        }
 
         const badKeys = new Set(diffs.filter((d) => d.kind === "value_diff" || d.kind === "label_diff").map((d) => JSON.stringify(d.key)));
         for (const k of v1ByKey.keys()) {
@@ -363,7 +422,8 @@ async function main() {
           disabledRules: classifyMutation?.disabledRules,
           rain,
           rainDateFromLabel: def.id === "rain_top_days",
-          syntheticSiteIds: PRETEND_SYNTHETIC_EXCLUDED ? new Set<string>() : undefined,
+          rainGrain: def.id === "rain_monthly_clim" ? "month" : "day",
+          syntheticSiteIds,
           declaredRot: classifyMutation?.declaredRot,
         };
 
@@ -385,31 +445,32 @@ async function main() {
     return { stats, unexplained, matchedDeclared, exceptions };
   }
 
+  /* -------------------------------- 通常実行 -------------------------------- */
+  const outcome = await runOnce(undefined, undefined);
+
   /* -------------------------- --mutate 自己診断 -------------------------- */
+  // 通常実行（変異なし）と同じ 1 回の呼び出しでレポートも作る（design §5.1
+  // 「末尾に…変異テストの結果表」）。`--mutate` 自体は「必ず unexplained > 0 で
+  // 落ちる」ことの自己診断なので、通常実行の結果（stats/unexplainedSamples/
+  // rottenDeclarations）は変えない——変異結果はレポート末尾に追記するだけ。
+  let mutationResults: MutationRunResult[] | undefined;
+  let anyMutationMissed = false;
   if (MUTATE_NAMES.length && !V1_ONLY) {
-    const mutationResults: MutationRunResult[] = [];
-    let anyMissed = false;
+    mutationResults = [];
     for (const name of MUTATE_NAMES) {
       const rowMutation = isRowMutation(name) ? name : undefined;
       const classifyMutation = isClassifyMutation(name)
         ? applyClassifyMutation(name, name === "declared_rot" ? { declaredRotTarget: firstDeclaredTarget(expected) } : {})
         : undefined;
-      const outcome = await runOnce(classifyMutation, rowMutation);
-      const totalUnexplained = [...outcome.stats.values()].reduce((n, s) => n + s.unexplained, 0);
-      const caught = totalUnexplained > 0 || outcome.exceptions.length > 0;
-      if (!caught) anyMissed = true;
+      const mutOutcome = await runOnce(classifyMutation, rowMutation);
+      const totalUnexplained = [...mutOutcome.stats.values()].reduce((n, s) => n + s.unexplained, 0);
+      const caught = totalUnexplained > 0 || mutOutcome.exceptions.length > 0;
+      if (!caught) anyMutationMissed = true;
       mutationResults.push({ name, unexplained: totalUnexplained, caughtAsExpected: caught });
     }
     console.log(`--mutate 結果: ${mutationResults.map((r) => `${r.name}=${r.caughtAsExpected ? "OK" : "NG"}`).join(", ")}`);
-    if (anyMissed) {
-      console.error("一部の変異が検出されなかった（分類器が壊れている可能性）。");
-      process.exit(3);
-    }
-    process.exit(0);
   }
 
-  /* -------------------------------- 通常実行 -------------------------------- */
-  const outcome = await runOnce(undefined, undefined);
   const elapsedMs = Date.now() - t0;
 
   if (V1_ONLY) {
@@ -441,6 +502,7 @@ async function main() {
     expand: EXPAND,
     v1Source: V1_SOURCE,
     generatedAt: new Date().toISOString(),
+    elapsedMs,
   };
 
   const reportInput = {
@@ -448,6 +510,7 @@ async function main() {
     stats: [...outcome.stats.values()],
     unexplainedSamples: outcome.unexplained,
     rottenDeclarations: rotten,
+    mutationResults,
   };
 
   fs.mkdirSync(path.dirname(OUT_MD), { recursive: true });
@@ -458,6 +521,13 @@ async function main() {
   console.log(`serving-diff: ${elapsedMs}ms, unexplained=${totalUnexplained}, rotten=${rotten.length}`);
   console.log(`report: ${OUT_MD}`);
 
+  // `--mutate` の自己診断（分類器が壊れていないか）が最優先——通常実行の
+  // unexplained/rotten より先に見る（設計書 §5.3 の「必ず落ちる」ことの検証が
+  // 主目的の呼び出しなので、その失敗を他の終了コードで覆い隠さない）。
+  if (anyMutationMissed) {
+    console.error("一部の変異が検出されなかった（分類器が壊れている可能性）。");
+    process.exit(3);
+  }
   if (outcome.exceptions.length || totalUnexplained > 0) process.exit(1);
   if (rotten.length > 0) process.exit(2);
   process.exit(0);

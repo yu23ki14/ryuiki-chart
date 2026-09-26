@@ -16,6 +16,7 @@ const header: ReportHeader = {
   expand: "all",
   v1Source: "derived",
   generatedAt: "2026-09-26T00:00:00.000Z",
+  elapsedMs: 12345,
 };
 
 describe("addClassification", () => {

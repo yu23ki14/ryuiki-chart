@@ -15,6 +15,8 @@ export interface ReportHeader {
   expand: string;
   v1Source: string;
   generatedAt: string;
+  /** 全問い合わせを回すのにかかった時間（ミリ秒）。 */
+  elapsedMs: number;
 }
 
 export interface QueryStats {
@@ -188,6 +190,7 @@ export function buildReportMarkdown(input: ReportInput): string {
     `- better-sqlite3 の SQLite 版: \`${header.sqliteVersion}\``,
     `- imputation: \`${header.imputation}\` / expand: \`${header.expand}\` / v1-source: \`${header.v1Source}\``,
     `- 生成日時: ${header.generatedAt}`,
+    `- 所要時間: ${(header.elapsedMs / 1000).toFixed(1)}s`,
     "",
     "## 問い合わせごとの集計",
     "",
