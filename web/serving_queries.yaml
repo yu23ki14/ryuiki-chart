@@ -226,7 +226,10 @@ queries:
       key: [variable_id]
       numeric: [n, n_places, y_from, y_to, n_censored]
       label: [unit]
-    known: [unit_label_registry, synthetic_excluded]
+    # `declared`: `v1_table` が無いため `classify.ts` の `ctx.byVariableDeclared`
+    # 経由（`scripts/reconcile/expected_diffs.yaml` の `var_catalog` を、束ねる
+    # alias ごとに探す。Issue #48 PR-2 統合後 修正B）。
+    known: [declared, unit_label_registry, synthetic_excluded]
 
   # `stat`（obs_stat）は key に含めない: v1 の alias 単位の表（site_var/meas_year）は
   # obs_stat を持たず、alias レベルでも一意に決まらない（実測: 'pH' は出典によって
@@ -242,7 +245,8 @@ queries:
       label: [unit]
     tolerance:
       avg: 1.0e-9
-    known: [unit_label_registry, synthetic_excluded, lod_imputation]
+    # `declared`: `ctx.byVariableDeclared` 経由（`site_var`。Issue #48 PR-2 統合後 修正B）。
+    known: [declared, unit_label_registry, synthetic_excluded, lod_imputation]
 
   - id: year_series_site_by_variable
     v1_table: null
@@ -267,7 +271,8 @@ queries:
       label: []
     tolerance:
       avg: 1.0e-9
-    known: [float_rounding, synthetic_excluded, lod_imputation]
+    # `declared`: `ctx.byVariableDeclared` 経由（`meas_month`。Issue #48 PR-2 統合後 修正B）。
+    known: [declared, float_rounding, synthetic_excluded, lod_imputation]
 
   - id: day_series_site_by_variable
     v1_table: null
@@ -278,7 +283,8 @@ queries:
       key: [d]
       numeric: [value, n_censored]
       label: []
-    known: [synthetic_excluded, lod_imputation]
+    # `declared`: `ctx.byVariableDeclared` 経由（`meas_daily`。Issue #48 PR-2 統合後 修正B）。
+    known: [declared, synthetic_excluded, lod_imputation]
 
   - id: zone_series_by_variable
     v1_table: null
@@ -303,7 +309,8 @@ queries:
       label: [unit]
     tolerance:
       avg: 1.0e-9
-    known: [unit_label_registry, float_rounding, synthetic_excluded, lod_imputation]
+    # `declared`: `ctx.byVariableDeclared` 経由（`meas_clim`。Issue #48 PR-2 統合後 修正B）。
+    known: [declared, unit_label_registry, float_rounding, synthetic_excluded, lod_imputation]
 
   - id: zone_climatology_by_variable
     v1_table: null

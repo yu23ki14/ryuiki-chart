@@ -410,6 +410,140 @@ describe("classifyDiff: synthetic_excluded（design §1「差分の差分」・v
   });
 });
 
+describe("classifyDiff: declared + synthetic_excluded の組み合わせ（Issue #48 PR-2 統合後 修正B）", () => {
+  it("v1Table 経由: 宣言が列の一部だけを覆い、残りが synthetic_excluded で説明できれば declared", () => {
+    // `var_catalog`/`浮遊物質量 SS` の実測ケースの再現: n は宣言済み（below_lod の
+    // 既知バグ）、n_sites は合成データの除外軸（宣言には無い）。
+    const v1 = rowsByKey(toNormRows([{ variable: "ss", n: 10, n_sites: 5 }], ["variable"], ["n", "n_sites"], []));
+    const v2 = rowsByKey(toNormRows([{ variable: "ss", n: 8, n_sites: 3 }], ["variable"], ["n", "n_sites"], []));
+    const v2Compat = rowsByKey(toNormRows([{ variable: "ss", n: 999, n_sites: 5 }], ["variable"], ["n", "n_sites"], []));
+    const diffs = compareRuns(v1, v2);
+    const expected: ExpectedDiffs = { var_catalog: [{ key: ["ss"], kind: "value_diff", columns: ["n"] }] };
+    const ctx = ctxBase({
+      expected,
+      declared: { v1Table: "var_catalog", builder: (_p, k) => [k[0]] },
+      known: new Set(["declared", "synthetic_excluded"]),
+      v2CompatByKey: v2Compat,
+    });
+    const c = classifyDiff(diffs[0], ctx);
+    expect(c.rule).toBe("declared");
+    expect(c.declaredMatch?.table).toBe("var_catalog");
+  });
+
+  it("残りの列が synthetic_excluded の許容列に無ければ unexplained（規則を緩めない）", () => {
+    const v1 = rowsByKey(toNormRows([{ variable: "ss", n: 10, elev_max: 5 }], ["variable"], ["n", "elev_max"], []));
+    const v2 = rowsByKey(toNormRows([{ variable: "ss", n: 8, elev_max: 3 }], ["variable"], ["n", "elev_max"], []));
+    const v2Compat = rowsByKey(toNormRows([{ variable: "ss", n: 999, elev_max: 5 }], ["variable"], ["n", "elev_max"], []));
+    const diffs = compareRuns(v1, v2);
+    const expected: ExpectedDiffs = { var_catalog: [{ key: ["ss"], kind: "value_diff", columns: ["n"] }] };
+    const ctx = ctxBase({
+      expected,
+      declared: { v1Table: "var_catalog", builder: (_p, k) => [k[0]] },
+      known: new Set(["declared", "synthetic_excluded"]),
+      v2CompatByKey: v2Compat,
+    });
+    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+  });
+
+  it("残りの列が v1==compat を満たさなければ unexplained（below_lod バグ以外の理由まで飲み込まない）", () => {
+    const v1 = rowsByKey(toNormRows([{ variable: "ss", n: 10, n_sites: 5 }], ["variable"], ["n", "n_sites"], []));
+    const v2 = rowsByKey(toNormRows([{ variable: "ss", n: 8, n_sites: 3 }], ["variable"], ["n", "n_sites"], []));
+    // compat の n_sites が v1 と食い違う（合成除外では説明できない別の原因の疑い）。
+    const v2Compat = rowsByKey(toNormRows([{ variable: "ss", n: 999, n_sites: 999 }], ["variable"], ["n", "n_sites"], []));
+    const diffs = compareRuns(v1, v2);
+    const expected: ExpectedDiffs = { var_catalog: [{ key: ["ss"], kind: "value_diff", columns: ["n"] }] };
+    const ctx = ctxBase({
+      expected,
+      declared: { v1Table: "var_catalog", builder: (_p, k) => [k[0]] },
+      known: new Set(["declared", "synthetic_excluded"]),
+      v2CompatByKey: v2Compat,
+    });
+    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+  });
+
+  it("by_variable（v1Table 無し）: byVariableDeclared 経由で束ねた alias の宣言が row_only_in_v2 を説明する", () => {
+    // `day_series_site_by_variable`/`meas_daily` の実測ケース（below_lod の
+    // 新規セルは v1 に無い row_only_in_v2）の再現。
+    const v1 = rowsByKey(toNormRows([], ["d"], ["value"], []));
+    const v2 = rowsByKey(toNormRows([{ d: "2002-11-06", value: 0 }], ["d"], ["value"], []));
+    const diffs = compareRuns(v1, v2);
+    const expected: ExpectedDiffs = {
+      meas_daily: [{ key: ["site1", "浮遊物質量 SS", "2002-11-06"], kind: "row_only_in_candidate" }],
+    };
+    const ctx = ctxBase({
+      expected,
+      params: { site_id: "site1", variable_id: "common:variable:water.ss" },
+      known: new Set(["declared", "synthetic_excluded"]),
+      byVariableDeclared: {
+        v1Table: "meas_daily",
+        aliasesFor: () => ["浮遊物質量 SS"],
+        buildKey: (alias, k) => [String(ctx.params.site_id), alias, k[0]],
+      },
+    });
+    const c = classifyDiff(diffs[0], ctx);
+    expect(c.rule).toBe("declared");
+    expect(c.declaredMatch?.table).toBe("meas_daily");
+  });
+
+  it("by_variable: 束ねたどの alias でも宣言が見つからなければ unexplained", () => {
+    const v1 = rowsByKey(toNormRows([], ["d"], ["value"], []));
+    const v2 = rowsByKey(toNormRows([{ d: "2002-11-06", value: 0 }], ["d"], ["value"], []));
+    const diffs = compareRuns(v1, v2);
+    const expected: ExpectedDiffs = {
+      meas_daily: [{ key: ["site1", "浮遊物質量 SS", "1999-01-01"], kind: "row_only_in_candidate" }],
+    };
+    const ctx = ctxBase({
+      expected,
+      params: { site_id: "site1", variable_id: "common:variable:water.ss" },
+      known: new Set(["declared", "synthetic_excluded"]),
+      byVariableDeclared: {
+        v1Table: "meas_daily",
+        aliasesFor: () => ["浮遊物質量 SS"],
+        buildKey: (alias, k) => [String(ctx.params.site_id), alias, k[0]],
+      },
+    });
+    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+  });
+
+  it("by_variable: 宣言の columns が diff.columns を完全に覆えば synthetic を使わず declared", () => {
+    const v1 = rowsByKey(toNormRows([{ month: 10, n: 5, avg: 1.0 }], ["month"], ["n", "avg"], []));
+    const v2 = rowsByKey(toNormRows([{ month: 10, n: 6, avg: 0.9 }], ["month"], ["n", "avg"], []));
+    const diffs = compareRuns(v1, v2);
+    const expected: ExpectedDiffs = {
+      meas_clim: [{ key: ["浮遊物質量 SS", 10], kind: "value_diff", columns: ["n", "avg"] }],
+    };
+    const ctx = ctxBase({
+      expected,
+      params: { variable_id: "common:variable:water.ss" },
+      known: new Set(["declared"]), // synthetic_excluded 無しでも完全一致は declared 単独で通る
+      byVariableDeclared: {
+        v1Table: "meas_clim",
+        aliasesFor: () => ["浮遊物質量 SS"],
+        buildKey: (alias, k) => [alias, k[0]],
+      },
+    });
+    const c = classifyDiff(diffs[0], ctx);
+    expect(c.rule).toBe("declared");
+    expect(c.declaredMatch?.table).toBe("meas_clim");
+  });
+
+  it("--mutate declared_rot 相当（disabledRot）は組み合わせでも unexplained に落ちる", () => {
+    const v1 = rowsByKey(toNormRows([{ variable: "ss", n: 10, n_sites: 5 }], ["variable"], ["n", "n_sites"], []));
+    const v2 = rowsByKey(toNormRows([{ variable: "ss", n: 8, n_sites: 3 }], ["variable"], ["n", "n_sites"], []));
+    const v2Compat = rowsByKey(toNormRows([{ variable: "ss", n: 999, n_sites: 5 }], ["variable"], ["n", "n_sites"], []));
+    const diffs = compareRuns(v1, v2);
+    const expected: ExpectedDiffs = { var_catalog: [{ key: ["ss"], kind: "value_diff", columns: ["n"] }] };
+    const ctx = ctxBase({
+      expected,
+      declared: { v1Table: "var_catalog", builder: (_p, k) => [k[0]] },
+      known: new Set(["declared", "synthetic_excluded"]),
+      v2CompatByKey: v2Compat,
+      declaredRot: { table: "var_catalog", key: ["ss"], kind: "value_diff" },
+    });
+    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+  });
+});
+
 describe("classifyDiff: lod_imputation（design §3 #1・--imputation lod）", () => {
   it("v1==v2(zero) かつ許容列（avg）が食い違えば lod_imputation（n_censored>0）", () => {
     const v1 = rowsByKey(toNormRows([{ y: 1, avg: 1.0, n_censored: 3 }], ["y"], ["avg", "n_censored"], []));

@@ -54,6 +54,7 @@ import {
 } from "./lib/serving/normalize";
 import { enumerateParams, runV1Query } from "./lib/serving/adapters-v1";
 import { openV1CompatDb } from "./lib/serving/v1-compat";
+import * as mergeV1 from "./lib/serving/merge-v1";
 import {
   compareRuns,
   classifyDiff,
@@ -259,6 +260,87 @@ function declaredLookupFor(def: QueryDef): DeclaredLookup {
   return { v1Table: def.v1Table, builder: DECLARED_KEY_BUILDERS[def.id] ?? null };
 }
 
+/**
+ * `*_by_variable` 問い合わせ（`v1_table: null`）向けの declared 対応表
+ * （`classify.ts` の `ClassifyContext.byVariableDeclared`/
+ * `classifyDeclaredWithSyntheticRemainder` docstring参照。Issue #48 PR-2
+ * 統合後 修正B）。それぞれ「束ねる前の alias 単位」の問い合わせ（`day_series_site`
+ * 等）が使う v1 表・キーの形をそのまま踏襲する——`buildKey` は対応する
+ * `DECLARED_KEY_BUILDERS` のエントリと同じ列順で組み立てる（違いは alias を
+ * `params.alias` からではなく、束ねの候補として1つずつ試す点だけ）。
+ *
+ * `variableIdOf`: variable_id は問い合わせによって `params.variable_id`
+ * （`site_id`/`variable_id` を params に持つもの）か、行キーそのもの
+ * （`variable_catalog_by_variable` は `params: {}` で `key: [variable_id]`——
+ * variable_id が全件を回す軸なので params ではなく行キーに乗る）のどちらかに
+ * 来る。行ごとに変わりうる（`variable_catalog_by_variable`）ため、alias 解決は
+ * `params` だけで1回ではなく、行キーを受け取ってから行う（`aliasesOf` を
+ * `classifyDeclaredWithSyntheticRemainder` が diff ごとに呼ぶ）。
+ *
+ * `aliasesOf`（この variable_id が束ねる alias の候補一覧）は
+ * `adapters-v1.ts` の各 `*_by_variable` case が実際に v1 側で使うのと
+ * **同じ絞り込み**にする（`allAliasesFor`＝ `variable_catalog`/`site_var`/
+ * `meas_clim` 系〔全 alias を束ねる〕、`aliasesForBasis(..., "day")`＝
+ * `meas_daily`/`meas_month` 系〔day grain を持つ alias だけ〕）——絞り込みが
+ * 違うと、束ねの母集合が v1 側の実際の計算と食い違ったまま declared を
+ * 探すことになる。
+ */
+interface ByVariableDeclaredSpec {
+  v1Table: string;
+  variableIdOf: (params: Readonly<Record<string, ScalarParam>>, rowKey: readonly ScalarParam[]) => string;
+  aliasesOf: (variableId: string) => readonly string[];
+  buildKey: (alias: string, params: Readonly<Record<string, ScalarParam>>, rowKey: readonly ScalarParam[]) => ScalarParam[];
+}
+
+const BY_VARIABLE_DECLARED_SPECS: Record<string, ByVariableDeclaredSpec> = {
+  variable_catalog_by_variable: {
+    v1Table: "var_catalog",
+    variableIdOf: (_p, k) => String(k[0]),
+    aliasesOf: (variableId) => mergeV1.allAliasesFor(REGISTRY_DB_PATH, "measurements", variableId),
+    buildKey: (alias) => [alias],
+  },
+  site_variables_by_variable: {
+    v1Table: "site_var",
+    variableIdOf: (_p, k) => String(k[0]),
+    aliasesOf: (variableId) => mergeV1.allAliasesFor(REGISTRY_DB_PATH, "measurements", variableId),
+    buildKey: (alias, p, k) => [p.site_id, alias, k[1] === "day" ? "daily" : "annual"],
+  },
+  month_series_site_by_variable: {
+    v1Table: "meas_month",
+    variableIdOf: (p) => String(p.variable_id),
+    aliasesOf: (variableId) => mergeV1.aliasesForBasis(REGISTRY_DB_PATH, "measurements", variableId, "day"),
+    buildKey: (alias, p, k) => {
+      const ym = String(k[0]);
+      return [p.site_id, alias, Number(ym.slice(0, 4)), Number(ym.slice(5, 7))];
+    },
+  },
+  day_series_site_by_variable: {
+    v1Table: "meas_daily",
+    variableIdOf: (p) => String(p.variable_id),
+    aliasesOf: (variableId) => mergeV1.aliasesForBasis(REGISTRY_DB_PATH, "measurements", variableId, "day"),
+    buildKey: (alias, p, k) => [p.site_id, alias, k[0]],
+  },
+  climatology_by_variable: {
+    v1Table: "meas_clim",
+    variableIdOf: (p) => String(p.variable_id),
+    aliasesOf: (variableId) => mergeV1.aliasesForBasis(REGISTRY_DB_PATH, "measurements", variableId, "day"),
+    buildKey: (alias, _p, k) => [alias, k[0]],
+  },
+};
+
+function byVariableDeclaredFor(
+  def: QueryDef,
+  params: Readonly<Record<string, ScalarParam>>,
+): ClassifyContext["byVariableDeclared"] {
+  const spec = BY_VARIABLE_DECLARED_SPECS[def.id];
+  if (!spec) return undefined;
+  return {
+    v1Table: spec.v1Table,
+    aliasesFor: (rowKey) => spec.aliasesOf(spec.variableIdOf(params, rowKey)),
+    buildKey: (alias, rowKey) => spec.buildKey(alias, params, rowKey),
+  };
+}
+
 /* ------------------------------------------------------------------ */
 /* rain の L2 再計算（day_split/rain_div10 が使う）                       */
 /* ------------------------------------------------------------------ */
@@ -404,14 +486,36 @@ async function main() {
         // `synthetic_excluded`（design §1「差分の差分」）用: 同じ問い合わせを
         // v1compat 接続で流す。診断専用のため失敗しても本体の突き合わせは
         // 続行する（この (id,params) では synthetic_excluded が不発になるだけ）。
+        //
+        // imputation は常に `"zero"` を固定で渡す（`IMPUTATION`——`--imputation lod`
+        // 実行時でも）。v1 は昔から「定量下限未満は 0」という zero 相当の集計法
+        // しか知らない——`v1CompatByKey` は「もし合成データを除外していなかった
+        // ら v1 はどう見えるか」を再現する基準値なので、v1 の意味論（zero）に
+        // 揃える必要がある。`--imputation lod` 実行時に current imputation
+        // （lod）のまま流すと、「合成データを含む」かつ「値が動く」セルの両方に
+        // 該当する行（実測: `zone_series`/`climatology`/`zone_climatology` と
+        // その `_by_variable` 双子で計132件、Issue #48 PR-2 統合後 修正Bで
+        // 判明）で `v1 == compatRow` が成り立たなくなり
+        // （v1 は zero 相当なのに compatRow は lod 済みの値のため）、
+        // `classifySyntheticExcludedV1Compat` が不発になる——結果、`known` に
+        // `synthetic_excluded`・`lod_imputation` の両方があっても、どちらの
+        // 単独規則も「片方の効果だけ」しか説明できず unexplained に落ちる。
+        // compat を常に zero で引けば、`v1 == compatRow(zero)` の一致判定で
+        // 「合成データを含む・含まない」の軸だけを確認でき、`compatRow(zero) ≠
+        // v2(本番、現在の imputation)` という既存のチェック（`classifySyntheticExcludedV1Compat`
+        // 内）が「合成データの除外」と「zero→lod」の両方が重なった差分も
+        // まとめて説明する（`diff.v1 !== diff.v2` は `RowDiff` の定義上すでに
+        // 真なので、この既存チェックは特別な追加条件なしに両対応する）。
         let v2CompatByKey: ReadonlyMap<string, NormRow> | undefined;
         if (v1CompatDb) {
           try {
-            // `{kind:'live'}`（既定の summary ではなく）を明示: `v2_v1compat.sqlite` は
-            // observation_agg だけが --include-synthetic で差し替わっており、
-            // summary_* は本番のまま更新されない（`adapters-v2.ts` の `runV2Query`
-            // docstring参照）。summary のままだと本番と同じ値しか返らない。
-            const rows = await v2!.runV2Query(v1CompatDb, def.id, params, def.compare, IMPUTATION, { kind: "live" });
+            // 既定の `{kind:'summary'}` のまま呼ぶ（画面・API・AI と同じ経路）。
+            // `scripts/b13_build_summary.py` を v1compat 段にも足したので
+            // （`scripts/b00_run_full_gate.py`/CI `sample-gate`）、
+            // `v2_v1compat.sqlite` の summary 2表も --include-synthetic 後の
+            // observation_agg から作り直されており、本番と同じ値しか返らない
+            // という旧問題（`{kind:'live'}` で回避していた）は解消済み。
+            const rows = await v2!.runV2Query(v1CompatDb, def.id, params, def.compare, "zero");
             v2CompatByKey = rowsByKey(rows);
           } catch (e) {
             console.error(`v1compat: [${def.id}] ${JSON.stringify(params)}: ${e instanceof Error ? e.message : e}`);
@@ -467,6 +571,7 @@ async function main() {
           v2ZeroByKey,
           declaredRot: classifyMutation?.declaredRot,
           expectedUnitSymbol,
+          byVariableDeclared: byVariableDeclaredFor(def, params),
         };
 
         for (const diff of diffs) {

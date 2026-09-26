@@ -289,6 +289,12 @@ export interface ClassifyContext {
    * 問い合わせと同じ params・compare で同じ行を流した結果（キー文字列
    * （`normalize.ts` の `keyString`）→ `NormRow`）。無ければ（`--v1compat-db`
    * 未指定・v1-only）この規則は常に不発。
+   *
+   * **常に `imputation=zero` で引いた結果**（`serving-diff.mts` 呼び出し側が
+   * `--imputation lod` 実行でも固定で `"zero"` を渡す）。v1 は zero 相当の
+   * 意味論しか知らないため、v1 と比べる基準（compat）も zero に揃える必要が
+   * ある——lod で引くと「合成データを含む・かつ値も動く」セルで `v1 ==
+   * compatRow` が成り立たず規則が不発になる（Issue #48 PR-2 統合後 修正B）。
    */
   v2CompatByKey?: ReadonlyMap<string, NormRow>;
   /**
@@ -310,6 +316,23 @@ export interface ClassifyContext {
    * はずだが）この規則は安全側に倒して不発にする。
    */
   expectedUnitSymbol?: ReadonlyMap<string, string | null>;
+  /**
+   * `*_by_variable` 問い合わせ（`v1Table` が無いため `declared`/`ctx.declared` の
+   * 単一キー組み立てが使えない）専用: この variable_id が束ねる alias 群のうち、
+   * `scripts/reconcile/expected_diffs.yaml` の対応表（alias 単位の v1 表）を
+   * 探すための情報。alias 一覧の解決自体は `merge-v1.ts` 経由で `registry.sqlite`
+   * を読む必要があるため `serving-diff.mts`（`BY_VARIABLE_DECLARED_SPECS`）が
+   * params から解決して埋める——classify.ts はここでも DB を直接読まない
+   * （モジュール docstring参照）。`classifyDeclaredWithSyntheticRemainder` が使う。
+   */
+  byVariableDeclared?: {
+    v1Table: string;
+    /** variable_id が params ではなく行キー側にある問い合わせ（`variable_catalog_by_variable`
+     *  等）もあるため、alias 解決は行キーを受け取ってから行う（`serving-diff.mts` の
+     *  `BY_VARIABLE_DECLARED_SPECS`/`byVariableDeclaredFor` 参照）。*/
+    aliasesFor: (rowKey: readonly ScalarParam[]) => readonly string[];
+    buildKey: (alias: string, rowKey: readonly ScalarParam[]) => ScalarParam[];
+  };
 }
 
 export interface Classification {
@@ -516,12 +539,18 @@ function rowsMatchOnAllColumns(a: NormRow, b: NormRow, tol = 1e-9): boolean {
 /**
  * design §1「診断用 v1互換キューブ」の差分の差分。`ctx.v2CompatByKey`
  * （`--v1compat-db` で開いた、合成データを除外**しない** `v2_v1compat.sqlite` に
- * 同じ問い合わせを流した行）と突き合わせる:
+ * 同じ問い合わせを常に `imputation=zero` で流した行——`ClassifyContext.v2CompatByKey`
+ * docstring参照）と突き合わせる:
  * - `row_only_in_v1`（v2 本番に無い）→ 同じキーが v2compat に存在し、v1 と
  *   （許容誤差内で）一致すれば「合成データが除かれて消えた行」として説明できる。
  * - `value_diff` → 列を `SYNTHETIC_EXCLUDED_VALUE_COLUMNS` に絞り、v1 == v2compat
- *   （合成込みの値は元々 v1 と一致していた）かつ v2compat ≠ v2 本番
- *   （除外後に実際に値が動いた）であれば説明できる。
+ *   （合成込み・zero 相当の値は元々 v1 と一致していた）かつ v2compat ≠ v2 本番
+ *   （現在の imputation で見て実際に値が動いた）であれば説明できる。`v2compat`
+ *   は常に zero 固定・`v2` は呼び出し元の imputation（zero/lod どちらもありうる）
+ *   なので、`--imputation lod` 実行時はこの1つの比較で「合成データの除外」と
+ *   「zero→lod」の両方が重なった差分もまとめて説明できる（`diff.v1 !== diff.v2`
+ *   は `RowDiff` の定義上すでに真なので、`v2compat ≠ v2` は追加の条件を要らずに
+ *   automatically 成り立つ——Issue #48 PR-2 統合後 修正B）。
  * - `row_only_in_v2` は対象外（合成データを除いて行が増えることは無い——常に
  *   unexplained）。
  */
@@ -545,6 +574,80 @@ function classifySyntheticExcludedV1Compat(diff: RowDiff, ctx: ClassifyContext):
     if (!numbersDiffer(compatRow.numeric[c] ?? null, diff.v2.numeric[c], 0)) return false; // v2compat ≠ v2(本番)
   }
   return true;
+}
+
+/**
+ * `declared`（`scripts/reconcile/expected_diffs.yaml`）と `synthetic_excluded`
+ * を組み合わせて説明する（Issue #48 PR-2 統合後 修正B）。
+ *
+ * 1つの診断（value_diff/row_only 系）が「独立した2つの既知の原因」——
+ * 例: `var_catalog`/`浮遊物質量 SS` は (a) 中津川の below_lod（"1未満"）2行を
+ * v1（`web/scripts/build-derived.mjs` の `meas_daily`、`WHERE value IS NOT NULL`）
+ * が丸ごと落とす既知バグ（`expected_diffs.yaml` に宣言済み。v1compat にも
+ * 同じ行が乗るため `synthetic_excluded` 側では説明できない列——n・n_daily・
+ * n_annual・n_censored）と (b) 合成データの除外（moni1000 の2026年データ等。
+ * n_sites・y_to が動く——`expected_diffs.yaml` には無い列）の**両方**が
+ * 重なって生まれることがある。`findDeclared`（列を宣言が完全に覆わないと
+ * 不発）・`classifySyntheticExcludedV1Compat`（全列で v1==compat を要求する
+ * ため、(a) の影響を受けた列で必ず不一致になり不発）のどちらも単体では
+ * 説明できない。ここでは diff.columns を「宣言側が覆う列」と「残りを
+ * synthetic_excluded と同じ式で説明できるか」に分担させる。
+ *
+ * row_only 系（`row_only_in_v1`/`row_only_in_v2`）は列を持たないため、
+ * 宣言のキー一致だけで確定する（`day_series_site_by_variable`/
+ * `month_series_site_by_variable` の row_only_in_v2 が対象——`meas_daily`/
+ * `meas_month` の row_only_in_candidate 宣言そのもの。合成の影響は無い）。
+ *
+ * `*_by_variable` 問い合わせ（`ctx.declared.v1Table` が無い）は
+ * `ctx.byVariableDeclared` が持つ束ねエイリアス群を順に試す——`findDeclared`
+ * 自体が使えない（`v1Table`/`builder` 無し）ため、この関数が唯一の declared
+ * 経路になる。
+ */
+function classifyDeclaredWithSyntheticRemainder(diff: RowDiff, ctx: ClassifyContext): Classification | undefined {
+  if (!ruleEnabled(ctx, "declared")) return undefined;
+  const declaredKind = DIFF_KIND_TO_DECLARED_KIND[diff.kind];
+  if (!declaredKind) return undefined;
+
+  const candidates: { table: string; key: ScalarParam[] }[] = [];
+  if (ctx.declared.v1Table && ctx.declared.builder) {
+    candidates.push({ table: ctx.declared.v1Table, key: ctx.declared.builder(ctx.params, diff.key) });
+  }
+  if (ctx.byVariableDeclared) {
+    for (const alias of ctx.byVariableDeclared.aliasesFor(diff.key)) {
+      candidates.push({ table: ctx.byVariableDeclared.v1Table, key: ctx.byVariableDeclared.buildKey(alias, diff.key) });
+    }
+  }
+  if (candidates.length === 0) return undefined;
+
+  for (const { table, key } of candidates) {
+    const entries = ctx.expected[table] ?? [];
+    for (const entry of entries) {
+      if (isRotted(ctx.declaredRot, table, entry)) continue;
+      if (entry.kind !== declaredKind) continue;
+      if (!keyEquals(entry.key, key)) continue;
+
+      if (declaredKind !== "value_diff") {
+        return { rule: "declared", declaredMatch: { table, entry } };
+      }
+
+      const declaredCols = new Set(entry.columns ?? []);
+      const remaining = diff.columns.filter((c) => !declaredCols.has(c));
+      if (remaining.length === 0) {
+        return { rule: "declared", declaredMatch: { table, entry } };
+      }
+      if (!ruleEnabled(ctx, "synthetic_excluded") || !ctx.v2CompatByKey || !diff.v1 || !diff.v2) continue;
+      if (!remaining.every((c) => SYNTHETIC_EXCLUDED_VALUE_COLUMNS.has(c))) continue;
+      const compatRow = ctx.v2CompatByKey.get(keyString(diff.key));
+      if (!compatRow) continue;
+      let ok = true;
+      for (const c of remaining) {
+        if (numbersDiffer(diff.v1.numeric[c], compatRow.numeric[c] ?? null, 1e-9)) { ok = false; break; } // v1 == v2compat
+        if (!numbersDiffer(compatRow.numeric[c] ?? null, diff.v2.numeric[c], 0)) { ok = false; break; } // v2compat ≠ v2(本番)
+      }
+      if (ok) return { rule: "declared", declaredMatch: { table, entry } };
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -591,8 +694,10 @@ function classifyLodImputation(diff: RowDiff, ctx: ClassifyContext): boolean {
 /**
  * `RowDiff` を既知の系統に当てはめる。当てはまらなければ `{ rule: "unexplained" }`。
  * 判定の優先順位: declared -> rain_div10 -> day_split -> synthetic_excluded ->
- * lod_imputation -> unit_label_registry -> float_rounding（設計書 §5.2 の表の順
- * ＋ PR-2 で追加した lod_imputation を synthetic_excluded の直後に挿入）。
+ * declared+synthetic_excluded の組み合わせ（`classifyDeclaredWithSyntheticRemainder`。
+ * by_variable の declared 経路もここ） -> lod_imputation -> unit_label_registry ->
+ * float_rounding（設計書 §5.2 の表の順＋ PR-2 で追加した lod_imputation を
+ * synthetic_excluded の直後に挿入、統合後 修正Bで組み合わせ判定をその後に追加）。
  */
 export function classifyDiff(diff: RowDiff, ctx: ClassifyContext): Classification {
   if (ruleEnabled(ctx, "declared")) {
@@ -602,6 +707,8 @@ export function classifyDiff(diff: RowDiff, ctx: ClassifyContext): Classificatio
   if (classifyRainDiv10(diff, ctx)) return { rule: "rain_div10" };
   if (classifyDaySplit(diff, ctx)) return { rule: "day_split" };
   if (classifySyntheticExcludedV1Compat(diff, ctx)) return { rule: "synthetic_excluded" };
+  const combo = classifyDeclaredWithSyntheticRemainder(diff, ctx);
+  if (combo) return combo;
   if (classifyLodImputation(diff, ctx)) return { rule: "lod_imputation" };
   if (classifyUnitLabelRegistry(diff, ctx)) return { rule: "unit_label_registry" };
   if (classifyFloatRounding(diff, ctx)) return { rule: "float_rounding" };
