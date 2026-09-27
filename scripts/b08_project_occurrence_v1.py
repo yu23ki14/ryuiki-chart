@@ -914,6 +914,13 @@ SELECT place_id,
 FROM reg.place_source_ref
 WHERE source_id = 'organism_records.lat_lon'
 """
+# `place_mesh_lookup(place_id)` に索引を張る（`_CREATE_INDEX_ORG_WATERSHED_YEAR_EXACT_SQL`
+# と同じ流儀。Issue #48 PR-3a 統合で `occurrence_agg` の第3索引
+# `(place_kind, grain, period_start)` を足した副作用で、この TEMP 表との
+# LEFT JOIN（`_occ_agg_enriched_sql()`）で SQLite の自動索引が選ばれなくなり、
+# 総当たりに落ちて b08 が100秒→745秒に後退していた——実測: 索引無しで約536秒
+# かかっていたこの JOIN が、索引ありだと数秒に戻る。/code-review 指摘3）。
+_CREATE_INDEX_PLACE_MESH_LOOKUP_SQL = "CREATE INDEX ix_place_mesh_lookup ON place_mesh_lookup(place_id)"
 
 # occurrence_agg のセルに taxon 属性（taxon_id 経由）・mesh 座標（place_id
 # 経由）・v1 の「年」（period_start から）を載せた作業テーブル。年キー8表は
@@ -1196,6 +1203,7 @@ def _build_cube_projections(
         _assert_no_stale_taxon_ids(conn, "cube.occurrence_agg", "occurrence_agg")
 
     conn.execute(_PLACE_MESH_LOOKUP_SQL)
+    conn.execute(_CREATE_INDEX_PLACE_MESH_LOOKUP_SQL)
     _assert_place_mesh_lookup_is_function(conn)
     conn.execute(_occ_agg_enriched_sql(), (default_taxon_group,))
     _assert_all_places_resolve_to_mesh(conn)
@@ -1347,6 +1355,13 @@ SELECT place_id, external_key AS watershed_id
 FROM reg.place_source_ref
 WHERE source_id = ?
 """
+# `place_watershed_lookup(place_id)` に索引を張る（`_CREATE_INDEX_PLACE_MESH_LOOKUP_SQL`
+# と同じ理由・同じ流儀。`_cube_watershed_year_totals_sql()` の
+# `cube.occurrence_agg JOIN place_watershed_lookup` が索引無しでは総当たりに
+# 落ちる——実測: 約40秒→索引ありで大幅短縮。/code-review 指摘3）。
+_CREATE_INDEX_PLACE_WATERSHED_LOOKUP_SQL = (
+    "CREATE INDEX ix_place_watershed_lookup ON place_watershed_lookup(place_id)"
+)
 
 
 def _assert_place_watershed_lookup_is_function(conn) -> None:
@@ -1864,6 +1879,7 @@ def _build_watershed(
         occurrence_fingerprint = _assert_occurrence_fingerprint_fresh(conn)
     occurrence_place_fingerprint = _assert_occurrence_place_fingerprint_fresh(conn)
     conn.execute(_PLACE_WATERSHED_LOOKUP_SQL, (_WATERSHED_SOURCE_ID,))
+    conn.execute(_CREATE_INDEX_PLACE_WATERSHED_LOOKUP_SQL)
     _assert_place_watershed_lookup_is_function(conn)
     _assert_all_watershed_places_resolve(conn)
     conn.execute(_OCC_PLACE_WATERSHED_SQL, (_WATERSHED_PLACE_KIND,))
