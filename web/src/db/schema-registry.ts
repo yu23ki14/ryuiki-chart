@@ -197,9 +197,19 @@ export const placeWatershed = sqliteTable("place_watershed", {
  * `registry.sqlite` 側にはあるが、意図的にここ（D1 側）には載せていない
  * （オーナー決定。`registry/README.md`「taxon の名前空間分割と分類補完」参照）。
  * `canonical_binomial`/`class`/`family`/`taxon_group` は Issue #48（PR-0）で
- * D1 の消費者ができたため追加した。`vernacular_name_en` はまだ無い（PR-3a の範囲）。
+ * D1 の消費者ができたため追加した。
  * `status='needs_review'` は既存の `status` 列にそのまま乗るので、D1 側の
  * スキーマ変更なしで既にシードされている。
+ *
+ * `vernacularNameEn`/`vernacularJaBasis`（Issue #48 PR-3a、D4）:
+ * `vernacularNameEn` は `organism_records.vernacular_name` のうちラテン文字だけの
+ * 値を (名前空間, taxon_key) ごとに最頻値で選んだもの（gbif/inat 由来の行にだけ
+ * 付く）。「英名」ではなく「ラテン文字の俗名」であることに注意（ローマ字表記・
+ * 属の仮名も入りうる。`registry/README.md` 参照）。`vernacularJaBasis` は
+ * `vernacularNameJa` の出処（`override`/`taxa`/`records`）——`records` は
+ * `vernacularNameJa` が NULL の行にだけ、記録由来の非ラテン文字の最頻値で
+ * 補完したことを示す（既存の値は1件も変えない。`scripts/registry/build_taxon.py`
+ * モジュール docstring 参照）。
  */
 export const taxon = sqliteTable("taxon", {
 	taxonId: text("taxon_id").primaryKey(),
@@ -211,6 +221,8 @@ export const taxon = sqliteTable("taxon", {
 	taxonGroup: text("taxon_group"),
 	gbifTaxonKey: text("gbif_taxon_key"),
 	vernacularNameJa: text("vernacular_name_ja"),
+	vernacularNameEn: text("vernacular_name_en"),
+	vernacularJaBasis: text("vernacular_ja_basis"),
 	status: text(),
 	acceptedTaxonId: text("accepted_taxon_id"),
 },
@@ -231,8 +243,12 @@ export const taxon = sqliteTable("taxon", {
  * 持つ、v1 の `taxa.vernacular_name_ja`（3出典をまたいだ畳み込み済みの和名）相当。
  *
  * Phase A/B 当初は D1 の消費者が無いとして見送っていたが、Issue #48（PR-0）で
- * D1 に追加した。`in_scope`（除外7種の宣言、`registry/taxon/
- * assessment_scope_exclusions.yaml`）はまだ無い（PR-3a/3b の範囲）。
+ * D1 に追加した。`in_scope`（Issue #48 PR-3a、D7）は
+ * `registry/taxon/assessment_scope_exclusions.yaml` の除外7種を `(list_id,
+ * scientific_name_raw の二名法)` で機械的に一致させて 0、他の全行を 1 にした
+ * 可視化列——**このテーブル自体は行を1件も除外しない**（`scientific_name_raw`
+ * の429行＋2,884行はそのまま。`scripts/registry/build_taxon_assessment.py`
+ * モジュール docstring「除外7種」「`in_scope`」参照）。
  */
 export const taxonAssessment = sqliteTable("taxon_assessment", {
 	assessmentId: text("assessment_id").primaryKey(),
@@ -252,6 +268,7 @@ export const taxonAssessment = sqliteTable("taxon_assessment", {
 	nationalCategoryRaw: text("national_category_raw"),
 	origin: text(),
 	sourceId: text("source_id"),
+	inScope: integer("in_scope"),
 },
 (table) => [
 	index("ix_taxon_assessment_list").on(table.listId),
