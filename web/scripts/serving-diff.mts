@@ -448,20 +448,16 @@ async function main() {
 
   const t0 = Date.now();
 
-  async function runOnce(
-    classifyMutation: ClassifyMutationOptions | undefined,
-    rowMutationName: string | undefined,
-  ): Promise<RunOutcome> {
+  /* -------------------------------------------------------------------- */
+  /* `--v1-only`: 変異を回さない単純な1パス（v1 側の行数を数えるだけ）。       */
+  /* mutate 用のキャッシュ構造は要らないので、他とは独立に単純な1ループで済ませる。 */
+  /* -------------------------------------------------------------------- */
+  if (V1_ONLY) {
     const stats = new Map<string, QueryStats>();
-    const unexplained: UnexplainedSample[] = [];
-    const matchedDeclared = new Map<string, Set<string>>();
     const exceptions: { id: string; params: Record<string, ScalarParam>; message: string }[] = [];
-    const mergeDisabled = !!rowMutationName && isV1Mutation(rowMutationName);
-
     for (const def of queryDefs) {
       const s = emptyQueryStats(def.id);
       stats.set(def.id, s);
-
       let tuples: Record<string, ScalarParam>[];
       try {
         tuples = await enumerateParams(def, config.domains, REGISTRY_DB_PATH);
@@ -469,166 +465,285 @@ async function main() {
         exceptions.push({ id: def.id, params: {}, message: `enumerateParams: ${e instanceof Error ? e.message : e}` });
         continue;
       }
-      const known = new Set(def.known as KnownRule[]);
-      const declaredLookup = declaredLookupFor(def);
-
       for (const params of tuples) {
         s.runs += 1;
-        let v1Rows: NormRow[];
         try {
-          v1Rows = await runV1Query(def.id, params, def.compare, REGISTRY_DB_PATH, { mergeDisabled });
+          const v1Rows = await runV1Query(def.id, params, def.compare, REGISTRY_DB_PATH, {});
+          s.rowsV1 += v1Rows.length;
+        } catch (e) {
+          exceptions.push({ id: def.id, params, message: e instanceof Error ? e.message : String(e) });
+        }
+      }
+    }
+    const elapsedMs = Date.now() - t0;
+    const totalRuns = [...stats.values()].reduce((n, s) => n + s.runs, 0);
+    const totalRows = [...stats.values()].reduce((n, s) => n + s.rowsV1, 0);
+    console.log(`v1-only: ${queryDefs.length} 問い合わせ / ${totalRuns} runs / ${totalRows} rows / ${elapsedMs}ms`);
+    for (const s of stats.values()) {
+      console.log(`  ${s.id}: runs=${s.runs} rows=${s.rowsV1}`);
+    }
+    if (exceptions.length) {
+      console.error(`${exceptions.length} 件の例外:`);
+      for (const e of exceptions.slice(0, 20)) {
+        console.error(`  [${e.id}] ${JSON.stringify(e.params)}: ${e.message}`);
+      }
+      process.exit(1);
+    }
+    process.exit(0);
+  }
+
+  /* -------------------------------------------------------------------- */
+  /* フェッチ段（(id,params) ごとに1回だけ）と分類段（`--mutate` の数だけ）を   */
+  /* 分離する（serving-diff 高速化。計測は報告参照）。                        */
+  /*                                                                        */
+  /* 前提: `mutations.ts` の行変異・分類器変異はどれも「フェッチ済みの行を     */
+  /* JS だけで書き換える/`ClassifyContext` を上書きする」だけの純関数で、DB を */
+  /* 読み直さない（`applyRowMutation`/`applyClassifyMutation`）。旧実装は     */
+  /* それでも `--mutate` の数だけ v1/v2/v1compat/v2(zero) のフェッチを丸ごと  */
+  /* 繰り返しており、そこが支配的コストだった（実測: 変異10種込みで単純に      */
+  /* 約10倍の DB 呼び出し）。ここでは v1/v2/v1compat/v2(zero) の行を           */
+  /* (id,params) ごとに1回だけ引いて `fetched` に保存し、通常実行＋各          */
+  /* `--mutate` はその保存済みの行に対して分類（`classifyDiff`）だけを         */
+  /* やり直す。                                                              */
+  /*                                                                        */
+  /* 例外: `merge_rule_off`（v1 側の alias→variable_id 束ねを止める）は       */
+  /* `*_by_variable` 問い合わせの v1 フェッチだけを変える——ただし              */
+  /* `mergeDisabled` のときの v1 フェッチは即座に空配列を返す軽い経路          */
+  /* （`adapters-v1.ts` の `aliasListOrEmpty`）なので、このパスだけは分類段で  */
+  /* 実際に引き直す（DB 往復は増えない。alias 単位の問い合わせ id は           */
+  /* `mergeDisabled` をそもそも見ないので触らない）。                         */
+  /* -------------------------------------------------------------------- */
+
+  interface FetchedEntry {
+    def: QueryDef;
+    params: Record<string, ScalarParam>;
+    v1Rows: NormRow[];
+    /** 行変異を適用する前の、v2 が実際に計算した生の行。 */
+    v2RowsRaw: NormRow[];
+    v2TrueByKey?: ReadonlyMap<string, NormRow>;
+    v2CompatByKey?: ReadonlyMap<string, NormRow>;
+    v2ZeroByKey?: ReadonlyMap<string, NormRow>;
+    v2TrueZeroByKey?: ReadonlyMap<string, NormRow>;
+  }
+
+  // 分類段では DB を読まないので、`known`/`declaredLookup`（def から機械的に
+  // 決まり、params にも変異にも依らない）は def ごとに1回だけ作る。
+  const knownByDefId = new Map<string, ReadonlySet<KnownRule>>();
+  const declaredLookupByDefId = new Map<string, DeclaredLookup>();
+  for (const def of queryDefs) {
+    knownByDefId.set(def.id, new Set(def.known as KnownRule[]));
+    declaredLookupByDefId.set(def.id, declaredLookupFor(def));
+  }
+
+  const runsByDefId = new Map<string, number>();
+  const fetched: FetchedEntry[] = [];
+  const fetchExceptions: { id: string; params: Record<string, ScalarParam>; message: string }[] = [];
+
+  for (const def of queryDefs) {
+    let tuples: Record<string, ScalarParam>[];
+    try {
+      tuples = await enumerateParams(def, config.domains, REGISTRY_DB_PATH);
+    } catch (e) {
+      fetchExceptions.push({ id: def.id, params: {}, message: `enumerateParams: ${e instanceof Error ? e.message : e}` });
+      continue;
+    }
+    runsByDefId.set(def.id, tuples.length);
+
+    for (const params of tuples) {
+      let v1Rows: NormRow[];
+      try {
+        v1Rows = await runV1Query(def.id, params, def.compare, REGISTRY_DB_PATH, { mergeDisabled: false });
+      } catch (e) {
+        fetchExceptions.push({ id: def.id, params, message: e instanceof Error ? e.message : String(e) });
+        continue;
+      }
+
+      let v2RowsRaw: NormRow[];
+      try {
+        v2RowsRaw = await v2!.runV2Query(v2Db!, def.id, params, def.compare, IMPUTATION);
+      } catch (e) {
+        fetchExceptions.push({ id: def.id, params, message: `v2: ${e instanceof Error ? e.message : e}` });
+        continue;
+      }
+
+      // `classify.ts` の `v2TrueByKey`（Issue #48 PR-2 統合後 修正C）用:
+      // 行変異（`--mutate lod_instead_of_zero`/`swap_kind` 等）を適用する**前**の
+      // 生の v2 行をキー化して控えておく。`synthetic_excluded`/`lod_imputation` が
+      // 「`diff.v2` は本当に v2 が計算した値か（行変異で書き換えられていないか）」
+      // を確かめるためだけに使う——本体の突き合わせ（`v2ByKey`/`diffs`）は
+      // 分類段で変異後の行から作る。診断専用なので、万一（変異前の）重複キーで
+      // 例外になっても本体の突き合わせは続行する（`v2TrueByKey` 抜きの安全側
+      // フォールバックは classify.ts 側に既にある）。
+      let v2TrueByKey: ReadonlyMap<string, NormRow> | undefined;
+      try {
+        v2TrueByKey = rowsByKey(v2RowsRaw);
+      } catch (e) {
+        console.error(`v2TrueByKey: [${def.id}] ${JSON.stringify(params)}: ${e instanceof Error ? e.message : e}`);
+      }
+
+      // `synthetic_excluded`（design §1「差分の差分」）用: 同じ問い合わせを
+      // v1compat 接続で流す。診断専用のため失敗しても本体の突き合わせは
+      // 続行する（この (id,params) では synthetic_excluded が不発になるだけ）。
+      //
+      // imputation は常に `"zero"` を固定で渡す（`IMPUTATION`——`--imputation lod`
+      // 実行時でも）。v1 は昔から「定量下限未満は 0」という zero 相当の集計法
+      // しか知らない——`v1CompatByKey` は「もし合成データを除外していなかった
+      // ら v1 はどう見えるか」を再現する基準値なので、v1 の意味論（zero）に
+      // 揃える必要がある。`--imputation lod` 実行時に current imputation
+      // （lod）のまま流すと、「合成データを含む」かつ「値が動く」セルの両方に
+      // 該当する行（実測: `zone_series`/`climatology`/`zone_climatology` と
+      // その `_by_variable` 双子で計132件、Issue #48 PR-2 統合後 修正Bで
+      // 判明）で `v1 == compatRow` が成り立たなくなり
+      // （v1 は zero 相当なのに compatRow は lod 済みの値のため）、
+      // `classifySyntheticExcludedV1Compat` が不発になる——結果、`known` に
+      // `synthetic_excluded`・`lod_imputation` の両方があっても、どちらの
+      // 単独規則も「片方の効果だけ」しか説明できず unexplained に落ちる。
+      // compat を常に zero で引けば、`v1 == compatRow(zero)` の一致判定で
+      // 「合成データを含む・含まない」の軸だけを確認でき、`compatRow(zero) ≠
+      // v2(本番、現在の imputation)` という既存のチェック（`classifySyntheticExcludedV1Compat`
+      // 内）が「合成データの除外」と「zero→lod」の両方が重なった差分も
+      // まとめて説明する（`diff.v1 !== diff.v2` は `RowDiff` の定義上すでに
+      // 真なので、この既存チェックは特別な追加条件なしに両対応する）。
+      let v2CompatByKey: ReadonlyMap<string, NormRow> | undefined;
+      if (v1CompatDb) {
+        try {
+          // 既定の `{kind:'summary'}` のまま呼ぶ（画面・API・AI と同じ経路）。
+          // `scripts/b13_build_summary.py` を v1compat 段にも足したので
+          // （`scripts/b00_run_full_gate.py`/CI `sample-gate`）、
+          // `v2_v1compat.sqlite` の summary 2表も --include-synthetic 後の
+          // observation_agg から作り直されており、本番と同じ値しか返らない
+          // という旧問題（`{kind:'live'}` で回避していた）は解消済み。
+          const rows = await v2!.runV2Query(v1CompatDb, def.id, params, def.compare, "zero");
+          v2CompatByKey = rowsByKey(rows);
+        } catch (e) {
+          console.error(`v1compat: [${def.id}] ${JSON.stringify(params)}: ${e instanceof Error ? e.message : e}`);
+        }
+      }
+
+      // `lod_imputation`（design §3 #1）用: `--imputation lod` のときだけ、
+      // 同じ問い合わせを imputation=zero でも引く（v1 と比べる基準値）。
+      let v2ZeroByKey: ReadonlyMap<string, NormRow> | undefined;
+      if (IMPUTATION === "lod") {
+        try {
+          const zeroRows = await v2!.runV2Query(v2Db!, def.id, params, def.compare, "zero");
+          v2ZeroByKey = rowsByKey(zeroRows);
+        } catch (e) {
+          console.error(`v2(zero): [${def.id}] ${JSON.stringify(params)}: ${e instanceof Error ? e.message : e}`);
+        }
+      }
+
+      // `classify.ts` の `v2TrueZeroByKey`（Issue #48 PR-2 統合後 修正C）用:
+      // 「行変異が無い・zero 相当の」v2 の正しい値。`--imputation lod` 実行では
+      // 上で引いた `v2ZeroByKey`（別クエリなので行変異の影響を受けない）と
+      // 同じもの、`--imputation zero` 実行では現在の問い合わせ自体が既に
+      // zero なので `v2TrueByKey`（行変異を当てる前の控え）と同じもの——
+      // どちらも追加の DB 問い合わせを増やさない。
+      const v2TrueZeroByKey: ReadonlyMap<string, NormRow> | undefined = IMPUTATION === "lod" ? v2ZeroByKey : v2TrueByKey;
+
+      fetched.push({ def, params, v1Rows, v2RowsRaw, v2TrueByKey, v2CompatByKey, v2ZeroByKey, v2TrueZeroByKey });
+    }
+  }
+
+  /**
+   * 分類段: `fetched` を使い回し、通常実行＋各 `--mutate` ごとに分類
+   * （`classifyDiff`）だけをやり直す。DB は `merge_rule_off`（`*_by_variable`
+   * 問い合わせの v1 側だけ、`mergeDisabled` で即座に空配列を返す軽い経路）
+   * 以外は一切引かない。
+   */
+  async function classifyPass(
+    classifyMutation: ClassifyMutationOptions | undefined,
+    rowMutationName: string | undefined,
+  ): Promise<RunOutcome> {
+    const stats = new Map<string, QueryStats>();
+    for (const def of queryDefs) {
+      const s = emptyQueryStats(def.id);
+      s.runs = runsByDefId.get(def.id) ?? 0;
+      stats.set(def.id, s);
+    }
+    const unexplained: UnexplainedSample[] = [];
+    const matchedDeclared = new Map<string, Set<string>>();
+    const exceptions = [...fetchExceptions];
+    const mergeDisabled = !!rowMutationName && isV1Mutation(rowMutationName);
+
+    for (const entry of fetched) {
+      const { def, params } = entry;
+      const s = stats.get(def.id)!;
+
+      // `merge_rule_off` は `*_by_variable` 問い合わせの v1 フェッチだけを
+      // 変える（他の問い合わせは `mergeDisabled` を見ないので無変更のまま
+      // フェッチ済みの `v1Rows` を再利用してよい）。
+      let v1Rows = entry.v1Rows;
+      if (mergeDisabled && def.id.endsWith("_by_variable")) {
+        try {
+          v1Rows = await runV1Query(def.id, params, def.compare, REGISTRY_DB_PATH, { mergeDisabled: true });
         } catch (e) {
           exceptions.push({ id: def.id, params, message: e instanceof Error ? e.message : String(e) });
           continue;
         }
-        s.rowsV1 += v1Rows.length;
+      }
+      s.rowsV1 += v1Rows.length;
 
-        if (V1_ONLY) continue;
+      let v2Rows = entry.v2RowsRaw;
+      if (rowMutationName && isRowMutation(rowMutationName) && rowMutationAppliesTo(rowMutationName, def.id)) {
+        v2Rows = applyRowMutation(rowMutationName, def.id, v2Rows);
+      }
+      s.rowsV2 += v2Rows.length;
 
-        let v2Rows: NormRow[];
-        try {
-          v2Rows = await v2!.runV2Query(v2Db!, def.id, params, def.compare, IMPUTATION);
-        } catch (e) {
-          exceptions.push({ id: def.id, params, message: `v2: ${e instanceof Error ? e.message : e}` });
-          continue;
+      // `rowsByKey` は同じキーの行が2つあれば例外にする（design: 「片方を捨てると
+      // 診断が壊れる」）。これは serving-diff 自身の設計上の保護であって v1/v2 の
+      // 例外ではないが、`--mutate include_watershed_cells`（行を複製する変異）が
+      // これを実際に踏む——変異1つが工具全体を落として残りの変異を試せなくする
+      // のは本末転倒なので、他の2つの問い合わせ呼び出しと同じく「この (id,params)
+      // だけ例外として記録して続行」にする（`--mutate` の自己診断は
+      // `exceptions.length > 0` も「検出できた」に数える——serving-diff.mts 冒頭）。
+      let v1ByKey: ReadonlyMap<string, NormRow>;
+      let v2ByKey: ReadonlyMap<string, NormRow>;
+      let diffs: RowDiff[];
+      try {
+        v1ByKey = rowsByKey(v1Rows);
+        v2ByKey = rowsByKey(v2Rows);
+        diffs = compareRuns(v1ByKey, v2ByKey, def.tolerance ?? {});
+      } catch (e) {
+        exceptions.push({ id: def.id, params, message: e instanceof Error ? e.message : String(e) });
+        continue;
+      }
+
+      const badKeys = new Set(diffs.filter((d) => d.kind === "value_diff" || d.kind === "label_diff").map((d) => JSON.stringify(d.key)));
+      for (const k of v1ByKey.keys()) {
+        if (v2ByKey.has(k) && !badKeys.has(k)) s.matched += 1;
+      }
+
+      const ctx: ClassifyContext = {
+        expected,
+        declared: declaredLookupByDefId.get(def.id)!,
+        params,
+        known: knownByDefId.get(def.id)!,
+        disabledRules: classifyMutation?.disabledRules,
+        rain,
+        rainDateFromLabel: false, // `rain_top_days` は D5 で削除済み（PR-2）
+        rainGrain: def.id === "rain_monthly_clim" ? "month" : "day",
+        v2CompatByKey: entry.v2CompatByKey,
+        v2ZeroByKey: entry.v2ZeroByKey,
+        v2TrueByKey: entry.v2TrueByKey,
+        v2TrueZeroByKey: entry.v2TrueZeroByKey,
+        declaredRot: classifyMutation?.declaredRot,
+        expectedUnitSymbol,
+        byVariableDeclared: byVariableDeclaredFor(def, params),
+      };
+
+      for (const diff of diffs) {
+        const c = classifyDiff(diff, ctx);
+        addClassification(s, c.rules);
+        // `c.declaredMatches`（段1で使われた宣言。overall unexplained でも
+        // 載っている——`classify.ts` の `Classification.declaredMatches` docstring
+        // 参照）を「腐り」判定の消費済みキーとして記録する。
+        for (const m of c.declaredMatches) {
+          const set = matchedDeclared.get(m.table) ?? new Set<string>();
+          set.add(declaredMatchTag(m.entry));
+          matchedDeclared.set(m.table, set);
         }
-        // `classify.ts` の `v2TrueByKey`（Issue #48 PR-2 統合後 修正C）用:
-        // 行変異（`--mutate lod_instead_of_zero`/`swap_kind` 等）を適用する**前**の
-        // 生の v2 行をキー化して控えておく。`synthetic_excluded`/`lod_imputation` が
-        // 「`diff.v2` は本当に v2 が計算した値か（行変異で書き換えられていないか）」
-        // を確かめるためだけに使う——本体の突き合わせ（`v2ByKey`/`diffs`）は
-        // これまでどおり変異後の `v2Rows` から作る。診断専用なので、万一
-        // （変異前の）重複キーで例外になっても本体の突き合わせは続行する
-        // （`v2TrueByKey` 抜きの安全側フォールバックは classify.ts 側に既にある）。
-        let v2TrueByKey: ReadonlyMap<string, NormRow> | undefined;
-        try {
-          v2TrueByKey = rowsByKey(v2Rows);
-        } catch (e) {
-          console.error(`v2TrueByKey: [${def.id}] ${JSON.stringify(params)}: ${e instanceof Error ? e.message : e}`);
-        }
-        if (rowMutationName && isRowMutation(rowMutationName) && rowMutationAppliesTo(rowMutationName, def.id)) {
-          v2Rows = applyRowMutation(rowMutationName, def.id, v2Rows);
-        }
-        s.rowsV2 += v2Rows.length;
-
-        // `synthetic_excluded`（design §1「差分の差分」）用: 同じ問い合わせを
-        // v1compat 接続で流す。診断専用のため失敗しても本体の突き合わせは
-        // 続行する（この (id,params) では synthetic_excluded が不発になるだけ）。
-        //
-        // imputation は常に `"zero"` を固定で渡す（`IMPUTATION`——`--imputation lod`
-        // 実行時でも）。v1 は昔から「定量下限未満は 0」という zero 相当の集計法
-        // しか知らない——`v1CompatByKey` は「もし合成データを除外していなかった
-        // ら v1 はどう見えるか」を再現する基準値なので、v1 の意味論（zero）に
-        // 揃える必要がある。`--imputation lod` 実行時に current imputation
-        // （lod）のまま流すと、「合成データを含む」かつ「値が動く」セルの両方に
-        // 該当する行（実測: `zone_series`/`climatology`/`zone_climatology` と
-        // その `_by_variable` 双子で計132件、Issue #48 PR-2 統合後 修正Bで
-        // 判明）で `v1 == compatRow` が成り立たなくなり
-        // （v1 は zero 相当なのに compatRow は lod 済みの値のため）、
-        // `classifySyntheticExcludedV1Compat` が不発になる——結果、`known` に
-        // `synthetic_excluded`・`lod_imputation` の両方があっても、どちらの
-        // 単独規則も「片方の効果だけ」しか説明できず unexplained に落ちる。
-        // compat を常に zero で引けば、`v1 == compatRow(zero)` の一致判定で
-        // 「合成データを含む・含まない」の軸だけを確認でき、`compatRow(zero) ≠
-        // v2(本番、現在の imputation)` という既存のチェック（`classifySyntheticExcludedV1Compat`
-        // 内）が「合成データの除外」と「zero→lod」の両方が重なった差分も
-        // まとめて説明する（`diff.v1 !== diff.v2` は `RowDiff` の定義上すでに
-        // 真なので、この既存チェックは特別な追加条件なしに両対応する）。
-        let v2CompatByKey: ReadonlyMap<string, NormRow> | undefined;
-        if (v1CompatDb) {
-          try {
-            // 既定の `{kind:'summary'}` のまま呼ぶ（画面・API・AI と同じ経路）。
-            // `scripts/b13_build_summary.py` を v1compat 段にも足したので
-            // （`scripts/b00_run_full_gate.py`/CI `sample-gate`）、
-            // `v2_v1compat.sqlite` の summary 2表も --include-synthetic 後の
-            // observation_agg から作り直されており、本番と同じ値しか返らない
-            // という旧問題（`{kind:'live'}` で回避していた）は解消済み。
-            const rows = await v2!.runV2Query(v1CompatDb, def.id, params, def.compare, "zero");
-            v2CompatByKey = rowsByKey(rows);
-          } catch (e) {
-            console.error(`v1compat: [${def.id}] ${JSON.stringify(params)}: ${e instanceof Error ? e.message : e}`);
-          }
-        }
-
-        // `lod_imputation`（design §3 #1）用: `--imputation lod` のときだけ、
-        // 同じ問い合わせを imputation=zero でも引く（v1 と比べる基準値）。
-        let v2ZeroByKey: ReadonlyMap<string, NormRow> | undefined;
-        if (IMPUTATION === "lod") {
-          try {
-            const zeroRows = await v2!.runV2Query(v2Db!, def.id, params, def.compare, "zero");
-            v2ZeroByKey = rowsByKey(zeroRows);
-          } catch (e) {
-            console.error(`v2(zero): [${def.id}] ${JSON.stringify(params)}: ${e instanceof Error ? e.message : e}`);
-          }
-        }
-
-        // `classify.ts` の `v2TrueZeroByKey`（Issue #48 PR-2 統合後 修正C）用:
-        // 「行変異が無い・zero 相当の」v2 の正しい値。`--imputation lod` 実行では
-        // 上で引いた `v2ZeroByKey`（別クエリなので行変異の影響を受けない）と
-        // 同じもの、`--imputation zero` 実行では現在の問い合わせ自体が既に
-        // zero なので `v2TrueByKey`（行変異を当てる前の控え）と同じもの——
-        // どちらも追加の DB 問い合わせを増やさない。`hasGenuineSyntheticEvidence`
-        // が「compat（合成込み・zero）とこの値が食い違うか」を見て、
-        // `synthetic_excluded` が本当に合成データの影響を受けた行だけを
-        // 説明するようにする。
-        const v2TrueZeroByKey: ReadonlyMap<string, NormRow> | undefined = IMPUTATION === "lod" ? v2ZeroByKey : v2TrueByKey;
-
-        // `rowsByKey` は同じキーの行が2つあれば例外にする（design: 「片方を捨てると
-        // 診断が壊れる」）。これは serving-diff 自身の設計上の保護であって v1/v2 の
-        // 例外ではないが、`--mutate include_watershed_cells`（行を複製する変異）が
-        // これを実際に踏む——変異1つが工具全体を落として残りの変異を試せなくする
-        // のは本末転倒なので、他の2つの問い合わせ呼び出しと同じく「この (id,params)
-        // だけ例外として記録して続行」にする（`--mutate` の自己診断は
-        // `exceptions.length > 0` も「検出できた」に数える——serving-diff.mts 冒頭）。
-        let v1ByKey: ReadonlyMap<string, NormRow>;
-        let v2ByKey: ReadonlyMap<string, NormRow>;
-        let diffs: RowDiff[];
-        try {
-          v1ByKey = rowsByKey(v1Rows);
-          v2ByKey = rowsByKey(v2Rows);
-          diffs = compareRuns(v1ByKey, v2ByKey, def.tolerance ?? {});
-        } catch (e) {
-          exceptions.push({ id: def.id, params, message: e instanceof Error ? e.message : String(e) });
-          continue;
-        }
-
-        const badKeys = new Set(diffs.filter((d) => d.kind === "value_diff" || d.kind === "label_diff").map((d) => JSON.stringify(d.key)));
-        for (const k of v1ByKey.keys()) {
-          if (v2ByKey.has(k) && !badKeys.has(k)) s.matched += 1;
-        }
-
-        const ctx: ClassifyContext = {
-          expected,
-          declared: declaredLookup,
-          params,
-          known,
-          disabledRules: classifyMutation?.disabledRules,
-          rain,
-          rainDateFromLabel: false, // `rain_top_days` は D5 で削除済み（PR-2）
-          rainGrain: def.id === "rain_monthly_clim" ? "month" : "day",
-          v2CompatByKey,
-          v2ZeroByKey,
-          v2TrueByKey,
-          v2TrueZeroByKey,
-          declaredRot: classifyMutation?.declaredRot,
-          expectedUnitSymbol,
-          byVariableDeclared: byVariableDeclaredFor(def, params),
-        };
-
-        for (const diff of diffs) {
-          const c = classifyDiff(diff, ctx);
-          addClassification(s, c.rules);
-          // `c.declaredMatches`（段1で使われた宣言。overall unexplained でも
-          // 載っている——`classify.ts` の `Classification.declaredMatches` docstring
-          // 参照）を「腐り」判定の消費済みキーとして記録する。
-          for (const m of c.declaredMatches) {
-            const set = matchedDeclared.get(m.table) ?? new Set<string>();
-            set.add(declaredMatchTag(m.entry));
-            matchedDeclared.set(m.table, set);
-          }
-          if (c.rules.size === 0 && unexplained.length < 20) {
-            unexplained.push({ queryId: def.id, params, kind: diff.kind, key: diff.key, columns: diff.columns });
-          }
+        if (c.rules.size === 0 && unexplained.length < 20) {
+          unexplained.push({ queryId: def.id, params, kind: diff.kind, key: diff.key, columns: diff.columns });
         }
       }
     }
@@ -637,7 +752,7 @@ async function main() {
   }
 
   /* -------------------------------- 通常実行 -------------------------------- */
-  const outcome = await runOnce(undefined, undefined);
+  const outcome = await classifyPass(undefined, undefined);
 
   /* -------------------------- --mutate 自己診断 -------------------------- */
   // 通常実行（変異なし）と同じ 1 回の呼び出しでレポートも作る（design §5.1
@@ -646,17 +761,17 @@ async function main() {
   // rottenDeclarations）は変えない——変異結果はレポート末尾に追記するだけ。
   let mutationResults: MutationRunResult[] | undefined;
   let anyMutationMissed = false;
-  if (MUTATE_NAMES.length && !V1_ONLY) {
+  if (MUTATE_NAMES.length) {
     mutationResults = [];
     for (const name of MUTATE_NAMES) {
-      // `runOnce` の第2引数は「行変異名」だったが、`isV1Mutation`（`merge_rule_off`）
-      // も同じ引数に相乗りさせる（`runOnce` 内で `isRowMutation`/`isV1Mutation` は
+      // `classifyPass` の第2引数は「行変異名」だったが、`isV1Mutation`（`merge_rule_off`）
+      // も同じ引数に相乗りさせる（`classifyPass` 内で `isRowMutation`/`isV1Mutation` は
       // 排他的なので、どちらの変異名を渡しても意図した1箇所にしか効かない）。
       const rowMutation = isRowMutation(name) || isV1Mutation(name) ? name : undefined;
       const classifyMutation = isClassifyMutation(name)
         ? applyClassifyMutation(name, name === "declared_rot" ? { declaredRotTarget: firstDeclaredTarget(expected) } : {})
         : undefined;
-      const mutOutcome = await runOnce(classifyMutation, rowMutation);
+      const mutOutcome = await classifyPass(classifyMutation, rowMutation);
       const totalUnexplained = [...mutOutcome.stats.values()].reduce((n, s) => n + s.unexplained, 0);
       const caught = totalUnexplained > 0 || mutOutcome.exceptions.length > 0;
       if (!caught) anyMutationMissed = true;
@@ -666,23 +781,6 @@ async function main() {
   }
 
   const elapsedMs = Date.now() - t0;
-
-  if (V1_ONLY) {
-    const totalRuns = [...outcome.stats.values()].reduce((n, s) => n + s.runs, 0);
-    const totalRows = [...outcome.stats.values()].reduce((n, s) => n + s.rowsV1, 0);
-    console.log(`v1-only: ${queryDefs.length} 問い合わせ / ${totalRuns} runs / ${totalRows} rows / ${elapsedMs}ms`);
-    for (const s of outcome.stats.values()) {
-      console.log(`  ${s.id}: runs=${s.runs} rows=${s.rowsV1}`);
-    }
-    if (outcome.exceptions.length) {
-      console.error(`${outcome.exceptions.length} 件の例外:`);
-      for (const e of outcome.exceptions.slice(0, 20)) {
-        console.error(`  [${e.id}] ${JSON.stringify(e.params)}: ${e.message}`);
-      }
-      process.exit(1);
-    }
-    process.exit(0);
-  }
 
   const usedTables = new Set(queryDefs.filter((q) => q.known.includes("declared") && q.v1Table).map((q) => q.v1Table!));
   const rotten: RottenDeclaration[] = findRottenDeclarations(expected, usedTables, outcome.matchedDeclared);
