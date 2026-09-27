@@ -843,5 +843,15 @@ def test_consistent_with_place_declarations_raises_when_resolved_count_too_small
         )
         with pytest.raises(common.MigrationError, match="watershed_dated_resolved_rows"):
             b07.build_cube(conn, decl, place_declarations_yaml=place_decl)
+        # 「全検査が通ってから差し替え」の回帰: この検査は宣言 YAML だけを読み
+        # conn に依存しないので、construction/差し替えより前に走らなければ
+        # ならない——ここで落ちたなら occurrence_agg はまだ作られていない
+        # （/code-review 指摘4。以前は差し替え・索引作成の後に呼んでいたため、
+        # この検査だけが失敗しても本番の occurrence_agg が新しい内容に
+        # 差し替わったままになっていた）。
+        exists = conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='occurrence_agg'"
+        ).fetchone()[0]
+        assert exists == 0
     finally:
         conn.close()

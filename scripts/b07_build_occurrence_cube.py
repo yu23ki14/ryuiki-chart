@@ -907,6 +907,16 @@ def build_cube(
     )
     declarations = load_and_validate_cube_declarations(declarations_yaml, count_overlay=count_overlay)
     leaf_expected = declarations[_LEAF_DECLARATION_NAME]["expected_row_count"]
+    # b09 の宣言との整合（`_assert_consistent_with_place_declarations`）は
+    # YAML 2つだけを読む検査で `occurrence_agg`/`conn` に一切依存しない
+    # ——「全検査が通ってから差し替え」を守るため、`occurrence_agg` を作り
+    # 始める前（`staged_table` に入る前）に呼ぶ。以前はここより後
+    # （差し替え・索引作成の後）で呼んでいたため、この検査だけが失敗しても
+    # 本番の `occurrence_agg` が既に新しい内容に差し替わってしまっていた
+    # （/code-review 指摘4）。
+    _assert_consistent_with_place_declarations(
+        declarations[_WATERSHED_RESOLVED_DECLARATION_NAME]["expected_row_count"], place_declarations_yaml,
+    )
     _assert_t1_invariant(conn)
     _assert_dated_rows_are_grid01(conn)
     n_dated_total = conn.execute("SELECT COUNT(*) FROM occurrence WHERE period_raw IS NOT NULL").fetchone()[0]
@@ -941,10 +951,6 @@ def build_cube(
 
     # Issue #48 PR-1 §1・PR-3a 決定 D6: 索引は差し替え確定後（本番テーブル名）に張る。
     common.create_indexes(conn, "occurrence_agg", OCCURRENCE_AGG_INDEXES)
-
-    _assert_consistent_with_place_declarations(
-        declarations[_WATERSHED_RESOLVED_DECLARATION_NAME]["expected_row_count"], place_declarations_yaml,
-    )
 
     return {
         "n_dated": n_dated_total,
