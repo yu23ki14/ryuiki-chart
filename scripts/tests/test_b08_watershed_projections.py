@@ -15,14 +15,12 @@ import pytest
 import b08_project_occurrence_v1 as b08
 from migrate import common
 
-from .occurrence_cube_family_fixtures import (
-    build_matching_occurrence_agg_watershed_rows,
-    make_v2_db_with_occurrence_place_and_agg,
-    occurrence_agg_row,
-)
 from .occurrence_fixtures import (
+    build_matching_occurrence_agg_watershed_rows,
     make_occurrence_registry_db,
     make_occurrence_watershed_v1_declarations_yaml,
+    make_v2_db_with_occurrence_and_agg,
+    occurrence_agg_row,
     occurrence_place_row,
     occurrence_row,
 )
@@ -53,7 +51,7 @@ def _setup(tmp_path, occurrence_rows, occurrence_place_rows):
     agg_rows = build_matching_occurrence_agg_watershed_rows(
         occurrence_rows, occurrence_place_rows, _PLACE_WATERSHED_MAP,
     )
-    make_v2_db_with_occurrence_place_and_agg(v2_db, occurrence_rows, occurrence_place_rows, agg_rows)
+    make_v2_db_with_occurrence_and_agg(v2_db, occurrence_rows, agg_rows, occurrence_place_rows)
 
     registry_db = tmp_path / "registry.sqlite"
     places = [(pid, None, "watershed") for pid, _ext, _sid in _PLACE_REFS]
@@ -324,12 +322,13 @@ def test_watershed_cube_cell_mismatch_vs_exact_halts(tmp_path):
     v2_db = tmp_path / "v2.sqlite"
     # 正確な解決（org_watershed_year_exact）は (W1, 2019, n=1) のはずだが、
     # occurrence_agg の流域セルはわざと n=5 と主張させる。
-    make_v2_db_with_occurrence_place_and_agg(
-        v2_db, occurrence_rows, occurrence_place_rows,
+    make_v2_db_with_occurrence_and_agg(
+        v2_db, occurrence_rows,
         [occurrence_agg_row(
             place_id=_W1_PLACE_ID, place_kind="watershed", grain="year",
             period_start="2019-01-01", period_end="2019-12-31", n=5,
         )],
+        occurrence_place_rows,
     )
     registry_db = tmp_path / "registry.sqlite"
     places = [(pid, None, "watershed") for pid, _ext, _sid in _PLACE_REFS]

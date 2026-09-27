@@ -2,10 +2,10 @@
 
 本物の `data/db/v2.sqlite`（原本由来）を要さず、`scripts/tests/migrate_fixtures.py`
 の `make_observation_agg_fixture`（observation_agg）・`scripts/tests/
-occurrence_agg_fixtures.py` の `make_occurrence_agg_fixture`（occurrence_agg。
-PR-3a §5——`scripts/tests/occurrence_fixtures.py` は U1 が触るので使わない。
-`occurrence_agg_fixtures.py` の docstring 参照）が作る小さなキューブだけで
-完結する。
+occurrence_fixtures.py` の `make_occurrence_agg_fixture`（occurrence_agg。
+PR-3a §5。`occurrence_agg` だけを持つ最小限のフィクスチャ——b13 は
+`occurrence_agg` を `SELECT` で読むだけなので、b06/b09 が作る `occurrence`/
+`occurrence_place` は要らない）が作る小さなキューブだけで完結する。
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ import b13_build_summary as b13
 from migrate import common
 
 from .migrate_fixtures import make_observation_agg_fixture
-from .occurrence_agg_fixtures import make_occurrence_agg_fixture
+from .occurrence_fixtures import make_occurrence_agg_fixture
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 DEFAULT_YAML = ROOT / "aggregations" / "serving.yaml"
@@ -51,7 +51,7 @@ _ROWS = [
      "month", "day", "mean", 7.0, 7.0, 777, 0, 0, 1, "obs", "v2"),
 ]
 
-# `scripts/tests/occurrence_agg_fixtures.py` の `OCCURRENCE_AGG_COLUMNS` の並び:
+# `scripts/tests/occurrence_fixtures.py` の `_OCCURRENCE_AGG_COLUMNS` の並び:
 # region_id, source_id, place_id, place_kind, taxon_id, grain, period_start,
 # period_end, n, n_red_list, n_alien, built_from, spec_version。
 #

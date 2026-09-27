@@ -80,8 +80,7 @@ v1 の静的な7種除外をそのまま宣言化したもの）から読む。`
   `_assert_known_place_kinds` が止める）。**`grain IN (年 族)` にも絞る**
   （O-1 設計 v2 §0-1: b07 が `month` 族〔`grid01`×`month`〕のセルを足す
   計画のため、絞らないと年キー8表が月セルを二重に数える。年 族の名前は
-  `b07.YEAR_GRAIN_FAMILY`（無ければ `b07.GRAIN_VALUES` にフォールバック。
-  `_year_grain_family()` 参照）。
+  `b07.YEAR_GRAIN_FAMILY` をそのまま使う。
 - **v1 の「年」はキューブのセルの `period_start` から**: `CAST(substr(period_start,1,4)
   AS INT)`。`year` セルも `survey_period`（leaf）セルも同じ式（year セルは
   `period_start` が暦年境界へ丸め済み、leaf セルは記録自身の区間の開始その
@@ -782,42 +781,25 @@ def build_ias_species_projection(
 # O-1b: 年キー8表（occurrence_agg だけから）＋ species_month（occurrence＝L2 から）
 # ---------------------------------------------------------------------------
 
-# grain の語彙は b07 の `GRAIN_VALUES` を正として import する（/simplify
-# 指摘5。以前は b07・b08 それぞれが `'year', 'survey_period'` を直書きして
-# いて、O-2 で grain を足すときに2箇所を直す必要があった）。**モジュール
-# import 時点の文字列に固定しない**（関数として、呼ばれるたびに
-# `b07.GRAIN_VALUES`/`b07.YEAR_GRAIN_FAMILY` を読みに行く）——この
-# worktree の b07 は month 族（O-1 設計 v2 §0-1。`YEAR_GRAIN_FAMILY`/
-# `MONTH_GRAIN_FAMILY`）をまだ知らず、並行して進む別 PR（U1）が足す。
-# import 時点で固定すると、そちらが `b07.GRAIN_VALUES` を広げても
-# このモジュールが起動時に読んだ古い値のまま凍結されてしまう。テストが
-# `monkeypatch.setattr(b07, "GRAIN_VALUES", ...)` で「month を知っている
-# b07」を模せるようにする狙いも兼ねる。
+# grain の語彙は b07 の `GRAIN_VALUES`（既知の全 grain）/`YEAR_GRAIN_FAMILY`
+# （年キー8表・`org_watershed_year` 系〔O-2a〕が対象にする年族だけ。O-1 設計
+# v2 §0-1）を正として import する（/simplify 指摘5。以前は b07・b08 それぞれが
+# `'year', 'survey_period'` を直書きしていて、grain を足すたびに2箇所を
+# 直す必要があった）。
 def _grain_values_sql_list() -> str:
     return ", ".join(repr(g) for g in b07.GRAIN_VALUES)
 
 
 def _grain_values_label() -> str:
-    return "/".join(repr(g) for g in b07.GRAIN_VALUES)  # 例: "'year'/'survey_period'"
-
-
-def _year_grain_family() -> tuple[str, ...]:
-    """b07 の `YEAR_GRAIN_FAMILY`（日付あり全記録の分割。年キー8表・
-    `org_watershed_year` 系〔O-2a〕が対象にする族）を読む。この worktree の
-    b07 はまだ `YEAR_GRAIN_FAMILY` を定義していないことがあるため、その
-    場合は今の `b07.GRAIN_VALUES`（＝年族のみ）にフォールバックする——
-    値は同じなので挙動は変わらない。b07 が `YEAR_GRAIN_FAMILY` を定義したら
-    自動的にそちらを使う。
-    """
-    return getattr(b07, "YEAR_GRAIN_FAMILY", b07.GRAIN_VALUES)
+    return "/".join(repr(g) for g in b07.GRAIN_VALUES)  # 例: "'year'/'survey_period'/'month'"
 
 
 def _year_grain_family_sql_list() -> str:
-    return ", ".join(repr(g) for g in _year_grain_family())
+    return ", ".join(repr(g) for g in b07.YEAR_GRAIN_FAMILY)
 
 
 def _year_grain_family_label() -> str:
-    return "/".join(repr(g) for g in _year_grain_family())
+    return "/".join(repr(g) for g in b07.YEAR_GRAIN_FAMILY)
 
 
 # 年キー8表が対象にする place_kind（O-2 で 'watershed' が増える計画。
@@ -1573,7 +1555,7 @@ _CREATE_INDEX_ORG_WATERSHED_EXACT_SQL = "CREATE INDEX ix_ow_exact ON org_watersh
 
 # `occurrence_agg`（キューブ）の流域セルを (watershed_id, year) に畳んだ
 # n/redlist_n/alien_n を、`org_watershed_year_exact`（上）と突き合わせる
-# ための SQL（設計書 PR-3a §2.2-2）。**年 族〔`_year_grain_family()`〕・
+# ための SQL（設計書 PR-3a §2.2-2）。**年 族〔`b07.YEAR_GRAIN_FAMILY`〕・
 # `place_id IS NOT NULL` に絞る**——`place_kind='watershed'` の NULL セル
 # （ADR-0025 D2「流域に解決できない記録もセルとして持つ」）は
 # `org_watershed_year_exact` 側にも対応が無い（そちらも

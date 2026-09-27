@@ -248,20 +248,25 @@ def make_period_shapes_yaml(path, text: str | None = None, counts: dict[str, int
         path.write_text(period_shapes_yaml_text(counts), encoding="utf-8")
 
 
-# scripts/b07_build_occurrence_cube.py（occurrence_cube_declarations.yaml。leaf
-# セルの元記録数の宣言）用。`make_period_shapes_yaml`/`make_source_regions_yaml`
-# と同じ形（/simplify 指摘4: test_b07_build_occurrence_cube.py・
-# test_b08_occurrence_cube_projections.py がそれぞれ同じテキストを組み立てて
-# いたものを1箇所に集約）。
-def occurrence_cube_declarations_yaml_text(expected_row_count: int = 1191) -> str:
-    return f"leaf_cell_source_rows:\n  expected_row_count: {expected_row_count}\n  note: テスト用\n"
+# scripts/b07_build_occurrence_cube.py（occurrence_cube_declarations.yaml）用。
+# `make_period_shapes_yaml`/`make_source_regions_yaml` と同じ形（/simplify
+# 指摘4: test_b07_build_occurrence_cube.py・test_b08_occurrence_cube_
+# projections.py がそれぞれ同じテキストを組み立てていたものを1箇所に集約
+# した。Issue #48 PR-3a で4キー〔leaf・month・watershed 解決/未解決〕に
+# 増えた——`b07.load_and_validate_cube_declarations` は集合の過不足を
+# 許さないため、4キーすべてを渡すこと）。
+def occurrence_cube_declarations_yaml_text(counts: dict[str, int]) -> str:
+    """`counts` は `{leaf_cell_source_rows, month_cell_source_rows,
+    watershed_dated_resolved_rows, watershed_dated_unresolved_rows}` の4キー。
+    """
+    return "".join(
+        f"{name}:\n  expected_row_count: {n}\n  note: テスト用\n" for name, n in counts.items()
+    )
 
 
-def make_occurrence_cube_declarations_yaml(
-    path, text: str | None = None, expected_row_count: int = 1191,
-) -> None:
+def make_occurrence_cube_declarations_yaml(path, counts: dict[str, int], text: str | None = None) -> None:
     path.write_text(
-        text if text is not None else occurrence_cube_declarations_yaml_text(expected_row_count),
+        text if text is not None else occurrence_cube_declarations_yaml_text(counts),
         encoding="utf-8",
     )
 
@@ -517,3 +522,112 @@ def make_v2_db_with_occurrence_and_agg(
         conn.commit()
     finally:
         conn.close()
+
+
+def occurrence_agg_row(
+    *, place_id, place_kind, grain, period_start, period_end, n,
+    taxon_id=None, n_red_list=0, n_alien=0,
+    source_id="gbif_kanagawa_occurrences", region_id="jp-14",
+    built_from="occurrence+occurrence_place", spec_version="phase-b-fact-slice/v2-test",
+) -> tuple:
+    """`_OCCURRENCE_AGG_COLUMNS` の並びで `occurrence_agg` の1行を組み立てる。"""
+    return (
+        region_id, source_id, place_id, place_kind, taxon_id, grain, period_start, period_end,
+        n, n_red_list, n_alien, built_from, spec_version,
+    )
+
+
+def build_matching_occurrence_agg_watershed_rows(
+    occurrence_rows: list[tuple], occurrence_place_rows: list[tuple], place_watershed_map: dict[str, str],
+    *, taxon_id=None, source_id: str = "gbif_kanagawa_occurrences", region_id: str = "jp-14",
+) -> list[tuple]:
+    """`occurrence_rows`（`occurrence_row()` の形）と `occurrence_place_rows`
+    （`occurrence_place_row()` の形、`place_kind='watershed'`）から、記録
+    自身の「正確な」解決を (watershed_id, year) で畳んだ `occurrence_agg` の
+    watershed セル（`grain='year'`）を機械的に組み立てる。
+
+    `scripts/b08_project_occurrence_v1.py` の `_assert_watershed_cells_match_
+    exact` が比較する「キューブ側」を、b08 自身が独立に組む
+    `org_watershed_year_exact`（`occurrence`+`occurrence_place` の記録単位の
+    正確な解決を `(exact_watershed_id, year)` で集計し直したもの——年は
+    `period_raw` の先頭4桁、`n_alien=SUM(is_alien)`、`n_red_list` は
+    red_list_category が非空かどうかの件数）と一致するように作る。
+
+    `place_watershed_map` は `{watershed の place_id: watershed_id}`
+    （registry の `place_source_ref` と対にする、各 watershed_id につき
+    place_id は1つの前提）。この関数自体は b07 の本物の「族×place_kind」
+    構築ロジックを再現しない——テスト専用の最小限の組み立て。
+    """
+    # occurrence_place_row() は (record_id, place_kind, place_id, method,
+    # built_from, spec_version) の並び。
+    place_by_record = {
+        row[0]: row[2] for row in occurrence_place_rows if row[1] == "watershed"
+    }
+    place_id_by_watershed = {v: k for k, v in place_watershed_map.items()}
+
+    # occurrence_row() は _OCCURRENCE_COLUMNS の並び: period_raw=14,
+    # red_list_category=18, is_alien=19。
+    cells: dict[tuple[str, int], list[int]] = {}
+    for row in occurrence_rows:
+        record_id = row[0]
+        period_raw = row[14]
+        red_list_category = row[18]
+        is_alien = row[19] or 0
+        if not period_raw or len(period_raw) < 4:
+            continue
+        place_id = place_by_record.get(record_id)
+        if place_id is None:
+            continue
+        watershed_id = place_watershed_map.get(place_id)
+        if watershed_id is None:
+            continue
+        year = int(period_raw[:4])
+        key = (watershed_id, year)
+        n, n_red_list, n_alien = cells.get(key, [0, 0, 0])
+        n += 1
+        n_red_list += 1 if (red_list_category not in (None, "")) else 0
+        n_alien += is_alien
+        cells[key] = [n, n_red_list, n_alien]
+
+    rows: list[tuple] = []
+    for (watershed_id, year), (n, n_red_list, n_alien) in cells.items():
+        place_id = place_id_by_watershed[watershed_id]
+        rows.append(occurrence_agg_row(
+            region_id=region_id, source_id=source_id, place_id=place_id, place_kind="watershed",
+            taxon_id=taxon_id, grain="year", period_start=f"{year:04d}-01-01", period_end=f"{year:04d}-12-31",
+            n=n, n_red_list=n_red_list, n_alien=n_alien,
+        ))
+    return rows
+
+
+# `scripts/b13_build_summary.py`（`occurrence_agg` 側の summary 2表）用。b13 は
+# `occurrence_agg` を `SELECT` で読むだけなので、b06/b09 が作る `occurrence`/
+# `occurrence_place` は要らない——`migrate_fixtures.make_observation_agg_fixture`
+# と同じ形の、`occurrence_agg` だけを持つ最小限のフィクスチャ。
+def make_occurrence_agg_fixture(tmp_path, rows: list[tuple], name: str = "v2.sqlite"):
+    """`occurrence_agg`（`_OCCURRENCE_AGG_COLUMNS` の並び）だけを持つ
+    `v2.sqlite` 風のフィクスチャを作り、`occurrence_agg` 自身の段階間指紋を
+    記録してファイルパスで返す。
+
+    `inputs={}`（空の系譜）で記録する——`scripts/b13_build_summary.py` の
+    `assert_stage_fingerprint_fresh(conn, "occurrence_agg", upstream_schemas={})`
+    は `inputs` が空なら (b) の再帰チェックが即座に終わるため、`occurrence`/
+    `occurrence_place` 実表を別途用意しなくてよい（b13 を単体で検証するための
+    簡略化。本番の b07 の出力は必ず `inputs={"occurrence": ..., "occurrence_place":
+    ...}` を持つ）。
+    """
+    import b07_build_occurrence_cube as b07
+
+    db_path = tmp_path / name
+    conn = sqlite3.connect(f"file:{db_path}", uri=True)
+    try:
+        conn.execute(b07._CREATE_OCCURRENCE_AGG_SQL.format(table="occurrence_agg"))
+        placeholders = ", ".join("?" for _ in _OCCURRENCE_AGG_COLUMNS)
+        conn.executemany(f"INSERT INTO occurrence_agg VALUES ({placeholders})", rows)
+        common.record_stage_fingerprint(
+            conn, "occurrence_agg", spec_version=common.OCCURRENCE_AGG_SPEC_VERSION, inputs={},
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return db_path
