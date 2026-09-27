@@ -168,7 +168,7 @@
           "table_name": "species_year2"
         }
       ],
-      "sha256": "a7e8b880468c095d1f833d1433ffc8eac53479b5a7cf1030a620f0a4bb379dc5"
+      "sha256": "000e96dccf2df5a3fc63c4272919c29ce16d2d9cef4cfdc757488d1fcafb2b0b"
     },
     "v1_projection_place.sqlite": {
       "pipeline_fingerprint_rows": [
@@ -192,8 +192,8 @@
       "sha256": "5c6fd091de7742cdea2c0da9d2775d35f561da217f9fb4784eca3029237b99ff"
     }
   },
-  "created_at": "2026-09-26T20:11:07+00:00",
-  "derived_reconciliation_all_md_sha256": "40d76c0e8c4abf1c8e9a740a29524741fc4744c01d74532d0d09742849526d72",
+  "created_at": "2026-09-27T06:36:56+00:00",
+  "derived_reconciliation_all_md_sha256": "8edd9a50fac10043fce25fc17ab2240aa2ce96b9a415876381e3fac1feb9492f",
   "environment": {
     "better_sqlite3_sqlite_version": "3.53.4",
     "node_version": "v22.22.2",
@@ -208,10 +208,10 @@
     "n_mismatch": 0,
     "total": 33
   },
-  "git_head": "57ae78f8ba42452b90924e0a6a9a356ca852076b",
+  "git_head": "d2b27e7fe2bb815dee9769c5281c58d07d75dcd1",
   "pipeline_path_hashes": {
-    "aggregations": "f85240ea316bde03153533e77143b83638a29ab4",
-    "registry": "e9b0110bc397109574f59f6b7bbcb1b6a8996c61",
+    "aggregations": "6a6545711aebf33412df89f8466e766d2029a4e5",
+    "registry": "0c40e29f4608018db357e1e057e8daeb1b815a1b",
     "reports/derived_baseline.json": "9448ea15f7e0340d98a9523be728606ecd774a0a",
     "requirements.txt": "204126f99a90855c9bfd80b00f08e8dcdf089eea",
     "scripts/b00_run_full_gate.py": "020f7cfc26494b1f499ff7dad03d215ec3987766",
@@ -222,20 +222,20 @@
     "scripts/b04_build_cube.py": "d3f60a34a8660059d1bdb92e5f6388d318f2a21c",
     "scripts/b05_project_v1.py": "971253771392b40790953ec1e1dad5b2d5063b14",
     "scripts/b06_build_occurrence.py": "c1a5a09136215fc7325ec0f2bbad73f082807dcd",
-    "scripts/b07_build_occurrence_cube.py": "257ff2f3a45806959eb404a2431ce0fb804ce489",
-    "scripts/b08_project_occurrence_v1.py": "9de19d9efc339d603712571575483ee97506480d",
+    "scripts/b07_build_occurrence_cube.py": "b71b55a63a7ce728198c035efc27bb02951b610d",
+    "scripts/b08_project_occurrence_v1.py": "59f2fd3a65cd376cc1cee34ac0fc8e22a9a635e6",
     "scripts/b09_build_occurrence_place.py": "642ef7d233207304db6fce3c1a5574fcea5c7182",
     "scripts/b10_project_documents_v1.py": "d7b620581ed237b1253ab044b8277b81162f2eb1",
     "scripts/b11_project_place_v1.py": "4977bdc14b614eff5f11a4946b57a46d64211587",
     "scripts/b12_project_taxon_v1.py": "3a7d5f6f4276b8682185afc92214275e6fd6b843",
-    "scripts/b13_build_summary.py": "3bbe9c9962902817ba11f2245d49bd7b2704cc0c",
-    "scripts/migrate": "ccf29253aac2abc8c51a64fbeb6c842e37523b89",
+    "scripts/b13_build_summary.py": "522a36b06d1f951821a7e612d6f826db05644334",
+    "scripts/migrate": "e8d4787a48e853847204b08bba1a586e76b2b10b",
     "scripts/pipeline_inputs.py": "26f0f1aa956493afa09db0fcab69bc939933b42a",
     "scripts/r01_build_registry.py": "4e4cebd61c8cfda48c67fc0ecc8f0cf9b474a686",
     "scripts/reconcile": "1d5a039bbbff33cce47801b8620d2959d411bbd7",
-    "scripts/registry": "c76cf4d090c58e586a7e951f6d63bcff887868a5",
+    "scripts/registry": "d9341f65f7f9b0659de6edcf65bdd4abeaffb760",
     "scripts/s05_check_sample_gate_summary.py": "45b1da2aa3a583f393ddfe8704e2fc6e6c98eab5",
-    "scripts/schema_registry.sql": "a65037f8b4275bbf3f938671457e8f22fa534245",
+    "scripts/schema_registry.sql": "1cf2bef3f3279b2ff90948be4f222ecd04b1256e",
     "scripts/taxon_namespaces.py": "56651e8f89085ad95c225643177c17a4098021c3",
     "web/package.json": "0761404fcea81600a9e8ff570536215c279e5d99",
     "web/pnpm-lock.yaml": "6ed023dae786be30e10835dd8a13d5af0bccd466",
