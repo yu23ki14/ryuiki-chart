@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "0029c713-aba0-444c-b380-bc8f5c815adf",
+  "id": "84461bcb-f4af-45ce-87d2-d2c44b825686",
   "prevId": "68cf8f45-6209-44b2-b42f-c96d49f42a4f",
   "tables": {
     "cells": {
@@ -6922,7 +6922,8 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false
+          "autoincrement": false,
+          "default": 0
         },
         "built_from": {
           "name": "built_from",

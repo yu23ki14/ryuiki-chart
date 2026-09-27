@@ -28,5 +28,5 @@ CREATE INDEX `ix_summary_watershed_occurrence_place` ON `summary_watershed_occur
 ALTER TABLE `taxon` ADD `vernacular_name_en` text;--> statement-breakpoint
 ALTER TABLE `taxon` ADD `vernacular_ja_basis` text;--> statement-breakpoint
 ALTER TABLE `taxon_assessment` ADD `in_scope` integer;--> statement-breakpoint
-ALTER TABLE `occurrence_agg` ADD `n_alien` integer NOT NULL;--> statement-breakpoint
+ALTER TABLE `occurrence_agg` ADD `n_alien` integer DEFAULT 0 NOT NULL;--> statement-breakpoint
 CREATE INDEX `ix_occurrence_agg_kind_grain_period` ON `occurrence_agg` (`place_kind`,`grain`,`period_start`);

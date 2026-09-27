@@ -117,7 +117,12 @@ export const occurrenceAgg = sqliteTable(
 		periodEnd: text("period_end").notNull(),
 		n: integer().notNull(),
 		nRedList: integer("n_red_list").notNull(),
-		nAlien: integer("n_alien").notNull(),
+		// `.default(0)`: 既存 D1（データの入った `occurrence_agg`）に対する
+		// `ALTER TABLE ADD COLUMN` が既定値なしだと失敗するため（SQLite は
+		// NOT NULL な列を既存の非空テーブルに追加するとき既定値を要求する）。
+		// 新規ビルドの b07 は常に実測値で埋めるので、この既定値が実際に使われる
+		// のは「移行の瞬間の既存行」だけ。Issue #48 PR-3a 統合 /code-review 指摘2。
+		nAlien: integer("n_alien").notNull().default(0),
 		builtFrom: text("built_from").notNull(),
 		specVersion: text("spec_version").notNull(),
 	},
