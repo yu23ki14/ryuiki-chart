@@ -1486,3 +1486,87 @@ _measure_keys_changed_vs_exact: 索引無し・手書きJOIN 31.2秒 →
 pytest: 438件成功（件数は前回と同じ——本ラウンドは内部リファクタのみで
   テストの追加/削除なし）
 ```
+
+## 18. O-2b（`occurrence_agg` に流域・月のセルを足す。Issue #48 PR-3a）実装・実測
+
+O-2a への申し送り（§14「O-2 への申し送り」・ADR-0025 D2・ADR-0026 D4）を実装した。
+設計は `docs/plans/V2_SERVING_PR3A.md`。`occurrence_agg` を「place_kind × grain 族」
+の行列にする（`year` 族＝`{year, survey_period}`〔既存〕・`month` 族＝`{month}`
+〔新設。同一月に収まる記録だけの分割〕、`place_kind` は `grid01`/`watershed`）。
+実際に作るのは `grid01`×`year`・`grid01`×`month`・`watershed`×`year` の3マス
+（`watershed`×`month` は消費者が無いので作らない）。流域に解決できない日付あり
+記録も `place_kind='watershed', place_id NULL` のセルとして持つ（データを
+落とさない。ADR-0025 D2 と同じ原則）。測度に `n_alien`（`SUM(is_alien)`。
+v1 `org_watershed.alien_n` の後継）を足した。
+
+b08（`org_watershed_year`/`org_watershed`）は1バイトも変えない（PR-5 で消える）。
+年キー8表の SQL に `grain IN (年族)` の絞り込みを足し（月族セルの二重計上を
+防ぐ）、新設の `_assert_watershed_cells_match_exact`（`occurrence_agg` の流域
+セルを (watershed_id, year) に畳んだ n/redlist_n/alien_n が、`occurrence`+
+`occurrence_place` から独立に組んだ `org_watershed_year_exact` と一致するか
+毎ビルド確認する検証）を足した。`org_watershed_year_exact`/`org_watershed_exact`
+は比較専用の実表として出力ファイルに残す（PR-3b の serving-diff が「exact」の
+点として読む。v1互換13テーブルの `table_counts`/`projection_manifest.yaml`/
+b02 の対象には入れない）。
+
+`taxon.vernacular_name_en`（`organism_records.vernacular_name` のうちラテン
+文字だけの値。(名前空間, taxon_key) ごとに最頻→同数なら値の昇順）・記録由来の
+和名補完（`vernacular_name_ja` が NULL の行にだけ、非ラテン文字の最頻値を
+`vernacular_ja_basis` 付きで入れる）・`taxon_assessment.in_scope`（除外7種を
+0、他を1にした可視化列。値そのものは動かさない）を r01 に足した。
+
+### 実測（`data/db/ryuiki.sqlite`/`registry.sqlite`/`data/processed/nlni_w12_watersheds.geojson`、2026-09-27。実データで `build:v2`→b08→b02_run_all_gates を通した実行）
+
+```
+occurrence_agg: 471,060 → 1,437,598 セル（3.05倍）
+  grid01: year=469,933 / leaf(survey_period)=1,127 / month=570,803
+  watershed: year=394,609（解決=733,341 / 未解決=83,515）/ leaf=1,126
+b07（build:v2 内、registry・observation・occurrence 込みの合計時間の一部）:
+  143.1秒（occurrence_agg の構築。日付あり合計=816,856 / 検証した系列数=96,175）
+b08（v1形13テーブルへの射影。実データ・単独実行）: 745.3秒
+  出力13テーブル: org_norm 816,856 / org_group_year 1,166 / effort_year 57 /
+  species2 23,618 / species_year2 116,899 / species_month 9,997 /
+  mesh_year 37,043 / mesh_all 4,083 / mesh_species 4,086 /
+  species_mesh_year 276,163 / org_watershed_year 10,699 / org_watershed 287 /
+  ias_species 173（合計 1,301,127 行）
+  _assert_watershed_cells_match_exact: 実データで例外なく通過
+  org_watershed のメモ化差分: memo_moved_records=11,306
+    （ws_to_ws=9,428 / v1_assigned_exact_unassigned=622 /
+    v1_unassigned_exact_assigned=1,256）/ memo_mixed_buckets=741 /
+    org_watershed_year_keys_changed_vs_exact=1,091（§15 実測と同じ値。
+    O-2b でも保存則 Σn(732,707) + 1,256 − 622 = 733,341 が成立）
+  ias_species: origin基準で除外されるbinom=16 / v1互換7種との差=10
+r01（taxon.vernacular_name_en・和名補完・taxon_assessment.in_scope）:
+  taxon: 41,454行。vernacular_name_en が付いた行 = gbif 566 / inat 6,741
+  （複数候補93 taxon・最頻値同数5 taxon）。和名の記録由来補完(D4) = 13,432
+  （和名が付いた行 = 22,056）。taxon_assessment: 3,313行、in_scope=0
+  （除外7種の宣言と二名法一致） = 7
+summary_taxon_catalog: 32,186行（SUM(n)=816,856、保存則OK）
+summary_watershed_occurrence: 288行（SUM(n)=816,856、保存則OK）
+b02_run_all_gates.py（v1互換の診断キューブ経由）:
+  33表中 一致25 / 宣言済み差分のみ8 / 不一致0 / 適用した宣言済み差分20件
+  （PR-3a 前と同じ——値が動いていない機械的な証拠）
+check_v2_fresh.py: 新しい v2.sqlite → exit 0。PR-2時点の古い v2.sqlite
+  （occurrence_agg.spec_version='phase-b-fact-slice/v1' 等）→ exit 10
+d1 seed（db:migrate→seed-d1-local.mjs）: 87テーブル（うち86がシード対象）/
+  7,747,758行。列集合完全一致で通過。occurrence_agg 1,437,598行・
+  summary_taxon_catalog 32,186行・summary_watershed_occurrence 288行を含む
+pnpm test / npx tsc --noEmit / pnpm lint / pytest scripts/tests -q:
+  いずれも緑（test_s04_* の証明鮮度検査だけは reports/full_gate_proof.json
+  未更新のため想定内の失敗）
+```
+
+### 設計からの逸脱
+
+なし（`docs/plans/V2_SERVING_PR3A.md` の決定 D1〜D7 をそのまま実装した）。
+
+### 未決
+
+- ADR-0030 D2 の `place_watershed`（D1 のレジストリ表）の記述が、O-2b で
+  実際には作らなかった「per-record の解決結果」ではなく「流域属性サテライト
+  （旧 `derived.watershed_meta` 相当）」であることの訂正（本 PR で反映済み。
+  ADR-0030 参照）。
+- PR-3b への申し送り: `watershed_memo`・`species_n_definition`・
+  `month_cell_membership`・`vernacular_label_rule`（表示名）の4つの
+  既知系統を serving-diff の `classify.ts` に足す設計は未着手（PR-3a では
+  `classify.ts` を触らない）。

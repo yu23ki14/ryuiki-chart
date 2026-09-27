@@ -36,7 +36,7 @@ Issue #48 の設計として閉じない。
 | ファクト | — | `observation` / `occurrence` / `occurrence_place`（L2。ADR-0001 の原則どおり D1 は L3 の配信キャッシュに限る） |
 | キューブ（L3） | `observation_agg` / `occurrence_agg` | — |
 | レジストリ | `unit`/`variable`/`variable_alias`/`place`/`place_source_ref`/`taxon`/`caveat`/`caveat_scope`（既存8表）＋ 新設4表（D2） | — |
-| summary（L3、宣言的集計） | 指標カタログ・地点×指標・種カタログの3表（D6） | — |
+| summary（L3、宣言的集計） | 指標カタログ・地点×指標・種カタログ・流域別出現の4表（D6。種カタログ・流域別出現は Issue #48 PR-3a で追加） | — |
 | v2 に相当物の無い原本表 | `cells`/`notes`/`documents`・`sites`・`source_registry`・Tier 1 の5表（`protected_areas`/`vegetation_polygons`/`mammal_mesh`/`wildlife_sightings`/`river_segments`） | — |
 | 派生33表 | — | `meas_*`/`zone_*`/`sensor_daily`/`sensor_hour_month`/`rain_daily`/`species*`/`org_*`/`mesh_*`/`redlist_map`/`redlist_change`/`doc_series*`/`quality_monthly`/`landuse_*`/`effort_year`/`ias_species`/`var_catalog`/`site_var`/`watershed_rollup` 全33表 |
 | 生ファクト（v1由来） | — | `measurements`/`sensor_timeseries`/`organism_records`/`taxa`/`redlist_assessments` |
@@ -51,16 +51,26 @@ summary・残す原本表を含む）。D1 の上限（10GB、込み容量5GB）
 
 - `place_relation`（ゾーン・流域の JOIN。ADR-0006 の「点→place の解決規約」が定義する
   辺の実体）。
-- `place_watershed`（occurrence の座標→流域の解決結果。ADR-0026 の `occurrence_place`
-  サテライトのうち、配信に要る列だけを軽量に運ぶ。O-2b で `occurrence_agg` に
-  `place_kind='watershed'` のセルが足された後、その裏付けとして持つ）。
+- `place_watershed`（**2026-09-27 訂正**: 提案時点の本節は「occurrence の座標→
+  流域の解決結果」と書いていたが、実装〔Issue #48 PR-0〕はそうならなかった——
+  記録単位の解決結果（`occurrence_place`、ADR-0026）は L2 に留め D1 には
+  ロードしない（D7「L2 は D1 に入れない」原則どおり）。`place_watershed` は
+  代わりに **`place_kind='watershed'` の属性サテライト**（旧
+  `derived.watershed_meta` の残り4列: `water_system_code`/
+  `water_system_category`/`main_rivers`/`data_year`。1 `place_id` につき
+  高々1行）で、O-2b〔ADR-0026 D4〕で `occurrence_agg` に足した
+  `place_kind='watershed'` のセルとは無関係——単に「その watershed の
+  place_id が持つ属性」を引く軽量な参照表。記録×流域の解決結果自体は
+  `occurrence_agg`（キューブのセルの `place_id`）が既に運んでいるため、
+  per-record の裏付け表は D1 に要らない）。
 - `taxon_assessment`（RL・外来種評価。`registry.sqlite` にのみあり、`scripts/registry/
   build_taxon_assessment.py` が作る。除外7種は r01 で `in_scope` 列にして持ち込む——
   `registry/taxon/assessment_scope_exclusions.yaml` の除外規約をデータとして運ぶ
   という設計は変えない）。
 - `taxon` への列追加: `canonical_binomial`/`class`/`family`/`taxon_group`（`registry.sqlite`
   の `taxon` には既にあるが `web/src/db/schema-registry.ts` の `taxon` には無い）＋
-  新設 `vernacular_name_en`。
+  新設 `vernacular_name_en`/`vernacular_ja_basis`（Issue #48 PR-3a、D4。記録由来の
+  和名補完の根拠列）。
 
 いずれも既存の `web/src/db/schema-registry.ts` への追加として実装する
 （`web/src/db/schema-cube.ts` は新設）。
@@ -74,12 +84,19 @@ observation_agg(variable_id, place_id, grain, stat, period_start)
 observation_agg(place_id, variable_id, grain)
 occurrence_agg(taxon_id, period_start)
 occurrence_agg(place_id, period_start)
+occurrence_agg(place_kind, grain, period_start)   # 2026-09-27 追記（Issue #48 PR-3a、D6）
 ```
 
 キューブの次元キー自体（`observation_agg` の12列・`occurrence_agg` の8列、ADR-0021・
 ADR-0025 D2 が既に決定済み）は変えない。索引はその上に、問い合わせ層
 （`web/src/lib/cube/`、`docs/plans/V2_SERVING.md` §3.4）が実際に使うアクセスパターンに
 合わせて張る。
+
+**2026-09-27 追記（Issue #48 PR-3a、D6）**: `occurrence_agg(place_kind, grain,
+period_start)` を追加した——O-2b で `occurrence_agg` が「place_kind × grain 族」
+の行列（`grid01`/`watershed` × `year`族/`month`族）になり、上の2索引だけでは
+「ある place_kind・ある grain 族に絞って期間で範囲検索する」（年の地図クエリ等）
+が全表走査になるため。詳細は `docs/plans/V2_SERVING_PR3A.md` §6。
 
 ### D4. 合成データは D1 に出さない
 
@@ -127,18 +144,21 @@ v1互換キューブ（PR-2 の合成データ矛盾対応、[docs/plans/V2_SERV
   （撤去すると `b05` の v1 射影——PR-5 で既に削除済み——と ADR-0016 の受け入れ基準が
   参照する対象が両方無くなるため、影響範囲を PR-6 で改めて洗い出してから撤去する）。
 
-### D6. summary の3表は宣言的集計（ADR-0011「単一キューブ＋宣言的集計定義」の最初の実装）
+### D6. summary の4表は宣言的集計（ADR-0011「単一キューブ＋宣言的集計定義」の最初の実装）
 
-重い全表集計（実測: 指標カタログ371ms・地点×指標499ms・種カタログ786ms）だけを
+重い全表集計（実測: 指標カタログ371ms・地点×指標499ms・種カタログ786ms、
+1.44M セル時点の種カタログ・流域別出現ではさらに増える）だけを
 事前計算する。ほかの問い合わせは問い合わせ時に計算する（実測15〜70ms、
 `docs/plans/V2_SERVING.md` §8）。
 
-`aggregations/serving.yaml`（新設予定、宣言）→ `scripts/b13_build_summary.py`
-（新設予定）→ `summary_variable_catalog`/`summary_place_variable`/`summary_taxon_catalog`
-（表名は仮）の3表。**キューブの再集計だけを行い、L2（`observation`/`occurrence`）を
-読まない**——ADR-0001 の「D1 は再構築可能な配信キャッシュ」原則を summary 表にも
-適用する。`scripts/migrate/common.py` の `record_stage_fingerprint`/
-`assert_stage_fingerprint_fresh` と同じ段階間の指紋機構に乗せる（ADR-0027 層4）。
+`aggregations/serving.yaml` → `scripts/b13_build_summary.py` →
+`summary_variable_catalog`/`summary_place_variable`（`observation_agg` 由来）・
+`summary_taxon_catalog`/`summary_watershed_occurrence`（`occurrence_agg` 由来。
+Issue #48 PR-3a で追加）の4表。**キューブの再集計だけを行い、L2
+（`observation`/`occurrence`）を読まない**——ADR-0001 の「D1 は再構築可能な
+配信キャッシュ」原則を summary 表にも適用する。`scripts/migrate/common.py` の
+`record_stage_fingerprint`/`assert_stage_fingerprint_fresh` と同じ段階間の
+指紋機構に乗せる（ADR-0027 層4）。
 
 ADR-0011 は依然「状態: 提案中（宣言的集計定義〔YAML〕が未実装のため）」のままだが、
 本 ADR の実装（b13・`aggregations/serving.yaml`）が完了すれば ADR-0011 の決定の中核
@@ -197,5 +217,8 @@ ADR-0001 の原則をあらためて明文化する。`observation`/`occurrence`
 
 提案中（オーナー承認待ち）。実装は `docs/plans/V2_SERVING.md` PR-0（`schema-cube.ts`・
 `schema-registry.ts` の追加）・PR-2（測定値系の imputation の切り替え、`is_synthetic=1` の
-ファクト除外〔D4〕）・PR-3b（生物系の imputation の切り替え）・PR-4（合成データ画面の撤去）・
-PR-5（v1 表の DROP）・PR-6（`not_detected` 例外の撤去、任意）に分かれて進む。
+ファクト除外〔D4〕）・PR-3a（`occurrence_agg` の watershed/month セル・
+`n_alien`・第3索引〔D6〕・`taxon.vernacular_name_en`・summary 4表〔D6〕・
+`taxon_assessment.in_scope`。完了）・PR-3b（生物系の imputation の切り替え）・
+PR-4（合成データ画面の撤去）・PR-5（v1 表の DROP）・
+PR-6（`not_detected` 例外の撤去、任意）に分かれて進む。

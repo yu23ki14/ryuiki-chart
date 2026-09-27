@@ -256,12 +256,20 @@ U4「serving-diff」は未着手）
 
 ### PR-3a パイプライン（値は動かない）
 
-状態: 未着手
+状態: 完了（設計・実測は [docs/plans/V2_SERVING_PR3A.md](V2_SERVING_PR3A.md)）
 
-- O-2b（#33、`occurrence_agg` に流域のセル）と、occurrence の月のセルを足す
-  （ADR-0025 D2「O-2 への申し送り」、ADR-0026 D4 の後続）。b07/b08 の分割検証を
-  grain 族・place_kind ごとに拡張する。
-- `taxon.vernacular_name_en` を足す。
+- O-2b（#33、`occurrence_agg` に流域のセル）と、occurrence の月のセルを足した
+  （ADR-0025 D2「O-2 への申し送り」、ADR-0026 D4 の後続）。`occurrence_agg` は
+  「place_kind × grain 族」の行列（grid01×year・grid01×month・watershed×year の
+  3マス、実測 1,437,598 セル）になり、測度に `n_alien` を足した。b07/b08 の
+  分割検証を grain 族・place_kind ごとに拡張し、b08 に新設した
+  `_assert_watershed_cells_match_exact`（キューブの流域セル＝
+  `occurrence`+`occurrence_place` から独立に組んだ集計、と毎ビルド突き合わせる）
+  が実データで通ることを確認した。
+- `taxon.vernacular_name_en`（俗名のうちラテン文字だけの値）・記録由来の和名
+  補完（`vernacular_ja_basis`）・`taxon_assessment.in_scope` を足した。
+- `b02_run_all_gates.py`（v1 互換の診断キューブ経由）は 33表中 一致25／
+  宣言のみ8／不一致0／宣言済み差分20件のまま（値が動いていない証拠）。
 
 ### PR-3b 生物系の切り替え（値が動く）
 
@@ -340,7 +348,7 @@ U4「serving-diff」は未着手）
 | 10 | `doc_series` の v1 のバグ4件 | 直す（label の `\|` 切り出し・`n_warnings`・`col_key` 潰れ・裸列、`docs/plans/PHASE_B_DOCUMENTS.md` §3）。差分は serving-diff で数える |
 | 11 | ペア測定（合成） | 画面ごと撤去する（決定7に従う） |
 | 12 | `water_*`/`vocab_*`/`extraction_log` | D1 から落とす（PR-6） |
-| 13 | summary 表 | 3表を持つ（YAML 宣言、b13） |
+| 13 | summary 表 | 4表を持つ（YAML 宣言、b13。指標カタログ・地点×指標・種カタログ・流域別出現。種カタログ・流域別出現は PR-3a） |
 | 14 | `describe_schema`/`run_sql`/`/api/column` | `describe_schema` はカタログの表だけ。`run_sql` は残し、対象を更新する。`/api/column` にゲートを付ける |
 
 ## 7. 見落としそうな危険（アドバイザーの指摘。実装時に踏みやすい順ではなく指摘順のまま残す）

@@ -1,16 +1,26 @@
 # ADR-0026: 点→流域の解決は記録×place のサテライトに直接持ち、v1 のメモ化の癖は射影の式で再現する
 
-- 状態: 承認済（一部未実装: D4〔`occurrence_agg`への反映〕は0025と同じくO-2bへ）
-  / 日付: 2026-09-23
+- 状態: 承認済・実装済（D4〔`occurrence_agg`への反映〕は O-2b〔Issue #48 PR-3a〕
+  で実装済み。詳細は `docs/plans/V2_SERVING_PR3A.md`）
+  / 日付: 2026-09-23（O-2b 追記: 2026-09-27）
 - 関連: ADR-0006（place）, ADR-0007（observation/occurrence）, ADR-0011（キューブ）,
   ADR-0013（caveat）, ADR-0022（place.region_id）, ADR-0024（時刻帯・時刻ラベル）,
   ADR-0025（occurrence ファクトとキューブ）
 
-**2026-09-26 追記（Issue #48）**: D4 で送った O-2b（`occurrence_agg` への
-`place_kind='watershed'` セルの反映）は `docs/plans/V2_SERVING.md` PR-3a で着手する。
-D1 に置く軽量な裏付け表 `place_watershed` は [ADR-0030](0030-d1-serving-schema.md) D2
-（提案中）。流域のメモ化の癖（1,091キー）は v1 撤去後の差分カウントでも既知の系統として
-扱う（[ADR-0029](0029-v1-removal-and-verification-handoff.md)、提案中）。本文は変えない。
+**2026-09-27 追記（Issue #48 PR-3a、D4 実装済み）**: D4 で送った O-2b
+（`occurrence_agg` への `place_kind='watershed'` セルの反映）を実装した。
+`occurrence_agg` は「place_kind × grain 族」の行列になり、`watershed`×`year`
+（実測 394,609 セル。解決 733,341・NULL〔D1 の保存則どおり流域外〕33,232に
+対応する記録は日付あり全体で 83,515）を持つ。b08 に新設した
+`_assert_watershed_cells_match_exact`（`occurrence_agg` の流域セルと、
+`occurrence`+`occurrence_place` から独立に組んだ集計が一致することを毎ビルド
+確認する）が実データで通ることを確認済み。D1 に置く軽量な裏付け表
+`place_watershed` は「流域属性サテライト」（`occurrence` の座標解決結果では
+ない）に訂正した（[ADR-0030](0030-d1-serving-schema.md) D2 参照）。流域の
+メモ化の癖（1,091キー）は v1 撤去後の差分カウントでも既知の系統として扱う
+（[ADR-0029](0029-v1-removal-and-verification-handoff.md)、提案中）。設計・
+実測は `docs/plans/V2_SERVING_PR3A.md`・`docs/plans/PHASE_B_OCCURRENCE.md` §18。
+本文（D1〜D3）は変えない。
 
 ## 背景
 
@@ -165,12 +175,19 @@ occurrence_watershed_v1_declarations.yaml`〕と突き合わせる。食い違�
    （`docs/plans/PHASE_B_INTAKE.md` #11/#16 を閉じる。以前は
    `scripts/registry/build_place.py` の逸脱として申し送りしていた）。
 
-### D4. キューブへの反映（O-2b、本 PR のスコープ外）
+### D4. キューブへの反映（O-2b、Issue #48 PR-3a で実装済み）
 
-`occurrence_agg`（ADR-0025 D2）は `place_kind` を鍵に既に持っており、今は
-常に `'grid01'`。`place_kind='watershed'` のセルを `occurrence_place` から
-足す設計・実装は **O-2b**（別 PR）に送る。ADR-0025 D2 の「O-2 への申し送り」
-節がこの依存を先取りして明記済み。
+`occurrence_agg`（ADR-0025 D2）は `place_kind` を鍵に持ち、O-1b の時点では
+常に `'grid01'` だった。O-2b で `place_kind='watershed'` のセルを
+`occurrence_place` から足した——`occurrence agg JOIN occurrence_place op ON
+op.record_id=o.record_id AND op.place_kind='watershed'`、`place_id :=
+op.place_id`。流域に解決できない日付あり記録（座標はあるがどの流域にも
+入らない、または座標そのものが無い）も `place_kind='watershed', place_id
+NULL` のセルとして持つ（D1「データを落とさない」の延長）。b08 に新設した
+`_assert_watershed_cells_match_exact` が、このセルを (watershed_id, year) に
+畳んだ集計と `occurrence`+`occurrence_place` から独立に組んだ
+`org_watershed_year_exact` の一致を毎ビルド確認する。設計・実測は
+`docs/plans/V2_SERVING_PR3A.md` §1-2・`docs/plans/PHASE_B_OCCURRENCE.md` §18。
 
 ## 宣言済み差分にしなかった理由
 
@@ -232,8 +249,9 @@ org_watershed_year_keys_changed_vs_exact  1,091
   （`occurrence` 本体とほぼ同じ行数）。v1 互換の射影（`org_watershed_year`/
   `org_watershed`）はキューブ（`occurrence_agg`）を経由せず `occurrence`/
   `occurrence_place` を直接読むため、O-1b の年キー8表とは独立した実行経路
-  になる（実行順 b06 → b09 → b07 → b08。b07/b09 の順序は入れ替え可能——
-  互いに依存しない）。
+  になる（実行順 b06 → b09 → b07 → b13 → b08 に固定——O-2b〔D4〕で b07 が
+  `occurrence_place` を読むようになったため、b07/b09 はもう入れ替え可能では
+  ない）。
 - **リスク**: `occurrence_place` に持つのは watershed だけ（O-2a の時点）。
   `place_kind='grid01'` の解決は引き続き `occurrence.place_id`/`place_kind`
   （ADR-0025 D1）にあり、`occurrence_place` には無い——2つの解決の置き場が

@@ -19,8 +19,8 @@
   `check_v2_pipeline_fresh()`。手書きの mtime 走査は撤去した）。単体で作り直すだけなら
   `cd web && pnpm run build:v2`。
 - データの置き場所は **Cloudflare D1**（デプロイ先を Cloudflare 想定にしたため）。
-  83 テーブル（`web/drizzle/migrations/` 適用後の実測。うちシード管理用の内部表
-  `_seed_state` を除く82表が `web/scripts/seed-d1-local.mjs` のシード対象）を 1 つの D1 に
+  87 テーブル（`web/drizzle/migrations/` 適用後の実測。うちシード管理用の内部表
+  `_seed_state` を除く86表が `web/scripts/seed-d1-local.mjs` のシード対象）を 1 つの D1 に
   統合してある。D1 に `ATTACH` は無いので `d.` / `c.` の接頭辞は使わない。
   どの原本から来たテーブルかは `web/src/lib/table-meta.ts` の `TABLE_ORIGIN`。
 - D1 のスキーマは `web/src/db/schema.ts`（v1、既存表）・`web/src/db/schema-registry.ts`
@@ -85,25 +85,42 @@
   （土地利用は `docs/plans/PHASE_B_LANDUSE.md`）。土地利用は区分ごとの面積・セル数を
   別々の variable にし、region は `scripts/migrate/source_regions.yaml`
   （`consumer='observation'`。occurrence 側〔下記〕と consumer で宣言を分ける）から決める。
-  生物の出現（occurrence、O-1a/O-1b/O-2a）は別の縦線。**実行順は
-  b06 → b09 → b07 → b08**（b09/b07 は互いに依存しないので入れ替え可能）:
+  生物の出現（occurrence、O-1a/O-1b/O-2a/O-2b）は別の縦線。**実行順は
+  b06 → b09 → b07 → b13 → b08 に固定**（b07 が `occurrence_place`〔b09の出力〕を
+  読むため b09 が先。b13 は `occurrence_agg` を読むだけなので b07 の直後、
+  b08 より前でよい。「b09/b07 は入れ替え可能」ではない）:
   `scripts/b06_build_occurrence.py`（`organism_records`→`occurrence`。
   `data/db/v2.sqlite` に `observation`/`observation_agg` と同居）/
   `scripts/b09_build_occurrence_place.py`（O-2a。`occurrence` の座標を
   `data/processed/nlni_w12_watersheds.geojson`〔W12流域、377面〕へ純 Python の
   点内包判定〔`scripts/migrate/point_in_polygon.py`〕で直接解決し、記録×place の
   サテライト `occurrence_place` を作る。同じ `data/db/v2.sqlite` に同居）/
-  `scripts/b07_build_occurrence_cube.py`（`occurrence`→キューブ
-  `occurrence_agg`。同じ `data/db/v2.sqlite` に同居）/
+  `scripts/b07_build_occurrence_cube.py`（`occurrence`+`occurrence_place`→
+  キューブ `occurrence_agg`。Issue #48 PR-3a（O-2b）で「place_kind × grain 族」
+  の行列にした——`grid01`×`year`・`grid01`×`month`・`watershed`×`year` の
+  3マス（実測 1,437,598 セル。`watershed`×`month` は消費者が無いので作らない）。
+  流域に解決できない日付あり記録も `place_kind='watershed', place_id NULL` の
+  セルとして持つ（データを落とさない）。測度は `n`/`n_red_list` に
+  `n_alien`（`SUM(is_alien)`）を足した。同じ `data/db/v2.sqlite` に同居）/
+  `scripts/b13_build_summary.py`（`observation_agg`/`occurrence_agg` の
+  宣言的集計〔`aggregations/serving.yaml`〕→ `data/db/v2.sqlite` 内の
+  `summary_*` 表。生物側は `summary_taxon_catalog`/`summary_watershed_occurrence`
+  を作る）/
   `scripts/b08_project_occurrence_v1.py`（`occurrence`/`occurrence_agg`/
-  `occurrence_place`→v1形12テーブル: `org_norm`・`org_group_year`・
+  `occurrence_place`→v1形13テーブル: `org_norm`・`org_group_year`・
   `effort_year`・`species2`・`species_year2`・`species_month`・`mesh_year`・
   `mesh_all`・`mesh_species`・`species_mesh_year`・`org_watershed_year`・
   `org_watershed`〔後者2つは O-2a、`occurrence`+`occurrence_place` だけから
-  ——`occurrence_agg` は経由しない〕、出力 `data/db/v1_projection_occurrence.sqlite`）
-  の4本。設計・実測は `docs/plans/PHASE_B_OCCURRENCE.md`・
+  ——`occurrence_agg` は経由しない〕・`ias_species`、出力
+  `data/db/v1_projection_occurrence.sqlite`。`_assert_watershed_cells_match_
+  exact` が「`occurrence_agg` の流域セル」＝「`occurrence`+`occurrence_place`
+  の正確な再集計」を毎ビルド確かめ、その比較専用の実表
+  `org_watershed_year_exact`/`org_watershed_exact`〔v1互換13テーブルには
+  数えない〕を出力ファイルに残す）
+  の5本。設計・実測は `docs/plans/PHASE_B_OCCURRENCE.md`・
   `docs/adr/0025-occurrence-fact-and-cube.md`・
-  `docs/adr/0026-occurrence-place-watershed.md`。
+  `docs/adr/0026-occurrence-place-watershed.md`・
+  `docs/plans/V2_SERVING_PR3A.md`。
 - watershed の属性（`watershed_meta`・`watershed_rollup`）は
   `scripts/b11_project_place_v1.py`（`watershed_rollup` は
   `v1_projection.sqlite`〔b05〕/`v1_projection_occurrence.sqlite`〔b08〕を
@@ -124,19 +141,30 @@
 - レッドリスト・外来種の評価（`taxon_assessment`、P-2）は
   `scripts/registry/build_taxon_assessment.py`（`ryuiki.redlist_assessments`
   〔3版〕と `data/processed/moe_ias_list.csv`〔外来種、`ryuiki.taxa` ではなく
-  L1 を直読み〕→ `registry.sqlite` の `taxon_assessment`。**D1 には載せない**。
-  外来種の表示名〔`vernacular_name_ja_resolved`〕は `ryuiki.taxa` から
+  L1 を直読み〕→ `registry.sqlite` の `taxon_assessment`。Phase A/B 当初は
+  D1 の消費者が無いとして見送っていたが、Issue #48（PR-0）で D1 に追加した
+  （`web/src/db/schema-registry.ts` の `taxonAssessment`）。外来種の表示名
+  〔`vernacular_name_ja_resolved`〕は `ryuiki.taxa` から
   ここで解決する——v1（`taxa`）は3出典〔`kanagawa_redlist.csv`→
   `moe_redlist.csv`→`moe_ias_list.csv`〕をまたいだ和名の畳み込みをしており、
   moe_ias_list.csv単体では再現できないため）が r01 の `taxon`（A-4）の直後に
-  作る。v1形への射影は2本に分かれ、**どちらも `registry.sqlite` だけを読み、
+  作る。**`taxon_assessment.in_scope`**（除外7種の宣言
+  〔`registry/taxon/assessment_scope_exclusions.yaml`〕と二名法一致する行を
+  0、他の全行〔redlist 3版を含む〕を1にした可視化列。Issue #48 PR-3a、D7。
+  行そのものは1件も除外しない）と、**`taxon.vernacular_name_en`**
+  （`organism_records.vernacular_name` のうちラテン文字だけの値。
+  (名前空間, taxon_key) ごとに最頻→同数なら値の昇順で1つ選ぶ。「英名」では
+  なく「ラテン文字の俗名」）・**記録由来の和名補完**（`vernacular_name_ja` が
+  NULL の行にだけ非ラテン文字の最頻値を入れ、`vernacular_ja_basis`
+  〔`override`/`taxa`/`records`〕に根拠を残す。既存の値は1件も変えない）も
+  同じ r01（`build_taxon.py`）が作る（Issue #48 PR-3a、D4）。
+  v1形への射影は2本に分かれ、**どちらも `registry.sqlite` だけを読み、
   `ryuiki.sqlite` には一切触れない**: `scripts/b12_project_taxon_v1.py`
   （`taxon_assessment` → `redlist_map`/`redlist_change`、出力
   `data/db/v1_projection_taxon.sqlite`）と、`scripts/b08_project_occurrence_v1.py`
   に足した `ias_species`（`org_norm` の binom と結合するため occurrence の
-  縦線側に同居）。除外7種の宣言は
-  `registry/taxon/assessment_scope_exclusions.yaml`。設計・実測は
-  `docs/plans/PHASE_B_TAXON_ASSESSMENT.md`。
+  縦線側に同居）。設計・実測は
+  `docs/plans/PHASE_B_TAXON_ASSESSMENT.md`・`docs/plans/V2_SERVING_PR3A.md`。
 - **`+09:00` 付きの時刻文字列に SQLite の日時関数（`date`/`datetime`/`strftime`）を使わない**
   （UTC に正規化されて日付が1日ずれる。`observation.period_start` は時刻帯なしのローカル時刻で
   持つ。詳細は `docs/adr/0024-local-time-and-time-labels.md`）。
