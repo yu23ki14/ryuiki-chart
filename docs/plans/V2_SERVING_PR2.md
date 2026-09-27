@@ -44,7 +44,13 @@
 - `row_only_in_v2` は説明不可（合成除外で行が増えることは無い）。
 既存の `SYNTHETIC_EXCLUDED_VALUE_COLUMNS`（列の絞り）はそのまま。`--pretend-synthetic-excluded`・`db-sqlite.ts` の `excludePlaceIds`・`computeSyntheticPlaceIds`・`siteIdsForPlaceIds` は削除。変異 `synthetic_rule_off`（規則を無効化→unexplained>0）を足す。
 
-**統合後 修正B（`classify.ts` の `classifyDeclaredWithSyntheticRemainder`）**: `declared`（`expected_diffs.yaml`）1つでは列を完全に覆えず、残りの列を `synthetic_excluded`（v1compat との差分の差分）で説明できる場合の組み合わせ判定。実測で `var_catalog`/`浮遊物質量 SS` 等、宣言済みバグ（below_lod 行の欠落）と合成データ除外の両方が同じ診断に重なるケースがあり、`findDeclared`（列を宣言が完全に覆う前提）・`classifySyntheticExcludedV1Compat`（全列で v1==compat を要求）のどちらか単体では説明できなかったため追加した。**これは ADR-0029 が言う「移行期間限定」の serving-diff 自身にすら重ねた一時的な特例であり、PR-5 で serving-diff・v1 比較が丸ごと消えるときに一緒に消える。** 新たな「宣言も規則も単体では説明できない重なり」が今後見つかっても、この関数に特例をもう1段積まない——`classify.ts` の判定優先順位（declared → rain_div10 → day_split → synthetic_excluded → 本関数 → lod_imputation → …）がこれ以上分岐すると「どの組み合わせがどの列を説明したか」を人が追えなくなる。その場合は `expected_diffs.yaml` の宣言粒度（列の絞り方）か `synthetic_excluded` 自体の判定式を見直す。
+**統合後 修正D（説明の鎖。`classify.ts` の `explainColumnChain`/`explainRowOnly`/`explainValueDiff`）**: 実測で `var_catalog`/`浮遊物質量 SS` 等、宣言済みバグ（below_lod 行の欠落）・合成データ除外・zero→lod 切り替えの**3つ**が同じ診断（`climatology`/`climatology_by_variable` の月10・11、列 n/avg/min）に重なるケースが見つかった。`declared`＋`synthetic_excluded` の2原因だけを想定した組み合わせ関数（旧 `classifyDeclaredWithSyntheticRemainder`）はこの3原因の重なりを説明できず、かつ ADR-0029 2026-09-27 追記が「新たな重なりにはこの関数に特例を積まない」と決めていたため、特例を積み増す代わりに分類器そのものを次の一般形に作り直した:
+
+行キーごとに値を並べる——`v1` →(declared)→ `compat_zero`（v1互換キューブ・zero）→(synthetic_excluded)→ `v2_zero`（本物・zero）→(lod_imputation。lod 実行時のみ)→ `v2_lod`。隣り合う2点は「値が等しい（許容差内）」か「その段の規則で説明できる」かのどちらかでなければならない。この判定を**列ごとに独立して**行う（`explainColumnChain`）——1つの value_diff の中で「この列は declared だけ、あの列は declared＋synthetic_excluded＋lod_imputation の全部」という列ごとに異なる組み合わせが、専用関数を増やさずに表現できる。`compat_zero` が無い問い合わせ（`--v1compat-db` 未指定）はその段を飛ばし、declared が `v1` から `v2_zero` へ直接橋渡しする（PR-1 期の挙動と同じ）。
+
+分類結果は「使った規則の集合」`Classification.rules`（例: `{declared, synthetic_excluded, lod_imputation}`）で、diff 全体が explained になるのは**全ての列が鎖の全段で説明できたとき**だけ。レポートの集計は、この集合の要素それぞれについて対応する列を1つずつ増やす——1行が複数系統に数えられる（`declared`＋`synthetic_excluded`＋`lod_imputation` の合計が診断の総行数を超えうる）ことを明記する。宣言の腐り判定（`findRottenDeclarations`）は「段1（declared）で実際に使われたか」だけで数える——他の列・他の段が原因で diff 全体が unexplained になっても、declared 自体は消費されたとみなす。
+
+day_split・unit_label_registry・float_rounding・by_variable の束ね（`declaredCandidates` に統合）は今の位置づけのまま、鎖が不発だったときのフォールバックとして試す。**新しい重なりが見つかっても、この鎖に特例をもう1段積まない**——見つかったら `expected_diffs.yaml` の宣言粒度か、鎖の各段の判定式（`SYNTHETIC_EXCLUDED_VALUE_COLUMNS`/`LOD_IMPUTATION_VALUE_COLUMNS` 等）自体を見直す。
 
 ## 2. 対応表: v1 の呼び出し → `lib/cube`
 

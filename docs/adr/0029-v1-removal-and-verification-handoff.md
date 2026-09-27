@@ -120,6 +120,23 @@ PR-5 で v1（`web/src/lib/queries.ts` が読む派生33表）を撤去したあ
 ない——見つかったら `expected_diffs.yaml` の宣言粒度か `synthetic_excluded` の判定式自体を
 見直す（設計の詳細は `docs/plans/V2_SERVING_PR2.md` §1）。
 
+**2026-09-27 追記2（Issue #48 PR-2 統合。上の追記で予告した「新たな重なり」が実際に見つ
+かったための書き換え）**: `--imputation lod` の全量実行で、中津川の SS 月別平年値
+（`climatology`/`climatology_by_variable` の月10・11、列 n/avg/min）が「宣言済みバグ・
+合成データの除外・zero→lod 切り替え」の**3つ**同時に重なっていることが分かった。上の
+`classifyDeclaredWithSyntheticRemainder`（declared＋synthetic_excluded の2原因だけを
+組み合わせる特例）ではこの3原因の重なりを説明できず、かつ「この関数に特例を積み増さない」
+という決定に反するため特例を積むのではなく、分類器自体を一般の**説明の鎖**に作り直した:
+行キーごとに `v1 →(declared)→ compat_zero →(synthetic_excluded)→ v2_zero →(lod_imputation、
+lod 実行時のみ)→ v2_lod` という値の並びを立て、隣り合う2点が「等しい」か「その段の規則で
+説明できる」かを**列ごとに独立して**確かめる（`explainColumnChain`）。診断が explained に
+なるのは全列が鎖の全段で説明できたときで、分類結果は「使った規則の集合」（例:
+`{declared, synthetic_excluded, lod_imputation}`）として持つ——単一の規則名ではなく集合に
+したことで、`classifyDeclaredWithSyntheticRemainder` とその特例（本追記の直前の段落）は
+撤去した。詳細・実測は `docs/plans/V2_SERVING_PR2.md` §1・§3。この書き換え後も「鎖に特例を
+もう1段積まない」という原則は変わらない——新しい重なりが見つかったら宣言粒度か各段の判定式
+（`SYNTHETIC_EXCLUDED_VALUE_COLUMNS`/`LOD_IMPUTATION_VALUE_COLUMNS` 等）を見直す。
+
 ## 根拠（却下した代替案）
 
 - **層2・層3を単純に廃止し、層1・層4だけで済ませる**: 却下。層1（フィクスチャ）は実データの
