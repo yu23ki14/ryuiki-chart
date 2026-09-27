@@ -101,6 +101,13 @@ def _build_cube_via_b07(tmp_path, occurrence_rows, *, leaf_expected: int, dirnam
     make_occurrence_cube_declarations_yaml(decl_path, expected_row_count=leaf_expected)
     try:
         b07.build_cube(conn, decl_path)
+        # この worktree の b07（U1 が並行して変更中）はまだ `n_alien` 列を
+        # 持たない（設計書 PR-3a §0-1・§1.1）。b08 の `_assert_watershed_
+        # cells_match_exact` が `occurrence_agg.n_alien` を読むため、ここで
+        # 後付けする——実際の watershed セルはこの経路では作られない
+        # （今の b07 は grid01 のセルしか作らない）ので値は使われず、列の
+        # 存在だけが要る。U1 の b07 が本物の `n_alien` を追加したら不要になる。
+        conn.execute("ALTER TABLE occurrence_agg ADD COLUMN n_alien INTEGER NOT NULL DEFAULT 0")
         conn.commit()
     finally:
         conn.close()
@@ -352,22 +359,95 @@ def test_mesh_species_includes_null_place_but_mesh_year_excludes_it(tmp_path):
 # 機械検証が崩れを検出できること（わざと食い違わせた手作りフィクスチャ）
 # ===========================================================================
 
-def test_grain_month_cell_stops_projection(tmp_path):
-    """`occurrence_agg` に想定外の grain（`'month'`）が混ざっていたら、年
-    キー8表を作る前に止まる（コードレビュー指摘2。将来 month セルを黙って
-    足しても年の表の n が倍になったりしない——絞り込みで捨てず、明示的に
-    止める）。
+def test_unknown_grain_stops_projection(tmp_path):
+    """`occurrence_agg` に本当に未知の grain（例 `'week'`。`b07.GRAIN_VALUES`
+    に無い値）が混ざっていたら、年キー8表を作る前に止まる（コードレビュー
+    指摘2。設計書 PR-3a §2.2-4: `'month'`〔O-1 設計 v2 で新設される既知の
+    grain〕は年キー8表の対象からは除外されるが「未知」ではない——このテスト
+    は `b07.GRAIN_VALUES` に無い値だけを「未知」として扱うことを確かめる。
+    `'month'` 自体のケースは `test_month_cells_do_not_affect_year_key_totals`
+    参照）。
     """
     occurrence_rows = [_occ_row("gbif__1", "common:taxon:gbif.1001", "2020-01-05")]
     occurrence_agg_rows = [
+        _agg_row("common:taxon:gbif.1001", "week", "2020-01-01", "2020-01-07", n=1),
+    ]
+    cube_db = tmp_path / "v2.sqlite"
+    make_v2_db_with_occurrence_and_agg(cube_db, occurrence_rows, occurrence_agg_rows)
+    registry_db, taxon_group_yaml = _setup_registry(tmp_path)
+    out = tmp_path / "out.sqlite"
+    with pytest.raises(common.MigrationError, match=r"grain が .* 以外の値を持つ（\['week'\]）"):
+        b08.build_occurrence_cube_projections(cube_db, registry_db, out, taxon_group_yaml)
+
+
+def test_month_cells_do_not_affect_year_key_totals(tmp_path, monkeypatch):
+    """b07 が `month` 族のセル（O-1 設計 v2 §0-1、`grid01`×`month`）を足しても、
+    年キー8表の Σn は変わらない（`grain IN (年 族)` の絞り込みが二重計上を
+    防ぐ。設計書 PR-3a §2.2-4）。
+
+    この worktree の b07（U1 が並行で変更中）はまだ `month` を知らないため、
+    ここでは `b07.GRAIN_VALUES`/`b07.YEAR_GRAIN_FAMILY` を一時的に広げて
+    「month を知っている b07」を模す——本体のコード（`_grain_values_sql_
+    list()`/`_year_grain_family()`）は呼ばれるたびに `b07` の属性を読みに
+    行くので、この monkeypatch だけで正しく反応する（モジュール import 時点
+    で凍結していれば効かない）。U1 の b07 が本物の値を定義したら、この
+    monkeypatch は無くても同じことが起きる。
+    """
+    monkeypatch.setattr(b07, "GRAIN_VALUES", ("year", "survey_period", "month"))
+    # この worktree の b07 はまだ `YEAR_GRAIN_FAMILY` を持たないため
+    # `raising=False`（`_year_grain_family()` の `getattr` フォールバックが
+    # 効かないよう、ここで明示的に属性を作る）。
+    monkeypatch.setattr(b07, "YEAR_GRAIN_FAMILY", ("year", "survey_period"), raising=False)
+
+    occurrence_rows = [_occ_row("gbif__1", "common:taxon:gbif.1001", "2020-01-05")]
+    occurrence_agg_rows = [
+        _agg_row("common:taxon:gbif.1001", "year", "2020-01-01", "2020-12-31", n=1),
+        # month セル（O-1 設計 v2）。年キー8表には現れてはいけない
+        # ——絞り込みを忘れると n が二重（1+1=2）になる。
         _agg_row("common:taxon:gbif.1001", "month", "2020-01-01", "2020-01-31", n=1),
     ]
     cube_db = tmp_path / "v2.sqlite"
     make_v2_db_with_occurrence_and_agg(cube_db, occurrence_rows, occurrence_agg_rows)
     registry_db, taxon_group_yaml = _setup_registry(tmp_path)
     out = tmp_path / "out.sqlite"
-    with pytest.raises(common.MigrationError, match="grain が 'year'/'survey_period' 以外"):
-        b08.build_occurrence_cube_projections(cube_db, registry_db, out, taxon_group_yaml)
+    counts = b08.build_occurrence_cube_projections(cube_db, registry_db, out, taxon_group_yaml)
+
+    assert counts["mesh_year"] == 1
+    mesh_year = _read(out, "mesh_year", ["mlat", "mlon", "year", "n"])[0]
+    assert mesh_year == {"mlat": 3550, "mlon": 13900, "year": 2020, "n": 1}
+    org_group_year = _read(out, "org_group_year", ["year", "n"])[0]
+    assert org_group_year["n"] == 1
+    effort_year = _read(out, "effort_year", ["year", "n"])[0]
+    assert effort_year["n"] == 1
+
+
+def test_watershed_cells_do_not_affect_mesh_tables(tmp_path):
+    """`occurrence_agg` に watershed セル（O-2）が混ざっていても、mesh 系
+    （grid01 前提の年キー8表）の Σn は変わらない（`_occ_agg_enriched_sql()`/
+    `_cube_series_totals_sql()` の `place_kind='grid01'` 絞り込みが O-2 の
+    watershed セルを正しく除外することの確認。設計書 PR-3a §2.2-4）。
+    """
+    occurrence_rows = [_occ_row("gbif__1", "common:taxon:gbif.1001", "2020-01-05")]
+    occurrence_agg_rows = [
+        _agg_row("common:taxon:gbif.1001", "year", "2020-01-01", "2020-12-31", n=1),
+        # watershed セル（O-2、b07 が別途作る想定）。grid01 前提の年キー8表
+        # には現れてはならない（n=999 が混ざれば即座に分かる値にしてある）。
+        _agg_row(
+            "common:taxon:gbif.1001", "year", "2020-01-01", "2020-12-31", n=999,
+            place_id="common:place:watershed.w1", place_kind="watershed",
+        ),
+    ]
+    cube_db = tmp_path / "v2.sqlite"
+    make_v2_db_with_occurrence_and_agg(cube_db, occurrence_rows, occurrence_agg_rows)
+    registry_db, taxon_group_yaml = _setup_registry(tmp_path)
+    out = tmp_path / "out.sqlite"
+    counts = b08.build_occurrence_cube_projections(cube_db, registry_db, out, taxon_group_yaml)
+
+    assert counts["mesh_year"] == 1
+    mesh_year = _read(out, "mesh_year", ["mlat", "mlon", "year", "n"])[0]
+    assert mesh_year == {"mlat": 3550, "mlon": 13900, "year": 2020, "n": 1}
+    org_group_year = _read(out, "org_group_year", ["year", "n"])[0]
+    assert org_group_year["n"] == 1
 
 
 def test_unknown_place_kind_stops_projection(tmp_path):
@@ -530,4 +610,8 @@ def test_build_all_projections_writes_org_norm_and_eleven_more_tables(tmp_path):
         }
     finally:
         conn.close()
-    assert tables == _table_keys
+    # `org_watershed_year_exact`/`org_watershed_exact` は比較専用の実表
+    # （設計書 PR-3a §2.2-3）。`table_counts`（13テーブルの行数だけ）・
+    # `projection_manifest.yaml`・b02 の対象には入れないが、出力ファイルには
+    # 実在する——ここでは意図的な差分として明示的に足す。
+    assert tables == _table_keys | {"org_watershed_year_exact", "org_watershed_exact"}

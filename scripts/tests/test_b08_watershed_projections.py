@@ -15,10 +15,14 @@ import pytest
 import b08_project_occurrence_v1 as b08
 from migrate import common
 
+from .occurrence_cube_family_fixtures import (
+    build_matching_occurrence_agg_watershed_rows,
+    make_v2_db_with_occurrence_place_and_agg,
+    occurrence_agg_row,
+)
 from .occurrence_fixtures import (
     make_occurrence_registry_db,
     make_occurrence_watershed_v1_declarations_yaml,
-    make_v2_db_with_occurrence_and_place,
     occurrence_place_row,
     occurrence_row,
 )
@@ -34,11 +38,22 @@ _PLACE_REFS = [
     (_W1_PLACE_ID, "W1", "watershed_meta.watershed_id"),
     (_W2_PLACE_ID, "W2", "watershed_meta.watershed_id"),
 ]
+# `build_matching_occurrence_agg_watershed_rows` に渡す {place_id: watershed_id}。
+_PLACE_WATERSHED_MAP = {pid: ext for pid, ext, _sid in _PLACE_REFS}
 
 
 def _setup(tmp_path, occurrence_rows, occurrence_place_rows):
+    """`occurrence`/`occurrence_place` に加えて、記録自身の正確な解決から
+    機械的に組み立てた `occurrence_agg` の watershed セル（設計書 PR-3a
+    §2.2-2。`build_watershed_projections` が `need_occurrence_agg=True` に
+    なったため、`_assert_watershed_cells_match_exact` が要る）を持つ
+    v2.sqlite を作る。
+    """
     v2_db = tmp_path / "v2.sqlite"
-    make_v2_db_with_occurrence_and_place(v2_db, occurrence_rows, occurrence_place_rows)
+    agg_rows = build_matching_occurrence_agg_watershed_rows(
+        occurrence_rows, occurrence_place_rows, _PLACE_WATERSHED_MAP,
+    )
+    make_v2_db_with_occurrence_place_and_agg(v2_db, occurrence_rows, occurrence_place_rows, agg_rows)
 
     registry_db = tmp_path / "registry.sqlite"
     places = [(pid, None, "watershed") for pid, _ext, _sid in _PLACE_REFS]
@@ -289,6 +304,43 @@ def test_population_record_missing_from_occurrence_place_halts(tmp_path):
     out = tmp_path / "out.sqlite"
 
     with pytest.raises(common.MigrationError, match="occurrence_place"):
+        b08.build_watershed_projections(v2_db, registry_db, out, decl)
+
+
+def test_watershed_cube_cell_mismatch_vs_exact_halts(tmp_path):
+    """`occurrence_agg` の流域セル（`_assert_watershed_cells_match_exact`が
+    `org_watershed_year_exact` と突き合わせる側）が、記録自身の正確な解決
+    から独立に組んだ集計と食い違っていれば止める（設計書 PR-3a §2.2-2）。
+    ここでは `_setup()` の自動組み立てを使わず、わざと食い違う `n` を持つ
+    セルを手で足す。
+    """
+    occurrence_rows = [
+        occurrence_row(
+            "A", None, "2019-01-01", "2019-01-01", "2019-01-01",
+            source_row_id=1, lat=35.0100, lon=139.0100,
+        ),
+    ]
+    occurrence_place_rows = [occurrence_place_row("A", _W1_PLACE_ID)]
+    v2_db = tmp_path / "v2.sqlite"
+    # 正確な解決（org_watershed_year_exact）は (W1, 2019, n=1) のはずだが、
+    # occurrence_agg の流域セルはわざと n=5 と主張させる。
+    make_v2_db_with_occurrence_place_and_agg(
+        v2_db, occurrence_rows, occurrence_place_rows,
+        [occurrence_agg_row(
+            place_id=_W1_PLACE_ID, place_kind="watershed", grain="year",
+            period_start="2019-01-01", period_end="2019-12-31", n=5,
+        )],
+    )
+    registry_db = tmp_path / "registry.sqlite"
+    places = [(pid, None, "watershed") for pid, _ext, _sid in _PLACE_REFS]
+    make_occurrence_registry_db(registry_db, taxa=[], places=places, place_refs=_PLACE_REFS)
+    decl = _declarations(
+        tmp_path, moved=0, ws_to_ws=0, v1_assigned_exact_unassigned=0,
+        v1_unassigned_exact_assigned=0, mixed_buckets=0, keys_changed=0,
+    )
+    out = tmp_path / "out.sqlite"
+
+    with pytest.raises(common.MigrationError, match="流域セル"):
         b08.build_watershed_projections(v2_db, registry_db, out, decl)
 
 
