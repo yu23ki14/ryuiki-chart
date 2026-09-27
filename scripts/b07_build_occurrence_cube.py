@@ -54,14 +54,16 @@ watershed×month は消費者が無いので作らない——足すなら `CELL
 `substr(period_start,1,7) = substr(period_end,1,7)`（`_SAME_MONTH_EXPR`）。
 月セルの `period_start`/`period_end` は暦月境界（月初日〜月末日）へ丸める
 ——**SQLite の日時関数は使わない**（年セルと同じ理由。ADR-0024）。月末日の
-計算は `scripts/migrate/period.py` の `month_bounds()`（`'YYYY-MM'` から
-`datetime.date`/`timedelta` で「翌月1日の前日」を出す——`occurrence_period.py`
-が 'month' 形の展開に使っているのと同じ実装。二重実装しない）を、出現する
+計算は Python の `calendar.monthrange()`（`_month_bounds()`）を、出現する
 `YYYY-MM` の distinct 値だけに対して1回ずつ呼び、一時テーブル
 `__month_bounds(ym, month_start, month_end)` に持たせて SQL 側で JOIN する
 （`period_start`/`period_end` という同名列を population 側と持つと WHERE 句の
 `_SAME_MONTH_EXPR`（列名を修飾しない共有述語）が曖昧になるため、一時テーブル
-の列名は `month_start`/`month_end` にしてある）。
+の列名は `month_start`/`month_end` にしてある）。`scripts/migrate/period.py`
+の `month_bounds()`（`occurrence_period.py` が 'month' 形の展開に使う、
+`datetime.date`/`timedelta` で「翌月1日の前日」を出す実装）と役割は同じだが、
+呼び出し側の型（1件ずつ vs. distinct な YYYY-MM の集合をまとめて一時テーブル
+化）が違うため、ここでは独立した薄い実装にしてある。
 
 ## 年境界の計算に SQLite の `date()` を使わない
 
