@@ -1,6 +1,6 @@
 # ADR-0025: occurrence ファクトとキューブの設計（region は出典から・期間は12形の宣言・1ファクト＝1キューブ表）
 
-- 状態: 承認済・実装済（D2「O-2 への申し送り」は O-2b〔Issue #48 PR-3a〕で実装済み。
+- 状態: 承認済（D2「O-2 への申し送り」は O-2b〔Issue #48 PR-3a〕で実装済み。
   `occurrence_agg` は「place_kind × grain 族」の行列——`grid01`×`year`・
   `grid01`×`month`・`watershed`×`year`（実測 1,437,598 セル）。詳細は
   `docs/plans/V2_SERVING_PR3A.md`・ADR-0026 D4）

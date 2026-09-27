@@ -1,6 +1,6 @@
 # ADR-0026: 点→流域の解決は記録×place のサテライトに直接持ち、v1 のメモ化の癖は射影の式で再現する
 
-- 状態: 承認済・実装済（D4〔`occurrence_agg`への反映〕は O-2b〔Issue #48 PR-3a〕
+- 状態: 承認済（D4〔`occurrence_agg`への反映〕は O-2b〔Issue #48 PR-3a〕
   で実装済み。詳細は `docs/plans/V2_SERVING_PR3A.md`）
   / 日付: 2026-09-23（O-2b 追記: 2026-09-27）
 - 関連: ADR-0006（place）, ADR-0007（observation/occurrence）, ADR-0011（キューブ）,

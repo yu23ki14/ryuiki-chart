@@ -35,7 +35,7 @@ Architecture Decision Record。1ファイル＝1決定。**背景・決定・根
 | [0008](0008-time-representation.md) | 時間は「区間＋粒度」の3点セットで表す | 承認済 |
 | [0009](0009-censored-values.md) | 定量下限未満を 0 で表さず、検閲を明示的に持つ | 承認済 |
 | [0010](0010-variable-registry.md) | 指標レジストリを設け、出典別名をエイリアスで束ねる | 承認済（一部未実装） |
-| [0011](0011-aggregation-cube.md) | 派生33テーブルを単一キューブ＋宣言的集計定義に置き換える | 提案中 |
+| [0011](0011-aggregation-cube.md) | 派生33テーブルを単一キューブ＋宣言的集計定義に置き換える | 承認済 |
 | [0012](0012-source-manifests.md) | L1→L2 でソース固有コードを書かない（マニフェスト＋共通ライブラリ） | 提案中 |
 | [0013](0013-caveats.md) | 注意事項（caveat）を一級エンティティにし、応答に必ず同梱する | 提案中 |
 | [0014](0014-response-envelope.md) | データインターフェースの共通レスポンス封筒と MCP ツール群 | 提案中 |
@@ -49,8 +49,8 @@ Architecture Decision Record。1ファイル＝1決定。**背景・決定・根
 | [0022](0022-place-region-scope.md) | `place.region_id` は ID のスコープと一致させ、所在は `place_relation` の辺で表す | 承認済（一部未実装） |
 | [0023](0023-unit-canonicalization.md) | 単位の正準化は取り込み時に潰さず、レジストリの換算係数とキューブの軸に分けて持つ | 提案中 |
 | [0024](0024-local-time-and-time-labels.md) | 時刻は時刻帯なしのローカル時刻で持ち、時刻ラベルの意味は出典ごとに宣言する | 承認済（一部未実装） |
-| [0025](0025-occurrence-fact-and-cube.md) | occurrence ファクトとキューブの設計（region は出典から・期間は12形の宣言・1ファクト＝1キューブ表） | 承認済（一部未実装） |
-| [0026](0026-occurrence-place-watershed.md) | 点→流域の解決は記録×placeのサテライトに直接持ち、v1のメモ化の癖は射影の式で再現する | 承認済（一部未実装） |
+| [0025](0025-occurrence-fact-and-cube.md) | occurrence ファクトとキューブの設計（region は出典から・期間は12形の宣言・1ファクト＝1キューブ表） | 承認済 |
+| [0026](0026-occurrence-place-watershed.md) | 点→流域の解決は記録×placeのサテライトに直接持ち、v1のメモ化の癖は射影の式で再現する | 承認済 |
 | [0027](0027-test-and-verification-strategy.md) | テスト・検証戦略は4層（フィクスチャ・縮小サンプル・全量の実行証明・段階間の指紋）に分け、層ごとに保証範囲を分担する | 承認済 |
 | [0028](0028-no-coordinate-generalization.md) | 座標の一般化はしない。入力・外部ソースの値をそのまま配信経路で返す（ADR-0018を置換） | 承認済 |
 | [0029](0029-v1-removal-and-verification-handoff.md) | v1 の撤去にあたり、検証（ADR-0027 層2・層3）の比較対象を「v1」から「凍結スナップショット」へ引き継ぐ | 提案中 |

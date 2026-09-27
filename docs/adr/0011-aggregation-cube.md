@@ -1,6 +1,6 @@
 # ADR-0011: 派生33テーブルを単一キューブ＋宣言的集計定義に置き換える
 
-- 状態: 実装済み（宣言的集計定義〔`aggregations/serving.yaml` →
+- 状態: 承認済（宣言的集計定義〔`aggregations/serving.yaml` →
   `scripts/b13_build_summary.py`〕が summary 4表〔指標カタログ・地点×指標・
   種カタログ・流域別出現、Issue #48 PR-1/PR-2/PR-3a〕として実装され、
   `observation_agg`/`occurrence_agg` 両方をキューブの再集計だけで賄うことを
