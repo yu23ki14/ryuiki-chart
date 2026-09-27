@@ -88,16 +88,27 @@ FINGERPRINT_SPEC_VERSION = "phase-b-fact-slice/v1"
 V2_CHECK_EXIT_FRESH = 0
 V2_CHECK_EXIT_STALE = 10
 
-# `scripts/b13_build_summary.py`（Issue #48 PR-2 §4）専用。`observation_agg`
-# から集計するだけの2表（`aggregations/serving.yaml` が宣言）——キー列や
-# 集計方法（`fn`/`expr`）を変えたら上げる（b13 自身が YAML の `spec_version`
-# とこの定数の一致を検証する）。
-SUMMARY_SPEC_VERSION = "serving-summary/v1"
+# `scripts/b13_build_summary.py`（Issue #48 PR-2 §4、PR-3a §5）専用。
+# `observation_agg`/`occurrence_agg` から集計するだけの4表（`aggregations/
+# serving.yaml` が宣言）——キー列や集計方法（`fn`/`expr`）を変えたら上げる
+# （b13 自身が YAML の `spec_version` とこの定数の一致を検証する）。
+# 2026-09-27: PR-3a で `occurrence_agg` 由来の2表（`summary_taxon_catalog`/
+# `summary_watershed_occurrence`）を足したため v1→v2 に上げた（過去の4表との
+# 比較はできなくなるが、v1 時点の2表はまだキー・集計方法を変えていないので
+# 実害は無い——`V2_SUMMARY_TABLES` の集合が変わったこと自体が YAML との
+# 過不足検査で拾われるようにするための版上げ）。
+SUMMARY_SPEC_VERSION = "serving-summary/v2"
 
 # D1 に載せる summary 表（`scripts/b13_build_summary.py` が作る）の名前。
 # `V2_CUBE_SPEC_VERSIONS` に SUMMARY_SPEC_VERSION 付きで足すのに使う——
-# ここで複製しない。
-V2_SUMMARY_TABLES = ("summary_variable_catalog", "summary_place_variable")
+# ここで複製しない。`summary_taxon_catalog`/`summary_watershed_occurrence`
+# （PR-3a）は `occurrence_agg` 由来（`aggregations/serving.yaml` 参照）。
+V2_SUMMARY_TABLES = (
+    "summary_variable_catalog",
+    "summary_place_variable",
+    "summary_taxon_catalog",
+    "summary_watershed_occurrence",
+)
 
 # D1 に載せるキューブ表と、それぞれの spec_version。値は上の
 # `OBSERVATION_AGG_SPEC_VERSION`/`OCCURRENCE_SPEC_VERSION`/`SUMMARY_SPEC_VERSION`
