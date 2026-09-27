@@ -55,8 +55,10 @@ taxon_key<>''`、日付の有無を問わない）。gbif/inat 名前空間の�
 常に NULL）。ローマ字表記（`Kawa-Semi`）・属の仮名（`Amara sp.`）も選ばれうる——
 「英名」ではなく「ラテン文字の俗名」であることに注意（`registry/README.md` 参照）。
 
-**和名の記録由来補完（D4）**: 同じ集計から非ラテン文字（ひらがな・カタカナ・CJK
-等）の最頻値を、`vernacular_name_ja` が **NULL の行にだけ** 埋める。根拠列
+**和名の記録由来補完（D4）**: 同じ集計から `common.is_japanese_name()`
+（ひらがな・カタカナを1文字以上含む、の肯定判定）で選んだ非ラテン文字の最頻値を、
+`vernacular_name_ja` が **NULL、かつ rank が種以下（`_SPECIES_OR_BELOW_RANKS`:
+species/subspecies/variety/form/hybrid/infrahybrid）の行にだけ** 埋める。根拠列
 `vernacular_ja_basis` に `override`（上記4のNAME_JA上書き）/`taxa`（`taxa` 由来。
 `_pick_taxa_representative()` の代表 or unresolved 行自身の `vernacular_name_ja`）/
 `records`（この補完）を記録する。優先順は override > taxa > records——
@@ -64,6 +66,17 @@ taxon_key<>''`、日付の有無を問わない）。gbif/inat 名前空間の�
 NULL の行にしか適用しないので、既存の値（taxa・override どちらの由来でも）は
 1件も変えない。両方とも候補が無い行は `vernacular_name_ja`/`vernacular_ja_basis`
 ともに NULL のまま。
+
+**rank 制限の理由**: 種より上の階級（界・門・綱・目・科・属等）の taxon は、
+`organism_records.vernacular_name` にその taxon_key で識別された「別の生きもの」の
+俗名が付いていることがある（例: 界レベルでしか同定されなかった記録に、たまたま
+その記録の俗名列が入っている）。実データで確認済み: `gbif.6`（kingdom Plantae）に
+「イヌガヤ」、`gbif.5`（kingdom Fungi）に「さび病」、`gbif.1`（kingdom Animalia）に
+「モクズヨコエビ科」が誤って入っていた（属以上で1,397行）。**`is_japanese_name()`
+は「ラテン文字でなければ日本語」ではなく肯定判定にする**——`not is_latin_script()`
+を代用すると、ロシア語（`gbif.7678610`→「Редька посевная」）・韓国語
+（`gbif.5069632`→「산물집파리」）が和名候補に混じる。漢字だけの名前も中国語と
+区別できないため候補にしない。
 
 ## 分類の補完（F2。要点）
 
@@ -133,6 +146,15 @@ VERNACULAR_JA_BASIS_RECORDS = "records"
 # v1 (web/scripts/build-biota.mjs org_norm) と同じ母集団: 日付の無い記録は
 # 分類の多数決に含めない（モジュール docstring参照。v1 の値を変えないための温存）。
 _DATED_POPULATION_WHERE = "observed_on IS NOT NULL AND length(observed_on) >= 4"
+
+# 和名の記録由来補完（D4）を適用してよい rank（taxon.rank。`rank_raw.lower()` で
+# 大文字小文字は正規化済み）。種・種内分類群だけに限る（モジュール docstring
+# 「和名の記録由来補完（D4）」の rank 制限の理由を参照）。`complex`（種複合体。
+# 種より広い単位）・`section`/`subsection`（属内亜区分）・`genushybrid`（属相当の
+# 雑種名）は含めない。
+_SPECIES_OR_BELOW_RANKS = frozenset({
+    "species", "subspecies", "variety", "form", "hybrid", "infrahybrid",
+})
 
 
 def _namespace_for_source(source_id: str) -> str:
@@ -494,8 +516,8 @@ def _load_vernacular_candidates(
 ) -> tuple[dict[tuple[str, str], str], dict[tuple[str, str], str]]:
     """`organism_records.vernacular_name` から (名前空間, taxon_key) ごとの代表候補を
     2種類作る: ラテン文字だけの値の最頻候補（`taxon.vernacular_name_en` の元）と、
-    非ラテン文字だけの値の最頻候補（D4: `vernacular_name_ja` が NULL の行への
-    記録由来の補完の元）。
+    ひらがな・カタカナを1文字以上含む値の最頻候補（D4: `vernacular_name_ja` が
+    NULL の行への記録由来の補完の元）。
 
     母集団は `_load_occurrence_representatives()` と同じ
     （`taxon_key IS NOT NULL AND taxon_key<>''`、日付の有無を問わない——
@@ -504,8 +526,12 @@ def _load_vernacular_candidates(
     分ける理由が無い）。空文字列の `vernacular_name` は候補にしない。
 
     最頻値の選び方は `_pick_majority()`（件数降順、同数は値の昇順）。
-    ラテン文字判定は `common.is_latin_script()`（`registry/README.md`「taxon の
-    名前空間分割と分類補完」参照。「英名」ではなく「ラテン文字の俗名」の判定）。
+    ラテン文字判定は `common.is_latin_script()`、和名判定は `common.is_japanese_name()`
+    （`registry/README.md`「taxon の名前空間分割と分類補完」参照。前者は「英名」では
+    なく「ラテン文字の俗名」の判定、後者は「ラテン文字でない」の否定ではなく
+    「ひらがな・カタカナを含む」の肯定判定——キリル文字・ハングル・漢字だけの
+    名前を和名候補に混ぜないため）。両判定を満たさない値（キリル文字・ハングル・
+    漢字だけの名前等）はどちらの候補にもしない。
 
     SQL 側で (ns, taxon_key, vernacular_name) の組ごとに1回集約するので、
     Python 側で 823,692 行をループしない（`_load_occurrence_representatives()`
@@ -522,8 +548,13 @@ def _load_vernacular_candidates(
     latin_by_key: dict[tuple[str, str], list[tuple[int, str]]] = {}
     non_latin_by_key: dict[tuple[str, str], list[tuple[int, str]]] = {}
     for ns, taxon_key, name, n in ryuiki.execute(sql):
-        bucket = latin_by_key if common.is_latin_script(name) else non_latin_by_key
-        bucket.setdefault((ns, taxon_key), []).append((n, name))
+        # ラテン文字判定と和名判定は排他的（ラテン文字の範囲にひらがな・カタカナは
+        # 含まれない）。どちらでもない値（キリル文字・ハングル・漢字だけ等）は
+        # 候補にしない。
+        if common.is_latin_script(name):
+            latin_by_key.setdefault((ns, taxon_key), []).append((n, name))
+        elif common.is_japanese_name(name):
+            non_latin_by_key.setdefault((ns, taxon_key), []).append((n, name))
 
     en_by_key: dict[tuple[str, str], str] = {}
     n_multi = 0
@@ -1049,9 +1080,10 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
         n_applied += 1
     print(f"  [taxon] NAME_JA 適用 = {n_applied:,} / {len(overrides):,}")
 
-    # --- D4: 和名の記録由来補完（vernacular_name_ja が NULL の行にだけ適用。
-    # 既存の値〔override・taxa どちらの由来でも〕は1件も変えない） ------------------
+    # --- D4: 和名の記録由来補完（vernacular_name_ja が NULL、かつ rank が種以下の
+    # 行にだけ適用。既存の値〔override・taxa どちらの由来でも〕は1件も変えない） -----
     n_ja_backfilled = 0
+    n_skipped_not_species_or_below = 0
     for ns, key in all_keys:
         taxon_id = _taxon_id_for(ns, key)
         row = rows_by_id[taxon_id]
@@ -1060,10 +1092,19 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
         candidate = vern_ja_records.get((ns, key))
         if candidate is None:
             continue
+        if row["rank"] not in _SPECIES_OR_BELOW_RANKS:
+            # rank が種以下と確認できない（種より上の階級、または rank 不明）行には
+            # 適用しない（モジュール docstring「rank 制限の理由」参照。実データで
+            # 別の生きものの和名が混入する事故があった）。
+            n_skipped_not_species_or_below += 1
+            continue
         row["vernacular_name_ja"] = candidate
         row["vernacular_ja_basis"] = VERNACULAR_JA_BASIS_RECORDS
         n_ja_backfilled += 1
-    print(f"  [taxon] 和名の記録由来補完(D4) = {n_ja_backfilled:,}")
+    print(
+        f"  [taxon] 和名の記録由来補完(D4) = {n_ja_backfilled:,}"
+        f"（rank が種以下と確認できず見送り = {n_skipped_not_species_or_below:,}）"
+    )
 
     n_vernacular = sum(1 for r in rows_by_id.values() if r["vernacular_name_ja"])
     print(f"  [taxon] 和名が付いた行 = {n_vernacular:,}")

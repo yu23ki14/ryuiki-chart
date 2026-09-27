@@ -475,6 +475,16 @@ def test_is_latin_script_accepts_ascii_and_latin_extended():
     assert common.is_latin_script("O’Brien")
 
 
+def test_is_latin_script_accepts_extended_punctuation():
+    """オキナ（U+02BB）・ノーブレークスペース・en ダッシュ・左曲線引用符も俗名表記に
+    実際に出現するのでラテン文字とみなす（実データ回帰: `inat.234905` "Oʻahu sedge"）。
+    """
+    assert common.is_latin_script("Oʻahu sedge")
+    assert common.is_latin_script("Foo Bar")
+    assert common.is_latin_script("Foo–Bar")
+    assert common.is_latin_script("‘Foo’")
+
+
 def test_is_latin_script_rejects_non_latin_and_empty():
     """ひらがな・カタカナ・CJK・ギリシャ文字・空文字列はラテン文字ではない。"""
     assert not common.is_latin_script("カワセミ")
@@ -482,6 +492,30 @@ def test_is_latin_script_rejects_non_latin_and_empty():
     assert not common.is_latin_script("Ελληνικά")
     assert not common.is_latin_script("")
     assert not common.is_latin_script(None)
+
+
+# ---------------------------------------------------------------------------
+# is_japanese_name（scripts/registry/common.py）
+# ---------------------------------------------------------------------------
+
+
+def test_is_japanese_name_accepts_hiragana_and_katakana():
+    """ひらがな・カタカナを1文字以上含めば和名候補とみなす。"""
+    assert common.is_japanese_name("カワセミ")
+    assert common.is_japanese_name("さび病")  # カタカナ無し・ひらがな有り
+    assert common.is_japanese_name("北海道カワセミ")  # 漢字+カタカナの混在
+
+
+def test_is_japanese_name_rejects_non_latin_non_japanese_and_empty():
+    """`not is_latin_script()` の代用ではない——ラテン文字でなくても、ひらがな・
+    カタカナが無ければ和名候補にしない（ロシア語・韓国語・漢字だけの名前の回帰。
+    実データ: `gbif.7678610`→「Редька посевная」、`gbif.5069632`→「산물집파리」）。
+    """
+    assert not common.is_japanese_name("Редька посевная")
+    assert not common.is_japanese_name("산물집파리")
+    assert not common.is_japanese_name("北海道")  # 漢字だけ（中国語と区別できない）
+    assert not common.is_japanese_name("")
+    assert not common.is_japanese_name(None)
 
 
 # ---------------------------------------------------------------------------
@@ -624,6 +658,89 @@ def test_d4_override_wins_over_taxa_and_records(tmp_path):
     t = _taxon(conn, "common:taxon:gbif.1022")
     assert t["vernacular_name_ja"] == "ハシボソガラス"
     assert t["vernacular_ja_basis"] == "override"
+
+
+def test_d4_does_not_backfill_ranks_above_species(tmp_path):
+    """rank が種より上（kingdom 等）の taxon には D4 補完を適用しない
+    （実データ回帰: `gbif.6` kingdom Plantae に「イヌガヤ」、`gbif.5` kingdom Fungi
+    に「さび病」、`gbif.1` kingdom Animalia に「モクズヨコエビ科」が誤って
+    入っていた——属以上で1,397行）。
+    """
+    rows = [
+        ("gbif_kanagawa_occurrences", "6", "Plantae", "kingdom",
+         "Plantae", None, None, None, None, "2020-01-01", "イヌガヤ"),
+        ("gbif_kanagawa_occurrences", "6", "Plantae", "kingdom",
+         "Plantae", None, None, None, None, "2020-01-02", "イヌガヤ"),
+    ]
+    conn, _counts = _build(tmp_path, organism_records_rows=rows)
+    t = _taxon(conn, "common:taxon:gbif.6")
+    assert t["rank"] == "kingdom"
+    assert t["vernacular_name_ja"] is None
+    assert t["vernacular_ja_basis"] is None
+
+
+def test_d4_backfills_subspecies_and_variety_ranks(tmp_path):
+    """種そのものだけでなく、種内分類群（亜種・変種）にも D4 補完は適用する。"""
+    rows = [
+        ("gbif_kanagawa_occurrences", "1030", "Ficticius ggg subsp. hhh", "subspecies",
+         None, None, None, None, None, "2020-01-01", "テスト亜種"),
+        ("gbif_kanagawa_occurrences", "1030", "Ficticius ggg subsp. hhh", "subspecies",
+         None, None, None, None, None, "2020-01-02", "テスト亜種"),
+        ("gbif_kanagawa_occurrences", "1031", "Ficticius iii var. jjj", "variety",
+         None, None, None, None, None, "2020-01-01", "テスト変種"),
+        ("gbif_kanagawa_occurrences", "1031", "Ficticius iii var. jjj", "variety",
+         None, None, None, None, None, "2020-01-02", "テスト変種"),
+    ]
+    conn, _counts = _build(tmp_path, organism_records_rows=rows)
+    subsp = _taxon(conn, "common:taxon:gbif.1030")
+    assert subsp["vernacular_name_ja"] == "テスト亜種"
+    assert subsp["vernacular_ja_basis"] == "records"
+    var = _taxon(conn, "common:taxon:gbif.1031")
+    assert var["vernacular_name_ja"] == "テスト変種"
+    assert var["vernacular_ja_basis"] == "records"
+
+
+def test_d4_ignores_cyrillic_korean_and_kanji_only_candidates(tmp_path):
+    """キリル文字・ハングル・漢字だけの俗名は和名候補にしない（rank は種で、
+    `is_latin_script` の否定を使っていた旧実装での誤検出の回帰）。
+    """
+    rows = [
+        # ロシア語（実データ: gbif.7678610）。
+        ("gbif_kanagawa_occurrences", "1040", "Ficticius kkk", "species",
+         None, None, None, None, None, "2020-01-01", "Редька посевная"),
+        ("gbif_kanagawa_occurrences", "1040", "Ficticius kkk", "species",
+         None, None, None, None, None, "2020-01-02", "Редька посевная"),
+        # 韓国語（実データ: gbif.5069632）。
+        ("gbif_kanagawa_occurrences", "1041", "Ficticius lll", "species",
+         None, None, None, None, None, "2020-01-01", "산물집파리"),
+        ("gbif_kanagawa_occurrences", "1041", "Ficticius lll", "species",
+         None, None, None, None, None, "2020-01-02", "산물집파리"),
+        # 漢字だけ（中国語と区別できない）。
+        ("gbif_kanagawa_occurrences", "1042", "Ficticius mmm", "species",
+         None, None, None, None, None, "2020-01-01", "北海道"),
+        ("gbif_kanagawa_occurrences", "1042", "Ficticius mmm", "species",
+         None, None, None, None, None, "2020-01-02", "北海道"),
+    ]
+    conn, _counts = _build(tmp_path, organism_records_rows=rows)
+    for taxon_id in ("common:taxon:gbif.1040", "common:taxon:gbif.1041", "common:taxon:gbif.1042"):
+        t = _taxon(conn, taxon_id)
+        assert t["vernacular_name_ja"] is None, taxon_id
+        assert t["vernacular_ja_basis"] is None, taxon_id
+
+
+def test_vernacular_name_en_accepts_okina_and_extended_punctuation(tmp_path):
+    """U+02BB（オキナ）等を含む俗名もラテン文字の俗名として vernacular_name_en の
+    候補になる（実データ回帰: `inat.234905` "Oʻahu sedge"）。
+    """
+    rows = [
+        ("inaturalist_kanagawa", "234905", "Ficticius nnn", "species",
+         None, None, None, None, None, "2020-01-01", "Oʻahu sedge"),
+        ("inaturalist_kanagawa", "234905", "Ficticius nnn", "species",
+         None, None, None, None, None, "2020-01-02", "Oʻahu sedge"),
+    ]
+    conn, _counts = _build(tmp_path, organism_records_rows=rows)
+    t = _taxon(conn, "common:taxon:inat.234905")
+    assert t["vernacular_name_en"] == "Oʻahu sedge"
 
 
 def test_taxon_group_yaml_rejects_duplicate_match_conditions(tmp_path, monkeypatch):

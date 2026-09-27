@@ -611,10 +611,20 @@ def caveat_id(key: str, scope: str = "common") -> str:
 # ---------------------------------------------------------------------------
 
 # ASCII 印字可能域（U+0020-U+007E）と Latin-1 Supplement / Latin Extended-A・B
-# （U+00C0-U+024F、ローマ字化された学名の分音符付き文字を含む）。曲線引用符
-# （’ U+2019。例: 種の英名表記に紛れ込む）は範囲外だが別枠で許可する。
+# （U+00C0-U+024F、ローマ字化された学名の分音符付き文字を含む）。範囲外だが
+# 俗名表記に実際に出現する句読点・記号は別枠で許可する（/code-review 指摘、
+# 実データ確認: `inat.234905` "Oʻahu sedge" の U+02BB 等）。
 _LATIN_SCRIPT_RANGES = ((0x20, 0x7E), (0xC0, 0x24F))
-_LATIN_SCRIPT_EXTRA_CHARS = frozenset({"’"})
+_LATIN_SCRIPT_EXTRA_CHARS = frozenset({
+    "’",       # U+2019 RIGHT SINGLE QUOTATION MARK（例: O’Brien）
+    "‘",  # LEFT SINGLE QUOTATION MARK
+    "ʻ",  # MODIFIER LETTER TURNED COMMA（オキナ。例: Oʻahu sedge）
+    " ",  # NO-BREAK SPACE
+    "–",  # EN DASH
+})
+
+# ひらがな（U+3040-U+309F）・カタカナ（U+30A0-U+30FF）。
+_HIRAGANA_KATAKANA_RANGES = ((0x3040, 0x309F), (0x30A0, 0x30FF))
 
 
 def is_latin_script(value: str) -> bool:
@@ -637,6 +647,23 @@ def is_latin_script(value: str) -> bool:
         if not any(lo <= cp <= hi for lo, hi in _LATIN_SCRIPT_RANGES):
             return False
     return True
+
+
+def is_japanese_name(value: str) -> bool:
+    """`value` にひらがな・カタカナが1文字以上含まれるか（和名候補の肯定判定）。
+
+    `not is_latin_script(value)` の代用にしない——ラテン文字でない値には
+    キリル文字（例: `Редька посевная`）・ハングル（例: `산물집파리`）・
+    漢字だけの名前（中国語と区別できない）も含まれ、これらは和名ではない
+    （実データで誤って和名候補になっていた。build_taxon.py D4 参照）。
+    空文字列・None は False。
+    """
+    if not value:
+        return False
+    return any(
+        any(lo <= ord(ch) <= hi for lo, hi in _HIRAGANA_KATAKANA_RANGES)
+        for ch in value
+    )
 
 
 def caveat_id_cells_note(note_pk, scope: str = "common") -> str:
