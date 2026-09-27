@@ -64,7 +64,7 @@ def test_check_fresh_returns_stale_for_legacy_13_column_style_db(tmp_path):
 def test_check_fresh_returns_stale_when_spec_version_stale(tmp_path):
     conn = make_v2_cube_tables(tmp_path)
     common.record_stage_fingerprint(conn, "observation_agg", spec_version="phase-b-fact-slice/v1")  # 古い版のまま
-    common.record_stage_fingerprint(conn, "occurrence_agg", spec_version=common.OCCURRENCE_SPEC_VERSION)
+    common.record_stage_fingerprint(conn, "occurrence_agg", spec_version=common.OCCURRENCE_AGG_SPEC_VERSION)
     common.record_v2_input_fingerprint(conn, common.compute_v2_input_fingerprint())
     conn.commit()
     conn.close()
@@ -87,7 +87,7 @@ def test_check_fresh_returns_stale_when_input_fingerprint_table_missing(tmp_path
     """
     conn = make_v2_cube_tables(tmp_path)
     common.record_stage_fingerprint(conn, "observation_agg", spec_version=common.OBSERVATION_AGG_SPEC_VERSION)
-    common.record_stage_fingerprint(conn, "occurrence_agg", spec_version=common.OCCURRENCE_SPEC_VERSION)
+    common.record_stage_fingerprint(conn, "occurrence_agg", spec_version=common.OCCURRENCE_AGG_SPEC_VERSION)
     conn.commit()
     conn.close()
 

@@ -1,136 +1,152 @@
 #!/usr/bin/env python3
-"""`occurrence`（`data/db/v2.sqlite`、b06 が作ったファクト）から、ADR-0025 D2 の
-キューブ `occurrence_agg` を作る（ADR-0016 Phase B「ファクトとキューブ」O-1b。
-番号は ADR-0025 の時点で予約済み）。
+"""`occurrence`（`data/db/v2.sqlite`、b06 が作ったファクト）と `occurrence_place`
+（`data/db/v2.sqlite`、b09 が作ったサテライト）から、ADR-0025 D2・Issue #48
+PR-3a の「place_kind × grain 族」の行列で `occurrence_agg` を作る
+（ADR-0016 Phase B「ファクトとキューブ」O-1b・O-2b）。
 
     .venv/bin/python3 scripts/b07_build_occurrence_cube.py
 
 `data/db/v2.sqlite` に `occurrence_agg` テーブルを（作り直して）追加する
-（`observation`/`observation_agg`/`occurrence` と同居。b04/b06 と同じ理由で
-v2.sqlite をファイルごと作り直さない——テーブル単位で `migrate.common.staged_table`
-を使う）。**入力（`occurrence`）は一切変更しない（`SELECT` するだけ）。**
+（`observation`/`observation_agg`/`occurrence`/`occurrence_place` と同居。
+b04/b06 と同じ理由で v2.sqlite をファイルごと作り直さない——テーブル単位で
+`migrate.common.staged_table` を使う）。**入力（`occurrence`・`occurrence_place`）は
+一切変更しない（`SELECT` するだけ）。**
 
 ## 対象は日付のある記録だけ（ADR-0025 D2）
 
 `occurrence.period_raw IS NOT NULL` の816,856行だけがキューブに入る。日付の
 無い6,836行はキューブの対象外（L2 にはそのまま残る。ADR-0007 原則1）。
 
-## 鍵と値（ADR-0025 D2・O-1 設計 v2 D2）
+## 「place_kind × grain 族」の行列（Issue #48 PR-3a 設計書 §1.1）
 
-    region_id, source_id, place_id, place_kind, taxon_id, grain, period_start, period_end
+族は2つ:
 
-`place_kind` を鍵に持つ理由・O-2 との関係は ADR-0025 D2 参照（`occurrence.place_kind`
-は今のところ常に `'grid01'` なので、この列を鍵に足しても他の列の値は1ビットも
-変わらない）。
+- `year` 族 `{year, survey_period}`（既存。日付あり全記録の分割——年境界に
+  収まる記録は `grain='year'`、年をまたぐ記録は `grain='survey_period'`）。
+- `month` 族 `{month}`（同一月に収まる記録だけの分割。ADR-0024 決定3を守る
+  ため、`grain='year'` の記録や月をまたぐ区間は month セルに入らない）。
 
-値は `n`（記録数）・`n_red_list`（`red_list_category` の原表記が NULL でも
-`''` でもない記録の数。v1 の `mesh_year.rl_n`・`mesh_species.rl_species_n` と
-同じ定義）。`n_distinct_taxon` は taxon 粒度で非加法なので持たない
-（ADR-0025 D2）。`taxon_id`/`place_id` が NULL のセルも持つ（データを落とさない）。
+`place_kind` は2つ（`PLACE_KINDS`）。このモジュールが実際に作るセルは
+`CELL_FAMILIES`（grid01×year・grid01×month・watershed×year の3マス。
+watershed×month は消費者が無いので作らない——足すなら `CELL_FAMILIES` に
+1行足すだけでよい設計にしてある）。
 
-## `grain ∈ {year, survey_period}` の判定（ADR-0025 D2）
+`place_kind` は各セルの INSERT でリテラル（`'grid01'`/`'watershed'`）を
+入れる——`occurrence.place_kind` から写さない（NULL place のセルでも族の
+識別子が必ず入る）。`occurrence.place_kind` は日付あり全行で `'grid01'` の
+はず（grid01 が今のところ唯一の「記録に直接ぶら下がる」place_kind）で
+あることを起動時に別途確かめる（`_assert_dated_rows_are_grid01`）。
 
-`occurrence.period_start`/`period_end`（b06 が展開済み。時刻帯なしのローカル
-時刻）の年が一致する記録（day/instant/month/year と、同年内に収まる区間）は
-`grain='year'`——キューブのセルは `substr(period_start,1,4) || '-01-01'` 〜
-`substr(period_start,1,4) || '-12-31'`（暦年境界へ正規化）に**丸める**。年が
-食い違う記録（年をまたぐ区間。実測1,191行）は `grain='survey_period'`
-（leaf）——セルの `period_start`/`period_end` は記録自身の区間**そのもの**
-（丸めない。セルの宣言する期間＝メンバーの期間なので ADR-0024 決定3を
-破らない）。
+## watershed セルの解決（O-2b）
 
-**年境界の計算に SQLite の `date()` を使わない**（文字列演算の
-`substr(...)||'-01-01'`/`||'-12-31'` だけで求める。b04 が `observation_agg`
-の年セルで使う `date(period_start,'start of year')` と値は同じだが、
-`occurrence.period_start`/`period_end` は `date()`/`datetime()`/`strftime()`
-が `+09:00` 付き文字列を UTC へ正規化してしまう問題〔ADR-0024〕そのものへの
-依存を断つため、日時関数を一切使わない——コードレビュー指摘5）。
-`_assert_t1_invariant` が実行のたびに `occurrence.period_start`/`period_end`
-（日付あり行）が時刻帯を持たない・10桁または19桁であること（ADR-0024 の T1。
-b06 が保証済みのはずだが、b07 自身も入力を信用せず確かめる）を検証してから
-使う。
+`occurrence`（日付あり）を `occurrence_place`（`place_kind='watershed'`）と
+`record_id` で結合し、`place_id := occurrence_place.place_id`
+（NULL のことがある——流域に解決できない記録。ADR-0025 D2「データを落とさ
+ない」に従い、`place_kind='watershed', place_id NULL` のセルとして持つ）。
+日付あり全行が `occurrence_place` に必ず1行（`place_kind='watershed'`）を
+持つことを、セルを作る前に確かめる（`_assert_populations_complete`。b09 の
+回し忘れ・別スナップショット混在を検出する——b09 は座標のある全記録が
+対象で、日付あり記録はその部分集合のため、この前提が崩れていれば必ず
+検出できる）。
 
-この2つの `grain` で、日付のある全記録がちょうど1つのセルに入る
-（キューブ＝L2 の分割。ADR-0025 D2）。
+## `grain='month' の判定（同一月に収まるか）
+
+`substr(period_start,1,7) = substr(period_end,1,7)`（`_SAME_MONTH_EXPR`）。
+月セルの `period_start`/`period_end` は暦月境界（月初日〜月末日）へ丸める
+——**SQLite の日時関数は使わない**（年セルと同じ理由。ADR-0024）。月末日の
+計算は Python の `calendar.monthrange()`（`_month_bounds()`）を、出現する
+`YYYY-MM` の distinct 値だけに対して1回ずつ呼び、一時テーブル
+`__month_bounds(ym, month_start, month_end)` に持たせて SQL 側で JOIN する
+（`period_start`/`period_end` という同名列を population 側と持つと WHERE 句の
+`_SAME_MONTH_EXPR`（列名を修飾しない共有述語）が曖昧になるため、一時テーブル
+の列名は `month_start`/`month_end` にしてある）。`scripts/migrate/period.py`
+の `month_bounds()`（`occurrence_period.py` が 'month' 形の展開に使う、
+`datetime.date`/`timedelta` で「翌月1日の前日」を出す実装）と役割は同じだが、
+呼び出し側の型（1件ずつ vs. distinct な YYYY-MM の集合をまとめて一時テーブル
+化）が違うため、ここでは独立した薄い実装にしてある。
+
+## 年境界の計算に SQLite の `date()` を使わない
+
+（`_YEAR_CELLS_SQL` と同じ理由。b04 が `observation_agg` の年セルで使う
+`date(period_start,'start of year')` と値は同じだが、`occurrence.period_start`/
+`period_end` は `date()`/`datetime()`/`strftime()` が `+09:00` 付き文字列を
+UTC へ正規化してしまう問題〔ADR-0024〕そのものへの依存を断つため、日時関数を
+一切使わない）。`_assert_t1_invariant` が実行のたびに `occurrence.period_start`/
+`period_end`（日付あり行）が時刻帯を持たない・10桁または19桁であることを
+検証してから使う。
+
+## 測度（Issue #48 PR-3a 決定 D3）
+
+`n`（記録数）・`n_red_list`（`red_list_category` の原表記が NULL でも '' でも
+ない記録の数。v1 の `mesh_year.rl_n`・`mesh_species.rl_species_n` と同じ定義）・
+`n_alien`（`SUM(is_alien)`。`is_alien` は (source, taxon_key) ごとに一定なので
+加法で正確——v1 `org_watershed.alien_n`/`watershed_rollup.org_alien_n` の
+後継）。`n_distinct_taxon` は taxon 粒度で非加法なので持たない。
 
 ## `built_from` に SQLite バージョンを埋め込まない、が書き込み経路自体は3.43以降が前提
 
 `scripts/b04_build_cube.py`（`observation_agg`）は `AVG()`/`SUM()` の
 浮動小数点加算アルゴリズムが SQLite 3.43 で変わる問題（ADR-0021 決定3）を
 踏まえ、`built_from` に `sqlite=...` を埋め込んで検証する。このキューブの値
-（`n`/`n_red_list`）は整数の `COUNT()`/`SUM(CASE ...)` だけで、SQLite の
-`SUM()` は整数列に対しては常に厳密な64bit整数和を返す（浮動小数点の丸め誤差
-やバージョン依存の加算アルゴリズムの対象外）。そのため ADR-0021 決定3の
-検証は適用対象が無く、`built_from` はバージョンを含まない `'occurrence'`
-（入力テーブル名）に留める。ADR-0025 D2 が明示する「共通」の規律（
-`staged_table`・`COALESCE(c,'') の UNIQUE INDEX`・`built_from`/`spec_version`）
-はそのまま満たす。
+（`n`/`n_red_list`/`n_alien`）は整数の `COUNT()`/`SUM(CASE ...)`/`SUM(is_alien)`
+だけで、SQLite の `SUM()` は整数列に対しては常に厳密な64bit整数和を返す
+（浮動小数点の丸め誤差やバージョン依存の加算アルゴリズムの対象外）。その
+ため ADR-0021 決定3の検証は適用対象が無く、`built_from` はバージョンを含ま
+ない `'occurrence'`（入力テーブル名）に留める。
 
-**ただし、この書き込み経路自体は SQLite 3.43 以降が前提**（コードレビュー
-指摘: 以前はここに「版の検査は要らない」と書いていたが誤りだった。「値の
-計算に版依存が無い」ことと「使っている SQL 機能に版の前提が無い」ことは別）。
-検証（`_assert_series_totals_match_l2`）が呼ぶ `scripts/migrate/common.
+**ただし、この書き込み経路自体は SQLite 3.43 以降が前提**（検証
+（`_assert_series_totals_match_population`）が呼ぶ `scripts/migrate/common.
 assert_grouped_totals_match` は `FULL OUTER JOIN`（SQLite 3.39 で追加）を
-使うため、それより古い版では `sqlite3.OperationalError: RIGHT and FULL
-OUTER JOINs are not currently supported` で落ちる（実測。古い `sqlite3`
-CLI 3.37.2 で確認済み）。`build_cube()` の先頭で `common.
-require_sqlite_version()`（b04・b05・b10 と共有するガード）を呼ぶ——
-`FULL OUTER JOIN` 自体が要求する最小版（3.39）ではなく、`AVG()`/`SUM()` を
-使う他のスクリプトと同じ **3.43 で統一**する（このパイプライン全体を
-「SQLite 3.43 以降が前提」という1つの基準で揃え、機能ごとに違う最小版を
-持ち込まない）。
+使うため、それより古い版では `sqlite3.OperationalError` で落ちる。
+`build_cube()` の先頭で `common.require_sqlite_version()`（b04・b05・b08・b10
+と共有するガード）を呼ぶ——`FULL OUTER JOIN` 自体が要求する最小版（3.39）
+ではなく、`AVG()`/`SUM()` を使う他のスクリプトと同じ **3.43 で統一**する）。
 
 ## 機械検証（1つでも失敗すれば `common.MigrationError` で止まる）
 
-**(ii)(iii) は L2（`occurrence`）の述語を数えるのではなく、実際に作った
-キューブ（`staging`）に対して行う**（コードレビュー指摘1）。以前の実装は
-`occurrence` に対して同じ年境界の述語を数え直していただけで、年セル/leaf
-セルの SQL 自体の WHERE 句が壊れていても（例: 年セルが同年判定を落として
-年をまたぐ記録まで飲み込む）検証側が同じ壊れた述語を使うため何も検出でき
-なかった（レビュアーが実際に確認・`scripts/tests/test_b07_build_occurrence_cube.py`
-の変異テストで再現・修正を確認済み）。
+**族×place_kind ごとの母集団を一時テーブル `__pop_grid01`/`__pop_watershed`
+として1回だけ作り、以下の検証はすべてこの母集団か、実際に作ったキューブ
+（`staging`）に対して行う**——`occurrence`（L2）の述語を検証のたびに数え
+直すのではない（以前の実装がこの穴を持っていたことのコードレビュー指摘。
+`scripts/tests/test_b07_build_occurrence_cube.py` の変異テストで再現・修正を
+確認済み）。
 
-- (i) 系列（`place_kind`, `source_id`, `taxon_id`。`taxon_id IS NULL` を含む）
-  ごとに `Σn(year+leaf) = occurrence の日付あり行数`、`Σn_red_list` も同様
-  （`_assert_series_totals_match_l2`。**`place_kind` を系列の一部に含める**
-  ——O-2 で `place_kind='watershed'` のセルが増えても、`place_kind` の違う
-  セルどうしを1つの系列に混ぜて合計しない。今は `place_kind` が常に
-  `'grid01'` なので、この変更自体は実測値に影響しない）。`occurrence`
-  （816,856行）に対する `GROUP BY` は `_materialize_l2_series_totals` が
-  最初に1回だけ行い、結果（約32,000行）を一時テーブルに残す——比較
-  （`scripts/migrate/common.assert_grouped_totals_match` が SQL の
-  `FULL OUTER JOIN` で行う。/simplify 指摘3: 系列数が約32,000にもなると、
-  両側を Python の `dict` に展開して `set` 演算で突き合わせる実装は Python
-  側の実行時間が支配的だった——実測 約3.6秒）・検証した系列数・
-  `place_kind` ごとの日付あり行数（(ii)(iii) が使う）は、すべてこの一時
-  テーブルを読むだけで済ませ、`occurrence` を何度もフルスキャンしない
-  （以前は `_DATED_ROW_COUNT_SQL`/`_YEAR_SOURCE_ROW_COUNT_SQL` で
-  `occurrence` を2回余分に読んでいた。実測で約6.4秒の短縮）。
-- (ii)(iii) `_assert_cube_partition_and_shape`（**staging に対して**。
-  `place_kind` ごとに行う——今は `'grid01'` だけ。O-2 で `'watershed'` が
-  増えたら、この検証もその宣言値ぶん拡張すること）:
-  - `grain` が `'year'`/`'survey_period'` 以外の値を持たない（`place_kind`
-    に関わらず共通の語彙検査。そのまま）。
-  - `staging` の `place_kind='grid01'` に絞った `SUM(n) GROUP BY grain` が、
-    `survey_period` は `scripts/migrate/occurrence_cube_declarations.yaml`
-    の宣言値（1,191）と、`year` は「(i) で得た `place_kind='grid01'` の
-    日付あり行数 − leaf の宣言値」と、それぞれ一致する。
-  - `grain='year'` の全行（`place_kind` に関わらず）が `period_start = <年>-01-01`
-    かつ `period_end = <年>-12-31`（暦年境界に丸められている）。
-  - `grain='survey_period'` の全行（`place_kind` に関わらず）が年をまたいで
-    いる（`substr(period_start,1,4) <> substr(period_end,1,4)`）。
-- 次元キーの一意性（`COALESCE(c,'') の UNIQUE INDEX`。`scripts/b04_build_cube.py`
-  の C-3 と同じ。`place_kind` も鍵の一部として含める）。
+1. **母集団の完全性**（`_assert_populations_complete`）: `__pop_grid01`/
+   `__pop_watershed` の行数がどちらも「日付あり occurrence 全行数」と一致する
+   （watershed 側は `occurrence_place` との JOIN が記録を落としていないかの
+   検査——b09 の回し忘れ・別スナップショット混在を検出する）。
+2. **系列 Σ の突合**（`_assert_series_totals_match_population`。族×place_kind
+   ごと。系列は (source_id, taxon_id)）: year 族は母集団の全行、month 族は
+   母集団のうち `_SAME_MONTH_EXPR` を満たす行、それぞれの Σn/Σn_red_list/
+   Σn_alien が `staging`（対応する `place_kind`・`grain IN 族` で絞る）と一致する。
+3. **宣言との突合**（`scripts/migrate/occurrence_cube_declarations.yaml`。4件。
+   `_assert_declared_counts`）: `staging` 自身から集計した
+   - leaf（`grain='survey_period'`）の Σn が `leaf_cell_source_rows`
+     （grid01・watershed の両方で。記録の属性なので place_kind に依らない）。
+   - year（`grain='year'`）の Σn が「日付あり行数 − leaf 宣言値」
+     （grid01・watershed の両方）。
+   - month（`grain='month'`、grid01）の Σn が `month_cell_source_rows`。
+   - watershed の year 族を `place_id IS NOT NULL`/`IS NULL` で分けた Σn が
+     `watershed_dated_resolved_rows`/`watershed_dated_unresolved_rows`。
+4. **形**（`_assert_cell_shapes`）: `grain` の語彙が `GRAIN_VALUES` 以外を
+   持たない。`grain='year'` の全行が暦年境界に丸められている。
+   `grain='survey_period'` の全行が年をまたいでいる。`grain='month'` の全行が
+   月初日始まり・同一月内・月末日終わりになっている。
+5. **月セルは年セルの部分和**（`_assert_month_cells_are_subset_of_year_cells`）:
+   同じ次元・同じ年で Σ(月セルの n) ≤ 対応する年セルの n、かつ対応する年
+   セルが必ず存在する。
+6. 次元キーの一意性（`COALESCE(c,'') の UNIQUE INDEX`。`place_kind` も鍵の
+   一部——族が増えても同じ仕組みでよい）。
 
-同じ年か否かの述語は `_SAME_YEAR_EXPR` の1箇所だけに持ち、年セル/leaf セルの
-INSERT 側と `_assert_cube_partition_and_shape` の検証側の両方がそこから作る
-（コードレビュー指摘12）。宣言 YAML は `load_and_validate_cube_declarations()`
-が1回だけ読み、構造検証と値の取得を同時に行う（以前は構造検証用と値取得用で
-2回読んでいた。コードレビュー指摘12）。
+同じ年/月か否かの述語は `_SAME_YEAR_EXPR`/`_CROSS_YEAR_EXPR`/`_SAME_MONTH_EXPR`
+の1箇所だけに持ち、セルの INSERT 側と検証側の両方がそこから作る。宣言 YAML は
+`load_and_validate_cube_declarations()` が1回だけ読み、構造検証と値の取得を
+同時に行う。
 """
 from __future__ import annotations
 
 import argparse
+import calendar
 import pathlib
 import sqlite3
 import sys
@@ -138,6 +154,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
+import b09_build_occurrence_place as b09  # noqa: E402
 from migrate import common, period  # noqa: E402
 
 DEFAULT_DB = ROOT / "data" / "db" / "v2.sqlite"
@@ -148,28 +165,55 @@ DEFAULT_DECLARATIONS_YAML = ROOT / "scripts" / "migrate" / "occurrence_cube_decl
 DEFAULT_BUILT_FROM = "occurrence"
 
 # ADR-0025 D2 の次元キー。列順はそのまま `occurrence_agg` の列順の先頭に使う。
-# `place_kind` は O-2（watershed セル）の先取り——`observation_agg` の鍵の
-# 並び（region_id, place_id, place_kind, ...）に合わせて place_id の直後に置く。
 DIM_COLUMNS = [
     "region_id", "source_id", "place_id", "place_kind", "taxon_id",
     "grain", "period_start", "period_end",
 ]
 
-# `staging` が実際に持ってよい grain の語彙（ADR-0025 D2）。将来 month セル等を
-# 足すときは、ここと年キー8表の射影（scripts/b08_project_occurrence_v1.py。
+# Issue #48 PR-3a §0: 2つの粒度族。b08（`scripts/b08_project_occurrence_v1.py`）が
+# `YEAR_GRAIN_FAMILY` を import して年キー8表の絞り込みに使う——**この2つの
+# 名前は最初のコミットで確定させ、以降変えない**（U2/U4 が同じ名前を前提に
+# 並行で書いている）。
+YEAR_GRAIN_FAMILY = ("year", "survey_period")   # 日付あり全記録の分割
+MONTH_GRAIN_FAMILY = ("month",)                  # 同一月に収まる記録だけの分割
+
+# `staging` が実際に持ってよい grain の語彙。新しい族を足すときは、ここと
+# `CELL_FAMILIES`・年キー8表の射影（`scripts/b08_project_occurrence_v1.py`。
 # `GRAIN_VALUES` をこのモジュールから import して使う）を合わせて見直すこと
-# ——黙って絞り込みで捨てない（コードレビュー指摘2）。1箇所で済むよう、
-# SQL の `IN (...)` 句・メッセージの語彙表記もここから組み立てる
-# （/simplify 指摘5: `_KNOWN_PLACE_KINDS` と同じ書き方）。
-GRAIN_VALUES = ("year", "survey_period")
+# ——黙って絞り込みで捨てない。
+GRAIN_VALUES = YEAR_GRAIN_FAMILY + MONTH_GRAIN_FAMILY
 _GRAIN_VALUES_SQL_LIST = ", ".join(repr(g) for g in GRAIN_VALUES)
-_GRAIN_VALUES_LABEL = "/".join(repr(g) for g in GRAIN_VALUES)  # 例: "'year'/'survey_period'"
+_GRAIN_VALUES_LABEL = "/".join(repr(g) for g in GRAIN_VALUES)  # 例: "'year'/'survey_period'/'month'"
+_YEAR_GRAIN_VALUES_SQL_LIST = ", ".join(repr(g) for g in YEAR_GRAIN_FAMILY)
+
+GRID01_PLACE_KIND = "grid01"
+WATERSHED_PLACE_KIND = b09.PLACE_KIND  # "watershed"（b09 の定義を正とする。二重に持たない）
+PLACE_KINDS: tuple[str, ...] = (GRID01_PLACE_KIND, WATERSHED_PLACE_KIND)
+
+# Issue #48 PR-3a §0 決定1: 作るセルの行列（(place_kind, 族名) の宣言表）。
+# 族名は `"year"`（`YEAR_GRAIN_FAMILY`）か `"month"`（`MONTH_GRAIN_FAMILY`）。
+# watershed×month（D2: 消費者が無いので作らない）を足すならここに1行足すだけ
+# でよい設計にしてある（母集団・セル生成・検証はすべてこの表を読んで回る）。
+CELL_FAMILIES: tuple[tuple[str, str], ...] = (
+    (GRID01_PLACE_KIND, "year"),
+    (GRID01_PLACE_KIND, "month"),
+    (WATERSHED_PLACE_KIND, "year"),
+)
+
+_FAMILY_GRAINS = {"year": YEAR_GRAIN_FAMILY, "month": MONTH_GRAIN_FAMILY}
 
 REQUIRED_DECLARATION_KEYS = ("expected_row_count", "note")
 _LEAF_DECLARATION_NAME = "leaf_cell_source_rows"
+_MONTH_DECLARATION_NAME = "month_cell_source_rows"
+_WATERSHED_RESOLVED_DECLARATION_NAME = "watershed_dated_resolved_rows"
+_WATERSHED_UNRESOLVED_DECLARATION_NAME = "watershed_dated_unresolved_rows"
+_DECLARATION_NAMES = frozenset({
+    _LEAF_DECLARATION_NAME, _MONTH_DECLARATION_NAME,
+    _WATERSHED_RESOLVED_DECLARATION_NAME, _WATERSHED_UNRESOLVED_DECLARATION_NAME,
+})
 
-_CREATE_OCCURRENCE_AGG_SQL = f"""
-CREATE TABLE {{table}} (
+_CREATE_OCCURRENCE_AGG_SQL = """
+CREATE TABLE {table} (
   region_id     TEXT NOT NULL,
   source_id     TEXT NOT NULL,
   place_id      TEXT,
@@ -180,6 +224,7 @@ CREATE TABLE {{table}} (
   period_end    TEXT NOT NULL,
   n             INTEGER NOT NULL,
   n_red_list    INTEGER NOT NULL,
+  n_alien       INTEGER NOT NULL,
   built_from    TEXT NOT NULL,
   spec_version  TEXT NOT NULL
 )
@@ -189,53 +234,105 @@ CREATE TABLE {{table}} (
 # mesh_year.rl_n・mesh_species.rl_species_n と同じ定義。O-1b brief 参照）。
 _RED_LIST_NONEMPTY_EXPR = "red_list_category IS NOT NULL AND red_list_category <> ''"
 
-# 「同じ暦年に収まる記録か」の述語（コードレビュー指摘12: 1箇所だけに持ち、
-# 年セル/leaf セルの INSERT 側と検証側（`_assert_cube_partition_and_shape`）の
-# 両方がここから作る）。列名は `period_start`/`period_end` のみを参照する
-# ため、`occurrence`（生の列）にも `staging`（キューブのセル。leaf セルは
-# 丸めていないので同じ意味を保つ）にもそのまま使える。
+# 「同じ暦年に収まる記録か」「同じ暦月に収まる記録か」の述語（1箇所だけに
+# 持ち、セルの INSERT 側と検証側の両方がここから作る）。列名は
+# `period_start`/`period_end` のみを参照するため、`occurrence`（生の列）にも
+# 母集団の一時テーブルにも `staging`（キューブのセル。leaf/month セルは
+# 丸めていないので同じ意味を保つ——leaf は記録そのもの、month は月境界に
+# 丸めるが同月内なので `_SAME_MONTH_EXPR` は変わらず真）にもそのまま使える。
 _SAME_YEAR_EXPR = "substr(period_start, 1, 4) = substr(period_end, 1, 4)"
 _CROSS_YEAR_EXPR = f"NOT ({_SAME_YEAR_EXPR})"
+_SAME_MONTH_EXPR = "substr(period_start, 1, 7) = substr(period_end, 1, 7)"
 
-_DIM_SELECT = ", ".join(DIM_COLUMNS[:5])  # region_id, source_id, place_id, place_kind, taxon_id
+# 母集団の一時テーブルの列（`record_id` は完全性検査・デバッグ用に残す。
+# セルの INSERT では使わない）。
+_POP_COLUMNS = (
+    "record_id", "region_id", "source_id", "place_id", "taxon_id",
+    "period_start", "period_end", "red_list_category", "is_alien",
+)
+_POP_COLUMNS_SQL = ", ".join(_POP_COLUMNS)
+# `_INSERT_COLUMNS`（≡ `DIM_COLUMNS`）の列順は
+# `region_id, source_id, place_id, place_kind, taxon_id, grain, ...`——
+# `place_kind` は母集団の列ではなくセルごとのリテラルなので、母集団からの
+# SELECT はその位置で分割する（`{{place_kind}}` を挟んで前半/後半をつなぐ）。
+_POP_DIM_SELECT_PRE = "region_id, source_id, place_id"     # place_kind の前
+_POP_DIM_SELECT_POST = "taxon_id"                            # place_kind の後
+_POP_DIM_GROUP_BY = "region_id, source_id, place_id, taxon_id"  # GROUP BY は順不同でよい
 
-_INSERT_COLUMNS = DIM_COLUMNS + ["n", "n_red_list", "built_from", "spec_version"]
+_POP_TABLE = {GRID01_PLACE_KIND: "__pop_grid01", WATERSHED_PLACE_KIND: "__pop_watershed"}
+
+# grid01: `occurrence.place_id`（b06 が grid01 の解決込みで書いている）が
+# そのまま使える。watershed: `occurrence_place`（b09、`place_kind='watershed'`）
+# と `record_id` で結合し、`place_id` を差し替える（NULL のことがある——
+# 流域に解決できない記録。ADR-0025 D2「データを落とさない」）。
+_POP_SOURCE_SQL = {
+    GRID01_PLACE_KIND: f"""
+        SELECT {_POP_COLUMNS_SQL}
+        FROM occurrence
+        WHERE period_raw IS NOT NULL
+    """,
+    WATERSHED_PLACE_KIND: f"""
+        SELECT o.record_id, o.region_id, o.source_id, op.place_id, o.taxon_id,
+               o.period_start, o.period_end, o.red_list_category, o.is_alien
+        FROM occurrence o
+        JOIN occurrence_place op
+          ON op.record_id = o.record_id AND op.place_kind = {WATERSHED_PLACE_KIND!r}
+        WHERE o.period_raw IS NOT NULL
+    """,
+}
+
+_MEASURE_SELECT = (
+    f"COUNT(*) AS n, "
+    f"SUM(CASE WHEN {_RED_LIST_NONEMPTY_EXPR} THEN 1 ELSE 0 END) AS n_red_list, "
+    f"SUM(is_alien) AS n_alien"
+)
 
 # 年セル: 期間が1つの暦年に収まる記録（day/instant/month/year と、同年内の
 # 区間）。セルの period_start/period_end は暦年境界へ丸める（文字列演算のみ。
-# モジュール docstring「年境界の計算に SQLite の date() を使わない」参照）。
+# モジュール docstring「年境界の計算」参照）。`{pop_table}`/`{place_kind}` は
+# `.format()` で埋める（テンプレート文字列自体は変えず、母集団テーブル名と
+# place_kind リテラルだけを差し替える——`_SAME_YEAR_EXPR` を含む WHERE 句の
+# テキストは常に一定なので、変異テストで文字列置換の対象にできる）。
 _YEAR_CELLS_SQL = f"""
-SELECT {_DIM_SELECT}, 'year' AS grain,
+SELECT {_POP_DIM_SELECT_PRE}, '{{place_kind}}' AS place_kind, {_POP_DIM_SELECT_POST}, 'year' AS grain,
        substr(period_start, 1, 4) || '-01-01' AS period_start,
        substr(period_start, 1, 4) || '-12-31' AS period_end,
-       COUNT(*) AS n,
-       SUM(CASE WHEN {_RED_LIST_NONEMPTY_EXPR} THEN 1 ELSE 0 END) AS n_red_list,
+       {_MEASURE_SELECT},
        ? AS built_from, ? AS spec_version
-FROM occurrence
-WHERE period_raw IS NOT NULL AND {_SAME_YEAR_EXPR}
-GROUP BY {_DIM_SELECT}, substr(period_start, 1, 4)
+FROM "{{pop_table}}"
+WHERE {_SAME_YEAR_EXPR}
+GROUP BY {_POP_DIM_GROUP_BY}, substr(period_start, 1, 4)
 """
 
 # leaf セル: 年をまたぐ区間。period_start/period_end は記録自身の区間その
 # もの（丸めない）。
 _LEAF_CELLS_SQL = f"""
-SELECT {_DIM_SELECT}, 'survey_period' AS grain,
+SELECT {_POP_DIM_SELECT_PRE}, '{{place_kind}}' AS place_kind, {_POP_DIM_SELECT_POST}, 'survey_period' AS grain,
        period_start, period_end,
-       COUNT(*) AS n,
-       SUM(CASE WHEN {_RED_LIST_NONEMPTY_EXPR} THEN 1 ELSE 0 END) AS n_red_list,
+       {_MEASURE_SELECT},
        ? AS built_from, ? AS spec_version
-FROM occurrence
-WHERE period_raw IS NOT NULL AND {_CROSS_YEAR_EXPR}
-GROUP BY {_DIM_SELECT}, period_start, period_end
+FROM "{{pop_table}}"
+WHERE {_CROSS_YEAR_EXPR}
+GROUP BY {_POP_DIM_GROUP_BY}, period_start, period_end
 """
 
-_L2_SERIES_TOTALS_SQL = f"""
-SELECT place_kind, source_id, taxon_id, COUNT(*) AS n,
-       SUM(CASE WHEN {_RED_LIST_NONEMPTY_EXPR} THEN 1 ELSE 0 END) AS n_red_list
-FROM occurrence
-WHERE period_raw IS NOT NULL
-GROUP BY place_kind, source_id, taxon_id
+# 月セル: 同一月に収まる記録。period_start/period_end は暦月境界へ丸める
+# （`__month_bounds` の `month_start`/`month_end` を JOIN する。列名を
+# `period_start`/`period_end` にすると `_SAME_MONTH_EXPR`（列を修飾しない
+# 共有述語）が母集団側とどちらを指すか曖昧になるため、月境界の一時テーブル
+# 側だけ別名にしてある）。
+_MONTH_CELLS_SQL = f"""
+SELECT {_POP_DIM_SELECT_PRE}, '{{place_kind}}' AS place_kind, {_POP_DIM_SELECT_POST}, 'month' AS grain,
+       mb.month_start AS period_start, mb.month_end AS period_end,
+       {_MEASURE_SELECT},
+       ? AS built_from, ? AS spec_version
+FROM "{{pop_table}}" o
+JOIN "__month_bounds" mb ON mb.ym = substr(o.period_start, 1, 7)
+WHERE {_SAME_MONTH_EXPR}
+GROUP BY {_POP_DIM_GROUP_BY}, mb.ym
 """
+
+_INSERT_COLUMNS = DIM_COLUMNS + ["n", "n_red_list", "n_alien", "built_from", "spec_version"]
 
 _SAMPLE_LIMIT = 20
 
@@ -250,9 +347,8 @@ def _assert_t1_invariant(conn: sqlite3.Connection) -> None:
     〔19桁〕のどちらか）を満たすことを確かめる。`scripts/b06_build_occurrence.py`
     が構築時に同じ不変条件を検証済みだが、`occurrence`（v2.sqlite）と
     `v2.sqlite` を読む b07 の実行は別プロセス・別タイミングでありうるため、
-    ここでも入力を信用せず確認する（段階間の検証。コードレビュー指摘5）。
-    これが通っていることが、年境界の計算を `date()` を使わず文字列演算だけで
-    行ってよい前提になる。
+    ここでも入力を信用せず確認する。これが通っていることが、年境界・月境界の
+    計算を `date()` を使わず文字列演算だけで行ってよい前提になる。
     """
     bad = conn.execute(
         """
@@ -272,8 +368,25 @@ def _assert_t1_invariant(conn: sqlite3.Connection) -> None:
         )
 
 
+def _assert_dated_rows_are_grid01(conn: sqlite3.Connection) -> None:
+    """日付あり `occurrence` 行の `place_kind` が全て `'grid01'` であることを
+    確かめる（Issue #48 PR-3a 設計書 §1.1: grid01 セルの母集団は
+    `occurrence.place_id` をそのまま使うため、この前提が崩れると grid01 の
+    セルに他の place_kind の place_id が紛れ込む）。
+    """
+    bad = conn.execute(
+        "SELECT COUNT(*) FROM occurrence WHERE period_raw IS NOT NULL AND "
+        f"(place_kind IS NULL OR place_kind <> '{GRID01_PLACE_KIND}')"
+    ).fetchone()[0]
+    if bad:
+        raise common.MigrationError(
+            f"occurrence_agg: occurrence（日付あり）の place_kind が {GRID01_PLACE_KIND!r} 以外の"
+            f"行が{bad}件ある。grid01 母集団は occurrence.place_id をそのまま使う前提が崩れている。"
+        )
+
+
 # ---------------------------------------------------------------------------
-# 宣言 YAML（1回だけ読む。コードレビュー指摘12）
+# 宣言 YAML（1回だけ読む）
 # ---------------------------------------------------------------------------
 
 def load_and_validate_cube_declarations(path=DEFAULT_DECLARATIONS_YAML, count_overlay=None) -> dict:
@@ -281,10 +394,10 @@ def load_and_validate_cube_declarations(path=DEFAULT_DECLARATIONS_YAML, count_ov
     （`occurrence_period_shapes.yaml` の `validate_occurrence_period_shapes_shape()`
     と同じ流儀——必須キーの検査は `period.required_keys_problems()`、整数検査は
     `period.validate_expected_row_count()` に委ねる）。宣言された名前の集合が
-    `{_LEAF_DECLARATION_NAME}` 1件と過不足なく一致することも確認する。
+    `_DECLARATION_NAMES`（4件）と過不足なく一致することも確認する。
 
     `build_cube()` はここが返した dict から値を直接取り出す——構造検証用と
-    値取得用でファイルを2回読まない（コードレビュー指摘12）。
+    値取得用でファイルを2回読まない。
 
     `count_overlay`（既定 None）は `expected_row_count` だけを差し替える
     （`period.apply_count_overlay()`。Issue #29「縮小サンプル」）。
@@ -302,7 +415,7 @@ def load_and_validate_cube_declarations(path=DEFAULT_DECLARATIONS_YAML, count_ov
     if problems:
         raise common.MigrationError(f"{path} の形が不正:\n- " + "\n- ".join(problems))
 
-    period.assert_declared_names_match(raw, {_LEAF_DECLARATION_NAME}, path)
+    period.assert_declared_names_match(raw, _DECLARATION_NAMES, path)
     return raw
 
 
@@ -314,96 +427,276 @@ def validate_cube_declarations_shape(path=DEFAULT_DECLARATIONS_YAML) -> None:
 
 
 # ---------------------------------------------------------------------------
-# (i) 系列ごとの Σn/Σn_red_list（occurrence=L2 と staging を突き合わせる）
+# 母集団（`__pop_grid01`/`__pop_watershed`）
 # ---------------------------------------------------------------------------
 
-_L2_SERIES_TOTALS_TABLE = "__l2_series_totals"
-
-
-def _materialize_l2_series_totals(conn: sqlite3.Connection) -> str:
-    """`occurrence`（日付あり行）を系列（place_kind, source_id, taxon_id）
-    ごとに集計した一時テーブルを作り、そのテーブル名を返す。
-
-    `occurrence`（816,856行）の `GROUP BY` はこの1回だけ行う——後続の3つの
-    用途（キューブとの突合・検証した系列数・`place_kind` ごとの日付あり
-    行数）は、すべてこの集計結果（約32,000行）を読むだけで済ませる
-    （呼び出し元がこれらを別々のクエリで `occurrence` に対して再実行すると、
-    同じ高コストな `GROUP BY` を複数回行うことになる——実装時に実際に踏んだ
-    非効率）。呼び出し元が使い終わったら `DROP TABLE` すること。
+def _materialize_populations(conn: sqlite3.Connection) -> dict[str, str]:
+    """`PLACE_KINDS` それぞれの母集団を一時テーブルに1回だけ実体化する。
+    戻り値は `{place_kind: 一時テーブル名}`。呼び出し元が使い終わったら
+    `_drop_populations()` で消すこと。
     """
-    conn.execute(f'DROP TABLE IF EXISTS "{_L2_SERIES_TOTALS_TABLE}"')
-    conn.execute(f'CREATE TEMP TABLE "{_L2_SERIES_TOTALS_TABLE}" AS {_L2_SERIES_TOTALS_SQL}')
-    return _L2_SERIES_TOTALS_TABLE
+    tables: dict[str, str] = {}
+    for place_kind in PLACE_KINDS:
+        name = _POP_TABLE[place_kind]
+        conn.execute(f'DROP TABLE IF EXISTS "{name}"')
+        conn.execute(f'CREATE TEMP TABLE "{name}" AS {_POP_SOURCE_SQL[place_kind]}')
+        tables[place_kind] = name
+    return tables
 
 
-def _assert_series_totals_match_l2(conn: sqlite3.Connection, staging: str, l2_series_table: str) -> int:
-    """(i): 系列（place_kind, source_id, taxon_id。taxon_id IS NULL を含む）
-    ごとに Σn(year+leaf) = occurrence の日付あり行数、Σn_red_list も同様。
-    `place_kind` を系列の一部に含める（O-2 の先取り。モジュール docstring
-    参照）。比較そのものは SQL 側で行う（`common.assert_grouped_totals_match`。
-    /simplify 指摘3: 系列数が約32,000にもなると、両側を Python の `dict` に
-    展開して `set` 演算で突き合わせる実装は Python 側の実行時間が支配的だった
-    ——実測 約3.6秒。系列の粒度はそのまま保つ〔合計だけを比べない〕）。
+def _drop_populations(conn: sqlite3.Connection) -> None:
+    for name in _POP_TABLE.values():
+        conn.execute(f'DROP TABLE IF EXISTS "{name}"')
 
-    `l2_series_table`（`_materialize_l2_series_totals` が作った一時テーブル）
-    を読むだけで、`occurrence` を再度スキャンしない。戻り値は検証した系列数
-    （レポート用）。
+
+def _assert_populations_complete(conn: sqlite3.Connection, n_dated_total: int) -> dict[str, int]:
+    """母集団の完全性: `__pop_grid01`/`__pop_watershed` の行数がどちらも
+    「日付あり occurrence 全行数」と一致することを確かめる。
+
+    grid01 は `occurrence.period_raw IS NOT NULL` を素通しするだけなので
+    自明に一致するが、watershed は `occurrence_place` との JOIN が実際に
+    全ての日付あり記録をカバーしているか（＝b09 が今の occurrence から
+    作られていて、回し忘れ・別スナップショット混在が無いか）を実際に検証
+    する意味がある。戻り値は `{place_kind: 母集団行数}`
+    （後続の宣言突合が「日付あり行数」として使う）。
     """
+    counts: dict[str, int] = {}
+    for place_kind in PLACE_KINDS:
+        n = conn.execute(f'SELECT COUNT(*) FROM "{_POP_TABLE[place_kind]}"').fetchone()[0]
+        if n != n_dated_total:
+            hint = (
+                "occurrence_place（b09 の出力）が日付あり全記録をカバーしていない可能性がある"
+                "（b09 の再実行漏れ・別スナップショット混在。実行順 b06 → b09 → b07 を確認すること）。"
+                if place_kind == WATERSHED_PLACE_KIND
+                else "occurrence（b06 の出力）の period_raw フィルタが壊れている可能性がある。"
+            )
+            raise common.MigrationError(
+                f"occurrence_agg: 母集団 {_POP_TABLE[place_kind]}（place_kind={place_kind!r}）の"
+                f"行数（{n:,}）が日付あり occurrence 全行数（{n_dated_total:,}）と一致しない。" + hint
+            )
+        counts[place_kind] = n
+    return counts
+
+
+# ---------------------------------------------------------------------------
+# 月境界（Python 側で計算し、一時テーブル `__month_bounds` に持たせる）
+# ---------------------------------------------------------------------------
+
+def _month_bounds(ym: str) -> tuple[str, str]:
+    """`'YYYY-MM'` から月初日・月末日を返す（SQLite の日時関数を使わない。
+    `calendar.monthrange` で月末日の日数を引く）。
+    """
+    year, month = int(ym[:4]), int(ym[5:7])
+    last_day = calendar.monthrange(year, month)[1]
+    return f"{ym}-01", f"{ym}-{last_day:02d}"
+
+
+def _materialize_month_bounds(conn: sqlite3.Connection, pop_table: str) -> None:
+    """`pop_table`（母集団の一時テーブル）のうち `_SAME_MONTH_EXPR` を満たす
+    行が持つ `YYYY-MM` の distinct 値それぞれについて、Python で月初日・月末日
+    を計算し、一時テーブル `__month_bounds(ym, month_start, month_end)` に
+    書く（`_MONTH_CELLS_SQL` がここに JOIN する）。
+    """
+    yms = [
+        row[0]
+        for row in conn.execute(
+            f'SELECT DISTINCT substr(period_start, 1, 7) FROM "{pop_table}" WHERE {_SAME_MONTH_EXPR}'
+        )
+    ]
+    conn.execute('DROP TABLE IF EXISTS "__month_bounds"')
+    conn.execute('CREATE TEMP TABLE "__month_bounds" (ym TEXT PRIMARY KEY, month_start TEXT, month_end TEXT)')
+    conn.executemany(
+        'INSERT INTO "__month_bounds" VALUES (?, ?, ?)',
+        [(ym, *_month_bounds(ym)) for ym in yms],
+    )
+
+
+def _drop_month_bounds(conn: sqlite3.Connection) -> None:
+    conn.execute('DROP TABLE IF EXISTS "__month_bounds"')
+
+
+# ---------------------------------------------------------------------------
+# セルの構築（族×place_kind の行列。`CELL_FAMILIES` を読んで回る）
+# ---------------------------------------------------------------------------
+
+def _insert_year_family_cells(
+    conn: sqlite3.Connection, staging: str, pop_table: str, place_kind: str, params: tuple,
+) -> dict[str, int]:
+    insert_sql = f'INSERT INTO "{staging}" ({", ".join(_INSERT_COLUMNS)}) '
+    year_sql = _YEAR_CELLS_SQL.format(pop_table=pop_table, place_kind=place_kind)
+    leaf_sql = _LEAF_CELLS_SQL.format(pop_table=pop_table, place_kind=place_kind)
+    n_year = conn.execute(insert_sql + year_sql, params).rowcount
+    n_leaf = conn.execute(insert_sql + leaf_sql, params).rowcount
+    return {"year": n_year, "survey_period": n_leaf}
+
+
+def _insert_month_family_cells(
+    conn: sqlite3.Connection, staging: str, pop_table: str, place_kind: str, params: tuple,
+) -> dict[str, int]:
+    _materialize_month_bounds(conn, pop_table)
+    try:
+        insert_sql = f'INSERT INTO "{staging}" ({", ".join(_INSERT_COLUMNS)}) '
+        month_sql = _MONTH_CELLS_SQL.format(pop_table=pop_table, place_kind=place_kind)
+        n_month = conn.execute(insert_sql + month_sql, params).rowcount
+    finally:
+        _drop_month_bounds(conn)
+    return {"month": n_month}
+
+
+def _build_all_cells(
+    conn: sqlite3.Connection, staging: str, pop_tables: dict[str, str], params: tuple,
+) -> dict[tuple[str, str], int]:
+    """`CELL_FAMILIES` の各 (place_kind, 族名) についてセルを作る。
+    戻り値は `{(place_kind, grain): 作ったセル数}`。
+    """
+    cells: dict[tuple[str, str], int] = {}
+    for place_kind, family_name in CELL_FAMILIES:
+        pop_table = pop_tables[place_kind]
+        if family_name == "year":
+            counts = _insert_year_family_cells(conn, staging, pop_table, place_kind, params)
+        else:
+            counts = _insert_month_family_cells(conn, staging, pop_table, place_kind, params)
+        for grain, n in counts.items():
+            cells[(place_kind, grain)] = n
+    return cells
+
+
+# ---------------------------------------------------------------------------
+# (i) 系列ごとの Σn/Σn_red_list/Σn_alien（母集団と staging を突き合わせる）
+# ---------------------------------------------------------------------------
+
+def _assert_series_totals_match_population(
+    conn: sqlite3.Connection, staging: str, pop_table: str, place_kind: str, family_name: str,
+) -> int:
+    """族×place_kind ごとに、系列（source_id, taxon_id。taxon_id IS NULL を
+    含む）ごとの Σn/Σn_red_list/Σn_alien が母集団と `staging` で一致することを
+    確かめる（`common.assert_grouped_totals_match`。母集団側は year 族なら
+    全行、month 族なら `_SAME_MONTH_EXPR` を満たす行だけを対象にする——
+    月をまたぐ記録は month セルに一切入らないため）。
+
+    比較は SQL の `FULL OUTER JOIN` で行う（系列数が多いため。
+    `scripts/migrate/common.py` の `assert_grouped_totals_match` 参照）。
+    戻り値は検証した系列数（レポート用）。
+    """
+    grains = _FAMILY_GRAINS[family_name]
+    grain_list_sql = ", ".join(repr(g) for g in grains)
+    where = "" if family_name == "year" else f"WHERE {_SAME_MONTH_EXPR}"
+    left_sql = (
+        f"SELECT source_id, taxon_id, {_MEASURE_SELECT} "
+        f'FROM "{pop_table}" {where} GROUP BY source_id, taxon_id'
+    )
+    right_sql = (
+        "SELECT source_id, taxon_id, SUM(n) AS n, SUM(n_red_list) AS n_red_list, SUM(n_alien) AS n_alien "
+        f'FROM "{staging}" WHERE place_kind = \'{place_kind}\' AND grain IN ({grain_list_sql}) '
+        "GROUP BY source_id, taxon_id"
+    )
     common.assert_grouped_totals_match(
-        conn,
-        f'SELECT place_kind, source_id, taxon_id, n, n_red_list FROM "{l2_series_table}"',
-        f'SELECT place_kind, source_id, taxon_id, SUM(n) AS n, SUM(n_red_list) AS n_red_list '
-        f'FROM "{staging}" GROUP BY place_kind, source_id, taxon_id',
-        key_columns=["place_kind", "source_id", "taxon_id"],
-        value_columns=["n", "n_red_list"],
+        conn, left_sql, right_sql,
+        key_columns=["source_id", "taxon_id"],
+        value_columns=["n", "n_red_list", "n_alien"],
         build_message=lambda rows: (
-            "occurrence_agg: 系列（place_kind, source_id, taxon_id）ごとの Σn/Σn_red_list が "
-            "occurrence（L2）と食い違う（キューブが記録を漏らす・二重に数えている可能性がある。"
-            f"例（上限{_SAMPLE_LIMIT}件、(place_kind, source_id, taxon_id, n_l2, n_red_list_l2, "
-            f"n_cube, n_red_list_cube)）: {rows}）。"
+            f"occurrence_agg: 系列（place_kind={place_kind!r}, source_id, taxon_id）ごとの "
+            f"Σn/Σn_red_list/Σn_alien が族={family_name!r} の母集団と食い違う（キューブが記録を"
+            f"漏らす・二重に数えている、または測度の式が壊れている可能性がある。例（上限"
+            f"{_SAMPLE_LIMIT}件、(source_id, taxon_id, n_母集団, n_キューブ, n_red_list_母集団, "
+            f"n_red_list_キューブ, n_alien_母集団, n_alien_キューブ)）: {rows}）。"
         ),
         sample_limit=_SAMPLE_LIMIT,
     )
-    return conn.execute(f'SELECT COUNT(*) FROM "{l2_series_table}"').fetchone()[0]
-
-
-def _l2_dated_count_by_place_kind(conn: sqlite3.Connection, l2_series_table: str) -> dict[str, int]:
-    """`occurrence`（日付あり行）の `place_kind` ごとの件数。
-    `_assert_cube_partition_and_shape` が「`place_kind='grid01'` の日付あり
-    行数」として使う。`l2_series_table` を読むだけの軽いクエリ
-    （`place_kind` の種類数——今は1——ぶんしか行が無い集計に対する集計）。
-    """
-    return dict(
-        conn.execute(f'SELECT place_kind, SUM(n) FROM "{l2_series_table}" GROUP BY place_kind')
-    )
+    return conn.execute(
+        f'SELECT COUNT(*) FROM (SELECT DISTINCT source_id, taxon_id FROM "{pop_table}" {where})'
+    ).fetchone()[0]
 
 
 # ---------------------------------------------------------------------------
-# (ii)(iii) staging（実際に作ったキューブ）に対して行う（コードレビュー指摘1）
+# (ii) 宣言との突合（staging 自身から集計する）
 # ---------------------------------------------------------------------------
 
-def _assert_cube_partition_and_shape(
-    conn: sqlite3.Connection, staging: str, leaf_expected: int,
+def _assert_declared_counts(
+    conn: sqlite3.Connection, staging: str, declarations: dict,
     n_dated_by_place_kind: dict[str, int], declarations_yaml,
 ) -> None:
-    """`staging`（実際に作ったキューブ。本番差し替え前の作業用テーブル）に
-    対して直接検証する——`occurrence`（L2）の述語を数え直すのではない
-    （コードレビュー指摘1。モジュール docstring「機械検証」参照。以前の実装は
-    L2 側の述語だけを検証していたため、年セル/leaf セルの SQL 自体の WHERE
-    句が壊れていても検出できなかった——変異テスト
-    `scripts/tests/test_b07_build_occurrence_cube.py` で再現・修正を確認済み）。
+    leaf_expected = declarations[_LEAF_DECLARATION_NAME]["expected_row_count"]
+    month_expected = declarations[_MONTH_DECLARATION_NAME]["expected_row_count"]
+    resolved_expected = declarations[_WATERSHED_RESOLVED_DECLARATION_NAME]["expected_row_count"]
+    unresolved_expected = declarations[_WATERSHED_UNRESOLVED_DECLARATION_NAME]["expected_row_count"]
 
-    - grain の語彙が `GRAIN_VALUES`（'year'/'survey_period'）以外を含まない
-      （`place_kind` に関わらず共通）。
-    - `place_kind='grid01'` に絞った `SUM(n) GROUP BY grain`: `survey_period`
-      は宣言値（`leaf_expected`）、`year` は「`place_kind='grid01'` の
-      日付あり行数 − leaf の宣言値」と一致する（**`place_kind` ごとに行う**。
-      今は `'grid01'` だけ——O-2 で `'watershed'` が増えたら、その宣言値ぶん
-      この検証も拡張すること）。
-    - `grain='year'` の全行（`place_kind` に関わらず）が暦年境界
-      （`<年>-01-01`〜`<年>-12-31`）に丸められている。
-    - `grain='survey_period'` の全行（`place_kind` に関わらず）が年をまたいで
-      いる（`_CROSS_YEAR_EXPR`）。
+    sums = conn.execute(f'SELECT place_kind, grain, SUM(n) FROM "{staging}" GROUP BY place_kind, grain').fetchall()
+    by_place_kind: dict[str, dict[str, int]] = {}
+    for place_kind, grain, total in sums:
+        by_place_kind.setdefault(place_kind, {})[grain] = total or 0
+
+    # leaf/year（year 族。grid01・watershed の両方——記録の属性なので
+    # place_kind に依らず同じ宣言値を要求する）。
+    for place_kind in PLACE_KINDS:
+        grains = by_place_kind.get(place_kind, {})
+        leaf_n = grains.get("survey_period", 0)
+        year_n = grains.get("year", 0)
+        n_dated = n_dated_by_place_kind.get(place_kind, 0)
+        if leaf_n != leaf_expected:
+            raise common.MigrationError(
+                f"occurrence_agg: place_kind={place_kind!r} の grain='survey_period'（年をまたぐ"
+                f"区間）のセルの Σn が宣言（{declarations_yaml} の "
+                f"{_LEAF_DECLARATION_NAME}.expected_row_count）と食い違う"
+                f"（宣言: {leaf_expected:,} / 実測: {leaf_n:,}）。occurrence の入力が変わったか、"
+                "年境界の判定（年セル/leaf セルの振り分け）が壊れている可能性がある。"
+            )
+        expected_year_n = n_dated - leaf_expected
+        if year_n != expected_year_n:
+            raise common.MigrationError(
+                f"occurrence_agg: place_kind={place_kind!r} の grain='year' セルの Σn"
+                f"（{year_n:,}）が「{place_kind} の日付あり行数 − leaf の宣言値」"
+                f"（{n_dated:,} − {leaf_expected:,} = {expected_year_n:,}）と食い違う。"
+                "年境界の判定が壊れている可能性がある。"
+            )
+
+    # month（grid01 のみ——CELL_FAMILIES に無い place_kind には month セルが
+    # 存在しないため、そこは既定の0のまま比較される）。
+    month_n = by_place_kind.get(GRID01_PLACE_KIND, {}).get("month", 0)
+    if month_n != month_expected:
+        raise common.MigrationError(
+            f"occurrence_agg: place_kind={GRID01_PLACE_KIND!r} の grain='month' セルの Σn が宣言"
+            f"（{declarations_yaml} の {_MONTH_DECLARATION_NAME}.expected_row_count）と食い違う"
+            f"（宣言: {month_expected:,} / 実測: {month_n:,}）。月境界の判定が壊れている可能性がある。"
+        )
+
+    # watershed の解決/未解決（year 族の place_id NULL/NOT NULL 内訳）。
+    resolved_n, unresolved_n = conn.execute(
+        "SELECT SUM(CASE WHEN place_id IS NOT NULL THEN n ELSE 0 END), "
+        "SUM(CASE WHEN place_id IS NULL THEN n ELSE 0 END) "
+        f'FROM "{staging}" WHERE place_kind = \'{WATERSHED_PLACE_KIND}\' '
+        f"AND grain IN ({_YEAR_GRAIN_VALUES_SQL_LIST})"
+    ).fetchone()
+    resolved_n = resolved_n or 0
+    unresolved_n = unresolved_n or 0
+    if resolved_n != resolved_expected:
+        raise common.MigrationError(
+            f"occurrence_agg: place_kind={WATERSHED_PLACE_KIND!r} の year 族で place_id が解決済み"
+            f"のセルの Σn が宣言（{declarations_yaml} の "
+            f"{_WATERSHED_RESOLVED_DECLARATION_NAME}.expected_row_count）と食い違う"
+            f"（宣言: {resolved_expected:,} / 実測: {resolved_n:,}）。"
+        )
+    if unresolved_n != unresolved_expected:
+        raise common.MigrationError(
+            f"occurrence_agg: place_kind={WATERSHED_PLACE_KIND!r} の year 族で place_id が NULL の"
+            f"セルの Σn が宣言（{declarations_yaml} の "
+            f"{_WATERSHED_UNRESOLVED_DECLARATION_NAME}.expected_row_count）と食い違う"
+            f"（宣言: {unresolved_expected:,} / 実測: {unresolved_n:,}）。流域への解決"
+            "（occurrence_place、b09）が変わったか、母集団の構築が壊れている可能性がある。"
+        )
+
+
+# ---------------------------------------------------------------------------
+# (iii) 形
+# ---------------------------------------------------------------------------
+
+def _assert_cell_shapes(conn: sqlite3.Connection, staging: str) -> None:
+    """`staging`（実際に作ったキューブ）に対して直接検証する。
+
+    - grain の語彙が `GRAIN_VALUES` 以外を含まない（place_kind に関わらず共通）。
+    - `grain='year'` の全行が暦年境界（`<年>-01-01`〜`<年>-12-31`）に丸められている。
+    - `grain='survey_period'` の全行が年をまたいでいる（`_CROSS_YEAR_EXPR`）。
+    - `grain='month'` の全行が月初日始まり・同一月内・月末日終わりになっている。
     """
     bad_grain = conn.execute(
         f'SELECT DISTINCT grain FROM "{staging}" WHERE grain NOT IN ({_GRAIN_VALUES_SQL_LIST})'
@@ -411,35 +704,8 @@ def _assert_cube_partition_and_shape(
     if bad_grain:
         raise common.MigrationError(
             f"occurrence_agg: grain が {_GRAIN_VALUES_LABEL} 以外の値を持つ行がある"
-            f"（{[r[0] for r in bad_grain]}）。ADR-0025 D2 はこの2つの grain だけを決めている"
-            "——新しい grain を足すなら、この検証と年キー8表の射影（scripts/b08_project_occurrence_v1.py）"
-            "を合わせて見直すこと。"
-        )
-
-    sums = conn.execute(f'SELECT place_kind, grain, SUM(n) FROM "{staging}" GROUP BY place_kind, grain').fetchall()
-    by_place_kind: dict[str, dict[str, int]] = {}
-    for place_kind, grain, total in sums:
-        by_place_kind.setdefault(place_kind, {})[grain] = total
-
-    grid01_sums = by_place_kind.get("grid01", {})
-    leaf_n = grid01_sums.get("survey_period", 0)
-    year_n = grid01_sums.get("year", 0)
-    n_dated_grid01 = n_dated_by_place_kind.get("grid01", 0)
-    if leaf_n != leaf_expected:
-        raise common.MigrationError(
-            f"occurrence_agg: place_kind='grid01' の grain='survey_period'（年をまたぐ区間）の"
-            f"セルの Σn が宣言（{declarations_yaml} の {_LEAF_DECLARATION_NAME}.expected_row_count）"
-            f"と食い違う（宣言: {leaf_expected:,} / 実測: {leaf_n:,}）。occurrence の入力が変わった"
-            "（新しい出典・期間の追加等）か、年境界の判定（年セル/leaf セルの振り分け）が"
-            "壊れている可能性がある。実測が正しければ宣言値を更新すること。"
-        )
-    expected_year_n = n_dated_grid01 - leaf_expected
-    if year_n != expected_year_n:
-        raise common.MigrationError(
-            f"occurrence_agg: place_kind='grid01' の grain='year' セルの Σn（{year_n:,}）が"
-            f"「grid01 の日付あり行数 − leaf の宣言値」（{n_dated_grid01:,} − {leaf_expected:,} = "
-            f"{expected_year_n:,}）と食い違う。年境界の判定（同年か否か）が壊れている可能性がある"
-            "（例: 年セルの SQL が年をまたぐ記録まで飲み込んでいる）。"
+            f"（{[r[0] for r in bad_grain]}）。新しい grain を足すなら、この検証と年キー8表の"
+            "射影（scripts/b08_project_occurrence_v1.py）を合わせて見直すこと。"
         )
 
     bad_year_shape = conn.execute(
@@ -466,22 +732,98 @@ def _assert_cube_partition_and_shape(
             f"period_end が同じ年に収まっている行が{bad_leaf_shape}件ある。"
         )
 
+    bad_month_shape = conn.execute(
+        f"""
+        SELECT COUNT(*) FROM "{staging}"
+        WHERE grain = 'month' AND (
+          period_start NOT LIKE '____-__-01'
+          OR substr(period_end, 1, 7) <> substr(period_start, 1, 7)
+          OR substr(period_end, 9, 2) NOT IN ('28', '29', '30', '31')
+        )
+        """
+    ).fetchone()[0]
+    if bad_month_shape:
+        raise common.MigrationError(
+            "occurrence_agg: grain='month' なのに period_start/period_end が暦月境界"
+            f"（月初日始まり・同一月内・月末日終わり）に丸められていない行が{bad_month_shape}件ある。"
+        )
 
-# `scripts/b04_build_cube.py` と実装がほぼ一字一句同じだったため、
-# `scripts/migrate/common.assert_dimension_key_unique` に集約した
-# （/simplify 指摘1）。ここでは `DIM_COLUMNS`・索引名・メッセージの文言
-# （b07 固有）だけを渡す薄い呼び出しにしてある。
+
+# ---------------------------------------------------------------------------
+# (iv) 月セルは年セルの部分和
+# ---------------------------------------------------------------------------
+
+_MONTH_SUBSET_KEY_COLUMNS = ["place_kind", "region_id", "source_id", "place_id", "taxon_id"]
+
+
+_MONTH_BY_YEAR_TABLE = "__month_by_year"
+_YEAR_CELLS_BY_KEY_TABLE = "__year_cells_by_key"
+
+
+def _assert_month_cells_are_subset_of_year_cells(conn: sqlite3.Connection, staging: str) -> None:
+    """同じ次元・同じ年で Σ(月セルの n) が対応する年セルの n を超えない、かつ
+    対応する年セルが必ず存在する（月に収まる記録は必ず同一年に収まる年セルの
+    メンバーでもあるはず——ADR-0025 D2 の分割の性質から導かれる）ことを確かめる。
+
+    **両側を一時テーブルに実体化し、結合キー `(k, yr)` に索引を張ってから
+    `LEFT JOIN` する**（`common._materialized_join_tables` と同じ理由——
+    `WITH` 句のサブクエリのまま `LEFT JOIN` すると、SQLite のクエリプラン
+    ナは索引の無い派生表に対してネストループへ落ち、月セル（実データで
+    約57万セル、次元×年で数万グループ）×年セル（同約47万+39万セル）の
+    総当たりになりうる。実測: 索引無しだと10分超えても終わらず、索引を
+    張ると数秒で終わる——`scripts/migrate/common.py` の
+    `_materialized_join_tables` docstring「NULL を含みうる列を `IS` で JOIN
+    すると自動インデックスが効かない」と同じ根の性能事故）。
+    """
+    key_expr = " || '|' || ".join(f"COALESCE({c}, '')" for c in _MONTH_SUBSET_KEY_COLUMNS)
+    conn.execute(f'DROP TABLE IF EXISTS "{_MONTH_BY_YEAR_TABLE}"')
+    conn.execute(f'DROP TABLE IF EXISTS "{_YEAR_CELLS_BY_KEY_TABLE}"')
+    try:
+        conn.execute(
+            f'CREATE TEMP TABLE "{_MONTH_BY_YEAR_TABLE}" AS '
+            f"SELECT {key_expr} AS k, substr(period_start, 1, 4) AS yr, SUM(n) AS msum "
+            f'FROM "{staging}" WHERE grain = \'month\' GROUP BY k, yr'
+        )
+        conn.execute(f'CREATE INDEX "{_MONTH_BY_YEAR_TABLE}_key" ON "{_MONTH_BY_YEAR_TABLE}" (k, yr)')
+        conn.execute(
+            f'CREATE TEMP TABLE "{_YEAR_CELLS_BY_KEY_TABLE}" AS '
+            f"SELECT {key_expr} AS k, substr(period_start, 1, 4) AS yr, n "
+            f'FROM "{staging}" WHERE grain = \'year\''
+        )
+        conn.execute(
+            f'CREATE UNIQUE INDEX "{_YEAR_CELLS_BY_KEY_TABLE}_key" ON "{_YEAR_CELLS_BY_KEY_TABLE}" (k, yr)'
+        )
+        bad = conn.execute(
+            f'SELECT COUNT(*) FROM "{_MONTH_BY_YEAR_TABLE}" m '
+            f'LEFT JOIN "{_YEAR_CELLS_BY_KEY_TABLE}" y ON y.k = m.k AND y.yr = m.yr '
+            "WHERE y.n IS NULL OR m.msum > y.n"
+        ).fetchone()[0]
+    finally:
+        conn.execute(f'DROP TABLE IF EXISTS "{_MONTH_BY_YEAR_TABLE}"')
+        conn.execute(f'DROP TABLE IF EXISTS "{_YEAR_CELLS_BY_KEY_TABLE}"')
+    if bad:
+        raise common.MigrationError(
+            "occurrence_agg: 月セルは年セルの部分和のはずだが、(次元, 年) ごとの Σ(月セルの n) が"
+            f"対応する年セルの n を超えている、または対応する年セルが無い組み合わせが{bad}件ある。"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 次元キーの一意性
+# ---------------------------------------------------------------------------
+
 _DIM_KEY_INDEX_NAME = "occurrence_agg_dim_key"
 
-# Issue #48 PR-1 §1: `occurrence_agg` に張る永続索引。名前・列・列順は
-# Drizzle（`web/src/db/schema-cube.ts` → `web/drizzle/migrations/0005_overrated_venom.sql`）
-# が正——ここは写し。`scripts/tests/test_cube_index_parity.py` がマイグレーション SQL から
-# 抜いた集合とこの定数の一致を機械検証する（`scripts/b04_build_cube.py` の
-# `OBSERVATION_AGG_INDEXES` と同じ形）。`build_cube()` が `common.create_indexes()` 経由で
-# `staged_table` の差し替え確定後に張る。
+# Issue #48 PR-1 §1・PR-3a 決定 D6: `occurrence_agg` に張る永続索引。
+# 名前・列・列順は Drizzle（`web/src/db/schema-cube.ts`）が正——ここは写し。
+# `scripts/tests/test_cube_index_parity.py` がマイグレーション SQL から抜いた
+# 集合とこの定数の一致を機械検証する。第3索引（D6）は族×place_kind が増えた
+# ことで年の地図クエリ（`place_kind`・`grain`・`period_start` で絞る）が
+# 既存2索引では全表走査になるのを避けるために足す（Drizzle 側は U4 が書く）。
 OCCURRENCE_AGG_INDEXES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("ix_occurrence_agg_taxon_period", ("taxon_id", "period_start")),
     ("ix_occurrence_agg_place_period", ("place_id", "period_start")),
+    ("ix_occurrence_agg_kind_grain_period", ("place_kind", "grain", "period_start")),
 )
 
 
@@ -490,85 +832,134 @@ def _assert_dimension_key_unique(conn: sqlite3.Connection, staging: str) -> None
         conn, staging, DIM_COLUMNS,
         index_name=_DIM_KEY_INDEX_NAME,
         table_label="occurrence_agg",
-        cause_hint="year/leaf の集計経路が重なっている可能性がある。",
+        cause_hint="年/leaf/月の集計経路が重なっている可能性がある。",
     )
 
+
+# ---------------------------------------------------------------------------
+# b09 の宣言との整合（Issue #48 PR-3a 設計書 §1.1: 「両宣言の整合」）
+# ---------------------------------------------------------------------------
+
+def _assert_consistent_with_place_declarations(
+    watershed_resolved_expected: int, place_declarations_yaml,
+) -> None:
+    """b09 の宣言（`occurrence_place_declarations.yaml` の `resolved_count`。
+    「座標のある全記録」のうち解決できた件数）が、この宣言（`occurrence_agg`
+    の watershed_dated_resolved_rows。「日付あり記録」のうち解決できた件数）
+    以上であることを確かめる（日付あり記録は座標のある記録の部分集合——
+    実データでは 733,341 ≤ 737,407）。
+
+    `place_declarations_yaml` が存在しない環境（多くの単体テストの最小
+    フィクスチャ）では検証をスキップする（この整合検証は「両方の宣言ファイル
+    が実データの値を持つとき」だけ意味を持つ——単体テストは
+    `occurrence_place_declarations.yaml` 自体を作らないことが多い）。
+    """
+    path = pathlib.Path(place_declarations_yaml)
+    if not path.exists():
+        return
+    raw = common.load_yaml(path)
+    resolved = raw.get("resolved_count", {}).get("expected_row_count")
+    if resolved is not None and resolved < watershed_resolved_expected:
+        raise common.MigrationError(
+            f"occurrence_agg: watershed_dated_resolved_rows の宣言（{watershed_resolved_expected:,}）が"
+            f"b09 の resolved_count 宣言（{path} の {resolved:,}）を上回っている。日付あり記録は"
+            "座標のある記録の部分集合のはずなので、後者が前者以上でなければならない。"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 本体
+# ---------------------------------------------------------------------------
 
 def build_cube(
     conn: sqlite3.Connection,
     declarations_yaml=DEFAULT_DECLARATIONS_YAML,
     built_from: str = DEFAULT_BUILT_FROM,
-    spec_version: str = common.OCCURRENCE_SPEC_VERSION,
+    spec_version: str = common.OCCURRENCE_AGG_SPEC_VERSION,
     count_overlay: dict[str, int] | None = None,
+    place_declarations_yaml=b09.DEFAULT_DECLARATIONS_YAML,
 ) -> dict:
-    """`conn`（`occurrence` を持つ読み書き可能な接続）に `occurrence_agg` を作る。
+    """`conn`（`occurrence`・`occurrence_place` を持つ読み書き可能な接続）に
+    `occurrence_agg` を作る。
 
-    `occurrence` を変更する SQL は一切実行しない（`SELECT`のみ）。
-    `occurrence_agg` 本体は `migrate.common.staged_table`（b04 の A-1 と同じ）
-    で作り直す——検証まで全部通ってから本番名に差し替える。戻り値はレポート用の統計。
-
-    検証（`_assert_series_totals_match_l2`）が `FULL OUTER JOIN` を使うため、
-    その前に `common.require_sqlite_version()` を呼ぶ（モジュール docstring
-    「built_from に SQLite バージョンを埋め込まない、が書き込み経路自体は
-    3.43以降が前提」参照）。
+    `occurrence`・`occurrence_place` を変更する SQL は一切実行しない
+    （`SELECT`のみ）。`occurrence_agg` 本体は `migrate.common.staged_table`
+    （b04 の A-1 と同じ）で作り直す——検証まで全部通ってから本番名に差し替える。
+    戻り値はレポート用の統計。
     """
     common.require_sqlite_version()
-    # 段階間の指紋（Issue #37 #1）: b06 が最後に記録した occurrence の指紋と
-    # 今の occurrence の内容が一致することを、集計を始める前に確認する。
-    # 戻り値（occurrence の現在の指紋）は occurrence_agg の系譜に使う。
+    # 段階間の指紋（Issue #37 #1）: b06/b09 が最後に記録した occurrence/
+    # occurrence_place の指紋と、今の内容が一致することを、集計を始める前に
+    # 確認する。戻り値はどちらも occurrence_agg の系譜に使う（実行順
+    # b06 → b09 → b07 に固定——占有検証（`_assert_populations_complete`）が
+    # occurrence_place の内容そのものにも依存するため）。
     occurrence_fingerprint = common.assert_occurrence_fingerprint_fresh(conn)
+    place_fingerprint = common.assert_stage_fingerprint_fresh(
+        conn, "occurrence_place",
+        rebuild_hint="scripts/b09_build_occurrence_place.py を再実行すること。",
+    )
     declarations = load_and_validate_cube_declarations(declarations_yaml, count_overlay=count_overlay)
     leaf_expected = declarations[_LEAF_DECLARATION_NAME]["expected_row_count"]
     _assert_t1_invariant(conn)
+    _assert_dated_rows_are_grid01(conn)
+    n_dated_total = conn.execute("SELECT COUNT(*) FROM occurrence WHERE period_raw IS NOT NULL").fetchone()[0]
     params = (built_from, spec_version)
 
     with common.staged_table(
         conn, "occurrence_agg", _CREATE_OCCURRENCE_AGG_SQL,
-        fingerprint_inputs={"occurrence": occurrence_fingerprint},
+        fingerprint_inputs={"occurrence": occurrence_fingerprint, "occurrence_place": place_fingerprint},
         fingerprint_spec_version=spec_version,
     ) as staging:
-        insert_cols = ", ".join(_INSERT_COLUMNS)
-        insert_sql = f'INSERT INTO "{staging}" ({insert_cols}) '
-
-        n_year = conn.execute(insert_sql + _YEAR_CELLS_SQL, params).rowcount
-        n_leaf = conn.execute(insert_sql + _LEAF_CELLS_SQL, params).rowcount
-
-        l2_series_table = _materialize_l2_series_totals(conn)
+        pop_tables = _materialize_populations(conn)
         try:
-            n_series = _assert_series_totals_match_l2(conn, staging, l2_series_table)
-            n_dated_by_place_kind = _l2_dated_count_by_place_kind(conn, l2_series_table)
-        finally:
-            conn.execute(f'DROP TABLE IF EXISTS "{l2_series_table}"')
-        _assert_cube_partition_and_shape(conn, staging, leaf_expected, n_dated_by_place_kind, declarations_yaml)
-        _assert_dimension_key_unique(conn, staging)
-    # ここまで来たら staged_table が差し替えと同じトランザクションで
-    # occurrence_agg の指紋・系譜（消費した occurrence の指紋）も記録済み
-    # （Issue #37 #1・/code-review 指摘の根本対応）。b08 の既存チェック
-    # （`_assert_cube_is_current_l2_partition`）が occurrence_agg 自体の集計
-    # 正しさを検証するため、この指紋自体は他段（将来 occurrence_agg を読む
-    # かもしれない別スクリプト）向けの一貫性維持——「全段の出力に指紋を
-    # 持たせる」方針どおり記録している。
+            n_dated_by_place_kind = _assert_populations_complete(conn, n_dated_total)
 
-    # Issue #48 PR-1 §1: 索引は差し替え確定後（本番テーブル名）に張る
-    # （`common.create_indexes` docstring 参照。`b04_build_cube.py` と同じ形）。
+            cells = _build_all_cells(conn, staging, pop_tables, params)
+
+            n_series_checked = 0
+            for place_kind, family_name in CELL_FAMILIES:
+                n_series_checked += _assert_series_totals_match_population(
+                    conn, staging, pop_tables[place_kind], place_kind, family_name,
+                )
+
+            _assert_declared_counts(conn, staging, declarations, n_dated_by_place_kind, declarations_yaml)
+            _assert_cell_shapes(conn, staging)
+            _assert_month_cells_are_subset_of_year_cells(conn, staging)
+            _assert_dimension_key_unique(conn, staging)
+        finally:
+            _drop_populations(conn)
+    # ここまで来たら staged_table が差し替えと同じトランザクションで
+    # occurrence_agg の指紋・系譜（消費した occurrence/occurrence_place の
+    # 指紋）も記録済み（Issue #37 #1）。
+
+    # Issue #48 PR-1 §1・PR-3a 決定 D6: 索引は差し替え確定後（本番テーブル名）に張る。
     common.create_indexes(conn, "occurrence_agg", OCCURRENCE_AGG_INDEXES)
 
-    n_dated_grid01 = n_dated_by_place_kind.get("grid01", 0)
+    _assert_consistent_with_place_declarations(
+        declarations[_WATERSHED_RESOLVED_DECLARATION_NAME]["expected_row_count"], place_declarations_yaml,
+    )
+
     return {
-        "n_year_cells": n_year,
-        "n_leaf_cells": n_leaf,
-        "n_total_cells": n_year + n_leaf,
-        "n_series_checked": n_series,
-        "n_dated": sum(n_dated_by_place_kind.values()),
+        "n_dated": n_dated_total,
         "n_dated_by_place_kind": n_dated_by_place_kind,
+        "n_year_cells": cells.get((GRID01_PLACE_KIND, "year"), 0),
+        "n_leaf_cells": cells.get((GRID01_PLACE_KIND, "survey_period"), 0),
+        "n_month_cells": cells.get((GRID01_PLACE_KIND, "month"), 0),
+        "n_watershed_year_cells": cells.get((WATERSHED_PLACE_KIND, "year"), 0),
+        "n_watershed_leaf_cells": cells.get((WATERSHED_PLACE_KIND, "survey_period"), 0),
+        "n_total_cells": sum(cells.values()),
         "n_leaf_source_rows": leaf_expected,
-        "n_year_source_rows": n_dated_grid01 - leaf_expected,
+        "n_year_source_rows": n_dated_total - leaf_expected,
+        "n_month_source_rows": declarations[_MONTH_DECLARATION_NAME]["expected_row_count"],
+        "n_watershed_resolved_rows": declarations[_WATERSHED_RESOLVED_DECLARATION_NAME]["expected_row_count"],
+        "n_watershed_unresolved_rows": declarations[_WATERSHED_UNRESOLVED_DECLARATION_NAME]["expected_row_count"],
+        "n_series_checked": n_series_checked,
     }
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--out", default=str(DEFAULT_DB), help="occurrence を持つ v2.sqlite（読み書き）")
+    parser.add_argument("--out", default=str(DEFAULT_DB), help="occurrence/occurrence_place を持つ v2.sqlite（読み書き）")
     parser.add_argument("--declarations-yaml", default=str(DEFAULT_DECLARATIONS_YAML))
     parser.add_argument(
         "--count-overlay", default=None,
@@ -580,7 +971,8 @@ def main() -> None:
     db_path = pathlib.Path(args.out)
     if not db_path.exists():
         sys.exit(
-            f"{db_path} が無い。先に `.venv/bin/python3 scripts/b06_build_occurrence.py` を実行すること。"
+            f"{db_path} が無い。先に `.venv/bin/python3 scripts/b06_build_occurrence.py` と "
+            "`.venv/bin/python3 scripts/b09_build_occurrence_place.py` を実行すること。"
         )
 
     count_overlay = period.resolve_count_overlay(args.count_overlay, "occurrence_cube_declarations.yaml")
@@ -588,18 +980,21 @@ def main() -> None:
     conn = sqlite3.connect(f"file:{db_path}", uri=True)
     try:
         n_occurrence = conn.execute("SELECT COUNT(*) FROM occurrence").fetchone()[0]
-        print(f"▶ 読み書き可能で開く（occurrence は変更しない）: {db_path} / occurrence {n_occurrence:,}行")
+        print(f"▶ 読み書き可能で開く（occurrence/occurrence_place は変更しない）: {db_path} / occurrence {n_occurrence:,}行")
         with common.timed_step("occurrence_agg を構築") as info:
             stats = build_cube(conn, args.declarations_yaml, count_overlay=count_overlay)
             info["n"] = stats["n_total_cells"]
     finally:
         conn.close()
 
+    print(f"  日付あり合計={stats['n_dated']:,} / 検証した系列数={stats['n_series_checked']:,}")
+    print("  内訳（place_kind × grain）:")
+    print(f"    grid01    : year={stats['n_year_cells']:,} / leaf={stats['n_leaf_cells']:,} / month={stats['n_month_cells']:,}")
     print(
-        f"  内訳: year={stats['n_year_cells']:,} / leaf(survey_period)={stats['n_leaf_cells']:,} / "
-        f"元記録: year={stats['n_year_source_rows']:,} / leaf={stats['n_leaf_source_rows']:,} / "
-        f"日付あり合計={stats['n_dated']:,} / 検証した系列数={stats['n_series_checked']:,}"
+        f"    watershed : year={stats['n_watershed_year_cells']:,}（解決={stats['n_watershed_resolved_rows']:,} / "
+        f"未解決={stats['n_watershed_unresolved_rows']:,}） / leaf={stats['n_watershed_leaf_cells']:,}"
     )
+    print(f"  総セル数={stats['n_total_cells']:,}")
 
 
 if __name__ == "__main__":

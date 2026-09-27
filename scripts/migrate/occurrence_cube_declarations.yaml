@@ -3,11 +3,49 @@
 # scripts/migrate/period.py の required_keys_problems/entries_with_required_keys/
 # validate_expected_row_count をそのまま再利用する（b06 の occurrence_period_shapes.yaml
 # と同じ流儀。宣言された名前の集合が過不足なく一致することも b07 が検証する）。
+#
+# Issue #48 PR-3a（O-2b: place_kind × grain 族の行列）で3件足した。leaf/month は
+# 「記録の属性」（同年に収まるか・同月に収まるか）なので、b07 が作る全 place_kind
+# （grid01・watershed）で同じ値を要求する。watershed の2件は「流域に解決できる
+# 記録がどれだけあるか」（occurrence_place、b09）由来の値。
 
 leaf_cell_source_rows:
   expected_row_count: 1191
   note: >
-    grain='survey_period'（年をまたぐ区間。b07 の「leaf セル」）に集約される、
+    grain='survey_period'（年をまたぐ区間。b07の「leafセル」）に集約される、
     日付ありの occurrence 記録の件数。O-1 設計 v2 実測「区間 4,840行のうち
     年をまたぐもの 1,191」（docs/plans/PHASE_B_OCCURRENCE.md O-1b 節・
-    ADR-0025 D2）を固定値として宣言する。不一致は b07 を止める。
+    ADR-0025 D2）を固定値として宣言する。記録自身の属性（開始/終了の年が
+    違うか）なので、b07 が作る全 place_kind（grid01・watershed）で同じ値を
+    要求する。不一致は b07 を止める。
+
+month_cell_source_rows:
+  expected_row_count: 812974
+  note: >
+    grain='month'（同一月に収まる区間・日付。b07の「月セル」）に集約される、
+    日付ありの occurrence 記録の件数。日付あり 816,856 行のうち、同一月に
+    収まるもの（day/instant/month と、同月内に収まる区間）が対象——
+    period_grain='year'（1,797行）や、月をまたぐ区間（同一年内 2,691行・
+    年をまたぐ 1,191行）は対象外（Issue #48 PR-3a 設計書 §1.1 実測）。
+    月境界は SQLite の日時関数を使わず、b06/b07 が使う
+    scripts/migrate/occurrence_period.py の展開結果（period_start/period_end。
+    'Z' の region utc_offset 変換込み）で判定する。記録自身の属性なので、
+    b07 が month セルを作る全 place_kind（今は grid01 のみ）で同じ値を
+    要求する。
+
+watershed_dated_resolved_rows:
+  expected_row_count: 733341
+  note: >
+    日付あり ∧ occurrence_place（b09、place_kind='watershed'）が place_id を
+    解決できた記録の件数（ADR-0026 の保存則の右辺と同じ数）。
+    watershed_dated_unresolved_rows と足すと日付あり全行数（816,856）に
+    一致する。Issue #48 PR-3a 設計書 §付録の実測値。
+
+watershed_dated_unresolved_rows:
+  expected_row_count: 83515
+  note: >
+    日付あり ∧ occurrence_place（b09）で流域に解決できなかった（place_id が
+    NULL の）記録の件数。ADR-0025 D2「データを落とさない」に従い、この記録も
+    `place_kind='watershed', place_id NULL` のセルとして持つ（Issue #48
+    PR-3a 決定 D1）。watershed_dated_resolved_rows と足すと日付あり全行数
+    （816,856）に一致する。

@@ -109,6 +109,11 @@ DEFAULT_TAXA = [
 # （/simplify 指摘7: 複数のテストファイルに同じ文字列リテラルが散っていた）。
 DEFAULT_GRID01_PLACE_ID = "common:place:grid01.3550_13900"
 
+# Issue #48 PR-3a（O-2b）のテスト用フィクスチャが共有する watershed の place_id
+# （`occurrence_place.place_id` に入れる値。grid01 と同じ registry ID の形だが
+# 別の名前空間——実データの `common:place:watershed.…` を模した固定値）。
+DEFAULT_WATERSHED_PLACE_ID = "common:place:watershed.test_ws"
+
 DEFAULT_PLACE = [
     # place_id, region_id, place_kind
     (DEFAULT_GRID01_PLACE_ID, None, "grid01"),
@@ -381,10 +386,11 @@ def make_taxon_group_yaml(path, default_label_ja: str = "未判定") -> None:
 
 # O-1b（`scripts/b07_build_occurrence_cube.py`/年キー8表・species_month）の
 # テスト用: `occurrence_agg` のスキーマは `_CREATE_OCCURRENCE_AGG_SQL` 1箇所が正
-# （同じ考え方。b07 の DIM_COLUMNS の並びで列を持つ）。
+# （同じ考え方。b07 の DIM_COLUMNS の並びで列を持つ）。Issue #48 PR-3a で
+# `n_alien` を足した（測度3本目。D3）。
 _OCCURRENCE_AGG_COLUMNS = (
     "region_id", "source_id", "place_id", "place_kind", "taxon_id", "grain", "period_start", "period_end",
-    "n", "n_red_list", "built_from", "spec_version",
+    "n", "n_red_list", "n_alien", "built_from", "spec_version",
 )
 
 
@@ -483,12 +489,19 @@ def make_occurrence_watershed_v1_declarations_yaml(path, text: str | None = None
 
 def make_v2_db_with_occurrence_and_agg(
     path, occurrence_rows: list[tuple], occurrence_agg_rows: list[tuple],
+    occurrence_place_rows: list[tuple] | None = None,
 ) -> None:
     """`occurrence`（L2）と `occurrence_agg`（キューブ）の両方を持つ v2.sqlite
     相当を作る（`scripts/b08_project_occurrence_v1.py` の
     `_build_cube_projections` は両方を読む——年キー8表は `occurrence_agg`
     だけから、`species2.en_name`/`red_list_category` と `species_month` は
     `occurrence` から）。
+
+    `occurrence_place_rows`（既定 None）を渡すと `occurrence_place`
+    （O-2a サテライト）も同居させる（Issue #48 PR-3a: `_build_watershed` の
+    `_assert_watershed_cells_match_exact` のように、`occurrence`/
+    `occurrence_agg`/`occurrence_place` の3つを同時に要るテスト向け）。
+    渡さなければ従来どおり `occurrence_place` は作らない。
     """
     import b07_build_occurrence_cube as b07
 
@@ -499,6 +512,8 @@ def make_v2_db_with_occurrence_and_agg(
         conn.execute(b07._CREATE_OCCURRENCE_AGG_SQL.format(table="occurrence_agg"))
         agg_placeholders = ", ".join("?" for _ in _OCCURRENCE_AGG_COLUMNS)
         conn.executemany(f"INSERT INTO occurrence_agg VALUES ({agg_placeholders})", occurrence_agg_rows)
+        if occurrence_place_rows is not None:
+            add_occurrence_place_table(conn, occurrence_place_rows)
         conn.commit()
     finally:
         conn.close()
