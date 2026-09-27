@@ -52,7 +52,7 @@ import {
   type ScalarParam,
   type ServingQueriesConfig,
 } from "./lib/serving/normalize";
-import { enumerateParams, runV1Query } from "./lib/serving/adapters-v1";
+import { enumerateParams, runV1Query, usesMergeDisabled } from "./lib/serving/adapters-v1";
 import { openV1CompatDb } from "./lib/serving/v1-compat";
 import * as mergeV1 from "./lib/serving/merge-v1";
 import {
@@ -469,8 +469,9 @@ async function main() {
   /* `*_by_variable` 問い合わせの v1 フェッチだけを変える——ただし              */
   /* `mergeDisabled` のときの v1 フェッチは即座に空配列を返す軽い経路          */
   /* （`adapters-v1.ts` の `aliasListOrEmpty`）なので、このパスだけは分類段で  */
-  /* 実際に引き直す（DB 往復は増えない。alias 単位の問い合わせ id は           */
-  /* `mergeDisabled` をそもそも見ないので触らない）。                         */
+  /* 実際に引き直す（DB 往復は増えない。どの id が対象かは                    */
+  /* `adapters-v1.ts` の `usesMergeDisabled` が唯一の宣言——alias 単位の       */
+  /* 問い合わせ id はそもそも `mergeDisabled` を見ないので触らない）。         */
   /* -------------------------------------------------------------------- */
 
   interface FetchedEntry {
@@ -672,7 +673,7 @@ async function main() {
       // 変える（他の問い合わせは `mergeDisabled` を見ないので無変更のまま
       // フェッチ済みの `v1Rows` を再利用してよい）。
       let v1Rows = entry.v1Rows;
-      if (mergeDisabled && def.id.endsWith("_by_variable")) {
+      if (mergeDisabled && usesMergeDisabled(def.id)) {
         try {
           v1Rows = await runV1Query(def.id, params, def.compare, REGISTRY_DB_PATH, { mergeDisabled: true });
         } catch (e) {

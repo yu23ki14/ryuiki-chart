@@ -149,6 +149,30 @@ function aliasListOrEmpty(mergeDisabled: boolean, aliases: readonly string[]): s
   return mergeDisabled ? [] : [...aliases];
 }
 
+/**
+ * `--mutate merge_rule_off` で v1 側のフェッチが変わる問い合わせ id の宣言。
+ * `fetchRawRows` の switch のうち、`aliasListOrEmpty`（または `mergeDisabled ? [] :`）
+ * を実際に使う `*_by_variable` case とちょうど同じ集合——ここでの宣言を唯一の
+ * 正とし、`serving-diff.mts`（分類段で再フェッチが要るかの判定）もこれを呼ぶ。
+ * 以前は `def.id.endsWith("_by_variable")` という別の推測を `serving-diff.mts`
+ * 側に書いており、この switch の実装と二重に知識を持っていた。
+ */
+const MERGE_DISABLED_QUERY_IDS: ReadonlySet<string> = new Set([
+  "variable_catalog_by_variable",
+  "site_variables_by_variable",
+  "year_series_site_by_variable",
+  "month_series_site_by_variable",
+  "day_series_site_by_variable",
+  "zone_series_by_variable",
+  "climatology_by_variable",
+  "zone_climatology_by_variable",
+  "water_bodies_for_variable_by_variable",
+]);
+
+export function usesMergeDisabled(id: string): boolean {
+  return MERGE_DISABLED_QUERY_IDS.has(id);
+}
+
 function cartesian(paramNames: string[], values: Record<string, ScalarParam[]>): Record<string, ScalarParam>[] {
   let acc: Record<string, ScalarParam>[] = [{}];
   for (const name of paramNames) {
