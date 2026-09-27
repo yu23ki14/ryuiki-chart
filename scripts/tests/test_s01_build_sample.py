@@ -236,3 +236,153 @@ def test_end_to_end_determinism_on_fixture_db(tmp_path):
     m1.pop("generated_at")
     m2.pop("generated_at")
     assert m1 == m2
+
+
+# ---------------------------------------------------------------------------
+# Issue #48 PR-3a（occurrence_cube_declarations.yaml の新設3キー）
+# ---------------------------------------------------------------------------
+
+_SOURCE_REGIONS_YAML_TEXT = (
+    "sources:\n"
+    "  gbif_kanagawa_occurrences:\n"
+    "    region_id: jp-14\n"
+    "    consumer: occurrence\n"
+    "    expected_row_count: 1\n"
+    "    evidence: テスト用\n"
+    "regions:\n"
+    "  jp-14:\n"
+    "    utc_offset: \"+09:00\"\n"
+    "    evidence: テスト用\n"
+)
+
+
+def _make_org_rows(conn: sqlite3.Connection, rows: list[tuple]) -> list[sqlite3.Row]:
+    """`compute_month_cell_source_rows`/`compute_leaf_cell_source_rows` が読む
+    列（`record_id, observed_on, source_id, lat, lon, scientific_name,
+    is_alien, red_list_category, rowid`）を持つ `sqlite3.Row` の並びを作る。
+    """
+    conn.row_factory = sqlite3.Row
+    conn.execute(
+        "CREATE TABLE t (record_id TEXT, observed_on TEXT, source_id TEXT, lat REAL, lon REAL, "
+        "scientific_name TEXT, is_alien INTEGER, red_list_category TEXT)"
+    )
+    conn.executemany("INSERT INTO t VALUES (?,?,?,?,?,?,?,?)", rows)
+    return conn.execute("SELECT rowid, * FROM t ORDER BY rowid").fetchall()
+
+
+def test_load_utc_offset_by_source_reads_declared_sources(tmp_path):
+    path = tmp_path / "source_regions.yaml"
+    path.write_text(_SOURCE_REGIONS_YAML_TEXT, encoding="utf-8")
+    mapping = s01.load_utc_offset_by_source(path)
+    assert mapping == {"gbif_kanagawa_occurrences": "+09:00"}
+
+
+def test_compute_month_cell_source_rows_counts_same_month_records():
+    conn = sqlite3.connect(":memory:")
+    rows = _make_org_rows(
+        conn,
+        [
+            ("r1", "2020-01-05", "gbif_kanagawa_occurrences", 35.5, 139.0, "Foo", 0, ""),  # day, 同一月
+            ("r2", "2020-03-01/2020-04-05", "gbif_kanagawa_occurrences", 35.5, 139.0, "Foo", 0, ""),  # 月をまたぐ
+        ],
+    )
+    n = s01.compute_month_cell_source_rows(rows, {"gbif_kanagawa_occurrences": "+09:00"})
+    assert n == 1
+
+
+def test_compute_month_cell_source_rows_uses_expand_period_not_raw_string_split():
+    """'Z' 終端の区間は、raw 文字列をそのまま '/' で割って月を比べる近似では
+    誤判定する（月境界をまたいで変換されることがあるため）。
+    `compute_leaf_cell_source_rows`（年境界の近似で足りる）と違い、この関数は
+    `occurrence_period.expand_period()` で実際に展開してから判定することを
+    確かめる。
+
+    `"2020-01-31T23:30Z/2020-02-01T00:30Z"`（UTC）は raw のままだと月が
+    '01'/'02' で異なる（近似なら「月をまたぐ」と誤判定する）が、
+    utc_offset='+09:00' で変換すると両端とも '2020-02' になり、実際には
+    同一月に収まる。
+    """
+    conn = sqlite3.connect(":memory:")
+    rows = _make_org_rows(
+        conn,
+        [
+            (
+                "r1", "2020-01-31T23:30Z/2020-02-01T00:30Z", "gbif_kanagawa_occurrences",
+                35.5, 139.0, "Foo", 0, "",
+            ),
+        ],
+    )
+    n = s01.compute_month_cell_source_rows(rows, {"gbif_kanagawa_occurrences": "+09:00"})
+    assert n == 1  # 変換後は同一月（'2020-02'）に収まる
+
+
+def test_compute_occurrence_place_and_watershed_stats_reports_dated_resolved_and_unresolved(tmp_path):
+    """`watershed_dated_resolved_rows`/`watershed_dated_unresolved_rows` は
+    「日付あり」記録だけを母集団にする——`occurrence_place_declarations.yaml`
+    の `resolved_count`（座標のある全記録が母集団）とは異なる母集団になりうる。
+    """
+    from .occurrence_fixtures import write_watershed_geojson
+
+    geojson_path = tmp_path / "watersheds.geojson"
+    # 1辺1度の正方形ポリゴン（lat 35.0〜36.0, lon 139.0〜140.0）。
+    write_watershed_geojson(
+        geojson_path,
+        [("W001", [[[139.0, 35.0], [140.0, 35.0], [140.0, 36.0], [139.0, 36.0], [139.0, 35.0]]])],
+    )
+    conn = sqlite3.connect(":memory:")
+    rows = _make_org_rows(
+        conn,
+        [
+            # 日付あり・ポリゴン内（解決）。
+            ("r_in", "2020-01-05", "gbif_kanagawa_occurrences", 35.5, 139.5, "Foo", 0, ""),
+            # 日付あり・ポリゴン外（未解決）。
+            ("r_out", "2020-01-06", "gbif_kanagawa_occurrences", 10.0, 10.0, "Foo", 0, ""),
+            # 座標はあるが日付なし（どちらの宣言の母集団にも入らない）。
+            ("r_undated", None, "gbif_kanagawa_occurrences", 35.5, 139.5, "Foo", 0, ""),
+        ],
+    )
+    stats = s01.compute_occurrence_place_and_watershed_stats(rows, geojson_path)
+    assert stats["watershed_dated_resolved_rows"] == 1
+    assert stats["watershed_dated_unresolved_rows"] == 1
+    # occurrence_place_declarations.yaml 側（座標のある全記録が母集団）は
+    # r_undated も数えるので3件。
+    assert stats["resolved_count"] + stats["place_id_null_count"] == 3
+
+
+def test_build_declaration_counts_wires_new_occurrence_cube_keys(tmp_path):
+    """`build_declaration_counts` が3つの新しい宣言キーを
+    `occurrence_cube_declarations.yaml` の名前空間で返すことを確認する
+    （値そのものは上の専用テストで確かめ済みなので、ここではキーの配線だけ見る）。
+    """
+    from .occurrence_fixtures import write_watershed_geojson
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(
+        "CREATE TABLE measurements (site_id TEXT, variable TEXT, measured_on TEXT, source_id TEXT);"
+        "CREATE TABLE organism_records (record_id TEXT, observed_on TEXT, lat REAL, lon REAL, "
+        "scientific_name TEXT, is_alien INTEGER, red_list_category TEXT, source_id TEXT, genus TEXT);"
+        "INSERT INTO organism_records "
+        "(record_id, observed_on, lat, lon, scientific_name, is_alien, red_list_category, source_id) "
+        "VALUES ('r1', '2020-01-05', 35.5, 139.5, 'Foo', 0, '', 'gbif_kanagawa_occurrences');"
+        "CREATE TABLE sensor_timeseries (source_id TEXT);"
+    )
+    selected = {"measurements": set(), "organism_records": {1}, "sensor_timeseries": set()}
+
+    geojson_path = tmp_path / "watersheds.geojson"
+    write_watershed_geojson(
+        geojson_path,
+        [("W001", [[[139.0, 35.0], [140.0, 35.0], [140.0, 36.0], [139.0, 36.0], [139.0, 35.0]]])],
+    )
+    landuse_csv_path = tmp_path / "landuse.csv"
+    landuse_csv_path.write_text(_MINIMAL_LANDUSE_CSV, encoding="utf-8")
+    source_regions_yaml = tmp_path / "source_regions.yaml"
+    source_regions_yaml.write_text(_SOURCE_REGIONS_YAML_TEXT, encoding="utf-8")
+
+    counts = s01.build_declaration_counts(
+        conn, selected, geojson_path, landuse_csv_path, source_regions_yaml=source_regions_yaml,
+    )
+    assert counts["occurrence_cube_declarations.yaml:leaf_cell_source_rows"] == 0
+    assert counts["occurrence_cube_declarations.yaml:month_cell_source_rows"] == 1
+    assert counts["occurrence_cube_declarations.yaml:watershed_dated_resolved_rows"] == 1
+    assert counts["occurrence_cube_declarations.yaml:watershed_dated_unresolved_rows"] == 0

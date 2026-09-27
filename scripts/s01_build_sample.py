@@ -69,6 +69,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import pipeline_inputs  # noqa: E402
 from migrate import occurrence_period  # noqa: E402
 from migrate import point_in_polygon as pip  # noqa: E402
+from migrate import source_regions  # noqa: E402
 from reconcile.common import load_yaml  # noqa: E402
 
 DEFAULT_RYUIKI_DB = ROOT / "data" / "db" / "ryuiki.sqlite"
@@ -302,6 +303,45 @@ def compute_leaf_cell_source_rows(rows: list[sqlite3.Row]) -> int:
     return n
 
 
+def load_utc_offset_by_source(source_regions_yaml=source_regions.DEFAULT_SOURCE_REGIONS_YAML) -> dict[str, str]:
+    """`source_regions.yaml`（consumer='occurrence'）から `{source_id: utc_offset}`
+    を組み立てる。`compute_month_cell_source_rows` が 'Z' 終端の瞬時記録を
+    ローカル時刻へ変換するのに使う（region の utc_offset）。
+
+    `load_source_regions()` 自体は「宣言が使われたか」（`EntryUsage`）を
+    追跡しない素の読み込みなので、ここでの呼び出しは副作用が無く安全
+    （b06 のように `mark_used()` を追う必要が無い——s01 は宣言の一部だけを
+    使っても「未使用宣言」にはならない）。
+    """
+    sources, regions = source_regions.load_source_regions(source_regions_yaml, consumer="occurrence")
+    return {source_id: regions[s.region_id].utc_offset for source_id, s in sources.items()}
+
+
+def compute_month_cell_source_rows(rows: list[sqlite3.Row], utc_offset_by_source: dict[str, str]) -> int:
+    """b07 の「月セル」（grain='month'。同一月に収まる日付ありレコード）に
+    集約される件数を数える。
+
+    `compute_leaf_cell_source_rows` の年境界判定は `observed_on` の文字列を
+    直接見るだけの近似で足りた（'Z' 変換で日付が変わっても年をまたぐことは
+    無い——region の utc_offset は最大でも数時間のずれで、年境界をまたぐには
+    12/31深夜のような際どいケースしか無く、実測では発生しない）。月境界は
+    'Z' の変換で月をまたぐことが実際にある（実測で最大10件——設計書 §0
+    参照）ため、b06/b07 と同じ `migrate.occurrence_period.expand_period()`
+    を呼んで実際に展開した `period_start`/`period_end` で判定する
+    （近似で済ませない）。
+    """
+    n = 0
+    for row in rows:
+        observed_on = row["observed_on"]
+        if not observed_on:
+            continue
+        utc_offset = utc_offset_by_source[row["source_id"]]
+        expanded = occurrence_period.expand_period(observed_on, utc_offset, record_id=row["record_id"])
+        if expanded.period_start[:7] == expanded.period_end[:7]:
+            n += 1
+    return n
+
+
 def compute_occurrence_place_and_watershed_stats(rows: list[sqlite3.Row], geojson_path) -> dict:
     """`occurrence_place_declarations.yaml`（3件。`n_watershed_polygons` は
     読み込んだ `polys` からそのまま数える）と
@@ -323,6 +363,21 @@ def compute_occurrence_place_and_watershed_stats(rows: list[sqlite3.Row], geojso
 
     n_null = sum(1 for v in exact_watershed.values() if v is None)
     n_resolved = len(exact_watershed) - n_null
+
+    # occurrence_cube_declarations.yaml の watershed_dated_resolved_rows/
+    # watershed_dated_unresolved_rows（Issue #48 PR-3a）: 母集団は
+    # `occurrence_place_declarations.yaml`（座標のある全記録）と違い
+    # 「日付あり」記録（b07 の watershed 母集団と同じ母集団）。実データでは
+    # 日付あり記録は必ず座標も持つ（no_coordinate_count=0）ため
+    # `exact_watershed`（座標のある記録だけを解決済み）で引けばよい——
+    # 座標を持たない日付あり記録があれば `.get()` が None を返し
+    # 「未解決」側に数えるが、この場合は occurrence_place 自体にその記録の
+    # 行が無いはずで、実際には b07 の母集団完全性検査が別途止める。
+    dated_record_ids = {r["record_id"] for r in rows if r["observed_on"] is not None}
+    n_watershed_dated_resolved = sum(
+        1 for rid in dated_record_ids if exact_watershed.get(rid) is not None
+    )
+    n_watershed_dated_unresolved = len(dated_record_ids) - n_watershed_dated_resolved
 
     # v1 母集団: period_raw(=observed_on) と lat/lon がどちらも非NULL
     v1_pop = [r for r in geo_rows if r["observed_on"] is not None]
@@ -399,6 +454,8 @@ def compute_occurrence_place_and_watershed_stats(rows: list[sqlite3.Row], geojso
         "n_watershed_polygons": len(polys),
         "place_id_null_count": n_null,
         "resolved_count": n_resolved,
+        "watershed_dated_resolved_rows": n_watershed_dated_resolved,
+        "watershed_dated_unresolved_rows": n_watershed_dated_unresolved,
         "memo_moved_records": {
             "ws_to_ws": ws_to_ws,
             "v1_assigned_exact_unassigned": v1_assigned_exact_unassigned,
@@ -434,6 +491,7 @@ def build_declaration_counts(
     ryuiki_selected: dict[str, set[int]],
     geojson_path=DEFAULT_GEOJSON,
     landuse_csv_path=DEFAULT_LANDUSE_CSV,
+    source_regions_yaml=source_regions.DEFAULT_SOURCE_REGIONS_YAML,
 ) -> dict[str, int]:
     """`data/sample/declaration_counts.yaml` の中身（フラットな
     `"<宣言ファイル名>:<エントリ名>[.<内訳キー>]"` -> 整数）を実測する。
@@ -513,17 +571,27 @@ def build_declaration_counts(
     # occurrence_cube_declarations.yaml
     org_rows = conn.execute(
         "SELECT t.rowid AS rowid, t.record_id, t.observed_on, t.lat, t.lon, t.scientific_name, "
-        "t.is_alien, t.red_list_category "
+        "t.is_alien, t.red_list_category, t.source_id "
         "FROM organism_records t JOIN temp.__s01_organism_records_rowids s ON t.rowid = s.rowid_value "
         "ORDER BY t.rowid"
     ).fetchall()
     out["occurrence_cube_declarations.yaml:leaf_cell_source_rows"] = compute_leaf_cell_source_rows(org_rows)
+    utc_offset_by_source = load_utc_offset_by_source(source_regions_yaml)
+    out["occurrence_cube_declarations.yaml:month_cell_source_rows"] = compute_month_cell_source_rows(
+        org_rows, utc_offset_by_source,
+    )
 
     # occurrence_place_declarations.yaml / occurrence_watershed_v1_declarations.yaml
     stats = compute_occurrence_place_and_watershed_stats(org_rows, geojson_path)
     out["occurrence_place_declarations.yaml:n_watershed_polygons"] = stats["n_watershed_polygons"]
     out["occurrence_place_declarations.yaml:place_id_null_count"] = stats["place_id_null_count"]
     out["occurrence_place_declarations.yaml:resolved_count"] = stats["resolved_count"]
+    out["occurrence_cube_declarations.yaml:watershed_dated_resolved_rows"] = stats[
+        "watershed_dated_resolved_rows"
+    ]
+    out["occurrence_cube_declarations.yaml:watershed_dated_unresolved_rows"] = stats[
+        "watershed_dated_unresolved_rows"
+    ]
 
     moved = stats["memo_moved_records"]
     total_moved = sum(moved.values())
