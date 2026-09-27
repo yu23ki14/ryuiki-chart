@@ -1,12 +1,12 @@
 # serving-diff レポート
 
-- git HEAD: `9b3b512a97fe7db32a9d03a23e686a9c5c3d6bb3`
+- git HEAD: `2ebb02dd0d7c81d8834f8f878c1a1af5c033b588`
 - v2 pipeline_fingerprint: `phase-b-fact-slice/v1`
 - registry_build.input_fingerprint: `55a8c2c4c1409a691f31a2e25e21b4bd6d6db2b3fd0f7852837c7d6bd60613f2`
 - better-sqlite3 の SQLite 版: `3.53.4`
 - imputation: `zero` / expand: `all` / v1-source: `derived`
-- 生成日時: 2026-09-27T02:43:29.445Z
-- 所要時間: 204.8s
+- 生成日時: 2026-09-27T03:18:36.425Z
+- 所要時間: 185.8s
 
 ## 問い合わせごとの集計
 
