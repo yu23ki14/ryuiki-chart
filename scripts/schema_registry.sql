@@ -204,9 +204,9 @@ CREATE INDEX IF NOT EXISTS ix_taxon_binomial ON taxon(canonical_binomial);
 -- v1 の redlist_assessments(2,884行、rl2020/rdb2022p/rl2026 の3版)と
 -- taxa.ias_category 由来の外来種評価(moe_ias_2015、v1 は data/processed/moe_ias_list.csv
 -- 由来)を、同じ「あるリストがある分類群に付けた評価」という構造に統合したもの。
--- D1(web/src/db/schema-registry.ts)には載せない(taxon の分類列と同じ判断。
--- 使う側〔web〕がまだ無い——registry/README.md「place.region_id と place_relation」
--- と同じ理由)。
+-- Phase A/B 当初は D1(web/src/db/schema-registry.ts)の消費者が無いとして
+-- 見送っていたが、Issue #48(PR-0)で D1 に追加した(web 側の taxonAssessment
+-- 定義参照)。
 --
 -- list_id は registry/taxon/assessment_list.yaml のコードリスト。
 -- category_code/prev_category_code は registry/taxon/redlist_category.yaml +
