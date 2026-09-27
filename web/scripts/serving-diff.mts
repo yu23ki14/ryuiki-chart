@@ -472,6 +472,13 @@ async function main() {
   /* 実際に引き直す（DB 往復は増えない。どの id が対象かは                    */
   /* `adapters-v1.ts` の `usesMergeDisabled` が唯一の宣言——alias 単位の       */
   /* 問い合わせ id はそもそも `mergeDisabled` を見ないので触らない）。         */
+  /*                                                                        */
+  /* メモリ: `fetched` は queryDefs×params の全 (v1Rows, v2RowsRaw, …の      */
+  /* 派生マップ) を実行終了までメモリに保持する設計のまま（行を書き換える      */
+  /* だけの分類段を再フェッチ無しで回すための前提なので、削らない）。          */
+  /* 実測（2026-09-27、`--imputation lod --v1compat-db data/db/v2_v1compat   */
+  /* .sqlite --mutate` 全11種、`/usr/bin/time -v` の Maximum resident set    */
+  /* size）: 約 3.3GB（3360568 KB）。                                       */
   /* -------------------------------------------------------------------- */
 
   interface FetchedEntry {
