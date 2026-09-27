@@ -94,8 +94,10 @@ def make_ryuiki_taxon_db(path, organism_records_rows=(), taxa_rows=()) -> None:
     """scripts/registry/build_taxon.py 用の最小限フィクスチャ。
 
     organism_records_rows: (source_id, taxon_key, scientific_name, taxon_rank,
-      kingdom, phylum, class, order, family, observed_on) の列
-      （build_taxon.py が実際に SELECT する列だけ。record_id/lat/lon 等は使わないので持たない）。
+      kingdom, phylum, class, order, family, observed_on) の10列に、俗名
+      （`vernacular_name_en`・D4 の和名補完の入力）を検証したい行だけ11個目の
+      要素として `vernacular_name` を足せる（10要素の行は `vernacular_name=NULL`
+      を補って読む——既存のテストが10要素のタプルのまま変更なしで動き続けるため）。
     taxa_rows: (taxon_id, scientific_name, vernacular_name_ja, gbif_taxon_key,
       gbif_match_type, kingdom, phylum, class, order, family) の列。
     """
@@ -105,7 +107,7 @@ def make_ryuiki_taxon_db(path, organism_records_rows=(), taxa_rows=()) -> None:
             """CREATE TABLE organism_records (
                 source_id TEXT, taxon_key TEXT, scientific_name TEXT, taxon_rank TEXT,
                 kingdom TEXT, phylum TEXT, class TEXT, "order" TEXT, family TEXT,
-                observed_on TEXT
+                observed_on TEXT, vernacular_name TEXT
             )"""
         )
         conn.execute(
@@ -115,8 +117,9 @@ def make_ryuiki_taxon_db(path, organism_records_rows=(), taxa_rows=()) -> None:
                 kingdom TEXT, phylum TEXT, class TEXT, "order" TEXT, family TEXT
             )"""
         )
+        padded_rows = [tuple(row) + (None,) * (11 - len(row)) for row in organism_records_rows]
         conn.executemany(
-            'INSERT INTO organism_records VALUES (?,?,?,?,?,?,?,?,?,?)', organism_records_rows
+            'INSERT INTO organism_records VALUES (?,?,?,?,?,?,?,?,?,?,?)', padded_rows
         )
         conn.executemany("INSERT INTO taxa VALUES (?,?,?,?,?,?,?,?,?,?)", taxa_rows)
         conn.commit()

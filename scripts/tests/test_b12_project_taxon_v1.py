@@ -26,6 +26,8 @@ def _ta_row(
         category_raw, category_code,
         prev_category_raw, prev_category_code,
         None, None, "kanagawa_redlist",
+        1,  # in_scope（D7）。b12 はこの列を読まない（redlist_map/redlist_change は
+        # taxon_assessment.category_code 等だけから作る）ので値は関係ない。
     )
 
 

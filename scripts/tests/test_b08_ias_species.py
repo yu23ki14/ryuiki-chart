@@ -80,6 +80,8 @@ def _ta_row(
         category_raw, None,
         None, None,
         None, origin, "moe_ias_list",
+        1,  # in_scope（D7）。b08 はこの列を読まない（除外は
+        # assessment_scope_exclusions.yaml を独立に読む）ので値は関係ない。
     )
 
 

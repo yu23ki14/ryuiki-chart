@@ -421,3 +421,56 @@ def test_load_assessment_scope_exclusions_rejects_non_binomial_name(tmp_path):
     bad_yaml.write_text(f"exclusions:\n{entries}\n", encoding="utf-8")
     with pytest.raises(AssertionError, match="二名法"):
         ta_module.load_assessment_scope_exclusions(bad_yaml)
+
+
+# ---------------------------------------------------------------------------
+# in_scope（D7、Issue #48 PR-3a）: 除外7種の宣言を可視化するだけで行は除外しない
+# ---------------------------------------------------------------------------
+
+def test_in_scope_is_1_for_redlist_rows_even_with_excluded_binomial(tmp_path):
+    """除外7種の宣言は list_id='moe_ias_2015' だけなので、redlist側の行は
+    たとえ学名(binom)が同じでも in_scope=1（list_id で先に絞るため一致しない）。"""
+    conn, _ = _build(tmp_path, redlist_rows=[_rl_row(scientific_name="Trypoxylus dichotomus")])
+    row = _assessment(conn, "rl2020_00001")
+    assert row["in_scope"] == 1
+
+
+def test_in_scope_is_0_for_excluded_species_via_binomial_contraction(tmp_path, monkeypatch):
+    """除外7種の1つ（掲載学名は亜種 `Trypoxylus dichotomus septentrionalis`。
+    `assessment_scope_exclusions.yaml` の宣言は二名法への縮約
+    `Trypoxylus dichotomus`）が `binom_of()` で一致すると in_scope=0 になる
+    （`taxon_assessment` の行自体は除外しない——429行のまま）。"""
+    csv_path = tmp_path / "moe_ias_list.csv"
+    write_moe_ias_list_csv(
+        csv_path,
+        [_ias_csv_row(
+            scientific_name="Trypoxylus dichotomus septentrionalis",
+            vernacular_name_ja="カブトムシ",
+        )],
+    )
+    monkeypatch.setattr(ta_module, "MOE_IAS_LIST_CSV", csv_path)
+    conn, counts = _build(
+        tmp_path,
+        taxa_rows=[(
+            "trypoxylus dichotomus septentrionalis",
+            "Trypoxylus dichotomus septentrionalis", "カブトムシ",
+        )],
+    )
+    assert counts["taxon_assessment"] == 1
+    row = _single_ias_row(conn)
+    assert row["in_scope"] == 0
+
+
+def test_in_scope_is_1_for_non_excluded_moe_ias_species(tmp_path, monkeypatch):
+    """除外7種に含まれない moe_ias_2015 の行は in_scope=1。"""
+    csv_path = tmp_path / "moe_ias_list.csv"
+    write_moe_ias_list_csv(
+        csv_path,
+        [_ias_csv_row(scientific_name="Herpestes javanicus", vernacular_name_ja="ジャワマングース")],
+    )
+    monkeypatch.setattr(ta_module, "MOE_IAS_LIST_CSV", csv_path)
+    conn, _ = _build(
+        tmp_path, taxa_rows=[("herpestes javanicus", "Herpestes javanicus", "ジャワマングース")],
+    )
+    row = _single_ias_row(conn)
+    assert row["in_scope"] == 1
