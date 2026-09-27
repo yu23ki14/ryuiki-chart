@@ -19,6 +19,10 @@
  *   - `observation_agg(place_id, variable_id, grain)`
  *   - `occurrence_agg(taxon_id, period_start)`
  *   - `occurrence_agg(place_id, period_start)`
+ *   - `occurrence_agg(place_kind, grain, period_start)`（Issue #48 PR-3a D6・
+ *     ADR-0030 D3 追記。族〔year/month〕・place_kind〔grid01/watershed〕が
+ *     2つずつに増えたため、年の地図クエリ〔ある年の grid01/watershed 全体〕が
+ *     この3列で絞らないと全表走査になる）
  *
  * このファイルを編集したら `npm run db:generate` でマイグレーションを作り直す。
  * drizzle/migrations/*.sql を直接書き換えない。`schema.ts`/`schema-registry.ts` と
@@ -81,13 +85,24 @@ export const observationAgg = sqliteTable(
 
 /**
  * 生物出現のキューブ（`organism_records` → `occurrence` → このキューブ。
- * ADR-0025 D2）。次元キー8列＋値2列（`n`/`n_red_list`）＋来歴2列の計12列。
+ * ADR-0025 D2）。次元キー8列＋値3列（`n`/`n_red_list`/`n_alien`）＋来歴2列の
+ * 計13列。
+ *
+ * `n_alien`（Issue #48 PR-3a D3。`SUM(is_alien)`）は v1 `org_watershed.alien_n`/
+ * `watershed_rollup.org_alien_n` の後継——JOIN で導くより加法で正確・速い
+ * （`is_alien` は (source, taxon_key) ごとに一定であることを実測済み）。
+ *
+ * PR-3a で `place_kind`/`grain` の取りうる値が増えた: `place_kind` は
+ * `grid01`（既存）に加えて `watershed`（O-2。流域に解決できない日付あり記録は
+ * `place_kind='watershed', place_id NULL` のセルとして持つ——ADR-0025/0026
+ * D1「データを落とさない」）、`grain` は年族 `{year, survey_period}`（既存）に
+ * 加えて月族 `{month}`（同一月に収まる記録だけの分割）を持つ。
  *
  * `region_id`/`source_id`/`grain`/`period_start`/`period_end`/`n`/`n_red_list`/
- * `built_from`/`spec_version` は NOT NULL、`place_id`/`place_kind`/`taxon_id`
- * は NULL を許容する（`scripts/b07_build_occurrence_cube.py` の
- * `_CREATE_OCCURRENCE_AGG_SQL` のまま——taxon_id が NULL のセルもデータを
- * 落とさず持つ、という同スクリプトの決定に合わせる）。
+ * `n_alien`/`built_from`/`spec_version` は NOT NULL、`place_id`/`place_kind`/
+ * `taxon_id` は NULL を許容する（`scripts/b07_build_occurrence_cube.py` の
+ * `_CREATE_OCCURRENCE_AGG_SQL` のまま——taxon_id/place_id が NULL のセルも
+ * データを落とさず持つ、という同スクリプトの決定に合わせる）。
  */
 export const occurrenceAgg = sqliteTable(
 	"occurrence_agg",
@@ -102,27 +117,35 @@ export const occurrenceAgg = sqliteTable(
 		periodEnd: text("period_end").notNull(),
 		n: integer().notNull(),
 		nRedList: integer("n_red_list").notNull(),
+		nAlien: integer("n_alien").notNull(),
 		builtFrom: text("built_from").notNull(),
 		specVersion: text("spec_version").notNull(),
 	},
 	(table) => [
 		index("ix_occurrence_agg_taxon_period").on(table.taxonId, table.periodStart),
 		index("ix_occurrence_agg_place_period").on(table.placeId, table.periodStart),
+		index("ix_occurrence_agg_kind_grain_period").on(table.placeKind, table.grain, table.periodStart),
 	],
 );
 
 /**
- * summary 2表（Issue #48 PR-2、`aggregations/serving.yaml` → `scripts/b13_build_summary.py`）。
+ * summary 4表（Issue #48 PR-2・PR-3a、`aggregations/serving.yaml` →
+ * `scripts/b13_build_summary.py`）。
  *
  * `observation_agg`（キューブ、上の `observationAgg`）を「年グレイン（year/fiscal_year）・
- * site・stat='mean'」に絞って事前集計した、画面/API/AI が読む配信用の形。列は
- * `aggregations/serving.yaml` の `summary_variable_catalog`/`summary_place_variable`
- * 宣言（group_by＋measures）と1対1で対応させてある——ここを触ったら YAML 側と
- * `scripts/b13_build_summary.py` の CREATE 文も合わせて直すこと。次元キー6/7列＋
- * 測度＋来歴2列（`built_from`/`spec_version`。`observationAgg`/`occurrenceAgg` と同じ形）。
+ * site・stat='mean'」に絞って事前集計した2表（`summaryVariableCatalog`/
+ * `summaryPlaceVariable`、PR-2）に加え、`occurrence_agg`（上の `occurrenceAgg`）を
+ * 「grid01・年族」「watershed・年族」に絞って事前集計した2表
+ * （`summaryTaxonCatalog`/`summaryWatershedOccurrence`、PR-3a）の計4表。列は
+ * `aggregations/serving.yaml` の同名の宣言（group_by＋measures）と1対1で
+ * 対応させてある——ここを触ったら YAML 側と `scripts/b13_build_summary.py` の
+ * CREATE 文も合わせて直すこと。次元キー＋測度＋来歴2列（`built_from`/
+ * `spec_version`。`observationAgg`/`occurrenceAgg` と同じ形）。
  *
- * `catalog.ts` はこの2表を `source:'summary'`（既定）で読む。variable_id 単位への束ね・
- * 代表化はここではなく `catalog.ts` の仕事（このテーブル自体は系列＝tuple 単位のまま）。
+ * `catalog.ts`（PR-3b で生物系の同種モジュールが加わる予定）はこれらを
+ * `source:'summary'`（既定）で読む。variable_id/binom 単位への束ね・代表化は
+ * ここではなく問い合わせ層の仕事（このテーブル自体は系列＝tuple 単位、または
+ * `taxon_id`/`place_id` そのものの単位のまま）。
  */
 export const summaryVariableCatalog = sqliteTable(
 	"summary_variable_catalog",
@@ -173,4 +196,55 @@ export const summaryPlaceVariable = sqliteTable(
 		index("ix_summary_place_variable_place").on(table.placeId),
 		index("ix_summary_place_variable_variable").on(table.variableId),
 	],
+);
+
+/**
+ * 種カタログ（Issue #48 PR-3a、v1 `species2`/`mesh_species` の後継）。
+ * `occurrence_agg` を「grid01・年族（year/survey_period）」に絞って `taxon_id`
+ * 単位で事前集計した形——`taxon_id IS NULL`（分類群未解決）の行も持つ
+ * （データを落とさない）。binom 束ね・表示名・レッドリスト評価との突合は
+ * ここではなく問い合わせ層（PR-3b）の仕事。
+ *
+ * `nPlaces`（v1 `mesh_species.mesh_n` 相当。`COUNT(DISTINCT place_id)`）・
+ * `nYears`（`COUNT(DISTINCT year_of_period_start)`）は `count_distinct` に
+ * `expr` を使う測度（`aggregations/serving.yaml` 参照）。
+ */
+export const summaryTaxonCatalog = sqliteTable(
+	"summary_taxon_catalog",
+	{
+		taxonId: text("taxon_id"),
+		n: integer().notNull(),
+		nRedList: integer("n_red_list").notNull(),
+		nAlien: integer("n_alien").notNull(),
+		nPlaces: integer("n_places").notNull(),
+		yFrom: integer("y_from"),
+		yTo: integer("y_to"),
+		nYears: integer("n_years").notNull(),
+		builtFrom: text("built_from").notNull(),
+		specVersion: text("spec_version").notNull(),
+	},
+	(table) => [index("ix_summary_taxon_catalog_taxon").on(table.taxonId)],
+);
+
+/**
+ * 流域ロールアップ（Issue #48 PR-3a、v1 `org_watershed`/`org_watershed_year`
+ * の年集計側の後継）。`occurrence_agg` を「watershed・年族（year/survey_period）」
+ * に絞って `place_id` 単位で事前集計した形——`place_id IS NULL`（流域に解決
+ * できない日付あり記録、ADR-0025/0026 D1）の行も持つ。画面は
+ * `place_id IS NOT NULL` で絞る。
+ */
+export const summaryWatershedOccurrence = sqliteTable(
+	"summary_watershed_occurrence",
+	{
+		placeId: text("place_id"),
+		n: integer().notNull(),
+		nRedList: integer("n_red_list").notNull(),
+		nAlien: integer("n_alien").notNull(),
+		nTaxa: integer("n_taxa").notNull(),
+		yFrom: integer("y_from"),
+		yTo: integer("y_to"),
+		builtFrom: text("built_from").notNull(),
+		specVersion: text("spec_version").notNull(),
+	},
+	(table) => [index("ix_summary_watershed_occurrence_place").on(table.placeId)],
 );
