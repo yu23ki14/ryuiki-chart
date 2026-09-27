@@ -125,7 +125,7 @@ describe("expectedUnitSymbols（registry.sqlite を直接 SQL で読む）", () 
     const v2 = rowsByKey(toNormRows([{ alias: "生物化学的酸素要求量 BOD", n: 5, unit: brokenV2Unit }], ["alias"], ["n"], ["unit"]));
     const diffs = compareRuns(v1, v2);
     const ctx = ctxBase({ known: new Set(["unit_label_registry"]), expectedUnitSymbol: map });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+    expect(classifyDiff(diffs[0], ctx).rules.size).toBe(0);
   });
 });
 

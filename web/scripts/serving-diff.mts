@@ -617,13 +617,16 @@ async function main() {
 
         for (const diff of diffs) {
           const c = classifyDiff(diff, ctx);
-          addClassification(s, c.rule);
-          if (c.rule === "declared" && c.declaredMatch) {
-            const set = matchedDeclared.get(c.declaredMatch.table) ?? new Set<string>();
-            set.add(declaredMatchTag(c.declaredMatch.entry));
-            matchedDeclared.set(c.declaredMatch.table, set);
+          addClassification(s, c.rules);
+          // `c.declaredMatches`（段1で使われた宣言。overall unexplained でも
+          // 載っている——`classify.ts` の `Classification.declaredMatches` docstring
+          // 参照）を「腐り」判定の消費済みキーとして記録する。
+          for (const m of c.declaredMatches) {
+            const set = matchedDeclared.get(m.table) ?? new Set<string>();
+            set.add(declaredMatchTag(m.entry));
+            matchedDeclared.set(m.table, set);
           }
-          if (c.rule === "unexplained" && unexplained.length < 20) {
+          if (c.rules.size === 0 && unexplained.length < 20) {
             unexplained.push({ queryId: def.id, params, kind: diff.kind, key: diff.key, columns: diff.columns });
           }
         }

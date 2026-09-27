@@ -5,6 +5,7 @@ import {
   compareRuns,
   computeRainRecompute,
   findRottenDeclarations,
+  type Classification,
   type ClassifyContext,
   type ExpectedDiffs,
   type RainL2Row,
@@ -18,6 +19,17 @@ function ctxBase(overrides: Partial<ClassifyContext> = {}): ClassifyContext {
     known: new Set(),
     ...overrides,
   };
+}
+
+/**
+ * `Classification.rules`（説明の鎖が使った規則の集合）を、単一規則のテストが
+ * 読みやすいように文字列へ潰す小さな補助関数。空集合は `"unexplained"`、複数
+ * 要素は `+` で連結してソートする（複数系統にまたがる診断を確かめるテストは
+ * `.rules` を直接 `toEqual(new Set([...]))` で見る）。
+ */
+function ruleOf(c: Classification): string {
+  if (c.rules.size === 0) return "unexplained";
+  return [...c.rules].sort().join("+");
 }
 
 describe("compareRuns", () => {
@@ -92,7 +104,7 @@ describe("classifyDiff: declared", () => {
       known: new Set(["declared"]),
     });
     const results = diffs.map((d) => classifyDiff(d, ctx));
-    expect(results.every((r) => r.rule === "declared")).toBe(true);
+    expect(results.every((r) => ruleOf(r) === "declared")).toBe(true);
   });
 
   it("row_only_in_candidate（v2にしか無い）の宣言は row_only_in_v2 に対応する", () => {
@@ -105,7 +117,7 @@ describe("classifyDiff: declared", () => {
       params: { site_id: "site-a", alias: "変数X", kind: "daily" },
       known: new Set(["declared"]),
     });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("declared");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("declared");
   });
 
   it("キーが一致しなければ declared にならない（unexplained）", () => {
@@ -118,7 +130,7 @@ describe("classifyDiff: declared", () => {
       params: { site_id: "site-a", alias: "変数X", kind: "daily" },
       known: new Set(["declared"]),
     });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("unexplained");
   });
 
   it("known に declared が無ければ、宣言があっても適用しない", () => {
@@ -131,7 +143,7 @@ describe("classifyDiff: declared", () => {
       params: { site_id: "site-a", alias: "変数X", kind: "daily" },
       known: new Set(),
     });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("unexplained");
   });
 });
 
@@ -148,7 +160,7 @@ describe("classifyDiff: day_split", () => {
     const v2 = rowsByKey(toNormRows([], ["d"], ["mm"], []));
     const diffs = compareRuns(v1, v2);
     const ctx = ctxBase({ known: new Set(["day_split"]), rain: r });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("day_split");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("day_split");
   });
 
   it("period_start日にしか無い日は row_only_in_v2 が day_split で説明できる", () => {
@@ -160,7 +172,7 @@ describe("classifyDiff: day_split", () => {
     const v2 = rowsByKey(toNormRows([{ d: "2020-01-31", mm: 1 }], ["d"], ["mm"], []));
     const diffs = compareRuns(v1, v2);
     const ctx = ctxBase({ known: new Set(["day_split"]), rain: r });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("day_split");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("day_split");
   });
 
   it("両方に日はあるが値が違う場合も、再計算値と一致すれば day_split", () => {
@@ -178,7 +190,7 @@ describe("classifyDiff: day_split", () => {
     const diffs = compareRuns(v1, v2);
     expect(diffs).toHaveLength(1);
     const ctx = ctxBase({ known: new Set(["day_split"]), rain: r });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("day_split");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("day_split");
   });
 
   it("rain が無ければ day_split は不発（unexplained）", () => {
@@ -186,7 +198,7 @@ describe("classifyDiff: day_split", () => {
     const v2 = rowsByKey(toNormRows([], ["d"], ["mm"], []));
     const diffs = compareRuns(v1, v2);
     const ctx = ctxBase({ known: new Set(["day_split"]) });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("unexplained");
   });
 
   it("--mutate day_split_rule_off 相当は unexplained に落ちる", () => {
@@ -198,7 +210,7 @@ describe("classifyDiff: day_split", () => {
     const v2 = rowsByKey(toNormRows([], ["d"], ["mm"], []));
     const diffs = compareRuns(v1, v2);
     const ctx = ctxBase({ known: new Set(["day_split"]), rain: r, disabledRules: new Set(["day_split"]) });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("unexplained");
   });
 });
 
@@ -221,7 +233,7 @@ describe("classifyDiff: day_split（月次・rain_monthly_clim、rainGrain:'mont
     const v2 = rowsByKey(toNormRows([], ["month"], ["mm"], []));
     const diffs = compareRuns(v1, v2);
     const ctx = ctxBase({ known: new Set(["day_split"]), rain: r, rainGrain: "month" });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("day_split");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("day_split");
   });
 
   it("period_start日にしか属さない月は row_only_in_v2 が day_split(月次) で説明できる", () => {
@@ -234,7 +246,7 @@ describe("classifyDiff: day_split（月次・rain_monthly_clim、rainGrain:'mont
     const v2 = rowsByKey(toNormRows([{ month: 1, mm: 100 }], ["month"], ["mm"], []));
     const diffs = compareRuns(v1, v2);
     const ctx = ctxBase({ known: new Set(["day_split"]), rain: r, rainGrain: "month" });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("day_split");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("day_split");
   });
 
   it("日付境界のずれが無くても、/10 換算だけの差を day_split(月次) がそのまま説明する（rain_div10 を撤去した理由）", () => {
@@ -250,7 +262,7 @@ describe("classifyDiff: day_split（月次・rain_monthly_clim、rainGrain:'mont
     const diffs = compareRuns(v1, v2);
     expect(diffs).toHaveLength(1); // 日付境界のずれが無いのに、なお value_diff が出る（=純粋な /10 の差）
     const ctx = ctxBase({ known: new Set(["day_split"]), rain: r, rainGrain: "month" });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("day_split");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("day_split");
   });
 
   it("--mutate day_split_rule_off 相当（月次）は unexplained に落ちる", () => {
@@ -267,7 +279,7 @@ describe("classifyDiff: day_split（月次・rain_monthly_clim、rainGrain:'mont
       rainGrain: "month",
       disabledRules: new Set(["day_split"]),
     });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("unexplained");
   });
 });
 
@@ -281,7 +293,7 @@ describe("classifyDiff: unit_label_registry", () => {
       params: { alias: "変数X" },
       expectedUnitSymbol: new Map([["変数X", "mg/L"]]),
     });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("unit_label_registry");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("unit_label_registry");
   });
 
   it("alias が params に無ければ diff.key[0]（variable_catalog/site_variables の行キー）から解決する", () => {
@@ -292,7 +304,7 @@ describe("classifyDiff: unit_label_registry", () => {
       known: new Set(["unit_label_registry"]),
       expectedUnitSymbol: new Map([["変数X", "mg/L"]]),
     });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("unit_label_registry");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("unit_label_registry");
   });
 
   it("数値列も食い違っていれば（value_diffが別に出るので）unit列単独のlabel_diffだけがunit_label_registryになる", () => {
@@ -308,7 +320,7 @@ describe("classifyDiff: unit_label_registry", () => {
       params: { alias: "変数X" },
       expectedUnitSymbol: new Map([["変数X", "mg/L"]]),
     });
-    expect(classifyDiff(labelDiff, ctx).rule).toBe("unit_label_registry");
+    expect(ruleOf(classifyDiff(labelDiff, ctx))).toBe("unit_label_registry");
   });
 
   it("v1側が既にunitを持っていれば適用しない", () => {
@@ -320,7 +332,7 @@ describe("classifyDiff: unit_label_registry", () => {
       params: { alias: "変数X" },
       expectedUnitSymbol: new Map([["変数X", "mg/l"]]),
     });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("unexplained");
   });
 
   it("known に unit_label_registry が無ければ、他の条件を満たしても適用しない（unexplained）", () => {
@@ -332,7 +344,7 @@ describe("classifyDiff: unit_label_registry", () => {
       params: { alias: "変数X" },
       expectedUnitSymbol: new Map([["変数X", "mg/L"]]),
     });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("unexplained");
   });
 
   it("v2の単位がその系列のレジストリsymbolと一致しなければ、非NULLでも unit_label_registry にならない", () => {
@@ -345,7 +357,7 @@ describe("classifyDiff: unit_label_registry", () => {
       params: { alias: "変数X" },
       expectedUnitSymbol: new Map([["変数X", "mg/L"]]),
     });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("unexplained");
   });
 
   it("expectedUnitSymbol が渡されていなければ安全側に倒して unexplained", () => {
@@ -353,7 +365,7 @@ describe("classifyDiff: unit_label_registry", () => {
     const v2 = rowsByKey(toNormRows([{ y: 1, n: 5, unit: "mg/L" }], ["y"], ["n"], ["unit"]));
     const diffs = compareRuns(v1, v2);
     const ctx = ctxBase({ known: new Set(["unit_label_registry"]), params: { alias: "変数X" } });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("unexplained");
   });
 });
 
@@ -364,7 +376,7 @@ describe("classifyDiff: float_rounding", () => {
     // tolerance を渡さず(=0)比較して、value_diffとして出したものを float_rounding が拾えるか見る
     const diffs = compareRuns(v1, v2);
     const ctx = ctxBase({ known: new Set(["float_rounding"]) });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("float_rounding");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("float_rounding");
   });
 
   it("誤差が大きければ float_rounding にならない", () => {
@@ -372,7 +384,7 @@ describe("classifyDiff: float_rounding", () => {
     const v2 = rowsByKey(toNormRows([{ y: 1, avg: 2.0 }], ["y"], ["avg"], []));
     const diffs = compareRuns(v1, v2);
     const ctx = ctxBase({ known: new Set(["float_rounding"]) });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("unexplained");
   });
 });
 
@@ -382,7 +394,7 @@ describe("classifyDiff: synthetic_excluded（design §1「差分の差分」・v
     const v2 = rowsByKey(toNormRows([], ["y"], ["n"], []));
     const diffs = compareRuns(v1, v2);
     const ctx = ctxBase({ known: new Set(["synthetic_excluded"]) });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("unexplained");
   });
 
   it("row_only_in_v1: v2compat（合成込み）が v1 と一致すれば synthetic_excluded", () => {
@@ -391,7 +403,7 @@ describe("classifyDiff: synthetic_excluded（design §1「差分の差分」・v
     const v2Compat = rowsByKey(toNormRows([{ y: 1, n: 5 }], ["y"], ["n"], []));
     const diffs = compareRuns(v1, v2);
     const ctx = ctxBase({ known: new Set(["synthetic_excluded"]), v2CompatByKey: v2Compat });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("synthetic_excluded");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("synthetic_excluded");
   });
 
   it("row_only_in_v1: v2compat の値が v1 と食い違えば unexplained（合成除外以外の理由で消えた行の疑い）", () => {
@@ -400,7 +412,7 @@ describe("classifyDiff: synthetic_excluded（design §1「差分の差分」・v
     const v2Compat = rowsByKey(toNormRows([{ y: 1, n: 999 }], ["y"], ["n"], []));
     const diffs = compareRuns(v1, v2);
     const ctx = ctxBase({ known: new Set(["synthetic_excluded"]), v2CompatByKey: v2Compat });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("unexplained");
   });
 
   it("value_diff: 許容列で v1==v2compat かつ v2compat≠v2(本番) なら synthetic_excluded", () => {
@@ -409,7 +421,7 @@ describe("classifyDiff: synthetic_excluded（design §1「差分の差分」・v
     const v2Compat = rowsByKey(toNormRows([{ y: 1, n: 10 }], ["y"], ["n"], []));
     const diffs = compareRuns(v1, v2);
     const ctx = ctxBase({ known: new Set(["synthetic_excluded"]), v2CompatByKey: v2Compat });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("synthetic_excluded");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("synthetic_excluded");
   });
 
   it("value_diff: v2compat と v2(本番) が同じ（合成除外の影響を受けていない）なら unexplained", () => {
@@ -418,7 +430,7 @@ describe("classifyDiff: synthetic_excluded（design §1「差分の差分」・v
     const v2Compat = rowsByKey(toNormRows([{ y: 1, n: 8 }], ["y"], ["n"], []));
     const diffs = compareRuns(v1, v2);
     const ctx = ctxBase({ known: new Set(["synthetic_excluded"]), v2CompatByKey: v2Compat });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("unexplained");
   });
 
   it("value_diff: 許容列（SYNTHETIC_EXCLUDED_VALUE_COLUMNS）以外の列は対象外", () => {
@@ -427,7 +439,7 @@ describe("classifyDiff: synthetic_excluded（design §1「差分の差分」・v
     const v2Compat = rowsByKey(toNormRows([{ y: 1, elev_max: 10 }], ["y"], ["elev_max"], []));
     const diffs = compareRuns(v1, v2);
     const ctx = ctxBase({ known: new Set(["synthetic_excluded"]), v2CompatByKey: v2Compat });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("unexplained");
   });
 
   it("row_only_in_v2 は対象外（合成除外で行が増えることは無い——常に unexplained）", () => {
@@ -436,7 +448,7 @@ describe("classifyDiff: synthetic_excluded（design §1「差分の差分」・v
     const v2Compat = rowsByKey(toNormRows([{ y: 1, n: 5 }], ["y"], ["n"], []));
     const diffs = compareRuns(v1, v2);
     const ctx = ctxBase({ known: new Set(["synthetic_excluded"]), v2CompatByKey: v2Compat });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("unexplained");
   });
 
   it("--mutate synthetic_rule_off 相当（disabledRules）は unexplained に落ちる", () => {
@@ -449,12 +461,12 @@ describe("classifyDiff: synthetic_excluded（design §1「差分の差分」・v
       v2CompatByKey: v2Compat,
       disabledRules: new Set(["synthetic_excluded"]),
     });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("unexplained");
   });
 });
 
-describe("classifyDiff: declared + synthetic_excluded の組み合わせ（Issue #48 PR-2 統合後 修正B）", () => {
-  it("v1Table 経由: 宣言が列の一部だけを覆い、残りが synthetic_excluded で説明できれば declared", () => {
+describe("classifyDiff: 説明の鎖（declared・synthetic_excluded・lod_imputation。docs/plans/V2_SERVING_PR2.md §1・§3）", () => {
+  it("v1Table 経由: 宣言が列の一部だけを覆い、残りが synthetic_excluded で説明できれば {declared, synthetic_excluded}", () => {
     // `var_catalog`/`浮遊物質量 SS` の実測ケースの再現: n は宣言済み（below_lod の
     // 既知バグ）、n_sites は合成データの除外軸（宣言には無い）。
     const v1 = rowsByKey(toNormRows([{ variable: "ss", n: 10, n_sites: 5 }], ["variable"], ["n", "n_sites"], []));
@@ -469,11 +481,12 @@ describe("classifyDiff: declared + synthetic_excluded の組み合わせ（Issue
       v2CompatByKey: v2Compat,
     });
     const c = classifyDiff(diffs[0], ctx);
-    expect(c.rule).toBe("declared");
-    expect(c.declaredMatch?.table).toBe("var_catalog");
+    expect(c.rules).toEqual(new Set(["declared", "synthetic_excluded"]));
+    expect(c.declaredMatches).toHaveLength(1);
+    expect(c.declaredMatches[0].table).toBe("var_catalog");
   });
 
-  it("残りの列が synthetic_excluded の許容列に無ければ unexplained（規則を緩めない）", () => {
+  it("残りの列が synthetic_excluded の許容列に無ければ unexplained（規則を緩めない）が、declared が使われた記録（declaredMatches）は残る（段1で使われたかで腐りを数える）", () => {
     const v1 = rowsByKey(toNormRows([{ variable: "ss", n: 10, elev_max: 5 }], ["variable"], ["n", "elev_max"], []));
     const v2 = rowsByKey(toNormRows([{ variable: "ss", n: 8, elev_max: 3 }], ["variable"], ["n", "elev_max"], []));
     const v2Compat = rowsByKey(toNormRows([{ variable: "ss", n: 999, elev_max: 5 }], ["variable"], ["n", "elev_max"], []));
@@ -485,7 +498,10 @@ describe("classifyDiff: declared + synthetic_excluded の組み合わせ（Issue
       known: new Set(["declared", "synthetic_excluded"]),
       v2CompatByKey: v2Compat,
     });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+    const c = classifyDiff(diffs[0], ctx);
+    expect(ruleOf(c)).toBe("unexplained");
+    expect(c.declaredMatches).toHaveLength(1); // n 列では declared が段1で使われた（overall unexplained でも記録は残る）
+    expect(c.declaredMatches[0].table).toBe("var_catalog");
   });
 
   it("残りの列が v1==compat を満たさなければ unexplained（below_lod バグ以外の理由まで飲み込まない）", () => {
@@ -501,7 +517,38 @@ describe("classifyDiff: declared + synthetic_excluded の組み合わせ（Issue
       known: new Set(["declared", "synthetic_excluded"]),
       v2CompatByKey: v2Compat,
     });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("unexplained");
+  });
+
+  it("3つの原因が同じセルに重なる（中津川 SS 10月の実例の再現。declared＋synthetic_excluded＋lod_imputation の全部が必要）", () => {
+    // v1 は below_lod の既知バグで below_lod 行を丸ごと落とす（n・avg・min の
+    // 全列が動く）。compat_zero はそのバグを持たない（v1 と食い違う＝declared）。
+    // v2_zero は compat_zero から合成データ1件を除いた値（n・avg が動く＝
+    // synthetic_excluded）。v2_lod は zero→lod の切り替えで avg・min が動く
+    // （lod_imputation）——列によって「どの段で・どれだけ動くか」が違う。
+    const cols = ["n", "avg", "min", "n_censored"] as const;
+    const v1 = rowsByKey(toNormRows([{ variable: "ss", month: 10, n: 10, avg: 1.0, min: 0.5, n_censored: 2 }], ["variable", "month"], [...cols], []));
+    const v2Compat = rowsByKey(toNormRows([{ variable: "ss", month: 10, n: 12, avg: 0.9, min: 0.3, n_censored: 2 }], ["variable", "month"], [...cols], []));
+    const v2Zero = rowsByKey(toNormRows([{ variable: "ss", month: 10, n: 11, avg: 0.95, min: 0.3, n_censored: 2 }], ["variable", "month"], [...cols], []));
+    const v2 = rowsByKey(toNormRows([{ variable: "ss", month: 10, n: 11, avg: 1.2, min: 0.4, n_censored: 2 }], ["variable", "month"], [...cols], []));
+    const diffs = compareRuns(v1, v2);
+    expect(diffs).toHaveLength(1);
+    expect(diffs[0].columns.slice().sort()).toEqual(["avg", "min", "n"]); // n_censored は動かない
+
+    const expected: ExpectedDiffs = {
+      meas_clim: [{ key: ["ss", 10], kind: "value_diff", columns: ["n", "avg", "min"] }],
+    };
+    const ctx = ctxBase({
+      expected,
+      declared: { v1Table: "meas_clim", builder: (_p, k) => [k[0], k[1]] },
+      known: new Set(["declared", "synthetic_excluded", "lod_imputation"]),
+      v2CompatByKey: v2Compat,
+      v2ZeroByKey: v2Zero,
+    });
+    const c = classifyDiff(diffs[0], ctx);
+    expect(c.rules).toEqual(new Set(["declared", "synthetic_excluded", "lod_imputation"]));
+    expect(c.declaredMatches.length).toBeGreaterThan(0);
+    expect(c.declaredMatches.every((m) => m.table === "meas_clim")).toBe(true);
   });
 
   it("by_variable（v1Table 無し）: byVariableDeclared 経由で束ねた alias の宣言が row_only_in_v2 を説明する", () => {
@@ -524,8 +571,8 @@ describe("classifyDiff: declared + synthetic_excluded の組み合わせ（Issue
       },
     });
     const c = classifyDiff(diffs[0], ctx);
-    expect(c.rule).toBe("declared");
-    expect(c.declaredMatch?.table).toBe("meas_daily");
+    expect(c.rules).toEqual(new Set(["declared"]));
+    expect(c.declaredMatches[0]?.table).toBe("meas_daily");
   });
 
   it("by_variable: 束ねたどの alias でも宣言が見つからなければ unexplained", () => {
@@ -545,7 +592,7 @@ describe("classifyDiff: declared + synthetic_excluded の組み合わせ（Issue
         buildKey: (alias, k) => [String(ctx.params.site_id), alias, k[0]],
       },
     });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("unexplained");
   });
 
   it("by_variable: 宣言の columns が diff.columns を完全に覆えば synthetic を使わず declared", () => {
@@ -566,8 +613,8 @@ describe("classifyDiff: declared + synthetic_excluded の組み合わせ（Issue
       },
     });
     const c = classifyDiff(diffs[0], ctx);
-    expect(c.rule).toBe("declared");
-    expect(c.declaredMatch?.table).toBe("meas_clim");
+    expect(c.rules).toEqual(new Set(["declared"]));
+    expect(c.declaredMatches[0]?.table).toBe("meas_clim");
   });
 
   it("--mutate declared_rot 相当（disabledRot）は組み合わせでも unexplained に落ちる", () => {
@@ -583,7 +630,7 @@ describe("classifyDiff: declared + synthetic_excluded の組み合わせ（Issue
       v2CompatByKey: v2Compat,
       declaredRot: { table: "var_catalog", key: ["ss"], kind: "value_diff" },
     });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("unexplained");
   });
 });
 
@@ -594,7 +641,7 @@ describe("classifyDiff: lod_imputation（design §3 #1・--imputation lod）", (
     const v2Zero = rowsByKey(toNormRows([{ y: 1, avg: 1.0, n_censored: 3 }], ["y"], ["avg", "n_censored"], []));
     const diffs = compareRuns(v1, v2);
     const ctx = ctxBase({ known: new Set(["lod_imputation"]), v2ZeroByKey: v2Zero });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("lod_imputation");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("lod_imputation");
   });
 
   it("n_censored 列があり 0 なら lod_imputation にならない（検閲が無いのに値が動くのは別の原因）", () => {
@@ -603,7 +650,7 @@ describe("classifyDiff: lod_imputation（design §3 #1・--imputation lod）", (
     const v2Zero = rowsByKey(toNormRows([{ y: 1, avg: 1.0, n_censored: 0 }], ["y"], ["avg", "n_censored"], []));
     const diffs = compareRuns(v1, v2);
     const ctx = ctxBase({ known: new Set(["lod_imputation"]), v2ZeroByKey: v2Zero });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("unexplained");
   });
 
   it("n_censored=0 でも lod 側がNULLになった（全件不検出）なら lod_imputation になる（実測: alias 'cn'/'pcb'）", () => {
@@ -617,7 +664,7 @@ describe("classifyDiff: lod_imputation（design §3 #1・--imputation lod）", (
     const v2Zero = rowsByKey(toNormRows([{ y: 1, avg: 0.0, n_censored: 0 }], ["y"], ["avg", "n_censored"], []));
     const diffs = compareRuns(v1, v2);
     const ctx = ctxBase({ known: new Set(["lod_imputation"]), v2ZeroByKey: v2Zero });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("lod_imputation");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("lod_imputation");
   });
 
   it("n_censored 列が無い合算問い合わせ（zone/climatology 等）は b04 の不変条件に依拠し確認しない", () => {
@@ -626,7 +673,7 @@ describe("classifyDiff: lod_imputation（design §3 #1・--imputation lod）", (
     const v2Zero = rowsByKey(toNormRows([{ y: 1, avg: 1.0 }], ["y"], ["avg"], []));
     const diffs = compareRuns(v1, v2);
     const ctx = ctxBase({ known: new Set(["lod_imputation"]), v2ZeroByKey: v2Zero });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("lod_imputation");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("lod_imputation");
   });
 
   it("v2ZeroByKey 未指定（--imputation zero 実行）では不発", () => {
@@ -634,7 +681,7 @@ describe("classifyDiff: lod_imputation（design §3 #1・--imputation lod）", (
     const v2 = rowsByKey(toNormRows([{ y: 1, avg: 1.5 }], ["y"], ["avg"], []));
     const diffs = compareRuns(v1, v2);
     const ctx = ctxBase({ known: new Set(["lod_imputation"]) });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("unexplained");
   });
 
   it("v1 が v2(zero) と食い違っていれば（zero 自体に回帰があるので）lod_imputation にならない", () => {
@@ -643,7 +690,7 @@ describe("classifyDiff: lod_imputation（design §3 #1・--imputation lod）", (
     const v2Zero = rowsByKey(toNormRows([{ y: 1, avg: 9.9 }], ["y"], ["avg"], []));
     const diffs = compareRuns(v1, v2);
     const ctx = ctxBase({ known: new Set(["lod_imputation"]), v2ZeroByKey: v2Zero });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("unexplained");
   });
 
   it("許容列（avg/min/max/value）以外は対象外", () => {
@@ -652,7 +699,7 @@ describe("classifyDiff: lod_imputation（design §3 #1・--imputation lod）", (
     const v2Zero = rowsByKey(toNormRows([{ y: 1, n: 10 }], ["y"], ["n"], []));
     const diffs = compareRuns(v1, v2);
     const ctx = ctxBase({ known: new Set(["lod_imputation"]), v2ZeroByKey: v2Zero });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("unexplained");
   });
 
   it("--mutate lod_rule_off 相当（disabledRules）は unexplained に落ちる", () => {
@@ -665,7 +712,7 @@ describe("classifyDiff: lod_imputation（design §3 #1・--imputation lod）", (
       v2ZeroByKey: v2Zero,
       disabledRules: new Set(["lod_imputation"]),
     });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("unexplained");
   });
 });
 
@@ -691,7 +738,7 @@ describe("classifyDiff: 行変異への耐性（v2TrueByKey/v2TrueZeroByKey、Is
       v2CompatByKey: v2Compat,
       v2TrueByKey: v2True,
     });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("unexplained");
   });
 
   it("v2TrueByKey が diff.v2 と一致していれば（行変異が無ければ）これまでどおり synthetic_excluded", () => {
@@ -705,7 +752,7 @@ describe("classifyDiff: 行変異への耐性（v2TrueByKey/v2TrueZeroByKey、Is
       v2CompatByKey: v2Compat,
       v2TrueByKey: v2True,
     });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("synthetic_excluded");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("synthetic_excluded");
   });
 
   it("row_only_in_v1: v2TrueByKey にまだ行が残っていれば（drop_series 等で消しただけ）synthetic_excluded にならない", () => {
@@ -719,7 +766,7 @@ describe("classifyDiff: 行変異への耐性（v2TrueByKey/v2TrueZeroByKey、Is
       v2CompatByKey: v2Compat,
       v2TrueByKey: v2True,
     });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("unexplained");
   });
 
   it("row_only_in_v1: v2TrueByKey が渡されていなければ（既存の挙動どおり）これまでどおり synthetic_excluded", () => {
@@ -728,7 +775,7 @@ describe("classifyDiff: 行変異への耐性（v2TrueByKey/v2TrueZeroByKey、Is
     const v2Compat = rowsByKey(toNormRows([{ y: 1, n: 5 }], ["y"], ["n"], []));
     const diffs = compareRuns(v1, v2);
     const ctx = ctxBase({ known: new Set(["synthetic_excluded"]), v2CompatByKey: v2Compat });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("synthetic_excluded");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("synthetic_excluded");
   });
 
   it("純粋な zero→lod の差（合成データの影響が無い地点）は synthetic_excluded で説明しない——lod_imputation が有効なら lod_imputation が説明する", () => {
@@ -745,7 +792,7 @@ describe("classifyDiff: 行変異への耐性（v2TrueByKey/v2TrueZeroByKey、Is
       v2ZeroByKey: v2TrueZero,
       v2TrueZeroByKey: v2TrueZero,
     });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("lod_imputation");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("lod_imputation");
   });
 
   it("...--mutate lod_rule_off 相当: 合成データの影響が無い地点なら synthetic_excluded が肩代わりせず unexplained に落ちる（lod_rule_off が検出できなかった実際の原因）", () => {
@@ -761,24 +808,30 @@ describe("classifyDiff: 行変異への耐性（v2TrueByKey/v2TrueZeroByKey、Is
       v2TrueZeroByKey: v2TrueZero,
       disabledRules: new Set(["lod_imputation"]),
     });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("unexplained");
   });
 
-  it("合成データの影響も受けている地点（compatがv2TrueZeroByKeyと食い違う）なら、lod_rule_off でも synthetic_excluded が両方まとめて説明する（意図した重なりの挙動は壊さない）", () => {
+  it("合成データの影響も受けている地点（compatがv2_zeroと食い違う）でも、lod_rule_off なら段3（zero→lod）を説明できず unexplained になる（段を分けたぶん、synthetic_excluded が lod の分まで肩代わりしなくなった——旧 `classifySyntheticExcludedV1Compat` が compat と最終値を直接比べていたために起きていた `--mutate lod_rule_off` の検出漏れの裏返し。`docs/plans/V2_SERVING_PR2.md` §1）", () => {
     const v1 = rowsByKey(toNormRows([{ y: 1, avg: 1.0 }], ["y"], ["avg"], []));
     const v2 = rowsByKey(toNormRows([{ y: 1, avg: 1.5 }], ["y"], ["avg"], []));
     const v2Compat = rowsByKey(toNormRows([{ y: 1, avg: 1.0 }], ["y"], ["avg"], []));
-    // 合成データを除いた「本当の zero」値は compat（合成込み）と食い違う
-    // ＝この行は実際に合成データの影響を受けている。
+    // 合成データを除いた「本当の v2_zero」値は compat（合成込み）と食い違う
+    // ＝この行は実際に合成データの影響を受けている（段2は synthetic_excluded で説明できる）。
     const v2TrueZero = rowsByKey(toNormRows([{ y: 1, avg: 0.9 }], ["y"], ["avg"], []));
     const diffs = compareRuns(v1, v2);
     const ctx = ctxBase({
       known: new Set(["synthetic_excluded", "lod_imputation"]),
       v2CompatByKey: v2Compat,
+      v2ZeroByKey: v2TrueZero, // 実際の lod 実行時の配線（v2TrueZeroByKey と同じ行）
       v2TrueZeroByKey: v2TrueZero,
       disabledRules: new Set(["lod_imputation"]),
     });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("synthetic_excluded");
+    // 段2（compat_zero↔v2_zero）は synthetic_excluded で説明できるが、
+    // 段3（v2_zero↔v2_lod）は lod_imputation を無効化しているため説明できない。
+    // 「説明の鎖」は各段を独立に検証するので、synthetic_excluded が段3の分まで
+    // 肩代わりすることは無い——これが本題（3原因重なり）の設計が解決したかった、
+    // 「特例を積み増さないと重なりを説明できない」状態そのものの解消。
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("unexplained");
   });
 
   it("v2TrueZeroByKey が渡されていなければ（既存の挙動どおり）これまでどおり synthetic_excluded", () => {
@@ -787,7 +840,7 @@ describe("classifyDiff: 行変異への耐性（v2TrueByKey/v2TrueZeroByKey、Is
     const v2Compat = rowsByKey(toNormRows([{ y: 1, avg: 1.0 }], ["y"], ["avg"], []));
     const diffs = compareRuns(v1, v2);
     const ctx = ctxBase({ known: new Set(["synthetic_excluded"]), v2CompatByKey: v2Compat });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("synthetic_excluded");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("synthetic_excluded");
   });
 
   it("diff.v2 が v2TrueByKey と食い違えば lod_imputation にならない（lod_instead_of_zero 相当、--imputation lod）", () => {
@@ -803,7 +856,7 @@ describe("classifyDiff: 行変異への耐性（v2TrueByKey/v2TrueZeroByKey、Is
       v2ZeroByKey: v2Zero,
       v2TrueByKey: v2True,
     });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("unexplained");
   });
 });
 
@@ -826,7 +879,7 @@ describe("優先順位", () => {
       rain: r,
       rainGrain: "month",
     });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("declared");
+    expect(ruleOf(classifyDiff(diffs[0], ctx))).toBe("declared");
   });
 });
 

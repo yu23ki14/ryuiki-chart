@@ -97,13 +97,6 @@ export interface DeclaredEntry {
 /** table -> DeclaredEntry[]（`expected_diffs.yaml` をそのまま読んだ形）。 */
 export type ExpectedDiffs = Record<string, DeclaredEntry[]>;
 
-const DIFF_KIND_TO_DECLARED_KIND: Record<RowDiffKind, DeclaredKind | null> = {
-  row_only_in_v1: "row_only_in_baseline",
-  row_only_in_v2: "row_only_in_candidate",
-  value_diff: "value_diff",
-  label_diff: null, // expected_diffs.yaml に label_diff という宣言種別は無い
-};
-
 function keyEquals(a: readonly ScalarParam[], b: readonly ScalarParam[]): boolean {
   return a.length === b.length && a.every((v, i) => String(v) === String(b[i]));
 }
@@ -130,30 +123,6 @@ export interface DeclaredRotOptions {
 
 function isRotted(rot: DeclaredRotOptions | undefined, table: string, entry: DeclaredEntry): boolean {
   return !!rot && rot.table === table && rot.kind === entry.kind && keyEquals(rot.key, entry.key);
-}
-
-function findDeclared(
-  expected: ExpectedDiffs,
-  lookup: DeclaredLookup,
-  params: Readonly<Record<string, ScalarParam>>,
-  diff: RowDiff,
-  rot: DeclaredRotOptions | undefined,
-): DeclaredEntry | undefined {
-  if (!lookup.v1Table || !lookup.builder) return undefined;
-  const declaredKind = DIFF_KIND_TO_DECLARED_KIND[diff.kind];
-  if (!declaredKind) return undefined;
-  const entries = expected[lookup.v1Table] ?? [];
-  const wantKey = lookup.builder(params, diff.key);
-  return entries.find((e) => {
-    if (isRotted(rot, lookup.v1Table!, e)) return false;
-    if (e.kind !== declaredKind) return false;
-    if (!keyEquals(e.key, wantKey)) return false;
-    if (declaredKind === "value_diff") {
-      const cols = e.columns ?? [];
-      return diff.columns.every((c) => cols.includes(c));
-    }
-    return true;
-  });
 }
 
 /**
@@ -263,7 +232,35 @@ export function computeRainRecompute(rows: readonly RainL2Row[]): RainRecompute 
 }
 
 /* ------------------------------------------------------------------ */
-/* classifyDiff 本体                                                    */
+/* classifyDiff 本体: 「説明の鎖」                                        */
+/*                                                                      */
+/* Issue #48 PR-2 統合後 論点C（`docs/plans/V2_SERVING_PR2.md` §1・§3、    */
+/* ADR-0029 2026-09-27 追記の書き換え）。行キーごとに                     */
+/*   v1 →(declared)→ compat_zero →(synthetic_excluded)→ v2_zero          */
+/*     →(lod_imputation、lod 実行時のみ)→ v2_lod                         */
+/* という値の鎖を辿り、隣り合う2点が「値が等しい（許容差内）」か「その段の  */
+/* 規則で説明できる」かのどちらかであることを列ごとに確かめる              */
+/* （`explainColumnChain`）。1つの value_diff の複数列がそれぞれ違う段で    */
+/* 差を持つ（例: n は宣言済みバグ、n_sites は合成データの除外）ことも、    */
+/* 1つの列が複数段にまたがって差を持つ（例: avg が below_lod バグ＋合成    */
+/* データの除外＋zero→lod の3つ全てで動く）こともあるため、列ごとに独立に  */
+/* 鎖を辿り、diff 全体としては「使った規則の集合」（`Classification.rules`。  */
+/* 例: `{declared, synthetic_excluded, lod_imputation}`）を返す——単一の    */
+/* `rule` ではなく集合にすることで、新しい重なりが見つかるたびに専用の     */
+/* 組み合わせ関数を積み増す必要が無くなる（旧 `classifyDeclaredWithSyntheticRemainder`  */
+/* は撤去。ADR-0029 2026-09-27 追記が「新たな重なりにはこの関数に特例を    */
+/* 積まない」と書いていた設計上の負債を、特例を無くすことで解消する）。     */
+/*                                                                      */
+/* `v2CompatByKey`（compat_zero）が無い問い合わせ（`--v1compat-db` 未指定・ */
+/* v1-only 相当）では、鎖の compat_zero の節をそのまま飛ばし、v1 から      */
+/* v2_zero へ直接 declared で橋渡しする（v1compat db が無かった PR-1 期の   */
+/* 挙動と同じ）。`v2ZeroByKey`（＝`--imputation lod` 実行時のみ設定される） */
+/* が無ければ lod の節も無く、鎖は v1/compat_zero/v2_zero の3点で終わる    */
+/* （v2_zero は「今の imputation での実際の最終値」と同じものになる）。     */
+/*                                                                      */
+/* day_split・unit_label_registry・float_rounding・by_variable の束ねは    */
+/* この鎖の対象外（今の位置づけのまま、鎖が不発だったときのフォールバック   */
+/* として試す）。                                                        */
 /* ------------------------------------------------------------------ */
 
 export type KnownRule =
@@ -338,17 +335,18 @@ export interface ClassifyContext {
    * `--imputation lod` 実行では `v2ZeroByKey` と同一の行——どちらも
    * `serving-diff.mts` が計算するだけで、追加の DB 問い合わせは増えない）。
    *
-   * `hasGenuineSyntheticEvidence` が使う: `compatRow`（合成込み・zero）と
-   * この「本当に合成を除いた場合の zero 値」を比べて、この行が実際に合成データの
-   * 除外で変わっている証拠があるかを確かめる。無ければ（合成の影響が無い地点の
-   * 純粋な zero→lod 由来の差分）、`synthetic_excluded` はこの行を説明しない
-   * ——`lod_imputation`（有効なら）に任せる。
+   * 「説明の鎖」（モジュール冒頭参照）の compat_zero↔v2_zero の段（`explainColumnChain`）
+   * が、この「本当の v2_zero 値」を橋渡し先として使う。無ければ（`--v1compat-db`
+   * 未指定・running lod でない等）その列の compat_zero→v2_zero の段は
+   * `ctx.v2ZeroByKey` にフォールバックする（無ければ「今の imputation の最終値が
+   * そのまま v2_zero」とみなす——`--imputation zero` 実行では常にそう）。
    *
-   * Issue #48 PR-2 統合後 修正C: これが無いと、`--imputation lod` 実行で
-   * `compatRow`（常に zero）と `diff.v2`（現在の imputation）を直接比べるだけなので、
-   * 合成データの影響が一切無い地点の「zero→lod」の差分まで `synthetic_excluded` が
-   * 説明してしまう。結果、`--mutate lod_rule_off` で `lod_imputation` を無効化しても
-   * `synthetic_excluded` が肩代わりしてしまい、unexplained が1件も出なかった。
+   * Issue #48 PR-2 統合後 修正C（旧実装での経緯）: これが無いと、`--imputation lod`
+   * 実行で `compatRow`（常に zero）と `diff.v2`（現在の imputation）を直接比べる
+   * だけになり、合成データの影響が一切無い地点の「zero→lod」の差分まで
+   * `synthetic_excluded` が説明してしまっていた。「説明の鎖」では
+   * compat_zero↔v2_zero と v2_zero↔v2_lod を別々の段として扱う（段ごとに
+   * 規則を分ける）ことで、この取り違えが構造的に起きなくなった。
    */
   v2TrueZeroByKey?: ReadonlyMap<string, NormRow>;
   /** `--mutate declared_rot` */
@@ -370,7 +368,7 @@ export interface ClassifyContext {
    * 探すための情報。alias 一覧の解決自体は `merge-v1.ts` 経由で `registry.sqlite`
    * を読む必要があるため `serving-diff.mts`（`BY_VARIABLE_DECLARED_SPECS`）が
    * params から解決して埋める——classify.ts はここでも DB を直接読まない
-   * （モジュール docstring参照）。`classifyDeclaredWithSyntheticRemainder` が使う。
+   * （モジュール docstring参照）。`declaredCandidates` が使う。
    */
   byVariableDeclared?: {
     v1Table: string;
@@ -383,13 +381,38 @@ export interface ClassifyContext {
 }
 
 export interface Classification {
-  rule: KnownRule | "unexplained";
-  /** declared のとき、`findRottenDeclarations` に渡す消費済みキーの記録用。 */
-  declaredMatch?: { table: string; entry: DeclaredEntry };
+  /**
+   * この diff を説明するのに使った規則の集合。空集合なら unexplained。
+   * 複数要素は、鎖の複数の段にまたがって説明されたことを示す
+   * （例: `{declared, synthetic_excluded, lod_imputation}`）。レポートでは
+   * この集合の要素それぞれについて1系統ずつ数える（1行が複数系統に数えられる）。
+   */
+  rules: ReadonlySet<KnownRule>;
+  /**
+   * `declared` が段1（v1↔compat_zero、または compat_zero が無いときは
+   * v1↔v2_zero）で実際に使われた宣言（`findRottenDeclarations` に渡す
+   * 消費済みキーの記録用）。**overall が unexplained でも、段1で使われて
+   * いれば必ずここに載る**（設計: 「宣言の腐り判定は段1で使われたかで数える」
+   * ——他の列・他の段が原因で diff 全体が unexplained になっても、この宣言
+   * 自体は実際に消費されている）。複数列・複数 by_variable alias 候補が
+   * それぞれ別のエントリに一致すれば複数件になりうる。
+   */
+  declaredMatches: { table: string; entry: DeclaredEntry }[];
+}
+
+/** `rules` が空 = unexplained。読みやすさのための小さな補助関数。 */
+export function isUnexplained(c: Classification): boolean {
+  return c.rules.size === 0;
 }
 
 function ruleEnabled(ctx: ClassifyContext, rule: KnownRule): boolean {
   return ctx.known.has(rule) && !ctx.disabledRules?.has(rule);
+}
+
+/** 空の分類（unexplained）。呼び出しのたびに新しいオブジェクトを作る
+ *  （`declaredMatches` 配列を呼び出し元同士で共有しないため）。 */
+function emptyClassification(): Classification {
+  return { rules: new Set(), declaredMatches: [] };
 }
 
 function dayKeyOf(diff: RowDiff, ctx: ClassifyContext): string | undefined {
@@ -588,225 +611,263 @@ function v2MatchesTrueRow(diff: RowDiff, ctx: ClassifyContext): boolean {
 }
 
 /**
- * `compatRow`（合成込み・zero）と「本当に合成を除いた場合の zero 値」
- * （`ctx.v2TrueZeroByKey` docstring参照）を比べ、この行の食い違いのうち少なくとも
- * 1列は実際に合成データの除外で動いていることを確かめる。`ctx.v2TrueZeroByKey`
- * が無い/該当キーが無ければ検証できないので、これまでどおり通す（`true`）。
+ * `diff` に含まれる declared 候補（table, key）を、`ctx.declared`（単一の
+ * v1Table/builder）と `ctx.byVariableDeclared`（`*_by_variable` 問い合わせの
+ * 束ねエイリアス群）の両方から集める。「段1」（declared）の唯一の入り口——
+ * value_diff・row_only のどちらの探索もこれを共有する。
  */
-function hasGenuineSyntheticEvidence(
-  columns: readonly string[],
-  key: readonly ScalarParam[],
-  ctx: ClassifyContext,
-  compatRow: NormRow,
-): boolean {
-  if (!ctx.v2TrueZeroByKey) return true;
-  const trueZero = ctx.v2TrueZeroByKey.get(keyString(key));
-  if (!trueZero) return true;
-  return columns.some((c) => numbersDiffer(compatRow.numeric[c] ?? null, trueZero.numeric[c] ?? null, 1e-9));
-}
-
-/**
- * design §1「診断用 v1互換キューブ」の差分の差分。`ctx.v2CompatByKey`
- * （`--v1compat-db` で開いた、合成データを除外**しない** `v2_v1compat.sqlite` に
- * 同じ問い合わせを常に `imputation=zero` で流した行——`ClassifyContext.v2CompatByKey`
- * docstring参照）と突き合わせる:
- * - `row_only_in_v1`（v2 本番に無い）→ 同じキーが v2compat に存在し、v1 と
- *   （許容誤差内で）一致し、かつ本当に（行変異ではなく）v2 本番から消えていれば
- *   （`v2TrueByKey` にも無ければ）「合成データが除かれて消えた行」として説明できる。
- * - `value_diff` → 列を `SYNTHETIC_EXCLUDED_VALUE_COLUMNS` に絞り、v1 == v2compat
- *   （合成込み・zero 相当の値は元々 v1 と一致していた）かつ v2compat ≠ v2 本番
- *   （現在の imputation で見て実際に値が動いた）であれば説明できる。`v2compat`
- *   は常に zero 固定・`v2` は呼び出し元の imputation（zero/lod どちらもありうる）
- *   なので、`--imputation lod` 実行時はこの1つの比較で「合成データの除外」と
- *   「zero→lod」の両方が重なった差分もまとめて説明できる（`diff.v1 !== diff.v2`
- *   は `RowDiff` の定義上すでに真なので、`v2compat ≠ v2` は追加の条件を要らずに
- *   automatically 成り立つ——Issue #48 PR-2 統合後 修正B）。**ただし**この「まとめて
- *   説明できる」が成り立つのは実際に合成データの影響を受けている行だけ
- *   （`hasGenuineSyntheticEvidence`）で、かつ `diff.v2` が行変異で書き換えられて
- *   いない（`v2MatchesTrueRow`）ときに限る——どちらもIssue #48 PR-2 統合後 修正C
- *   で追加した。無ければ、合成データを一切含まない地点の純粋な zero→lod の
- *   差分や、`swap_kind`/`lod_instead_of_zero` が書き換えた任意の値まで、この
- *   規則が「合成データの除外」として誤って説明してしまう。
- * - `row_only_in_v2` は対象外（合成データを除いて行が増えることは無い——常に
- *   unexplained）。
- */
-function classifySyntheticExcludedV1Compat(diff: RowDiff, ctx: ClassifyContext): boolean {
-  if (!ruleEnabled(ctx, "synthetic_excluded") || !ctx.v2CompatByKey) return false;
-  if (diff.kind !== "row_only_in_v1" && diff.kind !== "value_diff") return false;
-
-  const compatRow = ctx.v2CompatByKey.get(keyString(diff.key));
-  if (!compatRow) return false;
-
-  if (diff.kind === "row_only_in_v1") {
-    if (!diff.v1) return false;
-    // 本当は消えていない（行変異で v2ByKey から消しただけの）行は対象外。
-    if (ctx.v2TrueByKey?.has(keyString(diff.key))) return false;
-    return rowsMatchOnAllColumns(diff.v1, compatRow);
-  }
-
-  // value_diff
-  if (!diff.v1 || !diff.v2) return false;
-  if (!diff.columns.every((c) => SYNTHETIC_EXCLUDED_VALUE_COLUMNS.has(c))) return false;
-  for (const c of diff.columns) {
-    if (numbersDiffer(diff.v1.numeric[c], compatRow.numeric[c] ?? null, 1e-9)) return false; // v1 == v2compat
-    if (!numbersDiffer(compatRow.numeric[c] ?? null, diff.v2.numeric[c], 0)) return false; // v2compat ≠ v2(本番)
-  }
-  if (!v2MatchesTrueRow(diff, ctx)) return false;
-  if (!hasGenuineSyntheticEvidence(diff.columns, diff.key, ctx, compatRow)) return false;
-  return true;
-}
-
-/**
- * `declared`（`scripts/reconcile/expected_diffs.yaml`）と `synthetic_excluded`
- * を組み合わせて説明する（Issue #48 PR-2 統合後 修正B）。
- *
- * 1つの診断（value_diff/row_only 系）が「独立した2つの既知の原因」——
- * 例: `var_catalog`/`浮遊物質量 SS` は (a) 中津川の below_lod（"1未満"）2行を
- * v1（`web/scripts/build-derived.mjs` の `meas_daily`、`WHERE value IS NOT NULL`）
- * が丸ごと落とす既知バグ（`expected_diffs.yaml` に宣言済み。v1compat にも
- * 同じ行が乗るため `synthetic_excluded` 側では説明できない列——n・n_daily・
- * n_annual・n_censored）と (b) 合成データの除外（moni1000 の2026年データ等。
- * n_sites・y_to が動く——`expected_diffs.yaml` には無い列）の**両方**が
- * 重なって生まれることがある。`findDeclared`（列を宣言が完全に覆わないと
- * 不発）・`classifySyntheticExcludedV1Compat`（全列で v1==compat を要求する
- * ため、(a) の影響を受けた列で必ず不一致になり不発）のどちらも単体では
- * 説明できない。ここでは diff.columns を「宣言側が覆う列」と「残りを
- * synthetic_excluded と同じ式で説明できるか」に分担させる。
- *
- * row_only 系（`row_only_in_v1`/`row_only_in_v2`）は列を持たないため、
- * 宣言のキー一致だけで確定する（`day_series_site_by_variable`/
- * `month_series_site_by_variable` の row_only_in_v2 が対象——`meas_daily`/
- * `meas_month` の row_only_in_candidate 宣言そのもの。合成の影響は無い）。
- *
- * `*_by_variable` 問い合わせ（`ctx.declared.v1Table` が無い）は
- * `ctx.byVariableDeclared` が持つ束ねエイリアス群を順に試す——`findDeclared`
- * 自体が使えない（`v1Table`/`builder` 無し）ため、この関数が唯一の declared
- * 経路になる。
- *
- * **PR-5 で消える一時的な特例**（ADR-0029 2026-09-27 追記・`docs/plans/V2_SERVING_PR2.md`
- * §1）。serving-diff・v1 比較そのものが移行期間限定（ADR-0029）であり、この関数は
- * その中でも「宣言だけでは説明しきれない重なり」を拾うためだけの追加の特例。
- * 新しい重なりが見つかっても、ここに特例をもう1段積まない——`expected_diffs.yaml`
- * の宣言粒度か `synthetic_excluded` 自体の判定式を見直す。
- */
-function classifyDeclaredWithSyntheticRemainder(diff: RowDiff, ctx: ClassifyContext): Classification | undefined {
-  if (!ruleEnabled(ctx, "declared")) return undefined;
-  const declaredKind = DIFF_KIND_TO_DECLARED_KIND[diff.kind];
-  if (!declaredKind) return undefined;
-
-  const candidates: { table: string; key: ScalarParam[] }[] = [];
+function declaredCandidates(diff: RowDiff, ctx: ClassifyContext): { table: string; key: ScalarParam[] }[] {
+  const out: { table: string; key: ScalarParam[] }[] = [];
   if (ctx.declared.v1Table && ctx.declared.builder) {
-    candidates.push({ table: ctx.declared.v1Table, key: ctx.declared.builder(ctx.params, diff.key) });
+    out.push({ table: ctx.declared.v1Table, key: ctx.declared.builder(ctx.params, diff.key) });
   }
   if (ctx.byVariableDeclared) {
     for (const alias of ctx.byVariableDeclared.aliasesFor(diff.key)) {
-      candidates.push({ table: ctx.byVariableDeclared.v1Table, key: ctx.byVariableDeclared.buildKey(alias, diff.key) });
+      out.push({ table: ctx.byVariableDeclared.v1Table, key: ctx.byVariableDeclared.buildKey(alias, diff.key) });
     }
   }
-  if (candidates.length === 0) return undefined;
+  return out;
+}
 
-  for (const { table, key } of candidates) {
+/**
+ * row_only 系（`row_only_in_baseline`/`row_only_in_candidate`）の declared 一致。
+ * 列を持たないため、宣言のキー一致だけで確定する（値は見ない——これは元々
+ * `findDeclared`/旧 `classifyDeclaredWithSyntheticRemainder` の row_only 分岐と
+ * 同じ振る舞い）。
+ */
+function findDeclaredRowMatch(
+  diff: RowDiff,
+  ctx: ClassifyContext,
+  kind: "row_only_in_baseline" | "row_only_in_candidate",
+): { table: string; entry: DeclaredEntry } | undefined {
+  if (!ruleEnabled(ctx, "declared")) return undefined;
+  for (const { table, key } of declaredCandidates(diff, ctx)) {
     const entries = ctx.expected[table] ?? [];
     for (const entry of entries) {
       if (isRotted(ctx.declaredRot, table, entry)) continue;
-      if (entry.kind !== declaredKind) continue;
-      if (!keyEquals(entry.key, key)) continue;
-
-      if (declaredKind !== "value_diff") {
-        return { rule: "declared", declaredMatch: { table, entry } };
-      }
-
-      const declaredCols = new Set(entry.columns ?? []);
-      const remaining = diff.columns.filter((c) => !declaredCols.has(c));
-      if (remaining.length === 0) {
-        return { rule: "declared", declaredMatch: { table, entry } };
-      }
-      if (!ruleEnabled(ctx, "synthetic_excluded") || !ctx.v2CompatByKey || !diff.v1 || !diff.v2) continue;
-      if (!remaining.every((c) => SYNTHETIC_EXCLUDED_VALUE_COLUMNS.has(c))) continue;
-      const compatRow = ctx.v2CompatByKey.get(keyString(diff.key));
-      if (!compatRow) continue;
-      let ok = true;
-      for (const c of remaining) {
-        if (numbersDiffer(diff.v1.numeric[c], compatRow.numeric[c] ?? null, 1e-9)) { ok = false; break; } // v1 == v2compat
-        if (!numbersDiffer(compatRow.numeric[c] ?? null, diff.v2.numeric[c], 0)) { ok = false; break; } // v2compat ≠ v2(本番)
-      }
-      if (ok && !v2MatchesTrueRow(diff, ctx)) ok = false;
-      if (ok && !hasGenuineSyntheticEvidence(remaining, diff.key, ctx, compatRow)) ok = false;
-      if (ok) return { rule: "declared", declaredMatch: { table, entry } };
+      if (entry.kind !== kind) continue;
+      if (keyEquals(entry.key, key)) return { table, entry };
     }
   }
   return undefined;
 }
 
 /**
- * `--imputation lod` 実行専用（design §3 #1）。`value_diff` の数値列が
- * `LOD_IMPUTATION_VALUE_COLUMNS`（avg/min/max/value）に収まり、`ctx.v2ZeroByKey`
- * （同じ問い合わせを imputation=zero で引いた行）と v1 が一致していれば
- * 「値が動いたのは zero→lod の切り替えのせい」として説明できる。行に
- * `n_censored` 列があれば `>0` を要求する（無い合算問い合わせ——`zone_series`/
- * `climatology`/`zone_climatology`/`site_variables`/`longitudinal_highlight`
- * 等——は b04 が全セルで検証済みの不変条件「`value_zero≠value_lod` ⇒
- * `n_censored>0 or n_not_detected>0`」に依拠し、ここでは確認しない）。
- *
- * `v2MatchesTrueRow`（Issue #48 PR-2 統合後 修正C）: `diff.v1 == zeroRow` と
- * `n_censored>0` だけでは「`diff.v2` が実際に正しい lod 値か」を一切確かめて
- * いない——`--mutate lod_instead_of_zero` が検閲セルの値を書き換えても、この
- * 2条件はどちらも影響を受けないため、書き換えた値をそのまま「zero→lod のせい」
- * として説明してしまっていた。
+ * 1つの数値列について、`kind: "value_diff"` の宣言がその列を覆っているか
+ * （`entry.columns` に列名が含まれるか）を確かめる。「段1」（declared）が
+ * 数値列を橋渡しできるかどうかを、列ごとに独立して判定する——これにより、
+ * 同じ diff の中で「この列は宣言済みバグ、あの列は合成データの除外」という
+ * 列ごとに異なる説明の組み合わせが、専用の組み合わせ関数を書かずに済む。
+ */
+function findDeclaredColumnMatch(diff: RowDiff, ctx: ClassifyContext, column: string): { table: string; entry: DeclaredEntry } | undefined {
+  if (!ruleEnabled(ctx, "declared")) return undefined;
+  for (const { table, key } of declaredCandidates(diff, ctx)) {
+    const entries = ctx.expected[table] ?? [];
+    for (const entry of entries) {
+      if (isRotted(ctx.declaredRot, table, entry)) continue;
+      if (entry.kind !== "value_diff") continue;
+      if (!keyEquals(entry.key, key)) continue;
+      if ((entry.columns ?? []).includes(column)) return { table, entry };
+    }
+  }
+  return undefined;
+}
+
+const CHAIN_EPS = 1e-9;
+
+/**
+ * 段3（v2_zero -> v2_lod、`lod_imputation`）で説明を許す数値列。lod への
+ * 切り替えで実際に動きうる代表値・統計量だけに絞る（`n`/`n_censored` 等の
+ * 件数列は imputation では変わらないはずなので対象外——`SYNTHETIC_EXCLUDED_VALUE_COLUMNS`
+ * より狭い）。
  */
 const LOD_IMPUTATION_VALUE_COLUMNS = new Set(["avg", "min", "max", "value"]);
 
-function classifyLodImputation(diff: RowDiff, ctx: ClassifyContext): boolean {
-  if (!ruleEnabled(ctx, "lod_imputation") || diff.kind !== "value_diff") return false;
-  if (!ctx.v2ZeroByKey || !diff.v1 || !diff.v2) return false;
-  if (!diff.columns.every((c) => LOD_IMPUTATION_VALUE_COLUMNS.has(c))) return false;
+/**
+ * `row_only_in_v1`/`row_only_in_v2` を「説明の鎖」で辿る。列を持たないため
+ * value_diff ほど段を細かく分けられない——存在の有無は1段でしか判定できない
+ * ので、row_only はどちらの kind も「declared（段1）」か「synthetic_excluded
+ * （段2、`row_only_in_v1` だけ）」のどちらか一方で説明する（両方が同時に要る
+ * ケースは無い——値が無い以上「宣言はこの列だけ覆う」という粒度が存在しない）。
+ */
+function explainRowOnly(diff: RowDiff, ctx: ClassifyContext): Classification {
+  if (diff.kind === "row_only_in_v1") {
+    if (!diff.v1) return emptyClassification();
+    // 本当は消えていない（行変異で v2ByKey から消しただけの）行は対象外
+    // （`ClassifyContext.v2TrueByKey` docstring参照）。
+    if (ctx.v2TrueByKey?.has(keyString(diff.key))) return emptyClassification();
 
-  const zeroRow = ctx.v2ZeroByKey.get(keyString(diff.key));
-  if (!zeroRow) return false;
-  for (const c of diff.columns) {
-    if (numbersDiffer(diff.v1.numeric[c], zeroRow.numeric[c] ?? null, 1e-9)) return false; // v1 == v2(zero)
+    const declared = findDeclaredRowMatch(diff, ctx, "row_only_in_baseline");
+    if (declared) return { rules: new Set(["declared"]), declaredMatches: [declared] };
+
+    if (!ruleEnabled(ctx, "synthetic_excluded") || !ctx.v2CompatByKey) return emptyClassification();
+    const compatRow = ctx.v2CompatByKey.get(keyString(diff.key));
+    if (!compatRow || !rowsMatchOnAllColumns(diff.v1, compatRow)) return emptyClassification();
+    return { rules: new Set(["synthetic_excluded"]), declaredMatches: [] };
   }
-  if (!v2MatchesTrueRow(diff, ctx)) return false;
-  // b04 の不変条件は「value_zero≠value_lod ⇒ n_censored>0 **or** n_not_detected>0」
-  // という OR（CLAUDE.md 参照）。v1 の meas_year 系の表は `n_censored` しか
-  // 持たず `n_not_detected`（不検出・定量下限未満とは別に「検出されなかった」
-  // 件数）を区別できない——実測: alias 'cn'（シアン）/'pcb' のような不検出が
-  // 多い項目は `n_censored=0` のまま `value_lod` が NULL になる（不検出のみで
-  // 定量下限未満の値は無い年）。`n_censored>0` だけを要求すると、この
-  // 「不検出のみ」のケースを取りこぼす。v1 に `n_not_detected` が無い以上、
-  // 直接は確認できないので、代わりに「lod 側のその列の値が NULL になった」
-  // ことを不検出の代理指標として認める（`value_lod` が NULL なのは全件不検出の
-  // ときだけ——一部不検出なら AVG は NULL を無視して計算されるので非NULLのまま
-  //残る。その場合は `n_censored>0` 側でカバーされることを期待する）。
-  if ("n_censored" in diff.v1.numeric) {
-    const nCensored = diff.v1.numeric.n_censored ?? 0;
-    const anyColumnBecameNull = diff.columns.some((c) => diff.v2!.numeric[c] === null);
-    if (!(nCensored > 0 || anyColumnBecameNull)) return false;
+
+  if (diff.kind === "row_only_in_v2") {
+    if (!diff.v2) return emptyClassification();
+    // 合成データの除外で行が増えることは無い——row_only_in_v2 は declared だけが対象。
+    const declared = findDeclaredRowMatch(diff, ctx, "row_only_in_candidate");
+    if (declared) return { rules: new Set(["declared"]), declaredMatches: [declared] };
+    return emptyClassification();
+  }
+
+  return emptyClassification();
+}
+
+/**
+ * 1つの数値列について、鎖
+ *   v1 →(declared)→ compat_zero →(synthetic_excluded)→ v2_zero →(lod_imputation)→ v2_lod
+ * を辿る。隣り合う2点は「等しい（`CHAIN_EPS` 許容）」か「その段の規則で
+ * 説明できる」かのどちらかでなければならない——どちらも満たさなければ
+ * この列は explained できない（`false` を返す）。
+ *
+ * `compat_zero`（`ctx.v2CompatByKey`）が無ければその段を飛ばし、v1 から
+ * v2_zero へ declared で直接橋渡しする（`--v1compat-db` 未指定・v1-only 相当。
+ * PR-1 期の挙動と同じ）。v2_zero が取れない（`ctx.v2TrueZeroByKey`/
+ * `ctx.v2ZeroByKey` のどちらも無い）ときは、lod 実行でなければ「今の
+ * imputation の最終値がそのまま v2_zero」とみなす（`--imputation zero` 実行
+ * では常にそう——鎖はそこで終わる）。
+ *
+ * 見つかった規則・宣言一致は `acc` に積む——**列の途中で説明できなくなっても
+ * 打ち切らず、それまでに見つかった宣言一致は `acc.declaredMatches` に残す**
+ * （「宣言の腐り判定は段1で使われたかで数える」——他の理由でこの diff が
+ * 結局 unexplained になっても、宣言自体は消費されたとみなす）。
+ */
+function explainColumnChain(
+  column: string,
+  diff: RowDiff,
+  ctx: ClassifyContext,
+  keyStr: string,
+  acc: { rules: Set<KnownRule>; declaredMatches: { table: string; entry: DeclaredEntry }[] },
+): boolean {
+  const v1v = diff.v1!.numeric[column] ?? null;
+  const finalV = diff.v2!.numeric[column] ?? null;
+
+  const hasCompat = ctx.v2CompatByKey !== undefined;
+  const compatRow = ctx.v2CompatByKey?.get(keyStr);
+  const compatV = compatRow ? (compatRow.numeric[column] ?? null) : null;
+
+  const runningLod = ctx.v2ZeroByKey !== undefined;
+  const zeroSource = ctx.v2TrueZeroByKey ?? ctx.v2ZeroByKey;
+  const zeroRow = zeroSource?.get(keyStr);
+  const zeroKnown = zeroRow !== undefined || !runningLod;
+  const zeroV = zeroRow ? (zeroRow.numeric[column] ?? null) : finalV; // zeroKnown かつ zeroRow 無し = lod 実行でない = final が zero
+
+  let cur = v1v;
+
+  // 段1: v1 -> compat_zero
+  if (hasCompat) {
+    if (numbersDiffer(cur, compatV, CHAIN_EPS)) {
+      const entry = findDeclaredColumnMatch(diff, ctx, column);
+      if (!entry) return false;
+      acc.rules.add("declared");
+      acc.declaredMatches.push(entry);
+    }
+    cur = compatV;
+  }
+
+  // 段2: (v1 | compat_zero) -> v2_zero
+  if (!zeroKnown) {
+    // running lod だが v2_zero の値が取れない: これ以上は検証できない。
+    return !numbersDiffer(cur, finalV, CHAIN_EPS);
+  }
+  if (numbersDiffer(cur, zeroV, CHAIN_EPS)) {
+    if (hasCompat) {
+      if (!ruleEnabled(ctx, "synthetic_excluded") || !SYNTHETIC_EXCLUDED_VALUE_COLUMNS.has(column)) return false;
+      acc.rules.add("synthetic_excluded");
+    } else {
+      // compat_zero が無い: v1 -> v2_zero を declared で直接橋渡しする
+      // （`--v1compat-db` 未指定のときの唯一の橋渡し）。
+      const entry = findDeclaredColumnMatch(diff, ctx, column);
+      if (!entry) return false;
+      acc.rules.add("declared");
+      acc.declaredMatches.push(entry);
+    }
+  }
+  cur = zeroV;
+
+  // 段3: v2_zero -> v2_lod（lod 実行時のみ）
+  if (!runningLod) {
+    return !numbersDiffer(cur, finalV, CHAIN_EPS);
+  }
+  if (numbersDiffer(cur, finalV, CHAIN_EPS)) {
+    if (!ruleEnabled(ctx, "lod_imputation") || !LOD_IMPUTATION_VALUE_COLUMNS.has(column)) return false;
+    // b04 の不変条件は「value_zero≠value_lod ⇒ n_censored>0 **or**
+    // n_not_detected>0」という OR（CLAUDE.md 参照）。v1 は n_not_detected を
+    // 区別できないので、lod 側のその列の値が NULL になった（全件不検出）ことを
+    // 代理指標として認める（実測: alias 'cn'/'pcb' のような不検出が多い項目）。
+    //
+    // n_censored は **v1 ではなく v2_zero（無ければ compat_zero）から** 取る——
+    // v1 自身がこの列で説明を要する行（below_lod バグで n_censored 込みの
+    // 複数列が同時に動く行）では、v1 の n_censored もそのバグの影響を受けて
+    // 壊れている（実測: 中津川 SS 2005年度 annual は v1 の n_censored=0 だが
+    // 本当は 2——below_lod 行を丸ごと落としているため）。段1で declared が
+    // 橋渡しした後の「正しい」n_censored（`zeroRow`/`compatRow`）を使わないと、
+    // 3原因が重なる行で lod_imputation が不当に不発になる。
+    const nCensoredRow = zeroRow ?? compatRow ?? diff.v1!;
+    const nCensored = nCensoredRow.numeric.n_censored ?? 0;
+    const becameNull = finalV === null;
+    if ("n_censored" in nCensoredRow.numeric && !(nCensored > 0 || becameNull)) return false;
+    acc.rules.add("lod_imputation");
   }
   return true;
 }
 
 /**
- * `RowDiff` を既知の系統に当てはめる。当てはまらなければ `{ rule: "unexplained" }`。
- * 判定の優先順位: declared -> day_split -> synthetic_excluded ->
- * declared+synthetic_excluded の組み合わせ（`classifyDeclaredWithSyntheticRemainder`。
- * by_variable の declared 経路もここ） -> lod_imputation -> unit_label_registry ->
- * float_rounding（設計書 §5.2 の表の順＋ PR-2 で追加した lod_imputation を
- * synthetic_excluded の直後に挿入、統合後 修正Bで組み合わせ判定をその後に追加）。
+ * `value_diff` を「説明の鎖」で辿る。`diff.columns` の各列を独立に
+ * `explainColumnChain` へ通し、**全ての列が説明できたときだけ** `rules` を
+ * 返す（1列でも説明できなければ diff 全体が unexplained——ただし
+ * `declaredMatches` はそれまでに見つかった分を保持する）。
+ */
+function explainValueDiff(diff: RowDiff, ctx: ClassifyContext): Classification {
+  if (diff.kind !== "value_diff" || !diff.v1 || !diff.v2) return emptyClassification();
+  // `diff.v2` が本当に v2 が計算した値そのものか（行変異で書き換えられて
+  // いないか）を先に確かめる——これが崩れていれば、鎖のどの段も信用できない
+  // （`ClassifyContext.v2TrueByKey` docstring参照）。
+  if (!v2MatchesTrueRow(diff, ctx)) return emptyClassification();
+
+  const keyStr = keyString(diff.key);
+  const rules = new Set<KnownRule>();
+  const declaredMatches: { table: string; entry: DeclaredEntry }[] = [];
+  let allOk = true;
+  for (const column of diff.columns) {
+    const ok = explainColumnChain(column, diff, ctx, keyStr, { rules, declaredMatches });
+    if (!ok) allOk = false;
+  }
+  return { rules: allOk ? rules : new Set(), declaredMatches };
+}
+
+/**
+ * `RowDiff` を既知の系統に当てはめる。まず「説明の鎖」（`explainRowOnly`/
+ * `explainValueDiff`。declared・synthetic_excluded・lod_imputation を統合）を
+ * 試し、それで説明しきれなければ day_split（rain 系のみ）・
+ * unit_label_registry（label_diff のみ）・float_rounding の順にフォールバックする
+ * （設計書 §5.2 の順序のうち、鎖に統合した3規則の相対位置はそのまま
+ * 「最優先」を保ち、day_split・unit_label_registry・float_rounding は今の
+ * 位置づけのまま——`docs/plans/V2_SERVING_PR2.md` §1・§3）。
  */
 export function classifyDiff(diff: RowDiff, ctx: ClassifyContext): Classification {
-  if (ruleEnabled(ctx, "declared")) {
-    const entry = findDeclared(ctx.expected, ctx.declared, ctx.params, diff, ctx.declaredRot);
-    if (entry) return { rule: "declared", declaredMatch: { table: ctx.declared.v1Table!, entry } };
+  if (diff.kind === "row_only_in_v1" || diff.kind === "row_only_in_v2") {
+    const chain = explainRowOnly(diff, ctx);
+    if (chain.rules.size > 0) return chain;
+    if (classifyDaySplit(diff, ctx)) return { rules: new Set(["day_split"]), declaredMatches: chain.declaredMatches };
+    return chain;
   }
-  if (classifyDaySplit(diff, ctx)) return { rule: "day_split" };
-  if (classifySyntheticExcludedV1Compat(diff, ctx)) return { rule: "synthetic_excluded" };
-  const combo = classifyDeclaredWithSyntheticRemainder(diff, ctx);
-  if (combo) return combo;
-  if (classifyLodImputation(diff, ctx)) return { rule: "lod_imputation" };
-  if (classifyUnitLabelRegistry(diff, ctx)) return { rule: "unit_label_registry" };
-  if (classifyFloatRounding(diff, ctx)) return { rule: "float_rounding" };
-  return { rule: "unexplained" };
+
+  if (diff.kind === "value_diff") {
+    const chain = explainValueDiff(diff, ctx);
+    if (chain.rules.size > 0) return chain;
+    if (classifyDaySplit(diff, ctx)) return { rules: new Set(["day_split"]), declaredMatches: chain.declaredMatches };
+    if (classifyFloatRounding(diff, ctx)) return { rules: new Set(["float_rounding"]), declaredMatches: chain.declaredMatches };
+    return chain;
+  }
+
+  // label_diff: unit_label_registry だけが対象（宣言・synthetic・lod は数値列専用）。
+  if (classifyUnitLabelRegistry(diff, ctx)) return { rules: new Set(["unit_label_registry"]), declaredMatches: [] };
+  return emptyClassification();
 }
 
 export type { QueryDef };

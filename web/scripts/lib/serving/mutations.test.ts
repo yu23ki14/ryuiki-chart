@@ -25,7 +25,7 @@ function unexplainedCount(v1: NormRow[], v2: NormRow[], ctx: Partial<ClassifyCon
     ...ctx,
   };
   const diffs = compareRuns(rowsByKey(v1), rowsByKey(v2));
-  return diffs.map((d) => classifyDiff(d, full)).filter((c) => c.rule === "unexplained").length;
+  return diffs.map((d) => classifyDiff(d, full)).filter((c) => c.rules.size === 0).length;
 }
 
 describe("行変異は unexplained > 0 で必ず落ちる", () => {
@@ -223,7 +223,7 @@ describe("分類器変異", () => {
       declaredRot: opts.declaredRot,
     };
     const results = diffs.map((d) => classifyDiff(d, ctx));
-    expect(results.every((r) => r.rule === "unexplained")).toBe(true);
+    expect(results.every((r) => r.rules.size === 0)).toBe(true);
 
     // 腐り検出: 何も matched に記録しない状態で findRottenDeclarations を呼べば
     // その宣言が腐って見える。

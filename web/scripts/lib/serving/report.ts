@@ -51,12 +51,22 @@ export function emptyQueryStats(id: string): QueryStats {
   };
 }
 
-export function addClassification(stats: QueryStats, rule: KnownRule | "unexplained"): void {
-  if (rule === "unexplained") {
+/**
+ * 1つの diff の分類結果（`classify.ts` の `Classification.rules`、説明の鎖が
+ * 使った規則の集合）を集計へ足す。空集合なら unexplained を1増やす。空でなければ
+ * **集合の各要素について1回ずつ**その列を増やす——1つの diff が複数の段
+ * （例: declared＋synthetic_excluded＋lod_imputation）にまたがって説明された
+ * 場合、この1回の呼び出しで複数の列が同時に増える。したがって
+ * `declared+day_split+…+unexplained` の合計は診断の総数（`matched` を除く
+ * 行数）と必ずしも一致しない——1行が複数系統に数えられるのは意図した仕様
+ * （`docs/plans/V2_SERVING_PR2.md` §1・§3）。
+ */
+export function addClassification(stats: QueryStats, rules: ReadonlySet<KnownRule>): void {
+  if (rules.size === 0) {
     stats.unexplained += 1;
     return;
   }
-  stats[rule] += 1;
+  for (const rule of rules) stats[rule] += 1;
 }
 
 export interface UnexplainedSample {
