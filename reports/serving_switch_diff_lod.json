@@ -1,14 +1,14 @@
 {
   "header": {
-    "gitHead": "19d87fc7c18bb99a4d61c7a36c9cdc99aab8bd56",
+    "gitHead": "07afe75f0807a466bba860c8f75489e777318e0c",
     "v2PipelineFingerprint": "phase-b-fact-slice/v1",
     "registryInputFingerprint": "55a8c2c4c1409a691f31a2e25e21b4bd6d6db2b3fd0f7852837c7d6bd60613f2",
     "sqliteVersion": "3.53.4",
     "imputation": "lod",
     "expand": "all",
     "v1Source": "derived",
-    "generatedAt": "2026-09-26T17:33:40.009Z",
-    "elapsedMs": 281458
+    "generatedAt": "2026-09-27T00:53:19.096Z",
+    "elapsedMs": 2799767
   },
   "stats": [
     {
@@ -17,14 +17,13 @@
       "rowsV1": 58,
       "rowsV2": 58,
       "matched": 24,
-      "declared": 0,
-      "rain_div10": 0,
+      "declared": 1,
       "day_split": 0,
-      "synthetic_excluded": 0,
+      "synthetic_excluded": 5,
       "lod_imputation": 0,
       "unit_label_registry": 30,
       "float_rounding": 0,
-      "unexplained": 5
+      "unexplained": 0
     },
     {
       "id": "sites_list",
@@ -33,7 +32,6 @@
       "rowsV2": 352,
       "matched": 328,
       "declared": 0,
-      "rain_div10": 0,
       "day_split": 0,
       "synthetic_excluded": 24,
       "lod_imputation": 0,
@@ -48,10 +46,9 @@
       "rowsV2": 8114,
       "matched": 3034,
       "declared": 2,
-      "rain_div10": 0,
       "day_split": 0,
       "synthetic_excluded": 80,
-      "lod_imputation": 4407,
+      "lod_imputation": 4409,
       "unit_label_registry": 4149,
       "float_rounding": 0,
       "unexplained": 0
@@ -63,7 +60,6 @@
       "rowsV2": 26,
       "matched": 21,
       "declared": 0,
-      "rain_div10": 0,
       "day_split": 0,
       "synthetic_excluded": 5,
       "lod_imputation": 0,
@@ -78,7 +74,6 @@
       "rowsV2": 1092,
       "matched": 1078,
       "declared": 0,
-      "rain_div10": 0,
       "day_split": 0,
       "synthetic_excluded": 14,
       "lod_imputation": 0,
@@ -93,7 +88,6 @@
       "rowsV2": 127,
       "matched": 115,
       "declared": 0,
-      "rain_div10": 0,
       "day_split": 0,
       "synthetic_excluded": 12,
       "lod_imputation": 0,
@@ -108,10 +102,9 @@
       "rowsV2": 115918,
       "matched": 37697,
       "declared": 9,
-      "rain_div10": 0,
       "day_split": 0,
       "synthetic_excluded": 320,
-      "lod_imputation": 65656,
+      "lod_imputation": 65665,
       "unit_label_registry": 71187,
       "float_rounding": 0,
       "unexplained": 0
@@ -123,7 +116,6 @@
       "rowsV2": 126163,
       "matched": 113075,
       "declared": 2,
-      "rain_div10": 0,
       "day_split": 0,
       "synthetic_excluded": 2002,
       "lod_imputation": 12414,
@@ -138,7 +130,6 @@
       "rowsV2": 137350,
       "matched": 124837,
       "declared": 2,
-      "rain_div10": 0,
       "day_split": 0,
       "synthetic_excluded": 2203,
       "lod_imputation": 12490,
@@ -153,7 +144,6 @@
       "rowsV2": 81250,
       "matched": 25981,
       "declared": 0,
-      "rain_div10": 0,
       "day_split": 0,
       "synthetic_excluded": 144,
       "lod_imputation": 46184,
@@ -168,13 +158,12 @@
       "rowsV2": 3692,
       "matched": 915,
       "declared": 0,
-      "rain_div10": 0,
       "day_split": 0,
-      "synthetic_excluded": 63,
-      "lod_imputation": 2458,
+      "synthetic_excluded": 72,
+      "lod_imputation": 2467,
       "unit_label_registry": 2281,
       "float_rounding": 0,
-      "unexplained": 9
+      "unexplained": 0
     },
     {
       "id": "climatology",
@@ -182,14 +171,13 @@
       "rowsV1": 192,
       "rowsV2": 192,
       "matched": 41,
-      "declared": 0,
-      "rain_div10": 0,
+      "declared": 2,
       "day_split": 0,
-      "synthetic_excluded": 45,
-      "lod_imputation": 91,
+      "synthetic_excluded": 60,
+      "lod_imputation": 106,
       "unit_label_registry": 12,
       "float_rounding": 0,
-      "unexplained": 15
+      "unexplained": 0
     },
     {
       "id": "zone_climatology",
@@ -198,13 +186,12 @@
       "rowsV2": 595,
       "matched": 185,
       "declared": 0,
-      "rain_div10": 0,
       "day_split": 0,
-      "synthetic_excluded": 180,
-      "lod_imputation": 218,
+      "synthetic_excluded": 216,
+      "lod_imputation": 254,
       "unit_label_registry": 40,
       "float_rounding": 0,
-      "unexplained": 36
+      "unexplained": 0
     },
     {
       "id": "variable_catalog_by_variable",
@@ -212,14 +199,13 @@
       "rowsV1": 53,
       "rowsV2": 53,
       "matched": 21,
-      "declared": 0,
-      "rain_div10": 0,
+      "declared": 1,
       "day_split": 0,
-      "synthetic_excluded": 4,
+      "synthetic_excluded": 5,
       "lod_imputation": 0,
       "unit_label_registry": 28,
       "float_rounding": 0,
-      "unexplained": 1
+      "unexplained": 0
     },
     {
       "id": "site_variables_by_variable",
@@ -227,29 +213,27 @@
       "rowsV1": 7573,
       "rowsV2": 7547,
       "matched": 2643,
-      "declared": 0,
-      "rain_div10": 0,
+      "declared": 2,
       "day_split": 0,
       "synthetic_excluded": 80,
-      "lod_imputation": 4390,
+      "lod_imputation": 4392,
       "unit_label_registry": 3990,
       "float_rounding": 0,
-      "unexplained": 2
+      "unexplained": 0
     },
     {
       "id": "year_series_site_by_variable",
       "runs": 7569,
       "rowsV1": 105164,
-      "rowsV2": 104750,
-      "matched": 32645,
-      "declared": 0,
-      "rain_div10": 0,
+      "rowsV2": 105006,
+      "matched": 32894,
+      "declared": 9,
       "day_split": 0,
       "synthetic_excluded": 320,
-      "lod_imputation": 65559,
+      "lod_imputation": 65568,
       "unit_label_registry": 65175,
       "float_rounding": 0,
-      "unexplained": 258
+      "unexplained": 0
     },
     {
       "id": "month_series_site_by_variable",
@@ -257,14 +241,13 @@
       "rowsV1": 127491,
       "rowsV2": 126163,
       "matched": 113075,
-      "declared": 0,
-      "rain_div10": 0,
+      "declared": 2,
       "day_split": 0,
       "synthetic_excluded": 2002,
       "lod_imputation": 12414,
       "unit_label_registry": 0,
       "float_rounding": 0,
-      "unexplained": 2
+      "unexplained": 0
     },
     {
       "id": "day_series_site_by_variable",
@@ -272,14 +255,13 @@
       "rowsV1": 139530,
       "rowsV2": 137350,
       "matched": 124837,
-      "declared": 0,
-      "rain_div10": 0,
+      "declared": 2,
       "day_split": 0,
       "synthetic_excluded": 2203,
       "lod_imputation": 12490,
       "unit_label_registry": 0,
       "float_rounding": 0,
-      "unexplained": 2
+      "unexplained": 0
     },
     {
       "id": "zone_series_by_variable",
@@ -288,13 +270,12 @@
       "rowsV2": 3371,
       "matched": 778,
       "declared": 0,
-      "rain_div10": 0,
       "day_split": 0,
-      "synthetic_excluded": 63,
-      "lod_imputation": 2434,
+      "synthetic_excluded": 72,
+      "lod_imputation": 2443,
       "unit_label_registry": 2121,
       "float_rounding": 0,
-      "unexplained": 9
+      "unexplained": 0
     },
     {
       "id": "climatology_by_variable",
@@ -302,14 +283,13 @@
       "rowsV1": 192,
       "rowsV2": 192,
       "matched": 41,
-      "declared": 0,
-      "rain_div10": 0,
+      "declared": 2,
       "day_split": 0,
-      "synthetic_excluded": 45,
-      "lod_imputation": 91,
+      "synthetic_excluded": 60,
+      "lod_imputation": 106,
       "unit_label_registry": 12,
       "float_rounding": 0,
-      "unexplained": 15
+      "unexplained": 0
     },
     {
       "id": "zone_climatology_by_variable",
@@ -318,13 +298,12 @@
       "rowsV2": 595,
       "matched": 185,
       "declared": 0,
-      "rain_div10": 0,
       "day_split": 0,
-      "synthetic_excluded": 180,
-      "lod_imputation": 218,
+      "synthetic_excluded": 216,
+      "lod_imputation": 254,
       "unit_label_registry": 40,
       "float_rounding": 0,
-      "unexplained": 36
+      "unexplained": 0
     },
     {
       "id": "water_bodies_for_variable_by_variable",
@@ -333,7 +312,6 @@
       "rowsV2": 978,
       "matched": 964,
       "declared": 0,
-      "rain_div10": 0,
       "day_split": 0,
       "synthetic_excluded": 14,
       "lod_imputation": 0,
@@ -348,7 +326,6 @@
       "rowsV2": 12,
       "matched": 0,
       "declared": 0,
-      "rain_div10": 0,
       "day_split": 12,
       "synthetic_excluded": 0,
       "lod_imputation": 0,
@@ -363,7 +340,6 @@
       "rowsV2": 23,
       "matched": 23,
       "declared": 0,
-      "rain_div10": 0,
       "day_split": 0,
       "synthetic_excluded": 0,
       "lod_imputation": 0,
@@ -376,358 +352,73 @@
     "id": "total",
     "runs": 26007,
     "rowsV1": 863723,
-    "rowsV2": 855963,
-    "matched": 582543,
-    "declared": 15,
-    "rain_div10": 0,
+    "rowsV2": 856219,
+    "matched": 582792,
+    "declared": 36,
     "day_split": 12,
-    "synthetic_excluded": 10003,
-    "lod_imputation": 241514,
+    "synthetic_excluded": 10129,
+    "lod_imputation": 241656,
     "unit_label_registry": 199500,
     "float_rounding": 0,
-    "unexplained": 390
+    "unexplained": 0
   },
-  "unexplainedSamples": [
+  "unexplainedSamples": [],
+  "rottenDeclarations": [],
+  "mutationResults": [
     {
-      "queryId": "variable_catalog",
-      "params": {},
-      "kind": "value_diff",
-      "key": [
-        "溶存酸素量 DO"
-      ],
-      "columns": [
-        "n",
-        "n_sites",
-        "y_to",
-        "n_daily"
-      ]
+      "name": "day_split_rule_off",
+      "unexplained": 12,
+      "caughtAsExpected": true
     },
     {
-      "queryId": "variable_catalog",
-      "params": {},
-      "kind": "value_diff",
-      "key": [
-        "pH"
-      ],
-      "columns": [
-        "n",
-        "n_sites",
-        "y_to",
-        "n_daily"
-      ]
+      "name": "declared_rot",
+      "unexplained": 2,
+      "caughtAsExpected": true
     },
     {
-      "queryId": "variable_catalog",
-      "params": {},
-      "kind": "value_diff",
-      "key": [
-        "浮遊物質量 SS"
-      ],
-      "columns": [
-        "n",
-        "n_sites",
-        "y_to",
-        "n_daily",
-        "n_annual",
-        "n_censored"
-      ]
+      "name": "drop_series",
+      "unexplained": 424624,
+      "caughtAsExpected": true
     },
     {
-      "queryId": "variable_catalog",
-      "params": {},
-      "kind": "value_diff",
-      "key": [
-        "気温"
-      ],
-      "columns": [
-        "n",
-        "n_sites",
-        "y_to",
-        "n_daily"
-      ]
+      "name": "include_watershed_cells",
+      "unexplained": 0,
+      "caughtAsExpected": true
     },
     {
-      "queryId": "variable_catalog",
-      "params": {},
-      "kind": "value_diff",
-      "key": [
-        "水温"
-      ],
-      "columns": [
-        "n",
-        "n_sites",
-        "y_to",
-        "n_daily"
-      ]
+      "name": "lod_instead_of_zero",
+      "unexplained": 199516,
+      "caughtAsExpected": true
     },
     {
-      "queryId": "zone_series",
-      "params": {
-        "alias": "浮遊物質量 SS",
-        "kind": "daily"
-      },
-      "kind": "value_diff",
-      "key": [
-        3,
-        2023
-      ],
-      "columns": [
-        "n_sites",
-        "n",
-        "avg"
-      ]
+      "name": "merge_rule_off",
+      "unexplained": 381251,
+      "caughtAsExpected": true
     },
     {
-      "queryId": "zone_series",
-      "params": {
-        "alias": "浮遊物質量 SS",
-        "kind": "daily"
-      },
-      "kind": "value_diff",
-      "key": [
-        3,
-        2024
-      ],
-      "columns": [
-        "n_sites",
-        "n",
-        "avg"
-      ]
+      "name": "month_off_by_one",
+      "unexplained": 129895,
+      "caughtAsExpected": true
     },
     {
-      "queryId": "zone_series",
-      "params": {
-        "alias": "浮遊物質量 SS",
-        "kind": "daily"
-      },
-      "kind": "value_diff",
-      "key": [
-        3,
-        2025
-      ],
-      "columns": [
-        "n_sites",
-        "n",
-        "avg"
-      ]
+      "name": "no_unit",
+      "unexplained": 125974,
+      "caughtAsExpected": true
     },
     {
-      "queryId": "zone_series",
-      "params": {
-        "alias": "浮遊物質量 SS",
-        "kind": "daily"
-      },
-      "kind": "value_diff",
-      "key": [
-        4,
-        2023
-      ],
-      "columns": [
-        "n_sites",
-        "n",
-        "avg"
-      ]
+      "name": "swap_kind",
+      "unexplained": 79526,
+      "caughtAsExpected": true
     },
     {
-      "queryId": "zone_series",
-      "params": {
-        "alias": "浮遊物質量 SS",
-        "kind": "daily"
-      },
-      "kind": "value_diff",
-      "key": [
-        4,
-        2024
-      ],
-      "columns": [
-        "n_sites",
-        "n",
-        "avg"
-      ]
+      "name": "synthetic_rule_off",
+      "unexplained": 10129,
+      "caughtAsExpected": true
     },
     {
-      "queryId": "zone_series",
-      "params": {
-        "alias": "浮遊物質量 SS",
-        "kind": "daily"
-      },
-      "kind": "value_diff",
-      "key": [
-        4,
-        2025
-      ],
-      "columns": [
-        "n_sites",
-        "n",
-        "avg"
-      ]
-    },
-    {
-      "queryId": "zone_series",
-      "params": {
-        "alias": "浮遊物質量 SS",
-        "kind": "daily"
-      },
-      "kind": "value_diff",
-      "key": [
-        5,
-        2023
-      ],
-      "columns": [
-        "n_sites",
-        "n",
-        "avg"
-      ]
-    },
-    {
-      "queryId": "zone_series",
-      "params": {
-        "alias": "浮遊物質量 SS",
-        "kind": "daily"
-      },
-      "kind": "value_diff",
-      "key": [
-        5,
-        2024
-      ],
-      "columns": [
-        "n_sites",
-        "n",
-        "avg"
-      ]
-    },
-    {
-      "queryId": "zone_series",
-      "params": {
-        "alias": "浮遊物質量 SS",
-        "kind": "daily"
-      },
-      "kind": "value_diff",
-      "key": [
-        5,
-        2025
-      ],
-      "columns": [
-        "n_sites",
-        "n",
-        "avg"
-      ]
-    },
-    {
-      "queryId": "climatology",
-      "params": {
-        "alias": "浮遊物質量 SS"
-      },
-      "kind": "value_diff",
-      "key": [
-        1
-      ],
-      "columns": [
-        "n",
-        "avg",
-        "min"
-      ]
-    },
-    {
-      "queryId": "climatology",
-      "params": {
-        "alias": "浮遊物質量 SS"
-      },
-      "kind": "value_diff",
-      "key": [
-        2
-      ],
-      "columns": [
-        "n",
-        "avg",
-        "min"
-      ]
-    },
-    {
-      "queryId": "climatology",
-      "params": {
-        "alias": "浮遊物質量 SS"
-      },
-      "kind": "value_diff",
-      "key": [
-        3
-      ],
-      "columns": [
-        "n",
-        "avg",
-        "min"
-      ]
-    },
-    {
-      "queryId": "climatology",
-      "params": {
-        "alias": "浮遊物質量 SS"
-      },
-      "kind": "value_diff",
-      "key": [
-        4
-      ],
-      "columns": [
-        "n",
-        "avg",
-        "min"
-      ]
-    },
-    {
-      "queryId": "climatology",
-      "params": {
-        "alias": "浮遊物質量 SS"
-      },
-      "kind": "value_diff",
-      "key": [
-        5
-      ],
-      "columns": [
-        "n",
-        "avg",
-        "min"
-      ]
-    },
-    {
-      "queryId": "climatology",
-      "params": {
-        "alias": "浮遊物質量 SS"
-      },
-      "kind": "value_diff",
-      "key": [
-        6
-      ],
-      "columns": [
-        "n",
-        "avg",
-        "min"
-      ]
+      "name": "lod_rule_off",
+      "unexplained": 241656,
+      "caughtAsExpected": true
     }
-  ],
-  "rottenDeclarations": [
-    {
-      "table": "meas_clim",
-      "key": [
-        "浮遊物質量 SS",
-        10
-      ],
-      "kind": "value_diff"
-    },
-    {
-      "table": "meas_clim",
-      "key": [
-        "浮遊物質量 SS",
-        11
-      ],
-      "kind": "value_diff"
-    },
-    {
-      "table": "var_catalog",
-      "key": [
-        "浮遊物質量 SS"
-      ],
-      "kind": "value_diff"
-    }
-  ],
-  "mutationResults": []
+  ]
 }
