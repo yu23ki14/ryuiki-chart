@@ -4,6 +4,9 @@
 # scripts/migrate/period.py の apply_count_overlay/load_count_overlay_file を参照。
 
 "occurrence_cube_declarations.yaml:leaf_cell_source_rows": 21
+"occurrence_cube_declarations.yaml:month_cell_source_rows": 2467
+"occurrence_cube_declarations.yaml:watershed_dated_resolved_rows": 2421
+"occurrence_cube_declarations.yaml:watershed_dated_unresolved_rows": 88
 "occurrence_period_shapes.yaml:day": 2374
 "occurrence_period_shapes.yaml:day_interval": 12
 "occurrence_period_shapes.yaml:instant_millisecond_z": 10
