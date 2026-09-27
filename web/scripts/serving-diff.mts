@@ -449,52 +449,11 @@ async function main() {
   const t0 = Date.now();
 
   /* -------------------------------------------------------------------- */
-  /* `--v1-only`: 変異を回さない単純な1パス（v1 側の行数を数えるだけ）。       */
-  /* mutate 用のキャッシュ構造は要らないので、他とは独立に単純な1ループで済ませる。 */
-  /* -------------------------------------------------------------------- */
-  if (V1_ONLY) {
-    const stats = new Map<string, QueryStats>();
-    const exceptions: { id: string; params: Record<string, ScalarParam>; message: string }[] = [];
-    for (const def of queryDefs) {
-      const s = emptyQueryStats(def.id);
-      stats.set(def.id, s);
-      let tuples: Record<string, ScalarParam>[];
-      try {
-        tuples = await enumerateParams(def, config.domains, REGISTRY_DB_PATH);
-      } catch (e) {
-        exceptions.push({ id: def.id, params: {}, message: `enumerateParams: ${e instanceof Error ? e.message : e}` });
-        continue;
-      }
-      for (const params of tuples) {
-        s.runs += 1;
-        try {
-          const v1Rows = await runV1Query(def.id, params, def.compare, REGISTRY_DB_PATH, {});
-          s.rowsV1 += v1Rows.length;
-        } catch (e) {
-          exceptions.push({ id: def.id, params, message: e instanceof Error ? e.message : String(e) });
-        }
-      }
-    }
-    const elapsedMs = Date.now() - t0;
-    const totalRuns = [...stats.values()].reduce((n, s) => n + s.runs, 0);
-    const totalRows = [...stats.values()].reduce((n, s) => n + s.rowsV1, 0);
-    console.log(`v1-only: ${queryDefs.length} 問い合わせ / ${totalRuns} runs / ${totalRows} rows / ${elapsedMs}ms`);
-    for (const s of stats.values()) {
-      console.log(`  ${s.id}: runs=${s.runs} rows=${s.rowsV1}`);
-    }
-    if (exceptions.length) {
-      console.error(`${exceptions.length} 件の例外:`);
-      for (const e of exceptions.slice(0, 20)) {
-        console.error(`  [${e.id}] ${JSON.stringify(e.params)}: ${e.message}`);
-      }
-      process.exit(1);
-    }
-    process.exit(0);
-  }
-
-  /* -------------------------------------------------------------------- */
   /* フェッチ段（(id,params) ごとに1回だけ）と分類段（`--mutate` の数だけ）を   */
-  /* 分離する（serving-diff 高速化。計測は報告参照）。                        */
+  /* 分離する（serving-diff 高速化。計測は報告参照）。`--v1-only` はフェッチ段  */
+  /* を v1 側だけ回して分類段に進まず終わる（v2 アダプタが無い/未着手の環境    */
+  /* でも動かせるようにする設計はそのまま——以前はこの都合で別ループに分けて   */
+  /* おり、`enumerateParams`＋`runV1Query` の走査を通常実行と2重に持っていた）。*/
   /*                                                                        */
   /* 前提: `mutations.ts` の行変異・分類器変異はどれも「フェッチ済みの行を     */
   /* JS だけで書き換える/`ClassifyContext` を上書きする」だけの純関数で、DB を */
@@ -518,7 +477,7 @@ async function main() {
     def: QueryDef;
     params: Record<string, ScalarParam>;
     v1Rows: NormRow[];
-    /** 行変異を適用する前の、v2 が実際に計算した生の行。 */
+    /** 行変異を適用する前の、v2 が実際に計算した生の行。`--v1-only` では空配列。 */
     v2RowsRaw: NormRow[];
     v2TrueByKey?: ReadonlyMap<string, NormRow>;
     v2CompatByKey?: ReadonlyMap<string, NormRow>;
@@ -555,6 +514,13 @@ async function main() {
         v1Rows = await runV1Query(def.id, params, def.compare, REGISTRY_DB_PATH, { mergeDisabled: false });
       } catch (e) {
         fetchExceptions.push({ id: def.id, params, message: e instanceof Error ? e.message : String(e) });
+        continue;
+      }
+
+      // `--v1-only`: v2 側（アダプタ・DB 接続とも無い/未着手の可能性がある）を
+      // 一切引かず、v1 の行数を数えるだけで終わる。
+      if (V1_ONLY) {
+        fetched.push({ def, params, v1Rows, v2RowsRaw: [] });
         continue;
       }
 
@@ -642,6 +608,39 @@ async function main() {
 
       fetched.push({ def, params, v1Rows, v2RowsRaw, v2TrueByKey, v2CompatByKey, v2ZeroByKey, v2TrueZeroByKey });
     }
+  }
+
+  /* -------------------------------------------------------------------- */
+  /* `--v1-only`: フェッチ段（v1 だけ）の結果をそのまま集計して終わる。分類段  */
+  /* （`--mutate` 自己診断含む）には進まない——v2 が無い/未着手の環境でも      */
+  /* 動かせるようにするための経路（旧実装は enumerateParams/runV1Query の     */
+  /* 走査を通常実行と2重に持つ別ループだった）。                              */
+  /* -------------------------------------------------------------------- */
+  if (V1_ONLY) {
+    const stats = new Map<string, QueryStats>();
+    for (const def of queryDefs) {
+      const s = emptyQueryStats(def.id);
+      s.runs = runsByDefId.get(def.id) ?? 0;
+      stats.set(def.id, s);
+    }
+    for (const entry of fetched) {
+      stats.get(entry.def.id)!.rowsV1 += entry.v1Rows.length;
+    }
+    const elapsedMs = Date.now() - t0;
+    const totalRuns = [...stats.values()].reduce((n, s) => n + s.runs, 0);
+    const totalRows = [...stats.values()].reduce((n, s) => n + s.rowsV1, 0);
+    console.log(`v1-only: ${queryDefs.length} 問い合わせ / ${totalRuns} runs / ${totalRows} rows / ${elapsedMs}ms`);
+    for (const s of stats.values()) {
+      console.log(`  ${s.id}: runs=${s.runs} rows=${s.rowsV1}`);
+    }
+    if (fetchExceptions.length) {
+      console.error(`${fetchExceptions.length} 件の例外:`);
+      for (const e of fetchExceptions.slice(0, 20)) {
+        console.error(`  [${e.id}] ${JSON.stringify(e.params)}: ${e.message}`);
+      }
+      process.exit(1);
+    }
+    process.exit(0);
   }
 
   /**
