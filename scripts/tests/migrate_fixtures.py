@@ -463,9 +463,9 @@ def table_content_hash(path, table: str, key_columns: list[str]) -> str:
 
 
 def make_v2_cube_tables(tmp_path, name: str = "v2.sqlite") -> sqlite3.Connection:
-    """`observation_agg`/`occurrence_agg`/`summary_variable_catalog`/
-    `summary_place_variable`（`common.V2_CUBE_SPEC_VERSIONS` の全表）に相当する
-    最小のテーブルだけを持つ、v2.sqlite 風のフィクスチャ
+    """`observation_agg`/`occurrence_agg`/summary 4表（`common.V2_CUBE_SPEC_VERSIONS`
+    の全表——PR-3a で `summary_taxon_catalog`/`summary_watershed_occurrence` が
+    増えた）に相当する最小のテーブルだけを持つ、v2.sqlite 風のフィクスチャ
     （`pipeline_fingerprint`/`pipeline_input_fingerprint` はまだ記録しない、
     未コミットの `sqlite3.Connection`）。行の中身は鮮度判定に無関係なので
     空のまま。
@@ -474,13 +474,17 @@ def make_v2_cube_tables(tmp_path, name: str = "v2.sqlite") -> sqlite3.Connection
     テスト）と `scripts/tests/test_check_v2_fresh.py`（CLI 経由。
     `make_fresh_v2_cube_db` 参照）が共有する（旧 `_make_v2_like_db`/
     `_make_fresh_v2` の重複を解消。Issue #48 PR-0 /simplify 指摘4）。
+
+    テーブルの集合は `common.V2_CUBE_SPEC_VERSIONS` から動的に導く——表を
+    足すたびにここへの追随を手で忘れないため（PR-3a で summary が2表から
+    4表に増えたときに実際に踏んだ手直し）。最小列（`region_id`/`n` 等）は
+    実データの列と一致させる必要が無い——`compute_table_fingerprint` は
+    「列が1つ以上ある」ことしか要求しない。
     """
     db_path = tmp_path / name
     conn = sqlite3.connect(f"file:{db_path}", uri=True)
-    conn.execute("CREATE TABLE observation_agg (region_id TEXT, n INTEGER)")
-    conn.execute("CREATE TABLE occurrence_agg (region_id TEXT, n INTEGER)")
-    conn.execute("CREATE TABLE summary_variable_catalog (variable_id TEXT, n INTEGER)")
-    conn.execute("CREATE TABLE summary_place_variable (place_id TEXT, variable_id TEXT, n INTEGER)")
+    for table in common.V2_CUBE_SPEC_VERSIONS:
+        conn.execute(f"CREATE TABLE {table} (region_id TEXT, n INTEGER)")
     conn.commit()
     return conn
 
