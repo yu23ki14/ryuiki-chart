@@ -849,20 +849,27 @@ def _assert_consistent_with_place_declarations(
     以上であることを確かめる（日付あり記録は座標のある記録の部分集合——
     実データでは 733,341 ≤ 737,407）。
 
-    `place_declarations_yaml` が存在しない環境（多くの単体テストの最小
-    フィクスチャ）では検証をスキップする（この整合検証は「両方の宣言ファイル
-    が実データの値を持つとき」だけ意味を持つ——単体テストは
-    `occurrence_place_declarations.yaml` 自体を作らないことが多い）。
+    `place_declarations_yaml=None`: 単体テストが明示的に渡す opt-out
+    （Issue #48 PR-1 で単位の証拠検査〔`scripts/b04_build_cube.py` の
+    `_assert_unit_evidence`〕を直したのと同じ流儀）。この整合検証は「両方の
+    宣言ファイルが実データの値を持つとき」だけ意味を持つ——本物の
+    `occurrence_place_declarations.yaml` を持たない小さな単体フィクスチャは
+    `None` を渡してこの検証全体を明示的にスキップする。`None` 以外を渡した
+    のにファイルが存在しなければ、ここで（`load_yaml` が）自然に例外を出して
+    止まる——以前は「ファイルが無ければ黙ってスキップ」していたため、
+    本番経路（`main()`）が誤ってファイルを削除・移動しても検査が黙って
+    消えたまま気づけなかった（`build_cube()` の既定値
+    `b09.DEFAULT_DECLARATIONS_YAML` は実ファイルなので、`main()` は明示的に
+    指定しなくてもこの検証を必ず通る）。
     """
-    path = pathlib.Path(place_declarations_yaml)
-    if not path.exists():
+    if place_declarations_yaml is None:
         return
-    raw = common.load_yaml(path)
+    raw = common.load_yaml(place_declarations_yaml)
     resolved = raw.get("resolved_count", {}).get("expected_row_count")
     if resolved is not None and resolved < watershed_resolved_expected:
         raise common.MigrationError(
             f"occurrence_agg: watershed_dated_resolved_rows の宣言（{watershed_resolved_expected:,}）が"
-            f"b09 の resolved_count 宣言（{path} の {resolved:,}）を上回っている。日付あり記録は"
+            f"b09 の resolved_count 宣言（{place_declarations_yaml} の {resolved:,}）を上回っている。日付あり記録は"
             "座標のある記録の部分集合のはずなので、後者が前者以上でなければならない。"
         )
 

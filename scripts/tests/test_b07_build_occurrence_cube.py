@@ -18,7 +18,7 @@ from migrate import common
 
 from .occurrence_fixtures import (
     DEFAULT_WATERSHED_PLACE_ID,
-    make_occurrence_cube_declarations_yaml,
+    make_occurrence_cube_declarations_yaml as _make_declarations_yaml,
     make_v2_db_with_occurrence_and_place,
     occurrence_place_row,
     occurrence_row,
@@ -90,11 +90,13 @@ def _default_declaration_counts(rows: list[tuple], place_rows: list[tuple]) -> d
 
 
 def _write_declarations_yaml(tmp_path, counts: dict[str, int]):
+    """`scripts/tests/occurrence_fixtures.make_occurrence_cube_declarations_yaml`
+    （/simplify 指摘4: このテキスト組み立ては1箇所に集約してある）への薄い
+    呼び出し——このファイルの呼び出し慣習（`tmp_path` から標準ファイル名で
+    パスを組み立てて返す）だけをここに残す。
+    """
     path = tmp_path / "occurrence_cube_declarations.yaml"
-    lines = []
-    for name, n in counts.items():
-        lines.append(f"{name}:\n  expected_row_count: {n}\n  note: テスト用\n")
-    path.write_text("".join(lines), encoding="utf-8")
+    _make_declarations_yaml(path, counts)
     return path
 
 
@@ -137,7 +139,7 @@ def test_same_year_day_and_month_records_go_to_year_grain(tmp_path):
     ]
     conn, decl = _build(tmp_path, rows)
     try:
-        stats = b07.build_cube(conn, decl)
+        stats = b07.build_cube(conn, decl, place_declarations_yaml=None)
         assert stats["n_leaf_cells"] == 0
         assert stats["n_year_cells"] == 1  # 同じ (source, place, taxon) なら1セルに集約される
         cell = conn.execute(
@@ -156,7 +158,7 @@ def test_same_year_interval_goes_to_year_grain_not_leaf(tmp_path):
     rows = [_row("gbif__same_year_interval", "2019-08-01", "2019-08-31", "2019-08-01/2019-08-31")]
     conn, decl = _build(tmp_path, rows)
     try:
-        stats = b07.build_cube(conn, decl)
+        stats = b07.build_cube(conn, decl, place_declarations_yaml=None)
         assert stats["n_leaf_cells"] == 0
         assert stats["n_year_cells"] == 1
         cell = conn.execute(
@@ -176,7 +178,7 @@ def test_cross_year_interval_goes_to_leaf_grain_not_year(tmp_path):
     rows = [_row("gbif__cross_year", "1990-01-01", "1992-12-31", "1990/1992")]
     conn, decl = _build(tmp_path, rows)
     try:
-        stats = b07.build_cube(conn, decl)
+        stats = b07.build_cube(conn, decl, place_declarations_yaml=None)
         assert stats["n_year_cells"] == 0
         assert stats["n_leaf_cells"] == 1
         cell = conn.execute(
@@ -195,7 +197,7 @@ def test_undated_records_are_excluded_from_cube(tmp_path):
     ]
     conn, decl = _build(tmp_path, rows)
     try:
-        stats = b07.build_cube(conn, decl)
+        stats = b07.build_cube(conn, decl, place_declarations_yaml=None)
         assert stats["n_dated"] == 1
         # year 族（grid01）は日付あり全行の分割なので、その Σn がそのまま
         # 「キューブに入った記録数」になる（month 族は独立な部分集合なので
@@ -218,7 +220,7 @@ def test_n_red_list_counts_nonempty_raw_red_list_category(tmp_path):
     ]
     conn, decl = _build(tmp_path, rows)
     try:
-        b07.build_cube(conn, decl)
+        b07.build_cube(conn, decl, place_declarations_yaml=None)
         n, n_rl = conn.execute(
             "SELECT SUM(n), SUM(n_red_list) FROM occurrence_agg "
             "WHERE place_kind = 'grid01' AND grain != 'month'"
@@ -236,7 +238,7 @@ def test_n_alien_sums_is_alien_flag(tmp_path):
     ]
     conn, decl = _build(tmp_path, rows)
     try:
-        b07.build_cube(conn, decl)
+        b07.build_cube(conn, decl, place_declarations_yaml=None)
         n, n_alien = conn.execute(
             "SELECT SUM(n), SUM(n_alien) FROM occurrence_agg "
             "WHERE place_kind = 'grid01' AND grain != 'month'"
@@ -259,7 +261,7 @@ def test_same_month_record_goes_to_month_grain_cell(tmp_path):
     rows = [_row("gbif__day", "2020-01-05", "2020-01-05", "2020-01-05")]
     conn, decl = _build(tmp_path, rows)
     try:
-        stats = b07.build_cube(conn, decl)
+        stats = b07.build_cube(conn, decl, place_declarations_yaml=None)
         assert stats["n_month_cells"] == 1
         cell = conn.execute(
             "SELECT grain, period_start, period_end, n FROM occurrence_agg "
@@ -275,7 +277,7 @@ def test_month_bounds_handle_leap_year_february(tmp_path):
     rows = [_row("gbif__leap", "2020-02-10", "2020-02-10", "2020-02-10")]
     conn, decl = _build(tmp_path, rows)
     try:
-        b07.build_cube(conn, decl)
+        b07.build_cube(conn, decl, place_declarations_yaml=None)
         cell = conn.execute(
             "SELECT period_start, period_end FROM occurrence_agg WHERE grain = 'month'"
         ).fetchone()
@@ -292,7 +294,7 @@ def test_cross_month_same_year_interval_excluded_from_month_grain(tmp_path):
     rows = [_row("gbif__cross_month", "2020-03-01", "2020-04-05", "2020-03-01/2020-04-05")]
     conn, decl = _build(tmp_path, rows)
     try:
-        stats = b07.build_cube(conn, decl)
+        stats = b07.build_cube(conn, decl, place_declarations_yaml=None)
         assert stats["n_month_cells"] == 0
         assert stats["n_year_cells"] == 1
     finally:
@@ -306,7 +308,7 @@ def test_year_grain_shape_record_excluded_from_month_grain(tmp_path):
     rows = [_row("gbif__year_shape", "2020-01-01", "2020-12-31", "2020")]
     conn, decl = _build(tmp_path, rows)
     try:
-        stats = b07.build_cube(conn, decl)
+        stats = b07.build_cube(conn, decl, place_declarations_yaml=None)
         assert stats["n_month_cells"] == 0
         assert stats["n_year_cells"] == 1
     finally:
@@ -318,7 +320,7 @@ def test_cross_year_leaf_record_excluded_from_month_grain(tmp_path):
     rows = [_row("gbif__cross_year", "1990-01-01", "1992-12-31", "1990/1992")]
     conn, decl = _build(tmp_path, rows)
     try:
-        stats = b07.build_cube(conn, decl)
+        stats = b07.build_cube(conn, decl, place_declarations_yaml=None)
         assert stats["n_month_cells"] == 0
         assert stats["n_leaf_cells"] == 1
     finally:
@@ -339,7 +341,7 @@ def test_watershed_year_cell_uses_occurrence_place_place_id(tmp_path):
     place_rows = [occurrence_place_row("gbif__day", DEFAULT_WATERSHED_PLACE_ID)]
     conn, decl = _build(tmp_path, rows, place_rows=place_rows)
     try:
-        stats = b07.build_cube(conn, decl)
+        stats = b07.build_cube(conn, decl, place_declarations_yaml=None)
         assert stats["n_watershed_year_cells"] == 1
         place_id = conn.execute(
             "SELECT place_id FROM occurrence_agg WHERE place_kind = 'watershed' AND grain = 'year'"
@@ -359,7 +361,7 @@ def test_watershed_unresolved_record_kept_as_null_place_id_cell(tmp_path):
     place_rows = [occurrence_place_row("gbif__unresolved", None)]
     conn, decl = _build(tmp_path, rows, place_rows=place_rows)
     try:
-        stats = b07.build_cube(conn, decl)
+        stats = b07.build_cube(conn, decl, place_declarations_yaml=None)
         assert stats["n_watershed_year_cells"] == 1
         place_id, n = conn.execute(
             "SELECT place_id, n FROM occurrence_agg WHERE place_kind = 'watershed' AND grain = 'year'"
@@ -377,7 +379,7 @@ def test_watershed_leaf_cell_can_also_have_null_place_id(tmp_path):
     place_rows = [occurrence_place_row("gbif__cross_year", None)]
     conn, decl = _build(tmp_path, rows, place_rows=place_rows)
     try:
-        stats = b07.build_cube(conn, decl)
+        stats = b07.build_cube(conn, decl, place_declarations_yaml=None)
         assert stats["n_watershed_leaf_cells"] == 1
         place_id = conn.execute(
             "SELECT place_id FROM occurrence_agg WHERE place_kind = 'watershed' AND grain = 'survey_period'"
@@ -393,7 +395,7 @@ def test_watershed_month_cells_are_not_built(tmp_path):
     rows = [_row("gbif__day", "2020-01-05", "2020-01-05", "2020-01-05")]
     conn, decl = _build(tmp_path, rows)
     try:
-        b07.build_cube(conn, decl)
+        b07.build_cube(conn, decl, place_declarations_yaml=None)
         n = conn.execute(
             "SELECT COUNT(*) FROM occurrence_agg WHERE place_kind = 'watershed' AND grain = 'month'"
         ).fetchone()[0]
@@ -414,7 +416,7 @@ def test_occurrence_place_missing_row_for_dated_record_is_caught(tmp_path):
     conn, decl = _build(tmp_path, rows, place_rows=place_rows)
     try:
         with pytest.raises(common.MigrationError, match="母集団.*一致しない|一致しない.*母集団"):
-            b07.build_cube(conn, decl)
+            b07.build_cube(conn, decl, place_declarations_yaml=None)
     finally:
         conn.close()
 
@@ -432,7 +434,7 @@ def test_leaf_declared_row_count_mismatch_raises(tmp_path):
     conn, _ = _build(tmp_path, rows, declarations_yaml=decl)
     try:
         with pytest.raises(common.MigrationError, match="宣言.*食い違う|食い違う.*宣言"):
-            b07.build_cube(conn, decl)
+            b07.build_cube(conn, decl, place_declarations_yaml=None)
     finally:
         conn.close()
 
@@ -445,7 +447,7 @@ def test_month_declared_row_count_mismatch_raises(tmp_path):
     conn, _ = _build(tmp_path, rows, declarations_yaml=decl)
     try:
         with pytest.raises(common.MigrationError, match="month.*宣言|宣言.*month"):
-            b07.build_cube(conn, decl)
+            b07.build_cube(conn, decl, place_declarations_yaml=None)
     finally:
         conn.close()
 
@@ -460,7 +462,7 @@ def test_watershed_resolved_declared_row_count_mismatch_raises(tmp_path):
     conn, _ = _build(tmp_path, rows, place_rows=place_rows, declarations_yaml=decl)
     try:
         with pytest.raises(common.MigrationError, match="watershed_dated_resolved_rows"):
-            b07.build_cube(conn, decl)
+            b07.build_cube(conn, decl, place_declarations_yaml=None)
     finally:
         conn.close()
 
@@ -474,7 +476,7 @@ def test_watershed_unresolved_declared_row_count_mismatch_raises(tmp_path):
     conn, _ = _build(tmp_path, rows, place_rows=place_rows, declarations_yaml=decl)
     try:
         with pytest.raises(common.MigrationError, match="watershed_dated_unresolved_rows"):
-            b07.build_cube(conn, decl)
+            b07.build_cube(conn, decl, place_declarations_yaml=None)
     finally:
         conn.close()
 
@@ -538,7 +540,7 @@ def test_month_cells_are_subset_of_year_cells_passes_for_normal_data(tmp_path):
     ]
     conn, decl = _build(tmp_path, rows)
     try:
-        b07.build_cube(conn, decl)  # 例外が出なければ OK
+        b07.build_cube(conn, decl, place_declarations_yaml=None)  # 例外が出なければ OK
     finally:
         conn.close()
 
@@ -658,7 +660,7 @@ def test_mutation_year_and_leaf_classification_swapped_is_caught(tmp_path, monke
         monkeypatch.setattr(b07, "_YEAR_CELLS_SQL", mutated_year)
         monkeypatch.setattr(b07, "_LEAF_CELLS_SQL", mutated_leaf)
         with pytest.raises(common.MigrationError, match="同じ年に収まっている"):
-            b07.build_cube(conn, decl)
+            b07.build_cube(conn, decl, place_declarations_yaml=None)
     finally:
         conn.close()
 
@@ -685,7 +687,7 @@ def test_mutation_month_predicate_swapped_for_year_predicate_is_caught(tmp_path,
         # ものが広がる」実際の壊れ方を再現できる）。
         monkeypatch.setattr(b07, "_SAME_MONTH_EXPR", b07._SAME_YEAR_EXPR)
         with pytest.raises(common.MigrationError, match="month_cell_source_rows|grain='month'"):
-            b07.build_cube(conn, decl)
+            b07.build_cube(conn, decl, place_declarations_yaml=None)
     finally:
         conn.close()
 
@@ -712,7 +714,7 @@ def test_mutation_dropping_unresolved_watershed_rows_is_caught(tmp_path, monkeyp
         assert mutated != orig
         monkeypatch.setitem(b07._POP_SOURCE_SQL, b07.WATERSHED_PLACE_KIND, mutated)
         with pytest.raises(common.MigrationError, match="母集団.*一致しない|一致しない.*母集団"):
-            b07.build_cube(conn, decl)
+            b07.build_cube(conn, decl, place_declarations_yaml=None)
     finally:
         conn.close()
 
@@ -735,7 +737,7 @@ def test_mutation_watershed_join_left_and_wrong_place_kind_is_caught(tmp_path, m
         assert "LEFT JOIN" in mutated
         monkeypatch.setitem(b07._POP_SOURCE_SQL, b07.WATERSHED_PLACE_KIND, mutated)
         with pytest.raises(common.MigrationError, match="watershed_dated_resolved_rows"):
-            b07.build_cube(conn, decl)
+            b07.build_cube(conn, decl, place_declarations_yaml=None)
     finally:
         conn.close()
 
@@ -754,7 +756,7 @@ def test_mutation_n_alien_formula_swapped_for_n_red_list_is_caught(tmp_path, mon
             assert mutated != original, name
             monkeypatch.setattr(b07, name, mutated)
         with pytest.raises(common.MigrationError, match="Σn/Σn_red_list/Σn_alien"):
-            b07.build_cube(conn, decl)
+            b07.build_cube(conn, decl, place_declarations_yaml=None)
     finally:
         conn.close()
 
@@ -774,13 +776,13 @@ def test_build_cube_halts_when_occurrence_changed_since_b06_recorded_it(tmp_path
     rows = [_row("gbif__day", "2020-01-05", "2020-01-05", "2020-01-05")]
     conn, decl = _build(tmp_path, rows)
     try:
-        b07.build_cube(conn, decl)
+        b07.build_cube(conn, decl, place_declarations_yaml=None)
 
         conn.execute("UPDATE occurrence SET taxon_id = 'common:taxon:gbif.9999' WHERE record_id = 'gbif__day'")
         conn.commit()
 
         with pytest.raises(common.MigrationError, match="scripts/b06_build_occurrence.py を再実行すること"):
-            b07.build_cube(conn, decl)
+            b07.build_cube(conn, decl, place_declarations_yaml=None)
     finally:
         conn.close()
 
@@ -793,7 +795,7 @@ def test_build_cube_halts_when_occurrence_place_changed_since_b09_recorded_it(tm
     rows = [_row("gbif__day", "2020-01-05", "2020-01-05", "2020-01-05")]
     conn, decl = _build(tmp_path, rows)
     try:
-        b07.build_cube(conn, decl)
+        b07.build_cube(conn, decl, place_declarations_yaml=None)
 
         conn.execute(
             "UPDATE occurrence_place SET place_id = 'common:place:watershed.other' "
@@ -802,7 +804,7 @@ def test_build_cube_halts_when_occurrence_place_changed_since_b09_recorded_it(tm
         conn.commit()
 
         with pytest.raises(common.MigrationError, match="scripts/b09_build_occurrence_place.py を再実行すること"):
-            b07.build_cube(conn, decl)
+            b07.build_cube(conn, decl, place_declarations_yaml=None)
     finally:
         conn.close()
 
