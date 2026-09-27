@@ -768,7 +768,7 @@ def test_check_v2_cube_spec_fresh_reports_missing_row_for_table(tmp_path):
     try:
         common.record_stage_fingerprint(conn, "observation_agg", spec_version=common.OBSERVATION_AGG_SPEC_VERSION)
         conn.commit()
-        problems = common.check_v2_cube_spec_fresh(conn, "occurrence_agg", common.OCCURRENCE_SPEC_VERSION)
+        problems = common.check_v2_cube_spec_fresh(conn, "occurrence_agg", common.OCCURRENCE_AGG_SPEC_VERSION)
         assert len(problems) == 1
         assert "occurrence_agg" in problems[0]
         assert "記録が無い" in problems[0]
@@ -816,7 +816,7 @@ def test_check_v2_cube_fresh_checks_both_cube_tables(tmp_path):
         assert "occurrence_agg" in problems[0]
 
         # occurrence_agg も直せば新鮮になる。
-        common.record_stage_fingerprint(conn, "occurrence_agg", spec_version=common.OCCURRENCE_SPEC_VERSION)
+        common.record_stage_fingerprint(conn, "occurrence_agg", spec_version=common.OCCURRENCE_AGG_SPEC_VERSION)
         conn.commit()
         assert common.check_v2_cube_fresh(conn) == []
     finally:
@@ -1043,7 +1043,7 @@ def test_compute_v2_input_fingerprint_is_deterministic_for_absent_inputs(tmp_pat
 def test_check_v2_pipeline_fresh_flags_missing_input_fingerprint_table(tmp_path):
     conn = migrate_fixtures.make_v2_cube_tables(tmp_path)
     common.record_stage_fingerprint(conn, "observation_agg", spec_version=common.OBSERVATION_AGG_SPEC_VERSION)
-    common.record_stage_fingerprint(conn, "occurrence_agg", spec_version=common.OCCURRENCE_SPEC_VERSION)
+    common.record_stage_fingerprint(conn, "occurrence_agg", spec_version=common.OCCURRENCE_AGG_SPEC_VERSION)
     conn.commit()
     problems = common.check_v2_pipeline_fresh(conn, root=_ROOT)
     assert any(common.PIPELINE_INPUT_FINGERPRINT_TABLE in p for p in problems)

@@ -45,9 +45,24 @@ def test_occurrence_period_shapes_count_overlay(tmp_path):
 
 def test_b07_cube_declarations_count_overlay(tmp_path):
     path = tmp_path / "occurrence_cube_declarations.yaml"
-    path.write_text("leaf_cell_source_rows:\n  expected_row_count: 1191\n  note: n\n", encoding="utf-8")
-    declarations = b07.load_and_validate_cube_declarations(path, count_overlay={"leaf_cell_source_rows": 4})
+    path.write_text(
+        "leaf_cell_source_rows:\n  expected_row_count: 1191\n  note: n\n"
+        "month_cell_source_rows:\n  expected_row_count: 812974\n  note: n\n"
+        "watershed_dated_resolved_rows:\n  expected_row_count: 733341\n  note: n\n"
+        "watershed_dated_unresolved_rows:\n  expected_row_count: 83515\n  note: n\n",
+        encoding="utf-8",
+    )
+    declarations = b07.load_and_validate_cube_declarations(
+        path,
+        count_overlay={
+            "leaf_cell_source_rows": 4, "month_cell_source_rows": 2,
+            "watershed_dated_resolved_rows": 3, "watershed_dated_unresolved_rows": 1,
+        },
+    )
     assert declarations["leaf_cell_source_rows"]["expected_row_count"] == 4
+    assert declarations["month_cell_source_rows"]["expected_row_count"] == 2
+    assert declarations["watershed_dated_resolved_rows"]["expected_row_count"] == 3
+    assert declarations["watershed_dated_unresolved_rows"]["expected_row_count"] == 1
 
 
 def test_b09_place_declarations_count_overlay(tmp_path):
