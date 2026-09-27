@@ -6,6 +6,13 @@
   ADR-0030（D1 の配信スキーマ。本 ADR と対で読む）,
   Issue #48（親 #27、対象 #28・#41）, [docs/plans/V2_SERVING.md](../plans/V2_SERVING.md)（移行計画本体）
 
+**2026-09-26 追記（Issue #48 PR-2 着手、U1b）**: PR-2 の合成データ除外（D4）に伴う
+「差分の差分」判定規則（`synthetic_excluded`。v1互換キューブとの二重比較で説明する）と、
+alias→variable_id の束ねに対応する `*_by_variable` 系の新規問い合わせ ID は、
+`docs/plans/V2_SERVING_PR2.md` §1・§3 で設計した。serving-diff（`web/scripts/serving-diff.mts`
+等）への実装は、この追記の時点ではまだ行っていない——PR-2 の serving-diff 単位（U4）で
+実装予定。本文は変えない。
+
 ## 背景
 
 [ADR-0027](0027-test-and-verification-strategy.md) の層2（縮小サンプル突合）・層3（全量の
@@ -103,6 +110,32 @@ v1 という「もう一つの経路」を失うぶんを補う。
 PR-5 で v1（`web/src/lib/queries.ts` が読む派生33表）を撤去したあとは、serving-diff は
 比較先の v1 経路を失う。**PR-5 以降は動かさない**——削除はしないが（過去の切り替え差分の
 記録として残る）、CI では呼ばない。
+
+**2026-09-27 追記（Issue #48 PR-2 code-review。`web/scripts/lib/serving/classify.ts` の
+`classifyDeclaredWithSyntheticRemainder`）**: 宣言済み差分（`expected_diffs.yaml`）が
+診断の列を完全に覆わず、残りの列を `synthetic_excluded`（v1compat との差分の差分）で
+説明できる場合の組み合わせ判定を追加した。これは「移行期間限定」の serving-diff 自身に
+さらに重ねた一時的な特例で、PR-5 で serving-diff・v1 比較が丸ごと消えるときに一緒に消える。
+新たな「宣言も規則も単体では説明できない重なり」が見つかっても、この関数に特例を積み増さ
+ない——見つかったら `expected_diffs.yaml` の宣言粒度か `synthetic_excluded` の判定式自体を
+見直す（設計の詳細は `docs/plans/V2_SERVING_PR2.md` §1）。
+
+**2026-09-27 追記2（Issue #48 PR-2 統合。上の追記で予告した「新たな重なり」が実際に見つ
+かったための書き換え）**: `--imputation lod` の全量実行で、中津川の SS 月別平年値
+（`climatology`/`climatology_by_variable` の月10・11、列 n/avg/min）が「宣言済みバグ・
+合成データの除外・zero→lod 切り替え」の**3つ**同時に重なっていることが分かった。上の
+`classifyDeclaredWithSyntheticRemainder`（declared＋synthetic_excluded の2原因だけを
+組み合わせる特例）ではこの3原因の重なりを説明できず、かつ「この関数に特例を積み増さない」
+という決定に反するため特例を積むのではなく、分類器自体を一般の**説明の鎖**に作り直した:
+行キーごとに `v1 →(declared)→ compat_zero →(synthetic_excluded)→ v2_zero →(lod_imputation、
+lod 実行時のみ)→ v2_lod` という値の並びを立て、隣り合う2点が「等しい」か「その段の規則で
+説明できる」かを**列ごとに独立して**確かめる（`explainColumnChain`）。診断が explained に
+なるのは全列が鎖の全段で説明できたときで、分類結果は「使った規則の集合」（例:
+`{declared, synthetic_excluded, lod_imputation}`）として持つ——単一の規則名ではなく集合に
+したことで、`classifyDeclaredWithSyntheticRemainder` とその特例（本追記の直前の段落）は
+撤去した。詳細・実測は `docs/plans/V2_SERVING_PR2.md` §1・§3。この書き換え後も「鎖に特例を
+もう1段積まない」という原則は変わらない——新しい重なりが見つかったら宣言粒度か各段の判定式
+（`SYNTHETIC_EXCLUDED_VALUE_COLUMNS`/`LOD_IMPUTATION_VALUE_COLUMNS` 等）を見直す。
 
 ## 根拠（却下した代替案）
 

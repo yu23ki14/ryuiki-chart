@@ -10,7 +10,13 @@
  *   cd web
  *   pnpm run serving:diff [--v1-only] [--imputation zero|lod]
  *     [--only <id,...>] [--mutate <name,...>] [--v1-source derived|v1_projection]
- *     [--pretend-synthetic-excluded] [--out reports/serving_switch_diff.md]
+ *     [--v1compat-db data/db/v2_v1compat.sqlite] [--out reports/serving_switch_diff.md]
+ *
+ * `--v1compat-db`（design §1「診断用 v1互換キューブ」）: 合成データを除外**しない**
+ * 第2の v2.sqlite（`scripts/b03_build_observation.py --include-synthetic` → b04 →
+ * `--out` で作る）を開き、本番の v2 接続と同じ問い合わせを流して
+ * `synthetic_excluded` 規則の「差分の差分」判定に使う。省略時はこの規則は不発
+ * （`v1-only`・レジストリ未整備の環境でも動かせるように必須にはしない）。
  *
  * `--expand`（`all` 固定・`snapshot` は撤去）: 設計書は「全 site_var の組を全部回す
  * (`all`) / 決定論的な部分集合で CI 用に回す (`snapshot`、`snapshot_subset` を
@@ -47,6 +53,8 @@ import {
   type ServingQueriesConfig,
 } from "./lib/serving/normalize";
 import { enumerateParams, runV1Query } from "./lib/serving/adapters-v1";
+import { openV1CompatDb } from "./lib/serving/v1-compat";
+import * as mergeV1 from "./lib/serving/merge-v1";
 import {
   compareRuns,
   classifyDiff,
@@ -68,6 +76,7 @@ import {
   applyRowMutation,
   isClassifyMutation,
   isRowMutation,
+  isV1Mutation,
   rowMutationAppliesTo,
   type ClassifyMutationOptions,
 } from "./lib/serving/mutations";
@@ -99,13 +108,18 @@ const { values: argv } = parseArgs({
     only: { type: "string" },
     mutate: { type: "string" },
     "v1-source": { type: "string", default: "derived" },
-    "pretend-synthetic-excluded": { type: "boolean", default: false },
+    "v1compat-db": { type: "string" },
     out: { type: "string", default: "reports/serving_switch_diff.md" },
   },
 });
 
 const V1_ONLY = argv["v1-only"] === true;
-const IMPUTATION = argv.imputation as string;
+const IMPUTATION_RAW = argv.imputation as string;
+if (IMPUTATION_RAW !== "zero" && IMPUTATION_RAW !== "lod") {
+  console.error(`--imputation ${IMPUTATION_RAW} は使えない（zero か lod のどちらか）。`);
+  process.exit(1);
+}
+const IMPUTATION: "zero" | "lod" = IMPUTATION_RAW;
 if (argv.expand !== undefined && argv.expand !== "all") {
   console.error(
     `--expand ${argv.expand} は使えない（\`snapshot\` は Issue #48 PR-1 統合で撤去した。` +
@@ -117,7 +131,7 @@ const EXPAND = "all" as const;
 const ONLY_IDS = argv.only ? new Set(String(argv.only).split(",").map((s) => s.trim())) : null;
 const MUTATE_NAMES = argv.mutate ? String(argv.mutate).split(",").map((s) => s.trim()) : [];
 const V1_SOURCE = (argv["v1-source"] as string) === "v1_projection" ? "v1_projection" : "derived";
-const PRETEND_SYNTHETIC_EXCLUDED = argv["pretend-synthetic-excluded"] === true;
+const V1COMPAT_DB = argv["v1compat-db"] ? path.resolve(REPO_ROOT, String(argv["v1compat-db"])) : undefined;
 // `reports/serving_switch_diff.{md,json}` はリポジトリ直下（design: `docs/plans/V2_SERVING_PR1.md`・
 // `docs/adr/0029-v1-removal-and-verification-handoff.md`）。`--out` を明示すればそちらを
 // 優先するが、既定値・相対パスはどちらも REPO_ROOT からの相対として解決する。
@@ -246,6 +260,101 @@ function declaredLookupFor(def: QueryDef): DeclaredLookup {
   return { v1Table: def.v1Table, builder: DECLARED_KEY_BUILDERS[def.id] ?? null };
 }
 
+/**
+ * `*_by_variable` 問い合わせ（`v1_table: null`）向けの declared 対応表
+ * （`classify.ts` の `ClassifyContext.byVariableDeclared`/
+ * `classifyDeclaredWithSyntheticRemainder` docstring参照。Issue #48 PR-2
+ * 統合後 修正B）。それぞれ「束ねる前の alias 単位」の問い合わせ（`day_series_site`
+ * 等）が使う v1 表・キーの形をそのまま踏襲する——`buildKey` は対応する
+ * `DECLARED_KEY_BUILDERS` のエントリと同じ列順で組み立てる（違いは alias を
+ * `params.alias` からではなく、束ねの候補として1つずつ試す点だけ）。
+ *
+ * `variableIdOf`: variable_id は問い合わせによって `params.variable_id`
+ * （`site_id`/`variable_id` を params に持つもの）か、行キーそのもの
+ * （`variable_catalog_by_variable` は `params: {}` で `key: [variable_id]`——
+ * variable_id が全件を回す軸なので params ではなく行キーに乗る）のどちらかに
+ * 来る。行ごとに変わりうる（`variable_catalog_by_variable`）ため、alias 解決は
+ * `params` だけで1回ではなく、行キーを受け取ってから行う（`aliasesOf` を
+ * `classifyDeclaredWithSyntheticRemainder` が diff ごとに呼ぶ）。
+ *
+ * `aliasesOf`（この variable_id が束ねる alias の候補一覧）は
+ * `adapters-v1.ts` の各 `*_by_variable` case が実際に v1 側で使うのと
+ * **同じ絞り込み**にする（`allAliasesFor`＝ `variable_catalog`/`site_var`/
+ * `meas_clim` 系〔全 alias を束ねる〕、`aliasesForBasis(..., "day")`＝
+ * `meas_daily`/`meas_month` 系〔day grain を持つ alias だけ〕）——絞り込みが
+ * 違うと、束ねの母集合が v1 側の実際の計算と食い違ったまま declared を
+ * 探すことになる。
+ */
+interface ByVariableDeclaredSpec {
+  v1Table: string;
+  variableIdOf: (params: Readonly<Record<string, ScalarParam>>, rowKey: readonly ScalarParam[]) => string;
+  aliasesOf: (variableId: string, params: Readonly<Record<string, ScalarParam>>) => readonly string[];
+  buildKey: (alias: string, params: Readonly<Record<string, ScalarParam>>, rowKey: readonly ScalarParam[]) => ScalarParam[];
+}
+
+const BY_VARIABLE_DECLARED_SPECS: Record<string, ByVariableDeclaredSpec> = {
+  variable_catalog_by_variable: {
+    v1Table: "var_catalog",
+    variableIdOf: (_p, k) => String(k[0]),
+    aliasesOf: (variableId) => mergeV1.allAliasesFor(REGISTRY_DB_PATH, "measurements", variableId),
+    buildKey: (alias) => [alias],
+  },
+  site_variables_by_variable: {
+    v1Table: "site_var",
+    variableIdOf: (_p, k) => String(k[0]),
+    aliasesOf: (variableId) => mergeV1.allAliasesFor(REGISTRY_DB_PATH, "measurements", variableId),
+    buildKey: (alias, p, k) => [p.site_id, alias, k[1] === "day" ? "daily" : "annual"],
+  },
+  year_series_site_by_variable: {
+    // `year_series_site`（`DECLARED_KEY_BUILDERS.year_series_site`）と同じ v1 表・
+    // 同じキーの形（[site_id, alias, year, kind]）。束ねる前の alias 単位の問い合わせと
+    // 違い、`basis`（day/fiscal_year/year）が `compare.key` ではなく params に来るので
+    // `k[0]`（year）だけを行キーから取り、kind は params.basis から導く。alias の
+    // 絞り込みも params.basis に応じて `aliasesForBasis` を呼ぶ（`month`/`day`/
+    // `climatology` の各 spec は grain が basis='day' でしか意味を持たないので "day"
+    // 決め打ちで足りるが、year は day/fiscal_year/year のどの basis でも呼ばれるため
+    // 決め打ちできない——`byVariableDeclaredFor` が渡す `params` を使う）。
+    v1Table: "meas_year",
+    variableIdOf: (p) => String(p.variable_id),
+    aliasesOf: (variableId, p) => mergeV1.aliasesForBasis(REGISTRY_DB_PATH, "measurements", variableId, p.basis as mergeV1.Basis),
+    buildKey: (alias, p, k) => [p.site_id, alias, k[0], p.basis === "day" ? "daily" : "annual"],
+  },
+  month_series_site_by_variable: {
+    v1Table: "meas_month",
+    variableIdOf: (p) => String(p.variable_id),
+    aliasesOf: (variableId) => mergeV1.aliasesForBasis(REGISTRY_DB_PATH, "measurements", variableId, "day"),
+    buildKey: (alias, p, k) => {
+      const ym = String(k[0]);
+      return [p.site_id, alias, Number(ym.slice(0, 4)), Number(ym.slice(5, 7))];
+    },
+  },
+  day_series_site_by_variable: {
+    v1Table: "meas_daily",
+    variableIdOf: (p) => String(p.variable_id),
+    aliasesOf: (variableId) => mergeV1.aliasesForBasis(REGISTRY_DB_PATH, "measurements", variableId, "day"),
+    buildKey: (alias, p, k) => [p.site_id, alias, k[0]],
+  },
+  climatology_by_variable: {
+    v1Table: "meas_clim",
+    variableIdOf: (p) => String(p.variable_id),
+    aliasesOf: (variableId) => mergeV1.aliasesForBasis(REGISTRY_DB_PATH, "measurements", variableId, "day"),
+    buildKey: (alias, _p, k) => [alias, k[0]],
+  },
+};
+
+function byVariableDeclaredFor(
+  def: QueryDef,
+  params: Readonly<Record<string, ScalarParam>>,
+): ClassifyContext["byVariableDeclared"] {
+  const spec = BY_VARIABLE_DECLARED_SPECS[def.id];
+  if (!spec) return undefined;
+  return {
+    v1Table: spec.v1Table,
+    aliasesFor: (rowKey) => spec.aliasesOf(spec.variableIdOf(params, rowKey), params),
+    buildKey: (alias, rowKey) => spec.buildKey(alias, params, rowKey),
+  };
+}
+
 /* ------------------------------------------------------------------ */
 /* rain の L2 再計算（day_split/rain_div10 が使う）                       */
 /* ------------------------------------------------------------------ */
@@ -313,37 +422,28 @@ async function main() {
   const v2 = V1_ONLY ? null : await loadAdaptersV2();
   // `unit_label_registry` 規則が「v2 側が非NULLなら何でも通す」のではなく、実際に
   // その系列の unit_id のレジストリ symbol と一致するかまで確かめるための参照表
-  // （`ClassifyContext.expectedUnitSymbol`）。`registry.sqlite` を専用の別接続
-  // （`v2Db`/`--pretend-synthetic-excluded` の開き直しとは無関係）で直接読むだけ
-  // なので、`v2Db` を開く前に1回だけ作れば足りる（Issue #48 PR-1 code-review #3:
-  // 以前は `seriesForAlias` 経由——v2 側の unit 計算と同じ式——で「期待値」を
-  // 計算していて、常に一致してしまう見かけ上の検証だった）。
-  const expectedUnitSymbol = v2 ? v2.expectedUnitSymbols(REGISTRY_DB_PATH) : undefined;
+  // （`ClassifyContext.expectedUnitSymbol`）。`registry.sqlite` を専用の別接続で
+  // 直接読むだけなので、`v2Db` を開く前に1回だけ作れば足りる（Issue #48 PR-1
+  // code-review #3: 以前は `seriesForAlias` 経由——v2 側の unit 計算と同じ式——で
+  // 「期待値」を計算していて、常に一致してしまう見かけ上の検証だった）。
+  // alias 単位（既存の問い合わせ）と variable_id 単位（`*_by_variable`）の
+  // 期待値マップを1つに併せ持つ（`classify.ts` の `aliasKeyOf` docstring参照
+  // ——alias 文字列と `common:variable:...` は表記が衝突しない）。
+  const expectedUnitSymbol = v2
+    ? new Map([...v2.expectedUnitSymbols(REGISTRY_DB_PATH), ...v2.expectedUnitSymbolsByVariable(REGISTRY_DB_PATH)])
+    : undefined;
 
-  // `--pretend-synthetic-excluded`（設計書 §9-4）: まず素の v2 で「地点の全セルが
-  // 合成系列だけ」の place_id 集合を求め（`lib/cube` の `isSynthetic` 由来）、
-  // 一旦閉じてから、その place_id を `observation_agg` から除いた仮想の v2 で
-  // 開き直す（`db-sqlite.ts` の `excludePlaceIds`）。`ctx.syntheticSiteIds` には
-  // 対応する site_id を渡し、`classify.ts` の `synthetic_excluded` 規則を実際に働かせる。
-  let syntheticSiteIds: ReadonlySet<string> | undefined;
-  let v2Db: CubeDb | null = null;
-  if (v2) {
-    if (PRETEND_SYNTHETIC_EXCLUDED) {
-      const probeDb = v2.openV2Db({ v2: V2_DB_PATH, registry: REGISTRY_DB_PATH, ryuiki: RYUIKI_DB_PATH });
-      const syntheticPlaceIds = await v2.computeSyntheticPlaceIds(probeDb);
-      const siteIds = await v2.siteIdsForPlaceIds(probeDb, syntheticPlaceIds);
-      syntheticSiteIds = new Set(siteIds);
-      v2.closeV2Db();
-      console.log(
-        `--pretend-synthetic-excluded: 合成地点 ${syntheticPlaceIds.length} 件（うち site_id を持つもの ${siteIds.length} 件）を observation_agg から除いて開き直す`,
-      );
-      v2Db = v2.openV2Db(
-        { v2: V2_DB_PATH, registry: REGISTRY_DB_PATH, ryuiki: RYUIKI_DB_PATH },
-        { excludePlaceIds: syntheticPlaceIds },
-      );
-    } else {
-      v2Db = v2.openV2Db({ v2: V2_DB_PATH, registry: REGISTRY_DB_PATH, ryuiki: RYUIKI_DB_PATH });
-    }
+  const v2Db: CubeDb | null = v2 ? v2.openV2Db({ v2: V2_DB_PATH, registry: REGISTRY_DB_PATH, ryuiki: RYUIKI_DB_PATH }) : null;
+
+  // `--v1compat-db`（design §1「診断用 v1互換キューブ」）: 合成データを除外
+  // **しない** v2 を第2接続として開く。`synthetic_excluded` 規則の「差分の差分」
+  // 判定（`classify.ts`）専用で、本番の `v2Db` とは別のファイル・別の接続。
+  const v1CompatDb: CubeDb | null = v2 && V1COMPAT_DB ? openV1CompatDb({ v1compat: V1COMPAT_DB, registry: REGISTRY_DB_PATH, ryuiki: RYUIKI_DB_PATH }) : null;
+  if (!V1_ONLY && !v1CompatDb) {
+    console.error(
+      "--v1compat-db が指定されていない: synthetic_excluded 規則は不発になる（v1/v2 の食い違いが合成データ除外に" +
+        "由来する場合でも unexplained に数えられる）。",
+    );
   }
 
   const t0 = Date.now();
@@ -356,6 +456,7 @@ async function main() {
     const unexplained: UnexplainedSample[] = [];
     const matchedDeclared = new Map<string, Set<string>>();
     const exceptions: { id: string; params: Record<string, ScalarParam>; message: string }[] = [];
+    const mergeDisabled = !!rowMutationName && isV1Mutation(rowMutationName);
 
     for (const def of queryDefs) {
       const s = emptyQueryStats(def.id);
@@ -363,24 +464,19 @@ async function main() {
 
       let tuples: Record<string, ScalarParam>[];
       try {
-        tuples = await enumerateParams(def, config.domains);
+        tuples = await enumerateParams(def, config.domains, REGISTRY_DB_PATH);
       } catch (e) {
         exceptions.push({ id: def.id, params: {}, message: `enumerateParams: ${e instanceof Error ? e.message : e}` });
         continue;
       }
       const known = new Set(def.known as KnownRule[]);
-      // `--pretend-synthetic-excluded` は合成地点を含みうる問い合わせ全部に影響する
-      // （どの問い合わせが触れるかは合成地点がどの水域・ゾーンに属すかに依るので、
-      // YAML の `known` に問い合わせごと決め打ちしない——設計書 §9-4 の「PR-2 の予告」
-      // としてこのフラグが立っているときだけ全問い合わせに対して働かせる）。
-      if (PRETEND_SYNTHETIC_EXCLUDED) known.add("synthetic_excluded");
       const declaredLookup = declaredLookupFor(def);
 
       for (const params of tuples) {
         s.runs += 1;
         let v1Rows: NormRow[];
         try {
-          v1Rows = await runV1Query(def.id, params, def.compare);
+          v1Rows = await runV1Query(def.id, params, def.compare, REGISTRY_DB_PATH, { mergeDisabled });
         } catch (e) {
           exceptions.push({ id: def.id, params, message: e instanceof Error ? e.message : String(e) });
           continue;
@@ -391,15 +487,91 @@ async function main() {
 
         let v2Rows: NormRow[];
         try {
-          v2Rows = await v2!.runV2Query(v2Db!, def.id, params, def.compare);
+          v2Rows = await v2!.runV2Query(v2Db!, def.id, params, def.compare, IMPUTATION);
         } catch (e) {
           exceptions.push({ id: def.id, params, message: `v2: ${e instanceof Error ? e.message : e}` });
           continue;
+        }
+        // `classify.ts` の `v2TrueByKey`（Issue #48 PR-2 統合後 修正C）用:
+        // 行変異（`--mutate lod_instead_of_zero`/`swap_kind` 等）を適用する**前**の
+        // 生の v2 行をキー化して控えておく。`synthetic_excluded`/`lod_imputation` が
+        // 「`diff.v2` は本当に v2 が計算した値か（行変異で書き換えられていないか）」
+        // を確かめるためだけに使う——本体の突き合わせ（`v2ByKey`/`diffs`）は
+        // これまでどおり変異後の `v2Rows` から作る。診断専用なので、万一
+        // （変異前の）重複キーで例外になっても本体の突き合わせは続行する
+        // （`v2TrueByKey` 抜きの安全側フォールバックは classify.ts 側に既にある）。
+        let v2TrueByKey: ReadonlyMap<string, NormRow> | undefined;
+        try {
+          v2TrueByKey = rowsByKey(v2Rows);
+        } catch (e) {
+          console.error(`v2TrueByKey: [${def.id}] ${JSON.stringify(params)}: ${e instanceof Error ? e.message : e}`);
         }
         if (rowMutationName && isRowMutation(rowMutationName) && rowMutationAppliesTo(rowMutationName, def.id)) {
           v2Rows = applyRowMutation(rowMutationName, def.id, v2Rows);
         }
         s.rowsV2 += v2Rows.length;
+
+        // `synthetic_excluded`（design §1「差分の差分」）用: 同じ問い合わせを
+        // v1compat 接続で流す。診断専用のため失敗しても本体の突き合わせは
+        // 続行する（この (id,params) では synthetic_excluded が不発になるだけ）。
+        //
+        // imputation は常に `"zero"` を固定で渡す（`IMPUTATION`——`--imputation lod`
+        // 実行時でも）。v1 は昔から「定量下限未満は 0」という zero 相当の集計法
+        // しか知らない——`v1CompatByKey` は「もし合成データを除外していなかった
+        // ら v1 はどう見えるか」を再現する基準値なので、v1 の意味論（zero）に
+        // 揃える必要がある。`--imputation lod` 実行時に current imputation
+        // （lod）のまま流すと、「合成データを含む」かつ「値が動く」セルの両方に
+        // 該当する行（実測: `zone_series`/`climatology`/`zone_climatology` と
+        // その `_by_variable` 双子で計132件、Issue #48 PR-2 統合後 修正Bで
+        // 判明）で `v1 == compatRow` が成り立たなくなり
+        // （v1 は zero 相当なのに compatRow は lod 済みの値のため）、
+        // `classifySyntheticExcludedV1Compat` が不発になる——結果、`known` に
+        // `synthetic_excluded`・`lod_imputation` の両方があっても、どちらの
+        // 単独規則も「片方の効果だけ」しか説明できず unexplained に落ちる。
+        // compat を常に zero で引けば、`v1 == compatRow(zero)` の一致判定で
+        // 「合成データを含む・含まない」の軸だけを確認でき、`compatRow(zero) ≠
+        // v2(本番、現在の imputation)` という既存のチェック（`classifySyntheticExcludedV1Compat`
+        // 内）が「合成データの除外」と「zero→lod」の両方が重なった差分も
+        // まとめて説明する（`diff.v1 !== diff.v2` は `RowDiff` の定義上すでに
+        // 真なので、この既存チェックは特別な追加条件なしに両対応する）。
+        let v2CompatByKey: ReadonlyMap<string, NormRow> | undefined;
+        if (v1CompatDb) {
+          try {
+            // 既定の `{kind:'summary'}` のまま呼ぶ（画面・API・AI と同じ経路）。
+            // `scripts/b13_build_summary.py` を v1compat 段にも足したので
+            // （`scripts/b00_run_full_gate.py`/CI `sample-gate`）、
+            // `v2_v1compat.sqlite` の summary 2表も --include-synthetic 後の
+            // observation_agg から作り直されており、本番と同じ値しか返らない
+            // という旧問題（`{kind:'live'}` で回避していた）は解消済み。
+            const rows = await v2!.runV2Query(v1CompatDb, def.id, params, def.compare, "zero");
+            v2CompatByKey = rowsByKey(rows);
+          } catch (e) {
+            console.error(`v1compat: [${def.id}] ${JSON.stringify(params)}: ${e instanceof Error ? e.message : e}`);
+          }
+        }
+
+        // `lod_imputation`（design §3 #1）用: `--imputation lod` のときだけ、
+        // 同じ問い合わせを imputation=zero でも引く（v1 と比べる基準値）。
+        let v2ZeroByKey: ReadonlyMap<string, NormRow> | undefined;
+        if (IMPUTATION === "lod") {
+          try {
+            const zeroRows = await v2!.runV2Query(v2Db!, def.id, params, def.compare, "zero");
+            v2ZeroByKey = rowsByKey(zeroRows);
+          } catch (e) {
+            console.error(`v2(zero): [${def.id}] ${JSON.stringify(params)}: ${e instanceof Error ? e.message : e}`);
+          }
+        }
+
+        // `classify.ts` の `v2TrueZeroByKey`（Issue #48 PR-2 統合後 修正C）用:
+        // 「行変異が無い・zero 相当の」v2 の正しい値。`--imputation lod` 実行では
+        // 上で引いた `v2ZeroByKey`（別クエリなので行変異の影響を受けない）と
+        // 同じもの、`--imputation zero` 実行では現在の問い合わせ自体が既に
+        // zero なので `v2TrueByKey`（行変異を当てる前の控え）と同じもの——
+        // どちらも追加の DB 問い合わせを増やさない。`hasGenuineSyntheticEvidence`
+        // が「compat（合成込み・zero）とこの値が食い違うか」を見て、
+        // `synthetic_excluded` が本当に合成データの影響を受けた行だけを
+        // 説明するようにする。
+        const v2TrueZeroByKey: ReadonlyMap<string, NormRow> | undefined = IMPUTATION === "lod" ? v2ZeroByKey : v2TrueByKey;
 
         // `rowsByKey` は同じキーの行が2つあれば例外にする（design: 「片方を捨てると
         // 診断が壊れる」）。これは serving-diff 自身の設計上の保護であって v1/v2 の
@@ -432,22 +604,29 @@ async function main() {
           known,
           disabledRules: classifyMutation?.disabledRules,
           rain,
-          rainDateFromLabel: def.id === "rain_top_days",
+          rainDateFromLabel: false, // `rain_top_days` は D5 で削除済み（PR-2）
           rainGrain: def.id === "rain_monthly_clim" ? "month" : "day",
-          syntheticSiteIds,
+          v2CompatByKey,
+          v2ZeroByKey,
+          v2TrueByKey,
+          v2TrueZeroByKey,
           declaredRot: classifyMutation?.declaredRot,
           expectedUnitSymbol,
+          byVariableDeclared: byVariableDeclaredFor(def, params),
         };
 
         for (const diff of diffs) {
           const c = classifyDiff(diff, ctx);
-          addClassification(s, c.rule);
-          if (c.rule === "declared" && c.declaredMatch) {
-            const set = matchedDeclared.get(c.declaredMatch.table) ?? new Set<string>();
-            set.add(declaredMatchTag(c.declaredMatch.entry));
-            matchedDeclared.set(c.declaredMatch.table, set);
+          addClassification(s, c.rules);
+          // `c.declaredMatches`（段1で使われた宣言。overall unexplained でも
+          // 載っている——`classify.ts` の `Classification.declaredMatches` docstring
+          // 参照）を「腐り」判定の消費済みキーとして記録する。
+          for (const m of c.declaredMatches) {
+            const set = matchedDeclared.get(m.table) ?? new Set<string>();
+            set.add(declaredMatchTag(m.entry));
+            matchedDeclared.set(m.table, set);
           }
-          if (c.rule === "unexplained" && unexplained.length < 20) {
+          if (c.rules.size === 0 && unexplained.length < 20) {
             unexplained.push({ queryId: def.id, params, kind: diff.kind, key: diff.key, columns: diff.columns });
           }
         }
@@ -470,7 +649,10 @@ async function main() {
   if (MUTATE_NAMES.length && !V1_ONLY) {
     mutationResults = [];
     for (const name of MUTATE_NAMES) {
-      const rowMutation = isRowMutation(name) ? name : undefined;
+      // `runOnce` の第2引数は「行変異名」だったが、`isV1Mutation`（`merge_rule_off`）
+      // も同じ引数に相乗りさせる（`runOnce` 内で `isRowMutation`/`isV1Mutation` は
+      // 排他的なので、どちらの変異名を渡しても意図した1箇所にしか効かない）。
+      const rowMutation = isRowMutation(name) || isV1Mutation(name) ? name : undefined;
       const classifyMutation = isClassifyMutation(name)
         ? applyClassifyMutation(name, name === "declared_rot" ? { declaredRotTarget: firstDeclaredTarget(expected) } : {})
         : undefined;

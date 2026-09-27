@@ -123,3 +123,48 @@ export function buildClientVariableMaps(variables, aliases, units, dataset = "me
 
   return { variableShort, variableNote, higherIsWorse, variableUnitFallback };
 }
+
+/**
+ * `variable_id` をキーにした表示ラベル（Issue #48 PR-2、docs/plans/V2_SERVING_PR2.md §5）。
+ *
+ * 上の alias キー版（VARIABLE_SHORT/VARIABLE_NOTE/HIGHER_IS_WORSE）と違う点は2つ:
+ *
+ *   1. キーが `variable_id`（v2 の URL・系列の単位。alias→variable_id の束ねを
+ *      前提にした画面が引く）。
+ *   2. `variable.name_ja` が NULL でもエントリを落とさない——`short` は代表エイリアス
+ *      （`pickPrimaryAlias()`）の表記へフォールバックする。alias キー版は
+ *      「nameJa と alias が同じなら省く」「grain='fiscal_year' しか無い variable は
+ *      省く」という alias 表示の都合によるフィルタを持つが、`variable_id` が
+ *      唯一のキーになった今はそのフィルタの前提（v1 の annual/daily 分岐で alias
+ *      文字列を直接引く）が無くなっているため、両方とも掛けない
+ *      （実測: `dataset=measurements` の53 variable のうち19件が nameJa NULL。
+ *      地盤沈下系8件はいずれも fiscal_year 唯一のエイリアスしか持たないが、
+ *      `grain` は URL パラメータとして別に選ぶので表示名は必要）。
+ *
+ * `note`/`higherIsWorse` は variable 本体の列をそのまま使う（alias 単位に複製する
+ * 必要が無い）。対象は `dataset` の alias を1つ以上持つ variable のみ
+ * （sensor 専用の variable は対象外——URL の指標キーが今のところ measurements の
+ * カタログにしか無いため）。
+ */
+export function buildVariableLabelMap(variables, aliases, dataset = "measurements") {
+  const aliasesByVariable = new Map();
+  for (const a of aliases) {
+    if (!a.variableId || a.dataset !== dataset) continue;
+    const list = aliasesByVariable.get(a.variableId) ?? [];
+    list.push(a);
+    aliasesByVariable.set(a.variableId, list);
+  }
+
+  const out = {};
+  for (const variable of variables) {
+    const rows = aliasesByVariable.get(variable.variableId);
+    if (!rows || rows.length === 0) continue;
+    const primary = pickPrimaryAlias(dedupeByAlias(rows), variable.defaultStat);
+    out[variable.variableId] = {
+      short: variable.nameJa ?? primary.alias,
+      note: variable.descriptionJa ?? null,
+      higherIsWorse: variable.higherIsWorse,
+    };
+  }
+  return out;
+}

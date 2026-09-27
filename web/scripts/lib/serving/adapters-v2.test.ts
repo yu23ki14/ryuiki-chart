@@ -19,10 +19,30 @@ import { rowsByKey, toNormRows } from "./normalize";
 import { classifyDiff, compareRuns, type ClassifyContext } from "./classify";
 import { expectedUnitSymbols } from "./adapters-v2";
 
+/**
+ * design §8.4「検証が本番の経路を通っているか」の自動チェック1件:
+ * `adapters-v2.ts` は生 SQL を持たない（`@/lib/cube` の公開関数だけを呼ぶ）
+ * ——`observation_agg`/`summary_` という文字列そのものがソースに出てこないことで
+ * 確認する（キューブ・summary 2表のテーブル名は `lib/cube` 側にしか書かない）。
+ */
+describe("adapters-v2.ts は生 SQL を持たない（design §8.4）", () => {
+  it("ソースに observation_agg / summary_ という文字列が無い", () => {
+    const HERE = path.dirname(fileURLToPath(import.meta.url));
+    const src = fs.readFileSync(path.join(HERE, "adapters-v2.ts"), "utf8");
+    expect(src).not.toMatch(/observation_agg/);
+    expect(src).not.toMatch(/summary_/);
+  });
+});
+
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "..", "..", "..", "..");
 const DB_DIR = process.env.RYUIKI_DB_DIR ?? path.join(REPO_ROOT, "data", "db");
 const REGISTRY_DB_PATH = process.env.RYUIKI_REGISTRY_DB ?? path.join(DB_DIR, "registry.sqlite");
+// `registry.sqlite` は生成物（`.gitignore` 済み）で、CLAUDE.md の worktree 運用上
+// symlink しない原則の対象。原本が無い worktree（CI 再現・並行 worktree）でも
+// `pnpm test` が落ちないよう、`web/src/lib/registry/generated.test.ts` と同じ
+// `skipIf` の流儀にする（このファイルが要るのは実 DB を直接読む2件だけ）。
+const hasRegistryDb = fs.existsSync(REGISTRY_DB_PATH);
 
 function ctxBase(overrides: Partial<ClassifyContext> = {}): ClassifyContext {
   return {
@@ -35,7 +55,7 @@ function ctxBase(overrides: Partial<ClassifyContext> = {}): ClassifyContext {
 }
 
 describe("expectedUnitSymbols（registry.sqlite を直接 SQL で読む）", () => {
-  it("実データ: BOD（3 alias とも unit_id が common:unit:mg_per_l で一致）は symbol 'mg/L' を返す", () => {
+  it.skipIf(!hasRegistryDb)("実データ: BOD（3 alias とも unit_id が common:unit:mg_per_l で一致）は symbol 'mg/L' を返す", () => {
     const map = expectedUnitSymbols(REGISTRY_DB_PATH);
     expect(map.get("生物化学的酸素要求量 BOD")).toBe("mg/L");
   });
@@ -73,7 +93,7 @@ describe("expectedUnitSymbols（registry.sqlite を直接 SQL で読む）", () 
     vi.resetModules();
   });
 
-  it("変異: seriesForAlias（generated.ts 由来）が BOD に別の unit_id を返しても、真の期待値（registry.sqlite 直読み）との食い違いを検出する（unexplained）", async () => {
+  it.skipIf(!hasRegistryDb)("変異: seriesForAlias（generated.ts 由来）が BOD に別の unit_id を返しても、真の期待値（registry.sqlite 直読み）との食い違いを検出する（unexplained）", async () => {
     // `@/lib/registry/generated` の `GENERATED_VARIABLE_ALIASES` を、BOD の
     // unit_id が気温（degC）になるよう書き換えてモックする（`seriesForAlias`
     // 自体・`generated.ts` の生成にバグがあった場合の再現）。
@@ -105,7 +125,7 @@ describe("expectedUnitSymbols（registry.sqlite を直接 SQL で読む）", () 
     const v2 = rowsByKey(toNormRows([{ alias: "生物化学的酸素要求量 BOD", n: 5, unit: brokenV2Unit }], ["alias"], ["n"], ["unit"]));
     const diffs = compareRuns(v1, v2);
     const ctx = ctxBase({ known: new Set(["unit_label_registry"]), expectedUnitSymbol: map });
-    expect(classifyDiff(diffs[0], ctx).rule).toBe("unexplained");
+    expect(classifyDiff(diffs[0], ctx).rules.size).toBe(0);
   });
 });
 
@@ -166,7 +186,7 @@ describe("variable_catalog（aliasCatalog）: n_sites の distinct 集計（Issu
       insertCell.run({ placeId: fx.places.c, variableId: FAKE_VARIABLE_ID, obsStat: "mean" });
 
       const compare = { key: ["alias"], numeric: ["n", "n_sites"], label: ["unit"] };
-      const rows = await runQuery(cube.db, "variable_catalog", {}, compare);
+      const rows = await runQuery(cube.db, "variable_catalog", {}, compare, "zero");
       const ss = rows.find((r) => r.key[0] === "テスト用SS");
       expect(ss).toBeDefined();
       // fx_place_a（mean/day + point/day 両方）・fx_place_b（point/day）・
@@ -176,6 +196,48 @@ describe("variable_catalog（aliasCatalog）: n_sites の distinct 集計（Issu
       expect(ss!.numeric.n).toBe(4);
     } finally {
       cube.db.close();
+    }
+  });
+
+  it("同じプロセスで2つの CubeDb を順に問い合わせても、db ごとに別のキャッシュを引く（Issue #48 PR-2 統合後 修正B: aliasCatalogCache が db を無視していたバグの回帰）", async () => {
+    // serving-diff は本番 `v2Db` と `--v1compat-db` の2接続を同じプロセスで
+    // 順に開く（`synthetic_excluded` の差分の差分・design §1）。以前は
+    // `aliasCatalog()` の結果を `db` を無視した単一のモジュール変数にキャッシュ
+    // しており、1回目（`cubeA`）で埋めたキャッシュを2回目（`cubeB`）でもそのまま
+    // 返していた——`variable_catalog` の synthetic_excluded 判定が
+    // 「v2compat ≠ v2(本番)」を恒等的に満たせず不発になっていた
+    // （実測: DO/pH/SS/気温/水温が常に unexplained）。
+    const { buildCubeFixture: buildFixture, FX: fx } = await import("@/lib/cube/__fixtures__/cube-fixture");
+    const { runV2Query: runQuery } = await import("./adapters-v2");
+
+    const cubeA = buildFixture();
+    const cubeB = buildFixture();
+    try {
+      // cubeB だけ「浮遊物質量 SS」の year セルを1つ増やす（n が動く）。
+      // period_start は既存フィクスチャ行（2024年）と衝突しない年にする。
+      cubeB.raw
+        .prepare(
+          `INSERT INTO observation_agg
+            (region_id, place_id, place_kind, variable_id, obs_stat, unit_id, value_grain,
+             period_start, period_end, grain, input_grain, stat, value_zero, value_lod,
+             n, n_censored, n_not_detected, n_places, built_from, spec_version)
+           VALUES ('kanagawa', @placeId, 'site', 'common:variable:water.ss', 'mean', @unitId, 'day',
+                   '2030-01-01', '2030-12-31', 'year', 'day', 'mean', 1.0, 1.0, 1, 0, 0, 1, 'fixture:test', 'fixture@1')`,
+        )
+        .run({ placeId: fx.places.c, unitId: fx.units.mgPerL });
+
+      const compare = { key: ["alias"], numeric: ["n", "n_sites"], label: ["unit"] };
+      const rowsA = await runQuery(cubeA.db, "variable_catalog", {}, compare, "zero");
+      const rowsB = await runQuery(cubeB.db, "variable_catalog", {}, compare, "zero");
+      const ssA = rowsA.find((r) => r.key[0] === "浮遊物質量 SS");
+      const ssB = rowsB.find((r) => r.key[0] === "浮遊物質量 SS");
+      expect(ssA).toBeDefined();
+      expect(ssB).toBeDefined();
+      // cubeB の方が n が1つ多い（cubeA と同じ値を使い回していれば、ここが一致してしまう）。
+      expect(ssB!.numeric.n).toBe(Number(ssA!.numeric.n) + 1);
+    } finally {
+      cubeA.db.close();
+      cubeB.db.close();
     }
   });
 });

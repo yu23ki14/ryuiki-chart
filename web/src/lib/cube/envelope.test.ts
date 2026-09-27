@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { unitSymbol } from "@/lib/registry/lookup";
 import { buildCubeFixture, FX, type CubeFixture } from "./__fixtures__/cube-fixture";
-import { queryCells } from "./observation";
+import { queryCells, summarize } from "./observation";
 import type { CellRow, CellSpec } from "./observation";
-import { buildEnvelope } from "./envelope";
+import { buildEnvelope, buildZoneEnvelope } from "./envelope";
 
 /** `resolveProvenance` のテスト用に手で組み立てた `CellRow`（`queryCells` を経由しない。
  *  実データの `雪_最深 積雪`/`雪_最深積雪`〔同じ出典 jma_monthly_kanagawa の2 alias〕が
@@ -141,7 +141,7 @@ describe("buildEnvelope", () => {
     expect(env.provenance[0].n_rows).toBe(env.coverage.n_rows);
   });
 
-  it("excluded.reasons: 合成データを含む系列は synthetic_included を報告する", async () => {
+  it("excluded.reasons: PR-2 で撤去した synthetic_included はもう報告しない（D2。b03 が合成データを除くため）", async () => {
     const spec: CellSpec = {
       series: [FX.series.ssMean],
       scope: { kind: "site", siteId: FX.sites.a },
@@ -150,7 +150,24 @@ describe("buildEnvelope", () => {
     };
     const { rows } = await queryCells(fx.db, spec);
     const env = await buildEnvelope(fx.db, spec, rows);
-    expect(env.excluded.reasons).toContain("synthetic_included");
+    expect(env.excluded.reasons).toEqual([]);
+  });
+
+  it("imputation='both': columns に value_zero/value_lod を単位付きで両方持つ（value 列は無い）", async () => {
+    const spec: CellSpec = {
+      series: [FX.series.bodMean],
+      scope: { kind: "site", siteId: FX.sites.a },
+      grain: "day",
+      imputation: "both",
+    };
+    const { rows } = await queryCells(fx.db, spec);
+    const env = await buildEnvelope(fx.db, spec, rows);
+    expect(env.columns.map((c) => c.name)).toEqual(["place_id", "period_start", "value_zero", "value_lod"]);
+    const zeroCol = env.columns.find((c) => c.name === "value_zero")!;
+    const lodCol = env.columns.find((c) => c.name === "value_lod")!;
+    expect(zeroCol.unit).toBe(unitSymbol(FX.units.mgPerL));
+    expect(lodCol.unit).toBe(unitSymbol(FX.units.mgPerL));
+    expect(env.coverage.imputation).toBe("both");
   });
 
   it("opt.caveats をそのまま caveats に渡す（envelope.ts 自身は caveat の解決ロジックに依存しない）", async () => {
@@ -181,5 +198,47 @@ describe("buildEnvelope", () => {
     expect(env.coverage.n_rows).toBe(0);
     expect(env.coverage.period).toEqual({ start: null, end: null, grain: "day" });
     expect(env.provenance).toEqual([]);
+  });
+});
+
+describe("buildZoneEnvelope（ゾーン単位の封筒。Issue #48 PR-2 統合後修正A #4）", () => {
+  it("imputation='both' の summarize(...,'zone') 1回の結果を包む（envelope が null にならない）", async () => {
+    const spec: CellSpec = {
+      series: [FX.series.ssMean],
+      scope: { kind: "all_sites" },
+      grain: "day",
+      imputation: "both",
+    };
+    const { rows, truncated } = await summarize(fx.db, spec, "zone");
+    const env = await buildZoneEnvelope(fx.db, spec, rows, { truncated });
+
+    expect(env.columns.map((c) => c.name)).toEqual(["zone", "year", "value_zero", "value_lod"]);
+    const zeroCol = env.columns.find((c) => c.name === "value_zero")!;
+    expect(zeroCol.unit).toBe(unitSymbol(FX.units.mgPerL));
+    expect(env.coverage.n_rows).toBe(rows.length);
+    expect(env.coverage.n_places).toBe(new Set(rows.map((r) => r.zone)).size);
+    expect(env.coverage.imputation).toBe("both");
+    // fx_place_a の2日目（検閲）・3日目（不検出）がゾーン3の集計に含まれる。
+    const zone3 = rows.find((r) => r.zone === 3)!;
+    expect(zone3.nCensored).toBeGreaterThan(0);
+    // provenance は spec.series（atsugi の実出典）から解決する（行ごとではなく系列集合から）。
+    expect(env.provenance.length).toBeGreaterThan(0);
+    expect(env.provenance.every((p) => p.n_rows === rows.length)).toBe(true);
+  });
+
+  it("空の rows でも例外にならない", async () => {
+    const spec: CellSpec = {
+      series: [FX.series.ssMean],
+      scope: { kind: "site", siteId: "no-such-site" },
+      grain: "year",
+      imputation: "both",
+    };
+    const { rows } = await summarize(fx.db, spec, "zone");
+    expect(rows).toHaveLength(0);
+    const env = await buildZoneEnvelope(fx.db, spec, rows);
+    expect(env.coverage.n_rows).toBe(0);
+    expect(env.coverage.period).toEqual({ start: null, end: null, grain: "year" });
+    expect(env.provenance.length).toBeGreaterThan(0); // 系列自体は存在するので出典は列挙される
+    expect(env.provenance.every((p) => p.n_rows === 0)).toBe(true);
   });
 });

@@ -22,18 +22,27 @@ const header: ReportHeader = {
 describe("addClassification", () => {
   it("既知の規則ならその列を増やす", () => {
     const s = emptyQueryStats("q1");
-    addClassification(s, "declared");
-    addClassification(s, "declared");
-    addClassification(s, "rain_div10");
+    addClassification(s, new Set(["declared"]));
+    addClassification(s, new Set(["declared"]));
+    addClassification(s, new Set(["day_split"]));
     expect(s.declared).toBe(2);
-    expect(s.rain_div10).toBe(1);
+    expect(s.day_split).toBe(1);
     expect(s.unexplained).toBe(0);
   });
 
-  it("unexplained は専用の列", () => {
+  it("unexplained は空集合", () => {
     const s = emptyQueryStats("q1");
-    addClassification(s, "unexplained");
+    addClassification(s, new Set());
     expect(s.unexplained).toBe(1);
+  });
+
+  it("1つの diff が複数の系統にまたがるときは、それぞれの列を1回ずつ増やす（説明の鎖、design §1・§3）", () => {
+    const s = emptyQueryStats("q1");
+    addClassification(s, new Set(["declared", "synthetic_excluded", "lod_imputation"]));
+    expect(s.declared).toBe(1);
+    expect(s.synthetic_excluded).toBe(1);
+    expect(s.lod_imputation).toBe(1);
+    expect(s.unexplained).toBe(0);
   });
 });
 
@@ -44,8 +53,8 @@ describe("buildReportMarkdown/buildReportJson", () => {
     s1.rowsV1 = 100;
     s1.rowsV2 = 100;
     s1.matched = 95;
-    addClassification(s1, "declared");
-    addClassification(s1, "unexplained");
+    addClassification(s1, new Set(["declared"]));
+    addClassification(s1, new Set());
 
     const input = {
       header,
@@ -71,15 +80,29 @@ describe("buildReportMarkdown/buildReportJson", () => {
     expect(md).toContain("無し");
   });
 
+  it("imputation=lod のときだけ lod_moved の合計行を出す（design §3 の集計）", () => {
+    const s1 = emptyQueryStats("year_series_site_by_variable");
+    addClassification(s1, new Set(["lod_imputation"]));
+    addClassification(s1, new Set(["lod_imputation"]));
+
+    const lodHeader: ReportHeader = { ...header, imputation: "lod" };
+    const mdLod = buildReportMarkdown({ header: lodHeader, stats: [s1], unexplainedSamples: [], rottenDeclarations: [] });
+    expect(mdLod).toContain("lod_moved");
+    expect(mdLod).toContain("2");
+
+    const mdZero = buildReportMarkdown({ header, stats: [s1], unexplainedSamples: [], rottenDeclarations: [] });
+    expect(mdZero).not.toContain("lod_moved");
+  });
+
   it("変異結果があれば表を足す", () => {
     const md = buildReportMarkdown({
       header,
       stats: [],
       unexplainedSamples: [],
       rottenDeclarations: [],
-      mutationResults: [{ name: "rain_no_div10_rule", unexplained: 3105, caughtAsExpected: true }],
+      mutationResults: [{ name: "day_split_rule_off", unexplained: 3105, caughtAsExpected: true }],
     });
     expect(md).toContain("変異テスト");
-    expect(md).toContain("rain_no_div10_rule");
+    expect(md).toContain("day_split_rule_off");
   });
 });

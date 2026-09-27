@@ -210,7 +210,13 @@ place_kind・source_id・variable_theme。variable は予約のみ）を追加�
 
 ### PR-2 測定値系の切り替え（値が動く）
 
-状態: 未着手
+状態: 進行中（設計は `docs/plans/V2_SERVING_PR2.md`。U1b「レジストリ／注記／語彙」着手済み:
+`registry/caveat.yaml` に `censoredLod`/`unitUnknown` を新設し、`scripts/registry/build_caveat.py`
+が v2 facet `dataset=measurements`（censoredLod）・`variable`（unitUnknown、refs は
+`variable_alias.csv` の unit_id 空行から機械導出）を作るようにした。`censored`（v1 の
+table scope）の本文は変えていない。`generated-client.ts` に variable_id キーの
+`VARIABLE_LABEL` を新設。U1a「パイプライン」・U2「lib/cube＋Drizzle」・U3「画面/API/AI」・
+U4「serving-diff」は未着手）
 
 - **`scripts/b03_build_observation.py`/`scripts/b06_build_occurrence.py`（既存）で
   `is_synthetic=1` を除く**（合成データを出さない決定3）。**PR-0 からここに移した**

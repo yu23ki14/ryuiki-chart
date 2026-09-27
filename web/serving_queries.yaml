@@ -39,6 +39,15 @@ domains:
     values: [1, 2, 3, 4, 5]
   highlight_variant:
     values: [default, representative]
+  # `variable_id` は v1 に無い概念（registry 側の正準 ID）なので `registry.sqlite`
+  # に対して実行する（design §3 #2「by_variable」）。alias→variable_id の対応の
+  # 選定・代表フィルタは `web/scripts/lib/serving/merge-v1.ts` が持つ——ここは
+  # 単に「dataset='measurements' に属する variable_id の一覧」を列挙するだけ。
+  variable_id:
+    sql: "SELECT DISTINCT variable_id FROM variable_alias WHERE dataset = 'measurements' AND variable_id IS NOT NULL ORDER BY variable_id"
+    db: registry
+  basis:
+    values: [day, fiscal_year, year]
 
 queries:
   - id: variable_catalog
@@ -48,7 +57,7 @@ queries:
       key: [alias]
       numeric: [n, n_sites, y_from, y_to, n_daily, n_annual, n_censored]
       label: [unit]
-    known: [declared, unit_label_registry]
+    known: [declared, unit_label_registry, synthetic_excluded]
 
   - id: sites_list
     v1_table: null
@@ -57,7 +66,7 @@ queries:
       key: [site_id]
       numeric: [n_meas, n_var]
       label: []
-    known: []
+    known: [synthetic_excluded]
 
   - id: site_variables
     v1_table: site_var
@@ -69,7 +78,7 @@ queries:
       label: [unit]
     tolerance:
       avg: 1.0e-9
-    known: [declared, unit_label_registry]
+    known: [declared, unit_label_registry, synthetic_excluded, lod_imputation]
 
   - id: water_bodies
     v1_table: null
@@ -78,7 +87,7 @@ queries:
       key: [name]
       numeric: [n_sites, n_meas, y_from, y_to, elev_min, elev_max, zone_min, zone_max]
       label: []
-    known: []
+    known: [synthetic_excluded]
 
   - id: water_bodies_for_variable
     v1_table: null
@@ -88,7 +97,7 @@ queries:
       key: [name]
       numeric: [n_sites, n, y_from, y_to, elev_max]
       label: []
-    known: []
+    known: [synthetic_excluded]
 
   - id: sites_in_water_body
     v1_table: null
@@ -98,7 +107,7 @@ queries:
       key: [site_id]
       numeric: [n_meas, n_var]
       label: [municipality]
-    known: []
+    known: [synthetic_excluded]
 
   - id: year_series_site
     v1_table: meas_year
@@ -111,7 +120,7 @@ queries:
       key: [year]
       numeric: [n, avg, min, max, n_censored]
       label: [unit]
-    known: [declared, unit_label_registry]
+    known: [declared, unit_label_registry, synthetic_excluded, lod_imputation]
 
   - id: month_series_site
     v1_table: meas_month
@@ -125,7 +134,7 @@ queries:
       label: []
     tolerance:
       avg: 1.0e-9
-    known: [declared, float_rounding]
+    known: [declared, float_rounding, synthetic_excluded, lod_imputation]
 
   - id: day_series_site
     v1_table: meas_daily
@@ -137,7 +146,7 @@ queries:
       key: [d]
       numeric: [value, n_censored]
       label: []
-    known: [declared]
+    known: [declared, synthetic_excluded, lod_imputation]
 
   - id: year_series_water
     v1_table: meas_year
@@ -158,7 +167,7 @@ queries:
       key: [site_id, year]
       numeric: [n, avg, min, max, n_censored]
       label: [unit]
-    known: [declared, unit_label_registry]
+    known: [declared, unit_label_registry, synthetic_excluded, lod_imputation]
 
   - id: zone_series
     v1_table: zone_year
@@ -172,7 +181,7 @@ queries:
       label: [unit]
     tolerance:
       avg: 1.0e-9
-    known: [unit_label_registry]
+    known: [unit_label_registry, synthetic_excluded, lod_imputation]
 
   - id: climatology
     v1_table: meas_clim
@@ -185,7 +194,7 @@ queries:
       label: [unit]
     tolerance:
       avg: 1.0e-9
-    known: [declared, unit_label_registry, float_rounding]
+    known: [declared, unit_label_registry, float_rounding, synthetic_excluded, lod_imputation]
 
   - id: zone_climatology
     v1_table: zone_clim
@@ -198,17 +207,149 @@ queries:
       label: [unit]
     tolerance:
       avg: 1.0e-9
-    known: [unit_label_registry]
+    known: [unit_label_registry, synthetic_excluded, lod_imputation]
 
-  - id: rain_daily
-    v1_table: rain_daily
+  # ---------------------------------------------------------------------
+  # by_variable（design §3 #2「series_merge」）: alias→variable_id の束ね。
+  # v1 側は `web/scripts/lib/serving/merge-v1.ts`（registry の生ボキャブラリだけを
+  # 読む。`@/lib/cube` は import しない）で alias を代表 variable_id に束ね直し、
+  # v2 側は画面・AI と同じ `lib/cube` の公開関数（`representativeSeries`/
+  # `yearSeries`/`monthSeries`/`daySeries`/`summarize`/`catalog.*`）を呼ぶ
+  # （`adapters-v2.ts` 参照）。`v1_table` は無い（束ねた行を宣言済み差分の
+  # ベースラインと突き合わせる意味が無いため）。
+  # ---------------------------------------------------------------------
+
+  - id: variable_catalog_by_variable
+    v1_table: null
     params: {}
     compare:
-      key: [d]
-      numeric: [mm]
-      label: []
-    known: [rain_div10, day_split]
+      key: [variable_id]
+      numeric: [n, n_places, y_from, y_to, n_censored]
+      label: [unit]
+    # `declared`: `v1_table` が無いため `classify.ts` の `ctx.byVariableDeclared`
+    # 経由（`scripts/reconcile/expected_diffs.yaml` の `var_catalog` を、束ねる
+    # alias ごとに探す。Issue #48 PR-2 統合後 修正B）。
+    known: [declared, unit_label_registry, synthetic_excluded]
 
+  # `stat`（obs_stat）は key に含めない: v1 の alias 単位の表（site_var/meas_year）は
+  # obs_stat を持たず、alias レベルでも一意に決まらない（実測: 'pH' は出典によって
+  # point/mean が混在する）。variable_id×basis まで束ねる
+  # （`web/scripts/lib/serving/merge-v1.ts` の `aliasKindRoutes` docstring 参照）。
+  - id: site_variables_by_variable
+    v1_table: null
+    params:
+      site_id: { domain: site_id }
+    compare:
+      key: [variable_id, basis]
+      numeric: [n, y_from, y_to, avg]
+      label: [unit]
+    tolerance:
+      avg: 1.0e-9
+    # `declared`: `ctx.byVariableDeclared` 経由（`site_var`。Issue #48 PR-2 統合後 修正B）。
+    known: [declared, unit_label_registry, synthetic_excluded, lod_imputation]
+
+  - id: year_series_site_by_variable
+    v1_table: null
+    params:
+      variable_id: { domain: variable_id }
+      site_id: { domain: site_id }
+      basis: { domain: basis }
+    compare:
+      key: [year]
+      numeric: [n, avg, min, max, n_censored]
+      label: [unit]
+    # `declared`: `ctx.byVariableDeclared` 経由（`meas_year`。Issue #48 PR-2 code-review #8:
+    # 以前は BY_VARIABLE_DECLARED_SPECS に対応が無く、宣言済みの中津川 SS 由来9件が
+    # unexplained になっていた）。
+    known: [declared, unit_label_registry, synthetic_excluded, lod_imputation]
+
+  - id: month_series_site_by_variable
+    v1_table: null
+    params:
+      variable_id: { domain: variable_id }
+      site_id: { domain: site_id }
+    compare:
+      key: [ym]
+      numeric: [n, avg]
+      label: []
+    tolerance:
+      avg: 1.0e-9
+    # `declared`: `ctx.byVariableDeclared` 経由（`meas_month`。Issue #48 PR-2 統合後 修正B）。
+    known: [declared, float_rounding, synthetic_excluded, lod_imputation]
+
+  - id: day_series_site_by_variable
+    v1_table: null
+    params:
+      variable_id: { domain: variable_id }
+      site_id: { domain: site_id }
+    compare:
+      key: [d]
+      numeric: [value, n_censored]
+      label: []
+    # `declared`: `ctx.byVariableDeclared` 経由（`meas_daily`。Issue #48 PR-2 統合後 修正B）。
+    known: [declared, synthetic_excluded, lod_imputation]
+
+  - id: zone_series_by_variable
+    v1_table: null
+    params:
+      variable_id: { domain: variable_id }
+      basis: { domain: basis }
+    compare:
+      key: [zone, year]
+      numeric: [n_sites, n, avg]
+      label: [unit]
+    tolerance:
+      avg: 1.0e-9
+    known: [unit_label_registry, synthetic_excluded, lod_imputation]
+
+  - id: climatology_by_variable
+    v1_table: null
+    params:
+      variable_id: { domain: variable_id }
+    compare:
+      key: [month]
+      numeric: [n, avg, min, max]
+      label: [unit]
+    tolerance:
+      avg: 1.0e-9
+    # `declared`: `ctx.byVariableDeclared` 経由（`meas_clim`。Issue #48 PR-2 統合後 修正B）。
+    known: [declared, unit_label_registry, float_rounding, synthetic_excluded, lod_imputation]
+
+  - id: zone_climatology_by_variable
+    v1_table: null
+    params:
+      variable_id: { domain: variable_id }
+    compare:
+      key: [zone, month]
+      numeric: [n, avg]
+      label: [unit]
+    tolerance:
+      avg: 1.0e-9
+    known: [unit_label_registry, synthetic_excluded, lod_imputation]
+
+  - id: water_bodies_for_variable_by_variable
+    v1_table: null
+    params:
+      variable_id: { domain: variable_id }
+    compare:
+      key: [name]
+      numeric: [n_sites, n, y_from, y_to, elev_max]
+      label: []
+    known: [synthetic_excluded]
+
+  # `rain_daily`/`rain_top_days`（v1 `rainDaily`/`rainTopDays`）は `/api/timeseries
+  # ?mode=rain` 専用で、その API モード自体が読み手ゼロのため PR-2 で削除する
+  # （design D5）。`rain_monthly_clim` だけ残す——季節図（`mode=season`）が
+  # `rainMonthlyClim` を引き続き使い、日割り退役の検証対象として
+  # 唯一残る rain 系の問い合わせになる（U4 の判断。PR 本文で報告）。
+  # `rain_div10`（`/10` 撤去の検証規則）は known から外した: この問い合わせは
+  # 月次（`classifyDaySplitMonthly`）でしか判定しておらず、その再計算式が
+  # もともと `/10` の換算を含んだまま v1/v2 の実値と完全一致する——実測
+  # （`--only rain_monthly_clim --mutate rain_no_div10_rule`）で rain_div10 が
+  # 1件も選ばれない（day_split が全12ヶ月を先に説明する）ことを確認した。
+  # `rain_daily`/`rain_top_days`（rain_div10 が唯一 day_split と守備範囲を
+  # 分けて判定できていた問い合わせ）を削除した時点で、この問い合わせにおける
+  # rain_div10 は実質的な検証を持たない免除だった（Issue #48 PR-2 統合後 修正C）。
   - id: rain_monthly_clim
     v1_table: null
     params: {}
@@ -216,16 +357,7 @@ queries:
       key: [month]
       numeric: [mm]
       label: []
-    known: [rain_div10, day_split]
-
-  - id: rain_top_days
-    v1_table: null
-    params: {}
-    compare:
-      key: [rank]
-      numeric: [mm]
-      label: [d]
-    known: [rain_div10, day_split]
+    known: [day_split]
 
   - id: longitudinal_highlight
     v1_table: null
@@ -236,6 +368,8 @@ queries:
       numeric: [avg, n]
       label: [unit]
     # meas_year/sites の合成なので v1_table が無く、宣言済み差分の突き合わせ
-    # （キーの組み立て）先が無い。既知の系統は無し（unexplained になったら
-    # year_series_site/water 側の原因をそのまま引き継いでいる）。
-    known: []
+    # （キーの組み立て）先が無い（unexplained になったら year_series_site/water
+    # 側の原因をそのまま引き継いでいる）。home の①（境川 BOD）は合成データの
+    # 影響を受ける水域の1つ（津久井湖・相模川中流等。design 付録）で、lod にも
+    # 切り替わる（D6）。
+    known: [synthetic_excluded, lod_imputation]

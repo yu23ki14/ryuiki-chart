@@ -5,11 +5,46 @@
 
     .venv/bin/python3 scripts/b00_run_full_gate.py
 
-CLAUDE.md の実行順（r01 → b03→b04→b05、b06→b09→b07→b08、b10、b11、b12）で
-各スクリプトを引数無し（＝各スクリプト自身の既定パス）で呼び、最後に
-`scripts/b02_run_all_gates.py` を呼ぶ。**このスクリプト自身はデータの値を
-一切作らない**——各段のスクリプトを順に呼ぶだけの薄いオーケストレータで、
-検証・変換ロジックは1行も持たない。
+CLAUDE.md の実行順（r01 → b03→b04→b05、b06→b09→b07→b13→b08、b10、b11、b12、
+最後に Issue #48 PR-2 §1(d) の v1互換キューブ5段 b03→b04→b13→b05→b11）で各段の
+スクリプトを呼び（`PIPELINE_STEPS` の `args`——大半は既定パスのまま引数無し、
+v1互換キューブの5段だけ `--include-synthetic`/`--out`/`--cube-db` を渡す）、
+最後に `scripts/b02_run_all_gates.py` を呼ぶ。**このスクリプト自身はデータの
+値を一切作らない**——各段のスクリプトを順に呼ぶだけの薄いオーケストレータで、
+検証・変換ロジックは1行も持たない（唯一の例外が `data/db/v2.sqlite` →
+`data/db/v2_v1compat.sqlite` の複製——下段参照。これも変換ではなく複製）。
+
+v1互換キューブの段は、既定パスのまま書く2本目の b05（`--cube-db
+data/db/v2_v1compat.sqlite`、`--out` は渡さないため既定の
+`data/db/v1_projection.sqlite` に書く）が、その直前の素の b05 が書いた
+「合成データ除外後」の `v1_projection.sqlite` を「合成データを含む」内容で
+**意図的に上書きし**、続く2本目の b11（`--cube-db data/db/v2_v1compat.sqlite`、
+`--out` は渡さないため既定の `data/db/v1_projection_place.sqlite` に書く）が
+同様に `watershed_rollup` を上書きする——これにより最後の
+`b02_run_all_gates.py`（無変更）が実際には v1互換キューブ由来の内容を読み、
+v1（`derived.sqlite`）とそのまま一致する（`scripts/b03_build_observation.py`
+モジュール docstring「合成データを除く」節参照）。
+
+2本目の b05 の直前に挟む 2本目の b13（`--v2-db data/db/v2_v1compat.sqlite`）は、
+その直前の b04（`--out data/db/v2_v1compat.sqlite`）が差し替えた「合成データ込み」の
+`observation_agg` から `summary_variable_catalog`/`summary_place_variable` を作り直す
+（Issue #48 PR-2 統合後 修正B）。これが無いと、この2表は `v2.sqlite` を複製した
+時点の「合成データ除外後」の内容のまま残り、`serving-diff` の `--v1compat-db` 接続が
+`source:'summary'`（画面・API・AI と同じ既定）で読んだときに本番と同じ値しか返らず、
+`synthetic_excluded` 規則が summary 経由の問い合わせで機能しない
+（`web/scripts/lib/serving/adapters-v2.ts` の `runV2Query` docstring 参照）。
+
+2本目の b11 が `--cube-db` に必要とする `data/db/v2_v1compat.sqlite` は、
+`observation`/`observation_agg`（合成データ込み）だけでなく `occurrence`/
+`occurrence_place`/`occurrence_agg`（合成データの影響を受けない、通常の
+v2.sqlite のもの）も持つ必要がある——b11 の (b) 系譜チェック
+（`_assert_rollup_input_fingerprints_fresh`）が `site_var`（observation 系）と
+`org_watershed`（occurrence 系）の両方の系譜を、渡された **1つの** `--cube-db`
+に対して突き合わせるため。`v1compat 段の直前（b03 --include-synthetic の前）に
+`data/db/v2.sqlite`（この時点で observation/occurrence 両方のキューブが揃って
+いる）を丸ごと `data/db/v2_v1compat.sqlite` へ複製する——b03/b04
+（`migrate.common.staged_table`）は `observation`/`observation_agg` だけを
+差し替えるため、複製した `occurrence` 系のテーブルはそのまま残る。
 
 ## 証明の中身
 
@@ -34,6 +69,7 @@ import datetime
 import json
 import pathlib
 import platform
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -76,21 +112,95 @@ PIPELINE_EXPLICIT_FILES = (
     "web/package.json",
     "web/pnpm-lock.yaml",
 )
-PIPELINE_DIRS = ("scripts/registry", "scripts/migrate", "scripts/reconcile", "registry")
+# `aggregations`（Issue #48 PR-2 §4: `scripts/b13_build_summary.py` が読む
+# `aggregations/serving.yaml`）を追加。
+PIPELINE_DIRS = ("scripts/registry", "scripts/migrate", "scripts/reconcile", "registry", "aggregations")
 
-# CLAUDE.md の実行順（引数無し＝各スクリプトの既定パスをそのまま使う）。
-PIPELINE_STEPS = (
-    "scripts/r01_build_registry.py",
+# CLAUDE.md の実行順。各要素は `(script, args)`——`args` は素の `main()` 呼び出し
+# （引数無し＝既定パス）なら `()`（Issue #48 PR-2 §1・§4: v1互換キューブの3段
+# だけが追加の引数を持つため、全段を組にして揃えた）。
+PIPELINE_STEPS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("scripts/r01_build_registry.py", ()),
+    ("scripts/b03_build_observation.py", ()),
+    ("scripts/b04_build_cube.py", ()),
+    ("scripts/b05_project_v1.py", ()),
+    ("scripts/b06_build_occurrence.py", ()),
+    ("scripts/b09_build_occurrence_place.py", ()),
+    ("scripts/b07_build_occurrence_cube.py", ()),
+    # Issue #48 PR-2 §4: summary 2表（observation_agg から）。v1互換の
+    # 診断キューブより前——build:v2 と同じ相対順序（test_build_v2_script_order.py
+    # の部分列検証）に揃える。
+    ("scripts/b13_build_summary.py", ()),
+    ("scripts/b08_project_occurrence_v1.py", ()),
+    ("scripts/b10_project_documents_v1.py", ()),
+    ("scripts/b11_project_place_v1.py", ()),
+    ("scripts/b12_project_taxon_v1.py", ()),
+    # Issue #48 PR-2 §1(d): 診断専用の「v1互換キューブ」——b03 に
+    # `--include-synthetic` を渡し、合成データ込みで observation/
+    # observation_agg/v1_projection.sqlite を別ファイル
+    # （data/db/v2_v1compat.sqlite）に作り直す。b05 は `--out` を渡さない
+    # （既定のまま data/db/v1_projection.sqlite——上の素の b05 が書いた
+    # 「合成データ除外後」の内容を、ここで意図的に「合成データを含む」
+    # 内容で上書きする）。これにより、直後に呼ぶ b02_run_all_gates.py
+    # （無変更・既定のパスのまま）が実際には v1互換キューブ由来の
+    # v1_projection.sqlite を読み、v1（derived.sqlite、合成データを含む）と
+    # 一致する——b03 の合成データ除外という新しい差分を、宣言済み差分を
+    # 増やさずに説明する（scripts/b03_build_observation.py モジュール
+    # docstring「合成データを除く」節・PR-2 設計 §1）。
+    (
+        "scripts/b03_build_observation.py",
+        ("--include-synthetic", "--out", "data/db/v2_v1compat.sqlite"),
+    ),
+    (
+        "scripts/b04_build_cube.py",
+        (
+            "--out", "data/db/v2_v1compat.sqlite",
+            # 合成データを含む observation には、本番では既定除外により
+            # 消えた未解決の単位系列が残る（scripts/migrate/
+            # unit_evidence_declarations.yaml のコメント参照）。
+            "--unit-evidence-declarations-yaml",
+            "scripts/migrate/unit_evidence_declarations_v1compat.yaml",
+        ),
+    ),
+    # Issue #48 PR-2 統合後 修正B: summary 2表も合成データ込みの
+    # observation_agg から作り直す（`--v2-db data/db/v2_v1compat.sqlite`）。
+    # 上の b04 が直前で差し替えた observation_agg を読む（モジュール
+    # docstring「2本目の b13」節参照）。これが無いと serving-diff の
+    # `--v1compat-db` 接続が `source:'summary'` で本番と同じ値しか返さない。
+    ("scripts/b13_build_summary.py", ("--v2-db", "data/db/v2_v1compat.sqlite")),
+    ("scripts/b05_project_v1.py", ("--cube-db", "data/db/v2_v1compat.sqlite")),
+    # watershed_rollup（b11）は site_var（上の b05 が今書き換えた、合成データ
+    # 込みの v1_projection.sqlite）と org_watershed（v1_projection_occurrence.sqlite、
+    # 合成データの影響を受けない）を ATTACH して結合するだけの射影だが、
+    # 自分の (b) 系譜チェック（`_assert_rollup_input_fingerprints_fresh`）が
+    # `--cube-db` に ATTACH した v2.sqlite 相当の `observation_agg`/`occurrence`/
+    # `occurrence_place` の自己指紋と site_var/org_watershed の系譜を突き合わせる
+    # ため、既定の `--cube-db`（data/db/v2.sqlite、合成データ除外後）のままだと
+    # 「site_var は v2_v1compat.sqlite の observation_agg を消費したのに、
+    # 渡された cube_db は違う」で落ちる。v2_v1compat.sqlite を渡す必要がある——
+    # ただし v2_v1compat.sqlite は上の b03/b04 が `observation`/`observation_agg`
+    # だけを差し替えた（`migrate.common.staged_table` はそのテーブルにしか
+    # 触れない）ファイルなので、`occurrence`/`occurrence_place`/`occurrence_agg`
+    # を最初から持たせておく必要がある——`main()` がこの段の直前で
+    # `data/db/v2.sqlite` を丸ごと `data/db/v2_v1compat.sqlite` へ複製してから
+    # 上の b03 --include-synthetic を実行する（下の `_COPY_V2_FOR_V1COMPAT_BEFORE`
+    # 参照）。`--out` は渡さない（既定のまま data/db/v1_projection_place.sqlite——
+    # 素の b11（上の無引数の段）が書いた「合成データ除外後」の内容を、ここで
+    # 意図的に「合成データを含む」内容へ上書きする。b05 と同じ理由）。
+    ("scripts/b11_project_place_v1.py", ("--cube-db", "data/db/v2_v1compat.sqlite")),
+)
+
+# `main()` が PIPELINE_STEPS を順に実行する際、この段の**直前**に
+# `data/db/v2.sqlite`（この時点で観測・出現の両方のキューブが揃っている）を
+# 丸ごと `data/db/v2_v1compat.sqlite` へ複製する（`shutil.copy2`。上の
+# b11 のコメント参照）。`scripts/b03_build_observation.py --include-synthetic`
+# は `migrate.common.staged_table` で `observation` テーブルだけを差し替える
+# ため、複製した `occurrence`/`occurrence_place`/`occurrence_agg`
+# （合成データの影響を受けない）はそのまま残る——b11 の `--cube-db` 検証に
+# 両方（observation 系・occurrence 系）が要る。
+_COPY_V2_FOR_V1COMPAT_BEFORE = (
     "scripts/b03_build_observation.py",
-    "scripts/b04_build_cube.py",
-    "scripts/b05_project_v1.py",
-    "scripts/b06_build_occurrence.py",
-    "scripts/b09_build_occurrence_place.py",
-    "scripts/b07_build_occurrence_cube.py",
-    "scripts/b08_project_occurrence_v1.py",
-    "scripts/b10_project_documents_v1.py",
-    "scripts/b11_project_place_v1.py",
-    "scripts/b12_project_taxon_v1.py",
+    ("--include-synthetic", "--out", "data/db/v2_v1compat.sqlite"),
 )
 
 DEFAULT_PROJECTION_MANIFEST = ROOT / "scripts" / "reconcile" / "projection_manifest.yaml"
@@ -214,10 +324,19 @@ def main() -> int:
         )
     src_hashes = source_hashes()
 
-    for step in PIPELINE_STEPS:
-        result = _run([sys.executable, step])
+    for step, args in PIPELINE_STEPS:
+        if (step, args) == _COPY_V2_FOR_V1COMPAT_BEFORE:
+            # Issue #48 PR-2 §1(d)（`_COPY_V2_FOR_V1COMPAT_BEFORE` 定義のコメント・
+            # モジュール docstring 参照）: v1互換キューブの b11 が `occurrence`/
+            # `occurrence_place`/`occurrence_agg` も必要とするため、この段の
+            # b03 --include-synthetic を実行する前に v2.sqlite を丸ごと複製する。
+            v2_path = ROOT / "data" / "db" / "v2.sqlite"
+            v1compat_path = ROOT / "data" / "db" / "v2_v1compat.sqlite"
+            print(f"$ cp {v2_path} {v1compat_path}")
+            shutil.copy2(v2_path, v1compat_path)
+        result = _run([sys.executable, step, *args])
         if result.returncode != 0:
-            sys.exit(f"{step} が非0で終了した（{result.returncode}）。証明は書かない。")
+            sys.exit(f"{step} {' '.join(args)} が非0で終了した（{result.returncode}）。証明は書かない。")
 
     gate_out_md = ROOT / "reports" / "derived_reconciliation_all.md"
     gate_result = _run(

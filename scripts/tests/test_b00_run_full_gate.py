@@ -90,7 +90,9 @@ def test_collect_pipeline_paths_is_deterministic():
 # Python: パイプラインの入口から import を AST で再帰的にたどる
 # ---------------------------------------------------------------------------
 
-PYTHON_ENTRY_POINTS: tuple[str, ...] = tuple(b00.PIPELINE_STEPS) + (
+PYTHON_ENTRY_POINTS: tuple[str, ...] = tuple(
+    dict.fromkeys(script for script, _args in b00.PIPELINE_STEPS)
+) + (
     "scripts/b02_run_all_gates.py",
     "scripts/b00_run_full_gate.py",
 )

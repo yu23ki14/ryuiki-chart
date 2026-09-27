@@ -102,6 +102,9 @@ ADR-0007 の全列のうち埋まるのは次のとおり。
     列からの素の carry-over。`sensor_timeseries` にはこのうち `is_synthetic`
     しか対応する列が無いため、`quality_stage`/`source_ref`/`event_id` は
     `sensor_timeseries` 由来の行では常に NULL（新しい情報を捏造しない）。
+    **ただし `is_synthetic=1` の行は既定でここに来る前に除外する**（下の
+    「合成データを除く」節）ため、`observation.is_synthetic` は既定の実行では
+    常に 0（または NULL）。
 
 埋めない（理由）:
   - `observation_id` — Phase C の仕事。
@@ -117,6 +120,45 @@ ADR-0007 の全列のうち埋まるのは次のとおり。
   - `value_text` — どちらの出典も値は常に量的（`measurements` は検閲
     ありうる数量、`sensor_timeseries` は REAL の `result`）で、テキスト値を
     持つ観測が無い。
+
+## 合成データ（`is_synthetic=1`）を除く（Issue #48 PR-0 オーナー決定・PR-2 §1）
+
+合成データは本番に出さない。`measurements`（2,265行、`source_id IS NULL`）・
+`sensor_timeseries`（19,420行、`source_id='synthetic_sensor'`）の
+`is_synthetic=1` 行は `_process_row`（B-1）が `stats["total"]` を数えた直後、
+alias/place 解決や重複判定より前に、既定で弾く——`observation` には一切
+現れない（キューブの鍵に `source_id` を足す案は採らない。オーナー決定）。
+除外した行数は出典ごとに `stats["synthetic_excluded_count"]` に積み、
+`reports/phase_b_fact_slice.md` に出す。
+
+**`--include-synthetic`（既定 off）を渡すと、この除外を行わない。** 用途は
+診断専用の「v1互換キューブ」（PR-2 §1(d)。`data/db/v2_v1compat.sqlite` に
+`b03 --include-synthetic` → `b04` → `b05` の3段で作る、v1〔`derived.sqlite`〕と
+同じく合成データを含んだキューブ——`scripts/b02_run_all_gates.py`・
+serving-diff がこれと突き合わせることで、b03 の合成データ除外という新しい
+差分を「宣言済み差分を増やさずに」説明できる）専用で、**本番の `v2.sqlite`
+には絶対に使わない**。誤って本番へ書くことを防ぐため、`--include-synthetic`
+は既定の `--out`（`data/db/v2.sqlite`）を拒む（`main()` 参照）。同じ理由で
+`--report` を明示しない場合の既定の書き出し先も、コミット対象の
+`reports/phase_b_fact_slice.md` ではなく `DEFAULT_REPORT_INCLUDE_SYNTHETIC`
+（`data/db/phase_b_fact_slice_v1compat.md`。gitignore 済み）に切り替わる
+——さもないと `scripts/b00_run_full_gate.py`・CI の sample-gate が本番の b03
+の直後にこの診断段を回すたびに、本番のレポートが「合成データの除外 0件」
+の中身で上書きされてしまう（明示的に `--report reports/phase_b_fact_slice.md`
+を渡した場合は `_guard_include_synthetic_report` が拒む）。さらに
+`build_and_write_observation` は `pipeline_input_fingerprint` に
+`synthetic_included=1` の印を書く——`scripts/check_v2_fresh.py` はこの印が
+あるファイルを常に「古い」（`V2_CHECK_EXIT_STALE`）として扱う
+（`diff_v2_input_fingerprint` が「記録側にだけあるキー」として検出する。
+`compute_v2_input_fingerprint()` はこの印を計算しない——足すのは
+`--include-synthetic` のときだけの追加コンポーネントなので、通常実行の
+指紋と1ビットも変わらない）。
+
+v1 の派生33表（`derived.sqlite`、旧 JS パイプライン）は合成データを含んだ
+ままなので、既定（除外あり）の実行では `scripts/b02_run_all_gates.py` の
+突合ゲートで合成データ由来の差分が出る。この差分は上記の v1互換キューブ
+経由で説明する（ゲートを緑にするためにデータ・ラベルを曲げない。
+`docs/plans/PHASE_B_FACT_SLICE.md`「テスト・検証戦略」参照）。
 
 ## value_grain / period_grain の食い違い
 
@@ -180,6 +222,12 @@ DEFAULT_SOURCE_REGIONS_YAML = ROOT / "scripts" / "migrate" / "source_regions.yam
 DEFAULT_LANDUSE_CSV = ROOT / "data" / "processed" / "nlni_l03b_landuse_by_watershed.csv"
 DEFAULT_OUT = ROOT / "data" / "db" / "v2.sqlite"
 DEFAULT_REPORT = ROOT / "reports" / "phase_b_fact_slice.md"
+# `--include-synthetic`（診断専用の v1互換キューブ）が `--report` を明示しない
+# ときの既定の書き出し先。`DEFAULT_REPORT`（コミット対象のレポート）に
+# 「合成データの除外 0件」という診断用の中身で上書きされる事故を防ぐ
+# （`_guard_include_synthetic_report` 参照）。`data/*` は gitignore 済みなので
+# `data/db` に置く（`v2_v1compat.sqlite` と同じ置き場）。
+DEFAULT_REPORT_INCLUDE_SYNTHETIC = ROOT / "data" / "db" / "phase_b_fact_slice_v1compat.md"
 
 # P-1b（土地利用、docs/plans/PHASE_B_LANDUSE.md）。CSV の source_id 列は全行
 # この定数値（`data/processed/nlni_l03b_landuse_by_watershed.csv` を実測して
@@ -300,6 +348,7 @@ def _empty_stats(source_table: str) -> dict:
         "grain_mismatch_count": 0,
         "censoring_counts": {},
         "zero_imputed_count": 0,
+        "synthetic_excluded_count": 0,
     }
 
 
@@ -456,20 +505,37 @@ def _process_row(
     usage,
     time_conventions=None,
     time_usage=None,
+    is_synthetic=0,
+    include_synthetic=False,
 ):
     """1行ぶんの共通検証（B-1: `_ingest_measurements`/`_ingest_sensor_timeseries`
     が個別に持っていた「重複検出→alias解決→place解決→`compute_period`→grainの
     食い違い集計」を1つに集約したもの。重複判定は `_check_duplicate`、
     残りは `_resolve_and_compute_period` に委譲する——3出典目の土地利用
     〔`_ingest_landuse`〕は重複判定の形が違う〔業務キー・「1行→2行」〕ため
-    `_process_row` 自体は使わず、この2つの共有関数を直接呼ぶ）。
+    `_process_row` 自体は使わず、この2つの共有関数を直接呼ぶ。土地利用に
+    `is_synthetic` 相当の列は無いため `_process_row` は経由しない）。
 
-    行を捨てるべきとき（重複・alias/place 未解決・宣言に無い期間の食い違い）は
-    `None` を返す——呼び出し側はこの行を挿入せず次の行へ進む。それ以外は
-    `(period_grain, period_start, period_end)` を返す——呼び出し側が出典固有の
-    列（検閲の分類・挿入するタプル）を組み立てる。
+    行を捨てるべきとき（合成データ・重複・alias/place 未解決・宣言に無い期間の
+    食い違い）は `None` を返す——呼び出し側はこの行を挿入せず次の行へ進む。
+    それ以外は `(period_grain, period_start, period_end)` を返す——呼び出し側が
+    出典固有の列（検閲の分類・挿入するタプル）を組み立てる。
+
+    `is_synthetic == 1` の行は、`include_synthetic`（既定 False）が偽なら
+    重複判定・alias/place 解決より前に弾く（Issue #48 PR-0 オーナー決定:
+    合成データは本番に出さない。モジュール docstring「合成データを除く」節・
+    `--include-synthetic` 参照）。`stats["total"]` には合成データも含めて
+    数える（出典の生の行数を報告するため）——除外した件数は別途
+    `stats["synthetic_excluded_count"]` に積む。`include_synthetic` が真の
+    ときは弾かず、通常どおり重複判定・alias/place 解決へ進む（診断用の
+    v1互換キューブ専用。`synthetic_excluded_count` は積まない——実際には
+    除外していないため）。
     """
     stats["total"] += 1
+
+    if is_synthetic == 1 and not include_synthetic:
+        stats["synthetic_excluded_count"] += 1
+        return None
 
     if _check_duplicate(stats, seen_ids, row_id):
         return None
@@ -484,7 +550,10 @@ def _process_row(
     )
 
 
-def _ingest_measurements(work: sqlite3.Connection, dest: sqlite3.Connection, insert_table: str, exceptions, usage) -> dict:
+def _ingest_measurements(
+    work: sqlite3.Connection, dest: sqlite3.Connection, insert_table: str, exceptions, usage,
+    include_synthetic=False,
+) -> dict:
     """`measurements` を1行ずつ読み、`insert_table`（作業用テーブル。
     `migrate.common.staged_table` が返す名前）へ `executemany` でストリーム
     挿入する（C-5）。共通の行検証は `_process_row`（B-1）。出典固有なのは
@@ -493,6 +562,9 @@ def _ingest_measurements(work: sqlite3.Connection, dest: sqlite3.Connection, ins
     `dest` へのコミットは呼び出し側（`build_and_write_observation`）の
     責務——ここでは `executemany` するだけで `commit()` を呼ばない（出典ごとに
     1トランザクションにするため。モジュール docstring 参照）。
+
+    `include_synthetic`（既定 False）は `_process_row` にそのまま渡す
+    （Issue #48 PR-2 §1、`--include-synthetic` 参照）。
     """
     stats = _empty_stats("measurements")
     seen_ids: set[str] = set()
@@ -510,6 +582,7 @@ def _ingest_measurements(work: sqlite3.Connection, dest: sqlite3.Connection, ins
             result = _process_row(
                 stats, seen_ids, measurement_id, variable, source_id, site_id,
                 measured_on, value_grain, variable_id, place_id, exceptions, usage,
+                is_synthetic=is_synthetic, include_synthetic=include_synthetic,
             )
             if result is None:
                 continue
@@ -536,12 +609,15 @@ def _ingest_measurements(work: sqlite3.Connection, dest: sqlite3.Connection, ins
 
 def _ingest_sensor_timeseries(
     work: sqlite3.Connection, dest: sqlite3.Connection, insert_table: str, exceptions, usage,
-    time_conventions, time_usage,
+    time_conventions, time_usage, include_synthetic=False,
 ) -> dict:
     """`sensor_timeseries` を1行ずつ読み、`insert_table` へストリーム挿入する
     （`_ingest_measurements` と対になる関数。検閲が無いこと・
     `time_conventions`/`time_usage` を `_process_row` に渡すことが違い。
     alias/place の解決・重複検出・期間計算の呼び出し方はそのまま共有——B-1）。
+
+    `include_synthetic`（既定 False）は `_process_row` にそのまま渡す
+    （Issue #48 PR-2 §1、`--include-synthetic` 参照）。
     """
     stats = _empty_stats("sensor_timeseries")
     seen_ids: set[str] = set()
@@ -560,6 +636,7 @@ def _ingest_sensor_timeseries(
                 stats, seen_ids, row_id_str, datastream, source_id, site_id,
                 phenomenon_time, value_grain, variable_id, place_id, exceptions, usage,
                 time_conventions, time_usage,
+                is_synthetic=is_synthetic, include_synthetic=include_synthetic,
             )
             if processed is None:
                 continue
@@ -781,6 +858,7 @@ def build_and_write_observation(
     source_regions_yaml=DEFAULT_SOURCE_REGIONS_YAML,
     landuse_csv=DEFAULT_LANDUSE_CSV,
     count_overlay_by_file: dict[str, dict[str, int]] | None = None,
+    include_synthetic: bool = False,
 ) -> dict[str, dict]:
     """`observation` を構築し、`out_path` の `observation` テーブルに書き込む
     （`out_path` の他のテーブルは触らない。モジュール docstring 参照）。
@@ -799,6 +877,13 @@ def build_and_write_observation(
     `build_observation()` を使う——コードレビュー指摘10: 以前は `None` 番兵に
     してテストからの monkeypatch を前提にした設計だったが、本番の `main()`
     はこの2引数を常に明示的に渡すため、その経路が実質テストされていなかった）。
+
+    `include_synthetic`（既定 False。Issue #48 PR-2 §1、モジュール
+    docstring「合成データを除く」節）: 真なら `measurements`/
+    `sensor_timeseries` の `is_synthetic=1` 行も除外せず取り込み、
+    `pipeline_input_fingerprint` に `synthetic_included=1` の印を書く
+    （診断専用の v1互換キューブ以外では使わないこと——`main()` が既定の
+    `--out` を拒むガードを持つ）。
     """
     # `count_overlay_by_file`（既定 None）は Issue #29「縮小サンプル」用——
     # `--count-overlay` を渡さない本番の実行では常に None のまま、各 `.get()`
@@ -828,11 +913,16 @@ def build_and_write_observation(
     # "sensor_timeseries":` 分岐ではなく、ここで `functools.partial` に
     # 持たせる。呼び出し側はどちらの出典でも同じ形（`ingest(work, dest,
     # staging)`）で呼べる。
+    # `include_synthetic` は `measurements`/`sensor_timeseries` の2出典だけに
+    # 渡す——土地利用（`_ingest_landuse`）に `is_synthetic` 相当の列は無い
+    # （モジュール docstring「合成データを除く」節参照）。
     ingest_funcs = {
-        "measurements": functools.partial(_ingest_measurements, exceptions=exceptions, usage=usage),
+        "measurements": functools.partial(
+            _ingest_measurements, exceptions=exceptions, usage=usage, include_synthetic=include_synthetic,
+        ),
         "sensor_timeseries": functools.partial(
             _ingest_sensor_timeseries, exceptions=exceptions, usage=usage,
-            time_conventions=time_conventions, time_usage=time_usage,
+            time_conventions=time_conventions, time_usage=time_usage, include_synthetic=include_synthetic,
         ),
         LANDUSE_SOURCE_ID: functools.partial(
             _ingest_landuse, exceptions=exceptions, usage=usage,
@@ -950,9 +1040,16 @@ def build_and_write_observation(
         # コードの中身」と「今の入力・コードの中身」を比べて鮮度判定するための
         # 記録（`pipeline_fingerprint.inputs` の系譜とは別の表。
         # `common.record_v2_input_fingerprint` の docstring 参照）。
-        common.record_v2_input_fingerprint(
-            dest, common.compute_v2_input_fingerprint(ryuiki_db=ryuiki_db, registry_db=registry_db),
-        )
+        fingerprint_components = common.compute_v2_input_fingerprint(ryuiki_db=ryuiki_db, registry_db=registry_db)
+        if include_synthetic:
+            # Issue #48 PR-2 §1: 診断用の v1互換キューブ専用の印。
+            # `compute_v2_input_fingerprint()` はこのキーを計算しない
+            # （既定の実行では絶対に足さない）ため、`check_v2_fresh.py` の
+            # `diff_v2_input_fingerprint` は「記録側にだけこのキーがある」
+            # という食い違いとして必ず検出し、このファイルを古い扱いにする
+            # （モジュール docstring「合成データを除く」節参照）。
+            fingerprint_components = {**fingerprint_components, "synthetic_included": "1"}
+        common.record_v2_input_fingerprint(dest, fingerprint_components)
         dest.commit()
     except BaseException:
         dest.close()
@@ -993,6 +1090,12 @@ def render_report(all_stats: dict[str, dict]) -> str:
     a(f"- `observation` 総行数: **{total_obs:,}**（出典ごとの 入力行数→observation行数: {breakdown}。"
       "土地利用だけ CSV の1行が面積・セル数の2 observation 行になるため、"
       "入力行数と observation 行数が1:1にならない）")
+    total_synthetic_excluded = sum(s["synthetic_excluded_count"] for s in all_stats.values())
+    a(
+        f"- 合成データ（`is_synthetic=1`）を除外した行数（出典合計）: "
+        f"**{total_synthetic_excluded:,}**（Issue #48 PR-0 オーナー決定。`--include-synthetic` を"
+        "渡した診断専用の実行では 0 のまま——除外していないため。内訳は出典ごとの節を参照）"
+    )
     a("")
 
     for source_table in ("measurements", "sensor_timeseries", LANDUSE_SOURCE_ID):
@@ -1002,6 +1105,18 @@ def render_report(all_stats: dict[str, dict]) -> str:
         a(f"## 出典: `{source_table}`")
         a("")
         a(f"- `{source_table}` 総行数: **{stats['total']:,}**")
+        if source_table != LANDUSE_SOURCE_ID:
+            # Issue #48 PR-0 オーナー決定: 合成データ（is_synthetic=1）は既定で
+            # 本番に出さない。alias/place 解決の前に弾くため、解決率の分母は
+            # 「合成データを除いた行数」にする（そうしないと合成データの除外が
+            # 「未解決」に見えてしまう）。土地利用に is_synthetic 相当の列は無い
+            # （常に0。_ingest_landuse 参照）ため、このブロックは対象外。
+            a(
+                f"- 合成データ（`is_synthetic=1`）を除外した行数: "
+                f"**{stats['synthetic_excluded_count']:,}**"
+                "（既定で本番に出さない。Issue #48 PR-0 オーナー決定。"
+                "alias/place 解決の前に弾くため、下の解決率には含めない）"
+            )
         a(f"- `observation` 行数: **{stats['n_observation']:,}**")
         if source_table == LANDUSE_SOURCE_ID:
             # 土地利用は1行（watershed×year×landuse_code）から面積・セル数の
@@ -1014,14 +1129,16 @@ def render_report(all_stats: dict[str, dict]) -> str:
                 "このレポート自体が作られず b03 が例外で止まる）"
             )
         else:
+            resolvable = stats["total"] - stats["synthetic_excluded_count"]
             a(
                 "- alias（variable_alias）解決率: "
-                f"{stats['n_observation']:,} / {stats['total']:,} "
-                "（全行解決。1行でも未解決なら、このレポート自体が作られず b03 が例外で止まる）"
+                f"{stats['n_observation']:,} / {resolvable:,} "
+                "（合成データを除いた行のうち。全行解決。1行でも未解決なら、"
+                "このレポート自体が作られず b03 が例外で止まる）"
             )
             a(
                 "- place（place_source_ref）解決率: "
-                f"{stats['n_observation']:,} / {stats['total']:,} "
+                f"{stats['n_observation']:,} / {resolvable:,} "
                 "（同上。全行解決）"
             )
         a("")
@@ -1062,6 +1179,43 @@ def render_report(all_stats: dict[str, dict]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _guard_include_synthetic_out(include_synthetic: bool, out: str) -> None:
+    """Issue #48 PR-2 §1: `--include-synthetic` は既定の `--out`
+    （`data/db/v2.sqlite`）を拒む——診断専用の v1互換キューブ用のフラグを、
+    誤って本番の v2.sqlite に使ってしまう事故を防ぐ（モジュール docstring
+    「合成データを除く」節）。`main()` から呼ぶ——`argparse.Namespace` 全体
+    ではなく2つのスカラ引数だけを受け取ることで、DB を一切開かずに
+    単体テストできる（`scripts/tests/test_b03_build_observation.py`）。
+    """
+    if include_synthetic and out == str(DEFAULT_OUT):
+        sys.exit(
+            f"--include-synthetic は既定の --out（{DEFAULT_OUT}）には書けない。"
+            "診断専用の別ファイル（例: data/db/v2_v1compat.sqlite）を --out で明示すること"
+            "（本番の v2.sqlite に合成データを紛れ込ませないためのガード）。"
+        )
+
+
+def _guard_include_synthetic_report(include_synthetic: bool, report: str) -> None:
+    """`--include-synthetic` は既定の `--report`（`reports/phase_b_fact_slice.md`。
+    コミット対象のレポート）を明示的には拒む——`_guard_include_synthetic_out`
+    と同じ事故（診断専用の v1互換キューブ用の実行が、本番のレポートを
+    「合成データの除外 0件」という診断用の中身で上書きしてしまう）を防ぐ。
+    `--report` を明示しない場合はそもそも `main()` が既定の書き出し先を
+    `DEFAULT_REPORT_INCLUDE_SYNTHETIC` に切り替えるのでここには来ない
+    （`scripts/b00_run_full_gate.py` の診断段はこちら）。`main()` から、
+    その解決後の実際の書き出し先で呼ぶ——`argparse.Namespace` 全体では
+    なく2つのスカラ引数だけを受け取ることで、DB を一切開かずに単体
+    テストできる（`_guard_include_synthetic_out` と同じ流儀）。
+    """
+    if include_synthetic and report == str(DEFAULT_REPORT):
+        sys.exit(
+            f"--include-synthetic は既定の --report（{DEFAULT_REPORT}）には明示的に書けない。"
+            f"診断専用の別ファイル（既定は {DEFAULT_REPORT_INCLUDE_SYNTHETIC}。"
+            "--report を省略すれば自動的にそちらへ書く）を使うこと"
+            "（本番のレポートに合成データ込みの中身を紛れ込ませないためのガード）。"
+        )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -1076,7 +1230,13 @@ def main() -> None:
     parser.add_argument("--exceptions-yaml", default=str(DEFAULT_EXCEPTIONS_YAML))
     parser.add_argument("--time-conventions-yaml", default=str(DEFAULT_TIME_LABEL_CONVENTIONS_YAML))
     parser.add_argument("--out", default=str(DEFAULT_OUT))
-    parser.add_argument("--report", default=str(DEFAULT_REPORT))
+    parser.add_argument(
+        "--report", default=None,
+        help=f"既定は {DEFAULT_REPORT}。ただし --include-synthetic のときは"
+        f"（明示しない限り）{DEFAULT_REPORT_INCLUDE_SYNTHETIC} に切り替わる"
+        "（コミット対象のレポートを診断用の中身で上書きしないため。下の"
+        "_guard_include_synthetic_report 参照）。",
+    )
     parser.add_argument(
         "--source-regions-yaml", default=str(DEFAULT_SOURCE_REGIONS_YAML),
         help="土地利用（consumer='observation'）の region 宣言（P-1b）",
@@ -1090,12 +1250,32 @@ def main() -> None:
         help="data/sample/declaration_counts.yaml のようなファイル。既定は使わない（本番の実行では"
         "常に None のまま、正本の expected_row_count で検証する。Issue #29「縮小サンプル」）",
     )
+    parser.add_argument(
+        "--include-synthetic", action="store_true",
+        help="合成データ（is_synthetic=1）を除外せず observation に含める（既定 off）。診断専用の"
+        "v1互換キューブ（Issue #48 PR-2 §1）専用——本番の既定 --out には書けない（下のガード参照）。"
+        "モジュール docstring「合成データを除く」節参照。",
+    )
     args = parser.parse_args()
 
     # `--out` を `sqlite3.connect` で直接開く（`fresh_sqlite` を経由しない）ため、
     # ここで個別に検査する（`scripts/migrate/common.py` の
     # `reject_protected_source_db` の docstring 参照）。
     common.reject_protected_source_db(pathlib.Path(args.out))
+
+    _guard_include_synthetic_out(args.include_synthetic, args.out)
+
+    # `--report` を明示しなかった場合の既定は `--include-synthetic` の有無で
+    # 変わる（コミット対象のレポートを診断用の中身で上書きしないため）。
+    # 明示された場合はそのまま使うが、それが既定のコミット対象レポートと
+    # `--include-synthetic` の組み合わせなら拒む。
+    if args.report is not None:
+        report = args.report
+    elif args.include_synthetic:
+        report = str(DEFAULT_REPORT_INCLUDE_SYNTHETIC)
+    else:
+        report = str(DEFAULT_REPORT)
+    _guard_include_synthetic_report(args.include_synthetic, report)
 
     registry_db = common.resolve_registry_db(args.registry_db, DEFAULT_REGISTRY_DB)
 
@@ -1108,19 +1288,26 @@ def main() -> None:
         ("period_exceptions.yaml", "time_label_conventions.yaml", "source_regions.yaml"),
     )
 
+    if args.include_synthetic:
+        print("▶ --include-synthetic: 合成データ（is_synthetic=1）を除外せず取り込む（診断専用）")
+
     with common.timed_step("observation を構築して書き出し") as info:
         all_stats = build_and_write_observation(
             args.ryuiki_db, registry_db, args.exceptions_yaml, args.time_conventions_yaml, args.out,
             args.source_regions_yaml, args.landuse_csv, count_overlay_by_file,
+            include_synthetic=args.include_synthetic,
         )
         info["n"] = sum(s["n_observation"] for s in all_stats.values())
 
-    report_path = pathlib.Path(args.report)
+    report_path = pathlib.Path(report)
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(render_report(all_stats), encoding="utf-8")
     print(f"→ {report_path}")
     for source_table, stats in sorted(all_stats.items()):
-        print(f"  {source_table}: {stats['n_observation']:,}行")
+        print(
+            f"  {source_table}: {stats['n_observation']:,}行"
+            + (f"（合成データ除外 {stats['synthetic_excluded_count']:,}）" if stats["synthetic_excluded_count"] else "")
+        )
 
 
 if __name__ == "__main__":

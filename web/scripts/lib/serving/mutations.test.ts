@@ -12,6 +12,7 @@ import {
   applyRowMutation,
   isClassifyMutation,
   isRowMutation,
+  isV1Mutation,
   rowMutationAppliesTo,
 } from "./mutations";
 
@@ -20,11 +21,11 @@ function unexplainedCount(v1: NormRow[], v2: NormRow[], ctx: Partial<ClassifyCon
     expected: {},
     declared: { v1Table: null, builder: null },
     params: {},
-    known: new Set(["declared", "rain_div10", "day_split", "unit_label_registry", "float_rounding"]),
+    known: new Set(["declared", "day_split", "unit_label_registry", "float_rounding"]),
     ...ctx,
   };
   const diffs = compareRuns(rowsByKey(v1), rowsByKey(v2));
-  return diffs.map((d) => classifyDiff(d, full)).filter((c) => c.rule === "unexplained").length;
+  return diffs.map((d) => classifyDiff(d, full)).filter((c) => c.rules.size === 0).length;
 }
 
 describe("行変異は unexplained > 0 で必ず落ちる", () => {
@@ -38,6 +39,22 @@ describe("行変異は unexplained > 0 で必ず落ちる", () => {
     const v2raw = toNormRows([{ y: 2020, n_censored: 3, avg: 1.0 }], ["y"], ["n_censored", "avg"], []);
     const mutated = applyRowMutation("lod_instead_of_zero", "year_series_site", v2raw);
     expect(unexplainedCount(v1, mutated)).toBeGreaterThan(0);
+  });
+
+  it("lod_instead_of_zero: synthetic_excluded/lod_imputation が有効な現実的な known でも拾われる（Issue #48 PR-2 統合後 修正C。実データでは synthetic_excluded に飲み込まれ NG だった）", () => {
+    const v1 = toNormRows([{ y: 2020, n_censored: 3, avg: 1.0 }], ["y"], ["n_censored", "avg"], []);
+    const v2raw = toNormRows([{ y: 2020, n_censored: 3, avg: 1.0 }], ["y"], ["n_censored", "avg"], []);
+    const v2TrueByKey = rowsByKey(v2raw); // 行変異を当てる前の、本当の v2 の値（v1と一致）
+    const v2Compat = rowsByKey(toNormRows([{ y: 2020, n_censored: 3, avg: 1.0 }], ["y"], ["n_censored", "avg"], []));
+    const mutated = applyRowMutation("lod_instead_of_zero", "year_series_site", v2raw);
+    expect(
+      unexplainedCount(v1, mutated, {
+        known: new Set(["declared", "synthetic_excluded", "lod_imputation"]),
+        v2CompatByKey: v2Compat,
+        v2TrueByKey,
+        v2TrueZeroByKey: v2Compat, // この地点は合成データの影響が無い
+      }),
+    ).toBeGreaterThan(0);
   });
 
   it("lod_instead_of_zero: 検閲されていないセルはそもそも変わらない（no-op）", () => {
@@ -72,6 +89,24 @@ describe("行変異は unexplained > 0 で必ず落ちる", () => {
     );
     const mutated = applyRowMutation("swap_kind", "year_series_site", v1);
     expect(unexplainedCount(v1, mutated)).toBeGreaterThan(0);
+  });
+
+  it("swap_kind: synthetic_excluded が有効な現実的な known でも拾われる（Issue #48 PR-2 統合後 修正C。実データでは210地点・45,335件が synthetic_excluded に飲み込まれ NG だった）", () => {
+    const v1raw = [
+      { y: 1, n: 10 },
+      { y: 2, n: 20 },
+    ];
+    const v1 = toNormRows(v1raw, ["y"], ["n"], []);
+    const v2TrueByKey = rowsByKey(toNormRows(v1raw, ["y"], ["n"], [])); // 行変異前は v1 と一致（合成の影響も無い）
+    const v2Compat = rowsByKey(toNormRows(v1raw, ["y"], ["n"], []));
+    const mutated = applyRowMutation("swap_kind", "year_series_site", toNormRows(v1raw, ["y"], ["n"], []));
+    expect(
+      unexplainedCount(v1, mutated, {
+        known: new Set(["declared", "synthetic_excluded"]),
+        v2CompatByKey: v2Compat,
+        v2TrueByKey,
+      }),
+    ).toBeGreaterThan(0);
   });
 
   it("swap_kind: 無関係な問い合わせには効かない（no-op）", () => {
@@ -112,11 +147,9 @@ describe("行変異は unexplained > 0 で必ず落ちる", () => {
 });
 
 describe("分類器変異", () => {
-  it("rain_no_div10_rule は rain_div10 を無効化する", () => {
-    const opts = applyClassifyMutation("rain_no_div10_rule");
-    const v1 = toNormRows([{ d: "2020-01-01", mm: 1.23 }], ["d"], ["mm"], []);
-    const v2 = toNormRows([{ d: "2020-01-01", mm: 12.3 }], ["d"], ["mm"], []);
-    expect(unexplainedCount(v1, v2, { disabledRules: opts.disabledRules })).toBeGreaterThan(0);
+  it("rain_no_div10_rule / rain_div10 は撤去済み（Issue #48 PR-2 統合後 修正C: rain_monthly_clim では day_split が全件を先に説明し、rain_div10 は実質的な検証を持たなかった）", () => {
+    expect(ALL_MUTATION_NAMES).not.toContain("rain_no_div10_rule");
+    expect(() => applyClassifyMutation("rain_no_div10_rule" as never)).toThrow();
   });
 
   it("day_split_rule_off は day_split を無効化する", () => {
@@ -124,6 +157,52 @@ describe("分類器変異", () => {
     const v1 = toNormRows([{ d: "2020-01-01", mm: 1 }], ["d"], ["mm"], []);
     const v2 = toNormRows([], ["d"], ["mm"], []);
     expect(unexplainedCount(v1, v2, { disabledRules: opts.disabledRules })).toBeGreaterThan(0);
+  });
+
+  it("synthetic_rule_off は synthetic_excluded を無効化する", () => {
+    const opts = applyClassifyMutation("synthetic_rule_off");
+    const v1 = toNormRows([{ y: 1, n: 5 }], ["y"], ["n"], []);
+    const v2 = toNormRows([], ["y"], ["n"], []);
+    const v2Compat = rowsByKey(toNormRows([{ y: 1, n: 5 }], ["y"], ["n"], []));
+    expect(
+      unexplainedCount(v1, v2, {
+        known: new Set(["synthetic_excluded"]),
+        disabledRules: opts.disabledRules,
+        v2CompatByKey: v2Compat,
+      }),
+    ).toBeGreaterThan(0);
+  });
+
+  it("lod_rule_off は lod_imputation を無効化する", () => {
+    const opts = applyClassifyMutation("lod_rule_off");
+    const v1 = toNormRows([{ y: 1, avg: 1.0, n_censored: 3 }], ["y"], ["avg", "n_censored"], []);
+    const v2 = toNormRows([{ y: 1, avg: 1.5, n_censored: 3 }], ["y"], ["avg", "n_censored"], []);
+    const v2Zero = rowsByKey(toNormRows([{ y: 1, avg: 1.0, n_censored: 3 }], ["y"], ["avg", "n_censored"], []));
+    expect(
+      unexplainedCount(v1, v2, {
+        known: new Set(["lod_imputation"]),
+        disabledRules: opts.disabledRules,
+        v2ZeroByKey: v2Zero,
+      }),
+    ).toBeGreaterThan(0);
+  });
+
+  it("lod_rule_off: synthetic_excluded が有効な現実的な known でも、合成データの影響が無い地点なら肩代わりせず拾われる（Issue #48 PR-2 統合後 修正C。実データでは NG だった）", () => {
+    const opts = applyClassifyMutation("lod_rule_off");
+    const v1 = toNormRows([{ y: 1, avg: 1.0, n_censored: 3 }], ["y"], ["avg", "n_censored"], []);
+    const v2 = toNormRows([{ y: 1, avg: 1.5, n_censored: 3 }], ["y"], ["avg", "n_censored"], []);
+    // compat（合成込み・zero）はこの地点では合成の影響が無いので、真のzero値と同じ。
+    const v2Compat = rowsByKey(toNormRows([{ y: 1, avg: 1.0, n_censored: 3 }], ["y"], ["avg", "n_censored"], []));
+    const v2Zero = rowsByKey(toNormRows([{ y: 1, avg: 1.0, n_censored: 3 }], ["y"], ["avg", "n_censored"], []));
+    expect(
+      unexplainedCount(v1, v2, {
+        known: new Set(["declared", "synthetic_excluded", "lod_imputation"]),
+        disabledRules: opts.disabledRules,
+        v2CompatByKey: v2Compat,
+        v2ZeroByKey: v2Zero,
+        v2TrueZeroByKey: v2Zero,
+      }),
+    ).toBeGreaterThan(0);
   });
 
   it("declared_rot は指定した宣言を無視させる（腐りとして検出できる）", () => {
@@ -144,7 +223,7 @@ describe("分類器変異", () => {
       declaredRot: opts.declaredRot,
     };
     const results = diffs.map((d) => classifyDiff(d, ctx));
-    expect(results.every((r) => r.rule === "unexplained")).toBe(true);
+    expect(results.every((r) => r.rules.size === 0)).toBe(true);
 
     // 腐り検出: 何も matched に記録しない状態で findRottenDeclarations を呼べば
     // その宣言が腐って見える。
@@ -156,9 +235,16 @@ describe("分類器変異", () => {
     expect(() => applyClassifyMutation("declared_rot")).toThrow();
   });
 
-  it("isClassifyMutation/isRowMutation は互いに排他", () => {
+  it("isRowMutation/isClassifyMutation/isV1Mutation は互いに排他（どれか1つだけに属する）", () => {
     for (const name of ALL_MUTATION_NAMES) {
-      expect(isRowMutation(name) !== isClassifyMutation(name)).toBe(true);
+      const flags = [isRowMutation(name), isClassifyMutation(name), isV1Mutation(name)];
+      expect(flags.filter(Boolean)).toHaveLength(1);
     }
+  });
+
+  it("merge_rule_off は V1 変異（v1 側の束ねを止める。design §8.1 U4）", () => {
+    expect(isV1Mutation("merge_rule_off")).toBe(true);
+    expect(isRowMutation("merge_rule_off")).toBe(false);
+    expect(isClassifyMutation("merge_rule_off")).toBe(false);
   });
 });

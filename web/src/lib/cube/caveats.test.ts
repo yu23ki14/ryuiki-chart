@@ -26,6 +26,17 @@ import type { Scope } from "./sql";
  * organismSite 以外の4件（effort/regimes/gbifCutoff/share）も一緒に付いてしまう
  * （`build_caveat.py` のコメント参照）。この非対称は既知・意図どおりで、ここでは
  * 検証しない。
+ *
+ * **`censored`→`censoredLod`（Issue #48 PR-2、U1b、docs/plans/V2_SERVING_PR2.md §6・
+ * ADR-0009 決定4）**: v1 の `censored`（zero 系列を名指しした本文）は `caveats.ts`/
+ * `MEASURE_CAVEATS` のまま1行も変えていないが、v2 facet `dataset='measurements'` 側だけ
+ * `build_caveat.py` の `MEASURE_CAVEATS_V2` が `censoredLod`（lod 系列向けの本文）を
+ * 使う。これは意図した乖離であり、`MEASURE_DATASET_TABLES`（`build_caveat.py` の
+ * `MEASURE_TABLES` の複製）を含むテーブル組の期待値だけ、`withCensoredLod()` で
+ * `censored` を `censoredLod` に明示的に置き換える。他のテーブル組はそのまま
+ * `caveatKeysForTables` と一致させ続ける——ずれを一律に飲み込む緩和はしない
+ * （`withCensoredLod` は `censored` が無ければ例外を投げるので、対象外の組に
+ * 誤って使うと即座に失敗する）。
  */
 
 const TABLE_TO_FACET: Record<string, FacetRef> = {
@@ -86,10 +97,45 @@ function bridge(tables: readonly string[]): FacetRef[] {
 
 const ALL_BRIDGED_TABLES = Object.keys(TABLE_TO_FACET);
 
+/**
+ * v2 facet `dataset='measurements'` に束ねられる9表（`scripts/registry/build_caveat.py`
+ * の `MEASURE_TABLES` の複製。順序は無関係、集合として使う）。この組でだけ
+ * `censored`→`censoredLod` の意図した乖離が起きる（上のファイル冒頭コメント参照）。
+ */
+const MEASURE_DATASET_TABLES = new Set([
+  "measurements",
+  "meas_year",
+  "meas_month",
+  "meas_daily",
+  "meas_clim",
+  "zone_year",
+  "zone_clim",
+  "var_catalog",
+  "site_var",
+]);
+
+/**
+ * `censored` を `censoredLod` に1箇所だけ明示的に置き換えた期待値を作る。
+ * `MEASURE_DATASET_TABLES` を含むテーブル組の期待値にだけ使う（呼び出し側で絞る）。
+ * `censored` が見つからなければ例外を投げる——対象外の組に誤って使えば即座に失敗する
+ * ので、ずれを隠す汎用の緩和にはならない。
+ */
+function withCensoredLod(v1Keys: readonly string[]): string[] {
+  const i = v1Keys.indexOf("censored");
+  if (i === -1) {
+    throw new Error("withCensoredLod: 'censored' がv1のキーに無い（MEASURE_DATASET_TABLES を含まない組に使っていないか確認）");
+  }
+  const out = [...v1Keys];
+  out[i] = "censoredLod";
+  return out;
+}
+
 describe("caveatsForFacets — v1/v2 橋渡し（単一テーブル、全32表）", () => {
   for (const table of ALL_BRIDGED_TABLES) {
     it(table, () => {
-      expect(caveatKeysForFacets(bridge([table]))).toEqual(caveatKeysForTables([table]));
+      const v1Keys = caveatKeysForTables([table]);
+      const expected = MEASURE_DATASET_TABLES.has(table) ? withCensoredLod(v1Keys) : v1Keys;
+      expect(caveatKeysForFacets(bridge([table]))).toEqual(expected);
     });
   }
 });
@@ -116,16 +162,22 @@ describe("caveatsForFacets — v1/v2 橋渡し（tools.ts が渡す複合テー�
 
   for (const tables of COMPOSITES) {
     it(tables.join(" + "), () => {
-      expect(caveatKeysForFacets(bridge(tables))).toEqual(caveatKeysForTables(tables));
+      const v1Keys = caveatKeysForTables(tables);
+      const expected = tables.some((t) => MEASURE_DATASET_TABLES.has(t)) ? withCensoredLod(v1Keys) : v1Keys;
+      expect(caveatKeysForFacets(bridge(tables))).toEqual(expected);
     });
   }
 });
 
 describe("facetsForSeries", () => {
-  const measurementSeries = (theme: string | null, sourceIds: (string | null)[]): SeriesFacetInput => ({
+  // `unitId` は既定で非NULL（単位が判明している系列）にしてある——`variable` facet は
+  // `unitId===null` の系列だけに push する（統合後の追加決定。下の describe 参照）ので、
+  // 既存の dataset/theme/source_id の並びを確かめるテストが誤って variable facet の
+  // 有無に依存しないようにする。
+  const measurementSeries = (theme: string | null, sourceIds: (string | null)[], unitId: string | null = "common:unit:mg_per_l"): SeriesFacetInput => ({
     variableId: "common:variable:water.bod",
     obsStat: "mean",
-    unitId: "common:unit:mg_per_l",
+    unitId,
     valueGrain: "day",
     dataset: "measurements",
     aliases: ["生物化学的酸素要求量 BOD"],
@@ -133,7 +185,7 @@ describe("facetsForSeries", () => {
     theme,
   });
 
-  it("site スコープ: place_kind='site'、dataset/theme/source_id を初出順で返す", () => {
+  it("site スコープ: place_kind='site'、dataset/theme/source_id を初出順で返す（unitId 既知なので variable facet は付かない）", () => {
     const scope: Scope = { kind: "site", siteId: "s1" };
     const series = [measurementSeries("water", ["atsugi_river_water_quality"])];
     expect(facetsForSeries(series, scope)).toEqual([
@@ -161,13 +213,12 @@ describe("facetsForSeries", () => {
     },
   );
 
-  it("source_id が null を含む系列（合成データ）は dataset に 'synthetic' も足す", () => {
+  it("source_id が null（出典未記録）の系列でも 'synthetic' は足さない（PR-2 D2。b03 が合成行を除くため、除外後の observation_agg には現れない）", () => {
     const scope: Scope = { kind: "site", siteId: "s1" };
     const series = [measurementSeries("water", [null])];
     expect(facetsForSeries(series, scope)).toEqual([
       { kind: "dataset", ref: "measurements" },
       { kind: "variable_theme", ref: "water" },
-      { kind: "dataset", ref: "synthetic" },
       { kind: "place_kind", ref: "site" },
     ]);
   });
@@ -177,23 +228,56 @@ describe("facetsForSeries", () => {
     const series = [
       measurementSeries("water", ["atsugi_river_water_quality"]),
       measurementSeries("water", ["env_kousui_sample_kanagawa"]),
-      measurementSeries(null, [null]), // 合成: theme 無し、source_id 無し
+      measurementSeries(null, [null]), // theme 無し、source_id 無し
     ];
     expect(facetsForSeries(series, scope)).toEqual([
       { kind: "dataset", ref: "measurements" },
       { kind: "variable_theme", ref: "water" },
       { kind: "source_id", ref: "atsugi_river_water_quality" },
       { kind: "source_id", ref: "env_kousui_sample_kanagawa" },
-      { kind: "dataset", ref: "synthetic" },
       { kind: "place_kind", ref: "site" },
     ]);
   });
 
-  it("caveatsForFacets(facetsForSeries(...)) が実際に measuredOn 等を引ける", () => {
+  describe("variable facet（unitId===null の系列だけに push する。統合後の追加決定）", () => {
+    it("unitId が null の系列は variable facet を push する（unitUnknown 用）", () => {
+      const scope: Scope = { kind: "site", siteId: "s1" };
+      const series = [measurementSeries("water", ["atsugi_river_water_quality"], null)];
+      expect(facetsForSeries(series, scope)).toEqual([
+        { kind: "dataset", ref: "measurements" },
+        { kind: "variable_theme", ref: "water" },
+        { kind: "source_id", ref: "atsugi_river_water_quality" },
+        { kind: "variable", ref: "common:variable:water.bod" },
+        { kind: "place_kind", ref: "site" },
+      ]);
+    });
+
+    it("unitId が既知の系列は variable facet を push しない（単位不明ではないため）", () => {
+      const scope: Scope = { kind: "site", siteId: "s1" };
+      const series = [measurementSeries("water", ["atsugi_river_water_quality"], "common:unit:mg_per_l")];
+      expect(facetsForSeries(series, scope).some((f) => f.kind === "variable")).toBe(false);
+    });
+
+    it("同じ variableId で unitId あり/なしの系列が混ざるとき、unitId ありだけを渡せば variable facet は付かない（water.water_temp のような混在ケース）", () => {
+      const scope: Scope = { kind: "site", siteId: "s1" };
+      const known = measurementSeries("water", ["atsugi_river_water_quality"], "common:unit:degc");
+      expect(facetsForSeries([known], scope).some((f) => f.kind === "variable")).toBe(false);
+    });
+
+    it("unitId が null の系列と既知の系列が混ざると、variable facet は1回だけ push する", () => {
+      const scope: Scope = { kind: "site", siteId: "s1" };
+      const unknown = measurementSeries("water", ["atsugi_river_water_quality"], null);
+      const known = measurementSeries("water", ["env_kousui_sample_kanagawa"], "common:unit:degc");
+      const refs = facetsForSeries([unknown, known], scope);
+      expect(refs.filter((f) => f.kind === "variable")).toEqual([{ kind: "variable", ref: "common:variable:water.bod" }]);
+    });
+  });
+
+  it("caveatsForFacets(facetsForSeries(...)) が実際に measuredOn 等を引ける（dataset='measurements' なので censoredLod）", () => {
     const scope: Scope = { kind: "site", siteId: "s1" };
     const series = [measurementSeries("water", ["atsugi_river_water_quality"])];
     expect(caveatKeysForFacets(facetsForSeries(series, scope))).toEqual(
-      caveatKeysForTables(["measurements", "sites"]),
+      withCensoredLod(caveatKeysForTables(["measurements", "sites"])),
     );
   });
 });

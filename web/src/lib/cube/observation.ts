@@ -9,7 +9,18 @@
 import type { CubeDb, SqlParam } from "./db";
 import { MAX_ID_LIST } from "./db";
 import { buildScopeSql, OBS, seriesFilterSql, zoneExprSql, type Scope } from "./sql";
-import { seriesKeyFromRow, seriesKeySql, seriesKeyString, type Grain, type SeriesKey } from "./series";
+import {
+  basisOf,
+  labelYear,
+  representativeSeries,
+  seriesKeyFromRow,
+  seriesKeySql,
+  seriesKeyString,
+  yearCellFilterForBasis,
+  type Grain,
+  type SeriesInfo,
+  type SeriesKey,
+} from "./series";
 
 export type { Scope } from "./sql";
 
@@ -261,9 +272,15 @@ export interface SummarizeOpt {
 export interface MonthOfYearRow {
   month: number;
   n: number;
+  /** `spec.imputation` で選んだ値（`'both'` のときは null。`avgZero`/`avgLod` を見る）。 */
   avg: number | null;
+  /** `imputation:'both'` でも常に `value_lod` 基準（min/max は zero 側を別途持たない。
+   *  呼び出し側〔`get_seasonality`〕はこれで足りる）。 */
   min: number | null;
   max: number | null;
+  /** `imputation:'both'` のときだけ埋まる（それ以外は `undefined`）。 */
+  avgZero?: number | null;
+  avgLod?: number | null;
 }
 
 export interface ZoneYearRow {
@@ -273,7 +290,12 @@ export interface ZoneYearRow {
   year: number;
   nSites: number;
   n: number;
+  nCensored: number;
+  nNotDetected: number;
+  /** `spec.imputation` で選んだ値（`'both'` のときは null。`avgZero`/`avgLod` を見る）。 */
   avg: number | null;
+  avgZero: number | null;
+  avgLod: number | null;
 }
 
 export interface ZoneMonthRow {
@@ -281,7 +303,11 @@ export interface ZoneMonthRow {
   month: number;
   nSites: number;
   n: number;
+  /** `spec.imputation` で選んだ値（`'both'` のときは null。`avgZero`/`avgLod` を見る）。 */
   avg: number | null;
+  /** `imputation:'both'` のときだけ埋まる（それ以外は `undefined`）。 */
+  avgZero?: number | null;
+  avgLod?: number | null;
 }
 
 export interface PlaceSummaryRow {
@@ -319,6 +345,37 @@ function valueExpr(imputation: Imputation, alias: string): string {
 async function summarizeMonthOfYear(db: CubeDb, spec: CellSpec, opt?: SummarizeOpt): Promise<LimitedRows<MonthOfYearRow>> {
   const { joins, wheres, params } = commonFilterSql(spec, OBS);
   const limit = limitOf(spec);
+
+  // `imputation:'both'` は zero/lod の avg を1回の SQL で両方計算する（design 決定3・
+  // Issue #48 PR-2 /simplify #11）——以前は呼び出し側（`get_seasonality`）が
+  // `imputation:'zero'`/`'lod'` を2回叩いて JS 側でキーを合わせていた（`summarizeZone`
+  // と同じ簡易合成）。min/max は常に value_lod 基準（呼び出し側はこれしか使わない）。
+  if (spec.imputation === "both") {
+    if (opt?.measure === "sum_per_year") {
+      throw new Error("summarizeMonthOfYear: imputation='both' は measure='sum_per_year' 未対応（雨量は censored が無く imputation='zero' 固定で呼ぶため使っていない）");
+    }
+    const sql = `
+      SELECT CAST(substr(${OBS}.period_start,6,2) AS INTEGER) AS month,
+             COUNT(*) AS n,
+             AVG(${OBS}.value_zero) AS avg_zero, AVG(${OBS}.value_lod) AS avg_lod,
+             MIN(${OBS}.value_lod) AS min, MAX(${OBS}.value_lod) AS max
+      FROM observation_agg ${OBS}
+      ${joins.join("\n      ")}
+      ${whereSql(wheres)}
+      GROUP BY CAST(substr(${OBS}.period_start,6,2) AS INTEGER)
+      ORDER BY month
+      LIMIT ?
+    `;
+    const rows = await db.all<{ month: number; n: number; avg_zero: number | null; avg_lod: number | null; min: number | null; max: number | null }>(
+      sql,
+      [...params, limit + 1],
+    );
+    return applyLimit(
+      rows.map((r) => ({ month: r.month, n: r.n, avg: null, min: r.min, max: r.max, avgZero: r.avg_zero, avgLod: r.avg_lod })),
+      limit,
+    );
+  }
+
   const v = valueExpr(spec.imputation, OBS);
   const avgExpr =
     opt?.measure === "sum_per_year"
@@ -345,7 +402,6 @@ async function summarizeMonthOfYear(db: CubeDb, spec: CellSpec, opt?: SummarizeO
 async function summarizeZone(db: CubeDb, spec: CellSpec): Promise<LimitedRows<ZoneYearRow>> {
   const { joins, wheres, params } = commonFilterSql(spec, OBS);
   const limit = limitOf(spec);
-  const v = valueExpr(spec.imputation, OBS);
 
   // `zg`/`zgz`（zone-group）: このゾーン集計自身が使うためだけの地点→ゾーンの JOIN
   // （design が想定する主な呼び出し方——`scope: { kind: "all_sites" }` で呼び、
@@ -356,10 +412,18 @@ async function summarizeZone(db: CubeDb, spec: CellSpec): Promise<LimitedRows<Zo
   // "ambiguous column name" で拒む）。別名をここだけ変えて衝突を避ける——
   // どちらのスコープで呼ばれても正しく動くようにする（地点→ゾーンの辺は単射
   // なので、二重に JOIN しても行が増えることはない）。
+  //
+  // `value_zero`/`value_lod` の両方と `n_censored`/`n_not_detected` を常に1回の
+  // SQL で計算する（Issue #48 PR-2 統合後修正A #4）——呼び出し側が `imputation:'zero'`/
+  // `'lod'` を2回叩いて JS 側でキーを合わせていた簡易合成（旧 `get_timeseries` の
+  // zone 分岐）を撤去するため。`spec.imputation==='both'` のときは `avg` を null にし
+  // `avgZero`/`avgLod` を見させる（`observation_agg` の `imputation:'both'` と同じ約束）。
   const sql = `
     SELECT ${zoneExprSql("zgz")} AS zone, ${OBS}.grain AS grain, ${OBS}.input_grain AS input_grain,
            CAST(substr(${OBS}.period_start,1,4) AS INTEGER) AS year,
-           COUNT(DISTINCT ${OBS}.place_id) AS n_sites, SUM(${OBS}.n) AS n, AVG(${v}) AS avg
+           COUNT(DISTINCT ${OBS}.place_id) AS n_sites, SUM(${OBS}.n) AS n,
+           SUM(${OBS}.n_censored) AS n_censored, SUM(${OBS}.n_not_detected) AS n_not_detected,
+           AVG(${OBS}.value_zero) AS avg_zero, AVG(${OBS}.value_lod) AS avg_lod
     FROM observation_agg ${OBS}
     JOIN place_relation zg ON zg.child_id = ${OBS}.place_id AND zg.relation = 'within'
     JOIN place_source_ref zgz ON zgz.place_id = zg.parent_id AND zgz.source_id = 'sites.zone'
@@ -369,12 +433,32 @@ async function summarizeZone(db: CubeDb, spec: CellSpec): Promise<LimitedRows<Zo
     ORDER BY zone, year
     LIMIT ?
   `;
-  const rows = await db.all<{ zone: number; grain: string; input_grain: string; year: number; n_sites: number; n: number; avg: number | null }>(
-    sql,
-    [...params, limit + 1],
-  );
+  const rows = await db.all<{
+    zone: number;
+    grain: string;
+    input_grain: string;
+    year: number;
+    n_sites: number;
+    n: number;
+    n_censored: number;
+    n_not_detected: number;
+    avg_zero: number | null;
+    avg_lod: number | null;
+  }>(sql, [...params, limit + 1]);
   return applyLimit(
-    rows.map((r) => ({ zone: r.zone, grain: r.grain as Grain, inputGrain: r.input_grain, year: r.year, nSites: r.n_sites, n: r.n, avg: r.avg })),
+    rows.map((r) => ({
+      zone: r.zone,
+      grain: r.grain as Grain,
+      inputGrain: r.input_grain,
+      year: r.year,
+      nSites: r.n_sites,
+      n: r.n,
+      nCensored: r.n_censored,
+      nNotDetected: r.n_not_detected,
+      avg: spec.imputation === "zero" ? r.avg_zero : spec.imputation === "lod" ? r.avg_lod : null,
+      avgZero: r.avg_zero,
+      avgLod: r.avg_lod,
+    })),
     limit,
   );
 }
@@ -382,10 +466,37 @@ async function summarizeZone(db: CubeDb, spec: CellSpec): Promise<LimitedRows<Zo
 async function summarizeZoneMonth(db: CubeDb, spec: CellSpec): Promise<LimitedRows<ZoneMonthRow>> {
   const { joins, wheres, params } = commonFilterSql(spec, OBS);
   const limit = limitOf(spec);
-  const v = valueExpr(spec.imputation, OBS);
 
   // `zg`/`zgz` の別名の理由は `summarizeZone` のコメント参照
   // （`buildScopeSql` の "zone" スコープが使う `pr`/`zref` との衝突を避ける）。
+  // `imputation:'both'` は zero/lod の avg を1回の SQL で両方計算する（`summarizeZone`・
+  // `summarizeMonthOfYear` と同じ理由。Issue #48 PR-2 /simplify #11）。
+  if (spec.imputation === "both") {
+    const sql = `
+      SELECT ${zoneExprSql("zgz")} AS zone,
+             CAST(substr(${OBS}.period_start,6,2) AS INTEGER) AS month,
+             COUNT(DISTINCT ${OBS}.place_id) AS n_sites, SUM(${OBS}.n) AS n,
+             AVG(${OBS}.value_zero) AS avg_zero, AVG(${OBS}.value_lod) AS avg_lod
+      FROM observation_agg ${OBS}
+      JOIN place_relation zg ON zg.child_id = ${OBS}.place_id AND zg.relation = 'within'
+      JOIN place_source_ref zgz ON zgz.place_id = zg.parent_id AND zgz.source_id = 'sites.zone'
+      ${joins.join("\n      ")}
+      ${whereSql(wheres)}
+      GROUP BY zone, month
+      ORDER BY zone, month
+      LIMIT ?
+    `;
+    const rows = await db.all<{ zone: number; month: number; n_sites: number; n: number; avg_zero: number | null; avg_lod: number | null }>(
+      sql,
+      [...params, limit + 1],
+    );
+    return applyLimit(
+      rows.map((r) => ({ zone: r.zone, month: r.month, nSites: r.n_sites, n: r.n, avg: null, avgZero: r.avg_zero, avgLod: r.avg_lod })),
+      limit,
+    );
+  }
+
+  const v = valueExpr(spec.imputation, OBS);
   const sql = `
     SELECT ${zoneExprSql("zgz")} AS zone,
            CAST(substr(${OBS}.period_start,6,2) AS INTEGER) AS month,
@@ -521,6 +632,269 @@ export async function summarize(db: CubeDb, spec: CellSpec, by: SummarizeBy, opt
     case "series":
       return summarizeSeries(db, spec);
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* 系列（代表系列・`basis`）に対する時系列の問い合わせ（PR-2 design §2.1・§2.2）        */
+/* ------------------------------------------------------------------ */
+
+const DEFAULT_DATASET = "measurements";
+
+/**
+ * `variableId`/`stat` の代表系列一覧を解決する（`representativeSeries()` の薄い
+ * 包み）。空配列（該当する variableId・stat の組が登録に無い——呼び出し側の誤り）は
+ * ここで気づけるよう例外にする（`yearSeries`/`monthSeries`/`daySeries` が共有）。
+ *
+ * **`basis` では絞り込まない**（Issue #48 PR-2 統合後修正A #1）: basis はセルの性質
+ * （`grain`/`input_grain`）であり系列の登録（`value_grain`）ではないため、ここで
+ * `value_grain` によって系列を落とすと、`value_grain='day'` として登録された系列の
+ * 中に `input_grain='fiscal_year'` のセルがある地点（実測: 厚木系の中津川 BOD）の
+ * 年度値がどの basis 指定でも出てこなくなる。`representativeSeries()` の全
+ * `value_grain` をそのまま `CellSpec.series` に渡し、`basis` の絞り込みは
+ * `yearCellFilterForBasis()` が返す `grain`/`inputGrain` でセル側に行わせる。
+ */
+function representativeSeriesOrThrow(variableId: string, stat: string | undefined): SeriesInfo[] {
+  const all = representativeSeries(variableId, DEFAULT_DATASET, stat ?? "representative");
+  if (all.length === 0) {
+    throw new Error(`variableId=${variableId} stat=${stat ?? "representative"} に該当する系列が無い`);
+  }
+  return all;
+}
+
+export interface StatTriple {
+  mean: number | null;
+  min: number | null;
+  max: number | null;
+}
+
+export interface YearPoint {
+  placeId: string;
+  siteId: string | null;
+  /** `queryCells` が実際に返した grain（`'year'` または `'fiscal_year'`）。 */
+  grain: Grain;
+  periodStart: string;
+  /** `labelYear(periodStart)`（`fiscal_year` は年度の始まりの年）。 */
+  year: number;
+  n: number;
+  nCensored: number;
+  unitId: string | null;
+  /** `spec.imputation` で選んだ値（`'both'` のときは3つとも null。value_zero/value_lod を見る）。 */
+  value: StatTriple;
+  valueZero: StatTriple;
+  valueLod: StatTriple;
+}
+
+/**
+ * `adapters-v2.ts` の `pivotYearCells` の移設（design §2.1）。`observation_agg` の年セルは
+ * stat ごとに別行（mean/min/max）なので、`(place_id, period_start)` でまとめてピボットする。
+ * `n`/`n_censored`/`unit_id`/`site_id`/`grain` は同じキーの行なら stat によらず等しい
+ * （同じ集計対象からの別の集計関数の値でしかないため）——最初に見た行の値を使う。
+ *
+ * ピボットのキーには**系列（`seriesKeyString`）も含める**（Issue #48 PR-2 code-review #3）。
+ * `(placeId, periodStart)` だけをキーにすると、別系列（`obs_stat`/`unit_id` 違い）が
+ * 同じ地点・期間に来たとき黙って1つの `YearPoint` に混ざる（後から来た系列の
+ * `mean`/`min`/`max` が先の系列の値を上書きする）。実測では代表系列が同じ
+ * (地点, 期間, grain) に2つ以上同居することは0件（design §0 決定4）——これを
+ * 崩れてはいけない不変条件として固定し、破れていれば（`(placeId, periodStart, grain)`
+ * に2つ以上の異なる系列が現れたら）例外にする。黙って選ばない。
+ */
+export function pivotYearCells(cells: readonly CellRow[]): YearPoint[] {
+  const byKey = new Map<string, YearPoint>();
+  const seriesByGroup = new Map<string, string>();
+  for (const c of cells) {
+    const seriesKey = seriesKeyString(c.series);
+    const groupKey = `${c.placeId}|${c.periodStart}|${c.grain}`;
+    const prevSeriesKey = seriesByGroup.get(groupKey);
+    if (prevSeriesKey === undefined) {
+      seriesByGroup.set(groupKey, seriesKey);
+    } else if (prevSeriesKey !== seriesKey) {
+      throw new Error(
+        `pivotYearCells: place_id=${c.placeId} period_start=${c.periodStart} grain=${c.grain} に` +
+          `複数の代表系列（${prevSeriesKey} と ${seriesKey}）が同居している。` +
+          `代表系列は同じ地点・期間・粒度で高々1つという不変条件（design §0 決定4）が破れている。`,
+      );
+    }
+
+    const k = `${groupKey}|${seriesKey}`;
+    let row = byKey.get(k);
+    if (!row) {
+      row = {
+        placeId: c.placeId,
+        siteId: c.siteId,
+        grain: c.grain,
+        periodStart: c.periodStart,
+        year: labelYear(c.periodStart),
+        n: c.n,
+        nCensored: c.nCensored,
+        unitId: c.series.unitId,
+        value: { mean: null, min: null, max: null },
+        valueZero: { mean: null, min: null, max: null },
+        valueLod: { mean: null, min: null, max: null },
+      };
+      byKey.set(k, row);
+    }
+    if (c.stat === "mean" || c.stat === "min" || c.stat === "max") {
+      row.value[c.stat] = c.value;
+      row.valueZero[c.stat] = c.valueZero;
+      row.valueLod[c.stat] = c.valueLod;
+    }
+  }
+  return [...byKey.values()];
+}
+
+export interface YearSeriesOpt {
+  variableId: string;
+  /** 既定 "representative"（`series.representativeSeries` と同じ既定）。 */
+  stat?: string;
+  /** 既定は `basisOf()` が選ぶ既定の基準（day 優先）。 */
+  basis?: "day" | "fiscal_year" | "year";
+  scope: Scope;
+  period?: { from?: string; to?: string };
+  imputation: Imputation;
+  limit?: number;
+}
+
+/**
+ * 年セル（`grain IN (year, fiscal_year)`、mean/min/max をピボット）。v1 `meas_year`/
+ * `zone_year`/`site_var` 相当の時系列問い合わせが共有する経路（design §2.1）。
+ */
+export async function yearSeries(db: CubeDb, opt: YearSeriesOpt): Promise<LimitedRows<YearPoint>> {
+  const series = representativeSeriesOrThrow(opt.variableId, opt.stat);
+  const basis = opt.basis ?? basisOf(series).basis;
+  const { grain, inputGrain } = yearCellFilterForBasis(basis);
+  const spec: CellSpec = {
+    series,
+    scope: opt.scope,
+    grain,
+    stats: ["mean", "min", "max"],
+    inputGrain,
+    period: opt.period,
+    imputation: opt.imputation,
+    limit: opt.limit,
+  };
+  const { rows: cells, truncated } = await queryCells(db, spec);
+  return { rows: pivotYearCells(cells), truncated };
+}
+
+export interface SeriesPoint {
+  placeId: string;
+  siteId: string | null;
+  periodStart: string;
+  n: number;
+  nCensored: number;
+  unitId: string | null;
+  value: number | null;
+  valueZero: number | null;
+  valueLod: number | null;
+}
+
+/** month/day セル（1 (place, period) につき stat='mean' の1行）を `SeriesPoint` に
+ *  詰め替える。`pivotYearCells` と同様、`tools.ts` の `get_timeseries`（month/day
+ *  grain）が画面と同じ形の点を返すために export する（Issue #48 PR-2 code-review #5）。 */
+export function toSeriesPoint(c: CellRow): SeriesPoint {
+  return {
+    placeId: c.placeId,
+    siteId: c.siteId,
+    periodStart: c.periodStart,
+    n: c.n,
+    nCensored: c.nCensored,
+    unitId: c.series.unitId,
+    value: c.value,
+    valueZero: c.valueZero,
+    valueLod: c.valueLod,
+  };
+}
+
+export interface MonthDaySeriesOpt {
+  variableId: string;
+  stat?: string;
+  scope: Scope;
+  period?: { from?: string; to?: string };
+  imputation: Imputation;
+  limit?: number;
+}
+
+/**
+ * `monthSeries`/`daySeries` が共有する実装（Issue #48 PR-2 /simplify #10。
+ * grain だけが違う同じ処理だったので1関数にまとめた）。`basis='day'` の
+ * 変数だけに対応する（月・日は検体値〔day〕を積み上げた粒度でしか意味を持たない
+ * ——design §2.1「basis=day のみ許可、それ以外は例外」）。
+ *
+ * この変数の既定 basis（登録から優先順位で決めた基準）を検出したうえで day 以外を
+ * 拒む——`basis="day"` を決め打ちで問い合わせると、day 系列が無い変数（例:
+ * `land.max_subsidence`＝year のみ）でも「セルが無いので0行」になってしまい、
+ * 呼び出し側に「basis が違う」と伝わらない。
+ */
+async function monthOrDaySeries(db: CubeDb, opt: MonthDaySeriesOpt, grain: "month" | "day"): Promise<LimitedRows<SeriesPoint>> {
+  const series = representativeSeriesOrThrow(opt.variableId, opt.stat);
+  const basis = basisOf(series).basis;
+  if (basis !== "day") {
+    const fnName = grain === "month" ? "monthSeries" : "daySeries";
+    throw new Error(`${fnName}: basis='day' の変数だけに対応する（この変数の既定 basis は '${basis}'）`);
+  }
+  const spec: CellSpec = {
+    series,
+    scope: opt.scope,
+    grain,
+    stats: ["mean"],
+    period: opt.period,
+    imputation: opt.imputation,
+    limit: opt.limit,
+  };
+  const { rows: cells, truncated } = await queryCells(db, spec);
+  return { rows: cells.map(toSeriesPoint), truncated };
+}
+
+/** 月セル（`grain='month'`、`stat='mean'` のみ）。`monthOrDaySeries` 参照。 */
+export async function monthSeries(db: CubeDb, opt: MonthDaySeriesOpt): Promise<LimitedRows<SeriesPoint>> {
+  return monthOrDaySeries(db, opt, "month");
+}
+
+/** 日セル（`grain='day'`、`stat='mean'` のみ）。`monthSeries` と同じく basis='day' 限定。 */
+export async function daySeries(db: CubeDb, opt: MonthDaySeriesOpt): Promise<LimitedRows<SeriesPoint>> {
+  return monthOrDaySeries(db, opt, "day");
+}
+
+/* ------------------------------------------------------------------ */
+/* 雨量（weather.precipitation、sensor_timeseries、hour→day sum）           */
+/* ------------------------------------------------------------------ */
+
+const RAIN_VARIABLE_ID = "common:variable:weather.precipitation";
+const RAIN_DATASET = "sensor_timeseries";
+
+function rainSeries(): SeriesInfo[] {
+  return representativeSeries(RAIN_VARIABLE_ID, RAIN_DATASET, "representative");
+}
+
+/**
+ * RAIN（`weather.precipitation`）の全地点・日次 sum セル。v1 は `/10` した上で
+ * ラベル日割りしていたが、`lib/cube` はどちらもしない（design §0 要点4「`/10` 撤去」・
+ * 危険#4）——呼び出し側が原表記の値のまま扱う（単位不明は `unitUnknown` 注記）。
+ */
+export async function rainDaily(db: CubeDb, opt?: { period?: { from?: string; to?: string }; limit?: number }): Promise<LimitedRows<SeriesPoint>> {
+  const spec: CellSpec = {
+    series: rainSeries(),
+    scope: { kind: "all_sites" },
+    grain: "day",
+    stats: ["sum"],
+    period: opt?.period,
+    imputation: "zero",
+    limit: opt?.limit,
+  };
+  const { rows: cells, truncated } = await queryCells(db, spec);
+  return { rows: cells.map(toSeriesPoint), truncated };
+}
+
+/** RAIN の月別平年値（`SUM(v)/COUNT(DISTINCT 年)`）。v1 の `/10` はしない（同上）。 */
+export async function rainMonthlyClim(db: CubeDb): Promise<LimitedRows<MonthOfYearRow>> {
+  const spec: CellSpec = {
+    series: rainSeries(),
+    scope: { kind: "all_sites" },
+    grain: "day",
+    stats: ["sum"],
+    imputation: "zero",
+  };
+  return summarize(db, spec, "month_of_year", { measure: "sum_per_year" });
 }
 
 export { MAX_ID_LIST };

@@ -19,6 +19,7 @@
  */
 import {
   GENERATED_VARIABLE_ALIASES,
+  GENERATED_VARIABLES,
   type GeneratedVariableAlias,
 } from "@/lib/registry/generated";
 
@@ -159,6 +160,13 @@ export function seriesForAlias(dataset: string, alias: string): SeriesInfo[] {
 
 const REPRESENTATIVE_OBS_STATS: readonly (string | null)[] = [null, "mean", "point"];
 
+/** `obsStat` が代表統計量（mean/point/NULL）かどうか。`catalog.ts` の
+ *  `bundleVariableCatalog`（`stats` に非代表だけを集める。Issue #48 PR-2
+ *  code-review #7）も同じ判定を使う。 */
+export function isRepresentativeObsStat(obsStat: string | null): boolean {
+  return REPRESENTATIVE_OBS_STATS.includes(obsStat);
+}
+
 export interface SeriesForVariableOpt {
   dataset?: string;
   /** 既定 "representative"（`obsStat` が mean/point/NULL のものだけ）。 */
@@ -173,7 +181,7 @@ export function seriesForVariable(variableId: string, opt?: SeriesForVariableOpt
     if (g.key.variableId !== variableId) continue;
     if (opt?.dataset !== undefined && norm(g.dataset) !== opt.dataset) continue;
     if (mode === "representative") {
-      if (!REPRESENTATIVE_OBS_STATS.includes(g.key.obsStat)) continue;
+      if (!isRepresentativeObsStat(g.key.obsStat)) continue;
     } else if (Array.isArray(mode)) {
       if (g.key.obsStat === null || !mode.includes(g.key.obsStat)) continue;
     }
@@ -183,9 +191,127 @@ export function seriesForVariable(variableId: string, opt?: SeriesForVariableOpt
   return out;
 }
 
-/** 合成データの系列か（`sourceIds` に出典未記録＝NULL を含む）。 */
-export function isSynthetic(s: SeriesInfo): boolean {
-  return s.sourceIds.includes(null);
+const DEFAULT_DATASET = "measurements";
+
+/**
+ * ある正準 variable_id の「代表系列」（PR-2 design §2.1・§0 決定4）。`seriesForVariable`
+ * の薄い包みで、既定 `stat="representative"` は `obsStat ∈ {mean, point, NULL}` の組
+ * （`seriesForVariable` の `obsStats: "representative"` と同じ）。`stat` に具体的な
+ * `obsStat`（`"p75"`/`"p90"`/`"max"`/`"min"` 等）を渡すと、その `obsStat` の組だけに絞る
+ * （D4: 非代表統計量を落とさず `stat` パラメータで選べるようにする）。
+ *
+ * **フォールバック**（design §9 危険3）: `stat="representative"`（既定）で該当する組が
+ * 1つも無い variable（例: `land.max_subsidence` は唯一の alias が `obsStat="max"` で、
+ * mean/point/NULL のどれにも当たらない）は、空配列を返す代わりに全系列
+ * （`obsStats: "all"`）にフォールバックする——「代表系列が無いので何も表示されない」
+ * という事故を避ける。
+ */
+export function representativeSeries(
+  variableId: string,
+  dataset: string = DEFAULT_DATASET,
+  stat: "representative" | string = "representative",
+): SeriesInfo[] {
+  if (stat === "representative") {
+    const rep = seriesForVariable(variableId, { dataset, obsStats: "representative" });
+    if (rep.length > 0) return rep;
+    return seriesForVariable(variableId, { dataset, obsStats: "all" });
+  }
+  return seriesForVariable(variableId, { dataset, obsStats: [stat] });
+}
+
+export interface BasisInfo {
+  basis: "day" | "fiscal_year" | "year";
+  /** この `basis` で表示できる粒度（`grain`）。「元データ」から決まる（design §2.1）。 */
+  grains: Grain[];
+}
+
+/**
+ * 系列の集合から「元データ」（`value_grain`）の基準（`basis`）と、そこから表示できる
+ * `grain` の一覧を決める（v1 `kind`（daily/annual）の後継。design §2.1・§5）。
+ *
+ * `day` → 検体値（日次観測）が元データ。年（暦年、`input_grain='day'` で積み上げ）・
+ * 月・日の3粒度で表示できる。`fiscal_year` → 年度集計値が元データ（日本の年度、
+ * 4月始まり）。表示できるのは年度だけ。`year` → 暦年の集計値が元データ（例:
+ * 地盤沈下。`input_grain='same'`）。表示できるのは年（暦年）だけ。
+ *
+ * `series` に複数の `valueGrain` が混ざっている場合（例: `representativeSeries` を
+ * `basis` で絞る前の BOD は day/mean・day/point・fiscal_year/mean の3系列にまたがる）は、
+ * 「もっとも粒度が細かい（データが多い）」優先順位 day > fiscal_year > year で
+ * 代表の1つを選ぶ——`basis` を省略した呼び出し側（`observation.ts` の
+ * `yearSeries`/`monthSeries`/`daySeries` 等）のデフォルト値を決めるためのもので、
+ * 実際にどの系列を問い合わせに使うかは呼び出し側が `basis` で明示的に絞り込む。
+ *
+ * 空配列（該当する系列が1つも無い）は呼び出し側の誤り（存在しない variableId・
+ * `stat` を渡した等）として例外にする——`null` を返して呼び出し側に握りつぶされる
+ * より、ここで気づける方がよい。
+ */
+export function basisOf(series: readonly SeriesKey[]): BasisInfo {
+  if (series.length === 0) {
+    throw new Error("basisOf: series が空（該当する系列が無い）");
+  }
+  const valueGrains = new Set(series.map((s) => s.valueGrain));
+  const basis: "day" | "fiscal_year" | "year" = valueGrains.has("day")
+    ? "day"
+    : valueGrains.has("fiscal_year")
+      ? "fiscal_year"
+      : "year";
+  return { basis, grains: grainsForBasis(basis) };
+}
+
+/** `basis` から表示できる `grain` の一覧（`basisOf` と `catalog.ts` の summary 束ねが共有）。 */
+export function grainsForBasis(basis: "day" | "fiscal_year" | "year"): Grain[] {
+  return basis === "day" ? ["year", "month", "day"] : basis === "fiscal_year" ? ["fiscal_year"] : ["year"];
+}
+
+/**
+ * **basis はセルの性質**（`grain`/`input_grain` の組）として決める——系列の登録
+ * （`value_grain`）では決めない（Issue #48 PR-2 統合後修正A #1）。`value_grain='day'`
+ * として登録された系列でも、出典が一部の年だけ年度値を直接報告していれば
+ * `grain='fiscal_year'`（`input_grain` も `'fiscal_year'`）のセルを持つことがある
+ * （実測: 厚木系の中津川 BOD、day 入力36件＋年度入力192件）——旧
+ * `basisFromValueGrain`（`value_grain` の登録値だけを見る）はこの地点で誤判定した。
+ *
+ * `catalog.ts` の `variableCatalog`（`nByBasis`）・`SiteDetail.tsx`（測定項目一覧の表示）・
+ * `scripts/lib/serving/adapters-v2.ts`（`site_variables_by_variable` の basis 束ね。
+ * 以前は `siteSeriesBasis` という同じ判定の複製を持っていたが、この関数を直接
+ * import する形に統合した。Issue #48 PR-2 /simplify #10）が使う。
+ */
+export function basisOfCell(cell: { grain: string; inputGrain: string }): "day" | "fiscal_year" | "year" {
+  if (cell.inputGrain === "day") return "day";
+  return cell.grain === "year" ? "year" : "fiscal_year";
+}
+
+/**
+ * `basis`（省略時は `basisOf` が選ぶ既定）から、年セルの問い合わせに使う単一の
+ * `grain` と `inputGrain` を決める（`basisOfCell` の逆写像。Issue #48 PR-2 統合後
+ * 修正A #1・#3）。`observation.ts` の `yearSeries`・`web/src/app/api/timeseries/route.ts`・
+ * `web/src/lib/ai/tools.ts`・`web/src/app/page.tsx`（home）が共有する——旧
+ * `seriesForBasis`/`inputGrainForBasis`/`cellGrainForBasis` の3重複箇所を統合した。
+ *
+ * `day`→(year, day)：検体値からの積み上げ。`fiscal_year`→(fiscal_year, same)：
+ * 出典が直接報告した年度値（`input_grain=grain='fiscal_year'`）。`year`→(year, same)：
+ * 出典が直接報告した暦年値（例: 地盤沈下。`input_grain=grain='year'`）。
+ *
+ * 呼び出し側は `series` に `representativeSeries()` の結果（全 `value_grain`）を
+ * そのまま渡し、`basis` の絞り込みはこの関数が返す `grain`/`inputGrain` を
+ * `CellSpec` に渡すことでセル側（`observation_agg` 自身の `grain`/`input_grain` 列）
+ * に行わせる——系列を `value_grain` で事前に絞り込まない。
+ */
+export function yearCellFilterForBasis(basis: "day" | "fiscal_year" | "year"): { grain: Grain; inputGrain: "day" | "same" } {
+  if (basis === "fiscal_year") return { grain: "fiscal_year", inputGrain: "same" };
+  if (basis === "year") return { grain: "year", inputGrain: "same" };
+  return { grain: "year", inputGrain: "day" };
+}
+
+const variableById = new Map(GENERATED_VARIABLES.map((v) => [v.variableId, v]));
+
+/**
+ * `SeriesInfo` に `variable.theme` を足す（`caveats.ts` の `SeriesFacetInput` 用）。
+ * `variable` の生テーブル（`generated.ts`、サーバ専用）を見るヘルパをこちらに置き、
+ * `caveats.ts` をクライアント安全なまま保つ（同ファイルの docstring 参照）。
+ */
+export function withTheme(series: SeriesInfo): SeriesInfo & { theme: string | null } {
+  return { ...series, theme: variableById.get(series.variableId)?.theme ?? null };
 }
 
 /**

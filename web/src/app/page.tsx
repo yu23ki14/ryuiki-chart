@@ -1,11 +1,11 @@
 import Link from "next/link";
 import {
   overviewStats,
-  longitudinalHighlight,
   landuseHighlight,
   redlistSummary,
   effortYears,
 } from "@/lib/queries";
+import { d1CubeDb, representativeSeries, basisOf, yearCellFilterForBasis, summarize, sitesInWaterBody, unitLabel } from "@/lib/cube";
 import { HomeHighlights } from "@/components/HomeHighlights";
 import { Stat, nf } from "@/components/ui";
 import { caveatBody } from "@/lib/registry/lookup-client";
@@ -57,6 +57,64 @@ const SECTIONS = [
     body: "101 のデータソースと 98 の文書。ライセンスと再配布可否を1件ずつ。",
   },
 ].filter((s) => s.flag !== false);
+
+/** measurements データセット固定（PR-2 のスコープは測定値系。design §1.1 と同じ前提）。 */
+const DATASET = "measurements";
+const BOD_VARIABLE_ID = "common:variable:water.bod";
+
+/**
+ * 一本の川を下るときの水質の変わり方（既定は境川）。v1 の `longitudinalHighlight`
+ * （`meas_year` の `kind='daily'`・`year>=2020` を `AVG(avg)` で束ねる）の後継
+ * （Issue #48 PR-2 design §2.2「home」）。`summarize(...,'place')` は同じ束ね方
+ * （選んだ grain セルの値をそのまま `AVG()` する）をキューブに対して行う。
+ *
+ * 値は `imputation:'lod'`（定量下限値とみなす）で取る——v1 は検閲を単純に含めていたが
+ * 曖昧だった扱いを、PR-2 で明示的に選ぶ（D6）。HomeHighlights.tsx の固定文言
+ * （「5倍近い差」等）はここでは触らない——文言は PR 本文の before/after を見て
+ * オーナーが判断する（設計責任者の決定、D6）。
+ */
+async function longitudinalHighlight(water = "境川（１）", variableId = BOD_VARIABLE_ID) {
+  const db = await d1CubeDb();
+  // basis はセルの性質（grain/input_grain）であって系列の登録（value_grain）ではない
+  // ため、系列を basis で事前に絞り込まない（Issue #48 PR-2 統合後修正A #1）——
+  // `representativeSeries()` の全 value_grain をそのまま渡し、`yearCellFilterForBasis()`
+  // が返す grain/inputGrain でセル側から絞り込む。
+  const series = representativeSeries(variableId, DATASET);
+  const basis = basisOf(series).basis;
+  const { grain, inputGrain } = yearCellFilterForBasis(basis);
+  const [placeRows, sites] = await Promise.all([
+    summarize(
+      db,
+      {
+        series,
+        scope: { kind: "water", municipality: water },
+        grain,
+        inputGrain,
+        period: { from: "2020-01-01" },
+        imputation: "lod",
+      },
+      "place",
+    ),
+    sitesInWaterBody(db, water, { dataset: DATASET }),
+  ]);
+  const siteById = new Map(sites.map((s) => [s.siteId, s]));
+  const unit = unitLabel(series[0]?.unitId ?? null);
+  return placeRows.rows
+    .filter((r): r is typeof r & { siteId: string; avg: number } => r.siteId !== null && r.avg !== null)
+    .map((r) => {
+      const site = siteById.get(r.siteId);
+      return {
+        site_id: r.siteId,
+        name: site?.name ?? r.siteId,
+        elevation_m: site?.elevationM ?? 0,
+        zone: site?.zone ?? 0,
+        avg: r.avg,
+        n: r.n,
+        unit,
+      };
+    })
+    .sort((a, b) => b.elevation_m - a.elevation_m);
+}
 
 export default async function Home() {
   // D1 は 1 クエリ 1 往復。まとめて投げる。

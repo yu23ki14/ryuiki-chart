@@ -17,8 +17,24 @@ export { d1CubeDb } from "./db-d1";
 export type { Scope } from "./sql";
 export { jsonEachParam, seriesFilterSql, buildScopeSql } from "./sql";
 
-export type { Grain, SeriesKey, SeriesInfo, SeriesForVariableOpt } from "./series";
-export { seriesKeyString, seriesKeySql, seriesForAlias, seriesForVariable, seriesInfo, isSynthetic, labelYear } from "./series";
+export type { BasisInfo, Grain, SeriesKey, SeriesInfo, SeriesForVariableOpt } from "./series";
+export {
+  seriesKeyString,
+  seriesKeySql,
+  seriesForAlias,
+  seriesForVariable,
+  seriesInfo,
+  representativeSeries,
+  basisOf,
+  basisOfCell,
+  isRepresentativeObsStat,
+  grainsForBasis,
+  yearCellFilterForBasis,
+  withTheme,
+  labelYear,
+} from "./series";
+
+export { unitLabel } from "./unit";
 
 export type {
   CellSpec,
@@ -34,14 +50,32 @@ export type {
   PlaceSummaryRow,
   SeriesSummaryRow,
   LimitedRows,
+  StatTriple,
+  YearPoint,
+  YearSeriesOpt,
+  SeriesPoint,
+  MonthDaySeriesOpt,
 } from "./observation";
-export { queryCells, summarize, DEFAULT_CELL_LIMIT, UNLIMITED_CELL_LIMIT } from "./observation";
+export {
+  queryCells,
+  summarize,
+  DEFAULT_CELL_LIMIT,
+  UNLIMITED_CELL_LIMIT,
+  yearSeries,
+  monthSeries,
+  daySeries,
+  rainDaily,
+  rainMonthlyClim,
+  pivotYearCells,
+  toSeriesPoint,
+} from "./observation";
 
-export type { CatalogSource, SeriesCatalogRow, SiteSeriesRow, SiteRow2, WaterBodyRow, SiteSeriesCell, DatasetCell } from "./catalog";
+export type { CatalogSource, AvgImputation, VariableCatalogRow, SiteSeriesRow, SiteRow2, WaterBodyRow, SiteSeriesCell, DatasetCell } from "./catalog";
 export {
   variableCatalog,
   siteVariables,
   sites,
+  site,
   sitesInWaterBody,
   waterBodies,
   siteSeriesCells,
@@ -51,4 +85,4 @@ export {
 } from "./catalog";
 
 export type { Envelope, EnvelopeColumn, EnvelopeCoverage, EnvelopeProvenance, EnvelopeExcluded } from "./envelope";
-export { buildEnvelope, ENVELOPE_SPEC_VERSION } from "./envelope";
+export { buildEnvelope, buildZoneEnvelope, ENVELOPE_SPEC_VERSION } from "./envelope";

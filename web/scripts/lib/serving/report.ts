@@ -26,9 +26,9 @@ export interface QueryStats {
   rowsV2: number;
   matched: number;
   declared: number;
-  rain_div10: number;
   day_split: number;
   synthetic_excluded: number;
+  lod_imputation: number;
   unit_label_registry: number;
   float_rounding: number;
   unexplained: number;
@@ -42,21 +42,31 @@ export function emptyQueryStats(id: string): QueryStats {
     rowsV2: 0,
     matched: 0,
     declared: 0,
-    rain_div10: 0,
     day_split: 0,
     synthetic_excluded: 0,
+    lod_imputation: 0,
     unit_label_registry: 0,
     float_rounding: 0,
     unexplained: 0,
   };
 }
 
-export function addClassification(stats: QueryStats, rule: KnownRule | "unexplained"): void {
-  if (rule === "unexplained") {
+/**
+ * 1つの diff の分類結果（`classify.ts` の `Classification.rules`、説明の鎖が
+ * 使った規則の集合）を集計へ足す。空集合なら unexplained を1増やす。空でなければ
+ * **集合の各要素について1回ずつ**その列を増やす——1つの diff が複数の段
+ * （例: declared＋synthetic_excluded＋lod_imputation）にまたがって説明された
+ * 場合、この1回の呼び出しで複数の列が同時に増える。したがって
+ * `declared+day_split+…+unexplained` の合計は診断の総数（`matched` を除く
+ * 行数）と必ずしも一致しない——1行が複数系統に数えられるのは意図した仕様
+ * （`docs/plans/V2_SERVING_PR2.md` §1・§3）。
+ */
+export function addClassification(stats: QueryStats, rules: ReadonlySet<KnownRule>): void {
+  if (rules.size === 0) {
     stats.unexplained += 1;
     return;
   }
-  stats[rule] += 1;
+  for (const rule of rules) stats[rule] += 1;
 }
 
 export interface UnexplainedSample {
@@ -94,9 +104,9 @@ export interface ReportInput {
 // 数値の加算が `never` に落ちて型検査が通らない）。
 const KNOWN_RULE_COLUMNS = [
   "declared",
-  "rain_div10",
   "day_split",
   "synthetic_excluded",
+  "lod_imputation",
   "unit_label_registry",
   "float_rounding",
 ] as const satisfies readonly (keyof QueryStats)[];
@@ -177,6 +187,9 @@ export function buildReportMarkdown(input: ReportInput): string {
     statsTableMd(stats),
     "",
     `合計: runs=${total.runs} rows_v1=${total.rowsV1} rows_v2=${total.rowsV2} matched=${total.matched} unexplained=${total.unexplained}`,
+    header.imputation === "lod"
+      ? `lod_moved（zero→lod で値が動いたと確認できたキー数の合計。上表の \`lod_imputation\` 列と同じ）: ${total.lod_imputation}`
+      : "",
     "",
     "## 宣言済み差分の腐り（対象問い合わせが1件も対応しなかった宣言）",
     "",

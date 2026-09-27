@@ -11,6 +11,22 @@
  * 雨量（RAIN）は v1 側が `/10` した上でラベル日割りしているため、`/10` だけを
  * このテストで戻して比較する（日割りの差は既知の系統——design §5.2「day_split」
  * ——なのでここでは対象日をずらして日割りの影響が出ない日を選ぶ）。
+ *
+ * **合成データ（Issue #48 PR-2 D1・D2）**: `v2.sqlite`（本番用）は既定で
+ * `is_synthetic=1` を除く一方、`derived.sqlite`（v1、この比較の基準）は
+ * 合成データを含んだまま——両者は変数・地点によっては値が一致しなくなった
+ * （design §0-2「合成データは実在地点に混ざっている」・「合成データの5系列は
+ * 全部、実出典と同じ tuple を共有している」）。pH・水温・気温・SS・DO と、
+ * それらを持つ地点（env_kousui 18地点・moni1000 6地点）に触れるケースは、
+ * `v2.sqlite`（合成除外後）の代わりに診断専用の v1互換キューブ
+ * `v2_v1compat.sqlite`（`scripts/b00_run_full_gate.py` の該当ステップ・
+ * design §1(d) が作る、合成データを含んだまま作り直した第2キューブ）を読む
+ * `cubeV1Compat` を使う——`derived.sqlite` と同じ母集合で比較するためで、
+ * `lib/cube` の問い合わせロジックそのものの正しさを見るというこのテストの
+ * 目的は変えない（合成データの除外が正しいかどうかは `scripts/b02_run_all_gates.py`
+ * の役目）。`v2_v1compat.sqlite` は `.gitignore` 済み・手元で明示的に作らないと
+ * 無い（`describe`/`it` の入れ子ではなく `it.skipIf` で該当ケースだけ個別に
+ * スキップする——他のケースは `v2_v1compat.sqlite` 無しでも動く）。
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -27,22 +43,27 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..", "..", "..", "..");
 const DB_DIR = path.join(REPO_ROOT, "data", "db");
 const V2 = path.join(DB_DIR, "v2.sqlite");
+const V2_V1COMPAT = path.join(DB_DIR, "v2_v1compat.sqlite");
 const REGISTRY = path.join(DB_DIR, "registry.sqlite");
 const RYUIKI = path.join(DB_DIR, "ryuiki.sqlite");
 const DERIVED = path.join(DB_DIR, "derived.sqlite");
 
 const hasRealDb = [V2, REGISTRY, RYUIKI, DERIVED].every((p) => fs.existsSync(p));
+const hasV1Compat = hasRealDb && fs.existsSync(V2_V1COMPAT);
 
 describe.skipIf(!hasRealDb)("実DB統合テスト: lib/cube と v1 (derived.sqlite) の突合", () => {
   let cube: CubeDb & { close(): void };
+  let cubeV1Compat: (CubeDb & { close(): void }) | undefined;
   let v1: Database.Database;
 
   beforeAll(() => {
     cube = sqliteCubeDb({ v2: V2, registry: REGISTRY, ryuiki: RYUIKI });
+    cubeV1Compat = hasV1Compat ? sqliteCubeDb({ v2: V2_V1COMPAT, registry: REGISTRY, ryuiki: RYUIKI }) : undefined;
     v1 = new Database(DERIVED, { readonly: true, fileMustExist: true });
   });
   afterAll(() => {
     cube.close();
+    cubeV1Compat?.close();
     v1.close();
   });
 
@@ -74,7 +95,10 @@ describe.skipIf(!hasRealDb)("実DB統合テスト: lib/cube と v1 (derived.sqli
     expect(byStat.get("mean")?.nCensored).toBe(v1Row!.n_censored);
   });
 
-  it("meas_clim: pH の月別平年値（月1〜12件すべて。alias 'pH' の全系列を混ぜる——design §3.3）", async () => {
+  // pH は合成データの5系列の1つ（ファイル冒頭コメント参照）——`v2.sqlite`
+  // （合成除外後）ではなく `cubeV1Compat`（合成込み。derived.sqlite と同じ母集合）
+  // で読む。
+  it.skipIf(!hasV1Compat)("meas_clim: pH の月別平年値（月1〜12件すべて。alias 'pH' の全系列を混ぜる——design §3.3）", async () => {
     const v1Rows = v1.prepare(`SELECT month, n, avg, min, max FROM meas_clim WHERE variable='pH' ORDER BY month`).all() as {
       month: number;
       n: number;
@@ -86,7 +110,7 @@ describe.skipIf(!hasRealDb)("実DB統合テスト: lib/cube と v1 (derived.sqli
 
     const series = seriesForAlias("measurements", "pH"); // 複数系列（mean/point）を混ぜる
     const { rows } = await summarize(
-      cube,
+      cubeV1Compat!,
       {
         series,
         scope: { kind: "all_sites" },
@@ -190,6 +214,17 @@ describe.skipIf(!hasRealDb)("実DB統合テスト: lib/cube と v1 (derived.sqli
   // sensor_timeseries の両方を持つ実地点で固定する（`n_meas` が sensor_timeseries
   // 分を混入させずに v1 の site_var と一致することを見る——`nVariables`
   // は variable_id 単位で v1 の alias 単位の n_var とは別物なので比較しない）。
+  //
+  // この5地点は全部、合成データの影響を受ける（env_kousui 3地点は実データ併存、
+  // moni1000 2地点は合成のみ——ファイル冒頭コメント参照）ため、この2件も
+  // `cubeV1Compat`（合成込み）で読む。`source:'live'` も明示する——
+  // `summary_place_variable`/`summary_variable_catalog`（既定の `source:'summary'`
+  // が読む表）は `v2.sqlite`（合成除外後）で作った内容のコピーのまま
+  // `v2_v1compat.sqlite` に残っている（`scripts/b13_build_summary.py` は
+  // v1互換段では再実行しない——`migrate.common.staged_table` は
+  // `observation`/`observation_agg` にしか触れないため）。`source:'live'` は
+  // `observation_agg` を直接集計するので、この2件が見たい「合成込みの実測」を
+  // 正しく反映する。
   const BOTH_DATASET_SITE_IDS = [
     "env_kousui_stations_kanagawa__kousui_1410170",
     "env_kousui_stations_kanagawa__kousui_1410940",
@@ -200,7 +235,7 @@ describe.skipIf(!hasRealDb)("実DB統合テスト: lib/cube と v1 (derived.sqli
 
   // 以下2件は実 DB（200万行超）への集計を複数回投げるため、フルスイート実行時の
   // 負荷次第では既定の5秒タイムアウトを超えることがある（実測）ので明示的に長くする。
-  it(
+  it.skipIf(!hasV1Compat)(
     "catalog.sites({dataset:'measurements'}): measurements/sensor_timeseries を両方持つ5地点で n_meas が v1 site_var の SUM(n) と一致する",
     async () => {
       const v1RowsBySite = new Map(
@@ -210,7 +245,7 @@ describe.skipIf(!hasRealDb)("実DB統合テスト: lib/cube と v1 (derived.sqli
         ]),
       );
 
-      const v2Rows = await catalog.sites(cube, { dataset: "measurements" });
+      const v2Rows = await catalog.sites(cubeV1Compat!, { dataset: "measurements", source: { kind: "live" } });
       const v2BySite = new Map(v2Rows.map((r) => [r.siteId, r]));
 
       for (const siteId of BOTH_DATASET_SITE_IDS) {
@@ -223,15 +258,17 @@ describe.skipIf(!hasRealDb)("実DB統合テスト: lib/cube と v1 (derived.sqli
     20_000,
   );
 
-  it(
+  it.skipIf(!hasV1Compat)(
     "catalog.sites(): dataset を省略すると measurements + sensor_timeseries を合算する（同じ5地点で n_meas が dataset:'measurements' より大きい）",
     async () => {
       // dataset 省略時は `sites()` が絞り込み無しの経路（`observation_agg` 全体への
       // 索引なし集計）を通るため、実 DB に対しては特に時間がかかる（design §3.4
       // 「dataset を指定したときは variable_id 前段フィルタ込みの索引が効く経路」の
-      // 裏返し——絞り込み無しは元々このコストがある）。
-      const measurementsOnly = await catalog.sites(cube, { dataset: "measurements" });
-      const unfiltered = await catalog.sites(cube);
+      // 裏返し——絞り込み無しは元々このコストがある）。`cubeV1Compat` を使う理由は
+      // 上の `BOTH_DATASET_SITE_IDS` のコメント参照（5地点とも sensor_timeseries 側は
+      // 合成データのみで、合成除外後の `cube` では0件になり不等号が壊れる）。
+      const measurementsOnly = await catalog.sites(cubeV1Compat!, { dataset: "measurements", source: { kind: "live" } });
+      const unfiltered = await catalog.sites(cubeV1Compat!, { source: { kind: "live" } });
       const measBySite = new Map(measurementsOnly.map((r) => [r.siteId, r.nMeas]));
       const allBySite = new Map(unfiltered.map((r) => [r.siteId, r.nMeas]));
 

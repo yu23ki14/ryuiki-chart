@@ -5,21 +5,31 @@ import { caveatKeysForTables } from "./caveats";
 import { listTables, runUserSql, SqlError } from "@/lib/db";
 import { TABLE_META, SCHEMA_META, TABLE_ORIGIN } from "@/lib/table-meta";
 import { ZONE_INFO } from "@/lib/registry/generated-client";
-import { resolveVariableInfo, type ResolvedVariableInfo } from "@/lib/registry/lookup";
+import { getVariable } from "@/lib/registry/lookup";
 import {
-  listSites,
-  getSite,
-  siteVariables,
-  listWaterBodies,
-  sitesInWaterBody,
-  waterBodiesForVariable,
+  d1CubeDb,
+  representativeSeries,
+  basisOf,
+  yearCellFilterForBasis,
+  withTheme,
+  queryCells,
+  summarize,
+  buildEnvelope,
+  buildZoneEnvelope,
+  pivotYearCells,
+  toSeriesPoint,
+  unitLabel,
   variableCatalog,
-  yearSeries,
-  monthSeries,
-  daySeries,
-  zoneSeries,
-  zoneClimatology,
-  climatology,
+  siteVariables,
+  sites as cubeSites,
+  site as cubeSite,
+  sitesInWaterBody,
+  waterBodies,
+  type CellSpec,
+  type Scope,
+} from "@/lib/cube";
+import { facetsForSeries, caveatKeysForFacets } from "@/lib/cube/caveats";
+import {
   watershedRollup,
   overviewStats,
   taxonGroupYears,
@@ -36,6 +46,9 @@ import {
   decisions,
   observerStats,
 } from "@/lib/queries";
+
+/** measurements データセット固定（PR-2 のスコープは測定値系。design §1.1 と同じ前提）。 */
+const DATASET = "measurements";
 
 /**
  * 意図レベルのツール10個。中身は queries.ts の合成で、新しい SQL はほぼ書かない
@@ -135,22 +148,6 @@ function fitToBudget<T>(data: T): { data: T; truncated: boolean } {
 }
 
 /**
- * ツール結果に載せる registry の情報（variable_id / unit / higher_is_worse）。
- *
- * 出典表記（`variable` 引数・`variableCatalog()` の行の `variable` 列）は出典ごとに
- * 揺れる（ADR-0010: OX / Ox(ppm) / 光化学オキシダント_日平均 が同じ量）。ここで
- * レジストリの正準 `variableId` を引いて添えることで、モデルが名前の文字列一致ではなく
- * `variableId` の一致で「同じ指標か」を判断できるようにする（system prompt 側の説明と対）。
- * 未登録（レジストリにまだ無い出典表記）のときは null を返す（推測で埋めない）。
- */
-function registryInfo(
-  variable: string,
-  sourceScope: "measurements" | "sensor_timeseries" = "measurements",
-): ResolvedVariableInfo | null {
-  return resolveVariableInfo(variable, sourceScope) ?? null;
-}
-
-/**
  * ツール結果の共有辞書 `registry` の1エントリ。
  *
  * `variableId` は持たない（キーに出るので二重持ちしない）。`code` も持たない
@@ -168,55 +165,33 @@ interface RegistryEntry {
   descriptionJa: string | null;
 }
 
-function toRegistryEntry(info: ResolvedVariableInfo): RegistryEntry {
+/**
+ * `variableId`（正準の指標ID）から registry の1エントリを引く（Issue #48 PR-2）。
+ * `lib/cube` の問い合わせは行に variableId を直接持つので、v1 の
+ * `resolveVariableInfo`（出典表記→variableId の解決）はもう要らない——ここでは
+ * `@/lib/registry/lookup` の `getVariable` で variable テーブルを直接引くだけ。
+ * `unitId` を渡すと（系列固有の単位。alias 側の unit_id 上書きに相当）そちらを優先する。
+ */
+function registryEntryForVariable(variableId: string, unitId?: string | null): RegistryEntry | null {
+  const v = getVariable(variableId);
+  if (!v) return null;
   return {
-    nameJa: info.nameJa,
-    unit: info.unit,
-    higherIsWorse: info.higherIsWorse,
-    descriptionJa: info.descriptionJa,
+    nameJa: v.nameJa,
+    unit: unitLabel(unitId ?? v.unitId),
+    higherIsWorse: v.higherIsWorse,
+    descriptionJa: v.descriptionJa,
   };
 }
 
-/**
- * レジストリ情報を「行には variableId だけ」「本体は1つの共有辞書 registry」に分けて
- * 複数行にまとめて添える。
- *
- * レビュー指摘: 以前は行ごとに `registry: registryInfo(...)` をインライン展開しており、
- * `nameJa`/`descriptionJa`/`unit`/`code` が行の数だけ重複していた（実測:
- * list_catalog(what='variables') が 9,084 -> 20,333 バイトに膨張。BYTE_BUDGET
- * 24KB の85%を占め、`fitToBudget` の間引きが `var_catalog` の行から先に始まる
- * 状態だった）。variableId が同じなら registry の中身も同じなので、行ごとに
- * 持たせる必要が無い。
- */
-function withRegistry<T>(
-  rows: readonly T[],
-  variableOf: (row: T) => string,
-  sourceScope: "measurements" | "sensor_timeseries" = "measurements",
-): { rows: (T & { variableId: string | null })[]; registry: Record<string, RegistryEntry> } {
+/** `registryEntryForVariable` を複数の (variableId, unitId) 組に対して呼び、共有辞書にまとめる。 */
+function registryFor(pairs: readonly { variableId: string; unitId?: string | null }[]): Record<string, RegistryEntry> {
   const registry: Record<string, RegistryEntry> = {};
-  const withIds = rows.map((row) => {
-    const info = registryInfo(variableOf(row), sourceScope);
-    if (info) registry[info.variableId] = toRegistryEntry(info);
-    return { ...row, variableId: info?.variableId ?? null };
-  });
-  return { rows: withIds, registry };
-}
-
-/**
- * `withRegistry` の単一 variable 版（get_timeseries / get_seasonality のように
- * 行の配列ではなく1つの variable だけを扱うツール用）。形を揃えることで、
- * モデル・システムプロンプトが「ツール結果の registry[variableId] を見る」という
- * 単一の説明で済むようにする。
- */
-function singleRegistry(
-  variable: string,
-  sourceScope: "measurements" | "sensor_timeseries" = "measurements",
-): { variableId: string | null; registry: Record<string, RegistryEntry> } {
-  const info = registryInfo(variable, sourceScope);
-  return {
-    variableId: info?.variableId ?? null,
-    registry: info ? { [info.variableId]: toRegistryEntry(info) } : {},
-  };
+  for (const { variableId, unitId } of pairs) {
+    if (registry[variableId]) continue;
+    const e = registryEntryForVariable(variableId, unitId);
+    if (e) registry[variableId] = e;
+  }
+  return registry;
 }
 
 function makeResult<T>(opts: {
@@ -226,6 +201,9 @@ function makeResult<T>(opts: {
   rowCount: number;
   elapsedMs: number;
   sql?: string;
+  /** table 経由ではなく facet 経由で決めた注記キー（`lib/cube/caveats` の
+   *  `facetsForSeries`/`caveatKeysForFacets` を使うツール用）。指定時はこちらを使う。 */
+  caveats?: string[];
 }): ToolResult<T> {
   const { data, truncated } = fitToBudget(opts.data);
   return {
@@ -237,7 +215,7 @@ function makeResult<T>(opts: {
       rowCount: opts.rowCount,
       elapsedMs: Math.round(opts.elapsedMs),
     },
-    caveats: caveatKeysForTables(opts.tables),
+    caveats: opts.caveats ?? caveatKeysForTables(opts.tables),
     truncated: truncated || undefined,
     truncatedNote: truncated
       ? "応答が大きいため系列を等間隔に間引いてある（先頭と末尾は保持）。実際の件数は provenance.rowCount。" +
@@ -257,12 +235,12 @@ const list_catalog = tool({
     what: z
       .enum(["variables", "waters", "zones"])
       .describe("variables=水質などの測定項目一覧, waters=水域・地域一覧, zones=Ridge to Reefのゾーン(1-5)の定義"),
-    variable: z
+    variableId: z
       .string()
       .optional()
-      .describe("what='waters' のとき、この項目のデータを実際に持つ水域だけに絞り込む（項目名は variables の結果から取る）"),
+      .describe("what='waters' のとき、この項目のデータを実際に持つ水域だけに絞り込む（正準の指標ID。variables の結果の variableId をそのまま渡す）"),
   }),
-  execute: async ({ what, variable }) => {
+  execute: async ({ what, variableId }) => {
     const t0 = performance.now();
     if (what === "zones") {
       return makeResult({
@@ -273,23 +251,26 @@ const list_catalog = tool({
         elapsedMs: performance.now() - t0,
       });
     }
+    const db = await d1CubeDb();
     if (what === "waters") {
-      const rows = variable ? await waterBodiesForVariable(variable) : await listWaterBodies();
+      const rows = variableId
+        ? await waterBodies(db, { series: representativeSeries(variableId, DATASET) })
+        : await waterBodies(db, { dataset: DATASET });
       return makeResult({
         tool: "list_catalog",
-        tables: ["sites", "site_var"],
+        tables: ["sites", "summary_place_variable"],
         data: { waters: rows },
         rowCount: rows.length,
         elapsedMs: performance.now() - t0,
       });
     }
-    const rows = await variableCatalog();
-    const { rows: variables, registry } = withRegistry(rows, (r) => r.variable);
+    const rows = await variableCatalog(db, { dataset: DATASET });
+    const registry = registryFor(rows.map((r) => ({ variableId: r.variableId, unitId: r.unitId })));
     return makeResult({
       tool: "list_catalog",
-      tables: ["var_catalog"],
-      data: { variables, registry },
-      rowCount: variables.length,
+      tables: ["summary_variable_catalog"],
+      data: { variables: rows, registry },
+      rowCount: rows.length,
       elapsedMs: performance.now() - t0,
     });
   },
@@ -305,100 +286,109 @@ const scopeSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("zone") }),
 ]);
 
-/**
- * var_catalog を1回だけ引いて、kind と単位をまとめて決める。
- *
- * kind 未指定なら実在する方（daily 優先）を選ぶ。単位は meas_month / meas_daily の行には
- * 入っていない（monthSeries / daySeries が select していない）ので、ここで拾わないと
- * 月次・日次のグラフだけ縦軸の単位が消える。水質の図で mg/L が出ないのは読み手に厳しい。
- */
-async function resolveVariable(
-  variable: string,
-  kind?: "daily" | "annual",
-): Promise<{ kind: "daily" | "annual"; unit: string | null }> {
-  const row = (await variableCatalog()).find((c) => c.variable === variable);
-  const resolved = kind ?? (row && row.n_daily > 0 ? "daily" : row && row.n_annual > 0 ? "annual" : "daily");
-  return { kind: resolved, unit: row?.unit ?? null };
-}
-
 const get_timeseries = tool({
   description:
-    "ある測定項目の時系列を取る。scope で「水域の中の地点ごと」「1地点」「ゾーン平均」のどれで見るかを選ぶ。grain で年次/月次/日次を選ぶ。",
+    "ある測定項目の時系列を取る。scope で「水域の中の地点ごと」「1地点」「ゾーン平均」のどれで見るかを選ぶ。grain で粒度を選ぶ。",
   inputSchema: z.object({
-    variable: z.string().describe("測定項目名（list_catalog(what='variables') の variable の値そのまま）"),
+    variableId: z.string().describe("正準の指標ID（list_catalog(what='variables') の行の variableId をそのまま渡す）"),
     scope: scopeSchema,
-    grain: z.enum(["year", "month", "day"]).describe("時間の粒度。zoneスコープはyearのみ意味を持つ"),
-    kind: z
-      .enum(["daily", "annual"])
+    grain: z
+      .enum(["year", "fiscal_year", "month", "day"])
+      .describe(
+        "時間の粒度。year=暦年（検体値から積み上げた年別平均。無ければ暦年値そのもの）、" +
+          "fiscal_year=日本の年度（4月始まり。原本が年度集計値の項目はこちら）、month=月別平均、day=日次。" +
+          "zoneスコープは year/fiscal_year のみ意味を持つ",
+      ),
+    stat: z
+      .string()
       .optional()
-      .describe("検体値由来(daily)か年度集計値由来(annual)か。省略時はデータが実在する方を自動選択する"),
+      .describe("非代表の統計量（例: p75/p90/max/min）を明示したいときだけ指定する。省略時は代表系列（平均相当）"),
     from: z
       .string()
       .optional()
       .describe("grain='day' のときの開始日 YYYY-MM-DD。日次は点が多く、範囲を絞らないと間引かれる"),
     to: z.string().optional().describe("grain='day' のときの終了日 YYYY-MM-DD"),
   }),
-  execute: async ({ variable, scope, grain, kind, from, to }) => {
+  execute: async ({ variableId, scope, grain, stat, from, to }) => {
     const t0 = performance.now();
-    const { kind: resolvedKind, unit } = await resolveVariable(variable, kind);
-    const { variableId, registry } = singleRegistry(variable);
-    const tables = new Set<string>(["var_catalog"]);
+    const db = await d1CubeDb();
+    // series は basis で絞り込まない（basis はセルの性質であって系列の登録
+    // 〔value_grain〕ではない。Issue #48 PR-2 統合後修正A #1）——representativeSeries()
+    // の全 value_grain をそのまま渡し、basis の絞り込みは `yearCellFilterForBasis()`
+    // が返す grain/inputGrain でセル側（CellSpec）に行わせる。
+    const all = representativeSeries(variableId, DATASET, stat ?? "representative");
+    const basis: "day" | "fiscal_year" | "year" =
+      grain === "fiscal_year" ? "fiscal_year" : grain === "month" || grain === "day" ? "day" : all.length > 0 ? basisOf(all).basis : "day";
+    const registry = registryFor(all.map((s) => ({ variableId: s.variableId, unitId: s.unitId })));
+    const unitIds = new Set(all.map((s) => s.unitId));
+    const unit = unitIds.size === 1 ? unitLabel([...unitIds][0]) : null;
+    const period = from || to ? { from, to } : undefined;
+    const basisFilter = yearCellFilterForBasis(basis);
+    const cellGrain = grain === "year" || grain === "fiscal_year" ? [basisFilter.grain] : [grain];
+
+    if (all.length === 0) {
+      return makeResult({
+        tool: "get_timeseries",
+        tables: [],
+        data: { scope, grain, basis, stat: stat ?? "representative", variableId, unit, registry, points: [], envelope: null },
+        rowCount: 0,
+        elapsedMs: performance.now() - t0,
+      });
+    }
 
     if (scope.type === "zone") {
-      const points = await zoneSeries(variable, resolvedKind);
-      tables.add("zone_year");
+      const zoneScope: Scope = { kind: "all_sites" };
+      const spec: CellSpec = { series: all, scope: zoneScope, grain: cellGrain, inputGrain: basisFilter.inputGrain, period, imputation: "both" };
+      // zero/lod を1回の SQL で両方計算する（`summarizeZone` 参照）——以前は
+      // `imputation:'zero'`/`'lod'` を2回叩いて JS 側でキーを合わせていた
+      // （Issue #48 PR-2 統合後修正A #4）。
+      const { rows, truncated } = await summarize(db, spec, "zone");
+      const points = rows.map((r) => ({ zone: r.zone, grain: r.grain, year: r.year, nSites: r.nSites, n: r.n, valueLod: r.avgLod, valueZero: r.avgZero }));
+      const facets = facetsForSeries(all.map((s) => withTheme(s)), zoneScope);
+      const envelope = await buildZoneEnvelope(db, spec, rows, { truncated });
       return makeResult({
         tool: "get_timeseries",
-        tables: [...tables],
-        data: { scope, grain: "year", kind: resolvedKind, unit, variableId, registry, points },
+        tables: ["observation_agg"],
+        data: { scope, grain, basis, stat: stat ?? "representative", variableId, unit, registry, points, envelope },
         rowCount: points.length,
         elapsedMs: performance.now() - t0,
+        caveats: caveatKeysForFacets(facets),
       });
     }
 
-    // site スコープは site_id 直指定で meas_* だけを引く（sites テーブルには触れない）。
-    // water スコープだけ、対象地点を求めるのに sites/site_var を実際に引く。
-    let sites;
-    let siteIds: string[];
-    if (scope.type === "site") {
-      siteIds = [scope.siteId];
-    } else {
-      tables.add("sites");
-      tables.add("site_var");
-      sites = await sitesInWaterBody(scope.name);
-      siteIds = sites.map((s) => s.site_id);
-    }
+    const cubeScope: Scope = scope.type === "water" ? { kind: "water", municipality: scope.name } : { kind: "site", siteId: scope.siteId };
+    const sites = scope.type === "water" ? await sitesInWaterBody(db, scope.name, { dataset: DATASET }) : undefined;
 
-    if (grain === "year") {
-      const points = await yearSeries(variable, siteIds, resolvedKind);
-      tables.add("meas_year");
-      return makeResult({
-        tool: "get_timeseries",
-        tables: [...tables],
-        data: { scope, sites, grain, kind: resolvedKind, unit, variableId, registry, points },
-        rowCount: points.length,
-        elapsedMs: performance.now() - t0,
-      });
-    }
-    if (grain === "month") {
-      const points = await monthSeries(variable, siteIds);
-      tables.add("meas_month");
-      return makeResult({
-        tool: "get_timeseries",
-        tables: [...tables],
-        data: { scope, sites, grain, unit, variableId, registry, points },
-        rowCount: points.length,
-        elapsedMs: performance.now() - t0,
-      });
-    }
-    const points = await daySeries(variable, siteIds, from, to);
-    tables.add("meas_daily");
+    const isYearGrain = grain === "year" || grain === "fiscal_year";
+    const spec: CellSpec = {
+      series: all,
+      scope: cubeScope,
+      grain: cellGrain,
+      stats: isYearGrain ? ["mean", "min", "max"] : ["mean"],
+      inputGrain: basisFilter.inputGrain,
+      period,
+      imputation: "both",
+    };
+    const { rows: cells, truncated } = await queryCells(db, spec);
+    const facets = facetsForSeries(all.map((s) => withTheme(s)), cubeScope);
+    // `envelope` の coverage/provenance（nNotDetected・出典の帰属）は生セル（`cells`）
+    // からでないと正しく計算できない（ピボット後は落ちる情報がある）ので、先に生
+    // セルで組み立ててから、`rows` だけ画面と同じピボット済みの点に差し替える
+    // （Issue #48 PR-2 code-review #5）。以前は `data.points`（生セル）と
+    // `envelope.rows`（同じ生セル）を別々に持っており、24KB の予算で独立に
+    // 間引かれて食い違いうる上、`data.points` の形も画面（yearSeries 等の
+    // ピボット済み点）と食い違っていた。
+    const points = isYearGrain ? pivotYearCells(cells) : cells.map(toSeriesPoint);
+    const rawEnvelope = await buildEnvelope(db, spec, cells, { truncated });
+    const envelope = { ...rawEnvelope, rows: points };
+
     return makeResult({
       tool: "get_timeseries",
-      tables: [...tables],
-      data: { scope, sites, grain, from, to, unit, variableId, registry, points },
+      tables: ["observation_agg"],
+      data: { scope, sites, grain, basis, stat: stat ?? "representative", variableId, unit, registry, points, envelope },
       rowCount: points.length,
       elapsedMs: performance.now() - t0,
+      caveats: caveatKeysForFacets(facets),
     });
   },
 });
@@ -408,20 +398,63 @@ const get_timeseries = tool({
 /* ------------------------------------------------------------------ */
 
 const get_seasonality = tool({
-  description: "ある測定項目の季節性（月ごとの平均）を、全体とゾーン別の両方で取る。",
+  description: "ある測定項目の季節性（月ごとの平均）を、全体とゾーン別の両方で取る。検体値（basis=day）の項目だけ意味を持つ。",
   inputSchema: z.object({
-    variable: z.string().describe("測定項目名"),
+    variableId: z.string().describe("正準の指標ID（list_catalog(what='variables') の行の variableId をそのまま渡す）"),
   }),
-  execute: async ({ variable }) => {
+  execute: async ({ variableId }) => {
     const t0 = performance.now();
-    const [overall, byZone] = await Promise.all([climatology(variable), zoneClimatology(variable)]);
-    const { variableId, registry } = singleRegistry(variable);
+    // 月別集計は検体値（basis=day）からの積み上げだけが意味を持つ（v1 meas_clim/zone_clim と同じ前提）。
+    // series は value_grain で絞り込まない——`grain: "day"`/`"month"` のセル自体が
+    // day-input の系列にしか存在しないため、grain 指定だけで自然に絞り込まれる
+    // （Issue #48 PR-2 統合後修正A #1。basis はセルの性質であって系列の登録ではない）。
+    const series = representativeSeries(variableId, DATASET);
+    const registry = registryFor(series.map((s) => ({ variableId: s.variableId, unitId: s.unitId })));
+
+    if (series.length === 0) {
+      return makeResult({
+        tool: "get_seasonality",
+        tables: [],
+        data: { variableId, registry, overall: [], byZone: [] },
+        rowCount: 0,
+        elapsedMs: performance.now() - t0,
+      });
+    }
+
+    const db = await d1CubeDb();
+    const overallScope: Scope = { kind: "all_sites" };
+    // zero/lod を1回の SQL で両方計算する（`summarizeZone` と同じ `imputation:'both'`
+    // 形。Issue #48 PR-2 /simplify #11）——以前は `imputation:'zero'`/`'lod'` を
+    // 2回ずつ叩いて JS 側でキーを合わせていた（4回→2回）。
+    const [overall_, zone_] = await Promise.all([
+      summarize(db, { series, scope: overallScope, grain: "day", imputation: "both" }, "month_of_year"),
+      summarize(db, { series, scope: overallScope, grain: "month", imputation: "both" }, "zone_month_of_year"),
+    ]);
+    const overall = overall_.rows.map((r) => ({
+      month: r.month,
+      n: r.n,
+      min: r.min,
+      max: r.max,
+      valueLod: r.avgLod ?? null,
+      valueZero: r.avgZero ?? null,
+    }));
+    const byZone = zone_.rows.map((r) => ({
+      zone: r.zone,
+      month: r.month,
+      nSites: r.nSites,
+      n: r.n,
+      valueLod: r.avgLod ?? null,
+      valueZero: r.avgZero ?? null,
+    }));
+    const facets = facetsForSeries(series.map((s) => withTheme(s)), overallScope);
+
     return makeResult({
       tool: "get_seasonality",
-      tables: ["meas_clim", "zone_clim"],
-      data: { variable, variableId, registry, overall, byZone },
+      tables: ["observation_agg"],
+      data: { variableId, registry, overall, byZone },
       rowCount: overall.length + byZone.length,
       elapsedMs: performance.now() - t0,
+      caveats: caveatKeysForFacets(facets),
     });
   },
 });
@@ -441,18 +474,24 @@ const get_sites = tool({
   }),
   execute: async ({ siteId, query, zone, limit }) => {
     const t0 = performance.now();
+    const db = await d1CubeDb();
     if (siteId) {
-      const [site, siteVars] = await Promise.all([getSite(siteId), siteVariables(siteId)]);
-      const { rows: variables, registry } = withRegistry(siteVars, (v) => v.variable);
+      // `catalog.siteVariables()` は `site()` と同じ site_id を受ける（Issue #48
+      // PR-2 統合後修正A #2。内部の place_id への解決は `lib/cube` 側に集約した）。
+      const [site, siteVars] = await Promise.all([
+        cubeSite(db, siteId, { dataset: DATASET }),
+        siteVariables(db, siteId, { imputation: "lod", dataset: DATASET }),
+      ]);
+      const registry = registryFor(siteVars.map((v) => ({ variableId: v.series.variableId, unitId: v.series.unitId })));
       return makeResult({
         tool: "get_sites",
-        tables: ["sites", "watershed_meta", "site_var"],
-        data: { site: site ?? null, variables, registry },
-        rowCount: variables.length,
+        tables: ["sites", "summary_place_variable"],
+        data: { site: site ?? null, variables: siteVars, registry },
+        rowCount: siteVars.length,
         elapsedMs: performance.now() - t0,
       });
     }
-    let rows = await listSites();
+    let rows = await cubeSites(db, { dataset: DATASET });
     if (query) {
       const q = query.toLowerCase();
       rows = rows.filter((s) => (s.name ?? "").toLowerCase().includes(q));
@@ -462,7 +501,7 @@ const get_sites = tool({
     const limited = rows.slice(0, limit ?? 20);
     return makeResult({
       tool: "get_sites",
-      tables: ["sites", "watershed_meta", "site_var"],
+      tables: ["sites", "summary_place_variable"],
       data: { sites: limited, matched },
       rowCount: limited.length,
       elapsedMs: performance.now() - t0,

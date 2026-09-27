@@ -1,0 +1,29 @@
+# 単位の証拠検査（`scripts/b04_build_cube.py` の `_assert_unit_evidence()`）の
+# 宣言——**診断専用の「v1互換キューブ」だけが使う**（Issue #48 PR-2 §1(d)。
+# `scripts/b00_run_full_gate.py`/CI が `b03 --include-synthetic` → `b04
+# --unit-evidence-declarations-yaml scripts/migrate/unit_evidence_declarations_v1compat.yaml`
+# の順で明示的に渡す）。
+#
+# 本番の宣言 `scripts/migrate/unit_evidence_declarations.yaml` は PR-2 で
+# `declared: []`（合成データを既定で除外するようになったため）にしたが、
+# 合成データを含む v1互換キューブの `observation` にはこの系列
+# （sensor_timeseries/common:variable:water.water_temp/instant、alias
+# "water_temperature"、source_id=synthetic_sensor、11,652行）がそのまま残る
+# ため、`_assert_unit_evidence()` の検証2（宣言と実データの過不足なき一致）を
+# 通すにはこちらの宣言が要る。中身は PR-2 以前の本番宣言と同じ
+# （`unit_evidence_declarations.yaml` の履歴参照）。
+declared:
+  - source_table: sensor_timeseries
+    variable_id: common:variable:water.water_temp
+    obs_stat: null
+    value_grain: instant
+    reason: >
+      alias "water_temperature"（sensor_timeseries、source_id=synthetic_sensor、
+      合成データ）。原表記の単位 "degC" は該当 11,652 行すべてで一貫しており
+      common:unit:degc の symbol と一致することを実測済みだが、D3 の受け入れ
+      条件（measurements データセットの alias 38行のみ）の対象外のため埋めない
+      （PR-1 時点の判断のまま。PR-2 で本番の observation からは除外されるが、
+      v1互換キューブは合成データを含めて v1 を再現する専用の診断ファイルなので
+      この宣言をそのまま残す）。
+    found_on: 2026-09-26
+    record: docs/plans/V2_SERVING_PR1.md D3

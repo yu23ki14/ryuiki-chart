@@ -1,7 +1,9 @@
 /**
- * カタログ系の問い合わせ（design §3.4）。PR-1 は問い合わせ時計算（`CatalogSource: "live"`）。
- * PR-2 で事前計算した summary 表（`summary_variable_catalog` 等）に差し替える口を
- * `CatalogSource` として残してある（今はどの関数も `"live"` 固定）。
+ * カタログ系の問い合わせ（design §3.4・PR-2 design §4.3）。`CatalogSource` で出所を
+ * 切り替える: 既定は `summary`（`summary_variable_catalog`/`summary_place_variable`、
+ * `scripts/b13_build_summary.py` が作る事前集計。画面・API・AI・serving-diff はこちら）、
+ * `live` は `observation_agg` を直接集計する経路（PR-1 の実装。summary の正しさを
+ * 比べる統合テスト専用——実 DB に対しては summary より遅い）。
  *
  * `dataset` の絞り込みは `variable_alias` との JOIN で行う（`registry.sqlite`/D1 の
  * 生テーブルを直接読む。`series.ts`/`generated.ts` の中身が古くても常に最新の状態を反映する）。
@@ -9,9 +11,18 @@
 import type { CubeDb, SqlParam } from "./db";
 import { MAX_ID_LIST } from "./db";
 import { jsonEachParam, seriesFilterSql } from "./sql";
-import { seriesKeyFromRow, seriesKeySql, seriesKeyString, type SeriesKey } from "./series";
+import { basisOfCell, isRepresentativeObsStat, seriesKeyFromRow, seriesKeySql, seriesKeyString, type SeriesKey } from "./series";
 
+/**
+ * データの出所（PR-2 design §4.3）。`summary`（既定）は `summary_variable_catalog`/
+ * `summary_place_variable`（`scripts/b13_build_summary.py` が作る事前集計）を読む
+ * ——画面・API・AI・serving-diff は全部こちらを呼ぶ。`live` は `observation_agg`
+ * を直接集計する経路（PR-1 の実装で、summary の正しさを比べる統合テスト専用。
+ * 実 DB に対しては summary より遅い——§3.4 のコメント参照）。
+ */
 export type CatalogSource = { kind: "live" } | { kind: "summary" };
+
+const DEFAULT_CATALOG_SOURCE: CatalogSource = { kind: "summary" };
 
 /** `serving-diff` の v2 アダプタ（`scripts/lib/serving/adapters-v2.ts`）も
  *  同じ「年セル・mean 統計」の絞り込みを書く箇所があるため export する
@@ -19,83 +30,230 @@ export type CatalogSource = { kind: "live" } | { kind: "summary" };
 export const YEAR_GRAINS_SQL = "obs.grain IN ('year','fiscal_year')";
 export const MEAN_STAT_SQL = "obs.stat = 'mean'";
 
-export interface SeriesCatalogRow {
-  series: SeriesKey;
-  seriesKey: string;
-  inputGrain: string;
+/**
+ * 指標カタログ（v1 `var_catalog` の後継。design §0 決定4・§2.1・§4.3）。**variable_id
+ * 単位に束ねた行**を返す——同じ variable_id に属する複数の系列（obs_stat/unit_id/
+ * value_grain の組み合わせ違い。例: BOD の mean/day・point/day・mean/fiscal_year）を
+ * 1行にまとめる。PR-1 の `SeriesCatalogRow`（系列＝tuple 単位）から変わった点で、
+ * `lib/cube` の他の場所からもテストからも参照が無かったため破壊的に変更した。
+ *
+ * `nPlaces` は tuple ごとの distinct place 数を単純合算しない（同じ地点が複数 tuple
+ * に同時に現れると二重計上する——PR-1 の知見どおり）。`unitId` は束ねた中で最も
+ * `n` の大きい非NULLの unit_id（全部NULLなら null）。`stats` は束ねた中に現れる
+ * 具体的な obs_stat の集合（`null`＝代表統計量は含めない。D4 の非代表統計量選択に使う）。
+ */
+export interface VariableCatalogRow {
+  variableId: string;
+  unitId: string | null;
   n: number;
   nPlaces: number;
   yFrom: number;
   yTo: number;
-  nDaily: number;
-  nAnnual: number;
+  nByBasis: { day: number; fiscalYear: number; year: number };
   nCensored: number;
+  /** 束ねた中に現れる**非代表**の obs_stat（p75/p90/max/min 等。NULL・mean・point
+   *  ——代表統計量——は含めない。ソート済み・重複無し。D4「非代表統計量を stat
+   *  パラメータで選べるようにする」の選択肢そのもの。代表統計量まで含めると、
+   *  ほとんどの variable で「代表値（平均）」の選択肢と実質同じものが並んで
+   *  二重に見える（Issue #48 PR-2 code-review #7）。 */
+  stats: string[];
 }
 
-interface CatalogRawRow {
+/**
+ * `variableCatalog`（live/summary 共通）が集計するための、系列×地点1行。
+ *
+ * `grain`/`inputGrain`（セル自身の性質）を持つ——`nByBasis` の束ねは basis を
+ * これで決める（`value_grain` の登録値では決めない。Issue #48 PR-2 統合後
+ * 修正A #1・`series.ts` の `basisOfCell` docstring 参照）。
+ */
+interface CatalogCellAgg {
+  variableId: string;
+  obsStat: string | null;
+  unitId: string | null;
+  grain: string;
+  inputGrain: string;
+  placeId: string;
+  n: number;
+  nCensored: number;
+  yFrom: number;
+  yTo: number;
+}
+
+/** `unitCounts`（unit_id → 束ねた中の合計 n）から代表の unit_id を選ぶ。
+ *  非NULL のうち `n` が最大のものを優先する（全部NULLなら null）。 */
+function pickRepresentativeUnit(unitCounts: ReadonlyMap<string | null, number>): string | null {
+  let best: string | null = null;
+  let bestN = -1;
+  for (const [unitId, n] of unitCounts) {
+    if (unitId === null) continue;
+    if (n > bestN) {
+      best = unitId;
+      bestN = n;
+    }
+  }
+  return best;
+}
+
+function bundleVariableCatalog(rows: Iterable<CatalogCellAgg>): VariableCatalogRow[] {
+  interface Group {
+    unitCounts: Map<string | null, number>;
+    n: number;
+    places: Set<string>;
+    yFrom: number;
+    yTo: number;
+    nByBasis: { day: number; fiscalYear: number; year: number };
+    nCensored: number;
+    stats: Set<string>;
+  }
+  const groups = new Map<string, Group>();
+  for (const r of rows) {
+    let g = groups.get(r.variableId);
+    if (!g) {
+      g = {
+        unitCounts: new Map(),
+        n: 0,
+        places: new Set(),
+        yFrom: Number.POSITIVE_INFINITY,
+        yTo: Number.NEGATIVE_INFINITY,
+        nByBasis: { day: 0, fiscalYear: 0, year: 0 },
+        nCensored: 0,
+        stats: new Set(),
+      };
+      groups.set(r.variableId, g);
+    }
+    g.n += r.n;
+    g.places.add(r.placeId);
+    g.unitCounts.set(r.unitId, (g.unitCounts.get(r.unitId) ?? 0) + r.n);
+    if (r.yFrom < g.yFrom) g.yFrom = r.yFrom;
+    if (r.yTo > g.yTo) g.yTo = r.yTo;
+    const basis = basisOfCell(r);
+    if (basis === "day") g.nByBasis.day += r.n;
+    else if (basis === "fiscal_year") g.nByBasis.fiscalYear += r.n;
+    else g.nByBasis.year += r.n;
+    g.nCensored += r.nCensored;
+    if (r.obsStat && !isRepresentativeObsStat(r.obsStat)) g.stats.add(r.obsStat);
+  }
+
+  const out: VariableCatalogRow[] = [];
+  for (const [variableId, g] of groups) {
+    out.push({
+      variableId,
+      unitId: pickRepresentativeUnit(g.unitCounts),
+      n: g.n,
+      nPlaces: g.places.size,
+      yFrom: g.yFrom,
+      yTo: g.yTo,
+      nByBasis: g.nByBasis,
+      nCensored: g.nCensored,
+      stats: [...g.stats].sort(),
+    });
+  }
+  out.sort((a, b) => b.n - a.n);
+  return out;
+}
+
+interface RawLiveCatalogCell {
   variable_id: string;
   obs_stat: string | null;
   unit_id: string | null;
-  value_grain: string | null;
+  grain: string;
   input_grain: string;
+  place_id: string;
+  period_start: string;
   n: number;
-  n_places: number;
-  y_from: number;
-  y_to: number;
-  n_daily: number;
-  n_annual: number;
   n_censored: number;
 }
 
-function toSeriesCatalogRow(r: CatalogRawRow): SeriesCatalogRow {
-  const series = seriesKeyFromRow(r);
-  return {
-    series,
-    seriesKey: seriesKeyString(series),
-    inputGrain: r.input_grain,
-    n: r.n,
-    nPlaces: r.n_places,
-    yFrom: r.y_from,
-    yTo: r.y_to,
-    nDaily: r.n_daily,
-    nAnnual: r.n_annual,
-    nCensored: r.n_censored,
-  };
+function yearOf(periodStart: string): number {
+  return Number.parseInt(periodStart.slice(0, 4), 10);
 }
 
-const VARIABLE_CATALOG_SQL = `
-  SELECT obs.variable_id, obs.obs_stat, obs.unit_id, obs.value_grain, obs.input_grain,
-         SUM(obs.n) AS n, COUNT(DISTINCT obs.place_id) AS n_places,
-         MIN(CAST(substr(obs.period_start,1,4) AS INTEGER)) AS y_from,
-         MAX(CAST(substr(obs.period_start,1,4) AS INTEGER)) AS y_to,
-         SUM(CASE WHEN obs.input_grain = 'day' THEN obs.n ELSE 0 END) AS n_daily,
-         SUM(CASE WHEN obs.input_grain = obs.grain THEN obs.n ELSE 0 END) AS n_annual,
-         SUM(obs.n_censored) AS n_censored
-  FROM observation_agg obs
-  WHERE obs.place_kind = 'site' AND ${YEAR_GRAINS_SQL} AND ${MEAN_STAT_SQL}
-  GROUP BY obs.variable_id, obs.obs_stat, obs.unit_id, obs.value_grain, obs.input_grain
-  ORDER BY n DESC
-`;
+/** `variableCatalog({source:'live'})` 用の生セル（`datasetCells` を再利用、dataset
+ *  省略時は `observation_agg` を直接、絞り込み無しで読む）。 */
+async function liveCatalogCells(db: CubeDb, dataset?: string): Promise<CatalogCellAgg[]> {
+  if (dataset !== undefined) {
+    const cells = await datasetCells(db, dataset);
+    return cells.map((c) => ({
+      variableId: c.series.variableId,
+      obsStat: c.series.obsStat,
+      unitId: c.series.unitId,
+      grain: c.grain,
+      inputGrain: c.inputGrain,
+      placeId: c.placeId,
+      n: c.n,
+      nCensored: c.nCensored,
+      yFrom: yearOf(c.periodStart),
+      yTo: yearOf(c.periodStart),
+    }));
+  }
+  const rows = await db.all<RawLiveCatalogCell>(
+    `SELECT obs.variable_id, obs.obs_stat, obs.unit_id, obs.grain, obs.input_grain, obs.place_id, obs.period_start, obs.n, obs.n_censored
+     FROM observation_agg obs
+     WHERE obs.place_kind = 'site' AND ${YEAR_GRAINS_SQL} AND ${MEAN_STAT_SQL}`,
+  );
+  return rows.map((r) => ({
+    variableId: r.variable_id,
+    obsStat: r.obs_stat,
+    unitId: r.unit_id,
+    grain: r.grain,
+    inputGrain: r.input_grain,
+    placeId: r.place_id,
+    n: r.n,
+    nCensored: r.n_censored,
+    yFrom: yearOf(r.period_start),
+    yTo: yearOf(r.period_start),
+  }));
+}
+
+interface RawSummaryPlaceCell {
+  variable_id: string;
+  obs_stat: string | null;
+  unit_id: string | null;
+  grain: string;
+  input_grain: string;
+  place_id: string;
+  n: number;
+  n_censored: number;
+  y_from: number | null;
+  y_to: number | null;
+}
 
 /**
- * 系列単位の指標カタログ（v1 `var_catalog` の系列版。design §1.1・§3.4）。
- *
- * `dataset` を指定したときは `variable_alias` との JOIN で絞り込む……のを愚直に
- * 「(variable_id, value_grain, obs_stat, unit_id) の組が dataset の組の集合に含まれるか」
- * という等値条件（`COALESCE` で正準化した4列の文字列連結）で書くと、`observation_agg`
- * （200万行超）に索引の効かない結合（SQLite が `dataset` 側を外側ループにして
- * `observation_agg` を毎回全表スキャンする）になり実測 33 秒かかった。
- * `variable_id` 単体は既存索引の先頭列で絞れる（実測 1.5 秒）ので、SQL 側は
- * `variable_id ∈ dataset の distinct variable_id` までに留め、
- * 残り3列（value_grain/obs_stat/unit_id）の厳密一致と集計は JS 側で行う
- * （変換後の行数は高々 12 万行程度で、JS 側の Map 集計は数十 ms）。
+ * `variableCatalog({source:'summary'})` 用の生セル。`summary_place_variable`
+ * （地点×系列単位、時間はすでに畳み込み済み）を読む——`summary_variable_catalog`
+ * （系列単位に事前集計済みで `place_id` を持たない）ではなく地点単位の表を読むのは、
+ * variable_id への束ねで `nPlaces` を二重計上しないため（`bundleVariableCatalog` の
+ * docstring・design §4.1「束ねは summary_place_variable の place 集合から数える」）。
  */
-export async function variableCatalog(db: CubeDb, opt?: { dataset?: string }): Promise<SeriesCatalogRow[]> {
-  if (!opt?.dataset) {
-    const rows = await db.all<CatalogRawRow>(VARIABLE_CATALOG_SQL);
-    return rows.map(toSeriesCatalogRow);
-  }
-  return variableCatalogByDataset(db, opt.dataset);
+async function summaryCatalogCells(db: CubeDb, dataset?: string): Promise<CatalogCellAgg[]> {
+  const filter = dataset !== undefined ? await datasetFilterSql(db, dataset, "spv") : undefined;
+  if (filter?.empty) return [];
+
+  const sql = `
+    SELECT spv.variable_id, spv.obs_stat, spv.unit_id, spv.grain, spv.input_grain, spv.place_id,
+           spv.n, spv.n_censored, spv.y_from, spv.y_to
+    FROM summary_place_variable spv
+    ${(filter?.joins ?? []).join("\n    ")}
+  `;
+  const rows = await db.all<RawSummaryPlaceCell>(sql, filter?.params ?? []);
+  return rows.map((r) => ({
+    variableId: r.variable_id,
+    obsStat: r.obs_stat,
+    unitId: r.unit_id,
+    grain: r.grain,
+    inputGrain: r.input_grain,
+    placeId: r.place_id,
+    n: r.n,
+    nCensored: r.n_censored,
+    yFrom: r.y_from ?? 0,
+    yTo: r.y_to ?? 0,
+  }));
+}
+
+export async function variableCatalog(db: CubeDb, opt?: { dataset?: string; source?: CatalogSource }): Promise<VariableCatalogRow[]> {
+  const source = opt?.source ?? DEFAULT_CATALOG_SOURCE;
+  const cells = source.kind === "summary" ? await summaryCatalogCells(db, opt?.dataset) : await liveCatalogCells(db, opt?.dataset);
+  return bundleVariableCatalog(cells);
 }
 
 interface DatasetTupleRow {
@@ -207,66 +365,18 @@ export async function datasetCells(db: CubeDb, dataset: string): Promise<Dataset
   return out;
 }
 
-async function variableCatalogByDataset(db: CubeDb, dataset: string): Promise<SeriesCatalogRow[]> {
-  const cells = await datasetCells(db, dataset);
-
-  interface Group {
-    series: SeriesKey;
-    inputGrain: string;
-    n: number;
-    places: Set<string>;
-    yFrom: number;
-    yTo: number;
-    nDaily: number;
-    nAnnual: number;
-    nCensored: number;
-  }
-  const groups = new Map<string, Group>();
-  for (const c of cells) {
-    const groupKey = `${seriesKeyString(c.series)}|${c.inputGrain}`;
-    let group = groups.get(groupKey);
-    if (!group) {
-      group = {
-        series: c.series,
-        inputGrain: c.inputGrain,
-        n: 0,
-        places: new Set(),
-        yFrom: Number.POSITIVE_INFINITY,
-        yTo: Number.NEGATIVE_INFINITY,
-        nDaily: 0,
-        nAnnual: 0,
-        nCensored: 0,
-      };
-      groups.set(groupKey, group);
-    }
-    group.n += c.n;
-    group.places.add(c.placeId);
-    const year = Number.parseInt(c.periodStart.slice(0, 4), 10);
-    if (year < group.yFrom) group.yFrom = year;
-    if (year > group.yTo) group.yTo = year;
-    if (c.inputGrain === "day") group.nDaily += c.n;
-    if (c.inputGrain === c.grain) group.nAnnual += c.n;
-    group.nCensored += c.nCensored;
-  }
-
-  return [...groups.values()]
-    .map((g) => ({
-      series: g.series,
-      seriesKey: seriesKeyString(g.series),
-      inputGrain: g.inputGrain,
-      n: g.n,
-      nPlaces: g.places.size,
-      yFrom: g.yFrom,
-      yTo: g.yTo,
-      nDaily: g.nDaily,
-      nAnnual: g.nAnnual,
-      nCensored: g.nCensored,
-    }))
-    .sort((a, b) => b.n - a.n);
-}
-
 export interface SiteSeriesRow {
   series: SeriesKey;
+  /**
+   * `series` の tuple 文字列（`seriesKeyString`）に `grain`/`inputGrain` を足した
+   * 一意キー（Issue #48 PR-2 統合後修正A #1）。**同じ tuple（`series`）が
+   * `grain`/`inputGrain` 違いで複数行になりうる**——実測: 厚木系の中津川 BOD は
+   * `value_grain='day'` の同じ tuple が `grain='year'・input_grain='day'`
+   * （basis='day'）と `grain='fiscal_year'・input_grain='fiscal_year'`
+   * （basis='fiscal_year'）の2行に分かれる。`seriesKeyString(series)` だけを
+   * キーにすると（旧実装）この2行が同じキーに衝突し、Map に入れると片方が
+   * 消える。
+   */
   seriesKey: string;
   grain: string;
   inputGrain: string;
@@ -276,53 +386,122 @@ export interface SiteSeriesRow {
   avg: number | null;
 }
 
+interface RawSiteSeriesRow {
+  variable_id: string;
+  obs_stat: string | null;
+  unit_id: string | null;
+  value_grain: string | null;
+  grain: string;
+  input_grain: string;
+  n: number;
+  y_from: number;
+  y_to: number;
+  avg: number | null;
+}
+
+function toSiteSeriesRow(r: RawSiteSeriesRow): SiteSeriesRow {
+  const series = seriesKeyFromRow(r);
+  return {
+    series,
+    seriesKey: `${seriesKeyString(series)}|${r.grain}|${r.input_grain}`,
+    grain: r.grain,
+    inputGrain: r.input_grain,
+    n: r.n,
+    yFrom: r.y_from,
+    yTo: r.y_to,
+    avg: r.avg,
+  };
+}
+
 /**
- * 索引2 (place_id, variable_id, grain) を使う経路。v1 `site_var` 相当（design §3.4）。
- * `dataset` を指定すると `datasetFilterSql`（`waterBodies`/`sites` と同じ仕組み）で
- * 絞り込む（Issue #48 PR-1 論点A）。
+ * `siteId`（`sites.site_id`、外部キー）から `place_source_ref` 経由で解決する
+ * （Issue #48 PR-2 統合後修正A #2: 内部の `place_id` ではなく `site()`/`sites()`/
+ * `Scope{kind:'site'}` と同じ `site_id` を受ける——`resolvePlaceId()` の複製が
+ * `web/src/app/sites/[id]/page.tsx`・`web/src/lib/ai/tools.ts` にあったのをここに集約）。
  */
-export async function siteVariables(db: CubeDb, placeId: string, opt?: { dataset?: string }): Promise<SiteSeriesRow[]> {
-  const filter = opt?.dataset ? await datasetFilterSql(db, opt.dataset, "obs") : undefined;
+async function siteVariablesLive(db: CubeDb, siteId: string, imputation: AvgImputation, dataset?: string): Promise<SiteSeriesRow[]> {
+  const filter = dataset ? await datasetFilterSql(db, dataset, "obs") : undefined;
   if (filter?.empty) return [];
 
+  const valueCol = imputation === "zero" ? "obs.value_zero" : "obs.value_lod";
   const sql = `
     SELECT obs.variable_id, obs.obs_stat, obs.unit_id, obs.value_grain, obs.grain, obs.input_grain,
            SUM(obs.n) AS n,
            MIN(CAST(substr(obs.period_start,1,4) AS INTEGER)) AS y_from,
            MAX(CAST(substr(obs.period_start,1,4) AS INTEGER)) AS y_to,
-           AVG(obs.value_zero) AS avg
+           AVG(${valueCol}) AS avg
     FROM observation_agg obs
+    JOIN place_source_ref psr ON psr.place_id = obs.place_id AND psr.source_id = 'sites.site_id'
     ${(filter?.joins ?? []).join("\n    ")}
-    WHERE obs.place_id = ? AND obs.place_kind = 'site' AND ${YEAR_GRAINS_SQL} AND ${MEAN_STAT_SQL}
+    WHERE psr.external_key = ? AND obs.place_kind = 'site' AND ${YEAR_GRAINS_SQL} AND ${MEAN_STAT_SQL}
     GROUP BY obs.variable_id, obs.obs_stat, obs.unit_id, obs.value_grain, obs.grain, obs.input_grain
     ORDER BY n DESC
   `;
-  const rows = await db.all<{
-    variable_id: string;
-    obs_stat: string | null;
-    unit_id: string | null;
-    value_grain: string | null;
-    grain: string;
-    input_grain: string;
-    n: number;
-    y_from: number;
-    y_to: number;
-    avg: number | null;
-  }>(sql, [...(filter?.params ?? []), placeId]);
+  const rows = await db.all<RawSiteSeriesRow>(sql, [...(filter?.params ?? []), siteId]);
+  return rows.map(toSiteSeriesRow);
+}
 
-  return rows.map((r) => {
-    const series = seriesKeyFromRow(r);
-    return {
-      series,
-      seriesKey: seriesKeyString(series),
-      grain: r.grain,
-      inputGrain: r.input_grain,
-      n: r.n,
-      yFrom: r.y_from,
-      yTo: r.y_to,
-      avg: r.avg,
-    };
-  });
+/**
+ * `summary_place_variable` から1地点分の行を読む（design §2.1「variable_id×basis×stat
+ * 単位（avg は lod）」）。実データでは `(variable_id, obs_stat, value_grain)` の組に対し
+ * `grain`/`input_grain` が一意に決まる（同じ組が year と fiscal_year の両方の grain に
+ * またがることは無い——観測済み）ため、`GROUP BY` に `grain`/`input_grain` を含めても
+ * `summary_place_variable` の行をそのまま素通しするのと同じであり、`SiteSeriesRow`
+ * の形（系列＝tuple 単位）を壊さずに出典だけ summary に切り替えられる。
+ */
+async function siteVariablesSummary(db: CubeDb, siteId: string, imputation: AvgImputation, dataset?: string): Promise<SiteSeriesRow[]> {
+  const filter = dataset ? await datasetFilterSql(db, dataset, "spv") : undefined;
+  if (filter?.empty) return [];
+
+  const valueCol = imputation === "zero" ? "spv.avg_zero" : "spv.avg_lod";
+  const sql = `
+    SELECT spv.variable_id, spv.obs_stat, spv.unit_id, spv.value_grain, spv.grain, spv.input_grain,
+           SUM(spv.n) AS n,
+           MIN(spv.y_from) AS y_from,
+           MAX(spv.y_to) AS y_to,
+           AVG(${valueCol}) AS avg
+    FROM summary_place_variable spv
+    JOIN place_source_ref psr ON psr.place_id = spv.place_id AND psr.source_id = 'sites.site_id'
+    ${(filter?.joins ?? []).join("\n    ")}
+    WHERE psr.external_key = ?
+    GROUP BY spv.variable_id, spv.obs_stat, spv.unit_id, spv.value_grain, spv.grain, spv.input_grain
+    ORDER BY n DESC
+  `;
+  const rows = await db.all<RawSiteSeriesRow>(sql, [...(filter?.params ?? []), siteId]);
+  return rows.map(toSiteSeriesRow);
+}
+
+/**
+ * `avg` に使う値の選び方（design §2.2・§0-3）。`'zero'` は検閲値を0とみなす（v1 相当）、
+ * `'lod'` は定量下限値とみなす（画面の既定・D6）。`observation.ts` の `Imputation`
+ * （`'zero'|'lod'|'both'`）と違い `'both'` は無い——`avg` はスカラー1列なので選ぶしかない
+ * （`envelope.ts`/`observation.ts` の「value_zero/value_lod を両方返す」設計とは別軸）。
+ * 既定は置かない——呼び出し側（画面は `'lod'`、serving-diff の `--imputation zero` 実行は
+ * `'zero'`）に明示させる（design §3「serving-diff を2回回す」・CLAUDE.md 開発フロー）。
+ */
+export type AvgImputation = "zero" | "lod";
+
+/**
+ * 索引2 (place_id, variable_id, grain) を使う経路。v1 `site_var` 相当（design §3.4）。
+ * `dataset` を指定すると `datasetFilterSql`（`waterBodies`/`sites` と同じ仕組み）で
+ * 絞り込む（Issue #48 PR-1 論点A）。`source` 既定は `summary`（design §4.3）。`imputation`
+ * は必須（既定を置かない。上の `AvgImputation` docstring参照）——`avg` 列の意味その
+ * ものを決めるので、呼び出し側に選ばせる。
+ *
+ * 第2引数は `site()`/`sites()`/`Scope{kind:'site'}` と同じ外部キーの `site_id`
+ * （`sites.site_id`）を受ける（Issue #48 PR-2 統合後修正A #2。以前は内部の
+ * `place_id` を要求しており、呼び出し側〔`web/src/app/sites/[id]/page.tsx`・
+ * `web/src/lib/ai/tools.ts`〕がそれぞれ `resolvePlaceId()` を複製していた）。
+ */
+export async function siteVariables(
+  db: CubeDb,
+  siteId: string,
+  opt: { imputation: AvgImputation; dataset?: string; source?: CatalogSource },
+): Promise<SiteSeriesRow[]> {
+  const source = opt.source ?? DEFAULT_CATALOG_SOURCE;
+  return source.kind === "summary"
+    ? siteVariablesSummary(db, siteId, opt.imputation, opt.dataset)
+    : siteVariablesLive(db, siteId, opt.imputation, opt.dataset);
 }
 
 export interface SiteRow2 {
@@ -330,6 +509,10 @@ export interface SiteRow2 {
   name: string | null;
   nameEn: string | null;
   watershed: string | null;
+  /** `sites.watershed` → `place_source_ref('watershed_meta.watershed_id')` →
+   *  `place.name_ja`（design §2.1「water_system_name」）。`watershed` を持たない
+   *  地点や、対応する `place` が無い（Phase A で登録していない）場合は null。 */
+  waterSystemName: string | null;
   zone: number | null;
   lat: number | null;
   lon: number | null;
@@ -349,16 +532,34 @@ export interface SiteRow2 {
   nMeas: number;
 }
 
+/** `s.watershed` から水系名を引く JOIN 断片（`sites`/`sitesInWaterBody`/`site` が共有）。 */
+const WATER_SYSTEM_NAME_JOIN = `
+    LEFT JOIN place_source_ref wpsr ON wpsr.external_key = s.watershed AND wpsr.source_id = 'watershed_meta.watershed_id'
+    LEFT JOIN place wp ON wp.place_id = wpsr.place_id`;
+const WATER_SYSTEM_NAME_SELECT = "wp.name_ja AS water_system_name";
+
 /**
- * 地点ロールアップ（n_meas/n_series/n_variables）の派生表。`extraJoins`
- * （`datasetFilterSql` が返す JOIN 断片）を挟めば `dataset` で絞り込める
- * （Issue #48 PR-1 論点A。`extraJoins` 省略時は従来どおり全 dataset 合算）。
+ * `siteRollupSql`/`waterBodies` の内側 SELECT が共有する FROM/JOIN/WHERE/GROUP BY
+ * 骨格（summary/live で表・列名が違うだけ）。呼び出し側が要る SELECT 列
+ * （`measuresSql`。`site_id` 以外の集計列）だけを差し替える（Issue #48 PR-2
+ * /simplify #10）。`extraJoins`（`datasetFilterSql` が返す JOIN 断片。呼び出し側が
+ * `source` に合わせたエイリアス（`obs`/`spv`）で呼んでおくこと）を挟めば `dataset`
+ * で絞り込める（Issue #48 PR-1 論点A。省略時は従来どおり全 dataset 合算）。
+ * `source:'summary'` は `summary_place_variable`（すでに `place_kind='site'`・
+ * 年グレイン・`stat='mean'` に絞り込み済み——WHERE が要らない）を読む。
  */
-function siteRollupSql(extraJoins: readonly string[] = []): string {
+function siteAggregateSql(source: CatalogSource, extraJoins: readonly string[], measuresSql: string): string {
+  if (source.kind === "summary") {
+    return `
+    SELECT psr.external_key AS site_id, ${measuresSql}
+    FROM summary_place_variable spv
+    JOIN place_source_ref psr ON psr.place_id = spv.place_id AND psr.source_id = 'sites.site_id'
+    ${extraJoins.join("\n    ")}
+    GROUP BY psr.external_key
+  `;
+  }
   return `
-    SELECT psr.external_key AS site_id, SUM(obs.n) AS n_meas,
-           COUNT(DISTINCT (${seriesKeySql("obs")})) AS n_series,
-           COUNT(DISTINCT obs.variable_id) AS n_variables
+    SELECT psr.external_key AS site_id, ${measuresSql}
     FROM observation_agg obs
     JOIN place_source_ref psr ON psr.place_id = obs.place_id AND psr.source_id = 'sites.site_id'
     ${extraJoins.join("\n    ")}
@@ -367,11 +568,22 @@ function siteRollupSql(extraJoins: readonly string[] = []): string {
   `;
 }
 
+/** 地点ロールアップ（n_meas/n_series/n_variables）の派生表。`sites()`/`site()`/
+ *  `sitesInWaterBody()` が使う。 */
+function siteRollupSql(source: CatalogSource, extraJoins: readonly string[] = []): string {
+  const measuresSql =
+    source.kind === "summary"
+      ? `SUM(spv.n) AS n_meas, COUNT(DISTINCT (${seriesKeySql("spv")})) AS n_series, COUNT(DISTINCT spv.variable_id) AS n_variables`
+      : `SUM(obs.n) AS n_meas, COUNT(DISTINCT (${seriesKeySql("obs")})) AS n_series, COUNT(DISTINCT obs.variable_id) AS n_variables`;
+  return siteAggregateSql(source, extraJoins, measuresSql);
+}
+
 function toSiteRow2(r: {
   site_id: string;
   name: string | null;
   name_en: string | null;
   watershed: string | null;
+  water_system_name: string | null;
   zone: number | null;
   lat: number | null;
   lon: number | null;
@@ -393,6 +605,7 @@ function toSiteRow2(r: {
     name: r.name,
     nameEn: r.name_en,
     watershed: r.watershed,
+    waterSystemName: r.water_system_name,
     zone: r.zone,
     lat: r.lat,
     lon: r.lon,
@@ -411,51 +624,91 @@ function toSiteRow2(r: {
   };
 }
 
+const SITE_COLUMNS_SQL = `s.site_id, s.name, s.name_en, s.watershed, ${WATER_SYSTEM_NAME_SELECT}, s.zone, s.lat, s.lon, s.elevation_m,
+           s.municipality, s.muni_code, s.treatment, s.established_on, s.operator, s.source_id, s.source_ref, s.is_synthetic`;
+
 /**
- * `sites` JOIN `place_source_ref` JOIN 年セル集計（design §3.4）。`dataset` を
- * 指定すると `datasetFilterSql` で絞り込む（Issue #48 PR-1 論点A）。
+ * `sites()`/`site()` が共有する SQL 組み立て（Issue #48 PR-2 /simplify #10。
+ * `where`/`whereParams`/`orderBy` だけが呼び出し側で違う）。`dataset` を指定すると
+ * `datasetFilterSql` で絞り込む（Issue #48 PR-1 論点A）。`source` 既定は
+ * `summary`（design §4.3）。
  */
-export async function sites(db: CubeDb, opt?: { dataset?: string }): Promise<SiteRow2[]> {
-  const filter = opt?.dataset ? await datasetFilterSql(db, opt.dataset, "obs") : undefined;
+async function siteRows(
+  db: CubeDb,
+  opt: { dataset?: string; source?: CatalogSource } | undefined,
+  where: string,
+  whereParams: readonly SqlParam[],
+  orderBy: string,
+): Promise<SiteRow2[]> {
+  const source = opt?.source ?? DEFAULT_CATALOG_SOURCE;
+  const alias = source.kind === "summary" ? "spv" : "obs";
+  const filter = opt?.dataset ? await datasetFilterSql(db, opt.dataset, alias) : undefined;
   if (filter?.empty) {
     // dataset に系列が1つも無い: 全地点を n_meas=0 等（ロールアップ無し）で返す。
     const rows = await db.all<Parameters<typeof toSiteRow2>[0]>(
-      `SELECT s.site_id, s.name, s.name_en, s.watershed, s.zone, s.lat, s.lon, s.elevation_m,
-              s.municipality, s.muni_code, s.treatment, s.established_on, s.operator, s.source_id, s.source_ref, s.is_synthetic,
+      `SELECT ${SITE_COLUMNS_SQL},
               0 AS n_meas, 0 AS n_series, 0 AS n_variables
        FROM sites s
-       ORDER BY s.zone, s.elevation_m DESC`,
+       ${WATER_SYSTEM_NAME_JOIN}
+       ${where}
+       ${orderBy}`,
+      whereParams,
     );
     return rows.map(toSiteRow2);
   }
 
   const sql = `
-    SELECT s.site_id, s.name, s.name_en, s.watershed, s.zone, s.lat, s.lon, s.elevation_m,
-           s.municipality, s.muni_code, s.treatment, s.established_on, s.operator, s.source_id, s.source_ref, s.is_synthetic,
+    SELECT ${SITE_COLUMNS_SQL},
            COALESCE(v.n_meas, 0) AS n_meas, COALESCE(v.n_series, 0) AS n_series, COALESCE(v.n_variables, 0) AS n_variables
     FROM sites s
-    LEFT JOIN (${siteRollupSql(filter?.joins)}) v ON v.site_id = s.site_id
-    ORDER BY s.zone, s.elevation_m DESC
+    ${WATER_SYSTEM_NAME_JOIN}
+    LEFT JOIN (${siteRollupSql(source, filter?.joins)}) v ON v.site_id = s.site_id
+    ${where}
+    ${orderBy}
   `;
-  const rows = await db.all<Parameters<typeof toSiteRow2>[0]>(sql, filter?.params ?? []);
+  const rows = await db.all<Parameters<typeof toSiteRow2>[0]>(sql, [...(filter?.params ?? []), ...whereParams]);
   return rows.map(toSiteRow2);
+}
+
+/**
+ * `sites` JOIN `place_source_ref` JOIN 年セル集計（design §3.4）。
+ */
+export async function sites(db: CubeDb, opt?: { dataset?: string; source?: CatalogSource }): Promise<SiteRow2[]> {
+  return siteRows(db, opt, "", [], "ORDER BY s.zone, s.elevation_m DESC");
+}
+
+/**
+ * `sites()` の1地点版（design §2.1「新設」）。`/sites/[id]` 用——`sites()` 全件から
+ * JS 側で探すのではなく `WHERE s.site_id = ?` を投げる。存在しない `siteId` は
+ * `undefined`。
+ */
+export async function site(db: CubeDb, siteId: string, opt?: { dataset?: string; source?: CatalogSource }): Promise<SiteRow2 | undefined> {
+  const rows = await siteRows(db, opt, "WHERE s.site_id = ?", [siteId], "");
+  return rows[0];
 }
 
 /**
  * `dataset` を指定すると `datasetFilterSql` で絞り込む（Issue #48 PR-1 論点A）。
  * v1 の `sitesInWaterBody` と同じく、ロールアップに INNER JOIN する（測定値が
  * 1件も無い地点は除外——`dataset` 指定時に系列が1つも無ければ0件を返す）。
+ * `source` 既定は `summary`。
  */
-export async function sitesInWaterBody(db: CubeDb, municipality: string, opt?: { dataset?: string }): Promise<SiteRow2[]> {
-  const filter = opt?.dataset ? await datasetFilterSql(db, opt.dataset, "obs") : undefined;
+export async function sitesInWaterBody(
+  db: CubeDb,
+  municipality: string,
+  opt?: { dataset?: string; source?: CatalogSource },
+): Promise<SiteRow2[]> {
+  const source = opt?.source ?? DEFAULT_CATALOG_SOURCE;
+  const alias = source.kind === "summary" ? "spv" : "obs";
+  const filter = opt?.dataset ? await datasetFilterSql(db, opt.dataset, alias) : undefined;
   if (filter?.empty) return [];
 
   const sql = `
-    SELECT s.site_id, s.name, s.name_en, s.watershed, s.zone, s.lat, s.lon, s.elevation_m,
-           s.municipality, s.muni_code, s.treatment, s.established_on, s.operator, s.source_id, s.source_ref, s.is_synthetic,
+    SELECT ${SITE_COLUMNS_SQL},
            COALESCE(v.n_meas, 0) AS n_meas, COALESCE(v.n_series, 0) AS n_series, COALESCE(v.n_variables, 0) AS n_variables
     FROM sites s
-    JOIN (${siteRollupSql(filter?.joins)}) v ON v.site_id = s.site_id
+    ${WATER_SYSTEM_NAME_JOIN}
+    JOIN (${siteRollupSql(source, filter?.joins)}) v ON v.site_id = s.site_id
     WHERE s.municipality = ?
     ORDER BY s.elevation_m DESC
   `;
@@ -478,24 +731,38 @@ export interface WaterBodyRow {
 /**
  * 測定値を持つ地点が2つ以上ある「水域・地域」（v1 `listWaterBodies`/`waterBodiesForVariable` 統合。design §3.4）。
  * `series`（1系列集合に絞る。`waterBodiesForVariable` 相当）と `dataset`（データセット全体で
- * 絞り込む。`listWaterBodies` 相当——Issue #48 PR-1 論点A）はどちらか一方を渡す。
+ * 絞り込む。`listWaterBodies` 相当——Issue #48 PR-1 論点A）はどちらか一方を渡す。`source` 既定は `summary`。
  */
-export async function waterBodies(db: CubeDb, opt?: { series?: SeriesKey[]; dataset?: string }): Promise<WaterBodyRow[]> {
+export async function waterBodies(db: CubeDb, opt?: { series?: SeriesKey[]; dataset?: string; source?: CatalogSource }): Promise<WaterBodyRow[]> {
+  const source = opt?.source ?? DEFAULT_CATALOG_SOURCE;
+  const alias = source.kind === "summary" ? "spv" : "obs";
   const params: SqlParam[] = [];
   const joins: string[] = [];
-  if (opt?.series && opt.series.length > 0) {
+  // `series` は `undefined`（指定なし＝絞り込まない）と `[]`（明示的に空——
+  // 呼び出し側〔`representativeSeries()` が該当する系列を1つも見つけられなかった
+  // 場合等〕が「対象が無い」と言っている）を区別する（Issue #48 PR-2 code-review
+  // #4）。以前は `opt.series && opt.series.length > 0` で `[]` も「指定なし」と
+  // 同じ扱いになり、絞り込み無しの全水域が返っていた。
+  if (opt?.series !== undefined) {
+    if (opt.series.length === 0) return [];
     if (opt.series.length > MAX_ID_LIST) throw new Error(`waterBodies: series が ${opt.series.length} 件で上限 ${MAX_ID_LIST} を超えている`);
     // `variable_id` 前段フィルタ込み（`sql.ts` の `seriesFilterSql` docstring 参照。
     // 索引の先頭列で絞り込んでから系列キーで仕上げる）。
-    const f = seriesFilterSql(opt.series, "obs")!;
+    const f = seriesFilterSql(opt.series, alias)!;
     joins.push(...f.joins);
     params.push(...f.params);
   } else if (opt?.dataset) {
-    const filter = await datasetFilterSql(db, opt.dataset, "obs");
+    const filter = await datasetFilterSql(db, opt.dataset, alias);
     if (filter.empty) return [];
     joins.push(...filter.joins);
     params.push(...filter.params);
   }
+
+  const innerMeasuresSql =
+    source.kind === "summary"
+      ? `SUM(spv.n) AS n, MIN(spv.y_from) AS y_from, MAX(spv.y_to) AS y_to`
+      : `SUM(obs.n) AS n, MIN(CAST(substr(obs.period_start,1,4) AS INTEGER)) AS y_from, MAX(CAST(substr(obs.period_start,1,4) AS INTEGER)) AS y_to`;
+  const innerSql = siteAggregateSql(source, joins, innerMeasuresSql);
 
   const sql = `
     SELECT s.municipality AS name,
@@ -504,16 +771,7 @@ export async function waterBodies(db: CubeDb, opt?: { series?: SeriesKey[]; data
            MIN(s.zone) AS zone_min, MAX(s.zone) AS zone_max,
            SUM(v.n) AS n_meas, MIN(v.y_from) AS y_from, MAX(v.y_to) AS y_to
     FROM sites s
-    JOIN (
-      SELECT psr.external_key AS site_id, SUM(obs.n) AS n,
-             MIN(CAST(substr(obs.period_start,1,4) AS INTEGER)) AS y_from,
-             MAX(CAST(substr(obs.period_start,1,4) AS INTEGER)) AS y_to
-      FROM observation_agg obs
-      JOIN place_source_ref psr ON psr.place_id = obs.place_id AND psr.source_id = 'sites.site_id'
-      ${joins.join("\n      ")}
-      WHERE obs.place_kind = 'site' AND ${YEAR_GRAINS_SQL} AND ${MEAN_STAT_SQL}
-      GROUP BY psr.external_key
-    ) v ON v.site_id = s.site_id
+    JOIN (${innerSql}) v ON v.site_id = s.site_id
     WHERE s.municipality IS NOT NULL AND s.municipality <> ''
     GROUP BY s.municipality
     HAVING n_sites >= 2

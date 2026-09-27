@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildCubeFixture, FX, type CubeFixture } from "./__fixtures__/cube-fixture";
-import { queryCells, summarize } from "./observation";
-import type { CellSpec } from "./observation";
+import { daySeries, monthSeries, pivotYearCells, queryCells, rainDaily, rainMonthlyClim, summarize, yearSeries } from "./observation";
+import type { CellRow, CellSpec } from "./observation";
 
 let fx: CubeFixture;
 beforeEach(() => {
@@ -207,6 +207,22 @@ describe("queryCells/summarize: variableId + water/places スコープ（バイ�
     expect(rows[0].n).toBe(5);
   });
 
+  it("summarize zone_month_of_year: imputation='both' は avgZero/avgLod を1回のSQLで返す（Issue #48 PR-2 /simplify #11）", async () => {
+    const spec: CellSpec = {
+      variableId: FX.variables.ss,
+      scope: { kind: "water", municipality: FX.municipality },
+      grain: "day",
+      imputation: "both",
+    };
+    const { rows } = await summarize(fx.db, spec, "zone_month_of_year");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].nSites).toBe(2);
+    expect(rows[0].n).toBe(5);
+    expect(rows[0].avg).toBeNull();
+    expect(rows[0].avgZero).toBeCloseTo((10 + 8 + 0 + 15 + 17) / 5, 6);
+    expect(rows[0].avgLod).toBeCloseTo((10 + 6 + 15 + 17) / 4, 6); // fx_site_a 3日目は不検出で無視される
+  });
+
   it("summarize place: variableId + places（fx_place_a の年セル1件）", async () => {
     const spec: CellSpec = {
       variableId: FX.variables.ss,
@@ -351,6 +367,35 @@ describe("summarize: month_of_year（climatology）", () => {
     expect(byMonth.get(1)!.avg).toBeCloseTo(5.0, 6); // (5+0)/1年
     expect(byMonth.get(2)!.avg).toBeCloseTo(12.0, 6); // 12/1年
   });
+
+  it("imputation='both': avgZero/avgLod を1回のSQLで返す（min/max は常に value_lod 基準。Issue #48 PR-2 /simplify #11。zero/lod の2回叩きを撤去）", async () => {
+    const spec: CellSpec = {
+      series: [FX.series.ssMean],
+      scope: { kind: "site", siteId: FX.sites.a },
+      grain: "day",
+      imputation: "both",
+    };
+    const { rows } = await summarize(fx.db, spec, "month_of_year");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].month).toBe(1);
+    expect(rows[0].n).toBe(3);
+    expect(rows[0].avg).toBeNull();
+    expect(rows[0].avgZero).toBeCloseTo((10 + 8 + 0) / 3, 6);
+    expect(rows[0].avgLod).toBeCloseTo((10 + 6) / 2, 6); // 3日目は不検出（value_lod NULL）で無視される
+    expect(rows[0].min).toBe(6);
+    expect(rows[0].max).toBe(10);
+  });
+
+  it("imputation='both' かつ measure='sum_per_year' は例外（雨量は imputation='zero' 固定で呼ぶため未対応）", async () => {
+    const spec: CellSpec = {
+      series: [FX.series.rainSum],
+      scope: { kind: "all_sites" },
+      grain: "day",
+      stats: ["sum"],
+      imputation: "both",
+    };
+    await expect(summarize(fx.db, spec, "month_of_year", { measure: "sum_per_year" })).rejects.toThrow(/sum_per_year/);
+  });
 });
 
 describe("summarize: zone / zone_month_of_year", () => {
@@ -368,6 +413,24 @@ describe("summarize: zone / zone_month_of_year", () => {
     expect(zone3).toHaveLength(1);
     expect(zone3[0].nSites).toBe(3);
     expect(zone3[0].n).toBe(3 + 1 + 2);
+  });
+
+  it("imputation='both': avgZero/avgLod と nCensored/nNotDetected を1回のSQLで返す（Issue #48 PR-2 統合後修正A #4。zero/lod の2回叩きを撤去）", async () => {
+    const spec: CellSpec = {
+      series: [FX.series.ssMean],
+      scope: { kind: "all_sites" },
+      grain: "day",
+      imputation: "both",
+    };
+    const { rows } = await summarize(fx.db, spec, "zone");
+    const zone3 = rows.filter((r) => r.zone === 3);
+    expect(zone3).toHaveLength(1);
+    expect(zone3[0].n).toBe(3 + 1); // fx_place_a(3日) + fx_place_c(1日)
+    expect(zone3[0].avg).toBeNull(); // 'both' のときは avgZero/avgLod を見る
+    expect(zone3[0].avgZero).toBeCloseTo((10 + 8 + 0 + 5) / 4, 6);
+    expect(zone3[0].avgLod).toBeCloseTo((10 + 6 + 5) / 3, 6); // 3日目は value_lod NULL（不検出）なので AVG から除外
+    expect(zone3[0].nCensored).toBe(2); // fx_place_a の2日目（検閲）・3日目（不検出も censored=1 で記録）
+    expect(zone3[0].nNotDetected).toBe(1); // fx_place_a の3日目のみ
   });
 
   it("zone_month_of_year", async () => {
@@ -433,7 +496,12 @@ describe("summarize: place（v1 site_var・longitudinal 相当）", () => {
   });
 });
 
-describe("summarize: imputation='both' は AVG(v) を計算する by（place/zone/zone_month_of_year/month_of_year）では例外", () => {
+describe("summarize: imputation='both' は AVG(v) を単一の value 列で計算する by（place）では例外", () => {
+  // zone・zone_month_of_year・month_of_year は avg_zero/avg_lod を1回の SQL で
+  // 両方計算する形に対応済み（Issue #48 PR-2 統合後修正A #4・/simplify #11）。
+  // place（summarizePlace）と series（summarizeSeries とは別の意味で non-applicable）
+  // のうち、place だけが単一の value 式のまま（`v1_projection.sqlite` の
+  // `longitudinal_highlight` 相当で avg 列が1つしか無い）なので、今も例外にする。
   it("place", async () => {
     const spec: CellSpec = {
       series: [FX.series.ssMean],
@@ -545,5 +613,216 @@ describe("queryCells/summarize: limit/truncated（Issue #48 PR-1 §論点B）", 
     const { rows, truncated } = await summarize(fx.db, spec, "series");
     expect(rows).toHaveLength(2);
     expect(truncated).toBe(true);
+  });
+});
+
+describe("yearSeries（PR-2 §2.1。representativeSeries + queryCells のピボット）", () => {
+  it("basis='day'（既定）: fx_site_a の暦年セル1件（mean/min/max をピボット、n/n_censored/unitId は1つ）", async () => {
+    const { rows, truncated } = await yearSeries(fx.db, {
+      variableId: FX.variables.ss,
+      scope: { kind: "site", siteId: FX.sites.a },
+      imputation: "zero",
+    });
+    expect(truncated).toBe(false);
+    expect(rows).toHaveLength(1);
+    const r = rows[0];
+    expect(r.grain).toBe("year");
+    expect(r.periodStart).toBe("2024-01-01");
+    expect(r.year).toBe(2024);
+    expect(r.n).toBe(3);
+    expect(r.nCensored).toBe(2);
+    expect(r.unitId).toBe(FX.units.mgPerL);
+    expect(r.value.mean).toBeCloseTo(6.0, 6); // value_zero
+    expect(r.valueZero.mean).toBeCloseTo(6.0, 6);
+    expect(r.valueLod.mean).toBeCloseTo(8.0, 6);
+  });
+
+  it("basis='day' の既定は representativeSeries を basisOf の優先順位（day 優先）で絞る: water スコープは fx_site_a(mean/day)・fx_site_b(point/day) の2件になる", async () => {
+    const { rows } = await yearSeries(fx.db, {
+      variableId: FX.variables.ss,
+      scope: { kind: "water", municipality: FX.municipality },
+      imputation: "zero",
+    });
+    const siteIds = rows.map((r) => r.siteId).sort();
+    expect(siteIds).toEqual([FX.sites.a, FX.sites.b].sort());
+  });
+
+  it("basis='fiscal_year': fx_site_a の年度セル1件", async () => {
+    const { rows } = await yearSeries(fx.db, {
+      variableId: FX.variables.ss,
+      basis: "fiscal_year",
+      scope: { kind: "site", siteId: FX.sites.a },
+      imputation: "zero",
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].grain).toBe("fiscal_year");
+    expect(rows[0].periodStart).toBe("2024-04-01");
+    expect(rows[0].value.mean).toBeCloseTo(11.0, 6);
+  });
+
+  it("imputation='both': value は3つとも null、valueZero/valueLod だけ埋まる", async () => {
+    const { rows } = await yearSeries(fx.db, {
+      variableId: FX.variables.ss,
+      scope: { kind: "site", siteId: FX.sites.a },
+      imputation: "both",
+    });
+    expect(rows[0].value).toEqual({ mean: null, min: null, max: null });
+    expect(rows[0].valueZero.mean).toBeCloseTo(6.0, 6);
+    expect(rows[0].valueLod.mean).toBeCloseTo(8.0, 6);
+  });
+
+  it("basis はセルの性質: 該当するセルが無ければ0行（例外にしない。Issue #48 PR-2 統合後修正A #1）", async () => {
+    // water.ss は fiscal_year の登録系列があるが、grain='year'・input_grain='year'
+    // （basis='year'）のセルはフィクスチャに無い。系列自体は存在する（representativeSeries
+    // が空にならない）ので、`variableId` の誤りとは区別され、単に0行になる——basis の
+    // 有無は登録ではなく実際のセルから決まる、という設計どおり。
+    const { rows } = await yearSeries(fx.db, {
+      variableId: FX.variables.ss,
+      basis: "year",
+      scope: { kind: "site", siteId: FX.sites.a },
+      imputation: "zero",
+    });
+    expect(rows).toHaveLength(0);
+  });
+
+  it("存在しない variableId/stat の組は例外（representativeSeriesOrThrow）", async () => {
+    await expect(
+      yearSeries(fx.db, {
+        variableId: "common:variable:no.such.variable",
+        scope: { kind: "site", siteId: FX.sites.a },
+        imputation: "zero",
+      }),
+    ).rejects.toThrow(/該当する系列が無い/);
+  });
+
+  it("Issue #48 PR-2 統合後修正A #1: value_grain='day' の系列内に input_grain='fiscal_year' のセルがある地点でも basis='fiscal_year' で出る（実測: 厚木系中津川 BOD）", async () => {
+    const { rows } = await yearSeries(fx.db, {
+      variableId: FX.variables.bod,
+      basis: "fiscal_year",
+      scope: { kind: "site", siteId: FX.sites.a },
+      imputation: "zero",
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].grain).toBe("fiscal_year");
+    expect(rows[0].periodStart).toBe("2023-04-01");
+    expect(rows[0].value.mean).toBeCloseTo(3.0, 6);
+  });
+
+  it("stat に非代表統計量を渡すとその系列だけで問い合わせる（BOD 75%値 = p75/fiscal_year、実データ）", async () => {
+    // フィクスチャに BOD 75%値 のセルは無いので0行になるが、例外にならないこと
+    // （`representativeSeries`/`seriesForBasis` が正しく解決できることの確認）。
+    const { rows } = await yearSeries(fx.db, {
+      variableId: FX.variables.bod,
+      stat: "p75",
+      basis: "fiscal_year",
+      scope: { kind: "site", siteId: FX.sites.a },
+      imputation: "zero",
+    });
+    expect(rows).toHaveLength(0);
+  });
+});
+
+describe("pivotYearCells（Issue #48 PR-2 code-review #3: キーに系列を含め、代表系列が同居したら例外）", () => {
+  function cell(overrides: Partial<CellRow>): CellRow {
+    return {
+      placeId: FX.places.a,
+      siteId: FX.sites.a,
+      series: FX.series.ssMean,
+      inputGrain: "day",
+      grain: "year",
+      periodStart: "2024-01-01",
+      periodEnd: "2024-12-31",
+      stat: "mean",
+      value: 1,
+      valueZero: 1,
+      valueLod: 1,
+      n: 10,
+      nCensored: 0,
+      nNotDetected: 0,
+      nPlaces: 1,
+      ...overrides,
+    };
+  }
+
+  it("同じ系列の mean/min/max は1つの YearPoint にピボットされる", () => {
+    const rows = pivotYearCells([
+      cell({ stat: "mean", value: 5 }),
+      cell({ stat: "min", value: 1 }),
+      cell({ stat: "max", value: 9 }),
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].value).toEqual({ mean: 5, min: 1, max: 9 });
+  });
+
+  it("別の地点・別の期間の系列は別の YearPoint（衝突しない）", () => {
+    const rows = pivotYearCells([
+      cell({ placeId: FX.places.a, periodStart: "2024-01-01" }),
+      cell({ placeId: FX.places.b, periodStart: "2024-01-01" }),
+      cell({ placeId: FX.places.a, periodStart: "2025-01-01" }),
+    ]);
+    expect(rows).toHaveLength(3);
+  });
+
+  it("同じ地点・期間・grain に2つ以上の代表系列が同居すると例外にする（実測では0件の不変条件。黙って選ばない）", () => {
+    const rows = [
+      cell({ series: FX.series.ssMean, stat: "mean", value: 5 }),
+      cell({ series: FX.series.ssPoint, stat: "mean", value: 7 }),
+    ];
+    expect(() => pivotYearCells(rows)).toThrow(/複数の代表系列/);
+  });
+});
+
+describe("monthSeries / daySeries（basis='day' の変数だけに対応）", () => {
+  it("monthSeries: fx_site_a の月セル1件", async () => {
+    const { rows } = await monthSeries(fx.db, {
+      variableId: FX.variables.ss,
+      scope: { kind: "site", siteId: FX.sites.a },
+      imputation: "zero",
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].periodStart).toBe("2024-01-01");
+    expect(rows[0].value).toBeCloseTo(6.0, 6);
+    expect(rows[0].n).toBe(3);
+    expect(rows[0].nCensored).toBe(2);
+  });
+
+  it("daySeries: fx_site_a の日セル3件（imputation='lod' は3日目が null）", async () => {
+    const { rows } = await daySeries(fx.db, {
+      variableId: FX.variables.ss,
+      scope: { kind: "site", siteId: FX.sites.a },
+      imputation: "lod",
+    });
+    expect(rows).toHaveLength(3);
+    expect(rows.map((r) => r.periodStart)).toEqual(["2024-01-01", "2024-01-02", "2024-01-03"]);
+    expect(rows[2].value).toBeNull(); // 不検出日（value_lod NULL）
+  });
+
+  it("basis='day' でない変数（land.max_subsidence=year）は monthSeries/daySeries どちらも例外", async () => {
+    const opt = { variableId: "common:variable:land.max_subsidence", scope: { kind: "all_sites" } as const, imputation: "zero" as const };
+    await expect(monthSeries(fx.db, opt)).rejects.toThrow(/basis='day'/);
+    await expect(daySeries(fx.db, opt)).rejects.toThrow(/basis='day'/);
+  });
+});
+
+describe("rainDaily / rainMonthlyClim（RAIN、/10 しない）", () => {
+  it("rainDaily: フィクスチャの3日分をそのままの値で返す（v1 の /10 はしない）", async () => {
+    const { rows } = await rainDaily(fx.db);
+    expect(rows).toHaveLength(3);
+    const byDay = new Map(rows.map((r) => [r.periodStart, r]));
+    expect(byDay.get("2024-01-01")!.value).toBeCloseTo(5.0, 6);
+    expect(byDay.get("2024-02-15")!.value).toBeCloseTo(12.0, 6);
+  });
+
+  it("rainDaily: period で絞れる", async () => {
+    const { rows } = await rainDaily(fx.db, { period: { from: "2024-02-01" } });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].periodStart).toBe("2024-02-15");
+  });
+
+  it("rainMonthlyClim: SUM(v)/COUNT(DISTINCT 年) の月別平年値", async () => {
+    const { rows } = await rainMonthlyClim(fx.db);
+    const byMonth = new Map(rows.map((r) => [r.month, r]));
+    expect(byMonth.get(1)!.avg).toBeCloseTo(5.0, 6); // (5+0)/1年
+    expect(byMonth.get(2)!.avg).toBeCloseTo(12.0, 6); // 12/1年
   });
 });

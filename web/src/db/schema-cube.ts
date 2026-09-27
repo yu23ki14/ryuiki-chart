@@ -110,3 +110,67 @@ export const occurrenceAgg = sqliteTable(
 		index("ix_occurrence_agg_place_period").on(table.placeId, table.periodStart),
 	],
 );
+
+/**
+ * summary 2表（Issue #48 PR-2、`aggregations/serving.yaml` → `scripts/b13_build_summary.py`）。
+ *
+ * `observation_agg`（キューブ、上の `observationAgg`）を「年グレイン（year/fiscal_year）・
+ * site・stat='mean'」に絞って事前集計した、画面/API/AI が読む配信用の形。列は
+ * `aggregations/serving.yaml` の `summary_variable_catalog`/`summary_place_variable`
+ * 宣言（group_by＋measures）と1対1で対応させてある——ここを触ったら YAML 側と
+ * `scripts/b13_build_summary.py` の CREATE 文も合わせて直すこと。次元キー6/7列＋
+ * 測度＋来歴2列（`built_from`/`spec_version`。`observationAgg`/`occurrenceAgg` と同じ形）。
+ *
+ * `catalog.ts` はこの2表を `source:'summary'`（既定）で読む。variable_id 単位への束ね・
+ * 代表化はここではなく `catalog.ts` の仕事（このテーブル自体は系列＝tuple 単位のまま）。
+ */
+export const summaryVariableCatalog = sqliteTable(
+	"summary_variable_catalog",
+	{
+		variableId: text("variable_id"),
+		obsStat: text("obs_stat"),
+		unitId: text("unit_id"),
+		valueGrain: text("value_grain"),
+		grain: text(),
+		inputGrain: text("input_grain"),
+		n: integer().notNull(),
+		nPlaces: integer("n_places").notNull(),
+		yFrom: integer("y_from"),
+		yTo: integer("y_to"),
+		nCensored: integer("n_censored").notNull(),
+		nNotDetected: integer("n_not_detected").notNull(),
+		builtFrom: text("built_from").notNull(),
+		specVersion: text("spec_version").notNull(),
+	},
+	(table) => [index("ix_summary_variable_catalog_variable").on(table.variableId)],
+);
+
+/**
+ * 地点×系列単位（v1 `site_var` 相当）。`avg_zero`/`avg_lod` を両方持つ（PR-2 で
+ * lod 表示に切り替える画面用に lod を、既存比較用に zero も残す——ADR-0009 決定4）。
+ */
+export const summaryPlaceVariable = sqliteTable(
+	"summary_place_variable",
+	{
+		placeId: text("place_id"),
+		variableId: text("variable_id"),
+		obsStat: text("obs_stat"),
+		unitId: text("unit_id"),
+		valueGrain: text("value_grain"),
+		grain: text(),
+		inputGrain: text("input_grain"),
+		n: integer().notNull(),
+		yFrom: integer("y_from"),
+		yTo: integer("y_to"),
+		avgZero: real("avg_zero"),
+		avgLod: real("avg_lod"),
+		nCensored: integer("n_censored").notNull(),
+		nNotDetected: integer("n_not_detected").notNull(),
+		builtFrom: text("built_from").notNull(),
+		specVersion: text("spec_version").notNull(),
+	},
+	(table) => [
+		index("ix_summary_place_variable_place").on(table.placeId),
+		index("ix_summary_place_variable_variable").on(table.variableId),
+	],
+);

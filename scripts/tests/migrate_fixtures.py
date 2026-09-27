@@ -18,6 +18,7 @@ import pathlib
 import sqlite3
 
 import b03_build_observation as b03  # scripts/ が sys.path にある前提（scripts/tests/__init__.py 参照）
+import b04_build_cube as b04
 from migrate import common
 from reconcile import common as reconcile_common
 from reconcile import datasource
@@ -375,7 +376,7 @@ def make_landuse_registry_db(registry_db) -> None:
 
 def build_observation(
     tmp_path, measurements_db, registry_db, exceptions_yaml, time_conventions_yaml, out,
-    *, landuse_csv_rows=None, source_regions_yaml_text=None,
+    *, landuse_csv_rows=None, source_regions_yaml_text=None, include_synthetic=False,
 ):
     """`b03.build_and_write_observation` を、P-1b の土地利用2引数
     （`source_regions_yaml`/`landuse_csv`）を明示的に補って呼ぶ共通ヘルパ
@@ -387,6 +388,9 @@ def build_observation(
     そのまま動く。本番の `main()` と同じ「明示的に渡す」経路をテストでも
     通す（`build_and_write_observation` の既定値を monkeypatch で差し替える
     設計はやめた。理由はそちらの docstring 参照）。
+
+    `include_synthetic`（既定 False）は `build_and_write_observation` に
+    そのまま渡す（Issue #48 PR-2 §1、`--include-synthetic` 参照）。
     """
     landuse_csv = tmp_path / "_landuse.csv"
     make_landuse_csv(landuse_csv, rows=landuse_csv_rows if landuse_csv_rows is not None else [])
@@ -397,7 +401,7 @@ def build_observation(
     )
     return b03.build_and_write_observation(
         measurements_db, registry_db, exceptions_yaml, time_conventions_yaml, out,
-        source_regions_yaml, landuse_csv,
+        source_regions_yaml, landuse_csv, include_synthetic=include_synthetic,
     )
 
 
@@ -459,10 +463,12 @@ def table_content_hash(path, table: str, key_columns: list[str]) -> str:
 
 
 def make_v2_cube_tables(tmp_path, name: str = "v2.sqlite") -> sqlite3.Connection:
-    """`observation_agg`/`occurrence_agg` に相当する最小のテーブルだけを持つ、
-    v2.sqlite 風のフィクスチャ（`pipeline_fingerprint`/`pipeline_input_fingerprint`
-    はまだ記録しない、未コミットの `sqlite3.Connection`）。行の中身は鮮度判定に
-    無関係なので空のまま。
+    """`observation_agg`/`occurrence_agg`/`summary_variable_catalog`/
+    `summary_place_variable`（`common.V2_CUBE_SPEC_VERSIONS` の全表）に相当する
+    最小のテーブルだけを持つ、v2.sqlite 風のフィクスチャ
+    （`pipeline_fingerprint`/`pipeline_input_fingerprint` はまだ記録しない、
+    未コミットの `sqlite3.Connection`）。行の中身は鮮度判定に無関係なので
+    空のまま。
 
     `scripts/tests/test_migrate_common.py`（`check_v2_cube_spec_fresh` の単体
     テスト）と `scripts/tests/test_check_v2_fresh.py`（CLI 経由。
@@ -473,12 +479,25 @@ def make_v2_cube_tables(tmp_path, name: str = "v2.sqlite") -> sqlite3.Connection
     conn = sqlite3.connect(f"file:{db_path}", uri=True)
     conn.execute("CREATE TABLE observation_agg (region_id TEXT, n INTEGER)")
     conn.execute("CREATE TABLE occurrence_agg (region_id TEXT, n INTEGER)")
+    conn.execute("CREATE TABLE summary_variable_catalog (variable_id TEXT, n INTEGER)")
+    conn.execute("CREATE TABLE summary_place_variable (place_id TEXT, variable_id TEXT, n INTEGER)")
     conn.commit()
     return conn
 
 
+def record_all_v2_cube_fingerprints(conn: sqlite3.Connection) -> None:
+    """`common.V2_CUBE_SPEC_VERSIONS` の全表（`observation_agg`/`occurrence_agg`/
+    summary 2表）について、それぞれの期待 spec_version で
+    `common.record_stage_fingerprint` を呼ぶ（`make_v2_cube_tables` が作った
+    フィクスチャを丸ごと「新鮮」にしたいテストが使う——表が1つ増えるたびに
+    呼び出し側を手で追随させない。`conn.commit()` は呼び出し側の責務）。
+    """
+    for table, spec_version in common.V2_CUBE_SPEC_VERSIONS.items():
+        common.record_stage_fingerprint(conn, table, spec_version=spec_version)
+
+
 def make_fresh_v2_cube_db(tmp_path, name: str = "v2.sqlite", **input_fingerprint_kwargs) -> pathlib.Path:
-    """`observation_agg`/`occurrence_agg` の spec_version と、v2 パイプラインの
+    """`common.V2_CUBE_SPEC_VERSIONS` 全表の spec_version と、v2 パイプラインの
     入力＋コードの指紋（`common.compute_v2_input_fingerprint()`）の両方が
     記録済みの、「新鮮」な v2.sqlite 風フィクスチャをファイルパスで返す
     （`scripts/check_v2_fresh.py` の CLI テストが `--v2-db` に渡す形）。
@@ -490,10 +509,46 @@ def make_fresh_v2_cube_db(tmp_path, name: str = "v2.sqlite", **input_fingerprint
     一致する）。
     """
     conn = make_v2_cube_tables(tmp_path, name)
-    common.record_stage_fingerprint(conn, "observation_agg", spec_version=common.OBSERVATION_AGG_SPEC_VERSION)
-    common.record_stage_fingerprint(conn, "occurrence_agg", spec_version=common.OCCURRENCE_SPEC_VERSION)
+    record_all_v2_cube_fingerprints(conn)
     current = common.compute_v2_input_fingerprint(**input_fingerprint_kwargs)
     common.record_v2_input_fingerprint(conn, current)
     conn.commit()
     conn.close()
     return tmp_path / name
+
+
+def make_observation_agg_fixture(tmp_path, rows, name: str = "v2.sqlite") -> pathlib.Path:
+    """`observation_agg`（`scripts/b04_build_cube.py` の `DIM_COLUMNS`＋
+    `value_zero`/`value_lod`/`n`/`n_censored`/`n_not_detected`/`n_places`/
+    `built_from`/`spec_version`——本番の CREATE TABLE と同じ形。`_CREATE_
+    OBSERVATION_AGG_SQL` を再利用し列を複製しない）だけを持つ v2.sqlite 風の
+    フィクスチャを作り、`observation_agg` 自身の段階間指紋を記録してファイル
+    パスで返す（`scripts/tests/test_b13_build_summary.py` が使う）。
+
+    `rows` の各要素は `b04.DIM_COLUMNS + ("value_zero", "value_lod", "n",
+    "n_censored", "n_not_detected", "n_places", "built_from", "spec_version")`
+    の順のタプル。
+
+    `inputs={}`（空の系譜）で記録する——`scripts/b13_build_summary.py` の
+    `assert_stage_fingerprint_fresh(conn, "observation_agg", upstream_schemas=
+    {})` は `inputs` が空なら (b) の再帰チェック（上流 `observation` の自己
+    指紋との突合）が即座に終わるため、`observation` 実表を別途用意しなくて
+    よい（b13 を単体で検証するための簡略化。b04 の本番出力は必ず
+    `inputs={"observation": ...}` を持つ——`scripts/b04_build_cube.py` 参照）。
+    """
+    db_path = tmp_path / name
+    conn = sqlite3.connect(f"file:{db_path}", uri=True)
+    conn.execute(b04._CREATE_OBSERVATION_AGG_SQL.format(table="observation_agg"))
+    columns = list(b04.DIM_COLUMNS) + [
+        "value_zero", "value_lod", "n", "n_censored", "n_not_detected", "n_places", "built_from", "spec_version",
+    ]
+    placeholders = ", ".join("?" for _ in columns)
+    conn.executemany(
+        f'INSERT INTO observation_agg ({", ".join(columns)}) VALUES ({placeholders})', rows,
+    )
+    common.record_stage_fingerprint(
+        conn, "observation_agg", spec_version=common.OBSERVATION_AGG_SPEC_VERSION, inputs={},
+    )
+    conn.commit()
+    conn.close()
+    return db_path

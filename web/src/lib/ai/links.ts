@@ -13,10 +13,12 @@ export interface TimeseriesLinkScope {
 }
 
 export interface TimeseriesLinkInput {
-  variable: string;
+  /** variable_id（`common:variable:...`）。alias 文字列ではない（Issue #48 PR-2 design §5）。 */
+  variableId: string;
   scope: TimeseriesLinkScope;
-  grain: "year" | "month" | "day";
-  kind?: "daily" | "annual";
+  grain: "year" | "fiscal_year" | "month" | "day";
+  basis?: "day" | "fiscal_year" | "year";
+  stat?: string;
 }
 
 /**
@@ -32,14 +34,15 @@ export function timeseriesUrl(input: TimeseriesLinkInput): string | null {
   if (input.grain === "day") return null;
   if (input.scope.type === "water" && !input.scope.name) return null;
 
-  const params = new URLSearchParams({ variable: input.variable, grain: input.grain });
+  const params = new URLSearchParams({ variable: input.variableId, grain: input.grain });
   if (input.scope.type === "water") {
     params.set("mode", "water");
     params.set("water", input.scope.name as string);
   } else {
     params.set("mode", "zone");
   }
-  if (input.kind) params.set("kind", input.kind);
+  if (input.basis) params.set("basis", input.basis);
+  if (input.stat) params.set("stat", input.stat);
   return `/timeseries?${params.toString()}`;
 }
 

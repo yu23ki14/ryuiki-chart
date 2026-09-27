@@ -94,6 +94,26 @@ def test_check_fresh_returns_stale_when_input_fingerprint_table_missing(tmp_path
     assert cvf.check_fresh(tmp_path / "v2.sqlite") == common.V2_CHECK_EXIT_STALE
 
 
+def test_check_fresh_returns_stale_when_synthetic_included_marker_present(tmp_path):
+    """Issue #48 PR-2 §1: `b03_build_observation.py --include-synthetic` が
+    書く `pipeline_input_fingerprint` の `synthetic_included=1` の印は、他が
+    すべて新鮮でも常に「古い」（診断専用の v1互換キューブを誤って本番の
+    v2.sqlite として使わせないガード）。`compute_v2_input_fingerprint()` 自身は
+    このキーを一切計算しないため、`diff_v2_input_fingerprint` は「記録側にだけ
+    このキーがある」食い違いとして必ず検出する。
+    """
+    target = _make_fresh_v2(tmp_path)
+    conn = sqlite3.connect(f"file:{target}", uri=True)
+    conn.execute(
+        f"INSERT INTO {common.PIPELINE_INPUT_FINGERPRINT_TABLE} (component, value) "
+        "VALUES ('synthetic_included', '1')"
+    )
+    conn.commit()
+    conn.close()
+
+    assert cvf.check_fresh(target) == common.V2_CHECK_EXIT_STALE
+
+
 def test_check_fresh_returns_stale_when_recorded_code_fingerprint_differs(tmp_path):
     """入力・コードの指紋が「記録時と違う」ケース（原本・入力・コードのどれかが
     変わった後、v2.sqlite を作り直していない）を、記録済みの値を直接書き換える
