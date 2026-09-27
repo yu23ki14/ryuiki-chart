@@ -28,7 +28,12 @@
 #     `{month}` の2つの分割を同居させている——PR-3a 設計書 §9-2。`filter.grain`
 #     を書き忘れると、族をまたいだ二重計上を「保存則（SUM(n) の一致）」検証が
 #     検出できない——比較先の `observation_agg`/`occurrence_agg` 側の SUM(n) も
-#     同じ〔絞り込み忘れの〕`filter` で計算するため）
+#     同じ〔絞り込み忘れの〕`filter` で計算するため）。**列があるだけでは不十分
+#     で、値も `b07.YEAR_GRAIN_FAMILY`（`[year, survey_period]`）か
+#     `b07.MONTH_GRAIN_FAMILY`（`[month]`）のどちらか1つの族にちょうど
+#     一致していなければ止める**——`[year, month]` のように族を跨ぐ値は
+#     「列はある」だけでは検出できず、族をまたいだ二重計上を招く
+#     （/code-review 指摘5）。
 #
 # `key` は必ず `group_by` と同じ集合にすること（summary は1グループ=1行の
 # ロールアップで、`key` がその一意性を保証する次元）。

@@ -400,6 +400,41 @@ def test_build_summary_raises_when_occurrence_agg_summary_missing_grain_filter(t
         conn.close()
 
 
+def test_build_summary_raises_when_occurrence_agg_grain_filter_spans_families(tmp_path):
+    """`filter.grain` は列があるだけでは不十分——値が `b07.YEAR_GRAIN_FAMILY`
+    （`year`/`survey_period`）か `b07.MONTH_GRAIN_FAMILY`（`month`）のどちらか
+    1つの族にちょうど収まっていなければ止める。`[year, month]` のように族を
+    跨ぐ値は月族を二重に数える事故を招くため、有無だけのチェックでは検出
+    できなかった（/code-review 指摘5の回帰）。
+    """
+    raw = _load_real_yaml()
+    raw["summaries"]["summary_taxon_catalog"]["filter"]["grain"] = ["year", "month"]
+    yaml_path = _write_yaml(tmp_path, raw)
+
+    db_path = make_observation_agg_fixture(tmp_path, _ROWS)  # occurrence_agg は不要（DB に触る前に止まる）
+    conn = sqlite3.connect(f"file:{db_path}", uri=True)
+    try:
+        with pytest.raises(common.MigrationError, match="filter.grain が族に収まっていない"):
+            b13.build_summary(conn, yaml_path)
+    finally:
+        conn.close()
+
+
+def test_build_summary_raises_when_occurrence_agg_grain_filter_is_unknown_value(tmp_path):
+    """族に属さない値（例: 未知の grain `'week'`）も同じ検証で止める。"""
+    raw = _load_real_yaml()
+    raw["summaries"]["summary_watershed_occurrence"]["filter"]["grain"] = ["week"]
+    yaml_path = _write_yaml(tmp_path, raw)
+
+    db_path = make_observation_agg_fixture(tmp_path, _ROWS)
+    conn = sqlite3.connect(f"file:{db_path}", uri=True)
+    try:
+        with pytest.raises(common.MigrationError, match="filter.grain が族に収まっていない"):
+            b13.build_summary(conn, yaml_path)
+    finally:
+        conn.close()
+
+
 def test_build_summary_raises_on_cross_source_filter_column(tmp_path):
     """source をまたいだ列名の流用は許さない: `summary_taxon_catalog`
     （source: occurrence_agg）の filter に observation_agg にしかない次元キー

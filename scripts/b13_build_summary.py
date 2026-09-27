@@ -49,6 +49,13 @@ variable_id 単位への束ね・代表化はここではしない**（それは
    `filter.grain` が無ければ止まる**（`occurrence_agg` は year 族・month 族の
    セルを同居させているため——`aggregations/serving.yaml` のコメント「
    `source: occurrence_agg` の summary は `filter.grain` を必須とする」参照）。
+   **`filter.grain` の**値**も検証する**——単に列があるだけでは不十分で、
+   `b07.YEAR_GRAIN_FAMILY`（`{"year", "survey_period"}`）か
+   `b07.MONTH_GRAIN_FAMILY`（`{"month"}`）のどちらか1つの族にちょうど
+   収まっていなければ止める（例えば `[year, month]` のように2つの族を
+   跨ぐ値は、族をまたいだ二重計上を招くため無条件に拒否する。以前は
+   `filter.grain` の有無しか見ておらず、値が何であっても検証1を通過して
+   しまっていた。/code-review 指摘5）。
 2. **次元キーの一意性**（`key` 列。`common.assert_dimension_key_unique`）。
 3. **保存則**: 各 summary の `SUM(n)` が、同じ `filter` を通した `source`
    自身の `SUM(n)` と一致すること（GROUP BY で行を分けても件数の合計は
@@ -105,6 +112,14 @@ _ALLOWED_SOURCES = frozenset({"observation_agg", "occurrence_agg"})
 # docstring「YAML の語彙検証」参照）。
 _REQUIRED_FILTER_COLUMNS_BY_SOURCE: dict[str, frozenset[str]] = {
     "occurrence_agg": frozenset({"grain"}),
+}
+
+# `filter.grain` の**値**が収まっていなければならない族（`_REQUIRED_FILTER_
+# COLUMNS_BY_SOURCE` は列の有無しか見ないので、値の検証はこちらで別に持つ。
+# モジュール docstring「YAML の語彙検証」参照）。b07 の族定義をそのまま使い、
+# ここに族を複製しない。
+_ALLOWED_GRAIN_FAMILIES_BY_SOURCE: dict[str, tuple[frozenset[str], ...]] = {
+    "occurrence_agg": (frozenset(b07.YEAR_GRAIN_FAMILY), frozenset(b07.MONTH_GRAIN_FAMILY)),
 }
 
 _EXPR_SQL = {
@@ -222,6 +237,19 @@ def _validate_summary_spec(table_name: str, spec: dict) -> None:
             f"（source={source!r} の summary は、族をまたいだ二重計上を防ぐためこの列の"
             "絞り込みを必須とする。aggregations/serving.yaml 冒頭のコメント参照）"
         )
+
+    allowed_grain_families = _ALLOWED_GRAIN_FAMILIES_BY_SOURCE.get(source)
+    if allowed_grain_families is not None and "grain" in filter_spec:
+        grain_value = filter_spec["grain"]
+        grain_set = frozenset(grain_value) if isinstance(grain_value, list) else frozenset({grain_value})
+        if grain_set not in allowed_grain_families:
+            _fail(
+                f"{table_name}.filter.grain が族に収まっていない: {sorted(grain_set)}"
+                f"（source={source!r} の summary は、`b07.YEAR_GRAIN_FAMILY`"
+                f"（{sorted(b07.YEAR_GRAIN_FAMILY)}）か `b07.MONTH_GRAIN_FAMILY`"
+                f"（{sorted(b07.MONTH_GRAIN_FAMILY)}）のどちらか1つの族にちょうど"
+                "一致すること。族をまたぐ値は二重計上を招く）"
+            )
 
     group_by = spec.get("group_by")
     if not group_by or not isinstance(group_by, list):
