@@ -420,6 +420,51 @@ ADR-0019 参照。実測: gbif 21,234件 / inat 13,978件。
 `taxon_group` は「菌類」で変わらない）。残り775行は `taxon_key` 自体が無く
 元々 `taxon_id` 解決の対象外。
 
+## `taxon.vernacular_name_en`・和名の記録由来補完（D4）（Issue #48 PR-3a）
+
+`vernacular_name_en` は `organism_records.vernacular_name`（iNat 行は iNat API の
+英語 common name、GBIF 行はデータセット付属の俗名——大半が日本語だが一部
+ラテン文字）のうち **ラテン文字だけの値**を (名前空間, taxon_key) ごとに
+最頻値（同数は値の昇順）で選んだもの（`scripts/registry/build_taxon.py` の
+`_load_vernacular_candidates()`/`_pick_majority()`）。母集団は F1 の代表選び
+（`_load_occurrence_representatives()`）と同じ（`taxon_key IS NOT NULL AND
+taxon_key<>''`、日付の有無を問わない）。gbif/inat 名前空間の行にだけ付く
+（`taxa` 由来の unresolved 行は organism_records に対応する taxon_key が無いため
+常に NULL）。
+
+**「英名」ではなく「ラテン文字の俗名」である**ことに注意——ラテン文字判定
+（`scripts/registry/common.py` の `is_latin_script()`。ASCII 印字可能域 ∪
+Latin-1 Supplement/Latin Extended-A・B の字母 ∪ 曲線引用符 `’`）は英語かどうかを
+判定しないため、ローマ字表記（`Kawa-Semi`）・属の仮名（`Amara sp.`）も選ばれうる。
+
+**和名の記録由来補完（D4）**: 同じ集計から非ラテン文字（ひらがな・カタカナ・CJK
+等）の最頻値を、`vernacular_name_ja` が **NULL の行にだけ**埋める。根拠列
+`vernacular_ja_basis`（`override`/`taxa`/`records`）で出処を残す。優先順は
+override（`registry/taxon/vernacular_ja.csv` の人手確認済み54件）> taxa（`taxa`
+由来）> records（この補完）——override は taxa 由来の値があっても無条件に
+上書きする一方、records 補完は NULL の行にしか適用しないので、**既存の値は
+1件も変えない**（実データ・pytest 双方でこの不変条件を確認する。
+`scripts/tests/test_registry_taxon.py`）。
+
+いずれも `registry.sqlite` の `taxon` テーブルと D1（`web/src/db/schema-registry.ts`）
+の両方に載る（`taxon` は既に D1 の消費者があるため、`kingdom`/`phylum` 等とは
+異なり D1 側にも追加した）。
+
+## `taxon_assessment.in_scope`（D7）（Issue #48 PR-3a）
+
+`taxon_assessment.in_scope` は「除外7種」（上記「二名法(binom)は…」節、P-2
+オーナー決定A）の宣言を、`taxon_assessment` 自体の行を1件も除外せずに可視化する
+列。`(list_id, scientific_name_raw の二名法)` が
+`registry/taxon/assessment_scope_exclusions.yaml` の (list_id, scientific_name)
+と一致する行だけ `in_scope=0`、他の全行（redlist 3版を含む）は `in_scope=1`
+（`scripts/registry/build_taxon_assessment.py` の `_assign_in_scope()`）。
+二名法での一致規則は `scripts/b08_project_occurrence_v1.py` の
+`_build_ias_species()` が `org_norm.binom` に対して行うのと同じ
+（`binom_of()`）。`taxon_assessment` は Issue #48（PR-0）で既に D1
+（`web/src/db/schema-registry.ts`）に載っている（`scripts/schema_registry.sql`
+の同テーブルの先頭コメントは「D1には載せない」という古い記述のままだが、これは
+PR-0 以前の状態を指しており実態と食い違っている——別途の訂正が必要）。
+
 ## `status='needs_review'` / `'unresolved'` が意味すること
 
 **黙って埋めない・落とさないという契約**（`docs/COLLECTOR_CONTRACT.md`）。レジストリは

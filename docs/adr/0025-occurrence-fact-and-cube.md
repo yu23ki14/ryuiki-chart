@@ -1,7 +1,10 @@
 # ADR-0025: occurrence ファクトとキューブの設計（region は出典から・期間は12形の宣言・1ファクト＝1キューブ表）
 
-- 状態: 承認済（一部未実装: D4〔`occurrence_agg`へのwatershedセル追加〕はO-2bへ）
-  / 日付: 2026-09-22
+- 状態: 承認済（D2「O-2 への申し送り」は O-2b〔Issue #48 PR-3a〕で実装済み。
+  `occurrence_agg` は「place_kind × grain 族」の行列——`grid01`×`year`・
+  `grid01`×`month`・`watershed`×`year`（実測 1,437,598 セル）。詳細は
+  `docs/plans/V2_SERVING_PR3A.md`・ADR-0026 D4）
+  / 日付: 2026-09-22（O-2b 追記: 2026-09-27）
 - 関連: ADR-0006（place）, ADR-0007（observation/occurrence の分離）, ADR-0008（時間の3点セット）,
   ADR-0011（キューブ）, ADR-0016（移行計画）, ADR-0019（taxon）, ADR-0021（キューブの鍵）,
   ADR-0022（place.region_id とスコープ）, ADR-0024（時刻帯・時刻ラベル）
@@ -101,19 +104,23 @@ ADR-0011 は入力を `observation` と `occurrence` の2つに決めている�
 番号は本 ADR の時点で予約済み・未実装）になる。
 
 - 鍵: `region_id, source_id, place_id, place_kind, taxon_id, grain, period_start, period_end`。
-  値: `n`・`n_red_list`（RL 原表記が空でない記録数）。`n_distinct_taxon` は
+  値: `n`・`n_red_list`（RL 原表記が空でない記録数）・**`n_alien`（`SUM(is_alien)`。
+  O-2b〔Issue #48 PR-3a〕で追加。v1 `org_watershed.alien_n` の後継）**。
+  `n_distinct_taxon` は
   taxon 粒度で非加法なので持たない。`taxon_id` が `NULL` のセルも持つ（データを
   落とさない）。`place_kind` は ADR-0011「事前計算は `place_kind ∈ {site,
   watershed, mesh3}`」・`observation_agg` が既に鍵に持つ列に合わせたもの
   （place_id の直後。O-1b 実装時点では常に `'grid01'`——occurrence が grid01
-  経由でしか場所を解決しないため。O-2 で `place_kind='watershed'` の
-  ロールアップセルを同じ `occurrence_agg` に足す計画があるため、O-1b の
-  時点で鍵に先取りで入れてある。射影（`scripts/b08_project_occurrence_v1.py`）
-  は `place_kind='grid01'` に明示的に絞って年キー8表を作り、未知の
-  `place_kind` があれば止める——O-2 が `'watershed'` を追加するまでは
-  `'grid01'` 以外が現れないはずという前提を機械的に守る）。
-- **`grain ∈ {year, survey_period}`**（month は使う側が現れるまで後回し。
-  ADR-0011 の `biota_by_mesh` も `periods: [year]`）。
+  経由でしか場所を解決しないため。O-2b で `place_kind='watershed'` のセルを
+  同じ `occurrence_agg` に足した——ロールアップではなく `occurrence_place`
+  〔ADR-0026〕からの直接解決。射影（`scripts/b08_project_occurrence_v1.py`）
+  は年キー8表を作るときだけ `place_kind='grid01'` に明示的に絞る）。
+- **`grain ∈ {year, survey_period, month}`**（`year`/`survey_period` は日付あり
+  全記録の分割＝`YEAR_GRAIN_FAMILY`。`month` は O-2b〔Issue #48 PR-3a〕で追加した
+  ——同一月に収まる記録だけの分割＝`MONTH_GRAIN_FAMILY`。ADR-0024 決定3を守る
+  ため `year` セルや月をまたぐ区間は month セルに入らない。年キー8表・
+  `org_watershed(_year)` は年族だけを対象にする）。
+  ADR-0011 の `biota_by_mesh` の `periods: [year]` は年族のみを指す。
   - `year` セル: 期間が1つの暦年に収まる記録（day/instant/month/year と、
     同年内に収まる区間）。
   - `survey_period`（leaf）セル: 年をまたぐ区間（実測1,191行）。
@@ -123,14 +130,16 @@ ADR-0011 は入力を `observation` と `occurrence` の2つに決めている�
   - この2つの `grain` で、**観測日のある全記録がちょうど1つのセルに入る**
     （キューブ＝L2 の分割）。
 
-**O-2 への申し送り**: leaf セルの元記録数の宣言（`scripts/migrate/occurrence_cube_declarations.yaml`）は
-今のところ `place_kind='grid01'` 分の単一の値（`leaf_cell_source_rows`。スカラーの
-`expected_row_count`）しか持たない。O-2 で `place_kind='watershed'` の leaf 相当が
-増えたら、`scripts/b07_build_occurrence_cube.py` の `_LEAF_DECLARATION_NAME`
-（単一の宣言名）・宣言名の完全一致検査（`load_and_validate_cube_declarations` の
-`declared_names != expected_names`）・`leaf_expected`（スカラー、
-`_assert_cube_partition_and_shape` に渡す）は `place_kind` ごとの複数値を持てる
-形にコードを変える必要がある。
+**O-2 への申し送り（O-2b で実装済み。Issue #48 PR-3a）**: leaf セルの元記録数の
+宣言（`scripts/migrate/occurrence_cube_declarations.yaml`）は当初 `place_kind=
+'grid01'` 分の単一の値（`leaf_cell_source_rows`。スカラーの `expected_row_count`）
+しか持たなかったが、O-2b で `place_kind='watershed'` の year 族（leaf 含む）・
+新設した `month` 族の宣言を足し、4件（`leaf_cell_source_rows`/
+`month_cell_source_rows`/`watershed_dated_resolved_rows`/
+`watershed_dated_unresolved_rows`）の集合になった。`leaf`/`month` は記録の
+属性（同年/同月に収まるか）なので全 `place_kind` で同じ値を要求し、`watershed_
+dated_*` は `occurrence_place`（b09）由来の解決件数を持つ。詳細は
+`docs/plans/V2_SERVING_PR3A.md` §2・ADR-0026 D4。
 
 ### D3. v1 互換の射影（O-1a で `org_norm` を実装。年キー8表・species_month は O-1b）
 

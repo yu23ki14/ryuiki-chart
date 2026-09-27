@@ -1,8 +1,11 @@
 # ADR-0011: 派生33テーブルを単一キューブ＋宣言的集計定義に置き換える
 
-- 状態: 提案中（単一キューブへの統合は実装済みだが、決定の中核である宣言的集計定義
-  〔YAML、`aggregations/`〕が未実装のため。2026-09-25 状態再確認、詳細は status-review）
-  / 日付: 2026-09-06
+- 状態: 承認済（宣言的集計定義〔`aggregations/serving.yaml` →
+  `scripts/b13_build_summary.py`〕が summary 4表〔指標カタログ・地点×指標・
+  種カタログ・流域別出現、Issue #48 PR-1/PR-2/PR-3a〕として実装され、
+  `observation_agg`/`occurrence_agg` 両方をキューブの再集計だけで賄うことを
+  機械検証済み。2026-09-27 状態更新）
+  / 日付: 2026-09-06（状態更新: 2026-09-27）
 - 関連: ADR-0006（place）, ADR-0007（observation）, ADR-0008（時間）, ADR-0009（検閲）
 
 **2026-09-26 追記（Issue #48、ADR-0030提案）**: 宣言的集計定義（本ADR未実装の中核）の
@@ -14,8 +17,16 @@ summary 3表として、v1 撤去後の D1 配信スキーマ
 **2026-09-26 追記（Issue #48 PR-2 着手、U1b）**: summary 表は2表（指標カタログ・
 地点×指標。種カタログは PR-3b）に確定した（`docs/plans/V2_SERVING_PR2.md` §4）。
 `aggregations/serving.yaml`・`scripts/b13_build_summary.py` はこの追記の時点では
-まだ実装していない——PR-2 の他単位（U1a）で実装予定。**状態欄はまだ「実装済み」に
-更新しない**（宣言的集計定義そのものが実装されるまで、本ADRの決定の中核は未達のため）。
+まだ実装していない——PR-2 の他単位（U1a）で実装予定。
+
+**2026-09-27 追記（Issue #48 PR-3a、実装済みに更新）**: `aggregations/serving.yaml`・
+`scripts/b13_build_summary.py` を PR-1/PR-2 で実装し、PR-3a で `occurrence_agg`
+側の2表（`summary_taxon_catalog`/`summary_watershed_occurrence`）を足して
+合計4表にした。宣言（`source`/`filter`/`group_by`/`measures`/`key`/`indexes`）
+から `observation_agg`/`occurrence_agg` の両方を再集計だけで賄えることを
+実データで確認済みのため、本ADRの決定の中核（宣言的集計定義でキューブを
+再集計し、テーブルを増やさずに集計軸を足せる）が実装されたと判断し、状態欄を
+「実装済み」に更新した。
 
 **2026-09-08 追記（ADR-0021 で拡張）**: 次元キーの `stat` だけでは、出典が既に別々の統計量として
 配っている系列（`pH（最大値）`/`pH（最小値）` 等）が同じ格に混ざることが Phase B の実装で判明した。

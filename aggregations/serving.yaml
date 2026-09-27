@@ -1,30 +1,52 @@
-# `observation_agg`（`scripts/b04_build_cube.py`）から、画面・API・AI が直接
-# 読む summary 2表（`scripts/b13_build_summary.py` が作る `summary_variable_catalog`/
-# `summary_place_variable`）を宣言する（Issue #48 PR-2 §4、ADR-0011）。
+# `observation_agg`（`scripts/b04_build_cube.py`）・`occurrence_agg`
+# （`scripts/b07_build_occurrence_cube.py`）から、画面・API・AI が直接
+# 読む summary 4表（`scripts/b13_build_summary.py` が作る
+# `summary_variable_catalog`/`summary_place_variable`〔observation_agg 由来、
+# Issue #48 PR-2 §4〕・`summary_taxon_catalog`/`summary_watershed_occurrence`
+# 〔occurrence_agg 由来、Issue #48 PR-3a §5〕）を宣言する（ADR-0011）。
 #
 # `scripts/b13_build_summary.py` はこのファイルを読むだけで、どの列で GROUP BY
 # するか・どの測度（measure）を作るかを決める——テーブルごとの分岐はコード側に
 # 書かない（`scripts/reconcile/projection_manifest.yaml` と同じ流儀）。
 #
 # 語彙は閉じている（b13 が起動時に検証し、未知の語彙・列は止まる）:
-#   - `fn` ∈ {sum, count_distinct, min, max, avg}
+#   - `source` ∈ {observation_agg, occurrence_agg}
+#   - `fn` ∈ {sum, count_distinct, min, max, avg}（`count_distinct` は `col`
+#     ——例 `COUNT(DISTINCT place_id)`——にも `expr`——例
+#     `COUNT(DISTINCT year_of_period_start)`——にも使える）
 #   - `expr` ∈ {year_of_period_start}（`CAST(substr(period_start,1,4) AS INTEGER)`）
-#   - `filter`/`group_by`/`key` の列は `observation_agg` の次元キー
-#     （`scripts/b04_build_cube.py` の `DIM_COLUMNS`）のみ
-#   - 測度の `col` は次元キー、または `value_zero`/`value_lod`/`n`/`n_censored`/
-#     `n_not_detected`/`n_places`（`observation_agg` の測度列）
+#   - `filter`/`group_by`/`key` の列は、その summary の `source` の次元キー
+#     （observation_agg: `scripts/b04_build_cube.py` の `DIM_COLUMNS`、
+#     occurrence_agg: `scripts/b07_build_occurrence_cube.py` の `DIM_COLUMNS`）
+#     のみ——source をまたいだ列名の流用はできない（b13 が source ごとに
+#     許容集合を持って検証する）
+#   - 測度の `col` は同じ source の次元キー、または値列
+#     （observation_agg: `value_zero`/`value_lod`/`n`/`n_censored`/
+#     `n_not_detected`/`n_places`、occurrence_agg: `n`/`n_red_list`/`n_alien`）
+#   - **`source: occurrence_agg` の summary は `filter.grain` を必須とする**
+#     （`occurrence_agg` は year 族 `{year, survey_period}` と month 族
+#     `{month}` の2つの分割を同居させている——PR-3a 設計書 §9-2。`filter.grain`
+#     を書き忘れると、族をまたいだ二重計上を「保存則（SUM(n) の一致）」検証が
+#     検出できない——比較先の `observation_agg`/`occurrence_agg` 側の SUM(n) も
+#     同じ〔絞り込み忘れの〕`filter` で計算するため）。**列があるだけでは不十分
+#     で、値も `b07.YEAR_GRAIN_FAMILY`（`[year, survey_period]`）か
+#     `b07.MONTH_GRAIN_FAMILY`（`[month]`）のどちらか1つの族にちょうど
+#     一致していなければ止める**——`[year, month]` のように族を跨ぐ値は
+#     「列はある」だけでは検出できず、族をまたいだ二重計上を招く
+#     （/code-review 指摘5）。
 #
 # `key` は必ず `group_by` と同じ集合にすること（summary は1グループ=1行の
 # ロールアップで、`key` がその一意性を保証する次元）。
 #
-# variable_id 単位への束ね・代表化は**ここに書かない**——それは問い合わせ層
-# （`web/src/lib/cube/catalog.ts`）の仕事。summary は系列単位（`obs_stat`/
-# `unit_id`/`value_grain` を保ったまま）のロールアップにとどめる
+# variable_id/binom 単位への束ね・代表化は**ここに書かない**——それは問い合わせ層
+# （`web/src/lib/cube/catalog.ts`、生物系は PR-3b で追加予定の同種のモジュール）の
+# 仕事。summary は系列単位（`obs_stat`/`unit_id`/`value_grain`、または
+# `taxon_id`/`place_id` そのもの）を保ったままのロールアップにとどめる
 # （`nPlaces` を alias/variable 単位に単純合算すると二重計上する、という
 # PR-1 の知見どおり）。
 
 version: 1
-spec_version: serving-summary/v1
+spec_version: serving-summary/v2
 
 summaries:
   summary_variable_catalog:
@@ -55,3 +77,38 @@ summaries:
       n_not_detected: { fn: sum, col: n_not_detected }
     key: [place_id, variable_id, obs_stat, unit_id, value_grain, grain, input_grain]
     indexes: [[place_id], [variable_id]]
+
+  # v1 `species2`/`mesh_species` の後継。binom 束ね・表示名・RL 評価との突合は
+  # `catalog.ts`（PR-3b）の仕事——ここは `taxon_id` 単位のロールアップのまま。
+  # `taxon_id IS NULL`（分類群未解決）の行も落とさず1行として持つ。
+  summary_taxon_catalog:
+    source: occurrence_agg
+    filter: { place_kind: grid01, grain: [year, survey_period] }
+    group_by: [taxon_id]
+    measures:
+      n:          { fn: sum, col: n }
+      n_red_list: { fn: sum, col: n_red_list }
+      n_alien:    { fn: sum, col: n_alien }
+      n_places:   { fn: count_distinct, col: place_id }   # v1 mesh_n 相当
+      y_from:     { fn: min, expr: year_of_period_start }
+      y_to:       { fn: max, expr: year_of_period_start }
+      n_years:    { fn: count_distinct, expr: year_of_period_start }
+    key: [taxon_id]
+    indexes: [[taxon_id]]
+
+  # v1 `org_watershed`/`org_watershed_year` の後継（年ロールアップ側）。
+  # `place_id IS NULL`（流域に解決できない日付あり記録、ADR-0025/0026 D1）の
+  # 行も落とさず1行として持つ——画面は `place_id IS NOT NULL` で絞る。
+  summary_watershed_occurrence:
+    source: occurrence_agg
+    filter: { place_kind: watershed, grain: [year, survey_period] }
+    group_by: [place_id]
+    measures:
+      n:          { fn: sum, col: n }
+      n_red_list: { fn: sum, col: n_red_list }
+      n_alien:    { fn: sum, col: n_alien }
+      n_taxa:     { fn: count_distinct, col: taxon_id }
+      y_from:     { fn: min, expr: year_of_period_start }
+      y_to:       { fn: max, expr: year_of_period_start }
+    key: [place_id]
+    indexes: [[place_id]]

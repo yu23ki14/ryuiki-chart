@@ -77,7 +77,10 @@ v1 の静的な7種除外をそのまま宣言化したもの）から読む。`
   を鍵に持つ理由・O-2 との関係は ADR-0025 D2 参照。この8表は mesh
   〔`mlat`/`mlon`〕前提のため、`'watershed'` 等の他の `place_kind` は対象外
   にする。既知の値〔`'grid01'`/`'watershed'`〕以外なら
-  `_assert_known_place_kinds` が止める）。
+  `_assert_known_place_kinds` が止める）。**`grain IN (年 族)` にも絞る**
+  （O-1 設計 v2 §0-1: b07 が `month` 族〔`grid01`×`month`〕のセルを足す
+  計画のため、絞らないと年キー8表が月セルを二重に数える。年 族の名前は
+  `b07.YEAR_GRAIN_FAMILY` をそのまま使う。
 - **v1 の「年」はキューブのセルの `period_start` から**: `CAST(substr(period_start,1,4)
   AS INT)`。`year` セルも `survey_period`（leaf）セルも同じ式（year セルは
   `period_start` が暦年境界へ丸め済み、leaf セルは記録自身の区間の開始その
@@ -778,14 +781,29 @@ def build_ias_species_projection(
 # O-1b: 年キー8表（occurrence_agg だけから）＋ species_month（occurrence＝L2 から）
 # ---------------------------------------------------------------------------
 
-# grain の語彙は b07 の `GRAIN_VALUES` を正として import する（/simplify
-# 指摘5。以前は b07・b08 それぞれが `'year', 'survey_period'` を直書きして
-# いて、O-2 で grain を足すときに2箇所を直す必要があった）。
-_GRAIN_VALUES_SQL_LIST = ", ".join(repr(g) for g in b07.GRAIN_VALUES)
-_GRAIN_VALUES_LABEL = "/".join(repr(g) for g in b07.GRAIN_VALUES)
+# grain の語彙は b07 の `GRAIN_VALUES`（既知の全 grain）/`YEAR_GRAIN_FAMILY`
+# （年キー8表・`org_watershed_year` 系〔O-2a〕が対象にする年族だけ。O-1 設計
+# v2 §0-1）を正として import する（/simplify 指摘5。以前は b07・b08 それぞれが
+# `'year', 'survey_period'` を直書きしていて、grain を足すたびに2箇所を
+# 直す必要があった）。
+def _grain_values_sql_list() -> str:
+    return ", ".join(repr(g) for g in b07.GRAIN_VALUES)
+
+
+def _grain_values_label() -> str:
+    return "/".join(repr(g) for g in b07.GRAIN_VALUES)  # 例: "'year'/'survey_period'/'month'"
+
+
+def _year_grain_family_sql_list() -> str:
+    return ", ".join(repr(g) for g in b07.YEAR_GRAIN_FAMILY)
+
+
+def _year_grain_family_label() -> str:
+    return "/".join(repr(g) for g in b07.YEAR_GRAIN_FAMILY)
+
 
 # 年キー8表が対象にする place_kind（O-2 で 'watershed' が増える計画。
-# `_assert_known_place_kinds`/`_OCC_AGG_ENRICHED_SQL` が参照する）。
+# `_assert_known_place_kinds`/`_occ_agg_enriched_sql()` が参照する）。
 _KNOWN_PLACE_KINDS = frozenset({"grid01", "watershed"})
 _MESH_PLACE_KIND = "grid01"
 
@@ -802,12 +820,19 @@ FROM cube.occurrence
 WHERE period_raw IS NOT NULL AND place_kind = '{_MESH_PLACE_KIND}'
 GROUP BY source_id, taxon_id
 """
-_CUBE_SERIES_TOTALS_SQL = f"""
-SELECT source_id, taxon_id, SUM(n) AS n
-FROM cube.occurrence_agg
-WHERE place_kind = '{_MESH_PLACE_KIND}'
-GROUP BY source_id, taxon_id
-"""
+
+
+# **`grain IN (年 族)` にも絞る**（O-1 設計 v2 §0-1: b07 が `month` 族の
+# セルを足しても、この Σn 突合は「年 族のセルは occurrence の忠実な分割」
+# だけを見る——月族は別の分割なので対象外。関数にしてある理由は上の
+# `_grain_values_sql_list()` と同じ）。
+def _cube_series_totals_sql() -> str:
+    return f"""
+    SELECT source_id, taxon_id, SUM(n) AS n
+    FROM cube.occurrence_agg
+    WHERE place_kind = '{_MESH_PLACE_KIND}' AND grain IN ({_year_grain_family_sql_list()})
+    GROUP BY source_id, taxon_id
+    """
 
 
 def _assert_known_place_kinds(conn) -> None:
@@ -832,31 +857,42 @@ def _assert_known_place_kinds(conn) -> None:
 def _assert_cube_is_current_l2_partition(conn) -> None:
     """`occurrence_agg` の grain が `b07.GRAIN_VALUES` 以外を含んでいない
     （新しい grain を黙って絞り込みで捨てない）こと、`place_kind` が既知の
-    値だけであること、`place_kind='grid01'` に絞った系列
+    値だけであること、`place_kind='grid01'`・`grain IN (年 族)` に絞った系列
     （source_id, taxon_id）ごとの `SUM(occurrence_agg.n)` が `occurrence`
     （L2、日付あり行、同じく `place_kind='grid01'`）の件数と一致することを
     確認する。崩れていれば「b06 の後に b07 を再実行せよ」と案内して止める
     （コードレビュー指摘2）。比較そのものは SQL 側で行う
     （`common.assert_grouped_totals_match`。/simplify 指摘3——実測ではこの
     Python 側の突合だけで約2.4秒かかっていた）。
+
+    **`grain IN (年 族)` の絞り込み**（O-1 設計 v2 §0-1）は、b07 が
+    `month` 族（`grid01`×`month`）のセルを足しても、この Σn 突合が
+    「年 族のセルは occurrence の忠実な分割」だけを見るようにするため
+    ——月族は occurrence の別の分割（同一月に収まる記録だけ）なので、
+    年族の Σn と一緒に数えると occurrence の日付あり行数の2倍以上になり、
+    必ず食い違って止まってしまう。
     """
     bad_grain = conn.execute(
-        f"SELECT DISTINCT grain FROM cube.occurrence_agg WHERE grain NOT IN ({_GRAIN_VALUES_SQL_LIST})"
+        f"SELECT DISTINCT grain FROM cube.occurrence_agg WHERE grain NOT IN ({_grain_values_sql_list()})"
     ).fetchall()
     if bad_grain:
         raise common.MigrationError(
-            f"occurrence_agg: grain が {_GRAIN_VALUES_LABEL} 以外の値を持つ（{[r[0] for r in bad_grain]}）。"
-            "年キー8表の射影（このファイル）はこの2つの grain だけを前提にしているため、"
-            "新しい grain を足すならこの検証と射影の両方を見直すこと。"
+            f"occurrence_agg: grain が {_grain_values_label()} 以外の値を持つ（{[r[0] for r in bad_grain]}）。"
+            "既知の grain（b07.GRAIN_VALUES）以外を黙って捨てないための検証——新しい grain を"
+            "足すならこの検証を見直すこと。年キー8表の射影（このファイル）自体は "
+            f"grain IN {_year_grain_family_label()}（年キー族）のセルだけを対象にする——"
+            "他の族（例: 'month'）は既知の grain でも、この Σn 突合・射影のどちらからも"
+            "絞り込んで除外する。"
         )
     _assert_known_place_kinds(conn)
 
     common.assert_grouped_totals_match(
-        conn, _L2_DATED_SERIES_TOTALS_SQL, _CUBE_SERIES_TOTALS_SQL,
+        conn, _L2_DATED_SERIES_TOTALS_SQL, _cube_series_totals_sql(),
         key_columns=["source_id", "taxon_id"],
         value_columns=["n"],
         build_message=lambda rows: (
-            f"occurrence_agg: place_kind='{_MESH_PLACE_KIND}' に絞った系列（source_id, taxon_id）"
+            f"occurrence_agg: place_kind='{_MESH_PLACE_KIND}'・grain IN "
+            f"{_year_grain_family_label()} に絞った系列（source_id, taxon_id）"
             "ごとの Σn が occurrence（L2、同じく grid01）と食い違う（occurrence_agg が「今の"
             f" occurrence の分割」になっていない）。{_REBUILD_GUIDANCE_BY_CONTEXT['occurrence_agg']}"
             " を再実行すること。"
@@ -878,6 +914,13 @@ SELECT place_id,
 FROM reg.place_source_ref
 WHERE source_id = 'organism_records.lat_lon'
 """
+# `place_mesh_lookup(place_id)` に索引を張る（`_CREATE_INDEX_ORG_WATERSHED_YEAR_EXACT_SQL`
+# と同じ流儀。Issue #48 PR-3a 統合で `occurrence_agg` の第3索引
+# `(place_kind, grain, period_start)` を足した副作用で、この TEMP 表との
+# LEFT JOIN（`_occ_agg_enriched_sql()`）で SQLite の自動索引が選ばれなくなり、
+# 総当たりに落ちて b08 が100秒→745秒に後退していた——実測: 索引無しで約536秒
+# かかっていたこの JOIN が、索引ありだと数秒に戻る。/code-review 指摘3）。
+_CREATE_INDEX_PLACE_MESH_LOOKUP_SQL = "CREATE INDEX ix_place_mesh_lookup ON place_mesh_lookup(place_id)"
 
 # occurrence_agg のセルに taxon 属性（taxon_id 経由）・mesh 座標（place_id
 # 経由）・v1 の「年」（period_start から）を載せた作業テーブル。年キー8表は
@@ -885,28 +928,32 @@ WHERE source_id = 'organism_records.lat_lon'
 # `place_id` 自体も残す——`_assert_all_places_resolve_to_mesh`（座標はある
 # のに mesh が引けない事故の検出）と `mesh_year` の座標フィルタ
 # （`place_id IS NOT NULL`。モジュール docstring 参照）に要る。
-# **`WHERE c.place_kind = 'grid01'` で明示的に絞る**（追加指示。O-2 で
-# `place_kind='watershed'` のセルが `occurrence_agg` に増えても、mesh 前提の
-# 年キー8表（mlat/mlon を使う）がそれを二重に数えたり、watershed セルの
-# `place_id` を grid01 用の `place_mesh_lookup` に誤って引かせたりしない
-# ようにする）。
-_OCC_AGG_ENRICHED_SQL = f"""
-CREATE TEMP TABLE occ_agg_enriched AS
-SELECT c.source_id, c.place_id,
-       CAST(substr(c.period_start, 1, 4) AS INT) AS year,
-       t.canonical_binomial AS binom,
-       COALESCE(t.taxon_group, ?) AS taxon_group,
-       t.class AS cls,
-       t.family AS family,
-       pm.mlat AS mlat,
-       pm.mlon AS mlon,
-       c.n AS n,
-       c.n_red_list AS n_red_list
-FROM cube.occurrence_agg c
-LEFT JOIN reg.taxon t ON t.taxon_id = c.taxon_id
-LEFT JOIN place_mesh_lookup pm ON pm.place_id = c.place_id
-WHERE c.place_kind = '{_MESH_PLACE_KIND}'
-"""
+# **`WHERE c.place_kind = 'grid01' AND c.grain IN (年 族)` で明示的に絞る**
+# （追加指示。O-2 で `place_kind='watershed'` のセルが `occurrence_agg` に
+# 増えても、mesh 前提の年キー8表（mlat/mlon を使う）がそれを二重に数えたり、
+# watershed セルの `place_id` を grid01 用の `place_mesh_lookup` に誤って
+# 引かせたりしないようにする。`grain` の絞り込みは O-1 設計 v2 §0-1 の
+# `month` 族セル——同じ grid01 でも occurrence の別の分割——を二重に
+# 数えないためのもの）。関数にしてある理由は `_grain_values_sql_list()` と
+# 同じ（呼び出しのたびに年族の名前を読みに行く）。
+def _occ_agg_enriched_sql() -> str:
+    return f"""
+    CREATE TEMP TABLE occ_agg_enriched AS
+    SELECT c.source_id, c.place_id,
+           CAST(substr(c.period_start, 1, 4) AS INT) AS year,
+           t.canonical_binomial AS binom,
+           COALESCE(t.taxon_group, ?) AS taxon_group,
+           t.class AS cls,
+           t.family AS family,
+           pm.mlat AS mlat,
+           pm.mlon AS mlon,
+           c.n AS n,
+           c.n_red_list AS n_red_list
+    FROM cube.occurrence_agg c
+    LEFT JOIN reg.taxon t ON t.taxon_id = c.taxon_id
+    LEFT JOIN place_mesh_lookup pm ON pm.place_id = c.place_id
+    WHERE c.place_kind = '{_MESH_PLACE_KIND}' AND c.grain IN ({_year_grain_family_sql_list()})
+    """
 
 
 def _assert_all_places_resolve_to_mesh(conn) -> None:
@@ -1156,8 +1203,9 @@ def _build_cube_projections(
         _assert_no_stale_taxon_ids(conn, "cube.occurrence_agg", "occurrence_agg")
 
     conn.execute(_PLACE_MESH_LOOKUP_SQL)
+    conn.execute(_CREATE_INDEX_PLACE_MESH_LOOKUP_SQL)
     _assert_place_mesh_lookup_is_function(conn)
-    conn.execute(_OCC_AGG_ENRICHED_SQL, (default_taxon_group,))
+    conn.execute(_occ_agg_enriched_sql(), (default_taxon_group,))
     _assert_all_places_resolve_to_mesh(conn)
     conn.execute(_L2_TAXON_ENRICHED_SQL)
     conn.execute(_SPECIES2_L2_EXTRAS_SQL)
@@ -1307,6 +1355,13 @@ SELECT place_id, external_key AS watershed_id
 FROM reg.place_source_ref
 WHERE source_id = ?
 """
+# `place_watershed_lookup(place_id)` に索引を張る（`_CREATE_INDEX_PLACE_MESH_LOOKUP_SQL`
+# と同じ理由・同じ流儀。`_cube_watershed_year_totals_sql()` の
+# `cube.occurrence_agg JOIN place_watershed_lookup` が索引無しでは総当たりに
+# 落ちる——実測: 約40秒→索引ありで大幅短縮。/code-review 指摘3）。
+_CREATE_INDEX_PLACE_WATERSHED_LOOKUP_SQL = (
+    "CREATE INDEX ix_place_watershed_lookup ON place_watershed_lookup(place_id)"
+)
 
 
 def _assert_place_watershed_lookup_is_function(conn) -> None:
@@ -1471,11 +1526,16 @@ GROUP BY watershed_id
 """
 _CREATE_INDEX_ORG_WATERSHED_SQL = "CREATE INDEX ix_ow ON org_watershed(watershed_id)"
 
-# 比較専用（出力しない）: 記録自身の「正確な」流域だけで同じ式を集計し直した
-# org_watershed_year 相当。宣言（org_watershed_year_keys_changed_vs_exact）の
-# 実測に使う。
+# 比較専用ではなく実表として `v1_projection_occurrence.sqlite` に残す
+# （設計書 PR-3a §2.2-3。記録自身の「正確な」流域だけで同じ式を集計し
+# 直した org_watershed_year 相当。宣言（org_watershed_year_keys_changed_vs_
+# exact）の実測、および `_assert_watershed_cells_match_exact`〔下記〕の
+# 比較先として使う。CTAS で `main`（この関数の書き込み先の出力ファイル）に
+# 直接作る——`projection_manifest.yaml`・`table_counts`・b02 の対象には
+# **入れない**（13テーブルとは別枠の「exact の点」。PR-3b の serving-diff
+# が「v1 →(memo)→ exact →(=)→ v2」の鎖の中間点として読む）。
 _ORG_WATERSHED_YEAR_EXACT_SQL = f"""
-CREATE TEMP TABLE org_watershed_year_exact AS
+CREATE TABLE org_watershed_year_exact AS
 SELECT exact_watershed_id AS watershed_id, year, COUNT(*) AS n,
        COUNT(DISTINCT CASE WHEN scientific_name IS NOT NULL AND scientific_name <> ''
                            THEN scientific_name END) AS species_n,
@@ -1486,12 +1546,86 @@ WHERE exact_watershed_id IS NOT NULL
 GROUP BY exact_watershed_id, year
 """
 # `org_watershed_year` 側の `ix_owy` と対にする（効率。コードレビュー指摘1:
-# 索引が無いと `_measure_keys_changed_vs_exact` の FULL OUTER JOIN がネスト
-# ループになる——実測 31.2秒 → 索引ありで0.034秒、約900倍。値〔1,091〕は
-# 変わらない）。
+# 索引が無いと `_measure_keys_changed_vs_exact`/`_assert_watershed_cells_
+# match_exact` の FULL OUTER JOIN がネストループになる——実測 31.2秒 →
+# 索引ありで0.034秒、約900倍。値〔1,091〕は変わらない）。
 _CREATE_INDEX_ORG_WATERSHED_YEAR_EXACT_SQL = (
     "CREATE INDEX ix_owy_exact ON org_watershed_year_exact(watershed_id, year)"
 )
+
+# `org_watershed`（メモ方式・全年ロールアップ）と対になる、記録自身の
+# 「正確な」解決だけで積み上げ直した版。列は `org_watershed` と同じ形
+# （`species_n` は年をまたいだ DISTINCT が非加法なので持たない——
+# `org_watershed` 自体も持たない）。これも実表として残す（上と同じ扱い、
+# table_counts/projection_manifest/b02 の対象外）。
+_ORG_WATERSHED_EXACT_SQL = """
+CREATE TABLE org_watershed_exact AS
+SELECT watershed_id, SUM(n) AS n, SUM(alien_n) AS alien_n, SUM(redlist_n) AS redlist_n,
+       MIN(year) AS y_from, MAX(year) AS y_to
+FROM org_watershed_year_exact
+GROUP BY watershed_id
+"""
+_CREATE_INDEX_ORG_WATERSHED_EXACT_SQL = "CREATE INDEX ix_ow_exact ON org_watershed_exact(watershed_id)"
+
+
+# `occurrence_agg`（キューブ）の流域セルを (watershed_id, year) に畳んだ
+# n/redlist_n/alien_n を、`org_watershed_year_exact`（上）と突き合わせる
+# ための SQL（設計書 PR-3a §2.2-2）。**年 族〔`b07.YEAR_GRAIN_FAMILY`〕・
+# `place_id IS NOT NULL` に絞る**——`place_kind='watershed'` の NULL セル
+# （ADR-0025 D2「流域に解決できない記録もセルとして持つ」）は
+# `org_watershed_year_exact` 側にも対応が無い（そちらも
+# `exact_watershed_id IS NOT NULL` で絞ってある）ため、両側から揃って
+# 除外する。`place_watershed_lookup`（`_build_watershed` が既に作成済み）
+# で `place_id` を `watershed_id` に戻す。
+def _cube_watershed_year_totals_sql() -> str:
+    return f"""
+    SELECT pw.watershed_id AS watershed_id,
+           CAST(substr(c.period_start, 1, 4) AS INT) AS year,
+           SUM(c.n) AS n,
+           SUM(c.n_red_list) AS redlist_n,
+           SUM(c.n_alien) AS alien_n
+    FROM cube.occurrence_agg c
+    JOIN place_watershed_lookup pw ON pw.place_id = c.place_id
+    WHERE c.place_kind = '{_WATERSHED_PLACE_KIND}' AND c.grain IN ({_year_grain_family_sql_list()})
+      AND c.place_id IS NOT NULL
+    GROUP BY pw.watershed_id, year
+    """
+
+
+_ORG_WATERSHED_YEAR_EXACT_FOR_CUBE_CHECK_SQL = (
+    "SELECT watershed_id, year, n, redlist_n, alien_n FROM org_watershed_year_exact"
+)
+
+
+def _assert_watershed_cells_match_exact(conn) -> None:
+    """`cube.occurrence_agg` の流域セル（`place_kind='watershed'`・年 族・
+    `place_id IS NOT NULL`）を (watershed_id, year) に畳んだ
+    `n`/`redlist_n`/`alien_n` が、`occurrence`+`occurrence_place` から
+    独立に組んだ `org_watershed_year_exact`（このファイルが記録単位の
+    正確な解決から集計し直したもの）と一致することを確認する（設計書
+    PR-3a §2.2-2）。b07（キューブの構築側）が「流域セルは occurrence の
+    忠実な分割」であることを別途検証していても、b08 側が独立に組んだ式
+    （年の取り方・`n_alien` の定義）と一致するかまでここで確かめる——O-1b
+    の `_assert_cube_is_current_l2_partition`（grid01 側）を
+    `place_kind='watershed'` に拡張したもの、という位置づけ。
+    """
+    common.assert_grouped_totals_match(
+        conn,
+        _cube_watershed_year_totals_sql(),
+        _ORG_WATERSHED_YEAR_EXACT_FOR_CUBE_CHECK_SQL,
+        key_columns=["watershed_id", "year"],
+        value_columns=["n", "redlist_n", "alien_n"],
+        build_message=lambda rows: (
+            "occurrence_agg: 流域セル（place_kind='watershed'、grain IN "
+            f"{_year_grain_family_label()}、place_id IS NOT NULL）を (watershed_id, year) に"
+            "畳んだ n/redlist_n/alien_n が、org_watershed_year_exact（occurrence + "
+            "occurrence_place から独立に組んだ集計）と食い違う（b07 の流域セルの構築、"
+            "または occurrence_place の解決のどちらかが壊れている可能性がある。"
+            f"例（上限{_SAMPLE_LIMIT}件、(watershed_id, year, n_cube, n_exact, "
+            f"redlist_n_cube, redlist_n_exact, alien_n_cube, alien_n_exact)）: {rows}）"
+        ),
+        sample_limit=_SAMPLE_LIMIT,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1712,9 +1846,14 @@ def _build_watershed(
     occurrence_fingerprint: str | None = None, count_overlay: dict[str, int] | None = None,
 ) -> tuple[dict[str, int], dict, str, str]:
     """`conn`（`cube`/`reg` を ATTACH 済みの書き込み用接続）に
-    `org_watershed_year`/`org_watershed` を作る。`_build_org_norm`/
-    `_build_cube_projections` と独立に呼べる（`occurrence`/`occurrence_place`
-    だけに依存し、`occurrence_agg` は読まない）。
+    `org_watershed_year`/`org_watershed`（メモ方式、v1 互換）と
+    `org_watershed_year_exact`/`org_watershed_exact`（比較専用の実表。
+    設計書 PR-3a §2.2-3）を作る。`_build_org_norm`/`_build_cube_projections`
+    と独立に呼べる（`occurrence`/`occurrence_place` から
+    `org_watershed_year`/`org_watershed` 自体を組み立てるロジックは変わらない）。
+    **`occurrence_agg`（キューブ）も読む**——`_assert_watershed_cells_
+    match_exact`（設計書 PR-3a §2.2-2）が、キューブの流域セルを
+    `org_watershed_year_exact` と突き合わせるため。
 
     `occurrence_fingerprint` が渡されたとき（`build_all_projections` が
     `_build_org_norm` で既に検証・取得済みの値を渡す）は `occurrence` の
@@ -1728,7 +1867,9 @@ def _build_watershed(
     機械検証の実測値〔`memo_moved_records` 等、行数ではない統計値〕を同じ
     dict に混ぜていたため、`main()`/呼び出し側が `sum(counts.values())`・
     `set(counts)` をテーブル行数だけの集合として扱えなかった。`table_counts`
-    は `{"org_watershed_year": n, "org_watershed": n}` の2キーだけを持つ。
+    は `{"org_watershed_year": n, "org_watershed": n}` の2キーだけを持つ
+    ——`org_watershed_year_exact`/`org_watershed_exact` は比較専用の実表
+    であって v1 の13テーブルには含まれないため、ここには入れない。
     末尾2つの指紋は Issue #37 #1 で追加——呼び出し側が
     `org_watershed_year`/`org_watershed` の系譜〔`inputs`〕に使う）。
     """
@@ -1738,6 +1879,7 @@ def _build_watershed(
         occurrence_fingerprint = _assert_occurrence_fingerprint_fresh(conn)
     occurrence_place_fingerprint = _assert_occurrence_place_fingerprint_fresh(conn)
     conn.execute(_PLACE_WATERSHED_LOOKUP_SQL, (_WATERSHED_SOURCE_ID,))
+    conn.execute(_CREATE_INDEX_PLACE_WATERSHED_LOOKUP_SQL)
     _assert_place_watershed_lookup_is_function(conn)
     _assert_all_watershed_places_resolve(conn)
     conn.execute(_OCC_PLACE_WATERSHED_SQL, (_WATERSHED_PLACE_KIND,))
@@ -1756,8 +1898,11 @@ def _build_watershed(
 
     conn.execute(_ORG_WATERSHED_YEAR_EXACT_SQL)
     conn.execute(_CREATE_INDEX_ORG_WATERSHED_YEAR_EXACT_SQL)
+    conn.execute(_ORG_WATERSHED_EXACT_SQL)
+    conn.execute(_CREATE_INDEX_ORG_WATERSHED_EXACT_SQL)
     moved = _assert_watershed_declarations_match(conn, declarations, declarations_yaml)
     conservation = _assert_watershed_conservation(conn, moved)
+    _assert_watershed_cells_match_exact(conn)
 
     table_counts = {"org_watershed_year": n_org_watershed_year, "org_watershed": n_org_watershed}
     diagnostics = {**moved, **conservation}
@@ -1768,16 +1913,24 @@ def build_watershed_projections(
     cube_db, registry_db, out_path, declarations_yaml=DEFAULT_WATERSHED_DECLARATIONS_YAML,
     count_overlay: dict[str, int] | None = None,
 ) -> tuple[dict[str, int], dict]:
-    """`org_watershed_year`/`org_watershed` だけを単独で `out_path` に書く
-    （既存テスト・単体検証用のエントリポイント——`main()` は13テーブルまとめて
-    書く `build_all_projections` を使う）。戻り値は `_build_watershed()` と
-    同じ `(table_counts, diagnostics)`。
+    """`org_watershed_year`/`org_watershed`（＋比較専用の実表
+    `org_watershed_year_exact`/`org_watershed_exact`）だけを単独で
+    `out_path` に書く（既存テスト・単体検証用のエントリポイント——`main()`
+    は13テーブルまとめて書く `build_all_projections` を使う）。戻り値は
+    `_build_watershed()` と同じ `(table_counts, diagnostics)`。
 
-    `_measure_keys_changed_vs_exact` が `FULL OUTER JOIN` を使うため、その前に
-    `common.require_sqlite_version()` を呼ぶ。
+    **`occurrence_agg`（キューブ）も要る**（設計書 PR-3a §2.2-2:
+    `_assert_watershed_cells_match_exact` がキューブの流域セルを読むため。
+    以前はこの単独経路は `occurrence`/`occurrence_place` だけで完結して
+    いたが、`_assert_cube_is_current_l2_partition` 相当の検証——キューブの
+    流域セルが記録単位の正確な解決と一致するか——をここでも経由する）。
+
+    `_measure_keys_changed_vs_exact`/`_assert_watershed_cells_match_exact` が
+    `FULL OUTER JOIN` を使うため、その前に `common.require_sqlite_version()`
+    を呼ぶ。
     """
     common.require_sqlite_version()
-    _assert_prerequisites(cube_db, registry_db, need_occurrence_agg=False, need_occurrence_place=True)
+    _assert_prerequisites(cube_db, registry_db, need_occurrence_agg=True, need_occurrence_place=True)
     conn = common.fresh_sqlite(out_path)
     try:
         common.attach_readonly(conn, cube_db, "cube")
@@ -1786,9 +1939,13 @@ def build_watershed_projections(
             table_counts, diagnostics, occ_fp, place_fp = _build_watershed(
                 conn, declarations_yaml, count_overlay=count_overlay,
             )
-            # 読み取りの機械監査（Issue #37 #1、Tier 1。/simplify 指摘A）。
+            # 読み取りの機械監査（Issue #37 #1、Tier 1。/simplify 指摘A）:
+            # `occurrence_agg` は `_assert_watershed_cells_match_exact` で
+            # 検証済み扱い（`build_occurrence_cube_projections` が
+            # `_assert_cube_is_current_l2_partition` を declared にするのと
+            # 同じ理由）。
             common.assert_all_reads_verified(
-                conn, reads, {"occurrence", "occurrence_place"},
+                conn, reads, {"occurrence", "occurrence_agg", "occurrence_place"},
                 context="b08.build_watershed_projections",
             )
         # 段階間の指紋（Issue #37 #1）: 全段の出力に指紋を持たせる方針どおり、
@@ -1825,6 +1982,11 @@ def build_all_projections(
     `diagnostics` は `_build_watershed()` の2つ目の戻り値（watershed 節）に
     `ias_species` の `_measure_ias_origin_delta()` の結果を `ias_origin_delta`
     キーで足したもの。
+
+    出力ファイルには13テーブルに加えて `org_watershed_year_exact`/
+    `org_watershed_exact`（比較専用の実表、設計書 PR-3a §2.2-3）も実在する
+    ——`table_counts`・`projection_manifest.yaml`・b02 の対象には入れない
+    （`_build_watershed` docstring参照）。
 
     `_assert_cube_is_current_l2_partition`/`_measure_keys_changed_vs_exact` が
     `FULL OUTER JOIN` を使うため、その前に `common.require_sqlite_version()`

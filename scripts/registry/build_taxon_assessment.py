@@ -145,6 +145,19 @@ moe_ias_list.csv の429行をそのまま持つ「正の記録」であり、v1 
   指摘5: `WHERE o.binom NOT IN (...)` の比較先である `org_norm.binom`/
   `taxon_assessment` の binom は常に2語なので、3語（亜種名付き等）で書かれると
   binom と一致せず除外が黙って効かなくなる）。
+
+## `in_scope`（D7、Issue #48 PR-3a）
+
+`taxon_assessment.in_scope` は上記「除外7種」の宣言を、**このテーブル自体の行を
+1件も除外せずに**可視化する列。`(list_id, scientific_name_raw の binom)` が
+`assessment_scope_exclusions.yaml` の (list_id, scientific_name) と一致する行だけ
+`in_scope=0`、他の全行（redlist 3版を含む）は `in_scope=1`。二名法での一致規則は
+`scripts/b08_project_occurrence_v1.py` の `_build_ias_species()` が
+`org_norm.binom` に対して行うのと同じ（`binom_of()`）——**除外の判断そのものは
+ここでは行わない**（`taxon_assessment` は429行＋2,884行をそのまま持つ「正の記録」
+のまま。モジュール docstring「除外7種」参照）。`in_scope` は将来 `taxon_assessment`
+を直接読む消費者（D1 側の画面等）が、b08 を経由しなくても同じ除外集合を機械的に
+引けるようにするための列。
 """
 import csv
 import hashlib
@@ -167,7 +180,7 @@ TAXON_ASSESSMENT_COLUMNS = [
     "taxon_group_ja", "taxon_subgroup_ja", "family_ja",
     "category_raw", "category_code",
     "prev_category_raw", "prev_category_code",
-    "national_category_raw", "origin", "source_id",
+    "national_category_raw", "origin", "source_id", "in_scope",
 ]
 
 _KNOWN_LIST_KINDS = frozenset({"red_list", "invasive"})
@@ -460,6 +473,32 @@ def _ias_assessment_id(scientific_name_raw: str, category_raw: str | None, verna
 
 
 # ---------------------------------------------------------------------------
+# in_scope（D7。除外7種の宣言を可視化するだけで、行そのものは除外しない）
+# ---------------------------------------------------------------------------
+
+def _excluded_binoms_by_list(exclusions: list[dict]) -> dict[str, set[str]]:
+    """`list_id -> {除外対象の binom}`（`load_assessment_scope_exclusions()` の
+    戻り値から）。"""
+    out: dict[str, set[str]] = {}
+    for e in exclusions:
+        out.setdefault(e["list_id"], set()).add(e["scientific_name"])
+    return out
+
+
+def _assign_in_scope(rows: list[dict], exclusions: list[dict]) -> None:
+    """`rows`（`_build_redlist_rows()`/`_build_ias_rows()` の戻り値。その場で
+    書き換える）に `in_scope` を付ける。`(list_id, binom_of(scientific_name_raw))`
+    が除外7種の宣言と一致する行だけ 0、他は 1（モジュール docstring「`in_scope`」
+    参照）。
+    """
+    excluded_by_list = _excluded_binoms_by_list(exclusions)
+    for row in rows:
+        excluded_binoms = excluded_by_list.get(row["list_id"], frozenset())
+        binom = binom_of(row["scientific_name_raw"])
+        row["in_scope"] = 0 if binom in excluded_binoms else 1
+
+
+# ---------------------------------------------------------------------------
 # 行の組み立て
 # ---------------------------------------------------------------------------
 
@@ -617,7 +656,9 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
         f"{ASSESSMENT_LIST_YAML} に list_id={_IAS_LIST_ID!r} が無い（P-2の前提）"
     )
     alias = load_redlist_category_alias()
-    load_assessment_scope_exclusions()  # 構造検証だけ（戻り値は b08 が使う）。
+    # 構造検証に加え、戻り値を D7 の in_scope 算出にも使う（b08 は同じ関数を
+    # 独立に呼ぶので、ここで使っても「宣言はここ1箇所」という前提は崩れない）。
+    exclusions = load_assessment_scope_exclusions()
 
     by_name, by_binom = _load_taxon_lookup(conn)
     taxa_lookup = _load_taxa_lookup(ryuiki)
@@ -625,6 +666,7 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     redlist_rows = _build_redlist_rows(ryuiki, assessment_lists, alias, by_name, by_binom)
     ias_rows = _build_ias_rows(assessment_lists, alias, by_name, by_binom, taxa_lookup)
     all_rows = redlist_rows + ias_rows
+    _assign_in_scope(all_rows, exclusions)
 
     n_taxon_id = sum(1 for r in all_rows if r["taxon_id"])
     print(
@@ -632,6 +674,8 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
         f"（redlist {len(redlist_rows):,} / {_IAS_LIST_ID} {len(ias_rows):,}）"
         f" taxon_id解決 {n_taxon_id:,} ({n_taxon_id / len(all_rows) * 100:.1f}%)"
     )
+    n_out_of_scope = sum(1 for r in all_rows if r["in_scope"] == 0)
+    print(f"  [taxon_assessment] in_scope=0（除外7種の宣言と二名法一致） = {n_out_of_scope:,}")
 
     n = common.insert_many(
         conn,

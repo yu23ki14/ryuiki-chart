@@ -606,5 +606,65 @@ def caveat_id(key: str, scope: str = "common") -> str:
     return scoped_id("caveat", key, scope)
 
 
+# ---------------------------------------------------------------------------
+# ラテン文字判定（build_taxon.py の taxon.vernacular_name_en 用。PR-3a §4）
+# ---------------------------------------------------------------------------
+
+# ASCII 印字可能域（U+0020-U+007E）と Latin-1 Supplement / Latin Extended-A・B
+# （U+00C0-U+024F、ローマ字化された学名の分音符付き文字を含む）。範囲外だが
+# 俗名表記に実際に出現する句読点・記号は別枠で許可する（/code-review 指摘、
+# 実データ確認: `inat.234905` "Oʻahu sedge" の U+02BB 等）。
+_LATIN_SCRIPT_RANGES = ((0x20, 0x7E), (0xC0, 0x24F))
+_LATIN_SCRIPT_EXTRA_CHARS = frozenset({
+    "’",       # U+2019 RIGHT SINGLE QUOTATION MARK（例: O’Brien）
+    "‘",  # LEFT SINGLE QUOTATION MARK
+    "ʻ",  # MODIFIER LETTER TURNED COMMA（オキナ。例: Oʻahu sedge）
+    " ",  # NO-BREAK SPACE
+    "–",  # EN DASH
+})
+
+# ひらがな（U+3040-U+309F）・カタカナ（U+30A0-U+30FF）。
+_HIRAGANA_KATAKANA_RANGES = ((0x3040, 0x309F), (0x30A0, 0x30FF))
+
+
+def is_latin_script(value: str) -> bool:
+    """`value` の全文字がラテン文字の範囲（上記）に収まるかどうか。
+
+    1文字でも範囲外（ひらがな・カタカナ・CJK・キリル文字等）があれば False。
+    空文字列・None は False（「候補にならない」空値として扱う。呼び出し側
+    `build_taxon._load_vernacular_candidates()` は非空値だけをここに渡す前提だが、
+    防御的にここでも False にしておく）。ローマ字表記（例: `Kawa-Semi`）や
+    属の仮名（`Amara sp.`）は ASCII 印字可能域に収まるため True になる——
+    「英名」ではなく「ラテン文字の俗名」の判定であることに注意
+    （`registry/README.md` 参照）。
+    """
+    if not value:
+        return False
+    for ch in value:
+        if ch in _LATIN_SCRIPT_EXTRA_CHARS:
+            continue
+        cp = ord(ch)
+        if not any(lo <= cp <= hi for lo, hi in _LATIN_SCRIPT_RANGES):
+            return False
+    return True
+
+
+def is_japanese_name(value: str) -> bool:
+    """`value` にひらがな・カタカナが1文字以上含まれるか（和名候補の肯定判定）。
+
+    `not is_latin_script(value)` の代用にしない——ラテン文字でない値には
+    キリル文字（例: `Редька посевная`）・ハングル（例: `산물집파리`）・
+    漢字だけの名前（中国語と区別できない）も含まれ、これらは和名ではない
+    （実データで誤って和名候補になっていた。build_taxon.py D4 参照）。
+    空文字列・None は False。
+    """
+    if not value:
+        return False
+    return any(
+        any(lo <= ord(ch) <= hi for lo, hi in _HIRAGANA_KATAKANA_RANGES)
+        for ch in value
+    )
+
+
 def caveat_id_cells_note(note_pk, scope: str = "common") -> str:
     return scoped_id("caveat", f"cells.{note_pk}", scope)

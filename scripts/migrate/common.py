@@ -60,10 +60,20 @@ import pipeline_inputs  # noqa: E402  (v2 入力指紋が data/processed の sha
 # 過去のキーとは比較できないため v2 に上げた。
 OBSERVATION_AGG_SPEC_VERSION = "phase-b-fact-slice/v2"
 
-# `scripts/b07_build_occurrence_cube.py`（`occurrence_agg`）・
 # `scripts/b09_build_occurrence_place.py`（`occurrence_place`）専用。
-# どちらも今回のキー変更の対象外なので v1 のまま据え置く。
+# キー（`record_id, place_kind`）もスキーマも変わっていないので v1 のまま据え置く。
 OCCURRENCE_SPEC_VERSION = "phase-b-fact-slice/v1"
+
+# `scripts/b07_build_occurrence_cube.py`（`occurrence_agg`）専用。2026-09-27
+# Issue #48 PR-3a: 次元キーは変えていないが、(a) `place_kind='watershed'` の
+# セル（O-2b）と `grain='month'` のセル（月族）を新設し、(b) 測度に `n_alien`
+# を足した——過去に作った `occurrence_agg`（grid01×year だけ、n_alien 無し）
+# とは列・セル集合の両方で比較できなくなるため、`OCCURRENCE_SPEC_VERSION`
+# （`occurrence_place` と共有していた）から分離して独自に上げる。
+# 以前は `occurrence_agg`/`occurrence_place` の両方がこの1つの定数を共有して
+# いたが（`scripts/migrate/common.py` 冒頭のコメント「成果物ごとに別の定数を
+# 持つ」の趣旨どおり）、`occurrence_agg` だけを変えたので分離した。
+OCCURRENCE_AGG_SPEC_VERSION = "phase-b-fact-slice/v2"
 
 # `record_stage_fingerprint`/`record_stage_fingerprints`（段階間の指紋、
 # Issue #37 #1）の `spec_version` 引数の既定値。**成果物ごとの `built_from`/
@@ -75,8 +85,9 @@ OCCURRENCE_SPEC_VERSION = "phase-b-fact-slice/v1"
 # `spec_version` 列を埋め込まない表はこの既定値のまま記録する。
 # **`observation_agg`/`occurrence_agg`/`occurrence_place` のように自分の行に
 # `spec_version` を埋め込む表は、ここではなく成果物ごとの値
-# （`OBSERVATION_AGG_SPEC_VERSION`/`OCCURRENCE_SPEC_VERSION`）を呼び出し側が
-# 明示的に渡す**（2026-09-25 main マージ時の判断: 「成果物ごとの版番号を
+# （`OBSERVATION_AGG_SPEC_VERSION`/`OCCURRENCE_AGG_SPEC_VERSION`/
+# `OCCURRENCE_SPEC_VERSION`）を呼び出し側が明示的に渡す**（2026-09-25 main
+# マージ時の判断: 「成果物ごとの版番号を
 # そのまま使う」——`observation_agg` の指紋だけが空 v1 の既定値のまま取り
 # 残されて実際の v2 と食い違って見える、という事態を避ける）。
 FINGERPRINT_SPEC_VERSION = "phase-b-fact-slice/v1"
@@ -88,19 +99,30 @@ FINGERPRINT_SPEC_VERSION = "phase-b-fact-slice/v1"
 V2_CHECK_EXIT_FRESH = 0
 V2_CHECK_EXIT_STALE = 10
 
-# `scripts/b13_build_summary.py`（Issue #48 PR-2 §4）専用。`observation_agg`
-# から集計するだけの2表（`aggregations/serving.yaml` が宣言）——キー列や
-# 集計方法（`fn`/`expr`）を変えたら上げる（b13 自身が YAML の `spec_version`
-# とこの定数の一致を検証する）。
-SUMMARY_SPEC_VERSION = "serving-summary/v1"
+# `scripts/b13_build_summary.py`（Issue #48 PR-2 §4、PR-3a §5）専用。
+# `observation_agg`/`occurrence_agg` から集計するだけの4表（`aggregations/
+# serving.yaml` が宣言）——キー列や集計方法（`fn`/`expr`）を変えたら上げる
+# （b13 自身が YAML の `spec_version` とこの定数の一致を検証する）。
+# 2026-09-27: PR-3a で `occurrence_agg` 由来の2表（`summary_taxon_catalog`/
+# `summary_watershed_occurrence`）を足したため v1→v2 に上げた（過去の4表との
+# 比較はできなくなるが、v1 時点の2表はまだキー・集計方法を変えていないので
+# 実害は無い——`V2_SUMMARY_TABLES` の集合が変わったこと自体が YAML との
+# 過不足検査で拾われるようにするための版上げ）。
+SUMMARY_SPEC_VERSION = "serving-summary/v2"
 
 # D1 に載せる summary 表（`scripts/b13_build_summary.py` が作る）の名前。
 # `V2_CUBE_SPEC_VERSIONS` に SUMMARY_SPEC_VERSION 付きで足すのに使う——
-# ここで複製しない。
-V2_SUMMARY_TABLES = ("summary_variable_catalog", "summary_place_variable")
+# ここで複製しない。`summary_taxon_catalog`/`summary_watershed_occurrence`
+# （PR-3a）は `occurrence_agg` 由来（`aggregations/serving.yaml` 参照）。
+V2_SUMMARY_TABLES = (
+    "summary_variable_catalog",
+    "summary_place_variable",
+    "summary_taxon_catalog",
+    "summary_watershed_occurrence",
+)
 
 # D1 に載せるキューブ表と、それぞれの spec_version。値は上の
-# `OBSERVATION_AGG_SPEC_VERSION`/`OCCURRENCE_SPEC_VERSION`/`SUMMARY_SPEC_VERSION`
+# `OBSERVATION_AGG_SPEC_VERSION`/`OCCURRENCE_AGG_SPEC_VERSION`/`SUMMARY_SPEC_VERSION`
 # を直接引く——ここで複製しない。`scripts/check_v2_fresh.py`・
 # `web/scripts/seed-d1-local.mjs`（Python の `scripts/check_v2_fresh.py` を
 # 子プロセスとして呼ぶ）が読む唯一の正本（コードレビュー指摘: 以前は
@@ -109,7 +131,7 @@ V2_SUMMARY_TABLES = ("summary_variable_catalog", "summary_place_variable")
 # 黙ってずれた状態のまま「新鮮」と誤判定する穴があった）。
 V2_CUBE_SPEC_VERSIONS = {
     "observation_agg": OBSERVATION_AGG_SPEC_VERSION,
-    "occurrence_agg": OCCURRENCE_SPEC_VERSION,
+    "occurrence_agg": OCCURRENCE_AGG_SPEC_VERSION,
     **{table: SUMMARY_SPEC_VERSION for table in V2_SUMMARY_TABLES},
 }
 
@@ -293,8 +315,8 @@ def staged_table(
 
     `fingerprint_spec_version`（既定 `FINGERPRINT_SPEC_VERSION`）: `table` が
     自分の行に `spec_version`/`built_from` 列を埋め込む成果物（`observation_agg`
-    → `OBSERVATION_AGG_SPEC_VERSION`、`occurrence_agg`/`occurrence_place` →
-    `OCCURRENCE_SPEC_VERSION`）なら、呼び出し側がその値をそのまま渡すこと
+    → `OBSERVATION_AGG_SPEC_VERSION`、`occurrence_agg` → `OCCURRENCE_AGG_SPEC_VERSION`、
+    `occurrence_place` → `OCCURRENCE_SPEC_VERSION`）なら、呼び出し側がその値をそのまま渡すこと
     （2026-09-25 main マージ時の判断。`FINGERPRINT_SPEC_VERSION` 定義の
     コメント参照——「成果物ごとの版番号をそのまま使う」）。埋め込み列を
     持たない基底テーブル（`observation`/`occurrence`）は既定のままでよい。

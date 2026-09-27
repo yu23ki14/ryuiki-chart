@@ -1,7 +1,11 @@
 """scripts/b13_build_summary.py の統合テスト。
 
 本物の `data/db/v2.sqlite`（原本由来）を要さず、`scripts/tests/migrate_fixtures.py`
-の `make_observation_agg_fixture` が作る小さな `observation_agg` だけで完結する。
+の `make_observation_agg_fixture`（observation_agg）・`scripts/tests/
+occurrence_fixtures.py` の `make_occurrence_agg_fixture`（occurrence_agg。
+PR-3a §5。`occurrence_agg` だけを持つ最小限のフィクスチャ——b13 は
+`occurrence_agg` を `SELECT` で読むだけなので、b06/b09 が作る `occurrence`/
+`occurrence_place` は要らない）が作る小さなキューブだけで完結する。
 """
 from __future__ import annotations
 
@@ -16,6 +20,7 @@ import b13_build_summary as b13
 from migrate import common
 
 from .migrate_fixtures import make_observation_agg_fixture
+from .occurrence_fixtures import make_occurrence_agg_fixture
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 DEFAULT_YAML = ROOT / "aggregations" / "serving.yaml"
@@ -46,6 +51,52 @@ _ROWS = [
      "month", "day", "mean", 7.0, 7.0, 777, 0, 0, 1, "obs", "v2"),
 ]
 
+# `scripts/tests/occurrence_fixtures.py` の `_OCCURRENCE_AGG_COLUMNS` の並び:
+# region_id, source_id, place_id, place_kind, taxon_id, grain, period_start,
+# period_end, n, n_red_list, n_alien, built_from, spec_version。
+#
+# summary_taxon_catalog（filter: place_kind=grid01, grain IN (year, survey_period)）
+# が拾うのは grid01×year 族（インデックス0〜4）だけ——grid01×month（5）と
+# watershed 側（6〜9）は対象外。summary_watershed_occurrence（filter:
+# place_kind=watershed, grain IN (year, survey_period)）が拾うのは
+# watershed×year 族（6〜8）だけ——grid01 側（0〜5）と watershed×month（9）は
+# 対象外。同じ1つのフィクスチャで両方の filter が正しく族を分けることを
+# 検証する（filter.grain を忘れると month 族まで二重に数える、という
+# PR-3a §9-2 の事故をここで踏めるように、month 族には突飛な値を入れてある）。
+_OCC_ROWS = [
+    # 0: t1 @ g1, year 2020
+    ("jp-14", "gbif", "g1", "grid01", "t1", "year", "2020-01-01", "2020-12-31", 10, 2, 1, "occ", "v"),
+    # 1: t1 @ g2, year 2021
+    ("jp-14", "gbif", "g2", "grid01", "t1", "year", "2021-01-01", "2021-12-31", 5, 0, 0, "occ", "v"),
+    # 2: t2 @ g1, year 2020
+    ("jp-14", "gbif", "g1", "grid01", "t2", "year", "2020-01-01", "2020-12-31", 7, 1, 0, "occ", "v"),
+    # 3: taxon_id NULL（未解決）@ g3, year 2020
+    ("jp-14", "gbif", "g3", "grid01", None, "year", "2020-01-01", "2020-12-31", 3, 0, 0, "occ", "v"),
+    # 4: t1 @ g1, survey_period（年をまたぐ leaf。2020年に属する扱い）
+    ("jp-14", "gbif", "g1", "grid01", "t1", "survey_period", "2020-11-01", "2021-02-28", 4, 0, 1, "occ", "v"),
+    # 5: filter 対象外（grid01×month）。含まれれば SUM(n) が大きくずれる値にしてある。
+    ("jp-14", "gbif", "g1", "grid01", "t1", "month", "2020-06-01", "2020-06-30", 999, 999, 999, "occ", "v"),
+    # 6: t1 @ w1（流域解決済み）, year 2020
+    ("jp-14", "gbif", "w1", "watershed", "t1", "year", "2020-01-01", "2020-12-31", 6, 1, 0, "occ", "v"),
+    # 7: place_id NULL（流域に解決できない日付あり記録。ADR-0025/0026 D1）, year 2020
+    ("jp-14", "gbif", None, "watershed", "t1", "year", "2020-01-01", "2020-12-31", 2, 0, 0, "occ", "v"),
+    # 8: t2 @ w2, year 2021
+    ("jp-14", "gbif", "w2", "watershed", "t2", "year", "2021-01-01", "2021-12-31", 9, 3, 2, "occ", "v"),
+    # 9: filter 対象外（watershed×month）。含まれれば SUM(n) が大きくずれる値にしてある。
+    ("jp-14", "gbif", "w1", "watershed", "t1", "month", "2020-06-01", "2020-06-30", 888, 888, 888, "occ", "v"),
+]
+
+
+def _make_combined_fixture(tmp_path, obs_rows=_ROWS, occ_rows=_OCC_ROWS, name: str = "v2.sqlite") -> pathlib.Path:
+    """`observation_agg`（`_ROWS`）と `occurrence_agg`（`_OCC_ROWS`）の両方を
+    同じ v2.sqlite 風フィクスチャに持たせる。summary 4表のうち2表ずつが別々の
+    `source` を使うため、`build_summary` を実際に完走させるテストは両方が
+    要る（YAML の語彙検証だけで止まる失敗系のテストは、どちらか一方の
+    フィクスチャだけで足りる——各テストの docstring/コメント参照）。
+    """
+    make_observation_agg_fixture(tmp_path, obs_rows, name=name)
+    return make_occurrence_agg_fixture(tmp_path, occ_rows, name=name)
+
 # 機械検証3（無作為抽出した群を、b13 の生成 SQL とは独立の固定 SQL で再計算して
 # 一致を確認する）用の、宣言をなぞらない別実装。`aggregations/serving.yaml` の
 # 内容が変わったら、この定数もオーナーが手で追随させること（自動生成しない
@@ -74,6 +125,33 @@ _REFERENCE_SQL = {
         GROUP BY place_id, variable_id, obs_stat, unit_id, value_grain, grain, input_grain
         ORDER BY place_id, variable_id, obs_stat, unit_id, value_grain, grain, input_grain
     """,
+    # occurrence_agg 由来の2表（PR-3a §5）。filter の grain 族の絞り込みを
+    # 生成側（b13）と共有せず、ここで独立に `IN ('year', 'survey_period')` と
+    # 書く——filter.grain を書き忘れる事故（month 族の二重計上）を、生成側の
+    # コピーではなくこの独立実装で検出する（モジュール docstring 参照）。
+    "summary_taxon_catalog": """
+        SELECT taxon_id,
+               SUM(n), SUM(n_red_list), SUM(n_alien),
+               COUNT(DISTINCT place_id),
+               MIN(CAST(substr(period_start, 1, 4) AS INTEGER)),
+               MAX(CAST(substr(period_start, 1, 4) AS INTEGER)),
+               COUNT(DISTINCT CAST(substr(period_start, 1, 4) AS INTEGER))
+        FROM occurrence_agg
+        WHERE place_kind = 'grid01' AND grain IN ('year', 'survey_period')
+        GROUP BY taxon_id
+        ORDER BY taxon_id
+    """,
+    "summary_watershed_occurrence": """
+        SELECT place_id,
+               SUM(n), SUM(n_red_list), SUM(n_alien),
+               COUNT(DISTINCT taxon_id),
+               MIN(CAST(substr(period_start, 1, 4) AS INTEGER)),
+               MAX(CAST(substr(period_start, 1, 4) AS INTEGER))
+        FROM occurrence_agg
+        WHERE place_kind = 'watershed' AND grain IN ('year', 'survey_period')
+        GROUP BY place_id
+        ORDER BY place_id
+    """,
 }
 
 _SELECT_ORDER = {
@@ -86,6 +164,14 @@ _SELECT_ORDER = {
         "SELECT place_id, variable_id, obs_stat, unit_id, value_grain, grain, input_grain, "
         "n, y_from, y_to, avg_zero, avg_lod, n_censored, n_not_detected FROM summary_place_variable "
         "ORDER BY place_id, variable_id, obs_stat, unit_id, value_grain, grain, input_grain"
+    ),
+    "summary_taxon_catalog": (
+        "SELECT taxon_id, n, n_red_list, n_alien, n_places, y_from, y_to, n_years "
+        "FROM summary_taxon_catalog ORDER BY taxon_id"
+    ),
+    "summary_watershed_occurrence": (
+        "SELECT place_id, n, n_red_list, n_alien, n_taxa, y_from, y_to "
+        "FROM summary_watershed_occurrence ORDER BY place_id"
     ),
 }
 
@@ -101,7 +187,7 @@ def _load_real_yaml() -> dict:
 
 
 def test_build_summary_creates_both_tables_and_conservation_holds(tmp_path):
-    db_path = make_observation_agg_fixture(tmp_path, _ROWS)
+    db_path = _make_combined_fixture(tmp_path)
     conn = sqlite3.connect(f"file:{db_path}", uri=True)
     try:
         stats = b13.build_summary(conn, DEFAULT_YAML)
@@ -110,6 +196,8 @@ def test_build_summary_creates_both_tables_and_conservation_holds(tmp_path):
         # 機械検証4: 行数 > 0。
         assert stats["summary_variable_catalog"]["n_rows"] == 1  # 1 variable × 1 obs_stat/unit/grain 組
         assert stats["summary_place_variable"]["n_rows"] == 2  # p1・p2
+        assert stats["summary_taxon_catalog"]["n_rows"] == 3  # t1・t2・taxon_id=NULL
+        assert stats["summary_watershed_occurrence"]["n_rows"] == 3  # w1・w2・place_id=NULL
 
         # 機械検証3の裏付け: filter 対象外の3行（watershed/非mean/month、
         # n=999/888/777）は一切含まれない——含まれていれば SUM(n) が
@@ -134,17 +222,51 @@ def test_build_summary_creates_both_tables_and_conservation_holds(tmp_path):
         }
         assert place_rows["p1"] == ("p1", 15, 2020, 2021, 2.0, 2.1, 1)
         assert place_rows["p2"] == ("p2", 7, 2020, 2020, 5.0, 5.2, 2)
+
+        # 機械検証3の裏付け（occurrence_agg 側）: grid01×month（n=999）・
+        # watershed×month（n=888）は一切含まれない——含まれていれば SUM(n) が
+        # 大きくずれる。summary_taxon_catalog は 29（=10+5+7+3+4）、
+        # summary_watershed_occurrence は 17（=6+2+9）。
+        taxon_total = conn.execute("SELECT SUM(n) FROM summary_taxon_catalog").fetchone()[0]
+        watershed_total = conn.execute("SELECT SUM(n) FROM summary_watershed_occurrence").fetchone()[0]
+        assert taxon_total == 29
+        assert watershed_total == 17
+        assert stats["summary_taxon_catalog"]["sum_n"] == 29
+        assert stats["summary_watershed_occurrence"]["sum_n"] == 17
+
+        taxon_rows = {
+            r[0]: r for r in conn.execute(
+                "SELECT taxon_id, n, n_red_list, n_alien, n_places, y_from, y_to, n_years "
+                "FROM summary_taxon_catalog"
+            )
+        }
+        # t1: year(g1,10,2,1) + year(g2,5,0,0) + survey_period(g1,4,0,1)。
+        # n_places は distinct place_id（g1, g2）＝2、n_years は distinct
+        # 開始年（2020, 2021, 2020）＝2。
+        assert taxon_rows["t1"] == ("t1", 19, 2, 2, 2, 2020, 2021, 2)
+        assert taxon_rows["t2"] == ("t2", 7, 1, 0, 1, 2020, 2020, 1)
+        assert taxon_rows[None] == (None, 3, 0, 0, 1, 2020, 2020, 1)  # taxon_id 未解決
+
+        watershed_rows = {
+            r[0]: r for r in conn.execute(
+                "SELECT place_id, n, n_red_list, n_alien, n_taxa, y_from, y_to "
+                "FROM summary_watershed_occurrence"
+            )
+        }
+        assert watershed_rows["w1"] == ("w1", 6, 1, 0, 1, 2020, 2020)
+        assert watershed_rows["w2"] == ("w2", 9, 3, 2, 1, 2021, 2021)
+        assert watershed_rows[None] == (None, 2, 0, 0, 1, 2020, 2020)  # 流域に解決できない記録
     finally:
         conn.close()
 
 
 def test_build_summary_matches_independent_reference_sql(tmp_path):
     """機械検証3の裏付け: b13 が生成した SQL とは別に手書きした `_REFERENCE_SQL`
-    で observation_agg を直接再集計し、実際に作られた summary 表の内容と
-    一致することを確認する（宣言〔YAML〕を読むコード自身のバグを、宣言を
-    経由しない別実装で検出する）。
+    でキューブ（observation_agg/occurrence_agg）を直接再集計し、実際に
+    作られた summary 表の内容と一致することを確認する（宣言〔YAML〕を読む
+    コード自身のバグを、宣言を経由しない別実装で検出する）。
     """
-    db_path = make_observation_agg_fixture(tmp_path, _ROWS)
+    db_path = _make_combined_fixture(tmp_path)
     conn = sqlite3.connect(f"file:{db_path}", uri=True)
     try:
         b13.build_summary(conn, DEFAULT_YAML)
@@ -159,7 +281,12 @@ def test_build_summary_matches_independent_reference_sql(tmp_path):
 def test_build_summary_raises_when_observation_agg_is_stale(tmp_path):
     """段階間の指紋（`assert_stage_fingerprint_fresh`）: observation_agg の
     中身を、指紋を記録し直さずに変えると（b04 未実行のまま再実行、を模す）
-    `common.MigrationError` で止まる。
+    `common.MigrationError` で止まる。`common.V2_SUMMARY_TABLES` の先頭2表は
+    observation_agg 由来なので、occurrence_agg フィクスチャが無くてもこの
+    表構築ループの1周目（`summary_variable_catalog`）で止まる——
+    occurrence_agg の指紋確認まで到達しない（`build_summary` の「source ごと
+    の指紋確認は初めてその source を使う表に出会った時点で行う」docstring
+    参照）。
     """
     db_path = make_observation_agg_fixture(tmp_path, _ROWS)
     conn = sqlite3.connect(f"file:{db_path}", uri=True)
@@ -169,6 +296,26 @@ def test_build_summary_raises_when_observation_agg_is_stale(tmp_path):
         )
         conn.commit()
         with pytest.raises(common.MigrationError, match="scripts/b04_build_cube.py"):
+            b13.build_summary(conn, DEFAULT_YAML)
+    finally:
+        conn.close()
+
+
+def test_build_summary_raises_when_occurrence_agg_is_stale(tmp_path):
+    """段階間の指紋: occurrence_agg の中身を、指紋を記録し直さずに変えると
+    （b07 未実行のまま再実行、を模す）`common.MigrationError` で止まる。
+    観測側（observation_agg）は正常なので、先頭2表（summary_variable_catalog/
+    summary_place_variable）は問題なく通り、3表目の summary_taxon_catalog に
+    到達して初めて止まる。
+    """
+    db_path = _make_combined_fixture(tmp_path)
+    conn = sqlite3.connect(f"file:{db_path}", uri=True)
+    try:
+        conn.execute(
+            "UPDATE occurrence_agg SET n = 12345 WHERE place_id = 'g1' AND grain = 'year'"
+        )
+        conn.commit()
+        with pytest.raises(common.MigrationError, match="scripts/b07_build_occurrence_cube.py"):
             b13.build_summary(conn, DEFAULT_YAML)
     finally:
         conn.close()
@@ -230,6 +377,114 @@ def test_build_summary_raises_on_unknown_filter_column(tmp_path):
     conn = sqlite3.connect(f"file:{db_path}", uri=True)
     try:
         with pytest.raises(common.MigrationError, match="filter に未知の列"):
+            b13.build_summary(conn, yaml_path)
+    finally:
+        conn.close()
+
+
+def test_build_summary_raises_when_occurrence_agg_summary_missing_grain_filter(tmp_path):
+    """`source: occurrence_agg` の summary は `filter.grain` が必須（PR-3a §9-2）。
+    書き忘れると、月族の二重計上を保存則（同じ〔絞り込み忘れの〕filter どうし
+    の比較）が検出できないため、YAML の語彙検証（機械検証1）の段階で止める。
+    """
+    raw = _load_real_yaml()
+    del raw["summaries"]["summary_taxon_catalog"]["filter"]["grain"]
+    yaml_path = _write_yaml(tmp_path, raw)
+
+    db_path = make_observation_agg_fixture(tmp_path, _ROWS)  # occurrence_agg は不要（DB に触る前に止まる）
+    conn = sqlite3.connect(f"file:{db_path}", uri=True)
+    try:
+        with pytest.raises(common.MigrationError, match="filter に必須の列が無い"):
+            b13.build_summary(conn, yaml_path)
+    finally:
+        conn.close()
+
+
+def test_build_summary_raises_when_occurrence_agg_grain_filter_spans_families(tmp_path):
+    """`filter.grain` は列があるだけでは不十分——値が `b07.YEAR_GRAIN_FAMILY`
+    （`year`/`survey_period`）か `b07.MONTH_GRAIN_FAMILY`（`month`）のどちらか
+    1つの族にちょうど収まっていなければ止める。`[year, month]` のように族を
+    跨ぐ値は月族を二重に数える事故を招くため、有無だけのチェックでは検出
+    できなかった（/code-review 指摘5の回帰）。
+    """
+    raw = _load_real_yaml()
+    raw["summaries"]["summary_taxon_catalog"]["filter"]["grain"] = ["year", "month"]
+    yaml_path = _write_yaml(tmp_path, raw)
+
+    db_path = make_observation_agg_fixture(tmp_path, _ROWS)  # occurrence_agg は不要（DB に触る前に止まる）
+    conn = sqlite3.connect(f"file:{db_path}", uri=True)
+    try:
+        with pytest.raises(common.MigrationError, match="filter.grain が族に収まっていない"):
+            b13.build_summary(conn, yaml_path)
+    finally:
+        conn.close()
+
+
+def test_build_summary_raises_when_occurrence_agg_grain_filter_is_unknown_value(tmp_path):
+    """族に属さない値（例: 未知の grain `'week'`）も同じ検証で止める。"""
+    raw = _load_real_yaml()
+    raw["summaries"]["summary_watershed_occurrence"]["filter"]["grain"] = ["week"]
+    yaml_path = _write_yaml(tmp_path, raw)
+
+    db_path = make_observation_agg_fixture(tmp_path, _ROWS)
+    conn = sqlite3.connect(f"file:{db_path}", uri=True)
+    try:
+        with pytest.raises(common.MigrationError, match="filter.grain が族に収まっていない"):
+            b13.build_summary(conn, yaml_path)
+    finally:
+        conn.close()
+
+
+def test_build_summary_raises_on_cross_source_filter_column(tmp_path):
+    """source をまたいだ列名の流用は許さない: `summary_taxon_catalog`
+    （source: occurrence_agg）の filter に observation_agg にしかない次元キー
+    （`obs_stat`）を書くと止まる。
+    """
+    raw = _load_real_yaml()
+    raw["summaries"]["summary_taxon_catalog"]["filter"]["obs_stat"] = "mean"
+    yaml_path = _write_yaml(tmp_path, raw)
+
+    db_path = make_observation_agg_fixture(tmp_path, _ROWS)
+    conn = sqlite3.connect(f"file:{db_path}", uri=True)
+    try:
+        with pytest.raises(common.MigrationError, match="filter に未知の列"):
+            b13.build_summary(conn, yaml_path)
+    finally:
+        conn.close()
+
+
+def test_build_summary_raises_on_cross_source_group_by_column(tmp_path):
+    """source をまたいだ列名の流用は許さない: `summary_taxon_catalog`
+    （source: occurrence_agg）の group_by に observation_agg にしかない次元キー
+    （`variable_id`）を足すと止まる。
+    """
+    raw = _load_real_yaml()
+    raw["summaries"]["summary_taxon_catalog"]["group_by"].append("variable_id")
+    raw["summaries"]["summary_taxon_catalog"]["key"].append("variable_id")
+    yaml_path = _write_yaml(tmp_path, raw)
+
+    db_path = make_observation_agg_fixture(tmp_path, _ROWS)
+    conn = sqlite3.connect(f"file:{db_path}", uri=True)
+    try:
+        with pytest.raises(common.MigrationError, match="group_by に未知の列"):
+            b13.build_summary(conn, yaml_path)
+    finally:
+        conn.close()
+
+
+def test_build_summary_raises_on_cross_source_measure_column(tmp_path):
+    """source をまたいだ列名の流用は許さない: `summary_taxon_catalog`
+    （source: occurrence_agg）の測度に observation_agg にしかない値列
+    （`value_zero`）を書くと止まる。
+    """
+    raw = _load_real_yaml()
+    raw["summaries"]["summary_taxon_catalog"]["measures"]["n"]["col"] = "value_zero"
+    yaml_path = _write_yaml(tmp_path, raw)
+
+    db_path = make_observation_agg_fixture(tmp_path, _ROWS)
+    conn = sqlite3.connect(f"file:{db_path}", uri=True)
+    try:
+        with pytest.raises(common.MigrationError, match="col が未知の列"):
             b13.build_summary(conn, yaml_path)
     finally:
         conn.close()

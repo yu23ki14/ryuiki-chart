@@ -25,13 +25,13 @@ from migrate import common
 
 from .occurrence_fixtures import (
     DEFAULT_GRID01_PLACE_ID,
-    add_occurrence_place_table,
     make_occurrence_cube_declarations_yaml,
     make_occurrence_registry_db,
     make_occurrence_watershed_v1_declarations_yaml,
     make_taxon_group_yaml,
     make_v2_db_with_occurrence,
     make_v2_db_with_occurrence_and_agg,
+    make_v2_db_with_occurrence_and_place,
     occurrence_place_row,
     occurrence_row,
 )
@@ -88,40 +88,54 @@ def _bulk_dated_rows(taxon_id, source_id, date_str, count, *, prefix=None, start
     ]
 
 
+_PERIOD_START_IDX = 12  # occurrence_fixtures._OCCURRENCE_COLUMNS の並び
+_PERIOD_END_IDX = 13
+_PERIOD_RAW_IDX = 14
+
+
 def _build_cube_via_b07(tmp_path, occurrence_rows, *, leaf_expected: int, dirname="cube"):
-    """`occurrence_rows` から `occurrence` を作り、実際に `b07.build_cube()`
-    を通して `occurrence_agg` を構築した `v2.sqlite` のパスを返す。
+    """`occurrence_rows` から `occurrence`・`occurrence_place` を作り、実際に
+    `b07.build_cube()` を通して `occurrence_agg` を構築した `v2.sqlite` の
+    パスを返す。
+
+    b07 は「日付あり全記録が `occurrence_place`（place_kind='watershed'）に
+    必ず1行を持つこと」（母集団の完全性）を要求するため、`occurrence_rows`
+    の全件に place_id=None（流域に解決できない記録）の `occurrence_place` 行を
+    機械的に足す——このファイルのテストは grid01/mesh 系の年キー8表だけを
+    見るので、流域解決の中身はどのテストの結果にも影響しない。
+    `place_declarations_yaml=None` は単体テストの opt-out（b07 の docstring
+    参照。本物の `occurrence_place_declarations.yaml` の値とは無関係な
+    小さなフィクスチャなので、b09 宣言との整合検査はここでは意味を持たない）。
     """
     d = tmp_path / dirname
     d.mkdir()
     db_path = d / "v2.sqlite"
-    make_v2_db_with_occurrence(db_path, occurrence_rows)
+    place_rows = [
+        occurrence_place_row(row[0], None)
+        for row in occurrence_rows
+        if row[_PERIOD_RAW_IDX] is not None
+    ]
+    make_v2_db_with_occurrence_and_place(db_path, occurrence_rows, place_rows)
     conn = sqlite3.connect(f"file:{db_path}", uri=True)
     decl_path = d / "occurrence_cube_declarations.yaml"
-    make_occurrence_cube_declarations_yaml(decl_path, expected_row_count=leaf_expected)
+    n_dated = len(place_rows)
+    month_count = sum(
+        1 for row in occurrence_rows
+        if row[_PERIOD_RAW_IDX] is not None
+        and row[_PERIOD_START_IDX][:7] == row[_PERIOD_END_IDX][:7]
+    )
+    make_occurrence_cube_declarations_yaml(decl_path, {
+        "leaf_cell_source_rows": leaf_expected,
+        "month_cell_source_rows": month_count,
+        "watershed_dated_resolved_rows": 0,
+        "watershed_dated_unresolved_rows": n_dated,
+    })
     try:
-        b07.build_cube(conn, decl_path)
+        b07.build_cube(conn, decl_path, place_declarations_yaml=None)
         conn.commit()
     finally:
         conn.close()
     return db_path
-
-
-def _add_occurrence_place(db_path, rows) -> None:
-    """`db_path`（`occurrence` を持つ v2.sqlite）に `occurrence_place`
-    （O-2a）テーブルを追加で作る（`build_all_projections`/
-    `build_watershed_projections` が要求するため）。`rows` は
-    `occurrence_fixtures.occurrence_place_row()` で組み立てたタプル列。
-    テーブルの作り方自体は `occurrence_fixtures.add_occurrence_place_table()`
-    （`make_v2_db_with_occurrence_and_place()` と共有。/simplify 指摘7）に
-    委ねる——ここでは「既存の db を開いて追加する」薄い接続管理だけを持つ。
-    """
-    conn = sqlite3.connect(f"file:{db_path}", uri=True)
-    try:
-        add_occurrence_place_table(conn, rows)
-        conn.commit()
-    finally:
-        conn.close()
 
 
 def _setup_registry(tmp_path, *, taxa=None, default_label_ja="未判定", dirname="registry"):
@@ -155,12 +169,12 @@ def _read(out_path, table, columns, order_by=None):
 # ---------------------------------------------------------------------------
 
 def _agg_row(
-    taxon_id, grain, period_start, period_end, n, n_red_list=0,
+    taxon_id, grain, period_start, period_end, n, n_red_list=0, n_alien=0,
     source_id="gbif_kanagawa_occurrences", place_id=_PLACE_ID, region_id="jp-14", place_kind="grid01",
 ):
     return (
         region_id, source_id, place_id, place_kind, taxon_id, grain, period_start, period_end,
-        n, n_red_list, "occurrence", "phase-b-fact-slice/v1",
+        n, n_red_list, n_alien, "occurrence", "phase-b-fact-slice/v1",
     )
 
 
@@ -352,22 +366,81 @@ def test_mesh_species_includes_null_place_but_mesh_year_excludes_it(tmp_path):
 # 機械検証が崩れを検出できること（わざと食い違わせた手作りフィクスチャ）
 # ===========================================================================
 
-def test_grain_month_cell_stops_projection(tmp_path):
-    """`occurrence_agg` に想定外の grain（`'month'`）が混ざっていたら、年
-    キー8表を作る前に止まる（コードレビュー指摘2。将来 month セルを黙って
-    足しても年の表の n が倍になったりしない——絞り込みで捨てず、明示的に
-    止める）。
+def test_unknown_grain_stops_projection(tmp_path):
+    """`occurrence_agg` に本当に未知の grain（例 `'week'`。`b07.GRAIN_VALUES`
+    に無い値）が混ざっていたら、年キー8表を作る前に止まる（コードレビュー
+    指摘2。設計書 PR-3a §2.2-4: `'month'`〔O-1 設計 v2 で新設される既知の
+    grain〕は年キー8表の対象からは除外されるが「未知」ではない——このテスト
+    は `b07.GRAIN_VALUES` に無い値だけを「未知」として扱うことを確かめる。
+    `'month'` 自体のケースは `test_month_cells_do_not_affect_year_key_totals`
+    参照）。
     """
     occurrence_rows = [_occ_row("gbif__1", "common:taxon:gbif.1001", "2020-01-05")]
     occurrence_agg_rows = [
+        _agg_row("common:taxon:gbif.1001", "week", "2020-01-01", "2020-01-07", n=1),
+    ]
+    cube_db = tmp_path / "v2.sqlite"
+    make_v2_db_with_occurrence_and_agg(cube_db, occurrence_rows, occurrence_agg_rows)
+    registry_db, taxon_group_yaml = _setup_registry(tmp_path)
+    out = tmp_path / "out.sqlite"
+    with pytest.raises(common.MigrationError, match=r"grain が .* 以外の値を持つ（\['week'\]）"):
+        b08.build_occurrence_cube_projections(cube_db, registry_db, out, taxon_group_yaml)
+
+
+def test_month_cells_do_not_affect_year_key_totals(tmp_path):
+    """b07 が `month` 族のセル（O-1 設計 v2 §0-1、`grid01`×`month`）を足しても、
+    年キー8表の Σn は変わらない（`grain IN (年 族)` の絞り込みが二重計上を
+    防ぐ。設計書 PR-3a §2.2-4）。
+    """
+    occurrence_rows = [_occ_row("gbif__1", "common:taxon:gbif.1001", "2020-01-05")]
+    occurrence_agg_rows = [
+        _agg_row("common:taxon:gbif.1001", "year", "2020-01-01", "2020-12-31", n=1),
+        # month セル（O-1 設計 v2）。年キー8表には現れてはいけない
+        # ——絞り込みを忘れると n が二重（1+1=2）になる。
         _agg_row("common:taxon:gbif.1001", "month", "2020-01-01", "2020-01-31", n=1),
     ]
     cube_db = tmp_path / "v2.sqlite"
     make_v2_db_with_occurrence_and_agg(cube_db, occurrence_rows, occurrence_agg_rows)
     registry_db, taxon_group_yaml = _setup_registry(tmp_path)
     out = tmp_path / "out.sqlite"
-    with pytest.raises(common.MigrationError, match="grain が 'year'/'survey_period' 以外"):
-        b08.build_occurrence_cube_projections(cube_db, registry_db, out, taxon_group_yaml)
+    counts = b08.build_occurrence_cube_projections(cube_db, registry_db, out, taxon_group_yaml)
+
+    assert counts["mesh_year"] == 1
+    mesh_year = _read(out, "mesh_year", ["mlat", "mlon", "year", "n"])[0]
+    assert mesh_year == {"mlat": 3550, "mlon": 13900, "year": 2020, "n": 1}
+    org_group_year = _read(out, "org_group_year", ["year", "n"])[0]
+    assert org_group_year["n"] == 1
+    effort_year = _read(out, "effort_year", ["year", "n"])[0]
+    assert effort_year["n"] == 1
+
+
+def test_watershed_cells_do_not_affect_mesh_tables(tmp_path):
+    """`occurrence_agg` に watershed セル（O-2）が混ざっていても、mesh 系
+    （grid01 前提の年キー8表）の Σn は変わらない（`_occ_agg_enriched_sql()`/
+    `_cube_series_totals_sql()` の `place_kind='grid01'` 絞り込みが O-2 の
+    watershed セルを正しく除外することの確認。設計書 PR-3a §2.2-4）。
+    """
+    occurrence_rows = [_occ_row("gbif__1", "common:taxon:gbif.1001", "2020-01-05")]
+    occurrence_agg_rows = [
+        _agg_row("common:taxon:gbif.1001", "year", "2020-01-01", "2020-12-31", n=1),
+        # watershed セル（O-2、b07 が別途作る想定）。grid01 前提の年キー8表
+        # には現れてはならない（n=999 が混ざれば即座に分かる値にしてある）。
+        _agg_row(
+            "common:taxon:gbif.1001", "year", "2020-01-01", "2020-12-31", n=999,
+            place_id="common:place:watershed.w1", place_kind="watershed",
+        ),
+    ]
+    cube_db = tmp_path / "v2.sqlite"
+    make_v2_db_with_occurrence_and_agg(cube_db, occurrence_rows, occurrence_agg_rows)
+    registry_db, taxon_group_yaml = _setup_registry(tmp_path)
+    out = tmp_path / "out.sqlite"
+    counts = b08.build_occurrence_cube_projections(cube_db, registry_db, out, taxon_group_yaml)
+
+    assert counts["mesh_year"] == 1
+    mesh_year = _read(out, "mesh_year", ["mlat", "mlon", "year", "n"])[0]
+    assert mesh_year == {"mlat": 3550, "mlon": 13900, "year": 2020, "n": 1}
+    org_group_year = _read(out, "org_group_year", ["year", "n"])[0]
+    assert org_group_year["n"] == 1
 
 
 def test_unknown_place_kind_stops_projection(tmp_path):
@@ -492,9 +565,9 @@ def test_build_all_projections_writes_org_norm_and_eleven_more_tables(tmp_path):
     （`main()` が使う経路）。
     """
     rows = [occurrence_row("gbif__1", "common:taxon:gbif.1001", "2020-01-05", "2020-01-05", "2020-01-05")]
+    # `_build_cube_via_b07` が全記録に place_id=None の `occurrence_place` を
+    # 機械的に足す——座標はどの流域にも解決しない、単純な最小フィクスチャ。
     cube_db = _build_cube_via_b07(tmp_path, rows, leaf_expected=0)
-    # 座標はどの流域にも解決しない（place_id=None）——単純な最小フィクスチャ。
-    _add_occurrence_place(cube_db, [occurrence_place_row("gbif__1", None)])
     registry_db, taxon_group_yaml = _setup_registry(tmp_path)
     watershed_decl = tmp_path / "occurrence_watershed_v1_declarations.yaml"
     make_occurrence_watershed_v1_declarations_yaml(
@@ -530,4 +603,8 @@ def test_build_all_projections_writes_org_norm_and_eleven_more_tables(tmp_path):
         }
     finally:
         conn.close()
-    assert tables == _table_keys
+    # `org_watershed_year_exact`/`org_watershed_exact` は比較専用の実表
+    # （設計書 PR-3a §2.2-3）。`table_counts`（13テーブルの行数だけ）・
+    # `projection_manifest.yaml`・b02 の対象には入れないが、出力ファイルには
+    # 実在する——ここでは意図的な差分として明示的に足す。
+    assert tables == _table_keys | {"org_watershed_year_exact", "org_watershed_exact"}
