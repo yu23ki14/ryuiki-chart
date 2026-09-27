@@ -160,6 +160,23 @@ CREATE TABLE IF NOT EXISTS place_watershed (
 -- status は 'accepted'/'unresolved' に加え、分類の多数決が不確か(同数、または
 -- 属が複数classにまたがる)な taxon だけ 'needs_review' を持つ(accepted/unresolved
 -- どちらの行にも起こりうる)。
+--
+-- vernacular_name_en（Issue #48 PR-3a）: organism_records.vernacular_name の
+-- うちラテン文字だけの値を (名前空間, taxon_key) ごとに最頻値(同数は値の昇順)で
+-- 選んだもの。gbif/inat 名前空間の行にだけ付く(taxa 由来の unresolved 行は常に
+-- NULL——organism_records に対応する taxon_key が無いため)。「英名」ではなく
+-- 「ラテン文字の俗名」であることに注意(ローマ字表記・属の仮名も入りうる。
+-- registry/README.md 参照)。
+--
+-- vernacular_ja_basis（同PR、D4）: vernacular_name_ja の出処。'override'
+-- (registry/taxon/vernacular_ja.csv の人手確認済み54件)/'taxa'(taxa 由来、
+-- gbif_match_type='EXACT' の代表行 or unresolved 行自身)/'records'
+-- (vernacular_name_ja が override/taxa のどちらからも埋まらなかった行だけ、
+-- organism_records.vernacular_name の非ラテン文字の最頻値で補完したもの)。
+-- 優先順は override > taxa > records——override は taxa 由来の値があっても
+-- 無条件に上書きする(build_taxon.py モジュール docstring 参照)一方、records
+-- 補完は vernacular_name_ja が NULL の行にだけ適用し、既存の値は1件も変えない。
+-- 双方とも NULL のまま(候補が無い)行は vernacular_ja_basis も NULL。
 CREATE TABLE IF NOT EXISTS taxon (
   taxon_id TEXT PRIMARY KEY,
   scientific_name TEXT,
@@ -174,6 +191,8 @@ CREATE TABLE IF NOT EXISTS taxon (
   taxon_group TEXT,
   gbif_taxon_key TEXT,
   vernacular_name_ja TEXT,
+  vernacular_name_en TEXT,
+  vernacular_ja_basis TEXT,
   status TEXT,
   accepted_taxon_id TEXT
 );
@@ -209,6 +228,15 @@ CREATE INDEX IF NOT EXISTS ix_taxon_binomial ON taxon(canonical_binomial);
 -- 常に NULL。背景・実測・畳み込みの詳細は
 -- scripts/registry/build_taxon_assessment.py のモジュール docstring「和名の解決」・
 -- docs/plans/PHASE_B_TAXON_ASSESSMENT.md 参照。
+--
+-- in_scope (Issue #48 PR-3a、D7): registry/taxon/assessment_scope_exclusions.yaml
+-- に宣言した7種（moe_ias_2015 の binom による誤ヒット除外。P-2 オーナー決定A）
+-- を 0、それ以外の全行(redlist 3版含む)を 1 にした列。**このテーブル自体は
+-- moe_ias_list.csv の429行をそのまま持つ「正の記録」であり、除外は一切しない
+-- (build_taxon_assessment.py モジュール docstring「除外7種」参照)。in_scope は
+-- 除外の判断をデータから消さず、消費者(scripts/b08_project_occurrence_v1.py の
+-- ias_species 射影・将来の D1 側の画面)が「宣言済み除外を機械的に反映した集合」を
+-- 引けるようにするための可視化列——値そのものは動かさない。
 CREATE TABLE IF NOT EXISTS taxon_assessment (
   assessment_id TEXT PRIMARY KEY,
   list_id TEXT NOT NULL,
@@ -226,7 +254,8 @@ CREATE TABLE IF NOT EXISTS taxon_assessment (
   prev_category_code TEXT,
   national_category_raw TEXT,
   origin TEXT,
-  source_id TEXT
+  source_id TEXT,
+  in_scope INTEGER
 );
 CREATE INDEX IF NOT EXISTS ix_taxon_assessment_list ON taxon_assessment(list_id);
 CREATE INDEX IF NOT EXISTS ix_taxon_assessment_taxon ON taxon_assessment(taxon_id);

@@ -606,5 +606,38 @@ def caveat_id(key: str, scope: str = "common") -> str:
     return scoped_id("caveat", key, scope)
 
 
+# ---------------------------------------------------------------------------
+# ラテン文字判定（build_taxon.py の taxon.vernacular_name_en 用。PR-3a §4）
+# ---------------------------------------------------------------------------
+
+# ASCII 印字可能域（U+0020-U+007E）と Latin-1 Supplement / Latin Extended-A・B
+# （U+00C0-U+024F、ローマ字化された学名の分音符付き文字を含む）。曲線引用符
+# （’ U+2019。例: 種の英名表記に紛れ込む）は範囲外だが別枠で許可する。
+_LATIN_SCRIPT_RANGES = ((0x20, 0x7E), (0xC0, 0x24F))
+_LATIN_SCRIPT_EXTRA_CHARS = frozenset({"’"})
+
+
+def is_latin_script(value: str) -> bool:
+    """`value` の全文字がラテン文字の範囲（上記）に収まるかどうか。
+
+    1文字でも範囲外（ひらがな・カタカナ・CJK・キリル文字等）があれば False。
+    空文字列・None は False（「候補にならない」空値として扱う。呼び出し側
+    `build_taxon._load_vernacular_candidates()` は非空値だけをここに渡す前提だが、
+    防御的にここでも False にしておく）。ローマ字表記（例: `Kawa-Semi`）や
+    属の仮名（`Amara sp.`）は ASCII 印字可能域に収まるため True になる——
+    「英名」ではなく「ラテン文字の俗名」の判定であることに注意
+    （`registry/README.md` 参照）。
+    """
+    if not value:
+        return False
+    for ch in value:
+        if ch in _LATIN_SCRIPT_EXTRA_CHARS:
+            continue
+        cp = ord(ch)
+        if not any(lo <= cp <= hi for lo, hi in _LATIN_SCRIPT_RANGES):
+            return False
+    return True
+
+
 def caveat_id_cells_note(note_pk, scope: str = "common") -> str:
     return scoped_id("caveat", f"cells.{note_pk}", scope)

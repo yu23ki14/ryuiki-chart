@@ -43,6 +43,28 @@
 
 5. `taxon_key` を持たない `organism_records` 853行は `taxon_id` 解決の対象外。
 
+## `vernacular_name_en`・和名の記録由来補完（D4、Issue #48 PR-3a）
+
+**`vernacular_name_en`**: `organism_records.vernacular_name`（iNat 行は iNat API の
+英語 common name、GBIF 行はデータセット付属の俗名——大半が日本語だが一部
+ラテン文字）のうち、`common.is_latin_script()` で判定したラテン文字だけの値を
+(名前空間, taxon_key) ごとに最頻値（同数は値の昇順）で選ぶ（`_load_vernacular_candidates()`。
+`_load_occurrence_representatives()` と同じ母集団——`taxon_key IS NOT NULL AND
+taxon_key<>''`、日付の有無を問わない）。gbif/inat 名前空間の行にだけ付く
+（`taxa` 由来の unresolved 行は organism_records に対応する taxon_key が無いため
+常に NULL）。ローマ字表記（`Kawa-Semi`）・属の仮名（`Amara sp.`）も選ばれうる——
+「英名」ではなく「ラテン文字の俗名」であることに注意（`registry/README.md` 参照）。
+
+**和名の記録由来補完（D4）**: 同じ集計から非ラテン文字（ひらがな・カタカナ・CJK
+等）の最頻値を、`vernacular_name_ja` が **NULL の行にだけ** 埋める。根拠列
+`vernacular_ja_basis` に `override`（上記4のNAME_JA上書き）/`taxa`（`taxa` 由来。
+`_pick_taxa_representative()` の代表 or unresolved 行自身の `vernacular_name_ja`）/
+`records`（この補完）を記録する。優先順は override > taxa > records——
+**override は taxa 由来の値があっても無条件に上書きする**一方、records 補完は
+NULL の行にしか適用しないので、既存の値（taxa・override どちらの由来でも）は
+1件も変えない。両方とも候補が無い行は `vernacular_name_ja`/`vernacular_ja_basis`
+ともに NULL のまま。
+
 ## 分類の補完（F2。要点）
 
 v1（`web/scripts/build-biota.mjs` の `org_norm`）は**記録ごと**に分類を補完していた:
@@ -98,8 +120,15 @@ TAXON_COLUMNS = [
     "taxon_id", "scientific_name", "canonical_binomial", "rank",
     "kingdom", "phylum", "class", "order", "family",
     "classification_basis", "taxon_group",
-    "gbif_taxon_key", "vernacular_name_ja", "status", "accepted_taxon_id",
+    "gbif_taxon_key", "vernacular_name_ja", "vernacular_name_en", "vernacular_ja_basis",
+    "status", "accepted_taxon_id",
 ]
+
+# vernacular_name_ja_basis のコードリスト（モジュール docstring・schema_registry.sql
+# の taxon.vernacular_ja_basis コメント参照）。
+VERNACULAR_JA_BASIS_OVERRIDE = "override"
+VERNACULAR_JA_BASIS_TAXA = "taxa"
+VERNACULAR_JA_BASIS_RECORDS = "records"
 
 # v1 (web/scripts/build-biota.mjs org_norm) と同じ母集団: 日付の無い記録は
 # 分類の多数決に含めない（モジュール docstring参照。v1 の値を変えないための温存）。
@@ -443,6 +472,78 @@ def _load_vernacular_overrides() -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# vernacular_name_en・D4（記録由来の和名補完）: organism_records.vernacular_name
+# ---------------------------------------------------------------------------
+
+def _pick_majority(rows: list[tuple[int, str]]) -> tuple[str, bool, bool]:
+    """`rows`（同じ (名前空間, taxon_key) の中の候補と件数 `[(count, value), ...]`）から
+    最頻値を選ぶ。`(-count, value)` の昇順の先頭（件数降順、同数は値の昇順。
+    `_load_occurrence_representatives()` のタイブレークと同じ流儀）。
+
+    戻り値: `(選ばれた値, 複数候補があったか, 最頻値が同数だったか)`。後の2つは
+    診断ログ専用（実データの検証には使わない）。
+    """
+    ranked = sorted(rows, key=lambda x: (-x[0], x[1]))
+    top_count = ranked[0][0]
+    is_tied = sum(1 for n, _ in rows if n == top_count) > 1
+    return ranked[0][1], len(rows) > 1, is_tied
+
+
+def _load_vernacular_candidates(
+    ryuiki: sqlite3.Connection,
+) -> tuple[dict[tuple[str, str], str], dict[tuple[str, str], str]]:
+    """`organism_records.vernacular_name` から (名前空間, taxon_key) ごとの代表候補を
+    2種類作る: ラテン文字だけの値の最頻候補（`taxon.vernacular_name_en` の元）と、
+    非ラテン文字だけの値の最頻候補（D4: `vernacular_name_ja` が NULL の行への
+    記録由来の補完の元）。
+
+    母集団は `_load_occurrence_representatives()` と同じ
+    （`taxon_key IS NOT NULL AND taxon_key<>''`、日付の有無を問わない——
+    `organism_records.vernacular_name` は年月日と無関係にどの記録にも同じ確度で
+    付いているため、分類の多数決〔F2、`_DATED_POPULATION_WHERE`〕とは母集団を
+    分ける理由が無い）。空文字列の `vernacular_name` は候補にしない。
+
+    最頻値の選び方は `_pick_majority()`（件数降順、同数は値の昇順）。
+    ラテン文字判定は `common.is_latin_script()`（`registry/README.md`「taxon の
+    名前空間分割と分類補完」参照。「英名」ではなく「ラテン文字の俗名」の判定）。
+
+    SQL 側で (ns, taxon_key, vernacular_name) の組ごとに1回集約するので、
+    Python 側で 823,692 行をループしない（`_load_occurrence_representatives()`
+    と同じ設計）。
+    """
+    ns_case = _namespace_case_sql("source_id")
+    sql = f"""
+        SELECT {ns_case} AS ns, taxon_key, vernacular_name, COUNT(*) AS n
+        FROM organism_records
+        WHERE taxon_key IS NOT NULL AND taxon_key <> ''
+          AND vernacular_name IS NOT NULL AND vernacular_name <> ''
+        GROUP BY ns, taxon_key, vernacular_name
+    """
+    latin_by_key: dict[tuple[str, str], list[tuple[int, str]]] = {}
+    non_latin_by_key: dict[tuple[str, str], list[tuple[int, str]]] = {}
+    for ns, taxon_key, name, n in ryuiki.execute(sql):
+        bucket = latin_by_key if common.is_latin_script(name) else non_latin_by_key
+        bucket.setdefault((ns, taxon_key), []).append((n, name))
+
+    en_by_key: dict[tuple[str, str], str] = {}
+    n_multi = 0
+    n_tied = 0
+    for key, rows in latin_by_key.items():
+        value, multi, tied = _pick_majority(rows)
+        en_by_key[key] = value
+        n_multi += multi
+        n_tied += tied
+    ja_records_by_key = {key: _pick_majority(rows)[0] for key, rows in non_latin_by_key.items()}
+
+    print(
+        f"  [taxon] vernacular_name_en 候補（ラテン文字） = {len(en_by_key):,} "
+        f"(namespace, taxon_key)（うち複数候補 {n_multi:,} / 最頻値が同数 {n_tied:,}）。"
+        f"和名補完(D4)候補（非ラテン文字） = {len(ja_records_by_key):,}"
+    )
+    return en_by_key, ja_records_by_key
+
+
+# ---------------------------------------------------------------------------
 # F2: kingdom/phylum/class/order/family/taxon_group の多数決
 # ---------------------------------------------------------------------------
 
@@ -696,10 +797,16 @@ def _build_taxon_row(
     rank: str | None,
     gbif_taxon_key: str | None,
     vernacular_name_ja: str | None,
+    vernacular_name_en: str | None = None,
+    vernacular_ja_basis: str | None = None,
     status: str,
 ) -> dict:
     """taxon 行の共通構築（occurrence/taxa 両ループが使う。/simplify 指摘10）。
     2箇所でほぼ同じ15キーの dict リテラルを書いていたのをここに集約した。
+
+    `vernacular_name_en`/`vernacular_ja_basis` は呼び出し時点で分かっている分だけ
+    渡す（build() が後続のステップ——NAME_JA 上書き・D4 記録由来補完——で
+    `vernacular_ja_basis` を書き換える。モジュール docstring「和名の補完（D4）」参照）。
     """
     return {
         "taxon_id": taxon_id,
@@ -715,6 +822,8 @@ def _build_taxon_row(
         "taxon_group": _taxon_group_for(cls, phy, kdm, group_rules, group_default),
         "gbif_taxon_key": gbif_taxon_key,
         "vernacular_name_ja": vernacular_name_ja,
+        "vernacular_name_en": vernacular_name_en,
+        "vernacular_ja_basis": vernacular_ja_basis,
         "status": status,
         "accepted_taxon_id": None,
     }
@@ -734,6 +843,7 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     _assert_taxon_key_maps_to_single_binom(ryuiki)
 
     occ = _load_occurrence_representatives(ryuiki)
+    vern_en, vern_ja_records = _load_vernacular_candidates(ryuiki)
     taxa_rows = _load_taxa(ryuiki)
     crosswalk_rank = _load_crosswalk_rank()
     taxa_by_key = _group_taxa_by_gbif_key(taxa_rows)
@@ -792,6 +902,7 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     n_from_taxa_only = 0
     n_needs_review = 0
     basis_counts: dict[str, int] = {}
+    n_vernacular_en_by_ns: dict[str, int] = {}
 
     for ns, key in all_keys:
         taxon_id = _taxon_id_for(ns, key)
@@ -829,6 +940,14 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
             # あるとき（n_from_both）は taxa 側の代表をここで初めて要る
             # （/simplify 指摘12。同じ引数での2回呼び出しを避ける）。
             vernacular = (rep or _pick_taxa_representative(taxa_group, crosswalk_rank))["vernacular"]
+        # D4: この時点の vernacular_ja_basis は taxa 由来('taxa')か未定(None)のどちらか
+        # ——NAME_JA 上書き('override')・記録由来補完('records')は build() の後段で
+        # 適用する（モジュール docstring「vernacular_name_en・和名の記録由来補完」参照）。
+        vernacular_ja_basis = VERNACULAR_JA_BASIS_TAXA if vernacular is not None else None
+
+        vernacular_en = vern_en.get((ns, key))
+        if vernacular_en is not None:
+            n_vernacular_en_by_ns[ns] = n_vernacular_en_by_ns.get(ns, 0) + 1
 
         rank = rank_raw.lower() if rank_raw else None
         kdm, phy, cls, basis, needs_review = _resolve_classification(
@@ -846,7 +965,8 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
             taxon_id, scientific_name, kdm, phy, cls, own_order, own_family, basis,
             group_rules, group_default,
             rank=rank, gbif_taxon_key=_gbif_taxon_key_for(ns, key),
-            vernacular_name_ja=vernacular, status=status,
+            vernacular_name_ja=vernacular, vernacular_name_en=vernacular_en,
+            vernacular_ja_basis=vernacular_ja_basis, status=status,
         ))
 
     print(
@@ -855,6 +975,8 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
         f"taxa のみ {n_from_taxa_only:,})"
     )
     print(f"  [taxon] classification_basis 内訳: {basis_counts}")
+    en_breakdown = " / ".join(f"{ns} {n:,}" for ns, n in sorted(n_vernacular_en_by_ns.items()))
+    print(f"  [taxon] vernacular_name_en が付いた行 = {en_breakdown or '0'}")
 
     # --- taxa の gbif_match_type != 'EXACT' な行（unresolved） ---------------------
     n_unresolved = 0
@@ -879,11 +1001,15 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
         status = "needs_review" if needs_review else "unresolved"
         if needs_review:
             n_unresolved_needs_review += 1
+        # taxa 由来行は organism_records に対応する taxon_key を持たないので
+        # vernacular_name_en は常に NULL（モジュール docstring参照）。
+        unresolved_ja_basis = VERNACULAR_JA_BASIS_TAXA if row["vernacular_name_ja"] else None
         _insert(taxon_id, ("ryuiki-taxa", row["taxon_id"]), _build_taxon_row(
             taxon_id, scientific_name, kdm, phy, cls, row["order0"], row["family0"], basis,
             group_rules, group_default,
             rank=None, gbif_taxon_key=None,
-            vernacular_name_ja=row["vernacular_name_ja"], status=status,
+            vernacular_name_ja=row["vernacular_name_ja"], vernacular_name_en=None,
+            vernacular_ja_basis=unresolved_ja_basis, status=status,
         ))
         n_unresolved += 1
         if has_key:
@@ -916,9 +1042,28 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
             continue
         winner = max(candidates, key=lambda k: (total_by_key[k], k))
         winner_taxon_id = _taxon_id_for(winner[0], winner[1])
+        # taxa 由来の値があっても無条件に上書きする（モジュール docstring 方針4。
+        # D4 の優先順 override > taxa > records の最上位）。
         rows_by_id[winner_taxon_id]["vernacular_name_ja"] = ov["vernacular_name_ja"]
+        rows_by_id[winner_taxon_id]["vernacular_ja_basis"] = VERNACULAR_JA_BASIS_OVERRIDE
         n_applied += 1
     print(f"  [taxon] NAME_JA 適用 = {n_applied:,} / {len(overrides):,}")
+
+    # --- D4: 和名の記録由来補完（vernacular_name_ja が NULL の行にだけ適用。
+    # 既存の値〔override・taxa どちらの由来でも〕は1件も変えない） ------------------
+    n_ja_backfilled = 0
+    for ns, key in all_keys:
+        taxon_id = _taxon_id_for(ns, key)
+        row = rows_by_id[taxon_id]
+        if row["vernacular_name_ja"] is not None:
+            continue
+        candidate = vern_ja_records.get((ns, key))
+        if candidate is None:
+            continue
+        row["vernacular_name_ja"] = candidate
+        row["vernacular_ja_basis"] = VERNACULAR_JA_BASIS_RECORDS
+        n_ja_backfilled += 1
+    print(f"  [taxon] 和名の記録由来補完(D4) = {n_ja_backfilled:,}")
 
     n_vernacular = sum(1 for r in rows_by_id.values() if r["vernacular_name_ja"])
     print(f"  [taxon] 和名が付いた行 = {n_vernacular:,}")

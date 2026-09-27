@@ -443,6 +443,189 @@ def test_taxon_group_first_match_wins_over_later_rule(tmp_path):
     assert t["taxon_group"] == "鳥類"
 
 
+def test_no_vernacular_candidate_anywhere_leaves_fields_null(tmp_path):
+    """記録・taxa・override のいずれからも和名/俗名の候補が無ければ、
+    `vernacular_name_ja`/`vernacular_name_en`/`vernacular_ja_basis` は全部 NULL のまま
+    （D4/vernacular_name_en の「候補が無ければ何もしない」側の回帰）。
+    """
+    rows = [
+        ("gbif_kanagawa_occurrences", "1001", "Ficticius ggg", "species",
+         None, None, None, None, None, "2020-01-01"),
+    ]
+    conn, _counts = _build(tmp_path, organism_records_rows=rows)
+    t = _taxon(conn, "common:taxon:gbif.1001")
+    assert t["vernacular_name_ja"] is None
+    assert t["vernacular_name_en"] is None
+    assert t["vernacular_ja_basis"] is None
+
+
+# ---------------------------------------------------------------------------
+# is_latin_script（scripts/registry/common.py）
+# ---------------------------------------------------------------------------
+
+
+def test_is_latin_script_accepts_ascii_and_latin_extended():
+    """ASCII 印字可能域・Latin-1 Supplement の分音符付き文字・曲線引用符は
+    ラテン文字とみなす（ローマ字表記・属の仮名も含む——「英名」判定ではないことの回帰）。
+    """
+    assert common.is_latin_script("Kawa-Semi")
+    assert common.is_latin_script("Common Kingfisher")
+    assert common.is_latin_script("Amara sp.")
+    assert common.is_latin_script("Château")
+    assert common.is_latin_script("O’Brien")
+
+
+def test_is_latin_script_rejects_non_latin_and_empty():
+    """ひらがな・カタカナ・CJK・ギリシャ文字・空文字列はラテン文字ではない。"""
+    assert not common.is_latin_script("カワセミ")
+    assert not common.is_latin_script("北海道")
+    assert not common.is_latin_script("Ελληνικά")
+    assert not common.is_latin_script("")
+    assert not common.is_latin_script(None)
+
+
+# ---------------------------------------------------------------------------
+# vernacular_name_en（organism_records.vernacular_name のラテン文字だけの値の最頻値）
+# ---------------------------------------------------------------------------
+
+
+def test_vernacular_name_en_picks_majority_by_count(tmp_path):
+    """件数の多い候補が選ばれる（同数ではない場合。非ラテン文字の候補は無視する）。"""
+    rows = [
+        ("gbif_kanagawa_occurrences", "1010", "Ficticius ddd", "species",
+         None, None, None, None, None, "2020-01-01", "Common Kingfisher"),
+        ("gbif_kanagawa_occurrences", "1010", "Ficticius ddd", "species",
+         None, None, None, None, None, "2020-01-02", "Common Kingfisher"),
+        ("gbif_kanagawa_occurrences", "1010", "Ficticius ddd", "species",
+         None, None, None, None, None, "2020-01-03", "Common Kingfisher"),
+        ("gbif_kanagawa_occurrences", "1010", "Ficticius ddd", "species",
+         None, None, None, None, None, "2020-01-04", "Kawa-Semi"),
+    ]
+    conn, _counts = _build(tmp_path, organism_records_rows=rows)
+    t = _taxon(conn, "common:taxon:gbif.1010")
+    assert t["vernacular_name_en"] == "Common Kingfisher"
+
+
+def test_vernacular_name_en_tie_break_prefers_smaller_value(tmp_path):
+    """最頻値が同数のときは値の昇順で決定論的に選ぶ（`_pick_majority()`）。"""
+    rows = [
+        ("gbif_kanagawa_occurrences", "1011", "Ficticius ccc", "species",
+         None, None, None, None, None, "2020-01-01", "Zeta Bird"),
+        ("gbif_kanagawa_occurrences", "1011", "Ficticius ccc", "species",
+         None, None, None, None, None, "2020-01-02", "Zeta Bird"),
+        ("gbif_kanagawa_occurrences", "1011", "Ficticius ccc", "species",
+         None, None, None, None, None, "2020-01-03", "Alpha Bird"),
+        ("gbif_kanagawa_occurrences", "1011", "Ficticius ccc", "species",
+         None, None, None, None, None, "2020-01-04", "Alpha Bird"),
+        ("gbif_kanagawa_occurrences", "1011", "Ficticius ccc", "species",
+         None, None, None, None, None, "2020-01-05", "Beta Bird"),
+    ]
+    conn, _counts = _build(tmp_path, organism_records_rows=rows)
+    t = _taxon(conn, "common:taxon:gbif.1011")
+    assert t["vernacular_name_en"] == "Alpha Bird"  # Zeta/Alphaが同数(2)、値の昇順でAlpha
+
+
+def test_vernacular_name_en_ignores_empty_string_candidates(tmp_path):
+    """空文字列は件数が多くても候補にしない（黙って最頻値に混ぜない）。"""
+    rows = [
+        ("gbif_kanagawa_occurrences", "1012", "Ficticius eee", "species",
+         None, None, None, None, None, "2020-01-01", ""),
+        ("gbif_kanagawa_occurrences", "1012", "Ficticius eee", "species",
+         None, None, None, None, None, "2020-01-02", ""),
+        ("gbif_kanagawa_occurrences", "1012", "Ficticius eee", "species",
+         None, None, None, None, None, "2020-01-03", "Some Name"),
+    ]
+    conn, _counts = _build(tmp_path, organism_records_rows=rows)
+    t = _taxon(conn, "common:taxon:gbif.1012")
+    # 空文字列(件数2)ではなく "Some Name"(件数1) が選ばれる。
+    assert t["vernacular_name_en"] == "Some Name"
+
+
+def test_vernacular_name_en_all_empty_yields_no_candidate(tmp_path):
+    """俗名列が全部空文字列なら vernacular_name_en は NULL のまま。"""
+    rows = [
+        ("gbif_kanagawa_occurrences", "1013", "Ficticius fff", "species",
+         None, None, None, None, None, "2020-01-01", ""),
+        ("gbif_kanagawa_occurrences", "1013", "Ficticius fff", "species",
+         None, None, None, None, None, "2020-01-02", ""),
+    ]
+    conn, _counts = _build(tmp_path, organism_records_rows=rows)
+    t = _taxon(conn, "common:taxon:gbif.1013")
+    assert t["vernacular_name_en"] is None
+    assert t["vernacular_name_ja"] is None
+    assert t["vernacular_ja_basis"] is None
+
+
+# ---------------------------------------------------------------------------
+# D4: 和名の記録由来補完（vernacular_name_ja が NULL の行にだけ適用）
+# ---------------------------------------------------------------------------
+
+
+def test_d4_backfills_ja_from_records_when_no_taxa_or_override(tmp_path):
+    """taxa 由来の和名も NAME_JA 上書きも無い行は、記録由来の非ラテン文字の
+    最頻値で補完され、根拠列は 'records' になる。
+    """
+    rows = [
+        ("gbif_kanagawa_occurrences", "1020", "Ficticius aaa", "species",
+         None, None, None, None, None, "2020-01-01", "テスト鳥"),
+        ("gbif_kanagawa_occurrences", "1020", "Ficticius aaa", "species",
+         None, None, None, None, None, "2020-01-02", "テスト鳥"),
+        ("gbif_kanagawa_occurrences", "1020", "Ficticius aaa", "species",
+         None, None, None, None, None, "2020-01-03", "テスト鳥2"),
+    ]
+    conn, _counts = _build(tmp_path, organism_records_rows=rows)
+    t = _taxon(conn, "common:taxon:gbif.1020")
+    assert t["vernacular_name_ja"] == "テスト鳥"
+    assert t["vernacular_ja_basis"] == "records"
+    # この taxon_key の俗名は全部非ラテンなので en 側の候補は無い。
+    assert t["vernacular_name_en"] is None
+
+
+def test_d4_does_not_overwrite_taxa_sourced_ja(tmp_path):
+    """taxa（gbif_match_type='EXACT'）由来で既に vernacular_name_ja が入っている行は、
+    記録側によりよい（件数の多い）候補があっても1バイトも変えない
+    （「既存の値は1件も変えない」の回帰）。
+    """
+    taxa_rows = [
+        ("gbif_taxon_1021", "Ficticius bbb", "タクサ和名", "1021", "EXACT",
+         None, None, None, None, None),
+    ]
+    organism_rows = [
+        ("gbif_kanagawa_occurrences", "1021", "Ficticius bbb", "species",
+         None, None, None, None, None, "2020-01-01", "レコード和名"),
+        ("gbif_kanagawa_occurrences", "1021", "Ficticius bbb", "species",
+         None, None, None, None, None, "2020-01-02", "レコード和名"),
+        ("gbif_kanagawa_occurrences", "1021", "Ficticius bbb", "species",
+         None, None, None, None, None, "2020-01-03", "レコード和名"),
+    ]
+    conn, _counts = _build(tmp_path, organism_records_rows=organism_rows, taxa_rows=taxa_rows)
+    t = _taxon(conn, "common:taxon:gbif.1021")
+    assert t["vernacular_name_ja"] == "タクサ和名"
+    assert t["vernacular_ja_basis"] == "taxa"
+
+
+def test_d4_override_wins_over_taxa_and_records(tmp_path):
+    """NAME_JA（`registry/taxon/vernacular_ja.csv`）の上書きは、taxa 由来の値が
+    既にあっても・記録側に別の補完候補があっても、無条件に勝つ（優先順
+    override > taxa > records）。`Corvus corone` は同 CSV に実在する54件の1つ
+    （「ハシボソガラス」）。
+    """
+    taxa_rows = [
+        ("gbif_taxon_1022", "Corvus corone", "旧和名", "1022", "EXACT",
+         None, None, None, None, None),
+    ]
+    organism_rows = [
+        ("gbif_kanagawa_occurrences", "1022", "Corvus corone", "species",
+         None, None, None, None, None, "2020-01-01", "べつめい"),
+        ("gbif_kanagawa_occurrences", "1022", "Corvus corone", "species",
+         None, None, None, None, None, "2020-01-02", "べつめい"),
+    ]
+    conn, _counts = _build(tmp_path, organism_records_rows=organism_rows, taxa_rows=taxa_rows)
+    t = _taxon(conn, "common:taxon:gbif.1022")
+    assert t["vernacular_name_ja"] == "ハシボソガラス"
+    assert t["vernacular_ja_basis"] == "override"
+
+
 def test_taxon_group_yaml_rejects_duplicate_match_conditions(tmp_path, monkeypatch):
     """taxon_group.yaml は先勝ちの表なので、同じ match 条件が2回登場すると片方が
     黙って無効になる。build_place._load_zone_yaml()/build_caveat._load_caveat_yaml()
