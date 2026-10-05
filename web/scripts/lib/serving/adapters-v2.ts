@@ -788,7 +788,7 @@ async function fetchRawRows(
         mesh_n: r.meshN,
         y_from: r.yFrom,
         y_to: r.yTo,
-        n_since_2020: r.nSince2020,
+        n_since_2020: r.nSince,
       }));
     }
     case "redlist_summary": {
