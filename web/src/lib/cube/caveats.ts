@@ -163,3 +163,12 @@ export function facetsForSeries(series: readonly SeriesFacetInput[], scope: Scop
 
   return refs;
 }
+
+/**
+ * 生物出現（`occurrence_agg`）を引く画面・API・AI の facet（Issue #48 PR-3b、§2.2）。
+ * `dataset=organism_records` を常に、`place_kind=grid01` を grid01 を引くとき、
+ * `source_id=moe_ias_list` を IAS のときに積む。型確定コミット: 本体は未実装。
+ */
+export function facetsForOccurrence(_opt: { places: readonly ("grid01" | "watershed")[]; ias?: boolean }): FacetRef[] {
+  throw new Error("facetsForOccurrence: 未実装");
+}

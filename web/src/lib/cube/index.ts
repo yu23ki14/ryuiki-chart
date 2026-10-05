@@ -86,3 +86,28 @@ export {
 
 export type { Envelope, EnvelopeColumn, EnvelopeCoverage, EnvelopeProvenance, EnvelopeExcluded } from "./envelope";
 export { buildEnvelope, buildZoneEnvelope, ENVELOPE_SPEC_VERSION } from "./envelope";
+
+export * from "./occurrence";
+export * from "./assessment";
+export type {
+  SpeciesCatalogRow,
+  TaxonGroupYearRow,
+  EffortYearRow,
+  GridCatalogRow,
+  OccurrenceTotals,
+  WatershedOccurrenceRow,
+  WatershedOccurrence,
+  IasSpeciesRow,
+} from "./catalog";
+export {
+  speciesCatalog,
+  taxonGroupYears,
+  effortYears,
+  gridCatalog,
+  gridCellOfPlaceId,
+  occurrenceTotals,
+  watershedOccurrence,
+  watershedIdOfPlaceId,
+  placeIdOfWatershedId,
+  iasSpecies,
+} from "./catalog";

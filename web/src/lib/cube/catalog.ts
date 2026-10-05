@@ -868,3 +868,135 @@ export async function siteSeriesCells(db: CubeDb, opt: { dataset: string }): Pro
     yTo: r.y_to,
   }));
 }
+
+/* ------------------------------------------------------------------ */
+/* 生物系（Issue #48 PR-3b、docs/plans/V2_SERVING_PR3B.md §2.2）。型確定コミット: 本体は未実装 */
+/* ------------------------------------------------------------------ */
+
+const OCC_TODO = (): never => {
+  throw new Error("lib/cube/catalog（生物系）: 未実装");
+};
+
+export interface SpeciesCatalogRow {
+  binom: string;
+  taxonGroup: string | null;
+  class: string | null;
+  family: string | null;
+  n: number;
+  nRedList: number;
+  nAlien: number;
+  nPlaces: number;
+  yFrom: number | null;
+  yTo: number | null;
+  nYears: number;
+  /** `withNames` のときだけ（§2.3 の表示名）。 */
+  label?: string;
+}
+
+export async function speciesCatalog(
+  _db: CubeDb,
+  _opt?: { group?: string | null; limit?: number; withNames?: boolean },
+): Promise<SpeciesCatalogRow[]> {
+  return OCC_TODO();
+}
+
+export interface TaxonGroupYearRow {
+  year: number;
+  taxonGroup: string;
+  n: number;
+  /** source 別 `n_places` の MAX（和集合ではない。v1 の癖。§6-4）。 */
+  meshN: number;
+}
+
+export async function taxonGroupYears(_db: CubeDb, _opt?: { from?: number; to?: number }): Promise<TaxonGroupYearRow[]> {
+  return OCC_TODO();
+}
+
+export interface EffortYearRow {
+  year: number;
+  n: number;
+  speciesN: number;
+  meshN: number;
+  nInat: number;
+  nGbif: number;
+}
+
+export async function effortYears(_db: CubeDb, _opt?: { from?: number; to?: number }): Promise<EffortYearRow[]> {
+  return OCC_TODO();
+}
+
+export interface GridCatalogRow {
+  placeId: string;
+  mlat: number;
+  mlon: number;
+  n: number;
+  rlN: number;
+  speciesN: number;
+  rlSpeciesN: number;
+}
+
+export async function gridCatalog(_db: CubeDb): Promise<GridCatalogRow[]> {
+  return OCC_TODO();
+}
+
+/** `common:place:grid01.3520_13900` → `{ mlat: 3520, mlon: 13900 }`。形式違いは null。 */
+export function gridCellOfPlaceId(_placeId: string): { mlat: number; mlon: number } | null {
+  return OCC_TODO();
+}
+
+export interface OccurrenceTotals {
+  records: number;
+  species: number;
+  grids: number;
+  gbif: number;
+  inat: number;
+}
+
+export async function occurrenceTotals(_db: CubeDb): Promise<OccurrenceTotals> {
+  return OCC_TODO();
+}
+
+export interface WatershedOccurrenceRow {
+  /** v1 の `watershed_id`（`placeIdOfWatershedId` の逆）。 */
+  watershedId: string;
+  placeId: string;
+  orgN: number;
+  orgAlienN: number;
+  orgRedlistN: number;
+}
+
+export interface WatershedOccurrence {
+  watersheds: WatershedOccurrenceRow[];
+  /** `place_id` NULL の行（流域に解決できない日付あり記録。D2）。無ければ null。 */
+  outsideWatershed: { n: number; nRedList: number; nAlien: number } | null;
+}
+
+export async function watershedOccurrence(_db: CubeDb): Promise<WatershedOccurrence> {
+  return OCC_TODO();
+}
+
+/** `common:place:watershed.nlni-<id>` → `<id>`。形式違いは null。 */
+export function watershedIdOfPlaceId(_placeId: string): string | null {
+  return OCC_TODO();
+}
+
+export function placeIdOfWatershedId(_watershedId: string): string {
+  return OCC_TODO();
+}
+
+export interface IasSpeciesRow {
+  iasCategory: string;
+  binom: string;
+  nameJa: string | null;
+  enName: string | null;
+  taxonGroup: string | null;
+  n: number;
+  meshN: number;
+  yFrom: number | null;
+  yTo: number | null;
+  nSince2020: number;
+}
+
+export async function iasSpecies(_db: CubeDb): Promise<IasSpeciesRow[]> {
+  return OCC_TODO();
+}
