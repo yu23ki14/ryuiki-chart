@@ -3,6 +3,7 @@ import { TABLE_META, SCHEMA_META, TABLE_ORIGIN, SAMPLE_QUERIES } from "@/lib/tab
 import { caveatBody } from "@/lib/registry/lookup-client";
 import type { CaveatKey } from "@/lib/registry/generated-client";
 import { resolveVariableInfo } from "@/lib/registry/lookup";
+import { SENSOR_DATASET } from "@/lib/cube/series";
 import { describePageContext, type PageContext } from "./page-context";
 
 /**
@@ -81,13 +82,13 @@ function allCaveats(): string {
  * （code-review #5: 行ごとに nameJa/unit 等をインライン展開すると list_catalog の
  * ペイロードが膨らむため、行には variableId だけを持たせ、本体は
  * `registry[variableId]` に集約してある）。例は ADR-0010 が挙げているのと同じ
- * 「OX / Ox(ppm) / 光化学オキシダント（Ox）_日平均」（sensor_timeseries の出典表記違い）を、
+ * 「OX / Ox(ppm) / 光化学オキシダント（Ox）_日平均」（センサー系の出典表記違い）を、
  * ハードコードした文字列ではなくレジストリを実際に引いて確かめてから使う
  * （もし対応が崩れたら、この一致確認が失敗して例文が出なくなる＝気づける）。
  */
 function variableVocabNote(): string {
-  const ox = resolveVariableInfo("OX", "sensor_timeseries");
-  const oxPpm = resolveVariableInfo("Ox(ppm)", "sensor_timeseries");
+  const ox = resolveVariableInfo("OX", SENSOR_DATASET);
+  const oxPpm = resolveVariableInfo("Ox(ppm)", SENSOR_DATASET);
   const sameId = ox && oxPpm && ox.variableId === oxPpm.variableId ? ox.variableId : null;
   const example = sameId
     ? `\n例: 出典表記「OX」と「Ox(ppm)」は文字列としては別物だが、どちらも variableId="${sameId}"（同じ量）。`
@@ -167,14 +168,14 @@ ${schemaOrigins()}
 ${tableCatalog()}
 
 ## 意図ツール（キューブ・summary）を使う
-measurements（測定値の生データ）や organism_records（生物観察の生データ）を直接 GROUP BY で集計しないでください。
+観測キューブ（observation_agg / occurrence_agg）の生のセルを直接 GROUP BY で集計しないでください。
 基準（検体値/年度集計値の混在）や観察努力バイアスの罠があります。代わりに意図ツールを使ってください。
 list_catalog / get_timeseries / get_seasonality / get_sites は観測キューブ（observation_agg）の
 事前集計（summary_variable_catalog / summary_place_variable）を経由し、定量下限未満の扱い（value_zero/value_lod）
 も両方の値として返します。get_biota_trend / get_redlist / get_overview の生物部分も同じく観測キューブ（occurrence_agg）と
 summary_species_catalog / summary_group_year / summary_effort_year / summary_grid_catalog / summary_watershed_occurrence、
-レッドリストは taxon_assessment から読みます（生物レコード数は「日付のある記録」だけ）。get_quality_progress は従来の derived テーブルです。
-run_sql を使うときも、可能な限りこれらの集計済みテーブル（derived 系・summary_* ）を優先してください。
+レッドリストは taxon_assessment から読みます（生物レコード数は「日付のある記録」だけ）。
+run_sql を使うときも、可能な限りこれらの集計済みテーブル（summary_*・語彙レジストリの表）を優先してください。run_sql が読めるのは上の「主なテーブル」だけです。
 
 ## データの癖・注記（全文）
 ${allCaveats()}
@@ -182,15 +183,9 @@ ${allCaveats()}
 ## 指標の正準ID（variableId）
 ${variableVocabNote()}
 
-## 開示義務
-observers（観測者）・interventions（介入）・decisions（意思決定）・quality_transitions / quality_monthly（品質段階の遷移）は
-すべて合成データ（デモ用に生成したもの。実在の公開データではない）です。これらの話題が出たら、聞かれなくても
-必ず最初にその旨を伝えてください。
-
 ## ツールの使い方
 1. まず list_catalog や describe_schema などの意図ツールで全体像を掴む
-2. 具体的な数値は get_timeseries / get_seasonality / get_sites / get_biota_trend / get_redlist / get_overview /
-   get_quality_progress で取得する
+2. 具体的な数値は get_timeseries / get_seasonality / get_sites / get_biota_trend / get_redlist / get_overview で取得する
 3. これらで答えられない問いのときだけ run_sql を使う（SELECT/WITH/EXPLAIN のみ、行数200・応答24KBまでに切り詰められる）
 4. ツールの結果には caveats（注記のキーの配列）が機械的に付いてくる。上の「データの癖・注記」から
    そのキーの本文を引き、関係する内容は必ず回答に反映すること

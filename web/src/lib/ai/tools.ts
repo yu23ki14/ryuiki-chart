@@ -37,21 +37,14 @@ import {
   type Scope,
 } from "@/lib/cube";
 import { facetsForSeries, facetsForOccurrence, caveatKeysForFacets } from "@/lib/cube/caveats";
-import {
-  watershedRollup,
-  overviewStats,
-  qualityTotals,
-  qualityMonthly,
-  interventions,
-  decisions,
-  observerStats,
-} from "@/lib/queries";
+import { overviewCounts, watershedRollup } from "@/lib/cube/catalog";
+import { MEASUREMENTS_DATASET } from "@/lib/cube/series";
 
-/** measurements データセット固定（PR-2 のスコープは測定値系。design §1.1 と同じ前提）。 */
-const DATASET = "measurements";
+/** 測定値系データセット固定（PR-2 のスコープは測定値系。design §1.1 と同じ前提）。registry の dataset キー。 */
+const DATASET = MEASUREMENTS_DATASET;
 
 /**
- * 意図レベルのツール10個。中身は queries.ts の合成で、新しい SQL はほぼ書かない
+ * 意図レベルのツール9個。中身は queries.ts の合成で、新しい SQL はほぼ書かない
  * （唯一の例外が run_sql で、それも既存の runUserSql をラップするだけ）。
  *
  * 70関数を全部ツール化すると選択精度が落ちるので、意図（「時系列が見たい」「地点を調べたい」…）の
@@ -617,80 +610,82 @@ const get_redlist = tool({
 /* ------------------------------------------------------------------ */
 
 const get_overview = tool({
-  description: "アプリ全体の概況（地点数・測定値数・生物記録数などの総数）と、流域ごとのロールアップ上位N件を取る。",
+  description: "アプリ全体の概況（地点数・観測指標数・生物記録数などの総数）と、流域ごとのロールアップ上位N件を取る。",
   inputSchema: z.object({
     limit: z.number().int().min(1).max(50).optional().describe("流域ロールアップの件数上限（既定10、生物記録数の多い順）"),
   }),
   execute: async ({ limit }) => {
     const t0 = performance.now();
     const db = await d1CubeDb();
-    const [statsV1, rollupAll, occ, wsOcc] = await Promise.all([
-      overviewStats(),
-      watershedRollup(),
+    const [counts, rollupAll, occ, wsOcc] = await Promise.all([
+      overviewCounts(db),
+      watershedRollup(db),
       occurrenceTotals(db),
       watershedOccurrence(db),
     ]);
-    // 生物の件数・種数は cube（日付のある記録だけ。D3）。流域の面積・site_n・土地利用は PR-4 まで v1（D2）。
-    const stats = statsV1 ? { ...statsV1, n_org: occ.records, n_species: occ.species } : statsV1;
-    const occByWs = new Map(wsOcc.watersheds.map((o) => [o.watershedId, o]));
-    const rollup = rollupAll
-      .map((r) => {
-        const o = occByWs.get(r.watershed_id);
-        return { ...r, org_n: o?.orgN ?? 0, org_alien_n: o?.orgAlienN ?? 0, org_redlist_n: o?.orgRedlistN ?? 0 };
-      })
+    // 生物の件数・種数は cube（日付のある記録だけ）。それ以外の総数は overviewCounts。
+    const stats = {
+      n_sites: counts.sites,
+      n_variables: counts.variables,
+      n_org: occ.records,
+      n_species: occ.species,
+      n_sources: counts.sources,
+      n_watersheds: counts.watersheds,
+      y_from: counts.yFrom,
+      y_to: counts.yTo,
+    };
+    // watershedRollup は生物の列まで含めて全流域を返す。AI には v1 形（snake_case）で渡す。
+    const rollup = rollupAll.watersheds
+      .map((r) => ({
+        watershed_id: r.watershedId,
+        water_system_name: r.waterSystemName,
+        area_km2: r.areaKm2,
+        centroid_lat: r.centroidLat,
+        centroid_lon: r.centroidLon,
+        site_n: r.siteN,
+        org_n: r.orgN,
+        org_alien_n: r.orgAlienN,
+        org_redlist_n: r.orgRedlistN,
+        built_km2_2006: r.built.from,
+        built_km2_2016: r.built.to,
+        forest_km2_2006: r.forest.from,
+        forest_km2_2016: r.forest.to,
+        paddy_km2_2006: r.paddy.from,
+        paddy_km2_2016: r.paddy.to,
+      }))
       .sort((a, b) => b.org_n - a.org_n)
       .slice(0, limit ?? 10);
-    const bioTables = ["summary_effort_year", "summary_species_catalog", "summary_watershed_occurrence"];
-    const v1Tables = [
+    // 実際に読む表。測定値は返さないので、測定値の注記（measuredOn 等）は付かない。
+    // 土地利用の列は定義変更をまたぐので landuseDefinitionChange を facet で付ける。
+    const tables = [
       "sites",
-      "measurements",
-      "events",
-      "sensor_timeseries",
       "source_registry",
-      "watershed_meta",
-      "var_catalog",
-      "watershed_rollup",
+      "place",
+      "place_relation",
+      "observation_agg",
+      "summary_variable_catalog",
+      "summary_effort_year",
+      "summary_species_catalog",
+      "summary_watershed_occurrence",
     ];
     const caveats = [
       ...new Set([
-        ...caveatKeysForTables(v1Tables),
+        ...caveatKeysForTables(["sites", "source_registry"]),
         ...caveatKeysForFacets(facetsForOccurrence({ places: ["grid01", "watershed"] })),
+        ...caveatKeysForFacets([{ kind: "variable_theme", ref: "landuse" }]),
       ]),
     ];
     return makeResult({
       tool: "get_overview",
-      tables: [...v1Tables, ...bioTables],
+      tables,
       caveats,
-      data: { stats, watersheds: rollup, outside_watershed_n: wsOcc.outsideWatershed?.n ?? 0 },
+      data: {
+        stats,
+        landuse_years: rollupAll.landuseYears,
+        watersheds: rollup,
+        outside_watershed_n: rollupAll.outsideWatershed?.n ?? wsOcc.outsideWatershed?.n ?? 0,
+      },
       rowCount: rollup.length + 1,
-      elapsedMs: performance.now() - t0,
-    });
-  },
-});
-
-/* ------------------------------------------------------------------ */
-/* 8. get_quality_progress                                            */
-/* ------------------------------------------------------------------ */
-
-const get_quality_progress = tool({
-  description:
-    "データ品質パイプラインの進捗（暫定→検証済→公開済）、現場の観測体制、介入・意思決定の記録を見る。" +
-    "これらはすべて合成データ（デモ用に生成したもの）であることに必ず注意する。",
-  inputSchema: z.object({}),
-  execute: async () => {
-    const t0 = performance.now();
-    const [totals, monthly, iv, dec, observers] = await Promise.all([
-      qualityTotals(),
-      qualityMonthly(),
-      interventions(),
-      decisions(),
-      observerStats(),
-    ]);
-    return makeResult({
-      tool: "get_quality_progress",
-      tables: ["quality_transitions", "quality_monthly", "interventions", "decisions", "observers", "event_observers"],
-      data: { totals, monthly, interventions: iv, decisions: dec, observers },
-      rowCount: monthly.length + iv.length + dec.length + observers.length,
       elapsedMs: performance.now() - t0,
     });
   },
@@ -702,21 +697,22 @@ const get_quality_progress = tool({
 
 const describe_schema = tool({
   description:
-    "D1に入っている全56テーブルの一覧（テーブル名と日本語説明。トークン節約のため列は返さない）、" +
-    "または table を指定すると1テーブルの列定義を返す。run_sql を書く前にまずこれで構造を確認する。",
+    "AI が読めるテーブル（カタログ）の一覧（テーブル名と日本語説明。トークン節約のため列と件数は返さない）、" +
+    "または table を指定すると1テーブルの列定義を返す。run_sql を書く前にまずこれで構造を確認する。" +
+    "件数が要るときは run_sql の count(*) を使う。",
   inputSchema: z.object({
     table: z.string().optional().describe("列定義を見たいテーブル名"),
   }),
   execute: async ({ table }) => {
     const t0 = performance.now();
-    const tables = await listTables();
     if (table) {
-      const t = tables.find((x) => x.name === table);
+      const [t] = await listTables({ catalogOnly: true, only: table });
       if (!t) {
+        const all = await listTables({ catalogOnly: true, counts: false });
         return makeResult({
           tool: "describe_schema",
           tables: [],
-          data: { error: `テーブル ${table} は存在しない`, available: tables.map((x) => x.name) },
+          data: { error: `テーブル ${table} は存在しない（または AI からは読めない）`, available: all.map((x) => x.name) },
           rowCount: 0,
           elapsedMs: performance.now() - t0,
         });
@@ -735,9 +731,9 @@ const describe_schema = tool({
         elapsedMs: performance.now() - t0,
       });
     }
+    const tables = await listTables({ catalogOnly: true, counts: false });
     const list = tables.map((t) => ({
       name: t.name,
-      rowCount: t.rowCount,
       origin: TABLE_ORIGIN[t.name] ?? "main",
       description: TABLE_META[t.name] ?? "",
     }));
@@ -779,8 +775,9 @@ function extractTableNames(sql: string): string[] {
 const run_sql = tool({
   description:
     "任意の SELECT/WITH/EXPLAIN 文を D1 に対して実行する。第2層のフォールバックであり、意図ツール" +
-    "（list_catalog/get_timeseries/get_seasonality/get_sites/get_biota_trend/get_redlist/get_overview/get_quality_progress）" +
-    "で答えられないときだけ使う。行数は最大200・応答は最大24KBに切り詰められる。集計は可能な限り derived 系テーブルを使うこと。",
+    "（list_catalog/get_timeseries/get_seasonality/get_sites/get_biota_trend/get_redlist/get_overview）" +
+    "で答えられないときだけ使う。行数は最大200・応答は最大24KBに切り詰められる。カタログ外のテーブルは読めない。" +
+    "集計は可能な限り summary_*・registry 表を使うこと。",
   inputSchema: z.object({
     sql: z.string().describe("SELECT/WITH/EXPLAINで始まる1文。セミコロンは末尾以外に書かない"),
   }),
@@ -789,7 +786,7 @@ const run_sql = tool({
     const trimmed = sql.trim().replace(/;+\s*$/, "");
     const withLimit = /\blimit\s+\d+/i.test(trimmed) ? trimmed : `${trimmed} LIMIT 200`;
     try {
-      const res = await runUserSql(withLimit, 200);
+      const res = await runUserSql(withLimit, 200, { catalogOnly: true });
       return makeResult({
         tool: "run_sql",
         tables: extractTableNames(withLimit),
@@ -820,7 +817,6 @@ export const aiTools = {
   get_biota_trend,
   get_redlist,
   get_overview,
-  get_quality_progress,
   describe_schema,
   run_sql,
 };
