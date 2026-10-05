@@ -29,6 +29,7 @@ import {
   type GeneratedVariable,
   type GeneratedVariableAlias,
 } from "./generated";
+import { MEASUREMENTS_DATASET } from "@/lib/cube/series";
 
 /* ------------------------------------------------------------------ */
 /* 索引（モジュール読み込み時に一度だけ作る。154件程度なので毎回舐めても軽いが、
@@ -116,7 +117,7 @@ export interface ResolvedVariableInfo {
  */
 export function resolveVariableInfo(
   alias: string,
-  dataset: string = "measurements",
+  dataset: string = MEASUREMENTS_DATASET,
 ): ResolvedVariableInfo | undefined {
   const aliasRow = firstAliasByDatasetAlias.get(`${dataset}\t${alias}`);
   if (!aliasRow?.variableId) return undefined;

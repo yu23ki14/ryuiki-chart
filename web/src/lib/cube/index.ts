@@ -15,7 +15,7 @@ export { assertD1Compatible, MAX_ID_LIST } from "./db";
 export { d1CubeDb } from "./db-d1";
 
 export type { Scope } from "./sql";
-export { jsonEachParam, seriesFilterSql, buildScopeSql } from "./sql";
+export { jsonEachParam, seriesFilterSql, buildScopeSql, occDefaultTo, IAS_SINCE_YEAR } from "./sql";
 
 export type { BasisInfo, Grain, SeriesKey, SeriesInfo, SeriesForVariableOpt } from "./series";
 export {
@@ -32,6 +32,8 @@ export {
   yearCellFilterForBasis,
   withTheme,
   labelYear,
+  MEASUREMENTS_DATASET,
+  SENSOR_DATASET,
 } from "./series";
 
 export { unitLabel } from "./unit";
@@ -100,5 +102,9 @@ export type {
   IasSpeciesRow,
 } from "./catalog";
 export { speciesCatalog, taxonGroupYears, effortYears, effortRowV1, gridCatalog, occurrenceTotals, watershedOccurrence, iasSpecies } from "./catalog";
+export type { OverviewCounts, LanduseCell, WatershedRollupRow } from "./catalog";
+export { overviewCounts, watershedRollup, landuseHighlight } from "./catalog";
+export type { DocSeriesMeta, DocSeriesPoint } from "./documents";
+export { DOC_SERIES_WHERE, rowKeyLabel, docSeriesList, docSeriesPoints } from "./documents";
 export { gridCellOfPlaceId, watershedIdOfPlaceId, placeIdOfWatershedId } from "./grid";
 export { facetsForOccurrence } from "./caveats";

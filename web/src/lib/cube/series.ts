@@ -37,6 +37,13 @@ function norm(s: string | null | undefined): string {
 }
 
 /**
+ * registry の dataset キー（`variable_alias.dataset`）。v1 の表名と字面が同じだが表の参照ではない
+ * （web で字面を持つのはここ1か所。PR-4 §0-1）。
+ */
+export const MEASUREMENTS_DATASET = "measurements";
+export const SENSOR_DATASET = "sensor_timeseries";
+
+/**
  * `b05_project_v1.py` の `_AKEY_EXPR` と同じ連結順・NULL の扱い
  * （`variable_id || '|' || COALESCE(value_grain,'') || '|' || COALESCE(obs_stat,'') || '|' ||
  * COALESCE(unit_id,'')`）。テスト（`series.test.ts`）で b05 と同じ文字列になることを固定する。
@@ -104,7 +111,7 @@ const tupleGroups = new Map<string, TupleGroup>();
  * のため、意図的に同じ組が複数の dataset にまたがる。ここでは範囲外として無視する
  * （PR-1 の測定値系スコープは土地利用を含まない——design §1.1）。
  */
-const T4_GUARDED_DATASETS = new Set(["measurements", "sensor_timeseries"]);
+const T4_GUARDED_DATASETS = new Set([MEASUREMENTS_DATASET, SENSOR_DATASET]);
 
 for (const a of GENERATED_VARIABLE_ALIASES as readonly GeneratedVariableAlias[]) {
   if (!a.variableId) continue;
@@ -191,7 +198,7 @@ export function seriesForVariable(variableId: string, opt?: SeriesForVariableOpt
   return out;
 }
 
-const DEFAULT_DATASET = "measurements";
+const DEFAULT_DATASET = MEASUREMENTS_DATASET;
 
 /**
  * ある正準 variable_id の「代表系列」（PR-2 design §2.1・§0 決定4）。`seriesForVariable`

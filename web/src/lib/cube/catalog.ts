@@ -12,7 +12,7 @@ import type { CubeDb, SqlParam } from "./db";
 import { MAX_ID_LIST } from "./db";
 import { gridCellOfPlaceId, watershedIdOfPlaceId } from "./grid";
 import { USE_RECORD_VERNACULAR, labelMap, pickLabel, resolveNames } from "./occurrence";
-import { OCC_DEFAULT_FROM, OCC_DEFAULT_TO, YEAR_GRAINS, chunk, cmp, jsonEachParam, seriesFilterSql, uniq } from "./sql";
+import { IAS_SINCE_YEAR, OCC_DEFAULT_FROM, occDefaultTo, YEAR_GRAINS, chunk, cmp, jsonEachParam, seriesFilterSql, uniq } from "./sql";
 import { OCCURRENCE_AGG_INDEX } from "@/db/schema-cube";
 import { basisOfCell, isRepresentativeObsStat, seriesKeyFromRow, seriesKeySql, seriesKeyString, type SeriesKey } from "./series";
 
@@ -952,7 +952,7 @@ export async function taxonGroupYears(db: CubeDb, opt: { from?: number; to?: num
     `SELECT year, taxon_group, SUM(n) AS n, MAX(n_places) AS mesh_n
      FROM summary_group_year WHERE year BETWEEN ? AND ?
      GROUP BY year, taxon_group ORDER BY year, taxon_group`,
-    [opt.from ?? OCC_DEFAULT_FROM, opt.to ?? OCC_DEFAULT_TO],
+    [opt.from ?? OCC_DEFAULT_FROM, opt.to ?? occDefaultTo()],
   );
   return rows.map((r) => ({ year: r.year as number, taxonGroup: r.taxon_group as string, n: r.n as number, meshN: r.mesh_n as number }));
 }
@@ -973,7 +973,7 @@ export function effortRowV1(e: EffortYearRow) {
 
 /** v1 `effortYears`（窓の既定 1990〜2026）。`n_inat`/`n_gbif` は source 別の SUM(n)。 */
 export async function effortYears(db: CubeDb, opt: { from?: number; to?: number } = {}): Promise<EffortYearRow[]> {
-  const range = [opt.from ?? OCC_DEFAULT_FROM, opt.to ?? OCC_DEFAULT_TO];
+  const range = [opt.from ?? OCC_DEFAULT_FROM, opt.to ?? occDefaultTo()];
   const [eff, src] = await Promise.all([
     db.all<OccRow>(
       `SELECT year, n, n_binom, n_places FROM summary_effort_year WHERE year BETWEEN ? AND ? ORDER BY year`,
@@ -1109,13 +1109,16 @@ export interface IasSpeciesRow {
   meshN: number;
   yFrom: number | null;
   yTo: number | null;
-  nSince2020: number;
+  /** `IAS_SINCE_YEAR` 以降の記録数。 */
+  nSince: number;
+  /** `nSince` の起点年（`IAS_SINCE_YEAR`）。画面の見出しはここから出す。 */
+  sinceYear: number;
 }
 
 /**
  * v1 `iasSpecies`。`taxon_assessment`（`moe_ias_2015`・in_scope）の `binom` で
  * `summary_species_catalog` と結合（taxon_id 結合は 50 行しか出ない。§2.4）。
- * `n_since_2020` だけセルを `ix_occurrence_agg_taxon_period` で引く。同じ binom が
+ * `nSince`（IAS_SINCE_YEAR 以降）だけセルを `ix_occurrence_agg_taxon_period` で引く。同じ binom が
  * 2カテゴリに載るときは (category, binom) で返す。
  */
 export async function iasSpecies(db: CubeDb): Promise<IasSpeciesRow[]> {
@@ -1138,9 +1141,9 @@ export async function iasSpecies(db: CubeDb): Promise<IasSpeciesRow[]> {
        FROM json_each(?) j
        JOIN taxon t INDEXED BY ix_taxon_binomial ON t.canonical_binomial = j.value
        JOIN occurrence_agg o INDEXED BY ${OCCURRENCE_AGG_INDEX.taxonPeriod} ON o.taxon_id = t.taxon_id
-       WHERE o.place_kind = 'grid01' AND o.grain IN ${YEAR_GRAINS} AND o.period_start >= '2020'
+       WHERE o.place_kind = 'grid01' AND o.grain IN ${YEAR_GRAINS} AND o.period_start >= ?
        GROUP BY t.canonical_binomial`,
-      [jsonEachParam(part)],
+      [jsonEachParam(part), String(IAS_SINCE_YEAR)],
     );
     for (const r of rows) since.set(r.binom as string, r.n as number);
   }
@@ -1159,8 +1162,65 @@ export async function iasSpecies(db: CubeDb): Promise<IasSpeciesRow[]> {
       meshN: r.n_places as number,
       yFrom: r.y_from as number | null,
       yTo: r.y_to as number | null,
-      nSince2020: since.get(binom) ?? 0,
+      nSince: since.get(binom) ?? 0,
+      sinceYear: IAS_SINCE_YEAR,
     };
   });
   return out.sort((a, b) => b.n - a.n || cmp(a.binom, b.binom) || cmp(a.iasCategory, b.iasCategory));
+}
+
+/* ------------------------------------------------------------------ */
+/* 概況・流域・土地利用（Issue #48 PR-4 §3.3）                          */
+/* ------------------------------------------------------------------ */
+
+export interface OverviewCounts {
+  sites: number;
+  sources: number;
+  watersheds: number;
+  variables: number;
+  yFrom: number | null;
+  yTo: number | null;
+}
+
+export async function overviewCounts(_db: CubeDb): Promise<OverviewCounts> {
+  throw new Error("overviewCounts: not implemented");
+}
+
+/** 版の年ごとの km2。 */
+export interface LanduseCell {
+  from: number | null;
+  to: number | null;
+}
+
+export interface WatershedRollupRow {
+  watershedId: string;
+  waterSystemName: string | null;
+  areaKm2: number;
+  centroidLat: number;
+  centroidLon: number;
+  siteN: number;
+  /** org_* は watershedOccurrence（PR-3b）。 */
+  orgN: number;
+  orgAlienN: number;
+  orgRedlistN: number;
+  built: LanduseCell;
+  forest: LanduseCell;
+  paddy: LanduseCell;
+}
+
+export async function watershedRollup(
+  _db: CubeDb,
+): Promise<{
+  watersheds: WatershedRollupRow[];
+  landuseYears: { from: number; to: number } | null;
+  outsideWatershed: { n: number } | null;
+}> {
+  throw new Error("watershedRollup: not implemented");
+}
+
+export async function landuseHighlight(
+  _db: CubeDb,
+  _limit = 8,
+): Promise<{ watershedId: string; waterSystemName: string | null; delta: number; areaKm2: number }[]> {
+  throw new Error("landuseHighlight: not implemented");
 }

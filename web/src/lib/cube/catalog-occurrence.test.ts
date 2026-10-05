@@ -87,7 +87,7 @@ describe("iasSpecies", () => {
       ["その他の総合対策外来種", delta],
       ["総合対策外来種", delta],
     ]);
-    expect(rows[0]).toMatchObject({ n: 20, meshN: 1, yFrom: 2022, yTo: 2022, nSince2020: 20, nameJa: "デルタ", taxonGroup: "FxPlant" });
+    expect(rows[0]).toMatchObject({ n: 20, meshN: 1, yFrom: 2022, yTo: 2022, nSince: 20, sinceYear: 2020, nameJa: "デルタ", taxonGroup: "FxPlant" });
   });
 });
 

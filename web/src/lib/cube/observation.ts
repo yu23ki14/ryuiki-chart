@@ -12,7 +12,9 @@ import { buildScopeSql, OBS, seriesFilterSql, zoneExprSql, type Scope } from "./
 import {
   basisOf,
   labelYear,
+  MEASUREMENTS_DATASET,
   representativeSeries,
+  SENSOR_DATASET,
   seriesKeyFromRow,
   seriesKeySql,
   seriesKeyString,
@@ -638,7 +640,7 @@ export async function summarize(db: CubeDb, spec: CellSpec, by: SummarizeBy, opt
 /* 系列（代表系列・`basis`）に対する時系列の問い合わせ（PR-2 design §2.1・§2.2）        */
 /* ------------------------------------------------------------------ */
 
-const DEFAULT_DATASET = "measurements";
+const DEFAULT_DATASET = MEASUREMENTS_DATASET;
 
 /**
  * `variableId`/`stat` の代表系列一覧を解決する（`representativeSeries()` の薄い
@@ -860,7 +862,7 @@ export async function daySeries(db: CubeDb, opt: MonthDaySeriesOpt): Promise<Lim
 /* ------------------------------------------------------------------ */
 
 const RAIN_VARIABLE_ID = "common:variable:weather.precipitation";
-const RAIN_DATASET = "sensor_timeseries";
+const RAIN_DATASET = SENSOR_DATASET;
 
 function rainSeries(): SeriesInfo[] {
   return representativeSeries(RAIN_VARIABLE_ID, RAIN_DATASET, "representative");

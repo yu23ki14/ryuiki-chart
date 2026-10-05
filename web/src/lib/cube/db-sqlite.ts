@@ -36,6 +36,8 @@ export interface SqliteCubeDbPaths {
   v2: string;
   registry: string;
   ryuiki: string;
+  /** `cells.sqlite`（`cells`/`notes`/`documents`）。文書系列（`documents.ts`）に要るときだけ。 */
+  cells?: string;
 }
 
 function sqlString(path: string): string {
@@ -46,6 +48,8 @@ export function sqliteCubeDb(paths: SqliteCubeDbPaths): CubeDb & { close(): void
   const db = new Database(paths.v2, { readonly: true, fileMustExist: true });
   db.exec(`ATTACH DATABASE '${sqlString(paths.registry)}' AS reg`);
   db.exec(`ATTACH DATABASE '${sqlString(paths.ryuiki)}' AS r`);
+  // cells/notes/documents は ryuiki・v2・registry のどれとも表名が重ならない（非修飾で引ける）。
+  if (paths.cells) db.exec(`ATTACH DATABASE '${sqlString(paths.cells)}' AS cl`);
 
   db.pragma("query_only = ON");
 
