@@ -57,6 +57,13 @@
       "when": 1790488168270,
       "tag": "0007_awesome_cobalt_man",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1791204597996,
+      "tag": "0008_marvelous_midnight",
+      "breakpoints": true
     }
   ]
 }
