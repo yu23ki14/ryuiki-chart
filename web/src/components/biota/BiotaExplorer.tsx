@@ -127,10 +127,10 @@ function EffortTab() {
     <div className="space-y-4">
       <div className="card p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
         <Stat
-          label="生物レコード（全期間）"
+          label="日付のある生物レコード（全期間）"
           value={nf(data?.totals.records)}
           unit="件"
-          note={`GBIF ${nf(data?.totals.gbif)} / iNaturalist ${nf(data?.totals.inat)}`}
+          note={`GBIF ${nf(data?.totals.gbif)} / iNaturalist ${nf(data?.totals.inat)}（日付の無い記録は除く）`}
         />
         <Stat label="学名（二名法）の種類" value={nf(data?.totals.species)} note="亜種・変種を種にまとめた数" />
         <Stat label="記録のある1kmメッシュ" value={nf(data?.totals.mesh)} note="0.01度グリッド。県内をほぼ覆う" />
@@ -248,7 +248,7 @@ function TrendTab() {
   useSetPageContext({ route: "/biota", title: "生物相", tab: "trend", group, periodA: a, periodB: b, picked });
 
   const { data, loading, error } = useJson<{
-    rows: { binom: string; en_name: string; n_a: number; n_b: number; total_a: number; total_b: number }[];
+    rows: { binom: string; label: string; n_a: number; n_b: number; total_a: number; total_b: number }[];
   }>(`/api/biota?kind=trend&group=${encodeURIComponent(group)}&a0=${a[0]}&a1=${a[1]}&b0=${b[0]}&b1=${b[1]}`);
 
   const scored = React.useMemo(() => {
@@ -316,14 +316,14 @@ function TrendTab() {
             table={
               <MiniTable
                 columns={["種", `前期(‰)`, `後期(‰)`, "倍率", "前期件数", "後期件数"]}
-                rows={up.map((r) => [speciesLabel(r.binom, r.en_name), r.pa, r.pb, r.ratio, r.n_a, r.n_b])}
+                rows={up.map((r) => [speciesLabel(r.binom, r.label), r.pa, r.pb, r.ratio, r.n_a, r.n_b])}
               />
             }
           >
             <BarChart
               data={up.map((r) => ({
                 key: r.binom,
-                label: speciesLabel(r.binom, r.en_name),
+                label: speciesLabel(r.binom, r.label),
                 value: r.ratio,
                 note: r.binom,
               }))}
@@ -340,14 +340,14 @@ function TrendTab() {
             table={
               <MiniTable
                 columns={["種", `前期(‰)`, `後期(‰)`, "倍率", "前期件数", "後期件数"]}
-                rows={down.map((r) => [speciesLabel(r.binom, r.en_name), r.pa, r.pb, r.ratio, r.n_a, r.n_b])}
+                rows={down.map((r) => [speciesLabel(r.binom, r.label), r.pa, r.pb, r.ratio, r.n_a, r.n_b])}
               />
             }
           >
             <BarChart
               data={down.map((r) => ({
                 key: r.binom,
-                label: speciesLabel(r.binom, r.en_name),
+                label: speciesLabel(r.binom, r.label),
                 value: r.ratio,
                 note: r.binom,
               }))}

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { loadGeoJson } from "@/lib/geo";
 import { watershedRollup } from "@/lib/queries";
+import { d1CubeDb, watershedOccurrence } from "@/lib/cube";
 
 export const runtime = "nodejs";
 
@@ -8,10 +9,15 @@ export const runtime = "nodejs";
 export async function GET() {
   try {
     const fc = await loadGeoJson("watersheds.geojson");
-    const rollup = new Map((await watershedRollup()).map((r) => [r.watershed_id, r]));
+    // D2: 生物の件数だけ cube（流域のメモ化を退役）。面積・site_n・土地利用は PR-4 まで v1 の watershed_rollup。
+    const [rollupRows, occ] = await Promise.all([watershedRollup(), watershedOccurrence(await d1CubeDb())]);
+    const rollup = new Map(rollupRows.map((r) => [r.watershed_id, r]));
+    const occByWs = new Map(occ.watersheds.map((o) => [o.watershedId, o]));
     const features = fc.features.map((f) => {
       const id = String((f.properties as Record<string, unknown>).watershed_id ?? "");
       const r = rollup.get(id);
+      const orgN = occByWs.get(id)?.orgN ?? 0;
+      const orgRedlistN = occByWs.get(id)?.orgRedlistN ?? 0;
       const builtDelta =
         r?.built_km2_2016 != null && r?.built_km2_2006 != null ? r.built_km2_2016 - r.built_km2_2006 : null;
       const forestDelta =
@@ -27,9 +33,9 @@ export async function GET() {
           main_rivers: (f.properties as Record<string, unknown>).main_river_names_ja ?? null,
           area_km2: r?.area_km2 ?? null,
           site_n: r?.site_n ?? 0,
-          org_n: r?.org_n ?? 0,
-          org_redlist_n: r?.org_redlist_n ?? 0,
-          org_density: r?.area_km2 ? (r.org_n ?? 0) / r.area_km2 : 0,
+          org_n: orgN,
+          org_redlist_n: orgRedlistN,
+          org_density: r?.area_km2 ? orgN / r.area_km2 : 0,
           built_2016: r?.built_km2_2016 ?? null,
           built_delta: builtDelta,
           built_delta_pct:

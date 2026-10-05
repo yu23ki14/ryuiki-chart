@@ -171,8 +171,9 @@ measurements（測定値の生データ）や organism_records（生物観察の
 基準（検体値/年度集計値の混在）や観察努力バイアスの罠があります。代わりに意図ツールを使ってください。
 list_catalog / get_timeseries / get_seasonality / get_sites は観測キューブ（observation_agg）の
 事前集計（summary_variable_catalog / summary_place_variable）を経由し、定量下限未満の扱い（value_zero/value_lod）
-も両方の値として返します。get_biota_trend / get_redlist / get_overview / get_quality_progress はこれまで通り
-org_group_year / species_year2 / species_month / effort_year などの derived テーブルを使います。
+も両方の値として返します。get_biota_trend / get_redlist / get_overview の生物部分も同じく観測キューブ（occurrence_agg）と
+summary_species_catalog / summary_group_year / summary_effort_year / summary_grid_catalog / summary_watershed_occurrence、
+レッドリストは taxon_assessment から読みます（生物レコード数は「日付のある記録」だけ）。get_quality_progress は従来の derived テーブルです。
 run_sql を使うときも、可能な限りこれらの集計済みテーブル（derived 系・summary_* ）を優先してください。
 
 ## データの癖・注記（全文）

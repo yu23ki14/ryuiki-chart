@@ -25,21 +25,23 @@ import {
   site as cubeSite,
   sitesInWaterBody,
   waterBodies,
-  type CellSpec,
-  type Scope,
-} from "@/lib/cube";
-import { facetsForSeries, caveatKeysForFacets } from "@/lib/cube/caveats";
-import {
-  watershedRollup,
-  overviewStats,
   taxonGroupYears,
   effortYears,
+  occurrenceTotals,
+  watershedOccurrence,
   speciesShareTrend,
   speciesYears,
   speciesMonths,
   redlistFlows,
   redlistSpecies,
   redlistSummary,
+  type CellSpec,
+  type Scope,
+} from "@/lib/cube";
+import { facetsForSeries, facetsForOccurrence, caveatKeysForFacets } from "@/lib/cube/caveats";
+import {
+  watershedRollup,
+  overviewStats,
   qualityTotals,
   qualityMonthly,
   interventions,
@@ -538,16 +540,20 @@ const get_biota_trend = tool({
     }),
     z.object({
       mode: z.literal("species"),
-      binoms: z.array(z.string()).min(1).describe("学名（2語、例: Plecoglossus altivelis）の配列"),
+      binoms: z.array(z.string()).min(1).max(100).describe("学名（2語、例: Plecoglossus altivelis）の配列"),
     }),
   ]),
   execute: async (input) => {
     const t0 = performance.now();
+    const db = await d1CubeDb();
+    // 生物の注記は v1 表名ではなく facet（dataset=organism_records・place_kind=grid01）で決める。
+    const caveats = caveatKeysForFacets(facetsForOccurrence({ places: ["grid01"] }));
     if (input.mode === "groups") {
-      const [groups, effort] = await Promise.all([taxonGroupYears(), effortYears()]);
+      const [groups, effort] = await Promise.all([taxonGroupYears(db), effortYears(db)]);
       return makeResult({
         tool: "get_biota_trend",
-        tables: ["org_group_year", "effort_year"],
+        tables: ["summary_group_year", "summary_effort_year"],
+        caveats,
         data: { mode: "groups", groups, effort },
         rowCount: groups.length + effort.length,
         elapsedMs: performance.now() - t0,
@@ -555,20 +561,22 @@ const get_biota_trend = tool({
     }
     if (input.mode === "share") {
       const { group, periodA, periodB } = input;
-      const rows = await speciesShareTrend(group, periodA.from, periodA.to, periodB.from, periodB.to);
+      const rows = await speciesShareTrend(db, group, periodA, periodB);
       return makeResult({
         tool: "get_biota_trend",
-        tables: ["species_year2", "species2"],
+        tables: ["occurrence_agg", "summary_species_catalog"],
+        caveats,
         data: { mode: "share", group, periodA, periodB, rows },
         rowCount: rows.length,
         elapsedMs: performance.now() - t0,
       });
     }
     const { binoms } = input;
-    const [years, months] = await Promise.all([speciesYears(binoms), speciesMonths(binoms)]);
+    const [years, months] = await Promise.all([speciesYears(db, binoms), speciesMonths(db, binoms)]);
     return makeResult({
       tool: "get_biota_trend",
-      tables: ["species_year2", "species_month"],
+      tables: ["occurrence_agg", "summary_species_catalog"],
+      caveats,
       data: { mode: "species", binoms, years, months },
       rowCount: years.length + months.length,
       elapsedMs: performance.now() - t0,
@@ -592,14 +600,15 @@ const get_redlist = tool({
   }),
   execute: async ({ year, group, direction }) => {
     const t0 = performance.now();
+    const db = await d1CubeDb();
     const [summary, flows, species] = await Promise.all([
-      redlistSummary(),
-      redlistFlows(year, group),
-      redlistSpecies(year, direction, group, 300),
+      redlistSummary(db),
+      redlistFlows(db, year, group),
+      redlistSpecies(db, year, direction, group, 300),
     ]);
     return makeResult({
       tool: "get_redlist",
-      tables: ["redlist_change"],
+      tables: ["taxon_assessment"],
       data: { year, group, direction, summary, flows, species },
       rowCount: summary.length + flows.length + species.length,
       elapsedMs: performance.now() - t0,
@@ -618,23 +627,45 @@ const get_overview = tool({
   }),
   execute: async ({ limit }) => {
     const t0 = performance.now();
-    const [stats, rollupAll] = await Promise.all([overviewStats(), watershedRollup()]);
-    const rollup = [...rollupAll].sort((a, b) => (b.org_n ?? 0) - (a.org_n ?? 0)).slice(0, limit ?? 10);
+    const db = await d1CubeDb();
+    const [statsV1, rollupAll, occ, wsOcc] = await Promise.all([
+      overviewStats(),
+      watershedRollup(),
+      occurrenceTotals(db),
+      watershedOccurrence(db),
+    ]);
+    // 生物の件数・種数は cube（日付のある記録だけ。D3）。流域の面積・site_n・土地利用は PR-4 まで v1（D2）。
+    const stats = statsV1 ? { ...statsV1, n_org: occ.records, n_species: occ.species } : statsV1;
+    const occByWs = new Map(wsOcc.watersheds.map((o) => [o.watershedId, o]));
+    const rollup = rollupAll
+      .map((r) => {
+        const o = occByWs.get(r.watershed_id);
+        return { ...r, org_n: o?.orgN ?? 0, org_alien_n: o?.orgAlienN ?? 0, org_redlist_n: o?.orgRedlistN ?? 0 };
+      })
+      .sort((a, b) => b.org_n - a.org_n)
+      .slice(0, limit ?? 10);
+    const bioTables = ["summary_effort_year", "summary_species_catalog", "summary_watershed_occurrence"];
+    const v1Tables = [
+      "sites",
+      "measurements",
+      "events",
+      "sensor_timeseries",
+      "source_registry",
+      "watershed_meta",
+      "var_catalog",
+      "watershed_rollup",
+    ];
+    const caveats = [
+      ...new Set([
+        ...caveatKeysForTables(v1Tables),
+        ...caveatKeysForFacets(facetsForOccurrence({ places: ["grid01", "watershed"] })),
+      ]),
+    ];
     return makeResult({
       tool: "get_overview",
-      tables: [
-        "sites",
-        "measurements",
-        "organism_records",
-        "species2",
-        "events",
-        "sensor_timeseries",
-        "source_registry",
-        "watershed_meta",
-        "var_catalog",
-        "watershed_rollup",
-      ],
-      data: { stats, watersheds: rollup },
+      tables: [...v1Tables, ...bioTables],
+      caveats,
+      data: { stats, watersheds: rollup, outside_watershed_n: wsOcc.outsideWatershed?.n ?? 0 },
       rowCount: rollup.length + 1,
       elapsedMs: performance.now() - t0,
     });
