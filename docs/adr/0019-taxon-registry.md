@@ -168,6 +168,18 @@ taxon_assessment  assessment_id（PK）, list_id, list_year, taxon_id（NULL可�
    コード化経路を決定するデータ駆動の分岐に、`region`/`scope` は既知の
    地域ID（ADR-0002）に対する検証に使う。
 
+**2026-10-05 追記（Issue #48 PR-3b、D4: 記録由来の和名補完を表示名に使う）**: オーナー決定
+「使う」。`taxon.vernacular_ja_basis='records'`（12,024 件、種以下）の和名を、種の表示名の
+候補に含める。表示名は `NAME_JA`（`registry/taxon/vernacular_ja.csv`、人が確認した和名）→
+代表 taxon（`summary_taxon_catalog.n` が最大、同数は `taxon_id` 昇順）の和名 → 英名 → 学名の順で、
+`lib/cube` の `speciesLabels` の1箇所で決める。使わない場合は n≥80 の 1,702 種中 1,417 種（83%）の
+名前が変わり、うち 1,233 種が和名を失う（使う場合は 423 種・31 種）ため。残る危険（`taxa` 由来の
+地域個体群名が種の表示名になる事故。ホンドタヌキ・カブトムシの 2 件）は上書き
+（`vernacular_ja.csv`）で塞ぐ。採否は定数 `USE_RECORD_VERNACULAR`（`lib/cube/occurrence.ts`）1 箇所で
+切り替わり、serving-diff の期待値（`biota-expect.ts` の `EXPECT_RECORD_VERNACULAR`）と一致を
+テストで確かめる。名前が動く種数は既知の系統 `vernacular_label_rule` としてカテゴリ別に数える
+（[ADR-0029](0029-v1-removal-and-verification-handoff.md) 2026-10-05 追記）。本文は変えない。
+
 ## 背景（実測）
 
 生物データはこの基盤で最大のファクト（`occurrence` 823,692行）であり、

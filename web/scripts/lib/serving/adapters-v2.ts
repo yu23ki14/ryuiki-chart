@@ -39,9 +39,37 @@ import {
   type SeriesInfo,
   type AvgImputation,
   type CatalogSource,
+  // 生物系（PR-3b）。画面・API・AI が呼ぶ公開関数だけ（生 SQL を持たない。設計書 §5.4）。
+  speciesCatalog,
+  speciesLabels,
+  taxonGroupYears,
+  effortYears,
+  gridCatalog,
+  occurrenceTotals,
+  watershedOccurrence,
+  iasSpecies,
+  speciesYears,
+  speciesMonths,
+  speciesMeshYears,
+  speciesShareTrend,
+  meshByYear,
+  watershedYears,
+  watershedIdOfPlaceId,
+  redlistSummary,
+  redlistFlows,
+  redlistSpecies,
 } from "@/lib/cube";
 import { GENERATED_VARIABLE_ALIASES, type GeneratedVariableAlias } from "@/lib/registry/generated";
-import { toNormRows, type CompareSpec, type NormRow, type RawRow, type ScalarParam } from "./normalize";
+import {
+  parseTrendPeriods,
+  redlistGroupParam,
+  toNormRows,
+  withOrdinal,
+  type CompareSpec,
+  type NormRow,
+  type RawRow,
+  type ScalarParam,
+} from "./normalize";
 import { createCubeDbSingleton } from "./cube-db-singleton";
 
 export interface V2Paths {
@@ -283,6 +311,9 @@ function rainDailySumSpec(): CellSpec {
   const series: SeriesKey[] = seriesForAlias("sensor_timeseries", "RAIN");
   return { series, scope: { kind: "all_sites" }, grain: "day", stats: ["sum"], imputation: "zero", limit: UNLIMITED_CELL_LIMIT };
 }
+
+/** 「上位 N は比べない」問い合わせ（`species_catalog`/`species_labels`/`redlist_species`）の上限。 */
+const V2_NO_LIMIT = 1_000_000;
 
 async function fetchRawRows(
   db: CubeDb,
@@ -674,6 +705,127 @@ async function fetchRawRows(
       const series = representativeSeries(variableId, "measurements");
       const rows = await catalog.waterBodies(db, { series, source: catalogSource });
       return rows.map((r) => ({ name: r.name, n_sites: r.nSites, n: r.nMeas, y_from: r.yFrom, y_to: r.yTo, elev_max: r.elevMax }));
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* 生物系（Issue #48 PR-3b、`docs/plans/V2_SERVING_PR3B.md` §2.2・§3.2・§5.4）。   */
+    /* **`lib/cube` の公開関数だけ**を、画面・API・AI と同じ既定値（窓 1990〜2026・    */
+    /* n≥80・`records` 補完の定数）で呼ぶ。列名を v1 に揃えて返すだけで、SQL も        */
+    /* 表名も持たない（`adapters-v2.test.ts` がソースを検査する）。上限は「上位 N を    */
+    /* 比べない」ために十分大きく取る。                                              */
+    /* ------------------------------------------------------------------ */
+
+    case "effort_years": {
+      const rows = await effortYears(db);
+      return rows.map((r) => ({ year: r.year, n: r.n, species_n: r.speciesN, mesh_n: r.meshN, n_inat: r.nInat, n_gbif: r.nGbif }));
+    }
+    case "taxon_group_years": {
+      const rows = await taxonGroupYears(db);
+      return rows.map((r) => ({ year: r.year, taxon_group: r.taxonGroup, n: r.n, mesh_n: r.meshN }));
+    }
+    case "species_catalog": {
+      const rows = await speciesCatalog(db, { limit: V2_NO_LIMIT, withNames: true });
+      return rows.map((r) => ({
+        binom: r.binom,
+        taxon_group: r.taxonGroup,
+        cls: r.class,
+        family: r.family,
+        n: r.n,
+        has_red_list: r.nRedList > 0 ? 1 : 0,
+        y_from: r.yFrom,
+        y_to: r.yTo,
+        n_years: r.nYears,
+        mesh_n: r.nPlaces,
+        label: r.label ?? r.binom,
+      }));
+    }
+    case "species_labels": {
+      const catalogRows = await speciesCatalog(db, { limit: V2_NO_LIMIT });
+      const labels = await speciesLabels(db, catalogRows.map((r) => r.binom));
+      return labels.map((l) => ({ binom: l.binom, label: l.label }));
+    }
+    case "species_years": {
+      const rows = await speciesYears(db, [String(params.binom)]);
+      return rows.map((r) => ({ year: r.year, n: r.n, mesh_n: r.meshN }));
+    }
+    case "species_months": {
+      const rows = await speciesMonths(db, [String(params.binom)]);
+      return rows.map((r) => ({ month: r.month, n: r.n }));
+    }
+    case "species_mesh_years": {
+      const rows = await speciesMeshYears(db, String(params.binom));
+      return rows.map((r) => ({ year: r.year, mlat: r.mlat, mlon: r.mlon, n: r.n }));
+    }
+    case "species_share_trend": {
+      const [a, b] = parseTrendPeriods(params.periods);
+      const rows = await speciesShareTrend(db, String(params.group), { from: a[0], to: a[1] }, { from: b[0], to: b[1] });
+      return rows.map((r) => ({ binom: r.binom, n_a: r.nA, n_b: r.nB, total_a: r.totalA, total_b: r.totalB, label: r.label }));
+    }
+    case "mesh_all": {
+      const rows = await gridCatalog(db);
+      return rows.map((r) => ({ mlat: r.mlat, mlon: r.mlon, n: r.n, rl_n: r.rlN, species_n: r.speciesN, rl_species_n: r.rlSpeciesN }));
+    }
+    case "mesh_by_year": {
+      const rows = await meshByYear(db, Number(params.year));
+      return rows.map((r) => ({ mlat: r.mlat, mlon: r.mlon, n: r.n, species_n: r.speciesN, rl_n: r.rlN }));
+    }
+    case "ias_species": {
+      const rows = await iasSpecies(db);
+      return rows.map((r) => ({
+        ias_category: r.iasCategory,
+        binom: r.binom,
+        name_ja: r.nameJa,
+        taxon_group: r.taxonGroup,
+        n: r.n,
+        mesh_n: r.meshN,
+        y_from: r.yFrom,
+        y_to: r.yTo,
+        n_since_2020: r.nSince2020,
+      }));
+    }
+    case "redlist_summary": {
+      const rows = await redlistSummary(db);
+      return rows.map((r) => ({ list_year: r.listYear, list_name: r.listName, taxon_group_ja: r.taxonGroupJa, direction: r.direction, n: r.n }));
+    }
+    case "redlist_flows": {
+      const rows = await redlistFlows(db, Number(params.list_year), redlistGroupParam(params.group));
+      return rows.map((r) => ({ prev_label: r.prevLabel, cur_label: r.curLabel, direction: r.direction, n: r.n }));
+    }
+    case "redlist_species": {
+      const rows = await redlistSpecies(db, Number(params.list_year), undefined, redlistGroupParam(params.group), V2_NO_LIMIT);
+      return withOrdinal(
+        rows.map((r) => ({
+          scientific_name: r.scientificName,
+          vernacular_name_ja: r.vernacularNameJa,
+          family_ja: r.familyJa,
+          taxon_group_ja: r.taxonGroupJa,
+          prev_label: r.prevLabel,
+          cur_label: r.curLabel,
+          prev_rank: r.prevRank,
+          cur_rank: r.curRank,
+          direction: r.direction,
+          national_category_ja: r.nationalCategoryJa,
+        })),
+        ["scientific_name", "vernacular_name_ja", "prev_label", "cur_label"],
+      );
+    }
+    case "biota_totals": {
+      const t = await occurrenceTotals(db);
+      return [{ records: t.records, species: t.species, mesh: t.grids, gbif: t.gbif, inat: t.inat }];
+    }
+    case "watershed_rollup": {
+      const { watersheds } = await watershedOccurrence(db);
+      return watersheds.map((w) => ({ watershed_id: w.watershedId, org_n: w.orgN, org_alien_n: w.orgAlienN, org_redlist_n: w.orgRedlistN }));
+    }
+    case "watershed_year": {
+      const rows = await watershedYears(db);
+      const out: RawRow[] = [];
+      for (const r of rows) {
+        const id = watershedIdOfPlaceId(r.placeId);
+        if (id === null) continue;
+        out.push({ watershed_id: id, year: r.year, n: r.n, species_n: r.speciesN, alien_n: r.nAlien, redlist_n: r.nRedList });
+      }
+      return out;
     }
 
     default:

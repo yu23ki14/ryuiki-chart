@@ -53,6 +53,7 @@ import {
   type ServingQueriesConfig,
 } from "./lib/serving/normalize";
 import { enumerateParams, runV1Query, usesMergeDisabled } from "./lib/serving/adapters-v1";
+import { BIOTA_QUERY_IDS, loadBiotaExpectations } from "./lib/serving/biota-expect";
 import { openV1CompatDb } from "./lib/serving/v1-compat";
 import * as mergeV1 from "./lib/serving/merge-v1";
 import {
@@ -61,6 +62,7 @@ import {
   computeRainRecompute,
   declaredMatchTag,
   findRottenDeclarations,
+  type BiotaExpectations,
   type ClassifyContext,
   type DeclaredKeyBuilder,
   type DeclaredLookup,
@@ -129,7 +131,9 @@ if (argv.expand !== undefined && argv.expand !== "all") {
 }
 const EXPAND = "all" as const;
 const ONLY_IDS = argv.only ? new Set(String(argv.only).split(",").map((s) => s.trim())) : null;
-const MUTATE_NAMES = argv.mutate ? String(argv.mutate).split(",").map((s) => s.trim()) : [];
+// `--mutate all` は全変異（`ALL_MUTATION_NAMES`）。`all` と個別名の併記は個別名を足さない（重複させない）。
+const MUTATE_RAW = argv.mutate ? String(argv.mutate).split(",").map((s) => s.trim()) : [];
+const MUTATE_NAMES = MUTATE_RAW.includes("all") ? [...ALL_MUTATION_NAMES] : MUTATE_RAW;
 const V1_SOURCE = (argv["v1-source"] as string) === "v1_projection" ? "v1_projection" : "derived";
 const V1COMPAT_DB = argv["v1compat-db"] ? path.resolve(REPO_ROOT, String(argv["v1compat-db"])) : undefined;
 // `reports/serving_switch_diff.{md,json}` はリポジトリ直下（design: `docs/plans/V2_SERVING_PR1.md`・
@@ -163,6 +167,9 @@ if (V1_SOURCE === "v1_projection") {
 const V2_DB_PATH = path.join(DB_DIR, "v2.sqlite");
 const REGISTRY_DB_PATH = process.env.RYUIKI_REGISTRY_DB ?? path.join(DB_DIR, "registry.sqlite");
 const RYUIKI_DB_PATH = path.join(DB_DIR, "ryuiki.sqlite");
+// 生物系の期待値（`biota-expect.ts`）の入力。b08 が書く exact 表（`org_watershed_*_exact`）と人が確認した和名の台帳。
+const V1_OCCURRENCE_DB_PATH = path.join(DB_DIR, "v1_projection_occurrence.sqlite");
+const VERNACULAR_CSV_PATH = path.join(REPO_ROOT, "registry", "taxon", "vernacular_ja.csv");
 
 /* ------------------------------------------------------------------ */
 /* v2 の鮮度チェック（起動時に拒否）                                      */
@@ -254,6 +261,8 @@ const DECLARED_KEY_BUILDERS: Record<string, DeclaredKeyBuilder> = {
   site_variables: (p, k) => [p.site_id, k[0], k[1]],
   climatology: (p, k) => [p.alias, k[0]],
   variable_catalog: (_p, k) => [k[0]],
+  // 生物系（PR-3b）: `species2`（v1 の種カタログ）の宣言は binom 1 列がキー（Sirosporium celtidis の `cls`）。
+  species_catalog: (_p, k) => [k[0]],
 };
 
 function declaredLookupFor(def: QueryDef): DeclaredLookup {
@@ -409,6 +418,8 @@ interface RunOutcome {
   unexplained: UnexplainedSample[];
   matchedDeclared: Map<string, Set<string>>; // table -> matched tag set
   exceptions: { id: string; params: Record<string, ScalarParam>; message: string }[];
+  /** `vernacular_label_rule` が説明した表示名の動き（問い合わせ id → 文字種の遷移 → 件数）。 */
+  labelMoved: Record<string, Record<string, number>>;
 }
 
 async function main() {
@@ -445,6 +456,16 @@ async function main() {
         "由来する場合でも unexplained に数えられる）。",
     );
   }
+
+  // 生物系の5規則の期待値（L2・registry・`ryuiki.sqlite`・b08 の exact 表から別 SQL で作る。`lib/cube` を
+  // 通さない）。回す問い合わせに必要なものだけ読む（`--only` で生物系を回さなければ何も読まない）。
+  // 読めなければ止める（期待値が無いまま回すと、生物系の差が全部 unexplained に見えて原因が分かりにくい）。
+  const biota: BiotaExpectations | undefined = V1_ONLY
+    ? undefined
+    : loadBiotaExpectations(
+        { v2: V2_DB_PATH, registry: REGISTRY_DB_PATH, ryuiki: RYUIKI_DB_PATH, v1Occurrence: V1_OCCURRENCE_DB_PATH, vernacularCsv: VERNACULAR_CSV_PATH },
+        queryDefs.map((q) => q.id),
+      );
 
   const t0 = Date.now();
 
@@ -578,8 +599,9 @@ async function main() {
       // 内）が「合成データの除外」と「zero→lod」の両方が重なった差分も
       // まとめて説明する（`diff.v1 !== diff.v2` は `RowDiff` の定義上すでに
       // 真なので、この既存チェックは特別な追加条件なしに両対応する）。
+      // 生物系（`BIOTA_QUERY_IDS`）は合成データの除外と無関係なので第2接続では流さない。
       let v2CompatByKey: ReadonlyMap<string, NormRow> | undefined;
-      if (v1CompatDb) {
+      if (v1CompatDb && !BIOTA_QUERY_IDS.has(def.id)) {
         try {
           // 既定の `{kind:'summary'}` のまま呼ぶ（画面・API・AI と同じ経路）。
           // `scripts/b13_build_summary.py` を v1compat 段にも足したので
@@ -596,8 +618,9 @@ async function main() {
 
       // `lod_imputation`（design §3 #1）用: `--imputation lod` のときだけ、
       // 同じ問い合わせを imputation=zero でも引く（v1 と比べる基準値）。
+      // 生物系は imputation に依らない（重い問い合わせを2回流さない）。
       let v2ZeroByKey: ReadonlyMap<string, NormRow> | undefined;
-      if (IMPUTATION === "lod") {
+      if (IMPUTATION === "lod" && !BIOTA_QUERY_IDS.has(def.id)) {
         try {
           const zeroRows = await v2!.runV2Query(v2Db!, def.id, params, def.compare, "zero");
           v2ZeroByKey = rowsByKey(zeroRows);
@@ -668,6 +691,7 @@ async function main() {
       stats.set(def.id, s);
     }
     const unexplained: UnexplainedSample[] = [];
+    const labelMoved: Record<string, Record<string, number>> = {};
     const matchedDeclared = new Map<string, Set<string>>();
     const exceptions = [...fetchExceptions];
     const mergeDisabled = !!rowMutationName && isV1Mutation(rowMutationName);
@@ -721,6 +745,8 @@ async function main() {
       }
 
       const ctx: ClassifyContext = {
+        queryId: def.id,
+        biota,
         expected,
         declared: declaredLookupByDefId.get(def.id)!,
         params,
@@ -741,6 +767,10 @@ async function main() {
       for (const diff of diffs) {
         const c = classifyDiff(diff, ctx);
         addClassification(s, c.rules);
+        for (const move of c.labelMoves ?? []) {
+          const byCat = (labelMoved[def.id] ??= {});
+          byCat[move] = (byCat[move] ?? 0) + 1;
+        }
         // `c.declaredMatches`（段1で使われた宣言。overall unexplained でも
         // 載っている——`classify.ts` の `Classification.declaredMatches` docstring
         // 参照）を「腐り」判定の消費済みキーとして記録する。
@@ -755,7 +785,7 @@ async function main() {
       }
     }
 
-    return { stats, unexplained, matchedDeclared, exceptions };
+    return { stats, unexplained, matchedDeclared, exceptions, labelMoved };
   }
 
   /* -------------------------------- 通常実行 -------------------------------- */
@@ -809,6 +839,7 @@ async function main() {
     stats: [...outcome.stats.values()],
     unexplainedSamples: outcome.unexplained,
     rottenDeclarations: rotten,
+    labelMoved: outcome.labelMoved,
     mutationResults,
   };
 
