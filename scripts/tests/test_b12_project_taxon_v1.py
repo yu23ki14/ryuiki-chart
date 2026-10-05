@@ -34,8 +34,10 @@ def _ta_row(
 def _build_registry(tmp_path, rows):
     registry_db = tmp_path / "registry.sqlite"
     conn = registry_common.create_registry_db(registry_db)
-    placeholders = ",".join("?" for _ in TAXON_ASSESSMENT_COLUMNS)
-    conn.executemany(f"INSERT INTO taxon_assessment VALUES ({placeholders})", rows)
+    cols = TAXON_ASSESSMENT_COLUMNS[: len(rows[0])] if rows else TAXON_ASSESSMENT_COLUMNS
+    conn.executemany(
+        f"INSERT INTO taxon_assessment ({', '.join(cols)}) VALUES ({','.join('?' for _ in cols)})", rows
+    )
     conn.commit()
     conn.close()
     return registry_db

@@ -5,7 +5,17 @@
  */
 import { describe, expect, it } from "vitest";
 import { rowsByKey, toNormRows, type NormRow } from "./normalize";
-import { classifyDiff, compareRuns, findRottenDeclarations, type ClassifyContext, type ExpectedDiffs } from "./classify";
+import {
+  binomMonthKey,
+  classifyDiff,
+  compareRuns,
+  findRottenDeclarations,
+  watershedYearKey,
+  type BiotaExpectations,
+  type ClassifyContext,
+  type ExpectedDiffs,
+  type KnownRule,
+} from "./classify";
 import {
   ALL_MUTATION_NAMES,
   applyClassifyMutation,
@@ -246,5 +256,156 @@ describe("分類器変異", () => {
     expect(isV1Mutation("merge_rule_off")).toBe(true);
     expect(isRowMutation("merge_rule_off")).toBe(false);
     expect(isClassifyMutation("merge_rule_off")).toBe(false);
+  });
+});
+
+/**
+ * 生物系の変異 9 種（PR-3b §3.3）。分類器変異は「規則を無効化すると説明が消える」、行変異は
+ * 「v2 を壊すと、規則が有効でも説明されない」ことを、`classify-biota.test.ts` と同じ最小フィクスチャで確かめる。
+ */
+describe("生物系の変異（PR-3b §3.3）", () => {
+  const ALL_BIOTA_KNOWN = new Set<KnownRule>([
+    "watershed_memo",
+    "species_n_definition",
+    "month_cell_membership",
+    "vernacular_label_rule",
+    "undated_excluded",
+  ]);
+
+  function unexplained(spec: { key: string[]; numeric: string[]; label: string[] }, v1: Record<string, unknown>[], v2: NormRow[], ctx: Partial<ClassifyContext>): number {
+    const full: ClassifyContext = { expected: {}, declared: { v1Table: null, builder: null }, params: {}, known: ALL_BIOTA_KNOWN, ...ctx };
+    const n1 = toNormRows(v1, spec.key, spec.numeric, spec.label);
+    return compareRuns(rowsByKey(n1), rowsByKey(v2)).map((d) => classifyDiff(d, full)).filter((c) => c.rules.size === 0).length;
+  }
+  const norm = (spec: { key: string[]; numeric: string[]; label: string[] }, rows: Record<string, unknown>[]) =>
+    toNormRows(rows, spec.key, spec.numeric, spec.label);
+
+  const WS = { key: ["watershed_id", "year"], numeric: ["n", "species_n", "alien_n", "redlist_n"], label: [] };
+  const wsBiota: BiotaExpectations = {
+    wsYear: new Map([[watershedYearKey("A", 2020), { n: 12, alienN: 0, redlistN: 0, speciesNameN: 5, speciesTaxonN: 7 }]]),
+  };
+  const wsV1 = [{ watershed_id: "A", year: 2020, n: 10, species_n: 5, alien_n: 0, redlist_n: 0 }];
+  const wsV2 = [{ watershed_id: "A", year: 2020, n: 12, species_n: 7, alien_n: 0, redlist_n: 0 }];
+
+  it("変異なしなら 2 規則で全部説明できる（以降の変異の比較元）", () => {
+    expect(unexplained(WS, wsV1, norm(WS, wsV2), { queryId: "watershed_year", biota: wsBiota })).toBe(0);
+  });
+
+  it("memo_rule_off: watershed_year が unexplained になる", () => {
+    const opts = applyClassifyMutation("memo_rule_off");
+    expect(unexplained(WS, wsV1, norm(WS, wsV2), { queryId: "watershed_year", biota: wsBiota, disabledRules: opts.disabledRules })).toBeGreaterThan(0);
+  });
+
+  it("species_n_rule_off: species_n だけの差（定義の違い）が unexplained になる", () => {
+    const opts = applyClassifyMutation("species_n_rule_off");
+    const biota: BiotaExpectations = { wsYear: new Map([[watershedYearKey("A", 2020), { n: 10, alienN: 0, redlistN: 0, speciesNameN: 5, speciesTaxonN: 7 }]]) };
+    const v2 = [{ ...wsV2[0], n: 10 }];
+    expect(unexplained(WS, wsV1, norm(WS, v2), { queryId: "watershed_year", biota })).toBe(0);
+    expect(unexplained(WS, wsV1, norm(WS, v2), { queryId: "watershed_year", biota, disabledRules: opts.disabledRules })).toBeGreaterThan(0);
+  });
+
+  it("month_rule_off: species_months が unexplained になる", () => {
+    const opts = applyClassifyMutation("month_rule_off");
+    const spec = { key: ["month"], numeric: ["n"], label: [] };
+    const biota: BiotaExpectations = { monthV1: new Map([[binomMonthKey("Fx a", 1), 10]]), monthV2: new Map([[binomMonthKey("Fx a", 1), 9]]) };
+    const ctx = { queryId: "species_months", params: { binom: "Fx a" }, biota };
+    expect(unexplained(spec, [{ month: 1, n: 10 }], norm(spec, [{ month: 1, n: 9 }]), ctx)).toBe(0);
+    expect(unexplained(spec, [{ month: 1, n: 10 }], norm(spec, [{ month: 1, n: 9 }]), { ...ctx, disabledRules: opts.disabledRules })).toBeGreaterThan(0);
+  });
+
+  it("label_rule_off: 表示名の違いが unexplained になる（species_labels/species_catalog/species_share_trend）", () => {
+    const opts = applyClassifyMutation("label_rule_off");
+    const spec = { key: ["binom"], numeric: [], label: ["label"] };
+    const biota: BiotaExpectations = { labels: new Map([["Fx a", "アルファ"]]) };
+    for (const queryId of ["species_labels", "species_catalog", "species_share_trend"]) {
+      const ctx = { queryId, biota };
+      expect(unexplained(spec, [{ binom: "Fx a", label: "別名" }], norm(spec, [{ binom: "Fx a", label: "アルファ" }]), ctx)).toBe(0);
+      expect(unexplained(spec, [{ binom: "Fx a", label: "別名" }], norm(spec, [{ binom: "Fx a", label: "アルファ" }]), { ...ctx, disabledRules: opts.disabledRules })).toBeGreaterThan(0);
+    }
+  });
+
+  it("undated_rule_off: biota_totals が unexplained になる", () => {
+    const opts = applyClassifyMutation("undated_rule_off");
+    const spec = { key: [], numeric: ["records", "species", "mesh", "gbif", "inat"], label: [] };
+    const biota: BiotaExpectations = { undated: { records: 6, gbif: 5, inat: 1 } };
+    const v1 = [{ records: 100, species: 10, mesh: 5, gbif: 80, inat: 20 }];
+    const v2 = norm(spec, [{ records: 94, species: 10, mesh: 5, gbif: 75, inat: 19 }]);
+    expect(unexplained(spec, v1, v2, { queryId: "biota_totals", biota })).toBe(0);
+    expect(unexplained(spec, v1, v2, { queryId: "biota_totals", biota, disabledRules: opts.disabledRules })).toBeGreaterThan(0);
+  });
+
+  it("label_wrong: 規則が有効でも、再計算と食い違うラベルは unexplained（規則が何でも説明する穴になっていない）", () => {
+    const spec = { key: ["binom"], numeric: [], label: ["label"] };
+    const biota: BiotaExpectations = { labels: new Map([["Fx a", "アルファ"], ["Fx b", "ベータ"]]) };
+    const v2raw = norm(spec, [{ binom: "Fx a", label: "アルファ" }, { binom: "Fx b", label: "ベータ" }]);
+    const ctx = { queryId: "species_labels", biota };
+    // v1 が別の名前（規則が説明する通常の差）→ 変異なしなら 0
+    const v1 = [{ binom: "Fx a", label: "旧名" }, { binom: "Fx b", label: "旧名2" }];
+    expect(unexplained(spec, v1, v2raw, ctx)).toBe(0);
+    const mutated = applyRowMutation("label_wrong", "species_labels", v2raw);
+    expect(mutated[0].label.label).not.toBe("アルファ");
+    expect(unexplained(spec, v1, mutated, ctx)).toBeGreaterThan(0);
+    // v1 = v2 で差が無かった行でも、変異で食い違えば拾う
+    expect(unexplained(spec, [{ binom: "Fx a", label: "アルファ" }, { binom: "Fx b", label: "ベータ" }], mutated, ctx)).toBeGreaterThan(0);
+  });
+
+  it("drop_species_rows: species_years の1種ぶんを落とすと row_only_in_v1 で unexplained", () => {
+    const spec = { key: ["year"], numeric: ["n", "mesh_n"], label: [] };
+    const v1 = [{ year: 2020, n: 5, mesh_n: 2 }, { year: 2021, n: 6, mesh_n: 2 }];
+    const v2 = norm(spec, v1);
+    expect(unexplained(spec, v1, v2, { queryId: "species_years", known: new Set() })).toBe(0);
+    const mutated = applyRowMutation("drop_species_rows", "species_years", v2);
+    expect(mutated).toHaveLength(0);
+    expect(unexplained(spec, v1, mutated, { queryId: "species_years", known: new Set() })).toBeGreaterThan(0);
+  });
+
+  it("inflate_n: effort_years・mesh_by_year・ias_species の n を +1 すると説明できる規則が無く unexplained", () => {
+    const spec = { key: ["year"], numeric: ["n", "species_n"], label: [] };
+    const v1 = [{ year: 2020, n: 5, species_n: 2 }];
+    for (const queryId of ["effort_years", "mesh_by_year", "ias_species"]) {
+      const mutated = applyRowMutation("inflate_n", queryId, norm(spec, v1));
+      expect(mutated[0].numeric.n).toBe(6);
+      expect(unexplained(spec, v1, mutated, { queryId, known: new Set() })).toBeGreaterThan(0);
+    }
+    // 対象外の問い合わせでは no-op
+    const untouched = applyRowMutation("inflate_n", "species_years", norm(spec, v1));
+    expect(untouched[0].numeric.n).toBe(5);
+  });
+
+  it("month_off_by_one: species_months にも効く（月が1つずれて row_only になり、説明できない）", () => {
+    const spec = { key: ["month"], numeric: ["n"], label: [] };
+    expect(rowMutationAppliesTo("month_off_by_one", "species_months")).toBe(true);
+    const v1 = [{ month: 1, n: 5 }, { month: 2, n: 6 }];
+    // 期待値は v1 規則＝v2 規則（所属が原因の差は無い）ので、ずれた行は説明されない
+    const biota: BiotaExpectations = {
+      monthV1: new Map([[binomMonthKey("Fx a", 1), 5], [binomMonthKey("Fx a", 2), 6]]),
+      monthV2: new Map([[binomMonthKey("Fx a", 1), 5], [binomMonthKey("Fx a", 2), 6]]),
+    };
+    const ctx = { queryId: "species_months", params: { binom: "Fx a" }, biota };
+    const v2 = norm(spec, v1);
+    expect(unexplained(spec, v1, v2, ctx)).toBe(0);
+    const mutated = applyRowMutation("month_off_by_one", "species_months", v2);
+    expect(unexplained(spec, v1, mutated, ctx)).toBeGreaterThan(0);
+  });
+
+  it("生物系の行変異の対象問い合わせ（宣言表）", () => {
+    expect(rowMutationAppliesTo("label_wrong", "species_labels")).toBe(true);
+    expect(rowMutationAppliesTo("label_wrong", "species_catalog")).toBe(false);
+    expect(rowMutationAppliesTo("drop_species_rows", "species_years")).toBe(true);
+    expect(rowMutationAppliesTo("drop_species_rows", "year_series_site")).toBe(false);
+    for (const id of ["effort_years", "mesh_by_year", "ias_species"]) expect(rowMutationAppliesTo("inflate_n", id)).toBe(true);
+    expect(rowMutationAppliesTo("inflate_n", "mesh_all")).toBe(false);
+  });
+
+  it("9 変異が全部 ALL_MUTATION_NAMES にあり、種別が排他", () => {
+    for (const name of ["memo_rule_off", "species_n_rule_off", "month_rule_off", "label_rule_off", "undated_rule_off"]) {
+      expect(ALL_MUTATION_NAMES).toContain(name);
+      expect(isClassifyMutation(name)).toBe(true);
+    }
+    for (const name of ["label_wrong", "drop_species_rows", "inflate_n"]) {
+      expect(ALL_MUTATION_NAMES).toContain(name);
+      expect(isRowMutation(name)).toBe(true);
+    }
+    expect(ALL_MUTATION_NAMES).toContain("month_off_by_one");
   });
 });

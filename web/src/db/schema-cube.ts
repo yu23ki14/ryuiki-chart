@@ -83,6 +83,18 @@ export const observationAgg = sqliteTable(
 	],
 );
 
+// `occurrence_agg` の索引名（Issue #48 PR-3b §6-1）。taxon 引きの問い合わせは
+// `INDEXED BY ${OCCURRENCE_AGG_INDEX.taxonPeriod}` を付ける（第3索引
+// `kindGrainPeriod` がプランナに選ばれて 100 秒超かかる罠の回避。設計書 §0-2）——
+// `INDEXED BY` は索引が無いと実行時エラーになるので、名前はここ1箇所に置き、
+// `scripts/b07_build_occurrence_cube.py` の `OCCURRENCE_AGG_INDEXES` と
+// `scripts/tests/test_cube_index_parity.py` が一致を機械検証する。
+export const OCCURRENCE_AGG_INDEX = {
+	taxonPeriod: "ix_occurrence_agg_taxon_period",
+	placePeriod: "ix_occurrence_agg_place_period",
+	kindGrainPeriod: "ix_occurrence_agg_kind_grain_period",
+} as const;
+
 /**
  * 生物出現のキューブ（`organism_records` → `occurrence` → このキューブ。
  * ADR-0025 D2）。次元キー8列＋値3列（`n`/`n_red_list`/`n_alien`）＋来歴2列の
@@ -127,9 +139,9 @@ export const occurrenceAgg = sqliteTable(
 		specVersion: text("spec_version").notNull(),
 	},
 	(table) => [
-		index("ix_occurrence_agg_taxon_period").on(table.taxonId, table.periodStart),
-		index("ix_occurrence_agg_place_period").on(table.placeId, table.periodStart),
-		index("ix_occurrence_agg_kind_grain_period").on(table.placeKind, table.grain, table.periodStart),
+		index(OCCURRENCE_AGG_INDEX.taxonPeriod).on(table.taxonId, table.periodStart),
+		index(OCCURRENCE_AGG_INDEX.placePeriod).on(table.placeId, table.periodStart),
+		index(OCCURRENCE_AGG_INDEX.kindGrainPeriod).on(table.placeKind, table.grain, table.periodStart),
 	],
 );
 
@@ -252,4 +264,90 @@ export const summaryWatershedOccurrence = sqliteTable(
 		specVersion: text("spec_version").notNull(),
 	},
 	(table) => [index("ix_summary_watershed_occurrence_place").on(table.placeId)],
+);
+
+/**
+ * 以下4表は Issue #48 PR-3b（D1）で足した binom 単位（`taxon.canonical_binomial`）の
+ * summary。`occurrence_agg` を `registry.sqlite` の `taxon` と結合して作る
+ * （`aggregations/serving.yaml` の `join: {taxon: registry}`。v1 の「二名法キーの
+ * DISTINCT」と同じ種数を出すため）。いずれも最終粒度の表で再集計しない。
+ * 列は YAML の宣言（group_by＋measures）と1対1——ここを触ったら YAML と
+ * `scripts/b13_build_summary.py` も合わせて直すこと。
+ *
+ * 種カタログ（v1 `species2` の後継）。キーは `binom`（binom が取れない taxon・
+ * `taxon_id IS NULL` の行は含まない）。`taxon_group`/`class`/`family` は v1 の
+ * `MAX(...)` と同じ規則。
+ */
+export const summarySpeciesCatalog = sqliteTable(
+	"summary_species_catalog",
+	{
+		binom: text(),
+		taxonGroup: text("taxon_group"),
+		class: text(),
+		family: text(),
+		n: integer().notNull(),
+		nRedList: integer("n_red_list").notNull(),
+		nAlien: integer("n_alien").notNull(),
+		nPlaces: integer("n_places").notNull(),
+		yFrom: integer("y_from"),
+		yTo: integer("y_to"),
+		nYears: integer("n_years").notNull(),
+		builtFrom: text("built_from").notNull(),
+		specVersion: text("spec_version").notNull(),
+	},
+	(table) => [index("ix_summary_species_catalog_binom").on(table.binom)],
+);
+
+/**
+ * 年×分類群×出典（v1 `org_group_year` の後継）。`taxon_id` が NULL・`taxon_group` が
+ * NULL のセルは `taxon_group='未判定'`。年の窓（1970〜2026）は持たない（問い合わせの
+ * WHERE で掛ける）。`n_places` は grid01 の DISTINCT。
+ */
+export const summaryGroupYear = sqliteTable(
+	"summary_group_year",
+	{
+		year: integer(),
+		taxonGroup: text("taxon_group"),
+		sourceId: text("source_id"),
+		n: integer().notNull(),
+		nBinom: integer("n_binom").notNull(),
+		nPlaces: integer("n_places").notNull(),
+		builtFrom: text("built_from").notNull(),
+		specVersion: text("spec_version").notNull(),
+	},
+	(table) => [index("ix_summary_group_year_year").on(table.year)],
+);
+
+/**
+ * 年ごとの努力量（v1 `effort_year` の後継）。`n_inat`/`n_gbif` は持たない——n は
+ * 加法なので `summary_group_year` の `source_id` 別 `SUM(n)` から正確に引ける。
+ */
+export const summaryEffortYear = sqliteTable(
+	"summary_effort_year",
+	{
+		year: integer(),
+		n: integer().notNull(),
+		nBinom: integer("n_binom").notNull(),
+		nPlaces: integer("n_places").notNull(),
+		builtFrom: text("built_from").notNull(),
+		specVersion: text("spec_version").notNull(),
+	},
+);
+
+/**
+ * グリッド通年（v1 `mesh_all`＋`mesh_species` の後継）。`n`/`n_red_list` は v1
+ * `mesh_all` の窓（年 1970〜2026）を焼いてある（窓外のセルだけのグリッドは n=0 で
+ * 1行出る）。`n_binom`/`n_red_binom` は v1 `mesh_species` と同じく窓なし。
+ */
+export const summaryGridCatalog = sqliteTable(
+	"summary_grid_catalog",
+	{
+		placeId: text("place_id"),
+		n: integer().notNull(),
+		nRedList: integer("n_red_list").notNull(),
+		nBinom: integer("n_binom").notNull(),
+		nRedBinom: integer("n_red_binom").notNull(),
+		builtFrom: text("built_from").notNull(),
+		specVersion: text("spec_version").notNull(),
+	},
 );

@@ -17,7 +17,7 @@ Phase A（`docs/plans/PHASE_A.md`, ADR-0016）の成果物。v1 のファクト�
 | `place/site_supplement.csv` | `sites` テーブルに無い観測地点の補完（143件）。`place_local` 列は、
   `site_id` の局番コード部分（`"__"` の後ろ）が空文字で自動導出できない行にだけ
   明示の local を持たせる列（後述「空の局番コード」参照）。他の142行は空欄 |
-| `taxon/vernacular_ja.csv` | 人手確認済みの和名54件（`domain.ts` の `NAME_JA` の複製） |
+| `taxon/vernacular_ja.csv` | 人手確認済みの和名63件（`domain.ts` の `NAME_JA` の複製54件＋Issue #48 PR-3b D4 で足した上書き9件。出典列は `issue48-pr3b:D4`） |
 | `taxon/taxon_group.yaml` | 生物群の日本語ラベル（`taxon_group`）の先勝ちルール表。`web/scripts/build-biota.mjs` の `TAXON_GROUP` CASE式をデータ化したもの（Phase B `phase-b/occurrence-registry`、後述「taxon の分類補完」） |
 | `caveat.yaml` | 注記18件（`domain.ts` の `DATA_CAVEATS`/`BIOTA_CAVEATS` 等の移設14件＋Phase B以降の新規4件: `landuseDefinitionChange`・`aboveLod`・`censoredLod`・`unitUnknown`） |
 
@@ -440,7 +440,7 @@ Latin-1 Supplement/Latin Extended-A・B の字母 ∪ 曲線引用符 `’`）�
 **和名の記録由来補完（D4）**: 同じ集計から非ラテン文字（ひらがな・カタカナ・CJK
 等）の最頻値を、`vernacular_name_ja` が **NULL の行にだけ**埋める。根拠列
 `vernacular_ja_basis`（`override`/`taxa`/`records`）で出処を残す。優先順は
-override（`registry/taxon/vernacular_ja.csv` の人手確認済み54件）> taxa（`taxa`
+override（`registry/taxon/vernacular_ja.csv` の人手確認済み63件）> taxa（`taxa`
 由来）> records（この補完）——override は taxa 由来の値があっても無条件に
 上書きする一方、records 補完は NULL の行にしか適用しないので、**既存の値は
 1件も変えない**（実データ・pytest 双方でこの不変条件を確認する。

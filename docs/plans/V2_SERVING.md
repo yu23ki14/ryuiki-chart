@@ -273,7 +273,9 @@ U4「serving-diff」は未着手）
 
 ### PR-3b 生物系の切り替え（値が動く）
 
-状態: 未着手
+状態: 実装中（設計は [docs/plans/V2_SERVING_PR3B.md](V2_SERVING_PR3B.md)。serving-diff 側〔U4〕は
+実装済み: 生物系 17 問い合わせ・既知の系統 5 規則・変異 9 種・`biota-expect.ts`〔独立な期待値〕。
+全量の serving-diff は統合後に1回回す。ADR-0011/0019/0026/0029 に 2026-10-05 追記）
 
 - `/biota` / `/map`（mesh・watersheds）/ home、AI の `get_biota_trend` / `get_redlist` /
   `get_overview` を切り替える。

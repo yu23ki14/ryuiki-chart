@@ -57,14 +57,19 @@ exports[`buildSystemPrompt > pageContext 無し 1`] = `
 - observation_agg（観測キューブDB）: 観測キューブ。(variable_id, place_id, grain, stat, period_start) 単位のセル。value_zero/value_lod の両方を持つ。画面・意図ツールは直接読まず summary_* 経由で読む
 - summary_variable_catalog（観測キューブDB）: 指標カタログの事前集計。variable_id 単位（束ねる前）で observation_agg の年グレイン・stat='mean' セルを集計したもの。list_catalog(what='variables') の元
 - summary_place_variable（観測キューブDB）: 地点×指標の事前集計。(place_id, variable_id, obs_stat, unit_id, value_grain) 単位でobservation_agg の年グレイン・stat='mean' セルを集計したもの。get_sites/site_var 相当の元
+- summary_species_catalog（観測キューブDB）: 種カタログの事前集計。学名（二名法 binom）単位の記録数・レッドリスト/外来種の記録数・出現グリッド数・出現年。日付のある生物レコードだけ。species2 相当。n>=80 の足切りの元
+- summary_group_year（観測キューブDB）: 分類群×年×出典の事前集計（記録数・種数・グリッド数）。日付のある生物レコードだけ。org_group_year 相当
+- summary_effort_year（観測キューブDB）: 年ごとの観察努力（記録数・種数・グリッド数）の事前集計。日付のある生物レコードだけ。effort_year 相当
+- summary_grid_catalog（観測キューブDB）: 0.01度グリッドごとの記録数・レッドリスト記録数・種数（年1970〜2026の窓）の事前集計。mesh_all 相当
 
 ## 意図ツール（キューブ・summary）を使う
 measurements（測定値の生データ）や organism_records（生物観察の生データ）を直接 GROUP BY で集計しないでください。
 基準（検体値/年度集計値の混在）や観察努力バイアスの罠があります。代わりに意図ツールを使ってください。
 list_catalog / get_timeseries / get_seasonality / get_sites は観測キューブ（observation_agg）の
 事前集計（summary_variable_catalog / summary_place_variable）を経由し、定量下限未満の扱い（value_zero/value_lod）
-も両方の値として返します。get_biota_trend / get_redlist / get_overview / get_quality_progress はこれまで通り
-org_group_year / species_year2 / species_month / effort_year などの derived テーブルを使います。
+も両方の値として返します。get_biota_trend / get_redlist / get_overview の生物部分も同じく観測キューブ（occurrence_agg）と
+summary_species_catalog / summary_group_year / summary_effort_year / summary_grid_catalog / summary_watershed_occurrence、
+レッドリストは taxon_assessment から読みます（生物レコード数は「日付のある記録」だけ）。get_quality_progress は従来の derived テーブルです。
 run_sql を使うときも、可能な限りこれらの集計済みテーブル（derived 系・summary_* ）を優先してください。
 
 ## データの癖・注記（全文）

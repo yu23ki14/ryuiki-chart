@@ -163,3 +163,17 @@ export function facetsForSeries(series: readonly SeriesFacetInput[], scope: Scop
 
   return refs;
 }
+
+/**
+ * 生物出現（`occurrence_agg`）を引く画面・API・AI の facet（Issue #48 PR-3b、§2.2）。
+ * `dataset=organism_records` を常に、`place_kind=grid01` を grid01 を引くとき、
+ * `source_id=moe_ias_list` を IAS のときに積む（いずれも `registry/caveat.yaml`・
+ * `build_caveat.py` に既にある v2 facet）。v1 表名ベースの `table` は使わない（危険16件 #1）。
+ * `watershed` は専用の注記が無いので積まない（`organism_records` だけで足りる）。
+ */
+export function facetsForOccurrence(opt: { places: readonly ("grid01" | "watershed")[]; ias?: boolean }): FacetRef[] {
+  const refs: FacetRef[] = [{ kind: "dataset", ref: "organism_records" }];
+  if (opt.places.includes("grid01")) refs.push({ kind: "place_kind", ref: "grid01" });
+  if (opt.ias) refs.push({ kind: "source_id", ref: "moe_ias_list" });
+  return refs;
+}

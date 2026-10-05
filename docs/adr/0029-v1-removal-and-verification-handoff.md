@@ -13,6 +13,20 @@ alias→variable_id の束ねに対応する `*_by_variable` 系の新規問い�
 等）への実装は、この追記の時点ではまだ行っていない——PR-2 の serving-diff 単位（U4）で
 実装予定。本文は変えない。
 
+**2026-10-05 追記（Issue #48 PR-3b、生物系の5規則）**: 生物系の切り替えで値が動く点を、serving-diff の
+既知の系統として 5 つ足した（`web/scripts/lib/serving/classify.ts`。説明の鎖は「v1 →(規則)→
+独立に組んだ中間点 →(=)→ v2」。中間点は L2・registry・`ryuiki.sqlite`・b08 の exact 表から
+`biota-expect.ts` が**別 SQL で**再計算し、`lib/cube` を import しない）: (1) `watershed_memo`
+（流域のメモ化の退役。[ADR-0026](0026-occurrence-place-watershed.md)）、(2) `species_n_definition`
+（`org_watershed_year.species_n`＝学名全文 DISTINCT→`taxon_id` DISTINCT）、(3) `month_cell_membership`
+（月セルは同一月に収まる記録だけ。ADR-0024）、(4) `vernacular_label_rule`（表示名。
+[ADR-0019](0019-taxon-registry.md)。カテゴリ別の件数 `label_moved` をレポートに出す）、
+(5) `undated_excluded`（日付の無い記録 6,836 件が生物レコード数に入らない）。**どの規則も v2 が
+中間点と食い違えば説明しない**——`label_wrong`・`inflate_n` 等の変異で、規則が「何でも説明する穴」に
+なっていないことを毎回確かめる。v1 = v2 でなければならない問い合わせは `known` を空にし、1 件でも
+差が出れば unexplained にする。「鎖に特例を積まない」原則は変わらない。設計は
+`docs/plans/V2_SERVING_PR3B.md` §3。
+
 ## 背景
 
 [ADR-0027](0027-test-and-verification-strategy.md) の層2（縮小サンプル突合）・層3（全量の

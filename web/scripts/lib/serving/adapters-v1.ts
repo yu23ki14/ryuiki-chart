@@ -17,8 +17,12 @@ import Database from "better-sqlite3";
 import * as queries from "../../../src/lib/queries";
 import { query as v1RawQuery, ph } from "../v1-db-shim";
 import * as mergeV1 from "./merge-v1";
+import { speciesLabel } from "@/lib/registry/lookup-client";
 import {
   toNormRows,
+  parseTrendPeriods,
+  redlistGroupParam,
+  withOrdinal,
   type CompareSpec,
   type DomainDef,
   type NormRow,
@@ -230,6 +234,9 @@ async function highlightParams(variant: ScalarParam): Promise<[string, string]> 
   }
   return ["境川（１）", "生物化学的酸素要求量 BOD"];
 }
+
+/** v1 の `speciesList`/`redlistSpecies` に渡す「上限なし」（v1 は LIMIT を必ず取る）。 */
+const V1_NO_LIMIT = 1_000_000;
 
 async function fetchRawRows(
   id: string,
@@ -482,6 +489,69 @@ async function fetchRawRows(
         aliases,
       );
     }
+
+    /* ------------------------------------------------------------------ */
+    /* 生物系（Issue #48 PR-3b、`docs/plans/V2_SERVING_PR3B.md` §3.2）。          */
+    /* `queries.ts` の v1 関数を無変更で呼ぶ（`org_watershed_year` だけは関数が無い */
+    /* ので v1 表を直接読む）。表示名は v1 の画面と同じ `speciesLabel(binom, en_name)` */
+    /* （`NAME_JA ?? en_name ?? binom`）。                                      */
+    /* ------------------------------------------------------------------ */
+
+    case "effort_years":
+      return (await queries.effortYears()).map((r) => ({ ...r }));
+    case "taxon_group_years":
+      return (await queries.taxonGroupYears()).map((r) => ({ ...r }));
+    case "species_catalog": {
+      const rows = await queries.speciesList(null, V1_NO_LIMIT);
+      return rows.map((r) => ({
+        ...r,
+        has_red_list: r.red_list_category ? 1 : 0,
+        label: speciesLabel(r.binom, r.en_name),
+      }));
+    }
+    case "species_labels": {
+      const rows = await queries.speciesList(null, V1_NO_LIMIT);
+      return rows.map((r) => ({ binom: r.binom, label: speciesLabel(r.binom, r.en_name) }));
+    }
+    case "species_years":
+      return (await queries.speciesYears([String(params.binom)])).map((r) => ({ ...r }));
+    case "species_months":
+      return (await queries.speciesMonths([String(params.binom)])).map((r) => ({ ...r }));
+    case "species_mesh_years":
+      return (await queries.speciesMeshYears(String(params.binom))).map((r) => ({ ...r }));
+    case "species_share_trend": {
+      const [a, b] = parseTrendPeriods(params.periods);
+      const rows = await queries.speciesShareTrend(String(params.group), a[0], a[1], b[0], b[1]);
+      return rows.map((r) => ({ ...r, label: speciesLabel(r.binom, r.en_name) }));
+    }
+    case "mesh_all":
+      return (await queries.meshAll()).map((r) => ({ ...r }));
+    case "mesh_by_year":
+      return (await queries.meshByYear(Number(params.year))).map((r) => ({ ...r }));
+    case "ias_species":
+      return (await queries.iasSpecies()).map((r) => ({ ...r }));
+    case "redlist_summary":
+      return (await queries.redlistSummary()).map((r) => ({ ...r }));
+    case "redlist_flows":
+      return (await queries.redlistFlows(Number(params.list_year), redlistGroupParam(params.group))).map((r) => ({ ...r }));
+    case "redlist_species": {
+      const rows = await queries.redlistSpecies(Number(params.list_year), undefined, redlistGroupParam(params.group), V1_NO_LIMIT);
+      return withOrdinal(rows, ["scientific_name", "vernacular_name_ja", "prev_label", "cur_label"]);
+    }
+    case "biota_totals": {
+      const r = await queries.biotaTotals();
+      return r ? [{ records: r.records, species: r.species, mesh: r.mesh, gbif: r.gbif, inat: r.inat }] : [];
+    }
+    case "watershed_rollup": {
+      // v2 は 0 件の流域の行を返さない（`summary_watershed_occurrence` は記録のある流域だけ）。
+      // v1 の全 0 行は「どちらも 0」なので比べる対象から外す（`watershed_memo` の moved に数えない）。
+      const rows = await queries.watershedRollup();
+      return rows
+        .filter((r) => r.org_n !== 0 || r.org_alien_n !== 0 || r.org_redlist_n !== 0)
+        .map((r) => ({ watershed_id: r.watershed_id, org_n: r.org_n, org_alien_n: r.org_alien_n, org_redlist_n: r.org_redlist_n }));
+    }
+    case "watershed_year":
+      return v1RawQuery<RawRow>(`SELECT watershed_id, year, n, species_n, alien_n, redlist_n FROM org_watershed_year`);
 
     default:
       throw new Error(`v1 アダプタが未対応の問い合わせ id: ${id}`);

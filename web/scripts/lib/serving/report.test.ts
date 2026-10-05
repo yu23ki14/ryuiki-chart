@@ -105,4 +105,32 @@ describe("buildReportMarkdown/buildReportJson", () => {
     expect(md).toContain("変異テスト");
     expect(md).toContain("day_split_rule_off");
   });
+
+  it("生物系5規則の moved（キー数）と label_moved のカテゴリ別件数を出す（PR-3b §3.4-2）", () => {
+    const s1 = emptyQueryStats("watershed_year");
+    addClassification(s1, new Set(["watershed_memo", "species_n_definition"]));
+    addClassification(s1, new Set(["watershed_memo"]));
+    const s2 = emptyQueryStats("species_labels");
+    addClassification(s2, new Set(["vernacular_label_rule"]));
+    const input = {
+      header,
+      stats: [s1, s2],
+      unexplainedSamples: [],
+      rottenDeclarations: [],
+      labelMoved: { species_labels: { "日本語→日本語": 218, "日本語→学名のみ": 17 } },
+    };
+    const md = buildReportMarkdown(input);
+    expect(md).toContain("| watershed_memo | watershed_year | 2 |");
+    expect(md).toContain("| species_n_definition | watershed_year | 1 |");
+    expect(md).toContain("| vernacular_label_rule | species_labels | 1 |");
+    expect(md).toContain("| species_labels | 日本語→日本語 | 218 |");
+    const json = buildReportJson(input) as { totals: { watershed_memo: number }; labelMoved: Record<string, Record<string, number>> };
+    expect(json.totals.watershed_memo).toBe(2);
+    expect(json.labelMoved.species_labels["日本語→学名のみ"]).toBe(17);
+  });
+
+  it("生物系の規則が1件も無ければ（無し）と書く", () => {
+    const md = buildReportMarkdown({ header, stats: [emptyQueryStats("q")], unexplainedSamples: [], rottenDeclarations: [] });
+    expect(md).toContain("生物系の規則ごとの moved");
+  });
 });

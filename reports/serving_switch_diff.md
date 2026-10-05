@@ -1,44 +1,107 @@
 # serving-diff レポート
 
-- git HEAD: `2ebb02dd0d7c81d8834f8f878c1a1af5c033b588`
+- git HEAD: `57bf331744dfa89cad617c412bcfa7689d3e8710`
 - v2 pipeline_fingerprint: `phase-b-fact-slice/v1`
-- registry_build.input_fingerprint: `55a8c2c4c1409a691f31a2e25e21b4bd6d6db2b3fd0f7852837c7d6bd60613f2`
+- registry_build.input_fingerprint: `2112cfc3ff09e8fb6cef1be59783381f41bdb2cb8ca751cd702067415142fffa`
 - better-sqlite3 の SQLite 版: `3.53.4`
 - imputation: `zero` / expand: `all` / v1-source: `derived`
-- 生成日時: 2026-09-27T03:18:36.425Z
-- 所要時間: 185.8s
+- 生成日時: 2026-10-05T13:32:38.675Z
+- 所要時間: 242.4s
 
 ## 問い合わせごとの集計
 
-| id | runs | rows_v1 | rows_v2 | matched | declared | day_split | synthetic_excluded | lod_imputation | unit_label_registry | float_rounding | unexplained |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| variable_catalog | 1 | 58 | 58 | 24 | 1 | 0 | 5 | 0 | 30 | 0 | 0 |
-| sites_list | 1 | 352 | 352 | 328 | 0 | 0 | 24 | 0 | 0 | 0 | 0 |
-| site_variables | 250 | 8140 | 8114 | 3927 | 2 | 0 | 80 | 0 | 4149 | 0 | 0 |
-| water_bodies | 1 | 26 | 26 | 21 | 0 | 0 | 5 | 0 | 0 | 0 | 0 |
-| water_bodies_for_variable | 58 | 1092 | 1092 | 1078 | 0 | 0 | 14 | 0 | 0 | 0 | 0 |
-| sites_in_water_body | 26 | 127 | 127 | 115 | 0 | 0 | 12 | 0 | 0 | 0 | 0 |
-| year_series_site | 8140 | 116076 | 115918 | 44614 | 9 | 0 | 320 | 0 | 71187 | 0 | 0 |
-| month_series_site | 1966 | 127491 | 126163 | 125489 | 2 | 0 | 2002 | 0 | 0 | 0 | 0 |
-| day_series_site | 1966 | 139530 | 137350 | 137327 | 2 | 0 | 2203 | 0 | 0 | 0 | 0 |
-| year_series_water | 1432 | 81286 | 81250 | 30743 | 0 | 0 | 144 | 0 | 50435 | 0 | 0 |
-| zone_series | 61 | 3710 | 3692 | 1369 | 0 | 0 | 72 | 0 | 2281 | 0 | 0 |
-| climatology | 16 | 192 | 192 | 132 | 2 | 0 | 60 | 0 | 12 | 0 | 0 |
-| zone_climatology | 16 | 619 | 595 | 403 | 0 | 0 | 216 | 0 | 40 | 0 | 0 |
-| variable_catalog_by_variable | 1 | 53 | 53 | 21 | 1 | 0 | 5 | 0 | 28 | 0 | 0 |
-| site_variables_by_variable | 250 | 7573 | 7547 | 3519 | 2 | 0 | 80 | 0 | 3990 | 0 | 0 |
-| year_series_site_by_variable | 7569 | 105164 | 105006 | 39714 | 9 | 0 | 320 | 0 | 65175 | 0 | 0 |
-| month_series_site_by_variable | 1966 | 127491 | 126163 | 125489 | 2 | 0 | 2002 | 0 | 0 | 0 | 0 |
-| day_series_site_by_variable | 1966 | 139530 | 137350 | 137327 | 2 | 0 | 2203 | 0 | 0 | 0 | 0 |
-| zone_series_by_variable | 159 | 3389 | 3371 | 1208 | 0 | 0 | 72 | 0 | 2121 | 0 | 0 |
-| climatology_by_variable | 53 | 192 | 192 | 132 | 2 | 0 | 60 | 0 | 12 | 0 | 0 |
-| zone_climatology_by_variable | 53 | 619 | 595 | 403 | 0 | 0 | 216 | 0 | 40 | 0 | 0 |
-| water_bodies_for_variable_by_variable | 53 | 978 | 978 | 964 | 0 | 0 | 14 | 0 | 0 | 0 | 0 |
-| rain_monthly_clim | 1 | 12 | 12 | 0 | 0 | 12 | 0 | 0 | 0 | 0 | 0 |
-| longitudinal_highlight | 2 | 23 | 23 | 23 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| id | runs | rows_v1 | rows_v2 | matched | declared | day_split | synthetic_excluded | lod_imputation | unit_label_registry | float_rounding | watershed_memo | species_n_definition | month_cell_membership | vernacular_label_rule | undated_excluded | unexplained |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| variable_catalog | 1 | 58 | 58 | 24 | 1 | 0 | 5 | 0 | 30 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| sites_list | 1 | 352 | 352 | 328 | 0 | 0 | 24 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| site_variables | 250 | 8140 | 8114 | 3927 | 2 | 0 | 80 | 0 | 4149 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| water_bodies | 1 | 26 | 26 | 21 | 0 | 0 | 5 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| water_bodies_for_variable | 58 | 1092 | 1092 | 1078 | 0 | 0 | 14 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| sites_in_water_body | 26 | 127 | 127 | 115 | 0 | 0 | 12 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| year_series_site | 8140 | 116076 | 115918 | 44614 | 9 | 0 | 320 | 0 | 71187 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| month_series_site | 1966 | 127491 | 126163 | 125489 | 2 | 0 | 2002 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| day_series_site | 1966 | 139530 | 137350 | 137327 | 2 | 0 | 2203 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| year_series_water | 1432 | 81286 | 81250 | 30743 | 0 | 0 | 144 | 0 | 50435 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| zone_series | 61 | 3710 | 3692 | 1369 | 0 | 0 | 72 | 0 | 2281 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| climatology | 16 | 192 | 192 | 132 | 2 | 0 | 60 | 0 | 12 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| zone_climatology | 16 | 619 | 595 | 403 | 0 | 0 | 216 | 0 | 40 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| variable_catalog_by_variable | 1 | 53 | 53 | 21 | 1 | 0 | 5 | 0 | 28 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| site_variables_by_variable | 250 | 7573 | 7547 | 3519 | 2 | 0 | 80 | 0 | 3990 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| year_series_site_by_variable | 7569 | 105164 | 105006 | 39714 | 9 | 0 | 320 | 0 | 65175 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| month_series_site_by_variable | 1966 | 127491 | 126163 | 125489 | 2 | 0 | 2002 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| day_series_site_by_variable | 1966 | 139530 | 137350 | 137327 | 2 | 0 | 2203 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| zone_series_by_variable | 159 | 3389 | 3371 | 1208 | 0 | 0 | 72 | 0 | 2121 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| climatology_by_variable | 53 | 192 | 192 | 132 | 2 | 0 | 60 | 0 | 12 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| zone_climatology_by_variable | 53 | 619 | 595 | 403 | 0 | 0 | 216 | 0 | 40 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| water_bodies_for_variable_by_variable | 53 | 978 | 978 | 964 | 0 | 0 | 14 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| rain_monthly_clim | 1 | 12 | 12 | 0 | 0 | 12 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| longitudinal_highlight | 2 | 23 | 23 | 23 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| effort_years | 1 | 37 | 37 | 37 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| taxon_group_years | 1 | 588 | 588 | 588 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| species_catalog | 1 | 23618 | 23618 | 20780 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 2837 | 0 | 0 |
+| species_labels | 1 | 23618 | 23618 | 20781 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 2837 | 0 | 0 |
+| species_years | 1702 | 31955 | 31955 | 31955 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| species_months | 1702 | 9997 | 9997 | 9978 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 19 | 0 | 0 | 0 |
+| species_mesh_years | 1702 | 276163 | 276163 | 276163 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| species_share_trend | 34 | 246 | 246 | 172 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 74 | 0 | 0 |
+| mesh_all | 1 | 4083 | 4083 | 4083 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| mesh_by_year | 57 | 37043 | 37043 | 37043 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| ias_species | 1 | 173 | 173 | 173 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| redlist_summary | 1 | 30 | 30 | 30 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| redlist_flows | 18 | 308 | 308 | 308 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| redlist_species | 18 | 4080 | 4080 | 4080 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| biota_totals | 1 | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 |
+| watershed_rollup | 1 | 287 | 287 | 101 | 0 | 0 | 0 | 0 | 0 | 0 | 186 | 0 | 0 | 0 | 0 | 0 |
+| watershed_year | 1 | 10699 | 10684 | 9515 | 0 | 0 | 0 | 0 | 0 | 0 | 1090 | 371 | 0 | 0 | 0 | 0 |
 
-合計: runs=26007 rows_v1=863723 rows_v2=856219 matched=654370 unexplained=0
+合計: runs=31250 rows_v1=1286649 rows_v2=1279130 matched=1070157 unexplained=0
 
+
+## 生物系の規則ごとの moved（PR-3b）
+
+| rule | query | moved（キー数） |
+| --- | --- | --- |
+| vernacular_label_rule | species_catalog | 2837 |
+| vernacular_label_rule | species_labels | 2837 |
+| month_cell_membership | species_months | 19 |
+| vernacular_label_rule | species_share_trend | 74 |
+| undated_excluded | biota_totals | 1 |
+| watershed_memo | watershed_rollup | 186 |
+| watershed_memo | watershed_year | 1090 |
+| species_n_definition | watershed_year | 371 |
+
+### 表示名の動き（`vernacular_label_rule` の label_moved）
+
+| query | label_moved（v1→v2 の文字種） | 件数 |
+| --- | --- | --- |
+| species_catalog | 日本語→学名のみ | 1186 |
+| species_catalog | 日本語→日本語 | 593 |
+| species_catalog | 英名等→学名のみ | 270 |
+| species_catalog | 学名のみ→日本語 | 255 |
+| species_catalog | 英名等→日本語 | 200 |
+| species_catalog | 中国語等→日本語 | 167 |
+| species_catalog | 英名等→英名等 | 71 |
+| species_catalog | 日本語→英名等 | 64 |
+| species_catalog | 中国語等→学名のみ | 23 |
+| species_catalog | 学名のみ→英名等 | 5 |
+| species_catalog | 中国語等→英名等 | 3 |
+| species_labels | 日本語→学名のみ | 1186 |
+| species_labels | 日本語→日本語 | 593 |
+| species_labels | 英名等→学名のみ | 270 |
+| species_labels | 学名のみ→日本語 | 255 |
+| species_labels | 英名等→日本語 | 200 |
+| species_labels | 中国語等→日本語 | 167 |
+| species_labels | 英名等→英名等 | 71 |
+| species_labels | 日本語→英名等 | 64 |
+| species_labels | 中国語等→学名のみ | 23 |
+| species_labels | 学名のみ→英名等 | 5 |
+| species_labels | 中国語等→英名等 | 3 |
+| species_share_trend | 日本語→日本語 | 30 |
+| species_share_trend | 中国語等→日本語 | 21 |
+| species_share_trend | 英名等→英名等 | 16 |
+| species_share_trend | 日本語→英名等 | 4 |
+| species_share_trend | 日本語→学名のみ | 2 |
+| species_share_trend | 英名等→日本語 | 1 |
 
 ## 宣言済み差分の腐り（対象問い合わせが1件も対応しなかった宣言）
 
@@ -52,13 +115,22 @@
 
 | mutation | unexplained | 検出できたか |
 | --- | --- | --- |
+| lod_instead_of_zero | 199516 | OK |
+| drop_series | 634840 | OK |
+| swap_kind | 77560 | OK |
+| no_unit | 125974 | OK |
+| month_off_by_one | 142631 | OK |
+| include_watershed_cells | 0 | OK |
+| label_wrong | 1 | OK |
+| drop_species_rows | 31955 | OK |
+| inflate_n | 37253 | OK |
 | day_split_rule_off | 12 | OK |
 | declared_rot | 2 | OK |
-| drop_series | 424624 | OK |
-| include_watershed_cells | 0 | OK |
-| lod_instead_of_zero | 199516 | OK |
-| merge_rule_off | 381251 | OK |
-| month_off_by_one | 130792 | OK |
-| no_unit | 125974 | OK |
-| swap_kind | 77560 | OK |
 | synthetic_rule_off | 10129 | OK |
+| lod_rule_off | 0 | NG |
+| memo_rule_off | 1276 | OK |
+| species_n_rule_off | 371 | OK |
+| month_rule_off | 19 | OK |
+| label_rule_off | 5748 | OK |
+| undated_rule_off | 1 | OK |
+| merge_rule_off | 381251 | OK |

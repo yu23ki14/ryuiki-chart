@@ -31,6 +31,12 @@ export interface QueryStats {
   lod_imputation: number;
   unit_label_registry: number;
   float_rounding: number;
+  // 生物系の5規則（PR-3b。1 diff = 1 キーの動きなので、これが規則ごとの `moved`〔キー数〕になる）。
+  watershed_memo: number;
+  species_n_definition: number;
+  month_cell_membership: number;
+  vernacular_label_rule: number;
+  undated_excluded: number;
   unexplained: number;
 }
 
@@ -47,6 +53,11 @@ export function emptyQueryStats(id: string): QueryStats {
     lod_imputation: 0,
     unit_label_registry: 0,
     float_rounding: 0,
+    watershed_memo: 0,
+    species_n_definition: 0,
+    month_cell_membership: 0,
+    vernacular_label_rule: 0,
+    undated_excluded: 0,
     unexplained: 0,
   };
 }
@@ -94,6 +105,11 @@ export interface MutationRunResult {
 export interface ReportInput {
   header: ReportHeader;
   stats: QueryStats[];
+  /**
+   * `vernacular_label_rule` が説明した表示名の動きの件数（問い合わせ id → カテゴリ（`日本語→英名等` 等）→ 件数）。
+   * 設計書 §3.4-2「`label_moved`（カテゴリ別）をレポートに出す」。無ければ省略。
+   */
+  labelMoved?: Record<string, Record<string, number>>;
   unexplainedSamples: UnexplainedSample[];
   rottenDeclarations: RottenDeclaration[];
   mutationResults?: MutationRunResult[];
@@ -109,6 +125,11 @@ const KNOWN_RULE_COLUMNS = [
   "lod_imputation",
   "unit_label_registry",
   "float_rounding",
+  "watershed_memo",
+  "species_n_definition",
+  "month_cell_membership",
+  "vernacular_label_rule",
+  "undated_excluded",
 ] as const satisfies readonly (keyof QueryStats)[];
 
 function mdEscape(v: unknown): string {
@@ -130,6 +151,35 @@ function statsTableMd(stats: QueryStats[]): string {
   const header = ["id", "runs", "rows_v1", "rows_v2", "matched", ...KNOWN_RULE_COLUMNS, "unexplained"];
   const rows = stats.map((s) => [s.id, s.runs, s.rowsV1, s.rowsV2, s.matched, ...KNOWN_RULE_COLUMNS.map((c) => s[c]), s.unexplained]);
   return mdTable(header, rows);
+}
+
+/** 生物系5規則の `moved`（キー数）。受け入れ表 §3.4-2 がこの表の値を見る。 */
+const BIOTA_RULE_COLUMNS = [
+  "watershed_memo",
+  "species_n_definition",
+  "month_cell_membership",
+  "vernacular_label_rule",
+  "undated_excluded",
+] as const satisfies readonly (keyof QueryStats)[];
+
+function biotaMovedMd(stats: QueryStats[]): string {
+  const rows: (readonly unknown[])[] = [];
+  for (const s of stats) {
+    for (const rule of BIOTA_RULE_COLUMNS) {
+      if (s[rule] > 0) rows.push([rule, s.id, s[rule]]);
+    }
+  }
+  if (!rows.length) return "（無し）";
+  return mdTable(["rule", "query", "moved（キー数）"], rows);
+}
+
+function labelMovedMd(labelMoved: Record<string, Record<string, number>> | undefined): string {
+  const rows: (readonly unknown[])[] = [];
+  for (const [id, cats] of Object.entries(labelMoved ?? {})) {
+    for (const [cat, n] of Object.entries(cats).sort((a, b) => b[1] - a[1])) rows.push([id, cat, n]);
+  }
+  if (!rows.length) return "（無し）";
+  return mdTable(["query", "label_moved（v1→v2 の文字種）", "件数"], rows);
 }
 
 function totalsOf(stats: QueryStats[]): QueryStats {
@@ -191,6 +241,14 @@ export function buildReportMarkdown(input: ReportInput): string {
       ? `lod_moved（zero→lod で値が動いたと確認できたキー数の合計。上表の \`lod_imputation\` 列と同じ）: ${total.lod_imputation}`
       : "",
     "",
+    "## 生物系の規則ごとの moved（PR-3b）",
+    "",
+    biotaMovedMd(stats),
+    "",
+    "### 表示名の動き（`vernacular_label_rule` の label_moved）",
+    "",
+    labelMovedMd(input.labelMoved),
+    "",
     "## 宣言済み差分の腐り（対象問い合わせが1件も対応しなかった宣言）",
     "",
     rottenMd(input.rottenDeclarations),
@@ -208,6 +266,7 @@ export function buildReportJson(input: ReportInput): unknown {
     header: input.header,
     stats: input.stats,
     totals: totalsOf(input.stats),
+    labelMoved: input.labelMoved ?? {},
     unexplainedSamples: input.unexplainedSamples,
     rottenDeclarations: input.rottenDeclarations,
     mutationResults: input.mutationResults ?? [],

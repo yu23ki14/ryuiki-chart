@@ -210,9 +210,11 @@ def make_occurrence_registry_db(path, taxa=None, places=None, place_refs=None, t
             place_refs if place_refs is not None else DEFAULT_PLACE_SOURCE_REF,
         )
         if taxon_assessments:
-            placeholders = ",".join("?" for _ in TAXON_ASSESSMENT_COLUMNS)
+            # 行は先頭の列だけを持ってよい（`binom`〔PR-3b〕のような後から足した列は NULL のまま）。
+            cols = TAXON_ASSESSMENT_COLUMNS[: len(taxon_assessments[0])]
             conn.executemany(
-                f"INSERT INTO taxon_assessment VALUES ({placeholders})", taxon_assessments,
+                f"INSERT INTO taxon_assessment ({', '.join(cols)}) VALUES ({','.join('?' for _ in cols)})",
+                taxon_assessments,
             )
         conn.commit()
     finally:

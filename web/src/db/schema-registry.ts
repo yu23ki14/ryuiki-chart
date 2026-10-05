@@ -269,6 +269,12 @@ export const taxonAssessment = sqliteTable("taxon_assessment", {
 	origin: text(),
 	sourceId: text("source_id"),
 	inScope: integer("in_scope"),
+	/**
+	 * `binom_of(scientific_name_raw)`（二名法。取れなければ NULL。Issue #48 PR-3b §2.4）。
+	 * IAS は `taxon_id` が 346/429 しか解決しないので、v1 の `ias_species` 相当は
+	 * この列で結合する。
+	 */
+	binom: text(),
 },
 (table) => [
 	index("ix_taxon_assessment_list").on(table.listId),

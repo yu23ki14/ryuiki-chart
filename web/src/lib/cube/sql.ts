@@ -19,6 +19,30 @@ export type Scope =
   | { kind: "zone"; zone?: number }
   | { kind: "all_sites" };
 
+/** 年族のセル（`year` と、日付が範囲の `survey_period`）。生物系の SQL 断片。 */
+export const YEAR_GRAINS = "('year','survey_period')";
+/** 生物系の窓の既定（v1 の 1990〜2026）。 */
+export const OCC_DEFAULT_FROM = 1990;
+export const OCC_DEFAULT_TO = 2026;
+
+export function chunk<T>(xs: readonly T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < xs.length; i += size) out.push(xs.slice(i, i + size));
+  return out;
+}
+
+export function uniq(xs: readonly string[]): string[] {
+  return [...new Set(xs)];
+}
+
+/** null を先頭に置く文字列比較（`<`/`>` のみ。同値は 0）。 */
+export function cmp(a: string | null, b: string | null): number {
+  if (a === b) return 0;
+  if (a === null) return -1;
+  if (b === null) return 1;
+  return a < b ? -1 : 1;
+}
+
 export function jsonEachParam(values: readonly (string | number)[]): string {
   return JSON.stringify(values);
 }

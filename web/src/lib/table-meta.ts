@@ -58,6 +58,8 @@ export const TABLE_ORIGIN: Record<string, string> = {
   watershed_meta: "d", watershed_rollup: "d", zone_clim: "d", zone_year: "d",
   // v2.sqlite 由来（Issue #48 PR-2）
   observation_agg: "v2", summary_variable_catalog: "v2", summary_place_variable: "v2",
+  // Issue #48 PR-3b（生物系の summary 4表）。occurrence_agg/summary_taxon_catalog/summary_watershed_occurrence は PR-3a
+  summary_species_catalog: "v2", summary_group_year: "v2", summary_effort_year: "v2", summary_grid_catalog: "v2",
 };
 
 export const TABLE_META: Record<string, string> = {
@@ -120,6 +122,15 @@ export const TABLE_META: Record<string, string> = {
   summary_place_variable:
     "地点×指標の事前集計。(place_id, variable_id, obs_stat, unit_id, value_grain) 単位で" +
     "observation_agg の年グレイン・stat='mean' セルを集計したもの。get_sites/site_var 相当の元",
+  summary_species_catalog:
+    "種カタログの事前集計。学名（二名法 binom）単位の記録数・レッドリスト/外来種の記録数・" +
+    "出現グリッド数・出現年。日付のある生物レコードだけ。species2 相当。n>=80 の足切りの元",
+  summary_group_year:
+    "分類群×年×出典の事前集計（記録数・種数・グリッド数）。日付のある生物レコードだけ。org_group_year 相当",
+  summary_effort_year:
+    "年ごとの観察努力（記録数・種数・グリッド数）の事前集計。日付のある生物レコードだけ。effort_year 相当",
+  summary_grid_catalog:
+    "0.01度グリッドごとの記録数・レッドリスト記録数・種数（年1970〜2026の窓）の事前集計。mesh_all 相当",
 };
 
 export const SAMPLE_QUERIES: { title: string; note: string; sql: string }[] = [

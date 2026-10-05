@@ -6,7 +6,7 @@ import { query, queryOne, queryChunked, ph } from "@/lib/db";
  *
  * `taxon`（41,324件）・`place`（4,960件）・`cells.notes` 由来の caveat（207件、原文引用つき）は
  * 量が多く、または生成物（`../registry/generated.ts`）に載せる必要が無いため、ここから
- * D1 越しに直接引く。`variable` / `variable_alias` / 注記14件 / 和名54件は
+ * D1 越しに直接引く。`variable` / `variable_alias` / 注記14件 / 和名63件は
  * `generated.ts`（クライアント安全・同期）に既にあるので、ここでは扱わない
  * （`./lookup.ts` を使う）。
  *

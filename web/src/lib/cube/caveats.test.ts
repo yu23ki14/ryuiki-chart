@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { caveatKeysForTables } from "@/lib/registry/lookup-client";
-import { caveatKeysForFacets, facetsForSeries, type FacetRef, type SeriesFacetInput } from "./caveats";
+import { caveatKeysForFacets, facetsForOccurrence, facetsForSeries, type FacetRef, type SeriesFacetInput } from "./caveats";
 import type { Scope } from "./sql";
 
 /**
@@ -279,5 +279,22 @@ describe("facetsForSeries", () => {
     expect(caveatKeysForFacets(facetsForSeries(series, scope))).toEqual(
       withCensoredLod(caveatKeysForTables(["measurements", "sites"])),
     );
+  });
+});
+
+describe("facetsForOccurrence（Issue #48 PR-3b）", () => {
+  it("organism_records を常に、grid01 を引くとき place_kind、IAS のとき source_id を積む", () => {
+    expect(facetsForOccurrence({ places: ["watershed"] })).toEqual([{ kind: "dataset", ref: "organism_records" }]);
+    expect(facetsForOccurrence({ places: ["grid01"] })).toEqual([
+      { kind: "dataset", ref: "organism_records" },
+      { kind: "place_kind", ref: "grid01" },
+    ]);
+    expect(facetsForOccurrence({ places: ["grid01", "watershed"], ias: true }).map((f) => f.kind)).toEqual(["dataset", "place_kind", "source_id"]);
+  });
+  it("引いた注記に organism/mesh/IAS の主要なキーが入る（v1 表名ベースの table は使わない）", () => {
+    const f = facetsForOccurrence({ places: ["grid01"], ias: true });
+    expect(f.some((x) => x.kind === "table")).toBe(false);
+    const keys = caveatKeysForFacets(f);
+    expect(keys).toEqual(expect.arrayContaining(["organismSite", "effort", "share", "isAlien"]));
   });
 });

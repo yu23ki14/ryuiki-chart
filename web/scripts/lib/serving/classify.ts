@@ -269,9 +269,67 @@ export type KnownRule =
   | "synthetic_excluded"
   | "unit_label_registry"
   | "float_rounding"
-  | "lod_imputation";
+  | "lod_imputation"
+  // 生物系（Issue #48 PR-3b、`docs/plans/V2_SERVING_PR3B.md` §3.1。ADR-0029 追記）。
+  | "watershed_memo"
+  | "species_n_definition"
+  | "month_cell_membership"
+  | "vernacular_label_rule"
+  | "undated_excluded";
+
+/**
+ * 生物系の5規則（`watershed_memo`/`species_n_definition`/`month_cell_membership`/
+ * `vernacular_label_rule`/`undated_excluded`）が「独立に組んだ中間点」として使う期待値
+ * （`biota-expect.ts` が L2・registry・`ryuiki.sqlite`・`v1_projection_occurrence.sqlite` から
+ * 別 SQL で作る。**`lib/cube` は import しない**——正解を v2 の経路で作らない。設計書 §5.4-3）。
+ * classify.ts は DB を読まないので、読み込み済みのデータだけを受け取る。
+ * 載っていない項目の規則は不発（unexplained のまま）にする。
+ */
+export interface BiotaExpectations {
+  /** `watershed_year` の中間点。キーは `watershedYearKey(watershed_id, year)`。 */
+  wsYear?: ReadonlyMap<string, WsYearExpect>;
+  /** `watershed_rollup` の中間点（`org_watershed_exact`）。キーは watershed_id。 */
+  wsAll?: ReadonlyMap<string, WsAllExpect>;
+  /** `species_months`: v1 の規則（`period_raw` の月・年>=2018）で数えた件数。キーは `binomMonthKey`。 */
+  monthV1?: ReadonlyMap<string, number>;
+  /** `species_months`: v2 の月セルの所属規則（同一月に収まる記録・`period_start`>=2018）で数えた件数。 */
+  monthV2?: ReadonlyMap<string, number>;
+  /** 期待する表示名（binom → label。D4: 記録由来の和名補完を使う）。 */
+  labels?: ReadonlyMap<string, string>;
+  /** `ryuiki.sqlite` の `organism_records` で日付の無い件数（`observed_on` が NULL または 4 桁未満）。 */
+  undated?: { records: number; gbif: number; inat: number };
+}
+
+export interface WsYearExpect {
+  /** `org_watershed_year_exact`（b08。記録自身の流域）。 */
+  n: number;
+  alienN: number;
+  redlistN: number;
+  /** exact の species_n（学名全文の DISTINCT。v1 と同じ定義）。 */
+  speciesNameN: number;
+  /** 同じキーを L2 から `COUNT(DISTINCT taxon_id)` で数えた値（v2 の定義）。 */
+  speciesTaxonN: number | null;
+}
+
+export interface WsAllExpect {
+  n: number;
+  alienN: number;
+  redlistN: number;
+}
+
+export function watershedYearKey(watershedId: string | number, year: string | number): string {
+  return `${watershedId}\u0000${year}`;
+}
+
+export function binomMonthKey(binom: string | number, month: string | number): string {
+  return `${binom}\u0000${month}`;
+}
 
 export interface ClassifyContext {
+  /** 問い合わせ id（生物系の規則は id ごとに判定を変える）。 */
+  queryId?: string;
+  /** 生物系の期待値（`--only` で生物系を回さないときは undefined）。 */
+  biota?: BiotaExpectations;
   expected: ExpectedDiffs;
   declared: DeclaredLookup;
   params: Readonly<Record<string, ScalarParam>>;
@@ -398,6 +456,11 @@ export interface Classification {
    * それぞれ別のエントリに一致すれば複数件になりうる。
    */
   declaredMatches: { table: string; entry: DeclaredEntry }[];
+  /**
+   * `vernacular_label_rule` が説明した表示名の動きの分類（`labelCategory(v1) + "→" + labelCategory(v2)`。
+   * 例: `日本語→日本語`）。レポートの `label_moved` の件数に使う（設計書 §3.1・§3.4-2）。
+   */
+  labelMoves?: string[];
 }
 
 /** `rules` が空 = unexplained。読みやすさのための小さな補助関数。 */
@@ -840,6 +903,200 @@ function explainValueDiff(diff: RowDiff, ctx: ClassifyContext): Classification {
   return { rules: allOk ? rules : new Set(), declaredMatches };
 }
 
+/* ------------------------------------------------------------------ */
+/* 生物系の5規則（Issue #48 PR-3b、`docs/plans/V2_SERVING_PR3B.md` §3.1）     */
+/*                                                                      */
+/* 説明の鎖は「v1 →(規則)→ 独立に組んだ中間点 →(=)→ v2」。中間点は            */
+/* `ctx.biota`（`biota-expect.ts` が L2 等から別 SQL で作る）。「v2 が中間点と  */
+/* 一致する」ことを必ず確かめる——一致しなければ unexplained（規則が「何でも   */
+/* 説明する穴」にならない。`label_wrong` 変異がこれを見る）。                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 表示名の文字種の分類（D4 の判断材料の表と同じ。設計書 §0 D4）。
+ * 日本語＝かなを含む／学名のみ＝名前が binom そのもの／中国語等＝漢字のみ（かなもラテン文字も無い）／
+ * 英名等＝それ以外。
+ */
+export function labelCategory(label: string | null, binom: string): string {
+  if (label === null || label === "" || label === binom) return "学名のみ";
+  if (/[぀-ヿㇰ-ㇿｦ-ﾟ]/.test(label)) return "日本語";
+  if (/[A-Za-z]/.test(label)) return "英名等";
+  if (/[㐀-鿿]/.test(label)) return "中国語等";
+  return "英名等";
+}
+
+function numOf(row: NormRow | undefined, col: string): number | null {
+  return row ? (row.numeric[col] ?? null) : null;
+}
+
+/** 生物系の規則を有効にしてよいか（known に入っていて、変異で無効化されていない）。 */
+function bioRule(ctx: ClassifyContext, rule: KnownRule, used: Set<KnownRule>): boolean {
+  if (!ruleEnabled(ctx, rule)) return false;
+  used.add(rule);
+  return true;
+}
+
+const WS_COLUMN_OF: Readonly<Record<string, "n" | "alienN" | "redlistN">> = {
+  n: "n",
+  alien_n: "alienN",
+  redlist_n: "redlistN",
+  org_n: "n",
+  org_alien_n: "alienN",
+  org_redlist_n: "redlistN",
+};
+
+/**
+ * `watershed_rollup`／`watershed_year`: v1 →(memo)→ exact（b08 が L2 から別 SQL で組む）→(=)→ v2。
+ * `species_n`（`watershed_year` のみ）は v1 →(memo)→ exact(学名 DISTINCT) →(definition)→ L2 の
+ * `COUNT(DISTINCT taxon_id)` →(=)→ v2。
+ */
+function explainWatershed(diff: RowDiff, ctx: ClassifyContext, b: BiotaExpectations): Classification {
+  const isYear = ctx.queryId === "watershed_year";
+  const ex: WsYearExpect | WsAllExpect | undefined = isYear
+    ? b.wsYear?.get(watershedYearKey(diff.key[0], diff.key[1]))
+    : b.wsAll?.get(String(diff.key[0]));
+  if (!isYear && !b.wsAll) return emptyClassification();
+  if (isYear && !b.wsYear) return emptyClassification();
+  const used = new Set<KnownRule>();
+
+  if (diff.kind === "row_only_in_v1") {
+    // exact（＝v2 と一致するはずの中間点）にも無い行 = v1 のメモが作った行。
+    if (ex !== undefined || !bioRule(ctx, "watershed_memo", used)) return emptyClassification();
+    return { rules: used, declaredMatches: [] };
+  }
+  if (diff.kind === "row_only_in_v2") {
+    if (ex === undefined || !diff.v2 || !bioRule(ctx, "watershed_memo", used)) return emptyClassification();
+    for (const [col, k] of Object.entries(WS_COLUMN_OF)) {
+      const v2v = numOf(diff.v2, col);
+      if (v2v !== null && v2v !== ex[k]) return emptyClassification();
+    }
+    if (isYear) {
+      const y = ex as WsYearExpect;
+      if (y.speciesTaxonN === null || numOf(diff.v2, "species_n") !== y.speciesTaxonN) return emptyClassification();
+    }
+    return { rules: used, declaredMatches: [] };
+  }
+  if (diff.kind !== "value_diff" || !diff.v1 || !diff.v2 || ex === undefined) return emptyClassification();
+
+  for (const col of diff.columns) {
+    if (col === "species_n" && isYear) {
+      const y = ex as WsYearExpect;
+      const v1v = numOf(diff.v1, col);
+      const v2v = numOf(diff.v2, col);
+      if (y.speciesTaxonN === null || v2v !== y.speciesTaxonN) return emptyClassification();
+      let explained = false;
+      if (v1v !== y.speciesNameN) {
+        if (!bioRule(ctx, "watershed_memo", used)) return emptyClassification();
+        explained = true;
+      }
+      if (y.speciesNameN !== y.speciesTaxonN) {
+        if (!bioRule(ctx, "species_n_definition", used)) return emptyClassification();
+        explained = true;
+      }
+      if (!explained) return emptyClassification();
+      continue;
+    }
+    const k = WS_COLUMN_OF[col];
+    if (!k) return emptyClassification();
+    if (numOf(diff.v2, col) !== ex[k]) return emptyClassification();
+    if (!bioRule(ctx, "watershed_memo", used)) return emptyClassification();
+  }
+  return { rules: used, declaredMatches: [] };
+}
+
+/**
+ * `species_months`: v1 の件数が「v1 の所属規則（`period_raw` の月）で数えた期待値」と、v2 の件数が
+ * 「v2 の月セルの所属規則（同一月に収まる記録）で数えた期待値」と一致するときだけ説明する。
+ */
+function explainMonthCellMembership(diff: RowDiff, ctx: ClassifyContext, b: BiotaExpectations): Classification {
+  const binom = ctx.params.binom;
+  if (binom === undefined || !b.monthV1 || !b.monthV2) return emptyClassification();
+  const k = binomMonthKey(binom, diff.key[0]);
+  const e1 = b.monthV1.get(k) ?? 0;
+  const e2 = b.monthV2.get(k) ?? 0;
+  if (e1 === e2) return emptyClassification();
+  const v1n = diff.kind === "row_only_in_v2" ? 0 : (numOf(diff.v1, "n") ?? 0);
+  const v2n = diff.kind === "row_only_in_v1" ? 0 : (numOf(diff.v2, "n") ?? 0);
+  if (v1n !== e1 || v2n !== e2) return emptyClassification();
+  const used = new Set<KnownRule>();
+  if (!bioRule(ctx, "month_cell_membership", used)) return emptyClassification();
+  return { rules: used, declaredMatches: [] };
+}
+
+/**
+ * 表示名（`species_labels`/`species_catalog`/`species_share_trend` の `label` 列）: v2 の表示名が
+ * registry・`vernacular_ja.csv`・`summary_taxon_catalog` から独立に再計算した期待ラベルと一致する
+ * ときだけ `vernacular_label_rule` で説明する。`label` 以外のラベル列（`species_catalog` の
+ * `cls`/`family`/`taxon_group`）は宣言済み差分（`declared`。Sirosporium の `cls`）だけが説明できる。
+ */
+function explainLabelDiff(diff: RowDiff, ctx: ClassifyContext, b: BiotaExpectations): Classification {
+  if (diff.kind !== "label_diff" || !diff.v1 || !diff.v2 || !b.labels) return emptyClassification();
+  const binom = String(diff.key[0]);
+  const used = new Set<KnownRule>();
+  const declaredMatches: { table: string; entry: DeclaredEntry }[] = [];
+  const labelMoves: string[] = [];
+  let ok = true;
+  for (const col of diff.columns) {
+    if (col === "label") {
+      const v2l = diff.v2.label.label ?? null;
+      const expected = b.labels.get(binom);
+      if (expected === undefined || v2l !== expected || !bioRule(ctx, "vernacular_label_rule", used)) {
+        ok = false;
+        continue;
+      }
+      labelMoves.push(`${labelCategory(diff.v1.label.label ?? null, binom)}→${labelCategory(v2l, binom)}`);
+      continue;
+    }
+    const m = findDeclaredColumnMatch(diff, ctx, col);
+    if (!m) {
+      ok = false;
+      continue;
+    }
+    used.add("declared");
+    declaredMatches.push(m);
+  }
+  return ok ? { rules: used, declaredMatches, labelMoves } : { rules: new Set(), declaredMatches };
+}
+
+/** `biota_totals`: v1 − v2 が `ryuiki.sqlite` の日付の無い件数（全体・gbif・inat）と一致するときだけ説明する。 */
+function explainUndated(diff: RowDiff, ctx: ClassifyContext, b: BiotaExpectations): Classification {
+  if (diff.kind !== "value_diff" || !diff.v1 || !diff.v2 || !b.undated) return emptyClassification();
+  const delta: Record<string, number> = { records: b.undated.records, gbif: b.undated.gbif, inat: b.undated.inat };
+  const used = new Set<KnownRule>();
+  for (const col of diff.columns) {
+    const d = delta[col];
+    const v1v = numOf(diff.v1, col);
+    const v2v = numOf(diff.v2, col);
+    if (d === undefined || v1v === null || v2v === null || v1v - v2v !== d) return emptyClassification();
+    if (!bioRule(ctx, "undated_excluded", used)) return emptyClassification();
+  }
+  return { rules: used, declaredMatches: [] };
+}
+
+/**
+ * 生物系の問い合わせ（`ctx.queryId`）の diff を、5規則で説明する。対象外の問い合わせ・diff の種類は
+ * `undefined`（既存の鎖に任せる）。説明できなければ空の分類（unexplained）を返す。
+ */
+function classifyBiota(diff: RowDiff, ctx: ClassifyContext): Classification | undefined {
+  const b = ctx.biota;
+  if (!b) return undefined;
+  switch (ctx.queryId) {
+    case "watershed_rollup":
+    case "watershed_year":
+      return explainWatershed(diff, ctx, b);
+    case "species_months":
+      return explainMonthCellMembership(diff, ctx, b);
+    case "species_labels":
+    case "species_catalog":
+    case "species_share_trend":
+      return diff.kind === "label_diff" ? explainLabelDiff(diff, ctx, b) : undefined;
+    case "biota_totals":
+      return explainUndated(diff, ctx, b);
+    default:
+      return undefined;
+  }
+}
+
 /**
  * `RowDiff` を既知の系統に当てはめる。まず「説明の鎖」（`explainRowOnly`/
  * `explainValueDiff`。declared・synthetic_excluded・lod_imputation を統合）を
@@ -850,6 +1107,9 @@ function explainValueDiff(diff: RowDiff, ctx: ClassifyContext): Classification {
  * 位置づけのまま——`docs/plans/V2_SERVING_PR2.md` §1・§3）。
  */
 export function classifyDiff(diff: RowDiff, ctx: ClassifyContext): Classification {
+  const biota = classifyBiota(diff, ctx);
+  if (biota) return biota;
+
   if (diff.kind === "row_only_in_v1" || diff.kind === "row_only_in_v2") {
     const chain = explainRowOnly(diff, ctx);
     if (chain.rules.size > 0) return chain;

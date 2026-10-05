@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { meshPolygon } from "@/lib/geo";
-import { meshAll, meshByYear } from "@/lib/queries";
+import { d1CubeDb, gridCatalog, meshByYear } from "@/lib/cube";
 
 export const runtime = "nodejs";
 
@@ -8,9 +8,11 @@ export const runtime = "nodejs";
 export async function GET(req: NextRequest) {
   const yearRaw = req.nextUrl.searchParams.get("year");
   const year = yearRaw ? Number(yearRaw) : null;
+  const db = await d1CubeDb();
+  // meshByYear は種別の絶滅危惧種数を持たない（0）。gridCatalog は持つ。
   const rows = year
-    ? (await meshByYear(year)).map((r) => ({ ...r, rl_species_n: 0 }))
-    : await meshAll();
+    ? (await meshByYear(db, year)).map((r) => ({ ...r, rlSpeciesN: 0 }))
+    : await gridCatalog(db);
   return NextResponse.json(
     {
       type: "FeatureCollection",
@@ -19,9 +21,9 @@ export async function GET(req: NextRequest) {
         geometry: { type: "Polygon", coordinates: meshPolygon(r.mlat, r.mlon) },
         properties: {
           n: r.n,
-          species_n: (r as { species_n?: number }).species_n ?? 0,
-          rl_n: r.rl_n,
-          rl_species_n: (r as { rl_species_n?: number }).rl_species_n ?? 0,
+          species_n: r.speciesN,
+          rl_n: r.rlN,
+          rl_species_n: r.rlSpeciesN,
           lat: r.mlat / 100,
           lon: r.mlon / 100,
         },

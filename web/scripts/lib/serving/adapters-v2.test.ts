@@ -17,7 +17,11 @@ import Database from "better-sqlite3";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { rowsByKey, toNormRows } from "./normalize";
 import { classifyDiff, compareRuns, type ClassifyContext } from "./classify";
-import { expectedUnitSymbols } from "./adapters-v2";
+import { expectedUnitSymbols, runV2Query } from "./adapters-v2";
+import { load as loadYaml } from "js-yaml";
+import * as generatedClient from "@/lib/registry/generated-client";
+import { buildOccurrenceFixture, FXO } from "@/lib/cube/__fixtures__/occurrence-fixture";
+import type { CompareSpec, ScalarParam } from "./normalize";
 
 /**
  * design §8.4「検証が本番の経路を通っているか」の自動チェック1件:
@@ -31,6 +35,109 @@ describe("adapters-v2.ts は生 SQL を持たない（design §8.4）", () => {
     const src = fs.readFileSync(path.join(HERE, "adapters-v2.ts"), "utf8");
     expect(src).not.toMatch(/observation_agg/);
     expect(src).not.toMatch(/summary_/);
+  });
+
+  // PR-3b §5.4: 生物系（セル・summary 4表・レッドリスト）の表名も書かない。
+  it("ソースに occurrence_agg / summary_ / taxon_assessment という文字列が無い（生物系。PR-3b §5.4）", () => {
+    const HERE = path.dirname(fileURLToPath(import.meta.url));
+    const src = fs.readFileSync(path.join(HERE, "adapters-v2.ts"), "utf8");
+    expect(src).not.toMatch(/occurrence_agg/);
+    expect(src).not.toMatch(/summary_/);
+    expect(src).not.toMatch(/taxon_assessment/);
+  });
+
+  it("生物系の case は lib/cube の公開関数しか import しない（`@/lib/cube/<内部ファイル>` を足していない）", () => {
+    const HERE = path.dirname(fileURLToPath(import.meta.url));
+    const src = fs.readFileSync(path.join(HERE, "adapters-v2.ts"), "utf8");
+    // 既存の測定値系が使う `@/lib/cube/catalog`・`/db-sqlite`・`/series` 等以外の新規 import を足していないこと
+    // （occurrence/assessment の内部ファイルを直接読まない。index.ts の公開面だけ）。
+    expect(src).not.toMatch(/@\/lib\/cube\/(occurrence|assessment|grid)/);
+  });
+});
+
+/**
+ * 生物系の v2 アダプタを `lib/cube` のフィクスチャ（`buildOccurrenceFixture`）に通す。
+ * 目的: `serving_queries.yaml` の `compare`（key/numeric/label の列名）と、アダプタが返す列名が
+ * 食い違っていないこと（`toNormRows` は無い列を黙って null にするので、全行 null の列を検出する）。
+ * 値の正しさは見ない（それは serving-diff の本番実行の仕事）。
+ */
+describe("生物系の v2 アダプタ: serving_queries.yaml の compare の列名とアダプタの列名が一致する", () => {
+  const generated = generatedClient as unknown as { REDLIST_CATEGORY?: unknown; ASSESSMENT_LIST?: unknown };
+  const hasVocab = generated.REDLIST_CATEGORY !== undefined && generated.ASSESSMENT_LIST !== undefined;
+
+  const HERE_ = path.dirname(fileURLToPath(import.meta.url));
+  const yamlPath = path.join(HERE_, "..", "..", "..", "serving_queries.yaml");
+  const config = loadYaml(fs.readFileSync(yamlPath, "utf8")) as {
+    queries: { id: string; compare: CompareSpec; params?: Record<string, unknown> }[];
+  };
+
+  // フィクスチャの架空の値（`Fx*`）で埋めた最小の params。
+  const PARAMS: Record<string, Record<string, ScalarParam>> = {
+    species_years: { binom: FXO.binoms.alpha },
+    species_months: { binom: FXO.binoms.alpha },
+    species_mesh_years: { binom: FXO.binoms.alpha },
+    species_share_trend: { group: FXO.groups.bird, periods: "2000-2004:2010-2014" },
+    mesh_by_year: { year: 2010 },
+    redlist_flows: { list_year: 2020, group: "" },
+    redlist_species: { list_year: 2020, group: "" },
+  };
+  const BIOTA_IDS = [
+    "effort_years",
+    "taxon_group_years",
+    "species_catalog",
+    "species_labels",
+    "species_years",
+    "species_months",
+    "species_mesh_years",
+    "species_share_trend",
+    "mesh_all",
+    "mesh_by_year",
+    "ias_species",
+    "redlist_summary",
+    "redlist_flows",
+    "redlist_species",
+    "biota_totals",
+    "watershed_rollup",
+    "watershed_year",
+  ];
+
+  it("serving_queries.yaml に生物系 17 問い合わせが全部ある（アダプタの case と1対1）", () => {
+    const ids = new Set(config.queries.map((q) => q.id));
+    for (const id of BIOTA_IDS) expect(ids.has(id), id).toBe(true);
+  });
+
+  for (const id of BIOTA_IDS) {
+    const needsVocab = id.startsWith("redlist_");
+    it.skipIf(needsVocab && !hasVocab)(`${id}: 行が返り、compare の numeric/label の各列が少なくとも1行で非 null`, async () => {
+      const def = config.queries.find((q) => q.id === id)!;
+      const fx = buildOccurrenceFixture();
+      try {
+        const rows = await runV2Query(fx.db, id, PARAMS[id] ?? {}, def.compare, "zero");
+        expect(rows.length, `${id} の行`).toBeGreaterThan(0);
+        for (const r of rows) expect(r.key.length).toBe(def.compare.key.length);
+        for (const c of def.compare.numeric) expect(rows.some((r) => r.numeric[c] !== null), `${id}.${c}`).toBe(true);
+        // `ord` のようにキー列としてだけ使う列は numeric/label ではないので対象外。
+        for (const c of def.compare.label) expect(rows.some((r) => r.label[c] !== null), `${id}.${c}`).toBe(true);
+      } finally {
+        fx.db.close();
+      }
+    });
+  }
+
+  it("species_labels と species_catalog の label は同じ関数（speciesLabels）を通るので同じ値になる", async () => {
+    const fx = buildOccurrenceFixture();
+    try {
+      const labelsDef = config.queries.find((q) => q.id === "species_labels")!;
+      const catalogDef = config.queries.find((q) => q.id === "species_catalog")!;
+      const a = await runV2Query(fx.db, "species_labels", {}, labelsDef.compare, "zero");
+      const b = await runV2Query(fx.db, "species_catalog", {}, catalogDef.compare, "zero");
+      const byBinomA = new Map(a.map((r) => [String(r.key[0]), r.label.label]));
+      const byBinomB = new Map(b.map((r) => [String(r.key[0]), r.label.label]));
+      expect(byBinomA.size).toBeGreaterThan(0);
+      expect(byBinomB).toEqual(byBinomA);
+    } finally {
+      fx.db.close();
+    }
   });
 });
 

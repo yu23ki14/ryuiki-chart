@@ -192,7 +192,7 @@
       "sha256": "5c6fd091de7742cdea2c0da9d2775d35f561da217f9fb4784eca3029237b99ff"
     }
   },
-  "created_at": "2026-09-27T06:36:56+00:00",
+  "created_at": "2026-10-05T13:28:14+00:00",
   "derived_reconciliation_all_md_sha256": "8edd9a50fac10043fce25fc17ab2240aa2ce96b9a415876381e3fac1feb9492f",
   "environment": {
     "better_sqlite3_sqlite_version": "3.53.4",
@@ -208,10 +208,10 @@
     "n_mismatch": 0,
     "total": 33
   },
-  "git_head": "d2b27e7fe2bb815dee9769c5281c58d07d75dcd1",
+  "git_head": "57bf331744dfa89cad617c412bcfa7689d3e8710",
   "pipeline_path_hashes": {
-    "aggregations": "6a6545711aebf33412df89f8466e766d2029a4e5",
-    "registry": "0c40e29f4608018db357e1e057e8daeb1b815a1b",
+    "aggregations": "fea6727ad780d94a9688d34c255f6e5f6069256e",
+    "registry": "0c1c9d9ed0020a5be64af6869a11c311c4bbc8a7",
     "reports/derived_baseline.json": "9448ea15f7e0340d98a9523be728606ecd774a0a",
     "requirements.txt": "204126f99a90855c9bfd80b00f08e8dcdf089eea",
     "scripts/b00_run_full_gate.py": "020f7cfc26494b1f499ff7dad03d215ec3987766",
@@ -228,14 +228,14 @@
     "scripts/b10_project_documents_v1.py": "d7b620581ed237b1253ab044b8277b81162f2eb1",
     "scripts/b11_project_place_v1.py": "4977bdc14b614eff5f11a4946b57a46d64211587",
     "scripts/b12_project_taxon_v1.py": "3a7d5f6f4276b8682185afc92214275e6fd6b843",
-    "scripts/b13_build_summary.py": "522a36b06d1f951821a7e612d6f826db05644334",
-    "scripts/migrate": "e8d4787a48e853847204b08bba1a586e76b2b10b",
+    "scripts/b13_build_summary.py": "a3fea7c442ddc610a67344c9f46f9a0748576466",
+    "scripts/migrate": "5dd5a32f288e380c9677dedbbdbe6304d0a95bdf",
     "scripts/pipeline_inputs.py": "26f0f1aa956493afa09db0fcab69bc939933b42a",
     "scripts/r01_build_registry.py": "4e4cebd61c8cfda48c67fc0ecc8f0cf9b474a686",
     "scripts/reconcile": "1d5a039bbbff33cce47801b8620d2959d411bbd7",
-    "scripts/registry": "d9341f65f7f9b0659de6edcf65bdd4abeaffb760",
+    "scripts/registry": "e3e50388d06c1fbce25e371914bdad7535649164",
     "scripts/s05_check_sample_gate_summary.py": "45b1da2aa3a583f393ddfe8704e2fc6e6c98eab5",
-    "scripts/schema_registry.sql": "1cf2bef3f3279b2ff90948be4f222ecd04b1256e",
+    "scripts/schema_registry.sql": "5b0fa078ffbbf3c6ff5457db2efb813ac4b37dcb",
     "scripts/taxon_namespaces.py": "56651e8f89085ad95c225643177c17a4098021c3",
     "web/package.json": "0761404fcea81600a9e8ff570536215c279e5d99",
     "web/pnpm-lock.yaml": "6ed023dae786be30e10835dd8a13d5af0bccd466",

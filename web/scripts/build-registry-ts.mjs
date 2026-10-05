@@ -7,9 +7,12 @@
  * 読み取り元:
  *   - data/db/registry.sqlite（scripts/r01_build_registry.py が作る）の
  *     unit / variable / variable_alias / caveat / caveat_scope
- *   - registry/taxon/vernacular_ja.csv（旧 domain.ts の NAME_JA 54件をそのまま複製した台帳）
+ *   - registry/taxon/vernacular_ja.csv（旧 domain.ts の NAME_JA 54件＋PR-3b D4 の上書き9件の台帳）
  *   - registry/place/zone.yaml（旧 domain.ts の ZONE_INFO。registry.sqlite を経由せず
  *     直接読む。vernacular_ja.csv と同じ扱い）
+ *   - registry/taxon/redlist_category.yaml・assessment_list.yaml（Issue #48 PR-3b。
+ *     `REDLIST_CATEGORY`・`ASSESSMENT_LIST`。D1 に表は足さず、`taxon_assessment` の
+ *     `category_code`/`list_id` をこの定数で引く。zone.yaml と同じ直読み）
  *
  * ## 2ファイルに分けている理由（レビュー指摘・code-review #4）
  *
@@ -53,6 +56,8 @@
  *   - RYUIKI_REGISTRY_DB: 入力の registry.sqlite
  *   - RYUIKI_VERNACULAR_CSV: 入力の vernacular_ja.csv
  *   - RYUIKI_ZONE_YAML: 入力の zone.yaml
+ *   - RYUIKI_REDLIST_CATEGORY_YAML / RYUIKI_ASSESSMENT_LIST_YAML: 入力の
+ *     registry/taxon/redlist_category.yaml / assessment_list.yaml
  *   - RYUIKI_REGISTRY_TS_OUT_SERVER / RYUIKI_REGISTRY_TS_OUT_CLIENT: 出力先
  */
 import Database from "better-sqlite3";
@@ -70,6 +75,10 @@ const REGISTRY_DB = process.env.RYUIKI_REGISTRY_DB ?? path.join(REPO, "data", "d
 const VERNACULAR_CSV =
   process.env.RYUIKI_VERNACULAR_CSV ?? path.join(REPO, "registry", "taxon", "vernacular_ja.csv");
 const ZONE_YAML = process.env.RYUIKI_ZONE_YAML ?? path.join(REPO, "registry", "place", "zone.yaml");
+const REDLIST_CATEGORY_YAML =
+  process.env.RYUIKI_REDLIST_CATEGORY_YAML ?? path.join(REPO, "registry", "taxon", "redlist_category.yaml");
+const ASSESSMENT_LIST_YAML =
+  process.env.RYUIKI_ASSESSMENT_LIST_YAML ?? path.join(REPO, "registry", "taxon", "assessment_list.yaml");
 const OUT_SERVER =
   process.env.RYUIKI_REGISTRY_TS_OUT_SERVER ?? path.join(WEB, "src", "lib", "registry", "generated.ts");
 const OUT_CLIENT =
@@ -88,6 +97,8 @@ requireFile(
 );
 requireFile(VERNACULAR_CSV, "和名台帳");
 requireFile(ZONE_YAML, "zone.yaml");
+requireFile(REDLIST_CATEGORY_YAML, "redlist_category.yaml");
+requireFile(ASSESSMENT_LIST_YAML, "assessment_list.yaml");
 
 // CSV パーサ（引用符・引用符内カンマ・引用符内改行・""エスケープ対応、ヘッダ検証つき）は
 // `./lib/csv.mjs` に共通化した（`web/scripts/build-geo.mjs` の手書きパーサと同じアルゴリズムの
@@ -230,6 +241,37 @@ const zoneRows = loadYaml(fs.readFileSync(ZONE_YAML, "utf-8"));
 const zoneInfo = zoneRows
   .map((r) => ({ zone: r.zone, label: r.name_ja, cond: r.ui_condition_ja }))
   .sort((a, b) => a.zone - b.zone);
+
+// レッドリストのカテゴリー（code -> 表示名・順位）と評価リストの台帳（Issue #48 PR-3b §2.4）。
+// registry.sqlite には表が無い（`taxon_assessment.category_code`/`list_id` がこのコードを
+// 参照するだけ）ので、zone.yaml と同じく YAML を直接読む。rank は「悪化/改善」の比較順序
+// （大きいほど深刻）で、`not_listed` だけ null（前回記載なし）。
+const redlistCategoryRows = loadYaml(fs.readFileSync(REDLIST_CATEGORY_YAML, "utf-8")).categories;
+const redlistCategory = {};
+for (const r of redlistCategoryRows) {
+  if (r.code in redlistCategory) {
+    throw new Error(`registry/taxon/redlist_category.yaml の code が重複している: ${r.code}`);
+  }
+  if (!r.label_ja) throw new Error(`registry/taxon/redlist_category.yaml の code=${r.code} に label_ja が無い`);
+  redlistCategory[r.code] = { labelJa: r.label_ja, rank: r.rank ?? null, scope: r.scope };
+}
+const assessmentListRows = loadYaml(fs.readFileSync(ASSESSMENT_LIST_YAML, "utf-8")).lists;
+const assessmentList = {};
+for (const r of assessmentListRows) {
+  if (r.list_id in assessmentList) {
+    throw new Error(`registry/taxon/assessment_list.yaml の list_id が重複している: ${r.list_id}`);
+  }
+  if (r.codelist && r.codelist !== "redlist_category") {
+    throw new Error(`registry/taxon/assessment_list.yaml の list_id=${r.list_id} の codelist が未知: ${r.codelist}`);
+  }
+  assessmentList[r.list_id] = {
+    name: r.name,
+    year: r.year,
+    kind: r.kind,
+    region: r.region,
+    codelist: r.codelist ?? null,
+  };
+}
 
 // caveat キーの union 型（build-registry-ts.mjs が唯一の生成元。手書きしない）。
 // 画面・prompt.ts が既知のキーを直接引くときの型チェックに使う
@@ -441,6 +483,22 @@ export interface GeneratedZone {
   cond: string;
 }
 
+/** \`REDLIST_CATEGORY\` の1エントリ（Issue #48 PR-3b §2.4）。rank が null は「前回記載なし」。 */
+export interface GeneratedRedlistCategory {
+  labelJa: string;
+  rank: number | null;
+  scope: string;
+}
+
+/** \`ASSESSMENT_LIST\` の1エントリ（Issue #48 PR-3b §2.4）。 */
+export interface GeneratedAssessmentList {
+  name: string;
+  year: number;
+  kind: string;
+  region: string;
+  codelist: string | null;
+}
+
 /** \`VARIABLE_LABEL\` の1エントリ（Issue #48 PR-2、docs/plans/V2_SERVING_PR2.md §5）。 */
 export interface GeneratedVariableLabel {
   short: string;
@@ -478,7 +536,7 @@ export const VARIABLE_LABEL: Readonly<Record<string, GeneratedVariableLabel>> = 
 )};
 
 /**
- * 和名54件（registry/taxon/vernacular_ja.csv、旧 domain.ts の NAME_JA をそのまま複製した台帳）。
+ * 和名63件（registry/taxon/vernacular_ja.csv、旧 domain.ts の NAME_JA をそのまま複製した台帳）。
  * taxon テーブル全体の vernacular_name_ja（8,324件、taxa 由来の別の母集団）とは別物。
  */
 export const NAME_JA: Readonly<Record<string, string>> = ${emitRecord(nameJa)};
@@ -510,6 +568,25 @@ export const GENERATED_CAVEATS: readonly GeneratedCaveat[] = ${emitObjectArray(c
 export const GENERATED_CAVEAT_SCOPE: readonly GeneratedCaveatScope[] = ${emitObjectArray(
   caveatScope,
   ["scopeKind", "scopeRef", "caveatKey", "sortOrder", "priority"],
+)};
+
+/**
+ * レッドリストのカテゴリー（registry/taxon/redlist_category.yaml。Issue #48 PR-3b §2.4）。
+ * キーは \`taxon_assessment.category_code\`/\`prev_category_code\`。\`rank\` は悪化/改善を比べる順序
+ * （大きいほど深刻）で、\`not_listed\` だけ null（v1 の「前回記載なし」。direction の判定では順位なし）。
+ */
+export const REDLIST_CATEGORY: Readonly<Record<string, GeneratedRedlistCategory>> = ${emitNestedRecord(
+  redlistCategory,
+  ["labelJa", "rank", "scope"],
+)};
+
+/**
+ * 評価リストの台帳（registry/taxon/assessment_list.yaml。Issue #48 PR-3b §2.4）。
+ * キーは \`taxon_assessment.list_id\`。\`kind='red_list'\` が県レッドリスト3版、\`'invasive'\` が外来種。
+ */
+export const ASSESSMENT_LIST: Readonly<Record<string, GeneratedAssessmentList>> = ${emitNestedRecord(
+  assessmentList,
+  ["name", "year", "kind", "region", "codelist"],
 )};
 
 /** Ridge to Reef ゾーン(1-5)の定義（registry/place/zone.yaml、旧 domain.ts の ZONE_INFO）。 */

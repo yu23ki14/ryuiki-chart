@@ -1,14 +1,14 @@
 {
   "header": {
-    "gitHead": "2ebb02dd0d7c81d8834f8f878c1a1af5c033b588",
+    "gitHead": "57bf331744dfa89cad617c412bcfa7689d3e8710",
     "v2PipelineFingerprint": "phase-b-fact-slice/v1",
-    "registryInputFingerprint": "55a8c2c4c1409a691f31a2e25e21b4bd6d6db2b3fd0f7852837c7d6bd60613f2",
+    "registryInputFingerprint": "2112cfc3ff09e8fb6cef1be59783381f41bdb2cb8ca751cd702067415142fffa",
     "sqliteVersion": "3.53.4",
     "imputation": "lod",
     "expand": "all",
     "v1Source": "derived",
-    "generatedAt": "2026-09-27T03:23:09.428Z",
-    "elapsedMs": 262975
+    "generatedAt": "2026-10-05T13:36:23.051Z",
+    "elapsedMs": 213835
   },
   "stats": [
     {
@@ -23,6 +23,11 @@
       "lod_imputation": 0,
       "unit_label_registry": 30,
       "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
       "unexplained": 0
     },
     {
@@ -37,6 +42,11 @@
       "lod_imputation": 0,
       "unit_label_registry": 0,
       "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
       "unexplained": 0
     },
     {
@@ -51,6 +61,11 @@
       "lod_imputation": 4409,
       "unit_label_registry": 4149,
       "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
       "unexplained": 0
     },
     {
@@ -65,6 +80,11 @@
       "lod_imputation": 0,
       "unit_label_registry": 0,
       "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
       "unexplained": 0
     },
     {
@@ -79,6 +99,11 @@
       "lod_imputation": 0,
       "unit_label_registry": 0,
       "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
       "unexplained": 0
     },
     {
@@ -93,6 +118,11 @@
       "lod_imputation": 0,
       "unit_label_registry": 0,
       "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
       "unexplained": 0
     },
     {
@@ -107,6 +137,11 @@
       "lod_imputation": 65665,
       "unit_label_registry": 71187,
       "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
       "unexplained": 0
     },
     {
@@ -121,6 +156,11 @@
       "lod_imputation": 12414,
       "unit_label_registry": 0,
       "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
       "unexplained": 0
     },
     {
@@ -135,6 +175,11 @@
       "lod_imputation": 12490,
       "unit_label_registry": 0,
       "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
       "unexplained": 0
     },
     {
@@ -149,6 +194,11 @@
       "lod_imputation": 46184,
       "unit_label_registry": 50435,
       "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
       "unexplained": 0
     },
     {
@@ -163,6 +213,11 @@
       "lod_imputation": 2467,
       "unit_label_registry": 2281,
       "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
       "unexplained": 0
     },
     {
@@ -177,6 +232,11 @@
       "lod_imputation": 106,
       "unit_label_registry": 12,
       "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
       "unexplained": 0
     },
     {
@@ -191,6 +251,11 @@
       "lod_imputation": 254,
       "unit_label_registry": 40,
       "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
       "unexplained": 0
     },
     {
@@ -205,6 +270,11 @@
       "lod_imputation": 0,
       "unit_label_registry": 28,
       "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
       "unexplained": 0
     },
     {
@@ -219,6 +289,11 @@
       "lod_imputation": 4392,
       "unit_label_registry": 3990,
       "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
       "unexplained": 0
     },
     {
@@ -233,6 +308,11 @@
       "lod_imputation": 65568,
       "unit_label_registry": 65175,
       "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
       "unexplained": 0
     },
     {
@@ -247,6 +327,11 @@
       "lod_imputation": 12414,
       "unit_label_registry": 0,
       "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
       "unexplained": 0
     },
     {
@@ -261,6 +346,11 @@
       "lod_imputation": 12490,
       "unit_label_registry": 0,
       "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
       "unexplained": 0
     },
     {
@@ -275,6 +365,11 @@
       "lod_imputation": 2443,
       "unit_label_registry": 2121,
       "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
       "unexplained": 0
     },
     {
@@ -289,6 +384,11 @@
       "lod_imputation": 106,
       "unit_label_registry": 12,
       "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
       "unexplained": 0
     },
     {
@@ -303,6 +403,11 @@
       "lod_imputation": 254,
       "unit_label_registry": 40,
       "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
       "unexplained": 0
     },
     {
@@ -317,6 +422,11 @@
       "lod_imputation": 0,
       "unit_label_registry": 0,
       "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
       "unexplained": 0
     },
     {
@@ -331,6 +441,11 @@
       "lod_imputation": 0,
       "unit_label_registry": 0,
       "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
       "unexplained": 0
     },
     {
@@ -345,80 +460,393 @@
       "lod_imputation": 0,
       "unit_label_registry": 0,
       "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
+      "unexplained": 0
+    },
+    {
+      "id": "effort_years",
+      "runs": 1,
+      "rowsV1": 37,
+      "rowsV2": 37,
+      "matched": 37,
+      "declared": 0,
+      "day_split": 0,
+      "synthetic_excluded": 0,
+      "lod_imputation": 0,
+      "unit_label_registry": 0,
+      "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
+      "unexplained": 0
+    },
+    {
+      "id": "taxon_group_years",
+      "runs": 1,
+      "rowsV1": 588,
+      "rowsV2": 588,
+      "matched": 588,
+      "declared": 0,
+      "day_split": 0,
+      "synthetic_excluded": 0,
+      "lod_imputation": 0,
+      "unit_label_registry": 0,
+      "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
+      "unexplained": 0
+    },
+    {
+      "id": "species_catalog",
+      "runs": 1,
+      "rowsV1": 23618,
+      "rowsV2": 23618,
+      "matched": 20780,
+      "declared": 1,
+      "day_split": 0,
+      "synthetic_excluded": 0,
+      "lod_imputation": 0,
+      "unit_label_registry": 0,
+      "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 2837,
+      "undated_excluded": 0,
+      "unexplained": 0
+    },
+    {
+      "id": "species_labels",
+      "runs": 1,
+      "rowsV1": 23618,
+      "rowsV2": 23618,
+      "matched": 20781,
+      "declared": 0,
+      "day_split": 0,
+      "synthetic_excluded": 0,
+      "lod_imputation": 0,
+      "unit_label_registry": 0,
+      "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 2837,
+      "undated_excluded": 0,
+      "unexplained": 0
+    },
+    {
+      "id": "species_years",
+      "runs": 1702,
+      "rowsV1": 31955,
+      "rowsV2": 31955,
+      "matched": 31955,
+      "declared": 0,
+      "day_split": 0,
+      "synthetic_excluded": 0,
+      "lod_imputation": 0,
+      "unit_label_registry": 0,
+      "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
+      "unexplained": 0
+    },
+    {
+      "id": "species_months",
+      "runs": 1702,
+      "rowsV1": 9997,
+      "rowsV2": 9997,
+      "matched": 9978,
+      "declared": 0,
+      "day_split": 0,
+      "synthetic_excluded": 0,
+      "lod_imputation": 0,
+      "unit_label_registry": 0,
+      "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 19,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
+      "unexplained": 0
+    },
+    {
+      "id": "species_mesh_years",
+      "runs": 1702,
+      "rowsV1": 276163,
+      "rowsV2": 276163,
+      "matched": 276163,
+      "declared": 0,
+      "day_split": 0,
+      "synthetic_excluded": 0,
+      "lod_imputation": 0,
+      "unit_label_registry": 0,
+      "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
+      "unexplained": 0
+    },
+    {
+      "id": "species_share_trend",
+      "runs": 34,
+      "rowsV1": 246,
+      "rowsV2": 246,
+      "matched": 172,
+      "declared": 0,
+      "day_split": 0,
+      "synthetic_excluded": 0,
+      "lod_imputation": 0,
+      "unit_label_registry": 0,
+      "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 74,
+      "undated_excluded": 0,
+      "unexplained": 0
+    },
+    {
+      "id": "mesh_all",
+      "runs": 1,
+      "rowsV1": 4083,
+      "rowsV2": 4083,
+      "matched": 4083,
+      "declared": 0,
+      "day_split": 0,
+      "synthetic_excluded": 0,
+      "lod_imputation": 0,
+      "unit_label_registry": 0,
+      "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
+      "unexplained": 0
+    },
+    {
+      "id": "mesh_by_year",
+      "runs": 57,
+      "rowsV1": 37043,
+      "rowsV2": 37043,
+      "matched": 37043,
+      "declared": 0,
+      "day_split": 0,
+      "synthetic_excluded": 0,
+      "lod_imputation": 0,
+      "unit_label_registry": 0,
+      "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
+      "unexplained": 0
+    },
+    {
+      "id": "ias_species",
+      "runs": 1,
+      "rowsV1": 173,
+      "rowsV2": 173,
+      "matched": 173,
+      "declared": 0,
+      "day_split": 0,
+      "synthetic_excluded": 0,
+      "lod_imputation": 0,
+      "unit_label_registry": 0,
+      "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
+      "unexplained": 0
+    },
+    {
+      "id": "redlist_summary",
+      "runs": 1,
+      "rowsV1": 30,
+      "rowsV2": 30,
+      "matched": 30,
+      "declared": 0,
+      "day_split": 0,
+      "synthetic_excluded": 0,
+      "lod_imputation": 0,
+      "unit_label_registry": 0,
+      "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
+      "unexplained": 0
+    },
+    {
+      "id": "redlist_flows",
+      "runs": 18,
+      "rowsV1": 308,
+      "rowsV2": 308,
+      "matched": 308,
+      "declared": 0,
+      "day_split": 0,
+      "synthetic_excluded": 0,
+      "lod_imputation": 0,
+      "unit_label_registry": 0,
+      "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
+      "unexplained": 0
+    },
+    {
+      "id": "redlist_species",
+      "runs": 18,
+      "rowsV1": 4080,
+      "rowsV2": 4080,
+      "matched": 4080,
+      "declared": 0,
+      "day_split": 0,
+      "synthetic_excluded": 0,
+      "lod_imputation": 0,
+      "unit_label_registry": 0,
+      "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
+      "unexplained": 0
+    },
+    {
+      "id": "biota_totals",
+      "runs": 1,
+      "rowsV1": 1,
+      "rowsV2": 1,
+      "matched": 0,
+      "declared": 0,
+      "day_split": 0,
+      "synthetic_excluded": 0,
+      "lod_imputation": 0,
+      "unit_label_registry": 0,
+      "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 1,
+      "unexplained": 0
+    },
+    {
+      "id": "watershed_rollup",
+      "runs": 1,
+      "rowsV1": 287,
+      "rowsV2": 287,
+      "matched": 101,
+      "declared": 0,
+      "day_split": 0,
+      "synthetic_excluded": 0,
+      "lod_imputation": 0,
+      "unit_label_registry": 0,
+      "float_rounding": 0,
+      "watershed_memo": 186,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
+      "unexplained": 0
+    },
+    {
+      "id": "watershed_year",
+      "runs": 1,
+      "rowsV1": 10699,
+      "rowsV2": 10684,
+      "matched": 9515,
+      "declared": 0,
+      "day_split": 0,
+      "synthetic_excluded": 0,
+      "lod_imputation": 0,
+      "unit_label_registry": 0,
+      "float_rounding": 0,
+      "watershed_memo": 1090,
+      "species_n_definition": 371,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
       "unexplained": 0
     }
   ],
   "totals": {
     "id": "total",
-    "runs": 26007,
-    "rowsV1": 863723,
-    "rowsV2": 856219,
-    "matched": 582792,
-    "declared": 36,
+    "runs": 31250,
+    "rowsV1": 1286649,
+    "rowsV2": 1279130,
+    "matched": 998579,
+    "declared": 37,
     "day_split": 12,
     "synthetic_excluded": 10129,
     "lod_imputation": 241656,
     "unit_label_registry": 199500,
     "float_rounding": 0,
+    "watershed_memo": 1276,
+    "species_n_definition": 371,
+    "month_cell_membership": 19,
+    "vernacular_label_rule": 5748,
+    "undated_excluded": 1,
     "unexplained": 0
+  },
+  "labelMoved": {
+    "species_catalog": {
+      "英名等→英名等": 71,
+      "日本語→日本語": 593,
+      "中国語等→日本語": 167,
+      "日本語→英名等": 64,
+      "英名等→学名のみ": 270,
+      "英名等→日本語": 200,
+      "日本語→学名のみ": 1186,
+      "学名のみ→日本語": 255,
+      "学名のみ→英名等": 5,
+      "中国語等→英名等": 3,
+      "中国語等→学名のみ": 23
+    },
+    "species_labels": {
+      "英名等→英名等": 71,
+      "日本語→日本語": 593,
+      "中国語等→日本語": 167,
+      "日本語→英名等": 64,
+      "英名等→学名のみ": 270,
+      "英名等→日本語": 200,
+      "日本語→学名のみ": 1186,
+      "学名のみ→日本語": 255,
+      "学名のみ→英名等": 5,
+      "中国語等→英名等": 3,
+      "中国語等→学名のみ": 23
+    },
+    "species_share_trend": {
+      "中国語等→日本語": 21,
+      "日本語→日本語": 30,
+      "日本語→学名のみ": 2,
+      "日本語→英名等": 4,
+      "英名等→日本語": 1,
+      "英名等→英名等": 16
+    }
   },
   "unexplainedSamples": [],
   "rottenDeclarations": [],
-  "mutationResults": [
-    {
-      "name": "day_split_rule_off",
-      "unexplained": 12,
-      "caughtAsExpected": true
-    },
-    {
-      "name": "declared_rot",
-      "unexplained": 2,
-      "caughtAsExpected": true
-    },
-    {
-      "name": "drop_series",
-      "unexplained": 424624,
-      "caughtAsExpected": true
-    },
-    {
-      "name": "include_watershed_cells",
-      "unexplained": 0,
-      "caughtAsExpected": true
-    },
-    {
-      "name": "lod_instead_of_zero",
-      "unexplained": 199516,
-      "caughtAsExpected": true
-    },
-    {
-      "name": "merge_rule_off",
-      "unexplained": 381251,
-      "caughtAsExpected": true
-    },
-    {
-      "name": "month_off_by_one",
-      "unexplained": 129895,
-      "caughtAsExpected": true
-    },
-    {
-      "name": "no_unit",
-      "unexplained": 125974,
-      "caughtAsExpected": true
-    },
-    {
-      "name": "swap_kind",
-      "unexplained": 79526,
-      "caughtAsExpected": true
-    },
-    {
-      "name": "synthetic_rule_off",
-      "unexplained": 10129,
-      "caughtAsExpected": true
-    },
-    {
-      "name": "lod_rule_off",
-      "unexplained": 241656,
-      "caughtAsExpected": true
-    }
-  ]
+  "mutationResults": []
 }
