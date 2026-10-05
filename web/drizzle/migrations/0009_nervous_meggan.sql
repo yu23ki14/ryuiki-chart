@@ -1,0 +1,1 @@
+CREATE INDEX `ix_cells_series` ON `cells` (`doc_id`,`table_id`,`row_key`) WHERE superseded = 0 AND is_total = 0 AND value_type IN ('int','float') AND value IS NOT NULL AND fiscal_year IS NOT NULL AND row_key IS NOT NULL AND row_key <> '';
