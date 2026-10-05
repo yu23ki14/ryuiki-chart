@@ -28,16 +28,16 @@ import {
   taxonGroupYears,
   effortYears,
   occurrenceTotals,
-  watershedOccurrence,
   speciesShareTrend,
   speciesYears,
   speciesMonths,
   redlistBundle,
+  overviewCounts,
+  watershedRollup,
   type CellSpec,
   type Scope,
 } from "@/lib/cube";
 import { facetsForSeries, facetsForOccurrence, caveatKeysForFacets } from "@/lib/cube/caveats";
-import { overviewCounts, watershedRollup } from "@/lib/cube/catalog";
 import { MEASUREMENTS_DATASET } from "@/lib/cube/series";
 
 /** 測定値系データセット固定（PR-2 のスコープは測定値系。design §1.1 と同じ前提）。registry の dataset キー。 */
@@ -617,11 +617,10 @@ const get_overview = tool({
   execute: async ({ limit }) => {
     const t0 = performance.now();
     const db = await d1CubeDb();
-    const [counts, rollupAll, occ, wsOcc] = await Promise.all([
+    const [counts, rollupAll, occ] = await Promise.all([
       overviewCounts(db),
       watershedRollup(db),
       occurrenceTotals(db),
-      watershedOccurrence(db),
     ]);
     // 生物の件数・種数は cube（日付のある記録だけ）。それ以外の総数は overviewCounts。
     const stats = {
@@ -683,7 +682,7 @@ const get_overview = tool({
         stats,
         landuse_years: rollupAll.landuseYears,
         watersheds: rollup,
-        outside_watershed_n: rollupAll.outsideWatershed?.n ?? wsOcc.outsideWatershed?.n ?? 0,
+        outside_watershed_n: rollupAll.outsideWatershed?.n ?? 0,
       },
       rowCount: rollup.length + 1,
       elapsedMs: performance.now() - t0,

@@ -40,6 +40,8 @@ describe("expectedRowKeyLabel / parseNoteTableIds", () => {
     expect(expectedRowKeyLabel("a|b|c")).toBe("c");
     expect(expectedRowKeyLabel("abc")).toBe("abc");
     expect(expectedRowKeyLabel("a|b|")).toBe("a|b|");
+    expect(expectedRowKeyLabel("a|  b ")).toBe("b");
+    expect(expectedRowKeyLabel("湘南地域|  ")).toBe("湘南地域|  ");
   });
   it("table_ids: NULL・空・[] は文書全体（null）、配列は集合", () => {
     expect(parseNoteTableIds(null)).toBeNull();

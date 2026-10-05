@@ -14,8 +14,7 @@
  * あちらはモデルが意図ツールで答えられないときの第2層で、止めるかどうかは別の判断になる
  * （フラグでは止まらないが、`runUserSql` の `catalogOnly` でカタログ外の表は読めない）。
  *
- * `/api/schema` は閉じているが全表を列挙する（PR-5 で v1 の表を DROP するまで）。
- * EXPLORE_ENABLED を true に戻す前に PR-5 を済ませること。
+ * 探索面は v1 の表も列挙する。PR-5 で v1 の表を DROP するまで true に戻さない。
  */
 export const EXPLORE_ENABLED = false;
 

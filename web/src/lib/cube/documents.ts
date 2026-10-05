@@ -32,14 +32,14 @@ export interface DocSeriesPoint {
 }
 
 /**
- * 行キーの表示名＝最後の `|` の後ろ（空なら `row_key` 全体）。
+ * 行キーの表示名＝最後の `|` の後ろを trim したもの（空なら `row_key` 全体）。
  * API が `label` として返し、UI は再計算しない（label を作る場所はここ1つ）。
  * v1 は最初の `|` の次から末尾の `|` までを切り出していた（`PHASE_B_DOCUMENTS.md` §3 ①）。
  */
 export function rowKeyLabel(rowKey: string): string {
   const i = rowKey.lastIndexOf("|");
   if (i < 0) return rowKey;
-  const tail = rowKey.slice(i + 1);
+  const tail = rowKey.slice(i + 1).trim();
   return tail === "" ? rowKey : tail;
 }
 
@@ -54,17 +54,21 @@ type DocRow = Record<string, string | number | null>;
  * `INDEXED BY` は付けない: 部分索引 `ix_cells_series` は `cells.sqlite`（原本）には無く
  * （D1 にだけある）、述語が `DOC_SERIES_WHERE` と一致すれば SQLite が自動で選ぶ。
  */
-const POINTS_CTE = `
+function pointsCte(extraWhere = ""): string {
+  return `
   pts AS (
     SELECT doc_id, table_id, row_key, fiscal_year,
            MIN(CAST(value AS REAL)) AS value,
            MIN(page_no) AS page_no,
            MAX(unit) AS unit
     FROM cells
-    WHERE ${DOC_SERIES_WHERE}
+    WHERE ${DOC_SERIES_WHERE}${extraWhere}
     GROUP BY doc_id, table_id, row_key, fiscal_year
     HAVING MIN(CAST(value AS REAL)) = MAX(CAST(value AS REAL))
   )`;
+}
+
+const POINTS_CTE = pointsCte();
 
 /**
  * `n_warnings`: 時系列を止める注記（`blocks_timeseries=1`）のうち、文書全体にかかるもの
@@ -119,9 +123,9 @@ export async function docSeriesPoints(
   rowKey: string,
 ): Promise<DocSeriesPoint[]> {
   const rows = await db.all<DocRow>(
-    `WITH ${POINTS_CTE}
+    // 系列を CTE の中で絞る（部分索引 ix_cells_series の先頭3列 doc_id/table_id/row_key が効く）。
+    `WITH ${pointsCte(" AND doc_id = ? AND table_id = ? AND row_key = ?")}
      SELECT fiscal_year, value, unit, page_no FROM pts
-     WHERE doc_id = ? AND table_id = ? AND row_key = ?
      ORDER BY fiscal_year`,
     [docId, tableId, rowKey],
   );

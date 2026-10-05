@@ -1111,8 +1111,6 @@ export interface IasSpeciesRow {
   yTo: number | null;
   /** `IAS_SINCE_YEAR` 以降の記録数。 */
   nSince: number;
-  /** `nSince` の起点年（`IAS_SINCE_YEAR`）。画面の見出しはここから出す。 */
-  sinceYear: number;
 }
 
 /**
@@ -1163,7 +1161,6 @@ export async function iasSpecies(db: CubeDb): Promise<IasSpeciesRow[]> {
       yFrom: r.y_from as number | null,
       yTo: r.y_to as number | null,
       nSince: since.get(binom) ?? 0,
-      sinceYear: IAS_SINCE_YEAR,
     };
   });
   return out.sort((a, b) => b.n - a.n || cmp(a.binom, b.binom) || cmp(a.iasCategory, b.iasCategory));
@@ -1205,6 +1202,11 @@ export async function overviewCounts(db: CubeDb): Promise<OverviewCounts> {
 export interface LanduseCell {
   from: number | null;
   to: number | null;
+}
+
+/** 最古→最新の面積の差（km2）。どちらかが無ければ null。土地利用の増減を出す場所はここ1つ。 */
+export function landuseDelta(c: LanduseCell | null | undefined): number | null {
+  return c && c.from != null && c.to != null ? c.to - c.from : null;
 }
 
 export interface WatershedRollupRow {
@@ -1269,7 +1271,7 @@ interface LanduseLoaded {
  * 土地利用（建物・森林・田）の年版ごとの面積。`observation_agg`（theme=landuse、year・mean）を
  * 流域から引く。`ix_observation_agg_place_variable_grain` を明示する（第3索引 `ix_observation_agg_*`
  * の誤選択を避ける。PR-3b §0-2 と同じ理由）。`CROSS JOIN` で place 側を外側に固定する。
- * 版の年は定数にせず、取れた `period_start` の最小・最大を `years` として返す。
+ * 版の年は取れた `period_start` の最小・最大を `years` として返す（`/api/geo/watersheds` が画面のラベルに使う）。
  */
 async function loadLanduse(db: CubeDb): Promise<LanduseLoaded> {
   const rows = await db.all<OccRow>(
@@ -1363,9 +1365,9 @@ export async function landuseHighlight(
   const [bases, landuse] = await Promise.all([watershedBases(db), loadLanduse(db)]);
   const out: { watershedId: string; waterSystemName: string | null; delta: number; areaKm2: number }[] = [];
   for (const b of bases) {
-    const built = landuseCell(landuse, b.placeId, LANDUSE_BUILT);
-    if (built.from === null || built.to === null) continue;
-    out.push({ watershedId: b.watershedId, waterSystemName: b.waterSystemName, delta: built.to - built.from, areaKm2: b.areaKm2 });
+    const delta = landuseDelta(landuseCell(landuse, b.placeId, LANDUSE_BUILT));
+    if (delta === null) continue;
+    out.push({ watershedId: b.watershedId, waterSystemName: b.waterSystemName, delta, areaKm2: b.areaKm2 });
   }
   out.sort((a, b) => b.delta - a.delta || cmp(a.watershedId, b.watershedId));
   return out.slice(0, limit);

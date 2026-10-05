@@ -314,6 +314,8 @@ export interface DocsExpectations {
   series: ReadonlyMap<string, DocSeriesExpect>;
   /** （系列, 年）（`docPointKey`）ごとの「その年の値の種類数」（`CAST(value AS REAL)` の DISTINCT）。 */
   yearDistinct: ReadonlyMap<string, number>;
+  /** 点（docPointKey）ごとの期待 page_no（v2 の定義＝年内の MIN(page_no)）。 */
+  yearPageNo: ReadonlyMap<string, number>;
 }
 
 export interface DocSeriesExpect {
@@ -1187,8 +1189,13 @@ function explainDocMeta(diff: RowDiff, ctx: ClassifyContext, d: DocsExpectations
       n_years: [ex.allYears, ex.goodYears],
       y_from: [ex.allFrom, ex.goodFrom],
       y_to: [ex.allTo, ex.goodTo],
-      page_no: [ex.allPageNo, ex.goodPageNo],
     };
+    // page_no は v1 の GROUP BY の非集約列で値が不定（どの行の page_no が出るか決まらない）。
+    // v1 側は照合せず、v2 が独立に再計算した期待値（年ごとの MIN の、年をまたいだ MAX）と一致すれば説明済み。
+    if (col === "page_no") {
+      if (v2v !== ex.goodPageNo || !bioRule(ctx, "doc_year_collapse", used)) return emptyClassification();
+      continue;
+    }
     const pair = collapse[col];
     if (!pair || v1v !== pair[0] || v2v !== pair[1] || !bioRule(ctx, "doc_year_collapse", used)) return emptyClassification();
   }
@@ -1199,9 +1206,16 @@ function explainDocMeta(diff: RowDiff, ctx: ClassifyContext, d: DocsExpectations
 function explainDocPoint(diff: RowDiff, ctx: ClassifyContext, d: DocsExpectations): Classification {
   // 点が消えるのは、その年に値が2種以上ある（`doc_year_collapse`）ときだけ。値が1種の年の点が
   // 消えていれば v2 の取りこぼし。
-  if (diff.kind !== "row_only_in_v1" || !diff.v1) return emptyClassification();
   const { doc_id, table_id, row_key } = ctx.params;
   if (doc_id === undefined || table_id === undefined || row_key === undefined) return emptyClassification();
+  if (diff.kind === "value_diff" && diff.v1 && diff.v2) {
+    // v1 の page_no は不定（非集約列）。page_no だけの差で、v2 が年内 MIN の期待値と一致すれば説明済み。
+    if (diff.columns.length === 0 || diff.columns.some((c) => c !== "page_no")) return emptyClassification();
+    const exp = d.yearPageNo.get(docPointKey(doc_id, table_id, row_key, diff.key[0]));
+    if (exp === undefined || numOf(diff.v2, "page_no") !== exp || !ruleEnabled(ctx, "doc_year_collapse")) return emptyClassification();
+    return { rules: new Set(["doc_year_collapse"]), declaredMatches: [] };
+  }
+  if (diff.kind !== "row_only_in_v1" || !diff.v1) return emptyClassification();
   const distinct = d.yearDistinct.get(docPointKey(doc_id, table_id, row_key, diff.key[0]));
   if (distinct === undefined || distinct < 2 || !ruleEnabled(ctx, "doc_year_collapse")) return emptyClassification();
   return { rules: new Set(["doc_year_collapse"]), declaredMatches: [] };

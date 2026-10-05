@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { loadGeoJson } from "@/lib/geo";
-import { d1CubeDb, watershedRollup } from "@/lib/cube";
+import { d1CubeDb, landuseDelta, watershedRollup } from "@/lib/cube";
 
 export const runtime = "nodejs";
 
@@ -8,18 +8,16 @@ export const runtime = "nodejs";
 export async function GET() {
   try {
     const fc = await loadGeoJson("watersheds.geojson");
-    const { watersheds } = await watershedRollup(await d1CubeDb());
+    const { watersheds, landuseYears } = await watershedRollup(await d1CubeDb());
     const rollup = new Map(watersheds.map((r) => [r.watershedId, r]));
     const features = fc.features.map((f) => {
       const id = String((f.properties as Record<string, unknown>).watershed_id ?? "");
       const r = rollup.get(id);
       const orgN = r?.orgN ?? 0;
       const orgRedlistN = r?.orgRedlistN ?? 0;
-      const delta = (c?: { from: number | null; to: number | null }) =>
-        c && c.from != null && c.to != null ? c.to - c.from : null;
-      const builtDelta = delta(r?.built);
-      const forestDelta = delta(r?.forest);
-      const paddyDelta = delta(r?.paddy);
+      const builtDelta = landuseDelta(r?.built);
+      const forestDelta = landuseDelta(r?.forest);
+      const paddyDelta = landuseDelta(r?.paddy);
       return {
         type: "Feature" as const,
         geometry: f.geometry,
@@ -42,7 +40,7 @@ export async function GET() {
       };
     });
     return NextResponse.json(
-      { type: "FeatureCollection", features },
+      { type: "FeatureCollection", features, landuse_years: landuseYears },
       { headers: { "Cache-Control": "public, max-age=300" } },
     );
   } catch (e) {

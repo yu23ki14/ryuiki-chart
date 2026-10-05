@@ -191,6 +191,7 @@ function offCatalogTables(db: D1Database): Promise<Set<string>> {
 /**
  * SQL 中の識別子（位置を問わず全部）がカタログ外の実在表に当たれば SqlError。
  * 文字列リテラル中の語でも弾く（弾く側に倒す。取りこぼすほうが危ない）。
+ * 識別子の全走査なので、表名と同じ語の列名・別名・文字列も弾く（安全側）。
  */
 async function assertCatalogOnly(db: D1Database, sql: string): Promise<void> {
   const off = await offCatalogTables(db);
@@ -219,7 +220,8 @@ export interface TableInfo {
   /** どの原本から来たテーブルか（main = ryuiki / c = cells / d = derived）。D1 では全部 main スキーマ。 */
   schema: string;
   name: string;
-  rowCount: number;
+  /** 件数を数えない表（巨大表・`counts:false`）は null。 */
+  rowCount: number | null;
   columns: ColumnInfo[];
   sql: string | null;
 }
@@ -239,11 +241,7 @@ export interface ListTablesOpts {
   only?: string;
 }
 
-export type TableInfoLoose = Omit<TableInfo, "rowCount"> & { rowCount: number | null };
-
-export async function listTables(): Promise<TableInfo[]>;
-export async function listTables(opts: ListTablesOpts): Promise<TableInfoLoose[]>;
-export async function listTables(opts: ListTablesOpts = {}): Promise<TableInfoLoose[]> {
+export async function listTables(opts: ListTablesOpts = {}): Promise<TableInfo[]> {
   const db = await getD1();
   const withCounts = opts.counts !== false;
 

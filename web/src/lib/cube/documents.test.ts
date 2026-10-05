@@ -19,6 +19,10 @@ describe("rowKeyLabel（最後の | の後ろ）", () => {
     expect(rowKeyLabel("a|")).toBe("a|");
     expect(rowKeyLabel("")).toBe("");
   });
+  it("後ろの前後の空白は落とす。空白だけなら row_key 全体", () => {
+    expect(rowKeyLabel("a|  b ")).toBe("b");
+    expect(rowKeyLabel("湘南地域|  ")).toBe("湘南地域|  ");
+  });
 });
 
 describe("docSeriesList", () => {

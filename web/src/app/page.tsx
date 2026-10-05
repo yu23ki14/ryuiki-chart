@@ -50,10 +50,8 @@ const SECTIONS = [
 const BOD_VARIABLE_ID = "common:variable:water.bod";
 
 /**
- * 一本の川を下るときの水質の変わり方（既定は境川）。v1 の `longitudinalHighlight`
- * （`meas_year` の `kind='daily'`・`year>=2020` を `AVG(avg)` で束ねる）の後継
- * （Issue #48 PR-2 design §2.2「home」）。`summarize(...,'place')` は同じ束ね方
- * （選んだ grain セルの値をそのまま `AVG()` する）をキューブに対して行う。
+ * 一本の川を下るときの水質の変わり方（既定は境川）。キューブ（`observation_agg`）の
+ * 2020 年以降のセル（粒度は指標の basis で決まる）を `summarize(...,'place')` で地点ごとに平均する。
  *
  * 値は `imputation:'lod'`（定量下限値とみなす）で取る——v1 は検閲を単純に含めていたが
  * 曖昧だった扱いを、PR-2 で明示的に選ぶ（D6）。HomeHighlights.tsx の固定文言

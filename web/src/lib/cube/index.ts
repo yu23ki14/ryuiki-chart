@@ -103,7 +103,7 @@ export type {
 } from "./catalog";
 export { speciesCatalog, taxonGroupYears, effortYears, effortRowV1, gridCatalog, occurrenceTotals, watershedOccurrence, iasSpecies } from "./catalog";
 export type { OverviewCounts, LanduseCell, WatershedRollupRow } from "./catalog";
-export { overviewCounts, watershedRollup, landuseHighlight } from "./catalog";
+export { overviewCounts, watershedRollup, landuseHighlight, landuseDelta } from "./catalog";
 export type { DocSeriesMeta, DocSeriesPoint } from "./documents";
 export { DOC_SERIES_WHERE, rowKeyLabel, docSeriesList, docSeriesPoints } from "./documents";
 export { gridCellOfPlaceId, watershedIdOfPlaceId, placeIdOfWatershedId } from "./grid";

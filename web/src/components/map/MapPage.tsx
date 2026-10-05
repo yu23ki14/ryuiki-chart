@@ -20,14 +20,14 @@ const WS_METRICS: { id: WsMetric; label: string; note: string; diverging?: boole
   { id: "org_redlist_n", label: "レッドリスト種の記録数", note: "レッドリストのカテゴリーが付いた観察記録", unit: "件" },
   {
     id: "built_delta",
-    label: "市街地の増減 2006→2016",
+    label: "市街地の増減",
     note: "国土数値情報 土地利用細分メッシュ。建物用地の面積の差",
     diverging: true,
     unit: "km²",
     landuse: true,
   },
-  { id: "forest_delta", label: "森林の増減 2006→2016", note: "同上・森林の面積の差", diverging: true, unit: "km²", landuse: true },
-  { id: "paddy_delta", label: "田の増減 2006→2016", note: "同上・田の面積の差", diverging: true, unit: "km²", landuse: true },
+  { id: "forest_delta", label: "森林の増減", note: "同上・森林の面積の差", diverging: true, unit: "km²", landuse: true },
+  { id: "paddy_delta", label: "田の増減", note: "同上・田の面積の差", diverging: true, unit: "km²", landuse: true },
 ];
 
 const MESH_METRICS: { id: MeshMetric; label: string; note: string }[] = [
@@ -48,7 +48,8 @@ export function MapPage() {
   const [sel, setSel] = React.useState<Record<string, unknown> | null>(null);
   const [selKind, setSelKind] = React.useState<"watershed" | "site" | "mesh" | null>(null);
 
-  const ws = useJson<GeoJSON.FeatureCollection>("/api/geo/watersheds");
+  const ws = useJson<GeoJSON.FeatureCollection & { landuse_years?: { from: number; to: number } | null }>("/api/geo/watersheds");
+  const luYears = ws.data?.landuse_years ? ` ${ws.data.landuse_years.from}→${ws.data.landuse_years.to}` : "";
   const sites = useJson<GeoJSON.FeatureCollection>("/api/geo/sites");
   const mesh = useJson<GeoJSON.FeatureCollection>(
     showMesh ? `/api/geo/mesh${meshYear ? `?year=${meshYear}` : ""}` : "",
@@ -170,7 +171,7 @@ export function MapPage() {
             <div className="absolute bottom-6 left-2 z-10 card px-2.5 py-2 shadow-sm max-w-[220px] max-h-[calc(100%-4rem)] overflow-y-auto thin-scroll no-print">
               {showWatersheds && (
                 <div className="mb-2">
-                  <div className="text-[10.5px] font-semibold mb-1">{wsMeta.label}</div>
+                  <div className="text-[10.5px] font-semibold mb-1">{wsMeta.label}{wsMeta.landuse && luYears}</div>
                   <Ramp
                     min={wsScale.min}
                     max={wsScale.max}
@@ -240,6 +241,7 @@ export function MapPage() {
                   />
                   <span className="text-[11.5px] leading-tight">
                     {m.label}
+                    {m.landuse && luYears}
                     <span className="block text-[10px] text-muted">{m.note}</span>
                   </span>
                 </label>

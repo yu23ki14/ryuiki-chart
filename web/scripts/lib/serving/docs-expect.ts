@@ -44,10 +44,10 @@ const NUM_CELLS_SQL = `
     AND c.fiscal_year IS NOT NULL AND c.row_key IS NOT NULL AND c.row_key <> ''
 `;
 
-/** v2 の label（最後の `|` の後ろ。空なら row_key 全体）。`lib/cube/documents.ts` の `rowKeyLabel` の独立な再実装。 */
+/** v2 の label（最後の `|` の後ろを trim。空なら row_key 全体）。`lib/cube/documents.ts` の `rowKeyLabel` の独立な再実装。 */
 export function expectedRowKeyLabel(rowKey: string): string {
   const i = rowKey.lastIndexOf("|");
-  const tail = i >= 0 ? rowKey.slice(i + 1) : rowKey;
+  const tail = (i >= 0 ? rowKey.slice(i + 1) : rowKey).trim();
   return tail === "" ? rowKey : tail;
 }
 
@@ -92,6 +92,7 @@ export function buildDocsExpectations(db: Database.Database): DocsExpectations {
 
   const bySeries = new Map<string, { docId: string; tableId: string; acc: SeriesAcc }>();
   const yearDistinct = new Map<string, number>();
+  const yearPageNo = new Map<string, number>();
   for (const r of rows) {
     const sk = docSeriesKey(r.doc_id, r.table_id, r.row_key);
     let s = bySeries.get(sk);
@@ -105,7 +106,8 @@ export function buildDocsExpectations(db: Database.Database): DocsExpectations {
       s.acc.groups.set(r.fiscal_year, g);
     }
     g.values.add(r.v);
-    if (r.page_no !== null && (g.pageNo === null || r.page_no > g.pageNo)) g.pageNo = r.page_no;
+    // v2 の点の page_no は年ごとの MIN(page_no)（`docSeriesPoints`）。系列の page_no はその年をまたいだ MAX。
+    if (r.page_no !== null && (g.pageNo === null || r.page_no < g.pageNo)) g.pageNo = r.page_no;
   }
 
   // 警告: v1 は doc 単位の COUNT(*)、v2 は文書全体にかかる注記＋当該 table_id を含む注記。
@@ -128,6 +130,7 @@ export function buildDocsExpectations(db: Database.Database): DocsExpectations {
     const good: { year: number; pageNo: number | null }[] = [];
     for (const [year, g] of acc.groups) {
       yearDistinct.set(docPointKey(docId, tableId, rowKey, year), g.values.size);
+      if (g.pageNo !== null) yearPageNo.set(docPointKey(docId, tableId, rowKey, year), g.pageNo);
       all.push({ year, pageNo: g.pageNo });
       if (g.values.size === 1) good.push({ year, pageNo: g.pageNo });
     }
@@ -151,7 +154,7 @@ export function buildDocsExpectations(db: Database.Database): DocsExpectations {
       goodPageNo: maxPage(good),
     });
   }
-  return { series, yearDistinct };
+  return { series, yearDistinct, yearPageNo };
 }
 
 /** `cells.sqlite` を読み取り専用で開いて期待値を作る。 */
