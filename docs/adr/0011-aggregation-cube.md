@@ -71,6 +71,17 @@ period_end, grain, input_grain, stat`）。`imputation` は論理的な軸のま
 同じ書き方。射影は `scripts/b10_project_documents_v1.py` が cells.sqlite/ryuiki.sqlite を
 読み取り専用で ATTACH し、v1 と同じ SQL をそのまま再実行する）。
 
+**2026-10-05 追記（Issue #48 PR-3b、生物系 summary 4表と registry join の但し書き）**: 生物系の
+画面・API が全表走査（1〜2.8 秒）を避けるため、summary を 4 表足す（`summary_species_catalog`・
+`summary_group_year`・`summary_effort_year`・`summary_grid_catalog`）。v1 と同じ「二名法キー
+（binom）の DISTINCT」で種数を数えるには `taxon.canonical_binomial` が要るので、b13 は
+`registry.sqlite` を読み取り専用で ATTACH して `taxon_id` で結合する（`join: {taxon: registry}`）。
+これは PR-2/PR-3a の「summary は `taxon_id` 粒度のまま」の**例外**で、最終粒度の表（再集計しない）に
+限るので非加法の問題は起きない（保存則は結合前のキューブ側で確かめる）。`taxon_id` 粒度のままだと
+画面の種数が +8%（中央値）〜+41%（最大）動くための判断。`pipeline_fingerprint.inputs` に
+`registry:taxon` を持たせ、registry が古ければ summary も古いと判定される。設計は
+`docs/plans/V2_SERVING_PR3B.md` §2.1。本文は変えない。
+
 ## 背景（実測）
 
 `derived.sqlite` の**33テーブル**は、画面・AIツール・チャート部品ごとに個別対応で作られている。

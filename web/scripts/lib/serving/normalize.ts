@@ -122,3 +122,35 @@ export function rowsByKey(rows: readonly NormRow[]): Map<string, NormRow> {
   }
   return m;
 }
+
+/**
+ * 同じキー列の値を持つ行が複数ありうる問い合わせ（例: `redlist_species`）のために、行に連番 `ord`
+ * を足す。キー列が同じ行の中では「全列の JSON の昇順」で番号を振るので、v1・v2 に同じ行の集合が
+ * あれば並び順に依らず同じ `ord` が付く（`rowsByKey` の重複キー例外を避ける。診断の正確さのため
+ * 片方を捨てない）。
+ */
+export function withOrdinal<T extends RawRow>(rows: readonly T[], keyCols: readonly string[]): (T & { ord: number })[] {
+  const decorated = rows.map((r) => ({ r, key: JSON.stringify(keyCols.map((c) => r[c] ?? null)), all: JSON.stringify(r) }));
+  decorated.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : a.all < b.all ? -1 : a.all > b.all ? 1 : 0));
+  const seen = new Map<string, number>();
+  return decorated.map(({ r, key }) => {
+    const ord = seen.get(key) ?? 0;
+    seen.set(key, ord + 1);
+    return { ...r, ord };
+  });
+}
+
+/** `species_share_trend` の期間 A/B（`<aFrom>-<aTo>:<bFrom>-<bTo>`。`serving_queries.yaml` の `trend_periods`）。 */
+export function parseTrendPeriods(v: ScalarParam): [[number, number], [number, number]] {
+  const m = /^(\d{4})-(\d{4}):(\d{4})-(\d{4})$/.exec(String(v));
+  if (!m) throw new Error(`periods の形が不正: ${String(v)}`);
+  return [
+    [Number(m[1]), Number(m[2])],
+    [Number(m[3]), Number(m[4])],
+  ];
+}
+
+/** `redlist_group` ドメインの '' は「全分類群」（group を渡さない）。 */
+export function redlistGroupParam(v: ScalarParam): string | undefined {
+  return v === "" ? undefined : String(v);
+}

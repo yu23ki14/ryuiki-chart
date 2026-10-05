@@ -20,13 +20,23 @@ export type RowMutationName =
   | "swap_kind"
   | "no_unit"
   | "month_off_by_one"
-  | "include_watershed_cells";
+  | "include_watershed_cells"
+  // 生物系（PR-3b §3.3）
+  | "label_wrong"
+  | "drop_species_rows"
+  | "inflate_n";
 
 export type ClassifyMutationName =
   | "day_split_rule_off"
   | "declared_rot"
   | "synthetic_rule_off"
-  | "lod_rule_off";
+  | "lod_rule_off"
+  // 生物系5規則の無効化（PR-3b §3.3）
+  | "memo_rule_off"
+  | "species_n_rule_off"
+  | "month_rule_off"
+  | "label_rule_off"
+  | "undated_rule_off";
 
 /** v1 側だけを狂わせる変異（design §8.1 U4「新しい変異 …merge_rule_off」）。
  *  `merge-v1.ts` の alias→variable_id 束ねを止め、`*_by_variable` 問い合わせの
@@ -42,6 +52,9 @@ export const ROW_MUTATION_NAMES: readonly RowMutationName[] = [
   "no_unit",
   "month_off_by_one",
   "include_watershed_cells",
+  "label_wrong",
+  "drop_species_rows",
+  "inflate_n",
 ];
 
 export const CLASSIFY_MUTATION_NAMES: readonly ClassifyMutationName[] = [
@@ -49,6 +62,11 @@ export const CLASSIFY_MUTATION_NAMES: readonly ClassifyMutationName[] = [
   "declared_rot",
   "synthetic_rule_off",
   "lod_rule_off",
+  "memo_rule_off",
+  "species_n_rule_off",
+  "month_rule_off",
+  "label_rule_off",
+  "undated_rule_off",
 ];
 
 export const V1_MUTATION_NAMES: readonly V1MutationName[] = ["merge_rule_off"];
@@ -81,7 +99,11 @@ export function isV1Mutation(name: string): name is V1MutationName {
  */
 const ROW_MUTATION_APPLIES_TO: Partial<Record<RowMutationName, readonly string[]>> = {
   swap_kind: ["year_series_site", "year_series_water"],
-  month_off_by_one: ["month_series_site", "climatology", "zone_climatology"],
+  month_off_by_one: ["month_series_site", "climatology", "zone_climatology", "species_months"],
+  // 生物系（PR-3b §3.3）。表に無い名前は「全問い合わせに効く」になるので対象を必ず書く。
+  label_wrong: ["species_labels"],
+  drop_species_rows: ["species_years"],
+  inflate_n: ["effort_years", "mesh_by_year", "ias_species"],
 };
 
 /** `--mutate all` 用に、対応するクエリ id 一覧を返す（無関係な id には no-op で効かない変異もある）。 */
@@ -148,6 +170,18 @@ export function applyRowMutation(name: RowMutationName, queryId: string, rows: r
     case "include_watershed_cells":
       // `place_kind='site'` の絞り込みを外す = 重複行が増える再現。行を複製して壊す。
       return rows.length ? [...rows, rows[0]] : [...rows];
+    case "label_wrong":
+      // 規則（vernacular_label_rule）が有効でも落ちること: v2 の1ラベルを、registry から再計算した
+      // 期待ラベルと食い違う名前に差し替える。「ラベルが何であれ説明する」穴を塞げているかを見る。
+      if (!rowMutationAppliesTo(name, queryId)) return [...rows];
+      return rows.map((r, i) => (i === 0 && "label" in r.label ? { ...r, label: { ...r.label, label: `${r.label.label ?? ""}（変異）` } } : r));
+    case "drop_species_rows":
+      // species_years の 1 run は 1 種なので、その種の行を全部落とす（row_only_in_v1）。
+      return rowMutationAppliesTo(name, queryId) ? [] : [...rows];
+    case "inflate_n":
+      // 説明できる規則の無い問い合わせ（effort/mesh/ias）の n を +1 する。
+      if (!rowMutationAppliesTo(name, queryId)) return [...rows];
+      return rows.map((r) => (typeof r.numeric.n === "number" ? { ...r, numeric: { ...r.numeric, n: r.numeric.n + 1 } } : r));
     default: {
       const exhaustive: never = name;
       throw new Error(`未知の行変異: ${exhaustive}`);
@@ -172,6 +206,16 @@ export function applyClassifyMutation(
       return { disabledRules: new Set<KnownRule>(["synthetic_excluded"]) };
     case "lod_rule_off":
       return { disabledRules: new Set<KnownRule>(["lod_imputation"]) };
+    case "memo_rule_off":
+      return { disabledRules: new Set<KnownRule>(["watershed_memo"]) };
+    case "species_n_rule_off":
+      return { disabledRules: new Set<KnownRule>(["species_n_definition"]) };
+    case "month_rule_off":
+      return { disabledRules: new Set<KnownRule>(["month_cell_membership"]) };
+    case "label_rule_off":
+      return { disabledRules: new Set<KnownRule>(["vernacular_label_rule"]) };
+    case "undated_rule_off":
+      return { disabledRules: new Set<KnownRule>(["undated_excluded"]) };
     case "declared_rot": {
       if (!opts.declaredRotTarget) {
         throw new Error("declared_rot には無視する宣言（table/key/kind）の指定が要る");

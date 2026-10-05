@@ -22,6 +22,19 @@
 実測は `docs/plans/V2_SERVING_PR3A.md`・`docs/plans/PHASE_B_OCCURRENCE.md` §18。
 本文（D1〜D3）は変えない。
 
+**2026-10-05 追記（Issue #48 PR-3b、流域のメモ化の退役）**: v1 の「バケット（緯度経度3桁）の
+代表記録の流域を全記録に使う」メモ化（D2 で射影の式に再現した癖）は、画面と AI が
+`occurrence_agg` の流域セル（記録自身の流域。D1）を読むようになったことで退役した
+（`/map` の流域ポリゴンの生物件数・`get_overview` の流域ロールアップ。流域外の記録は
+`outside_watershed_n` として別に出す）。値は動く（`org_watershed_year` の n/alien/redlist が
+1,085 キー、`watershed_rollup` の `org_n` が 185/287 流域）ので、serving-diff が既知の系統
+`watershed_memo` として数える: 説明の鎖は「v1 →(メモ)→ b08 が L2 から別 SQL で組む
+`org_watershed_year_exact`/`org_watershed_exact` →(=)→ v2」で、v2 が exact と一致しなければ
+unexplained（規則が何でも説明する穴にしない）。`org_watershed_year.species_n` だけは v1 が学名全文の
+DISTINCT・v2 が `taxon_id` の DISTINCT なので別の既知の系統 `species_n_definition` にする
+（[ADR-0029](0029-v1-removal-and-verification-handoff.md) 2026-10-05 追記）。本文（D1〜D4）は変えない。
+設計・実測は `docs/plans/V2_SERVING_PR3B.md` §3.1。
+
 ## 背景
 
 `docs/plans/PHASE_B_OCCURRENCE.md` F3 が実測したとおり、v1
