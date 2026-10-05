@@ -474,3 +474,28 @@ def test_in_scope_is_1_for_non_excluded_moe_ias_species(tmp_path, monkeypatch):
     )
     row = _single_ias_row(conn)
     assert row["in_scope"] == 1
+
+
+# ---------------------------------------------------------------------------
+# binom（Issue #48 PR-3b §2.4）: taxon_id が解決しない行でも二名法で結合できる
+# ---------------------------------------------------------------------------
+
+def test_binom_is_contracted_even_when_taxon_id_is_unresolved(tmp_path, monkeypatch):
+    csv_path = tmp_path / "moe_ias_list.csv"
+    write_moe_ias_list_csv(
+        csv_path,
+        [_ias_csv_row(scientific_name="Herpestes javanicus auropunctatus", vernacular_name_ja="ジャワマングース")],
+    )
+    monkeypatch.setattr(ta_module, "MOE_IAS_LIST_CSV", csv_path)
+    conn, _ = _build(
+        tmp_path,
+        taxa_rows=[("herpestes javanicus auropunctatus", "Herpestes javanicus auropunctatus", "ジャワマングース")],
+    )
+    row = _single_ias_row(conn)
+    assert row["taxon_id"] is None
+    assert row["binom"] == "Herpestes javanicus"
+
+
+def test_binom_matches_binom_of_for_redlist_rows(tmp_path):
+    conn, _ = _build(tmp_path, redlist_rows=[_rl_row(scientific_name="Trypoxylus dichotomus")])
+    assert _assessment(conn, "rl2020_00001")["binom"] == "Trypoxylus dichotomus"

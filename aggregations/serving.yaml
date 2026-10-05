@@ -1,9 +1,12 @@
 # `observation_agg`（`scripts/b04_build_cube.py`）・`occurrence_agg`
 # （`scripts/b07_build_occurrence_cube.py`）から、画面・API・AI が直接
-# 読む summary 4表（`scripts/b13_build_summary.py` が作る
+# 読む summary 8表（`scripts/b13_build_summary.py` が作る
 # `summary_variable_catalog`/`summary_place_variable`〔observation_agg 由来、
 # Issue #48 PR-2 §4〕・`summary_taxon_catalog`/`summary_watershed_occurrence`
-# 〔occurrence_agg 由来、Issue #48 PR-3a §5〕）を宣言する（ADR-0011）。
+# 〔occurrence_agg 由来、Issue #48 PR-3a §5〕・`summary_species_catalog`/
+# `summary_group_year`/`summary_effort_year`/`summary_grid_catalog`
+# 〔occurrence_agg ＋ registry の taxon 結合、binom 単位。Issue #48 PR-3b §2.1〕）を
+# 宣言する（ADR-0011）。
 #
 # `scripts/b13_build_summary.py` はこのファイルを読むだけで、どの列で GROUP BY
 # するか・どの測度（measure）を作るかを決める——テーブルごとの分岐はコード側に
@@ -35,6 +38,20 @@
 #     「列はある」だけでは検出できず、族をまたいだ二重計上を招く
 #     （/code-review 指摘5）。
 #
+# PR-3b（D1）で足した語彙（b13 の拡張はこの4つだけ）:
+#   - `join: {taxon: registry}`: `registry.sqlite` を `ATTACH ... mode=ro` して
+#     `taxon_id` で LEFT JOIN する（`taxon` は主キー結合なので行は増減しない——b13 が
+#     毎回確かめる）。結合先の列（`taxon.canonical_binomial`/`taxon_group`/`class`/
+#     `family`）は `columns`・measures の `col`・`filter` に `taxon.<列>` の形で書く。
+#     `source: occurrence_agg` だけに使える。registry が無い・`taxon` 表が無ければ止まる。
+#   - `columns: {名前: {col|expr, coalesce}}`: group_by に出す、キューブの次元キーでは
+#     ない列の定義（`expr: year_of_period_start`、`col: taxon.taxon_group`、
+#     `coalesce: '未判定'`〔NULL をその文字列に畳む〕）。
+#   - `filter: {<結合先の列>: {not_null: true}}`: 結合先の列が NULL の行を落とす。
+#   - measure の `when: {year_between: [lo, hi], positive: <col>}`: 条件つき集計
+#     （`sum`/`count_distinct` だけ）。窓を焼く（`summary_grid_catalog`）ためのもの。
+#     保存則は `n` 測度の `when` を掛けた側と比べる。
+#
 # `key` は必ず `group_by` と同じ集合にすること（summary は1グループ=1行の
 # ロールアップで、`key` がその一意性を保証する次元）。
 #
@@ -46,7 +63,7 @@
 # PR-1 の知見どおり）。
 
 version: 1
-spec_version: serving-summary/v2
+spec_version: serving-summary/v3
 
 summaries:
   summary_variable_catalog:
@@ -112,3 +129,85 @@ summaries:
       y_to:       { fn: max, expr: year_of_period_start }
     key: [place_id]
     indexes: [[place_id]]
+
+
+  # ---- PR-3b（D1）: binom（`taxon.canonical_binomial`）単位の表。v1 の「二名法キー
+  # の DISTINCT」と同じ種数を出すため、registry の taxon を結合して作る。いずれも最終
+  # 粒度の表で、再集計しない（非加法の二重計上は起きない）。`taxon_id` が NULL の
+  # セルは binom が NULL なので、binom の DISTINCT には数えない（v1 と同じ）。
+
+  # v1 `species2` の後継。`taxon_group`/`class`/`family` は v1 の `MAX(...)` と同じ規則。
+  # `taxon_id IS NULL`・binom が取れない taxon の行は含まない（binom がキーのため）。
+  summary_species_catalog:
+    source: occurrence_agg
+    join: { taxon: registry }
+    filter:
+      place_kind: grid01
+      grain: [year, survey_period]
+      taxon.canonical_binomial: { not_null: true }
+    columns:
+      binom: { col: taxon.canonical_binomial }
+    group_by: [binom]
+    measures:
+      taxon_group: { fn: max, col: taxon.taxon_group }
+      class:       { fn: max, col: taxon.class }
+      family:      { fn: max, col: taxon.family }
+      n:           { fn: sum, col: n }
+      n_red_list:  { fn: sum, col: n_red_list }
+      n_alien:     { fn: sum, col: n_alien }
+      n_places:    { fn: count_distinct, col: place_id }
+      y_from:      { fn: min, expr: year_of_period_start }
+      y_to:        { fn: max, expr: year_of_period_start }
+      n_years:     { fn: count_distinct, expr: year_of_period_start }
+    key: [binom]
+    indexes: [[binom]]
+
+  # v1 `org_group_year` の後継。taxon_id が NULL（または taxon_group が NULL）の
+  # セルは '未判定' に畳む（畳まないと v1 と 31 キーが割れる）。年の窓（1970〜2026）は
+  # 持たない（問い合わせの WHERE で掛ける）。`n_places` は grid01 の DISTINCT。
+  summary_group_year:
+    source: occurrence_agg
+    join: { taxon: registry }
+    filter: { place_kind: grid01, grain: [year, survey_period] }
+    columns:
+      year:        { expr: year_of_period_start }
+      taxon_group: { col: taxon.taxon_group, coalesce: '未判定' }
+    group_by: [year, taxon_group, source_id]
+    measures:
+      n:        { fn: sum, col: n }
+      n_binom:  { fn: count_distinct, col: taxon.canonical_binomial }
+      n_places: { fn: count_distinct, col: place_id }
+    key: [year, taxon_group, source_id]
+    indexes: [[year]]
+
+  # v1 `effort_year` の後継。`n_inat`/`n_gbif` は持たない（n は加法なので
+  # `summary_group_year` の `source_id` 別 `SUM(n)` から正確に引ける）。
+  summary_effort_year:
+    source: occurrence_agg
+    join: { taxon: registry }
+    filter: { place_kind: grid01, grain: [year, survey_period] }
+    columns:
+      year: { expr: year_of_period_start }
+    group_by: [year]
+    measures:
+      n:        { fn: sum, col: n }
+      n_binom:  { fn: count_distinct, col: taxon.canonical_binomial }
+      n_places: { fn: count_distinct, col: place_id }
+    key: [year]
+    indexes: []
+
+  # v1 `mesh_all`＋`mesh_species` の後継（グリッド通年）。`n`/`n_red_list` は
+  # v1 `mesh_all` の窓（年 1970〜2026）を焼く。`n_binom`/`n_red_binom` は v1
+  # `mesh_species` と同じく窓なし。窓外のセルしか持たないグリッドも1行出る（n=0）。
+  summary_grid_catalog:
+    source: occurrence_agg
+    join: { taxon: registry }
+    filter: { place_kind: grid01, grain: [year, survey_period] }
+    group_by: [place_id]
+    measures:
+      n:            { fn: sum, col: n,          when: { year_between: [1970, 2026] } }
+      n_red_list:   { fn: sum, col: n_red_list, when: { year_between: [1970, 2026] } }
+      n_binom:      { fn: count_distinct, col: taxon.canonical_binomial }
+      n_red_binom:  { fn: count_distinct, col: taxon.canonical_binomial, when: { positive: n_red_list } }
+    key: [place_id]
+    indexes: []

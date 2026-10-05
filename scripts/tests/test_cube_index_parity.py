@@ -79,3 +79,34 @@ def test_occurrence_agg_index_parity():
         "b07_build_occurrence_cube.OCCURRENCE_AGG_INDEXES が Drizzle マイグレーション（正）と"
         f"一致しない。migrations={from_migrations} / b07={from_b07}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Issue #48 PR-3b §6-1: `INDEXED BY` に使う索引名の定数（schema-cube.ts の
+# `OCCURRENCE_AGG_INDEX`）が b07 の索引名と一致すること。`INDEXED BY` は索引が
+# 無いと実行時エラーになるので、名前のずれをここで先に落とす。マイグレーション SQL
+# （`0008_*` が出る前でも通る）に依らず、TS の定数と b07 を直接比べる。
+# ---------------------------------------------------------------------------
+
+SCHEMA_CUBE_TS = ROOT / "web" / "src" / "db" / "schema-cube.ts"
+
+
+def _occurrence_agg_index_constants() -> dict[str, str]:
+    text = SCHEMA_CUBE_TS.read_text(encoding="utf-8")
+    block = re.search(r"export const OCCURRENCE_AGG_INDEX = \{(?P<body>.*?)\} as const;", text, re.DOTALL)
+    assert block, "schema-cube.ts に OCCURRENCE_AGG_INDEX が無い"
+    return dict(re.findall(r'(\w+):\s*"([^"]+)"', block.group("body")))
+
+
+def test_occurrence_agg_index_name_constants_match_b07():
+    constants = _occurrence_agg_index_constants()
+    assert set(constants) == {"taxonPeriod", "placePeriod", "kindGrainPeriod"}
+    assert set(constants.values()) == {name for name, _ in b07.OCCURRENCE_AGG_INDEXES}
+
+
+def test_drizzle_index_definitions_use_the_constants():
+    """索引の定義側（`index(...)`）が文字列の直書きではなく定数を使っていること
+    （直書きに戻ると、定数だけ直して定義がずれる）。"""
+    text = SCHEMA_CUBE_TS.read_text(encoding="utf-8")
+    for key in _occurrence_agg_index_constants():
+        assert f"index(OCCURRENCE_AGG_INDEX.{key})" in text

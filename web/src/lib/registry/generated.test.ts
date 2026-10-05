@@ -8,6 +8,8 @@ import {
   GENERATED_CAVEATS,
   GENERATED_CAVEAT_SCOPE,
   NAME_JA,
+  REDLIST_CATEGORY,
+  ASSESSMENT_LIST,
   ZONE_INFO,
 } from "@/lib/registry/generated-client";
 
@@ -115,8 +117,8 @@ describe("generated.ts / generated-client.ts の形", () => {
     expect(GENERATED_CAVEAT_SCOPE.some((s) => s.priority > 0)).toBe(true);
   });
 
-  it("和名台帳（NAME_JA、generated-client.ts）は54件", () => {
-    expect(Object.keys(NAME_JA)).toHaveLength(54);
+  it("和名台帳（NAME_JA、generated-client.ts）は63件（旧 NAME_JA 54件＋PR-3b D4 の上書き9件）", () => {
+    expect(Object.keys(NAME_JA)).toHaveLength(63);
   });
 
   /**
@@ -140,5 +142,17 @@ describe("generated.ts / generated-client.ts の形", () => {
       expect(z.label.length).toBeGreaterThan(0);
       expect(z.cond.length).toBeGreaterThan(0);
     }
+  });
+
+  it("REDLIST_CATEGORY・ASSESSMENT_LIST（PR-3b）: not_listed は順位なし、県レッドリスト3版が red_list", () => {
+    expect(REDLIST_CATEGORY["not_listed"]?.rank).toBeNull();
+    expect(REDLIST_CATEGORY["CR"]?.rank).toBe(60);
+    expect(REDLIST_CATEGORY["CR"]?.labelJa).toBe("絶滅危惧IA類");
+    const redLists = Object.entries(ASSESSMENT_LIST)
+      .filter(([, v]) => v.kind === "red_list")
+      .map(([k]) => k)
+      .sort();
+    expect(redLists).toEqual(["rdb2022p", "rl2020", "rl2026"]);
+    expect(ASSESSMENT_LIST["moe_ias_2015"]?.kind).toBe("invasive");
   });
 });

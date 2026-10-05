@@ -59,6 +59,22 @@ export interface GeneratedZone {
   cond: string;
 }
 
+/** `REDLIST_CATEGORY` の1エントリ（Issue #48 PR-3b §2.4）。rank が null は「前回記載なし」。 */
+export interface GeneratedRedlistCategory {
+  labelJa: string;
+  rank: number | null;
+  scope: string;
+}
+
+/** `ASSESSMENT_LIST` の1エントリ（Issue #48 PR-3b §2.4）。 */
+export interface GeneratedAssessmentList {
+  name: string;
+  year: number;
+  kind: string;
+  region: string;
+  codelist: string | null;
+}
+
 /** `VARIABLE_LABEL` の1エントリ（Issue #48 PR-2、docs/plans/V2_SERVING_PR2.md §5）。 */
 export interface GeneratedVariableLabel {
   short: string;
@@ -178,7 +194,7 @@ export const VARIABLE_LABEL: Readonly<Record<string, GeneratedVariableLabel>> = 
 };
 
 /**
- * 和名54件（registry/taxon/vernacular_ja.csv、旧 domain.ts の NAME_JA をそのまま複製した台帳）。
+ * 和名63件（registry/taxon/vernacular_ja.csv、旧 domain.ts の NAME_JA をそのまま複製した台帳）。
  * taxon テーブル全体の vernacular_name_ja（8,324件、taxa 由来の別の母集団）とは別物。
  */
 export const NAME_JA: Readonly<Record<string, string>> = {
@@ -236,6 +252,15 @@ export const NAME_JA: Readonly<Record<string, string>> = {
   "Oenothera laciniata": "コマツヨイグサ",
   "Robinia pseudoacacia": "ハリエンジュ",
   "Pomacea canaliculata": "スクミリンゴガイ",
+  "Nyctereutes procyonoides": "ホンドタヌキ",
+  "Trypoxylus dichotomus": "カブトムシ",
+  "Plestiodon japonicus": "ニホントカゲ",
+  "Bufo japonicus": "アズマヒキガエル",
+  "Protaetia brevitarsis": "シラホシハナムグリ",
+  "Sus scrofa": "ニホンイノシシ",
+  "Fejervarya kawamurai": "ヌマガエル",
+  "Mustela itatsi": "ニホンイタチ",
+  "Martes melampus": "ホンドテン",
 };
 
 /**
@@ -400,6 +425,37 @@ export const GENERATED_CAVEAT_SCOPE: readonly GeneratedCaveatScope[] = [
   { scopeKind: "variable", scopeRef: "common:variable:weather.wind_direction_at_max", caveatKey: "unitUnknown", sortOrder: 0, priority: 0 },
   { scopeKind: "variable_theme", scopeRef: "landuse", caveatKey: "landuseDefinitionChange", sortOrder: 0, priority: 0 },
 ];
+
+/**
+ * レッドリストのカテゴリー（registry/taxon/redlist_category.yaml。Issue #48 PR-3b §2.4）。
+ * キーは `taxon_assessment.category_code`/`prev_category_code`。`rank` は悪化/改善を比べる順序
+ * （大きいほど深刻）で、`not_listed` だけ null（v1 の「前回記載なし」。direction の判定では順位なし）。
+ */
+export const REDLIST_CATEGORY: Readonly<Record<string, GeneratedRedlistCategory>> = {
+  "EX": { labelJa: "絶滅", rank: 70, scope: "common" },
+  "EW": { labelJa: "野生絶滅", rank: 65, scope: "common" },
+  "CR": { labelJa: "絶滅危惧IA類", rank: 60, scope: "common" },
+  "CR+EN": { labelJa: "絶滅危惧I類", rank: 55, scope: "common" },
+  "EN": { labelJa: "絶滅危惧IB類", rank: 50, scope: "common" },
+  "VU": { labelJa: "絶滅危惧II類", rank: 40, scope: "common" },
+  "LP": { labelJa: "地域個体群", rank: 35, scope: "common" },
+  "NT": { labelJa: "準絶滅危惧", rank: 30, scope: "common" },
+  "RA": { labelJa: "希少種（2006年版）", rank: 25, scope: "jp-14" },
+  "AT": { labelJa: "注目種", rank: 20, scope: "jp-14" },
+  "DD": { labelJa: "情報不足", rank: 10, scope: "common" },
+  "not_listed": { labelJa: "前回記載なし", rank: null, scope: "common" },
+};
+
+/**
+ * 評価リストの台帳（registry/taxon/assessment_list.yaml。Issue #48 PR-3b §2.4）。
+ * キーは `taxon_assessment.list_id`。`kind='red_list'` が県レッドリスト3版、`'invasive'` が外来種。
+ */
+export const ASSESSMENT_LIST: Readonly<Record<string, GeneratedAssessmentList>> = {
+  "rl2020": { name: "神奈川県レッドリスト2020（植物編CSV）", year: 2020, kind: "red_list", region: "jp-14", codelist: "redlist_category" },
+  "rdb2022p": { name: "神奈川県レッドデータブック2022（植物編）", year: 2022, kind: "red_list", region: "jp-14", codelist: "redlist_category" },
+  "rl2026": { name: "神奈川県レッドリスト2026（昆虫類・クモ類）", year: 2026, kind: "red_list", region: "jp-14", codelist: "redlist_category" },
+  "moe_ias_2015": { name: "環境省 生態系被害防止外来種リスト", year: 2015, kind: "invasive", region: "jp", codelist: null },
+};
 
 /** Ridge to Reef ゾーン(1-5)の定義（registry/place/zone.yaml、旧 domain.ts の ZONE_INFO）。 */
 export const ZONE_INFO: readonly GeneratedZone[] = [

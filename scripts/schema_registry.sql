@@ -237,6 +237,10 @@ CREATE INDEX IF NOT EXISTS ix_taxon_binomial ON taxon(canonical_binomial);
 -- 除外の判断をデータから消さず、消費者(scripts/b08_project_occurrence_v1.py の
 -- ias_species 射影・将来の D1 側の画面)が「宣言済み除外を機械的に反映した集合」を
 -- 引けるようにするための可視化列——値そのものは動かさない。
+--
+-- binom (Issue #48 PR-3b §2.4): binom_of(scientific_name_raw)（二名法。取れなければ
+-- NULL）。IAS は taxon_id が 346/429 しか解決せず、taxon_id 結合だと v1 の
+-- ias_species（173行）が 50 行にしかならないため、binom で結合できるようにする。
 CREATE TABLE IF NOT EXISTS taxon_assessment (
   assessment_id TEXT PRIMARY KEY,
   list_id TEXT NOT NULL,
@@ -255,7 +259,8 @@ CREATE TABLE IF NOT EXISTS taxon_assessment (
   national_category_raw TEXT,
   origin TEXT,
   source_id TEXT,
-  in_scope INTEGER
+  in_scope INTEGER,
+  binom TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_taxon_assessment_list ON taxon_assessment(list_id);
 CREATE INDEX IF NOT EXISTS ix_taxon_assessment_taxon ON taxon_assessment(taxon_id);

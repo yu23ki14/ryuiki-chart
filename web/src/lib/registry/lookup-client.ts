@@ -66,7 +66,7 @@ export function shortVariable(v: string): string {
 }
 
 /**
- * 和名（本デモで人が確認した54件、`NAME_JA`）。無ければ英名、それも無ければ学名を返す
+ * 和名（本デモで人が確認した63件、`NAME_JA`）。無ければ英名、それも無ければ学名を返す
  * （旧 domain.ts の speciesLabel。organism_records に和名は入っておらず、taxa の和名を
  * 学名で機械結合すると別地域の個体群の名前が付く事故があるため、代表種だけ人が確認した
  * 和名をここで引く）。

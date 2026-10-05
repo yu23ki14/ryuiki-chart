@@ -99,8 +99,8 @@ FINGERPRINT_SPEC_VERSION = "phase-b-fact-slice/v1"
 V2_CHECK_EXIT_FRESH = 0
 V2_CHECK_EXIT_STALE = 10
 
-# `scripts/b13_build_summary.py`（Issue #48 PR-2 §4、PR-3a §5）専用。
-# `observation_agg`/`occurrence_agg` から集計するだけの4表（`aggregations/
+# `scripts/b13_build_summary.py`（Issue #48 PR-2 §4、PR-3a §5、PR-3b §2.1）専用。
+# `observation_agg`/`occurrence_agg`（＋PR-3b の4表は registry の taxon）から集計するだけの8表（`aggregations/
 # serving.yaml` が宣言）——キー列や集計方法（`fn`/`expr`）を変えたら上げる
 # （b13 自身が YAML の `spec_version` とこの定数の一致を検証する）。
 # 2026-09-27: PR-3a で `occurrence_agg` 由来の2表（`summary_taxon_catalog`/
@@ -108,7 +108,10 @@ V2_CHECK_EXIT_STALE = 10
 # 比較はできなくなるが、v1 時点の2表はまだキー・集計方法を変えていないので
 # 実害は無い——`V2_SUMMARY_TABLES` の集合が変わったこと自体が YAML との
 # 過不足検査で拾われるようにするための版上げ）。
-SUMMARY_SPEC_VERSION = "serving-summary/v2"
+# 2026-10-05: Issue #48 PR-3b（D1）で binom 単位の4表（`summary_species_catalog`/
+# `summary_group_year`/`summary_effort_year`/`summary_grid_catalog`。`registry.sqlite` の
+# `taxon` を読み取り専用で結合して作る）を足したため v2→v3 に上げた。
+SUMMARY_SPEC_VERSION = "serving-summary/v3"
 
 # D1 に載せる summary 表（`scripts/b13_build_summary.py` が作る）の名前。
 # `V2_CUBE_SPEC_VERSIONS` に SUMMARY_SPEC_VERSION 付きで足すのに使う——
@@ -119,6 +122,11 @@ V2_SUMMARY_TABLES = (
     "summary_place_variable",
     "summary_taxon_catalog",
     "summary_watershed_occurrence",
+    # Issue #48 PR-3b（D1）: binom 単位（registry の taxon を結合して作る）。
+    "summary_species_catalog",
+    "summary_group_year",
+    "summary_effort_year",
+    "summary_grid_catalog",
 )
 
 # D1 に載せるキューブ表と、それぞれの spec_version。値は上の

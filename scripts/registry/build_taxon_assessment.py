@@ -180,7 +180,7 @@ TAXON_ASSESSMENT_COLUMNS = [
     "taxon_group_ja", "taxon_subgroup_ja", "family_ja",
     "category_raw", "category_code",
     "prev_category_raw", "prev_category_code",
-    "national_category_raw", "origin", "source_id", "in_scope",
+    "national_category_raw", "origin", "source_id", "in_scope", "binom",
 ]
 
 _KNOWN_LIST_KINDS = frozenset({"red_list", "invasive"})
@@ -496,6 +496,10 @@ def _assign_in_scope(rows: list[dict], exclusions: list[dict]) -> None:
         excluded_binoms = excluded_by_list.get(row["list_id"], frozenset())
         binom = binom_of(row["scientific_name_raw"])
         row["in_scope"] = 0 if binom in excluded_binoms else 1
+        # Issue #48 PR-3b §2.4: v1 の ias_species（binom で org_norm に結合）と
+        # 同じ結合を、taxon_id が解決できない行（IAS 429 行中 83 行）でも
+        # 可能にするための列。in_scope と同じ binom_of() の結果を持たせる。
+        row["binom"] = binom
 
 
 # ---------------------------------------------------------------------------
