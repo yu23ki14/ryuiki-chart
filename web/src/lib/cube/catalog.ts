@@ -1182,11 +1182,26 @@ export interface OverviewCounts {
   yTo: number | null;
 }
 
-export async function overviewCounts(_db: CubeDb): Promise<OverviewCounts> {
-  throw new Error("overviewCounts: not implemented");
+export async function overviewCounts(db: CubeDb): Promise<OverviewCounts> {
+  const rows = await db.all<OccRow>(
+    `SELECT (SELECT COUNT(*) FROM sites) AS sites,
+            (SELECT COUNT(*) FROM source_registry) AS sources,
+            (SELECT COUNT(*) FROM place WHERE place_kind = 'watershed') AS watersheds,
+            (SELECT COUNT(DISTINCT variable_id) FROM summary_variable_catalog) AS variables,
+            (SELECT MIN(y_from) FROM summary_variable_catalog) AS y_from,
+            (SELECT MAX(y_to) FROM summary_variable_catalog) AS y_to`,
+  );
+  const r = rows[0] ?? {};
+  return {
+    sites: (r.sites as number) ?? 0,
+    sources: (r.sources as number) ?? 0,
+    watersheds: (r.watersheds as number) ?? 0,
+    variables: (r.variables as number) ?? 0,
+    yFrom: (r.y_from as number | null) ?? null,
+    yTo: (r.y_to as number | null) ?? null,
+  };
 }
 
-/** 版の年ごとの km2。 */
 export interface LanduseCell {
   from: number | null;
   to: number | null;
@@ -1208,19 +1223,150 @@ export interface WatershedRollupRow {
   paddy: LanduseCell;
 }
 
-export async function watershedRollup(
-  _db: CubeDb,
-): Promise<{
+/** `schema-cube.ts` の索引名（EXPLAIN をテストで固定）。 */
+const OBS_PLACE_VARIABLE_INDEX = "ix_observation_agg_place_variable_grain";
+const WATERSHED_ID_SOURCE = "watershed_meta.watershed_id";
+const LANDUSE_BUILT = "common:variable:landuse.building_land";
+const LANDUSE_FOREST = "common:variable:landuse.forest";
+const LANDUSE_PADDY = "common:variable:landuse.paddy";
+
+interface WatershedBase {
+  placeId: string;
+  watershedId: string;
+  waterSystemName: string | null;
+  areaKm2: number;
+  centroidLat: number;
+  centroidLon: number;
+}
+
+/** 流域の `place`。v1 の `watershed_id` は `place_source_ref('watershed_meta.watershed_id').external_key`。 */
+async function watershedBases(db: CubeDb): Promise<WatershedBase[]> {
+  const rows = await db.all<OccRow>(
+    `SELECT p.place_id, r.external_key AS watershed_id, p.name_ja, p.area_km2, p.lat, p.lon
+     FROM place p
+     JOIN place_source_ref r ON r.place_id = p.place_id AND r.source_id = ?
+     WHERE p.place_kind = 'watershed'
+     ORDER BY r.external_key`,
+    [WATERSHED_ID_SOURCE],
+  );
+  return rows.map((r) => ({
+    placeId: r.place_id as string,
+    watershedId: r.watershed_id as string,
+    waterSystemName: (r.name_ja as string | null) ?? null,
+    areaKm2: r.area_km2 as number,
+    centroidLat: r.lat as number,
+    centroidLon: r.lon as number,
+  }));
+}
+
+interface LanduseLoaded {
+  years: { from: number; to: number } | null;
+  /** place_id → 指標 → 年 → km2 */
+  byPlace: Map<string, Map<string, Map<number, number>>>;
+}
+
+/**
+ * 土地利用（建物・森林・田）の年版ごとの面積。`observation_agg`（theme=landuse、year・mean）を
+ * 流域から引く。`ix_observation_agg_place_variable_grain` を明示する（第3索引 `ix_observation_agg_*`
+ * の誤選択を避ける。PR-3b §0-2 と同じ理由）。`CROSS JOIN` で place 側を外側に固定する。
+ * 版の年は定数にせず、取れた `period_start` の最小・最大を `years` として返す。
+ */
+async function loadLanduse(db: CubeDb): Promise<LanduseLoaded> {
+  const rows = await db.all<OccRow>(
+    `SELECT o.place_id, o.variable_id, o.period_start, o.value_lod
+     FROM place p
+     CROSS JOIN observation_agg o INDEXED BY ${OBS_PLACE_VARIABLE_INDEX}
+       ON o.place_id = p.place_id
+     WHERE p.place_kind = 'watershed'
+       AND o.variable_id IN (?, ?, ?) AND o.grain = 'year' AND o.stat = 'mean'`,
+    [LANDUSE_BUILT, LANDUSE_FOREST, LANDUSE_PADDY],
+  );
+  const byPlace = new Map<string, Map<string, Map<number, number>>>();
+  let from: number | null = null;
+  let to: number | null = null;
+  for (const r of rows) {
+    if (r.value_lod === null) continue;
+    const year = Number((r.period_start as string).slice(0, 4));
+    if (!Number.isFinite(year)) continue;
+    if (from === null || year < from) from = year;
+    if (to === null || year > to) to = year;
+    const place = r.place_id as string;
+    let vars = byPlace.get(place);
+    if (!vars) byPlace.set(place, (vars = new Map()));
+    const v = r.variable_id as string;
+    let years = vars.get(v);
+    if (!years) vars.set(v, (years = new Map()));
+    years.set(year, r.value_lod as number);
+  }
+  return { years: from !== null && to !== null ? { from, to } : null, byPlace };
+}
+
+function landuseCell(l: LanduseLoaded, placeId: string, variableId: string): LanduseCell {
+  if (!l.years) return { from: null, to: null };
+  const ys = l.byPlace.get(placeId)?.get(variableId);
+  return { from: ys?.get(l.years.from) ?? null, to: ys?.get(l.years.to) ?? null };
+}
+
+/**
+ * v1 `watershed_rollup` の置き換え（全 377 流域・全列。`/api/geo/watersheds`・`get_overview`・
+ * serving-diff の3者が同じこの1関数を呼ぶ）。`place`＋`place_relation`（site_n）＋
+ * `watershedOccurrence`（org_*。記録の無い流域は 0）＋キューブの土地利用を問い合わせ時に束ねる。
+ */
+export async function watershedRollup(db: CubeDb): Promise<{
   watersheds: WatershedRollupRow[];
   landuseYears: { from: number; to: number } | null;
   outsideWatershed: { n: number } | null;
 }> {
-  throw new Error("watershedRollup: not implemented");
+  const [bases, siteRows, occ, landuse] = await Promise.all([
+    watershedBases(db),
+    db.all<OccRow>(
+      `SELECT r.parent_id AS place_id, COUNT(*) AS n
+       FROM place_relation r
+       JOIN place cp ON cp.place_id = r.child_id AND cp.place_kind = 'site'
+       WHERE r.relation = 'within'
+       GROUP BY r.parent_id`,
+    ),
+    watershedOccurrence(db),
+    loadLanduse(db),
+  ]);
+  const siteN = new Map(siteRows.map((r) => [r.place_id as string, r.n as number]));
+  const orgByPlace = new Map(occ.watersheds.map((w) => [w.placeId, w]));
+  const watersheds = bases.map((b): WatershedRollupRow => {
+    const o = orgByPlace.get(b.placeId);
+    return {
+      watershedId: b.watershedId,
+      waterSystemName: b.waterSystemName,
+      areaKm2: b.areaKm2,
+      centroidLat: b.centroidLat,
+      centroidLon: b.centroidLon,
+      siteN: siteN.get(b.placeId) ?? 0,
+      orgN: o?.orgN ?? 0,
+      orgAlienN: o?.orgAlienN ?? 0,
+      orgRedlistN: o?.orgRedlistN ?? 0,
+      built: landuseCell(landuse, b.placeId, LANDUSE_BUILT),
+      forest: landuseCell(landuse, b.placeId, LANDUSE_FOREST),
+      paddy: landuseCell(landuse, b.placeId, LANDUSE_PADDY),
+    };
+  });
+  return {
+    watersheds,
+    landuseYears: landuse.years,
+    outsideWatershed: occ.outsideWatershed ? { n: occ.outsideWatershed.n } : null,
+  };
 }
 
+/** 建物用地の最古→最新の増加が大きい流域（v1 `landuseHighlight`）。`delta DESC, watershed_id`。 */
 export async function landuseHighlight(
-  _db: CubeDb,
-  _limit = 8,
+  db: CubeDb,
+  limit = 8,
 ): Promise<{ watershedId: string; waterSystemName: string | null; delta: number; areaKm2: number }[]> {
-  throw new Error("landuseHighlight: not implemented");
+  const [bases, landuse] = await Promise.all([watershedBases(db), loadLanduse(db)]);
+  const out: { watershedId: string; waterSystemName: string | null; delta: number; areaKm2: number }[] = [];
+  for (const b of bases) {
+    const built = landuseCell(landuse, b.placeId, LANDUSE_BUILT);
+    if (built.from === null || built.to === null) continue;
+    out.push({ watershedId: b.watershedId, waterSystemName: b.waterSystemName, delta: built.to - built.from, areaKm2: b.areaKm2 });
+  }
+  out.sort((a, b) => b.delta - a.delta || cmp(a.watershedId, b.watershedId));
+  return out.slice(0, limit);
 }

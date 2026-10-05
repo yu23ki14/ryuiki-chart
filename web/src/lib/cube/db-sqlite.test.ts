@@ -57,6 +57,29 @@ describe("sqliteCubeDb", () => {
     }
   });
 
+  it("cells を渡すと cells/notes/documents も非修飾で引ける（無ければ ATTACH しない）。読み取り専用", async () => {
+    const cellsPath = path.join(dir, "cells.sqlite");
+    const c = new Database(cellsPath);
+    c.exec("CREATE TABLE cells (doc_id TEXT, value TEXT)");
+    c.exec("INSERT INTO cells VALUES ('d1','3')");
+    c.close();
+
+    const without = sqliteCubeDb(paths);
+    try {
+      await expect(without.all("SELECT * FROM cells")).rejects.toThrow(/no such table/);
+    } finally {
+      without.close();
+    }
+
+    const db = sqliteCubeDb({ ...paths, cells: cellsPath });
+    try {
+      expect(await db.all("SELECT doc_id, value FROM cells")).toEqual([{ doc_id: "d1", value: "3" }]);
+      await expect(db.all("INSERT INTO cells VALUES ('d2','4')")).rejects.toThrow();
+    } finally {
+      db.close();
+    }
+  });
+
   it("kind は 'sqlite'", () => {
     const db = sqliteCubeDb(paths);
     expect(db.kind).toBe("sqlite");
