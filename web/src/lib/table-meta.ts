@@ -1,42 +1,39 @@
 /** テーブル / 出自の日本語説明。データ探索画面の道案内に使う。 */
 
 /**
- * 全 56 テーブルは 1 つの D1 データベースに入っている。
+ * カタログ表は 1 つの D1 データベースに入っている。
  * 一覧の見出しに使う「どの原本から来たか」は SQLite のスキーマではなくこの表が持つ。
  */
 export const SCHEMA_META: Record<string, { label: string; file: string; note: string }> = {
   main: {
     label: "流域DB",
     file: "ryuiki.sqlite 由来",
-    note: "観測地点・イベント・測定値・生物レコードなど、アプリのデータモデル本体（DwC Event Core + eMoF 同型）",
+    note: "観測地点・出典レジストリ・自然環境の台帳（保護区・植生・哺乳類・出没記録・河川流路）・水道水の水源マップ",
   },
   c: {
     label: "行政文書DB",
     file: "cells.sqlite 由来",
     note: "PDF等の行政文書から抽出した表のセル単位データ。出典ページ・座標つき",
   },
-  d: {
-    label: "集計DB",
-    file: "derived.sqlite 由来",
-    note: "本デモが原本から生成した事前集計テーブル（描画高速化用・再生成可能）",
-  },
   v2: {
     label: "観測キューブDB",
     file: "v2.sqlite 由来",
     note:
-      "measurements/sensor_timeseries 等を統合した観測キューブ（Issue #48）。" +
+      "観測キューブ（Issue #48）と、その事前集計（summary_*）。" +
       "value_zero（定量下限未満を0とみなす）と value_lod（定量下限値とみなす）の両方を持つ。" +
-      "画面・意図ツールは summary_variable_catalog/summary_place_variable（キューブの事前集計）経由で読む",
+      "画面・意図ツールは summary_variable_catalog/summary_place_variable などの事前集計経由で読む",
+  },
+  reg: {
+    label: "語彙レジストリDB",
+    file: "registry.sqlite 由来",
+    note: "指標・単位・場所・分類群・注記の正準の語彙（registry/ 配下のファイルから生成）。観測キューブの variable_id・place_id・taxon_id の引き先",
   },
 };
 
 /** テーブル名 -> SCHEMA_META のキー。D1 に統合したので接頭辞からは分からない。 */
 export const TABLE_ORIGIN: Record<string, string> = {
   // ryuiki.sqlite 由来
-  decisions: "main", event_observers: "main", events: "main", instruments: "main",
-  interventions: "main", measurements: "main", observers: "main", organism_records: "main",
-  protocols: "main", quality_transitions: "main", redlist_assessments: "main",
-  sensor_timeseries: "main", sites: "main", source_registry: "main", taxa: "main",
+  sites: "main", source_registry: "main",
   // Tier 1 追加ソース（docs/UNDATAFIED_TIERS.md）。原本は ryuiki.sqlite。
   protected_areas: "main", vegetation_polygons: "main", mammal_mesh: "main",
   wildlife_sightings: "main", river_segments: "main",
@@ -47,36 +44,19 @@ export const TABLE_ORIGIN: Record<string, string> = {
   // cells.sqlite 由来
   cells: "c", documents: "c", extraction_log: "c", notes: "c",
   vocab_areas: "c", vocab_eras: "c", vocab_indicators: "c", vocab_units: "c",
-  // derived.sqlite 由来
-  doc_series: "d", doc_series_meta: "d", effort_year: "d", ias_species: "d",
-  landuse_change: "d", landuse_watershed: "d", meas_clim: "d", meas_daily: "d",
-  meas_month: "d", meas_year: "d", mesh_all: "d", mesh_species: "d", mesh_year: "d",
-  org_group_year: "d", org_norm: "d", org_watershed: "d", org_watershed_year: "d",
-  quality_monthly: "d", rain_daily: "d", redlist_change: "d", redlist_map: "d",
-  sensor_daily: "d", sensor_hour_month: "d", site_var: "d", species2: "d",
-  species_mesh_year: "d", species_month: "d", species_year2: "d", var_catalog: "d",
-  watershed_meta: "d", watershed_rollup: "d", zone_clim: "d", zone_year: "d",
-  // v2.sqlite 由来（Issue #48 PR-2）
-  observation_agg: "v2", summary_variable_catalog: "v2", summary_place_variable: "v2",
-  // Issue #48 PR-3b（生物系の summary 4表）。occurrence_agg/summary_taxon_catalog/summary_watershed_occurrence は PR-3a
+  // v2.sqlite 由来（Issue #48）。観測キューブ・生物キューブと、その事前集計
+  observation_agg: "v2", occurrence_agg: "v2",
+  summary_variable_catalog: "v2", summary_place_variable: "v2",
+  summary_taxon_catalog: "v2", summary_watershed_occurrence: "v2",
   summary_species_catalog: "v2", summary_group_year: "v2", summary_effort_year: "v2", summary_grid_catalog: "v2",
+  // registry.sqlite 由来（語彙レジストリ）
+  unit: "reg", variable: "reg", variable_alias: "reg",
+  place: "reg", place_source_ref: "reg", place_relation: "reg", place_watershed: "reg",
+  taxon: "reg", taxon_assessment: "reg", caveat: "reg", caveat_scope: "reg",
 };
 
 export const TABLE_META: Record<string, string> = {
   sites: "観測地点。ゾーン(Ridge to Reef 1-5)・座標・標高・市区町村・運用主体",
-  events: "観測イベント（いつ・どこで・どのプロトコルで）。測定値と生物レコードの親",
-  event_observers: "イベントと測定者の対応（測定者／立会者）",
-  measurements: "測定値。水質項目を中心とした eMoF 相当のレコード",
-  organism_records: "生物観察レコード。GBIF / iNaturalist 由来を含む Darwin Core 相当",
-  sensor_timeseries: "センサー時系列（時別・日別）。OGC SensorThings の Observation 相当",
-  taxa: "分類群マスタ。GBIF taxonKey・レッドリスト・外来種区分を保持",
-  redlist_assessments: "レッドリストの版ごとの評価。版間のカテゴリー比較に使う",
-  protocols: "測定プロトコル（手順の版）",
-  instruments: "測定機器と校正記録",
-  observers: "測定者（役割: 初級／訓練済／専門）",
-  interventions: "介入記録（石積み・復田・駆除など）",
-  decisions: "意思決定記録。会議で何が提示され何が決まったか",
-  quality_transitions: "品質段階の遷移履歴（暫定→検証済→公開済）",
   source_registry: "出典レジストリ。取得元・ライセンス・再配布可否",
   documents: "抽出元の行政文書（PDF）",
   cells: "行政文書の表のセル。行キー・列キー・年度・出典ページつき",
@@ -121,16 +101,34 @@ export const TABLE_META: Record<string, string> = {
     "stat='mean' セルを集計したもの。list_catalog(what='variables') の元",
   summary_place_variable:
     "地点×指標の事前集計。(place_id, variable_id, obs_stat, unit_id, value_grain) 単位で" +
-    "observation_agg の年グレイン・stat='mean' セルを集計したもの。get_sites/site_var 相当の元",
+    "observation_agg の年グレイン・stat='mean' セルを集計したもの。get_sites の元",
   summary_species_catalog:
     "種カタログの事前集計。学名（二名法 binom）単位の記録数・レッドリスト/外来種の記録数・" +
-    "出現グリッド数・出現年。日付のある生物レコードだけ。species2 相当。n>=80 の足切りの元",
+    "出現グリッド数・出現年。日付のある生物レコードだけ。n>=80 の足切りの元",
   summary_group_year:
-    "分類群×年×出典の事前集計（記録数・種数・グリッド数）。日付のある生物レコードだけ。org_group_year 相当",
+    "分類群×年×出典の事前集計（記録数・種数・グリッド数）。日付のある生物レコードだけ",
   summary_effort_year:
-    "年ごとの観察努力（記録数・種数・グリッド数）の事前集計。日付のある生物レコードだけ。effort_year 相当",
+    "年ごとの観察努力（記録数・種数・グリッド数）の事前集計。日付のある生物レコードだけ",
+  summary_taxon_catalog:
+    "分類群カタログの事前集計（taxon_id 単位）。生物レコードのキューブ occurrence_agg を束ねたもの",
+  summary_watershed_occurrence:
+    "流域ごとの生物記録数・外来種記録数・レッドリスト記録数の事前集計。日付のある生物レコードだけ",
+  occurrence_agg:
+    "生物レコードのキューブ。(taxon_id, place_id, 年, 月 など) 単位の記録数。" +
+    "画面・意図ツールは直接読まず summary_* 経由で読む（行数が多いので集計時は条件で絞ること）",
   summary_grid_catalog:
-    "0.01度グリッドごとの記録数・レッドリスト記録数・種数（年1970〜2026の窓）の事前集計。mesh_all 相当",
+    "0.01度グリッドごとの記録数・レッドリスト記録数・種数（年1970〜2026の窓）の事前集計",
+  unit: "単位レジストリ。unit_id・表記・変換係数",
+  variable: "指標レジストリ。正準の variable_id・和名・単位・higher_is_worse・説明",
+  variable_alias: "出典ごとの指標名（表記違い）から正準の variable_id への対応",
+  place: "場所レジストリ。地点・流域・ゾーン・0.01度グリッドの place_id・名称・座標・面積",
+  place_source_ref: "place と出典側のキー（site_id・watershed_id など）の対応",
+  place_relation: "場所どうしの包含関係（地点→流域・ゾーンなど）",
+  place_watershed: "流域（place）の水系コード・水系区分・主な河川・データ年",
+  taxon: "分類群レジストリ。taxon_id・学名・和名・分類階級",
+  taxon_assessment: "分類群ごとのレッドリスト・外来種などの評価（版・カテゴリー）",
+  caveat: "データの癖・注記の本文（キー単位）",
+  caveat_scope: "注記がどの dataset・指標・場所種別・出典にかかるかの対応",
 };
 
 export const SAMPLE_QUERIES: { title: string; note: string; sql: string }[] = [
@@ -145,81 +143,78 @@ LIMIT 200`,
   },
   {
     title: "測定項目の一覧と期間",
-    note: "どの水質項目が何年分あるかを一望する",
-    sql: `SELECT variable, unit, count(*) AS n,
-       count(DISTINCT site_id) AS sites,
-       min(substr(measured_on,1,4)) AS y_from,
-       max(substr(measured_on,1,4)) AS y_to
-FROM measurements
-GROUP BY variable, unit
-ORDER BY n DESC`,
+    note: "どの指標が何年分あるかを一望する（事前集計 summary_variable_catalog）",
+    sql: `SELECT v.variable_id, v.name_ja, c.unit_id, c.value_grain,
+       sum(c.n) AS n, max(c.n_places) AS places,
+       min(c.y_from) AS y_from, max(c.y_to) AS y_to
+FROM summary_variable_catalog c JOIN variable v USING (variable_id)
+GROUP BY 1,2,3,4
+ORDER BY n DESC
+LIMIT 200`,
   },
   {
-    title: "地点×年 の水質平均（BOD）",
-    note: "時系列比較の元になる形。variable を変えれば他項目も同じ",
-    sql: `SELECT m.site_id, s.name, substr(m.measured_on,1,4) AS year,
-       round(avg(m.value),3) AS avg_value, count(*) AS n
-FROM measurements m JOIN sites s USING (site_id)
-WHERE m.variable LIKE '%BOD%' AND m.value IS NOT NULL
-GROUP BY 1,2,3
-HAVING n >= 4
-ORDER BY s.name, year
+    title: "地点ごとの水質平均（BOD）",
+    note: "事前集計 summary_place_variable。value_grain（検体値か年度集計値か）と obs_stat を必ず見る。variable を変えれば他項目も同じ",
+    sql: `SELECT p.name_ja AS site, s.value_grain, s.obs_stat, s.unit_id,
+       s.y_from, s.y_to, s.n, round(s.avg_lod, 3) AS avg_lod, round(s.avg_zero, 3) AS avg_zero
+FROM summary_place_variable s
+JOIN place p USING (place_id)
+JOIN variable v USING (variable_id)
+WHERE p.place_kind = 'site' AND v.code LIKE '%bod%'
+ORDER BY p.name_ja, s.value_grain
 LIMIT 500`,
   },
   {
     title: "生物レコードの年次推移（分類群別）",
-    note: "観察努力の増加も一緒に写ることに注意",
-    sql: `SELECT substr(observed_on,1,4) AS year, kingdom, count(*) AS n
-FROM organism_records
-WHERE observed_on >= '2000' AND kingdom IS NOT NULL AND kingdom <> ''
+    note: "観察努力の増加も一緒に写ることに注意（事前集計 summary_group_year。日付のある記録だけ）",
+    sql: `SELECT year, taxon_group, sum(n) AS n, sum(n_binom) AS species
+FROM summary_group_year
+WHERE year >= 2000
 GROUP BY 1,2
-ORDER BY 1 DESC, 3 DESC`,
+ORDER BY 1 DESC, 3 DESC
+LIMIT 500`,
   },
   {
-    title: "外来種の年次推移",
-    note: "is_alien=1 のレコードを種別に数える",
-    sql: `SELECT vernacular_name, scientific_name,
-       count(*) AS n,
-       min(substr(observed_on,1,4)) AS first_year,
-       max(substr(observed_on,1,4)) AS last_year
-FROM organism_records
-WHERE is_alien = 1
-GROUP BY 1,2
-ORDER BY n DESC
+    title: "外来種の記録数",
+    note: "環境省の外来種リスト（moe_ias_2015）に載る種を、記録数の多い順に並べる",
+    sql: `SELECT a.vernacular_name_ja_resolved AS name_ja, a.binom,
+       c.n, c.y_from, c.y_to
+FROM taxon_assessment a JOIN summary_species_catalog c USING (binom)
+WHERE a.list_id = 'moe_ias_2015' AND a.in_scope = 1
+ORDER BY c.n DESC
 LIMIT 100`,
   },
   {
     title: "レッドリストの版間比較",
     note: "同じ和名が複数の版に登場するものを並べる",
-    sql: `SELECT vernacular_name_ja, taxon_group_ja,
-       group_concat(list_year || ':' || COALESCE(category_ja, category_code, '-'), '  →  ') AS history,
+    sql: `SELECT vernacular_name_ja_raw AS name_ja, taxon_group_ja,
+       group_concat(list_year || ':' || COALESCE(category_code, category_raw, '-'), '  →  ') AS history,
        count(*) AS versions
-FROM redlist_assessments
-WHERE vernacular_name_ja IS NOT NULL
+FROM taxon_assessment
+WHERE vernacular_name_ja_raw IS NOT NULL AND list_year IS NOT NULL
 GROUP BY 1,2
 HAVING versions > 1
-ORDER BY versions DESC, vernacular_name_ja
+ORDER BY versions DESC, name_ja
 LIMIT 200`,
   },
   {
-    title: "センサー時系列（降雨と光化学オキシダント）",
-    note: "10年・時別のデータ。日別に丸めて返す",
-    sql: `SELECT substr(phenomenon_time,1,10) AS day, datastream,
-       round(sum(result),2) AS daily_sum, count(*) AS n
-FROM sensor_timeseries
-WHERE datastream = 'RAIN' AND phenomenon_time >= '2024-01'
-GROUP BY 1,2
-ORDER BY 1 DESC
+    title: "降水量の日別合計（センサー）",
+    note: "観測キューブ observation_agg の日別 sum。件数が多いので variable_id・grain・stat・期間で必ず絞る",
+    sql: `SELECT place_id, period_start AS day, round(value_lod, 2) AS daily_sum, n
+FROM observation_agg
+WHERE variable_id = 'common:variable:weather.precipitation'
+  AND grain = 'day' AND stat = 'sum' AND period_start >= '2024-01'
+ORDER BY period_start DESC
 LIMIT 300`,
   },
   {
     title: "行政文書から抽出した指標",
     note: "行政文書のセル。同じ指標が複数年度にあるものを探す",
-    sql: `SELECT row_key, col_key, count(DISTINCT fiscal_year) AS years,
+    sql: `SELECT doc_id, table_id, row_key, count(DISTINCT fiscal_year) AS years,
        min(fiscal_year) AS y_from, max(fiscal_year) AS y_to, count(*) AS n
 FROM cells
-WHERE fiscal_year IS NOT NULL AND value_type = 'number'
-GROUP BY 1,2
+WHERE superseded = 0 AND fiscal_year IS NOT NULL AND value_type IN ('int','float')
+GROUP BY 1,2,3
 HAVING years >= 3
 ORDER BY years DESC, n DESC
 LIMIT 200`,
