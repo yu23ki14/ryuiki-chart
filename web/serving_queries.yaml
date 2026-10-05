@@ -562,16 +562,40 @@ queries:
       label: []
     known: [undated_excluded]
 
-  # 本番経路（/map の流域ポリゴン・AI get_overview）: v1 `watershedRollup` の `org_*` と
-  # `watershedOccurrence`（D2）。v2 は 0 件の流域の行を返さないので、v1 側の全 0 行は落とす
-  # （`adapters-v1.ts`）。
+  # 本番経路（/map の流域ポリゴン・AI get_overview）: v1 `watershedRollup`（`watershed_rollup` 表）と
+  # v2 `watershedRollup(db)`（PR-4。`org_*` は `watershedOccurrence` を内部で呼ぶ）。どちらも全 377 流域を返す
+  # （PR-3b の「v1 の全 0 行を落とす」処理は外した）。org_* は `watershed_memo`、それ以外（site_n・area・centroid・
+  # 土地利用 6 列）は既知の系統なし（差 0 が受け入れ。`inflate_site_n` 変異が見る）。
   - id: watershed_rollup
     v1_table: null
     params: {}
     compare:
       key: [watershed_id]
-      numeric: [org_n, org_alien_n, org_redlist_n]
-      label: []
+      numeric:
+        - org_n
+        - org_alien_n
+        - org_redlist_n
+        - site_n
+        - area_km2
+        - centroid_lat
+        - centroid_lon
+        - built_km2_2006
+        - built_km2_2016
+        - forest_km2_2006
+        - forest_km2_2016
+        - paddy_km2_2006
+        - paddy_km2_2016
+      label: [water_system_name]
+    tolerance:
+      area_km2: 1.0e-9
+      centroid_lat: 1.0e-9
+      centroid_lon: 1.0e-9
+      built_km2_2006: 1.0e-9
+      built_km2_2016: 1.0e-9
+      forest_km2_2006: 1.0e-9
+      forest_km2_2016: 1.0e-9
+      paddy_km2_2006: 1.0e-9
+      paddy_km2_2016: 1.0e-9
     known: [watershed_memo]
 
   # セルの検証（画面の読み手は無い）: v1 `org_watershed_year` と `watershedYears`。
@@ -583,3 +607,53 @@ queries:
       numeric: [n, species_n, alien_n, redlist_n]
       label: []
     known: [watershed_memo, species_n_definition]
+
+  # ---- 文書・概況（PR-4。`docs/plans/V2_SERVING_PR4.md` §5.2）----
+  # v1 は `v1-queries.ts` の `docSeriesList(3)`/`docSeriesPoints`、v2 は `lib/cube/documents.ts`
+  # （`api/documents` と同じ minYears=3）。3 規則は `cells.sqlite` からの別 SQL の再計算
+  # （`docs-expect.ts`）と照合して説明する。
+  - id: doc_series_meta
+    v1_table: null
+    params: {}
+    compare:
+      key: [doc_id, table_id, row_key]
+      numeric: [n_years, y_from, y_to, page_no, n_warnings]
+      label: [label, unit, doc_title, publisher, url, license]
+    known: [doc_label_rule, doc_warning_scope, doc_year_collapse]
+
+  # パラメータは v1 の meta（470 系列）から列挙する。
+  - id: doc_series_points
+    v1_table: null
+    params: {}
+    only_existing: "SELECT doc_id, table_id, row_key FROM doc_series_meta WHERE n_years >= 3 ORDER BY doc_id, table_id, row_key"
+    compare:
+      key: [fiscal_year]
+      numeric: [value, page_no]
+      label: [unit]
+    tolerance:
+      value: 1.0e-9
+    known: [doc_year_collapse]
+
+  # 1 行だけ。n_meas / n_sensor / n_events は D2 で廃止（キューブから再現できない）ので比べない。
+  - id: overview_counts
+    v1_table: null
+    params: {}
+    compare:
+      key: []
+      numeric: [n_sites, n_sources, n_watersheds, y_from, y_to]
+      label: []
+    retired: [n_meas, n_sensor, n_events]
+    known: []
+
+  # 建物用地の 2006→2016 の増加上位 8（`app/page.tsx` と同じ limit=8）。
+  - id: landuse_highlight
+    v1_table: null
+    params: {}
+    compare:
+      key: [watershed_id]
+      numeric: [delta, area_km2]
+      label: [water_system_name]
+    tolerance:
+      delta: 1.0e-9
+      area_km2: 1.0e-9
+    known: []

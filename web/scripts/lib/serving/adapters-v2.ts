@@ -47,7 +47,6 @@ import {
   effortYears,
   gridCatalog,
   occurrenceTotals,
-  watershedOccurrence,
   iasSpecies,
   speciesYears,
   speciesMonths,
@@ -59,6 +58,12 @@ import {
   redlistSummary,
   redlistFlows,
   redlistSpecies,
+  // 文書・概況・流域（PR-4。`api/documents`・`app/page.tsx`・`api/geo/watersheds`・AI `get_overview` と同じ関数）。
+  docSeriesList,
+  docSeriesPoints,
+  overviewCounts,
+  watershedRollup,
+  landuseHighlight,
 } from "@/lib/cube";
 import { GENERATED_VARIABLE_ALIASES, type GeneratedVariableAlias } from "@/lib/registry/generated";
 import {
@@ -77,6 +82,8 @@ export interface V2Paths {
   v2: string;
   registry: string;
   ryuiki: string;
+  /** `cells.sqlite`（`doc_series_*` が読む `cells`/`notes`/`documents`。PR-4）。 */
+  cells?: string;
 }
 
 // シングルトンの生成・破棄のパターンは `v1-compat.ts` の `openV1CompatDb`/
@@ -815,8 +822,63 @@ async function fetchRawRows(
       return [{ records: t.records, species: t.species, mesh: t.grids, gbif: t.gbif, inat: t.inat }];
     }
     case "watershed_rollup": {
-      const { watersheds } = await watershedOccurrence(db);
-      return watersheds.map((w) => ({ watershed_id: w.watershedId, org_n: w.orgN, org_alien_n: w.orgAlienN, org_redlist_n: w.orgRedlistN }));
+      // 画面（`/api/geo/watersheds`）・AI `get_overview` と同じ `watershedRollup(db)` 1本。全 377 流域を返す。
+      const { watersheds, landuseYears } = await watershedRollup(db);
+      // v1 の列名（`built_km2_2006` 等）は版の年を含む。版が変わったら黙って列名がずれないよう止める。
+      if (landuseYears !== null && (landuseYears.from !== 2006 || landuseYears.to !== 2016)) {
+        throw new Error(`土地利用の版が 2006/2016 でない（${landuseYears.from}/${landuseYears.to}）: v1 の列名との対応を見直すこと`);
+      }
+      return watersheds.map((w) => ({
+        watershed_id: w.watershedId,
+        water_system_name: w.waterSystemName,
+        area_km2: w.areaKm2,
+        centroid_lat: w.centroidLat,
+        centroid_lon: w.centroidLon,
+        site_n: w.siteN,
+        org_n: w.orgN,
+        org_alien_n: w.orgAlienN,
+        org_redlist_n: w.orgRedlistN,
+        built_km2_2006: w.built.from,
+        built_km2_2016: w.built.to,
+        forest_km2_2006: w.forest.from,
+        forest_km2_2016: w.forest.to,
+        paddy_km2_2006: w.paddy.from,
+        paddy_km2_2016: w.paddy.to,
+      }));
+    }
+    case "doc_series_meta": {
+      // `api/documents` と同じ minYears=3。label は API・UI と同じく `docSeriesList` が付ける（ここで作らない）。
+      const rows = await docSeriesList(db, { minYears: 3 });
+      return rows.map((r) => ({
+        doc_id: r.docId,
+        table_id: r.tableId,
+        row_key: r.rowKey,
+        label: r.label,
+        page_no: r.pageNo,
+        n_years: r.nYears,
+        y_from: r.yFrom,
+        y_to: r.yTo,
+        unit: r.unit,
+        doc_title: r.docTitle,
+        publisher: r.publisher,
+        url: r.url,
+        license: r.license,
+        n_warnings: r.nWarnings,
+      }));
+    }
+    case "doc_series_points": {
+      const rows = await docSeriesPoints(db, String(params.doc_id), String(params.table_id), String(params.row_key));
+      return rows.map((r) => ({ fiscal_year: r.fiscalYear, value: r.value, unit: r.unit, page_no: r.pageNo }));
+    }
+    case "overview_counts": {
+      // `app/page.tsx` と同じ `overviewCounts(db)`。n_meas/n_sensor/n_events は D2 で廃止（比べない）。
+      const c = await overviewCounts(db);
+      return [{ n_sites: c.sites, n_sources: c.sources, n_watersheds: c.watersheds, y_from: c.yFrom, y_to: c.yTo }];
+    }
+    case "landuse_highlight": {
+      // `app/page.tsx` と同じ limit=8。
+      const rows = await landuseHighlight(db, 8);
+      return rows.map((r) => ({ watershed_id: r.watershedId, water_system_name: r.waterSystemName, delta: r.delta, area_km2: r.areaKm2 }));
     }
     case "watershed_year": {
       const rows = await watershedYears(db);

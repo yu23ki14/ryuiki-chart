@@ -99,6 +99,8 @@ export interface QueryDef {
   compare: CompareSpec;
   /** 既定は完全一致（許容差 0）。ここに載っている数値列だけ相対許容差を許す。 */
   tolerance?: Record<string, number>;
+  /** 廃止した列（v1 にあって v2 に無い。比べず、レポートに1行出す。PR-4 D2）。 */
+  retired?: string[];
   /** この問い合わせに当てはまりうる既知の系統（`classify.ts` の `KnownRule`）。 */
   known: string[];
 }

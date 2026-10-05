@@ -275,7 +275,11 @@ export type KnownRule =
   | "species_n_definition"
   | "month_cell_membership"
   | "vernacular_label_rule"
-  | "undated_excluded";
+  | "undated_excluded"
+  // 文書系列の3規則（Issue #48 PR-4、`docs/plans/V2_SERVING_PR4.md` §5.2。ADR-0029 追記）。
+  | "doc_label_rule"
+  | "doc_warning_scope"
+  | "doc_year_collapse";
 
 /**
  * 生物系の5規則（`watershed_memo`/`species_n_definition`/`month_cell_membership`/
@@ -298,6 +302,48 @@ export interface BiotaExpectations {
   labels?: ReadonlyMap<string, string>;
   /** `ryuiki.sqlite` の `organism_records` で日付の無い件数（`observed_on` が NULL または 4 桁未満）。 */
   undated?: { records: number; gbif: number; inat: number };
+}
+
+/**
+ * 文書系列の3規則（`doc_label_rule`/`doc_warning_scope`/`doc_year_collapse`）が「独立に組んだ中間点」として
+ * 使う期待値（`docs-expect.ts` が `cells.sqlite` を別 SQL で直接読んで作る。**`lib/cube` は import しない**）。
+ * 載っていない系列・年の規則は不発（unexplained のまま）にする。
+ */
+export interface DocsExpectations {
+  /** 系列（`docSeriesKey`）ごとの期待値。 */
+  series: ReadonlyMap<string, DocSeriesExpect>;
+  /** （系列, 年）（`docPointKey`）ごとの「その年の値の種類数」（`CAST(value AS REAL)` の DISTINCT）。 */
+  yearDistinct: ReadonlyMap<string, number>;
+}
+
+export interface DocSeriesExpect {
+  /** v1 の式（`build-derived.mjs` の `instr/replace`）で評価した label。 */
+  v1Label: string;
+  /** `lastIndexOf('|')` で切った label（v2 の `rowKeyLabel`）。 */
+  v2Label: string;
+  /** v1: doc 単位の `COUNT(*)`（`blocks_timeseries=1`）。 */
+  v1Warnings: number;
+  /** v2: 文書全体にかかる注記＋当該 `table_id` を含む注記。 */
+  v2Warnings: number;
+  /** v1 が数える年（割れる年を含む。`GROUP BY (doc,table,row,year)` の行数）。 */
+  allYears: number;
+  allFrom: number | null;
+  allTo: number | null;
+  allPageNo: number | null;
+  /** v2 が数える年（値が1種の年だけ）。 */
+  goodYears: number;
+  goodFrom: number | null;
+  goodTo: number | null;
+  goodPageNo: number | null;
+}
+
+/** 系列のキー（`doc_series_meta` の key と `doc_series_points` の params）。 */
+export function docSeriesKey(docId: string | number, tableId: string | number, rowKey: string | number): string {
+  return `${docId}\u0000${tableId}\u0000${rowKey}`;
+}
+
+export function docPointKey(docId: string | number, tableId: string | number, rowKey: string | number, year: string | number): string {
+  return `${docId}\u0000${tableId}\u0000${rowKey}\u0000${year}`;
 }
 
 export interface WsYearExpect {
@@ -330,6 +376,8 @@ export interface ClassifyContext {
   queryId?: string;
   /** 生物系の期待値（`--only` で生物系を回さないときは undefined）。 */
   biota?: BiotaExpectations;
+  /** 文書系列の期待値（`--only` で `doc_series_*` を回さないときは undefined）。 */
+  docs?: DocsExpectations;
   expected: ExpectedDiffs;
   declared: DeclaredLookup;
   params: Readonly<Record<string, ScalarParam>>;
@@ -1097,6 +1145,81 @@ function classifyBiota(diff: RowDiff, ctx: ClassifyContext): Classification | un
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* 文書系列の3規則（Issue #48 PR-4、`docs/plans/V2_SERVING_PR4.md` §5.2）       */
+/*                                                                      */
+/* 説明の鎖は「v1 →(規則)→ cells.sqlite からの別 SQL の再計算 →(=)→ v2」。       */
+/* 「v2 が再計算と一致する」ことを必ず確かめる（規則が何でも説明する穴に      */
+/* ならない。`doc_label_wrong`/`doc_drop_point` 変異がこれを見る）。            */
+/* ------------------------------------------------------------------ */
+
+/** `doc_series_meta`（key = [doc_id, table_id, row_key]）。 */
+function explainDocMeta(diff: RowDiff, ctx: ClassifyContext, d: DocsExpectations): Classification {
+  const ex = d.series.get(docSeriesKey(diff.key[0], diff.key[1], diff.key[2]));
+  if (ex === undefined) return emptyClassification();
+  const used = new Set<KnownRule>();
+
+  if (diff.kind === "row_only_in_v1") {
+    // 値が1種の年が3未満になった系列だけが v2 から消える（`doc_year_collapse`）。
+    if (ex.goodYears >= 3 || !diff.v1 || !ruleEnabled(ctx, "doc_year_collapse")) return emptyClassification();
+    return { rules: new Set(["doc_year_collapse"]), declaredMatches: [] };
+  }
+  if (diff.kind === "label_diff") {
+    if (!diff.v1 || !diff.v2) return emptyClassification();
+    for (const col of diff.columns) {
+      // label 以外（unit/doc_title/…）は規則が無い。
+      if (col !== "label") return emptyClassification();
+      if (diff.v1.label.label !== ex.v1Label || diff.v2.label.label !== ex.v2Label) return emptyClassification();
+      if (!bioRule(ctx, "doc_label_rule", used)) return emptyClassification();
+    }
+    return { rules: used, declaredMatches: [] };
+  }
+  if (diff.kind !== "value_diff" || !diff.v1 || !diff.v2) return emptyClassification();
+
+  for (const col of diff.columns) {
+    const v1v = numOf(diff.v1, col);
+    const v2v = numOf(diff.v2, col);
+    if (col === "n_warnings") {
+      if (v1v !== ex.v1Warnings || v2v !== ex.v2Warnings || !bioRule(ctx, "doc_warning_scope", used)) return emptyClassification();
+      continue;
+    }
+    const collapse: Record<string, [number | null, number | null]> = {
+      n_years: [ex.allYears, ex.goodYears],
+      y_from: [ex.allFrom, ex.goodFrom],
+      y_to: [ex.allTo, ex.goodTo],
+      page_no: [ex.allPageNo, ex.goodPageNo],
+    };
+    const pair = collapse[col];
+    if (!pair || v1v !== pair[0] || v2v !== pair[1] || !bioRule(ctx, "doc_year_collapse", used)) return emptyClassification();
+  }
+  return { rules: used, declaredMatches: [] };
+}
+
+/** `doc_series_points`（params = {doc_id, table_id, row_key}、key = [fiscal_year]）。 */
+function explainDocPoint(diff: RowDiff, ctx: ClassifyContext, d: DocsExpectations): Classification {
+  // 点が消えるのは、その年に値が2種以上ある（`doc_year_collapse`）ときだけ。値が1種の年の点が
+  // 消えていれば v2 の取りこぼし。
+  if (diff.kind !== "row_only_in_v1" || !diff.v1) return emptyClassification();
+  const { doc_id, table_id, row_key } = ctx.params;
+  if (doc_id === undefined || table_id === undefined || row_key === undefined) return emptyClassification();
+  const distinct = d.yearDistinct.get(docPointKey(doc_id, table_id, row_key, diff.key[0]));
+  if (distinct === undefined || distinct < 2 || !ruleEnabled(ctx, "doc_year_collapse")) return emptyClassification();
+  return { rules: new Set(["doc_year_collapse"]), declaredMatches: [] };
+}
+
+function classifyDocs(diff: RowDiff, ctx: ClassifyContext): Classification | undefined {
+  const d = ctx.docs;
+  if (!d) return undefined;
+  switch (ctx.queryId) {
+    case "doc_series_meta":
+      return explainDocMeta(diff, ctx, d);
+    case "doc_series_points":
+      return explainDocPoint(diff, ctx, d);
+    default:
+      return undefined;
+  }
+}
+
 /**
  * `RowDiff` を既知の系統に当てはめる。まず「説明の鎖」（`explainRowOnly`/
  * `explainValueDiff`。declared・synthetic_excluded・lod_imputation を統合）を
@@ -1107,6 +1230,8 @@ function classifyBiota(diff: RowDiff, ctx: ClassifyContext): Classification | un
  * 位置づけのまま——`docs/plans/V2_SERVING_PR2.md` §1・§3）。
  */
 export function classifyDiff(diff: RowDiff, ctx: ClassifyContext): Classification {
+  const docs = classifyDocs(diff, ctx);
+  if (docs) return docs;
   const biota = classifyBiota(diff, ctx);
   if (biota) return biota;
 
