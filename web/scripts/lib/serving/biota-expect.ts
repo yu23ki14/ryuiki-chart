@@ -128,13 +128,15 @@ export interface TaxonNameRow {
   vernacular_name_ja: string | null;
   vernacular_name_en: string | null;
   vernacular_ja_basis: string | null;
+  rank: string | null;
 }
 
 /**
- * D4 の表示名の定義（設計書 §0 D4・§2.3）から、binom ごとの期待ラベルを作る。
- * 代表 taxon は `summary_taxon_catalog.n` が最大のもの（同数は taxon_id の昇順）。
- * `NAME_JA`（`vernacular_ja.csv`）→ 代表 taxon の和名（`records:false` なら basis が
- * override/taxa のものだけ）→ 英名 → binom。
+ * D4（改訂）の表示名の定義（設計書 §0 D4・§2.3）から、binom ごとの期待ラベルを作る。
+ * `NAME_JA`（`vernacular_ja.csv`）→ 和名を持つ taxon のうち種の階級（rank='species'）で
+ * `summary_taxon_catalog.n` 最大 → 和名を持つ taxon（種より下を含む）で n 最大 →
+ * binom の全 taxon で n 最大のものの英名 → binom。同数は taxon_id の昇順。
+ * `records:false` なら和名の候補を basis が override/taxa のものに絞る。
  */
 export function expectedLabels(
   taxa: readonly TaxonNameRow[],
@@ -142,23 +144,25 @@ export function expectedLabels(
   fixedJa: ReadonlyMap<string, string>,
   records: boolean,
 ): Map<string, string> {
-  const best = new Map<string, { n: number; row: TaxonNameRow }>();
+  type Pick = { n: number; row: TaxonNameRow };
+  const beats = (n: number, row: TaxonNameRow, cur: Pick | undefined) =>
+    !cur || n > cur.n || (n === cur.n && row.taxon_id < cur.row.taxon_id);
+  const top = new Map<string, Pick>();
+  const jaSp = new Map<string, Pick>();
+  const jaAny = new Map<string, Pick>();
   for (const t of taxa) {
     const n = nByTaxon.get(t.taxon_id) ?? 0;
-    const cur = best.get(t.canonical_binomial);
-    if (!cur || n > cur.n || (n === cur.n && t.taxon_id < cur.row.taxon_id)) best.set(t.canonical_binomial, { n, row: t });
+    const b = t.canonical_binomial;
+    if (beats(n, t, top.get(b))) top.set(b, { n, row: t });
+    if (t.vernacular_name_ja && (records || t.vernacular_ja_basis === "override" || t.vernacular_ja_basis === "taxa")) {
+      if (beats(n, t, jaAny.get(b))) jaAny.set(b, { n, row: t });
+      if (t.rank === "species" && beats(n, t, jaSp.get(b))) jaSp.set(b, { n, row: t });
+    }
   }
   const out = new Map<string, string>();
-  for (const [binom, { row }] of best) {
-    const fixed = fixedJa.get(binom);
-    if (fixed) {
-      out.set(binom, fixed);
-      continue;
-    }
-    const basisOk = records || row.vernacular_ja_basis === "override" || row.vernacular_ja_basis === "taxa";
-    if (row.vernacular_name_ja && basisOk) out.set(binom, row.vernacular_name_ja);
-    else if (row.vernacular_name_en) out.set(binom, row.vernacular_name_en);
-    else out.set(binom, binom);
+  for (const [binom, { row }] of top) {
+    const ja = (jaSp.get(binom) ?? jaAny.get(binom))?.row.vernacular_name_ja;
+    out.set(binom, fixedJa.get(binom) || ja || row.vernacular_name_en || binom);
   }
   return out;
 }
@@ -287,7 +291,7 @@ function loadLabels(paths: BiotaPaths): Map<string, string> {
   const l2 = openReadOnly(paths.v2, { reg: paths.registry });
   try {
     const taxa = l2.rows.all(
-      `SELECT taxon_id, canonical_binomial, vernacular_name_ja, vernacular_name_en, vernacular_ja_basis
+      `SELECT taxon_id, canonical_binomial, rank, vernacular_name_ja, vernacular_name_en, vernacular_ja_basis
        FROM reg.taxon WHERE canonical_binomial IS NOT NULL AND canonical_binomial <> ''`,
     ) as unknown as TaxonNameRow[];
     const nByTaxon = new Map<string, number>();

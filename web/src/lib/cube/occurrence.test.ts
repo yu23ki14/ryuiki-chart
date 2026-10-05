@@ -138,7 +138,7 @@ describe("speciesLabels（表示名。§2.3）", () => {
     const out = await speciesLabels(fx.db, [alpha, beta, gamma, delta, named, "Nope nope"]);
     const m = new Map(out.map((l) => [l.binom, l.label]));
     expect(m.get(alpha)).toBe("アルファ");
-    expect(m.get(beta)).toBe("ベータ"); // 代表は件数最大の B2（B1 は和名なし）
+    expect(m.get(beta)).toBe("ベータ"); // 和名を持つのは B2（亜種）だけ。種の階級の B1 に和名が無いので亜種名へ
     expect(m.get(gamma)).toBe(gamma);
     expect(m.get(delta)).toBe("デルタ");
     expect(m.get(named)).toBe(NAME_JA[named]);

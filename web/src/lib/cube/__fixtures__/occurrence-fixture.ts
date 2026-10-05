@@ -34,6 +34,7 @@ interface TaxonFx {
   binom: string | null;
   group: string | null;
   cls?: string | null;
+  rank?: string | null;
   family?: string | null;
   ja?: string | null;
   basis?: string | null;
@@ -42,8 +43,8 @@ interface TaxonFx {
 
 const TAXA: TaxonFx[] = [
   { id: "common:taxon:fx_a", binom: "Fxa alpha", group: "FxBird", cls: "Aves", family: "FamA", ja: "アルファ", basis: "taxa" },
-  { id: "common:taxon:fx_b1", binom: "Fxb beta", group: "FxBird", cls: "Aves", family: "FamB", en: "Beta bird small" },
-  { id: "common:taxon:fx_b2", binom: "Fxb beta", group: "FxBird", cls: "Aves", family: "FamB", ja: "ベータ", basis: "records", en: "Beta bird" },
+  { id: "common:taxon:fx_b1", binom: "Fxb beta", group: "FxBird", cls: "Aves", family: "FamB", en: "Beta bird small", rank: "species" },
+  { id: "common:taxon:fx_b2", binom: "Fxb beta", group: "FxBird", cls: "Aves", family: "FamB", ja: "ベータ", basis: "records", en: "Beta bird", rank: "subspecies" },
   { id: "common:taxon:fx_c", binom: "Fxc gamma", group: "FxPlant", cls: "Mag", family: "FamC" },
   { id: "common:taxon:fx_d", binom: "Fxd delta", group: "FxPlant", cls: "Mag", family: "FamD", ja: "デルタ", basis: "override" },
   { id: "common:taxon:fx_n", binom: FX_NAME_JA_BINOM, group: "FxPlant", ja: "別の和名", basis: "records" },
@@ -178,10 +179,10 @@ function ensureSchema(db: Database.Database): void {
 
 function seed(db: Database.Database): void {
   const tx = db.prepare(
-    `INSERT INTO taxon (taxon_id, scientific_name, canonical_binomial, "class", family, taxon_group, vernacular_name_ja, vernacular_name_en, vernacular_ja_basis)
-     VALUES (@id,@binom,@binom,@cls,@family,@group,@ja,@en,@basis)`,
+    `INSERT INTO taxon (taxon_id, scientific_name, canonical_binomial, "class", family, rank, taxon_group, vernacular_name_ja, vernacular_name_en, vernacular_ja_basis)
+     VALUES (@id,@binom,@binom,@cls,@family,@rank,@group,@ja,@en,@basis)`,
   );
-  for (const t of TAXA) tx.run({ id: t.id, binom: t.binom, group: t.group, cls: t.cls ?? null, family: t.family ?? null, ja: t.ja ?? null, en: t.en ?? null, basis: t.basis ?? null });
+  for (const t of TAXA) tx.run({ id: t.id, binom: t.binom, group: t.group, cls: t.cls ?? null, family: t.family ?? null, rank: t.rank ?? null, ja: t.ja ?? null, en: t.en ?? null, basis: t.basis ?? null });
 
   const oc = db.prepare(
     `INSERT INTO occurrence_agg (region_id, source_id, place_id, place_kind, taxon_id, grain, period_start, period_end, n, n_red_list, n_alien, built_from, spec_version)

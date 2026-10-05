@@ -281,14 +281,24 @@ export interface TaxonNames {
 }
 
 /**
- * binom → 代表 taxon（`summary_taxon_catalog.n` が最大。同数は taxon_id 昇順）の名前。
- * `ix_taxon_binomial` で引く。
+ * binom → 表示名の素材（D4 改訂、§2.3）。和名は「和名を持つ taxon のうち、種の階級
+ * （`rank='species'`）で `summary_taxon_catalog.n` 最大 → 無ければ種より下を含めて n 最大」、
+ * 英名は binom の全 taxon で n 最大のもの。同数は taxon_id 昇順。`records:false` なら和名の
+ * 候補を basis が override/taxa のものに絞る。`ix_taxon_binomial` で引く。
  */
-export async function resolveNames(db: CubeDb, binoms: readonly string[]): Promise<Map<string, TaxonNames>> {
-  const best = new Map<string, { n: number; id: string; names: TaxonNames }>();
+export async function resolveNames(
+  db: CubeDb,
+  binoms: readonly string[],
+  records: boolean = USE_RECORD_VERNACULAR,
+): Promise<Map<string, TaxonNames>> {
+  interface Cand { n: number; id: string; species: boolean; ja: string | null; basis: string | null; en: string | null }
+  const better = (x: Cand, y: Cand | undefined) => !y || x.n > y.n || (x.n === y.n && x.id < y.id);
+  const top = new Map<string, Cand>(); // 全 taxon で n 最大（英名用）
+  const jaSp = new Map<string, Cand>(); // 和名あり・種の階級
+  const jaAny = new Map<string, Cand>(); // 和名あり（種より下を含む）
   for (const part of chunk(uniq(binoms), MAX_ID_LIST)) {
     const rows = await db.all<R>(
-      `SELECT t.canonical_binomial AS binom, t.taxon_id AS taxon_id,
+      `SELECT t.canonical_binomial AS binom, t.taxon_id AS taxon_id, t.rank AS rank,
               t.vernacular_name_ja AS ja, t.vernacular_ja_basis AS basis, t.vernacular_name_en AS en,
               COALESCE(tc.n, 0) AS n
        FROM json_each(?) j
@@ -298,15 +308,27 @@ export async function resolveNames(db: CubeDb, binoms: readonly string[]): Promi
     );
     for (const r of rows) {
       const binom = r.binom as string;
-      const n = r.n as number;
-      const id = r.taxon_id as string;
-      const cur = best.get(binom);
-      if (!cur || n > cur.n || (n === cur.n && id < cur.id)) {
-        best.set(binom, { n, id, names: { ja: r.ja as string | null, jaBasis: r.basis as string | null, en: r.en as string | null } });
+      const c: Cand = {
+        n: r.n as number,
+        id: r.taxon_id as string,
+        species: r.rank === "species",
+        ja: r.ja as string | null,
+        basis: r.basis as string | null,
+        en: r.en as string | null,
+      };
+      if (better(c, top.get(binom))) top.set(binom, c);
+      if (c.ja && (records || c.basis === "override" || c.basis === "taxa")) {
+        if (better(c, jaAny.get(binom))) jaAny.set(binom, c);
+        if (c.species && better(c, jaSp.get(binom))) jaSp.set(binom, c);
       }
     }
   }
-  return new Map([...best].map(([k, v]) => [k, v.names]));
+  const out = new Map<string, TaxonNames>();
+  for (const [binom, t] of top) {
+    const j = jaSp.get(binom) ?? jaAny.get(binom);
+    out.set(binom, { ja: j?.ja ?? null, jaBasis: j?.basis ?? null, en: t.en });
+  }
+  return out;
 }
 
 /**
@@ -326,7 +348,7 @@ export function pickLabel(binom: string, names: TaxonNames | undefined, records:
 
 export async function labelMap(db: CubeDb, binoms: readonly string[], opt: SpeciesLabelOpt): Promise<Map<string, string>> {
   const records = opt.records ?? USE_RECORD_VERNACULAR;
-  const names = await resolveNames(db, binoms);
+  const names = await resolveNames(db, binoms, records);
   return new Map(uniq(binoms).map((b) => [b, pickLabel(b, names.get(b), records)]));
 }
 

@@ -52,17 +52,24 @@ describe("parseVernacularCsv", () => {
   });
 });
 
-describe("expectedLabels（D4: NAME_JA → 代表 taxon の和名 → 英名 → binom）", () => {
+describe("expectedLabels（D4 改訂: NAME_JA → 種の階級の和名 → 種より下の和名 → 英名 → binom）", () => {
   const taxa: TaxonNameRow[] = [
-    { taxon_id: "t1", canonical_binomial: "Fx a", vernacular_name_ja: null, vernacular_name_en: "Alpha", vernacular_ja_basis: null },
-    { taxon_id: "t2", canonical_binomial: "Fx a", vernacular_name_ja: "アルファ", vernacular_name_en: null, vernacular_ja_basis: "records" },
-    { taxon_id: "t3", canonical_binomial: "Fx b", vernacular_name_ja: "ベータ", vernacular_name_en: "Beta", vernacular_ja_basis: "taxa" },
-    { taxon_id: "t4", canonical_binomial: "Fx c", vernacular_name_ja: null, vernacular_name_en: null, vernacular_ja_basis: null },
-    { taxon_id: "t5", canonical_binomial: "Fx d", vernacular_name_ja: "デルタ（記録）", vernacular_name_en: "Delta", vernacular_ja_basis: "records" },
-    { taxon_id: "t6", canonical_binomial: "Fx e", vernacular_name_ja: "同数1", vernacular_name_en: null, vernacular_ja_basis: "taxa" },
-    { taxon_id: "t7", canonical_binomial: "Fx e", vernacular_name_ja: "同数2", vernacular_name_en: null, vernacular_ja_basis: "taxa" },
+    { taxon_id: "t1", canonical_binomial: "Fx a", vernacular_name_ja: null, vernacular_name_en: "Alpha", vernacular_ja_basis: null, rank: null },
+    { taxon_id: "t2", canonical_binomial: "Fx a", vernacular_name_ja: "アルファ", vernacular_name_en: null, vernacular_ja_basis: "records", rank: null },
+    { taxon_id: "t3", canonical_binomial: "Fx b", vernacular_name_ja: "ベータ", vernacular_name_en: "Beta", vernacular_ja_basis: "taxa", rank: null },
+    { taxon_id: "t4", canonical_binomial: "Fx c", vernacular_name_ja: null, vernacular_name_en: null, vernacular_ja_basis: null, rank: null },
+    { taxon_id: "t5", canonical_binomial: "Fx d", vernacular_name_ja: "デルタ（記録）", vernacular_name_en: "Delta", vernacular_ja_basis: "records", rank: null },
+    { taxon_id: "t6", canonical_binomial: "Fx e", vernacular_name_ja: "同数1", vernacular_name_en: null, vernacular_ja_basis: "taxa", rank: null },
+    { taxon_id: "t7", canonical_binomial: "Fx e", vernacular_name_ja: "同数2", vernacular_name_en: null, vernacular_ja_basis: "taxa", rank: null },
+    // Fx f: 件数最大は和名のない種 t8、和名は亜種 t9（件数大）と種 t10（件数小）。種の階級が勝つ。
+    { taxon_id: "t8", canonical_binomial: "Fx f", vernacular_name_ja: null, vernacular_name_en: "Fen", vernacular_ja_basis: null, rank: "species" },
+    { taxon_id: "t9", canonical_binomial: "Fx f", vernacular_name_ja: "亜種名", vernacular_name_en: null, vernacular_ja_basis: "records", rank: "subspecies" },
+    { taxon_id: "t10", canonical_binomial: "Fx f", vernacular_name_ja: "種名", vernacular_name_en: null, vernacular_ja_basis: "records", rank: "species" },
+    // Fx g: 和名は亜種にしか無い → 亜種名にフォールバック（英名より先）。
+    { taxon_id: "t11", canonical_binomial: "Fx g", vernacular_name_ja: null, vernacular_name_en: "Gen", vernacular_ja_basis: null, rank: "species" },
+    { taxon_id: "t12", canonical_binomial: "Fx g", vernacular_name_ja: "亜種だけの名", vernacular_name_en: null, vernacular_ja_basis: "records", rank: "subspecies" },
   ];
-  const n = new Map([["t1", 5], ["t2", 50], ["t3", 3], ["t5", 9], ["t6", 4], ["t7", 4]]);
+  const n = new Map([["t1", 5], ["t2", 50], ["t3", 3], ["t5", 9], ["t6", 4], ["t7", 4], ["t8", 100], ["t9", 40], ["t10", 2], ["t11", 50], ["t12", 1]]);
   const fixed = new Map([["Fx b", "固定名"]]);
 
   it("記録由来を使う: 件数最大の taxon の和名。台帳（NAME_JA）が最優先。無ければ英名→binom。同数は taxon_id 昇順", () => {
@@ -72,6 +79,8 @@ describe("expectedLabels（D4: NAME_JA → 代表 taxon の和名 → 英名 →
     expect(m.get("Fx c")).toBe("Fx c");
     expect(m.get("Fx d")).toBe("デルタ（記録）");
     expect(m.get("Fx e")).toBe("同数1");
+    expect(m.get("Fx f")).toBe("種名"); // 種の階級の和名が、件数の多い亜種名に勝つ
+    expect(m.get("Fx g")).toBe("亜種だけの名"); // 種に和名が無ければ亜種名（英名より先）
   });
 
   it("記録由来を使わない: basis が override/taxa のものだけ和名にし、records は英名へ落とす", () => {
@@ -100,9 +109,9 @@ describe("loadBiotaExpectations（フィクスチャの sqlite 4 つ）", () => 
     // registry: taxon・place_source_ref
     const reg = new Database(paths.registry);
     reg.exec(`
-      CREATE TABLE taxon (taxon_id TEXT PRIMARY KEY, canonical_binomial TEXT, vernacular_name_ja TEXT, vernacular_name_en TEXT, vernacular_ja_basis TEXT);
+      CREATE TABLE taxon (taxon_id TEXT PRIMARY KEY, canonical_binomial TEXT, vernacular_name_ja TEXT, vernacular_name_en TEXT, vernacular_ja_basis TEXT, rank TEXT);
       CREATE TABLE place_source_ref (source_id TEXT, external_key TEXT, place_id TEXT);
-      INSERT INTO taxon VALUES ('t1','Fx a',NULL,'Alpha',NULL), ('t2','Fx a','アルファ',NULL,'records'), ('t3','Fx b','ベータ','Beta','taxa');
+      INSERT INTO taxon VALUES ('t1','Fx a',NULL,'Alpha',NULL,NULL), ('t2','Fx a','アルファ',NULL,'records',NULL), ('t3','Fx b','ベータ','Beta','taxa',NULL);
       INSERT INTO place_source_ref VALUES ('watershed_meta.watershed_id','W1','common:place:watershed.nlni-W1');
     `);
     reg.close();
