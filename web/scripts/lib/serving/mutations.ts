@@ -24,7 +24,11 @@ export type RowMutationName =
   // 生物系（PR-3b §3.3）
   | "label_wrong"
   | "drop_species_rows"
-  | "inflate_n";
+  | "inflate_n"
+  // 文書・流域（PR-4 §5.2）
+  | "doc_label_wrong"
+  | "doc_drop_point"
+  | "inflate_site_n";
 
 export type ClassifyMutationName =
   | "day_split_rule_off"
@@ -36,7 +40,11 @@ export type ClassifyMutationName =
   | "species_n_rule_off"
   | "month_rule_off"
   | "label_rule_off"
-  | "undated_rule_off";
+  | "undated_rule_off"
+  // 文書系列3規則の無効化（PR-4 §5.2）
+  | "doc_label_rule_off"
+  | "doc_warning_rule_off"
+  | "doc_collapse_rule_off";
 
 /** v1 側だけを狂わせる変異（design §8.1 U4「新しい変異 …merge_rule_off」）。
  *  `merge-v1.ts` の alias→variable_id 束ねを止め、`*_by_variable` 問い合わせの
@@ -55,6 +63,9 @@ export const ROW_MUTATION_NAMES: readonly RowMutationName[] = [
   "label_wrong",
   "drop_species_rows",
   "inflate_n",
+  "doc_label_wrong",
+  "doc_drop_point",
+  "inflate_site_n",
 ];
 
 export const CLASSIFY_MUTATION_NAMES: readonly ClassifyMutationName[] = [
@@ -67,6 +78,9 @@ export const CLASSIFY_MUTATION_NAMES: readonly ClassifyMutationName[] = [
   "month_rule_off",
   "label_rule_off",
   "undated_rule_off",
+  "doc_label_rule_off",
+  "doc_warning_rule_off",
+  "doc_collapse_rule_off",
 ];
 
 export const V1_MUTATION_NAMES: readonly V1MutationName[] = ["merge_rule_off"];
@@ -103,8 +117,36 @@ const ROW_MUTATION_APPLIES_TO: Partial<Record<RowMutationName, readonly string[]
   // 生物系（PR-3b §3.3）。表に無い名前は「全問い合わせに効く」になるので対象を必ず書く。
   label_wrong: ["species_labels"],
   drop_species_rows: ["species_years"],
-  inflate_n: ["effort_years", "mesh_by_year", "ias_species"],
+  inflate_n: ["effort_years", "mesh_by_year", "ias_species", "overview_counts"],
+  // 文書・流域（PR-4 §5.2）。
+  doc_label_wrong: ["doc_series_meta"],
+  doc_drop_point: ["doc_series_points"],
+  inflate_site_n: ["watershed_rollup"],
 };
+
+/**
+ * 変異ごとの「意味を持つ imputation」（§7-1）。表に無い名前はどの imputation でも意味を持つ。
+ * `lod_rule_off` は `lod_imputation` 規則を止める変異で、zero 実行ではその規則が説明する差が無いので
+ * 当てても何も落ちない（以前は `--mutate all` が zero 実行でこれを当てて NG になっていた）。
+ */
+const MUTATION_REQUIRES_IMPUTATION: Readonly<Record<string, "zero" | "lod">> = {
+  lod_rule_off: "lod",
+};
+
+/** `--mutate all` を現在の imputation で展開する。意味を持たない変異は `skipped`（理由つき）に分ける。 */
+export function expandAllMutations(imputation: "zero" | "lod"): { names: string[]; skipped: { name: string; reason: string }[] } {
+  const names: string[] = [];
+  const skipped: { name: string; reason: string }[] = [];
+  for (const name of ALL_MUTATION_NAMES) {
+    const need = MUTATION_REQUIRES_IMPUTATION[name];
+    if (need !== undefined && need !== imputation) {
+      skipped.push({ name, reason: `${need} 実行のみ（現在は ${imputation}）` });
+    } else {
+      names.push(name);
+    }
+  }
+  return { names, skipped };
+}
 
 /** `--mutate all` 用に、対応するクエリ id 一覧を返す（無関係な id には no-op で効かない変異もある）。 */
 export function rowMutationAppliesTo(name: RowMutationName, queryId: string): boolean {
@@ -181,7 +223,28 @@ export function applyRowMutation(name: RowMutationName, queryId: string, rows: r
     case "inflate_n":
       // 説明できる規則の無い問い合わせ（effort/mesh/ias）の n を +1 する。
       if (!rowMutationAppliesTo(name, queryId)) return [...rows];
+      // overview_counts は列名が n ではなく n_sites（1行だけの問い合わせ）。
+      if (queryId === "overview_counts") {
+        return rows.map((r) => (typeof r.numeric.n_sites === "number" ? { ...r, numeric: { ...r.numeric, n_sites: r.numeric.n_sites + 1 } } : r));
+      }
       return rows.map((r) => (typeof r.numeric.n === "number" ? { ...r, numeric: { ...r.numeric, n: r.numeric.n + 1 } } : r));
+    case "doc_label_wrong":
+      // 規則（doc_label_rule）が有効でも落ちること: v2 の1 label を再計算（lastIndexOf）と食い違う文字列に差し替える。
+      if (!rowMutationAppliesTo(name, queryId)) return [...rows];
+      return rows.map((r, i) => (i === 0 && "label" in r.label ? { ...r, label: { ...r.label, label: `${r.label.label ?? ""}（変異）` } } : r));
+    case "doc_drop_point":
+      // v2 の点は値が1種の年だけ（割れる年は最初から出ない）なので、1点落とせば v1 にだけ在る行になり、
+      // doc_year_collapse（割れた年だけを説明する）では説明できない。
+      return rowMutationAppliesTo(name, queryId) ? rows.slice(1) : [...rows];
+    case "inflate_site_n":
+      // 説明できる規則の無い列（site_n と土地利用1列）を +1 する。
+      if (!rowMutationAppliesTo(name, queryId)) return [...rows];
+      return rows.map((r) => {
+        const numeric = { ...r.numeric };
+        if (typeof numeric.site_n === "number") numeric.site_n += 1;
+        if (typeof numeric.built_km2_2016 === "number") numeric.built_km2_2016 += 1;
+        return { ...r, numeric };
+      });
     default: {
       const exhaustive: never = name;
       throw new Error(`未知の行変異: ${exhaustive}`);
@@ -216,6 +279,12 @@ export function applyClassifyMutation(
       return { disabledRules: new Set<KnownRule>(["vernacular_label_rule"]) };
     case "undated_rule_off":
       return { disabledRules: new Set<KnownRule>(["undated_excluded"]) };
+    case "doc_label_rule_off":
+      return { disabledRules: new Set<KnownRule>(["doc_label_rule"]) };
+    case "doc_warning_rule_off":
+      return { disabledRules: new Set<KnownRule>(["doc_warning_scope"]) };
+    case "doc_collapse_rule_off":
+      return { disabledRules: new Set<KnownRule>(["doc_year_collapse"]) };
     case "declared_rot": {
       if (!opts.declaredRotTarget) {
         throw new Error("declared_rot には無視する宣言（table/key/kind）の指定が要る");

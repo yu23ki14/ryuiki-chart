@@ -54,6 +54,7 @@ import {
 } from "./lib/serving/normalize";
 import { enumerateParams, runV1Query, usesMergeDisabled } from "./lib/serving/adapters-v1";
 import { BIOTA_QUERY_IDS, loadBiotaExpectations } from "./lib/serving/biota-expect";
+import { PR4_QUERY_IDS, loadDocsExpectations } from "./lib/serving/docs-expect";
 import { openV1CompatDb } from "./lib/serving/v1-compat";
 import * as mergeV1 from "./lib/serving/merge-v1";
 import {
@@ -64,6 +65,7 @@ import {
   findRottenDeclarations,
   type BiotaExpectations,
   type ClassifyContext,
+  type DocsExpectations,
   type DeclaredKeyBuilder,
   type DeclaredLookup,
   type ExpectedDiffs,
@@ -74,6 +76,7 @@ import {
 } from "./lib/serving/classify";
 import {
   ALL_MUTATION_NAMES,
+  expandAllMutations,
   applyClassifyMutation,
   applyRowMutation,
   isClassifyMutation,
@@ -131,9 +134,13 @@ if (argv.expand !== undefined && argv.expand !== "all") {
 }
 const EXPAND = "all" as const;
 const ONLY_IDS = argv.only ? new Set(String(argv.only).split(",").map((s) => s.trim())) : null;
-// `--mutate all` は全変異（`ALL_MUTATION_NAMES`）。`all` と個別名の併記は個別名を足さない（重複させない）。
+// `--mutate all` は全変異（`ALL_MUTATION_NAMES`）のうち、現在の imputation で意味を持つもの
+// （`lod_rule_off` は lod 実行のみ。zero 実行では `skipped` としてレポートに出す。PR-4 §7-1）。
+// `all` と個別名の併記は個別名を足さない（重複させない）。個別名で明示指定した変異は除外しない。
 const MUTATE_RAW = argv.mutate ? String(argv.mutate).split(",").map((s) => s.trim()) : [];
-const MUTATE_NAMES = MUTATE_RAW.includes("all") ? [...ALL_MUTATION_NAMES] : MUTATE_RAW;
+const MUTATE_ALL = MUTATE_RAW.includes("all") ? expandAllMutations(IMPUTATION) : undefined;
+const MUTATE_NAMES = MUTATE_ALL ? MUTATE_ALL.names : MUTATE_RAW;
+const SKIPPED_MUTATIONS = MUTATE_ALL?.skipped ?? [];
 const V1_SOURCE = (argv["v1-source"] as string) === "v1_projection" ? "v1_projection" : "derived";
 const V1COMPAT_DB = argv["v1compat-db"] ? path.resolve(REPO_ROOT, String(argv["v1compat-db"])) : undefined;
 // `reports/serving_switch_diff.{md,json}` はリポジトリ直下（design: `docs/plans/V2_SERVING_PR1.md`・
@@ -165,6 +172,8 @@ if (V1_SOURCE === "v1_projection") {
 const V2_DB_PATH = path.join(DB_DIR, "v2.sqlite");
 const REGISTRY_DB_PATH = process.env.RYUIKI_REGISTRY_DB ?? path.join(DB_DIR, "registry.sqlite");
 const RYUIKI_DB_PATH = path.join(DB_DIR, "ryuiki.sqlite");
+// 文書系列（`doc_series_*`）の v2 側（`lib/cube/documents.ts` が ATTACH して読む）と期待値（`docs-expect.ts`）の入力。
+const CELLS_DB_PATH = path.join(DB_DIR, "cells.sqlite");
 // 生物系の期待値（`biota-expect.ts`）の入力。b08 が書く exact 表（`org_watershed_*_exact`）と人が確認した和名の台帳。
 const V1_OCCURRENCE_DB_PATH = path.join(DB_DIR, "v1_projection_occurrence.sqlite");
 const VERNACULAR_CSV_PATH = path.join(REPO_ROOT, "registry", "taxon", "vernacular_ja.csv");
@@ -204,6 +213,7 @@ interface RawQueryDef {
   only_existing?: string;
   compare: CompareSpec;
   tolerance?: Record<string, number>;
+  retired?: string[];
   known: string[];
 }
 interface RawConfig {
@@ -225,6 +235,7 @@ function loadServingQueries(): ServingQueriesConfig {
     onlyExisting: q.only_existing,
     compare: q.compare,
     tolerance: q.tolerance,
+    retired: q.retired,
     known: q.known,
   }));
   return { version: raw.version, domains, queries };
@@ -442,7 +453,7 @@ async function main() {
     ? new Map([...v2.expectedUnitSymbols(REGISTRY_DB_PATH), ...v2.expectedUnitSymbolsByVariable(REGISTRY_DB_PATH)])
     : undefined;
 
-  const v2Db: CubeDb | null = v2 ? v2.openV2Db({ v2: V2_DB_PATH, registry: REGISTRY_DB_PATH, ryuiki: RYUIKI_DB_PATH }) : null;
+  const v2Db: CubeDb | null = v2 ? v2.openV2Db({ v2: V2_DB_PATH, registry: REGISTRY_DB_PATH, ryuiki: RYUIKI_DB_PATH, cells: CELLS_DB_PATH }) : null;
 
   // `--v1compat-db`（design §1「診断用 v1互換キューブ」）: 合成データを除外
   // **しない** v2 を第2接続として開く。`synthetic_excluded` 規則の「差分の差分」
@@ -464,6 +475,12 @@ async function main() {
         { v2: V2_DB_PATH, registry: REGISTRY_DB_PATH, ryuiki: RYUIKI_DB_PATH, v1Occurrence: V1_OCCURRENCE_DB_PATH, vernacularCsv: VERNACULAR_CSV_PATH },
         queryDefs.map((q) => q.id),
       );
+
+  // 文書系列の3規則の期待値（`cells.sqlite` から別 SQL で作る。`lib/cube` を通さない）。`doc_series_*` を回すときだけ読む。
+  const docs: DocsExpectations | undefined = V1_ONLY ? undefined : loadDocsExpectations(CELLS_DB_PATH, queryDefs.map((q) => q.id));
+
+  // imputation（zero/lod）にも合成データ（v1互換キューブ）にも依らない問い合わせ: zero 再実行と第2接続を省く。
+  const IMPUTATION_FREE_IDS = new Set([...BIOTA_QUERY_IDS, ...PR4_QUERY_IDS]);
 
   const t0 = Date.now();
 
@@ -599,7 +616,7 @@ async function main() {
       // 真なので、この既存チェックは特別な追加条件なしに両対応する）。
       // 生物系（`BIOTA_QUERY_IDS`）は合成データの除外と無関係なので第2接続では流さない。
       let v2CompatByKey: ReadonlyMap<string, NormRow> | undefined;
-      if (v1CompatDb && !BIOTA_QUERY_IDS.has(def.id)) {
+      if (v1CompatDb && !IMPUTATION_FREE_IDS.has(def.id)) {
         try {
           // 既定の `{kind:'summary'}` のまま呼ぶ（画面・API・AI と同じ経路）。
           // `scripts/b13_build_summary.py` を v1compat 段にも足したので
@@ -618,7 +635,7 @@ async function main() {
       // 同じ問い合わせを imputation=zero でも引く（v1 と比べる基準値）。
       // 生物系は imputation に依らない（重い問い合わせを2回流さない）。
       let v2ZeroByKey: ReadonlyMap<string, NormRow> | undefined;
-      if (IMPUTATION === "lod" && !BIOTA_QUERY_IDS.has(def.id)) {
+      if (IMPUTATION === "lod" && !IMPUTATION_FREE_IDS.has(def.id)) {
         try {
           const zeroRows = await v2!.runV2Query(v2Db!, def.id, params, def.compare, "zero");
           v2ZeroByKey = rowsByKey(zeroRows);
@@ -745,6 +762,7 @@ async function main() {
       const ctx: ClassifyContext = {
         queryId: def.id,
         biota,
+        docs,
         expected,
         declared: declaredLookupByDefId.get(def.id)!,
         params,
@@ -812,6 +830,7 @@ async function main() {
       if (!caught) anyMutationMissed = true;
       mutationResults.push({ name, unexplained: totalUnexplained, caughtAsExpected: caught });
     }
+    for (const k of SKIPPED_MUTATIONS) console.log(`--mutate skipped: ${k.name}（${k.reason}）`);
     console.log(`--mutate 結果: ${mutationResults.map((r) => `${r.name}=${r.caughtAsExpected ? "OK" : "NG"}`).join(", ")}`);
   }
 
@@ -839,6 +858,8 @@ async function main() {
     rottenDeclarations: rotten,
     labelMoved: outcome.labelMoved,
     mutationResults,
+    skippedMutations: SKIPPED_MUTATIONS,
+    retiredColumns: Object.fromEntries(queryDefs.filter((q) => q.retired?.length).map((q) => [q.id, q.retired!])),
   };
 
   fs.mkdirSync(path.dirname(OUT_MD), { recursive: true });

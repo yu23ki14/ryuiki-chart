@@ -537,13 +537,24 @@ async function fetchRawRows(
       return r ? [{ records: r.records, species: r.species, mesh: r.mesh, gbif: r.gbif, inat: r.inat }] : [];
     }
     case "watershed_rollup": {
-      // v2 は 0 件の流域の行を返さない（`summary_watershed_occurrence` は記録のある流域だけ）。
-      // v1 の全 0 行は「どちらも 0」なので比べる対象から外す（`watershed_memo` の moved に数えない）。
+      // PR-4: v2 も全 377 流域を返すので、v1 の全 0 行を落とす処理は外した（流域外の取りこぼしを見逃さない）。
       const rows = await queries.watershedRollup();
-      return rows
-        .filter((r) => r.org_n !== 0 || r.org_alien_n !== 0 || r.org_redlist_n !== 0)
-        .map((r) => ({ watershed_id: r.watershed_id, org_n: r.org_n, org_alien_n: r.org_alien_n, org_redlist_n: r.org_redlist_n }));
+      return rows.map((r) => ({ ...r }));
     }
+    case "doc_series_meta":
+      // 画面・API（`api/documents`）と同じ minYears=3（v1 の既定は 4 だが、API は今も 3 を渡している）。
+      return (await queries.docSeriesList(3)).map((r) => ({ ...r }));
+    case "doc_series_points":
+      return (await queries.docSeriesPoints(String(params.doc_id), String(params.table_id), String(params.row_key))).map((r) => ({ ...r }));
+    case "overview_counts": {
+      // n_meas / n_sensor / n_events は D2 で廃止（キューブから再現できない）ので比べない。
+      const r = await queries.overviewStats();
+      return r
+        ? [{ n_sites: r.n_sites, n_sources: r.n_sources, n_watersheds: r.n_watersheds, y_from: r.y_from, y_to: r.y_to }]
+        : [];
+    }
+    case "landuse_highlight":
+      return (await queries.landuseHighlight(8)).map((r) => ({ ...r }));
     case "watershed_year":
       return v1RawQuery<RawRow>(`SELECT watershed_id, year, n, species_n, alien_n, redlist_n FROM org_watershed_year`);
 
