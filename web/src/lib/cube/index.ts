@@ -99,15 +99,6 @@ export type {
   WatershedOccurrence,
   IasSpeciesRow,
 } from "./catalog";
-export {
-  speciesCatalog,
-  taxonGroupYears,
-  effortYears,
-  gridCatalog,
-  gridCellOfPlaceId,
-  occurrenceTotals,
-  watershedOccurrence,
-  watershedIdOfPlaceId,
-  placeIdOfWatershedId,
-  iasSpecies,
-} from "./catalog";
+export { speciesCatalog, taxonGroupYears, effortYears, gridCatalog, occurrenceTotals, watershedOccurrence, iasSpecies } from "./catalog";
+export { gridCellOfPlaceId, watershedIdOfPlaceId, placeIdOfWatershedId } from "./grid";
+export { facetsForOccurrence } from "./caveats";

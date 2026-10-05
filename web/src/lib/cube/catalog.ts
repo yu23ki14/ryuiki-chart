@@ -10,6 +10,8 @@
  */
 import type { CubeDb, SqlParam } from "./db";
 import { MAX_ID_LIST } from "./db";
+import { gridCellOfPlaceId, placeIdOfWatershedId, watershedIdOfPlaceId } from "./grid";
+import { OCC_INDEX, USE_RECORD_VERNACULAR, pickLabel, resolveNames, speciesLabels } from "./occurrence";
 import { jsonEachParam, seriesFilterSql } from "./sql";
 import { basisOfCell, isRepresentativeObsStat, seriesKeyFromRow, seriesKeySql, seriesKeyString, type SeriesKey } from "./series";
 
@@ -870,12 +872,19 @@ export async function siteSeriesCells(db: CubeDb, opt: { dataset: string }): Pro
 }
 
 /* ------------------------------------------------------------------ */
-/* 生物系（Issue #48 PR-3b、docs/plans/V2_SERVING_PR3B.md §2.2）。型確定コミット: 本体は未実装 */
+/* 生物系（Issue #48 PR-3b、docs/plans/V2_SERVING_PR3B.md §2.2）。summary 4表と      */
+/* summary_taxon_catalog/summary_watershed_occurrence を読む。                       */
 /* ------------------------------------------------------------------ */
 
-const OCC_TODO = (): never => {
-  throw new Error("lib/cube/catalog（生物系）: 未実装");
-};
+export { gridCellOfPlaceId, placeIdOfWatershedId, watershedIdOfPlaceId };
+
+type OccRow = Record<string, string | number | null>;
+
+const SOURCE_GBIF = "gbif_kanagawa_occurrences";
+const SOURCE_INAT = "inaturalist_kanagawa";
+const OCC_DEFAULT_FROM = 1990;
+const OCC_DEFAULT_TO = 2026;
+const IAS_LIST_ID = "moe_ias_2015";
 
 export interface SpeciesCatalogRow {
   binom: string;
@@ -893,11 +902,43 @@ export interface SpeciesCatalogRow {
   label?: string;
 }
 
+/** v1 `speciesList`。`ORDER BY n DESC, binom`。 */
 export async function speciesCatalog(
-  _db: CubeDb,
-  _opt?: { group?: string | null; limit?: number; withNames?: boolean },
+  db: CubeDb,
+  opt: { group?: string | null; limit?: number; withNames?: boolean } = {},
 ): Promise<SpeciesCatalogRow[]> {
-  return OCC_TODO();
+  const limit = opt.limit ?? 200;
+  const params: SqlParam[] = [];
+  let where = "";
+  if (opt.group) {
+    where = "WHERE taxon_group = ?";
+    params.push(opt.group);
+  }
+  params.push(limit);
+  const rows = await db.all<OccRow>(
+    `SELECT binom, taxon_group, "class", family, n, n_red_list, n_alien, n_places, y_from, y_to, n_years
+     FROM summary_species_catalog ${where}
+     ORDER BY n DESC, binom LIMIT ?`,
+    params,
+  );
+  const out: SpeciesCatalogRow[] = rows.map((r) => ({
+    binom: r.binom as string,
+    taxonGroup: r.taxon_group as string | null,
+    class: r.class as string | null,
+    family: r.family as string | null,
+    n: r.n as number,
+    nRedList: r.n_red_list as number,
+    nAlien: r.n_alien as number,
+    nPlaces: r.n_places as number,
+    yFrom: r.y_from as number | null,
+    yTo: r.y_to as number | null,
+    nYears: r.n_years as number,
+  }));
+  if (opt.withNames && out.length > 0) {
+    const labels = new Map((await speciesLabels(db, out.map((r) => r.binom))).map((l) => [l.binom, l.label]));
+    for (const r of out) r.label = labels.get(r.binom) ?? r.binom;
+  }
+  return out;
 }
 
 export interface TaxonGroupYearRow {
@@ -908,8 +949,15 @@ export interface TaxonGroupYearRow {
   meshN: number;
 }
 
-export async function taxonGroupYears(_db: CubeDb, _opt?: { from?: number; to?: number }): Promise<TaxonGroupYearRow[]> {
-  return OCC_TODO();
+/** v1 `taxonGroupYears`（窓の既定 1990〜2026）。 */
+export async function taxonGroupYears(db: CubeDb, opt: { from?: number; to?: number } = {}): Promise<TaxonGroupYearRow[]> {
+  const rows = await db.all<OccRow>(
+    `SELECT year, taxon_group, SUM(n) AS n, MAX(n_places) AS mesh_n
+     FROM summary_group_year WHERE year BETWEEN ? AND ?
+     GROUP BY year, taxon_group ORDER BY year, taxon_group`,
+    [opt.from ?? OCC_DEFAULT_FROM, opt.to ?? OCC_DEFAULT_TO],
+  );
+  return rows.map((r) => ({ year: r.year as number, taxonGroup: r.taxon_group as string, n: r.n as number, meshN: r.mesh_n as number }));
 }
 
 export interface EffortYearRow {
@@ -921,8 +969,30 @@ export interface EffortYearRow {
   nGbif: number;
 }
 
-export async function effortYears(_db: CubeDb, _opt?: { from?: number; to?: number }): Promise<EffortYearRow[]> {
-  return OCC_TODO();
+/** v1 `effortYears`（窓の既定 1990〜2026）。`n_inat`/`n_gbif` は source 別の SUM(n)。 */
+export async function effortYears(db: CubeDb, opt: { from?: number; to?: number } = {}): Promise<EffortYearRow[]> {
+  const range = [opt.from ?? OCC_DEFAULT_FROM, opt.to ?? OCC_DEFAULT_TO];
+  const [eff, src] = await Promise.all([
+    db.all<OccRow>(
+      `SELECT year, n, n_binom, n_places FROM summary_effort_year WHERE year BETWEEN ? AND ? ORDER BY year`,
+      range,
+    ),
+    db.all<OccRow>(
+      `SELECT year, source_id, SUM(n) AS n FROM summary_group_year
+       WHERE year BETWEEN ? AND ? AND source_id IN (?, ?) GROUP BY year, source_id`,
+      [...range, SOURCE_GBIF, SOURCE_INAT],
+    ),
+  ]);
+  const bySource = new Map<string, number>();
+  for (const r of src) bySource.set(`${r.year}|${r.source_id}`, r.n as number);
+  return eff.map((r) => ({
+    year: r.year as number,
+    n: r.n as number,
+    speciesN: r.n_binom as number,
+    meshN: r.n_places as number,
+    nInat: bySource.get(`${r.year}|${SOURCE_INAT}`) ?? 0,
+    nGbif: bySource.get(`${r.year}|${SOURCE_GBIF}`) ?? 0,
+  }));
 }
 
 export interface GridCatalogRow {
@@ -935,13 +1005,26 @@ export interface GridCatalogRow {
   rlSpeciesN: number;
 }
 
-export async function gridCatalog(_db: CubeDb): Promise<GridCatalogRow[]> {
-  return OCC_TODO();
-}
-
-/** `common:place:grid01.3520_13900` → `{ mlat: 3520, mlon: 13900 }`。形式違いは null。 */
-export function gridCellOfPlaceId(_placeId: string): { mlat: number; mlon: number } | null {
-  return OCC_TODO();
+/** v1 `meshAll`（`mesh_all ⋈ mesh_species`）。n>0 のグリッドだけ。 */
+export async function gridCatalog(db: CubeDb): Promise<GridCatalogRow[]> {
+  const rows = await db.all<OccRow>(
+    `SELECT place_id, n, n_red_list, n_binom, n_red_binom FROM summary_grid_catalog WHERE n > 0 ORDER BY place_id`,
+  );
+  const out: GridCatalogRow[] = [];
+  for (const r of rows) {
+    const cell = gridCellOfPlaceId(r.place_id as string);
+    if (!cell) continue;
+    out.push({
+      placeId: r.place_id as string,
+      mlat: cell.mlat,
+      mlon: cell.mlon,
+      n: r.n as number,
+      rlN: r.n_red_list as number,
+      speciesN: r.n_binom as number,
+      rlSpeciesN: r.n_red_binom as number,
+    });
+  }
+  return out;
 }
 
 export interface OccurrenceTotals {
@@ -952,8 +1035,24 @@ export interface OccurrenceTotals {
   inat: number;
 }
 
-export async function occurrenceTotals(_db: CubeDb): Promise<OccurrenceTotals> {
-  return OCC_TODO();
+/** v1 `biotaTotals`・`overviewStats` の生物部分。日付のある記録だけ（D3）。 */
+export async function occurrenceTotals(db: CubeDb): Promise<OccurrenceTotals> {
+  const rows = await db.all<OccRow>(
+    `SELECT (SELECT COALESCE(SUM(n), 0) FROM summary_effort_year) AS records,
+            (SELECT COUNT(*) FROM summary_species_catalog) AS species,
+            (SELECT COUNT(*) FROM summary_grid_catalog WHERE n > 0) AS grids,
+            (SELECT COALESCE(SUM(n), 0) FROM summary_group_year WHERE source_id = ?) AS gbif,
+            (SELECT COALESCE(SUM(n), 0) FROM summary_group_year WHERE source_id = ?) AS inat`,
+    [SOURCE_GBIF, SOURCE_INAT],
+  );
+  const r = rows[0] ?? {};
+  return {
+    records: (r.records as number) ?? 0,
+    species: (r.species as number) ?? 0,
+    grids: (r.grids as number) ?? 0,
+    gbif: (r.gbif as number) ?? 0,
+    inat: (r.inat as number) ?? 0,
+  };
 }
 
 export interface WatershedOccurrenceRow {
@@ -971,17 +1070,29 @@ export interface WatershedOccurrence {
   outsideWatershed: { n: number; nRedList: number; nAlien: number } | null;
 }
 
-export async function watershedOccurrence(_db: CubeDb): Promise<WatershedOccurrence> {
-  return OCC_TODO();
-}
-
-/** `common:place:watershed.nlni-<id>` → `<id>`。形式違いは null。 */
-export function watershedIdOfPlaceId(_placeId: string): string | null {
-  return OCC_TODO();
-}
-
-export function placeIdOfWatershedId(_watershedId: string): string {
-  return OCC_TODO();
+/** v1 `watershed_rollup` の `org_n`/`org_alien_n`/`org_redlist_n`（`org_watershed`）。 */
+export async function watershedOccurrence(db: CubeDb): Promise<WatershedOccurrence> {
+  const rows = await db.all<OccRow>(
+    `SELECT place_id, n, n_red_list, n_alien FROM summary_watershed_occurrence ORDER BY place_id`,
+  );
+  const watersheds: WatershedOccurrenceRow[] = [];
+  let outside: WatershedOccurrence["outsideWatershed"] = null;
+  for (const r of rows) {
+    if (r.place_id === null) {
+      outside = { n: r.n as number, nRedList: r.n_red_list as number, nAlien: r.n_alien as number };
+      continue;
+    }
+    const id = watershedIdOfPlaceId(r.place_id as string);
+    if (id === null) continue;
+    watersheds.push({
+      watershedId: id,
+      placeId: r.place_id as string,
+      orgN: r.n as number,
+      orgAlienN: r.n_alien as number,
+      orgRedlistN: r.n_red_list as number,
+    });
+  }
+  return { watersheds, outsideWatershed: outside };
 }
 
 export interface IasSpeciesRow {
@@ -989,6 +1100,8 @@ export interface IasSpeciesRow {
   binom: string;
   nameJa: string | null;
   enName: string | null;
+  /** §2.3 の表示名。 */
+  label: string;
   taxonGroup: string | null;
   n: number;
   meshN: number;
@@ -997,6 +1110,54 @@ export interface IasSpeciesRow {
   nSince2020: number;
 }
 
-export async function iasSpecies(_db: CubeDb): Promise<IasSpeciesRow[]> {
-  return OCC_TODO();
+/**
+ * v1 `iasSpecies`。`taxon_assessment`（`moe_ias_2015`・in_scope）の `binom` で
+ * `summary_species_catalog` と結合（taxon_id 結合は 50 行しか出ない。§2.4）。
+ * `n_since_2020` だけセルを `ix_occurrence_agg_taxon_period` で引く。同じ binom が
+ * 2カテゴリに載るときは (category, binom) で返す。
+ */
+export async function iasSpecies(db: CubeDb): Promise<IasSpeciesRow[]> {
+  const base = await db.all<OccRow>(
+    `SELECT DISTINCT a.category_raw AS ias_category, a.binom AS binom,
+            a.vernacular_name_ja_resolved AS name_ja,
+            s.taxon_group, s.n, s.n_places, s.y_from, s.y_to
+     FROM taxon_assessment a
+     JOIN summary_species_catalog s ON s.binom = a.binom
+     WHERE a.list_id = ? AND a.in_scope = 1 AND a.binom IS NOT NULL`,
+    [IAS_LIST_ID],
+  );
+  if (base.length === 0) return [];
+  const binoms = [...new Set(base.map((r) => r.binom as string))];
+  const since = new Map<string, number>();
+  for (let i = 0; i < binoms.length; i += MAX_ID_LIST) {
+    const rows = await db.all<OccRow>(
+      `SELECT t.canonical_binomial AS binom, SUM(o.n) AS n
+       FROM json_each(?) j
+       JOIN taxon t INDEXED BY ix_taxon_binomial ON t.canonical_binomial = j.value
+       JOIN occurrence_agg o INDEXED BY ${OCC_INDEX.taxonPeriod} ON o.taxon_id = t.taxon_id
+       WHERE o.place_kind = 'grid01' AND o.grain IN ('year','survey_period') AND o.period_start >= '2020'
+       GROUP BY t.canonical_binomial`,
+      [jsonEachParam(binoms.slice(i, i + MAX_ID_LIST))],
+    );
+    for (const r of rows) since.set(r.binom as string, r.n as number);
+  }
+  const names = await resolveNames(db, binoms);
+  const out = base.map((r) => {
+    const binom = r.binom as string;
+    const nm = names.get(binom);
+    return {
+      iasCategory: r.ias_category as string,
+      binom,
+      nameJa: r.name_ja as string | null,
+      enName: nm?.en ?? null,
+      label: pickLabel(binom, nm, USE_RECORD_VERNACULAR),
+      taxonGroup: r.taxon_group as string | null,
+      n: r.n as number,
+      meshN: r.n_places as number,
+      yFrom: r.y_from as number | null,
+      yTo: r.y_to as number | null,
+      nSince2020: since.get(binom) ?? 0,
+    };
+  });
+  return out.sort((a, b) => b.n - a.n || (a.binom < b.binom ? -1 : a.binom > b.binom ? 1 : a.iasCategory < b.iasCategory ? -1 : 1));
 }

@@ -70,11 +70,15 @@ export function shortVariable(v: string): string {
  * （旧 domain.ts の speciesLabel。organism_records に和名は入っておらず、taxa の和名を
  * 学名で機械結合すると別地域の個体群の名前が付く事故があるため、代表種だけ人が確認した
  * 和名をここで引く）。
+ *
+ * 第2引数 `label`（Issue #48 PR-3b・D4）は API が返す表示名（`lib/cube` の `speciesLabels`。
+ * taxon 由来の和名→英名の順で選んだもの）。旧来の英名もそのまま渡せる。`NAME_JA` が先に勝つ
+ * 規則は変えない。
  */
-export function speciesLabel(binom: string, enName?: string | null): string {
+export function speciesLabel(binom: string, label?: string | null): string {
   const ja = NAME_JA[binom];
   if (ja) return ja;
-  return enName || binom;
+  return label || binom;
 }
 
 /* ------------------------------------------------------------------ */
