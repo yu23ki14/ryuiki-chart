@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { loadGeoJson } from "@/lib/geo";
-import { watershedRollup } from "@/lib/queries";
-import { d1CubeDb, watershedOccurrence } from "@/lib/cube";
+import { d1CubeDb, watershedRollup } from "@/lib/cube";
 
 export const runtime = "nodejs";
 
@@ -9,38 +8,34 @@ export const runtime = "nodejs";
 export async function GET() {
   try {
     const fc = await loadGeoJson("watersheds.geojson");
-    // D2: 生物の件数だけ cube（流域のメモ化を退役）。面積・site_n・土地利用は PR-4 まで v1 の watershed_rollup。
-    const [rollupRows, occ] = await Promise.all([watershedRollup(), watershedOccurrence(await d1CubeDb())]);
-    const rollup = new Map(rollupRows.map((r) => [r.watershed_id, r]));
-    const occByWs = new Map(occ.watersheds.map((o) => [o.watershedId, o]));
+    const { watersheds } = await watershedRollup(await d1CubeDb());
+    const rollup = new Map(watersheds.map((r) => [r.watershedId, r]));
     const features = fc.features.map((f) => {
       const id = String((f.properties as Record<string, unknown>).watershed_id ?? "");
       const r = rollup.get(id);
-      const o = occByWs.get(id);
-      const orgN = o?.orgN ?? 0;
-      const orgRedlistN = o?.orgRedlistN ?? 0;
-      const builtDelta =
-        r?.built_km2_2016 != null && r?.built_km2_2006 != null ? r.built_km2_2016 - r.built_km2_2006 : null;
-      const forestDelta =
-        r?.forest_km2_2016 != null && r?.forest_km2_2006 != null ? r.forest_km2_2016 - r.forest_km2_2006 : null;
-      const paddyDelta =
-        r?.paddy_km2_2016 != null && r?.paddy_km2_2006 != null ? r.paddy_km2_2016 - r.paddy_km2_2006 : null;
+      const orgN = r?.orgN ?? 0;
+      const orgRedlistN = r?.orgRedlistN ?? 0;
+      const delta = (c?: { from: number | null; to: number | null }) =>
+        c && c.from != null && c.to != null ? c.to - c.from : null;
+      const builtDelta = delta(r?.built);
+      const forestDelta = delta(r?.forest);
+      const paddyDelta = delta(r?.paddy);
       return {
         type: "Feature" as const,
         geometry: f.geometry,
         properties: {
           watershed_id: id,
-          water_system_name: r?.water_system_name ?? null,
+          water_system_name: r?.waterSystemName ?? null,
           main_rivers: (f.properties as Record<string, unknown>).main_river_names_ja ?? null,
-          area_km2: r?.area_km2 ?? null,
-          site_n: r?.site_n ?? 0,
+          area_km2: r?.areaKm2 ?? null,
+          site_n: r?.siteN ?? 0,
           org_n: orgN,
           org_redlist_n: orgRedlistN,
-          org_density: r?.area_km2 ? orgN / r.area_km2 : 0,
-          built_2016: r?.built_km2_2016 ?? null,
+          org_density: r?.areaKm2 ? orgN / r.areaKm2 : 0,
+          built_2016: r?.built?.to ?? null,
           built_delta: builtDelta,
           built_delta_pct:
-            builtDelta != null && r?.built_km2_2006 ? (builtDelta / r.built_km2_2006) * 100 : null,
+            builtDelta != null && r?.built?.from ? (builtDelta / r.built.from) * 100 : null,
           forest_delta: forestDelta,
           paddy_delta: paddyDelta,
         },

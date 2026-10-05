@@ -6,7 +6,6 @@
  * - STATUS: 状態色。系列には流用せず、必ずラベルを添える。
  */
 import { ZONE_INFO } from "@/lib/registry/generated-client";
-import type { QualityStage } from "@/lib/quality";
 
 export const SERIES = [
   "#2a78d6",
@@ -88,13 +87,6 @@ export const STATUS = {
   serious: "#ec835a",
   critical: "#d03b3b",
 } as const;
-
-/** 品質段階の配色。順序があるので序列として扱い、必ずラベルとセットで出す（3値の定義は `@/lib/quality`）。 */
-export const QUALITY_STAGE: Record<QualityStage, { color: string; order: number }> = {
-  暫定: { color: STATUS.warning, order: 1 },
-  検証済: { color: "#5598e7", order: 2 },
-  公開済: { color: STATUS.good, order: 3 },
-};
 
 export const INK = {
   primary: "#12211f",

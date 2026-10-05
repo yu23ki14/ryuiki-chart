@@ -14,14 +14,12 @@ import {
   unitLabel,
   type Scope,
   type CellSpec,
+  MEASUREMENTS_DATASET as DATASET,
 } from "@/lib/cube";
 import { facetsForSeries, caveatKeysForFacets } from "@/lib/cube/caveats";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-/** measurements データセット固定（PR-2 のスコープは測定値系。design §1.1 と同じ前提）。 */
-const DATASET = "measurements";
 
 type Basis = "day" | "fiscal_year" | "year";
 

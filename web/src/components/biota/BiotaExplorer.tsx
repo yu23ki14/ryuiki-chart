@@ -425,6 +425,7 @@ const IAS_ORDER = ["緊急対策外来種", "重点対策外来種", "その他�
 function IasTab() {
   useSetPageContext({ route: "/biota", title: "生物相", tab: "ias" });
   const { data, loading, error } = useJson<{
+    since_year: number;
     rows: {
       ias_category: string;
       binom: string;
@@ -435,7 +436,7 @@ function IasTab() {
       mesh_n: number;
       y_from: number;
       y_to: number;
-      n_since_2020: number;
+      n_since: number;
     }[];
   }>("/api/biota?kind=ias");
   const [cat, setCat] = React.useState<string>("すべて");
@@ -540,7 +541,7 @@ function IasTab() {
                 <th>メッシュ数</th>
                 <th>初記録</th>
                 <th>最新</th>
-                <th>2020年以降</th>
+                <th>{data?.since_year}年以降</th>
               </tr>
             </thead>
             <tbody>
@@ -559,7 +560,7 @@ function IasTab() {
                   <td className="num">{nf(r.mesh_n)}</td>
                   <td className="num">{r.y_from}</td>
                   <td className="num">{r.y_to}</td>
-                  <td className="num">{nf(r.n_since_2020)}</td>
+                  <td className="num">{nf(r.n_since)}</td>
                 </tr>
               ))}
             </tbody>

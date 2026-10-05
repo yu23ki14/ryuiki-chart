@@ -11,7 +11,6 @@ const NAV = [
   { href: "/timeseries", label: "時系列比較" },
   { href: "/biota", label: "生物相" },
   { href: "/sites", label: "地点カルテ" },
-  { href: "/quality", label: "品質と進捗" },
   { href: "/explore", label: "データ探索", flag: EXPLORE_ENABLED },
   { href: "/sources", label: "出典" },
 ].filter((n) => n.flag !== false);

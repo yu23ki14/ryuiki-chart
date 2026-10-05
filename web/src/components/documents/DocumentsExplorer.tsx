@@ -7,21 +7,6 @@ import { SERIES, STATUS } from "@/components/viz/palette";
 import { inputCls, Spinner, Stat, nf, Provenance } from "@/components/ui";
 import { useJson } from "@/components/useJson";
 
-/**
- * 行政文書から抽出した表の行キーは、表によって行見出しと列見出しが連結されている
- * （例: `湘南地域秦野市伊勢原市|清川村`）。信頼できるのは最後の `|` の後ろだけなので、
- * 表示名にはそこを使う。原文の行キーは別途そのまま見せる。
- *
- * この画面（DocumentsExplorer）だけが使う整形なので、レジストリの語彙ではなくここに置く
- * （旧 domain.ts の rowKeyLabel。docs/plans/PHASE_B_INTAKE.md #6）。
- */
-function rowKeyLabel(rowKey: string): string {
-  if (!rowKey) return "";
-  const i = rowKey.lastIndexOf("|");
-  const tail = i >= 0 ? rowKey.slice(i + 1) : rowKey;
-  return tail.trim() || rowKey;
-}
-
 interface SeriesMeta {
   doc_id: string;
   table_id: string;
@@ -87,7 +72,7 @@ export function DocumentsExplorer() {
     const needle = q.trim();
     return (data?.series ?? [])
       .filter((s) => s.n_years >= minYears)
-      .filter((s) => !needle || `${rowKeyLabel(s.row_key)} ${s.doc_title} ${s.publisher}`.includes(needle));
+      .filter((s) => !needle || `${s.label} ${s.doc_title} ${s.publisher}`.includes(needle));
   }, [data, q, minYears]);
 
   return (
@@ -132,7 +117,7 @@ export function DocumentsExplorer() {
                 }`}
               >
                 <div className="flex items-baseline gap-2">
-                  <span className="text-[12px] font-medium truncate">{rowKeyLabel(s.row_key)}</span>
+                  <span className="text-[12px] font-medium truncate">{s.label}</span>
                   <span className="ml-auto text-[10px] text-muted tnum shrink-0">
                     {s.y_from}–{s.y_to}
                   </span>
@@ -182,7 +167,7 @@ function SeriesView({ meta, warnings }: { meta: SeriesMeta; warnings: Warning[] 
     return [
       {
         key: meta.row_key,
-        label: rowKeyLabel(meta.row_key),
+        label: meta.label,
         color: SERIES[0],
         points: data.points.map((p) => ({ x: p.fiscal_year, y: p.value })),
       },
@@ -199,7 +184,7 @@ function SeriesView({ meta, warnings }: { meta: SeriesMeta; warnings: Warning[] 
   return (
     <div className="space-y-4 mb-6">
       <div className="card p-3.5">
-        <h2 className="text-[16px] font-bold">{rowKeyLabel(meta.row_key)}</h2>
+        <h2 className="text-[16px] font-bold">{meta.label}</h2>
         <p className="text-[11.5px] text-ink-2 mt-0.5">
           {meta.doc_title}（{meta.publisher}）— p.{meta.page_no}
         </p>
