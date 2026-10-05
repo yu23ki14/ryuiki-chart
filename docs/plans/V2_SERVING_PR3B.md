@@ -321,3 +321,11 @@ ias_species        173 行: taxon_id 結合は 50 行（binom 結合は 173 行�
 - D1〜D3 は推奨どおり採用。**D4 はオーナーが「使う」と決定**（記録由来の和名補完を表示名に使う。タヌキ・カブトムシの上書き2件を足し、§6-3 の洗い出しを U1 で行う）。
 - 並行: U1 と U2 を同時に始める（U2 は §2.1 の列名で書き、型を最初にコミットする）。U3・U4 は U2 の型が出たら同時に始める。
 - 全担当共通: スキル（/simplify・/code-review 等）やサブエージェントを起動しない。重い検証（build:v2 の全量・b00・serving-diff の全量・CI 再現）は回さない。`drizzle/migrations` を生成・コミットしない。worktree には原本だけを1ファイルずつ symlink し、生成物は worktree 内に書く。`git add -A` を使わない。
+
+## 実測の記録（統合後、2026-10-05）
+- `build:v2` → b08 → `db:setup`（0008 適用・シード）を1回ずつ。summary 8表すべて保存則 OK（新4表: species_catalog 23,618／group_year 1,851／effort_year 171／grid_catalog 4,086）。
+- b00: 33表中 一致25／宣言のみ8／不一致0／宣言20（PR-3a と同じ）。`reports/full_gate_proof.json` を更新。
+- serving-diff 全量: `--imputation zero --mutate all` と `--imputation lod` の両方で unexplained=0・rotten=0。変異は `lod_rule_off` 以外すべて zero で検出、`lod_rule_off` は lod で検出（PR-2 の受け入れ表どおり。`--mutate all` が zero でも `lod_rule_off` を当てるのは道具の癖で、判定の対象外）。
+- 生物系の規則ごとの moved: vernacular_label_rule species_catalog/species_labels 2,837・species_share_trend 74／month_cell_membership 19／undated_excluded 1／watershed_memo rollup 186・watershed_year 1,090／species_n_definition 371。
+- 統合後の修正: `species_mesh_years` の窓（1970〜2026）が v2 に無く 1970 年より前の 11,863 行が余っていた → v1 と同じ窓に。`iasSpecies` が和名を DISTINCT に含めて Sus scrofa を2行返していた（/code-review）→ (category, binom) で1行。
+- **D4 の表示名の代表 taxon を変更**（設計責任者）: 「件数最大の taxon の和名」では亜種にだけ和名がある種が学名表示になり、和名喪失が見積もり（1,250）を超えて 2,113 になった。D4 の趣旨（和名を残す）に沿って「NAME_JA → 種の階級で和名を持つ件数最大の taxon → 和名を持つ件数最大の taxon → 件数最大の英名 → binom」に変更。和名喪失 2,113→1,313（n≥80: 183→31）、亜種・変種名への逆戻りの新規増は3件。
