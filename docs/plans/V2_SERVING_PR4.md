@@ -316,3 +316,20 @@ describe_schema の count(*): 61 表で 419 万行読む（observation_agg 2,000
 - **D1〜D3 はオーナーが推奨どおりに決定**（D1: A＝値が割れる年を系列から除く。D2: タイルを「観測指標 N 種」に置き換え、センサー・イベントを外す。D3: `instruments`/`protocols` は画面ごと撤去し、PR-5 で表も落とす）。
 - 並行: U1〜U4 を同時に始める。U2〜U4 は §4.1 のシグネチャで書く。U1 は最初のコミットで型とスタブを出す。
 - 全担当共通: スキル（/simplify・/code-review 等）やサブエージェントを起動しない。重い検証（build:v2・b00・serving-diff の全量・CI 再現）は回さない。`drizzle/migrations` を生成・コミットしない。worktree には原本だけを1ファイルずつ symlink し、生成物は worktree 内に書く。`git add -A` を使わない。
+
+---
+## 実測の記録（統合後、2026-10-05）
+- serving-diff 全量: zero（`--mutate all`）・lod（`--mutate lod_rule_off`）とも unexplained=0・rotten=0。変異 24 種 OK、`lod_rule_off` は zero では skipped。
+- 規則ごとの moved（`reports/serving_switch_diff.md`）: `doc_label_rule` 20（doc_series_meta）、`doc_warning_scope` 245（doc_series_meta）、`doc_year_collapse` 61（doc_series_meta）・243（doc_series_points）。`watershed_rollup` は 377 行中 191 一致・186 が `watershed_memo`（moved）。
+- 統合後の修正（レビュー A〜I）:
+  - A: `rowKeyLabel`／`expectedRowKeyLabel` に `.trim()` を戻した（空白だけの後ろは row_key 全体）。
+  - B: 期待 page_no を v2 の定義（年ごとの MIN の年またぎ MAX）に揃え、v1 の page_no（不定）は v2 が期待値と一致すれば説明済みにした（meta・points とも）。
+  - C: `get_overview` の重複呼び出し `watershedOccurrence` を外した。
+  - D: `IasSpeciesRow.sinceYear`（読み手なし）を削除した。
+  - E: `docSeriesPoints` の CTE 内で doc/table/row を絞り、部分索引の先頭3列が効くようにした。
+  - F: 土地利用の差分を `landuseDelta` に一本化した。
+  - G: `/api/geo/watersheds` が `landuse_years` を返し、地図のラベルの年を固定文字列でなくした。
+  - H: `listTables` を `rowCount: number | null` の単一シグネチャにした。
+  - I: `features.ts`・`page.tsx`・`assertCatalogOnly` のコメントを整理した。
+- スモーク: `/` `/documents` `/map` `/sites` `/timeseries` `/biota` は 200、`/quality` `/api/quality` `/api/geo/events` `/api/column` は 404。ホームのタイルは5枚（観測指標 75 種・日付のある生物レコード 816,856）。
+- b00 は省略（パイプラインのパスに触れていない。`git diff --name-only 9890e37` に `scripts/b0*`・`scripts/registry/`・`aggregations/` が無い）。
