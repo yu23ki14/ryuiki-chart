@@ -39,7 +39,7 @@ import type { SeriesKey } from "../series";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, "..", "..", "..", "..", "drizzle", "migrations");
 
-function applyMigrations(db: Database.Database): void {
+export function applyMigrations(db: Database.Database): void {
   const files = fs
     .readdirSync(MIGRATIONS_DIR)
     .filter((f) => f.endsWith(".sql"))
@@ -389,13 +389,9 @@ export interface CubeFixture {
   raw: Database.Database;
 }
 
-/** in-memory の `CubeDb` を組み立てる（ATTACH は使わない。全テーブルが同じ DB に同居）。 */
-export function buildCubeFixture(): CubeFixture {
-  const raw = new Database(":memory:");
-  applyMigrations(raw);
-  seed(raw);
-
-  const db: CubeDb & { close(): void } = {
+/** `better-sqlite3` を `CubeDb` に包む（D1 の制約検査 `assertD1Compatible` 付き）。 */
+export function wrapSqlite(raw: Database.Database): CubeDb & { close(): void } {
+  return {
     kind: "sqlite",
     async all<T = Row>(sql: string, params: readonly SqlParam[] = []): Promise<T[]> {
       assertD1Compatible(sql, params);
@@ -407,6 +403,13 @@ export function buildCubeFixture(): CubeFixture {
       raw.close();
     },
   };
+}
 
-  return { db, raw };
+/** in-memory の `CubeDb` を組み立てる（ATTACH は使わない。全テーブルが同じ DB に同居）。 */
+export function buildCubeFixture(): CubeFixture {
+  const raw = new Database(":memory:");
+  applyMigrations(raw);
+  seed(raw);
+
+  return { db: wrapSqlite(raw), raw };
 }

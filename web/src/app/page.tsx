@@ -2,10 +2,8 @@ import Link from "next/link";
 import {
   overviewStats,
   landuseHighlight,
-  redlistSummary,
-  effortYears,
 } from "@/lib/queries";
-import { d1CubeDb, representativeSeries, basisOf, yearCellFilterForBasis, summarize, sitesInWaterBody, unitLabel } from "@/lib/cube";
+import { d1CubeDb, effortYears, occurrenceTotals, redlistSummary, representativeSeries, basisOf, yearCellFilterForBasis, summarize, sitesInWaterBody, unitLabel } from "@/lib/cube";
 import { HomeHighlights } from "@/components/HomeHighlights";
 import { Stat, nf } from "@/components/ui";
 import { caveatBody } from "@/lib/registry/lookup-client";
@@ -118,13 +116,30 @@ async function longitudinalHighlight(water = "境川（１）", variableId = BOD
 
 export default async function Home() {
   // D1 は 1 クエリ 1 往復。まとめて投げる。
-  const [s, longitudinal, landuse, redlist, effort] = await Promise.all([
+  const cdb = await d1CubeDb();
+  const [s, longitudinal, landuse, redlistRows, effortRows, occ] = await Promise.all([
     overviewStats(),
     longitudinalHighlight(),
     landuseHighlight(),
-    redlistSummary(),
-    effortYears(),
+    redlistSummary(cdb),
+    effortYears(cdb),
+    occurrenceTotals(cdb),
   ]);
+  const redlist = redlistRows.map((r) => ({
+    list_year: r.listYear,
+    list_name: r.listName,
+    taxon_group_ja: r.taxonGroupJa ?? "",
+    direction: r.direction,
+    n: r.n,
+  }));
+  const effort = effortRows.map((e) => ({
+    year: e.year,
+    n: e.n,
+    species_n: e.speciesN,
+    mesh_n: e.meshN,
+    n_inat: e.nInat,
+    n_gbif: e.nGbif,
+  }));
 
   return (
     <div className="flex-1 overflow-y-auto thin-scroll">
@@ -147,7 +162,7 @@ export default async function Home() {
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-5 mt-6">
             <Stat label="観測地点" value={nf(s?.n_sites)} unit="件" />
             <Stat label="測定値" value={nf(s?.n_meas)} unit="行" note={`${s?.y_from}–${s?.y_to}`} />
-            <Stat label="生物レコード" value={nf(s?.n_org)} unit="件" />
+            <Stat label="日付のある生物レコード" value={nf(occ.records)} unit="件" />
             <Stat label="センサー観測" value={nf(s?.n_sensor)} unit="行" />
             <Stat label="単位流域" value={nf(s?.n_watersheds)} unit="面" />
             <Stat label="観測イベント" value={nf(s?.n_events)} unit="件" />
