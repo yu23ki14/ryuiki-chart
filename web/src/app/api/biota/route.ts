@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   d1CubeDb,
   taxonGroupYears,
+  effortRowV1,
   effortYears,
   occurrenceTotals,
   speciesCatalog,
@@ -10,9 +11,7 @@ import {
   speciesMonths,
   speciesMeshYears,
   iasSpecies,
-  redlistFlows,
-  redlistSpecies,
-  redlistSummary,
+  redlistBundle,
 } from "@/lib/cube";
 
 export const runtime = "nodejs";
@@ -33,14 +32,7 @@ export async function GET(req: NextRequest) {
         // 画面の形（snake_case）は v1 のまま。totals.mesh は日付のある記録が入るグリッド数（D3）。
         return NextResponse.json({
           groups: groups.map((g) => ({ year: g.year, taxon_group: g.taxonGroup, n: g.n, mesh_n: g.meshN })),
-          effort: effort.map((e) => ({
-            year: e.year,
-            n: e.n,
-            species_n: e.speciesN,
-            mesh_n: e.meshN,
-            n_inat: e.nInat,
-            n_gbif: e.nGbif,
-          })),
+          effort: effort.map(effortRowV1),
           totals: {
             records: totals.records,
             species: totals.species,
@@ -100,11 +92,11 @@ export async function GET(req: NextRequest) {
       case "redlist": {
         const y = Number(sp.get("year") ?? 2022);
         const group = sp.get("group") || undefined;
-        const [flows, species, summary] = await Promise.all([
-          redlistFlows(db, y, group),
-          redlistSpecies(db, y, sp.get("direction") || undefined, group, 400),
-          redlistSummary(db),
-        ]);
+        const { flows, species, summary } = await redlistBundle(db, y, {
+          group,
+          direction: sp.get("direction") || undefined,
+          limit: 400,
+        });
         return NextResponse.json({
           flows: flows.map((f) => ({ prev_label: f.prevLabel, cur_label: f.curLabel, direction: f.direction, n: f.n })),
           species: species.map((r) => ({

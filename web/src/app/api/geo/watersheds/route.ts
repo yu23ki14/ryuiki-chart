@@ -16,8 +16,9 @@ export async function GET() {
     const features = fc.features.map((f) => {
       const id = String((f.properties as Record<string, unknown>).watershed_id ?? "");
       const r = rollup.get(id);
-      const orgN = occByWs.get(id)?.orgN ?? 0;
-      const orgRedlistN = occByWs.get(id)?.orgRedlistN ?? 0;
+      const o = occByWs.get(id);
+      const orgN = o?.orgN ?? 0;
+      const orgRedlistN = o?.orgRedlistN ?? 0;
       const builtDelta =
         r?.built_km2_2016 != null && r?.built_km2_2006 != null ? r.built_km2_2016 - r.built_km2_2006 : null;
       const forestDelta =

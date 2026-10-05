@@ -3,7 +3,7 @@ import {
   overviewStats,
   landuseHighlight,
 } from "@/lib/queries";
-import { d1CubeDb, effortYears, occurrenceTotals, redlistSummary, representativeSeries, basisOf, yearCellFilterForBasis, summarize, sitesInWaterBody, unitLabel } from "@/lib/cube";
+import { d1CubeDb, effortRowV1, effortYears, occurrenceTotals, redlistSummary, representativeSeries, basisOf, yearCellFilterForBasis, summarize, sitesInWaterBody, unitLabel } from "@/lib/cube";
 import { HomeHighlights } from "@/components/HomeHighlights";
 import { Stat, nf } from "@/components/ui";
 import { caveatBody } from "@/lib/registry/lookup-client";
@@ -132,14 +132,7 @@ export default async function Home() {
     direction: r.direction,
     n: r.n,
   }));
-  const effort = effortRows.map((e) => ({
-    year: e.year,
-    n: e.n,
-    species_n: e.speciesN,
-    mesh_n: e.meshN,
-    n_inat: e.nInat,
-    n_gbif: e.nGbif,
-  }));
+  const effort = effortRows.map(effortRowV1);
 
   return (
     <div className="flex-1 overflow-y-auto thin-scroll">

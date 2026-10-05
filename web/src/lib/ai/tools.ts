@@ -32,9 +32,7 @@ import {
   speciesShareTrend,
   speciesYears,
   speciesMonths,
-  redlistFlows,
-  redlistSpecies,
-  redlistSummary,
+  redlistBundle,
   type CellSpec,
   type Scope,
 } from "@/lib/cube";
@@ -526,6 +524,9 @@ const yearRange = z.object({
   to: z.number().describe("終了年（西暦）"),
 });
 
+// 生物の注記は v1 表名ではなく facet（dataset=organism_records・place_kind=grid01）で決める。
+const BIOTA_CAVEATS = caveatKeysForFacets(facetsForOccurrence({ places: ["grid01"] }));
+
 const get_biota_trend = tool({
   description:
     "生物観察の推移を見る。mode='groups' で分類群別の年次件数と観察努力、mode='share' で分類群内シェアの前後比較、" +
@@ -546,8 +547,7 @@ const get_biota_trend = tool({
   execute: async (input) => {
     const t0 = performance.now();
     const db = await d1CubeDb();
-    // 生物の注記は v1 表名ではなく facet（dataset=organism_records・place_kind=grid01）で決める。
-    const caveats = caveatKeysForFacets(facetsForOccurrence({ places: ["grid01"] }));
+    const caveats = BIOTA_CAVEATS;
     if (input.mode === "groups") {
       const [groups, effort] = await Promise.all([taxonGroupYears(db), effortYears(db)]);
       return makeResult({
@@ -601,11 +601,7 @@ const get_redlist = tool({
   execute: async ({ year, group, direction }) => {
     const t0 = performance.now();
     const db = await d1CubeDb();
-    const [summary, flows, species] = await Promise.all([
-      redlistSummary(db),
-      redlistFlows(db, year, group),
-      redlistSpecies(db, year, direction, group, 300),
-    ]);
+    const { summary, flows, species } = await redlistBundle(db, year, { group, direction, limit: 300 });
     return makeResult({
       tool: "get_redlist",
       tables: ["taxon_assessment"],
