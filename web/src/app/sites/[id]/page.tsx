@@ -1,11 +1,8 @@
 import { notFound } from "next/navigation";
-import { d1CubeDb, site, siteVariables, unitLabel } from "@/lib/cube";
+import { d1CubeDb, site, siteVariables, unitLabel, MEASUREMENTS_DATASET as DATASET } from "@/lib/cube";
 import { SiteDetail } from "@/components/sites/SiteDetail";
 
 export const dynamic = "force-dynamic";
-
-/** measurements データセット固定（PR-2 のスコープは測定値系。design §1.1 と同じ前提）。 */
-const DATASET = "measurements";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

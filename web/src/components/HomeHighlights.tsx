@@ -8,6 +8,7 @@ import { ChartFrame, MiniTable } from "@/components/viz/ChartFrame";
 import { SERIES, ZONE_COLORS, DIVERGING, STATUS } from "@/components/viz/palette";
 import { fmt } from "@/components/viz/scales";
 import { nf } from "@/components/ui";
+import { caveatBody } from "@/lib/registry/lookup-client";
 
 export function HomeHighlights({
   longitudinal,
@@ -171,6 +172,7 @@ export function HomeHighlights({
             <Link href="/map" className="text-water underline ml-1">
               地図で塗り分ける
             </Link>
+            <span className="block mt-1">{caveatBody("landuseDefinitionChange")}</span>
           </>
         }
       >

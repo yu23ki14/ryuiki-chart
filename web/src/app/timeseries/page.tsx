@@ -1,14 +1,11 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
-import { d1CubeDb, waterBodies, variableCatalog, unitLabel } from "@/lib/cube";
+import { d1CubeDb, waterBodies, variableCatalog, unitLabel, MEASUREMENTS_DATASET as DATASET } from "@/lib/cube";
 import { resolveVariableInfo } from "@/lib/registry/lookup";
 import { TimeseriesExplorer } from "@/components/timeseries/TimeseriesExplorer";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "時系列比較" };
-
-/** measurements データセット固定（PR-2 のスコープは測定値系。design §1.1 と同じ前提）。 */
-const DATASET = "measurements";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
