@@ -157,9 +157,7 @@ for (const name of MUTATE_NAMES) {
 const DB_DIR = process.env.RYUIKI_DB_DIR ?? path.join(REPO_ROOT, "data", "db");
 if (V1_SOURCE === "v1_projection") {
   // v1-db-shim.ts は `process.env.RYUIKI_V1_DERIVED_DB` を呼び出しのたびに読む
-  // （関数呼び出しでの設定にしない理由は v1-db-shim.ts 冒頭のコメント参照:
-  // queries.ts からは CJS require() 経由、ここからは ESM import 経由でこの
-  // ファイルが2重にロードされるため、module-level な設定関数は片方にしか効かない）。
+  // （関数呼び出しでの設定にしない理由は v1-db-shim.ts 冒頭のコメント参照）。
   // 実際に db を開く（＝最初のクエリを実行する）より前でありさえすればよい。
   process.env.RYUIKI_V1_DERIVED_DB = path.join(DB_DIR, "v1_projection.sqlite");
 }
