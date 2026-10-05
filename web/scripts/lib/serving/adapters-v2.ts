@@ -43,6 +43,7 @@ import {
   speciesCatalog,
   speciesLabels,
   taxonGroupYears,
+  effortRowV1,
   effortYears,
   gridCatalog,
   occurrenceTotals,
@@ -717,7 +718,7 @@ async function fetchRawRows(
 
     case "effort_years": {
       const rows = await effortYears(db);
-      return rows.map((r) => ({ year: r.year, n: r.n, species_n: r.speciesN, mesh_n: r.meshN, n_inat: r.nInat, n_gbif: r.nGbif }));
+      return rows.map(effortRowV1);
     }
     case "taxon_group_years": {
       const rows = await taxonGroupYears(db);

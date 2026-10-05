@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { OCCURRENCE_AGG_INDEX as OCC_INDEX } from "@/db/schema-cube";
 import { NAME_JA } from "@/lib/registry/generated-client";
 import type { CubeDb, SqlParam } from "./db";
 import { buildOccurrenceFixture, FXO, type OccurrenceFixture } from "./__fixtures__/occurrence-fixture";
 import {
   meshByYear,
-  OCC_INDEX,
   pickLabel,
   speciesLabels,
   speciesMeshYears,
@@ -70,9 +70,8 @@ describe("speciesMonths", () => {
 });
 
 describe("speciesMeshYears", () => {
-  it("(year, mlat, mlon) ごと。n≥80 の種だけ", async () => {
+  it("(year, mlat, mlon) ごと。n≥80 の種だけ。1970 年より前は除く（v1 `yr BETWEEN 1970 AND 2026`）", async () => {
     expect(await speciesMeshYears(fx.db, alpha)).toEqual([
-      { year: 1950, mlat: 3521, mlon: 13901, n: 2 },
       { year: 2000, mlat: 3520, mlon: 13900, n: 50 },
       { year: 2005, mlat: 3521, mlon: 13901, n: 4 },
       { year: 2010, mlat: 3520, mlon: 13900, n: 30 },
@@ -238,13 +237,6 @@ describe("EXPLAIN QUERY PLAN の固定（occurrence_agg の索引）", () => {
       }
     });
   }
-
-  it("索引名は Drizzle スキーマ（schema-cube.ts）の名前と一致する", async () => {
-    const { readFileSync } = await import("node:fs");
-    const { fileURLToPath } = await import("node:url");
-    const src = readFileSync(fileURLToPath(new URL("../../db/schema-cube.ts", import.meta.url)), "utf-8");
-    for (const name of Object.values(OCC_INDEX)) expect(src).toContain(`index("${name}")`);
-  });
 
   it("occurrence.ts/catalog.ts の occurrence_agg を引く SQL は全部 INDEXED BY を持つ（上のケースの網羅性の検査）", async () => {
     const { readFileSync } = await import("node:fs");

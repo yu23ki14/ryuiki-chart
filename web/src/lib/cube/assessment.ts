@@ -7,9 +7,9 @@
  * の `_v1_compat`/`_direction` と同じ（`not_listed` は label/rank を NULL に戻す＝前回記載なし）。
  * 1 版は最大 1,033 行なので行を取って TS で畳む。
  */
-import * as generatedClient from "@/lib/registry/generated-client";
+import { ASSESSMENT_LIST, REDLIST_CATEGORY } from "@/lib/registry/generated-client";
 import type { CubeDb } from "./db";
-import { jsonEachParam } from "./sql";
+import { cmp, jsonEachParam } from "./sql";
 
 /** `registry/taxon/redlist_category.yaml`・`assessment_list.yaml` の生成定数の形。 */
 export interface AssessmentVocab {
@@ -22,14 +22,7 @@ export interface AssessmentVocab {
  * `registry-codegen.mjs` で足す）から既定の語彙を組む。
  */
 export function generatedAssessmentVocab(): AssessmentVocab {
-  const g = generatedClient as unknown as {
-    REDLIST_CATEGORY?: AssessmentVocab["categories"];
-    ASSESSMENT_LIST?: AssessmentVocab["lists"];
-  };
-  if (!g.REDLIST_CATEGORY || !g.ASSESSMENT_LIST) {
-    throw new Error("generated-client に REDLIST_CATEGORY/ASSESSMENT_LIST が無い（pnpm run build:registry-ts を回す）");
-  }
-  return { categories: g.REDLIST_CATEGORY, lists: g.ASSESSMENT_LIST };
+  return { categories: REDLIST_CATEGORY, lists: ASSESSMENT_LIST };
 }
 
 export type RedlistDirection = "悪化" | "改善" | "横ばい" | "前回記載なし";
@@ -130,17 +123,12 @@ async function changeRows(db: CubeDb, vocab: AssessmentVocab, listYear?: number)
   });
 }
 
-/** `?`/`<`/`>` でバイト列順（SQLite の BINARY）に寄せた比較。null は先頭（ASC の NULLS FIRST）。 */
-function cmp(a: string | null, b: string | null): number {
-  if (a === b) return 0;
-  if (a === null) return -1;
-  if (b === null) return 1;
-  return a < b ? -1 : 1;
-}
-
 /** v1 `redlistSummary`。 */
 export async function redlistSummary(db: CubeDb, vocab: AssessmentVocab = generatedAssessmentVocab()): Promise<RedlistSummaryRow[]> {
-  const rows = await changeRows(db, vocab);
+  return foldSummary(await changeRows(db, vocab));
+}
+
+function foldSummary(rows: readonly ChangeRow[]): RedlistSummaryRow[] {
   const acc = new Map<string, RedlistSummaryRow>();
   for (const r of rows) {
     const key = `${r.listYear}\u0000${r.listName}\u0000${r.taxonGroupJa ?? ""}\u0000${r.taxonGroupJa === null ? 1 : 0}\u0000${r.direction}`;
@@ -160,7 +148,10 @@ export async function redlistFlows(
   group?: string,
   vocab: AssessmentVocab = generatedAssessmentVocab(),
 ): Promise<RedlistFlowRow[]> {
-  const rows = await changeRows(db, vocab, listYear);
+  return foldFlows(await changeRows(db, vocab, listYear), group);
+}
+
+function foldFlows(rows: readonly ChangeRow[], group?: string): RedlistFlowRow[] {
   const acc = new Map<string, RedlistFlowRow>();
   for (const r of rows) {
     if (r.prevLabel === null || r.curLabel === null) continue;
@@ -184,7 +175,10 @@ export async function redlistSpecies(
   limit = 300,
   vocab: AssessmentVocab = generatedAssessmentVocab(),
 ): Promise<RedlistSpeciesRow[]> {
-  const rows = await changeRows(db, vocab, listYear);
+  return foldSpecies(await changeRows(db, vocab, listYear), direction, group, limit);
+}
+
+function foldSpecies(rows: readonly ChangeRow[], direction: string | undefined, group: string | undefined, limit: number): RedlistSpeciesRow[] {
   const out: RedlistSpeciesRow[] = [];
   for (const r of rows) {
     if (r.prevLabel === null || r.curLabel === null || r.prevRank === null || r.curRank === null) continue;
@@ -205,4 +199,23 @@ export async function redlistSpecies(
   }
   out.sort((a, b) => b.curRank - b.prevRank - (a.curRank - a.prevRank) || cmp(a.vernacularNameJa, b.vernacularNameJa));
   return out.slice(0, limit);
+}
+
+/**
+ * `redlistSummary`・`redlistFlows`・`redlistSpecies` を `changeRows` 1回で返す（画面・AI が3つ
+ * 揃えて使う。3関数を別々に呼ぶと同じ行を3回引く）。返す形は個別に呼んだときと同じ。
+ */
+export async function redlistBundle(
+  db: CubeDb,
+  listYear: number,
+  opt: { group?: string; direction?: string; limit?: number } = {},
+  vocab: AssessmentVocab = generatedAssessmentVocab(),
+): Promise<{ summary: RedlistSummaryRow[]; flows: RedlistFlowRow[]; species: RedlistSpeciesRow[] }> {
+  const all = await changeRows(db, vocab);
+  const year = all.filter((r) => r.listYear === listYear);
+  return {
+    summary: foldSummary(all),
+    flows: foldFlows(year, opt.group),
+    species: foldSpecies(year, opt.direction, opt.group, opt.limit ?? 300),
+  };
 }

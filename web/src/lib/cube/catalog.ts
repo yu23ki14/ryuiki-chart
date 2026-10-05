@@ -10,9 +10,10 @@
  */
 import type { CubeDb, SqlParam } from "./db";
 import { MAX_ID_LIST } from "./db";
-import { gridCellOfPlaceId, placeIdOfWatershedId, watershedIdOfPlaceId } from "./grid";
-import { OCC_INDEX, USE_RECORD_VERNACULAR, pickLabel, resolveNames, speciesLabels } from "./occurrence";
-import { jsonEachParam, seriesFilterSql } from "./sql";
+import { gridCellOfPlaceId, watershedIdOfPlaceId } from "./grid";
+import { USE_RECORD_VERNACULAR, labelMap, pickLabel, resolveNames } from "./occurrence";
+import { OCC_DEFAULT_FROM, OCC_DEFAULT_TO, YEAR_GRAINS, chunk, cmp, jsonEachParam, seriesFilterSql, uniq } from "./sql";
+import { OCCURRENCE_AGG_INDEX } from "@/db/schema-cube";
 import { basisOfCell, isRepresentativeObsStat, seriesKeyFromRow, seriesKeySql, seriesKeyString, type SeriesKey } from "./series";
 
 /**
@@ -876,14 +877,10 @@ export async function siteSeriesCells(db: CubeDb, opt: { dataset: string }): Pro
 /* summary_taxon_catalog/summary_watershed_occurrence を読む。                       */
 /* ------------------------------------------------------------------ */
 
-export { gridCellOfPlaceId, placeIdOfWatershedId, watershedIdOfPlaceId };
-
 type OccRow = Record<string, string | number | null>;
 
 const SOURCE_GBIF = "gbif_kanagawa_occurrences";
 const SOURCE_INAT = "inaturalist_kanagawa";
-const OCC_DEFAULT_FROM = 1990;
-const OCC_DEFAULT_TO = 2026;
 const IAS_LIST_ID = "moe_ias_2015";
 
 export interface SpeciesCatalogRow {
@@ -935,7 +932,7 @@ export async function speciesCatalog(
     nYears: r.n_years as number,
   }));
   if (opt.withNames && out.length > 0) {
-    const labels = new Map((await speciesLabels(db, out.map((r) => r.binom))).map((l) => [l.binom, l.label]));
+    const labels = await labelMap(db, out.map((r) => r.binom), {});
     for (const r of out) r.label = labels.get(r.binom) ?? r.binom;
   }
   return out;
@@ -967,6 +964,11 @@ export interface EffortYearRow {
   meshN: number;
   nInat: number;
   nGbif: number;
+}
+
+/** 画面・API・serving-diff が使う v1 の snake_case の形（`effort_years`）。 */
+export function effortRowV1(e: EffortYearRow) {
+  return { year: e.year, n: e.n, species_n: e.speciesN, mesh_n: e.meshN, n_inat: e.nInat, n_gbif: e.nGbif };
 }
 
 /** v1 `effortYears`（窓の既定 1990〜2026）。`n_inat`/`n_gbif` は source 別の SUM(n)。 */
@@ -1118,26 +1120,27 @@ export interface IasSpeciesRow {
  */
 export async function iasSpecies(db: CubeDb): Promise<IasSpeciesRow[]> {
   const base = await db.all<OccRow>(
-    `SELECT DISTINCT a.category_raw AS ias_category, a.binom AS binom,
-            a.vernacular_name_ja_resolved AS name_ja,
+    `SELECT a.category_raw AS ias_category, a.binom AS binom,
+            MAX(a.vernacular_name_ja_resolved) AS name_ja,
             s.taxon_group, s.n, s.n_places, s.y_from, s.y_to
      FROM taxon_assessment a
      JOIN summary_species_catalog s ON s.binom = a.binom
-     WHERE a.list_id = ? AND a.in_scope = 1 AND a.binom IS NOT NULL`,
+     WHERE a.list_id = ? AND a.in_scope = 1 AND a.binom IS NOT NULL
+     GROUP BY a.category_raw, a.binom`,
     [IAS_LIST_ID],
   );
   if (base.length === 0) return [];
-  const binoms = [...new Set(base.map((r) => r.binom as string))];
+  const binoms = uniq(base.map((r) => r.binom as string));
   const since = new Map<string, number>();
-  for (let i = 0; i < binoms.length; i += MAX_ID_LIST) {
+  for (const part of chunk(binoms, MAX_ID_LIST)) {
     const rows = await db.all<OccRow>(
       `SELECT t.canonical_binomial AS binom, SUM(o.n) AS n
        FROM json_each(?) j
        JOIN taxon t INDEXED BY ix_taxon_binomial ON t.canonical_binomial = j.value
-       JOIN occurrence_agg o INDEXED BY ${OCC_INDEX.taxonPeriod} ON o.taxon_id = t.taxon_id
-       WHERE o.place_kind = 'grid01' AND o.grain IN ('year','survey_period') AND o.period_start >= '2020'
+       JOIN occurrence_agg o INDEXED BY ${OCCURRENCE_AGG_INDEX.taxonPeriod} ON o.taxon_id = t.taxon_id
+       WHERE o.place_kind = 'grid01' AND o.grain IN ${YEAR_GRAINS} AND o.period_start >= '2020'
        GROUP BY t.canonical_binomial`,
-      [jsonEachParam(binoms.slice(i, i + MAX_ID_LIST))],
+      [jsonEachParam(part)],
     );
     for (const r of rows) since.set(r.binom as string, r.n as number);
   }
@@ -1159,5 +1162,5 @@ export async function iasSpecies(db: CubeDb): Promise<IasSpeciesRow[]> {
       nSince2020: since.get(binom) ?? 0,
     };
   });
-  return out.sort((a, b) => b.n - a.n || (a.binom < b.binom ? -1 : a.binom > b.binom ? 1 : a.iasCategory < b.iasCategory ? -1 : 1));
+  return out.sort((a, b) => b.n - a.n || cmp(a.binom, b.binom) || cmp(a.iasCategory, b.iasCategory));
 }

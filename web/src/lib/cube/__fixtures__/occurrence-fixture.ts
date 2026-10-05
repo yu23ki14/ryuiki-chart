@@ -132,10 +132,11 @@ interface AssessFx {
   inScope?: number;
   catRaw?: string;
   resolved?: string | null;
+  familyJa?: string | null;
 }
 
 const ASSESS: AssessFx[] = [
-  { id: "rl2020_1", list: "rl2020", year: 2020, sci: "Fxa alpha", ja: "アルファ", group: "鳥類", cat: "CR", prev: "EN" }, // 悪化
+  { id: "rl2020_1", list: "rl2020", year: 2020, sci: "Fxa alpha", ja: "アルファ", group: "鳥類", cat: "CR", prev: "EN", familyJa: "アルファ科" }, // 悪化
   { id: "rl2020_2", list: "rl2020", year: 2020, sci: "Fxb beta", ja: "ベータ", group: "鳥類", cat: "EN", prev: "CR" }, // 改善
   { id: "rl2020_3", list: "rl2020", year: 2020, sci: "Fxc gamma", ja: "ガンマ", group: "植物", cat: "VU", prev: "VU" }, // 横ばい
   { id: "rl2020_4", list: "rl2020", year: 2020, sci: "Fxd delta", ja: "デルタ", group: "植物", cat: "NT", prev: "not_listed" }, // 前回記載なし
@@ -189,12 +190,12 @@ function seed(db: Database.Database): void {
   for (const c of CELLS) oc.run({ src: c.src ?? GBIF, place: c.place, kind: c.kind, taxon: c.taxon, grain: c.grain, start: c.start, n: c.n, red: c.red ?? 0, alien: c.alien ?? 0 });
 
   const as = db.prepare(
-    `INSERT INTO taxon_assessment (assessment_id, list_id, list_year, scientific_name_raw, vernacular_name_ja_raw, vernacular_name_ja_resolved, taxon_group_ja,
+    `INSERT INTO taxon_assessment (assessment_id, list_id, list_year, scientific_name_raw, vernacular_name_ja_raw, vernacular_name_ja_resolved, taxon_group_ja, family_ja,
         category_raw, category_code, prev_category_code, national_category_raw, binom, in_scope)
-     VALUES (@id,@list,@year,@sci,@ja,@resolved,@group,@catRaw,@cat,@prev,'国:NT',@binom,@inScope)`,
+     VALUES (@id,@list,@year,@sci,@ja,@resolved,@group,@familyJa,@catRaw,@cat,@prev,'国:NT',@binom,@inScope)`,
   );
   for (const a of ASSESS) {
-    as.run({ id: a.id, list: a.list, year: a.year, sci: a.sci, ja: a.ja, resolved: a.resolved ?? null, group: a.group, catRaw: a.catRaw ?? a.cat, cat: a.cat, prev: a.prev, binom: a.binom ?? null, inScope: a.inScope ?? 1 });
+    as.run({ id: a.id, list: a.list, year: a.year, sci: a.sci, ja: a.ja, resolved: a.resolved ?? null, group: a.group, familyJa: a.familyJa ?? null, catRaw: a.catRaw ?? a.cat, cat: a.cat, prev: a.prev, binom: a.binom ?? null, inScope: a.inScope ?? 1 });
   }
 
   seedSummaries(db);

@@ -3,15 +3,13 @@ import { buildOccurrenceFixture, FXO, type OccurrenceFixture } from "./__fixture
 import {
   effortYears,
   gridCatalog,
-  gridCellOfPlaceId,
   iasSpecies,
   occurrenceTotals,
-  placeIdOfWatershedId,
   speciesCatalog,
   taxonGroupYears,
-  watershedIdOfPlaceId,
   watershedOccurrence,
 } from "./catalog";
+import { gridCellOfPlaceId, placeIdOfWatershedId, watershedIdOfPlaceId } from "./grid";
 
 let fx: OccurrenceFixture;
 beforeEach(() => {

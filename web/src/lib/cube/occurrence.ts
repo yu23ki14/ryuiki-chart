@@ -7,17 +7,11 @@
  * **taxon 引き・place 引きの SQL は全部 `INDEXED BY`**（§0-2。第3索引 `ix_occurrence_agg_kind_grain_period` が
  * プランナの計画を壊すため。EXPLAIN は `occurrence.test.ts` で固定）。
  */
+import { OCCURRENCE_AGG_INDEX } from "@/db/schema-cube";
 import { NAME_JA } from "@/lib/registry/generated-client";
 import { MAX_ID_LIST, type CubeDb, type SqlParam } from "./db";
 import { gridCellOfPlaceId } from "./grid";
-import { jsonEachParam } from "./sql";
-
-/** `occurrence_agg` の索引名（Drizzle `schema-cube.ts`・`scripts/` 側と一致させる。1箇所）。 */
-export const OCC_INDEX = {
-  taxonPeriod: "ix_occurrence_agg_taxon_period",
-  placePeriod: "ix_occurrence_agg_place_period",
-  kindGrainPeriod: "ix_occurrence_agg_kind_grain_period",
-} as const;
+import { OCC_DEFAULT_FROM, OCC_DEFAULT_TO, YEAR_GRAINS, chunk, cmp, jsonEachParam, uniq } from "./sql";
 
 /**
  * D4（オーナー決定）: 記録由来の和名補完（`vernacular_ja_basis='records'`）を表示名に使う。
@@ -92,28 +86,19 @@ export interface SpeciesLabelOpt {
 }
 
 
+/** `speciesShareTrend` の足切り（v1 `HAVING n_a>=40 AND n_b>=20`）。 */
+const SHARE_MIN_N_A = 40;
+const SHARE_MIN_N_B = 20;
 /** v1 の n≥80 の足切り（`species_month`/`species_mesh_year`。外す変更はしない。§2.2）。 */
 export const SPECIES_MIN_N = 80;
-/** 年族のセル（`year` と、日付が範囲の `survey_period`）。 */
-const YEAR_GRAINS = "('year','survey_period')";
-const DEFAULT_FROM = 1990;
-const DEFAULT_TO = 2026;
+/** v1 `species_mesh_year` の年の下限（`yr BETWEEN 1970 AND 2026`）。 */
+const MESH_YEAR_FROM = 1970;
 /** 月別の下限（v1 `species_month` は 2018 年以降のみ）。 */
 const MONTH_FROM = "2018-01-01";
 
 /** 年の範囲 → `period_start` の文字列範囲（ISO 日付の辞書順。'2026' < '2026-01-01' < '2027'）。 */
 function periodRange(from: number, to: number): [string, string] {
   return [String(from).padStart(4, "0"), String(to + 1).padStart(4, "0")];
-}
-
-function chunk<T>(xs: readonly T[], size: number): T[][] {
-  const out: T[][] = [];
-  for (let i = 0; i < xs.length; i += size) out.push(xs.slice(i, i + size));
-  return out;
-}
-
-function uniq(xs: readonly string[]): string[] {
-  return [...new Set(xs)];
 }
 
 type R = Record<string, string | number | null>;
@@ -124,7 +109,7 @@ export async function speciesYears(
   binoms: readonly string[],
   opt: Partial<YearRange> = {},
 ): Promise<SpeciesYearRow[]> {
-  const [lo, hi] = periodRange(opt.from ?? DEFAULT_FROM, opt.to ?? DEFAULT_TO);
+  const [lo, hi] = periodRange(opt.from ?? OCC_DEFAULT_FROM, opt.to ?? OCC_DEFAULT_TO);
   const out: SpeciesYearRow[] = [];
   for (const part of chunk(uniq(binoms), MAX_ID_LIST)) {
     const rows = await db.all<R>(
@@ -134,7 +119,7 @@ export async function speciesYears(
               COUNT(DISTINCT o.place_id) AS mesh_n
        FROM json_each(?) j
        JOIN taxon t INDEXED BY ix_taxon_binomial ON t.canonical_binomial = j.value
-       JOIN occurrence_agg o INDEXED BY ${OCC_INDEX.taxonPeriod} ON o.taxon_id = t.taxon_id
+       JOIN occurrence_agg o INDEXED BY ${OCCURRENCE_AGG_INDEX.taxonPeriod} ON o.taxon_id = t.taxon_id
        WHERE o.place_kind = 'grid01' AND o.grain IN ${YEAR_GRAINS}
          AND o.period_start >= ? AND o.period_start < ?
        GROUP BY t.canonical_binomial, year`,
@@ -142,7 +127,7 @@ export async function speciesYears(
     );
     for (const r of rows) out.push({ binom: r.binom as string, year: r.year as number, n: r.n as number, meshN: r.mesh_n as number });
   }
-  return out.sort((a, b) => a.year - b.year || (a.binom < b.binom ? -1 : a.binom > b.binom ? 1 : 0));
+  return out.sort((a, b) => a.year - b.year || cmp(a.binom, b.binom));
 }
 
 /** v1 `speciesMonths`。2018-01-01 以降の月セル。n≥80 の足切りは `summary_species_catalog.n`。 */
@@ -156,27 +141,29 @@ export async function speciesMonths(db: CubeDb, binoms: readonly string[]): Prom
        FROM json_each(?) j
        JOIN summary_species_catalog s ON s.binom = j.value AND s.n >= ?
        JOIN taxon t INDEXED BY ix_taxon_binomial ON t.canonical_binomial = s.binom
-       JOIN occurrence_agg o INDEXED BY ${OCC_INDEX.taxonPeriod} ON o.taxon_id = t.taxon_id
+       JOIN occurrence_agg o INDEXED BY ${OCCURRENCE_AGG_INDEX.taxonPeriod} ON o.taxon_id = t.taxon_id
        WHERE o.place_kind = 'grid01' AND o.grain = 'month' AND o.period_start >= ?
        GROUP BY t.canonical_binomial, month`,
       [jsonEachParam(part), SPECIES_MIN_N, MONTH_FROM],
     );
     for (const r of rows) out.push({ binom: r.binom as string, month: r.month as number, n: r.n as number });
   }
-  return out.sort((a, b) => a.month - b.month || (a.binom < b.binom ? -1 : a.binom > b.binom ? 1 : 0));
+  return out.sort((a, b) => a.month - b.month || cmp(a.binom, b.binom));
 }
 
 /** v1 `speciesMeshYears`。n≥80 の種だけ（それ未満は空配列）。 */
 export async function speciesMeshYears(db: CubeDb, binom: string): Promise<SpeciesMeshYearRow[]> {
+  const [lo, hi] = periodRange(MESH_YEAR_FROM, OCC_DEFAULT_TO); // v1 は yr BETWEEN 1970 AND 2026
   const rows = await db.all<R>(
     `SELECT CAST(substr(o.period_start, 1, 4) AS INTEGER) AS year, o.place_id AS place_id, SUM(o.n) AS n
      FROM summary_species_catalog s
      JOIN taxon t INDEXED BY ix_taxon_binomial ON t.canonical_binomial = s.binom
-     JOIN occurrence_agg o INDEXED BY ${OCC_INDEX.taxonPeriod} ON o.taxon_id = t.taxon_id
+     JOIN occurrence_agg o INDEXED BY ${OCCURRENCE_AGG_INDEX.taxonPeriod} ON o.taxon_id = t.taxon_id
      WHERE s.binom = ? AND s.n >= ?
        AND o.place_kind = 'grid01' AND o.grain IN ${YEAR_GRAINS}
+       AND o.period_start >= ? AND o.period_start < ?
      GROUP BY year, o.place_id`,
-    [binom, SPECIES_MIN_N],
+    [binom, SPECIES_MIN_N, lo, hi],
   );
   const out: SpeciesMeshYearRow[] = [];
   for (const r of rows) {
@@ -208,7 +195,7 @@ export async function speciesShareTrend(
             SUM(CASE WHEN o.period_start >= ? AND o.period_start < ? THEN o.n ELSE 0 END) AS n_b
      FROM summary_species_catalog s
      JOIN taxon t INDEXED BY ix_taxon_binomial ON t.canonical_binomial = s.binom
-     JOIN occurrence_agg o INDEXED BY ${OCC_INDEX.taxonPeriod} ON o.taxon_id = t.taxon_id
+     JOIN occurrence_agg o INDEXED BY ${OCCURRENCE_AGG_INDEX.taxonPeriod} ON o.taxon_id = t.taxon_id
      WHERE s.taxon_group = ?
        AND o.place_kind = 'grid01' AND o.grain IN ${YEAR_GRAINS}
        AND o.period_start >= ? AND o.period_start < ?
@@ -221,7 +208,7 @@ export async function speciesShareTrend(
     totalA += r.n_a as number;
     totalB += r.n_b as number;
   }
-  const kept = rows.filter((r) => (r.n_a as number) >= 40 && (r.n_b as number) >= 20);
+  const kept = rows.filter((r) => (r.n_a as number) >= SHARE_MIN_N_A && (r.n_b as number) >= SHARE_MIN_N_B);
   const labels = await labelMap(db, kept.map((r) => r.binom as string), opt);
   return kept.map((r) => ({
     binom: r.binom as string,
@@ -240,7 +227,7 @@ export async function meshByYear(db: CubeDb, year: number): Promise<MeshYearRow[
     `SELECT o.place_id AS place_id, SUM(o.n) AS n,
             COUNT(DISTINCT t.canonical_binomial) AS species_n,
             SUM(o.n_red_list) AS rl_n
-     FROM occurrence_agg o INDEXED BY ${OCC_INDEX.kindGrainPeriod}
+     FROM occurrence_agg o INDEXED BY ${OCCURRENCE_AGG_INDEX.kindGrainPeriod}
      LEFT JOIN taxon t ON t.taxon_id = o.taxon_id
      WHERE o.place_kind = 'grid01' AND o.grain IN ${YEAR_GRAINS}
        AND o.period_start >= ? AND o.period_start < ?
@@ -258,10 +245,10 @@ export async function meshByYear(db: CubeDb, year: number): Promise<MeshYearRow[
 /** v1 `org_watershed_year`。画面の読み手は無い（serving-diff の `watershed_year` 用）。 */
 export async function watershedYears(db: CubeDb, opt: { placeId?: string } = {}): Promise<WatershedYearRow[]> {
   const params: SqlParam[] = [];
-  let index: string = OCC_INDEX.kindGrainPeriod;
+  let index: string = OCCURRENCE_AGG_INDEX.kindGrainPeriod;
   let where = "o.place_kind = 'watershed' AND o.place_id IS NOT NULL AND o.grain IN " + YEAR_GRAINS;
   if (opt.placeId !== undefined) {
-    index = OCC_INDEX.placePeriod;
+    index = OCCURRENCE_AGG_INDEX.placePeriod;
     where += " AND o.place_id = ?";
     params.push(opt.placeId);
   }
@@ -283,7 +270,7 @@ export async function watershedYears(db: CubeDb, opt: { placeId?: string } = {})
       nRedList: r.n_red_list as number,
       speciesN: r.species_n as number,
     }))
-    .sort((x, y) => (x.placeId < y.placeId ? -1 : x.placeId > y.placeId ? 1 : x.year - y.year));
+    .sort((x, y) => (cmp(x.placeId, y.placeId) || x.year - y.year));
 }
 
 /** 代表 taxon の名前の素材（`resolveNames`・`catalog.ts` の `iasSpecies` が使う）。 */
@@ -337,7 +324,7 @@ export function pickLabel(binom: string, names: TaxonNames | undefined, records:
   return binom;
 }
 
-async function labelMap(db: CubeDb, binoms: readonly string[], opt: SpeciesLabelOpt): Promise<Map<string, string>> {
+export async function labelMap(db: CubeDb, binoms: readonly string[], opt: SpeciesLabelOpt): Promise<Map<string, string>> {
   const records = opt.records ?? USE_RECORD_VERNACULAR;
   const names = await resolveNames(db, binoms);
   return new Map(uniq(binoms).map((b) => [b, pickLabel(b, names.get(b), records)]));
