@@ -65,10 +65,13 @@
 - b13 の表ごとの区切り（`reset`）を入れ忘れると他表の上流が混ざる（多めに申告する方向に倒れるので安全側）。
 
 ## 実装メモ（承認後の決定・設計からの差分）
-- b03/b06 は `work` 接続にも `lineage.watch(work, external=...)` を1行足した（承認済み）。原本は表ごとの代理指標
-  （`pipeline_input_fingerprint` と同じ取り方）を値に `ext:src.<table>` として入る。
-- tracker は `track_lineage` コンテキストではなく `LineageTracker(conn)` を段の先頭で作る形にした（段の本体をインデントし直さないため）。
-  `staged_table` が失敗すると authorizer を解除し、b04/b07 は成功後に `release()`、b13 は finally、b09 は接続を閉じる。
-- 実測: TEMP テーブルの読み取りは `SQLITE_READ` で `temp` ではなく `main` と報告される。resolve 時点で main に実在しない表は無視する
-  （DROP 済みの `__sample_ids` 等）。
-- `track_reads`/`assert_all_reads_verified`/`assert_occurrence_fingerprint_fresh` は撤去（`LineageTracker.resolve` に吸収）。
+- `LineageTracker` は context manager。`with lineage, staged_table(..., lineage=lineage):` の間の読み取りが1出力の系譜
+  （入るたびに空にし、出るとき authorizer を必ず解除）。b13 は出力ごとに入り直す（`reset()` は無い）。with の前の事前検査の
+  読み取りは系譜に入らない。`verify` は冪等で、`upstream_schemas={}`（上流の系譜も再帰検査）が既定。
+- b03/b06 は `work` 接続を `lineage.watch(work, external=...)`。作業用接続が宣言の無い ATTACH を読めば必ず止まる。
+- キーは ATTACH の別名に依存しない論理名: 上流は表名、外部は `ext:<registry|ryuiki>.<table>`（`ExternalSource.label`）。
+  `ryuiki_external`/`registry_external` は読まれた表だけ遅延計算する。
+- 実測の訂正: TEMP 表の読み取りは `temp` で報告される。`db_name=None` になるのは「列を読まない読み取り」（COUNT(*) や
+  JOIN 条件で列を使わない表）で、b04 の `__sample_ids` がこれだった。段の中で CREATE された TEMP 表名を
+  authorizer の CREATE_TEMP_* で集めて除外する（実在確認はしない。DROP/RENAME しても宣言漏れは通さない）。
+- `track_reads`/`assert_all_reads_verified`/`assert_occurrence_fingerprint_fresh` は撤去。

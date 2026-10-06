@@ -1235,9 +1235,7 @@ def build_cube(
     # 系譜（observation_agg の inputs）は手で書かない——`lineage` が段の先頭から
     # 実際に読んだ表（observation・registry の `reg`）を集め、`staged_table` が
     # 差し替え時に自動で記録する。`verify` していない上流を読めば止まる。
-    lineage = common.LineageTracker(
-        conn, external=common.lineage_external_for_sources(None, registry_db, registry_alias="reg"),
-    )
+    lineage = common.LineageTracker(conn, external={"reg": common.registry_external(registry_db)})
     observation_fingerprint = lineage.verify(
         "observation", rebuild_hint="scripts/b03_build_observation.py を再実行すること。",
     )
@@ -1261,7 +1259,7 @@ def build_cube(
 
     conn.execute(_CREATE_OBS_IMPUTED_VIEW_SQL)
 
-    with common.staged_table(
+    with lineage, common.staged_table(
         conn, "observation_agg", _CREATE_OBSERVATION_AGG_SQL,
         lineage=lineage,
         fingerprint_spec_version=spec_version,
@@ -1347,7 +1345,6 @@ def build_cube(
             conn, staging, observation_fingerprint, spec_version,
         )
         value_stats = _collect_value_zero_lod_stats(conn, staging)
-    lineage.release()
     # ここまで来たら staged_table が観測差し替えと同じトランザクションで
     # observation_agg の指紋・系譜（消費した observation の指紋）も記録済み
     # （Issue #37 #1・/code-review 指摘の根本対応。「内容は新しいが指紋は

@@ -658,9 +658,9 @@ def build_summary(
             str(registry_db) if registry_db is not None else None, DEFAULT_REGISTRY_DB,
         )
         _attach_registry(conn, registry_path)
-        external = common.lineage_external_for_sources(None, registry_path, registry_alias=_JOIN_ALIAS)
+        external = {_JOIN_ALIAS: common.registry_external(registry_path)}
 
-    # 系譜（Issue #45）: 手で組まない。出力表ごとに `reset()` し、その表の SELECT が
+    # 系譜（Issue #45）: 手で組まない。出力表ごとに `with lineage:` に入り直し、その表の SELECT が
     # 実際に読んだ source と registry の表から自動生成する（registry の鮮度の正は
     # check_v2_fresh の registry.input_fingerprint。ここは `ext:` の来歴）。
     lineage = common.LineageTracker(conn, external=external)
@@ -669,7 +669,6 @@ def build_summary(
             conn, summaries, lineage, built_from=built_from, spec_version=spec_version,
         )
     finally:
-        lineage.release()
         if needs_registry:
             conn.execute(f"DETACH DATABASE {_JOIN_ALIAS}")
 
@@ -705,16 +704,15 @@ def _build_summary_tables(
     for table_name in common.V2_SUMMARY_TABLES:
         spec = summaries[table_name]
         source = spec["source"]
-        lineage.reset()  # 出力表ごとの系譜（この表の SELECT が読むものだけ）。verify 済みの指紋は残る。
-        if not lineage.is_verified(source):
-            lineage.verify(source, rebuild_hint=_REBUILD_HINT_BY_SOURCE[source])
+        lineage.verify(source, rebuild_hint=_REBUILD_HINT_BY_SOURCE[source])  # 冪等（source ごとに実検証は1回）
         table_built_from = built_from if built_from is not None else _default_built_from(source)
         if spec.get("join") and built_from is None:
             table_built_from += f" + {_JOIN_ALIAS}:{','.join(spec['join'])}"
         create_sql = _create_table_sql(spec)
         insert_sql, insert_params = _insert_select_sql(spec, built_from=table_built_from, spec_version=spec_version)
 
-        with common.staged_table(
+        # `with lineage:` に出力ごとに入り直す＝出力表ごとの系譜（その表の SELECT が読むものだけ）。
+        with lineage, common.staged_table(
             conn, table_name, create_sql,
             lineage=lineage,
             fingerprint_spec_version=spec_version,

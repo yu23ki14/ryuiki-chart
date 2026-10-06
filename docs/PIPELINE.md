@@ -90,10 +90,10 @@ PR-5 で v1 射影（b05/b08）から移した。キューブ・registry だけ�
 - **段階間の指紋**（`scripts/migrate/common.py` の `record_stage_fingerprint`/`assert_stage_fingerprint_fresh`/`LineageTracker`）:
   `b04`/`b07`/`b09`/`b13` は上流の段の出力が今も一致するか（(a)、系譜を再帰的に(b)）を読み込み時に確認し、崩れていれば止まる。
   **系譜（`pipeline_fingerprint.inputs`）は手で書かない**（Issue #45）: 各段は `LineageTracker(conn, external=...)` を張り、
-  上流は `lineage.verify(...)`、出力は `staged_table(..., lineage=lineage)`。差し替え時に、実際に読んだ表（`sqlite3.set_authorizer`
+  上流は `lineage.verify(...)`（冪等。上流の系譜も再帰検査する）、出力は `with lineage, staged_table(..., lineage=lineage):`（この `with` の間の読み取りが出力の系譜。例外時も authorizer は解除される）。差し替え時に、実際に読んだ表（`sqlite3.set_authorizer`
   の `SQLITE_READ`）から出力表ごとに `inputs` を自動生成する。検証していない上流を読めば止まり、宣言の無い ATTACH 先も止まる。
-  registry・原本は `ext:<schema>.<table>` として来歴に載る（鮮度の正は `pipeline_input_fingerprint`）。b03/b06 は別接続
-  （原本・registry を読む作業用接続）を `lineage.watch(work, external=...)` で合算する。b13 は表ごとに `reset()`。
+  registry・原本は ATTACH の別名に依存しない論理名の `ext:<registry|ryuiki>.<table>` として来歴に載る（鮮度の正は `pipeline_input_fingerprint`）。b03/b06 は別接続
+  （原本・registry を読む作業用接続）を `lineage.watch(work, external=...)` で合算する。b13 は表ごとに `with lineage:` に入り直す。
   設計は `docs/plans/ISSUE45_AUTO_LINEAGE.md`・`docs/plans/PHASE_B_FACT_SLICE.md`。
 - テスト・検証戦略は4層（フィクスチャ・縮小サンプル・全量の実行証明・段階間の指紋）。
   詳細は `docs/adr/0027-test-and-verification-strategy.md`。パイプラインのパス

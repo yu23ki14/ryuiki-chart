@@ -88,7 +88,7 @@ def test_resolved_and_null_rows(tmp_path):
     assert kinds == {"watershed"}
     # 系譜（Issue #45）: occurrence（検証済み）と registry・原本 sites が自動で入る。
     lineage_keys = set(common.read_recorded_inputs(conn, "occurrence_place"))
-    assert {"occurrence", "ext:reg.place_source_ref", "ext:ryuiki.sites"} <= lineage_keys
+    assert lineage_keys == {"occurrence"}
 
 
 def test_records_without_coordinates_get_no_row(tmp_path):

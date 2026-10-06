@@ -903,8 +903,8 @@ def build_cube(
     # 確認する。戻り値はどちらも occurrence_agg の系譜に使う（実行順
     # b06 → b09 → b07 に固定——占有検証（`_assert_populations_complete`）が
     # occurrence_place の内容そのものにも依存するため）。
-    # 系譜（occurrence_agg の inputs）は手で書かない（Issue #45）: `lineage` が実際に
-    # 読んだ表を集め、`staged_table` が差し替え時に自動で記録する。
+    # 系譜（occurrence_agg の inputs）は手で書かない（Issue #45）: `with lineage, staged_table(...)` の
+    # 間に実際に読んだ表から、`staged_table` が差し替え時に自動で記録する。
     lineage = common.LineageTracker(conn)
     lineage.verify("occurrence", rebuild_hint="scripts/b06_build_occurrence.py を再実行すること。")
     lineage.verify("occurrence_place", rebuild_hint="scripts/b09_build_occurrence_place.py を再実行すること。")
@@ -925,7 +925,7 @@ def build_cube(
     n_dated_total = conn.execute("SELECT COUNT(*) FROM occurrence WHERE period_raw IS NOT NULL").fetchone()[0]
     params = (built_from, spec_version)
 
-    with common.staged_table(
+    with lineage, common.staged_table(
         conn, "occurrence_agg", _CREATE_OCCURRENCE_AGG_SQL,
         lineage=lineage,
         fingerprint_spec_version=spec_version,
@@ -955,7 +955,6 @@ def build_cube(
             _assert_dimension_key_unique(conn, staging)
         finally:
             _drop_populations(conn)
-    lineage.release()
     # ここまで来たら staged_table が差し替えと同じトランザクションで
     # occurrence_agg の指紋・系譜（消費した occurrence/occurrence_place の
     # 指紋）も記録済み（Issue #37 #1）。

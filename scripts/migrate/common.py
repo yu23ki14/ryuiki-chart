@@ -28,6 +28,7 @@
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import hashlib
 import json
 import os
@@ -36,6 +37,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+from typing import Callable
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 _SCRIPTS = ROOT / "scripts"
@@ -327,8 +329,9 @@ def staged_table(
     状態が残る」という穴（/code-review 指摘）をこれで塞ぐ。差し替えの DDL と
     指紋の記録がどちらも成功しないとコミットされない（片方が失敗すればロール
     バックで本番テーブルも元に戻る）。未検証の上流を読んでいれば `resolve()`
-    が `MigrationError` を投げ、同じ経路で本番はそのまま残る。失敗時は
-    tracker の authorizer も解除する。
+    が `MigrationError` を投げ、同じ経路で本番はそのまま残る。呼び出し側は
+    `with lineage, staged_table(..., lineage=lineage) as staging:` の形で使う
+    （authorizer の解除は tracker の `with` が受け持つ）。
 
     `fingerprint_spec_version`（既定 `FINGERPRINT_SPEC_VERSION`）: `table` が
     自分の行に `spec_version`/`built_from` 列を埋め込む成果物（`observation_agg`
@@ -407,8 +410,6 @@ def staged_table(
     try:
         yield staging
     except BaseException:
-        if lineage is not None:
-            lineage.release()
         conn.rollback()
         conn.execute(f'DROP TABLE IF EXISTS "{staging}"')
         conn.commit()
@@ -429,8 +430,6 @@ def staged_table(
                 inputs=lineage.resolve(table, staging),
             )
     except BaseException:
-        if lineage is not None:
-            lineage.release()
         conn.rollback()  # 本番テーブル（と指紋）を元に戻す（まだ確定していない）
         conn.execute(f'DROP TABLE IF EXISTS "{staging}"')  # 作業用テーブルも残さない
         conn.commit()
@@ -1054,11 +1053,9 @@ def _assert_lineage_fresh(
             # pipeline_fingerprint の行を持たないので辿らない（check_v2_pipeline_fresh
             # の pipeline_input_fingerprint が鮮度の正）。
             continue
-        if "." in upstream_table:
-            # 非 main の上流は "schema.table" で記録される（LineageTracker.resolve）。
-            upstream_schema, _, upstream_table = upstream_table.partition(".")
-        else:
-            upstream_schema = upstream_schemas.get(upstream_table, current_schema)
+        # キーは上流の論理名（表名）。居場所は呼び出し側の upstream_schemas で解決する
+        # （ATTACH の別名に依存しない。LineageTracker.resolve）。
+        upstream_schema = upstream_schemas.get(upstream_table, current_schema)
         key = (upstream_schema, upstream_table)
         qualified_upstream = f"{upstream_schema}.{upstream_table}" if upstream_schema else upstream_table
         upstream_current = read_recorded_fingerprint(conn, upstream_table, schema=upstream_schema)
@@ -1234,6 +1231,22 @@ CREATE TABLE IF NOT EXISTS {PIPELINE_INPUT_FINGERPRINT_TABLE} (
 _ABSENT = "absent"
 
 
+def _ryuiki_one_table_proxy(ryuiki_db: pathlib.Path, table: str) -> str:
+    """`ryuiki_db` の `table` 1つの代理指標（行数＋最大rowid）。ファイルか表が無ければ
+    `_ABSENT`。`ryuiki_external` が段の読んだ表だけ遅延計算するのに使う。
+    """
+    if not ryuiki_db.exists():
+        return _ABSENT
+    conn = sqlite3.connect(f"file:{ryuiki_db}?mode=ro", uri=True)
+    try:
+        if not _table_exists(conn, table):
+            return _ABSENT
+        count, max_rowid = conn.execute(f"SELECT COUNT(*), MAX(rowid) FROM {table}").fetchone()
+        return f"count={count};max_rowid={max_rowid}"
+    finally:
+        conn.close()
+
+
 def _ryuiki_table_proxy(ryuiki_db: pathlib.Path) -> dict[str, str]:
     """`V2_RYUIKI_TABLES` それぞれの「行数＋最大rowid」の代理指標
     （モジュールコメント「大きい原本はフルスキャンしない」参照）。
@@ -1243,20 +1256,7 @@ def _ryuiki_table_proxy(ryuiki_db: pathlib.Path) -> dict[str, str]:
     持たない（例: b09 のフィクスチャは `sites` だけで `measurements` を
     持たない）ため、ファイルはあっても個々の表が無いことがある。
     """
-    if not ryuiki_db.exists():
-        return {f"ryuiki.{t}": _ABSENT for t in V2_RYUIKI_TABLES}
-    conn = sqlite3.connect(f"file:{ryuiki_db}?mode=ro", uri=True)
-    try:
-        out: dict[str, str] = {}
-        for t in V2_RYUIKI_TABLES:
-            if not _table_exists(conn, t):
-                out[f"ryuiki.{t}"] = _ABSENT
-                continue
-            count, max_rowid = conn.execute(f"SELECT COUNT(*), MAX(rowid) FROM {t}").fetchone()
-            out[f"ryuiki.{t}"] = f"count={count};max_rowid={max_rowid}"
-        return out
-    finally:
-        conn.close()
+    return {f"ryuiki.{t}": _ryuiki_one_table_proxy(ryuiki_db, t) for t in V2_RYUIKI_TABLES}
 
 
 def _processed_file_hashes(processed_dir: pathlib.Path) -> dict[str, str]:
@@ -1480,150 +1480,199 @@ def check_v2_pipeline_fresh(
 
 EXTERNAL_LINEAGE_PREFIX = "ext:"
 
-# 系譜に載せない読み取り: SQLite のカタログ表・指紋のメタ表自身（検証・記録が読む）。
+# 系譜に載せない読み取り: 指紋のメタ表自身（検証・記録が読む）。SQLite カタログ表は別途除外。
 _LINEAGE_IGNORED_TABLES = frozenset({PIPELINE_FINGERPRINT_TABLE, PIPELINE_INPUT_FINGERPRINT_TABLE})
+
+
+@dataclasses.dataclass(frozen=True)
+class ExternalSource:
+    """別機構が鮮度を見る外部入力（原本・registry）。`label` は系譜のキーに使う論理名
+    （ATTACH の別名ではない。`ext:<label>.<table>`——下流が別の別名で ATTACH しても同じ）。
+    `resolve(table)` はその表の指紋・代理指標（`None` なら宣言外の表）で、読まれた表だけ
+    呼ばれる（遅延計算）。
+    """
+    label: str
+    resolve: Callable[[str], str | None]
+
+
+def ryuiki_external(ryuiki_db) -> ExternalSource:
+    """原本 `ryuiki.sqlite`: 表ごとの代理指標（`compute_v2_input_fingerprint` と同じ取り方）。
+    `V2_RYUIKI_TABLES` 以外の表を読めば止まる（宣言漏れ）。読んだ表だけ COUNT/MAX を引く。
+    """
+    path = pathlib.Path(ryuiki_db)
+    cache: dict[str, str] = {}
+
+    def resolve(table: str) -> str | None:
+        if table not in V2_RYUIKI_TABLES:
+            return None
+        if table not in cache:
+            cache[table] = _ryuiki_one_table_proxy(path, table)
+        return cache[table]
+
+    return ExternalSource("ryuiki", resolve)
+
+
+def registry_external(registry_db) -> ExternalSource:
+    """`registry.sqlite`: ファイル全体の入力指紋（`registry_build.input_fingerprint`）。初回だけ読む。"""
+    path = pathlib.Path(registry_db)
+    cache: list[str] = []
+
+    def resolve(_table: str) -> str:
+        if not cache:
+            cache.append(_registry_input_fingerprint(path))
+        return cache[0]
+
+    return ExternalSource("registry", resolve)
+
+
+@dataclasses.dataclass
+class _ReadSource:
+    conn: sqlite3.Connection
+    external: dict[str, ExternalSource]
+    primary: bool
+    reads: set = dataclasses.field(default_factory=set)  # (db_name or None, table)
+    temp_names: set = dataclasses.field(default_factory=set)  # 段の中で CREATE された TEMP 表・ビュー
 
 
 class LineageTracker:
     """段の系譜（`pipeline_fingerprint.inputs`）を、実際の読み取りから自動生成する
     （Issue #45。手書きの `fingerprint_inputs=` の置き換え）。
 
-    使い方: 段の先頭で `LineageTracker(conn, external={...})`（authorizer が入る）、
-    上流の (a) 検証は `tracker.verify(...)`（`assert_stage_fingerprint_fresh` を
-    呼び、確認済みの指紋を覚える）、出力は `staged_table(..., lineage=tracker)`。
-    差し替え直前に `resolve()` が、`reset()` 以降に読んだ表を次の規則で `inputs`
-    にする。`reset()` を呼ばなければ段の先頭からの全読み取りが対象（単一出力の段）。
-    出力を複数作る段は出力ごとに `reset()` する（出力表ごとの粒度）。
+    使い方:
+        lineage = LineageTracker(conn, external={"reg": registry_external(path)})
+        lineage.verify("observation", rebuild_hint=...)   # 上流の (a)+(b) 検証。冪等
+        with lineage, staged_table(conn, "out", sql, lineage=lineage) as staging:
+            ...  # この with の間の読み取りが、この出力の系譜になる
 
-    読み取り `(schema, table)`（接続が `watch` した別接続分も合算）の扱い:
-    - SQLite カタログ・`pipeline_fingerprint`/`pipeline_input_fingerprint`・`temp`
-      スキーマ・自分の出力と作業用テーブル・resolve 時点で main に実在しない表（DROP 済みの
-      TEMP テーブルは "main" と報告される）→ 無視（一時テーブル・ビューは基底の実表が
-      別に報告されるので落ちない）。
-    - `external[schema]` がある → `inputs["ext:<schema>.<table>"]`。値は str（その
-      ATTACH 先全体の指紋。registry）か `{table: 値}`（原本の表ごとの代理指標）。
+    **`with lineage:` が1つの出力の範囲**（入るたびに読み取りを空にし、出るとき authorizer を
+    必ず解除する。例外時も）。出力を複数作る段（b13）は同じ tracker に出力ごとに入り直す
+    （`verify` 済みの指紋は残る）。with に入る前の読み取り（事前の検査）は系譜に入らない。
+    差し替え時に `staged_table` が `resolve()` で `inputs` を作り、同じトランザクションで記録する。
+
+    **`verify` は `assert_stage_fingerprint_fresh` を `upstream_schemas={}` で呼ぶ**——上流の
+    系譜も再帰的に検査する（b04/b07 で新たに有効になった意図した挙動。上流の上流が古ければ
+    ここで止まる。opt-out は無い）。
+
+    読み取り `(db_name, table)`（`watch` した別接続分も合算）の扱い:
+    - SQLite カタログ・`pipeline_fingerprint`/`pipeline_input_fingerprint`・`temp`・自分の出力と
+      作業用テーブル → 無視。段の中で CREATE された TEMP 表・ビューは authorizer の
+      CREATE_TEMP_* で名前を集めて除外する（列を読まない読み取り〔COUNT(*)・JOIN 条件のみ等〕は
+      db_name が None で報告されるため、名前で見分ける。実在確認はしない——DROP 済みでも
+      宣言漏れは通さない）。
+    - `external[alias]`（`ExternalSource`）にある schema → `inputs["ext:<label>.<table>"]`。
       鮮度の正は `check_v2_pipeline_fresh`（pipeline_input_fingerprint）で、ここは来歴。
-    - `verify` 済み → `inputs[<table>]`（main）/`inputs["<schema>.<table>"]`（ATTACH 先）。
-    - それ以外（未検証の指紋あり表・宣言の無い ATTACH 先・`external` の dict に無い表）
-      → `MigrationError`。検証や宣言を足し忘れた JOIN を機械的に止める。
+    - `verify` 済み → `inputs[<上流の論理名＝表名>]`（ATTACH の別名に依存しない。再帰検査は
+      呼び出し側の `upstream_schemas` で解決する）。
+    - それ以外 → `MigrationError`（検証や宣言を足し忘れた JOIN、宣言の無い ATTACH 先、
+      external が None を返す表）。`watch` した接続は external の宣言が無い ATTACH を必ず止める。
     """
 
-    def __init__(self, conn: sqlite3.Connection, *, external: dict[str, object] | None = None):
-        self._verified: dict[tuple[str, str], str] = {}
-        self._sources: list[tuple[sqlite3.Connection, set[tuple[str, str]], dict, bool]] = []
-        self._add_source(conn, external or {}, primary=True)
+    def __init__(self, conn: sqlite3.Connection, *, external: dict[str, ExternalSource] | None = None):
+        self._verified: dict[str, str] = {}
+        self._verified_schema: dict[str, str] = {}
+        self._sources = [_ReadSource(conn, dict(external or {}), primary=True)]
+        self._entered = False
 
-    def _add_source(self, conn, external, *, primary: bool) -> None:
-        reads: set[tuple[str, str]] = set()
+    def __enter__(self) -> "LineageTracker":
+        self._entered = True
+        self._install(self._sources[0])
+        return self
+
+    def __exit__(self, *_exc) -> None:
+        self._release()
+        self._sources = self._sources[:1]
+        self._entered = False
+
+    @staticmethod
+    def _install(source: _ReadSource) -> None:
+        source.reads.clear()
+        source.temp_names.clear()
+        reads, temp_names = source.reads, source.temp_names
 
         def authorizer(action, arg1, arg2, db_name, _trigger_or_view):
             if action == sqlite3.SQLITE_READ:
-                reads.add((db_name or "main", arg1))
+                reads.add((db_name, arg1))
+            elif action in (sqlite3.SQLITE_CREATE_TEMP_TABLE, sqlite3.SQLITE_CREATE_TEMP_VIEW):
+                temp_names.add(arg1)
             return sqlite3.SQLITE_OK
 
-        conn.set_authorizer(authorizer)
-        self._sources.append((conn, reads, dict(external), primary))
+        source.conn.set_authorizer(authorizer)
 
-    def watch(self, conn: sqlite3.Connection, *, external: dict[str, object]) -> None:
-        """出力の接続とは別の接続（b03/b06 が原本・registry を読む `:memory:` の作業用
-        接続）の読み取りも系譜に合算する。その接続の `main`/`temp` は無視し、読んだ
-        ATTACH 先は必ず `external` に宣言されていること。authorizer は接続を閉じる
-        まで（または `release()` まで）効く。
+    def _release(self) -> None:
+        for source in self._sources:
+            try:
+                if sys.version_info >= (3, 11):
+                    source.conn.set_authorizer(None)
+                else:
+                    # Python 3.10 以下は None で解除できない（None を渡すとその接続の以後の
+                    # 全文が not authorized になる）。「常に許可する」コールバックに差し替える。
+                    source.conn.set_authorizer(lambda *_args: sqlite3.SQLITE_OK)
+            except sqlite3.ProgrammingError:
+                pass  # 接続が既に閉じている
+
+    def watch(self, conn: sqlite3.Connection, *, external: dict[str, ExternalSource]) -> None:
+        """出力の接続とは別の接続（b03/b06 が原本・registry を読む `:memory:` の作業用接続）の
+        読み取りも系譜に合算する（`with lineage:` の中で呼ぶ）。その接続の main/temp は無視し、
+        読んだ ATTACH 先は必ず `external` に宣言されていること（無ければ止まる）。
         """
-        self._add_source(conn, external, primary=False)
+        if not self._entered:
+            raise MigrationError("LineageTracker.watch は `with lineage:` の中で呼ぶこと。")
+        source = _ReadSource(conn, dict(external), primary=False)
+        self._install(source)
+        self._sources.append(source)
 
     def verify(
         self, table: str, *, schema: str | None = None, rebuild_hint: str,
         upstream_schemas: dict[str, str] | None = None,
     ) -> str:
-        """`assert_stage_fingerprint_fresh` を呼び、確認済みの指紋を覚えて返す。"""
-        # 検証自身の読み取り（上流の全件走査）はこの上流の読み取りとして記録されるのは
-        # 当然なので、tracker の authorizer はそのまま。
+        """`assert_stage_fingerprint_fresh` を呼び、確認済みの指紋を覚えて返す（冪等:
+        2回目以降は覚えた値を返す）。`upstream_schemas` の既定は `{}`（系譜の再帰検査あり）。
+        """
+        if table in self._verified:
+            return self._verified[table]
         fingerprint = assert_stage_fingerprint_fresh(
-            self._primary_conn, table, schema=schema, rebuild_hint=rebuild_hint,
+            self._sources[0].conn, table, schema=schema, rebuild_hint=rebuild_hint,
             upstream_schemas={} if upstream_schemas is None else upstream_schemas,
         )
-        self._verified[(schema or "main", table)] = fingerprint
+        self._verified[table] = fingerprint
+        self._verified_schema[table] = schema or "main"
         return fingerprint
-
-    def is_verified(self, table: str, *, schema: str | None = None) -> bool:
-        return (schema or "main", table) in self._verified
-
-    @property
-    def _primary_conn(self) -> sqlite3.Connection:
-        return self._sources[0][0]
-
-    def reset(self) -> None:
-        """読み取り集合を空にする（`verify` 済みの指紋は残す）。出力表ごとの区切り。"""
-        for _, reads, _, _ in self._sources:
-            reads.clear()
-
-    def release(self) -> None:
-        """authorizer を外す（Python 3.10 以下は `None` で解除できない——None を渡すとその接続の以後の全文が not authorized になる）。"""
-        for conn, _, _, _ in self._sources:
-            try:
-                if sys.version_info >= (3, 11):
-                    conn.set_authorizer(None)
-                else:
-                    conn.set_authorizer(lambda *_args: sqlite3.SQLITE_OK)
-            except sqlite3.ProgrammingError:
-                pass  # 接続が既に閉じている
-
-    def _exists_in_main(self, table: str) -> bool:
-        return self._primary_conn.execute(
-            "SELECT 1 FROM main.sqlite_master WHERE name = ? AND type IN ('table', 'view')", (table,)
-        ).fetchone() is not None
 
     def resolve(self, output: str, staging: str) -> dict[str, str]:
         """`output`（と作業用テーブル `staging`）の系譜 `inputs` を読み取りから作る。"""
         inputs: dict[str, str] = {}
-        for _, reads, external, primary in self._sources:
-            for schema, table in sorted(set(reads)):
-                if table.startswith("sqlite_") or table in _LINEAGE_IGNORED_TABLES or schema == "temp":
+        for source in self._sources:
+            for db_name, table in sorted(source.reads, key=lambda r: (r[0] or "", r[1])):
+                if table.startswith("sqlite_") or table in _LINEAGE_IGNORED_TABLES or db_name == "temp":
                     continue
-                if schema in external:
-                    ext = external[schema]
-                    value = ext if isinstance(ext, str) else ext.get(table)
+                if db_name is None and table in source.temp_names:
+                    continue  # 列を読まない読み取り（COUNT(*) 等）の TEMP 表
+                schema = db_name or "main"
+                ext = source.external.get(schema)
+                if ext is not None:
+                    value = ext.resolve(table)
                     if value is None:
                         raise MigrationError(
-                            f"{output}: {schema}.{table} を読んでいるが、external[{schema!r}] に"
-                            "この表の指紋・代理指標が宣言されていない（読む表を足したなら宣言も足すこと）。"
+                            f"{output}: {schema}.{table} を読んでいるが、この表の指紋・代理指標が"
+                            f"宣言されていない（external の {ext.label}。読む表を足したなら宣言も足すこと）。"
                         )
-                    inputs[f"{EXTERNAL_LINEAGE_PREFIX}{schema}.{table}"] = value
+                    inputs[f"{EXTERNAL_LINEAGE_PREFIX}{ext.label}.{table}"] = value
                     continue
-                if schema == "main" and (not primary or table in (output, staging)):
-                    continue
-                verified = self._verified.get((schema, table))
-                if verified is None and schema == "main" and not self._exists_in_main(table):
-                    # TEMP テーブルは SQLITE_READ で "main" として報告される（実測）。resolve
-                    # までに DROP 済みの作業用テーブル（b04 の `__sample_ids` 等）は入力ではない。
-                    continue
-                if verified is None:
+                if not source.primary:
+                    if schema == "main":
+                        continue  # 作業用接続自身の表
                     raise MigrationError(
-                        f"{output}: {schema}.{table} を読んでいるが、(a) の検証（tracker.verify）も "
-                        "external の宣言もされていない（新しい JOIN・SELECT を足したのに検証か宣言を"
-                        "足し忘れた可能性がある。検証してから読むか、別機構が鮮度を見る入力なら external "
-                        "に宣言すること）。"
+                        f"{output}: 作業用接続が宣言の無い ATTACH 先 {schema}.{table} を読んでいる"
+                        "（external に宣言すること）。"
                     )
-                inputs[table if schema == "main" else f"{schema}.{table}"] = verified
+                if schema == "main" and table in (output, staging):
+                    continue
+                if table not in self._verified or self._verified_schema[table] != schema:
+                    raise MigrationError(
+                        f"{output}: {schema}.{table} を読んでいるが、(a) の検証（lineage.verify）も "
+                        "external の宣言もされていない（新しい JOIN・SELECT を足したのに検証か宣言を"
+                        "足し忘れた可能性がある。検証してから読むか、別機構が鮮度を見る入力なら "
+                        "external に宣言すること）。"
+                    )
+                inputs[table] = self._verified[table]
         return inputs
-
-
-def lineage_external_for_sources(
-    ryuiki_db, registry_db, *, src_alias: str | None = None, registry_alias: str | None = None,
-) -> dict[str, object]:
-    """`LineageTracker` の `external` を、原本（`ryuiki.sqlite`。表ごとの代理指標）と
-    registry（入力指紋）から作る。ATTACH の別名は段ごとに違う（b03/b06 は
-    `src`/`reg`、b09 は `ryuiki`/`reg`、b13 は `registry`）ので呼び出し側が渡す。
-    値は `compute_v2_input_fingerprint` と同じ取り方なので、どちらも
-    `pipeline_input_fingerprint` が鮮度を見る入力と一致する。
-    """
-    external: dict[str, object] = {}
-    if src_alias is not None:
-        external[src_alias] = {
-            table.removeprefix("ryuiki."): value
-            for table, value in _ryuiki_table_proxy(pathlib.Path(ryuiki_db)).items()
-        }
-    if registry_alias is not None:
-        external[registry_alias] = _registry_input_fingerprint(pathlib.Path(registry_db))
-    return external

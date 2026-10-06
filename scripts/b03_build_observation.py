@@ -904,10 +904,9 @@ def build_and_write_observation(
     dest.execute("PRAGMA journal_mode=DELETE")
     # 系譜（Issue #45）: 読み取りから自動生成する。`work`（原本・registry を読む
     # 作業用接続）も watch する。原本の鮮度の正は pipeline_input_fingerprint。
-    lineage = common.LineageTracker(dest)
-    external = common.lineage_external_for_sources(ryuiki_db, registry_db, src_alias="src", registry_alias="reg")
+    work_external = {"src": common.ryuiki_external(ryuiki_db), "reg": common.registry_external(registry_db)}
     try:
-        with common.staged_table(
+        with common.LineageTracker(dest) as lineage, common.staged_table(
             dest, "observation", _CREATE_OBSERVATION_SQL, lineage=lineage,
         ) as staging:
             all_stats: dict[str, dict] = {}
@@ -916,7 +915,7 @@ def build_and_write_observation(
                 try:
                     common.attach_readonly(work, ryuiki_db, "src")
                     common.attach_readonly(work, registry_db, "reg")
-                    lineage.watch(work, external=external)
+                    lineage.watch(work, external=work_external)
                     stats = ingest(work, dest, staging)
                 finally:
                     work.close()
@@ -1005,7 +1004,7 @@ def build_and_write_observation(
             # 指摘の根本対応: `lineage=` を渡したことで、
             # 差し替えのコミットと指紋の記録が同じコミットになり、
             # 「内容は新しいが指紋は古い」状態が原理的に作れなくなる。
-            # `observation` は基底テーブルなので系譜は空）。b04 はこの指紋を
+            # `observation` は基底テーブルで、系譜は原本・registry の ext: 来歴だけ）。b04 はこの指紋を
             # 見て「今の observation から作った observation_agg か」を検証する。
         # v2 パイプラインの入力＋コードの指紋（Issue #48 PR-0 /simplify 指摘1）:
         # ensure-v2.sh/check_v2_fresh.py が「observation を作ったときの入力・
