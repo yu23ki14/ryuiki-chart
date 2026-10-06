@@ -9,6 +9,10 @@
 [ADR-0029](0029-v1-removal-and-verification-handoff.md)（提案中）に書く。本文・層1・層4は
 このADRのまま変えない。
 
+**2026-10-06 追記（Issue #48 PR-5）**: 層2・層3の後継を実装した。層2は `data/sample/serving_snapshot.json`
+（CI の `sample-gate` が凍結比較）、層3は `reports/serving_fingerprint.json`（`full_gate_proof.json` の置き換え。b00 が書く）。
+詳細は [ADR-0029](0029-v1-removal-and-verification-handoff.md) の 2026-10-06 追記。
+
 ## 背景
 
 ADR-0016 の受け入れ基準（`imputation='zero'` の系列で v1 の派生33表を再現
