@@ -7,6 +7,8 @@ from __future__ import annotations
 import pathlib
 
 import pytest
+
+from .manifest_fixtures import write_manifests_from_sources_text
 import sqlite3
 import sys
 
@@ -14,7 +16,6 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import s01_build_sample as s01  # noqa: E402
-from scripts.tests.manifest_fixtures import write_manifests_from_sources_text  # noqa: E402
 
 
 def _build_fixture_ryuiki(path: pathlib.Path) -> None:
@@ -393,7 +394,7 @@ def test_build_declaration_counts_wires_new_occurrence_cube_keys(tmp_path):
 
 def _adapter_manifest(tmp_path, monkeypatch, *, table="wildlife_sightings", file=None, n=400):
     import ingest.manifest as manifest_lib
-    from scripts.tests.manifest_fixtures import write_manifest
+    from .manifest_fixtures import write_manifest
 
     adapters = tmp_path / "adapters"
     adapters.mkdir(exist_ok=True)

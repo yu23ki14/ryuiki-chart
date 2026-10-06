@@ -86,6 +86,7 @@ const OUT_CLIENT =
 const OUT_ID_MAP =
   process.env.RYUIKI_REGISTRY_TS_OUT_ID_MAP ?? path.join(WEB, "src", "lib", "registry", "generated-id-map.ts");
 const MANIFESTS_DIR = process.env.RYUIKI_MANIFESTS_DIR ?? path.join(REPO, "manifests");
+const SOURCE_COMMITTED = path.join(WEB, "src", "lib", "registry", "generated-source.ts");
 const OUT_SOURCE =
   process.env.RYUIKI_REGISTRY_TS_OUT_SOURCE ?? path.join(WEB, "src", "lib", "registry", "generated-source.ts");
 
@@ -336,6 +337,18 @@ for (const e of sourceEditions) {
 }
 
 // 出現データの出典 = マニフェスト（target=occurrence）。新出典を adapter で足せば web を触らずに provenance/freshness に載る。
+// `r01 --files-only`（原本の ryuiki.sqlite を開かない CI のビルド）は source / source_edition / license を作らない
+// （原本の source_registry が要る）。その registry では出典メタ（generated-source.ts の SOURCE_META 等）を
+// 再生成できないので、**既存の generated-source.ts を保持**し、registry との照合は「files-only のため未照合」と明示してスキップする。
+// 出典メタはフルビルド（原本のある環境の `pnpm run build:registry:ts`）でだけ更新する。
+// ただしマニフェスト由来の OCCURRENCE_SOURCE_IDS は registry を要さないので、files-only でも保持した生成物と突合して止める。
+const filesOnly = (() => {
+  try {
+    return db.prepare("SELECT mode FROM registry_build").get()?.mode === "files-only";
+  } catch {
+    return false;
+  }
+})();
 const knownSourceIds = new Set(sourceMeta.map((m) => m.sourceId));
 const occurrenceSourceIds = fs
   .readdirSync(MANIFESTS_DIR)
@@ -344,7 +357,7 @@ const occurrenceSourceIds = fs
   .map((f) => ({ file: f, doc: loadYaml(fs.readFileSync(path.join(MANIFESTS_DIR, f), "utf8")) }))
   .filter(({ doc }) => doc?.target === "occurrence")
   .map(({ file, doc }) => {
-    if (!knownSourceIds.has(doc.source)) {
+    if (!filesOnly && !knownSourceIds.has(doc.source)) {
       throw new Error(`manifests/${file} の source=${doc.source} が registry の source に無い（r01 を再実行すること）`);
     }
     return doc.source;
@@ -774,7 +787,20 @@ export const LICENSES: readonly GeneratedLicense[] = ${emitObjectArray(licenses,
 `;
 
 fs.mkdirSync(path.dirname(OUT_SERVER), { recursive: true });
-fs.writeFileSync(OUT_SOURCE, sourceOut);
+if (filesOnly) {
+  const kept = fs.readFileSync(SOURCE_COMMITTED, "utf8");
+  const m = /export const OCCURRENCE_SOURCE_IDS: readonly string\[\] = (\[.*?\]);/.exec(kept);
+  if (!m || m[1] !== JSON.stringify(occurrenceSourceIds)) {
+    throw new Error(
+      `files-only のため出典メタは再生成しないが、保持した generated-source.ts の OCCURRENCE_SOURCE_IDS が manifests/（target=occurrence）` +
+        `${JSON.stringify(occurrenceSourceIds)} と食い違う。原本のある環境で \`pnpm run build:registry:ts\`（フルビルド）を実行して更新すること`,
+    );
+  }
+  if (path.resolve(OUT_SOURCE) !== path.resolve(SOURCE_COMMITTED)) fs.writeFileSync(OUT_SOURCE, kept); // 出力先が別なら保持した内容を写す（再生成テストがバイト一致を確かめられる）
+  console.log("files-only のため出典メタ（generated-source.ts）は再生成せず既存を保持した（registry との照合は未実施）");
+} else {
+  fs.writeFileSync(OUT_SOURCE, sourceOut);
+}
 fs.writeFileSync(OUT_SERVER, serverOut);
 fs.writeFileSync(OUT_CLIENT, clientOut);
 fs.writeFileSync(OUT_ID_MAP, idMapOut);
@@ -782,7 +808,7 @@ console.log(
   `wrote ${path.relative(REPO, OUT_SERVER)} ` +
     `(units=${units.length} variables=${variables.length} aliases=${variableAliases.length})`,
 );
-console.log(`wrote ${path.relative(REPO, OUT_SOURCE)} (sources=${sourceMeta.length} editions=${sourceEditions.length} licenses=${licenses.length})`);
+if (!filesOnly) console.log(`wrote ${path.relative(REPO, OUT_SOURCE)} (sources=${sourceMeta.length} editions=${sourceEditions.length} licenses=${licenses.length})`);
 console.log(`wrote ${path.relative(REPO, OUT_ID_MAP)} (legacyPlaceIds=${legacyPlaceIds.length})`);
 console.log(
   `wrote ${path.relative(REPO, OUT_CLIENT)} ` +
