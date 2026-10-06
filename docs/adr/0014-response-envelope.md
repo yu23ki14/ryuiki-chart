@@ -19,7 +19,7 @@
 
 ## 背景
 
-現行の API は画面ごとに生えている（`/api/timeseries` `/api/biota` `/api/nature?kind=`
+現行の API は画面ごとに生えている（`/api/timeseries` `/api/biota` `/api/nature?kind=`（→ Issue #61 で撤去）
 `/api/quality` `/api/geo/*` `/api/column` `/api/table` …）。任意 SQL の `/api/sql` と
 全表スキャンの `/api/table` `/api/schema` は `EXPLORE_ENABLED=false` で閉じている
 （公開 URL に任意 SQL を出さないため）。

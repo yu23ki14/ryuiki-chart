@@ -37,13 +37,13 @@ export const TABLE_ORIGIN: Record<string, string> = {
   // Tier 1 追加ソース（docs/UNDATAFIED_TIERS.md）。原本は ryuiki.sqlite。
   protected_areas: "main", vegetation_polygons: "main", mammal_mesh: "main",
   wildlife_sightings: "main", river_segments: "main",
-  // 水道水の水源マップ（docs/WATER_SOURCE_MAP.md）。原本は data/water/*.csv → ryuiki.sqlite
+  // 水道水の水源マップ（docs/WATER_SOURCE_MAP.md）。原本は data/water/*.csv → ryuiki.sqlite。
+  // v2 にキューブ化しない台帳表として D1 に残す（Issue #61）。run_sql で「この町の水源はどこか」に答える用途
   water_utility: "main", water_source: "main", water_facility: "main",
   water_source_doc: "main", water_flow_edge: "main", water_zone: "main",
   water_zone_assignment: "main", water_zone_source_share: "main",
   // cells.sqlite 由来
-  cells: "c", documents: "c", extraction_log: "c", notes: "c",
-  vocab_areas: "c", vocab_eras: "c", vocab_indicators: "c", vocab_units: "c",
+  cells: "c", documents: "c", notes: "c",
   // v2.sqlite 由来（Issue #48）。観測キューブ・生物キューブと、その事前集計
   observation_agg: "v2", occurrence_agg: "v2",
   summary_variable_catalog: "v2", summary_place_variable: "v2",
@@ -61,11 +61,6 @@ export const TABLE_META: Record<string, string> = {
   documents: "抽出元の行政文書（PDF）",
   cells: "行政文書の表のセル。行キー・列キー・年度・出典ページつき",
   notes: "表に付随する注記。時系列比較を阻害する注記のフラグを含む",
-  vocab_areas: "文書中に現れる地域名とその定義",
-  vocab_indicators: "文書中に現れる指標名と単位・測定法",
-  vocab_units: "文書中に現れる単位表記",
-  vocab_eras: "文書中に現れる年号表記",
-  extraction_log: "抽出処理のログ",
   protected_areas:
     "保護区・緑地・保存樹木の指定台帳。自然公園／特別緑地保全地区／近郊緑地保全区域／" +
     "歴史的風土保存地区／風致地区／都市公園／保存樹木を category_code で束ねている",

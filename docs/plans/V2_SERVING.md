@@ -67,7 +67,8 @@ v1 の派生表（`web/scripts/build-derived.mjs` が書く `derived.sqlite`）�
 | L2 | `observation` / `occurrence` / `occurrence_place` | **入れない**（ADR-0001「D1 は L3 の配信キャッシュ」） |
 | 派生33表 | `meas_*` / `zone_*` / `sensor_*` / `species*` / `org_*` / `mesh_*` / `redlist_*` / `doc_series*` / `quality_monthly` / `landuse_*` / `effort_year` / `ias_species` / `var_catalog` / `site_var` / `watershed_rollup` 等 | **落とす**（PR-5） |
 | その他落とすもの | `measurements` / `sensor_timeseries` / `organism_records` / `taxa` / `redlist_assessments`（`web/src/db/schema.ts` 既存）・合成データ系表（`decisions` / `interventions` / `quality_transitions` / `observers` / `events` / `event_observers`） | **落とす** |
-| PR-6 送り | `water_*`（6表）・`vocab_*`（4表）・`extraction_log` | PR-6（任意）で落とす |
+| 落とした（Issue #61） | `vocab_*`（4表）・`extraction_log` | 落とした（マイグレーション `0011`） |
+| 残す（Issue #61） | `water_*`（8表） | v2 の台帳表として D1 に残す。AI が `run_sql` で「この町の水源はどこか」に答える用途 |
 
 容量見積もり（実測）: 今のローカル D1 1,295MB → 約500〜900MB。D1 の上限（10GB、込み容量
 5GB）に余裕がある（§8）。
@@ -333,15 +334,16 @@ DROP は 46 表（派生33＋落とす原本11＋`instruments`/`protocols`）、
 
 ### PR-6（任意）
 
-状態: 未着手
+※ `not_detected` の `value_zero` 例外の撤去と b03 `--include-synthetic` の撤去は Issue #61（2026-10-06）で実施済み。
 
-- `water_*`（`waterUtility`/`waterSource`/`waterFacility`/`waterSourceDoc`/`waterFlowEdge`/
-  `waterZone`/`waterZoneAssignment`/`waterZoneSourceShare`）/ `vocab_*`
-  （`vocabAreas`/`vocabEras`/`vocabIndicators`/`vocabUnits`）/ `extractionLog`
-  （すべて `web/src/db/schema.ts` 既存）を D1 から落とす。
+状態: Issue #61 で決定・実装（`water_*` 以外）
+
+- `vocab_*`（`vocabAreas`/`vocabEras`/`vocabIndicators`/`vocabUnits`）/ `extractionLog` を D1 から
+  落とした（マイグレーション `0011`。Issue #61）。
+- `water_*`（8表）は**落とさない**。v2 の台帳表として D1 に残す（オーナー決定、Issue #61）。
 - `not_detected` の `value_zero` 例外（ADR-0009 決定4「v1 再現のための時限的な例外」）を
   撤去する。
-- `web/src/app/api/nature`（既存、`kind=` クエリ）系を整理する。
+- `web/src/app/api/nature` は呼び出し元が無いのでルートごと削除した（Issue #61）。`/api/geo/*` は残す。
 
 ## 6. 決定事項（アドバイザーの14件への回答。オーナーの方針に沿って確定）
 
@@ -350,7 +352,7 @@ DROP は 46 表（派生33＋落とす原本11＋`instruments`/`protocols`）、
 | 1 | D1 に L2 を入れるか | 入れない（A案）。`run_sql`（`web/src/lib/ai/tools.ts` 既存）はキューブ・レジストリ・残す原本表に限る |
 | 2 | 種の英名・レッドリストの解決 | 種の英名は `taxon.vernacular_name_en`（r01 で決定論的に）。RL は `taxon_assessment`。名前が変わる種数は PR-3b の差分表で数える |
 | 3 | 画面・AI/API の代入方式 | 画面は `lod` のみ（注記付き）。AI/API の封筒は `value_zero`/`value_lod` の両方。`half_lod` は出さない（ADR-0009 決定4） |
-| 4 | `not_detected` の `value_zero` 例外 | PR-5 の後（PR-6）で撤去する |
+| 4 | `not_detected` の `value_zero` 例外 | 撤去済み（Issue #61、2026-10-06） |
 | 5 | `above_lod`（透明度26行） | 現状維持（非メンバー＋`aboveLod` 注記） |
 | 6 | 雨量の単位不明の推測換算 | **`/10`（v1 の単位不明の推測換算）をやめ、原値に「単位不明」の注記を付ける**（推測で埋めない）。3,654行の表示値が10倍になる |
 | 7 | 合成データ | 出さない（オーナー決定、§2-3）。キューブの鍵に `source_id` を足す案は採らない |
@@ -358,7 +360,7 @@ DROP は 46 表（派生33＋落とす原本11＋`instruments`/`protocols`）、
 | 9 | 月別平年値の系列の混在 | `mean`/`point` の系列を `variable_id` で混ぜる。AI の封筒には系列の内訳を付ける |
 | 10 | `doc_series` の v1 のバグ4件 | 直す（label の `\|` 切り出し・`n_warnings`・`col_key` 潰れ・裸列、`docs/plans/PHASE_B_DOCUMENTS.md` §3）。差分は serving-diff で数える |
 | 11 | ペア測定（合成） | 画面ごと撤去する（決定7に従う） |
-| 12 | `water_*`/`vocab_*`/`extraction_log` | D1 から落とす（PR-6） |
+| 12 | `water_*`/`vocab_*`/`extraction_log` | `vocab_*`/`extraction_log` は落とした。`water_*` は v2 の台帳表として残す（Issue #61 で改訂） |
 | 13 | summary 表 | 4表を持つ（YAML 宣言、b13。指標カタログ・地点×指標・種カタログ・流域別出現。種カタログ・流域別出現は PR-3a） |
 | 14 | `describe_schema`/`run_sql`/`/api/column` | `describe_schema` はカタログの表だけ。`run_sql` は残し、対象を更新する。`/api/column` にゲートを付ける |
 

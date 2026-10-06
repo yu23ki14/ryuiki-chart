@@ -43,8 +43,10 @@ ALL_CENSORING_VALUES = (
     CENSORING_UNKNOWN,
 )
 
-# `imputation='zero'` が 0.0 を代入してよいのはこの2つだけ（ADR-0009 決定2・
-# design.md D2）。`above_lod` に 0 を入れない理由: 0 は上限ではない
+# `value_zero` 系列が 0.0 を代入してよいのは `below_lod` だけ（ADR-0009 決定2・
+# design.md D2。2026-10-06 追記〔Issue #61〕: `not_detected` への 0 代入は v1 再現の
+# ための時限的な例外だったので撤去した。ND は `value_zero` でも平均・MIN/MAX から
+# 除外する）。`above_lod` に 0 を入れない理由: 0 は上限ではない
 # （`<0.5` の 0.5 と違い、`>3.2` の 3.2 は「これより大きい」という下限情報であり、
 # 0 を代入すると値の意味が逆転する）。`unknown` に入れない理由: 限界が
 # 分からないものを推測しない（ADR-0009 決定3 と同じ原則）。
@@ -58,7 +60,7 @@ ALL_CENSORING_VALUES = (
 # 正しく 0 を代入していること自体は
 # `scripts/tests/test_b04_build_cube.py::test_zero_and_lod_series_per_censoring_branch`
 # がキューブ経由（`observation_agg` を実際に読む）で確認する——こちらが本物のテスト）。
-ZERO_IMPUTED_CENSORING = (CENSORING_BELOW_LOD, CENSORING_NOT_DETECTED)
+ZERO_IMPUTED_CENSORING = (CENSORING_BELOW_LOD,)
 
 
 def classify_censoring(value_raw: str | None) -> tuple[str, float | None]:

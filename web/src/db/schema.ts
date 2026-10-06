@@ -95,18 +95,6 @@ export const documents = sqliteTable("documents", {
 	fetchedAt: text("fetched_at"),
 });
 
-export const extractionLog = sqliteTable("extraction_log", {
-	ts: text(),
-	docId: text("doc_id"),
-	pageNo: integer("page_no"),
-	tableId: text("table_id"),
-	role: text(),
-	attempt: integer(),
-	verdict: text(),
-	failures: text(),
-	note: text(),
-});
-
 export const notes = sqliteTable("notes", {
 	// 原本では TEXT PRIMARY KEY だが 207 行のうち 30 行が NULL（SQLite は非 INTEGER の
 	// 主キーに NULL を許す）。PRIMARY KEY にすると NOT NULL が付いて原本が入らないので、
@@ -120,36 +108,6 @@ export const notes = sqliteTable("notes", {
 	blocksTimeseries: integer("blocks_timeseries"),
 	reason: text(),
 });
-
-export const vocabAreas = sqliteTable("vocab_areas", {
-	docId: text("doc_id"),
-	name: text(),
-	definition: text(),
-	foundDefinition: integer("found_definition"),
-	pages: text(),
-});
-
-export const vocabEras = sqliteTable("vocab_eras", {
-	docId: text("doc_id"),
-	literal: text(),
-	pages: text(),
-});
-
-export const vocabIndicators = sqliteTable("vocab_indicators", {
-	docId: text("doc_id"),
-	name: text(),
-	unit: text(),
-	method: text(),
-	pages: text(),
-});
-
-export const vocabUnits = sqliteTable("vocab_units", {
-	docId: text("doc_id"),
-	literal: text(),
-	quantity: text(),
-	pages: text(),
-});
-
 
 /* ------------------------------------------------------------------ */
 /* Tier 1 追加ソース（docs/UNDATAFIED_TIERS.md）                        */

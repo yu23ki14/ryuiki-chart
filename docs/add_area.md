@@ -486,7 +486,7 @@ PDFが変わるだけ）。
 | **L0** | `SELECT count(*) FROM sites WHERE region_id='jp-XX'` が0でない。地図の `web/public/geo/watersheds.geojson` / `rivers.geojson` に対象エリアの feature が含まれる。 | 地図に流域界と河川が出る。 |
 | **L1** | `SELECT count(*) FROM organism_records WHERE region_id='jp-XX'`（列追加後）または該当 `source_id` で件数確認。 | 生物出現（`/biota`）にエリアの記録が乗る。**ただし `biotaTotals()`/`build-biota.mjs` の直書き（§9）を直さない限り、合計カードには反映されない。** |
 | **L2** | `measurements` / `sensor_timeseries` に該当 `region_id`（または `source_id`）の行があり、`m99_validate.py` の期間集計に現れる。 | 水質・気象の時系列（`/quality` 等）にエリアの系列が出る。 |
-| **L3** | `protected_areas` / `vegetation_polygons` / `mammal_mesh` / `wildlife_sightings` / `river_segments` のいずれかに該当エリアの行がある。`/api/nature?kind=...` が空でない応答を返す。 | Tier1相当の自然系データ（保護区・植生・メッシュ分布・出没記録）が地図・一覧に出る。 |
+| **L3** | `protected_areas` / `vegetation_polygons` / `mammal_mesh` / `wildlife_sightings` / `river_segments` のいずれかに該当エリアの行がある。`/api/geo/{protected-areas,vegetation,river-segments}` が空でない応答を返す（`wildlife_sightings`・`mammal_mesh` は D1 を直接引いて確認する）。 | Tier1相当の自然系データ（保護区・植生・メッシュ分布・出没記録）が地図・一覧に出る。 |
 | **L4** | `water_zone` 等の水道系テーブルに該当エリアの行があり、`docs/add_utility.md` の検証（`m06_water.py --dry-run`）が通る。行政文書（`documents` / `cells`）にも該当エリアの文書がある。 | 神奈川と同等（行政文書の参照、水道水源マップ）。 |
 
 **どの段階なら公開してよいか**: 少なくとも **L2 まで到達し、§9 の

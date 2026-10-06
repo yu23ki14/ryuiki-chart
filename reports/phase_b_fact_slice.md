@@ -4,7 +4,7 @@
 
 - 入力（`measurements`+`sensor_timeseries`+土地利用CSV）総行数: **1,045,861**
 - `observation` 総行数: **1,029,034**（出典ごとの 入力行数→observation行数: measurements=323,164→320,899, nlni_l03b_landuse_by_watershed=4,858→9,716, sensor_timeseries=717,839→698,419。土地利用だけ CSV の1行が面積・セル数の2 observation 行になるため、入力行数と observation 行数が1:1にならない）
-- 合成データ（`is_synthetic=1`）を除外した行数（出典合計）: **21,685**（Issue #48 PR-0 オーナー決定。`--include-synthetic` を渡した診断専用の実行では 0 のまま——除外していないため。内訳は出典ごとの節を参照）
+- 合成データ（`is_synthetic=1`）を除外した行数（出典合計）: **21,685**（Issue #48 PR-0 オーナー決定。内訳は出典ごとの節を参照）
 
 ## 出典: `measurements`
 
@@ -24,7 +24,7 @@
 | `above_lod` | 26 |
 | `unknown` | 0 |
 
-`imputation='zero'` で値（0.0）が入る行（`below_lod` + `not_detected`）: **76,768行**（`above_lod`/`unknown` には代入しない。design.md D2）。
+`value_zero` 系列で値（0.0）が入る行（`below_lod` のみ。`not_detected` は Issue #61 で除外に変更）: **75,701行**（`above_lod`/`unknown` には代入しない。design.md D2）。
 
 value_grain != period_grain（食い違う行。宣言表でカバーされている分のみ許される）: **3,840行**
 
@@ -36,7 +36,7 @@ value_grain != period_grain（食い違う行。宣言表でカバーされて�
 - alias（variable_alias）解決率: 698,419 / 698,419 （合成データを除いた行のうち。全行解決。1行でも未解決なら、このレポート自体が作られず b03 が例外で止まる）
 - place（place_source_ref）解決率: 698,419 / 698,419 （同上。全行解決）
 
-センサーに検閲の概念は無い（design.md T3）。`censoring` は常に `'none'`・`value_raw` は常に NULL。`sensor_timeseries.result IS NULL` の行はそのまま `value_num=NULL` で運び、b04 の `WHERE v_zero IS NOT NULL` でキューブから自然に除外される。
+センサーに検閲の概念は無い（design.md T3）。`censoring` は常に `'none'`・`value_raw` は常に NULL。`sensor_timeseries.result IS NULL` の行はそのまま `value_num=NULL` で運び、b04 のメンバー条件（`_MEMBER_SQL`）でキューブから自然に除外される。
 
 value_grain != period_grain（食い違う行。宣言表でカバーされている分のみ許される）: **0行**
 

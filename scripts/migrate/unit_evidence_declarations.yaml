@@ -29,5 +29,5 @@
 #
 # 診断専用の「v1互換キューブ」（合成データを含む observation）は、この系列がまた現れるため
 # 別ファイルの宣言を使っていたが、Issue #48 PR-5 でその段ごと撤去した（b03 の
-# `--include-synthetic` は診断用の単体オプションとして残っている）。
+# `--include-synthetic` も Issue #61 で撤去した）。
 declared: []

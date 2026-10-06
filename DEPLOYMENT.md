@@ -279,6 +279,37 @@ pnpm wrangler d1 migrations list ryuiki --remote   # 本番の適用済みを確
 - `0010` を A より先に当てない。
 - サイズ見積もりの根拠は `docs/plans/V2_SERVING.md` §8。
 
+## v1 撤去の後片付けの本番切り替え（Issue #61）
+
+`0011`（`vocab_areas`/`vocab_eras`/`vocab_indicators`/`vocab_units`/`extraction_log` の5表を DROP）と、
+b04 の集計変更（ND を `value_zero` の平均からも除外する）を本番へ出す手順。手順書で、**実施はまだ**。`water_*` は残す。
+b04 の変更で `observation_agg` の値と、そこから作る `summary_*`（b13 の出力）が変わるので、コードだけでなく**データの再投入が要る**。
+
+順序: **コードのデプロイ → `0011` DROP → キューブ・summary の再投入 → 画面と AI の確認**。
+
+1. **コードのデプロイ**: main で `pnpm run deploy`。この版は 5 表を参照しない（`/api/nature` も消える）。
+   動作確認は「v1 撤去後の本番切り替え」節の手順 B と同じ。
+2. **DROP**: 十分に様子を見てから `pnpm run db:migrate:remote`（`0011` が当たる）。
+   `pnpm wrangler d1 info ryuiki` で表数が 40（実測。5 表減る）になったことを確認。
+3. **キューブ・summary の再投入**: 手元で `build:v2` と D1 のシードが済んだ最新の状態から、`web/src/db/schema-cube.ts` の
+   `observation_agg`（b04）と、そこから作る `summary_variable_catalog`・`summary_place_variable`（b13）を書き出して流す。
+   生物側の `occurrence_agg`・`summary_taxon_catalog`・`summary_watershed_occurrence`・`summary_species_catalog`・`summary_group_year`・
+   `summary_effort_year`・`summary_grid_catalog` は今回の変更の対象外だが、ローカル D1 と行数・内容が一致しないものがあれば同じ手で入れ直す。
+   `reports/serving_fingerprint.json` の `git_head` が今のコードであることと `scripts/check_v2_fresh.py` の鮮度を、入れる前に確かめる。
+   入れ直す表は本番に行があるので、流す前に `DELETE FROM` する（素の `INSERT INTO` のため主キーが衝突する）。
+
+   ```bash
+   pnpm run db:export -- --table observation_agg,summary_variable_catalog,summary_place_variable
+   ```
+
+   流し方は「3. データを入れる」のファイル単位の再試行ループと同じ（`wrangler d1 execute --remote --file`）。`wrangler d1 export` は使わない。
+   投入中は該当画面の値が空か古いので、手順 1〜2 のあと続けて行う。rows written の予算（5,000 万行/月）を数えること。
+4. **確認**: `pnpm run db:verify:remote`（行数がローカル D1 と一致）。画面（`/timeseries`・`/sites`・`/`）と AI の注記で、
+   ND（不検出）の平均が下がっていない・`reports/serving_fingerprint.json` の代表値と矛盾しないことを見る。
+
+ロールバック: 手順 1 は `wrangler rollback`。手順 2 以降（DROP・再投入）は Time Travel（`0011` の直前）になるので、
+**ロールバックは事前にオーナーの許可を取ってから行う**。逆順（DROP が先）にしない。
+
 ## 更新するとき
 
 ### スキーマを変えた
@@ -361,11 +392,11 @@ V8 fatal error; location = Reached heap limit; message = : allocation failed: Ja
 本番投入で `statement too long: SQLITE_TOOBIG` になった。ローカルの SQLite にはこの上限が無いので、
 書き出した .sql を復元して確かめる検証では気付けない。`Buffer.byteLength` で測ること。
 
-**1 行だけで 100KB を超える行がある。** `vegetation_polygons.geometry_geojson`（10 行）と
-`extraction_log`（6 行）。バッチをどう割っても 1 文に収まらないので、
+**1 行だけで 100KB を超える行がある。** `vegetation_polygons.geometry_geojson`（10 行）など。
+（かつては `extraction_log`（6 行）もあったが Issue #61 で落とした。）バッチをどう割っても 1 文に収まらないので、
 `export-d1-sql.mjs` は大きい TEXT 列を空で INSERT してから
 `UPDATE … SET col = col || '…'` で 8000 文字ずつ継ぎ足す。
-追記先は主キーで特定し、主キーが無いテーブル（`extraction_log`）は分割しない列すべてで特定して、
+追記先は主キーで特定し、主キーが無いテーブルは分割しない列すべてで特定して、
 一意にならなければエラーで止める。
 
 **大きいファイルはアップロードで落ちる。** `wrangler d1 execute --remote --file` は

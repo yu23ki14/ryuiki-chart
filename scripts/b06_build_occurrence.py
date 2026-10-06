@@ -76,10 +76,8 @@ NULL にするだけで扱えるようにしてある。座標があるのに gr
 現状は no-op だが、`_ingest` は `is_synthetic=1` の行を alias/place 解決より
 前に明示的に弾く——将来合成の出現記録が足されても黙って `occurrence` に
 通さないための防御。除外した行数は `stats["synthetic_excluded_count"]` に
-積み、`reports/phase_b_occurrence.md` に出す。b03 と違い `--include-synthetic`
-は持たない——`organism_records` は診断用 v1互換キューブ（b03 §1(d)）の対象
-外（v1 の occurrence 系派生表は突合の宣言済み差分に合成データを含まない）
-なので、除外を切り替える必要が無い。
+積み、`reports/phase_b_occurrence.md` に出す。b03 と同じく除外を切り替える
+オプションは持たない（b03 の `--include-synthetic` は Issue #61 で撤去した）。
 
 ## 機械検証（1つでも失敗すれば `MigrationError`（のサブクラス）で止まる）
 

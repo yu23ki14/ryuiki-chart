@@ -170,8 +170,9 @@ describe("queryCells/summarize: variableId + water/places スコープ（バイ�
     expect(rows).toHaveLength(1);
     expect(rows[0].month).toBe(1);
     expect(rows[0].n).toBe(5);
-    expect(rows[0].avg).toBeCloseTo((10 + 8 + 0 + 15 + 17) / 5, 6);
-    expect(rows[0].min).toBe(0);
+    // fx_place_a の3日目（不検出）は value_zero も NULL なので平均・最小に入らない（Issue #61）。
+    expect(rows[0].avg).toBeCloseTo((10 + 8 + 15 + 17) / 4, 6);
+    expect(rows[0].min).toBe(8);
     expect(rows[0].max).toBe(17);
   });
 
@@ -188,7 +189,7 @@ describe("queryCells/summarize: variableId + water/places スコープ（バイ�
     expect(zone3).toHaveLength(1);
     expect(zone3[0].nSites).toBe(2);
     expect(zone3[0].n).toBe(5);
-    expect(zone3[0].avg).toBeCloseTo((10 + 8 + 0 + 15 + 17) / 5, 6);
+    expect(zone3[0].avg).toBeCloseTo((10 + 8 + 15 + 17) / 4, 6); // 不検出日は value_zero でも除外（Issue #61）
   });
 
   it("summarize zone_month_of_year: variableId + water（fx_site_a/b、zone=3・month=1）", async () => {
@@ -219,7 +220,7 @@ describe("queryCells/summarize: variableId + water/places スコープ（バイ�
     expect(rows[0].nSites).toBe(2);
     expect(rows[0].n).toBe(5);
     expect(rows[0].avg).toBeNull();
-    expect(rows[0].avgZero).toBeCloseTo((10 + 8 + 0 + 15 + 17) / 5, 6);
+    expect(rows[0].avgZero).toBeCloseTo((10 + 8 + 15 + 17) / 4, 6); // fx_site_a 3日目は不検出で value_zero も NULL（Issue #61）
     expect(rows[0].avgLod).toBeCloseTo((10 + 6 + 15 + 17) / 4, 6); // fx_site_a 3日目は不検出で無視される
   });
 
@@ -236,7 +237,7 @@ describe("queryCells/summarize: variableId + water/places スコープ（バイ�
     expect(rows[0].placeId).toBe(FX.places.a);
     expect(rows[0].siteId).toBe(FX.sites.a);
     expect(rows[0].n).toBe(3);
-    expect(rows[0].avg).toBe(6.0);
+    expect(rows[0].avg).toBe(9.0); // (10 + 8) / 2。不検出日は value_zero でも除外（Issue #61）
   });
 
   it("summarize series: variableId + water（fx_site_a/b の3系列組に分かれる）", async () => {
@@ -296,7 +297,7 @@ describe("queryCells: grain / inputGrain / period", () => {
 });
 
 describe("queryCells: imputation（value_zero/value_lod、検閲・不検出）", () => {
-  it("zero は value_zero を使う（不検出日は0）", async () => {
+  it("zero は value_zero を使う（不検出日は NULL。Issue #61 で 0 から変更）", async () => {
     const spec: CellSpec = {
       series: [FX.series.ssMean],
       scope: { kind: "site", siteId: FX.sites.a },
@@ -305,7 +306,8 @@ describe("queryCells: imputation（value_zero/value_lod、検閲・不検出）"
       imputation: "zero",
     };
     const { rows } = await queryCells(fx.db, spec);
-    expect(rows[0].value).toBe(0.0);
+    expect(rows[0].value).toBeNull();
+    expect(rows[0].valueZero).toBeNull();
     expect(rows[0].valueLod).toBeNull();
     expect(rows[0].nNotDetected).toBe(1);
   });
@@ -349,8 +351,8 @@ describe("summarize: month_of_year（climatology）", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].month).toBe(1);
     expect(rows[0].n).toBe(3);
-    expect(rows[0].avg).toBeCloseTo((10 + 8 + 0) / 3, 6);
-    expect(rows[0].min).toBe(0);
+    expect(rows[0].avg).toBeCloseTo((10 + 8) / 2, 6); // 3日目（不検出）は value_zero も NULL で除外（Issue #61）
+    expect(rows[0].min).toBe(8);
     expect(rows[0].max).toBe(10);
   });
 
@@ -380,7 +382,7 @@ describe("summarize: month_of_year（climatology）", () => {
     expect(rows[0].month).toBe(1);
     expect(rows[0].n).toBe(3);
     expect(rows[0].avg).toBeNull();
-    expect(rows[0].avgZero).toBeCloseTo((10 + 8 + 0) / 3, 6);
+    expect(rows[0].avgZero).toBeCloseTo((10 + 8) / 2, 6); // 3日目は不検出（value_zero も NULL）で無視される（Issue #61）
     expect(rows[0].avgLod).toBeCloseTo((10 + 6) / 2, 6); // 3日目は不検出（value_lod NULL）で無視される
     expect(rows[0].min).toBe(6);
     expect(rows[0].max).toBe(10);
@@ -427,7 +429,7 @@ describe("summarize: zone / zone_month_of_year", () => {
     expect(zone3).toHaveLength(1);
     expect(zone3[0].n).toBe(3 + 1); // fx_place_a(3日) + fx_place_c(1日)
     expect(zone3[0].avg).toBeNull(); // 'both' のときは avgZero/avgLod を見る
-    expect(zone3[0].avgZero).toBeCloseTo((10 + 8 + 0 + 5) / 4, 6);
+    expect(zone3[0].avgZero).toBeCloseTo((10 + 8 + 5) / 3, 6); // 3日目は value_zero も NULL（不検出。Issue #61）
     expect(zone3[0].avgLod).toBeCloseTo((10 + 6 + 5) / 3, 6); // 3日目は value_lod NULL（不検出）なので AVG から除外
     expect(zone3[0].nCensored).toBe(2); // fx_place_a の2日目（検閲）・3日目（不検出も censored=1 で記録）
     expect(zone3[0].nNotDetected).toBe(1); // fx_place_a の3日目のみ
@@ -632,8 +634,8 @@ describe("yearSeries（PR-2 §2.1。representativeSeries + queryCells のピボ�
     expect(r.n).toBe(3);
     expect(r.nCensored).toBe(2);
     expect(r.unitId).toBe(FX.units.mgPerL);
-    expect(r.value.mean).toBeCloseTo(6.0, 6); // value_zero
-    expect(r.valueZero.mean).toBeCloseTo(6.0, 6);
+    expect(r.value.mean).toBeCloseTo(9.0, 6); // value_zero（不検出日は除外。Issue #61）
+    expect(r.valueZero.mean).toBeCloseTo(9.0, 6);
     expect(r.valueLod.mean).toBeCloseTo(8.0, 6);
   });
 
@@ -667,7 +669,7 @@ describe("yearSeries（PR-2 §2.1。representativeSeries + queryCells のピボ�
       imputation: "both",
     });
     expect(rows[0].value).toEqual({ mean: null, min: null, max: null });
-    expect(rows[0].valueZero.mean).toBeCloseTo(6.0, 6);
+    expect(rows[0].valueZero.mean).toBeCloseTo(9.0, 6);
     expect(rows[0].valueLod.mean).toBeCloseTo(8.0, 6);
   });
 
@@ -781,7 +783,7 @@ describe("monthSeries / daySeries（basis='day' の変数だけに対応）", ()
     });
     expect(rows).toHaveLength(1);
     expect(rows[0].periodStart).toBe("2024-01-01");
-    expect(rows[0].value).toBeCloseTo(6.0, 6);
+    expect(rows[0].value).toBeCloseTo(9.0, 6);
     expect(rows[0].n).toBe(3);
     expect(rows[0].nCensored).toBe(2);
   });
