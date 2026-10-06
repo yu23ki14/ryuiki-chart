@@ -1,12 +1,197 @@
 {
-  "created_at": "2026-10-06T01:01:58+00:00",
+  "changes_vs_previous": {
+    "per_query": {
+      "biota_totals": {
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 1
+      },
+      "climatology_by_variable": {
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 53
+      },
+      "day_series_site_by_variable": {
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 30
+      },
+      "doc_series_meta": {
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 1
+      },
+      "doc_series_points": {
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 60
+      },
+      "effort_years": {
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 1
+      },
+      "ias_species": {
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 1
+      },
+      "landuse_highlight": {
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 1
+      },
+      "mesh_all": {
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 1
+      },
+      "mesh_by_year": {
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 57
+      },
+      "month_series_site_by_variable": {
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 60
+      },
+      "overview_counts": {
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 1
+      },
+      "rain_monthly_clim": {
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 1
+      },
+      "redlist_summary": {
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 1
+      },
+      "site_variables_by_variable": {
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 60
+      },
+      "sites_in_water_body": {
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 26
+      },
+      "sites_list": {
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 1
+      },
+      "species_catalog": {
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 1
+      },
+      "species_mesh_years": {
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 60
+      },
+      "species_months": {
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 60
+      },
+      "species_share_trend": {
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 34
+      },
+      "species_years": {
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 60
+      },
+      "taxon_group_years": {
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 1
+      },
+      "variable_catalog_by_variable": {
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 1
+      },
+      "water_bodies": {
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 1
+      },
+      "water_bodies_for_variable_by_variable": {
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 53
+      },
+      "watershed_rollup": {
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 1
+      },
+      "year_series_site_by_variable": {
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 60
+      },
+      "zone_climatology_by_variable": {
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 53
+      },
+      "zone_series_by_variable": {
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 60
+      }
+    },
+    "previous_git_head": "ec6cf62ae90baf69b922c06ab6f6f3d87abb9ba1"
+  },
+  "created_at": "2026-10-06T07:30:31+00:00",
   "environment": {
     "better_sqlite3_sqlite_version": "3.53.4",
     "node_version": "v22.22.2",
     "python_sqlite3_version": "3.49.1",
     "python_version": "3.13.7"
   },
-  "git_head": "ec6cf62ae90baf69b922c06ab6f6f3d87abb9ba1",
+  "git_head": "cf23aff265ef3419f0f5313d4ab0e40e07238f26",
   "pipeline_fingerprint_rows": {
     "registry.sqlite": null,
     "v2.sqlite": [
@@ -17,9 +202,9 @@
         "table_name": "observation"
       },
       {
-        "fingerprint": "sha256:8202e54690e4694047a5abc28a09721eb3d14c310ef4a9482f1273ab8b42bf14:1999844",
+        "fingerprint": "sha256:13b507a561cd870f4fa9db25056875d6f0a5c51c774cdf248559d774734a0a6f:1999844",
         "inputs": "{\"observation\": \"sha256:61c674e789a96f248f4935f999e43254b217aaad12ab7904a7f9e3a68cc40d84:1029034\"}",
-        "spec_version": "phase-b-fact-slice/v2",
+        "spec_version": "phase-b-fact-slice/v3",
         "table_name": "observation_agg"
       },
       {
@@ -41,67 +226,67 @@
         "table_name": "occurrence_place"
       },
       {
-        "fingerprint": "sha256:ff6cac41a229d4d6cd5a7c8ca00c8e26a7f15910977bb9cc450b700b76e368b1:171",
+        "fingerprint": "sha256:45ef45ee550b574242995de72fa8e7ba1ea151c385f0c34a65fad597299a4701:171",
         "inputs": "{\"occurrence_agg\": \"sha256:cac900a4347e76578b22dcfdabb158524d2093ac5652f3f500042da09d734649:1437598\", \"registry:taxon\": \"fcaaa2d52a6474e11e23f5d5b3ce96f6c6e41462794e2a5b1c056c8b42c8f118\"}",
-        "spec_version": "serving-summary/v3",
+        "spec_version": "serving-summary/v4",
         "table_name": "summary_effort_year"
       },
       {
-        "fingerprint": "sha256:115a7e2b91f1aa6cc43481c6ff1fcbf8d8e1f90dfb40db1afb87c1b9ffd6e811:4086",
+        "fingerprint": "sha256:3edb48d2aebc87f001d2f7aeb811e1412b05c2c24f9aa642a68317b1e2bf6289:4086",
         "inputs": "{\"occurrence_agg\": \"sha256:cac900a4347e76578b22dcfdabb158524d2093ac5652f3f500042da09d734649:1437598\", \"registry:taxon\": \"fcaaa2d52a6474e11e23f5d5b3ce96f6c6e41462794e2a5b1c056c8b42c8f118\"}",
-        "spec_version": "serving-summary/v3",
+        "spec_version": "serving-summary/v4",
         "table_name": "summary_grid_catalog"
       },
       {
-        "fingerprint": "sha256:15614332458d21935b9ed9b078dcda5debe637e038a27cb4f5ef3e947e96b822:1851",
+        "fingerprint": "sha256:7af22cd18d552d2bdcb0886efb7de10c7181af2dbe70ded793818168e8a565da:1851",
         "inputs": "{\"occurrence_agg\": \"sha256:cac900a4347e76578b22dcfdabb158524d2093ac5652f3f500042da09d734649:1437598\", \"registry:taxon\": \"fcaaa2d52a6474e11e23f5d5b3ce96f6c6e41462794e2a5b1c056c8b42c8f118\"}",
-        "spec_version": "serving-summary/v3",
+        "spec_version": "serving-summary/v4",
         "table_name": "summary_group_year"
       },
       {
-        "fingerprint": "sha256:40c664e009a8086630dea3e6069c3be20cde82d2e5d400f615342987b8d55e1f:8311",
-        "inputs": "{\"observation_agg\": \"sha256:8202e54690e4694047a5abc28a09721eb3d14c310ef4a9482f1273ab8b42bf14:1999844\"}",
-        "spec_version": "serving-summary/v3",
+        "fingerprint": "sha256:b2da85f7dca48b919996fa1150e0e2b6e8258612bb766cd4b2c0a2a62b84d7b9:8311",
+        "inputs": "{\"observation_agg\": \"sha256:13b507a561cd870f4fa9db25056875d6f0a5c51c774cdf248559d774734a0a6f:1999844\"}",
+        "spec_version": "serving-summary/v4",
         "table_name": "summary_place_variable"
       },
       {
-        "fingerprint": "sha256:594f3f82fc85b3b6eb2b7f2437b1cdbe6aaa216072109fc8e10df38e86495d98:23618",
+        "fingerprint": "sha256:fcd9d31f37130edf0cbb3f8da2f534a9d905cd58b44d755df5e885571936957b:23618",
         "inputs": "{\"occurrence_agg\": \"sha256:cac900a4347e76578b22dcfdabb158524d2093ac5652f3f500042da09d734649:1437598\", \"registry:taxon\": \"fcaaa2d52a6474e11e23f5d5b3ce96f6c6e41462794e2a5b1c056c8b42c8f118\"}",
-        "spec_version": "serving-summary/v3",
+        "spec_version": "serving-summary/v4",
         "table_name": "summary_species_catalog"
       },
       {
-        "fingerprint": "sha256:811c0afa20b39019ceb6e172f9aad1e660abab4ae2d3171480832470678dff98:32186",
+        "fingerprint": "sha256:77f4152e762b0d72bab8424817afb0d7c3bf682cca6a47822293cf2023b548ce:32186",
         "inputs": "{\"occurrence_agg\": \"sha256:cac900a4347e76578b22dcfdabb158524d2093ac5652f3f500042da09d734649:1437598\"}",
-        "spec_version": "serving-summary/v3",
+        "spec_version": "serving-summary/v4",
         "table_name": "summary_taxon_catalog"
       },
       {
-        "fingerprint": "sha256:4ac4e389a45c0e508564fe73527e1d6b17c1317f02a48ba17b579163eb5f853f:119",
-        "inputs": "{\"observation_agg\": \"sha256:8202e54690e4694047a5abc28a09721eb3d14c310ef4a9482f1273ab8b42bf14:1999844\"}",
-        "spec_version": "serving-summary/v3",
+        "fingerprint": "sha256:688dac2540a325e78481a4ba5798fbac0535d68d76aa4f3e624829ca590ab7c2:119",
+        "inputs": "{\"observation_agg\": \"sha256:13b507a561cd870f4fa9db25056875d6f0a5c51c774cdf248559d774734a0a6f:1999844\"}",
+        "spec_version": "serving-summary/v4",
         "table_name": "summary_variable_catalog"
       },
       {
-        "fingerprint": "sha256:9b2f74f42b8e1f6538439742fed60752609b6600bf1afb94ad29cbd3ebe9ca48:288",
+        "fingerprint": "sha256:09e4960288caa4270906a2ed9b88ea84b552ed16a7bc74e6d54c07cc7f352507:288",
         "inputs": "{\"occurrence_agg\": \"sha256:cac900a4347e76578b22dcfdabb158524d2093ac5652f3f500042da09d734649:1437598\"}",
-        "spec_version": "serving-summary/v3",
+        "spec_version": "serving-summary/v4",
         "table_name": "summary_watershed_occurrence"
       }
     ]
   },
   "pipeline_path_hashes": {
-    "aggregations": "fea6727ad780d94a9688d34c255f6e5f6069256e",
+    "aggregations": "054a6ad40f7a2c0a1eb118972cfb7e77369ece30",
     "registry": "ce2fc1d5c0187863c71d9f9fedbede6aaafec6bc",
     "requirements.txt": "6982cafe7c0c5ce12db1ca2b7d74868e69945a27",
     "scripts/b00_run_full_gate.py": "fabb95ebb06883005b139c56b8b44199af37dc18",
-    "scripts/b03_build_observation.py": "81b1665a40c6a36c40d9b48bc1e38f27065a4fc6",
-    "scripts/b04_build_cube.py": "ba4ff2076458b98ef7b226f82decfae5194250a1",
-    "scripts/b06_build_occurrence.py": "2132981c96d96fec57f85219bed58460f6554184",
+    "scripts/b03_build_observation.py": "058ca1b64c7c48d8eb5507b230ee013a1151b15a",
+    "scripts/b04_build_cube.py": "9d8a0e3f97f168c6d6cd70e4530e0cb95493299a",
+    "scripts/b06_build_occurrence.py": "44c3e4930ea4c9a12ef68f2010c2c2d19ce1343a",
     "scripts/b07_build_occurrence_cube.py": "de83dc57eabf7011f31aabe254ac07bd1d12c9e6",
     "scripts/b09_build_occurrence_place.py": "790194b4d55c275860280faecc5e0452adb4b0ba",
     "scripts/b13_build_summary.py": "a3fea7c442ddc610a67344c9f46f9a0748576466",
-    "scripts/migrate": "8f0e3da27f18b4cba91681562ff3e3f97869c5cb",
+    "scripts/migrate": "ad9e915e86b6d8dd018f97deea9243aa91120634",
     "scripts/pipeline_inputs.py": "26f0f1aa956493afa09db0fcab69bc939933b42a",
     "scripts/r01_build_registry.py": "4e4cebd61c8cfda48c67fc0ecc8f0cf9b474a686",
     "scripts/reconcile": "0434daaaa6e412fafdff6a99768d9486b7c5c9a0",
