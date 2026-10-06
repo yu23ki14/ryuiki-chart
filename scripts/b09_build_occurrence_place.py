@@ -36,6 +36,8 @@ ADR-0006 規約2の改定・ADR-0026）。
 1. GeoJSON の `watershed_id` 集合と registry の
    `place_source_ref(source_id='watershed_meta.watershed_id')` の
    `external_key` 集合が一致すること・`external_key` 自体が一意であること。
+   `place_id` も単射で、grid01（`organism_records.lat_lon`）の `occurrence.place_id`
+   が `place_source_ref` で必ず引けること（`migrate/cube_invariants.py`）。
 2. **境界上の点**（ADR-0026 D1）: 際どい座標（点から辺までの距離が
    1e-9度未満）のうち、`fractions.Fraction` で実際に辺〔頂点上を含む〕に
    厳密に乗っているものが無いこと（無条件の停止条件）。
@@ -64,7 +66,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from migrate import common, period, point_in_polygon as pip  # noqa: E402
+from migrate import common, cube_invariants, period, point_in_polygon as pip  # noqa: E402
 
 DEFAULT_V2_DB = ROOT / "data" / "db" / "v2.sqlite"
 DEFAULT_RYUIKI_DB = ROOT / "data" / "db" / "ryuiki.sqlite"
@@ -370,6 +372,13 @@ def build_and_write_occurrence_place(
 
         _assert_polygon_set_matches_registry(polys, conn)
         _assert_watershed_external_key_unique(conn)
+        # place_id ⇄ external_key の対応（Issue #48 PR-5: b08 の逆引き検査から移設。
+        # 流域は external_key → place_id の辞書で書くので、逆向き〔place_id → 1つの
+        # external_key〕の単射もここで見る。mesh 側は b06 が書いた occurrence.place_id
+        # が registry で必ず引けること）。
+        cube_invariants.assert_place_source_ref_is_injective(conn, WATERSHED_SOURCE_ID)
+        cube_invariants.assert_place_source_ref_is_injective(conn, cube_invariants.MESH_SOURCE_ID)
+        cube_invariants.assert_occurrence_places_resolve(conn)
         watershed_place_id = {
             external_key: place_id
             for place_id, external_key in conn.execute(

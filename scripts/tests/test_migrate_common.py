@@ -207,7 +207,7 @@ def test_fresh_sqlite_still_works_for_an_ordinary_output_path(tmp_path, monkeypa
     monkeypatch.setattr(common, "ROOT", tmp_path)
     (tmp_path / "data" / "db").mkdir(parents=True)
 
-    out = tmp_path / "data" / "db" / "v1_projection_documents.sqlite"
+    out = tmp_path / "data" / "db" / "scratch_output.sqlite"
     conn = common.fresh_sqlite(out)
     conn.execute("CREATE TABLE t (a INTEGER)")
     conn.commit()
@@ -233,23 +233,6 @@ def test_reject_protected_source_db_is_public_and_usable_standalone(tmp_path, mo
 
     # 無関係な出力パスは通る（何も起きない）。
     common.reject_protected_source_db(tmp_path / "data" / "db" / "v2.sqlite")
-
-
-def test_existing_tables_returns_table_names_read_only(tmp_path):
-    """`common.existing_tables` が `scripts/b08_project_occurrence_v1.py`・
-    `scripts/b11_project_place_v1.py` から集約した共通ヘルパであること
-    （コードレビュー指摘）。読み取り専用で開くので書き込みはできない。
-    """
-    db_path = tmp_path / "t.sqlite"
-    conn = sqlite3.connect(db_path)
-    try:
-        conn.execute("CREATE TABLE a (x)")
-        conn.execute("CREATE TABLE b (y)")
-        conn.commit()
-    finally:
-        conn.close()
-
-    assert common.existing_tables(db_path) == {"a", "b"}
 
 
 def test_require_sqlite_version_passes_when_version_is_new_enough():

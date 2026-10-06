@@ -90,14 +90,14 @@ def test_load_count_overlay_file_groups_by_filename(tmp_path):
     path.write_text(
         '"period_exceptions.yaml:atsugi_river_water_quality": 5\n'
         '"source_regions.yaml:gbif_kanagawa_occurrences": 12\n'
-        '"occurrence_watershed_v1_declarations.yaml:memo_moved_records.ws_to_ws": 1\n',
+        '"occurrence_cube_declarations.yaml:leaf_cell_source_rows": 1\n',
         encoding="utf-8",
     )
     grouped = period.load_count_overlay_file(path)
     assert grouped == {
         "period_exceptions.yaml": {"atsugi_river_water_quality": 5},
         "source_regions.yaml": {"gbif_kanagawa_occurrences": 12},
-        "occurrence_watershed_v1_declarations.yaml": {"memo_moved_records.ws_to_ws": 1},
+        "occurrence_cube_declarations.yaml": {"leaf_cell_source_rows": 1},
     }
 
 
