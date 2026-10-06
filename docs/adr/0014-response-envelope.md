@@ -17,6 +17,42 @@
 相当の実装は無い）。方針だけをここに残し、実装は最初の消費者が現れたとき
 の別 PR で行う（ADR-0023 決定4と同じ扱い）。
 
+**2026-10-06 追記（Issue #40 Phase D 担当 E。封筒と MCP 第1段を実装。上の 2026-09-24 追記の
+「まだコード化されていない」は、この追記で古くなった）**:
+
+1. **封筒は `cube-envelope@2`**（`web/src/lib/cube/envelope.ts`）。@1 からは加算のみ:
+   `provenance[]` に `source_edition_id`・`fetched_at`（region の時刻帯つき ISO 8601）・
+   `update_mode`・`age_days`・`license_id`/`license_class`/`redistributable`/`attribution`、
+   `coverage` に `oldest_fetched_at`/`newest_fetched_at`、トップに `cite_as`・`as_of`・`time_zone`
+   （`regionTimeZone()`）、`caveats[]` に registry の `severity`/`kind`。
+   **鮮度は取得日・更新方式・経過日数を載せるだけで、`stale` のような閾値判定は持たない**
+   （閾値はオーナー未決。推測で埋めない）。`update_mode` が宣言されていない出典は
+   `"undeclared"`（NULL を別の値に倒さない）。
+2. **出典メタは D1 を引かない。** `source`/`source_edition`/`license`（件数が小さく不変）を
+   `web/src/lib/registry/generated-source.ts` に焼き（`build-registry-ts.mjs`）、封筒はそこから引く
+   （rows_read 0。本 ADR「応答が重くなる」への回答）。`provenance` は系列の登録
+   （`variable_alias.source_id`）から決めるため、`source_id IS NULL`（＝合成）の alias は行にしない
+   （合成は b03 が除外済みで、載せると存在しない合成データが寄与したように読める）。
+3. **`excluded` は構造を残して常に 0。** ADR-0028 により、ライセンス・公開範囲による除外は無い。
+   「黙って減らさない」は「減らしていない」が正であり、`by_license>0` を許さない回帰テストで固定した。
+   MCP の `get_occurrences` に利用者指定の `license_class`/`redistributable` 絞り込みを持たせる案は、
+   問い合わせ層が出典別の集計を持たず MCP 専用の SQL が要るため第1段では持たない
+   （持つ場合も既定は絞らない。ADR-0028 が記録した「既知の食い違い」）。
+4. **画面用 API は封筒に置き換えない**（「同一経路は強制しない」）。`/api/timeseries`・`/api/biota` には
+   加算の `freshness`（出典ごとの `fetched_at`・`update_mode`・`age_days`）だけを足し、画面の既存フィールドは
+   変えない。AI の `get_timeseries` と MCP の `get_observations` は同じ関数（`lib/cube/timeseries.ts`）を通り、
+   同じ封筒と注記（facet から機械的に付与。モデル任意のツールにしない）を返す。
+5. **MCP は第1段 5 本**（`describe_catalog`/`search_registry`/`get_observations`/`get_occurrences`/
+   `export_dataset`）。第2段（`get_geometry`/`get_provenance`/`get_caveats`）は、封筒が provenance・caveats を
+   同梱するので作らない（需要待ち）。`web/src/lib/features.ts` の `MCP_ENABLED`（既定 false。false の間は
+   `/api/mcp` が 404）で出し分ける。**任意 SQL・全表走査のツールは無い**（ツール一覧と入力スキーマを
+   スナップショットで固定。`EXPLORE_ENABLED` とは独立に成立する）。`export_dataset` は
+   `dist/datapackage.json` が指す相対パスと sha256 を返すだけ（無ければ `available: false`。配信は含めない）。
+6. **MCP の実装は SDK を使わない。** `@modelcontextprotocol/sdk` 1.32 は展開 4.5MB・依存 17 件
+   （express・hono・ajv・jose 等）で Workers のバンドルに載せる重さではないため、Streamable HTTP の
+   ステートレス・JSON 応答モードを自前で持つ（`web/src/lib/mcp/server.ts`。セッション・SSE・resources/prompts は
+   無い）。ツール定義は SDK 非依存（zod）なので、後で SDK に替えても定義はそのまま使える。
+
 ## 背景
 
 現行の API は画面ごとに生えている（`/api/timeseries` `/api/biota` `/api/nature?kind=`（→ Issue #61 で撤去）

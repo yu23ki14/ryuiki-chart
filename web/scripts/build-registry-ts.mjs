@@ -85,6 +85,8 @@ const OUT_CLIENT =
   process.env.RYUIKI_REGISTRY_TS_OUT_CLIENT ?? path.join(WEB, "src", "lib", "registry", "generated-client.ts");
 const OUT_ID_MAP =
   process.env.RYUIKI_REGISTRY_TS_OUT_ID_MAP ?? path.join(WEB, "src", "lib", "registry", "generated-id-map.ts");
+const OUT_SOURCE =
+  process.env.RYUIKI_REGISTRY_TS_OUT_SOURCE ?? path.join(WEB, "src", "lib", "registry", "generated-source.ts");
 
 /** 入力ファイルが無ければヒントを添えて即座に落ちる（3つの入力（DB・CSV・YAML）で共通化）。 */
 function requireFile(filePath, label, hint) {
@@ -290,6 +292,44 @@ if (caveatKeys.length === 0) {
 const legacyPlaceIds = db
   .prepare("SELECT old_id, new_id FROM id_map WHERE entity = 'place' ORDER BY old_id")
   .all();
+
+// 出典メタ（source / source_edition / license。Issue #39 Phase C、Issue #40 Phase D 担当 E）。
+// 応答封筒（ADR-0014）の provenance が毎応答 D1 の source_registry を引かずに済むよう、
+// 件数が小さく不変なこの3表を生成物に焼く（rows_read 0）。サーバ専用。
+const sourceMeta = db
+  .prepare(`SELECT source_id, name_ja, publisher, homepage_url, superseded_by FROM source ORDER BY source_id`)
+  .all()
+  .map((r) => ({ sourceId: r.source_id, nameJa: r.name_ja, publisher: r.publisher, homepageUrl: r.homepage_url, supersededBy: r.superseded_by }));
+const sourceEditions = db
+  .prepare(
+    `SELECT edition_id, source_id, edition_key, vintage, fetched_at, url, license_id, license_class,
+            redistributable, update_mode, superseded_by
+     FROM source_edition ORDER BY source_id, edition_key`,
+  )
+  .all()
+  .map((r) => ({
+    editionId: r.edition_id,
+    sourceId: r.source_id,
+    editionKey: r.edition_key,
+    vintage: r.vintage,
+    fetchedAt: r.fetched_at,
+    url: r.url,
+    licenseId: r.license_id,
+    licenseClass: r.license_class,
+    redistributable: r.redistributable === null ? null : r.redistributable !== 0,
+    updateMode: r.update_mode,
+    supersededBy: r.superseded_by,
+  }));
+const licenses = db
+  .prepare(`SELECT license_id, name_ja, spdx_or_url, license_class, attribution_text FROM license ORDER BY license_id`)
+  .all()
+  .map((r) => ({
+    licenseId: r.license_id,
+    nameJa: r.name_ja,
+    spdxOrUrl: r.spdx_or_url,
+    licenseClass: r.license_class,
+    attributionText: r.attribution_text,
+  }));
 
 db.close();
 
@@ -638,7 +678,70 @@ const idMapOut = [
   "",
 ].join("\n");
 
+const sourceOut = `/**
+ * 生成物。直接編集しない。サーバ専用（応答封筒の provenance が引く出典メタ）。
+ *
+ * 再生成: \`cd web && pnpm run build:registry:ts\`
+ * 生成元: \`web/scripts/build-registry-ts.mjs\`（data/db/registry.sqlite の source / source_edition /
+ * license 表。正は \`registry/source/{editions,license}.yaml\` と原本の \`source_registry\`）。
+ *
+ * \`updateMode\` が null の edition は「宣言なし」（推測で埋めない。\`registry/source/editions.yaml\`）。
+ * \`fetchedAt\` は取得日時の壁時計（\`YYYY-MM-DDTHH:MM:SS\`、時刻帯なし。時刻帯は region から決める）。
+ */
+
+export interface GeneratedSourceMeta {
+  sourceId: string;
+  nameJa: string | null;
+  publisher: string | null;
+  homepageUrl: string | null;
+  supersededBy: string | null;
+}
+
+export interface GeneratedSourceEdition {
+  editionId: string;
+  sourceId: string;
+  editionKey: string;
+  vintage: string | null;
+  fetchedAt: string | null;
+  url: string | null;
+  licenseId: string;
+  licenseClass: string;
+  /** 出典の旗。出力を絞る根拠にしない（ADR-0028）。 */
+  redistributable: boolean | null;
+  /** snapshot / append / revision / static。null = 宣言なし。 */
+  updateMode: string | null;
+  supersededBy: string | null;
+}
+
+export interface GeneratedLicense {
+  licenseId: string;
+  nameJa: string | null;
+  spdxOrUrl: string | null;
+  licenseClass: string;
+  attributionText: string | null;
+}
+
+export const SOURCE_META: readonly GeneratedSourceMeta[] = ${emitObjectArray(sourceMeta, ["sourceId", "nameJa", "publisher", "homepageUrl", "supersededBy"])};
+
+export const SOURCE_EDITIONS: readonly GeneratedSourceEdition[] = ${emitObjectArray(sourceEditions, [
+  "editionId",
+  "sourceId",
+  "editionKey",
+  "vintage",
+  "fetchedAt",
+  "url",
+  "licenseId",
+  "licenseClass",
+  "redistributable",
+  "updateMode",
+  "supersededBy",
+])};
+
+export const LICENSES: readonly GeneratedLicense[] = ${emitObjectArray(licenses, ["licenseId", "nameJa", "spdxOrUrl", "licenseClass", "attributionText"])};
+`;
+
 fs.mkdirSync(path.dirname(OUT_SERVER), { recursive: true });
+fs.writeFileSync(OUT_SOURCE, sourceOut);
 fs.writeFileSync(OUT_SERVER, serverOut);
 fs.writeFileSync(OUT_CLIENT, clientOut);
 fs.writeFileSync(OUT_ID_MAP, idMapOut);
@@ -646,6 +749,7 @@ console.log(
   `wrote ${path.relative(REPO, OUT_SERVER)} ` +
     `(units=${units.length} variables=${variables.length} aliases=${variableAliases.length})`,
 );
+console.log(`wrote ${path.relative(REPO, OUT_SOURCE)} (sources=${sourceMeta.length} editions=${sourceEditions.length} licenses=${licenses.length})`);
 console.log(`wrote ${path.relative(REPO, OUT_ID_MAP)} (legacyPlaceIds=${legacyPlaceIds.length})`);
 console.log(
   `wrote ${path.relative(REPO, OUT_CLIENT)} ` +

@@ -81,3 +81,18 @@ update_mode: static     # ほぼ不変。明示的に更新するまで再取得
 未宣言は止まる（推測で埋めない）。マニフェストを持たない出典（パイプラインが読まない 111 出典）は従来どおり
 editions.yaml に書くか NULL。v2 の鮮度判定（`check_v2_fresh.py`）のコード指紋に `manifests/*.yml` と
 `scripts/adapters/*.py` を入れた（adapter は実行時に `importlib` で読まれ、import 追跡では見つからないため）。
+
+## 追記
+
+**2026-10-06（Issue #40 Phase D 担当 E。決定5「鮮度を応答に出す」の実装範囲）**:
+応答（封筒 `cube-envelope@2`、ADR-0014 の同日追記）の `provenance` に出典ごとの `fetched_at`・
+`update_mode`・`age_days` を、`coverage` に `oldest_fetched_at`/`newest_fetched_at` を載せた。
+画面用 API（`/api/timeseries`・`/api/biota`）には加算の `freshness` を返す。
+
+- **載せるのは取得日と更新方式だけで、`stale` の閾値判定は持たない**（`expected_refresh_days` も作らない。
+  閾値はオーナーが決めていない。決まったら利用側が `age_days` と `update_mode` から判定できる）。
+- `update_mode` は registry の `source_edition.update_mode`（宣言は `registry/source/editions.yaml`）から
+  生成物に焼いて読む。**宣言が無いものは `"undeclared"` を返す**（推測で埋めない）。
+- `fetched_at` は壁時計なので region の時刻帯（`registry/region.yaml`）のオフセットを付け、`age_days` は
+  region の暦日差で数える（SQLite の日時関数は使わない。ADR-0024）。出典の region は宣言しないため、
+  region は封筒の既定（`jp-14`、`DEFAULT_REGION_ID`）。地域を足すときは呼び出し側が `regionId` を渡す。
