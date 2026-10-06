@@ -387,6 +387,7 @@ wholesale_ryuiki_tables:
   - taxa
   - redlist_assessments
   - quality_transitions
+  - source_registry  # cube（overviewCounts・envelope の来歴）が読む。小さい台帳（124行）
 
 # ---------------------------------------------------------------------------
 # 丸ごと入れる cells.sqlite のテーブル（`cells` 自身は document_closure が

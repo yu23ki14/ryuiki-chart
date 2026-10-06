@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-27T04:33:00+00:00",
+  "generated_at": "2026-10-06T00:52:33+00:00",
   "generated_by": "scripts/s01_build_sample.py",
   "source_files": {
     "data/db/ryuiki.sqlite": "554b41a03dd5ca7753aaf813691a9008c9c5c06de3d61262cbca0095399039d4",
@@ -24,6 +24,7 @@
     "redlist_assessments": 2884,
     "sensor_timeseries": 6770,
     "sites": 352,
+    "source_registry": 124,
     "taxa": 8585
   }
 }
