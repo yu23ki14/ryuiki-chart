@@ -295,7 +295,7 @@ export const SOURCE_EDITIONS: readonly GeneratedSourceEdition[] = [
 ];
 
 /** 出現データ（occurrence_agg）の出典。マニフェスト（target=occurrence）由来。画面用 API・MCP の provenance/freshness が使う。 */
-export const OCCURRENCE_SOURCE_IDS: readonly string[] = ["gbif_kanagawa_occurrences","inaturalist_kanagawa"];
+export const OCCURRENCE_SOURCE_IDS: readonly string[] = ["gbif_kanagawa_occurrences","inaturalist_kanagawa","kanagawa_kuma_sightings"];
 
 export const LICENSES: readonly GeneratedLicense[] = [
   { licenseId: "all_rights_reserved", nameJa: "無断複製・転用不可", spdxOrUrl: null, licenseClass: "restricted", attributionText: null },

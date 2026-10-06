@@ -5,6 +5,7 @@
 
 "manifests:gbif_kanagawa_occurrences": 2424
 "manifests:inaturalist_kanagawa": 95
+"manifests:kanagawa_kuma_sightings": 400
 "manifests:nlni_l03b_landuse_by_watershed": 4858
 "occurrence_cube_declarations.yaml:leaf_cell_source_rows": 21
 "occurrence_cube_declarations.yaml:month_cell_source_rows": 2467

@@ -69,3 +69,18 @@ CREATE TABLE taxa (
   redlist_kanagawa TEXT, redlist_national TEXT, ias_category TEXT,
   source_id TEXT, source_ref TEXT
 );
+CREATE TABLE wildlife_sightings (
+  sighting_id TEXT PRIMARY KEY,
+  species_ja TEXT,
+  fiscal_year INTEGER,
+  observed_on TEXT,               -- 年度から西暦を決めて正規化。1-3月は翌年
+  observed_on_raw TEXT, observed_time_raw TEXT,
+  individual_count REAL, individual_count_raw TEXT,
+  situation_ja TEXT,              -- 目撃/痕跡/捕殺 等(原文のまま)
+  locality_ja TEXT,
+  area_kind_ja TEXT,              -- 人里/山中 等(原文のまま)
+  municipality_ja TEXT, lat REAL, lon REAL,
+  is_preliminary INTEGER DEFAULT 0,  -- 速報値なら 1
+  note_ja TEXT,
+  source_id TEXT, source_ref TEXT
+);
