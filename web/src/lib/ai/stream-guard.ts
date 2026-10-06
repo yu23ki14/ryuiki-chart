@@ -37,12 +37,6 @@ export function guardAssistantStream<TOOLS extends ToolSet>() {
     let leakedInStep = false;
     let textInStep = "";
     /**
-     * finish-step は「これが最後のステップだったか」が分かるまで持っておく。
-     * 注記はステップの中（finish-step より前）に入れたいが、最後かどうかは次に来るのが
-     * start-step か finish かを見ないと決まらないため。
-     */
-    let heldFinishStep: TextStreamPart<TOOLS> | null = null;
-    /**
      * text-start は最初の1文字が実際に出るまで持っておく。中身ゼロのまま text-end が来たら
      * 両方捨てる（空の本文パートを画面に渡さない）。
      */
@@ -64,13 +58,18 @@ export function guardAssistantStream<TOOLS extends ToolSet>() {
       emitText(controller, { type: "text-delta", id: pendingId, text: pending } as TextStreamPart<TOOLS>, pending);
       pending = "";
     };
-    const releaseHeld = (controller: Ctl) => {
-      if (!heldFinishStep) return;
-      controller.enqueue(heldFinishStep);
-      heldFinishStep = null;
-    };
+    /**
+     * 注記は最後の finish-step の後ろ（finish の直前）に、独立した本文パートとして足す。
+     *
+     * finish-step を保留してはいけない。ai v7 の streamText は、変換の出口を通った finish-step で
+     * ステップの結果を確定させてから次（stopWhen の判定・finish）に進むので、ここで止めると
+     * 上流が先に進めず、本文が出きったところでストリームが閉じも終わりもしなくなる
+     * （Workers では「code had hung」で打ち切られ、finish が届かない）。
+     */
     const emitCutoffNote = (controller: Ctl) => {
-      const id = `cutoff-${Date.now()}`;
+      // 最後のステップが答えになっていない（ツールを呼ぼうとして終わった／本文が空）ときだけ。
+      if (!leakedInStep && textInStep.trim()) return;
+      const id = "cutoff-note";
       controller.enqueue({ type: "text-start", id } as TextStreamPart<TOOLS>);
       controller.enqueue({ type: "text-delta", id, text: CUTOFF_NOTE } as TextStreamPart<TOOLS>);
       controller.enqueue({ type: "text-end", id } as TextStreamPart<TOOLS>);
@@ -115,12 +114,7 @@ export function guardAssistantStream<TOOLS extends ToolSet>() {
           controller.enqueue(part);
           return;
         }
-        if (part.type === "finish-step") {
-          heldFinishStep = part;
-          return;
-        }
         if (part.type === "start-step") {
-          releaseHeld(controller);
           suppressed = false;
           leakedInStep = false;
           textInStep = "";
@@ -128,9 +122,7 @@ export function guardAssistantStream<TOOLS extends ToolSet>() {
           return;
         }
         if (part.type === "finish") {
-          // 最後のステップが答えになっていない（ツールを呼ぼうとして終わった／本文が空）ときだけ注記を足す。
-          if (leakedInStep || !textInStep.trim()) emitCutoffNote(controller);
-          releaseHeld(controller);
+          emitCutoffNote(controller);
           controller.enqueue(part);
           return;
         }
@@ -139,7 +131,6 @@ export function guardAssistantStream<TOOLS extends ToolSet>() {
       flush(controller) {
         flushPending(controller);
         heldTextStart = null;
-        releaseHeld(controller);
       },
     });
   };
