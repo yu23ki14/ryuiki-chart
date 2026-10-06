@@ -168,6 +168,7 @@ def _load_build_steps() -> None:
         return
 
     from registry.build_unit_variable import build as build_unit_variable
+    from registry.build_region import build as build_region
     from registry.build_place import build as build_place
     from registry.build_taxon import build as build_taxon
     from registry.build_taxon_assessment import build as build_taxon_assessment
@@ -175,6 +176,8 @@ def _load_build_steps() -> None:
 
     if STEPS is None:
         STEPS = [
+            # region (Issue #32-3) は place より前: place.region_id が参照する語彙。
+            ("region (#32-3)", build_region),
             ("unit/variable/variable_alias (A-2)", build_unit_variable),
             ("place/place_source_ref (A-3)", build_place),
             ("taxon (A-4)", build_taxon),
@@ -188,6 +191,7 @@ def _load_build_steps() -> None:
     if FILES_ONLY_STEPS is None:
         # --files-only: 原本 DB を開かないので、src を受け取らない関数だけを実行する。
         FILES_ONLY_STEPS = [
+            ("region (#32-3)", build_region),
             ("unit/variable/variable_alias (A-2)", build_unit_variable),
             ("caveat, ファイル由来のみ (A-5, --files-only)", lambda conn, _src: build_caveat_from_files(conn)),
         ]
@@ -201,6 +205,7 @@ def _load_build_steps() -> None:
 # 制約が無い複合キー、例: place_relation の (parent_id, child_id, relation) を
 # 専用関数ではなくこの宣言リストで表すため）。
 ID_UNIQUENESS_CHECKS = [
+    ("region", "region_id"),
     ("unit", "unit_id"),
     ("variable", "variable_id"),
     ("place", "place_id"),
@@ -254,6 +259,7 @@ def _assert_id_uniqueness(conn) -> None:
 # （例: variable.unit_id は値の無い指標があるため NULL 可）。
 ID_REFERENCE_CHECKS = [
     # (子テーブル, 外部キー列, 親テーブル, 主キー列)
+    ("place", "region_id", "region", "region_id"),  # Issue #32-3: place.region_id は region 語彙に在ること
     ("variable", "unit_id", "unit", "unit_id"),
     ("unit", "canonical_unit_id", "unit", "unit_id"),
     ("variable_alias", "unit_id", "unit", "unit_id"),

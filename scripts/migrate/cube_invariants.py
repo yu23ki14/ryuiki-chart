@@ -240,6 +240,98 @@ def verify_hourly_daily_rollup(conn: sqlite3.Connection, staging: str, sample_li
 
 
 # ---------------------------------------------------------------------------
+# b04: 月 → 年・年度の積み上げの保存則（Issue #32-2）
+# ---------------------------------------------------------------------------
+
+_MONTH_SERIES_DIM = "region_id, place_id, place_kind, variable_id, obs_stat, unit_id, value_grain"
+
+
+def _bucket_of(grain: str, period_start: str) -> str:
+    """月セルの `period_start`（`YYYY-MM-01`）が属する年（暦年）・年度の始まりの年。
+    文字列の切り出しだけで行う（日時関数を使わない。ADR-0024）。"""
+    year, month = int(period_start[:4]), int(period_start[5:7])
+    if grain == "year":
+        return f"{year:04d}"
+    return f"{(year if month >= 4 else year - 1):04d}"
+
+
+def verify_month_year_rollup(conn: sqlite3.Connection, staging: str, sample_limit: int = SAMPLE_LIMIT) -> dict:
+    """月で配られた観測（`grain='month'`・`input_grain='month'` の出典配布セル）から積み上げた
+    年・年度のセル（`grain IN ('year','fiscal_year')`・`input_grain='month'`）が、元の月セルと
+    食い違わないことを検証する（保存則）。系列×年（暦年）／年度ごとに:
+
+    - n・n_censored・n_not_detected は、その年（年度）に属する月セルの合計と**完全一致**する
+      （観測の行を落としても重複させても崩れる）。
+    - stat='min' の value_zero/value_lod は月セルの min の最小、stat='max' は最大と一致する
+      （min/max は丸め誤差が無いのでビット単位で一致する）。
+    - 月セルが無いのに年・年度のセルがある、またはその逆（月セルがあるのに年・年度のセルが
+      無い）は不一致。
+
+    食い違いは `common.MigrationError`。戻り値は検証した件数（レポート用）。
+    """
+    months = conn.execute(
+        f"""
+        SELECT {_MONTH_SERIES_DIM}, period_start, stat, n, n_censored, n_not_detected, value_zero, value_lod
+        FROM "{staging}" WHERE grain = 'month' AND input_grain = 'month'
+        """
+    ).fetchall()
+    cubes = conn.execute(
+        f"""
+        SELECT {_MONTH_SERIES_DIM}, grain, period_start, stat, n, n_censored, n_not_detected, value_zero, value_lod
+        FROM "{staging}" WHERE grain IN ('year', 'fiscal_year') AND input_grain = 'month'
+        """
+    ).fetchall()
+
+    # (系列, grain, bucket) -> {n, n_censored, n_not_detected, min_z, min_l, max_z, max_l}
+    expected: dict[tuple, dict] = {}
+    for row in months:
+        key, period_start, stat, n, n_c, n_nd, vz, vl = row[:7], row[7], row[8], row[9], row[10], row[11], row[12], row[13]
+        for grain in ("year", "fiscal_year"):
+            e = expected.setdefault((key, grain, _bucket_of(grain, period_start)), {})
+            if stat == "mean":
+                e["n"] = e.get("n", 0) + n
+                e["n_censored"] = e.get("n_censored", 0) + n_c
+                e["n_not_detected"] = e.get("n_not_detected", 0) + n_nd
+            elif stat == "min":
+                for name, v in (("min_z", vz), ("min_l", vl)):
+                    if v is not None:
+                        e[name] = v if name not in e else min(e[name], v)
+            elif stat == "max":
+                for name, v in (("max_z", vz), ("max_l", vl)):
+                    if v is not None:
+                        e[name] = v if name not in e else max(e[name], v)
+
+    actual: dict[tuple, dict] = {}
+    for row in cubes:
+        key, grain, period_start, stat, n, n_c, n_nd, vz, vl = row[:7], row[7], row[8], row[9], row[10], row[11], row[12], row[13], row[14]
+        a = actual.setdefault((key, grain, period_start[:4]), {})
+        if stat == "mean":
+            a.update(n=n, n_censored=n_c, n_not_detected=n_nd)
+        elif stat == "min":
+            for name, v in (("min_z", vz), ("min_l", vl)):
+                if v is not None:
+                    a[name] = v
+        elif stat == "max":
+            for name, v in (("max_z", vz), ("max_l", vl)):
+                if v is not None:
+                    a[name] = v
+
+    mismatches = []
+    for k in set(expected) | set(actual):
+        e, a = expected.get(k), actual.get(k)
+        if e != a:
+            mismatches.append((k, e, a))
+    if mismatches:
+        raise common.MigrationError(
+            "月 → 年・年度の積み上げの保存則が崩れている（n・検閲件数の合計、または min/max が"
+            f"月セルと一致しない。{len(mismatches)}件。例（上限{sample_limit}件、"
+            f"((次元キー, grain, 年/年度), 月セルから期待, 実際のセル)）: {mismatches[:sample_limit]}）。"
+            "scripts/b04_build_cube.py の `_year_from_month_stats_sql` を確認すること。"
+        )
+    return {"n_month_rollup_buckets_checked": len(expected)}
+
+
+# ---------------------------------------------------------------------------
 # b07: 流域セルの (place, 年) 粒度の保存則
 # ---------------------------------------------------------------------------
 

@@ -48,7 +48,7 @@ Architecture Decision Record。1ファイル＝1決定。**背景・決定・根
 | [0021](0021-observation-grain-and-cube-key.md) | 粒度は「値の粒度」と「日付の精度」に分け、キューブは入力の統計量と粒度を鍵に含める | 承認済 |
 | [0022](0022-place-region-scope.md) | `place.region_id` は ID のスコープと一致させ、所在は `place_relation` の辺で表す | 承認済（一部未実装） |
 | [0023](0023-unit-canonicalization.md) | 単位の正準化は取り込み時に潰さず、レジストリの換算係数とキューブの軸に分けて持つ | 承認済 |
-| [0024](0024-local-time-and-time-labels.md) | 時刻は時刻帯なしのローカル時刻で持ち、時刻ラベルの意味は出典ごとに宣言する | 承認済（一部未実装） |
+| [0024](0024-local-time-and-time-labels.md) | 時刻は時刻帯なしのローカル時刻で持ち、時刻ラベルの意味は出典ごとに宣言する | 承認済 |
 | [0025](0025-occurrence-fact-and-cube.md) | occurrence ファクトとキューブの設計（region は出典から・期間は12形の宣言・1ファクト＝1キューブ表） | 承認済 |
 | [0026](0026-occurrence-place-watershed.md) | 点→流域の解決は記録×placeのサテライトに直接持ち、v1のメモ化の癖は射影の式で再現する | 承認済 |
 | [0027](0027-test-and-verification-strategy.md) | テスト・検証戦略は4層（フィクスチャ・縮小サンプル・全量の実行証明・段階間の指紋）に分け、層ごとに保証範囲を分担する | 承認済 |

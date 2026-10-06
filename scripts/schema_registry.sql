@@ -9,6 +9,16 @@
 -- CREATE TABLE IF NOT EXISTS なので再実行しても安全。中身(行)は scripts/registry/build_*.py
 -- が入れる(このファイルは器だけ)。
 
+-- region（ADR-0002）ごとの時刻帯の語彙（Issue #32-3、ADR-0024）。手書きの正は registry/region.yaml。
+-- region_id は place.region_id・observation.region_id と同じ値（jp-14 等）。
+CREATE TABLE IF NOT EXISTS region (
+  region_id TEXT PRIMARY KEY,
+  name_ja TEXT NOT NULL,
+  tz_name TEXT NOT NULL,
+  utc_offset TEXT NOT NULL,
+  evidence TEXT
+);
+
 -- 単位。symbol は人間向けの原表記、ucum は UCUM 準拠のコード。
 CREATE TABLE IF NOT EXISTS unit (
   unit_id TEXT PRIMARY KEY,

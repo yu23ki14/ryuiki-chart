@@ -502,12 +502,124 @@ def test_year_source_cell_closed_to_year_and_fiscal_year_only(tmp_path):
         stats = b04.build_cube(conn, _registry_db(tmp_path), unit_evidence_declarations_path=None)
         assert stats["n_month_source"] == 3
         assert stats["n_year_source"] == 3
+        # 出典配布の年次セル（grain=input_grain）は fiscal_year だけ（月次データが年次の出典配布に混ざらない）。
         year_grains = conn.execute(
-            "SELECT DISTINCT grain FROM observation_agg WHERE grain IN ('year','fiscal_year')"
+            "SELECT DISTINCT grain FROM observation_agg WHERE grain IN ('year','fiscal_year') AND input_grain = grain"
         ).fetchall()
-        assert year_grains == [("fiscal_year",)]  # 月次データが年次に混ざっていない
+        assert year_grains == [("fiscal_year",)]
+        # 月で配られた観測は input_grain='month' のまま year/fiscal_year へ積み上がる（Issue #32-2）。
+        from_month = conn.execute(
+            "SELECT DISTINCT grain FROM observation_agg WHERE input_grain = 'month' AND grain IN ('year','fiscal_year') "
+            "ORDER BY grain"
+        ).fetchall()
+        assert from_month == [("fiscal_year",), ("year",)]
     finally:
         conn.close()
+
+
+def _month_row(source_id, start, value, *, censoring="none", limit=None, raw=None):
+    end = start[:8] + "28"
+    return _row(
+        "measurements", source_id, start, end, value, raw or (None if value is None else str(value)), censoring,
+        value_grain="day", period_grain="month", period_raw=start[:4],
+        **({"censoring_limit": limit} if limit is not None else {}),
+    )
+
+
+def test_year_and_fiscal_year_roll_up_from_month_observations(tmp_path):
+    """Issue #32-2: 月で配られた観測は、観測の行から直接、暦年と年度（4月始まり）に
+    積み上がる。2013-03 は年度2012・暦年2013、2013-04 は年度2013・暦年2013。
+    input_grain は 'month' のまま。n は観測行の個数（欠月は補完しない）。"""
+    rows = [
+        _month_row("m1", "2013-01-01", 1.0),
+        _month_row("m2", "2013-03-01", 3.0),
+        _month_row("m3", "2013-04-01", 5.0),
+        _month_row("m4", "2013-12-01", 11.0),
+    ]
+    db_path = tmp_path / "v2.sqlite"
+    conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
+    try:
+        stats = b04.build_cube(conn, _registry_db(tmp_path), unit_evidence_declarations_path=None)
+        assert stats["n_year_from_month"] == 9  # 年1 + 年度2 の各 mean/min/max
+        got = conn.execute(
+            "SELECT grain, period_start, period_end, stat, value_zero, n FROM observation_agg "
+            "WHERE input_grain = 'month' AND grain IN ('year','fiscal_year')"
+        ).fetchall()
+        assert ("year", "2013-01-01", "2013-12-31", "mean", 5.0, 4) in got
+        assert ("year", "2013-01-01", "2013-12-31", "min", 1.0, 4) in got
+        assert ("year", "2013-01-01", "2013-12-31", "max", 11.0, 4) in got
+        assert ("fiscal_year", "2012-04-01", "2013-03-31", "mean", 2.0, 2) in got
+        assert ("fiscal_year", "2013-04-01", "2014-03-31", "mean", 8.0, 2) in got
+        assert ("fiscal_year", "2013-04-01", "2014-03-31", "max", 11.0, 2) in got
+        assert len(got) == 9
+    finally:
+        conn.close()
+
+
+def test_month_rollup_counts_censored_like_other_cells(tmp_path):
+    """検閲値の扱いは既存の積み上げと同じ: below_lod は value_zero=0・value_lod=限界値、
+    n_censored に数える。"""
+    rows = [
+        _month_row("m1", "2013-05-01", 2.0),
+        _month_row("m2", "2013-06-01", None, censoring="below_lod", limit=1.0, raw="<1"),
+    ]
+    db_path = tmp_path / "v2.sqlite"
+    conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
+    try:
+        b04.build_cube(conn, _registry_db(tmp_path), unit_evidence_declarations_path=None)
+        got = conn.execute(
+            "SELECT value_zero, value_lod, n, n_censored FROM observation_agg "
+            "WHERE input_grain='month' AND grain='fiscal_year' AND stat='mean'"
+        ).fetchone()
+        assert got == (1.0, 1.5, 2, 1)
+    finally:
+        conn.close()
+
+
+def _rollup_staging(rows):
+    import sqlite3
+
+    conn = sqlite3.connect(":memory:")
+    cols = ("region_id, place_id, place_kind, variable_id, obs_stat, unit_id, value_grain, period_start, "
+            "grain, input_grain, stat, n, n_censored, n_not_detected, value_zero, value_lod")
+    conn.execute(f"CREATE TABLE stg ({cols})")
+    conn.executemany(f"INSERT INTO stg VALUES ({','.join('?' * 16)})", rows)
+    return conn
+
+
+_K = ("jp-14", "p", "site", "v", None, "u", "day")
+
+
+def _good_rollup_rows():
+    month = []
+    for start, v in (("2013-04-01", 2.0), ("2013-05-01", 4.0)):
+        for stat in ("mean", "min", "max"):
+            month.append((*_K, start, "month", "month", stat, 1, 0, 0, v, v))
+    rolled = []
+    for grain, start in (("year", "2013-01-01"), ("fiscal_year", "2013-04-01")):
+        for stat, v in (("mean", 3.0), ("min", 2.0), ("max", 4.0)):
+            rolled.append((*_K, start, grain, "month", stat, 2, 0, 0, v, v))
+    return month + rolled
+
+
+def test_month_year_rollup_invariant_passes_on_consistent_cells():
+    conn = _rollup_staging(_good_rollup_rows())
+    assert cube_invariants.verify_month_year_rollup(conn, "stg")["n_month_rollup_buckets_checked"] == 2
+
+
+def test_month_year_rollup_invariant_stops_on_dropped_or_corrupted_cells():
+    """わざと壊すと止まる: n の取りこぼし・max の食い違い・年度セルの欠落。"""
+    rows = _good_rollup_rows()
+    # row: (..7 key.., period_start[7], grain[8], input_grain[9], stat[10], n[11], nc, nnd, vz[14], vl[15])
+    bad_n = [(*r[:11], 1, *r[12:]) if (r[8] == "year" and r[10] == "mean") else r for r in rows]
+    with pytest.raises(common.MigrationError, match="保存則"):
+        cube_invariants.verify_month_year_rollup(_rollup_staging(bad_n), "stg")
+    bad_max = [(*r[:14], 9.0, r[15]) if (r[8] == "fiscal_year" and r[10] == "max") else r for r in rows]
+    with pytest.raises(common.MigrationError, match="保存則"):
+        cube_invariants.verify_month_year_rollup(_rollup_staging(bad_max), "stg")
+    missing = [r for r in rows if r[8] != "fiscal_year"]
+    with pytest.raises(common.MigrationError, match="保存則"):
+        cube_invariants.verify_month_year_rollup(_rollup_staging(missing), "stg")
 
 
 def test_month_and_year_from_day_inherit_input_grain_and_filter_mean(tmp_path):

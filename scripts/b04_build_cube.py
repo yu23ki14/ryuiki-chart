@@ -504,6 +504,57 @@ def _year_source_expand_sql(stat: str, value_zero_column: str, value_lod_column:
 
 
 # ---------------------------------------------------------------------------
+# 年次・年度（出典が月で配った観測から積み上げる側。Issue #32-2）
+# ---------------------------------------------------------------------------
+# `period_grain='month'` の観測（jma_monthly、復元した厚木）を、暦年（`year`）と日本の年度
+# （`fiscal_year`、4/1〜翌3/31）の2つへ積み上げる。**観測の行から直接再集計する**
+# （月セルの平均の平均にしない）。メンバー・検閲・n の規則は日次→年次（出典配布セル）と
+# 同じ（`_MEMBER_SQL`・`_CENSORED_COUNTS_SELECT`）: n はメンバーの観測行の個数、欠月は
+# n に現れる（数えないだけで、補完しない）。`input_grain='month'` を保つので、`grain=input_grain`
+# の出典配布セル（`_cell_mode` の _MODE_SOURCE）とも、`input_grain='day'` の積み上げとも区別できる。
+# 日付は文字列の切り出しだけで作る（日時関数を使わない。ADR-0024）。
+
+_FISCAL_START_YEAR_SQL = (
+    "CASE WHEN CAST(substr(period_start, 6, 2) AS INTEGER) >= 4 "
+    "THEN CAST(substr(period_start, 1, 4) AS INTEGER) "
+    "ELSE CAST(substr(period_start, 1, 4) AS INTEGER) - 1 END"
+)
+
+
+def _year_from_month_stats_sql(grain: str) -> str:
+    if grain == "year":
+        start = "substr(period_start, 1, 4) || '-01-01'"
+        end = "substr(period_start, 1, 4) || '-12-31'"
+        key = "substr(period_start, 1, 4)"
+    elif grain == "fiscal_year":
+        start = f"printf('%04d', {_FISCAL_START_YEAR_SQL}) || '-04-01'"
+        end = f"printf('%04d', {_FISCAL_START_YEAR_SQL} + 1) || '-03-31'"
+        key = _FISCAL_START_YEAR_SQL
+    else:
+        raise common.MigrationError(f"_year_from_month_stats_sql: 想定外の grain {grain!r}")
+    return f"""
+    SELECT {_DIM_SELECT}, {start} AS period_start, {end} AS period_end,
+           '{grain}' AS grain,
+           AVG(v_zero) AS vz_mean, MIN(v_zero) AS vz_min, MAX(v_zero) AS vz_max,
+           AVG(v_lod) AS vl_mean, MIN(v_lod) AS vl_min, MAX(v_lod) AS vl_max,
+           COUNT(*) AS n,
+           {_CENSORED_COUNTS_SELECT}
+    FROM obs_imputed
+    WHERE period_grain = 'month' AND {_MEMBER_SQL}
+    GROUP BY {_DIM_SELECT}, {key}
+    """
+
+
+def _year_from_month_expand_sql(stat: str, value_zero_column: str, value_lod_column: str) -> str:
+    return f"""
+    SELECT {_DIM_SELECT}, period_start, period_end,
+           grain, 'month' AS input_grain, '{stat}' AS stat,
+           {value_zero_column} AS value_zero, {value_lod_column} AS value_lod, {_AGG_TAIL_SELECT}
+    FROM year_from_month_stats
+    """
+
+
+# ---------------------------------------------------------------------------
 # 次元キーの一意性検証（C-3）
 # ---------------------------------------------------------------------------
 # day/month(day側/出典側)/year(day側/出典側) の5経路は grain/input_grain/stat
@@ -872,7 +923,12 @@ SAMPLE_CENSORED_CELLS_PER_STRATUM = 50
 # セルが観測のどの行から作られるか（`_cell_mode`）。`plen` は日付の先頭何文字で
 # 同じセルに入れるか（None は period_start/period_end の完全一致）。
 _MODE_DAY, _MODE_MONTH_FROM_DAY, _MODE_YEAR_FROM_DAY, _MODE_SOURCE = "day", "month_from_day", "year_from_day", "source"
-_MODE_PREFIX_LEN = {_MODE_DAY: 10, _MODE_MONTH_FROM_DAY: 7, _MODE_YEAR_FROM_DAY: 4, _MODE_SOURCE: None}
+# Issue #32-2: 月で配られた観測から直接積み上げた年（暦年）・年度のセル。
+_MODE_YEAR_FROM_MONTH, _MODE_FISCAL_FROM_MONTH = "year_from_month", "fiscal_from_month"
+_MODE_PREFIX_LEN = {
+    _MODE_DAY: 10, _MODE_MONTH_FROM_DAY: 7, _MODE_YEAR_FROM_DAY: 4, _MODE_SOURCE: None,
+    _MODE_YEAR_FROM_MONTH: 4, _MODE_FISCAL_FROM_MONTH: 4,
+}
 
 _KEY_SEP = "\x1f"
 _KEY_NULL = "\x1e"
@@ -881,6 +937,10 @@ _KEY_NULL = "\x1e"
 def _cell_mode(grain: str, input_grain: str) -> str:
     if grain == "day":
         return _MODE_DAY
+    if input_grain == "month" and grain == "year":
+        return _MODE_YEAR_FROM_MONTH
+    if input_grain == "month" and grain == "fiscal_year":
+        return _MODE_FISCAL_FROM_MONTH
     if grain == input_grain:  # 出典配布セル（month/year/fiscal_year）
         return _MODE_SOURCE
     if grain == "month":
@@ -1009,7 +1069,14 @@ def _skey_sql(mode: str) -> str:
     直す（`IS` の NULL 安全 JOIN は索引が効かないため、1本の文字列キーの等値にする）。"""
     parts = [f"IFNULL(o.{c}, char(30))" for c in _PRE_PERIOD_DIM_COLUMNS] + ["o.period_grain"]
     plen = _MODE_PREFIX_LEN[mode]
-    if plen is None:
+    if mode == _MODE_FISCAL_FROM_MONTH:
+        # 年度の始まりの年（4月始まり）。セル側の period_start[:4] と同じ値になる。
+        parts.append(
+            "printf('%04d', CASE WHEN CAST(substr(o.period_start, 6, 2) AS INTEGER) >= 4 "
+            "THEN CAST(substr(o.period_start, 1, 4) AS INTEGER) "
+            "ELSE CAST(substr(o.period_start, 1, 4) AS INTEGER) - 1 END)"
+        )
+    elif plen is None:
         parts += ["o.period_start", "o.period_end"]
     else:
         parts.append(f"substr(o.period_start, 1, {plen})")
@@ -1030,7 +1097,8 @@ def _expected_cell(cell: dict, mode: str, obs_rows: list[tuple]) -> tuple:
     """`obs_rows`（(period_start, censoring, value_num, censoring_limit)）から、セル
     `cell` の (value_zero, value_lod, n, n_censored, n_not_detected) を独立に求める。"""
     stat = cell["stat"]
-    if mode in (_MODE_DAY, _MODE_SOURCE):
+    if mode in (_MODE_DAY, _MODE_SOURCE, _MODE_YEAR_FROM_MONTH, _MODE_FISCAL_FROM_MONTH):
+        # 月から積み上げた年・年度は、観測の行から直接再集計する（葉の格と同じ式）。
         return _group_stats([r[1:] for r in obs_rows], stat)
     # 積み上げ: 月は日次の mean だけ、年は日次の mean を stat で集計する。
     stat_of_days = "mean" if mode == _MODE_MONTH_FROM_DAY else stat
@@ -1227,8 +1295,19 @@ def build_cube(
             cur = conn.execute(insert_sql + _year_source_expand_sql(stat, vz_col, vl_col), params)
             n_year_source += cur.rowcount
 
+        # 年次・年度（出典が月で配った観測から。Issue #32-2。観測の行から直接再集計）。
+        n_year_from_month = 0
+        for grain in ("year", "fiscal_year"):
+            common.replace_table(
+                conn, "year_from_month_stats",
+                f"CREATE TEMP TABLE year_from_month_stats AS {_year_from_month_stats_sql(grain)}",
+            )
+            for stat, vz_col, vl_col in _STAT_VALUE_COLUMNS:
+                cur = conn.execute(insert_sql + _year_from_month_expand_sql(stat, vz_col, vl_col), params)
+                n_year_from_month += cur.rowcount
+
         # B-4: 一時テーブルの DROP をループに（cube_day は C-1 で無くなった）。
-        for t in ("day_stats", "year_from_day_stats", "month_source_stats", "year_source_stats"):
+        for t in ("day_stats", "year_from_day_stats", "month_source_stats", "year_source_stats", "year_from_month_stats"):
             conn.execute(f'DROP TABLE IF EXISTS "{t}"')
         conn.execute("DROP VIEW IF EXISTS obs_imputed")
 
@@ -1242,6 +1321,8 @@ def build_cube(
         _assert_value_zero_lod_invariants(conn, staging)
         # T6: 毎時→日次の件数・Σn・min・max が observation と一致する（移設）。
         cube_invariants.verify_hourly_daily_rollup(conn, staging)
+        # Issue #32-2: 月 → 年・年度の積み上げの保存則（n・検閲件数の和、値の min/max）。
+        month_rollup_stats = cube_invariants.verify_month_year_rollup(conn, staging)
         # 無作為抽出したセルを observation から独立に求め直す（Issue #48 PR-5 §2.3）。
         sample_stats = _assert_sampled_cells_recompute_from_observation(
             conn, staging, observation_fingerprint, spec_version,
@@ -1263,7 +1344,9 @@ def build_cube(
         "n_month_source": n_month_source,
         "n_year_from_day": n_year_from_day,
         "n_year_source": n_year_source,
-        "n_total": n_day + n_month_from_day + n_month_source + n_year_from_day + n_year_source,
+        "n_year_from_month": n_year_from_month,
+        "n_total": n_day + n_month_from_day + n_month_source + n_year_from_day + n_year_source + n_year_from_month,
+        **month_rollup_stats,
         **value_stats,
         **sample_stats,
         **unit_evidence_stats,
@@ -1326,7 +1409,8 @@ def main() -> None:
     print(
         f"  内訳: day={stats['n_day']:,} / "
         f"month(day側)={stats['n_month_from_day']:,} / month(出典側)={stats['n_month_source']:,} / "
-        f"year(day側)={stats['n_year_from_day']:,} / year(出典側)={stats['n_year_source']:,}"
+        f"year(day側)={stats['n_year_from_day']:,} / year(出典側)={stats['n_year_source']:,} / "
+        f"year・年度(month側)={stats['n_year_from_month']:,}"
     )
     print(
         f"  value_zero/value_lod: 食い違うセル={stats['n_value_lod_differs']:,} / "

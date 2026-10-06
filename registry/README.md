@@ -10,6 +10,7 @@ Phase A（`docs/plans/PHASE_A.md`, ADR-0016）の成果物。v1 のファクト�
 
 | ファイル | 中身 |
 |---|---|
+| `region.yaml` | region（`jp-14` 等）ごとの時刻帯（IANA 名・UTC オフセット）。唯一の置き場（Issue #32-3、ADR-0024）。`registry.sqlite` の `region` 表 → D1 → `generated-client.ts` の `REGION_TIME` → `lookup-client.ts` の `regionTimeZone()`。b03/b06 は `scripts/migrate/regions.py` で直接読む |
 | `unit.yaml` | 単位29件。`unit_id` を各行が明示する（後述） |
 | `variable.yaml` | 正準指標85件 |
 | `variable_alias.csv` | 出典表記→正準 `variable_id` の対応154件（列は後述「`variable_alias.csv` の列」） |

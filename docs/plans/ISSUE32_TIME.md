@@ -119,3 +119,43 @@
 - A: `period_exceptions.yaml` のエントリは消えず override=month で残る（Issue の閉じる条件の文言が実態と違う）。この読みでよいか。
 - B: 月セルの年度ロールアップは作らない（スコープ外）でよいか。fiscal_year 行が cube から消える影響を許容するか。
 - C: `source_regions.yaml` の `regions:` を撤去して `registry/region.yaml` に一本化する（宣言ファイルの形が変わる）でよいか。
+
+
+---
+
+## 7. 実装の記録（2026-10-06。メイン承認後）
+
+### 承認で決まったこと
+- A: `period_exceptions.yaml` のエントリは残し override=month（ADR-0021 追記に理由）。
+- B: (a) 月 → 年・年度のロールアップを**一般規則**として b04 に実装（厚木専用にしない）。観測の行から直接再集計。
+- C: `source_regions.yaml` の `regions:` を撤去し `registry/region.yaml` に一本化。旧形式が残っていれば止める。
+
+### 実測（b03→b04 を scratchpad の別ファイルに全量で流して計測。`data/db/v2.sqlite` は無変更）
+- b04 全量が不変条件（月→年の保存則・無作為抽出セルの独立再計算・T6）込みで通った（128 秒）。
+- `observation_agg` 全体: 1,999,844 → 2,016,782（+16,938）。内訳:
+  - month(出典側): +11,520（厚木 3,840 行 × mean/min/max。`input_grain=month`）。
+  - year(month 側): +3,099（厚木 1,020 + jma_monthly 2,079）。
+  - fiscal_year: 厚木は 960 → 960（`input_grain` が fiscal_year → month に変わっただけ）。jma_monthly の年度セルが +2,319 増える。
+  - day・month(day 側)・year(day 側)は 0 増減。
+- **厚木以外に month 配布の観測があった**: `sensor_timeseries` の `jma_monthly`（13,821 行・7 地点・16 変数、`value_grain='month'`）。
+  対象は year 2,079 セル・fiscal_year 2,319 セル（`input_grain=month`）が新規に生まれる。既存のセルは動かない。
+- **旧 fiscal_year セル（年度番号から直接作っていた 960 セル）と新ロールアップの突き合わせ: 960 件中 960 件一致、不一致 0**
+  （value_zero/value_lod は相対誤差 1e-9、n・n_censored・n_not_detected は完全一致。キーは place/variable/obs_stat/unit/value_grain/
+  period_start/period_end/stat）。
+
+### web 側の整合（厚木の fiscal_year 行が画面・API から消えないように）
+- `observation.ts` の `inputGrain: "same"`、`web/serving_queries.yaml` の `variable_site_basis`/`variable_basis` は
+  `input_grain = grain` に加え「`input_grain='month'` かつ `value_grain<>'month'`（日付が月までしか言えない日間平均値の
+  積み上げ）」を通す。`value_grain='month'`（jma_monthly）の月→年セルはここには出さない（平均の平均が年値として
+  現れるのを避ける）。summary（`summary_place_variable` 等）には jma_monthly の year/fiscal_year 行が載る（`input_grain=month`）。
+- 厚木は `year`（暦年、input_grain=month）の basis 行も増える（暦年値）。画面上の差は `serving:snapshot --mode diff` で確認する。
+
+### 時刻帯
+`registry/region.yaml` → `region` 表（`schema-registry.ts`・マイグレーション 0012・`schema_registry.sql`）→ `REGION_TIME` →
+`regionTimeZone()`。`source_regions.yaml` の `regions:` 撤去、`period.py` の `+09:00` 直書きを region.yaml 由来に。
+D1 の表数 40 → 41（CLAUDE.md・web/README.md 更新）。
+
+### スナップショットが動く範囲（実測見積りの更新）
+厚木 `fiscal_year` 行（中津川の site 一覧 5 行、相模川 DO・玉川 SS の series）の `input_grain` が変わる。avg は一致する見込み
+（旧 960 セルとの突き合わせで値が一致）。厚木の `year` basis 行が増える。ほかに jma_monthly の year/fiscal_year summary 行が増えるが、
+web 側の既存の読み出し口は measurements（`variable_alias` の dataset）に限る・`same` は `value_grain<>'month'` に限るので画面に出ない見込みだが、`--mode diff` で確認すること。

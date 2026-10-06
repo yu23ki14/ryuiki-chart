@@ -305,3 +305,51 @@ def test_unexpected_digit_count_message_mentions_all_supported_lengths():
     usage = period.PeriodExceptionUsage({})
     with pytest.raises(period.MigrationError, match="4/7/10/25桁"):
         period.compute_period("abc", "day", "src_a", {}, usage)
+
+
+# --- Issue #32-2: 厚木の月粒度の復元 ---------------------------------------
+
+
+def test_restore_month_bare_label_uses_fiscal_year_calendar_mapping():
+    r = period.restore_month_from_source_ref
+    assert r("2012", "https://x/y.xlsx#5月:相模川:pH") == "2012-05"
+    assert r("2012", "https://x/y.xlsx#12月:相模川:pH") == "2012-12"
+    assert r("2012", "https://x/y.xlsx#1月:相模川:pH") == "2013-01"  # 1〜3月は年度+1
+    assert r("2012", "https://x/y.xlsx#3月:相模川:pH") == "2013-03"
+    assert r("2012", "https://x/y.xlsx#4月:相模川:pH") == "2012-04"
+
+
+def test_restore_month_era_label_cross_checks_year():
+    r = period.restore_month_from_source_ref
+    assert r("2020", "u#令和2年4月:相模川:pH") == "2020-04"
+    assert r("2012", "u#平成25年1月:玉　川:pH") == "2013-01"
+    assert r("2019", "u#令和元年5月:相模川:pH") == "2019-05"
+    assert r("2019", "u#平成31年4月:相模川:pH") == "2019-04"
+
+
+def test_restore_month_era_contradiction_raises():
+    # 令和2年1月 = 2020-01 だが、年度2020の1月は2021-01（わざと矛盾させると止まる）
+    with pytest.raises(period.MigrationError, match="矛盾"):
+        period.restore_month_from_source_ref("2020", "u#令和2年1月:相模川:pH")
+
+
+def test_restore_month_missing_label_raises():
+    with pytest.raises(period.MigrationError, match="月ラベルを取れない"):
+        period.restore_month_from_source_ref("2020", "u#相模川:pH")
+    with pytest.raises(period.MigrationError, match="月ラベルを取れない"):
+        period.restore_month_from_source_ref("2020", None)
+
+
+def test_month_period_with_day_value_grain_needs_month_override():
+    exc = _exceptions(period_grain_override="month")
+    usage = period.PeriodExceptionUsage(exc)
+    grain, start, end = period.compute_period("2013-02", "day", "atsugi_like", exc, usage)
+    assert (grain, start, end) == ("month", "2013-02-01", "2013-02-28")
+    assert usage.counts()["atsugi_like"] == 1
+    # 宣言が無ければ従来どおり止まる
+    with pytest.raises(period.PeriodMismatchError):
+        period.compute_period("2013-02", "day", "atsugi_like", {}, period.PeriodExceptionUsage({}))
+    # override が month でなければ（fiscal_year の宣言では）止まる
+    fy = _exceptions()
+    with pytest.raises(period.PeriodMismatchError):
+        period.compute_period("2013-02", "day", "atsugi_like", fy, period.PeriodExceptionUsage(fy))

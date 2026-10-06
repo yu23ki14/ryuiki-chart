@@ -80,14 +80,14 @@ package.json の `deploy` は動かないので、デプロイは必ず `pnpm ru
 
 Cloudflare へのデプロイを見据えて、**データは D1（Cloudflare の SQLite）に置いています**。
 元は 3 つの SQLite ファイルを `ATTACH` して `d.` / `c.` の接頭辞で引いていましたが、
-D1 に `ATTACH` は無いので、40 テーブル（`drizzle/migrations/` 適用後。うちシード管理用の
-内部表 `_seed_state` を除く39表がシード対象。v1 の派生33表と落とした原本11表は PR-5 の `0010` で DROP、`vocab_*` 4表と `extraction_log` は Issue #61 の `0011` で DROP）を 1 つの D1 に統合し、素のテーブル名で引いています。
+D1 に `ATTACH` は無いので、41 テーブル（`drizzle/migrations/` 適用後。うちシード管理用の
+内部表 `_seed_state` を除く40表がシード対象。v1 の派生33表と落とした原本11表は PR-5 の `0010` で DROP、`vocab_*` 4表と `extraction_log` は Issue #61 の `0011` で DROP）を 1 つの D1 に統合し、素のテーブル名で引いています。
 どの原本から来たテーブルかは `src/lib/table-meta.ts` の `TABLE_ORIGIN` が持ちます。
 
 ```
 data/db/ryuiki.sqlite   ─┐
 data/db/cells.sqlite    ─┤
-data/db/registry.sqlite ─┼→ scripts/seed-d1-local.mjs →  D1 (40 テーブル)
+data/db/registry.sqlite ─┼→ scripts/seed-d1-local.mjs →  D1 (41 テーブル)
 data/db/v2.sqlite       ─┘        （入力は readonly で開く）
 ```
 

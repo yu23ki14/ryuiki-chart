@@ -182,3 +182,23 @@ b03/b04/b05 が実際に使うのは **Python 同梱の `sqlite3` モジュー�
 - **`built_from` に入力の粒度を書いてキーには含めない**: `built_from` は版・出所を記録する列で
   あり、次元（グループ化の単位）ではない。次元をここに逃がすと「同じ `built_from` でも実は違う
   グループ化がされている」状態を許してしまい、意味が二重になる。却下。
+
+## 追記 2026-10-06（Issue #32-2）: 厚木の月粒度の復元と、それでもエントリが残る理由
+
+`atsugi_river_water_quality` の年度番号だけの 3,840 行は、`source_ref` の月ラベル（`N月` 3,180 行・和暦付き
+660 行。和暦付きは年度と独立に照合）から暦月を復元し、`period_grain='month'`（月初〜月末）で入る
+（`scripts/migrate/period.py` の `restore_month_from_source_ref`、b03 が `period_exceptions.yaml` の
+`restore_month_from: source_ref_month_label` を持つ出典の 4 桁行だけに適用。`period_raw` は原表記のまま）。
+
+**Issue の閉じる条件（「`period_exceptions.yaml` の該当エントリが不要になる」）とは違い、エントリは消えない。**
+値は日間平均（`value_grain='day'`）で、採水日は月内の 1 日だが原本は「8〜9日」のような範囲表記しか持たず
+特定できない。よって `value_grain='day'` と `period_grain='month'` の不一致は日が原理的に特定できない
+ことによる**恒久的なもの**で、宣言（`period_grain_override: month`）として残す。`restoration_plan` は
+「復元済み」に書き換えた。
+
+キューブ側: 月で配られた観測（`period_grain='month'`、`input_grain='month'`。厚木と `jma_monthly`）は、
+b04 が**観測の行から直接**（月セルの平均の平均にしない）暦年（`year`）と年度（`fiscal_year`）に積み上げる
+（`input_grain='month'` のまま区別できる。n・検閲件数・欠月の扱いは日次→年次の出典配布セルと同じ規則）。
+`cube_invariants.verify_month_year_rollup` が月 → 年・年度の保存則（n・検閲件数の合計、min/max）を検証する。
+旧 fiscal_year セル（年度番号から直接作っていた 960 セル）と新ロールアップの値は 960/960 件一致した
+（実測は `docs/plans/ISSUE32_TIME.md` §5）。

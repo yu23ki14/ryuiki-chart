@@ -539,9 +539,21 @@ def _ingest_measurements(
                 place_id, region_id, place_kind,
             ) = row
 
+            # Issue #32-2: 年度番号しか持たない行は、宣言があるとき source_ref の月ラベルから
+            # 'YYYY-MM' を復元して期間の計算に使う。period_raw（下の measured_on）は原表記のまま。
+            period_input = measured_on
+            exc = exceptions.get(source_id) if source_id is not None else None
+            if (
+                exc is not None and exc.restore_month_from == "source_ref_month_label"
+                and measured_on is not None and len(measured_on) == 4 and is_synthetic != 1
+            ):
+                period_input = period.restore_month_from_source_ref(
+                    measured_on, source_ref, row_id=measurement_id
+                )
+
             result = _process_row(
                 stats, seen_ids, measurement_id, variable, source_id, site_id,
-                measured_on, value_grain, variable_id, place_id, exceptions, usage,
+                period_input, value_grain, variable_id, place_id, exceptions, usage,
                 is_synthetic=is_synthetic,
             )
             if result is None:

@@ -40,7 +40,8 @@ domains:
     sql: "SELECT DISTINCT variable_id FROM variable_alias WHERE dataset = 'measurements' AND variable_id IS NOT NULL"
   # 実在する (variable_id, site_id, basis)。basis は `lib/cube/series.ts` の `basisOfCell` と同じ式
   # （input_grain='day' → day、そうでなければ grain='year' → year、それ以外 fiscal_year）。
-  # `input_grain = grain` だけを通す（hour 入力の年値は basis='year' の系列ではない）。
+  # `input_grain = grain`（出典配布）と、月までしか日付が言えない日間平均値の月からの積み上げ
+  # （value_grain≠'month'。厚木、Issue #32-2）だけを通す（hour 入力の年値は basis='year' の系列ではない）。
   variable_site_basis:
     db: v2
     columns: [variable_id, site_id, basis]
@@ -49,7 +50,8 @@ domains:
              CASE WHEN spv.input_grain = 'day' THEN 'day' WHEN spv.grain = 'year' THEN 'year' ELSE 'fiscal_year' END AS basis
       FROM summary_place_variable spv
       JOIN place_source_ref psr ON psr.place_id = spv.place_id AND psr.source_id = 'sites.site_id'
-      WHERE (spv.input_grain = 'day' OR spv.input_grain = spv.grain)
+      WHERE (spv.input_grain = 'day' OR spv.input_grain = spv.grain
+             OR (spv.input_grain = 'month' AND spv.value_grain <> 'month'))
         AND spv.variable_id IN (SELECT variable_id FROM variable_alias WHERE dataset = 'measurements' AND variable_id IS NOT NULL)
   # 日次の積み上げがある (variable_id, site_id)（月次・日次の系列）。
   variable_site_day:
@@ -69,7 +71,8 @@ domains:
       SELECT DISTINCT spv.variable_id AS variable_id,
              CASE WHEN spv.input_grain = 'day' THEN 'day' WHEN spv.grain = 'year' THEN 'year' ELSE 'fiscal_year' END AS basis
       FROM summary_place_variable spv
-      WHERE (spv.input_grain = 'day' OR spv.input_grain = spv.grain)
+      WHERE (spv.input_grain = 'day' OR spv.input_grain = spv.grain
+             OR (spv.input_grain = 'month' AND spv.value_grain <> 'month'))
         AND spv.variable_id IN (SELECT variable_id FROM variable_alias WHERE dataset = 'measurements' AND variable_id IS NOT NULL)
   # 水域（`sites.municipality`）。測定値を持つ地点が2つ以上ある水域だけ。
   water:

@@ -328,10 +328,6 @@ DEFAULT_LANDUSE_SOURCE_REGIONS_YAML_TEXT = (
     "    consumer: observation\n"
     f"    expected_row_count: {len(DEFAULT_LANDUSE_CSV_ROWS)}\n"
     "    evidence: テスト用\n"
-    "regions:\n"
-    "  jp-14:\n"
-    "    utc_offset: \"+09:00\"\n"
-    "    evidence: テスト用\n"
 )
 
 
@@ -394,7 +390,7 @@ def build_observation(
     source_regions_yaml = tmp_path / "_source_regions.yaml"
     make_landuse_source_regions_yaml(
         source_regions_yaml,
-        text=source_regions_yaml_text if source_regions_yaml_text is not None else "sources: {}\nregions: {}\n",
+        text=source_regions_yaml_text if source_regions_yaml_text is not None else "sources: {}\n",
     )
     return b03.build_and_write_observation(
         measurements_db, registry_db, exceptions_yaml, time_conventions_yaml, out,

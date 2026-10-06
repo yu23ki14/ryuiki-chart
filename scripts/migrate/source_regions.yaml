@@ -19,10 +19,8 @@
 #   宣言はあるが1行も現れなかった source_id（未使用宣言）・実測件数が
 #   expected_row_count と食い違う場合はいずれも、その出典を読む b0x スクリプトを
 #   止める（scripts/migrate/period_exceptions.yaml と同じ流儀）。
-# regions: region_id -> utc_offset（'Z' 表記の時刻をローカル時刻に直すのに使う。
-#   ADR-0024。「+09:00 を直書きしない」ための唯一の置き場）。
-#   宣言されているのに sources のどれからも参照されない region_id（未使用宣言）は
-#   同様に止める。
+# regions（時刻帯）は registry/region.yaml に移した（Issue #32-3）。旧形式の `regions:` を
+#   ここに書くと止まる。
 #
 # consumer: この宣言を実際に消費するスクリプト（occurrence=scripts/b06_build_
 #   occurrence.py、observation=scripts/b03_build_observation.py）。**必須**。
@@ -60,11 +58,3 @@ sources:
       絞って前処理しているため region_id=jp-14。place（watershed。common スコープ）
       の region_id は常に NULL（ADR-0022 決定1）なので、observation 側で
       初めて出典由来の region を使う（ADR-0022 決定3・P-1b オーナー決定）。
-
-regions:
-  jp-14:
-    utc_offset: "+09:00"
-    evidence: >
-      日本標準時（JST、UTC+9）。ADR-0002 のコードリストにある神奈川県のスコープ。
-      'Z'（UTC）表記の observed_on をローカル時刻に直すときにこの値を使う
-      （scripts/migrate/occurrence_period.py、ADR-0024）。

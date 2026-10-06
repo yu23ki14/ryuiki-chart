@@ -38,9 +38,11 @@ from __future__ import annotations
 
 import copy
 import datetime
+import re
 import pathlib
 from dataclasses import dataclass
 
+from . import regions as region_vocab
 from .common import MigrationError, load_yaml
 
 DEFAULT_EXCEPTIONS_YAML = pathlib.Path(__file__).resolve().parent / "period_exceptions.yaml"
@@ -58,7 +60,19 @@ _YEAR_LIKE_GRAINS = ("year", "fiscal_year")
 # 実測すると、25桁のラベルを持つ3出典（sagamihara_taiki_hourly・
 # soramame_hourly_kanagawa・synthetic_sensor）は全行この表記だけを持つ
 # （2026-09-15実測）。それ以外のオフセットは推測で読み替えず即座に止める。
-_EXPECTED_TZ_SUFFIX = "+09:00"
+#
+# Issue #32-3: 直書きをやめ、`registry/region.yaml`（region の時刻帯の唯一の置き場）の jp-14 から導く。
+# センサー3出典はいずれも神奈川県（jp-14）の出典。
+_SENSOR_LABEL_REGION_ID = "jp-14"
+# （import 時には読まない。PyYAML の無い環境でも import できる必要がある〔v2 パイプラインの
+# コード対象の洗い出しが `-I -S` のサブプロセスで import する〕ため、初回使用時に1回だけ読む。）
+_expected_tz_suffix_cache: list[str] = []
+
+
+def _expected_tz_suffix() -> str:
+    if not _expected_tz_suffix_cache:
+        _expected_tz_suffix_cache.append(region_vocab.load_regions()[_SENSOR_LABEL_REGION_ID].utc_offset)
+    return _expected_tz_suffix_cache[0]
 
 
 @dataclass(frozen=True)
@@ -70,6 +84,9 @@ class PeriodException:
     expected_row_count: int | None
     reason: str
     restoration_plan: str
+    # 'source_ref_month_label' のとき、b03 が 4桁の measured_on を source_ref の月ラベルから
+    # 'YYYY-MM' に復元してから compute_period に渡す（Issue #32-2。厚木）。
+    restore_month_from: str | None = None
 
 
 def _load_raw(path) -> dict:
@@ -259,6 +276,7 @@ def load_period_exceptions(
             expected_row_count=spec.get("expected_row_count"),
             reason=spec.get("reason", ""),
             restoration_plan=spec.get("restoration_plan", ""),
+            restore_month_from=spec.get("restore_month_from"),
         )
     return out
 
@@ -584,6 +602,34 @@ def _bounds_for_grain(grain: str, year: int) -> tuple[str, str]:
     )
 
 
+_SOURCE_REF_MONTH_LABEL = re.compile(r"#(?:(令和|平成)(元|\d+)年)?(\d{1,2})月:")
+_ERA_OFFSET = {"令和": 2018, "平成": 1988}
+
+
+def restore_month_from_source_ref(fiscal_year: str, source_ref: str | None, *, row_id=None) -> str:
+    """4桁の年度番号 `fiscal_year` と `source_ref` の月ラベル（`...#5月:地点:項目` /
+    `...#令和2年4月:...`）から暦の `'YYYY-MM'` を作る（Issue #32-2）。月 4〜12 は年度と同じ年、
+    1〜3 は年度+1。和暦付きラベルは暦年を独立に計算して照合し、食い違えば止める。
+    解析できなければ止める（推測で埋めない）。
+    """
+    m = _SOURCE_REF_MONTH_LABEL.search(source_ref or "")
+    if m is None:
+        raise MigrationError(f"source_ref から月ラベルを取れない: {source_ref!r}（row_id={row_id!r}）")
+    era, era_year, month_s = m.group(1), m.group(2), int(m.group(3))
+    if not 1 <= month_s <= 12:
+        raise MigrationError(f"月ラベルが範囲外: {source_ref!r}（row_id={row_id!r}）")
+    fy = int(fiscal_year)
+    year = fy if month_s >= 4 else fy + 1
+    if era is not None:
+        ey = 1 if era_year == "元" else int(era_year)
+        if _ERA_OFFSET[era] + ey != year:
+            raise MigrationError(
+                f"月ラベルの和暦年と年度番号が矛盾: {source_ref!r} は {_ERA_OFFSET[era] + ey} 年、"
+                f"年度 {fiscal_year} からは {year} 年（row_id={row_id!r}）"
+            )
+    return f"{year:04d}-{month_s:02d}"
+
+
 def _month_bounds(measured_on7: str) -> tuple[str, str]:
     """出典が直接配った月次値（jma_monthly、`'2019-01'` 形。7桁）の区間。
     月の初日〜末日（閉区間の終端を明示。ADR-0008）。`calendar` を使わず
@@ -614,12 +660,12 @@ def _strip_tz(label: str, source_id: str | None) -> str:
     持たない。原表記は `period_raw` として呼び出し側 `b03` が別途保持する）。
 
     `+09:00` 以外のオフセットは実データに存在しない想定外の形として扱い、
-    推測で変換せず即座に止める（`_EXPECTED_TZ_SUFFIX` のコメント参照。
+    推測で変換せず即座に止める（`_expected_tz_suffix` のコメント参照。
     2026-09-15実測で全717,839行中25桁の全行が `+09:00` であることを確認済み）。
     """
-    if len(label) != 25 or label[19:] != _EXPECTED_TZ_SUFFIX:
+    if len(label) != 25 or label[19:] != _expected_tz_suffix():
         raise MigrationError(
-            f"時刻ラベルの形が想定外（25桁・末尾 {_EXPECTED_TZ_SUFFIX!r} のみ対応）: "
+            f"時刻ラベルの形が想定外（25桁・末尾 {_expected_tz_suffix()!r} のみ対応）: "
             f"{label!r}（source_id={source_id!r}）。実データでは起きないはずの形。"
         )
     return label[:19]
@@ -694,9 +740,15 @@ def compute_period(
         return "day", measured_on, measured_on
 
     if n == 7:
-        if value_grain != "month":
-            raise PeriodMismatchError(measured_on, value_grain, source_id)
         start, end = _month_bounds(measured_on)
+        if value_grain == "month":
+            return "month", start, end
+        # 値は日間平均だが日付が月までしか言えない行（復元した厚木。Issue #32-2）は、
+        # 4桁の行と同じく period_exceptions.yaml の宣言があるときだけ許す。
+        exc = exceptions.get(source_id) if source_id is not None else None
+        if exc is None or exc.period_grain_override != "month":
+            raise PeriodMismatchError(measured_on, value_grain, source_id)
+        usage.mark_used(source_id)
         return "month", start, end
 
     if n == 25:

@@ -20,10 +20,6 @@ def test_source_regions_count_overlay_applies_only_to_sources(tmp_path):
         "    region_id: jp-14\n"
         "    consumer: occurrence\n"
         "    expected_row_count: 658360\n"
-        "    evidence: e\n"
-        "regions:\n"
-        "  jp-14:\n"
-        "    utc_offset: '+09:00'\n"
         "    evidence: e\n",
         encoding="utf-8",
     )
