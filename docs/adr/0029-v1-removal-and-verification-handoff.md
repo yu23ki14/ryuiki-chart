@@ -140,12 +140,12 @@ serving-diff は **v1 側ごと削除した**。理由は、v1 の oracle が消
 過去の `reports/serving_switch_diff*.md/.json` は切り替え差分の記録として残す。
 削除したもの: `adapters-v1`・`v1-queries`・`v1-compat`・`merge-v1`・`classify*`・`mutations*`・`report*`・`*-expect*`・
 `serving-diff.mts`・`v1-db-shim`。
-再利用したもの: `adapters-v2.ts`・`normalize.ts`・`cube-db-singleton.ts`・`register-aliases.mjs`・`web/serving_queries.yaml`（v1 部分を剥がして再構成）。
+再利用したもの: `adapters-v2.ts`・`normalize.ts`・（`cube-db-singleton.ts` は PR-5 の修正で `adapters-v2.ts` に畳んだ）`register-aliases.mjs`・`web/serving_queries.yaml`（v1 部分を剥がして再構成）。
 新設: `web/scripts/serving-snapshot.mts`（`--mode snapshot|fingerprint|diff`）。`snapshot` が `data/sample/serving_snapshot.json`（層2、CI の
 `sample-gate` で凍結比較）、`fingerprint` が `reports/serving_fingerprint.json`（層3、b00 が書く）を作る。`diff` はスナップショット更新 PR に貼る
 問い合わせごとの before/after 表で、serving-diff の表を必須にする規則の後継（表の出処はこのモードだけ）。
 `reports/serving_fingerprint.json` は `reports/full_gate_proof.json` の**置き換え**（併存しない）。
-b00 の証明のパスに **`web/src/lib/cube`（`*.test.ts`・`__fixtures__` を除く）を足した**
+b00 の証明のパスに **`web/src/lib/cube`（`*.test.ts`・`__fixtures__` を除く）を足した**（のちに `web/src/lib/registry`・`web/src/lib/db.ts`・`web/src/db/schema-cube.ts` も足した）
 （fingerprint が cube の出力そのものなので、cube の非テストコードを触ったら原本のある手元で b00 を回し直す）。
 
 **2026-09-27 追記（Issue #48 PR-2 code-review。`web/scripts/lib/serving/classify.ts` の

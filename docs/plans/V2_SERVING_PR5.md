@@ -443,3 +443,19 @@ B が executor、D が最後に CI・文書を実態に合わせる）。A・C �
 要決定は D-1〜D-3（いずれも推奨で進めてよい。D-4 は範囲の線引き）。
 
 **決定（2026-10-06、メイン）**: D-1〜D-4 はすべて推奨どおり。serving-diff は v1 側ごと削除・PR-5 は1本（オーナー決定）。
+
+## 実測の記録（2026-10-06）
+
+統合後、ローカル D1 に `0010` を当ててシードした実測。
+
+- 表数は **45**（`_seed_state` を含み、`d1_migrations`・`_cf_*` を除く）。シード対象は **44 表・3,796,099 行**、seed は 44.7 秒。§1.3 の見込み（41 表/40 表）は誤りで、正しくは 45/44。
+- 使用量は約 **1.41GB**（空きページを除く。DROP の後に VACUUM はしていない）。内訳は observation_agg 866MB・occurrence_agg 434MB・cells 39MB で、残りは小さい。見込みの 500〜900MB は外れた（PR-3a で occurrence_agg に流域・月のセルが入ったため）。D1 の上限 10GB には収まる。
+- b00 は 6分38秒。問い合わせ 30 件・run 801 件で、s04 は OK。
+- サンプルの snapshot（`data/sample/serving_snapshot.json`）は約 390KB。一時 clone で CI と同じ手順を回して再現し、`git status --porcelain` は空だった。
+- b04 の抽出再計算は、サンプルで 3,961 セル（うち検閲あり 943）。サンプルの v2 で `value_lod` と `n` をそれぞれ1セル改ざんし、どちらも止まることを確かめた。
+
+既知の小さな癖: b04 の抽出再計算が失敗すると、同じ接続に一時表 `__sample_ids` が残る。失敗すればビルドは中断するので、実害は無い。
+
+統合中に見つけて直したこと:
+- サンプルに `source_registry`（124 行）を足した（cube の `overviewCounts`・来歴が読む。無いと snapshot が `no such table` で落ちた）。
+- `web/serving_queries.yaml` の `water_bodies_for_variable_by_variable`・`species_share_trend` の `max_runs`（snapshot）を増やし、サンプルでの空振りを無くした（行が出る組が少なく、等間隔の12件では外れていた）。

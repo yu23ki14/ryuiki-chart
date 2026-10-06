@@ -71,6 +71,7 @@ v1 の派生表（`web/scripts/build-derived.mjs` が書く `derived.sqlite`）�
 
 容量見積もり（実測）: 今のローカル D1 1,295MB → 約500〜900MB。D1 の上限（10GB、込み容量
 5GB）に余裕がある（§8）。
+（実測 2026-10-06: `0010` 適用・シード後は約 1.41GB。見込みの 500〜900MB は外れた。PR-3a で `occurrence_agg` に流域・月のセルが入ったため。内訳は observation_agg 866MB・occurrence_agg 434MB・cells 39MB。上限 10GB には収まる。）
 
 ### 3.2 新たに D1 に要るレジストリ
 

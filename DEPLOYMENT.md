@@ -15,7 +15,7 @@
 | Worker | `ryuiki-demo` |
 | D1 | `ryuiki` / `634bbe1b-72aa-48a0-9021-c15167f68a0b` / リージョン APAC |
 | シークレット | `AI_GATEWAY_TOKEN`, `AI_GATEWAY_ACCOUNT_ID` |
-| データ | 61 テーブル / 4,193,724 行 / 1.32GB（ローカル D1 と全テーブル一致を確認。**v1 撤去前の 2026-09 時点の値**。撤去後は 41 テーブルになる。下の「v1 撤去後の本番切り替え」） |
+| データ | 61 テーブル / 4,193,724 行 / 1.32GB（ローカル D1 と全テーブル一致を確認。**v1 撤去前の 2026-09 時点の値**。撤去後は 45 テーブルになる。下の「v1 撤去後の本番切り替え」） |
 
 **2026-09-05 追記**: 水道水の水源マップ（`docs/WATER_SOURCE_MAP.md`）の Phase 0〜2 を出した。
 `water_*` 8 テーブル / 13,243 行を追加（マイグレーション `0002_mute_tempest.sql`）。
@@ -66,7 +66,7 @@ JSON を読み直して詰めて書く（壊れた GeoJSON をビルド時に弾
 ## 前提
 
 - Cloudflare アカウントと **Workers 有料プラン**。D1 は 1 データベース 10GB（有料）/ 500MB（無料）で、
-  このデータは 1.3GB あるので無料プランには載らない。
+  このデータは 1.4GB あるので無料プランには載らない。
 - ローカルに原本 `data/db/ryuiki.sqlite` と `data/db/cells.sqlite`。
 - `cd web && pnpm wrangler login`
 
@@ -143,7 +143,7 @@ done
 
 ```bash
 pnpm run db:verify:remote      # ローカル D1 と本番 D1 の行数を全テーブルで比較
-pnpm wrangler d1 info ryuiki   # サイズを見る。1.3GB 前後になるはず
+pnpm wrangler d1 info ryuiki   # サイズを見る。撤去前は 1.3GB 前後、`0010` 後は約 1.4GB（実測）
 ```
 
 ### 4. 環境変数（AI Gateway / Mapbox）
@@ -209,7 +209,7 @@ done
 手順 A では `0010` が無いツリーから当てる。
 
 `0010` は 46 表を DROP する（v1 の派生33表・落とす原本11表・`instruments`/`protocols`。一覧は `docs/plans/V2_SERVING_PR5.md` §1.3）。
-適用後の D1 は 41 表（シード対象は `_seed_state` を除く 40 表）。
+適用後の D1 は 45 表（シード対象は `_seed_state` を除く 44 表。ローカル D1 に `0010` を当ててシードした実測。設計の見込みの 41/40 は誤り）。
 
 ### 1. 事前
 
@@ -225,7 +225,18 @@ pnpm wrangler d1 migrations list ryuiki --remote   # 本番の適用済みを確
 
 1. `pre-v1-removal` を別ディレクトリに `git worktree` で出し、そこで `pnpm run db:migrate:remote`。
    `0001`〜`0009` が当たる。`0009` は `cells` の部分索引で、投入の後・コードの前でよい（この段で当てて構わない）。
-2. 新しい表だけを書き出して流す。**入れる前に** `v2.sqlite` の鮮度（`scripts/check_v2_fresh.py`）と、
+2. **本番の現状を確かめる（先に）**。本番の今の状態は「61 テーブル」としか記録が無く、どの表があるかは手元では確定できない。
+
+   ```bash
+   pnpm wrangler d1 migrations list ryuiki --remote
+   pnpm wrangler d1 execute ryuiki --remote --command "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+   ```
+
+   `export-d1-sql.mjs` は素の `INSERT INTO` を書き出すので、本番に同じ表があって行が入っていると主キーが衝突するか重複する
+   （registry の8表は `0003` からあるので本番にもありうる）。`--table` に並べた表のうち本番に行があるものは、流す前に `DELETE FROM` する。
+   逆に、「本番に既にある」前提で新規の投入一覧から外してあるのは、`0001`〜`0002` の Tier 1 の5表・`water_*` の8表・
+   `sites`/`cells`/`notes`/`documents`/`source_registry`。本番に無ければ `--table` に足す。
+3. 新しい表だけを書き出して流す。**入れる前に** `v2.sqlite` の鮮度（`scripts/check_v2_fresh.py`）と、
    `reports/serving_fingerprint.json` の `git_head` が今のコードであることを確かめる。
 
    ```bash
@@ -233,7 +244,7 @@ pnpm wrangler d1 migrations list ryuiki --remote   # 本番の適用済みを確
    ```
 
    表名は `web/src/lib/table-meta.ts` の `TABLE_ORIGIN`（v2・reg）と照合してから。流し方は「3. データを入れる」のファイル単位の再試行ループをそのまま使う。
-3. 行数検証: `pnpm run db:verify:remote`（新表の行数がローカル D1 と一致。旧表は変わっていない）。
+4. 行数検証: `pnpm run db:verify:remote`（新表の行数がローカル D1 と一致。旧表は変わっていない）。
 
 ### 3. B. コードをデプロイ
 
@@ -245,7 +256,7 @@ pnpm wrangler d1 migrations list ryuiki --remote   # 本番の適用済みを確
 ### 4. C. DROP
 
 十分に様子を見てから、main のツリーで `pnpm run db:migrate:remote`（`0010`。46 表が消える。**戻すには Time Travel**）。
-`pnpm wrangler d1 info ryuiki` でサイズ（約 1.3GB → 500〜900MB の見込み）と表数（41）を確認し、手順 B の動作確認をもう一度行う。
+`pnpm wrangler d1 info ryuiki` でサイズ（約 1.4GB。実測。見込みの 500〜900MB は外れた）と表数（45）を確認し、手順 B の動作確認をもう一度行う。
 
 ### 5. ロールバック表
 

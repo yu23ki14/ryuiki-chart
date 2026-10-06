@@ -80,14 +80,14 @@ package.json の `deploy` は動かないので、デプロイは必ず `pnpm ru
 
 Cloudflare へのデプロイを見据えて、**データは D1（Cloudflare の SQLite）に置いています**。
 元は 3 つの SQLite ファイルを `ATTACH` して `d.` / `c.` の接頭辞で引いていましたが、
-D1 に `ATTACH` は無いので、41 テーブル（`drizzle/migrations/` 適用後。うちシード管理用の
-内部表 `_seed_state` を除く40表がシード対象。v1 の派生33表と落とした原本11表は PR-5 の `0010` で DROP）を 1 つの D1 に統合し、素のテーブル名で引いています。
+D1 に `ATTACH` は無いので、45 テーブル（`drizzle/migrations/` 適用後。うちシード管理用の
+内部表 `_seed_state` を除く44表がシード対象。v1 の派生33表と落とした原本11表は PR-5 の `0010` で DROP）を 1 つの D1 に統合し、素のテーブル名で引いています。
 どの原本から来たテーブルかは `src/lib/table-meta.ts` の `TABLE_ORIGIN` が持ちます。
 
 ```
 data/db/ryuiki.sqlite   ─┐
 data/db/cells.sqlite    ─┤
-data/db/registry.sqlite ─┼→ scripts/seed-d1-local.mjs →  D1 (41 テーブル)
+data/db/registry.sqlite ─┼→ scripts/seed-d1-local.mjs →  D1 (45 テーブル)
 data/db/v2.sqlite       ─┘        （入力は readonly で開く）
 ```
 
@@ -108,7 +108,7 @@ src/db/schema.ts        ── drizzle-kit generate ──> drizzle/migrations/0
 | 制約 | 効いてくる場所 |
 |---|---|
 | バインドパラメータ 100個/クエリ | `IN (...)` は `db.ts` の `queryChunked` で 80 個ずつに分割している |
-| 1 データベース 10GB（有料）/ 500MB（無料） | 現状 1.3GB。無料プランには載らない |
+| 1 データベース 10GB（有料）/ 500MB（無料） | 現状 約 1.4GB（PR-5 後の実測）。無料プランには載らない |
 | SQL 文 100KB / 実行 30 秒 | 現状は余裕がある |
 | ATTACH 不可・ユーザー定義関数不可 | テーブルを 1 DB に統合済み。`REGEXP` は使っていない |
 
