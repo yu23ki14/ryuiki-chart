@@ -1,485 +1,279 @@
-# serving-diff（`pnpm run serving:diff`）が回す問い合わせの一覧。
+# serving-snapshot（`pnpm run serving:snapshot`）が回す問い合わせの一覧。
 #
-# 設計・経緯: Issue #48 PR-1 設計書（1c: serving-diff）§4「serving_queries.yaml と
-# 共通の行形」、`docs/plans/V2_SERVING_PR1.md`。PR-1 は測定値系（PR-2 が使うもの）
-# だけを対象にする（設計書 §0 要点1）。生物系は PR-3b（`docs/plans/V2_SERVING_PR3B.md`
-# §3.2。v1 は `queries.ts` の関数を無変更で呼び、v2 は `lib/cube` の公開関数を画面・AI と
-# 同じ既定値で呼ぶ）で足した。文書・概況・合成は PR-4 で足す。
+# 設計: `docs/plans/V2_SERVING_PR5.md` §3.2・§3.3。経緯: Issue #48 PR-1〜PR-4（v1 と突き合わせる serving-diff。
+# PR-5 で v1 側ごと撤去し、この一覧は「v2 の出力を残す」道具の入力になった）。
 #
-# ここに SQL は書かない（`domains` の列挙 SQL だけが例外）。各問い合わせの実体
-# （v1 側は `web/src/lib/queries.ts` を無変更で呼ぶ・v2 側は `@/lib/cube` を呼ぶ）は
-# `web/scripts/lib/serving/adapters-v1.ts` / `adapters-v2.ts` が `id` ごとに持つ。
-# ここが持つのは「パラメータをどう列挙するか」「行をどの列で比較するか」
-# 「既知の系統のうちどれがこの問い合わせに当てはまりうるか」だけ。
+# ここに SQL は書かない（`domains` の列挙 SQL だけが例外）。各問い合わせの実体（`@/lib/cube` の公開関数を
+# 画面・API・AI と同じ既定値で呼ぶ）は `web/scripts/lib/serving/adapters-v2.ts` が `id` ごとに持つ。
+# ここが持つのは「パラメータをどう列挙するか」「行をどの列で比較・記録するか」「run の上限」だけ。
 #
-# domains: パラメータの取りうる値の集合。`sql` は v1（derived.sqlite + ryuiki.sqlite）
-# に対して実行し、結果の最初の列を値の列とする。`values` は列挙のリテラル。
-version: 1
+# 残す問い合わせの規則: `adapters-v2` がその id で呼ぶ公開関数に、`web/src/app`・`web/src/components`・
+# `web/src/lib/ai` の**テスト以外**の呼び出し元がある。alias 起点の問い合わせ（旧 v1 の oracle 専用）と、
+# 呼び出し元の無い `speciesLabels`/`redlistFlows`/`redlistSpecies`/`watershedYears` は PR-5 で落とした。
+#
+# domains: パラメータの取りうる値。v2 から導く（`db: v2|registry|ryuiki|cells`。executor は4つを ATTACH した
+# 1本の接続で流すので、表名は非修飾で書く。`c.`/`d.` で始まるエイリアスは D1 互換検査が落とす）。`sql` は
+# **実在する組だけ**を返す（空走りを防ぐ）。`columns` を持つ domain は複数列を1つの軸（組）にする。
+# 問い合わせの `params.<name>.column`（省略時は param 名）が列を引き、同じ domain を引く param は1つの軸になる。
+# `values` は列挙のリテラル。値は executor が決定論的な全順序（数値は数値順・文字列は UTF-16 順）に並べる。
+#
+# queries の任意キー:
+#   max_runs: 数値（snapshot・fingerprint 共通）か {snapshot: n, fingerprint: n}。既定は snapshot 12 / fingerprint 60。
+#   allow_empty: true  空が正常な問い合わせだけ（空振り検査の対象外）。理由をコメントに書く。
+version: 2
 
 domains:
-  alias:
-    sql: "SELECT variable FROM var_catalog ORDER BY variable"
-    db: v1
+  # 測定値（dataset='measurements'。センサー系列は含めない）を持つ地点（`sites.site_id`）。
+  # 以下の summary_place_variable 起点の domain も同じ絞り込み（`representativeSeries(variableId, 'measurements')` が空で落ちないように）。
   site_id:
-    sql: "SELECT DISTINCT site_id FROM site_var ORDER BY site_id"
-    db: v1
-  # `listWaterBodies()`（web/src/lib/queries.ts）と同じ絞り込み: site_var に
-  # 測定値集計を持つ地点が2つ以上ある municipality だけ（実測 26。単に sites 側
-  # だけで絞ると、site_var に一度も出てこない地点まで拾って 65 になる）。
-  water:
+    db: v2
+    columns: [site_id]
     sql: >
-      SELECT s.municipality FROM sites s
-      JOIN (SELECT DISTINCT site_id FROM site_var) v ON v.site_id = s.site_id
-      WHERE s.municipality IS NOT NULL AND s.municipality <> ''
-      GROUP BY s.municipality HAVING COUNT(DISTINCT s.site_id) >= 2
-      ORDER BY s.municipality
-    db: v1
-  kind:
-    values: [daily, annual]
-  zone:
-    values: [1, 2, 3, 4, 5]
-  highlight_variant:
-    values: [default, representative]
-  # `variable_id` は v1 に無い概念（registry 側の正準 ID）なので `registry.sqlite`
-  # に対して実行する（design §3 #2「by_variable」）。alias→variable_id の対応の
-  # 選定・代表フィルタは `web/scripts/lib/serving/merge-v1.ts` が持つ——ここは
-  # 単に「dataset='measurements' に属する variable_id の一覧」を列挙するだけ。
+      SELECT DISTINCT psr.external_key AS site_id
+      FROM summary_place_variable spv
+      JOIN place_source_ref psr ON psr.place_id = spv.place_id AND psr.source_id = 'sites.site_id'
+      WHERE spv.variable_id IN (SELECT variable_id FROM variable_alias WHERE dataset = 'measurements' AND variable_id IS NOT NULL)
+  # 測定値の variable_id（レジストリ上の正準 ID）。
   variable_id:
-    sql: "SELECT DISTINCT variable_id FROM variable_alias WHERE dataset = 'measurements' AND variable_id IS NOT NULL ORDER BY variable_id"
     db: registry
-  basis:
-    values: [day, fiscal_year, year]
+    columns: [variable_id]
+    sql: "SELECT DISTINCT variable_id FROM variable_alias WHERE dataset = 'measurements' AND variable_id IS NOT NULL"
+  # 実在する (variable_id, site_id, basis)。basis は `lib/cube/series.ts` の `basisOfCell` と同じ式
+  # （input_grain='day' → day、そうでなければ grain='year' → year、それ以外 fiscal_year）。
+  # `input_grain = grain` だけを通す（hour 入力の年値は basis='year' の系列ではない）。
+  variable_site_basis:
+    db: v2
+    columns: [variable_id, site_id, basis]
+    sql: >
+      SELECT DISTINCT spv.variable_id AS variable_id, psr.external_key AS site_id,
+             CASE WHEN spv.input_grain = 'day' THEN 'day' WHEN spv.grain = 'year' THEN 'year' ELSE 'fiscal_year' END AS basis
+      FROM summary_place_variable spv
+      JOIN place_source_ref psr ON psr.place_id = spv.place_id AND psr.source_id = 'sites.site_id'
+      WHERE (spv.input_grain = 'day' OR spv.input_grain = spv.grain)
+        AND spv.variable_id IN (SELECT variable_id FROM variable_alias WHERE dataset = 'measurements' AND variable_id IS NOT NULL)
+  # 日次の積み上げがある (variable_id, site_id)（月次・日次の系列）。
+  variable_site_day:
+    db: v2
+    columns: [variable_id, site_id]
+    sql: >
+      SELECT DISTINCT spv.variable_id AS variable_id, psr.external_key AS site_id
+      FROM summary_place_variable spv
+      JOIN place_source_ref psr ON psr.place_id = spv.place_id AND psr.source_id = 'sites.site_id'
+      WHERE spv.input_grain = 'day'
+        AND spv.variable_id IN (SELECT variable_id FROM variable_alias WHERE dataset = 'measurements' AND variable_id IS NOT NULL)
+  # 実在する (variable_id, basis)（ゾーン系列）。
+  variable_basis:
+    db: v2
+    columns: [variable_id, basis]
+    sql: >
+      SELECT DISTINCT spv.variable_id AS variable_id,
+             CASE WHEN spv.input_grain = 'day' THEN 'day' WHEN spv.grain = 'year' THEN 'year' ELSE 'fiscal_year' END AS basis
+      FROM summary_place_variable spv
+      WHERE (spv.input_grain = 'day' OR spv.input_grain = spv.grain)
+        AND spv.variable_id IN (SELECT variable_id FROM variable_alias WHERE dataset = 'measurements' AND variable_id IS NOT NULL)
+  # 水域（`sites.municipality`）。測定値を持つ地点が2つ以上ある水域だけ。
+  water:
+    db: ryuiki
+    columns: [water]
+    sql: >
+      SELECT s.municipality AS water
+      FROM sites s
+      JOIN place_source_ref psr ON psr.external_key = s.site_id AND psr.source_id = 'sites.site_id'
+      WHERE s.municipality IS NOT NULL AND s.municipality <> ''
+        AND psr.place_id IN (SELECT DISTINCT place_id FROM summary_place_variable)
+      GROUP BY s.municipality
+      HAVING COUNT(DISTINCT s.site_id) >= 2
 
-  # ---- 生物系（PR-3b）----
-  # n≥80 の種（v1 `species_month`/`species_mesh_year` の足切りと同じ。実測 1,702 種）。
+  # ---- 生物系 ----
+  # n≥80 の種（`summary_species_catalog`。画面・API の足切りと同じ）。
   binom_n80:
-    sql: "SELECT binom FROM species2 WHERE n >= 80 ORDER BY binom"
-    db: v1
-  # 分類群（v1 `species2.taxon_group`）。
+    db: v2
+    columns: [binom]
+    sql: "SELECT binom FROM summary_species_catalog WHERE n >= 80"
+  # 分類群（`summary_group_year`）。
   group:
-    sql: "SELECT DISTINCT taxon_group FROM species2 WHERE taxon_group IS NOT NULL ORDER BY taxon_group"
-    db: v1
-  # `speciesShareTrend` の期間 A/B の組（`<aFrom>-<aTo>:<bFrom>-<bTo>`。/biota の既定の増減表と、
-  # 古い期間どうしの比べ）。
+    db: v2
+    columns: [taxon_group]
+    sql: "SELECT DISTINCT taxon_group FROM summary_group_year WHERE taxon_group IS NOT NULL"
+  # `speciesShareTrend` の期間 A/B の組（`<aFrom>-<aTo>:<bFrom>-<bTo>`。/biota の既定の増減表と、古い期間どうしの比べ）。
   trend_periods:
     values: ["2018-2020:2022-2024", "1990-2000:2010-2020"]
   # `/api/geo/mesh?year=` が取りうる年（`summary_grid_catalog` の窓 1970〜2026）。
   year:
     values: [1970, 1971, 1972, 1973, 1974, 1975, 1976, 1977, 1978, 1979, 1980, 1981, 1982, 1983, 1984, 1985, 1986, 1987, 1988, 1989, 1990, 1991, 1992, 1993, 1994, 1995, 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]
-  # レッドリストの版（v1 `redlist_change.list_year`）。
-  list_year:
-    sql: "SELECT DISTINCT list_year FROM redlist_change ORDER BY list_year"
-    db: v1
-  # レッドリストの分類群。'' は「全分類群」（group を渡さない）。
-  redlist_group:
-    sql: "SELECT '' AS g UNION ALL SELECT DISTINCT taxon_group_ja FROM redlist_change WHERE taxon_group_ja IS NOT NULL ORDER BY g"
-    db: v1
+  # 文書系列（3年以上の年を持つ (doc_id, table_id, row_key)。`lib/cube/doc-series-where.ts` の `DOC_SERIES_WHERE` と同じ述語）。
+  doc_series:
+    db: cells
+    columns: [doc_id, table_id, row_key]
+    sql: >
+      SELECT doc_id, table_id, row_key
+      FROM cells
+      WHERE superseded = 0 AND is_total = 0 AND value_type IN ('int','float') AND value IS NOT NULL
+        AND fiscal_year IS NOT NULL AND row_key IS NOT NULL AND row_key <> ''
+      GROUP BY doc_id, table_id, row_key
+      HAVING COUNT(DISTINCT fiscal_year) >= 3
 
 queries:
-  - id: variable_catalog
-    v1_table: var_catalog
-    params: {}
-    compare:
-      key: [alias]
-      numeric: [n, n_sites, y_from, y_to, n_daily, n_annual, n_censored]
-      label: [unit]
-    known: [declared, unit_label_registry, synthetic_excluded]
-
+  # ---- 測定値（variable_id 起点。画面・API・AI が使う経路）----
   - id: sites_list
-    v1_table: null
     params: {}
     compare:
       key: [site_id]
       numeric: [n_meas, n_var]
       label: []
-    known: [synthetic_excluded]
-
-  - id: site_variables
-    v1_table: site_var
-    params:
-      site_id: { domain: site_id }
-    compare:
-      key: [alias, kind]
-      numeric: [n, y_from, y_to, avg]
-      label: [unit]
-    tolerance:
-      avg: 1.0e-9
-    known: [declared, unit_label_registry, synthetic_excluded, lod_imputation]
 
   - id: water_bodies
-    v1_table: null
     params: {}
     compare:
       key: [name]
       numeric: [n_sites, n_meas, y_from, y_to, elev_min, elev_max, zone_min, zone_max]
       label: []
-    known: [synthetic_excluded]
-
-  - id: water_bodies_for_variable
-    v1_table: null
-    params:
-      alias: { domain: alias }
-    compare:
-      key: [name]
-      numeric: [n_sites, n, y_from, y_to, elev_max]
-      label: []
-    known: [synthetic_excluded]
 
   - id: sites_in_water_body
-    v1_table: null
     params:
       water: { domain: water }
     compare:
       key: [site_id]
       numeric: [n_meas, n_var]
       label: [municipality]
-    known: [synthetic_excluded]
-
-  - id: year_series_site
-    v1_table: meas_year
-    params:
-      alias: { domain: alias }
-      site_id: { domain: site_id }
-      kind: { domain: kind }
-    only_existing: "SELECT site_id, variable AS alias, kind FROM site_var"
-    compare:
-      key: [year]
-      numeric: [n, avg, min, max, n_censored]
-      label: [unit]
-    known: [declared, unit_label_registry, synthetic_excluded, lod_imputation]
-
-  - id: month_series_site
-    v1_table: meas_month
-    params:
-      alias: { domain: alias }
-      site_id: { domain: site_id }
-    only_existing: "SELECT DISTINCT site_id, variable AS alias FROM meas_month"
-    compare:
-      key: [ym]
-      numeric: [n, avg]
-      label: []
-    tolerance:
-      avg: 1.0e-9
-    known: [declared, float_rounding, synthetic_excluded, lod_imputation]
-
-  - id: day_series_site
-    v1_table: meas_daily
-    params:
-      alias: { domain: alias }
-      site_id: { domain: site_id }
-    only_existing: "SELECT DISTINCT site_id, variable AS alias FROM meas_daily"
-    compare:
-      key: [d]
-      numeric: [value, n_censored]
-      label: []
-    known: [declared, synthetic_excluded, lod_imputation]
-
-  - id: year_series_water
-    v1_table: meas_year
-    params:
-      alias: { domain: alias }
-      water: { domain: water }
-      kind: { domain: kind }
-    only_existing: >
-      SELECT DISTINCT s.municipality AS water, sv.variable AS alias, sv.kind AS kind
-      FROM site_var sv JOIN sites s ON s.site_id = sv.site_id
-      WHERE s.municipality IN (
-        SELECT s2.municipality FROM sites s2
-        JOIN (SELECT DISTINCT site_id FROM site_var) v2 ON v2.site_id = s2.site_id
-        WHERE s2.municipality IS NOT NULL AND s2.municipality <> ''
-        GROUP BY s2.municipality HAVING COUNT(DISTINCT s2.site_id) >= 2
-      )
-    compare:
-      key: [site_id, year]
-      numeric: [n, avg, min, max, n_censored]
-      label: [unit]
-    known: [declared, unit_label_registry, synthetic_excluded, lod_imputation]
-
-  - id: zone_series
-    v1_table: zone_year
-    params:
-      alias: { domain: alias }
-      kind: { domain: kind }
-    only_existing: "SELECT DISTINCT variable AS alias, kind FROM zone_year"
-    compare:
-      key: [zone, year]
-      numeric: [n_sites, n, avg]
-      label: [unit]
-    tolerance:
-      avg: 1.0e-9
-    known: [unit_label_registry, synthetic_excluded, lod_imputation]
-
-  - id: climatology
-    v1_table: meas_clim
-    params:
-      alias: { domain: alias }
-    only_existing: "SELECT DISTINCT variable AS alias FROM meas_clim"
-    compare:
-      key: [month]
-      numeric: [n, avg, min, max]
-      label: [unit]
-    tolerance:
-      avg: 1.0e-9
-    known: [declared, unit_label_registry, float_rounding, synthetic_excluded, lod_imputation]
-
-  - id: zone_climatology
-    v1_table: zone_clim
-    params:
-      alias: { domain: alias }
-    only_existing: "SELECT DISTINCT variable AS alias FROM zone_clim"
-    compare:
-      key: [zone, month]
-      numeric: [n, avg]
-      label: [unit]
-    tolerance:
-      avg: 1.0e-9
-    known: [unit_label_registry, synthetic_excluded, lod_imputation]
-
-  # ---------------------------------------------------------------------
-  # by_variable（design §3 #2「series_merge」）: alias→variable_id の束ね。
-  # v1 側は `web/scripts/lib/serving/merge-v1.ts`（registry の生ボキャブラリだけを
-  # 読む。`@/lib/cube` は import しない）で alias を代表 variable_id に束ね直し、
-  # v2 側は画面・AI と同じ `lib/cube` の公開関数（`representativeSeries`/
-  # `yearSeries`/`monthSeries`/`daySeries`/`summarize`/`catalog.*`）を呼ぶ
-  # （`adapters-v2.ts` 参照）。`v1_table` は無い（束ねた行を宣言済み差分の
-  # ベースラインと突き合わせる意味が無いため）。
-  # ---------------------------------------------------------------------
 
   - id: variable_catalog_by_variable
-    v1_table: null
     params: {}
     compare:
       key: [variable_id]
       numeric: [n, n_places, y_from, y_to, n_censored]
       label: [unit]
-    # `declared`: `v1_table` が無いため `classify.ts` の `ctx.byVariableDeclared`
-    # 経由（`scripts/reconcile/expected_diffs.yaml` の `var_catalog` を、束ねる
-    # alias ごとに探す。Issue #48 PR-2 統合後 修正B）。
-    known: [declared, unit_label_registry, synthetic_excluded]
 
-  # `stat`（obs_stat）は key に含めない: v1 の alias 単位の表（site_var/meas_year）は
-  # obs_stat を持たず、alias レベルでも一意に決まらない（実測: 'pH' は出典によって
-  # point/mean が混在する）。variable_id×basis まで束ねる
-  # （`web/scripts/lib/serving/merge-v1.ts` の `aliasKindRoutes` docstring 参照）。
+  # `stat`（obs_stat）は key に含めない: variable_id×basis まで束ねる。
   - id: site_variables_by_variable
-    v1_table: null
     params:
       site_id: { domain: site_id }
     compare:
       key: [variable_id, basis]
       numeric: [n, y_from, y_to, avg]
       label: [unit]
-    tolerance:
-      avg: 1.0e-9
-    # `declared`: `ctx.byVariableDeclared` 経由（`site_var`。Issue #48 PR-2 統合後 修正B）。
-    known: [declared, unit_label_registry, synthetic_excluded, lod_imputation]
 
   - id: year_series_site_by_variable
-    v1_table: null
     params:
-      variable_id: { domain: variable_id }
-      site_id: { domain: site_id }
-      basis: { domain: basis }
+      variable_id: { domain: variable_site_basis }
+      site_id: { domain: variable_site_basis }
+      basis: { domain: variable_site_basis }
     compare:
       key: [year]
       numeric: [n, avg, min, max, n_censored]
       label: [unit]
-    # `declared`: `ctx.byVariableDeclared` 経由（`meas_year`。Issue #48 PR-2 code-review #8:
-    # 以前は BY_VARIABLE_DECLARED_SPECS に対応が無く、宣言済みの中津川 SS 由来9件が
-    # unexplained になっていた）。
-    known: [declared, unit_label_registry, synthetic_excluded, lod_imputation]
 
+  # 日次・月次は行が多いので snapshot の run を絞る（コミットするファイルの大きさ）。
   - id: month_series_site_by_variable
-    v1_table: null
+    max_runs: { snapshot: 6 }
     params:
-      variable_id: { domain: variable_id }
-      site_id: { domain: site_id }
+      variable_id: { domain: variable_site_day }
+      site_id: { domain: variable_site_day }
     compare:
       key: [ym]
       numeric: [n, avg]
       label: []
-    tolerance:
-      avg: 1.0e-9
-    # `declared`: `ctx.byVariableDeclared` 経由（`meas_month`。Issue #48 PR-2 統合後 修正B）。
-    known: [declared, float_rounding, synthetic_excluded, lod_imputation]
 
   - id: day_series_site_by_variable
-    v1_table: null
+    max_runs: { snapshot: 3, fingerprint: 30 }
     params:
-      variable_id: { domain: variable_id }
-      site_id: { domain: site_id }
+      variable_id: { domain: variable_site_day }
+      site_id: { domain: variable_site_day }
     compare:
       key: [d]
       numeric: [value, n_censored]
       label: []
-    # `declared`: `ctx.byVariableDeclared` 経由（`meas_daily`。Issue #48 PR-2 統合後 修正B）。
-    known: [declared, synthetic_excluded, lod_imputation]
 
   - id: zone_series_by_variable
-    v1_table: null
     params:
-      variable_id: { domain: variable_id }
-      basis: { domain: basis }
+      variable_id: { domain: variable_basis }
+      basis: { domain: variable_basis }
     compare:
       key: [zone, year]
       numeric: [n_sites, n, avg]
       label: [unit]
-    tolerance:
-      avg: 1.0e-9
-    known: [unit_label_registry, synthetic_excluded, lod_imputation]
 
   - id: climatology_by_variable
-    v1_table: null
     params:
       variable_id: { domain: variable_id }
     compare:
       key: [month]
       numeric: [n, avg, min, max]
       label: [unit]
-    tolerance:
-      avg: 1.0e-9
-    # `declared`: `ctx.byVariableDeclared` 経由（`meas_clim`。Issue #48 PR-2 統合後 修正B）。
-    known: [declared, unit_label_registry, float_rounding, synthetic_excluded, lod_imputation]
 
   - id: zone_climatology_by_variable
-    v1_table: null
     params:
       variable_id: { domain: variable_id }
     compare:
       key: [zone, month]
       numeric: [n, avg]
       label: [unit]
-    tolerance:
-      avg: 1.0e-9
-    known: [unit_label_registry, synthetic_excluded, lod_imputation]
 
   - id: water_bodies_for_variable_by_variable
-    v1_table: null
     params:
       variable_id: { domain: variable_id }
     compare:
       key: [name]
       numeric: [n_sites, n, y_from, y_to, elev_max]
       label: []
-    known: [synthetic_excluded]
 
-  # `rain_daily`/`rain_top_days`（v1 `rainDaily`/`rainTopDays`）は `/api/timeseries
-  # ?mode=rain` 専用で、その API モード自体が読み手ゼロのため PR-2 で削除する
-  # （design D5）。`rain_monthly_clim` だけ残す——季節図（`mode=season`）が
-  # `rainMonthlyClim` を引き続き使い、日割り退役の検証対象として
-  # 唯一残る rain 系の問い合わせになる（U4 の判断。PR 本文で報告）。
-  # `rain_div10`（`/10` 撤去の検証規則）は known から外した: この問い合わせは
-  # 月次（`classifyDaySplitMonthly`）でしか判定しておらず、その再計算式が
-  # もともと `/10` の換算を含んだまま v1/v2 の実値と完全一致する——実測
-  # （`--only rain_monthly_clim --mutate rain_no_div10_rule`）で rain_div10 が
-  # 1件も選ばれない（day_split が全12ヶ月を先に説明する）ことを確認した。
-  # `rain_daily`/`rain_top_days`（rain_div10 が唯一 day_split と守備範囲を
-  # 分けて判定できていた問い合わせ）を削除した時点で、この問い合わせにおける
-  # rain_div10 は実質的な検証を持たない免除だった（Issue #48 PR-2 統合後 修正C）。
+  # 季節図（`/api/timeseries?mode=season`）が使う雨量の月別平年値。
   - id: rain_monthly_clim
-    v1_table: null
     params: {}
     compare:
       key: [month]
       numeric: [mm]
       label: []
-    known: [day_split]
 
-  - id: longitudinal_highlight
-    v1_table: null
-    params:
-      variant: { domain: highlight_variant }
-    compare:
-      key: [site_id]
-      numeric: [avg, n]
-      label: [unit]
-    # meas_year/sites の合成なので v1_table が無く、宣言済み差分の突き合わせ
-    # （キーの組み立て）先が無い（unexplained になったら year_series_site/water
-    # 側の原因をそのまま引き継いでいる）。home の①（境川 BOD）は合成データの
-    # 影響を受ける水域の1つ（津久井湖・相模川中流等。design 付録）で、lod にも
-    # 切り替わる（D6）。
-    known: [synthetic_excluded, lod_imputation]
-
-  # ---------------------------------------------------------------------
-  # 生物系（Issue #48 PR-3b、`docs/plans/V2_SERVING_PR3B.md` §3.2）。
-  # v1 側は `web/src/lib/queries.ts` を無変更で呼び（無いものは v1 表を読む）、v2 側は
-  # `@/lib/cube` の公開関数だけを呼ぶ（`adapters-v2.ts`。生 SQL を持たない）。
-  # `known: []`（空）は「v1 = v2 でなければならない」問い合わせ: 1 件でも差が出れば
-  # unexplained になる。規則が当てはまる問い合わせだけ、その規則を `known` に書く
-  # （`classify.ts` の生物系5規則。期待値は `biota-expect.ts` が L2 等から独立に再計算する）。
-  # ---------------------------------------------------------------------
-
+  # ---- 生物系 ----
   - id: effort_years
-    v1_table: effort_year
     params: {}
     compare:
       key: [year]
       numeric: [n, species_n, mesh_n, n_inat, n_gbif]
       label: []
-    known: []
 
   - id: taxon_group_years
-    v1_table: org_group_year
     params: {}
     compare:
       key: [year, taxon_group]
       numeric: [n, mesh_n]
       label: []
-    known: []
 
-  # v1 は limit 無制限で全行（23,618）。タイブレークで境界の行が食い違わないよう上位 N は比べない。
-  # `cls`（v1 の列名）= v2 の `class`。`has_red_list` は v1 `red_list_category` が空でないか／
-  # v2 `n_red_list > 0`。Sirosporium celtidis の `cls` は `expected_diffs.yaml` の `species2` で宣言済み。
+  # 上位 N は比べない（limit 無制限で全行）。`cls` = v2 の `class`。`has_red_list` は `n_red_list > 0`。
   - id: species_catalog
-    v1_table: species2
     params: {}
     compare:
       key: [binom]
       numeric: [n, has_red_list, y_from, y_to, n_years, mesh_n]
       label: [taxon_group, cls, family, label]
-    known: [declared, vernacular_label_rule]
-
-  - id: species_labels
-    v1_table: null
-    params: {}
-    compare:
-      key: [binom]
-      numeric: []
-      label: [label]
-    known: [vernacular_label_rule]
 
   - id: species_years
-    v1_table: species_year2
     params:
       binom: { domain: binom_n80 }
     compare:
       key: [year]
       numeric: [n, mesh_n]
       label: []
-    known: []
 
   - id: species_months
-    v1_table: species_month
     params:
       binom: { domain: binom_n80 }
     compare:
       key: [month]
       numeric: [n]
       label: []
-    known: [month_cell_membership]
 
   - id: species_mesh_years
-    v1_table: species_mesh_year
+    max_runs: { snapshot: 4 }
     params:
       binom: { domain: binom_n80 }
     compare:
       key: [year, mlat, mlon]
       numeric: [n]
       label: []
-    known: []
 
   - id: species_share_trend
-    v1_table: null
     params:
       group: { domain: group }
       periods: { domain: trend_periods }
@@ -487,87 +281,48 @@ queries:
       key: [binom]
       numeric: [n_a, n_b, total_a, total_b]
       label: [label]
-    known: [vernacular_label_rule]
 
   - id: mesh_all
-    v1_table: mesh_all
     params: {}
     compare:
       key: [mlat, mlon]
       numeric: [n, rl_n, species_n, rl_species_n]
       label: []
-    known: []
 
   - id: mesh_by_year
-    v1_table: mesh_year
+    max_runs: { snapshot: 6 }
     params:
       year: { domain: year }
     compare:
       key: [mlat, mlon]
       numeric: [n, species_n, rl_n]
       label: []
-    known: []
 
   - id: ias_species
-    v1_table: ias_species
     params: {}
     compare:
       key: [ias_category, binom]
       numeric: [n, mesh_n, y_from, y_to, n_since_2020]
       label: [name_ja, taxon_group]
-    known: []
 
   - id: redlist_summary
-    v1_table: redlist_change
     params: {}
     compare:
       key: [list_year, taxon_group_ja, direction]
       numeric: [n]
       label: [list_name]
-    known: []
 
-  - id: redlist_flows
-    v1_table: redlist_change
-    params:
-      list_year: { domain: list_year }
-      group: { domain: redlist_group }
-    compare:
-      key: [prev_label, cur_label, direction]
-      numeric: [n]
-      label: []
-    known: []
-
-  # `ord`: 同じ (学名, 和名, 前回, 今回) の行が複数あるときの連番（同一内容の行は入れ替え可能なので
-  # 並びに依らず決まる。`normalize.ts` の `withOrdinal`）。v1・v2 とも limit は十分大きく取る
-  # （境界のタイブレークを比べない）。
-  - id: redlist_species
-    v1_table: redlist_change
-    params:
-      list_year: { domain: list_year }
-      group: { domain: redlist_group }
-    compare:
-      key: [scientific_name, vernacular_name_ja, prev_label, cur_label, ord]
-      numeric: [prev_rank, cur_rank]
-      label: [direction, family_ja, taxon_group_ja, national_category_ja]
-    known: []
-
-  # key が空 = 1 行だけの問い合わせ。`mesh` は v2 の `grids`。gbif/inat/records は日付の無い記録
-  # （`undated_excluded`）の分だけ v2 が少ない。species/mesh は動かない。
+  # key が空 = 1 行だけの問い合わせ。`mesh` は v2 の `grids`。
   - id: biota_totals
-    v1_table: null
     params: {}
     compare:
       key: []
       numeric: [records, species, mesh, gbif, inat]
       label: []
-    known: [undated_excluded]
 
-  # 本番経路（/map の流域ポリゴン・AI get_overview）: v1 `watershedRollup`（`watershed_rollup` 表）と
-  # v2 `watershedRollup(db)`（PR-4。`org_*` は `watershedOccurrence` を内部で呼ぶ）。どちらも全 377 流域を返す
-  # （PR-3b の「v1 の全 0 行を落とす」処理は外した）。org_* は `watershed_memo`、それ以外（site_n・area・centroid・
-  # 土地利用 6 列）は既知の系統なし（差 0 が受け入れ。`inflate_site_n` 変異が見る）。
+  # ---- 流域・文書・概況 ----
+  # 本番経路（/map の流域ポリゴン・AI get_overview）: `watershedRollup(db)`。全 377 流域。
   - id: watershed_rollup
-    v1_table: null
     params: {}
     compare:
       key: [watershed_id]
@@ -586,74 +341,38 @@ queries:
         - paddy_km2_2006
         - paddy_km2_2016
       label: [water_system_name]
-    tolerance:
-      area_km2: 1.0e-9
-      centroid_lat: 1.0e-9
-      centroid_lon: 1.0e-9
-      built_km2_2006: 1.0e-9
-      built_km2_2016: 1.0e-9
-      forest_km2_2006: 1.0e-9
-      forest_km2_2016: 1.0e-9
-      paddy_km2_2006: 1.0e-9
-      paddy_km2_2016: 1.0e-9
-    known: [watershed_memo]
 
-  # セルの検証（画面の読み手は無い）: v1 `org_watershed_year` と `watershedYears`。
-  - id: watershed_year
-    v1_table: null
-    params: {}
-    compare:
-      key: [watershed_id, year]
-      numeric: [n, species_n, alien_n, redlist_n]
-      label: []
-    known: [watershed_memo, species_n_definition]
-
-  # ---- 文書・概況（PR-4。`docs/plans/V2_SERVING_PR4.md` §5.2）----
-  # v1 は `v1-queries.ts` の `docSeriesList(3)`/`docSeriesPoints`、v2 は `lib/cube/documents.ts`
-  # （`api/documents` と同じ minYears=3）。3 規則は `cells.sqlite` からの別 SQL の再計算
-  # （`docs-expect.ts`）と照合して説明する。
+  # `api/documents` と同じ minYears=3。
   - id: doc_series_meta
-    v1_table: null
     params: {}
     compare:
       key: [doc_id, table_id, row_key]
       numeric: [n_years, y_from, y_to, page_no, n_warnings]
       label: [label, unit, doc_title, publisher, url, license]
-    known: [doc_label_rule, doc_warning_scope, doc_year_collapse]
 
-  # パラメータは v1 の meta（470 系列）から列挙する。
   - id: doc_series_points
-    v1_table: null
-    params: {}
-    only_existing: "SELECT doc_id, table_id, row_key FROM doc_series_meta WHERE n_years >= 3 ORDER BY doc_id, table_id, row_key"
+    max_runs: { snapshot: 6 }
+    params:
+      doc_id: { domain: doc_series }
+      table_id: { domain: doc_series }
+      row_key: { domain: doc_series }
     compare:
       key: [fiscal_year]
       numeric: [value, page_no]
       label: [unit]
-    tolerance:
-      value: 1.0e-9
-    known: [doc_year_collapse]
 
-  # 1 行だけ。n_meas / n_sensor / n_events は D2 で廃止（キューブから再現できない）ので比べない。
+  # 1 行だけ。
   - id: overview_counts
-    v1_table: null
     params: {}
     compare:
       key: []
       numeric: [n_sites, n_sources, n_watersheds, y_from, y_to]
       label: []
-    retired: [n_meas, n_sensor, n_events]
-    known: []
 
   # 建物用地の 2006→2016 の増加上位 8（`app/page.tsx` と同じ limit=8）。
   - id: landuse_highlight
-    v1_table: null
     params: {}
     compare:
       key: [watershed_id]
       numeric: [delta, area_km2]
       label: [water_system_name]
-    tolerance:
-      delta: 1.0e-9
-      area_km2: 1.0e-9
-    known: []
