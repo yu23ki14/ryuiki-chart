@@ -166,7 +166,7 @@ def make_ryuiki_redlist_db(path, redlist_rows=(), taxa_rows=()) -> None:
     """scripts/registry/build_taxon_assessment.py 用の最小限フィクスチャ
     （`redlist_assessments`＋`taxa`。`redlist_rows` は
     `REDLIST_ASSESSMENT_COLUMNS` の順のタプル列。`taxa_rows` は
-    `(taxon_id, scientific_name, vernacular_name_ja)` の列——`build()` は
+    `(taxon_id, scientific_name, vernacular_name_ja[, redlist_national, redlist_kanagawa])` の列——`build()` は
     moe_ias 行の有無に関わらず常に `taxa` を読む（`_load_taxa_lookup()`）ため、
     `taxa` テーブル自体は常に作る（空でもよい）。
     """
@@ -178,11 +178,13 @@ def make_ryuiki_redlist_db(path, redlist_rows=(), taxa_rows=()) -> None:
             )"""
         )
         conn.execute(
-            "CREATE TABLE taxa (taxon_id TEXT PRIMARY KEY, scientific_name TEXT, vernacular_name_ja TEXT)"
+            "CREATE TABLE taxa (taxon_id TEXT PRIMARY KEY, scientific_name TEXT, vernacular_name_ja TEXT,"
+            " redlist_national TEXT, redlist_kanagawa TEXT)"
         )
         placeholders = ",".join("?" for _ in REDLIST_ASSESSMENT_COLUMNS)
         conn.executemany(f"INSERT INTO redlist_assessments VALUES ({placeholders})", redlist_rows)
-        conn.executemany("INSERT INTO taxa VALUES (?,?,?)", taxa_rows)
+        padded = [tuple(row) + (None,) * (5 - len(row)) for row in taxa_rows]
+        conn.executemany("INSERT INTO taxa VALUES (?,?,?,?,?)", padded)
         conn.commit()
     finally:
         conn.close()

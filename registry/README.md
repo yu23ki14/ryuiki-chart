@@ -23,7 +23,7 @@ Phase A（`docs/plans/PHASE_A.md`, ADR-0016）の成果物。v1 のファクト�
 | `place/site_supplement.csv` | `sites` テーブルに無い観測地点の補完（143件）。`place_local` 列は、
   `site_id` の局番コード部分（`"__"` の後ろ）が空文字で自動導出できない行にだけ
   明示の local を持たせる列（後述「空の局番コード」参照）。他の142行は空欄 |
-| `taxon/vernacular_ja.csv` | 人手確認済みの和名63件（`domain.ts` の `NAME_JA` の複製54件＋Issue #48 PR-3b D4 で足した上書き9件。出典列は `issue48-pr3b:D4`） |
+| `taxon/vernacular_ja.csv` | 人手確認済みの和名64件（`domain.ts` の `NAME_JA` の複製54件＋Issue #48 PR-3b D4 で足した上書き9件〔出典列 `issue48-pr3b:D4`〕＋Issue #75 のツキノワグマ1件〔出典列 `issue75`。根拠は下の「和名 override の根拠」〕） |
 | `taxon/taxon_group.yaml` | 生物群の日本語ラベル（`taxon_group`）の先勝ちルール表。`web/scripts/build-biota.mjs` の `TAXON_GROUP` CASE式をデータ化したもの（Phase B `phase-b/occurrence-registry`、後述「taxon の分類補完」） |
 | `caveat.yaml` | 注記18件（移設14件＋新規4件〔`landuseDefinitionChange`・`aboveLod`・`censoredLod`・`unitUnknown`〕、Issue #35 で `flowTidalBackflow` を足し `censored` 撤去。全件に `review`） |
 | `caveat_scope.yaml` | 注記がどの範囲に掛かるかの宣言（Issue #35。上の語彙の節） |
@@ -466,7 +466,7 @@ Latin-1 Supplement/Latin Extended-A・B の字母 ∪ 曲線引用符 `’`）�
 **和名の記録由来補完（D4）**: 同じ集計から非ラテン文字（ひらがな・カタカナ・CJK
 等）の最頻値を、`vernacular_name_ja` が **NULL の行にだけ**埋める。根拠列
 `vernacular_ja_basis`（`override`/`taxa`/`records`）で出処を残す。優先順は
-override（`registry/taxon/vernacular_ja.csv` の人手確認済み63件）> taxa（`taxa`
+override（`registry/taxon/vernacular_ja.csv` の人手確認済み64件）> taxa（`taxa`
 由来）> records（この補完）——override は taxa 由来の値があっても無条件に
 上書きする一方、records 補完は NULL の行にしか適用しないので、**既存の値は
 1件も変えない**（実データ・pytest 双方でこの不変条件を確認する。
@@ -475,6 +475,21 @@ override（`registry/taxon/vernacular_ja.csv` の人手確認済み63件）> tax
 いずれも `registry.sqlite` の `taxon` テーブルと D1（`web/src/db/schema-registry.ts`）
 の両方に載る（`taxon` は既に D1 の消費者があるため、`kingdom`/`phylum` 等とは
 異なり D1 側にも追加した）。
+
+### 和名 override の根拠と、地域個体群（LP）の名称の扱い（Issue #75）
+
+- `vernacular_ja.csv` の `source` 列は短いコード。`issue75` は、環境省レッドリストの
+  地域個体群名（「西中国地域のツキノワグマ」等）が `Ursus thibetanus` の和名として
+  出ていた件の是正で、和名「ツキノワグマ」は `ryuiki.taxa` の `wamei:ツキノワグマ`
+  （神奈川県レッドデータブック2006 哺乳類の掲載名）を根拠にする。
+- override は二名法（学名の先頭2語）が一致する**全 taxon**（gbif/inat、種・亜種の各行）に付く。
+- LP の名称は `scripts/registry/taxa_lp.py` の述語で判定する（区分が地域個体群・学名あり・
+  名称に限定語〔の・個体群・集団・系群〕が付く、の AND。理由は同ファイルの docstring）。
+  該当する `taxa` 行の和名は `taxon.vernacular_name_ja` と
+  `taxon_assessment.vernacular_name_ja_resolved` の両方で採用しない。学名の無い行
+  （`wamei:*`）は判定の対象外で、現状どおり taxon に残る。
+- 和名が空になった種は、記録由来の和名（records）があればそれが付き、無ければ学名表示になる
+  （LP 名しか持たなかった種に推測で和名を足さない）。
 
 ## `taxon_assessment.in_scope`・`scope_reason`（Issue #34 で規則を出典の属性に切り替え）
 

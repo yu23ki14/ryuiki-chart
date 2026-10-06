@@ -175,7 +175,7 @@ import sqlite3
 
 import yaml
 
-from registry import common
+from registry import common, taxa_lp
 from taxon_namespaces import IAS_LIST_ID, binom_of
 
 REDLIST_CATEGORY_YAML = common.ROOT / "registry" / "taxon" / "redlist_category.yaml"
@@ -468,9 +468,16 @@ def _load_taxa_lookup(ryuiki: sqlite3.Connection) -> dict[str, tuple[str, str | 
     """`ryuiki.taxa` を正規化学名（`_norm_id()`）で引く辞書:
     `{norm_id: (scientific_name, vernacular_name_ja)}`。
     """
+    # 地域個体群（LP）の名称は和名として引かない（Issue #75。`taxa_lp` の述語は build_taxon と共通）。
     return {
-        row[0]: (row[1], row[2])
-        for row in ryuiki.execute("SELECT taxon_id, scientific_name, vernacular_name_ja FROM taxa")
+        row[0]: (
+            row[1],
+            None if taxa_lp.is_lp_population_name(row[3], row[4], row[1], row[2]) else row[2],
+        )
+        for row in ryuiki.execute(
+            "SELECT taxon_id, scientific_name, vernacular_name_ja, redlist_national, "
+            "redlist_kanagawa FROM taxa"
+        )
     }
 
 

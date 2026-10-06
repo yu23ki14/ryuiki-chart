@@ -129,11 +129,9 @@ describe("generated.ts / generated-client.ts の形", () => {
     expect(NAME_JA["Plecoglossus altivelis"]).not.toBe("リュウキュウアユ");
   });
 
-  /** Issue #75: ツキノワグマの和名が地域個体群名（西中国地域のツキノワグマ）にならず、種カタログの検索（NAME_JA 部分一致）で当たる。 */
-  it("Ursus thibetanus の和名は「ツキノワグマ」で、「ツキノワグマ」検索で当たる", () => {
+  /** Issue #75: ツキノワグマの和名は地域個体群名ではなく種の和名（検索の当たりは catalog-occurrence.test.ts）。 */
+  it("Ursus thibetanus の和名は「ツキノワグマ」", () => {
     expect(NAME_JA["Ursus thibetanus"]).toBe("ツキノワグマ");
-    const hit = Object.entries(NAME_JA).filter(([, ja]) => ja.includes("ツキノワグマ")).map(([b]) => b);
-    expect(hit).toEqual(["Ursus thibetanus"]);
   });
 
   it("ZONE_INFO（generated-client.ts）は5件、zoneは1..5が過不足なく揃っている", () => {

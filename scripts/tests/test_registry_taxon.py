@@ -860,20 +860,31 @@ def test_gbif_accepted_csv_out_of_sync_with_taxa_stops(tmp_path, monkeypatch):
 _LP = "絶滅のおそれのある地域個体群（LP）"
 
 
-def test_lp_population_name_is_not_adopted_as_vernacular_for_unresolved_row(tmp_path):
+def _occ(key, name, rank="species"):
+    return ("gbif_kanagawa_occurrences", key, name, rank, None, None, None, None, None, "2020-01-01")
+
+
+def test_lp_population_name_is_not_adopted_but_species_name_in_lp_row_is_kept(tmp_path):
     taxa_rows = [
+        # LP 区分＋限定語付き → 採用しない
         ("ficticius lp", "Ficticius lp", "西どこかの地域のテスト熊", None, None,
+         None, None, None, None, None, _LP, None),
+        # LP 区分だが名称は種名そのもの（限定語なし）→ 残す
+        ("ficticius sp", "Ficticius sp", "テストハゼ", None, None,
+         None, None, None, None, None, _LP, None),
+        # 学名の無い行（wamei）は LP 区分でも名前を残す
+        ("wamei:テストリス", None, "テストリス", None, None,
          None, None, None, None, None, _LP, None),
         ("ficticius nolp", "Ficticius nolp", "ふつうの和名", None, None,
          None, None, None, None, None, "準絶滅危惧（NT）", None),
     ]
-    organism_rows = [
-        ("gbif_kanagawa_occurrences", "1074", "Ficticius other", "species",
-         None, None, None, None, None, "2020-01-01"),
-    ]
-    conn, _ = _build(tmp_path, organism_records_rows=organism_rows, taxa_rows=taxa_rows)
+    conn, _ = _build(tmp_path, organism_records_rows=[_occ("1074", "Ficticius other")], taxa_rows=taxa_rows)
     lp = _taxon(conn, common.taxon_id_unresolved("ficticius lp"))
     assert lp["vernacular_name_ja"] is None and lp["vernacular_ja_basis"] is None
+    sp = _taxon(conn, common.taxon_id_unresolved("ficticius sp"))
+    assert (sp["vernacular_name_ja"], sp["vernacular_ja_basis"]) == ("テストハゼ", "taxa")
+    wamei = _taxon(conn, common.taxon_id_unresolved("wamei:テストリス"))
+    assert wamei["vernacular_name_ja"] == "テストリス"
     ok = _taxon(conn, common.taxon_id_unresolved("ficticius nolp"))
     assert ok["vernacular_name_ja"] == "ふつうの和名"
 
@@ -883,46 +894,62 @@ def test_lp_population_name_is_not_adopted_for_exact_gbif_row(tmp_path):
         ("ficticius lpx", "Ficticius lpx", "島のテスト貝", "1075", "EXACT",
          None, None, None, None, None, _LP, None),
     ]
-    organism_rows = [
-        ("gbif_kanagawa_occurrences", "1075", "Ficticius lpx", "species",
-         None, None, None, None, None, "2020-01-01"),
-    ]
-    conn, _ = _build(tmp_path, organism_records_rows=organism_rows, taxa_rows=taxa_rows)
-    t = _taxon(conn, "common:taxon:gbif.1075")
-    assert t["vernacular_name_ja"] is None
+    conn, _ = _build(tmp_path, organism_records_rows=[_occ("1075", "Ficticius lpx")], taxa_rows=taxa_rows)
+    assert _taxon(conn, "common:taxon:gbif.1075")["vernacular_name_ja"] is None
 
 
-def test_ursus_thibetanus_gets_override_name_not_lp_name(tmp_path):
+def test_override_applies_to_every_taxon_of_the_binomial(tmp_path):
+    """ツキノワグマ: 種ランクの行にも亜種の行にも付き、LP 名は taxon に残らない。
+    taxon_id で引く経路（`getTaxonById` と同じ `WHERE taxon_id = ?`）でツキノワグマになる。"""
     taxa_rows = [
         ("ursus thibetanus japonicus", "Ursus thibetanus japonicus", "西中国地域のツキノワグマ",
          None, None, None, None, None, None, None, _LP, None),
     ]
     organism_rows = [
-        ("gbif_kanagawa_occurrences", "1076", "Ursus thibetanus", "species",
-         None, None, None, None, None, "2020-01-01"),
+        _occ("1076", "Ursus thibetanus"),
+        _occ("1078", "Ursus thibetanus japonicus Schlegel, 1857", "subspecies"),
+        _occ("1076", "Ursus thibetanus"),
     ]
     conn, _ = _build(tmp_path, organism_records_rows=organism_rows, taxa_rows=taxa_rows)
-    t = _taxon(conn, "common:taxon:gbif.1076")
-    assert (t["vernacular_name_ja"], t["vernacular_ja_basis"]) == ("ツキノワグマ", "override")
+    for tid in ("common:taxon:gbif.1076", "common:taxon:gbif.1078"):
+        row = conn.execute(
+            "SELECT vernacular_name_ja, vernacular_ja_basis FROM taxon WHERE taxon_id = ?", (tid,)
+        ).fetchone()
+        assert tuple(row) == ("ツキノワグマ", "override"), tid
     assert conn.execute(
         "SELECT COUNT(*) FROM taxon WHERE vernacular_name_ja = '西中国地域のツキノワグマ'"
     ).fetchone()[0] == 0
 
 
 def test_lp_name_leak_stops_the_build(tmp_path, monkeypatch):
-    """検査の固定: LP 名が和名に残る状態（除外を壊した状態）を作ると ValueError で止まる。"""
+    """検査の固定: 除外（代表選び）を壊して LP の名称が和名に入ると、出どころで検知して止まる。"""
+    def unfiltered(rows, crosswalk_rank):
+        rep = min(rows, key=lambda r: r["taxon_id"])
+        return {
+            "scientific_name": rep["scientific_name"], "rank_raw": None,
+            "kingdom0": None, "phylum0": None, "class0": None, "order0": None, "family0": None,
+            "vernacular": rep["vernacular_name_ja"],
+            "vernacular_src_ids": [rep["taxon_id"]],
+        }
+    monkeypatch.setattr(build_taxon_module, "_pick_taxa_representative", unfiltered)
+    taxa_rows = [
+        ("ficticius lpz", "Ficticius lpz", "島のテスト蝉", "1077", "EXACT",
+         None, None, None, None, None, _LP, None),
+    ]
+    with pytest.raises(ValueError, match="地域個体群"):
+        _build(tmp_path, organism_records_rows=[_occ("1077", "Ficticius lpz")], taxa_rows=taxa_rows)
+
+
+def test_override_with_same_value_as_an_lp_name_is_not_a_leak(tmp_path, monkeypatch):
+    """検査は値の一致ではなく出どころで見る: override が LP 名と同じ値でも誤検知しない。"""
     monkeypatch.setattr(
         build_taxon_module, "_load_vernacular_overrides",
-        lambda: [{"scientific_name": "Ficticius lpz", "vernacular_name_ja": "島のテスト蝉",
+        lambda: [{"scientific_name": "Ficticius other", "vernacular_name_ja": "島のテスト蝉",
                   "source": "test"}],
     )
     taxa_rows = [
         ("ficticius lpz", "Ficticius lpz", "島のテスト蝉", None, None,
          None, None, None, None, None, _LP, None),
     ]
-    organism_rows = [
-        ("gbif_kanagawa_occurrences", "1077", "Ficticius lpz", "species",
-         None, None, None, None, None, "2020-01-01"),
-    ]
-    with pytest.raises(ValueError, match="地域個体群"):
-        _build(tmp_path, organism_records_rows=organism_rows, taxa_rows=taxa_rows)
+    conn, _ = _build(tmp_path, organism_records_rows=[_occ("1079", "Ficticius other")], taxa_rows=taxa_rows)
+    assert _taxon(conn, "common:taxon:gbif.1079")["vernacular_ja_basis"] == "override"

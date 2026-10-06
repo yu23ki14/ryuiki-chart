@@ -39,7 +39,7 @@
 4. **和名は `registry/taxon/vernacular_ja.csv`（64件）だけを、機械結合ではない
    人間確認済みの和名として GBIF/iNat 由来の行に上書きする。** 突き合わせは学名の
    完全一致ではなく `binom_of()`（学名の先頭2語）で行い、両方の名前空間を横断して
-   件数最多の (ns, taxon_key) を採用先とする。
+   一致する全 (ns, taxon_key) の taxon に付ける（Issue #75。以前は件数最多の1行だけ）。
 
 5. `taxon_key` を持たない `organism_records` 853行は `taxon_id` 解決の対象外。
 
@@ -137,7 +137,7 @@ import sqlite3
 import yaml
 
 from taxon_namespaces import TAXON_KEY_SOURCE_NAMESPACE, assert_known_source_ids, binom_of
-from registry import common
+from registry import common, taxa_lp
 
 CROSSWALK_CSV = common.ROOT / common.TAXON_CROSSWALK_CSV_RELPATH
 GBIF_ACCEPTED_CSV = common.ROOT / common.TAXON_GBIF_ACCEPTED_CSV_RELPATH
@@ -409,19 +409,22 @@ def _load_occurrence_representatives(ryuiki: sqlite3.Connection) -> dict[tuple[s
     return out
 
 
-def _load_taxa(ryuiki: sqlite3.Connection) -> list[sqlite3.Row]:
-    return ryuiki.execute(
+def _load_taxa(ryuiki: sqlite3.Connection) -> list[dict]:
+    """`ryuiki.taxa` の全行。`is_lp` は地域個体群の名称かどうか（`taxa_lp` の述語。Issue #75）。"""
+    rows = ryuiki.execute(
         "SELECT taxon_id, scientific_name, vernacular_name_ja, gbif_taxon_key, "
         "gbif_match_type, NULLIF(kingdom,'') AS kingdom0, NULLIF(phylum,'') AS phylum0, "
         'NULLIF(class,\'\') AS class0, NULLIF("order",\'\') AS order0, '
-        "NULLIF(family,'') AS family0, "
-        # 環境省・県レッドリストの区分が「地域個体群（LP）」の行（Issue #75）。名称ではなく
-        # 出典の属性で判定する。学名の無い行（和名だけの `wamei:*`）は対象外。
-        "(NULLIF(scientific_name,'') IS NOT NULL AND ("
-        "instr(COALESCE(redlist_national,''),'地域個体群') > 0 OR "
-        "instr(COALESCE(redlist_kanagawa,''),'地域個体群') > 0)) AS is_lp "
-        "FROM taxa"
+        "NULLIF(family,'') AS family0, redlist_national, redlist_kanagawa FROM taxa"
     ).fetchall()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["is_lp"] = taxa_lp.is_lp_population_name(
+            d["redlist_national"], d["redlist_kanagawa"], d["scientific_name"], d["vernacular_name_ja"]
+        )
+        out.append(d)
+    return out
 
 
 def _load_crosswalk_rank() -> dict[str, str]:
@@ -541,7 +544,8 @@ def _group_taxa_by_gbif_key(taxa_rows) -> dict[str, list[dict]]:
             {
                 "taxon_id": row["taxon_id"],
                 "scientific_name": row["scientific_name"],
-                "vernacular_name_ja": None if row["is_lp"] else row["vernacular_name_ja"],
+                "vernacular_name_ja": row["vernacular_name_ja"],
+                "is_lp": row["is_lp"],
                 "gbif_match_type": row["gbif_match_type"],
                 "kingdom0": row["kingdom0"],
                 "phylum0": row["phylum0"],
@@ -562,8 +566,13 @@ def _pick_taxa_representative(rows: list[dict], crosswalk_rank: dict[str, str]) 
     rep = min(rows, key=lambda r: r["taxon_id"])
     rank_raw = crosswalk_rank.get(rep["taxon_id"])
 
-    vernaculars = {r["vernacular_name_ja"] for r in rows if r["vernacular_name_ja"]}
+    # 地域個体群の名称は和名の候補にしない（Issue #75）。
+    vernaculars = {r["vernacular_name_ja"] for r in rows if r["vernacular_name_ja"] and not r["is_lp"]}
     vernacular = next(iter(vernaculars)) if len(vernaculars) == 1 else None
+    # 和名の出どころ（`taxa.taxon_id`。末尾の検査用。LP 判定の前の生の名前で引く）。
+    vernacular_src_ids = (
+        [r["taxon_id"] for r in rows if r["vernacular_name_ja"] == vernacular] if vernacular else []
+    )
     return {
         "scientific_name": rep["scientific_name"],
         "rank_raw": rank_raw,
@@ -573,6 +582,7 @@ def _pick_taxa_representative(rows: list[dict], crosswalk_rank: dict[str, str]) 
         "order0": rep["order0"],
         "family0": rep["family0"],
         "vernacular": vernacular,
+        "vernacular_src_ids": vernacular_src_ids,
     }
 
 
@@ -580,7 +590,7 @@ def _load_vernacular_overrides() -> list[dict]:
     if not VERNACULAR_CSV.exists():
         raise FileNotFoundError(
             f"人手確認済み和名 CSV が無い: {VERNACULAR_CSV}\n"
-            "domain.ts の NAME_JA 54件＋Issue #48 PR-3b D4 の上書き9件。"
+            "domain.ts の NAME_JA 54件＋Issue #48 PR-3b D4 の上書き9件＋Issue #75 の1件（計64件）。"
         )
     with VERNACULAR_CSV.open(encoding="utf-8", newline="") as f:
         return list(csv.DictReader(f))
@@ -969,10 +979,8 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     occ = _load_occurrence_representatives(ryuiki)
     vern_en, vern_ja_records = _load_vernacular_candidates(ryuiki)
     taxa_rows = _load_taxa(ryuiki)
-    # 地域個体群（LP）の名称の集合（Issue #75）。末尾の検査（和名に残っていたら止める）に使う。
-    lp_population_names = {
-        r["vernacular_name_ja"] for r in taxa_rows if r["is_lp"] and r["vernacular_name_ja"]
-    }
+    # 地域個体群（LP）の taxa 行（Issue #75）。末尾の検査（和名の出どころに使われていたら止める）に使う。
+    lp_ids = {r["taxon_id"] for r in taxa_rows if r["is_lp"]}
     crosswalk_rank = _load_crosswalk_rank()
     gbif_accepted = _load_gbif_accepted()
     _assert_accepted_matches_taxa(taxa_rows, gbif_accepted)
@@ -1019,6 +1027,8 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     # --- 行の組み立て --------------------------------------------------------------
     rows_by_id: dict[str, dict] = {}
     origin_by_id: dict[str, tuple] = {}
+    # basis='taxa' の和名の出どころ（`taxa.taxon_id` の列）。末尾の LP 検査用（Issue #75）。
+    ja_src_ids: dict[str, list[str]] = {}
 
     def _insert(taxon_id: str, origin: tuple, fields: dict) -> None:
         if taxon_id in rows_by_id:
@@ -1072,7 +1082,10 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
             # rep は occ_info が None のときだけ計算済み（上の分岐）。occ_info が
             # あるとき（n_from_both）は taxa 側の代表をここで初めて要る
             # （/simplify 指摘12。同じ引数での2回呼び出しを避ける）。
-            vernacular = (rep or _pick_taxa_representative(taxa_group, crosswalk_rank))["vernacular"]
+            taxa_rep = rep or _pick_taxa_representative(taxa_group, crosswalk_rank)
+            vernacular = taxa_rep["vernacular"]
+            if vernacular is not None:
+                ja_src_ids[taxon_id] = taxa_rep["vernacular_src_ids"]
         # D4: この時点の vernacular_ja_basis は taxa 由来('taxa')か未定(None)のどちらか
         # ——NAME_JA 上書き('override')・記録由来補完('records')は build() の後段で
         # 適用する（モジュール docstring「vernacular_name_en・和名の記録由来補完」参照）。
@@ -1140,6 +1153,8 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
         # 和名だけを採用しない（種の和名は override／records から付く）。
         unresolved_ja = None if row["is_lp"] else row["vernacular_name_ja"]
         unresolved_ja_basis = VERNACULAR_JA_BASIS_TAXA if unresolved_ja else None
+        if unresolved_ja:
+            ja_src_ids[taxon_id] = [row["taxon_id"]]
         _insert(taxon_id, ("ryuiki-taxa", row["taxon_id"]), _build_taxon_row(
             taxon_id, scientific_name, kdm, phy, cls, row["order0"], row["family0"], basis,
             group_rules, group_default,
@@ -1162,7 +1177,6 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
 
     # --- NAME_JA（人手確認済み64件）を binom で上書き（gbif/inat 両方の名前空間を横断） ---
     overrides = _load_vernacular_overrides()
-    total_by_key = {k: v["total_n"] for k, v in occ.items()}
     binom_index: dict[str, list[tuple[str, str]]] = {}
     for (ns, key), info in occ.items():
         b = binom_of(info["scientific_name"])
@@ -1176,12 +1190,15 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
         if not candidates:
             print(f"  [taxon][WARN] NAME_JA '{name}' に一致する taxon_key が無い（未適用）")
             continue
-        winner = max(candidates, key=lambda k: (total_by_key[k], k))
-        winner_taxon_id = _taxon_id_for(winner[0], winner[1])
-        # taxa 由来の値があっても無条件に上書きする（モジュール docstring 方針4。
-        # D4 の優先順 override > taxa > records の最上位）。
-        rows_by_id[winner_taxon_id]["vernacular_name_ja"] = ov["vernacular_name_ja"]
-        rows_by_id[winner_taxon_id]["vernacular_ja_basis"] = VERNACULAR_JA_BASIS_OVERRIDE
+        # 二名法に一致する全 taxon（種・亜種の各行。gbif/inat 両名前空間）に付ける
+        # （Issue #75。以前は記録数最多の1行だけで、taxon_id から引く経路では種ランクの
+        # 行に和名が付かなかった）。taxa 由来の値があっても無条件に上書きする
+        # （モジュール docstring 方針4。D4 の優先順 override > taxa > records の最上位）。
+        for ns_k in candidates:
+            tid = _taxon_id_for(ns_k[0], ns_k[1])
+            rows_by_id[tid]["vernacular_name_ja"] = ov["vernacular_name_ja"]
+            rows_by_id[tid]["vernacular_ja_basis"] = VERNACULAR_JA_BASIS_OVERRIDE
+            ja_src_ids.pop(tid, None)
         n_applied += 1
     print(f"  [taxon] NAME_JA 適用 = {n_applied:,} / {len(overrides):,}")
 
@@ -1216,19 +1233,24 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     n_vernacular = sum(1 for r in rows_by_id.values() if r["vernacular_name_ja"])
     print(f"  [taxon] 和名が付いた行 = {n_vernacular:,}")
 
-    # 検査（Issue #75）: 地域個体群の名称が taxon の和名として残っていない。
+    # 検査（Issue #75）: LP の名称から来た和名が無い。値の一致ではなく出どころ（ja_src_ids）で見る
+    # ——override・records が同じ値を持っていても誤検知しない。数えるのは「basis='taxa' の和名のうち、
+    # 出どころの taxa 行が全て LP の名称である行」。学名の無い行（wamei:*）は LP と判定されない。
     leaked = sorted(
-        (r["taxon_id"], r["vernacular_name_ja"])
-        for r in rows_by_id.values()
-        if r["vernacular_name_ja"] in lp_population_names
+        (tid, rows_by_id[tid]["vernacular_name_ja"])
+        for tid, srcs in ja_src_ids.items()
+        if rows_by_id[tid]["vernacular_ja_basis"] == VERNACULAR_JA_BASIS_TAXA
+        and srcs and all(src in lp_ids for src in srcs)
     )
     if leaked:
         raise ValueError(
-            f"地域個体群（LP）の名称が taxon.vernacular_name_ja に {len(leaked)} 件残っている: "
+            f"地域個体群（LP）の名称から来た和名が taxon.vernacular_name_ja に {len(leaked)} 件ある: "
             f"{leaked[:5]}（種・亜種の和名として採用しない。Issue #75）"
         )
-    print(f"  [taxon] 地域個体群の名称を和名にしている行 = 0"
-          f"（LP 名 {len(lp_population_names):,} 件を除外）")
+    print(
+        f"  [taxon] LP の名称（学名あり・限定語付き）{len(lp_ids):,} 行を和名に採用しない。"
+        f"basis='taxa' の和名のうち LP 由来 = 0"
+    )
 
     n = common.insert_many(
         conn,

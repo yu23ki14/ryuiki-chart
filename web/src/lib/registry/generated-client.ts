@@ -203,7 +203,7 @@ export const VARIABLE_LABEL: Readonly<Record<string, GeneratedVariableLabel>> = 
 };
 
 /**
- * 和名63件（registry/taxon/vernacular_ja.csv、旧 domain.ts の NAME_JA をそのまま複製した台帳）。
+ * 和名64件（registry/taxon/vernacular_ja.csv、旧 domain.ts の NAME_JA をそのまま複製した台帳）。
  * taxon テーブル全体の vernacular_name_ja（8,324件、taxa 由来の別の母集団）とは別物。
  */
 export const NAME_JA: Readonly<Record<string, string>> = {

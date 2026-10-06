@@ -294,6 +294,24 @@ def test_moe_ias_rows_get_moe_ias_2015_list_id_and_carry_origin(tmp_path, monkey
     assert row["vernacular_name_ja_resolved"] == "ジャワマングース"
 
 
+def test_moe_ias_resolved_vernacular_skips_lp_population_name(tmp_path, monkeypatch):
+    """地域個体群の名称（馬毛島のニホンジカ）は vernacular_name_ja_resolved に入れない（Issue #75）。
+    LP 区分でも限定語の無い名称は残す。"""
+    csv_path = tmp_path / "moe_ias_list.csv"
+    write_moe_ias_list_csv(csv_path, [
+        _ias_csv_row(scientific_name="Foo lp"), _ias_csv_row(scientific_name="Foo sp"),
+    ])
+    monkeypatch.setattr(ta_module, "MOE_IAS_LIST_CSV", csv_path)
+    lp = "絶滅のおそれのある地域個体群（LP）"
+    conn, _ = _build(tmp_path, taxa_rows=[
+        ("foo lp", "Foo lp", "馬毛島のテスト鹿", lp, None),
+        ("foo sp", "Foo sp", "テスト鹿", lp, None),
+    ])
+    rows = {r["scientific_name_raw"]: r["vernacular_name_ja_resolved"] for r in conn.execute(
+        "SELECT * FROM taxon_assessment WHERE list_id = 'moe_ias_2015'")}
+    assert rows == {"Foo lp": None, "Foo sp": "テスト鹿"}
+
+
 def test_moe_ias_row_without_taxa_match_raises(tmp_path, monkeypatch):
     """`taxa` に対応する行が無ければ黙って空文字/NULLに丸めず止める
     （/code-review 指摘4）。"""

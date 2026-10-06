@@ -34,6 +34,16 @@ describe("speciesCatalog", () => {
       n: 236, nRedList: 62, nAlien: 0, nPlaces: 2, yFrom: 1950, yTo: 2021, nYears: 5,
     });
   });
+  it("和名で検索できる（Issue #75: ツキノワグマ。地域個体群名ではなく種の和名で当たる）", async () => {
+    fx.raw
+      .prepare(
+        `INSERT INTO summary_species_catalog (binom, taxon_group, "class", family, n, n_red_list, n_alien, n_places, y_from, y_to, n_years, built_from, spec_version)
+         VALUES ('Ursus thibetanus', '哺乳類', 'Mammalia', 'Ursidae', 5, 0, 0, 1, 2020, 2021, 2, 'fx', 'fx')`,
+      )
+      .run();
+    expect((await speciesCatalog(fx.db, { search: "ツキノワグマ" })).map((r) => r.binom)).toEqual(["Ursus thibetanus"]);
+    expect(await speciesCatalog(fx.db, { search: "西中国地域" })).toEqual([]);
+  });
   it("group と limit", async () => {
     expect((await speciesCatalog(fx.db, { group: "FxPlant" })).map((r) => r.binom)).toEqual([delta, gamma, named]);
     expect((await speciesCatalog(fx.db, { limit: 1 })).length).toBe(1);
