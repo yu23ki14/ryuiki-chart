@@ -14,7 +14,7 @@ import pytest
 
 import b03_build_observation as b03
 import b06_build_occurrence as b06
-import x01_dwca
+import dwca_id_map
 from migrate import common, public_id
 from registry import common as registry_common
 
@@ -226,7 +226,7 @@ def test_missing_edition_stops_occurrence_build(tmp_path):
 
 def test_dwca_occurrence_id_mapping_is_one_to_one(tmp_path):
     p = tmp_path / "m.csv"
-    x01_dwca.write_occurrence_id_mapping(p, [
+    dwca_id_map.write_occurrence_id_mapping(p, [
         ("gbif_kanagawa_occurrences__1", "common:occ:gbif.1", "ev_gbif_kanagawa_occurrences__1", "ev_common:occ:gbif.1"),
         ("inaturalist_kanagawa__2", "common:occ:inat.2", "EV-SRC", "EV-SRC"),
     ])
@@ -236,11 +236,11 @@ def test_dwca_occurrence_id_mapping_is_one_to_one(tmp_path):
         "inaturalist_kanagawa__2,common:occ:inat.2,EV-SRC,EV-SRC",
     ]
     with pytest.raises(SystemExit):  # 新 ID が重複（旧 -> 新が 1 対 1 でない）
-        x01_dwca.write_occurrence_id_mapping(p, [("a", "common:occ:gbif.1", "e1", "e1"), ("b", "common:occ:gbif.1", "e2", "e2")])
+        dwca_id_map.write_occurrence_id_mapping(p, [("a", "common:occ:gbif.1", "e1", "e1"), ("b", "common:occ:gbif.1", "e2", "e2")])
     with pytest.raises(SystemExit):  # 旧 ID が重複
-        x01_dwca.write_occurrence_id_mapping(p, [("a", "common:occ:gbif.1", "e1", "e1"), ("a", "common:occ:gbif.2", "e2", "e2")])
+        dwca_id_map.write_occurrence_id_mapping(p, [("a", "common:occ:gbif.1", "e1", "e1"), ("a", "common:occ:gbif.2", "e2", "e2")])
     with pytest.raises(SystemExit):  # 同じ旧 eventID が別の新 eventID に写る
-        x01_dwca.write_occurrence_id_mapping(p, [("a", "common:occ:gbif.1", "e", "x"), ("b", "common:occ:gbif.2", "e", "y")])
+        dwca_id_map.write_occurrence_id_mapping(p, [("a", "common:occ:gbif.1", "e", "x"), ("b", "common:occ:gbif.2", "e", "y")])
 
 
 # ---------------------------------------------------------------------------

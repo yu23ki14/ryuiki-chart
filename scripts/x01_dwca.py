@@ -23,6 +23,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from common import DB, ROOT, now
 from taxon_namespaces import TAXON_KEY_SOURCE_NAMESPACE, dwca_taxon_id
 from migrate import public_id
+from dwca_id_map import write_occurrence_id_mapping
 
 OUT = ROOT/"data/dwca"; OUT.mkdir(parents=True, exist_ok=True)
 # DwC-A の zip は展開形と同じ data/dwca/ に置く。
@@ -333,24 +334,6 @@ def build(include_noncommercial=False):
           f"  -> {zp}\n"
           f"  -> {OUT/'EXCLUDED_LICENSE.md'}")
     return stats
-
-
-def write_occurrence_id_mapping(path, rows):
-    """`occurrenceID_mapping.csv`（列: old_occurrenceID,new_occurrenceID,old_eventID,new_eventID）。
-    occurrenceID の旧 -> 新は 1 対 1（重複すれば止まる）。eventID は複数の occurrence で共有されうるので
-    重複を許すが、同じ旧 eventID が別の新 eventID に写ることは許さない。"""
-    olds = [r[0] for r in rows]
-    news = [r[1] for r in rows]
-    if len(set(olds)) != len(olds) or len(set(news)) != len(news):
-        raise SystemExit("occurrenceID の旧->新が1対1でない（record_id か公開 ID が重複している）")
-    ev: dict[str, str] = {}
-    for _o, _n, old_ev, new_ev in rows:
-        if ev.setdefault(old_ev, new_ev) != new_ev:
-            raise SystemExit(f"同じ旧 eventID {old_ev!r} が複数の新 eventID に写っている")
-    with open(path, "w", encoding="utf-8", newline="") as f:
-        w = csv.writer(f, lineterminator="\n")
-        w.writerow(["old_occurrenceID", "new_occurrenceID", "old_eventID", "new_eventID"])
-        w.writerows(rows)
 
 
 def write_excluded_license_md(stats, include_noncommercial):
