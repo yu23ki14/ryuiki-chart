@@ -67,8 +67,7 @@
 
 ### D3. キューブが正準単位でも読める — キューブのスキーマは変えない
 - 方式: 問い合わせ層で正準化する。`lib/registry/lookup.ts` に `canonicalOf(unitId) -> {unitId, symbol, scale}`、
-  `lib/cube/unit.ts` に `toCanonical(value, unitId)`、`canonicalSeriesKey(series)`（`unitId` を正準に置換した系列キー）
-  と、行配列を正準単位へ寄せる `canonicalizeCells(rows)`（`valueZero`/`valueLod` に scale を掛け `unitId` を正準に差し替え。
+  `lib/cube/unit.ts` に `toCanonical(value, unitId)`、行配列を正準単位へ寄せる `canonicalizeCells(rows)`（`valueZero`/`valueLod` に scale を掛け `unitId` を正準に差し替え。
   元の `unitId` は `sourceUnitId` として残す＝出典の単位は捨てない）を足す。
 - なぜキューブに列を足さないか: (1) ADR-0023 追記が「列追加で値を複製」と言うが、scale は unit の関数なので
   値の二重保持は冗長で、b04 の再ビルド（2.8GB）と v2 の鮮度指紋・D1 再投入が全部動く。(2) 横断比較の消費者が
@@ -84,7 +83,7 @@
 - 実測用の一回きり生成: `unit_basis` を埋める小スクリプト（コミットはしないか `scripts/migrate/` 配下に置く）
 - web: `src/db/schema-registry.ts`、`drizzle/migrations/`（`db:generate`）、`src/lib/registry/generated.ts` と
   `generated-client.ts`（再生成）、`lookup.ts`（`canonicalOf`/`unitBasis`）、`lib/cube/unit.ts`（`toCanonical`/
-  `canonicalizeCells`/`canonicalSeriesKey`）＋テスト、`lib/ai/tools.ts`（`RegistryEntry.unitBasis`）、`lib/ai/prompt.ts`（1文）
+  `canonicalizeCells`/（系列キーの正準化は作っていない））＋テスト、`lib/ai/tools.ts`（`RegistryEntry.unitBasis`）、`lib/ai/prompt.ts`（1文）
 - docs: ADR-0023（状態「コード化済み」・追記）、`docs/plans/PHASE_B_INTAKE.md` #15（解決済みの追記）、
   `docs/plans/PHASE_B_RECONCILIATION.md:453` 付近、`CLAUDE.md` の「40テーブル」等は列追加なので変更なし
 - 既存の `SeriesChartCard.tsx` は**変更しない**（すでにレジストリ経由。回帰テスト `unit` が `registry[variableId].unit` と一致を追加）
@@ -103,14 +102,13 @@
    **残す理由つきで列挙**（食い違いではなく宣言済みの補完になる）。画面/AI 側で raw と registry が違う箇所は 0。
 
 ## 5. スナップショットが動くか
-- `data/sample/serving_snapshot.json`（v2 サービング）: 動かない。観測値・系列キー・`observation_agg` は不変
-  （正準化は読み出し関数に閉じ、既存の問い合わせは `canonicalizeCells` を呼ばない）。
-- `web/src/lib/ai/__snapshots__/prompt.test.ts.snap`: **動く**（prompt に1文足すため。差分は1文のみ・宣言する）。
-- `registry` の生成物（`generated.ts` 等）: unit の2列と alias の `unit_basis` が増える（再生成物）。
-- `reports/serving_fingerprint.json`: b00 のパスは触らないが、b04 の検査を足すため `b04` のコードが変わる場合は
-  v2 パイプラインのコード指紋が変わる（`check_v2_fresh` が「古い」と判定→メインが `build:v2` を1回回す）。
-  b00 を回すか否かは「`PIPELINE_*` に b04 が含まれるか」で決まるので、実装時に確認して報告する。
-- 実行が重いもの（メインが最後に1回）: `build:v2`（b04 の検査3を実データで）、`serving:snapshot -- --mode snapshot`、b00。
+- `data/sample/serving_snapshot.json`: **動く（宣言済みの差分）**。流量（hydro.flow）の `label.unit` が null → "m3/s"
+  に変わる（alias に `unit_id=m3_per_s` を明示したため。§7）。観測値・他の系列キー・`observation_agg` の値は不変
+  （正準化は読み出し関数に閉じる）。更新はメインが `--mode diff` の before/after を添えて行う。
+- `web/src/lib/ai/__snapshots__/prompt.test.ts.snap`: 動く（prompt に1文足したため。反映済み）。
+- `registry` の生成物（`generated.ts` 等）: unit の2列と alias の `unit_basis` が増え、流量の `unitUnknown` 注記が1行消える。
+- `reports/serving_fingerprint.json`: b04・registry が `PIPELINE_*` に含まれるため更新が必要（メインが b00 後にコミット）。
+- 重いもの（メインが最後に1回）: `build:v2`、`serving:snapshot`、b00。
 
 ## 6. 対象外・未解決
 - オフセット換算、次元をまたぐ統一（mg/L↔mg/m3、cm↔m）、`0_01ppmc` の ppm 換算、`observation_agg` への正準値列の追加。

@@ -33,7 +33,8 @@ export const unit = sqliteTable("unit", {
 	quantityKind: text("quantity_kind"),
 	/** 正準単位（ADR-0023、Issue #31）。換算しない単位は自分自身。 */
 	// registry.sqlite 側は NOT NULL（build_unit_variable.py が全行に明示させる）。D1 側は
-	// 既存テーブルへの ALTER ADD COLUMN が NOT NULL（既定値なし）を許さないため nullable。
+	// D1 の既存テーブルへの ALTER TABLE ADD COLUMN は NOT NULL かつ既定値なしを許さない（SQLite の制約）ため
+	// nullable。値は常に埋まる（seed が registry.sqlite からそのまま写す）。
 	canonicalUnitId: text("canonical_unit_id"),
 	/** 値_正準 = 値_出典 × scale。線形のみ（オフセット換算は扱わない）。 */
 	scaleToCanonical: real("scale_to_canonical").notNull().default(1),

@@ -166,14 +166,17 @@ interface RegistryEntry {
  * `resolveVariableInfo`（出典表記→variableId の解決）はもう要らない——ここでは
  * `@/lib/registry/lookup` の `getVariable` で variable テーブルを直接引くだけ。
  * `unitId` を渡すと（系列固有の単位。alias 側の unit_id 上書きに相当）そちらを優先する。
+ * 明示的な null は「単位不明」であり、variable の既定単位で埋めない（推測しない）。
  */
 function registryEntryForVariable(variableId: string, unitId?: string | null): RegistryEntry | null {
   const v = getVariable(variableId);
   if (!v) return null;
+  // 単位: 省略（undefined）なら variable の既定。明示的な null（単位不明の系列）は null のまま。
+  const u = unitId === undefined ? v.unitId : unitId;
   return {
     nameJa: v.nameJa,
-    unit: unitLabel(unitId ?? v.unitId),
-    unitBasis: unitBasis(variableId, unitId),
+    unit: unitLabel(u),
+    unitBasis: unitBasis(variableId, u),
     higherIsWorse: v.higherIsWorse,
     descriptionJa: v.descriptionJa,
   };

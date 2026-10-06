@@ -55,27 +55,31 @@ def assert_canonical_units(entries: list[dict]) -> None:
     - canonical 自身は自分を指し scale=1（正準が連鎖しない）
     - scale は有限の正の数（線形換算のみ。オフセット換算は扱わない）
     """
+    for e in entries:  # 相互検査の前に、全エントリのキー存在を先に確かめる（KeyError で落とさない）
+        for key in ("canonical_unit_id", "scale_to_canonical"):
+            if e.get(key) in (None, ""):
+                raise AssertionError(
+                    f"registry/unit.yaml: {e['unit_id']} に {key} が無い（自分自身・倍率1でもよいが明示する）"
+                )
     by_id = {e["unit_id"]: e for e in entries}
     for e in entries:
         uid = e["unit_id"]
-        for key in ("canonical_unit_id", "scale_to_canonical"):
-            if e.get(key) in (None, ""):
-                raise AssertionError(f"registry/unit.yaml: {uid} に {key} が無い（自分自身・倍率1でもよいが明示する）")
         canon, scale = e["canonical_unit_id"], e["scale_to_canonical"]
         if canon not in by_id:
             raise AssertionError(f"registry/unit.yaml: {uid} の canonical_unit_id={canon!r} が unit に無い")
         if isinstance(scale, bool) or not isinstance(scale, (int, float)) or not (0 < scale < float("inf")):
             raise AssertionError(f"registry/unit.yaml: {uid} の scale_to_canonical={scale!r} が正の有限数でない")
-        if (by_id[canon].get("quantity_kind") or "") != (e.get("quantity_kind") or ""):
+        c = by_id[canon]
+        if (c.get("quantity_kind") or "") != (e.get("quantity_kind") or ""):
             raise AssertionError(
                 f"registry/unit.yaml: {uid} と canonical {canon} の quantity_kind が違う"
                 "（量の種類をまたぐ換算は書かない）"
             )
-        if canon == uid and scale != 1:
-            raise AssertionError(f"registry/unit.yaml: {uid} は自分自身が正準なので scale_to_canonical は 1 でなければならない")
-        c = by_id[canon]
+        # 正準自身は自分を指し倍率1（自分が正準の単位 canon==uid も、他の単位の正準もこの1規則で見る。連鎖不可）
         if c["canonical_unit_id"] != canon or c["scale_to_canonical"] != 1:
-            raise AssertionError(f"registry/unit.yaml: {uid} の正準 {canon} が自分自身を正準としていない（連鎖は不可）")
+            raise AssertionError(
+                f"registry/unit.yaml: {uid} の正準 {canon} は自分自身を正準（倍率1）としていなければならない（連鎖は不可）"
+            )
 
 
 UNIT_BASIS_CODES = frozenset({"source", "registry"})

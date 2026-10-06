@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canonicalUnitId, canonicalizeCells, toCanonical } from "./unit";
+import { canonicalizeCells, toCanonical } from "./unit";
 
 describe("正準単位での読み出し（ADR-0023, Issue #31）", () => {
   it("0.1℃ → ℃（×0.1）、出典の unit は sourceUnitId に残る", () => {
@@ -36,8 +36,6 @@ describe("正準単位での読み出し（ADR-0023, Issue #31）", () => {
       sourceUnitId: "common:unit:nope",
     });
     expect(toCanonical(null, "common:unit:ppb").value).toBeNull();
-    expect(canonicalUnitId(null)).toBeNull();
-    expect(canonicalUnitId("common:unit:ppb")).toBe("common:unit:ppm");
   });
 
   it("canonicalizeCells は値3列と series.unitId を寄せ、入力を変更しない", () => {

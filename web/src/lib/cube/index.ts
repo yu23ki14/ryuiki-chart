@@ -36,7 +36,7 @@ export {
   SENSOR_DATASET,
 } from "./series";
 
-export { unitLabel, toCanonical, canonicalUnitId, canonicalizeCells } from "./unit";
+export { unitLabel, toCanonical, canonicalizeCells } from "./unit";
 
 export type {
   CellSpec,

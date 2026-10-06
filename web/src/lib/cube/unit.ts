@@ -29,36 +29,22 @@ export function toCanonical(value: number | null, unitId: string | null): Canoni
   return { value: value === null ? null : value * c.scale, unitId: c.unitId, sourceUnitId: unitId };
 }
 
-/** 系列の単位を正準単位に置き換えた系列キー用の unit_id（null は null のまま）。 */
-export function canonicalUnitId(unitId: string | null): string | null {
-  return canonicalOf(unitId)?.unitId ?? unitId;
-}
+/** `canonicalizeCells` が換算する値の列（`CellRow` の値3列）。 */
+const VALUE_COLUMNS = ["value", "valueZero", "valueLod"] as const;
 
 /**
- * セル行（`CellRow` 互換）の値（value/valueZero/valueLod）を正準単位へ換算し、
- * `series.unitId` を正準にした新しい行を返す。元の `series.unitId` は `sourceUnitId` に残す。
- * 入力は変更しない。
+ * セル行（`CellRow` 互換）の値列を正準単位へ換算し、`series.unitId` を正準にした新しい行を返す。
+ * 元の `series.unitId` は `sourceUnitId` に残す。入力は変更しない。
  */
 export function canonicalizeCells<
-  T extends {
-    series: { unitId: string | null };
-    value: number | null;
-    valueZero: number | null;
-    valueLod: number | null;
-  },
+  T extends { series: { unitId: string | null } } & Record<(typeof VALUE_COLUMNS)[number], number | null>,
 >(rows: readonly T[]): (T & { sourceUnitId: string | null })[] {
   return rows.map((r) => {
-    const sourceUnitId = r.series.unitId;
-    const c = canonicalOf(sourceUnitId);
-    if (!c) return { ...r, sourceUnitId };
-    const k = (v: number | null) => (v === null ? null : v * c.scale);
-    return {
-      ...r,
-      series: { ...r.series, unitId: c.unitId },
-      value: k(r.value),
-      valueZero: k(r.valueZero),
-      valueLod: k(r.valueLod),
-      sourceUnitId,
-    };
+    const out: T & { sourceUnitId: string | null } = { ...r, sourceUnitId: r.series.unitId };
+    for (const col of VALUE_COLUMNS) {
+      (out as Record<string, number | null>)[col] = toCanonical(r[col], r.series.unitId).value;
+    }
+    out.series = { ...r.series, unitId: toCanonical(null, r.series.unitId).unitId };
+    return out;
   });
 }

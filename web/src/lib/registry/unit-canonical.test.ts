@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { canonicalOf, unitBasis } from "./lookup";
-import { GENERATED_UNITS, GENERATED_VARIABLES } from "./generated";
+import { GENERATED_UNITS, GENERATED_VARIABLES, GENERATED_VARIABLE_ALIASES } from "./generated";
 
 describe("正準単位・単位の根拠（Issue #31）", () => {
   it("canonicalOf: 換算する単位・しない単位・不明", () => {
@@ -26,5 +26,21 @@ describe("正準単位・単位の根拠（Issue #31）", () => {
     expect(unitBasis("common:variable:hydro.flow")).toBe("registry");
     const noUnit = GENERATED_VARIABLES.find((v) => !v.unitId)!;
     expect(unitBasis(noUnit.variableId)).toBeNull();
+  });
+
+  it("unitBasis: 明示的な null（単位不明の系列）は variable の既定に落とさず null", () => {
+    expect(unitBasis("common:variable:water.bod", null)).toBeNull();
+    expect(unitBasis("common:variable:water.bod", undefined)).toBe("source");
+  });
+
+  it("unitBasis: 宣言した alias が無い (variable, unit) の組は null（'registry' と推測しない）", () => {
+    expect(unitBasis("common:variable:water.bod", "common:unit:km2")).toBeNull();
+  });
+
+  it("unitBasis: 出典（dataset）を渡すとその出典の宣言だけで決める。土地利用は @年を無視", () => {
+    expect(unitBasis("common:variable:water.ph", undefined, "measurements")).toBe("registry");
+    expect(unitBasis("common:variable:water.ph", undefined, "sensor_timeseries")).toBeNull();
+    const landuse = GENERATED_VARIABLE_ALIASES.find((a) => a.dataset?.startsWith("nlni_l03b_landuse_by_watershed@"))!;
+    expect(unitBasis(landuse.variableId!, landuse.unitId, "nlni_l03b_landuse_by_watershed")).toBe("registry");
   });
 });

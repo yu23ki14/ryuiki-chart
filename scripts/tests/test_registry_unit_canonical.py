@@ -52,6 +52,14 @@ def test_missing_scale_halts():
         bu.assert_canonical_units(units)
 
 
+def test_missing_key_on_a_later_entry_halts_before_cross_checks():
+    """後ろのエントリのキー欠落でも、相互検査が KeyError で落ちず明示メッセージで止まる。"""
+    units = _units()
+    del units[-1]["canonical_unit_id"]
+    with pytest.raises(AssertionError, match="canonical_unit_id が無い"):
+        bu.assert_canonical_units(units)
+
+
 def test_unknown_canonical_halts():
     units = _units()
     _unit(units, "common:unit:ppb")["canonical_unit_id"] = "common:unit:nope"
@@ -77,7 +85,7 @@ def test_canonical_across_quantity_kind_halts():
 def test_self_canonical_with_scale_not_one_halts():
     units = _units()
     _unit(units, "common:unit:ppm")["scale_to_canonical"] = 2
-    with pytest.raises(AssertionError, match="自分自身が正準"):
+    with pytest.raises(AssertionError, match="連鎖は不可"):
         bu.assert_canonical_units(units)
 
 
