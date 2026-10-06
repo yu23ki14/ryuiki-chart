@@ -5,7 +5,7 @@ import { caveatKeysForTables } from "./caveats";
 import { listTables, runUserSql, SqlError } from "@/lib/db";
 import { TABLE_META, SCHEMA_META, TABLE_ORIGIN } from "@/lib/table-meta";
 import { ZONE_INFO } from "@/lib/registry/generated-client";
-import { getVariable } from "@/lib/registry/lookup";
+import { getVariable, unitBasis, type UnitBasis } from "@/lib/registry/lookup";
 import {
   d1CubeDb,
   representativeSeries,
@@ -156,6 +156,8 @@ interface RegistryEntry {
   unit: string | null;
   higherIsWorse: boolean | null;
   descriptionJa: string | null;
+  /** 単位の根拠: 'source'=原本が報告 / 'registry'=原本に単位記載が無くレジストリが補った / 'mixed'。 */
+  unitBasis: UnitBasis | null;
 }
 
 /**
@@ -171,6 +173,7 @@ function registryEntryForVariable(variableId: string, unitId?: string | null): R
   return {
     nameJa: v.nameJa,
     unit: unitLabel(unitId ?? v.unitId),
+    unitBasis: unitBasis(variableId, unitId),
     higherIsWorse: v.higherIsWorse,
     descriptionJa: v.descriptionJa,
   };

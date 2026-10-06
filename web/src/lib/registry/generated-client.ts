@@ -320,7 +320,6 @@ export const GENERATED_CAVEAT_SCOPE: readonly GeneratedCaveatScope[] = [
   { scopeKind: "table", scopeRef: "sites", caveatKey: "zone", sortOrder: 0, priority: 0 },
   { scopeKind: "table", scopeRef: "sites", caveatKey: "municipality", sortOrder: 1, priority: 0 },
   { scopeKind: "variable", scopeRef: "common:variable:air.photochemical_oxidant", caveatKey: "unitUnknown", sortOrder: 0, priority: 0 },
-  { scopeKind: "variable", scopeRef: "common:variable:hydro.flow", caveatKey: "unitUnknown", sortOrder: 0, priority: 0 },
   { scopeKind: "variable", scopeRef: "common:variable:water.water_temp", caveatKey: "unitUnknown", sortOrder: 0, priority: 0 },
   { scopeKind: "variable", scopeRef: "common:variable:weather.precipitation", caveatKey: "unitUnknown", sortOrder: 0, priority: 0 },
   { scopeKind: "variable", scopeRef: "common:variable:weather.weather_summary_day", caveatKey: "unitUnknown", sortOrder: 0, priority: 0 },

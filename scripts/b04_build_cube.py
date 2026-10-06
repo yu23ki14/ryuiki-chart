@@ -758,6 +758,8 @@ def _assert_unit_evidence(conn: sqlite3.Connection, declarations_path=UNIT_EVIDE
     if declarations_path is None:
         return {"n_unit_symbol_mismatch": n_mismatch, "n_unit_evidence_declared": 0}
 
+    n_basis = _assert_unit_basis_evidence(conn)
+
     rows = conn.execute(
         """
         SELECT DISTINCT source_table, variable_id, obs_stat, value_grain
@@ -795,7 +797,63 @@ def _assert_unit_evidence(conn: sqlite3.Connection, declarations_path=UNIT_EVIDE
             )
         raise common.MigrationError(" / ".join(parts))
 
-    return {"n_unit_symbol_mismatch": n_mismatch, "n_unit_evidence_declared": len(declared)}
+    return {
+        "n_unit_symbol_mismatch": n_mismatch,
+        "n_unit_evidence_declared": len(declared),
+        "n_unit_basis_series": n_basis,
+    }
+
+
+def _assert_unit_basis_evidence(conn: sqlite3.Connection) -> int:
+    """検査3（Issue #31）: `variable_alias.unit_basis`（単位の根拠の宣言）と `observation` の実態の一致。
+
+    `unit_basis='registry'` は「原本に単位の記載が無く（`unit_raw IS NULL`）レジストリが補った」、
+    `'source'` は「原本が単位を報告している（`unit_raw IS NOT NULL`）」。AI がこの区別を根拠として
+    ユーザーに語るので、宣言が実態とずれたまま黙って通さない。
+
+    観測は alias を持たないので `(variable_id, unit_id)` 単位で突き合わせる:
+    - 実データにある (variable_id, unit_id, basis) の組が、どの alias からも宣言されていなければ止まる
+      （宣言漏れ・原本の単位記載が変わった）。
+    - 宣言された basis が、その (variable_id, unit_id) の実データに1行も無ければ止まる
+      （宣言の腐り。合成データ専用 alias は同じ (variable_id, unit_id) の他 alias が同じ basis を宣言していれば通る）。
+    戻り値は突き合わせた (variable_id, unit_id) の数。
+    """
+    cols = [r[1] for r in conn.execute("PRAGMA reg.table_info(variable_alias)")]
+    if "unit_basis" not in cols:
+        raise common.MigrationError(
+            "registry の variable_alias に unit_basis 列が無い。scripts/r01_build_registry.py で作り直すこと（Issue #31）。"
+        )
+    actual = {
+        (v, u, "source" if has_raw else "registry")
+        for v, u, has_raw in conn.execute(
+            "SELECT variable_id, unit_id, unit_raw IS NOT NULL FROM observation "
+            "WHERE unit_id IS NOT NULL GROUP BY 1, 2, 3"
+        )
+    }
+    declared = {
+        (v, u, b)
+        for v, u, b in conn.execute(
+            "SELECT DISTINCT variable_id, unit_id, unit_basis FROM reg.variable_alias WHERE unit_id IS NOT NULL"
+        )
+    }
+    pairs = {(v, u) for v, u, _ in actual}
+    missing = actual - declared
+    stale = {d for d in declared if (d[0], d[1]) in pairs and d not in actual}
+    if missing or stale:
+        parts = []
+        if missing:
+            parts.append(
+                f"実データにあるが variable_alias.unit_basis に宣言が無い (variable_id, unit_id, basis) が "
+                f"{len(missing):,} 組: {sorted(missing)[:10]}"
+            )
+        if stale:
+            parts.append(
+                f"unit_basis の宣言があるが実データに該当行が無い組が {len(stale):,}: {sorted(stale)[:10]}"
+            )
+        raise common.MigrationError(
+            " / ".join(parts) + "。registry/variable_alias.csv の unit_basis を実測に基づいて直すこと（推測で埋めない）。"
+        )
+    return len(pairs)
 
 
 # ---------------------------------------------------------------------------

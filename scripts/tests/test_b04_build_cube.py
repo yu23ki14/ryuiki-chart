@@ -886,6 +886,14 @@ def test_unit_evidence_ignores_sensor_timeseries_symbol_mismatch(tmp_path):
         ),
     ]
     registry_db = _registry_db_with_unit(tmp_path, [("common:unit:ug_per_m3", "ug/m3")])
+    import sqlite3 as _sqlite3
+    _r = _sqlite3.connect(registry_db)
+    _r.execute(
+        "INSERT INTO variable_alias (dataset, alias, source_id, variable_id, unit_id, unit_basis) "
+        "VALUES ('sensor_timeseries', 'x', 's', 'common:variable:water.bod', 'common:unit:ug_per_m3', 'source')"
+    )
+    _r.commit()
+    _r.close()
     conn = _observation_conn_with_attached_registry(tmp_path, rows, registry_db)
     conn.execute(
         "UPDATE observation SET unit_raw = 'μg/m3' WHERE source_row_id = 's1'"
@@ -1345,5 +1353,98 @@ def test_sampled_recompute_is_wired_into_build_cube_and_keeps_the_previous_cube_
         with pytest.raises(common.MigrationError, match="独立な再計算と一致しない"):
             b04.build_cube(conn, registry_db, unit_evidence_declarations_path=None)
         assert conn.execute("SELECT COUNT(*), SUM(value_zero) FROM observation_agg").fetchone() == before
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# 検査3: variable_alias.unit_basis と observation の実態の一致（Issue #31）
+# ---------------------------------------------------------------------------
+
+
+def _basis_conn(tmp_path, *, unit_raw, declared_basis, extra_alias=None):
+    """`measurements` の1行（unit_id=mg_per_l、`unit_raw` は引数）と、その
+    (variable_id, unit_id) を `declared_basis` で宣言する alias を持つフィクスチャ。"""
+    import sqlite3
+
+    rows = [
+        _row("measurements", "m1", "2020-01-01", "2020-01-01", 2.0, "2.0", "none", unit_id="common:unit:mg_per_l"),
+    ]
+    registry_db = _registry_db_with_unit(tmp_path, [("common:unit:mg_per_l", "mg/L")])
+    r = sqlite3.connect(registry_db)
+    r.execute("DELETE FROM variable_alias")
+    r.execute(
+        "INSERT INTO variable_alias (dataset, alias, source_id, variable_id, unit_id, unit_basis) "
+        "VALUES ('measurements', 'BOD', 's', 'common:variable:water.bod', 'common:unit:mg_per_l', ?)",
+        (declared_basis,),
+    )
+    for ex in extra_alias or []:
+        r.execute(
+            "INSERT INTO variable_alias (dataset, alias, source_id, variable_id, unit_id, unit_basis) "
+            "VALUES ('measurements', 'BOD2', 's2', 'common:variable:water.bod', 'common:unit:mg_per_l', ?)",
+            (ex,),
+        )
+    r.commit()
+    r.close()
+    conn = _observation_conn_with_attached_registry(tmp_path, rows, registry_db)
+    if unit_raw is None:
+        conn.execute("UPDATE observation SET unit_raw = NULL")
+        conn.commit()
+    return conn
+
+
+def test_unit_basis_evidence_passes_when_source_declared_and_unit_raw_present(tmp_path):
+    conn = _basis_conn(tmp_path, unit_raw="mg/L", declared_basis="source")
+    try:
+        stats = b04._assert_unit_evidence(conn, declarations_path=_write_declarations(tmp_path, []))
+        assert stats["n_unit_basis_series"] == 1
+    finally:
+        conn.close()
+
+
+def test_unit_basis_evidence_passes_when_registry_declared_and_unit_raw_null(tmp_path):
+    conn = _basis_conn(tmp_path, unit_raw=None, declared_basis="registry")
+    try:
+        b04._assert_unit_evidence(conn, declarations_path=_write_declarations(tmp_path, []))
+    finally:
+        conn.close()
+
+
+def test_unit_basis_evidence_raises_when_registry_declared_but_source_reports_unit(tmp_path):
+    """変異: 原本が単位を報告しているのに 'registry'（補った）と宣言していると止まる。"""
+    conn = _basis_conn(tmp_path, unit_raw="mg/L", declared_basis="registry")
+    try:
+        with pytest.raises(common.MigrationError, match="unit_basis"):
+            b04._assert_unit_evidence(conn, declarations_path=_write_declarations(tmp_path, []))
+    finally:
+        conn.close()
+
+
+def test_unit_basis_evidence_raises_when_source_declared_but_unit_raw_null(tmp_path):
+    """変異: 原本に単位記載が無いのに 'source' と宣言していると止まる。"""
+    conn = _basis_conn(tmp_path, unit_raw=None, declared_basis="source")
+    try:
+        with pytest.raises(common.MigrationError, match="unit_basis"):
+            b04._assert_unit_evidence(conn, declarations_path=_write_declarations(tmp_path, []))
+    finally:
+        conn.close()
+
+
+def test_unit_basis_evidence_allows_synthetic_only_alias_sharing_the_same_basis(tmp_path):
+    """同じ (variable_id, unit_id) の別 alias（合成専用で実データに行が無い等）が同じ basis を
+    宣言していても、腐った宣言とは扱わない。"""
+    conn = _basis_conn(tmp_path, unit_raw="mg/L", declared_basis="source", extra_alias=["source"])
+    try:
+        b04._assert_unit_evidence(conn, declarations_path=_write_declarations(tmp_path, []))
+    finally:
+        conn.close()
+
+
+def test_unit_basis_evidence_raises_on_stale_basis_declaration(tmp_path):
+    """変異: 別 alias が実データに1行も無い basis を宣言していると止まる（宣言の腐り）。"""
+    conn = _basis_conn(tmp_path, unit_raw="mg/L", declared_basis="source", extra_alias=["registry"])
+    try:
+        with pytest.raises(common.MigrationError, match="実データに該当行が無い"):
+            b04._assert_unit_evidence(conn, declarations_path=_write_declarations(tmp_path, []))
     finally:
         conn.close()

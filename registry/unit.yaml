@@ -38,143 +38,201 @@ units:
     ucum: "mg/L"
     name_ja: "ミリグラム毎リットル"
     quantity_kind: mass_concentration
+    canonical_unit_id: common:unit:mg_per_l
+    scale_to_canonical: 1
   - unit_id: common:unit:cfu_per_100ml
     symbol: "CFU/100mL"
     ucum: null
     name_ja: "コロニー形成単位毎100ミリリットル（大腸菌数）"
     quantity_kind: microbial_density
+    canonical_unit_id: common:unit:cfu_per_100ml
+    scale_to_canonical: 1
   - unit_id: common:unit:mpn_per_100ml
     symbol: "MPN/100mL"
     ucum: null
     name_ja: "最確数毎100ミリリットル（大腸菌群数）"
     quantity_kind: microbial_density
+    canonical_unit_id: common:unit:mpn_per_100ml
+    scale_to_canonical: 1
   - unit_id: common:unit:t_p_m
     symbol: "T.P. m"
     ucum: null
     name_ja: "東京湾平均海面(T.P.)基準の標高（メートル）"
     quantity_kind: elevation
+    canonical_unit_id: common:unit:t_p_m
+    scale_to_canonical: 1
   - unit_id: common:unit:cm
     symbol: "cm"
     ucum: "cm"
     name_ja: "センチメートル"
     quantity_kind: length
+    canonical_unit_id: common:unit:m
+    scale_to_canonical: 0.01
   - unit_id: common:unit:degc
     symbol: "degC"
     ucum: "Cel"
     name_ja: "セ氏度"
     quantity_kind: temperature
+    canonical_unit_id: common:unit:degc
+    scale_to_canonical: 1
   - unit_id: common:unit:km2
     symbol: "km2"
     ucum: "km2"
     name_ja: "平方キロメートル"
     quantity_kind: area
+    canonical_unit_id: common:unit:km2
+    scale_to_canonical: 1
   - unit_id: common:unit:m
     symbol: "m"
     ucum: "m"
     name_ja: "メートル"
     quantity_kind: length
+    canonical_unit_id: common:unit:m
+    scale_to_canonical: 1
   - unit_id: common:unit:count
     symbol: "点"
     ucum: null
     name_ja: "地点数（可算・地盤沈下観測の水準点数）"
     quantity_kind: count
+    canonical_unit_id: common:unit:count
+    scale_to_canonical: 1
   - unit_id: common:unit:ppm
     symbol: "ppm"
     ucum: "[ppm]"
     name_ja: "百万分率"
     quantity_kind: volume_fraction
+    canonical_unit_id: common:unit:ppm
+    scale_to_canonical: 1
   - unit_id: common:unit:ug_per_m3
     symbol: "ug/m3"
     ucum: "ug/m3"
     name_ja: "マイクログラム毎立方メートル"
     quantity_kind: mass_concentration
+    canonical_unit_id: common:unit:mg_per_m3
+    scale_to_canonical: 0.001
   - unit_id: common:unit:mg_per_m3
     symbol: "mg/m3"
     ucum: "mg/m3"
     name_ja: "ミリグラム毎立方メートル"
     quantity_kind: mass_concentration
+    canonical_unit_id: common:unit:mg_per_m3
+    scale_to_canonical: 1
   - unit_id: common:unit:m3_per_m3
     symbol: "m3/m3"
     ucum: "m3/m3"
     name_ja: "立方メートル毎立方メートル（体積含水率）"
     quantity_kind: volume_fraction
+    canonical_unit_id: common:unit:m3_per_m3
+    scale_to_canonical: 1
   - unit_id: common:unit:0_01ppmc
     symbol: "0.01ppmC"
     ucum: null
     name_ja: "ppmC(炭素換算した百万分率)の1/100単位の原表記。実値は本値×0.01（平塚市大気環境データ仕様書に基づく。換算はしていない）"
     quantity_kind: volume_fraction
+    canonical_unit_id: common:unit:0_01ppmc
+    scale_to_canonical: 1
   - unit_id: common:unit:0_1ppm
     symbol: "0.1ppm"
     ucum: null
     name_ja: "ppmの1/10単位の原表記。実値は本値×0.1（平塚市大気環境データ仕様書に基づく。換算はしていない）"
     quantity_kind: volume_fraction
+    canonical_unit_id: common:unit:ppm
+    scale_to_canonical: 0.1
   - unit_id: common:unit:ppb
     symbol: "ppb"
     ucum: "[ppb]"
     name_ja: "十億分率"
     quantity_kind: volume_fraction
+    canonical_unit_id: common:unit:ppm
+    scale_to_canonical: 0.001
   - unit_id: common:unit:days
     symbol: "days"
     ucum: null
     name_ja: "日数（可算・現象のあった日数）"
     quantity_kind: count
+    canonical_unit_id: common:unit:days
+    scale_to_canonical: 1
   - unit_id: common:unit:h
     symbol: "h"
     ucum: "h"
     name_ja: "時間"
     quantity_kind: time
+    canonical_unit_id: common:unit:h
+    scale_to_canonical: 1
   - unit_id: common:unit:hpa
     symbol: "hPa"
     ucum: "hPa"
     name_ja: "ヘクトパスカル"
     quantity_kind: pressure
+    canonical_unit_id: common:unit:hpa
+    scale_to_canonical: 1
   - unit_id: common:unit:0_1degc
     symbol: "0.1℃"
     ucum: null
     name_ja: "セ氏度の1/10単位の原表記。実値は本値×0.1（平塚市大気環境データ仕様書に基づく。換算はしていない）"
     quantity_kind: temperature
+    canonical_unit_id: common:unit:degc
+    scale_to_canonical: 0.1
   - unit_id: common:unit:percent
     symbol: "percent"
     ucum: "%"
     name_ja: "パーセント"
     quantity_kind: fraction
+    canonical_unit_id: common:unit:percent
+    scale_to_canonical: 1
   - unit_id: common:unit:0_1percent
     symbol: "0.1%"
     ucum: null
     name_ja: "パーセントの1/10単位の原表記。実値は本値×0.1（平塚市大気環境データ仕様書に基づく。換算はしていない）"
     quantity_kind: fraction
+    canonical_unit_id: common:unit:percent
+    scale_to_canonical: 0.1
   - unit_id: common:unit:mm
     symbol: "mm"
     ucum: "mm"
     name_ja: "ミリメートル"
     quantity_kind: length
+    canonical_unit_id: common:unit:m
+    scale_to_canonical: 0.001
   - unit_id: common:unit:0_1mm
     symbol: "0.1mm"
     ucum: null
     name_ja: "ミリメートルの1/10単位の原表記。実値は本値×0.1（平塚市大気環境データ仕様書に基づく。換算はしていない）"
     quantity_kind: length
+    canonical_unit_id: common:unit:m
+    scale_to_canonical: 0.0001
   - unit_id: common:unit:tenths
     symbol: "tenths"
     ucum: null
     name_ja: "10分比（雲量の目視観測階級。0〜10）"
     quantity_kind: fraction
+    canonical_unit_id: common:unit:tenths
+    scale_to_canonical: 1
   - unit_id: common:unit:m_per_s
     symbol: "m/s"
     ucum: "m/s"
     name_ja: "メートル毎秒"
     quantity_kind: velocity
+    canonical_unit_id: common:unit:m_per_s
+    scale_to_canonical: 1
   - unit_id: common:unit:m3_per_s
     symbol: "m3/s"
     ucum: "m3/s"
     name_ja: "立方メートル毎秒"
     quantity_kind: volume_flow_rate
+    canonical_unit_id: common:unit:m3_per_s
+    scale_to_canonical: 1
   - unit_id: common:unit:0_1m_per_s
     symbol: "0.1m/s"
     ucum: null
     name_ja: "メートル毎秒の1/10単位の原表記。実値は本値×0.1（平塚市大気環境データ仕様書に基づく。換算はしていない）"
     quantity_kind: velocity
+    canonical_unit_id: common:unit:m_per_s
+    scale_to_canonical: 0.1
   - unit_id: common:unit:dimensionless
     symbol: ""
     ucum: "1"
     name_ja: "無次元（pH 等）"
     quantity_kind: dimensionless
+    canonical_unit_id: common:unit:dimensionless
+    scale_to_canonical: 1

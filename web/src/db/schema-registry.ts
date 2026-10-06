@@ -31,6 +31,12 @@ export const unit = sqliteTable("unit", {
 	ucum: text(),
 	nameJa: text("name_ja"),
 	quantityKind: text("quantity_kind"),
+	/** 正準単位（ADR-0023、Issue #31）。換算しない単位は自分自身。 */
+	// registry.sqlite 側は NOT NULL（build_unit_variable.py が全行に明示させる）。D1 側は
+	// 既存テーブルへの ALTER ADD COLUMN が NOT NULL（既定値なし）を許さないため nullable。
+	canonicalUnitId: text("canonical_unit_id"),
+	/** 値_正準 = 値_出典 × scale。線形のみ（オフセット換算は扱わない）。 */
+	scaleToCanonical: real("scale_to_canonical").notNull().default(1),
 });
 
 /**
@@ -87,6 +93,8 @@ export const variableAlias = sqliteTable("variable_alias", {
 	unitId: text("unit_id"),
 	stat: text(),
 	grain: text(),
+	/** unit_id の根拠: 'source'（原本が報告）/ 'registry'（原本に単位記載が無くレジストリが補った）。 */
+	unitBasis: text("unit_basis"),
 	note: text(),
 },
 (table) => [

@@ -95,6 +95,55 @@ export function unitSymbol(unitId: string | null | undefined): string | null {
   return u.symbol ?? "";
 }
 
+export interface CanonicalUnit {
+  unitId: string;
+  /** 正準単位の表示用シンボル（`unitSymbol` と同じ扱い。無次元は ""）。 */
+  symbol: string;
+  /** 値_正準 = 値_出典 × scale（線形のみ）。 */
+  scale: number;
+}
+
+/**
+ * 単位の正準単位と換算倍率（ADR-0023、Issue #31）。未知の unit_id・null は undefined
+ * （換算しない・推測しない）。換算しない単位は自分自身・scale=1。
+ */
+export function canonicalOf(unitId: string | null | undefined): CanonicalUnit | undefined {
+  const u = getUnit(unitId);
+  if (!u || !u.canonicalUnitId) return undefined;
+  const c = unitById.get(u.canonicalUnitId);
+  if (!c) return undefined;
+  return { unitId: c.unitId, symbol: c.symbol ?? "", scale: u.scaleToCanonical };
+}
+
+export type UnitBasis = "source" | "registry" | "mixed";
+
+const aliasesByVariable = new Map<string, GeneratedVariableAlias[]>();
+for (const a of GENERATED_VARIABLE_ALIASES) {
+  if (!a.variableId) continue;
+  const list = aliasesByVariable.get(a.variableId) ?? [];
+  list.push(a);
+  aliasesByVariable.set(a.variableId, list);
+}
+
+/**
+ * 単位の根拠（Issue #31）。`unitId` を渡さなければ variable の単位を使う。
+ * 'source'=原本が単位を報告している / 'registry'=原本に単位の記載が無くレジストリが補った /
+ * 'mixed'=出典によって両方ある。単位が無ければ null。宣言は `variable_alias.unit_basis`
+ * （b04 が実データとの一致を機械検証している）。alias に該当が無く variable の単位だけで
+ * 解決している場合はレジストリが補った値なので 'registry'。
+ */
+export function unitBasis(variableId: string, unitId?: string | null): UnitBasis | null {
+  const effective = unitId ?? variableById.get(variableId)?.unitId ?? null;
+  if (!effective) return null;
+  const bases = new Set<string>();
+  for (const a of aliasesByVariable.get(variableId) ?? []) {
+    if (a.unitId === effective && a.unitBasis) bases.add(a.unitBasis);
+  }
+  if (bases.size === 0) return "registry";
+  if (bases.size > 1) return "mixed";
+  return [...bases][0] as UnitBasis;
+}
+
 export interface ResolvedVariableInfo {
   variableId: string;
   code: string | null;

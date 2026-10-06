@@ -111,7 +111,7 @@ const db = new Database(REGISTRY_DB, { readonly: true });
 /* ------------------------------------------------------------------ */
 
 const units = db
-  .prepare(`SELECT unit_id, symbol, ucum, name_ja, quantity_kind FROM unit ORDER BY unit_id`)
+  .prepare(`SELECT unit_id, symbol, ucum, name_ja, quantity_kind, canonical_unit_id, scale_to_canonical FROM unit ORDER BY unit_id`)
   .all()
   .map((r) => ({
     unitId: r.unit_id,
@@ -119,6 +119,8 @@ const units = db
     ucum: r.ucum,
     nameJa: r.name_ja,
     quantityKind: r.quantity_kind,
+    canonicalUnitId: r.canonical_unit_id,
+    scaleToCanonical: r.scale_to_canonical,
   }));
 
 const variables = db
@@ -144,7 +146,7 @@ const variables = db
 
 const variableAliases = db
   .prepare(
-    `SELECT alias, dataset, source_id, variable_id, unit_id, stat, grain
+    `SELECT alias, dataset, source_id, variable_id, unit_id, stat, grain, unit_basis
      FROM variable_alias ORDER BY id`,
   )
   .all()
@@ -156,6 +158,7 @@ const variableAliases = db
     unitId: r.unit_id,
     stat: r.stat || null,
     grain: r.grain,
+    unitBasis: r.unit_basis || null,
   }));
 
 // caveat_scope.scope_kind の既知の語彙（scripts/registry/build_caveat.py の
@@ -357,6 +360,10 @@ export interface GeneratedUnit {
   ucum: string | null;
   nameJa: string | null;
   quantityKind: string | null;
+  /** 正準単位（ADR-0023、Issue #31）。換算しない単位は自分自身。 */
+  canonicalUnitId: string;
+  /** 値_正準 = 値_出典 × scaleToCanonical（線形のみ。オフセット換算は扱わない）。 */
+  scaleToCanonical: number;
 }
 
 export interface GeneratedVariable {
@@ -385,6 +392,8 @@ export interface GeneratedVariableAlias {
   unitId: string | null;
   stat: string | null;
   grain: string | null;
+  /** unit_id の根拠。'source'=原本が報告 / 'registry'=原本に単位記載が無くレジストリが補った。unitId が無い行は null。 */
+  unitBasis: "source" | "registry" | null;
 }
 `;
 
@@ -397,6 +406,8 @@ export const GENERATED_UNITS: readonly GeneratedUnit[] = ${emitObjectArray(units
   "ucum",
   "nameJa",
   "quantityKind",
+  "canonicalUnitId",
+  "scaleToCanonical",
 ])};
 
 /** 正準の指標（registry/variable.yaml）。名前から単位・粒度・統計量を剥がした後の形。 */
@@ -418,7 +429,7 @@ export const GENERATED_VARIABLES: readonly GeneratedVariable[] = ${emitObjectArr
  * 出典 × 表記で解決する — ADR-0010 決定1）。 */
 export const GENERATED_VARIABLE_ALIASES: readonly GeneratedVariableAlias[] = ${emitObjectArray(
   variableAliases,
-  ["alias", "dataset", "sourceId", "variableId", "unitId", "stat", "grain"],
+  ["alias", "dataset", "sourceId", "variableId", "unitId", "stat", "grain", "unitBasis"],
 )};
 `;
 

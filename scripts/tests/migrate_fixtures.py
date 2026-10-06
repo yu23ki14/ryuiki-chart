@@ -179,7 +179,7 @@ def make_registry_db(
         conn.execute(
             """CREATE TABLE variable_alias (
                 dataset TEXT, alias TEXT, source_id TEXT, variable_id TEXT, unit_id TEXT,
-                stat TEXT, grain TEXT
+                stat TEXT, grain TEXT, unit_basis TEXT
             )"""
         )
         conn.execute(
@@ -204,9 +204,13 @@ def make_registry_db(
             "name_ja TEXT, quantity_kind TEXT)"
         )
         conn.executemany(
-            "INSERT INTO variable_alias VALUES (?,?,?,?,?,?,?)",
+            "INSERT INTO variable_alias (dataset, alias, source_id, variable_id, unit_id, stat, grain) "
+            "VALUES (?,?,?,?,?,?,?)",
             aliases if aliases is not None else DEFAULT_ALIASES,
         )
+        # unit_basis（Issue #31）: 既定は「原本が単位を報告している」('source')。
+        # 原本に単位が無い系列を作るテストは自分で UPDATE する。
+        conn.execute("UPDATE variable_alias SET unit_basis = 'source' WHERE unit_id IS NOT NULL")
         conn.executemany(
             "INSERT INTO place VALUES (?,?,?)", places if places is not None else DEFAULT_PLACES
         )

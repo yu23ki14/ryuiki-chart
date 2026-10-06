@@ -43,7 +43,80 @@ def _load_unit_yaml() -> list[dict]:
     entries = doc["units"]
     common.assert_unique([e["unit_id"] for e in entries], "registry/unit.yaml の unit_id")
     _assert_quantity_kind_codes(entries)
+    assert_canonical_units(entries)
     return entries
+
+
+def assert_canonical_units(entries: list[dict]) -> None:
+    """正準単位の宣言（ADR-0023、Issue #31）の整合。`canonical_unit_id`/`scale_to_canonical` は
+    全行が明示する（省略＝書き忘れで止める。換算しない単位は自分自身・倍率1と書く）。
+
+    - canonical は unit に実在し、同じ quantity_kind であること（量の種類をまたぐ換算を書かせない）
+    - canonical 自身は自分を指し scale=1（正準が連鎖しない）
+    - scale は有限の正の数（線形換算のみ。オフセット換算は扱わない）
+    """
+    by_id = {e["unit_id"]: e for e in entries}
+    for e in entries:
+        uid = e["unit_id"]
+        for key in ("canonical_unit_id", "scale_to_canonical"):
+            if e.get(key) in (None, ""):
+                raise AssertionError(f"registry/unit.yaml: {uid} に {key} が無い（自分自身・倍率1でもよいが明示する）")
+        canon, scale = e["canonical_unit_id"], e["scale_to_canonical"]
+        if canon not in by_id:
+            raise AssertionError(f"registry/unit.yaml: {uid} の canonical_unit_id={canon!r} が unit に無い")
+        if isinstance(scale, bool) or not isinstance(scale, (int, float)) or not (0 < scale < float("inf")):
+            raise AssertionError(f"registry/unit.yaml: {uid} の scale_to_canonical={scale!r} が正の有限数でない")
+        if (by_id[canon].get("quantity_kind") or "") != (e.get("quantity_kind") or ""):
+            raise AssertionError(
+                f"registry/unit.yaml: {uid} と canonical {canon} の quantity_kind が違う"
+                "（量の種類をまたぐ換算は書かない）"
+            )
+        if canon == uid and scale != 1:
+            raise AssertionError(f"registry/unit.yaml: {uid} は自分自身が正準なので scale_to_canonical は 1 でなければならない")
+        c = by_id[canon]
+        if c["canonical_unit_id"] != canon or c["scale_to_canonical"] != 1:
+            raise AssertionError(f"registry/unit.yaml: {uid} の正準 {canon} が自分自身を正準としていない（連鎖は不可）")
+
+
+UNIT_BASIS_CODES = frozenset({"source", "registry"})
+
+
+def _assert_unit_basis(rows: list[dict]) -> None:
+    """unit_id がある行は unit_basis が 'source'/'registry' のどちらか、無い行は空であること。"""
+    for r in rows:
+        basis = r.get("unit_basis") or ""
+        if r.get("unit_id"):
+            if basis not in UNIT_BASIS_CODES:
+                raise AssertionError(
+                    f"registry/variable_alias.csv: unit_id がある行の unit_basis={basis!r} が "
+                    f"{sorted(UNIT_BASIS_CODES)} のどちらでもない alias={r['alias']!r} dataset={r['dataset']!r} "
+                    f"source_id={r.get('source_id')!r}"
+                )
+        elif basis:
+            raise AssertionError(
+                f"registry/variable_alias.csv: unit_id が空なのに unit_basis={basis!r} がある "
+                f"alias={r['alias']!r} dataset={r['dataset']!r}"
+            )
+
+
+def assert_variable_units_share_canonical(alias_rows: list[dict], variable_entries: list[dict], unit_entries: list[dict]) -> None:
+    """同じ variable に使われる単位（alias の unit_id と variable.unit_id）は同じ正準単位を持つこと。
+    ADR-0023 の「出典間でスケールが違う変数」が1つの正準に寄ることの機械的な担保。"""
+    canon_of = {e["unit_id"]: e["canonical_unit_id"] for e in unit_entries}
+    used: dict[str, set[str]] = {}
+    for r in alias_rows:
+        if r.get("variable_id") and r.get("unit_id"):
+            used.setdefault(r["variable_id"], set()).add(r["unit_id"])
+    for v in variable_entries:
+        if v.get("unit_id"):
+            used.setdefault(v["variable_id"], set()).add(v["unit_id"])
+    for vid, units in sorted(used.items()):
+        canons = {canon_of[u] for u in units if u in canon_of}
+        if len(canons) > 1:
+            raise AssertionError(
+                f"variable {vid} に使われる単位 {sorted(units)} の正準単位が割れている: {sorted(canons)}"
+                "（registry/unit.yaml の canonical_unit_id を揃えるか、変数の単位を見直す）"
+            )
 
 
 def _load_variable_yaml() -> list[dict]:
@@ -170,6 +243,7 @@ def _load_variable_alias_csv() -> list[dict]:
     )
     _assert_variable_unit_consistent_per_alias(rows)
     _assert_grain_and_stat_codes(rows)
+    _assert_unit_basis(rows)
     _assert_fiscal_year_not_first_when_mixed(rows)
     return rows
 
@@ -177,7 +251,8 @@ def _load_variable_alias_csv() -> list[dict]:
 def _unit_rows(entries: list[dict]) -> list[tuple]:
     return [
         (e["unit_id"], e.get("symbol") or None, e.get("ucum") or None,
-         e.get("name_ja") or None, e.get("quantity_kind") or None)
+         e.get("name_ja") or None, e.get("quantity_kind") or None,
+         e["canonical_unit_id"], float(e["scale_to_canonical"]))
         for e in entries
     ]
 
@@ -200,7 +275,7 @@ def _variable_alias_rows(rows: list[dict]) -> list[tuple]:
     return [
         (r["alias"], r.get("dataset") or None, r.get("source_id") or None,
          r.get("variable_id") or None, r.get("unit_id") or None, r.get("stat") or None,
-         r.get("grain") or None, r.get("note") or None)
+         r.get("grain") or None, r.get("unit_basis") or None, r.get("note") or None)
         for r in rows
     ]
 
@@ -215,10 +290,11 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     unit_entries = _load_unit_yaml()
     variable_entries = _load_variable_yaml()
     alias_rows_raw = _load_variable_alias_csv()
+    assert_variable_units_share_canonical(alias_rows_raw, variable_entries, unit_entries)
 
     n_unit = common.insert_many(
         conn, "unit",
-        ["unit_id", "symbol", "ucum", "name_ja", "quantity_kind"],
+        ["unit_id", "symbol", "ucum", "name_ja", "quantity_kind", "canonical_unit_id", "scale_to_canonical"],
         _unit_rows(unit_entries),
     )
     n_variable = common.insert_many(
@@ -229,7 +305,7 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     )
     n_alias = common.insert_many(
         conn, "variable_alias",
-        ["alias", "dataset", "source_id", "variable_id", "unit_id", "stat", "grain", "note"],
+        ["alias", "dataset", "source_id", "variable_id", "unit_id", "stat", "grain", "unit_basis", "note"],
         _variable_alias_rows(alias_rows_raw),
     )
     return {"unit": n_unit, "variable": n_variable, "variable_alias": n_alias}

@@ -255,6 +255,7 @@ def _assert_id_uniqueness(conn) -> None:
 ID_REFERENCE_CHECKS = [
     # (子テーブル, 外部キー列, 親テーブル, 主キー列)
     ("variable", "unit_id", "unit", "unit_id"),
+    ("unit", "canonical_unit_id", "unit", "unit_id"),
     ("variable_alias", "unit_id", "unit", "unit_id"),
     ("variable_alias", "variable_id", "variable", "variable_id"),
     ("caveat_scope", "caveat_id", "caveat", "caveat_id"),

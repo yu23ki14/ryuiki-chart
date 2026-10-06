@@ -116,3 +116,22 @@
 - オフセット換算、次元をまたぐ統一（mg/L↔mg/m3、cm↔m）、`0_01ppmc` の ppm 換算、`observation_agg` への正準値列の追加。
 - 画面の注記（新設しない）。AI の応答文での「補った」旨の言い回しは prompt の1文に任せる。
 - `sensor_timeseries` の symbol 表記ゆれ（b04 コメントの既知課題）は本 Issue 範囲外。
+
+## 7. 実装結果（2026-10-06 追記）
+
+- 正準の規則は承認時に変更: 「同じ量の種類の中で SI 接頭辞・出典仕様書の10進スケールだけで換算できるものを1つの正準に寄せる」。
+  長さは m（mm・cm・0.1mm → m）。mg/L（水）と mg/m3（大気）は別扱い、0.01ppmC は自分自身。ADR-0023 の 2026-10-06 追記に明記。
+- `unit_basis` の実測（`registry/variable_alias.csv` 200行）: unit_id あり 191 行のうち source 112 / registry 79
+  （土地利用 46 行は原本に単位列が無く registry、measurements の pH・健康項目等 32 行、流量 1 行）。b04 の検査は
+  実データ v2.sqlite の observation に対して通った（113 の (variable_id, unit_id) 組）。
+- **hydro.flow の unit_id NULL（追加調査）**: 原因は `variable_alias.csv` の流量 alias の `unit_id` が空で、
+  単位が `variable.yaml` 側（m3/s）にしか無かったこと。b03 は alias の unit_id だけを `observation.unit_id` に写すため
+  4,668 行（キューブでは 12,325 セル）が NULL になっていた。alias に `unit_id=common:unit:m3_per_s`・
+  `unit_basis=registry`（原本に単位記載が無い）を書いて解消（推測ではなく環境省の利用説明書で確定済みの値）。
+  副作用: 流量の `unitUnknown` 注記（`caveat_scope`）が機械導出で消える。キューブ再ビルドで流量の系列キューブの
+  `unit_id` が NULL → m3_per_s に変わる（`data/sample/serving_snapshot.json` の流量の `label.unit` が null → "m3/s"。
+  宣言された差分）。
+- 他に `observation_agg.unit_id` が NULL の変数（意図的・推測しない）: weather.precipitation 14,765 セル
+  （相模原 RAIN: 単位が読み取れない）、air.photochemical_oxidant 11,004 セル（同 OX）。b04 の `observation` では
+  風向（最大風速時・最大瞬間風速時）・天気概況（昼・夜）の sensor_timeseries も unit_id NULL（単位の無い量。unit_raw も無い）。
+- 変更しなかったもの: `SeriesChartCard.tsx`（すでにレジストリ経由）、キューブのスキーマ。
