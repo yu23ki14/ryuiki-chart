@@ -75,7 +75,9 @@ OCCURRENCE_SPEC_VERSION = "phase-b-fact-slice/v1"
 # 以前は `occurrence_agg`/`occurrence_place` の両方がこの1つの定数を共有して
 # いたが（`scripts/migrate/common.py` 冒頭のコメント「成果物ごとに別の定数を
 # 持つ」の趣旨どおり）、`occurrence_agg` だけを変えたので分離した。
-OCCURRENCE_AGG_SPEC_VERSION = "phase-b-fact-slice/v2"
+# 2026-10-06: Issue #34 で `n_alien` の意味が「外来種の除外規則〔in_scope〕を反映した旗の合計」に
+# 変わったため v3 に上げた。
+OCCURRENCE_AGG_SPEC_VERSION = "phase-b-fact-slice/v3"
 
 # `record_stage_fingerprint`/`record_stage_fingerprints`（段階間の指紋、
 # Issue #37 #1）の `spec_version` 引数の既定値。**成果物ごとの `built_from`/

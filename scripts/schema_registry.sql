@@ -277,7 +277,10 @@ CREATE TABLE IF NOT EXISTS taxon_assessment (
   origin TEXT,
   source_id TEXT,
   in_scope INTEGER,
-  binom TEXT
+  binom TEXT,
+  -- scope_reason (Issue #34): in_scope=0 の理由コード（domestic_origin /
+  -- subspecies_binomial_contraction、重なれば ',' 連結）。in_scope=1 は NULL。
+  scope_reason TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_taxon_assessment_list ON taxon_assessment(list_id);
 CREATE INDEX IF NOT EXISTS ix_taxon_assessment_taxon ON taxon_assessment(taxon_id);

@@ -79,7 +79,7 @@ UTC へ正規化してしまう問題〔ADR-0024〕そのものへの依存を�
 
 `n`（記録数）・`n_red_list`（`red_list_category` の原表記が NULL でも '' でも
 ない記録の数。v1 の `mesh_year.rl_n`・`mesh_species.rl_species_n` と同じ定義）・
-`n_alien`（`SUM(is_alien)`。`is_alien` は (source, taxon_key) ごとに一定なので
+`n_alien`（`SUM(is_alien_in_scope)`——Issue #34: 外来種の除外規則〔in_scope〕を反映した旗。`is_alien_in_scope` は (source, taxon_key) ごとに一定なので
 加法で正確——v1 `org_watershed.alien_n`/`watershed_rollup.org_alien_n` の
 後継）。`n_distinct_taxon` は taxon 粒度で非加法なので持たない。
 
@@ -88,7 +88,7 @@ UTC へ正規化してしまう問題〔ADR-0024〕そのものへの依存を�
 `scripts/b04_build_cube.py`（`observation_agg`）は `AVG()`/`SUM()` の
 浮動小数点加算アルゴリズムが SQLite 3.43 で変わる問題（ADR-0021 決定3）を
 踏まえ、`built_from` に `sqlite=...` を埋め込んで検証する。このキューブの値
-（`n`/`n_red_list`/`n_alien`）は整数の `COUNT()`/`SUM(CASE ...)`/`SUM(is_alien)`
+（`n`/`n_red_list`/`n_alien`）は整数の `COUNT()`/`SUM(CASE ...)`/`SUM(is_alien_in_scope)`
 だけで、SQLite の `SUM()` は整数列に対しては常に厳密な64bit整数和を返す
 （浮動小数点の丸め誤差やバージョン依存の加算アルゴリズムの対象外）。その
 ため ADR-0021 決定3の検証は適用対象が無く、`built_from` はバージョンを含ま
@@ -251,7 +251,7 @@ _SAME_MONTH_EXPR = "substr(period_start, 1, 7) = substr(period_end, 1, 7)"
 # セルの INSERT では使わない）。
 _POP_COLUMNS = (
     "record_id", "region_id", "source_id", "place_id", "taxon_id",
-    "period_start", "period_end", "red_list_category", "is_alien",
+    "period_start", "period_end", "red_list_category", "is_alien_in_scope",
 )
 _POP_COLUMNS_SQL = ", ".join(_POP_COLUMNS)
 # `_INSERT_COLUMNS`（≡ `DIM_COLUMNS`）の列順は
@@ -276,7 +276,7 @@ _POP_SOURCE_SQL = {
     """,
     WATERSHED_PLACE_KIND: f"""
         SELECT o.record_id, o.region_id, o.source_id, op.place_id, o.taxon_id,
-               o.period_start, o.period_end, o.red_list_category, o.is_alien
+               o.period_start, o.period_end, o.red_list_category, o.is_alien_in_scope
         FROM occurrence o
         JOIN occurrence_place op
           ON op.record_id = o.record_id AND op.place_kind = {WATERSHED_PLACE_KIND!r}
@@ -287,7 +287,7 @@ _POP_SOURCE_SQL = {
 _MEASURE_SELECT = (
     f"COUNT(*) AS n, "
     f"SUM(CASE WHEN {_RED_LIST_NONEMPTY_EXPR} THEN 1 ELSE 0 END) AS n_red_list, "
-    f"SUM(is_alien) AS n_alien"
+    f"SUM(is_alien_in_scope) AS n_alien"
 )
 
 # 年セル: 期間が1つの暦年に収まる記録（day/instant/month/year と、同年内の

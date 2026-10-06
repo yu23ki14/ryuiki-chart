@@ -54,3 +54,22 @@ def assert_known_source_ids(source_ids, error_cls=ValueError) -> None:
             "（scripts/taxon_namespaces.py の TAXON_KEY_SOURCE_NAMESPACE に"
             f"追記すること）: {unknown}"
         )
+
+
+# 外来種リスト（環境省 moe_ias_2015）の list_id。`registry/taxon/assessment_list.yaml` の値。
+# b06（occurrence の is_alien_in_scope）と build_taxon_assessment.py が共有する
+# （yaml に依存しないこのモジュールに置く。Issue #34）。
+IAS_LIST_ID = "moe_ias_2015"
+
+
+def binom_of(name: str | None) -> str | None:
+    """学名の先頭2語（属+種）。web/scripts/build-biota.mjs の BINOM と同じ規則。
+    `scripts/registry/build_taxon_assessment.py`（taxon_assessment.binom・in_scope）と
+    `scripts/b06_build_occurrence.py`（is_alien_in_scope）が同じ規則で binom を取るための正。
+    """
+    if not name:
+        return None
+    toks = name.split(" ")
+    if len(toks) < 2:
+        return name
+    return f"{toks[0]} {toks[1]}"

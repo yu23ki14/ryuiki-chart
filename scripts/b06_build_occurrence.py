@@ -113,7 +113,9 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from migrate import common, occurrence_period, period, source_regions  # noqa: E402
 from registry import common as registry_common  # noqa: E402
-from taxon_namespaces import TAXON_KEY_SOURCE_NAMESPACE, assert_known_source_ids  # noqa: E402
+from taxon_namespaces import (  # noqa: E402
+    IAS_LIST_ID, TAXON_KEY_SOURCE_NAMESPACE, assert_known_source_ids, binom_of,
+)
 
 DEFAULT_RYUIKI_DB = ROOT / "data" / "db" / "ryuiki.sqlite"
 DEFAULT_REGISTRY_DB = ROOT / "data" / "db" / "registry.sqlite"
@@ -201,7 +203,8 @@ CREATE TABLE {table} (
   red_list_category         TEXT,
   is_alien                  INTEGER,
   license_class             TEXT,
-  publication_scope         TEXT
+  publication_scope         TEXT,
+  is_alien_in_scope         INTEGER
 )
 """
 
@@ -216,8 +219,9 @@ INSERT INTO {table} (
   place_id, place_kind, coordinate_uncertainty_m, lat, lon,
   period_grain, period_start, period_end, period_raw,
   scientific_name, vernacular_name, taxon_rank,
-  red_list_category, is_alien, license_class, publication_scope
-) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+  red_list_category, is_alien, license_class, publication_scope,
+  is_alien_in_scope
+) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 """
 
 
@@ -268,6 +272,18 @@ def _problems_from_stats(stats: dict) -> list[str]:
     return problems
 
 
+def _load_out_of_scope_binoms(work: sqlite3.Connection) -> frozenset[str]:
+    """外来種として数えない binom（`taxon_assessment.in_scope=0`、moe_ias_2015。Issue #34:
+    出典の属性による規則＋固定宣言。registry/taxon/assessment_scope_exclusions.yaml）。"""
+    return frozenset(
+        r[0] for r in work.execute(
+            "SELECT DISTINCT binom FROM reg.taxon_assessment "
+            "WHERE list_id = ? AND in_scope = 0 AND binom IS NOT NULL",
+            (IAS_LIST_ID,),
+        )
+    )
+
+
 def _load_taxon_ids(work: sqlite3.Connection) -> set[str]:
     return {row[0] for row in work.execute("SELECT taxon_id FROM reg.taxon")}
 
@@ -277,6 +293,7 @@ def _ingest(
     dest: sqlite3.Connection,
     insert_table: str,
     taxon_ids: set[str],
+    out_of_scope_binoms: frozenset[str],
     sources: dict,
     regions: dict,
     source_usage,
@@ -298,6 +315,10 @@ def _ingest(
                 red_list_category, is_alien, license_class, publication_scope,
                 place_id, place_kind, is_synthetic,
             ) = row
+            # 原表記の旗 is_alien は変えない。n_alien（b07）は in_scope を反映したこちらを数える。
+            is_alien_in_scope = (
+                0 if is_alien and binom_of(scientific_name) in out_of_scope_binoms else is_alien
+            )
 
             stats["total"] += 1
 
@@ -372,6 +393,7 @@ def _ingest(
                 period_grain, period_start, period_end, period_raw,
                 scientific_name, vernacular_name, taxon_rank,
                 red_list_category, is_alien, license_class, publication_scope,
+                is_alien_in_scope,
             )
 
     dest.executemany(_INSERT_SQL.format(table=f'"{insert_table}"'), rows())
@@ -438,8 +460,9 @@ def build_and_write_occurrence(
                 common.attach_readonly(work, registry_db, "reg")
                 _assert_known_source_ids(work)
                 taxon_ids = _load_taxon_ids(work)
+                out_of_scope_binoms = _load_out_of_scope_binoms(work)
                 stats = _ingest(
-                    work, dest, staging, taxon_ids, sources, regions, source_usage, region_usage,
+                    work, dest, staging, taxon_ids, out_of_scope_binoms, sources, regions, source_usage, region_usage,
                     shape_usage,
                 )
             finally:

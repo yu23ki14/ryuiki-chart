@@ -248,6 +248,27 @@ def test_n_alien_sums_is_alien_flag(tmp_path):
         conn.close()
 
 
+def test_n_alien_counts_in_scope_flag_not_raw_flag(tmp_path):
+    """Issue #34: `n_alien` は除外規則（in_scope）を反映した `is_alien_in_scope` を数える。
+    原表記 is_alien=1 でも is_alien_in_scope=0 の記録（国内由来の種）は数えない。"""
+    rows = [
+        occurrence_row("gbif__dom", "common:taxon:gbif.1001", "2020-01-05", "2020-01-05", "2020-01-05",
+                       is_alien=1, is_alien_in_scope=0),
+        occurrence_row("gbif__alien", "common:taxon:gbif.1001", "2020-01-06", "2020-01-06", "2020-01-06",
+                       is_alien=1),
+    ]
+    conn, decl = _build(tmp_path, rows)
+    try:
+        b07.build_cube(conn, decl, place_declarations_yaml=None)
+        n, n_alien = conn.execute(
+            "SELECT SUM(n), SUM(n_alien) FROM occurrence_agg "
+            "WHERE place_kind = 'grid01' AND grain != 'month'"
+        ).fetchone()
+        assert (n, n_alien) == (2, 1)
+    finally:
+        conn.close()
+
+
 # ---------------------------------------------------------------------------
 # month 族（新設）
 # ---------------------------------------------------------------------------
@@ -586,7 +607,7 @@ def _staging_row(
 ):
     return (
         "jp-14", "gbif_kanagawa_occurrences", "common:place:grid01.3550_13900", place_kind, taxon_id,
-        grain, period_start, period_end, n, n_red_list, n_alien, "occurrence", "phase-b-fact-slice/v2",
+        grain, period_start, period_end, n, n_red_list, n_alien, "occurrence", "phase-b-fact-slice/v3",
     )
 
 
@@ -752,7 +773,7 @@ def test_mutation_n_alien_formula_swapped_for_n_red_list_is_caught(tmp_path, mon
         wrong_alien_expr = f"SUM(CASE WHEN {b07._RED_LIST_NONEMPTY_EXPR} THEN 1 ELSE 0 END) AS n_alien"
         for name in ("_YEAR_CELLS_SQL", "_LEAF_CELLS_SQL", "_MONTH_CELLS_SQL"):
             original = getattr(b07, name)
-            mutated = original.replace("SUM(is_alien) AS n_alien", wrong_alien_expr)
+            mutated = original.replace("SUM(is_alien_in_scope) AS n_alien", wrong_alien_expr)
             assert mutated != original, name
             monkeypatch.setattr(b07, name, mutated)
         with pytest.raises(common.MigrationError, match="Σn/Σn_red_list/Σn_alien"):

@@ -20,7 +20,8 @@ from .occurrence_fixtures import (
 
 
 def _build(tmp_path, organism_rows=None, taxa=None, places=None, place_refs=None,
-           source_regions_text=None, period_shapes_text=None, period_shapes_counts=None):
+           source_regions_text=None, period_shapes_text=None, period_shapes_counts=None,
+           taxon_assessments=None):
     ryuiki_db = tmp_path / "ryuiki.sqlite"
     registry_db = tmp_path / "registry.sqlite"
     source_regions_yaml = tmp_path / "source_regions.yaml"
@@ -28,7 +29,7 @@ def _build(tmp_path, organism_rows=None, taxa=None, places=None, place_refs=None
     out = tmp_path / "v2.sqlite"
 
     make_organism_records_db(ryuiki_db, organism_rows)
-    make_occurrence_registry_db(registry_db, taxa, places, place_refs)
+    make_occurrence_registry_db(registry_db, taxa, places, place_refs, taxon_assessments)
     make_source_regions_yaml(source_regions_yaml, source_regions_text)
     make_period_shapes_yaml(period_shapes_yaml, period_shapes_text, period_shapes_counts)
 
@@ -335,3 +336,43 @@ def test_v2_sqlite_only_occurrence_table_is_touched(tmp_path):
     n_occurrence = conn.execute("SELECT COUNT(*) FROM occurrence").fetchone()[0]
     conn.close()
     assert n_occurrence == len(DEFAULT_ORGANISM_RECORDS)
+
+
+def _assessment_row(binom, in_scope):
+    """`taxon_assessment` の行（先頭19列。`binom`/`in_scope` だけ意味を持たせる）。"""
+    return (
+        f"a_{binom}", "moe_ias_2015", 2015, None, binom, None, None, None, None, None,
+        None, None, None, None, None, None, None, in_scope, binom,
+    )
+
+
+def test_is_alien_in_scope_zeroes_flag_for_out_of_scope_binom_but_keeps_raw_flag(tmp_path):
+    """Issue #34: in_scope=0 の binom の外来種旗は is_alien_in_scope=0 になる（原表記 is_alien は変えない）。
+    in_scope=1 の binom・registry に無い binom の外来種旗はそのまま。"""
+    rows = [
+        ("gbif__a", "gbif_kanagawa_occurrences", "2020-01-05", 35.505, 139.005, 10.0,
+         "Foo bar baz", "", "SPECIES", "1001", "", 1, "CC-BY", "公開"),   # out of scope（亜種付き学名でも binom で一致）
+        ("gbif__b", "gbif_kanagawa_occurrences", "2020-01-06", 35.505, 139.005, 10.0,
+         "Keep this", "", "SPECIES", "1001", "", 1, "CC-BY", "公開"),    # in scope
+        ("gbif__c", "gbif_kanagawa_occurrences", "2020-01-07", 35.505, 139.005, 10.0,
+         "Other sp", "", "SPECIES", "1001", "", 1, "CC-BY", "公開"),     # registry に無い
+        ("gbif__d", "gbif_kanagawa_occurrences", "2020-01-08", 35.505, 139.005, 10.0,
+         "Foo bar", "", "SPECIES", "1001", "", 0, "CC-BY", "公開"),      # out of scope だが元から外来でない
+    ]
+    _stats, out = _build(
+        tmp_path, organism_rows=list(DEFAULT_ORGANISM_RECORDS) + rows,
+        period_shapes_counts={"day": 5},
+        taxon_assessments=[_assessment_row("Foo bar", 0), _assessment_row("Keep this", 1)],
+        source_regions_text=(
+            "sources:\n  gbif_kanagawa_occurrences:\n    region_id: jp-14\n    consumer: occurrence\n"
+            "    expected_row_count: 15\n    evidence: テスト用\n"
+            "  inaturalist_kanagawa:\n    region_id: jp-14\n    consumer: occurrence\n"
+            "    expected_row_count: 1\n    evidence: テスト用\n"
+            "regions:\n  jp-14:\n    utc_offset: \"+09:00\"\n    evidence: テスト用\n"
+        ),
+    )
+    conn = sqlite3.connect(f"file:{out}?mode=ro", uri=True)
+    got = {r[0]: (r[1], r[2]) for r in conn.execute("SELECT record_id, is_alien, is_alien_in_scope FROM occurrence "
+        "WHERE record_id IN ('gbif__a','gbif__b','gbif__c','gbif__d')")}
+    conn.close()
+    assert got == {"gbif__a": (1, 0), "gbif__b": (1, 1), "gbif__c": (1, 1), "gbif__d": (0, 0)}
