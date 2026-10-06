@@ -46,7 +46,7 @@ value_grain != period_grain（食い違う行。宣言表でカバーされて�
 - `observation` 行数: **9,716**
 - alias（variable_alias）/ place（place_source_ref）解決率: 9,716 / 9,716 （CSV1行→面積・セル数の2 observation 行。全行解決。1行でも未解決なら、このレポート自体が作られず b03 が例外で止まる）
 
-検閲の概念は無い（`censoring` は常に `'none'`）。区分の面積（km2）とセル数（count）をそれぞれ別の variable として持つ（P-1b オーナー決定1）。region は `source_regions.yaml`（consumer='observation'）の宣言から決める（ADR-0022 決定3・P-1b オーナー決定3）。
+検閲の概念は無い（`censoring` は常に `'none'`）。区分の面積（km2）とセル数（count）をそれぞれ別の variable として持つ（P-1b オーナー決定1）。region は `manifests/*.yml`（consumer='observation'）の宣言から決める（ADR-0022 決定3・P-1b オーナー決定3）。
 
 value_grain != period_grain（食い違う行。宣言表でカバーされている分のみ許される）: **0行**
 
