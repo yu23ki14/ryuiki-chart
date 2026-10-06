@@ -902,9 +902,13 @@ def build_and_write_observation(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     dest = sqlite3.connect(f"file:{out_path}", uri=True)
     dest.execute("PRAGMA journal_mode=DELETE")
+    # 系譜（Issue #45）: 読み取りから自動生成する。`work`（原本・registry を読む
+    # 作業用接続）も watch する。原本の鮮度の正は pipeline_input_fingerprint。
+    lineage = common.LineageTracker(dest)
+    external = common.lineage_external_for_sources(ryuiki_db, registry_db, src_alias="src", registry_alias="reg")
     try:
         with common.staged_table(
-            dest, "observation", _CREATE_OBSERVATION_SQL, fingerprint_inputs={},
+            dest, "observation", _CREATE_OBSERVATION_SQL, lineage=lineage,
         ) as staging:
             all_stats: dict[str, dict] = {}
             for source_table, ingest in ingest_funcs.items():
@@ -912,6 +916,7 @@ def build_and_write_observation(
                 try:
                     common.attach_readonly(work, ryuiki_db, "src")
                     common.attach_readonly(work, registry_db, "reg")
+                    lineage.watch(work, external=external)
                     stats = ingest(work, dest, staging)
                 finally:
                     work.close()
@@ -997,7 +1002,7 @@ def build_and_write_observation(
             # ここまで来たら with ブロックを正常に抜け、staged_table が
             # 作業用テーブルを本番名 "observation" に差し替え、同じ
             # トランザクションで指紋も記録する（Issue #37 #1・/code-review
-            # 指摘の根本対応: `fingerprint_inputs={}` を渡したことで、
+            # 指摘の根本対応: `lineage=` を渡したことで、
             # 差し替えのコミットと指紋の記録が同じコミットになり、
             # 「内容は新しいが指紋は古い」状態が原理的に作れなくなる。
             # `observation` は基底テーブルなので系譜は空）。b04 はこの指紋を

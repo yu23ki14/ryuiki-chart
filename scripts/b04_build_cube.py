@@ -1229,15 +1229,17 @@ def build_cube(
     （モジュール docstring「SQLite の版を守る」参照）。
     """
     common.require_sqlite_version()
-    # 段階間の指紋（Issue #37 #1）: b03 が最後に記録した observation の指紋と
+    # 段階間の指紋（Issue #37 #1・#45）: b03 が最後に記録した observation の指紋と
     # 今の observation の内容が一致することを、集計を始める前に確認する
     # （b03 が別内容で再実行された後、b04 が再実行されていない事故を検出する）。
-    # 戻り値（observation の現在の指紋）は observation_agg の系譜（inputs）に
-    # そのまま使う——ここで確認済みの値を再利用するだけで、observation を
-    # もう一度読み直しはしない。
-    observation_fingerprint = common.assert_stage_fingerprint_fresh(
-        conn, "observation",
-        rebuild_hint="scripts/b03_build_observation.py を再実行すること。",
+    # 系譜（observation_agg の inputs）は手で書かない——`lineage` が段の先頭から
+    # 実際に読んだ表（observation・registry の `reg`）を集め、`staged_table` が
+    # 差し替え時に自動で記録する。`verify` していない上流を読めば止まる。
+    lineage = common.LineageTracker(
+        conn, external=common.lineage_external_for_sources(None, registry_db, registry_alias="reg"),
+    )
+    observation_fingerprint = lineage.verify(
+        "observation", rebuild_hint="scripts/b03_build_observation.py を再実行すること。",
     )
     # below_lod が censoring_limit を必ず持つことは b03 が保証済み（/simplify 指摘2）。
     params = (built_from, spec_version)
@@ -1261,7 +1263,7 @@ def build_cube(
 
     with common.staged_table(
         conn, "observation_agg", _CREATE_OBSERVATION_AGG_SQL,
-        fingerprint_inputs={"observation": observation_fingerprint},
+        lineage=lineage,
         fingerprint_spec_version=spec_version,
     ) as staging:
         insert_cols = ", ".join(
@@ -1345,6 +1347,7 @@ def build_cube(
             conn, staging, observation_fingerprint, spec_version,
         )
         value_stats = _collect_value_zero_lod_stats(conn, staging)
+    lineage.release()
     # ここまで来たら staged_table が観測差し替えと同じトランザクションで
     # observation_agg の指紋・系譜（消費した observation の指紋）も記録済み
     # （Issue #37 #1・/code-review 指摘の根本対応。「内容は新しいが指紋は

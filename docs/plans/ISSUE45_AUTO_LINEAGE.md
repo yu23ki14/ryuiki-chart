@@ -63,3 +63,12 @@
 - b04/b07 の `inputs` に registry が増える（b04 は `reg`）。表の内容・`spec_version` は不変だが `pipeline_fingerprint.inputs` が変わるので b00 の実行証明は更新が要る。
 - authorizer は接続に1つ。b04 の既存コードが別の authorizer を使っていないことは確認済み（grep: 他に無し）。
 - b13 の表ごとの区切り（`reset`）を入れ忘れると他表の上流が混ざる（多めに申告する方向に倒れるので安全側）。
+
+## 実装メモ（承認後の決定・設計からの差分）
+- b03/b06 は `work` 接続にも `lineage.watch(work, external=...)` を1行足した（承認済み）。原本は表ごとの代理指標
+  （`pipeline_input_fingerprint` と同じ取り方）を値に `ext:src.<table>` として入る。
+- tracker は `track_lineage` コンテキストではなく `LineageTracker(conn)` を段の先頭で作る形にした（段の本体をインデントし直さないため）。
+  `staged_table` が失敗すると authorizer を解除し、b04/b07 は成功後に `release()`、b13 は finally、b09 は接続を閉じる。
+- 実測: TEMP テーブルの読み取りは `SQLITE_READ` で `temp` ではなく `main` と報告される。resolve 時点で main に実在しない表は無視する
+  （DROP 済みの `__sample_ids` 等）。
+- `track_reads`/`assert_all_reads_verified`/`assert_occurrence_fingerprint_fresh` は撤去（`LineageTracker.resolve` に吸収）。

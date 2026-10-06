@@ -19,9 +19,10 @@
   構築関数の先頭**で呼ぶ（モジュール読み込み時点ではない——
   `require_sqlite_version` の docstring 参照）。
 - 段階間の指紋（`record_stage_fingerprint`/`assert_stage_fingerprint_fresh`/
-  `track_reads`/`assert_all_reads_verified`。Issue #37 #1）: あるテーブルが
+  `LineageTracker`。Issue #37 #1・#45）: あるテーブルが
   「今の上流テーブルから作られた状態」であることと、「実際に読んだ表を
-  検証し忘れていないか」を、次の段が読み込み時に機械で確認する。詳細は
+  検証し忘れていないか」を、次の段が読み込み時に機械で確認する（系譜は実際の
+  読み取りから自動生成する）。詳細は
   各関数の直前のモジュールコメント参照。
 """
 from __future__ import annotations
@@ -307,25 +308,27 @@ def _staging_table_name(table: str) -> str:
 @contextlib.contextmanager
 def staged_table(
     conn: sqlite3.Connection, table: str, create_sql: str, params=(), *,
-    fingerprint_inputs: dict[str, str] | None = None,
+    lineage: "LineageTracker | None" = None,
     fingerprint_spec_version: str = FINGERPRINT_SPEC_VERSION,
 ):
     """`table`（`observation`/`observation_agg` のような本番テーブル）を
     「作業用テーブルに作る → 呼び出し側が全部挿入・検証する → 本番名に差し替える」
     の手順で作り直す（A-1）。
 
-    `fingerprint_inputs`（Issue #37 #1・/code-review 指摘の根本対応）:
-    `None`（既定）なら今までどおり指紋の記録はしない（呼び出し側が `with`
-    ブロックの外で別途 `record_stage_fingerprint()` を呼ぶ設計のまま）。
-    **辞書（空 `{}` でもよい）を渡すと、差し替え（DROP+RENAME）と同じ明示
+    `lineage`（Issue #37 #1・/code-review 指摘の根本対応、Issue #45）:
+    `None`（既定）なら指紋の記録はしない（呼び出し側が `with` ブロックの外で
+    別途 `record_stage_fingerprint()` を呼ぶ設計のまま）。**`LineageTracker`
+    を渡すと、系譜（`inputs`）を手で書かず、tracker が集めた実際の読み取りから
+    `tracker.resolve()` が自動生成する**。差し替え（DROP+RENAME）と同じ明示
     トランザクション内で `record_stage_fingerprint(conn, table,
-    spec_version=fingerprint_spec_version, inputs=fingerprint_inputs)` も
-    実行し、1つの `conn.commit()` で確定する**——「表の差し替えのコミットと
-    指紋の記録が別コミットなので、その間でプロセスが落ちると『内容は新しいが
-    指紋は古い（前回のまま）』状態が残ってしまう」という穴（/code-review
-    指摘）をこれで塞ぐ。差し替えの DDL と指紋の記録がどちらも成功しないと
-    コミットされない（片方が失敗すればロールバックで本番テーブルも元に戻る
-    ——`with` ブロック内の検証失敗時と同じ「本番はそのまま」を保つ）。
+    spec_version=fingerprint_spec_version, inputs=<自動生成>)` も実行し、1つの
+    `conn.commit()` で確定する——「表の差し替えのコミットと指紋の記録が別
+    コミットなので、その間でプロセスが落ちると『内容は新しいが指紋は古い』
+    状態が残る」という穴（/code-review 指摘）をこれで塞ぐ。差し替えの DDL と
+    指紋の記録がどちらも成功しないとコミットされない（片方が失敗すればロール
+    バックで本番テーブルも元に戻る）。未検証の上流を読んでいれば `resolve()`
+    が `MigrationError` を投げ、同じ経路で本番はそのまま残る。失敗時は
+    tracker の authorizer も解除する。
 
     `fingerprint_spec_version`（既定 `FINGERPRINT_SPEC_VERSION`）: `table` が
     自分の行に `spec_version`/`built_from` 列を埋め込む成果物（`observation_agg`
@@ -404,6 +407,8 @@ def staged_table(
     try:
         yield staging
     except BaseException:
+        if lineage is not None:
+            lineage.release()
         conn.rollback()
         conn.execute(f'DROP TABLE IF EXISTS "{staging}"')
         conn.commit()
@@ -416,13 +421,16 @@ def staged_table(
     try:
         conn.execute(f'DROP TABLE IF EXISTS "{table}"')
         conn.execute(f'ALTER TABLE "{staging}" RENAME TO "{table}"')
-        if fingerprint_inputs is not None:
+        if lineage is not None:
             # 差し替えと同じトランザクション内で指紋も記録する（上の
             # docstring 参照）。RENAME 直後なので `table` は既に本番名。
             record_stage_fingerprint(
-                conn, table, spec_version=fingerprint_spec_version, inputs=fingerprint_inputs,
+                conn, table, spec_version=fingerprint_spec_version,
+                inputs=lineage.resolve(table, staging),
             )
     except BaseException:
+        if lineage is not None:
+            lineage.release()
         conn.rollback()  # 本番テーブル（と指紋）を元に戻す（まだ確定していない）
         conn.execute(f'DROP TABLE IF EXISTS "{staging}"')  # 作業用テーブルも残さない
         conn.commit()
@@ -1041,7 +1049,16 @@ def _assert_lineage_fresh(
     はずだが、`visited` があるので万一あっても無限再帰しない）。
     """
     for upstream_table, consumed_fp in inputs.items():
-        upstream_schema = upstream_schemas.get(upstream_table, current_schema)
+        if upstream_table.startswith(EXTERNAL_LINEAGE_PREFIX):
+            # 別機構が鮮度を見る外部入力（registry・原本）。来歴の記録であり、
+            # pipeline_fingerprint の行を持たないので辿らない（check_v2_pipeline_fresh
+            # の pipeline_input_fingerprint が鮮度の正）。
+            continue
+        if "." in upstream_table:
+            # 非 main の上流は "schema.table" で記録される（LineageTracker.resolve）。
+            upstream_schema, _, upstream_table = upstream_table.partition(".")
+        else:
+            upstream_schema = upstream_schemas.get(upstream_table, current_schema)
         key = (upstream_schema, upstream_table)
         qualified_upstream = f"{upstream_schema}.{upstream_table}" if upstream_schema else upstream_table
         upstream_current = read_recorded_fingerprint(conn, upstream_table, schema=upstream_schema)
@@ -1066,24 +1083,6 @@ def _assert_lineage_fresh(
             _assert_lineage_fresh(
                 conn, qualified_upstream, upstream_inputs, upstream_schema, upstream_schemas, rebuild_hint, visited,
             )
-
-
-# ---------------------------------------------------------------------------
-# occurrence の縦線（b07/b08/b09）が共有する指紋チェック（/simplify 指摘:
-# b07・b09 が一字一句同じ `assert_stage_fingerprint_fresh(conn, "occurrence",
-# ...)` 呼び出しを別々に持っていた）。`occurrence` は基底テーブル（系譜を
-# 持たない）なので `upstream_schemas` は渡さない。
-# ---------------------------------------------------------------------------
-
-def assert_occurrence_fingerprint_fresh(conn: sqlite3.Connection, *, schema: str | None = None) -> str:
-    """`occurrence`（`schema` が None なら `conn` 自身、b08 のように ATTACH
-    済みの別名越しなら `schema="cube"` 等）の (a) 自己一致を確認し、現在の
-    指紋を返す。`b06_build_occurrence.py` を再実行するよう案内する。
-    """
-    return assert_stage_fingerprint_fresh(
-        conn, "occurrence", schema=schema,
-        rebuild_hint="scripts/b06_build_occurrence.py を再実行すること。",
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -1463,127 +1462,168 @@ def check_v2_pipeline_fresh(
 
 
 # ---------------------------------------------------------------------------
-# 読み取りの機械監査（Issue #37 #1、Tier 1。/simplify 指摘A）: 段階間の
-# 指紋（上）は「検証した表が新鮮か」を確認するが、「その段が実際に読んだ
-# 表**全部**を検証したか」は、これまで人が SQL を目で追って `_assert_
-# prerequisites`/`assert_stage_fingerprint_fresh` の呼び出しを書き足す
-# 前提に頼っていた。b05 が `cube.observation` を検証せずに読んでいた
-# コードレビュー指摘（Issue #37、Turn3）は、まさにこの「新しい JOIN を
-# 足したのに検証を足し忘れる」形の見落としだった。`track_reads`/
-# `assert_all_reads_verified` はこれを機械的に検出する——ATTACH 先の
-# 実表を実際に SELECT した瞬間を `sqlite3.Connection.set_authorizer` で
-# 捕まえ、`declared`（その段が検証済みとして宣言する表名の集合）に
-# 無ければ止める。
+# 系譜の自動生成（Issue #45。Issue #37 #1 の「読み取りの機械監査」の後継）:
+# 段階間の指紋（上）の系譜 `inputs` は、以前は各段が手で組んでいた
+# （`fingerprint_inputs=`）。手書きだと「新しい JOIN を足したのに検証も
+# 系譜も足し忘れる」見落とし（b05 が `cube.observation` を検証せずに読んで
+# いたコードレビュー指摘）が起きるため、ATTACH 先の実表を実際に SELECT した
+# 瞬間を `sqlite3.Connection.set_authorizer` の `SQLITE_READ` で捕まえ、
+# 出力表ごとに系譜を作る。`SQLITE_READ` は文の**コンパイル時**に発火する
+# （行ごとではない）。`CREATE TEMP TABLE ... AS SELECT` やビュー経由の読み取りも
+# 基底の実表として拾える（この機構の要）。
 #
-# **粒度は表単位ではなく段単位**（`declared` はその段が書く出力全体で
-# 共有する1つの集合）。出力テーブルごとに「どの入力を読んだか」を
-# 正確に対応づけるのは、複数の出力を1つの接続・1回の走査で作る
-# 現状の構造（例: b05 の13テーブル、b08 の10テーブル）とは相性が悪く、
-# 非現実的（per-table 精度が要るなら、まず出力ごとに接続を分けるという
-# 大きな構造変更が要る）。段単位の粗さで十分——「検証していない表を
-# 読んでいる」という見落としそのものは、どの出力テーブルの分か特定
-# できなくても検出できれば実害を防げる。per-table の自動導出（Tier 2）は
-# 別 Issue に切り出す（`docs/plans/PHASE_B_FACT_SLICE.md` 該当項目参照）。
-#
-# **対象外の自動判定**: `schema` が `main`（自分自身の出力ファイル。
-# 一時テーブルも含む）の読み取りは対象外。ATTACH 先のスキーマは、その
-# ファイルが `pipeline_fingerprint` テーブルを持つ（=この指紋機構の
-# 対象）ときだけ検査する——原本（`ryuiki.sqlite`/`cells.sqlite`）と
-# `registry.sqlite`（`registry_build` という別の一括指紋機構を持つ。
-# `scripts/r01_build_registry.py`）はどちらも `pipeline_fingerprint` を
-# 持たないため、ハードコードした除外リストを書かなくても自動的に
-# 対象外になる。
+# 原本（`ryuiki.sqlite`）・registry.sqlite は `pipeline_fingerprint` を持たず、
+# 別機構（`pipeline_input_fingerprint`）が鮮度を見るため、`external` で明示的に
+# 宣言する（以前の「pipeline_fingerprint が無ければ自動で対象外」という暗黙の
+# 除外はやめた——宣言の無い ATTACH 先を読めば止まる）。
 # ---------------------------------------------------------------------------
 
-@contextlib.contextmanager
-def track_reads(conn: sqlite3.Connection):
-    """`with track_reads(conn) as reads:` の間に `conn` がコンパイルする
-    SQL 文が実際に読む `(schema, table)` の組を `reads`（集合）に集める。
+EXTERNAL_LINEAGE_PREFIX = "ext:"
 
-    `sqlite3.Connection.set_authorizer` の `SQLITE_READ` イベントを使う——
-    文の**コンパイル時**に発火する（実行時に行ごとに発火するのではない。
-    同じ文を何度実行しても1回しか記録されない代わり、`EXPLAIN` のように
-    実行されない文でも記録されうる。ここでは「build 関数の本体が読みうる
-    表の集合」を知りたいだけなので十分）。`CREATE TEMP TABLE x AS SELECT
-    ... FROM cube.observation` のように一時テーブルを作る文も、その
-    `SELECT` が参照する実表への読み取りとして記録される——一時テーブルを
-    経由して間接的に読んだ実表も、依存グラフを個別に手で追わずに拾える
-    （この機構の要）。
+# 系譜に載せない読み取り: SQLite のカタログ表・指紋のメタ表自身（検証・記録が読む）。
+_LINEAGE_IGNORED_TABLES = frozenset({PIPELINE_FINGERPRINT_TABLE, PIPELINE_INPUT_FINGERPRINT_TABLE})
 
-    `with` を抜けると authorizer を解除する。ネストして呼ばない前提
-    （authorizer は接続に1つしか設定できない）。
 
-    **Python 3.10 以下では `set_authorizer(None)` で解除できない**
-    （/code-review 指摘。`None` を渡して解除する対応は Python 3.11 で
-    追加された——それより前は `None` がそのままコールバックとして
-    登録され、以後そのコネクションで実行する文が全て
-    `sqlite3.DatabaseError: not authorized` になる。実測: システムの
-    Python 3.10.12〔SQLite 3.37.2〕で再現・確認した。3.10 以下では
-    代わりに「常に許可する」コールバックに差し替える——「原本の無い
-    環境」の受け入れ基準（pass/skip だけになる）に、SQLite 3.10 系の
-    venv も含まれるため、ここで壊すと以降の全クエリが失敗し `pytest`
-    が大量に落ちる）。
+class LineageTracker:
+    """段の系譜（`pipeline_fingerprint.inputs`）を、実際の読み取りから自動生成する
+    （Issue #45。手書きの `fingerprint_inputs=` の置き換え）。
+
+    使い方: 段の先頭で `LineageTracker(conn, external={...})`（authorizer が入る）、
+    上流の (a) 検証は `tracker.verify(...)`（`assert_stage_fingerprint_fresh` を
+    呼び、確認済みの指紋を覚える）、出力は `staged_table(..., lineage=tracker)`。
+    差し替え直前に `resolve()` が、`reset()` 以降に読んだ表を次の規則で `inputs`
+    にする。`reset()` を呼ばなければ段の先頭からの全読み取りが対象（単一出力の段）。
+    出力を複数作る段は出力ごとに `reset()` する（出力表ごとの粒度）。
+
+    読み取り `(schema, table)`（接続が `watch` した別接続分も合算）の扱い:
+    - SQLite カタログ・`pipeline_fingerprint`/`pipeline_input_fingerprint`・`temp`
+      スキーマ・自分の出力と作業用テーブル・resolve 時点で main に実在しない表（DROP 済みの
+      TEMP テーブルは "main" と報告される）→ 無視（一時テーブル・ビューは基底の実表が
+      別に報告されるので落ちない）。
+    - `external[schema]` がある → `inputs["ext:<schema>.<table>"]`。値は str（その
+      ATTACH 先全体の指紋。registry）か `{table: 値}`（原本の表ごとの代理指標）。
+      鮮度の正は `check_v2_pipeline_fresh`（pipeline_input_fingerprint）で、ここは来歴。
+    - `verify` 済み → `inputs[<table>]`（main）/`inputs["<schema>.<table>"]`（ATTACH 先）。
+    - それ以外（未検証の指紋あり表・宣言の無い ATTACH 先・`external` の dict に無い表）
+      → `MigrationError`。検証や宣言を足し忘れた JOIN を機械的に止める。
     """
-    reads: set[tuple[str, str]] = set()
 
-    def authorizer(action, arg1, arg2, db_name, _trigger_or_view):
-        if action == sqlite3.SQLITE_READ:
-            reads.add((db_name or "main", arg1))
-        return sqlite3.SQLITE_OK
+    def __init__(self, conn: sqlite3.Connection, *, external: dict[str, object] | None = None):
+        self._verified: dict[tuple[str, str], str] = {}
+        self._sources: list[tuple[sqlite3.Connection, set[tuple[str, str]], dict, bool]] = []
+        self._add_source(conn, external or {}, primary=True)
 
-    conn.set_authorizer(authorizer)
-    try:
-        yield reads
-    finally:
-        if sys.version_info >= (3, 11):
-            conn.set_authorizer(None)
-        else:
-            conn.set_authorizer(lambda *_args: sqlite3.SQLITE_OK)
+    def _add_source(self, conn, external, *, primary: bool) -> None:
+        reads: set[tuple[str, str]] = set()
 
+        def authorizer(action, arg1, arg2, db_name, _trigger_or_view):
+            if action == sqlite3.SQLITE_READ:
+                reads.add((db_name or "main", arg1))
+            return sqlite3.SQLITE_OK
 
-_SQLITE_CATALOG_TABLES = frozenset({"sqlite_master", "sqlite_temp_master", "sqlite_schema"})
+        conn.set_authorizer(authorizer)
+        self._sources.append((conn, reads, dict(external), primary))
 
+    def watch(self, conn: sqlite3.Connection, *, external: dict[str, object]) -> None:
+        """出力の接続とは別の接続（b03/b06 が原本・registry を読む `:memory:` の作業用
+        接続）の読み取りも系譜に合算する。その接続の `main`/`temp` は無視し、読んだ
+        ATTACH 先は必ず `external` に宣言されていること。authorizer は接続を閉じる
+        まで（または `release()` まで）効く。
+        """
+        self._add_source(conn, external, primary=False)
 
-def assert_all_reads_verified(
-    conn: sqlite3.Connection, reads: set[tuple[str, str]], declared: set[str], *, context: str,
-) -> None:
-    """`track_reads` が集めた `reads` のうち、`main`（自分自身の出力
-    ファイル）以外で、かつ ATTACH 先が `pipeline_fingerprint` を持つ
-    （=この指紋機構の対象）表が、`declared`（その段が (a) を検証済みとして
-    渡す表名の集合。`pipeline_fingerprint` 自身は除く）に含まれることを
-    確認する。含まれない表があれば、検証を足し忘れている疑いとして
-    `MigrationError` で止める（`context` は診断メッセージに出す段の名前、
-    例 `"b05_project_v1.build_projections"`）。
-
-    `sqlite_master` 等の SQLite カタログ表（`_SQLITE_CATALOG_TABLES`）は
-    常に対象外——`_table_exists`/`assert_stage_fingerprint_fresh` 自身が
-    テーブルの有無を確かめるのに読む（検証対象のデータそのものではない。
-    `track_reads` は「検証中に発生した読み取り」も一緒に拾ってしまうため、
-    ここで弾く）。
-
-    **呼び出し順の注意**: `with track_reads(conn) as reads:` を抜ける前に
-    この関数を呼ぶ場合、authorizer はまだ有効なので、この関数自身の
-    `_table_exists` 呼び出しが新たな `SQLITE_READ` を発生させ、`reads`
-    （元の集合そのもの）に書き足す——それを同じ集合に対して走査すると
-    `RuntimeError: Set changed size during iteration` になる（実測で踏んだ）。
-    そのため最初に `reads` をコピーしてから走査する。
-    """
-    reads = set(reads)
-    undeclared = sorted(
-        (schema, table)
-        for schema, table in reads
-        if schema != "main"
-        and table != PIPELINE_FINGERPRINT_TABLE
-        and table not in _SQLITE_CATALOG_TABLES
-        and _table_exists(conn, PIPELINE_FINGERPRINT_TABLE, schema=schema)
-        and table not in declared
-    )
-    if undeclared:
-        names = "、".join(f"{schema}.{table}" for schema, table in undeclared)
-        raise MigrationError(
-            f"{context}: {names} を読んでいるが、(a) の検証済み表として宣言されて"
-            "いない（新しい JOIN・SELECT を足したのに、対応する検証か `declared` への"
-            "追加を忘れた可能性がある）。assert_stage_fingerprint_fresh 等で検証してから"
-            "declared に加えるか、意図的に対象外にするならその理由をコードのコメントに"
-            "書いた上で declared に加えること。"
+    def verify(
+        self, table: str, *, schema: str | None = None, rebuild_hint: str,
+        upstream_schemas: dict[str, str] | None = None,
+    ) -> str:
+        """`assert_stage_fingerprint_fresh` を呼び、確認済みの指紋を覚えて返す。"""
+        # 検証自身の読み取り（上流の全件走査）はこの上流の読み取りとして記録されるのは
+        # 当然なので、tracker の authorizer はそのまま。
+        fingerprint = assert_stage_fingerprint_fresh(
+            self._primary_conn, table, schema=schema, rebuild_hint=rebuild_hint,
+            upstream_schemas={} if upstream_schemas is None else upstream_schemas,
         )
+        self._verified[(schema or "main", table)] = fingerprint
+        return fingerprint
+
+    def is_verified(self, table: str, *, schema: str | None = None) -> bool:
+        return (schema or "main", table) in self._verified
+
+    @property
+    def _primary_conn(self) -> sqlite3.Connection:
+        return self._sources[0][0]
+
+    def reset(self) -> None:
+        """読み取り集合を空にする（`verify` 済みの指紋は残す）。出力表ごとの区切り。"""
+        for _, reads, _, _ in self._sources:
+            reads.clear()
+
+    def release(self) -> None:
+        """authorizer を外す（Python 3.10 以下は `None` で解除できない——None を渡すとその接続の以後の全文が not authorized になる）。"""
+        for conn, _, _, _ in self._sources:
+            try:
+                if sys.version_info >= (3, 11):
+                    conn.set_authorizer(None)
+                else:
+                    conn.set_authorizer(lambda *_args: sqlite3.SQLITE_OK)
+            except sqlite3.ProgrammingError:
+                pass  # 接続が既に閉じている
+
+    def _exists_in_main(self, table: str) -> bool:
+        return self._primary_conn.execute(
+            "SELECT 1 FROM main.sqlite_master WHERE name = ? AND type IN ('table', 'view')", (table,)
+        ).fetchone() is not None
+
+    def resolve(self, output: str, staging: str) -> dict[str, str]:
+        """`output`（と作業用テーブル `staging`）の系譜 `inputs` を読み取りから作る。"""
+        inputs: dict[str, str] = {}
+        for _, reads, external, primary in self._sources:
+            for schema, table in sorted(set(reads)):
+                if table.startswith("sqlite_") or table in _LINEAGE_IGNORED_TABLES or schema == "temp":
+                    continue
+                if schema in external:
+                    ext = external[schema]
+                    value = ext if isinstance(ext, str) else ext.get(table)
+                    if value is None:
+                        raise MigrationError(
+                            f"{output}: {schema}.{table} を読んでいるが、external[{schema!r}] に"
+                            "この表の指紋・代理指標が宣言されていない（読む表を足したなら宣言も足すこと）。"
+                        )
+                    inputs[f"{EXTERNAL_LINEAGE_PREFIX}{schema}.{table}"] = value
+                    continue
+                if schema == "main" and (not primary or table in (output, staging)):
+                    continue
+                verified = self._verified.get((schema, table))
+                if verified is None and schema == "main" and not self._exists_in_main(table):
+                    # TEMP テーブルは SQLITE_READ で "main" として報告される（実測）。resolve
+                    # までに DROP 済みの作業用テーブル（b04 の `__sample_ids` 等）は入力ではない。
+                    continue
+                if verified is None:
+                    raise MigrationError(
+                        f"{output}: {schema}.{table} を読んでいるが、(a) の検証（tracker.verify）も "
+                        "external の宣言もされていない（新しい JOIN・SELECT を足したのに検証か宣言を"
+                        "足し忘れた可能性がある。検証してから読むか、別機構が鮮度を見る入力なら external "
+                        "に宣言すること）。"
+                    )
+                inputs[table if schema == "main" else f"{schema}.{table}"] = verified
+        return inputs
+
+
+def lineage_external_for_sources(
+    ryuiki_db, registry_db, *, src_alias: str | None = None, registry_alias: str | None = None,
+) -> dict[str, object]:
+    """`LineageTracker` の `external` を、原本（`ryuiki.sqlite`。表ごとの代理指標）と
+    registry（入力指紋）から作る。ATTACH の別名は段ごとに違う（b03/b06 は
+    `src`/`reg`、b09 は `ryuiki`/`reg`、b13 は `registry`）ので呼び出し側が渡す。
+    値は `compute_v2_input_fingerprint` と同じ取り方なので、どちらも
+    `pipeline_input_fingerprint` が鮮度を見る入力と一致する。
+    """
+    external: dict[str, object] = {}
+    if src_alias is not None:
+        external[src_alias] = {
+            table.removeprefix("ryuiki."): value
+            for table, value in _ryuiki_table_proxy(pathlib.Path(ryuiki_db)).items()
+        }
+    if registry_alias is not None:
+        external[registry_alias] = _registry_input_fingerprint(pathlib.Path(registry_db))
+    return external

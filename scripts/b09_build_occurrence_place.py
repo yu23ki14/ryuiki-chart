@@ -350,6 +350,13 @@ def build_and_write_occurrence_place(
         )
 
     conn = sqlite3.connect(f"file:{v2_db}", uri=True)
+    # 系譜（occurrence_place の inputs）は手で書かない（Issue #45）: 段の先頭から実際に
+    # 読んだ表（occurrence・registry の reg・原本の sites）を集める。
+    lineage = common.LineageTracker(
+        conn, external=common.lineage_external_for_sources(
+            ryuiki_db, registry_db, src_alias="ryuiki", registry_alias="reg",
+        ),
+    )
     try:
         common.attach_readonly(conn, registry_db, "reg")
         common.attach_readonly(conn, ryuiki_db, "ryuiki")
@@ -367,7 +374,7 @@ def build_and_write_occurrence_place(
         # 段階間の指紋（Issue #37 #1）: b06 が最後に記録した occurrence の指紋と
         # 今の occurrence の内容が一致することを、座標を読む前に確認する。
         # 戻り値は occurrence_place の系譜に使う。
-        occurrence_fingerprint = common.assert_occurrence_fingerprint_fresh(conn)
+        lineage.verify("occurrence", rebuild_hint="scripts/b06_build_occurrence.py を再実行すること。")
 
         _assert_polygon_set_matches_registry(polys, conn)
         _assert_watershed_external_key_unique(conn)
@@ -405,7 +412,7 @@ def build_and_write_occurrence_place(
 
         with common.staged_table(
             conn, "occurrence_place", _CREATE_OCCURRENCE_PLACE_SQL,
-            fingerprint_inputs={"occurrence": occurrence_fingerprint},
+            lineage=lineage,
             fingerprint_spec_version=common.OCCURRENCE_SPEC_VERSION,
         ) as staging:
             def rows():

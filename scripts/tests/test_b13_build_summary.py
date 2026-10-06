@@ -770,7 +770,7 @@ def test_pipeline_fingerprint_records_registry_lineage_for_joined_tables(tmp_pat
         inputs = json.loads(conn.execute(
             "SELECT inputs FROM pipeline_fingerprint WHERE table_name='summary_species_catalog'"
         ).fetchone()[0])
-        assert set(inputs) == {"occurrence_agg", "registry:taxon"}
+        assert set(inputs) == {"occurrence_agg", "ext:registry.taxon"}
         plain = json.loads(conn.execute(
             "SELECT inputs FROM pipeline_fingerprint WHERE table_name='summary_taxon_catalog'"
         ).fetchone()[0])
