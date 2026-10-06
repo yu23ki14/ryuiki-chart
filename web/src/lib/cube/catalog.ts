@@ -434,7 +434,7 @@ async function siteVariablesLive(db: CubeDb, siteId: string, imputation: AvgImpu
            MAX(CAST(substr(obs.period_start,1,4) AS INTEGER)) AS y_to,
            AVG(${valueCol}) AS avg
     FROM observation_agg obs
-    JOIN place_source_ref psr ON psr.place_id = obs.place_id AND psr.source_id = 'sites.site_id'
+    JOIN place_source_ref psr ON psr.place_id = obs.place_id AND psr.key_space = 'site_id'
     ${(filter?.joins ?? []).join("\n    ")}
     WHERE psr.external_key = ? AND obs.place_kind = 'site' AND ${YEAR_GRAINS_SQL} AND ${MEAN_STAT_SQL}
     GROUP BY obs.variable_id, obs.obs_stat, obs.unit_id, obs.value_grain, obs.grain, obs.input_grain
@@ -464,7 +464,7 @@ async function siteVariablesSummary(db: CubeDb, siteId: string, imputation: AvgI
            MAX(spv.y_to) AS y_to,
            AVG(${valueCol}) AS avg
     FROM summary_place_variable spv
-    JOIN place_source_ref psr ON psr.place_id = spv.place_id AND psr.source_id = 'sites.site_id'
+    JOIN place_source_ref psr ON psr.place_id = spv.place_id AND psr.key_space = 'site_id'
     ${(filter?.joins ?? []).join("\n    ")}
     WHERE psr.external_key = ?
     GROUP BY spv.variable_id, spv.obs_stat, spv.unit_id, spv.value_grain, spv.grain, spv.input_grain
@@ -512,7 +512,7 @@ export interface SiteRow2 {
   name: string | null;
   nameEn: string | null;
   watershed: string | null;
-  /** `sites.watershed` → `place_source_ref('watershed_meta.watershed_id')` →
+  /** `sites.watershed` → `place_source_ref('watershed_id')` →
    *  `place.name_ja`（design §2.1「water_system_name」）。`watershed` を持たない
    *  地点や、対応する `place` が無い（Phase A で登録していない）場合は null。 */
   waterSystemName: string | null;
@@ -537,7 +537,7 @@ export interface SiteRow2 {
 
 /** `s.watershed` から水系名を引く JOIN 断片（`sites`/`sitesInWaterBody`/`site` が共有）。 */
 const WATER_SYSTEM_NAME_JOIN = `
-    LEFT JOIN place_source_ref wpsr ON wpsr.external_key = s.watershed AND wpsr.source_id = 'watershed_meta.watershed_id'
+    LEFT JOIN place_source_ref wpsr ON wpsr.external_key = s.watershed AND wpsr.key_space = 'watershed_id'
     LEFT JOIN place wp ON wp.place_id = wpsr.place_id`;
 const WATER_SYSTEM_NAME_SELECT = "wp.name_ja AS water_system_name";
 
@@ -556,7 +556,7 @@ function siteAggregateSql(source: CatalogSource, extraJoins: readonly string[], 
     return `
     SELECT psr.external_key AS site_id, ${measuresSql}
     FROM summary_place_variable spv
-    JOIN place_source_ref psr ON psr.place_id = spv.place_id AND psr.source_id = 'sites.site_id'
+    JOIN place_source_ref psr ON psr.place_id = spv.place_id AND psr.key_space = 'site_id'
     ${extraJoins.join("\n    ")}
     GROUP BY psr.external_key
   `;
@@ -564,7 +564,7 @@ function siteAggregateSql(source: CatalogSource, extraJoins: readonly string[], 
   return `
     SELECT psr.external_key AS site_id, ${measuresSql}
     FROM observation_agg obs
-    JOIN place_source_ref psr ON psr.place_id = obs.place_id AND psr.source_id = 'sites.site_id'
+    JOIN place_source_ref psr ON psr.place_id = obs.place_id AND psr.key_space = 'site_id'
     ${extraJoins.join("\n    ")}
     WHERE obs.place_kind = 'site' AND ${YEAR_GRAINS_SQL} AND ${MEAN_STAT_SQL}
     GROUP BY psr.external_key
@@ -841,7 +841,7 @@ export async function siteSeriesCells(db: CubeDb, opt: { dataset: string }): Pro
            MIN(CAST(substr(obs.period_start,1,4) AS INTEGER)) AS y_from,
            MAX(CAST(substr(obs.period_start,1,4) AS INTEGER)) AS y_to
     FROM observation_agg obs
-    JOIN place_source_ref psr ON psr.place_id = obs.place_id AND psr.source_id = 'sites.site_id'
+    JOIN place_source_ref psr ON psr.place_id = obs.place_id AND psr.key_space = 'site_id'
     ${filter.joins.join("\n    ")}
     WHERE obs.place_kind = 'site' AND ${YEAR_GRAINS_SQL} AND ${MEAN_STAT_SQL}
     GROUP BY psr.external_key, obs.variable_id, obs.obs_stat, obs.unit_id, obs.value_grain, obs.input_grain, obs.grain
@@ -1227,7 +1227,7 @@ export interface WatershedRollupRow {
 
 /** `schema-cube.ts` の索引名（EXPLAIN をテストで固定）。 */
 const OBS_PLACE_VARIABLE_INDEX = "ix_observation_agg_place_variable_grain";
-const WATERSHED_ID_SOURCE = "watershed_meta.watershed_id";
+const WATERSHED_KEY_SPACE = "watershed_id";
 const LANDUSE_BUILT = "common:variable:landuse.building_land";
 const LANDUSE_FOREST = "common:variable:landuse.forest";
 const LANDUSE_PADDY = "common:variable:landuse.paddy";
@@ -1241,15 +1241,15 @@ interface WatershedBase {
   centroidLon: number;
 }
 
-/** 流域の `place`。v1 の `watershed_id` は `place_source_ref('watershed_meta.watershed_id').external_key`。 */
+/** 流域の `place`。v1 の `watershed_id` は `place_source_ref('watershed_id').external_key`。 */
 async function watershedBases(db: CubeDb): Promise<WatershedBase[]> {
   const rows = await db.all<OccRow>(
     `SELECT p.place_id, r.external_key AS watershed_id, p.name_ja, p.area_km2, p.lat, p.lon
      FROM place p
-     JOIN place_source_ref r ON r.place_id = p.place_id AND r.source_id = ?
+     JOIN place_source_ref r ON r.place_id = p.place_id AND r.key_space = ?
      WHERE p.place_kind = 'watershed'
      ORDER BY r.external_key`,
-    [WATERSHED_ID_SOURCE],
+    [WATERSHED_KEY_SPACE],
   );
   return rows.map((r) => ({
     placeId: r.place_id as string,

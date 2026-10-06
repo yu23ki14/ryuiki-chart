@@ -430,7 +430,7 @@ async function summarizeZone(db: CubeDb, spec: CellSpec): Promise<LimitedRows<Zo
            AVG(${OBS}.value_zero) AS avg_zero, AVG(${OBS}.value_lod) AS avg_lod
     FROM observation_agg ${OBS}
     JOIN place_relation zg ON zg.child_id = ${OBS}.place_id AND zg.relation = 'within'
-    JOIN place_source_ref zgz ON zgz.place_id = zg.parent_id AND zgz.source_id = 'sites.zone'
+    JOIN place_source_ref zgz ON zgz.place_id = zg.parent_id AND zgz.key_space = 'zone'
     ${joins.join("\n    ")}
     ${whereSql(wheres)}
     GROUP BY zone, ${OBS}.grain, ${OBS}.input_grain, substr(${OBS}.period_start,1,4)
@@ -483,7 +483,7 @@ async function summarizeZoneMonth(db: CubeDb, spec: CellSpec): Promise<LimitedRo
              AVG(${OBS}.value_zero) AS avg_zero, AVG(${OBS}.value_lod) AS avg_lod
       FROM observation_agg ${OBS}
       JOIN place_relation zg ON zg.child_id = ${OBS}.place_id AND zg.relation = 'within'
-      JOIN place_source_ref zgz ON zgz.place_id = zg.parent_id AND zgz.source_id = 'sites.zone'
+      JOIN place_source_ref zgz ON zgz.place_id = zg.parent_id AND zgz.key_space = 'zone'
       ${joins.join("\n      ")}
       ${whereSql(wheres)}
       GROUP BY zone, month
@@ -507,7 +507,7 @@ async function summarizeZoneMonth(db: CubeDb, spec: CellSpec): Promise<LimitedRo
            COUNT(DISTINCT ${OBS}.place_id) AS n_sites, SUM(${OBS}.n) AS n, AVG(${v}) AS avg
     FROM observation_agg ${OBS}
     JOIN place_relation zg ON zg.child_id = ${OBS}.place_id AND zg.relation = 'within'
-    JOIN place_source_ref zgz ON zgz.place_id = zg.parent_id AND zgz.source_id = 'sites.zone'
+    JOIN place_source_ref zgz ON zgz.place_id = zg.parent_id AND zgz.key_space = 'zone'
     ${joins.join("\n    ")}
     ${whereSql(wheres)}
     GROUP BY zone, month

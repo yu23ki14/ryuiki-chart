@@ -103,12 +103,12 @@ v1 側の JS 実装が `??`（nullish coalescing）を使っているのに合�
 
 ## `place_source_ref.external_key` の合成規則（v1 側の識別子との接続点）
 
-| place_kind | external_key                  | source_id                    |
+| place_kind | external_key                  | key_space                    |
 |---|---|---|
-| site       | v1 の `site_id` そのまま       | `sites.site_id`               |
-| watershed  | `watershed_meta.watershed_id` そのまま | `watershed_meta.watershed_id` |
-| grid01     | `f"grid01:{mlat},{mlon}"`（2列を1文字列に合成。旧`mesh3:{mlat},{mlon}`から改名。**形は変えない**） | `organism_records.lat_lon`（旧`mesh_all.mlat_mlon`から変更。入力が `derived.mesh_all` から `ryuiki.organism_records` の座標に変わったため） |
-| zone       | `sites.zone` の整数値を文字列化（"1".."5"） | `sites.zone`                  |
+| site       | v1 の `site_id` そのまま       | `site_id`                     |
+| watershed  | `watershed_meta.watershed_id` そのまま | `watershed_id`                |
+| grid01     | `f"grid01:{mlat},{mlon}"`（2列を1文字列に合成。旧`mesh3:{mlat},{mlon}`から改名。**形は変えない**） | `grid01_latlon`（旧 source_id=`organism_records.lat_lon`、さらに前は`mesh_all.mlat_mlon`） |
+| zone       | `sites.zone` の整数値を文字列化（"1".."5"） | `zone`                        |
 
 site の external_key は「sites テーブルにある行」と「measurements /
 sensor_timeseries にしか出てこない行」を区別しない。site_id は3テーブルで共通の
@@ -120,8 +120,8 @@ sensor_timeseries にしか出てこない行」を区別しない。site_id は
 `<出典名前空間>` を `SITE_NAMESPACE` で ADR-0004 の短い名前空間トークンに変換し、
 `<出典側コード>`（`__` の後ろ）を `common.place_id()` の `local` に渡す
 （例: `sites.site_id = "jma_stations_kanagawa__jma_0387"` →
-`jp-14:place:site.jma-jma_0387"`。ADR-0004 の例 `jp-14:place:site.env-pubwater-0142`
-と同じ組み立て）。`measurements` / `sensor_timeseries` にしか無い site_id も
+`jp-14:place:site.jma.jma_0387`。ns と key の区切りは `.`＝ADR-0004 規約1、
+Issue #39 Phase C。旧形式は `site.jma-jma_0387`で、旧 ID は `registry/id_map/place.csv` が新 ID に引く）。`measurements` / `sensor_timeseries` にしか無い site_id も
 同じ関数 `_site_place_id()` に通すので、同じ規則で ID が決まる。
 
 ## sites に無い site_id の補完（測定 7,846行 / センサー65地点）
@@ -175,7 +175,7 @@ ID を機械的に作っていたが、レビューで「ID は不変（ADR-0004
 
 対象は `sites` テーブル本体のうち `zone IS NOT NULL` の行（290件。`site_supplement.csv`
 側の補完地点は zone 列を持たないため対象外）。`parent_id` は `place_source_ref
-(source_id='sites.zone')` 相当の対応から解決し、`registry/place/zone.yaml` に無い
+(key_space='zone')` 相当の対応から解決し、`registry/place/zone.yaml` に無い
 ゾーン番号が現れたら例外を投げて止める（`_zone_relation_rows()`）。
 
 地点→流域（Phase B `phase-b/place-attributes`、P-1a で新設）:
@@ -189,7 +189,7 @@ ID を機械的に作っていたが、レビューで「ID は不変（ADR-0004
 `nlni_w12_watersheds.geojson`（1977年版 W12 ポリゴン）への点内包判定（shapely の
 `contains`/`intersects`）で機械的に決定した値——ゾーンと違って「地点の属性を
 そのまま転記する」辺ではないことに注意（basis にその旨を明記する）。`parent_id` は
-`place_source_ref(source_id='watershed_meta.watershed_id')` 相当の対応から解決し、
+`place_source_ref(key_space='watershed_id')` 相当の対応から解決し、
 対応する流域が place に無ければ例外を投げて止める（`_watershed_relation_rows()`、
 `_zone_relation_rows()` と同じ流儀）。
 
@@ -213,6 +213,28 @@ from . import common
 PLACE_SCOPE = "jp-14"
 
 PLACE_DIR = pathlib.Path(__file__).resolve().parents[2] / "registry" / "place"
+
+# place_source_ref.key_space の値（外部キーの空間。registry/place/key_space.yaml が宣言。
+# 旧 `source_id` 列の値 'sites.site_id' 等の改称。出典ではない。Issue #39 Phase C）。
+KS_SITE_ID = "site_id"
+KS_ZONE = "zone"
+KS_WATERSHED_ID = "watershed_id"
+KS_GRID01_LATLON = "grid01_latlon"
+
+
+def _load_key_spaces() -> list[dict]:
+    """`registry/place/key_space.yaml` を読み、宣言した key_space が上の定数と
+    一致することを検査する（宣言と実装の食い違いで止める）。"""
+    with open(PLACE_DIR / "key_space.yaml", encoding="utf-8") as f:
+        items = yaml.safe_load(f)["key_spaces"]
+    declared = {it["key_space"] for it in items}
+    used = {KS_SITE_ID, KS_ZONE, KS_WATERSHED_ID, KS_GRID01_LATLON}
+    if declared != used:
+        raise AssertionError(
+            f"registry/place/key_space.yaml の key_space {sorted(declared)} が "
+            f"build_place.py の KS_* {sorted(used)} と一致しない"
+        )
+    return items
 
 # watershed 節の入力（L1、国土数値情報 W12 流域界 1977年版、377面）。
 # common.WATERSHED_JSONL_RELPATH と共有する（指紋計算とビルド側が同じファイルを
@@ -378,7 +400,7 @@ def _zone_relation_rows(
     zone IS NOT NULL の行だけが対象（zone は sites にしか無い列なので、
     site_supplement.csv 側の補完地点は対象外）。
     `zone_place_id_by_external_key`: ゾーン番号(文字列) -> place_id
-    （place_source_ref(source_id='sites.zone') 相当の対応）。
+    （place_source_ref(key_space='zone') 相当の対応）。
     `registry/place/zone.yaml` に無いゾーン番号が現れたら、黙って捨てず例外を投げる。
     """
     basis = (
@@ -411,7 +433,7 @@ def _watershed_relation_rows(
     `nlni_w12_watersheds.geojson`（1977年版 W12 ポリゴン）への点内包判定で
     機械的に決定した値（モジュール docstring「place_relation」節参照）。
     `watershed_place_id_by_external_key`: 流域ID(文字列、v1の watershed_id) ->
-    place_id（place_source_ref(source_id='watershed_meta.watershed_id') 相当の対応）。
+    place_id（place_source_ref(key_space='watershed_id') 相当の対応）。
     対応する流域が place に無ければ、黙って捨てず例外を投げる。
     """
     basis = (
@@ -432,9 +454,9 @@ def _watershed_relation_rows(
     )
 
 
-def _place_id_by_external_key(ref_rows: list[tuple], source_id: str) -> dict[str, str]:
-    """`ref_rows`（`(place_id, external_key, source_id)` のタプル列。`build()` が
-    `place_source_ref` へ積む行そのもの）から、`source_id` に絞った
+def _place_id_by_external_key(ref_rows: list[tuple], key_space: str) -> dict[str, str]:
+    """`ref_rows`（`(place_id, external_key, key_space)` のタプル列。`build()` が
+    `place_source_ref` へ積む行そのもの）から、`key_space` に絞った
     `external_key -> place_id` の対応表を作る。`_zone_relation_rows()`/
     `_watershed_relation_rows()` に渡す辞書がどちらも同じ形の内包表記だったのを
     1つの関数に集約した（code-review 指摘）。
@@ -442,7 +464,7 @@ def _place_id_by_external_key(ref_rows: list[tuple], source_id: str) -> dict[str
     return {
         external_key: place_id
         for place_id, external_key, sid in ref_rows
-        if sid == source_id
+        if sid == key_space
     }
 
 
@@ -486,7 +508,7 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
             pid, common.region_id_for_scoped_id(pid), "site", row["name"], row["lat"], row["lon"],
             row["elevation_m"], None, row["source_ref"] or row["source_id"], "ok",
         ))
-        ref_rows.append((pid, row["site_id"], "sites.site_id"))
+        ref_rows.append((pid, row["site_id"], KS_SITE_ID))
 
     # --- site: sites に無い分の補完 -----------------------------------------
     # （measurements の site_id 250種中78種 / sensor_timeseries の77種中65種）
@@ -516,7 +538,7 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
             pid, common.region_id_for_scoped_id(pid), "site", name_ja, lat, lon,
             None, None, definition_ref, status,
         ))
-        ref_rows.append((pid, site_id, "sites.site_id"))
+        ref_rows.append((pid, site_id, KS_SITE_ID))
 
     # --- watershed: data/processed/nlni_w12_watersheds.jsonl（L1、377件） -----
     # 入力は Phase B `phase-b/place-attributes` で derived.watershed_meta から
@@ -540,7 +562,7 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
             o["centroid_lat"], o["centroid_lon"], None, o["area_km2"],
             o["source_ref"], "ok",
         ))
-        ref_rows.append((pid, o["watershed_id"], "watershed_meta.watershed_id"))
+        ref_rows.append((pid, o["watershed_id"], KS_WATERSHED_ID))
         watershed_attr_rows.append((
             pid,
             o["water_system_code_old"],
@@ -587,7 +609,7 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
             pid, common.region_id_for_scoped_id(pid), "grid01", None, lat, lon,
             None, None, definition_ref, "ok",
         ))
-        ref_rows.append((pid, f"grid01:{mlat},{mlon}", "organism_records.lat_lon"))
+        ref_rows.append((pid, f"grid01:{mlat},{mlon}", KS_GRID01_LATLON))
 
     # --- zone: registry/place/zone.yaml（5件） ------------------------------
     disclaimer = (
@@ -605,19 +627,19 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
             pid, common.region_id_for_scoped_id(pid), "zone", item["name_ja"],
             None, None, None, None, definition_ref, "ok",
         ))
-        ref_rows.append((pid, str(n), "sites.zone"))
+        ref_rows.append((pid, str(n), KS_ZONE))
 
     # --- place_relation: 地点 -> ゾーン（sites.zone 由来。ADR-0022 決定2） ------
-    # ゾーン番号(文字列) -> place_id を ref_rows から引く（source_id='sites.zone' は
+    # ゾーン番号(文字列) -> place_id を ref_rows から引く（key_space='zone' は
     # 上の zone loop が積んだ行だけなので、専用の対応表を別途維持しなくても
     # ref_rows 一本から求まる。`_place_id_by_external_key()` 参照）。
-    zone_place_id_by_external_key = _place_id_by_external_key(ref_rows, "sites.zone")
+    zone_place_id_by_external_key = _place_id_by_external_key(ref_rows, KS_ZONE)
     zone_relation_rows = _zone_relation_rows(site_zone_pairs, zone_place_id_by_external_key)
 
     # --- place_relation: 地点 -> 流域（sites.watershed 由来。Phase B
     # `phase-b/place-attributes`、P-1a） ---------------------------------------
     watershed_place_id_by_external_key = _place_id_by_external_key(
-        ref_rows, "watershed_meta.watershed_id"
+        ref_rows, KS_WATERSHED_ID
     )
     watershed_relation_rows = _watershed_relation_rows(
         site_watershed_pairs, watershed_place_id_by_external_key
@@ -631,10 +653,13 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
          "elevation_m", "area_km2", "definition_ref", "status"],
         place_rows,
     )
+    _load_key_spaces()  # 宣言（key_space.yaml）と KS_* の一致を検査する
+    # source_edition_id は source_edition 表（Issue #39 担当 B）ができるまで全行 NULL
+    # （出典の版を捏造しない。key_space.yaml の edition 欄が埋め方を宣言している）。
     common.insert_many(
         conn, "place_source_ref",
-        ["place_id", "external_key", "source_id"],
-        ref_rows,
+        ["place_id", "external_key", "key_space", "source_edition_id"],
+        [(pid, ext, ks, None) for pid, ext, ks in ref_rows],
     )
     common.insert_many(
         conn, "place_relation",

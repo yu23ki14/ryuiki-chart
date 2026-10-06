@@ -277,7 +277,7 @@ def test_unresolved_place_raises(tmp_path):
     make_measurements_db(measurements_db)
     make_registry_db(
         registry_db,
-        place_refs=[("place_s1", "S1", "sites.site_id")],  # S2 の解決先が無い
+        place_refs=[("place_s1", "S1", "site_id")],  # S2 の解決先が無い
     )
 
     with pytest.raises(common.MigrationError, match="place_source_ref で解決できない"):

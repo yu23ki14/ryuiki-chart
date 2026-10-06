@@ -65,7 +65,7 @@ export interface MeshYearRow {
 }
 
 export interface WatershedYearRow {
-  /** `common:place:watershed.nlni-<id>` */
+  /** `common:place:watershed.nlni.<id>` */
   placeId: string;
   year: number;
   n: number;

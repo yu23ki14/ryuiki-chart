@@ -121,7 +121,7 @@ DEFAULT_PLACE = [
 
 DEFAULT_PLACE_SOURCE_REF = [
     # place_id, external_key, source_id
-    (DEFAULT_GRID01_PLACE_ID, "grid01:3550,13900", "organism_records.lat_lon"),
+    (DEFAULT_GRID01_PLACE_ID, "grid01:3550,13900", "grid01_latlon"),
 ]
 
 # 既定フィクスチャの出典別件数（gbif 11行・inat 1行。`DEFAULT_ORGANISM_RECORDS`
@@ -188,7 +188,7 @@ def make_occurrence_registry_db(path, taxa=None, places=None, place_refs=None, t
         )
         conn.execute("CREATE TABLE place (place_id TEXT PRIMARY KEY, region_id TEXT, place_kind TEXT)")
         conn.execute(
-            "CREATE TABLE place_source_ref (place_id TEXT, external_key TEXT, source_id TEXT)"
+            "CREATE TABLE place_source_ref (place_id TEXT, external_key TEXT, key_space TEXT)"
         )
         conn.execute(
             f"""CREATE TABLE taxon_assessment (

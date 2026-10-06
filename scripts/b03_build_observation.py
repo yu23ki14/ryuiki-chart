@@ -150,7 +150,7 @@ alias/place 解決や重複判定より前に、既定で弾く——`observatio
 
 ## alias / place 解決
 
-`(dataset, alias, source_id)` と `place_source_ref(source_id='sites.site_id')`
+`(dataset, alias, source_id)` と `place_source_ref(key_space='site_id')`
 は、この縦線の全1,041,003行（323,164 + 717,839）が解決するはず（design.md
 実測）。1行でも解決できなければ、件数と実例を出して止まる（黙って捨てない・
 黙って NULL にしない）。JOIN が1行を2行以上に増やしていないか（alias/place
@@ -219,7 +219,7 @@ LEFT JOIN reg.variable_alias a
   ON a.dataset = 'measurements' AND a.alias = m.variable
  AND (a.source_id = m.source_id OR (a.source_id IS NULL AND m.source_id IS NULL))
 LEFT JOIN reg.place_source_ref psr
-  ON psr.source_id = 'sites.site_id' AND psr.external_key = m.site_id
+  ON psr.key_space = 'site_id' AND psr.external_key = m.site_id
 LEFT JOIN reg.place p ON p.place_id = psr.place_id
 ORDER BY m.measurement_id
 """
@@ -235,7 +235,7 @@ LEFT JOIN reg.variable_alias a
   ON a.dataset = 'sensor_timeseries' AND a.alias = st.datastream
  AND (a.source_id = st.source_id OR (a.source_id IS NULL AND st.source_id IS NULL))
 LEFT JOIN reg.place_source_ref psr
-  ON psr.source_id = 'sites.site_id' AND psr.external_key = st.site_id
+  ON psr.key_space = 'site_id' AND psr.external_key = st.site_id
 LEFT JOIN reg.place p ON p.place_id = psr.place_id
 ORDER BY st.id
 """
@@ -636,7 +636,7 @@ def _ingest_sensor_timeseries(
 
 def _load_watershed_place_lookup(work: sqlite3.Connection) -> dict[str, tuple[str, str]]:
     """`watershed_id -> (place_id, place_kind)` を返す
-    （`place_source_ref(source_id='watershed_meta.watershed_id')` 経由。
+    （`place_source_ref(key_space='watershed_id')` 経由。
     ハードコードしない——`measurements`/`sensor_timeseries` が地点の place を
     解決するのと同じ流儀。P-1a（`scripts/registry/build_place.py`）が
     既に登録済みの watershed place をここで再利用するだけで、新規には作らない）。
@@ -651,11 +651,11 @@ def _load_watershed_place_lookup(work: sqlite3.Connection) -> dict[str, tuple[st
     common.raise_on_group_by_duplicates(
         work,
         "SELECT external_key, COUNT(*) AS c FROM reg.place_source_ref "
-        "WHERE source_id = 'watershed_meta.watershed_id' GROUP BY external_key HAVING c > 1 LIMIT 5",
+        "WHERE key_space = 'watershed_id' GROUP BY external_key HAVING c > 1 LIMIT 5",
         (),
         lambda dup: (
             "observation（土地利用）: place_source_ref"
-            "（source_id='watershed_meta.watershed_id'）の external_key が一意でない"
+            "（source_id='watershed_id'）の external_key が一意でない"
             f"（同じ watershed_id に複数の place_id が対応している。例: {dup}）。"
             "watershed_id -> place_id の辞書を一意に構築できない。"
         ),
@@ -664,7 +664,7 @@ def _load_watershed_place_lookup(work: sqlite3.Connection) -> dict[str, tuple[st
         "SELECT psr.external_key, psr.place_id, p.place_kind "
         "FROM reg.place_source_ref psr "
         "JOIN reg.place p ON p.place_id = psr.place_id "
-        "WHERE psr.source_id = 'watershed_meta.watershed_id'"
+        "WHERE psr.key_space = 'watershed_id'"
     ).fetchall()
     return {external_key: (place_id, place_kind) for external_key, place_id, place_kind in rows}
 

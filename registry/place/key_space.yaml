@@ -1,0 +1,35 @@
+# place_source_ref.key_space の宣言（ADR-0006、Issue #39 Phase C）。
+#
+# place_source_ref の旧 `source_id` 列は出典ではなく「外部キーの空間」（v1 の `表.列`）だった。
+# 列名を key_space に改め、値を下の4つに写した。出典（どの版のデータか）は別列
+# `source_edition_id`（NULL 可）が持つ。
+#
+# legacy_source_id: 旧 `place_source_ref.source_id` の値（旧→新の写像。`id_map` と違い
+#   ID の改称ではなく列値の改称なので、ここに宣言する）。
+# place_kind: この key_space を持つ place の種類。
+# edition: source_edition_id の埋め方。
+#   per_row_prefix = site_id の接頭辞（`<source>__`）から行ごとに引く / fixed = 1つの
+#   出典に固定 / none = 出典を持たない（理由は edition_note）。
+#   source_edition_id は担当 B の source_edition 表ができるまで全行 NULL
+#   （捏造しない。表ができたら build_place が埋める）。
+key_spaces:
+  - key_space: site_id
+    legacy_source_id: sites.site_id
+    place_kind: site
+    edition: per_row_prefix
+    edition_note: site_id が `<source>__<code>` の形なので接頭辞から出典が引ける。
+  - key_space: zone
+    legacy_source_id: sites.zone
+    place_kind: zone
+    edition: none
+    edition_note: Ridge to Reef ゾーンは本プロジェクト自前の操作的区分（registry/place/zone.yaml）で、外部の出典を持たない。
+  - key_space: watershed_id
+    legacy_source_id: watershed_meta.watershed_id
+    place_kind: watershed
+    edition: fixed
+    edition_note: data/processed/nlni_w12_watersheds.jsonl（国土数値情報 W12 流域界 1977年版）。
+  - key_space: grid01_latlon
+    legacy_source_id: organism_records.lat_lon
+    place_kind: grid01
+    edition: none
+    edition_note: 0.01度グリッドは organism_records の座標から機械的に作った集計単位で、出典を持たない。

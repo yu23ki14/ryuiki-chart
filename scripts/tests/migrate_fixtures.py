@@ -37,7 +37,7 @@ DEFAULT_MEASUREMENTS = [
 # 毎時1系列（src_hourly/RAIN。24時ラベル＝日をまたぐケースを含む）・瞬時1系列
 # （src_instant/WTEMP）をそれぞれ最小限持つ（T1〜T6 の主要な分岐を一通り踏める
 # ように選んだ。site_id は measurements と同じ S1/S2 の名前空間を再利用する
-# ——実データでも `place_source_ref(source_id='sites.site_id')` は出典を
+# ——実データでも `place_source_ref(source_id='site_id')` は出典を
 # 問わない単一の名前空間なので、フィクスチャでもそれに合わせる）。
 DEFAULT_SENSOR_ROWS = [
     # site_id, datastream, phenomenon_time, result, unit, instrument_id, source_id, is_synthetic
@@ -76,8 +76,8 @@ DEFAULT_PLACES = [
 
 DEFAULT_PLACE_REFS = [
     # place_id, external_key, source_id
-    ("place_s1", "S1", "sites.site_id"),
-    ("place_s2", "S2", "sites.site_id"),
+    ("place_s1", "S1", "site_id"),
+    ("place_s2", "S2", "site_id"),
 ]
 
 # `variable.default_stat`（b04 の T4-2「sum」の絞り込みが読む）・`name_ja`
@@ -195,7 +195,7 @@ def make_registry_db(
             "CREATE TABLE place (place_id TEXT PRIMARY KEY, region_id TEXT, place_kind TEXT)"
         )
         conn.execute(
-            "CREATE TABLE place_source_ref (place_id TEXT, external_key TEXT, source_id TEXT)"
+            "CREATE TABLE place_source_ref (place_id TEXT, external_key TEXT, key_space TEXT)"
         )
         conn.execute(
             "CREATE TABLE place_relation (id INTEGER PRIMARY KEY AUTOINCREMENT, "
@@ -291,8 +291,8 @@ DEFAULT_WATERSHED_PLACES = [
 
 DEFAULT_WATERSHED_PLACE_REFS = [
     # place_id, external_key, source_id
-    ("place_w1", "W1", "watershed_meta.watershed_id"),
-    ("place_w2", "W2", "watershed_meta.watershed_id"),
+    ("place_w1", "W1", "watershed_id"),
+    ("place_w2", "W2", "watershed_id"),
 ]
 
 DEFAULT_LANDUSE_ALIASES = [

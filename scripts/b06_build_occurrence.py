@@ -179,7 +179,7 @@ SELECT
   psr.place_id AS place_id, p.place_kind AS place_kind, o.is_synthetic
 FROM src.organism_records o
 LEFT JOIN reg.place_source_ref psr
-  ON psr.source_id = 'organism_records.lat_lon'
+  ON psr.key_space = 'grid01_latlon'
  AND psr.external_key = 'grid01:' || CAST(FLOOR(o.lat*100) AS INT) || ',' || CAST(FLOOR(o.lon*100) AS INT)
 LEFT JOIN reg.place p ON p.place_id = psr.place_id
 ORDER BY o.rowid

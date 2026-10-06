@@ -71,7 +71,7 @@ def test_resolved_and_null_rows(tmp_path):
         tmp_path,
         occurrence_rows=rows,
         geojson_features=[("W1", _W1_RINGS)],
-        place_refs=[(_W1_PLACE_ID, "W1", "watershed_meta.watershed_id")],
+        place_refs=[(_W1_PLACE_ID, "W1", "watershed_id")],
     )
     decl = _declarations(tmp_path, n_watershed_polygons=1, place_id_null_count=1, resolved_count=1)
 
@@ -105,7 +105,7 @@ def test_records_without_coordinates_get_no_row(tmp_path):
         tmp_path,
         occurrence_rows=rows,
         geojson_features=[("W1", _W1_RINGS)],
-        place_refs=[(_W1_PLACE_ID, "W1", "watershed_meta.watershed_id")],
+        place_refs=[(_W1_PLACE_ID, "W1", "watershed_id")],
     )
     decl = _declarations(tmp_path, n_watershed_polygons=1, place_id_null_count=0, resolved_count=1)
 
@@ -124,8 +124,8 @@ def test_two_overlapping_polygons_halts(tmp_path):
         occurrence_rows=rows,
         geojson_features=[("W1", _W1_RINGS), ("W2", _W2_RINGS)],
         place_refs=[
-            (_W1_PLACE_ID, "W1", "watershed_meta.watershed_id"),
-            (_W2_PLACE_ID, "W2", "watershed_meta.watershed_id"),
+            (_W1_PLACE_ID, "W1", "watershed_id"),
+            (_W2_PLACE_ID, "W2", "watershed_id"),
         ],
     )
     decl = _declarations(tmp_path, n_watershed_polygons=2, place_id_null_count=0, resolved_count=1)
@@ -148,8 +148,8 @@ def test_point_on_shared_edge_boundary_halts(tmp_path):
         occurrence_rows=rows,
         geojson_features=[("W1", _W1_RINGS), ("W3", _W3_RINGS)],
         place_refs=[
-            (_W1_PLACE_ID, "W1", "watershed_meta.watershed_id"),
-            (_W3_PLACE_ID, "W3", "watershed_meta.watershed_id"),
+            (_W1_PLACE_ID, "W1", "watershed_id"),
+            (_W3_PLACE_ID, "W3", "watershed_id"),
         ],
     )
     decl = _declarations(tmp_path, n_watershed_polygons=2, place_id_null_count=0, resolved_count=1)
@@ -159,7 +159,7 @@ def test_point_on_shared_edge_boundary_halts(tmp_path):
 
 
 def test_watershed_external_key_duplicate_halts(tmp_path):
-    """registry の `place_source_ref(source_id='watershed_meta.watershed_id')`
+    """registry の `place_source_ref(source_id='watershed_id')`
     に同じ `external_key`（watershed_id）を持つ行が2つあると、
     `watershed_id -> place_id` の辞書が後勝ちで黙って潰れる——事前に
     一意性を検証して止める（コードレビュー指摘5）。
@@ -172,8 +172,8 @@ def test_watershed_external_key_duplicate_halts(tmp_path):
         geojson_features=[("W1", _W1_RINGS)],
         # 同じ external_key "W1" に2つの異なる place_id が対応している。
         place_refs=[
-            (_W1_PLACE_ID, "W1", "watershed_meta.watershed_id"),
-            (other_place_id, "W1", "watershed_meta.watershed_id"),
+            (_W1_PLACE_ID, "W1", "watershed_id"),
+            (other_place_id, "W1", "watershed_id"),
         ],
     )
     decl = _declarations(tmp_path, n_watershed_polygons=1, place_id_null_count=0, resolved_count=1)
@@ -189,7 +189,7 @@ def test_geojson_registry_set_mismatch_halts(tmp_path):
         occurrence_rows=rows,
         geojson_features=[("W1", _W1_RINGS)],
         # registry 側は別の watershed_id（"W_OTHER"）しか知らない。
-        place_refs=[(_W1_PLACE_ID, "W_OTHER", "watershed_meta.watershed_id")],
+        place_refs=[(_W1_PLACE_ID, "W_OTHER", "watershed_id")],
     )
     decl = _declarations(tmp_path, n_watershed_polygons=1, place_id_null_count=0, resolved_count=1)
 
@@ -203,7 +203,7 @@ def test_declaration_count_mismatch_halts(tmp_path):
         tmp_path,
         occurrence_rows=rows,
         geojson_features=[("W1", _W1_RINGS)],
-        place_refs=[(_W1_PLACE_ID, "W1", "watershed_meta.watershed_id")],
+        place_refs=[(_W1_PLACE_ID, "W1", "watershed_id")],
     )
     # resolved_count を実際の値(1)と食い違わせる。
     decl = _declarations(tmp_path, n_watershed_polygons=1, place_id_null_count=0, resolved_count=999)
@@ -218,7 +218,7 @@ def test_site_watershed_edge_mismatch_halts(tmp_path):
         tmp_path,
         occurrence_rows=rows,
         geojson_features=[("W1", _W1_RINGS)],
-        place_refs=[(_W1_PLACE_ID, "W1", "watershed_meta.watershed_id")],
+        place_refs=[(_W1_PLACE_ID, "W1", "watershed_id")],
         # この地点は実際には W1 の中だが、sites.watershed は別の値を申告している。
         sites_rows=[("site_a", 35.05, 139.05, "W_WRONG")],
     )
@@ -239,7 +239,7 @@ def test_empty_population_does_not_crash_on_sum(tmp_path):
         tmp_path,
         occurrence_rows=rows,
         geojson_features=[("W1", _W1_RINGS)],
-        place_refs=[(_W1_PLACE_ID, "W1", "watershed_meta.watershed_id")],
+        place_refs=[(_W1_PLACE_ID, "W1", "watershed_id")],
     )
     decl = _declarations(tmp_path, n_watershed_polygons=1, place_id_null_count=0, resolved_count=0)
 
@@ -255,7 +255,7 @@ def test_site_watershed_edge_matches_passes(tmp_path):
         tmp_path,
         occurrence_rows=rows,
         geojson_features=[("W1", _W1_RINGS)],
-        place_refs=[(_W1_PLACE_ID, "W1", "watershed_meta.watershed_id")],
+        place_refs=[(_W1_PLACE_ID, "W1", "watershed_id")],
         sites_rows=[("site_a", 35.05, 139.05, "W1"), ("site_b", 50.0, 200.0, None)],
     )
     decl = _declarations(tmp_path, n_watershed_polygons=1, place_id_null_count=0, resolved_count=1)
@@ -298,8 +298,8 @@ def test_watershed_place_id_with_two_external_keys_halts(tmp_path):
             features=[("W1", _W1_RINGS), ("W3", _W3_RINGS)],
             # 2つの流域（external_key は別々）が同じ place_id を指している。
             place_refs=[
-                (_W1_PLACE_ID, "W1", "watershed_meta.watershed_id"),
-                (_W1_PLACE_ID, "W3", "watershed_meta.watershed_id"),
+                (_W1_PLACE_ID, "W1", "watershed_id"),
+                (_W1_PLACE_ID, "W3", "watershed_id"),
             ],
         )
 
@@ -308,8 +308,8 @@ def test_mesh_place_id_with_two_external_keys_halts(tmp_path):
     with pytest.raises(common.MigrationError, match="place_id について単射でない"):
         _run_b09(
             tmp_path, occurrence_rows=_ONE_RESOLVED,
-            place_refs=[(_W1_PLACE_ID, "W1", "watershed_meta.watershed_id")],
-            extra_registry_refs=[(DEFAULT_PLACE_SOURCE_REF[0][0], "grid01:9999,9999", "organism_records.lat_lon")],
+            place_refs=[(_W1_PLACE_ID, "W1", "watershed_id")],
+            extra_registry_refs=[(DEFAULT_PLACE_SOURCE_REF[0][0], "grid01:9999,9999", "grid01_latlon")],
         )
 
 
@@ -322,4 +322,4 @@ def test_occurrence_place_id_missing_from_place_source_ref_halts(tmp_path):
         place_id="common:place:grid01.0000_00000",
     )]
     with pytest.raises(common.MigrationError, match="引けない place_id"):
-        _run_b09(tmp_path, occurrence_rows=rows, place_refs=[(_W1_PLACE_ID, "W1", "watershed_meta.watershed_id")])
+        _run_b09(tmp_path, occurrence_rows=rows, place_refs=[(_W1_PLACE_ID, "W1", "watershed_id")])

@@ -143,15 +143,18 @@ export const place = sqliteTable("place", {
 ]);
 
 /**
- * v1 の出典側識別子（`sites.site_id` / `watershed_meta.watershed_id` /
- * `mlat,mlon` 等）から place への対応。「v1 を動かさずに並走させる」ための
+ * 出典側の識別子（`site_id` / `watershed_id` / `zone` / `grid01_latlon` の各 key_space）から
+ * place への対応。「v1 を動かさずに並走させる」ための
  * 接続点（PHASE_A.md §A-3）。`external_key` からの逆引きが主な引き方。
  */
 export const placeSourceRef = sqliteTable("place_source_ref", {
 	id: integer().primaryKey({ autoIncrement: true }),
 	placeId: text("place_id"),
 	externalKey: text("external_key"),
-	sourceId: text("source_id"),
+	/** 外部キーの空間（site_id | zone | watershed_id | grid01_latlon。registry/place/key_space.yaml）。旧 source_id。 */
+	keySpace: text("key_space"),
+	/** この行の出典の版（NULL 可。出典を持たない key_space は NULL）。 */
+	sourceEditionId: text("source_edition_id"),
 },
 (table) => [
 	index("ix_place_source_ref_external").on(table.externalKey),

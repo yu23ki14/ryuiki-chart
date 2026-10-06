@@ -33,7 +33,7 @@ ADR-0006 規約2の改定・ADR-0026）。
 参照（すべて期待どおりだったことのみここに記す）。
 
 1. GeoJSON の `watershed_id` 集合と registry の
-   `place_source_ref(source_id='watershed_meta.watershed_id')` の
+   `place_source_ref(key_space='watershed_id')` の
    `external_key` 集合が一致すること・`external_key` 自体が一意であること。
    `place_id` も単射で、grid01（`organism_records.lat_lon`）の `occurrence.place_id`
    が `place_source_ref` で必ず引けること（`migrate/cube_invariants.py`）。
@@ -75,7 +75,7 @@ DEFAULT_DECLARATIONS_YAML = ROOT / "scripts" / "migrate" / "occurrence_place_dec
 
 PLACE_KIND = "watershed"
 METHOD = "point_in_polygon:even_odd"
-WATERSHED_SOURCE_ID = "watershed_meta.watershed_id"
+WATERSHED_KEY_SPACE = "watershed_id"
 
 _SAMPLE_LIMIT = 20
 
@@ -159,7 +159,7 @@ def _built_from(geojson_path) -> str:
 # ---------------------------------------------------------------------------
 
 def _assert_watershed_external_key_unique(conn: sqlite3.Connection) -> None:
-    """`place_source_ref(source_id='watershed_meta.watershed_id')` の
+    """`place_source_ref(key_space='watershed_id')` の
     `external_key` が一意であることを確認する（コードレビュー指摘5）。
     重複があると、`external_key -> place_id` の辞書内包表記が後勝ちで
     黙って別の place に束ねてしまう——`place_mesh_lookup`
@@ -168,11 +168,11 @@ def _assert_watershed_external_key_unique(conn: sqlite3.Connection) -> None:
     common.raise_on_group_by_duplicates(
         conn,
         "SELECT external_key, COUNT(*) AS c FROM reg.place_source_ref "
-        "WHERE source_id = ? GROUP BY external_key HAVING c > 1 LIMIT 5",
-        (WATERSHED_SOURCE_ID,),
+        "WHERE key_space = ? GROUP BY external_key HAVING c > 1 LIMIT 5",
+        (WATERSHED_KEY_SPACE,),
         lambda dup: (
             "occurrence_place: place_source_ref"
-            f"（source_id={WATERSHED_SOURCE_ID!r}）の external_key が一意でない"
+            f"（key_space={WATERSHED_KEY_SPACE!r}）の external_key が一意でない"
             f"（同じ watershed_id に複数の place_id が対応している。例: {dup}）。"
             "watershed_id -> place_id の辞書を一意に構築できない。"
         ),
@@ -184,7 +184,7 @@ def _assert_polygon_set_matches_registry(polys: list[pip.Polygon], reg_conn: sql
     registry_ids = {
         row[0]
         for row in reg_conn.execute(
-            "SELECT external_key FROM reg.place_source_ref WHERE source_id = ?", (WATERSHED_SOURCE_ID,)
+            "SELECT external_key FROM reg.place_source_ref WHERE key_space = ?", (WATERSHED_KEY_SPACE,)
         )
     }
     if geojson_ids != registry_ids:
@@ -192,7 +192,7 @@ def _assert_polygon_set_matches_registry(polys: list[pip.Polygon], reg_conn: sql
         only_registry = sorted(registry_ids - geojson_ids)[:_SAMPLE_LIMIT]
         raise common.MigrationError(
             "occurrence_place: GeoJSON の watershed_id 集合と registry の "
-            f"place_source_ref(source_id={WATERSHED_SOURCE_ID!r}) の external_key 集合が"
+            f"place_source_ref(key_space={WATERSHED_KEY_SPACE!r}) の external_key 集合が"
             f"食い違う（GeoJSON にしか無い: {only_geojson} / registry にしか無い: {only_registry}）。"
             "registry.sqlite と data/processed/nlni_w12_watersheds.geojson の版がずれている"
             "可能性がある。"
@@ -382,14 +382,14 @@ def build_and_write_occurrence_place(
             # 流域は external_key → place_id の辞書で書くので、逆向き〔place_id → 1つの
             # external_key〕の単射もここで見る。mesh 側は b06 が書いた occurrence.place_id
             # が registry で必ず引けること）。
-            cube_invariants.assert_place_source_ref_is_injective(conn, WATERSHED_SOURCE_ID)
-            cube_invariants.assert_place_source_ref_is_injective(conn, cube_invariants.MESH_SOURCE_ID)
+            cube_invariants.assert_place_source_ref_is_injective(conn, WATERSHED_KEY_SPACE)
+            cube_invariants.assert_place_source_ref_is_injective(conn, cube_invariants.MESH_KEY_SPACE)
             cube_invariants.assert_occurrence_places_resolve(conn)
             watershed_place_id = {
                 external_key: place_id
                 for place_id, external_key in conn.execute(
-                    "SELECT place_id, external_key FROM reg.place_source_ref WHERE source_id = ?",
-                    (WATERSHED_SOURCE_ID,),
+                    "SELECT place_id, external_key FROM reg.place_source_ref WHERE key_space = ?",
+                    (WATERSHED_KEY_SPACE,),
                 )
             }
 

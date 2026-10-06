@@ -21,10 +21,10 @@ from .registry_fixtures import make_ryuiki_places_db, open_places_src, write_wat
 
 def test_region_id_for_scoped_id_derives_from_scope_not_hardcoded():
     """common.region_id_for_scoped_id() 自体の単体テスト（ADR-0022 決定1）。"""
-    assert common.region_id_for_scoped_id("common:place:watershed.nlni-83032-0024") is None
+    assert common.region_id_for_scoped_id("common:place:watershed.nlni.83032-0024") is None
     assert common.region_id_for_scoped_id("common:place:grid01.3500_13900") is None
-    assert common.region_id_for_scoped_id("jp-14:place:site.jma-jma_0387") == "jp-14"
-    assert common.region_id_for_scoped_id("jp-14:place:zone.r2r-1") == "jp-14"
+    assert common.region_id_for_scoped_id("jp-14:place:site.jma.jma_0387") == "jp-14"
+    assert common.region_id_for_scoped_id("jp-14:place:zone.r2r.1") == "jp-14"
 
 
 def _build(tmp_path, monkeypatch, sites_rows, watershed_rows=(), organism_records_rows=()):
@@ -101,10 +101,10 @@ def test_place_relation_edge_count_matches_sites_with_zone_not_null(tmp_path, mo
     assert [r["relation"] for r in rows] == ["within", "within"]
     # fraction は NOT NULL・常に 1.0（地点は1つのゾーンに完全に含まれる。ADR-0022 決定2）。
     assert [r["fraction"] for r in rows] == [1.0, 1.0]
-    assert rows[0]["parent_id"] == "jp-14:place:zone.r2r-1"
-    assert rows[0]["child_id"] == "jp-14:place:site.jma-s1"
-    assert rows[1]["parent_id"] == "jp-14:place:zone.r2r-3"
-    assert rows[1]["child_id"] == "jp-14:place:site.jma-s2"
+    assert rows[0]["parent_id"] == "jp-14:place:zone.r2r.1"
+    assert rows[0]["child_id"] == "jp-14:place:site.jma.s1"
+    assert rows[1]["parent_id"] == "jp-14:place:zone.r2r.3"
+    assert rows[1]["child_id"] == "jp-14:place:site.jma.s2"
 
 
 def test_unresolvable_zone_value_raises(tmp_path, monkeypatch):
@@ -150,12 +150,12 @@ def test_grid01_dedupes_by_cell_and_includes_dateless_coords(tmp_path, monkeypat
     assert grid01_rows[0]["lon"] == pytest.approx(139.005)
 
     ref_rows = conn.execute(
-        "SELECT external_key, source_id FROM place_source_ref WHERE place_id='common:place:grid01.3500_13900'"
+        "SELECT external_key, key_space FROM place_source_ref WHERE place_id='common:place:grid01.3500_13900'"
     ).fetchall()
     assert len(ref_rows) == 1
     assert ref_rows[0]["external_key"] == "grid01:3500,13900"
-    # source_id は derived.mesh_all ではなく organism_records の座標由来になったことを表す。
-    assert ref_rows[0]["source_id"] == "organism_records.lat_lon"
+    # key_space は derived.mesh_all ではなく organism_records の座標由来になったことを表す。
+    assert ref_rows[0]["key_space"] == "grid01_latlon"
 
 
 def test_grid01_region_id_is_null_and_id_form_unchanged(tmp_path, monkeypatch):
@@ -195,7 +195,7 @@ def test_watershed_place_fields_come_from_jsonl(tmp_path, monkeypatch):
         "SELECT place_id, region_id, place_kind, name_ja, lat, lon, elevation_m, "
         "area_km2, definition_ref, status FROM place WHERE place_kind='watershed'"
     ).fetchone()
-    assert row["place_id"] == "common:place:watershed.nlni-83032-0024"
+    assert row["place_id"] == "common:place:watershed.nlni.83032-0024"
     assert row["region_id"] is None  # common スコープ（ADR-0022 決定1）
     assert row["name_ja"] == "相模川"
     assert row["lat"] == pytest.approx(35.1)
@@ -206,12 +206,12 @@ def test_watershed_place_fields_come_from_jsonl(tmp_path, monkeypatch):
     assert row["status"] == "ok"
 
     ref = conn.execute(
-        "SELECT external_key, source_id FROM place_source_ref WHERE place_id=?",
+        "SELECT external_key, key_space FROM place_source_ref WHERE place_id=?",
         (row["place_id"],),
     ).fetchone()
-    # source_id の文字列は改名しない（消費者を増やさないための既存の約束。brief #1）。
+    # 旧 source_id の値は Issue #39 Phase C で key_space に改称した（registry/place/key_space.yaml）。
     assert ref["external_key"] == "83032-0024"
-    assert ref["source_id"] == "watershed_meta.watershed_id"
+    assert ref["key_space"] == "watershed_id"
 
 
 def test_watershed_place_water_system_name_null_becomes_place_name_null(tmp_path, monkeypatch):
@@ -283,7 +283,7 @@ def test_watershed_place_not_loaded_when_watershed_jsonl_is_empty(tmp_path, monk
 
 def test_watershed_relation_edge_resolves_via_sites_watershed(tmp_path, monkeypatch):
     """sites.watershed が指す v1 の watershed_id から、place_source_ref
-    (source_id='watershed_meta.watershed_id') 経由で流域の place_id を解決し、
+    (key_space='watershed_id') 経由で流域の place_id を解決し、
     'within' 辺を1本作る（fraction=1.0）。
     """
     sites_rows = [
@@ -295,8 +295,8 @@ def test_watershed_relation_edge_resolves_via_sites_watershed(tmp_path, monkeypa
     row = conn.execute(
         "SELECT parent_id, child_id, relation, fraction FROM place_relation"
     ).fetchone()
-    assert row["parent_id"] == "common:place:watershed.nlni-83032-0024"
-    assert row["child_id"] == "jp-14:place:site.jma-s1"
+    assert row["parent_id"] == "common:place:watershed.nlni.83032-0024"
+    assert row["child_id"] == "jp-14:place:site.jma.s1"
     assert row["relation"] == "within"
     assert row["fraction"] == 1.0
 
@@ -317,7 +317,7 @@ def test_watershed_relation_edge_count_matches_sites_with_watershed_not_null(tmp
     n_within_watershed = conn.execute(
         "SELECT COUNT(*) FROM place_relation pr "
         "JOIN place_source_ref wref ON wref.place_id = pr.parent_id "
-        "  AND wref.source_id = 'watershed_meta.watershed_id' "
+        "  AND wref.key_space = 'watershed_id' "
         "WHERE pr.relation = 'within'"
     ).fetchone()[0]
     assert n_within_watershed == 2
@@ -337,7 +337,7 @@ def test_unresolvable_watershed_value_raises(tmp_path, monkeypatch):
 def test_site_has_at_most_one_watershed_edge_by_construction(tmp_path, monkeypatch):
     """`sites.watershed` は単一列なので、build_place.py が組み立てる地点->流域の
     辺は地点ごとに高々1本になる（r01 側の機械検証
-    `_assert_relation_child_is_single_valued(conn, "watershed_meta.watershed_id", ...)`
+    `_assert_relation_child_is_single_valued(conn, "watershed_id", ...)`
     が独立に保証する不変条件の、build_place.py 側からの裏付け）。
     """
     row2 = dict(_WATERSHED_ROW_FULL, watershed_id="83032-0099")
@@ -349,8 +349,8 @@ def test_site_has_at_most_one_watershed_edge_by_construction(tmp_path, monkeypat
     n = conn.execute(
         "SELECT COUNT(*) FROM place_relation pr "
         "JOIN place_source_ref wref ON wref.place_id = pr.parent_id "
-        "  AND wref.source_id = 'watershed_meta.watershed_id' "
-        "WHERE pr.relation = 'within' AND pr.child_id = 'jp-14:place:site.jma-s1'"
+        "  AND wref.key_space = 'watershed_id' "
+        "WHERE pr.relation = 'within' AND pr.child_id = 'jp-14:place:site.jma.s1'"
     ).fetchone()[0]
     assert n == 1
 
