@@ -18,7 +18,7 @@
 # `values` は列挙のリテラル。値は executor が決定論的な全順序（数値は数値順・文字列は UTF-16 順）に並べる。
 #
 # queries の任意キー:
-#   max_runs: 数値（snapshot・fingerprint 共通）か {snapshot: n, fingerprint: n}。既定は snapshot 12 / fingerprint 60。
+#   max_runs: {snapshot: n, fingerprint: n}（どちらも省略可）。既定は snapshot 12 / fingerprint 60。
 #   allow_empty: true  空が正常な問い合わせだけ（空振り検査の対象外）。理由をコメントに書く。
 version: 2
 

@@ -15,7 +15,7 @@ import type { CompareSpec, DomainDef, MaxRuns, NormRow, QueryDef, ScalarParam, S
 
 export const SCHEMA_VERSION = 1;
 export type Mode = "snapshot" | "fingerprint";
-export const DEFAULT_MAX_RUNS: Record<Mode, number> = { snapshot: 12, fingerprint: 60 };
+const DEFAULT_MAX_RUNS: Record<Mode, number> = { snapshot: 12, fingerprint: 60 };
 
 /* ------------------------------------------------------------------ */
 /* serving_queries.yaml の読み込み・検証                                  */
@@ -37,7 +37,7 @@ export function parseServingQueries(text: string): ServingQueriesConfig {
       id?: string;
       params?: Record<string, { domain?: string; column?: string }>;
       compare?: Partial<CompareSpec>;
-      max_runs?: number | MaxRuns;
+      max_runs?: MaxRuns;
       allow_empty?: boolean;
     }[];
   };
@@ -74,10 +74,7 @@ export function parseServingQueries(text: string): ServingQueriesConfig {
       params[pname] = { domain: p.domain, ...(p.column ? { column: p.column } : {}) };
     }
     let maxRuns: MaxRuns | undefined;
-    if (typeof q.max_runs === "number") {
-      const n = asPositiveInt(q.max_runs, `queries.${q.id}.max_runs`);
-      maxRuns = { snapshot: n, fingerprint: n };
-    } else if (q.max_runs) {
+    if (q.max_runs) {
       maxRuns = {};
       if (q.max_runs.snapshot !== undefined) maxRuns.snapshot = asPositiveInt(q.max_runs.snapshot, `queries.${q.id}.max_runs.snapshot`);
       if (q.max_runs.fingerprint !== undefined) maxRuns.fingerprint = asPositiveInt(q.max_runs.fingerprint, `queries.${q.id}.max_runs.fingerprint`);
@@ -109,7 +106,7 @@ export function compareScalar(a: ScalarParam, b: ScalarParam): number {
 }
 
 /** 列順の辞書式。 */
-export function compareTuple(a: readonly ScalarParam[], b: readonly ScalarParam[]): number {
+function compareTuple(a: readonly ScalarParam[], b: readonly ScalarParam[]): number {
   const n = Math.min(a.length, b.length);
   for (let i = 0; i < n; i++) {
     const c = compareScalar(a[i], b[i]);
@@ -186,7 +183,7 @@ export async function resolveDomain(
   return { columns, tuples: uniq };
 }
 
-export interface ExpandedParams {
+interface ExpandedParams {
   /** 直積の全件数（ドメインが縮んだことが見えるように記録する）。 */
   nDomain: number;
   params: Record<string, ScalarParam>[];
@@ -261,7 +258,7 @@ export function finalizeRows(rows: readonly NormRow[]): NormRow[] {
 /* スナップショット                                                      */
 /* ------------------------------------------------------------------ */
 
-export interface SnapshotRun {
+interface SnapshotRun {
   params: Record<string, ScalarParam>;
   rows: NormRow[];
 }
@@ -306,7 +303,7 @@ export function formatSnapshot(s: Snapshot): string {
 /* 指紋                                                                  */
 /* ------------------------------------------------------------------ */
 
-export interface FingerprintRun {
+interface FingerprintRun {
   params: Record<string, ScalarParam>;
   n_rows: number;
   /** `numeric` 列ごとの和（丸め済み。NULL は足さない）。 */
@@ -314,7 +311,7 @@ export interface FingerprintRun {
   /** 正規化済み行の JSON の sha256。 */
   hash: string;
 }
-export interface FingerprintQuery {
+interface FingerprintQuery {
   id: string;
   n_domain: number;
   runs: FingerprintRun[];

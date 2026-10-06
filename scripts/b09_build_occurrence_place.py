@@ -12,9 +12,8 @@ ADR-0006 規約2の改定・ADR-0026）。
 **入力（`occurrence`・`registry.sqlite`・`ryuiki.sqlite`・GeoJSON）は読み取り
 専用でしか開かない**）。
 
-実行順は **b06 → b09 → b07 → b08**（このスクリプトは b06 の出力
-〔`occurrence`〕だけに依存し、b07/b08 に依存されない——O-2b でキューブに
-`place_kind='watershed'` のセルを足すときに `occurrence_place` を読む計画）。
+実行順は **b06 → b09 → b07**（このスクリプトは b06 の出力
+〔`occurrence`〕だけに依存し、b07 から `occurrence_place` が読まれる。`pnpm run build:v2` の順）。
 
 ## D1: `occurrence_place`
 
@@ -98,7 +97,7 @@ CREATE TABLE {table} (
 )
 """
 # `occurrence_place` の唯一の消費者（scripts/tests/occurrence_fixtures.py の
-# フィクスチャ・scripts/b08_project_occurrence_v1.py の一時テーブル作成）は
+# フィクスチャ）は
 # この DDL 文字列をそのまま import して使うこと（コードレビュー指摘13:
 # DDL を複数箇所に手書きで複製しない）。
 _DIM_COLUMNS = ["record_id", "place_kind"]
@@ -164,7 +163,7 @@ def _assert_watershed_external_key_unique(conn: sqlite3.Connection) -> None:
     `external_key` が一意であることを確認する（コードレビュー指摘5）。
     重複があると、`external_key -> place_id` の辞書内包表記が後勝ちで
     黙って別の place に束ねてしまう——`place_mesh_lookup`
-    （`scripts/b08_project_occurrence_v1.py`）と同型の検証。
+    （撤去済みの b08 にあった）と同型の検証。
     """
     common.raise_on_group_by_duplicates(
         conn,
@@ -355,8 +354,8 @@ def build_and_write_occurrence_place(
         common.attach_readonly(conn, registry_db, "reg")
         common.attach_readonly(conn, ryuiki_db, "ryuiki")
         # ATTACH 直後に表の有無を確認する（/simplify 指摘8: 無いまま SELECT
-        # すると生の OperationalError になる。scripts/b11_project_place_v1.py の
-        # `_validate_registry` と同じ流儀）。
+        # すると生の OperationalError になる。撤去済みの b11 の
+        # `_validate_registry` と同じ流儀だった）。
         common.assert_attached_table_exists(
             conn, "reg", "place_source_ref",
             hint="scripts/r01_build_registry.py で registry.sqlite を作り直すこと。",
@@ -466,7 +465,7 @@ def build_and_write_occurrence_place(
             # ここまで来たら with ブロックを正常に抜け、staged_table が本番名に
             # 差し替え、同じトランザクションで指紋・系譜（消費した occurrence
             # の指紋）も記録する（Issue #37 #1・/code-review 指摘の根本対応）。
-            # b08 はこの指紋を見て「今の occurrence から作った occurrence_place
+            # b07 はこの指紋を見て「今の occurrence から作った occurrence_place
             # か」を検証する。
         # v2 パイプラインの入力＋コードの指紋（Issue #48 PR-0 /simplify 指摘1）:
         # `common.record_v2_input_fingerprint` の docstring 参照（b03/b06 も同じ

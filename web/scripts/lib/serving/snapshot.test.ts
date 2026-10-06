@@ -246,7 +246,7 @@ queries:
     compare: { key: [k], numeric: [n], label: [] }
   - id: q2
     allow_empty: true
-    max_runs: 5
+    max_runs: { snapshot: 5, fingerprint: 5 }
     params: {}
     compare: { key: [], numeric: [], label: [] }
 `;

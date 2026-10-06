@@ -46,6 +46,7 @@ import {
   watershedRollup,
   landuseHighlight,
 } from "@/lib/cube";
+import { sqliteCubeDb } from "@/lib/cube/db-sqlite";
 import {
   parseTrendPeriods,
   toNormRows,
@@ -54,24 +55,26 @@ import {
   type RawRow,
   type ScalarParam,
 } from "./normalize";
-import { createCubeDbSingleton } from "./cube-db-singleton";
 
 export interface V2Paths {
   v2: string;
   registry: string;
   ryuiki: string;
   /** `cells.sqlite`（`doc_series_*` が読む `cells`/`notes`/`documents`。PR-4）。 */
-  cells?: string;
+  cells: string;
 }
 
-const v2Singleton = createCubeDbSingleton();
+/** 初回の呼び出しで `sqliteCubeDb` を1回だけ開き、以降は使い回す（`closeV2Db()` で閉じる）。 */
+let v2Db: (CubeDb & { close(): void }) | undefined;
 
 export function openV2Db(paths: V2Paths): CubeDb & { close(): void } {
-  return v2Singleton.open(paths);
+  if (!v2Db) v2Db = sqliteCubeDb(paths);
+  return v2Db;
 }
 
 export function closeV2Db(): void {
-  v2Singleton.close();
+  v2Db?.close();
+  v2Db = undefined;
 }
 
 /** `representativeSeries()`/`seriesForAlias()` の結果から単位を1つ選ぶ

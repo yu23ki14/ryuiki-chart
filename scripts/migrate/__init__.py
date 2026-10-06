@@ -1,9 +1,9 @@
 """ADR-0016 Phase B「ファクトとキューブ」— measurements を単一の縦持ちファクト
-`observation`（ADR-0007）に集約し、キューブ（ADR-0011）を経て v1 の派生テーブル形
-（meas_daily/meas_month/meas_year）に射影するパッケージ。
+`observation`（ADR-0007）に集約し、キューブ（ADR-0011）にするパッケージ。
+（v1 の派生テーブル形への射影 b05 などは Issue #48 PR-5 で撤去した。）
 
-`scripts/b03_build_observation.py` / `scripts/b04_build_cube.py` /
-`scripts/b05_project_v1.py` の3本が薄いオーケストレータで、実際の変換ロジックは
+`scripts/b03_build_observation.py` / `scripts/b04_build_cube.py` ほか
+b06/b07/b09/b13 が薄いオーケストレータで、実際の変換ロジックは
 このパッケージに置く（`scripts/registry/` が build_*.py 群を持つのと同じ構成）。
 
 - `common.py`   — 読み取り専用オープン・出力 sqlite の作り直し・タイミング表示

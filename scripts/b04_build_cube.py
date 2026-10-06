@@ -298,7 +298,9 @@ SELECT *,
 FROM observation
 """
 
-_DIM_SELECT = ", ".join(DIM_COLUMNS[:7])  # region_id..value_grain（期間より前の7列）
+# 期間（period_start）より前の次元列（region_id..value_grain の7列）。`DIM_COLUMNS` から導く。
+_PRE_PERIOD_DIM_COLUMNS = DIM_COLUMNS[: DIM_COLUMNS.index("period_start")]
+_DIM_SELECT = ", ".join(_PRE_PERIOD_DIM_COLUMNS)
 
 # `built_from`/`spec_version` はどの SELECT でも「行ごとに同じ1つの値を複製する」
 # だけの列。バインドパラメータで渡す（値がアポストロフィを含んでも構文エラーに
@@ -792,7 +794,6 @@ def _assert_unit_evidence(conn: sqlite3.Connection, declarations_path=UNIT_EVIDE
 
 SAMPLE_CELLS_PER_STRATUM = 200
 SAMPLE_CENSORED_CELLS_PER_STRATUM = 50
-_SAMPLE_REPORT_LIMIT = 20
 
 # セルが観測のどの行から作られるか（`_cell_mode`）。`plen` は日付の先頭何文字で
 # 同じセルに入れるか（None は period_start/period_end の完全一致）。
@@ -847,7 +848,9 @@ def _pick_sample_rowids(conn: sqlite3.Connection, staging: str, seed: int) -> li
 
 
 def _imputed(censoring_value, value_num, censoring_limit) -> tuple:
-    """観測1行の (value_zero 側, value_lod 側)。規則は ADR-0009 決定2（モジュール docstring）。
+    """**独立再計算のための意図的な重複**: 本体の集計 SQL（`_VALUE_LOD_CASE` など）と同じ規則を
+    別の書き方で再実装している（同じ式の同じバグを見逃さないため。共通化しない）。
+    観測1行の (value_zero 側, value_lod 側)。規則は ADR-0009 決定2（モジュール docstring）。
     value_zero 側が None の行は非メンバー（above_lod/unknown で値が無いもの）。"""
     if censoring_value in censoring.ZERO_IMPUTED_CENSORING:
         v_zero = 0.0
@@ -863,7 +866,8 @@ def _imputed(censoring_value, value_num, censoring_limit) -> tuple:
 
 
 def _stat_of(values: list[float], stat: str):
-    """`values`（None を除いたリスト）の mean/min/max/sum。空なら None。"""
+    """**独立再計算のための意図的な重複**（`_imputed` と同じ理由。本体の SQL 集計と共通化しない）。
+    `values`（None を除いたリスト）の mean/min/max/sum。空なら None。"""
     if not values:
         return None
     if stat == "mean":
@@ -920,7 +924,7 @@ def _rollup_stats(obs_rows: list[tuple], stat_of_days: str) -> tuple:
 def _skey_sql(mode: str) -> str:
     """`observation` 側の結合キー（セル側の `_cell_skey` と同じ並び）。NULL は番人文字に
     直す（`IS` の NULL 安全 JOIN は索引が効かないため、1本の文字列キーの等値にする）。"""
-    parts = [f"IFNULL(o.{c}, char(30))" for c in DIM_COLUMNS[:7]] + ["o.period_grain"]
+    parts = [f"IFNULL(o.{c}, char(30))" for c in _PRE_PERIOD_DIM_COLUMNS] + ["o.period_grain"]
     plen = _MODE_PREFIX_LEN[mode]
     if plen is None:
         parts += ["o.period_start", "o.period_end"]
@@ -930,7 +934,7 @@ def _skey_sql(mode: str) -> str:
 
 
 def _cell_skey(cell: dict, mode: str) -> str:
-    parts = [_KEY_NULL if cell[c] is None else cell[c] for c in DIM_COLUMNS[:7]] + [cell["input_grain"]]
+    parts = [_KEY_NULL if cell[c] is None else cell[c] for c in _PRE_PERIOD_DIM_COLUMNS] + [cell["input_grain"]]
     plen = _MODE_PREFIX_LEN[mode]
     if plen is None:
         parts += [cell["period_start"], cell["period_end"]]
@@ -962,7 +966,7 @@ def _assert_sampled_cells_recompute_from_observation(
     """`staging` から層別に無作為抽出したセルを、`observation` から Python で求め直して
     突き合わせる。n・n_censored・n_not_detected は完全一致、value_zero/value_lod は
     相対誤差 1e-9（`fsum` と SQLite の AVG の加算順の差）で一致。食い違えば最大
-    `_SAMPLE_REPORT_LIMIT` 件を (次元キー・期間・期待・実際) つきで止める。
+    `cube_invariants.SAMPLE_LIMIT` 件を (次元キー・期間・期待・実際) つきで止める。
     抽出は `observation` の指紋と spec_version から決める（入力が同じなら同じ抽出）。
     戻り値はレポート用の統計。
     """
@@ -1008,9 +1012,9 @@ def _assert_sampled_cells_recompute_from_observation(
     if mismatches:
         raise common.MigrationError(
             f"observation_agg: 無作為抽出したセルのうち{len(mismatches)}件が observation からの"
-            f"独立な再計算と一致しない（例（上限{_SAMPLE_REPORT_LIMIT}件、次元キー{DIM_COLUMNS}・"
+            f"独立な再計算と一致しない（例（上限{cube_invariants.SAMPLE_LIMIT}件、次元キー{DIM_COLUMNS}・"
             f"期待・実際。期待/実際は (value_zero, value_lod, n, n_censored, n_not_detected)）: "
-            f"{mismatches[:_SAMPLE_REPORT_LIMIT]}）。"
+            f"{mismatches[:cube_invariants.SAMPLE_LIMIT]}）。"
             "セルの集計 SQL（日次・月次・年次の経路）か value_zero/value_lod の代入規則が"
             "観測と食い違っている。"
         )

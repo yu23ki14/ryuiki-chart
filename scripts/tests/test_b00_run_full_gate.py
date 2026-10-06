@@ -73,8 +73,10 @@ def test_collect_pipeline_paths_excludes_tests_and_docs():
     paths = b00.collect_pipeline_paths()
     assert not any(p.startswith("scripts/tests/") for p in paths)
     assert not any(p.startswith("docs/") for p in paths)
-    # web/src は `web/src/lib/cube`（テスト・フィクスチャを除く）だけが入る。
-    assert not any(p.startswith("web/src/") and not p.startswith("web/src/lib/cube/") for p in paths)
+    # web/src は `web/src/lib/cube`・`web/src/lib/registry`（テスト・フィクスチャを除く）と、
+    # それらが import する単体ファイル（db.ts・schema-cube.ts）だけが入る。
+    allowed = ("web/src/lib/cube/", "web/src/lib/registry/", "web/src/lib/db.ts", "web/src/db/schema-cube.ts")
+    assert not any(p.startswith("web/src/") and not p.startswith(allowed) for p in paths)
     assert not any(p.startswith("data/sample/") for p in paths)
 
 
@@ -393,11 +395,13 @@ def test_expanded_dir_files_are_listed_from_the_index(monkeypatch):
     fake = {
         "web/src/lib/cube": ["web/src/lib/cube/a.ts", "web/src/lib/cube/a.test.ts", "web/src/lib/cube/__fixtures__/x.json"],
         "web/scripts/lib/serving": ["web/scripts/lib/serving/n.ts"],
+        "web/src/lib/registry": ["web/src/lib/registry/lookup.ts", "web/src/lib/registry/lookup.test.ts"],
     }
     monkeypatch.setattr(b00, "_tracked_files_under", lambda d: fake[d])
     paths = b00.collect_pipeline_paths()
     assert "web/src/lib/cube/a.ts" in paths and "web/scripts/lib/serving/n.ts" in paths
     assert "web/src/lib/cube/a.test.ts" not in paths and "web/src/lib/cube/__fixtures__/x.json" not in paths
+    assert "web/src/lib/registry/lookup.ts" in paths and "web/src/lib/registry/lookup.test.ts" not in paths
 
 
 def _q(qid, runs):

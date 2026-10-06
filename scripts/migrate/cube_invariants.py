@@ -17,7 +17,8 @@ from datetime import date, timedelta
 
 from migrate import common
 
-_SAMPLE_LIMIT = 20
+# 食い違いの例を報告に載せる上限（b04 の独立再計算の不一致報告もこれを使う）。
+SAMPLE_LIMIT = 20
 
 # ---------------------------------------------------------------------------
 # registry: variable_alias（b04）
@@ -134,7 +135,7 @@ def assert_unit_raw_is_function(conn: sqlite3.Connection) -> None:
 _HOUR_SERIES_DIM = "region_id, place_id, place_kind, variable_id, obs_stat, unit_id, value_grain"
 
 
-def verify_hourly_daily_rollup(conn: sqlite3.Connection, staging: str, sample_limit: int = _SAMPLE_LIMIT) -> dict:
+def verify_hourly_daily_rollup(conn: sqlite3.Connection, staging: str, sample_limit: int = SAMPLE_LIMIT) -> dict:
     """`value_grain='hour'` の各系列・各日 D について、
     **キューブの日次セルの n = ラベル日割り（`period_raw` の先頭10桁）の日 D の n
     − (日 D のラベル 00 時の件数) + (日 D+1 のラベル 00 時の件数)**
@@ -244,7 +245,7 @@ def verify_hourly_daily_rollup(conn: sqlite3.Connection, staging: str, sample_li
 
 def assert_place_year_totals_match_population(
     conn: sqlite3.Connection, staging: str, pop_table: str, place_kind: str,
-    year_grains: tuple[str, ...], measure_select: str, sample_limit: int = _SAMPLE_LIMIT,
+    year_grains: tuple[str, ...], measure_select: str, sample_limit: int = SAMPLE_LIMIT,
 ) -> int:
     """`place_kind` の年族セル（`place_id IS NOT NULL`）を (place_id, 年) に畳んだ
     n/n_red_list/n_alien が、母集団（`pop_table`）を同じ粒度で畳んだものと一致する

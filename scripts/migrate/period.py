@@ -229,7 +229,7 @@ def resolve_count_overlays(
 
     以前は b03/b06 がここと同じロジック（`load_count_overlay_file` を
     `--count-overlay` があるときだけ呼び、無ければ `None`）をそれぞれ
-    独自にインライン実装しており、b07/b08/b09 の `resolve_count_overlay()`
+    独自にインライン実装しており、b07/b09 の `resolve_count_overlay()`
     と流儀が分かれていた（code-review 指摘対応）。
     """
     if count_overlay_path is None:
@@ -320,10 +320,8 @@ def non_negative_int_problem(label: str, value) -> str | None:
     `int` のサブクラスだが整数として扱わない）。`label` は呼び出し側が
     メッセージに出したいフィールドの表示名をそのまま渡す。
 
-    `validate_expected_row_count()`（下記）と
-    `scripts/b08_project_occurrence_v1.py` の宣言値検証（`expected_count`・
-    `breakdown` の各値）が共有する下請け（/simplify 指摘4: 後者は以前
-    「整数でない」だけを見て「負の数」を検査していなかった）。
+    `validate_expected_row_count()`（下記）と、宣言値（`expected_count`・
+    `breakdown` の各値）の検証が共有する下請け。
     """
     if isinstance(value, bool) or not isinstance(value, int):
         return f"{label} が整数でない（実際: {value!r}）"
@@ -345,8 +343,7 @@ def assert_declared_names_match(raw: dict, expected_names, path) -> None:
     """宣言 YAML のトップレベルキー集合（`raw`）が `expected_names` と過不足
     なく一致することを確認する。食い違えば `MigrationError`（`path` を
     メッセージに含める）。`scripts/b07_build_occurrence_cube.py`・
-    `scripts/b08_project_occurrence_v1.py`・
-    `scripts/b09_build_occurrence_place.py` が同じ約10行を別々に持っていたのを
+    `scripts/b09_build_occurrence_place.py`（と撤去済みの b08）が同じ約10行を別々に持っていたのを
     1箇所に集約した（/simplify 指摘3）。
     """
     declared_names = frozenset(raw)

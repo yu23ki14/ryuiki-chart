@@ -11,6 +11,7 @@
  * data/processed が無くても、既に public/geo に置いてあれば通す。
  * （原本データを持たないマシンでコードだけ直してデプロイする場合のため）
  */
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -39,6 +40,17 @@ const FILES = [
   // ブラウザが直接取る（/water は D1 を読まない）。作るのは scripts/build-water-geo.mjs。
   { src: "water_zones.geojson", dst: "water_zones.geojson" },
 ];
+
+// water_zones.geojson は原本から再生成できる生成物。data/processed にも public/geo にも無いときだけ
+// build-water-geo.mjs で作る（ホストで `pnpm run dev` するとき・docker のどちらでも同じ挙動になる）。
+if (
+  !fs.existsSync(path.join(SRC, "water_zones.geojson")) &&
+  !fs.existsSync(path.join(DST, "water_zones.geojson"))
+) {
+  console.log("▶ water_zones.geojson が無いので作る (build-water-geo.mjs)");
+  const r = spawnSync(process.execPath, [path.join(__dirname, "build-water-geo.mjs")], { stdio: "inherit" });
+  if (r.status !== 0) process.exit(r.status ?? 1);
+}
 
 fs.mkdirSync(DST, { recursive: true });
 // 名前を変えたときに古いものが残ってデプロイに乗り続けないように、知らないファイルは消す

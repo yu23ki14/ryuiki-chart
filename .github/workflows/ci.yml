@@ -307,8 +307,10 @@ jobs:
       - name: serving スナップショットがコミット済みのものと一致することを確認
         # 免除リストは持たない。スナップショットの更新自体が「出力が変わった」という宣言になる。
         run: |
+          git ls-files --error-unmatch data/sample/serving_snapshot.json >/dev/null
           (cd web && pnpm run serving:snapshot -- --mode snapshot)
-          if ! git diff --exit-code data/sample/serving_snapshot.json; then
+          if [ -n "$(git status --porcelain -- data/sample/serving_snapshot.json)" ]; then
+            git diff data/sample/serving_snapshot.json | head -100
             echo "::error::serving スナップショットが動いた。意図した変更なら、'pnpm run serving:snapshot -- --mode diff' の before/after 表を PR に貼り、data/sample/serving_snapshot.json を更新してコミットすること。"
             exit 1
           fi

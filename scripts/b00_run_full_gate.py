@@ -74,6 +74,9 @@ PIPELINE_EXPLICIT_FILES = (
     "web/scripts/build-registry-ts.mjs",
     "web/scripts/lib/registry-codegen.mjs",
     "web/scripts/lib/csv.mjs",
+    # web/src/lib/cube が `@/` 別名で import する単体ファイル（cube/db-sqlite・cube/*.ts → db / schema-cube）。
+    "web/src/lib/db.ts",
+    "web/src/db/schema-cube.ts",
     "requirements.txt",
     "web/package.json",
     "web/pnpm-lock.yaml",
@@ -84,7 +87,8 @@ PIPELINE_DIRS = ("scripts/registry", "scripts/migrate", "scripts/reconcile", "re
 # 配下のファイルに展開して個別の blob ハッシュを取るディレクトリ（テストと
 # フィクスチャは `PIPELINE_EXCLUDE_GLOBS` で外す——テストを直しただけで証明が
 # 無効になるのを避ける）。`scripts/s04_check_full_gate_proof.py` も同じ関数を使う。
-PIPELINE_EXPANDED_DIRS = ("web/scripts/lib/serving", "web/src/lib/cube")
+# `web/src/lib/registry` は cube/series と executor が語彙の読み出し（lookup*.ts・generated*.ts）で使う。
+PIPELINE_EXPANDED_DIRS = ("web/scripts/lib/serving", "web/src/lib/cube", "web/src/lib/registry")
 PIPELINE_EXCLUDE_GLOBS = ("**/*.test.ts", "**/__fixtures__/**")
 
 # `web/package.json` の `build:v2` と同じ順（`test_build_v2_script_order.py` が守る）。
@@ -218,7 +222,7 @@ def read_pipeline_fingerprint_rows(db_path: pathlib.Path) -> list[dict] | None:
 def run_serving_fingerprint() -> list[dict]:
     """executor（`--mode fingerprint`、全量）を呼び、`queries`（問い合わせごと・run ごとの
     `n_rows`/`sums`/`hash`）を返す。executor の空振り検査（全 run が0行など）で非0に
-    なれば、そのまま止まる。executor の出力は `{"queries": [...]}` でも `[...]` でもよい。
+    なれば、そのまま止まる。executor の出力は `{"queries": [...]}` だけを受け、形が違えば落とす。
     """
     with tempfile.TemporaryDirectory() as tmp:
         out = pathlib.Path(tmp) / "fingerprint"  # 拡張子なし（パイプラインの入力ファイル名の検出に拾われないため）
@@ -226,7 +230,7 @@ def run_serving_fingerprint() -> list[dict]:
         if result.returncode != 0:
             sys.exit(f"serving-snapshot（--mode fingerprint）が非0で終了した（{result.returncode}）。証明は書かない。")
         data = json.loads(out.read_text(encoding="utf-8"))
-    queries = data["queries"] if isinstance(data, dict) else data
+    queries = data.get("queries") if isinstance(data, dict) else None
     if not isinstance(queries, list) or not queries:
         sys.exit("serving-snapshot の出力に queries が無い（形が壊れている）。証明は書かない。")
     return queries

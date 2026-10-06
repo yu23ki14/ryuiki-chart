@@ -50,17 +50,6 @@ def get_columns(conn: sqlite3.Connection, table: str) -> list[str]:
     return [r[1] for r in table_info(conn, table)]
 
 
-def get_column_types(conn: sqlite3.Connection, table: str) -> dict[str, str]:
-    return {r[1]: (r[2] or "") for r in table_info(conn, table)}
-
-
-def get_pk_columns(conn: sqlite3.Connection, table: str) -> list[str]:
-    """PRAGMA table_info の pk 列（0 は非PK）。宣言順（pk の番号順）で返す。"""
-    pairs = [(r[5], r[1]) for r in table_info(conn, table) if r[5] and r[5] > 0]
-    pairs.sort()
-    return [name for _, name in pairs]
-
-
 def numeric_columns_of(conn: sqlite3.Connection, table: str, columns: Sequence[str]) -> list[str]:
     """`columns` のうち、非NULL値がすべて INTEGER/REAL ストレージクラスの列
     （数値列）だけを、元の並び順で返す。
@@ -93,7 +82,7 @@ def format_number(value) -> str:
     """数値集計の丸め規則: 小数点以下6桁の固定文字列にする。
 
     JSON の float 表現（実装依存になりうる）に頼らず、常に文字列として持つことで、
-    b01 の2回実行のバイト一致や b02 での比較を実装非依存にする。
+    2回実行のバイト一致の比較を実装非依存にする。
     """
     return f"{float(value):.6f}"
 
@@ -101,19 +90,16 @@ def format_number(value) -> str:
 def _canonicalize_scalar(value):
     """int/float は `format_number` で固定小数点の文字列に揃える。
 
-    sqlite の `REAL` 列から来た `1.0`（Python `float`）と、手書き/他言語製の
-    JSON 候補が同じ値を書いた `1`（`json.load` で Python `int` になる）は、
-    そのまま `json.dumps` すると `1.0` と `1` という別のトークンになり、
-    `numeric_stats` は一致するのに `content_hash` だけ食い違う
-    （レビュー指摘。ドキュメントで「候補は sqlite でも JSON でもよい」と
-    明言している以上、最初の非 Python 製の射影で必ず踏む）。
+    sqlite の `REAL` 列から来た `1.0`（Python `float`）と、整数で書かれた同じ値の
+    `1`（Python `int`）は、そのまま `json.dumps` すると `1.0` と `1` という別の
+    トークンになり、`numeric_stats` は一致するのに `content_hash` だけ食い違う。
 
     文字列・None・bytes はそのまま返す（数値に見える文字列を誤って
     数値として丸めない。テキスト列の値をここで書き換えてはいけない）。
     """
     if isinstance(value, bool):
-        # SQLite に真偽型は無く 0/1 の INTEGER として保持される。JSON 側が
-        # true/false を書いてきても同じ扱いにする。
+        # SQLite に真偽型は無く 0/1 の INTEGER として保持される。bool が来ても
+        # 同じ扱いにする。
         return format_number(int(value))
     if isinstance(value, (int, float)):
         return format_number(value)
@@ -143,11 +129,11 @@ def canonical_row_bytes(row: Sequence) -> bytes:
 
 
 # ---------------------------------------------------------------------------
-# 指紋計算（b01 / b02 共通）
+# 指紋計算
 # ---------------------------------------------------------------------------
 
 def compute_fingerprint(
-    source: datasource.DataSource,
+    source: datasource.SqliteSource,
     table: str,
     columns: Sequence[str],
     key: Sequence[str],
@@ -156,11 +142,8 @@ def compute_fingerprint(
     """`columns` の並びでテーブルを読み、`key` 順にソートしながら
     行数・内容ハッシュ・数値列ごとの (非NULL件数, min, max, 合計) を1パスで計算する。
 
-    `source` は sqlite でも JSON でもよい（`datasource.DataSource`）。b01 は
-    derived.sqlite を包んだ `SqliteSource` に対して、b02 は候補側
-    （sqlite か JSON）と、必要なら実データのベースライン側の両方に対して、
-    **同じこの関数**を呼ぶ。計算方法を1箇所にすることで、
-    「計算方法の違いによる見かけ上の不一致」を作らない。
+    `source` は読み取り専用 sqlite を包んだ `datasource.SqliteSource`。段階間の指紋
+    （`migrate/common.py`）も決定論テストも**同じこの関数**を呼ぶ（計算方法を1箇所にする）。
 
     合計は `math.fsum`（入力の順序に依存しない正しく丸められた総和）を使う。
     SQL の `SUM` は物理的な行の並びに集計順序が左右されうる（ドキュメントで
