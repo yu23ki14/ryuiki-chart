@@ -15,8 +15,8 @@ adapter は 1 行ごとに `ingest.api.occurrence_row(...)` を `yield` する�
 - `observed_on_raw`（原表記。`occurrence_period_shapes.yaml` の 12 形のどれか。無ければ None）
 - `lat`/`lon`（どちらも数値、またはどちらも None。**座標を補完しない**＝推測で埋めない）
 - 任意: `scientific_name`/`vernacular_name`/`taxon_rank`/`red_list_category`/`license_class`
-- `attributes`（出典固有の補助情報。**現状の occurrence 表に列が無いので L2 には載らない**。
-  runner が件数を報告するだけ。列を足すときはこの契約を広げる）
+- `attributes`（出典固有の補助情報の dict。JSON 文字列として `occurrence.attributes` に保存される。無ければ NULL。
+  D1 には L2 を入れないが dist には載る。値は JSON にできるもの〔文字列・数値・真偽・None・リスト・dict〕に限る）
 """
 from __future__ import annotations
 

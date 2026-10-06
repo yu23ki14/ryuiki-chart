@@ -125,5 +125,8 @@ checks:
 8. 例の `taxon: common:taxon:gbif.2433433` は registry に存在しない ID だった（ツキノワグマは `gbif.6163862`〔亜種〕・
    `gbif.9335699`・`inat.41647`〔species〕・`inat.418146`〔亜種〕）。`const` の taxon は registry に実在することを
    ビルドが検査する（`in_registry`）。
-9. adapter の `attributes`（出典固有の補助情報）は、現状の `occurrence` 表に列が無いので L2 には載らない
-   （runner が件数を報告する）。列を足すときに列契約（`scripts/ingest/api.py`）を広げる。
+9. adapter の `attributes`（出典固有の補助情報）は `occurrence.attributes`（JSON 文字列、NULL 可）に保存する。
+   既存の builtin 出典は NULL。D1 には L2 を入れない（変わらない）、dist には載る。
+10. **未対応・着手条件**: ①非 builtin の observation adapter（b03 が止まる）は、観測型の新出典が実際に要る時に
+   alias・単位・期間の解決を ingest.api に足して実装する。②出典の鮮度一覧 CLI（`scripts/freshness.py`）は作らない
+   （鮮度は応答封筒の `age_days`/`update_mode` で足りる。一覧が運用で要る時に足す）。

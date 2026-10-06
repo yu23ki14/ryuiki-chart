@@ -61,7 +61,7 @@ class AdapterRun:
         self._taxon_ids = taxon_ids
         self._root = pathlib.Path(root)
         self.n_rows = 0
-        self.n_attributes_dropped = 0
+        self.n_attributes = 0
         self._seen_keys: set[str] = set()
         self._unique_seen: dict[tuple, set] = {}
         self._problems: list[str] = []
@@ -99,7 +99,7 @@ class AdapterRun:
             row = self._validate(raw, i)
             self.n_rows += 1
             if row.attributes:
-                self.n_attributes_dropped += 1
+                self.n_attributes += 1
             self._apply_row_checks(row, i)
             yield row
         self._finished = True

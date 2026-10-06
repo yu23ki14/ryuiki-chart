@@ -117,6 +117,7 @@ grid01 place・期間の展開）に流す。`record_id` は `<source_id>__<reco
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import dataclasses
 import pathlib
@@ -222,7 +223,8 @@ CREATE TABLE {table} (
   publication_scope         TEXT,
   is_alien_in_scope         INTEGER,
   occurrence_id             TEXT NOT NULL,
-  source_edition_id         TEXT
+  source_edition_id         TEXT,
+  attributes                TEXT
 )
 """
 
@@ -244,8 +246,8 @@ INSERT INTO {table} (
   period_grain, period_start, period_end, period_raw,
   scientific_name, vernacular_name, taxon_rank,
   red_list_category, is_alien, license_class, publication_scope,
-  is_alien_in_scope, occurrence_id, source_edition_id
-) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+  is_alien_in_scope, occurrence_id, source_edition_id, attributes
+) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 """
 
 
@@ -267,7 +269,7 @@ def _empty_stats() -> dict:
         "day_changed_count": 0,
         "month_changed_count": 0,
         "adapter_counts": {},
-        "adapter_attributes_dropped": {},
+        "adapter_attributes_count": {},
         "adapter_problems": [],
     }
 
@@ -459,7 +461,7 @@ def _ingest(
                 scientific_name, vernacular_name, taxon_rank,
                 red_list_category, is_alien, license_class, publication_scope,
                 is_alien_in_scope,
-                public_id.occurrence_id(record_id, source_id), edition_of(source_id),
+                public_id.occurrence_id(record_id, source_id), edition_of(source_id), None,
             )
 
     runs = [ingest_runner.AdapterRun(m, work, taxon_ids) for m in ctx.adapter_manifests]
@@ -522,6 +524,7 @@ def _ingest(
                     r.red_list_category, None, r.license_class, None,
                     is_alien_in_scope,
                     public_id.adapter_occurrence_id(source_id, r.record_key), edition_of(source_id),
+                    json.dumps(r.attributes, ensure_ascii=False, sort_keys=True) if r.attributes else None,
                 )
 
     dest.executemany(_INSERT_SQL.format(table=f'"{insert_table}"'), rows())
@@ -529,7 +532,7 @@ def _ingest(
         dest.executemany(_INSERT_SQL.format(table=f'"{insert_table}"'), adapter_rows())
         for run in runs:
             stats["adapter_counts"][run.manifest.source] = run.n_rows
-            stats["adapter_attributes_dropped"][run.manifest.source] = run.n_attributes_dropped
+            stats["adapter_attributes_count"][run.manifest.source] = run.n_attributes
             stats["adapter_problems"].extend(run.problems())
     return stats
 
@@ -724,10 +727,10 @@ def render_report(stats: dict) -> str:
         a("")
         a("## adapter 経由の出典（`manifests/*.yml` の `adapter` が builtin でないもの）")
         a("")
-        a("| source_id | 取り込み行数 | attributes を持つ行（L2 に列が無く載らない） |")
+        a("| source_id | 取り込み行数 | attributes を持つ行 |")
         a("|---|---:|---:|")
         for sid, n in sorted(stats["adapter_counts"].items()):
-            a(f"| `{sid}` | {n:,} | {stats['adapter_attributes_dropped'][sid]:,} |")
+            a(f"| `{sid}` | {n:,} | {stats['adapter_attributes_count'][sid]:,} |")
     a("")
     a("## region 内訳")
     a("")

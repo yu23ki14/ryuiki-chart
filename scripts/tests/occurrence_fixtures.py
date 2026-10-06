@@ -336,9 +336,9 @@ def _create_and_fill_occurrence(conn: sqlite3.Connection, rows: list[tuple]) -> 
     import b06_build_occurrence as b06
 
     conn.execute(b06._CREATE_OCCURRENCE_SQL.format(table="occurrence"))
-    if rows and len(rows[0]) == len(_OCCURRENCE_COLUMNS):  # 旧来の列数。Issue #39 Phase C の 2 列を足す
-        rows = [tuple(r) + (f"common:occ:fixture.{r[0]}", None) for r in rows]
-    placeholders = ", ".join("?" for _ in range(len(_OCCURRENCE_COLUMNS) + 2))
+    if rows and len(rows[0]) == len(_OCCURRENCE_COLUMNS):  # 旧来の列数。Issue #39 Phase C の 2 列と attributes（Phase D）を足す
+        rows = [tuple(r) + (f"common:occ:fixture.{r[0]}", None, None) for r in rows]
+    placeholders = ", ".join("?" for _ in range(len(_OCCURRENCE_COLUMNS) + 3))
     conn.executemany(f"INSERT INTO occurrence VALUES ({placeholders})", rows)
     common.record_stage_fingerprint(conn, "occurrence")
 

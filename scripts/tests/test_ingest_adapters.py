@@ -5,6 +5,7 @@ adapter は tmp に置いたモジュールを `adapters` パッケージの検�
 """
 from __future__ import annotations
 
+import json
 import sqlite3
 import sys
 import textwrap
@@ -118,12 +119,12 @@ def test_adapter_rows_flow_into_occurrence_without_touching_builtin_rows(env):
     stats = _run(tmp_path, ryuiki_db, registry_db, manifests)
 
     assert stats["adapter_counts"] == {SOURCE: 3}
-    assert stats["adapter_attributes_dropped"] == {SOURCE: 3}
+    assert stats["adapter_attributes_count"] == {SOURCE: 3}
     assert stats["no_coordinate_count"] == 3
     conn = sqlite3.connect(f"file:{tmp_path / 'v2.sqlite'}?mode=ro", uri=True)
     rows = conn.execute(
         "SELECT record_id, source_table, source_row_id, region_id, taxon_id, place_id, place_kind, lat, lon, "
-        "period_grain, period_start, period_raw, occurrence_id, source_edition_id "
+        "period_grain, period_start, period_raw, occurrence_id, source_edition_id, attributes "
         "FROM occurrence WHERE source_id = ? ORDER BY source_row_id", (SOURCE,)
     ).fetchall()
     assert len(rows) == 3
@@ -134,7 +135,9 @@ def test_adapter_rows_flow_into_occurrence_without_touching_builtin_rows(env):
     assert first[9:12] == ("day", "2020-03-01", "2020-03-01")
     assert first[12] == f"common:occ:{SOURCE}.s1"
     assert first[13] == f"common:edition:{SOURCE}.20260101"
+    assert json.loads(first[14]) == {"situation": "目撃"}  # attributes は JSON 文字列で保存される
     assert rows[2][9] is None  # 日付なしの記録も落とさない
+    assert conn.execute("SELECT COUNT(*) FROM occurrence WHERE source_id <> ? AND attributes IS NOT NULL", (SOURCE,)).fetchone()[0] == 0
     # 既存出典の行は従来どおり（件数）
     assert conn.execute("SELECT COUNT(*) FROM occurrence WHERE source_id <> ?", (SOURCE,)).fetchone()[0] == len(
         DEFAULT_ORGANISM_RECORDS
