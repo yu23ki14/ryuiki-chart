@@ -95,6 +95,43 @@ describe("variable_alias の (dataset, alias, sourceId) 重複は索引構築時
   });
 });
 
+describe("variable_alias の版（editionKey。Issue #39 Phase C）", () => {
+  const LU = "nlni_l03b_landuse_by_watershed";
+
+  it("(dataset, alias, sourceId, editionKey) で引く。同じ alias でも版が違えば別行、版を問わない引きは先頭", () => {
+    expect(resolveAliasForSource("1:area_km2", LU, LU, "2006")?.editionKey).toBe("2006");
+    expect(resolveAliasForSource("0100:area_km2", LU, LU, "2016")?.editionKey).toBe("2016");
+    // 2006 の alias を 2016 として引いても、版なしとして引いても当たらない（推測しない）
+    expect(resolveAliasForSource("1:area_km2", LU, LU, "2016")).toBeUndefined();
+    expect(resolveAliasForSource("1:area_km2", LU, LU)).toBeUndefined();
+  });
+
+  it("resolveVariableInfo は editionKey を渡すとその版の行だけを見る", () => {
+    expect(resolveVariableInfo("1:area_km2", LU, "2006")?.variableId).toBe("common:variable:landuse.paddy");
+    expect(resolveVariableInfo("1:area_km2", LU, "2016")).toBeUndefined();
+    expect(resolveVariableInfo("1:area_km2", LU)?.variableId).toBe("common:variable:landuse.paddy"); // 版を問わない
+  });
+
+  it("同じ (dataset, alias, sourceId) でも editionKey が違えば重複ではない。同じなら import 時に throw", async () => {
+    const row = (editionKey: string | null) => ({
+      alias: "a", dataset: "d", sourceId: "s", variableId: "v", unitId: null, stat: "sum", grain: "year", editionKey,
+    });
+    for (const [rows, ok] of [[[row("2006"), row("2016")], true], [[row("2006"), row("2006")], false]] as const) {
+      vi.resetModules();
+      vi.doMock("@/lib/registry/generated", () => ({
+        GENERATED_UNITS: [], GENERATED_VARIABLES: [], GENERATED_VARIABLE_ALIASES: rows,
+      }));
+      try {
+        if (ok) await expect(import("@/lib/registry/lookup")).resolves.toBeDefined();
+        else await expect(import("@/lib/registry/lookup")).rejects.toThrow(/重複している/);
+      } finally {
+        vi.doUnmock("@/lib/registry/generated");
+        vi.resetModules();
+      }
+    }
+  });
+});
+
 describe("getVariable / getUnit / unitSymbol", () => {
   it("variableId から variable 行を引ける", () => {
     expect(getVariable("common:variable:water.bod")?.code).toBe("water.bod");

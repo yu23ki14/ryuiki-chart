@@ -15,10 +15,10 @@
  *     統合後修正A #1。basis はセルの性質であって系列の登録ではないことのテスト用）
  *   - `weather.precipitation` の hour→day sum セル（2ヶ月分、月別平年値のテスト用）
  *   - `unit_id` NULL のセル（water.ss・weather.precipitation）と NULL でないセル（water.bod）
- *   - レジストリ8表の必要行（`place_source_ref` の `sites.site_id`/`sites.zone`、
+ *   - レジストリ8表の必要行（`place_source_ref` の `site_id`/`zone` の key_space、
  *     `place_relation` の within、`variable_alias` の source_id NULL 行＝合成）
  *   - `caveat`/`caveat_scope`（table 行と facet 行〔1b が使う `dataset` kind〕の両方）
- *   - `place`/`place_source_ref('watershed_meta.watershed_id')`（fx_site_a の
+ *   - `place`/`place_source_ref('watershed_id')`（fx_site_a の
  *     `watershed` → `water_system_name` の解決用。Issue #48 PR-2）
  *   - `summary_variable_catalog`/`summary_place_variable`（Issue #48 PR-2、
  *     `seedSummaryFromObsAgg()` が上の `observation_agg` から SQL で導出する。
@@ -159,7 +159,7 @@ function seed(db: Database.Database): void {
   ).run({
     siteId: FX.sites.a,
     name: "地点A",
-    // `water_system_name`（catalog.ts）用: `place_source_ref('watershed_meta.watershed_id')`
+    // `water_system_name`（catalog.ts）用: `place_source_ref('watershed_id')`
     // 経由で `place.name_ja` を引けるようにする（下の watershed 関連 INSERT 参照）。
     watershed: FX.watershedId,
     zone: 3,
@@ -178,13 +178,13 @@ function seed(db: Database.Database): void {
   ).run({ siteId: FX.sites.rain, name: "地点雨量", zone: 2, lat: 35.5, lon: 139.3, elevationM: 100, municipality: "相模原" });
   // fx_site_c は意図的に `sites` に行を作らない（厚木型。design §7「sites に無い厚木型1地点」）。
 
-  const psr = db.prepare(`INSERT INTO place_source_ref (place_id, external_key, source_id) VALUES (?,?,?)`);
-  psr.run(FX.places.a, FX.sites.a, "sites.site_id");
-  psr.run(FX.places.b, FX.sites.b, "sites.site_id");
-  psr.run(FX.places.c, FX.sites.c, "sites.site_id");
-  psr.run(FX.places.rain, FX.sites.rain, "sites.site_id");
-  psr.run(FX.places.zone3, "3", "sites.zone");
-  psr.run(FX.places.zone2, "2", "sites.zone");
+  const psr = db.prepare(`INSERT INTO place_source_ref (place_id, external_key, key_space) VALUES (?,?,?)`);
+  psr.run(FX.places.a, FX.sites.a, "site_id");
+  psr.run(FX.places.b, FX.sites.b, "site_id");
+  psr.run(FX.places.c, FX.sites.c, "site_id");
+  psr.run(FX.places.rain, FX.sites.rain, "site_id");
+  psr.run(FX.places.zone3, "3", "zone");
+  psr.run(FX.places.zone2, "2", "zone");
 
   const rel = db.prepare(`INSERT INTO place_relation (parent_id, child_id, relation, fraction, basis) VALUES (?,?,'within',1.0,NULL)`);
   rel.run(FX.places.zone3, FX.places.a);
@@ -246,15 +246,15 @@ function seed(db: Database.Database): void {
 
   // `water_system_name`（catalog.ts の `sites`/`sitesInWaterBody`/`site`）用:
   // `sites.watershed`（fx_site_a に設定した FX.watershedId）→
-  // `place_source_ref(source_id='watershed_meta.watershed_id')` → `place.name_ja`。
+  // `place_source_ref(key_space='watershed_id')` → `place.name_ja`。
   db.prepare(
     `INSERT INTO place (place_id, region_id, place_kind, name_ja, lat, lon, elevation_m, area_km2, definition_ref, status)
      VALUES (@placeId,'kanagawa','watershed',@nameJa,NULL,NULL,NULL,NULL,NULL,NULL)`,
   ).run({ placeId: FX.watershedPlaceId, nameJa: FX.waterSystemName });
-  db.prepare(`INSERT INTO place_source_ref (place_id, external_key, source_id) VALUES (?,?,?)`).run(
+  db.prepare(`INSERT INTO place_source_ref (place_id, external_key, key_space) VALUES (?,?,?)`).run(
     FX.watershedPlaceId,
     FX.watershedId,
-    "watershed_meta.watershed_id",
+    "watershed_id",
   );
 
   db.prepare(`INSERT INTO caveat (caveat_id, severity, kind, title_ja, body_ja, quote) VALUES ('common:caveat:fx_test','info','data_quality','テスト注記','フィクスチャ用のテスト注記',NULL)`).run();

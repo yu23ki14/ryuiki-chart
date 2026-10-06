@@ -74,7 +74,8 @@ jobs:
         run: |
           git diff --exit-code \
             web/src/lib/registry/generated.ts \
-            web/src/lib/registry/generated-client.ts
+            web/src/lib/registry/generated-client.ts \
+            web/src/lib/registry/generated-id-map.ts
 
   web:
     name: web (lint, typecheck, test)

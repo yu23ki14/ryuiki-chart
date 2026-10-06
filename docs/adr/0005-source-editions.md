@@ -1,6 +1,6 @@
 # ADR-0005: 出典を版管理し、ライセンスを行単位で解決可能にする
 
-- 状態: 提案中 / 日付: 2026-09-06
+- 状態: 承認済（一部未実装） / 日付: 2026-09-06
 - 関連: ADR-0001（原本）, ADR-0004（識別子）, ADR-0013（caveat）
 
 **2026-09-24 追記（P-1b、`docs/plans/PHASE_B_LANDUSE.md`）**: 「同じ出典に
@@ -20,6 +20,40 @@ r5table.xlsx（令和5年度版）と r6table.xlsx（令和6年度版）が同�
 `notes`/`fetched_at` を上書きし、取得回ごとの数値が復元不能になっていることを実測で
 確認した。どちらも本ADRの `source_edition`＋`superseded_by`（Phase C）で解く領域。
 決定は変えない。
+
+**2026-10-06 改定（Issue #39 Phase C。`docs/plans/ISSUE39_PHASE_C.md` §2.2・§3）**: 状態を提案中から
+承認済に上げ、`source`/`source_edition`/`license` を `registry.sqlite`（と D1）に実装した
+（`scripts/registry/build_source.py`、手書きの正は `registry/source/{license,editions}.yaml`）。
+次の点を決定として改める。
+
+- **隔離は行わない（決定2・3を上書き）。** 扱うデータは全て公開済みで、ライセンス表示も不要というオーナー決定
+  と ADR-0028（座標をぼかさない）により、`redistributable` / `license_class` / `commercial_ok` は
+  **出典の旗として列に残すだけ**で、出力・API・DwC-A を絞る根拠にしない。決定3の「`dist/`・公開物から落とす」
+  「`embargo_reason` を応答・カタログに出す」は撤回し、**`embargo_reason` 列は作らない**。
+  人の判断待ちで出力を止めない。
+- **列の確定**: `source` に `source_ref_id`（公開 ID `common:source:<source_id>`）・`theme`・`superseded_by`
+  （置換先の source_id）。`source_edition` に `edition_key`・`vintage`・`update_mode`（ADR-0020 の
+  snapshot/append/revision/static。分かるものだけ宣言し、無いものは NULL）・`license_raw`（原文）。
+  `source_id` は bare のまま（`[a-z0-9_]+` なので公開 ID と全単射）。cube・D1 summary・variable_alias は bare を持つ。
+- **edition とは取得回、または出典自身の版（vintage）。** 土地利用 L03-b の 2006/2016 は vintage、
+  それ以外は取得日 `YYYYMMDD`。`edition_id` = `common:edition:<source_id>.<edition_key>`。
+- **版の履歴が復元不能な既存行は作らない（捏造しない）。** `source_registry` は `INSERT OR REPLACE` で
+  上書きされてきたので、現在の1版 + 宣言した版（`editions.yaml`）だけを持つ。「行単位で取得回が言える」のは
+  将来の再取得から。
+- **置換は `superseded_by`**: `gbif_kanagawa` → `gbif_kanagawa_occurrences` を `source.superseded_by` と
+  `source_edition.superseded_by` の両方に張った（ADR-0004 規約2）。notes の `【SUPERSEDED` は、宣言の無い
+  行を検出するための検査にだけ使い、参照側は常に `superseded_by` 列を使う。
+- **ファクトの `source_edition_id`は L2（v2 の observation/occurrence）のみ**。キューブ・D1 summary は
+  `source_id`（bare）のまま（キューブのセル鍵を動かさないため）。
+- `variable_alias.dataset` の `@<年>` 後置（2026-09-24 追記の暫定）は廃止し、`edition_key`（→ `source_edition_id`）に
+  置き換えた。旧→新の対応は `registry/id_map/dataset.csv`。
+- `source_registry`（v1 表。D1 の `queries.ts` が使用中）は並走して残す。撤去は別 Issue。
+- **実装済み（担当 C）**: v2 の `observation`/`occurrence` に `source_edition_id` を持たせた
+  （`scripts/migrate/edition.py` の `resolve_edition()`。土地利用は `data_year` を vintage に渡す）。
+  `place_source_ref.source_edition_id` は `registry/place/key_space.yaml` の宣言で埋める
+  （site は site_id の接頭辞の出典、watershed は `nlni_w12_watersheds`、zone・grid01 は出典を持たず NULL）。
+  未実装として残るもの: `content_sha256`（L0 がリポジトリ外のものは NULL）、行単位のライセンス解決
+  （`organism_records` の行単位ライセンスは従来どおり行側の列）、過去の取得履歴（復元不能）。
 
 ## 背景
 
@@ -47,16 +81,18 @@ source          source_id, name, publisher, homepage, region_id, theme, access_m
 source_edition  edition_id, source_id, fetched_at, url, format, content_sha256,
                 license_id, license_class, redistributable, commercial_ok,
                 record_count, superseded_by, embargo_reason, notes
+                -- 2026-10-06 改定: embargo_reason は作らない。edition_key, vintage, update_mode,
+                -- license_raw を足した（実装は scripts/schema_registry.sql の source_edition）
 license         license_id, name, spdx_or_url, class, attribution_text
 ```
 
 1. **ファクトは `source_edition_id` を持つ**（`source_id` ではない）。これで「この数字は
    2026-08-29 取得の GBIF 第3ラウンド由来」まで行単位で言える。
-2. **ライセンス判定はコードに書かない。** 出力・API・MCP は
+2. （2026-10-06 改定: 出力の絞り込みには使わない。上の改定参照）**ライセンス判定はコードに書かない。** 出力・API・MCP は
    `license_class` / `redistributable` / `commercial_ok` を**フィルタ条件として受け取り**、
    除外した件数を応答に含める（ADR-0014）。DwC-A アダプタの現行ポリシー
    （`noncommercial`/`unknown` を除外）はアダプタ設定として明示する。
-3. **隔離は削除ではない。** `redistributable=0` の版（実測33ソース）は `core/` に保持し、
+3. （2026-10-06 改定: 撤回。隔離せず、旗として残すだけ。`embargo_reason` は作らない）**隔離は削除ではない。** `redistributable=0` の版（実測33ソース）は `core/` に保持し、
    **`dist/`・L3・公開物からは落とす**（ADR-0001 の `core/` と `dist/` の分離）。
    落とした事実と理由（`embargo_reason`）は応答とカタログに出す。
    **`core/` は配布しない。** ここを混同すると隔離データがそのまま公開される。

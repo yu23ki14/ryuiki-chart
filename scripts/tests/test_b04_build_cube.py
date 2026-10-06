@@ -12,7 +12,7 @@ import b03_build_observation as b03
 import b04_build_cube as b04
 from migrate import common, cube_invariants
 
-from .migrate_fixtures import DEFAULT_ALIASES, make_registry_db, make_v2_db_with_observation, table_content_hash
+from .migrate_fixtures import DEFAULT_ALIASES, make_registry_db, make_v2_db_with_observation, pad_observation_rows, table_content_hash
 
 # b04 は AVG()/SUM() を使うため `common.require_sqlite_version()` で古い
 # SQLite を拒む（`scripts/migrate/common.py` 参照）。この版のガード自体の
@@ -916,6 +916,7 @@ def test_build_cube_halts_when_observation_has_no_recorded_fingerprint(tmp_path)
     registry_db = _registry_db(tmp_path)
     conn = sqlite3.connect(f"file:{db_path}", uri=True)
     conn.execute(b03._CREATE_OBSERVATION_SQL.format(table="observation"))
+    rows = pad_observation_rows(rows)
     conn.executemany(f"INSERT INTO observation VALUES ({', '.join('?' for _ in rows[0])})", rows)
     conn.commit()  # record_stage_fingerprint を呼ばない（指紋を記録しない）
     try:
@@ -1179,8 +1180,8 @@ def test_unit_evidence_raises_on_stale_declaration(tmp_path):
 # 自己不変条件（Issue #48 PR-5。`scripts/migrate/cube_invariants.py`。b05 から移設）
 # ---------------------------------------------------------------------------
 
-def _alias(dataset, alias, variable_id, unit_id, stat, grain):
-    return (dataset, alias, "src", variable_id, unit_id, stat, grain)
+def _alias(dataset, alias, variable_id, unit_id, stat, grain, edition_key=None):
+    return (dataset, alias, "src", variable_id, unit_id, stat, grain, edition_key)
 
 
 def _registry_with_aliases(tmp_path, aliases):
@@ -1213,24 +1214,24 @@ def test_alias_collision_halts_build_cube(tmp_path):
 
 
 def test_alias_collision_in_a_landuse_year_version_halts(tmp_path):
-    """土地利用の年版 dataset（`<source>@<年>`）ごとにも関数性を見る。"""
-    ds = "nlni_l03b_landuse_by_watershed@2006"
+    """土地利用の版（`edition_key`）ごとにも関数性を見る（同じ版の中で同じ組に別 alias は止まる）。"""
+    ds = "nlni_l03b_landuse_by_watershed"
     with pytest.raises(common.MigrationError, match="関数になっていない"):
         _build_with_aliases(tmp_path, [
-            _alias(ds, "1:area_km2", "common:variable:landuse.paddy", "common:unit:km2", "sum", "year"),
-            _alias(ds, "01:area_km2", "common:variable:landuse.paddy", "common:unit:km2", "sum", "year"),
+            _alias(ds, "1:area_km2", "common:variable:landuse.paddy", "common:unit:km2", "sum", "year", "2006"),
+            _alias(ds, "01:area_km2", "common:variable:landuse.paddy", "common:unit:km2", "sum", "year", "2006"),
         ])
 
 
 def test_alias_collision_passes_for_default_fixture_and_landuse_year_sharing(tmp_path):
-    """衝突の無い既定の registry と、土地利用が年版をまたいで同じ tuple を共有する
-    正常系（正規化後は同じ出典名）は通る。
+    """衝突の無い既定の registry と、土地利用が版（edition_key）をまたいで同じ tuple を
+    共有する正常系（dataset は同じ。版ごとに別の alias）は通る。
     """
     _build_with_aliases(tmp_path, list(DEFAULT_ALIASES) + [
-        _alias("nlni_l03b_landuse_by_watershed@2006", "1:area_km2",
-               "common:variable:landuse.paddy", "common:unit:km2", "sum", "year"),
-        _alias("nlni_l03b_landuse_by_watershed@2016", "0100:area_km2",
-               "common:variable:landuse.paddy", "common:unit:km2", "sum", "year"),
+        _alias("nlni_l03b_landuse_by_watershed", "1:area_km2",
+               "common:variable:landuse.paddy", "common:unit:km2", "sum", "year", "2006"),
+        _alias("nlni_l03b_landuse_by_watershed", "0100:area_km2",
+               "common:variable:landuse.paddy", "common:unit:km2", "sum", "year", "2016"),
     ])
 
 
@@ -1246,8 +1247,8 @@ def test_alias_tuple_collision_between_landuse_and_measurements_is_still_detecte
     with pytest.raises(common.MigrationError, match="複数の出典.*にまたがっている"):
         _build_with_aliases(tmp_path, [
             _alias("measurements", "何か", "common:variable:landuse.paddy", "common:unit:km2", "sum", "year"),
-            _alias("nlni_l03b_landuse_by_watershed@2006", "1:area_km2",
-                   "common:variable:landuse.paddy", "common:unit:km2", "sum", "year"),
+            _alias("nlni_l03b_landuse_by_watershed", "1:area_km2",
+                   "common:variable:landuse.paddy", "common:unit:km2", "sum", "year", "2006"),
         ])
 
 

@@ -247,7 +247,7 @@ pnpm wrangler d1 migrations list ryuiki --remote   # 本番の適用済みを確
    `reports/serving_fingerprint.json` の `git_head` が今のコードであることを確かめる。
 
    ```bash
-   pnpm run db:export -- --table observation_agg,occurrence_agg,summary_variable_catalog,summary_place_variable,summary_taxon_catalog,summary_watershed_occurrence,summary_species_catalog,summary_group_year,summary_effort_year,summary_grid_catalog,unit,variable,variable_alias,place,place_source_ref,place_relation,place_watershed,taxon,taxon_assessment,caveat,caveat_scope
+   pnpm run db:export -- --table observation_agg,occurrence_agg,summary_variable_catalog,summary_place_variable,summary_taxon_catalog,summary_watershed_occurrence,summary_species_catalog,summary_group_year,summary_effort_year,summary_grid_catalog,unit,variable,variable_alias,license,source,source_edition,place,place_source_ref,place_relation,place_watershed,taxon,taxon_assessment,caveat,caveat_scope
    ```
 
    表名は `web/src/lib/table-meta.ts` の `TABLE_ORIGIN`（v2・reg）と照合してから。流し方は「3. データを入れる」のファイル単位の再試行ループをそのまま使う。
@@ -327,6 +327,29 @@ b04 の変更で `observation_agg` の値と、そこから作る `summary_*`（
    本番の AI（`/api/chat`）に ND の集計を尋ね、ND だけの年度で `value_zero`・`value_lod` とも null と答えることを確認。
 
 ロールバックは行っていない。
+
+## ID と版の正式化（Issue #39 Phase C）の本番切り替え
+
+マイグレーション `0015_*`（ID・版の正式化）は **既存の表を壊す変更を含む**。`place_source_ref.source_id` を
+`key_space` に **RENAME** するので、**適用した瞬間に今デプロイされている Worker（旧コード）の
+`place_source_ref.source_id` を使う結合が壊れる**（列が無くなる）。再投入するまで新しい `key_space` の結合も 0 件
+（旧データの `key_space` 列には旧値 `sites.site_id` 等が入ったまま。新 ID 文法の place も入っていない）。
+つまり **マイグレーション適用から Worker デプロイまでの間、place を引く画面・API は壊れる**。
+**停止時間が出ることを前提に、次を一続きで行う**（途中で止めない。#61 と同じ流儀で、ロールバックは事前許可あり）:
+
+1. 事前: `v2.sqlite`・`registry.sqlite` が今のコードで作り直されていること（`scripts/check_v2_fresh.py`・`--check-fresh`）。
+   `reports/serving_fingerprint.json` の `git_head` が今のコードであること。ローカル D1 で通しで予行する。
+   新コードのビルド（`pnpm run build`）を **先に** 済ませ、デプロイ直前の状態にしておく（停止時間を縮める）。
+2. `pnpm wrangler d1 migrations apply ryuiki --remote`（0015。ここから旧 Worker は place を引けない）。
+3. 再投入（`pnpm run db:export -- --table ...` の .sql を流す。**先に `DELETE FROM`**）:
+   `place`・`place_source_ref`・`place_relation`・`place_watershed`・`variable_alias`・`license`・`source`・`source_edition`・
+   `observation_agg`・`occurrence_agg`・`summary_*`（place_id の文字列が変わるため）。表の一覧は上の「2. A.」の `--table` と同じ。
+4. `pnpm run db:verify:remote`（行数が一致すること）。
+5. **すぐに** `pnpm run deploy`（新 Worker は `key_space`・新 place ID 文法を読む。旧 ID の URL は `resolveLegacyId()`
+   が新 ID に解決する **予定** だが、現状 place_id を受ける経路は無い。経路ができたらそこを通す。`web/src/lib/registry/legacy-id.ts` 参照）。
+6. 動作確認。問題があれば `wrangler rollback`（コード）＋マイグレーション前の .sql の再投入（旧 `source_id` 列はもう無いので、
+   完全なロールバックにはリバース用の SQL〔`ALTER TABLE place_source_ref RENAME COLUMN key_space TO source_id`〕と旧データの再投入が要る。
+   旧データは 2. の前に `pnpm run db:export` で控えておく）。
 
 ## 更新するとき
 

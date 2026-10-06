@@ -36,7 +36,9 @@ observation を経由しない静的な地理データの転記で、`place` の
    occurrence〔ADR-0025〕に続き、observation 側で初めて出典由来の region を
    使う）。watershed の place は `common` スコープなので `place.region_id` は
    常に `NULL`（ADR-0022 決定1）——place 経由では地域を決められないため。
-5. **2006年版と2016年版でコード体系が違う**（§2実測）。`variable_alias.csv` の
+5. （**Issue #39 Phase C で解消**: `dataset` の `@<年>` 後置は廃止し、版は `variable_alias.edition_key`
+   〔2006/2016〕に分けた。以下は当時の決定の記録）
+   **2006年版と2016年版でコード体系が違う**（§2実測）。`variable_alias.csv` の
    `dataset` を版付き（`nlni_l03b_landuse_by_watershed@2006`/`@2016`）にする
    ——ADR-0005「同じ出典に複数版が同居する」の実例。同じ日本語名を持つ区分
    （10区分）は年をまたいで同じ `variable_id` を共有させ、`9 幹線交通用地`
@@ -101,7 +103,8 @@ watershed_id の distinct 数: 377（registry.place の watershed 件数と一�
 （11+12=23区分×年 × 2指標=46）。`alias` は `f"{landuse_code_raw}:area_km2"`/
 `f"{landuse_code_raw}:n_cells"`（CSVの生コードに指標名の接尾辞を付けた文字列。
 新しい命名規則だが、レジストリ内部のキーでしかなく他の画面・APIには出ない）。
-`dataset` は `nlni_l03b_landuse_by_watershed@2006`/`@2016`。`source_id` は
+`dataset` は `nlni_l03b_landuse_by_watershed@2006`/`@2016`
+（Issue #39 Phase C 以降は `nlni_l03b_landuse_by_watershed` + `edition_key` 2006/2016）。`source_id` は
 CSV の `source_id` 列と同じ定数。`stat="sum"`, `grain="year"`。
 
 ### `scripts/migrate/source_regions.yaml` の `consumer` 分離
@@ -170,6 +173,7 @@ watershed版）と、年版ごとの`landuse_alias_lookup_{year}`（`_alias_look
 `watershed_id, landuse_name`でグループ化）を`landuse_watershed`の
 一時テーブルに対して実行する。
 
+（Issue #39 Phase C で `edition_key` 列に分けたため、この正規化は撤去した。dataset をそのまま数える。）
 `assert_alias_tuple_maps_to_single_dataset`（既存の検証。同じ
 `(variable_id, grain, stat, unit_id)`が`measurements`と`sensor_timeseries`
 の両方のaliasに対応していないことを確認する）は、`dataset`を
@@ -425,7 +429,8 @@ note`短縮分だけ指紋が変わる。構造検証には影響しない）、
   採用することをオーナーが確認した。命名規則自体を変える理由が無い限りこのまま固定する。
   未着手の「語彙ガバナンスと命名規約」ADR（`docs/adr/README.md`の未着手表、Phase C・#39）
   を書くときの入力の1つとする。
-- **variable_alias.csvの`dataset`が版付き（`<source>@<year>`）になる
+- （Issue #39 Phase C で解消。`edition_key` 列に置き換えた）
+  **variable_alias.csvの`dataset`が版付き（`<source>@<year>`）になる
   パターンは、`docs/plans/PHASE_B_INTAKE.md`に暫定の接続点として記録
   した**（ADR-0005が「同じ出典に複数版が同居する」ケースの正式な設計を
   Phase C まで持ち越しているため、恒久的な設計ではない）。

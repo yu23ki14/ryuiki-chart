@@ -1,8 +1,7 @@
 # ADR-0004: 識別子はスコープ付きの安定IDとし、既定を `common` にする
 
-- 状態: 承認済（一部未実装: 規約1の区切り文字〔Phase C、下記追記参照〕、規約2
-  `superseded_by`、規約4 公開URI解決、規約5 `synthetic.`名前空間、
-  `observation_id`/`occurrence.record_id`のスコープ付きID化） / 日付: 2026-09-06
+- 状態: 承認済（一部未実装: 規約4 公開URI解決、規約5 `synthetic.`名前空間の実発行
+  〔合成データは v2 に入れないため発行規則だけ〕） / 日付: 2026-09-06
 - 関連: ADR-0002（多地域）, ADR-0005（版）, ADR-0006（place）
 
 **2026-09-15 追記（ADR-0022 で明確化）**: 規約0の「地域は `region_id`（ファクトの
@@ -16,6 +15,28 @@
 `docs/plans/PHASE_B_INTAKE.md` #12）。名前空間とローカルキーの区切り文字を変える改定が要るが、
 Phase B の縦線はどれもこの分解を必要としなかったため未着手のまま残っている。**この改定は
 Phase C（#39）で行う**（`docs/plans/PHASE_B_INTAKE.md:30` 付近にも同じ申し送りを記載）。
+
+**2026-10-06 追記（Issue #39 Phase C 担当 A で実施）**: 規約1 の区切りを `.` に改定した（下の規約1）。
+place の site / watershed / zone の877件（site 495・watershed 377・zone 5）の ID が変わり、
+旧→新の対応は `registry/id_map/place.csv`（手書きの宣言。`id_map` 表として registry.sqlite にも入る）に持つ。
+grid01（4,087件）・taxon・variable・unit・caveat は ID が変わらない（taxon は元から `.` 区切り）。
+旧 ID を受けたら新 ID に解決するリゾルバを恒久的に残す（`web/src/lib/registry/legacy-id.ts`。
+**現状、place_id を URL・クエリ・ツール引数で受ける経路は無いので、リゾルバは未接続**。経路ができたらここを通す）。ID の分解は `scripts/registry/common.py` の `parse_id()`・
+`web/src/lib/registry/parse-id.ts` の `parseId()` の2つだけが行う。
+
+**2026-10-06 追記（Issue #39 Phase C 担当 C で実施）**: ファクトの公開 ID を v2 に発行した。
+`observation_id` = `common:obs:<tbl>.<業務キー>`（meas: measurement_id の slug / sensor:
+`sensor.<source_id>.<sha256 先頭16桁>`〔業務キー (site_id, datastream, phenomenon_time, source_id)〕/
+landuse: `landuse.<watershed_id>.<data_year>.<区分コード>.<area_km2|n_cells>`）、
+`occurrence_id` = `common:occ:<gbif|inat>.<出典の key>`（出典が `gbif_kanagawa` から
+`gbif_kanagawa_occurrences` に移っても同じ ID）。**ファクト ID のスコープは `common`**（地域は
+`region_id` 列で絞る。規約0）。**行の位置（rowid・CSV 行番号）ではなく出典の業務キーで決める**
+（決定的・再利用しない・一意。一意性は旧キー列と新 ID 列の両方の UNIQUE 索引で検証し、衝突すれば
+ビルドが止まる）。発行規則は `scripts/migrate/public_id.py` の1箇所。`id_map`（ID の改称）と
+`superseded_by`（置換）は別物（`gbif_kanagawa` → `gbif_kanagawa_occurrences` は
+`source.superseded_by`/`source_edition.superseded_by`。ADR-0005）。D1 には L2（observation/occurrence）を
+載せない。DwC-A の `occurrenceID` は新 ID に切り替え、旧→新の対応を `occurrenceID_mapping.csv` として
+DwC-A に同梱する（公開物の契約変更。`data/dwca` の再公開はしない）。
 
 ## 背景
 
@@ -40,9 +61,9 @@ Phase C（#39）で行う**（`docs/plans/PHASE_B_INTAKE.md:30` 付近にも同�
 
 例)  common:variable:water.bod         レジストリは既定で common
      common:taxon:gbif.2480932         分類群は地域の属性ではない
-     common:place:watershed.nlni-83032-0024   県境をまたぐ流域も common
-     jp-14:place:site.env-pubwater-0142       出典が県単位の地点
-     jp-46-tatsugo:place:zone.r2r-3           地域固有の操作的定義
+     common:place:watershed.nlni.83032-0024   県境をまたぐ流域も common
+     jp-14:place:site.env-pubwater.0142       出典が県単位の地点
+     jp-46-tatsugo:place:zone.r2r.3           地域固有の操作的定義
 ```
 
 規約:
@@ -55,11 +76,22 @@ Phase C（#39）で行う**（`docs/plans/PHASE_B_INTAKE.md:30` 付近にも同�
    レジストリの ID に埋めない（ADR-0002）。
 
 1. **`local_key` は出典の識別子をそのまま使ってよいが、必ず名前空間を前置する**
-   （`gbif.` / `nlni-w05.` / `estat.` …）。出典が変わっても衝突しない。
+   （`gbif.` / `nlni.` / `estat.` …）。出典が変わっても衝突しない。
+   **名前空間（ns）と key の区切りは `.`。ns は `[a-z0-9_-]+`（`.` と `:` を含まない。`-` は含んでよいが
+   区切りには使わない）、key は `.` を含んでよい。分解は最初の `.` で切る**（最後の `.` ではない）。
+   place は `<kind>.<ns>.<key>`。ns を持たない kind（`grid01`）は `<kind>.<key>`
+   （`common:place:grid01.3520_13900`。ns の有無は kind で決まる）。
+   旧形式（`-` 区切り。`site.env-pubwater-0142`）は名前空間も key も `-` を含むため機械的に
+   分解できなかった。区切りの比較（`/`・`~`・ns から `-` を禁じる案）と採否は
+   `docs/plans/ISSUE39_PHASE_C.md` §2.1。
 2. **ID は不変。** 対象の実体が変わったら新しい ID を作り、旧 ID は `superseded_by` で
    新 ID を指す行として残す（削除しない）。`notes` の文字列で表さない。
    スコープの変更（`jp-14:` → `common:`）は ID の変更にあたるので、**規約0 により
    そもそも起こさない**。判断に迷うものは `common` に置く。
+   **ID の改称（置換ではなく、同じ実体の ID の付け替え）は `id_map`（`registry/id_map/<entity>.csv`）に
+   記録し、`superseded_by` とは混ぜない。** 旧 ID は新 ID として再利用しない（再利用すると古いリンク・
+   外部の引用が別物を指す）。`scripts/r01_build_registry.py` が毎回、宣言と現行 ID の一致・1対1・
+   再利用なしを検査して止める。
 3. **出典 ID（`source_id`）とエンティティ ID を混ぜない。** 同じ地点が複数出典に現れる場合、
    place は1つで、出典ごとの対応は `place_source_ref` の行として持つ。
 4. **公開 ID は URI に解決できる形にする**（`https://<host>/id/jp-14/place/site.env-...`）。

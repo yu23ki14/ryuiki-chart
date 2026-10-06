@@ -26,6 +26,9 @@ def test_check_accepts_matching_and_empty_rejects_bare_wrong_namespace_and_bad_f
     assert check_dwca_taxon_id("inat:8026", gbif_oid)       # 名前空間の取り違え
     assert check_dwca_taxon_id("gbif:abc", gbif_oid)        # 形式
     assert check_dwca_taxon_id("foo:1", gbif_oid)
+    # 公開 ID 形式（Issue #39 Phase C）
+    assert check_dwca_taxon_id("gbif:8026", "common:occ:gbif.12") is None
+    assert check_dwca_taxon_id("inat:8026", "common:occ:gbif.12")  # 名前空間の取り違え
 
 
 def _write_archive(d, taxon_id):

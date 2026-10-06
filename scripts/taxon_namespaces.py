@@ -98,13 +98,19 @@ def dwca_taxon_id(source_id, taxon_key) -> str:
 def check_dwca_taxon_id(taxon_id: str, occurrence_id: str) -> str | None:
     """`occurrence.txt` の 1 行の taxonID を検査する。問題があれば理由の文字列、無ければ None。
     空は許す（taxon_key の無い行）。非空は `^(gbif|inat):\\d+$`、かつ名前空間が
-    `occurrenceID`（`<source_id>__<key>`）の出典と一致すること。
+    `occurrenceID` の出典と一致すること。occurrenceID は公開 ID `common:occ:<ns>.<key>`
+    （Issue #39 Phase C。`ns` が名前空間）。旧形式 `<source_id>__<key>` も受ける（旧 DwC-A の検証用）。
     """
     if taxon_id == "":
         return None
     ns, sep, key = taxon_id.partition(":")
     if not sep or not key.isdigit() or ns not in TAXON_NAMESPACES:
         return "形式が <gbif|inat>:<数字> ではない"
+    if occurrence_id.startswith("common:occ:"):
+        occ_ns = occurrence_id[len("common:occ:"):].partition(".")[0]
+        if occ_ns != ns:
+            return f"名前空間 {ns} が occurrenceID の名前空間 {occ_ns!r} と合わない"
+        return None
     source_id = occurrence_id.split("__", 1)[0]
     if TAXON_KEY_SOURCE_NAMESPACE.get(source_id) != ns:
         return f"名前空間 {ns} が occurrenceID の出典 {source_id!r} と合わない"

@@ -26,9 +26,9 @@ from migrate import common, occurrence_period as _occurrence_period
 from registry.build_taxon_assessment import TAXON_ASSESSMENT_COLUMNS
 
 # 既定のフィクスチャ: 12形すべてを1行ずつ（gbif 11行・inat 1行）。
-# gbif__1（day, taxon_key あり）と inat__1（instant_minute_z, taxon_key 無し
+# gbif_kanagawa_occurrences__1（day, taxon_key あり）と inaturalist_kanagawa__1（instant_minute_z, taxon_key 無し
 # ＝ taxon_id NULL の正常系）は元からのテストが record_id で直接参照するため
-# 名前を変えていない。残り10形は "gbif__<shape>" という素直な名前にした。
+# 名前を変えていない。残り10形は "gbif_kanagawa_occurrences__<shape>" という素直な名前にした。
 # 座標はすべて grid01 (3550, 13900) に解決する位置（lat=35.50..35.51,
 # lon=139.00..139.01）。
 DEFAULT_ORGANISM_RECORDS = [
@@ -36,53 +36,53 @@ DEFAULT_ORGANISM_RECORDS = [
     # scientific_name, vernacular_name, taxon_rank, taxon_key,
     # red_list_category, is_alien, license_class, publication_scope
     (
-        "gbif__1", "gbif_kanagawa_occurrences", "2020-01-05", 35.505, 139.005, 10.0,
+        "gbif_kanagawa_occurrences__1", "gbif_kanagawa_occurrences", "2020-01-05", 35.505, 139.005, 10.0,
         "Foo bar", "フーバー", "SPECIES", "1001",
         "LC", 0, "CC-BY", "公開",
     ),  # day
     (
-        "inat__1", "inaturalist_kanagawa", "2020-02-01T03:00Z", 35.506, 139.006, None,
+        "inaturalist_kanagawa__1", "inaturalist_kanagawa", "2020-02-01T03:00Z", 35.506, 139.006, None,
         "", "", "", "",
         "", 0, "", "限定共有",
     ),  # instant_minute_z, taxon_key 無し
     (
-        "gbif__year", "gbif_kanagawa_occurrences", "2020", 35.505, 139.005, None,
+        "gbif_kanagawa_occurrences__year", "gbif_kanagawa_occurrences", "2020", 35.505, 139.005, None,
         "Foo bar", "", "SPECIES", "1001", "", 0, "", "公開",
     ),
     (
-        "gbif__month", "gbif_kanagawa_occurrences", "2020-02", 35.505, 139.005, None,
+        "gbif_kanagawa_occurrences__month", "gbif_kanagawa_occurrences", "2020-02", 35.505, 139.005, None,
         "Foo bar", "", "SPECIES", "1001", "", 0, "", "公開",
     ),
     (
-        "gbif__year_interval", "gbif_kanagawa_occurrences", "1990/1992", 35.505, 139.005, None,
+        "gbif_kanagawa_occurrences__year_interval", "gbif_kanagawa_occurrences", "1990/1992", 35.505, 139.005, None,
         "Foo bar", "", "SPECIES", "1001", "", 0, "", "公開",
     ),
     (
-        "gbif__month_interval", "gbif_kanagawa_occurrences", "2012-08/2013-06", 35.505, 139.005, None,
+        "gbif_kanagawa_occurrences__month_interval", "gbif_kanagawa_occurrences", "2012-08/2013-06", 35.505, 139.005, None,
         "Foo bar", "", "SPECIES", "1001", "", 0, "", "公開",
     ),
     (
-        "gbif__instant_minute", "gbif_kanagawa_occurrences", "2020-01-05T12:30", 35.505, 139.005, None,
+        "gbif_kanagawa_occurrences__instant_minute", "gbif_kanagawa_occurrences", "2020-01-05T12:30", 35.505, 139.005, None,
         "Foo bar", "", "SPECIES", "1001", "", 0, "", "公開",
     ),
     (
-        "gbif__instant_second", "gbif_kanagawa_occurrences", "2020-01-05T12:30:45", 35.505, 139.005, None,
+        "gbif_kanagawa_occurrences__instant_second", "gbif_kanagawa_occurrences", "2020-01-05T12:30:45", 35.505, 139.005, None,
         "Foo bar", "", "SPECIES", "1001", "", 0, "", "公開",
     ),
     (
-        "gbif__instant_second_z", "gbif_kanagawa_occurrences", "2020-01-05T12:30:45Z", 35.505, 139.005, None,
+        "gbif_kanagawa_occurrences__instant_second_z", "gbif_kanagawa_occurrences", "2020-01-05T12:30:45Z", 35.505, 139.005, None,
         "Foo bar", "", "SPECIES", "1001", "", 0, "", "公開",
     ),
     (
-        "gbif__day_interval", "gbif_kanagawa_occurrences", "2019-08-01/2019-08-31", 35.505, 139.005, None,
+        "gbif_kanagawa_occurrences__day_interval", "gbif_kanagawa_occurrences", "2019-08-01/2019-08-31", 35.505, 139.005, None,
         "Foo bar", "", "SPECIES", "1001", "", 0, "", "公開",
     ),
     (
-        "gbif__instant_millisecond_z", "gbif_kanagawa_occurrences", "2020-01-05T12:30:45.123Z",
+        "gbif_kanagawa_occurrences__instant_millisecond_z", "gbif_kanagawa_occurrences", "2020-01-05T12:30:45.123Z",
         35.505, 139.005, None, "Foo bar", "", "SPECIES", "1001", "", 0, "", "公開",
     ),
     (
-        "gbif__instant_minute_z_interval", "gbif_kanagawa_occurrences",
+        "gbif_kanagawa_occurrences__instant_minute_z_interval", "gbif_kanagawa_occurrences",
         "2020-01-05T12:30Z/2020-01-06T12:30Z", 35.505, 139.005, None,
         "Foo bar", "", "SPECIES", "1001", "", 0, "", "公開",
     ),
@@ -121,7 +121,7 @@ DEFAULT_PLACE = [
 
 DEFAULT_PLACE_SOURCE_REF = [
     # place_id, external_key, source_id
-    (DEFAULT_GRID01_PLACE_ID, "grid01:3550,13900", "organism_records.lat_lon"),
+    (DEFAULT_GRID01_PLACE_ID, "grid01:3550,13900", "grid01_latlon"),
 ]
 
 # 既定フィクスチャの出典別件数（gbif 11行・inat 1行。`DEFAULT_ORGANISM_RECORDS`
@@ -188,7 +188,15 @@ def make_occurrence_registry_db(path, taxa=None, places=None, place_refs=None, t
         )
         conn.execute("CREATE TABLE place (place_id TEXT PRIMARY KEY, region_id TEXT, place_kind TEXT)")
         conn.execute(
-            "CREATE TABLE place_source_ref (place_id TEXT, external_key TEXT, source_id TEXT)"
+            "CREATE TABLE place_source_ref (place_id TEXT, external_key TEXT, key_space TEXT)"
+        )
+        # b06 が occurrence.source_edition_id を引く source_edition（Issue #39 Phase C）。出典ごとに版 1 つ。
+        conn.execute(
+            "CREATE TABLE source_edition (edition_id TEXT PRIMARY KEY, source_id TEXT, edition_key TEXT, vintage TEXT)"
+        )
+        conn.executemany(
+            "INSERT INTO source_edition VALUES (?, ?, '20260101', NULL)",
+            [(f"common:edition:{sid}.20260101", sid) for sid in ("gbif_kanagawa_occurrences", "inaturalist_kanagawa")],
         )
         conn.execute(
             f"""CREATE TABLE taxon_assessment (
@@ -325,7 +333,9 @@ def _create_and_fill_occurrence(conn: sqlite3.Connection, rows: list[tuple]) -> 
     import b06_build_occurrence as b06
 
     conn.execute(b06._CREATE_OCCURRENCE_SQL.format(table="occurrence"))
-    placeholders = ", ".join("?" for _ in _OCCURRENCE_COLUMNS)
+    if rows and len(rows[0]) == len(_OCCURRENCE_COLUMNS):  # 旧来の列数。Issue #39 Phase C の 2 列を足す
+        rows = [tuple(r) + (f"common:occ:fixture.{r[0]}", None) for r in rows]
+    placeholders = ", ".join("?" for _ in range(len(_OCCURRENCE_COLUMNS) + 2))
     conn.executemany(f"INSERT INTO occurrence VALUES ({placeholders})", rows)
     common.record_stage_fingerprint(conn, "occurrence")
 

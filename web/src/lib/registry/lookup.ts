@@ -51,8 +51,10 @@ function sourceKey(sourceId: string | null | undefined): string {
  * （`(dataset, alias)` は1対多で正しい）ので、先勝ちで無言のまま構わない。
  */
 const firstAliasByDatasetAlias = new Map<string, GeneratedVariableAlias>();
+/** (dataset, alias, editionKey) -> 最初の行。版（土地利用 2006/2016）を指定して引くとき用。 */
+const firstAliasByDatasetAliasEdition = new Map<string, GeneratedVariableAlias>();
 /**
- * (dataset, alias, sourceId) -> 行。厳密な1行引き（`resolveAliasForSource`）に使う。
+ * (dataset, alias, sourceId, editionKey) -> 行。厳密な1行引き（`resolveAliasForSource`）に使う。
  * このキーは一意でなければならない（`scripts/registry/build_unit_variable.py` の
  * `_load_variable_alias_csv` が Python 側で assert している）が、SQLite の
  * `ix_variable_alias_dataset_alias_source` は非 UNIQUE 索引で D1 側では何も
@@ -65,11 +67,14 @@ const aliasBySourceKey = new Map<string, GeneratedVariableAlias>();
 for (const a of GENERATED_VARIABLE_ALIASES) {
   const datasetAliasKey = `${a.dataset ?? ""}\t${a.alias}`;
   if (!firstAliasByDatasetAlias.has(datasetAliasKey)) firstAliasByDatasetAlias.set(datasetAliasKey, a);
+  const editionAliasKey = `${datasetAliasKey}\t${a.editionKey ?? ""}`;
+  if (!firstAliasByDatasetAliasEdition.has(editionAliasKey)) firstAliasByDatasetAliasEdition.set(editionAliasKey, a);
 
-  const sourceKeyStr = `${a.dataset ?? ""}\t${a.alias}\t${sourceKey(a.sourceId)}`;
+  // Python（build_unit_variable.py）と同じ一意キー (dataset, alias, sourceId, editionKey)。
+  const sourceKeyStr = `${datasetAliasKey}\t${sourceKey(a.sourceId)}\t${a.editionKey ?? ""}`;
   if (aliasBySourceKey.has(sourceKeyStr)) {
     throw new Error(
-      `variable_alias: (dataset, alias, sourceId) が重複している: ${sourceKeyStr}`,
+      `variable_alias: (dataset, alias, sourceId, editionKey) が重複している: ${sourceKeyStr}`,
     );
   }
   aliasBySourceKey.set(sourceKeyStr, a);
@@ -129,7 +134,7 @@ for (const a of GENERATED_VARIABLE_ALIASES) {
  * 単位の根拠（Issue #31）。
  * - `unitId` が `undefined`（省略）なら variable の単位を使う。**明示的な null（単位不明の系列）は
  *   null を返す**（variable の既定に落とさない）。
- * - `dataset`（`measurements` / `sensor_timeseries` / 土地利用の本体名。`@年` は無視）を渡すと、
+ * - `dataset`（`measurements` / `sensor_timeseries` / 土地利用は出典名そのもの。版は edition_key）を渡すと、
  *   その出典の alias だけで根拠を決める。省略すると全出典を畳み、出典で食い違えば 'mixed'。
  * - 該当する alias が無ければ null（推測しない）。
  * 'source'=原本が単位を報告 / 'registry'=原本に単位記載が無くレジストリが補った。宣言は
@@ -141,7 +146,7 @@ export function unitBasis(variableId: string, unitId?: string | null, dataset?: 
   const bases = new Set<string>();
   for (const a of aliasesByVariable.get(variableId) ?? []) {
     if (a.unitId !== effective || !a.unitBasis) continue;
-    if (dataset !== undefined && a.dataset?.split("@", 1)[0] !== dataset) continue;
+    if (dataset !== undefined && a.dataset !== dataset) continue;
     bases.add(a.unitBasis);
   }
   if (bases.size === 0) return null;
@@ -172,8 +177,13 @@ export interface ResolvedVariableInfo {
 export function resolveVariableInfo(
   alias: string,
   dataset: string = MEASUREMENTS_DATASET,
+  editionKey?: string | null,
 ): ResolvedVariableInfo | undefined {
-  const aliasRow = firstAliasByDatasetAlias.get(`${dataset}\t${alias}`);
+  // editionKey を渡すとその版の行（null = 版を持たない行）、省略すると版を問わず最初の行。
+  const aliasRow =
+    editionKey === undefined
+      ? firstAliasByDatasetAlias.get(`${dataset}\t${alias}`)
+      : firstAliasByDatasetAliasEdition.get(`${dataset}\t${alias}\t${editionKey ?? ""}`);
   if (!aliasRow?.variableId) return undefined;
   const v = variableById.get(aliasRow.variableId);
   if (!v) return undefined;
@@ -192,6 +202,8 @@ export function resolveVariableInfo(
  * が要る利用者（Phase B のファクト移行）はこちらを使うこと。一致が無ければ
  * `undefined`（推測で埋めない）。
  *
+ * `editionKey`（土地利用の 2006/2016。省略・null = 版を持たない行）も一意キーの一部（Python と同じ）。
+ *
  * `sourceId` は `undefined`/`null` を「出典未記録」として同じ意味に扱う
  * （`variable_alias.source_id` が空の行 = `is_synthetic=1` のデータ）。
  */
@@ -199,8 +211,9 @@ export function resolveAliasForSource(
   alias: string,
   dataset: string,
   sourceId: string | null | undefined,
+  editionKey?: string | null,
 ): GeneratedVariableAlias | undefined {
-  return aliasBySourceKey.get(`${dataset}\t${alias}\t${sourceKey(sourceId)}`);
+  return aliasBySourceKey.get(`${dataset}\t${alias}\t${sourceKey(sourceId)}\t${editionKey ?? ""}`);
 }
 
 export function allVariables(): readonly GeneratedVariable[] {

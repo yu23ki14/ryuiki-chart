@@ -2,7 +2,7 @@
 ADR-0022 決定3・O-1 設計 v2 D1）。
 
 `scripts/b03_build_observation.py` の `measurements`/`sensor_timeseries` は
-`place_source_ref(source_id='sites.site_id')` → `place.region_id` の経路で
+`place_source_ref(key_space='site_id')` → `place.region_id` の経路で
 `observation.region_id` を決めている。occurrence（grid01。県境という概念を
 持たない機械グリッド）や、P-1b で足した土地利用（watershed。common スコープ
 なので `place.region_id` は常に NULL）は、この経路では region_id を決められない

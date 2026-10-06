@@ -94,11 +94,11 @@ describe("iasSpecies", () => {
 describe("place_id 変換", () => {
   it("グリッド", () => {
     expect(gridCellOfPlaceId("common:place:grid01.3520_13900")).toEqual({ mlat: 3520, mlon: 13900 });
-    expect(gridCellOfPlaceId("common:place:watershed.nlni-1")).toBeNull();
+    expect(gridCellOfPlaceId("common:place:watershed.nlni.1")).toBeNull();
   });
   it("流域は往復できる", () => {
-    expect(watershedIdOfPlaceId("common:place:watershed.nlni-83030-0016")).toBe("83030-0016");
-    expect(placeIdOfWatershedId("83030-0016")).toBe("common:place:watershed.nlni-83030-0016");
+    expect(watershedIdOfPlaceId("common:place:watershed.nlni.83030-0016")).toBe("83030-0016");
+    expect(placeIdOfWatershedId("83030-0016")).toBe("common:place:watershed.nlni.83030-0016");
     expect(watershedIdOfPlaceId("common:place:grid01.3520_13900")).toBeNull();
   });
 });

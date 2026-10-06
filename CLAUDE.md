@@ -19,8 +19,8 @@
   `check_v2_pipeline_fresh()`。手書きの mtime 走査は撤去した）。単体で作り直すだけなら
   `cd web && pnpm run build:v2`。
 - データの置き場所は **Cloudflare D1**（デプロイ先を Cloudflare 想定にしたため）。
-  41 テーブル（`web/drizzle/migrations/` 適用後の実測。うちシード管理用の内部表
-  `_seed_state` を除く40表が `web/scripts/seed-d1-local.mjs` のシード対象）を 1 つの D1 に
+  44 テーブル（`web/drizzle/migrations/` 適用後の実測。うちシード管理用の内部表
+  `_seed_state` を除く43表が `web/scripts/seed-d1-local.mjs` のシード対象）を 1 つの D1 に
   統合してある。D1 に `ATTACH` は無いので `d.` / `c.` の接頭辞は使わない。
   どの原本から来たテーブルかは `web/src/lib/table-meta.ts` の `TABLE_ORIGIN`。
 - D1 のスキーマは `web/src/db/schema.ts`（v1、既存表）・`web/src/db/schema-registry.ts`

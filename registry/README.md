@@ -14,7 +14,12 @@ Phase A（`docs/plans/PHASE_A.md`, ADR-0016）の成果物。v1 のファクト�
 | `unit.yaml` | 単位29件。`unit_id` を各行が明示する（後述） |
 | `variable.yaml` | 正準指標85件 |
 | `variable_alias.csv` | 出典表記→正準 `variable_id` の対応154件（列は後述「`variable_alias.csv` の列」） |
+| `source/license.yaml` | 出典のライセンス（ADR-0005、Issue #39 Phase C）。`source_registry.license` の自由記述71種の原文 → `license_id`/`license_class` の写像。`registry.sqlite` の `license` 表と `source_edition.license_*` の元（後述「出典・版・ライセンス」） |
+| `source/editions.yaml` | 出典の版（`source_edition`）の宣言。土地利用の 2006/2016・置換（`gbif_kanagawa` → `gbif_kanagawa_occurrences`）・`update_mode`・`content_file`。過去の取得履歴は復元不能なので書かない（捏造しない） |
+| `id_map/dataset.csv` | 旧 ID → 現行 ID の対応（dataset 分: 旧 `<dataset>@<年>` → 版の ID の 2 行。凍結リストとして `build_source.py` が variable_alias と突き合わせる） |
 | `place/zone.yaml` | Ridge to Reef ゾーン(1-5)の操作的定義 |
+| `place/key_space.yaml` | `place_source_ref.key_space`（外部キーの空間: `site_id`/`zone`/`watershed_id`/`grid01_latlon`）の宣言と、旧 `source_id` 値との対応、出典の版を持つか（Issue #39 Phase C、ADR-0006） |
+| `id_map/place.csv` | place の旧→新 ID の対応877件（ADR-0004 規約1 の区切り改定。**手書きの宣言**で、一度だけ旧ビルダーの出力から作った。`r01` が毎回、現行の place と1対1・旧 ID の再利用なし・規則一致を検査して止める。`registry.sqlite` の `id_map` 表→`web/src/lib/registry/generated-id-map.ts`→`legacy-id.ts` のリゾルバ。place_id を受ける経路が無いので未接続）。ファイル名の stem が entity |
 | `place/site_supplement.csv` | `sites` テーブルに無い観測地点の補完（143件）。`place_local` 列は、
   `site_id` の局番コード部分（`"__"` の後ろ）が空文字で自動導出できない行にだけ
   明示の local を持たせる列（後述「空の局番コード」参照）。他の142行は空欄 |
@@ -145,7 +150,7 @@ Phase B `phase-b/place-attributes`（P-1a）で `place_watershed` を新設し10
 |---|---|---|
 | unit | `common:unit:<slug>` | `common:unit:mg_per_l` |
 | variable | `common:variable:<theme>.<name>` | `common:variable:water.bod` |
-| place（namespace あり） | `<scope>:place:<kind>.<namespace>-<local>` | `jp-14:place:site.env-pubwater-0142` |
+| place（namespace あり） | `<scope>:place:<kind>.<namespace>.<local>`（ns と local の区切りは `.`、ADR-0004 規約1） | `jp-14:place:site.env-pubwater.0142` |
 | place（namespace 無し） | `<scope>:place:<kind>.<local>` | `common:place:grid01.3500_13900`（後述） |
 | taxon（GBIF由来） | `common:taxon:gbif.<GBIFのtaxonKey>` | `common:taxon:gbif.2480932` |
 | taxon（iNaturalist由来） | `common:taxon:inat.<iNatのtaxon.id>` | `common:taxon:inat.12345`（GBIFのtaxonKeyとは無関係な別の数値空間。Phase B `phase-b/occurrence-registry`、後述「taxon の名前空間分割」） |
@@ -266,22 +271,23 @@ ADR-0010 決定1「エイリアスは出典 × 表記で解決する」に沿っ
 | 列 | 意味 |
 |---|---|
 | `alias` | v1 の生の表記（`measurements.variable` / `sensor_timeseries.datastream`） |
-| `dataset` | v1 のどのテーブルの表記か（`measurements` / `sensor_timeseries`）。以前の `source_scope` を改名した。「出典スコープ」を名乗りながらテーブル名を持っていたのが Phase A の実装のズレだったので、実態に合わせて改名した |
+| `dataset` | v1 のどのテーブルの表記か（`measurements` / `sensor_timeseries`。土地利用は出典名 `nlni_l03b_landuse_by_watershed` そのもの）。以前の `source_scope` を改名した。「出典スコープ」を名乗りながらテーブル名を持っていたのが Phase A の実装のズレだったので、実態に合わせて改名した。**`@<年>` の後置は廃止した**（Issue #39 Phase C。版は次の `edition_key`） |
 | `source_id` | v1 `source_registry.source_id`。空 = 出典未記録（`measurements.source_id IS NULL` の行。全件 `is_synthetic=1`） |
 | `variable_id` / `unit_id` | 従来どおり。同じ `(dataset, alias)` を共有する行は必ず一致する（ビルド時表明。後述） |
 | `stat` / `grain` | 従来どおり。`(dataset, alias, source_id)` の組ごとに固定1値（一次資料調査済み。`docs/plans/PHASE_B_ALIAS_STAT_SOURCES.md`） |
 | `unit_basis` | `unit_id` の根拠（Issue #31）。`source`=原本が同じ単位を報告している／`registry`=原本に単位の記載が無くレジストリが補った。`unit_id` が空の行は空。実データとの一致は b04 の `_assert_unit_basis_evidence` が機械検証する（食い違えば止まる） |
+| `edition_key` | 出典が版を持つときの版（土地利用 2006/2016。46行〔2006:22・2016:24〕だけが値を持つ）。空 = 全 edition 共通。`(source_id, edition_key)` が `source/editions.yaml` の `declared_editions` に在ることをビルドが検査し、`registry.sqlite` では `source_edition_id`（`common:edition:<source_id>.<edition_key>`）に展開して持つ（`--files-only` でも同じ検査が効く） |
 | `note` | 従来どおり。根拠となる一次資料は `docs/plans/PHASE_B_ALIAS_STAT_SOURCES.md` の該当節を参照する形で書く（154行全部にURLを書けないため） |
 
-`source_id` は ADR-0010 決定1が言う `source_edition_id` の**暫定形**。`source_registry`/
-`source_edition`（ADR-0005）が入る Phase C で置き換わる（`docs/plans/PHASE_B_INTAKE.md` #9
-と同じ性質の暫定接続点）。
+`source_id` は bare のまま変えない（cube・D1 も bare。ADR-0005 改定）。ADR-0010 決定1が言う
+`source_edition_id` は、版を持つ出典だけ `edition_key` → `source_edition_id` として持つ
+（以前の暫定形 `dataset` の `@<年>` 後置は Issue #39 Phase C で解消した）。
 
 **ビルド時の表明**（`scripts/registry/build_unit_variable.py`。原本 DB は開かない）:
 
-1. `(dataset, alias, source_id)` が一意（`source_id` が空の行も Python 側で明示的に比較する。
-   SQLite の「NULL は互いに異なる」に頼らない）。
-2. 同じ `(dataset, alias)` を共有する行は `variable_id` と `unit_id` が一致する
+1. `(dataset, alias, source_id, edition_key)` が一意（`source_id`・`edition_key` が空の行も
+   Python 側で明示的に比較する。SQLite の「NULL は互いに異なる」に頼らない）。
+2. 同じ `(dataset, alias, edition_key)` を共有する行は `variable_id` と `unit_id` が一致する
    （`resolveVariableInfo()` が「どの `source_id` の行を引いたか」に関わらず同じ結果を
    返すための根拠）。
 3. `grain` は `{hour, day, month, year, fiscal_year}`、`stat` は実際に使われている値の
@@ -311,11 +317,31 @@ alias_source_pairs_{csv,data}_only.csv` に片方向ずつのズレを出す（0
 の語彙」参照）。ハードコードしないので、`variable_alias.csv` の `unit_id` を今後埋めれば
 このリストも自動的に縮む。
 
+### 出典・版・ライセンス（`license` / `source` / `source_edition`。Issue #39 Phase C、ADR-0005）
+
+`scripts/registry/build_source.py` が `ryuiki.sqlite` の `source_registry`（124行）と
+`source/license.yaml`・`source/editions.yaml` から作る（`--files-only` では作らない。原本を開くため）。
+
+- **`source`**: `source_registry` 1行 = 1行。`source_id` は bare のまま（`[a-z0-9_]+`。公開 ID は
+  `common:source:<source_id>` で全単射。`common.source_public_id()`/`source_local_id()`）。
+  `superseded_by` は置換先の source_id（`gbif_kanagawa` → `gbif_kanagawa_occurrences` の1件）。
+- **`source_edition`**: 124 source に 125 edition。宣言の無い source は取得日 `YYYYMMDD` の edition を1つ
+  自動で作り、土地利用の流域別集計だけは宣言した 2006/2016（出典自身の版 = vintage）を持つ。
+  `edition_id` = `common:edition:<source_id>.<edition_key>`。**過去の取得履歴は復元不能なので作らない。**
+  `redistributable`/`license_class`/`commercial_ok` は出典の旗として列に残すだけで、出力を絞る根拠にしない
+  （`embargo_reason` は作らない。ADR-0005 改定）。原文は `license_raw`。
+- **`license`**: 17件。`license_class` は public_domain / cc_by / share_alike / open_terms / noncommercial /
+  custom_terms / restricted / mixed / unconfirmed / unknown（`license.yaml` が正）。写像漏れは `unknown` に
+  落としてビルド出力に原文を出す（止めない）。実データでは 0 件であることをテストが見る。
+- ファクト側の `source_edition_id` は `scripts/migrate/edition.py` の `resolve_edition()` 1関数で引く（L2 のみ。
+  キューブ・D1 summary は bare の `source_id`）。
+- 検査（壊すと止まる）: `scripts/tests/test_registry_source.py`。
+
 ### `local_key` のスラッグ化（ADR-0004 規約4）
 
 レビューで、ID に空白（`taxon_id` 5,685件）・コロン（`local_key` 内に221件。
 `<scope>:<entity>:<local_key>` の3分割が曖昧になる）・非ASCII文字（`place_id` 7件。
-例: `jp-14:place:site.atsugi-river-中津川`）がそのまま入っていることが指摘された
+例: `jp-14:place:site.atsugi-river.中津川`）がそのまま入っていることが指摘された
 （ADR-0004 規約4「公開 ID は URI に解決できる形にする」に反する）。
 
 `scripts/registry/common.py` の `slugify_local_key()` に1箇所で実装し、

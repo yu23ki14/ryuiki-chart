@@ -37,7 +37,7 @@ DEFAULT_MEASUREMENTS = [
 # 毎時1系列（src_hourly/RAIN。24時ラベル＝日をまたぐケースを含む）・瞬時1系列
 # （src_instant/WTEMP）をそれぞれ最小限持つ（T1〜T6 の主要な分岐を一通り踏める
 # ように選んだ。site_id は measurements と同じ S1/S2 の名前空間を再利用する
-# ——実データでも `place_source_ref(source_id='sites.site_id')` は出典を
+# ——実データでも `place_source_ref(source_id='site_id')` は出典を
 # 問わない単一の名前空間なので、フィクスチャでもそれに合わせる）。
 DEFAULT_SENSOR_ROWS = [
     # site_id, datastream, phenomenon_time, result, unit, instrument_id, source_id, is_synthetic
@@ -76,8 +76,8 @@ DEFAULT_PLACES = [
 
 DEFAULT_PLACE_REFS = [
     # place_id, external_key, source_id
-    ("place_s1", "S1", "sites.site_id"),
-    ("place_s2", "S2", "sites.site_id"),
+    ("place_s1", "S1", "site_id"),
+    ("place_s2", "S2", "site_id"),
 ]
 
 # `variable.default_stat`（b04 の T4-2「sum」の絞り込みが読む）・`name_ja`
@@ -188,14 +188,17 @@ def make_registry_db(
         conn.execute(
             """CREATE TABLE variable_alias (
                 dataset TEXT, alias TEXT, source_id TEXT, variable_id TEXT, unit_id TEXT,
-                stat TEXT, grain TEXT, unit_basis TEXT
+                stat TEXT, grain TEXT, unit_basis TEXT, edition_key TEXT
             )"""
+        )
+        conn.execute(
+            "CREATE TABLE source_edition (edition_id TEXT PRIMARY KEY, source_id TEXT, edition_key TEXT, vintage TEXT)"
         )
         conn.execute(
             "CREATE TABLE place (place_id TEXT PRIMARY KEY, region_id TEXT, place_kind TEXT)"
         )
         conn.execute(
-            "CREATE TABLE place_source_ref (place_id TEXT, external_key TEXT, source_id TEXT)"
+            "CREATE TABLE place_source_ref (place_id TEXT, external_key TEXT, key_space TEXT)"
         )
         conn.execute(
             "CREATE TABLE place_relation (id INTEGER PRIMARY KEY AUTOINCREMENT, "
@@ -212,10 +215,11 @@ def make_registry_db(
             "CREATE TABLE unit (unit_id TEXT PRIMARY KEY, symbol TEXT, ucum TEXT, "
             "name_ja TEXT, quantity_kind TEXT)"
         )
+        # 土地利用の alias だけが 8 つ目に edition_key を持つ（Issue #39 Phase C）。他は 7 要素で渡す。
         conn.executemany(
-            "INSERT INTO variable_alias (dataset, alias, source_id, variable_id, unit_id, stat, grain) "
-            "VALUES (?,?,?,?,?,?,?)",
-            aliases if aliases is not None else DEFAULT_ALIASES,
+            "INSERT INTO variable_alias (dataset, alias, source_id, variable_id, unit_id, stat, grain, edition_key) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            [tuple(a) + (None,) * (8 - len(a)) for a in (aliases if aliases is not None else DEFAULT_ALIASES)],
         )
         # unit_basis（Issue #31）: 既定は「原本が単位を報告している」('source')。
         # 原本に単位が無い系列を作るテストは自分で UPDATE する。
@@ -251,9 +255,29 @@ def make_registry_db(
             "INSERT INTO unit (unit_id, symbol) VALUES (?,?)",
             units if units is not None else DEFAULT_UNITS,
         )
+        # source_edition（Issue #39 Phase C）: alias の出典ごとに版を 1 つ（取得回）。alias が edition_key を
+        # 持つ出典（土地利用）はその版だけ。b03 が observation.source_edition_id を引くための最小限の実体。
+        all_aliases = [tuple(a) + (None,) * (8 - len(a)) for a in (aliases if aliases is not None else DEFAULT_ALIASES)]
+        editions = {(a[2], a[7]) for a in all_aliases if a[2] is not None and a[7] is not None}
+        with_versions = {sid for sid, _ in editions}
+        editions |= {(a[2], "20260101") for a in all_aliases if a[2] is not None and a[2] not in with_versions}
+        editions |= {(sid, "20260101") for sid in ("fixture",) if sid not in with_versions}
+        conn.executemany(
+            "INSERT OR IGNORE INTO source_edition (edition_id, source_id, edition_key, vintage) VALUES (?,?,?,?)",
+            [(f"common:edition:{sid}.{key}", sid, key, key if key in ("2006", "2016") else None)
+             for sid, key in sorted(editions)],
+        )
         conn.commit()
     finally:
         conn.close()
+
+
+def pad_observation_rows(rows):
+    """旧来の 22 列の行に、Issue #39 Phase C で増えた `observation_id`（行ごとに一意な仮の値）と
+    `source_edition_id`（NULL）を足す。すでに 24 列ならそのまま。"""
+    if not rows or len(rows[0]) != 22:
+        return rows
+    return [tuple(r) + (f"common:obs:fixture.{i}", None) for i, r in enumerate(rows)]
 
 
 # P-1b（土地利用、docs/plans/PHASE_B_LANDUSE.md）。`scripts/b03_build_observation.py`
@@ -291,24 +315,24 @@ DEFAULT_WATERSHED_PLACES = [
 
 DEFAULT_WATERSHED_PLACE_REFS = [
     # place_id, external_key, source_id
-    ("place_w1", "W1", "watershed_meta.watershed_id"),
-    ("place_w2", "W2", "watershed_meta.watershed_id"),
+    ("place_w1", "W1", "watershed_id"),
+    ("place_w2", "W2", "watershed_id"),
 ]
 
 DEFAULT_LANDUSE_ALIASES = [
-    # dataset, alias, source_id, variable_id, unit_id, stat, grain
-    ("nlni_l03b_landuse_by_watershed@2006", "1:area_km2", LANDUSE_SOURCE_ID,
-     "common:variable:landuse.paddy", "common:unit:km2", "sum", "year"),
-    ("nlni_l03b_landuse_by_watershed@2006", "1:n_cells", LANDUSE_SOURCE_ID,
-     "common:variable:landuse.paddy_n_cells", "common:unit:count", "sum", "year"),
-    ("nlni_l03b_landuse_by_watershed@2006", "5:area_km2", LANDUSE_SOURCE_ID,
-     "common:variable:landuse.forest", "common:unit:km2", "sum", "year"),
-    ("nlni_l03b_landuse_by_watershed@2006", "5:n_cells", LANDUSE_SOURCE_ID,
-     "common:variable:landuse.forest_n_cells", "common:unit:count", "sum", "year"),
-    ("nlni_l03b_landuse_by_watershed@2016", "0100:area_km2", LANDUSE_SOURCE_ID,
-     "common:variable:landuse.paddy", "common:unit:km2", "sum", "year"),
-    ("nlni_l03b_landuse_by_watershed@2016", "0100:n_cells", LANDUSE_SOURCE_ID,
-     "common:variable:landuse.paddy_n_cells", "common:unit:count", "sum", "year"),
+    # dataset, alias, source_id, variable_id, unit_id, stat, grain, edition_key
+    ("nlni_l03b_landuse_by_watershed", "1:area_km2", LANDUSE_SOURCE_ID,
+     "common:variable:landuse.paddy", "common:unit:km2", "sum", "year", "2006"),
+    ("nlni_l03b_landuse_by_watershed", "1:n_cells", LANDUSE_SOURCE_ID,
+     "common:variable:landuse.paddy_n_cells", "common:unit:count", "sum", "year", "2006"),
+    ("nlni_l03b_landuse_by_watershed", "5:area_km2", LANDUSE_SOURCE_ID,
+     "common:variable:landuse.forest", "common:unit:km2", "sum", "year", "2006"),
+    ("nlni_l03b_landuse_by_watershed", "5:n_cells", LANDUSE_SOURCE_ID,
+     "common:variable:landuse.forest_n_cells", "common:unit:count", "sum", "year", "2006"),
+    ("nlni_l03b_landuse_by_watershed", "0100:area_km2", LANDUSE_SOURCE_ID,
+     "common:variable:landuse.paddy", "common:unit:km2", "sum", "year", "2016"),
+    ("nlni_l03b_landuse_by_watershed", "0100:n_cells", LANDUSE_SOURCE_ID,
+     "common:variable:landuse.paddy_n_cells", "common:unit:count", "sum", "year", "2016"),
 ]
 
 # `variable.default_stat`/`name_ja`（landuse 分。DEFAULT_VARIABLES に連結して
@@ -428,6 +452,7 @@ def make_v2_db_with_observation(path, create_sql: str, rows: list[tuple]) -> sql
     """
     conn = sqlite3.connect(f"file:{path}", uri=True)
     conn.execute(create_sql.format(table="observation"))
+    rows = pad_observation_rows(rows)
     placeholders = ", ".join("?" for _ in rows[0])
     conn.executemany(f"INSERT INTO observation VALUES ({placeholders})", rows)
     common.record_stage_fingerprint(conn, "observation")

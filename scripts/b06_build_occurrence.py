@@ -116,7 +116,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from migrate import common, occurrence_period, period, source_regions  # noqa: E402
+from migrate import common, edition, occurrence_period, period, public_id, source_regions  # noqa: E402
 from registry import common as registry_common  # noqa: E402
 from taxon_namespaces import (  # noqa: E402
     IAS_LIST_ID, TAXON_KEY_SOURCE_NAMESPACE, assert_known_source_ids, binom_of,
@@ -179,7 +179,7 @@ SELECT
   psr.place_id AS place_id, p.place_kind AS place_kind, o.is_synthetic
 FROM src.organism_records o
 LEFT JOIN reg.place_source_ref psr
-  ON psr.source_id = 'organism_records.lat_lon'
+  ON psr.key_space = 'grid01_latlon'
  AND psr.external_key = 'grid01:' || CAST(FLOOR(o.lat*100) AS INT) || ',' || CAST(FLOOR(o.lon*100) AS INT)
 LEFT JOIN reg.place p ON p.place_id = psr.place_id
 ORDER BY o.rowid
@@ -209,7 +209,9 @@ CREATE TABLE {table} (
   is_alien                  INTEGER,
   license_class             TEXT,
   publication_scope         TEXT,
-  is_alien_in_scope         INTEGER
+  is_alien_in_scope         INTEGER,
+  occurrence_id             TEXT NOT NULL,
+  source_edition_id         TEXT
 )
 """
 
@@ -217,6 +219,12 @@ _CREATE_OCCURRENCE_INDEX_SQL = (
     "CREATE UNIQUE INDEX occurrence_record_id_pk ON {table} (record_id)"
 )
 _DROP_OCCURRENCE_INDEX_SQL = "DROP INDEX IF EXISTS occurrence_record_id_pk"
+# Issue #39 Phase C（担当 C）: 公開 ID（`migrate/public_id.py`）も同じ流儀で一意性を検証する
+# （旧キー record_id と occurrence_id の両方が UNIQUE = 旧 -> 新が1対1に引ける）。
+_CREATE_OCCURRENCE_ID_INDEX_SQL = (
+    "CREATE UNIQUE INDEX occurrence_occurrence_id_pk ON {table} (occurrence_id)"
+)
+_DROP_OCCURRENCE_ID_INDEX_SQL = "DROP INDEX IF EXISTS occurrence_occurrence_id_pk"
 
 _INSERT_SQL = """
 INSERT INTO {table} (
@@ -225,8 +233,8 @@ INSERT INTO {table} (
   period_grain, period_start, period_end, period_raw,
   scientific_name, vernacular_name, taxon_rank,
   red_list_category, is_alien, license_class, publication_scope,
-  is_alien_in_scope
-) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+  is_alien_in_scope, occurrence_id, source_edition_id
+) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 """
 
 
@@ -318,6 +326,8 @@ def _ingest(
     溜めない）。
     """
     stats = _empty_stats()
+    edition_of = edition.make_resolver(work, "reg")  # その出典の唯一の版（解決できなければ止まる）
+
     taxon_ids, alien_binoms, sources, regions = ctx.taxon_ids, ctx.alien_binoms, ctx.sources, ctx.regions
     source_usage, region_usage, shape_usage = ctx.source_usage, ctx.region_usage, ctx.shape_usage
 
@@ -408,6 +418,7 @@ def _ingest(
                 scientific_name, vernacular_name, taxon_rank,
                 red_list_category, is_alien, license_class, publication_scope,
                 is_alien_in_scope,
+                public_id.occurrence_id(record_id, source_id), edition_of(source_id),
             )
 
     dest.executemany(_INSERT_SQL.format(table=f'"{insert_table}"'), rows())
@@ -507,6 +518,13 @@ def build_and_write_occurrence(
 
             dest.execute(_CREATE_OCCURRENCE_INDEX_SQL.format(table=f'"{staging}"'))
             dest.execute(_DROP_OCCURRENCE_INDEX_SQL)
+            try:
+                dest.execute(_CREATE_OCCURRENCE_ID_INDEX_SQL.format(table=f'"{staging}"'))
+            except sqlite3.IntegrityError as e:
+                raise common.MigrationError(
+                    f"occurrence_id が一意でない（出典の key が重複している。ADR-0004）: {e}"
+                ) from e
+            dest.execute(_DROP_OCCURRENCE_ID_INDEX_SQL)
 
             # T1 不変条件（ADR-0024）: period_start/period_end が時刻帯を持たない、
             # date(period_start)/date(period_end) がそれぞれ自身の日付部分と一致する

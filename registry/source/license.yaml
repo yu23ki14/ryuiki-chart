@@ -1,0 +1,283 @@
+# registry/source/license.yaml
+#
+# 出典のライセンス（ADR-0005）。scripts/registry/build_source.py が読み、registry.sqlite の
+# `license` 表と、`source_edition.license_id`/`license_class`/`commercial_ok` を作る。
+#
+# 手書きの正。元の自由記述（ryuiki.sqlite `source_registry.license`、71 種）を **原文の
+# まま** `mappings[].raw` に置き、`license_id` へ写す。原文は `source_edition.license_raw`
+# にも残る（写像で情報を捨てない）。
+#
+# **これは分類であって許諾の判断ではない。** ADR-0005 改定（Issue #39 Phase C）のとおり、
+# `redistributable`/`license_class`/`commercial_ok` は出典の旗として残すだけで、出力・API・
+# DwC-A を絞る根拠にしない（扱うデータは全て公開済み。ADR-0028・オーナー決定）。
+# 「隔離」は行わず、`embargo_reason` 列も作らない。
+#
+# 写像漏れ: source_registry に、ここの `mappings[].raw` に無い原文があると `unknown` に
+# 落とし、件数と原文をビルドの出力に出す（黙って埋めない。止めもしない）。逆に、
+# source_registry に無い原文を `mappings` に書いておくとビルドが止まる（古い宣言の掃除）。
+# `unknown` に落ちた件数が 0 であることは scripts/tests/test_registry_source.py が
+# 実データで確認する（原本があるときだけ）。
+
+# license_class のコードリスト。commercial_ok は edition の列に写す値（NULL = 判定しない）。
+# organism_records.license_class（open/noncommercial/restricted/unknown）は別の語彙で、
+# 行単位のライセンス（DwC-A 用）。ここは出典（edition）単位。
+license_classes:
+  public_domain: {commercial_ok: 1, description: "パブリック・ドメイン（CC0 等）"}
+  cc_by: {commercial_ok: 1, description: "CC BY（表示）"}
+  share_alike: {commercial_ok: 1, description: "継承条件あり（ODbL 等）"}
+  open_terms: {commercial_ok: 1, description: "出典明示で利用可（政府標準利用規約・PDL・各サイトポリシー等）"}
+  noncommercial: {commercial_ok: 0, description: "非商用のみ"}
+  custom_terms: {commercial_ok: null, description: "出典独自の規約。商用可否は規約を読む"}
+  restricted: {commercial_ok: 0, description: "複製・転用不可"}
+  mixed: {commercial_ok: null, description: "行・データセットごとに異なる"}
+  unconfirmed: {commercial_ok: null, description: "未確認"}
+  unknown: {commercial_ok: null, description: "未分類"}
+
+licenses:
+  - license_id: cc0_1_0
+    name_ja: "CC0 1.0 全世界パブリック・ドメイン提供"
+    spdx_or_url: "https://creativecommons.org/publicdomain/zero/1.0/"
+    license_class: public_domain
+    attribution_text: null
+    notes: "合成データ（自プロジェクト生成）と、さがみはらデジタルアーカイブの目録情報。"
+  - license_id: cc_by
+    name_ja: "クリエイティブ・コモンズ 表示（CC BY）"
+    spdx_or_url: "https://creativecommons.org/licenses/by/4.0/"
+    license_class: cc_by
+    attribution_text: "出典（提供元・データセット名）を表示する"
+    notes: "表記ゆれ（CC-BY 4.0 / Creative Commons Attribution / クリエイティブ・コモンズ-表示）をまとめた。版（4.0）の明記が無い原文も含む（原文は license_raw に残す）。"
+  - license_id: odbl_1_0
+    name_ja: "Open Database License 1.0（ODbL）"
+    spdx_or_url: "https://opendatacommons.org/licenses/odbl/1-0/"
+    license_class: share_alike
+    attribution_text: "© OpenStreetMap contributors"
+    notes: "継承（Share-Alike）条件あり。OpenStreetMap。"
+  - license_id: pdl_1_0
+    name_ja: "公共データ利用規約（第1.0版、PDL1.0）"
+    spdx_or_url: "https://www.kantei.go.jp/jp/singi/it2/densi/pdf/opendata_ver1.0.pdf"
+    license_class: open_terms
+    attribution_text: "出典を記載する（改変時は改変した旨も明記）"
+    notes: "各府省ウェブサイトの利用規約が PDL1.0 に準拠しているもの。"
+  - license_id: gov_standard_2_0
+    name_ja: "政府標準利用規約（第2.0版）"
+    spdx_or_url: "https://www.digital.go.jp/resources/open_data/"
+    license_class: open_terms
+    attribution_text: "出典を記載する"
+    notes: "CC BY 4.0 と互換。気象庁・e-Stat・環境省水環境総合情報サイトなど、第2.0版準拠をうたうもの。"
+  - license_id: nlni_terms
+    name_ja: "国土数値情報利用約款（商用可・オープンデータ）"
+    spdx_or_url: "https://nlftp.mlit.go.jp/ksj/other/agreement.html"
+    license_class: open_terms
+    attribution_text: "出典（国土数値情報）を明示する"
+    notes: "ダウンロードページの個別条件が「商用可」または「適用する利用規約に基づく（オープンデータ）」のもの。"
+  - license_id: nlni_noncommercial
+    name_ja: "国土数値情報利用約款（非商用）"
+    spdx_or_url: "https://nlftp.mlit.go.jp/ksj/other/agreement.html"
+    license_class: noncommercial
+    attribution_text: "出典（国土数値情報）を明示する"
+    notes: "ダウンロードページの個別条件が「非商用」のもの。NII geoshape 経由の河川データ（元は国土数値情報 W05）も同じ扱いを維持。"
+  - license_id: gsi_terms
+    name_ja: "国土地理院コンテンツ利用規約"
+    spdx_or_url: "https://www.gsi.go.jp/kikakuchousei/kikakuchousei40182.html"
+    license_class: open_terms
+    attribution_text: "出典を表記する"
+    notes: "PDL1.0 相当。基盤地図情報は測量法上の基本測量成果で、複製・使用に別途申請が要る場合がある（該当版は license_raw に原文）。"
+  - license_id: plateau_site_policy
+    name_ja: "PLATEAU Site Policy（著作権について）"
+    spdx_or_url: null
+    license_class: open_terms
+    attribution_text: null
+    notes: "実質 CC BY 4.0 相当（原文の記述）。"
+  - license_id: site_policy
+    name_ja: "自治体・機関ウェブサイトの利用規約（出典明示で利用可）"
+    spdx_or_url: null
+    license_class: open_terms
+    attribution_text: "出典を明記する"
+    notes: "神奈川県・横浜市・川崎市・神奈川県立生命の星・地球博物館等のサイトポリシー。条件の細部（二次利用の事前問合せ等）は license_raw に原文。"
+  - license_id: biodic_terms
+    name_ja: "環境省生物多様性センターウェブサイト利用規約"
+    spdx_or_url: "https://www.biodic.go.jp/"
+    license_class: custom_terms
+    attribution_text: "出典を明示する"
+    notes: "独自の利用規約。一部は事前アンケート回答を要する（license_raw に原文）。"
+  - license_id: soramame_terms
+    name_ja: "環境省 そらまめ君 利用規約"
+    spdx_or_url: "https://soramame.env.go.jp/policy"
+    license_class: custom_terms
+    attribution_text: "出典を明示する"
+    notes: null
+  - license_id: custom_terms
+    name_ja: "出典独自の利用規約（ol）"
+    spdx_or_url: null
+    license_class: custom_terms
+    attribution_text: null
+    notes: "GBIF 等のデータセット単位で独自利用規約が付くもの。"
+  - license_id: all_rights_reserved
+    name_ja: "無断複製・転用不可"
+    spdx_or_url: null
+    license_class: restricted
+    attribution_text: null
+    notes: "サイトポリシーが無断複製・転用を禁じるもの。"
+  - license_id: per_item_mixed
+    name_ja: "データセット（または観察）ごとに個別"
+    spdx_or_url: null
+    license_class: mixed
+    attribution_text: null
+    notes: "出典の中にライセンスの異なるデータセット・観察が混在する。ライセンスは行側（データセット列・license 列・organism_records.license_class）が持つ。"
+  - license_id: terms_unconfirmed
+    name_ja: "利用条件が未確認（要確認・明示なし）"
+    spdx_or_url: null
+    license_class: unconfirmed
+    attribution_text: null
+    notes: "原文が『要確認』『不明』『明示なし』等のもの。推測で埋めず、確認できるまでこのまま。"
+  - license_id: unknown
+    name_ja: "ライセンス未分類（写像漏れ）"
+    spdx_or_url: null
+    license_class: unknown
+    attribution_text: null
+    notes: "mappings に無かった原文の受け皿。ビルドは通すが件数と原文を出力して知らせる。この ID が実データに残らないことをテストで見る。"
+
+# 原文（source_registry.license）-> license_id。
+mappings:
+  - raw: "無断複製・転用不可（サイトポリシー）"
+    license_id: all_rights_reserved
+  - raw: "生物多様性センターウェブサイト利用規約"
+    license_id: biodic_terms
+  - raw: "生物多様性センターウェブサイト利用規約（www.biodic.go.jp と同一の環境省生物多様性センターが公開するWebGISであり、既存収集分(biodic_vegmesh_4th_kanagawa 等)と同じ利用規約が適用されると判断)。ただし『いきもの地図』のWebMapアイテム自体は ArcGIS Online 上で access: public / licenseInfo: 空欄 だったことを実測で確認しており(2026-08-30)、明示的な二次利用許諾条項がアプリ側に記載されているわけではない点に注意。"
+    license_id: biodic_terms
+  - raw: "生物多様性センターウェブサイト利用規約(要事前アンケート回答)"
+    license_id: biodic_terms
+  - raw: "CC0 1.0相当（自プロジェクトで生成した合成データであり、外部データの再配布ではない）"
+    license_id: cc0_1_0
+  - raw: "目録情報はCC0 1.0 全世界パブリック・ドメイン提供(https://digital-sagamihara.jp/terms 2-1)。個別資料の画像2次利用は所蔵機関(市立博物館)へ要問合せのため画像は未取得。"
+    license_id: cc0_1_0
+  - raw: "CC-BY 4.0"
+    license_id: cc_by
+  - raw: "Creative Commons Attribution (CC BY)"
+    license_id: cc_by
+  - raw: "Creative Commons Attribution 4.0 International (CC BY 4.0)"
+    license_id: cc_by
+  - raw: "GBIF Backbone Taxonomy は CC BY 4.0（https://doi.org/10.15468/39omei）"
+    license_id: cc_by
+  - raw: "cc-by（データ提供元クレジット表記必須の付帯条件あり）"
+    license_id: cc_by
+  - raw: "オープンデータ（CC BY 4.0）"
+    license_id: cc_by
+  - raw: "クリエイティブ・コモンズ 表示 (CC BY) https://opendata.city.sagamihara.kanagawa.jp/dataset/taiki"
+    license_id: cc_by
+  - raw: "クリエイティブ・コモンズ-表示(CC-BY)"
+    license_id: cc_by
+  - raw: "独自利用規約(ol)"
+    license_id: custom_terms
+  - raw: "政府標準利用規約2.0 (e-Stat 統計GIS 境界データ)"
+    license_id: gov_standard_2_0
+  - raw: "政府標準利用規約2.0 (e-Stat)"
+    license_id: gov_standard_2_0
+  - raw: "政府標準利用規約（第2.0版）準拠。出典明示で改変含む自由利用・商用利用可（利用申請不要）。CC BY 4.0（表示4.0国際）と互換性があり、CC BYに従うことでも利用可能（https://www.gsj.jp/license/license.html に明記）。"
+    license_id: gov_standard_2_0
+  - raw: "気象庁ホームページ利用規約（政府標準利用規約 2.0 準拠 / CC BY 4.0 互換） https://www.jma.go.jp/jma/kishou/info/coment.html"
+    license_id: gov_standard_2_0
+  - raw: "環境省 水環境総合情報サイト（政府標準利用規約準拠 / 出典明示で利用可） https://water-pub.env.go.jp/water-pub/mizu-site/env.asp"
+    license_id: gov_standard_2_0
+  - raw: "国土地理院コンテンツ利用規約（公共データ利用規約(PDL1.0)相当、出典表記必須） https://www.gsi.go.jp/kikakuchousei/kikakuchousei40182.html"
+    license_id: gsi_terms
+  - raw: "国土地理院コンテンツ利用規約（公共データ利用規約(PDL1.0)相当）https://www.gsi.go.jp/kikakuchousei/kikakuchousei40182.html　※基盤地図情報は測量法上の基本測量成果であり複製・使用には別途申請が必要な場合がある旨の注記あり"
+    license_id: gsi_terms
+  - raw: "geoshape.ex.nii.ac.jp の説明ページには「このウェブサイトのコンテンツは、CC BY 4.0 の下に提供されています」とある一方、同じ段落で「ただし本サイトで利用している河川データの利用規約については、国土数値情報を参照して下さい」とも明記されている。NIIのCC BY 4.0はサイト・GeoJSON変換という再パッケージ行為にかかる権利表示であって、原データ(国土数値情報W05)自体の利用規約(既存 nlni_w05_rivers に記載の「非商用」条件, https://nlftp.mlit.go.jp/ksj/other/agreement.html)を上書きするものではないと解釈するのが妥当。商用利用可への緩和効果は無いと判断する(既存nlni_w05_riversと同じ「非商用」扱いを維持)。"
+    license_id: nlni_noncommercial
+  - raw: "ダウンロードページ記載の使用許諾条件「非商用」"
+    license_id: nlni_noncommercial
+  - raw: "国土数値情報利用約款 + ダウンロードページ記載の使用許諾条件「非商用」（出典明示で利用可・商用利用不可） https://nlftp.mlit.go.jp/ksj/other/agreement.html"
+    license_id: nlni_noncommercial
+  - raw: "オープンデータ（CC BY 4.0）／国土数値情報利用約款。ダウンロードページ原文「適用する利用規約に基づく（オープンデータ）」 https://nlftp.mlit.go.jp/ksj/other/agreement.html"
+    license_id: nlni_terms
+  - raw: "国土数値情報利用約款 / ダウンロードページ記載の使用許諾条件「商用可」 https://nlftp.mlit.go.jp/ksj/other/agreement.html"
+    license_id: nlni_terms
+  - raw: "国土数値情報利用約款 / 平成28年度分は「適用する利用規約に基づく（オープンデータ）」 https://nlftp.mlit.go.jp/ksj/other/agreement.html"
+    license_id: nlni_terms
+  - raw: "国土数値情報利用約款（出典明示で商用利用・再配布可） https://nlftp.mlit.go.jp/ksj/other/agreement.html"
+    license_id: nlni_terms
+  - raw: "ODbL 1.0（Share-Alike/帰属表示の継承条件あり、詳細: https://www.openstreetmap.org/copyright）"
+    license_id: odbl_1_0
+  - raw: "ktr.mlit.go.jp/guide/copyright.html を確認。原文『関東地方整備局ウェブサイトで掲載・発信している情報...の著作権は...「公共データ利用規約(第1.0版)」(PDL1.0)に準拠...利用することができます』"
+    license_id: pdl_1_0
+  - raw: "公共データ利用規約(第1.0版)PDL1.0 (農林水産省ウェブサイトのコンテンツ利用規約、出典: https://www.maff.go.jp/j/use/link.html ; G空間情報センター側の実データは別ライセンス条件の可能性あり未確認)"
+    license_id: pdl_1_0
+  - raw: "公共データ利用規約(第1.0版)PDL1.0 (農林水産省ウェブサイトのコンテンツ利用規約、出典: https://www.maff.go.jp/j/use/link.html ; 出典記載必須・改変時の明記必須)"
+    license_id: pdl_1_0
+  - raw: "公共データ利用規約（第1.0版）"
+    license_id: pdl_1_0
+  - raw: "公共データ利用規約（第1.0版）PDL1.0（環境省ホームページコンテンツの利用について）: https://www.env.go.jp/mail.html"
+    license_id: pdl_1_0
+  - raw: "第5次RL(CSV)はCC BY 4.0（いきものログ記載）。環境省サイトは公共データ利用規約(第1.0版)PDL1.0。"
+    license_id: pdl_1_0
+  - raw: "CC BY 4.0 / CC BY-NC 4.0（データセット個別）"
+    license_id: per_item_mixed
+  - raw: "データセットごとに異なる（cc-by, ol=独自利用規約, ogl=政府標準利用規約, notspecified 等混在。個票の license 列参照）"
+    license_id: per_item_mixed
+  - raw: "各データセット個別 (CC0/CC BY/CC BY-NC が混在。license列に保持)"
+    license_id: per_item_mixed
+  - raw: "各データセット個別(多くは CC BY 4.0)"
+    license_id: per_item_mixed
+  - raw: "各データセット個別(多くは CC BY 4.0)。https://data.city.yokohama.lg.jp/terms.html に「特別の記載がない限りクリエイティブ・コモンズ・ライセンス 表示 4.0 国際のもとでライセンス」との記載を確認。"
+    license_id: per_item_mixed
+  - raw: "各データセット個別（多くは CC BY 4.0 / 政府標準利用規約）"
+    license_id: per_item_mixed
+  - raw: "観察ごとに個別 (CC0/CC BY/CC BY-NC/全権利留保。license_code列に保持)"
+    license_id: per_item_mixed
+  - raw: "PLATEAU Site Policy「3. 著作権について」に拠る（実質CC-BY 4.0相当）"
+    license_id: plateau_site_policy
+  - raw: "nh.kanagawa-museum.jp サイトポリシー https://nh.kanagawa-museum.jp/sitepolicy/ 「『引用』等の著作権法上認められている範囲において自由にご利用になれます。コンテンツを利用する際には、出典を記載してください。」(既存source_registryの kanagawa_rdb2006_animals と同一サイト・同一適用)"
+    license_id: site_policy
+  - raw: "サイト著作権表記: 『当サイトに掲載されているコンテンツ（文章、イラスト、写真、動画など）は、著作権の対象となっています。「引用」等の著作権法上認められている範囲において自由にご利用になれます。コンテンツを利用する際には、出典を記載してください。』(© Kanagawa Prefectural Museum of Natural History, https://nh.kanagawa-museum.jp/sitepolicy/)。本データセットはPDF本体を含まず書誌情報(目録)のみ。"
+    license_id: site_policy
+  - raw: "各事業体のサイト利用条件（出典明示で利用可）"
+    license_id: site_policy
+  - raw: "川崎市ホームページの利用について（出典明示で利用可）https://www.city.kawasaki.jp/170/page/0000000440.html"
+    license_id: site_policy
+  - raw: "横浜市サイトの利用について（出典明示で利用可）https://www.city.yokohama.lg.jp/site/copyright.html"
+    license_id: site_policy
+  - raw: "神奈川県サイトポリシー(出典明示で利用可)"
+    license_id: site_policy
+  - raw: "神奈川県サイトポリシー（出典記載により利用可／書籍転載等の二次的利用は所管所属へ事前問合せ）: https://www.pref.kanagawa.jp/master/sitepolicy.html"
+    license_id: site_policy
+  - raw: "環境省 そらまめ君 利用規約（出典明示による利用可 / 速報値・確定値は国立環境研究所 環境数値データベース）https://soramame.env.go.jp/policy"
+    license_id: soramame_terms
+  - raw: "EADAS利用規約(要確認 /Service/AboutTermofuse)"
+    license_id: terms_unconfirmed
+  - raw: "サイト上に利用規約・ライセンス表記は見当たらず。download-kakutei.php に「このサイトに掲載している測定値以外の測定値の入手については、環境保全課へお問い合わせください。」とあるのみ。明示的な二次配布許諾なしと判断しredistributable=0 とする（内部デモとしては取得する）。"
+    license_id: terms_unconfirmed
+  - raw: "ライセンス表示なし（引用形式のみ指定）"
+    license_id: terms_unconfirmed
+  - raw: "不明(要利用規約確認、登録前のため未確認)"
+    license_id: terms_unconfirmed
+  - raw: "利用条件の明示なし(要問合せ)。相模川漁連の公開告知記事のため出典明記の上での引用は可能と判断"
+    license_id: terms_unconfirmed
+  - raw: "国立科学博物館の利用規約に準拠(要確認)"
+    license_id: terms_unconfirmed
+  - raw: "平塚市オープンデータ利用規約(要確認、CC-BY相当を想定)"
+    license_id: terms_unconfirmed
+  - raw: "政府標準利用規約(準拠を想定、要確認)"
+    license_id: terms_unconfirmed
+  - raw: "政府標準利用規約(第2.0版)相当・国交省地方整備局サイトの二次利用ルールに準拠（要確認）"
+    license_id: terms_unconfirmed
+  - raw: "政府標準利用規約(第2.0版)相当（要確認）"
+    license_id: terms_unconfirmed
+  - raw: "環境省ウェブサイト利用規約(要確認)"
+    license_id: terms_unconfirmed
+  - raw: "環境省ウェブサイト著作権・リンクについて(要確認、既存 moe_satoyama_kanagawa と同じ扱い)"
+    license_id: terms_unconfirmed
+  - raw: "環境省ウェブサイト著作権・リンクについてに準拠(要確認)"
+    license_id: terms_unconfirmed
+  - raw: "神奈川県サイトポリシー(出典明示で利用可、要確認)。CKAN上の当該データセットはCC-BY表記。"
+    license_id: terms_unconfirmed
+  - raw: "神奈川県ホームページ利用規約(要確認、政府標準利用規約(CC-BY相当)準拠を想定)"
+    license_id: terms_unconfirmed
+  - raw: "秦野市オープンデータ利用規約(要確認、CC-BY相当を想定)"
+    license_id: terms_unconfirmed
+  - raw: "要確認"
+    license_id: terms_unconfirmed
+  - raw: "要確認(ビジターセンター運営元への利用許諾確認が必要)"
+    license_id: terms_unconfirmed
+  - raw: "要確認(転載条件の明記なし)"
+    license_id: terms_unconfirmed

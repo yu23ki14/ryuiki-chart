@@ -14,7 +14,7 @@ export interface RollupFixture {
   raw: Database.Database;
 }
 
-const PLACE = (id: string) => `common:place:watershed.nlni-${id}`;
+const PLACE = (id: string) => `common:place:watershed.nlni.${id}`;
 export const RFX = {
   ws: { w1: "83030-0001", w2: "83030-0002", w3: "83030-0003", w4: "83030-0004", w5: "83030-0005" },
   place: PLACE,
@@ -41,7 +41,7 @@ export function buildRollupFixture(opts: { years?: [number, number] } = {}): Rol
     `INSERT INTO place (place_id, region_id, place_kind, name_ja, lat, lon, elevation_m, area_km2, definition_ref, status)
      VALUES (?,?,?,?,?,?,NULL,?,NULL,NULL)`,
   );
-  const ref = raw.prepare(`INSERT INTO place_source_ref (place_id, external_key, source_id) VALUES (?,?,?)`);
+  const ref = raw.prepare(`INSERT INTO place_source_ref (place_id, external_key, key_space) VALUES (?,?,?)`);
   const watersheds: [string, string | null, number, number, number][] = [
     [RFX.ws.w1, "多摩川", 20, 35.5, 139.5],
     [RFX.ws.w2, null, 8, 35.6, 139.6],
@@ -51,7 +51,7 @@ export function buildRollupFixture(opts: { years?: [number, number] } = {}): Rol
   ];
   for (const [id, name, area, lat, lon] of watersheds) {
     place.run(PLACE(id), "kanagawa", "watershed", name, lat, lon, area);
-    ref.run(PLACE(id), id, "watershed_meta.watershed_id");
+    ref.run(PLACE(id), id, "watershed_id");
   }
   // 流域でない place（数えてはいけない）
   place.run("fx:site:1", "kanagawa", "site", "地点1", 35, 139, null);

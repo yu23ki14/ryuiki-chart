@@ -22,6 +22,8 @@ import sys, csv, json, re, sqlite3, zipfile, pathlib, datetime, argparse
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from common import DB, ROOT, now
 from taxon_namespaces import TAXON_KEY_SOURCE_NAMESPACE, dwca_taxon_id
+from migrate import public_id
+from dwca_id_map import write_occurrence_id_mapping
 
 OUT = ROOT/"data/dwca"; OUT.mkdir(parents=True, exist_ok=True)
 # DwC-A の zip は展開形と同じ data/dwca/ に置く。
@@ -154,6 +156,7 @@ def build(include_noncommercial=False):
              "included_license_class_counts": {},
              "include_noncommercial_flag": include_noncommercial}
     written_event_ids = set()
+    id_map_rows: list[tuple[str, str, str, str]] = []
 
     ev_path, occ_path, emof_path = OUT/"event.txt", OUT/"occurrence.txt", OUT/"extendedmeasurementorfact.txt"
     fev = open(ev_path, "w", encoding="utf-8", newline="")
@@ -195,7 +198,12 @@ def build(include_noncommercial=False):
             continue
         stats["included_license_class_counts"][lic_class] = \
             stats["included_license_class_counts"].get(lic_class, 0) + 1
-        eid = r["event_id"] or f"ev_{r['record_id']}"
+        # occurrenceID は公開 ID（Issue #39 Phase C。旧 record_id との対応は occurrenceID_mapping.csv）。
+        occ_id = public_id.occurrence_id(r["record_id"], sid)
+        # eventID: 出典が event_id を持つ行はそのまま。持たない行の補完 ID も公開 ID 由来にする
+        # （旧 `ev_<record_id>` は旧 occurrenceID を含むため）。旧→新は同じ対応 CSV に載せる。
+        eid = r["event_id"] or f"ev_{occ_id}"
+        id_map_rows.append((r["record_id"], occ_id, r["event_id"] or f"ev_{r['record_id']}", eid))
         lat, lon = r["lat"], r["lon"]
         d = r["observed_on"] or ""
         write_event_once(eid, {
@@ -215,7 +223,7 @@ def build(include_noncommercial=False):
         if not sci.strip():
             stats["n_blank_sciname"] += 1
         wocc.writerow({k: clean(v) for k, v in {
-          "occurrenceID": r["record_id"], "eventID": eid,
+          "occurrenceID": occ_id, "eventID": eid,
           "basisOfRecord": r["basis_of_record"] or "HumanObservation",
           "occurrenceStatus": "present",
           "scientificName": sci, "acceptedNameUsage": "",
@@ -240,8 +248,8 @@ def build(include_noncommercial=False):
         stats["n_occ"] += 1
         if r["density"] is not None:
             wemof.writerow({k: clean(v) for k, v in {
-              "eventID": eid, "occurrenceID": r["record_id"],
-              "measurementID": f"{r['record_id']}_density",
+              "eventID": eid, "occurrenceID": occ_id,
+              "measurementID": f"{occ_id}_density",
               "measurementType": "個体密度 / population density", "measurementTypeID": "",
               "measurementValue": r["density"], "measurementUnit": r["density_unit"] or "",
               "measurementUnitID": "", "measurementAccuracy": "",
@@ -303,10 +311,13 @@ def build(include_noncommercial=False):
         date=datetime.date.today().isoformat(),
         excl_summary=excl_summary), encoding="utf-8")
 
+    # 旧 occurrenceID（record_id）-> 新 occurrenceID の対応。公開物の契約変更なので DwC-A と一緒に出す。
+    write_occurrence_id_mapping(OUT/"occurrenceID_mapping.csv", id_map_rows)
+
     zp = OUT/"dwca_ryuiki_kanagawa.zip"
     with zipfile.ZipFile(zp, "w", zipfile.ZIP_DEFLATED) as z:
         for n in ("meta.xml","eml.xml","event.txt","occurrence.txt",
-                  "extendedmeasurementorfact.txt"):
+                  "extendedmeasurementorfact.txt","occurrenceID_mapping.csv"):
             z.write(OUT/n, n)
 
     write_excluded_license_md(stats, include_noncommercial)

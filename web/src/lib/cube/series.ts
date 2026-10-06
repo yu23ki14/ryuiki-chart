@@ -106,10 +106,11 @@ const tupleGroups = new Map<string, TupleGroup>();
  * b05 の T4 不変条件（「同じ (variable_id, grain, stat, unit_id) が measurements と
  * sensor_timeseries の両方の alias に現れていない」）を守るのはこの2つの dataset の
  * 組み合わせだけ（`scripts/b05_project_v1.py` docstring 参照）。土地利用（P-1b、
- * `nlni_l03b_landuse_by_watershed@2006`/`@2016` のような年版つき dataset）は、
- * 同じ日本語区分名が年をまたいで同じ variable_id を共有する設計（P-1b オーナー決定2）
- * のため、意図的に同じ組が複数の dataset にまたがる。ここでは範囲外として無視する
- * （PR-1 の測定値系スコープは土地利用を含まない——design §1.1）。
+ * dataset は `nlni_l03b_landuse_by_watershed`、版は `variable_alias.edition_key` の 2006/2016。
+ * Issue #39 Phase C で dataset の `@<年>` 後置を廃止した）は、同じ区分が年版をまたいで
+ * 同じ variable_id を共有する設計（P-1b オーナー決定2）のため、意図的に同じ組へ版ごとの
+ * 別 alias が付く。dataset は版を問わず 1 つで、T4 は measurements と sensor_timeseries
+ * だけを見るので対象外（PR-1 の測定値系スコープは土地利用を含まない——design §1.1）。
  */
 const T4_GUARDED_DATASETS = new Set([MEASUREMENTS_DATASET, SENSOR_DATASET]);
 
@@ -139,7 +140,7 @@ for (const a of GENERATED_VARIABLE_ALIASES as readonly GeneratedVariableAlias[])
   // 重複排除する（元の順序は保つ）: 同じ組に対応する alias が複数あり、それらが
   // 同じ出典（`source_id`）を指すことがある（例: `雪_最深 積雪`/`雪_最深積雪` は
   // 空白の有無が違うだけの2 alias で、どちらも jma_monthly_kanagawa。土地利用の
-  // `@2006`/`@2016` も同じ `source_id` を共有する）。重複排除しないと
+  // 2006/2016 年版（edition_key）も同じ `source_id` を共有する）。重複排除しないと
   // `envelope.ts` の `resolveProvenance`（`sourceIds` を1件ずつ数える）が同じ
   // 出典の n_rows を alias の本数ぶん水増ししてしまう（Issue #48 PR-1 code-review #2）。
   if (!g.sourceIds.includes(a.sourceId)) g.sourceIds.push(a.sourceId);

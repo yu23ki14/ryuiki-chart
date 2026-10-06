@@ -55,9 +55,9 @@ CREATE TABLE IF NOT EXISTS variable (
 -- 表記かを表し (measurements / sensor_timeseries)、source_id は v1
 -- source_registry.source_id (空 = 出典未記録。is_synthetic=1 の行)。
 -- 同じ (dataset, alias) でも source_id が違えば grain/stat が異なりうるため、
--- PK は別に自動採番の id を持つ。source_id は source_registry/source_edition
--- (ADR-0005) が入る Phase C で source_edition_id に置き換わる暫定形
--- (docs/plans/PHASE_B_INTAKE.md #1/#9 と同じ性質の暫定接続点)。
+-- PK は別に自動採番の id を持つ。source_id は bare のまま変えない（cube・D1 も bare）。
+-- 出典が版を持つときだけ edition_key / source_edition_id（Issue #39 Phase C。土地利用の
+-- `@<年>` を置き換えた。dataset は論理名のまま）。
 -- grain/stat は一次資料調査 (docs/plans/PHASE_B_ALIAS_STAT_SOURCES.md) 済みで、
 -- (dataset, alias, source_id) の組ごとに固定 1 値に決まる (atsugi_river_water_quality
 -- の「日付書式の混在」も統計量としては全期間 mean/day で確定するため、行ごとに決まる
@@ -74,11 +74,69 @@ CREATE TABLE IF NOT EXISTS variable_alias (
   -- unit_id の根拠: 'source'=原本が同じ単位を報告している / 'registry'=原本に単位の記載が無く
   -- レジストリが補った（Issue #31）。unit_id が空の行は空。
   unit_basis TEXT,
-  note TEXT
+  note TEXT,
+  -- 版（Issue #39 Phase C、ADR-0005）。NULL = 全 edition 共通。値があるとき (source_id, edition_key)
+  -- が source_edition に実在することをビルドが検査し、source_edition_id に展開して持つ
+  -- （common:edition:<source_id>.<edition_key>）。土地利用 46 行（2006:22・2016:24）だけが値を持つ。
+  edition_key TEXT,
+  source_edition_id TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_variable_alias_alias ON variable_alias(alias);
 CREATE INDEX IF NOT EXISTS ix_variable_alias_variable ON variable_alias(variable_id);
 CREATE INDEX IF NOT EXISTS ix_variable_alias_dataset_alias_source ON variable_alias(dataset, alias, source_id);
+
+-- 出典のライセンス（ADR-0005、Issue #39 Phase C）。手書きの正は registry/source/license.yaml。
+-- license_class のコードリストもそこ。
+CREATE TABLE IF NOT EXISTS license (
+  license_id TEXT PRIMARY KEY,
+  name_ja TEXT,
+  spdx_or_url TEXT,
+  license_class TEXT NOT NULL,
+  attribution_text TEXT,
+  notes TEXT
+);
+
+-- 出典（不変）。source_id は ryuiki.sqlite の source_registry.source_id そのまま（bare。
+-- cube・D1・alias は bare のまま）。公開 ID は source_ref_id = 'common:source:' || source_id。
+-- superseded_by は置き換え先の source_id（旧 ID は消さない。ADR-0004 規約2）。
+-- source_registry（D1 の v1 表）は並走して残す。
+CREATE TABLE IF NOT EXISTS source (
+  source_id TEXT PRIMARY KEY,
+  source_ref_id TEXT NOT NULL,
+  name_ja TEXT,
+  publisher TEXT,
+  homepage_url TEXT,
+  region_id TEXT,
+  theme TEXT,
+  access_method TEXT,
+  superseded_by TEXT,
+  notes TEXT
+);
+
+-- 出典の版（取得回、または出典自身の版 = vintage）。edition_id = common:edition:<source_id>.<edition_key>。
+-- redistributable/license_class/commercial_ok は出典の旗であり、出力を絞る根拠にしない
+-- （ADR-0005 改定・ADR-0028。embargo_reason 列は作らない）。license_raw は source_registry.license の原文。
+-- 過去の取得履歴は復元不能なので作らない（宣言した版と現在の 1 版だけ。registry/source/editions.yaml）。
+CREATE TABLE IF NOT EXISTS source_edition (
+  edition_id TEXT PRIMARY KEY,
+  source_id TEXT NOT NULL,
+  edition_key TEXT NOT NULL,
+  vintage TEXT,
+  fetched_at TEXT,
+  url TEXT,
+  format TEXT,
+  content_sha256 TEXT,
+  license_id TEXT NOT NULL,
+  license_raw TEXT,
+  license_class TEXT NOT NULL,
+  redistributable INTEGER,
+  commercial_ok INTEGER,
+  record_count INTEGER,
+  superseded_by TEXT,
+  update_mode TEXT,
+  notes TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_source_edition_source_key ON source_edition(source_id, edition_key);
 
 -- 空間単位(ADR-0006)。Phase A で登録するのは集計軸として実在するものだけ
 -- (site / watershed / mesh3 / zone)。geometry_ref は持たない(点→place の解決も含め
@@ -128,11 +186,16 @@ CREATE INDEX IF NOT EXISTS ix_place_relation_child ON place_relation(child_id);
 -- v1 の出典側識別子(sites.site_id / watershed_meta.watershed_id / mlat,mlon 等)から
 -- place への対応。「v1 を動かさずに並走させる」ための接続点(PHASE_A.md §A-3)。
 -- external_key からの逆引きが主な引き方。
+-- key_space = 外部キーの空間(site_id | zone | watershed_id | grid01_latlon。
+-- registry/place/key_space.yaml が宣言。旧 source_id 列の値 'sites.site_id' 等を
+-- Issue #39 Phase C で改称した。出典ではないので source_id とは呼ばない)。
+-- source_edition_id = その行の出典の版(NULL 可。出典を持たない key_space は NULL)。
 CREATE TABLE IF NOT EXISTS place_source_ref (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   place_id TEXT,
   external_key TEXT,
-  source_id TEXT
+  key_space TEXT,
+  source_edition_id TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_place_source_ref_external ON place_source_ref(external_key);
 CREATE INDEX IF NOT EXISTS ix_place_source_ref_place ON place_source_ref(place_id);
@@ -332,3 +395,16 @@ CREATE TABLE IF NOT EXISTS registry_build (
   input_fingerprint TEXT NOT NULL,
   mode TEXT NOT NULL
 );
+
+-- ID の改称の記録(ADR-0004 規約2。置換(superseded_by)とは別物)。
+-- registry/id_map/<entity>.csv の宣言から作る。受け入れ検証は「旧 ID の凍結リストの
+-- 各行が id_map(または恒等)でちょうど1個の現行 ID に解決する」こと。
+CREATE TABLE IF NOT EXISTS id_map (
+  entity TEXT NOT NULL,
+  old_id TEXT NOT NULL,
+  new_id TEXT NOT NULL,
+  reason TEXT,
+  spec_version TEXT,
+  PRIMARY KEY (entity, old_id)
+);
+CREATE INDEX IF NOT EXISTS ix_id_map_new ON id_map(entity, new_id);

@@ -58,7 +58,7 @@
  *   - RYUIKI_ZONE_YAML: 入力の zone.yaml
  *   - RYUIKI_REDLIST_CATEGORY_YAML / RYUIKI_ASSESSMENT_LIST_YAML: 入力の
  *     registry/taxon/redlist_category.yaml / assessment_list.yaml
- *   - RYUIKI_REGISTRY_TS_OUT_SERVER / RYUIKI_REGISTRY_TS_OUT_CLIENT: 出力先
+ *   - RYUIKI_REGISTRY_TS_OUT_SERVER / RYUIKI_REGISTRY_TS_OUT_CLIENT / RYUIKI_REGISTRY_TS_OUT_ID_MAP: 出力先
  */
 import Database from "better-sqlite3";
 import fs from "node:fs";
@@ -83,6 +83,8 @@ const OUT_SERVER =
   process.env.RYUIKI_REGISTRY_TS_OUT_SERVER ?? path.join(WEB, "src", "lib", "registry", "generated.ts");
 const OUT_CLIENT =
   process.env.RYUIKI_REGISTRY_TS_OUT_CLIENT ?? path.join(WEB, "src", "lib", "registry", "generated-client.ts");
+const OUT_ID_MAP =
+  process.env.RYUIKI_REGISTRY_TS_OUT_ID_MAP ?? path.join(WEB, "src", "lib", "registry", "generated-id-map.ts");
 
 /** 入力ファイルが無ければヒントを添えて即座に落ちる（3つの入力（DB・CSV・YAML）で共通化）。 */
 function requireFile(filePath, label, hint) {
@@ -146,7 +148,7 @@ const variables = db
 
 const variableAliases = db
   .prepare(
-    `SELECT alias, dataset, source_id, variable_id, unit_id, stat, grain, unit_basis
+    `SELECT alias, dataset, source_id, variable_id, unit_id, stat, grain, unit_basis, edition_key
      FROM variable_alias ORDER BY id`,
   )
   .all()
@@ -159,6 +161,7 @@ const variableAliases = db
     stat: r.stat || null,
     grain: r.grain,
     unitBasis: r.unit_basis || null,
+    editionKey: r.edition_key || null,
   }));
 
 // caveat_scope.scope_kind の語彙は registry/caveat_scope.yaml の `vocabulary`（ADR-0013 の6種）を
@@ -283,6 +286,11 @@ if (caveatKeys.length === 0) {
   throw new Error("caveat が0件（registry.sqlite の caveat テーブルが空）。CaveatKey を生成できない。");
 }
 
+// 旧 place_id → 新 place_id（registry.sqlite の id_map。下の idMapOut が使う）。
+const legacyPlaceIds = db
+  .prepare("SELECT old_id, new_id FROM id_map WHERE entity = 'place' ORDER BY old_id")
+  .all();
+
 db.close();
 
 /* ------------------------------------------------------------------ */
@@ -380,11 +388,9 @@ export interface GeneratedVariable {
 
 export interface GeneratedVariableAlias {
   alias: string;
-  /** v1 のどのテーブルの表記か（measurements / sensor_timeseries）。以前の sourceScope。 */
+  /** どの原本の表記か（measurements / sensor_timeseries / 土地利用は出典名そのもの。版は editionKey）。以前の sourceScope。 */
   dataset: string | null;
-  /** v1 source_registry.source_id。null = 出典未記録（is_synthetic=1 の行）。
-   * source_registry/source_edition（ADR-0005）が入る Phase C で source_edition_id に
-   * 置き換わる暫定形（docs/plans/PHASE_B_INTAKE.md #1/#9）。 */
+  /** source_registry.source_id（bare。cube・D1 も bare）。null = 出典未記録（is_synthetic=1 の行）。 */
   sourceId: string | null;
   variableId: string | null;
   unitId: string | null;
@@ -392,6 +398,8 @@ export interface GeneratedVariableAlias {
   grain: string | null;
   /** unit_id の根拠。'source'=原本が報告 / 'registry'=原本に単位記載が無くレジストリが補った。unitId が無い行は null。 */
   unitBasis: "source" | "registry" | null;
+  /** 出典の版（土地利用 2006/2016。Issue #39 Phase C。以前は dataset に @<年> を後置していた）。null = 全 edition 共通。 */
+  editionKey: string | null;
 }
 `;
 
@@ -427,7 +435,7 @@ export const GENERATED_VARIABLES: readonly GeneratedVariable[] = ${emitObjectArr
  * 出典 × 表記で解決する — ADR-0010 決定1）。 */
 export const GENERATED_VARIABLE_ALIASES: readonly GeneratedVariableAlias[] = ${emitObjectArray(
   variableAliases,
-  ["alias", "dataset", "sourceId", "variableId", "unitId", "stat", "grain", "unitBasis"],
+  ["alias", "dataset", "sourceId", "variableId", "unitId", "stat", "grain", "unitBasis", "editionKey"],
 )};
 `;
 
@@ -611,13 +619,34 @@ export const ZONE_INFO: readonly GeneratedZone[] = ${emitObjectArray(zoneInfo, [
 export const REGION_TIME: readonly GeneratedRegionTime[] = ${emitObjectArray(regionTime, ["regionId", "tzName", "utcOffset"])};
 `;
 
+// 旧 place_id → 新 place_id（registry.sqlite の id_map。Issue #39 Phase C、ADR-0004 規約2）。
+// 旧 ID を受けたら新 ID に解決するための表で、`lib/registry/legacy-id.ts` の `resolveLegacyId()` だけが読む。
+
+const idMapOut = [
+  "/**",
+  " * 生成物。直接編集しない。サーバ専用（旧 place_id → 新 place_id の対応）。",
+  " *",
+  " * 再生成: `cd web && npm run build:registry:ts`",
+  " * 生成元: `web/scripts/build-registry-ts.mjs`（data/db/registry.sqlite の id_map 表。",
+  " * 正は `registry/id_map/place.csv`）。",
+  " */",
+  "",
+  "/** 旧 place_id → 現行の place_id（ADR-0004 規約1 の改定で ns と key の区切りが `-` から `.` になったもの）。 */",
+  "export const LEGACY_PLACE_ID_MAP: Readonly<Record<string, string>> = {",
+  ...legacyPlaceIds.map((r) => `  ${JSON.stringify(r.old_id)}: ${JSON.stringify(r.new_id)},`),
+  "};",
+  "",
+].join("\n");
+
 fs.mkdirSync(path.dirname(OUT_SERVER), { recursive: true });
 fs.writeFileSync(OUT_SERVER, serverOut);
 fs.writeFileSync(OUT_CLIENT, clientOut);
+fs.writeFileSync(OUT_ID_MAP, idMapOut);
 console.log(
   `wrote ${path.relative(REPO, OUT_SERVER)} ` +
     `(units=${units.length} variables=${variables.length} aliases=${variableAliases.length})`,
 );
+console.log(`wrote ${path.relative(REPO, OUT_ID_MAP)} (legacyPlaceIds=${legacyPlaceIds.length})`);
 console.log(
   `wrote ${path.relative(REPO, OUT_CLIENT)} ` +
     `(variableShort=${Object.keys(variableShort).length} variableNote=${Object.keys(variableNote).length} ` +

@@ -37,10 +37,12 @@ describe("正準単位・単位の根拠（Issue #31）", () => {
     expect(unitBasis("common:variable:water.bod", "common:unit:km2")).toBeNull();
   });
 
-  it("unitBasis: 出典（dataset）を渡すとその出典の宣言だけで決める。土地利用は @年を無視", () => {
+  it("unitBasis: 出典（dataset）を渡すとその出典の宣言だけで決める。土地利用は版（edition_key）が違っても同じ dataset", () => {
     expect(unitBasis("common:variable:water.ph", undefined, "measurements")).toBe("registry");
     expect(unitBasis("common:variable:water.ph", undefined, "sensor_timeseries")).toBeNull();
-    const landuse = GENERATED_VARIABLE_ALIASES.find((a) => a.dataset?.startsWith("nlni_l03b_landuse_by_watershed@"))!;
+    const landuse = GENERATED_VARIABLE_ALIASES.find(
+      (a) => a.dataset === "nlni_l03b_landuse_by_watershed" && a.editionKey === "2016",
+    )!;
     expect(unitBasis(landuse.variableId!, landuse.unitId, "nlni_l03b_landuse_by_watershed")).toBe("registry");
   });
 });

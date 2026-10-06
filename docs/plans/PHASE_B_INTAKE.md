@@ -214,6 +214,10 @@ build_unit_variable.py` の `GRAIN_CODES` にはまだ入っていなかった�
 
 ### `variable_alias.csv` の `dataset` が版付き（`<source>@<year>`）になる暫定の接続点
 
+> **解消済み（Issue #39 Phase C、ADR-0005 改定）**: `dataset` の `@<year>` 後置は廃止し、
+> `variable_alias.edition_key`（土地利用 46 行が 2006/2016 を持つ）→ `source_edition_id` に置き換えた。
+> 旧→新の対応は `registry/id_map/dataset.csv`。以下は当時の記録。
+
 ADR-0005「同じ出典に複数版が同居する」は `source`/`source_edition` という
 正式なテーブル分割を Phase C の仕事として予告しているが、それより前に
 `variable_alias.csv` の `dataset` 列で**版を区別する必要**が実際に生じた

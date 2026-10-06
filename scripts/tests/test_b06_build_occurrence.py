@@ -43,7 +43,7 @@ def test_normal_case_resolves_all_rows(tmp_path):
     stats, out = _build(tmp_path)
     assert stats["total"] == len(DEFAULT_ORGANISM_RECORDS)
     assert stats["n_dated"] == len(DEFAULT_ORGANISM_RECORDS)
-    assert stats["taxon_null_count"] == 1  # inat__1 は taxon_key が空文字
+    assert stats["taxon_null_count"] == 1  # inaturalist_kanagawa__1 は taxon_key が空文字
     assert stats["unresolved_taxon_count"] == 0
     assert stats["unresolved_place_count"] == 0
     assert stats["no_coordinate_count"] == 0
@@ -61,7 +61,7 @@ def test_normal_case_resolves_all_rows(tmp_path):
     assert "ext:ryuiki.organism_records" in lineage_keys
     conn.close()
 
-    gbif_row = rows["gbif__1"]
+    gbif_row = rows["gbif_kanagawa_occurrences__1"]
     assert gbif_row[1] == "organism_records"  # source_table
     assert isinstance(gbif_row[2], int)  # source_row_id は INTEGER（コードレビュー指摘5）
     assert gbif_row[3] == "gbif_kanagawa_occurrences"
@@ -75,7 +75,7 @@ def test_normal_case_resolves_all_rows(tmp_path):
     assert gbif_row[12] == "Foo bar"
     assert gbif_row[13] == 0
 
-    inat_row = rows["inat__1"]
+    inat_row = rows["inaturalist_kanagawa__1"]
     assert inat_row[5] is None  # taxon_id NULL（taxon_key が空文字）
     assert inat_row[6] == "common:place:grid01.3550_13900"
     # 'Z' 変換: 03:00Z + 9h -> 12:00（ローカル）。日は変わらない。
@@ -101,7 +101,7 @@ def test_row_without_coordinates_is_kept_with_null_place(tmp_path):
     持つ（ADR-0007 原則1。コードレビュー指摘14）。エラーにはならない。"""
     rows = list(DEFAULT_ORGANISM_RECORDS) + [
         (
-            "gbif__no_coord", "gbif_kanagawa_occurrences", "2020-01-06", None, None, None,
+            "gbif_kanagawa_occurrences__no_coord", "gbif_kanagawa_occurrences", "2020-01-06", None, None, None,
             "Foo bar", "", "SPECIES", "1001", "", 0, "", "公開",
         ),
     ]
@@ -123,7 +123,7 @@ def test_row_without_coordinates_is_kept_with_null_place(tmp_path):
 
     conn = sqlite3.connect(f"file:{out}?mode=ro", uri=True)
     row = conn.execute(
-        "SELECT place_id, place_kind, lat, lon FROM occurrence WHERE record_id='gbif__no_coord'"
+        "SELECT place_id, place_kind, lat, lon FROM occurrence WHERE record_id='gbif_kanagawa_occurrences__no_coord'"
     ).fetchone()
     conn.close()
     assert row == (None, None, None, None)
@@ -137,7 +137,7 @@ def test_synthetic_row_is_excluded_from_occurrence(tmp_path):
     確認する）。
     """
     synthetic_row = (
-        "gbif__synthetic", "gbif_kanagawa_occurrences", "2020-01-06", 35.505, 139.005, 10.0,
+        "gbif_kanagawa_occurrences__synthetic", "gbif_kanagawa_occurrences", "2020-01-06", 35.505, 139.005, 10.0,
         "Foo bar", "", "SPECIES", "1001", "", 0, "", "公開", 1,  # 15要素目 = is_synthetic
     )
     rows = list(DEFAULT_ORGANISM_RECORDS) + [synthetic_row]
@@ -158,10 +158,10 @@ def test_synthetic_row_is_excluded_from_occurrence(tmp_path):
 
     conn = sqlite3.connect(f"file:{out}?mode=ro", uri=True)
     assert conn.execute(
-        "SELECT COUNT(*) FROM occurrence WHERE record_id='gbif__synthetic'"
+        "SELECT COUNT(*) FROM occurrence WHERE record_id='gbif_kanagawa_occurrences__synthetic'"
     ).fetchone()[0] == 0
     # 非合成の行は普段どおり occurrence に入る。
-    assert conn.execute("SELECT COUNT(*) FROM occurrence WHERE record_id='gbif__1'").fetchone()[0] == 1
+    assert conn.execute("SELECT COUNT(*) FROM occurrence WHERE record_id='gbif_kanagawa_occurrences__1'").fetchone()[0] == 1
     conn.close()
 
 
@@ -171,7 +171,7 @@ def test_unresolved_taxon_key_raises(tmp_path):
     宣言表の件数を追加行に合わせて厳密に揃える必要はない（既定のままでよい）。"""
     rows = list(DEFAULT_ORGANISM_RECORDS) + [
         (
-            "gbif__ghost", "gbif_kanagawa_occurrences", "2020-01-06", 35.505, 139.005, 10.0,
+            "gbif_kanagawa_occurrences__ghost", "gbif_kanagawa_occurrences", "2020-01-06", 35.505, 139.005, 10.0,
             "Ghost sp.", "", "SPECIES", "9999", "", 0, "", "公開",
         ),
     ]
@@ -186,7 +186,7 @@ def test_unresolved_place_raises_only_when_coordinates_present(tmp_path):
     明記する（座標が無い行と区別する。コードレビュー指摘14）。"""
     rows = list(DEFAULT_ORGANISM_RECORDS) + [
         (
-            "gbif__elsewhere", "gbif_kanagawa_occurrences", "2020-01-06", 10.0, 20.0, 10.0,
+            "gbif_kanagawa_occurrences__elsewhere", "gbif_kanagawa_occurrences", "2020-01-06", 10.0, 20.0, 10.0,
             "Foo bar", "", "SPECIES", "1001", "", 0, "", "公開",
         ),
     ]
@@ -303,7 +303,7 @@ def test_year_boundary_crossed_stops_build(tmp_path):
     """'Z' 変換で年が変わる行があると、構築全体が止まる（D3の前提）。"""
     rows = list(DEFAULT_ORGANISM_RECORDS) + [
         (
-            "gbif__ny", "gbif_kanagawa_occurrences", "2020-12-31T16:30Z", 35.505, 139.005, 10.0,
+            "gbif_kanagawa_occurrences__ny", "gbif_kanagawa_occurrences", "2020-12-31T16:30Z", 35.505, 139.005, 10.0,
             "Foo bar", "", "SPECIES", "1001", "", 0, "", "公開",
         ),
     ]
@@ -354,13 +354,13 @@ def test_is_alien_in_scope_comes_from_registry_not_from_the_raw_flag(tmp_path):
     """Issue #34: is_alien_in_scope は binom が taxon_assessment に in_scope=1 で載っているかで決まる。
     原本の is_alien（種内で 1/0 が混在する）は根拠にせず、原表記として残る。"""
     rows = [
-        ("gbif__a", "gbif_kanagawa_occurrences", "2020-01-05", 35.505, 139.005, 10.0,
+        ("gbif_kanagawa_occurrences__a", "gbif_kanagawa_occurrences", "2020-01-05", 35.505, 139.005, 10.0,
          "Keep this sp", "", "SPECIES", "1001", "", 0, "CC-BY", "公開"),   # 亜種付きでも binom（Keep this）で in_scope=1 に一致。原旗は 0
-        ("gbif__b", "gbif_kanagawa_occurrences", "2020-01-06", 35.505, 139.005, 10.0,
+        ("gbif_kanagawa_occurrences__b", "gbif_kanagawa_occurrences", "2020-01-06", 35.505, 139.005, 10.0,
          "Foo bar baz", "", "SPECIES", "1001", "", 1, "CC-BY", "公開"),    # in_scope=0（亜種付きでも binom で一致）。原旗は 1
-        ("gbif__c", "gbif_kanagawa_occurrences", "2020-01-07", 35.505, 139.005, 10.0,
+        ("gbif_kanagawa_occurrences__c", "gbif_kanagawa_occurrences", "2020-01-07", 35.505, 139.005, 10.0,
          "Other sp", "", "SPECIES", "1001", "", 1, "CC-BY", "公開"),       # リストに無い。原旗は 1
-        ("gbif__d", "gbif_kanagawa_occurrences", "2020-01-08", 35.505, 139.005, 10.0,
+        ("gbif_kanagawa_occurrences__d", "gbif_kanagawa_occurrences", "2020-01-08", 35.505, 139.005, 10.0,
          "Keep this", "", "SPECIES", "1001", "", 0, "CC-BY", "公開"),      # in_scope=1 で載る。原旗は 0
     ]
     _stats, out = _build(
@@ -377,6 +377,6 @@ def test_is_alien_in_scope_comes_from_registry_not_from_the_raw_flag(tmp_path):
     conn = sqlite3.connect(f"file:{out}?mode=ro", uri=True)
     got = {r[0]: (r[1], r[2]) for r in conn.execute(
         "SELECT record_id, is_alien, is_alien_in_scope FROM occurrence "
-        "WHERE record_id IN ('gbif__a','gbif__b','gbif__c','gbif__d')")}
+        "WHERE record_id IN ('gbif_kanagawa_occurrences__a','gbif_kanagawa_occurrences__b','gbif_kanagawa_occurrences__c','gbif_kanagawa_occurrences__d')")}
     conn.close()
-    assert got == {"gbif__a": (0, 1), "gbif__b": (1, 0), "gbif__c": (1, 0), "gbif__d": (0, 1)}
+    assert got == {"gbif_kanagawa_occurrences__a": (0, 1), "gbif_kanagawa_occurrences__b": (1, 0), "gbif_kanagawa_occurrences__c": (1, 0), "gbif_kanagawa_occurrences__d": (0, 1)}

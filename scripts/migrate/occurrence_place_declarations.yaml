@@ -14,7 +14,7 @@ n_watershed_polygons:
   expected_row_count: 377
   note: >
     data/processed/nlni_w12_watersheds.geojson の feature 数。registry の
-    place_source_ref(source_id='watershed_meta.watershed_id') の external_key 数
+    place_source_ref(key_space='watershed_id') の external_key 数
     （= place_watershed の行数）と一致することを別途検証する。
 
 place_id_null_count:

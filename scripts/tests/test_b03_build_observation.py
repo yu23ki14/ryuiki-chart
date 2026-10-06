@@ -277,7 +277,7 @@ def test_unresolved_place_raises(tmp_path):
     make_measurements_db(measurements_db)
     make_registry_db(
         registry_db,
-        place_refs=[("place_s1", "S1", "sites.site_id")],  # S2 の解決先が無い
+        place_refs=[("place_s1", "S1", "site_id")],  # S2 の解決先が無い
     )
 
     with pytest.raises(common.MigrationError, match="place_source_ref で解決できない"):
@@ -855,10 +855,10 @@ def test_landuse_value_grain_mismatch_raises(tmp_path):
     make_registry_db(
         registry_db,
         aliases=DEFAULT_ALIASES + [
-            ("nlni_l03b_landuse_by_watershed@2006", "1:area_km2", LANDUSE_SOURCE_ID,
-             "common:variable:landuse.paddy", "common:unit:km2", "sum", "day"),  # year/fiscal_year 以外
-            ("nlni_l03b_landuse_by_watershed@2006", "1:n_cells", LANDUSE_SOURCE_ID,
-             "common:variable:landuse.paddy_n_cells", "common:unit:count", "sum", "day"),
+            ("nlni_l03b_landuse_by_watershed", "1:area_km2", LANDUSE_SOURCE_ID,
+             "common:variable:landuse.paddy", "common:unit:km2", "sum", "day", "2006"),  # year/fiscal_year 以外
+            ("nlni_l03b_landuse_by_watershed", "1:n_cells", LANDUSE_SOURCE_ID,
+             "common:variable:landuse.paddy_n_cells", "common:unit:count", "sum", "day", "2006"),
         ],
         places=DEFAULT_PLACES + DEFAULT_WATERSHED_PLACES,
         place_refs=DEFAULT_PLACE_REFS + DEFAULT_WATERSHED_PLACE_REFS,
@@ -899,10 +899,10 @@ def test_landuse_declared_grain_mismatch_is_counted(tmp_path):
     make_registry_db(
         registry_db,
         aliases=DEFAULT_ALIASES + [
-            ("nlni_l03b_landuse_by_watershed@2006", "1:area_km2", LANDUSE_SOURCE_ID,
-             "common:variable:landuse.paddy", "common:unit:km2", "sum", "day"),  # year/fiscal_year 以外
-            ("nlni_l03b_landuse_by_watershed@2006", "1:n_cells", LANDUSE_SOURCE_ID,
-             "common:variable:landuse.paddy_n_cells", "common:unit:count", "sum", "day"),
+            ("nlni_l03b_landuse_by_watershed", "1:area_km2", LANDUSE_SOURCE_ID,
+             "common:variable:landuse.paddy", "common:unit:km2", "sum", "day", "2006"),  # year/fiscal_year 以外
+            ("nlni_l03b_landuse_by_watershed", "1:n_cells", LANDUSE_SOURCE_ID,
+             "common:variable:landuse.paddy_n_cells", "common:unit:count", "sum", "day", "2006"),
         ],
         places=DEFAULT_PLACES + DEFAULT_WATERSHED_PLACES,
         place_refs=DEFAULT_PLACE_REFS + DEFAULT_WATERSHED_PLACE_REFS,

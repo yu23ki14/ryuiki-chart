@@ -169,6 +169,7 @@ def _load_build_steps() -> None:
 
     from registry.build_unit_variable import build as build_unit_variable
     from registry.build_region import build as build_region
+    from registry.build_source import build as build_source
     from registry.build_place import build as build_place
     from registry.build_taxon import build as build_taxon
     from registry.build_taxon_assessment import build as build_taxon_assessment
@@ -179,6 +180,9 @@ def _load_build_steps() -> None:
             # region (Issue #32-3) は place より前: place.region_id が参照する語彙。
             ("region (#32-3)", build_region),
             ("unit/variable/variable_alias (A-2)", build_unit_variable),
+            # license/source/source_edition (Issue #39 Phase C) は alias の後: alias.source_edition_id
+            # と alias.source_id が実在するかをこのステップが検査する。
+            ("license/source/source_edition (#39)", build_source),
             ("place/place_source_ref (A-3)", build_place),
             ("taxon (A-4)", build_taxon),
             # taxon_assessment (P-2) は taxon (A-4) の直後に置く: taxon_id の
@@ -208,15 +212,20 @@ ID_UNIQUENESS_CHECKS = [
     ("region", "region_id"),
     ("unit", "unit_id"),
     ("variable", "variable_id"),
+    # license/source/source_edition (Issue #39 Phase C)。edition は (source_id, edition_key) でも一意。
+    ("license", "license_id"),
+    ("source", "source_id"),
+    ("source_edition", "edition_id"),
+    ("source_edition", ("source_id", "edition_key")),
     ("place", "place_id"),
     ("taxon", "taxon_id"),
     ("caveat", "caveat_id"),
     ("place_relation", ("parent_id", "child_id", "relation")),
     # Phase B `phase-b/zone-slice` のコードレビュー対応で追加。実データで
-    # 全 source_id について重複0件を確認済み（4件の source_id: sites.site_id/
-    # sites.zone/watershed_meta.watershed_id/organism_records.lat_lon）なので、
+    # 全 key_space について重複0件を確認済み（4件の key_space: site_id/
+    # zone/watershed_id/grid01_latlon）なので、
     # sites.zone に限定せず汎用にここへ入れる。
-    ("place_source_ref", ("place_id", "source_id")),
+    ("place_source_ref", ("place_id", "key_space")),
     # place_watershed は place_id が PRIMARY KEY（Phase B `phase-b/place-attributes`、
     # P-1a）。SQLite が挿入時点で保証済みだが、他の PK 列（place/taxon/caveat）と
     # 同じく統合作業の受け入れ基準として明示的にも検証する。
@@ -264,6 +273,12 @@ ID_REFERENCE_CHECKS = [
     ("unit", "canonical_unit_id", "unit", "unit_id"),
     ("variable_alias", "unit_id", "unit", "unit_id"),
     ("variable_alias", "variable_id", "variable", "variable_id"),
+    # variable_alias.source_id / source_edition_id は --files-only（source 表が空）でも動くよう
+    # ここには置かず、build_source.py が検査する。
+    ("source_edition", "source_id", "source", "source_id"),
+    ("source_edition", "license_id", "license", "license_id"),
+    ("source_edition", "superseded_by", "source_edition", "edition_id"),
+    ("source", "superseded_by", "source", "source_id"),
     ("caveat_scope", "caveat_id", "caveat", "caveat_id"),
     ("place_source_ref", "place_id", "place", "place_id"),
     ("place_relation", "parent_id", "place", "place_id"),
@@ -275,9 +290,11 @@ ID_REFERENCE_CHECKS = [
 def _assert_id_references(conn) -> None:
     for child, fk_col, parent, pk_col in ID_REFERENCE_CHECKS:
         missing = conn.execute(
-            f"SELECT count(*) FROM {child} "
-            f"WHERE {fk_col} IS NOT NULL "
-            f"AND NOT EXISTS (SELECT 1 FROM {parent} WHERE {parent}.{pk_col} = {child}.{fk_col})"
+            # 親子が同じ表（unit.canonical_unit_id -> unit.unit_id、source_edition.superseded_by ->
+            # source_edition.edition_id）でも子と親を取り違えないよう、別名 c/p を付ける。
+            f"SELECT count(*) FROM {child} AS c "
+            f"WHERE c.{fk_col} IS NOT NULL "
+            f"AND NOT EXISTS (SELECT 1 FROM {parent} AS p WHERE p.{pk_col} = c.{fk_col})"
         ).fetchone()[0]
         if missing:
             raise AssertionError(
@@ -323,16 +340,16 @@ def _assert_region_id_scope_invariant(conn) -> None:
 # `phase-b/place-attributes`、P-1a）は同じ形の検証だったので、この宣言リストと
 # 共通実装（`_assert_relation_child_is_single_valued()`）から回す
 # （code-review 指摘。辺の種類が増えたらここに1行足すだけでよい）。
-# 各要素: (place_source_ref.source_id, レポート・メッセージに出す日本語ラベル)。
+# 各要素: (place_source_ref.key_space, レポート・メッセージに出す日本語ラベル)。
 RELATION_SINGLE_VALUED_CHECKS = [
-    ("sites.zone", "ゾーン"),
-    ("watershed_meta.watershed_id", "流域"),
+    ("zone", "ゾーン"),
+    ("watershed_id", "流域"),
 ]
 
 
-def _assert_relation_child_is_single_valued(conn, source_id: str, label: str) -> None:
+def _assert_relation_child_is_single_valued(conn, key_space: str, label: str) -> None:
     """地点（`place_relation.child_id`）が、`label`（`place_source_ref
-    (source_id=source_id)` を持つ place を `parent_id` とする `'within'` 辺）を
+    (key_space=key_space)` を持つ place を `parent_id` とする `'within'` 辺）を
     高々1本しか持たないことを検証する。v1 側（`sites.zone`/`sites.watershed`）が
     単一列であり、地点は必ず1つの X にしか属さないため。
     """
@@ -341,12 +358,12 @@ def _assert_relation_child_is_single_valued(conn, source_id: str, label: str) ->
         SELECT pr.child_id, COUNT(*) AS n
         FROM place_relation pr
         JOIN place_source_ref ref
-          ON ref.place_id = pr.parent_id AND ref.source_id = ?
+          ON ref.place_id = pr.parent_id AND ref.key_space = ?
         WHERE pr.relation = 'within'
         GROUP BY pr.child_id
         HAVING n > 1
         """,
-        (source_id,),
+        (key_space,),
     ).fetchall()
     if dup:
         raise AssertionError(
@@ -356,18 +373,18 @@ def _assert_relation_child_is_single_valued(conn, source_id: str, label: str) ->
         """
         SELECT COUNT(*) FROM place_relation pr
         JOIN place_source_ref ref
-          ON ref.place_id = pr.parent_id AND ref.source_id = ?
+          ON ref.place_id = pr.parent_id AND ref.key_space = ?
         WHERE pr.relation = 'within'
         """,
-        (source_id,),
+        (key_space,),
     ).fetchone()[0]
     print(f"  地点→{label}の辺は単射OK: {n:,} 件")
 
 
 def _assert_all_relation_single_valued_checks(conn) -> None:
     """`RELATION_SINGLE_VALUED_CHECKS` に宣言した全ペアを検証する。"""
-    for source_id, label in RELATION_SINGLE_VALUED_CHECKS:
-        _assert_relation_child_is_single_valued(conn, source_id, label)
+    for key_space, label in RELATION_SINGLE_VALUED_CHECKS:
+        _assert_relation_child_is_single_valued(conn, key_space, label)
 
 
 # watershed の属性完全性（Phase B `phase-b/place-attributes`、P-1a。上の
@@ -378,7 +395,7 @@ def _assert_all_relation_single_valued_checks(conn) -> None:
 # PHASE_B_PLACE_ATTRIBUTES.md 参照）。
 def _assert_watershed_place_has_attributes_and_source_ref(conn) -> None:
     """`place_kind='watershed'` の各 place が、`place_watershed`（属性サテライト）
-    と `place_source_ref(source_id='watershed_meta.watershed_id')`（v1 の
+    と `place_source_ref(key_space='watershed_id')`（v1 の
     watershed_id への逆引き）をそれぞれちょうど1件持つことを検証する。
     `scripts/registry/build_place.py` の watershed 節が両方を同じループで1回ずつ
     積む構造を裏付ける不変条件——欠けていると `b11_project_place_v1.py` の
@@ -405,7 +422,7 @@ def _assert_watershed_place_has_attributes_and_source_ref(conn) -> None:
         WHERE p.place_kind = 'watershed'
           AND NOT EXISTS (
             SELECT 1 FROM place_source_ref ref
-            WHERE ref.place_id = p.place_id AND ref.source_id = 'watershed_meta.watershed_id'
+            WHERE ref.place_id = p.place_id AND ref.key_space = 'watershed_id'
           )
         LIMIT 10
         """
@@ -413,11 +430,22 @@ def _assert_watershed_place_has_attributes_and_source_ref(conn) -> None:
     if missing_ref:
         raise AssertionError(
             "place_kind='watershed' なのに "
-            "place_source_ref(source_id='watershed_meta.watershed_id') が無い place がある: "
+            "place_source_ref(key_space='watershed_id') が無い place がある: "
             f"{[r[0] for r in missing_ref]}"
         )
     n = conn.execute("SELECT COUNT(*) FROM place WHERE place_kind='watershed'").fetchone()[0]
     print(f"  watershed place の属性/逆引きOK: {n:,} 件")
+
+
+def _build_and_assert_id_map(conn, *, full: bool) -> None:
+    """`registry/id_map/{place,dataset}.csv`（旧→新の ID 対応表。手書きの宣言）を `id_map` 表に載せ、検査する
+    （ADR-0004 規約2、Issue #39 Phase C。中身は `registry.id_map.build_id_map()`）。原本は要らないので
+    `--files-only` でも作る（`full=False` は現行 place に依存する検査だけ省く）。
+    """
+    from registry import id_map
+
+    counts = id_map.build_id_map(conn, full=full)
+    print(f"  id_map OK: {counts}（旧 ID は全て新 ID に1対1で解決。現行 ID の再利用なし{'' if full else '。files-only は place 依存の検査を省略'}）")
 
 
 def _assert_taxon_assessment_invariants(conn) -> None:
@@ -468,14 +496,14 @@ def _assert_taxon_assessment_invariants(conn) -> None:
 
 
 def _assert_zone_external_key_is_numeric(conn) -> None:
-    """`place_source_ref(source_id='sites.zone').external_key`（ゾーン番号）が
+    """`place_source_ref(key_space='zone').external_key`（ゾーン番号）が
     数字だけの文字列であることを検証する。消費側（`b05_project_v1.py`）が
     `CAST(... AS INT)` で整数に変換するため、非数値文字列（例: `'z1'`）が
     紛れ込むと黙って `0` になる。
     """
     bad = conn.execute(
         "SELECT place_id, external_key FROM place_source_ref "
-        "WHERE source_id = 'sites.zone' "
+        "WHERE key_space = 'zone' "
         "AND (external_key IS NULL OR external_key = '' OR external_key GLOB '*[^0-9]*')"
     ).fetchall()
     if bad:
@@ -483,7 +511,7 @@ def _assert_zone_external_key_is_numeric(conn) -> None:
             f"sites.zone の external_key が数字だけの文字列でない行がある: {bad[:10]}"
         )
     n = conn.execute(
-        "SELECT COUNT(*) FROM place_source_ref WHERE source_id = 'sites.zone'"
+        "SELECT COUNT(*) FROM place_source_ref WHERE key_space = 'zone'"
     ).fetchone()[0]
     print(f"  sites.zone の external_key 数値形式OK: {n:,} 件")
 
@@ -655,6 +683,7 @@ def main() -> None:
         _assert_zone_external_key_is_numeric(conn)
         _assert_watershed_place_has_attributes_and_source_ref(conn)
         _assert_taxon_assessment_invariants(conn)
+        _build_and_assert_id_map(conn, full=not args.files_only)
 
         conn.execute("DELETE FROM registry_build")
         conn.execute(

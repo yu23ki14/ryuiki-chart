@@ -40,8 +40,9 @@ KNOWN_DUPLICATE_ALIAS_SERIES: frozenset[tuple[str, str, str]] = frozenset({
 
 def assert_alias_is_function(conn: sqlite3.Connection) -> None:
     """`(dataset, variable_id, grain, stat, unit_id) → alias` が関数であること
-    （`reg.variable_alias` 全体。土地利用の年版 `<source>@<年>` は dataset ごとに
-    別に見るので、年ごとに独立して検証される）。衝突があれば、どの組が何個の alias に
+    （`reg.variable_alias` 全体。土地利用は 2006/2016 年版でコード体系が違い、同じ variable_id に
+    版ごとの別 alias が付くので、`edition_key` ごとに別に見る（Issue #39 Phase C。以前は dataset に
+    `@<年>` を後置していた）。衝突があれば、どの組が何個の alias に
     割れているかを示して止まる——`MIN(alias)` 等で黙って1つを選ばない。
     `KNOWN_DUPLICATE_ALIAS_SERIES` の組だけは既知の負債として除外する。
     """
@@ -49,7 +50,7 @@ def assert_alias_is_function(conn: sqlite3.Connection) -> None:
         """
         SELECT dataset, variable_id, grain, stat, unit_id, COUNT(DISTINCT alias) AS n_alias
         FROM reg.variable_alias
-        GROUP BY dataset, variable_id, grain, stat, unit_id
+        GROUP BY dataset, variable_id, grain, stat, unit_id, COALESCE(edition_key, '')
         HAVING n_alias > 1
         """
     ).fetchall()
@@ -68,32 +69,26 @@ def assert_alias_tuple_maps_to_single_dataset(conn: sqlite3.Connection) -> None:
     `sensor_timeseries`/土地利用の本体名）にまたがっていないこと。崩れていると
     同じキューブのセルがどの出典のものか決まらない。
 
-    版付き dataset（`<source>@<年>`。ADR-0005）は `@` より前（出典本体）に正規化して
-    から比べる——土地利用は同じ tuple を意図して複数の年版にまたがって再利用する
-    （P-1b オーナー決定2）ため、正規化しないと版の数だけ誤検出する。一方、
-    土地利用と measurements/sensor_timeseries が同じ tuple を持てば別の出典名の
-    まま残るので検出できる。
+    土地利用は同じ tuple を意図して複数の年版（`edition_key` 2006/2016）にまたがって再利用する
+    （P-1b オーナー決定2）が、dataset は版を問わず同じ名前なので `dataset` を数えれば誤検出
+    しない（以前は dataset が `<source>@<年>` で、`@` より前に正規化して比べていた。Issue #39
+    Phase C で `edition_key` 列に分けたので正規化は要らない）。土地利用と
+    measurements/sensor_timeseries が同じ tuple を持てば別の dataset のまま残るので検出できる。
     """
     common.raise_on_group_by_duplicates(
         conn,
         """
         SELECT variable_id, grain, stat, unit_id,
-               COUNT(DISTINCT base_dataset) AS n_dataset,
-               GROUP_CONCAT(DISTINCT base_dataset) AS datasets
-        FROM (
-            SELECT variable_id, grain, stat, unit_id,
-                   CASE WHEN instr(dataset, '@') > 0
-                        THEN substr(dataset, 1, instr(dataset, '@') - 1)
-                        ELSE dataset END AS base_dataset
-            FROM reg.variable_alias
-        )
+               COUNT(DISTINCT dataset) AS n_dataset,
+               GROUP_CONCAT(DISTINCT dataset) AS datasets
+        FROM reg.variable_alias
         GROUP BY variable_id, grain, stat, unit_id
         HAVING n_dataset > 1
         """,
         (),
         lambda dup: (
-            "(variable_id, grain, stat, unit_id) が複数の出典（版のサフィックスを"
-            f"正規化した後）にまたがっている（例: {dup}）。\n"
+            "(variable_id, grain, stat, unit_id) が複数の出典（dataset）にまたがっている"
+            f"（例: {dup}）。\n"
             "variable_alias 側で tuple が出典をまたいで重複しないようにしてから"
             "再実行すること。"
         ),
@@ -380,30 +375,30 @@ def assert_place_year_totals_match_population(
 # b09: place_id と place_source_ref の関係
 # ---------------------------------------------------------------------------
 
-MESH_SOURCE_ID = "organism_records.lat_lon"
+MESH_KEY_SPACE = "grid01_latlon"
 
 
-def assert_place_source_ref_is_injective(conn: sqlite3.Connection, source_id: str) -> None:
-    """`reg.place_source_ref(source_id=...)` が `place_id` について単射であること
+def assert_place_source_ref_is_injective(conn: sqlite3.Connection, key_space: str) -> None:
+    """`reg.place_source_ref(key_space=...)` が `place_id` について単射であること
     （同じ place_id に複数の external_key が対応していない）。`place_id` から
     `external_key`（流域 ID・メッシュ座標）を一意に復元できる前提。
     """
     common.raise_on_group_by_duplicates(
         conn,
         "SELECT place_id, COUNT(*) AS c FROM reg.place_source_ref "
-        "WHERE source_id = ? GROUP BY place_id HAVING c > 1 LIMIT 5",
-        (source_id,),
+        "WHERE key_space = ? GROUP BY place_id HAVING c > 1 LIMIT 5",
+        (key_space,),
         lambda dup: (
-            f"place_source_ref（source_id={source_id!r}）が place_id について単射でない"
+            f"place_source_ref（key_space={key_space!r}）が place_id について単射でない"
             f"（同じ place_id に複数の external_key が対応している。例: {dup}）。"
             "place_id から external_key を一意に復元できない。"
         ),
     )
 
 
-def assert_occurrence_places_resolve(conn: sqlite3.Connection, source_id: str = MESH_SOURCE_ID) -> None:
+def assert_occurrence_places_resolve(conn: sqlite3.Connection, key_space: str = MESH_KEY_SPACE) -> None:
     """`occurrence.place_id`（b06 が座標から解決した grid01 の place。NULL は座標なしの
-    正常系）が、すべて `reg.place_source_ref(source_id=...)` で引けること。引けない
+    正常系）が、すべて `reg.place_source_ref(key_space=...)` で引けること。引けない
     place_id は registry と occurrence の版がずれている異常——黙って NULL に落とさず止める。
     """
     # 記録ごとの相関サブクエリにせず、distinct な place_id（数百〜数千）だけを引く
@@ -411,15 +406,15 @@ def assert_occurrence_places_resolve(conn: sqlite3.Connection, source_id: str = 
     bad = conn.execute(
         """
         SELECT COUNT(*) FROM (SELECT DISTINCT place_id FROM occurrence WHERE place_id IS NOT NULL) d
-        LEFT JOIN (SELECT DISTINCT place_id FROM reg.place_source_ref WHERE source_id = ?) r
+        LEFT JOIN (SELECT DISTINCT place_id FROM reg.place_source_ref WHERE key_space = ?) r
           ON r.place_id = d.place_id
         WHERE r.place_id IS NULL
         """,
-        (source_id,),
+        (key_space,),
     ).fetchone()[0]
     if bad:
         raise common.MigrationError(
-            f"occurrence: place_id はあるのに place_source_ref(source_id={source_id!r}) で"
+            f"occurrence: place_id はあるのに place_source_ref(key_space={key_space!r}) で"
             f"引けない place_id が{bad:,}種ある（registry.sqlite と occurrence の版がずれている、"
             "または grid01 以外の place_id が混ざっている可能性がある。"
             "scripts/r01_build_registry.py と b06 を同じ版で揃えて再実行すること）。"

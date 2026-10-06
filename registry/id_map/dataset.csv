@@ -1,0 +1,3 @@
+old_id,new_id,reason,spec_version
+nlni_l03b_landuse_by_watershed@2006,common:edition:nlni_l03b_landuse_by_watershed.2006,variable_alias.dataset の `@<年>` 後置（P-1b の暫定）を廃止。dataset は nlni_l03b_landuse_by_watershed のまま、版は variable_alias.edition_key=2006 が持つ（new_id は版の ID）,issue-39-phase-c
+nlni_l03b_landuse_by_watershed@2016,common:edition:nlni_l03b_landuse_by_watershed.2016,variable_alias.dataset の `@<年>` 後置（P-1b の暫定）を廃止。dataset は nlni_l03b_landuse_by_watershed のまま、版は variable_alias.edition_key=2016 が持つ（new_id は版の ID）,issue-39-phase-c

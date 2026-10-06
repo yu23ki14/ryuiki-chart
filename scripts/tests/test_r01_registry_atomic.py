@@ -662,3 +662,24 @@ def test_hash_optional_file_still_uses_hash_labeled_byte_layout(tmp_path):
         common._hash_labeled(via_labeled, label, path.read_bytes() if path.exists() else None)
 
         assert via_file.hexdigest() == via_labeled.hexdigest()
+
+
+def test_fingerprint_full_mode_detects_source_registry_content_change(tmp_path):
+    """`ryuiki.source_registry`（build_source.py の入力）は行の値の書き換えでも指紋が変わる
+    （Issue #39 Phase C。license/fetched_at を直したのに「新鮮」のまま固まらない）。"""
+    root = tmp_path / "repo"
+    _make_fingerprint_input_tree(root)
+    (root / "data" / "db").mkdir(parents=True)
+    ryuiki_path = root / "data" / "db" / "ryuiki.sqlite"
+    conn = sqlite3.connect(ryuiki_path)
+    conn.execute("CREATE TABLE organism_records (a)")
+    conn.execute("CREATE TABLE source_registry (source_id TEXT PRIMARY KEY, license TEXT)")
+    conn.execute("INSERT INTO source_registry VALUES ('s', 'CC BY')")
+    conn.commit()
+    conn.close()
+    before = common.compute_input_fingerprint(root=root, mode=common.MODE_FULL)
+    conn = sqlite3.connect(ryuiki_path)
+    conn.execute("UPDATE source_registry SET license = 'CC0'")
+    conn.commit()
+    conn.close()
+    assert common.compute_input_fingerprint(root=root, mode=common.MODE_FULL) != before
