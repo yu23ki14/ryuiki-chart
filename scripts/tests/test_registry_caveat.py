@@ -53,7 +53,8 @@ def test_every_caveat_has_a_complete_review_record():
     for e in entries:
         r = e["review"]
         assert r["reviewed_on"] == "2026-10-06"
-        assert r["reviewer"] == "claude（オーナー委任・要最終確認）"
+        assert r["reviewer"] == "claude（オーナー委任）"
+        assert r["owner_confirmed_on"] == "2026-10-07"
         assert r["reason"]
 
 
@@ -105,6 +106,13 @@ def test_incomplete_review_stops(decl):
     cav, _ = decl
     _rewrite(cav, lambda d: d["caveats"][0]["review"].pop("reason"))
     with pytest.raises(build_caveat.CaveatDeclarationError, match="reason"):
+        build_caveat._load_caveat_yaml()
+
+
+def test_missing_owner_confirmation_stops(decl):
+    cav, _ = decl
+    _rewrite(cav, lambda d: d["caveats"][0]["review"].pop("owner_confirmed_on"))
+    with pytest.raises(build_caveat.CaveatDeclarationError, match="owner_confirmed_on"):
         build_caveat._load_caveat_yaml()
 
 

@@ -273,6 +273,7 @@ taxon_assessment  taxon_id, list_id, list_year, category_code, category_raw,
    「国内に自然分布域を持つ国外由来の外来種」の語句を除いた残りに「国外由来」を含めば foreign（国外由来の掲載）、
    それ以外で「国内由来」を含めば domestic。同じ binom に foreign の掲載が1件でもあれば除外しない（Sus scrofa 等）。
    「国内に自然分布域を持つ国外由来」も国内に在来の分布があるので、神奈川で外来かを全国リストは決められず、同じ理由で除外側に倒す（オーナー承認）。
+   **`n_alien` の定義とこの除外規則は 2026-10-07 オーナー確認済み**（値・規則は変更なし）。
    固定宣言（7種。Apis mellifera だけが規則外）との和集合が除外集合（28 binom）。行は消さず `in_scope=0`・`scope_reason`
    に理由を残す。規則の件数（27）は `build()` の本番経路が宣言と突き合わせ、固定宣言の `domestic_origin` が規則と
    食い違えば常に止まる。

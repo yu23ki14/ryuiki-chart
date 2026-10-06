@@ -78,7 +78,8 @@ update_mode: static     # ほぼ不変。明示的に更新するまで再取得
 
 `update_mode`（`snapshot|append|revision|static`）は `manifests/<source_id>.yml` の必須キーで、registry ビルドが
 `source_edition.update_mode` に流す（マニフェストが正。editions.yaml に同じ出典があって食い違えば止まる）。
-未宣言は止まる（推測で埋めない）。マニフェストを持たない出典（パイプラインが読まない 111 出典）は従来どおり
+未宣言は止まる（推測で埋めない）。
+既存 13 出典の宣言値（各 `manifests/*.yml` の `evidence` に根拠）は 2026-10-07 オーナー確認済み（値は変更なし）。マニフェストを持たない出典（パイプラインが読まない 111 出典）は従来どおり
 editions.yaml に書くか NULL。v2 の鮮度判定（`check_v2_fresh.py`）のコード指紋に `manifests/*.yml` と
 `scripts/adapters/*.py` を入れた（adapter は実行時に `importlib` で読まれ、import 追跡では見つからないため）。
 

@@ -127,7 +127,7 @@
 
 ### 承認で決まったこと
 - A: `period_exceptions.yaml` のエントリは残し override=month（ADR-0021 追記に理由）。
-- B: 月 → 年度のロールアップを実装。当初の「一般規則」はレビューで撤回し、**宣言駆動**にした
+- B（2026-10-07 オーナー確認済み。厚木の年度のみ・暦年は作らない）: 月 → 年度のロールアップを実装。当初の「一般規則」はレビューで撤回し、**宣言駆動**にした
   （`rollup_to: [fiscal_year]` と宣言した出典だけ。厚木は年度、暦年は作らない。jma_monthly は新セル 0）。
 - C: `source_regions.yaml` の `regions:` を撤去し `registry/region.yaml` に一本化。旧形式が残っていれば止める。
 - 25桁ラベルの時刻帯は固定の jp-14 ではなく、行の region（`place.region_id`）の `utc_offset` と照合する（b03 が渡す）。

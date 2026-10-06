@@ -60,8 +60,9 @@
 # ## レビュー記録（Issue #35、2026-10-06）
 # 全注記に `review:` を持たせた（docs/plans/ISSUE35_CAVEAT.md §3。判定基準は
 # docs/adr/0013-caveats.md の「severity/kind の判定基準」）。reviewer は
-# 「claude（オーナー委任・要最終確認）」で、オーナーの最終確認は未了。
-#   review.reviewed_on / reviewer / reason（判断理由1〜2文）/ changed（機械分類から変えた項目の
+# 「claude（オーナー委任）」。オーナーは 2026-10-07 に全18件の severity/kind を
+# 変更なしで確認済み（review.owner_confirmed_on）。
+#   review.reviewed_on / reviewer / owner_confirmed_on / reason（判断理由1〜2文）/ changed（機械分類から変えた項目の
 #   リスト。変えていなければ false。severity/kind/scope/body/new のいずれか）。
 # kind: null は「該当なし」という判断（無理に ADR の enum に当てはめない）。
 # 上の「severity / kind の付け方」は Phase A の機械分類の記録で、現在の値は review が正。
@@ -81,7 +82,8 @@ caveats:
   quote: null
   review:
     reviewed_on: '2026-10-06'
-    reviewer: claude（オーナー委任・要最終確認）
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: '2026-10-07'
     reason: 年度集計値と検体値は grain で構造的に分離済みで、無視しても数値は誤らない。本文の件数が古かったので実測（合成データを除く）に直した。
     changed:
     - severity
@@ -94,7 +96,8 @@ caveats:
   quote: null
   review:
     reviewed_on: '2026-10-06'
-    reviewer: claude（オーナー委任・要最終確認）
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: '2026-10-07'
     reason: ND を観測値と読むと過大評価になる。実測で定量下限未満は 75,689/320,899行（23.6%）で本文の「約24%」は正しい。
     changed: false
 - key: aboveLod
@@ -105,7 +108,8 @@ caveats:
   quote: null
   review:
     reviewed_on: '2026-10-06'
-    reviewer: claude（オーナー委任・要最終確認）
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: '2026-10-07'
     reason: 定量上限超えの26行は全て透明度で、無視して比較すると高透明度が落ちて偏る。効く範囲は透明度だけなので scope を measurements 全体から water.transparency に狭めた。
     changed:
     - scope
@@ -117,7 +121,8 @@ caveats:
   quote: null
   review:
     reviewed_on: '2026-10-06'
-    reviewer: claude（オーナー委任・要最終確認）
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: '2026-10-07'
     reason: 日平均にまとめる処理規則の説明で、無視しても値の解釈は変わらない（非合成で重複グループ71,356）。
     changed:
     - severity
@@ -129,7 +134,8 @@ caveats:
   quote: null
   review:
     reviewed_on: '2026-10-06'
-    reviewer: claude（オーナー委任・要最終確認）
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: '2026-10-07'
     reason: 操作的定義であることの断りで、比較は成立する。zone 1 は4地点で測定0件（本文どおり）。
     changed:
     - severity
@@ -141,7 +147,8 @@ caveats:
   quote: null
   review:
     reviewed_on: '2026-10-06'
-    reviewer: claude（オーナー委任・要最終確認）
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: '2026-10-07'
     reason: 流域・地点への割り当ては推定で誤読しうるが比較は成立する。流域に割り当てられない記録が約10%ある事実を本文に足した。
     changed:
     - severity
@@ -154,7 +161,8 @@ caveats:
   quote: null
   review:
     reviewed_on: '2026-10-06'
-    reviewer: claude（オーナー委任・要最終確認）
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: '2026-10-07'
     reason: 件数の増加を実体の増加と読むと結論が誤る。「記録した人の数」は記録者列が大半 NULL（GBIF 88.6%・iNaturalist 100%）で裏付けられないため、測れる事実に置き換えた。
     changed:
     - body
@@ -166,7 +174,8 @@ caveats:
   quote: null
   review:
     reviewed_on: '2026-10-06'
-    reviewer: claude（オーナー委任・要最終確認）
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: '2026-10-07'
     reason: 合成データを実データと読むと結論が誤る。現行の配信経路には合成データが載らない（b03 が2,265行を除外）休眠の注記で、本文は現在の D1 に実在する範囲に縮めた。scope は実在しない dataset 値をやめて observation_set にした。
     changed:
     - body
@@ -179,7 +188,8 @@ caveats:
   quote: null
   review:
     reviewed_on: '2026-10-06'
-    reviewer: claude（オーナー委任・要最終確認）
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: '2026-10-07'
     reason: 年代で記録の中身が入れ替わり、分類群をまたぐ件数比較は誤りになる。流域内の実データ（2013–16 被子植物・2017–24 鳥類・2025– 昆虫/植物/菌類）で確認した。
     changed: false
 - key: gbifCutoff
@@ -190,7 +200,8 @@ caveats:
   quote: null
   review:
     reviewed_on: '2026-10-06'
-    reviewer: claude（オーナー委任・要最終確認）
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: '2026-10-07'
     reason: 2025年以降の鳥類の減少をデータの都合と読ませる必要があり、無視すると結論が誤る。「8,750件」は2024年1月の件数だったので、2024年12月（6,789件）→2025年1月（399件）に直した。
     changed:
     - body
@@ -202,7 +213,8 @@ caveats:
   quote: null
   review:
     reviewed_on: '2026-10-06'
-    reviewer: claude（オーナー委任・要最終確認）
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: '2026-10-07'
     reason: 割合で比べているという方法の説明で、危険の本体は effort が既に blocking で述べている（重複した blocking を避ける）。流域の表は割合を持たないので scope を grid01 のみにした。
     changed:
     - severity
@@ -215,7 +227,8 @@ caveats:
   quote: null
   review:
     reviewed_on: '2026-10-06'
-    reviewer: claude（オーナー委任・要最終確認）
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: '2026-10-07'
     reason: 当プロジェクトの補完規則で、時間をまたぐ方法変化ではないので kind は付けない。「96%が解決」は再現できず、実測（先頭2語一致70.8%・属一致15.2%・未解決13.7%）に直した。
     changed:
     - severity
@@ -229,7 +242,8 @@ caveats:
   quote: null
   review:
     reviewed_on: '2026-10-06'
-    reviewer: claude（オーナー委任・要最終確認）
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: '2026-10-07'
     reason: 当プロジェクトの分類規則で、定義の時間変化ではないので kind は付けない。Chordata で class 空が8,863件・Actinopterygii は0件（本文どおり）。
     changed:
     - severity
@@ -242,7 +256,8 @@ caveats:
   quote: null
   review:
     reviewed_on: '2026-10-06'
-    reviewer: claude（オーナー委任・要最終確認）
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: '2026-10-07'
     reason: 原本の is_alien で外来種を数えると結論が誤る（同一二名法で混在する種が102、オオクチバス139件・ウシガエル88件がフラグ0）。Issue #34 で n_alien を環境省リスト（国内由来のみの種を除く）への二名法一致から導く定義に変えたため、本文をその定義に合わせた。
     changed:
     - body
@@ -254,7 +269,8 @@ caveats:
   quote: null
   review:
     reviewed_on: '2026-10-06'
-    reviewer: claude（オーナー委任・要最終確認）
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: '2026-10-07'
     reason: 列名と中身の不一致の説明で表示名の問題。290地点が水域名・62地点が市区町村名（本文どおり）。
     changed:
     - severity
@@ -266,7 +282,8 @@ caveats:
   quote: null
   review:
     reviewed_on: '2026-10-06'
-    reviewer: claude（オーナー委任・要最終確認）
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: '2026-10-07'
     reason: 無視すると2006→2016の「全減・全増」を実変化と読んで結論が誤るので blocking の定義に当たる（禁止表現が無く機械分類が漏らしていた）。scope は土地利用の指標全体のまま（影響を受けるのは本文の3区分だが、他区分の定義一致は名称一致では確認できないので推測で狭めない）。
     changed:
     - severity
@@ -278,7 +295,8 @@ caveats:
   quote: null
   review:
     reviewed_on: '2026-10-06'
-    reviewer: claude（オーナー委任・要最終確認）
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: '2026-10-07'
     reason: 単位が判明している出典の値と混ぜると桁がずれる（出典間の単位差なので unit_change）。対象の variable は variable_alias.csv の unit_id 空行から機械導出されるので、流量の単位を確定する #31 が入れば自動で外れる。
     changed:
     - kind
@@ -290,7 +308,8 @@ caveats:
   quote: null
   review:
     reviewed_on: '2026-10-06'
-    reviewer: claude（オーナー委任・要最終確認）
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: '2026-10-07'
     reason: 感潮域の負値を誤りと読んで除外・絶対値化すると平均が偏る。比較自体は成立するので blocking ではなく warning。variable.yaml の description_ja に埋め込んでいたものを variable スコープの独立した注記にした（件数は実測し直して一致）。
     changed:
     - new

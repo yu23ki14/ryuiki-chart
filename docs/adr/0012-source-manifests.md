@@ -117,6 +117,7 @@ checks:
 5. `redistributable` は出典の旗で、出力を絞らない（ADR-0028）。
 6. **既存 5 系統（measurements・sensor_timeseries・土地利用・organism_records の 13 出典）は `adapter: builtin`**
    （region・update_mode・件数・版参照のメタデータだけ。変換は b03/b06 のまま。出力を 1 ビットも動かさない）。
+   13 出典の `update_mode`（各 `manifests/*.yml` の `evidence` に根拠）は **2026-10-07 オーナー確認済み**（値は変更なし）。
    マニフェストに無い出典・マニフェストにあるのに誰も処理しない出典はどちらも止まる。
 7. 新出典の宣言値（期間の形ごとの件数・leaf/month/流域の解決件数・座標なしの件数）は、`scripts/migrate/*.yaml` を
    触らずに済むよう、マニフェストの `expected:` ブロックに書く（b06/b07/b09 は yaml の宣言値とこの値の和と突合する。

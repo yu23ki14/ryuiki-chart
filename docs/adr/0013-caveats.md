@@ -71,7 +71,8 @@ caveat
 ## 追記（2026-10-06、Issue #35）: severity/kind の判定基準・scope の語彙・レビュー結果
 
 状態: 実装済み。レビューは**オーナー委任で claude が行った**（各注記の `review.reviewer` は
-「claude（オーナー委任・要最終確認）」）。オーナーの最終確認は未了。設計・実測の根拠は
+「claude（オーナー委任）」）。**2026-10-07 オーナー確認済み**（全18件の severity/kind を変更なしで確定。
+各 `review.owner_confirmed_on: '2026-10-07'`、`build_caveat` の検査が必須項目として要求する）。設計・実測の根拠は
 `docs/plans/ISSUE35_CAVEAT.md`。
 
 ### severity の判定基準
