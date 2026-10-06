@@ -1,7 +1,7 @@
 # ADR-0006: 空間単位を単一の `place` レジストリに統合する
 
 - 状態: 承認済（一部未実装: `feature` エンティティへの統合、`sites.municipality` 混入の解消は
-  未着手、`place_source_ref.source_id` が `source_edition_id` ではなく文字列〔#9〕）
+  未着手。`place_source_ref` は Issue #39 Phase C で `key_space` 列と任意の `source_edition_id` 列を持つ形にした）
   / 日付: 2026-09-06
 - 関連: ADR-0002（多地域）, ADR-0004（識別子）, ADR-0007（observation）, ADR-0011（キューブ）
 
@@ -83,7 +83,7 @@ place           place_id, region_id, place_kind, name_ja, name_en,
                 definition_ref, source_edition_id
 place_relation  parent_id, child_id, relation ('within'|'overlaps'|'adjacent'|'flows_to'),
                 fraction, basis, source_edition_id
-place_source_ref place_id, source_edition_id, external_key   -- 出典側の識別子
+place_source_ref place_id, key_space, external_key, source_edition_id (NULL可)   -- 出典側の識別子
 ```
 
 - `place_kind` はコードリスト（ADR-0010 と同じ管理）: `site` / `watershed` / `mesh3` /
@@ -149,3 +149,12 @@ coordinate_uncertainty_m  617,950行（75%）が NULL＝精度不明
   ファイル配布）と両立しない。関係を**事前に辺として持つ**ことで配布可能性を優先する。却下。
 - **place と feature を統合する**: エンティティが減るが、「集計軸としての場所」と
   「属性を持つ地物」は用途も更新頻度も違う（植生ポリゴン13,206行を集計軸にはしない）。却下。
+
+**2026-10-06 追記（Issue #39 Phase C）**: `place_source_ref` の旧 `source_id` 列（`sites.site_id` /
+`sites.zone` / `watershed_meta.watershed_id` / `organism_records.lat_lon` の4値）は出典ではなく
+**外部キーの空間**（v1 の `表.列`）だったので、`key_space`（`site_id` | `zone` | `watershed_id` |
+`grid01_latlon`）に改め、出典（どの版のデータか）は別列 `source_edition_id`（NULL 可）に分けた。
+`key_space` の宣言と、各 key_space が出典の版を持つか（site は `site_id` の接頭辞 `<source>__` から行ごとに、
+watershed は固定、zone・grid01 は出典なし）は `registry/place/key_space.yaml`。
+`source_edition_id` は source_edition 表（担当 B）ができるまで全行 NULL（捏造しない）。
+place_id の区切りが `-` から `.` に変わった件は ADR-0004 規約1 と `registry/id_map/place.csv`。

@@ -18,7 +18,7 @@ const INAT = "inaturalist_kanagawa";
 
 const G1 = "common:place:grid01.3520_13900";
 const G2 = "common:place:grid01.3521_13901";
-const WS1 = "common:place:watershed.nlni-83030-0001";
+const WS1 = "common:place:watershed.nlni.83030-0001";
 
 /** `NAME_JA` にある実在の学名（1つ）。 */
 export const FX_NAME_JA_BINOM = Object.keys(NAME_JA)[0]!;

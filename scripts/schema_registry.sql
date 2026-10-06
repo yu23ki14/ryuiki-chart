@@ -186,11 +186,16 @@ CREATE INDEX IF NOT EXISTS ix_place_relation_child ON place_relation(child_id);
 -- v1 の出典側識別子(sites.site_id / watershed_meta.watershed_id / mlat,mlon 等)から
 -- place への対応。「v1 を動かさずに並走させる」ための接続点(PHASE_A.md §A-3)。
 -- external_key からの逆引きが主な引き方。
+-- key_space = 外部キーの空間(site_id | zone | watershed_id | grid01_latlon。
+-- registry/place/key_space.yaml が宣言。旧 source_id 列の値 'sites.site_id' 等を
+-- Issue #39 Phase C で改称した。出典ではないので source_id とは呼ばない)。
+-- source_edition_id = その行の出典の版(NULL 可。出典を持たない key_space は NULL)。
 CREATE TABLE IF NOT EXISTS place_source_ref (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   place_id TEXT,
   external_key TEXT,
-  source_id TEXT
+  key_space TEXT,
+  source_edition_id TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_place_source_ref_external ON place_source_ref(external_key);
 CREATE INDEX IF NOT EXISTS ix_place_source_ref_place ON place_source_ref(place_id);
@@ -390,3 +395,16 @@ CREATE TABLE IF NOT EXISTS registry_build (
   input_fingerprint TEXT NOT NULL,
   mode TEXT NOT NULL
 );
+
+-- ID の改称の記録(ADR-0004 規約2。置換(superseded_by)とは別物)。
+-- registry/id_map/<entity>.csv の宣言から作る。受け入れ検証は「旧 ID の凍結リストの
+-- 各行が id_map(または恒等)でちょうど1個の現行 ID に解決する」こと。
+CREATE TABLE IF NOT EXISTS id_map (
+  entity TEXT NOT NULL,
+  old_id TEXT NOT NULL,
+  new_id TEXT NOT NULL,
+  reason TEXT,
+  spec_version TEXT,
+  PRIMARY KEY (entity, old_id)
+);
+CREATE INDEX IF NOT EXISTS ix_id_map_new ON id_map(entity, new_id);

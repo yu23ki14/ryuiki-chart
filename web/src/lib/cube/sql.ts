@@ -94,7 +94,7 @@ export interface ScopeSql {
 /**
  * スコープを JOIN/WHERE に展開する（design §3.3）。
  *
- * `psr`（`place_source_ref`、`source_id='sites.site_id'`）は `all_sites` 以外は
+ * `psr`（`place_source_ref`、`key_space='site_id'`）は `all_sites` 以外は
  * INNER JOIN にする（design: 「psr は LEFT JOIN にしない」）。`all_sites` だけは
  * `sites` に無い地点（厚木の一部・地盤沈下観測点等）も含めるため psr を付けない。
  *
@@ -123,19 +123,19 @@ export function buildScopeSql(scope: Scope, alias = OBS): ScopeSql {
       }
       joins.push(`JOIN json_each(?) pid ON pid.value = ${alias}.place_id`);
       joinParams.push(jsonEachParam(scope.placeIds));
-      joins.push(`JOIN place_source_ref psr ON psr.place_id = ${alias}.place_id AND psr.source_id = 'sites.site_id'`);
+      joins.push(`JOIN place_source_ref psr ON psr.place_id = ${alias}.place_id AND psr.key_space = 'site_id'`);
       siteIdExpr = "psr.external_key";
       break;
     }
     case "site": {
-      joins.push(`JOIN place_source_ref psr ON psr.place_id = ${alias}.place_id AND psr.source_id = 'sites.site_id'`);
+      joins.push(`JOIN place_source_ref psr ON psr.place_id = ${alias}.place_id AND psr.key_space = 'site_id'`);
       wheres.push("psr.external_key = ?");
       whereParams.push(scope.siteId);
       siteIdExpr = "psr.external_key";
       break;
     }
     case "water": {
-      joins.push(`JOIN place_source_ref psr ON psr.place_id = ${alias}.place_id AND psr.source_id = 'sites.site_id'`);
+      joins.push(`JOIN place_source_ref psr ON psr.place_id = ${alias}.place_id AND psr.key_space = 'site_id'`);
       joins.push(`JOIN sites s ON s.site_id = psr.external_key AND s.municipality = ?`);
       joinParams.push(scope.municipality);
       siteIdExpr = "psr.external_key";
@@ -143,8 +143,8 @@ export function buildScopeSql(scope: Scope, alias = OBS): ScopeSql {
     }
     case "zone": {
       joins.push(`JOIN place_relation pr ON pr.child_id = ${alias}.place_id AND pr.relation = 'within'`);
-      joins.push(`JOIN place_source_ref zref ON zref.place_id = pr.parent_id AND zref.source_id = 'sites.zone'`);
-      joins.push(`JOIN place_source_ref psr ON psr.place_id = ${alias}.place_id AND psr.source_id = 'sites.site_id'`);
+      joins.push(`JOIN place_source_ref zref ON zref.place_id = pr.parent_id AND zref.key_space = 'zone'`);
+      joins.push(`JOIN place_source_ref psr ON psr.place_id = ${alias}.place_id AND psr.key_space = 'site_id'`);
       if (scope.zone !== undefined) {
         wheres.push(`${zoneExprSql("zref")} = ?`);
         whereParams.push(scope.zone);
@@ -165,7 +165,7 @@ export function buildScopeSql(scope: Scope, alias = OBS): ScopeSql {
 }
 
 /** ゾーンの数値（`sites.zone` は "1".."5" の数字文字列）。`alias` は
- *  `place_source_ref`（`source_id='sites.zone'`）を指すテーブルエイリアス。 */
+ *  `place_source_ref`（`key_space='zone'`）を指すテーブルエイリアス。 */
 export function zoneExprSql(alias: string): string {
   return `CAST(${alias}.external_key AS INTEGER)`;
 }

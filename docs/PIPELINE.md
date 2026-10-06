@@ -77,6 +77,18 @@ PR-5 で v1 射影（b05/b08）から移した。キューブ・registry だけ�
   `scripts/c26_taxon_gbif_accepted.py` が書く `data/processed/taxon_gbif_accepted.csv`（GBIF API 収集物。
   `taxon_crosswalk.csv` と同じ扱いで指紋・サンプル `data/sample/processed/` に入る）を r01 が読む。
 
+## ファクトの公開 ID と版（Issue #39 Phase C）
+
+- v2 の `observation` は `observation_id`（`common:obs:<tbl>.<業務キー>`）と `source_edition_id`、`occurrence` は
+  `occurrence_id`（`common:occ:<gbif|inat>.<出典の key>`）と `source_edition_id` を持つ。発行規則は
+  `scripts/migrate/public_id.py` の1箇所、版は `scripts/migrate/edition.py` の `resolve_edition()`（土地利用は `data_year` を vintage に）。
+  **ID は行の位置ではなく出典の業務キーで決める**（決定的・再利用しない）。旧キー列（`(source_table, source_row_id)`/`record_id`）と
+  新 ID 列の両方が UNIQUE（挿入後に検証用の索引を張って確かめる。衝突すれば止まる）。旧→新は `SELECT source_table, source_row_id,
+  observation_id FROM observation` で引く（別ファイルの対応表・ビュー〔`ALTER TABLE ... RENAME` と相性が悪い〕は作らない）。
+- キューブ（`observation_agg`/`occurrence_agg`）・D1 summary は bare の `source_id` のまま（キーを動かさない）。D1 に L2 は載せない。
+- `scripts/x01_dwca.py` の `occurrenceID` は新 ID。旧→新の対応は `occurrenceID_mapping.csv`（DwC-A の zip に同梱）。
+- `spec_version`: `observation_agg`/`occurrence_agg` を v4、`occurrence_place` を v3 に上げた（place_id の ID 文法の変更を含む）。
+
 ## 規約
 
 - **`+09:00` 付きの時刻文字列に SQLite の日時関数（`date`/`datetime`/`strftime`）を使わない**

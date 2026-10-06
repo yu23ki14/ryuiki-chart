@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "b6c0fcee-0b3a-4970-8ce4-c1724e471cde",
+  "id": "0e3753e3-9426-43e3-a933-87e9b591e38d",
   "prevId": "d049a3f5-efd2-47d3-9673-33d5c03bfbb8",
   "tables": {
     "cells": {
@@ -2168,8 +2168,15 @@
           "notNull": false,
           "autoincrement": false
         },
-        "source_id": {
-          "name": "source_id",
+        "key_space": {
+          "name": "key_space",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "source_edition_id": {
+          "name": "source_edition_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -4072,7 +4079,9 @@
   "_meta": {
     "schemas": {},
     "tables": {},
-    "columns": {}
+    "columns": {
+      "\"place_source_ref\".\"source_id\"": "\"place_source_ref\".\"key_space\""
+    }
   },
   "internal": {
     "indexes": {}

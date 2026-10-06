@@ -18,6 +18,8 @@ Phase A（`docs/plans/PHASE_A.md`, ADR-0016）の成果物。v1 のファクト�
 | `source/editions.yaml` | 出典の版（`source_edition`）の宣言。土地利用の 2006/2016・置換（`gbif_kanagawa` → `gbif_kanagawa_occurrences`）・`update_mode`・`content_file`。過去の取得履歴は復元不能なので書かない（捏造しない） |
 | `id_map/dataset.csv` | 旧 ID → 現行 ID の対応（dataset 分: 旧 `<dataset>@<年>` → 版の ID の 2 行。凍結リストとして `build_source.py` が variable_alias と突き合わせる） |
 | `place/zone.yaml` | Ridge to Reef ゾーン(1-5)の操作的定義 |
+| `place/key_space.yaml` | `place_source_ref.key_space`（外部キーの空間: `site_id`/`zone`/`watershed_id`/`grid01_latlon`）の宣言と、旧 `source_id` 値との対応、出典の版を持つか（Issue #39 Phase C、ADR-0006） |
+| `id_map/place.csv` | place の旧→新 ID の対応877件（ADR-0004 規約1 の区切り改定。**手書きの宣言**で、一度だけ旧ビルダーの出力から作った。`r01` が毎回、現行の place と1対1・旧 ID の再利用なし・規則一致を検査して止める。`registry.sqlite` の `id_map` 表→`web/src/lib/registry/generated-id-map.ts`→`resolveLegacyId()`）。ファイル名の stem が entity |
 | `place/site_supplement.csv` | `sites` テーブルに無い観測地点の補完（143件）。`place_local` 列は、
   `site_id` の局番コード部分（`"__"` の後ろ）が空文字で自動導出できない行にだけ
   明示の local を持たせる列（後述「空の局番コード」参照）。他の142行は空欄 |
@@ -148,7 +150,7 @@ Phase B `phase-b/place-attributes`（P-1a）で `place_watershed` を新設し10
 |---|---|---|
 | unit | `common:unit:<slug>` | `common:unit:mg_per_l` |
 | variable | `common:variable:<theme>.<name>` | `common:variable:water.bod` |
-| place（namespace あり） | `<scope>:place:<kind>.<namespace>-<local>` | `jp-14:place:site.env-pubwater-0142` |
+| place（namespace あり） | `<scope>:place:<kind>.<namespace>.<local>`（ns と local の区切りは `.`、ADR-0004 規約1） | `jp-14:place:site.env-pubwater.0142` |
 | place（namespace 無し） | `<scope>:place:<kind>.<local>` | `common:place:grid01.3500_13900`（後述） |
 | taxon（GBIF由来） | `common:taxon:gbif.<GBIFのtaxonKey>` | `common:taxon:gbif.2480932` |
 | taxon（iNaturalist由来） | `common:taxon:inat.<iNatのtaxon.id>` | `common:taxon:inat.12345`（GBIFのtaxonKeyとは無関係な別の数値空間。Phase B `phase-b/occurrence-registry`、後述「taxon の名前空間分割」） |
@@ -339,7 +341,7 @@ alias_source_pairs_{csv,data}_only.csv` に片方向ずつのズレを出す（0
 
 レビューで、ID に空白（`taxon_id` 5,685件）・コロン（`local_key` 内に221件。
 `<scope>:<entity>:<local_key>` の3分割が曖昧になる）・非ASCII文字（`place_id` 7件。
-例: `jp-14:place:site.atsugi-river-中津川`）がそのまま入っていることが指摘された
+例: `jp-14:place:site.atsugi-river.中津川`）がそのまま入っていることが指摘された
 （ADR-0004 規約4「公開 ID は URI に解決できる形にする」に反する）。
 
 `scripts/registry/common.py` の `slugify_local_key()` に1箇所で実装し、

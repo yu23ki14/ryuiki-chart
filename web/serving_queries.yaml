@@ -31,7 +31,7 @@ domains:
     sql: >
       SELECT DISTINCT psr.external_key AS site_id
       FROM summary_place_variable spv
-      JOIN place_source_ref psr ON psr.place_id = spv.place_id AND psr.source_id = 'sites.site_id'
+      JOIN place_source_ref psr ON psr.place_id = spv.place_id AND psr.key_space = 'site_id'
       WHERE spv.variable_id IN (SELECT variable_id FROM variable_alias WHERE dataset = 'measurements' AND variable_id IS NOT NULL)
   # 測定値の variable_id（レジストリ上の正準 ID）。
   variable_id:
@@ -51,7 +51,7 @@ domains:
       SELECT DISTINCT spv.variable_id AS variable_id, psr.external_key AS site_id,
              CASE WHEN spv.input_grain = 'day' THEN 'day' WHEN spv.grain = 'year' THEN 'year' ELSE 'fiscal_year' END AS basis
       FROM summary_place_variable spv
-      JOIN place_source_ref psr ON psr.place_id = spv.place_id AND psr.source_id = 'sites.site_id'
+      JOIN place_source_ref psr ON psr.place_id = spv.place_id AND psr.key_space = 'site_id'
       WHERE (spv.input_grain = 'day' OR (spv.input_grain = spv.grain OR (spv.input_grain = 'month' AND spv.grain = 'fiscal_year')))
         AND spv.variable_id IN (SELECT variable_id FROM variable_alias WHERE dataset = 'measurements' AND variable_id IS NOT NULL)
   # 日次の積み上げがある (variable_id, site_id)（月次・日次の系列）。
@@ -61,7 +61,7 @@ domains:
     sql: >
       SELECT DISTINCT spv.variable_id AS variable_id, psr.external_key AS site_id
       FROM summary_place_variable spv
-      JOIN place_source_ref psr ON psr.place_id = spv.place_id AND psr.source_id = 'sites.site_id'
+      JOIN place_source_ref psr ON psr.place_id = spv.place_id AND psr.key_space = 'site_id'
       WHERE spv.input_grain = 'day'
         AND spv.variable_id IN (SELECT variable_id FROM variable_alias WHERE dataset = 'measurements' AND variable_id IS NOT NULL)
   # 実在する (variable_id, basis)（ゾーン系列）。
@@ -81,7 +81,7 @@ domains:
     sql: >
       SELECT s.municipality AS water
       FROM sites s
-      JOIN place_source_ref psr ON psr.external_key = s.site_id AND psr.source_id = 'sites.site_id'
+      JOIN place_source_ref psr ON psr.external_key = s.site_id AND psr.key_space = 'site_id'
       WHERE s.municipality IS NOT NULL AND s.municipality <> ''
         AND psr.place_id IN (SELECT DISTINCT place_id FROM summary_place_variable)
       GROUP BY s.municipality

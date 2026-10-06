@@ -238,7 +238,7 @@ def report_place(ryuiki: sqlite3.Connection) -> dict:
             SELECT t.site_id AS site_id, count(*) AS n
             FROM {table} t
             LEFT JOIN reg.place_source_ref psr
-              ON psr.external_key = t.site_id AND psr.source_id = 'sites.site_id'
+              ON psr.external_key = t.site_id AND psr.key_space = 'site_id'
             WHERE psr.place_id IS NULL
             GROUP BY t.site_id
             ORDER BY t.site_id
@@ -401,7 +401,7 @@ def report_needs_review(ryuiki: sqlite3.Connection, unit_still_missing_by_variab
                p.lat AS lat, p.lon AS lon, p.definition_ref AS reason
         FROM reg.place p
         LEFT JOIN reg.place_source_ref psr
-          ON psr.place_id = p.place_id AND psr.source_id = 'sites.site_id'
+          ON psr.place_id = p.place_id AND psr.key_space = 'site_id'
         WHERE p.status = 'needs_review'
         ORDER BY p.place_id
         """,
@@ -747,7 +747,7 @@ def render_markdown(v, p, o, u, nr, t, ap) -> str:
     a("")
     a(
         f"- `measurements` の site_id {pm['distinct_total']}種、"
-        f"`place_source_ref`（`source_id='sites.site_id'`）で全件解決"
+        f"`place_source_ref`（`key_space='site_id'`）で全件解決"
         f"（未解決 {pm['distinct_unresolved']}種）。行ベースでは "
         f"{pm['row_resolved']:,}/{pm['row_total']:,}行。"
     )

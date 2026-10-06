@@ -12,7 +12,7 @@ import b03_build_observation as b03
 import b04_build_cube as b04
 from migrate import common, cube_invariants
 
-from .migrate_fixtures import DEFAULT_ALIASES, make_registry_db, make_v2_db_with_observation, table_content_hash
+from .migrate_fixtures import DEFAULT_ALIASES, make_registry_db, make_v2_db_with_observation, pad_observation_rows, table_content_hash
 
 # b04 は AVG()/SUM() を使うため `common.require_sqlite_version()` で古い
 # SQLite を拒む（`scripts/migrate/common.py` 参照）。この版のガード自体の
@@ -916,6 +916,7 @@ def test_build_cube_halts_when_observation_has_no_recorded_fingerprint(tmp_path)
     registry_db = _registry_db(tmp_path)
     conn = sqlite3.connect(f"file:{db_path}", uri=True)
     conn.execute(b03._CREATE_OBSERVATION_SQL.format(table="observation"))
+    rows = pad_observation_rows(rows)
     conn.executemany(f"INSERT INTO observation VALUES ({', '.join('?' for _ in rows[0])})", rows)
     conn.commit()  # record_stage_fingerprint を呼ばない（指紋を記録しない）
     try:

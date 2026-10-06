@@ -21,6 +21,7 @@ import re
 import sqlite3
 import pathlib
 import time
+from typing import NamedTuple
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 DB_DIR = ROOT / "data" / "db"
@@ -549,6 +550,14 @@ def variable_id(theme: str, name: str, scope: str = "common") -> str:
     return scoped_id("variable", f"{theme}.{name}", scope)
 
 
+# namespace を持たない place_kind（ADR-0004 規約1。値そのものが ID 全体で一意な
+# 機械グリッド等）。`place_id()` と `parse_id()` が同じ集合を見る（唯一の正）。
+PLACE_KINDS_WITHOUT_NAMESPACE = frozenset({"grid01"})
+
+# ns（出典名前空間）に許す文字。`.` と `:` は区切りなので含めない（ADR-0004 規約1）。
+_NAMESPACE_RE = re.compile(r"[a-z0-9_-]+")
+
+
 def place_id(
     place_kind: str,
     namespace: str | None,
@@ -557,16 +566,38 @@ def place_id(
     *,
     seen: dict | None = None,
 ) -> str:
-    """common:place:<kind>.<namespace>-<local>。site は通常 jp-14 スコープ。
+    """<scope>:place:<kind>.<namespace>.<local>。site は通常 jp-14 スコープ。
 
-    `namespace` に None（または空文字）を渡すと `<namespace>-` を省いて
-    `common:place:<kind>.<local>` にする（例: grid01 のように、値そのものが
-    ID 全体で一意な出典由来のグリッド）。
+    ns と key の区切りは `.`（ADR-0004 規約1、Issue #39 Phase C）。**ns は `.` と `:`
+    を含まない**（`-` は含んでよい。区切りに使わない）ので、最初の `.` で切れば
+    一意に分解できる（分解は `parse_id()` が唯一の口）。key（`local`）は
+    `slugify_local_key()` を通すので `.` を含みうる。
+
+    `namespace` が None になれるのは `PLACE_KINDS_WITHOUT_NAMESPACE`（grid01）だけ。
+    それ以外の kind で None/空を渡す・grid01 に namespace を渡すのは例外
+    （`parse_id()` が kind だけで ns の有無を決められるように）。
 
     `local` は `slugify_local_key()` を通す（空白・コロン・非ASCII対策。
     レビュー指摘）。`seen` を渡すと、同じ (place_kind, namespace) の中で
     別の元 local が同じ slug に潰れた場合に例外を投げる。
     """
+    if place_kind in PLACE_KINDS_WITHOUT_NAMESPACE:
+        if namespace:
+            raise ValueError(
+                f"place_id: place_kind={place_kind!r} は namespace を持たない"
+                f"（namespace={namespace!r}）"
+            )
+    else:
+        if not namespace:
+            raise ValueError(
+                f"place_id: place_kind={place_kind!r} には namespace が要る"
+                "（namespace を持たない kind は PLACE_KINDS_WITHOUT_NAMESPACE）"
+            )
+        if not _NAMESPACE_RE.fullmatch(namespace):
+            raise ValueError(
+                f"place_id: namespace={namespace!r} は [a-z0-9_-]+ でなければならない"
+                "（'.' と ':' は区切りなので含められない。ADR-0004 規約1）"
+            )
     slug = slugify_local_key(str(local))
     if seen is not None:
         key = (place_kind, namespace)
@@ -578,8 +609,53 @@ def place_id(
                 f"{local!r} と {prev!r} が同じ slug {slug!r} に潰れた。"
             )
         bucket[slug] = local
-    middle = f"{namespace}-{slug}" if namespace else slug
+    middle = f"{namespace}.{slug}" if namespace else slug
     return scoped_id("place", f"{place_kind}.{middle}", scope)
+
+
+class ParsedId(NamedTuple):
+    """`parse_id()` の結果。place 以外では kind は None。"""
+    scope: str
+    entity: str
+    local: str
+    kind: str | None
+    ns: str | None
+    key: str
+
+
+def parse_id(id_value: str) -> ParsedId:
+    """`<scope>:<entity>:<local>` を分解する唯一の口（ADR-0004 規約1）。
+
+    - scope・entity は最初の2つの `:` で切る（local には `:` が残らない。
+      `slugify_local_key()` が `:`→`.` にしている）。
+    - place の local は `<kind>.<ns>.<key>`（kind が `PLACE_KINDS_WITHOUT_NAMESPACE`
+      なら `<kind>.<key>`）。ns と key は**最初の `.`** で切る（key は `.` を含みうる
+      ので「最後の `.`」で切ってはいけない）。
+    - place 以外は local 全体を `<ns>.<key>` とみなして最初の `.` で切る
+      （taxon の `gbif.123`・variable の `water.bod`。`.` が無ければ ns=None）。
+    形が崩れていれば ValueError（黙って誤分割しない）。
+    """
+    scope, sep1, rest = id_value.partition(":")
+    entity, sep2, local = rest.partition(":")
+    if not (sep1 and sep2 and scope and entity and local):
+        raise ValueError(f"parse_id: <scope>:<entity>:<local> の形ではない: {id_value!r}")
+    if entity == "place":
+        kind, dot, tail = local.partition(".")
+        if not (kind and dot and tail):
+            raise ValueError(f"parse_id: place の local が <kind>.… の形ではない: {id_value!r}")
+        if kind in PLACE_KINDS_WITHOUT_NAMESPACE:
+            return ParsedId(scope, entity, local, kind, None, tail)
+        ns, dot2, key = tail.partition(".")
+        if not (ns and dot2 and key) or not _NAMESPACE_RE.fullmatch(ns):
+            raise ValueError(
+                f"parse_id: place の local が <kind>.<ns>.<key> の形ではない"
+                f"（旧形式の '-' 区切りの可能性）: {id_value!r}"
+            )
+        return ParsedId(scope, entity, local, kind, ns, key)
+    ns, dot, key = local.partition(".")
+    if not dot:
+        return ParsedId(scope, entity, local, None, None, local)
+    return ParsedId(scope, entity, local, None, ns, key)
 
 
 def taxon_id_gbif(gbif_key, scope: str = "common") -> str:

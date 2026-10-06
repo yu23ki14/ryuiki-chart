@@ -63,12 +63,16 @@ import pipeline_inputs  # noqa: E402  (v2 入力指紋が data/processed の sha
 # 過去のキーとは比較できないため v2 に上げた。
 # 2026-10-06: Issue #61 で `value_zero` が not_detected を平均・MIN/MAX から除外する
 # 意味に変わったため v3 に上げた。
-OBSERVATION_AGG_SPEC_VERSION = "phase-b-fact-slice/v3"
+# 2026-10-06: Issue #39 Phase C で place_id の ID 文法（ns と key の区切り）が変わり、observation に
+# 公開 ID（observation_id）と source_edition_id が付いたため v4 に上げた（place_id がキーの一部）。
+OBSERVATION_AGG_SPEC_VERSION = "phase-b-fact-slice/v4"
 
 # `scripts/b09_build_occurrence_place.py`（`occurrence_place`）専用。
 # キー（`record_id, place_kind`）もスキーマも変わっていないが、2026-10-06 Issue #34 で
 # 入力の `occurrence` に `is_alien_in_scope` 列が増えた（n_alien の意味が変わった）ため v2 に上げた。
-OCCURRENCE_SPEC_VERSION = "phase-b-fact-slice/v2"
+# 2026-10-06: Issue #39 Phase C で place_id の ID 文法が変わり、occurrence に公開 ID（occurrence_id）と
+# source_edition_id が付いたため v3 に上げた。
+OCCURRENCE_SPEC_VERSION = "phase-b-fact-slice/v3"
 
 # `scripts/b07_build_occurrence_cube.py`（`occurrence_agg`）専用。2026-09-27
 # Issue #48 PR-3a: 次元キーは変えていないが、(a) `place_kind='watershed'` の
@@ -81,7 +85,8 @@ OCCURRENCE_SPEC_VERSION = "phase-b-fact-slice/v2"
 # 持つ」の趣旨どおり）、`occurrence_agg` だけを変えたので分離した。
 # 2026-10-06: Issue #34 で `n_alien` の意味が「外来種の除外規則〔in_scope〕を反映した旗の合計」に
 # 変わったため v3 に上げた。
-OCCURRENCE_AGG_SPEC_VERSION = "phase-b-fact-slice/v3"
+# 2026-10-06: Issue #39 Phase C で place_id の ID 文法が変わった（place_id がキーの一部）ため v4 に上げた。
+OCCURRENCE_AGG_SPEC_VERSION = "phase-b-fact-slice/v4"
 
 # `record_stage_fingerprint`/`record_stage_fingerprints`（段階間の指紋、
 # Issue #37 #1）の `spec_version` 引数の既定値。**成果物ごとの `built_from`/

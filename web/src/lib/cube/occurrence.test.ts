@@ -129,7 +129,7 @@ describe("watershedYears", () => {
       { placeId: FXO.places.ws1, year: 2021, n: 5, nAlien: 0, nRedList: 5, speciesN: 1 },
     ]);
     expect(await watershedYears(fx.db, { placeId: FXO.places.ws1 })).toEqual(rows);
-    expect(await watershedYears(fx.db, { placeId: "common:place:watershed.nlni-none" })).toEqual([]);
+    expect(await watershedYears(fx.db, { placeId: "common:place:watershed.nlni.none" })).toEqual([]);
   });
 });
 

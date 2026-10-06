@@ -81,7 +81,8 @@ ADR-0007 の全列のうち埋まるのは次のとおり。
     （design.md T3）。`source_table` は `'measurements'`/`'sensor_timeseries'`、
     `source_row_id` はそれぞれ `measurement_id`（元々 TEXT）/
     `id`（元々 INTEGER。ここで `str()` にして運ぶ）。`observation_id` は
-    発行しない（ADR-0016: 公開 ID の発行は Phase C）。
+    Issue #39 Phase C で発行する（`migrate/public_id.py`。出典の業務キーで決める。
+    `(source_table, source_row_id)` と `observation_id` の両方が一意）。
   - `region_id` / `place_id` / `place_kind` — `place_source_ref` 経由で解決
     （ハードコードしない。`place.region_id`/`place.place_kind` から引く）。
   - `variable_id` / `unit_id` / `obs_stat` / `value_grain`
@@ -115,8 +116,9 @@ ADR-0007 の全列のうち埋まるのは次のとおり。
     （合成センサーの `'SYN-INSTR-WTLOG-01'` 等。0.7%行程度にのみ値あり）も
     自由記述でレジストリ ID ではないので、無理に詰めない（推測でマッピング
     しない）。
-  - `observer_id` / `source_edition_id` — 対応する列が無い/レジストリが
-    まだ無い（Phase C の仕事）。
+  - `source_edition_id` — `migrate/edition.py` の `resolve_edition()`（その出典の唯一の版。
+    土地利用は `data_year` を vintage に渡す。Issue #39 Phase C）。
+  - `observer_id` — 対応する列が無い。
   - `value_text` — どちらの出典も値は常に量的（`measurements` は検閲
     ありうる数量、`sensor_timeseries` は REAL の `result`）で、テキスト値を
     持つ観測が無い。
@@ -150,7 +152,7 @@ alias/place 解決や重複判定より前に、既定で弾く——`observatio
 
 ## alias / place 解決
 
-`(dataset, alias, source_id)` と `place_source_ref(source_id='sites.site_id')`
+`(dataset, alias, source_id)` と `place_source_ref(key_space='site_id')`
 は、この縦線の全1,041,003行（323,164 + 717,839）が解決するはず（design.md
 実測）。1行でも解決できなければ、件数と実例を出して止まる（黙って捨てない・
 黙って NULL にしない）。JOIN が1行を2行以上に増やしていないか（alias/place
@@ -188,7 +190,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from migrate import censoring, common, period, regions as region_vocab, source_regions  # noqa: E402
+from migrate import censoring, common, edition, period, public_id, regions as region_vocab, source_regions  # noqa: E402
 
 DEFAULT_RYUIKI_DB = ROOT / "data" / "db" / "ryuiki.sqlite"
 DEFAULT_REGISTRY_DB = ROOT / "data" / "db" / "registry.sqlite"
@@ -219,7 +221,7 @@ LEFT JOIN reg.variable_alias a
   ON a.dataset = 'measurements' AND a.alias = m.variable
  AND (a.source_id = m.source_id OR (a.source_id IS NULL AND m.source_id IS NULL))
 LEFT JOIN reg.place_source_ref psr
-  ON psr.source_id = 'sites.site_id' AND psr.external_key = m.site_id
+  ON psr.key_space = 'site_id' AND psr.external_key = m.site_id
 LEFT JOIN reg.place p ON p.place_id = psr.place_id
 ORDER BY m.measurement_id
 """
@@ -235,7 +237,7 @@ LEFT JOIN reg.variable_alias a
   ON a.dataset = 'sensor_timeseries' AND a.alias = st.datastream
  AND (a.source_id = st.source_id OR (a.source_id IS NULL AND st.source_id IS NULL))
 LEFT JOIN reg.place_source_ref psr
-  ON psr.source_id = 'sites.site_id' AND psr.external_key = st.site_id
+  ON psr.key_space = 'site_id' AND psr.external_key = st.site_id
 LEFT JOIN reg.place p ON p.place_id = psr.place_id
 ORDER BY st.id
 """
@@ -265,7 +267,9 @@ CREATE TABLE {table} (
   quality_stage   TEXT,
   is_synthetic    INTEGER,
   source_ref      TEXT,
-  event_id        TEXT
+  event_id        TEXT,
+  observation_id  TEXT NOT NULL,
+  source_edition_id TEXT
 )
 """
 
@@ -286,18 +290,26 @@ CREATE TABLE {table} (
 # `OperationalError: index ... already exists`」で毎回2回目以降が壊れる
 # （実測で踏んだ）。使い捨てて存在期間を「挿入直後の検証」だけに閉じることで、
 # 名前は固定のままで衝突が起きなくなる。
+#
+# Issue #39 Phase C（担当 C）: 公開 ID `observation_id`（`migrate/public_id.py`）も同じ流儀で一意性を検証する
+# （旧自然キー `(source_table, source_row_id)` と新 ID の両方が UNIQUE = 旧 -> 新が1対1に引ける）。
 _CREATE_OBSERVATION_INDEX_SQL = (
     "CREATE UNIQUE INDEX observation_source_row_pk ON {table} (source_table, source_row_id)"
 )
 _DROP_OBSERVATION_INDEX_SQL = "DROP INDEX IF EXISTS observation_source_row_pk"
+_CREATE_OBSERVATION_ID_INDEX_SQL = (
+    "CREATE UNIQUE INDEX observation_observation_id_pk ON {table} (observation_id)"
+)
+_DROP_OBSERVATION_ID_INDEX_SQL = "DROP INDEX IF EXISTS observation_observation_id_pk"
 
 _INSERT_SQL = """
 INSERT INTO {table} (
   source_table, source_row_id, region_id, place_id, place_kind, variable_id, obs_stat,
   unit_id, unit_raw, value_grain, period_grain, period_start, period_end, period_raw,
   value_num, value_raw, censoring, censoring_limit,
-  quality_stage, is_synthetic, source_ref, event_id
-) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+  quality_stage, is_synthetic, source_ref, event_id,
+  observation_id, source_edition_id
+) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 """
 
 
@@ -533,6 +545,7 @@ def _ingest_measurements(
     stats = _empty_stats("measurements")
     seen_ids: set[str] = set()
     censoring_counts: collections.Counter = collections.Counter()
+    edition_of = _edition_resolver(work)
 
     def rows():
         for row in work.execute(_SELECT_MEASUREMENTS_SQL):
@@ -576,6 +589,7 @@ def _ingest_measurements(
                 unit_id, unit, value_grain, period_grain, period_start, period_end, measured_on,
                 value_num, value_raw, cens, cens_limit,
                 quality_stage, is_synthetic, source_ref, event_id,
+                public_id.measurement_observation_id(measurement_id), edition_of(source_id),
             )
 
     dest.executemany(_INSERT_SQL.format(table=f'"{insert_table}"'), rows())
@@ -594,6 +608,7 @@ def _ingest_sensor_timeseries(
     """
     stats = _empty_stats("sensor_timeseries")
     seen_ids: set[str] = set()
+    edition_of = _edition_resolver(work)
 
     def rows():
         for row in work.execute(_SELECT_SENSOR_SQL):
@@ -628,6 +643,8 @@ def _ingest_sensor_timeseries(
                 unit_id, unit, value_grain, period_grain, period_start, period_end, phenomenon_time,
                 result, None, censoring.CENSORING_NONE, None,
                 None, is_synthetic, None, None,
+                public_id.sensor_observation_id(site_id, datastream, phenomenon_time, source_id),
+                edition_of(source_id),
             )
 
     dest.executemany(_INSERT_SQL.format(table=f'"{insert_table}"'), rows())
@@ -636,7 +653,7 @@ def _ingest_sensor_timeseries(
 
 def _load_watershed_place_lookup(work: sqlite3.Connection) -> dict[str, tuple[str, str]]:
     """`watershed_id -> (place_id, place_kind)` を返す
-    （`place_source_ref(source_id='watershed_meta.watershed_id')` 経由。
+    （`place_source_ref(key_space='watershed_id')` 経由。
     ハードコードしない——`measurements`/`sensor_timeseries` が地点の place を
     解決するのと同じ流儀。P-1a（`scripts/registry/build_place.py`）が
     既に登録済みの watershed place をここで再利用するだけで、新規には作らない）。
@@ -651,11 +668,11 @@ def _load_watershed_place_lookup(work: sqlite3.Connection) -> dict[str, tuple[st
     common.raise_on_group_by_duplicates(
         work,
         "SELECT external_key, COUNT(*) AS c FROM reg.place_source_ref "
-        "WHERE source_id = 'watershed_meta.watershed_id' GROUP BY external_key HAVING c > 1 LIMIT 5",
+        "WHERE key_space = 'watershed_id' GROUP BY external_key HAVING c > 1 LIMIT 5",
         (),
         lambda dup: (
             "observation（土地利用）: place_source_ref"
-            "（source_id='watershed_meta.watershed_id'）の external_key が一意でない"
+            "（source_id='watershed_id'）の external_key が一意でない"
             f"（同じ watershed_id に複数の place_id が対応している。例: {dup}）。"
             "watershed_id -> place_id の辞書を一意に構築できない。"
         ),
@@ -664,9 +681,31 @@ def _load_watershed_place_lookup(work: sqlite3.Connection) -> dict[str, tuple[st
         "SELECT psr.external_key, psr.place_id, p.place_kind "
         "FROM reg.place_source_ref psr "
         "JOIN reg.place p ON p.place_id = psr.place_id "
-        "WHERE psr.source_id = 'watershed_meta.watershed_id'"
+        "WHERE psr.key_space = 'watershed_id'"
     ).fetchall()
     return {external_key: (place_id, place_kind) for external_key, place_id, place_kind in rows}
+
+
+def _edition_resolver(work: sqlite3.Connection):
+    """`source_id -> source_edition_id`（その出典の唯一の edition）を返す関数。出典ごとにキャッシュする。
+    版を複数持つ出典（土地利用）は vintage を渡す別経路（`_ingest_landuse`）で引く。
+    `source_id` が NULL の行（出典未記録。合成データ以外には無い）は NULL。解決できなければ止まる
+    （`migrate.edition.resolve_edition`。黙って選ばない）。
+    """
+    idx = edition.load_editions(work, "reg")
+    cache: dict = {}
+
+    def resolve(source_id):
+        if source_id is None:
+            return None
+        if source_id not in cache:
+            try:
+                cache[source_id] = edition.resolve_edition(idx, source_id)
+            except edition.EditionResolutionError as e:
+                raise common.MigrationError(f"observation の source_edition_id を決められない: {e}") from e
+        return cache[source_id]
+
+    return resolve
 
 
 def _load_landuse_alias_map(work: sqlite3.Connection) -> dict[tuple[str, str, str], tuple]:
@@ -753,6 +792,7 @@ def _ingest_landuse(
     watershed_place = _load_watershed_place_lookup(work)
     alias_map = _load_landuse_alias_map(work)
     seen_business_keys: set[tuple] = set()
+    edition_idx = edition.load_editions(work, "reg")
 
     def rows():
         with open(csv_path, encoding="utf-8", newline="") as f:
@@ -813,6 +853,8 @@ def _ingest_landuse(
                         period_start, period_end, data_year,
                         float(value_str), None, censoring.CENSORING_NONE, None,
                         None, 0, source_ref, None,
+                        public_id.landuse_observation_id(watershed_id, data_year, code, suffix),
+                        edition.resolve_edition(edition_idx, source_id, vintage=data_year),
                     )
 
     dest.executemany(_INSERT_SQL.format(table=f'"{insert_table}"'), rows())
@@ -930,6 +972,13 @@ def build_and_write_observation(
             # 名前衝突で壊れる）。
             dest.execute(_CREATE_OBSERVATION_INDEX_SQL.format(table=f'"{staging}"'))
             dest.execute(_DROP_OBSERVATION_INDEX_SQL)
+            try:
+                dest.execute(_CREATE_OBSERVATION_ID_INDEX_SQL.format(table=f'"{staging}"'))
+            except sqlite3.IntegrityError as e:
+                raise common.MigrationError(
+                    f"observation_id が一意でない（業務キーが重複している。ADR-0004）: {e}"
+                ) from e
+            dest.execute(_DROP_OBSERVATION_ID_INDEX_SQL)
 
             # 宣言表（period_exceptions.yaml / time_label_conventions.yaml /
             # source_regions.yaml）は全出典を処理し終えてから検証する

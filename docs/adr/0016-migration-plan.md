@@ -1,6 +1,6 @@
 # ADR-0016: 移行は4段階に分け、v1 の数値を再現できることを受け入れ基準にする
 
-- 状態: 承認済（一部未実装: Phase C・D は未着手） / 日付: 2026-09-06
+- 状態: 承認済（一部未実装: Phase D は未着手） / 日付: 2026-09-06
 - 関連: ADR-0004, 0006, 0008, 0009, 0010, 0011
 
 **2026-09-26 追記（Issue #48）**: Phase B の受け入れ基準（v1 の再現）を満たしたあと、
@@ -59,6 +59,15 @@ ADR-0004 の ID 規約と ADR-0005 の `source_edition` を適用する。旧 ID
 
 - 受け入れ基準: 旧 ID から新 ID が一意に引ける。`superseded_by` で
   `gbif_kanagawa` → `gbif_kanagawa_occurrences` の関係が表現できている。
+- **実施（2026-10-06、Issue #39）**: 受け入れ基準を機械検証で満たした。
+  ① 旧 ID の凍結リスト（place 877・dataset 2 は `id_map`、observation/occurrence は v2 の旧キー列
+  `(source_table, source_row_id)`/`record_id` と新 ID 列の両方が UNIQUE）の各行が、ちょうど 1 個の現行 ID に
+  解決する（`scripts/tests/test_public_ids.py`・`scripts/tests/test_place_id_grammar.py`・
+  `scripts/tests/test_registry_source.py`、ビルド時の `scripts/r01_build_registry.py`・
+  `scripts/b03_build_observation.py`・`scripts/b06_build_occurrence.py`）。
+  ② `gbif_kanagawa` → `gbif_kanagawa_occurrences` が `source.superseded_by` と
+  `source_edition.superseded_by` の両方で引ける（同上）。
+  検証コマンド: `cd scripts && ../.venv/bin/python3 -m pytest tests/test_public_ids.py tests/test_registry_source.py tests/test_place_id_grammar.py`。
 
 ### Phase D — マニフェストと公開
 

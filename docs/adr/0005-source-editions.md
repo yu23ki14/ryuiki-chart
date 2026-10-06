@@ -48,6 +48,12 @@ r5table.xlsx（令和5年度版）と r6table.xlsx（令和6年度版）が同�
 - `variable_alias.dataset` の `@<年>` 後置（2026-09-24 追記の暫定）は廃止し、`edition_key`（→ `source_edition_id`）に
   置き換えた。旧→新の対応は `registry/id_map/dataset.csv`。
 - `source_registry`（v1 表。D1 の `queries.ts` が使用中）は並走して残す。撤去は別 Issue。
+- **実装済み（担当 C）**: v2 の `observation`/`occurrence` に `source_edition_id` を持たせた
+  （`scripts/migrate/edition.py` の `resolve_edition()`。土地利用は `data_year` を vintage に渡す）。
+  `place_source_ref.source_edition_id` は `registry/place/key_space.yaml` の宣言で埋める
+  （site は site_id の接頭辞の出典、watershed は `nlni_w12_watersheds`、zone・grid01 は出典を持たず NULL）。
+  未実装として残るもの: `content_sha256`（L0 がリポジトリ外のものは NULL）、行単位のライセンス解決
+  （`organism_records` の行単位ライセンスは従来どおり行側の列）、過去の取得履歴（復元不能）。
 
 ## 背景
 

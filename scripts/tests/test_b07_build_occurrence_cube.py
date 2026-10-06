@@ -132,10 +132,10 @@ def test_same_year_day_and_month_records_go_to_year_grain(tmp_path):
     丸められる。'Z' 変換後の瞬時記録（変換後も同年）も同じ扱い。
     """
     rows = [
-        _row("gbif__day", "2020-01-05", "2020-01-05", "2020-01-05"),
-        _row("gbif__month", "2020-02-01", "2020-02-29", "2020-02"),
+        _row("gbif_kanagawa_occurrences__day", "2020-01-05", "2020-01-05", "2020-01-05"),
+        _row("gbif_kanagawa_occurrences__month", "2020-02-01", "2020-02-29", "2020-02"),
         # 'Z' 変換後を模した瞬時記録（同年）。
-        _row("gbif__z_instant", "2020-06-01T12:30:45", "2020-06-01T12:30:45", "2020-06-01T12:30:45Z"),
+        _row("gbif_kanagawa_occurrences__z_instant", "2020-06-01T12:30:45", "2020-06-01T12:30:45", "2020-06-01T12:30:45Z"),
     ]
     conn, decl = _build(tmp_path, rows)
     try:
@@ -157,7 +157,7 @@ def test_same_year_interval_goes_to_year_grain_not_leaf(tmp_path):
     """同年内に収まる区間（day_interval 等、年をまたがない）は grain='year'
     に入る（leaf には入らない）。
     """
-    rows = [_row("gbif__same_year_interval", "2019-08-01", "2019-08-31", "2019-08-01/2019-08-31")]
+    rows = [_row("gbif_kanagawa_occurrences__same_year_interval", "2019-08-01", "2019-08-31", "2019-08-01/2019-08-31")]
     conn, decl = _build(tmp_path, rows)
     try:
         stats = b07.build_cube(conn, decl, place_declarations_yaml=None)
@@ -177,7 +177,7 @@ def test_cross_year_interval_goes_to_leaf_grain_not_year(tmp_path):
     入らない。leaf セルの period_start/period_end は記録自身の区間そのもの
     （丸めない）。
     """
-    rows = [_row("gbif__cross_year", "1990-01-01", "1992-12-31", "1990/1992")]
+    rows = [_row("gbif_kanagawa_occurrences__cross_year", "1990-01-01", "1992-12-31", "1990/1992")]
     conn, decl = _build(tmp_path, rows)
     try:
         stats = b07.build_cube(conn, decl, place_declarations_yaml=None)
@@ -194,8 +194,8 @@ def test_cross_year_interval_goes_to_leaf_grain_not_year(tmp_path):
 def test_undated_records_are_excluded_from_cube(tmp_path):
     """`period_raw IS NULL`（観測日の無い記録）はキューブに入らない（ADR-0025 D2）。"""
     rows = [
-        _row("gbif__dated", "2020-01-05", "2020-01-05", "2020-01-05"),
-        _row("gbif__undated", None, None, None),
+        _row("gbif_kanagawa_occurrences__dated", "2020-01-05", "2020-01-05", "2020-01-05"),
+        _row("gbif_kanagawa_occurrences__undated", None, None, None),
     ]
     conn, decl = _build(tmp_path, rows)
     try:
@@ -217,8 +217,8 @@ def test_n_red_list_counts_nonempty_raw_red_list_category(tmp_path):
     記録の数（v1 の mesh_year.rl_n・mesh_species.rl_species_n と同じ定義）。
     """
     rows = [
-        _row("gbif__lc", "2020-01-05", "2020-01-05", "2020-01-05", red_list_category="LC"),
-        _row("gbif__empty", "2020-01-06", "2020-01-06", "2020-01-06", red_list_category=""),
+        _row("gbif_kanagawa_occurrences__lc", "2020-01-05", "2020-01-05", "2020-01-05", red_list_category="LC"),
+        _row("gbif_kanagawa_occurrences__empty", "2020-01-06", "2020-01-06", "2020-01-06", red_list_category=""),
     ]
     conn, decl = _build(tmp_path, rows)
     try:
@@ -235,8 +235,8 @@ def test_n_red_list_counts_nonempty_raw_red_list_category(tmp_path):
 def test_n_alien_sums_is_alien_flag(tmp_path):
     """`n_alien = SUM(is_alien)`（Issue #48 PR-3a 決定 D3）。"""
     rows = [
-        _row("gbif__alien", "2020-01-05", "2020-01-05", "2020-01-05", is_alien=1),
-        _row("gbif__native", "2020-01-06", "2020-01-06", "2020-01-06", is_alien=0),
+        _row("gbif_kanagawa_occurrences__alien", "2020-01-05", "2020-01-05", "2020-01-05", is_alien=1),
+        _row("gbif_kanagawa_occurrences__native", "2020-01-06", "2020-01-06", "2020-01-06", is_alien=0),
     ]
     conn, decl = _build(tmp_path, rows)
     try:
@@ -254,9 +254,9 @@ def test_n_alien_counts_in_scope_flag_not_raw_flag(tmp_path):
     """Issue #34: `n_alien` は除外規則（in_scope）を反映した `is_alien_in_scope` を数える。
     原表記 is_alien=1 でも is_alien_in_scope=0 の記録（国内由来の種）は数えない。"""
     rows = [
-        occurrence_row("gbif__dom", "common:taxon:gbif.1001", "2020-01-05", "2020-01-05", "2020-01-05",
+        occurrence_row("gbif_kanagawa_occurrences__dom", "common:taxon:gbif.1001", "2020-01-05", "2020-01-05", "2020-01-05",
                        is_alien=1, is_alien_in_scope=0),
-        occurrence_row("gbif__alien", "common:taxon:gbif.1001", "2020-01-06", "2020-01-06", "2020-01-06",
+        occurrence_row("gbif_kanagawa_occurrences__alien", "common:taxon:gbif.1001", "2020-01-06", "2020-01-06", "2020-01-06",
                        is_alien=1),
     ]
     conn, decl = _build(tmp_path, rows)
@@ -281,7 +281,7 @@ def test_same_month_record_goes_to_month_grain_cell(tmp_path):
     grain='month' のセルにも入る（year 族のセルとは別に、両方に入る——
     year 族と month 族は独立な分割）。
     """
-    rows = [_row("gbif__day", "2020-01-05", "2020-01-05", "2020-01-05")]
+    rows = [_row("gbif_kanagawa_occurrences__day", "2020-01-05", "2020-01-05", "2020-01-05")]
     conn, decl = _build(tmp_path, rows)
     try:
         stats = b07.build_cube(conn, decl, place_declarations_yaml=None)
@@ -297,7 +297,7 @@ def test_same_month_record_goes_to_month_grain_cell(tmp_path):
 
 def test_month_bounds_handle_leap_year_february(tmp_path):
     """月末日の計算（`calendar.monthrange` 経由）が閏年2月を正しく扱う。"""
-    rows = [_row("gbif__leap", "2020-02-10", "2020-02-10", "2020-02-10")]
+    rows = [_row("gbif_kanagawa_occurrences__leap", "2020-02-10", "2020-02-10", "2020-02-10")]
     conn, decl = _build(tmp_path, rows)
     try:
         b07.build_cube(conn, decl, place_declarations_yaml=None)
@@ -314,7 +314,7 @@ def test_cross_month_same_year_interval_excluded_from_month_grain(tmp_path):
     入る）——ADR-0024 決定3「セルの宣言する期間＝メンバーの期間」を破らない
     ため、複数月にまたがる記録を1つの月セルに丸めて詰めない。
     """
-    rows = [_row("gbif__cross_month", "2020-03-01", "2020-04-05", "2020-03-01/2020-04-05")]
+    rows = [_row("gbif_kanagawa_occurrences__cross_month", "2020-03-01", "2020-04-05", "2020-03-01/2020-04-05")]
     conn, decl = _build(tmp_path, rows)
     try:
         stats = b07.build_cube(conn, decl, place_declarations_yaml=None)
@@ -328,7 +328,7 @@ def test_year_grain_shape_record_excluded_from_month_grain(tmp_path):
     """`period_grain='year'`（`'2020'` のような年だけの記録）は暦年全体に
     広がるため、同一月には収まらず month セルに入らない。
     """
-    rows = [_row("gbif__year_shape", "2020-01-01", "2020-12-31", "2020")]
+    rows = [_row("gbif_kanagawa_occurrences__year_shape", "2020-01-01", "2020-12-31", "2020")]
     conn, decl = _build(tmp_path, rows)
     try:
         stats = b07.build_cube(conn, decl, place_declarations_yaml=None)
@@ -340,7 +340,7 @@ def test_year_grain_shape_record_excluded_from_month_grain(tmp_path):
 
 def test_cross_year_leaf_record_excluded_from_month_grain(tmp_path):
     """年をまたぐ区間（leaf）は当然 month セルにも入らない。"""
-    rows = [_row("gbif__cross_year", "1990-01-01", "1992-12-31", "1990/1992")]
+    rows = [_row("gbif_kanagawa_occurrences__cross_year", "1990-01-01", "1992-12-31", "1990/1992")]
     conn, decl = _build(tmp_path, rows)
     try:
         stats = b07.build_cube(conn, decl, place_declarations_yaml=None)
@@ -360,8 +360,8 @@ def test_watershed_year_cell_uses_occurrence_place_place_id(tmp_path):
     （`place_kind='watershed'`）から取る（`occurrence.place_id`——grid01 の
     メッシュ——ではない）。
     """
-    rows = [_row("gbif__day", "2020-01-05", "2020-01-05", "2020-01-05")]
-    place_rows = [occurrence_place_row("gbif__day", DEFAULT_WATERSHED_PLACE_ID)]
+    rows = [_row("gbif_kanagawa_occurrences__day", "2020-01-05", "2020-01-05", "2020-01-05")]
+    place_rows = [occurrence_place_row("gbif_kanagawa_occurrences__day", DEFAULT_WATERSHED_PLACE_ID)]
     conn, decl = _build(tmp_path, rows, place_rows=place_rows)
     try:
         stats = b07.build_cube(conn, decl, place_declarations_yaml=None)
@@ -380,8 +380,8 @@ def test_watershed_unresolved_record_kept_as_null_place_id_cell(tmp_path):
     「データを落とさない」・Issue #48 PR-3a 決定 D1）——year セルの外に
     捨てない。
     """
-    rows = [_row("gbif__unresolved", "2020-01-05", "2020-01-05", "2020-01-05")]
-    place_rows = [occurrence_place_row("gbif__unresolved", None)]
+    rows = [_row("gbif_kanagawa_occurrences__unresolved", "2020-01-05", "2020-01-05", "2020-01-05")]
+    place_rows = [occurrence_place_row("gbif_kanagawa_occurrences__unresolved", None)]
     conn, decl = _build(tmp_path, rows, place_rows=place_rows)
     try:
         stats = b07.build_cube(conn, decl, place_declarations_yaml=None)
@@ -398,8 +398,8 @@ def test_watershed_leaf_cell_can_also_have_null_place_id(tmp_path):
     """年をまたぐ区間（leaf）も、流域に解決できなければ watershed 族では
     `place_id NULL` のセルになる。
     """
-    rows = [_row("gbif__cross_year", "1990-01-01", "1992-12-31", "1990/1992")]
-    place_rows = [occurrence_place_row("gbif__cross_year", None)]
+    rows = [_row("gbif_kanagawa_occurrences__cross_year", "1990-01-01", "1992-12-31", "1990/1992")]
+    place_rows = [occurrence_place_row("gbif_kanagawa_occurrences__cross_year", None)]
     conn, decl = _build(tmp_path, rows, place_rows=place_rows)
     try:
         stats = b07.build_cube(conn, decl, place_declarations_yaml=None)
@@ -415,7 +415,7 @@ def test_watershed_leaf_cell_can_also_have_null_place_id(tmp_path):
 def test_watershed_month_cells_are_not_built(tmp_path):
     """D2: watershed×month は消費者が無いので作らない
     （`CELL_FAMILIES` に無い組み合わせ）。"""
-    rows = [_row("gbif__day", "2020-01-05", "2020-01-05", "2020-01-05")]
+    rows = [_row("gbif_kanagawa_occurrences__day", "2020-01-05", "2020-01-05", "2020-01-05")]
     conn, decl = _build(tmp_path, rows)
     try:
         b07.build_cube(conn, decl, place_declarations_yaml=None)
@@ -432,10 +432,10 @@ def test_occurrence_place_missing_row_for_dated_record_is_caught(tmp_path):
     別スナップショット混在）と、母集団の完全性検査で止まる。
     """
     rows = [
-        _row("gbif__has_place", "2020-01-05", "2020-01-05", "2020-01-05"),
-        _row("gbif__no_place", "2020-01-06", "2020-01-06", "2020-01-06"),
+        _row("gbif_kanagawa_occurrences__has_place", "2020-01-05", "2020-01-05", "2020-01-05"),
+        _row("gbif_kanagawa_occurrences__no_place", "2020-01-06", "2020-01-06", "2020-01-06"),
     ]
-    place_rows = [occurrence_place_row("gbif__has_place", DEFAULT_WATERSHED_PLACE_ID)]  # 2件目が無い
+    place_rows = [occurrence_place_row("gbif_kanagawa_occurrences__has_place", DEFAULT_WATERSHED_PLACE_ID)]  # 2件目が無い
     conn, decl = _build(tmp_path, rows, place_rows=place_rows)
     try:
         with pytest.raises(common.MigrationError, match="母集団.*一致しない|一致しない.*母集団"):
@@ -450,8 +450,8 @@ def test_occurrence_place_missing_row_for_dated_record_is_caught(tmp_path):
 
 
 def test_leaf_declared_row_count_mismatch_raises(tmp_path):
-    rows = [_row("gbif__cross_year", "1990-01-01", "1992-12-31", "1990/1992")]
-    counts = _default_declaration_counts(rows, [occurrence_place_row("gbif__cross_year", DEFAULT_WATERSHED_PLACE_ID)])
+    rows = [_row("gbif_kanagawa_occurrences__cross_year", "1990-01-01", "1992-12-31", "1990/1992")]
+    counts = _default_declaration_counts(rows, [occurrence_place_row("gbif_kanagawa_occurrences__cross_year", DEFAULT_WATERSHED_PLACE_ID)])
     counts["leaf_cell_source_rows"] = 2  # 実際は1件
     decl = _write_declarations_yaml(tmp_path, counts)
     conn, _ = _build(tmp_path, rows, declarations_yaml=decl)
@@ -463,8 +463,8 @@ def test_leaf_declared_row_count_mismatch_raises(tmp_path):
 
 
 def test_month_declared_row_count_mismatch_raises(tmp_path):
-    rows = [_row("gbif__day", "2020-01-05", "2020-01-05", "2020-01-05")]
-    counts = _default_declaration_counts(rows, [occurrence_place_row("gbif__day", DEFAULT_WATERSHED_PLACE_ID)])
+    rows = [_row("gbif_kanagawa_occurrences__day", "2020-01-05", "2020-01-05", "2020-01-05")]
+    counts = _default_declaration_counts(rows, [occurrence_place_row("gbif_kanagawa_occurrences__day", DEFAULT_WATERSHED_PLACE_ID)])
     counts["month_cell_source_rows"] = 0  # 実際は1件
     decl = _write_declarations_yaml(tmp_path, counts)
     conn, _ = _build(tmp_path, rows, declarations_yaml=decl)
@@ -476,8 +476,8 @@ def test_month_declared_row_count_mismatch_raises(tmp_path):
 
 
 def test_watershed_resolved_declared_row_count_mismatch_raises(tmp_path):
-    rows = [_row("gbif__day", "2020-01-05", "2020-01-05", "2020-01-05")]
-    place_rows = [occurrence_place_row("gbif__day", DEFAULT_WATERSHED_PLACE_ID)]
+    rows = [_row("gbif_kanagawa_occurrences__day", "2020-01-05", "2020-01-05", "2020-01-05")]
+    place_rows = [occurrence_place_row("gbif_kanagawa_occurrences__day", DEFAULT_WATERSHED_PLACE_ID)]
     counts = _default_declaration_counts(rows, place_rows)
     counts["watershed_dated_resolved_rows"] = 0  # 実際は1件（解決済み）
     counts["watershed_dated_unresolved_rows"] = 1
@@ -491,8 +491,8 @@ def test_watershed_resolved_declared_row_count_mismatch_raises(tmp_path):
 
 
 def test_watershed_unresolved_declared_row_count_mismatch_raises(tmp_path):
-    rows = [_row("gbif__day", "2020-01-05", "2020-01-05", "2020-01-05")]
-    place_rows = [occurrence_place_row("gbif__day", None)]
+    rows = [_row("gbif_kanagawa_occurrences__day", "2020-01-05", "2020-01-05", "2020-01-05")]
+    place_rows = [occurrence_place_row("gbif_kanagawa_occurrences__day", None)]
     counts = _default_declaration_counts(rows, place_rows)
     counts["watershed_dated_unresolved_rows"] = 0  # 実際は1件（未解決）——resolved は実測どおり（0）のまま
     decl = _write_declarations_yaml(tmp_path, counts)
@@ -557,9 +557,9 @@ def test_real_declarations_yaml_is_valid_shape():
 
 def test_month_cells_are_subset_of_year_cells_passes_for_normal_data(tmp_path):
     rows = [
-        _row("gbif__day1", "2020-01-05", "2020-01-05", "2020-01-05"),
-        _row("gbif__day2", "2020-01-06", "2020-01-06", "2020-01-06"),
-        _row("gbif__cross_month", "2020-03-01", "2020-04-05", "2020-03-01/2020-04-05"),
+        _row("gbif_kanagawa_occurrences__day1", "2020-01-05", "2020-01-05", "2020-01-05"),
+        _row("gbif_kanagawa_occurrences__day2", "2020-01-06", "2020-01-06", "2020-01-06"),
+        _row("gbif_kanagawa_occurrences__cross_month", "2020-03-01", "2020-04-05", "2020-03-01/2020-04-05"),
     ]
     conn, decl = _build(tmp_path, rows)
     try:
@@ -609,7 +609,7 @@ def _staging_row(
 ):
     return (
         "jp-14", "gbif_kanagawa_occurrences", "common:place:grid01.3550_13900", place_kind, taxon_id,
-        grain, period_start, period_end, n, n_red_list, n_alien, "occurrence", "phase-b-fact-slice/v3",
+        grain, period_start, period_end, n, n_red_list, n_alien, "occurrence", "phase-b-fact-slice/v4",
     )
 
 
@@ -667,8 +667,8 @@ def test_mutation_year_and_leaf_classification_swapped_is_caught(tmp_path, monke
     の構造チェック（全行が年をまたいでいるか）で捕まる。
     """
     rows = [
-        _row("gbif__same_year", "2020-01-05", "2020-01-05", "2020-01-05"),
-        _row("gbif__cross_year", "1990-01-01", "1992-12-31", "1990/1992"),
+        _row("gbif_kanagawa_occurrences__same_year", "2020-01-05", "2020-01-05", "2020-01-05"),
+        _row("gbif_kanagawa_occurrences__cross_year", "1990-01-01", "1992-12-31", "1990/1992"),
     ]
     conn, decl = _build(tmp_path, rows)
     try:
@@ -695,8 +695,8 @@ def test_mutation_month_predicate_swapped_for_year_predicate_is_caught(tmp_path,
     ため）が、月セルの宣言 Σn が実測と食い違うため (ii) で止まる。
     """
     rows = [
-        _row("gbif__day", "2020-01-05", "2020-01-05", "2020-01-05"),
-        _row("gbif__cross_month", "2020-03-01", "2020-04-05", "2020-03-01/2020-04-05"),
+        _row("gbif_kanagawa_occurrences__day", "2020-01-05", "2020-01-05", "2020-01-05"),
+        _row("gbif_kanagawa_occurrences__cross_month", "2020-03-01", "2020-04-05", "2020-03-01/2020-04-05"),
     ]
     conn, decl = _build(tmp_path, rows)
     try:
@@ -720,12 +720,12 @@ def test_mutation_dropping_unresolved_watershed_rows_is_caught(tmp_path, monkeyp
     検査（行数が日付あり全行数と一致しない）で止まる。
     """
     rows = [
-        _row("gbif__resolved", "2020-01-05", "2020-01-05", "2020-01-05"),
-        _row("gbif__unresolved", "2020-01-06", "2020-01-06", "2020-01-06"),
+        _row("gbif_kanagawa_occurrences__resolved", "2020-01-05", "2020-01-05", "2020-01-05"),
+        _row("gbif_kanagawa_occurrences__unresolved", "2020-01-06", "2020-01-06", "2020-01-06"),
     ]
     place_rows = [
-        occurrence_place_row("gbif__resolved", DEFAULT_WATERSHED_PLACE_ID),
-        occurrence_place_row("gbif__unresolved", None),
+        occurrence_place_row("gbif_kanagawa_occurrences__resolved", DEFAULT_WATERSHED_PLACE_ID),
+        occurrence_place_row("gbif_kanagawa_occurrences__unresolved", None),
     ]
     conn, decl = _build(tmp_path, rows, place_rows=place_rows)
     try:
@@ -748,8 +748,8 @@ def test_mutation_watershed_join_left_and_wrong_place_kind_is_caught(tmp_path, m
     行を落とさないため、単純な行数チェックはすり抜ける）が、全行が
     `place_id NULL` になるため、解決/未解決の宣言 Σn が食い違って止まる。
     """
-    rows = [_row("gbif__resolved", "2020-01-05", "2020-01-05", "2020-01-05")]
-    place_rows = [occurrence_place_row("gbif__resolved", DEFAULT_WATERSHED_PLACE_ID)]
+    rows = [_row("gbif_kanagawa_occurrences__resolved", "2020-01-05", "2020-01-05", "2020-01-05")]
+    place_rows = [occurrence_place_row("gbif_kanagawa_occurrences__resolved", DEFAULT_WATERSHED_PLACE_ID)]
     conn, decl = _build(tmp_path, rows, place_rows=place_rows)
     try:
         orig = b07._POP_SOURCE_SQL[b07.WATERSHED_PLACE_KIND]
@@ -769,7 +769,7 @@ def test_mutation_n_alien_formula_swapped_for_n_red_list_is_caught(tmp_path, mon
     """`n_alien` の式を `n_red_list` の式にすり替える変異は、系列ごとの
     Σn_alien が母集団と食い違うため (i) で止まる。
     """
-    rows = [_row("gbif__alien_only", "2020-01-05", "2020-01-05", "2020-01-05", is_alien=1, red_list_category="")]
+    rows = [_row("gbif_kanagawa_occurrences__alien_only", "2020-01-05", "2020-01-05", "2020-01-05", is_alien=1, red_list_category="")]
     conn, decl = _build(tmp_path, rows)
     try:
         wrong_alien_expr = f"SUM(CASE WHEN {b07._RED_LIST_NONEMPTY_EXPR} THEN 1 ELSE 0 END) AS n_alien"
@@ -796,12 +796,12 @@ def test_build_cube_halts_when_occurrence_changed_since_b06_recorded_it(tmp_path
     `scripts/b06_build_occurrence.py を再実行すること` と案内する
     `MigrationError` で止まる。
     """
-    rows = [_row("gbif__day", "2020-01-05", "2020-01-05", "2020-01-05")]
+    rows = [_row("gbif_kanagawa_occurrences__day", "2020-01-05", "2020-01-05", "2020-01-05")]
     conn, decl = _build(tmp_path, rows)
     try:
         b07.build_cube(conn, decl, place_declarations_yaml=None)
 
-        conn.execute("UPDATE occurrence SET taxon_id = 'common:taxon:gbif.9999' WHERE record_id = 'gbif__day'")
+        conn.execute("UPDATE occurrence SET taxon_id = 'common:taxon:gbif.9999' WHERE record_id = 'gbif_kanagawa_occurrences__day'")
         conn.commit()
 
         with pytest.raises(common.MigrationError, match="scripts/b06_build_occurrence.py を再実行すること"):
@@ -815,14 +815,14 @@ def test_build_cube_halts_when_occurrence_place_changed_since_b09_recorded_it(tm
     （b09 が再実行されたのに b07 が追随していない）状態は、
     `scripts/b09_build_occurrence_place.py を再実行すること` で止まる。
     """
-    rows = [_row("gbif__day", "2020-01-05", "2020-01-05", "2020-01-05")]
+    rows = [_row("gbif_kanagawa_occurrences__day", "2020-01-05", "2020-01-05", "2020-01-05")]
     conn, decl = _build(tmp_path, rows)
     try:
         b07.build_cube(conn, decl, place_declarations_yaml=None)
 
         conn.execute(
             "UPDATE occurrence_place SET place_id = 'common:place:watershed.other' "
-            "WHERE record_id = 'gbif__day'"
+            "WHERE record_id = 'gbif_kanagawa_occurrences__day'"
         )
         conn.commit()
 
@@ -838,7 +838,7 @@ def test_build_cube_halts_when_occurrence_place_changed_since_b09_recorded_it(tm
 
 
 def test_consistent_with_place_declarations_passes_when_resolved_count_is_at_least_as_large(tmp_path):
-    rows = [_row("gbif__day", "2020-01-05", "2020-01-05", "2020-01-05")]
+    rows = [_row("gbif_kanagawa_occurrences__day", "2020-01-05", "2020-01-05", "2020-01-05")]
     conn, decl = _build(tmp_path, rows)
     try:
         place_decl = tmp_path / "occurrence_place_declarations.yaml"
@@ -854,7 +854,7 @@ def test_consistent_with_place_declarations_passes_when_resolved_count_is_at_lea
 
 
 def test_consistent_with_place_declarations_raises_when_resolved_count_too_small(tmp_path):
-    rows = [_row("gbif__day", "2020-01-05", "2020-01-05", "2020-01-05")]
+    rows = [_row("gbif_kanagawa_occurrences__day", "2020-01-05", "2020-01-05", "2020-01-05")]
     conn, decl = _build(tmp_path, rows)
     try:
         place_decl = tmp_path / "occurrence_place_declarations.yaml"
@@ -891,12 +891,12 @@ def test_mutation_watershed_cells_shifted_across_years_is_caught_by_place_year_c
     """
     other_place = "common:place:watershed.other"
     rows = [
-        _row("gbif__a", "2020-01-05", "2020-01-05", "2020-01-05"),
-        _row("gbif__b", "2021-02-06", "2021-02-06", "2021-02-06"),
+        _row("gbif_kanagawa_occurrences__a", "2020-01-05", "2020-01-05", "2020-01-05"),
+        _row("gbif_kanagawa_occurrences__b", "2021-02-06", "2021-02-06", "2021-02-06"),
     ]
     place_rows = [
-        occurrence_place_row("gbif__a", DEFAULT_WATERSHED_PLACE_ID),
-        occurrence_place_row("gbif__b", other_place),
+        occurrence_place_row("gbif_kanagawa_occurrences__a", DEFAULT_WATERSHED_PLACE_ID),
+        occurrence_place_row("gbif_kanagawa_occurrences__b", other_place),
     ]
     conn, decl = _build(tmp_path, rows, place_rows=place_rows)
     try:
@@ -915,8 +915,8 @@ def test_mutation_watershed_cells_shifted_across_years_is_caught_by_place_year_c
 
 def test_place_year_check_passes_for_normal_data_and_counts_place_years(tmp_path):
     rows = [
-        _row("gbif__a", "2020-01-05", "2020-01-05", "2020-01-05"),
-        _row("gbif__b", "2021-02-06", "2021-02-06", "2021-02-06"),
+        _row("gbif_kanagawa_occurrences__a", "2020-01-05", "2020-01-05", "2020-01-05"),
+        _row("gbif_kanagawa_occurrences__b", "2021-02-06", "2021-02-06", "2021-02-06"),
     ]
     conn, decl = _build(tmp_path, rows)
     try:

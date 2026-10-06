@@ -17,6 +17,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB = path.resolve(__dirname, "..", "..", "..");
 const GENERATED_SERVER_PATH = path.join(WEB, "src", "lib", "registry", "generated.ts");
 const GENERATED_CLIENT_PATH = path.join(WEB, "src", "lib", "registry", "generated-client.ts");
+const GENERATED_ID_MAP_PATH = path.join(WEB, "src", "lib", "registry", "generated-id-map.ts");
 // build-registry-ts.mjs と同じく RYUIKI_REGISTRY_DB を見る（code-review 指摘: 以前は
 // data/db/registry.sqlite に決め打ちで、CI が --files-only 用に別ファイルへ書いても
 // このテストの skip 判定にも子プロセスへ渡す入力パスにも反映されなかった）。
@@ -49,6 +50,7 @@ describe.skipIf(!hasRegistryDb)("build:registry:ts は再生成しても差分�
     const tmpDir = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), "registry-ts-check-"));
     const tmpOutServer = path.join(tmpDir, "generated.ts");
     const tmpOutClient = path.join(tmpDir, "generated-client.ts");
+    const tmpOutIdMap = path.join(tmpDir, "generated-id-map.ts");
     try {
       execFileSync("node", [BUILD_SCRIPT], {
         cwd: WEB,
@@ -58,11 +60,13 @@ describe.skipIf(!hasRegistryDb)("build:registry:ts は再生成しても差分�
           RYUIKI_REGISTRY_DB: REGISTRY_DB,
           RYUIKI_REGISTRY_TS_OUT_SERVER: tmpOutServer,
           RYUIKI_REGISTRY_TS_OUT_CLIENT: tmpOutClient,
+          RYUIKI_REGISTRY_TS_OUT_ID_MAP: tmpOutIdMap,
         },
       });
 
       expect(fs.readFileSync(tmpOutServer, "utf-8")).toBe(fs.readFileSync(GENERATED_SERVER_PATH, "utf-8"));
       expect(fs.readFileSync(tmpOutClient, "utf-8")).toBe(fs.readFileSync(GENERATED_CLIENT_PATH, "utf-8"));
+      expect(fs.readFileSync(tmpOutIdMap, "utf-8")).toBe(fs.readFileSync(GENERATED_ID_MAP_PATH, "utf-8"));
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }

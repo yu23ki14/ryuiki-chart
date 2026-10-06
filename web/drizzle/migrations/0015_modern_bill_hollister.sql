@@ -1,3 +1,4 @@
+ALTER TABLE `place_source_ref` RENAME COLUMN "source_id" TO "key_space";--> statement-breakpoint
 CREATE TABLE `license` (
 	`license_id` text PRIMARY KEY NOT NULL,
 	`name_ja` text,
@@ -41,5 +42,6 @@ CREATE TABLE `source_edition` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `ux_source_edition_source_key` ON `source_edition` (`source_id`,`edition_key`);--> statement-breakpoint
+ALTER TABLE `place_source_ref` ADD `source_edition_id` text;--> statement-breakpoint
 ALTER TABLE `variable_alias` ADD `edition_key` text;--> statement-breakpoint
 ALTER TABLE `variable_alias` ADD `source_edition_id` text;

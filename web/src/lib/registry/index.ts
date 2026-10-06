@@ -1,5 +1,7 @@
 import "server-only";
 import { query, queryOne, queryChunked, ph } from "@/lib/db";
+export { resolveLegacyId, legacyPlaceIdToCurrent, type ResolvedPlaceId } from "./legacy-id";
+export { parseId, buildPlaceId, type ParsedId } from "./parse-id";
 
 /**
  * レジストリの D1 読み出し層（docs/plans/PHASE_A.md §A-7）。
@@ -89,14 +91,14 @@ export async function getPlacesByKind(placeKind: string): Promise<PlaceRow[]> {
 }
 
 /**
- * v1 の出典側識別子（`sites.site_id` / `watershed_meta.watershed_id` 等）から place を引く。
+ * 出典側の識別子から place を引く（`keySpace` は `site_id` / `watershed_id` / `zone` / `grid01_latlon`）。
  * 「v1 を動かさずに並走させる」ための接続点（PHASE_A.md §A-3）。
  */
-export async function getPlaceByExternalKey(externalKey: string, sourceId?: string): Promise<PlaceRow | undefined> {
-  const row = sourceId
+export async function getPlaceByExternalKey(externalKey: string, keySpace?: string): Promise<PlaceRow | undefined> {
+  const row = keySpace
     ? await queryOne<{ place_id: string }>(
-        `SELECT place_id FROM place_source_ref WHERE external_key = ? AND source_id = ?`,
-        [externalKey, sourceId],
+        `SELECT place_id FROM place_source_ref WHERE external_key = ? AND key_space = ?`,
+        [externalKey, keySpace],
       )
     : await queryOne<{ place_id: string }>(`SELECT place_id FROM place_source_ref WHERE external_key = ?`, [
         externalKey,
