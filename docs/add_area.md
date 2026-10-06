@@ -155,6 +155,11 @@ ADR-0004 の例に合わせ `jp-<JIS2桁>` とする（例 `jp-14`＝神奈川�
 
 ---
 
+> **新しい region を足すとき（Issue #32-3）**: `registry/region.yaml` に `region_id`・`name_ja`・`tz_name`（IANA）・
+> `utc_offset`・`evidence` を1件足す（`scripts/migrate/source_regions.yaml` には時刻帯を書かない。旧形式の
+> `regions:` が残っていると止まる）。足し忘れると `place.region_id` の参照整合性検査と
+> `regionTimeZone()` が止まる。
+
 ## 4. 手順 Step 0〜9
 
 ### Step 0: どこまでやるかを決める

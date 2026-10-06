@@ -17,6 +17,12 @@ from registry import common
 @pytest.fixture()
 def empty_registry(tmp_path):
     conn = common.create_registry_db(tmp_path / "registry.sqlite")
+    # region 語彙（Issue #32-3）。place.region_id の参照整合性検査が jp-14 を引けるようにする。
+    conn.execute(
+        "INSERT INTO region (region_id, name_ja, tz_name, utc_offset, evidence) "
+        "VALUES ('jp-14', '神奈川県', 'Asia/Tokyo', '+09:00', 'テスト')"
+    )
+    conn.commit()
     yield conn
     conn.close()
 
@@ -94,6 +100,16 @@ def test_place_relation_uniqueness_raises_for_duplicate_edge(empty_registry):
 
     with pytest.raises(AssertionError, match="一意ではない"):
         r01._assert_id_uniqueness(empty_registry)
+
+
+def test_id_references_catches_place_region_missing_from_region_vocabulary(empty_registry):
+    """Issue #32-3: place.region_id は registry/region.yaml の語彙に在ること。
+    未知の region（時刻帯が引けない）を黙って通さない。"""
+    _insert_place(empty_registry, "jp-99:place:site.x", "jp-99")
+    empty_registry.commit()
+
+    with pytest.raises(AssertionError, match="place.region_id"):
+        r01._assert_id_references(empty_registry)
 
 
 def test_id_references_catches_dangling_place_relation_child(empty_registry):

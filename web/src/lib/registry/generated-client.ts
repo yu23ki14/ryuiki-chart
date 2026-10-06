@@ -59,6 +59,15 @@ export interface GeneratedZone {
   cond: string;
 }
 
+/** region（`jp-14` 等）の時刻帯（registry/region.yaml。Issue #32-3、ADR-0024）。 */
+export interface GeneratedRegionTime {
+  regionId: string;
+  /** IANA 時刻帯名（例 `Asia/Tokyo`）。 */
+  tzName: string;
+  /** UTC オフセット（`+HH:MM`/`-HH:MM`）。 */
+  utcOffset: string;
+}
+
 /** `REDLIST_CATEGORY` の1エントリ（Issue #48 PR-3b §2.4）。rank が null は「前回記載なし」。 */
 export interface GeneratedRedlistCategory {
   labelJa: string;
@@ -367,4 +376,9 @@ export const ZONE_INFO: readonly GeneratedZone[] = [
   { zone: 3, label: "丘陵・扇状地", cond: "標高 100–400m" },
   { zone: 4, label: "平野・沖積低地", cond: "標高 100m 以下・海岸から 2km 超" },
   { zone: 5, label: "河口・沿岸", cond: "標高 100m 以下・海岸から 2km 以内" },
+];
+
+/** region の時刻帯（registry/region.yaml の語彙。`lookup-client.ts` の `regionTimeZone()` が引く）。 */
+export const REGION_TIME: readonly GeneratedRegionTime[] = [
+  { regionId: "jp-14", tzName: "Asia/Tokyo", utcOffset: "+09:00" },
 ];

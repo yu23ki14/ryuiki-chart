@@ -502,12 +502,175 @@ def test_year_source_cell_closed_to_year_and_fiscal_year_only(tmp_path):
         stats = b04.build_cube(conn, _registry_db(tmp_path), unit_evidence_declarations_path=None)
         assert stats["n_month_source"] == 3
         assert stats["n_year_source"] == 3
+        # 出典配布の年次セル（grain=input_grain）は fiscal_year だけ（月次データが年次の出典配布に混ざらない）。
         year_grains = conn.execute(
-            "SELECT DISTINCT grain FROM observation_agg WHERE grain IN ('year','fiscal_year')"
+            "SELECT DISTINCT grain FROM observation_agg WHERE grain IN ('year','fiscal_year') AND input_grain = grain"
         ).fetchall()
-        assert year_grains == [("fiscal_year",)]  # 月次データが年次に混ざっていない
+        assert year_grains == [("fiscal_year",)]
+        # 出典が月で配った値（value_grain='month'。jma_monthly 相当）は、年・年度へ積み上げない
+        # （宣言駆動。Issue #32-2。平均の平均が年値として現れない）。
+        assert stats["n_year_from_month"] == 0
+        assert conn.execute(
+            "SELECT COUNT(*) FROM observation_agg WHERE input_grain = 'month' AND grain IN ('year','fiscal_year')"
+        ).fetchone()[0] == 0
     finally:
         conn.close()
+
+
+def _rollup_declaration(tmp_path, rollup: str | None = "[fiscal_year]"):
+    """厚木相当の復元エントリ（`rollup_to` は引数）を持つ period_exceptions.yaml を作ってパスを返す。"""
+    path = tmp_path / "period_exceptions.yaml"
+    body = "src_a:\n  period_grain_override: month\n  restore_month_from: source_ref_month_label\n"
+    if rollup is not None:
+        body += f"  rollup_to: {rollup}\n"
+    path.write_text(body + "  expected_row_count: 1\n  reason: テスト\n  restoration_plan: テスト\n", encoding="utf-8")
+    return path
+
+
+def _month_row(source_id, start, value, *, censoring="none", limit=None, raw=None):
+    end = start[:8] + "28"
+    return _row(
+        "measurements", source_id, start, end, value, raw or (None if value is None else str(value)), censoring,
+        value_grain="day", period_grain="month", period_raw=start[:4],
+        **({"censoring_limit": limit} if limit is not None else {}),
+    )
+
+
+def test_fiscal_year_rolls_up_from_month_observations_when_declared(tmp_path):
+    """Issue #32-2: 宣言（rollup_to: [fiscal_year]）された粒度だけ、月に復元した観測から**観測の行から
+    直接**年度（4月始まり）に積み上がる。2013-03 は年度2012、2013-04 は年度2013。暦年は作らない。
+    input_grain は 'month' のまま。n は観測行の個数（欠月は補完しない）。"""
+    rows = [
+        _month_row("m1", "2013-01-01", 1.0),
+        _month_row("m2", "2013-03-01", 3.0),
+        _month_row("m3", "2013-04-01", 5.0),
+        _month_row("m4", "2013-12-01", 11.0),
+    ]
+    db_path = tmp_path / "v2.sqlite"
+    conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
+    try:
+        stats = b04.build_cube(
+            conn, _registry_db(tmp_path), unit_evidence_declarations_path=None,
+            period_exceptions_path=_rollup_declaration(tmp_path),
+        )
+        assert stats["n_year_from_month"] == 6  # 年度2つ × mean/min/max
+        got = conn.execute(
+            "SELECT grain, period_start, period_end, stat, value_zero, n FROM observation_agg "
+            "WHERE input_grain = 'month' AND grain IN ('year','fiscal_year')"
+        ).fetchall()
+        assert ("fiscal_year", "2012-04-01", "2013-03-31", "mean", 2.0, 2) in got
+        assert ("fiscal_year", "2013-04-01", "2014-03-31", "mean", 8.0, 2) in got
+        assert ("fiscal_year", "2013-04-01", "2014-03-31", "max", 11.0, 2) in got
+        assert len(got) == 6 and {g[0] for g in got} == {"fiscal_year"}
+    finally:
+        conn.close()
+
+
+def test_no_rollup_without_declaration(tmp_path):
+    """宣言が無い（`rollup_to` を書かない）復元エントリでは、月 → 年・年度のセルを作らない。"""
+    rows = [_month_row("m1", "2013-04-01", 5.0)]
+    db_path = tmp_path / "v2.sqlite"
+    conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
+    try:
+        stats = b04.build_cube(
+            conn, _registry_db(tmp_path), unit_evidence_declarations_path=None,
+            period_exceptions_path=_rollup_declaration(tmp_path, rollup=None),
+        )
+        assert stats["n_year_from_month"] == 0
+        assert conn.execute("SELECT COUNT(*) FROM observation_agg WHERE grain IN ('year','fiscal_year')").fetchone()[0] == 0
+        # 月セル（出典側）は作られる。
+        assert conn.execute("SELECT COUNT(*) FROM observation_agg WHERE grain='month' AND stat='mean'").fetchone()[0] == 1
+    finally:
+        conn.close()
+
+
+def test_month_rollup_counts_censored_like_other_cells(tmp_path):
+    """検閲値の扱いは既存の積み上げと同じ: below_lod は value_zero=0・value_lod=限界値、
+    n_censored に数える。"""
+    rows = [
+        _month_row("m1", "2013-05-01", 2.0),
+        _month_row("m2", "2013-06-01", None, censoring="below_lod", limit=1.0, raw="<1"),
+    ]
+    db_path = tmp_path / "v2.sqlite"
+    conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
+    try:
+        b04.build_cube(
+            conn, _registry_db(tmp_path), unit_evidence_declarations_path=None,
+            period_exceptions_path=_rollup_declaration(tmp_path),
+        )
+        got = conn.execute(
+            "SELECT value_zero, value_lod, n, n_censored FROM observation_agg "
+            "WHERE input_grain='month' AND grain='fiscal_year' AND stat='mean'"
+        ).fetchone()
+        assert got == (1.0, 1.5, 2, 1)
+    finally:
+        conn.close()
+
+
+def _rollup_staging(rows):
+    import sqlite3
+
+    conn = sqlite3.connect(":memory:")
+    cols = ("region_id, place_id, place_kind, variable_id, obs_stat, unit_id, value_grain, period_start, "
+            "grain, input_grain, stat, n, n_censored, n_not_detected, value_zero, value_lod")
+    conn.execute(f"CREATE TABLE stg ({cols})")
+    conn.executemany(f"INSERT INTO stg VALUES ({','.join('?' * 16)})", rows)
+    return conn
+
+
+_K = ("jp-14", "p", "site", "v", None, "u", "day")
+
+
+def _good_rollup_rows():
+    month = []
+    for start, v in (("2013-04-01", 2.0), ("2013-05-01", 4.0)):
+        for stat in ("mean", "min", "max"):
+            month.append((*_K, start, "month", "month", stat, 1, 0, 0, v, v))
+    rolled = []
+    for grain, start in (("year", "2013-01-01"), ("fiscal_year", "2013-04-01")):
+        for stat, v in (("mean", 3.0), ("min", 2.0), ("max", 4.0)):
+            rolled.append((*_K, start, grain, "month", stat, 2, 0, 0, v, v))
+    return month + rolled
+
+
+_BOTH = ("year", "fiscal_year")
+
+
+def test_month_year_rollup_invariant_passes_on_consistent_cells():
+    conn = _rollup_staging(_good_rollup_rows())
+    assert cube_invariants.verify_month_year_rollup(conn, "stg", _BOTH)["n_month_rollup_buckets_checked"] == 2
+
+
+def test_month_year_rollup_invariant_stops_on_dropped_or_corrupted_cells():
+    """わざと壊すと止まる: n の取りこぼし・max の食い違い・年度セルの欠落。"""
+    rows = _good_rollup_rows()
+    # row: (..7 key.., period_start[7], grain[8], input_grain[9], stat[10], n[11], nc, nnd, vz[14], vl[15])
+    bad_n = [(*r[:11], 1, *r[12:]) if (r[8] == "year" and r[10] == "mean") else r for r in rows]
+    with pytest.raises(common.MigrationError, match="保存則"):
+        cube_invariants.verify_month_year_rollup(_rollup_staging(bad_n), "stg", _BOTH)
+    bad_max = [(*r[:14], 9.0, r[15]) if (r[8] == "fiscal_year" and r[10] == "max") else r for r in rows]
+    with pytest.raises(common.MigrationError, match="保存則"):
+        cube_invariants.verify_month_year_rollup(_rollup_staging(bad_max), "stg", _BOTH)
+    missing = [r for r in rows if r[8] != "fiscal_year"]
+    with pytest.raises(common.MigrationError, match="保存則"):
+        cube_invariants.verify_month_year_rollup(_rollup_staging(missing), "stg", _BOTH)
+
+
+def test_month_year_rollup_invariant_stops_on_undeclared_grain_cells():
+    """宣言していない粒度（暦年）のセルがあれば止まる。宣言が fiscal_year だけなら暦年セルは不一致。"""
+    with pytest.raises(common.MigrationError, match="宣言外"):
+        cube_invariants.verify_month_year_rollup(_rollup_staging(_good_rollup_rows()), "stg", ("fiscal_year",))
+
+
+def test_month_year_rollup_invariant_stops_on_rollup_of_source_month_values():
+    """value_grain='month'（出典が月で配った値。jma_monthly 相当）から月→年のセルが作られていたら止まる。"""
+    jma_key = (*_K[:6], "month")
+    rows = [
+        (*jma_key, "2013-04-01", "month", "month", "mean", 1, 0, 0, 2.0, 2.0),
+        (*jma_key, "2013-04-01", "fiscal_year", "month", "mean", 1, 0, 0, 2.0, 2.0),
+    ]
+    with pytest.raises(common.MigrationError, match="保存則"):
+        cube_invariants.verify_month_year_rollup(_rollup_staging(rows), "stg", ("fiscal_year",))
 
 
 def test_month_and_year_from_day_inherit_input_grain_and_filter_mean(tmp_path):

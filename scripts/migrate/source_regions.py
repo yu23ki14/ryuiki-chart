@@ -35,41 +35,42 @@ consumer 扱いになる方が、都度エラーで気づけるより危険—�
 `validate_source_regions_shape()` が構造検証の時点で止める
 （`CONSUMER_CODES` 外の値と同じ扱い）。
 
-**「どの sources からも参照されない region」の検査は consumer で絞らない**
-（コードレビュー指摘3）。`sources` を consumer で絞り込むと、ある consumer の
-視点からは「参照していない region」がその consumer 自身の未使用宣言としては
-見えるが、**全 consumer をまたいで一度も参照されない孤児の region**は、
-どの consumer の呼び出しからも「自分の担当外」として素通りされ、検出する
-経路が無くなってしまう。そのため、この検査だけは常に**絞り込み前の全
-`sources`** に対して行う——`consumer` を指定した呼び出しでも、指定しない
-呼び出しでも同じ孤児が同じように検出される。
+**regions（時刻帯）は `registry/region.yaml` が正**（Issue #32-3。ADR-0024）。以前はこのファイルの
+`regions:` にあった。旧形式が残っていると `load_source_regions()` と
+`validate_source_regions_shape()` が止める。region.yaml は語彙なので、どの sources からも参照
+されない region が載っていてもよい（将来の地域を先に載せられる）。
 """
 from __future__ import annotations
 
 import pathlib
-import re
 from dataclasses import dataclass
 
-from . import period
+from . import period, regions as region_vocab
 from .common import MigrationError, load_yaml
 
 DEFAULT_SOURCE_REGIONS_YAML = pathlib.Path(__file__).resolve().parent / "source_regions.yaml"
 
+DEFAULT_REGION_YAML = region_vocab.DEFAULT_REGION_YAML
+
 REQUIRED_SOURCE_KEYS = ("region_id", "consumer", "expected_row_count", "evidence")
-REQUIRED_REGION_KEYS = ("utc_offset", "evidence")
 
 # `consumer` が取りうる値のコードリスト（`scripts/registry/build_unit_variable.py`
 # の `GRAIN_CODES`/`STAT_CODES` と同じ考え方——このリストに無い値が来たら
 # ビルドを落とす）。
 CONSUMER_CODES = frozenset({"occurrence", "observation"})
 
-# `'+09:00'`/`'-05:30'` の形だけを許す（コードレビュー指摘1）。`period._parse_utc_offset`
-# （時刻帯の扱いは `scripts/migrate/period.py` の `_strip_tz` の隣に集約。
-# /simplify 指摘2）は符号1文字＋2桁＋':'＋2桁だけを前提に減算するため、
-# `"09:00"`（符号無し）のような値を読むと符号判定が
-# `sign = 1 if s[0]=='+' else -1` で黙って `-1`（負）に倒れる事故が起きる。
-# 読み込み時（ここ）と構造検証（CI）の両方で同じ正規表現を使う。
-UTC_OFFSET_PATTERN = re.compile(r"^[+-][0-9]{2}:[0-9]{2}$")
+# Issue #32-3: `regions:`（時刻帯）は `registry/region.yaml` に移した。旧形式が残っていたら止める
+# （二重管理に戻さない。ADR-0024）。
+_LEGACY_REGIONS_MESSAGE = (
+    "`regions:` は scripts/migrate/source_regions.yaml から撤去した（Issue #32-3）。"
+    "region の時刻帯（utc_offset）は registry/region.yaml が唯一の置き場。"
+    "`regions:` ブロックを削除し、必要な region を registry/region.yaml に足すこと。"
+)
+
+
+def reject_legacy_regions_key(raw: dict, path) -> None:
+    if isinstance(raw, dict) and "regions" in raw:
+        raise MigrationError(f"{path}: {_LEGACY_REGIONS_MESSAGE}")
 
 
 @dataclass(frozen=True)
@@ -89,29 +90,16 @@ class SourceRegion:
     evidence: str
 
 
-@dataclass(frozen=True)
-class Region:
-    """`regions:` の1エントリ。`expected_row_count` は常に `None`
-    （`migrate.period.EntryUsage` が「未使用宣言」の検出に `SourceRegion`/
-    `Region` のどちらも同じ形で扱えるように持つダミー属性で、regions 自体には
-    件数の宣言が無い。`mismatched_expected_counts()` は `None` のエントリを
-    素通りするので、regions では実質「未使用宣言」の検出だけが働く）。
-    """
-
-    region_id: str
-    utc_offset: str
-    evidence: str
-    expected_row_count: int | None = None
-
-
 def load_source_regions(
     path=DEFAULT_SOURCE_REGIONS_YAML,
     consumer: str | None = None,
     count_overlay: dict[str, int] | None = None,
-) -> tuple[dict[str, SourceRegion], dict[str, Region]]:
-    """`(sources, regions)` を返す。`sources` の全 `region_id` が `regions` に
-    宣言されていることと、`regions` の `utc_offset` が `UTC_OFFSET_PATTERN`
-    に一致することをここで検証する（黙って `KeyError` や符号違いの値を通さない）。
+    regions_path=DEFAULT_REGION_YAML,
+) -> tuple[dict[str, SourceRegion], dict[str, region_vocab.RegionTime]]:
+    """`(sources, regions)` を返す。`regions` は `registry/region.yaml`（`regions_path`）から読む
+    （Issue #32-3。`source_regions.yaml` に旧形式の `regions:` が残っていたら止める）。
+    `sources` の全 `region_id` が region.yaml に宣言されていることをここで検証する
+    （黙って `KeyError` を通さない）。utc_offset の形は `regions.load_regions` が検証する。
 
     `consumer` を渡すと、`sources` を `s.consumer == consumer`（`consumer` は
     必須キーなので `SourceRegion.consumer` に必ず値がある）の行だけに絞り込み、
@@ -126,27 +114,12 @@ def load_source_regions(
     `regions` には件数の宣言が無いので対象外。Issue #29「縮小サンプル」）。
     """
     raw = load_yaml(path)
+    reject_legacy_regions_key(raw, path)
     sources_raw = raw.get("sources") or {}
-    regions_raw = raw.get("regions") or {}
     if count_overlay:
         sources_raw = period.apply_count_overlay(sources_raw, count_overlay)
 
-    bad_offsets: list[tuple[str, str]] = []
-    all_regions: dict[str, Region] = {}
-    for region_id, spec in regions_raw.items():
-        utc_offset = spec["utc_offset"]
-        if not UTC_OFFSET_PATTERN.fullmatch(utc_offset):
-            bad_offsets.append((region_id, utc_offset))
-        all_regions[region_id] = Region(
-            region_id=region_id,
-            utc_offset=utc_offset,
-            evidence=spec.get("evidence", ""),
-        )
-    if bad_offsets:
-        raise MigrationError(
-            f"{path} の regions.<region_id>.utc_offset が想定外の形"
-            f"（'+HH:MM'/'-HH:MM' のみ対応）: {bad_offsets}"
-        )
+    all_regions = region_vocab.load_regions(regions_path)
 
     # consumer で絞る前の全 sources（missing_regions・孤児 region の検査は
     # 常にこちらに対して行う。モジュール docstring 参照）。`consumer` は
@@ -166,18 +139,8 @@ def load_source_regions(
     missing_regions = sorted({s.region_id for s in all_sources.values()} - set(all_regions))
     if missing_regions:
         raise MigrationError(
-            f"{path} の sources が参照する region_id が regions に宣言されていない: "
-            f"{missing_regions}"
-        )
-
-    # 孤児の region（宣言されているが、どの consumer の sources からも
-    # 参照されない）を全体に対して検査する（コードレビュー指摘3）。
-    region_ids_used_by_any_source = {s.region_id for s in all_sources.values()}
-    orphan_regions = sorted(set(all_regions) - region_ids_used_by_any_source)
-    if orphan_regions:
-        raise MigrationError(
-            f"{path} の regions に、どの sources からも参照されていないエントリがある: "
-            f"{orphan_regions}"
+            f"{path} の sources が参照する region_id が {regions_path}（registry/region.yaml）に"
+            f"宣言されていない: {missing_regions}"
         )
 
     if consumer is None:
@@ -201,8 +164,7 @@ def load_source_regions(
 
 
 def validate_source_regions_shape(path=DEFAULT_SOURCE_REGIONS_YAML) -> None:
-    """`source_regions.yaml` の形（`sources`/`regions` それぞれの必須キー・
-    `sources` の `expected_row_count` が整数・`regions` の `utc_offset` の形）を
+    """`source_regions.yaml` の形（`sources` の必須キー・`expected_row_count` が整数。旧形式の `regions:` が残っていないこと）を
     検証する（原本DBを一切必要としない構造検証。CI 用）。
 
     必須キーの検査は `period.required_keys_problems()`（`sources`/`regions`
@@ -237,20 +199,8 @@ def validate_source_regions_shape(path=DEFAULT_SOURCE_REGIONS_YAML) -> None:
                 f"（コードリスト: {sorted(CONSUMER_CODES)}）"
             )
 
-    regions = raw.get("regions")
-    if regions is None:
-        regions = {}
-    if not isinstance(regions, dict):
-        problems.append(f"regions: マッピングになっていない（実際の型: {type(regions).__name__}）")
-        regions = {}
-    problems += period.required_keys_problems(regions, REQUIRED_REGION_KEYS, label_prefix="regions.")
-    for region_id, spec in period.entries_with_required_keys(regions, REQUIRED_REGION_KEYS).items():
-        utc_offset = spec.get("utc_offset")
-        if not isinstance(utc_offset, str) or not UTC_OFFSET_PATTERN.fullmatch(utc_offset):
-            problems.append(
-                f"regions.{region_id}: utc_offset が想定外の形"
-                f"（'+HH:MM'/'-HH:MM' のみ対応。実際: {utc_offset!r}）"
-            )
+    if "regions" in raw:
+        problems.append(_LEGACY_REGIONS_MESSAGE)
 
     if problems:
         raise MigrationError(f"{path} の形が不正:\n- " + "\n- ".join(problems))

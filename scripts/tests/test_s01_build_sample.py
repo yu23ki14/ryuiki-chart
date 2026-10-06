@@ -245,10 +245,6 @@ _SOURCE_REGIONS_YAML_TEXT = (
     "    consumer: occurrence\n"
     "    expected_row_count: 1\n"
     "    evidence: テスト用\n"
-    "regions:\n"
-    "  jp-14:\n"
-    "    utc_offset: \"+09:00\"\n"
-    "    evidence: テスト用\n"
 )
 
 

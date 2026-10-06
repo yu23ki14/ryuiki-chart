@@ -221,3 +221,13 @@ observation_agg
   毎回走査するのは配信要件を満たさない。却下。
 - **画面ごとの派生テーブルを自動生成する**: 手書きは減るが、外部の可視化作者が
   自分の軸を足せないままで、目的（シビックテックに開く）に反する。却下。
+
+## 追記 2026-10-06（Issue #33-4）: ゾーンのロールアップセル（`roll_up_to`）の着手条件
+
+`roll_up_to: [zone, watershed, municipality]` のセルは**まだ作っていない**。v1 の `zone_year`/`zone_clim`
+（非加重の射影でキューブのセルではなかった）は撤去済みで、使う側（画面・API・AI）も無い。
+
+- **トリガー**: zone/watershed/municipality 単位の集計値を、画面・API・AI のいずれかが要求する最初の PR。
+- **方針案**: `place_relation`（ADR-0006）を辿って観測行から**再集計**する（セルの平均の平均は作らない）。
+  `n_places` を持たせ、系列単位（`obs_stat`/`unit_id`/`value_grain`）を保ったロールアップにとどめる
+  （`nPlaces` を alias/variable 単位に単純合算すると二重計上する、という PR-1 の知見）。

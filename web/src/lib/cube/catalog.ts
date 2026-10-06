@@ -446,11 +446,11 @@ async function siteVariablesLive(db: CubeDb, siteId: string, imputation: AvgImpu
 
 /**
  * `summary_place_variable` から1地点分の行を読む（design §2.1「variable_id×basis×stat
- * 単位（avg は lod）」）。実データでは `(variable_id, obs_stat, value_grain)` の組に対し
- * `grain`/`input_grain` が一意に決まる（同じ組が year と fiscal_year の両方の grain に
- * またがることは無い——観測済み）ため、`GROUP BY` に `grain`/`input_grain` を含めても
- * `summary_place_variable` の行をそのまま素通しするのと同じであり、`SiteSeriesRow`
- * の形（系列＝tuple 単位）を壊さずに出典だけ summary に切り替えられる。
+ * 単位（avg は lod）」）。`GROUP BY` に `grain`/`input_grain` を含めるので、`summary_place_variable` の行
+ * （系列 × grain × input_grain）をそのまま素通しする。**同じ tuple が複数の (grain, input_grain)
+ * を持つことはある**（実測: 厚木の BOD は `year/day`〔2002〜2004年度の採水日〕と `fiscal_year/month`
+ * 〔年度へ積み上げた月値〕の両方を持つ）ので、呼び出し側は `grain`/`inputGrain`（`basisOfCell`）で
+ * 区別する——`SiteSeriesRow` の形（系列＝tuple 単位＋grain/inputGrain）は壊れない。
  */
 async function siteVariablesSummary(db: CubeDb, siteId: string, imputation: AvgImputation, dataset?: string): Promise<SiteSeriesRow[]> {
   const filter = dataset ? await datasetFilterSql(db, dataset, "spv") : undefined;

@@ -40,7 +40,7 @@ PR-5 で v1 射影（b05/b08）から移した。キューブ・registry だけ�
 
 | 置き場 | 検査 |
 |---|---|
-| b04 | 時間→日の積み上げ（T6）、alias が関数であること（dataset ごと）、alias タプルが単一 dataset に写ること、1系列 1 単位表記 |
+| b04 | 時間→日の積み上げ（T6）、月→年・年度の積み上げの保存則（`verify_month_year_rollup`。Issue #32-2。n・検閲件数の和と min/max が月セルと一致）、alias が関数であること（dataset ごと）、alias タプルが単一 dataset に写ること、1系列 1 単位表記 |
 | b07 | 系列ごとの Σn/Σn_red_list/Σn_alien が母集団と一致（族×place_kind）、流域セルを (place, 年) に畳んだ保存則 |
 | b09 | `occurrence_place.place_id` が `place_source_ref` で必ず引け、`place_id → external_key` が単射（流域・メッシュ） |
 

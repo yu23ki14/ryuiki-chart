@@ -110,7 +110,6 @@ def test_row_without_coordinates_is_kept_with_null_place(tmp_path):
             "  inaturalist_kanagawa:\n"
             "    region_id: jp-14\n    consumer: occurrence\n"
             "    expected_row_count: 1\n    evidence: テスト用\n"
-            "regions:\n  jp-14:\n    utc_offset: \"+09:00\"\n    evidence: テスト用\n"
         ),
         period_shapes_counts={"day": 2},
     )
@@ -147,7 +146,6 @@ def test_synthetic_row_is_excluded_from_occurrence(tmp_path):
             "  inaturalist_kanagawa:\n"
             "    region_id: jp-14\n    consumer: occurrence\n"
             "    expected_row_count: 1\n    evidence: テスト用\n"
-            "regions:\n  jp-14:\n    utc_offset: \"+09:00\"\n    evidence: テスト用\n"
         ),
     )
     assert stats["total"] == len(DEFAULT_ORGANISM_RECORDS) + 1  # 生の行数には合成データも数える
@@ -208,7 +206,7 @@ def test_unknown_source_region_raises(tmp_path):
     """source_id は taxon_namespaces には知られているが、source_regions.yaml
     に宣言が無い場合は `UnknownSourceRegionError`。"""
     with pytest.raises(source_regions.UnknownSourceRegionError):
-        _build(tmp_path, source_regions_text="sources: {}\nregions: {}\n")
+        _build(tmp_path, source_regions_text="sources: {}\n")
 
 
 def test_unused_source_region_declaration_raises(tmp_path):
@@ -229,10 +227,6 @@ def test_unused_source_region_declaration_raises(tmp_path):
         "    consumer: occurrence\n"
         "    expected_row_count: 1\n"
         "    evidence: テスト\n"
-        "regions:\n"
-        "  jp-14:\n"
-        "    utc_offset: \"+09:00\"\n"
-        "    evidence: テスト\n"
     )
     with pytest.raises(common.MigrationError, match="never_used_source"):
         _build(tmp_path, source_regions_text=text)
@@ -250,10 +244,6 @@ def test_source_region_expected_row_count_mismatch_raises(tmp_path):
         "    region_id: jp-14\n"
         "    consumer: occurrence\n"
         "    expected_row_count: 1\n"
-        "    evidence: テスト\n"
-        "regions:\n"
-        "  jp-14:\n"
-        "    utc_offset: \"+09:00\"\n"
         "    evidence: テスト\n"
     )
     with pytest.raises(common.MigrationError, match="expected_row_count"):
@@ -284,10 +274,6 @@ def test_b06_succeeds_when_source_regions_yaml_also_has_landuse_declarations(tmp
         "    region_id: jp-14\n"
         "    consumer: observation\n"
         "    expected_row_count: 4858\n"
-        "    evidence: テスト用\n"
-        "regions:\n"
-        "  jp-14:\n"
-        "    utc_offset: \"+09:00\"\n"
         "    evidence: テスト用\n"
     )
     stats, _out = _build(tmp_path, source_regions_text=text)  # 例外を投げなければ良い

@@ -52,7 +52,7 @@ export const TABLE_ORIGIN: Record<string, string> = {
   summary_taxon_catalog: "v2", summary_watershed_occurrence: "v2",
   summary_species_catalog: "v2", summary_group_year: "v2", summary_effort_year: "v2", summary_grid_catalog: "v2",
   // registry.sqlite 由来（語彙レジストリ）
-  unit: "reg", variable: "reg", variable_alias: "reg",
+  region: "reg", unit: "reg", variable: "reg", variable_alias: "reg",
   place: "reg", place_source_ref: "reg", place_relation: "reg", place_watershed: "reg",
   taxon: "reg", taxon_assessment: "reg", caveat: "reg", caveat_scope: "reg",
 };
@@ -122,6 +122,7 @@ export const TABLE_META: Record<string, string> = {
   place_source_ref: "place と出典側のキー（site_id・watershed_id など）の対応",
   place_relation: "場所どうしの包含関係（地点→流域・ゾーンなど）",
   place_watershed: "流域（place）の水系コード・水系区分・主な河川・データ年",
+  region: "地域（region_id）の時刻帯。IANA 名と UTC オフセット（観測日時はこの時刻帯のローカル時刻）",
   taxon: "分類群レジストリ。taxon_id・学名・和名・分類階級",
   taxon_assessment: "分類群ごとのレッドリスト・外来種などの評価（版・カテゴリー）",
   caveat: "データの癖・注記の本文（キー単位）",

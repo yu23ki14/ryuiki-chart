@@ -9,9 +9,9 @@
       },
       "climatology_by_variable": {
         "added": 0,
-        "changed": 1,
+        "changed": 0,
         "removed": 0,
-        "same": 52
+        "same": 53
       },
       "day_series_site_by_variable": {
         "added": 0,
@@ -63,9 +63,9 @@
       },
       "month_series_site_by_variable": {
         "added": 0,
-        "changed": 0,
+        "changed": 1,
         "removed": 0,
-        "same": 60
+        "same": 59
       },
       "overview_counts": {
         "added": 0,
@@ -87,9 +87,9 @@
       },
       "site_variables_by_variable": {
         "added": 0,
-        "changed": 19,
+        "changed": 0,
         "removed": 0,
-        "same": 41
+        "same": 60
       },
       "sites_in_water_body": {
         "added": 0,
@@ -141,9 +141,9 @@
       },
       "variable_catalog_by_variable": {
         "added": 0,
-        "changed": 1,
+        "changed": 0,
         "removed": 0,
-        "same": 0
+        "same": 1
       },
       "water_bodies": {
         "added": 0,
@@ -165,45 +165,45 @@
       },
       "year_series_site_by_variable": {
         "added": 0,
-        "changed": 1,
+        "changed": 0,
         "removed": 0,
-        "same": 59
+        "same": 60
       },
       "zone_climatology_by_variable": {
         "added": 0,
-        "changed": 1,
+        "changed": 0,
         "removed": 0,
-        "same": 52
+        "same": 53
       },
       "zone_series_by_variable": {
         "added": 0,
-        "changed": 1,
+        "changed": 0,
         "removed": 0,
-        "same": 59
+        "same": 60
       }
     },
-    "previous_git_head": "cf23aff265ef3419f0f5313d4ab0e40e07238f26"
+    "previous_git_head": "0523c8e075e9b171e6036daa70f7bccf2241d7f0"
   },
-  "created_at": "2026-10-06T08:50:13+00:00",
+  "created_at": "2026-10-06T09:17:32+00:00",
   "environment": {
     "better_sqlite3_sqlite_version": "3.53.4",
     "node_version": "v22.22.2",
     "python_sqlite3_version": "3.49.1",
     "python_version": "3.13.7"
   },
-  "git_head": "0523c8e075e9b171e6036daa70f7bccf2241d7f0",
+  "git_head": "7498a4c7659acea563c13620a7bc32f4cde753ab",
   "pipeline_fingerprint_rows": {
     "registry.sqlite": null,
     "v2.sqlite": [
       {
-        "fingerprint": "sha256:fe927450985e4840a96a55a54a9eaf2020ffc5c2f3a71e2f5d990e8c6f7afc8e:1029034",
+        "fingerprint": "sha256:99fb2893d442c4e1464f59470d7824673875734a67da613f11e356f24038e609:1029034",
         "inputs": "{}",
         "spec_version": "phase-b-fact-slice/v1",
         "table_name": "observation"
       },
       {
-        "fingerprint": "sha256:0b480dd90e78a72bfd9a9c74288d5cf44a6fe0d1ea6a0afe90ee6a8cc41a9443:1999844",
-        "inputs": "{\"observation\": \"sha256:fe927450985e4840a96a55a54a9eaf2020ffc5c2f3a71e2f5d990e8c6f7afc8e:1029034\"}",
+        "fingerprint": "sha256:267cfb4de8b811d543e9ce0d73b0d618bb1c0678f149c80724e527652c3d6dbd:2011364",
+        "inputs": "{\"observation\": \"sha256:99fb2893d442c4e1464f59470d7824673875734a67da613f11e356f24038e609:1029034\"}",
         "spec_version": "phase-b-fact-slice/v3",
         "table_name": "observation_agg"
       },
@@ -227,31 +227,31 @@
       },
       {
         "fingerprint": "sha256:45ef45ee550b574242995de72fa8e7ba1ea151c385f0c34a65fad597299a4701:171",
-        "inputs": "{\"occurrence_agg\": \"sha256:cac900a4347e76578b22dcfdabb158524d2093ac5652f3f500042da09d734649:1437598\", \"registry:taxon\": \"b4d0ebfe0899ad42ace6484092b68b0bdfb0bec00fe36026baa32bc05cefe09a\"}",
+        "inputs": "{\"occurrence_agg\": \"sha256:cac900a4347e76578b22dcfdabb158524d2093ac5652f3f500042da09d734649:1437598\", \"registry:taxon\": \"8a1baa8c816bac10567acd13e924efb33fce475bc4e75414fade77cc44316390\"}",
         "spec_version": "serving-summary/v4",
         "table_name": "summary_effort_year"
       },
       {
         "fingerprint": "sha256:3edb48d2aebc87f001d2f7aeb811e1412b05c2c24f9aa642a68317b1e2bf6289:4086",
-        "inputs": "{\"occurrence_agg\": \"sha256:cac900a4347e76578b22dcfdabb158524d2093ac5652f3f500042da09d734649:1437598\", \"registry:taxon\": \"b4d0ebfe0899ad42ace6484092b68b0bdfb0bec00fe36026baa32bc05cefe09a\"}",
+        "inputs": "{\"occurrence_agg\": \"sha256:cac900a4347e76578b22dcfdabb158524d2093ac5652f3f500042da09d734649:1437598\", \"registry:taxon\": \"8a1baa8c816bac10567acd13e924efb33fce475bc4e75414fade77cc44316390\"}",
         "spec_version": "serving-summary/v4",
         "table_name": "summary_grid_catalog"
       },
       {
         "fingerprint": "sha256:7af22cd18d552d2bdcb0886efb7de10c7181af2dbe70ded793818168e8a565da:1851",
-        "inputs": "{\"occurrence_agg\": \"sha256:cac900a4347e76578b22dcfdabb158524d2093ac5652f3f500042da09d734649:1437598\", \"registry:taxon\": \"b4d0ebfe0899ad42ace6484092b68b0bdfb0bec00fe36026baa32bc05cefe09a\"}",
+        "inputs": "{\"occurrence_agg\": \"sha256:cac900a4347e76578b22dcfdabb158524d2093ac5652f3f500042da09d734649:1437598\", \"registry:taxon\": \"8a1baa8c816bac10567acd13e924efb33fce475bc4e75414fade77cc44316390\"}",
         "spec_version": "serving-summary/v4",
         "table_name": "summary_group_year"
       },
       {
-        "fingerprint": "sha256:aa92c8039679aaeb788cf02a0a3ea5a7bd7785db38fe21efd241db2bd8368b1f:8311",
-        "inputs": "{\"observation_agg\": \"sha256:0b480dd90e78a72bfd9a9c74288d5cf44a6fe0d1ea6a0afe90ee6a8cc41a9443:1999844\"}",
+        "fingerprint": "sha256:7dff2aac2999ffe15af3b35d0169bd5890b5e75ad94b343c772111bb61265b75:8311",
+        "inputs": "{\"observation_agg\": \"sha256:267cfb4de8b811d543e9ce0d73b0d618bb1c0678f149c80724e527652c3d6dbd:2011364\"}",
         "spec_version": "serving-summary/v4",
         "table_name": "summary_place_variable"
       },
       {
         "fingerprint": "sha256:fcd9d31f37130edf0cbb3f8da2f534a9d905cd58b44d755df5e885571936957b:23618",
-        "inputs": "{\"occurrence_agg\": \"sha256:cac900a4347e76578b22dcfdabb158524d2093ac5652f3f500042da09d734649:1437598\", \"registry:taxon\": \"b4d0ebfe0899ad42ace6484092b68b0bdfb0bec00fe36026baa32bc05cefe09a\"}",
+        "inputs": "{\"occurrence_agg\": \"sha256:cac900a4347e76578b22dcfdabb158524d2093ac5652f3f500042da09d734649:1437598\", \"registry:taxon\": \"8a1baa8c816bac10567acd13e924efb33fce475bc4e75414fade77cc44316390\"}",
         "spec_version": "serving-summary/v4",
         "table_name": "summary_species_catalog"
       },
@@ -262,8 +262,8 @@
         "table_name": "summary_taxon_catalog"
       },
       {
-        "fingerprint": "sha256:910124f121b6549c48d85ed50d60904134521b86b7b82c18f2edba6295272195:119",
-        "inputs": "{\"observation_agg\": \"sha256:0b480dd90e78a72bfd9a9c74288d5cf44a6fe0d1ea6a0afe90ee6a8cc41a9443:1999844\"}",
+        "fingerprint": "sha256:3be322168067739cfb7b166a37dcf8303d9a08493ffdf11a9146873a6186bdd6:119",
+        "inputs": "{\"observation_agg\": \"sha256:267cfb4de8b811d543e9ce0d73b0d618bb1c0678f149c80724e527652c3d6dbd:2011364\"}",
         "spec_version": "serving-summary/v4",
         "table_name": "summary_variable_catalog"
       },
@@ -277,25 +277,26 @@
   },
   "pipeline_path_hashes": {
     "aggregations": "054a6ad40f7a2c0a1eb118972cfb7e77369ece30",
-    "registry": "786574012f49ab0e598a95f5d1819cd8efe747a1",
+    "registry": "20d1760e8080e53b70bcd83c34b8fbc5748dd7bc",
     "requirements.txt": "6982cafe7c0c5ce12db1ca2b7d74868e69945a27",
-    "scripts/b00_run_full_gate.py": "fabb95ebb06883005b139c56b8b44199af37dc18",
-    "scripts/b03_build_observation.py": "058ca1b64c7c48d8eb5507b230ee013a1151b15a",
-    "scripts/b04_build_cube.py": "705efd0304a4a6a39708a67f3c18e52ea1b08935",
+    "scripts/b00_run_full_gate.py": "984c2613672ff8541f9ee3445c481db8792e0ee8",
+    "scripts/b03_build_observation.py": "3f99081672bccf26d702d16db74c29c5d1af8d92",
+    "scripts/b04_build_cube.py": "9b05aeb9c3c3f1f0ac926079758aecbe29673764",
     "scripts/b06_build_occurrence.py": "44c3e4930ea4c9a12ef68f2010c2c2d19ce1343a",
     "scripts/b07_build_occurrence_cube.py": "de83dc57eabf7011f31aabe254ac07bd1d12c9e6",
     "scripts/b09_build_occurrence_place.py": "790194b4d55c275860280faecc5e0452adb4b0ba",
     "scripts/b13_build_summary.py": "a3fea7c442ddc610a67344c9f46f9a0748576466",
-    "scripts/migrate": "ad9e915e86b6d8dd018f97deea9243aa91120634",
+    "scripts/era_table.py": "b0953de3efa2eee6eff43c249cda61e4e2e64c95",
+    "scripts/migrate": "ff46e496c2ad1f970deed4786a99538dc5e27bbe",
     "scripts/pipeline_inputs.py": "26f0f1aa956493afa09db0fcab69bc939933b42a",
-    "scripts/r01_build_registry.py": "d3b1963e961676f03e9924c09d9f09802e9982e5",
+    "scripts/r01_build_registry.py": "c3172adf22287966e49f8c33ec6597d90988e64b",
     "scripts/reconcile": "0434daaaa6e412fafdff6a99768d9486b7c5c9a0",
-    "scripts/registry": "476bf9d79b493e5d468b78850f0318ce4eafea1b",
-    "scripts/schema_registry.sql": "6716252545d449fecd3146bd73fd64b9163b9503",
+    "scripts/registry": "25bae8237286128aac1917053fdafe49bbe44a80",
+    "scripts/schema_registry.sql": "2ab2bbddff0f1eaaf5e9a52012c32ab0d4fbdc46",
     "scripts/taxon_namespaces.py": "56651e8f89085ad95c225643177c17a4098021c3",
     "web/package.json": "0a17420f8dbd67b82ab52ff89e511bac8a2d5eaf",
     "web/pnpm-lock.yaml": "6ed023dae786be30e10835dd8a13d5af0bccd466",
-    "web/scripts/build-registry-ts.mjs": "af8c7100aa5ee72fb1d973d01943fd2bf30903dc",
+    "web/scripts/build-registry-ts.mjs": "b7125fef3ec19477fba612d02a6f48310f21a1f8",
     "web/scripts/lib/csv.mjs": "2d1fa1614b795cc6b3501f25afadddb30403afe2",
     "web/scripts/lib/registry-codegen.mjs": "de8f929332c58b7dd8a8391f1b17391326ed6342",
     "web/scripts/lib/serving/adapters-v2.ts": "2d62b4df13cc085594d4eaafc51f5f6496dd603d",
@@ -303,11 +304,12 @@
     "web/scripts/lib/serving/register-aliases.mjs": "2cb72578a5245ece90194b7e599178007b59f24a",
     "web/scripts/lib/serving/snapshot.ts": "beb996b860b34dde85aa318af5544b310b3c8d8e",
     "web/scripts/serving-snapshot.mts": "f101456833dcc8654fdba0fc61b7b91d7b9991da",
-    "web/serving_queries.yaml": "4b88a6b4331150307d28761f8eac6d302d5c6fa1",
+    "web/serving_queries.yaml": "c03ad7ae340d6d9e541e5954204be34079faa475",
     "web/src/db/schema-cube.ts": "c273e62f7435a4227236a9d3f97423e9d9900ee0",
     "web/src/lib/cube/assessment.ts": "8c16346ecdfaecbfd99e228caa46261c91daac30",
-    "web/src/lib/cube/catalog.ts": "c86aa405b63756875b0132d6d6e441440cc3bbb3",
+    "web/src/lib/cube/catalog.ts": "260d1fe0033155ee320aa0cc1e80fb22509ac7de",
     "web/src/lib/cube/caveats.ts": "0bca10dfe595ba0d9d9a97423eb3ab11d6bf81f3",
+    "web/src/lib/cube/cell-basis.ts": "8daf1bcedb90ed3d26b21d938eba7fc28d722ce8",
     "web/src/lib/cube/db-d1.ts": "04fc725695abca60df033398f90c9b82b602522a",
     "web/src/lib/cube/db-sqlite.ts": "752a69c34f0a42f3733a75987c3401a1776bed06",
     "web/src/lib/cube/db.ts": "ed383adaafced2ce12a01103844ed3049966febf",
@@ -316,16 +318,16 @@
     "web/src/lib/cube/envelope.ts": "31a48209cd11cc36c778a0bcfd721685e523e540",
     "web/src/lib/cube/grid.ts": "96ec103c3ad2c0c0183018fae0237d0ad47775fd",
     "web/src/lib/cube/index.ts": "95c2a16d58c21337cf90cba5c52176ba85ff1835",
-    "web/src/lib/cube/observation.ts": "a0aec01d8602031b41d45165bf5a072ba65e4c19",
+    "web/src/lib/cube/observation.ts": "7d2ce1e79c2b014d7b3d94e534b1ac9d5b179985",
     "web/src/lib/cube/occurrence.ts": "98b05930bc32fba4a0d7c4be6ac940c46668bbe8",
-    "web/src/lib/cube/series.ts": "81c37ded9402779c6d4fcafe957524046f39b704",
+    "web/src/lib/cube/series.ts": "7769329be7e9fd2a162ac8909a8b4505a84149aa",
     "web/src/lib/cube/sql.ts": "e1f5d4e7f9fd8151d3314a4053e5076689e01a52",
     "web/src/lib/cube/unit.ts": "24c38c741b8a1cfc62bc5d33861aa7b1c45cfdcc",
     "web/src/lib/db.ts": "cb9a153fb416b4400bd74ecf0fd4d3977df90944",
-    "web/src/lib/registry/generated-client.ts": "73f881ca331ce3ee6ec393b022311034ee18a1c2",
+    "web/src/lib/registry/generated-client.ts": "3b86636c64090665899bd74d3c20a9495e92d5d4",
     "web/src/lib/registry/generated.ts": "f3badab93a88fe06a8c823c0a284f490ff0d8e7f",
     "web/src/lib/registry/index.ts": "1278a11f34ed70023dcef58a8a5636324679b400",
-    "web/src/lib/registry/lookup-client.ts": "6f0f3d6e1b3f199692069087fcfbbf5bbd51a54c",
+    "web/src/lib/registry/lookup-client.ts": "f436dee9290927326740be2ce07a12e511744336",
     "web/src/lib/registry/lookup.ts": "aa5a98adee1145416dba524842d5df2db8b3d977"
   },
   "queries": [
@@ -2504,15 +2506,15 @@
           }
         },
         {
-          "hash": "ded6e48199e5a14ed61a1e9b1f3433f5ce7a8c94dc1bb3e0f6375caaf6760f0b",
-          "n_rows": 36,
+          "hash": "bdc6ec5b5a882649dc79ce3551245ffb5e7076a4ea9104df13f4e9067337fcaf",
+          "n_rows": 228,
           "params": {
             "site_id": "atsugi_river_water_quality__相模川",
             "variable_id": "common:variable:water.cod"
           },
           "sums": {
-            "avg": 68.3,
-            "n": 36
+            "avg": 440.9,
+            "n": 228
           }
         },
         {

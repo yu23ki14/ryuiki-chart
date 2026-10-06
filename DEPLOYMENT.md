@@ -357,6 +357,26 @@ pnpm run db:export
 やり直したいだけなら [Time Travel](https://developers.cloudflare.com/d1/reference/time-travel/) で
 直前の時点に戻せる（過去 30 日）。
 
+### 原本を更新したときの宣言ファイルの測り直しチェックリスト（Issue #33-6）
+
+宣言ファイルの `expected_row_count` 等はスナップショット固有の実測値で、原本（`ryuiki.sqlite`/
+`cells.sqlite`、`data/processed`）を書き換えたら**測り直さないと古い値で止まる**（止まるのが仕様。
+値を通すために宣言を曲げない——差分は理由を書いて更新する）。`build:v2` を回し、止まった宣言を下の表で直す。
+
+| 宣言（`scripts/migrate/`） | 測る段 | 注意 |
+|---|---|---|
+| `occurrence_place_declarations.yaml` | b09 | 値は `organism_records` の rowid に固有。行の追加・削除・並べ替えで変わる。流域ポリゴン数は `nlni_w12_watersheds.geojson` |
+| `occurrence_cube_declarations.yaml` | b07 | `organism_records` の期間・place 内訳 |
+| `occurrence_period_shapes.yaml` | b06 | 日付表記の形ごとの件数 |
+| `period_exceptions.yaml` | b03 | `measurements` の該当 source の件数（厚木） |
+| `time_label_conventions.yaml` | b03 | `sensor_timeseries` の毎時 source の件数 |
+| `source_regions.yaml` | b06/b03 | source ごとの件数（`organism_records`・土地利用 CSV の行数） |
+| `unit_evidence_declarations.yaml` | b04 | 単位が未解決のままの組。解決済みになったら宣言を消す |
+| `data/sample/declaration_counts.yaml` | `scripts/s01_build_sample.py` | 標本側の上書き値。手で編集せず再生成（本物のチェックアウトでは実行しない。CLAUDE.md） |
+
+あわせて `scripts/b00_run_full_gate.py` を回して `reports/serving_fingerprint.json` を更新し、
+`data/sample/serving_snapshot.json` の差分を `serving:snapshot -- --mode diff` で確認する。
+
 ### コードだけ変えた
 
 ```bash

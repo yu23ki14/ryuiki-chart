@@ -14,23 +14,31 @@
 # （restoration_plan）を必ず書くこと。
 
 atsugi_river_water_quality:
-  # このソースの variable_alias は grain='day'（日間平均値）だが、
-  # measured_on が4桁の行だけがここに来る（compute_period() 側の分岐条件）。
-  period_grain_override: fiscal_year
+  # このソースの variable_alias は grain='day'（日間平均値）だが、測定日が月までしか
+  # 言えない行（年度番号だけだった 3,840 行を、source_ref の月ラベルから 'YYYY-MM' に復元した
+  # もの。Issue #32-2）がここに来る（compute_period() の 7桁分岐）。
+  period_grain_override: month
+  # source_ref の月ラベルから暦月を復元する（scripts/migrate/period.py の
+  # restore_month_from_source_ref。b03 が measured_on(4桁) の行にだけ適用する）。
+  restore_month_from: source_ref_month_label
+  # 出典は年度（fiscal_year）で配っているので、月 → 年度だけ積み上げる（b04。暦年は作らない。
+  # 暦年にすると両端が3か月・9か月の部分年になり、同じ月観測が year と fiscal_year の両方で
+  # n に二重計上される）。値は観測の行から直接再集計する。
+  rollup_to: [fiscal_year]
   # 実測（design.md 実測値）: この宣言に該当する行数。ここに書いた数と食い違ったら
-  # b03 が例外を投げて止まる（scripts/migrate/period.py の verify_all_used 系の
-  # チェックとは別に、b03 側で件数を突き合わせる）。
+  # b03 が例外を投げて止まる。
   expected_row_count: 3840
   reason: >
-    scripts/m05_tier1.py:312 の `measured_on = sampled_on or fiscal_year` の副作用。
-    このソースの alias は grain='day'（日間平均値）を宣言しているが、
-    `sampled_on`（採水日）が無い行は `fiscal_year`（年度番号、4桁）だけが
-    `measured_on` に残る。「日間平均値である」という情報（value_grain='day'）は
-    失わずに observation に残すが、期間はその日付からは特定できず、
-    年度としてしか表せない。
+    scripts/m05_tier1.py:312 の `measured_on = sampled_on or fiscal_year` の副作用で、
+    `sampled_on`（採水日）が無い行は年度番号（4桁）しか `measured_on` に残らない。
+    このソースは「日間平均値」（value_grain='day'）だが、採水日は月内の1日で、原本の
+    xlsx は「8〜9日」のような範囲表記しか持たず特定できない（月より細かい粒度には
+    永久に復元できない）。
   restoration_plan: >
-    `source_ref` に月ラベルが19年度×12ヶ月ぶん残っているため、日付は復元できる
-    （このエントリの reason に書いた副作用を直せば良い）。ADR-0016 の順序どおり、
-    Phase B のゲート（scripts/b02_derived_compare.py）が緑になった後に対応する。
-    復元できれば value_grain と period_grain が一致するようになり、
-    このエントリ自体が不要になる。
+    【Issue #32-2 で復元済み（2026-10-06）】source_ref の月ラベル（19年度ぶん×12か月、
+    和暦付き 660 行は年度と独立に照合）から暦月を復元し、period_grain='month'
+    （period_start/period_end = 月初〜月末）で入る。**このエントリは消えない**:
+    value_grain='day' と period_grain='month' の不一致は日が原理的に特定できないことによる
+    恒久的なもの（Issue の「エントリが不要になる」は成り立たなかった。ADR-0021 追記）。
+    以前の fiscal_year（年度番号から直接）の期間は、b04 が `rollup_to: [fiscal_year]` の宣言に従って
+    month → fiscal_year に積み上げ直す（input_grain='month'）。

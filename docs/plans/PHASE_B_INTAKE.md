@@ -75,7 +75,7 @@ Phase A の判断が誤りだったという意味ではない——**計画ど�
   `grain_rule` 列は不要と判断して作らなかった**。最終的に `grain='mixed'` の行は
   **0件**になった（詳細な一次資料と引用は `docs/plans/PHASE_B_ALIAS_STAT_SOURCES.md` §4）。
 
-### `atsugi_river_water_quality` は月粒度まで復元できる（本PRでは着手しない）
+### `atsugi_river_water_quality` は月粒度まで復元できる（本PRでは着手しない。**2026-10-06 に Issue #32-2 で復元済み**。ADR-0021 追記）
 
 - `measured_on` が2005年度以降「年だけ」になるのは、`scripts/m05_tier1.py` の
   `measured_on = sampled_on or fiscal_year` というフォールバックの副作用であり、

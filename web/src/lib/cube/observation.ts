@@ -23,6 +23,7 @@ import {
   type SeriesInfo,
   type SeriesKey,
 } from "./series";
+import { sourceGrainCellSql } from "./cell-basis";
 
 export type { Scope } from "./sql";
 
@@ -38,7 +39,7 @@ export interface CellSpec {
   grain: Grain | Grain[];
   /** 既定 ['mean']。 */
   stats?: Stat[];
-  /** 'same' = 出典配布セル（input_grain = grain）。 */
+  /** 'same' = 出典が配った粒度のセル（規則は `cell-basis.ts` の `sourceGrainCellSql`）。 */
   inputGrain?: "day" | "hour" | "instant" | "same";
   /** `period_start` の範囲（文字列比較。日時関数は使わない: ADR-0024）。 */
   period?: { from?: string; to?: string };
@@ -194,7 +195,8 @@ function commonFilterSql(spec: CellSpec, alias: string): { joins: string[]; wher
   whereParams.push(...stats);
 
   if (spec.inputGrain === "same") {
-    wheres.push(`${alias}.input_grain = ${alias}.grain`);
+    // 「出典が配った粒度のセル」の規則は `cell-basis.ts` の1か所（`sourceGrainCellSql`）。
+    wheres.push(sourceGrainCellSql(alias));
   } else if (spec.inputGrain) {
     wheres.push(`${alias}.input_grain = ?`);
     whereParams.push(spec.inputGrain);

@@ -24,6 +24,19 @@
  */
 import { sqliteTable, text, integer, real, index } from "drizzle-orm/sqlite-core";
 
+/**
+ * region（ADR-0002。`jp-14` 等）ごとの時刻帯の語彙（Issue #32-3、ADR-0024）。手書きの正は
+ * `registry/region.yaml`。観測の日時は時刻帯なしのローカル時刻で持ち（ADR-0024）、その
+ * 「ローカル」の意味（IANA 名と UTC オフセット）をここから引く。
+ */
+export const region = sqliteTable("region", {
+	regionId: text("region_id").primaryKey(),
+	nameJa: text("name_ja").notNull(),
+	tzName: text("tz_name").notNull(),
+	utcOffset: text("utc_offset").notNull(),
+	evidence: text(),
+});
+
 /** 単位。symbol は人間向けの原表記、ucum は UCUM 準拠のコード。 */
 export const unit = sqliteTable("unit", {
 	unitId: text("unit_id").primaryKey(),

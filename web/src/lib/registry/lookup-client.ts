@@ -22,6 +22,7 @@ import {
   GENERATED_CAVEATS,
   GENERATED_CAVEAT_SCOPE,
   NAME_JA,
+  REGION_TIME,
   VARIABLE_SHORT,
   type CaveatKey,
   type GeneratedCaveat,
@@ -165,4 +166,32 @@ export function caveatsForTables(tables: readonly string[]): CaveatRef[] {
 
 export function caveatKeysForTables(tables: readonly string[]): string[] {
   return caveatsForTables(tables).map((c) => c.key);
+}
+
+// ---------------------------------------------------------------------------
+// region の時刻帯（Issue #32-3、ADR-0024）
+// ---------------------------------------------------------------------------
+
+export interface RegionTimeZone {
+  /** IANA 時刻帯名（例 `Asia/Tokyo`）。 */
+  tzName: string;
+  /** UTC オフセット（`+HH:MM`/`-HH:MM`）。 */
+  utcOffset: string;
+}
+
+let regionTimeById: Map<string, (typeof REGION_TIME)[number]> | undefined;
+
+/**
+ * `region_id`（`jp-14` 等）の時刻帯を引く（応答封筒〔ADR-0014〕・時刻の表示が使う口）。
+ * 観測の `period_start`/`period_end` は時刻帯なしのローカル時刻（ADR-0024）で、その「ローカル」が
+ * どの時刻帯かはここで決まる。**未知の region は例外にする**（黙って JST に倒さない。
+ * registry/region.yaml に足し忘れたまま新しい地域のデータを出すと、ここで気づける）。
+ */
+export function regionTimeZone(regionId: string): RegionTimeZone {
+  regionTimeById ??= new Map(REGION_TIME.map((r) => [r.regionId, r]));
+  const r = regionTimeById.get(regionId);
+  if (!r) {
+    throw new Error(`regionTimeZone: region_id=${JSON.stringify(regionId)} は registry/region.yaml に無い`);
+  }
+  return { tzName: r.tzName, utcOffset: r.utcOffset };
 }

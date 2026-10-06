@@ -270,23 +270,9 @@ export function grainsForBasis(basis: "day" | "fiscal_year" | "year"): Grain[] {
   return basis === "day" ? ["year", "month", "day"] : basis === "fiscal_year" ? ["fiscal_year"] : ["year"];
 }
 
-/**
- * **basis はセルの性質**（`grain`/`input_grain` の組）として決める——系列の登録
- * （`value_grain`）では決めない（Issue #48 PR-2 統合後修正A #1）。`value_grain='day'`
- * として登録された系列でも、出典が一部の年だけ年度値を直接報告していれば
- * `grain='fiscal_year'`（`input_grain` も `'fiscal_year'`）のセルを持つことがある
- * （実測: 厚木系の中津川 BOD、day 入力36件＋年度入力192件）——旧
- * `basisFromValueGrain`（`value_grain` の登録値だけを見る）はこの地点で誤判定した。
- *
- * `catalog.ts` の `variableCatalog`（`nByBasis`）・`SiteDetail.tsx`（測定項目一覧の表示）・
- * `scripts/lib/serving/adapters-v2.ts`（`site_variables_by_variable` の basis 束ね。
- * 以前は `siteSeriesBasis` という同じ判定の複製を持っていたが、この関数を直接
- * import する形に統合した。Issue #48 PR-2 /simplify #10）が使う。
- */
-export function basisOfCell(cell: { grain: string; inputGrain: string }): "day" | "fiscal_year" | "year" {
-  if (cell.inputGrain === "day") return "day";
-  return cell.grain === "year" ? "year" : "fiscal_year";
-}
+// `basisOfCell`（セルの性質＝grain/input_grain の組から basis を決める規則）は `cell-basis.ts` の1か所。
+// クライアントコンポーネントからも使えるよう別ファイルに置き、ここから再エクスポートする。
+export { basisOfCell } from "./cell-basis";
 
 /**
  * `basis`（省略時は `basisOf` が選ぶ既定）から、年セルの問い合わせに使う単一の

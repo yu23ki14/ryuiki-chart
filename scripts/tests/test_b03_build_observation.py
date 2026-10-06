@@ -777,7 +777,6 @@ def test_landuse_unresolved_watershed_raises(tmp_path):
             "    consumer: observation\n"
             "    expected_row_count: 1\n"
             "    evidence: テスト用\n"
-            "regions:\n  jp-14:\n    utc_offset: \"+09:00\"\n    evidence: テスト用\n"
         ),
     )
     with pytest.raises(common.MigrationError, match="place_source_ref で解決できない"):
@@ -804,7 +803,6 @@ def test_landuse_unresolved_alias_raises(tmp_path):
             "    consumer: observation\n"
             "    expected_row_count: 1\n"
             "    evidence: テスト用\n"
-            "regions:\n  jp-14:\n    utc_offset: \"+09:00\"\n    evidence: テスト用\n"
         ),
     )
     with pytest.raises(common.MigrationError, match="variable_alias で解決できない"):
@@ -835,7 +833,6 @@ def test_landuse_duplicate_business_key_raises(tmp_path):
             "    consumer: observation\n"
             "    expected_row_count: 2\n"
             "    evidence: テスト用\n"
-            "regions:\n  jp-14:\n    utc_offset: \"+09:00\"\n    evidence: テスト用\n"
         ),
     )
     with pytest.raises(common.MigrationError, match="複数行にマッチした"):
@@ -876,7 +873,6 @@ def test_landuse_value_grain_mismatch_raises(tmp_path):
             "    consumer: observation\n"
             "    expected_row_count: 1\n"
             "    evidence: テスト用\n"
-            "regions:\n  jp-14:\n    utc_offset: \"+09:00\"\n    evidence: テスト用\n"
         ),
     )
     with pytest.raises(common.MigrationError, match="value_grain"):
@@ -921,7 +917,6 @@ def test_landuse_declared_grain_mismatch_is_counted(tmp_path):
             "    consumer: observation\n"
             "    expected_row_count: 1\n"
             "    evidence: テスト用\n"
-            "regions:\n  jp-14:\n    utc_offset: \"+09:00\"\n    evidence: テスト用\n"
         ),
     )
     # value_grain='day' に対する宣言を足す（period_grain_override='year'）。
@@ -974,7 +969,7 @@ def test_landuse_unknown_source_id_raises_immediately(tmp_path):
         ("unknown_source", "ref2006", 2006, "W1", "OLD1", "水系1", "1", "田", 10, 1.5),
     ])
     yaml_path = tmp_path / "source_regions.yaml"
-    make_landuse_source_regions_yaml(yaml_path, text="sources: {}\nregions: {}\n")
+    make_landuse_source_regions_yaml(yaml_path, text="sources: {}\n")
     with pytest.raises(source_regions.UnknownSourceRegionError, match="unknown_source"):
         _build_landuse(tmp_path, registry_db, landuse_csv=csv_path, source_regions_yaml=yaml_path)
 
@@ -1008,7 +1003,6 @@ def test_landuse_expected_row_count_mismatch_raises(tmp_path):
             "    consumer: observation\n"
             "    expected_row_count: 999\n"
             "    evidence: テスト用\n"
-            "regions:\n  jp-14:\n    utc_offset: \"+09:00\"\n    evidence: テスト用\n"
         ),
     )
     with pytest.raises(common.MigrationError, match="expected_row_count と実測件数が食い違う"):
@@ -1051,3 +1045,60 @@ def test_landuse_does_not_affect_measurements_rows(tmp_path):
     conn.close()
     assert n_measurements == 3
     assert n_landuse == len(DEFAULT_LANDUSE_CSV_ROWS) * 2
+
+
+def _restore_yaml(tmp_path, count=1):
+    p = tmp_path / "exceptions.yaml"
+    p.write_text(
+        "src_a:\n"
+        "  period_grain_override: month\n"
+        "  restore_month_from: source_ref_month_label\n"
+        f"  expected_row_count: {count}\n"
+        "  reason: テスト\n"
+        "  restoration_plan: テスト\n",
+        encoding="utf-8",
+    )
+    return p
+
+
+def test_month_label_restoration_produces_month_period(tmp_path):
+    """Issue #32-2: 4桁の年度番号の行が source_ref の月ラベルから 'month' の期間になる。
+    period_raw は原表記（年度番号）のまま。"""
+    import sqlite3
+
+    measurements_db = tmp_path / "ryuiki.sqlite"
+    registry_db = tmp_path / "registry.sqlite"
+    make_measurements_db(
+        measurements_db,
+        rows=[("m1", "S1", "2012", "BOD", "src_a", 1.2, "1.2", "mg/L", "公開済", 0, "u#1月:相模川:BOD", "ev1")],
+    )
+    make_registry_db(registry_db)
+    out = tmp_path / "v2.sqlite"
+    all_stats = build_observation(
+        tmp_path, measurements_db, registry_db, _restore_yaml(tmp_path), _no_conventions_path(tmp_path), out
+    )
+    assert all_stats["measurements"]["n_observation"] == 1
+    conn = sqlite3.connect(str(out))
+    try:
+        row = conn.execute(
+            "SELECT period_grain, period_start, period_end, period_raw FROM observation"
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row == ("month", "2013-01-01", "2013-01-31", "2012")
+
+
+def test_month_label_restoration_without_label_stops(tmp_path):
+    """月ラベルが取れない行は黙って落とさず止まる。"""
+    measurements_db = tmp_path / "ryuiki.sqlite"
+    registry_db = tmp_path / "registry.sqlite"
+    make_measurements_db(
+        measurements_db,
+        rows=[("m1", "S1", "2012", "BOD", "src_a", 1.2, "1.2", "mg/L", "公開済", 0, "ref1", "ev1")],
+    )
+    make_registry_db(registry_db)
+    with pytest.raises(common.MigrationError, match="月ラベルを取れない"):
+        build_observation(
+            tmp_path, measurements_db, registry_db, _restore_yaml(tmp_path), _no_conventions_path(tmp_path),
+            tmp_path / "v2.sqlite",
+        )

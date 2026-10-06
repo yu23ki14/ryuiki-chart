@@ -85,7 +85,7 @@ def write_jsonl(name, rows):
     return p
 
 # ---- 正規化 (P6 SKILL.md 準拠) ----
-ERA = {"令和":2018, "平成":1988, "昭和":1925, "R":2018, "H":1988, "S":1925}
+from era_table import ERA  # noqa: E402  （requests 非依存の正。v2 パイプラインも使う）
 def to_fiscal_year(s):
     """「令和4年度」「H29年度」「2006(平成18)年度」「平成19(2007)年度」→ 西暦年度(int)"""
     if s is None: return None

@@ -241,6 +241,13 @@ const zoneRows = loadYaml(fs.readFileSync(ZONE_YAML, "utf-8"));
     }
   }
 }
+// region（時刻帯の語彙。Issue #32-3、ADR-0024）。registry.sqlite の `region` 表（手書きの正は
+// registry/region.yaml）から作る。応答封筒（ADR-0014）が `regionTimeZone()` で引く。
+const regionTime = db
+  .prepare(`SELECT region_id, tz_name, utc_offset FROM region ORDER BY region_id`)
+  .all()
+  .map((r) => ({ regionId: r.region_id, tzName: r.tz_name, utcOffset: r.utc_offset }));
+
 const zoneInfo = zoneRows
   .map((r) => ({ zone: r.zone, label: r.name_ja, cond: r.ui_condition_ja }))
   .sort((a, b) => a.zone - b.zone);
@@ -494,6 +501,15 @@ export interface GeneratedZone {
   cond: string;
 }
 
+/** region（\`jp-14\` 等）の時刻帯（registry/region.yaml。Issue #32-3、ADR-0024）。 */
+export interface GeneratedRegionTime {
+  regionId: string;
+  /** IANA 時刻帯名（例 \`Asia/Tokyo\`）。 */
+  tzName: string;
+  /** UTC オフセット（\`+HH:MM\`/\`-HH:MM\`）。 */
+  utcOffset: string;
+}
+
 /** \`REDLIST_CATEGORY\` の1エントリ（Issue #48 PR-3b §2.4）。rank が null は「前回記載なし」。 */
 export interface GeneratedRedlistCategory {
   labelJa: string;
@@ -602,6 +618,9 @@ export const ASSESSMENT_LIST: Readonly<Record<string, GeneratedAssessmentList>> 
 
 /** Ridge to Reef ゾーン(1-5)の定義（registry/place/zone.yaml、旧 domain.ts の ZONE_INFO）。 */
 export const ZONE_INFO: readonly GeneratedZone[] = ${emitObjectArray(zoneInfo, ["zone", "label", "cond"])};
+
+/** region の時刻帯（registry/region.yaml の語彙。\`lookup-client.ts\` の \`regionTimeZone()\` が引く）。 */
+export const REGION_TIME: readonly GeneratedRegionTime[] = ${emitObjectArray(regionTime, ["regionId", "tzName", "utcOffset"])};
 `;
 
 fs.mkdirSync(path.dirname(OUT_SERVER), { recursive: true });
@@ -617,5 +636,5 @@ console.log(
     `higherIsWorse=${Object.keys(higherIsWorse).length} variableUnitFallback=${Object.keys(variableUnitFallback).length} ` +
     `variableLabel=${Object.keys(variableLabel).length} ` +
     `nameJa=${Object.keys(nameJa).length} caveats=${caveats.length} caveatScope=${caveatScope.length} ` +
-    `zones=${zoneInfo.length})`,
+    `zones=${zoneInfo.length} regions=${regionTime.length})`,
 );

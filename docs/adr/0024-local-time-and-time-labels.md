@@ -1,6 +1,6 @@
 # ADR-0024: 時刻は時刻帯なしのローカル時刻で持ち、時刻ラベルの意味は出典ごとに宣言する
 
-- 状態: 承認済（一部未実装: 「時刻帯は地域の属性」の結線がobservation側は未接続）
+- 状態: 承認済（2026-10-06 に「時刻帯は地域の属性」の結線を実装。下の追記参照）
   / 日付: 2026-09-15
 - 関連: ADR-0002（多地域）, ADR-0007（observation）, ADR-0008（時間の3点セット）,
   ADR-0011（キューブ）, ADR-0014（応答封筒）, ADR-0021（キューブの鍵）
@@ -8,6 +8,28 @@
 **2026-09-26 追記（Issue #48、ADR-0029提案）**: 決定2の時刻ラベル日割り（`sensor_daily`/
 `rain_daily`）は、v1 撤去後の差分カウント（serving-diff）でも既知の系統として扱い続ける
 （[ADR-0029](0029-v1-removal-and-verification-handoff.md)、提案中）。本文は変えない。
+
+**2026-10-06 追記（Issue #32-3、時刻帯の結線）**: 決定1が「別途要る」とした region → 時刻帯の結線を実装した。
+- 正は `registry/region.yaml`（`jp-14: {name_ja, tz_name: Asia/Tokyo, utc_offset: "+09:00", evidence}`）。
+  経路は `registry.sqlite` の `region` 表 → D1 → `generated-client.ts` の `REGION_TIME` →
+  `lookup-client.ts` の `regionTimeZone(regionId)`（応答封筒〔ADR-0014〕が使う読み出し口。未知の region は
+  例外。黙って JST に倒さない）。パイプラインは `scripts/migrate/regions.py` が同じファイルを読む。
+- 置き換えた直書き: `scripts/migrate/source_regions.yaml` の `regions:`（'Z'→ローカル変換の `utc_offset`。
+  撤去し、旧形式が残っていれば `load_source_regions()`/`validate_source_regions_shape()` が止める）、
+  `scripts/migrate/period.py` の `_EXPECTED_TZ_SUFFIX`（廃止。25桁ラベルの接尾辞は、b03 が行の region
+  〔`place.region_id`〕の `utc_offset` を渡して照合する。渡されなければ止まる）。
+- 検査: r01 が `place.region_id` が region 語彙に在ることを検証する（`ID_REFERENCE_CHECKS`）。
+  `region.yaml` の `utc_offset`/`tz_name` の形は `regions.region_problems()`、web 側の
+  `region-time.test.ts` が `tz_name` が実在する IANA 名で宣言のオフセットと一致することを確かめる。
+- 残る範囲: 応答封筒そのもの（ADR-0014、Phase D）は未実装。夏時間のある地域を足すときは
+  `utc_offset` ではなく `tz_name` を正にし、時刻ごとにオフセットを引く設計へ直す（`region.yaml` のコメント）。
+
+**2026-10-06 追記（Issue #32-1、退役済み）**: 決定3・4 が言う v1 互換の射影（`b05`）と
+`sensor_daily`/`rain_daily`/`sensor_hour_month`（ラベル日割り）は Issue #48 PR-5 で v1 表ごと撤去された。
+現行コード（b03/b04/web の cube 層）を grep で確認し、ラベルの日付で割る分岐は残っていない
+（残るのは説明コメントのみ）。退役で動いた値は**なし**（表そのものが消滅したため。切り替え時に
+9,424/549/1,992 行が動くという当初の懸念は、撤去により発生しなかった）。キューブの正しい日割りは
+`cube_invariants.py` T6 が全日検証している。下の 2026-09-26 の2つの追記は、この結果により解決済み。
 
 **2026-09-26 追記（Issue #48 PR-2 着手、U1b）**: `docs/plans/V2_SERVING.md` #32-1
 （ラベル日割りの退役。summary の2表を作る PR-2 の中で実現する予定、
@@ -124,10 +146,12 @@ ADR-0002（多地域）・ADR-0008（時間の3点セット）・ADR-0014（応�
   日割りの正しさを機械検証に変えたことで、v1 のバグ由来の癖をキューブに持ち込まずに済む。
 - **コスト**: `period_raw`（原表記）を別列で持つ必要がある。`sensor_daily` の毎時分だけキューブを
   経由しない特別扱いが残る（D10 の原則どおりだが、コードパスが1つ増える）。
-- **注意**: 時刻帯を「地域の属性」にする設計は本 ADR ではまだコード化されていない
-  （ADR-0002 のコードリスト拡張と、応答境界での変換が別途要る）。`soramame_hourly_kanagawa` の
+- **注意（2026-10-06 更新）**: 時刻帯を「地域の属性」にする設計の結線は上の追記で実装済み
+  （応答境界での変換そのもの〔ADR-0014〕は Phase D）。`soramame_hourly_kanagawa` の
   hour_ending という前提は一次資料未確認のまま採用している——将来一次資料が見つかれば
-  `time_label_conventions.yaml` の `evidence` を更新すること。
+  `time_label_conventions.yaml` の `evidence` を更新すること。2026-10-06 に再探索し、環境展望台の
+  `TJ_manu.pdf`（時間値ファイル仕様）が列を `01h`〜`24h`（`00h` 無し）で定義することまでは確認
+  （hour_ending と整合する状況証拠）。定義文そのものは未確認のまま。
 
 ## 検討した代替案（却下理由）
 

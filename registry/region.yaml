@@ -1,0 +1,28 @@
+# registry/region.yaml
+#
+# region（`jp-14` 等。ADR-0002）ごとの時刻帯の語彙（Issue #32-3、ADR-0024）。
+# `time` を持つ唯一の置き場。ここを正として:
+#   - scripts/registry/build_region.py が registry.sqlite の `region` 表を作る
+#     （→ D1 → web/src/lib/registry/generated-client.ts の REGION_TIME → lookup-client.ts の
+#       regionTimeZone()。応答封筒〔ADR-0014〕が使う読み出し口）
+#   - scripts/migrate/regions.py が b03/b06/period.py 向けに直接読む
+#     （'Z'〔UTC〕表記の観測日時をローカル時刻に直すときの utc_offset）
+#
+# scripts/migrate/source_regions.yaml の `regions:` は撤去した（二重管理をやめるため）。
+# 新しい地域を足すときは docs/add_area.md の手順に従い、ここにも1件足す。
+#
+# utc_offset は '+HH:MM' / '-HH:MM' の形だけを許す。日本は夏時間が無いので1つの固定オフセットで
+# 足りるが、夏時間のある地域を足すときは utc_offset ではなく tz_name を正にする設計に直すこと
+# （その時点で応答封筒が時刻ごとにオフセットを引く必要がある）。
+#
+# region.yaml 各エントリのキー: name_ja / tz_name（IANA）/ utc_offset / evidence（根拠）
+
+jp-14:
+  name_ja: 神奈川県
+  tz_name: Asia/Tokyo
+  utc_offset: "+09:00"
+  evidence: >
+    日本標準時（JST、UTC+9、夏時間なし）。ADR-0002 のコードリストにある神奈川県のスコープ。
+    'Z'（UTC）表記の observed_on をローカル時刻に直すとき（scripts/migrate/occurrence_period.py、
+    ADR-0024）と、sensor_timeseries の 25 桁ラベル（'+09:00' 固定。scripts/migrate/period.py）の
+    検査に使う。
