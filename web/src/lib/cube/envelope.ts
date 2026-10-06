@@ -13,8 +13,15 @@ import type { CaveatRef } from "@/lib/registry/lookup-client";
 import { regionTimeZone } from "@/lib/registry/lookup-client";
 import { GENERATED_CAVEATS } from "@/lib/registry/generated-client";
 import { unitSymbol } from "@/lib/registry/lookup";
-import { DEFAULT_REGION_ID, sourceCitation, type SourceCitation, type UpdateModeOrUndeclared } from "./source-meta";
-import { seriesInfo, type Grain, type SeriesKey } from "./series";
+import {
+  dedupeSourceRefs,
+  DEFAULT_REGION_ID,
+  seriesSourceRefs,
+  sourceCitation,
+  type SourceCitation,
+  type UpdateModeOrUndeclared,
+} from "./source-meta";
+import { seriesInfo, type Grain, type SeriesKey, type SourceRef } from "./series";
 import type { CellRow, CellSpec, Imputation, ZoneYearRow } from "./observation";
 
 /**
@@ -58,7 +65,8 @@ export interface EnvelopeProvenance {
   /** 出典の旗。出力を絞る根拠にしない（ADR-0028）。 */
   redistributable?: boolean;
   attribution?: string;
-  n_rows: number;
+  /** この出典から引いた行数。数えていない（出典の一覧だけを載せる応答）ときは null（0 と書かない）。 */
+  n_rows: number | null;
 }
 
 /** 注記。本文は registry（`caveat.yaml`）のもので、severity / kind もそのまま載せる（分類は #35 の責務）。 */
@@ -108,8 +116,9 @@ function resolveUnitColumn(rows: readonly CellRow[]): { unit: string | null; ucu
 }
 
 /** 出典 ID 1件分の provenance 行（registry の生成物から引く。D1 は引かない）。 */
-function provenanceRow(sourceId: string, nRows: number, now: Date, regionId: string): EnvelopeProvenance {
-  const c: SourceCitation = sourceCitation(sourceId, { now, regionId });
+function provenanceRow(ref: SourceRef, nRows: number | null, now: Date, regionId: string): EnvelopeProvenance {
+  const { sourceId, editionKey } = ref;
+  const c: SourceCitation = sourceCitation(sourceId, { now, regionId, editionKey });
   return {
     source_id: sourceId,
     name: c.name ?? undefined,
@@ -133,14 +142,16 @@ function provenanceRow(sourceId: string, nRows: number, now: Date, regionId: str
  * 除外は provenance の行だけで、`rows` や `excluded` には触れない。
  */
 function resolveProvenance(rows: readonly CellRow[], now: Date, regionId: string): EnvelopeProvenance[] {
-  const nRowsBySource = new Map<string, number>();
+  const counted = new Map<string, { ref: SourceRef; n: number }>();
   for (const r of rows) {
-    for (const sourceId of seriesInfo(r.series)?.sourceIds ?? []) {
-      if (sourceId === null) continue;
-      nRowsBySource.set(sourceId, (nRowsBySource.get(sourceId) ?? 0) + 1);
+    for (const ref of seriesInfo(r.series)?.sourceRefs ?? []) {
+      const key = `${ref.sourceId}\u0000${ref.editionKey ?? ""}`;
+      const cur = counted.get(key) ?? { ref, n: 0 };
+      cur.n += 1;
+      counted.set(key, cur);
     }
   }
-  return [...nRowsBySource].map(([sourceId, n]) => provenanceRow(sourceId, n, now, regionId));
+  return [...counted.values()].map(({ ref, n }) => provenanceRow(ref, n, now, regionId));
 }
 
 /**
@@ -154,13 +165,7 @@ function resolveProvenance(rows: readonly CellRow[], now: Date, regionId: string
  * という近似。`buildZoneEnvelope` が使う）。
  */
 function resolveSeriesSetProvenance(series: readonly SeriesKey[], nRows: number, now: Date, regionId: string): EnvelopeProvenance[] {
-  const sourceIdSet = new Set<string>();
-  for (const s of series) {
-    for (const sourceId of seriesInfo(s)?.sourceIds ?? []) {
-      if (sourceId !== null) sourceIdSet.add(sourceId);
-    }
-  }
-  return [...sourceIdSet].map((sourceId) => provenanceRow(sourceId, nRows, now, regionId));
+  return seriesSourceRefs(series).map((ref) => provenanceRow(ref, nRows, now, regionId));
 }
 
 /** provenance の取得日の最古・最新（文字列比較。同じ時刻帯のオフセット付きなので辞書順が時刻順）。 */
@@ -363,12 +368,13 @@ export interface DataEnvelope<D> {
 export function buildDataEnvelope<D>(
   query: Record<string, unknown>,
   data: D,
-  sourceIds: readonly string[],
+  sources: readonly (string | SourceRef)[],
   opt?: EnvelopeOpt,
 ): DataEnvelope<D> {
   const now = opt?.now ?? new Date();
   const regionId = opt?.regionId ?? DEFAULT_REGION_ID;
-  const provenance = [...new Set(sourceIds)].map((id) => provenanceRow(id, 0, now, regionId));
+  // 行数は数えていないので null（0 と書くと「0 行引いた」と読める）。出典の一覧だけを載せる。
+  const provenance = dedupeSourceRefs(sources).map((ref) => provenanceRow(ref, null, now, regionId));
   const meta = envelopeMeta(provenance, now, regionId);
   return {
     query,

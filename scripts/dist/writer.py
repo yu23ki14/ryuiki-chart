@@ -13,8 +13,9 @@ from __future__ import annotations
 import hashlib
 import pathlib
 import sqlite3
-from typing import Iterable, Iterator, Sequence
+from typing import Iterator, Sequence
 
+from pipeline_inputs import sha256_file  # noqa: F401  (ファイルの sha256 は pipeline_inputs のものを再利用。w.sha256_file として公開)
 import pyarrow as pa
 import pyarrow.parquet as pq
 
@@ -82,21 +83,6 @@ class Digest:
     @property
     def hexdigest(self) -> str:
         return f"{self._total:064x}"
-
-
-def rowset_digest(rows: Iterable[tuple]) -> tuple[int, str]:
-    d = Digest()
-    for r in rows:
-        d.add(tuple(r))
-    return d.n, d.hexdigest
-
-
-def sha256_file(path: pathlib.Path) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
 
 
 def arrow_schema(columns: Sequence[Column]) -> pa.Schema:

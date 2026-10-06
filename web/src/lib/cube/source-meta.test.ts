@@ -8,7 +8,30 @@ describe("source-meta（出典メタ。registry の生成物から引く）", ()
 
   it("fetched_at に region の時刻帯を付ける", () => {
     expect(fetchedAtIso("2026-08-30T16:20:58")).toBe("2026-08-30T16:20:58+09:00");
-    expect(() => fetchedAtIso("2026-08-30")).toThrow(/書式/);
+    // 書式の検査は生成時（build-registry-ts.mjs）。リクエスト時は投げない。
+    expect(() => fetchedAtIso("2026-08-30")).not.toThrow();
+    expect(ageDays("not-a-date", NOW)).toBeNull();
+  });
+
+  it("生成物の fetchedAt は全て壁時計の書式（生成時に検査済み）で、合成の出典は載らない", () => {
+    for (const e of SOURCE_EDITIONS) {
+      if (e.fetchedAt !== null) expect(e.fetchedAt, e.editionId).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
+      expect(e.sourceId, e.editionId).not.toMatch(/^synthetic_/);
+    }
+    for (const m of SOURCE_META) expect(m.sourceId).not.toMatch(/^synthetic_/);
+  });
+
+  it("OCCURRENCE_SOURCE_IDS はマニフェスト（target=occurrence）由来の生成物で、registry に実在する", () => {
+    expect(OCCURRENCE_SOURCE_IDS.length).toBeGreaterThanOrEqual(2);
+    expect(OCCURRENCE_SOURCE_IDS).toEqual(expect.arrayContaining(["gbif_kanagawa_occurrences", "inaturalist_kanagawa"]));
+  });
+
+  it("版つき出典は系列の版に対応する edition を引く（freshnessFor に SourceRef を渡す）", () => {
+    const f = freshnessFor([{ sourceId: "nlni_l03b_landuse_by_watershed", editionKey: "2006" }, { sourceId: "nlni_l03b_landuse_by_watershed", editionKey: "2016" }], { now: NOW });
+    expect(f.map((x) => x.source_edition_id)).toEqual([
+      "common:edition:nlni_l03b_landuse_by_watershed.2006",
+      "common:edition:nlni_l03b_landuse_by_watershed.2016",
+    ]);
   });
 
   it("age_days は region の暦日差", () => {

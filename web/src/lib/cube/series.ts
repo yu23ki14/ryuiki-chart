@@ -91,6 +91,14 @@ export interface SeriesInfo extends SeriesKey {
   sourceIds: (string | null)[];
   /** この組に登録されている出典表記（`variable_alias.alias`）の一覧（重複なし）。 */
   aliases: string[];
+  /** 出典（NULL=合成は除く）と版（`variable_alias.edition_key`。土地利用の 2006/2016 など。版が無ければ null）の組（重複なし）。 */
+  sourceRefs: SourceRef[];
+}
+
+/** 出典と、その系列が引く版。版つき出典（土地利用）は版ごとに別の取得日・ライセンスを持つ。 */
+export interface SourceRef {
+  sourceId: string;
+  editionKey: string | null;
 }
 
 interface TupleGroup {
@@ -98,6 +106,7 @@ interface TupleGroup {
   dataset: string | null;
   sourceIds: (string | null)[];
   aliases: string[];
+  sourceRefs: SourceRef[];
 }
 
 const tupleGroups = new Map<string, TupleGroup>();
@@ -125,7 +134,7 @@ for (const a of GENERATED_VARIABLE_ALIASES as readonly GeneratedVariableAlias[])
   const tk = seriesKeyString(key);
   let g = tupleGroups.get(tk);
   if (!g) {
-    g = { key, dataset: a.dataset, sourceIds: [], aliases: [] };
+    g = { key, dataset: a.dataset, sourceIds: [], aliases: [], sourceRefs: [] };
     tupleGroups.set(tk, g);
   } else if (
     norm(g.dataset) !== norm(a.dataset) &&
@@ -145,10 +154,13 @@ for (const a of GENERATED_VARIABLE_ALIASES as readonly GeneratedVariableAlias[])
   // 出典の n_rows を alias の本数ぶん水増ししてしまう（Issue #48 PR-1 code-review #2）。
   if (!g.sourceIds.includes(a.sourceId)) g.sourceIds.push(a.sourceId);
   if (!g.aliases.includes(a.alias)) g.aliases.push(a.alias);
+  if (a.sourceId !== null && !g.sourceRefs.some((r) => r.sourceId === a.sourceId && r.editionKey === a.editionKey)) {
+    g.sourceRefs.push({ sourceId: a.sourceId, editionKey: a.editionKey });
+  }
 }
 
 function toSeriesInfo(g: TupleGroup): SeriesInfo {
-  return { ...g.key, dataset: norm(g.dataset), sourceIds: g.sourceIds, aliases: g.aliases };
+  return { ...g.key, dataset: norm(g.dataset), sourceIds: g.sourceIds, aliases: g.aliases, sourceRefs: g.sourceRefs };
 }
 
 /** 逆引き（組 → SeriesInfo）。`b05` の T4 不変条件によりモジュール内で一意。 */

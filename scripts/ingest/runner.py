@@ -65,6 +65,8 @@ class AdapterRun:
         self._seen_keys: set[str] = set()
         self._unique_seen: dict[tuple, set] = {}
         self._problems: list[str] = []
+        # checks（1 キーの dict のリスト）は最初に 1 回だけ (名前, 引数) に分解する
+        self._checks = [next(iter(c.items())) for c in manifest.checks]
         self._finished = False
 
     # --- 入力（読み取り専用の窓。adapter には接続を渡さない）-------------------------------------
@@ -142,8 +144,7 @@ class AdapterRun:
 
     def _apply_row_checks(self, row: AdapterRow, i: int) -> None:
         src = self.manifest.source
-        for check in self.manifest.checks:
-            (name, arg), = check.items()
+        for name, arg in self._checks:
             if name == "not_null":
                 for col in arg:
                     if getattr(row, col) is None:
@@ -172,8 +173,7 @@ class AdapterRun:
         if not self._finished:
             raise MigrationError(f"{self.manifest.source}: rows() を最後まで消費する前に problems() を呼んだ")
         out = list(self._problems)
-        for check in self.manifest.checks:
-            (name, arg), = check.items()
+        for name, arg in self._checks:
             if name == "row_count_between" and not (arg[0] <= self.n_rows <= arg[1]):
                 out.append(f"{self.manifest.source}: checks.row_count_between[{arg[0]}..{arg[1]}] に違反（実測 {self.n_rows}）")
         if len(out) > limit:

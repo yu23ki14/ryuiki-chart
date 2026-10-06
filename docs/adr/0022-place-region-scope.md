@@ -155,3 +155,8 @@ ADR-0006 が定義した `place_relation` を実装する。本 PR で作る辺�
 （宣言の誤りか place の誤りを検出する。照合は恒久）。place が region を持たない行（`common:` の place）は照合の
 対象外。実測で observation 1,029,034 行は全て `jp-14` で、マニフェストと place 経由の値は全行一致する
 （移行の出力は同一）。決定4（地域そのものを表す place・`common:` place→地域の辺）は引き続き作らない。
+
+**挙動変更の実測（Issue #40 レビュー対応）**: 決定3の統一で、`place.region_id` が NULL の行は（place 経由では region が決まらず落ちていたところ）
+マニフェストの region で決まるようになる。現データで該当は **0 件**（非合成の measurements 320,899 行・sensor_timeseries 698,419 行が全て
+place 経由でも `jp-14`。実測 2026-10-06）。0 件であることはビルド時の宣言で固定した: マニフェストの
+`expected_place_region_null_rows`（既定 0）と実測が食い違えば b03 が止まる（place 側の region が欠けた行が黙って増えない）。

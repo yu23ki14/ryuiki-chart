@@ -50,7 +50,9 @@ import pathlib
 import re
 from dataclasses import dataclass, field
 
-from migrate.common import MigrationError, load_yaml
+from migrate.common import MigrationError, load_yaml, parse_manifest_inputs
+
+from .api import ROW_COLUMNS  # adapter が返す行の列契約（正は api.py の 1 か所。`checks` の列名の検証に使う）
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 DEFAULT_MANIFESTS_DIR = ROOT / "manifests"
@@ -61,13 +63,11 @@ UPDATE_MODE_CODES = ("snapshot", "append", "revision", "static")
 TARGET_CODES = ("observation", "occurrence")
 BUILTIN = "builtin"
 CHECK_NAMES = ("not_null", "unique", "row_count_between", "in_registry", "date_between")
-# adapter が返す行の列契約（`ingest.api.ROW_COLUMNS` と同じ。`checks` の列名の検証に使う）。
-ROW_COLUMNS = ("record_key", "taxon_id", "observed_on_raw", "lat", "lon")
 
 _SOURCE_ID_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
 REQUIRED_KEYS = ("source", "region", "target", "update_mode", "input", "adapter", "evidence")
-OPTIONAL_KEYS = ("expected_row_count", "checks", "edition", "expected")
+OPTIONAL_KEYS = ("expected_row_count", "checks", "edition", "expected", "expected_place_region_null_rows")
 
 EXPECTED_PLACE_KEYS = ("coord_resolved", "coord_unresolved")
 EXPECTED_CUBE_KEYS = (
@@ -89,6 +89,9 @@ class Manifest:
     checks: tuple = ()
     edition: str | None = None
     expected: dict | None = None
+    # b03（観測）: place が region を持たない（place.region_id NULL）のに、マニフェストの region で決めた行の件数の宣言（既定 0）。
+    # ADR-0022 決定3: region は出典から決め place 経由は照合だが、place 側が NULL の行は照合できない。黙って増えないよう宣言で固定する。
+    expected_place_region_null_rows: int = 0
     path: str = ""
 
     @property
@@ -187,6 +190,8 @@ def manifest_problems(raw, stem: str, *, adapters_dir=None) -> list[str]:
         if not (isinstance(inp, dict) and len(inp) == 1 and next(iter(inp)) in ("table", "file")
                 and isinstance(next(iter(inp.values())), str) and next(iter(inp.values()))):
             problems.append(f"{label}.input は {{table: 名前}} か {{file: パス}} のどちらか 1 つ（実際: {inp!r}）")
+    if "expected_place_region_null_rows" in raw and not _non_negative_int(raw["expected_place_region_null_rows"]):
+        problems.append(f"{label}.expected_place_region_null_rows が非負整数でない（実際: {raw['expected_place_region_null_rows']!r}）")
     if "expected_row_count" in raw and not _non_negative_int(raw["expected_row_count"]):
         problems.append(f"{label}.expected_row_count が非負整数でない（実際: {raw['expected_row_count']!r}）")
     builtin = raw.get("adapter") == BUILTIN
@@ -228,7 +233,17 @@ def validate_manifests_shape(manifests_dir=DEFAULT_MANIFESTS_DIR, *, adapters_di
     if stray:
         problems.append(f"{manifests_dir} に .yml 以外のファイルがある: {stray}")
     for p in sorted(manifests_dir.glob("*.yml")):
-        problems += manifest_problems(load_yaml(p), p.stem, adapters_dir=adapters_dir)
+        raw = load_yaml(p)
+        problems += manifest_problems(raw, p.stem, adapters_dir=adapters_dir)
+        if isinstance(raw, dict) and not problems:
+            # PyYAML を使えない鮮度判定（check_v2_fresh）が読む最小パーサの結果が、PyYAML の結果と一致していること。
+            adapter, inp = parse_manifest_inputs(p.read_text(encoding="utf-8"))
+            want_input = next(iter(raw["input"].items())) if isinstance(raw.get("input"), dict) and raw["input"] else None
+            if adapter != raw.get("adapter") or (inp is not None and inp != want_input) or (inp is None and want_input):
+                problems.append(
+                    f"{p.stem}: adapter/input を最小パーサ（migrate.common.parse_manifest_inputs）が正しく読めない"
+                    f"（パーサ: {adapter!r}/{inp!r}、YAML: {raw.get('adapter')!r}/{want_input!r}）。単純な書き方にすること"
+                )
     if problems:
         raise MigrationError(f"{manifests_dir} のマニフェストの形が不正:\n- " + "\n- ".join(problems))
 
@@ -244,7 +259,8 @@ def load_manifests(manifests_dir=DEFAULT_MANIFESTS_DIR, *, adapters_dir=None) ->
             input=dict(raw["input"]), adapter=raw["adapter"], evidence=str(raw["evidence"]).strip(),
             expected_row_count=raw.get("expected_row_count"),
             checks=tuple(raw.get("checks") or ()), edition=raw.get("edition"),
-            expected=raw.get("expected"), path=str(p),
+            expected=raw.get("expected"), expected_place_region_null_rows=raw.get("expected_place_region_null_rows", 0),
+            path=str(p),
         )
     return out
 

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildCubeFixture, FX, type CubeFixture } from "@/lib/cube/__fixtures__/cube-fixture";
 import { buildOccurrenceFixture, FXO, type OccurrenceFixture } from "@/lib/cube/__fixtures__/occurrence-fixture";
-import { handleBody, handleRpc, listTools, MCP_PROTOCOL_VERSION } from "./server";
+import { handleBody, handleRpc, listTools, MAX_BATCH, MCP_PROTOCOL_VERSION } from "./server";
 import realDatapackage from "./__fixtures__/datapackage.real.json";
 import { datapackageResources, MCP_TOOLS, type McpContext } from "./tools";
 
@@ -19,6 +19,9 @@ function expectPublicInvariants(env: Record<string, unknown>) {
     expect(p.source_id).not.toBeNull();
     expect(String(p.source_id)).not.toMatch(/^synthetic/);
   }
+  // provenance だけでなく応答全体（data を含む）に合成の出典が出ない
+  expect(JSON.stringify(env.data ?? null)).not.toMatch(/synthetic_/);
+  expect(JSON.stringify(env.provenance ?? null)).not.toMatch(/synthetic_/);
   expect(typeof env.cite_as).toBe("string");
   expect(typeof env.as_of).toBe("string");
 }
@@ -180,6 +183,14 @@ describe("5 ツールの応答は封筒（excluded=0・合成なし・cite_as・
     expect((out.structuredContent.data as { resources: unknown[] }).resources).toEqual(res);
   });
 
+  it("JSON-RPC バッチは上限 MAX_BATCH 件で、順に実行する。超過は invalid request", async () => {
+    const ping = (id: number) => ({ jsonrpc: "2.0", id, method: "ping" });
+    const ok = (await handleBody(Array.from({ length: MAX_BATCH }, (_, i) => ping(i + 1)), ctx())) as { id: number }[];
+    expect(ok.map((r) => r.id)).toEqual(Array.from({ length: MAX_BATCH }, (_, i) => i + 1));
+    const over = (await handleBody(Array.from({ length: MAX_BATCH + 1 }, (_, i) => ping(i + 1)), ctx())) as { error?: { code: number } };
+    expect(over.error?.code).toBe(-32600);
+  });
+
   it("全ツールを網羅している（新ツールを足したらこのテストに応答検査を足す）", () => {
     expect(MCP_TOOLS.map((t) => t.name)).toEqual(["describe_catalog", "search_registry", "get_observations", "get_occurrences", "export_dataset"]);
   });
@@ -199,6 +210,7 @@ describe("不変条件の検査そのものが効く（わざと壊すと止ま�
   });
   it("合成の出典が provenance に出ると落ちる", () => {
     expect(() => expectPublicInvariants({ ...good(), provenance: [{ source_id: "synthetic_sensor" }] })).toThrow();
+    expect(() => expectPublicInvariants({ ...good(), data: { sources: [{ source_id: "synthetic_sensor" }] } })).toThrow();
     expect(() => expectPublicInvariants({ ...good(), provenance: [{ source_id: null }] })).toThrow();
   });
   it("tools/list に listTools と同じものが出る", async () => {

@@ -1,5 +1,5 @@
 import "server-only";
-import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { readStaticJson } from "./static-assets";
 
 /**
  * GeoJSON の読み込み。
@@ -31,30 +31,14 @@ const cache = (globalThis.__ryuikiGeo ??= new Map<string, FeatureCollection>());
 export async function loadGeoJson(name: string): Promise<FeatureCollection> {
   const hit = cache.get(name);
   if (hit) return hit;
-  const fc = process.env.NODE_ENV === "development" ? await fromPublicDir(name) : await fromAssets(name);
-  cache.set(name, fc);
-  return fc;
-}
-
-async function fromAssets(name: string): Promise<FeatureCollection> {
-  const { env } = await getCloudflareContext({ async: true });
-  if (!env.ASSETS) {
-    throw new Error("ASSETS バインディングが無い。wrangler.jsonc の assets を確認する。");
-  }
-  // ASSETS.fetch は絶対 URL を要求するが、ホスト名は使われない
-  const res = await env.ASSETS.fetch(new URL(`/geo/${name}`, "https://assets.local"));
-  if (!res.ok) {
+  const fc = (await readStaticJson(`/geo/${name}`)) as FeatureCollection | null;
+  if (!fc) {
     throw new Error(
-      `静的アセット /geo/${name} が無い (${res.status})。ビルド前に npm run prepare:geo が通っているか確認する。`,
+      `静的アセット /geo/${name} が無い。ビルド前に npm run prepare:geo が通っているか、wrangler.jsonc の assets を確認する。`,
     );
   }
-  return (await res.json()) as FeatureCollection;
-}
-
-async function fromPublicDir(name: string): Promise<FeatureCollection> {
-  const [fs, path] = await Promise.all([import("node:fs/promises"), import("node:path")]);
-  const file = path.join(process.cwd(), "public", "geo", name);
-  return JSON.parse(await fs.readFile(file, "utf8")) as FeatureCollection;
+  cache.set(name, fc);
+  return fc;
 }
 
 /** 0.01度メッシュの ID から矩形ポリゴンを作る */

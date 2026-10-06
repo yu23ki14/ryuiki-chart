@@ -45,6 +45,24 @@ def _problems(tmp_path, source: str) -> list[str]:
         "x = open('/etc/passwd')\n",
         "eval('1')\n",
         "import os, sqlite3\n",
+        # 許可リスト方式: 禁止リストに無い標準ライブラリ・サードパーティも止まる
+        "import os\n",
+        "from pathlib import Path\n",
+        "import io\n",
+        "import shutil\n",
+        "import csv\n",
+        "import requests\n",
+        "import builtins\n",
+        # 属性・リフレクション経由の迂回
+        "import datetime\nx = datetime.__builtins__\n",
+        "x = __builtins__\n",
+        "x = getattr(__builtins__, 'open')\n",
+        "x = ().__class__.__bases__[0].__subclasses__()\n",
+        "import json\nx = json.__dict__\n",
+        "f = open\n",
+        "import re\nx = re.__loader__\n",
+        "x = vars()\n",
+        "x = globals()\n",
     ],
 )
 def test_forbidden_imports_and_dynamic_escapes_are_caught(tmp_path, source):
@@ -57,7 +75,8 @@ def test_forbidden_imports_and_dynamic_escapes_are_caught(tmp_path, source):
         "from ingest.api import occurrence_row\n",
         "import ingest.api\n",
         "from ingest import api\n",
-        "from __future__ import annotations\nimport csv, re, json, datetime\nfrom ingest.api import occurrence_row\n",
+        "from __future__ import annotations\nimport re, json, datetime, math\nfrom decimal import Decimal\nfrom ingest.api import occurrence_row\n",
+        "import datetime\nd = datetime.date.fromisoformat('2020-01-01')\nx = re.compile('a')\n".replace("x = re.compile('a')\n", ""),
     ],
 )
 def test_allowed_imports_pass(tmp_path, source):

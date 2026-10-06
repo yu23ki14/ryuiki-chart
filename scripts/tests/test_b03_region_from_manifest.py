@@ -28,9 +28,23 @@ def test_region_id_comes_from_manifest_when_place_has_no_region(tmp_path):
     make_measurements_db(measurements_db)
     make_registry_db(registry_db, places=[(pid, None, kind) for pid, _r, kind in DEFAULT_PLACES])
     exc, conv = _paths(tmp_path)
-    build_observation(tmp_path, measurements_db, registry_db, exc, conv, out)
+    build_observation(tmp_path, measurements_db, registry_db, exc, conv, out, null_region_rows=3)
     conn = sqlite3.connect(f"file:{out}?mode=ro", uri=True)
     assert {r[0] for r in conn.execute("SELECT DISTINCT region_id FROM observation")} == {"jp-14"}
+
+
+def test_place_region_null_rows_must_match_the_manifest_declaration(tmp_path):
+    """place.region_id が NULL の行（マニフェストの region で決めた行）は件数を宣言（既定 0）で固定する。宣言と食い違えば止まる。"""
+    measurements_db, registry_db, out = tmp_path / "ryuiki.sqlite", tmp_path / "registry.sqlite", tmp_path / "v2.sqlite"
+    make_measurements_db(measurements_db)
+    make_registry_db(registry_db, places=[(pid, None, kind) for pid, _r, kind in DEFAULT_PLACES])
+    exc, conv = _paths(tmp_path)
+    with pytest.raises(common.MigrationError, match="expected_place_region_null_rows"):
+        build_observation(tmp_path, measurements_db, registry_db, exc, conv, out, null_region_rows=0)
+    # 実測（このフィクスチャは 3 行）を宣言すれば通る
+    second = tmp_path / "second"
+    second.mkdir()
+    build_observation(second, measurements_db, registry_db, exc, conv, second / "v2.sqlite", null_region_rows=3)
 
 
 def test_region_mismatch_between_manifest_and_place_stops(tmp_path):

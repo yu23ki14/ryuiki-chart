@@ -119,11 +119,19 @@ export async function handleRpc(msg: unknown, ctx: McpContext): Promise<JsonRpcR
   }
 }
 
-/** POST 本文（単一またはバッチ）を処理して、返す JSON（無ければ null＝202）を返す。 */
+/** JSON-RPC バッチの上限（超過は invalid request）。バッチを無制限に並行実行して D1 の rows_read を食わせない。 */
+export const MAX_BATCH = 16;
+
+/** POST 本文（単一またはバッチ）を処理して、返す JSON（無ければ null＝202）を返す。バッチは逐次実行。 */
 export async function handleBody(body: unknown, ctx: McpContext): Promise<JsonRpcResponse | JsonRpcResponse[] | null> {
   if (Array.isArray(body)) {
     if (body.length === 0) return rpcError(null, ERR.invalidRequest, "空のバッチ");
-    const out = (await Promise.all(body.map((m) => handleRpc(m, ctx)))).filter((r): r is JsonRpcResponse => r !== null);
+    if (body.length > MAX_BATCH) return rpcError(null, ERR.invalidRequest, `バッチは ${MAX_BATCH} 件まで（${body.length} 件）`);
+    const out: JsonRpcResponse[] = [];
+    for (const m of body) {
+      const r = await handleRpc(m, ctx);
+      if (r !== null) out.push(r);
+    }
     return out.length ? out : null;
   }
   return handleRpc(body, ctx);

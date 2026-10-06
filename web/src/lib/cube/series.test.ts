@@ -254,7 +254,7 @@ describe("withTheme", () => {
   });
 
   it("variable が見つからなければ theme は null", () => {
-    const fake = { variableId: "common:variable:no.such.variable", obsStat: null, unitId: null, valueGrain: "", dataset: "measurements", sourceIds: [], aliases: [] };
+    const fake = { variableId: "common:variable:no.such.variable", obsStat: null, unitId: null, valueGrain: "", dataset: "measurements", sourceIds: [], sourceRefs: [], aliases: [] };
     expect(withTheme(fake).theme).toBeNull();
   });
 });

@@ -17,6 +17,7 @@ import { z } from "zod";
 import {
   buildDataEnvelope,
   OCCURRENCE_SOURCE_IDS,
+  seriesSourceRefs,
   sourceFreshness,
   speciesCatalog,
   speciesMonths,
@@ -31,7 +32,7 @@ import {
 import { SOURCE_META } from "@/lib/registry/generated-source";
 import { GENERATED_VARIABLES } from "@/lib/registry/generated";
 import { VARIABLE_LABEL, ZONE_INFO } from "@/lib/registry/generated-client";
-import { representativeSeries, seriesInfo } from "@/lib/cube/series";
+import { representativeSeries } from "@/lib/cube/series";
 import { loadDatapackage } from "./datapackage";
 
 export interface McpContext {
@@ -54,7 +55,12 @@ function defineTool<S extends z.ZodType>(t: {
   inputSchema: S;
   execute: (args: z.infer<S>, ctx: McpContext) => Promise<unknown>;
 }): McpTool {
-  return t as unknown as McpTool;
+  return t; // execute の引数型は never を受け取る側（McpTool）に代入できる。as unknown で型を潰さない
+}
+
+/** 出典 1 件の行（describe_catalog の sources と search_registry の source で同じ形）。 */
+function sourceRow(m: (typeof SOURCE_META)[number], now: Date | undefined) {
+  return { ...sourceFreshness(m.sourceId, { now }), name: m.nameJa, publisher: m.publisher, superseded_by: m.supersededBy };
 }
 
 /** 出力行数の上限（コンテキストを溢れさせない。超えたら `truncated: true`）。 */
@@ -91,7 +97,7 @@ export const MCP_TOOLS: McpTool[] = [
       if (what === "zones") return buildDataEnvelope(query, { zones: [...ZONE_INFO] }, [], opt);
       if (what === "sources") {
         const { rows, truncated } = cap(
-          SOURCE_META.map((m) => ({ ...sourceFreshness(m.sourceId, { now: ctx.now }), name: m.nameJa, publisher: m.publisher, superseded_by: m.supersededBy })),
+          SOURCE_META.map((m) => sourceRow(m, ctx.now)),
           limit ?? MAX_ROWS,
         );
         return buildDataEnvelope(query, { sources: rows }, [], { ...opt, truncated });
@@ -106,7 +112,7 @@ export const MCP_TOOLS: McpTool[] = [
       }
       const all = await variableCatalog(db, { dataset: MEASUREMENTS_DATASET });
       const { rows, truncated } = cap(all, limit);
-      const sourceIds = rows.flatMap((r) => seriesSourceIdsOf(r.variableId));
+      const sourceIds = rows.flatMap((r) => seriesSourceRefsOf(r.variableId));
       return buildDataEnvelope(
         query,
         { variables: rows.map((r) => ({ ...r, label: VARIABLE_LABEL[r.variableId]?.short ?? null })) },
@@ -142,24 +148,20 @@ export const MCP_TOOLS: McpTool[] = [
         return buildDataEnvelope({ kind, query, limit: limit ?? null }, { matches: c.rows }, [], { ...opt, truncated: c.truncated });
       }
       if (kind === "source") {
-        const rows = SOURCE_META.filter((m) => hit(m.sourceId, m.nameJa, m.publisher)).map((m) => ({
-          ...sourceFreshness(m.sourceId, { now: ctx.now }),
-          name: m.nameJa,
-          publisher: m.publisher,
-        }));
+        const rows = SOURCE_META.filter((m) => hit(m.sourceId, m.nameJa, m.publisher)).map((m) => sourceRow(m, ctx.now));
         const c = cap(rows, limit);
         return buildDataEnvelope({ kind, query, limit: limit ?? null }, { matches: c.rows }, [], { ...opt, truncated: c.truncated });
       }
-      // species: 出現件数の多い上位から引く（`speciesCatalog` の上限内。それを超える分は見えない旨を truncated に載せる）。
-      const CATALOG_LIMIT = 1000;
-      const catalog = await speciesCatalog(await ctx.db(), { limit: CATALOG_LIMIT, withNames: true });
-      const rows = catalog.filter((s) => hit(s.binom, s.label)).map((s) => ({ binom: s.binom, label: s.label ?? null, taxonGroup: s.taxonGroup, n: s.n }));
+      // species: cube 層の speciesCatalog に検索語を渡して絞る（学名・和名の部分一致。MCP 専用の SQL は持たない）。
+      const n = (limit ?? 100) + 1; // 1 件多く取って truncated を判定する
+      const catalog = await speciesCatalog(await ctx.db(), { search: query, limit: n, withNames: true });
+      const rows = catalog.map((s) => ({ binom: s.binom, label: s.label ?? null, taxonGroup: s.taxonGroup, n: s.n }));
       const c = cap(rows, limit);
       return buildDataEnvelope(
         { kind, query, limit: limit ?? null },
-        { matches: c.rows, searched: catalog.length },
+        { matches: c.rows },
         OCCURRENCE_SOURCE_IDS,
-        { ...opt, truncated: c.truncated || catalog.length >= CATALOG_LIMIT },
+        { ...opt, truncated: c.truncated },
       );
     },
   }),
@@ -255,10 +257,6 @@ export function datapackageResources(pkg: unknown): { name: string | null; path:
   });
 }
 
-function seriesSourceIdsOf(variableId: string): string[] {
-  const out: string[] = [];
-  for (const s of representativeSeries(variableId, MEASUREMENTS_DATASET)) {
-    for (const id of seriesInfo(s)?.sourceIds ?? []) if (id !== null) out.push(id);
-  }
-  return out;
+function seriesSourceRefsOf(variableId: string) {
+  return seriesSourceRefs(representativeSeries(variableId, MEASUREMENTS_DATASET));
 }

@@ -242,3 +242,46 @@ def test_non_builtin_manifest_inputs_are_part_of_the_v2_input_fingerprint(tmp_pa
     write_manifest(tmp_path / "manifests", "src_b", target="occurrence", adapter="src_b", input={"file": "data/x.csv"})
     write_manifest(tmp_path / "manifests", "gbif_x", target="occurrence")  # builtin は対象外
     assert common.manifest_inputs(tmp_path / "manifests") == (("wildlife_sightings",), ("data/x.csv",))
+
+
+# ---- PyYAML 無しの最小パーサ（check_v2_fresh が使う）。引用符・コメント・フロー形式 ----------------------------------
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("adapter: builtin\ninput:\n  table: organism_records\n", ("builtin", ("table", "organism_records"))),
+        ("adapter: 'src_a'  # comment\ninput:\n  table: \"wildlife_sightings\"  # 原本の表\n", ("src_a", ("table", "wildlife_sightings"))),
+        ("adapter: \"src_a\"\ninput: {file: data/x.csv}  # flow\n", ("src_a", ("file", "data/x.csv"))),
+        ("# adapter: fake\nadapter: src_a\n\ninput:\n\n  # c\n  file: 'data/a b.csv'\n", ("src_a", ("file", "data/a b.csv"))),
+        ("evidence: >\n  adapter: nested\nadapter: src_a\ninput:\n  table: t#1\n", ("src_a", ("table", "t#1"))),
+    ],
+)
+def test_minimal_manifest_parser_handles_quotes_comments_and_flow(text, expected):
+    import yaml
+
+    assert common.parse_manifest_inputs(text) == expected
+    doc = yaml.safe_load(text)  # PyYAML の結果と一致（`manifest.validate_manifests_shape` が実ファイルで同じ検査をする）
+    assert (doc["adapter"], next(iter(doc["input"].items()))) == expected
+
+
+def test_manifest_inputs_reads_quoted_and_commented_manifests(tmp_path):
+    d = tmp_path / "m"
+    d.mkdir()
+    (d / "a.yml").write_text("adapter: 'a'  # x\ninput:\n  table: 'wildlife_sightings'  # y\n", encoding="utf-8")
+    (d / "b.yml").write_text("adapter: builtin\ninput:\n  table: organism_records\n", encoding="utf-8")
+    assert common.manifest_inputs(d) == (("wildlife_sightings",), ())
+
+
+def test_parser_disagreeing_with_pyyaml_stops_validation(tmp_path):
+    ad = _adapter_dir(tmp_path)
+    d = tmp_path / "m"
+    d.mkdir()
+    # 複数行の入力指定（最小パーサが読めない形）は構造検証で止まる
+    (d / "src_a.yml").write_text(
+        "source: src_a\nregion: jp-14\ntarget: occurrence\nupdate_mode: append\nadapter: src_a\nevidence: e\nexpected_row_count: 1\n"
+        "input:\n  ? table\n  : t\nexpected:\n  period_shapes: {day: 1}\n  place: {coord_resolved: 0, coord_unresolved: 0}\n  cube: "
+        + str({k: 0 for k in manifest_lib.EXPECTED_CUBE_KEYS}) + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(common.MigrationError, match="最小パーサ"):
+        manifest_lib.validate_manifests_shape(d, adapters_dir=ad)

@@ -178,8 +178,14 @@ def test_two_builds_are_byte_identical(env):
     ha, hb = _tree_hashes(tmp / "a"), _tree_hashes(tmp / "b")
     assert ha == hb
     # 行集合のダイジェスト（バイトが揺れたときの正）は順序に依らない
-    assert w.rowset_digest([(1, "a"), (2, "b")]) == w.rowset_digest([(2, "b"), (1, "a")])
-    assert w.rowset_digest([(1, "a")]) != w.rowset_digest([(1, "b")])
+    def digest(rows):
+        d = w.Digest()
+        for r in rows:
+            d.add(r)
+        return d.hexdigest
+
+    assert digest([(1, "a"), (2, "b")]) == digest([(2, "b"), (1, "a")])
+    assert digest([(1, "a")]) != digest([(1, "b")])
 
 
 def test_rebuild_rewrites_only_changed_partitions(env):
@@ -210,6 +216,17 @@ def test_invariant1_build_refuses_synthetic_observation_rows(env):
     v2, reg, tmp = env
     _edit(v2, "UPDATE observation SET is_synthetic = 1 WHERE source_table = 'land_use'")
     with pytest.raises(SystemExit, match="is_synthetic"):
+        _build(v2, reg, tmp / "dist")
+
+
+def test_invariant1_build_refuses_observation_rows_of_synthetic_source_edition(env):
+    """変異: observation の source_table（表名）ではなく source_edition_id→source_id で合成の出典を見つける。"""
+    v2, reg, tmp = env
+    c = sqlite3.connect(v2)
+    _obs(c, 99, "measurements", ED_SYNTH)
+    c.commit()
+    c.close()
+    with pytest.raises(SystemExit, match="synthetic_"):
         _build(v2, reg, tmp / "dist")
 
 

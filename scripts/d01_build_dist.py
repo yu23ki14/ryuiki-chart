@@ -76,15 +76,28 @@ def _part_dir_name(column: str, value: str) -> str:
     return f"{column}={urllib.parse.quote(value, safe='')}"
 
 
-def preflight_no_synthetic(v2: sqlite3.Connection) -> None:
-    """合成データが v2 に居たら止める（黙って除外すると、b03/b06 の除外が壊れたことに気づけない）。"""
+def preflight_no_synthetic(v2: sqlite3.Connection, reg: sqlite3.Connection) -> None:
+    """合成データが v2 に居たら止める（黙って除外すると、b03/b06 の除外が壊れたことに気づけない）。
+
+    出典は **`source_edition_id` → registry の `source_edition.source_id`** で判定する（observation の `source_table` は
+    出典ではなく原本の表名〔measurements 等〕なので、そこを見ても合成の出典は見つからない）。occurrence は `source_id` 列も見る。
+    """
     n = v2.execute("SELECT COUNT(*) FROM observation WHERE is_synthetic IS NOT NULL AND is_synthetic <> 0").fetchone()[0]
     if n:
         raise SystemExit(f"v2.observation に is_synthetic<>0 の行が {n} 件ある。合成データは配布物に出さない（b03 の除外を確認）")
-    for table, col in (("observation", "source_table"), ("occurrence", "source_id")):
-        n = v2.execute(f"SELECT COUNT(*) FROM {table} WHERE {col} LIKE ? ESCAPE '!'", (_LIKE_SYNTHETIC,)).fetchone()[0]
-        if n:
-            raise SystemExit(f"v2.{table} に {dp.SYNTHETIC_SOURCE_PREFIX}* の出典の行が {n} 件ある。合成データは配布物に出さない")
+    source_of_edition = dict(reg.execute("SELECT edition_id, source_id FROM source_edition"))
+    for table in ("observation", "occurrence"):
+        synthetic_editions = [
+            eid for (eid,) in v2.execute(f"SELECT DISTINCT source_edition_id FROM {table} WHERE source_edition_id IS NOT NULL")
+            if str(source_of_edition.get(eid, "")).startswith(dp.SYNTHETIC_SOURCE_PREFIX)
+        ]
+        if synthetic_editions:
+            raise SystemExit(
+                f"v2.{table} が {dp.SYNTHETIC_SOURCE_PREFIX}* の出典の版を参照している: {synthetic_editions}。合成データは配布物に出さない"
+            )
+    n = v2.execute("SELECT COUNT(*) FROM occurrence WHERE source_id LIKE ? ESCAPE '!'", (_LIKE_SYNTHETIC,)).fetchone()[0]
+    if n:
+        raise SystemExit(f"v2.occurrence に {dp.SYNTHETIC_SOURCE_PREFIX}* の出典の行が {n} 件ある。合成データは配布物に出さない")
 
 
 def _v2_built_from(v2: sqlite3.Connection) -> dict:
@@ -169,7 +182,7 @@ def build_dist(v2_db: pathlib.Path, registry_db: pathlib.Path, out: pathlib.Path
     v2 = _open_ro(v2_db)
     reg = _open_ro(registry_db)
     try:
-        preflight_no_synthetic(v2)
+        preflight_no_synthetic(v2, reg)
         out.mkdir(parents=True, exist_ok=True)
         previous = dp.load(out / "datapackage.json")
         b = Builder(out, previous, verbose=verbose)

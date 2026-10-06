@@ -397,7 +397,7 @@ def make_landuse_registry_db(registry_db) -> None:
 
 def build_observation(
     tmp_path, measurements_db, registry_db, exceptions_yaml, time_conventions_yaml, out,
-    *, landuse_csv_rows=None, source_regions_yaml_text=None,
+    *, landuse_csv_rows=None, source_regions_yaml_text=None, null_region_rows=0,
 ):
     """`b03.build_and_write_observation` を、P-1b の土地利用2引数
     （`source_regions_yaml`/`landuse_csv`）を明示的に補って呼ぶ共通ヘルパ
@@ -418,7 +418,7 @@ def build_observation(
         text=source_regions_yaml_text if source_regions_yaml_text is not None else "sources: {}\n",
     )
     # フィクスチャの measurements/sensor_timeseries にある出典のマニフェスト（region はマニフェストから決める。Phase D）
-    ensure_measurement_source_manifests(source_regions_yaml, measurements_db)
+    ensure_measurement_source_manifests(source_regions_yaml, measurements_db, null_region_rows=null_region_rows)
     return b03.build_and_write_observation(
         measurements_db, registry_db, exceptions_yaml, time_conventions_yaml, out,
         source_regions_yaml, landuse_csv,

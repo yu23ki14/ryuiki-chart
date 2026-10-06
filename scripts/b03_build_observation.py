@@ -538,6 +538,9 @@ class _RegionDecl:
     sources: dict
     source_usage: object
     region_usage: object
+    # place.region_id が NULL なのにマニフェストの region で決めた行の件数（出典ごと。マニフェストの
+    # expected_place_region_null_rows と突合する。ADR-0022 決定3）
+    place_region_null: dict = dataclasses.field(default_factory=dict)
 
 
 def _manifest_region(decl: _RegionDecl, source_id, place_region_id, row_label) -> str:
@@ -550,7 +553,9 @@ def _manifest_region(decl: _RegionDecl, source_id, place_region_id, row_label) -
         raise source_regions.UnknownSourceRegionError(source_id)
     decl.source_usage.mark_used(source_id)
     decl.region_usage.mark_used(source_region.region_id)
-    if place_region_id is not None and place_region_id != source_region.region_id:
+    if place_region_id is None:
+        decl.place_region_null[source_id] = decl.place_region_null.get(source_id, 0) + 1
+    elif place_region_id != source_region.region_id:
         raise common.MigrationError(
             f"region の照合に失敗した: マニフェスト（manifests/{source_id}.yml）の region="
             f"{source_region.region_id!r} と、place 経由の region={place_region_id!r} が食い違う"
@@ -928,10 +933,10 @@ def build_and_write_observation(
     landuse_source_usage = period.EntryUsage(landuse_sources)
     landuse_region_usage = period.EntryUsage(landuse_regions)
     # 非 builtin の observation アダプタは未実装（Phase D 時点では occurrence の adapter だけ。ADR-0012 改定）。
-    unsupported = sorted(
-        sid for sid, m in manifest_lib.load_manifests(manifests_dir).items()
-        if m.target == "observation" and not m.is_builtin
-    )
+    observation_manifests = {
+        sid: m for sid, m in manifest_lib.load_manifests(manifests_dir).items() if m.target == "observation"
+    }
+    unsupported = sorted(sid for sid, m in observation_manifests.items() if not m.is_builtin)
     if unsupported:
         raise common.MigrationError(
             f"manifests/ に adapter が builtin でない target=observation のマニフェストがある: {unsupported}。"
@@ -1022,6 +1027,13 @@ def build_and_write_observation(
                 + period.declaration_problems(
                     landuse_region_usage, "manifests/ (regions, target=observation)"
                 )
+                + [
+                    f"manifests/{sid}.yml の expected_place_region_null_rows={m.expected_place_region_null_rows} と、"
+                    f"place.region_id が NULL なのにマニフェストの region で決めた行の実測 {decl.place_region_null.get(sid, 0)} が食い違う"
+                    "（ADR-0022 決定3。place 側の region が欠けた行が黙って増えた、または宣言が古い）"
+                    for sid, m in sorted(observation_manifests.items())
+                    if decl.place_region_null.get(sid, 0) != m.expected_place_region_null_rows
+                ]
             )
             if declaration_problems:
                 raise common.MigrationError(

@@ -1254,31 +1254,69 @@ def _ryuiki_one_table_proxy(ryuiki_db: pathlib.Path, table: str) -> str:
         conn.close()
 
 
-# `check_v2_fresh.py` は `-I -S`（PyYAML 無し）で動くので、ここでは YAML を読まず正規表現で 2 つのキーだけ取る
-# （構造の検証は `ingest.manifest` の責務。`adapter: <名前>` と `input:` 直下の `table|file: <値>`）。
-_MANIFEST_ADAPTER_RE = re.compile(r"^adapter:\s*(\S+)", re.MULTILINE)
-_MANIFEST_INPUT_RE = re.compile(r"^input:[\s{]*(table|file)\s*:\s*([^\s,}]+)", re.MULTILINE)
+def _unquote_scalar(v: str) -> str:
+    """YAML の 1 行スカラー（引用符つき・行末コメントつき）から値を取り出す。"""
+    v = v.strip()
+    if v[:1] in ("'", '"'):
+        end = v.find(v[0], 1)
+        if end == -1:
+            raise MigrationError(f"マニフェストの値の引用符が閉じていない: {v!r}")
+        return v[1:end]
+    cut = v.find(" #")
+    return (v[:cut] if cut != -1 else v).strip().rstrip(",}").strip()
+
+
+def parse_manifest_inputs(text: str) -> tuple[str | None, tuple[str, str] | None]:
+    """マニフェスト（YAML）のテキストから `(adapter, (input の種別 table|file, 値))` だけを取り出す。
+
+    `check_v2_fresh.py` は `-I -S`（PyYAML 無し）で動くので、YAML ライブラリを使わずに読む必要がある。
+    読めるのは最小のサブセットだけ（トップレベルの `adapter: 値` と、`input:` 直下の `table:`/`file:`〔ブロック形式か
+    `{table: x}` のフロー形式〕。値は引用符つき・行末コメントつきでもよい）。マニフェストをそれ以外の書き方
+    （アンカー・複数行スカラー等）にすると、`ingest.manifest` が PyYAML の結果とこの関数の結果の一致を検査して止める
+    （ビルド・テスト時。PyYAML のある環境）ので、黙って食い違うことはない。
+    """
+    adapter: str | None = None
+    inp: tuple[str, str] | None = None
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if line.startswith("adapter:"):
+            adapter = _unquote_scalar(line[len("adapter:"):])
+        elif line.startswith("input:"):
+            rest = line[len("input:"):].strip()
+            if rest.startswith("{"):
+                body = rest.strip("{}").split("#")[0]
+                key, _, val = body.partition(":")
+                inp = (key.strip(), _unquote_scalar(val))
+            else:
+                for nxt in lines[i + 1:]:
+                    if not nxt.strip() or nxt.lstrip().startswith("#"):
+                        continue
+                    if not nxt.startswith((" ", "\t")):
+                        break
+                    key, _, val = nxt.strip().partition(":")
+                    inp = (key.strip(), _unquote_scalar(val))
+                    break
+    return adapter, inp
 
 
 def manifest_inputs(manifests_dir: pathlib.Path) -> tuple[tuple[str, ...], tuple[str, ...]]:
     """`manifests_dir` の非 builtin（adapter 経由）マニフェストが読む入力 `(原本の表, リポジトリ内ファイル)`。
     adapter は `ctx.input_rows()` で入力を読むので、その表・ファイルは v2 の入力指紋と系譜の宣言に含める必要がある
     （ライブラリ側の `V2_RYUIKI_TABLES` に出典ごとの表を足さずに済ませる。Issue #40 Phase D・L6）。
-    構造の検証はしない（`ingest.manifest` の責務。ここは読み取りだけ）。builtin の入力は従来の定数が持つ。
+    構造の検証はしない（`ingest.manifest` の責務）。読み取りは `parse_manifest_inputs`（PyYAML 不要）。
+    builtin の入力は従来の定数が持つ。
     """
     manifests_dir = pathlib.Path(manifests_dir)
     tables: set[str] = set()
     files: set[str] = set()
     if manifests_dir.is_dir():
         for p in sorted(manifests_dir.glob("*.yml")):
-            text = p.read_text(encoding="utf-8")
-            m_adapter = _MANIFEST_ADAPTER_RE.search(text)
-            if m_adapter is None or m_adapter.group(1) == "builtin":
+            adapter, inp = parse_manifest_inputs(p.read_text(encoding="utf-8"))
+            if adapter is None or adapter == "builtin":
                 continue
-            m_input = _MANIFEST_INPUT_RE.search(text)
-            if m_input is None:
+            if inp is None or inp[0] not in ("table", "file"):
                 raise MigrationError(f"{p}: 非 builtin のマニフェストの input（table/file）を読み取れない")
-            (tables if m_input.group(1) == "table" else files).add(m_input.group(2))
+            (tables if inp[0] == "table" else files).add(inp[1])
     return tuple(sorted(tables)), tuple(sorted(files))
 
 

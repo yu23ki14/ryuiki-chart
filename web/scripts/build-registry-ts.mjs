@@ -85,6 +85,7 @@ const OUT_CLIENT =
   process.env.RYUIKI_REGISTRY_TS_OUT_CLIENT ?? path.join(WEB, "src", "lib", "registry", "generated-client.ts");
 const OUT_ID_MAP =
   process.env.RYUIKI_REGISTRY_TS_OUT_ID_MAP ?? path.join(WEB, "src", "lib", "registry", "generated-id-map.ts");
+const MANIFESTS_DIR = process.env.RYUIKI_MANIFESTS_DIR ?? path.join(REPO, "manifests");
 const OUT_SOURCE =
   process.env.RYUIKI_REGISTRY_TS_OUT_SOURCE ?? path.join(WEB, "src", "lib", "registry", "generated-source.ts");
 
@@ -296,9 +297,15 @@ const legacyPlaceIds = db
 // 出典メタ（source / source_edition / license。Issue #39 Phase C、Issue #40 Phase D 担当 E）。
 // 応答封筒（ADR-0014）の provenance が毎応答 D1 の source_registry を引かずに済むよう、
 // 件数が小さく不変なこの3表を生成物に焼く（rows_read 0）。サーバ専用。
+// 合成データの出典（`synthetic_*`。b03/b06 が除外し、dist も出さない）は生成物に載せない。出典メタの読み出し口
+// （MCP の describe_catalog/search_registry・応答封筒）に合成の出典が出ないことを、ここ（生成の段階）で保証する。
+const SYNTHETIC_SOURCE_PREFIX = "synthetic_";
+const isSyntheticSource = (sourceId) => String(sourceId).startsWith(SYNTHETIC_SOURCE_PREFIX);
+const WALL_CLOCK = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/;
 const sourceMeta = db
   .prepare(`SELECT source_id, name_ja, publisher, homepage_url, superseded_by FROM source ORDER BY source_id`)
   .all()
+  .filter((r) => !isSyntheticSource(r.source_id))
   .map((r) => ({ sourceId: r.source_id, nameJa: r.name_ja, publisher: r.publisher, homepageUrl: r.homepage_url, supersededBy: r.superseded_by }));
 const sourceEditions = db
   .prepare(
@@ -307,6 +314,7 @@ const sourceEditions = db
      FROM source_edition ORDER BY source_id, edition_key`,
   )
   .all()
+  .filter((r) => !isSyntheticSource(r.source_id))
   .map((r) => ({
     editionId: r.edition_id,
     sourceId: r.source_id,
@@ -320,6 +328,28 @@ const sourceEditions = db
     updateMode: r.update_mode,
     supersededBy: r.superseded_by,
   }));
+// fetched_at の書式（壁時計 YYYY-MM-DDTHH:MM:SS。時刻帯なし）はここ（ビルド時）で検査する。リクエスト時は投げない。
+for (const e of sourceEditions) {
+  if (e.fetchedAt !== null && !WALL_CLOCK.test(e.fetchedAt)) {
+    throw new Error(`source_edition.fetched_at の書式が YYYY-MM-DDTHH:MM:SS ではない: ${e.editionId} = ${JSON.stringify(e.fetchedAt)}`);
+  }
+}
+
+// 出現データの出典 = マニフェスト（target=occurrence）。新出典を adapter で足せば web を触らずに provenance/freshness に載る。
+const knownSourceIds = new Set(sourceMeta.map((m) => m.sourceId));
+const occurrenceSourceIds = fs
+  .readdirSync(MANIFESTS_DIR)
+  .filter((f) => f.endsWith(".yml"))
+  .sort()
+  .map((f) => ({ file: f, doc: loadYaml(fs.readFileSync(path.join(MANIFESTS_DIR, f), "utf8")) }))
+  .filter(({ doc }) => doc?.target === "occurrence")
+  .map(({ file, doc }) => {
+    if (!knownSourceIds.has(doc.source)) {
+      throw new Error(`manifests/${file} の source=${doc.source} が registry の source に無い（r01 を再実行すること）`);
+    }
+    return doc.source;
+  });
+
 const licenses = db
   .prepare(`SELECT license_id, name_ja, spdx_or_url, license_class, attribution_text FROM license ORDER BY license_id`)
   .all()
@@ -736,6 +766,9 @@ export const SOURCE_EDITIONS: readonly GeneratedSourceEdition[] = ${emitObjectAr
   "updateMode",
   "supersededBy",
 ])};
+
+/** 出現データ（occurrence_agg）の出典。マニフェスト（target=occurrence）由来。画面用 API・MCP の provenance/freshness が使う。 */
+export const OCCURRENCE_SOURCE_IDS: readonly string[] = ${JSON.stringify(occurrenceSourceIds)};
 
 export const LICENSES: readonly GeneratedLicense[] = ${emitObjectArray(licenses, ["licenseId", "nameJa", "spdxOrUrl", "licenseClass", "attributionText"])};
 `;

@@ -16,9 +16,10 @@
  * `Date.UTC` だけで行い、SQLite の日時関数は使わない（ADR-0024）。
  */
 import { regionTimeZone } from "@/lib/registry/lookup-client";
-import { seriesInfo, type SeriesKey } from "./series";
+import { seriesInfo, type SeriesKey, type SourceRef } from "./series";
 import {
   LICENSES,
+  OCCURRENCE_SOURCE_IDS,
   SOURCE_EDITIONS,
   SOURCE_META,
   type GeneratedLicense,
@@ -97,18 +98,18 @@ export function currentEdition(sourceId: string, editionKey?: string | null): Ge
 
 const WALL_CLOCK = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})$/;
 
-/** 壁時計の `fetched_at` に region の UTC オフセットを付ける。想定外の書式は例外（黙って直さない）。 */
+/**
+ * 壁時計の `fetched_at` に region の UTC オフセットを付ける。書式（`YYYY-MM-DDTHH:MM:SS`）の検査は生成時
+ * （`build-registry-ts.mjs`）に済んでいるので、リクエスト時は投げない。
+ */
 export function fetchedAtIso(wallClock: string, regionId: string = DEFAULT_REGION_ID): string {
-  if (!WALL_CLOCK.test(wallClock)) {
-    throw new Error(`fetched_at の書式が YYYY-MM-DDTHH:MM:SS ではない: ${JSON.stringify(wallClock)}`);
-  }
   return `${wallClock}${regionTimeZone(regionId).utcOffset}`;
 }
 
 /** 取得日（region の壁時計の日付）から `now`（region の壁時計へ直した日付）までの暦日差。 */
-export function ageDays(fetchedAtWallClock: string, now: Date, regionId: string = DEFAULT_REGION_ID): number {
+export function ageDays(fetchedAtWallClock: string, now: Date, regionId: string = DEFAULT_REGION_ID): number | null {
   const m = WALL_CLOCK.exec(fetchedAtWallClock);
-  if (!m) throw new Error(`fetched_at の書式が YYYY-MM-DDTHH:MM:SS ではない: ${JSON.stringify(fetchedAtWallClock)}`);
+  if (!m) return null; // 書式は生成時に検査済み。ここでは投げない（リクエストを落とさない）
   const { utcOffset } = regionTimeZone(regionId);
   const off = /^([+-])(\d{2}):(\d{2})$/.exec(utcOffset);
   if (!off) throw new Error(`utc_offset の書式が不正: ${utcOffset}`);
@@ -154,24 +155,25 @@ export function sourceCitation(sourceId: string, opt: SourceMetaOpt = {}): Sourc
   };
 }
 
-/** 画面用 API に加算する `freshness`（出典ごとの取得日・更新方式・経過日数）。重複は除く。 */
-export function freshnessFor(sourceIds: readonly string[], opt: SourceMetaOpt = {}): SourceFreshness[] {
-  return [...new Set(sourceIds)].map((id) => sourceFreshness(id, opt));
+/** 出典 ID（版が決まるものは `SourceRef`）の重複を除く。同じ (出典, 版) は 1 件。 */
+export function dedupeSourceRefs(sources: readonly (string | SourceRef)[]): SourceRef[] {
+  const seen = new Map<string, SourceRef>();
+  for (const s of sources) {
+    const ref: SourceRef = typeof s === "string" ? { sourceId: s, editionKey: null } : s;
+    seen.set(`${ref.sourceId}\u0000${ref.editionKey ?? ""}`, ref);
+  }
+  return [...seen.values()];
+}
+
+/** 画面用 API に加算する `freshness`（出典ごとの取得日・更新方式・経過日数）。重複は除く。版つき出典は `SourceRef` で渡す。 */
+export function freshnessFor(sources: readonly (string | SourceRef)[], opt: SourceMetaOpt = {}): SourceFreshness[] {
+  return dedupeSourceRefs(sources).map((r) => sourceFreshness(r.sourceId, { ...opt, editionKey: r.editionKey ?? opt.editionKey }));
 }
 
 /** 系列の出典（`series.ts` の登録）の `freshness`。出典未記録（NULL＝合成）の alias は載せない（envelope と同じ規則）。 */
 export function freshnessForSeries(series: readonly SeriesKey[], opt: SourceMetaOpt = {}): SourceFreshness[] {
-  const ids: string[] = [];
-  for (const s of series) for (const id of seriesInfo(s)?.sourceIds ?? []) if (id !== null) ids.push(id);
-  return freshnessFor(ids, opt);
+  return freshnessFor(seriesSourceRefs(series), opt);
 }
-
-/**
- * 出現データ（`occurrence_agg`）の出典。画面用 API の `freshness` が使う。
- * D1 の `occurrence_agg` を `DISTINCT source_id` で舐めない（rows_read）ための固定表で、
- * 出典が増えたら `source-meta.test.ts` の突合が落ちて気づける形にしてある。
- */
-export const OCCURRENCE_SOURCE_IDS: readonly string[] = ["gbif_kanagawa_occurrences", "inaturalist_kanagawa"];
 
 /**
  * レッドリスト（`taxon_assessment` の rl2020/rl2026/rdb2022p）の出典。`/api/biota?kind=redlist` の `freshness` が使う。
@@ -180,3 +182,11 @@ export const OCCURRENCE_SOURCE_IDS: readonly string[] = ["gbif_kanagawa_occurren
  * 宣言されるまで "undeclared"（推測で埋めない）。
  */
 export const REDLIST_SOURCE_IDS: readonly string[] = ["kanagawa_redlist", "kanagawa_rdb2022_plants"];
+
+/** 出現データの出典（マニフェスト target=occurrence 由来の生成物。手書きしない）。 */
+export { OCCURRENCE_SOURCE_IDS };
+
+/** 系列の集合が引く出典（と版）。合成（出典未記録）は含まない。 */
+export function seriesSourceRefs(series: readonly SeriesKey[]): SourceRef[] {
+  return dedupeSourceRefs(series.flatMap((s) => seriesInfo(s)?.sourceRefs ?? []));
+}

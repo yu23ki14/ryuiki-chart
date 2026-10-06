@@ -50,7 +50,7 @@ def write_manifests_from_sources_text(manifests_dir, text: str) -> None:
         )
 
 
-def ensure_measurement_source_manifests(manifests_dir, ryuiki_db) -> None:
+def ensure_measurement_source_manifests(manifests_dir, ryuiki_db, *, null_region_rows: int = 0) -> None:
     """フィクスチャの measurements/sensor_timeseries にある（合成でない）出典のマニフェストを、無ければ書く。"""
     conn = sqlite3.connect(f"file:{ryuiki_db}?mode=ro", uri=True)
     try:
@@ -65,6 +65,9 @@ def ensure_measurement_source_manifests(manifests_dir, ryuiki_db) -> None:
             ).fetchall()
             for (sid,) in rows:
                 if not (pathlib.Path(manifests_dir) / f"{sid}.yml").exists():
-                    write_manifest(manifests_dir, sid, update_mode="append", input={"table": table})
+                    write_manifest(
+                        manifests_dir, sid, update_mode="append", input={"table": table},
+                        extra={"expected_place_region_null_rows": null_region_rows} if null_region_rows else None,
+                    )
     finally:
         conn.close()

@@ -19,14 +19,19 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/** kind ごとの出典（既定は出現データの出典）。外来種は環境省リスト、レッドリストは評価リストの出典も引く。 */
+const FRESHNESS_SOURCES: Record<string, readonly string[]> = {
+  ias: [...OCCURRENCE_SOURCE_IDS, "moe_ias_list"],
+  redlist: REDLIST_SOURCE_IDS,
+};
+
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const kind = sp.get("kind") ?? "effort";
   try {
     const db = await d1CubeDb();
     // 出典ごとの取得日・更新方式・経過日数（加算。registry の生成物から引き、D1 は引かない。ADR-0014/0020）。
-    // レッドリスト（kind=redlist）は評価リストの出典（REDLIST_SOURCE_IDS）を載せる。
-    const freshness = freshnessFor(OCCURRENCE_SOURCE_IDS);
+    const freshness = freshnessFor(FRESHNESS_SOURCES[kind] ?? OCCURRENCE_SOURCE_IDS);
     switch (kind) {
       case "effort": {
         const [groups, effort, totals] = await Promise.all([
@@ -83,7 +88,7 @@ export async function GET(req: NextRequest) {
       case "ias": {
         const rows = await iasSpecies(db);
         return NextResponse.json({
-          freshness: freshnessFor([...OCCURRENCE_SOURCE_IDS, "moe_ias_list"]),
+          freshness,
           since_year: IAS_SINCE_YEAR,
           rows: rows.map((r) => ({
             ias_category: r.iasCategory,
@@ -108,7 +113,7 @@ export async function GET(req: NextRequest) {
           limit: 400,
         });
         return NextResponse.json({
-          freshness: freshnessFor(REDLIST_SOURCE_IDS),
+          freshness,
           flows: flows.map((f) => ({ prev_label: f.prevLabel, cur_label: f.curLabel, direction: f.direction, n: f.n })),
           species: species.map((r) => ({
             vernacular_name_ja: r.vernacularNameJa,
