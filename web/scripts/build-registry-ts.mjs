@@ -344,7 +344,7 @@ for (const e of sourceEditions) {
 // ただしマニフェスト由来の OCCURRENCE_SOURCE_IDS は registry を要さないので、files-only でも保持した生成物と突合して止める。
 const filesOnly = (() => {
   try {
-    return db.prepare("SELECT mode FROM registry_build").get()?.mode === "files-only";
+    return db.prepare("SELECT mode FROM registry_build").get()?.mode === "files_only";
   } catch {
     return false;
   }
