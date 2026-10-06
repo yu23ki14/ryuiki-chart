@@ -114,7 +114,6 @@ DBおよびリポジトリのファイルは一切変更していない。
 
 ### API
 
-- `/api/nature?kind=protected|wildlife|mammal|vegetation|rivers`
 - `/api/geo/protected-areas` / `/api/geo/vegetation` / `/api/geo/river-segments`（GeoJSON）
 - データ探索画面（`/api/sql`）と `/api/schema` からも新テーブルを直接引ける
 

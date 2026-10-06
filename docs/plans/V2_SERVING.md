@@ -67,7 +67,8 @@ v1 の派生表（`web/scripts/build-derived.mjs` が書く `derived.sqlite`）�
 | L2 | `observation` / `occurrence` / `occurrence_place` | **入れない**（ADR-0001「D1 は L3 の配信キャッシュ」） |
 | 派生33表 | `meas_*` / `zone_*` / `sensor_*` / `species*` / `org_*` / `mesh_*` / `redlist_*` / `doc_series*` / `quality_monthly` / `landuse_*` / `effort_year` / `ias_species` / `var_catalog` / `site_var` / `watershed_rollup` 等 | **落とす**（PR-5） |
 | その他落とすもの | `measurements` / `sensor_timeseries` / `organism_records` / `taxa` / `redlist_assessments`（`web/src/db/schema.ts` 既存）・合成データ系表（`decisions` / `interventions` / `quality_transitions` / `observers` / `events` / `event_observers`） | **落とす** |
-| PR-6 送り | `water_*`（6表）・`vocab_*`（4表）・`extraction_log` | PR-6（任意）で落とす |
+| 落とした（Issue #61） | `vocab_*`（4表）・`extraction_log` | 落とした（マイグレーション `0011`） |
+| 残す（Issue #61） | `water_*`（8表） | v2 の台帳表として D1 に残す。AI が `run_sql` で「この町の水源はどこか」に答える用途 |
 
 容量見積もり（実測）: 今のローカル D1 1,295MB → 約500〜900MB。D1 の上限（10GB、込み容量
 5GB）に余裕がある（§8）。
@@ -333,15 +334,14 @@ DROP は 46 表（派生33＋落とす原本11＋`instruments`/`protocols`）、
 
 ### PR-6（任意）
 
-状態: 未着手
+状態: Issue #61 で決定・実装（`water_*` 以外）
 
-- `water_*`（`waterUtility`/`waterSource`/`waterFacility`/`waterSourceDoc`/`waterFlowEdge`/
-  `waterZone`/`waterZoneAssignment`/`waterZoneSourceShare`）/ `vocab_*`
-  （`vocabAreas`/`vocabEras`/`vocabIndicators`/`vocabUnits`）/ `extractionLog`
-  （すべて `web/src/db/schema.ts` 既存）を D1 から落とす。
+- `vocab_*`（`vocabAreas`/`vocabEras`/`vocabIndicators`/`vocabUnits`）/ `extractionLog` を D1 から
+  落とした（マイグレーション `0011`。Issue #61）。
+- `water_*`（8表）は**落とさない**。v2 の台帳表として D1 に残す（オーナー決定、Issue #61）。
 - `not_detected` の `value_zero` 例外（ADR-0009 決定4「v1 再現のための時限的な例外」）を
   撤去する。
-- `web/src/app/api/nature`（既存、`kind=` クエリ）系を整理する。
+- `web/src/app/api/nature` は呼び出し元が無いのでルートごと削除した（Issue #61）。`/api/geo/*` は残す。
 
 ## 6. 決定事項（アドバイザーの14件への回答。オーナーの方針に沿って確定）
 
@@ -358,7 +358,7 @@ DROP は 46 表（派生33＋落とす原本11＋`instruments`/`protocols`）、
 | 9 | 月別平年値の系列の混在 | `mean`/`point` の系列を `variable_id` で混ぜる。AI の封筒には系列の内訳を付ける |
 | 10 | `doc_series` の v1 のバグ4件 | 直す（label の `\|` 切り出し・`n_warnings`・`col_key` 潰れ・裸列、`docs/plans/PHASE_B_DOCUMENTS.md` §3）。差分は serving-diff で数える |
 | 11 | ペア測定（合成） | 画面ごと撤去する（決定7に従う） |
-| 12 | `water_*`/`vocab_*`/`extraction_log` | D1 から落とす（PR-6） |
+| 12 | `water_*`/`vocab_*`/`extraction_log` | `vocab_*`/`extraction_log` は落とした。`water_*` は v2 の台帳表として残す（Issue #61 で改訂） |
 | 13 | summary 表 | 4表を持つ（YAML 宣言、b13。指標カタログ・地点×指標・種カタログ・流域別出現。種カタログ・流域別出現は PR-3a） |
 | 14 | `describe_schema`/`run_sql`/`/api/column` | `describe_schema` はカタログの表だけ。`run_sql` は残し、対象を更新する。`/api/column` にゲートを付ける |
 
