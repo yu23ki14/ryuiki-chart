@@ -5,6 +5,8 @@ sqlite（`ryuiki.sqlite`/`cells.sqlite` の必要最小限の列だけ）だけ�
 from __future__ import annotations
 
 import pathlib
+
+import pytest
 import sqlite3
 import sys
 
@@ -379,3 +381,64 @@ def test_build_declaration_counts_wires_new_occurrence_cube_keys(tmp_path):
     assert counts["occurrence_cube_declarations.yaml:month_cell_source_rows"] == 1
     assert counts["occurrence_cube_declarations.yaml:watershed_dated_resolved_rows"] == 1
     assert counts["occurrence_cube_declarations.yaml:watershed_dated_unresolved_rows"] == 0
+
+
+# ---------------------------------------------------------------------------
+# adapter 出典（マニフェストの非 builtin）の入力はマニフェストから導いてサンプルに入れる（Issue #40）
+# ---------------------------------------------------------------------------
+
+def _adapter_manifest(tmp_path, monkeypatch, *, table="wildlife_sightings", file=None, n=400):
+    import ingest.manifest as manifest_lib
+    from scripts.tests.manifest_fixtures import write_manifest
+
+    adapters = tmp_path / "adapters"
+    adapters.mkdir(exist_ok=True)
+    (adapters / "src_a.py").write_text("def rows(ctx):\n    return iter(())\n", encoding="utf-8")
+    monkeypatch.setattr(manifest_lib, "DEFAULT_ADAPTERS_DIR", adapters)
+    expected = {
+        "period_shapes": {"day": n},
+        "place": {"coord_resolved": 0, "coord_unresolved": 0},
+        "cube": {k: 0 for k in manifest_lib.EXPECTED_CUBE_KEYS},
+    }
+    d = tmp_path / ("m_file" if file else "m")
+    write_manifest(
+        d, "src_a", target="occurrence", adapter="src_a", expected_row_count=n,
+        input={"file": file} if file else {"table": table}, extra={"expected": expected},
+    )
+    return d
+
+
+def test_adapter_input_table_is_included_whole_without_touching_coverage_yaml(tmp_path, monkeypatch):
+    m = _adapter_manifest(tmp_path, monkeypatch)
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE wildlife_sightings (id INTEGER)")
+    conn.executemany("INSERT INTO wildlife_sightings VALUES (?)", [(i,) for i in range(400)])
+    chosen = s01.select_adapter_input_tables(conn, s01.adapter_inputs(m), selected={})
+    assert set(chosen) == {"wildlife_sightings"} and len(chosen["wildlife_sightings"]) == 400
+
+
+def test_adapter_input_table_over_limit_or_already_narrowed_stops(tmp_path, monkeypatch):
+    m = _adapter_manifest(tmp_path, monkeypatch)
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE wildlife_sightings (id INTEGER)")
+    conn.executemany("INSERT INTO wildlife_sightings VALUES (?)", [(i,) for i in range(s01.ADAPTER_INPUT_WHOLESALE_MAX_ROWS + 1)])
+    with pytest.raises(SystemExit, match="上限"):
+        s01.select_adapter_input_tables(conn, s01.adapter_inputs(m), selected={})
+    with pytest.raises(SystemExit, match="predicate"):
+        s01.select_adapter_input_tables(conn, s01.adapter_inputs(m), selected={"wildlife_sightings": {1}})
+
+
+def test_adapter_input_file_must_be_under_data_processed(tmp_path, monkeypatch):
+    m = _adapter_manifest(tmp_path, monkeypatch, file="data/processed/x.csv")
+    assert s01.adapter_input_files(s01.adapter_inputs(m)) == ["x.csv"]
+
+
+def test_adapter_input_file_elsewhere_stops(tmp_path, monkeypatch):
+    m = _adapter_manifest(tmp_path, monkeypatch, file="data/elsewhere/x.csv")
+    with pytest.raises(SystemExit, match="data/processed"):
+        s01.adapter_input_files(s01.adapter_inputs(m))
+
+
+def test_declaration_counts_keys_come_from_adapter_manifests(tmp_path, monkeypatch):
+    m = _adapter_manifest(tmp_path, monkeypatch)
+    assert {sid: x.expected_row_count for sid, x in s01.adapter_inputs(m).items()} == {"src_a": 400}

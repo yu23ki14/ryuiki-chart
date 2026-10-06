@@ -63,6 +63,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import pipeline_inputs  # noqa: E402
+from ingest import manifest as manifest_lib  # noqa: E402
 from migrate import occurrence_period  # noqa: E402
 from migrate import point_in_polygon as pip  # noqa: E402
 from migrate import source_regions  # noqa: E402
@@ -258,6 +259,57 @@ def apply_quality_transitions_closure(conn: sqlite3.Connection, measurement_rowi
 
 def select_wholesale_rowids(conn: sqlite3.Connection, table: str) -> list[int]:
     return [r[0] for r in conn.execute(f'SELECT rowid FROM "{table}" ORDER BY rowid')]
+
+
+# adapter 出典（マニフェストの非 builtin）の入力表・ファイルを全件サンプルに入れてよい上限（行数）。
+# これを超える入力は coverage.yaml に predicate を書いて絞る（adapter の出力件数の宣言と合わなくなるので自動では絞らない）。
+ADAPTER_INPUT_WHOLESALE_MAX_ROWS = 5000
+
+
+def adapter_inputs(manifests_dir=source_regions.DEFAULT_MANIFESTS_DIR) -> dict[str, manifest_lib.Manifest]:
+    """サンプルに入力を入れる必要がある出典 = マニフェストの非 builtin（adapter 経由）。
+    新出典を足してもこのスクリプトを触らずに済むよう、対象はマニフェストから導く。"""
+    return {sid: m for sid, m in manifest_lib.load_manifests(manifests_dir).items() if not m.is_builtin}
+
+
+def select_adapter_input_tables(
+    conn: sqlite3.Connection, manifests: dict[str, manifest_lib.Manifest], selected: dict[str, set[int]],
+) -> dict[str, set[int]]:
+    """adapter 出典の入力表（`input.table`）を、小さければ全件サンプルに入れる。
+    全件入れるので adapter の出力はサンプルでも原本と同じ件数（マニフェストの宣言値がそのまま合う）。
+    すでに predicate で絞って選ばれた表・上限を超える表は、黙って部分的に入れず止める。"""
+    out: dict[str, set[int]] = {}
+    for sid, m in sorted(manifests.items()):
+        table = m.input.get("table")
+        if table is None or table in out:
+            continue
+        if table in selected:
+            raise SystemExit(
+                f"{sid}: input.table={table!r} は coverage.yaml の predicate で絞られている。adapter の入力は全件入れる"
+                "（件数の宣言が合わなくなる）ので、predicate を外すこと"
+            )
+        n = conn.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]
+        if n > ADAPTER_INPUT_WHOLESALE_MAX_ROWS:
+            raise SystemExit(
+                f"{sid}: input.table={table!r} が {n:,} 行ある（全件入れる上限 {ADAPTER_INPUT_WHOLESALE_MAX_ROWS:,}）。"
+                "coverage.yaml に絞り込みの predicate を書き、マニフェストの expected を縮小サンプルの件数に合わせること"
+            )
+        out[table] = set(select_wholesale_rowids(conn, table))
+    return out
+
+
+def adapter_input_files(manifests: dict[str, manifest_lib.Manifest]) -> list[str]:
+    """adapter 出典の入力ファイル（`input.file`。`data/processed/` 配下のファイル名）。サンプルの processed/ に丸ごと写す。"""
+    names: list[str] = []
+    for sid, m in sorted(manifests.items()):
+        f = m.input.get("file")
+        if f is None:
+            continue
+        path = pathlib.PurePosixPath(f)
+        if path.parent != pathlib.PurePosixPath("data/processed"):
+            raise SystemExit(f"{sid}: input.file={f!r} は data/processed/ 直下のファイルでなければならない（サンプルに写せない）")
+        names.append(path.name)
+    return names
 
 
 def select_cells_rowids(conn: sqlite3.Connection, doc_ids: list[str]) -> list[int]:
@@ -473,6 +525,10 @@ def build_declaration_counts(
     # 土地利用CSVは丸ごとコピーする（coverage.yaml の wholesale_processed_files）
     # ので、サンプルの件数は原本の行数と同じ（実測: count_csv_data_rows 参照）。
     out["manifests:nlni_l03b_landuse_by_watershed"] = count_csv_data_rows(landuse_csv_path)
+    # adapter 出典は入力を全件サンプルに入れる（select_adapter_input_tables）ので、取り込み件数は原本と同じ。
+    # マニフェストの宣言値（expected_row_count）をそのまま持つ（キーはマニフェストから導く。新出典で s01 を触らない）。
+    for sid, m in sorted(adapter_inputs(manifests_dir).items()):
+        out[f"manifests:{sid}"] = m.expected_row_count
 
     # occurrence_period_shapes.yaml。形の名前は宣言ファイル（コードの
     # `_SHAPE_DEFS` と過不足なく一致することを `assert_declared_shapes_match_code`
@@ -555,6 +611,10 @@ def main() -> int:
     selected["measurements"] = apply_quality_transitions_closure(ryuiki_conn, selected["measurements"])
     for table in coverage.get("wholesale_ryuiki_tables", []):
         selected[table] = set(select_wholesale_rowids(ryuiki_conn, table))
+    # adapter 出典（マニフェストの非 builtin）の入力表は、coverage.yaml に書かなくてもマニフェストから導いて入れる
+    manifests = adapter_inputs()
+    for table, rowids in select_adapter_input_tables(ryuiki_conn, manifests, selected).items():
+        selected[table] = rowids
 
     doc_ids = coverage["document_closure"]["doc_ids"]
     if len(doc_ids) < coverage["document_closure"]["min_documents"]:
@@ -580,7 +640,7 @@ def main() -> int:
     processed_dir = pathlib.Path(args.processed_dir)
     processed_out = out_dir / "processed"
     processed_out.mkdir(parents=True, exist_ok=True)
-    for name in coverage.get("wholesale_processed_files", []):
+    for name in [*coverage.get("wholesale_processed_files", []), *adapter_input_files(manifests)]:
         shutil.copyfile(processed_dir / name, processed_out / name)
 
     # --- declaration_counts.yaml ---
