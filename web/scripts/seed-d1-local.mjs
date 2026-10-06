@@ -10,6 +10,8 @@
  *   マイグレーション適用済みのそのファイルへ better-sqlite3 で直接 INSERT する。
  *
  * 原本 (data/db/*.sqlite) は readonly で開く。書き換えない。
+ * Issue #48 PR-5: derived.sqlite は SOURCES から外した（派生33表は v1 撤去で無くなった）。
+ * 入力のファイル構成が変わったので、_seed_state の指紋が合わず初回は全入れ直しになる（想定内）。
  *
  * 冪等性:
  *   原本 3 ファイルのフィンガープリント（サイズ + mtime）を `_seed_state` に記録する。
@@ -40,10 +42,6 @@ const D1_STATE = path.join(WEB, ".wrangler", "state", "v3", "d1", "miniflare-D1D
 const SOURCES = [
   { alias: "ryuiki", file: "ryuiki.sqlite", required: true, hint: "data/db/ に原本を置く。" },
   { alias: "cells", file: "cells.sqlite", required: true, hint: "data/db/ に原本を置く。" },
-  {
-    alias: "derived", file: "derived.sqlite", required: true,
-    hint: "集計 DB は `npm run build:derived` で作る（初回のみ・約1分）。",
-  },
   {
     alias: "registry", file: "registry.sqlite", required: true,
     hint: "語彙レジストリは `npm run build:registry` で作る（scripts/r01_build_registry.py）。",

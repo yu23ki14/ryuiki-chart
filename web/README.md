@@ -30,7 +30,6 @@ docker compose up          # リポジトリ直下で
 ```bash
 cd web
 pnpm install
-pnpm run build:derived   # 集計 DB (../data/db/derived.sqlite) を作る。初回のみ・約1分
 pnpm run db:setup        # 語彙レジストリ + v2（キューブ）+ D1 マイグレーション + シード投入
 pnpm run dev             # http://localhost:3000
 ```
@@ -43,18 +42,17 @@ v2 だけを作り直したいときは `pnpm run build:v2`
 `scripts/b04_build_cube.py` → `scripts/b06_build_occurrence.py` →
 `scripts/b09_build_occurrence_place.py` → `scripts/b07_build_occurrence_cube.py` の順で回す）。
 
-`build:derived`/`build:v2` は原本を**読み取り専用**で開き、集計済み・キューブ済みのテーブルだけを
-別ファイルに書き出します。原本の `ryuiki.sqlite` / `cells.sqlite` は一切書き換えません。
+`build:v2` は原本を**読み取り専用**で開き、キューブ済みのテーブルだけを
+別ファイルに書き出します（かつての集計 DB `derived.sqlite` と `build:derived` は Issue #48 PR-5 で廃止。
+水源マップの GeoJSON だけは `pnpm run build:water-geo`）。原本の `ryuiki.sqlite` / `cells.sqlite` は一切書き換えません。
 いつでも消して作り直せます。
 
 | スクリプト | 中身 |
 |---|---|
-| `scripts/build-derived.mjs` | 測定値・センサー・品質・行政文書の集計 |
-| `scripts/build-geo.mjs` | 流域界ポリゴンの属性、土地利用 2006/2016、生物レコードの流域への点内包判定 |
-| `scripts/build-biota.mjs` | 生物レコードの分類正規化（iNaturalist の欠損補完・魚類判定）と種別集計、レッドリスト版間比較 |
+| `scripts/build-water-geo.mjs` | 水源マップ用の GeoJSON（`../data/processed/water_zones.geojson`）。`pnpm run build:water-geo` |
 | `scripts/ensure-registry.sh` | 語彙レジストリ（`../data/db/registry.sqlite`）が古ければ作り直す（`db:setup`/entrypoint 共通） |
 | `scripts/ensure-v2.sh` | v2（`../data/db/v2.sqlite`。キューブ）が古ければ作り直す（`db:setup`/entrypoint 共通） |
-| `scripts/seed-d1-local.mjs` | 原本 SQLite（ryuiki/cells/derived/registry/v2）の中身をローカル D1 に流し込む（開発専用） |
+| `scripts/seed-d1-local.mjs` | 原本・生成物 SQLite（ryuiki/cells/registry/v2）の中身をローカル D1 に流し込む（開発専用） |
 | `scripts/copy-maplibre-worker.mjs` | MapLibre のワーカーを `public/` へ配置（`pnpm run dev` / `build` の前に自動実行） |
 | `scripts/copy-geo-assets.mjs` | 地図の GeoJSON を `../data/processed` から `public/geo/` へ配置（同上）。Workers に fs は無いので静的アセットで配る |
 | `scripts/export-d1-sql.mjs` | ローカル D1 の中身を本番 D1 に流せる .sql に書き出す（`dist/d1/`） |
@@ -82,14 +80,15 @@ package.json の `deploy` は動かないので、デプロイは必ず `pnpm ru
 
 Cloudflare へのデプロイを見据えて、**データは D1（Cloudflare の SQLite）に置いています**。
 元は 3 つの SQLite ファイルを `ATTACH` して `d.` / `c.` の接頭辞で引いていましたが、
-D1 に `ATTACH` は無いので、83 テーブル（`drizzle/migrations/` 適用後の実測。うちシード管理用の
-内部表 `_seed_state` を除く82表がシード対象）を 1 つの D1 に統合し、素のテーブル名で引いています。
+D1 に `ATTACH` は無いので、41 テーブル（`drizzle/migrations/` 適用後。うちシード管理用の
+内部表 `_seed_state` を除く40表がシード対象。v1 の派生33表と落とした原本11表は PR-5 の `0010` で DROP）を 1 つの D1 に統合し、素のテーブル名で引いています。
 どの原本から来たテーブルかは `src/lib/table-meta.ts` の `TABLE_ORIGIN` が持ちます。
 
 ```
-data/db/ryuiki.sqlite  ─┐
-data/db/cells.sqlite   ─┼→ scripts/seed-d1-local.mjs →  D1 (83 テーブル / 419 万行 / 約 1.3GB)
-data/db/derived.sqlite ─┘        （原本は readonly で開く）
+data/db/ryuiki.sqlite   ─┐
+data/db/cells.sqlite    ─┤
+data/db/registry.sqlite ─┼→ scripts/seed-d1-local.mjs →  D1 (41 テーブル)
+data/db/v2.sqlite       ─┘        （入力は readonly で開く）
 ```
 
 スキーマは Drizzle で持ち、マイグレーションは drizzle-kit が生成して wrangler が当てます。

@@ -15,7 +15,7 @@
 | Worker | `ryuiki-demo` |
 | D1 | `ryuiki` / `634bbe1b-72aa-48a0-9021-c15167f68a0b` / リージョン APAC |
 | シークレット | `AI_GATEWAY_TOKEN`, `AI_GATEWAY_ACCOUNT_ID` |
-| データ | 61 テーブル / 4,193,724 行 / 1.32GB（ローカル D1 と全テーブル一致を確認） |
+| データ | 61 テーブル / 4,193,724 行 / 1.32GB（ローカル D1 と全テーブル一致を確認。**v1 撤去前の 2026-09 時点の値**。撤去後は 41 テーブルになる。下の「v1 撤去後の本番切り替え」） |
 
 **2026-09-05 追記**: 水道水の水源マップ（`docs/WATER_SOURCE_MAP.md`）の Phase 0〜2 を出した。
 `water_*` 8 テーブル / 13,243 行を追加（マイグレーション `0002_mute_tempest.sql`）。
@@ -114,8 +114,7 @@ pnpm run db:migrate:remote     # wrangler d1 migrations apply ryuiki --remote
 
 ```bash
 # 3-1. ローカル D1 を作る（済んでいれば飛ばす）
-pnpm run build:derived     # 集計 DB。約 1 分
-pnpm run db:setup          # マイグレーション + シード。約 1.5 分
+pnpm run db:setup          # 語彙レジストリ・v2 の鮮度確認 + マイグレーション + シード（`derived.sqlite` は PR-5 で廃止）
 
 # 3-2. 投入用 SQL を書き出す（dist/d1/ に 20MB 刻みで 90 本ほど・約 1 分）
 pnpm run db:export
@@ -201,6 +200,67 @@ done
 `/geo/rivers.geojson` が 200 で返ること（4.5MB）も見ておく。404 なら `pnpm run prepare:geo` が
 通っていない。本文 0 バイトの 500 なら上の「アセットの実体」を読むこと。
 
+## v1 撤去後の本番切り替え（PR-5）
+
+**DROP のマイグレーション `0010` をコードのデプロイより先に当てると、旧コードが読む表が消えて全画面が落ちる。順序を守る。**
+この節は手順書で、PR-5 では**本番へ何も出していない**（「v1 撤去が終わるまで本番にデプロイしない」方針。切り替えはこの PR のマージ後に別途判断する）。
+
+本番 D1 は v1 撤去前のスキーマ（`0000`〜）で動いている。`pnpm run db:migrate:remote` は**未適用を全部（`0010` を含めて）当ててしまう**ので、
+手順 A では `0010` が無いツリーから当てる。
+
+`0010` は 46 表を DROP する（v1 の派生33表・落とす原本11表・`instruments`/`protocols`。一覧は `docs/plans/V2_SERVING_PR5.md` §1.3）。
+適用後の D1 は 41 表（シード対象は `_seed_state` を除く 40 表）。
+
+### 1. 事前
+
+```bash
+git tag pre-v1-removal d6af36c     # PR-4 マージ時点。0009 までを含み 0010 を含まない
+pnpm wrangler d1 migrations list ryuiki --remote   # 本番の適用済みを確認
+```
+
+- Time Travel の戻し先（直前の時刻）を控える（過去 30 日）。
+- rows written の予算（5,000 万行/月まで込み）に対し、投入のやり直しの回数を数える。
+
+### 2. A. 加えるだけのマイグレーションと新データの投入（旧コードのまま。画面は落ちない）
+
+1. `pre-v1-removal` を別ディレクトリに `git worktree` で出し、そこで `pnpm run db:migrate:remote`。
+   `0001`〜`0009` が当たる。`0009` は `cells` の部分索引で、投入の後・コードの前でよい（この段で当てて構わない）。
+2. 新しい表だけを書き出して流す。**入れる前に** `v2.sqlite` の鮮度（`scripts/check_v2_fresh.py`）と、
+   `reports/serving_fingerprint.json` の `git_head` が今のコードであることを確かめる。
+
+   ```bash
+   pnpm run db:export -- --table observation_agg,occurrence_agg,summary_variable_catalog,summary_place_variable,summary_taxon_catalog,summary_watershed_occurrence,summary_species_catalog,summary_group_year,summary_effort_year,summary_grid_catalog,unit,variable,variable_alias,place,place_source_ref,place_relation,place_watershed,taxon,taxon_assessment,caveat,caveat_scope
+   ```
+
+   表名は `web/src/lib/table-meta.ts` の `TABLE_ORIGIN`（v2・reg）と照合してから。流し方は「3. データを入れる」のファイル単位の再試行ループをそのまま使う。
+3. 行数検証: `pnpm run db:verify:remote`（新表の行数がローカル D1 と一致。旧表は変わっていない）。
+
+### 3. B. コードをデプロイ
+
+マージ後の main で `pnpm run deploy`。この時点では v1 の表がまだ残っているが、新コードは読まない。
+デプロイ後の動作確認は「6. 動作確認」に加え、`/`・`/sites`・`/timeseries`・`/biota`・`/documents`・`/map` が 200 で、値が
+`reports/serving_fingerprint.json`／サンプルの代表値と矛盾しないこと、AI の注記が出ること。
+**ここで問題が出たら、旧コードへ `wrangler rollback` するだけで戻れる**（DROP はまだ）。
+
+### 4. C. DROP
+
+十分に様子を見てから、main のツリーで `pnpm run db:migrate:remote`（`0010`。46 表が消える。**戻すには Time Travel**）。
+`pnpm wrangler d1 info ryuiki` でサイズ（約 1.3GB → 500〜900MB の見込み）と表数（41）を確認し、手順 B の動作確認をもう一度行う。
+
+### 5. ロールバック表
+
+| 失敗した段 | 戻し方 |
+|---|---|
+| A | 新表を `DELETE`/`DROP` して再投入（旧画面に影響なし） |
+| B | `wrangler rollback` |
+| C | Time Travel（`0010` の直前）＋旧コードの再デプロイ |
+
+### 6. やらないこと
+
+- `wrangler d1 export` は大きい表で OOM するので使わない（`pnpm run db:export` → `wrangler d1 execute --remote --file`）。
+- `0010` を A より先に当てない。
+- サイズ見積もりの根拠は `docs/plans/V2_SERVING.md` §8。
+
 ## 更新するとき
 
 ### スキーマを変えた
@@ -218,7 +278,7 @@ pnpm run deploy
 ### 原本データが変わった
 
 ```bash
-pnpm run build:derived        # 集計 DB を作り直す
+pnpm run build:v2             # v2（キューブ）を作り直す（語彙レジストリは db:setup の predb フックが見る）
 pnpm run db:seed              # ローカル D1 に入れ直す（原本の変化を検出して自動で入れ直す）
 pnpm run db:export
 # 変わったテーブルのファイルだけ流す。全部入れ直すなら先に DELETE が要る:

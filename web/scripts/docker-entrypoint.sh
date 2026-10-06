@@ -18,15 +18,16 @@ for f in ryuiki.sqlite cells.sqlite; do
   fi
 done
 
-# 1. 集計 DB。原本から再生成できるものなので、無ければ作る（初回のみ・約1分）
-if [ ! -f "$DB_DIR/derived.sqlite" ]; then
-  echo "▶ 集計 DB が無いので作る (build:derived)"
-  pnpm run build:derived
+# 1. 水源マップの GeoJSON。原本から再生成できるので、無ければ作る
+# （derived.sqlite は PR-5 で廃止。作らず、検査もしない）
+if [ ! -f "$(dirname "$DB_DIR")/processed/water_zones.geojson" ]; then
+  echo "▶ 水源マップの GeoJSON が無いので作る (build:water-geo)"
+  pnpm run build:water-geo
 else
-  echo "✔ 集計 DB あり"
+  echo "✔ 水源マップの GeoJSON あり"
 fi
 
-# 1.5. 語彙レジストリ。ryuiki/cells を読み取り専用で読んで作る（derived は読まない。
+# 1.5. 語彙レジストリ。ryuiki/cells を読み取り専用で読んで作る。
 # 経緯は registry/README.md 参照。scripts/r01_build_registry.py）
 # 「指紋が古ければ作り直す」判定は db:setup の predb:setup フックと共通（scripts/ensure-registry.sh）
 scripts/ensure-registry.sh

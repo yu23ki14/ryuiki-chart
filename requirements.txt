@@ -1,6 +1,6 @@
 # これはレジストリビルド（scripts/r01_build_registry.py と scripts/registry/*.py）と
-# Phase B 突合ハーネス（scripts/b01_derived_baseline.py / scripts/b02_derived_compare.py /
-# scripts/reconcile/*.py）が実際に import するサードパーティ依存の固定リストであり、
+# Phase B パイプライン（scripts/b0x・scripts/migrate/*.py・scripts/reconcile/common.py /
+# datasource.py）が実際に import するサードパーティ依存の固定リストであり、
 # scripts/c*.py（収集スクリプト）全体の依存マニフェストではない。収集スクリプト側は
 # 別途棚卸しが必要（このファイルの範囲外）。
 #
