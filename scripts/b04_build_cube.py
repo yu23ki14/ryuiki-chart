@@ -1195,11 +1195,8 @@ def main() -> None:
     parser.add_argument(
         "--unit-evidence-declarations-yaml", default=str(UNIT_EVIDENCE_DECLARATIONS_YAML),
         help="単位の証拠検査（D3・検証2）が読む宣言 YAML。既定は本番の "
-        f"{UNIT_EVIDENCE_DECLARATIONS_YAML}。Issue #48 PR-2 §1(d) の診断用 v1互換キューブ"
-        "（合成データを含む observation を読む。scripts/b00_run_full_gate.py 参照）だけが "
-        "scripts/migrate/unit_evidence_declarations_v1compat.yaml を明示的に渡す——合成データを"
-        "除外する本番の observation には無い未解決系列が、合成データを含む observation には"
-        "残るため（scripts/migrate/unit_evidence_declarations.yaml のコメント参照）。",
+        f"{UNIT_EVIDENCE_DECLARATIONS_YAML}。（合成データを含む診断用の observation 向けの別宣言は、"
+        "v1互換キューブの撤去〔Issue #48 PR-5〕とともに無くなった。）",
     )
     args = parser.parse_args()
 

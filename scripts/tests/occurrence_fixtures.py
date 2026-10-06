@@ -240,9 +240,6 @@ def period_shapes_yaml_text(counts: dict[str, int] | None = None) -> str:
     return "".join(lines)
 
 
-DEFAULT_PERIOD_SHAPES_YAML_TEXT = period_shapes_yaml_text()
-
-
 def make_period_shapes_yaml(path, text: str | None = None, counts: dict[str, int] | None = None) -> None:
     if text is not None:
         path.write_text(text, encoding="utf-8")
@@ -387,10 +384,6 @@ def make_v2_db_with_occurrence_and_place(
         conn.close()
 
 
-def make_taxon_group_yaml(path, default_label_ja: str = "未判定") -> None:
-    path.write_text(f'default_label_ja: "{default_label_ja}"\nrules: []\n', encoding="utf-8")
-
-
 # O-1b（`scripts/b07_build_occurrence_cube.py`/年キー8表・species_month）の
 # テスト用: `occurrence_agg` のスキーマは `_CREATE_OCCURRENCE_AGG_SQL` 1箇所が正
 # （同じ考え方。b07 の DIM_COLUMNS の並びで列を持つ）。Issue #48 PR-3a で
@@ -464,142 +457,6 @@ def make_occurrence_place_declarations_yaml(
         ),
         encoding="utf-8",
     )
-
-
-def occurrence_watershed_v1_declarations_yaml_text(
-    *, moved: int, ws_to_ws: int, v1_assigned_exact_unassigned: int, v1_unassigned_exact_assigned: int,
-    mixed_buckets: int, keys_changed: int,
-) -> str:
-    return (
-        "memo_moved_records:\n"
-        f"  expected_count: {moved}\n"
-        "  breakdown:\n"
-        f"    ws_to_ws: {ws_to_ws}\n"
-        f"    v1_assigned_exact_unassigned: {v1_assigned_exact_unassigned}\n"
-        f"    v1_unassigned_exact_assigned: {v1_unassigned_exact_assigned}\n"
-        "  note: テスト用\n"
-        "memo_mixed_buckets:\n"
-        f"  expected_count: {mixed_buckets}\n"
-        "  note: テスト用\n"
-        "org_watershed_year_keys_changed_vs_exact:\n"
-        f"  expected_count: {keys_changed}\n"
-        "  note: テスト用\n"
-    )
-
-
-def make_occurrence_watershed_v1_declarations_yaml(path, text: str | None = None, **kwargs) -> None:
-    path.write_text(
-        text if text is not None else occurrence_watershed_v1_declarations_yaml_text(**kwargs),
-        encoding="utf-8",
-    )
-
-
-def make_v2_db_with_occurrence_and_agg(
-    path, occurrence_rows: list[tuple], occurrence_agg_rows: list[tuple],
-    occurrence_place_rows: list[tuple] | None = None,
-) -> None:
-    """`occurrence`（L2）と `occurrence_agg`（キューブ）の両方を持つ v2.sqlite
-    相当を作る（`scripts/b08_project_occurrence_v1.py` の
-    `_build_cube_projections` は両方を読む——年キー8表は `occurrence_agg`
-    だけから、`species2.en_name`/`red_list_category` と `species_month` は
-    `occurrence` から）。
-
-    `occurrence_place_rows`（既定 None）を渡すと `occurrence_place`
-    （O-2a サテライト）も同居させる（Issue #48 PR-3a: `_build_watershed` の
-    `_assert_watershed_cells_match_exact` のように、`occurrence`/
-    `occurrence_agg`/`occurrence_place` の3つを同時に要るテスト向け）。
-    渡さなければ従来どおり `occurrence_place` は作らない。
-    """
-    import b07_build_occurrence_cube as b07
-
-    conn = sqlite3.connect(f"file:{path}", uri=True)
-    try:
-        _create_and_fill_occurrence(conn, occurrence_rows)
-
-        conn.execute(b07._CREATE_OCCURRENCE_AGG_SQL.format(table="occurrence_agg"))
-        agg_placeholders = ", ".join("?" for _ in _OCCURRENCE_AGG_COLUMNS)
-        conn.executemany(f"INSERT INTO occurrence_agg VALUES ({agg_placeholders})", occurrence_agg_rows)
-        if occurrence_place_rows is not None:
-            add_occurrence_place_table(conn, occurrence_place_rows)
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def occurrence_agg_row(
-    *, place_id, place_kind, grain, period_start, period_end, n,
-    taxon_id=None, n_red_list=0, n_alien=0,
-    source_id="gbif_kanagawa_occurrences", region_id="jp-14",
-    built_from="occurrence+occurrence_place", spec_version="phase-b-fact-slice/v2-test",
-) -> tuple:
-    """`_OCCURRENCE_AGG_COLUMNS` の並びで `occurrence_agg` の1行を組み立てる。"""
-    return (
-        region_id, source_id, place_id, place_kind, taxon_id, grain, period_start, period_end,
-        n, n_red_list, n_alien, built_from, spec_version,
-    )
-
-
-def build_matching_occurrence_agg_watershed_rows(
-    occurrence_rows: list[tuple], occurrence_place_rows: list[tuple], place_watershed_map: dict[str, str],
-    *, taxon_id=None, source_id: str = "gbif_kanagawa_occurrences", region_id: str = "jp-14",
-) -> list[tuple]:
-    """`occurrence_rows`（`occurrence_row()` の形）と `occurrence_place_rows`
-    （`occurrence_place_row()` の形、`place_kind='watershed'`）から、記録
-    自身の「正確な」解決を (watershed_id, year) で畳んだ `occurrence_agg` の
-    watershed セル（`grain='year'`）を機械的に組み立てる。
-
-    `scripts/b08_project_occurrence_v1.py` の `_assert_watershed_cells_match_
-    exact` が比較する「キューブ側」を、b08 自身が独立に組む
-    `org_watershed_year_exact`（`occurrence`+`occurrence_place` の記録単位の
-    正確な解決を `(exact_watershed_id, year)` で集計し直したもの——年は
-    `period_raw` の先頭4桁、`n_alien=SUM(is_alien)`、`n_red_list` は
-    red_list_category が非空かどうかの件数）と一致するように作る。
-
-    `place_watershed_map` は `{watershed の place_id: watershed_id}`
-    （registry の `place_source_ref` と対にする、各 watershed_id につき
-    place_id は1つの前提）。この関数自体は b07 の本物の「族×place_kind」
-    構築ロジックを再現しない——テスト専用の最小限の組み立て。
-    """
-    # occurrence_place_row() は (record_id, place_kind, place_id, method,
-    # built_from, spec_version) の並び。
-    place_by_record = {
-        row[0]: row[2] for row in occurrence_place_rows if row[1] == "watershed"
-    }
-    place_id_by_watershed = {v: k for k, v in place_watershed_map.items()}
-
-    # occurrence_row() は _OCCURRENCE_COLUMNS の並び: period_raw=14,
-    # red_list_category=18, is_alien=19。
-    cells: dict[tuple[str, int], list[int]] = {}
-    for row in occurrence_rows:
-        record_id = row[0]
-        period_raw = row[14]
-        red_list_category = row[18]
-        is_alien = row[19] or 0
-        if not period_raw or len(period_raw) < 4:
-            continue
-        place_id = place_by_record.get(record_id)
-        if place_id is None:
-            continue
-        watershed_id = place_watershed_map.get(place_id)
-        if watershed_id is None:
-            continue
-        year = int(period_raw[:4])
-        key = (watershed_id, year)
-        n, n_red_list, n_alien = cells.get(key, [0, 0, 0])
-        n += 1
-        n_red_list += 1 if (red_list_category not in (None, "")) else 0
-        n_alien += is_alien
-        cells[key] = [n, n_red_list, n_alien]
-
-    rows: list[tuple] = []
-    for (watershed_id, year), (n, n_red_list, n_alien) in cells.items():
-        place_id = place_id_by_watershed[watershed_id]
-        rows.append(occurrence_agg_row(
-            region_id=region_id, source_id=source_id, place_id=place_id, place_kind="watershed",
-            taxon_id=taxon_id, grain="year", period_start=f"{year:04d}-01-01", period_end=f"{year:04d}-12-31",
-            n=n, n_red_list=n_red_list, n_alien=n_alien,
-        ))
-    return rows
 
 
 # `scripts/b13_build_summary.py`（`occurrence_agg` 側の summary 2表）用。b13 は

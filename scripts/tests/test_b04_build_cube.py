@@ -1279,3 +1279,31 @@ def test_sampling_always_includes_the_max_n_cell_and_censored_cells(tmp_path, mo
         assert max_month in picked
     finally:
         conn.close()
+
+
+def test_sampled_recompute_is_wired_into_build_cube_and_keeps_the_previous_cube_on_failure(tmp_path, monkeypatch):
+    """`build_cube()` の中で呼ばれ、落ちれば本番名へ差し替えない（前回の observation_agg が残る）。
+    前の検証をすり抜ける形で staging の日次セルの値を壊す変異を注入する。"""
+    conn = make_v2_db_with_observation(tmp_path / "v2.sqlite", b03._CREATE_OBSERVATION_SQL, _sampling_rows())
+    registry_db = _registry_db(tmp_path)
+    b04.build_cube(conn, registry_db, unit_evidence_declarations_path=None)
+    before = conn.execute("SELECT COUNT(*), SUM(value_zero) FROM observation_agg").fetchone()
+
+    real = cube_invariants.verify_hourly_daily_rollup
+
+    def corrupt_then_check(c, staging, *args, **kwargs):
+        # 前の検証（value_zero/value_lod の関係・T6）をすり抜ける、両系列そろった値の改ざん。
+        c.execute(
+            f'UPDATE "{staging}" SET value_zero = value_zero + 1, value_lod = value_lod + 1 '
+            "WHERE grain='day' AND stat='mean' AND period_start='2020-01-03'"
+        )
+        return real(c, staging, *args, **kwargs)
+
+    monkeypatch.setattr(cube_invariants, "verify_hourly_daily_rollup", corrupt_then_check)
+    conn.execute("DETACH DATABASE reg")  # 2回目の build_cube が ATTACH し直す
+    try:
+        with pytest.raises(common.MigrationError, match="独立な再計算と一致しない"):
+            b04.build_cube(conn, registry_db, unit_evidence_declarations_path=None)
+        assert conn.execute("SELECT COUNT(*), SUM(value_zero) FROM observation_agg").fetchone() == before
+    finally:
+        conn.close()

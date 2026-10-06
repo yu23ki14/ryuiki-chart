@@ -1,10 +1,10 @@
 """`scripts/s04_check_full_gate_proof.py`（CI の `full-gate-proof-check`
 ジョブが呼ぶ、ワークフローの heredoc から切り出したスクリプト）の単体テスト。
-原本DBは不要——コミット済みの `reports/full_gate_proof.json`・
+原本DBは不要——コミット済みの `reports/serving_fingerprint.json`・
 `data/sample/manifest.json` と、自前の小さな改変版だけで完結する。
 
 これはレビュー指摘（ワークフローに直接埋め込んだ Python はテストされず、
-`manifest.json`/`full_gate_proof.json` のキーの形が食い違ったまま
+`manifest.json`/`serving_fingerprint.json` のキーの形が食い違ったまま
 `KeyError` で落ちる不具合が気づかれずに残っていた）への対応そのもの。
 """
 from __future__ import annotations
@@ -21,12 +21,12 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import s04_check_full_gate_proof as s04  # noqa: E402
 
-_PROOF_PATH = ROOT / "reports" / "full_gate_proof.json"
+_PROOF_PATH = ROOT / "reports" / "serving_fingerprint.json"
 _MANIFEST_PATH = ROOT / "data" / "sample" / "manifest.json"
 
 pytestmark = pytest.mark.skipif(
     not _PROOF_PATH.exists() or not _MANIFEST_PATH.exists(),
-    reason="reports/full_gate_proof.json または data/sample/manifest.json が無い",
+    reason="reports/serving_fingerprint.json または data/sample/manifest.json が無い",
 )
 
 
@@ -47,7 +47,7 @@ def real_manifest() -> dict:
 
 def test_committed_proof_and_manifest_pass(capsys, monkeypatch):
     """`scripts/s04_check_full_gate_proof.py` を既定の引数（コミット済みの
-    reports/full_gate_proof.json・data/sample/manifest.json）で呼ぶと
+    reports/serving_fingerprint.json・data/sample/manifest.json）で呼ぶと
     exit 0 になる。
     """
     monkeypatch.setattr(sys, "argv", ["s04_check_full_gate_proof.py"])

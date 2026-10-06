@@ -194,9 +194,6 @@ def test_end_to_end_determinism_on_fixture_db(tmp_path):
     ):
         (tmp_path / name).write_text("dummy", encoding="utf-8")
 
-    baseline_json = tmp_path / "derived_baseline.json"
-    baseline_json.write_text('{"tables": {}}', encoding="utf-8")
-
     out_dir_1 = tmp_path / "out1"
     out_dir_2 = tmp_path / "out2"
 
@@ -208,7 +205,6 @@ def test_end_to_end_determinism_on_fixture_db(tmp_path):
             "--cells-db", str(cells_db),
             "--processed-dir", str(tmp_path),
             "--coverage-yaml", str(coverage_yaml),
-            "--baseline-json", str(baseline_json),
             "--out-dir", str(out_dir),
         ]
         try:
