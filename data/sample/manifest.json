@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-06T00:52:33+00:00",
+  "generated_at": "2026-10-06T09:00:46+00:00",
   "generated_by": "scripts/s01_build_sample.py",
   "source_files": {
     "data/db/ryuiki.sqlite": "554b41a03dd5ca7753aaf813691a9008c9c5c06de3d61262cbca0095399039d4",
@@ -8,7 +8,8 @@
     "data/processed/nlni_w12_watersheds.jsonl": "901924abd35592a6a1a570864ed6b1843755070490ea39cc16f6a3114a5c492d",
     "data/processed/nlni_l03b_landuse_by_watershed.csv": "ec71d28f382785af6ef7ed588350f67537f96d356d1d73c541522a74421cb644",
     "data/processed/moe_ias_list.csv": "54a3261737bc72b84910d75d78a7da7beee067c5b78581c9b2522627b7bffb41",
-    "data/processed/taxon_crosswalk.csv": "cde56ea81743f7790a04ac9c7e5fd9dc47699edd56c8c9fcfe70c3eea6a74e52"
+    "data/processed/taxon_crosswalk.csv": "cde56ea81743f7790a04ac9c7e5fd9dc47699edd56c8c9fcfe70c3eea6a74e52",
+    "data/processed/taxon_gbif_accepted.csv": "d0b325a0eadac87515420002f6a7fc2ac39be827ebc506a76a10f5c29239c8d2"
   },
   "row_counts": {
     "cells.cells": 286,

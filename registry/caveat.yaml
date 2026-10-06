@@ -238,13 +238,14 @@ caveats:
   severity: blocking
   kind: known_error
   title_ja: null
-  body_ja: 原本の is_alien フラグは同一種の中で 1 と 0 が混在し、オオクチバスやウシガエルが 0 件になるなど信頼できない。外来種の判定には環境省の生態系被害防止外来種リスト（taxa.ias_category）を学名で結合した結果を使っている。
+  body_ja: 原本の is_alien フラグは同一種の中で 1 と 0 が混在し、オオクチバスやウシガエルが 0 件になるなど信頼できない。外来種の判定には、記録の学名（二名法）を環境省の生態系被害防止外来種リストに結合した結果を使っている。ただし国内由来のみの種（国内の別地域の個体群など。神奈川県では在来の可能性がある）は外来種に数えない。
   quote: null
   review:
     reviewed_on: '2026-10-06'
     reviewer: claude（オーナー委任・要最終確認）
-    reason: 原本の is_alien で外来種を数えると結論が誤る（同一二名法で混在する種が102、オオクチバス139件・ウシガエル88件がフラグ0）。
-    changed: false
+    reason: 原本の is_alien で外来種を数えると結論が誤る（同一二名法で混在する種が102、オオクチバス139件・ウシガエル88件がフラグ0）。Issue #34 で n_alien を環境省リスト（国内由来のみの種を除く）への二名法一致から導く定義に変えたため、本文をその定義に合わせた。
+    changed:
+    - body
 - key: municipality
   severity: info
   kind: null

@@ -411,3 +411,4 @@ wholesale_processed_files:
   - nlni_l03b_landuse_by_watershed.csv
   - moe_ias_list.csv
   - taxon_crosswalk.csv
+  - taxon_gbif_accepted.csv

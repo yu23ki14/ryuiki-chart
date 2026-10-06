@@ -15,6 +15,8 @@ GBIF完走後の再検証にあたってスクリプトとして固定した。�
   6. dataGeneralizations / informationWithheld が常に空欄であること（ADR-0028: 座標は
      一般化しない。旧 FR-4.5 の座標一般化は ADR-0018 とともに撤回されたため、非空の行が
      あれば回帰として検出する）
+  7. occurrence.txt の taxonID が <gbif|inat>:<数字>（空は可）で、名前空間が occurrenceID の出典と
+     一致すること（Issue #34 D4。GBIF と iNaturalist の ID 空間を混ぜない）
 
 eventDate について: Darwin Core の `eventDate` は ISO 8601-1:2019 の
 date / dateTime に加えて「開始/終了」の**区間**表記を許容する
@@ -24,6 +26,9 @@ GBIF由来のレコードには dateTime 形式・区間形式が多数含まれ
 date / dateTime / 区間の3形式を適合として扱う。
 """
 import re, sys, pathlib, xml.etree.ElementTree as ET
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from taxon_namespaces import check_dwca_taxon_id  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 D = ROOT / "data/dwca"
@@ -96,7 +101,9 @@ def main():
     i_gen = cols.index("dataGeneralizations") if "dataGeneralizations" in cols else None
     i_wh = cols.index("informationWithheld") if "informationWithheld" in cols else None
     i_lic = cols.index("license") if "license" in cols else None
-    n_oc = bad_oc = miss_ev = blank_sci = n_gen = n_wh = blank_lic = 0
+    i_tid, i_oid = cols.index("taxonID"), cols.index("occurrenceID")
+    n_oc = bad_oc = miss_ev = blank_sci = n_gen = n_wh = blank_lic = bad_tid = 0
+    bad_tid_samples = []
     with open(D / "occurrence.txt", encoding="utf-8") as f:
         f.readline()
         for line in f:
@@ -115,12 +122,19 @@ def main():
                 n_wh += 1
             if i_lic is not None and p[i_lic].strip() == "":
                 blank_lic += 1
-    fail += bad_oc + miss_ev + n_gen + n_wh
+            why = check_dwca_taxon_id(p[i_tid], p[i_oid])
+            if why:
+                bad_tid += 1
+                if len(bad_tid_samples) < 5:
+                    bad_tid_samples.append((p[i_oid], p[i_tid], why))
+    fail += bad_oc + miss_ev + n_gen + n_wh + bad_tid
     print(f"\n=== 3. occurrence.txt ===")
     print(f"  行数={n_oc}  列数不整合={bad_oc}")
     print(f"  eventID が event.txt に存在しない件数={miss_ev}")
     print(f"  scientificName 空欄={blank_sci}（原資料に学名が無いレコード。推測で埋めていない）")
     print(f"  license 列 空欄={blank_lic}")
+    print(f"  taxonID が <gbif|inat>:<数字> でない／出典と合わない={bad_tid}"
+          f"{'  例: ' + str(bad_tid_samples) if bad_tid_samples else ''}")
     print(f"  座標一般化済み(dataGeneralizations非空)={n_gen}  "
           f"← ADR-0028で撤去済み。0でなければ回帰")
     print(f"  座標秘匿済み(informationWithheld非空)={n_wh}  "

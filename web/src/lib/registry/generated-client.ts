@@ -286,7 +286,7 @@ export const GENERATED_CAVEATS: readonly GeneratedCaveat[] = [
   { key: "flowTidalBackflow", severity: "warning", kind: null, bodyJa: "河川の流量。感潮域（全83地点のうち14地点）では潮汐による逆流で負の値になる（4,668行のうち180行、最小 -8.5 m3/s）。負の値は欠測や誤りではなく逆流を表す実測値なので、除外したり絶対値にしたりして平均しないこと。" },
   { key: "gbifCutoff", severity: "blocking", kind: "coverage_gap", bodyJa: "GBIF 側の取り込みは 2024年12月で実質途切れている（月の件数が2024年12月の6,789件から2025年1月に399件へ。2024年の月平均は約6,400件）。鳥類の2025年以降の減少はデータの都合であり、生きものの減少ではない。" },
   { key: "inatBackfill", severity: "info", kind: null, bodyJa: "iNaturalist 由来の 165,332 件は分類階級が空だったため、学名の先頭2語をキーに GBIF 側の分類を引き当てて補完している（先頭2語の一致が約71%、属だけの一致が約15%、未解決が約14%）。" },
-  { key: "isAlien", severity: "blocking", kind: "known_error", bodyJa: "原本の is_alien フラグは同一種の中で 1 と 0 が混在し、オオクチバスやウシガエルが 0 件になるなど信頼できない。外来種の判定には環境省の生態系被害防止外来種リスト（taxa.ias_category）を学名で結合した結果を使っている。" },
+  { key: "isAlien", severity: "blocking", kind: "known_error", bodyJa: "原本の is_alien フラグは同一種の中で 1 と 0 が混在し、オオクチバスやウシガエルが 0 件になるなど信頼できない。外来種の判定には、記録の学名（二名法）を環境省の生態系被害防止外来種リストに結合した結果を使っている。ただし国内由来のみの種（国内の別地域の個体群など。神奈川県では在来の可能性がある）は外来種に数えない。" },
   { key: "landuseDefinitionChange", severity: "blocking", kind: "definition_change", bodyJa: "土地利用の区分は2006年調査と2016年調査で定義が違う。2006年の「幹線交通用地」は2016年調査で「道路」「鉄道」に分割されており、同じ区分として比較できない。この2区分が2006年→2016年で全減・全増に見えるのは、実際の土地利用の変化ではなく調査区分の定義変更による見かけ上の増減である。" },
   { key: "measuredOn", severity: "info", kind: null, bodyJa: "measurements.measured_on には「2015-04-08」形式（検体値・215,445行）と「2015」形式（年度集計値・105,454行）が混在する（合成データを除く）。年度集計値は日本の年度（4月〜翌3月）を指す。この画面では両者を kind で区別している。" },
   { key: "municipality", severity: "info", kind: null, bodyJa: "sites.municipality は出典によって中身が違う。環境省 公共用水域の290地点では水域名（河川名・湖沼名）が入り、それ以外の62地点では市区町村名が入る。列名と中身が一致していないため、この画面では「水域・地域」と呼ぶ。" },

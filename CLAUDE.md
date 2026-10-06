@@ -161,6 +161,8 @@
         <worktree>/data/processed/nlni_l03b_landuse_by_watershed.csv
   ln -s /home/yu23ki14/cfj/ryuiki-demo/data/processed/moe_ias_list.csv \
         <worktree>/data/processed/moe_ias_list.csv
+  ln -s /home/yu23ki14/cfj/ryuiki-demo/data/processed/taxon_gbif_accepted.csv \
+        <worktree>/data/processed/taxon_gbif_accepted.csv
   ```
   レジストリのビルド先を明示したいときは `RYUIKI_REGISTRY_DB=<worktree の絶対パス>/data/db/registry.sqlite`
   （`scripts/r01_build_registry.py` / `web/scripts/build-registry-ts.mjs` /

@@ -20,6 +20,21 @@ import registry.build_taxon as build_taxon_module
 from .registry_fixtures import make_ryuiki_taxon_db, open_taxon_src
 
 
+_ACCEPTED_HEADER = (
+    "taxon_id,scientific_name,gbif_key,match_type,status,accepted_key,accepted_canonical_name,"
+    "accepted_basis,weak_resolution,weak_reason,weak_key,weak_rank,weak_status,fetched_at"
+)
+
+
+def _write_accepted(tmp_path, monkeypatch, rows):
+    """`rows`: dict のリスト（_ACCEPTED_HEADER の列。無い列は空）。"""
+    cols = _ACCEPTED_HEADER.split(",")
+    lines = [_ACCEPTED_HEADER] + [",".join(str(r.get(c, "")) for c in cols) for r in rows]
+    path = tmp_path / "taxon_gbif_accepted.csv"
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    monkeypatch.setattr(build_taxon_module, "GBIF_ACCEPTED_CSV", path)
+
+
 @pytest.fixture(autouse=True)
 def _empty_crosswalk(monkeypatch, tmp_path):
     """CROSSWALK_CSV（Git管理外）を空のクロスウォークに差し替える。
@@ -30,6 +45,10 @@ def _empty_crosswalk(monkeypatch, tmp_path):
     csv_path = tmp_path / "taxon_crosswalk.csv"
     csv_path.write_text("taxon_id,rank\n", encoding="utf-8")
     monkeypatch.setattr(build_taxon_module, "CROSSWALK_CSV", csv_path)
+    # GBIF の受理名の収集物（Issue #34）も空（ヘッダだけ）に差し替える。
+    accepted = tmp_path / "taxon_gbif_accepted.csv"
+    accepted.write_text(_ACCEPTED_HEADER + "\n", encoding="utf-8")
+    monkeypatch.setattr(build_taxon_module, "GBIF_ACCEPTED_CSV", accepted)
 
 
 def _build(tmp_path, organism_records_rows=(), taxa_rows=()):
@@ -764,3 +783,71 @@ def test_taxon_group_yaml_rejects_duplicate_match_conditions(tmp_path, monkeypat
     monkeypatch.setattr(build_taxon_module, "TAXON_GROUP_YAML", dup_yaml)
     with pytest.raises(AssertionError, match="match が重複している"):
         build_taxon_module._load_taxon_group_rules()
+
+
+# ---------------------------------------------------------------------------
+# Issue #34: accepted_taxon_id・弱い一致の自動採用
+# ---------------------------------------------------------------------------
+
+def _occ(key, name):
+    return ("gbif_kanagawa_occurrences", key, name, "species",
+            "Animalia", "Chordata", "Aves", None, None, "2020-01-01")
+
+
+def test_accepted_taxon_id_points_to_registered_accepted_taxon(tmp_path, monkeypatch):
+    _write_accepted(tmp_path, monkeypatch, [
+        {"taxon_id": "t1", "gbif_key": "100", "match_type": "EXACT", "status": "SYNONYM",
+         "accepted_key": "200", "accepted_basis": "api"},
+    ])
+    conn, _ = _build(tmp_path, organism_records_rows=[_occ("100", "Old name"), _occ("200", "New name")])
+    assert _taxon(conn, "common:taxon:gbif.100")["accepted_taxon_id"] == "common:taxon:gbif.200"
+    assert _taxon(conn, "common:taxon:gbif.200")["accepted_taxon_id"] is None
+
+
+def test_accepted_taxon_id_stays_null_when_accepted_taxon_not_registered_or_self(tmp_path, monkeypatch):
+    _write_accepted(tmp_path, monkeypatch, [
+        {"taxon_id": "t1", "gbif_key": "100", "match_type": "EXACT", "status": "SYNONYM",
+         "accepted_key": "999", "accepted_basis": "api"},          # 受理名の taxon が無い
+        {"taxon_id": "t2", "gbif_key": "300", "match_type": "EXACT", "status": "ACCEPTED",
+         "accepted_key": "300", "accepted_basis": "self"},         # 自分自身
+    ])
+    conn, _ = _build(tmp_path, organism_records_rows=[_occ("100", "Old name"), _occ("300", "Self")])
+    assert _taxon(conn, "common:taxon:gbif.100")["accepted_taxon_id"] is None
+    assert _taxon(conn, "common:taxon:gbif.300")["accepted_taxon_id"] is None
+
+
+def test_adopted_weak_match_is_treated_as_exact_and_unadopted_stays_unresolved(tmp_path, monkeypatch):
+    _write_accepted(tmp_path, monkeypatch, [
+        {"taxon_id": "w:ok", "gbif_key": "11", "match_type": "HIGHERRANK", "weak_resolution": "adopted",
+         "weak_key": "500", "weak_rank": "SPECIES", "accepted_key": "500", "accepted_basis": "self"},
+        {"taxon_id": "w:ng", "gbif_key": "12", "match_type": "HIGHERRANK", "weak_resolution": "unresolved",
+         "weak_reason": "infraspecific_collapsed", "accepted_basis": "n/a"},
+    ])
+    taxa_rows = [
+        ("w:ok", "Foo bar", "和名1", "11", "HIGHERRANK", None, None, None, None, None),
+        ("w:ng", "Foo baz qux", "和名2", "12", "HIGHERRANK", None, None, None, None, None),
+    ]
+    conn, _ = _build(tmp_path, organism_records_rows=[_occ("1", "Dummy one")], taxa_rows=taxa_rows)
+    assert _taxon(conn, "common:taxon:gbif.500")["scientific_name"] == "Foo bar"
+    unresolved = conn.execute("SELECT taxon_id, status FROM taxon WHERE taxon_id LIKE '%ryuiki-taxa%'").fetchall()
+    assert len(unresolved) == 1 and unresolved[0]["status"] in ("unresolved", "needs_review")
+
+
+def test_missing_gbif_accepted_csv_warns_and_skips_instead_of_failing(tmp_path, monkeypatch, capsys):
+    """taxon_gbif_accepted.csv が無い環境（docker・新しい clone）でもビルドは止まらない。
+    警告を出して accepted_taxon_id・弱い一致の採用をスキップする。"""
+    monkeypatch.setattr(build_taxon_module, "GBIF_ACCEPTED_CSV", tmp_path / "nonexistent.csv")
+    conn, _ = _build(tmp_path, organism_records_rows=[_occ("100", "Old name")])
+    assert "WARN" in capsys.readouterr().out
+    assert _taxon(conn, "common:taxon:gbif.100")["accepted_taxon_id"] is None
+
+
+def test_gbif_accepted_csv_out_of_sync_with_taxa_stops(tmp_path, monkeypatch):
+    """収集物の gbif_key が今の taxa の gbif_taxon_key と違えば（c26 の回し忘れ）止まる。"""
+    _write_accepted(tmp_path, monkeypatch, [
+        {"taxon_id": "w:ok", "gbif_key": "999", "match_type": "HIGHERRANK", "weak_resolution": "unresolved",
+         "accepted_basis": "n/a"},
+    ])
+    taxa_rows = [("w:ok", "Foo bar", "和名1", "11", "HIGHERRANK", None, None, None, None, None)]
+    with pytest.raises(ValueError, match="c26"):
+        _build(tmp_path, organism_records_rows=[_occ("1", "Dummy one")], taxa_rows=taxa_rows)

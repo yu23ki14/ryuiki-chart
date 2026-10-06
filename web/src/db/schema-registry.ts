@@ -297,6 +297,8 @@ export const taxonAssessment = sqliteTable("taxon_assessment", {
 	 * この列で結合する。
 	 */
 	binom: text(),
+	/** `in_scope=0` の理由コード（`domestic_origin` / `subspecies_binomial_contraction`、重なれば `,` 連結）。Issue #34。 */
+	scopeReason: text("scope_reason"),
 },
 (table) => [
 	index("ix_taxon_assessment_list").on(table.listId),

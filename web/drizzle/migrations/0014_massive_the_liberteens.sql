@@ -1,0 +1,1 @@
+ALTER TABLE `taxon_assessment` ADD `scope_reason` text;
