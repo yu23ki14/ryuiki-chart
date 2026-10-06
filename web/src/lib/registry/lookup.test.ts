@@ -115,10 +115,9 @@ describe("caveatBody / caveatsForTables — generated-client.ts 経由でも cav
     expect(caveatBody("zone")).toContain("公式の区分ではない");
   });
 
-  it("caveatsForTables は複数テーブルで synthetic を最優先にする", () => {
-    const refs = caveatsForTables(["measurements", "observers"]);
-    expect(refs[0].key).toBe("synthetic");
-    expect(refs.map((r) => r.key)).toContain("measuredOn");
+  it("caveatsForTables は sites の table 行（zone/municipality）だけを返す（v1 の表は DROP 済み。PR-5）", () => {
+    expect(caveatsForTables(["sites"]).map((r) => r.key)).toEqual(["zone", "municipality"]);
+    expect(caveatsForTables(["measurements", "observers"])).toEqual([]);
   });
 });
 
