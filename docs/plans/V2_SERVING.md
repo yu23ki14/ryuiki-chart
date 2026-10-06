@@ -334,6 +334,8 @@ DROP は 46 表（派生33＋落とす原本11＋`instruments`/`protocols`）、
 
 ### PR-6（任意）
 
+※ `not_detected` の `value_zero` 例外の撤去と b03 `--include-synthetic` の撤去は Issue #61（2026-10-06）で実施済み。
+
 状態: Issue #61 で決定・実装（`water_*` 以外）
 
 - `vocab_*`（`vocabAreas`/`vocabEras`/`vocabIndicators`/`vocabUnits`）/ `extractionLog` を D1 から
@@ -350,7 +352,7 @@ DROP は 46 表（派生33＋落とす原本11＋`instruments`/`protocols`）、
 | 1 | D1 に L2 を入れるか | 入れない（A案）。`run_sql`（`web/src/lib/ai/tools.ts` 既存）はキューブ・レジストリ・残す原本表に限る |
 | 2 | 種の英名・レッドリストの解決 | 種の英名は `taxon.vernacular_name_en`（r01 で決定論的に）。RL は `taxon_assessment`。名前が変わる種数は PR-3b の差分表で数える |
 | 3 | 画面・AI/API の代入方式 | 画面は `lod` のみ（注記付き）。AI/API の封筒は `value_zero`/`value_lod` の両方。`half_lod` は出さない（ADR-0009 決定4） |
-| 4 | `not_detected` の `value_zero` 例外 | PR-5 の後（PR-6）で撤去する |
+| 4 | `not_detected` の `value_zero` 例外 | 撤去済み（Issue #61、2026-10-06） |
 | 5 | `above_lod`（透明度26行） | 現状維持（非メンバー＋`aboveLod` 注記） |
 | 6 | 雨量の単位不明の推測換算 | **`/10`（v1 の単位不明の推測換算）をやめ、原値に「単位不明」の注記を付ける**（推測で埋めない）。3,654行の表示値が10倍になる |
 | 7 | 合成データ | 出さない（オーナー決定、§2-3）。キューブの鍵に `source_id` を足す案は採らない |

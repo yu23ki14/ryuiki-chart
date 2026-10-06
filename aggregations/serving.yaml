@@ -63,7 +63,7 @@
 # PR-1 の知見どおり）。
 
 version: 1
-spec_version: serving-summary/v3
+spec_version: serving-summary/v4
 
 summaries:
   summary_variable_catalog:

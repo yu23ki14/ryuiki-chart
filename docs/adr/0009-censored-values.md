@@ -12,6 +12,7 @@
 ではなく `value_lod` になる（[ADR-0030](0030-d1-serving-schema.md) D5、提案中）。
 決定4の `not_detected`/`value_zero` の時限的な例外自体は直ちには撤去せず、
 `docs/plans/V2_SERVING.md` PR-6 で扱う。本文は変えない。
+→ 2026-10-06 追記（Issue #61）で撤去した（決定2・4 参照）。
 
 **2026-10-06 追記（Issue #48 PR-5）**: registry の caveat `censored`（「0 とみなして集計」）を撤去し、`censoredLod` に一本化した
 （v1 の table 行が消えて読み手がホームだけになり、同じ意味の2キーが残ると再発するため）。
@@ -195,7 +196,8 @@ value_raw        原表記（'<0.5'）を必ず残す
         積み上げの格どちらでも成り立つ**（積み上げの格は「日ごとの
         `(value_zero+value_lod)/2` の平均」＝「積み上げ後の
         `(value_zero+value_lod)/2`」——平均の線形性による）。
-      - 検閲を除外した平均（below_lod・not_detected の両方を除く）
+      - （2026-10-06 に失効。下の2026-10-06追記の式が現行）
+        検閲を除外した平均（below_lod・not_detected の両方を除く）
         = `value_zero × n / (n − n_censored − n_not_detected)`
         **（葉の格に限る。`n − n_censored − n_not_detected > 0` が必要）**。
         `value_zero` は below_lod/not_detected を 0 として計算した平均なので、

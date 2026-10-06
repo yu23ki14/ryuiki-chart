@@ -71,11 +71,11 @@ def test_zero_and_lod_series_per_censoring_branch(tmp_path):
     - `none`（2.0）: 両系列とも 2.0（代入の余地が無い）。
     - `below_lod`（<0.5）: value_zero=0.0・value_lod=0.5（censoring_limit）。
     - `not_detected`（ND）: value_zero も value_lod も NULL（どちらの系列でも代入せず
-      平均・MIN/MAX から除外する。Issue #61 で value_zero の ND=0 の例外を撤去）。
+      平均・MIN/MAX から除外する）。
       セルのメンバーとして n/n_not_detected には数える。
     - `above_lod`（>9.0）: value_num が NULL（D2）のまま、どちらの系列でも
-      代入されないので `v_zero IS NOT NULL` の絞り込みで日次セル自体ができない
-      （非メンバーのまま。ADR-0009 決定4-C）。
+      代入されないので、メンバー条件（`_MEMBER_SQL`: `v_zero IS NOT NULL` の行と
+      値を持たない ND の行）に入らず日次セル自体ができない（非メンバー。ADR-0009 決定4-C）。
     """
     rows = [
         _row("measurements", "m1", "2020-01-01", "2020-01-01", 2.0, "2.0", "none"),
@@ -318,9 +318,9 @@ def _make_staging_with_rows(conn, rows):
             id="check1_leaf_unit_mismatch",
         ),
         pytest.param(
-            (*_STAGING_DIM, None, 1.0, 1, 0, 0, 1, "bf", "sv"),
-            "value_lod IS NULL の条件が崩れている",
-            id="check1_null_mismatch_between_series",
+            (*_STAGING_DIM, None, 1.0, 1, 1, 0, 1, "bf", "sv"),
+            "NULL 性が食い違う",
+            id="null_match_between_series",
         ),
         pytest.param(
             (*_STAGING_DIM, 1.0, 2.0, 1, 0, 0, 1, "bf", "sv"),

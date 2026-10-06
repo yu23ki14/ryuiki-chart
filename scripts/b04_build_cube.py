@@ -23,8 +23,7 @@ ADR-0016・ADR-0009 決定4）。`data/db/v2.sqlite` に `observation_agg` テ�
 
 below_lod は `value_zero` で 0、`value_lod` で `censoring_limit`。
 not_detected は**どちらの系列でも**代入せず平均・MIN/MAX から除外する
-（Issue #61〔2026-10-06〕で `value_zero` の「ND を 0 とみなす」時限的な例外を
-撤去した。ADR-0009 決定2の2026-10-06追記を参照）。ND はセルのメンバーとして
+（ADR-0009 決定2・2026-10-06追記参照）。ND はセルのメンバーとして
 `n`/`n_not_detected` には数える。どちらの系列に何が入るか・`above_lod`/`unknown`
 が非メンバーである理由は本ファイルでは繰り返さず ADR-0009 決定2 を正とする。
 実装は「ND だけの格では `AVG` が NULL を返す」という一般形（`CASE WHEN censoring=
@@ -174,20 +173,17 @@ b04 側では検証しない。
    ——逆方向（`value_lod IS NULL ⇒ n_not_detected=0` にならない、程度の
    弱い言明）は、日次セルごとの ND 充足状況を追加で持たないと判定できない
    （ADR-0009 決定4・2026-09-25追記参照）。
-   Issue #61 以降は加えて、**全ての格で** `(value_zero IS NULL) = (value_lod IS NULL)`
-   （ND は両系列で除外されるので NULL 性が一致する）。
+4. **全ての格で** `(value_zero IS NULL) = (value_lod IS NULL)`
+   （ND は両系列で除外されるので NULL 性が一致する。検証1とは別の違反件数・メッセージ）。
 2. `n_censored = 0` ⇒ `value_lod IS value_zero`（ビット一致。below_lod の無い
-   セルでは代入の余地が無いので両系列は同じ値になるはず。Issue #61 前は
-   `n_not_detected = 0` も条件だったが、ND の代入差が無くなったので外れた。
+   セルでは代入の余地が無いので両系列は同じ値になるはず。
    day_stats/month_source_stats/year_source_stats がどちらも同じ `GROUP BY` の
    1パスで `AVG(v_zero)`/`AVG(v_lod)` 等を並べて計算しており、加算順序は自動的に
    揃っている。積み上げの格でも同じ列を同じ順序で `AVG` するだけなのでビット
    一致が伝播する）。
-3. **全てのセルで**、両方が非 NULL ⇒ `value_lod >= value_zero`。Issue #61 前は
-   ND を含むセルでは「0 で埋める」と「除外する」で分母・分子の構成が変わり、実測値が
-   負の変数〔河川水位・気温等〕で逆転しうるため `n_not_detected = 0` のセルに限って
-   いた。いまは ND が両系列で除外され、below_lod の 0 → `censoring_limit`（正）だけが
-   差なので、他のメンバーの符号によらず成り立つ。
+3. **全てのセルで**、両方が非 NULL ⇒ `value_lod >= value_zero`。ND は両系列で
+   除外され、両系列の差は below_lod の 0 → `censoring_limit`（正）だけなので、
+   他のメンバーの符号によらず成り立つ。
 
 ## 単位の証拠検査（Issue #48 PR-1b §3.7、D3。危険#5「単位」の機械検証）
 
@@ -291,7 +287,7 @@ _VALUE_LOD_CASE = (
 # セルのメンバー（`n` に数える観測）: v_zero が非 NULL の行に加え、ND の行
 # （v_zero も v_lod も NULL。平均・MIN/MAX には入らないが、`n`/`n_not_detected`
 # には数える。ND だけの格は value_zero/value_lod が両方 NULL になる）。
-# above_lod/unknown の値無し行は非メンバー。Issue #61。
+# above_lod/unknown の値無し行は非メンバー。
 _MEMBER_SQL = f"(v_zero IS NOT NULL OR censoring = '{censoring.CENSORING_NOT_DETECTED}')"
 _CREATE_OBS_IMPUTED_VIEW_SQL = f"""
 CREATE TEMP VIEW obs_imputed AS
@@ -345,10 +341,11 @@ _CENSORED_COUNTS_SELECT = (
 # ここで一度に計算してから（C-2 と同じ考え方: 同じ GROUP BY を何度も叩き
 # 直さない）、stat ごとに展開する。
 #
-# `WHERE v_zero IS NOT NULL` で絞る観測の集合（above_lod/unknown を除く）は
-# 旧実装の `WHERE v IS NOT NULL` と同じ——`value_zero`/`value_lod` は
-# 「どちらの系列も同じセルのメンバー」（ADR-0009 決定4 決定1）なので、
-# メンバーシップは value_zero 側の非 NULL 性だけで決める。
+# セルのメンバーは `_MEMBER_SQL`（`v_zero IS NOT NULL` の行に加え、値を持たない
+# not_detected の行。above_lod/unknown の値無し行は非メンバー）で決める。
+# `value_zero`/`value_lod` は「どちらの系列も同じセルのメンバー」
+# （ADR-0009 決定4 決定1）で、ND は `n`/`n_not_detected` には数えるが
+# AVG/MIN/MAX/SUM には入らない（両系列とも NULL）。
 
 def _day_stats_sql() -> str:
     return f"""
@@ -558,24 +555,22 @@ def _assert_dimension_key_unique(conn: sqlite3.Connection, staging: str) -> None
 _IS_LEAF_SQL = "(grain = 'day' OR grain = input_grain)"
 
 # 検証1: 葉の格では単位が揃った等式、積み上げの格では単位を混ぜない片方向の
-# 含意だけを課す（/code-review 指摘1）。Issue #61 以降は value_zero も ND を
+# 含意だけを課す（/code-review 指摘1）。value_zero も ND を
 # 除外するので、`value_zero IS NULL` と `value_lod IS NULL` は全ての格で一致する
 # （葉・積み上げどちらでも。ND だけの格で両方 NULL、それ以外は両方非 NULL）。
 _CHECK1_LEAF_VIOLATION_SQL = f"({_IS_LEAF_SQL} AND (value_lod IS NULL) != (n_not_detected = n))"
 _CHECK1_ROLLUP_VIOLATION_SQL = f"(NOT {_IS_LEAF_SQL} AND n_not_detected = 0 AND value_lod IS NULL)"
-_CHECK1_NULL_MATCH_VIOLATION_SQL = "((value_zero IS NULL) != (value_lod IS NULL))"
-_CHECK1_VIOLATION_SQL = (
-    f"({_CHECK1_LEAF_VIOLATION_SQL} OR {_CHECK1_ROLLUP_VIOLATION_SQL} OR {_CHECK1_NULL_MATCH_VIOLATION_SQL})"
-)
+_CHECK1_VIOLATION_SQL = f"({_CHECK1_LEAF_VIOLATION_SQL} OR {_CHECK1_ROLLUP_VIOLATION_SQL})"
+
+# NULL 性の検証: value_zero と value_lod の NULL 性は全ての格で一致する。
+_CHECK_NULL_MATCH_VIOLATION_SQL = "((value_zero IS NULL) != (value_lod IS NULL))"
 
 # 検証2: 下限未満（below_lod）の無いセル（葉・積み上げどちらも）は両系列がビット
-# 一致するはず。両系列が違うのは below_lod の代入値（0 か censoring_limit）だけ
-# （Issue #61 で ND の代入差は消えた）。
+# 一致するはず。両系列が違うのは below_lod の代入値（0 か censoring_limit）だけ。
 _CHECK2_VIOLATION_SQL = "(n_censored = 0 AND value_lod IS NOT value_zero)"
 
-# 検証3: 全てのセルで value_lod >= value_zero（Issue #61 で `n_not_detected=0` の
-# 限定を外した。ND は両系列で除外されるので分母・分子の構成が揃い、違いは
-# below_lod の 0 → censoring_limit（正）だけ。モジュール docstring「機械検証」節参照）。
+# 検証3: 全てのセルで value_lod >= value_zero（ND は両系列で除外されるので
+# 分母・分子の構成が揃い、違いは below_lod の 0 → censoring_limit（正）だけ。モジュール docstring「機械検証」節参照）。
 _CHECK3_VIOLATION_SQL = (
     "(value_zero IS NOT NULL AND value_lod IS NOT NULL AND value_lod < value_zero)"
 )
@@ -583,7 +578,7 @@ _CHECK3_VIOLATION_SQL = (
 
 def _assert_value_zero_lod_invariants(conn: sqlite3.Connection, staging: str) -> None:
     """`staging`（`staged_table` の作業用テーブル）に対して、`value_zero`/
-    `value_lod` の不変条件（検証1〜3）を検証する（検証のみ。レポート用の実測件数は
+    `value_lod` の不変条件（検証1〜3と NULL 性の検証）を検証する（検証のみ。レポート用の実測件数は
     `_collect_value_zero_lod_stats` が別に返す——/code-review 指摘13: 検証と
     統計収集を1つの関数に混ぜると、検証を外したときに戻り値のキーが黙って
     消える）。いずれかが崩れていれば `common.MigrationError` で例外の
@@ -594,12 +589,13 @@ def _assert_value_zero_lod_invariants(conn: sqlite3.Connection, staging: str) ->
     違反が1件も無ければこの1クエリだけで終わる——サンプル行を取るための
     2つ目のクエリは、実際に違反があった検証についてだけ実行する。
     """
-    n_bad1, n_bad2, n_bad3 = conn.execute(
+    n_bad1, n_bad2, n_bad3, n_bad_null = conn.execute(
         f"""
         SELECT
           SUM(CASE WHEN {_CHECK1_VIOLATION_SQL} THEN 1 ELSE 0 END),
           SUM(CASE WHEN {_CHECK2_VIOLATION_SQL} THEN 1 ELSE 0 END),
-          SUM(CASE WHEN {_CHECK3_VIOLATION_SQL} THEN 1 ELSE 0 END)
+          SUM(CASE WHEN {_CHECK3_VIOLATION_SQL} THEN 1 ELSE 0 END),
+          SUM(CASE WHEN {_CHECK_NULL_MATCH_VIOLATION_SQL} THEN 1 ELSE 0 END)
         FROM "{staging}"
         """
     ).fetchone()
@@ -618,8 +614,7 @@ def _assert_value_zero_lod_invariants(conn: sqlite3.Connection, staging: str) ->
             "積み上げの格（月次・年次を日次セルから作る側）は n（日次セルの個数）と "
             "n_not_detected（観測行の個数）の単位が違うため同じ式は使えず、"
             "n_not_detected=0 ならば value_lod は NULL にならない、という片方向の"
-            "条件だけを課している——それが崩れている（または value_zero/value_lod の "
-            "NULL 性が食い違っている。Issue #61 以降は ND を両系列で除外するので一致するはず）。"
+            "条件だけを課している——それが崩れている。"
         )
     if n_bad2:
         bad2 = conn.execute(
@@ -629,8 +624,7 @@ def _assert_value_zero_lod_invariants(conn: sqlite3.Connection, staging: str) ->
         raise common.MigrationError(
             "observation_agg: below_lod を含まないセル（n_censored=0）で "
             f"value_lod と value_zero がビット一致しない行がある（例: {bad2}）。"
-            "ADR-0009 決定4「below_lod の無いセルは両系列が同じ値」（Issue #61 以降は "
-            "ND も両系列で除外）が崩れている。"
+            "ADR-0009 決定4「below_lod の無いセルは両系列が同じ値」が崩れている。"
         )
     if n_bad3:
         bad3 = conn.execute(
@@ -643,6 +637,16 @@ def _assert_value_zero_lod_invariants(conn: sqlite3.Connection, staging: str) ->
             "他のメンバーの符号によらず value_lod は value_zero 以上になるはず"
             "（below_lod の限界値が0以下、または符号の取り違えの疑い。ADR-0009 決定4・"
             "2026-10-06追記参照）。"
+        )
+    if n_bad_null:
+        bad_null = conn.execute(
+            f'SELECT {dim_cols}, value_zero, value_lod, n, n_not_detected FROM "{staging}" '
+            f"WHERE {_CHECK_NULL_MATCH_VIOLATION_SQL} LIMIT 5"
+        ).fetchall()
+        raise common.MigrationError(
+            "observation_agg: value_zero と value_lod の NULL 性が食い違う行がある"
+            f"（例: {bad_null}）。ND は両系列で除外されるので、どの格でも片方だけ NULL に"
+            "なることはない（ADR-0009 決定2・2026-10-06追記参照）。"
         )
 
 
@@ -868,7 +872,7 @@ def _imputed(censoring_value, value_num, censoring_limit) -> tuple:
     if censoring_value in censoring.ZERO_IMPUTED_CENSORING:
         v_zero = 0.0
     elif censoring_value == censoring.CENSORING_NOT_DETECTED:
-        v_zero = None  # Issue #61: ND は value_zero でも除外（メンバーではあるが値は無い）
+        v_zero = None  # ND は value_zero でも除外（メンバーではあるが値は無い）
     else:
         v_zero = value_num
     if censoring_value == censoring.CENSORING_BELOW_LOD:

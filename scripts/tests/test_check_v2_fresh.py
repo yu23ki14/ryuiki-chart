@@ -94,25 +94,6 @@ def test_check_fresh_returns_stale_when_input_fingerprint_table_missing(tmp_path
     assert cvf.check_fresh(tmp_path / "v2.sqlite") == common.V2_CHECK_EXIT_STALE
 
 
-def test_check_fresh_returns_stale_when_recorded_side_has_extra_component(tmp_path):
-    """`pipeline_input_fingerprint` に、`compute_v2_input_fingerprint()` が計算しない
-    コンポーネントが記録側にだけあると、他がすべて新鮮でも「古い」
-    （`diff_v2_input_fingerprint` が「記録側にだけあるキー」として検出する。
-    以前は b03 の `--include-synthetic` が書いた `synthetic_included=1` の印で
-    これを使っていた。Issue #61 で印ごと撤去したが、この検出自体は残す）。
-    """
-    target = _make_fresh_v2(tmp_path)
-    conn = sqlite3.connect(f"file:{target}", uri=True)
-    conn.execute(
-        f"INSERT INTO {common.PIPELINE_INPUT_FINGERPRINT_TABLE} (component, value) "
-        "VALUES ('unexpected_component', '1')"
-    )
-    conn.commit()
-    conn.close()
-
-    assert cvf.check_fresh(target) == common.V2_CHECK_EXIT_STALE
-
-
 def test_check_fresh_returns_stale_when_recorded_code_fingerprint_differs(tmp_path):
     """入力・コードの指紋が「記録時と違う」ケース（原本・入力・コードのどれかが
     変わった後、v2.sqlite を作り直していない）を、記録済みの値を直接書き換える

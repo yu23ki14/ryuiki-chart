@@ -58,7 +58,9 @@ import pipeline_inputs  # noqa: E402  (v2 入力指紋が data/processed の sha
 # ADR-0009 決定4（検閲値の zero/lod 併記）で次元キーから `imputation` を
 # 外し（13列→12列）、`value` を `value_zero`/`value_lod` の2列に分けた。
 # 過去のキーとは比較できないため v2 に上げた。
-OBSERVATION_AGG_SPEC_VERSION = "phase-b-fact-slice/v2"
+# 2026-10-06: Issue #61 で `value_zero` が not_detected を平均・MIN/MAX から除外する
+# 意味に変わったため v3 に上げた。
+OBSERVATION_AGG_SPEC_VERSION = "phase-b-fact-slice/v3"
 
 # `scripts/b09_build_occurrence_place.py`（`occurrence_place`）専用。
 # キー（`record_id, place_kind`）もスキーマも変わっていないので v1 のまま据え置く。
@@ -110,7 +112,9 @@ V2_CHECK_EXIT_STALE = 10
 # 2026-10-05: Issue #48 PR-3b（D1）で binom 単位の4表（`summary_species_catalog`/
 # `summary_group_year`/`summary_effort_year`/`summary_grid_catalog`。`registry.sqlite` の
 # `taxon` を読み取り専用で結合して作る）を足したため v2→v3 に上げた。
-SUMMARY_SPEC_VERSION = "serving-summary/v3"
+# 2026-10-06: Issue #61 で入力の `value_zero` の意味（ND 除外）が変わり、
+# `avg_zero` の値が変わるため v3→v4 に上げた。
+SUMMARY_SPEC_VERSION = "serving-summary/v4"
 
 # D1 に載せる summary 表（`scripts/b13_build_summary.py` が作る）の名前。
 # `V2_CUBE_SPEC_VERSIONS` に SUMMARY_SPEC_VERSION 付きで足すのに使う——
