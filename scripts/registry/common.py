@@ -267,6 +267,10 @@ MODE_FILES_ONLY = "files_only"
 # `_hash_optional_file()` ベースの仕組み（1ファイル単位）かそちらを復元すること。
 TAXON_CROSSWALK_CSV_RELPATH = pathlib.PurePosixPath("data/processed/taxon_crosswalk.csv")
 
+# build_taxon.py が `accepted_taxon_id`・弱い一致の自動採用に使う GBIF の受理名の収集物
+# （scripts/c26_taxon_gbif_accepted.py。Issue #34 D2・D3）。taxon_crosswalk.csv と同じ扱い。
+TAXON_GBIF_ACCEPTED_CSV_RELPATH = pathlib.PurePosixPath("data/processed/taxon_gbif_accepted.csv")
+
 # build_taxon_assessment.py の moe_ias_2015 節が読む L1（環境省 生態系被害防止外来種
 # リスト。scripts/c21_moe_ias_list.py の成果物）。taxon_crosswalk.csv と同じ扱い
 # （読み取り専用の配布物だが「原本」ではないので内容ハッシュを指紋に混ぜてよい）。
@@ -401,6 +405,7 @@ def compute_input_fingerprint(
     - `data/processed/nlni_w12_watersheds.jsonl`（build_place.py の `WATERSHED_JSONL`）
       の中身。
     - `data/processed/taxon_crosswalk.csv`（build_taxon.py の `CROSSWALK_CSV`）の中身。
+    - `data/processed/taxon_gbif_accepted.csv`（build_taxon.py の `GBIF_ACCEPTED_CSV`。Issue #34）の中身。
     - `ryuiki.sqlite` の `organism_records` の軽い代理指標（行数・最大rowid、
       `_hash_organism_records_freshness()`）。grid01（build_place.py）の入力に
       なったための例外（次の段落参照）。
@@ -444,6 +449,9 @@ def compute_input_fingerprint(
         )
         _hash_optional_file(
             h, TAXON_CROSSWALK_CSV_RELPATH.as_posix(), base / TAXON_CROSSWALK_CSV_RELPATH
+        )
+        _hash_optional_file(
+            h, TAXON_GBIF_ACCEPTED_CSV_RELPATH.as_posix(), base / TAXON_GBIF_ACCEPTED_CSV_RELPATH
         )
         _hash_optional_file(
             h, MOE_IAS_LIST_CSV_RELPATH.as_posix(), base / MOE_IAS_LIST_CSV_RELPATH

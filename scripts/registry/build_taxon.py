@@ -107,13 +107,22 @@ taxon_key の記録は常に同じ分類列を持つ——実測で確認済み�
 `taxon_group` は `registry/taxon/taxon_group.yaml`（v1 の `TAXON_GROUP` CASE式を
 先勝ち順のまま移したデータ）から機械的に生成する。
 
-## `accepted_taxon_id`（方針6・シノニム解決）
+## `accepted_taxon_id`（方針6・シノニム解決。Issue #34 D2 で実装）
 
-`data/processed/taxon_crosswalk.csv` の `accepted_scientific_name` は「マッチした
-ノード自身の学名」であって「本当の受理名」ではない（`c24_taxon_crosswalk.py` が
-GBIF の `acceptedUsageKey` を取得していないため）。使える「別の taxon_id への
-受理名情報」が現状存在しないため、`accepted_taxon_id` は全行 NULL のままにする
-（詳細は `docs/plans/PHASE_A.md` §A-4）。
+`data/processed/taxon_gbif_accepted.csv`（`scripts/c26_taxon_gbif_accepted.py` が GBIF の
+`species/{key}` から取った `acceptedKey`）で、`gbif_taxon_key` が受理名ではない行（同物異名）に
+`accepted_taxon_id`（`common:taxon:gbif.<acceptedKey>`）を入れる。**受理名側の taxon が
+レジストリに実在するときだけ**入れる（新しい taxon 行は作らない）。実在しない・API 失敗・
+受理名が自分自身の行は NULL のまま（この列は「別の taxon の受理名」だけを意味する）。
+`taxon_crosswalk.csv` の `accepted_scientific_name` は一致ノード自身の学名で受理名ではない
+（c24 が acceptedUsageKey を取っていなかった）ので使わない。
+
+## 弱い一致の自動採用（Issue #34 D3）
+
+taxa の `gbif_match_type` が HIGHERRANK/FUZZY の行のうち、`taxon_gbif_accepted.csv` で
+`weak_resolution='adopted'`（学名の正規形が完全一致・種以下・候補1つ。判定は
+`scripts/taxon_gbif_adopt.py`）の行だけを EXACT と同じ扱いにする（`weak_key` を gbif_taxon_key、
+`weak_rank` を rank として使う）。それ以外は従来どおり unresolved（理由は CSV の `weak_reason`）。
 """
 import csv
 import sqlite3
@@ -124,6 +133,7 @@ from taxon_namespaces import TAXON_KEY_SOURCE_NAMESPACE, assert_known_source_ids
 from registry import common
 
 CROSSWALK_CSV = common.ROOT / common.TAXON_CROSSWALK_CSV_RELPATH
+GBIF_ACCEPTED_CSV = common.ROOT / common.TAXON_GBIF_ACCEPTED_CSV_RELPATH
 VERNACULAR_CSV = common.ROOT / "registry" / "taxon" / "vernacular_ja.csv"
 TAXON_GROUP_YAML = common.ROOT / "registry" / "taxon" / "taxon_group.yaml"
 
@@ -427,6 +437,61 @@ def _load_crosswalk_rank() -> dict[str, str]:
         for row in csv.DictReader(f):
             out[row["taxon_id"]] = row.get("rank") or None
     return out
+
+
+def _load_gbif_accepted() -> dict[str, dict]:
+    """data/processed/taxon_gbif_accepted.csv の taxon_id（taxa）-> 行。"""
+    if not GBIF_ACCEPTED_CSV.exists():
+        raise FileNotFoundError(
+            f"taxon_gbif_accepted.csv が無い: {GBIF_ACCEPTED_CSV}\n"
+            "scripts/c26_taxon_gbif_accepted.py の成果物（GBIF API 呼び出しを伴う。"
+            "CI は data/sample/processed/ のコピーを使う）。"
+        )
+    with GBIF_ACCEPTED_CSV.open(encoding="utf-8", newline="") as f:
+        return {row["taxon_id"]: row for row in csv.DictReader(f)}
+
+
+def _apply_adopted_weak_matches(taxa_rows, gbif_accepted: dict[str, dict], crosswalk_rank: dict[str, str]) -> list[dict]:
+    """`weak_resolution='adopted'` の行を EXACT 扱いに書き換えた taxa 行（dict）のリストを返す。
+    crosswalk_rank も採用したランクで更新する（その場で書き換える）。"""
+    out = []
+    n = 0
+    for r in taxa_rows:
+        row = dict(r)
+        g = gbif_accepted.get(row["taxon_id"])
+        if g is not None and g["weak_resolution"] == "adopted" and row["gbif_match_type"] != "EXACT":
+            row["gbif_taxon_key"] = g["weak_key"]
+            row["gbif_match_type"] = "EXACT"
+            crosswalk_rank[row["taxon_id"]] = g["weak_rank"] or None
+            n += 1
+        out.append(row)
+    print(f"  [taxon] 弱い一致の自動採用（正規形完全一致・種以下・候補1つ） = {n:,}")
+    return out
+
+
+def _assign_accepted_taxon_ids(rows_by_id: dict[str, dict], gbif_accepted: dict[str, dict]) -> None:
+    """同物異名の行に `accepted_taxon_id` を入れる（モジュール docstring「accepted_taxon_id」）。"""
+    accepted_by_key: dict[str, str] = {}
+    for g in gbif_accepted.values():
+        key = g["weak_key"] if g["weak_resolution"] == "adopted" else g["gbif_key"]
+        acc = g["accepted_key"]
+        if key and acc and acc != key:
+            accepted_by_key[key] = acc
+    n_set = n_missing = 0
+    for row in rows_by_id.values():
+        key = row["gbif_taxon_key"]
+        if not key or key not in accepted_by_key:
+            continue
+        target = _taxon_id_for("gbif", accepted_by_key[key])
+        if target in rows_by_id and target != row["taxon_id"]:
+            row["accepted_taxon_id"] = target
+            n_set += 1
+        else:
+            n_missing += 1
+    print(
+        f"  [taxon] accepted_taxon_id を設定 = {n_set:,}"
+        f"（受理名はあるがその taxon がレジストリに無く NULL のまま = {n_missing:,}）"
+    )
 
 
 def _group_taxa_by_gbif_key(taxa_rows) -> dict[str, list[dict]]:
@@ -877,6 +942,8 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     vern_en, vern_ja_records = _load_vernacular_candidates(ryuiki)
     taxa_rows = _load_taxa(ryuiki)
     crosswalk_rank = _load_crosswalk_rank()
+    gbif_accepted = _load_gbif_accepted()
+    taxa_rows = _apply_adopted_weak_matches(taxa_rows, gbif_accepted, crosswalk_rank)
     taxa_by_key = _group_taxa_by_gbif_key(taxa_rows)
 
     _create_classification_population(ryuiki)
@@ -1105,6 +1172,8 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
         f"  [taxon] 和名の記録由来補完(D4) = {n_ja_backfilled:,}"
         f"（rank が種以下と確認できず見送り = {n_skipped_not_species_or_below:,}）"
     )
+
+    _assign_accepted_taxon_ids(rows_by_id, gbif_accepted)
 
     n_vernacular = sum(1 for r in rows_by_id.values() if r["vernacular_name_ja"])
     print(f"  [taxon] 和名が付いた行 = {n_vernacular:,}")

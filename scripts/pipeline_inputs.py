@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """原本・入力ファイル（`data/db/ryuiki.sqlite`・`cells.sqlite`・
-`data/processed` の5ファイル）の一覧とハッシュの計算を1箇所にまとめる。
+`data/processed` の6ファイル）の一覧とハッシュの計算を1箇所にまとめる。
 
 **このモジュールを作った理由（レビュー指摘）**: `scripts/s01_build_sample.py`
 （`data/sample/manifest.json` の `source_files`）と
@@ -17,7 +17,7 @@
 `/` 区切り）に統一する——`"ryuiki.sqlite"` だけだと `data/db/` 以外の
 同名ファイルと区別できず曖昧だが、リポジトリルート相対パスなら一意に決まる。
 
-`SOURCE_FILE_KEYS`（`data/processed` の5ファイル）は
+`SOURCE_FILE_KEYS`（`data/processed` の6ファイル）は
 `data/sample/coverage.yaml` の `wholesale_processed_files` と同じ集合で
 あることを `scripts/tests/test_pipeline_inputs.py` が確認する（コード側の
 定数と YAML の宣言が黙って食い違うのを防ぐ——値を二重管理する代わりに、
@@ -29,7 +29,7 @@ import hashlib
 import pathlib
 
 # リポジトリルートからの相対パス。原本2つ（ryuiki.sqlite・cells.sqlite）＋
-# data/processed の入力5つ（v1・v2 のどちらかが読むもの。
+# data/processed の入力6つ（v1・v2 のどちらかが読むもの。
 # data/sample/coverage.yaml の wholesale_processed_files と同じ集合）。
 SOURCE_FILE_KEYS: tuple[str, ...] = (
     "data/db/ryuiki.sqlite",
@@ -39,6 +39,7 @@ SOURCE_FILE_KEYS: tuple[str, ...] = (
     "data/processed/nlni_l03b_landuse_by_watershed.csv",
     "data/processed/moe_ias_list.csv",
     "data/processed/taxon_crosswalk.csv",
+    "data/processed/taxon_gbif_accepted.csv",
 )
 
 

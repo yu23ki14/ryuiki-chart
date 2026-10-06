@@ -343,6 +343,18 @@ def test_fingerprint_full_mode_changes_when_taxon_crosswalk_csv_changes(tmp_path
     assert before != after
 
 
+def test_fingerprint_full_mode_changes_when_taxon_gbif_accepted_csv_changes(tmp_path):
+    """Issue #34: build_taxon.py が読む taxon_gbif_accepted.csv の中身が変わると指紋も変わる。"""
+    root = tmp_path / "repo"
+    _make_fingerprint_input_tree(root)
+    (root / "data" / "processed").mkdir(parents=True)
+    csv_path = root / "data" / "processed" / "taxon_gbif_accepted.csv"
+    csv_path.write_text("taxon_id,accepted_key\nabc,1\n", encoding="utf-8")
+    before = common.compute_input_fingerprint(root=root, mode=common.MODE_FULL)
+    csv_path.write_text("taxon_id,accepted_key\nabc,2\n", encoding="utf-8")
+    assert common.compute_input_fingerprint(root=root, mode=common.MODE_FULL) != before
+
+
 def test_fingerprint_full_mode_changes_when_watershed_jsonl_changes(tmp_path):
     """build_place.py の watershed 節が読む `nlni_w12_watersheds.jsonl` の中身が
     変わると指紋も変わる（Phase B `phase-b/place-attributes`。旧
