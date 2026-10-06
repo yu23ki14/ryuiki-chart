@@ -145,6 +145,48 @@ src/db/schema.ts        ── drizzle-kit generate ──> drizzle/migrations/0
 - 会話は `AssistantPanel`（`src/components/assistant/`）が `app/layout.tsx` に常駐して持つので、
   画面を遷移しても会話は消えない。
 
+## MCP の使い方
+
+流域カルテのデータを MCP（Model Context Protocol）クライアントから読めます。認証なし・読み取り専用。
+エンドポイントは `POST /api/mcp`（Streamable HTTP のステートレス・JSON 応答。セッションなし、GET/DELETE は 405）。
+
+- 本番: `https://ryuiki-demo.tokyo-odh-009.workers.dev/api/mcp`
+- ローカル: `http://localhost:8787/api/mcp`（`pnpm run preview`）
+
+### 登録
+
+```bash
+# Claude Code
+claude mcp add --transport http ryuiki https://ryuiki-demo.tokyo-odh-009.workers.dev/api/mcp
+```
+
+Claude Desktop（`claude_desktop_config.json`。リモート HTTP は `mcp-remote` 経由）:
+
+```json
+{ "mcpServers": { "ryuiki": { "command": "npx", "args": ["-y", "mcp-remote", "https://ryuiki-demo.tokyo-odh-009.workers.dev/api/mcp"] } } }
+```
+
+### ツール（5 つ）
+
+| ツール | 内容 |
+| --- | --- |
+| `describe_catalog` | 測定項目・水域・ゾーン・出典の一覧（出典は取得日・更新方式つき）。最初に呼ぶ |
+| `search_registry` | 測定項目・出典・生物種を名前で検索して ID（variableId・sourceId・学名）を引く |
+| `get_observations` | ある測定項目の時系列（水域・地点・ゾーン平均、年/年度/月/日） |
+| `get_occurrences` | 出現記録（GBIF・iNaturalist）の種一覧・年別/月別件数・流域別件数 |
+| `export_dataset` | 配布用 Parquet の目録（パスと sha256 のみ。ファイル本体は返さない） |
+
+応答はすべて封筒（rows・coverage・provenance・caveats・excluded・cite_as）。caveats と provenance は利用者に伝えてください。
+
+### 制約
+
+- 任意 SQL・全表走査のツールは無い（ツール一覧は `src/lib/mcp/tools.test.ts` のスナップショットで固定）。
+- 1 回の POST は本文 64KB まで（超えた時点で 413）、JSON-RPC バッチは 16 件まで。IP ごとに 60 リクエスト/分（超過は 429 + Retry-After。Cloudflare Rate Limiting バインディング `MCP_RATE_LIMITER`、値は `features.ts` の `MCP_RATE_LIMIT` と `wrangler.jsonc` の `ratelimits`）。
+- 各ツールの `limit` は出力行数の上限（最大 500、既定 100、超過は `truncated: true`）。問い合わせの読み取り量の上限ではない（集計済みの表を読むので行数は元々小さいが、`get_occurrences` の年別・月別などは出力時に切る）。`species_catalog` は `limit` を問い合わせに渡す。`get_observations` の `grain='day'` で `from`/`to` を省略すると直近 2 年に絞る。
+- Origin ヘッダがあるときは許可リスト（本番ホスト・localhost 系）のものだけ受ける（ブラウザからの別サイトは 403。Claude Desktop/Code は Origin を付けないので通る）。これは認証ではない。
+- id の無いリクエスト（通知）は実行しない。
+- 出し分けは `src/lib/features.ts` の `MCP_ENABLED`（false で 404）。
+
 ## 地図の差し替え（OpenStreetMap → Mapbox）
 
 地図は **MapLibre GL JS**（Mapbox GL JS のオープンソース版）で描いています。

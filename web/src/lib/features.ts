@@ -24,12 +24,23 @@ export const EXPLORE_DISABLED_MESSAGE =
   "データ探索は現在ご利用いただけません。";
 
 /**
- * MCP サーバ（`/api/mcp`、ADR-0014 の第1段 5 ツール）の出し分け。既定は閉じている。
+ * MCP サーバ（`/api/mcp`、ADR-0014 の第1段 5 ツール）の出し分け。本番公開済み（認証なし）。
  *
- * false の間は route が 404 を返す（`EXPLORE_ENABLED` と同じ流儀。環境変数ではなくこの1ファイルで切り替える。
- * 画面ごとに条件を散らさない）。開くのは本番公開の判断（Issue #40 のスコープ外）。
+ * false にすると route が 404 を返す（`EXPLORE_ENABLED` と同じ流儀。環境変数ではなくこの1ファイルで切り替える。
+ * 画面ごとに条件を散らさない）。閉じられることは `route.test.ts` で固定している。
  *
  * MCP は任意 SQL・全表走査を出さない（`EXPLORE_ENABLED` とは独立に成立する。ツール一覧は
- * `src/lib/mcp/tools.test.ts` のスナップショットで固定）。ローカルで試すときだけ true にする。
+ * `src/lib/mcp/tools.test.ts` のスナップショットで固定）。負荷上限: バッチ16件・本文64KB・各ツールの出力 limit 最大500行
+ * （出力の上限。問い合わせの読み取り量の上限ではない）・IP ごとのレート制限（下記）。
  */
-export const MCP_ENABLED = false;
+export const MCP_ENABLED = true;
+
+/**
+ * `/api/mcp` のレート制限（Cloudflare Rate Limiting バインディング `MCP_RATE_LIMITER`）。
+ * `wrangler.jsonc` の `ratelimits[].simple`（limit / period）と同じ値にする（バインディング側が実際の制限を持つ。
+ * period は 10 か 60 秒のみ）。キーはクライアント IP（`cf-connecting-ip`）。
+ */
+export const MCP_RATE_LIMIT = { limit: 60, periodSeconds: 60 } as const;
+
+/** `/api/mcp` が受ける Origin のホスト名（Origin ヘッダがあるときだけ検査。無ければ通す＝CLI/デスクトップのクライアント）。 */
+export const MCP_ALLOWED_ORIGIN_HOSTS = ["ryuiki-demo.tokyo-odh-009.workers.dev", "localhost", "127.0.0.1", "[::1]"] as const;

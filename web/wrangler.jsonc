@@ -20,5 +20,14 @@
       "database_id": "634bbe1b-72aa-48a0-9021-c15167f68a0b",
       "migrations_dir": "drizzle/migrations"
     }
+  ],
+
+  // /api/mcp のレート制限（値は src/lib/features.ts の MCP_RATE_LIMIT と揃える）。
+  "ratelimits": [
+    {
+      "name": "MCP_RATE_LIMITER",
+      "namespace_id": "1001",
+      "simple": { "limit": 60, "period": 60 }
+    }
   ]
 }

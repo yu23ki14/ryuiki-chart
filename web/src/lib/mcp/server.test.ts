@@ -115,7 +115,7 @@ describe("5 ツールの応答は封筒（excluded=0・合成なし・cite_as・
   });
 
   it("get_observations: 封筒に fetched_at・update_mode・age_days・cite_as・注記が載り、excluded=0", async () => {
-    const r = await call("get_observations", { variableId: FX.variables.ss, scope: { type: "site", siteId: FX.sites.a }, grain: "day" });
+    const r = await call("get_observations", { variableId: FX.variables.ss, scope: { type: "site", siteId: FX.sites.a }, grain: "day", from: "2000-01-01" });
     expect(r.isError).toBe(false);
     const env = r.structuredContent as { provenance: Record<string, unknown>[]; rows: unknown[]; caveats: { key: string; severity: unknown }[]; cite_as: string };
     expectPublicInvariants(env);
@@ -137,7 +137,7 @@ describe("5 ツールの応答は封筒（excluded=0・合成なし・cite_as・
   });
 
   it("get_observations: limit で行を切り、truncated を立てる", async () => {
-    const r = await call("get_observations", { variableId: FX.variables.ss, scope: { type: "site", siteId: FX.sites.a }, grain: "day", limit: 1 });
+    const r = await call("get_observations", { variableId: FX.variables.ss, scope: { type: "site", siteId: FX.sites.a }, grain: "day", from: "2000-01-01", limit: 1 });
     const env = r.structuredContent as { rows: unknown[]; truncated: boolean };
     expect(env.rows).toHaveLength(1);
     expect(env.truncated).toBe(true);

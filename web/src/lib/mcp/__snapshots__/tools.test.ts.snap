@@ -76,7 +76,7 @@ exports[`MCP ツール一覧（第1段 5 本） > 入力スキーマのスナッ
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "properties": {
         "from": {
-          "description": "grain='day' の開始日 YYYY-MM-DD",
+          "description": "grain='day' の開始日 YYYY-MM-DD（grain='day' で from/to とも省略すると直近 2 年）",
           "type": "string",
         },
         "grain": {
