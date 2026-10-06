@@ -8,7 +8,7 @@ import { ChartFrame, MiniTable } from "@/components/viz/ChartFrame";
 import { MapCanvas } from "@/components/map/MapCanvas";
 import { SERIES, ZONE_COLORS, ZONE_LABELS, ZONE_ELEV } from "@/components/viz/palette";
 import { Btn, Stat, nf, Provenance, Spinner } from "@/components/ui";
-import { caveatBody } from "@/lib/registry/lookup-client";
+import { caveatBody, variableNote } from "@/lib/registry/lookup-client";
 import { VARIABLE_LABEL } from "@/lib/registry/generated-client";
 import { basisOfCell, type Basis } from "@/lib/cube/cell-basis";
 import { MUNICIPALITY_LABEL } from "@/lib/municipality";
@@ -263,7 +263,7 @@ export function SiteDetail({ site, variables }: { site: Site; variables: Variabl
         <div className="xl:col-span-2 space-y-4">
           <ChartFrame
             title={`${variableLabel(variableId)} の推移`}
-            subtitle={VARIABLE_LABEL[variableId]?.note ?? "この地点で記録されている値の推移"}
+            subtitle={variableNote(variableId) ?? "この地点で記録されている値の推移"}
             right={
               <div className="flex gap-0.5">
                 {basis === "day" && (

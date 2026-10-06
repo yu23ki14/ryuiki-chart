@@ -83,17 +83,13 @@ export function speciesLabel(binom: string, label?: string | null): string {
 }
 
 /* ------------------------------------------------------------------ */
-/* caveatsForTables（web/src/lib/ai/caveats.ts の中身。ここに置いて、
-   caveats.ts は薄いラッパにする） */
+/* 注記の解決（`web/src/lib/cube/caveats.ts` の `caveatsForFacets` が使う共通規則） */
 /* ------------------------------------------------------------------ */
 
 export interface CaveatRef {
   key: string;
   text: string;
 }
-
-const TABLE_SCOPES = GENERATED_CAVEAT_SCOPE.filter((s) => s.scopeKind === "table");
-const TABLE_PREFIX_SCOPES = GENERATED_CAVEAT_SCOPE.filter((s) => s.scopeKind === "table_prefix");
 
 /** スコープ行1つと、それが一致した参照（テーブル名・facet 参照）の初出順。 */
 export interface ScopeMatch {
@@ -104,7 +100,7 @@ export interface ScopeMatch {
 /**
  * `matches`（スコープ行＋その参照の初出順）から、決定論的な注記の並びを作る
  * （`caveatsForTables` と `web/src/lib/cube/caveats.ts` の `caveatsForFacets` が
- * 共有する一般規則。以前は同じソート＋重複排除がここと `caveatsForFacets` の
+ * 使う一般規則。以前は同じソート＋重複排除がここと `caveatsForFacets` の
  * 2箇所に複製されていた）:
  *   1. `(priority 降順, order 昇順, sortOrder 昇順)` で並べる。`priority` は
  *      `synthetic`（合成データ由来）のように「他のどの参照より先に出す」注記を
@@ -130,42 +126,23 @@ export function resolveCaveatRefs(matches: readonly ScopeMatch[]): CaveatRef[] {
 }
 
 /**
- * ツールが触れたテーブル名から、該当する注記を決定論的に引く。
- *
- * **単一の一般規則**（現行の web/src/lib/ai/caveats.ts と同一の結果を返す。
- * scripts/registry/build_caveat.py の docstring に書かれている手順をそのまま実装したもの）:
- *   1. 渡されたテーブルを順に見て、各テーブルについて table / table_prefix のスコープに
- *      一致する行をすべて集める（「このスコープ行がどのテーブル引数にマッチしたか」の
- *      インデックスを記録しておく）。
- *   2. `resolveCaveatRefs` で並べ替え・重複排除する。
- *
- * `scope_kind === 'table_synthetic'` のような特殊分岐は無い。「synthetic を最優先で
- * 先頭に置く」という以前の挙動は、synthetic のスコープ行だけが priority=1 を持つことから
- * 自然に再現される（レビュー指摘: 以前の特殊分岐は「最初に一致した1テーブルだけ処理して
- * break する」バグを実際に生んだ）。
+ * 変数単位（scope_kind='variable'、scope_ref=variable_id）の注記の本文（画面の変数説明の下に出す。
+ * 例: 流量の感潮域の逆流 flowTidalBackflow）。`theme=` 等の選択式は対象外。
+ * 画面ごとの個別対応を書かず、変数の説明に注記をまとめて添えるための口。
  */
-export function caveatsForTables(tables: readonly string[]): CaveatRef[] {
-  const tableOrder = new Map<string, number>();
-  tables.forEach((t, i) => {
-    if (!tableOrder.has(t)) tableOrder.set(t, i);
-  });
-
-  const matches: ScopeMatch[] = [];
-  for (const t of tables) {
-    const order = tableOrder.get(t)!;
-    for (const s of TABLE_SCOPES) {
-      if (s.scopeRef === t) matches.push({ scope: s, order });
-    }
-    for (const s of TABLE_PREFIX_SCOPES) {
-      if (t.startsWith(s.scopeRef)) matches.push({ scope: s, order });
-    }
-  }
-
-  return resolveCaveatRefs(matches);
+export function variableCaveatBodies(variableId: string): string[] {
+  return GENERATED_CAVEAT_SCOPE.filter((s) => s.scopeKind === "variable" && s.scopeRef === variableId)
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((s) => tryCaveatBody(s.caveatKey) ?? s.caveatKey);
 }
 
-export function caveatKeysForTables(tables: readonly string[]): string[] {
-  return caveatsForTables(tables).map((c) => c.key);
+/**
+ * 画面の変数説明（`VARIABLE_LABEL[id].note`）に、その変数に掛かる注記（`variableCaveatBodies`）を
+ * 添えた文。どちらも無ければ undefined（呼び出し側が既定の文を出す）。
+ */
+export function variableNote(variableId: string): string | undefined {
+  const parts = [VARIABLE_LABEL[variableId]?.note, ...variableCaveatBodies(variableId)].filter((x): x is string => !!x);
+  return parts.length > 0 ? parts.join(" ") : undefined;
 }
 
 // ---------------------------------------------------------------------------

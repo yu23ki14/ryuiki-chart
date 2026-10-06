@@ -73,49 +73,34 @@ describe.skipIf(!hasRegistryDb)("build:registry:ts は再生成しても差分�
  * 生成物の形の健全性（regenerate できない環境でも実行できる、軽い形チェック）。
  */
 describe("generated.ts / generated-client.ts の形", () => {
-  it("caveat は cells.notes 由来（207件）を含まない17件のまま", () => {
-    // P-1b（土地利用）で Phase A 以降初めて新規の注記（landuseDefinitionChange）を
-    // 1件足した（14→15）。さらに ADR-0009 決定4-C（above_lod、/code-review 指摘3）で
-    // aboveLod を1件足した（15→16）。Issue #48 PR-2 で censoredLod・unitUnknown の
-    // 2件を足した（16→18）。PR-5 で `censored` を撤去（18→17）。registry/caveat.yaml 冒頭コメント参照。
-    expect(GENERATED_CAVEATS).toHaveLength(17);
+  it("caveat は cells.notes 由来（207件）を含まない18件", () => {
+    // Phase A の14件に landuseDefinitionChange・aboveLod・censoredLod・unitUnknown を足し（18件）、
+    // `censored` を撤去して17件（PR-5）、Issue #35 で flowTidalBackflow を足して18件。
+    expect(GENERATED_CAVEATS).toHaveLength(18);
     expect(GENERATED_CAVEATS.some((c) => c.key === "censored")).toBe(false);
     expect(GENERATED_CAVEATS.every((c) => !c.key.startsWith("cells."))).toBe(true);
   });
 
-  it("caveat_scope は既知の scope_kind のみ（優先度は scope_kind ではなく priority 列が持つ）", () => {
-    // 'cell'/'cell_table'（cells.notes 由来）は含めない規約（build-registry-ts.mjs の
-    // WHERE 句、scripts/registry/build_caveat.py の docstring）。'table'/'table_prefix' は
-    // v1（caveatsForTables）、'dataset'/'place_kind'/'source_id'/'variable_theme'/'variable'
-    // は v2 facet（`lib/cube/caveats.ts` の `caveatsForFacets`、Issue #48 PR-1b）。
-    // 'variable' は PR-1 では型だけの予約枠だったが、PR-2 で unitUnknown の行ができた
-    // （scope_ref=variable_id）。
-    const KNOWN_KINDS = new Set([
-      "table",
-      "table_prefix",
-      "dataset",
-      "place_kind",
-      "source_id",
-      "variable_theme",
-      "variable",
-    ]);
+  it("severity は全注記に付く（Issue #35 のレビュー後。null は無い）", () => {
+    expect(GENERATED_CAVEATS.every((c) => ["blocking", "warning", "info"].includes(c.severity ?? ""))).toBe(true);
+    expect(GENERATED_CAVEATS.filter((c) => c.severity === "blocking").map((c) => c.key).sort()).toEqual(
+      ["aboveLod", "censoredLod", "effort", "gbifCutoff", "isAlien", "landuseDefinitionChange", "regimes", "synthetic", "unitUnknown"].sort(),
+    );
+  });
+
+  it("caveat_scope は ADR-0013 の語彙だけ（優先度は scope_kind ではなく priority 列が持つ）", () => {
+    // cells.notes 由来（source_edition の doc_id=／observation_set の doc_table=）は生成物に含めない
+    // （build-registry-ts.mjs の WHERE 句）。語彙は registry/caveat_scope.yaml の vocabulary。
+    const ADR_KINDS = new Set(["variable", "place", "source_edition", "observation_set", "dataset", "taxon"]);
     expect(GENERATED_CAVEAT_SCOPE.length).toBeGreaterThan(0);
-    expect(GENERATED_CAVEAT_SCOPE.every((s) => KNOWN_KINDS.has(s.scopeKind))).toBe(true);
-    // v1 の表名の行は撤去済み（PR-5）。残る 'table' 行は sites だけで、'table_prefix' は無い。
-    expect(GENERATED_CAVEAT_SCOPE.filter((s) => s.scopeKind === "table").every((s) => s.scopeRef === "sites")).toBe(true);
-    expect(GENERATED_CAVEAT_SCOPE.some((s) => s.scopeKind === "table" && s.scopeRef === "sites")).toBe(true);
-    expect(GENERATED_CAVEAT_SCOPE.some((s) => s.scopeKind === "table_prefix")).toBe(false);
-    expect(
-      GENERATED_CAVEAT_SCOPE.some(
-        (s) =>
-          s.scopeKind === "dataset" ||
-          s.scopeKind === "place_kind" ||
-          s.scopeKind === "source_id" ||
-          s.scopeKind === "variable_theme",
-      ),
-    ).toBe(true);
-    expect(GENERATED_CAVEAT_SCOPE.some((s) => s.scopeKind === "variable")).toBe(true);
-    expect(GENERATED_CAVEAT_SCOPE.some((s) => s.priority > 0)).toBe(true);
+    expect(GENERATED_CAVEAT_SCOPE.every((s) => ADR_KINDS.has(s.scopeKind))).toBe(true);
+    expect(GENERATED_CAVEAT_SCOPE.every((s) => !s.scopeRef.startsWith("doc_id=") && !s.scopeRef.startsWith("doc_table="))).toBe(true);
+    for (const kind of ["variable", "place", "source_edition", "observation_set", "dataset"]) {
+      expect(GENERATED_CAVEAT_SCOPE.some((s) => s.scopeKind === kind)).toBe(true);
+    }
+    expect(GENERATED_CAVEAT_SCOPE.filter((s) => s.priority > 0).map((s) => `${s.scopeKind}:${s.scopeRef}`)).toEqual([
+      "observation_set:is_synthetic=1",
+    ]);
   });
 
   it("和名台帳（NAME_JA、generated-client.ts）は63件（旧 NAME_JA 54件＋PR-3b D4 の上書き9件）", () => {

@@ -65,6 +65,7 @@ const CAVEAT_KEY_ORDER = {
   aboveLod: true,
   censoredLod: true,
   unitUnknown: true,
+  flowTidalBackflow: true,
 } satisfies Record<CaveatKey, true>;
 const CAVEAT_KEYS = Object.keys(CAVEAT_KEY_ORDER) as CaveatKey[];
 

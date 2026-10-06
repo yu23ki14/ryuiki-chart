@@ -1,158 +1,59 @@
-"""caveat を作る（docs/plans/PHASE_A.md §A-5）。
+"""caveat を作る（docs/plans/PHASE_A.md §A-5、Issue #35 で宣言ファイル化）。
 
-domain.ts の DATA_CAVEATS（7件）・BIOTA_CAVEATS（6件）・MUNICIPALITY_LABEL の説明、
-caveats.ts のテーブル→注記マッピング、cells.notes（207行）を caveat に移す。
-文言は変えない（変えると web/src/lib/ai/caveats.test.ts の回帰テストが意味を失う）。
-新しい注記は書き足さない。
-**例外（2026-09-24、ADR-0009 決定4）**: `censored` の本文だけは変えた
-——検閲値の zero/lod 併記でキューブに単一の `value` 列が無くなり、旧本文
-「value 列には 0 が入っている」が偽になったため。`registry/caveat.yaml` の
-`censored` エントリ直前のコメント参照。`caveats.test.ts` 側も対応する3ケースを
-新しい本文に更新済み。
+入力は3つ。
+  - `registry/caveat.yaml`: 注記そのもの（key・severity・kind・本文・引用・`review`）。
+  - `registry/caveat_scope.yaml`: どの注記がどの範囲に掛かるか（scope の宣言）。**このファイルは
+    それを読んで検査し、`caveat_scope` に書くだけ**（以前は Python 定数だった。Issue #35）。
+  - `cells.sqlite` の `notes`（207行）: 行政文書の注記。`build()` だけが足す。
 
-**例外2（Issue #48 PR-2、`docs/plans/V2_SERVING_PR2.md` §6）**: `censoredLod`・
-`unitUnknown` の2件を新規に足した（`registry/caveat.yaml` の各エントリ直前の
-コメント参照）。
+文言は変えない方針（Phase A）だったが、Issue #35 のレビュー（`review` 参照）で数値の誤りを直した。
+経緯の古い記述（`censored` の撤去・v1 表の撤去など）は `docs/plans/V2_SERVING_PR5.md` §4.3 を参照。
 
-**Issue #48 PR-5**: v1 の派生表・原本表が D1 から DROP されたので、それらの表名の
-'table'/'table_prefix' 行は作らない（残る 'table' 行は `sites` だけ）。v1 の zero 系列を
-名指ししていた `censored` キーは撤去し `censoredLod` に一本化した
-（`docs/plans/V2_SERVING_PR5.md` §4.3・D-1）。以下の「スキーマの逸脱」「scope_kind」節の
-`censored`・`MEASURE_TABLES` などの記述は、当時の経緯として残してある。
+## スキーマ（計画の7テーブル→8テーブル）
 
-## スキーマの逸脱（計画の7テーブル→8テーブル）
+`caveat`（注記そのもの: `caveat_id` PK・`severity`・`kind`・`title_ja`・`body_ja`・`quote`）と
+`caveat_scope(id, caveat_id, scope_kind, scope_ref, sort_order, priority)`（1注記 : N スコープ）に
+分けた（1つの注記が複数の範囲に掛かるため）。
 
-PHASE_A.md §A-1 の計画では `caveat(caveat_id PK, scope_kind, scope_ref, severity, kind,
-title_ja, body_ja, quote)` という単一テーブルだった。しかし実装時に、**1つの注記が
-複数のテーブルに掛かる**ことが判明した（例: `censored` は `measurements` / `meas_year` /
-`meas_month` など9テーブルに掛かる。`caveats.ts` の `MEASURE_CAVEATS` を見れば分かる）。
-`caveat_id` を主キーにしたまま `scope_kind`/`scope_ref` を同じ行に持たせると、
-1つの注記につき1行しか持てず 1:N を表現できない。
+## `caveat_scope.scope_kind` と `scope_ref`（ADR-0013「scope の語彙」）
 
-そのため:
-- `caveat` は注記そのもの（`caveat_id` PK, `severity`, `kind`, `title_ja`, `body_ja`,
-  `quote`）だけにした。
-- スコープは新テーブル `caveat_scope(id, caveat_id, scope_kind, scope_ref, sort_order)`
-  に出した（1注記 : N スコープ）。
+`scope_kind` は ADR-0013 の6種（`variable`/`place`/`source_edition`/`observation_set`/`dataset`/`taxon`）。
+`scope_ref` は ID そのもの、または `キー=値`（`&` 連結）の選択式。選択式のキーは
+`registry/caveat_scope.yaml` の `selectors` が kind ごとに許すものだけ。実行時の照合は文字列の完全一致。
 
-`web/src/db/schema-registry.ts` / `scripts/schema_registry.sql` /
-`web/drizzle/migrations/` を合わせて直してある（`pnpm run db:generate` が
-"No schema changes" になることと、まっさらな状態からの `pnpm run db:migrate` が
-通ることを確認済み）。
+旧語彙との対応: `table:sites`→`dataset:sites`、`place_kind:X`→`place:place_kind=X`、
+`source_id:X`→`source_edition:source_id=X`、`variable_theme:X`→`variable:theme=X`、
+`dataset:synthetic`→`observation_set:is_synthetic=1`、`cell:<doc>`→`source_edition:doc_id=<doc>`、
+`cell_table:<doc>#<t>`→`observation_set:doc_table=<doc>#<t>`。`table_prefix` は廃止。
 
-## `caveat_scope.scope_kind` が取りうる値（**一致方法だけ**を表す）
+**優先度は `scope_kind` ではなく `priority` 列（既定0）が持つ。** synthetic の scope だけが1。
+`sort_order` は「同じ `(scope_kind, scope_ref)` の中での宣言順」。読み出し側は
+`(priority 降順, 参照の初出順 昇順, sort_order 昇順)` で並べ、caveat の key で先勝ち重複排除する
+（`web/src/lib/registry/lookup-client.ts` の `resolveCaveatRefs`）。
 
-- `'table'`      — scope_ref はテーブル名の完全一致（例: `'sites'`, `'measurements'`,
-                   `SYNTHETIC_TABLES`）。`caveats.ts` の `SITES_CAVEATS` / `MEASURE_TABLES` /
-                   `ORGANISM_TABLES` / `MESH_TABLES_EXTRA`（`species_mesh_year`）/
-                   `IAS_CAVEATS`（`ias_species`）/ `SYNTHETIC_CAVEATS`（`SYNTHETIC_TABLES`）
-                   すべてがこの1種類に対応する。
-- `'table_prefix'` — scope_ref はテーブル名の前方一致パターン（今のところ `'mesh_'` のみ）。
-                   `caveats.ts` の `t.startsWith("mesh_")` を表す。
-- `'cell'`       — `cells.sqlite` の `notes` 由来。scope_ref は `notes.doc_id`
-                   （原本の文書ID。全207行に必ず入っている）。
-- `'cell_table'` — 同じく `notes` 由来で、`notes.table_ids`（JSON配列、59/207行で非空）が
-                   指す個別の表を表す。scope_ref は `"<doc_id>#<table_ids の要素>"`
-                   （`table_ids` の値は文書内で使われる略記で、文書をまたいで一意とは限らない
-                   ため doc_id を前置して衝突を避けている）。
-  **`'cell'` / `'cell_table'` は `caveatsForTables()` の対象外。** テーブル向けの
-  `'table'` / `'table_prefix'` 側には絶対に混ぜない
-  （混ぜると `caveats.test.ts` のスナップショットが壊れる）。
+## ビルド時の検査（失敗すれば `CaveatDeclarationError`）
 
-### v2 facet（Issue #48 PR-1b、docs/plans/V2_SERVING_PR1.md §6.1）
-
-上記4種（v1、テーブル名で引く）に加えて、v2（`lib/cube`）がキューブのセルから
-直接引けるスコープを4種新設した。**v1 の `'table'`/`'table_prefix'` 行は1行も
-変えず、同じ caveat_id に対して新しい scope_kind の行を追加するだけ**（`_build_table_scope_rows()`
-の各 `add_table_group(...)` 呼び出しの直後に対応する `add_facet_group(...)` を置き、
-v1 行の「隣に」生成する）。`caveatsForTables()`（`lookup-client.ts`）は
-`scope_kind IN ('table','table_prefix')` でしかフィルタしないので、この追加は
-既存の注記の結果（`caveats.test.ts` の34ケース）を1文字も変えない。
-
-- `'dataset'`        — scope_ref は `variable_alias.dataset` 相当の論理データセット名
-                       (`'measurements'` / `'organism_records'`)。ただし `'synthetic'`
-                       だけは例外で、実在の dataset 値ではなく「系列の `source_id` が
-                       NULL（`is_synthetic=1`）」という規約を表す記号（D4）。
-- `'place_kind'`     — scope_ref は `place.place_kind` の値そのもの（`'site'` / `'zone'` /
-                       `'grid01'`）。
-- `'source_id'`      — scope_ref は出典 ID。`isAlien` は `taxon_assessment.source_id`
-                       の値 `'moe_ias_list'`（`taxon_assessment.list_id`
-                       の `'moe_ias_2015'` とは別物。実データで確認済み）。
-- `'variable_theme'` — scope_ref は `variable.theme` の値（`'landuse'`）。
-- `'variable'`       — scope_ref は `variable.variable_id`。**Issue #48 PR-2 で
-                       最初の消費者が現れた**（PR-1 では型だけ予約し行を作らなかった）。
-                       `unitUnknown` だけがこの kind を使う（`censoredLod` は
-                       `'dataset'` kind の `measurements` に乗る——下記参照）。
-                       refs（対象 variable_id）は `registry/variable_alias.csv` の
-                       `unit_id` が空の行から `_unit_unknown_variable_refs()` が
-                       機械的に導出する（ハードコードしない）。
-
-**優先度は `scope_kind` ではなく `priority` 列（既定0）が持つ。** 以前は `synthetic`
-専用に `scope_kind='table_synthetic'` という一致方法を作り、「渡されたテーブルの中に
-1つでもあれば他のどのテーブルより先頭に置く」という優先規則をそこに乗せていた。
-しかしこれは「一致方法」ではなく「優先順位」の話であり、`scope_kind` に混ぜたことで
-`caveatsForTables()` 側に `if (scope_kind === 'table_synthetic')` という特殊分岐が必要になり、
-**実際にバグを生んだ**（複数の synthetic テーブルが別々の注記キーを持つとき、最初の1件で
-`break` して2件目以降を落とす欠陥。直前のコミットで修正済み）。`priority` を明示の列として
-切り出し、`synthetic` の scope 行だけ `priority=SYNTHETIC_PRIORITY`（1、他は既定0）にすることで、
-「優先度が高い」という事実がデータ側に乗り、読み出し側は特殊分岐無しの一般規則で済むようにした。
-
-## `caveatsForTables()` の順序を `caveat_scope` から復元する方法
-
-`sort_order` は「同じ `(scope_kind, scope_ref)` の中での並び」だけを表す
-（例: `('table', 'sites', ...)` は `zone` が0、`municipality` が1）。
-スコープ同士（＝渡されたテーブルの間）の並びは、現行の `caveatsForTables()` と同じく
-**呼び出し側が渡すテーブル名の順序**に従う。読み出し側は**単一の一般規則**でよい:
-
-1. 渡されたテーブルを順に見て、各テーブルについて
-   `scope_kind='table' AND scope_ref=<テーブル名>` または
-   `scope_kind='table_prefix' AND <テーブル名> LIKE scope_ref || '%'` に一致する行を集める。
-2. 全ての一致行を `(priority 降順, その行がマッチしたテーブルの呼び出し側での出現順序 昇順,
-   sort_order 昇順)` で並べる。
-3. `caveat_id` で重複排除（先勝ち）。
-
-`priority` が同点（既定0同士）のときはテーブルの出現順序がそのまま並びを決めるので、
-以前の「synthetic だけ先頭・残りは渡された順」という挙動は `priority` の値だけで
-再現される。特殊分岐は要らない。
+- `caveat.yaml`: key の一意・全注記に完全な `review`（reviewed_on/reviewer/reason/changed）。
+- `caveat_scope.yaml`: kind が vocabulary 内・`caveats` の key が `caveat.yaml` に存在・
+  (kind, ref, caveat) の重複なし・選択式のキーが `selectors` の許可内・
+  ID 参照（variable）が `variable.yaml` に存在・`theme=` が実在の theme・
+  `ref_from` が既知の導出器・`caveat.yaml` の全注記がどこかの scope に載っている
+  （意図して付けないものは `unscoped` に宣言する。休眠の synthetic は scopes に載せる）。
 
 ## cells.notes（207行）の取り込み
 
-`cells.sqlite` の `notes` テーブルの列: `note_id`（177/207行で非NULL・非NULLの範囲では
-一意）, `doc_id`（全行に存在）, `table_ids`（JSON配列文字列。59行が非空、それ以外は `"[]"`）,
-`kind`（`definition_change` 58 / `footnote` 52 / `comparability` 44 / `survey_scope` 23 /
-NULL 30）, `text`（原文引用。NULL の行もある）, `page`, `blocks_timeseries`（0/1 のフラグ。
-132行が1）, `reason`（このプロジェクトが付けた「なぜ比較を阻害するか」の説明）。
+`notes` の列: `note_id`（177/207行で非NULL）, `doc_id`（全行）, `table_ids`（JSON配列。59行が非空）,
+`kind`（`definition_change`/`footnote`/`comparability`/`survey_scope`/NULL）, `text`（原文引用）,
+`blocks_timeseries`（0/1）, `reason`（このプロジェクトが付けた説明）。
 
-- `caveat_id`: `common:caveat:cells.<note_id>`。ただし `note_id` が NULL の30行は
-  一意な主キーが無いため、`"rowid<rowid>"`（sqlite の rowid）を代わりに使う
-  （`rowid` は207行すべてで一意）。`common.caveat_id_cells_note()` に渡すキー文字列を
-  このどちらかにしている。
-- `severity`: `blocks_timeseries` をそのまま一般化する（ADR-0013 の決定どおり）。
-  `1 -> 'blocking'`（この注記を無視した時系列比較は誤り）、`0 -> 'info'`
-  （時系列比較は阻害しないが記録すべき注記）。
-- `kind`: `notes.kind` をそのまま使う（`definition_change` は ADR-0013 の enum と
-  文字列が一致する。`footnote` / `comparability` / `survey_scope` は enum に無い値だが、
-  推測で無理に丸めず原本の値をそのまま残した。NULL はそのまま NULL）。
-- `title_ja`: 無し（NULL）。
-- `body_ja`: `notes.reason`（プロジェクトが書いた説明文。要約ではなく、この行が
-  存在する理由そのもの）。
-- `quote`: `notes.text`（原本からの抜粋。ADR-0013 の「原文は引用のみ、要約しない」を
-  ここで満たす。NULL の行はそのまま NULL）。
-- スコープ: `caveat_scope` に `scope_kind='cell'`, `scope_ref=doc_id` を1行、
-  `table_ids` が非空ならその要素ごとに `scope_kind='cell_table'`,
-  `scope_ref=f"{doc_id}#{table_id}"` を追加行として入れる。
-
-cells.notes は `caveatsForTables()` の対象外なので、ここで作る `caveat_scope` 行は
-`'cell'` / `'cell_table'` にしか出さない。
-
-## registry/caveat.yaml との関係
-
-`registry/caveat.yaml` に14件（`key`, `severity`, `kind`, `title_ja`, `body_ja`,
-`quote`）を手書きで置いてある。`caveat_id` はここで `common.caveat_id(key)`
-（`common:caveat:<key>`）から導出する（yaml 側は key だけ持つ）。
-`caveat_scope`（テーブル→注記のマッピング）は yaml に出さず、下のモジュール定数として
-このファイルに直接書いた。`caveats.ts` の集合演算（`Set` とテーブル名前方一致）の
-複製であり、データというよりロジックの複製にあたるため。
+- `caveat_id`: `common:caveat:cells.<note_id>`。`note_id` が NULL の30行は `"rowid<rowid>"`。
+- `severity`: `blocks_timeseries` 1→`'blocking'`、0→`'info'`（原本の人の区分で、機械分類ではない）。
+- `kind`: `notes.kind` をそのまま（enum 外の3値は ADR-0013 に追記して正式化。丸めない）。
+- `body_ja`: `notes.reason`、`quote`: `notes.text`（原文は要約しない）。
+- scope: `source_edition` の `doc_id=<doc_id>` を1行、`table_ids` の要素ごとに
+  `observation_set` の `doc_table=<doc_id>#<table_id>`。
+  cells.notes は配信側の `GENERATED_CAVEAT_SCOPE`（`build-registry-ts.mjs`）には含めない
+  （`caveat_id` が `cells.` で始まるものを除外する）。
 """
 import csv
 import json
@@ -162,64 +63,27 @@ import sqlite3
 import yaml
 
 from . import common
-from .build_unit_variable import VARIABLE_ALIAS_CSV
+from .build_unit_variable import VARIABLE_ALIAS_CSV, VARIABLE_YAML
 
 CAVEAT_YAML = common.ROOT / "registry" / "caveat.yaml"
+CAVEAT_SCOPE_YAML = common.ROOT / "registry" / "caveat_scope.yaml"
 
-# --- 注記キーのリスト（順序が sort_order になる） ---
-#
-# Issue #48 PR-5: v1 の派生表・原本表が D1 から DROP されたので、それらの名前を持つ
-# 'table'/'table_prefix' 行（MEASURE_TABLES・ORGANISM_TABLES・mesh_*・ias_species・
-# landuse_*・SYNTHETIC_TABLES）は作らなくなった。残る 'table' 行は `sites` だけ
-# （`ai/tools.ts` が `caveatKeysForTables(["sites", "source_registry"])` で引く）。
-# v2 は facet（'dataset'/'place_kind'/'source_id'/'variable_theme'/'variable'）で引く。
-
-SITES_CAVEATS = ["zone", "municipality"]
-
-# `censored`（zero 系列を名指しする旧キー）は撤去し、画面の値（lod 系列）に合う `censoredLod`
-# に一本化した（docs/plans/V2_SERVING_PR5.md §4.3・D-1）。
-MEASURE_CAVEATS = ["measuredOn", "censoredLod", "duplicates"]
-
-ORGANISM_CAVEATS = ["organismSite", "effort", "regimes", "gbifCutoff", "share"]
-
-MESH_CAVEATS = ["share", "effort"]
-
-IAS_CAVEATS = ["isAlien"]
-
-# P-1b（土地利用、docs/plans/PHASE_B_LANDUSE.md）。Phase A 以降で初めて足した
-# 新規の注記（registry/caveat.yaml 冒頭コメント参照）。scope は variable_theme='landuse'。
-LANDUSE_CAVEATS = ["landuseDefinitionChange"]
-
-# ADR-0009 決定4-C（2026-09-24、/code-review 指摘3）。Phase A 以降で
-# `landuseDefinitionChange` に続いて3件目に足した新規の注記
-# （registry/caveat.yaml 冒頭コメント・aboveLod エントリ直前のコメント参照）。
-# `water.transparency`（透明度）の above_lod（定量上限超え、26行）は
-# value_zero/value_lod のどちらにも入らない（列を作らない代わりに注記で
-# 伝える、という設計上の取引）。scope は `censoredLod` と同じ dataset='measurements'。
-# MEASURE_CAVEATS には足さず、専用リストにしてある。
-ABOVE_LOD_CAVEATS = ["aboveLod"]
-
-SYNTHETIC_CAVEATS = ["synthetic"]
-
-# 「渡されたテーブルの中に synthetic 対象が1つでもあれば、他のどのテーブルより先頭に
-# 置く」という優先規則を表す priority 値（既定は 0）。scope_kind ではなくここで表す
-# （このファイル冒頭のモジュール docstring 参照）。
-SYNTHETIC_PRIORITY = 1
 DEFAULT_PRIORITY = 0
 
-# Issue #48 PR-2（docs/plans/V2_SERVING_PR2.md §6）。`unitUnknown` は v1 に対応物が無い
-# 新規注記で、v2 facet だけ（scope_kind='variable'、PR-1 で型だけ予約していた kind の
-# 最初の消費者）に付ける。
-UNIT_UNKNOWN_CAVEATS = ["unitUnknown"]
+REVIEW_FIELDS = ("reviewed_on", "reviewer", "reason", "changed")
+REVIEW_CHANGED_VALUES = {"severity", "kind", "scope", "body", "new"}
+
+
+class CaveatDeclarationError(ValueError):
+    """`registry/caveat.yaml`・`registry/caveat_scope.yaml` の宣言が検査に通らない。"""
 
 
 def _unit_unknown_variable_refs() -> list[str]:
-    """`unitUnknown` の refs（対象 variable_id）を `registry/variable_alias.csv` から
-    機械的に導出する（ハードコードしない）。`unit_id` 列が空の行を集め、`variable_id`
-    を出現順（CSV の行順）で重複排除する。原本 DB は開かない（`--files-only` 安全）。
+    """`unitUnknown` の対象 variable_id を `registry/variable_alias.csv` から機械的に導出する
+    （ハードコードしない）。`unit_id` 列が空の行の `variable_id` を、CSV の行順で重複排除する。
+    原本 DB は開かない（`--files-only` 安全）。
 
-    実測（2026-09-26）: 10行（流量関連1・sensor 9〔RAIN 含む〕）が variable_id 8件
-    （流量1・水温1・光化学オキシダント1・降水量1・風向×2・天気概況×2）に畳まれる。
+    実測（2026-09-26）: 10行が variable_id 8件に畳まれる。
     """
     refs: list[str] = []
     seen: set[str] = set()
@@ -235,11 +99,33 @@ def _unit_unknown_variable_refs() -> list[str]:
     return refs
 
 
+# `ref_from` の名前 → 導出器（variable_id のリストを返す）。宣言は yaml、導出はここ。
+REF_DERIVERS = {"unit_unknown_variables": _unit_unknown_variable_refs}
+
+
+def _validate_review(key: str, review) -> None:
+    if not isinstance(review, dict):
+        raise CaveatDeclarationError(f"caveat {key!r}: review が無い（Issue #35: 全注記に人のレビュー記録が要る）")
+    missing = [f for f in REVIEW_FIELDS if f not in review or review[f] in (None, "")]
+    # changed は false（変更なし）が正当な値なので、None/空だけを欠落とみなす
+    missing = [f for f in missing if not (f == "changed" and review.get(f) is False)]
+    if missing:
+        raise CaveatDeclarationError(f"caveat {key!r}: review に {missing} が無い")
+    changed = review["changed"]
+    if changed is not False:
+        if not isinstance(changed, list) or not changed or not set(changed) <= REVIEW_CHANGED_VALUES:
+            raise CaveatDeclarationError(
+                f"caveat {key!r}: review.changed は false か {sorted(REVIEW_CHANGED_VALUES)} のリスト（実際: {changed!r}）"
+            )
+
+
 def _load_caveat_yaml() -> list[dict]:
     with CAVEAT_YAML.open(encoding="utf-8") as f:
         doc = yaml.safe_load(f)
     entries = doc["caveats"]
     common.assert_unique([e["key"] for e in entries], "registry/caveat.yaml の key")  # Issue #37 #4
+    for e in entries:
+        _validate_review(e["key"], e.get("review"))
     return entries
 
 
@@ -259,54 +145,81 @@ def _build_caveat_rows(entries: list[dict]) -> list[tuple]:
     return rows
 
 
-def _build_table_scope_rows() -> list[tuple]:
-    """caveat_scope の行を作る。'table' 行は `sites`（zone/municipality）だけ。v1 の派生表・
-    原本表は D1 から DROP 済み（Issue #48 PR-5）なので、その表名の行（'table'/
-    'table_prefix'）は作らない。v2（`lib/cube`）が引く facet（'dataset'/'place_kind'/
-    'source_id'/'variable_theme'/'variable'）の行は変えない。
-    """
+def _load_variable_ids_and_themes() -> tuple[set[str], set[str]]:
+    with VARIABLE_YAML.open(encoding="utf-8") as f:
+        variables = yaml.safe_load(f)["variables"]
+    return {v["variable_id"] for v in variables}, {v["theme"] for v in variables if v.get("theme")}
+
+
+def _validate_ref(kind: str, ref: str, selectors: dict, variable_ids: set[str], themes: set[str]) -> None:
+    rule = selectors.get(kind)
+    if rule is None:
+        raise CaveatDeclarationError(f"scope kind {kind!r} の selectors が caveat_scope.yaml に無い")
+    if "=" not in ref:
+        if not rule["id_ok"]:
+            raise CaveatDeclarationError(f"scope {kind}:{ref!r}: この kind は ID 参照を許さない（キー=値の選択式のみ）")
+        if kind == "variable" and ref not in variable_ids:
+            raise CaveatDeclarationError(f"scope variable:{ref!r}: registry/variable.yaml に無い variable_id")
+        return
+    for part in ref.split("&"):
+        k, sep, v = part.partition("=")
+        if not sep or not v or k not in rule["keys"]:
+            raise CaveatDeclarationError(
+                f"scope {kind}:{ref!r}: 選択式のキー {k!r} は許可外（許可: {rule['keys']}）"
+            )
+        if kind == "variable" and k == "theme" and v not in themes:
+            raise CaveatDeclarationError(f"scope variable:{ref!r}: variable.yaml に無い theme {v!r}")
+
+
+def _load_scope_declaration(caveat_keys: set[str]) -> list[tuple]:
+    """`registry/caveat_scope.yaml` を読んで検査し、caveat_scope の行
+    （caveat_id, scope_kind, scope_ref, sort_order, priority）を作る。"""
+    with CAVEAT_SCOPE_YAML.open(encoding="utf-8") as f:
+        doc = yaml.safe_load(f)
+    vocabulary = doc["vocabulary"]
+    selectors = doc["selectors"]
+    variable_ids, themes = _load_variable_ids_and_themes()
+
     rows: list[tuple] = []
+    next_order: dict[tuple[str, str], int] = {}
+    seen: set[tuple[str, str, str]] = set()
+    covered: set[str] = set()
 
-    def add_table_group(
-        tables: list[str], keys: list[str], priority: int = DEFAULT_PRIORITY, start: int = 0
-    ) -> None:
-        for t in tables:
-            for i, key in enumerate(keys, start=start):
-                rows.append((common.caveat_id(key), "table", t, i, priority))
-
-    def add_facet_group(
-        scope_kind: str, refs: list[str], keys: list[str], priority: int = DEFAULT_PRIORITY, start: int = 0
-    ) -> None:
+    for entry in doc["scopes"]:
+        kind = entry["kind"]
+        if kind not in vocabulary:
+            raise CaveatDeclarationError(f"scope kind {kind!r} は ADR-0013 の語彙 {vocabulary} に無い")
+        if "ref_from" in entry:
+            deriver = REF_DERIVERS.get(entry["ref_from"])
+            if deriver is None:
+                raise CaveatDeclarationError(f"ref_from {entry['ref_from']!r} は既知の導出器でない（{sorted(REF_DERIVERS)}）")
+            refs = [entry["ref_template"].format(variable_id=v) for v in deriver()]
+        else:
+            refs = [entry["ref"]]
+        for key in entry["caveats"]:
+            if key not in caveat_keys:
+                raise CaveatDeclarationError(f"scope {kind}:{refs}: caveats の {key!r} が registry/caveat.yaml に無い")
         for ref in refs:
-            for i, key in enumerate(keys, start=start):
-                rows.append((common.caveat_id(key), scope_kind, ref, i, priority))
+            _validate_ref(kind, ref, selectors, variable_ids, themes)
+            for key in entry["caveats"]:
+                if (kind, ref, key) in seen:
+                    raise CaveatDeclarationError(f"scope ({kind}, {ref!r}, {key!r}) が重複している")
+                seen.add((kind, ref, key))
+                order = next_order.get((kind, ref), 0)
+                next_order[(kind, ref)] = order + 1
+                rows.append((common.caveat_id(key), kind, ref, order, entry.get("priority", DEFAULT_PRIORITY)))
+        covered.update(entry["caveats"])
 
-    add_table_group(["sites"], SITES_CAVEATS)
-    # zone（SITES_CAVEATS[0]）は地点単位（place_kind='site'）にも流域集計
-    # （place_kind='zone'）にも掛かる。municipality（SITES_CAVEATS[1]）は地点固有の
-    # 属性（sites.municipality）なので place_kind='site' だけ。place_kind='site' での
-    # sort_order は 'sites' テーブルと同じ番号（zone=0, municipality=1）を保つよう
-    # municipality 側に `start=1` を明示する（2回の add_facet_group 呼び出しに分かれて
-    # いるため、どちらも既定の 0 から採番すると place_kind='site' 上で衝突する）。
-    add_facet_group("place_kind", ["site", "zone"], ["zone"])
-    add_facet_group("place_kind", ["site"], ["municipality"], start=1)
-
-    add_facet_group("dataset", ["measurements"], MEASURE_CAVEATS)
-    # aboveLod は MEASURE_CAVEATS の続きの番号で同じ dataset に掛ける。
-    add_facet_group("dataset", ["measurements"], ABOVE_LOD_CAVEATS, start=len(MEASURE_CAVEATS))
-    # unitUnknown: scope_kind='variable' の最初の消費者。
-    # refs は registry/variable_alias.csv から機械導出する（ハードコードしない）。
-    add_facet_group("variable", _unit_unknown_variable_refs(), UNIT_UNKNOWN_CAVEATS)
-
-    add_facet_group("dataset", ["organism_records"], ORGANISM_CAVEATS)
-    # place_kind='grid01' は mesh_* 系（旧 mesh_ 接頭辞・species_mesh_year）をまとめて表す。
-    add_facet_group("place_kind", ["grid01"], MESH_CAVEATS)
-    add_facet_group("source_id", ["moe_ias_list"], IAS_CAVEATS)
-    add_facet_group("variable_theme", ["landuse"], LANDUSE_CAVEATS)
-    # 規約（D4）: 系列の source_id が NULL（is_synthetic=1）であることを
-    # dataset='synthetic' という記号で表す。実在の dataset 値ではない。
-    add_facet_group("dataset", ["synthetic"], SYNTHETIC_CAVEATS, priority=SYNTHETIC_PRIORITY)
-
+    unscoped = set(doc.get("unscoped") or [])
+    unknown = sorted(unscoped - caveat_keys)
+    if unknown:
+        raise CaveatDeclarationError(f"unscoped の {unknown} が registry/caveat.yaml に無い")
+    both = sorted(unscoped & covered)
+    if both:
+        raise CaveatDeclarationError(f"{both} は unscoped と scopes の両方に載っている")
+    orphans = sorted(caveat_keys - covered - unscoped)
+    if orphans:
+        raise CaveatDeclarationError(f"どの scope にも載っていない注記: {orphans}（scopes か unscoped に足す）")
     return rows
 
 
@@ -340,11 +253,11 @@ def _build_cells_notes(cells_conn: sqlite3.Connection) -> tuple[list[tuple], lis
         )
 
         doc_id = row["doc_id"]
-        scope_rows.append((cid, "cell", doc_id, 0, DEFAULT_PRIORITY))
+        scope_rows.append((cid, "source_edition", f"doc_id={doc_id}", 0, DEFAULT_PRIORITY))
 
         table_ids = json.loads(row["table_ids"] or "[]")
         for i, table_id in enumerate(table_ids):
-            scope_rows.append((cid, "cell_table", f"{doc_id}#{table_id}", i + 1, DEFAULT_PRIORITY))
+            scope_rows.append((cid, "observation_set", f"doc_table={doc_id}#{table_id}", i + 1, DEFAULT_PRIORITY))
 
     return caveat_rows, scope_rows
 
@@ -365,14 +278,14 @@ def _insert_caveat_and_scope(
 
 
 def build_from_files(conn: sqlite3.Connection) -> dict[str, int]:
-    """`registry/caveat.yaml` とこのファイルのモジュール定数（テーブル→注記の
+    """`registry/caveat.yaml` と `registry/caveat_scope.yaml`（注記→範囲の
     マッピング）だけから caveat / caveat_scope を作る。原本 DB には一切触れない
     （docs/plans/PHASE_B_INTAKE.md #7。`scripts/r01_build_registry.py --files-only` が
     使う。`place`/`taxon`/`cells.notes` 由来の caveat（`build()` が足す分）は含まない）。
     """
     entries = _load_caveat_yaml()
     caveat_rows = _build_caveat_rows(entries)
-    scope_rows = _build_table_scope_rows()
+    scope_rows = _load_scope_declaration({e["key"] for e in entries})
     return _insert_caveat_and_scope(conn, caveat_rows, scope_rows)
 
 

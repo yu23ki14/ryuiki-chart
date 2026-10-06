@@ -37,7 +37,7 @@ import {
   type CellSpec,
   type Scope,
 } from "@/lib/cube";
-import { facetsForSeries, facetsForOccurrence, caveatKeysForFacets } from "@/lib/cube/caveats";
+import { facetsForSeries, facetsForOccurrence, caveatKeysForFacets, variableTheme } from "@/lib/cube/caveats";
 import { MEASUREMENTS_DATASET } from "@/lib/cube/series";
 
 /** 測定値系データセット固定（PR-2 のスコープは測定値系。design §1.1 と同じ前提）。registry の dataset キー。 */
@@ -676,8 +676,9 @@ const get_overview = tool({
     const caveats = [
       ...new Set([
         ...caveatKeysForTables(["sites", "source_registry"]),
-        ...caveatKeysForFacets(facetsForOccurrence({ places: ["grid01", "watershed"] })),
-        ...caveatKeysForFacets([{ kind: "variable_theme", ref: "landuse" }]),
+        // 生物の件数は流域のロールアップだけ（割合は出さない）なので watershed のみ。share は付かない。
+        ...caveatKeysForFacets(facetsForOccurrence({ places: ["watershed"] })),
+        ...caveatKeysForFacets([variableTheme("landuse")]),
       ]),
     ];
     return makeResult({

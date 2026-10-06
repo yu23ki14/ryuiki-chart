@@ -27,14 +27,10 @@
 # 一次資料（docs/plans/PHASE_B_ALIAS_STAT_SOURCES.md §3.3、MK_manu.pdf 項目ID 090700）で
 # 単位 m3/s・意味「流量」を確定し、status=ok に直した（測定は4,668行、すべて
 # env_kousui_sample_kanagawa 由来）。
-# description_ja は出典の書誌ではなく「読み手が誤読しないために必要な1点」を書く方針にした
-# （web/src/components/timeseries/TimeseriesExplorer.tsx の該当 <p> は全角約42文字で折り返す
-# UI 制約があり、既存の最長も34文字だった）。感潮域では潮汐による逆流で流量が負の値になる
-# （180行/4,668行・14地点/83地点。一次資料と実データの突き合わせは
-# PHASE_B_ALIAS_STAT_SOURCES.md §3.3）ことを読み手が知らずに負値を見ると誤読するため、
-# これは必ず含めた。出典の書誌（利用説明書名・発行元・年月・項目ID）は
-# variable_alias.csv の note 列と PHASE_B_ALIAS_STAT_SOURCES.md §3.3 に既にあるため、
-# description_ja には入れていない。
+# description_ja は出典の書誌ではなく読み手向けの短い説明にする。感潮域の逆流で流量が負の値になる
+# （180行/4,668行・14地点/83地点。一次資料との突き合わせは PHASE_B_ALIAS_STAT_SOURCES.md §3.3）
+# 注意は、Issue #35 で registry/caveat.yaml の flowTidalBackflow（scope: variable）に独立させ、
+# ここからは外した。出典の書誌は variable_alias.csv の note 列と同 §3.3 にある。
 #
 # theme は water(水質) / hydro(水文) / land(地盤沈下観測) / air(大気) / weather(気象)。
 # value_type は num（既定）/ category（風向・天気概況などの文字列値）。
@@ -522,7 +518,7 @@ variables:
     value_type: num
     default_stat: null
     higher_is_worse: null
-    description_ja: "河川の流量。感潮域では潮汐による逆流で負の値になる"
+    description_ja: "河川の流量"
     status: ok
   - variable_id: common:variable:hydro.groundwater_level
     code: hydro.groundwater_level

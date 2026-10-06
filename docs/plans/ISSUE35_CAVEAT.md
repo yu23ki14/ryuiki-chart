@@ -181,3 +181,14 @@ D1 スキーマ（`schema-registry.ts`）: 列は変わらない（`scope_kind`/
    名称一致は定義一致の証明ではないので、**今は theme 全体のまま**にする（推測で狭めない）。狭めるなら一次資料の確認が要る。
 4. **organismSite に流域外 10.2% を追記するか**: 本文の事実は正しいので今回は変えない案（変えるなら本文変更が1件増える）。
 5. #33-5 の残り（#33 の 3・4・6）はこの担当の範囲外。
+
+## 8. 実装後の決定（2026-10-06、メインの承認）
+
+- §7-1: hydro.flow は unitUnknown の対象を機械導出（`variable_alias.csv` の `unit_id` 空行）のままにし、
+  #31 が流量の alias に m3/s を入れれば自動で外れる（本 PR は `variable_alias.csv` に触れない）。
+  本文は元のまま（事実どおり）。
+- §7-2: synthetic の本文を縮めた。§7-3: landuse は theme 全体のまま、理由を `caveat_scope.yaml` と review に1文。
+- §7-4: organismSite に流域外・未解決 10.2%（83,515/816,856件）を追記した。
+- 実装で足したもの: `unscoped`（意図して範囲に付けない `fishClass`/`inatBackfill` の宣言）、
+  画面の変数説明に変数スコープの注記を添える `variableNote()`（TimeseriesExplorer・SiteDetail）。
+- `facetsForTables` は配信表 `sites` だけを dataset として引く（`measurements` 等の論理名は D1 の表ではない）。

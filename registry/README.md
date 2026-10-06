@@ -20,7 +20,8 @@ Phase A（`docs/plans/PHASE_A.md`, ADR-0016）の成果物。v1 のファクト�
   明示の local を持たせる列（後述「空の局番コード」参照）。他の142行は空欄 |
 | `taxon/vernacular_ja.csv` | 人手確認済みの和名63件（`domain.ts` の `NAME_JA` の複製54件＋Issue #48 PR-3b D4 で足した上書き9件。出典列は `issue48-pr3b:D4`） |
 | `taxon/taxon_group.yaml` | 生物群の日本語ラベル（`taxon_group`）の先勝ちルール表。`web/scripts/build-biota.mjs` の `TAXON_GROUP` CASE式をデータ化したもの（Phase B `phase-b/occurrence-registry`、後述「taxon の分類補完」） |
-| `caveat.yaml` | 注記18件（`domain.ts` の `DATA_CAVEATS`/`BIOTA_CAVEATS` 等の移設14件＋Phase B以降の新規4件: `landuseDefinitionChange`・`aboveLod`・`censoredLod`・`unitUnknown`） |
+| `caveat.yaml` | 注記18件（移設14件＋新規4件〔`landuseDefinitionChange`・`aboveLod`・`censoredLod`・`unitUnknown`〕、Issue #35 で `flowTidalBackflow` を足し `censored` 撤去。全件に `review`） |
+| `caveat_scope.yaml` | 注記がどの範囲に掛かるかの宣言（Issue #35。上の語彙の節） |
 
 **生成物はここには置かない。** `data/db/registry.sqlite`（gitignore 済み）が唯一の生成物で、
 `scripts/r01_build_registry.py` が上記の手書きファイルと、読み取り専用の原本
@@ -162,34 +163,31 @@ assert する（`scripts/r01_build_registry.py` の `_assert_id_uniqueness`）�
 PRIMARY KEY 制約により挿入時点でも保証されるが、4モジュールが同じ DB に同居する統合作業の
 受け入れ基準として明示的に確認している。
 
-### `caveat_scope.scope_kind` の語彙（Issue #48 PR-1b で v2 facet を追加）
+### `caveat_scope.scope_kind` の語彙（Issue #35 で ADR-0013 の6種に寄せた）
 
-`caveat_scope` は「どのスコープに注記が掛かるか」を `(scope_kind, scope_ref)` の組で持つ
-（1注記:Nスコープ。詳細は `scripts/registry/build_caveat.py` のモジュール docstring）。
-`scope_kind` は「一致方法」だけを表し、優先度は別の `priority` 列が持つ。
+`caveat_scope` は「どの範囲に注記が掛かるか」を `(scope_kind, scope_ref)` の組で持つ
+（1注記:Nスコープ）。**宣言の正は `registry/caveat_scope.yaml`**（以前は `build_caveat.py` の
+Python 定数）。`build_caveat.py` はそれを読んで検査し書くだけ。優先度は `priority` 列が持つ。
 
-| scope_kind | scope_ref の意味 | 消費者 |
+| scope_kind | scope_ref | 例 |
 |---|---|---|
-| `table` | v1 のテーブル名の完全一致 | `web/src/lib/registry/lookup-client.ts` の `caveatsForTables()`（v1、既存の画面・AI ツール） |
-| `table_prefix` | v1 のテーブル名の前方一致パターン（`mesh_` のみ） | 同上 |
-| `cell` | `cells.sqlite` の `notes.doc_id` | 対象外（`caveatsForTables()` は見ない） |
-| `cell_table` | `notes.doc_id` + `notes.table_ids` の要素 | 対象外（同上） |
-| `dataset` | 論理データセット名（`measurements` / `organism_records`。`synthetic` は「系列の `source_id` が NULL」という規約上の記号で実在の dataset 値ではない） | `web/src/lib/cube/caveats.ts` の `caveatsForFacets()`（v2、Issue #48 PR-1b） |
-| `place_kind` | `place.place_kind` の値（`site` / `zone` / `grid01`） | 同上 |
-| `source_id` | 出典 ID（`isAlien` は `taxon_assessment.source_id='moe_ias_list'`） | 同上 |
-| `variable_theme` | `variable.theme` の値（`landuse`） | 同上 |
-| `variable` | `variable.variable_id`。PR-1 では型だけ予約し行を作らなかったが、Issue #48 PR-2 で `unitUnknown` が最初の消費者になった（refs は `registry/variable_alias.csv` の `unit_id` が空の行から機械導出。`scripts/registry/build_caveat.py` の `_unit_unknown_variable_refs()`） | 同上 |
+| `dataset` | 論理データセット名・配信表名 | `measurements` / `organism_records` / `sites` |
+| `place` | `place_kind=<種別>` | `place_kind=site` / `zone` / `grid01` |
+| `variable` | `variable_id`、または `theme=<theme>` | `common:variable:hydro.flow`（逆流）、`theme=landuse` |
+| `source_edition` | `source_id=<出典ID>`、`doc_id=<文書ID>`（cells.notes） | `source_id=moe_ias_list` |
+| `observation_set` | `キー=値`（`&` 連結） | `is_synthetic=1`、`variable=<id>&unit_id=null`（unitUnknown）、`doc_table=<doc>#<table>`（cells.notes） |
+| `taxon` | `taxon_id`（まだ使っていない） | — |
 
-`table`/`table_prefix` の行は v1 のもの（撤去は PR-5）で、`dataset`/`place_kind`/
-`source_id`/`variable_theme`/`variable` の行はそれと**並存**する同じ意味の v2 facet
-（`scripts/registry/build_caveat.py` の `add_facet_group()` が、対応する `add_table_group()`
-呼び出しの直後に足すだけで、v1 側は1行も変えない）。`web/scripts/build-registry-ts.mjs` の
-`CAVEAT_SCOPE_KINDS` 定数がこの語彙の唯一の生成元（`CaveatScopeKind` 型も同じ配列から作る）。
+scope_ref の照合は文字列の完全一致で、選択式は解釈しない（`web/src/lib/cube/caveats.ts` の
+ヘルパが宣言と同じ文字列を作る）。選択式のキーは `caveat_scope.yaml` の `selectors` が kind ごとに許す
+ものだけで、ビルド時に検査する。**v1 の `table`/`table_prefix`/`place_kind`/`source_id`/
+`variable_theme`/`cell`/`cell_table` は廃止**（旧→新の対応は `scripts/registry/build_caveat.py` の
+docstring と `docs/adr/0013-caveats.md` の追記）。意図して範囲に付けない注記は `unscoped` に宣言する
+（`fishClass`/`inatBackfill`: 画面が直接引く）。語彙は `web/scripts/build-registry-ts.mjs` が
+`caveat_scope.yaml` の `vocabulary` から読み、`CaveatScopeKind` 型も同じ配列から作る。
 
-**例外（Issue #48 PR-2）**: `censoredLod`/`unitUnknown` はどちらも v1 に対応物が無い
-新規注記なので、v2 facet だけを持ち v1 `table` 行は作らない。`censoredLod` は
-`dataset='measurements'` に乗る（`censored` の v1 `table` 行はそのまま変えていない
-——v1 経路がいま読んでいるのは zero 系列だけなので。`docs/plans/V2_SERVING_PR2.md` §6）。
+全注記に人のレビュー記録（`registry/caveat.yaml` の `review`）が要る。判定基準は
+`docs/adr/0013-caveats.md`「severity/kind の判定基準」。
 
 ### `place.region_id` と `place_relation`（Phase B `phase-b/region-scope`。理由・経緯は ADR-0022 参照）
 

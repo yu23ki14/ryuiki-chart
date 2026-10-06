@@ -1,10 +1,12 @@
 /**
- * v2（`lib/cube`）向けの注記引き（Issue #48 PR-1b、docs/plans/V2_SERVING_PR1.md §3.6・§6）。
+ * 注記引き（Issue #48 PR-1b、docs/plans/V2_SERVING_PR1.md §3.6・§6。Issue #35 で語彙を ADR-0013 に寄せた）。
  *
- * v1 の `web/src/lib/ai/caveats.ts`（`caveatsForTables`、テーブル名で引く）と対になる、
- * facet（`dataset`/`variable_theme`/`place_kind`/`source_id`）で引く版。中身は
- * `scripts/registry/build_caveat.py` が `caveat_scope` に足した v2 facet 行
- * （v1 の `table`/`table_prefix` 行の「隣」に追加しただけで、v1 側は1行も変えていない）。
+ * facet（`FacetRef` = scope_kind と scope_ref の組。kind は ADR-0013 の6種）で `caveat_scope` を引く。
+ * 中身は `registry/caveat_scope.yaml`（宣言）を `scripts/registry/build_caveat.py` が書いた行。
+ * scope_ref は ID か `キー=値` の選択式で、照合は完全一致（選択式は解釈しない）。このファイルの
+ * ヘルパ（`placeKind`・`unitUnknownOf` 等）が、宣言と同じ文字列を作る。
+ * v1 の「テーブル名で引く」経路（`caveatsForTables`）は廃止した。配信表名は `facetsForTables`
+ * （dataset として引く）に置き換えた。
  *
  * クライアント安全（`generated-client.ts` だけに依存。`server-only` は付けない）。
  * `./series`/`./sql` からは **型だけ**を import する（`import type` は完全に消える
@@ -44,18 +46,36 @@ import type { Scope } from "./sql";
 
 export type { CaveatRef };
 
-/** `caveat_scope.scope_kind`（v2 facet 行の種類。互換のための `table` も含む）。
- *  `variable`（PR-2 で追加。§6・D3）は `variable_id` 単位の注記（`unitUnknown` 等）用。 */
-export type FacetKind = "dataset" | "variable_theme" | "place_kind" | "source_id" | "table" | "variable";
+/** `caveat_scope.scope_kind`（ADR-0013 の6種。`registry/caveat_scope.yaml` の vocabulary と同じ）。 */
+export type FacetKind = "variable" | "place" | "source_edition" | "observation_set" | "dataset" | "taxon";
 
-/**
- * 1つの facet 参照。`kind="table"` は v1 のテーブル名（`caveatsForTables` と同じ一致方法。
- * `table_prefix` も見る）——v2 専用の呼び出しでは使わなくてよい。
- */
+/** 1つの facet 参照（scope_kind と、宣言と完全一致する scope_ref）。 */
 export interface FacetRef {
   readonly kind: FacetKind;
   readonly ref: string;
 }
+
+/** `place_kind=<種別>`（`site`/`zone`/`grid01` 等）。 */
+export const placeKind = (kind: string): FacetRef => ({ kind: "place", ref: `place_kind=${kind}` });
+/** `theme=<variable.theme>`。 */
+export const variableTheme = (theme: string): FacetRef => ({ kind: "variable", ref: `theme=${theme}` });
+/** 出典の版の集合。`source_id=<出典ID>`。 */
+export const sourceEditionOf = (sourceId: string): FacetRef => ({ kind: "source_edition", ref: `source_id=${sourceId}` });
+/** 「その変数かつ単位が付かない系列」の集合（unitUnknown の scope）。 */
+export const unitUnknownOf = (variableId: string): FacetRef => ({
+  kind: "observation_set",
+  ref: `variable=${variableId}&unit_id=null`,
+});
+/**
+ * D1 の配信表のうち、表そのものを dataset として注記を持つもの（`registry/caveat_scope.yaml` の
+ * `dataset: sites`）。`measurements` 等の dataset 名は論理名であり D1 の表ではないので、
+ * 同名の表名を渡されても引かない（v1 の表は DROP 済み。PR-5）。
+ */
+const DATASET_TABLES: ReadonlySet<string> = new Set(["sites"]);
+
+/** 配信表名（`sites`）を dataset として引く。それ以外の表名は何にも一致しない。 */
+export const facetsForTables = (tables: readonly string[]): FacetRef[] =>
+  tables.filter((t) => DATASET_TABLES.has(t)).map((t) => ({ kind: "dataset", ref: t }));
 
 const SCOPES_BY_KIND = new Map<string, GeneratedCaveatScope[]>();
 for (const s of GENERATED_CAVEAT_SCOPE) {
@@ -63,8 +83,6 @@ for (const s of GENERATED_CAVEAT_SCOPE) {
   if (list) list.push(s);
   else SCOPES_BY_KIND.set(s.scopeKind, [s]);
 }
-const TABLE_PREFIX_SCOPES = SCOPES_BY_KIND.get("table_prefix") ?? [];
-
 function facetKey(f: FacetRef): string {
   return `${f.kind}\u0000${f.ref}`;
 }
@@ -91,11 +109,6 @@ export function caveatsForFacets(facets: readonly FacetRef[]): CaveatRef[] {
     for (const s of SCOPES_BY_KIND.get(f.kind) ?? []) {
       if (s.scopeRef === f.ref) matches.push({ scope: s, order: idx });
     }
-    if (f.kind === "table") {
-      for (const s of TABLE_PREFIX_SCOPES) {
-        if (f.ref.startsWith(s.scopeRef)) matches.push({ scope: s, order: idx });
-      }
-    }
   }
 
   return resolveCaveatRefs(matches);
@@ -116,19 +129,18 @@ export type SeriesFacetInput = SeriesInfo & {
 
 /**
  * 系列とスコープから facet 参照の並びを組み立てる（§3.6、PR-2 で D2 の synthetic push を
- * 撤去・`variable` facet を追加）。系列を順に見て、各系列について
- * `dataset`→`variable_theme`→`source_id`（複数）→`variable`（`variableId`。**`unitId`
- * が null の系列だけ**）の順に積む。最後に scope から決まる `place_kind` を1つ積む
- * （`'zone'` スコープだけ `place_kind='zone'`、それ以外（site/water/places/all_sites）は
- * `place_kind='site'`——`scripts/registry/build_caveat.py` の facet 対応表どおり）。
+ * 撤去・`variable` facet を追加。Issue #35 で語彙を ADR-0013 に寄せた）。系列を順に見て、
+ * 各系列について dataset → variable（`theme=`）→ source_edition（`source_id=`、複数）→
+ * variable（`variableId`）→ observation_set（`variable=<id>&unit_id=null`。**`unitId` が null の
+ * 系列だけ**）の順に積む。最後に scope から決まる place（`place_kind=`）を1つ積む
+ * （`'zone'` スコープだけ `zone`、それ以外（site/water/places/all_sites）は `site`——
+ * `registry/caveat_scope.yaml` の宣言どおり）。
  *
- * **`variable` facet は `unitId===null` の系列だけに push する**（統合後の追加決定。
- * `unitUnknown` の対象 variable_id——`hydro.flow`/`water.water_temp`/
- * `air.photochemical_oxidant`/`weather.precipitation` 等8件——のうち `water.water_temp`
- * のように単位が分かっている実データの系列も同じ variable_id に混在するものがある。
- * variable_id 単位で無条件に push すると、単位が判明している系列にまで「単位不明」の
- * 注記が誤って付く——合成データの誤爆（PR-2 で撤去した synthetic push）と同じ種類の
- * 誤り。`unitId` が既知の系列は `variable` facet を push しない。
+ * **変数単位の注記**（`hydro.flow` の逆流 flowTidalBackflow、`water.transparency` の
+ * aboveLod）は `variable:<variable_id>` で、単位の有無によらずその変数の全系列に付く。
+ * 一方 `unitUnknown` は **`unitId===null` の系列だけ**（`variable=<id>&unit_id=null`）。
+ * variable_id 単位で無条件に付けると、単位が判明している系列（`water.water_temp` の一部等、
+ * 同じ variable_id に単位の分かる実データが混在する）にまで「単位不明」が誤って付く。
  *
  * **PR-2 で撤去**（design §0-2・D2）: 以前はここで合成データの系列（`sourceIds` に
  * null を含む）に続けて `dataset='synthetic'` を積んでいたが、実測で「合成専用の
@@ -143,23 +155,26 @@ export type SeriesFacetInput = SeriesInfo & {
 export function facetsForSeries(series: readonly SeriesFacetInput[], scope: Scope): FacetRef[] {
   const refs: FacetRef[] = [];
   const seen = new Set<string>();
-  const push = (kind: FacetKind, ref: string) => {
-    const k = facetKey({ kind, ref });
+  const push = (f: FacetRef) => {
+    const k = facetKey(f);
     if (seen.has(k)) return;
     seen.add(k);
-    refs.push({ kind, ref });
+    refs.push(f);
   };
 
   for (const s of series) {
-    push("dataset", s.dataset);
-    if (s.theme !== null) push("variable_theme", s.theme);
+    push({ kind: "dataset", ref: s.dataset });
+    if (s.theme !== null) push(variableTheme(s.theme));
     for (const id of s.sourceIds) {
-      if (id !== null) push("source_id", id);
+      if (id !== null) push(sourceEditionOf(id));
     }
-    if (s.unitId === null) push("variable", s.variableId);
+    // 変数単位の注記（hydro.flow の逆流など）は単位の有無によらず付く。
+    push({ kind: "variable", ref: s.variableId });
+    // 単位が付かない系列だけ unitUnknown（単位が判明している系列に誤って付けない）。
+    if (s.unitId === null) push(unitUnknownOf(s.variableId));
   }
 
-  push("place_kind", scope.kind === "zone" ? "zone" : "site");
+  push(placeKind(scope.kind === "zone" ? "zone" : "site"));
 
   return refs;
 }
@@ -173,7 +188,7 @@ export function facetsForSeries(series: readonly SeriesFacetInput[], scope: Scop
  */
 export function facetsForOccurrence(opt: { places: readonly ("grid01" | "watershed")[]; ias?: boolean }): FacetRef[] {
   const refs: FacetRef[] = [{ kind: "dataset", ref: "organism_records" }];
-  if (opt.places.includes("grid01")) refs.push({ kind: "place_kind", ref: "grid01" });
-  if (opt.ias) refs.push({ kind: "source_id", ref: "moe_ias_list" });
+  if (opt.places.includes("grid01")) refs.push(placeKind("grid01"));
+  if (opt.ias) refs.push(sourceEditionOf("moe_ias_list"));
   return refs;
 }

@@ -127,12 +127,12 @@ export async function getCaveatById(caveatId: string): Promise<CaveatRow | undef
 /**
  * 行政文書（`cells.sqlite` の `notes` 由来）に付随する注記を doc_id で引く。
  * `title_ja` は無く、`quote` に原文からの抜粋が入る（ADR-0013「原文は引用のみ、要約しない」）。
- * `caveatsForTables()`（`../lookup.ts`）の対象外（scope_kind='cell'/'cell_table'はそちらに含めない）。
+ * 配信側の `GENERATED_CAVEAT_SCOPE` には含めない（source_edition の `doc_id=<doc_id>`、observation_set の `doc_table=<doc>#<table>`）。
  */
 export async function getCaveatsForDocument(docId: string): Promise<CaveatRow[]> {
   const scopes = await query<{ caveat_id: string }>(
-    `SELECT caveat_id FROM caveat_scope WHERE scope_kind = 'cell' AND scope_ref = ?`,
-    [docId],
+    `SELECT caveat_id FROM caveat_scope WHERE scope_kind = 'source_edition' AND scope_ref = ?`,
+    [`doc_id=${docId}`],
   );
   const ids = [...new Set(scopes.map((s) => s.caveat_id))];
   if (ids.length === 0) return [];
