@@ -182,16 +182,16 @@
         "same": 60
       }
     },
-    "previous_git_head": "902d9b5b49755f66e1ac43f6cf1becb78098fa68"
+    "previous_git_head": "9be566a2508920711bea3301e6cc5537bc36c4f3"
   },
-  "created_at": "2026-10-06T12:31:36+00:00",
+  "created_at": "2026-10-06T13:02:42+00:00",
   "environment": {
     "better_sqlite3_sqlite_version": "3.53.4",
     "node_version": "v22.22.2",
     "python_sqlite3_version": "3.49.1",
     "python_version": "3.13.7"
   },
-  "git_head": "9be566a2508920711bea3301e6cc5537bc36c4f3",
+  "git_head": "b318ac18e90e69862c6656319eb4534f8382101f",
   "pipeline_fingerprint_rows": {
     "registry.sqlite": null,
     "v2.sqlite": [
@@ -299,7 +299,7 @@
     "scripts/taxon_namespaces.py": "96b49ceb0d4badf6a32f2a5732f2ed2efe0df79f",
     "web/package.json": "cfdc9a0a4addc8aa86b9db4727d13e5c4fae3e2e",
     "web/pnpm-lock.yaml": "6ed023dae786be30e10835dd8a13d5af0bccd466",
-    "web/scripts/build-registry-ts.mjs": "e58125d3eea8b6d03cc968940d6ca72935331fab",
+    "web/scripts/build-registry-ts.mjs": "6435f4cd4b1942540b9115d5b45c0522101c0a0d",
     "web/scripts/lib/csv.mjs": "2d1fa1614b795cc6b3501f25afadddb30403afe2",
     "web/scripts/lib/registry-codegen.mjs": "de8f929332c58b7dd8a8391f1b17391326ed6342",
     "web/scripts/lib/serving/adapters-v2.ts": "2d62b4df13cc085594d4eaafc51f5f6496dd603d",
