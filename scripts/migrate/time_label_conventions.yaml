@@ -35,6 +35,16 @@ soramame_hourly_kanagawa:
   convention: hour_ending
   expected_row_count: 168793
   evidence: >
+    【2026-10-06 追記（Issue #32-4）】一次資料の再探索。環境展望台（国立環境研究所）の
+    「大気環境時間値データファイル」仕様書 https://tenbou.nies.go.jp/download/TJ_manu.pdf
+    は、測定データ列を `01h`〜`24h` の24列（`00h` は無い）で定義し「１時間値測定データ」
+    を収録するとある。これは hour_ending（24h = 23〜24時の値）と整合する構造的な状況
+    証拠だが、「1時の値は0〜1時の平均」と明記した文は取得できなかった（探した範囲:
+    環境省 press/1562・2700、環境展望台 /download/・gis/explain/atm/moni.html・TJ_manu.pdf、
+    soramame.env.go.jp トップ、環境省 manual_kento mat07.pdf〔大気常時監視の歴史〕）。
+    定義文の確認には環境省「大気汚染物質常時監視マニュアル」本文が要る。よって
+    convention は現状維持（以下の従来の根拠も残す）。
+    ---
     そらまめ君（環境省 大気汚染物質広域監視システム）の公開 CSV には「時」列
     （1〜24）があるが、区間の始まりか終わりかの説明は含まれていない。収集
     スクリプト scripts/c11_soramame.py:121-123 のコメントは「『24時』は翌日
