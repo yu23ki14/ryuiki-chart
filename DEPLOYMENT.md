@@ -279,6 +279,18 @@ pnpm wrangler d1 migrations list ryuiki --remote   # 本番の適用済みを確
 - `0010` を A より先に当てない。
 - サイズ見積もりの根拠は `docs/plans/V2_SERVING.md` §8。
 
+## vocab_*・extraction_log の DROP（Issue #61）
+
+`0011`（`vocab_areas`/`vocab_eras`/`vocab_indicators`/`vocab_units`/`extraction_log` の5表を DROP）の本番手順。
+手順書で、実施はまだ。`water_*` は残す。表は全部 v1 時代の原本表でコードは読まないが、順序は守る。
+
+1. **コードのデプロイ（先）**: main で `pnpm run deploy`。この版は 5 表を参照しない。`/api/nature` も消える。
+   動作確認は「v1 撤去後の本番切り替え」節の手順 B と同じ。問題があれば `wrangler rollback`（DROP はまだ）。
+2. **DROP（後）**: 十分に様子を見てから `pnpm run db:migrate:remote`（`0011` が当たる）。
+   `pnpm wrangler d1 info ryuiki` で表数が 40（実測。5 表減る）になったことと、動作確認を再度。
+   戻すには Time Travel（`0011` の直前）。
+3. 逆順（DROP が先）にしない。旧コードが `extraction_log` 等を読んでいると落ちる。
+
 ## 更新するとき
 
 ### スキーマを変えた
@@ -361,11 +373,11 @@ V8 fatal error; location = Reached heap limit; message = : allocation failed: Ja
 本番投入で `statement too long: SQLITE_TOOBIG` になった。ローカルの SQLite にはこの上限が無いので、
 書き出した .sql を復元して確かめる検証では気付けない。`Buffer.byteLength` で測ること。
 
-**1 行だけで 100KB を超える行がある。** `vegetation_polygons.geometry_geojson`（10 行）と
-`extraction_log`（6 行）。バッチをどう割っても 1 文に収まらないので、
+**1 行だけで 100KB を超える行がある。** `vegetation_polygons.geometry_geojson`（10 行）など。
+（かつては `extraction_log`（6 行）もあったが Issue #61 で落とした。）バッチをどう割っても 1 文に収まらないので、
 `export-d1-sql.mjs` は大きい TEXT 列を空で INSERT してから
 `UPDATE … SET col = col || '…'` で 8000 文字ずつ継ぎ足す。
-追記先は主キーで特定し、主キーが無いテーブル（`extraction_log`）は分割しない列すべてで特定して、
+追記先は主キーで特定し、主キーが無いテーブルは分割しない列すべてで特定して、
 一意にならなければエラーで止める。
 
 **大きいファイルはアップロードで落ちる。** `wrangler d1 execute --remote --file` は

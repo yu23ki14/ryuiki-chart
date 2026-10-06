@@ -19,8 +19,8 @@
   `check_v2_pipeline_fresh()`。手書きの mtime 走査は撤去した）。単体で作り直すだけなら
   `cd web && pnpm run build:v2`。
 - データの置き場所は **Cloudflare D1**（デプロイ先を Cloudflare 想定にしたため）。
-  45 テーブル（`web/drizzle/migrations/` 適用後の実測。うちシード管理用の内部表
-  `_seed_state` を除く44表が `web/scripts/seed-d1-local.mjs` のシード対象）を 1 つの D1 に
+  40 テーブル（`web/drizzle/migrations/` 適用後の実測。うちシード管理用の内部表
+  `_seed_state` を除く39表が `web/scripts/seed-d1-local.mjs` のシード対象）を 1 つの D1 に
   統合してある。D1 に `ATTACH` は無いので `d.` / `c.` の接頭辞は使わない。
   どの原本から来たテーブルかは `web/src/lib/table-meta.ts` の `TABLE_ORIGIN`。
 - D1 のスキーマは `web/src/db/schema.ts`（v1、既存表）・`web/src/db/schema-registry.ts`
@@ -67,7 +67,7 @@
   Tier 1 は収集済み（`scripts/c80`〜`c88`）で、`scripts/m05_tier1.py` がアプリモデルに流す。
   台帳・区域・メッシュ型のデータ用に `protected_areas` / `vegetation_polygons` / `mammal_mesh` /
   `wildlife_sightings` / `river_segments` を新設した（DDL は `scripts/schema_tier1.sql`）。
-  API は `/api/nature?kind=...` と `/api/geo/{protected-areas,vegetation,river-segments}`。
+  API は `/api/geo/{protected-areas,vegetation,river-segments}`（`/api/nature` は Issue #61 で撤去）。
 - 収集スクリプトの User-Agent に個人名・個人アドレスを入れない（`scripts/common.py`）。
   経緯は `docs/COLLECTOR_CONTRACT.md` の追記を読むこと。
 - 新しいエリア（東京都・沖縄県・兵庫県など）を足すときは `docs/add_area.md` の手順に従う。
