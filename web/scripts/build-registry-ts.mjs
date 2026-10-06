@@ -101,7 +101,7 @@ requireFile(REDLIST_CATEGORY_YAML, "redlist_category.yaml");
 requireFile(ASSESSMENT_LIST_YAML, "assessment_list.yaml");
 
 // CSV パーサ（引用符・引用符内カンマ・引用符内改行・""エスケープ対応、ヘッダ検証つき）は
-// `./lib/csv.mjs` に共通化した（`web/scripts/build-geo.mjs` の手書きパーサと同じアルゴリズムの
+// `./lib/csv.mjs` に共通化した（削除済みの `build-geo.mjs` の手書きパーサと同じアルゴリズムの
 // 再実装だったため。/simplify 修正3）。
 
 const db = new Database(REGISTRY_DB, { readonly: true });

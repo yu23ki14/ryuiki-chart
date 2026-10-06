@@ -13,7 +13,7 @@
     "prepare:assets": "npm run prepare:maplibre && npm run prepare:geo",
     "predev": "npm run prepare:assets",
     "prebuild": "npm run prepare:assets",
-    "build:derived": "node scripts/build-derived.mjs && node scripts/build-geo.mjs && node scripts/build-biota.mjs && node scripts/build-water-geo.mjs",
+    "build:water-geo": "node scripts/build-water-geo.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "wrangler d1 migrations apply ryuiki --local",
     "db:migrate:remote": "wrangler d1 migrations apply ryuiki --remote",

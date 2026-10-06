@@ -24,7 +24,7 @@ services:
       - ./web/next.config.ts:/app/web/next.config.ts
       - ./web/wrangler.jsonc:/app/web/wrangler.jsonc
       - ./web/drizzle.config.ts:/app/web/drizzle.config.ts
-      # 原本 SQLite と GeoJSON。derived.sqlite / registry.sqlite をここに書くので rw
+      # 原本 SQLite と GeoJSON。registry.sqlite / v2.sqlite をここに書くので rw
       - ./data:/app/data
       # レジストリビルド（scripts/r01_build_registry.py, scripts/registry/*.py）と
       # その手書きソース（registry/*.yaml, *.csv）。コンテナからは読むだけなので ro
