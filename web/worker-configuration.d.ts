@@ -4,6 +4,7 @@
 interface __BaseEnv_CloudflareEnv {
 	DB: D1Database;
 	ASSETS: Fetcher;
+	MCP_RATE_LIMITER: RateLimit;
 	AI_GATEWAY_ACCOUNT_ID: string;
 	AI_GATEWAY_NAME: string;
 	AI_GATEWAY_TOKEN: string;

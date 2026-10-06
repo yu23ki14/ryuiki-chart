@@ -181,8 +181,10 @@ Claude Desktop（`claude_desktop_config.json`。リモート HTTP は `mcp-remot
 ### 制約
 
 - 任意 SQL・全表走査のツールは無い（ツール一覧は `src/lib/mcp/tools.test.ts` のスナップショットで固定）。
-- 1 回の POST は本文 64KB まで、JSON-RPC バッチは 16 件まで。各ツールの `limit` は最大 500 行（既定 100、超過は `truncated: true`）。
-- Origin ヘッダがあるときは Host と一致するものだけ受ける（ブラウザからの別オリジンは 403。Claude Desktop/Code は Origin を付けない）。
+- 1 回の POST は本文 64KB まで（超えた時点で 413）、JSON-RPC バッチは 16 件まで。IP ごとに 60 リクエスト/分（超過は 429 + Retry-After。Cloudflare Rate Limiting バインディング `MCP_RATE_LIMITER`、値は `features.ts` の `MCP_RATE_LIMIT` と `wrangler.jsonc` の `ratelimits`）。
+- 各ツールの `limit` は出力行数の上限（最大 500、既定 100、超過は `truncated: true`）。問い合わせの読み取り量の上限ではない（集計済みの表を読むので行数は元々小さいが、`get_occurrences` の年別・月別などは出力時に切る）。`species_catalog` は `limit` を問い合わせに渡す。`get_observations` の `grain='day'` で `from`/`to` を省略すると直近 2 年に絞る。
+- Origin ヘッダがあるときは許可リスト（本番ホスト・localhost 系）のものだけ受ける（ブラウザからの別サイトは 403。Claude Desktop/Code は Origin を付けないので通る）。これは認証ではない。
+- id の無いリクエスト（通知）は実行しない。
 - 出し分けは `src/lib/features.ts` の `MCP_ENABLED`（false で 404）。
 
 ## 地図の差し替え（OpenStreetMap → Mapbox）

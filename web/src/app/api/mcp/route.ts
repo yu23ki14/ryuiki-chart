@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { MCP_ENABLED } from "@/lib/features";
+import { MCP_ENABLED, MCP_RATE_LIMIT } from "@/lib/features";
+import { getRateLimiter, originAllowed, readBodyLimited, withinRateLimit } from "@/lib/mcp/guard";
 import { d1CubeDb } from "@/lib/cube";
 import { handleBody, RPC_ERRORS } from "@/lib/mcp/server";
 
@@ -13,35 +14,24 @@ export const dynamic = "force-dynamic";
 const MAX_BODY_BYTES = 64 * 1024;
 
 const notFound = () => NextResponse.json({ error: "Not Found" }, { status: 404 });
-
-/** DNS リバインディング対策（MCP 仕様）: Origin があるなら Host と同じものだけ受ける。MCP クライアントは通常 Origin を付けない。 */
-function originAllowed(req: NextRequest): boolean {
-  const origin = req.headers.get("origin");
-  if (!origin) return true;
-  try {
-    return new URL(origin).host === req.headers.get("host");
-  } catch {
-    return false;
-  }
-}
+const rpcFail = (status: number, code: number, message: string, headers?: Record<string, string>) =>
+  NextResponse.json({ jsonrpc: "2.0", id: null, error: { code, message } }, { status, headers });
+const tooLarge = () => rpcFail(413, RPC_ERRORS.invalidRequest, "本文が大きすぎる");
 
 export async function POST(req: NextRequest) {
   if (!MCP_ENABLED) return notFound();
-  if (!originAllowed(req)) return NextResponse.json({ error: "Forbidden origin" }, { status: 403 });
+  if (!originAllowed(req.headers.get("origin"))) return rpcFail(403, RPC_ERRORS.invalidRequest, "許可されていない Origin");
+  if (!(await withinRateLimit(await getRateLimiter(), req.headers.get("cf-connecting-ip")))) {
+    return rpcFail(429, RPC_ERRORS.invalidRequest, "リクエストが多すぎる。しばらく待ってから再試行して", { "Retry-After": String(MCP_RATE_LIMIT.periodSeconds) });
+  }
 
-  // 本文を読む前に宣言サイズで弾く（chunked で宣言が無いときは下の実測が効く）。
-  if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) {
-    return NextResponse.json({ jsonrpc: "2.0", id: null, error: { code: RPC_ERRORS.invalidRequest, message: "本文が大きすぎる" } }, { status: 413 });
-  }
-  const text = await req.text();
-  if (new TextEncoder().encode(text).length > MAX_BODY_BYTES) {
-    return NextResponse.json({ jsonrpc: "2.0", id: null, error: { code: RPC_ERRORS.invalidRequest, message: "本文が大きすぎる" } }, { status: 413 });
-  }
+  const text = await readBodyLimited(req, MAX_BODY_BYTES);
+  if (text === null) return tooLarge();
   let body: unknown;
   try {
     body = JSON.parse(text);
   } catch {
-    return NextResponse.json({ jsonrpc: "2.0", id: null, error: { code: RPC_ERRORS.parse, message: "JSON として読めない" } }, { status: 400 });
+    return rpcFail(400, RPC_ERRORS.parse, "JSON として読めない");
   }
 
   const out = await handleBody(body, { db: d1CubeDb });

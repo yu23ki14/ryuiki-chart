@@ -72,6 +72,9 @@ function cap<T>(rows: readonly T[], limit: number | undefined): { rows: T[]; tru
   return { rows: rows.slice(0, n), truncated: rows.length > n };
 }
 
+/** get_observations の grain='day' で from/to が無いときに読む期間（年）。 */
+const DAY_DEFAULT_YEARS = 2;
+
 const READING_RULES =
   "読み方: 値は定量下限未満を value_lod（下限値で代用）と value_zero（0 で代用）の両方で返す。" +
   "n_censored・n_not_detected が多い系列は下限付近の値を平均した結果なので断定しない。" +
@@ -181,11 +184,16 @@ export const MCP_TOOLS: McpTool[] = [
       ]),
       grain: z.enum(["year", "fiscal_year", "month", "day"]).describe("時間の粒度。year=暦年、fiscal_year=年度（4月始まり）、month=月、day=日。zone は year/fiscal_year のみ意味を持つ"),
       stat: z.string().optional().describe("非代表の統計量（p75/p90/max/min）。省略時は代表系列"),
-      from: z.string().optional().describe("grain='day' の開始日 YYYY-MM-DD"),
+      from: z.string().optional().describe(`grain='day' の開始日 YYYY-MM-DD（grain='day' で from/to とも省略すると直近 ${DAY_DEFAULT_YEARS} 年）`),
       to: z.string().optional().describe("grain='day' の終了日 YYYY-MM-DD"),
       limit: limitSchema,
     }),
     execute: async ({ limit, ...input }, ctx) => {
+      // grain='day' で期間が無いと全期間の日次を読む。直近 DAY_DEFAULT_YEARS 年に絞り、query に反映して黙らない。
+      if (input.grain === "day" && !input.from && !input.to) {
+        const now = ctx.now ?? new Date();
+        input.from = `${now.getUTCFullYear() - DAY_DEFAULT_YEARS}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-${String(now.getUTCDate()).padStart(2, "0")}`;
+      }
       const r = await timeseries(await ctx.db(), input, { now: ctx.now });
       if (!r.envelope) {
         // 該当する系列が登録されていない。空の封筒（出典なし）で返し、黙って別の系列に倒さない。
@@ -213,7 +221,7 @@ export const MCP_TOOLS: McpTool[] = [
       const db = await ctx.db();
       const query = { kind, group: group ?? null, binoms: binoms ?? null, placeId: placeId ?? null, limit: limit ?? null };
       let rows: unknown[];
-      if (kind === "species_catalog") rows = await speciesCatalog(db, { group: group ?? null, limit: MAX_ROWS, withNames: true });
+      if (kind === "species_catalog") rows = await speciesCatalog(db, { group: group ?? null, limit: (limit ?? 100) + 1, withNames: true });
       else if (kind === "watershed_years") rows = await watershedYears(db, { placeId });
       else {
         if (!binoms?.length) throw new McpInputError(`kind='${kind}' には binoms（学名）が要る`);

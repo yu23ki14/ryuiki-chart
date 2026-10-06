@@ -83,6 +83,8 @@ export async function handleRpc(msg: unknown, ctx: McpContext): Promise<JsonRpcR
   }
   const isNotification = m.id === undefined;
   const id: Id = m.id ?? null;
+  // 通知（id 無し）は応答しないので、結果を返すメソッド（tools/call など）を通知として送られても実行しない。
+  if (isNotification) return null;
   try {
     let result: unknown;
     switch (m.method) {
@@ -108,14 +110,13 @@ export async function handleRpc(msg: unknown, ctx: McpContext): Promise<JsonRpcR
         result = await callTool(m.params, ctx);
         break;
       default:
-        if (isNotification) return null; // notifications/initialized など
         return rpcError(id, ERR.methodNotFound, `未対応のメソッド: ${m.method}`);
     }
-    return isNotification ? null : { jsonrpc: "2.0", id, result };
+    return { jsonrpc: "2.0", id, result };
   } catch (e) {
-    if (e instanceof RpcError) return isNotification ? null : rpcError(id, e.code, e.message);
+    if (e instanceof RpcError) return rpcError(id, e.code, e.message);
     console.error("mcp rpc failed", m.method, e);
-    return isNotification ? null : rpcError(id, ERR.internal, "内部エラー");
+    return rpcError(id, ERR.internal, "内部エラー");
   }
 }
 
