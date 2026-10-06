@@ -282,7 +282,7 @@ pnpm wrangler d1 migrations list ryuiki --remote   # 本番の適用済みを確
 ## v1 撤去の後片付けの本番切り替え（Issue #61）
 
 `0011`（`vocab_areas`/`vocab_eras`/`vocab_indicators`/`vocab_units`/`extraction_log` の5表を DROP）と、
-b04 の集計変更（ND を `value_zero` の平均からも除外する）を本番へ出す手順。手順書で、**実施はまだ**。`water_*` は残す。
+b04 の集計変更（ND を `value_zero` の平均からも除外する）を本番へ出す手順。手順書。**2026-10-06 に実施した**（実施記録は節末）。`water_*` は残す。
 b04 の変更で `observation_agg` の値と、そこから作る `summary_*`（b13 の出力）が変わるので、コードだけでなく**データの再投入が要る**。
 
 順序: **コードのデプロイ → `0011` DROP → キューブ・summary の再投入 → 画面と AI の確認**。
@@ -291,7 +291,7 @@ b04 の変更で `observation_agg` の値と、そこから作る `summary_*`（
    動作確認は「v1 撤去後の本番切り替え」節の手順 B と同じ。
 2. **DROP**: 十分に様子を見てから `pnpm run db:migrate:remote`（`0011` が当たる）。
    `pnpm wrangler d1 info ryuiki` で表数が 40（実測。5 表減る）になったことを確認。
-3. **キューブ・summary の再投入**: 手元で `build:v2` と D1 のシードが済んだ最新の状態から、`web/src/db/schema-cube.ts` の
+3. **キューブ・summary の再投入**（今回は全量ではなく下の差分 UPDATE で行った）: 手元で `build:v2` と D1 のシードが済んだ最新の状態から、`web/src/db/schema-cube.ts` の
    `observation_agg`（b04）と、そこから作る `summary_variable_catalog`・`summary_place_variable`（b13）を書き出して流す。
    生物側の `occurrence_agg`・`summary_taxon_catalog`・`summary_watershed_occurrence`・`summary_species_catalog`・`summary_group_year`・
    `summary_effort_year`・`summary_grid_catalog` は今回の変更の対象外だが、ローカル D1 と行数・内容が一致しないものがあれば同じ手で入れ直す。
@@ -309,6 +309,24 @@ b04 の変更で `observation_agg` の値と、そこから作る `summary_*`（
 
 ロールバック: 手順 1 は `wrangler rollback`。手順 2 以降（DROP・再投入）は Time Travel（`0011` の直前）になるので、
 **ロールバックは事前にオーナーの許可を取ってから行う**。逆順（DROP が先）にしない。
+
+### 実施記録（2026-10-06）
+
+1. **デプロイ**: main `7a201e8`、Version `0983d851-482d-43a5-b322-cc802f126d1d`。`/`・`/timeseries`・`/sites`・`/water`・`/map` が 200、`/api/nature` は 404。
+2. **DROP**: `db:migrate:remote` で `0011` を適用。表数 40 を確認。
+3. **データ**: 手順 3 の「DELETE→全量再投入」ではなく、**値が変わる行だけを UPDATE した**。全量だと `observation_agg` 約200万行の
+   DELETE+INSERT（書き込み約400万行・投入中は画面が空）になるのに対し、実際の差分は小さかったため。
+   変更前のローカル D1（本番と同じ版）と新しい `v2.sqlite` を、行の印の列 `built_from`/`spec_version` を除いて表ごとに EXCEPT で突き合わせ、
+   次元キーを `IS` で照合して（キーに NULL を含むので `=`/USING では取りこぼす）UPDATE 文を生成した。
+   結果は `observation_agg` の `value_zero` 3,201 行（0→NULL、すべて `n_not_detected=n` の fiscal_year セル）と
+   `summary_place_variable` の `avg_zero` 62 行、計 3,263 文。`occurrence_agg` と生物側の `summary_*` は差分なし。
+   ローカル D1 に先に流して v2 との差分が全表 0 になることを確かめてから本番へ流した（rows_written 3,263）。
+   注意: 本番の `built_from`/`spec_version` 列は古い値（`serving-summary/v3` 等）のまま。画面・API はこの列を読まない。次に全量を入れ直すときに揃う。
+4. **確認**: 投入前に本番で ND 行 3,201 件がすべて `value_zero=0`（ローカルの基準と一致）、投入後は 3,201 件すべて NULL。
+   `db:verify:remote` で 39 表・3,795,095 行すべて一致。`summary_place_variable` の `avg_zero` の和がローカルと一致（4965155.008229）。
+   本番の AI（`/api/chat`）に ND の集計を尋ね、ND だけの年度で `value_zero`・`value_lod` とも null と答えることを確認。
+
+ロールバックは行っていない。
 
 ## 更新するとき
 
