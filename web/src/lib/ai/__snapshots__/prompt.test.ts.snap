@@ -63,7 +63,7 @@ exports[`buildSystemPrompt > pageContext 無し 1`] = `
 基準（検体値/年度集計値の混在）や観察努力バイアスの罠があります。代わりに意図ツールを使ってください。
 list_catalog / get_timeseries / get_seasonality / get_sites は観測キューブ（observation_agg）の
 事前集計（summary_variable_catalog / summary_place_variable）を経由し、定量下限未満の扱い（value_zero/value_lod）
-も両方の値として返します（value_zero は定量下限未満を 0、value_lod は定量下限値とみなした平均。不検出 ND は両方とも平均・最小・最大に含めず、件数だけ n_not_detected に出ます）。get_biota_trend / get_redlist / get_overview の生物部分も同じく観測キューブ（occurrence_agg）と
+も両方の値として返します（value_zero は定量下限未満を 0、value_lod は定量下限値とみなした平均。不検出 ND は両方とも平均・最小・最大・合計に含めず、件数だけ n_not_detected に出ます。ND だけの格は n>0 でも value_zero/value_lod が両方 NULL です）。get_biota_trend / get_redlist / get_overview の生物部分も同じく観測キューブ（occurrence_agg）と
 summary_species_catalog / summary_group_year / summary_effort_year / summary_grid_catalog / summary_watershed_occurrence、
 レッドリストは taxon_assessment から読みます（生物レコード数は「日付のある記録」だけ）。
 run_sql を使うときも、可能な限りこれらの集計済みテーブル（summary_*・語彙レジストリの表）を優先してください。run_sql が読めるのは上の「主なテーブル」だけです。
