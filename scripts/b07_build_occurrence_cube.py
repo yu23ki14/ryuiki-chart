@@ -903,58 +903,58 @@ def build_cube(
     # 確認する。戻り値はどちらも occurrence_agg の系譜に使う（実行順
     # b06 → b09 → b07 に固定——占有検証（`_assert_populations_complete`）が
     # occurrence_place の内容そのものにも依存するため）。
-    # 系譜（occurrence_agg の inputs）は手で書かない（Issue #45）: `with lineage, staged_table(...)` の
+    # 系譜（occurrence_agg の inputs）は手で書かない（Issue #45）: `with LineageTracker` 以降の
     # 間に実際に読んだ表から、`staged_table` が差し替え時に自動で記録する。
-    lineage = common.LineageTracker(conn)
-    lineage.verify("occurrence", rebuild_hint="scripts/b06_build_occurrence.py を再実行すること。")
-    lineage.verify("occurrence_place", rebuild_hint="scripts/b09_build_occurrence_place.py を再実行すること。")
-    declarations = load_and_validate_cube_declarations(declarations_yaml, count_overlay=count_overlay)
-    leaf_expected = declarations[_LEAF_DECLARATION_NAME]["expected_row_count"]
-    # b09 の宣言との整合（`_assert_consistent_with_place_declarations`）は
-    # YAML 2つだけを読む検査で `occurrence_agg`/`conn` に一切依存しない
-    # ——「全検査が通ってから差し替え」を守るため、`occurrence_agg` を作り
-    # 始める前（`staged_table` に入る前）に呼ぶ。以前はここより後
-    # （差し替え・索引作成の後）で呼んでいたため、この検査だけが失敗しても
-    # 本番の `occurrence_agg` が既に新しい内容に差し替わってしまっていた
-    # （/code-review 指摘4）。
-    _assert_consistent_with_place_declarations(
-        declarations[_WATERSHED_RESOLVED_DECLARATION_NAME]["expected_row_count"], place_declarations_yaml,
-    )
-    _assert_t1_invariant(conn)
-    _assert_dated_rows_are_grid01(conn)
-    n_dated_total = conn.execute("SELECT COUNT(*) FROM occurrence WHERE period_raw IS NOT NULL").fetchone()[0]
-    params = (built_from, spec_version)
+    with common.LineageTracker(conn) as lineage:
+        lineage.verify("occurrence", rebuild_hint="scripts/b06_build_occurrence.py を再実行すること。")
+        lineage.verify("occurrence_place", rebuild_hint="scripts/b09_build_occurrence_place.py を再実行すること。")
+        declarations = load_and_validate_cube_declarations(declarations_yaml, count_overlay=count_overlay)
+        leaf_expected = declarations[_LEAF_DECLARATION_NAME]["expected_row_count"]
+        # b09 の宣言との整合（`_assert_consistent_with_place_declarations`）は
+        # YAML 2つだけを読む検査で `occurrence_agg`/`conn` に一切依存しない
+        # ——「全検査が通ってから差し替え」を守るため、`occurrence_agg` を作り
+        # 始める前（`staged_table` に入る前）に呼ぶ。以前はここより後
+        # （差し替え・索引作成の後）で呼んでいたため、この検査だけが失敗しても
+        # 本番の `occurrence_agg` が既に新しい内容に差し替わってしまっていた
+        # （/code-review 指摘4）。
+        _assert_consistent_with_place_declarations(
+            declarations[_WATERSHED_RESOLVED_DECLARATION_NAME]["expected_row_count"], place_declarations_yaml,
+        )
+        _assert_t1_invariant(conn)
+        _assert_dated_rows_are_grid01(conn)
+        n_dated_total = conn.execute("SELECT COUNT(*) FROM occurrence WHERE period_raw IS NOT NULL").fetchone()[0]
+        params = (built_from, spec_version)
 
-    with lineage, common.staged_table(
-        conn, "occurrence_agg", _CREATE_OCCURRENCE_AGG_SQL,
-        lineage=lineage,
-        fingerprint_spec_version=spec_version,
-    ) as staging:
-        pop_tables = _materialize_populations(conn)
-        try:
-            n_dated_by_place_kind = _assert_populations_complete(conn, n_dated_total)
+        with common.staged_table(
+            conn, "occurrence_agg", _CREATE_OCCURRENCE_AGG_SQL,
+            lineage=lineage,
+            fingerprint_spec_version=spec_version,
+        ) as staging:
+            pop_tables = _materialize_populations(conn)
+            try:
+                n_dated_by_place_kind = _assert_populations_complete(conn, n_dated_total)
 
-            cells = _build_all_cells(conn, staging, pop_tables, params)
+                cells = _build_all_cells(conn, staging, pop_tables, params)
 
-            n_series_checked = 0
-            for place_kind, family_name in CELL_FAMILIES:
-                n_series_checked += _assert_series_totals_match_population(
-                    conn, staging, pop_tables[place_kind], place_kind, family_name,
+                n_series_checked = 0
+                for place_kind, family_name in CELL_FAMILIES:
+                    n_series_checked += _assert_series_totals_match_population(
+                        conn, staging, pop_tables[place_kind], place_kind, family_name,
+                    )
+
+                # 流域セルの (place_id, 年) 粒度の突合（Issue #48 PR-5: b08 の保存則から移設。
+                # 系列粒度の上の検査より細かく、place・年の間の付け替えを捕まえる）。
+                n_place_years_checked = cube_invariants.assert_place_year_totals_match_population(
+                    conn, staging, pop_tables[WATERSHED_PLACE_KIND], WATERSHED_PLACE_KIND,
+                    YEAR_GRAIN_FAMILY, _MEASURE_SELECT,
                 )
 
-            # 流域セルの (place_id, 年) 粒度の突合（Issue #48 PR-5: b08 の保存則から移設。
-            # 系列粒度の上の検査より細かく、place・年の間の付け替えを捕まえる）。
-            n_place_years_checked = cube_invariants.assert_place_year_totals_match_population(
-                conn, staging, pop_tables[WATERSHED_PLACE_KIND], WATERSHED_PLACE_KIND,
-                YEAR_GRAIN_FAMILY, _MEASURE_SELECT,
-            )
-
-            _assert_declared_counts(conn, staging, declarations, n_dated_by_place_kind, declarations_yaml)
-            _assert_cell_shapes(conn, staging)
-            _assert_month_cells_are_subset_of_year_cells(conn, staging)
-            _assert_dimension_key_unique(conn, staging)
-        finally:
-            _drop_populations(conn)
+                _assert_declared_counts(conn, staging, declarations, n_dated_by_place_kind, declarations_yaml)
+                _assert_cell_shapes(conn, staging)
+                _assert_month_cells_are_subset_of_year_cells(conn, staging)
+                _assert_dimension_key_unique(conn, staging)
+            finally:
+                _drop_populations(conn)
     # ここまで来たら staged_table が差し替えと同じトランザクションで
     # occurrence_agg の指紋・系譜（消費した occurrence/occurrence_place の
     # 指紋）も記録済み（Issue #37 #1）。

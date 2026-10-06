@@ -660,14 +660,15 @@ def build_summary(
         _attach_registry(conn, registry_path)
         external = {_JOIN_ALIAS: common.registry_external(registry_path)}
 
-    # 系譜（Issue #45）: 手で組まない。出力表ごとに `with lineage:` に入り直し、その表の SELECT が
+    # 系譜（Issue #45）: 手で組まない。出力表ごとに `begin_output()` し、その表の構築が
     # 実際に読んだ source と registry の表から自動生成する（registry の鮮度の正は
     # check_v2_fresh の registry.input_fingerprint。ここは `ext:` の来歴）。
     lineage = common.LineageTracker(conn, external=external)
     try:
-        return _build_summary_tables(
-            conn, summaries, lineage, built_from=built_from, spec_version=spec_version,
-        )
+        with lineage:
+            return _build_summary_tables(
+                conn, summaries, lineage, built_from=built_from, spec_version=spec_version,
+            )
     finally:
         if needs_registry:
             conn.execute(f"DETACH DATABASE {_JOIN_ALIAS}")
@@ -711,8 +712,8 @@ def _build_summary_tables(
         create_sql = _create_table_sql(spec)
         insert_sql, insert_params = _insert_select_sql(spec, built_from=table_built_from, spec_version=spec_version)
 
-        # `with lineage:` に出力ごとに入り直す＝出力表ごとの系譜（その表の SELECT が読むものだけ）。
-        with lineage, common.staged_table(
+        lineage.begin_output()  # 出力表ごとの系譜（この表の構築が読むものだけ）
+        with common.staged_table(
             conn, table_name, create_sql,
             lineage=lineage,
             fingerprint_spec_version=spec_version,

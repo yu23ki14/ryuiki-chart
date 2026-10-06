@@ -24,13 +24,15 @@ def _make_up_tables(path, names=("up", "up2")):
     return conn
 
 
-def _build_down(conn, lineage, select_sql, table="down", before=None):
-    with lineage, common.staged_table(
-        conn, table, "CREATE TABLE {table} (k INTEGER, v INTEGER)", lineage=lineage,
-    ) as staging:
+def _build_down(conn, lineage, select_sql, table="down", before=None, begin=False):
+    with lineage:
         if before is not None:
             before()
-        conn.execute(f'INSERT INTO "{staging}" {select_sql}')
+        lineage.begin_output() if begin else None
+        with common.staged_table(
+            conn, table, "CREATE TABLE {table} (k INTEGER, v INTEGER)", lineage=lineage,
+        ) as staging:
+            conn.execute(f'INSERT INTO "{staging}" {select_sql}')
 
 
 def test_inputs_are_generated_from_actual_reads_and_follow_a_new_join(tmp_path):
@@ -135,6 +137,27 @@ def test_lineage_is_per_output_table_when_the_same_tracker_is_reentered(tmp_path
     _build_down(conn, lin, "SELECT k, v FROM up2", table="d2")
     assert common.read_recorded_inputs(conn, "d1") == {"up": up_fp}
     assert common.read_recorded_inputs(conn, "d2") == {"up2": up2_fp}
+    conn.close()
+
+
+def test_everything_read_after_the_stage_head_is_in_lineage_even_before_staged_table(tmp_path):
+    """`with lineage:`（段の先頭）以降の読み取りは、staged_table の前のものも全部載る。
+    `begin_output()` を呼べば、そこまでの読み取りは別の出力のものとして切り離される。"""
+    conn = _make_up_tables(tmp_path / "v.sqlite")
+    up_fp = common.read_recorded_fingerprint(conn, "up")
+    up2_fp = common.read_recorded_fingerprint(conn, "up2")
+    lin = common.LineageTracker(conn)
+    lin.verify("up", rebuild_hint=HINT)
+    lin.verify("up2", rebuild_hint=HINT)
+    _build_down(
+        conn, lin, "SELECT k, v FROM up", before=lambda: conn.execute("SELECT * FROM up2").fetchall(),
+    )
+    assert common.read_recorded_inputs(conn, "down") == {"up": up_fp, "up2": up2_fp}
+    _build_down(
+        conn, lin, "SELECT k, v FROM up", table="d2", begin=True,
+        before=lambda: conn.execute("SELECT * FROM up2").fetchall(),
+    )
+    assert common.read_recorded_inputs(conn, "d2") == {"up": up_fp}
     conn.close()
 
 

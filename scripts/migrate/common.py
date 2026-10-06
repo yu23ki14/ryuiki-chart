@@ -330,7 +330,7 @@ def staged_table(
     指紋の記録がどちらも成功しないとコミットされない（片方が失敗すればロール
     バックで本番テーブルも元に戻る）。未検証の上流を読んでいれば `resolve()`
     が `MigrationError` を投げ、同じ経路で本番はそのまま残る。呼び出し側は
-    `with lineage, staged_table(..., lineage=lineage) as staging:` の形で使う
+    `with lineage:`（段の先頭）の中で `staged_table(..., lineage=lineage)` を使う
     （authorizer の解除は tracker の `with` が受け持つ）。
 
     `fingerprint_spec_version`（既定 `FINGERPRINT_SPEC_VERSION`）: `table` が
@@ -1541,13 +1541,15 @@ class LineageTracker:
     使い方:
         lineage = LineageTracker(conn, external={"reg": registry_external(path)})
         lineage.verify("observation", rebuild_hint=...)   # 上流の (a)+(b) 検証。冪等
-        with lineage, staged_table(conn, "out", sql, lineage=lineage) as staging:
-            ...  # この with の間の読み取りが、この出力の系譜になる
+        with lineage:                       # 段の先頭から記録開始。出るとき authorizer を必ず解除（例外時も）
+            lineage.verify("observation", rebuild_hint=...)   # 上流の (a)+(b) 検証。冪等
+            with staged_table(conn, "out", sql, lineage=lineage) as staging:
+                ...
 
-    **`with lineage:` が1つの出力の範囲**（入るたびに読み取りを空にし、出るとき authorizer を
-    必ず解除する。例外時も）。出力を複数作る段（b13）は同じ tracker に出力ごとに入り直す
-    （`verify` 済みの指紋は残る）。with に入る前の読み取り（事前の検査）は系譜に入らない。
-    差し替え時に `staged_table` が `resolve()` で `inputs` を作り、同じトランザクションで記録する。
+    **`with lineage:`（段の先頭）以降の読み取りは全部系譜に載る**（事前の検査・座標や registry の
+    読み取りも）。`staged_table` は差し替え時に `resolve()` で `inputs` を作り、同じトランザクションで
+    記録するだけ。出力を複数作る段（b13）は出力ごとに `begin_output()` で読み取りを空にする
+    （`verify` 済みの指紋と段の中で作った TEMP 名は残る）。
 
     **`verify` は `assert_stage_fingerprint_fresh` を `upstream_schemas={}` で呼ぶ**——上流の
     系譜も再帰的に検査する（b04/b07 で新たに有効になった意図した挙動。上流の上流が古ければ
@@ -1610,9 +1612,14 @@ class LineageTracker:
             except sqlite3.ProgrammingError:
                 pass  # 接続が既に閉じている
 
+    def begin_output(self) -> None:
+        """次の出力表の区切り: これまでの読み取りを空にする（出力表ごとの系譜用）。"""
+        for source in self._sources:
+            source.reads.clear()
+
     def watch(self, conn: sqlite3.Connection, *, external: dict[str, ExternalSource]) -> None:
         """出力の接続とは別の接続（b03/b06 が原本・registry を読む `:memory:` の作業用接続）の
-        読み取りも系譜に合算する（`with lineage:` の中で呼ぶ）。その接続の main/temp は無視し、
+        読み取りも系譜に合算する（`with lineage:` の中で呼ぶ。`begin_output` はこの接続の分も空にする）。その接続の main/temp は無視し、
         読んだ ATTACH 先は必ず `external` に宣言されていること（無ければ止まる）。
         """
         if not self._entered:

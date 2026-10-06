@@ -368,108 +368,112 @@ def build_and_write_occurrence_place(
         # 今の occurrence の内容が一致することを、座標を読む前に確認する。
         # 戻り値は occurrence_place の系譜に使う。
         # 系譜（occurrence_place の inputs）は手で書かない（Issue #45）: 出力を作る
-        # `with lineage, staged_table(...)` の間に実際に読んだ表から自動生成する。
-        lineage = common.LineageTracker(conn)
-        lineage.verify("occurrence", rebuild_hint="scripts/b06_build_occurrence.py を再実行すること。")
+        # `with LineageTracker` 以降に実際に読んだ表（occurrence・registry・原本 sites）から自動生成する。
+        with common.LineageTracker(
+            conn, external={
+                "reg": common.registry_external(registry_db), "ryuiki": common.ryuiki_external(ryuiki_db),
+            },
+        ) as lineage:
+            lineage.verify("occurrence", rebuild_hint="scripts/b06_build_occurrence.py を再実行すること。")
 
-        _assert_polygon_set_matches_registry(polys, conn)
-        _assert_watershed_external_key_unique(conn)
-        # place_id ⇄ external_key の対応（Issue #48 PR-5: b08 の逆引き検査から移設。
-        # 流域は external_key → place_id の辞書で書くので、逆向き〔place_id → 1つの
-        # external_key〕の単射もここで見る。mesh 側は b06 が書いた occurrence.place_id
-        # が registry で必ず引けること）。
-        cube_invariants.assert_place_source_ref_is_injective(conn, WATERSHED_SOURCE_ID)
-        cube_invariants.assert_place_source_ref_is_injective(conn, cube_invariants.MESH_SOURCE_ID)
-        cube_invariants.assert_occurrence_places_resolve(conn)
-        watershed_place_id = {
-            external_key: place_id
-            for place_id, external_key in conn.execute(
-                "SELECT place_id, external_key FROM reg.place_source_ref WHERE source_id = ?",
-                (WATERSHED_SOURCE_ID,),
-            )
-        }
+            _assert_polygon_set_matches_registry(polys, conn)
+            _assert_watershed_external_key_unique(conn)
+            # place_id ⇄ external_key の対応（Issue #48 PR-5: b08 の逆引き検査から移設。
+            # 流域は external_key → place_id の辞書で書くので、逆向き〔place_id → 1つの
+            # external_key〕の単射もここで見る。mesh 側は b06 が書いた occurrence.place_id
+            # が registry で必ず引けること）。
+            cube_invariants.assert_place_source_ref_is_injective(conn, WATERSHED_SOURCE_ID)
+            cube_invariants.assert_place_source_ref_is_injective(conn, cube_invariants.MESH_SOURCE_ID)
+            cube_invariants.assert_occurrence_places_resolve(conn)
+            watershed_place_id = {
+                external_key: place_id
+                for place_id, external_key in conn.execute(
+                    "SELECT place_id, external_key FROM reg.place_source_ref WHERE source_id = ?",
+                    (WATERSHED_SOURCE_ID,),
+                )
+            }
 
-        coords = [
-            (lat, lon)
-            for lat, lon in conn.execute(
-                "SELECT DISTINCT lat, lon FROM occurrence WHERE lat IS NOT NULL AND lon IS NOT NULL"
-            )
-        ]
-        matches, near_coords = _resolve_distinct_coordinates(coords, polys, grid)
-        _assert_no_boundary_points(near_coords, polys, grid)
-        n_near_checked = _assert_no_float_exact_mismatch(near_coords, matches, polys, grid)
-        _assert_no_multi_match(matches)
+            coords = [
+                (lat, lon)
+                for lat, lon in conn.execute(
+                    "SELECT DISTINCT lat, lon FROM occurrence WHERE lat IS NOT NULL AND lon IS NOT NULL"
+                )
+            ]
+            matches, near_coords = _resolve_distinct_coordinates(coords, polys, grid)
+            _assert_no_boundary_points(near_coords, polys, grid)
+            n_near_checked = _assert_no_float_exact_mismatch(near_coords, matches, polys, grid)
+            _assert_no_multi_match(matches)
 
-        coord_place_id: dict[tuple[float, float], str | None] = {}
-        for key, ids in matches.items():
-            coord_place_id[key] = watershed_place_id[ids[0]] if len(ids) == 1 else None
+            coord_place_id: dict[tuple[float, float], str | None] = {}
+            for key, ids in matches.items():
+                coord_place_id[key] = watershed_place_id[ids[0]] if len(ids) == 1 else None
 
-        n_checked_sites = _assert_matches_site_watershed_edges(conn, polys, grid)
+            n_checked_sites = _assert_matches_site_watershed_edges(conn, polys, grid)
 
-        with lineage, common.staged_table(
-            conn, "occurrence_place", _CREATE_OCCURRENCE_PLACE_SQL,
-            lineage=lineage,
-            fingerprint_spec_version=common.OCCURRENCE_SPEC_VERSION,
-        ) as staging:
-            def rows():
-                for record_id, lat, lon in conn.execute(
-                    "SELECT record_id, lat, lon FROM occurrence "
-                    "WHERE lat IS NOT NULL AND lon IS NOT NULL"
-                ):
-                    place_id = coord_place_id[(lat, lon)]
-                    yield (record_id, PLACE_KIND, place_id, METHOD, built_from, common.OCCURRENCE_SPEC_VERSION)
+            with common.staged_table(
+                conn, "occurrence_place", _CREATE_OCCURRENCE_PLACE_SQL,
+                lineage=lineage,
+                fingerprint_spec_version=common.OCCURRENCE_SPEC_VERSION,
+            ) as staging:
+                def rows():
+                    for record_id, lat, lon in conn.execute(
+                        "SELECT record_id, lat, lon FROM occurrence "
+                        "WHERE lat IS NOT NULL AND lon IS NOT NULL"
+                    ):
+                        place_id = coord_place_id[(lat, lon)]
+                        yield (record_id, PLACE_KIND, place_id, METHOD, built_from, common.OCCURRENCE_SPEC_VERSION)
 
-            conn.executemany(_INSERT_SQL.format(table=f'"{staging}"'), rows())
-            # 検証6: UNIQUE(record_id, place_kind)（コードレビュー指摘10:
-            # 手書きの CREATE UNIQUE INDEX/DROP INDEX ではなく共通ヘルパを使う
-            # ——重複時に生の IntegrityError ではなく、どの行かを示す
-            # MigrationError になる）。
-            common.assert_dimension_key_unique(
-                conn, staging, _DIM_COLUMNS,
-                index_name=_DIM_KEY_INDEX_NAME,
-                table_label="occurrence_place",
-                cause_hint="occurrence の座標あり記録が record_id について重複している可能性がある。",
-            )
-
-            n_total, n_null, n_resolved = conn.execute(
-                f"""
-                SELECT COUNT(*),
-                       COALESCE(SUM(CASE WHEN place_id IS NULL THEN 1 ELSE 0 END), 0),
-                       COALESCE(SUM(CASE WHEN place_id IS NOT NULL THEN 1 ELSE 0 END), 0)
-                FROM "{staging}"
-                """
-            ).fetchone()
-
-            n_with_coords = conn.execute(
-                "SELECT COUNT(*) FROM occurrence WHERE lat IS NOT NULL AND lon IS NOT NULL"
-            ).fetchone()[0]
-            if n_total != n_with_coords:
-                raise common.MigrationError(
-                    f"occurrence_place: 行数（{n_total}）が occurrence の座標あり行数"
-                    f"（{n_with_coords}）と一致しない（UNIQUE(record_id, place_kind) は"
-                    "満たしているはずなので、座標のある記録の一部が取りこぼされている"
-                    "可能性がある）。"
+                conn.executemany(_INSERT_SQL.format(table=f'"{staging}"'), rows())
+                # 検証6: UNIQUE(record_id, place_kind)（コードレビュー指摘10:
+                # 手書きの CREATE UNIQUE INDEX/DROP INDEX ではなく共通ヘルパを使う
+                # ——重複時に生の IntegrityError ではなく、どの行かを示す
+                # MigrationError になる）。
+                common.assert_dimension_key_unique(
+                    conn, staging, _DIM_COLUMNS,
+                    index_name=_DIM_KEY_INDEX_NAME,
+                    table_label="occurrence_place",
+                    cause_hint="occurrence の座標あり記録が record_id について重複している可能性がある。",
                 )
 
-            expected_null = declarations["place_id_null_count"]["expected_row_count"]
-            expected_resolved = declarations["resolved_count"]["expected_row_count"]
-            if n_null != expected_null or n_resolved != expected_resolved:
-                raise common.MigrationError(
-                    "occurrence_place: 実測件数が宣言と食い違う"
-                    f"（place_id NULL: 宣言{expected_null:,} / 実測{n_null:,}、"
-                    f"解決: 宣言{expected_resolved:,} / 実測{n_resolved:,}）。"
-                    f"{declarations_yaml} を確認すること。"
-                )
-            if n_null + n_resolved != n_with_coords:
-                raise common.MigrationError(
-                    f"occurrence_place: 検算に失敗（NULL {n_null:,} + 解決 {n_resolved:,} != "
-                    f"座標あり行数 {n_with_coords:,}）。"
-                )
-            # ここまで来たら with ブロックを正常に抜け、staged_table が本番名に
-            # 差し替え、同じトランザクションで指紋・系譜（消費した occurrence
-            # の指紋）も記録する（Issue #37 #1・/code-review 指摘の根本対応）。
-            # b07 はこの指紋を見て「今の occurrence から作った occurrence_place
-            # か」を検証する。
+                n_total, n_null, n_resolved = conn.execute(
+                    f"""
+                    SELECT COUNT(*),
+                           COALESCE(SUM(CASE WHEN place_id IS NULL THEN 1 ELSE 0 END), 0),
+                           COALESCE(SUM(CASE WHEN place_id IS NOT NULL THEN 1 ELSE 0 END), 0)
+                    FROM "{staging}"
+                    """
+                ).fetchone()
+
+                n_with_coords = conn.execute(
+                    "SELECT COUNT(*) FROM occurrence WHERE lat IS NOT NULL AND lon IS NOT NULL"
+                ).fetchone()[0]
+                if n_total != n_with_coords:
+                    raise common.MigrationError(
+                        f"occurrence_place: 行数（{n_total}）が occurrence の座標あり行数"
+                        f"（{n_with_coords}）と一致しない（UNIQUE(record_id, place_kind) は"
+                        "満たしているはずなので、座標のある記録の一部が取りこぼされている"
+                        "可能性がある）。"
+                    )
+
+                expected_null = declarations["place_id_null_count"]["expected_row_count"]
+                expected_resolved = declarations["resolved_count"]["expected_row_count"]
+                if n_null != expected_null or n_resolved != expected_resolved:
+                    raise common.MigrationError(
+                        "occurrence_place: 実測件数が宣言と食い違う"
+                        f"（place_id NULL: 宣言{expected_null:,} / 実測{n_null:,}、"
+                        f"解決: 宣言{expected_resolved:,} / 実測{n_resolved:,}）。"
+                        f"{declarations_yaml} を確認すること。"
+                    )
+                if n_null + n_resolved != n_with_coords:
+                    raise common.MigrationError(
+                        f"occurrence_place: 検算に失敗（NULL {n_null:,} + 解決 {n_resolved:,} != "
+                        f"座標あり行数 {n_with_coords:,}）。"
+                    )
+                # ここまで来たら with ブロックを正常に抜け、staged_table が本番名に
+                # 差し替え、同じトランザクションで指紋・系譜（消費した occurrence
+                # の指紋）も記録する（Issue #37 #1・/code-review 指摘の根本対応）。
+                # b07 はこの指紋を見て「今の occurrence から作った occurrence_place
+                # か」を検証する。
         # v2 パイプラインの入力＋コードの指紋（Issue #48 PR-0 /simplify 指摘1）:
         # `common.record_v2_input_fingerprint` の docstring 参照（b03/b06 も同じ
         # 全体像の辞書を同じ v2.sqlite に upsert する——3段のどれが最後に走っても
