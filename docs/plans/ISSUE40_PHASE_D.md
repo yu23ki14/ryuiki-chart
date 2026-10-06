@@ -141,7 +141,7 @@ ADR-0001「ライセンス条件でフィルタ済みの `dist/`」・ADR-0014�
 
 | 項目 | Phase D | 理由・着手条件 |
 |---|---|---|
-| `update_mode` の宣言と enum 検証 | **やる** | マニフェスト必須キー。Phase C の `source_edition.update_mode` に写す（全 124 出典。既存は `static`/`snapshot`/`append` を `registry/source/editions.yaml` へ宣言）。**未宣言は止める**（推測で埋めない） |
+| `update_mode` の宣言と enum 検証 | **やる** | マニフェスト必須キー。Phase C の `source_edition.update_mode` に写す（全 124 出典。既存 13 出典の宣言値は 2026-10-07 オーナー確認済み。既存は `static`/`snapshot`/`append` を `registry/source/editions.yaml` へ宣言）。**未宣言は止める**（推測で埋めない） |
 | 鮮度の算出と応答への同梱 | **やる** | D4。`fetched_at`・`update_mode`・`age_days`。CLI `pnpm run freshness`（出典ごとの一覧）も 1 本足す（担当 M） |
 | 出典単位のパーティション＋「入力が変わったパーティションだけ書き直す」 | **やる（dist のみ）** | D3 のレイアウトで、パーティションごとの行ハッシュを `datapackage.json` に持ち、前回と同じなら**書き込みをスキップ**する。ADR-0020 決定2 の最小の一歩で、測れる（スキップ数・所要時間をログ） |
 | キューブの影響範囲だけの再ビルド（決定3） | **残す** | b04/b07 は現在 v2 全量を作り直し、層3 の指紋と b00 が全量前提。**着手条件**: (a) 出典が 2 つ目の版を実際に取得して差分更新の需要が出る、かつ (b) `build:v2` の所要が運用に耐えない（実測値を DEPLOYMENT.md に残してから判断）。週次フルチェックとの一致検証が先に要る |

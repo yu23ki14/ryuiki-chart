@@ -33,7 +33,7 @@
 
 ## ビルド時の検査（失敗すれば `CaveatDeclarationError`）
 
-- `caveat.yaml`: key の一意・全注記に完全な `review`（reviewed_on/reviewer/reason/changed）。
+- `caveat.yaml`: key の一意・全注記に完全な `review`（reviewed_on/reviewer/owner_confirmed_on/reason/changed）。
 - `caveat_scope.yaml`: kind が vocabulary 内・`caveats` の key が `caveat.yaml` に存在・
   (kind, ref, caveat) の重複なし・選択式のキーが `selectors` の許可内・
   ID 参照（variable）が `variable.yaml` に存在・選択式の値（theme/variable/place_kind/source_id 等）と dataset 名が実在値・
@@ -70,7 +70,7 @@ CAVEAT_SCOPE_YAML = common.ROOT / "registry" / "caveat_scope.yaml"
 
 DEFAULT_PRIORITY = 0
 
-REVIEW_FIELDS = ("reviewed_on", "reviewer", "reason", "changed")
+REVIEW_FIELDS = ("reviewed_on", "reviewer", "owner_confirmed_on", "reason", "changed")
 REVIEW_CHANGED_VALUES = {"severity", "kind", "scope", "body", "new"}
 
 

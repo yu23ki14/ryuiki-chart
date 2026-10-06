@@ -1,7 +1,7 @@
 # Issue #35 注記の整備（＋ #33-5）設計
 
 状態: 設計のみ（実装は承認後）。2026-10-06。担当: Sonnet 設計担当。
-レビュー（severity/kind）はオーナー委任で行った判断で、**オーナーの最終確認が後で要る**。
+レビュー（severity/kind）はオーナー委任で行った判断で、**2026-10-07 にオーナーが全件を変更なしで確認済み**（`review.owner_confirmed_on`）。
 数値はすべて `ryuiki.sqlite`（読み取り専用）・`v2.sqlite`・`registry.sqlite` の実測（2026-10-06）。
 
 ## 1. 現状の実測
@@ -61,7 +61,7 @@ Issue 本文の「14件・blocking 7件」は古い。yaml の blocking は現�
 
 ## 3. レビュー表（`registry/caveat.yaml` に各注記の `review:` として記録する）
 
-記録の形: `review: {reviewed_on: 2026-10-06, reviewer: "claude（オーナー委任・要最終確認）", reason: "…1〜2文", changed: [severity, kind, scope, body] または false}`。
+記録の形: `review: {reviewed_on: 2026-10-06, reviewer: "claude（オーナー委任）", owner_confirmed_on: 2026-10-07, reason: "…1〜2文", changed: [severity, kind, scope, body] または false}`。
 
 | key | 現 severity/kind | 判定 severity/kind | 変更 | 理由 |
 |---|---|---|---|---|
