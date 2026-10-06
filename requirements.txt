@@ -14,3 +14,6 @@
 # 手元・CI いずれでも動作確認した pyenv グローバル環境のバージョンを固定した）。
 PyYAML==6.0.3
 pytest==8.2.0
+# scripts/d01_build_dist.py・scripts/d02_check_dist.py（dist/ の Parquet 配布物。ADR-0001）だけが import する。
+# 出力のバイトが版に依存するので固定（同じ入力から同じバイトを作る検査がある）。duckdb は入れない。
+pyarrow==25.0.1
