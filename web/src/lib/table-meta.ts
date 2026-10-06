@@ -35,6 +35,8 @@ export const TABLE_ORIGIN: Record<string, string> = {
   // ryuiki.sqlite 由来
   sites: "main", source_registry: "main",
   // Tier 1 追加ソース（docs/UNDATAFIED_TIERS.md）。原本は ryuiki.sqlite。
+  // mammal_mesh / wildlife_sightings は画面・API の読み手が無い（/api/nature は Issue #61 で撤去）。
+  // AI の run_sql / describe_schema 用の台帳表として D1 に残している
   protected_areas: "main", vegetation_polygons: "main", mammal_mesh: "main",
   wildlife_sightings: "main", river_segments: "main",
   // 水道水の水源マップ（docs/WATER_SOURCE_MAP.md）。原本は data/water/*.csv → ryuiki.sqlite。

@@ -68,6 +68,7 @@
   台帳・区域・メッシュ型のデータ用に `protected_areas` / `vegetation_polygons` / `mammal_mesh` /
   `wildlife_sightings` / `river_segments` を新設した（DDL は `scripts/schema_tier1.sql`）。
   API は `/api/geo/{protected-areas,vegetation,river-segments}`（`/api/nature` は Issue #61 で撤去）。
+  `mammal_mesh` / `wildlife_sightings` は画面・API の読み手が無く、AI の run_sql / describe_schema 用の台帳表として D1 に残している。
 - 収集スクリプトの User-Agent に個人名・個人アドレスを入れない（`scripts/common.py`）。
   経緯は `docs/COLLECTOR_CONTRACT.md` の追記を読むこと。
 - 新しいエリア（東京都・沖縄県・兵庫県など）を足すときは `docs/add_area.md` の手順に従う。
