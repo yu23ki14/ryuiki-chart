@@ -10,6 +10,8 @@
 不正な値を確かめるため、`monkeypatch` でモジュール定数を一時ファイルに差し替える）。
 """
 import csv
+import hashlib
+import json
 import sqlite3
 
 import pytest
@@ -604,8 +606,20 @@ def test_unknown_origin_value_stops_the_build(tmp_path, monkeypatch):
 
 
 def _real_ias_rows():
-    real_csv = ta_module.common.ROOT / ta_module.common.MOE_IAS_LIST_CSV_RELPATH
-    with real_csv.open(encoding="utf-8", newline="") as f:
+    """実物の moe_ias_list.csv の行。`data/processed/` に無い環境（CI）では、コミット済みの全件コピー
+    `data/sample/processed/` を使う。どちらも `data/sample/manifest.json` の sha256（原本の中身）と一致
+    することを確かめてから読む（同じ中身であることの保証。食い違えば sample を作り直すまで落ちる）。"""
+    root = ta_module.common.ROOT
+    rel = ta_module.common.MOE_IAS_LIST_CSV_RELPATH
+    path = root / rel
+    if not path.exists():
+        path = root / "data" / "sample" / "processed" / rel.name
+    expected = json.loads((root / "data" / "sample" / "manifest.json").read_text(encoding="utf-8"))[
+        "source_files"][rel.as_posix()]
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == expected, (
+        f"{path} の中身が data/sample/manifest.json の sha256 と一致しない（scripts/s01_build_sample.py で作り直す）"
+    )
+    with path.open(encoding="utf-8", newline="") as f:
         raw = list(csv.DictReader(f))
     return [{"list_id": "moe_ias_2015", "scientific_name_raw": r["scientific_name"], "origin": r["origin_ja"]} for r in raw]
 
