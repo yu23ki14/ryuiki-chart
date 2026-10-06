@@ -58,6 +58,9 @@ exports[`buildSystemPrompt > pageContext 無し 1`] = `
 - taxon_assessment（語彙レジストリDB）: 分類群ごとのレッドリスト・外来種などの評価（版・カテゴリー）
 - caveat（語彙レジストリDB）: データの癖・注記の本文（キー単位）
 - caveat_scope（語彙レジストリDB）: 注記がどの dataset・指標・場所種別・出典にかかるかの対応
+- license（語彙レジストリDB）: 出典のライセンス（license_id・名称・分類 license_class・表示文言）。原文の自由記述は source_edition.license_raw
+- source（語彙レジストリDB）: 出典（不変）。source_registry と並走。置換された出典は superseded_by で新しい出典を指す
+- source_edition（語彙レジストリDB）: 出典の版（取得回または出典自身の版）。取得日・URL・ライセンス・再配布可否・件数・置換先。再配布可否・ライセンス分類は出典の旗で、出力を絞る根拠にしない
 
 ## 意図ツール（キューブ・summary）を使う
 観測キューブ（observation_agg / occurrence_agg）の生のセルを直接 GROUP BY で集計しないでください。

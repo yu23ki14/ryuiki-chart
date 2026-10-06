@@ -53,6 +53,7 @@ export const TABLE_ORIGIN: Record<string, string> = {
   region: "reg", unit: "reg", variable: "reg", variable_alias: "reg",
   place: "reg", place_source_ref: "reg", place_relation: "reg", place_watershed: "reg",
   taxon: "reg", taxon_assessment: "reg", caveat: "reg", caveat_scope: "reg",
+  license: "reg", source: "reg", source_edition: "reg",
 };
 
 export const TABLE_META: Record<string, string> = {
@@ -125,6 +126,11 @@ export const TABLE_META: Record<string, string> = {
   taxon_assessment: "分類群ごとのレッドリスト・外来種などの評価（版・カテゴリー）",
   caveat: "データの癖・注記の本文（キー単位）",
   caveat_scope: "注記がどの dataset・指標・場所種別・出典にかかるかの対応",
+  license: "出典のライセンス（license_id・名称・分類 license_class・表示文言）。原文の自由記述は source_edition.license_raw",
+  source: "出典（不変）。source_registry と並走。置換された出典は superseded_by で新しい出典を指す",
+  source_edition:
+    "出典の版（取得回または出典自身の版）。取得日・URL・ライセンス・再配布可否・件数・置換先。" +
+    "再配布可否・ライセンス分類は出典の旗で、出力を絞る根拠にしない",
 };
 
 export const SAMPLE_QUERIES: { title: string; note: string; sql: string }[] = [

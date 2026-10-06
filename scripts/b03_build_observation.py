@@ -201,7 +201,7 @@ DEFAULT_REPORT = ROOT / "reports" / "phase_b_fact_slice.md"
 # P-1b（土地利用、docs/plans/PHASE_B_LANDUSE.md）。CSV の source_id 列は全行
 # この定数値（`data/processed/nlni_l03b_landuse_by_watershed.csv` を実測して
 # 確認済み）。source_regions.yaml の sources キー・observation.source_table・
-# variable_alias.csv の dataset 接頭辞のすべてがこの文字列を共有する。
+# variable_alias.csv の dataset（版は edition_key。Issue #39 Phase C）がこの文字列を共有する。
 LANDUSE_SOURCE_ID = "nlni_l03b_landuse_by_watershed"
 
 _SAMPLE_LIMIT = 20
@@ -670,24 +670,19 @@ def _load_watershed_place_lookup(work: sqlite3.Connection) -> dict[str, tuple[st
 
 
 def _load_landuse_alias_map(work: sqlite3.Connection) -> dict[tuple[str, str, str], tuple]:
-    """`(dataset, alias, source_id) -> (variable_id, unit_id, stat, grain)` を返す
-    （`dataset` が `f"{LANDUSE_SOURCE_ID}@"` で始まる行だけ。P-1b オーナー決定2:
-    土地利用は2006/2016でコード体系が違うため `dataset` を版付きにしてある）。
-
-    前方一致は `substr(dataset, 1, ?) = ?` で取る（`LIKE` は `_` を1文字
-    ワイルドカードとして解釈してしまい、`LANDUSE_SOURCE_ID` に含まれる
-    アンダースコアが誤って任意の1文字にマッチしうるため使わない。
-    コードレビュー指摘7）。
+    """`(edition_key, alias, source_id) -> (variable_id, unit_id, stat, grain)` を返す
+    （`dataset = LANDUSE_SOURCE_ID` の行だけ。土地利用は2006/2016でコード体系が違い、
+    版は `variable_alias.edition_key`（Issue #39 Phase C。以前は `dataset` に `@<年>` を
+    後置していた）が持つ。`edition_key` が空の行は版を指定できないので引かない）。
     """
-    prefix = f"{LANDUSE_SOURCE_ID}@"
     rows = work.execute(
-        "SELECT dataset, alias, source_id, variable_id, unit_id, stat, grain "
-        "FROM reg.variable_alias WHERE substr(dataset, 1, ?) = ?",
-        (len(prefix), prefix),
+        "SELECT edition_key, alias, source_id, variable_id, unit_id, stat, grain "
+        "FROM reg.variable_alias WHERE dataset = ? AND edition_key IS NOT NULL",
+        (LANDUSE_SOURCE_ID,),
     ).fetchall()
     return {
-        (dataset, alias, source_id): (variable_id, unit_id, stat, grain)
-        for dataset, alias, source_id, variable_id, unit_id, stat, grain in rows
+        (edition_key, alias, source_id): (variable_id, unit_id, stat, grain)
+        for edition_key, alias, source_id, variable_id, unit_id, stat, grain in rows
     }
 
 
@@ -715,8 +710,8 @@ def _ingest_landuse(
     **セル数**という2つの observation 行を作る（P-1b オーナー決定1:
     observation に「n」の列が無いため、セル数は面積とは別の variable にする。
     それぞれの `variable_id`/`unit_id`/`obs_stat`/`value_grain` は
-    `variable_alias`（`dataset` は `f"{LANDUSE_SOURCE_ID}@{data_year}"` で
-    版付き。2006/2016でコード体系が違う——`assert_grain_and_stat_codes` 等が
+    `variable_alias`（`dataset = LANDUSE_SOURCE_ID`、版は `edition_key = data_year`。
+    2006/2016でコード体系が違う——`assert_grain_and_stat_codes` 等が
     書き手側で既に検証済み）から引く。
 
     `region_id` は `source_regions.yaml`（consumer='observation'。
@@ -784,7 +779,6 @@ def _ingest_landuse(
 
                 data_year = row["data_year"]
                 code = row["landuse_code_raw"]
-                dataset = f"{LANDUSE_SOURCE_ID}@{data_year}"
                 source_ref = row["source_ref"]
 
                 for suffix, alias, value_str in (
@@ -795,7 +789,7 @@ def _ingest_landuse(
                     if _check_duplicate(stats, seen_business_keys, business_key):
                         continue
 
-                    entry = alias_map.get((dataset, alias, source_id))
+                    entry = alias_map.get((data_year, alias, source_id))
                     if entry is None:
                         variable_id = unit_id = obs_stat = value_grain = None
                     else:
@@ -803,7 +797,7 @@ def _ingest_landuse(
 
                     result = _resolve_and_compute_period(
                         stats, variable_id, place_id, data_year, value_grain, source_id, exceptions, usage,
-                        unresolved_alias_sample_value=(row_number, dataset, alias, source_id),
+                        unresolved_alias_sample_value=(row_number, f"{LANDUSE_SOURCE_ID}/{data_year}", alias, source_id),
                         unresolved_place_sample_value=(row_number, watershed_id),
                         period_mismatch_sample_value=(row_number, source_id, data_year, value_grain),
                     )

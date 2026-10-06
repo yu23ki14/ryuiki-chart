@@ -1,0 +1,65 @@
+# registry/source/editions.yaml
+#
+# 出典（source）の版（source_edition）の宣言（ADR-0005、Issue #39 Phase C）。
+# scripts/registry/build_source.py が読み、ryuiki.sqlite の `source_registry`（124 行）と
+# 合わせて registry.sqlite の `source`/`source_edition` を作る。
+#
+# ## 規則
+#
+# - **全ての source に edition が最低 1 つ**ある。宣言が無い source には、
+#   `source_registry.fetched_at`（`YYYY-MM-DDTHH:MM:SS`）の日付部分 `YYYYMMDD` を
+#   `edition_key` とする「取得回」の edition を 1 つ自動で作る
+#   （`edition_id = common:edition:<source_id>.<edition_key>`）。日付の切り出しは文字列
+#   操作で行い、SQLite の日時関数は使わない（ADR-0024）。
+# - **過去の取得履歴は復元不能なので作らない**（`source_registry` は `INSERT OR REPLACE`
+#   で上書きされてきた。ADR-0005 の 2026-09-25 追記）。ここに書くのは「分かっている版」
+#   だけ。捏造しない。
+# - edition は取得回**または**出典自身の版（vintage。土地利用の 2006/2016 など）。
+#   `declared_editions` に書いた source は、自動の取得回 edition を作らず、書いた版だけを持つ。
+# - **版の置換は `superseded_by` で表す**（`notes` の文字列ではない）。
+#   source_id が不変のまま版が替わる場合は edition 側、source_id ごと置き換わる場合
+#   （`gbif_kanagawa` -> `gbif_kanagawa_occurrences`）は **source 側と edition 側の両方**に張る
+#   （ADR-0004 規約 2）。build_source.py は、`source_registry.notes` に `【SUPERSEDED`
+#   を含む行が `superseded_by` を宣言されていなければ止まる（文字列の判定はこの検査だけ。
+#   参照側は常に `superseded_by` 列を使う）。
+# - **`update_mode`**（ADR-0020: snapshot / append / revision / static）は、分かるものだけ宣言する。
+#   宣言の無い source は NULL（推測で埋めない）。
+# - `content_sha256` は L0 の生ファイルがリポジトリ外にあるものは NULL。リポジトリ内の入力
+#   ファイルがその source の唯一の版そのものであるものだけ `content_file`
+#   （リポジトリルートからの相対パス）で宣言し、ビルド時に sha256 を埋める
+#   （ファイルが無い環境では NULL。ハッシュの入力は registry 指紋に既に入っている）。
+# - `region_id` は宣言しない（NULL）。出典と地域の対応は scripts/migrate/source_regions.yaml
+#   （ADR-0022 決定 3）が持っており、ここに二重に持たない。
+
+update_mode_codes: [snapshot, append, revision, static]
+
+# 出典自身の版を持つもの。`fetched_from` はその版の取得日時・URL を借りる source_registry の行
+# （土地利用は取得行が版ごとに別 source_id で登録されている）。license/redistributable/format/
+# access_method は source 本体（`source_id`）の行から取る。
+# record_count は NULL（流域別集計の 4,858 行は 2 版の合計で、版ごとの内訳は source_registry に無い）。
+declared_editions:
+  - source_id: nlni_l03b_landuse_by_watershed
+    edition_key: "2006"
+    vintage: "2006"
+    fetched_from: nlni_l03b_landuse_2006
+    update_mode: revision
+    notes: "国土数値情報 L03-b 2006 年版（コード体系は 1,2,5,6,7,9,A,B,E,F,G）。variable_alias.csv の edition_key=2006。"
+  - source_id: nlni_l03b_landuse_by_watershed
+    edition_key: "2016"
+    vintage: "2016"
+    fetched_from: nlni_l03b_landuse_2016
+    update_mode: revision
+    notes: "国土数値情報 L03-b 2016 年版（コード体系は 0100,0200,0500,…,1600）。variable_alias.csv の edition_key=2016。"
+
+# source ごとの宣言（edition の自動生成・declared_editions のどちらにも効く）。
+source_declarations:
+  gbif_kanagawa:
+    # 旧登録（第2ラウンド完走時点 586,300 件）。第3ラウンド完走で gbif_kanagawa_occurrences（658,360 件）
+    # に置き換わった（source_registry.notes 先頭の【SUPERSEDED 2026-08-29】）。
+    superseded_by: gbif_kanagawa_occurrences
+    update_mode: snapshot
+  gbif_kanagawa_occurrences:
+    update_mode: snapshot
+  moe_ias_list:
+    # data/processed/moe_ias_list.csv（429 行）はこの source の L1 そのもの。
+    content_file: data/processed/moe_ias_list.csv

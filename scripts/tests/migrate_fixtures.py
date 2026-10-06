@@ -188,7 +188,7 @@ def make_registry_db(
         conn.execute(
             """CREATE TABLE variable_alias (
                 dataset TEXT, alias TEXT, source_id TEXT, variable_id TEXT, unit_id TEXT,
-                stat TEXT, grain TEXT, unit_basis TEXT
+                stat TEXT, grain TEXT, unit_basis TEXT, edition_key TEXT
             )"""
         )
         conn.execute(
@@ -212,10 +212,11 @@ def make_registry_db(
             "CREATE TABLE unit (unit_id TEXT PRIMARY KEY, symbol TEXT, ucum TEXT, "
             "name_ja TEXT, quantity_kind TEXT)"
         )
+        # 土地利用の alias だけが 8 つ目に edition_key を持つ（Issue #39 Phase C）。他は 7 要素で渡す。
         conn.executemany(
-            "INSERT INTO variable_alias (dataset, alias, source_id, variable_id, unit_id, stat, grain) "
-            "VALUES (?,?,?,?,?,?,?)",
-            aliases if aliases is not None else DEFAULT_ALIASES,
+            "INSERT INTO variable_alias (dataset, alias, source_id, variable_id, unit_id, stat, grain, edition_key) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            [tuple(a) + (None,) * (8 - len(a)) for a in (aliases if aliases is not None else DEFAULT_ALIASES)],
         )
         # unit_basis（Issue #31）: 既定は「原本が単位を報告している」('source')。
         # 原本に単位が無い系列を作るテストは自分で UPDATE する。
@@ -296,19 +297,19 @@ DEFAULT_WATERSHED_PLACE_REFS = [
 ]
 
 DEFAULT_LANDUSE_ALIASES = [
-    # dataset, alias, source_id, variable_id, unit_id, stat, grain
-    ("nlni_l03b_landuse_by_watershed@2006", "1:area_km2", LANDUSE_SOURCE_ID,
-     "common:variable:landuse.paddy", "common:unit:km2", "sum", "year"),
-    ("nlni_l03b_landuse_by_watershed@2006", "1:n_cells", LANDUSE_SOURCE_ID,
-     "common:variable:landuse.paddy_n_cells", "common:unit:count", "sum", "year"),
-    ("nlni_l03b_landuse_by_watershed@2006", "5:area_km2", LANDUSE_SOURCE_ID,
-     "common:variable:landuse.forest", "common:unit:km2", "sum", "year"),
-    ("nlni_l03b_landuse_by_watershed@2006", "5:n_cells", LANDUSE_SOURCE_ID,
-     "common:variable:landuse.forest_n_cells", "common:unit:count", "sum", "year"),
-    ("nlni_l03b_landuse_by_watershed@2016", "0100:area_km2", LANDUSE_SOURCE_ID,
-     "common:variable:landuse.paddy", "common:unit:km2", "sum", "year"),
-    ("nlni_l03b_landuse_by_watershed@2016", "0100:n_cells", LANDUSE_SOURCE_ID,
-     "common:variable:landuse.paddy_n_cells", "common:unit:count", "sum", "year"),
+    # dataset, alias, source_id, variable_id, unit_id, stat, grain, edition_key
+    ("nlni_l03b_landuse_by_watershed", "1:area_km2", LANDUSE_SOURCE_ID,
+     "common:variable:landuse.paddy", "common:unit:km2", "sum", "year", "2006"),
+    ("nlni_l03b_landuse_by_watershed", "1:n_cells", LANDUSE_SOURCE_ID,
+     "common:variable:landuse.paddy_n_cells", "common:unit:count", "sum", "year", "2006"),
+    ("nlni_l03b_landuse_by_watershed", "5:area_km2", LANDUSE_SOURCE_ID,
+     "common:variable:landuse.forest", "common:unit:km2", "sum", "year", "2006"),
+    ("nlni_l03b_landuse_by_watershed", "5:n_cells", LANDUSE_SOURCE_ID,
+     "common:variable:landuse.forest_n_cells", "common:unit:count", "sum", "year", "2006"),
+    ("nlni_l03b_landuse_by_watershed", "0100:area_km2", LANDUSE_SOURCE_ID,
+     "common:variable:landuse.paddy", "common:unit:km2", "sum", "year", "2016"),
+    ("nlni_l03b_landuse_by_watershed", "0100:n_cells", LANDUSE_SOURCE_ID,
+     "common:variable:landuse.paddy_n_cells", "common:unit:count", "sum", "year", "2016"),
 ]
 
 # `variable.default_stat`/`name_ja`（landuse 分。DEFAULT_VARIABLES に連結して

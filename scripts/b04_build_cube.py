@@ -880,7 +880,7 @@ def _assert_unit_basis_evidence(conn: sqlite3.Connection) -> int:
     ユーザーに語るので、宣言が実態とずれたまま黙って通さない。
 
     観測は alias を持たないので `(dataset, variable_id, unit_id)` 単位で突き合わせる（dataset は
-    `observation.source_table`。土地利用の alias は `<table>@<年>` なので `@` 以降を落として比べる）。
+    `observation.source_table`。土地利用も dataset は `observation.source_table` と同じ名前で、版は `edition_key` が持つ）。
     出典ごとに逆の宣言をしても、同じ組に対する宣言として個別に検証される:
     - 実データにある (dataset, variable_id, unit_id, basis) が宣言されていなければ止まる（宣言漏れ）。
     - 宣言された basis が、同じ (dataset, variable_id, unit_id) の実データに1行も無ければ止まる
@@ -898,7 +898,7 @@ def _assert_unit_basis_evidence(conn: sqlite3.Connection) -> int:
         )
     }
     declared = {
-        (d.split("@", 1)[0] if d else d, v, u, b)
+        (d, v, u, b)
         for d, v, u, b in conn.execute(
             "SELECT DISTINCT dataset, variable_id, unit_id, unit_basis FROM reg.variable_alias WHERE unit_id IS NOT NULL"
         )

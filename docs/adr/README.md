@@ -29,7 +29,7 @@ Architecture Decision Record。1ファイル＝1決定。**背景・決定・根
 | [0002](0002-multi-region.md) | 多地域前提でモデリングし、地域固有語彙をコードリストの拡張として扱う | 提案中 |
 | [0003](0003-standards-at-the-boundary.md) | 外部標準（DwC-A / SensorThings / DCAT）は境界のアダプタで満たす | 提案中 |
 | [0004](0004-identifiers.md) | 識別子はスコープ付きの安定IDとし、既定を `common` にする | 承認済（一部未実装） |
-| [0005](0005-source-editions.md) | 出典を版管理し、ライセンスを行単位で解決可能にする | 提案中 |
+| [0005](0005-source-editions.md) | 出典を版管理し、ライセンスを行単位で解決可能にする | 承認済（一部未実装） |
 | [0006](0006-place-registry.md) | 空間単位を単一の `place` レジストリに統合する | 承認済（一部未実装） |
 | [0007](0007-observation-fact.md) | 観測値を単一の縦持ちファクト `observation` に集約する | 承認済（一部未実装） |
 | [0008](0008-time-representation.md) | 時間は「区間＋粒度」の3点セットで表す | 承認済 |

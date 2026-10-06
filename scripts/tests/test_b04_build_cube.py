@@ -1179,8 +1179,8 @@ def test_unit_evidence_raises_on_stale_declaration(tmp_path):
 # 自己不変条件（Issue #48 PR-5。`scripts/migrate/cube_invariants.py`。b05 から移設）
 # ---------------------------------------------------------------------------
 
-def _alias(dataset, alias, variable_id, unit_id, stat, grain):
-    return (dataset, alias, "src", variable_id, unit_id, stat, grain)
+def _alias(dataset, alias, variable_id, unit_id, stat, grain, edition_key=None):
+    return (dataset, alias, "src", variable_id, unit_id, stat, grain, edition_key)
 
 
 def _registry_with_aliases(tmp_path, aliases):
@@ -1213,24 +1213,24 @@ def test_alias_collision_halts_build_cube(tmp_path):
 
 
 def test_alias_collision_in_a_landuse_year_version_halts(tmp_path):
-    """土地利用の年版 dataset（`<source>@<年>`）ごとにも関数性を見る。"""
-    ds = "nlni_l03b_landuse_by_watershed@2006"
+    """土地利用の版（`edition_key`）ごとにも関数性を見る（同じ版の中で同じ組に別 alias は止まる）。"""
+    ds = "nlni_l03b_landuse_by_watershed"
     with pytest.raises(common.MigrationError, match="関数になっていない"):
         _build_with_aliases(tmp_path, [
-            _alias(ds, "1:area_km2", "common:variable:landuse.paddy", "common:unit:km2", "sum", "year"),
-            _alias(ds, "01:area_km2", "common:variable:landuse.paddy", "common:unit:km2", "sum", "year"),
+            _alias(ds, "1:area_km2", "common:variable:landuse.paddy", "common:unit:km2", "sum", "year", "2006"),
+            _alias(ds, "01:area_km2", "common:variable:landuse.paddy", "common:unit:km2", "sum", "year", "2006"),
         ])
 
 
 def test_alias_collision_passes_for_default_fixture_and_landuse_year_sharing(tmp_path):
-    """衝突の無い既定の registry と、土地利用が年版をまたいで同じ tuple を共有する
-    正常系（正規化後は同じ出典名）は通る。
+    """衝突の無い既定の registry と、土地利用が版（edition_key）をまたいで同じ tuple を
+    共有する正常系（dataset は同じ。版ごとに別の alias）は通る。
     """
     _build_with_aliases(tmp_path, list(DEFAULT_ALIASES) + [
-        _alias("nlni_l03b_landuse_by_watershed@2006", "1:area_km2",
-               "common:variable:landuse.paddy", "common:unit:km2", "sum", "year"),
-        _alias("nlni_l03b_landuse_by_watershed@2016", "0100:area_km2",
-               "common:variable:landuse.paddy", "common:unit:km2", "sum", "year"),
+        _alias("nlni_l03b_landuse_by_watershed", "1:area_km2",
+               "common:variable:landuse.paddy", "common:unit:km2", "sum", "year", "2006"),
+        _alias("nlni_l03b_landuse_by_watershed", "0100:area_km2",
+               "common:variable:landuse.paddy", "common:unit:km2", "sum", "year", "2016"),
     ])
 
 
@@ -1246,8 +1246,8 @@ def test_alias_tuple_collision_between_landuse_and_measurements_is_still_detecte
     with pytest.raises(common.MigrationError, match="複数の出典.*にまたがっている"):
         _build_with_aliases(tmp_path, [
             _alias("measurements", "何か", "common:variable:landuse.paddy", "common:unit:km2", "sum", "year"),
-            _alias("nlni_l03b_landuse_by_watershed@2006", "1:area_km2",
-                   "common:variable:landuse.paddy", "common:unit:km2", "sum", "year"),
+            _alias("nlni_l03b_landuse_by_watershed", "1:area_km2",
+                   "common:variable:landuse.paddy", "common:unit:km2", "sum", "year", "2006"),
         ])
 
 

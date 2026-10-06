@@ -129,7 +129,7 @@ for (const a of GENERATED_VARIABLE_ALIASES) {
  * 単位の根拠（Issue #31）。
  * - `unitId` が `undefined`（省略）なら variable の単位を使う。**明示的な null（単位不明の系列）は
  *   null を返す**（variable の既定に落とさない）。
- * - `dataset`（`measurements` / `sensor_timeseries` / 土地利用の本体名。`@年` は無視）を渡すと、
+ * - `dataset`（`measurements` / `sensor_timeseries` / 土地利用は出典名そのもの。版は edition_key）を渡すと、
  *   その出典の alias だけで根拠を決める。省略すると全出典を畳み、出典で食い違えば 'mixed'。
  * - 該当する alias が無ければ null（推測しない）。
  * 'source'=原本が単位を報告 / 'registry'=原本に単位記載が無くレジストリが補った。宣言は
@@ -141,7 +141,7 @@ export function unitBasis(variableId: string, unitId?: string | null, dataset?: 
   const bases = new Set<string>();
   for (const a of aliasesByVariable.get(variableId) ?? []) {
     if (a.unitId !== effective || !a.unitBasis) continue;
-    if (dataset !== undefined && a.dataset?.split("@", 1)[0] !== dataset) continue;
+    if (dataset !== undefined && a.dataset !== dataset) continue;
     bases.add(a.unitBasis);
   }
   if (bases.size === 0) return null;

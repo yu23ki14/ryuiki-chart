@@ -40,8 +40,9 @@ KNOWN_DUPLICATE_ALIAS_SERIES: frozenset[tuple[str, str, str]] = frozenset({
 
 def assert_alias_is_function(conn: sqlite3.Connection) -> None:
     """`(dataset, variable_id, grain, stat, unit_id) → alias` が関数であること
-    （`reg.variable_alias` 全体。土地利用の年版 `<source>@<年>` は dataset ごとに
-    別に見るので、年ごとに独立して検証される）。衝突があれば、どの組が何個の alias に
+    （`reg.variable_alias` 全体。土地利用は 2006/2016 年版でコード体系が違い、同じ variable_id に
+    版ごとの別 alias が付くので、`edition_key` ごとに別に見る（Issue #39 Phase C。以前は dataset に
+    `@<年>` を後置していた）。衝突があれば、どの組が何個の alias に
     割れているかを示して止まる——`MIN(alias)` 等で黙って1つを選ばない。
     `KNOWN_DUPLICATE_ALIAS_SERIES` の組だけは既知の負債として除外する。
     """
@@ -49,7 +50,7 @@ def assert_alias_is_function(conn: sqlite3.Connection) -> None:
         """
         SELECT dataset, variable_id, grain, stat, unit_id, COUNT(DISTINCT alias) AS n_alias
         FROM reg.variable_alias
-        GROUP BY dataset, variable_id, grain, stat, unit_id
+        GROUP BY dataset, variable_id, grain, stat, unit_id, COALESCE(edition_key, '')
         HAVING n_alias > 1
         """
     ).fetchall()
@@ -68,32 +69,26 @@ def assert_alias_tuple_maps_to_single_dataset(conn: sqlite3.Connection) -> None:
     `sensor_timeseries`/土地利用の本体名）にまたがっていないこと。崩れていると
     同じキューブのセルがどの出典のものか決まらない。
 
-    版付き dataset（`<source>@<年>`。ADR-0005）は `@` より前（出典本体）に正規化して
-    から比べる——土地利用は同じ tuple を意図して複数の年版にまたがって再利用する
-    （P-1b オーナー決定2）ため、正規化しないと版の数だけ誤検出する。一方、
-    土地利用と measurements/sensor_timeseries が同じ tuple を持てば別の出典名の
-    まま残るので検出できる。
+    土地利用は同じ tuple を意図して複数の年版（`edition_key` 2006/2016）にまたがって再利用する
+    （P-1b オーナー決定2）が、dataset は版を問わず同じ名前なので `dataset` を数えれば誤検出
+    しない（以前は dataset が `<source>@<年>` で、`@` より前に正規化して比べていた。Issue #39
+    Phase C で `edition_key` 列に分けたので正規化は要らない）。土地利用と
+    measurements/sensor_timeseries が同じ tuple を持てば別の dataset のまま残るので検出できる。
     """
     common.raise_on_group_by_duplicates(
         conn,
         """
         SELECT variable_id, grain, stat, unit_id,
-               COUNT(DISTINCT base_dataset) AS n_dataset,
-               GROUP_CONCAT(DISTINCT base_dataset) AS datasets
-        FROM (
-            SELECT variable_id, grain, stat, unit_id,
-                   CASE WHEN instr(dataset, '@') > 0
-                        THEN substr(dataset, 1, instr(dataset, '@') - 1)
-                        ELSE dataset END AS base_dataset
-            FROM reg.variable_alias
-        )
+               COUNT(DISTINCT dataset) AS n_dataset,
+               GROUP_CONCAT(DISTINCT dataset) AS datasets
+        FROM reg.variable_alias
         GROUP BY variable_id, grain, stat, unit_id
         HAVING n_dataset > 1
         """,
         (),
         lambda dup: (
-            "(variable_id, grain, stat, unit_id) が複数の出典（版のサフィックスを"
-            f"正規化した後）にまたがっている（例: {dup}）。\n"
+            "(variable_id, grain, stat, unit_id) が複数の出典（dataset）にまたがっている"
+            f"（例: {dup}）。\n"
             "variable_alias 側で tuple が出典をまたいで重複しないようにしてから"
             "再実行すること。"
         ),

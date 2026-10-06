@@ -146,7 +146,7 @@ const variables = db
 
 const variableAliases = db
   .prepare(
-    `SELECT alias, dataset, source_id, variable_id, unit_id, stat, grain, unit_basis
+    `SELECT alias, dataset, source_id, variable_id, unit_id, stat, grain, unit_basis, edition_key
      FROM variable_alias ORDER BY id`,
   )
   .all()
@@ -159,6 +159,7 @@ const variableAliases = db
     stat: r.stat || null,
     grain: r.grain,
     unitBasis: r.unit_basis || null,
+    editionKey: r.edition_key || null,
   }));
 
 // caveat_scope.scope_kind の語彙は registry/caveat_scope.yaml の `vocabulary`（ADR-0013 の6種）を
@@ -380,11 +381,9 @@ export interface GeneratedVariable {
 
 export interface GeneratedVariableAlias {
   alias: string;
-  /** v1 のどのテーブルの表記か（measurements / sensor_timeseries）。以前の sourceScope。 */
+  /** どの原本の表記か（measurements / sensor_timeseries / 土地利用は出典名そのもの。版は editionKey）。以前の sourceScope。 */
   dataset: string | null;
-  /** v1 source_registry.source_id。null = 出典未記録（is_synthetic=1 の行）。
-   * source_registry/source_edition（ADR-0005）が入る Phase C で source_edition_id に
-   * 置き換わる暫定形（docs/plans/PHASE_B_INTAKE.md #1/#9）。 */
+  /** source_registry.source_id（bare。cube・D1 も bare）。null = 出典未記録（is_synthetic=1 の行）。 */
   sourceId: string | null;
   variableId: string | null;
   unitId: string | null;
@@ -392,6 +391,8 @@ export interface GeneratedVariableAlias {
   grain: string | null;
   /** unit_id の根拠。'source'=原本が報告 / 'registry'=原本に単位記載が無くレジストリが補った。unitId が無い行は null。 */
   unitBasis: "source" | "registry" | null;
+  /** 出典の版（土地利用 2006/2016。Issue #39 Phase C。以前は dataset に @<年> を後置していた）。null = 全 edition 共通。 */
+  editionKey: string | null;
 }
 `;
 
@@ -427,7 +428,7 @@ export const GENERATED_VARIABLES: readonly GeneratedVariable[] = ${emitObjectArr
  * 出典 × 表記で解決する — ADR-0010 決定1）。 */
 export const GENERATED_VARIABLE_ALIASES: readonly GeneratedVariableAlias[] = ${emitObjectArray(
   variableAliases,
-  ["alias", "dataset", "sourceId", "variableId", "unitId", "stat", "grain", "unitBasis"],
+  ["alias", "dataset", "sourceId", "variableId", "unitId", "stat", "grain", "unitBasis", "editionKey"],
 )};
 `;
 

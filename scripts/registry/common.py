@@ -615,6 +615,40 @@ def caveat_id(key: str, scope: str = "common") -> str:
     return scoped_id("caveat", key, scope)
 
 
+# 出典（source）と版（edition）の公開 ID（ADR-0004、Issue #39 Phase C）。
+# source_id は `[a-z0-9_]+` のみ（実測: 124 件に `@ : . -` を含むものは 0 件）なので
+# local としてそのまま使える全単射。cube・D1・alias は bare のまま変えず、公開 ID が要る
+# 場所（DwC-A・カタログ・id_map）だけがこの関数を通す。
+SOURCE_ID_RE = re.compile(r"^[a-z0-9_]+$")
+EDITION_KEY_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def source_public_id(source_id: str) -> str:
+    """`gbif_kanagawa` -> `common:source:gbif_kanagawa`。"""
+    if not SOURCE_ID_RE.match(source_id):
+        raise ValueError(f"source_id が [a-z0-9_]+ ではない（公開 ID にできない）: {source_id!r}")
+    return scoped_id("source", source_id)
+
+
+def source_local_id(public_id: str) -> str:
+    """`common:source:gbif_kanagawa` -> `gbif_kanagawa`（`source_public_id` の逆）。"""
+    scope, _, rest = public_id.partition(":")
+    entity, _, local = rest.partition(":")
+    if scope != "common" or entity != "source" or not SOURCE_ID_RE.match(local):
+        raise ValueError(f"出典の公開 ID ではない: {public_id!r}")
+    return local
+
+
+def edition_id(source_id: str, edition_key: str) -> str:
+    """`common:edition:<source_id>.<edition_key>`。ns=source_id（`.` を含まない）、
+    key=edition_key（`.` を含まない取得日 `YYYYMMDD` か出典自身の版 `2006` 等）。"""
+    if not SOURCE_ID_RE.match(source_id):
+        raise ValueError(f"source_id が [a-z0-9_]+ ではない: {source_id!r}")
+    if not EDITION_KEY_RE.match(edition_key):
+        raise ValueError(f"edition_key が [A-Za-z0-9_-]+ ではない: {edition_key!r}")
+    return scoped_id("edition", f"{source_id}.{edition_key}")
+
+
 # ---------------------------------------------------------------------------
 # ラテン文字判定（build_taxon.py の taxon.vernacular_name_en 用。PR-3a §4）
 # ---------------------------------------------------------------------------

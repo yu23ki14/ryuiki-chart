@@ -22,7 +22,7 @@
  * このファイルを編集したら `npm run db:generate` でマイグレーションを作り直す。
  * drizzle/migrations/*.sql を直接書き換えない。
  */
-import { sqliteTable, text, integer, real, index } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, index, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 /**
  * region（ADR-0002。`jp-14` 等）ごとの時刻帯の語彙（Issue #32-3、ADR-0024）。手書きの正は
@@ -85,9 +85,10 @@ export const variable = sqliteTable("variable", {
  * （例: 環境省公共用水域水質の同じ項目名でも、年度代表値の出典と検体値の出典で
  * 粒度が違う）。1つの `(dataset, alias, sourceId)` の組につき1行（PK は
  * 別に自動採番の id を持つ。公開 ID ではないので ADR-0004「ID は不変」の対象外）。
- * `sourceId` は `source_registry`/`source_edition`（ADR-0005）が入る Phase C で
- * `source_edition_id` に置き換わる**暫定形**（docs/plans/PHASE_B_INTAKE.md #9 と
- * 同じ性質の暫定接続点）。
+ * `sourceId` は bare のまま（cube・D1 も bare。ADR-0005 改定）。出典が版を持つときだけ
+ * `editionKey`（土地利用の 2006/2016。以前は `dataset` に `@<年>` を後置していた暫定形を
+ * Issue #39 Phase C で置き換えた）と、それを `common:edition:<source_id>.<edition_key>` に
+ * 展開した `sourceEditionId` を持つ。NULL = 全 edition 共通。
  *
  * `grain`/`stat` は一次資料調査（docs/plans/PHASE_B_ALIAS_STAT_SOURCES.md）済みで、
  * `(dataset, alias, sourceId)` の組ごとに固定1値に決まる（`atsugi_river_water_quality`
@@ -110,11 +111,78 @@ export const variableAlias = sqliteTable("variable_alias", {
 	/** unit_id の根拠: 'source'（原本が報告）/ 'registry'（原本に単位記載が無くレジストリが補った）。 */
 	unitBasis: text("unit_basis"),
 	note: text(),
+	/** 出典の版（土地利用 2006/2016）。NULL = 全 edition 共通。 */
+	editionKey: text("edition_key"),
+	/** `editionKey` を `source_edition.edition_id` に展開したもの。 */
+	sourceEditionId: text("source_edition_id"),
 },
 (table) => [
 	index("ix_variable_alias_alias").on(table.alias),
 	index("ix_variable_alias_variable").on(table.variableId),
 	index("ix_variable_alias_dataset_alias_source").on(table.dataset, table.alias, table.sourceId),
+]);
+
+/**
+ * 出典のライセンス（ADR-0005、Issue #39 Phase C）。手書きの正は `registry/source/license.yaml`。
+ * `licenseClass` のコードリストもそこ（public_domain / cc_by / share_alike / open_terms /
+ * noncommercial / custom_terms / restricted / mixed / unconfirmed / unknown）。
+ */
+export const license = sqliteTable("license", {
+	licenseId: text("license_id").primaryKey(),
+	nameJa: text("name_ja"),
+	spdxOrUrl: text("spdx_or_url"),
+	licenseClass: text("license_class").notNull(),
+	attributionText: text("attribution_text"),
+	notes: text(),
+});
+
+/**
+ * 出典（不変）。`sourceId` は `source_registry.source_id` そのまま（bare）。公開 ID は
+ * `sourceRefId = 'common:source:' || source_id`。`supersededBy` は置き換え先の source_id
+ * （旧 ID は消さない。ADR-0004 規約 2。`gbif_kanagawa` → `gbif_kanagawa_occurrences`）。
+ * v1 の `source_registry` は並走して残す（`queries.ts` が使用中。撤去は別 Issue）。
+ */
+export const source = sqliteTable("source", {
+	sourceId: text("source_id").primaryKey(),
+	sourceRefId: text("source_ref_id").notNull(),
+	nameJa: text("name_ja"),
+	publisher: text(),
+	homepageUrl: text("homepage_url"),
+	regionId: text("region_id"),
+	theme: text(),
+	accessMethod: text("access_method"),
+	supersededBy: text("superseded_by"),
+	notes: text(),
+});
+
+/**
+ * 出典の版（取得回、または出典自身の版 = vintage）。`editionId` は
+ * `common:edition:<source_id>.<edition_key>`。`redistributable`/`licenseClass`/`commercialOk`
+ * は出典の旗として残すだけで、出力・API を絞る根拠にしない（ADR-0005 改定・ADR-0028。
+ * `embargo_reason` は作らない）。`licenseRaw` は `source_registry.license` の原文。
+ * 過去の取得履歴は復元不能なので作らない（宣言した版と現在の 1 版。`registry/source/editions.yaml`）。
+ */
+export const sourceEdition = sqliteTable("source_edition", {
+	editionId: text("edition_id").primaryKey(),
+	sourceId: text("source_id").notNull(),
+	editionKey: text("edition_key").notNull(),
+	vintage: text(),
+	fetchedAt: text("fetched_at"),
+	url: text(),
+	format: text(),
+	contentSha256: text("content_sha256"),
+	licenseId: text("license_id").notNull(),
+	licenseRaw: text("license_raw"),
+	licenseClass: text("license_class").notNull(),
+	redistributable: integer(),
+	commercialOk: integer("commercial_ok"),
+	recordCount: integer("record_count"),
+	supersededBy: text("superseded_by"),
+	updateMode: text("update_mode"),
+	notes: text(),
+},
+(table) => [
+	uniqueIndex("ux_source_edition_source_key").on(table.sourceId, table.editionKey),
 ]);
 
 /**

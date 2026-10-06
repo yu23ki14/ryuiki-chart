@@ -169,6 +169,7 @@ def _load_build_steps() -> None:
 
     from registry.build_unit_variable import build as build_unit_variable
     from registry.build_region import build as build_region
+    from registry.build_source import build as build_source
     from registry.build_place import build as build_place
     from registry.build_taxon import build as build_taxon
     from registry.build_taxon_assessment import build as build_taxon_assessment
@@ -179,6 +180,9 @@ def _load_build_steps() -> None:
             # region (Issue #32-3) は place より前: place.region_id が参照する語彙。
             ("region (#32-3)", build_region),
             ("unit/variable/variable_alias (A-2)", build_unit_variable),
+            # license/source/source_edition (Issue #39 Phase C) は alias の後: alias.source_edition_id
+            # と alias.source_id が実在するかをこのステップが検査する。
+            ("license/source/source_edition (#39)", build_source),
             ("place/place_source_ref (A-3)", build_place),
             ("taxon (A-4)", build_taxon),
             # taxon_assessment (P-2) は taxon (A-4) の直後に置く: taxon_id の
@@ -208,6 +212,11 @@ ID_UNIQUENESS_CHECKS = [
     ("region", "region_id"),
     ("unit", "unit_id"),
     ("variable", "variable_id"),
+    # license/source/source_edition (Issue #39 Phase C)。edition は (source_id, edition_key) でも一意。
+    ("license", "license_id"),
+    ("source", "source_id"),
+    ("source_edition", "edition_id"),
+    ("source_edition", ("source_id", "edition_key")),
     ("place", "place_id"),
     ("taxon", "taxon_id"),
     ("caveat", "caveat_id"),
@@ -264,6 +273,12 @@ ID_REFERENCE_CHECKS = [
     ("unit", "canonical_unit_id", "unit", "unit_id"),
     ("variable_alias", "unit_id", "unit", "unit_id"),
     ("variable_alias", "variable_id", "variable", "variable_id"),
+    # variable_alias.source_id / source_edition_id は --files-only（source 表が空）でも動くよう
+    # ここには置かず、build_source.py が検査する。
+    ("source_edition", "source_id", "source", "source_id"),
+    ("source_edition", "license_id", "license", "license_id"),
+    ("source_edition", "superseded_by", "source_edition", "edition_id"),
+    ("source", "superseded_by", "source", "source_id"),
     ("caveat_scope", "caveat_id", "caveat", "caveat_id"),
     ("place_source_ref", "place_id", "place", "place_id"),
     ("place_relation", "parent_id", "place", "place_id"),
@@ -275,9 +290,11 @@ ID_REFERENCE_CHECKS = [
 def _assert_id_references(conn) -> None:
     for child, fk_col, parent, pk_col in ID_REFERENCE_CHECKS:
         missing = conn.execute(
-            f"SELECT count(*) FROM {child} "
-            f"WHERE {fk_col} IS NOT NULL "
-            f"AND NOT EXISTS (SELECT 1 FROM {parent} WHERE {parent}.{pk_col} = {child}.{fk_col})"
+            # 親子が同じ表（unit.canonical_unit_id -> unit.unit_id、source_edition.superseded_by ->
+            # source_edition.edition_id）でも子と親を取り違えないよう、別名 c/p を付ける。
+            f"SELECT count(*) FROM {child} AS c "
+            f"WHERE c.{fk_col} IS NOT NULL "
+            f"AND NOT EXISTS (SELECT 1 FROM {parent} AS p WHERE p.{pk_col} = c.{fk_col})"
         ).fetchone()[0]
         if missing:
             raise AssertionError(

@@ -247,7 +247,7 @@ pnpm wrangler d1 migrations list ryuiki --remote   # 本番の適用済みを確
    `reports/serving_fingerprint.json` の `git_head` が今のコードであることを確かめる。
 
    ```bash
-   pnpm run db:export -- --table observation_agg,occurrence_agg,summary_variable_catalog,summary_place_variable,summary_taxon_catalog,summary_watershed_occurrence,summary_species_catalog,summary_group_year,summary_effort_year,summary_grid_catalog,unit,variable,variable_alias,place,place_source_ref,place_relation,place_watershed,taxon,taxon_assessment,caveat,caveat_scope
+   pnpm run db:export -- --table observation_agg,occurrence_agg,summary_variable_catalog,summary_place_variable,summary_taxon_catalog,summary_watershed_occurrence,summary_species_catalog,summary_group_year,summary_effort_year,summary_grid_catalog,unit,variable,variable_alias,license,source,source_edition,place,place_source_ref,place_relation,place_watershed,taxon,taxon_assessment,caveat,caveat_scope
    ```
 
    表名は `web/src/lib/table-meta.ts` の `TABLE_ORIGIN`（v2・reg）と照合してから。流し方は「3. データを入れる」のファイル単位の再試行ループをそのまま使う。

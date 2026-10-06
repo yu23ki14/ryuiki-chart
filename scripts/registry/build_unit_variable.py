@@ -31,6 +31,7 @@ import sqlite3
 import yaml
 
 from . import common
+from .build_source import load_declared_edition_ids
 
 UNIT_YAML = common.ROOT / "registry" / "unit.yaml"
 VARIABLE_YAML = common.ROOT / "registry" / "variable.yaml"
@@ -131,20 +132,39 @@ def _load_variable_yaml() -> list[dict]:
     return entries
 
 
+def _assert_edition_keys_declared(rows: list[dict]) -> None:
+    """`edition_key` が空でない行は、`(source_id, edition_key)` が registry/source/editions.yaml の
+    `declared_editions` に実在すること（alias が指してよい版は宣言された版だけ。`--files-only` でも
+    同じ検査が効く。source_edition 表への実在は build_source.py が重ねて検査する）。
+    """
+    declared = load_declared_edition_ids()
+    for r in rows:
+        ek = r.get("edition_key") or ""
+        if not ek:
+            continue
+        sid = r.get("source_id") or ""
+        if (sid, ek) not in declared:
+            raise AssertionError(
+                f"registry/variable_alias.csv: alias={r['alias']!r} dataset={r['dataset']!r} の "
+                f"(source_id, edition_key)=({sid!r}, {ek!r}) が registry/source/editions.yaml の "
+                "declared_editions に無い（版を宣言するか edition_key を直す）"
+            )
+
+
 def _assert_variable_unit_consistent_per_alias(rows: list[dict]) -> None:
-    """同じ (dataset, alias) を共有する行は variable_id と unit_id が一致すること
+    """同じ (dataset, alias, edition_key) を共有する行は variable_id と unit_id が一致すること
     （docs/plans/PHASE_B_INTAKE.md 設計B-2）。これが崩れると
     `resolveVariableInfo()`（web/src/lib/registry/lookup.ts）が「どの source_id の
     行を引いたか」によって違う variable_id/unit_id を返しうる曖昧な状態になる。
     """
     seen: dict[tuple, tuple] = {}
     for r in rows:
-        key = (r["dataset"], r["alias"])
+        key = (r["dataset"], r["alias"], r.get("edition_key") or "")
         val = (r.get("variable_id") or None, r.get("unit_id") or None)
         prev = seen.get(key)
         if prev is not None and prev != val:
             raise AssertionError(
-                f"registry/variable_alias.csv: (dataset, alias)={key!r} の行で "
+                f"registry/variable_alias.csv: (dataset, alias, edition_key)={key!r} の行で "
                 f"variable_id/unit_id が一致しない: {prev!r} と {val!r}"
             )
         seen[key] = val
@@ -241,10 +261,14 @@ def _load_variable_alias_csv() -> list[dict]:
     # (dataset, alias, source_id) の組で見る（source_id が空の行＝出典未記録も
     # Python 側で明示的に None として扱い、SQLite の「NULL は互いに異なる」に
     # 頼らない。web/src/db/schema-registry.ts の variableAlias 参照）。
+    #
+    # Issue #39 Phase C: 出典が版を持つとき（土地利用 2006/2016）は edition_key が一意性の4つ目の
+    # 成分になる（以前は dataset に `@<年>` を後置していた）。空 = 全 edition 共通。
     common.assert_unique(
-        [(r["dataset"] or None, r["alias"], r.get("source_id") or None) for r in rows],
-        "registry/variable_alias.csv の (dataset, alias, source_id)",
+        [(r["dataset"] or None, r["alias"], r.get("source_id") or None, r.get("edition_key") or None) for r in rows],
+        "registry/variable_alias.csv の (dataset, alias, source_id, edition_key)",
     )
+    _assert_edition_keys_declared(rows)
     _assert_variable_unit_consistent_per_alias(rows)
     _assert_grain_and_stat_codes(rows)
     _assert_unit_basis(rows)
@@ -279,7 +303,9 @@ def _variable_alias_rows(rows: list[dict]) -> list[tuple]:
     return [
         (r["alias"], r.get("dataset") or None, r.get("source_id") or None,
          r.get("variable_id") or None, r.get("unit_id") or None, r.get("stat") or None,
-         r.get("grain") or None, r.get("unit_basis") or None, r.get("note") or None)
+         r.get("grain") or None, r.get("unit_basis") or None, r.get("note") or None,
+         r.get("edition_key") or None,
+         common.edition_id(r["source_id"], r["edition_key"]) if r.get("edition_key") else None)
         for r in rows
     ]
 
@@ -309,7 +335,8 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     )
     n_alias = common.insert_many(
         conn, "variable_alias",
-        ["alias", "dataset", "source_id", "variable_id", "unit_id", "stat", "grain", "unit_basis", "note"],
+        ["alias", "dataset", "source_id", "variable_id", "unit_id", "stat", "grain", "unit_basis", "note",
+         "edition_key", "source_edition_id"],
         _variable_alias_rows(alias_rows_raw),
     )
     return {"unit": n_unit, "variable": n_variable, "variable_alias": n_alias}
