@@ -1,7 +1,7 @@
 # 注意事項（caveat）レジストリ（docs/plans/PHASE_A.md §A-5, docs/adr/0013-caveats.md）。
 #
 # 現行の注記14件をそのまま移したもの:
-#   - web/src/lib/domain.ts の DATA_CAVEATS（7件）: measuredOn censored duplicates
+#   - web/src/lib/domain.ts の DATA_CAVEATS（7件）: measuredOn censored（のち censoredLod に一本化）duplicates
 #     zone organismSite effort synthetic
 #   - web/src/lib/domain.ts の BIOTA_CAVEATS（6件）: regimes gbifCutoff share
 #     inatBackfill fishClass isAlien
@@ -32,61 +32,30 @@
 # （マッピング自体は web/src/lib/ai/caveats.ts の SITES_CAVEATS 等の再現であり、
 # データというよりロジックの複製にあたるため。理由は build_caveat.py の docstring）。
 #
-# landuseDefinitionChange（P-1b、docs/plans/PHASE_B_LANDUSE.md）は Phase A 以降
-# 初めて新規に足した注記（上記「新しい注記はここに足していない」は Phase A 時点の
-# 記述で、この1件だけ例外）。scope は landuse_watershed/landuse_change の2表
-# （scripts/registry/build_caveat.py の LANDUSE_TABLES）。
+# landuseDefinitionChange（P-1b、docs/plans/PHASE_B_LANDUSE.md）・censoredLod・unitUnknown
+# （Issue #48 PR-2）・aboveLod（ADR-0009 決定4-C）は Phase A 以降に新規に足した注記
+# （上記「新しい注記はここに足していない」への例外）。
 #
-# censoredLod・unitUnknown（Issue #48 PR-2、docs/plans/V2_SERVING_PR2.md §6）は
-# landuseDefinitionChange に続いて新規に足した注記（上記「新しい注記はここに足して
-# いない」への3件目の例外）。
+# **v1 の table 行は撤去済み（Issue #48 PR-5）。** v1 の派生表・原本表が D1 から DROP
+# されたので、caveat_scope の 'table'/'table_prefix' 行は `sites`（zone/municipality）だけ
+# になった。v2 は facet（dataset/place_kind/source_id/variable_theme/variable）で引く。
+# scope は scripts/registry/build_caveat.py にある（yaml には含めない）。
 #
-# censoredLod: 上の censored エントリ直前のコメント・ADR-0009 の申し送り
-# （「lod の系列を画面に出す最初の消費者が現れたら、censoredZero/censoredLod の
-# ように key ごと分ける」）どおり、censored（zero 系列を名指し）とは別の key に
-# 分けた。zero 系列の censored 本文は1文字も変えていない。severity='blocking' は
-# 「とは読まないこと」という禁止表現を含むため（build_caveat.py 冒頭の severity
-# 判定ルールに従う）。scope は v2 facet `dataset=measurements` のみ
-# （build_caveat.py の MEASURE_CAVEATS_V2。v1 の 'table' 行は censored のまま
-# 変えない——v1 経路がいま読んでいるのは zero 系列だけなので）。
+# `censored`（旧: 定量下限未満を 0 とみなす、zero 系列を名指し）は撤去し、画面の値
+# （lod 系列）に合う `censoredLod` に一本化した（ADR-0009 の2026-09-24追記の申し送りの
+# 解消。同じ意味の2キーを残すと再発するため）。ホームの注記（web/src/app/page.tsx）も
+# `censoredLod`。severity='blocking' は「とは読まないこと」という禁止表現を含むため
+# （build_caveat.py 冒頭の severity 判定ルールに従う）。
 #
-# unitUnknown: 新設 scope kind `variable`（PR-1 で型だけ予約していたもの）の
-# 最初の消費者。refs（対象 variable_id）は registry/variable_alias.csv の
-# unit_id が空の行から build_caveat.py が機械的に導出する（ハードコードしない）。
-# severity='blocking' は「混同しないこと」という禁止表現を含むため。kind は
-# ADR-0013 の enum のどれにも無理に当てはまらないため null のまま。
+# unitUnknown: scope kind `variable` の最初の消費者。refs（対象 variable_id）は
+# registry/variable_alias.csv の unit_id が空の行から build_caveat.py が機械的に導出する
+# （ハードコードしない）。severity='blocking' は「混同しないこと」という禁止表現を含むため。
+# kind は ADR-0013 の enum のどれにも無理に当てはまらないため null のまま。
 #
-# censored（ADR-0009 決定4、2026-09-24）は Phase A 以降で本文を変えた唯一の例外
-# （上記「body_ja は1文字も変えていない」への2件目の例外）。旧本文「value 列には
-# 0 が入っている」は、キューブが zero/lod の2系列を併記するようになった時点で
-# 偽になる（value 列という単一の列自体が無くなり、value_zero/value_lod に分かれた
-# うえ、value_lod には 0 ではなく定量下限値が入る）。
-#
-# 本文は「系列に依らない書き方」にはしなかった（オーナー判断）。いま画面が読んで
-# いるのは v1 の派生表（`meas_*` 等。b05 が `value_zero` だけを射影したもの＝
-# zero の系列）だけなので、「代入方式によって変わる」のような系列に依らない
-# 書き方にすると、読者は自分が見ている値がどちらの系列か分からないまま放置される。
-# 「いま見えているものを名指しする」方が正直、という判断で「この画面の値は
-# 定量下限未満を 0 とみなして集計している」と、zero 系列であることを明示した。
-#
-# **申し送り**: `lod` の系列を画面（または応答封筒 ADR-0014）に出す段——v2
-# （observation_agg）を直読みして系列を選べるようにする最初の消費者が現れたとき
-# ——には本文を見直すこと。**この注記の仕組みは caveat_id（key）ごとに静的な
-# 1本の文を持つ形**（build_caveat.py・generated-client.ts）なので、系列ごとに
-# 本文を動的に差し替えるより、`aboveLod` を独立した key にしたのと同じやり方
-# （例: `censoredZero`/`censoredLod` のように key ごと分ける）の方が既存設計と
-# 噛み合う。ADR-0009 の2026-09-24追記にも同じ申し送りを残した。
-#
-# web/src/lib/ai/caveats.test.ts の該当3ケース・スナップショットも合わせて更新済み。
-#
-# aboveLod（ADR-0009 決定4-C、2026-09-24、/code-review 指摘3）は censored に続く
-# 2件目の新規注記（上記「新しい注記はここに足していない」への2件目の例外）。
-# `water.transparency`（透明度）の定量上限超え（`>1.4`〜`>28`、26行）は、
-# `value_zero`/`value_lod` のどちらの列も作らない（`n`/`n_censored` を含む
-# あらゆる集計から丸ごと落ちる——ADR-0009 決定4-C「above_lod は今回も
-# 非メンバーのまま」）。列を作らない代わりに注記で伝える、という設計上の
-# 取引なので、この注記が無いと上限側の検閲がどこにも残らない。scope は
-# censored と同じ MEASURE_TABLES（`scripts/registry/build_caveat.py`）。
+# aboveLod: `water.transparency`（透明度）の定量上限超え（`>1.4`〜`>28`、26行）は
+# `value_zero`/`value_lod` のどちらの列も作らない（`n`/`n_censored` を含むあらゆる集計から
+# 丸ごと落ちる——ADR-0009 決定4-C）。列を作らない代わりに注記で伝える。scope は
+# `censoredLod` と同じ dataset='measurements'。
 
 caveats:
 - key: measuredOn
@@ -94,12 +63,6 @@ caveats:
   kind: null
   title_ja: null
   body_ja: measurements.measured_on には「2015-04-08」形式（検体値・216,990行）と「2015」形式（年度集計値・98,328行）が混在する。年度集計値は日本の年度（4月〜翌3月）を指す。この画面では両者を kind で区別している。
-  quote: null
-- key: censored
-  severity: blocking
-  kind: censoring
-  title_ja: null
-  body_ja: 全体の約24%は定量下限未満（原表記が「<0.5」など）。この画面の値は定量下限未満を 0 とみなして集計している。折れ線では中抜きの点で示し、「0 が観測された」とは読まないこと。
   quote: null
 - key: censoredLod
   severity: blocking
