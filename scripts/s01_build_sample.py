@@ -595,6 +595,7 @@ def main() -> int:
     parser.add_argument("--processed-dir", default=str(DEFAULT_PROCESSED_DIR))
     parser.add_argument("--coverage-yaml", default=str(DEFAULT_COVERAGE_YAML))
     parser.add_argument("--out-dir", default=str(DEFAULT_OUT_DIR))
+    parser.add_argument("--manifests-dir", default=str(source_regions.DEFAULT_MANIFESTS_DIR))
     args = parser.parse_args()
 
     coverage = load_yaml(args.coverage_yaml)
@@ -612,7 +613,7 @@ def main() -> int:
     for table in coverage.get("wholesale_ryuiki_tables", []):
         selected[table] = set(select_wholesale_rowids(ryuiki_conn, table))
     # adapter 出典（マニフェストの非 builtin）の入力表は、coverage.yaml に書かなくてもマニフェストから導いて入れる
-    manifests = adapter_inputs()
+    manifests = adapter_inputs(args.manifests_dir)
     for table, rowids in select_adapter_input_tables(ryuiki_conn, manifests, selected).items():
         selected[table] = rowids
 
@@ -646,7 +647,7 @@ def main() -> int:
     # --- declaration_counts.yaml ---
     geojson_path = pathlib.Path(args.processed_dir) / "nlni_w12_watersheds.geojson"
     landuse_csv_path = pathlib.Path(args.processed_dir) / "nlni_l03b_landuse_by_watershed.csv"
-    counts = build_declaration_counts(ryuiki_conn, selected, geojson_path, landuse_csv_path)
+    counts = build_declaration_counts(ryuiki_conn, selected, geojson_path, landuse_csv_path, manifests_dir=args.manifests_dir)
     (out_dir / "declaration_counts.yaml").write_text(_dump_declaration_counts_yaml(counts), encoding="utf-8")
 
     # --- manifest.json ---

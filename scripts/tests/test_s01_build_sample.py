@@ -197,6 +197,9 @@ def test_end_to_end_determinism_on_fixture_db(tmp_path):
     ):
         (tmp_path / name).write_text("dummy", encoding="utf-8")
 
+    manifests_for_main = tmp_path / "manifests_main"
+    write_manifests_from_sources_text(manifests_for_main, _SOURCE_REGIONS_YAML_TEXT)
+
     out_dir_1 = tmp_path / "out1"
     out_dir_2 = tmp_path / "out2"
 
@@ -209,6 +212,7 @@ def test_end_to_end_determinism_on_fixture_db(tmp_path):
             "--processed-dir", str(tmp_path),
             "--coverage-yaml", str(coverage_yaml),
             "--out-dir", str(out_dir),
+            "--manifests-dir", str(manifests_for_main),
         ]
         try:
             assert s01.main() == 0
