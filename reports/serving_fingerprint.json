@@ -182,94 +182,94 @@
         "same": 60
       }
     },
-    "previous_git_head": "7f2318297efc633e11e5d11e477d385c2782d20d"
+    "previous_git_head": "62afa96ba1a1ced57fa944f61bf9baac1cb6409c"
   },
-  "created_at": "2026-10-06T09:56:27+00:00",
+  "created_at": "2026-10-06T11:14:25+00:00",
   "environment": {
     "better_sqlite3_sqlite_version": "3.53.4",
     "node_version": "v22.22.2",
     "python_sqlite3_version": "3.49.1",
     "python_version": "3.13.7"
   },
-  "git_head": "62afa96ba1a1ced57fa944f61bf9baac1cb6409c",
+  "git_head": "902d9b5b49755f66e1ac43f6cf1becb78098fa68",
   "pipeline_fingerprint_rows": {
     "registry.sqlite": null,
     "v2.sqlite": [
       {
-        "fingerprint": "sha256:99fb2893d442c4e1464f59470d7824673875734a67da613f11e356f24038e609:1029034",
-        "inputs": "{\"ext:registry.place\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\", \"ext:registry.place_source_ref\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\", \"ext:registry.variable_alias\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\", \"ext:ryuiki.measurements\": \"count=323164;max_rowid=342142\", \"ext:ryuiki.sensor_timeseries\": \"count=717839;max_rowid=1775419\"}",
+        "fingerprint": "sha256:17ceb60713d7c652789a4a82149a952234848b16162f5d22b0f2f3d8e0adb544:1029034",
+        "inputs": "{\"ext:registry.place\": \"ef13d3d8cf2a6543b79865a18392d7800a439ed74143baab2646bb229733f556\", \"ext:registry.place_source_ref\": \"ef13d3d8cf2a6543b79865a18392d7800a439ed74143baab2646bb229733f556\", \"ext:registry.source_edition\": \"ef13d3d8cf2a6543b79865a18392d7800a439ed74143baab2646bb229733f556\", \"ext:registry.variable_alias\": \"ef13d3d8cf2a6543b79865a18392d7800a439ed74143baab2646bb229733f556\", \"ext:ryuiki.measurements\": \"count=323164;max_rowid=342142\", \"ext:ryuiki.sensor_timeseries\": \"count=717839;max_rowid=1775419\"}",
         "spec_version": "phase-b-fact-slice/v1",
         "table_name": "observation"
       },
       {
-        "fingerprint": "sha256:267cfb4de8b811d543e9ce0d73b0d618bb1c0678f149c80724e527652c3d6dbd:2011364",
-        "inputs": "{\"ext:registry.unit\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\", \"ext:registry.variable\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\", \"ext:registry.variable_alias\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\", \"observation\": \"sha256:99fb2893d442c4e1464f59470d7824673875734a67da613f11e356f24038e609:1029034\"}",
-        "spec_version": "phase-b-fact-slice/v3",
+        "fingerprint": "sha256:396f44fe82b23c3d70f9f102619dfda7864e13235d318f6f202e01704cc92049:2011364",
+        "inputs": "{\"ext:registry.unit\": \"ef13d3d8cf2a6543b79865a18392d7800a439ed74143baab2646bb229733f556\", \"ext:registry.variable\": \"ef13d3d8cf2a6543b79865a18392d7800a439ed74143baab2646bb229733f556\", \"ext:registry.variable_alias\": \"ef13d3d8cf2a6543b79865a18392d7800a439ed74143baab2646bb229733f556\", \"observation\": \"sha256:17ceb60713d7c652789a4a82149a952234848b16162f5d22b0f2f3d8e0adb544:1029034\"}",
+        "spec_version": "phase-b-fact-slice/v4",
         "table_name": "observation_agg"
       },
       {
-        "fingerprint": "sha256:494fadabdce670530fe3ccea036313afea088bc89a963c84f75cd7f4132d1d1a:823692",
-        "inputs": "{\"ext:registry.place\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\", \"ext:registry.place_source_ref\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\", \"ext:registry.taxon\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\", \"ext:registry.taxon_assessment\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\", \"ext:ryuiki.organism_records\": \"count=823692;max_rowid=823692\"}",
+        "fingerprint": "sha256:83a35935e2ef890ca69daa278d5072e6520568479f20b03387530debbaf90704:823692",
+        "inputs": "{\"ext:registry.place\": \"ef13d3d8cf2a6543b79865a18392d7800a439ed74143baab2646bb229733f556\", \"ext:registry.place_source_ref\": \"ef13d3d8cf2a6543b79865a18392d7800a439ed74143baab2646bb229733f556\", \"ext:registry.source_edition\": \"ef13d3d8cf2a6543b79865a18392d7800a439ed74143baab2646bb229733f556\", \"ext:registry.taxon\": \"ef13d3d8cf2a6543b79865a18392d7800a439ed74143baab2646bb229733f556\", \"ext:registry.taxon_assessment\": \"ef13d3d8cf2a6543b79865a18392d7800a439ed74143baab2646bb229733f556\", \"ext:ryuiki.organism_records\": \"count=823692;max_rowid=823692\"}",
         "spec_version": "phase-b-fact-slice/v1",
         "table_name": "occurrence"
       },
       {
-        "fingerprint": "sha256:87f74b6f4b9ecf2c9b5f03293ba0c5d9fa3ae258740c9f1032374bac7fa8c52d:1437598",
-        "inputs": "{\"occurrence\": \"sha256:494fadabdce670530fe3ccea036313afea088bc89a963c84f75cd7f4132d1d1a:823692\", \"occurrence_place\": \"sha256:9376e87fc8e2123f1f1ca4ee455949975aca4c0357590174783fdcb218d26782:823692\"}",
-        "spec_version": "phase-b-fact-slice/v3",
+        "fingerprint": "sha256:515db1b26fe971dc9ebf4b28aa38a57b119d971256b21f4aaad019b5cd0023b3:1437598",
+        "inputs": "{\"occurrence\": \"sha256:83a35935e2ef890ca69daa278d5072e6520568479f20b03387530debbaf90704:823692\", \"occurrence_place\": \"sha256:474664027357904f64e34f13b8014dd1f6ffc183d498334f15d6cff1c1268aa3:823692\"}",
+        "spec_version": "phase-b-fact-slice/v4",
         "table_name": "occurrence_agg"
       },
       {
-        "fingerprint": "sha256:9376e87fc8e2123f1f1ca4ee455949975aca4c0357590174783fdcb218d26782:823692",
-        "inputs": "{\"ext:registry.place_source_ref\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\", \"ext:ryuiki.sites\": \"count=352;max_rowid=738\", \"occurrence\": \"sha256:494fadabdce670530fe3ccea036313afea088bc89a963c84f75cd7f4132d1d1a:823692\"}",
-        "spec_version": "phase-b-fact-slice/v2",
+        "fingerprint": "sha256:474664027357904f64e34f13b8014dd1f6ffc183d498334f15d6cff1c1268aa3:823692",
+        "inputs": "{\"ext:registry.place_source_ref\": \"ef13d3d8cf2a6543b79865a18392d7800a439ed74143baab2646bb229733f556\", \"ext:ryuiki.sites\": \"count=352;max_rowid=738\", \"occurrence\": \"sha256:83a35935e2ef890ca69daa278d5072e6520568479f20b03387530debbaf90704:823692\"}",
+        "spec_version": "phase-b-fact-slice/v3",
         "table_name": "occurrence_place"
       },
       {
         "fingerprint": "sha256:d5222446e6367c83f64205370bc73d6e94668e9ba195a52fb2f9ef79c951c65b:171",
-        "inputs": "{\"ext:registry.taxon\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\", \"occurrence_agg\": \"sha256:87f74b6f4b9ecf2c9b5f03293ba0c5d9fa3ae258740c9f1032374bac7fa8c52d:1437598\"}",
+        "inputs": "{\"ext:registry.taxon\": \"ef13d3d8cf2a6543b79865a18392d7800a439ed74143baab2646bb229733f556\", \"occurrence_agg\": \"sha256:515db1b26fe971dc9ebf4b28aa38a57b119d971256b21f4aaad019b5cd0023b3:1437598\"}",
         "spec_version": "serving-summary/v5",
         "table_name": "summary_effort_year"
       },
       {
         "fingerprint": "sha256:7a00d35717767cef249a25c7d16f56255f0bd767acfc7209cfe5286fd9971656:4086",
-        "inputs": "{\"ext:registry.taxon\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\", \"occurrence_agg\": \"sha256:87f74b6f4b9ecf2c9b5f03293ba0c5d9fa3ae258740c9f1032374bac7fa8c52d:1437598\"}",
+        "inputs": "{\"ext:registry.taxon\": \"ef13d3d8cf2a6543b79865a18392d7800a439ed74143baab2646bb229733f556\", \"occurrence_agg\": \"sha256:515db1b26fe971dc9ebf4b28aa38a57b119d971256b21f4aaad019b5cd0023b3:1437598\"}",
         "spec_version": "serving-summary/v5",
         "table_name": "summary_grid_catalog"
       },
       {
         "fingerprint": "sha256:293cd085fb6002c514cc7d63a23ea657749eb9acec7d20f373e452b1b8f4d3a7:1851",
-        "inputs": "{\"ext:registry.taxon\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\", \"occurrence_agg\": \"sha256:87f74b6f4b9ecf2c9b5f03293ba0c5d9fa3ae258740c9f1032374bac7fa8c52d:1437598\"}",
+        "inputs": "{\"ext:registry.taxon\": \"ef13d3d8cf2a6543b79865a18392d7800a439ed74143baab2646bb229733f556\", \"occurrence_agg\": \"sha256:515db1b26fe971dc9ebf4b28aa38a57b119d971256b21f4aaad019b5cd0023b3:1437598\"}",
         "spec_version": "serving-summary/v5",
         "table_name": "summary_group_year"
       },
       {
-        "fingerprint": "sha256:c8e7d8dc94e1a633dee90c49041cd93656794e0a24addce31ce8868b65cbcbb2:8311",
-        "inputs": "{\"observation_agg\": \"sha256:267cfb4de8b811d543e9ce0d73b0d618bb1c0678f149c80724e527652c3d6dbd:2011364\"}",
+        "fingerprint": "sha256:140b0d867b4c5a27fa7a11c002e1775feab198aa5cc526f497faa627c93733ed:8311",
+        "inputs": "{\"observation_agg\": \"sha256:396f44fe82b23c3d70f9f102619dfda7864e13235d318f6f202e01704cc92049:2011364\"}",
         "spec_version": "serving-summary/v5",
         "table_name": "summary_place_variable"
       },
       {
         "fingerprint": "sha256:ca8e8bff552679b421030c0b79bfd451ad26be9b797137ed3c407343b094bd51:23618",
-        "inputs": "{\"ext:registry.taxon\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\", \"occurrence_agg\": \"sha256:87f74b6f4b9ecf2c9b5f03293ba0c5d9fa3ae258740c9f1032374bac7fa8c52d:1437598\"}",
+        "inputs": "{\"ext:registry.taxon\": \"ef13d3d8cf2a6543b79865a18392d7800a439ed74143baab2646bb229733f556\", \"occurrence_agg\": \"sha256:515db1b26fe971dc9ebf4b28aa38a57b119d971256b21f4aaad019b5cd0023b3:1437598\"}",
         "spec_version": "serving-summary/v5",
         "table_name": "summary_species_catalog"
       },
       {
         "fingerprint": "sha256:d61ce946c0bff20d5f9ea55e144481bd6a9bd47cf2de38cf6819fb70b79cbbb2:32186",
-        "inputs": "{\"occurrence_agg\": \"sha256:87f74b6f4b9ecf2c9b5f03293ba0c5d9fa3ae258740c9f1032374bac7fa8c52d:1437598\"}",
+        "inputs": "{\"occurrence_agg\": \"sha256:515db1b26fe971dc9ebf4b28aa38a57b119d971256b21f4aaad019b5cd0023b3:1437598\"}",
         "spec_version": "serving-summary/v5",
         "table_name": "summary_taxon_catalog"
       },
       {
         "fingerprint": "sha256:94ffa339f08f601897b2a74e7b7e6c8724d47d501f7d7c48f713a9496db9ba36:119",
-        "inputs": "{\"observation_agg\": \"sha256:267cfb4de8b811d543e9ce0d73b0d618bb1c0678f149c80724e527652c3d6dbd:2011364\"}",
+        "inputs": "{\"observation_agg\": \"sha256:396f44fe82b23c3d70f9f102619dfda7864e13235d318f6f202e01704cc92049:2011364\"}",
         "spec_version": "serving-summary/v5",
         "table_name": "summary_variable_catalog"
       },
       {
-        "fingerprint": "sha256:b5abd20028658cf4cbfd4a0d0bd2b4e979ecb48aa14f5c9a6e7fd7b870c7f7c9:288",
-        "inputs": "{\"occurrence_agg\": \"sha256:87f74b6f4b9ecf2c9b5f03293ba0c5d9fa3ae258740c9f1032374bac7fa8c52d:1437598\"}",
+        "fingerprint": "sha256:a3a7da7b347ebbdafeb12405a347c155d093df3ed8417f8bb3afed5a7a30de48:288",
+        "inputs": "{\"occurrence_agg\": \"sha256:515db1b26fe971dc9ebf4b28aa38a57b119d971256b21f4aaad019b5cd0023b3:1437598\"}",
         "spec_version": "serving-summary/v5",
         "table_name": "summary_watershed_occurrence"
       }
@@ -277,26 +277,26 @@
   },
   "pipeline_path_hashes": {
     "aggregations": "a187c139e235411513062adb0fd6dadd7fcbf220",
-    "registry": "281c5376e214608a757c59351fd882606ebf2498",
+    "registry": "8d1babda4c76b948bf8698d805f75ef6b9df5a76",
     "requirements.txt": "6982cafe7c0c5ce12db1ca2b7d74868e69945a27",
     "scripts/b00_run_full_gate.py": "984c2613672ff8541f9ee3445c481db8792e0ee8",
-    "scripts/b03_build_observation.py": "360209b034846e9ad2b9fd1841b2a57b6ebf6cd2",
-    "scripts/b04_build_cube.py": "8cc7f6c8bad4f3be91730295ffeda97132e814c6",
-    "scripts/b06_build_occurrence.py": "aa7b4014ee199cd13adbdc3af39f7990aae46f3d",
+    "scripts/b03_build_observation.py": "5f16ae89e6f2ecc4ef7f606a831f2ea00998e5b0",
+    "scripts/b04_build_cube.py": "86d236f0cd8f2144905fd1cf1deaa44afd30996e",
+    "scripts/b06_build_occurrence.py": "e524784344ded5dc842405a3abde45184cb3d8f0",
     "scripts/b07_build_occurrence_cube.py": "19bdcc361653971a736b0c35a18526f1e92314d0",
-    "scripts/b09_build_occurrence_place.py": "a1918d66e11707beff62d99a02a9ace4874f9d6e",
+    "scripts/b09_build_occurrence_place.py": "0b8d32c438228daaa07988b80e58d87bfc1f18f0",
     "scripts/b13_build_summary.py": "9c0fe0c56c79c2f357b44f06429a38fc3d068971",
     "scripts/era_table.py": "b0953de3efa2eee6eff43c249cda61e4e2e64c95",
-    "scripts/migrate": "5cffaf0dfb3fe5bd3e0e4884d25961b916564177",
+    "scripts/migrate": "4a28e53fae02861aa993244490fb6655830d6183",
     "scripts/pipeline_inputs.py": "d681352977b943ed8f7c689bbb16786f9ee93754",
-    "scripts/r01_build_registry.py": "1b1629f93d73d1a6144e000ede1e94babcbc9db2",
+    "scripts/r01_build_registry.py": "ea9cd2a918b425153dfa00ed2dc34bc5993142f4",
     "scripts/reconcile": "0434daaaa6e412fafdff6a99768d9486b7c5c9a0",
-    "scripts/registry": "9ad02f0d88253ab44f67ef43553c714d2eba2528",
-    "scripts/schema_registry.sql": "700ee7d5a609fb64df3929852433d53660ff43cc",
-    "scripts/taxon_namespaces.py": "a51a90e423c15c4dbfa2031b80686cca0384e954",
+    "scripts/registry": "df703e619aad13352ec2bc42d6832c185526980f",
+    "scripts/schema_registry.sql": "a3f5724e68fb8e90d5ab61d4d64f275091230021",
+    "scripts/taxon_namespaces.py": "96b49ceb0d4badf6a32f2a5732f2ed2efe0df79f",
     "web/package.json": "0a17420f8dbd67b82ab52ff89e511bac8a2d5eaf",
     "web/pnpm-lock.yaml": "6ed023dae786be30e10835dd8a13d5af0bccd466",
-    "web/scripts/build-registry-ts.mjs": "1f85d3373fbde65e2cbfb6c1735c8fdf2fbabfa8",
+    "web/scripts/build-registry-ts.mjs": "7f440492f97ba45507cceb83bfe62475981cc3d3",
     "web/scripts/lib/csv.mjs": "2d1fa1614b795cc6b3501f25afadddb30403afe2",
     "web/scripts/lib/registry-codegen.mjs": "de8f929332c58b7dd8a8391f1b17391326ed6342",
     "web/scripts/lib/serving/adapters-v2.ts": "2d62b4df13cc085594d4eaafc51f5f6496dd603d",
@@ -304,10 +304,10 @@
     "web/scripts/lib/serving/register-aliases.mjs": "2cb72578a5245ece90194b7e599178007b59f24a",
     "web/scripts/lib/serving/snapshot.ts": "beb996b860b34dde85aa318af5544b310b3c8d8e",
     "web/scripts/serving-snapshot.mts": "f101456833dcc8654fdba0fc61b7b91d7b9991da",
-    "web/serving_queries.yaml": "c03ad7ae340d6d9e541e5954204be34079faa475",
+    "web/serving_queries.yaml": "8f191c103cbfb9119fbe28e58046a2c195a34d8e",
     "web/src/db/schema-cube.ts": "d65b49bf9617a4e318beaea7008f5582ee260bb8",
     "web/src/lib/cube/assessment.ts": "8c16346ecdfaecbfd99e228caa46261c91daac30",
-    "web/src/lib/cube/catalog.ts": "260d1fe0033155ee320aa0cc1e80fb22509ac7de",
+    "web/src/lib/cube/catalog.ts": "c90520761db381102928e4a098f31e2780167aa5",
     "web/src/lib/cube/caveats.ts": "8e266e963e96847b3fbf4a950cd9488da74a9c6e",
     "web/src/lib/cube/cell-basis.ts": "8daf1bcedb90ed3d26b21d938eba7fc28d722ce8",
     "web/src/lib/cube/db-d1.ts": "04fc725695abca60df033398f90c9b82b602522a",
@@ -316,19 +316,22 @@
     "web/src/lib/cube/doc-series-where.ts": "4fe9d9c42d6f079713e87a3c0498ddb480e1049c",
     "web/src/lib/cube/documents.ts": "76d830abf16fa04d42e78d7cbbf1c993239cdf9c",
     "web/src/lib/cube/envelope.ts": "31a48209cd11cc36c778a0bcfd721685e523e540",
-    "web/src/lib/cube/grid.ts": "96ec103c3ad2c0c0183018fae0237d0ad47775fd",
+    "web/src/lib/cube/grid.ts": "c841e7ecf6456e3098b50126153df841b184d67d",
     "web/src/lib/cube/index.ts": "95c2a16d58c21337cf90cba5c52176ba85ff1835",
-    "web/src/lib/cube/observation.ts": "7d2ce1e79c2b014d7b3d94e534b1ac9d5b179985",
-    "web/src/lib/cube/occurrence.ts": "98b05930bc32fba4a0d7c4be6ac940c46668bbe8",
-    "web/src/lib/cube/series.ts": "7769329be7e9fd2a162ac8909a8b4505a84149aa",
-    "web/src/lib/cube/sql.ts": "e1f5d4e7f9fd8151d3314a4053e5076689e01a52",
+    "web/src/lib/cube/observation.ts": "3ef7273204e2929d61e3fa87ea465b9997bac3ef",
+    "web/src/lib/cube/occurrence.ts": "0dc265ba53edf1c7ce4ca6c39930a3d50fa857ed",
+    "web/src/lib/cube/series.ts": "fe7e328f71c074fc7ca394180f85990131c6d120",
+    "web/src/lib/cube/sql.ts": "d97ebacbb0c094754815ed73a4fcdf88a5df0c66",
     "web/src/lib/cube/unit.ts": "24c38c741b8a1cfc62bc5d33861aa7b1c45cfdcc",
     "web/src/lib/db.ts": "cb9a153fb416b4400bd74ecf0fd4d3977df90944",
     "web/src/lib/registry/generated-client.ts": "a0871726ce0964fbe31f0fed6a8ed0b98d426460",
-    "web/src/lib/registry/generated.ts": "d895f8e3b923c4a05873416f2b141564ab57c63b",
-    "web/src/lib/registry/index.ts": "bec75bbb451e73a699a8f260e0f3430bbab16121",
+    "web/src/lib/registry/generated-id-map.ts": "df5cd62cdf65bf30fe058654c18ed5a3f648bd75",
+    "web/src/lib/registry/generated.ts": "260e216c1034ef85d2fd3ad9e8a5da44c7302a47",
+    "web/src/lib/registry/index.ts": "02fc0d4c3b83cce49ea4b72d5e349dc3c45a201b",
+    "web/src/lib/registry/legacy-id.ts": "e6fb112a8a1288823915b2030c6d72d1a57c751c",
     "web/src/lib/registry/lookup-client.ts": "1cffcdff03e6a63f828d93be56ebb455736d9edb",
-    "web/src/lib/registry/lookup.ts": "aa5a98adee1145416dba524842d5df2db8b3d977"
+    "web/src/lib/registry/lookup.ts": "a7067c34fac88c4c99b33cb11009c80d7ef53c7b",
+    "web/src/lib/registry/parse-id.ts": "7a200e11ceb33b64b0185a88c1a90d1c2ca21ae6"
   },
   "queries": [
     {
