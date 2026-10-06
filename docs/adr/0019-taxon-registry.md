@@ -272,6 +272,7 @@ taxon_assessment  taxon_id, list_id, list_year, category_code, category_raw,
    掲載**が「国内由来のみ」のとき除外する（27 binom）。1件の `origin_ja` の分類: 空は unknown（1件でもあれば除外しない）、
    「国内に自然分布域を持つ国外由来の外来種」の語句を除いた残りに「国外由来」を含めば foreign（国外由来の掲載）、
    それ以外で「国内由来」を含めば domestic。同じ binom に foreign の掲載が1件でもあれば除外しない（Sus scrofa 等）。
+   「国内に自然分布域を持つ国外由来」も国内に在来の分布があるので、神奈川で外来かを全国リストは決められず、同じ理由で除外側に倒す（オーナー承認）。
    固定宣言（7種。Apis mellifera だけが規則外）との和集合が除外集合（28 binom）。行は消さず `in_scope=0`・`scope_reason`
    に理由を残す。規則の件数（27）は `build()` の本番経路が宣言と突き合わせ、固定宣言の `domestic_origin` が規則と
    食い違えば常に止まる。
@@ -284,9 +285,22 @@ taxon_assessment  taxon_id, list_id, list_year, category_code, category_raw,
    | 除外集合（28 binom）の記録 | 380 | 0（-380。固定7種 351・新規10種 29） |
    | 原旗が 0 だったのにリストに載る種の記録 | 0 | 15,896（148 binom） |
 
-   増分の大きい種（記録数・旧 `is_alien=1`）: Garrulax canorus（ガビチョウ）4,353・262、Trachemys scripta 520・169、
-   Solidago altissima 529・228、Paguma larvata 457・17、Bidens pilosa 447・0、Psittacula krameri 407・8、
-   Oenothera laciniata 406・156、Leiothrix lutea 303・39 ほか。旧旗が 1 だったのに新で 0 になるのは除外集合の 380 件だけ。
+   原旗が 0 だったのにリストに載る種（+15,896 件、148 binom）の増分上位10種:
+
+   | binom | 記録数 | 旧 `is_alien=1` | 新 `is_alien_in_scope=1` | 増分 |
+   |---|---:|---:|---:|---:|
+   | Garrulax canorus（ガビチョウ） | 4,353 | 262 | 4,353 | +4,091 |
+   | Bidens pilosa | 447 | 0 | 447 | +447 |
+   | Paguma larvata | 457 | 17 | 457 | +440 |
+   | Psittacula krameri | 407 | 8 | 407 | +399 |
+   | Trachemys scripta | 520 | 169 | 520 | +351 |
+   | Solidago altissima | 529 | 228 | 529 | +301 |
+   | Leiothrix lutea | 303 | 39 | 303 | +264 |
+   | Mytilus galloprovincialis | 260 | 2 | 260 | +258 |
+   | Oenothera laciniata | 406 | 156 | 406 | +250 |
+   | Sorghum halepense | 258 | 29 | 258 | +229 |
+
+   内訳: 3,721 − 380（除外集合）+ 15,896（原旗 0 の掲載種）= 19,237。旧旗が 1 から 0 になるのは除外集合の 380 件だけ。
    種ごとの除外の表は `reports/phase_b_taxon_assessment.md`。キューブ（`occurrence_agg` の年セル、日付あり記録）の
    `n_alien` は 3,717 → 19,176。
 2. **`accepted_taxon_id`（方針6）を実装した。** `scripts/c26_taxon_gbif_accepted.py` が GBIF の `species/{key}` から
