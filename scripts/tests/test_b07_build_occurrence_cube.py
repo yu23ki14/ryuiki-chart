@@ -924,3 +924,78 @@ def test_place_year_check_passes_for_normal_data_and_counts_place_years(tmp_path
         assert stats["n_watershed_place_years_checked"] == 2
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# 座標なしの日付あり記録（Issue #40 Phase D・J1）: grid01 に入れず watershed の place_id NULL セルにだけ入る
+# ---------------------------------------------------------------------------
+
+_NOCOORD_SOURCE = "kuma_like_source"
+
+
+def _coordless_setup(tmp_path):
+    coord = _row("gbif_kanagawa_occurrences__c", "2020-01-05", "2020-01-05", "2020-01-05")
+    nocoord = occurrence_row(
+        f"{_NOCOORD_SOURCE}__n", None, "2020-02-10", "2020-02-10", "2020-02-10",
+        source_id=_NOCOORD_SOURCE, place_id=None, place_kind=None, lat=None, lon=None,
+    )
+    place_rows = [
+        occurrence_place_row(coord[0], DEFAULT_WATERSHED_PLACE_ID),
+        occurrence_place_row(nocoord[0], None),
+    ]
+    # yaml の宣言値は既存出典（座標あり）だけの値。座標なしの出典の分はマニフェストの expected で足す。
+    conn, decl = _build(tmp_path, [coord, nocoord], place_rows=place_rows)
+    _write_declarations_yaml(decl.parent, _default_declaration_counts([coord], [place_rows[0]]))
+    return conn, decl
+
+
+def _nocoord_sums(**overrides):
+    from ingest import manifest as manifest_lib
+
+    cube = {k: 0 for k in manifest_lib.EXPECTED_CUBE_KEYS}
+    cube.update(dated_rows=1, dated_no_coordinate_rows=1, watershed_dated_unresolved_rows=1)
+    cube.update(overrides)
+    return manifest_lib.ExpectedSums(cube=cube, sources=(_NOCOORD_SOURCE,))
+
+
+def test_coordinate_less_dated_record_goes_only_to_watershed_null_place_cell(tmp_path):
+    conn, decl = _coordless_setup(tmp_path)
+    try:
+        stats = b07.build_cube(conn, decl, place_declarations_yaml=None, expected_sums=_nocoord_sums())
+        assert stats["n_dated_by_place_kind"] == {"grid01": 1, "watershed": 2}
+        # grid01 は座標ありの 1 件だけ（place_id NULL の grid01 セルを作らない）
+        assert conn.execute(
+            "SELECT COUNT(*) FROM occurrence_agg WHERE place_kind = 'grid01' AND place_id IS NULL"
+        ).fetchone()[0] == 0
+        assert conn.execute(
+            "SELECT SUM(n) FROM occurrence_agg WHERE place_kind = 'grid01' AND grain = 'year'"
+        ).fetchone()[0] == 1
+        # watershed には座標なしの記録が place_id NULL のセルとして入る
+        assert conn.execute(
+            "SELECT SUM(n) FROM occurrence_agg WHERE place_kind = 'watershed' AND place_id IS NULL AND source_id = ?",
+            (_NOCOORD_SOURCE,),
+        ).fetchone()[0] == 1
+    finally:
+        conn.close()
+
+
+def test_coordinate_less_dated_record_without_manifest_declaration_stops(tmp_path):
+    """座標なしの記録が宣言（マニフェストの expected）に無いまま混ざれば、黙って通さず止まる。"""
+    conn, decl = _coordless_setup(tmp_path)
+    try:
+        with pytest.raises(common.MigrationError):
+            b07.build_cube(conn, decl, place_declarations_yaml=None)
+    finally:
+        conn.close()
+
+
+def test_manifest_cube_declaration_mismatch_stops(tmp_path):
+    conn, decl = _coordless_setup(tmp_path)
+    try:
+        with pytest.raises(common.MigrationError, match="dated_no_coordinate_rows"):
+            b07.build_cube(
+                conn, decl, place_declarations_yaml=None,
+                expected_sums=_nocoord_sums(dated_no_coordinate_rows=0),
+            )
+    finally:
+        conn.close()

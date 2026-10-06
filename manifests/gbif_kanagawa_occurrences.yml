@@ -1,0 +1,12 @@
+# manifests/gbif_kanagawa_occurrences.yml（宣言。形は scripts/ingest/manifest.py の docstring）。
+# adapter: builtin = 変換は b03/b06 のまま（出力を動かさない）。メタデータだけを持つ。
+source: gbif_kanagawa_occurrences
+region: jp-14
+target: occurrence
+update_mode: snapshot
+input:
+  table: organism_records
+adapter: builtin
+expected_row_count: 658360
+evidence: >
+  GBIF 経由で取得した神奈川県内の occurrence（収集は scripts/c02_gbif.py 系）。対象地域を神奈川県（ADR-0002 jp-14）に絞って収集しているため region=jp-14。 件数は実測（data/db/ryuiki.sqlite、2026-09-22）の organism_records の source_id 別件数。 update_mode=snapshot は registry/source/editions.yaml に宣言済みだったものをここへ移した（二重管理にしない）。

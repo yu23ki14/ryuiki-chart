@@ -24,6 +24,8 @@ YAML だけから読めるので、`build_unit_variable.py` が alias.edition_ke
   raw が一意・`unknown` が定義されている
 - mappings の raw が source_registry に実在する（古い宣言の掃除）
 - 写像漏れの原文は `unknown` に落とし、件数と原文を出力する（止めない）
+- `manifests/<source_id>.yml`: `update_mode`（必須・コードリスト内）を source_edition.update_mode の正とする。source が
+  source_registry に実在し、editions.yaml に同じ出典の update_mode があれば一致していること
 - editions.yaml: 宣言の source_id が実在・edition_key が一意・fetched_from が実在・
   update_mode がコードリスト内・content_file がリポジトリ内の相対パス
 - 置換: `superseded_by` の先が実在し、自分自身ではなく、循環せず、先の source は edition を
@@ -191,7 +193,22 @@ def _sha256_of(path: pathlib.Path) -> str | None:
     return h.hexdigest()
 
 
-def assemble(registry_rows: list[dict], license_doc: dict, editions_doc: dict, *, root: pathlib.Path | None = None):
+def _manifest_update_mode(sid: str, manifest_modes: dict[str, str], declared: str | None, label: str) -> str | None:
+    """`update_mode` の正は `manifests/<source_id>.yml`（Issue #40 Phase D）。editions.yaml にも同じ出典の宣言が
+    あれば、一致しなければ止まる（二重管理にしない。一致する重複は editions.yaml 側を消すこと）。"""
+    mode = manifest_modes.get(sid)
+    if mode is not None and declared is not None and declared != mode:
+        raise AssertionError(
+            f"update_mode が食い違う: manifests/{sid}.yml は {mode!r}、registry/source/editions.yaml の {label} は {declared!r}。"
+            "update_mode はマニフェストで宣言する（editions.yaml 側は消す）"
+        )
+    return mode if mode is not None else declared
+
+
+def assemble(
+    registry_rows: list[dict], license_doc: dict, editions_doc: dict, *, root: pathlib.Path | None = None,
+    manifest_modes: dict[str, str] | None = None,
+):
     """`source_registry` の行（辞書のリスト）と 2 つの宣言から、3 表に入れる行を作る。
 
     DB に触らない純関数（テストが偽の source_registry 行で検査を壊せるようにするため）。
@@ -200,6 +217,10 @@ def assemble(registry_rows: list[dict], license_doc: dict, editions_doc: dict, *
     root = root or common.ROOT
     reg = {r["source_id"]: r for r in registry_rows}
     common.assert_unique(list(reg), "source_registry.source_id")
+    manifest_modes = manifest_modes or {}
+    unknown_manifest_sources = sorted(set(manifest_modes) - set(reg))
+    if unknown_manifest_sources:
+        raise AssertionError(f"manifests/ の source が source_registry に無い: {unknown_manifest_sources}")
 
     lic_by_id = {e["license_id"]: e for e in license_doc["licenses"]}
     classes = license_doc["license_classes"]
@@ -271,14 +292,17 @@ def assemble(registry_rows: list[dict], license_doc: dict, editions_doc: dict, *
                     "content_file": e.get("content_file"),
                     "edition_key": str(e["edition_key"]), "vintage": e.get("vintage"),
                     "fetched_at": src_row["fetched_at"], "url": src_row["url"],
-                    "record_count": None, "update_mode": e.get("update_mode"), "notes": e.get("notes"),
+                    "record_count": None, "notes": e.get("notes"),
+                    "update_mode": _manifest_update_mode(
+                        sid, manifest_modes, e.get("update_mode"), f"declared_editions {sid}/{e['edition_key']}"),
                 })
         else:
             specs = [{
                 "content_file": d.get("content_file"),
                 "edition_key": _default_edition_key(sid, r["fetched_at"]), "vintage": None,
                 "fetched_at": r["fetched_at"], "url": r["url"],
-                "record_count": r["record_count"], "update_mode": d.get("update_mode"), "notes": None,
+                "record_count": r["record_count"], "notes": None,
+                "update_mode": _manifest_update_mode(sid, manifest_modes, d.get("update_mode"), f"source_declarations {sid}"),
             }]
         for sp in specs:
             eid = common.edition_id(sid, sp["edition_key"])
@@ -351,8 +375,11 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     cols = [d[0] for d in cur.description]
     registry_rows = [dict(zip(cols, row)) for row in cur.fetchall()]
 
+    from ingest import manifest as manifest_lib  # noqa: E402（scripts/ を sys.path に持つ実行経路でだけ読む）
+
     license_rows, source_rows, edition_rows, unmapped = assemble(
-        registry_rows, load_license_yaml(), load_editions_yaml()
+        registry_rows, load_license_yaml(), load_editions_yaml(),
+        manifest_modes=manifest_lib.update_modes(manifest_lib.load_manifests()),
     )
     if unmapped:
         n_src = sum(1 for r in registry_rows if r["license"] in set(unmapped))

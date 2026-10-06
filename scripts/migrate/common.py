@@ -33,6 +33,7 @@ import hashlib
 import json
 import os
 import pathlib
+import re
 import sqlite3
 import subprocess
 import sys
@@ -1194,7 +1195,7 @@ def check_v2_cube_fresh(conn: sqlite3.Connection) -> list[str]:
 # が yaml を遅延 import する設計のおかげで、v2 パイプライン5段の import 自体は
 # PyYAML を要求しない。`scripts/tests/test_check_v2_fresh.py` の
 # `test_cli_does_not_import_yaml` がこれを壊さないことを確認する）。
-# YAML 宣言（`period_exceptions.yaml`・`source_regions.yaml` 等）は import では
+# YAML 宣言（`period_exceptions.yaml`・`manifests/*.yml` 等）は import では
 # 見つからない（実行時に `load_yaml()` でパスから読むだけ）ため、
 # `scripts/migrate/*.yaml` を丸ごと glob で足す（`occurrence_watershed_v1_declarations.yaml`
 # のような v1 専用の宣言も混じるが、v2 に無関係な宣言が変わったときに余計な
@@ -1252,7 +1253,35 @@ def _ryuiki_one_table_proxy(ryuiki_db: pathlib.Path, table: str) -> str:
         conn.close()
 
 
-def _ryuiki_table_proxy(ryuiki_db: pathlib.Path) -> dict[str, str]:
+# `check_v2_fresh.py` は `-I -S`（PyYAML 無し）で動くので、ここでは YAML を読まず正規表現で 2 つのキーだけ取る
+# （構造の検証は `ingest.manifest` の責務。`adapter: <名前>` と `input:` 直下の `table|file: <値>`）。
+_MANIFEST_ADAPTER_RE = re.compile(r"^adapter:\s*(\S+)", re.MULTILINE)
+_MANIFEST_INPUT_RE = re.compile(r"^input:[\s{]*(table|file)\s*:\s*([^\s,}]+)", re.MULTILINE)
+
+
+def manifest_inputs(manifests_dir: pathlib.Path) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """`manifests_dir` の非 builtin（adapter 経由）マニフェストが読む入力 `(原本の表, リポジトリ内ファイル)`。
+    adapter は `ctx.input_rows()` で入力を読むので、その表・ファイルは v2 の入力指紋と系譜の宣言に含める必要がある
+    （ライブラリ側の `V2_RYUIKI_TABLES` に出典ごとの表を足さずに済ませる。Issue #40 Phase D・L6）。
+    構造の検証はしない（`ingest.manifest` の責務。ここは読み取りだけ）。builtin の入力は従来の定数が持つ。
+    """
+    manifests_dir = pathlib.Path(manifests_dir)
+    tables: set[str] = set()
+    files: set[str] = set()
+    if manifests_dir.is_dir():
+        for p in sorted(manifests_dir.glob("*.yml")):
+            text = p.read_text(encoding="utf-8")
+            m_adapter = _MANIFEST_ADAPTER_RE.search(text)
+            if m_adapter is None or m_adapter.group(1) == "builtin":
+                continue
+            m_input = _MANIFEST_INPUT_RE.search(text)
+            if m_input is None:
+                raise MigrationError(f"{p}: 非 builtin のマニフェストの input（table/file）を読み取れない")
+            (tables if m_input.group(1) == "table" else files).add(m_input.group(2))
+    return tuple(sorted(tables)), tuple(sorted(files))
+
+
+def _ryuiki_table_proxy(ryuiki_db: pathlib.Path, extra_tables: tuple[str, ...] = ()) -> dict[str, str]:
     """`V2_RYUIKI_TABLES` それぞれの「行数＋最大rowid」の代理指標
     （モジュールコメント「大きい原本はフルスキャンしない」参照）。
     `ryuiki_db` が無ければ（原本の無い環境）各表を `_ABSENT` として返す
@@ -1261,7 +1290,10 @@ def _ryuiki_table_proxy(ryuiki_db: pathlib.Path) -> dict[str, str]:
     持たない（例: b09 のフィクスチャは `sites` だけで `measurements` を
     持たない）ため、ファイルはあっても個々の表が無いことがある。
     """
-    return {f"ryuiki.{t}": _ryuiki_one_table_proxy(ryuiki_db, t) for t in V2_RYUIKI_TABLES}
+    return {
+        f"ryuiki.{t}": _ryuiki_one_table_proxy(ryuiki_db, t)
+        for t in (*V2_RYUIKI_TABLES, *(t for t in extra_tables if t not in V2_RYUIKI_TABLES))
+    }
 
 
 def _processed_file_hashes(processed_dir: pathlib.Path) -> dict[str, str]:
@@ -1350,6 +1382,12 @@ def _v2_pipeline_code_fingerprint(root: pathlib.Path) -> str:
         p.relative_to(root).as_posix() for p in sorted((root / "scripts" / "migrate").glob("*.yaml"))
     ] + [
         p.relative_to(root).as_posix() for p in sorted((root / "aggregations").glob("*.yaml"))
+    ] + [
+        # マニフェスト（region・件数・period 形の宣言）と adapter（`importlib` で実行時に読むので import では
+        # 見つからない）。変えれば v2 の出力が変わりうる入力なので、鮮度判定の対象に明示で足す（Issue #40 Phase D・L6）。
+        p.relative_to(root).as_posix() for p in sorted((root / "manifests").glob("*.yml"))
+    ] + [
+        p.relative_to(root).as_posix() for p in sorted((root / "scripts" / "adapters").glob("*.py"))
     ]
     h = hashlib.sha256()
     for rel in sorted(py_files + yaml_files):
@@ -1387,9 +1425,13 @@ def compute_v2_input_fingerprint(
     )
     processed_dir = pathlib.Path(processed_dir) if processed_dir is not None else base / "data" / "processed"
 
+    extra_tables, extra_files = manifest_inputs(base / "manifests")
     out: dict[str, str] = {}
-    out.update(_ryuiki_table_proxy(ryuiki_db))
+    out.update(_ryuiki_table_proxy(ryuiki_db, extra_tables))
     out.update(_processed_file_hashes(processed_dir))
+    for rel in extra_files:  # 非 builtin マニフェストの入力ファイル（リポジトリ相対）の内容ハッシュ
+        f = base / rel
+        out[f"manifest_input.{rel}"] = pipeline_inputs.sha256_file(f) if f.exists() else _ABSENT
     out["registry.input_fingerprint"] = _registry_input_fingerprint(registry_db)
     out["code"] = _v2_pipeline_code_fingerprint(base)
     return out
@@ -1500,15 +1542,16 @@ class ExternalSource:
     resolve: Callable[[str], str | None]
 
 
-def ryuiki_external(ryuiki_db) -> ExternalSource:
+def ryuiki_external(ryuiki_db, extra_tables: tuple[str, ...] = ()) -> ExternalSource:
     """原本 `ryuiki.sqlite`: 表ごとの代理指標（`compute_v2_input_fingerprint` と同じ取り方）。
-    `V2_RYUIKI_TABLES` 以外の表を読めば止まる（宣言漏れ）。読んだ表だけ COUNT/MAX を引く。
+    `V2_RYUIKI_TABLES` と `extra_tables`（非 builtin マニフェストの入力表。`manifest_inputs()`）以外の表を読めば
+    止まる（宣言漏れ）。読んだ表だけ COUNT/MAX を引く。
     """
     path = pathlib.Path(ryuiki_db)
     cache: dict[str, str] = {}
 
     def resolve(table: str) -> str | None:
-        if table not in V2_RYUIKI_TABLES:
+        if table not in V2_RYUIKI_TABLES and table not in extra_tables:
             return None
         if table not in cache:
             cache[table] = _ryuiki_one_table_proxy(path, table)

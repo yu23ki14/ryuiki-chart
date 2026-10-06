@@ -74,6 +74,9 @@ ADR-0004 の ID 規約と ADR-0005 の `source_edition` を適用する。旧 ID
 ADR-0012 のマニフェストへ移行し、`dist/` の生成と MCP を公開する。
 
 - 受け入れ基準: 新規ソース1件を、共通ライブラリに手を入れずに追加できる。
+  **機械的な証明**（Issue #40 Phase D で追記）: その PR の差分が `manifests/`・`scripts/adapters/`・`registry/`
+  （語彙の宣言ファイル）・`scripts/tests/`・サンプル再生成物だけで、`scripts/check_source_add_boundary.py` が通ること
+  （`scripts/migrate/**`・`scripts/b0*`・`scripts/registry/*.py`・`web/src/**` が差分に出たら落ちる）。
 
 ## 影響
 

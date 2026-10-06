@@ -12,6 +12,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import s01_build_sample as s01  # noqa: E402
+from scripts.tests.manifest_fixtures import write_manifests_from_sources_text  # noqa: E402
 
 
 def _build_fixture_ryuiki(path: pathlib.Path) -> None:
@@ -263,8 +264,8 @@ def _make_org_rows(conn: sqlite3.Connection, rows: list[tuple]) -> list[sqlite3.
 
 
 def test_load_utc_offset_by_source_reads_declared_sources(tmp_path):
-    path = tmp_path / "source_regions.yaml"
-    path.write_text(_SOURCE_REGIONS_YAML_TEXT, encoding="utf-8")
+    path = tmp_path / "manifests"
+    write_manifests_from_sources_text(path, _SOURCE_REGIONS_YAML_TEXT)
     mapping = s01.load_utc_offset_by_source(path)
     assert mapping == {"gbif_kanagawa_occurrences": "+09:00"}
 
@@ -368,11 +369,11 @@ def test_build_declaration_counts_wires_new_occurrence_cube_keys(tmp_path):
     )
     landuse_csv_path = tmp_path / "landuse.csv"
     landuse_csv_path.write_text(_MINIMAL_LANDUSE_CSV, encoding="utf-8")
-    source_regions_yaml = tmp_path / "source_regions.yaml"
-    source_regions_yaml.write_text(_SOURCE_REGIONS_YAML_TEXT, encoding="utf-8")
+    manifests_dir = tmp_path / "manifests"
+    write_manifests_from_sources_text(manifests_dir, _SOURCE_REGIONS_YAML_TEXT)
 
     counts = s01.build_declaration_counts(
-        conn, selected, geojson_path, landuse_csv_path, source_regions_yaml=source_regions_yaml,
+        conn, selected, geojson_path, landuse_csv_path, manifests_dir=manifests_dir,
     )
     assert counts["occurrence_cube_declarations.yaml:leaf_cell_source_rows"] == 0
     assert counts["occurrence_cube_declarations.yaml:month_cell_source_rows"] == 1

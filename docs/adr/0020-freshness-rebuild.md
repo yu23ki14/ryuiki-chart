@@ -73,3 +73,11 @@ update_mode: static     # ほぼ不変。明示的に更新するまで再取得
   スナップショット型で容量が線形に増え、「何が変わったか」も別途計算が要る。却下。
 - **更新を自動巡回にする**: 鮮度は上がるが、収集規約の制約に反し、
   相手サイトへの負荷の責任を持てない。却下。
+
+## 追記（2026-10-06、Issue #40 Phase D）: `update_mode` の宣言
+
+`update_mode`（`snapshot|append|revision|static`）は `manifests/<source_id>.yml` の必須キーで、registry ビルドが
+`source_edition.update_mode` に流す（マニフェストが正。editions.yaml に同じ出典があって食い違えば止まる）。
+未宣言は止まる（推測で埋めない）。マニフェストを持たない出典（パイプラインが読まない 111 出典）は従来どおり
+editions.yaml に書くか NULL。v2 の鮮度判定（`check_v2_fresh.py`）のコード指紋に `manifests/*.yml` と
+`scripts/adapters/*.py` を入れた（adapter は実行時に `importlib` で読まれ、import 追跡では見つからないため）。

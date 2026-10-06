@@ -13,6 +13,7 @@ from migrate import common
 
 from migrate import source_regions
 
+from .manifest_fixtures import ensure_measurement_source_manifests
 from .migrate_fixtures import (
     DEFAULT_ALIASES,
     DEFAULT_LANDUSE_ALIASES,
@@ -659,9 +660,9 @@ def test_a2_duplicate_rows_raise_migration_error_with_count_and_examples(tmp_pat
 # ---------------------------------------------------------------------------
 
 def test_build_and_write_observation_default_landuse_args_point_at_module_constants():
-    """コードレビュー指摘10: `source_regions_yaml`/`landuse_csv` を省略した
+    """コードレビュー指摘10: `manifests_dir`/`landuse_csv` を省略した
     ときに使われる既定値が、`main()` が明示的に渡す値と同じ
-    `DEFAULT_SOURCE_REGIONS_YAML`/`DEFAULT_LANDUSE_CSV`（モジュール定数）で
+    `DEFAULT_MANIFESTS_DIR`/`DEFAULT_LANDUSE_CSV`（モジュール定数）で
     あることを確認する。`None` 番兵＋関数内で解決する設計をやめ、他の3引数
     （`exceptions_yaml` 等）と同じ素のデフォルト引数に戻した結果、この
     「引数を省略したときの経路」自体はシグネチャの既定値を見るだけで検証
@@ -669,7 +670,7 @@ def test_build_and_write_observation_default_landuse_args_point_at_module_consta
     環境でも実行できる）。
     """
     sig = inspect.signature(b03.build_and_write_observation)
-    assert sig.parameters["source_regions_yaml"].default == b03.DEFAULT_SOURCE_REGIONS_YAML
+    assert sig.parameters["manifests_dir"].default == b03.DEFAULT_MANIFESTS_DIR
     assert sig.parameters["landuse_csv"].default == b03.DEFAULT_LANDUSE_CSV
 
 
@@ -1031,6 +1032,7 @@ def test_landuse_does_not_affect_measurements_rows(tmp_path):
     make_landuse_csv(landuse_csv)
     yaml_path = tmp_path / "source_regions.yaml"
     make_landuse_source_regions_yaml(yaml_path)
+    ensure_measurement_source_manifests(yaml_path, measurements_db)
     out = tmp_path / "v2.sqlite"
 
     all_stats = b03.build_and_write_observation(

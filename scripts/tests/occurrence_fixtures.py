@@ -20,6 +20,7 @@
 """
 from __future__ import annotations
 
+from .manifest_fixtures import write_manifests_from_sources_text
 import sqlite3
 
 from migrate import common, occurrence_period as _occurrence_period
@@ -226,7 +227,9 @@ def make_occurrence_registry_db(path, taxa=None, places=None, place_refs=None, t
 
 
 def make_source_regions_yaml(path, text: str | None = None) -> None:
-    path.write_text(text if text is not None else DEFAULT_SOURCE_REGIONS_YAML_TEXT, encoding="utf-8")
+    """旧 `source_regions.yaml` 形式の文字列（既定は `DEFAULT_SOURCE_REGIONS_YAML_TEXT`）を、`path` というディレクトリに
+    `adapter: builtin` のマニフェストとして書く（Issue #40 Phase D。`manifest_fixtures` 参照）。"""
+    write_manifests_from_sources_text(path, text if text is not None else DEFAULT_SOURCE_REGIONS_YAML_TEXT)
 
 
 def period_shapes_yaml_text(counts: dict[str, int] | None = None) -> str:

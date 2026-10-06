@@ -85,7 +85,10 @@ PIPELINE_EXPLICIT_FILES = (
 )
 # `aggregations`（Issue #48 PR-2 §4: `scripts/b13_build_summary.py` が読む
 # `aggregations/serving.yaml`）を含む。ディレクトリのまま tree ハッシュを取る。
-PIPELINE_DIRS = ("scripts/registry", "scripts/migrate", "scripts/reconcile", "registry", "aggregations")
+PIPELINE_DIRS = (
+    "scripts/registry", "scripts/migrate", "scripts/reconcile", "scripts/ingest", "scripts/adapters", "manifests",
+    "registry", "aggregations",
+)
 # 配下のファイルに展開して個別の blob ハッシュを取るディレクトリ（テストと
 # フィクスチャは `PIPELINE_EXCLUDE_GLOBS` で外す——テストを直しただけで証明が
 # 無効になるのを避ける）。`scripts/s04_check_full_gate_proof.py` も同じ関数を使う。

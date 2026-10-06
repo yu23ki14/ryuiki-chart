@@ -3,6 +3,9 @@
 # 形式・使い方は docs/plans/PHASE_B_RECONCILIATION.md §5 と
 # scripts/migrate/period.py の apply_count_overlay/load_count_overlay_file を参照。
 
+"manifests:gbif_kanagawa_occurrences": 2424
+"manifests:inaturalist_kanagawa": 95
+"manifests:nlni_l03b_landuse_by_watershed": 4858
 "occurrence_cube_declarations.yaml:leaf_cell_source_rows": 21
 "occurrence_cube_declarations.yaml:month_cell_source_rows": 2467
 "occurrence_cube_declarations.yaml:watershed_dated_resolved_rows": 2421
@@ -23,8 +26,5 @@
 "occurrence_place_declarations.yaml:place_id_null_count": 89
 "occurrence_place_declarations.yaml:resolved_count": 2430
 "period_exceptions.yaml:atsugi_river_water_quality": 3840
-"source_regions.yaml:gbif_kanagawa_occurrences": 2424
-"source_regions.yaml:inaturalist_kanagawa": 95
-"source_regions.yaml:nlni_l03b_landuse_by_watershed": 4858
 "time_label_conventions.yaml:sagamihara_taiki_hourly": 1500
 "time_label_conventions.yaml:soramame_hourly_kanagawa": 3700

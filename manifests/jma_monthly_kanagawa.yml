@@ -1,0 +1,11 @@
+# manifests/jma_monthly_kanagawa.yml（宣言。形は scripts/ingest/manifest.py の docstring）。
+# adapter: builtin = 変換は b03/b06 のまま（出力を動かさない）。メタデータだけを持つ。
+source: jma_monthly_kanagawa
+region: jp-14
+target: observation
+update_mode: append
+input:
+  table: sensor_timeseries
+adapter: builtin
+evidence: >
+  気象庁 月別値（神奈川県主要地点）。月ごとに追加される形式なので append。region=jp-14。

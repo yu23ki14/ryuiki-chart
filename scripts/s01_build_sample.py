@@ -298,8 +298,8 @@ def compute_leaf_cell_source_rows(rows: list[sqlite3.Row]) -> int:
     return n
 
 
-def load_utc_offset_by_source(source_regions_yaml=source_regions.DEFAULT_SOURCE_REGIONS_YAML) -> dict[str, str]:
-    """`source_regions.yaml`（consumer='occurrence'）から `{source_id: utc_offset}`
+def load_utc_offset_by_source(manifests_dir=source_regions.DEFAULT_MANIFESTS_DIR) -> dict[str, str]:
+    """`manifests/*.yml`（target=occurrence）から `{source_id: utc_offset}`
     を組み立てる。`compute_month_cell_source_rows` が 'Z' 終端の瞬時記録を
     ローカル時刻へ変換するのに使う（region の utc_offset）。
 
@@ -308,7 +308,7 @@ def load_utc_offset_by_source(source_regions_yaml=source_regions.DEFAULT_SOURCE_
     （b06 のように `mark_used()` を追う必要が無い——s01 は宣言の一部だけを
     使っても「未使用宣言」にはならない）。
     """
-    sources, regions = source_regions.load_source_regions(source_regions_yaml, consumer="occurrence")
+    sources, regions = source_regions.load_source_regions(manifests_dir, consumer="occurrence")
     return {source_id: regions[s.region_id].utc_offset for source_id, s in sources.items()}
 
 
@@ -409,7 +409,7 @@ def build_declaration_counts(
     ryuiki_selected: dict[str, set[int]],
     geojson_path=DEFAULT_GEOJSON,
     landuse_csv_path=DEFAULT_LANDUSE_CSV,
-    source_regions_yaml=source_regions.DEFAULT_SOURCE_REGIONS_YAML,
+    manifests_dir=source_regions.DEFAULT_MANIFESTS_DIR,
 ) -> dict[str, int]:
     """`data/sample/declaration_counts.yaml` の中身（フラットな
     `"<宣言ファイル名>:<エントリ名>[.<内訳キー>]"` -> 整数）を実測する。
@@ -463,16 +463,16 @@ def build_declaration_counts(
         "sensor_timeseries", "source_id = 'soramame_hourly_kanagawa'"
     )
 
-    # source_regions.yaml
-    out["source_regions.yaml:gbif_kanagawa_occurrences"] = count(
+    # manifests/*.yml
+    out["manifests:gbif_kanagawa_occurrences"] = count(
         "organism_records", "source_id = 'gbif_kanagawa_occurrences'"
     )
-    out["source_regions.yaml:inaturalist_kanagawa"] = count(
+    out["manifests:inaturalist_kanagawa"] = count(
         "organism_records", "source_id = 'inaturalist_kanagawa'"
     )
     # 土地利用CSVは丸ごとコピーする（coverage.yaml の wholesale_processed_files）
     # ので、サンプルの件数は原本の行数と同じ（実測: count_csv_data_rows 参照）。
-    out["source_regions.yaml:nlni_l03b_landuse_by_watershed"] = count_csv_data_rows(landuse_csv_path)
+    out["manifests:nlni_l03b_landuse_by_watershed"] = count_csv_data_rows(landuse_csv_path)
 
     # occurrence_period_shapes.yaml。形の名前は宣言ファイル（コードの
     # `_SHAPE_DEFS` と過不足なく一致することを `assert_declared_shapes_match_code`
@@ -494,7 +494,7 @@ def build_declaration_counts(
         "ORDER BY t.rowid"
     ).fetchall()
     out["occurrence_cube_declarations.yaml:leaf_cell_source_rows"] = compute_leaf_cell_source_rows(org_rows)
-    utc_offset_by_source = load_utc_offset_by_source(source_regions_yaml)
+    utc_offset_by_source = load_utc_offset_by_source(manifests_dir)
     out["occurrence_cube_declarations.yaml:month_cell_source_rows"] = compute_month_cell_source_rows(
         org_rows, utc_offset_by_source,
     )

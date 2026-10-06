@@ -1,0 +1,11 @@
+# manifests/yokohama_river_waterlevel.yml（宣言。形は scripts/ingest/manifest.py の docstring）。
+# adapter: builtin = 変換は b03/b06 のまま（出力を動かさない）。メタデータだけを持つ。
+source: yokohama_river_waterlevel
+region: jp-14
+target: observation
+update_mode: append
+input:
+  table: sensor_timeseries
+adapter: builtin
+evidence: >
+  横浜市 河川水位オープンデータ。月次 CSV が追加される形式なので append。region=jp-14。

@@ -158,6 +158,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import b09_build_occurrence_place as b09  # noqa: E402
+from ingest import manifest as manifest_lib  # noqa: E402
 from migrate import common, cube_invariants, period  # noqa: E402
 
 DEFAULT_DB = ROOT / "data" / "db" / "v2.sqlite"
@@ -272,7 +273,7 @@ _POP_SOURCE_SQL = {
     GRID01_PLACE_KIND: f"""
         SELECT {_POP_COLUMNS_SQL}
         FROM occurrence
-        WHERE period_raw IS NOT NULL
+        WHERE period_raw IS NOT NULL AND lat IS NOT NULL AND lon IS NOT NULL
     """,
     WATERSHED_PLACE_KIND: f"""
         SELECT o.record_id, o.region_id, o.source_id, op.place_id, o.taxon_id,
@@ -372,13 +373,13 @@ def _assert_t1_invariant(conn: sqlite3.Connection) -> None:
 
 
 def _assert_dated_rows_are_grid01(conn: sqlite3.Connection) -> None:
-    """日付あり `occurrence` 行の `place_kind` が全て `'grid01'` であることを
-    確かめる（Issue #48 PR-3a 設計書 §1.1: grid01 セルの母集団は
+    """座標あり・日付あり `occurrence` 行の `place_kind` が全て `'grid01'` であることを
+    確かめる（座標なしの行は grid01 の母集団に入れない〔J1〕ので対象外。Issue #48 PR-3a 設計書 §1.1: grid01 セルの母集団は
     `occurrence.place_id` をそのまま使うため、この前提が崩れると grid01 の
     セルに他の place_kind の place_id が紛れ込む）。
     """
     bad = conn.execute(
-        "SELECT COUNT(*) FROM occurrence WHERE period_raw IS NOT NULL AND "
+        "SELECT COUNT(*) FROM occurrence WHERE period_raw IS NOT NULL AND lat IS NOT NULL AND lon IS NOT NULL AND "
         f"(place_kind IS NULL OR place_kind <> '{GRID01_PLACE_KIND}')"
     ).fetchone()[0]
     if bad:
@@ -452,7 +453,7 @@ def _drop_populations(conn: sqlite3.Connection) -> None:
         conn.execute(f'DROP TABLE IF EXISTS "{name}"')
 
 
-def _assert_populations_complete(conn: sqlite3.Connection, n_dated_total: int) -> dict[str, int]:
+def _assert_populations_complete(conn: sqlite3.Connection, n_dated_expected: dict[str, int]) -> dict[str, int]:
     """母集団の完全性: `__pop_grid01`/`__pop_watershed` の行数がどちらも
     「日付あり occurrence 全行数」と一致することを確かめる。
 
@@ -466,6 +467,7 @@ def _assert_populations_complete(conn: sqlite3.Connection, n_dated_total: int) -
     counts: dict[str, int] = {}
     for place_kind in PLACE_KINDS:
         n = conn.execute(f'SELECT COUNT(*) FROM "{_POP_TABLE[place_kind]}"').fetchone()[0]
+        n_dated_total = n_dated_expected[place_kind]
         if n != n_dated_total:
             hint = (
                 "occurrence_place（b09 の出力）が日付あり全記録をカバーしていない可能性がある"
@@ -475,7 +477,8 @@ def _assert_populations_complete(conn: sqlite3.Connection, n_dated_total: int) -
             )
             raise common.MigrationError(
                 f"occurrence_agg: 母集団 {_POP_TABLE[place_kind]}（place_kind={place_kind!r}）の"
-                f"行数（{n:,}）が日付あり occurrence 全行数（{n_dated_total:,}）と一致しない。" + hint
+                f"行数（{n:,}）が期待する日付あり行数（{n_dated_total:,}。grid01 は座標あり日付あり、"
+                "watershed は日付あり全行）と一致しない。" + hint
             )
         counts[place_kind] = n
     return counts
@@ -617,9 +620,9 @@ def _assert_series_totals_match_population(
 
 def _assert_declared_counts(
     conn: sqlite3.Connection, staging: str, declarations: dict,
-    n_dated_by_place_kind: dict[str, int], declarations_yaml,
+    n_dated_by_place_kind: dict[str, int], declarations_yaml, leaf_no_coordinate: int = 0,
 ) -> None:
-    leaf_expected = declarations[_LEAF_DECLARATION_NAME]["expected_row_count"]
+    leaf_total_expected = declarations[_LEAF_DECLARATION_NAME]["expected_row_count"]
     month_expected = declarations[_MONTH_DECLARATION_NAME]["expected_row_count"]
     resolved_expected = declarations[_WATERSHED_RESOLVED_DECLARATION_NAME]["expected_row_count"]
     unresolved_expected = declarations[_WATERSHED_UNRESOLVED_DECLARATION_NAME]["expected_row_count"]
@@ -636,6 +639,8 @@ def _assert_declared_counts(
         leaf_n = grains.get("survey_period", 0)
         year_n = grains.get("year", 0)
         n_dated = n_dated_by_place_kind.get(place_kind, 0)
+        # grid01 には座標なしの記録が入らない（J1）ので、その分の leaf は引く。
+        leaf_expected = leaf_total_expected - (leaf_no_coordinate if place_kind == GRID01_PLACE_KIND else 0)
         if leaf_n != leaf_expected:
             raise common.MigrationError(
                 f"occurrence_agg: place_kind={place_kind!r} の grain='survey_period'（年をまたぐ"
@@ -844,7 +849,7 @@ def _assert_dimension_key_unique(conn: sqlite3.Connection, staging: str) -> None
 # ---------------------------------------------------------------------------
 
 def _assert_consistent_with_place_declarations(
-    watershed_resolved_expected: int, place_declarations_yaml,
+    watershed_resolved_expected: int, place_declarations_yaml, place_resolved_extra: int = 0,
 ) -> None:
     """b09 の宣言（`occurrence_place_declarations.yaml` の `resolved_count`。
     「座標のある全記録」のうち解決できた件数）が、この宣言（`occurrence_agg`
@@ -869,12 +874,54 @@ def _assert_consistent_with_place_declarations(
         return
     raw = common.load_yaml(place_declarations_yaml)
     resolved = raw.get("resolved_count", {}).get("expected_row_count")
+    if resolved is not None:
+        resolved += place_resolved_extra  # マニフェストの expected.place.coord_resolved（b09 側の宣言の合計に合わせる）
     if resolved is not None and resolved < watershed_resolved_expected:
         raise common.MigrationError(
             f"occurrence_agg: watershed_dated_resolved_rows の宣言（{watershed_resolved_expected:,}）が"
             f"b09 の resolved_count 宣言（{place_declarations_yaml} の {resolved:,}）を上回っている。日付あり記録は"
             "座標のある記録の部分集合のはずなので、後者が前者以上でなければならない。"
         )
+
+
+# ---------------------------------------------------------------------------
+# マニフェストの宣言値（非 builtin の出典。J6）
+# ---------------------------------------------------------------------------
+
+def _add_manifest_declarations(declarations: dict, sums: manifest_lib.ExpectedSums) -> dict:
+    """yaml の宣言値に、マニフェストの `expected.cube` の和を足したコピーを返す（既存出典の宣言は yaml のまま）。"""
+    adds = {
+        _LEAF_DECLARATION_NAME: sums.cube["leaf_cell_source_rows"],
+        _MONTH_DECLARATION_NAME: sums.cube["month_cell_source_rows"],
+        _WATERSHED_RESOLVED_DECLARATION_NAME: sums.cube["watershed_dated_resolved_rows"],
+        _WATERSHED_UNRESOLVED_DECLARATION_NAME: sums.cube["watershed_dated_unresolved_rows"],
+    }
+    out = {name: dict(spec) for name, spec in declarations.items()}
+    for name, add in adds.items():
+        out[name]["expected_row_count"] = out[name]["expected_row_count"] + add
+    return out
+
+
+def _assert_adapter_source_populations(conn: sqlite3.Connection, sums: manifest_lib.ExpectedSums) -> None:
+    """マニフェストが宣言した日付あり行数・座標なし日付あり行数が、宣言を持つ出典の実測と一致すること。"""
+    if not sums.sources:
+        n_dated = n_no_coord = 0
+    else:
+        marks = ",".join("?" for _ in sums.sources)
+        n_dated, n_no_coord = conn.execute(
+            f"SELECT COUNT(*), COALESCE(SUM(CASE WHEN lat IS NULL OR lon IS NULL THEN 1 ELSE 0 END), 0) "
+            f"FROM occurrence WHERE period_raw IS NOT NULL AND source_id IN ({marks})",
+            sums.sources,
+        ).fetchone()
+    for label, declared, actual in (
+        ("dated_rows", sums.cube["dated_rows"], n_dated),
+        ("dated_no_coordinate_rows", sums.cube["dated_no_coordinate_rows"], n_no_coord),
+    ):
+        if declared != actual:
+            raise common.MigrationError(
+                f"occurrence_agg: マニフェストの expected.cube.{label} の和（{declared:,}）が実測"
+                f"（{actual:,}。対象出典: {list(sums.sources)}）と食い違う。"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -888,9 +935,14 @@ def build_cube(
     spec_version: str = common.OCCURRENCE_AGG_SPEC_VERSION,
     count_overlay: dict[str, int] | None = None,
     place_declarations_yaml=b09.DEFAULT_DECLARATIONS_YAML,
+    expected_sums: manifest_lib.ExpectedSums | None = None,
 ) -> dict:
     """`conn`（`occurrence`・`occurrence_place` を持つ読み書き可能な接続）に
     `occurrence_agg` を作る。
+
+    `expected_sums`（既定 None＝マニフェストの宣言を足さない）: 非 builtin マニフェストの `expected.cube` の合計
+    （`manifest_lib.expected_sums`。`main()` が渡す）。yaml の宣言値に足して突合する（J6）。**座標なしの日付あり記録は
+    grid01 の母集団に入れず**、watershed の `place_id NULL` セルにだけ入る（J1）。
 
     `occurrence`・`occurrence_place` を変更する SQL は一切実行しない
     （`SELECT`のみ）。`occurrence_agg` 本体は `migrate.common.staged_table`
@@ -908,7 +960,10 @@ def build_cube(
     with common.LineageTracker(conn) as lineage:
         lineage.verify("occurrence", rebuild_hint="scripts/b06_build_occurrence.py を再実行すること。")
         lineage.verify("occurrence_place", rebuild_hint="scripts/b09_build_occurrence_place.py を再実行すること。")
-        declarations = load_and_validate_cube_declarations(declarations_yaml, count_overlay=count_overlay)
+        sums = expected_sums or manifest_lib.ExpectedSums()
+        declarations = _add_manifest_declarations(
+            load_and_validate_cube_declarations(declarations_yaml, count_overlay=count_overlay), sums,
+        )
         leaf_expected = declarations[_LEAF_DECLARATION_NAME]["expected_row_count"]
         # b09 の宣言との整合（`_assert_consistent_with_place_declarations`）は
         # YAML 2つだけを読む検査で `occurrence_agg`/`conn` に一切依存しない
@@ -919,10 +974,15 @@ def build_cube(
         # （/code-review 指摘4）。
         _assert_consistent_with_place_declarations(
             declarations[_WATERSHED_RESOLVED_DECLARATION_NAME]["expected_row_count"], place_declarations_yaml,
+            place_resolved_extra=sums.place["coord_resolved"],
         )
         _assert_t1_invariant(conn)
         _assert_dated_rows_are_grid01(conn)
         n_dated_total = conn.execute("SELECT COUNT(*) FROM occurrence WHERE period_raw IS NOT NULL").fetchone()[0]
+        n_dated_with_coord = conn.execute(
+            "SELECT COUNT(*) FROM occurrence WHERE period_raw IS NOT NULL AND lat IS NOT NULL AND lon IS NOT NULL"
+        ).fetchone()[0]
+        _assert_adapter_source_populations(conn, sums)
         params = (built_from, spec_version)
 
         with common.staged_table(
@@ -932,7 +992,9 @@ def build_cube(
         ) as staging:
             pop_tables = _materialize_populations(conn)
             try:
-                n_dated_by_place_kind = _assert_populations_complete(conn, n_dated_total)
+                n_dated_by_place_kind = _assert_populations_complete(
+                    conn, {GRID01_PLACE_KIND: n_dated_with_coord, WATERSHED_PLACE_KIND: n_dated_total},
+                )
 
                 cells = _build_all_cells(conn, staging, pop_tables, params)
 
@@ -949,7 +1011,10 @@ def build_cube(
                     YEAR_GRAIN_FAMILY, _MEASURE_SELECT,
                 )
 
-                _assert_declared_counts(conn, staging, declarations, n_dated_by_place_kind, declarations_yaml)
+                _assert_declared_counts(
+                    conn, staging, declarations, n_dated_by_place_kind, declarations_yaml,
+                    leaf_no_coordinate=sums.cube["leaf_cell_source_rows_no_coordinate"],
+                )
                 _assert_cell_shapes(conn, staging)
                 _assert_month_cells_are_subset_of_year_cells(conn, staging)
                 _assert_dimension_key_unique(conn, staging)
@@ -985,6 +1050,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", default=str(DEFAULT_DB), help="occurrence/occurrence_place を持つ v2.sqlite（読み書き）")
     parser.add_argument("--declarations-yaml", default=str(DEFAULT_DECLARATIONS_YAML))
+    parser.add_argument("--manifests-dir", default=str(manifest_lib.DEFAULT_MANIFESTS_DIR))
     parser.add_argument(
         "--count-overlay", default=None,
         help="data/sample/declaration_counts.yaml のようなファイル。既定は使わない（本番の実行では"
@@ -1006,7 +1072,10 @@ def main() -> None:
         n_occurrence = conn.execute("SELECT COUNT(*) FROM occurrence").fetchone()[0]
         print(f"▶ 読み書き可能で開く（occurrence/occurrence_place は変更しない）: {db_path} / occurrence {n_occurrence:,}行")
         with common.timed_step("occurrence_agg を構築") as info:
-            stats = build_cube(conn, args.declarations_yaml, count_overlay=count_overlay)
+            stats = build_cube(
+                conn, args.declarations_yaml, count_overlay=count_overlay,
+                expected_sums=manifest_lib.expected_sums(manifest_lib.load_manifests(args.manifests_dir)),
+            )
             info["n"] = stats["n_total_cells"]
     finally:
         conn.close()

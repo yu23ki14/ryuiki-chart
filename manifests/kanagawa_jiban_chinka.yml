@@ -1,0 +1,11 @@
+# manifests/kanagawa_jiban_chinka.yml（宣言。形は scripts/ingest/manifest.py の docstring）。
+# adapter: builtin = 変換は b03/b06 のまま（出力を動かさない）。メタデータだけを持つ。
+source: kanagawa_jiban_chinka
+region: jp-14
+target: observation
+update_mode: revision
+input:
+  table: measurements
+adapter: builtin
+evidence: >
+  地盤沈下調査結果（令和4〜6年度）。公開元の入口ページに「令和4年と令和5年の一部データを修正した」旨の更新履歴があり（source_registry.notes）、既存年度が改訂されうるので revision。region=jp-14。

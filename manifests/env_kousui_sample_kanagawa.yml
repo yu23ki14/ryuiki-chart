@@ -1,0 +1,11 @@
+# manifests/env_kousui_sample_kanagawa.yml（宣言。形は scripts/ingest/manifest.py の docstring）。
+# adapter: builtin = 変換は b03/b06 のまま（出力を動かさない）。メタデータだけを持つ。
+source: env_kousui_sample_kanagawa
+region: jp-14
+target: observation
+update_mode: append
+input:
+  table: measurements
+adapter: builtin
+evidence: >
+  環境省 公共用水域水質測定結果 検体値（神奈川県）。年度ごとに検体値が追加される公表形式なので append。神奈川県に絞った取得なので region=jp-14。

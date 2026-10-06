@@ -1,7 +1,6 @@
 # ADR-0022: `place.region_id` は ID のスコープと一致させ、所在は `place_relation` の辺で表す
 
-- 状態: 承認済（一部未実装: 決定3〔`observation`/`occurrence`のregion決め方の統一〕・
-  決定4〔地域そのものを表すplace〕は未着手） / 日付: 2026-09-15
+- 状態: 承認済（決定3は 2026-10-06 に実装〔下記「決定3の確定」〕。一部未実装: 決定4〔地域そのものを表すplace〕は未着手） / 日付: 2026-09-15
 - 関連: ADR-0002（多地域）, ADR-0004（識別子）, ADR-0006（place）, ADR-0011（キューブ）, ADR-0012（マニフェスト）
 
 ## 背景（実測）
@@ -147,3 +146,12 @@ ADR-0006 が定義した `place_relation` を実装する。本 PR で作る辺�
   正面から矛盾し、将来 山梨県を対象地域に加えたときに同じ流域（相模川水系）が
   `jp-14` 版と `jp-19`（山梨県）版の2回登録されうる。ID の意味（規約0がスコープに
   込めた「昇格したら ID が変わらない」という不変性）を壊すため却下。
+
+## 決定3の確定（2026-10-06、Issue #40 Phase D）
+
+`observation.region_id`/`occurrence.region_id` は**どちらも出典（`manifests/<source_id>.yml` の `region`）から決める**
+（`source_regions.yaml` はマニフェストに吸収して撤去した）。place 経由（`place.region_id`）は決定の根拠ではなく
+**照合**に格下げした: b03 は、place が region を持つ行でマニフェストの region と食い違えば止まる
+（宣言の誤りか place の誤りを検出する。照合は恒久）。place が region を持たない行（`common:` の place）は照合の
+対象外。実測で observation 1,029,034 行は全て `jp-14` で、マニフェストと place 経由の値は全行一致する
+（移行の出力は同一）。決定4（地域そのものを表す place・`common:` place→地域の辺）は引き続き作らない。

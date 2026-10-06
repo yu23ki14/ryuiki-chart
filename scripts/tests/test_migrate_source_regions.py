@@ -1,11 +1,14 @@
 """scripts/migrate/source_regions.py の単体テスト（ADR-0022 決定3・O-1 設計 v2 D1）。
 
 Issue #32-3: region の時刻帯は `registry/region.yaml`（`regions_path`）が正。
-`source_regions.yaml` の `regions:` は撤去済みで、残っていれば止まる。
+Issue #40 Phase D: 出典→region の宣言は `manifests/<source_id>.yml`（`scripts/ingest/manifest.py`）。
+`source_regions.yaml` は撤去した（旧形式の文字列は `manifest_fixtures` がマニフェストへ変換して書く）。
 """
 import pytest
 
 from migrate import period, regions as region_vocab, source_regions as sr
+
+from .manifest_fixtures import write_manifest, write_manifests_from_sources_text
 
 
 def _region_yaml(tmp_path, extra: str = ""):
@@ -42,8 +45,8 @@ def _source(source_id="src_a", region_id="jp-14", consumer="occurrence", count=1
 
 
 def _write_sources(tmp_path, *entries: str):
-    path = tmp_path / "source_regions.yaml"
-    path.write_text("sources:\n" + "".join(entries), encoding="utf-8")
+    path = tmp_path / "manifests"
+    write_manifests_from_sources_text(path, "sources:\n" + "".join(entries))
     return path
 
 
@@ -60,11 +63,9 @@ def test_load_source_regions_from_yaml(tmp_path):
     assert regions["jp-14"].tz_name == "Asia/Tokyo"
 
 
-def test_load_source_regions_missing_file_returns_empty_sources(tmp_path):
-    sources, _regions = sr.load_source_regions(
-        tmp_path / "does_not_exist.yaml", regions_path=_region_yaml(tmp_path)
-    )
-    assert sources == {}
+def test_load_source_regions_missing_dir_raises(tmp_path):
+    with pytest.raises(sr.MigrationError, match="ディレクトリ"):
+        sr.load_source_regions(tmp_path / "does_not_exist", regions_path=_region_yaml(tmp_path))
 
 
 def test_load_source_regions_source_with_undeclared_region_raises(tmp_path):
@@ -79,29 +80,19 @@ def test_load_source_regions_source_with_undeclared_region_raises(tmp_path):
 # 旧形式の `regions:`（Issue #32-3）: 残っていれば止める
 # ---------------------------------------------------------------------------
 
-def test_legacy_regions_key_in_source_regions_yaml_raises_on_load(tmp_path):
-    yaml_path = tmp_path / "source_regions.yaml"
-    yaml_path.write_text(
-        "sources:\n" + _source() +
-        "regions:\n  jp-14:\n    utc_offset: \"+09:00\"\n    evidence: テスト\n",
-        encoding="utf-8",
-    )
-    with pytest.raises(sr.MigrationError, match="registry/region.yaml"):
-        sr.load_source_regions(yaml_path, regions_path=_region_yaml(tmp_path))
+def test_source_regions_yaml_is_gone():
+    """`source_regions.yaml` は撤去した（マニフェストへ吸収。二重管理に戻さない）。"""
+    assert not (sr.DEFAULT_MANIFESTS_DIR.parent / "scripts" / "migrate" / "source_regions.yaml").exists()
 
 
-def test_legacy_regions_key_in_source_regions_yaml_raises_on_shape_validation(tmp_path):
-    yaml_path = tmp_path / "source_regions.yaml"
-    yaml_path.write_text(
-        "sources:\n" + _source() + "regions: {}\n",
-        encoding="utf-8",
-    )
-    with pytest.raises(sr.MigrationError, match="registry/region.yaml"):
-        sr.validate_source_regions_shape(yaml_path)
+def test_manifest_with_unknown_key_raises(tmp_path):
+    write_manifest(tmp_path / "m", "src_a", target="occurrence", extra={"regions": {"jp-14": {}}})
+    with pytest.raises(sr.MigrationError, match="未知のキー"):
+        sr.validate_source_regions_shape(tmp_path / "m")
 
 
-def test_real_source_regions_yaml_has_no_legacy_regions_key():
-    sr.validate_source_regions_shape()  # 実ファイル。旧形式が復活すれば止まる
+def test_real_manifests_are_valid():
+    sr.validate_source_regions_shape()  # 実ファイル。構造が壊れれば止まる
 
 
 # ---------------------------------------------------------------------------
@@ -180,26 +171,28 @@ def test_consumer_observation_excludes_occurrence_entries(tmp_path):
     assert set(regions) == {"jp-99"}
 
 
-def test_validate_source_regions_shape_rejects_unknown_consumer(tmp_path):
-    """`consumer` に `CONSUMER_CODES` 外の値があれば構造検証で落ちる
-    （コードレビュー指摘8）。"""
-    yaml_path = _write_sources(tmp_path, _source(consumer="bogus"))
+def test_validate_source_regions_shape_rejects_unknown_target(tmp_path):
+    """`target` に `TARGET_CODES` 外の値（feature/place/document 等）があれば構造検証で落ちる。"""
+    write_manifest(tmp_path / "m", "src_a", target="occurrence")
+    path = tmp_path / "m" / "src_a.yml"
+    path.write_text(path.read_text(encoding="utf-8").replace("target: occurrence", "target: bogus"), encoding="utf-8")
     with pytest.raises(sr.MigrationError, match="bogus"):
-        sr.validate_source_regions_shape(yaml_path)
+        sr.validate_source_regions_shape(tmp_path / "m")
 
 
-def test_validate_source_regions_shape_rejects_missing_consumer_key(tmp_path):
-    """`consumer` は必須キー（オーナー決定。省略時に既定値へ黙って落ちる
-    設計は採らない）。他の必須キーが揃っていても `consumer` だけが無ければ
-    構造検証で止まる（過去に存在した `_DEFAULT_CONSUMER` は撤回した）。
-    """
-    yaml_path = tmp_path / "source_regions.yaml"
-    yaml_path.write_text(
-        "sources:\n  src_a:\n    region_id: jp-14\n    expected_row_count: 1\n    evidence: テスト\n",
-        encoding="utf-8",
-    )
-    with pytest.raises(sr.MigrationError, match="src_a"):
-        sr.validate_source_regions_shape(yaml_path)
+def test_validate_source_regions_shape_rejects_missing_update_mode(tmp_path):
+    """`update_mode` は必須（未宣言は止める。推測で埋めない）。"""
+    write_manifest(tmp_path / "m", "src_a", target="occurrence", expected_row_count=1)
+    path = tmp_path / "m" / "src_a.yml"
+    path.write_text(path.read_text(encoding="utf-8").replace("update_mode: snapshot\n", ""), encoding="utf-8")
+    with pytest.raises(sr.MigrationError, match="update_mode"):
+        sr.validate_source_regions_shape(tmp_path / "m")
+
+
+def test_validate_source_regions_shape_rejects_update_mode_outside_enum(tmp_path):
+    write_manifest(tmp_path / "m", "src_a", target="occurrence", update_mode="weekly", expected_row_count=1)
+    with pytest.raises(sr.MigrationError, match="weekly"):
+        sr.validate_source_regions_shape(tmp_path / "m")
 
 
 # ---------------------------------------------------------------------------
@@ -210,27 +203,33 @@ def test_validate_source_regions_shape_accepts_complete_entries(tmp_path):
     sr.validate_source_regions_shape(_write_sources(tmp_path, _source()))  # 例外を投げなければ良い
 
 
-def test_validate_source_regions_shape_rejects_missing_source_key(tmp_path):
-    yaml_path = tmp_path / "source_regions.yaml"
-    yaml_path.write_text("sources:\n  src_a:\n    region_id: jp-14\n", encoding="utf-8")
+def test_validate_source_regions_shape_rejects_missing_required_key(tmp_path):
+    d = tmp_path / "m"
+    d.mkdir()
+    (d / "src_a.yml").write_text("source: src_a\nregion: jp-14\n", encoding="utf-8")
     with pytest.raises(sr.MigrationError, match="src_a"):
-        sr.validate_source_regions_shape(yaml_path)
+        sr.validate_source_regions_shape(d)
+
+
+def test_validate_source_regions_shape_rejects_source_not_matching_filename(tmp_path):
+    write_manifest(tmp_path / "m", "src_a", target="occurrence", expected_row_count=1)
+    (tmp_path / "m" / "src_a.yml").rename(tmp_path / "m" / "src_b.yml")
+    with pytest.raises(sr.MigrationError, match="ファイル名"):
+        sr.validate_source_regions_shape(tmp_path / "m")
 
 
 def test_validate_source_regions_shape_rejects_non_integer_expected_row_count(tmp_path):
     """コードレビュー指摘6: expected_row_count は整数必須。"""
-    yaml_path = tmp_path / "source_regions.yaml"
-    yaml_path.write_text(
-        "sources:\n  src_a:\n    region_id: jp-14\n    consumer: occurrence\n"
-        "    expected_row_count: \"1\"\n    evidence: テスト\n",
-        encoding="utf-8",
-    )
-    with pytest.raises(sr.MigrationError, match="整数"):
-        sr.validate_source_regions_shape(yaml_path)
+    write_manifest(tmp_path / "m", "src_a", target="occurrence", expected_row_count=1)
+    path = tmp_path / "m" / "src_a.yml"
+    path.write_text(path.read_text(encoding="utf-8").replace("expected_row_count: 1", "expected_row_count: '1'"), encoding="utf-8")
+    with pytest.raises(sr.MigrationError, match="非負整数"):
+        sr.validate_source_regions_shape(tmp_path / "m")
 
 
-def test_validate_source_regions_shape_missing_file_is_allowed(tmp_path):
-    sr.validate_source_regions_shape(tmp_path / "does_not_exist.yaml")  # 空表は許す
+def test_validate_source_regions_shape_missing_dir_raises(tmp_path):
+    with pytest.raises(sr.MigrationError, match="ディレクトリ"):
+        sr.validate_source_regions_shape(tmp_path / "does_not_exist")
 
 
 # ---------------------------------------------------------------------------

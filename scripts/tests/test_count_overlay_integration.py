@@ -11,17 +11,19 @@ import b07_build_occurrence_cube as b07
 import b09_build_occurrence_place as b09
 from migrate import occurrence_period, source_regions
 
+from .manifest_fixtures import write_manifests_from_sources_text
+
 
 def test_source_regions_count_overlay_applies_only_to_sources(tmp_path):
-    path = tmp_path / "source_regions.yaml"
-    path.write_text(
+    path = tmp_path / "manifests"
+    write_manifests_from_sources_text(
+        path,
         "sources:\n"
         "  gbif_kanagawa_occurrences:\n"
         "    region_id: jp-14\n"
         "    consumer: occurrence\n"
         "    expected_row_count: 658360\n"
         "    evidence: e\n",
-        encoding="utf-8",
     )
     sources, regions = source_regions.load_source_regions(
         path, consumer="occurrence", count_overlay={"gbif_kanagawa_occurrences": 10}

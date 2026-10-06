@@ -1,0 +1,11 @@
+# manifests/jma_daily_yokohama.yml（宣言。形は scripts/ingest/manifest.py の docstring）。
+# adapter: builtin = 変換は b03/b06 のまま（出力を動かさない）。メタデータだけを持つ。
+source: jma_daily_yokohama
+region: jp-14
+target: observation
+update_mode: append
+input:
+  table: sensor_timeseries
+adapter: builtin
+evidence: >
+  気象庁 日別値（横浜）。直近月まで月ごとに追加される形式なので append。region=jp-14。

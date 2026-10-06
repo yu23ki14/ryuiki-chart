@@ -323,3 +323,95 @@ def test_occurrence_place_id_missing_from_place_source_ref_halts(tmp_path):
     )]
     with pytest.raises(common.MigrationError, match="引けない place_id"):
         _run_b09(tmp_path, occurrence_rows=rows, place_refs=[(_W1_PLACE_ID, "W1", "watershed_id")])
+
+
+# ---------------------------------------------------------------------------
+# 座標なしの日付あり記録（Issue #40 Phase D・J1）
+# ---------------------------------------------------------------------------
+
+def _nocoord_row(record_id, *, dated=True, source_id="kuma_like_source"):
+    day = "2020-02-10" if dated else None
+    return occurrence_row(
+        record_id, None, day, day, day, source_row_id=9, lat=None, lon=None,
+        place_id=None, place_kind=None, source_id=source_id,
+    )
+
+
+def _sums(**cube_overrides):
+    from ingest import manifest as manifest_lib
+
+    cube = {k: 0 for k in manifest_lib.EXPECTED_CUBE_KEYS}
+    cube.update(cube_overrides)
+    return manifest_lib.ExpectedSums(cube=cube, sources=("kuma_like_source",))
+
+
+def _nocoord_setup(tmp_path, rows):
+    return _setup(
+        tmp_path,
+        occurrence_rows=rows,
+        geojson_features=[("W1", _W1_RINGS)],
+        place_refs=[(_W1_PLACE_ID, "W1", "watershed_id")],
+    )
+
+
+def test_dated_record_without_coordinates_gets_place_id_null_row(tmp_path):
+    rows = [
+        occurrence_row("r1", None, None, None, None, source_row_id=1, lat=35.05, lon=139.05),
+        _nocoord_row("r2"),
+    ]
+    v2_db, ryuiki_db, registry_db, geojson = _nocoord_setup(tmp_path, rows)
+    decl = _declarations(tmp_path, n_watershed_polygons=1, place_id_null_count=0, resolved_count=1)
+
+    stats = b09.build_and_write_occurrence_place(
+        v2_db, ryuiki_db, registry_db, geojson, decl, expected_sums=_sums(dated_no_coordinate_rows=1),
+    )
+    assert stats["n_total"] == 2 and stats["n_dated_no_coord"] == 1
+    assert stats["n_null"] == 0 and stats["n_resolved"] == 1  # 座標あり記録の内訳は従来どおり
+    conn = sqlite3.connect(f"file:{v2_db}?mode=ro", uri=True)
+    out = {r[0]: (r[1], r[2]) for r in conn.execute("SELECT record_id, place_kind, place_id FROM occurrence_place")}
+    assert out["r2"] == ("watershed", None)
+    assert out["r1"] == ("watershed", _W1_PLACE_ID)
+
+
+def test_undated_record_without_coordinates_gets_no_row(tmp_path):
+    rows = [_nocoord_row("r2", dated=False)]
+    v2_db, ryuiki_db, registry_db, geojson = _nocoord_setup(tmp_path, rows)
+    decl = _declarations(tmp_path, n_watershed_polygons=1, place_id_null_count=0, resolved_count=0)
+    stats = b09.build_and_write_occurrence_place(v2_db, ryuiki_db, registry_db, geojson, decl)
+    assert stats["n_total"] == 0
+
+
+def test_dated_record_without_coordinates_must_be_declared_by_manifest(tmp_path):
+    """座標なしの日付あり記録が宣言（マニフェストの expected.cube.dated_no_coordinate_rows）に無ければ止まる。"""
+    rows = [_nocoord_row("r2")]
+    v2_db, ryuiki_db, registry_db, geojson = _nocoord_setup(tmp_path, rows)
+    decl = _declarations(tmp_path, n_watershed_polygons=1, place_id_null_count=0, resolved_count=0)
+    with pytest.raises(common.MigrationError, match="dated_no_coordinate_rows"):
+        b09.build_and_write_occurrence_place(v2_db, ryuiki_db, registry_db, geojson, decl)
+
+
+def test_b09_output_passes_b07_population_check_for_coordinate_less_record(tmp_path):
+    """b09 の出力（座標なし日付あり記録の place_id NULL 行）を、b07 の母集団検査がそのまま受け入れる（鎖が通る）。"""
+    import b07_build_occurrence_cube as b07
+    from .occurrence_fixtures import make_occurrence_cube_declarations_yaml
+
+    rows = [
+        occurrence_row("r1", None, "2020-01-05", "2020-01-05", "2020-01-05", source_row_id=1, lat=35.05, lon=139.05),
+        _nocoord_row("r2"),
+    ]
+    v2_db, ryuiki_db, registry_db, geojson = _nocoord_setup(tmp_path, rows)
+    decl = _declarations(tmp_path, n_watershed_polygons=1, place_id_null_count=0, resolved_count=1)
+    sums = _sums(dated_rows=1, dated_no_coordinate_rows=1, watershed_dated_unresolved_rows=1)
+    b09.build_and_write_occurrence_place(v2_db, ryuiki_db, registry_db, geojson, decl, expected_sums=sums)
+
+    cube_decl = tmp_path / "cube.yaml"
+    make_occurrence_cube_declarations_yaml(cube_decl, {
+        "leaf_cell_source_rows": 0, "month_cell_source_rows": 1,
+        "watershed_dated_resolved_rows": 1, "watershed_dated_unresolved_rows": 0,
+    })
+    conn = sqlite3.connect(f"file:{v2_db}", uri=True)
+    try:
+        stats = b07.build_cube(conn, cube_decl, place_declarations_yaml=None, expected_sums=sums)
+        assert stats["n_dated_by_place_kind"] == {"grid01": 1, "watershed": 2}
+    finally:
+        conn.close()
