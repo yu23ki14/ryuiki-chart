@@ -71,6 +71,11 @@ PR-5 で v1 射影（b05/b08）から移した。キューブ・registry だけ�
   （ラテン文字だけの俗名の最頻値）・**記録由来の和名補完**（`vernacular_ja_basis`〔`override`/`taxa`/`records`〕に根拠を残す。
   既存の値は変えない）も r01（`build_taxon.py`）が作る（PR-3a、D4）。
   設計・実測は `docs/plans/PHASE_B_TAXON_ASSESSMENT.md`・`docs/plans/V2_SERVING_PR3A.md`。
+  **Issue #34**: `in_scope` の規則は出典の属性（`origin_ja`）に切り替えた（`assessment_scope_exclusions.yaml` の
+  `rules:`＋固定宣言。`scope_reason` に理由）。b06 が `occurrence.is_alien_in_scope` を持ち、`n_alien` はそれを数える
+  （定義・件数は ADR-0019「Issue #34 追記」）。`taxon.accepted_taxon_id` と弱い一致の採用は
+  `scripts/c26_taxon_gbif_accepted.py` が書く `data/processed/taxon_gbif_accepted.csv`（GBIF API 収集物。
+  `taxon_crosswalk.csv` と同じ扱いで指紋・サンプル `data/sample/processed/` に入る）を r01 が読む。
 
 ## 規約
 

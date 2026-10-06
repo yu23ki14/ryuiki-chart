@@ -256,3 +256,42 @@ taxon_assessment  taxon_id, list_id, list_year, category_code, category_raw,
   （地域個体群、和名のみ）を表せない。却下。
 - **カテゴリを正規化せず原表記のまま扱う**: 情報は失われないが、
   比較も判定もできない。原表記は `category_raw` に残すことで両立させる。部分的に採用。
+
+## Issue #34 追記（2026-10-06）: 外来種の除外規則・受理名・弱い一致・着手条件
+
+設計・実測は `docs/plans/ISSUE34_TAXON.md`、除外規則の実測表は `reports/phase_b_taxon_assessment.md`。
+
+1. **`n_alien` の定義＝国外由来の掲載がある種（宣言の除外を除く）の記録数。** 全国リストの「国内由来」
+   （国内外来種）は地域によって在来であり、全国リストは神奈川で外来かを判定できない。`taxon_assessment.in_scope` は
+   「この地域の外来種として数える対象か」の旗であり、集計がそれを無視していたのは欠陥だった。規則は
+   `registry/taxon/assessment_scope_exclusions.yaml` の `rules:`（binom の掲載行がすべて `origin_ja` に「国内由来」を含む。
+   27 binom）と固定宣言（7種。Apis mellifera だけが規則外で、理由は掲載学名が亜種）の和集合（28 binom）。行は消さず
+   `in_scope=0`・`scope_reason` に理由を残す。b06 が `occurrence.is_alien_in_scope`（原表記 `is_alien` は変えない）を
+   持ち、b07 が `n_alien = SUM(is_alien_in_scope)`（`OCCURRENCE_AGG_SPEC_VERSION` を v3 に）。
+
+   | | 除外前 | 除外後 |
+   |---|---:|---:|
+   | `n_alien`（occurrence 全体） | 3,721 | 3,341（-380） |
+   | うち固定7種（以前から宣言していたが `n_alien` には効いていなかった） | 351 | 0 |
+   | うち新規10種（モツゴ・ニホントカゲ・ニホンヒキガエル・Fejervarya kawamurai・Mustela itatsi・Martes melampus・Ficus microcarpa・Coreoperca kawamebari・Dicentra peregrina・Tachysurus nudiceps） | 29 | 0 |
+
+   新規10種の記録は 291 件（`is_alien` が立っていたのは 29 件）。種ごとの件数は `reports/phase_b_taxon_assessment.md`。
+2. **`accepted_taxon_id`（方針6）を実装した。** `scripts/c26_taxon_gbif_accepted.py` が GBIF の `species/{key}` から
+   `acceptedKey` を収集し（`data/processed/taxon_gbif_accepted.csv`、2,643行。c24 は触らない）、受理名の taxon が
+   レジストリに実在する行にだけ入れる。実測: 設定 81件／受理名はあるがその taxon がレジストリに無く NULL 269件／
+   DOUBTFUL で受理名なし 16件／ACCEPTED（自分自身）1,977件。
+3. **弱い一致 300件の再照合。** 自動採用は「正規形が完全一致・種以下・候補1つ」だけ（`scripts/taxon_gbif_adopt.py`）。
+   実測: **0件**（`infraspecific_collapsed` 69・`genus_or_higher` 79・`higher_rank` 93・`fuzzy_spelling` 55・
+   `annotated_name` 4）。全件 `unresolved` のまま理由区分を `weak_reason` に残した（決定4のとおり、照合できないことを
+   データとして残す）。採用の仕組みは `build_taxon.py` に入っているので、GBIF backbone が変われば c26 の再収集で拾える。
+4. **DwC-A の `taxonID` に名前空間を前置**（`gbif:8026`/`inat:8026`。`scripts/taxon_namespaces.py` の
+   `dwca_taxon_id()`、`x03_verify_dwca.py` が検証）。公開物の意図的な変更なので再公開は公開の段取りと合わせる。
+5. **`place_kind='grid01'`** は ADR-0006 のコードリストに追記済み（2026-09-23）。
+
+### 着手条件（実装していない）
+
+- **`taxon.parent_taxon_id`（階層構造）**: 上位分類のツリーを要る消費者（分類群の階層で集計する画面・AI ツール、
+  「科に属する種を全部引く」API）が Issue になったときに設計する。いまは kingdom〜family のフラットな列で足りる。
+- **評価の `taxon_id` 解決率 60.6%（2,008/3,313）**: `taxon_assessment.taxon_id` を結合キーに使う画面・クエリが
+  出たときに規則を見直す。いまの消費者は `binom` で結合しており足りている。
+

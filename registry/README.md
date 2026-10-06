@@ -450,6 +450,15 @@ override（`registry/taxon/vernacular_ja.csv` の人手確認済み63件）> tax
 の両方に載る（`taxon` は既に D1 の消費者があるため、`kingdom`/`phylum` 等とは
 異なり D1 側にも追加した）。
 
+## `taxon_assessment.in_scope`・`scope_reason`（Issue #34 で規則を出典の属性に切り替え）
+
+除外集合は `assessment_scope_exclusions.yaml` の `rules:`（moe_ias_2015 の binom の掲載行がすべて `origin_ja` に
+「国内由来」を含む。27 binom）と固定宣言 `exclusions:`（7種。Apis mellifera だけが規則外）の和集合（28）。
+`in_scope=0` の行は `scope_reason`（`domestic_origin`/`subspecies_binomial_contraction`、重なれば `,` 連結）に理由を
+残す。`n_alien` はこの集合を反映した `occurrence.is_alien_in_scope` の合計（b06/b07。定義と件数は
+`docs/adr/0019-taxon-registry.md` の Issue #34 追記）。`taxon.accepted_taxon_id` と弱い一致の採用は
+`data/processed/taxon_gbif_accepted.csv`（`scripts/c26_taxon_gbif_accepted.py`）を読む。以下は PR-3a 時点の記述。
+
 ## `taxon_assessment.in_scope`（D7）（Issue #48 PR-3a）
 
 `taxon_assessment.in_scope` は「除外7種」（上記「二名法(binom)は…」節、P-2
