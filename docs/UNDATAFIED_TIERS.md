@@ -114,9 +114,9 @@ DBおよびリポジトリのファイルは一切変更していない。
 
 ### API
 
+- `/api/geo/protected-areas` / `/api/geo/vegetation` / `/api/geo/river-segments`（GeoJSON）
 - データ探索画面（`/api/sql`）と `/api/schema` からも新テーブルを直接引ける
 - `mammal_mesh` / `wildlife_sightings` は画面・API の読み手が無く（`/api/nature` は Issue #61 で撤去）、AI の run_sql 用の台帳表として D1 に残している
-- データ探索画面（`/api/sql`）と `/api/schema` からも新テーブルを直接引ける
 
 ### 収集して分かった、当初の想定と違ったこと
 
