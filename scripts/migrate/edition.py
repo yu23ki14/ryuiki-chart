@@ -14,8 +14,10 @@
 """
 import sqlite3
 
+from . import common
 
-class EditionResolutionError(Exception):
+
+class EditionResolutionError(common.MigrationError):
     """source_id（と vintage）から edition を一意に決められない。"""
 
 
@@ -52,3 +54,27 @@ def resolve_edition(editions: dict, source_id: str, *, vintage: str | None = Non
             f"（候補: {[c[0] for c in candidates]}）"
         )
     return matched[0][0]
+
+
+def make_resolver(conn: sqlite3.Connection, schema: str = "main"):
+    """`resolve(source_id, *, vintage=None) -> edition_id | None` を返す（出典・版ごとにキャッシュ）。
+
+    b03・b06・registry の build_place が使う唯一の入口（それぞれが自前のラッパーを持たない）。
+    `source_id is None`（出典未記録の行）は None。解決できなければ `EditionResolutionError`
+    （`MigrationError` の一種。黙って選ばない・黙って NULL にしない）。
+    """
+    index = load_editions(conn, schema)
+    cache: dict = {}
+
+    def resolve(source_id, *, vintage=None):
+        if source_id is None:
+            return None
+        key = (source_id, vintage)
+        if key not in cache:
+            try:
+                cache[key] = resolve_edition(index, source_id, vintage=vintage)
+            except EditionResolutionError as e:
+                raise EditionResolutionError(f"source_edition_id を決められない: {e}") from e
+        return cache[key]
+
+    return resolve

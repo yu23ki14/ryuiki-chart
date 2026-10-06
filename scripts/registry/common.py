@@ -344,6 +344,7 @@ def _fingerprint_source_paths(root: pathlib.Path) -> list[pathlib.Path]:
         root / "scripts" / "r01_build_registry.py",
         root / "scripts" / "taxon_namespaces.py",
         root / "scripts" / "migrate" / "regions.py",  # build_region.py が読む region.yaml の検証（Issue #32-3）
+        root / "scripts" / "migrate" / "edition.py",  # build_place.py が版を引く（Issue #39 Phase C）
         *(root / "scripts" / "registry").glob("*.py"),
         *(p for p in (root / "registry").rglob("*") if p.is_file()),
     ]
@@ -390,6 +391,24 @@ def _hash_organism_records_freshness(h, ryuiki_path: pathlib.Path) -> None:
     _hash_labeled(h, "organism_records_freshness", repr(values).encode("utf-8"))
 
 
+def _hash_source_registry(h, ryuiki_path: pathlib.Path) -> None:
+    """`ryuiki.source_registry`（124 行。build_source.py が source/source_edition/license の元にする）の
+    **全内容**を指紋に混ぜる（小さい表なので代理指標ではなく内容そのもの。約1ms）。
+    `ryuiki.sqlite` が無い環境は `_hash_organism_records_freshness()` と同じく「無い」を混ぜる。"""
+    if not ryuiki_path.exists():
+        _hash_labeled(h, "source_registry", None)
+        return
+    conn = sqlite3.connect(f"file:{ryuiki_path}?mode=ro", uri=True)
+    try:
+        try:
+            rows = conn.execute("SELECT * FROM source_registry ORDER BY source_id").fetchall()
+        except sqlite3.OperationalError:  # 表が無い（テストの最小 DB）。「無い」として混ぜる
+            rows = None
+    finally:
+        conn.close()
+    _hash_labeled(h, "source_registry", None if rows is None else repr(rows).encode("utf-8"))
+
+
 def compute_input_fingerprint(
     root: pathlib.Path | None = None, mode: str = MODE_FULL
 ) -> str:
@@ -407,6 +426,8 @@ def compute_input_fingerprint(
       の中身。
     - `data/processed/taxon_crosswalk.csv`（build_taxon.py の `CROSSWALK_CSV`）の中身。
     - `data/processed/taxon_gbif_accepted.csv`（build_taxon.py の `GBIF_ACCEPTED_CSV`。Issue #34）の中身。
+    - `ryuiki.sqlite` の `source_registry` の全内容（`_hash_source_registry()`。build_source.py の入力。
+      Issue #39 Phase C）。
     - `ryuiki.sqlite` の `organism_records` の軽い代理指標（行数・最大rowid、
       `_hash_organism_records_freshness()`）。grid01（build_place.py）の入力に
       なったための例外（次の段落参照）。
@@ -458,6 +479,7 @@ def compute_input_fingerprint(
             h, MOE_IAS_LIST_CSV_RELPATH.as_posix(), base / MOE_IAS_LIST_CSV_RELPATH
         )
         _hash_organism_records_freshness(h, base / "data" / "db" / "ryuiki.sqlite")
+        _hash_source_registry(h, base / "data" / "db" / "ryuiki.sqlite")
 
     return h.hexdigest()
 
@@ -558,6 +580,13 @@ PLACE_KINDS_WITHOUT_NAMESPACE = frozenset({"grid01"})
 _NAMESPACE_RE = re.compile(r"[a-z0-9_-]+")
 
 
+def is_valid_namespace(ns: str) -> bool:
+    """ns（出典名前空間）として使える文字列か（`[a-z0-9_-]+`。`.` と `:` は区切りなので不可）。
+    ns の検証はここ1箇所（`place_id()`・`parse_id()`。TS の `parse-id.ts` の `NAMESPACE_RE` と
+    同じ規則であることは `test_place_id_grammar.py` が検査する）。"""
+    return bool(_NAMESPACE_RE.fullmatch(ns))
+
+
 def place_id(
     place_kind: str,
     namespace: str | None,
@@ -593,7 +622,7 @@ def place_id(
                 f"place_id: place_kind={place_kind!r} には namespace が要る"
                 "（namespace を持たない kind は PLACE_KINDS_WITHOUT_NAMESPACE）"
             )
-        if not _NAMESPACE_RE.fullmatch(namespace):
+        if not is_valid_namespace(namespace):
             raise ValueError(
                 f"place_id: namespace={namespace!r} は [a-z0-9_-]+ でなければならない"
                 "（'.' と ':' は区切りなので含められない。ADR-0004 規約1）"
@@ -646,7 +675,7 @@ def parse_id(id_value: str) -> ParsedId:
         if kind in PLACE_KINDS_WITHOUT_NAMESPACE:
             return ParsedId(scope, entity, local, kind, None, tail)
         ns, dot2, key = tail.partition(".")
-        if not (ns and dot2 and key) or not _NAMESPACE_RE.fullmatch(ns):
+        if not (ns and dot2 and key) or not is_valid_namespace(ns):
             raise ValueError(
                 f"parse_id: place の local が <kind>.<ns>.<key> の形ではない"
                 f"（旧形式の '-' 区切りの可能性）: {id_value!r}"
@@ -704,15 +733,6 @@ def source_public_id(source_id: str) -> str:
     if not SOURCE_ID_RE.match(source_id):
         raise ValueError(f"source_id が [a-z0-9_]+ ではない（公開 ID にできない）: {source_id!r}")
     return scoped_id("source", source_id)
-
-
-def source_local_id(public_id: str) -> str:
-    """`common:source:gbif_kanagawa` -> `gbif_kanagawa`（`source_public_id` の逆）。"""
-    scope, _, rest = public_id.partition(":")
-    entity, _, local = rest.partition(":")
-    if scope != "common" or entity != "source" or not SOURCE_ID_RE.match(local):
-        raise ValueError(f"出典の公開 ID ではない: {public_id!r}")
-    return local
 
 
 def edition_id(source_id: str, edition_key: str) -> str:

@@ -53,9 +53,12 @@ def legacy_place_id(new_id: str) -> str:
     return f"{p.scope}:{p.entity}:{p.kind}.{p.ns}-{p.key}"
 
 
-def verify_place_id_map(rows: list[dict], place_ids: set[str]) -> None:
+def verify_place_id_map(rows: list[dict], place_ids: set[str] | None) -> None:
     """`rows`（place.csv）が現行の `place_ids`（place テーブルの place_id 全件）と
-    整合していることを検査する。食い違いがあれば AssertionError。"""
+    整合していることを検査する。食い違いがあれば AssertionError。
+
+    `place_ids=None`（`--files-only`。place を作らない）のときは、現行 place に依存しない検査
+    （空でない・old/new の一意・new が新形式・old が規則どおり）だけを行う。"""
     problems: list[str] = []
     old_seen: dict[str, int] = {}
     new_seen: dict[str, int] = {}
@@ -70,26 +73,26 @@ def verify_place_id_map(rows: list[dict], place_ids: set[str]) -> None:
         if new in new_seen:
             problems.append(f"{i} 行目: new_id が重複（{new_seen[new]} 行目と同じ）: {new}")
         new_seen[new] = i
-        if old in place_ids:
+        if place_ids is not None and old in place_ids:
             problems.append(
                 f"{i} 行目: 旧 ID が現行の place_id として発行されている"
                 f"（廃止した ID を再利用しない。ADR-0004 規約2）: {old}"
             )
-        if new not in place_ids:
-            problems.append(f"{i} 行目: new_id が現行の place に無い: {new}")
+        # new_id が現行の place に実在するかは見ない（縮小サンプルのように、宣言より少ない place しか
+        # 作らない環境がある。旧 ID の受理は place の有無に関わらず恒久的に宣言どおりに効く）。
+        # 代わりに、new_id が新形式として分解でき、old_id が規則から導けることは常に検査する。
+        try:
+            expected_old = legacy_place_id(new)
+        except ValueError as e:
+            problems.append(f"{i} 行目: new_id が新形式として分解できない: {e}")
         else:
-            try:
-                expected_old = legacy_place_id(new)
-            except ValueError as e:
-                problems.append(f"{i} 行目: new_id が新形式として分解できない: {e}")
-            else:
-                if expected_old != old:
-                    problems.append(
-                        f"{i} 行目: old_id が規則（ns と key の区切りを `-` に戻した形）と"
-                        f"一致しない: old={old} 期待={expected_old}"
-                    )
+            if expected_old != old:
+                problems.append(
+                    f"{i} 行目: old_id が規則（ns と key の区切りを `-` に戻した形）と"
+                    f"一致しない: old={old} 期待={expected_old}"
+                )
     declared_new = set(new_seen)
-    for pid in sorted(place_ids):
+    for pid in sorted(place_ids or ()):
         try:
             p = common.parse_id(pid)
         except ValueError as e:
@@ -102,3 +105,57 @@ def verify_place_id_map(rows: list[dict], place_ids: set[str]) -> None:
         raise AssertionError(
             f"registry/id_map/place.csv が現行の place と整合しない（{len(problems)} 件）:\n  {head}"
         )
+
+
+def verify_dataset_id_map(rows: list[dict], conn) -> None:
+    """`rows`（dataset.csv。旧 `<dataset>@<年>` -> 版の ID）が variable_alias の
+    `(dataset, edition_key)` の集合と過不足なく一致し、`new_id` が版の ID の規則どおりであること。
+    `source_edition` が空でなければ（full ビルド）new_id の実在も検査する。"""
+    problems: list[str] = []
+    for col in ("old_id", "new_id"):
+        values = [r[col] for r in rows]
+        if len(set(values)) != len(values):
+            problems.append(f"{col} が重複している（旧 -> 新は 1 対 1）")
+    mapped: set[tuple[str, str]] = set()
+    have_editions = conn.execute("SELECT count(*) FROM source_edition").fetchone()[0] > 0
+    for r in rows:
+        ds, sep, key = r["old_id"].partition("@")
+        if not (sep and ds and key):
+            problems.append(f"old_id が <dataset>@<年> の形ではない: {r['old_id']!r}")
+            continue
+        expected = common.edition_id(ds, key)
+        if r["new_id"] != expected:
+            problems.append(f"old_id={r['old_id']!r} の new_id={r['new_id']!r} が {expected!r} ではない")
+        elif have_editions and conn.execute(
+            "SELECT 1 FROM source_edition WHERE edition_id = ?", (r["new_id"],)
+        ).fetchone() is None:
+            problems.append(f"new_id={r['new_id']!r} が source_edition に無い")
+        mapped.add((ds, key))
+    in_alias = set(conn.execute(
+        "SELECT DISTINCT dataset, edition_key FROM variable_alias WHERE edition_key IS NOT NULL"
+    ))
+    if in_alias != mapped:
+        problems.append(
+            "variable_alias の (dataset, edition_key) と一致しない: "
+            f"alias のみ={sorted(in_alias - mapped)} / id_map のみ={sorted(mapped - in_alias)}"
+        )
+    if problems:
+        raise AssertionError("registry/id_map/dataset.csv が整合しない:\n  " + "\n  ".join(problems))
+
+
+def build_id_map(conn, *, full: bool, directory: pathlib.Path | None = None) -> dict[str, int]:
+    """`registry/id_map/{place,dataset}.csv` を1回だけ読み、検査し、`id_map` 表に載せる。
+
+    原本は要らないので `--files-only` でも作る（`full=False`: place の現行 ID 依存の検査だけ省く。
+    CI の生成物検査〔generated-id-map.ts〕が空のマップで上書きされないため）。
+    """
+    place_rows = load_csv("place", directory)
+    dataset_rows = load_csv("dataset", directory)
+    place_ids = {r[0] for r in conn.execute("SELECT place_id FROM place")} if full else None
+    verify_place_id_map(place_rows, place_ids)
+    verify_dataset_id_map(dataset_rows, conn)
+    sql = "INSERT INTO id_map (entity, old_id, new_id, reason, spec_version) VALUES (?, ?, ?, ?, ?)"
+    for entity, rows in (("place", place_rows), ("dataset", dataset_rows)):
+        conn.executemany(sql, [(entity, r["old_id"], r["new_id"], r["reason"], r["spec_version"]) for r in rows])
+    conn.commit()
+    return {"place": len(place_rows), "dataset": len(dataset_rows)}

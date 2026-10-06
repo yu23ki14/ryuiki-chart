@@ -545,7 +545,7 @@ def _ingest_measurements(
     stats = _empty_stats("measurements")
     seen_ids: set[str] = set()
     censoring_counts: collections.Counter = collections.Counter()
-    edition_of = _edition_resolver(work)
+    edition_of = edition.make_resolver(work, "reg")
 
     def rows():
         for row in work.execute(_SELECT_MEASUREMENTS_SQL):
@@ -608,7 +608,7 @@ def _ingest_sensor_timeseries(
     """
     stats = _empty_stats("sensor_timeseries")
     seen_ids: set[str] = set()
-    edition_of = _edition_resolver(work)
+    edition_of = edition.make_resolver(work, "reg")
 
     def rows():
         for row in work.execute(_SELECT_SENSOR_SQL):
@@ -684,28 +684,6 @@ def _load_watershed_place_lookup(work: sqlite3.Connection) -> dict[str, tuple[st
         "WHERE psr.key_space = 'watershed_id'"
     ).fetchall()
     return {external_key: (place_id, place_kind) for external_key, place_id, place_kind in rows}
-
-
-def _edition_resolver(work: sqlite3.Connection):
-    """`source_id -> source_edition_id`（その出典の唯一の edition）を返す関数。出典ごとにキャッシュする。
-    版を複数持つ出典（土地利用）は vintage を渡す別経路（`_ingest_landuse`）で引く。
-    `source_id` が NULL の行（出典未記録。合成データ以外には無い）は NULL。解決できなければ止まる
-    （`migrate.edition.resolve_edition`。黙って選ばない）。
-    """
-    idx = edition.load_editions(work, "reg")
-    cache: dict = {}
-
-    def resolve(source_id):
-        if source_id is None:
-            return None
-        if source_id not in cache:
-            try:
-                cache[source_id] = edition.resolve_edition(idx, source_id)
-            except edition.EditionResolutionError as e:
-                raise common.MigrationError(f"observation の source_edition_id を決められない: {e}") from e
-        return cache[source_id]
-
-    return resolve
 
 
 def _load_landuse_alias_map(work: sqlite3.Connection) -> dict[tuple[str, str, str], tuple]:
@@ -792,7 +770,7 @@ def _ingest_landuse(
     watershed_place = _load_watershed_place_lookup(work)
     alias_map = _load_landuse_alias_map(work)
     seen_business_keys: set[tuple] = set()
-    edition_idx = edition.load_editions(work, "reg")
+    edition_of = edition.make_resolver(work, "reg")
 
     def rows():
         with open(csv_path, encoding="utf-8", newline="") as f:
@@ -854,7 +832,7 @@ def _ingest_landuse(
                         float(value_str), None, censoring.CENSORING_NONE, None,
                         None, 0, source_ref, None,
                         public_id.landuse_observation_id(watershed_id, data_year, code, suffix),
-                        edition.resolve_edition(edition_idx, source_id, vintage=data_year),
+                        edition_of(source_id, vintage=data_year),
                     )
 
     dest.executemany(_INSERT_SQL.format(table=f'"{insert_table}"'), rows())

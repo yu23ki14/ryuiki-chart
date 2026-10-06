@@ -6,28 +6,43 @@
 スコープは常に `common`（ADR-0004 規約0 の追記。地域は `region_id` 列で絞る）。
 
     observation_id = common:obs:<tbl>.<key>
-      measurements       tbl=meas    key = slug(measurement_id)                         例 common:obs:meas.atsugi_river_water_quality__000000
+      measurements       tbl=meas    key = reversible_key(measurement_id)                      例 common:obs:meas.atsugi_river_water_quality__000000
       sensor_timeseries  tbl=sensor  `sensor.<source_id>.<sha256 先頭16桁>`（業務キー (site_id, datastream, phenomenon_time, source_id)
                                      が全行で一意であることは実測済み。長いのでハッシュにする。衝突は UNIQUE 索引で止まる）
-      landuse            tbl=landuse key = slug(<watershed_id>.<data_year>.<code>.<area_km2|n_cells>)（CSV 行番号は使わない）
+      landuse            tbl=landuse key = <watershed_id>.<data_year>.<code>.<area_km2|n_cells>（各部を reversible_key。CSV 行番号は使わない）
     occurrence_id  = common:occ:<ns>.<key>   ns は gbif / inat（`taxon_namespaces.TAXON_KEY_SOURCE_NAMESPACE`）、
                                      key = 出典の key（`record_id` = `<source_id>__<key>` の `<key>`）
                                      例 common:occ:gbif.1830141077（source が gbif_kanagawa から
                                      gbif_kanagawa_occurrences に移っても同じ）
 """
 import hashlib
+import re
+import urllib.parse
 
 from registry import common as registry_common
 from taxon_namespaces import TAXON_KEY_SOURCE_NAMESPACE
 
 from . import common
 
+_KEY_SAFE = re.compile(r"[A-Za-z0-9_.\-]")
+
+
+def reversible_key(raw: str) -> str:
+    """公開 ID の key 用の**可逆な**エンコード（`urllib.parse.unquote` で元に戻る）。
+    `[A-Za-z0-9_.-]` 以外（空白・`:`・`/`・非 ASCII・`%`）は UTF-8 の percent-encode にし、`_` `.` の連続を畳まない
+    （`registry.common.slugify_local_key` は連続する `_` を畳むので、`a__b` と `a_b` が同じ key に潰れる。
+    place ID はそちらを使い続ける〔既存 ID を変えない〕が、観測・出現の ID は可逆にして衝突を原理的に避ける）。"""
+    if not raw:
+        raise common.MigrationError("公開 ID の key が空")
+    return "".join(ch if _KEY_SAFE.match(ch) else "".join(f"%{b:02X}" for b in ch.encode("utf-8")) for ch in raw)
+
+
 OBS_ENTITY = "obs"
 OCC_ENTITY = "occ"
 
 
 def measurement_observation_id(measurement_id: str) -> str:
-    return registry_common.scoped_id(OBS_ENTITY, f"meas.{registry_common.slugify_local_key(measurement_id)}")
+    return registry_common.scoped_id(OBS_ENTITY, f"meas.{reversible_key(measurement_id)}")
 
 
 def sensor_observation_id(site_id: str, datastream: str, phenomenon_time: str, source_id: str | None) -> str:
@@ -43,7 +58,7 @@ def sensor_observation_id(site_id: str, datastream: str, phenomenon_time: str, s
 
 
 def landuse_observation_id(watershed_id: str, data_year: str, code: str, suffix: str) -> str:
-    key = registry_common.slugify_local_key(f"{watershed_id}.{data_year}.{code}.{suffix}")
+    key = ".".join(reversible_key(p) for p in (watershed_id, data_year, code, suffix))
     return registry_common.scoped_id(OBS_ENTITY, f"landuse.{key}")
 
 
@@ -55,5 +70,5 @@ def occurrence_id(record_id: str, source_id: str) -> str:
     prefix = f"{source_id}__"
     if not record_id.startswith(prefix) or len(record_id) == len(prefix):
         raise common.MigrationError(f"record_id が <source_id>__<key> の形ではない: {record_id!r}（source_id={source_id!r}）")
-    key = registry_common.slugify_local_key(record_id[len(prefix):])
+    key = reversible_key(record_id[len(prefix):])
     return registry_common.scoped_id(OCC_ENTITY, f"{ns}.{key}")

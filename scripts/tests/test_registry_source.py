@@ -15,7 +15,8 @@ import yaml
 
 import r01_build_registry as r01
 from migrate import edition as edition_mod
-from registry import build_source, build_unit_variable, common
+from migrate import common as common_migrate
+from registry import build_source, build_unit_variable, common, id_map
 
 RYUIKI = common.DB_DIR / "ryuiki.sqlite"
 needs_ryuiki = pytest.mark.skipif(not RYUIKI.exists(), reason="原本 ryuiki.sqlite が無い（CI 等）")
@@ -161,6 +162,42 @@ def test_content_file_hash_is_filled_only_when_the_file_exists(tmp_path):
     assert got["b"] is None
 
 
+def test_per_edition_content_file_is_hashed_and_source_level_one_is_rejected_for_versioned_sources(tmp_path):
+    (tmp_path / "v2006.csv").write_bytes(b"abc")
+    (tmp_path / "v2016.csv").write_bytes(b"abcd")
+    rows = [_row("lu"), _row("lu_2006"), _row("lu_2016")]
+    ed = _editions_doc(declared_editions=[
+        {"source_id": "lu", "edition_key": "2006", "fetched_from": "lu_2006", "content_file": "v2006.csv"},
+        {"source_id": "lu", "edition_key": "2016", "fetched_from": "lu_2016", "content_file": "v2016.csv"},
+    ])
+    _, _, editions, _ = _assemble(rows, ed=ed, root=tmp_path)
+    sha = build_source._EDITION_COLUMNS.index("content_sha256")
+    got = {e[2]: e[sha] for e in editions if e[1] == "lu"}
+    assert got["2006"] != got["2016"] and all(got.values())  # 版ごとに別のファイルを読む
+    # 版を宣言した出典に、出典単位の content_file を書くと止まる（どの版か決まらない）
+    path = tmp_path / "e.yaml"
+    path.write_text(yaml.safe_dump(_editions_doc(
+        declared_editions=[{"source_id": "lu", "edition_key": "2006", "fetched_from": "lu_2006"}],
+        source_declarations={"lu": {"content_file": "v2006.csv"}}), allow_unicode=True), encoding="utf-8")
+    with pytest.raises(AssertionError, match="content_file は、版を宣言している出典には"):
+        build_source.load_editions_yaml(path)
+
+
+def test_unsupported_per_edition_overrides_are_rejected_not_ignored(tmp_path):
+    """版ごとの license 等の上書きは宣言できない。書いたら黙って無視せず止まる。"""
+    for entry, where in (
+        ({"source_id": "a", "edition_key": "1", "fetched_from": "a", "license": "CC0"}, "declared_editions"),
+        ({"source_id": "a", "edition_key": "1", "fetched_from": "a", "redistributable": 0}, "declared_editions"),
+    ):
+        path = tmp_path / "e.yaml"
+        path.write_text(yaml.safe_dump(_editions_doc(declared_editions=[entry]), allow_unicode=True), encoding="utf-8")
+        with pytest.raises(AssertionError, match="未対応のキー"):
+            build_source.load_editions_yaml(path)
+    path.write_text(yaml.safe_dump(_editions_doc(source_declarations={"a": {"license": "x"}}), allow_unicode=True), encoding="utf-8")
+    with pytest.raises(AssertionError, match="未対応のキー"):
+        build_source.load_editions_yaml(path)
+
+
 def _write_yaml(path, doc):
     path.write_text(yaml.safe_dump(doc, allow_unicode=True), encoding="utf-8")
     return path
@@ -214,14 +251,10 @@ def test_editions_yaml_checks_halt(tmp_path):
 
 def test_source_public_id_round_trip_and_rejects_bad_ids():
     assert common.source_public_id("gbif_kanagawa") == "common:source:gbif_kanagawa"
-    assert common.source_local_id("common:source:gbif_kanagawa") == "gbif_kanagawa"
     assert common.edition_id("gbif_kanagawa", "20260829") == "common:edition:gbif_kanagawa.20260829"
     for bad in ("a.b", "a-b", "A", "a:b", ""):
         with pytest.raises(ValueError):
             common.source_public_id(bad)
-    for bad in ("common:place:x", "jp-14:source:x", "common:source:a.b"):
-        with pytest.raises(ValueError):
-            common.source_local_id(bad)
     with pytest.raises(ValueError):
         common.edition_id("a", "1.5")
 
@@ -251,9 +284,9 @@ def test_real_data_every_source_has_an_edition_and_every_license_is_mapped():
     assert len(src) == len(rows)
     assert {e[1] for e in ed} == {r["source_id"] for r in rows}  # 全 source に最低 1 つ
     assert len({e[0] for e in ed}) == len(ed)
-    # source_public_id の往復（124 件）
-    for s in src:
-        assert common.source_local_id(s[1]) == s[0]
+    # source_public_id は全 124 件で発行でき、一意
+    assert len({s[1] for s in src}) == len(src)
+    assert all(s[1] == common.source_public_id(s[0]) for s in src)
     # redistributable=0 も捨てない（隔離しない。旗として残す）
     red = build_source._EDITION_COLUMNS.index("redistributable")
     assert any(e[red] == 0 for e in ed) and any(e[red] == 1 for e in ed)
@@ -423,40 +456,50 @@ def _reg_with_landuse_editions(reg):
         )
 
 
-def _dataset_csv(tmp_path, pairs):
-    p = tmp_path / "dataset.csv"
-    with p.open("w", encoding="utf-8", newline="") as f:
-        w = csv.writer(f)
-        w.writerow(["old_id", "new_id", "reason", "spec_version"])
-        for old, new in pairs:
-            w.writerow([old, new, "テスト", "t"])
-    return p
+def _dataset_rows(pairs):
+    return [{"old_id": o, "new_id": n, "reason": "テスト", "spec_version": "t"} for o, n in pairs]
 
 
 GOOD_PAIRS = [("lu@2006", "common:edition:lu.2006"), ("lu@2016", "common:edition:lu.2016")]
 
 
-def test_dataset_id_map_matches_alias_and_halts_when_broken(reg, tmp_path):
+def test_dataset_id_map_matches_alias_and_halts_when_broken(reg):
     _reg_with_landuse_editions(reg)
-    assert build_source.assert_dataset_id_map(reg, _dataset_csv(tmp_path, GOOD_PAIRS)) == 2
+    id_map.verify_dataset_id_map(_dataset_rows(GOOD_PAIRS), reg)
     with pytest.raises(AssertionError, match="一致しない"):  # 1 行消すと alias の版と食い違う
-        build_source.assert_dataset_id_map(reg, _dataset_csv(tmp_path, GOOD_PAIRS[:1]))
+        id_map.verify_dataset_id_map(_dataset_rows(GOOD_PAIRS[:1]), reg)
     with pytest.raises(AssertionError, match="重複"):  # 新 ID が 1 対 1 でない
-        build_source.assert_dataset_id_map(reg, _dataset_csv(tmp_path, [GOOD_PAIRS[0], ("lu@2016", GOOD_PAIRS[0][1])]))
+        id_map.verify_dataset_id_map(_dataset_rows([GOOD_PAIRS[0], ("lu@2016", GOOD_PAIRS[0][1])]), reg)
     with pytest.raises(AssertionError, match="ではない"):  # 新 ID が規則どおりでない
-        build_source.assert_dataset_id_map(reg, _dataset_csv(tmp_path, [GOOD_PAIRS[0], ("lu@2016", "common:edition:lu.2017")]))
+        id_map.verify_dataset_id_map(_dataset_rows([GOOD_PAIRS[0], ("lu@2016", "common:edition:lu.2017")]), reg)
 
 
-def test_real_dataset_id_map_file_shape():
-    rows = list(csv.DictReader(build_source.DATASET_ID_MAP_CSV.open(encoding="utf-8", newline="")))
-    assert [r["old_id"] for r in rows] == [
-        "nlni_l03b_landuse_by_watershed@2006", "nlni_l03b_landuse_by_watershed@2016",
-    ]
+def test_id_map_is_built_from_csv_without_source_data_in_files_only_mode(tmp_path):
+    """原本が要らない: place も source_edition も空のレジストリでも（`full=False`）、
+    place.csv・dataset.csv が id_map に載る（CI の生成物検査が空のマップで上書きされない）。"""
+    conn = common.create_registry_db(tmp_path / "r.sqlite")
+    # dataset.csv が指す alias は variable_alias.csv 由来（--files-only でも作る）
+    build_unit_variable.build(conn, {})
+    counts = id_map.build_id_map(conn, full=False)
+    assert counts == {"place": 877, "dataset": 2}
+    assert conn.execute("SELECT count(*) FROM id_map").fetchone()[0] == 879
+    conn.close()
 
 
 # ---------------------------------------------------------------------------
 # resolve_edition（ファクトの source_edition_id を決める唯一の入口）
 # ---------------------------------------------------------------------------
+
+def test_make_resolver_caches_and_names_the_failure(reg):
+    _reg_with_landuse_editions(reg)
+    resolve = edition_mod.make_resolver(reg)
+    assert resolve(None) is None  # 出典未記録
+    assert resolve("lu", vintage="2006") == "common:edition:lu.2006"
+    with pytest.raises(common_migrate.MigrationError, match="source_edition_id を決められない"):
+        resolve("lu")  # 版が複数。黙って選ばない
+    with pytest.raises(edition_mod.EditionResolutionError):
+        resolve("nope")
+
 
 def test_resolve_edition(reg):
     _reg_with_landuse_editions(reg)

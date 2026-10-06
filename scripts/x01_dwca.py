@@ -155,7 +155,7 @@ def build(include_noncommercial=False):
              "included_license_class_counts": {},
              "include_noncommercial_flag": include_noncommercial}
     written_event_ids = set()
-    id_map_rows: list[tuple[str, str]] = []
+    id_map_rows: list[tuple[str, str, str, str]] = []
 
     ev_path, occ_path, emof_path = OUT/"event.txt", OUT/"occurrence.txt", OUT/"extendedmeasurementorfact.txt"
     fev = open(ev_path, "w", encoding="utf-8", newline="")
@@ -197,10 +197,12 @@ def build(include_noncommercial=False):
             continue
         stats["included_license_class_counts"][lic_class] = \
             stats["included_license_class_counts"].get(lic_class, 0) + 1
-        eid = r["event_id"] or f"ev_{r['record_id']}"
         # occurrenceID は公開 ID（Issue #39 Phase C。旧 record_id との対応は occurrenceID_mapping.csv）。
         occ_id = public_id.occurrence_id(r["record_id"], sid)
-        id_map_rows.append((r["record_id"], occ_id))
+        # eventID: 出典が event_id を持つ行はそのまま。持たない行の補完 ID も公開 ID 由来にする
+        # （旧 `ev_<record_id>` は旧 occurrenceID を含むため）。旧→新は同じ対応 CSV に載せる。
+        eid = r["event_id"] or f"ev_{occ_id}"
+        id_map_rows.append((r["record_id"], occ_id, r["event_id"] or f"ev_{r['record_id']}", eid))
         lat, lon = r["lat"], r["lon"]
         d = r["observed_on"] or ""
         write_event_once(eid, {
@@ -334,14 +336,20 @@ def build(include_noncommercial=False):
 
 
 def write_occurrence_id_mapping(path, rows):
-    """`occurrenceID_mapping.csv`（列: old_occurrenceID,new_occurrenceID）。旧 -> 新は 1 対 1（重複すれば止まる）。"""
-    olds = [o for o, _ in rows]
-    news = [n for _, n in rows]
+    """`occurrenceID_mapping.csv`（列: old_occurrenceID,new_occurrenceID,old_eventID,new_eventID）。
+    occurrenceID の旧 -> 新は 1 対 1（重複すれば止まる）。eventID は複数の occurrence で共有されうるので
+    重複を許すが、同じ旧 eventID が別の新 eventID に写ることは許さない。"""
+    olds = [r[0] for r in rows]
+    news = [r[1] for r in rows]
     if len(set(olds)) != len(olds) or len(set(news)) != len(news):
         raise SystemExit("occurrenceID の旧->新が1対1でない（record_id か公開 ID が重複している）")
+    ev: dict[str, str] = {}
+    for _o, _n, old_ev, new_ev in rows:
+        if ev.setdefault(old_ev, new_ev) != new_ev:
+            raise SystemExit(f"同じ旧 eventID {old_ev!r} が複数の新 eventID に写っている")
     with open(path, "w", encoding="utf-8", newline="") as f:
         w = csv.writer(f, lineterminator="\n")
-        w.writerow(["old_occurrenceID", "new_occurrenceID"])
+        w.writerow(["old_occurrenceID", "new_occurrenceID", "old_eventID", "new_eventID"])
         w.writerows(rows)
 
 

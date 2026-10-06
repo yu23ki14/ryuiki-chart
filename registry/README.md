@@ -19,7 +19,7 @@ Phase A（`docs/plans/PHASE_A.md`, ADR-0016）の成果物。v1 のファクト�
 | `id_map/dataset.csv` | 旧 ID → 現行 ID の対応（dataset 分: 旧 `<dataset>@<年>` → 版の ID の 2 行。凍結リストとして `build_source.py` が variable_alias と突き合わせる） |
 | `place/zone.yaml` | Ridge to Reef ゾーン(1-5)の操作的定義 |
 | `place/key_space.yaml` | `place_source_ref.key_space`（外部キーの空間: `site_id`/`zone`/`watershed_id`/`grid01_latlon`）の宣言と、旧 `source_id` 値との対応、出典の版を持つか（Issue #39 Phase C、ADR-0006） |
-| `id_map/place.csv` | place の旧→新 ID の対応877件（ADR-0004 規約1 の区切り改定。**手書きの宣言**で、一度だけ旧ビルダーの出力から作った。`r01` が毎回、現行の place と1対1・旧 ID の再利用なし・規則一致を検査して止める。`registry.sqlite` の `id_map` 表→`web/src/lib/registry/generated-id-map.ts`→`resolveLegacyId()`）。ファイル名の stem が entity |
+| `id_map/place.csv` | place の旧→新 ID の対応877件（ADR-0004 規約1 の区切り改定。**手書きの宣言**で、一度だけ旧ビルダーの出力から作った。`r01` が毎回、現行の place と1対1・旧 ID の再利用なし・規則一致を検査して止める。`registry.sqlite` の `id_map` 表→`web/src/lib/registry/generated-id-map.ts`→`legacy-id.ts` のリゾルバ。place_id を受ける経路が無いので未接続）。ファイル名の stem が entity |
 | `place/site_supplement.csv` | `sites` テーブルに無い観測地点の補完（143件）。`place_local` 列は、
   `site_id` の局番コード部分（`"__"` の後ろ）が空文字で自動導出できない行にだけ
   明示の local を持たせる列（後述「空の局番コード」参照）。他の142行は空欄 |

@@ -326,17 +326,7 @@ def _ingest(
     溜めない）。
     """
     stats = _empty_stats()
-    edition_idx = edition.load_editions(work, "reg")
-    edition_cache: dict = {}
-
-    def edition_of(source_id):
-        # その出典の唯一の版（解決できなければ止まる。黙って選ばない）。
-        if source_id not in edition_cache:
-            try:
-                edition_cache[source_id] = edition.resolve_edition(edition_idx, source_id)
-            except edition.EditionResolutionError as e:
-                raise common.MigrationError(f"occurrence の source_edition_id を決められない: {e}") from e
-        return edition_cache[source_id]
+    edition_of = edition.make_resolver(work, "reg")  # その出典の唯一の版（解決できなければ止まる）
 
     taxon_ids, alien_binoms, sources, regions = ctx.taxon_ids, ctx.alien_binoms, ctx.sources, ctx.regions
     source_usage, region_usage, shape_usage = ctx.source_usage, ctx.region_usage, ctx.shape_usage

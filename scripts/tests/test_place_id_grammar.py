@@ -124,9 +124,20 @@ def test_verify_place_id_map_halts_on_duplicate_old_or_new_id():
         id_map.verify_place_id_map(_rows(*dup_new), set(_PLACE_IDS))
 
 
-def test_verify_place_id_map_halts_when_new_id_is_not_a_live_place():
-    with pytest.raises(AssertionError, match="現行の place に無い"):
-        id_map.verify_place_id_map(_rows(*_GOOD_PAIRS), _PLACE_IDS - {_GOOD_PAIRS[0][1]})
+def test_verify_place_id_map_allows_declared_places_absent_from_a_reduced_sample():
+    """縮小サンプルのように現行の place が宣言より少なくても、宣言の new_id が規則から導ければ通る
+    （CI の sample-gate。現行の place は全部宣言されている必要があるが、逆は要求しない）。"""
+    id_map.verify_place_id_map(_rows(*_GOOD_PAIRS), _PLACE_IDS - {_GOOD_PAIRS[0][1]})
+
+
+def test_verify_place_id_map_halts_when_a_live_renamed_place_is_not_declared():
+    with pytest.raises(AssertionError, match="宣言されていない"):
+        id_map.verify_place_id_map(_rows(*_GOOD_PAIRS[1:]), set(_PLACE_IDS))
+
+
+def test_verify_place_id_map_halts_when_new_id_is_not_derivable_even_if_absent_from_places():
+    with pytest.raises(AssertionError, match="分解できない"):
+        id_map.verify_place_id_map(_rows(("jp-14:place:site.x-1", "jp-14:place:site.x-1")), set(_PLACE_IDS))
 
 
 def test_verify_place_id_map_halts_when_old_id_drifts_from_the_rule():

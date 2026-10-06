@@ -437,41 +437,15 @@ def _assert_watershed_place_has_attributes_and_source_ref(conn) -> None:
     print(f"  watershed place の属性/逆引きOK: {n:,} 件")
 
 
-def _build_and_assert_place_id_map(conn) -> None:
-    """`registry/id_map/place.csv`（旧→新の ID 対応表。手書きの宣言）を `id_map` 表に載せ、
-    現行の place と整合していることを検査する（ADR-0004 規約2、Issue #39 Phase C）。
-    検査の中身は `registry.id_map.verify_place_id_map()` の docstring を参照
-    （1対1・旧 ID を現行 ID として再利用していない・規則との一致・宣言漏れなし）。
-    食い違えばビルドを止める。--files-only（place を作らない）では呼ばない。
+def _build_and_assert_id_map(conn, *, full: bool) -> None:
+    """`registry/id_map/{place,dataset}.csv`（旧→新の ID 対応表。手書きの宣言）を `id_map` 表に載せ、検査する
+    （ADR-0004 規約2、Issue #39 Phase C。中身は `registry.id_map.build_id_map()`）。原本は要らないので
+    `--files-only` でも作る（`full=False` は現行 place に依存する検査だけ省く）。
     """
     from registry import id_map
 
-    rows = id_map.load_csv("place")
-    place_ids = {r[0] for r in conn.execute("SELECT place_id FROM place")}
-    id_map.verify_place_id_map(rows, place_ids)
-    conn.executemany(
-        "INSERT INTO id_map (entity, old_id, new_id, reason, spec_version) VALUES ('place', ?, ?, ?, ?)",
-        [(r["old_id"], r["new_id"], r["reason"], r["spec_version"]) for r in rows],
-    )
-    conn.commit()
-    print(f"  id_map(place) OK: {len(rows):,} 件（旧 ID は全て新 ID に1対1で解決。現行 ID の再利用なし）")
-
-
-def _build_and_assert_dataset_id_map(conn) -> None:
-    """`registry/id_map/dataset.csv`（旧 `<dataset>@<年>` → 版の ID）を `id_map` 表に載せ、
-    variable_alias の `(dataset, edition_key)` と過不足なく一致し new_id が source_edition に
-    実在することを検査する（`registry.build_source.assert_dataset_id_map`）。--files-only では呼ばない。
-    """
-    from registry import build_source, id_map
-
-    n = build_source.assert_dataset_id_map(conn)
-    rows = id_map.load_csv("dataset")
-    conn.executemany(
-        "INSERT INTO id_map (entity, old_id, new_id, reason, spec_version) VALUES ('dataset', ?, ?, ?, ?)",
-        [(r["old_id"], r["new_id"], r["reason"], r["spec_version"]) for r in rows],
-    )
-    conn.commit()
-    print(f"  id_map(dataset) OK: {n:,} 件")
+    counts = id_map.build_id_map(conn, full=full)
+    print(f"  id_map OK: {counts}（旧 ID は全て新 ID に1対1で解決。現行 ID の再利用なし{'' if full else '。files-only は place 依存の検査を省略'}）")
 
 
 def _assert_taxon_assessment_invariants(conn) -> None:
@@ -709,9 +683,7 @@ def main() -> None:
         _assert_zone_external_key_is_numeric(conn)
         _assert_watershed_place_has_attributes_and_source_ref(conn)
         _assert_taxon_assessment_invariants(conn)
-        if not args.files_only:
-            _build_and_assert_place_id_map(conn)
-            _build_and_assert_dataset_id_map(conn)
+        _build_and_assert_id_map(conn, full=not args.files_only)
 
         conn.execute("DELETE FROM registry_build")
         conn.execute(

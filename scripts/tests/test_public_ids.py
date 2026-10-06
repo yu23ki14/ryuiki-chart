@@ -51,7 +51,7 @@ from .occurrence_fixtures import (
 
 def test_id_formats_and_parse_id_round_trip():
     meas = public_id.measurement_observation_id("atsugi_river_water_quality__000000")
-    assert meas == "common:obs:meas.atsugi_river_water_quality_000000"  # slug は連続する _ を畳む
+    assert meas == "common:obs:meas.atsugi_river_water_quality__000000"  # 可逆（__ を畳まない）
     sensor = public_id.sensor_observation_id("jp-14:place:site.x", "水位", "2020-01-01T00:00:00", "jma_amedas")
     assert sensor.startswith("common:obs:sensor.jma_amedas.") and len(sensor.rsplit(".", 1)[1]) == 16
     land = public_id.landuse_observation_id("83030-0001", "2006", "1", "area_km2")
@@ -64,6 +64,19 @@ def test_id_formats_and_parse_id_round_trip():
     assert (p.scope, p.entity, p.ns, p.key) == ("common", "occ", "gbif", "1830141077")
     p = registry_common.parse_id(meas)
     assert (p.scope, p.entity, p.ns) == ("common", "obs", "meas")
+
+
+def test_reversible_key_does_not_collapse_and_round_trips():
+    """slugify_local_key は `a__b` と `a_b` を同じ key に畳むが、公開 ID の key は畳まず、unquote で元に戻る。"""
+    import urllib.parse
+
+    for raw in ("a__b", "a_b", "x y", "a:b/c", "日本語", "100%", "a..b", "1:area_km2"):
+        k = public_id.reversible_key(raw)
+        assert urllib.parse.unquote(k) == raw
+        assert ":" not in k and "/" not in k and " " not in k
+    assert public_id.reversible_key("a__b") != public_id.reversible_key("a_b")
+    with pytest.raises(common.MigrationError):
+        public_id.reversible_key("")
 
 
 def test_ids_are_deterministic_and_depend_on_business_key_not_position():
@@ -213,17 +226,21 @@ def test_missing_edition_stops_occurrence_build(tmp_path):
 
 def test_dwca_occurrence_id_mapping_is_one_to_one(tmp_path):
     p = tmp_path / "m.csv"
-    x01_dwca.write_occurrence_id_mapping(p, [("gbif_kanagawa_occurrences__1", "common:occ:gbif.1"),
-                                              ("inaturalist_kanagawa__2", "common:occ:inat.2")])
+    x01_dwca.write_occurrence_id_mapping(p, [
+        ("gbif_kanagawa_occurrences__1", "common:occ:gbif.1", "ev_gbif_kanagawa_occurrences__1", "ev_common:occ:gbif.1"),
+        ("inaturalist_kanagawa__2", "common:occ:inat.2", "EV-SRC", "EV-SRC"),
+    ])
     assert p.read_text(encoding="utf-8").splitlines() == [
-        "old_occurrenceID,new_occurrenceID",
-        "gbif_kanagawa_occurrences__1,common:occ:gbif.1",
-        "inaturalist_kanagawa__2,common:occ:inat.2",
+        "old_occurrenceID,new_occurrenceID,old_eventID,new_eventID",
+        "gbif_kanagawa_occurrences__1,common:occ:gbif.1,ev_gbif_kanagawa_occurrences__1,ev_common:occ:gbif.1",
+        "inaturalist_kanagawa__2,common:occ:inat.2,EV-SRC,EV-SRC",
     ]
     with pytest.raises(SystemExit):  # 新 ID が重複（旧 -> 新が 1 対 1 でない）
-        x01_dwca.write_occurrence_id_mapping(p, [("a", "common:occ:gbif.1"), ("b", "common:occ:gbif.1")])
+        x01_dwca.write_occurrence_id_mapping(p, [("a", "common:occ:gbif.1", "e1", "e1"), ("b", "common:occ:gbif.1", "e2", "e2")])
     with pytest.raises(SystemExit):  # 旧 ID が重複
-        x01_dwca.write_occurrence_id_mapping(p, [("a", "common:occ:gbif.1"), ("a", "common:occ:gbif.2")])
+        x01_dwca.write_occurrence_id_mapping(p, [("a", "common:occ:gbif.1", "e1", "e1"), ("a", "common:occ:gbif.2", "e2", "e2")])
+    with pytest.raises(SystemExit):  # 同じ旧 eventID が別の新 eventID に写る
+        x01_dwca.write_occurrence_id_mapping(p, [("a", "common:occ:gbif.1", "e", "x"), ("b", "common:occ:gbif.2", "e", "y")])
 
 
 # ---------------------------------------------------------------------------

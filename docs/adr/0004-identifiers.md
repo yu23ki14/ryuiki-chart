@@ -20,8 +20,8 @@ Phase C（#39）で行う**（`docs/plans/PHASE_B_INTAKE.md:30` 付近にも同�
 place の site / watershed / zone の877件（site 495・watershed 377・zone 5）の ID が変わり、
 旧→新の対応は `registry/id_map/place.csv`（手書きの宣言。`id_map` 表として registry.sqlite にも入る）に持つ。
 grid01（4,087件）・taxon・variable・unit・caveat は ID が変わらない（taxon は元から `.` 区切り）。
-旧 ID を受けたら新 ID に解決する経路を恒久的に残す（`web/src/lib/registry/legacy-id.ts` の
-`resolveLegacyId()`）。ID の分解は `scripts/registry/common.py` の `parse_id()`・
+旧 ID を受けたら新 ID に解決するリゾルバを恒久的に残す（`web/src/lib/registry/legacy-id.ts`。
+**現状、place_id を URL・クエリ・ツール引数で受ける経路は無いので、リゾルバは未接続**。経路ができたらここを通す）。ID の分解は `scripts/registry/common.py` の `parse_id()`・
 `web/src/lib/registry/parse-id.ts` の `parseId()` の2つだけが行う。
 
 **2026-10-06 追記（Issue #39 Phase C 担当 C で実施）**: ファクトの公開 ID を v2 に発行した。

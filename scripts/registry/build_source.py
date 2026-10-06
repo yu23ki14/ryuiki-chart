@@ -31,6 +31,7 @@ YAML だけから読めるので、`build_unit_variable.py` が alias.edition_ke
 - `source_registry.notes` に `【SUPERSEDED` を含む行は `superseded_by` を宣言していること
 - alias.edition_key の指す (source_id, edition_key) が source_edition に実在する
 """
+import functools
 import hashlib
 import pathlib
 import re
@@ -94,9 +95,33 @@ def load_license_yaml(path: pathlib.Path | None = None) -> dict:
     return doc
 
 
+_DECLARED_EDITION_KEYS = {"source_id", "edition_key", "vintage", "fetched_from", "update_mode", "notes", "content_file"}
+_SOURCE_DECLARATION_KEYS = {"superseded_by", "update_mode", "content_file"}
+
+
+def _unknown_keys(label: str, entry: dict, allowed: set) -> None:
+    """宣言に未知のキーがあれば止まる（license 等の上書きを書いても黙って無視されない）。"""
+    extra = sorted(set(entry) - allowed)
+    if extra:
+        raise AssertionError(
+            f"registry/source/editions.yaml: {label} に未対応のキー {extra} がある（使えるキー: {sorted(allowed)}。"
+            "license/redistributable 等は source_registry と license.yaml が決めるので版ごとには上書きできない）"
+        )
+
+
+@functools.lru_cache(maxsize=8)
+def _parse_yaml(text: str) -> dict:
+    return yaml.safe_load(text)
+
+
+def _read_yaml(path: pathlib.Path) -> dict:
+    """同じ内容を build_unit_variable.py と build_source.py が二度パースしないためのキャッシュ（内容で引く）。"""
+    return _parse_yaml(path.read_text(encoding="utf-8"))
+
+
 def load_editions_yaml(path: pathlib.Path | None = None) -> dict:
-    with (path or EDITIONS_YAML).open(encoding="utf-8") as f:
-        doc = yaml.safe_load(f)
+    p = path or EDITIONS_YAML
+    doc = _read_yaml(p)
     codes = set(doc["update_mode_codes"])
     declared = doc.get("declared_editions") or []
     decls = doc.get("source_declarations") or {}
@@ -106,6 +131,14 @@ def load_editions_yaml(path: pathlib.Path | None = None) -> dict:
     )
     for e in declared:
         common.edition_id(e["source_id"], str(e["edition_key"]))  # 形式検査（例外で止まる）
+        _unknown_keys(f"declared_editions {e['source_id']}/{e['edition_key']}", e, _DECLARED_EDITION_KEYS)
+    for k, v in decls.items():
+        _unknown_keys(f"source_declarations {k}", v, _SOURCE_DECLARATION_KEYS)
+        if v.get("content_file") and any(e["source_id"] == k for e in declared):
+            raise AssertionError(
+                f"registry/source/editions.yaml: source_declarations {k} の content_file は、版を宣言している出典には"
+                "書けない（どの版のファイルか決まらない）。declared_editions の版ごとに content_file を書く"
+            )
     for label, entry in [(f"declared_editions {e['source_id']}/{e['edition_key']}", e) for e in declared] + [
         (f"source_declarations {k}", v) for k, v in decls.items()
     ]:
@@ -228,7 +261,6 @@ def assemble(registry_rows: list[dict], license_doc: dict, editions_doc: dict, *
         lic_id = raw_to_lic.get(lic_raw, UNKNOWN_LICENSE_ID)
         lic_class = lic_by_id[lic_id]["license_class"]
         commercial_ok = classes[lic_class].get("commercial_ok")
-        content_sha = _sha256_of(root / d["content_file"]) if d.get("content_file") else None
         redistributable = r["redistributable"]
 
         if sid in declared_by_source:
@@ -236,12 +268,14 @@ def assemble(registry_rows: list[dict], license_doc: dict, editions_doc: dict, *
             for e in declared_by_source[sid]:
                 src_row = reg[e["fetched_from"]]
                 specs.append({
+                    "content_file": e.get("content_file"),
                     "edition_key": str(e["edition_key"]), "vintage": e.get("vintage"),
                     "fetched_at": src_row["fetched_at"], "url": src_row["url"],
                     "record_count": None, "update_mode": e.get("update_mode"), "notes": e.get("notes"),
                 })
         else:
             specs = [{
+                "content_file": d.get("content_file"),
                 "edition_key": _default_edition_key(sid, r["fetched_at"]), "vintage": None,
                 "fetched_at": r["fetched_at"], "url": r["url"],
                 "record_count": r["record_count"], "update_mode": d.get("update_mode"), "notes": None,
@@ -249,6 +283,7 @@ def assemble(registry_rows: list[dict], license_doc: dict, editions_doc: dict, *
         for sp in specs:
             eid = common.edition_id(sid, sp["edition_key"])
             editions_of.setdefault(sid, []).append(eid)
+            content_sha = _sha256_of(root / sp["content_file"]) if sp["content_file"] else None
             edition_rows.append([
                 eid, sid, sp["edition_key"], sp["vintage"], sp["fetched_at"], sp["url"], r["format"],
                 content_sha, lic_id, lic_raw, lic_class, redistributable, commercial_ok,
@@ -306,48 +341,6 @@ def _assert_alias_editions_exist(conn: sqlite3.Connection) -> None:
         )
 
 
-DATASET_ID_MAP_CSV = common.ROOT / "registry" / "id_map" / "dataset.csv"
-
-
-def assert_dataset_id_map(conn: sqlite3.Connection, path: pathlib.Path | None = None) -> int:
-    """`registry/id_map/dataset.csv`（旧 `<dataset>@<年>` -> 版の ID）が、variable_alias の
-    `(dataset, edition_key)` の集合と過不足なく一致し、`new_id` が source_edition に実在すること。
-
-    旧 ID の凍結リスト（ADR-0016 の受け入れ基準「旧 ID が ちょうど 1 個の現行 ID に解決する」）の
-    dataset 分。`new_id` は 1 対 1（重複すれば止まる）。行数を返す。
-    """
-    import csv
-
-    with (path or DATASET_ID_MAP_CSV).open(encoding="utf-8", newline="") as f:
-        rows = list(csv.DictReader(f))
-    common.assert_unique([r["old_id"] for r in rows], "registry/id_map/dataset.csv の old_id")
-    common.assert_unique([r["new_id"] for r in rows], "registry/id_map/dataset.csv の new_id")
-    mapped: set[tuple[str, str]] = set()
-    for r in rows:
-        ds, sep, key = r["old_id"].partition("@")
-        if not sep or not ds or not key:
-            raise AssertionError(f"registry/id_map/dataset.csv: old_id が <dataset>@<年> の形ではない: {r['old_id']!r}")
-        if r["new_id"] != common.edition_id(ds, key):
-            raise AssertionError(
-                f"registry/id_map/dataset.csv: old_id={r['old_id']!r} の new_id={r['new_id']!r} が "
-                f"{common.edition_id(ds, key)!r} ではない"
-            )
-        if conn.execute("SELECT 1 FROM source_edition WHERE edition_id = ?", (r["new_id"],)).fetchone() is None:
-            raise AssertionError(f"registry/id_map/dataset.csv: new_id={r['new_id']!r} が source_edition に無い")
-        mapped.add((ds, key))
-    in_alias = {
-        (d, k) for d, k in conn.execute(
-            "SELECT DISTINCT dataset, edition_key FROM variable_alias WHERE edition_key IS NOT NULL"
-        )
-    }
-    if in_alias != mapped:
-        raise AssertionError(
-            "registry/id_map/dataset.csv と variable_alias の (dataset, edition_key) が一致しない: "
-            f"alias のみ={sorted(in_alias - mapped)} / id_map のみ={sorted(mapped - in_alias)}"
-        )
-    return len(rows)
-
-
 def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[str, int]:
     """conn: registry.sqlite への書き込み用。src['ryuiki']: 読み取り専用の原本。"""
     ryuiki = src["ryuiki"]
@@ -374,5 +367,4 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     n_source = common.insert_many(conn, "source", _SOURCE_COLUMNS, source_rows)
     n_edition = common.insert_many(conn, "source_edition", _EDITION_COLUMNS, edition_rows)
     _assert_alias_editions_exist(conn)
-    assert_dataset_id_map(conn)
     return {"license": n_license, "source": n_source, "source_edition": n_edition}

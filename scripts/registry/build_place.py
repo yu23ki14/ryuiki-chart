@@ -228,27 +228,16 @@ def _edition_resolver(conn, key_spaces: list[dict]):
     - `none`: 常に None（出典を持たない。理由は edition_note）。
     - `fixed`: `edition_source_id` の出典が持つ唯一の edition。
     - `per_row_prefix`: external_key（`<source>__<code>`）の `<source>` の唯一の edition。
-    `source_edition` に無い出典・版が複数ある出典は止まる（捏造・黙って選ぶことをしない。
-    `source_edition` は registry の前のステップ `build_source` が作る）。
+    版の解決は `migrate.edition.make_resolver`（`source_edition` は前のステップ `build_source` が作る）。
+    実在しない・複数ある出典は止まる（捏造・黙って選ぶことをしない）。
     """
-    editions: dict[str, list[str]] = {}
-    for eid, sid in conn.execute("SELECT edition_id, source_id FROM source_edition ORDER BY edition_id"):
-        editions.setdefault(sid, []).append(eid)
+    from migrate import edition
 
-    def sole(source_id: str, what: str) -> str:
-        found = editions.get(source_id) or []
-        if len(found) != 1:
-            raise AssertionError(
-                f"place_source_ref.source_edition_id: {what} の出典 {source_id!r} の edition が "
-                f"{len(found)} 個（ちょうど 1 個でなければ決められない。registry/source/editions.yaml を確認）"
-            )
-        return found[0]
-
+    resolve = edition.make_resolver(conn)
     mode = {it["key_space"]: it for it in key_spaces}
-    fixed = {ks: sole(it["edition_source_id"], f"key_space={ks}") for ks, it in mode.items() if it["edition"] == "fixed"}
-    per_prefix_cache: dict[str, str] = {}
+    fixed = {ks: resolve(it["edition_source_id"]) for ks, it in mode.items() if it["edition"] == "fixed"}
 
-    def resolve(key_space: str, external_key: str):
+    def resolve_row(key_space: str, external_key: str):
         kind = mode[key_space]["edition"]
         if kind == "none":
             return None
@@ -258,12 +247,23 @@ def _edition_resolver(conn, key_spaces: list[dict]):
             source_id, sep, _ = external_key.partition("__")
             if not sep:
                 raise AssertionError(f"key_space={key_space} の external_key に '<source>__' の接頭辞が無い: {external_key!r}")
-            if source_id not in per_prefix_cache:
-                per_prefix_cache[source_id] = sole(source_id, f"key_space={key_space}")
-            return per_prefix_cache[source_id]
+            return resolve(source_id)
         raise AssertionError(f"key_space.yaml: 未知の edition 宣言 {kind!r}（key_space={key_space}）")
 
-    return resolve
+    return resolve_row
+
+
+def _assert_key_space_place_kinds(key_spaces: list[dict], ref_rows: list[tuple], place_rows: list[tuple]) -> None:
+    """key_space.yaml の `place_kind` が、実際に作った place_source_ref 行の place の種類と一致すること
+    （宣言と出力の食い違いで止める）。`place_rows` の先頭3列は (place_id, region_id, place_kind)。"""
+    kind_of = {r[0]: r[2] for r in place_rows}
+    declared = {it["key_space"]: it["place_kind"] for it in key_spaces}
+    bad = sorted({(ks, kind_of.get(pid)) for pid, _ext, ks in ref_rows if kind_of.get(pid) != declared[ks]}, key=str)
+    if bad:
+        raise AssertionError(
+            f"registry/place/key_space.yaml の place_kind が実際の place の種類と一致しない: {bad}"
+            f"（宣言: {declared}）"
+        )
 
 
 def _load_key_spaces() -> list[dict]:
@@ -698,6 +698,7 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
         place_rows,
     )
     key_spaces = _load_key_spaces()  # 宣言（key_space.yaml）と KS_* の一致を検査する
+    _assert_key_space_place_kinds(key_spaces, ref_rows, place_rows)
     edition_of = _edition_resolver(conn, key_spaces)
     common.insert_many(
         conn, "place_source_ref",

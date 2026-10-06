@@ -238,6 +238,10 @@ occurrence_id  = common:occ:<ns>.<key>      ns: gbif / inat（`scripts/taxon_nam
 
 ## 2.7 旧 ID の受理（既存リンクを壊さない）
 
+> **実装の現状（Issue #39 実装時に確認）**: place_id を URL・クエリ・ツール引数で受ける経路が
+> 画面・API・AI ツールのどこにも無い。リゾルバ（`web/src/lib/registry/legacy-id.ts`）とテストは作ったが、
+> **どの経路にも接続していない**。経路ができたらここを通す。下の「適用箇所」は将来の規約であって、現時点では未適用。
+
 place ID が変わる877件について、旧 ID を受けたら `id_map` で新 ID に解決する。
 - 入口は1か所: `web/src/lib/registry/index.ts` に `resolveLegacyId(id)`（`registry.id_map` 由来の生成物 `generated*.ts` の小さな Map、877+2件。新 ID はそのまま通す）。
 - 適用箇所: place_id を URL・クエリ・ツール引数で受ける全経路（`/api` の place 指定、画面の URL パラメータ、AI ツール `web/src/lib/ai/tools.ts` の引数）。解決できたら ① 画面はサーバ側で新 ID の URL へ 308 リダイレクト ② API・AI ツールは新 ID で処理し、応答に `resolvedFrom: <旧 ID>` を付ける。どちらでも解決しない ID は従来どおり not found。
