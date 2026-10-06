@@ -210,6 +210,9 @@ queries:
       label: [unit]
 
   - id: water_bodies_for_variable_by_variable
+    # 縮小サンプルでは「その変数で2地点以上を持つ水域」がごく少数の変数にしか無い（`waterBodies` の
+    # HAVING n_sites >= 2）。等間隔の12件だと全部空に当たりうるので、サンプルの snapshot は全変数を見る。
+    max_runs: { snapshot: 60 }
     params:
       variable_id: { domain: variable_id }
     compare:
@@ -274,6 +277,9 @@ queries:
       label: []
 
   - id: species_share_trend
+    # 縮小サンプルでは種ごとの件数が `SHARE_MIN_N_A/B`（40/20）を超える（分類群, 期間）が1組
+    # （シダ植物, 1990-2000:2010-2020）しか無い。等間隔の12件だと外れうるので、snapshot は全組（28）を見る。
+    max_runs: { snapshot: 28 }
     params:
       group: { domain: group }
       periods: { domain: trend_periods }
