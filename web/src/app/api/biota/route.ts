@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { IAS_SINCE_YEAR } from "@/lib/cube/sql";
+import { freshnessFor, OCCURRENCE_SOURCE_IDS } from "@/lib/cube/source-meta";
 import {
   d1CubeDb,
   taxonGroupYears,
@@ -23,6 +24,9 @@ export async function GET(req: NextRequest) {
   const kind = sp.get("kind") ?? "effort";
   try {
     const db = await d1CubeDb();
+    // 出典ごとの取得日・更新方式・経過日数（加算。registry の生成物から引き、D1 は引かない。ADR-0014/0020）。
+    // レッドリストは評価リスト（`taxon_assessment`）が出典で、出典 edition との対応が未整理のため載せない。
+    const freshness = freshnessFor(OCCURRENCE_SOURCE_IDS);
     switch (kind) {
       case "effort": {
         const [groups, effort, totals] = await Promise.all([
@@ -32,6 +36,7 @@ export async function GET(req: NextRequest) {
         ]);
         // 画面の形（snake_case）は v1 のまま。totals.mesh は日付のある記録が入るグリッド数（D3）。
         return NextResponse.json({
+          freshness,
           groups: groups.map((g) => ({ year: g.year, taxon_group: g.taxonGroup, n: g.n, mesh_n: g.meshN })),
           effort: effort.map(effortRowV1),
           totals: {
@@ -51,6 +56,7 @@ export async function GET(req: NextRequest) {
         const b1 = Number(sp.get("b1") ?? 2024);
         const rows = await speciesShareTrend(db, group, { from: a0, to: a1 }, { from: b0, to: b1 });
         return NextResponse.json({
+          freshness,
           rows: rows.map((r) => ({
             binom: r.binom,
             label: r.label,
@@ -67,15 +73,17 @@ export async function GET(req: NextRequest) {
         const binoms = (sp.get("binoms") ?? "").split(",").filter(Boolean);
         const [years, months] = await Promise.all([speciesYears(db, binoms), speciesMonths(db, binoms)]);
         return NextResponse.json({
+          freshness,
           years: years.map((r) => ({ binom: r.binom, year: r.year, n: r.n, mesh_n: r.meshN })),
           months,
         });
       }
       case "mesh":
-        return NextResponse.json({ rows: await speciesMeshYears(db, sp.get("binom") ?? "") });
+        return NextResponse.json({ rows: await speciesMeshYears(db, sp.get("binom") ?? ""), freshness });
       case "ias": {
         const rows = await iasSpecies(db);
         return NextResponse.json({
+          freshness: freshnessFor([...OCCURRENCE_SOURCE_IDS, "moe_ias_list"]),
           since_year: IAS_SINCE_YEAR,
           rows: rows.map((r) => ({
             ias_category: r.iasCategory,
@@ -125,6 +133,7 @@ export async function GET(req: NextRequest) {
       case "list": {
         const rows = await speciesCatalog(db, { group: sp.get("group") || null, limit: 300, withNames: true });
         return NextResponse.json({
+          freshness,
           rows: rows.map((r) => ({
             binom: r.binom,
             taxon_group: r.taxonGroup,

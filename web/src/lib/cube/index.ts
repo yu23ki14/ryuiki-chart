@@ -86,8 +86,8 @@ export {
   MEAN_STAT_SQL,
 } from "./catalog";
 
-export type { Envelope, EnvelopeColumn, EnvelopeCoverage, EnvelopeProvenance, EnvelopeExcluded } from "./envelope";
-export { buildEnvelope, buildZoneEnvelope, ENVELOPE_SPEC_VERSION } from "./envelope";
+export type { Envelope, EnvelopeColumn, EnvelopeCoverage, EnvelopeProvenance, EnvelopeExcluded, EnvelopeCaveat, EnvelopeOpt, DataEnvelope } from "./envelope";
+export { buildEnvelope, buildZoneEnvelope, buildDataEnvelope, ENVELOPE_SPEC_VERSION } from "./envelope";
 
 export * from "./occurrence";
 export * from "./assessment";
@@ -108,3 +108,7 @@ export type { DocSeriesMeta, DocSeriesPoint } from "./documents";
 export { DOC_SERIES_WHERE, rowKeyLabel, docSeriesList, docSeriesPoints } from "./documents";
 export { gridCellOfPlaceId, watershedIdOfPlaceId, placeIdOfWatershedId } from "./grid";
 export { facetsForOccurrence } from "./caveats";
+export { timeseries } from "./timeseries";
+export type { TimeseriesInput, TimeseriesResult, TimeseriesScope, TimeseriesGrain } from "./timeseries";
+export { sourceCitation, sourceFreshness, freshnessFor, freshnessForSeries, OCCURRENCE_SOURCE_IDS, DEFAULT_REGION_ID } from "./source-meta";
+export type { SourceCitation, SourceFreshness, UpdateModeOrUndeclared } from "./source-meta";

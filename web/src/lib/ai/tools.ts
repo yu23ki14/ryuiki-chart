@@ -8,21 +8,13 @@ import { getVariable, unitBasis, type UnitBasis } from "@/lib/registry/lookup";
 import {
   d1CubeDb,
   representativeSeries,
-  basisOf,
-  yearCellFilterForBasis,
   withTheme,
-  queryCells,
   summarize,
-  buildEnvelope,
-  buildZoneEnvelope,
-  pivotYearCells,
-  toSeriesPoint,
   unitLabel,
   variableCatalog,
   siteVariables,
   sites as cubeSites,
   site as cubeSite,
-  sitesInWaterBody,
   waterBodies,
   taxonGroupYears,
   effortYears,
@@ -33,11 +25,11 @@ import {
   redlistBundle,
   overviewCounts,
   watershedRollup,
-  type CellSpec,
   type Scope,
 } from "@/lib/cube";
 import { facetsForSeries, facetsForOccurrence, facetsForTables, caveatKeysForFacets, variableTheme } from "@/lib/cube/caveats";
 import { MEASUREMENTS_DATASET } from "@/lib/cube/series";
+import { timeseries } from "@/lib/cube/timeseries";
 
 /** 測定値系データセット固定（PR-2 のスコープは測定値系。design §1.1 と同じ前提）。registry の dataset キー。 */
 const DATASET = MEASUREMENTS_DATASET;
@@ -310,83 +302,26 @@ const get_timeseries = tool({
   execute: async ({ variableId, scope, grain, stat, from, to }) => {
     const t0 = performance.now();
     const db = await d1CubeDb();
-    // series は basis で絞り込まない（basis はセルの性質であって系列の登録
-    // 〔value_grain〕ではない。Issue #48 PR-2 統合後修正A #1）——representativeSeries()
-    // の全 value_grain をそのまま渡し、basis の絞り込みは `yearCellFilterForBasis()`
-    // が返す grain/inputGrain でセル側（CellSpec）に行わせる。
-    const all = representativeSeries(variableId, DATASET, stat ?? "representative");
-    const basis: "day" | "fiscal_year" | "year" =
-      grain === "fiscal_year" ? "fiscal_year" : grain === "month" || grain === "day" ? "day" : all.length > 0 ? basisOf(all).basis : "day";
-    const registry = registryFor(all.map((s) => ({ variableId: s.variableId, unitId: s.unitId })));
-    const unitIds = new Set(all.map((s) => s.unitId));
-    const unit = unitIds.size === 1 ? unitLabel([...unitIds][0]) : null;
-    const period = from || to ? { from, to } : undefined;
-    const basisFilter = yearCellFilterForBasis(basis);
-    const cellGrain = grain === "year" || grain === "fiscal_year" ? [basisFilter.grain] : [grain];
-
-    if (all.length === 0) {
+    // 本体は lib/cube/timeseries.ts（MCP の get_observations と同じ関数。封筒・注記もそこで付く）。
+    const r = await timeseries(db, { variableId, scope, grain, stat, from, to });
+    const registry = registryFor(r.series.map((s) => ({ variableId: s.variableId, unitId: s.unitId })));
+    const base = { scope, grain, basis: r.basis, stat: stat ?? "representative", variableId, unit: r.unit, registry, points: r.points };
+    if (r.series.length === 0) {
       return makeResult({
         tool: "get_timeseries",
         tables: [],
-        data: { scope, grain, basis, stat: stat ?? "representative", variableId, unit, registry, points: [], envelope: null },
+        data: { ...base, envelope: null },
         rowCount: 0,
         elapsedMs: performance.now() - t0,
       });
     }
-
-    if (scope.type === "zone") {
-      const zoneScope: Scope = { kind: "all_sites" };
-      const spec: CellSpec = { series: all, scope: zoneScope, grain: cellGrain, inputGrain: basisFilter.inputGrain, period, imputation: "both" };
-      // zero/lod を1回の SQL で両方計算する（`summarizeZone` 参照）——以前は
-      // `imputation:'zero'`/`'lod'` を2回叩いて JS 側でキーを合わせていた
-      // （Issue #48 PR-2 統合後修正A #4）。
-      const { rows, truncated } = await summarize(db, spec, "zone");
-      const points = rows.map((r) => ({ zone: r.zone, grain: r.grain, year: r.year, nSites: r.nSites, n: r.n, valueLod: r.avgLod, valueZero: r.avgZero }));
-      const facets = facetsForSeries(all.map((s) => withTheme(s)), zoneScope);
-      const envelope = await buildZoneEnvelope(db, spec, rows, { truncated });
-      return makeResult({
-        tool: "get_timeseries",
-        tables: ["observation_agg"],
-        data: { scope, grain, basis, stat: stat ?? "representative", variableId, unit, registry, points, envelope },
-        rowCount: points.length,
-        elapsedMs: performance.now() - t0,
-        caveats: caveatKeysForFacets(facets),
-      });
-    }
-
-    const cubeScope: Scope = scope.type === "water" ? { kind: "water", municipality: scope.name } : { kind: "site", siteId: scope.siteId };
-    const sites = scope.type === "water" ? await sitesInWaterBody(db, scope.name, { dataset: DATASET }) : undefined;
-
-    const isYearGrain = grain === "year" || grain === "fiscal_year";
-    const spec: CellSpec = {
-      series: all,
-      scope: cubeScope,
-      grain: cellGrain,
-      stats: isYearGrain ? ["mean", "min", "max"] : ["mean"],
-      inputGrain: basisFilter.inputGrain,
-      period,
-      imputation: "both",
-    };
-    const { rows: cells, truncated } = await queryCells(db, spec);
-    const facets = facetsForSeries(all.map((s) => withTheme(s)), cubeScope);
-    // `envelope` の coverage/provenance（nNotDetected・出典の帰属）は生セル（`cells`）
-    // からでないと正しく計算できない（ピボット後は落ちる情報がある）ので、先に生
-    // セルで組み立ててから、`rows` だけ画面と同じピボット済みの点に差し替える
-    // （Issue #48 PR-2 code-review #5）。以前は `data.points`（生セル）と
-    // `envelope.rows`（同じ生セル）を別々に持っており、24KB の予算で独立に
-    // 間引かれて食い違いうる上、`data.points` の形も画面（yearSeries 等の
-    // ピボット済み点）と食い違っていた。
-    const points = isYearGrain ? pivotYearCells(cells) : cells.map(toSeriesPoint);
-    const rawEnvelope = await buildEnvelope(db, spec, cells, { truncated });
-    const envelope = { ...rawEnvelope, rows: points };
-
     return makeResult({
       tool: "get_timeseries",
       tables: ["observation_agg"],
-      data: { scope, sites, grain, basis, stat: stat ?? "representative", variableId, unit, registry, points, envelope },
-      rowCount: points.length,
+      data: { ...base, sites: r.sites, envelope: r.envelope },
+      rowCount: r.points.length,
       elapsedMs: performance.now() - t0,
-      caveats: caveatKeysForFacets(facets),
+      caveats: r.envelope?.caveats.map((c) => c.key) ?? [],
     });
   },
 });

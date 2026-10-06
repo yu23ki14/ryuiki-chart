@@ -16,6 +16,7 @@ import {
   type CellSpec,
   MEASUREMENTS_DATASET as DATASET,
 } from "@/lib/cube";
+import { freshnessForSeries } from "@/lib/cube/source-meta";
 import { facetsForSeries, caveatKeysForFacets } from "@/lib/cube/caveats";
 
 export const runtime = "nodejs";
@@ -47,26 +48,28 @@ export async function GET(req: NextRequest) {
       const series = representativeSeries(variableId, DATASET, stat ?? "representative");
       const unit = unitLabel(series[0]?.unitId ?? null);
       const caveats = series.length ? caveatKeysForFacets(facetsForSeries(series.map((s) => withTheme(s)), scope)) : [];
+      // 出典ごとの取得日・更新方式・経過日数（加算。registry の生成物から引くので D1 は引かない。ADR-0014/0020）。
+      const freshness = freshnessForSeries(series);
       const sites = mode === "water" ? await sitesInWaterBody(db, sp.get("water") ?? "", { dataset: DATASET }) : undefined;
 
       if (series.length === 0) {
-        return NextResponse.json({ sites, points: [], unit, grain: sp.get("grain") ?? basis, basis, stat: stat ?? "representative", caveats });
+        return NextResponse.json({ sites, points: [], unit, grain: sp.get("grain") ?? basis, basis, stat: stat ?? "representative", caveats, freshness });
       }
 
       const grain = sp.get("grain") ?? (basis === "day" ? "year" : basis);
       if (grain === "month" || grain === "day") {
         if (basis !== "day") {
-          return NextResponse.json({ sites, points: [], unit, grain, basis, stat: stat ?? "representative", caveats });
+          return NextResponse.json({ sites, points: [], unit, grain, basis, stat: stat ?? "representative", caveats, freshness });
         }
         const period = { from: sp.get("from") ?? undefined, to: sp.get("to") ?? undefined };
         const { rows: points } = grain === "month"
           ? await monthSeries(db, { variableId, stat, scope, imputation: "lod" })
           : await daySeries(db, { variableId, stat, scope, period, imputation: "lod" });
-        return NextResponse.json({ sites, points, unit, grain, basis, stat: stat ?? "representative", caveats });
+        return NextResponse.json({ sites, points, unit, grain, basis, stat: stat ?? "representative", caveats, freshness });
       }
 
       const { rows: points } = await yearSeries(db, { variableId, stat, basis, scope, imputation: "lod" });
-      return NextResponse.json({ sites, points, unit, grain: basis === "day" ? "year" : basis, basis, stat: stat ?? "representative", caveats });
+      return NextResponse.json({ sites, points, unit, grain: basis === "day" ? "year" : basis, basis, stat: stat ?? "representative", caveats, freshness });
     }
 
     if (mode === "zone") {
@@ -74,13 +77,13 @@ export async function GET(req: NextRequest) {
       const unit = unitLabel(series[0]?.unitId ?? null);
       const { grain: cellGrain, inputGrain } = yearCellFilterForBasis(basis);
       if (series.length === 0) {
-        return NextResponse.json({ points: [], unit, grain: cellGrain, basis, stat: stat ?? "representative", caveats: [] });
+        return NextResponse.json({ points: [], unit, grain: cellGrain, basis, stat: stat ?? "representative", caveats: [], freshness: [] });
       }
       const scope: Scope = { kind: "all_sites" };
       const spec: CellSpec = { series, scope, grain: cellGrain, inputGrain, imputation: "lod" };
       const { rows: points } = await summarize(db, spec, "zone");
       const caveats = caveatKeysForFacets(facetsForSeries(series.map((s) => withTheme(s)), scope));
-      return NextResponse.json({ points, unit, grain: cellGrain, basis, stat: stat ?? "representative", caveats });
+      return NextResponse.json({ points, unit, grain: cellGrain, basis, stat: stat ?? "representative", caveats, freshness: freshnessForSeries(series) });
     }
 
     if (mode === "season") {
@@ -99,7 +102,7 @@ export async function GET(req: NextRequest) {
           : Promise.resolve({ rows: [], truncated: false }),
         rainMonthlyClim(db),
       ]);
-      return NextResponse.json({ overall: overall.rows, byZone: byZone.rows, rain: rain.rows, unit });
+      return NextResponse.json({ overall: overall.rows, byZone: byZone.rows, rain: rain.rows, unit, freshness: freshnessForSeries(series) });
     }
 
     return NextResponse.json({ error: "不明な mode" }, { status: 400 });

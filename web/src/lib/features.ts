@@ -22,3 +22,14 @@ export const EXPLORE_ENABLED = false;
 /** 閉じているときに API と画面で出す文言。 */
 export const EXPLORE_DISABLED_MESSAGE =
   "データ探索は現在ご利用いただけません。";
+
+/**
+ * MCP サーバ（`/api/mcp`、ADR-0014 の第1段 5 ツール）の出し分け。既定は閉じている。
+ *
+ * false の間は route が 404 を返す（`EXPLORE_ENABLED` と同じ流儀。環境変数ではなくこの1ファイルで切り替える。
+ * 画面ごとに条件を散らさない）。開くのは本番公開の判断（Issue #40 のスコープ外）。
+ *
+ * MCP は任意 SQL・全表走査を出さない（`EXPLORE_ENABLED` とは独立に成立する。ツール一覧は
+ * `src/lib/mcp/tools.test.ts` のスナップショットで固定）。ローカルで試すときだけ true にする。
+ */
+export const MCP_ENABLED = false;

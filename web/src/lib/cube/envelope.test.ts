@@ -52,7 +52,7 @@ describe("buildEnvelope", () => {
       imputation: "zero",
     };
     const { rows } = await queryCells(fx.db, spec);
-    const env = await buildEnvelope(fx.db, spec, rows);
+    const env = await buildEnvelope(spec, rows);
 
     expect(env.coverage.n_rows).toBe(3);
     expect(env.coverage.n_places).toBe(1);
@@ -77,7 +77,7 @@ describe("buildEnvelope", () => {
       imputation: "zero",
     };
     const { rows } = await queryCells(fx.db, spec);
-    const env = await buildEnvelope(fx.db, spec, rows);
+    const env = await buildEnvelope(spec, rows);
     const valueCol = env.columns.find((c) => c.name === "value")!;
     expect(valueCol.unit).toBeNull();
   });
@@ -90,12 +90,12 @@ describe("buildEnvelope", () => {
       imputation: "zero",
     };
     const { rows } = await queryCells(fx.db, spec);
-    const env = await buildEnvelope(fx.db, spec, rows);
+    const env = await buildEnvelope(spec, rows);
     const valueCol = env.columns.find((c) => c.name === "value")!;
     expect(valueCol.unit).toBe(unitSymbol(FX.units.mgPerL));
   });
 
-  it("provenance: source_registry から name/license を解決する（複数出典の系列は両方に計上される）", async () => {
+  it("provenance: registry の生成物から name/license を解決する（複数出典の系列は両方に計上される）", async () => {
     const spec: CellSpec = {
       series: [FX.series.ssMean],
       scope: { kind: "site", siteId: FX.sites.a },
@@ -103,19 +103,20 @@ describe("buildEnvelope", () => {
       imputation: "zero",
     };
     const { rows } = await queryCells(fx.db, spec);
-    const env = await buildEnvelope(fx.db, spec, rows);
+    const env = await buildEnvelope(spec, rows);
 
     // provenance は `series.ts`（実データの generated.ts）の `seriesInfo()` を経由するため、
     // `common:variable:water.ss` の mean/day 組の実際の sourceIds
-    // （[null, 'atsugi_river_water_quality']。合成 + atsugi の実データ）が使われる
+    // （[null, 'atsugi_river_water_quality']。null＝合成は provenance の行にしない）が使われる
     // （フィクスチャ自身の variable_alias.source_id='fx_atsugi' は catalog.ts 用で、
     // ここでは参照されない）。
     const bySource = new Map(env.provenance.map((p) => [p.source_id, p]));
-    expect(bySource.get(null)?.n_rows).toBe(3);
+    expect(bySource.has(null as unknown as string)).toBe(false);
     expect(bySource.get("atsugi_river_water_quality")?.n_rows).toBe(3);
-    expect(bySource.get("atsugi_river_water_quality")?.name).toBe("厚木河川水質（実データ源）");
-    expect(bySource.get("atsugi_river_water_quality")?.license).toBe("CC-BY-FX");
-    expect(bySource.get(null)?.name).toBeUndefined();
+    const atsugi = bySource.get("atsugi_river_water_quality");
+    expect(atsugi?.name).toBe("厚木市 河川水質調査結果(相模川・中津川・小鮎川・玉川)");
+    expect(atsugi?.license).toBe("クリエイティブ・コモンズ 表示（CC BY）");
+    expect(atsugi?.license_class).toBe("cc_by");
   });
 
   it("provenance: 同じ出典の alias が2つある系列は n_rows を2重計上しない（Issue #48 PR-1 code-review #2）", async () => {
@@ -133,7 +134,7 @@ describe("buildEnvelope", () => {
       imputation: "zero",
     };
     const rows = [fakeSnowCellRow()];
-    const env = await buildEnvelope(fx.db, spec, rows);
+    const env = await buildEnvelope(spec, rows);
 
     expect(env.coverage.n_rows).toBe(1);
     expect(env.provenance).toHaveLength(1);
@@ -149,7 +150,7 @@ describe("buildEnvelope", () => {
       imputation: "zero",
     };
     const { rows } = await queryCells(fx.db, spec);
-    const env = await buildEnvelope(fx.db, spec, rows);
+    const env = await buildEnvelope(spec, rows);
     expect(env.excluded.reasons).toEqual([]);
   });
 
@@ -161,7 +162,7 @@ describe("buildEnvelope", () => {
       imputation: "both",
     };
     const { rows } = await queryCells(fx.db, spec);
-    const env = await buildEnvelope(fx.db, spec, rows);
+    const env = await buildEnvelope(spec, rows);
     expect(env.columns.map((c) => c.name)).toEqual(["place_id", "period_start", "value_zero", "value_lod"]);
     const zeroCol = env.columns.find((c) => c.name === "value_zero")!;
     const lodCol = env.columns.find((c) => c.name === "value_lod")!;
@@ -179,8 +180,9 @@ describe("buildEnvelope", () => {
     };
     const { rows } = await queryCells(fx.db, spec);
     const caveats = [{ key: "common:caveat:fx_test", text: "テスト注記" }];
-    const env = await buildEnvelope(fx.db, spec, rows, { caveats });
-    expect(env.caveats).toEqual(caveats);
+    const env = await buildEnvelope(spec, rows, { caveats });
+    // key/text はそのまま。severity/kind は registry に無いキー（このテストの架空キー）なので null。
+    expect(env.caveats).toEqual([{ ...caveats[0], severity: null, kind: null }]);
     // BOD は合成を含まないので reasons は空。
     expect(env.excluded.reasons).toEqual([]);
   });
@@ -194,7 +196,7 @@ describe("buildEnvelope", () => {
     };
     const { rows } = await queryCells(fx.db, spec);
     expect(rows).toHaveLength(0);
-    const env = await buildEnvelope(fx.db, spec, rows);
+    const env = await buildEnvelope(spec, rows);
     expect(env.coverage.n_rows).toBe(0);
     expect(env.coverage.period).toEqual({ start: null, end: null, grain: "day" });
     expect(env.provenance).toEqual([]);
@@ -210,7 +212,7 @@ describe("buildZoneEnvelope（ゾーン単位の封筒。Issue #48 PR-2 統合�
       imputation: "both",
     };
     const { rows, truncated } = await summarize(fx.db, spec, "zone");
-    const env = await buildZoneEnvelope(fx.db, spec, rows, { truncated });
+    const env = await buildZoneEnvelope(spec, rows, { truncated });
 
     expect(env.columns.map((c) => c.name)).toEqual(["zone", "year", "value_zero", "value_lod"]);
     const zeroCol = env.columns.find((c) => c.name === "value_zero")!;
@@ -235,10 +237,90 @@ describe("buildZoneEnvelope（ゾーン単位の封筒。Issue #48 PR-2 統合�
     };
     const { rows } = await summarize(fx.db, spec, "zone");
     expect(rows).toHaveLength(0);
-    const env = await buildZoneEnvelope(fx.db, spec, rows);
+    const env = await buildZoneEnvelope(spec, rows);
     expect(env.coverage.n_rows).toBe(0);
     expect(env.coverage.period).toEqual({ start: null, end: null, grain: "year" });
     expect(env.provenance.length).toBeGreaterThan(0); // 系列自体は存在するので出典は列挙される
     expect(env.provenance.every((p) => p.n_rows === 0)).toBe(true);
+  });
+});
+
+
+describe("cube-envelope@2（Issue #40 Phase D 担当 E）", () => {
+  const NOW = new Date("2026-10-06T03:00:00Z"); // JST 2026-10-06 12:00
+
+  async function atsugiEnvelope(opt?: Parameters<typeof buildEnvelope>[2]) {
+    const spec: CellSpec = {
+      series: [FX.series.ssMean],
+      scope: { kind: "site", siteId: FX.sites.a },
+      grain: "day",
+      imputation: "zero",
+    };
+    const { rows } = await queryCells(fx.db, spec);
+    return buildEnvelope(spec, rows, { now: NOW, ...opt });
+  }
+
+  it("spec_version は cube-envelope@2", async () => {
+    expect((await atsugiEnvelope()).spec_version).toBe("cube-envelope@2");
+  });
+
+  it("provenance に fetched_at（時刻帯つき）・update_mode・age_days・source_edition_id・attribution が載る", async () => {
+    const env = await atsugiEnvelope();
+    const p = env.provenance.find((x) => x.source_id === "atsugi_river_water_quality");
+    expect(p?.source_edition_id).toBe("common:edition:atsugi_river_water_quality.20260830");
+    expect(p?.fetched_at).toBe("2026-08-30T16:20:58+09:00");
+    // 2026-08-30 -> 2026-10-06（JST）= 37 日
+    expect(p?.age_days).toBe(37);
+    // update_mode は宣言があればその値、無ければ "undeclared"（NULL を黙って別の値にしない）。
+    expect(["snapshot", "append", "revision", "static", "undeclared"]).toContain(p?.update_mode);
+    expect(p?.attribution).toBeTruthy();
+    // 合成（source_id NULL / synthetic_*）は provenance の行にならない（ADR-0028 の不変条件 1）。
+    expect(env.provenance.some((x) => x.source_id === null || String(x.source_id).startsWith("synthetic"))).toBe(false);
+  });
+
+  it("coverage の oldest/newest_fetched_at・cite_as・as_of・time_zone", async () => {
+    const env = await atsugiEnvelope();
+    expect(env.coverage.oldest_fetched_at).toBe("2026-08-30T16:20:58+09:00");
+    expect(env.coverage.newest_fetched_at).toBe("2026-08-30T16:20:58+09:00");
+    expect(env.cite_as).toContain("取得 2026-08-30");
+    expect(env.cite_as).toContain("厚木市 河川水質調査結果");
+    expect(env.as_of).toBe("2026-10-06T03:00:00.000Z");
+    expect(env.time_zone).toEqual({ region_id: "jp-14", tz_name: "Asia/Tokyo", utc_offset: "+09:00" });
+  });
+
+  it("JST の日付境界: UTC 14:59 はまだ 2026-10-06（JST 23:59）、15:00 で翌日", async () => {
+    const before = await atsugiEnvelope({ now: new Date("2026-10-06T14:59:00Z") });
+    const after = await atsugiEnvelope({ now: new Date("2026-10-06T15:00:00Z") });
+    const f = (e: typeof before) => e.provenance.find((x) => x.source_id === "atsugi_river_water_quality")?.age_days;
+    expect(f(after)).toBe(f(before)! + 1);
+  });
+
+  it("stale のような閾値判定のキーを持たない（ADR-0020・J5）", async () => {
+    const env = await atsugiEnvelope();
+    expect(JSON.stringify(env)).not.toMatch(/stale|expected_refresh/);
+  });
+
+  it("buildEnvelope/buildZoneEnvelope は DB を引かない（第1引数が CubeDb でない＝来歴の取得にクエリが走らない）", async () => {
+    const spec: CellSpec = { series: [FX.series.ssMean], scope: { kind: "site", siteId: FX.sites.a }, grain: "day", imputation: "zero" };
+    const { rows } = await queryCells(fx.db, spec);
+    let calls = 0;
+    const spy = fx.db.all.bind(fx.db);
+    fx.db.all = ((...a: Parameters<typeof spy>) => {
+      calls++;
+      return spy(...a);
+    }) as typeof fx.db.all;
+    buildEnvelope(spec, rows, { now: NOW });
+    expect(calls).toBe(0);
+  });
+
+  it("excluded は常に 0（ADR-0028。ライセンス・公開範囲で黙って減らさない）。redistributable=0 の出典が混ざっても 0", async () => {
+    const spec: CellSpec = { series: [FX.series.ssMean], scope: { kind: "site", siteId: FX.sites.a }, grain: "day", imputation: "zero" };
+    const { rows } = await queryCells(fx.db, spec);
+    const env = buildEnvelope(spec, rows, { now: NOW });
+    expect(env.excluded).toEqual({ by_license: 0, by_embargo: 0, reasons: [] });
+    // 旗が 0 の出典（atsugi は redistributable=true だが、旗の値が出力を絞らないことを別系列でも固定する）
+    const snow = buildEnvelope({ ...spec, series: [fakeSnowCellRow().series] }, [fakeSnowCellRow()], { now: NOW });
+    expect(snow.excluded).toEqual({ by_license: 0, by_embargo: 0, reasons: [] });
+    expect(snow.coverage.n_rows).toBe(1);
   });
 });
