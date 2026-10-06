@@ -188,7 +188,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from migrate import censoring, common, period, source_regions  # noqa: E402
+from migrate import censoring, common, period, regions as region_vocab, source_regions  # noqa: E402
 
 DEFAULT_RYUIKI_DB = ROOT / "data" / "db" / "ryuiki.sqlite"
 DEFAULT_REGISTRY_DB = ROOT / "data" / "db" / "registry.sqlite"
@@ -406,6 +406,7 @@ def _resolve_and_compute_period(
     period_mismatch_sample_value,
     time_conventions=None,
     time_usage=None,
+    utc_offset=None,
 ):
     """3出典（`measurements`/`sensor_timeseries`/土地利用）で共通の
     「alias/place が解決できているかの確認→期間の計算→grain の食い違いの
@@ -446,6 +447,7 @@ def _resolve_and_compute_period(
     try:
         period_grain, period_start, period_end = period.compute_period(
             period_raw, value_grain, source_id, exceptions, usage, time_conventions, time_usage,
+            utc_offset=utc_offset,
         )
     except period.PeriodMismatchError:
         stats["period_mismatch_count"] += 1
@@ -475,6 +477,7 @@ def _process_row(
     time_conventions=None,
     time_usage=None,
     is_synthetic=0,
+    utc_offset=None,
 ):
     """1行ぶんの共通検証（B-1: `_ingest_measurements`/`_ingest_sensor_timeseries`
     が個別に持っていた「重複検出→alias解決→place解決→`compute_period`→grainの
@@ -511,6 +514,7 @@ def _process_row(
         period_mismatch_sample_value=(row_id, source_id, measured_on, value_grain),
         time_conventions=time_conventions,
         time_usage=time_usage,
+        utc_offset=utc_offset,
     )
 
 
@@ -581,7 +585,7 @@ def _ingest_measurements(
 
 def _ingest_sensor_timeseries(
     work: sqlite3.Connection, dest: sqlite3.Connection, insert_table: str, exceptions, usage,
-    time_conventions, time_usage,
+    time_conventions, time_usage, region_offsets,
 ) -> dict:
     """`sensor_timeseries` を1行ずつ読み、`insert_table` へストリーム挿入する
     （`_ingest_measurements` と対になる関数。検閲が無いこと・
@@ -606,6 +610,9 @@ def _ingest_sensor_timeseries(
                 phenomenon_time, value_grain, variable_id, place_id, exceptions, usage,
                 time_conventions, time_usage,
                 is_synthetic=is_synthetic,
+                # 25桁ラベルの時刻帯は、行の region（place.region_id）の時刻帯と一致していなければならない
+                # （registry/region.yaml。Issue #32-3）。region が引けなければ None のまま渡り、止まる。
+                utc_offset=region_offsets.get(region_id),
             )
             if processed is None:
                 continue
@@ -882,6 +889,7 @@ def build_and_write_observation(
         "sensor_timeseries": functools.partial(
             _ingest_sensor_timeseries, exceptions=exceptions, usage=usage,
             time_conventions=time_conventions, time_usage=time_usage,
+            region_offsets={rid: r.utc_offset for rid, r in region_vocab.load_regions().items()},
         ),
         LANDUSE_SOURCE_ID: functools.partial(
             _ingest_landuse, exceptions=exceptions, usage=usage,

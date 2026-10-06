@@ -10,6 +10,7 @@ import { SERIES, ZONE_COLORS, ZONE_LABELS, ZONE_ELEV } from "@/components/viz/pa
 import { Btn, Stat, nf, Provenance, Spinner } from "@/components/ui";
 import { caveatBody } from "@/lib/registry/lookup-client";
 import { VARIABLE_LABEL } from "@/lib/registry/generated-client";
+import { basisOfCell, type Basis } from "@/lib/cube/cell-basis";
 import { MUNICIPALITY_LABEL } from "@/lib/municipality";
 import { useJson } from "@/components/useJson";
 import { fmt } from "@/components/viz/scales";
@@ -48,22 +49,6 @@ interface Variable {
   unit: string | null;
 }
 
-type Basis = "day" | "fiscal_year" | "year";
-
-/**
- * `lib/cube/series.ts` の `basisOfCell` と同じ式（クライアント安全のため複製——
- * `series.ts` はサーバ専用の大きい `registry/generated.ts` を import するため、
- * クライアントコンポーネントからは直接 import しない）。
- *
- * **basis はセルの性質**（`grain`/`inputGrain` の組）で決める——`value_grain`
- * （系列の登録）では決めない（Issue #48 PR-2 統合後修正A #1）。`value_grain='day'`
- * として登録された系列でも、出典が一部の年だけ年度値を直接報告していれば
- * `grain='fiscal_year'` のセルを持つ（実測: 厚木系の中津川 BOD）。
- */
-function basisOfCell(cell: { grain: string; inputGrain: string }): Basis {
-  if (cell.inputGrain === "day") return "day";
-  return cell.grain === "year" ? "year" : "fiscal_year";
-}
 
 /** `series.ts` の `REPRESENTATIVE_OBS_STATS`（`[null, "mean", "point"]`）と同じ判定
  *  （クライアント安全のため複製）。非代表（p75/p90/max/min 等）だけ `obsStat` を

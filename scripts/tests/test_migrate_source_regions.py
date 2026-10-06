@@ -146,10 +146,10 @@ def test_real_region_yaml_declares_jp14_jst():
 
 
 def test_utc_offset_pattern_matches_examples():
-    assert sr.UTC_OFFSET_PATTERN.fullmatch("+09:00")
-    assert sr.UTC_OFFSET_PATTERN.fullmatch("-05:30")
-    assert not sr.UTC_OFFSET_PATTERN.fullmatch("09:00")
-    assert not sr.UTC_OFFSET_PATTERN.fullmatch("+9:00")
+    assert region_vocab.UTC_OFFSET_PATTERN.fullmatch("+09:00")
+    assert region_vocab.UTC_OFFSET_PATTERN.fullmatch("-05:30")
+    assert not region_vocab.UTC_OFFSET_PATTERN.fullmatch("09:00")
+    assert not region_vocab.UTC_OFFSET_PATTERN.fullmatch("+9:00")
 
 
 # ---------------------------------------------------------------------------
@@ -254,7 +254,9 @@ def test_source_region_usage_reports_unused_and_mismatched():
 def test_region_usage_reports_unused_without_expected_count():
     """regions には expected_row_count が無い（常に None）ので、未使用の検出
     だけが働き、件数不一致は検出されない。"""
-    region = sr.Region(region_id="jp-14", utc_offset="+09:00", evidence="テスト")
+    region = region_vocab.RegionTime(
+        region_id="jp-14", name_ja="神奈川県", tz_name="Asia/Tokyo", utc_offset="+09:00", evidence="テスト"
+    )
     usage = period.EntryUsage({"jp-14": region})
     assert usage.unused_entries() == ["jp-14"]
     usage.mark_used("jp-14")

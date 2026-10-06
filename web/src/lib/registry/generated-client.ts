@@ -62,7 +62,6 @@ export interface GeneratedZone {
 /** region（`jp-14` 等）の時刻帯（registry/region.yaml。Issue #32-3、ADR-0024）。 */
 export interface GeneratedRegionTime {
   regionId: string;
-  nameJa: string;
   /** IANA 時刻帯名（例 `Asia/Tokyo`）。 */
   tzName: string;
   /** UTC オフセット（`+HH:MM`/`-HH:MM`）。 */
@@ -381,5 +380,5 @@ export const ZONE_INFO: readonly GeneratedZone[] = [
 
 /** region の時刻帯（registry/region.yaml の語彙。`lookup-client.ts` の `regionTimeZone()` が引く）。 */
 export const REGION_TIME: readonly GeneratedRegionTime[] = [
-  { regionId: "jp-14", nameJa: "神奈川県", tzName: "Asia/Tokyo", utcOffset: "+09:00" },
+  { regionId: "jp-14", tzName: "Asia/Tokyo", utcOffset: "+09:00" },
 ];

@@ -196,9 +196,17 @@ b03/b04/b05 が実際に使うのは **Python 同梱の `sqlite3` モジュー�
 ことによる**恒久的なもの**で、宣言（`period_grain_override: month`）として残す。`restoration_plan` は
 「復元済み」に書き換えた。
 
-キューブ側: 月で配られた観測（`period_grain='month'`、`input_grain='month'`。厚木と `jma_monthly`）は、
-b04 が**観測の行から直接**（月セルの平均の平均にしない）暦年（`year`）と年度（`fiscal_year`）に積み上げる
-（`input_grain='month'` のまま区別できる。n・検閲件数・欠月の扱いは日次→年次の出典配布セルと同じ規則）。
-`cube_invariants.verify_month_year_rollup` が月 → 年・年度の保存則（n・検閲件数の合計、min/max）を検証する。
-旧 fiscal_year セル（年度番号から直接作っていた 960 セル）と新ロールアップの値は 960/960 件一致した
-（実測は `docs/plans/ISSUE32_TIME.md` §5）。
+キューブ側（**宣言駆動**。2026-10-06 のレビューで「月で配られた観測を一般に年・年度へ積む」規則を撤回した）:
+`period_exceptions.yaml` の復元エントリが `rollup_to: [fiscal_year]` と宣言した粒度だけ、b04 が月に復元した
+観測（`period_grain='month' AND value_grain<>'month'`）を**観測の行から直接**（月セルの平均の平均にしない）
+積み上げる（`input_grain='month'` のまま区別できる）。厚木は出典が年度で配っているので年度だけ
+（暦年は作らない。暦年にすると両端が3か月・9か月の部分年になり、同じ月観測が year と fiscal_year の両方で
+n に二重計上される）。出典が月で配った値（`jma_monthly`、`value_grain='month'`）は何も積み上げない
+（新セル 0。月値の平均の平均が年値として画面・API に出る漏れを防ぐ）。
+`cube_invariants.verify_month_year_rollup` が月 → 年度の保存則（n・検閲件数の合計、min/max）と、宣言外の粒度の
+セルが無いことを検証する。旧 fiscal_year セル（年度番号から直接作っていた 960 セル）と新ロールアップの値は
+960/960 件一致した（実測は `docs/plans/ISSUE32_TIME.md` §7）。
+
+**宣言済み差分（件数）**: 厚木の月セル（`grain='month'`・`input_grain='month'`、1回採水の月値）11,520 セル
+（3,840 観測行 × mean/min/max）が新たにキューブに入る。月系列・季節性・zone_month_of_year の集計には、日付ありの
+1回採水（`input_grain='day'` の 720 行）と同じ扱いで入る（受け入れ済み）。

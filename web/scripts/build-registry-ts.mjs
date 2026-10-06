@@ -244,9 +244,9 @@ const zoneRows = loadYaml(fs.readFileSync(ZONE_YAML, "utf-8"));
 // region（時刻帯の語彙。Issue #32-3、ADR-0024）。registry.sqlite の `region` 表（手書きの正は
 // registry/region.yaml）から作る。応答封筒（ADR-0014）が `regionTimeZone()` で引く。
 const regionTime = db
-  .prepare(`SELECT region_id, name_ja, tz_name, utc_offset FROM region ORDER BY region_id`)
+  .prepare(`SELECT region_id, tz_name, utc_offset FROM region ORDER BY region_id`)
   .all()
-  .map((r) => ({ regionId: r.region_id, nameJa: r.name_ja, tzName: r.tz_name, utcOffset: r.utc_offset }));
+  .map((r) => ({ regionId: r.region_id, tzName: r.tz_name, utcOffset: r.utc_offset }));
 
 const zoneInfo = zoneRows
   .map((r) => ({ zone: r.zone, label: r.name_ja, cond: r.ui_condition_ja }))
@@ -504,7 +504,6 @@ export interface GeneratedZone {
 /** region（\`jp-14\` 等）の時刻帯（registry/region.yaml。Issue #32-3、ADR-0024）。 */
 export interface GeneratedRegionTime {
   regionId: string;
-  nameJa: string;
   /** IANA 時刻帯名（例 \`Asia/Tokyo\`）。 */
   tzName: string;
   /** UTC オフセット（\`+HH:MM\`/\`-HH:MM\`）。 */
@@ -621,7 +620,7 @@ export const ASSESSMENT_LIST: Readonly<Record<string, GeneratedAssessmentList>> 
 export const ZONE_INFO: readonly GeneratedZone[] = ${emitObjectArray(zoneInfo, ["zone", "label", "cond"])};
 
 /** region の時刻帯（registry/region.yaml の語彙。\`lookup-client.ts\` の \`regionTimeZone()\` が引く）。 */
-export const REGION_TIME: readonly GeneratedRegionTime[] = ${emitObjectArray(regionTime, ["regionId", "nameJa", "tzName", "utcOffset"])};
+export const REGION_TIME: readonly GeneratedRegionTime[] = ${emitObjectArray(regionTime, ["regionId", "tzName", "utcOffset"])};
 `;
 
 fs.mkdirSync(path.dirname(OUT_SERVER), { recursive: true });

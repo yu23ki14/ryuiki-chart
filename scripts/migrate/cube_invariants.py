@@ -244,91 +244,91 @@ def verify_hourly_daily_rollup(conn: sqlite3.Connection, staging: str, sample_li
 # ---------------------------------------------------------------------------
 
 _MONTH_SERIES_DIM = "region_id, place_id, place_kind, variable_id, obs_stat, unit_id, value_grain"
+_ROLLUP_CELL_COLUMNS = "period_start, stat, n, n_censored, n_not_detected, value_zero, value_lod"
 
 
 def _bucket_of(grain: str, period_start: str) -> str:
     """月セルの `period_start`（`YYYY-MM-01`）が属する年（暦年）・年度の始まりの年。
-    文字列の切り出しだけで行う（日時関数を使わない。ADR-0024）。"""
+    文字列の切り出しだけで行う（日時関数を使わない。ADR-0024）。**b04 の SQL
+    （`_fiscal_start_year_sql`）とは共有せず、ここで独立に書いている**（同じ式の同じバグを見逃さない）。"""
     year, month = int(period_start[:4]), int(period_start[5:7])
     if grain == "year":
         return f"{year:04d}"
     return f"{(year if month >= 4 else year - 1):04d}"
 
 
-def verify_month_year_rollup(conn: sqlite3.Connection, staging: str, sample_limit: int = SAMPLE_LIMIT) -> dict:
-    """月で配られた観測（`grain='month'`・`input_grain='month'` の出典配布セル）から積み上げた
-    年・年度のセル（`grain IN ('year','fiscal_year')`・`input_grain='month'`）が、元の月セルと
-    食い違わないことを検証する（保存則）。系列×年（暦年）／年度ごとに:
+def _reduce_rollup_rows(rows: list[tuple]) -> dict:
+    """1つの (系列, grain, 年/年度) に属するセル行 `(stat, n, n_censored, n_not_detected, value_zero,
+    value_lod)` の集まりから、n・検閲件数（mean 行の合計）と min/max（min 行の最小・max 行の最大）を作る。
+    期待側（月セル。mean/min/max が月ごとに複数行）と実際側（年・年度セル。各 stat 1行）の両方が使う。"""
+    out: dict = {}
+    for stat, n, n_censored, n_not_detected, value_zero, value_lod in rows:
+        if stat == "mean":
+            for key, v in (("n", n), ("n_censored", n_censored), ("n_not_detected", n_not_detected)):
+                out[key] = out.get(key, 0) + v
+            continue
+        pick = min if stat == "min" else max if stat == "max" else None
+        if pick is None:
+            continue
+        for key, v in ((f"{stat}_z", value_zero), (f"{stat}_l", value_lod)):
+            if v is not None:
+                out[key] = v if key not in out else pick(out[key], v)
+    return out
+
+
+def verify_month_year_rollup(
+    conn: sqlite3.Connection, staging: str, rollup_grains: tuple[str, ...], sample_limit: int = SAMPLE_LIMIT
+) -> dict:
+    """宣言された粒度（`rollup_grains`。`period_exceptions.yaml` の `rollup_to`）へ、月に復元した
+    日間平均値（`grain='month'`・`input_grain='month'`・`value_grain<>'month'` の月セル）から
+    積み上げた年・年度のセル（`input_grain='month'`）が、元の月セルと食い違わないことを検証する
+    （保存則）。系列×年（暦年）／年度ごとに:
 
     - n・n_censored・n_not_detected は、その年（年度）に属する月セルの合計と**完全一致**する
       （観測の行を落としても重複させても崩れる）。
     - stat='min' の value_zero/value_lod は月セルの min の最小、stat='max' は最大と一致する
       （min/max は丸め誤差が無いのでビット単位で一致する）。
-    - 月セルが無いのに年・年度のセルがある、またはその逆（月セルがあるのに年・年度のセルが
-      無い）は不一致。
+    - 月セルが無いのに年・年度のセルがある、その逆、**宣言していない粒度のセルがある**
+      （jma_monthly のように出典が月で配った値の月→年セル等）はいずれも不一致。
 
     食い違いは `common.MigrationError`。戻り値は検証した件数（レポート用）。
     """
-    months = conn.execute(
+    expected_rows: dict[tuple, list[tuple]] = {}
+    for *key, period_start, stat, n, n_c, n_nd, vz, vl in conn.execute(
         f"""
-        SELECT {_MONTH_SERIES_DIM}, period_start, stat, n, n_censored, n_not_detected, value_zero, value_lod
-        FROM "{staging}" WHERE grain = 'month' AND input_grain = 'month'
+        SELECT {_MONTH_SERIES_DIM}, {_ROLLUP_CELL_COLUMNS}
+        FROM "{staging}" WHERE grain = 'month' AND input_grain = 'month' AND value_grain <> 'month'
         """
-    ).fetchall()
-    cubes = conn.execute(
+    ):
+        for grain in rollup_grains:
+            expected_rows.setdefault((tuple(key), grain, _bucket_of(grain, period_start)), []).append(
+                (stat, n, n_c, n_nd, vz, vl)
+            )
+
+    actual_rows: dict[tuple, list[tuple]] = {}
+    for *key, grain, period_start, stat, n, n_c, n_nd, vz, vl in conn.execute(
         f"""
-        SELECT {_MONTH_SERIES_DIM}, grain, period_start, stat, n, n_censored, n_not_detected, value_zero, value_lod
+        SELECT {_MONTH_SERIES_DIM}, grain, {_ROLLUP_CELL_COLUMNS}
         FROM "{staging}" WHERE grain IN ('year', 'fiscal_year') AND input_grain = 'month'
         """
-    ).fetchall()
-
-    # (系列, grain, bucket) -> {n, n_censored, n_not_detected, min_z, min_l, max_z, max_l}
-    expected: dict[tuple, dict] = {}
-    for row in months:
-        key, period_start, stat, n, n_c, n_nd, vz, vl = row[:7], row[7], row[8], row[9], row[10], row[11], row[12], row[13]
-        for grain in ("year", "fiscal_year"):
-            e = expected.setdefault((key, grain, _bucket_of(grain, period_start)), {})
-            if stat == "mean":
-                e["n"] = e.get("n", 0) + n
-                e["n_censored"] = e.get("n_censored", 0) + n_c
-                e["n_not_detected"] = e.get("n_not_detected", 0) + n_nd
-            elif stat == "min":
-                for name, v in (("min_z", vz), ("min_l", vl)):
-                    if v is not None:
-                        e[name] = v if name not in e else min(e[name], v)
-            elif stat == "max":
-                for name, v in (("max_z", vz), ("max_l", vl)):
-                    if v is not None:
-                        e[name] = v if name not in e else max(e[name], v)
-
-    actual: dict[tuple, dict] = {}
-    for row in cubes:
-        key, grain, period_start, stat, n, n_c, n_nd, vz, vl = row[:7], row[7], row[8], row[9], row[10], row[11], row[12], row[13], row[14]
-        a = actual.setdefault((key, grain, period_start[:4]), {})
-        if stat == "mean":
-            a.update(n=n, n_censored=n_c, n_not_detected=n_nd)
-        elif stat == "min":
-            for name, v in (("min_z", vz), ("min_l", vl)):
-                if v is not None:
-                    a[name] = v
-        elif stat == "max":
-            for name, v in (("max_z", vz), ("max_l", vl)):
-                if v is not None:
-                    a[name] = v
+    ):
+        actual_rows.setdefault((tuple(key), grain, period_start[:4]), []).append((stat, n, n_c, n_nd, vz, vl))
 
     mismatches = []
-    for k in set(expected) | set(actual):
-        e, a = expected.get(k), actual.get(k)
+    for k in set(expected_rows) | set(actual_rows):
+        e = _reduce_rollup_rows(expected_rows[k]) if k in expected_rows else None
+        a = _reduce_rollup_rows(actual_rows[k]) if k in actual_rows else None
         if e != a:
             mismatches.append((k, e, a))
     if mismatches:
         raise common.MigrationError(
             "月 → 年・年度の積み上げの保存則が崩れている（n・検閲件数の合計、または min/max が"
-            f"月セルと一致しない。{len(mismatches)}件。例（上限{sample_limit}件、"
+            f"月セルと一致しない、または宣言外の粒度のセルがある。{len(mismatches)}件。例（上限{sample_limit}件、"
             f"((次元キー, grain, 年/年度), 月セルから期待, 実際のセル)）: {mismatches[:sample_limit]}）。"
-            "scripts/b04_build_cube.py の `_year_from_month_stats_sql` を確認すること。"
+            "scripts/b04_build_cube.py の `_year_from_month_stats_sql` と period_exceptions.yaml の "
+            "rollup_to を確認すること。"
         )
-    return {"n_month_rollup_buckets_checked": len(expected)}
+    return {"n_month_rollup_buckets_checked": len(expected_rows)}
 
 
 # ---------------------------------------------------------------------------

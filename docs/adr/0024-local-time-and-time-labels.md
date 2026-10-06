@@ -16,7 +16,8 @@
   例外。黙って JST に倒さない）。パイプラインは `scripts/migrate/regions.py` が同じファイルを読む。
 - 置き換えた直書き: `scripts/migrate/source_regions.yaml` の `regions:`（'Z'→ローカル変換の `utc_offset`。
   撤去し、旧形式が残っていれば `load_source_regions()`/`validate_source_regions_shape()` が止める）、
-  `scripts/migrate/period.py` の `_EXPECTED_TZ_SUFFIX`（jp-14 の `utc_offset` から導く）。
+  `scripts/migrate/period.py` の `_EXPECTED_TZ_SUFFIX`（廃止。25桁ラベルの接尾辞は、b03 が行の region
+  〔`place.region_id`〕の `utc_offset` を渡して照合する。渡されなければ止まる）。
 - 検査: r01 が `place.region_id` が region 語彙に在ることを検証する（`ID_REFERENCE_CHECKS`）。
   `region.yaml` の `utc_offset`/`tz_name` の形は `regions.region_problems()`、web 側の
   `region-time.test.ts` が `tz_name` が実在する IANA 名で宣言のオフセットと一致することを確かめる。

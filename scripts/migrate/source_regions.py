@@ -59,14 +59,6 @@ REQUIRED_SOURCE_KEYS = ("region_id", "consumer", "expected_row_count", "evidence
 # ビルドを落とす）。
 CONSUMER_CODES = frozenset({"occurrence", "observation"})
 
-# `'+09:00'`/`'-05:30'` の形だけを許す（コードレビュー指摘1）。`period._parse_utc_offset`
-# （時刻帯の扱いは `scripts/migrate/period.py` の `_strip_tz` の隣に集約。
-# /simplify 指摘2）は符号1文字＋2桁＋':'＋2桁だけを前提に減算するため、
-# `"09:00"`（符号無し）のような値を読むと符号判定が
-# `sign = 1 if s[0]=='+' else -1` で黙って `-1`（負）に倒れる事故が起きる。
-# 読み込み時（ここ）と構造検証（CI）の両方で同じ正規表現を使う。
-UTC_OFFSET_PATTERN = region_vocab.UTC_OFFSET_PATTERN
-
 # Issue #32-3: `regions:`（時刻帯）は `registry/region.yaml` に移した。旧形式が残っていたら止める
 # （二重管理に戻さない。ADR-0024）。
 _LEGACY_REGIONS_MESSAGE = (
@@ -98,30 +90,12 @@ class SourceRegion:
     evidence: str
 
 
-@dataclass(frozen=True)
-class Region:
-    """`registry/region.yaml` の1エントリ（`load_source_regions` が返す、その consumer の
-    sources が参照する分）。`expected_row_count` は常に `None`
-    （`migrate.period.EntryUsage` が「未使用宣言」の検出に `SourceRegion`/
-    `Region` のどちらも同じ形で扱えるように持つダミー属性で、regions 自体には
-    件数の宣言が無い。`mismatched_expected_counts()` は `None` のエントリを
-    素通りするので、regions では実質「未使用宣言」の検出だけが働く）。
-    """
-
-    region_id: str
-    utc_offset: str
-    evidence: str
-    expected_row_count: int | None = None
-    tz_name: str = ""
-    name_ja: str = ""
-
-
 def load_source_regions(
     path=DEFAULT_SOURCE_REGIONS_YAML,
     consumer: str | None = None,
     count_overlay: dict[str, int] | None = None,
     regions_path=DEFAULT_REGION_YAML,
-) -> tuple[dict[str, SourceRegion], dict[str, Region]]:
+) -> tuple[dict[str, SourceRegion], dict[str, region_vocab.RegionTime]]:
     """`(sources, regions)` を返す。`regions` は `registry/region.yaml`（`regions_path`）から読む
     （Issue #32-3。`source_regions.yaml` に旧形式の `regions:` が残っていたら止める）。
     `sources` の全 `region_id` が region.yaml に宣言されていることをここで検証する
@@ -145,12 +119,7 @@ def load_source_regions(
     if count_overlay:
         sources_raw = period.apply_count_overlay(sources_raw, count_overlay)
 
-    all_regions: dict[str, Region] = {
-        rid: Region(
-            region_id=rid, utc_offset=r.utc_offset, evidence=r.evidence, tz_name=r.tz_name, name_ja=r.name_ja,
-        )
-        for rid, r in region_vocab.load_regions(regions_path).items()
-    }
+    all_regions = region_vocab.load_regions(regions_path)
 
     # consumer で絞る前の全 sources（missing_regions・孤児 region の検査は
     # 常にこちらに対して行う。モジュール docstring 参照）。`consumer` は

@@ -36,6 +36,9 @@ class RegionTime:
     tz_name: str
     utc_offset: str
     evidence: str
+    # `migrate.period.EntryUsage`（未使用宣言の検出）が出典宣言と同じ形で扱えるようにするダミー属性。
+    # region には件数の宣言が無いので常に None。
+    expected_row_count: int | None = None
 
 
 def region_problems(raw: object) -> list[str]:

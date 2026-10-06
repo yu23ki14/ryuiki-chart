@@ -21,6 +21,10 @@ atsugi_river_water_quality:
   # source_ref の月ラベルから暦月を復元する（scripts/migrate/period.py の
   # restore_month_from_source_ref。b03 が measured_on(4桁) の行にだけ適用する）。
   restore_month_from: source_ref_month_label
+  # 出典は年度（fiscal_year）で配っているので、月 → 年度だけ積み上げる（b04。暦年は作らない。
+  # 暦年にすると両端が3か月・9か月の部分年になり、同じ月観測が year と fiscal_year の両方で
+  # n に二重計上される）。値は観測の行から直接再集計する。
+  rollup_to: [fiscal_year]
   # 実測（design.md 実測値）: この宣言に該当する行数。ここに書いた数と食い違ったら
   # b03 が例外を投げて止まる。
   expected_row_count: 3840
@@ -36,5 +40,5 @@ atsugi_river_water_quality:
     （period_start/period_end = 月初〜月末）で入る。**このエントリは消えない**:
     value_grain='day' と period_grain='month' の不一致は日が原理的に特定できないことによる
     恒久的なもの（Issue の「エントリが不要になる」は成り立たなかった。ADR-0021 追記）。
-    以前の fiscal_year（年度番号から直接）の期間は、b04 が month → fiscal_year/year に
-    積み上げ直す（input_grain='month'）。
+    以前の fiscal_year（年度番号から直接）の期間は、b04 が `rollup_to: [fiscal_year]` の宣言に従って
+    month → fiscal_year に積み上げ直す（input_grain='month'）。

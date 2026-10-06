@@ -174,7 +174,7 @@ def test_instant_grain_strips_timezone_and_keeps_label():
     """
     usage = period.PeriodExceptionUsage({})
     grain, start, end = period.compute_period(
-        "2024-01-01T00:00:00+09:00", "instant", "synthetic_sensor", {}, usage
+        "2024-01-01T00:00:00+09:00", "instant", "synthetic_sensor", {}, usage, utc_offset="+09:00"
     )
     assert (grain, start, end) == ("instant", "2024-01-01T00:00:00", "2024-01-01T00:00:00")
 
@@ -208,7 +208,7 @@ def test_hour_ending_subtracts_one_hour():
     time_usage = period.TimeLabelConventionUsage(conventions)
     grain, start, end = period.compute_period(
         "2015-04-01T01:00:00+09:00", "hour", "sagamihara_taiki_hourly", {}, period.PeriodExceptionUsage({}),
-        conventions, time_usage,
+        conventions, time_usage, utc_offset="+09:00",
     )
     assert (grain, start, end) == ("hour", "2015-04-01T00:00:00", "2015-04-01T01:00:00")
     assert time_usage.counts() == {"sagamihara_taiki_hourly": 1}
@@ -222,7 +222,7 @@ def test_hour_ending_00_00_label_crosses_to_previous_day():
     time_usage = period.TimeLabelConventionUsage(conventions)
     grain, start, end = period.compute_period(
         "2015-05-01T00:00:00+09:00", "hour", "sagamihara_taiki_hourly", {}, period.PeriodExceptionUsage({}),
-        conventions, time_usage,
+        conventions, time_usage, utc_offset="+09:00",
     )
     assert (grain, start, end) == ("hour", "2015-04-30T23:00:00", "2015-05-01T00:00:00")
 
@@ -237,13 +237,83 @@ def test_hour_grain_unknown_source_id_raises_even_with_other_conventions_declare
 
 
 def test_25_digit_label_with_unexpected_timezone_offset_raises():
-    """`+09:00` 以外のオフセットは推測で読み替えず即座に止まる。"""
+    """出典の region の時刻帯（`utc_offset`）と違うオフセットは推測で読み替えず即座に止まる。"""
     conventions = _hour_ending_convention()
-    with pytest.raises(period.MigrationError):
+    with pytest.raises(period.MigrationError, match="想定外"):
         period.compute_period(
             "2015-04-01T01:00:00+00:00", "hour", "sagamihara_taiki_hourly", {}, period.PeriodExceptionUsage({}),
+            conventions, period.TimeLabelConventionUsage(conventions), utc_offset="+09:00",
+        )
+    # 別の region（例: -05:00）の出典なら、その時刻帯のラベルだけを受け付ける。
+    grain, start, end = period.compute_period(
+        "2015-04-01T01:00:00-05:00", "hour", "sagamihara_taiki_hourly", {}, period.PeriodExceptionUsage({}),
+        conventions, period.TimeLabelConventionUsage(conventions), utc_offset="-05:00",
+    )
+    assert (start, end) == ("2015-04-01T00:00:00", "2015-04-01T01:00:00")
+
+
+def test_25_digit_label_without_region_utc_offset_raises():
+    """region が引けず `utc_offset` が渡されない場合は黙って JST に倒さず止まる。"""
+    conventions = _hour_ending_convention()
+    with pytest.raises(period.MigrationError, match="utc_offset が渡されていない"):
+        period.compute_period(
+            "2015-04-01T01:00:00+09:00", "hour", "sagamihara_taiki_hourly", {}, period.PeriodExceptionUsage({}),
             conventions, period.TimeLabelConventionUsage(conventions),
         )
+
+
+# --- Issue #32-2: restore_month_from / rollup_to の宣言の検査 ------------------
+
+
+def _write_exceptions(tmp_path, body: str):
+    path = tmp_path / "exceptions.yaml"
+    path.write_text(
+        "src_a:\n"
+        "  expected_row_count: 1\n  reason: テスト\n  restoration_plan: テスト\n" + body,
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_override_month_requires_restore_month_from(tmp_path):
+    path = _write_exceptions(tmp_path, "  period_grain_override: month\n")
+    with pytest.raises(period.MigrationError, match="restore_month_from が必須"):
+        period.load_period_exceptions(path)
+    with pytest.raises(period.MigrationError, match="restore_month_from が必須"):
+        period.validate_period_exceptions_shape(path)
+
+
+def test_restore_month_from_is_a_closed_vocabulary(tmp_path):
+    path = _write_exceptions(
+        tmp_path, "  period_grain_override: month\n  restore_month_from: guess_from_somewhere\n"
+    )
+    with pytest.raises(period.MigrationError, match="未対応"):
+        period.load_period_exceptions(path)
+
+
+def test_rollup_to_must_be_declared_vocabulary_and_needs_restore(tmp_path):
+    ok = _write_exceptions(
+        tmp_path,
+        "  period_grain_override: month\n  restore_month_from: source_ref_month_label\n  rollup_to: [fiscal_year]\n",
+    )
+    exceptions = period.load_period_exceptions(ok)
+    assert exceptions["src_a"].rollup_to == ("fiscal_year",)
+    assert period.declared_rollup_grains(exceptions) == ("fiscal_year",)
+    bad_vocab = _write_exceptions(
+        tmp_path,
+        "  period_grain_override: month\n  restore_month_from: source_ref_month_label\n  rollup_to: [decade]\n",
+    )
+    with pytest.raises(period.MigrationError, match="rollup_to"):
+        period.load_period_exceptions(bad_vocab)
+    no_restore = _write_exceptions(tmp_path, "  period_grain_override: fiscal_year\n  rollup_to: [fiscal_year]\n")
+    with pytest.raises(period.MigrationError, match="restore_month_from を持つ"):
+        period.load_period_exceptions(no_restore)
+
+
+def test_real_period_exceptions_yaml_declares_fiscal_year_rollup_only():
+    period.validate_period_exceptions_shape()
+    exceptions = period.load_period_exceptions()
+    assert period.declared_rollup_grains(exceptions) == ("fiscal_year",)
 
 
 def test_load_time_label_conventions_from_yaml(tmp_path):

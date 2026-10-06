@@ -23,6 +23,7 @@ import {
   type SeriesInfo,
   type SeriesKey,
 } from "./series";
+import { sourceGrainCellSql } from "./cell-basis";
 
 export type { Scope } from "./sql";
 
@@ -38,7 +39,7 @@ export interface CellSpec {
   grain: Grain | Grain[];
   /** 既定 ['mean']。 */
   stats?: Stat[];
-  /** 'same' = 出典配布セル（input_grain = grain）。月までしか日付が言えない日間平均値を月から積み上げた年・年度セルも含む。 */
+  /** 'same' = 出典が配った粒度のセル（規則は `cell-basis.ts` の `sourceGrainCellSql`）。 */
   inputGrain?: "day" | "hour" | "instant" | "same";
   /** `period_start` の範囲（文字列比較。日時関数は使わない: ADR-0024）。 */
   period?: { from?: string; to?: string };
@@ -194,10 +195,8 @@ function commonFilterSql(spec: CellSpec, alias: string): { joins: string[]; wher
   whereParams.push(...stats);
 
   if (spec.inputGrain === "same") {
-    // 出典配布セル（input_grain = grain）に加え、日付が月までしか言えない日間平均値
-    // （value_grain≠'month'、復元した厚木。Issue #32-2）を月から積み上げた年・年度セルも含める。
-    // value_grain='month' の系列（jma_monthly）の月→年の積み上げはここには出さない。
-    wheres.push(`(${alias}.input_grain = ${alias}.grain OR (${alias}.input_grain = 'month' AND ${alias}.value_grain <> 'month'))`);
+    // 「出典が配った粒度のセル」の規則は `cell-basis.ts` の1か所（`sourceGrainCellSql`）。
+    wheres.push(sourceGrainCellSql(alias));
   } else if (spec.inputGrain) {
     wheres.push(`${alias}.input_grain = ?`);
     whereParams.push(spec.inputGrain);

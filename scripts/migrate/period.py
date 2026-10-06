@@ -42,7 +42,7 @@ import re
 import pathlib
 from dataclasses import dataclass
 
-from . import regions as region_vocab
+from era_table import ERA
 from .common import MigrationError, load_yaml
 
 DEFAULT_EXCEPTIONS_YAML = pathlib.Path(__file__).resolve().parent / "period_exceptions.yaml"
@@ -56,23 +56,11 @@ DEFAULT_TIME_LABEL_CONVENTIONS_YAML = (
 # grain に従って展開する」）。
 _YEAR_LIKE_GRAINS = ("year", "fiscal_year")
 
-# 25桁ラベルのタイムゾーン部分。実データ（sensor_timeseries 717,839行）を
-# 実測すると、25桁のラベルを持つ3出典（sagamihara_taiki_hourly・
-# soramame_hourly_kanagawa・synthetic_sensor）は全行この表記だけを持つ
-# （2026-09-15実測）。それ以外のオフセットは推測で読み替えず即座に止める。
-#
-# Issue #32-3: 直書きをやめ、`registry/region.yaml`（region の時刻帯の唯一の置き場）の jp-14 から導く。
-# センサー3出典はいずれも神奈川県（jp-14）の出典。
-_SENSOR_LABEL_REGION_ID = "jp-14"
-# （import 時には読まない。PyYAML の無い環境でも import できる必要がある〔v2 パイプラインの
-# コード対象の洗い出しが `-I -S` のサブプロセスで import する〕ため、初回使用時に1回だけ読む。）
-_expected_tz_suffix_cache: list[str] = []
-
-
-def _expected_tz_suffix() -> str:
-    if not _expected_tz_suffix_cache:
-        _expected_tz_suffix_cache.append(region_vocab.load_regions()[_SENSOR_LABEL_REGION_ID].utc_offset)
-    return _expected_tz_suffix_cache[0]
+# 25桁ラベルのタイムゾーン部分は、その行の出典の region（`registry/region.yaml`。
+# Issue #32-3、ADR-0024）の `utc_offset` と一致していなければならない。呼び出し側（b03）が
+# 行の region_id から引いた `utc_offset` を `compute_period()` に渡す。実データ
+# （sensor_timeseries 717,839行）では25桁ラベルは全行 '+09:00'（jp-14）だけ。
+# 渡されない・食い違う場合は推測で読み替えず即座に止める。
 
 
 @dataclass(frozen=True)
@@ -87,6 +75,9 @@ class PeriodException:
     # 'source_ref_month_label' のとき、b03 が 4桁の measured_on を source_ref の月ラベルから
     # 'YYYY-MM' に復元してから compute_period に渡す（Issue #32-2。厚木）。
     restore_month_from: str | None = None
+    # month → 宣言した粒度への積み上げ（b04 が読む。Issue #32-2）。出典が配った粒度だけを書く
+    # （厚木は年度で配っているので ('fiscal_year',)。暦年は作らない）。
+    rollup_to: tuple[str, ...] = ()
 
 
 def _load_raw(path) -> dict:
@@ -277,8 +268,50 @@ def load_period_exceptions(
             reason=spec.get("reason", ""),
             restoration_plan=spec.get("restoration_plan", ""),
             restore_month_from=spec.get("restore_month_from"),
+            rollup_to=tuple(spec.get("rollup_to") or ()),
         )
+    problems = exception_semantic_problems(raw)
+    if problems:
+        raise MigrationError(f"{path} の宣言が不正:\n- " + "\n- ".join(problems))
     return out
+
+
+# `restore_month_from` の閉じた語彙（Issue #32-2）。推測で新しい復元方法を足さず、対応する
+# 分岐を b03 に足してからここに増やす。
+RESTORE_MONTH_FROM_CODES = ("source_ref_month_label",)
+# `rollup_to`（month → 積み上げ先）の閉じた語彙。b04 が対応する粒度だけ。
+ROLLUP_TO_CODES = ("year", "fiscal_year")
+
+
+def exception_semantic_problems(raw: dict) -> list[str]:
+    """`period_exceptions.yaml` の意味的な検査（語彙・組み合わせ）。読み込み時と CI の構造検証の両方が使う。
+    - `restore_month_from` は `RESTORE_MONTH_FROM_CODES` の値。
+    - `period_grain_override: month` のエントリは `restore_month_from` が必須（月を復元せずに
+      month の期間を作る経路は無い）。
+    - `rollup_to` は `ROLLUP_TO_CODES` の部分集合で、`restore_month_from` を持つエントリだけが書ける。
+    """
+    problems: list[str] = []
+    for source_id, spec in raw.items():
+        if not isinstance(spec, dict):
+            continue
+        restore = spec.get("restore_month_from")
+        if restore is not None and restore not in RESTORE_MONTH_FROM_CODES:
+            problems.append(f"{source_id}: restore_month_from={restore!r} は未対応（対応済み: {RESTORE_MONTH_FROM_CODES}）")
+        if spec.get("period_grain_override") == "month" and restore is None:
+            problems.append(f"{source_id}: period_grain_override=month には restore_month_from が必須")
+        rollup = spec.get("rollup_to")
+        if rollup is not None:
+            if not isinstance(rollup, list) or not set(rollup) <= set(ROLLUP_TO_CODES):
+                problems.append(f"{source_id}: rollup_to は {ROLLUP_TO_CODES} の部分集合のリスト（実際: {rollup!r}）")
+            elif restore is None:
+                problems.append(f"{source_id}: rollup_to は restore_month_from を持つエントリだけが書ける")
+    return problems
+
+
+def declared_rollup_grains(exceptions: dict[str, "PeriodException"]) -> tuple[str, ...]:
+    """宣言された `rollup_to` の和集合（`ROLLUP_TO_CODES` の順）。b04 が積み上げる粒度を決める。"""
+    declared = {g for e in exceptions.values() for g in e.rollup_to}
+    return tuple(g for g in ROLLUP_TO_CODES if g in declared)
 
 
 # CI の構造検証（原本DBを必要としない）が要求する必須キー。`load_period_exceptions`
@@ -397,6 +430,9 @@ def validate_period_exceptions_shape(path=DEFAULT_EXCEPTIONS_YAML) -> None:
     すべて持つことを検証する（`_validate_shape` 参照）。
     """
     _validate_shape(path, REQUIRED_EXCEPTION_KEYS)
+    problems = exception_semantic_problems(_load_raw(path))
+    if problems:
+        raise MigrationError(f"{path} の宣言が不正:\n- " + "\n- ".join(problems))
 
 
 @dataclass(frozen=True)
@@ -602,8 +638,8 @@ def _bounds_for_grain(grain: str, year: int) -> tuple[str, str]:
     )
 
 
-_SOURCE_REF_MONTH_LABEL = re.compile(r"#(?:(令和|平成)(元|\d+)年)?(\d{1,2})月:")
-_ERA_OFFSET = {"令和": 2018, "平成": 1988}
+_KANJI_ERAS = tuple(k for k in ERA if not k.isascii())
+_SOURCE_REF_MONTH_LABEL = re.compile(rf"#(?:({'|'.join(_KANJI_ERAS)})(元|\d+)年)?(\d{{1,2}})月:")
 
 
 def restore_month_from_source_ref(fiscal_year: str, source_ref: str | None, *, row_id=None) -> str:
@@ -622,9 +658,9 @@ def restore_month_from_source_ref(fiscal_year: str, source_ref: str | None, *, r
     year = fy if month_s >= 4 else fy + 1
     if era is not None:
         ey = 1 if era_year == "元" else int(era_year)
-        if _ERA_OFFSET[era] + ey != year:
+        if ERA[era] + ey != year:
             raise MigrationError(
-                f"月ラベルの和暦年と年度番号が矛盾: {source_ref!r} は {_ERA_OFFSET[era] + ey} 年、"
+                f"月ラベルの和暦年と年度番号が矛盾: {source_ref!r} は {ERA[era] + ey} 年、"
                 f"年度 {fiscal_year} からは {year} 年（row_id={row_id!r}）"
             )
     return f"{year:04d}-{month_s:02d}"
@@ -654,18 +690,23 @@ year_bounds = _year_bounds
 month_bounds = _month_bounds
 
 
-def _strip_tz(label: str, source_id: str | None) -> str:
+def _strip_tz(label: str, source_id: str | None, utc_offset: str | None) -> str:
     """25桁の `'YYYY-MM-DDTHH:MM:SS+09:00'` から時刻帯を落として、19桁の
     時刻帯なしローカル時刻にする（T1: `period_start`/`period_end` は時刻帯を
     持たない。原表記は `period_raw` として呼び出し側 `b03` が別途保持する）。
 
-    `+09:00` 以外のオフセットは実データに存在しない想定外の形として扱い、
-    推測で変換せず即座に止める（`_expected_tz_suffix` のコメント参照。
-    2026-09-15実測で全717,839行中25桁の全行が `+09:00` であることを確認済み）。
+    末尾は行の出典の region の `utc_offset`（`registry/region.yaml`）と一致していなければならない。
+    `utc_offset` が渡されない（region が引けない）・食い違う場合は推測で変換せず即座に止める
+    （2026-09-15実測で全717,839行中25桁の全行が '+09:00' であることを確認済み）。
     """
-    if len(label) != 25 or label[19:] != _expected_tz_suffix():
+    if utc_offset is None:
         raise MigrationError(
-            f"時刻ラベルの形が想定外（25桁・末尾 {_expected_tz_suffix()!r} のみ対応）: "
+            f"25桁の時刻ラベルの時刻帯を検査できない（region の utc_offset が渡されていない）: "
+            f"{label!r}（source_id={source_id!r}）"
+        )
+    if len(label) != 25 or label[19:] != utc_offset:
+        raise MigrationError(
+            f"時刻ラベルの形が想定外（25桁・末尾 {utc_offset!r}＝その出典の region の時刻帯のみ対応）: "
             f"{label!r}（source_id={source_id!r}）。実データでは起きないはずの形。"
         )
     return label[:19]
@@ -711,8 +752,11 @@ def compute_period(
     usage: PeriodExceptionUsage,
     time_conventions: dict[str, TimeLabelConvention] | None = None,
     time_usage: TimeLabelConventionUsage | None = None,
+    utc_offset: str | None = None,
 ) -> tuple[str, str, str]:
     """`(period_grain, period_start, period_end)` を返す。
+
+    `utc_offset`: 行の出典の region の時刻帯（25桁ラベルの接尾辞の検査に使う。25桁以外では不要）。
 
     - `measured_on` が10桁: `period_grain='day'`、`period_start=period_end=measured_on`。
       `value_grain` が `'day'` でなければ、通常データには現れない想定外の形なので
@@ -753,7 +797,7 @@ def compute_period(
 
     if n == 25:
         if value_grain == "instant":
-            label19 = _strip_tz(measured_on, source_id)
+            label19 = _strip_tz(measured_on, source_id, utc_offset)
             return "instant", label19, label19
         if value_grain == "hour":
             conventions = time_conventions or {}
@@ -762,7 +806,7 @@ def compute_period(
                 raise UnknownTimeLabelConventionError(source_id, value_grain)
             if time_usage is not None:
                 time_usage.mark_used(source_id)
-            label19 = _strip_tz(measured_on, source_id)
+            label19 = _strip_tz(measured_on, source_id, utc_offset)
             # conv.convention は load_time_label_conventions が
             # _SUPPORTED_TIME_LABEL_CONVENTIONS で既に絞っているので、
             # ここでは唯一の対応値（hour_ending）を前提にしてよい。

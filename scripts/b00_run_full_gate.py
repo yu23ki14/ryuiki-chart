@@ -63,6 +63,8 @@ PIPELINE_EXPLICIT_FILES = (
     # する（scripts/ 直下の単体ファイルで、b0*/b1* にも scripts/registry/ にも
     # マッチしない。code-review 指摘）。
     "scripts/taxon_namespaces.py",
+    # scripts/migrate/period.py が import する元号表（requests 非依存。Issue #32-2）。
+    "scripts/era_table.py",
     # scripts/registry/common.py が SCHEMA_SQL として読む（同じく scripts/ 直下の
     # 単体ファイル。code-review 指摘）。
     "scripts/schema_registry.sql",
