@@ -55,6 +55,10 @@ def test_normal_case_resolves_all_rows(tmp_path):
         "scientific_name, is_alien "
         "FROM occurrence"
     )}
+    # 系譜（Issue #45）: #34 で増えた registry の読み取り（taxon_assessment）も自動で載る。
+    lineage_keys = set(common.read_recorded_inputs(conn, "occurrence"))
+    assert {"ext:registry.taxon_assessment", "ext:registry.taxon", "ext:registry.place_source_ref"} <= lineage_keys
+    assert "ext:ryuiki.organism_records" in lineage_keys
     conn.close()
 
     gbif_row = rows["gbif__1"]
