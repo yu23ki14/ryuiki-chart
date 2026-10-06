@@ -1229,122 +1229,122 @@ def build_cube(
     （モジュール docstring「SQLite の版を守る」参照）。
     """
     common.require_sqlite_version()
-    # 段階間の指紋（Issue #37 #1）: b03 が最後に記録した observation の指紋と
+    # 段階間の指紋（Issue #37 #1・#45）: b03 が最後に記録した observation の指紋と
     # 今の observation の内容が一致することを、集計を始める前に確認する
     # （b03 が別内容で再実行された後、b04 が再実行されていない事故を検出する）。
-    # 戻り値（observation の現在の指紋）は observation_agg の系譜（inputs）に
-    # そのまま使う——ここで確認済みの値を再利用するだけで、observation を
-    # もう一度読み直しはしない。
-    observation_fingerprint = common.assert_stage_fingerprint_fresh(
-        conn, "observation",
-        rebuild_hint="scripts/b03_build_observation.py を再実行すること。",
-    )
-    # below_lod が censoring_limit を必ず持つことは b03 が保証済み（/simplify 指摘2）。
-    params = (built_from, spec_version)
-    common.attach_readonly(conn, registry_db, "reg")
-
-    # 単位の証拠検査（D3、モジュール docstring「単位の証拠検査」節参照）。
-    # observation_agg を作り始める前に確認する（observation_agg 自体は unit_raw を
-    # 持たないため、この検証ができるのは observation を直接読めるここだけ）。
-    # 呼び出し側が渡した `unit_evidence_declarations_path`（既定は実ファイル。
-    # 上記 docstring 参照）をそのまま `_assert_unit_evidence()` に渡す。
-    unit_evidence_stats = _assert_unit_evidence(conn, declarations_path=unit_evidence_declarations_path)
-
-    # 自己不変条件（Issue #48 PR-5: v1 射影 b05 から移した。`migrate/cube_invariants.py`）。
-    # 系列の逆引き（alias・単位表記）が一意でなければ、キューブのセルがどの出典・
-    # どの単位の系列なのか決まらない。
-    cube_invariants.assert_alias_is_function(conn)
-    cube_invariants.assert_alias_tuple_maps_to_single_dataset(conn)
-    cube_invariants.assert_unit_raw_is_function(conn)
-
-    conn.execute(_CREATE_OBS_IMPUTED_VIEW_SQL)
-
-    with common.staged_table(
-        conn, "observation_agg", _CREATE_OBSERVATION_AGG_SQL,
-        fingerprint_inputs={"observation": observation_fingerprint},
-        fingerprint_spec_version=spec_version,
-    ) as staging:
-        insert_cols = ", ".join(
-            DIM_COLUMNS
-            + ["value_zero", "value_lod", "n", "n_censored", "n_not_detected", "n_places", "built_from", "spec_version"]
+    # 系譜（observation_agg の inputs）は手で書かない——`lineage` が段の先頭から
+    # 実際に読んだ表（observation・registry の `reg`）を集め、`staged_table` が
+    # 差し替え時に自動で記録する。`verify` していない上流を読めば止まる。
+    with common.LineageTracker(conn, external={"reg": common.registry_external(registry_db)}) as lineage:
+        observation_fingerprint = lineage.verify(
+            "observation", rebuild_hint="scripts/b03_build_observation.py を再実行すること。",
         )
-        insert_sql = f'INSERT INTO "{staging}" ({insert_cols}) '
+        # below_lod が censoring_limit を必ず持つことは b03 が保証済み（/simplify 指摘2）。
+        params = (built_from, spec_version)
+        common.attach_readonly(conn, registry_db, "reg")
 
-        # 日次（T4-2）。C-2: COUNT(*) を打ち直さず、直前の INSERT の
-        # cursor.rowcount を積み上げて件数にする。
-        common.replace_table(conn, "day_stats", f"CREATE TEMP TABLE day_stats AS {_day_stats_sql()}")
-        n_day = 0
-        for stat, vz_col, vl_col in _STAT_VALUE_COLUMNS:
-            cur = conn.execute(insert_sql + _day_expand_sql(stat, vz_col, vl_col), params)
-            n_day += cur.rowcount
-        n_day += conn.execute(insert_sql + _day_sum_expand_sql(), params).rowcount
+        # 単位の証拠検査（D3、モジュール docstring「単位の証拠検査」節参照）。
+        # observation_agg を作り始める前に確認する（observation_agg 自体は unit_raw を
+        # 持たないため、この検証ができるのは observation を直接読めるここだけ）。
+        # 呼び出し側が渡した `unit_evidence_declarations_path`（既定は実ファイル。
+        # 上記 docstring 参照）をそのまま `_assert_unit_evidence()` に渡す。
+        unit_evidence_stats = _assert_unit_evidence(conn, declarations_path=unit_evidence_declarations_path)
 
-        # 月次（日次から積み上げ。C-1: cube_day を経由せず staging を直接読む）。
-        n_month_from_day = conn.execute(insert_sql + _month_from_day_sql(staging), params).rowcount
+        # 自己不変条件（Issue #48 PR-5: v1 射影 b05 から移した。`migrate/cube_invariants.py`）。
+        # 系列の逆引き（alias・単位表記）が一意でなければ、キューブのセルがどの出典・
+        # どの単位の系列なのか決まらない。
+        cube_invariants.assert_alias_is_function(conn)
+        cube_invariants.assert_alias_tuple_maps_to_single_dataset(conn)
+        cube_invariants.assert_unit_raw_is_function(conn)
 
-        # 年次（日次から積み上げ）。mean/min/max を1本の GROUP BY でまとめて
-        # 計算し、stat リテラルと対応する値列だけを変えた3本の INSERT に展開する。
-        common.replace_table(
-            conn, "year_from_day_stats",
-            f"CREATE TEMP TABLE year_from_day_stats AS {_year_from_day_stats_sql(staging)}",
-        )
-        n_year_from_day = 0
-        for stat, vz_col, vl_col in _STAT_VALUE_COLUMNS:
-            cur = conn.execute(insert_sql + _year_from_day_expand_sql(stat, vz_col, vl_col), params)
-            n_year_from_day += cur.rowcount
+        conn.execute(_CREATE_OBS_IMPUTED_VIEW_SQL)
 
-        # 月次（出典配布側。jma_monthly。年次の出典配布セルと対称）。
-        common.replace_table(
-            conn, "month_source_stats", f"CREATE TEMP TABLE month_source_stats AS {_month_source_stats_sql()}"
-        )
-        n_month_source = 0
-        for stat, vz_col, vl_col in _STAT_VALUE_COLUMNS:
-            cur = conn.execute(insert_sql + _month_source_expand_sql(stat, vz_col, vl_col), params)
-            n_month_source += cur.rowcount
-
-        # 年次（出典配布側）。
-        common.replace_table(
-            conn, "year_source_stats", f"CREATE TEMP TABLE year_source_stats AS {_year_source_stats_sql()}"
-        )
-        n_year_source = 0
-        for stat, vz_col, vl_col in _STAT_VALUE_COLUMNS:
-            cur = conn.execute(insert_sql + _year_source_expand_sql(stat, vz_col, vl_col), params)
-            n_year_source += cur.rowcount
-
-        # 年次・年度（出典が月で配った観測から。Issue #32-2。観測の行から直接再集計）。
-        rollup_grains = period.declared_rollup_grains(period.load_period_exceptions(period_exceptions_path))
-        n_year_from_month = 0
-        for grain in rollup_grains:
-            common.replace_table(
-                conn, "year_from_month_stats",
-                f"CREATE TEMP TABLE year_from_month_stats AS {_year_from_month_stats_sql(grain)}",
+        with common.staged_table(
+            conn, "observation_agg", _CREATE_OBSERVATION_AGG_SQL,
+            lineage=lineage,
+            fingerprint_spec_version=spec_version,
+        ) as staging:
+            insert_cols = ", ".join(
+                DIM_COLUMNS
+                + ["value_zero", "value_lod", "n", "n_censored", "n_not_detected", "n_places", "built_from", "spec_version"]
             )
+            insert_sql = f'INSERT INTO "{staging}" ({insert_cols}) '
+
+            # 日次（T4-2）。C-2: COUNT(*) を打ち直さず、直前の INSERT の
+            # cursor.rowcount を積み上げて件数にする。
+            common.replace_table(conn, "day_stats", f"CREATE TEMP TABLE day_stats AS {_day_stats_sql()}")
+            n_day = 0
             for stat, vz_col, vl_col in _STAT_VALUE_COLUMNS:
-                cur = conn.execute(insert_sql + _year_from_month_expand_sql(stat, vz_col, vl_col), params)
-                n_year_from_month += cur.rowcount
+                cur = conn.execute(insert_sql + _day_expand_sql(stat, vz_col, vl_col), params)
+                n_day += cur.rowcount
+            n_day += conn.execute(insert_sql + _day_sum_expand_sql(), params).rowcount
 
-        # B-4: 一時テーブルの DROP をループに（cube_day は C-1 で無くなった）。
-        for t in ("day_stats", "year_from_day_stats", "month_source_stats", "year_source_stats", "year_from_month_stats"):
-            conn.execute(f'DROP TABLE IF EXISTS "{t}"')
-        conn.execute("DROP VIEW IF EXISTS obs_imputed")
+            # 月次（日次から積み上げ。C-1: cube_day を経由せず staging を直接読む）。
+            n_month_from_day = conn.execute(insert_sql + _month_from_day_sql(staging), params).rowcount
 
-        # 次元キーが本当に一意か（同じキーの行が複数できていないか）を確認する
-        # （C-3）。ここで失敗すれば staged_table が作業用テーブルを破棄し、
-        # 前回の observation_agg がそのまま残る（A-1）。
-        _assert_dimension_key_unique(conn, staging)
+            # 年次（日次から積み上げ）。mean/min/max を1本の GROUP BY でまとめて
+            # 計算し、stat リテラルと対応する値列だけを変えた3本の INSERT に展開する。
+            common.replace_table(
+                conn, "year_from_day_stats",
+                f"CREATE TEMP TABLE year_from_day_stats AS {_year_from_day_stats_sql(staging)}",
+            )
+            n_year_from_day = 0
+            for stat, vz_col, vl_col in _STAT_VALUE_COLUMNS:
+                cur = conn.execute(insert_sql + _year_from_day_expand_sql(stat, vz_col, vl_col), params)
+                n_year_from_day += cur.rowcount
 
-        # value_zero/value_lod の3つの不変条件（ADR-0009 決定4）。検証と
-        # 統計収集を分ける（/code-review 指摘13）。
-        _assert_value_zero_lod_invariants(conn, staging)
-        # T6: 毎時→日次の件数・Σn・min・max が observation と一致する（移設）。
-        cube_invariants.verify_hourly_daily_rollup(conn, staging)
-        # Issue #32-2: 月 → 年・年度の積み上げの保存則（n・検閲件数の和、値の min/max）。
-        month_rollup_stats = cube_invariants.verify_month_year_rollup(conn, staging, rollup_grains)
-        # 無作為抽出したセルを observation から独立に求め直す（Issue #48 PR-5 §2.3）。
-        sample_stats = _assert_sampled_cells_recompute_from_observation(
-            conn, staging, observation_fingerprint, spec_version,
-        )
-        value_stats = _collect_value_zero_lod_stats(conn, staging)
+            # 月次（出典配布側。jma_monthly。年次の出典配布セルと対称）。
+            common.replace_table(
+                conn, "month_source_stats", f"CREATE TEMP TABLE month_source_stats AS {_month_source_stats_sql()}"
+            )
+            n_month_source = 0
+            for stat, vz_col, vl_col in _STAT_VALUE_COLUMNS:
+                cur = conn.execute(insert_sql + _month_source_expand_sql(stat, vz_col, vl_col), params)
+                n_month_source += cur.rowcount
+
+            # 年次（出典配布側）。
+            common.replace_table(
+                conn, "year_source_stats", f"CREATE TEMP TABLE year_source_stats AS {_year_source_stats_sql()}"
+            )
+            n_year_source = 0
+            for stat, vz_col, vl_col in _STAT_VALUE_COLUMNS:
+                cur = conn.execute(insert_sql + _year_source_expand_sql(stat, vz_col, vl_col), params)
+                n_year_source += cur.rowcount
+
+            # 年次・年度（出典が月で配った観測から。Issue #32-2。観測の行から直接再集計）。
+            rollup_grains = period.declared_rollup_grains(period.load_period_exceptions(period_exceptions_path))
+            n_year_from_month = 0
+            for grain in rollup_grains:
+                common.replace_table(
+                    conn, "year_from_month_stats",
+                    f"CREATE TEMP TABLE year_from_month_stats AS {_year_from_month_stats_sql(grain)}",
+                )
+                for stat, vz_col, vl_col in _STAT_VALUE_COLUMNS:
+                    cur = conn.execute(insert_sql + _year_from_month_expand_sql(stat, vz_col, vl_col), params)
+                    n_year_from_month += cur.rowcount
+
+            # B-4: 一時テーブルの DROP をループに（cube_day は C-1 で無くなった）。
+            for t in ("day_stats", "year_from_day_stats", "month_source_stats", "year_source_stats", "year_from_month_stats"):
+                conn.execute(f'DROP TABLE IF EXISTS "{t}"')
+            conn.execute("DROP VIEW IF EXISTS obs_imputed")
+
+            # 次元キーが本当に一意か（同じキーの行が複数できていないか）を確認する
+            # （C-3）。ここで失敗すれば staged_table が作業用テーブルを破棄し、
+            # 前回の observation_agg がそのまま残る（A-1）。
+            _assert_dimension_key_unique(conn, staging)
+
+            # value_zero/value_lod の3つの不変条件（ADR-0009 決定4）。検証と
+            # 統計収集を分ける（/code-review 指摘13）。
+            _assert_value_zero_lod_invariants(conn, staging)
+            # T6: 毎時→日次の件数・Σn・min・max が observation と一致する（移設）。
+            cube_invariants.verify_hourly_daily_rollup(conn, staging)
+            # Issue #32-2: 月 → 年・年度の積み上げの保存則（n・検閲件数の和、値の min/max）。
+            month_rollup_stats = cube_invariants.verify_month_year_rollup(conn, staging, rollup_grains)
+            # 無作為抽出したセルを observation から独立に求め直す（Issue #48 PR-5 §2.3）。
+            sample_stats = _assert_sampled_cells_recompute_from_observation(
+                conn, staging, observation_fingerprint, spec_version,
+            )
+            value_stats = _collect_value_zero_lod_stats(conn, staging)
     # ここまで来たら staged_table が観測差し替えと同じトランザクションで
     # observation_agg の指紋・系譜（消費した observation の指紋）も記録済み
     # （Issue #37 #1・/code-review 指摘の根本対応。「内容は新しいが指紋は

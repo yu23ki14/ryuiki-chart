@@ -77,6 +77,11 @@ def test_normal_case_resolves_all_rows_and_maps_censoring(tmp_path):
             "FROM observation WHERE source_table='measurements'"
         )
     }
+    # 系譜（Issue #45）: 読み取りから自動生成。原本の measurements と registry の表が ext: で入る。
+    lineage_keys = set(common.read_recorded_inputs(conn, "observation"))
+    assert "ext:ryuiki.measurements" in lineage_keys
+    assert {"ext:registry.variable_alias", "ext:registry.place_source_ref", "ext:registry.place"} <= lineage_keys
+    assert lineage_keys <= {k for k in lineage_keys if k.startswith("ext:")}
     conn.close()
     # value_num は censoring='none' のときだけ運ぶ（D2）。below_lod は NULL。
     assert rows["m1"][3] == 1.2  # value_num

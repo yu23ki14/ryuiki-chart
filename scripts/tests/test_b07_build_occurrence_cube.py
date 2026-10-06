@@ -147,6 +147,8 @@ def test_same_year_day_and_month_records_go_to_year_grain(tmp_path):
             "WHERE place_kind = 'grid01' AND grain = 'year'"
         ).fetchone()
         assert cell == ("year", "2020-01-01", "2020-12-31", 3)
+        # 系譜（Issue #45）: 読んだ上流が自動で入る。
+        assert set(common.read_recorded_inputs(conn, "occurrence_agg")) == {"occurrence", "occurrence_place"}
     finally:
         conn.close()
 

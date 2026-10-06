@@ -92,6 +92,12 @@ def test_zero_and_lod_series_per_censoring_branch(tmp_path):
             "WHERE grain='day' AND stat='mean' ORDER BY period_start"
         ).fetchall()
         assert stats["n_day"] == 9  # mean/min/max の3行 × 3日（above_lodの日は無い）
+        # 系譜（Issue #45）: 読み取りから自動生成（observation と registry の表）。
+        lineage_keys = set(common.read_recorded_inputs(conn, "observation_agg"))
+        assert "observation" in lineage_keys
+        assert lineage_keys <= {"observation"} | {k for k in lineage_keys if k.startswith("ext:registry.")}
+        # #31 の unit_basis 検査が読む registry の表も自動で載る。
+        assert {"ext:registry.variable_alias", "ext:registry.unit"} <= lineage_keys
         assert ("2020-01-01", 2.0, 2.0, 1, 0, 0) in day_rows
         assert ("2020-01-02", 0.0, 0.5, 1, 1, 0) in day_rows
         assert ("2020-01-03", None, None, 1, 0, 1) in day_rows

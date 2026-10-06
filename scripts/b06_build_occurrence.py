@@ -464,14 +464,17 @@ def build_and_write_occurrence(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     dest = sqlite3.connect(f"file:{out_path}", uri=True)
     dest.execute("PRAGMA journal_mode=DELETE")
+    # 系譜（Issue #45）: 読み取りから自動生成する（b03 と同じ）。
+    work_external = {"src": common.ryuiki_external(ryuiki_db), "reg": common.registry_external(registry_db)}
     try:
-        with common.staged_table(
-            dest, "occurrence", _CREATE_OCCURRENCE_SQL, fingerprint_inputs={},
+        with common.LineageTracker(dest) as lineage, common.staged_table(
+            dest, "occurrence", _CREATE_OCCURRENCE_SQL, lineage=lineage,
         ) as staging:
             work = sqlite3.connect(":memory:", uri=True)
             try:
                 common.attach_readonly(work, ryuiki_db, "src")
                 common.attach_readonly(work, registry_db, "reg")
+                lineage.watch(work, external=work_external)
                 _assert_known_source_ids(work)
                 taxon_ids = _load_taxon_ids(work)
                 ctx = _IngestContext(
@@ -532,8 +535,8 @@ def build_and_write_occurrence(
             # ここまで来たら with ブロックを正常に抜け、staged_table が
             # 作業用テーブルを本番名 "occurrence" に差し替え、同じ
             # トランザクションで指紋も記録する（Issue #37 #1・/code-review
-            # 指摘の根本対応。`fingerprint_inputs={}`——`occurrence` は基底
-            # テーブルなので系譜は空）。b07/b09 はこの指紋を見て「今の
+            # 指摘の根本対応。`lineage=`——`occurrence` は基底
+            # テーブルで、系譜は原本・registry の ext: 来歴だけ）。b07/b09 はこの指紋を見て「今の
             # occurrence から作った出力か」を検証する。
         # v2 パイプラインの入力＋コードの指紋（Issue #48 PR-0 /simplify 指摘1）:
         # `common.record_v2_input_fingerprint` の docstring 参照

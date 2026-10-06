@@ -499,17 +499,16 @@ tie を等号（`>=`）で明示的に許容している。
   **以下2点は Issue #37（親 #27）で解決済み**:
   1. **段階間の指紋**（`scripts/migrate/common.py` の `record_stage_fingerprint`/
      `assert_stage_fingerprint_fresh`/`compute_table_fingerprint`/
-     `read_recorded_fingerprint`/`read_recorded_inputs`/`track_reads`/
-     `assert_all_reads_verified`）。**設計の正は `scripts/migrate/common.py`
+     `read_recorded_fingerprint`/`read_recorded_inputs`/`LineageTracker`〔Issue #45 で
+     `track_reads`/`assert_all_reads_verified` を置き換え〕）。**設計の正は `scripts/migrate/common.py`
      の該当関数群の直前のモジュールコメント**（指紋の中身・保存場所・
      (a)/(b) の別・(b) の再帰・読み取りの機械監査〔Tier 1〕の設計判断は
      すべてそこに書いてある。ここでは繰り返さない）。以下はこの文書に残す
      測定値・受け入れ基準・段ごとの対応表だけ。
      - **段ごとの読み取り→検証の対応表**（各段の SQL が ATTACH 先のどの表を
-       読んでいるかを grep で確認した結果。`declared` は `track_reads`/
-       `assert_all_reads_verified`〔Tier 1、段単位の粗さ——per-table 精度の
-       自動導出は Tier 2 として別 Issue に切り出す。下記「次の一手」参照〕に
-       渡す宣言集合）:
+       読んでいるかを grep で確認した結果。`declared` は当時の
+       `track_reads`/`assert_all_reads_verified`〔段単位の粗さ。Issue #45 で
+       `LineageTracker` による出力表ごとの自動生成に置き換わった〕に渡した宣言集合）:
 
        | 段 | ATTACH 先で読む表 | (a) 自己一致チェック | (b)/系譜 | Tier 1 機械監査 |
        |---|---|---|---|---|
@@ -583,10 +582,10 @@ tie を等号（`>=`）で明示的に許容している。
          と実際に「内容は新しいが指紋は古い」状態が作れてしまうことも
          再現した（`test_migrate_common.py::
          test_recording_fingerprint_separately_from_the_swap_can_leave_it_stale`）。
-       - 読み取りの機械監査（Tier 1）: `declared` に無い表を JOIN で読むと
-         `assert_all_reads_verified` が止まることを確認した
-         （`test_migrate_common.py::
-         test_assert_all_reads_verified_raises_on_undeclared_join`——
+       - 読み取りの機械監査（Tier 1）: 検証していない表を JOIN で読むと
+         `LineageTracker.resolve` が止まることを確認した（当時は
+         `assert_all_reads_verified`、現在は
+         `test_lineage_auto.py::test_unverified_join_stops_and_keeps_the_previous_table`——
          これが b05 の `cube.observation` 検証漏れと同じ形の見落としを
          機械的に検出できることの確認）。
   2. **`staged_table` の差し替え（`DROP TABLE`→`ALTER TABLE RENAME`）の原子性**は、

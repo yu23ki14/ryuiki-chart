@@ -86,6 +86,11 @@ def test_resolved_and_null_rows(tmp_path):
     assert rows_out["r2"] is None
     kinds = {r[0] for r in conn.execute("SELECT DISTINCT place_kind FROM occurrence_place")}
     assert kinds == {"watershed"}
+    # 系譜（Issue #45）: occurrence（検証済み）と registry・原本 sites が自動で入る。
+    lineage_keys = set(common.read_recorded_inputs(conn, "occurrence_place"))
+    # 出力を左右する registry の place_source_ref・原本の sites も系譜に載る
+    # （staged_table の前の読み取りも含め、段の先頭以降の読み取りは全部載る）。
+    assert {"occurrence", "ext:registry.place_source_ref", "ext:ryuiki.sites"} <= lineage_keys
 
 
 def test_records_without_coordinates_get_no_row(tmp_path):

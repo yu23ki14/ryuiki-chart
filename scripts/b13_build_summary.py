@@ -651,22 +651,24 @@ def build_summary(
     # 確認してしまうと、一部の summary しか使わない環境（単体テストの最小
     # フィクスチャ等）で「他の summary が使う source のテーブルが無い」という
     # 無関係な理由で早期に落ちる——実際に使う直前まで確認を遅らせる）。
-    fingerprint_by_source: dict[str, str] = {}
-
     needs_registry = any(summaries[t].get("join") for t in common.V2_SUMMARY_TABLES)
-    registry_fingerprint = None
+    external = {}
     if needs_registry:
         registry_path = common.resolve_registry_db(
             str(registry_db) if registry_db is not None else None, DEFAULT_REGISTRY_DB,
         )
         _attach_registry(conn, registry_path)
-        registry_fingerprint = common._registry_input_fingerprint(registry_path)
+        external = {_JOIN_ALIAS: common.registry_external(registry_path)}
 
+    # 系譜（Issue #45）: 手で組まない。出力表ごとに `begin_output()` し、その表の構築が
+    # 実際に読んだ source と registry の表から自動生成する（registry の鮮度の正は
+    # check_v2_fresh の registry.input_fingerprint。ここは `ext:` の来歴）。
+    lineage = common.LineageTracker(conn, external=external)
     try:
-        return _build_summary_tables(
-            conn, summaries, fingerprint_by_source, registry_fingerprint,
-            built_from=built_from, spec_version=spec_version,
-        )
+        with lineage:
+            return _build_summary_tables(
+                conn, summaries, lineage, built_from=built_from, spec_version=spec_version,
+            )
     finally:
         if needs_registry:
             conn.execute(f"DETACH DATABASE {_JOIN_ALIAS}")
@@ -696,34 +698,24 @@ def _attach_registry(conn: sqlite3.Connection, registry_path: pathlib.Path) -> N
 
 
 def _build_summary_tables(
-    conn: sqlite3.Connection, summaries: dict, fingerprint_by_source: dict[str, str],
-    registry_fingerprint: str | None, *, built_from: str | None, spec_version: str,
+    conn: sqlite3.Connection, summaries: dict, lineage: common.LineageTracker, *,
+    built_from: str | None, spec_version: str,
 ) -> dict[str, dict]:
     stats: dict[str, dict] = {}
     for table_name in common.V2_SUMMARY_TABLES:
         spec = summaries[table_name]
         source = spec["source"]
-        if source not in fingerprint_by_source:
-            fingerprint_by_source[source] = common.assert_stage_fingerprint_fresh(
-                conn, source, upstream_schemas={},
-                rebuild_hint=_REBUILD_HINT_BY_SOURCE[source],
-            )
+        lineage.verify(source, rebuild_hint=_REBUILD_HINT_BY_SOURCE[source])  # 冪等（source ごとに実検証は1回）
         table_built_from = built_from if built_from is not None else _default_built_from(source)
         if spec.get("join") and built_from is None:
             table_built_from += f" + {_JOIN_ALIAS}:{','.join(spec['join'])}"
         create_sql = _create_table_sql(spec)
         insert_sql, insert_params = _insert_select_sql(spec, built_from=table_built_from, spec_version=spec_version)
-        lineage = {source: fingerprint_by_source[source]}
-        if spec.get("join"):
-            # registry は pipeline_fingerprint を持たない別機構（registry_build）なので、
-            # 系譜には「消費した時点の registry の入力指紋」を値として残す（鮮度判定は
-            # check_v2_fresh が v2 全体の入力指紋として registry.input_fingerprint を
-            # 見ているので、ここは来歴の記録）。
-            lineage[f"{_JOIN_ALIAS}:{','.join(spec['join'])}"] = registry_fingerprint
 
+        lineage.begin_output()  # 出力表ごとの系譜（この表の構築が読むものだけ）
         with common.staged_table(
             conn, table_name, create_sql,
-            fingerprint_inputs=lineage,
+            lineage=lineage,
             fingerprint_spec_version=spec_version,
         ) as staging:
             cur = conn.execute(insert_sql.format(table=f'"{staging}"'), insert_params)

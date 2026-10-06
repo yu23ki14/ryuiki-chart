@@ -87,9 +87,14 @@ PR-5 で v1 射影（b05/b08）から移した。キューブ・registry だけ�
   それぞれの構築関数の先頭〔モジュール読み込み時点ではない〕で `scripts/migrate/common.py` の `require_sqlite_version()` を呼んで検証する。
   加算アルゴリズムが3.43で変わり、それより前だと平均値が黙って変わる行がある。`FULL OUTER JOIN` は3.39未満だとそもそも使えない）。
   見るのは `sqlite3` CLI ではなく Python 同梱の `sqlite3` モジュールのバージョン。詳細は `docs/adr/0021-observation-grain-and-cube-key.md`。
-- **段階間の指紋**（`scripts/migrate/common.py` の `record_stage_fingerprint`/`assert_stage_fingerprint_fresh`/`track_reads`）:
-  `b04`/`b07`/`b09` は上流の段の出力が今も一致するか（(a)、系譜を再帰的に(b)）・実際に読んだ表を検証し忘れていないか
-  （読み取りの機械監査）を読み込み時に確認し、崩れていれば止まる。設計・実測は `docs/plans/PHASE_B_FACT_SLICE.md` 参照。
+- **段階間の指紋**（`scripts/migrate/common.py` の `record_stage_fingerprint`/`assert_stage_fingerprint_fresh`/`LineageTracker`）:
+  `b04`/`b07`/`b09`/`b13` は上流の段の出力が今も一致するか（(a)、系譜を再帰的に(b)）を読み込み時に確認し、崩れていれば止まる。
+  **系譜（`pipeline_fingerprint.inputs`）は手で書かない**（Issue #45）: 各段は `LineageTracker(conn, external=...)` を張り、
+  上流は `lineage.verify(...)`（冪等。上流の系譜も再帰検査する）、段の先頭で `with LineageTracker(...) as lineage:`（そこから段の読み取りは全部系譜に載る。例外時も authorizer は解除される）、出力は `staged_table(..., lineage=lineage)`。差し替え時に、実際に読んだ表（`sqlite3.set_authorizer`
+  の `SQLITE_READ`）から出力表ごとに `inputs` を自動生成する。検証していない上流を読めば止まり、宣言の無い ATTACH 先も止まる。
+  registry・原本は ATTACH の別名に依存しない論理名の `ext:<registry|ryuiki>.<table>` として来歴に載る（鮮度の正は `pipeline_input_fingerprint`）。b03/b06 は別接続
+  （原本・registry を読む作業用接続）を `lineage.watch(work, external=...)` で合算する。b13 は表ごとに `lineage.begin_output()`。
+  設計は `docs/plans/ISSUE45_AUTO_LINEAGE.md`・`docs/plans/PHASE_B_FACT_SLICE.md`。
 - テスト・検証戦略は4層（フィクスチャ・縮小サンプル・全量の実行証明・段階間の指紋）。
   詳細は `docs/adr/0027-test-and-verification-strategy.md`。パイプラインのパス
   （`scripts/b0*.py`/`b1*.py`・`scripts/migrate/`・`scripts/reconcile/`・`scripts/registry/`・`web/src/lib/cube` 等、

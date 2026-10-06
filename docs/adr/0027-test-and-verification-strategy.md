@@ -78,7 +78,7 @@ README「未着手」表は「テスト・検証戦略」を独立の論点と�
   CI の `full-gate-proof-check` ジョブ、原本を必要としない（新設）。
 
 ### 層4: 段階間の指紋（Issue #37 #1。`scripts/migrate/common.py` の
-`record_stage_fingerprint`/`assert_stage_fingerprint_fresh`/`track_reads`）
+`record_stage_fingerprint`/`assert_stage_fingerprint_fresh`/`LineageTracker`）
 
 - **何を保証するか**: パイプラインの**各実行時**に、ある段の出力が
   「今の上流の出力から作られた状態」であることと、「実際に読んだ表を
