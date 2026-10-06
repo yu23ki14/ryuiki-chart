@@ -1,36 +1,19 @@
 import { GENERATED_CAVEAT_SCOPE } from "@/lib/registry/generated-client";
-import { tryCaveatBody, caveatKeysForTables, caveatsForTables, type CaveatRef } from "@/lib/registry/lookup-client";
+import { tryCaveatBody } from "@/lib/registry/lookup-client";
 
 /**
- * ツールが触れたテーブル名から、該当する注記を決定論的に引く。
- *
- * 中身は `web/src/lib/registry/lookup.ts`（レジストリの `caveat` / `caveat_scope` 由来）に
- * 移した（docs/plans/PHASE_A.md §A-7）。以前はここにテーブル→注記のマッピングを
- * 直書きしていたが、同じ情報がレジストリ（`registry/caveat.yaml` → `data/db/registry.sqlite`）に
- * 一級のデータとして載ったので、そちらを正とする。
- *
- * このファイル自体が持つ役割は変わっていない: モデルに注意書きを書かせない
- * （書かせると省略されうる）ための決定論的な参照点であること、
- * `caveatsForTables` の戻り値の形・順序・重複排除規則（`caveats.test.ts` の34ケース）を
- * 1つも変えないこと。
- *
- * server-only にしていないのも変わらず意図的。ツール結果には注記の「キー」だけを載せ
- * （本文はシステムプロンプトが持っているのでモデルは二重に受け取らなくてよい）、
- * 本文への引き直しは証跡カード（クライアント）が caveatText でやる。
- * `lookup.ts` は generated.ts（クライアント安全・同期）だけを見ているので、
- * このファイルもクライアントから import して問題ない。
+ * ツール結果の注記キー -> 本文。モデルに注意書きを書かせない（書かせると省略されうる）ため、
+ * 注記は `web/src/lib/cube/caveats.ts`（`caveatKeysForFacets`。レジストリの `caveat_scope` 由来）が
+ * 決定論的に引き、ツール結果にはキーだけを載せる（本文はシステムプロンプトが持っている）。
+ * 本文への引き直しは証跡カード（クライアント）が `caveatText` でやるので、server-only にしていない。
  */
-
-export type { CaveatRef };
-export { caveatsForTables, caveatKeysForTables };
 
 /**
  * 全注記のキー -> 本文。証跡カード（クライアント）とシステムプロンプトの両方が引く。
  *
- * 対象はテーブルに紐づく注記（`caveat_scope` に table/table_prefix/table_synthetic の
- * 行があるもの）だけ。`fishClass` / `inatBackfill` はテーブル→注記のマッピングに
- * 一度も登場しない（`BiotaExplorer.tsx` が `caveatBody("fishClass"/"inatBackfill")` を
- * 直接引いている）ため、以前の実装と同じくここには含まれない。
+ * 対象は `caveat_scope` に行があるものだけ。`fishClass` / `inatBackfill` は
+ * `registry/caveat_scope.yaml` の `unscoped`（意図して付けない）で、`BiotaExplorer.tsx` が
+ * `caveatBody("fishClass"/"inatBackfill")` を直接引くため、ここには含まれない。
  */
 export const CAVEAT_TEXT: Record<string, string> = Object.fromEntries(
   [...new Set(GENERATED_CAVEAT_SCOPE.map((s) => s.caveatKey))].map((key) => [key, tryCaveatBody(key) ?? key]),

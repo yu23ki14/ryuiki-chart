@@ -9,6 +9,7 @@ import { MapCanvas } from "@/components/map/MapCanvas";
 import { SERIES, ZONE_COLORS, ZONE_LABELS, ZONE_ELEV } from "@/components/viz/palette";
 import { Btn, Stat, nf, Provenance, Spinner } from "@/components/ui";
 import { caveatBody } from "@/lib/registry/lookup-client";
+import { variableCaveats } from "@/lib/cube/caveats";
 import { VARIABLE_LABEL } from "@/lib/registry/generated-client";
 import { basisOfCell, type Basis } from "@/lib/cube/cell-basis";
 import { MUNICIPALITY_LABEL } from "@/lib/municipality";
@@ -291,6 +292,7 @@ export function SiteDetail({ site, variables }: { site: Site; variables: Variabl
             note={
               <>
                 {caveatBody("duplicates")} {caveatBody("censoredLod")}
+                {variableCaveats(variableId).map((c) => ` ${c.text}`)}
               </>
             }
           >

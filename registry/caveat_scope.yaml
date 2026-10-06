@@ -1,0 +1,68 @@
+# 注記（registry/caveat.yaml）がどの範囲に掛かるか（caveat_scope の宣言。Issue #35）。
+# 以前は scripts/registry/build_caveat.py の Python 定数だった。build_caveat.py はこのファイルを
+# 読んで検査し、caveat_scope に書くだけ。語彙の根拠は docs/adr/0013-caveats.md
+# 「scope の語彙（2026-10-06 追記）」。
+#
+# scope_kind は ADR-0013 の6種。scope_ref は ID そのもの、または `キー=値`（`&` で連結）の選択式。
+# 実行時の照合は文字列の完全一致で、選択式は解釈しない（web/src/lib/cube/caveats.ts の
+# facetsForSeries 等が同じ文字列を作る）。selectors に無いキーは build_caveat.py が止める。
+#
+# 並び: sort_order は「同じ (kind, ref) の中での宣言順」。priority は大きいほど先頭
+# （synthetic だけ 1）。
+#
+# cells.notes 由来の注記の scope はここに書かない（build_caveat.py が cells.sqlite から導出する。
+# source_edition の `doc_id=<doc_id>`、observation_set の `doc_table=<doc_id>#<table_id>`）。
+
+vocabulary: [variable, place, source_edition, observation_set, dataset, taxon]
+
+# kind ごとに許す選択式のキー。ID 参照を許す kind は id_ok: true
+# （variable は variable.yaml の variable_id、dataset は論理データセット名）。
+selectors:
+  variable: {id_ok: true, keys: [theme]}
+  place: {id_ok: false, keys: [place_kind]}
+  source_edition: {id_ok: false, keys: [source_id, doc_id]}
+  observation_set: {id_ok: false, keys: [is_synthetic, variable, unit_id, doc_table]}
+  dataset: {id_ok: true, keys: []}
+  taxon: {id_ok: false, keys: []}  # 未使用。使うときに実在の検証を足してから id_ok にする
+
+# 値が閉じた集合のもの（実在の値。build_caveat.py が scope_ref の値と照合し、無ければ止める）。
+# variable_id・theme は registry/variable.yaml、doc_id・doc_table は cells.notes から検証するので
+# ここには書かない。place_kind は place.place_kind、source_id は taxon_assessment.source_id、
+# dataset は variable_alias.csv の dataset 列＋配信表 sites・生物レコード organism_records。
+values:
+  place_kind: [site, zone, grid01, watershed]
+  source_id: [moe_ias_list]
+  dataset: [measurements, organism_records, sites]
+
+scopes:
+  # 配信表 sites（地点台帳）を dataset として扱う（v1 の表名で引く経路は廃止）。
+  - {kind: dataset, ref: sites, caveats: [zone, municipality]}
+  # zone は地点（site）にも流域集計（zone）にも掛かる。municipality は地点固有。
+  - {kind: place, ref: place_kind=site, caveats: [zone, municipality]}
+  - {kind: place, ref: place_kind=zone, caveats: [zone]}
+
+  - {kind: dataset, ref: measurements, caveats: [measuredOn, censoredLod, duplicates]}
+  # 定量上限超えの26行は全て透明度（Issue #35 レビューで dataset 全体から狭めた）。
+  - {kind: variable, ref: "common:variable:water.transparency", caveats: [aboveLod]}
+  # 感潮域の逆流。以前は hydro.flow の description_ja への埋め込み。
+  - {kind: variable, ref: "common:variable:hydro.flow", caveats: [flowTidalBackflow]}
+  # 単位が付かない系列。対象の variable は registry/variable_alias.csv の unit_id が空の行から
+  # build_caveat.py が機械的に導出する（ref_template の {variable_id} に代入）。
+  # 流量の unit_id は #31 で variable_alias.csv に入るので、この導出から自動で外れる。
+  - {kind: observation_set, ref_from: unit_unknown_variables, ref_template: "variable={variable_id}&unit_id=null", caveats: [unitUnknown]}
+
+  - {kind: dataset, ref: organism_records, caveats: [organismSite, effort, regimes, gbifCutoff]}
+  # share は割合（‰）で比べる画面（grid01 の種別トレンド）だけに掛かる。流域の表は生の件数。
+  - {kind: place, ref: place_kind=grid01, caveats: [share, effort]}
+  - {kind: source_edition, ref: source_id=moe_ias_list, caveats: [isAlien]}
+  # 土地利用の定義変更は、本文が名指しする3区分（幹線交通用地・道路・鉄道）だけが影響を受けるが、
+  # 他の10区分は日本語名が一致するだけで定義の一致は確認できていないので、指標全体（theme）に掛ける
+  # （推測で狭めない。docs/plans/ISSUE35_CAVEAT.md §7-3）。
+  - {kind: variable, ref: theme=landuse, caveats: [landuseDefinitionChange]}
+  # 合成データ（is_synthetic=1）。現行の配信経路には載らない休眠の注記。先頭に出す。
+  - {kind: observation_set, ref: is_synthetic=1, priority: 1, caveats: [synthetic]}
+
+# どの範囲にも自動では付けない注記（画面が caveatBody で直接引くもの。AI のプロンプトには全注記が
+# 入る）。意図して付けないことを宣言する（宣言漏れと区別するため。build_caveat.py が、ここと
+# scopes の両方に載る・どちらにも載らない注記を止める）。
+unscoped: [fishClass, inatBackfill]

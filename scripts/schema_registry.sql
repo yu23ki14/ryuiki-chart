@@ -300,10 +300,11 @@ CREATE TABLE IF NOT EXISTS caveat (
   quote TEXT
 );
 
--- caveat が掛かる範囲。1注記に対して複数行になりうる(1:N)。scope_kind は「一致方法」だけを
--- 表す(table/table_prefix/cell/cell_table)。「渡されたテーブルの中でどれを先頭に出すか」という
--- 優先規則は scope_kind ではなく priority 列が持つ(既定0。大きいほど優先)。
--- caveatsForTables() の順序復元の方法は scripts/registry/build_caveat.py の docstring 参照。
+-- caveat が掛かる範囲。1注記に対して複数行になりうる(1:N)。scope_kind は ADR-0013 の6種
+-- (variable/place/source_edition/observation_set/dataset/taxon)、scope_ref は ID か キー=値 の選択式
+-- (宣言は registry/caveat_scope.yaml。Issue #35)。「どれを先頭に出すか」という優先規則は
+-- scope_kind ではなく priority 列が持つ(既定0。大きいほど優先)。
+-- 順序復元の方法は scripts/registry/build_caveat.py の docstring 参照。
 CREATE TABLE IF NOT EXISTS caveat_scope (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   caveat_id TEXT,

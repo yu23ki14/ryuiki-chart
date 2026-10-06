@@ -9,6 +9,7 @@ import { ChartFrame, MiniTable } from "@/components/viz/ChartFrame";
 import { SERIES, ZONE_COLORS, ZONE_LABELS, INK } from "@/components/viz/palette";
 import { Btn, inputCls, Spinner, Provenance, nf } from "@/components/ui";
 import { caveatBody } from "@/lib/registry/lookup-client";
+import { variableCaveats } from "@/lib/cube/caveats";
 import { VARIABLE_LABEL } from "@/lib/registry/generated-client";
 import { MUNICIPALITY_LABEL } from "@/lib/municipality";
 import { useJson } from "@/components/useJson";
@@ -450,6 +451,7 @@ function WaterMode({
             <>
               {caveatBody("duplicates")} {caveatBody("censoredLod")}
               {basis === "fiscal_year" && ` ${caveatBody("measuredOn")}`}
+              {variableCaveats(variableId).map((c) => ` ${c.text}`)}
             </>
           }
         >

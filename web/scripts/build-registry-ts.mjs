@@ -161,26 +161,17 @@ const variableAliases = db
     unitBasis: r.unit_basis || null,
   }));
 
-// caveat_scope.scope_kind の既知の語彙（scripts/registry/build_caveat.py の
-// docstring「caveat_scope.scope_kind が取りうる値」参照）。'cell'/'cell_table'
-// （cells.notes 由来）はここに含めない——`caveatsForTables()` の対象外であり続ける
-// 規約（build_caveat.py 参照）を、生成物に混ぜないことでも保証するため。
-// 'table'/'table_prefix' は v1（テーブル名で引く）、'dataset'/'place_kind'/
-// 'source_id'/'variable_theme' は v2（`lib/cube` がキューブのセルから直接引く。
-// Issue #48 PR-1b）。'variable' も同じく v2（`unitUnknown` の scope_ref=variable_id。
-// PR-1 では型だけ予約していたが、Issue #48 PR-2 で最初の行ができた）。
-// `CaveatScopeKind` 型はこの配列から生成する（手書きしない。以前は
-// `"table" | "table_prefix"` を直書きしており、新しい kind を足すたびに
-// 型定義とクエリの WHERE 句を別々に直す必要があった）。
-const CAVEAT_SCOPE_KINDS = [
-  "table",
-  "table_prefix",
-  "dataset",
-  "place_kind",
-  "source_id",
-  "variable_theme",
-  "variable",
-];
+// caveat_scope.scope_kind の語彙は registry/caveat_scope.yaml の `vocabulary`（ADR-0013 の6種）を
+// 読む（二重管理しない。Issue #35）。`CaveatScopeKind` 型もここから生成する。
+// cells.notes 由来（common:caveat:cells.*）の scope は生成物に含めない（下の WHERE 句。
+// 以前は scope_kind で除外していたが、語彙を ADR に寄せたので caveat_id で除く）。
+const CAVEAT_SCOPE_YAML =
+  process.env.RYUIKI_CAVEAT_SCOPE_YAML ?? path.join(REPO, "registry", "caveat_scope.yaml");
+requireFile(CAVEAT_SCOPE_YAML, "caveat_scope.yaml");
+const CAVEAT_SCOPE_KINDS = loadYaml(fs.readFileSync(CAVEAT_SCOPE_YAML, "utf-8")).vocabulary;
+if (!Array.isArray(CAVEAT_SCOPE_KINDS) || CAVEAT_SCOPE_KINDS.length === 0) {
+  throw new Error("registry/caveat_scope.yaml の vocabulary が空");
+}
 
 // cells.notes 由来（common:caveat:cells.*）は除く。18件のみ。
 const CAVEAT_ID_PREFIX = "common:caveat:";
@@ -202,7 +193,7 @@ const caveatScopeKindList = CAVEAT_SCOPE_KINDS.map((k) => `'${k}'`).join(", ");
 const caveatScope = db
   .prepare(
     `SELECT caveat_id, scope_kind, scope_ref, sort_order, priority FROM caveat_scope
-     WHERE scope_kind IN (${caveatScopeKindList})
+     WHERE scope_kind IN (${caveatScopeKindList}) AND caveat_id NOT LIKE '${CELLS_PREFIX}%'
      ORDER BY scope_kind, scope_ref, sort_order`,
   )
   .all()
@@ -581,15 +572,12 @@ export const GENERATED_CAVEATS: readonly GeneratedCaveat[] = ${emitObjectArray(c
 ])};
 
 /**
- * テーブル/v2 facet -> 注記キーのスコープ（caveat_scope の scope_kind in
- * (${CAVEAT_SCOPE_KINDS.map((k) => `'${k}'`).join(", ")})）。
- * cell/cell_table（cells.notes 由来）は含めない。'table'/'table_prefix' は v1
- * （\`caveatsForTables\`、テーブル名で引く）、'dataset'/'place_kind'/'source_id'/
- * 'variable_theme'/'variable' は v2（\`lib/cube/caveats.ts\` の \`caveatsForFacets\`、
- * キューブのセルから直接引く。Issue #48 PR-1b。'variable' の行は PR-2 で足した
- * \`unitUnknown\` の scope_ref=variable_id）。
- * 同じ (scopeKind, scopeRef) の中の並びは sortOrder。scope 同士（渡されたテーブル間）の並びは
- * 呼び出し側がテーブル名を渡す順序と priority（既定0。synthetic だけ1で最優先）に従う
+ * 注記キー -> 範囲（scope）。caveat_scope の scope_kind は ADR-0013 の語彙
+ * (${CAVEAT_SCOPE_KINDS.map((k) => `'${k}'`).join(", ")})。scopeRef は ID か \`キー=値\` の選択式
+ * （registry/caveat_scope.yaml が宣言。照合は文字列の完全一致）。cells.notes 由来は含めない。
+ * 引くのは \`lib/cube/caveats.ts\` の \`caveatsForFacets\`。
+ * 同じ (scopeKind, scopeRef) の中の並びは sortOrder（宣言順）。scope 同士の並びは
+ * 呼び出し側が渡す facet の順序と priority（既定0。synthetic だけ1で最優先）に従う
  * （scripts/registry/build_caveat.py の docstring参照）。
  */
 export const GENERATED_CAVEAT_SCOPE: readonly GeneratedCaveatScope[] = ${emitObjectArray(

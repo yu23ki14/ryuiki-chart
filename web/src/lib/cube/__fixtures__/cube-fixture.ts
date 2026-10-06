@@ -258,9 +258,9 @@ function seed(db: Database.Database): void {
   );
 
   db.prepare(`INSERT INTO caveat (caveat_id, severity, kind, title_ja, body_ja, quote) VALUES ('common:caveat:fx_test','info','data_quality','テスト注記','フィクスチャ用のテスト注記',NULL)`).run();
-  db.prepare(`INSERT INTO caveat_scope (caveat_id, scope_kind, scope_ref, sort_order, priority) VALUES ('common:caveat:fx_test','table','meas_year',0,0)`).run();
-  // facet 行（1b が使う v2 キー。design §6）。1a はこの行を消費しないが、
-  // フィクスチャの内容としては design §7 の要求どおり両方入れておく。
+  db.prepare(`INSERT INTO caveat_scope (caveat_id, scope_kind, scope_ref, sort_order, priority) VALUES ('common:caveat:fx_test','place','place_kind=site',0,0)`).run();
+  // ADR-0013 の語彙（Issue #35）で place と dataset の2行を入れる。1a はこの行を消費しないが、
+  // フィクスチャの内容としては両方の種類を入れておく。
   db.prepare(`INSERT INTO caveat_scope (caveat_id, scope_kind, scope_ref, sort_order, priority) VALUES ('common:caveat:fx_test','dataset','measurements',0,0)`).run();
 
   // --- water.ss: mean/day（合成 + atsugi。fx_place_a） ---

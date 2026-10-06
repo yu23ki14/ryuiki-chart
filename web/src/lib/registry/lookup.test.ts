@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { getUnit, getVariable, resolveAliasForSource, resolveVariableInfo, unitSymbol } from "@/lib/registry/lookup";
-import { caveatBody, caveatsForTables } from "@/lib/registry/lookup-client";
+import { caveatBody, resolveCaveatRefs } from "@/lib/registry/lookup-client";
+import { VARIABLE_LABEL } from "@/lib/registry/generated-client";
 
 describe("resolveVariableInfo", () => {
   it("出典表記から正準 variable を引く（measurements, 既定スコープ）", () => {
@@ -110,46 +111,34 @@ describe("getVariable / getUnit / unitSymbol", () => {
   });
 });
 
-describe("caveatBody / caveatsForTables — generated-client.ts 経由でも caveats.ts と同じ結果になる", () => {
+describe("caveatBody / variableNote — generated-client.ts 経由の引き", () => {
   it("caveatBody は registry/caveat.yaml の本文をそのまま返す", () => {
     expect(caveatBody("zone")).toContain("公式の区分ではない");
   });
 
-  it("caveatsForTables は sites の table 行（zone/municipality）だけを返す（v1 の表は DROP 済み。PR-5）", () => {
-    expect(caveatsForTables(["sites"]).map((r) => r.key)).toEqual(["zone", "municipality"]);
-    expect(caveatsForTables(["measurements", "observers"])).toEqual([]);
+  it("流量の変数説明（VARIABLE_LABEL の note）に逆流は埋め込まない（注記 flowTidalBackflow が持つ）", () => {
+    expect(VARIABLE_LABEL["common:variable:hydro.flow"]?.note).toBe("河川の流量");
+    expect(caveatBody("flowTidalBackflow")).toContain("逆流");
   });
 });
 
-describe("caveatsForTables — priority が同点の synthetic が 1:N（複数の synthetic テーブルが別々の注記を持つ場合）", () => {
-  // 現行の registry/caveat.yaml では 6 つの synthetic テーブルが全て同じキー
-  // "synthetic" に写るため、実データだけでは「最初の1件で break していないか」を
-  // 見分けられない（レビュー指摘: caveatsForTables の旧 table_synthetic 特殊分岐が
-  // 最初に一致したテーブルの注記だけを足して break していた。修正1で scope_kind の
-  // 特殊値を廃止し、priority 列だけで優先度を表す一般規則にした）。ここでは
-  // generated-client.ts をモックし、2つの synthetic テーブル（どちらも priority=1）に
-  // それぞれ別のキーを割り当てて、両方とも失われず返ることを確認する。
-  it("2つ目以降の synthetic テーブルの注記も失われない", async () => {
-    vi.resetModules();
-    vi.doMock("@/lib/registry/generated-client", () => ({
-      GENERATED_CAVEATS: [
-        { key: "synthetic_a", severity: null, kind: null, bodyJa: "A注記" },
-        { key: "synthetic_b", severity: null, kind: null, bodyJa: "B注記" },
-      ],
-      GENERATED_CAVEAT_SCOPE: [
-        { scopeKind: "table", scopeRef: "observers", caveatKey: "synthetic_a", sortOrder: 0, priority: 1 },
-        { scopeKind: "table", scopeRef: "quality_monthly", caveatKey: "synthetic_b", sortOrder: 0, priority: 1 },
-      ],
-    }));
-    try {
-      const mod = await import("@/lib/registry/lookup-client");
-      const refs = mod.caveatsForTables(["observers", "quality_monthly"]);
-      const keys = refs.map((r) => r.key);
-      expect(keys).toContain("synthetic_a");
-      expect(keys).toContain("synthetic_b");
-    } finally {
-      vi.doUnmock("@/lib/registry/generated-client");
-      vi.resetModules();
-    }
+describe("resolveCaveatRefs — priority が同点の複数の scope が別々の注記を持つ場合", () => {
+  // 旧 table_synthetic の特殊分岐は「最初に一致した1件だけ足して break する」バグを生んだ。
+  // priority 列だけで優先度を表す一般規則なので、同じ priority の2件目以降も失われない。
+  const scope = (scopeRef: string, caveatKey: string, priority: number) => ({
+    scopeKind: "observation_set" as const,
+    scopeRef,
+    caveatKey,
+    sortOrder: 0,
+    priority,
+  });
+
+  it("2つ目以降の priority=1 の注記も失われず、priority=0 より先に並ぶ", () => {
+    const refs = resolveCaveatRefs([
+      { scope: scope("x", "plain", 0), order: 0 },
+      { scope: scope("a", "synthetic_a", 1), order: 1 },
+      { scope: scope("b", "synthetic_b", 1), order: 2 },
+    ]);
+    expect(refs.map((r) => r.key)).toEqual(["synthetic_a", "synthetic_b", "plain"]);
   });
 });

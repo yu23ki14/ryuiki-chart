@@ -20,8 +20,8 @@ D1 は「捨てて再構築できる」もの — ADR-0001）。
 
 ## `--files-only`（docs/plans/PHASE_B_INTAKE.md #7、CI 用）
 
-原本 DB（`ryuiki`/`cells`）を一切開かず、`registry/` 配下の手書きファイルと
-`build_caveat.py` の Python 定数だけから作れる部分（`unit`/`variable`/`variable_alias`
+原本 DB（`ryuiki`/`cells`）を一切開かず、`registry/` 配下の手書きファイル（`caveat.yaml`・
+`caveat_scope.yaml` を含む）だけから作れる部分（`unit`/`variable`/`variable_alias`
 と、ファイル由来の `caveat`/`caveat_scope`）だけを作るモード。`place`/`place_relation`/
 `taxon`、および `cells.notes`/`place`/`taxon` 由来の `caveat` は作らない（それらのテーブルは
 空のまま。`place_relation` は `place` 経由でしか作れない辺なので、`place` を作らない
@@ -569,7 +569,7 @@ def main() -> None:
         action="store_true",
         help=(
             "原本 DB（ryuiki/cells）を開かず、registry/ 配下の手書きファイルと "
-            "build_caveat.py の Python 定数だけから unit/variable/variable_alias と "
+            "caveat_scope.yaml 等だけから unit/variable/variable_alias と "
             "ファイル由来の caveat/caveat_scope だけを作る（CI 用）。書き込み先は既定で "
             f"正規の {common.REGISTRY_DB.name} とは別ファイル "
             f"（{common.FILES_ONLY_REGISTRY_DB.name}）にする。RYUIKI_REGISTRY_DB で上書き可。"

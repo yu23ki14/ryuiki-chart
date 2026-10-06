@@ -327,15 +327,14 @@ export const caveat = sqliteTable("caveat", {
 
 /**
  * `caveat` が掛かる範囲。1注記に対して複数行になりうる（1:N）。
- * `scope_kind` は**一致方法だけ**を表す（`table` / `table_prefix` / `cell` / `cell_table`）。
- * 「渡されたテーブルのうちどれを先頭に出すか」という**優先規則**は `scope_kind` の値では
- * 表さず、`priority` 列（既定0・大きいほど優先）が持つ。以前は `scope_kind='table_synthetic'`
- * という専用の一致方法を作ってこの優先規則を表していたが、優先度は本来「一致方法」ではないため
- * `caveatsForTables()` 側に特殊分岐が必要になり、実際にバグ（複数 synthetic テーブルのうち
- * 最初の1件しか注記を拾わない）を生んだ。`priority` を切り出したことで、読み出し側は
- * `(priority, 呼び出し側が渡したテーブルの順序, sort_order)` の一般規則1本で済む。
- * `sort_order` は「同じ (scope_kind, scope_ref) の中での並び」だけを表し、scope 同士の並びは
- * 呼び出し側が渡すテーブル名の順序に従う。詳細は `scripts/registry/build_caveat.py` の docstring。
+ * `scope_kind` は ADR-0013 の6種（`variable`/`place`/`source_edition`/`observation_set`/`dataset`/`taxon`）。
+ * `scope_ref` は ID か `キー=値` の選択式で、照合は完全一致（宣言は `registry/caveat_scope.yaml`。
+ * Issue #35 で旧語彙の `table`/`table_prefix`/`cell`/`cell_table` 等から移した）。
+ * 「渡された参照のうちどれを先頭に出すか」という**優先規則**は `scope_kind` の値では表さず、
+ * `priority` 列（既定0・大きいほど優先）が持つ。読み出し側は
+ * `(priority, 呼び出し側が渡した参照の順序, sort_order)` の一般規則1本で済む。
+ * `sort_order` は「同じ (scope_kind, scope_ref) の中での宣言順」だけを表す。
+ * 詳細は `scripts/registry/build_caveat.py` の docstring。
  */
 export const caveatScope = sqliteTable("caveat_scope", {
 	id: integer().primaryKey({ autoIncrement: true }),
