@@ -39,9 +39,9 @@
       },
       "ias_species": {
         "added": 0,
-        "changed": 0,
+        "changed": 1,
         "removed": 0,
-        "same": 1
+        "same": 0
       },
       "landuse_highlight": {
         "added": 0,
@@ -159,9 +159,9 @@
       },
       "watershed_rollup": {
         "added": 0,
-        "changed": 0,
+        "changed": 1,
         "removed": 0,
-        "same": 1
+        "same": 0
       },
       "year_series_site_by_variable": {
         "added": 0,
@@ -182,16 +182,16 @@
         "same": 60
       }
     },
-    "previous_git_head": "7498a4c7659acea563c13620a7bc32f4cde753ab"
+    "previous_git_head": "48db06024036aded7b4b89297e909b22e7c6e704"
   },
-  "created_at": "2026-10-06T09:30:35+00:00",
+  "created_at": "2026-10-06T09:38:44+00:00",
   "environment": {
     "better_sqlite3_sqlite_version": "3.53.4",
     "node_version": "v22.22.2",
     "python_sqlite3_version": "3.49.1",
     "python_version": "3.13.7"
   },
-  "git_head": "48db06024036aded7b4b89297e909b22e7c6e704",
+  "git_head": "7f2318297efc633e11e5d11e477d385c2782d20d",
   "pipeline_fingerprint_rows": {
     "registry.sqlite": null,
     "v2.sqlite": [
@@ -208,92 +208,92 @@
         "table_name": "observation_agg"
       },
       {
-        "fingerprint": "sha256:62e97db56e1fd4d5bcf6ad05dab1b0e4edb9e701f1f330ad838a4fc895a0859f:823692",
+        "fingerprint": "sha256:494fadabdce670530fe3ccea036313afea088bc89a963c84f75cd7f4132d1d1a:823692",
         "inputs": "{}",
         "spec_version": "phase-b-fact-slice/v1",
         "table_name": "occurrence"
       },
       {
-        "fingerprint": "sha256:cac900a4347e76578b22dcfdabb158524d2093ac5652f3f500042da09d734649:1437598",
-        "inputs": "{\"occurrence\": \"sha256:62e97db56e1fd4d5bcf6ad05dab1b0e4edb9e701f1f330ad838a4fc895a0859f:823692\", \"occurrence_place\": \"sha256:d7b2fa5aa620fb0f853a5a460f3e0450d2292cc26a9c3c943d308033d3206743:823692\"}",
-        "spec_version": "phase-b-fact-slice/v2",
+        "fingerprint": "sha256:87f74b6f4b9ecf2c9b5f03293ba0c5d9fa3ae258740c9f1032374bac7fa8c52d:1437598",
+        "inputs": "{\"occurrence\": \"sha256:494fadabdce670530fe3ccea036313afea088bc89a963c84f75cd7f4132d1d1a:823692\", \"occurrence_place\": \"sha256:9376e87fc8e2123f1f1ca4ee455949975aca4c0357590174783fdcb218d26782:823692\"}",
+        "spec_version": "phase-b-fact-slice/v3",
         "table_name": "occurrence_agg"
       },
       {
-        "fingerprint": "sha256:d7b2fa5aa620fb0f853a5a460f3e0450d2292cc26a9c3c943d308033d3206743:823692",
-        "inputs": "{\"occurrence\": \"sha256:62e97db56e1fd4d5bcf6ad05dab1b0e4edb9e701f1f330ad838a4fc895a0859f:823692\"}",
-        "spec_version": "phase-b-fact-slice/v1",
+        "fingerprint": "sha256:9376e87fc8e2123f1f1ca4ee455949975aca4c0357590174783fdcb218d26782:823692",
+        "inputs": "{\"occurrence\": \"sha256:494fadabdce670530fe3ccea036313afea088bc89a963c84f75cd7f4132d1d1a:823692\"}",
+        "spec_version": "phase-b-fact-slice/v2",
         "table_name": "occurrence_place"
       },
       {
-        "fingerprint": "sha256:45ef45ee550b574242995de72fa8e7ba1ea151c385f0c34a65fad597299a4701:171",
-        "inputs": "{\"occurrence_agg\": \"sha256:cac900a4347e76578b22dcfdabb158524d2093ac5652f3f500042da09d734649:1437598\", \"registry:taxon\": \"3cf13661b4c4042022e54a1e19f03f5f8173ad3b0d58e341a9a369072fa4b6d2\"}",
-        "spec_version": "serving-summary/v4",
+        "fingerprint": "sha256:d5222446e6367c83f64205370bc73d6e94668e9ba195a52fb2f9ef79c951c65b:171",
+        "inputs": "{\"occurrence_agg\": \"sha256:87f74b6f4b9ecf2c9b5f03293ba0c5d9fa3ae258740c9f1032374bac7fa8c52d:1437598\", \"registry:taxon\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\"}",
+        "spec_version": "serving-summary/v5",
         "table_name": "summary_effort_year"
       },
       {
-        "fingerprint": "sha256:3edb48d2aebc87f001d2f7aeb811e1412b05c2c24f9aa642a68317b1e2bf6289:4086",
-        "inputs": "{\"occurrence_agg\": \"sha256:cac900a4347e76578b22dcfdabb158524d2093ac5652f3f500042da09d734649:1437598\", \"registry:taxon\": \"3cf13661b4c4042022e54a1e19f03f5f8173ad3b0d58e341a9a369072fa4b6d2\"}",
-        "spec_version": "serving-summary/v4",
+        "fingerprint": "sha256:7a00d35717767cef249a25c7d16f56255f0bd767acfc7209cfe5286fd9971656:4086",
+        "inputs": "{\"occurrence_agg\": \"sha256:87f74b6f4b9ecf2c9b5f03293ba0c5d9fa3ae258740c9f1032374bac7fa8c52d:1437598\", \"registry:taxon\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\"}",
+        "spec_version": "serving-summary/v5",
         "table_name": "summary_grid_catalog"
       },
       {
-        "fingerprint": "sha256:7af22cd18d552d2bdcb0886efb7de10c7181af2dbe70ded793818168e8a565da:1851",
-        "inputs": "{\"occurrence_agg\": \"sha256:cac900a4347e76578b22dcfdabb158524d2093ac5652f3f500042da09d734649:1437598\", \"registry:taxon\": \"3cf13661b4c4042022e54a1e19f03f5f8173ad3b0d58e341a9a369072fa4b6d2\"}",
-        "spec_version": "serving-summary/v4",
+        "fingerprint": "sha256:293cd085fb6002c514cc7d63a23ea657749eb9acec7d20f373e452b1b8f4d3a7:1851",
+        "inputs": "{\"occurrence_agg\": \"sha256:87f74b6f4b9ecf2c9b5f03293ba0c5d9fa3ae258740c9f1032374bac7fa8c52d:1437598\", \"registry:taxon\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\"}",
+        "spec_version": "serving-summary/v5",
         "table_name": "summary_group_year"
       },
       {
-        "fingerprint": "sha256:7dff2aac2999ffe15af3b35d0169bd5890b5e75ad94b343c772111bb61265b75:8311",
+        "fingerprint": "sha256:c8e7d8dc94e1a633dee90c49041cd93656794e0a24addce31ce8868b65cbcbb2:8311",
         "inputs": "{\"observation_agg\": \"sha256:267cfb4de8b811d543e9ce0d73b0d618bb1c0678f149c80724e527652c3d6dbd:2011364\"}",
-        "spec_version": "serving-summary/v4",
+        "spec_version": "serving-summary/v5",
         "table_name": "summary_place_variable"
       },
       {
-        "fingerprint": "sha256:fcd9d31f37130edf0cbb3f8da2f534a9d905cd58b44d755df5e885571936957b:23618",
-        "inputs": "{\"occurrence_agg\": \"sha256:cac900a4347e76578b22dcfdabb158524d2093ac5652f3f500042da09d734649:1437598\", \"registry:taxon\": \"3cf13661b4c4042022e54a1e19f03f5f8173ad3b0d58e341a9a369072fa4b6d2\"}",
-        "spec_version": "serving-summary/v4",
+        "fingerprint": "sha256:ca8e8bff552679b421030c0b79bfd451ad26be9b797137ed3c407343b094bd51:23618",
+        "inputs": "{\"occurrence_agg\": \"sha256:87f74b6f4b9ecf2c9b5f03293ba0c5d9fa3ae258740c9f1032374bac7fa8c52d:1437598\", \"registry:taxon\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\"}",
+        "spec_version": "serving-summary/v5",
         "table_name": "summary_species_catalog"
       },
       {
-        "fingerprint": "sha256:77f4152e762b0d72bab8424817afb0d7c3bf682cca6a47822293cf2023b548ce:32186",
-        "inputs": "{\"occurrence_agg\": \"sha256:cac900a4347e76578b22dcfdabb158524d2093ac5652f3f500042da09d734649:1437598\"}",
-        "spec_version": "serving-summary/v4",
+        "fingerprint": "sha256:d61ce946c0bff20d5f9ea55e144481bd6a9bd47cf2de38cf6819fb70b79cbbb2:32186",
+        "inputs": "{\"occurrence_agg\": \"sha256:87f74b6f4b9ecf2c9b5f03293ba0c5d9fa3ae258740c9f1032374bac7fa8c52d:1437598\"}",
+        "spec_version": "serving-summary/v5",
         "table_name": "summary_taxon_catalog"
       },
       {
-        "fingerprint": "sha256:3be322168067739cfb7b166a37dcf8303d9a08493ffdf11a9146873a6186bdd6:119",
+        "fingerprint": "sha256:94ffa339f08f601897b2a74e7b7e6c8724d47d501f7d7c48f713a9496db9ba36:119",
         "inputs": "{\"observation_agg\": \"sha256:267cfb4de8b811d543e9ce0d73b0d618bb1c0678f149c80724e527652c3d6dbd:2011364\"}",
-        "spec_version": "serving-summary/v4",
+        "spec_version": "serving-summary/v5",
         "table_name": "summary_variable_catalog"
       },
       {
-        "fingerprint": "sha256:09e4960288caa4270906a2ed9b88ea84b552ed16a7bc74e6d54c07cc7f352507:288",
-        "inputs": "{\"occurrence_agg\": \"sha256:cac900a4347e76578b22dcfdabb158524d2093ac5652f3f500042da09d734649:1437598\"}",
-        "spec_version": "serving-summary/v4",
+        "fingerprint": "sha256:b5abd20028658cf4cbfd4a0d0bd2b4e979ecb48aa14f5c9a6e7fd7b870c7f7c9:288",
+        "inputs": "{\"occurrence_agg\": \"sha256:87f74b6f4b9ecf2c9b5f03293ba0c5d9fa3ae258740c9f1032374bac7fa8c52d:1437598\"}",
+        "spec_version": "serving-summary/v5",
         "table_name": "summary_watershed_occurrence"
       }
     ]
   },
   "pipeline_path_hashes": {
-    "aggregations": "054a6ad40f7a2c0a1eb118972cfb7e77369ece30",
-    "registry": "5d9264bb4e9336a19c45af7c46443bc0bcbeaa3e",
+    "aggregations": "a187c139e235411513062adb0fd6dadd7fcbf220",
+    "registry": "281c5376e214608a757c59351fd882606ebf2498",
     "requirements.txt": "6982cafe7c0c5ce12db1ca2b7d74868e69945a27",
     "scripts/b00_run_full_gate.py": "984c2613672ff8541f9ee3445c481db8792e0ee8",
     "scripts/b03_build_observation.py": "3f99081672bccf26d702d16db74c29c5d1af8d92",
     "scripts/b04_build_cube.py": "9b05aeb9c3c3f1f0ac926079758aecbe29673764",
-    "scripts/b06_build_occurrence.py": "44c3e4930ea4c9a12ef68f2010c2c2d19ce1343a",
-    "scripts/b07_build_occurrence_cube.py": "de83dc57eabf7011f31aabe254ac07bd1d12c9e6",
+    "scripts/b06_build_occurrence.py": "e7fc3929c3d449931ff1c4d27770a928d979e0d4",
+    "scripts/b07_build_occurrence_cube.py": "fdbace171ff22d2ca20d703f734e853d1b5bf9ef",
     "scripts/b09_build_occurrence_place.py": "790194b4d55c275860280faecc5e0452adb4b0ba",
     "scripts/b13_build_summary.py": "a3fea7c442ddc610a67344c9f46f9a0748576466",
     "scripts/era_table.py": "b0953de3efa2eee6eff43c249cda61e4e2e64c95",
-    "scripts/migrate": "ff46e496c2ad1f970deed4786a99538dc5e27bbe",
-    "scripts/pipeline_inputs.py": "26f0f1aa956493afa09db0fcab69bc939933b42a",
+    "scripts/migrate": "75c59dd39eea2fb15b84d993fbafd89b9dcf8e9b",
+    "scripts/pipeline_inputs.py": "d681352977b943ed8f7c689bbb16786f9ee93754",
     "scripts/r01_build_registry.py": "1b1629f93d73d1a6144e000ede1e94babcbc9db2",
     "scripts/reconcile": "0434daaaa6e412fafdff6a99768d9486b7c5c9a0",
-    "scripts/registry": "27f92fda3d61ea22333d9918cd7c5fd481414409",
-    "scripts/schema_registry.sql": "c1749660625fc0e34ff5056c92c45ebeaf62109c",
-    "scripts/taxon_namespaces.py": "56651e8f89085ad95c225643177c17a4098021c3",
+    "scripts/registry": "9ad02f0d88253ab44f67ef43553c714d2eba2528",
+    "scripts/schema_registry.sql": "700ee7d5a609fb64df3929852433d53660ff43cc",
+    "scripts/taxon_namespaces.py": "a51a90e423c15c4dbfa2031b80686cca0384e954",
     "web/package.json": "0a17420f8dbd67b82ab52ff89e511bac8a2d5eaf",
     "web/pnpm-lock.yaml": "6ed023dae786be30e10835dd8a13d5af0bccd466",
     "web/scripts/build-registry-ts.mjs": "1f85d3373fbde65e2cbfb6c1735c8fdf2fbabfa8",
@@ -305,7 +305,7 @@
     "web/scripts/lib/serving/snapshot.ts": "beb996b860b34dde85aa318af5544b310b3c8d8e",
     "web/scripts/serving-snapshot.mts": "f101456833dcc8654fdba0fc61b7b91d7b9991da",
     "web/serving_queries.yaml": "c03ad7ae340d6d9e541e5954204be34079faa475",
-    "web/src/db/schema-cube.ts": "c273e62f7435a4227236a9d3f97423e9d9900ee0",
+    "web/src/db/schema-cube.ts": "d65b49bf9617a4e318beaea7008f5582ee260bb8",
     "web/src/lib/cube/assessment.ts": "8c16346ecdfaecbfd99e228caa46261c91daac30",
     "web/src/lib/cube/catalog.ts": "260d1fe0033155ee320aa0cc1e80fb22509ac7de",
     "web/src/lib/cube/caveats.ts": "8e266e963e96847b3fbf4a950cd9488da74a9c6e",
@@ -324,7 +324,7 @@
     "web/src/lib/cube/sql.ts": "e1f5d4e7f9fd8151d3314a4053e5076689e01a52",
     "web/src/lib/cube/unit.ts": "24c38c741b8a1cfc62bc5d33861aa7b1c45cfdcc",
     "web/src/lib/db.ts": "cb9a153fb416b4400bd74ecf0fd4d3977df90944",
-    "web/src/lib/registry/generated-client.ts": "a32ef72f94f5a4d9a00a03311d13d48881445321",
+    "web/src/lib/registry/generated-client.ts": "a0871726ce0964fbe31f0fed6a8ed0b98d426460",
     "web/src/lib/registry/generated.ts": "d895f8e3b923c4a05873416f2b141564ab57c63b",
     "web/src/lib/registry/index.ts": "bec75bbb451e73a699a8f260e0f3430bbab16121",
     "web/src/lib/registry/lookup-client.ts": "1cffcdff03e6a63f828d93be56ebb455736d9edb",
@@ -9477,15 +9477,15 @@
       "n_domain": 1,
       "runs": [
         {
-          "hash": "0465f967f0a87a0649658f64fd38ffdca0bb10cb4addaebbc992f63db4a264f4",
-          "n_rows": 173,
+          "hash": "6c3a58975f2f161ddc661b87383e048051026423c0b833f983913e120a367ced",
+          "n_rows": 163,
           "params": {},
           "sums": {
-            "mesh_n": 8706,
-            "n": 19572,
-            "n_since_2020": 9348,
-            "y_from": 343385,
-            "y_to": 349716
+            "mesh_n": 8603,
+            "n": 19283,
+            "n_since_2020": 9169,
+            "y_from": 323394,
+            "y_to": 329513
           }
         }
       ]
@@ -9527,7 +9527,7 @@
       "n_domain": 1,
       "runs": [
         {
-          "hash": "cb5d39add7e17119d04e83a6f17d06e97ef7ce89211b977a08a543893beeca1f",
+          "hash": "e4cdfedd8272a75ca8b81f9f8549e3f68ac47bf4f2bc0c3fe66381d9afeb68e3",
           "n_rows": 377,
           "params": {},
           "sums": {
@@ -9538,7 +9538,7 @@
             "centroid_lon": 52489.161141,
             "forest_km2_2006": 1398.148525,
             "forest_km2_2016": 1476.154338,
-            "org_alien_n": 3261,
+            "org_alien_n": 16884,
             "org_n": 733341,
             "org_redlist_n": 4441,
             "paddy_km2_2006": 111.274474,
@@ -10394,6 +10394,7 @@
     "data/processed/nlni_l03b_landuse_by_watershed.csv": "ec71d28f382785af6ef7ed588350f67537f96d356d1d73c541522a74421cb644",
     "data/processed/nlni_w12_watersheds.geojson": "0fdb4360f1a1d0f8473a0d5b9b9a16f1cc42420312f654781a5dfd66b0aa56f7",
     "data/processed/nlni_w12_watersheds.jsonl": "901924abd35592a6a1a570864ed6b1843755070490ea39cc16f6a3114a5c492d",
-    "data/processed/taxon_crosswalk.csv": "cde56ea81743f7790a04ac9c7e5fd9dc47699edd56c8c9fcfe70c3eea6a74e52"
+    "data/processed/taxon_crosswalk.csv": "cde56ea81743f7790a04ac9c7e5fd9dc47699edd56c8c9fcfe70c3eea6a74e52",
+    "data/processed/taxon_gbif_accepted.csv": "d0b325a0eadac87515420002f6a7fc2ac39be827ebc506a76a10f5c29239c8d2"
   }
 }
