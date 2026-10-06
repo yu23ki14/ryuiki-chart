@@ -351,6 +351,28 @@ b04 の変更で `observation_agg` の値と、そこから作る `summary_*`（
    完全なロールバックにはリバース用の SQL〔`ALTER TABLE place_source_ref RENAME COLUMN key_space TO source_id`〕と旧データの再投入が要る。
    旧データは 2. の前に `pnpm run db:export` で控えておく）。
 
+### 実施記録（2026-10-06〜07、Issue #27 の PR #65〜#71 をまとめて反映）
+
+マイグレーション 0012〜0015（#31 の unit 列・#32 の region 表・#34 の scope_reason・#39 の RENAME と source 系3表）と、
+キューブ・summary・レジストリ 25 表の入れ直しを一続きで行った。
+
+1. **事前**: main `f73d5c4` で `pnpm run db:setup`（v2・registry を作り直し、ローカル D1 43 表 / 3,806,887 行）。
+   `pnpm run db:export -- --table <25表>` で 64 ファイル・776MB。Worker は `opennextjs-cloudflare build` を先に済ませた。
+   Time Travel のブックマーク `00000045-00000000-000050fc-f6200af006d1003d829b02896f1b7ff4`、直前の Worker は `0983d851-482d-43a5-b322-cc802f126d1d`。
+2. **マイグレーション**（10-06 23:43）: `wrangler d1 migrations apply ryuiki --remote` で 0012〜0015 を適用。
+   **ここで止まった**: 削除前の件数確認（`wrangler d1 execute --json` の出力を Python で読む）が一時的に結果ではなく
+   エラーの dict を受け取り、手順書のスクリプトが削除に進まず停止した（データは無変更のまま、place を引く画面は壊れた状態）。
+3. **再開**（10-07 00:28〜00:50）: 件数確認を「失敗したら生の出力を表示して再試行」に直して再開。25 表を 10 万行ずつ
+   `DELETE … WHERE rowid IN (SELECT rowid … LIMIT 100000)` で空にし（約6分）、64 ファイルをファイル単位の再試行つきで投入（約16分）。
+4. **確認**: `pnpm run db:verify:remote` で 43 表 / 3,806,887 行すべて一致。
+5. **デプロイ**（00:50）: Version `11bd22db-0930-4e79-abc6-f2b8b52ebe5c`。`/`・`/sites`・`/timeseries`・`/biota`・`/documents`・`/water`・`/map`・`/sources`
+   が 200、`/api/mcp` は 404（`MCP_ENABLED=false`）。`/api/timeseries`（水域×BOD、day と fiscal_year）が地点・点・単位・`freshness` を返し、
+   `/api/biota?kind=redlist` が評価リストの出典の `freshness`（update_mode は `undeclared`）を返すことを確認。
+
+place を引く画面・API が壊れていたのは 23:43〜00:50（約67分）。教訓: 停止時間を伴う切り替えの検査は、
+**失敗を「中身が無い」と読み違えない**（生の出力を残して止まる）ように書き、マイグレーションの前に予行で通しておく。
+ロールバックは行っていない。
+
 ## 更新するとき
 
 ### スキーマを変えた
