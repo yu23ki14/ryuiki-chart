@@ -18,6 +18,7 @@ import dwca_id_map
 from migrate import common, public_id
 from registry import common as registry_common
 
+from .manifest_fixtures import ensure_measurement_source_manifests
 from .migrate_fixtures import (
     DEFAULT_ALIASES,
     DEFAULT_LANDUSE_ALIASES,
@@ -159,6 +160,7 @@ def test_landuse_observation_edition_follows_data_year(tmp_path):
     make_landuse_registry_db(registry_db)
     make_landuse_csv(csv_path)
     make_landuse_source_regions_yaml(regions_yaml)
+    ensure_measurement_source_manifests(regions_yaml, ryuiki_db)
     out = tmp_path / "v2.sqlite"
     b03.build_and_write_observation(
         ryuiki_db, registry_db, tmp_path / "no_exc.yaml", tmp_path / "no_conv.yaml", out, regions_yaml, csv_path,

@@ -300,3 +300,9 @@ org_watershed_year_keys_changed_vs_exact  1,091
   却下。
 - **1,091キーを `expected_diffs.yaml` に列挙する**: 「宣言済み差分にしな
   かった理由」節で却下。
+
+## 追記（2026-10-06、Issue #40 Phase D・J1）
+
+`occurrence_place` の母集団は「座標のある全記録」に加え、**座標のない日付あり記録**（`place_id NULL`）を含む
+（座標も日付も無い記録は、どのセルにも入らないので行を作らない）。座標のある記録の解決規則・停止条件は変えない。
+b07 の watershed 母集団は日付あり全行、grid01 母集団は座標あり日付あり行（ADR-0025 の同日追記）。

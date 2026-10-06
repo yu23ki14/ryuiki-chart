@@ -22,13 +22,15 @@
 #   （ADR-0004 規約 2）。build_source.py は、`source_registry.notes` に `【SUPERSEDED`
 #   を含む行が `superseded_by` を宣言されていなければ止まる（文字列の判定はこの検査だけ。
 #   参照側は常に `superseded_by` 列を使う）。
-# - **`update_mode`**（ADR-0020: snapshot / append / revision / static）は、分かるものだけ宣言する。
-#   宣言の無い source は NULL（推測で埋めない）。
+# - **`update_mode`**（ADR-0020: snapshot / append / revision / static）の正は `manifests/<source_id>.yml`
+#   （Issue #40 Phase D。パイプラインが読む出典は必ず宣言する。未宣言は止まる）。マニフェストを持たない出典は
+#   ここに書いてよい（分かるものだけ。無ければ NULL。推測で埋めない）。**同じ出典を両方に書かない**
+#   （build_source.py が食い違いを止める。一致していても二重管理なのでマニフェスト側だけにする）。
 # - `content_sha256` は L0 の生ファイルがリポジトリ外にあるものは NULL。リポジトリ内の入力
 #   ファイルがその source の唯一の版そのものであるものだけ `content_file`
 #   （リポジトリルートからの相対パス）で宣言し、ビルド時に sha256 を埋める
 #   （ファイルが無い環境では NULL。ハッシュの入力は registry 指紋に既に入っている）。
-# - `region_id` は宣言しない（NULL）。出典と地域の対応は scripts/migrate/source_regions.yaml
+# - `region_id` は宣言しない（NULL）。出典と地域の対応は manifests/<source_id>.yml の `region`
 #   （ADR-0022 決定 3）が持っており、ここに二重に持たない。
 
 update_mode_codes: [snapshot, append, revision, static]
@@ -42,13 +44,11 @@ declared_editions:
     edition_key: "2006"
     vintage: "2006"
     fetched_from: nlni_l03b_landuse_2006
-    update_mode: revision
     notes: "国土数値情報 L03-b 2006 年版（コード体系は 1,2,5,6,7,9,A,B,E,F,G）。variable_alias.csv の edition_key=2006。"
   - source_id: nlni_l03b_landuse_by_watershed
     edition_key: "2016"
     vintage: "2016"
     fetched_from: nlni_l03b_landuse_2016
-    update_mode: revision
     notes: "国土数値情報 L03-b 2016 年版（コード体系は 0100,0200,0500,…,1600）。variable_alias.csv の edition_key=2016。"
 
 # source ごとの宣言（edition の自動生成・declared_editions のどちらにも効く）。
@@ -57,8 +57,6 @@ source_declarations:
     # 旧登録（第2ラウンド完走時点 586,300 件）。第3ラウンド完走で gbif_kanagawa_occurrences（658,360 件）
     # に置き換わった（source_registry.notes 先頭の【SUPERSEDED 2026-08-29】）。
     superseded_by: gbif_kanagawa_occurrences
-    update_mode: snapshot
-  gbif_kanagawa_occurrences:
     update_mode: snapshot
   moe_ias_list:
     # data/processed/moe_ias_list.csv（429 行）はこの source の L1 そのもの。

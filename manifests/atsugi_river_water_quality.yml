@@ -1,0 +1,11 @@
+# manifests/atsugi_river_water_quality.yml（宣言。形は scripts/ingest/manifest.py の docstring）。
+# adapter: builtin = 変換は b03/b06 のまま（出力を動かさない）。メタデータだけを持つ。
+source: atsugi_river_water_quality
+region: jp-14
+target: observation
+update_mode: static
+input:
+  table: measurements
+adapter: builtin
+evidence: >
+  厚木市 河川水質調査結果（平成14〜令和2年度の XLSX 19 本を取得済み。source_registry.notes）。年度が閉じた系列で、以後の追加取得の予定が無いため static。 神奈川県内の 4 河川（相模川・中津川・小鮎川・玉川）なので region=jp-14。

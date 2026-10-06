@@ -11,6 +11,7 @@
 import type { CubeDb, SqlParam } from "./db";
 import { MAX_ID_LIST } from "./db";
 import { gridCellOfPlaceId, watershedIdOfPlaceId } from "./grid";
+import { NAME_JA } from "@/lib/registry/generated-client";
 import { USE_RECORD_VERNACULAR, labelMap, pickLabel, resolveNames } from "./occurrence";
 import { IAS_SINCE_YEAR, OCC_DEFAULT_FROM, occDefaultTo, YEAR_GRAINS, chunk, cmp, jsonEachParam, seriesFilterSql, uniq } from "./sql";
 import { OCCURRENCE_AGG_INDEX } from "@/db/schema-cube";
@@ -902,15 +903,28 @@ export interface SpeciesCatalogRow {
 /** v1 `speciesList`。`ORDER BY n DESC, binom`。 */
 export async function speciesCatalog(
   db: CubeDb,
-  opt: { group?: string | null; limit?: number; withNames?: boolean } = {},
+  opt: { group?: string | null; limit?: number; withNames?: boolean; search?: string } = {},
 ): Promise<SpeciesCatalogRow[]> {
   const limit = opt.limit ?? 200;
   const params: SqlParam[] = [];
-  let where = "";
+  const conds: string[] = [];
   if (opt.group) {
-    where = "WHERE taxon_group = ?";
+    conds.push("taxon_group = ?");
     params.push(opt.group);
   }
+  // 検索語（部分一致・大文字小文字無視）: 学名（binom）か、人が確認した和名（NAME_JA）に当たる種。
+  // 和名は D1 に無く生成物にあるので、当たった学名を IN で渡す（検索語で絞ってから LIMIT する＝上位 N 件の中だけを探さない）。
+  const q = opt.search?.trim().toLowerCase();
+  if (q) {
+    const byName = Object.entries(NAME_JA)
+      .filter(([, ja]) => ja.toLowerCase().includes(q))
+      .map(([binom]) => binom)
+      .slice(0, 50);
+    const like = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    conds.push(`(LOWER(binom) LIKE ? ESCAPE '\\'${byName.length ? ` OR binom IN (${byName.map(() => "?").join(",")})` : ""})`);
+    params.push(like, ...byName);
+  }
+  const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
   params.push(limit);
   const rows = await db.all<OccRow>(
     `SELECT binom, taxon_group, "class", family, n, n_red_list, n_alien, n_places, y_from, y_to, n_years

@@ -1,0 +1,103 @@
+{
+  "profile": "data-package",
+  "name": "ryuiki-dist",
+  "spec_version": "dist@1",
+  "resources": [
+    {
+      "name": "observation.measurements",
+      "path": "observation/source_table=measurements/part-0.parquet",
+      "format": "parquet",
+      "mediatype": "application/vnd.apache.parquet",
+      "bytes": 3464332,
+      "sha256": "860f8cc191d9ac18f4942fdf52d8ecbf2eb73c0ea1c7b1c1c649ea826b5c60d6",
+      "rows": 320899,
+      "rows_sha256": "8916c4071d02f5381d38fa85ed8d3c40a092a2d274404ee7a0b640e9439239a8",
+      "input_fingerprint": "03f02d5aca1627056a0419ac1da14b2c61624902821b6249595330aa977e544e",
+      "order_by": [
+        "observation_id"
+      ],
+      "schema": {
+        "fields": [
+          {
+            "name": "source_row_id",
+            "type": "string",
+            "constraints": {
+              "required": true
+            }
+          },
+          {
+            "name": "region_id",
+            "type": "string",
+            "constraints": {
+              "required": true
+            }
+          }
+        ]
+      },
+      "partition": {
+        "column": "source_table",
+        "value": "measurements"
+      }
+    },
+    {
+      "name": "occurrence.gbif_kanagawa_occurrences",
+      "path": "occurrence/source_id=gbif_kanagawa_occurrences/part-0.parquet",
+      "format": "parquet",
+      "mediatype": "application/vnd.apache.parquet",
+      "bytes": 18962454,
+      "sha256": "5571389430280ff6e75743879c65649dfa4491d14b5a89dc59fa8cd2aba6f96f",
+      "rows": 658360,
+      "rows_sha256": "a4523e0560b6e9cfa44106b2e35c0856a12a7c95fcf4043ae4c83aab4da63e03",
+      "input_fingerprint": "9812c10c8d9f0a169c29db61da98ee6b47e17561e1f3a2a1e8c16a4ef15c1ff6",
+      "order_by": [
+        "occurrence_id"
+      ],
+      "schema": {
+        "fields": [
+          {
+            "name": "record_id",
+            "type": "string",
+            "constraints": {
+              "required": true
+            }
+          },
+          {
+            "name": "source_table",
+            "type": "string",
+            "constraints": {
+              "required": true
+            }
+          }
+        ]
+      },
+      "partition": {
+        "column": "source_id",
+        "value": "gbif_kanagawa_occurrences"
+      }
+    },
+    {
+      "name": "observation_agg",
+      "path": "observation_agg.parquet",
+      "format": "parquet",
+      "mediatype": "application/vnd.apache.parquet",
+      "bytes": 8821161,
+      "sha256": "b81dc65e35283905dd249f47ccf11f4964b30662bc62095f003cb47f90ad9597",
+      "rows": 2011364,
+      "rows_sha256": "8f7ee433d732e1a37d68a22ea0a581ee9a49e3c3b9164e8b3e51774c6bfe3f23",
+      "input_fingerprint": "a9f9fb2ab06da7dceba77f6c42aa22ccef3ce12941291e4e032a08495175d1bc",
+      "order_by": "all_columns",
+      "schema": {
+        "fields": [
+          {
+            "name": "region_id",
+            "type": "string"
+          },
+          {
+            "name": "place_id",
+            "type": "string"
+          }
+        ]
+      }
+    }
+  ]
+}

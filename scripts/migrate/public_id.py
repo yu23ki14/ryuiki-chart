@@ -72,3 +72,15 @@ def occurrence_id(record_id: str, source_id: str) -> str:
         raise common.MigrationError(f"record_id が <source_id>__<key> の形ではない: {record_id!r}（source_id={source_id!r}）")
     key = reversible_key(record_id[len(prefix):])
     return registry_common.scoped_id(OCC_ENTITY, f"{ns}.{key}")
+
+
+def adapter_occurrence_id(source_id: str, record_key: str) -> str:
+    """adapter（`scripts/adapters/`）経由の出現の公開 ID: `common:occ:<source_id>.<key>`（key は可逆エンコード）。
+
+    gbif/inat は `TAXON_KEY_SOURCE_NAMESPACE` の名前空間（`gbif.`/`inat.`）を使う従来の `occurrence_id()` のまま
+    （既存 ID は変えない）。名前空間を持たない新しい出典は、source_id 自身を名前空間にする
+    （`TAXON_KEY_SOURCE_NAMESPACE` への追記を要求しない＝ソース追加でライブラリ側を触らない）。
+    """
+    if TAXON_KEY_SOURCE_NAMESPACE.get(source_id) is not None:
+        raise common.MigrationError(f"{source_id!r} は組み込みの出典。occurrence_id() を使うこと")
+    return registry_common.scoped_id(OCC_ENTITY, f"{source_id}.{reversible_key(record_key)}")

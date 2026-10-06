@@ -33,7 +33,7 @@ NULL にするだけで扱えるようにしてある。座標があるのに gr
   （`gbif_kanagawa_occurrences`/`inaturalist_kanagawa`。将来 O-1b のキューブが
   次元に使う）— 素の carry-over。
 - `region_id`: **出典から決める**（ADR-0022 決定3の最初の実装。
-  `scripts/migrate/source_regions.py`・`source_regions.yaml`）。`place`
+  `scripts/migrate/source_regions.py`・`manifests/*.yml`）。`place`
   経由では決められない（grid01 の region_id は常に NULL——ADR-0022 決定1）。
 - `taxon_id`: `scripts/taxon_namespaces.py` の名前空間から
   `scripts/registry/common.py` の `taxon_id_gbif`/`taxon_id_inat`（taxon
@@ -59,8 +59,17 @@ NULL にするだけで扱えるようにしてある。座標があるのに gr
 - `period_grain`/`period_start`/`period_end`/`period_raw`: ADR-0008・
   ADR-0024。`observed_on` から `scripts/migrate/occurrence_period.py` で展開する
   （12形。宣言表は `occurrence_period_shapes.yaml`。形の定義自体はコードが正）。
-  'Z' 終端の形は `source_regions.yaml` の region の `utc_offset` でローカル時刻に
+  'Z' 終端の形は `manifests/*.yml` の region の `utc_offset` でローカル時刻に
   変換する（SQLite の日時関数は使わない。Python の `datetime` で計算する）。
+
+## adapter 経由の出現（Issue #40 Phase D）
+
+`manifests/<source_id>.yml` の `adapter` が `builtin` でない target=occurrence の出典は、`scripts/adapters/<source_id>.py`
+の `rows(ctx)` が返す行（列契約は `scripts/ingest/api.py`）を、organism_records と同じ後段（region・taxon 解決・
+grid01 place・期間の展開）に流す。`record_id` は `<source_id>__<record_key>`、公開 ID は
+`public_id.adapter_occurrence_id`（`common:occ:<source_id>.<key>`。`TAXON_KEY_SOURCE_NAMESPACE` への追記は要らない）。
+座標の無い記録は `place_id`/`place_kind` NULL のまま落とさない（b09/b07 が watershed の place_id NULL セルにだけ入れる）。
+件数・形の宣言値は yaml の宣言値とマニフェストの `expected` の和と突合する。
 
 ## 埋めない列（理由）
 
@@ -85,14 +94,14 @@ NULL にするだけで扱えるようにしてある。座標があるのに gr
 
 ## 機械検証（1つでも失敗すれば `MigrationError`（のサブクラス）で止まる）
 
-- `source_regions.yaml`/`occurrence_period_shapes.yaml` の構造
+- `manifests/*.yml`/`occurrence_period_shapes.yaml` の構造
   （`validate_source_regions_shape`/`validate_occurrence_period_shapes_shape`）
   を実行のたびに検証する——`.get()` で黙って検査を外さない。
   `occurrence_period_shapes.yaml` の形の名前がコード（`_SHAPE_DEFS`）と
   過不足なく一致することも含む。
-- 出典（`organism_records.source_id`）が `source_regions.yaml`/
+- 出典（`organism_records.source_id`）が `manifests/*.yml`/
   `taxon_namespaces.TAXON_KEY_SOURCE_NAMESPACE` に無い → 即座に止まる。
-- `source_regions.yaml`/`occurrence_period_shapes.yaml` の宣言が1件も
+- `manifests/*.yml`/`occurrence_period_shapes.yaml` の宣言が1件も
   使われなかった・実測件数が `expected_row_count` と食い違う → 止まる。
 - `taxon_key` はあるのに `registry.taxon` に無い → 止まる。
 - 座標が**あるのに** grid01 の `place_id` が解決できない行 → 止まる
@@ -108,6 +117,8 @@ NULL にするだけで扱えるようにしてある。座標があるのに gr
 from __future__ import annotations
 
 import argparse
+import json
+import math
 import dataclasses
 import pathlib
 import sqlite3
@@ -116,6 +127,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
+from ingest import manifest as manifest_lib, runner as ingest_runner  # noqa: E402
 from migrate import common, edition, occurrence_period, period, public_id, source_regions  # noqa: E402
 from registry import common as registry_common  # noqa: E402
 from taxon_namespaces import (  # noqa: E402
@@ -124,7 +136,7 @@ from taxon_namespaces import (  # noqa: E402
 
 DEFAULT_RYUIKI_DB = ROOT / "data" / "db" / "ryuiki.sqlite"
 DEFAULT_REGISTRY_DB = ROOT / "data" / "db" / "registry.sqlite"
-DEFAULT_SOURCE_REGIONS_YAML = ROOT / "scripts" / "migrate" / "source_regions.yaml"
+DEFAULT_MANIFESTS_DIR = source_regions.DEFAULT_MANIFESTS_DIR
 DEFAULT_PERIOD_SHAPES_YAML = ROOT / "scripts" / "migrate" / "occurrence_period_shapes.yaml"
 DEFAULT_OUT = ROOT / "data" / "db" / "v2.sqlite"
 DEFAULT_REPORT = ROOT / "reports" / "phase_b_occurrence.md"
@@ -211,7 +223,8 @@ CREATE TABLE {table} (
   publication_scope         TEXT,
   is_alien_in_scope         INTEGER,
   occurrence_id             TEXT NOT NULL,
-  source_edition_id         TEXT
+  source_edition_id         TEXT,
+  attributes                TEXT
 )
 """
 
@@ -233,8 +246,8 @@ INSERT INTO {table} (
   period_grain, period_start, period_end, period_raw,
   scientific_name, vernacular_name, taxon_rank,
   red_list_category, is_alien, license_class, publication_scope,
-  is_alien_in_scope, occurrence_id, source_edition_id
-) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+  is_alien_in_scope, occurrence_id, source_edition_id, attributes
+) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 """
 
 
@@ -255,6 +268,9 @@ def _empty_stats() -> dict:
         "z_converted_count": 0,
         "day_changed_count": 0,
         "month_changed_count": 0,
+        "adapter_counts": {},
+        "adapter_attributes_count": {},
+        "adapter_problems": [],
     }
 
 
@@ -282,6 +298,7 @@ def _problems_from_stats(stats: dict) -> list[str]:
         if not count:
             continue
         problems.append(template.format(count=count, sample=stats[sample_key]))
+    problems.extend(stats["adapter_problems"])
     return problems
 
 
@@ -303,6 +320,47 @@ def _load_taxon_ids(work: sqlite3.Connection) -> set[str]:
     return {row[0] for row in work.execute("SELECT taxon_id FROM reg.taxon")}
 
 
+def _add_manifest_shape_counts(shapes: dict, extra: dict[str, int]) -> dict:
+    """マニフェストの `expected.period_shapes` を、yaml の形ごとの宣言件数に足す。未知の形名は止める。"""
+    unknown = sorted(set(extra) - set(shapes))
+    if unknown:
+        raise common.MigrationError(
+            f"マニフェストの expected.period_shapes に occurrence_period_shapes.yaml に無い形がある: {unknown}"
+        )
+    return {
+        name: dataclasses.replace(sh, expected_row_count=sh.expected_row_count + extra.get(name, 0))
+        for name, sh in shapes.items()
+    }
+
+
+def _period_fields(stats: dict, shape_usage, observed_on, utc_offset, record_id) -> tuple:
+    """`(period_grain, period_start, period_end, period_raw)`。日付の無い記録は全て None。形の使用・件数を `stats` に積む
+    （organism_records と adapter 経由の行で同じ規則を使う）。"""
+    if observed_on is None:
+        return None, None, None, None
+    expanded = occurrence_period.expand_period(observed_on, utc_offset, record_id=record_id)
+    shape_usage.mark_used(expanded.shape)
+    stats["shape_counts"][expanded.shape] = stats["shape_counts"].get(expanded.shape, 0) + 1
+    if expanded.shape in occurrence_period.Z_SHAPES:
+        stats["z_converted_count"] += 1
+    if expanded.day_changed:
+        stats["day_changed_count"] += 1
+    if expanded.month_changed:
+        stats["month_changed_count"] += 1
+    stats["n_dated"] += 1
+    return expanded.period_grain, expanded.period_start, expanded.period_end, observed_on
+
+
+def _load_grid01_places(work: sqlite3.Connection) -> dict[str, tuple[str, str]]:
+    """`grid01:<floor(lat*100)>,<floor(lon*100)>` -> (place_id, place_kind)（organism_records の SQL JOIN と同じキー）。"""
+    return {
+        ext: (pid, kind) for ext, pid, kind in work.execute(
+            "SELECT psr.external_key, psr.place_id, p.place_kind FROM reg.place_source_ref psr "
+            "JOIN reg.place p ON p.place_id = psr.place_id WHERE psr.key_space = 'grid01_latlon'"
+        )
+    }
+
+
 @dataclasses.dataclass(frozen=True)
 class _IngestContext:
     """`_ingest()` が1行ごとの解決に使う宣言・参照集合（引数が増えたのでまとめた）。"""
@@ -313,6 +371,7 @@ class _IngestContext:
     source_usage: object
     region_usage: object
     shape_usage: object
+    adapter_manifests: tuple = ()
 
 
 def _ingest(
@@ -354,7 +413,7 @@ def _ingest(
             region_usage.mark_used(region_id)
 
             # Issue #48 PR-0 オーナー決定: 合成データは本番に出さない。
-            # source_regions.yaml の宣言使用マーキングは合成データの行でも
+            # manifests/*.yml の宣言使用マーキングは合成データの行でも
             # 行った後（実測ではこの出典・region は全行非合成だが、将来
             # source_id 丸ごとが合成データだけになっても「宣言未使用」の
             # 誤検出にしないため）、region_counts への計上・alias/place 解決
@@ -391,25 +450,9 @@ def _ingest(
                     stats["unresolved_place_sample"].append((record_id, lat, lon))
                 continue
 
-            if observed_on is None:
-                period_grain = period_start = period_end = period_raw = None
-            else:
-                expanded = occurrence_period.expand_period(
-                    observed_on, utc_offset, record_id=record_id
-                )
-                shape_usage.mark_used(expanded.shape)
-                stats["shape_counts"][expanded.shape] = stats["shape_counts"].get(expanded.shape, 0) + 1
-                if expanded.shape in occurrence_period.Z_SHAPES:
-                    stats["z_converted_count"] += 1
-                if expanded.day_changed:
-                    stats["day_changed_count"] += 1
-                if expanded.month_changed:
-                    stats["month_changed_count"] += 1
-                period_grain = expanded.period_grain
-                period_start = expanded.period_start
-                period_end = expanded.period_end
-                period_raw = observed_on
-                stats["n_dated"] += 1
+            period_grain, period_start, period_end, period_raw = _period_fields(
+                stats, shape_usage, observed_on, utc_offset, record_id
+            )
 
             yield (
                 record_id, "organism_records", source_row_id, source_id, region_id, taxon_id,
@@ -418,17 +461,86 @@ def _ingest(
                 scientific_name, vernacular_name, taxon_rank,
                 red_list_category, is_alien, license_class, publication_scope,
                 is_alien_in_scope,
-                public_id.occurrence_id(record_id, source_id), edition_of(source_id),
+                public_id.occurrence_id(record_id, source_id), edition_of(source_id), None,
             )
 
+    runs = [ingest_runner.AdapterRun(m, work, taxon_ids) for m in ctx.adapter_manifests]
+    grid01_places: dict | None = None
+
+    def adapter_rows():
+        """`scripts/adapters/` 経由の出現（非 builtin のマニフェスト）。organism_records と同じ後段
+        （region・taxon 解決・place・期間）を通す。座標の無い記録は place_id NULL のまま落とさない
+        （ADR-0007 原則 1。grid01 には入れず、b09/b07 が watershed の place_id NULL セルにだけ入れる）。"""
+        nonlocal grid01_places
+        for run in runs:
+            m = run.manifest
+            source_id = m.source
+            source_region = sources[source_id]
+            region_id = source_region.region_id
+            utc_offset = regions[region_id].utc_offset
+            source_table = next(iter(m.input.values()))
+            for n, r in enumerate(run.rows(), start=1):
+                stats["total"] += 1
+                source_usage.mark_used(source_id)
+                region_usage.mark_used(region_id)
+                stats["region_counts"][region_id] = stats["region_counts"].get(region_id, 0) + 1
+                record_id = f"{source_id}__{r.record_key}"
+
+                taxon_id = r.taxon_id
+                if taxon_id is None:
+                    stats["taxon_null_count"] += 1
+                    if r.observed_on_raw is not None:
+                        stats["taxon_null_dated_count"] += 1
+                elif taxon_id not in taxon_ids:
+                    stats["unresolved_taxon_count"] += 1
+                    if len(stats["unresolved_taxon_sample"]) < _SAMPLE_LIMIT:
+                        stats["unresolved_taxon_sample"].append((record_id, taxon_id))
+                    continue
+
+                place_id = place_kind = None
+                if r.lat is None:
+                    stats["no_coordinate_count"] += 1
+                else:
+                    if grid01_places is None:
+                        grid01_places = _load_grid01_places(work)
+                    key = f"grid01:{math.floor(r.lat * 100)},{math.floor(r.lon * 100)}"
+                    resolved = grid01_places.get(key)
+                    if resolved is None:
+                        stats["unresolved_place_count"] += 1
+                        if len(stats["unresolved_place_sample"]) < _SAMPLE_LIMIT:
+                            stats["unresolved_place_sample"].append((record_id, r.lat, r.lon))
+                        continue
+                    place_id, place_kind = resolved
+
+                period_grain, period_start, period_end, period_raw = _period_fields(
+                    stats, shape_usage, r.observed_on_raw, utc_offset, record_id
+                )
+                is_alien_in_scope = 1 if binom_of(r.scientific_name) in alien_binoms else 0
+                yield (
+                    record_id, source_table, n, source_id, region_id, taxon_id,
+                    place_id, place_kind, None, r.lat, r.lon,
+                    period_grain, period_start, period_end, period_raw,
+                    r.scientific_name, r.vernacular_name, r.taxon_rank,
+                    r.red_list_category, None, r.license_class, None,
+                    is_alien_in_scope,
+                    public_id.adapter_occurrence_id(source_id, r.record_key), edition_of(source_id),
+                    json.dumps(r.attributes, ensure_ascii=False, sort_keys=True) if r.attributes else None,
+                )
+
     dest.executemany(_INSERT_SQL.format(table=f'"{insert_table}"'), rows())
+    if runs:
+        dest.executemany(_INSERT_SQL.format(table=f'"{insert_table}"'), adapter_rows())
+        for run in runs:
+            stats["adapter_counts"][run.manifest.source] = run.n_rows
+            stats["adapter_attributes_count"][run.manifest.source] = run.n_attributes
+            stats["adapter_problems"].extend(run.problems())
     return stats
 
 
 def build_and_write_occurrence(
     ryuiki_db,
     registry_db,
-    source_regions_yaml=DEFAULT_SOURCE_REGIONS_YAML,
+    manifests_dir=DEFAULT_MANIFESTS_DIR,
     period_shapes_yaml=DEFAULT_PERIOD_SHAPES_YAML,
     out_path=DEFAULT_OUT,
     count_overlay_by_file: dict[str, dict[str, int]] | None = None,
@@ -445,10 +557,10 @@ def build_and_write_occurrence(
 
     # 宣言表の構造検証（コードレビュー指摘6: `.get()` で黙って検査を外さない。
     # CI 用の `validate_*_shape` を実行時にも呼ぶ）。
-    source_regions.validate_source_regions_shape(source_regions_yaml)
+    source_regions.validate_source_regions_shape(manifests_dir)
     occurrence_period.validate_occurrence_period_shapes_shape(period_shapes_yaml)
 
-    # consumer="occurrence": P-1b で source_regions.yaml に土地利用
+    # consumer="occurrence": P-1b で manifests/*.yml に土地利用
     # （consumer="observation"）の宣言が同居するようになったため、b06 が
     # 自分の使わない宣言を「未使用宣言」として誤検出しないように絞り込む
     # （scripts/migrate/source_regions.py モジュール docstring「consumer」節）。
@@ -456,13 +568,20 @@ def build_and_write_occurrence(
     # `--count-overlay` を渡さない本番の実行では常に None のまま。
     overlay = count_overlay_by_file or {}
     sources, regions = source_regions.load_source_regions(
-        source_regions_yaml, consumer="occurrence", count_overlay=overlay.get("source_regions.yaml")
+        manifests_dir, consumer="occurrence", count_overlay=overlay.get("manifests")
     )
     source_usage = period.EntryUsage(sources)
     region_usage = period.EntryUsage(regions)
     shapes = occurrence_period.load_period_shapes(
         period_shapes_yaml, count_overlay=overlay.get("occurrence_period_shapes.yaml")
     )
+    # 非 builtin のマニフェスト（adapter 経由の出現）の宣言値（`expected`）は yaml の宣言値に足して突合する
+    # （ソース追加で scripts/migrate/ を触らない。J6）。既存出典の宣言は従来どおり yaml のまま。
+    manifests = manifest_lib.load_manifests(manifests_dir)
+    adapter_manifests = tuple(
+        m for m in manifests.values() if m.target == "occurrence" and not m.is_builtin
+    )
+    shapes = _add_manifest_shape_counts(shapes, manifest_lib.expected_sums(manifests).period_shapes)
     # `validate_occurrence_period_shapes_shape()` は生の YAML dict に対して
     # 同じ名前集合の一致を既に検証済みだが、ここでは `load_period_shapes()` が
     # 実際に作った `PeriodShape` の集合に対して独立にもう一度確認する
@@ -476,7 +595,10 @@ def build_and_write_occurrence(
     dest = sqlite3.connect(f"file:{out_path}", uri=True)
     dest.execute("PRAGMA journal_mode=DELETE")
     # 系譜（Issue #45）: 読み取りから自動生成する（b03 と同じ）。
-    work_external = {"src": common.ryuiki_external(ryuiki_db), "reg": common.registry_external(registry_db)}
+    work_external = {
+        "src": common.ryuiki_external(ryuiki_db, extra_tables=common.manifest_inputs(manifests_dir)[0]),
+        "reg": common.registry_external(registry_db),
+    }
     try:
         with common.LineageTracker(dest) as lineage, common.staged_table(
             dest, "occurrence", _CREATE_OCCURRENCE_SQL, lineage=lineage,
@@ -490,7 +612,7 @@ def build_and_write_occurrence(
                 taxon_ids = _load_taxon_ids(work)
                 ctx = _IngestContext(
                     taxon_ids, _load_alien_binoms(work), sources, regions,
-                    source_usage, region_usage, shape_usage,
+                    source_usage, region_usage, shape_usage, adapter_manifests,
                 )
                 stats = _ingest(work, dest, staging, ctx)
             finally:
@@ -505,8 +627,8 @@ def build_and_write_occurrence(
             dest.commit()
 
             declaration_problems = (
-                period.declaration_problems(source_usage, "source_regions.yaml (sources)")
-                + period.declaration_problems(region_usage, "source_regions.yaml (regions)")
+                period.declaration_problems(source_usage, "manifests/ (sources, target=occurrence)")
+                + period.declaration_problems(region_usage, "manifests/ (regions, target=occurrence)")
                 + period.declaration_problems(shape_usage, "occurrence_period_shapes.yaml")
             )
             if declaration_problems:
@@ -601,6 +723,14 @@ def render_report(stats: dict) -> str:
         f"- `taxon_id` NULL: **{stats['taxon_null_count']:,}**"
         f"（うち日付あり: {stats['taxon_null_dated_count']:,}）"
     )
+    if stats["adapter_counts"]:
+        a("")
+        a("## adapter 経由の出典（`manifests/*.yml` の `adapter` が builtin でないもの）")
+        a("")
+        a("| source_id | 取り込み行数 | attributes を持つ行 |")
+        a("|---|---:|---:|")
+        for sid, n in sorted(stats["adapter_counts"].items()):
+            a(f"| `{sid}` | {n:,} | {stats['adapter_attributes_count'][sid]:,} |")
     a("")
     a("## region 内訳")
     a("")
@@ -633,7 +763,7 @@ def main() -> None:
         "--registry-db", default=None,
         help=f"既定は RYUIKI_REGISTRY_DB 環境変数、それも無ければ {DEFAULT_REGISTRY_DB}",
     )
-    parser.add_argument("--source-regions-yaml", default=str(DEFAULT_SOURCE_REGIONS_YAML))
+    parser.add_argument("--manifests-dir", default=str(DEFAULT_MANIFESTS_DIR))
     parser.add_argument("--period-shapes-yaml", default=str(DEFAULT_PERIOD_SHAPES_YAML))
     parser.add_argument("--out", default=str(DEFAULT_OUT))
     parser.add_argument("--report", default=str(DEFAULT_REPORT))
@@ -650,12 +780,12 @@ def main() -> None:
     print(f"▶ 読み取り専用で開く: {registry_db}")
 
     count_overlay_by_file = period.resolve_count_overlays(
-        args.count_overlay, ("source_regions.yaml", "occurrence_period_shapes.yaml"),
+        args.count_overlay, ("manifests", "occurrence_period_shapes.yaml"),
     )
 
     with common.timed_step("occurrence を構築して書き出し") as info:
         stats = build_and_write_occurrence(
-            args.ryuiki_db, registry_db, args.source_regions_yaml, args.period_shapes_yaml, args.out,
+            args.ryuiki_db, registry_db, args.manifests_dir, args.period_shapes_yaml, args.out,
             count_overlay_by_file,
         )
         info["n"] = stats["total"] - stats["synthetic_excluded_count"]

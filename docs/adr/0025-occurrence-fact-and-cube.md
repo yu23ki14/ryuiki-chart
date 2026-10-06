@@ -223,3 +223,12 @@ dated_*` は `occurrence_place`（b09）由来の解決件数を持つ。詳細�
   （Slice 0）が既に taxon 単位で計算済みの値を、記録単位でもう一度計算し直す
   ことになり、2つの実装が食い違う余地を生む。taxon への単純な JOIN で
   実データが再現できることを確認済みなので却下。
+
+## 追記（2026-10-06、Issue #40 Phase D・J1）: 座標のない出現の扱い
+
+座標のない出現（例: 神奈川県のクマ出没 400 件は lat/lon が全て NULL）は、**grid01 族に入れず、watershed 族の
+`place_id NULL` セルにだけ入れる**。grid01 に NULL place のセルは新設しない（grid01 は「座標がある」ことが意味）。
+b09 は座標なし・日付ありの記録にも `place_kind='watershed', place_id NULL` の `occurrence_place` 行を作り
+（ADR-0007 原則 1・D2「データを落とさない」と同じ扱い）、b07 の grid01 母集団は「座標あり・日付あり行」に限る
+（座標なし行は grid01 のセルを作らない）。座標なしの件数はマニフェストの `expected.cube.dated_no_coordinate_rows`
+で宣言し、b09/b07 が実測と突合する（宣言が無ければ止まる）。

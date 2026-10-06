@@ -1765,8 +1765,8 @@
 {"key":[2021],"numeric":{"n":1525,"species_n":42,"mesh_n":9,"n_inat":5,"n_gbif":1520},"label":{}},
 {"key":[2022],"numeric":{"n":10,"species_n":8,"mesh_n":9,"n_inat":0,"n_gbif":10},"label":{}},
 {"key":[2023],"numeric":{"n":22,"species_n":2,"mesh_n":11,"n_inat":0,"n_gbif":22},"label":{}},
-{"key":[2024],"numeric":{"n":1,"species_n":1,"mesh_n":1,"n_inat":0,"n_gbif":1},"label":{}},
-{"key":[2025],"numeric":{"n":2,"species_n":2,"mesh_n":2,"n_inat":1,"n_gbif":1},"label":{}},
+{"key":[2024],"numeric":{"n":2,"species_n":2,"mesh_n":2,"n_inat":1,"n_gbif":1},"label":{}},
+{"key":[2025],"numeric":{"n":4,"species_n":3,"mesh_n":4,"n_inat":3,"n_gbif":1},"label":{}},
 {"key":[2026],"numeric":{"n":24,"species_n":18,"mesh_n":14,"n_inat":0,"n_gbif":24},"label":{}}
 ]}
 ]},
@@ -1828,7 +1828,9 @@
 {"key":[2023,"シダ植物"],"numeric":{"n":21,"mesh_n":10},"label":{}},
 {"key":[2023,"鳥類"],"numeric":{"n":1,"mesh_n":1},"label":{}},
 {"key":[2024,"シダ植物"],"numeric":{"n":1,"mesh_n":1},"label":{}},
+{"key":[2024,"未判定"],"numeric":{"n":1,"mesh_n":1},"label":{}},
 {"key":[2025,"シダ植物"],"numeric":{"n":1,"mesh_n":1},"label":{}},
+{"key":[2025,"未判定"],"numeric":{"n":2,"mesh_n":2},"label":{}},
 {"key":[2025,"鳥類"],"numeric":{"n":1,"mesh_n":1},"label":{}},
 {"key":[2026,"その他無脊椎動物"],"numeric":{"n":1,"mesh_n":1},"label":{}},
 {"key":[2026,"シダ植物"],"numeric":{"n":4,"mesh_n":2},"label":{}},
@@ -1987,6 +1989,7 @@
 {"key":["Trypoxylus dichotomus"],"numeric":{"n":2,"has_red_list":0,"y_from":2016,"y_to":2020,"n_years":2,"mesh_n":2},"label":{"taxon_group":"未判定","cls":null,"family":null,"label":"カブトムシ"}},
 {"key":["Turdus chrysolaus"],"numeric":{"n":5,"has_red_list":0,"y_from":2021,"y_to":2021,"n_years":1,"mesh_n":1},"label":{"taxon_group":"鳥類","cls":"Aves","family":"Turdidae","label":"Brown-headed Thrush"}},
 {"key":["Turdus eunomus"],"numeric":{"n":63,"has_red_list":0,"y_from":2021,"y_to":2021,"n_years":1,"mesh_n":1},"label":{"taxon_group":"鳥類","cls":"Aves","family":"Turdidae","label":"Dusky Thrush"}},
+{"key":["Ursus thibetanus"],"numeric":{"n":3,"has_red_list":0,"y_from":2024,"y_to":2025,"n_years":2,"mesh_n":3},"label":{"taxon_group":"未判定","cls":null,"family":null,"label":"西中国地域のツキノワグマ"}},
 {"key":["Verasper variegatus"],"numeric":{"n":1,"has_red_list":0,"y_from":2002,"y_to":2002,"n_years":1,"mesh_n":1},"label":{"taxon_group":"魚類","cls":null,"family":"Pleuronectidae","label":"ホシガレイ"}},
 {"key":["Veronica anagallis-aquatica"],"numeric":{"n":2,"has_red_list":0,"y_from":2018,"y_to":2018,"n_years":1,"mesh_n":1},"label":{"taxon_group":"被子植物","cls":"Magnoliopsida","family":null,"label":"オオカワヂシャ"}},
 {"key":["Veronica persica"],"numeric":{"n":1,"has_red_list":0,"y_from":2021,"y_to":2021,"n_years":1,"mesh_n":1},"label":{"taxon_group":"被子植物","cls":"Magnoliopsida","family":"Plantaginaceae","label":"Veronica persica"}},
@@ -2373,7 +2376,7 @@
 {"key":[3539,13922],"numeric":{"n":2,"rl_n":0,"species_n":1,"rl_species_n":0},"label":{}},
 {"key":[3539,13923],"numeric":{"n":1,"rl_n":0,"species_n":1,"rl_species_n":0},"label":{}},
 {"key":[3539,13926],"numeric":{"n":1,"rl_n":0,"species_n":1,"rl_species_n":0},"label":{}},
-{"key":[3539,13927],"numeric":{"n":1,"rl_n":0,"species_n":1,"rl_species_n":0},"label":{}},
+{"key":[3539,13927],"numeric":{"n":2,"rl_n":0,"species_n":2,"rl_species_n":0},"label":{}},
 {"key":[3539,13949],"numeric":{"n":1,"rl_n":0,"species_n":1,"rl_species_n":0},"label":{}},
 {"key":[3539,13952],"numeric":{"n":1,"rl_n":0,"species_n":1,"rl_species_n":0},"label":{}},
 {"key":[3539,13961],"numeric":{"n":1,"rl_n":0,"species_n":1,"rl_species_n":0},"label":{}},
@@ -2397,7 +2400,7 @@
 {"key":[3543,13904],"numeric":{"n":2,"rl_n":0,"species_n":1,"rl_species_n":0},"label":{}},
 {"key":[3543,13921],"numeric":{"n":1,"rl_n":1,"species_n":1,"rl_species_n":1},"label":{}},
 {"key":[3543,13922],"numeric":{"n":1,"rl_n":0,"species_n":1,"rl_species_n":0},"label":{}},
-{"key":[3543,13923],"numeric":{"n":2,"rl_n":2,"species_n":1,"rl_species_n":1},"label":{}},
+{"key":[3543,13923],"numeric":{"n":3,"rl_n":2,"species_n":2,"rl_species_n":1},"label":{}},
 {"key":[3543,13931],"numeric":{"n":2,"rl_n":0,"species_n":2,"rl_species_n":0},"label":{}},
 {"key":[3543,13933],"numeric":{"n":1,"rl_n":0,"species_n":1,"rl_species_n":0},"label":{}},
 {"key":[3543,13934],"numeric":{"n":11,"rl_n":1,"species_n":11,"rl_species_n":1},"label":{}},
@@ -2471,7 +2474,7 @@
 {"key":[3551,13975],"numeric":{"n":1,"rl_n":0,"species_n":1,"rl_species_n":0},"label":{}},
 {"key":[3552,13917],"numeric":{"n":1,"rl_n":1,"species_n":1,"rl_species_n":1},"label":{}},
 {"key":[3552,13918],"numeric":{"n":1,"rl_n":0,"species_n":1,"rl_species_n":0},"label":{}},
-{"key":[3552,13919],"numeric":{"n":2,"rl_n":0,"species_n":1,"rl_species_n":0},"label":{}},
+{"key":[3552,13919],"numeric":{"n":3,"rl_n":0,"species_n":2,"rl_species_n":0},"label":{}},
 {"key":[3552,13927],"numeric":{"n":1,"rl_n":0,"species_n":1,"rl_species_n":0},"label":{}},
 {"key":[3552,13932],"numeric":{"n":1,"rl_n":0,"species_n":1,"rl_species_n":0},"label":{}},
 {"key":[3552,13936],"numeric":{"n":3,"rl_n":0,"species_n":1,"rl_species_n":0},"label":{}},
@@ -2725,7 +2728,7 @@
 ]},
 {"id": "biota_totals", "n_domain": 1, "runs": [
 {"params": {}, "rows": [
-{"key":[],"numeric":{"records":2509,"species":153,"mesh":391,"gbif":2424,"inat":85},"label":{}}
+{"key":[],"numeric":{"records":2512,"species":154,"mesh":391,"gbif":2424,"inat":88},"label":{}}
 ]}
 ]},
 {"id": "watershed_rollup", "n_domain": 1, "runs": [
@@ -2837,7 +2840,7 @@
 {"key":["83032-0035"],"numeric":{"org_n":4,"org_alien_n":0,"org_redlist_n":2,"site_n":0,"area_km2":14.890584,"centroid_lat":35.475743,"centroid_lon":139.185752,"built_km2_2006":null,"built_km2_2016":null,"forest_km2_2006":14.611093,"forest_km2_2016":14.736961,"paddy_km2_2006":null,"paddy_km2_2016":null},"label":{"water_system_name":"相模川"}},
 {"key":["83032-0036"],"numeric":{"org_n":0,"org_alien_n":0,"org_redlist_n":0,"site_n":0,"area_km2":0.340485,"centroid_lat":35.520101,"centroid_lon":139.20889,"built_km2_2006":null,"built_km2_2016":null,"forest_km2_2006":0.272566,"forest_km2_2016":0.272566,"paddy_km2_2006":null,"paddy_km2_2016":null},"label":{"water_system_name":"相模川"}},
 {"key":["83032-0037"],"numeric":{"org_n":4,"org_alien_n":0,"org_redlist_n":1,"site_n":0,"area_km2":22.975369,"centroid_lat":35.504716,"centroid_lon":139.164786,"built_km2_2006":null,"built_km2_2016":null,"forest_km2_2006":22.679613,"forest_km2_2016":22.826381,"paddy_km2_2006":null,"paddy_km2_2016":null},"label":{"water_system_name":"相模川"}},
-{"key":["83032-0038"],"numeric":{"org_n":2,"org_alien_n":0,"org_redlist_n":2,"site_n":0,"area_km2":6.990141,"centroid_lat":35.530446,"centroid_lon":139.178787,"built_km2_2006":null,"built_km2_2016":null,"forest_km2_2006":6.886628,"forest_km2_2016":6.980972,"paddy_km2_2006":null,"paddy_km2_2016":null},"label":{"water_system_name":"相模川"}},
+{"key":["83032-0038"],"numeric":{"org_n":3,"org_alien_n":0,"org_redlist_n":2,"site_n":0,"area_km2":6.990141,"centroid_lat":35.530446,"centroid_lon":139.178787,"built_km2_2006":null,"built_km2_2016":null,"forest_km2_2006":6.886628,"forest_km2_2016":6.980972,"paddy_km2_2006":null,"paddy_km2_2016":null},"label":{"water_system_name":"相模川"}},
 {"key":["83032-0039"],"numeric":{"org_n":26,"org_alien_n":0,"org_redlist_n":0,"site_n":0,"area_km2":10.398079,"centroid_lat":35.564321,"centroid_lon":139.31147,"built_km2_2006":1.456302,"built_km2_2016":1.990643,"forest_km2_2006":3.866266,"forest_km2_2016":4.117776,"paddy_km2_2006":0.377187,"paddy_km2_2016":0.136226},"label":{"water_system_name":"相模川"}},
 {"key":["83032-0040"],"numeric":{"org_n":11,"org_alien_n":0,"org_redlist_n":0,"site_n":2,"area_km2":2.456987,"centroid_lat":35.589848,"centroid_lon":139.294563,"built_km2_2006":0.932182,"built_km2_2016":1.036932,"forest_km2_2006":0.701796,"forest_km2_2016":0.712261,"paddy_km2_2006":null,"paddy_km2_2016":null},"label":{"water_system_name":"相模川"}},
 {"key":["83032-0041"],"numeric":{"org_n":18,"org_alien_n":0,"org_redlist_n":0,"site_n":1,"area_km2":26.21676,"centroid_lat":35.559292,"centroid_lon":139.248224,"built_km2_2006":2.085025,"built_km2_2016":3.614741,"forest_km2_2006":18.546856,"forest_km2_2016":18.106837,"paddy_km2_2006":0.125741,"paddy_km2_2016":0.12574},"label":{"water_system_name":"相模川"}},
@@ -3058,8 +3061,8 @@
 {"key":["83545-0042"],"numeric":{"org_n":0,"org_alien_n":0,"org_redlist_n":0,"site_n":0,"area_km2":0.86748,"centroid_lat":35.370042,"centroid_lon":139.291394,"built_km2_2006":0.094524,"built_km2_2016":0.178545,"forest_km2_2006":null,"forest_km2_2016":null,"paddy_km2_2006":0.703664,"paddy_km2_2016":0.630146},"label":{"water_system_name":"金目川"}},
 {"key":["83545-0043"],"numeric":{"org_n":0,"org_alien_n":0,"org_redlist_n":0,"site_n":0,"area_km2":7.476489,"centroid_lat":35.37428,"centroid_lon":139.267187,"built_km2_2006":3.969762,"built_km2_2016":4.442356,"forest_km2_2006":1.197167,"forest_km2_2016":1.249689,"paddy_km2_2006":0.399067,"paddy_km2_2016":0.273048},"label":{"water_system_name":"金目川"}},
 {"key":["83545-0044"],"numeric":{"org_n":1,"org_alien_n":0,"org_redlist_n":0,"site_n":0,"area_km2":4.562799,"centroid_lat":35.388444,"centroid_lon":139.270818,"built_km2_2006":0.661512,"built_km2_2016":0.934519,"forest_km2_2006":1.490976,"forest_km2_2016":1.690469,"paddy_km2_2006":0.850566,"paddy_km2_2016":0.735062},"label":{"water_system_name":"金目川"}},
-{"key":["83545-0045"],"numeric":{"org_n":1,"org_alien_n":0,"org_redlist_n":0,"site_n":0,"area_km2":7.917296,"centroid_lat":35.396816,"centroid_lon":139.284898,"built_km2_2006":2.89774,"built_km2_2016":3.275715,"forest_km2_2006":1.742726,"forest_km2_2016":1.963191,"paddy_km2_2006":1.207556,"paddy_km2_2016":0.924042},"label":{"water_system_name":"金目川"}},
-{"key":["83545-0046"],"numeric":{"org_n":5,"org_alien_n":0,"org_redlist_n":3,"site_n":0,"area_km2":10.998847,"centroid_lat":35.420136,"centroid_lon":139.258793,"built_km2_2006":0.57732,"built_km2_2016":0.797757,"forest_km2_2006":8.491097,"forest_km2_2016":8.732544,"paddy_km2_2006":0.388404,"paddy_km2_2016":0.272925},"label":{"water_system_name":"金目川"}},
+{"key":["83545-0045"],"numeric":{"org_n":2,"org_alien_n":0,"org_redlist_n":0,"site_n":0,"area_km2":7.917296,"centroid_lat":35.396816,"centroid_lon":139.284898,"built_km2_2006":2.89774,"built_km2_2016":3.275715,"forest_km2_2006":1.742726,"forest_km2_2016":1.963191,"paddy_km2_2006":1.207556,"paddy_km2_2016":0.924042},"label":{"water_system_name":"金目川"}},
+{"key":["83545-0046"],"numeric":{"org_n":6,"org_alien_n":0,"org_redlist_n":3,"site_n":0,"area_km2":10.998847,"centroid_lat":35.420136,"centroid_lon":139.258793,"built_km2_2006":0.57732,"built_km2_2016":0.797757,"forest_km2_2006":8.491097,"forest_km2_2016":8.732544,"paddy_km2_2006":0.388404,"paddy_km2_2016":0.272925},"label":{"water_system_name":"金目川"}},
 {"key":["83545-0047"],"numeric":{"org_n":0,"org_alien_n":0,"org_redlist_n":0,"site_n":1,"area_km2":17.485806,"centroid_lat":35.37275,"centroid_lon":139.330103,"built_km2_2006":8.66434,"built_km2_2016":9.777512,"forest_km2_2006":0.063008,"forest_km2_2016":0.063006,"paddy_km2_2006":4.967612,"paddy_km2_2016":4.242948},"label":{"water_system_name":"金目川"}},
 {"key":["83545-0048"],"numeric":{"org_n":0,"org_alien_n":0,"org_redlist_n":0,"site_n":0,"area_km2":5.265971,"centroid_lat":35.404371,"centroid_lon":139.351178,"built_km2_2006":2.288478,"built_km2_2016":2.571916,"forest_km2_2006":0.052475,"forest_km2_2016":0.031485,"paddy_km2_2006":2.15225,"paddy_km2_2016":1.795276},"label":{"water_system_name":"相模川"}},
 {"key":["83545-0049"],"numeric":{"org_n":0,"org_alien_n":0,"org_redlist_n":0,"site_n":0,"area_km2":8.819605,"centroid_lat":35.41016,"centroid_lon":139.331714,"built_km2_2006":3.411524,"built_km2_2016":4.13586,"forest_km2_2006":0.818693,"forest_km2_2016":0.75572,"paddy_km2_2006":2.120732,"paddy_km2_2016":1.574804},"label":{"water_system_name":"金目川"}},

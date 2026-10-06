@@ -63,6 +63,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import pipeline_inputs  # noqa: E402
+from ingest import manifest as manifest_lib  # noqa: E402
 from migrate import occurrence_period  # noqa: E402
 from migrate import point_in_polygon as pip  # noqa: E402
 from migrate import source_regions  # noqa: E402
@@ -260,6 +261,57 @@ def select_wholesale_rowids(conn: sqlite3.Connection, table: str) -> list[int]:
     return [r[0] for r in conn.execute(f'SELECT rowid FROM "{table}" ORDER BY rowid')]
 
 
+# adapter 出典（マニフェストの非 builtin）の入力表・ファイルを全件サンプルに入れてよい上限（行数）。
+# これを超える入力は coverage.yaml に predicate を書いて絞る（adapter の出力件数の宣言と合わなくなるので自動では絞らない）。
+ADAPTER_INPUT_WHOLESALE_MAX_ROWS = 5000
+
+
+def adapter_inputs(manifests_dir=source_regions.DEFAULT_MANIFESTS_DIR) -> dict[str, manifest_lib.Manifest]:
+    """サンプルに入力を入れる必要がある出典 = マニフェストの非 builtin（adapter 経由）。
+    新出典を足してもこのスクリプトを触らずに済むよう、対象はマニフェストから導く。"""
+    return {sid: m for sid, m in manifest_lib.load_manifests(manifests_dir).items() if not m.is_builtin}
+
+
+def select_adapter_input_tables(
+    conn: sqlite3.Connection, manifests: dict[str, manifest_lib.Manifest], selected: dict[str, set[int]],
+) -> dict[str, set[int]]:
+    """adapter 出典の入力表（`input.table`）を、小さければ全件サンプルに入れる。
+    全件入れるので adapter の出力はサンプルでも原本と同じ件数（マニフェストの宣言値がそのまま合う）。
+    すでに predicate で絞って選ばれた表・上限を超える表は、黙って部分的に入れず止める。"""
+    out: dict[str, set[int]] = {}
+    for sid, m in sorted(manifests.items()):
+        table = m.input.get("table")
+        if table is None or table in out:
+            continue
+        if table in selected:
+            raise SystemExit(
+                f"{sid}: input.table={table!r} は coverage.yaml の predicate で絞られている。adapter の入力は全件入れる"
+                "（件数の宣言が合わなくなる）ので、predicate を外すこと"
+            )
+        n = conn.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]
+        if n > ADAPTER_INPUT_WHOLESALE_MAX_ROWS:
+            raise SystemExit(
+                f"{sid}: input.table={table!r} が {n:,} 行ある（全件入れる上限 {ADAPTER_INPUT_WHOLESALE_MAX_ROWS:,}）。"
+                "coverage.yaml に絞り込みの predicate を書き、マニフェストの expected を縮小サンプルの件数に合わせること"
+            )
+        out[table] = set(select_wholesale_rowids(conn, table))
+    return out
+
+
+def adapter_input_files(manifests: dict[str, manifest_lib.Manifest]) -> list[str]:
+    """adapter 出典の入力ファイル（`input.file`。`data/processed/` 配下のファイル名）。サンプルの processed/ に丸ごと写す。"""
+    names: list[str] = []
+    for sid, m in sorted(manifests.items()):
+        f = m.input.get("file")
+        if f is None:
+            continue
+        path = pathlib.PurePosixPath(f)
+        if path.parent != pathlib.PurePosixPath("data/processed"):
+            raise SystemExit(f"{sid}: input.file={f!r} は data/processed/ 直下のファイルでなければならない（サンプルに写せない）")
+        names.append(path.name)
+    return names
+
+
 def select_cells_rowids(conn: sqlite3.Connection, doc_ids: list[str]) -> list[int]:
     placeholder = ",".join("?" * len(doc_ids))
     return [
@@ -298,8 +350,8 @@ def compute_leaf_cell_source_rows(rows: list[sqlite3.Row]) -> int:
     return n
 
 
-def load_utc_offset_by_source(source_regions_yaml=source_regions.DEFAULT_SOURCE_REGIONS_YAML) -> dict[str, str]:
-    """`source_regions.yaml`（consumer='occurrence'）から `{source_id: utc_offset}`
+def load_utc_offset_by_source(manifests_dir=source_regions.DEFAULT_MANIFESTS_DIR) -> dict[str, str]:
+    """`manifests/*.yml`（target=occurrence）から `{source_id: utc_offset}`
     を組み立てる。`compute_month_cell_source_rows` が 'Z' 終端の瞬時記録を
     ローカル時刻へ変換するのに使う（region の utc_offset）。
 
@@ -308,7 +360,7 @@ def load_utc_offset_by_source(source_regions_yaml=source_regions.DEFAULT_SOURCE_
     （b06 のように `mark_used()` を追う必要が無い——s01 は宣言の一部だけを
     使っても「未使用宣言」にはならない）。
     """
-    sources, regions = source_regions.load_source_regions(source_regions_yaml, consumer="occurrence")
+    sources, regions = source_regions.load_source_regions(manifests_dir, consumer="occurrence")
     return {source_id: regions[s.region_id].utc_offset for source_id, s in sources.items()}
 
 
@@ -409,7 +461,7 @@ def build_declaration_counts(
     ryuiki_selected: dict[str, set[int]],
     geojson_path=DEFAULT_GEOJSON,
     landuse_csv_path=DEFAULT_LANDUSE_CSV,
-    source_regions_yaml=source_regions.DEFAULT_SOURCE_REGIONS_YAML,
+    manifests_dir=source_regions.DEFAULT_MANIFESTS_DIR,
 ) -> dict[str, int]:
     """`data/sample/declaration_counts.yaml` の中身（フラットな
     `"<宣言ファイル名>:<エントリ名>[.<内訳キー>]"` -> 整数）を実測する。
@@ -463,16 +515,20 @@ def build_declaration_counts(
         "sensor_timeseries", "source_id = 'soramame_hourly_kanagawa'"
     )
 
-    # source_regions.yaml
-    out["source_regions.yaml:gbif_kanagawa_occurrences"] = count(
+    # manifests/*.yml
+    out["manifests:gbif_kanagawa_occurrences"] = count(
         "organism_records", "source_id = 'gbif_kanagawa_occurrences'"
     )
-    out["source_regions.yaml:inaturalist_kanagawa"] = count(
+    out["manifests:inaturalist_kanagawa"] = count(
         "organism_records", "source_id = 'inaturalist_kanagawa'"
     )
     # 土地利用CSVは丸ごとコピーする（coverage.yaml の wholesale_processed_files）
     # ので、サンプルの件数は原本の行数と同じ（実測: count_csv_data_rows 参照）。
-    out["source_regions.yaml:nlni_l03b_landuse_by_watershed"] = count_csv_data_rows(landuse_csv_path)
+    out["manifests:nlni_l03b_landuse_by_watershed"] = count_csv_data_rows(landuse_csv_path)
+    # adapter 出典は入力を全件サンプルに入れる（select_adapter_input_tables）ので、取り込み件数は原本と同じ。
+    # マニフェストの宣言値（expected_row_count）をそのまま持つ（キーはマニフェストから導く。新出典で s01 を触らない）。
+    for sid, m in sorted(adapter_inputs(manifests_dir).items()):
+        out[f"manifests:{sid}"] = m.expected_row_count
 
     # occurrence_period_shapes.yaml。形の名前は宣言ファイル（コードの
     # `_SHAPE_DEFS` と過不足なく一致することを `assert_declared_shapes_match_code`
@@ -494,7 +550,7 @@ def build_declaration_counts(
         "ORDER BY t.rowid"
     ).fetchall()
     out["occurrence_cube_declarations.yaml:leaf_cell_source_rows"] = compute_leaf_cell_source_rows(org_rows)
-    utc_offset_by_source = load_utc_offset_by_source(source_regions_yaml)
+    utc_offset_by_source = load_utc_offset_by_source(manifests_dir)
     out["occurrence_cube_declarations.yaml:month_cell_source_rows"] = compute_month_cell_source_rows(
         org_rows, utc_offset_by_source,
     )
@@ -539,6 +595,7 @@ def main() -> int:
     parser.add_argument("--processed-dir", default=str(DEFAULT_PROCESSED_DIR))
     parser.add_argument("--coverage-yaml", default=str(DEFAULT_COVERAGE_YAML))
     parser.add_argument("--out-dir", default=str(DEFAULT_OUT_DIR))
+    parser.add_argument("--manifests-dir", default=str(source_regions.DEFAULT_MANIFESTS_DIR))
     args = parser.parse_args()
 
     coverage = load_yaml(args.coverage_yaml)
@@ -555,6 +612,10 @@ def main() -> int:
     selected["measurements"] = apply_quality_transitions_closure(ryuiki_conn, selected["measurements"])
     for table in coverage.get("wholesale_ryuiki_tables", []):
         selected[table] = set(select_wholesale_rowids(ryuiki_conn, table))
+    # adapter 出典（マニフェストの非 builtin）の入力表は、coverage.yaml に書かなくてもマニフェストから導いて入れる
+    manifests = adapter_inputs(args.manifests_dir)
+    for table, rowids in select_adapter_input_tables(ryuiki_conn, manifests, selected).items():
+        selected[table] = rowids
 
     doc_ids = coverage["document_closure"]["doc_ids"]
     if len(doc_ids) < coverage["document_closure"]["min_documents"]:
@@ -580,13 +641,13 @@ def main() -> int:
     processed_dir = pathlib.Path(args.processed_dir)
     processed_out = out_dir / "processed"
     processed_out.mkdir(parents=True, exist_ok=True)
-    for name in coverage.get("wholesale_processed_files", []):
+    for name in [*coverage.get("wholesale_processed_files", []), *adapter_input_files(manifests)]:
         shutil.copyfile(processed_dir / name, processed_out / name)
 
     # --- declaration_counts.yaml ---
     geojson_path = pathlib.Path(args.processed_dir) / "nlni_w12_watersheds.geojson"
     landuse_csv_path = pathlib.Path(args.processed_dir) / "nlni_l03b_landuse_by_watershed.csv"
-    counts = build_declaration_counts(ryuiki_conn, selected, geojson_path, landuse_csv_path)
+    counts = build_declaration_counts(ryuiki_conn, selected, geojson_path, landuse_csv_path, manifests_dir=args.manifests_dir)
     (out_dir / "declaration_counts.yaml").write_text(_dump_declaration_counts_yaml(counts), encoding="utf-8")
 
     # --- manifest.json ---

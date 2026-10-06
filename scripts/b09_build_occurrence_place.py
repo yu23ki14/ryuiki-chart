@@ -65,6 +65,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
+from ingest import manifest as manifest_lib  # noqa: E402
 from migrate import common, cube_invariants, period, point_in_polygon as pip  # noqa: E402
 
 DEFAULT_V2_DB = ROOT / "data" / "db" / "v2.sqlite"
@@ -327,6 +328,7 @@ def build_and_write_occurrence_place(
     geojson_path=DEFAULT_GEOJSON,
     declarations_yaml=DEFAULT_DECLARATIONS_YAML,
     count_overlay: dict[str, int] | None = None,
+    expected_sums: manifest_lib.ExpectedSums | None = None,
 ) -> dict:
     """`v2_db`（`occurrence` を持つ、読み書き可能な v2.sqlite）に
     `occurrence_place` を作る。`occurrence` を変更する SQL は一切実行しない
@@ -334,8 +336,16 @@ def build_and_write_occurrence_place(
 
     `count_overlay`（既定 None）は Issue #29「縮小サンプル」用（`expected_row_count`
     だけを差し替える）。
+
+    `expected_sums`（既定 None＝マニフェストの宣言を足さない）は非 builtin マニフェストの `expected`
+    の合計（`manifest_lib.expected_sums`。`main()` が渡す）。yaml の宣言値に足して突合する（J6）。
+
+    **座標のある記録**は従来どおり PIP で解決する。**座標の無い日付あり記録**は `place_id NULL` の行を作る
+    （J1・ADR-0025 D2「データを落とさない」。b07 の watershed 母集団が日付あり全行を要求するため。
+    grid01 には入れない）。座標も日付も無い記録は行を作らない（どのセルにも入らない）。
     """
     declarations = load_and_validate_place_declarations(declarations_yaml, count_overlay=count_overlay)
+    sums = expected_sums or manifest_lib.ExpectedSums()
 
     polys = pip.load_polygons(geojson_path)
     grid = pip.build_grid(polys)
@@ -415,12 +425,20 @@ def build_and_write_occurrence_place(
                 lineage=lineage,
                 fingerprint_spec_version=common.OCCURRENCE_SPEC_VERSION,
             ) as staging:
+                n_no_coord_dated = 0
+
                 def rows():
+                    nonlocal n_no_coord_dated
                     for record_id, lat, lon in conn.execute(
                         "SELECT record_id, lat, lon FROM occurrence "
-                        "WHERE lat IS NOT NULL AND lon IS NOT NULL"
+                        "WHERE (lat IS NOT NULL AND lon IS NOT NULL) OR period_raw IS NOT NULL "
+                        "ORDER BY rowid"
                     ):
-                        place_id = coord_place_id[(lat, lon)]
+                        if lat is None or lon is None:
+                            n_no_coord_dated += 1
+                            place_id = None
+                        else:
+                            place_id = coord_place_id[(lat, lon)]
                         yield (record_id, PLACE_KIND, place_id, METHOD, built_from, common.OCCURRENCE_SPEC_VERSION)
 
                 conn.executemany(_INSERT_SQL.format(table=f'"{staging}"'), rows())
@@ -447,16 +465,28 @@ def build_and_write_occurrence_place(
                 n_with_coords = conn.execute(
                     "SELECT COUNT(*) FROM occurrence WHERE lat IS NOT NULL AND lon IS NOT NULL"
                 ).fetchone()[0]
-                if n_total != n_with_coords:
+                n_dated_no_coord = conn.execute(
+                    "SELECT COUNT(*) FROM occurrence WHERE (lat IS NULL OR lon IS NULL) AND period_raw IS NOT NULL"
+                ).fetchone()[0]
+                if n_total != n_with_coords + n_dated_no_coord or n_no_coord_dated != n_dated_no_coord:
                     raise common.MigrationError(
-                        f"occurrence_place: 行数（{n_total}）が occurrence の座標あり行数"
-                        f"（{n_with_coords}）と一致しない（UNIQUE(record_id, place_kind) は"
-                        "満たしているはずなので、座標のある記録の一部が取りこぼされている"
-                        "可能性がある）。"
+                        f"occurrence_place: 行数（{n_total}）が occurrence の座標あり行数（{n_with_coords}）＋"
+                        f"座標なし日付あり行数（{n_dated_no_coord}）と一致しない（UNIQUE(record_id, place_kind) は"
+                        "満たしているはずなので、記録の一部が取りこぼされている可能性がある）。"
                     )
+                # 座標なしの日付あり記録の件数は宣言（マニフェストの expected.cube.dated_no_coordinate_rows の和）と突合する。
+                # 既存出典（organism_records）は座標なしが 0 件で、yaml に宣言は無い（暗黙の 0）。
+                expected_no_coord = sums.cube["dated_no_coordinate_rows"]
+                if n_dated_no_coord != expected_no_coord:
+                    raise common.MigrationError(
+                        f"occurrence_place: 座標なしの日付あり記録の件数が宣言と食い違う（マニフェストの "
+                        f"expected.cube.dated_no_coordinate_rows の和: {expected_no_coord:,} / 実測: {n_dated_no_coord:,}）。"
+                    )
+                # 以降の突合は「座標のある記録」だけ（NULL 行から座標なし分を除く）。
+                n_null -= n_dated_no_coord
 
-                expected_null = declarations["place_id_null_count"]["expected_row_count"]
-                expected_resolved = declarations["resolved_count"]["expected_row_count"]
+                expected_null = declarations["place_id_null_count"]["expected_row_count"] + sums.place["coord_unresolved"]
+                expected_resolved = declarations["resolved_count"]["expected_row_count"] + sums.place["coord_resolved"]
                 if n_null != expected_null or n_resolved != expected_resolved:
                     raise common.MigrationError(
                         "occurrence_place: 実測件数が宣言と食い違う"
@@ -490,6 +520,7 @@ def build_and_write_occurrence_place(
     return {
         "n_polygons": len(polys),
         "n_total": n_total,
+        "n_dated_no_coord": n_dated_no_coord,
         "n_null": n_null,
         "n_resolved": n_resolved,
         "n_distinct_coords": len(coords),
@@ -509,6 +540,7 @@ def main() -> None:
     )
     parser.add_argument("--geojson", default=str(DEFAULT_GEOJSON))
     parser.add_argument("--declarations-yaml", default=str(DEFAULT_DECLARATIONS_YAML))
+    parser.add_argument("--manifests-dir", default=str(manifest_lib.DEFAULT_MANIFESTS_DIR))
     parser.add_argument(
         "--count-overlay", default=None,
         help="data/sample/declaration_counts.yaml のようなファイル。既定は使わない（Issue #29「縮小サンプル」）",
@@ -539,13 +571,14 @@ def main() -> None:
         stats = build_and_write_occurrence_place(
             args.v2_db, args.ryuiki_db, registry_db, args.geojson, args.declarations_yaml,
             count_overlay=count_overlay,
+            expected_sums=manifest_lib.expected_sums(manifest_lib.load_manifests(args.manifests_dir)),
         )
         info["n"] = stats["n_total"]
 
     print(
         f"  ポリゴン数={stats['n_polygons']} / distinct座標={stats['n_distinct_coords']:,} / "
         f"際どい交差の再判定={stats['n_near_checked']} / sites突合={stats['n_checked_sites']} / "
-        f"解決={stats['n_resolved']:,} / NULL={stats['n_null']:,} / built_from={stats['built_from']}"
+        f"解決={stats['n_resolved']:,} / NULL={stats['n_null']:,} / 座標なし日付あり={stats['n_dated_no_coord']:,} / built_from={stats['built_from']}"
     )
 
 

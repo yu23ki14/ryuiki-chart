@@ -1,0 +1,12 @@
+# manifests/inaturalist_kanagawa.yml（宣言。形は scripts/ingest/manifest.py の docstring）。
+# adapter: builtin = 変換は b03/b06 のまま（出力を動かさない）。メタデータだけを持つ。
+source: inaturalist_kanagawa
+region: jp-14
+target: occurrence
+update_mode: snapshot
+input:
+  table: organism_records
+adapter: builtin
+expected_row_count: 165332
+evidence: >
+  iNaturalist 経由で取得した神奈川県内の観測（収集は scripts/c03_inaturalist.py）。同じく対象地域を神奈川県に絞って収集しているため region=jp-14。 update_mode=snapshot は gbif_kanagawa_occurrences と同じ取得方式（REST API の全件取得を 1 回ずつ。source_registry.access_method）に揃えた宣言。

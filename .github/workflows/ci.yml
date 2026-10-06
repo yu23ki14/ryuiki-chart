@@ -141,7 +141,7 @@ jobs:
       - name: Phase B パイプラインのフィクスチャテスト（原本DBは使わない）
         run: pytest
 
-      - name: 宣言ファイル（period_exceptions.yaml / time_label_conventions.yaml / source_regions.yaml / occurrence_period_shapes.yaml / occurrence_cube_declarations.yaml）の構造検証（原本DBは使わない）
+      - name: 宣言ファイル（period_exceptions.yaml / time_label_conventions.yaml / manifests/*.yml / occurrence_period_shapes.yaml / occurrence_cube_declarations.yaml）の構造検証（原本DBは使わない）
         run: |
           python3 - <<'PY'
           import pathlib
@@ -166,15 +166,14 @@ jobs:
           conventions = period.load_time_label_conventions(conventions_path)
           print(f"OK: {conventions_path}（{len(conventions)}件の宣言）")
 
-          # source_regions.yaml（occurrence〔scripts/b06_build_occurrence.py〕と
-          # 土地利用〔scripts/b03_build_observation.py、P-1b〕が consumer ごとに
-          # 共有。ここでは consumer を指定せずファイル全体を検証する）/
-          # occurrence_period_shapes.yaml（O-1a。scripts/b06_build_occurrence.py
+          # manifests/*.yml（出典→region・update_mode・件数の宣言。occurrence〔scripts/b06_build_occurrence.py〕と
+          # 観測〔scripts/b03_build_observation.py〕が target ごとに共有。ここでは consumer を指定せず
+          # 全体を検証する）/ occurrence_period_shapes.yaml（O-1a。scripts/b06_build_occurrence.py
           # が読む）も同じ流儀で検証する。
-          source_regions_path = pathlib.Path("scripts/migrate/source_regions.yaml")
-          source_regions.validate_source_regions_shape(source_regions_path)
-          sources, regions = source_regions.load_source_regions(source_regions_path)
-          print(f"OK: {source_regions_path}（出典{len(sources)}件・region{len(regions)}件）")
+          manifests_path = pathlib.Path("manifests")
+          source_regions.validate_source_regions_shape(manifests_path)
+          sources, regions = source_regions.load_source_regions(manifests_path)
+          print(f"OK: {manifests_path}（出典{len(sources)}件・region{len(regions)}件）")
 
           period_shapes_path = pathlib.Path("scripts/migrate/occurrence_period_shapes.yaml")
           occurrence_period.validate_occurrence_period_shapes_shape(period_shapes_path)
@@ -297,6 +296,19 @@ jobs:
             --out data/db/v2.sqlite \
             --count-overlay "$COUNT_OVERLAY"
           python3 scripts/b13_build_summary.py
+
+      - name: dist（Parquet 配布物）をサンプルから構築
+        # Issue #40 Phase D。dist は v2 の派生物で `build:v2` には含めない（`pnpm run build:dist`）。
+        # 本番サイズの dist は CI で作らない（手元で1回）。サンプル規模で書き出しが通ることを確かめる。
+        run: python3 scripts/d01_build_dist.py
+
+      - name: dist の不変条件を検査（合成データなし・座標が v2 と同一・redistributable で絞らない・旗が registry と一致）
+        run: python3 scripts/d02_check_dist.py
+
+      - name: dist を 2 回作って同じバイトになることを確認（決定性）
+        run: |
+          python3 scripts/d01_build_dist.py --out "$SCRATCH/dist2"
+          diff -r dist "$SCRATCH/dist2"
 
       - name: サンプルの成果物を作り直し、コミット済みのものと一致することを確認
         # scripts/s03_verify_sample_artifacts.py は原本を一切開かない（材料化済みの

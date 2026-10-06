@@ -28,6 +28,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import pipeline_inputs  # noqa: E402
 import s01_build_sample as s01  # noqa: E402
 import s02_materialize_sample as s02  # noqa: E402
+from ingest import manifest as manifest_lib  # noqa: E402
 from migrate import period  # noqa: E402
 from reconcile.common import load_yaml  # noqa: E402
 
@@ -145,14 +146,13 @@ def test_wholesale_ryuiki_tables_have_rows(conn, coverage):
 # 重複させていた——正本にキーの種類が増えても追従し忘れる余地があった
 # （code-review 指摘対応）。今は判定条件そのものを持つ
 # `period.declared_overlay_keys()` を呼ぶだけにし、ここではファイルの
-# パスと「YAML のどこが entries か」（`source_regions.yaml` だけ
-# `raw["sources"]`）だけを持つ。
+# パスと「どこが entries か」（`manifests` だけ `manifests/*.yml` から
+# `expected_row_count` を持つ出典を集める。Issue #40 Phase D）だけを持つ。
 _DECLARATION_FILE_PATHS = {
     name: ROOT / "scripts" / "migrate" / name
     for name in (
         "period_exceptions.yaml",
         "time_label_conventions.yaml",
-        "source_regions.yaml",
         "occurrence_period_shapes.yaml",
         "occurrence_cube_declarations.yaml",
         "occurrence_place_declarations.yaml",
@@ -161,13 +161,15 @@ _DECLARATION_FILE_PATHS = {
 
 
 def _declared_entries_for(filename: str) -> dict:
-    raw = load_yaml(_DECLARATION_FILE_PATHS[filename])
-    if filename == "source_regions.yaml":
-        return raw.get("sources") or {}
-    return raw
+    if filename == "manifests":
+        return {
+            sid: {"expected_row_count": m.expected_row_count}
+            for sid, m in manifest_lib.load_manifests().items() if m.expected_row_count is not None
+        }
+    return load_yaml(_DECLARATION_FILE_PATHS[filename])
 
 
-@pytest.mark.parametrize("filename", sorted(_DECLARATION_FILE_PATHS))
+@pytest.mark.parametrize("filename", sorted(_DECLARATION_FILE_PATHS) + ["manifests"])
 def test_declaration_counts_keys_match_declared_entries_exactly(filename):
     grouped = period.load_count_overlay_file(SAMPLE_DIR / "declaration_counts.yaml")
     overlay_keys = set(grouped.get(filename, {}))

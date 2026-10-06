@@ -10,13 +10,27 @@
  * 消費者は PR-2（AI ツール）。PR-1 はテスト（フィクスチャ）だけで検証する。
  */
 import type { CaveatRef } from "@/lib/registry/lookup-client";
+import { regionTimeZone } from "@/lib/registry/lookup-client";
+import { GENERATED_CAVEATS } from "@/lib/registry/generated-client";
 import { unitSymbol } from "@/lib/registry/lookup";
-import type { CubeDb, SqlParam } from "./db";
-import { jsonEachParam } from "./sql";
-import { seriesInfo, type Grain, type SeriesKey } from "./series";
+import {
+  dedupeSourceRefs,
+  DEFAULT_REGION_ID,
+  seriesSourceRefs,
+  sourceCitation,
+  type SourceCitation,
+  type UpdateModeOrUndeclared,
+} from "./source-meta";
+import { seriesInfo, type Grain, type SeriesKey, type SourceRef } from "./series";
 import type { CellRow, CellSpec, Imputation, ZoneYearRow } from "./observation";
 
-export const ENVELOPE_SPEC_VERSION = "cube-envelope@1";
+/**
+ * `cube-envelope@2`（Issue #40 Phase D）。@1 からの差分は加算のみ:
+ * provenance に source_edition_id / fetched_at / update_mode / age_days / license_* / attribution、
+ * coverage に oldest/newest_fetched_at、トップに cite_as / as_of / time_zone、
+ * caveats に severity / kind。鮮度の閾値判定（stale）は持たない（ADR-0020）。
+ */
+export const ENVELOPE_SPEC_VERSION = "cube-envelope@2";
 
 export interface EnvelopeColumn {
   name: string;
@@ -32,13 +46,33 @@ export interface EnvelopeCoverage {
   n_not_detected: number;
   period: { start: string | null; end: string | null; grain: string };
   imputation: Imputation;
+  /** この結果が引いた出典の取得日（ISO 8601、region の時刻帯つき）の最古・最新。全て取得日不明なら null。 */
+  oldest_fetched_at: string | null;
+  newest_fetched_at: string | null;
 }
 
 export interface EnvelopeProvenance {
-  source_id: string | null;
+  source_id: string;
   name?: string;
   license?: string;
-  n_rows: number;
+  source_edition_id?: string;
+  fetched_at?: string;
+  /** 宣言が無い出典は `"undeclared"`（推測で埋めない）。 */
+  update_mode?: UpdateModeOrUndeclared;
+  age_days?: number;
+  license_id?: string;
+  license_class?: string;
+  /** 出典の旗。出力を絞る根拠にしない（ADR-0028）。 */
+  redistributable?: boolean;
+  attribution?: string;
+  /** この出典から引いた行数。数えていない（出典の一覧だけを載せる応答）ときは null（0 と書かない）。 */
+  n_rows: number | null;
+}
+
+/** 注記。本文は registry（`caveat.yaml`）のもので、severity / kind もそのまま載せる（分類は #35 の責務）。 */
+export interface EnvelopeCaveat extends CaveatRef {
+  severity: string | null;
+  kind: string | null;
 }
 
 export interface EnvelopeExcluded {
@@ -54,9 +88,24 @@ export interface Envelope<R> {
   coverage: EnvelopeCoverage;
   provenance: EnvelopeProvenance[];
   excluded: EnvelopeExcluded;
-  caveats: CaveatRef[];
+  caveats: EnvelopeCaveat[];
   truncated: boolean;
   spec_version: string;
+  /** 「出典名（取得日）」の並びと本サービス名。出典の引用にそのまま使える文字列。 */
+  cite_as: string;
+  /** `age_days` を数えた時点（ISO 8601、UTC）。 */
+  as_of: string;
+  /** `fetched_at`・`as_of` の時刻帯（`regionTimeZone()`）。 */
+  time_zone: { region_id: string; tz_name: string; utc_offset: string };
+}
+
+export interface EnvelopeOpt {
+  caveats?: CaveatRef[];
+  truncated?: boolean;
+  /** `age_days`・`as_of` の基準（テスト用。既定は現在時刻）。 */
+  now?: Date;
+  /** 時刻帯を決める region（既定 `DEFAULT_REGION_ID`）。 */
+  regionId?: string;
 }
 
 function resolveUnitColumn(rows: readonly CellRow[]): { unit: string | null; ucum: string | null } {
@@ -66,44 +115,43 @@ function resolveUnitColumn(rows: readonly CellRow[]): { unit: string | null; ucu
   return { unit: unitSymbol(unitId), ucum: null };
 }
 
-/** `source_registry` から名前・ライセンスを引く（`resolveProvenance`/`resolveSeriesSetProvenance` が共有）。 */
-async function resolveSourceMeta(db: CubeDb, sourceIds: readonly string[]): Promise<Map<string, { name: string | null; license: string | null }>> {
-  const metaById = new Map<string, { name: string | null; license: string | null }>();
-  if (sourceIds.length === 0) return metaById;
-  const params: SqlParam[] = [jsonEachParam(sourceIds)];
-  const sql = `
-    SELECT source_id, name, license FROM source_registry
-    JOIN json_each(?) sk ON sk.value = source_registry.source_id
-  `;
-  const metaRows = await db.all<{ source_id: string; name: string | null; license: string | null }>(sql, params);
-  for (const m of metaRows) metaById.set(m.source_id, { name: m.name, license: m.license });
-  return metaById;
+/** 出典 ID 1件分の provenance 行（registry の生成物から引く。D1 は引かない）。 */
+function provenanceRow(ref: SourceRef, nRows: number | null, now: Date, regionId: string): EnvelopeProvenance {
+  const { sourceId, editionKey } = ref;
+  const c: SourceCitation = sourceCitation(sourceId, { now, regionId, editionKey });
+  return {
+    source_id: sourceId,
+    name: c.name ?? undefined,
+    license: c.license ?? undefined,
+    source_edition_id: c.source_edition_id ?? undefined,
+    fetched_at: c.fetched_at ?? undefined,
+    update_mode: c.update_mode,
+    age_days: c.age_days ?? undefined,
+    license_id: c.license_id ?? undefined,
+    license_class: c.license_class ?? undefined,
+    redistributable: c.redistributable ?? undefined,
+    attribution: c.attribution ?? undefined,
+    n_rows: nRows,
+  };
 }
 
-async function resolveProvenance(db: CubeDb, rows: readonly CellRow[]): Promise<EnvelopeProvenance[]> {
-  const nRowsBySource = new Map<string | null, number>();
+/**
+ * `variable_alias.source_id IS NULL` は「出典未記録＝合成」の alias（`series.ts`）。合成データは
+ * b03 が除外していて `observation_agg` に載らない（設計 §0・ADR-0028 の不変条件 1）ので、
+ * その alias を provenance の行にしない（載せると存在しない合成データが寄与したように読める）。
+ * 除外は provenance の行だけで、`rows` や `excluded` には触れない。
+ */
+function resolveProvenance(rows: readonly CellRow[], now: Date, regionId: string): EnvelopeProvenance[] {
+  const counted = new Map<string, { ref: SourceRef; n: number }>();
   for (const r of rows) {
-    const info = seriesInfo(r.series);
-    const sourceIds = info ? info.sourceIds : [null];
-    for (const sourceId of sourceIds) {
-      nRowsBySource.set(sourceId, (nRowsBySource.get(sourceId) ?? 0) + 1);
+    for (const ref of seriesInfo(r.series)?.sourceRefs ?? []) {
+      const key = `${ref.sourceId}\u0000${ref.editionKey ?? ""}`;
+      const cur = counted.get(key) ?? { ref, n: 0 };
+      cur.n += 1;
+      counted.set(key, cur);
     }
   }
-
-  const knownIds = [...nRowsBySource.keys()].filter((id): id is string => id !== null);
-  const metaById = await resolveSourceMeta(db, knownIds);
-
-  const out: EnvelopeProvenance[] = [];
-  for (const [sourceId, n_rows] of nRowsBySource) {
-    const meta = sourceId ? metaById.get(sourceId) : undefined;
-    out.push({
-      source_id: sourceId,
-      name: meta?.name ?? undefined,
-      license: meta?.license ?? undefined,
-      n_rows,
-    });
-  }
-  return out;
+  return [...counted.values()].map(({ ref, n }) => provenanceRow(ref, n, now, regionId));
 }
 
 /**
@@ -116,28 +164,45 @@ async function resolveProvenance(db: CubeDb, rows: readonly CellRow[]): Promise<
  * 結果全体の行数をそのまま添える（「この結果にはこれらの出典が寄与しうる」
  * という近似。`buildZoneEnvelope` が使う）。
  */
-async function resolveSeriesSetProvenance(db: CubeDb, series: readonly SeriesKey[], nRows: number): Promise<EnvelopeProvenance[]> {
-  const sourceIdSet = new Set<string | null>();
-  for (const s of series) {
-    const info = seriesInfo(s);
-    const sourceIds = info ? info.sourceIds : [null];
-    for (const sourceId of sourceIds) sourceIdSet.add(sourceId);
-  }
+function resolveSeriesSetProvenance(series: readonly SeriesKey[], nRows: number, now: Date, regionId: string): EnvelopeProvenance[] {
+  return seriesSourceRefs(series).map((ref) => provenanceRow(ref, nRows, now, regionId));
+}
 
-  const knownIds = [...sourceIdSet].filter((id): id is string => id !== null);
-  const metaById = await resolveSourceMeta(db, knownIds);
-
-  const out: EnvelopeProvenance[] = [];
-  for (const sourceId of sourceIdSet) {
-    const meta = sourceId ? metaById.get(sourceId) : undefined;
-    out.push({
-      source_id: sourceId,
-      name: meta?.name ?? undefined,
-      license: meta?.license ?? undefined,
-      n_rows: nRows,
-    });
+/** provenance の取得日の最古・最新（文字列比較。同じ時刻帯のオフセット付きなので辞書順が時刻順）。 */
+function fetchedRange(provenance: readonly EnvelopeProvenance[]): { oldest: string | null; newest: string | null } {
+  let oldest: string | null = null;
+  let newest: string | null = null;
+  for (const p of provenance) {
+    if (!p.fetched_at) continue;
+    if (oldest === null || p.fetched_at < oldest) oldest = p.fetched_at;
+    if (newest === null || p.fetched_at > newest) newest = p.fetched_at;
   }
-  return out;
+  return { oldest, newest };
+}
+
+const CAVEAT_META = new Map(GENERATED_CAVEATS.map((c) => [c.key, c]));
+
+/** 注記に registry の severity / kind を添える。registry に無いキーは null（黙って作らない）。 */
+function withCaveatMeta(caveats: readonly CaveatRef[]): EnvelopeCaveat[] {
+  return caveats.map((c) => ({ ...c, severity: CAVEAT_META.get(c.key)?.severity ?? null, kind: CAVEAT_META.get(c.key)?.kind ?? null }));
+}
+
+/** 「流域カルテ。出典: A（取得 2026-08-30）、B（取得日不明）」。URL はホスト未決のため載せない。 */
+function citeAs(provenance: readonly EnvelopeProvenance[]): string {
+  const parts = provenance
+    .map((p) => `${p.name ?? p.source_id}（${p.fetched_at ? `取得 ${p.fetched_at.slice(0, 10)}` : "取得日不明"}）`);
+  return parts.length ? `流域カルテ。出典: ${parts.join("、")}` : "流域カルテ";
+}
+
+function envelopeMeta(provenance: readonly EnvelopeProvenance[], now: Date, regionId: string) {
+  const tz = regionTimeZone(regionId);
+  const { oldest, newest } = fetchedRange(provenance);
+  return {
+    range: { oldest_fetched_at: oldest, newest_fetched_at: newest },
+    cite_as: citeAs(provenance),
+    as_of: now.toISOString(),
+    time_zone: { region_id: regionId, tz_name: tz.tzName, utc_offset: tz.utcOffset },
+  };
 }
 
 function grainLabel(grain: Grain | Grain[]): string {
@@ -145,15 +210,12 @@ function grainLabel(grain: Grain | Grain[]): string {
 }
 
 /**
- * `queryCells()` が返した行を ADR-0014 のエンベロープ形に包む。DB へは
- * `source_registry`（来歴）だけを追加で引く。
+ * `queryCells()` が返した行を ADR-0014 のエンベロープ形に包む。DB は引かない
+ * （来歴・鮮度は registry の生成物から。`source-meta.ts`）。
  */
-export async function buildEnvelope<R extends CellRow>(
-  db: CubeDb,
-  spec: CellSpec,
-  rows: R[],
-  opt?: { caveats?: CaveatRef[]; truncated?: boolean },
-): Promise<Envelope<R>> {
+export function buildEnvelope<R extends CellRow>(spec: CellSpec, rows: R[], opt?: EnvelopeOpt): Envelope<R> {
+  const now = opt?.now ?? new Date();
+  const regionId = opt?.regionId ?? DEFAULT_REGION_ID;
   const placeIds = new Set<string>();
   let nCensored = 0;
   let nNotDetected = 0;
@@ -186,7 +248,8 @@ export async function buildEnvelope<R extends CellRow>(
           { name: "value", type: "number", unit, ucum },
         ];
 
-  const provenance = await resolveProvenance(db, rows);
+  const provenance = resolveProvenance(rows, now, regionId);
+  const meta = envelopeMeta(provenance, now, regionId);
 
   return {
     query: { ...spec },
@@ -199,14 +262,18 @@ export async function buildEnvelope<R extends CellRow>(
       n_not_detected: nNotDetected,
       period: { start: periodStart, end: periodEnd, grain: grainLabel(spec.grain) },
       imputation: spec.imputation,
+      ...meta.range,
     },
     provenance,
     // `synthetic_included` は PR-2 で撤去した（D2。b03 が合成データを除くため、
     // `observation_agg` に合成データはもう載らない——design §0-2・§2.1「envelope.buildEnvelope」）。
     excluded: { by_license: 0, by_embargo: 0, reasons: [] },
-    caveats: opt?.caveats ?? [],
+    caveats: withCaveatMeta(opt?.caveats ?? []),
     truncated: opt?.truncated ?? false,
     spec_version: ENVELOPE_SPEC_VERSION,
+    cite_as: meta.cite_as,
+    as_of: meta.as_of,
+    time_zone: meta.time_zone,
   };
 }
 
@@ -225,12 +292,9 @@ export async function buildEnvelope<R extends CellRow>(
  * （`resolveSeriesSetProvenance` docstring参照——ゾーン集計は複数系列を
  * 1行に合算しうるため、行ごとの精密な帰属ができない）。
  */
-export async function buildZoneEnvelope(
-  db: CubeDb,
-  spec: CellSpec,
-  rows: readonly ZoneYearRow[],
-  opt?: { caveats?: CaveatRef[]; truncated?: boolean },
-): Promise<Envelope<ZoneYearRow>> {
+export function buildZoneEnvelope(spec: CellSpec, rows: readonly ZoneYearRow[], opt?: EnvelopeOpt): Envelope<ZoneYearRow> {
+  const now = opt?.now ?? new Date();
+  const regionId = opt?.regionId ?? DEFAULT_REGION_ID;
   const zones = new Set<number>();
   let nCensored = 0;
   let nNotDetected = 0;
@@ -255,7 +319,8 @@ export async function buildZoneEnvelope(
     { name: "value_lod", type: "number", unit, ucum: null },
   ];
 
-  const provenance = await resolveSeriesSetProvenance(db, series, rows.length);
+  const provenance = resolveSeriesSetProvenance(series, rows.length, now, regionId);
+  const meta = envelopeMeta(provenance, now, regionId);
 
   return {
     query: { ...spec },
@@ -268,11 +333,60 @@ export async function buildZoneEnvelope(
       n_not_detected: nNotDetected,
       period: { start: yFrom !== null ? String(yFrom) : null, end: yTo !== null ? String(yTo) : null, grain: grainLabel(spec.grain) },
       imputation: spec.imputation,
+      ...meta.range,
     },
     provenance,
     excluded: { by_license: 0, by_embargo: 0, reasons: [] },
-    caveats: opt?.caveats ?? [],
+    caveats: withCaveatMeta(opt?.caveats ?? []),
     truncated: opt?.truncated ?? false,
     spec_version: ENVELOPE_SPEC_VERSION,
+    cite_as: meta.cite_as,
+    as_of: meta.as_of,
+    time_zone: meta.time_zone,
+  };
+}
+
+/**
+ * セルを返さない応答（カタログ・検索・出現の集計など）の封筒。`rows` の代わりに `data` を持ち、
+ * 出典（`sourceIds`）の来歴・鮮度、注記、`excluded`（常に 0）、`cite_as` は `buildEnvelope` と同じ。
+ * MCP の全ツール（`lib/mcp`）が、封筒を持たないツールでもこの形で返す（ADR-0014）。
+ */
+export interface DataEnvelope<D> {
+  query: Record<string, unknown>;
+  data: D;
+  provenance: EnvelopeProvenance[];
+  coverage: Pick<EnvelopeCoverage, "oldest_fetched_at" | "newest_fetched_at">;
+  excluded: EnvelopeExcluded;
+  caveats: EnvelopeCaveat[];
+  truncated: boolean;
+  spec_version: string;
+  cite_as: string;
+  as_of: string;
+  time_zone: Envelope<unknown>["time_zone"];
+}
+
+export function buildDataEnvelope<D>(
+  query: Record<string, unknown>,
+  data: D,
+  sources: readonly (string | SourceRef)[],
+  opt?: EnvelopeOpt,
+): DataEnvelope<D> {
+  const now = opt?.now ?? new Date();
+  const regionId = opt?.regionId ?? DEFAULT_REGION_ID;
+  // 行数は数えていないので null（0 と書くと「0 行引いた」と読める）。出典の一覧だけを載せる。
+  const provenance = dedupeSourceRefs(sources).map((ref) => provenanceRow(ref, null, now, regionId));
+  const meta = envelopeMeta(provenance, now, regionId);
+  return {
+    query,
+    data,
+    provenance,
+    coverage: meta.range,
+    excluded: { by_license: 0, by_embargo: 0, reasons: [] },
+    caveats: withCaveatMeta(opt?.caveats ?? []),
+    truncated: opt?.truncated ?? false,
+    spec_version: ENVELOPE_SPEC_VERSION,
+    cite_as: meta.cite_as,
+    as_of: meta.as_of,
+    time_zone: meta.time_zone,
   };
 }

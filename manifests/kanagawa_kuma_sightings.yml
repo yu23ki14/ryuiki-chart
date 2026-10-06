@@ -1,0 +1,38 @@
+# manifests/kanagawa_kuma_sightings.yml（宣言。形は scripts/ingest/manifest.py の docstring）。
+# 変換は scripts/adapters/kanagawa_kuma_sightings.py（import は ingest.api だけ）。
+source: kanagawa_kuma_sightings
+region: jp-14
+target: occurrence
+update_mode: snapshot
+input:
+  table: wildlife_sightings
+adapter: kanagawa_kuma_sightings
+expected_row_count: 400
+checks:
+  - not_null: [record_key, taxon_id]
+  - unique: [record_key]
+  - row_count_between: [400, 400]
+  - in_registry: taxon
+  - date_between: ["2022-04-01", "2026-12-31"]
+evidence: >
+  神奈川県のツキノワグマ出没・目撃記録（収集は scripts/c81_kanagawa_kuma.py、原本の表は wildlife_sightings、
+  実測 2026-10-06 で 400 行・令和4〜8年度・is_preliminary 31 行）。神奈川県の公表資料のため region=jp-14。
+  update_mode=snapshot は c81 が毎回全件を取り直して表を置き換える（m05_tier1.load_wildlife の wipe+reload）ため。
+  種はツキノワグマ 1 種のみで taxon は定数 common:taxon:inat.41647（registry の canonical_binomial='Ursus thibetanus'
+  かつ rank='species' かつ scientific_name が canonical_binomial と一致するもの。gbif.9335699 は scientific_name が
+  「Ursus thibetanus G」で一致しないので採らない。既存の出現記録 3 件と同じ taxon）。
+  lat/lon は原本に無く（400/400 が NULL）補完しない。座標なしの出現は watershed 族の place_id NULL セルにだけ入る（ADR-0025/0026）。
+  observed_on は年度から西暦を決めて正規化済みの YYYY-MM-DD（形 day 396 行）。日付が確定できなかった 4 行は observed_on NULL のまま取り込む（落とさない・日付を補わない。期間 NULL）。
+expected:
+  period_shapes: {day: 396}
+  place:
+    coord_resolved: 0
+    coord_unresolved: 0
+  cube:
+    dated_rows: 396
+    dated_no_coordinate_rows: 396
+    leaf_cell_source_rows: 0
+    leaf_cell_source_rows_no_coordinate: 0
+    month_cell_source_rows: 0
+    watershed_dated_resolved_rows: 0
+    watershed_dated_unresolved_rows: 396

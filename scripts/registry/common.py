@@ -325,7 +325,7 @@ def _fingerprint_source_paths(root: pathlib.Path) -> list[pathlib.Path]:
 
     対象は「ビルドの論理（コード）」と「手書きの入力（registry/ 配下）」:
     scripts/schema_registry.sql・scripts/r01_build_registry.py・
-    scripts/taxon_namespaces.py・scripts/migrate/regions.py・scripts/registry/*.py・registry/ 配下の全ファイル。
+    scripts/taxon_namespaces.py・scripts/migrate/regions.py・scripts/registry/*.py・scripts/ingest/*.py・manifests/*.yml・registry/ 配下の全ファイル。
     ここでは常にこの集合だけを扱う（watershed の JSONL と taxon_crosswalk.csv は
     `compute_input_fingerprint()` 側が mode に応じて別途混ぜる。後述）。
 
@@ -346,6 +346,8 @@ def _fingerprint_source_paths(root: pathlib.Path) -> list[pathlib.Path]:
         root / "scripts" / "migrate" / "regions.py",  # build_region.py が読む region.yaml の検証（Issue #32-3）
         root / "scripts" / "migrate" / "edition.py",  # build_place.py が版を引く（Issue #39 Phase C）
         *(root / "scripts" / "registry").glob("*.py"),
+        *(root / "scripts" / "ingest").glob("*.py"),  # build_source.py がマニフェストを読む（Issue #40 Phase D）
+        *(root / "manifests").glob("*.yml"),  # update_mode（source_edition.update_mode の正）
         *(p for p in (root / "registry").rglob("*") if p.is_file()),
     ]
     existing = (p for p in candidates if p.exists())

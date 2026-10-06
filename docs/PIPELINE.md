@@ -14,8 +14,8 @@ serving-diff の v1 側）は撤去した。ここに残るのは v2（観測・
 
 - `scripts/b03_build_observation.py`: `measurements`・`sensor_timeseries`・土地利用 CSV
   （P-1b、`data/processed/nlni_l03b_landuse_by_watershed.csv`、`_ingest_landuse`）の3出典 → `observation`。
-  土地利用は区分ごとの面積・セル数を別々の variable にし、region は `scripts/migrate/source_regions.yaml`
-  （`consumer='observation'`。occurrence 側と consumer で宣言を分ける）から決める。設計・実測は
+  土地利用は区分ごとの面積・セル数を別々の variable にし、region は出典のマニフェスト
+  （`manifests/<source_id>.yml` の `region`。place 経由の region は照合に使う。ADR-0022 決定3・Issue #40 Phase D）から決める。設計・実測は
   `docs/plans/PHASE_B_FACT_SLICE.md`・`docs/plans/PHASE_B_LANDUSE.md`。
   b03 は合成データ（`is_synthetic=1`）を常に除外する（`--include-synthetic` と v1互換キューブ専用の宣言は Issue #61 で撤去した）。
 - `scripts/b04_build_cube.py`: `observation` → キューブ `observation_agg`（土地利用を足しても無変更）。

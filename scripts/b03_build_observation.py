@@ -182,6 +182,7 @@ from __future__ import annotations
 import argparse
 import collections
 import csv
+import dataclasses
 import functools
 import pathlib
 import sqlite3
@@ -190,19 +191,20 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
+from ingest import manifest as manifest_lib  # noqa: E402
 from migrate import censoring, common, edition, period, public_id, regions as region_vocab, source_regions  # noqa: E402
 
 DEFAULT_RYUIKI_DB = ROOT / "data" / "db" / "ryuiki.sqlite"
 DEFAULT_REGISTRY_DB = ROOT / "data" / "db" / "registry.sqlite"
 DEFAULT_EXCEPTIONS_YAML = ROOT / "scripts" / "migrate" / "period_exceptions.yaml"
 DEFAULT_TIME_LABEL_CONVENTIONS_YAML = ROOT / "scripts" / "migrate" / "time_label_conventions.yaml"
-DEFAULT_SOURCE_REGIONS_YAML = ROOT / "scripts" / "migrate" / "source_regions.yaml"
+DEFAULT_MANIFESTS_DIR = source_regions.DEFAULT_MANIFESTS_DIR
 DEFAULT_LANDUSE_CSV = ROOT / "data" / "processed" / "nlni_l03b_landuse_by_watershed.csv"
 DEFAULT_OUT = ROOT / "data" / "db" / "v2.sqlite"
 DEFAULT_REPORT = ROOT / "reports" / "phase_b_fact_slice.md"
 # P-1b（土地利用、docs/plans/PHASE_B_LANDUSE.md）。CSV の source_id 列は全行
 # この定数値（`data/processed/nlni_l03b_landuse_by_watershed.csv` を実測して
-# 確認済み）。source_regions.yaml の sources キー・observation.source_table・
+# 確認済み）。manifests/*.yml の sources キー・observation.source_table・
 # variable_alias.csv の dataset（版は edition_key。Issue #39 Phase C）がこの文字列を共有する。
 LANDUSE_SOURCE_ID = "nlni_l03b_landuse_by_watershed"
 
@@ -530,8 +532,41 @@ def _process_row(
     )
 
 
+@dataclasses.dataclass(frozen=True)
+class _RegionDecl:
+    """マニフェスト（target='observation'）由来の region 宣言と使用状況（ADR-0022 決定3・Phase D）。"""
+    sources: dict
+    source_usage: object
+    region_usage: object
+    # place.region_id が NULL なのにマニフェストの region で決めた行の件数（出典ごと。マニフェストの
+    # expected_place_region_null_rows と突合する。ADR-0022 決定3）
+    place_region_null: dict = dataclasses.field(default_factory=dict)
+
+
+def _manifest_region(decl: _RegionDecl, source_id, place_region_id, row_label) -> str:
+    """出典（マニフェスト）から region_id を決める。place が region を持つ行は、place 経由の値と**照合**し、
+    食い違えば止まる（宣言の誤りか place の誤り。ADR-0022 決定3: place 経由は決定の根拠ではなく照合）。
+    place が region を持たない（common スコープ。`place_region_id is None`）行は照合の対象外。
+    """
+    source_region = decl.sources.get(source_id)
+    if source_region is None:
+        raise source_regions.UnknownSourceRegionError(source_id)
+    decl.source_usage.mark_used(source_id)
+    decl.region_usage.mark_used(source_region.region_id)
+    if place_region_id is None:
+        decl.place_region_null[source_id] = decl.place_region_null.get(source_id, 0) + 1
+    elif place_region_id != source_region.region_id:
+        raise common.MigrationError(
+            f"region の照合に失敗した: マニフェスト（manifests/{source_id}.yml）の region="
+            f"{source_region.region_id!r} と、place 経由の region={place_region_id!r} が食い違う"
+            f"（行: {row_label}）。マニフェストの宣言か place の region_id のどちらかが誤り。"
+        )
+    return source_region.region_id
+
+
 def _ingest_measurements(
     work: sqlite3.Connection, dest: sqlite3.Connection, insert_table: str, exceptions, usage,
+    decl: _RegionDecl,
 ) -> dict:
     """`measurements` を1行ずつ読み、`insert_table`（作業用テーブル。
     `migrate.common.staged_table` が返す名前）へ `executemany` でストリーム
@@ -553,8 +588,12 @@ def _ingest_measurements(
                 measurement_id, site_id, measured_on, variable, source_id,
                 value, value_raw, unit, quality_stage, is_synthetic, source_ref, event_id,
                 variable_id, unit_id, obs_stat, value_grain,
-                place_id, region_id, place_kind,
+                place_id, place_region_id, place_kind,
             ) = row
+            # region は出典（マニフェスト）から決める。place 経由の値は照合に使う（合成データは出力しないので対象外）。
+            region_id = None
+            if is_synthetic != 1:
+                region_id = _manifest_region(decl, source_id, place_region_id, f"measurements {measurement_id}")
 
             # Issue #32-2: 年度番号しか持たない行は、宣言があるとき source_ref の月ラベルから
             # 'YYYY-MM' を復元して期間の計算に使う。period_raw（下の measured_on）は原表記のまま。
@@ -599,7 +638,7 @@ def _ingest_measurements(
 
 def _ingest_sensor_timeseries(
     work: sqlite3.Connection, dest: sqlite3.Connection, insert_table: str, exceptions, usage,
-    time_conventions, time_usage, region_offsets,
+    time_conventions, time_usage, region_offsets, decl: _RegionDecl,
 ) -> dict:
     """`sensor_timeseries` を1行ずつ読み、`insert_table` へストリーム挿入する
     （`_ingest_measurements` と対になる関数。検閲が無いこと・
@@ -616,16 +655,19 @@ def _ingest_sensor_timeseries(
                 row_id, site_id, phenomenon_time, datastream, source_id,
                 result, unit, is_synthetic,
                 variable_id, unit_id, obs_stat, value_grain,
-                place_id, region_id, place_kind,
+                place_id, place_region_id, place_kind,
             ) = row
             row_id_str = str(row_id)
+            region_id = None
+            if is_synthetic != 1:
+                region_id = _manifest_region(decl, source_id, place_region_id, f"sensor_timeseries {row_id_str}")
 
             processed = _process_row(
                 stats, seen_ids, row_id_str, datastream, source_id, site_id,
                 phenomenon_time, value_grain, variable_id, place_id, exceptions, usage,
                 time_conventions, time_usage,
                 is_synthetic=is_synthetic,
-                # 25桁ラベルの時刻帯は、行の region（place.region_id）の時刻帯と一致していなければならない
+                # 25桁ラベルの時刻帯は、行の region（出典＝マニフェストの region）の時刻帯と一致していなければならない
                 # （registry/region.yaml。Issue #32-3）。region が引けなければ None のまま渡り、止まる。
                 utc_offset=region_offsets.get(region_id),
             )
@@ -731,7 +773,7 @@ def _ingest_landuse(
     2006/2016でコード体系が違う——`assert_grain_and_stat_codes` 等が
     書き手側で既に検証済み）から引く。
 
-    `region_id` は `source_regions.yaml`（consumer='observation'。
+    `region_id` は `manifests/*.yml`（consumer='observation'。
     `landuse_sources`/`source_usage`/`region_usage` は呼び出し側
     `build_and_write_observation` が `consumer='observation'` で絞り込んで
     渡す）から決める——watershed の place は `common` スコープで
@@ -845,7 +887,7 @@ def build_and_write_observation(
     exceptions_yaml=DEFAULT_EXCEPTIONS_YAML,
     time_conventions_yaml=DEFAULT_TIME_LABEL_CONVENTIONS_YAML,
     out_path=DEFAULT_OUT,
-    source_regions_yaml=DEFAULT_SOURCE_REGIONS_YAML,
+    manifests_dir=DEFAULT_MANIFESTS_DIR,
     landuse_csv=DEFAULT_LANDUSE_CSV,
     count_overlay_by_file: dict[str, dict[str, int]] | None = None,
 ) -> dict[str, dict]:
@@ -859,7 +901,7 @@ def build_and_write_observation(
     `migrate.common.staged_table` の `with` ブロックの中で行うため、失敗すれば
     本番の `observation` には一切触れずに終わる。
 
-    `source_regions_yaml`/`landuse_csv` は他の3引数（`exceptions_yaml` 等）と
+    `manifests_dir`/`landuse_csv` は他の3引数（`exceptions_yaml` 等）と
     同じ、素のデフォルト引数（`main()` が明示的に渡す値と同じ既定値）。
     テストで既定を差し替えたい場合は monkeypatch ではなく、呼び出し側が
     明示的にこの2引数を渡すこと（`scripts/tests/migrate_fixtures.py` の
@@ -884,12 +926,23 @@ def build_and_write_observation(
     # P-1b（土地利用）: consumer='observation' で自分の宣言だけに絞り込む
     # （scripts/migrate/source_regions.py モジュール docstring「consumer」節。
     # b06_build_occurrence.py が consumer='occurrence' で絞り込むのと対称）。
-    source_regions.validate_source_regions_shape(source_regions_yaml)
+    source_regions.validate_source_regions_shape(manifests_dir)
     landuse_sources, landuse_regions = source_regions.load_source_regions(
-        source_regions_yaml, consumer="observation", count_overlay=overlay.get("source_regions.yaml")
+        manifests_dir, consumer="observation", count_overlay=overlay.get("manifests")
     )
     landuse_source_usage = period.EntryUsage(landuse_sources)
     landuse_region_usage = period.EntryUsage(landuse_regions)
+    # 非 builtin の observation アダプタは未実装（Phase D 時点では occurrence の adapter だけ。ADR-0012 改定）。
+    observation_manifests = {
+        sid: m for sid, m in manifest_lib.load_manifests(manifests_dir).items() if m.target == "observation"
+    }
+    unsupported = sorted(sid for sid, m in observation_manifests.items() if not m.is_builtin)
+    if unsupported:
+        raise common.MigrationError(
+            f"manifests/ に adapter が builtin でない target=observation のマニフェストがある: {unsupported}。"
+            "observation の adapter 取り込みは未実装（occurrence のみ）。"
+        )
+    decl = _RegionDecl(landuse_sources, landuse_source_usage, landuse_region_usage)
 
     # B-2: 出典ごとに違う追加引数（`sensor_timeseries` だけが要る
     # `time_conventions`/`time_usage`）は、呼び出し側の `if source_table ==
@@ -898,12 +951,13 @@ def build_and_write_observation(
     # staging)`）で呼べる。
     ingest_funcs = {
         "measurements": functools.partial(
-            _ingest_measurements, exceptions=exceptions, usage=usage,
+            _ingest_measurements, exceptions=exceptions, usage=usage, decl=decl,
         ),
         "sensor_timeseries": functools.partial(
             _ingest_sensor_timeseries, exceptions=exceptions, usage=usage,
             time_conventions=time_conventions, time_usage=time_usage,
             region_offsets={rid: r.utc_offset for rid, r in region_vocab.load_regions().items()},
+            decl=decl,
         ),
         LANDUSE_SOURCE_ID: functools.partial(
             _ingest_landuse, exceptions=exceptions, usage=usage,
@@ -959,20 +1013,27 @@ def build_and_write_observation(
             dest.execute(_DROP_OBSERVATION_ID_INDEX_SQL)
 
             # 宣言表（period_exceptions.yaml / time_label_conventions.yaml /
-            # source_regions.yaml）は全出典を処理し終えてから検証する
+            # manifests/*.yml）は全出典を処理し終えてから検証する
             # （period_exceptions.yaml は measurements、time_label_conventions.yaml
-            # は sensor_timeseries の value_grain='hour'、source_regions.yaml
+            # は sensor_timeseries の value_grain='hour'、manifests/*.yml
             # （consumer='observation'）は土地利用からしか使われないため、
             # 1つの出典だけを見て判定すると腐った宣言を見逃す。B-3）。
             declaration_problems = (
                 period.declaration_problems(usage, "period_exceptions.yaml")
                 + period.declaration_problems(time_usage, "time_label_conventions.yaml")
                 + period.declaration_problems(
-                    landuse_source_usage, "source_regions.yaml (sources, consumer=observation)"
+                    landuse_source_usage, "manifests/ (sources, target=observation)"
                 )
                 + period.declaration_problems(
-                    landuse_region_usage, "source_regions.yaml (regions, consumer=observation)"
+                    landuse_region_usage, "manifests/ (regions, target=observation)"
                 )
+                + [
+                    f"manifests/{sid}.yml の expected_place_region_null_rows={m.expected_place_region_null_rows} と、"
+                    f"place.region_id が NULL なのにマニフェストの region で決めた行の実測 {decl.place_region_null.get(sid, 0)} が食い違う"
+                    "（ADR-0022 決定3。place 側の region が欠けた行が黙って増えた、または宣言が古い）"
+                    for sid, m in sorted(observation_manifests.items())
+                    if decl.place_region_null.get(sid, 0) != m.expected_place_region_null_rows
+                ]
             )
             if declaration_problems:
                 raise common.MigrationError(
@@ -1150,7 +1211,7 @@ def render_report(all_stats: dict[str, dict]) -> str:
             a(
                 "検閲の概念は無い（`censoring` は常に `'none'`）。区分の面積（km2）と"
                 "セル数（count）をそれぞれ別の variable として持つ（P-1b オーナー決定1）。"
-                "region は `source_regions.yaml`（consumer='observation'）の宣言から決める"
+                "region は `manifests/*.yml`（consumer='observation'）の宣言から決める"
                 "（ADR-0022 決定3・P-1b オーナー決定3）。"
             )
         a("")
@@ -1178,7 +1239,7 @@ def main() -> None:
     parser.add_argument("--out", default=str(DEFAULT_OUT))
     parser.add_argument("--report", default=str(DEFAULT_REPORT), help=f"既定は {DEFAULT_REPORT}")
     parser.add_argument(
-        "--source-regions-yaml", default=str(DEFAULT_SOURCE_REGIONS_YAML),
+        "--manifests-dir", default=str(DEFAULT_MANIFESTS_DIR),
         help="土地利用（consumer='observation'）の region 宣言（P-1b）",
     )
     parser.add_argument(
@@ -1205,13 +1266,13 @@ def main() -> None:
 
     count_overlay_by_file = period.resolve_count_overlays(
         args.count_overlay,
-        ("period_exceptions.yaml", "time_label_conventions.yaml", "source_regions.yaml"),
+        ("period_exceptions.yaml", "time_label_conventions.yaml", "manifests"),
     )
 
     with common.timed_step("observation を構築して書き出し") as info:
         all_stats = build_and_write_observation(
             args.ryuiki_db, registry_db, args.exceptions_yaml, args.time_conventions_yaml, args.out,
-            args.source_regions_yaml, args.landuse_csv, count_overlay_by_file,
+            args.manifests_dir, args.landuse_csv, count_overlay_by_file,
         )
         info["n"] = sum(s["n_observation"] for s in all_stats.values())
 

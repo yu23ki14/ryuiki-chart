@@ -20,6 +20,7 @@
 """
 from __future__ import annotations
 
+from .manifest_fixtures import write_manifests_from_sources_text
 import sqlite3
 
 from migrate import common, occurrence_period as _occurrence_period
@@ -226,7 +227,9 @@ def make_occurrence_registry_db(path, taxa=None, places=None, place_refs=None, t
 
 
 def make_source_regions_yaml(path, text: str | None = None) -> None:
-    path.write_text(text if text is not None else DEFAULT_SOURCE_REGIONS_YAML_TEXT, encoding="utf-8")
+    """旧 `source_regions.yaml` 形式の文字列（既定は `DEFAULT_SOURCE_REGIONS_YAML_TEXT`）を、`path` というディレクトリに
+    `adapter: builtin` のマニフェストとして書く（Issue #40 Phase D。`manifest_fixtures` 参照）。"""
+    write_manifests_from_sources_text(path, text if text is not None else DEFAULT_SOURCE_REGIONS_YAML_TEXT)
 
 
 def period_shapes_yaml_text(counts: dict[str, int] | None = None) -> str:
@@ -333,9 +336,9 @@ def _create_and_fill_occurrence(conn: sqlite3.Connection, rows: list[tuple]) -> 
     import b06_build_occurrence as b06
 
     conn.execute(b06._CREATE_OCCURRENCE_SQL.format(table="occurrence"))
-    if rows and len(rows[0]) == len(_OCCURRENCE_COLUMNS):  # 旧来の列数。Issue #39 Phase C の 2 列を足す
-        rows = [tuple(r) + (f"common:occ:fixture.{r[0]}", None) for r in rows]
-    placeholders = ", ".join("?" for _ in range(len(_OCCURRENCE_COLUMNS) + 2))
+    if rows and len(rows[0]) == len(_OCCURRENCE_COLUMNS):  # 旧来の列数。Issue #39 Phase C の 2 列と attributes（Phase D）を足す
+        rows = [tuple(r) + (f"common:occ:fixture.{r[0]}", None, None) for r in rows]
+    placeholders = ", ".join("?" for _ in range(len(_OCCURRENCE_COLUMNS) + 3))
     conn.executemany(f"INSERT INTO occurrence VALUES ({placeholders})", rows)
     common.record_stage_fingerprint(conn, "occurrence")
 

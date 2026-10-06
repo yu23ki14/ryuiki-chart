@@ -83,6 +83,7 @@ describe("facetsForSeries", () => {
     dataset: "measurements",
     aliases: ["生物化学的酸素要求量 BOD"],
     sourceIds,
+    sourceRefs: [],
     theme,
   });
 
@@ -246,7 +247,7 @@ describe("ref ヘルパが作る scope_ref は宣言（GENERATED_CAVEAT_SCOPE）
       valueGrain: "day",
       dataset: "measurements",
       aliases: ["流量関連（公式定義未確認のため原表記のまま）"],
-      sourceIds: ["env_kousui_sample_kanagawa"],
+      sourceIds: ["env_kousui_sample_kanagawa"], sourceRefs: [],
       theme: "hydro",
     };
     const keys = caveatKeysForFacets(facetsForSeries([flow], { kind: "site", siteId: "s1" }));

@@ -152,6 +152,14 @@ predicates:
   #     なると黙って誤分類する恐れがあった（code-review 指摘）。
   #     `scripts/s01_build_sample.py` の `_open_ro` が `classify_shape` を
   #     SQL 関数として登録しており、ここでは実際の分類関数をそのまま呼ぶ。 ---
+  # adapter 出典（manifests の非 builtin。kanagawa_kuma_sightings）が const で参照する taxon（ツキノワグマ
+  # common:taxon:inat.41647）が、サンプルの registry に入るようにする（taxon は organism_records から作られる）。
+  - name: adapter_const_taxon_ursus_thibetanus
+    table: organism_records
+    where: "source_id = 'inaturalist_kanagawa' AND taxon_key = '41647'"
+    limit: 3
+    min_rows: 3
+
   - name: occurrence_shape_year
     table: organism_records
     where: "classify_shape(observed_on) = 'year'"

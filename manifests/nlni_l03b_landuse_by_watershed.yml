@@ -1,0 +1,12 @@
+# manifests/nlni_l03b_landuse_by_watershed.yml（宣言。形は scripts/ingest/manifest.py の docstring）。
+# adapter: builtin = 変換は b03/b06 のまま（出力を動かさない）。メタデータだけを持つ。
+source: nlni_l03b_landuse_by_watershed
+region: jp-14
+target: observation
+update_mode: revision
+input:
+  file: data/processed/nlni_l03b_landuse_by_watershed.csv
+adapter: builtin
+expected_row_count: 4858
+evidence: >
+  国土数値情報 L03-b 土地利用（流域別、2006/2016年版、前処理は data/processed/nlni_l03b_landuse_by_watershed.csv）。神奈川県内の流域に絞って前処理しているため region=jp-14。 place（watershed。common スコープ）の region_id は常に NULL（ADR-0022 決定1）なので、出典から決める。件数は実測（2026-09-24）で 2006年版2,398行 + 2016年版2,460行。 update_mode=revision は registry/source/editions.yaml の declared_editions（版ごと）に宣言済みだったものをここへ移した。
