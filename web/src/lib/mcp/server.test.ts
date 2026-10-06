@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildCubeFixture, FX, type CubeFixture } from "@/lib/cube/__fixtures__/cube-fixture";
 import { buildOccurrenceFixture, FXO, type OccurrenceFixture } from "@/lib/cube/__fixtures__/occurrence-fixture";
 import { handleBody, handleRpc, listTools, MCP_PROTOCOL_VERSION } from "./server";
+import realDatapackage from "./__fixtures__/datapackage.real.json";
 import { datapackageResources, MCP_TOOLS, type McpContext } from "./tools";
 
 /**
@@ -162,6 +163,21 @@ describe("5 ツールの応答は封筒（excluded=0・合成なし・cite_as・
     expectPublicInvariants(some.structuredContent);
     expect((some.structuredContent.data as { resources: unknown[] }).resources).toEqual([{ name: "occurrence", path: "occurrence/a.parquet", sha256: "abc", bytes: 10 }]);
     expect(datapackageResources({})).toEqual([]);
+  });
+
+  it("export_dataset: 担当 P の実際の datapackage.json（scripts/d01_build_dist.py の出力から切り出した fixture）の形を読める", async () => {
+    // fixture は実出力の resources 先頭 3 件（schema だけ 2 項目に切り詰め）。キー名（name/path/sha256/bytes）が変わったら
+    // ここが落ちる。scripts/tests/test_dist.py も同じキーを固定している。
+    const res = datapackageResources(realDatapackage);
+    expect(res).toHaveLength(3);
+    for (const r of res) {
+      expect(typeof r.name).toBe("string");
+      expect(r.path).toMatch(/\.parquet$/);
+      expect(r.sha256).toMatch(/^[0-9a-f]{64}$/);
+      expect(typeof r.bytes).toBe("number");
+    }
+    const out = await call("export_dataset", {}, ctx({ datapackage: async () => realDatapackage }));
+    expect((out.structuredContent.data as { resources: unknown[] }).resources).toEqual(res);
   });
 
   it("全ツールを網羅している（新ツールを足したらこのテストに応答検査を足す）", () => {

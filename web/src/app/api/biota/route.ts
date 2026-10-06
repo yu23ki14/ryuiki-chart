@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { IAS_SINCE_YEAR } from "@/lib/cube/sql";
-import { freshnessFor, OCCURRENCE_SOURCE_IDS } from "@/lib/cube/source-meta";
+import { freshnessFor, OCCURRENCE_SOURCE_IDS, REDLIST_SOURCE_IDS } from "@/lib/cube/source-meta";
 import {
   d1CubeDb,
   taxonGroupYears,
@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
   try {
     const db = await d1CubeDb();
     // 出典ごとの取得日・更新方式・経過日数（加算。registry の生成物から引き、D1 は引かない。ADR-0014/0020）。
-    // レッドリストは評価リスト（`taxon_assessment`）が出典で、出典 edition との対応が未整理のため載せない。
+    // レッドリスト（kind=redlist）は評価リストの出典（REDLIST_SOURCE_IDS）を載せる。
     const freshness = freshnessFor(OCCURRENCE_SOURCE_IDS);
     switch (kind) {
       case "effort": {
@@ -108,6 +108,7 @@ export async function GET(req: NextRequest) {
           limit: 400,
         });
         return NextResponse.json({
+          freshness: freshnessFor(REDLIST_SOURCE_IDS),
           flows: flows.map((f) => ({ prev_label: f.prevLabel, cur_label: f.curLabel, direction: f.direction, n: f.n })),
           species: species.map((r) => ({
             vernacular_name_ja: r.vernacularNameJa,

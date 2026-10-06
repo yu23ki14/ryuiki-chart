@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { GENERATED_VARIABLE_ALIASES } from "@/lib/registry/generated";
 import { SOURCE_EDITIONS, SOURCE_META } from "@/lib/registry/generated-source";
-import { ageDays, currentEdition, fetchedAtIso, freshnessFor, OCCURRENCE_SOURCE_IDS, sourceCitation, sourceFreshness } from "./source-meta";
+import { ageDays, currentEdition, fetchedAtIso, freshnessFor, OCCURRENCE_SOURCE_IDS, REDLIST_SOURCE_IDS, sourceCitation, sourceFreshness } from "./source-meta";
 
 describe("source-meta（出典メタ。registry の生成物から引く）", () => {
   const NOW = new Date("2026-10-06T03:00:00Z");
@@ -61,6 +61,17 @@ describe("source-meta（出典メタ。registry の生成物から引く）", ()
   it("OCCURRENCE_SOURCE_IDS は registry の出典として実在する", () => {
     const ids = new Set(SOURCE_META.map((m) => m.sourceId));
     for (const id of OCCURRENCE_SOURCE_IDS) expect(ids.has(id), id).toBe(true);
+  });
+
+  it("REDLIST_SOURCE_IDS は registry の出典として実在し、版を引ける（update_mode は未宣言なら undeclared と明示）", () => {
+    const ids = new Set(SOURCE_META.map((m) => m.sourceId));
+    for (const id of REDLIST_SOURCE_IDS) {
+      expect(ids.has(id), id).toBe(true);
+      const f = sourceFreshness(id, { now: NOW });
+      expect(f.source_edition_id, id).not.toBeNull();
+      expect(f.fetched_at, id).not.toBeNull();
+      expect(f.update_mode, id).toBe("undeclared");
+    }
   });
 
   it("測定値系列（measurements）の出典に合成センサー出典は含まれない", () => {

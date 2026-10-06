@@ -70,10 +70,11 @@ def _obs(conn, n, table, edition, *, synthetic=0):
 def _occ(conn, n, source_id, edition, lat, lon):
     conn.execute(
         "INSERT INTO occurrence (record_id, source_table, source_row_id, source_id, region_id, taxon_id, place_id, place_kind,"
-        " coordinate_uncertainty_m, lat, lon, period_grain, period_start, period_end, period_raw, occurrence_id, source_edition_id)"
-        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        " coordinate_uncertainty_m, lat, lon, period_grain, period_start, period_end, period_raw, occurrence_id, source_edition_id,"
+        " attributes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (f"{source_id}:{n}", "organism_records", n, source_id, "jp-14", "t1", "g1", "grid01", 12.5, lat, lon,
-         "day", "2026-01-01", "2026-01-01", "2026-01-01", f"jp-14:occurrence:{source_id}.{n}", edition),
+         "day", "2026-01-01", "2026-01-01", "2026-01-01", f"jp-14:occurrence:{source_id}.{n}", edition,
+         '{"situation": "目撃"}' if n == 1 else None),
     )
 
 
@@ -150,6 +151,17 @@ def test_clean_build_passes_all_checks(env):
     obs = next(r for r in doc["resources"] if r["path"].startswith("observation/source_table=measurements"))
     assert "source_table" not in [f["name"] for f in obs["schema"]["fields"]]
     assert "observation_id" in [f["name"] for f in obs["schema"]["fields"]]
+    # occurrence.attributes（JSON 文字列・NULL 可。Phase D）は dist に載り、値がそのまま往復する
+    occ = next(r for r in doc["resources"] if r["path"] == "occurrence/source_id=src_open/part-0.parquet")
+    assert "attributes" in [f["name"] for f in occ["schema"]["fields"]]
+    import pyarrow.parquet as pq
+
+    attrs = pq.read_table(out / occ["path"], columns=["attributes"]).column(0).to_pylist()
+    assert '{"situation": "目撃"}' in attrs
+    # MCP の export_dataset（web/src/lib/mcp/tools.ts の datapackageResources）が読む形: name・path・sha256（16進 64 桁）・bytes
+    for r in doc["resources"]:
+        assert isinstance(r["name"], str) and isinstance(r["path"], str) and isinstance(r["bytes"], int)
+        assert len(r["sha256"]) == 64 and set(r["sha256"]) <= set("0123456789abcdef")
     # 写像漏れ・未確認の件数を黙って埋めずに出す
     assert doc["license_summary"]["unresolved_license_class"]["unknown"] == [ED_UNKNOWN]
     # 合成出典の宣言は registry からも出さない（件数を記録）

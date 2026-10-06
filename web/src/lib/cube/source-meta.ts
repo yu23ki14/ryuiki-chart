@@ -172,3 +172,11 @@ export function freshnessForSeries(series: readonly SeriesKey[], opt: SourceMeta
  * 出典が増えたら `source-meta.test.ts` の突合が落ちて気づける形にしてある。
  */
 export const OCCURRENCE_SOURCE_IDS: readonly string[] = ["gbif_kanagawa_occurrences", "inaturalist_kanagawa"];
+
+/**
+ * レッドリスト（`taxon_assessment` の rl2020/rl2026/rdb2022p）の出典。`/api/biota?kind=redlist` の `freshness` が使う。
+ * 評価リストの `source_id`（registry.taxon_assessment.source_id の distinct。環境省外来種リスト moe_ias_list は別リスト）。
+ * registry の source/source_edition で引けるので取得日・経過日数が載る。`update_mode` はマニフェストの無い出典なので
+ * 宣言されるまで "undeclared"（推測で埋めない）。
+ */
+export const REDLIST_SOURCE_IDS: readonly string[] = ["kanagawa_redlist", "kanagawa_rdb2022_plants"];
