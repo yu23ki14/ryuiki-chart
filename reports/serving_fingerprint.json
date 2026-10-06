@@ -63,9 +63,9 @@
       },
       "month_series_site_by_variable": {
         "added": 0,
-        "changed": 1,
+        "changed": 0,
         "removed": 0,
-        "same": 59
+        "same": 60
       },
       "overview_counts": {
         "added": 0,
@@ -182,16 +182,16 @@
         "same": 60
       }
     },
-    "previous_git_head": "0523c8e075e9b171e6036daa70f7bccf2241d7f0"
+    "previous_git_head": "7498a4c7659acea563c13620a7bc32f4cde753ab"
   },
-  "created_at": "2026-10-06T09:17:32+00:00",
+  "created_at": "2026-10-06T09:30:35+00:00",
   "environment": {
     "better_sqlite3_sqlite_version": "3.53.4",
     "node_version": "v22.22.2",
     "python_sqlite3_version": "3.49.1",
     "python_version": "3.13.7"
   },
-  "git_head": "7498a4c7659acea563c13620a7bc32f4cde753ab",
+  "git_head": "48db06024036aded7b4b89297e909b22e7c6e704",
   "pipeline_fingerprint_rows": {
     "registry.sqlite": null,
     "v2.sqlite": [
@@ -227,19 +227,19 @@
       },
       {
         "fingerprint": "sha256:45ef45ee550b574242995de72fa8e7ba1ea151c385f0c34a65fad597299a4701:171",
-        "inputs": "{\"occurrence_agg\": \"sha256:cac900a4347e76578b22dcfdabb158524d2093ac5652f3f500042da09d734649:1437598\", \"registry:taxon\": \"8a1baa8c816bac10567acd13e924efb33fce475bc4e75414fade77cc44316390\"}",
+        "inputs": "{\"occurrence_agg\": \"sha256:cac900a4347e76578b22dcfdabb158524d2093ac5652f3f500042da09d734649:1437598\", \"registry:taxon\": \"3cf13661b4c4042022e54a1e19f03f5f8173ad3b0d58e341a9a369072fa4b6d2\"}",
         "spec_version": "serving-summary/v4",
         "table_name": "summary_effort_year"
       },
       {
         "fingerprint": "sha256:3edb48d2aebc87f001d2f7aeb811e1412b05c2c24f9aa642a68317b1e2bf6289:4086",
-        "inputs": "{\"occurrence_agg\": \"sha256:cac900a4347e76578b22dcfdabb158524d2093ac5652f3f500042da09d734649:1437598\", \"registry:taxon\": \"8a1baa8c816bac10567acd13e924efb33fce475bc4e75414fade77cc44316390\"}",
+        "inputs": "{\"occurrence_agg\": \"sha256:cac900a4347e76578b22dcfdabb158524d2093ac5652f3f500042da09d734649:1437598\", \"registry:taxon\": \"3cf13661b4c4042022e54a1e19f03f5f8173ad3b0d58e341a9a369072fa4b6d2\"}",
         "spec_version": "serving-summary/v4",
         "table_name": "summary_grid_catalog"
       },
       {
         "fingerprint": "sha256:7af22cd18d552d2bdcb0886efb7de10c7181af2dbe70ded793818168e8a565da:1851",
-        "inputs": "{\"occurrence_agg\": \"sha256:cac900a4347e76578b22dcfdabb158524d2093ac5652f3f500042da09d734649:1437598\", \"registry:taxon\": \"8a1baa8c816bac10567acd13e924efb33fce475bc4e75414fade77cc44316390\"}",
+        "inputs": "{\"occurrence_agg\": \"sha256:cac900a4347e76578b22dcfdabb158524d2093ac5652f3f500042da09d734649:1437598\", \"registry:taxon\": \"3cf13661b4c4042022e54a1e19f03f5f8173ad3b0d58e341a9a369072fa4b6d2\"}",
         "spec_version": "serving-summary/v4",
         "table_name": "summary_group_year"
       },
@@ -251,7 +251,7 @@
       },
       {
         "fingerprint": "sha256:fcd9d31f37130edf0cbb3f8da2f534a9d905cd58b44d755df5e885571936957b:23618",
-        "inputs": "{\"occurrence_agg\": \"sha256:cac900a4347e76578b22dcfdabb158524d2093ac5652f3f500042da09d734649:1437598\", \"registry:taxon\": \"8a1baa8c816bac10567acd13e924efb33fce475bc4e75414fade77cc44316390\"}",
+        "inputs": "{\"occurrence_agg\": \"sha256:cac900a4347e76578b22dcfdabb158524d2093ac5652f3f500042da09d734649:1437598\", \"registry:taxon\": \"3cf13661b4c4042022e54a1e19f03f5f8173ad3b0d58e341a9a369072fa4b6d2\"}",
         "spec_version": "serving-summary/v4",
         "table_name": "summary_species_catalog"
       },
@@ -277,7 +277,7 @@
   },
   "pipeline_path_hashes": {
     "aggregations": "054a6ad40f7a2c0a1eb118972cfb7e77369ece30",
-    "registry": "20d1760e8080e53b70bcd83c34b8fbc5748dd7bc",
+    "registry": "5d9264bb4e9336a19c45af7c46443bc0bcbeaa3e",
     "requirements.txt": "6982cafe7c0c5ce12db1ca2b7d74868e69945a27",
     "scripts/b00_run_full_gate.py": "984c2613672ff8541f9ee3445c481db8792e0ee8",
     "scripts/b03_build_observation.py": "3f99081672bccf26d702d16db74c29c5d1af8d92",
@@ -289,14 +289,14 @@
     "scripts/era_table.py": "b0953de3efa2eee6eff43c249cda61e4e2e64c95",
     "scripts/migrate": "ff46e496c2ad1f970deed4786a99538dc5e27bbe",
     "scripts/pipeline_inputs.py": "26f0f1aa956493afa09db0fcab69bc939933b42a",
-    "scripts/r01_build_registry.py": "c3172adf22287966e49f8c33ec6597d90988e64b",
+    "scripts/r01_build_registry.py": "1b1629f93d73d1a6144e000ede1e94babcbc9db2",
     "scripts/reconcile": "0434daaaa6e412fafdff6a99768d9486b7c5c9a0",
-    "scripts/registry": "25bae8237286128aac1917053fdafe49bbe44a80",
-    "scripts/schema_registry.sql": "2ab2bbddff0f1eaaf5e9a52012c32ab0d4fbdc46",
+    "scripts/registry": "27f92fda3d61ea22333d9918cd7c5fd481414409",
+    "scripts/schema_registry.sql": "c1749660625fc0e34ff5056c92c45ebeaf62109c",
     "scripts/taxon_namespaces.py": "56651e8f89085ad95c225643177c17a4098021c3",
     "web/package.json": "0a17420f8dbd67b82ab52ff89e511bac8a2d5eaf",
     "web/pnpm-lock.yaml": "6ed023dae786be30e10835dd8a13d5af0bccd466",
-    "web/scripts/build-registry-ts.mjs": "b7125fef3ec19477fba612d02a6f48310f21a1f8",
+    "web/scripts/build-registry-ts.mjs": "1f85d3373fbde65e2cbfb6c1735c8fdf2fbabfa8",
     "web/scripts/lib/csv.mjs": "2d1fa1614b795cc6b3501f25afadddb30403afe2",
     "web/scripts/lib/registry-codegen.mjs": "de8f929332c58b7dd8a8391f1b17391326ed6342",
     "web/scripts/lib/serving/adapters-v2.ts": "2d62b4df13cc085594d4eaafc51f5f6496dd603d",
@@ -308,7 +308,7 @@
     "web/src/db/schema-cube.ts": "c273e62f7435a4227236a9d3f97423e9d9900ee0",
     "web/src/lib/cube/assessment.ts": "8c16346ecdfaecbfd99e228caa46261c91daac30",
     "web/src/lib/cube/catalog.ts": "260d1fe0033155ee320aa0cc1e80fb22509ac7de",
-    "web/src/lib/cube/caveats.ts": "0bca10dfe595ba0d9d9a97423eb3ab11d6bf81f3",
+    "web/src/lib/cube/caveats.ts": "8e266e963e96847b3fbf4a950cd9488da74a9c6e",
     "web/src/lib/cube/cell-basis.ts": "8daf1bcedb90ed3d26b21d938eba7fc28d722ce8",
     "web/src/lib/cube/db-d1.ts": "04fc725695abca60df033398f90c9b82b602522a",
     "web/src/lib/cube/db-sqlite.ts": "752a69c34f0a42f3733a75987c3401a1776bed06",
@@ -324,10 +324,10 @@
     "web/src/lib/cube/sql.ts": "e1f5d4e7f9fd8151d3314a4053e5076689e01a52",
     "web/src/lib/cube/unit.ts": "24c38c741b8a1cfc62bc5d33861aa7b1c45cfdcc",
     "web/src/lib/db.ts": "cb9a153fb416b4400bd74ecf0fd4d3977df90944",
-    "web/src/lib/registry/generated-client.ts": "3b86636c64090665899bd74d3c20a9495e92d5d4",
-    "web/src/lib/registry/generated.ts": "f3badab93a88fe06a8c823c0a284f490ff0d8e7f",
-    "web/src/lib/registry/index.ts": "1278a11f34ed70023dcef58a8a5636324679b400",
-    "web/src/lib/registry/lookup-client.ts": "f436dee9290927326740be2ce07a12e511744336",
+    "web/src/lib/registry/generated-client.ts": "a32ef72f94f5a4d9a00a03311d13d48881445321",
+    "web/src/lib/registry/generated.ts": "d895f8e3b923c4a05873416f2b141564ab57c63b",
+    "web/src/lib/registry/index.ts": "bec75bbb451e73a699a8f260e0f3430bbab16121",
+    "web/src/lib/registry/lookup-client.ts": "1cffcdff03e6a63f828d93be56ebb455736d9edb",
     "web/src/lib/registry/lookup.ts": "aa5a98adee1145416dba524842d5df2db8b3d977"
   },
   "queries": [
