@@ -5,7 +5,7 @@ import { caveatKeysForTables } from "./caveats";
 import { listTables, runUserSql, SqlError } from "@/lib/db";
 import { TABLE_META, SCHEMA_META, TABLE_ORIGIN } from "@/lib/table-meta";
 import { ZONE_INFO } from "@/lib/registry/generated-client";
-import { getVariable } from "@/lib/registry/lookup";
+import { getVariable, unitBasis, type UnitBasis } from "@/lib/registry/lookup";
 import {
   d1CubeDb,
   representativeSeries,
@@ -156,6 +156,8 @@ interface RegistryEntry {
   unit: string | null;
   higherIsWorse: boolean | null;
   descriptionJa: string | null;
+  /** 単位の根拠: 'source'=原本が報告 / 'registry'=原本に単位記載が無くレジストリが補った / 'mixed'。 */
+  unitBasis: UnitBasis | null;
 }
 
 /**
@@ -164,13 +166,17 @@ interface RegistryEntry {
  * `resolveVariableInfo`（出典表記→variableId の解決）はもう要らない——ここでは
  * `@/lib/registry/lookup` の `getVariable` で variable テーブルを直接引くだけ。
  * `unitId` を渡すと（系列固有の単位。alias 側の unit_id 上書きに相当）そちらを優先する。
+ * 明示的な null は「単位不明」であり、variable の既定単位で埋めない（推測しない）。
  */
 function registryEntryForVariable(variableId: string, unitId?: string | null): RegistryEntry | null {
   const v = getVariable(variableId);
   if (!v) return null;
+  // 単位: 省略（undefined）なら variable の既定。明示的な null（単位不明の系列）は null のまま。
+  const u = unitId === undefined ? v.unitId : unitId;
   return {
     nameJa: v.nameJa,
-    unit: unitLabel(unitId ?? v.unitId),
+    unit: unitLabel(u),
+    unitBasis: unitBasis(variableId, u),
     higherIsWorse: v.higherIsWorse,
     descriptionJa: v.descriptionJa,
   };

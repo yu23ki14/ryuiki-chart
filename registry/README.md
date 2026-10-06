@@ -271,6 +271,7 @@ ADR-0010 決定1「エイリアスは出典 × 表記で解決する」に沿っ
 | `source_id` | v1 `source_registry.source_id`。空 = 出典未記録（`measurements.source_id IS NULL` の行。全件 `is_synthetic=1`） |
 | `variable_id` / `unit_id` | 従来どおり。同じ `(dataset, alias)` を共有する行は必ず一致する（ビルド時表明。後述） |
 | `stat` / `grain` | 従来どおり。`(dataset, alias, source_id)` の組ごとに固定1値（一次資料調査済み。`docs/plans/PHASE_B_ALIAS_STAT_SOURCES.md`） |
+| `unit_basis` | `unit_id` の根拠（Issue #31）。`source`=原本が同じ単位を報告している／`registry`=原本に単位の記載が無くレジストリが補った。`unit_id` が空の行は空。実データとの一致は b04 の `_assert_unit_basis_evidence` が機械検証する（食い違えば止まる） |
 | `note` | 従来どおり。根拠となる一次資料は `docs/plans/PHASE_B_ALIAS_STAT_SOURCES.md` の該当節を参照する形で書く（154行全部にURLを書けないため） |
 
 `source_id` は ADR-0010 決定1が言う `source_edition_id` の**暫定形**。`source_registry`/

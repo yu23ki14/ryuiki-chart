@@ -755,8 +755,11 @@ def _assert_unit_evidence(conn: sqlite3.Connection, declarations_path=UNIT_EVIDE
             "一致だけを埋める）の前提が崩れている。"
         )
 
+    # 検査3は宣言 YAML の有無（declarations_path）と無関係に必ず走る。
+    n_basis = _assert_unit_basis_evidence(conn)
+
     if declarations_path is None:
-        return {"n_unit_symbol_mismatch": n_mismatch, "n_unit_evidence_declared": 0}
+        return {"n_unit_symbol_mismatch": n_mismatch, "n_unit_evidence_declared": 0, "n_unit_basis_series": n_basis}
 
     rows = conn.execute(
         """
@@ -795,7 +798,62 @@ def _assert_unit_evidence(conn: sqlite3.Connection, declarations_path=UNIT_EVIDE
             )
         raise common.MigrationError(" / ".join(parts))
 
-    return {"n_unit_symbol_mismatch": n_mismatch, "n_unit_evidence_declared": len(declared)}
+    return {
+        "n_unit_symbol_mismatch": n_mismatch,
+        "n_unit_evidence_declared": len(declared),
+        "n_unit_basis_series": n_basis,
+    }
+
+
+def _assert_unit_basis_evidence(conn: sqlite3.Connection) -> int:
+    """検査3（Issue #31）: `variable_alias.unit_basis`（単位の根拠の宣言）と `observation` の実態の一致。
+
+    `unit_basis='registry'` は「原本に単位の記載が無く（`unit_raw IS NULL`）レジストリが補った」、
+    `'source'` は「原本が単位を報告している（`unit_raw IS NOT NULL`）」。AI がこの区別を根拠として
+    ユーザーに語るので、宣言が実態とずれたまま黙って通さない。
+
+    観測は alias を持たないので `(dataset, variable_id, unit_id)` 単位で突き合わせる（dataset は
+    `observation.source_table`。土地利用の alias は `<table>@<年>` なので `@` 以降を落として比べる）。
+    出典ごとに逆の宣言をしても、同じ組に対する宣言として個別に検証される:
+    - 実データにある (dataset, variable_id, unit_id, basis) が宣言されていなければ止まる（宣言漏れ）。
+    - 宣言された basis が、同じ (dataset, variable_id, unit_id) の実データに1行も無ければ止まる
+      （宣言の腐り。その組が実データに全く無い合成専用 alias は対象外）。
+    戻り値は突き合わせた (dataset, variable_id, unit_id) の数。
+
+    reg.variable_alias に unit_basis 列が無ければ SQLite が OperationalError で止まる
+    （registry は schema_registry.sql から作られ、鮮度は r01 の指紋が担保するので個別の列検査はしない）。
+    """
+    actual = {
+        (t, v, u, "source" if has_raw else "registry")
+        for t, v, u, has_raw in conn.execute(
+            "SELECT source_table, variable_id, unit_id, unit_raw IS NOT NULL FROM observation "
+            "WHERE unit_id IS NOT NULL GROUP BY 1, 2, 3, 4"
+        )
+    }
+    declared = {
+        (d.split("@", 1)[0] if d else d, v, u, b)
+        for d, v, u, b in conn.execute(
+            "SELECT DISTINCT dataset, variable_id, unit_id, unit_basis FROM reg.variable_alias WHERE unit_id IS NOT NULL"
+        )
+    }
+    keys = {a[:3] for a in actual}
+    missing = actual - declared
+    stale = {d for d in declared if d[:3] in keys and d not in actual}
+    if missing or stale:
+        parts = []
+        if missing:
+            parts.append(
+                f"実データにあるが variable_alias.unit_basis に宣言が無い (dataset, variable_id, unit_id, basis) が "
+                f"{len(missing):,} 組: {sorted(missing, key=str)[:10]}"
+            )
+        if stale:
+            parts.append(
+                f"unit_basis の宣言があるが実データに該当行が無い組が {len(stale):,}: {sorted(stale, key=str)[:10]}"
+            )
+        raise common.MigrationError(
+            " / ".join(parts) + "。registry/variable_alias.csv の unit_basis を実測に基づいて直すこと（推測で埋めない）。"
+        )
+    return len(keys)
 
 
 # ---------------------------------------------------------------------------

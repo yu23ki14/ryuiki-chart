@@ -15,7 +15,11 @@ CREATE TABLE IF NOT EXISTS unit (
   symbol TEXT,
   ucum TEXT,
   name_ja TEXT,
-  quantity_kind TEXT
+  quantity_kind TEXT,
+  -- 正準単位への換算（ADR-0023、Issue #31）。値_正準 = 値_出典 × scale_to_canonical。線形のみ
+  -- （オフセット換算は扱わない）。換算しない単位は自分自身を指し scale=1。
+  canonical_unit_id TEXT NOT NULL,
+  scale_to_canonical REAL NOT NULL
 );
 
 -- 正準の指標。measurements.variable / sensor_timeseries.datastream の出典別名は
@@ -57,6 +61,9 @@ CREATE TABLE IF NOT EXISTS variable_alias (
   unit_id TEXT,
   stat TEXT,
   grain TEXT,
+  -- unit_id の根拠: 'source'=原本が同じ単位を報告している / 'registry'=原本に単位の記載が無く
+  -- レジストリが補った（Issue #31）。unit_id が空の行は空。
+  unit_basis TEXT,
   note TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_variable_alias_alias ON variable_alias(alias);

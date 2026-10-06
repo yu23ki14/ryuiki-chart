@@ -95,6 +95,60 @@ export function unitSymbol(unitId: string | null | undefined): string | null {
   return u.symbol ?? "";
 }
 
+export interface CanonicalUnit {
+  unitId: string;
+  /** 正準単位の表示用シンボル（`unitSymbol` と同じ扱い。無次元は ""）。 */
+  symbol: string;
+  /** 値_正準 = 値_出典 × scale（線形のみ）。 */
+  scale: number;
+}
+
+/**
+ * 単位の正準単位と換算倍率（ADR-0023、Issue #31）。未知の unit_id・null は undefined
+ * （換算しない・推測しない）。換算しない単位は自分自身・scale=1。
+ */
+export function canonicalOf(unitId: string | null | undefined): CanonicalUnit | undefined {
+  const u = getUnit(unitId);
+  if (!u) return undefined;
+  const c = unitById.get(u.canonicalUnitId);
+  if (!c) return undefined;
+  return { unitId: c.unitId, symbol: c.symbol ?? "", scale: u.scaleToCanonical };
+}
+
+export type UnitBasis = "source" | "registry" | "mixed";
+
+const aliasesByVariable = new Map<string, GeneratedVariableAlias[]>();
+for (const a of GENERATED_VARIABLE_ALIASES) {
+  if (!a.variableId) continue;
+  const list = aliasesByVariable.get(a.variableId) ?? [];
+  list.push(a);
+  aliasesByVariable.set(a.variableId, list);
+}
+
+/**
+ * 単位の根拠（Issue #31）。
+ * - `unitId` が `undefined`（省略）なら variable の単位を使う。**明示的な null（単位不明の系列）は
+ *   null を返す**（variable の既定に落とさない）。
+ * - `dataset`（`measurements` / `sensor_timeseries` / 土地利用の本体名。`@年` は無視）を渡すと、
+ *   その出典の alias だけで根拠を決める。省略すると全出典を畳み、出典で食い違えば 'mixed'。
+ * - 該当する alias が無ければ null（推測しない）。
+ * 'source'=原本が単位を報告 / 'registry'=原本に単位記載が無くレジストリが補った。宣言は
+ * `variable_alias.unit_basis`（b04 が実データとの一致を出典ごとに機械検証している）。
+ */
+export function unitBasis(variableId: string, unitId?: string | null, dataset?: string): UnitBasis | null {
+  const effective = unitId === undefined ? (variableById.get(variableId)?.unitId ?? null) : unitId;
+  if (!effective) return null;
+  const bases = new Set<string>();
+  for (const a of aliasesByVariable.get(variableId) ?? []) {
+    if (a.unitId !== effective || !a.unitBasis) continue;
+    if (dataset !== undefined && a.dataset?.split("@", 1)[0] !== dataset) continue;
+    bases.add(a.unitBasis);
+  }
+  if (bases.size === 0) return null;
+  if (bases.size > 1) return "mixed";
+  return [...bases][0] as UnitBasis;
+}
+
 export interface ResolvedVariableInfo {
   variableId: string;
   code: string | null;

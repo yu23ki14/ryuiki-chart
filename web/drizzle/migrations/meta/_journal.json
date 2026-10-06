@@ -85,6 +85,13 @@
       "when": 1791270332920,
       "tag": "0011_smooth_professor_monster",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1791275325749,
+      "tag": "0012_misty_exodus",
+      "breakpoints": true
     }
   ]
 }

@@ -99,6 +99,8 @@ function variableVocabNote(): string {
     `出典側の表記（水質項目名など）は同じ量でも出典ごとに違うことがあるが、variableId が同じなら同じ量を指す。` +
     `ただし単位・スケールは出典ごとに違いうる（例: air.co は0.1ppm刻みの原表記）ので、` +
     `値を比較するときは必ずツール結果の registry[variableId].unit を見ること。` +
+    `registry[variableId].unitBasis が "registry" のときは、原本に単位の記載が無くレジストリが補った単位なので、` +
+    `「原本にその単位が書かれている」とは言わないこと（"mixed" は出典により異なる）。` +
     `名前の文字列一致ではなく variableId の一致で「同じ指標か」を判断すること。${example}\n` +
     `get_timeseries の grain（時間の粒度）は "year"（暦年。検体値から積み上げた年別平均）・` +
     `"fiscal_year"（日本の年度、4月始まり。原本が年度集計値の項目はこちら）・"month"（月別平均）・` +

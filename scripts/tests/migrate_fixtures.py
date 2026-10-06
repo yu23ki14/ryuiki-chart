@@ -157,9 +157,18 @@ def make_measurements_db(path, rows=None, sensor_rows=None) -> None:
         conn.close()
 
 
+FIXTURE_UNIT_BASIS_DECLS = [
+    ("measurements", "common:variable:water.bod", "common:unit:mg_per_l"),
+    ("measurements", "common:variable:water.cod", "common:unit:mg_per_l"),
+    ("measurements", "common:variable:water.ph", "common:unit:mg_per_l"),
+    ("sensor_timeseries", "common:variable:water.bod", "common:unit:mg_per_l"),
+    ("sensor_timeseries", "common:variable:weather.pressure_station", "common:unit:hpa"),
+]
+
+
 def make_registry_db(
     path, aliases=None, places=None, place_refs=None, variables=None, place_relations=None,
-    units=None,
+    units=None, unit_basis_decls=None,
 ) -> None:
     """`place_relations` の既定は空（ゾーンを持たないテストはそのまま動く。
     `phase-b/zone-slice` で `place_relation`（地点→ゾーンの辺、ADR-0022 決定2）
@@ -179,7 +188,7 @@ def make_registry_db(
         conn.execute(
             """CREATE TABLE variable_alias (
                 dataset TEXT, alias TEXT, source_id TEXT, variable_id TEXT, unit_id TEXT,
-                stat TEXT, grain TEXT
+                stat TEXT, grain TEXT, unit_basis TEXT
             )"""
         )
         conn.execute(
@@ -204,8 +213,23 @@ def make_registry_db(
             "name_ja TEXT, quantity_kind TEXT)"
         )
         conn.executemany(
-            "INSERT INTO variable_alias VALUES (?,?,?,?,?,?,?)",
+            "INSERT INTO variable_alias (dataset, alias, source_id, variable_id, unit_id, stat, grain) "
+            "VALUES (?,?,?,?,?,?,?)",
             aliases if aliases is not None else DEFAULT_ALIASES,
+        )
+        # unit_basis（Issue #31）: 既定は「原本が単位を報告している」('source')。
+        # 原本に単位が無い系列を作るテストは自分で UPDATE する。
+        conn.execute("UPDATE variable_alias SET unit_basis = 'source' WHERE unit_id IS NOT NULL")
+        # b04 の検査3（unit_basis と observation の一致）は常に走る。一般のテストが使う
+        # observation の (dataset, variable_id, unit_id) の組を、実在しない名前の alias として
+        # 宣言しておく（本物の alias とは衝突しない名前）。単位の根拠を検証するテストは
+        # `aliases=[]`（または `unit_basis_decls=[]`）で自分の宣言だけを持たせる。
+        decls = FIXTURE_UNIT_BASIS_DECLS if unit_basis_decls is None else unit_basis_decls
+        conn.executemany(
+            "INSERT INTO variable_alias (dataset, alias, source_id, variable_id, unit_id, stat, grain, unit_basis) "
+            "VALUES (?, ?, 'fixture', ?, ?, ?, 'fixture_decl', 'source')",
+            # stat/grain を一意にして、(variable_id, grain, stat, unit_id) の一意性検査と衝突させない。
+            [(d, f"__fixture_unit_basis_{i}", v, u, f"fixture_decl_{i}") for i, (d, v, u) in enumerate(decls)],
         )
         conn.executemany(
             "INSERT INTO place VALUES (?,?,?)", places if places is not None else DEFAULT_PLACES

@@ -1,6 +1,6 @@
 # ADR-0023: 単位の正準化は取り込み時に潰さず、レジストリの換算係数とキューブの軸に分けて持つ
 
-- 状態: 提案中 / 日付: 2026-09-15
+- 状態: 承認済 / 日付: 2026-09-15
 - 関連: ADR-0007（observation）, ADR-0010（指標）, ADR-0011（キューブ）, ADR-0021（キューブの鍵）,
   `docs/plans/PHASE_B_INTAKE.md` 申し送り #5
 
@@ -16,6 +16,30 @@ ADR-0009 決定4 で**まさに却下した設計**（`imputation ∈ {zero, lod
 そのまま残す**（歴史的記録）が、次に正準単位を実装するときは、この2026-09-25
 追記と ADR-0009 決定4 を優先すること——決定3を文字通り実装しにいかないこと。
 コードはこのタスクでは触っていない（方針のみ）。
+
+**2026-10-06 追記（コード化、Issue #31）**: 決定1・2・4を実装した。決定3（キューブの軸）は
+**キューブのスキーマを変えない形に置き換えた**。経緯と規則:
+
+- `unit` に `canonical_unit_id`（NOT NULL。換算しない単位は自分自身）と `scale_to_canonical`
+  （値_正準 = 値_出典 × scale。**線形のみ。オフセット換算は扱わない**。本データに該当する単位が無い。
+  決定2が併設を想定したオフセット列は設けない。必要になったら ADR を改訂する）を持たせた。
+  `registry/unit.yaml` の全29行が明示し、`scripts/registry/build_unit_variable.py` が「canonical の実在・
+  同じ量の種類（quantity_kind）・正準自身は倍率1で連鎖しない・倍率は正の有限数・同じ variable の単位は
+  同じ正準を持つ」を機械検証する（`scripts/tests/test_registry_unit_canonical.py` が壊すと止まることを固定）。
+- **正準の規則**: 同じ量の種類（quantity kind）の中で SI 接頭辞または出典仕様書の10進スケール（`0.1℃` 等）だけで
+  換算できるものは1つの正準に寄せる。長さは m（mm・cm・0.1mm も）、気温は degC、割合は percent、
+  体積比は ppm（ppb・0.1ppm）、速度は m/s、大気の質量濃度は mg/m3（ug/m3）。規則に当てはまらないものは
+  自分自身・倍率1: 水の mg/L は大気の mg/m3 と媒体が違い比較対象にならないため別扱い、`0.01ppmC` は炭素換算で
+  ppm と同じ尺度と言えないので寄せない（推測しない）、`t_p_m`（標高。基準面付き）・`tenths` 等も自分自身。
+- **決定3の置き換え**: `observation_agg` に正準単位のセル／列を足さず、問い合わせ層（`web/src/lib/cube/unit.ts` の
+  `toCanonical`/`canonicalizeCells`）が `unit` レジストリの倍率で読む。理由: 倍率は unit の関数なので値の
+  二重保持は冗長で、キューブの再ビルド・指紋・D1 再投入が全て動く。横断比較の消費者はまだ無い。出典単位の値と
+  `unit_id` は無改変のまま残る（出典単位を捨てない）。DuckDB 直クエリの利用者は `unit` の2列を JOIN して自力で換算できる。
+  実際に正準単位のセルをキューブに持たせる必要が出たら、そのとき本 ADR を改訂する。
+- **単位の出どころの統一**: 画面・AI の単位は `unit_id` → レジストリで解決する（v1 の原本表記は PR-5 で撤去済み）。
+  原本に単位記載が無くレジストリが補った事実は `variable_alias.unit_basis`（'source'|'registry'）で宣言し、
+  b04 が `observation` の `unit_raw` と突き合わせる（`_assert_unit_basis_evidence`）。AI のツール結果の
+  `registry[variableId].unitBasis` に出る。経緯は `docs/plans/ISSUE31_CANONICAL_UNIT.md`。
 
 ## 背景（実測）
 
