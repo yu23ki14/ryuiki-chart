@@ -17,7 +17,7 @@ serving-diff の v1 側）は撤去した。ここに残るのは v2（観測・
   土地利用は区分ごとの面積・セル数を別々の variable にし、region は `scripts/migrate/source_regions.yaml`
   （`consumer='observation'`。occurrence 側と consumer で宣言を分ける）から決める。設計・実測は
   `docs/plans/PHASE_B_FACT_SLICE.md`・`docs/plans/PHASE_B_LANDUSE.md`。
-  `--include-synthetic` と合成データ除外の宣言は残してある（v1互換キューブ専用だったが、b03 本体を触る確認を避けて PR-6 の整理に回した）。
+  b03 は合成データ（`is_synthetic=1`）を常に除外する（`--include-synthetic` と v1互換キューブ専用の宣言は Issue #61 で撤去した）。
 - `scripts/b04_build_cube.py`: `observation` → キューブ `observation_agg`（土地利用を足しても無変更）。
 - `scripts/b06_build_occurrence.py`: `organism_records` → `occurrence`（`v2.sqlite` に同居）。
 - `scripts/b09_build_occurrence_place.py`（O-2a）: `occurrence` の座標を `data/processed/nlni_w12_watersheds.geojson`

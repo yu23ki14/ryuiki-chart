@@ -359,6 +359,7 @@ tie を等号（`>=`）で明示的に許容している。
   `measurements.source_id IS NULL` の行は全部 `is_synthetic=1` で、全行 `length(measured_on)=10`
   かつ `value IS NOT NULL`（実測）なので、そのまま `meas_daily`（延いては `meas_month`/`meas_year`）
   に流れ込む。v2 もそのまま含めて再現した（ゲート緑後に外すのは意図的な変更）。
+  （v2 は既定で合成データを除外し、診断用の `--include-synthetic` と v1互換キュー用の「合成データ除外の宣言」は Issue #61 で撤去した。）
 - **`measurements.value` は `below_lod`（ASCII `<`）/ `not_detected`（`ND`）行で採取段階から
   0.0 が入っている**（実測: `value_raw LIKE '<%'` の75,689行・`value_raw='ND'` の1,067行は
   すべて `value=0.0`。集計スクリプトの問題ではなくファクトテーブル自体の慣習）。**ただし
@@ -366,7 +367,10 @@ tie を等号（`>=`）で明示的に許容している。
   ASCII 表記と扱いが違う（v1 の `value_raw LIKE '<%'` が `未満` を拾わず、かつ `value` も
   `NULL` なので `AVG(value)` から自然に除外されていた＝v1 が「たまたま」正しく除外していた
   ケース）。
-- **`value_zero` が `not_detected` を 0 とみなすのは、v1 再現のためだけの例外**
+- **【Issue #61（2026-10-06）で撤去済み】`value_zero` が `not_detected` を 0 とみなすのは、v1 再現のためだけの例外だった**
+  （現在は `value_zero` も ND を平均・MIN/MAX から除外する。`ZERO_IMPUTED_CENSORING` は `below_lod` だけ、
+  b04 の検証は `value_zero`/`value_lod` の NULL 性の一致を全格に課す形に更新済み。ADR-0009 の2026-10-06追記参照。
+  以下は撤去前の記述）
   （ADR-0009 決定2 の本来の規定は「代入せず、平均から除外」。`value_lod` はこの規定
   どおりに実装したが、`value_zero` だけは v1 の `AVG(value)` が ND 行を 0 として
   含めているのに合わせた。ADR-0009 の2026-09-24追記参照）。**撤去するとき何が変わるか**:

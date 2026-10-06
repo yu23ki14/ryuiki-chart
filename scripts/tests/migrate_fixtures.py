@@ -352,7 +352,7 @@ def make_landuse_registry_db(registry_db) -> None:
 
 def build_observation(
     tmp_path, measurements_db, registry_db, exceptions_yaml, time_conventions_yaml, out,
-    *, landuse_csv_rows=None, source_regions_yaml_text=None, include_synthetic=False,
+    *, landuse_csv_rows=None, source_regions_yaml_text=None,
 ):
     """`b03.build_and_write_observation` を、P-1b の土地利用2引数
     （`source_regions_yaml`/`landuse_csv`）を明示的に補って呼ぶ共通ヘルパ
@@ -364,9 +364,6 @@ def build_observation(
     そのまま動く。本番の `main()` と同じ「明示的に渡す」経路をテストでも
     通す（`build_and_write_observation` の既定値を monkeypatch で差し替える
     設計はやめた。理由はそちらの docstring 参照）。
-
-    `include_synthetic`（既定 False）は `build_and_write_observation` に
-    そのまま渡す（Issue #48 PR-2 §1、`--include-synthetic` 参照）。
     """
     landuse_csv = tmp_path / "_landuse.csv"
     make_landuse_csv(landuse_csv, rows=landuse_csv_rows if landuse_csv_rows is not None else [])
@@ -377,7 +374,7 @@ def build_observation(
     )
     return b03.build_and_write_observation(
         measurements_db, registry_db, exceptions_yaml, time_conventions_yaml, out,
-        source_regions_yaml, landuse_csv, include_synthetic=include_synthetic,
+        source_regions_yaml, landuse_csv,
     )
 
 

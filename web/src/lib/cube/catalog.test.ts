@@ -83,12 +83,12 @@ describe("siteVariables（第2引数は site_id。Issue #48 PR-2 統合後修正
   });
 
   it("imputation='zero'/'lod' で avg が value_zero/value_lod に切り替わる（既定は置かず必須。design §0-3・U2）", async () => {
-    // fx_site_a の SS mean/day 年セルは value_zero=6.0・value_lod=8.0（cube-fixture.ts）。
+    // fx_site_a の SS mean/day 年セルは value_zero=9.0・value_lod=8.0（cube-fixture.ts。不検出日は両系列とも NULL で平均に入らない。Issue #61）。
     const zeroRows = await siteVariables(fx.db, FX.sites.a, { imputation: "zero" });
     const lodRows = await siteVariables(fx.db, FX.sites.a, { imputation: "lod" });
     const ssZero = zeroRows.find((r) => r.series.variableId === FX.variables.ss && r.grain === "year" && r.series.obsStat === "mean");
     const ssLod = lodRows.find((r) => r.series.variableId === FX.variables.ss && r.grain === "year" && r.series.obsStat === "mean");
-    expect(ssZero!.avg).toBeCloseTo(6.0, 6);
+    expect(ssZero!.avg).toBeCloseTo(9.0, 6);
     expect(ssLod!.avg).toBeCloseTo(8.0, 6);
   });
 

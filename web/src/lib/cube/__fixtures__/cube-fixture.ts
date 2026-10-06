@@ -8,7 +8,7 @@
  *     厚木型1地点 fx_site_c）＋ゾーン2の地点1つ（fx_site_rain、雨量用）
  *   - `water.ss` に2系列（mean/day＝atsugi型＋合成、point/day＝env型。alias は同じ
  *     '浮遊物質量 SS'）＋ fiscal_year の3系列目
- *   - 日セル（検閲あり: value_zero ≠ value_lod、n_not_detected>0 で value_lod NULL）
+ *   - 日セル（検閲あり: value_zero ≠ value_lod、ND だけの格は n_not_detected>0 で value_zero・value_lod とも NULL）
  *   - 月・年（暦年 input=day）・年度（fiscal_year）セル
  *   - `water.bod`（fx_site_a）に、`value_grain='day'` の系列の中に
  *     `input_grain='fiscal_year'` のセルが混ざる厚木型のケース（Issue #48 PR-2
@@ -267,14 +267,14 @@ function seed(db: Database.Database): void {
   // `unitId: FX.units.mgPerL`: `FX.series.ssMean` と一致させる（上のコメント参照。
   // 実 registry が mean/day 組に `common:unit:mg_per_l` を持つのに合わせてある）。
   insertObsAgg(db, [
-    // 日セル（3日分。2日目は検閲〔value_zero≠value_lod〕、3日目は不検出〔value_lod NULL〕）
+    // 日セル（3日分。2日目は検閲〔value_zero≠value_lod〕、3日目は不検出〔value_zero も value_lod も NULL。Issue #61〕）
     { placeId: FX.places.a, variableId: FX.variables.ss, obsStat: "mean", unitId: FX.units.mgPerL, valueGrain: "day", grain: "day", inputGrain: "day", stat: "mean", periodStart: "2024-01-01", valueZero: 10.0, valueLod: 10.0, n: 1 },
     { placeId: FX.places.a, variableId: FX.variables.ss, obsStat: "mean", unitId: FX.units.mgPerL, valueGrain: "day", grain: "day", inputGrain: "day", stat: "mean", periodStart: "2024-01-02", valueZero: 8.0, valueLod: 6.0, n: 1, nCensored: 1 },
-    { placeId: FX.places.a, variableId: FX.variables.ss, obsStat: "mean", unitId: FX.units.mgPerL, valueGrain: "day", grain: "day", inputGrain: "day", stat: "mean", periodStart: "2024-01-03", valueZero: 0.0, valueLod: null, n: 1, nCensored: 1, nNotDetected: 1 },
+    { placeId: FX.places.a, variableId: FX.variables.ss, obsStat: "mean", unitId: FX.units.mgPerL, valueGrain: "day", grain: "day", inputGrain: "day", stat: "mean", periodStart: "2024-01-03", valueZero: null, valueLod: null, n: 1, nCensored: 1, nNotDetected: 1 },
     // 月セル（1月、上の3日の集計。SQLite の AVG は NULL を無視する実際の挙動に合わせてある）
-    { placeId: FX.places.a, variableId: FX.variables.ss, obsStat: "mean", unitId: FX.units.mgPerL, valueGrain: "day", grain: "month", inputGrain: "day", stat: "mean", periodStart: "2024-01-01", periodEnd: "2024-01-31", valueZero: 6.0, valueLod: 8.0, n: 3, nCensored: 2, nNotDetected: 1 },
+    { placeId: FX.places.a, variableId: FX.variables.ss, obsStat: "mean", unitId: FX.units.mgPerL, valueGrain: "day", grain: "month", inputGrain: "day", stat: "mean", periodStart: "2024-01-01", periodEnd: "2024-01-31", valueZero: 9.0, valueLod: 8.0, n: 3, nCensored: 2, nNotDetected: 1 },
     // 年セル（暦年、input_grain='day' = v1 の kind='daily'）
-    { placeId: FX.places.a, variableId: FX.variables.ss, obsStat: "mean", unitId: FX.units.mgPerL, valueGrain: "day", grain: "year", inputGrain: "day", stat: "mean", periodStart: "2024-01-01", periodEnd: "2024-12-31", valueZero: 6.0, valueLod: 8.0, n: 3, nCensored: 2, nNotDetected: 1 },
+    { placeId: FX.places.a, variableId: FX.variables.ss, obsStat: "mean", unitId: FX.units.mgPerL, valueGrain: "day", grain: "year", inputGrain: "day", stat: "mean", periodStart: "2024-01-01", periodEnd: "2024-12-31", valueZero: 9.0, valueLod: 8.0, n: 3, nCensored: 2, nNotDetected: 1 },
   ]);
 
   // fx_place_c（`sites` に無い地点）にも同じ mean/day 系列のセルを持たせる

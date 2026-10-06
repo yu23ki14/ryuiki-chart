@@ -136,6 +136,23 @@ value_raw        原表記（'<0.5'）を必ず残す
      と ADR-0016 の受け入れ基準（`imputation='zero'` で v1 を誤差0で再現する）
      が影響を受ける。撤去の道筋・変更点の一覧は
      `docs/plans/PHASE_B_FACT_SLICE.md` §6「移行で温存した v1 の癖」参照。
+
+   **2026-10-06 追記（Issue #61）: 例外を撤去した。** v1 は PR-5 で撤去済みで
+   「v1 を誤差0で再現する」という受け入れ基準は無くなったので、`value_zero` も
+   `not_detected` を**代入せず、平均・MIN/MAX・SUM から除外する**（`value_lod` と同じ）。
+   上の「2026-09-24 追記」の `value_zero` の項（ND を 0 として平均に含める）は
+   旧記述として残し、この追記で上書きする。
+   - `value_zero` は `below_lod` だけを 0 とする。ND はセルのメンバーとして `n`/
+     `n_not_detected` には数えるが、値は両系列とも NULL（ND だけの格は
+     `value_zero` も `value_lod` も NULL）。`above_lod`/`unknown` の値無しは
+     従来どおり非メンバー。
+   - 両系列の違いは `below_lod` の代入値（0 か `censoring_limit`）だけになった。
+     不変条件は「`(value_zero IS NULL) = (value_lod IS NULL)`（全格）」「`n_censored = 0`
+     ⇒ `value_lod IS value_zero`」「`value_lod >= value_zero`（全セル。以前の
+     `n_not_detected = 0` の限定は不要になった）」（`scripts/b04_build_cube.py` の
+     「機械検証」節）。
+   - 画面・API の数値への影響: ND を含むセル（実データでは出典配布の
+     `fiscal_year` セルに限られる）の `value_zero` が 0 でなくなる。`value_lod` は変わらない。
 3. **`detection_flag` は捨てない**。出典コードとして `source_flag_raw` に退避し、
    意味が判明した出典についてのみ `censoring` へのマッピングをマニフェストに書く。
    意味が不明なものは `censoring='unknown'` とし、**推測でマッピングしない**。
@@ -194,6 +211,21 @@ value_raw        原表記（'<0.5'）を必ず残す
         `observation_agg` は持っていないため、既存の列だけからは復元できない**
         （何が足りないかを正直に書く。将来この式を使う消費者が必要とするなら、
         その列を足すところから始める）。
+      **2026-10-06 追記（Issue #61）: 上の決定4-4の式は ND の扱いが変わって次のように
+      改まった（旧記述は上に残す。`value_zero` が ND を 0 として含める前提の式なので、
+      現在のキューブには当てはまらない）。**
+      - `half_lod` の平均 = `(value_zero + value_lod) / 2`。ND が両系列で除外される
+        ので、`n_not_detected` の値によらず、**葉の格・積み上げの格のどちらでも**
+        成り立つ（zero 側・lod 側でメンバーの集合も分母も同一）。
+      - 検閲を除外した平均（below_lod・not_detected の両方を除く）
+        = `value_zero × (n − n_not_detected) / (n − n_censored − n_not_detected)`
+        **（葉の格に限る。`n − n_censored − n_not_detected > 0` が必要）**。
+        `value_zero` の分母は ND を除いた `n − n_not_detected` なので、合計に戻すのも
+        その件数を掛ける。積み上げの格では `n` が日次セルの個数で単位が違うため、
+        従来どおり成り立たない。
+      - 現在のキューブには、検閲を除外した平均の導出が必要な消費者は無い
+        （画面・API は `value_zero`/`value_lod` をそのまま使う）。
+
    5. ADR-0023 の正準単位も同じ形（列）で並存できるので、キューブを二度
       作り直さずに済む。
    却下した案は決定4本文のとおり（全セル二重化・差の出るセルだけ持つ案）。

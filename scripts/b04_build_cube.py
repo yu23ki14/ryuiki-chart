@@ -21,11 +21,13 @@ ADR-0016・ADR-0009 決定4）。`data/db/v2.sqlite` に `observation_agg` テ�
 
 ## `value_lod` の代入規則（非対称に実装。規則は ADR-0009 決定2 参照）
 
-below_lod/not_detected の扱いは `value_zero`/`value_lod` で非対称——
-どちらの系列に何が入るか・`above_lod`/`unknown` が非メンバーである理由は
-本ファイルでは繰り返さず ADR-0009 決定2（`value_zero` が v1 再現のための
-時限的な例外である旨の2026-09-24追記を含む）を正とする。実装は「ND だけの
-格では `AVG` が NULL を返す」という一般形（`CASE WHEN censoring=
+below_lod は `value_zero` で 0、`value_lod` で `censoring_limit`。
+not_detected は**どちらの系列でも**代入せず平均・MIN/MAX から除外する
+（Issue #61〔2026-10-06〕で `value_zero` の「ND を 0 とみなす」時限的な例外を
+撤去した。ADR-0009 決定2の2026-10-06追記を参照）。ND はセルのメンバーとして
+`n`/`n_not_detected` には数える。どちらの系列に何が入るか・`above_lod`/`unknown`
+が非メンバーである理由は本ファイルでは繰り返さず ADR-0009 決定2 を正とする。
+実装は「ND だけの格では `AVG` が NULL を返す」という一般形（`CASE WHEN censoring=
 'not_detected' THEN NULL ELSE ... END` を `AVG`/`MIN`/`MAX` に渡すだけ）で
 書き、**「ND を含むセルは全て 100% ND」という実データの性質には依存しない**
 （この性質は機械検証にだけ使う）。
@@ -172,24 +174,20 @@ b04 側では検証しない。
    ——逆方向（`value_lod IS NULL ⇒ n_not_detected=0` にならない、程度の
    弱い言明）は、日次セルごとの ND 充足状況を追加で持たないと判定できない
    （ADR-0009 決定4・2026-09-25追記参照）。
-2. `n_censored = 0 AND n_not_detected = 0` ⇒ `value_lod IS value_zero`
-   （ビット一致。検閲の無いセルでは代入の余地が無いので両系列は同じ値になる
-   はず——day_stats/month_source_stats/year_source_stats がどちらも同じ
-   `GROUP BY` の1パスで `AVG(v_zero)`/`AVG(v_lod)` 等を並べて計算しており、
-   加算順序は自動的に揃っている。積み上げの格でも、寄与する日次セルが全部
-   この条件を満たすなら同じ値の列を同じ順序で `AVG` するだけなのでビット
+   Issue #61 以降は加えて、**全ての格で** `(value_zero IS NULL) = (value_lod IS NULL)`
+   （ND は両系列で除外されるので NULL 性が一致する）。
+2. `n_censored = 0` ⇒ `value_lod IS value_zero`（ビット一致。below_lod の無い
+   セルでは代入の余地が無いので両系列は同じ値になるはず。Issue #61 前は
+   `n_not_detected = 0` も条件だったが、ND の代入差が無くなったので外れた。
+   day_stats/month_source_stats/year_source_stats がどちらも同じ `GROUP BY` の
+   1パスで `AVG(v_zero)`/`AVG(v_lod)` 等を並べて計算しており、加算順序は自動的に
+   揃っている。積み上げの格でも同じ列を同じ順序で `AVG` するだけなのでビット
    一致が伝播する）。
-3. **`n_not_detected = 0` のセルに限り**、両方が非 NULL ⇒
-   `value_lod >= value_zero`（/code-review 指摘2: 「値は非負」という宣言していない
-   前提に乗っていた——ND は zero 側で0・lod 側で除外なので、実測値が負の
-   変数〔河川水位・地下水位・気温・流量・PM2.5 等、実測75,871セル〕だと
-   ND を含むセルでは逆転しうる。below_lod だけなら `censoring_limit` は正なので、
-   他のメンバーの符号によらず `value_lod >= value_zero` が成り立つ——below_lod の
-   行は zero 側で0、lod 側で正の値に置き換わるだけで、他のメンバーの寄与は
-   両系列で同一だから。ND を含むセルは「0 で埋める」（zero）と「その行ごと
-   除外する」（lod）で分母・分子の構成そのものが変わるため、この論法が
-   成り立たない——除外後の残りが負の値ばかりだと lod 側の平均がより低くなる
-   ことがある。ND を含むセルにはこの不等式を課さない）。
+3. **全てのセルで**、両方が非 NULL ⇒ `value_lod >= value_zero`。Issue #61 前は
+   ND を含むセルでは「0 で埋める」と「除外する」で分母・分子の構成が変わり、実測値が
+   負の変数〔河川水位・気温等〕で逆転しうるため `n_not_detected = 0` のセルに限って
+   いた。いまは ND が両系列で除外され、below_lod の 0 → `censoring_limit`（正）だけが
+   差なので、他のメンバーの符号によらず成り立つ。
 
 ## 単位の証拠検査（Issue #48 PR-1b §3.7、D3。危険#5「単位」の機械検証）
 
@@ -290,10 +288,17 @@ _VALUE_LOD_CASE = (
     f"WHEN censoring = '{censoring.CENSORING_NOT_DETECTED}' THEN NULL "
     "ELSE value_num END"
 )
+# セルのメンバー（`n` に数える観測）: v_zero が非 NULL の行に加え、ND の行
+# （v_zero も v_lod も NULL。平均・MIN/MAX には入らないが、`n`/`n_not_detected`
+# には数える。ND だけの格は value_zero/value_lod が両方 NULL になる）。
+# above_lod/unknown の値無し行は非メンバー。Issue #61。
+_MEMBER_SQL = f"(v_zero IS NOT NULL OR censoring = '{censoring.CENSORING_NOT_DETECTED}')"
 _CREATE_OBS_IMPUTED_VIEW_SQL = f"""
 CREATE TEMP VIEW obs_imputed AS
 SELECT *,
-       CASE WHEN censoring IN ({_ZERO_IMPUTED_IN_CLAUSE}) THEN 0.0 ELSE value_num END AS v_zero,
+       CASE WHEN censoring IN ({_ZERO_IMPUTED_IN_CLAUSE}) THEN 0.0
+            WHEN censoring = '{censoring.CENSORING_NOT_DETECTED}' THEN NULL
+            ELSE value_num END AS v_zero,
        {_VALUE_LOD_CASE} AS v_lod
 FROM observation
 """
@@ -355,7 +360,7 @@ def _day_stats_sql() -> str:
            COUNT(*) AS n,
            {_CENSORED_COUNTS_SELECT}
     FROM obs_imputed
-    WHERE period_grain IN ('day', 'hour', 'instant') AND v_zero IS NOT NULL
+    WHERE period_grain IN ('day', 'hour', 'instant') AND {_MEMBER_SQL}
     GROUP BY {_DIM_SELECT}, period_grain, substr(period_start, 1, 10)
     """
 
@@ -464,7 +469,7 @@ def _month_source_stats_sql() -> str:
            COUNT(*) AS n,
            {_CENSORED_COUNTS_SELECT}
     FROM obs_imputed
-    WHERE period_grain = 'month' AND v_zero IS NOT NULL
+    WHERE period_grain = 'month' AND {_MEMBER_SQL}
     GROUP BY {_DIM_SELECT}, period_start, period_end
     """
 
@@ -486,7 +491,7 @@ def _year_source_stats_sql() -> str:
            COUNT(*) AS n,
            {_CENSORED_COUNTS_SELECT}
     FROM obs_imputed
-    WHERE period_grain IN ('year', 'fiscal_year') AND v_zero IS NOT NULL
+    WHERE period_grain IN ('year', 'fiscal_year') AND {_MEMBER_SQL}
     GROUP BY {_DIM_SELECT}, period_start, period_end, period_grain
     """
 
@@ -553,25 +558,32 @@ def _assert_dimension_key_unique(conn: sqlite3.Connection, staging: str) -> None
 _IS_LEAF_SQL = "(grain = 'day' OR grain = input_grain)"
 
 # 検証1: 葉の格では単位が揃った等式、積み上げの格では単位を混ぜない片方向の
-# 含意だけを課す（/code-review 指摘1）。
+# 含意だけを課す（/code-review 指摘1）。Issue #61 以降は value_zero も ND を
+# 除外するので、`value_zero IS NULL` と `value_lod IS NULL` は全ての格で一致する
+# （葉・積み上げどちらでも。ND だけの格で両方 NULL、それ以外は両方非 NULL）。
 _CHECK1_LEAF_VIOLATION_SQL = f"({_IS_LEAF_SQL} AND (value_lod IS NULL) != (n_not_detected = n))"
 _CHECK1_ROLLUP_VIOLATION_SQL = f"(NOT {_IS_LEAF_SQL} AND n_not_detected = 0 AND value_lod IS NULL)"
-_CHECK1_VIOLATION_SQL = f"({_CHECK1_LEAF_VIOLATION_SQL} OR {_CHECK1_ROLLUP_VIOLATION_SQL})"
+_CHECK1_NULL_MATCH_VIOLATION_SQL = "((value_zero IS NULL) != (value_lod IS NULL))"
+_CHECK1_VIOLATION_SQL = (
+    f"({_CHECK1_LEAF_VIOLATION_SQL} OR {_CHECK1_ROLLUP_VIOLATION_SQL} OR {_CHECK1_NULL_MATCH_VIOLATION_SQL})"
+)
 
-# 検証2: 検閲の無いセル（葉・積み上げどちらも）は両系列がビット一致するはず。
-_CHECK2_VIOLATION_SQL = "(n_censored = 0 AND n_not_detected = 0 AND value_lod IS NOT value_zero)"
+# 検証2: 下限未満（below_lod）の無いセル（葉・積み上げどちらも）は両系列がビット
+# 一致するはず。両系列が違うのは below_lod の代入値（0 か censoring_limit）だけ
+# （Issue #61 で ND の代入差は消えた）。
+_CHECK2_VIOLATION_SQL = "(n_censored = 0 AND value_lod IS NOT value_zero)"
 
-# 検証3: n_not_detected=0 のセルに限る（/code-review 指摘2。モジュール
-# docstring「機械検証」節参照——ND を含むセルは実測値が負だと不等式が逆転しうる）。
+# 検証3: 全てのセルで value_lod >= value_zero（Issue #61 で `n_not_detected=0` の
+# 限定を外した。ND は両系列で除外されるので分母・分子の構成が揃い、違いは
+# below_lod の 0 → censoring_limit（正）だけ。モジュール docstring「機械検証」節参照）。
 _CHECK3_VIOLATION_SQL = (
-    "(n_not_detected = 0 AND value_zero IS NOT NULL AND value_lod IS NOT NULL "
-    "AND value_lod < value_zero)"
+    "(value_zero IS NOT NULL AND value_lod IS NOT NULL AND value_lod < value_zero)"
 )
 
 
 def _assert_value_zero_lod_invariants(conn: sqlite3.Connection, staging: str) -> None:
     """`staging`（`staged_table` の作業用テーブル）に対して、`value_zero`/
-    `value_lod` の3つの不変条件を検証する（検証のみ。レポート用の実測件数は
+    `value_lod` の不変条件（検証1〜3）を検証する（検証のみ。レポート用の実測件数は
     `_collect_value_zero_lod_stats` が別に返す——/code-review 指摘13: 検証と
     統計収集を1つの関数に混ぜると、検証を外したときに戻り値のキーが黙って
     消える）。いずれかが崩れていれば `common.MigrationError` で例外の
@@ -606,7 +618,8 @@ def _assert_value_zero_lod_invariants(conn: sqlite3.Connection, staging: str) ->
             "積み上げの格（月次・年次を日次セルから作る側）は n（日次セルの個数）と "
             "n_not_detected（観測行の個数）の単位が違うため同じ式は使えず、"
             "n_not_detected=0 ならば value_lod は NULL にならない、という片方向の"
-            "条件だけを課している——それが崩れている。"
+            "条件だけを課している——それが崩れている（または value_zero/value_lod の "
+            "NULL 性が食い違っている。Issue #61 以降は ND を両系列で除外するので一致するはず）。"
         )
     if n_bad2:
         bad2 = conn.execute(
@@ -614,9 +627,10 @@ def _assert_value_zero_lod_invariants(conn: sqlite3.Connection, staging: str) ->
             f"WHERE {_CHECK2_VIOLATION_SQL} LIMIT 5"
         ).fetchall()
         raise common.MigrationError(
-            "observation_agg: 検閲を含まないセル（n_censored=0 AND n_not_detected=0）で "
+            "observation_agg: below_lod を含まないセル（n_censored=0）で "
             f"value_lod と value_zero がビット一致しない行がある（例: {bad2}）。"
-            "ADR-0009 決定4「検閲の無いセルは両系列が同じ値」が崩れている。"
+            "ADR-0009 決定4「below_lod の無いセルは両系列が同じ値」（Issue #61 以降は "
+            "ND も両系列で除外）が崩れている。"
         )
     if n_bad3:
         bad3 = conn.execute(
@@ -624,13 +638,11 @@ def _assert_value_zero_lod_invariants(conn: sqlite3.Connection, staging: str) ->
             f"WHERE {_CHECK3_VIOLATION_SQL} LIMIT 5"
         ).fetchall()
         raise common.MigrationError(
-            "observation_agg: not_detected を含まないセル（n_not_detected=0）で "
-            f"value_lod が value_zero を下回る行がある（例: {bad3}）。censoring_limit は"
-            "正なので、below_lod だけを含むセルでは他のメンバーの符号によらず "
-            "value_lod は value_zero 以上になるはず（below_lod の限界値が0以下、"
-            "または符号の取り違えの疑い）。n_not_detected>0 のセルにはこの不等式を"
-            "課していない（ND を0とみなす側と除外する側で分母・分子の構成が変わり、"
-            "実測値が負だと逆転しうるため。ADR-0009 決定4参照）。"
+            "observation_agg: value_lod が value_zero を下回る行がある"
+            f"（例: {bad3}）。censoring_limit は正で、ND は両系列で除外されるので、"
+            "他のメンバーの符号によらず value_lod は value_zero 以上になるはず"
+            "（below_lod の限界値が0以下、または符号の取り違えの疑い。ADR-0009 決定4・"
+            "2026-10-06追記参照）。"
         )
 
 
@@ -851,9 +863,12 @@ def _imputed(censoring_value, value_num, censoring_limit) -> tuple:
     """**独立再計算のための意図的な重複**: 本体の集計 SQL（`_VALUE_LOD_CASE` など）と同じ規則を
     別の書き方で再実装している（同じ式の同じバグを見逃さないため。共通化しない）。
     観測1行の (value_zero 側, value_lod 側)。規則は ADR-0009 決定2（モジュール docstring）。
-    value_zero 側が None の行は非メンバー（above_lod/unknown で値が無いもの）。"""
+    v_zero/v_lod がどちらも None の行は値を持たない（ND は集計から除外するがセルのメンバー。
+    above_lod/unknown で値が無いものは非メンバー）。"""
     if censoring_value in censoring.ZERO_IMPUTED_CENSORING:
         v_zero = 0.0
+    elif censoring_value == censoring.CENSORING_NOT_DETECTED:
+        v_zero = None  # Issue #61: ND は value_zero でも除外（メンバーではあるが値は無い）
     else:
         v_zero = value_num
     if censoring_value == censoring.CENSORING_BELOW_LOD:
@@ -887,16 +902,20 @@ def _group_stats(obs_rows: list[tuple], stat: str) -> tuple:
     zeros: list[float] = []
     lods: list[float] = []
     n_censored = n_nd = 0
+    n = 0
     for censoring_value, value_num, limit in obs_rows:
         v_zero, v_lod = _imputed(censoring_value, value_num, limit)
-        if v_zero is None:
-            continue
-        zeros.append(v_zero)
+        is_nd = censoring_value == censoring.CENSORING_NOT_DETECTED
+        if v_zero is None and not is_nd:
+            continue  # 非メンバー（above_lod/unknown で値が無いもの）
+        n += 1
+        if v_zero is not None:
+            zeros.append(v_zero)
         if v_lod is not None:
             lods.append(v_lod)
         n_censored += censoring_value == censoring.CENSORING_BELOW_LOD
-        n_nd += censoring_value == censoring.CENSORING_NOT_DETECTED
-    return _stat_of(zeros, stat), _stat_of(lods, stat), len(zeros), n_censored, n_nd
+        n_nd += is_nd
+    return _stat_of(zeros, stat), _stat_of(lods, stat), n, n_censored, n_nd
 
 
 def _rollup_stats(obs_rows: list[tuple], stat_of_days: str) -> tuple:
@@ -908,17 +927,19 @@ def _rollup_stats(obs_rows: list[tuple], stat_of_days: str) -> tuple:
         by_day.setdefault(day, []).append(tuple(rest))
     day_zero: list[float] = []
     day_lod: list[float] = []
-    n_censored = n_nd = 0
+    n_days = n_censored = n_nd = 0
     for rows in by_day.values():
         vz, vl, n, n_c, n_d = _group_stats(rows, "mean")
         if n == 0:
             continue  # メンバーの無い日はセルにならない
-        day_zero.append(vz)
+        n_days += 1  # ND だけの日もセルにはなる（値は NULL で平均には入らない）
+        if vz is not None:
+            day_zero.append(vz)
         if vl is not None:
             day_lod.append(vl)
         n_censored += n_c
         n_nd += n_d
-    return _stat_of(day_zero, stat_of_days), _stat_of(day_lod, stat_of_days), len(day_zero), n_censored, n_nd
+    return _stat_of(day_zero, stat_of_days), _stat_of(day_lod, stat_of_days), n_days, n_censored, n_nd
 
 
 def _skey_sql(mode: str) -> str:
@@ -972,9 +993,9 @@ def _assert_sampled_cells_recompute_from_observation(
     """
     rowids = _pick_sample_rowids(conn, staging, _sample_seed(observation_fingerprint, spec_version))
     cols = DIM_COLUMNS + ["value_zero", "value_lod", "n", "n_censored", "n_not_detected"]
-    conn.execute("CREATE TEMP TABLE __sample_ids (cid INTEGER PRIMARY KEY)")
-    conn.execute("CREATE TEMP TABLE __sample_cells (cid INTEGER, mode TEXT, skey TEXT)")
     try:
+        conn.execute("CREATE TEMP TABLE __sample_ids (cid INTEGER PRIMARY KEY)")
+        conn.execute("CREATE TEMP TABLE __sample_cells (cid INTEGER, mode TEXT, skey TEXT)")
         conn.executemany("INSERT INTO __sample_ids VALUES (?)", [(r,) for r in rowids])
         cells: dict[int, dict] = {}
         for row in conn.execute(

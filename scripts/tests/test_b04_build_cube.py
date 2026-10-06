@@ -69,9 +69,10 @@ def test_zero_and_lod_series_per_censoring_branch(tmp_path):
     検証7の実測）。
 
     - `none`（2.0）: 両系列とも 2.0（代入の余地が無い）。
-    - `below_lod`（<0.5）: value_zero=0.0（v1再現）・value_lod=0.5（censoring_limit）。
-    - `not_detected`（ND）: value_zero=0.0（v1再現）・value_lod=NULL（限界値が
-      無いため代入せず、平均から除外する一般形）。
+    - `below_lod`（<0.5）: value_zero=0.0・value_lod=0.5（censoring_limit）。
+    - `not_detected`（ND）: value_zero も value_lod も NULL（どちらの系列でも代入せず
+      平均・MIN/MAX から除外する。Issue #61 で value_zero の ND=0 の例外を撤去）。
+      セルのメンバーとして n/n_not_detected には数える。
     - `above_lod`（>9.0）: value_num が NULL（D2）のまま、どちらの系列でも
       代入されないので `v_zero IS NOT NULL` の絞り込みで日次セル自体ができない
       （非メンバーのまま。ADR-0009 決定4-C）。
@@ -93,11 +94,12 @@ def test_zero_and_lod_series_per_censoring_branch(tmp_path):
         assert stats["n_day"] == 9  # mean/min/max の3行 × 3日（above_lodの日は無い）
         assert ("2020-01-01", 2.0, 2.0, 1, 0, 0) in day_rows
         assert ("2020-01-02", 0.0, 0.5, 1, 1, 0) in day_rows
-        assert ("2020-01-03", 0.0, None, 1, 0, 1) in day_rows
+        assert ("2020-01-03", None, None, 1, 0, 1) in day_rows
         assert all(r[0] != "2020-01-04" for r in day_rows)
-        # 検証1: value_lod が NULL になるのは 2020-01-03（n_not_detected=n=1）
+        # 検証1: value_zero/value_lod が NULL になるのは 2020-01-03（n_not_detected=n=1）
         # の日次セルだけ（`day_rows` は stat='mean' に絞っているので1行）。
         null_rows = [r for r in day_rows if r[2] is None]
+        assert all((r[1] is None) == (r[2] is None) for r in day_rows)
         assert {r[0] for r in null_rows} == {"2020-01-03"}
         assert len(null_rows) == 1
     finally:
@@ -134,7 +136,7 @@ def test_value_lod_report_counts(tmp_path):
         # stat ∈ {mean, min, max} の3行 × 3系列 = 9行。
         assert stats["n_year_source"] == 9
         # none（m1）は3行とも差なし。below_lod（m2）は3行（mean/min/max）とも
-        # 差あり。not_detected（m3）は3行とも value_lod が NULL——`!=` は
+        # 差あり。not_detected（m3）は3行とも value_zero/value_lod が NULL——`!=` は
         # NULL を含む比較を「異なる」として数えない（SQL の3値論理）ので
         # n_value_lod_differs には入らず、n_value_lod_null 側だけに数えられる
         # （設計ブリーフ 検証4「重なり0」）。
@@ -180,11 +182,12 @@ def test_month_rollup_allows_all_nd_day_mixed_with_valid_day(tmp_path):
             "SELECT value_zero, value_lod, n, n_not_detected FROM observation_agg "
             "WHERE grain='month' AND stat='mean'"
         ).fetchone()
-        # 日次セル: 01-01(n=2,n_not_detected=2,value_zero=0.0,value_lod=NULL) /
+        # 日次セル: 01-01(n=2,n_not_detected=2,value_zero=NULL,value_lod=NULL) /
         # 01-02(n=1,n_not_detected=0,value_zero=5.0,value_lod=5.0)。
         # 月セル: n=2（日次セルの個数）, n_not_detected=2（0+2）,
-        # value_zero=AVG(0.0,5.0)=2.5, value_lod=AVG(NULL,5.0)=5.0。
-        assert month_row == (2.5, 5.0, 2, 2)
+        # value_zero=AVG(NULL,5.0)=5.0, value_lod=AVG(NULL,5.0)=5.0
+        # （Issue #61: ND の日は value_zero でも平均に入らない。以前は 2.5）。
+        assert month_row == (5.0, 5.0, 2, 2)
     finally:
         conn.close()
 
@@ -209,19 +212,17 @@ def test_month_rollup_allows_two_all_nd_days(tmp_path):
             "SELECT value_zero, value_lod, n, n_not_detected FROM observation_agg "
             "WHERE grain='month' AND stat='mean'"
         ).fetchone()
-        assert month_row == (0.0, None, 2, 3)
+        assert month_row == (None, None, 2, 3)
     finally:
         conn.close()
 
 
-def test_negative_values_with_not_detected_reverse_the_inequality(tmp_path):
-    """/code-review 指摘2: 実測値が負の変数（河川水位等）で not_detected が
-    混じると value_lod（ND除外平均）が value_zero（ND=0平均）を下回る
-    （[-10.0, ND] は zero側平均-5.0・lod側平均-10.0）。旧検証3
-    （n_not_detected の値によらず両方非NULLなら value_lod>=value_zero を
-    課す）はこれを誤検出していた。below_lod の限界値が正であることに
-    依拠する不等式を、not_detected を含むセルには課さないように直したので
-    このフィクスチャは例外を投げずに通る。
+def test_negative_values_with_not_detected_keep_both_series_equal(tmp_path):
+    """/code-review 指摘2 の後継（Issue #61）: 実測値が負の変数（河川水位等）で
+    not_detected が混じっても、ND は両系列で除外されるので value_zero と
+    value_lod は一致し（[-10.0, ND] はどちらも -10.0）、不等式の逆転は起きない。
+    以前（value_zero が ND を 0 として平均に入れていた頃）は zero側 -5.0 >
+    lod側 -10.0 と逆転していたので、検証3を `n_not_detected = 0` に限っていた。
     """
     rows = [
         _row("measurements", "m1", "2020-01-01", "2020-01-01", -10.0, "-10.0", "none"),
@@ -231,12 +232,47 @@ def test_negative_values_with_not_detected_reverse_the_inequality(tmp_path):
     conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
     try:
         b04.build_cube(conn, _registry_db(tmp_path), unit_evidence_declarations_path=None)  # 例外を投げなければ良い
-        day_row = conn.execute(
-            "SELECT value_zero, value_lod, n, n_not_detected FROM observation_agg "
-            "WHERE grain='day' AND stat='mean'"
+        day_rows = conn.execute(
+            "SELECT stat, value_zero, value_lod, n, n_not_detected FROM observation_agg "
+            "WHERE grain='day' ORDER BY stat"
+        ).fetchall()
+        # mean/min/max のどれも ND（n=2 のうち 1）を除いた -10.0。
+        assert day_rows == [
+            ("max", -10.0, -10.0, 2, 1), ("mean", -10.0, -10.0, 2, 1), ("min", -10.0, -10.0, 2, 1),
+        ]
+    finally:
+        conn.close()
+
+
+def test_value_zero_excludes_not_detected_from_mean_min_max_and_sum(tmp_path):
+    """Issue #61: ND を含むセルで value_zero が ND を平均・MIN・MAX・SUM から除外する
+    （以前は ND を 0 として含めていた）。below_lod は value_zero で 0 のまま。
+    day の mean/min/max と年次の積み上げで確認する。
+    """
+    rows = [
+        _row("measurements", "m1", "2020-01-01", "2020-01-01", 4.0, "4.0", "none"),
+        _row("measurements", "m2", "2020-01-01", "2020-01-01", None, "ND", "not_detected"),
+        _row("measurements", "m3", "2020-01-01", "2020-01-01", None, "<0.5", "below_lod", censoring_limit=0.5),
+    ]
+    db_path = tmp_path / "v2.sqlite"
+    conn = make_v2_db_with_observation(db_path, b03._CREATE_OBSERVATION_SQL, rows)
+    try:
+        b04.build_cube(conn, _registry_db(tmp_path), unit_evidence_declarations_path=None)
+        day = {
+            r[0]: r[1:]
+            for r in conn.execute(
+                "SELECT stat, value_zero, value_lod, n, n_censored, n_not_detected FROM observation_agg "
+                "WHERE grain='day'"
+            )
+        }
+        # zero 側の構成は [4.0, 0.0]（ND 除外・below_lod=0）、lod 側は [4.0, 0.5]。
+        assert day["mean"] == (2.0, 2.25, 3, 1, 1)
+        assert day["min"] == (0.0, 0.5, 3, 1, 1)
+        assert day["max"] == (4.0, 4.0, 3, 1, 1)
+        year = conn.execute(
+            "SELECT value_zero, value_lod FROM observation_agg WHERE grain='year' AND stat='mean'"
         ).fetchone()
-        assert day_row == (-5.0, -10.0, 2, 1)
-        assert day_row[1] < day_row[0]  # value_lod < value_zero（逆転そのものを確認）
+        assert year == (2.0, 2.25)
     finally:
         conn.close()
 
@@ -282,6 +318,11 @@ def _make_staging_with_rows(conn, rows):
             id="check1_leaf_unit_mismatch",
         ),
         pytest.param(
+            (*_STAGING_DIM, None, 1.0, 1, 0, 0, 1, "bf", "sv"),
+            "value_lod IS NULL の条件が崩れている",
+            id="check1_null_mismatch_between_series",
+        ),
+        pytest.param(
             (*_STAGING_DIM, 1.0, 2.0, 1, 0, 0, 1, "bf", "sv"),
             "ビット一致しない",
             id="check2_bit_mismatch",
@@ -303,10 +344,9 @@ def test_assert_value_zero_lod_invariants_raises_when_deliberately_broken(tmp_pa
 
     - check1: 葉の格（grain='day'=input_grain）で value_lod が NULL なのに
       n_not_detected（0）が n（1）と一致しない。
-    - check2: 検閲の無いセル（n_censored=0, n_not_detected=0）なのに
+    - check2: below_lod の無いセル（n_censored=0）なのに
       value_zero と value_lod が異なる。
-    - check3: not_detected を含まないセル（n_not_detected=0）で value_lod
-      が value_zero を下回る。
+    - check3: value_lod が value_zero を下回る。
     """
     db_path = tmp_path / "t.sqlite"
     conn = sqlite3.connect(f"file:{db_path}", uri=True)
