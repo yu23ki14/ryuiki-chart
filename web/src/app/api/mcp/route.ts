@@ -5,7 +5,7 @@ import { handleBody, RPC_ERRORS } from "@/lib/mcp/server";
 
 /**
  * MCP サーバ（Streamable HTTP、ステートレス・JSON 応答。ADR-0014 の第1段）。
- * `MCP_ENABLED`（`lib/features.ts`）が false の間は 404（存在しないものとして扱う）。
+ * `MCP_ENABLED`（`lib/features.ts`）が false なら 404（存在しないものとして扱う）。
  */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,6 +29,10 @@ export async function POST(req: NextRequest) {
   if (!MCP_ENABLED) return notFound();
   if (!originAllowed(req)) return NextResponse.json({ error: "Forbidden origin" }, { status: 403 });
 
+  // 本文を読む前に宣言サイズで弾く（chunked で宣言が無いときは下の実測が効く）。
+  if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) {
+    return NextResponse.json({ jsonrpc: "2.0", id: null, error: { code: RPC_ERRORS.invalidRequest, message: "本文が大きすぎる" } }, { status: 413 });
+  }
   const text = await req.text();
   if (new TextEncoder().encode(text).length > MAX_BODY_BYTES) {
     return NextResponse.json({ jsonrpc: "2.0", id: null, error: { code: RPC_ERRORS.invalidRequest, message: "本文が大きすぎる" } }, { status: 413 });

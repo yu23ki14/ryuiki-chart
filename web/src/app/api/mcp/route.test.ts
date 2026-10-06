@@ -12,9 +12,13 @@ afterEach(() => {
 });
 
 describe("/api/mcp の出し分け（MCP_ENABLED）", () => {
-  it("既定は false。false の間は POST/GET/DELETE とも 404", async () => {
+  it("本番の既定は true（公開中）", async () => {
     const features = await import("@/lib/features");
-    expect(features.MCP_ENABLED).toBe(false);
+    expect(features.MCP_ENABLED).toBe(true);
+  });
+
+  it("false にすると POST/GET/DELETE とも 404（フラグで閉じられる）", async () => {
+    vi.doMock("@/lib/features", () => ({ MCP_ENABLED: false }));
     const route = await import("./route");
     expect((await route.POST(req(init))).status).toBe(404);
     expect((await route.GET()).status).toBe(404);
@@ -29,6 +33,13 @@ describe("/api/mcp の出し分け（MCP_ENABLED）", () => {
     expect(((await res.json()) as { result: { serverInfo: { name: string } } }).result.serverInfo.name).toBe("ryuiki-karte");
     expect((await route.POST(req({ jsonrpc: "2.0", method: "notifications/initialized" }))).status).toBe(202);
     expect((await route.GET()).status).toBe(405);
+  });
+
+  it("Origin ヘッダ無し（Claude Desktop/Code などブラウザ以外）は通り、別オリジンは 403", async () => {
+    const route = await import("./route");
+    expect((await route.POST(req(init))).status).toBe(200);
+    expect((await route.POST(req(init, { origin: "https://evil.example" }))).status).toBe(403);
+    expect((await route.POST(req(init, { origin: "null" }))).status).toBe(403);
   });
 
   it("Origin が Host と違えば 403、壊れた JSON は 400、大きすぎる本文は 413", async () => {
