@@ -8,7 +8,8 @@ import { BarChart, ColumnChart } from "@/components/viz/BarChart";
 import { ChartFrame, MiniTable } from "@/components/viz/ChartFrame";
 import { SERIES, ZONE_COLORS, ZONE_LABELS, INK } from "@/components/viz/palette";
 import { Btn, inputCls, Spinner, Provenance, nf } from "@/components/ui";
-import { caveatBody, variableNote } from "@/lib/registry/lookup-client";
+import { caveatBody } from "@/lib/registry/lookup-client";
+import { variableCaveats } from "@/lib/cube/caveats";
 import { VARIABLE_LABEL } from "@/lib/registry/generated-client";
 import { MUNICIPALITY_LABEL } from "@/lib/municipality";
 import { useJson } from "@/components/useJson";
@@ -219,7 +220,7 @@ export function TimeseriesExplorer({ waters, vars }: { waters: WaterBody[]; vars
 
         {v && (
           <p className="text-[10.5px] text-muted max-w-md ml-auto leading-snug">
-            {variableNote(variableId) ?? "　"}
+            {VARIABLE_LABEL[variableId]?.note ?? "　"}
             <br />
             {nf(v.n)} 行 / {v.nPlaces} 地点 / {v.yFrom}–{v.yTo}
             {v.nCensored > 0 && `　定量下限未満 ${((v.nCensored / v.n) * 100).toFixed(0)}%`}
@@ -450,6 +451,7 @@ function WaterMode({
             <>
               {caveatBody("duplicates")} {caveatBody("censoredLod")}
               {basis === "fiscal_year" && ` ${caveatBody("measuredOn")}`}
+              {variableCaveats(variableId).map((c) => ` ${c.text}`)}
             </>
           }
         >

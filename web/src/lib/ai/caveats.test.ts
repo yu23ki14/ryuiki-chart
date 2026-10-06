@@ -1,12 +1,16 @@
 import { expect, it } from "vitest";
-import { CAVEAT_TEXT, caveatKeysForTables, caveatsForTables, caveatText } from "@/lib/ai/caveats";
+import { CAVEAT_TEXT, caveatText } from "@/lib/ai/caveats";
+import { caveatKeysForFacets, caveatsForFacets, facetsForTables } from "@/lib/cube/caveats";
+
+const caveatsForTables = (t: string[]) => caveatsForFacets(facetsForTables(t));
+const caveatKeysForTables = (t: string[]) => caveatKeysForFacets(facetsForTables(t));
 
 /**
- * `caveatsForTables`（テーブル名 → 注記）のスナップショット。
+ * 配信表名 → 注記（`facetsForTables` → `caveatsForFacets`）のスナップショット。
  *
  * Issue #48 PR-5 で v1 の派生表・原本表が D1 から DROP されたため、テーブル名で引ける注記は
- * `sites`（zone/municipality）だけになった（`registry/caveat.yaml` の caveat_scope の
- * 'table' 行）。v2 の注記は facet で引く（`lib/cube/caveats.test.ts`）。
+ * `sites`（zone/municipality）だけになった（`registry/caveat_scope.yaml` の
+ * `dataset: sites`）。v2 の注記は facet で引く（`lib/cube/caveats.test.ts`）。
  * `CAVEAT_TEXT` は全キー・全本文の固定（`censored` は撤去して `censoredLod` に一本化済み）。
  */
 

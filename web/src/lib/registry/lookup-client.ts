@@ -20,7 +20,6 @@
  */
 import {
   GENERATED_CAVEATS,
-  GENERATED_CAVEAT_SCOPE,
   NAME_JA,
   REGION_TIME,
   VARIABLE_SHORT,
@@ -33,7 +32,7 @@ const caveatByKey = new Map<string, GeneratedCaveat>(GENERATED_CAVEATS.map((c) =
 
 /**
  * 動的な（コンパイル時に既知でない）キーでの生の引き。無ければ undefined。
- * `caveat_scope` 由来の文字列キー（`caveatsForTables` / `web/src/lib/ai/caveats.ts`）専用。
+ * `caveat_scope` 由来の文字列キー（`web/src/lib/cube/caveats.ts` / `web/src/lib/ai/caveats.ts`）専用。
  * 既知のキーを直書きする画面・prompt.ts は代わりに `caveatBody` を使うこと。
  */
 export function tryCaveatBody(key: string): string | undefined {
@@ -99,7 +98,7 @@ export interface ScopeMatch {
 
 /**
  * `matches`（スコープ行＋その参照の初出順）から、決定論的な注記の並びを作る
- * （`caveatsForTables` と `web/src/lib/cube/caveats.ts` の `caveatsForFacets` が
+ * （`web/src/lib/cube/caveats.ts` の `caveatsForFacets` が
  * 使う一般規則。以前は同じソート＋重複排除がここと `caveatsForFacets` の
  * 2箇所に複製されていた）:
  *   1. `(priority 降順, order 昇順, sortOrder 昇順)` で並べる。`priority` は
@@ -123,26 +122,6 @@ export function resolveCaveatRefs(matches: readonly ScopeMatch[]): CaveatRef[] {
   }
 
   return [...seen.values()];
-}
-
-/**
- * 変数単位（scope_kind='variable'、scope_ref=variable_id）の注記の本文（画面の変数説明の下に出す。
- * 例: 流量の感潮域の逆流 flowTidalBackflow）。`theme=` 等の選択式は対象外。
- * 画面ごとの個別対応を書かず、変数の説明に注記をまとめて添えるための口。
- */
-export function variableCaveatBodies(variableId: string): string[] {
-  return GENERATED_CAVEAT_SCOPE.filter((s) => s.scopeKind === "variable" && s.scopeRef === variableId)
-    .sort((a, b) => a.sortOrder - b.sortOrder)
-    .map((s) => tryCaveatBody(s.caveatKey) ?? s.caveatKey);
-}
-
-/**
- * 画面の変数説明（`VARIABLE_LABEL[id].note`）に、その変数に掛かる注記（`variableCaveatBodies`）を
- * 添えた文。どちらも無ければ undefined（呼び出し側が既定の文を出す）。
- */
-export function variableNote(variableId: string): string | undefined {
-  const parts = [VARIABLE_LABEL[variableId]?.note, ...variableCaveatBodies(variableId)].filter((x): x is string => !!x);
-  return parts.length > 0 ? parts.join(" ") : undefined;
 }
 
 // ---------------------------------------------------------------------------

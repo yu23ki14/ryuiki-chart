@@ -16,17 +16,15 @@
  * ## 並び（Issue #48 PR-1 統合 §5）
  *
  * `caveatsForFacets` は「順序付きの facet 参照の配列（`FacetRef[]`）」を受け取り、
- * `web/src/lib/registry/lookup-client.ts` の `caveatsForTables()` と全く同じ一般規則
- * （`(priority 降順, 初出順 昇順, sortOrder 昇順)` でソートし、caveat の key で先勝ち
+ * 一般規則
+ * (`(priority 降順, 初出順 昇順, sortOrder 昇順)` でソートし、caveat の key で先勝ち
  * 重複排除——`lookup-client.ts` の `resolveCaveatRefs()` を共有し、この並べ替え・
  * 重複排除自体は1箇所にしかない）で注記を引く。**facet の種類ごとにグループ化してから並べる、ということは
- * しない**——`caveatsForTables` が「渡されたテーブル引数の出現順」をそのまま使うのと同じく、
- * `caveatsForFacets` も「渡された facet 参照の出現順」をそのまま使う。以前の実装は
+ * しない**——「渡された facet 参照の出現順」をそのまま使う。以前の実装は
  * `CaveatFacets`（`datasets`/`themes`/`placeKinds`/`sourceIds`/`tables` に分けたオブジェクト）
  * を受け取り、カテゴリ固定順（datasets→themes→placeKinds→sourceIds→tables）で平坦化して
  * いたため、`web/src/lib/ai/tools.ts` が渡す `["sites","site_var"]` のような「place_kind 系が
- * dataset 系より先に来る」複合で `caveatsForTables` と順序がずれていた
- * （`caveats.test.ts` の「既知の限界」テストが可視化していた）。
+ * dataset 系より先に来る」複合で順序がずれていた。
  *
  * ## `facetsForSeries` の型について（実装判断）
  *
@@ -39,7 +37,7 @@
  * （`variable` テーブルを既に読んでいる 1a の catalog.ts/series.ts 側）に委ね、
  * `SeriesFacetInput`（`SeriesInfo & { theme }`）として渡してもらう形にした。
  */
-import { GENERATED_CAVEAT_SCOPE, type GeneratedCaveatScope } from "@/lib/registry/generated-client";
+import { GENERATED_CAVEAT_SCOPE, type CaveatScopeKind, type GeneratedCaveatScope } from "@/lib/registry/generated-client";
 import { resolveCaveatRefs, type CaveatRef, type ScopeMatch } from "@/lib/registry/lookup-client";
 import type { SeriesInfo } from "./series";
 import type { Scope } from "./sql";
@@ -47,7 +45,7 @@ import type { Scope } from "./sql";
 export type { CaveatRef };
 
 /** `caveat_scope.scope_kind`（ADR-0013 の6種。`registry/caveat_scope.yaml` の vocabulary と同じ）。 */
-export type FacetKind = "variable" | "place" | "source_edition" | "observation_set" | "dataset" | "taxon";
+export type FacetKind = CaveatScopeKind;
 
 /** 1つの facet 参照（scope_kind と、宣言と完全一致する scope_ref）。 */
 export interface FacetRef {
@@ -71,20 +69,23 @@ export const unitUnknownOf = (variableId: string): FacetRef => ({
  * `dataset: sites`）。`measurements` 等の dataset 名は論理名であり D1 の表ではないので、
  * 同名の表名を渡されても引かない（v1 の表は DROP 済み。PR-5）。
  */
-const DATASET_TABLES: ReadonlySet<string> = new Set(["sites"]);
+export const DATASET_TABLES: ReadonlySet<string> = new Set(["sites"]);
 
 /** 配信表名（`sites`）を dataset として引く。それ以外の表名は何にも一致しない。 */
 export const facetsForTables = (tables: readonly string[]): FacetRef[] =>
   tables.filter((t) => DATASET_TABLES.has(t)).map((t) => ({ kind: "dataset", ref: t }));
 
-const SCOPES_BY_KIND = new Map<string, GeneratedCaveatScope[]>();
-for (const s of GENERATED_CAVEAT_SCOPE) {
-  const list = SCOPES_BY_KIND.get(s.scopeKind);
-  if (list) list.push(s);
-  else SCOPES_BY_KIND.set(s.scopeKind, [s]);
-}
 function facetKey(f: FacetRef): string {
   return `${f.kind}\u0000${f.ref}`;
+}
+
+/** (scope_kind, scope_ref) → その scope 行。モジュールで1回だけ作る索引（完全一致の引き）。 */
+const SCOPES_BY_FACET = new Map<string, GeneratedCaveatScope[]>();
+for (const s of GENERATED_CAVEAT_SCOPE) {
+  const k = facetKey({ kind: s.scopeKind, ref: s.scopeRef });
+  const list = SCOPES_BY_FACET.get(k);
+  if (list) list.push(s);
+  else SCOPES_BY_FACET.set(k, [s]);
 }
 
 /**
@@ -92,9 +93,8 @@ function facetKey(f: FacetRef): string {
  * 決定論的に引く。
  *
  * 並び: `(priority 降順, facet の初出順 昇順, sortOrder 昇順)` でソートし、caveat の
- * key で先勝ち重複排除する（`web/src/lib/registry/lookup-client.ts` の
- * `caveatsForTables()` と一字一句同じ規則。詳細は同ファイルの docstring・
- * `scripts/registry/build_caveat.py` の docstring参照）。
+ * key で先勝ち重複排除する（`web/src/lib/registry/lookup-client.ts` の `resolveCaveatRefs`。
+ * 詳細は `scripts/registry/build_caveat.py` の docstring参照）。
  */
 export function caveatsForFacets(facets: readonly FacetRef[]): CaveatRef[] {
   const order = new Map<string, number>();
@@ -106,9 +106,7 @@ export function caveatsForFacets(facets: readonly FacetRef[]): CaveatRef[] {
   const matches: ScopeMatch[] = [];
   for (const f of facets) {
     const idx = order.get(facetKey(f))!;
-    for (const s of SCOPES_BY_KIND.get(f.kind) ?? []) {
-      if (s.scopeRef === f.ref) matches.push({ scope: s, order: idx });
-    }
+    for (const s of SCOPES_BY_FACET.get(facetKey(f)) ?? []) matches.push({ scope: s, order: idx });
   }
 
   return resolveCaveatRefs(matches);
@@ -116,6 +114,14 @@ export function caveatsForFacets(facets: readonly FacetRef[]): CaveatRef[] {
 
 export function caveatKeysForFacets(facets: readonly FacetRef[]): string[] {
   return caveatsForFacets(facets).map((c) => c.key);
+}
+
+/**
+ * 変数単位（`variable:<variable_id>`。例: 流量の逆流 flowTidalBackflow、透明度の aboveLod）の注記。
+ * 画面の注意書き欄に出す口で、`caveatsForFacets` と同じ索引・同じ並べ替え・重複排除規則を使う。
+ */
+export function variableCaveats(variableId: string): CaveatRef[] {
+  return caveatsForFacets([{ kind: "variable", ref: variableId }]);
 }
 
 /**
@@ -153,13 +159,11 @@ export type SeriesFacetInput = SeriesInfo & {
  * 初出順ソートに使うため）。
  */
 export function facetsForSeries(series: readonly SeriesFacetInput[], scope: Scope): FacetRef[] {
-  const refs: FacetRef[] = [];
-  const seen = new Set<string>();
+  // 同じ (kind, ref) は初出だけを残す（Map は挿入順）。
+  const refs = new Map<string, FacetRef>();
   const push = (f: FacetRef) => {
     const k = facetKey(f);
-    if (seen.has(k)) return;
-    seen.add(k);
-    refs.push(f);
+    if (!refs.has(k)) refs.set(k, f);
   };
 
   for (const s of series) {
@@ -176,7 +180,7 @@ export function facetsForSeries(series: readonly SeriesFacetInput[], scope: Scop
 
   push(placeKind(scope.kind === "zone" ? "zone" : "site"));
 
-  return refs;
+  return [...refs.values()];
 }
 
 /**

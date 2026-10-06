@@ -377,6 +377,16 @@ pnpm run db:export
 あわせて `scripts/b00_run_full_gate.py` を回して `reports/serving_fingerprint.json` を更新し、
 `data/sample/serving_snapshot.json` の差分を `serving:snapshot -- --mode diff` で確認する。
 
+### 注記（caveat）の scope 語彙を変えた（Issue #35）
+
+`caveat`/`caveat_scope` の `scope_kind`/`scope_ref` を ADR-0013 の語彙に改めた
+（`table`/`place_kind`/`cell` 等 → `dataset`/`place`/`source_edition`/`observation_set` 等）。
+**順序に注意: 先に本番 D1 の `caveat`・`caveat_scope` を入れ直し（`DELETE FROM` → `pnpm run db:export -- --table caveat,caveat_scope` の .sql を流す）、
+その後で Worker をデプロイする。** 逆順だと、新しい `getCaveatsForDocument`（`source_edition` の `doc_id=` で引く）が
+旧データ（`scope_kind='cell'`）に当たらず空を返し、行政文書の注記が黙って消える。旧 Worker に新データだと、
+旧コードは `scope_kind='table'` 等を引くので注記が欠ける（画面は落ちない）。注記は `generated*.ts` にも
+焼いてあるので、画面側の注記は Worker のデプロイで切り替わる。
+
 ### コードだけ変えた
 
 ```bash

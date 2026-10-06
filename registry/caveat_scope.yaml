@@ -23,7 +23,16 @@ selectors:
   source_edition: {id_ok: false, keys: [source_id, doc_id]}
   observation_set: {id_ok: false, keys: [is_synthetic, variable, unit_id, doc_table]}
   dataset: {id_ok: true, keys: []}
-  taxon: {id_ok: true, keys: []}
+  taxon: {id_ok: false, keys: []}  # 未使用。使うときに実在の検証を足してから id_ok にする
+
+# 値が閉じた集合のもの（実在の値。build_caveat.py が scope_ref の値と照合し、無ければ止める）。
+# variable_id・theme は registry/variable.yaml、doc_id・doc_table は cells.notes から検証するので
+# ここには書かない。place_kind は place.place_kind、source_id は taxon_assessment.source_id、
+# dataset は variable_alias.csv の dataset 列＋配信表 sites・生物レコード organism_records。
+values:
+  place_kind: [site, zone, grid01, watershed]
+  source_id: [moe_ias_list]
+  dataset: [measurements, organism_records, sites]
 
 scopes:
   # 配信表 sites（地点台帳）を dataset として扱う（v1 の表名で引く経路は廃止）。

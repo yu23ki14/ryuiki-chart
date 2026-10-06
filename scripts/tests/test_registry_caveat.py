@@ -195,6 +195,46 @@ def test_unscoped_and_scoped_at_once_stops(decl):
         _build_rows()
 
 
+@pytest.mark.parametrize(
+    "kind,ref,match",
+    [
+        ("place", "place_kind=nowhere", "実在する値でない"),
+        ("source_edition", "source_id=no_such_source", "実在する値でない"),
+        ("observation_set", "variable=common:variable:no.such&unit_id=null", "実在する値でない"),
+        ("observation_set", "is_synthetic=0", "実在する値でない"),
+        ("observation_set", "variable=common:variable:water.bod&unit_id=known", "実在する値でない"),
+        ("dataset", "no_such_dataset", "values.dataset"),
+        ("taxon", "common:taxon:gbif.1", "ID 参照"),
+    ],
+)
+def test_selector_values_must_exist(decl, kind, ref, match):
+    _, scope = decl
+    _rewrite(scope, lambda d: d["scopes"].append({"kind": kind, "ref": ref, "caveats": ["zone"]}))
+    with pytest.raises(build_caveat.CaveatDeclarationError, match=match):
+        _build_rows()
+
+
+def test_derived_ref_with_nonexistent_variable_stops(decl, monkeypatch):
+    monkeypatch.setitem(build_caveat.REF_DERIVERS, "unit_unknown_variables", lambda: ["common:variable:no.such"])
+    with pytest.raises(build_caveat.CaveatDeclarationError, match="実在する値でない"):
+        _build_rows()
+
+
+def test_empty_derivation_does_not_silently_drop_the_caveat(decl, monkeypatch):
+    # #31 で unit_id が全部埋まると導出が空になる。unitUnknown を黙って消さず、止まる。
+    monkeypatch.setitem(build_caveat.REF_DERIVERS, "unit_unknown_variables", lambda: [])
+    with pytest.raises(build_caveat.CaveatDeclarationError, match="unitUnknown"):
+        _build_rows()
+
+
+def test_empty_derivation_is_ok_once_explicitly_moved_to_unscoped(decl, monkeypatch):
+    _, scope = decl
+    monkeypatch.setitem(build_caveat.REF_DERIVERS, "unit_unknown_variables", lambda: [])
+    _rewrite(scope, lambda d: d["unscoped"].append("unitUnknown"))
+    rows = _build_rows()
+    assert not any(r[0].endswith(":unitUnknown") for r in rows)
+
+
 def test_unscoped_unknown_key_stops(decl):
     _, scope = decl
     _rewrite(scope, lambda d: d["unscoped"].append("noSuch"))

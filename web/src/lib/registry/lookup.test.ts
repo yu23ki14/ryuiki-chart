@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { getUnit, getVariable, resolveAliasForSource, resolveVariableInfo, unitSymbol } from "@/lib/registry/lookup";
-import { caveatBody, resolveCaveatRefs, variableCaveatBodies, variableNote } from "@/lib/registry/lookup-client";
+import { caveatBody, resolveCaveatRefs } from "@/lib/registry/lookup-client";
+import { VARIABLE_LABEL } from "@/lib/registry/generated-client";
 
 describe("resolveVariableInfo", () => {
   it("出典表記から正準 variable を引く（measurements, 既定スコープ）", () => {
@@ -115,13 +116,9 @@ describe("caveatBody / variableNote — generated-client.ts 経由の引き", ()
     expect(caveatBody("zone")).toContain("公式の区分ではない");
   });
 
-  it("variableNote は変数の説明に、その変数の scope の注記（流量の逆流）を添える。description_ja には逆流を埋め込まない", () => {
-    expect(variableNote("common:variable:hydro.flow")).toContain("逆流");
-    expect(variableNote("common:variable:hydro.flow")).toBe(
-      `河川の流量 ${caveatBody("flowTidalBackflow")}`,
-    );
-    expect(variableCaveatBodies("common:variable:water.transparency")).toEqual([caveatBody("aboveLod")]);
-    expect(variableCaveatBodies("common:variable:no.such")).toEqual([]);
+  it("流量の変数説明（VARIABLE_LABEL の note）に逆流は埋め込まない（注記 flowTidalBackflow が持つ）", () => {
+    expect(VARIABLE_LABEL["common:variable:hydro.flow"]?.note).toBe("河川の流量");
+    expect(caveatBody("flowTidalBackflow")).toContain("逆流");
   });
 });
 

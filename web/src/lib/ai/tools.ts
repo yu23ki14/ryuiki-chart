@@ -1,7 +1,6 @@
 import "server-only";
 import { z } from "zod";
 import { tool } from "ai";
-import { caveatKeysForTables } from "./caveats";
 import { listTables, runUserSql, SqlError } from "@/lib/db";
 import { TABLE_META, SCHEMA_META, TABLE_ORIGIN } from "@/lib/table-meta";
 import { ZONE_INFO } from "@/lib/registry/generated-client";
@@ -37,7 +36,7 @@ import {
   type CellSpec,
   type Scope,
 } from "@/lib/cube";
-import { facetsForSeries, facetsForOccurrence, caveatKeysForFacets, variableTheme } from "@/lib/cube/caveats";
+import { facetsForSeries, facetsForOccurrence, facetsForTables, caveatKeysForFacets, variableTheme } from "@/lib/cube/caveats";
 import { MEASUREMENTS_DATASET } from "@/lib/cube/series";
 
 /** 測定値系データセット固定（PR-2 のスコープは測定値系。design §1.1 と同じ前提）。registry の dataset キー。 */
@@ -214,7 +213,7 @@ function makeResult<T>(opts: {
       rowCount: opts.rowCount,
       elapsedMs: Math.round(opts.elapsedMs),
     },
-    caveats: opts.caveats ?? caveatKeysForTables(opts.tables),
+    caveats: opts.caveats ?? caveatKeysForFacets(facetsForTables(opts.tables)),
     truncated: truncated || undefined,
     truncatedNote: truncated
       ? "応答が大きいため系列を等間隔に間引いてある（先頭と末尾は保持）。実際の件数は provenance.rowCount。" +
@@ -675,7 +674,7 @@ const get_overview = tool({
     ];
     const caveats = [
       ...new Set([
-        ...caveatKeysForTables(["sites", "source_registry"]),
+        ...caveatKeysForFacets(facetsForTables(["sites"])),
         // 生物の件数は流域のロールアップだけ（割合は出さない）なので watershed のみ。share は付かない。
         ...caveatKeysForFacets(facetsForOccurrence({ places: ["watershed"] })),
         ...caveatKeysForFacets([variableTheme("landuse")]),

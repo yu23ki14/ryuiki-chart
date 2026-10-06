@@ -7,11 +7,14 @@ import {
   placeKind,
   sourceEditionOf,
   unitUnknownOf,
+  variableCaveats,
+  DATASET_TABLES,
   variableTheme,
   type FacetRef,
   type SeriesFacetInput,
 } from "./caveats";
 import type { Scope } from "./sql";
+import { GENERATED_CAVEAT_SCOPE } from "@/lib/registry/generated-client";
 
 /**
  * facet → 注記（`caveatKeysForFacets`）のテスト（docs/plans/V2_SERVING_PR1.md §6.2）。
@@ -205,5 +208,41 @@ describe("facetsForOccurrence（Issue #48 PR-3b）", () => {
     expect(f.some((x) => (x.kind as string) === "table")).toBe(false);
     const keys = caveatKeysForFacets(f);
     expect(keys).toEqual(expect.arrayContaining(["organismSite", "effort", "share", "isAlien"]));
+  });
+});
+
+describe("ref ヘルパが作る scope_ref は宣言（GENERATED_CAVEAT_SCOPE）に実在する", () => {
+  const exists = (f: FacetRef) => GENERATED_CAVEAT_SCOPE.some((s) => s.scopeKind === f.kind && s.scopeRef === f.ref);
+
+  it.each([
+    ["placeKind(site)", placeKind("site")],
+    ["placeKind(zone)", placeKind("zone")],
+    ["placeKind(grid01)", placeKind("grid01")],
+    ["variableTheme(landuse)", variableTheme("landuse")],
+    ["sourceEditionOf(moe_ias_list)", sourceEditionOf("moe_ias_list")],
+  ] as [string, FacetRef][])("%s", (_name, facet) => {
+    expect(exists(facet)).toBe(true);
+  });
+
+  it("unitUnknownOf: 宣言された observation_set の variable=<id>&unit_id=null と同じ文字列を作る", () => {
+    const rows = GENERATED_CAVEAT_SCOPE.filter((s) => s.scopeKind === "observation_set" && s.caveatKey === "unitUnknown");
+    expect(rows.length).toBeGreaterThan(0);
+    for (const r of rows) {
+      const m = /^variable=(.+)&unit_id=null$/.exec(r.scopeRef);
+      expect(m).not.toBeNull();
+      expect(unitUnknownOf(m![1]).ref).toBe(r.scopeRef);
+    }
+  });
+
+  it("DATASET_TABLES の各表は dataset の scope 行として宣言されている（ずれたら止まる）", () => {
+    for (const t of DATASET_TABLES) {
+      expect(exists({ kind: "dataset", ref: t })).toBe(true);
+    }
+  });
+
+  it("variableCaveats: 流量の逆流・透明度の aboveLod。変数スコープの無い変数は空", () => {
+    expect(variableCaveats("common:variable:hydro.flow").map((c) => c.key)).toEqual(["flowTidalBackflow"]);
+    expect(variableCaveats("common:variable:water.transparency").map((c) => c.key)).toEqual(["aboveLod"]);
+    expect(variableCaveats("common:variable:water.bod")).toEqual([]);
   });
 });

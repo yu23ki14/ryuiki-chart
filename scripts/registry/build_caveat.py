@@ -36,8 +36,8 @@
 - `caveat.yaml`: key の一意・全注記に完全な `review`（reviewed_on/reviewer/reason/changed）。
 - `caveat_scope.yaml`: kind が vocabulary 内・`caveats` の key が `caveat.yaml` に存在・
   (kind, ref, caveat) の重複なし・選択式のキーが `selectors` の許可内・
-  ID 参照（variable）が `variable.yaml` に存在・`theme=` が実在の theme・
-  `ref_from` が既知の導出器・`caveat.yaml` の全注記がどこかの scope に載っている
+  ID 参照（variable）が `variable.yaml` に存在・選択式の値（theme/variable/place_kind/source_id 等）と dataset 名が実在値・
+  `ref_from` が既知の導出器（導出が空になった注記は黙って消さず、scopes か unscoped を要求する）・全注記がどこかの scope に載っている
   （意図して付けないものは `unscoped` に宣言する。休眠の synthetic は scopes に載せる）。
 
 ## cells.notes（207行）の取り込み
@@ -151,7 +151,11 @@ def _load_variable_ids_and_themes() -> tuple[set[str], set[str]]:
     return {v["variable_id"] for v in variables}, {v["theme"] for v in variables if v.get("theme")}
 
 
-def _validate_ref(kind: str, ref: str, selectors: dict, variable_ids: set[str], themes: set[str]) -> None:
+def _validate_ref(kind: str, ref: str, doc: dict, variable_ids: set[str], themes: set[str]) -> None:
+    """scope_ref が語彙・実在する値に収まっていることを検査する。cells.notes 由来の
+    `doc_id`・`doc_table`（ここでは宣言しない）は検査しない。"""
+    selectors = doc["selectors"]
+    values = doc.get("values") or {}
     rule = selectors.get(kind)
     if rule is None:
         raise CaveatDeclarationError(f"scope kind {kind!r} の selectors が caveat_scope.yaml に無い")
@@ -160,15 +164,25 @@ def _validate_ref(kind: str, ref: str, selectors: dict, variable_ids: set[str], 
             raise CaveatDeclarationError(f"scope {kind}:{ref!r}: この kind は ID 参照を許さない（キー=値の選択式のみ）")
         if kind == "variable" and ref not in variable_ids:
             raise CaveatDeclarationError(f"scope variable:{ref!r}: registry/variable.yaml に無い variable_id")
+        if kind == "dataset" and ref not in values.get("dataset", []):
+            raise CaveatDeclarationError(f"scope dataset:{ref!r}: values.dataset に無い dataset 名")
         return
+    allowed_values = {
+        "place_kind": set(values.get("place_kind", [])),
+        "source_id": set(values.get("source_id", [])),
+        "theme": themes,
+        "variable": variable_ids,
+        "is_synthetic": {"1"},
+        "unit_id": {"null"},
+    }
     for part in ref.split("&"):
         k, sep, v = part.partition("=")
         if not sep or not v or k not in rule["keys"]:
             raise CaveatDeclarationError(
                 f"scope {kind}:{ref!r}: 選択式のキー {k!r} は許可外（許可: {rule['keys']}）"
             )
-        if kind == "variable" and k == "theme" and v not in themes:
-            raise CaveatDeclarationError(f"scope variable:{ref!r}: variable.yaml に無い theme {v!r}")
+        if k in allowed_values and v not in allowed_values[k]:
+            raise CaveatDeclarationError(f"scope {kind}:{ref!r}: {k}={v!r} は実在する値でない")
 
 
 def _load_scope_declaration(caveat_keys: set[str]) -> list[tuple]:
@@ -177,7 +191,6 @@ def _load_scope_declaration(caveat_keys: set[str]) -> list[tuple]:
     with CAVEAT_SCOPE_YAML.open(encoding="utf-8") as f:
         doc = yaml.safe_load(f)
     vocabulary = doc["vocabulary"]
-    selectors = doc["selectors"]
     variable_ids, themes = _load_variable_ids_and_themes()
 
     rows: list[tuple] = []
@@ -194,13 +207,17 @@ def _load_scope_declaration(caveat_keys: set[str]) -> list[tuple]:
             if deriver is None:
                 raise CaveatDeclarationError(f"ref_from {entry['ref_from']!r} は既知の導出器でない（{sorted(REF_DERIVERS)}）")
             refs = [entry["ref_template"].format(variable_id=v) for v in deriver()]
+            if not refs:
+                # 導出が空（例: #31 で unit_id が全部埋まった）になっても注記を黙って消さない。
+                # この entry の注記は covered に入れず、下の孤児検査（scopes か unscoped に載せる）に掛ける。
+                continue
         else:
             refs = [entry["ref"]]
         for key in entry["caveats"]:
             if key not in caveat_keys:
                 raise CaveatDeclarationError(f"scope {kind}:{refs}: caveats の {key!r} が registry/caveat.yaml に無い")
         for ref in refs:
-            _validate_ref(kind, ref, selectors, variable_ids, themes)
+            _validate_ref(kind, ref, doc, variable_ids, themes)
             for key in entry["caveats"]:
                 if (kind, ref, key) in seen:
                     raise CaveatDeclarationError(f"scope ({kind}, {ref!r}, {key!r}) が重複している")
