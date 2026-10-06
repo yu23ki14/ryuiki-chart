@@ -10,9 +10,9 @@ import yaml
 
 import b03_build_observation as b03
 import b04_build_cube as b04
-from migrate import common
+from migrate import common, cube_invariants
 
-from .migrate_fixtures import make_registry_db, make_v2_db_with_observation, table_content_hash
+from .migrate_fixtures import DEFAULT_ALIASES, make_registry_db, make_v2_db_with_observation, table_content_hash
 
 # b04 は AVG()/SUM() を使うため `common.require_sqlite_version()` で古い
 # SQLite を拒む（`scripts/migrate/common.py` 参照）。この版のガード自体の
@@ -943,5 +943,339 @@ def test_unit_evidence_raises_on_stale_declaration(tmp_path):
     try:
         with pytest.raises(common.MigrationError, match="宣言を削除すること"):
             b04._assert_unit_evidence(conn, declarations_path=declarations_path)
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# 自己不変条件（Issue #48 PR-5。`scripts/migrate/cube_invariants.py`。b05 から移設）
+# ---------------------------------------------------------------------------
+
+def _alias(dataset, alias, variable_id, unit_id, stat, grain):
+    return (dataset, alias, "src", variable_id, unit_id, stat, grain)
+
+
+def _registry_with_aliases(tmp_path, aliases):
+    registry_db = tmp_path / "registry.sqlite"
+    make_registry_db(registry_db, aliases=aliases)
+    return registry_db
+
+
+def _build_with_aliases(tmp_path, aliases, rows=None):
+    """`aliases` を持つ registry で `build_cube()` を呼ぶ（b04 が alias の検査を
+    呼ぶことの確認。`rows` 省略時は1行だけの `observation`）。
+    """
+    rows = rows or [_row("measurements", "m1", "2020-01-01", "2020-01-01", 1.0, "1.0", "none")]
+    conn = make_v2_db_with_observation(tmp_path / "v2.sqlite", b03._CREATE_OBSERVATION_SQL, rows)
+    try:
+        return b04.build_cube(conn, _registry_with_aliases(tmp_path, aliases), unit_evidence_declarations_path=None)
+    finally:
+        conn.close()
+
+
+_BOD = ("common:variable:water.bod", "common:unit:mg_per_l")
+
+
+def test_alias_collision_halts_build_cube(tmp_path):
+    with pytest.raises(common.MigrationError, match="関数になっていない"):
+        _build_with_aliases(tmp_path, [
+            _alias("measurements", "BOD", *_BOD, None, "day"),
+            _alias("measurements", "BOD_alt", *_BOD, None, "day"),  # 同じ組に別名
+        ])
+
+
+def test_alias_collision_in_a_landuse_year_version_halts(tmp_path):
+    """土地利用の年版 dataset（`<source>@<年>`）ごとにも関数性を見る。"""
+    ds = "nlni_l03b_landuse_by_watershed@2006"
+    with pytest.raises(common.MigrationError, match="関数になっていない"):
+        _build_with_aliases(tmp_path, [
+            _alias(ds, "1:area_km2", "common:variable:landuse.paddy", "common:unit:km2", "sum", "year"),
+            _alias(ds, "01:area_km2", "common:variable:landuse.paddy", "common:unit:km2", "sum", "year"),
+        ])
+
+
+def test_alias_collision_passes_for_default_fixture_and_landuse_year_sharing(tmp_path):
+    """衝突の無い既定の registry と、土地利用が年版をまたいで同じ tuple を共有する
+    正常系（正規化後は同じ出典名）は通る。
+    """
+    _build_with_aliases(tmp_path, list(DEFAULT_ALIASES) + [
+        _alias("nlni_l03b_landuse_by_watershed@2006", "1:area_km2",
+               "common:variable:landuse.paddy", "common:unit:km2", "sum", "year"),
+        _alias("nlni_l03b_landuse_by_watershed@2016", "0100:area_km2",
+               "common:variable:landuse.paddy", "common:unit:km2", "sum", "year"),
+    ])
+
+
+def test_alias_tuple_spanning_two_datasets_halts_build_cube(tmp_path):
+    with pytest.raises(common.MigrationError, match="複数の出典.*にまたがっている"):
+        _build_with_aliases(tmp_path, [
+            _alias("measurements", "水温", "common:variable:water.water_temp", None, None, "instant"),
+            _alias("sensor_timeseries", "WTEMP", "common:variable:water.water_temp", None, None, "instant"),
+        ])
+
+
+def test_alias_tuple_collision_between_landuse_and_measurements_is_still_detected(tmp_path):
+    with pytest.raises(common.MigrationError, match="複数の出典.*にまたがっている"):
+        _build_with_aliases(tmp_path, [
+            _alias("measurements", "何か", "common:variable:landuse.paddy", "common:unit:km2", "sum", "year"),
+            _alias("nlni_l03b_landuse_by_watershed@2006", "1:area_km2",
+                   "common:variable:landuse.paddy", "common:unit:km2", "sum", "year"),
+        ])
+
+
+def test_known_snow_month_alias_duplicates_are_excluded_by_declared_constant(tmp_path):
+    """積雪3変数の月次 alias 揺れ（既知の登録負債）は定数で除外され止まらない。
+    同じ dataset でも grain が違えば（日次の重複は）止まる——grain を黙って狭めない。
+    """
+    var = "common:variable:weather.snow_depth_max"
+    dup_month = [
+        _alias("sensor_timeseries", "雪_最深 積雪", var, "common:unit:cm", "max", "month"),
+        _alias("sensor_timeseries", "雪_最深積雪", var, "common:unit:cm", "max", "month"),
+    ]
+    _build_with_aliases(tmp_path, dup_month)
+    assert ("sensor_timeseries", var, "month") in cube_invariants.KNOWN_DUPLICATE_ALIAS_SERIES
+    dup_day = [(*a[:6], "day") for a in dup_month]
+    (tmp_path / "sub").mkdir()
+    with pytest.raises(common.MigrationError, match="関数になっていない"):
+        _build_with_aliases(tmp_path / "sub", dup_day)
+
+
+def test_two_unit_raw_in_one_series_halts_build_cube(tmp_path):
+    rows = [
+        _row("sensor_timeseries", "m1", "2020-01-01", "2020-01-01", 1.0, "1.0", "none"),
+        _row("sensor_timeseries", "m2", "2020-01-02", "2020-01-02", 1.0, "1.0", "none"),
+    ]
+    # （単位の証拠検査は measurements だけが対象なので、sensor_timeseries で作る。）
+    # 同じ系列（variable・value_grain・obs_stat・unit_id）に別の単位表記。
+    rows[1] = rows[1][:8] + ("mg/l",) + rows[1][9:]
+    conn = make_v2_db_with_observation(tmp_path / "v2.sqlite", b03._CREATE_OBSERVATION_SQL, rows)
+    try:
+        with pytest.raises(common.MigrationError, match="unit_raw が関数になっていない"):
+            b04.build_cube(conn, _registry_db(tmp_path), unit_evidence_declarations_path=None)
+    finally:
+        conn.close()
+
+
+def _hour_rows():
+    """毎時の1系列: 2020-01-01 の 01・02 時ラベルと 2020-01-02 の 00 時ラベル（=前日 23 時の
+    観測）。period_start は b03 が「ラベル-1時間」にしたもの。"""
+    kw = dict(
+        variable_id="common:variable:weather.precipitation", unit_id=None,
+        value_grain="hour", period_grain="hour",
+    )
+    return [
+        _row("sensor_timeseries", "h1", "2020-01-01T00:00:00", "2020-01-01T01:00:00", 1.0, None, "none",
+             period_raw="2020-01-01T01:00:00+09:00", **kw),
+        _row("sensor_timeseries", "h2", "2020-01-01T01:00:00", "2020-01-01T02:00:00", 2.0, None, "none",
+             period_raw="2020-01-01T02:00:00+09:00", **kw),
+        _row("sensor_timeseries", "h3", "2020-01-01T23:00:00", "2020-01-02T00:00:00", 4.0, None, "none",
+             period_raw="2020-01-02T00:00:00+09:00", **kw),
+    ]
+
+
+def test_hourly_daily_rollup_passes_through_build_cube(tmp_path):
+    conn = make_v2_db_with_observation(tmp_path / "v2.sqlite", b03._CREATE_OBSERVATION_SQL, _hour_rows())
+    try:
+        b04.build_cube(conn, _registry_db(tmp_path), unit_evidence_declarations_path=None)
+        n = conn.execute(
+            "SELECT n FROM observation_agg WHERE grain='day' AND input_grain='hour' AND stat='mean' "
+            "AND period_start='2020-01-01'"
+        ).fetchone()[0]
+        assert n == 3  # 00 時ラベル（前日 23 時）も 01-01 のセルに入る
+    finally:
+        conn.close()
+
+
+def test_hourly_daily_rollup_mutation_is_caught_in_build_cube(tmp_path, monkeypatch):
+    """日次セルの n を壊す変異（b04 の SQL が壊れた状況）は T6 が止める。
+    直前の検証（value_zero/value_lod の関係）の位置で `staging` の n を壊して注入する。
+    """
+    real = b04._assert_value_zero_lod_invariants
+
+    def break_then_check(conn, staging):
+        conn.execute(
+            f'UPDATE "{staging}" SET n = n + 100 WHERE grain = \'day\' AND input_grain = \'hour\' AND stat = \'mean\''
+        )
+        real(conn, staging)
+
+    monkeypatch.setattr(b04, "_assert_value_zero_lod_invariants", break_then_check)
+    conn = make_v2_db_with_observation(tmp_path / "v2.sqlite", b03._CREATE_OBSERVATION_SQL, _hour_rows())
+    try:
+        with pytest.raises(common.MigrationError, match="T6"):
+            b04.build_cube(conn, _registry_db(tmp_path), unit_evidence_declarations_path=None)
+    finally:
+        conn.close()
+
+
+def test_verify_hourly_daily_rollup_function_directly():
+    """期待式（キューブの日次 n = ラベル日割りの n − 00 時ラベル + 翌日の 00 時ラベル）を、
+    手作りの `observation` と `staging` で直接確かめる。
+    """
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE observation (region_id, place_id, place_kind, variable_id, obs_stat, "
+        "unit_id, value_grain, period_raw, value_num)"
+    )
+    conn.execute(
+        "CREATE TABLE staging (region_id, place_id, place_kind, variable_id, obs_stat, "
+        "unit_id, value_grain, period_start, period_end, grain, input_grain, stat, value_zero, n)"
+    )
+    dim = ("jp-14", "place_s1", "site", "v1", None, "u1", "hour")
+    conn.executemany(
+        "INSERT INTO observation VALUES (?,?,?,?,?,?,?,?,?)",
+        [
+            (*dim, "2020-01-01T01:00:00+09:00", 1.0),
+            (*dim, "2020-01-01T02:00:00+09:00", 2.0),
+            (*dim, "2020-01-01T03:00:00+09:00", 3.0),
+            (*dim, "2020-01-02T00:00:00+09:00", 4.0),
+        ],
+    )
+    # 4件すべてが 2020-01-01 のセル（00 時ラベルは前日側）。
+    conn.executemany(
+        "INSERT INTO staging VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        [
+            (*dim, "2020-01-01", "2020-01-01", "day", "hour", "mean", 2.5, 4),
+            (*dim, "2020-01-01", "2020-01-01", "day", "hour", "min", 1.0, 4),
+            (*dim, "2020-01-01", "2020-01-01", "day", "hour", "max", 4.0, 4),
+        ],
+    )
+    stats = cube_invariants.verify_hourly_daily_rollup(conn, "staging")
+    assert stats["n_series_days_checked"] >= 1
+
+    # Σn は合っていても max が違えば（系列ごとの全期間の突合）止まる。
+    conn.execute("UPDATE staging SET value_zero = 3.0 WHERE stat = 'max'")
+    with pytest.raises(common.MigrationError, match="T6.*Σn・min・max"):
+        cube_invariants.verify_hourly_daily_rollup(conn, "staging")
+
+
+# ---------------------------------------------------------------------------
+# 無作為抽出セルの独立再計算（Issue #48 PR-5 §2.3）
+# ---------------------------------------------------------------------------
+
+def _sampling_rows():
+    """日次・月次/年次の積み上げ・出典配布セル（fiscal_year・month）・検閲を一通り含む観測。"""
+    rows = []
+    for d in range(1, 31):
+        day = f"2020-01-{d:02d}"
+        if d == 15:
+            rows.append(_row("measurements", f"m{d}", day, day, None, "<0.5", "below_lod", censoring_limit=0.5))
+        elif d == 16:
+            rows.append(_row("measurements", f"m{d}", day, day, None, "ND", "not_detected"))
+        else:
+            rows.append(_row("measurements", f"m{d}", day, day, float(d), str(d), "none"))
+    rows.append(_row(
+        "measurements", "fy1", "2020-04-01", "2021-03-31", 3.0, "3.0", "none",
+        variable_id="common:variable:water.cod", value_grain="fiscal_year", period_grain="fiscal_year",
+    ))
+    rows.append(_row(
+        "measurements", "mo1", "2020-02-01", "2020-02-29", 5.0, "5.0", "none",
+        variable_id="common:variable:water.ph", value_grain="month", period_grain="month",
+    ))
+    return rows
+
+
+def _built_cube_conn(tmp_path, rows=None):
+    conn = make_v2_db_with_observation(
+        tmp_path / "v2.sqlite", b03._CREATE_OBSERVATION_SQL, rows or _sampling_rows(),
+    )
+    b04.build_cube(conn, _registry_db(tmp_path), unit_evidence_declarations_path=None)
+    return conn
+
+
+def _recheck(conn, fingerprint="fp"):
+    return b04._assert_sampled_cells_recompute_from_observation(conn, "observation_agg", fingerprint, "sv")
+
+
+def test_sampled_recompute_passes_on_a_correct_cube_and_covers_every_cell_path(tmp_path):
+    conn = _built_cube_conn(tmp_path)
+    try:
+        stats = _recheck(conn)
+        # 小さな入力では各層が丸ごと抽出される（≤200セル）。
+        assert stats["n_sampled_cells"] == conn.execute("SELECT COUNT(*) FROM observation_agg").fetchone()[0]
+        assert stats["n_sampled_censored_cells"] > 0
+        # 経路ごとに1つ以上のセルがある（day/月・年の積み上げ/出典配布 month・fiscal_year）。
+        paths = {r[0] for r in conn.execute("SELECT DISTINCT grain || '/' || input_grain FROM observation_agg")}
+        assert {"day/day", "month/day", "year/day", "month/month", "fiscal_year/fiscal_year"} <= paths
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize(
+    "where, column",
+    [
+        pytest.param("grain='day' AND stat='mean' AND period_start='2020-01-15'", "value_lod", id="day_value_lod"),
+        pytest.param("grain='day' AND stat='mean' AND period_start='2020-01-03'", "n", id="day_n"),
+        pytest.param("grain='day' AND stat='max' AND period_start='2020-01-03'", "value_zero", id="day_max"),
+        pytest.param("grain='day' AND stat='mean' AND period_start='2020-01-15'", "n_censored", id="day_n_censored"),
+        pytest.param("grain='month' AND input_grain='day'", "value_zero", id="month_from_day"),
+        pytest.param("grain='month' AND input_grain='day'", "n_not_detected", id="month_from_day_nd"),
+        pytest.param("grain='year' AND input_grain='day' AND stat='min'", "value_lod", id="year_from_day_min"),
+        pytest.param("grain='year' AND input_grain='day' AND stat='mean'", "n", id="year_from_day_n"),
+        pytest.param("grain='fiscal_year'", "value_zero", id="source_fiscal_year"),
+        pytest.param("grain='month' AND input_grain='month' AND stat='max'", "value_zero", id="source_month"),
+    ],
+)
+def test_sampled_recompute_detects_a_corrupted_cell(tmp_path, where, column):
+    """staging の1セルを壊すと（層の全セルが抽出される小さな入力なので）必ず落ちる。"""
+    conn = _built_cube_conn(tmp_path)
+    try:
+        cur = conn.execute(f"UPDATE observation_agg SET {column} = COALESCE({column}, 0) + 1 WHERE {where}")
+        assert cur.rowcount >= 1
+        with pytest.raises(common.MigrationError, match="独立な再計算と一致しない"):
+            _recheck(conn)
+    finally:
+        conn.close()
+
+
+def test_sampled_recompute_detects_a_phantom_cell(tmp_path):
+    """観測に無いセル（期待 n=0 に対して n=1）も食い違いとして落ちる。"""
+    conn = _built_cube_conn(tmp_path)
+    try:
+        conn.execute(
+            "INSERT INTO observation_agg SELECT region_id, place_id, place_kind, variable_id, obs_stat, unit_id, "
+            "value_grain, '2019-05-05', '2019-05-05', grain, input_grain, stat, value_zero, value_lod, n, "
+            "n_censored, n_not_detected, n_places, built_from, spec_version FROM observation_agg "
+            "WHERE grain='day' AND stat='mean' AND period_start='2020-01-03'"
+        )
+        with pytest.raises(common.MigrationError, match="独立な再計算と一致しない"):
+            _recheck(conn)
+    finally:
+        conn.close()
+
+
+def _picked(conn, fingerprint):
+    seed = b04._sample_seed(fingerprint, "sv")
+    return b04._pick_sample_rowids(conn, "observation_agg", seed)
+
+
+def test_sampling_is_deterministic_and_depends_on_the_observation_fingerprint(tmp_path, monkeypatch):
+    conn = _built_cube_conn(tmp_path)
+    try:
+        monkeypatch.setattr(b04, "SAMPLE_CELLS_PER_STRATUM", 3)
+        monkeypatch.setattr(b04, "SAMPLE_CENSORED_CELLS_PER_STRATUM", 0)
+        assert _picked(conn, "fp-a") == _picked(conn, "fp-a")
+        assert len({tuple(_picked(conn, f"fp-{i}")) for i in range(8)}) > 1
+    finally:
+        conn.close()
+
+
+def test_sampling_always_includes_the_max_n_cell_and_censored_cells(tmp_path, monkeypatch):
+    """ランダム枠を0にしても、各層の n 最大のセルと検閲を含むセルは必ず抽出される。"""
+    conn = _built_cube_conn(tmp_path)
+    try:
+        monkeypatch.setattr(b04, "SAMPLE_CELLS_PER_STRATUM", 0)
+        picked = set(_picked(conn, "fp"))
+        censored = {
+            r[0] for r in conn.execute(
+                "SELECT rowid FROM observation_agg WHERE grain='day' AND input_grain='day' "
+                "AND stat='mean' AND (n_censored > 0 OR n_not_detected > 0)"
+            )
+        }
+        assert len(censored) == 2 and censored <= picked
+        max_month = conn.execute(
+            "SELECT rowid FROM observation_agg WHERE grain='month' AND input_grain='day' AND stat='mean' "
+            "ORDER BY n DESC LIMIT 1"
+        ).fetchone()[0]
+        assert max_month in picked
     finally:
         conn.close()

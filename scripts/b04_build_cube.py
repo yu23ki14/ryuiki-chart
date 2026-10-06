@@ -229,14 +229,17 @@ b04 側では検証しない。
 from __future__ import annotations
 
 import argparse
+import hashlib
+import math
 import pathlib
+import random
 import sqlite3
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from migrate import censoring, common  # noqa: E402
+from migrate import censoring, common, cube_invariants  # noqa: E402
 
 DEFAULT_DB = ROOT / "data" / "db" / "v2.sqlite"
 DEFAULT_REGISTRY_DB = ROOT / "data" / "db" / "registry.sqlite"
@@ -777,6 +780,246 @@ def _assert_unit_evidence(conn: sqlite3.Connection, declarations_path=UNIT_EVIDE
     return {"n_unit_symbol_mismatch": n_mismatch, "n_unit_evidence_declared": len(declared)}
 
 
+# ---------------------------------------------------------------------------
+# 無作為抽出セルの独立再計算（Issue #48 PR-5 §2.3。モジュール docstring
+# 「機械検証」節の補足）
+# ---------------------------------------------------------------------------
+# v1 との突合（b02）が無くなった後の「キューブの値は観測から正しく作られているか」の
+# 検査。`staging` のセルを層別に無作為抽出し、`observation` の該当行から Python
+# （`math.fsum`）で値を求め直して比べる。**SQL の式（`_day_stats_sql` 等）を使い回さない**
+# ——同じ式の同じバグを見逃すため、集計の規則だけを読んで別の書き方で組んである。
+# 欠落セル（観測にはあるのにキューブに無い）は抽出の対象外（見るのは「あるセルの値」）。
+
+SAMPLE_CELLS_PER_STRATUM = 200
+SAMPLE_CENSORED_CELLS_PER_STRATUM = 50
+_SAMPLE_REPORT_LIMIT = 20
+
+# セルが観測のどの行から作られるか（`_cell_mode`）。`plen` は日付の先頭何文字で
+# 同じセルに入れるか（None は period_start/period_end の完全一致）。
+_MODE_DAY, _MODE_MONTH_FROM_DAY, _MODE_YEAR_FROM_DAY, _MODE_SOURCE = "day", "month_from_day", "year_from_day", "source"
+_MODE_PREFIX_LEN = {_MODE_DAY: 10, _MODE_MONTH_FROM_DAY: 7, _MODE_YEAR_FROM_DAY: 4, _MODE_SOURCE: None}
+
+_KEY_SEP = "\x1f"
+_KEY_NULL = "\x1e"
+
+
+def _cell_mode(grain: str, input_grain: str) -> str:
+    if grain == "day":
+        return _MODE_DAY
+    if grain == input_grain:  # 出典配布セル（month/year/fiscal_year）
+        return _MODE_SOURCE
+    if grain == "month":
+        return _MODE_MONTH_FROM_DAY
+    if grain == "year":
+        return _MODE_YEAR_FROM_DAY
+    raise common.MigrationError(f"observation_agg: 想定外の (grain, input_grain)=({grain!r}, {input_grain!r})")
+
+
+def _sample_seed(observation_fingerprint: str, spec_version: str) -> int:
+    """入力が同じなら同じ抽出（決定論）、入力が変われば別の抽出になる seed。"""
+    return int(hashlib.sha256(f"{observation_fingerprint}|{spec_version}".encode()).hexdigest()[:8], 16)
+
+
+def _pick_sample_rowids(conn: sqlite3.Connection, staging: str, seed: int) -> list[int]:
+    """層（grain, input_grain, stat）ごとに、無作為の最大 `SAMPLE_CELLS_PER_STRATUM` セルと
+    n が最大のセル1つ・検閲を含むセル（最大 `SAMPLE_CENSORED_CELLS_PER_STRATUM`）を選ぶ。"""
+    rng = random.Random(seed)
+    rowids: dict[tuple, list[int]] = {}
+    best_n: dict[tuple, tuple[int, int]] = {}
+    censored: dict[tuple, list[int]] = {}
+    for rowid, grain, input_grain, stat, n, n_censored, n_nd in conn.execute(
+        f'SELECT rowid, grain, input_grain, stat, n, n_censored, n_not_detected FROM "{staging}"'
+    ):
+        stratum = (grain, input_grain, stat)
+        rowids.setdefault(stratum, []).append(rowid)
+        if stratum not in best_n or n > best_n[stratum][0]:
+            best_n[stratum] = (n, rowid)
+        if n_censored or n_nd:
+            censored.setdefault(stratum, []).append(rowid)
+    picked: set[int] = set()
+    for stratum in sorted(rowids):  # 層の順序を固定して抽出を決定論にする
+        ids = rowids[stratum]
+        picked.update(rng.sample(ids, min(len(ids), SAMPLE_CELLS_PER_STRATUM)))
+        picked.add(best_n[stratum][1])
+        cens = censored.get(stratum, [])
+        picked.update(rng.sample(cens, min(len(cens), SAMPLE_CENSORED_CELLS_PER_STRATUM)))
+    return sorted(picked)
+
+
+def _imputed(censoring_value, value_num, censoring_limit) -> tuple:
+    """観測1行の (value_zero 側, value_lod 側)。規則は ADR-0009 決定2（モジュール docstring）。
+    value_zero 側が None の行は非メンバー（above_lod/unknown で値が無いもの）。"""
+    if censoring_value in censoring.ZERO_IMPUTED_CENSORING:
+        v_zero = 0.0
+    else:
+        v_zero = value_num
+    if censoring_value == censoring.CENSORING_BELOW_LOD:
+        v_lod = censoring_limit
+    elif censoring_value == censoring.CENSORING_NOT_DETECTED:
+        v_lod = None
+    else:
+        v_lod = value_num
+    return v_zero, v_lod
+
+
+def _stat_of(values: list[float], stat: str):
+    """`values`（None を除いたリスト）の mean/min/max/sum。空なら None。"""
+    if not values:
+        return None
+    if stat == "mean":
+        return math.fsum(values) / len(values)
+    if stat == "min":
+        return min(values)
+    if stat == "max":
+        return max(values)
+    if stat == "sum":
+        return math.fsum(values)
+    raise common.MigrationError(f"observation_agg: 想定外の stat {stat!r}")
+
+
+def _group_stats(obs_rows: list[tuple], stat: str) -> tuple:
+    """観測行（(censoring, value_num, censoring_limit)）の集まりから、1つの葉の格の
+    (value_zero, value_lod, n, n_censored, n_not_detected) を求める（日次セルと出典配布セル）。"""
+    zeros: list[float] = []
+    lods: list[float] = []
+    n_censored = n_nd = 0
+    for censoring_value, value_num, limit in obs_rows:
+        v_zero, v_lod = _imputed(censoring_value, value_num, limit)
+        if v_zero is None:
+            continue
+        zeros.append(v_zero)
+        if v_lod is not None:
+            lods.append(v_lod)
+        n_censored += censoring_value == censoring.CENSORING_BELOW_LOD
+        n_nd += censoring_value == censoring.CENSORING_NOT_DETECTED
+    return _stat_of(zeros, stat), _stat_of(lods, stat), len(zeros), n_censored, n_nd
+
+
+def _rollup_stats(obs_rows: list[tuple], stat_of_days: str) -> tuple:
+    """日次→月次・年次の積み上げ（日次セルの mean を `stat_of_days` で集計し直す。
+    n は日次セルの個数、検閲件数は日次セルの合計）。`obs_rows` は
+    (date, censoring, value_num, censoring_limit)。"""
+    by_day: dict[str, list[tuple]] = {}
+    for day, *rest in obs_rows:
+        by_day.setdefault(day, []).append(tuple(rest))
+    day_zero: list[float] = []
+    day_lod: list[float] = []
+    n_censored = n_nd = 0
+    for rows in by_day.values():
+        vz, vl, n, n_c, n_d = _group_stats(rows, "mean")
+        if n == 0:
+            continue  # メンバーの無い日はセルにならない
+        day_zero.append(vz)
+        if vl is not None:
+            day_lod.append(vl)
+        n_censored += n_c
+        n_nd += n_d
+    return _stat_of(day_zero, stat_of_days), _stat_of(day_lod, stat_of_days), len(day_zero), n_censored, n_nd
+
+
+def _skey_sql(mode: str) -> str:
+    """`observation` 側の結合キー（セル側の `_cell_skey` と同じ並び）。NULL は番人文字に
+    直す（`IS` の NULL 安全 JOIN は索引が効かないため、1本の文字列キーの等値にする）。"""
+    parts = [f"IFNULL(o.{c}, char(30))" for c in DIM_COLUMNS[:7]] + ["o.period_grain"]
+    plen = _MODE_PREFIX_LEN[mode]
+    if plen is None:
+        parts += ["o.period_start", "o.period_end"]
+    else:
+        parts.append(f"substr(o.period_start, 1, {plen})")
+    return " || char(31) || ".join(parts)
+
+
+def _cell_skey(cell: dict, mode: str) -> str:
+    parts = [_KEY_NULL if cell[c] is None else cell[c] for c in DIM_COLUMNS[:7]] + [cell["input_grain"]]
+    plen = _MODE_PREFIX_LEN[mode]
+    if plen is None:
+        parts += [cell["period_start"], cell["period_end"]]
+    else:
+        parts.append(cell["period_start"][:plen])
+    return _KEY_SEP.join(parts)
+
+
+def _expected_cell(cell: dict, mode: str, obs_rows: list[tuple]) -> tuple:
+    """`obs_rows`（(period_start, censoring, value_num, censoring_limit)）から、セル
+    `cell` の (value_zero, value_lod, n, n_censored, n_not_detected) を独立に求める。"""
+    stat = cell["stat"]
+    if mode in (_MODE_DAY, _MODE_SOURCE):
+        return _group_stats([r[1:] for r in obs_rows], stat)
+    # 積み上げ: 月は日次の mean だけ、年は日次の mean を stat で集計する。
+    stat_of_days = "mean" if mode == _MODE_MONTH_FROM_DAY else stat
+    return _rollup_stats([(r[0][:10], *r[1:]) for r in obs_rows], stat_of_days)
+
+
+def _close(expected, actual) -> bool:
+    if expected is None or actual is None:
+        return expected is None and actual is None
+    return math.isclose(expected, actual, rel_tol=1e-9, abs_tol=1e-12)
+
+
+def _assert_sampled_cells_recompute_from_observation(
+    conn: sqlite3.Connection, staging: str, observation_fingerprint: str, spec_version: str,
+) -> dict:
+    """`staging` から層別に無作為抽出したセルを、`observation` から Python で求め直して
+    突き合わせる。n・n_censored・n_not_detected は完全一致、value_zero/value_lod は
+    相対誤差 1e-9（`fsum` と SQLite の AVG の加算順の差）で一致。食い違えば最大
+    `_SAMPLE_REPORT_LIMIT` 件を (次元キー・期間・期待・実際) つきで止める。
+    抽出は `observation` の指紋と spec_version から決める（入力が同じなら同じ抽出）。
+    戻り値はレポート用の統計。
+    """
+    rowids = _pick_sample_rowids(conn, staging, _sample_seed(observation_fingerprint, spec_version))
+    cols = DIM_COLUMNS + ["value_zero", "value_lod", "n", "n_censored", "n_not_detected"]
+    conn.execute("CREATE TEMP TABLE __sample_ids (cid INTEGER PRIMARY KEY)")
+    conn.execute("CREATE TEMP TABLE __sample_cells (cid INTEGER, mode TEXT, skey TEXT)")
+    try:
+        conn.executemany("INSERT INTO __sample_ids VALUES (?)", [(r,) for r in rowids])
+        cells: dict[int, dict] = {}
+        for row in conn.execute(
+            f'SELECT s.rowid, {", ".join("s." + c for c in cols)} FROM "{staging}" s '
+            "JOIN __sample_ids i ON i.cid = s.rowid"
+        ):
+            cells[row[0]] = dict(zip(cols, row[1:]))
+        modes = {cid: _cell_mode(c["grain"], c["input_grain"]) for cid, c in cells.items()}
+        conn.executemany(
+            "INSERT INTO __sample_cells VALUES (?,?,?)",
+            [(cid, modes[cid], _cell_skey(c, modes[cid])) for cid, c in cells.items()],
+        )
+        conn.execute("CREATE INDEX __sample_cells_skey ON __sample_cells (skey)")
+
+        obs_by_cell: dict[int, list[tuple]] = {cid: [] for cid in cells}
+        for mode in sorted(set(modes.values())):
+            for cid, period_start, censoring_value, value_num, limit in conn.execute(
+                "SELECT s.cid, o.period_start, o.censoring, o.value_num, o.censoring_limit "
+                "FROM observation o JOIN __sample_cells s "
+                f"ON s.skey = {_skey_sql(mode)} WHERE s.mode = ?",
+                (mode,),
+            ):
+                obs_by_cell[cid].append((period_start, censoring_value, value_num, limit))
+    finally:
+        conn.execute("DROP TABLE IF EXISTS __sample_cells")
+        conn.execute("DROP TABLE IF EXISTS __sample_ids")
+
+    mismatches = []
+    for cid in rowids:
+        cell = cells[cid]
+        exp = _expected_cell(cell, modes[cid], obs_by_cell[cid])
+        act = (cell["value_zero"], cell["value_lod"], cell["n"], cell["n_censored"], cell["n_not_detected"])
+        if not (_close(exp[0], act[0]) and _close(exp[1], act[1]) and exp[2:] == act[2:]):
+            mismatches.append((tuple(cell[c] for c in DIM_COLUMNS), "期待", exp, "実際", act))
+    if mismatches:
+        raise common.MigrationError(
+            f"observation_agg: 無作為抽出したセルのうち{len(mismatches)}件が observation からの"
+            f"独立な再計算と一致しない（例（上限{_SAMPLE_REPORT_LIMIT}件、次元キー{DIM_COLUMNS}・"
+            f"期待・実際。期待/実際は (value_zero, value_lod, n, n_censored, n_not_detected)）: "
+            f"{mismatches[:_SAMPLE_REPORT_LIMIT]}）。"
+            "セルの集計 SQL（日次・月次・年次の経路）か value_zero/value_lod の代入規則が"
+            "観測と食い違っている。"
+        )
+    return {
+        "n_sampled_cells": len(rowids),
+        "n_sampled_censored_cells": sum(1 for c in cells.values() if c["n_censored"] or c["n_not_detected"]),
+    }
+
+
 def build_cube(
     conn,
     registry_db=DEFAULT_REGISTRY_DB,
@@ -835,6 +1078,13 @@ def build_cube(
     # 呼び出し側が渡した `unit_evidence_declarations_path`（既定は実ファイル。
     # 上記 docstring 参照）をそのまま `_assert_unit_evidence()` に渡す。
     unit_evidence_stats = _assert_unit_evidence(conn, declarations_path=unit_evidence_declarations_path)
+
+    # 自己不変条件（Issue #48 PR-5: v1 射影 b05 から移した。`migrate/cube_invariants.py`）。
+    # 系列の逆引き（alias・単位表記）が一意でなければ、キューブのセルがどの出典・
+    # どの単位の系列なのか決まらない。
+    cube_invariants.assert_alias_is_function(conn)
+    cube_invariants.assert_alias_tuple_maps_to_single_dataset(conn)
+    cube_invariants.assert_unit_raw_is_function(conn)
 
     conn.execute(_CREATE_OBS_IMPUTED_VIEW_SQL)
 
@@ -903,6 +1153,12 @@ def build_cube(
         # value_zero/value_lod の3つの不変条件（ADR-0009 決定4）。検証と
         # 統計収集を分ける（/code-review 指摘13）。
         _assert_value_zero_lod_invariants(conn, staging)
+        # T6: 毎時→日次の件数・Σn・min・max が observation と一致する（移設）。
+        cube_invariants.verify_hourly_daily_rollup(conn, staging)
+        # 無作為抽出したセルを observation から独立に求め直す（Issue #48 PR-5 §2.3）。
+        sample_stats = _assert_sampled_cells_recompute_from_observation(
+            conn, staging, observation_fingerprint, spec_version,
+        )
         value_stats = _collect_value_zero_lod_stats(conn, staging)
     # ここまで来たら staged_table が観測差し替えと同じトランザクションで
     # observation_agg の指紋・系譜（消費した observation の指紋）も記録済み
@@ -922,6 +1178,7 @@ def build_cube(
         "n_year_source": n_year_source,
         "n_total": n_day + n_month_from_day + n_month_source + n_year_from_day + n_year_source,
         **value_stats,
+        **sample_stats,
         **unit_evidence_stats,
     }
 

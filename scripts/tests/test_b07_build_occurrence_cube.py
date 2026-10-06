@@ -855,3 +855,49 @@ def test_consistent_with_place_declarations_raises_when_resolved_count_too_small
         assert exists == 0
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# 流域セルの (place_id, 年) 粒度の突合（Issue #48 PR-5。b08 の保存則から移設）
+# ---------------------------------------------------------------------------
+
+def test_mutation_watershed_cells_shifted_across_years_is_caught_by_place_year_check(tmp_path, monkeypatch):
+    """年セルの年ラベルを全部同じ年にする変異: 系列（source_id, taxon_id）ごとの Σn は
+    変わらず、行数の宣言も保たれる。(place_id, 年) の突合だけが「別の年へ付け替わった」
+    ことを捕まえる。
+    """
+    other_place = "common:place:watershed.other"
+    rows = [
+        _row("gbif__a", "2020-01-05", "2020-01-05", "2020-01-05"),
+        _row("gbif__b", "2021-02-06", "2021-02-06", "2021-02-06"),
+    ]
+    place_rows = [
+        occurrence_place_row("gbif__a", DEFAULT_WATERSHED_PLACE_ID),
+        occurrence_place_row("gbif__b", other_place),
+    ]
+    conn, decl = _build(tmp_path, rows, place_rows=place_rows)
+    try:
+        mutated = b07._YEAR_CELLS_SQL.replace(
+            "substr(period_start, 1, 4) || '-01-01' AS period_start", "'2020-01-01' AS period_start",
+        ).replace(
+            "substr(period_start, 1, 4) || '-12-31' AS period_end", "'2020-12-31' AS period_end",
+        )
+        assert mutated != b07._YEAR_CELLS_SQL
+        monkeypatch.setattr(b07, "_YEAR_CELLS_SQL", mutated)
+        with pytest.raises(common.MigrationError, match=r"\(place_id, 年\)"):
+            b07.build_cube(conn, decl, place_declarations_yaml=None)
+    finally:
+        conn.close()
+
+
+def test_place_year_check_passes_for_normal_data_and_counts_place_years(tmp_path):
+    rows = [
+        _row("gbif__a", "2020-01-05", "2020-01-05", "2020-01-05"),
+        _row("gbif__b", "2021-02-06", "2021-02-06", "2021-02-06"),
+    ]
+    conn, decl = _build(tmp_path, rows)
+    try:
+        stats = b07.build_cube(conn, decl, place_declarations_yaml=None)
+        assert stats["n_watershed_place_years_checked"] == 2
+    finally:
+        conn.close()
