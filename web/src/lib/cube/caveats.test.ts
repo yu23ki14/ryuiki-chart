@@ -187,9 +187,10 @@ describe("facetsForSeries", () => {
     });
     expect(caveatKeysForFacets(facetsForSeries([mk("common:variable:water.transparency", "common:unit:m")], scope))).toContain("aboveLod");
     expect(caveatKeysForFacets(facetsForSeries([mk("common:variable:hydro.flow", "common:unit:m3_per_s")], scope))).toContain("flowTidalBackflow");
-    expect(caveatKeysForFacets(facetsForSeries([mk("common:variable:hydro.flow", null)], scope))).toEqual(
-      expect.arrayContaining(["flowTidalBackflow", "unitUnknown"]),
-    );
+    // 流量は #31 で単位が埋まり unitUnknown の対象から外れたので、単位 null の系列でも付かない
+    const flowNull = caveatKeysForFacets(facetsForSeries([mk("common:variable:hydro.flow", null)], scope));
+    expect(flowNull).toContain("flowTidalBackflow");
+    expect(flowNull).not.toContain("unitUnknown");
     expect(caveatKeysForFacets(facetsForSeries([mk("common:variable:water.bod", "common:unit:mg_per_l")], scope))).not.toContain("aboveLod");
   });
 });
@@ -232,6 +233,25 @@ describe("ref ヘルパが作る scope_ref は宣言（GENERATED_CAVEAT_SCOPE）
       expect(m).not.toBeNull();
       expect(unitUnknownOf(m![1]).ref).toBe(r.scopeRef);
     }
+  });
+
+  it("unitUnknown の対象は7変数。流量は #31 で単位（m3/s）が埋まったので、流量の系列に unitUnknown は付かない", () => {
+    const rows = GENERATED_CAVEAT_SCOPE.filter((s) => s.scopeKind === "observation_set" && s.caveatKey === "unitUnknown");
+    expect(rows).toHaveLength(7);
+    expect(rows.some((r) => r.scopeRef.includes("hydro.flow"))).toBe(false);
+    const flow: SeriesFacetInput = {
+      variableId: "common:variable:hydro.flow",
+      obsStat: "point",
+      unitId: "common:unit:m3_per_s",
+      valueGrain: "day",
+      dataset: "measurements",
+      aliases: ["流量関連（公式定義未確認のため原表記のまま）"],
+      sourceIds: ["env_kousui_sample_kanagawa"],
+      theme: "hydro",
+    };
+    const keys = caveatKeysForFacets(facetsForSeries([flow], { kind: "site", siteId: "s1" }));
+    expect(keys).toContain("flowTidalBackflow");
+    expect(keys).not.toContain("unitUnknown");
   });
 
   it("DATASET_TABLES の各表は dataset の scope 行として宣言されている（ずれたら止まる）", () => {
