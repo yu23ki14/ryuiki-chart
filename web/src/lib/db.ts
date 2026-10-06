@@ -167,7 +167,7 @@ export async function runUserSql(
 /**
  * 「実在するが TABLE_ORIGIN（カタログ）に無い表」の集合を、実行時に sqlite_master から導く。
  * ソースに表名を書かない（v1 の表名は web/src に出さない完了条件と両立させる）。
- * PR-5 で表が DROP されれば集合が空になり、何も弾かなくなる。isolate ごとに1回だけ引く。
+ * v1 の表は PR-5 で DROP 済みなので、残るのは `_seed_state` などの内部表の除外。isolate ごとに1回だけ引く。
  */
 let offCatalogCache: Promise<Set<string>> | null = null;
 
@@ -217,7 +217,7 @@ export interface ColumnInfo {
 }
 
 export interface TableInfo {
-  /** どの原本から来たテーブルか（main = ryuiki / c = cells / d = derived）。D1 では全部 main スキーマ。 */
+  /** どの原本から来たテーブルか（main = ryuiki / c = cells。derived は撤去済み）。D1 では全部 main スキーマ。 */
   schema: string;
   name: string;
   /** 件数を数えない表（巨大表・`counts:false`）は null。 */
