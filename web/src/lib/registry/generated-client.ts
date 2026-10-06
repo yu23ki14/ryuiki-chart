@@ -270,6 +270,7 @@ export const NAME_JA: Readonly<Record<string, string>> = {
   "Fejervarya kawamurai": "ヌマガエル",
   "Mustela itatsi": "ニホンイタチ",
   "Martes melampus": "ホンドテン",
+  "Ursus thibetanus": "ツキノワグマ",
 };
 
 /**

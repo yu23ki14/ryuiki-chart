@@ -99,7 +99,8 @@ def make_ryuiki_taxon_db(path, organism_records_rows=(), taxa_rows=()) -> None:
       要素として `vernacular_name` を足せる（10要素の行は `vernacular_name=NULL`
       を補って読む——既存のテストが10要素のタプルのまま変更なしで動き続けるため）。
     taxa_rows: (taxon_id, scientific_name, vernacular_name_ja, gbif_taxon_key,
-      gbif_match_type, kingdom, phylum, class, order, family) の列。
+      gbif_match_type, kingdom, phylum, class, order, family[, redlist_national,
+      redlist_kanagawa]) の列。
     """
     conn = sqlite3.connect(str(path))
     try:
@@ -114,14 +115,17 @@ def make_ryuiki_taxon_db(path, organism_records_rows=(), taxa_rows=()) -> None:
             """CREATE TABLE taxa (
                 taxon_id TEXT PRIMARY KEY, scientific_name TEXT, vernacular_name_ja TEXT,
                 gbif_taxon_key TEXT, gbif_match_type TEXT,
-                kingdom TEXT, phylum TEXT, class TEXT, "order" TEXT, family TEXT
+                kingdom TEXT, phylum TEXT, class TEXT, "order" TEXT, family TEXT,
+                redlist_national TEXT, redlist_kanagawa TEXT
             )"""
         )
         padded_rows = [tuple(row) + (None,) * (11 - len(row)) for row in organism_records_rows]
         conn.executemany(
             'INSERT INTO organism_records VALUES (?,?,?,?,?,?,?,?,?,?,?)', padded_rows
         )
-        conn.executemany("INSERT INTO taxa VALUES (?,?,?,?,?,?,?,?,?,?)", taxa_rows)
+        # 11個目以降（redlist_national, redlist_kanagawa）は省略可（Issue #75。LP の検証用）。
+        padded_taxa = [tuple(row) + (None,) * (12 - len(row)) for row in taxa_rows]
+        conn.executemany("INSERT INTO taxa VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", padded_taxa)
         conn.commit()
     finally:
         conn.close()

@@ -70,6 +70,7 @@ PR-5 で v1 射影（b05/b08）から移した。キューブ・registry だけ�
   他の全行を 1 にした可視化列。PR-3a、D7。行そのものは1件も除外しない）、**`taxon.vernacular_name_en`**
   （ラテン文字だけの俗名の最頻値）・**記録由来の和名補完**（`vernacular_ja_basis`〔`override`/`taxa`/`records`〕に根拠を残す。
   既存の値は変えない）も r01（`build_taxon.py`）が作る（PR-3a、D4）。
+  環境省・県レッドリストの区分が地域個体群（LP）の taxa 行の名称は和名に採用しない（Issue #75。残っていればビルドが止まる）。
   設計・実測は `docs/plans/PHASE_B_TAXON_ASSESSMENT.md`・`docs/plans/V2_SERVING_PR3A.md`。
   **Issue #34**: `in_scope` の規則は出典の属性（`origin_ja`）に切り替えた（`assessment_scope_exclusions.yaml` の
   `rules:`＋固定宣言。`scope_reason` に理由）。b06 が `occurrence.is_alien_in_scope` を持ち、`n_alien` はそれを数える

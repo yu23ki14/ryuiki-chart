@@ -851,3 +851,78 @@ def test_gbif_accepted_csv_out_of_sync_with_taxa_stops(tmp_path, monkeypatch):
     taxa_rows = [("w:ok", "Foo bar", "和名1", "11", "HIGHERRANK", None, None, None, None, None)]
     with pytest.raises(ValueError, match="c26"):
         _build(tmp_path, organism_records_rows=[_occ("1", "Dummy one")], taxa_rows=taxa_rows)
+
+
+# ---------------------------------------------------------------------------
+# Issue #75: 地域個体群（LP）の名称は和名にしない
+# ---------------------------------------------------------------------------
+
+_LP = "絶滅のおそれのある地域個体群（LP）"
+
+
+def test_lp_population_name_is_not_adopted_as_vernacular_for_unresolved_row(tmp_path):
+    taxa_rows = [
+        ("ficticius lp", "Ficticius lp", "西どこかの地域のテスト熊", None, None,
+         None, None, None, None, None, _LP, None),
+        ("ficticius nolp", "Ficticius nolp", "ふつうの和名", None, None,
+         None, None, None, None, None, "準絶滅危惧（NT）", None),
+    ]
+    organism_rows = [
+        ("gbif_kanagawa_occurrences", "1074", "Ficticius other", "species",
+         None, None, None, None, None, "2020-01-01"),
+    ]
+    conn, _ = _build(tmp_path, organism_records_rows=organism_rows, taxa_rows=taxa_rows)
+    lp = _taxon(conn, common.taxon_id_unresolved("ficticius lp"))
+    assert lp["vernacular_name_ja"] is None and lp["vernacular_ja_basis"] is None
+    ok = _taxon(conn, common.taxon_id_unresolved("ficticius nolp"))
+    assert ok["vernacular_name_ja"] == "ふつうの和名"
+
+
+def test_lp_population_name_is_not_adopted_for_exact_gbif_row(tmp_path):
+    taxa_rows = [
+        ("ficticius lpx", "Ficticius lpx", "島のテスト貝", "1075", "EXACT",
+         None, None, None, None, None, _LP, None),
+    ]
+    organism_rows = [
+        ("gbif_kanagawa_occurrences", "1075", "Ficticius lpx", "species",
+         None, None, None, None, None, "2020-01-01"),
+    ]
+    conn, _ = _build(tmp_path, organism_records_rows=organism_rows, taxa_rows=taxa_rows)
+    t = _taxon(conn, "common:taxon:gbif.1075")
+    assert t["vernacular_name_ja"] is None
+
+
+def test_ursus_thibetanus_gets_override_name_not_lp_name(tmp_path):
+    taxa_rows = [
+        ("ursus thibetanus japonicus", "Ursus thibetanus japonicus", "西中国地域のツキノワグマ",
+         None, None, None, None, None, None, None, _LP, None),
+    ]
+    organism_rows = [
+        ("gbif_kanagawa_occurrences", "1076", "Ursus thibetanus", "species",
+         None, None, None, None, None, "2020-01-01"),
+    ]
+    conn, _ = _build(tmp_path, organism_records_rows=organism_rows, taxa_rows=taxa_rows)
+    t = _taxon(conn, "common:taxon:gbif.1076")
+    assert (t["vernacular_name_ja"], t["vernacular_ja_basis"]) == ("ツキノワグマ", "override")
+    assert conn.execute(
+        "SELECT COUNT(*) FROM taxon WHERE vernacular_name_ja = '西中国地域のツキノワグマ'"
+    ).fetchone()[0] == 0
+
+
+def test_lp_name_leak_stops_the_build(tmp_path, monkeypatch):
+    """検査の固定: LP 名が和名に残る状態（除外を壊した状態）を作ると ValueError で止まる。"""
+    monkeypatch.setattr(
+        build_taxon_module, "_load_vernacular_overrides",
+        lambda: [{"scientific_name": "Ficticius lpz", "vernacular_name_ja": "島のテスト蝉",
+                  "source": "test"}],
+    )
+    taxa_rows = [
+        ("ficticius lpz", "Ficticius lpz", "島のテスト蝉", None, None,
+         None, None, None, None, None, _LP, None),
+    ]
+    organism_rows = [
+        ("gbif_kanagawa_occurrences", "1077", "Ficticius lpz", "species",
+         None, None, None, None, None, "2020-01-01"),
+    ]
+    with pytest.raises(ValueError, match="地域個体群"):
+        _build(tmp_path, organism_records_rows=organism_rows, taxa_rows=taxa_rows)

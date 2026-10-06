@@ -36,12 +36,19 @@
 3. **`gbif_match_type='EXACT'` でない `taxa` 行は捨てず
    `common:taxon:ryuiki-taxa.<taxa.taxon_id>` で `status='unresolved'` として登録する。**
 
-4. **和名は `registry/taxon/vernacular_ja.csv`（63件）だけを、機械結合ではない
+4. **和名は `registry/taxon/vernacular_ja.csv`（64件）だけを、機械結合ではない
    人間確認済みの和名として GBIF/iNat 由来の行に上書きする。** 突き合わせは学名の
    完全一致ではなく `binom_of()`（学名の先頭2語）で行い、両方の名前空間を横断して
    件数最多の (ns, taxon_key) を採用先とする。
 
 5. `taxon_key` を持たない `organism_records` 853行は `taxon_id` 解決の対象外。
+
+## 地域個体群（LP）の名称は和名にしない（Issue #75）
+
+`taxa` の行のうち、`redlist_national`/`redlist_kanagawa` が「地域個体群」（LP）で学名を持つもの
+（例: 「西中国地域のツキノワグマ」）の `vernacular_name_ja` は、種・亜種の和名として採用しない
+（taxon 行・評価は残す）。種の和名は override／records から付く。末尾で「LP の名称を和名に
+している行 = 0」を検査し、残っていれば ValueError で止める。
 
 ## `vernacular_name_en`・和名の記録由来補完（D4、Issue #48 PR-3a）
 
@@ -407,7 +414,13 @@ def _load_taxa(ryuiki: sqlite3.Connection) -> list[sqlite3.Row]:
         "SELECT taxon_id, scientific_name, vernacular_name_ja, gbif_taxon_key, "
         "gbif_match_type, NULLIF(kingdom,'') AS kingdom0, NULLIF(phylum,'') AS phylum0, "
         'NULLIF(class,\'\') AS class0, NULLIF("order",\'\') AS order0, '
-        "NULLIF(family,'') AS family0 FROM taxa"
+        "NULLIF(family,'') AS family0, "
+        # 環境省・県レッドリストの区分が「地域個体群（LP）」の行（Issue #75）。名称ではなく
+        # 出典の属性で判定する。学名の無い行（和名だけの `wamei:*`）は対象外。
+        "(NULLIF(scientific_name,'') IS NOT NULL AND ("
+        "instr(COALESCE(redlist_national,''),'地域個体群') > 0 OR "
+        "instr(COALESCE(redlist_kanagawa,''),'地域個体群') > 0)) AS is_lp "
+        "FROM taxa"
     ).fetchall()
 
 
@@ -528,7 +541,7 @@ def _group_taxa_by_gbif_key(taxa_rows) -> dict[str, list[dict]]:
             {
                 "taxon_id": row["taxon_id"],
                 "scientific_name": row["scientific_name"],
-                "vernacular_name_ja": row["vernacular_name_ja"],
+                "vernacular_name_ja": None if row["is_lp"] else row["vernacular_name_ja"],
                 "gbif_match_type": row["gbif_match_type"],
                 "kingdom0": row["kingdom0"],
                 "phylum0": row["phylum0"],
@@ -956,6 +969,10 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     occ = _load_occurrence_representatives(ryuiki)
     vern_en, vern_ja_records = _load_vernacular_candidates(ryuiki)
     taxa_rows = _load_taxa(ryuiki)
+    # 地域個体群（LP）の名称の集合（Issue #75）。末尾の検査（和名に残っていたら止める）に使う。
+    lp_population_names = {
+        r["vernacular_name_ja"] for r in taxa_rows if r["is_lp"] and r["vernacular_name_ja"]
+    }
     crosswalk_rank = _load_crosswalk_rank()
     gbif_accepted = _load_gbif_accepted()
     _assert_accepted_matches_taxa(taxa_rows, gbif_accepted)
@@ -1119,12 +1136,15 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
             n_unresolved_needs_review += 1
         # taxa 由来行は organism_records に対応する taxon_key を持たないので
         # vernacular_name_en は常に NULL（モジュール docstring参照）。
-        unresolved_ja_basis = VERNACULAR_JA_BASIS_TAXA if row["vernacular_name_ja"] else None
+        # 地域個体群（LP）の名称は種・亜種の和名ではない（Issue #75）。taxon 行は残し、
+        # 和名だけを採用しない（種の和名は override／records から付く）。
+        unresolved_ja = None if row["is_lp"] else row["vernacular_name_ja"]
+        unresolved_ja_basis = VERNACULAR_JA_BASIS_TAXA if unresolved_ja else None
         _insert(taxon_id, ("ryuiki-taxa", row["taxon_id"]), _build_taxon_row(
             taxon_id, scientific_name, kdm, phy, cls, row["order0"], row["family0"], basis,
             group_rules, group_default,
             rank=None, gbif_taxon_key=None,
-            vernacular_name_ja=row["vernacular_name_ja"], vernacular_name_en=None,
+            vernacular_name_ja=unresolved_ja, vernacular_name_en=None,
             vernacular_ja_basis=unresolved_ja_basis, status=status,
         ))
         n_unresolved += 1
@@ -1140,7 +1160,7 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     print(f"  [taxon] classification_basis 内訳（unresolved含む全体）: {basis_counts}")
     print(f"  [taxon] status='needs_review'（accepted系 + unresolved系）合計 = {n_needs_review:,}")
 
-    # --- NAME_JA（人手確認済み63件）を binom で上書き（gbif/inat 両方の名前空間を横断） ---
+    # --- NAME_JA（人手確認済み64件）を binom で上書き（gbif/inat 両方の名前空間を横断） ---
     overrides = _load_vernacular_overrides()
     total_by_key = {k: v["total_n"] for k, v in occ.items()}
     binom_index: dict[str, list[tuple[str, str]]] = {}
@@ -1195,6 +1215,20 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
 
     n_vernacular = sum(1 for r in rows_by_id.values() if r["vernacular_name_ja"])
     print(f"  [taxon] 和名が付いた行 = {n_vernacular:,}")
+
+    # 検査（Issue #75）: 地域個体群の名称が taxon の和名として残っていない。
+    leaked = sorted(
+        (r["taxon_id"], r["vernacular_name_ja"])
+        for r in rows_by_id.values()
+        if r["vernacular_name_ja"] in lp_population_names
+    )
+    if leaked:
+        raise ValueError(
+            f"地域個体群（LP）の名称が taxon.vernacular_name_ja に {len(leaked)} 件残っている: "
+            f"{leaked[:5]}（種・亜種の和名として採用しない。Issue #75）"
+        )
+    print(f"  [taxon] 地域個体群の名称を和名にしている行 = 0"
+          f"（LP 名 {len(lp_population_names):,} 件を除外）")
 
     n = common.insert_many(
         conn,
