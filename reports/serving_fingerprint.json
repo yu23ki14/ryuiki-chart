@@ -39,9 +39,9 @@
       },
       "ias_species": {
         "added": 0,
-        "changed": 1,
+        "changed": 0,
         "removed": 0,
-        "same": 0
+        "same": 1
       },
       "landuse_highlight": {
         "added": 0,
@@ -159,9 +159,9 @@
       },
       "watershed_rollup": {
         "added": 0,
-        "changed": 1,
+        "changed": 0,
         "removed": 0,
-        "same": 0
+        "same": 1
       },
       "year_series_site_by_variable": {
         "added": 0,
@@ -182,34 +182,34 @@
         "same": 60
       }
     },
-    "previous_git_head": "48db06024036aded7b4b89297e909b22e7c6e704"
+    "previous_git_head": "7f2318297efc633e11e5d11e477d385c2782d20d"
   },
-  "created_at": "2026-10-06T09:38:44+00:00",
+  "created_at": "2026-10-06T09:56:27+00:00",
   "environment": {
     "better_sqlite3_sqlite_version": "3.53.4",
     "node_version": "v22.22.2",
     "python_sqlite3_version": "3.49.1",
     "python_version": "3.13.7"
   },
-  "git_head": "7f2318297efc633e11e5d11e477d385c2782d20d",
+  "git_head": "62afa96ba1a1ced57fa944f61bf9baac1cb6409c",
   "pipeline_fingerprint_rows": {
     "registry.sqlite": null,
     "v2.sqlite": [
       {
         "fingerprint": "sha256:99fb2893d442c4e1464f59470d7824673875734a67da613f11e356f24038e609:1029034",
-        "inputs": "{}",
+        "inputs": "{\"ext:registry.place\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\", \"ext:registry.place_source_ref\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\", \"ext:registry.variable_alias\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\", \"ext:ryuiki.measurements\": \"count=323164;max_rowid=342142\", \"ext:ryuiki.sensor_timeseries\": \"count=717839;max_rowid=1775419\"}",
         "spec_version": "phase-b-fact-slice/v1",
         "table_name": "observation"
       },
       {
         "fingerprint": "sha256:267cfb4de8b811d543e9ce0d73b0d618bb1c0678f149c80724e527652c3d6dbd:2011364",
-        "inputs": "{\"observation\": \"sha256:99fb2893d442c4e1464f59470d7824673875734a67da613f11e356f24038e609:1029034\"}",
+        "inputs": "{\"ext:registry.unit\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\", \"ext:registry.variable\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\", \"ext:registry.variable_alias\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\", \"observation\": \"sha256:99fb2893d442c4e1464f59470d7824673875734a67da613f11e356f24038e609:1029034\"}",
         "spec_version": "phase-b-fact-slice/v3",
         "table_name": "observation_agg"
       },
       {
         "fingerprint": "sha256:494fadabdce670530fe3ccea036313afea088bc89a963c84f75cd7f4132d1d1a:823692",
-        "inputs": "{}",
+        "inputs": "{\"ext:registry.place\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\", \"ext:registry.place_source_ref\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\", \"ext:registry.taxon\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\", \"ext:registry.taxon_assessment\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\", \"ext:ryuiki.organism_records\": \"count=823692;max_rowid=823692\"}",
         "spec_version": "phase-b-fact-slice/v1",
         "table_name": "occurrence"
       },
@@ -221,25 +221,25 @@
       },
       {
         "fingerprint": "sha256:9376e87fc8e2123f1f1ca4ee455949975aca4c0357590174783fdcb218d26782:823692",
-        "inputs": "{\"occurrence\": \"sha256:494fadabdce670530fe3ccea036313afea088bc89a963c84f75cd7f4132d1d1a:823692\"}",
+        "inputs": "{\"ext:registry.place_source_ref\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\", \"ext:ryuiki.sites\": \"count=352;max_rowid=738\", \"occurrence\": \"sha256:494fadabdce670530fe3ccea036313afea088bc89a963c84f75cd7f4132d1d1a:823692\"}",
         "spec_version": "phase-b-fact-slice/v2",
         "table_name": "occurrence_place"
       },
       {
         "fingerprint": "sha256:d5222446e6367c83f64205370bc73d6e94668e9ba195a52fb2f9ef79c951c65b:171",
-        "inputs": "{\"occurrence_agg\": \"sha256:87f74b6f4b9ecf2c9b5f03293ba0c5d9fa3ae258740c9f1032374bac7fa8c52d:1437598\", \"registry:taxon\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\"}",
+        "inputs": "{\"ext:registry.taxon\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\", \"occurrence_agg\": \"sha256:87f74b6f4b9ecf2c9b5f03293ba0c5d9fa3ae258740c9f1032374bac7fa8c52d:1437598\"}",
         "spec_version": "serving-summary/v5",
         "table_name": "summary_effort_year"
       },
       {
         "fingerprint": "sha256:7a00d35717767cef249a25c7d16f56255f0bd767acfc7209cfe5286fd9971656:4086",
-        "inputs": "{\"occurrence_agg\": \"sha256:87f74b6f4b9ecf2c9b5f03293ba0c5d9fa3ae258740c9f1032374bac7fa8c52d:1437598\", \"registry:taxon\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\"}",
+        "inputs": "{\"ext:registry.taxon\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\", \"occurrence_agg\": \"sha256:87f74b6f4b9ecf2c9b5f03293ba0c5d9fa3ae258740c9f1032374bac7fa8c52d:1437598\"}",
         "spec_version": "serving-summary/v5",
         "table_name": "summary_grid_catalog"
       },
       {
         "fingerprint": "sha256:293cd085fb6002c514cc7d63a23ea657749eb9acec7d20f373e452b1b8f4d3a7:1851",
-        "inputs": "{\"occurrence_agg\": \"sha256:87f74b6f4b9ecf2c9b5f03293ba0c5d9fa3ae258740c9f1032374bac7fa8c52d:1437598\", \"registry:taxon\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\"}",
+        "inputs": "{\"ext:registry.taxon\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\", \"occurrence_agg\": \"sha256:87f74b6f4b9ecf2c9b5f03293ba0c5d9fa3ae258740c9f1032374bac7fa8c52d:1437598\"}",
         "spec_version": "serving-summary/v5",
         "table_name": "summary_group_year"
       },
@@ -251,7 +251,7 @@
       },
       {
         "fingerprint": "sha256:ca8e8bff552679b421030c0b79bfd451ad26be9b797137ed3c407343b094bd51:23618",
-        "inputs": "{\"occurrence_agg\": \"sha256:87f74b6f4b9ecf2c9b5f03293ba0c5d9fa3ae258740c9f1032374bac7fa8c52d:1437598\", \"registry:taxon\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\"}",
+        "inputs": "{\"ext:registry.taxon\": \"03f2bbbbb5699d2c8b41951d8e0e04671fe9c2ca7125b981efbc074a4df0bd54\", \"occurrence_agg\": \"sha256:87f74b6f4b9ecf2c9b5f03293ba0c5d9fa3ae258740c9f1032374bac7fa8c52d:1437598\"}",
         "spec_version": "serving-summary/v5",
         "table_name": "summary_species_catalog"
       },
@@ -280,14 +280,14 @@
     "registry": "281c5376e214608a757c59351fd882606ebf2498",
     "requirements.txt": "6982cafe7c0c5ce12db1ca2b7d74868e69945a27",
     "scripts/b00_run_full_gate.py": "984c2613672ff8541f9ee3445c481db8792e0ee8",
-    "scripts/b03_build_observation.py": "3f99081672bccf26d702d16db74c29c5d1af8d92",
-    "scripts/b04_build_cube.py": "9b05aeb9c3c3f1f0ac926079758aecbe29673764",
-    "scripts/b06_build_occurrence.py": "e7fc3929c3d449931ff1c4d27770a928d979e0d4",
-    "scripts/b07_build_occurrence_cube.py": "fdbace171ff22d2ca20d703f734e853d1b5bf9ef",
-    "scripts/b09_build_occurrence_place.py": "790194b4d55c275860280faecc5e0452adb4b0ba",
-    "scripts/b13_build_summary.py": "a3fea7c442ddc610a67344c9f46f9a0748576466",
+    "scripts/b03_build_observation.py": "360209b034846e9ad2b9fd1841b2a57b6ebf6cd2",
+    "scripts/b04_build_cube.py": "8cc7f6c8bad4f3be91730295ffeda97132e814c6",
+    "scripts/b06_build_occurrence.py": "aa7b4014ee199cd13adbdc3af39f7990aae46f3d",
+    "scripts/b07_build_occurrence_cube.py": "19bdcc361653971a736b0c35a18526f1e92314d0",
+    "scripts/b09_build_occurrence_place.py": "a1918d66e11707beff62d99a02a9ace4874f9d6e",
+    "scripts/b13_build_summary.py": "9c0fe0c56c79c2f357b44f06429a38fc3d068971",
     "scripts/era_table.py": "b0953de3efa2eee6eff43c249cda61e4e2e64c95",
-    "scripts/migrate": "75c59dd39eea2fb15b84d993fbafd89b9dcf8e9b",
+    "scripts/migrate": "5cffaf0dfb3fe5bd3e0e4884d25961b916564177",
     "scripts/pipeline_inputs.py": "d681352977b943ed8f7c689bbb16786f9ee93754",
     "scripts/r01_build_registry.py": "1b1629f93d73d1a6144e000ede1e94babcbc9db2",
     "scripts/reconcile": "0434daaaa6e412fafdff6a99768d9486b7c5c9a0",
