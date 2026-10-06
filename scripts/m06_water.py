@@ -163,7 +163,7 @@ def main():
             ["key_code", "source_id", "share", "confidence", "basis", "as_of"], shares)
     con.commit()
     con.close()
-    print("\nryuiki.sqlite に書いた。次は `cd web && pnpm run build:derived` → `pnpm run db:seed`。")
+    print("\nryuiki.sqlite に書いた。次は `cd web && pnpm run build:water-geo` → `pnpm run db:seed`。")
     return 0
 
 

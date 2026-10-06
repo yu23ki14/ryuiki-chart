@@ -4,7 +4,6 @@
 # 収集物・中間生成物・DB は合計 14GB あり GitHub には載せない。
 # すべて scripts/ のコレクタと web/scripts/ のビルダで再生成できる。
 #   - data/raw, data/processed, data/dwca : scripts/c*.py が取得・整形
-#   - data/db/derived.sqlite              : cd web && npm run build:derived
 #   - data/db/ryuiki.sqlite, cells.sqlite : 原本。100MB 超のため別配布
 # 例外は 2 つだけ。どちらも「スクリプトで再生成できない、手で育てるデータ」。
 #   - data/vocab/ : LLM 抽出済みの語彙（再取得できず、436KB）
@@ -28,18 +27,6 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 .ipynb_checkpoints/
-
-# ---------------------------------------------------------------
-# Phase B 突合ハーネス (docs/plans/PHASE_B_RECONCILIATION.md)
-# ---------------------------------------------------------------
-# reports/derived_baseline.json / .md は scripts/b01_derived_baseline.py が
-# 書く「正」でコミット対象（ADR-0016 の受け入れゲート）。一方
-# reports/derived_reconciliation.md は scripts/b02_derived_compare.py が
-# 候補と突き合わせるたびに書き直す成果物（ADR-0016 の言う「CI の成果物」）
-# なので、コミットしない。reports/derived_reconciliation_all.md は
-# scripts/b02_run_all_gates.py（33表の統合ゲート）が同じ理由で書き直す成果物。
-reports/derived_reconciliation.md
-reports/derived_reconciliation_all.md
 
 # ---------------------------------------------------------------
 # Node / Next.js / Cloudflare

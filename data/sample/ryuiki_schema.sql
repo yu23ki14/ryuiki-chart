@@ -57,6 +57,11 @@ CREATE TABLE sites (
   established_on TEXT, operator TEXT,
   source_id TEXT, source_ref TEXT, is_synthetic INTEGER DEFAULT 0
 );
+CREATE TABLE source_registry (
+  source_id TEXT PRIMARY KEY, name TEXT, publisher TEXT, url TEXT,
+  category TEXT, access_method TEXT, format TEXT, license TEXT,
+  redistributable INTEGER, fetched_at TEXT, record_count INTEGER, notes TEXT
+);
 CREATE TABLE taxa (
   taxon_id TEXT PRIMARY KEY, scientific_name TEXT, vernacular_name_ja TEXT,
   taxon_group_ja TEXT, kingdom TEXT, phylum TEXT, class TEXT, "order" TEXT,

@@ -49,7 +49,6 @@ function schemaOrigins(): string {
  */
 const CAVEAT_KEY_ORDER = {
   measuredOn: true,
-  censored: true,
   duplicates: true,
   zone: true,
   organismSite: true,

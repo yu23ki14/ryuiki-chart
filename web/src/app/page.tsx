@@ -188,7 +188,7 @@ export default async function Home() {
           <ul className="mt-3 space-y-2">
             {[
               ["日付の形式が2種類ある", caveatBody("measuredOn")],
-              ["「0」は本当に0ではない", caveatBody("censored")],
+              ["「0」は本当に0ではない", caveatBody("censoredLod")],
               ["同じ日に同じ項目が複数行ある", caveatBody("duplicates")],
               ["ゾーンは公式の区分ではない", caveatBody("zone")],
               ["生物レコードは地点に紐づいていない", caveatBody("organismSite")],

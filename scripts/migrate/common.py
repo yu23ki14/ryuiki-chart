@@ -1,9 +1,9 @@
-"""b03/b04/b05/b10（Phase B ファクトとキューブ、および文書/品質ワークフローの
-v1射影）が共有する薄い土台。
+"""b03/b04/b06/b07/b09/b13（Phase B ファクトとキューブ）が共有する薄い土台。
+（v1 射影の b05/b08/b10〜b12 は Issue #48 PR-5 で撤去した。本文中の b05・b08・b10〜b12 への言及は
+経緯の説明で、いまは存在しない。）
 
 - 読み取り専用オープンと YAML 読み込みは `scripts/reconcile/common.open_readonly`/
-  `load_yaml` をそのまま使う（同じ規約を2箇所に書かない。既に b01/b02 が
-  使っている実装。`scripts/migrate/period.py` はここから `load_yaml` を引く）。
+  `load_yaml` をそのまま使う（同じ規約を2箇所に書かない。`scripts/reconcile/common.py` の実装。`scripts/migrate/period.py` はここから `load_yaml` を引く）。
 - 出力 sqlite は毎回ゼロから作り直す（`fresh_sqlite`）。前回実行の残骸（WAL/SHM
   側車ファイルを含む）が残ったまま次の実行が古い行を引きずる事故を避ける。
   `fresh_sqlite` は書き込み先が読み取り専用の原本そのものでないことも検査する
@@ -11,8 +11,8 @@ v1射影）が共有する薄い土台。
   で直接開き `fresh_sqlite` を経由しない**ため、それぞれの `main()` が引数
   パース直後に同じ検査を個別に呼ぶ。
 - 実行時間とテーブルごとの行数を `[12.3s] ラベル / N行` の形で出す（`timed_step`）。
-- `AVG()`/`SUM()`（b04・b05・b10）または `FULL OUTER JOIN`（`assert_grouped_totals_match`
-  経由。b07・b08）を使うスクリプトは、どちらも SQLite 3.43 以降が前提
+- `AVG()`/`SUM()`（b04）または `FULL OUTER JOIN`（`assert_grouped_totals_match`
+  経由。b07）を使うスクリプトは、どちらも SQLite 3.43 以降が前提
   （`AVG()`/`SUM()` は加算アルゴリズムの正しさ、`FULL OUTER JOIN` は機能自体の
   対応のため——3.39で足りる `FULL OUTER JOIN` 単体の最小版ではなく、他の
   スクリプトと同じ3.43に揃える）。`require_sqlite_version()` を**各スクリプトの
@@ -41,7 +41,7 @@ _SCRIPTS = ROOT / "scripts"
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
 
-from reconcile.common import load_yaml, open_readonly  # noqa: E402,F401  (b03/b04/b05/b10 から re-export)
+from reconcile.common import load_yaml, open_readonly  # noqa: E402,F401  (b03/b04/b06/b07/b09/b13 から re-export)
 import pipeline_inputs  # noqa: E402  (v2 入力指紋が data/processed の sha256 を再利用する)
 
 # `built_from` / `spec_version` に書く定数。**成果物ごとに別の定数を持つ**
@@ -80,8 +80,7 @@ OCCURRENCE_AGG_SPEC_VERSION = "phase-b-fact-slice/v2"
 # `spec_version`（上の2定数）とは別の軸**——`pipeline_fingerprint.spec_version`
 # は「指紋機構そのものの記述用メタデータ」で、どの機械検証にも使わない
 # （2026-09-25 現在。読むのは人だけ）。`observation`/`occurrence`（基底表）・
-# `scripts/b05_project_v1.py`/`scripts/b08_project_occurrence_v1.py`/
-# `scripts/b11_project_place_v1.py` の v1 射影各表のように、自分の行に
+# 撤去済みの v1 射影各表（b05/b08/b11）のように、自分の行に
 # `spec_version` 列を埋め込まない表はこの既定値のまま記録する。
 # **`observation_agg`/`occurrence_agg`/`occurrence_place` のように自分の行に
 # `spec_version` を埋め込む表は、ここではなく成果物ごとの値
@@ -158,10 +157,8 @@ MIN_SQLITE_VERSION = (3, 43, 0)
 def require_sqlite_version(min_version: tuple[int, int, int] = MIN_SQLITE_VERSION) -> None:
     """`sqlite3.sqlite_version_info` が `min_version` 未満なら `SystemExit` で止まる。
 
-    **呼び出し側（b04/b05/b07/b08/b10）は各スクリプトの構築・射影関数の先頭
-    （`build_cube`/`build_projections`/`build_documents_projection`/
-    `build_org_norm_projection`/`build_occurrence_cube_projections`/
-    `build_all_projections`）でこれを呼ぶこと。モジュール読み込み時点
+    **呼び出し側（b04/b07 ほか）は各スクリプトの構築関数の先頭
+    （`build_cube`/`build_occurrence_cube_projections` など）でこれを呼ぶこと。モジュール読み込み時点
     （トップレベル）では呼ばない。** 古い SQLite の環境で `import` した瞬間に
     `SystemExit` が飛ぶと、`pytest` は複数のテストファイルを import してから
     収集するため、無関係な1ファイルの import 失敗がスイート全体の収集を
@@ -454,22 +451,6 @@ def attach_readonly(conn: sqlite3.Connection, path, alias: str) -> None:
     if not p.exists():
         raise FileNotFoundError(f"sqlite ファイルが無い: {p}")
     conn.execute(f"ATTACH DATABASE 'file:{p}?mode=ro' AS {alias}")
-
-
-def existing_tables(db_path) -> set[str]:
-    """`db_path`（sqlite ファイル）が持つテーブル名の集合を、読み取り専用の
-    新規接続で返す。`scripts/b08_project_occurrence_v1.py`・
-    `scripts/b11_project_place_v1.py` がそれぞれ同型の実装を別々に持っていた
-    もの（`_assert_prerequisites`/`_assert_rollup_prerequisites` が「必要な
-    テーブルが有るか」を `fresh_sqlite` の前に確かめるのに使う）を1箇所に
-    集約した（コードレビュー指摘。`attach_readonly`/`assert_attached_table_exists`
-    と同じ「同型の検証は共通ヘルパに寄せる」方針）。
-    """
-    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-    try:
-        return {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    finally:
-        conn.close()
 
 
 def _table_exists(conn: sqlite3.Connection, table: str, *, schema: str | None = None) -> bool:

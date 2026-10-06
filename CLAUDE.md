@@ -4,9 +4,9 @@
   `pnpm deploy` は pnpm 組み込みのコマンドで package.json の `deploy` は動かないので、必ず `pnpm run deploy`。
 - Web アプリは `web/`（Next.js 16 / App Router / TypeScript / Tailwind v4）。詳細は `web/README.md`。
 - デプロイ先は Cloudflare Workers（`@opennextjs/cloudflare`）。手順と未解決点は `DEPLOYMENT.md`。
-- 開発環境は `docker compose up`（リポジトリ直下）。起動時に「集計 DB 生成 → 語彙レジストリ生成 →
+- 開発環境は `docker compose up`（リポジトリ直下）。起動時に「水源マップの GeoJSON 生成 → 語彙レジストリ生成 →
   v2（キューブ）生成 → D1 マイグレーション → シード」を、まだのものだけ実行する。ホストで直接動かすときは
-  `cd web && pnpm run build:derived && pnpm run db:setup && pnpm run dev`
+  `cd web && pnpm run db:setup && pnpm run dev`
   （`db:setup` は `predb:setup` フックで語彙レジストリも v2 も「古ければ作り直す」。
   `web/scripts/ensure-registry.sh` が `scripts/r01_build_registry.py --check-fresh` を呼び、
   `web/scripts/ensure-v2.sh` が v2（`data/db/v2.sqlite`。`observation_agg`/`occurrence_agg` の
@@ -19,8 +19,8 @@
   `check_v2_pipeline_fresh()`。手書きの mtime 走査は撤去した）。単体で作り直すだけなら
   `cd web && pnpm run build:v2`。
 - データの置き場所は **Cloudflare D1**（デプロイ先を Cloudflare 想定にしたため）。
-  87 テーブル（`web/drizzle/migrations/` 適用後の実測。うちシード管理用の内部表
-  `_seed_state` を除く86表が `web/scripts/seed-d1-local.mjs` のシード対象）を 1 つの D1 に
+  45 テーブル（`web/drizzle/migrations/` 適用後の実測。うちシード管理用の内部表
+  `_seed_state` を除く44表が `web/scripts/seed-d1-local.mjs` のシード対象）を 1 つの D1 に
   統合してある。D1 に `ATTACH` は無いので `d.` / `c.` の接頭辞は使わない。
   どの原本から来たテーブルかは `web/src/lib/table-meta.ts` の `TABLE_ORIGIN`。
 - D1 のスキーマは `web/src/db/schema.ts`（v1、既存表）・`web/src/db/schema-registry.ts`
@@ -30,10 +30,11 @@
   直接書き換えない。
 - 原本は `data/db/ryuiki.sqlite` と `data/db/cells.sqlite`。**読み取り専用**で扱う
   （この規約は `web/` 側から見たものであり、書き手は `scripts/m0x_*.py` に限る）。
-  集計は `data/db/derived.sqlite` に分けて書く（`cd web && pnpm run build:derived` で再生成）。
-  D1 シードの入力（`web/scripts/seed-d1-local.mjs` の `SOURCES`）はこの3ファイルに加えて
+  かつての集計 DB `derived.sqlite`（v1 の派生33表）は Issue #48 PR-5 で撤去した。無い。
+  `build:derived` は `build:water-geo`（水源マップの GeoJSON だけ）に改名した。
+  D1 シードの入力（`web/scripts/seed-d1-local.mjs` の `SOURCES`）はこの2ファイルに加えて
   `registry.sqlite`（語彙レジストリ）・`v2.sqlite`（キューブ。上記の `ensure-v2.sh` が作る）
-  の計5ファイル。
+  の計4ファイル。
 - 地図の GeoJSON は `web/public/geo/`。`data/processed` から `pnpm run prepare:geo` が写す生成物で、
   `predev` / `prebuild` に繋いである（`.gitignore` 済み）。Workers に fs は無いので `fs` で読まない。
   河川はブラウザが `/geo/rivers.geojson` を直接取り、流域界は `web/src/lib/geo.ts` が
@@ -72,11 +73,11 @@
 - 新しいエリア（東京都・沖縄県・兵庫県など）を足すときは `docs/add_area.md` の手順に従う。
   方式（単一 D1 + `region_id`）は `docs/adr/0002-multi-region.md` で決定済みで蒸し返さない。
 - **データパイプライン**（Phase B / Issue #48）の詳細は `docs/PIPELINE.md`。パイプラインを触る作業では該当する節だけ読む。要点:
-  - 実行順: r01 → b03 → b04 → b06 → b09 → b07 → b13（ここまでが `pnpm run build:v2`）→ b05・b08 → b10・b11・b12 → b02。b07 は b09 の出力を読むので b09 が先。
-  - v1 との突合ゲートは `scripts/b02_run_all_gates.py`（宣言済み差分は `scripts/reconcile/expected_diffs.yaml`）。配信側の差分は `pnpm run serving:diff`（`docs/plans/V2_SERVING*.md`）。
+  - 実行順: r01 → b03 → b04 → b06 → b09 → b07 → b13（ここまでが `pnpm run build:v2`）。b07 は b09 の出力を読むので b09 が先。
+  - v1 は撤去済み（PR-5）。検証は層2＝`cd web && pnpm run serving:snapshot -- --mode snapshot`（サンプルの凍結スナップショット `data/sample/serving_snapshot.json` との一致。CI の sample-gate）、層3＝b00 が書く `reports/serving_fingerprint.json`。スナップショットを更新する PR には `--mode diff` の before/after 表を貼る（`docs/plans/V2_SERVING*.md`、ADR-0027・0029）。
   - **`+09:00` 付きの時刻文字列に SQLite の日時関数を使わない**（日付が1日ずれる。ADR-0024）。
   - **キューブ・射影を作るのは Python 同梱の SQLite 3.43 以降**（`scripts/migrate/common.py` の `require_sqlite_version()`。ADR-0021）。
-  - パイプラインのパス（`scripts/b00_run_full_gate.py` の `PIPELINE_*`）を触ったら、原本のある手元で `.venv/bin/python3 scripts/b00_run_full_gate.py` を回し `reports/full_gate_proof.json` を一緒にコミットする（CI が鮮度を検査）。
+  - パイプラインのパス（`scripts/b00_run_full_gate.py` の `PIPELINE_*`）を触ったら、原本のある手元で `.venv/bin/python3 scripts/b00_run_full_gate.py` を回し `reports/serving_fingerprint.json` を一緒にコミットする（CI が鮮度を検査）。
   - `scripts/s02_materialize_sample.py` は本物のチェックアウト・worktree で絶対に実行しない（一時ディレクトリへの clone で）。
   - テスト・検証戦略は ADR-0027。
 
@@ -119,7 +120,7 @@
 - **PR ごとに新しいセッションで始める。** 前の PR の経緯は Issue のコメント（申し送り）と `docs/plans/` に残し、会話の履歴に頼らない。
 - **エージェントは少数・大きめの単位で。** 1本の PR で起動するのは、設計1・実装（並行）2〜4・統合と修正1・レビュー2（/code-review と /simplify を同時）を目安にする。小さな修正のためだけに新しいエージェントを起動しない（直前の担当に SendMessage で続けさせる）。
 - **読ませる資料を絞る。** 指示には「読むべき節」をファイル名と節番号で明示し、設計書・ADR・ソースを丸ごと読ませない。設計書は実装担当ごとの節に分けて書く。
-- **重い処理（全量ゲート・serving-diff の全量・build:v2・CI の clone 再現）はエージェントに待たせない。** メインが裏で1回だけ回し、結果だけを確かめる。エージェントには速い検証（該当テスト・`--only`）だけを許す。
+- **重い処理（全量ゲート・serving snapshot/fingerprint の全量・build:v2・CI の clone 再現）はエージェントに待たせない。** メインが裏で1回だけ回し、結果だけを確かめる。エージェントには速い検証（該当テスト・`--only`）だけを許す。
 - **Fable は設計判断に迷ったときだけ。** 前例のある PR の設計は Sonnet に任せる。Fable に実データの計測をさせない（計測が要るなら Sonnet に）。
 - **レビューは安く。**
   - /simplify は4観点を**1本のレビュー担当**にまとめて頼む（スキル既定の4並列にしない）。/code-review は `medium` を既定にする。
@@ -139,8 +140,8 @@
   ユーザーが手で編集した無関係なファイルを巻き込む事故は防げないので、明示的な add を徹底する。
 - **worktree には `data/db` が無い。`data/db` 自体をまるごと symlink しない。**
   `data/*` は `.gitignore` 済みなので worktree にも clone にも入らないが、`data/db` は
-  読み取り専用の原本（ryuiki/cells/derived）だけでなく、`scripts/r01_build_registry.py`
-  が書く `registry.sqlite` や `scripts/b03〜b05_*.py` が書く `v2.sqlite`/`v1_projection.sqlite`
+  読み取り専用の原本（ryuiki/cells）だけでなく、`scripts/r01_build_registry.py`
+  が書く `registry.sqlite` や `scripts/b03〜b13_*.py` が書く `v2.sqlite`
   のような**生成物の置き場でもある**。ディレクトリごと symlink すると、worktree からの
   ビルドが元のチェックアウトの生成物を上書きする（実際に踏みかけた事故）。
   読み取り専用の原本・入力ファイルだけを1ファイルずつ symlink し、生成物は worktree 内の
@@ -149,7 +150,6 @@
   mkdir -p <worktree>/data/db <worktree>/data/processed
   ln -s /home/yu23ki14/cfj/ryuiki-demo/data/db/ryuiki.sqlite  <worktree>/data/db/ryuiki.sqlite
   ln -s /home/yu23ki14/cfj/ryuiki-demo/data/db/cells.sqlite   <worktree>/data/db/cells.sqlite
-  ln -s /home/yu23ki14/cfj/ryuiki-demo/data/db/derived.sqlite <worktree>/data/db/derived.sqlite
   ln -s /home/yu23ki14/cfj/ryuiki-demo/data/processed/taxon_crosswalk.csv \
         <worktree>/data/processed/taxon_crosswalk.csv
   ln -s /home/yu23ki14/cfj/ryuiki-demo/data/processed/nlni_w12_watersheds.jsonl \
@@ -166,8 +166,7 @@
   `web/src/lib/registry/generated.test.ts` が見る環境変数。既定でも worktree 内の
   `data/db/registry.sqlite` を指すので、並行して複数 worktree を動かす等で明示したいときだけでよい）。
 - **原本を移動・退避しない。** `data/db/ryuiki.sqlite`(828MB) と `cells.sqlite`(42MB) は
-  「100MB 超のため別配布」で `scripts/c*.py` から再生成できない（`derived.sqlite` だけは
-  `pnpm run build:derived` で作り直せる）。読み取り専用（`file:...?mode=ro`）でのみ開く。
+  「100MB 超のため別配布」で `scripts/c*.py` から再生成できない。読み取り専用（`file:...?mode=ro`）でのみ開く。
 - **「原本の無い環境」（CI の再現）は worktree ではなく一時ディレクトリへの `git clone` で作る。**
   `data/*` が gitignore 済みなので、原本が存在しない状態が非破壊で作れる。`actions/checkout` と同じ。
   原本を `/tmp` に退避して CI を再現しようとするな（掃除されうるし、途中で死ねば戻らない）。

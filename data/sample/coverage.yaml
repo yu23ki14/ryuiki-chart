@@ -6,20 +6,13 @@
 # 材料化したサンプルで min_rows 以上あること）。同じ宣言から出すので
 # 「入れたつもりが入っていない」が起きない。
 #
-# 対象は v1（web/scripts/build-derived.mjs・build-geo.mjs・build-biota.mjs）と
-# v2（scripts/r01_build_registry.py・scripts/b03〜b12_*.py）が実際に読む表だけに
-# 絞ってある（`grep -oE '\br\.[a-z_]+|\bc\.[a-z_]+' web/scripts/build-{derived,geo,biota}.mjs`
-# で実測: r.measurements/r.sensor_timeseries/r.organism_records/r.sites/r.taxa/
-# r.redlist_assessments/r.quality_transitions/c.cells/c.documents/c.notes の10表）。
-# `data/db/ryuiki.sqlite` の他の19表（decisions・event_observers・events・
-# instruments・interventions・mammal_mesh・observers・protected_areas・
-# protocols・river_segments・source_registry・vegetation_polygons・
-# water_facility・water_flow_edge・water_source・water_source_doc・
-# water_utility・water_zone・water_zone_assignment・water_zone_source_share・
-# wildlife_sightings）は Tier1 API 等 v1/v2 Phase B ゲートの対象外の画面が
-# 使うもので、このゲートの対象（33表の突合）には出てこないためサンプルに
-# 含めない（スコープの意図的な絞り込み。b00_run_full_gate.py が確認する
-# パイプラインのパスにもこれらのテーブルへの依存は無い）。
+# 対象は v2（scripts/r01_build_registry.py・scripts/b03〜b13_*.py）と配信側のスナップショット
+# （web/scripts/serving-snapshot.mts）が実際に読む表だけに絞ってある。`data/db/ryuiki.sqlite` の
+# 他の表（decisions・events・interventions・mammal_mesh・protected_areas・river_segments・
+# vegetation_polygons・water_* ・wildlife_sightings 等）は Tier1 API 等、このサンプルの
+# ゲートの対象外の画面が使うもので、サンプルに含めない（スコープの意図的な絞り込み。
+# b00_run_full_gate.py が確認するパイプラインのパスにもこれらのテーブルへの依存は無い）。
+# （Issue #48 PR-5 で v1 の派生33表〔build-derived.mjs 等〕とその突合は無くなった。）
 #
 # 決定論: 述語＋`ORDER BY rowid`＋固定の上限（`limit`）で選ぶ。乱数は使わない。
 # `limit` を省略した predicate は `default_limit` を使う。`full_closures`/
@@ -394,6 +387,7 @@ wholesale_ryuiki_tables:
   - taxa
   - redlist_assessments
   - quality_transitions
+  - source_registry  # cube（overviewCounts・envelope の来歴）が読む。小さい台帳（124行）
 
 # ---------------------------------------------------------------------------
 # 丸ごと入れる cells.sqlite のテーブル（`cells` 自身は document_closure が

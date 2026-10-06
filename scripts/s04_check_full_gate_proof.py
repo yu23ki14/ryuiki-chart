@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""`reports/full_gate_proof.json`（原本のある手元で `scripts/b00_run_full_gate.py`
-が書いた実行証明、コミット済み）が**今の HEAD のパイプラインコードに対応して
-いるか**を確かめる（CI の `full-gate-proof-check` ジョブから呼ぶ。原本は不要
+"""`reports/serving_fingerprint.json`（原本のある手元で `scripts/b00_run_full_gate.py`
+が書いた実行証明、コミット済み。Issue #48 PR-5 で `full_gate_proof.json` の後継になった）が
+**今の HEAD のパイプラインコードに対応しているか**を確かめる（CI の `full-gate-proof-check` ジョブから呼ぶ。原本は不要
 ——証明の JSON とコミット済みのコードだけで完結する）。
 
     python3 scripts/s04_check_full_gate_proof.py
@@ -12,8 +12,8 @@ pytest で検証されないため、キーの付け方の食い違いのよう�
 テストをすり抜けたまま CI に入ってしまった——実際に一度それが起きた。
 `scripts/tests/test_s04_check_full_gate_proof.py` がこのファイルを検証する）。
 
-確認する2点（`docs/plans/PHASE_B_RECONCILIATION.md` §5.2参照。**証明が本物で
-あることまでは確かめられない**——確かめられるのはこの2点だけ）:
+確認する3点（**証明が本物であることまでは確かめられない**——確かめられるのは
+この3点だけ）:
 
 1. パイプラインのパス（`scripts/b00_run_full_gate.py` の
    `collect_pipeline_paths()`）の git tree/blob ハッシュを HEAD で計算し直し、
@@ -26,12 +26,18 @@ pytest で検証されないため、キーの付け方の食い違いのよう�
    `scripts/b00_run_full_gate.py`（この証明）のどちらも使う——レビュー指摘対応。
    以前はキーの形が2箇所で食い違っており（`"ryuiki.sqlite"` 形と
    `"data/db/ryuiki.sqlite"` 形）、`KeyError` で落ちる不具合になっていた）。
+3. 証明の `schema_version` が今の形（`b00.SCHEMA_VERSION`）で、`queries[].id` の集合が
+   HEAD の `web/serving_queries.yaml` の問い合わせの `id` の集合と一致すること
+   （問い合わせを足したのに証明を作り直していない、を落とす）。PyYAML が無い環境
+   （CI のこのジョブは `pip install` しない）でも動くよう、YAML は行の正規表現で読む。
 """
 from __future__ import annotations
 
 import argparse
 import json
 import pathlib
+import re
+import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -39,7 +45,9 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import b00_run_full_gate as b00  # noqa: E402
 
-DEFAULT_PROOF = ROOT / "reports" / "full_gate_proof.json"
+DEFAULT_PROOF = ROOT / "reports" / "serving_fingerprint.json"
+QUERIES_YAML = "web/serving_queries.yaml"
+_QUERY_ID_RE = re.compile(r"^\s*-\s+id:\s*([A-Za-z0-9_.-]+)\s*(?:#.*)?$")
 DEFAULT_MANIFEST = ROOT / "data" / "sample" / "manifest.json"
 
 
@@ -100,6 +108,49 @@ def check_source_hashes_match_manifest(proof: dict, manifest: dict) -> list[str]
     return problems
 
 
+def parse_query_ids(yaml_text: str) -> set[str]:
+    """`serving_queries.yaml` の `queries:` セクションの `- id: xxx` の集合。"""
+    ids: set[str] = set()
+    in_queries = False
+    for line in yaml_text.splitlines():
+        if re.match(r"^queries:\s*$", line):
+            in_queries = True
+            continue
+        if in_queries and re.match(r"^\S", line) and not line.startswith("#"):
+            in_queries = False  # 次の最上位キー
+        if in_queries:
+            m = _QUERY_ID_RE.match(line)
+            if m:
+                ids.add(m.group(1))
+    return ids
+
+
+def check_schema_and_query_ids(proof: dict, head_queries_yaml: str) -> list[str]:
+    """証明の `schema_version` と `queries[].id` の集合が、今のコードと対応しているか。"""
+    problems: list[str] = []
+    if proof.get("schema_version") != b00.SCHEMA_VERSION:
+        problems.append(f"schema_version が {proof.get('schema_version')!r}（期待: {b00.SCHEMA_VERSION}）")
+    head_ids = parse_query_ids(head_queries_yaml)
+    if not head_ids:
+        return problems + [f"{QUERIES_YAML} から問い合わせの id を1つも読めない（形が変わった可能性）"]
+    proof_ids = {q.get("id") for q in proof.get("queries", [])}
+    if proof_ids != head_ids:
+        problems.append(
+            "証明の queries[].id の集合が HEAD の問い合わせの id の集合と一致しない"
+            f"（証明にしか無い: {sorted(proof_ids - head_ids)} / HEAD にしか無い: {sorted(head_ids - proof_ids)}）"
+        )
+    return problems
+
+
+def _head_queries_yaml() -> str:
+    result = subprocess.run(
+        ["git", "show", f"HEAD:{QUERIES_YAML}"], cwd=str(ROOT), capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        sys.exit(f"git show HEAD:{QUERIES_YAML} に失敗した: {result.stderr.strip()}")
+    return result.stdout
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--proof", default=str(DEFAULT_PROOF))
@@ -110,7 +161,9 @@ def main() -> int:
     if not proof_path.exists():
         sys.exit(f"{proof_path} が無い。scripts/b00_run_full_gate.py を実行してコミットすること。")
     proof = json.loads(proof_path.read_text(encoding="utf-8"))
-    _require_keys(proof, ("pipeline_path_hashes", "source_hashes"), label=str(proof_path))
+    _require_keys(
+        proof, ("schema_version", "pipeline_path_hashes", "source_hashes", "queries"), label=str(proof_path),
+    )
 
     path_problems = check_pipeline_path_hashes(proof)
     if path_problems:
@@ -137,6 +190,15 @@ def main() -> int:
         )
     n_shared = len(set(proof["source_hashes"]) & set(manifest["source_files"]))
     print(f"OK: {manifest_path} の原本 sha256 と証明の原本 sha256 が一致（{n_shared}件）")
+
+    query_problems = check_schema_and_query_ids(proof, _head_queries_yaml())
+    if query_problems:
+        sys.exit(
+            f"証明が今の問い合わせの定義と食い違う（{len(query_problems)}件）。原本のある手元で "
+            "`.venv/bin/python3 scripts/b00_run_full_gate.py` を回して証明を更新すること:\n"
+            + "\n".join(f"  - {p}" for p in query_problems)
+        )
+    print(f"OK: 証明の問い合わせ{len(proof['queries'])}件が {QUERIES_YAML} と一致")
     return 0
 
 

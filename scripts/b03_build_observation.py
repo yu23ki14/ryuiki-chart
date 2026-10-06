@@ -134,7 +134,7 @@ alias/place 解決や重複判定より前に、既定で弾く——`observatio
 **`--include-synthetic`（既定 off）を渡すと、この除外を行わない。** 用途は
 診断専用の「v1互換キューブ」（PR-2 §1(d)。`data/db/v2_v1compat.sqlite` に
 `b03 --include-synthetic` → `b04` → `b05` の3段で作る、v1〔`derived.sqlite`〕と
-同じく合成データを含んだキューブ——`scripts/b02_run_all_gates.py`・
+同じく合成データを含んだキューブ——（旧）`scripts/b02_run_all_gates.py`・
 serving-diff がこれと突き合わせることで、b03 の合成データ除外という新しい
 差分を「宣言済み差分を増やさずに」説明できる）専用で、**本番の `v2.sqlite`
 には絶対に使わない**。誤って本番へ書くことを防ぐため、`--include-synthetic`

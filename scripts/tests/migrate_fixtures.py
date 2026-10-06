@@ -80,30 +80,6 @@ DEFAULT_PLACE_REFS = [
     ("place_s2", "S2", "sites.site_id"),
 ]
 
-# ゾーン（`place_relation`、ADR-0022 決定2）のフィクスチャ。地点→ゾーンの辺を
-# テストするときは、DEFAULT_PLACES/DEFAULT_PLACE_REFS にこれらを連結して渡す
-# （`make_registry_db` の `places`/`place_refs` は完全上書きのため、足したい側が
-# 連結する）。S1 をゾーン1に属させる（S2 はどのゾーンにも属さない——v1 の
-# `sites.zone IS NULL` に相当。zone_year/zone_clim では自然に除外される）。
-DEFAULT_ZONE_PLACES = [
-    ("place_zone1", "jp-14", "zone"),
-]
-
-DEFAULT_ZONE_PLACE_REFS = [
-    ("place_zone1", "1", "sites.zone"),
-]
-
-DEFAULT_PLACE_RELATIONS = [
-    # parent_id (ゾーン), child_id (地点), relation, fraction, basis
-    ("place_zone1", "place_s1", "within", 1.0, "test"),
-]
-
-# ゾーンを1つ足した `places`/`place_refs`（/simplify 指摘: テスト側で
-# `DEFAULT_PLACES + DEFAULT_ZONE_PLACES` / `DEFAULT_PLACE_REFS +
-# DEFAULT_ZONE_PLACE_REFS` を6箇所書いていたものをここに1組まとめた）。
-PLACES_WITH_ZONE = DEFAULT_PLACES + DEFAULT_ZONE_PLACES
-PLACE_REFS_WITH_ZONE = DEFAULT_PLACE_REFS + DEFAULT_ZONE_PLACE_REFS
-
 # `variable.default_stat`（b04 の T4-2「sum」の絞り込みが読む）・`name_ja`
 # （P-1b の landuse_watershed/landuse_change が `reg.variable.name_ja` を
 # landuse_name として読む。既存の4変数はどれも landuse ではないので None のまま）。

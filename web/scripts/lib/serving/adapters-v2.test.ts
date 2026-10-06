@@ -1,27 +1,17 @@
 /**
- * `expectedUnitSymbols()`（Issue #48 PR-1 code-review #3）のテスト。
- *
- * この関数は `registry.sqlite` の `variable_alias`/`unit` を SQL で直接読み、
- * v2 アダプタ自身が「v2 側の unit 列」を計算するのに使う経路（`seriesForAlias(...)[0].unitId`
- * 経由の `unitLabel()`。`adapters-v2.ts` の `fetchRawRows` 参照）とは独立に「正しい
- * unit symbol」を求める。以前の実装は両方が同じ式（`seriesForAlias(...)[0].unitId`）を
- * 使っていたため、`classify.ts` の `unit_label_registry` 規則の `expected === v2Unit` が
- * 構造的に常に真になり、実際にレジストリと一致しているかを何も確かめていなかった
- * （`seriesForAlias`/`generated.ts` 側にバグがあっても検出できない）。
+ * v2 アダプタのテスト（DB 不要。`lib/cube` のフィクスチャかスタブを使う）。
+ * 値の正しさは見ない（それはスナップショット・指紋の仕事）。見るのは、アダプタが生 SQL を持たないこと・
+ * `serving_queries.yaml` の `compare` の列名とアダプタが返す列名が食い違っていないこと・呼び出しの既定値。
  */
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import Database from "better-sqlite3";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { rowsByKey, toNormRows } from "./normalize";
-import { classifyDiff, compareRuns, type ClassifyContext } from "./classify";
-import { expectedUnitSymbols, runV2Query } from "./adapters-v2";
-import { load as loadYaml } from "js-yaml";
+import { runV2Query } from "./adapters-v2";
+import { parseServingQueries } from "./snapshot";
 import * as generatedClient from "@/lib/registry/generated-client";
 import { buildOccurrenceFixture, FXO } from "@/lib/cube/__fixtures__/occurrence-fixture";
-import type { CompareSpec, ScalarParam } from "./normalize";
+import type { ScalarParam } from "./normalize";
 
 /**
  * design §8.4「検証が本番の経路を通っているか」の自動チェック1件:
@@ -71,7 +61,7 @@ describe("adapters-v2.ts は生 SQL を持たない（design §8.4）", () => {
  * 生物系の v2 アダプタを `lib/cube` のフィクスチャ（`buildOccurrenceFixture`）に通す。
  * 目的: `serving_queries.yaml` の `compare`（key/numeric/label の列名）と、アダプタが返す列名が
  * 食い違っていないこと（`toNormRows` は無い列を黙って null にするので、全行 null の列を検出する）。
- * 値の正しさは見ない（それは serving-diff の本番実行の仕事）。
+ * 値の正しさは見ない（それは serving-snapshot の仕事）。
  */
 describe("生物系の v2 アダプタ: serving_queries.yaml の compare の列名とアダプタの列名が一致する", () => {
   const generated = generatedClient as unknown as { REDLIST_CATEGORY?: unknown; ASSESSMENT_LIST?: unknown };
@@ -79,9 +69,7 @@ describe("生物系の v2 アダプタ: serving_queries.yaml の compare の列�
 
   const HERE_ = path.dirname(fileURLToPath(import.meta.url));
   const yamlPath = path.join(HERE_, "..", "..", "..", "serving_queries.yaml");
-  const config = loadYaml(fs.readFileSync(yamlPath, "utf8")) as {
-    queries: { id: string; compare: CompareSpec; params?: Record<string, unknown> }[];
-  };
+  const config = parseServingQueries(fs.readFileSync(yamlPath, "utf8"));
 
   // フィクスチャの架空の値（`Fx*`）で埋めた最小の params。
   const PARAMS: Record<string, Record<string, ScalarParam>> = {
@@ -90,14 +78,11 @@ describe("生物系の v2 アダプタ: serving_queries.yaml の compare の列�
     species_mesh_years: { binom: FXO.binoms.alpha },
     species_share_trend: { group: FXO.groups.bird, periods: "2000-2004:2010-2014" },
     mesh_by_year: { year: 2010 },
-    redlist_flows: { list_year: 2020, group: "" },
-    redlist_species: { list_year: 2020, group: "" },
   };
   const BIOTA_IDS = [
     "effort_years",
     "taxon_group_years",
     "species_catalog",
-    "species_labels",
     "species_years",
     "species_months",
     "species_mesh_years",
@@ -106,17 +91,14 @@ describe("生物系の v2 アダプタ: serving_queries.yaml の compare の列�
     "mesh_by_year",
     "ias_species",
     "redlist_summary",
-    "redlist_flows",
-    "redlist_species",
     "biota_totals",
     "watershed_rollup",
-    "watershed_year",
   ];
   // `watershed_rollup` は PR-4 で非生物列（site_n・area・土地利用）が増え、生物系フィクスチャには
   // `place_relation`/土地利用セルが無いので、下の「PR-4 の v2 アダプタ」（`lib/cube` の関数をモック）で見る。
   const FIXTURE_IDS = BIOTA_IDS.filter((id) => id !== "watershed_rollup");
 
-  it("serving_queries.yaml に生物系 17 問い合わせが全部ある（アダプタの case と1対1）", () => {
+  it("serving_queries.yaml に生物系の問い合わせが全部ある（アダプタの case と1対1）", () => {
     const ids = new Set(config.queries.map((q) => q.id));
     for (const id of BIOTA_IDS) expect(ids.has(id), id).toBe(true);
   });
@@ -139,236 +121,12 @@ describe("生物系の v2 アダプタ: serving_queries.yaml の compare の列�
     });
   }
 
-  it("species_labels と species_catalog の label は同じ関数（speciesLabels）を通るので同じ値になる", async () => {
-    const fx = buildOccurrenceFixture();
-    try {
-      const labelsDef = config.queries.find((q) => q.id === "species_labels")!;
-      const catalogDef = config.queries.find((q) => q.id === "species_catalog")!;
-      const a = await runV2Query(fx.db, "species_labels", {}, labelsDef.compare, "zero");
-      const b = await runV2Query(fx.db, "species_catalog", {}, catalogDef.compare, "zero");
-      const byBinomA = new Map(a.map((r) => [String(r.key[0]), r.label.label]));
-      const byBinomB = new Map(b.map((r) => [String(r.key[0]), r.label.label]));
-      expect(byBinomA.size).toBeGreaterThan(0);
-      expect(byBinomB).toEqual(byBinomA);
-    } finally {
-      fx.db.close();
-    }
-  });
 });
-
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = path.resolve(HERE, "..", "..", "..", "..");
-const DB_DIR = process.env.RYUIKI_DB_DIR ?? path.join(REPO_ROOT, "data", "db");
-const REGISTRY_DB_PATH = process.env.RYUIKI_REGISTRY_DB ?? path.join(DB_DIR, "registry.sqlite");
-// `registry.sqlite` は生成物（`.gitignore` 済み）で、CLAUDE.md の worktree 運用上
-// symlink しない原則の対象。原本が無い worktree（CI 再現・並行 worktree）でも
-// `pnpm test` が落ちないよう、`web/src/lib/registry/generated.test.ts` と同じ
-// `skipIf` の流儀にする（このファイルが要るのは実 DB を直接読む2件だけ）。
-const hasRegistryDb = fs.existsSync(REGISTRY_DB_PATH);
-
-function ctxBase(overrides: Partial<ClassifyContext> = {}): ClassifyContext {
-  return {
-    expected: {},
-    declared: { v1Table: null, builder: null },
-    params: {},
-    known: new Set(),
-    ...overrides,
-  };
-}
-
-describe("expectedUnitSymbols（registry.sqlite を直接 SQL で読む）", () => {
-  it.skipIf(!hasRegistryDb)("実データ: BOD（3 alias とも unit_id が common:unit:mg_per_l で一致）は symbol 'mg/L' を返す", () => {
-    const map = expectedUnitSymbols(REGISTRY_DB_PATH);
-    expect(map.get("生物化学的酸素要求量 BOD")).toBe("mg/L");
-  });
-
-  it("unit_id が1つに定まらない alias（NULLを除いて2種類以上）は期待値を持たない（unexplained に倒す）", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "expected-unit-symbols-ambiguous-"));
-    const dbPath = path.join(dir, "registry.sqlite");
-    try {
-      const db = new Database(dbPath);
-      db.exec(`
-        CREATE TABLE variable_alias (
-          id INTEGER PRIMARY KEY AUTOINCREMENT, alias TEXT NOT NULL, dataset TEXT,
-          source_id TEXT, variable_id TEXT, unit_id TEXT, stat TEXT, grain TEXT, note TEXT
-        );
-        CREATE TABLE unit (unit_id TEXT PRIMARY KEY, symbol TEXT, ucum TEXT, name_ja TEXT, quantity_kind TEXT);
-      `);
-      db.prepare(`INSERT INTO unit (unit_id, symbol) VALUES (?, ?)`).run("common:unit:mg_per_l", "mg/L");
-      db.prepare(`INSERT INTO unit (unit_id, symbol) VALUES (?, ?)`).run("common:unit:degc", "℃");
-      const insertAlias = db.prepare(
-        `INSERT INTO variable_alias (alias, dataset, unit_id) VALUES ('生物化学的酸素要求量 BOD', 'measurements', ?)`,
-      );
-      insertAlias.run("common:unit:mg_per_l");
-      insertAlias.run("common:unit:degc"); // 同じ alias に2つ目の異なる非NULL unit_id を混入させる
-      db.close();
-
-      const map = expectedUnitSymbols(dbPath);
-      expect(map.has("生物化学的酸素要求量 BOD")).toBe(false);
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  afterEach(() => {
-    vi.doUnmock("@/lib/registry/generated");
-    vi.resetModules();
-  });
-
-  it.skipIf(!hasRegistryDb)("変異: seriesForAlias（generated.ts 由来）が BOD に別の unit_id を返しても、真の期待値（registry.sqlite 直読み）との食い違いを検出する（unexplained）", async () => {
-    // `@/lib/registry/generated` の `GENERATED_VARIABLE_ALIASES` を、BOD の
-    // unit_id が気温（degC）になるよう書き換えてモックする（`seriesForAlias`
-    // 自体・`generated.ts` の生成にバグがあった場合の再現）。
-    vi.resetModules();
-    vi.doMock("@/lib/registry/generated", async (importOriginal) => {
-      const actual = await importOriginal<typeof import("@/lib/registry/generated")>();
-      const mutatedAliases = actual.GENERATED_VARIABLE_ALIASES.map((a) =>
-        a.alias === "生物化学的酸素要求量 BOD" ? { ...a, unitId: "common:unit:degc" } : a,
-      );
-      return { ...actual, GENERATED_VARIABLE_ALIASES: mutatedAliases };
-    });
-
-    // v2 アダプタが実際に unit 列を計算するのと同じ式
-    // （`adapters-v2.ts` の `unitLabel(series[0]?.unitId ?? null)`）で、
-    // モック後の（壊れた）v2Unit を求める。
-    const { seriesForAlias } = await import("@/lib/cube/series");
-    const { unitSymbol } = await import("@/lib/registry/lookup");
-    const mutatedSeries = seriesForAlias("measurements", "生物化学的酸素要求量 BOD");
-    const brokenV2Unit = unitSymbol(mutatedSeries[0]?.unitId ?? null);
-    expect(brokenV2Unit).toBe("degC"); // モックが効いていることの確認
-
-    // `expectedUnitSymbols`（この describe の最上部で静的 import した、モックの
-    // 影響を受けない元の実装）は registry.sqlite を直接読むので、上のモックとは
-    // 無関係に真の期待値（mg/L）を返し続ける。
-    const map = expectedUnitSymbols(REGISTRY_DB_PATH);
-    expect(map.get("生物化学的酸素要求量 BOD")).toBe("mg/L");
-
-    const v1 = rowsByKey(toNormRows([{ alias: "生物化学的酸素要求量 BOD", n: 5, unit: null }], ["alias"], ["n"], ["unit"]));
-    const v2 = rowsByKey(toNormRows([{ alias: "生物化学的酸素要求量 BOD", n: 5, unit: brokenV2Unit }], ["alias"], ["n"], ["unit"]));
-    const diffs = compareRuns(v1, v2);
-    const ctx = ctxBase({ known: new Set(["unit_label_registry"]), expectedUnitSymbol: map });
-    expect(classifyDiff(diffs[0], ctx).rules.size).toBe(0);
-  });
-});
-
-describe("variable_catalog（aliasCatalog）: n_sites の distinct 集計（Issue #48 PR-1 論点A）", () => {
-  afterEach(() => {
-    vi.doUnmock("@/lib/registry/generated");
-    vi.resetModules();
-  });
-
-  it("同じ alias の2 tuple（mean/day, point/day）を同じ地点が両方持っていても n_sites を二重計上しない", async () => {
-    // `series.ts` の `seriesInfo()`/`tupleGroups` はモジュール読み込み時に
-    // `GENERATED_VARIABLE_ALIASES`（実 registry の静的データ）から組み立てられる
-    // ——フィクスチャの `variable_alias` SQL テーブルは `catalog.ts` の dataset
-    // 絞り込み（`datasetCells` が読む変数一覧）専用で、alias 解決には使われない
-    // （`envelope.test.ts` の同種のコメント参照）。この2つを一致させて自己完結
-    // させるため、実データに存在しない架空の `variable_id`（衝突を避ける）を使い、
-    // `GENERATED_VARIABLE_ALIASES` をモックしてから動的 import し直す。
-    const FAKE_VARIABLE_ID = "common:variable:__pr1_test_fake__";
-    vi.resetModules();
-    vi.doMock("@/lib/registry/generated", async (importOriginal) => {
-      const actual = await importOriginal<typeof import("@/lib/registry/generated")>();
-      const extra = [
-        { alias: "テスト用SS", dataset: "measurements", sourceId: "fx_test_mean", variableId: FAKE_VARIABLE_ID, unitId: null, stat: "mean", grain: "day" },
-        { alias: "テスト用SS", dataset: "measurements", sourceId: "fx_test_point", variableId: FAKE_VARIABLE_ID, unitId: null, stat: "point", grain: "day" },
-      ];
-      return { ...actual, GENERATED_VARIABLE_ALIASES: [...actual.GENERATED_VARIABLE_ALIASES, ...extra] };
-    });
-
-    const { buildCubeFixture: buildFixture, FX: fx } = await import("@/lib/cube/__fixtures__/cube-fixture");
-    const { runV2Query: runQuery } = await import("./adapters-v2");
-
-    const cube = buildFixture();
-    try {
-      // フィクスチャ側（`catalog.ts` の dataset 絞り込みが読む `variable_alias`）にも
-      // 同じ2 tuple を登録する。
-      const insertAlias = cube.raw.prepare(
-        `INSERT INTO variable_alias (alias, dataset, source_id, variable_id, unit_id, stat, grain)
-         VALUES (@alias,@dataset,@sourceId,@variableId,@unitId,@stat,@grain)`,
-      );
-      insertAlias.run({ alias: "テスト用SS", dataset: "measurements", sourceId: "fx_test_mean", variableId: FAKE_VARIABLE_ID, unitId: null, stat: "mean", grain: "day" });
-      insertAlias.run({ alias: "テスト用SS", dataset: "measurements", sourceId: "fx_test_point", variableId: FAKE_VARIABLE_ID, unitId: null, stat: "point", grain: "day" });
-
-      // 年セル（`variableCatalog`/`aliasCatalog` が見る grain='year'・stat='mean'）を
-      // 3地点に置く: fx_place_a は mean/day・point/day の**両方**（同じ地点が同じ
-      // alias の複数 tuple を持つ、実データ〔浮遊物質量 SS 等〕で実測したケースの
-      // 再現）、fx_place_b は point/day のみ、fx_place_c は mean/day のみ。
-      const insertCell = cube.raw.prepare(
-        `INSERT INTO observation_agg
-          (region_id, place_id, place_kind, variable_id, obs_stat, unit_id, value_grain,
-           period_start, period_end, grain, input_grain, stat, value_zero, value_lod,
-           n, n_censored, n_not_detected, n_places, built_from, spec_version)
-         VALUES ('kanagawa', @placeId, 'site', @variableId, @obsStat, NULL, 'day',
-                 '2024-01-01', '2024-12-31', 'year', 'day', 'mean', 1.0, 1.0, 1, 0, 0, 1, 'fixture:test', 'fixture@1')`,
-      );
-      insertCell.run({ placeId: fx.places.a, variableId: FAKE_VARIABLE_ID, obsStat: "mean" });
-      insertCell.run({ placeId: fx.places.a, variableId: FAKE_VARIABLE_ID, obsStat: "point" });
-      insertCell.run({ placeId: fx.places.b, variableId: FAKE_VARIABLE_ID, obsStat: "point" });
-      insertCell.run({ placeId: fx.places.c, variableId: FAKE_VARIABLE_ID, obsStat: "mean" });
-
-      const compare = { key: ["alias"], numeric: ["n", "n_sites"], label: ["unit"] };
-      const rows = await runQuery(cube.db, "variable_catalog", {}, compare, "zero");
-      const ss = rows.find((r) => r.key[0] === "テスト用SS");
-      expect(ss).toBeDefined();
-      // fx_place_a（mean/day + point/day 両方）・fx_place_b（point/day）・
-      // fx_place_c（mean/day）の3地点——tuple ごとの distinct 数を単純合算すると
-      // fx_place_a が2重に数えられて4になる。
-      expect(ss!.numeric.n_sites).toBe(3);
-      expect(ss!.numeric.n).toBe(4);
-    } finally {
-      cube.db.close();
-    }
-  });
-
-  it("同じプロセスで2つの CubeDb を順に問い合わせても、db ごとに別のキャッシュを引く（Issue #48 PR-2 統合後 修正B: aliasCatalogCache が db を無視していたバグの回帰）", async () => {
-    // serving-diff は本番 `v2Db` と `--v1compat-db` の2接続を同じプロセスで
-    // 順に開く（`synthetic_excluded` の差分の差分・design §1）。以前は
-    // `aliasCatalog()` の結果を `db` を無視した単一のモジュール変数にキャッシュ
-    // しており、1回目（`cubeA`）で埋めたキャッシュを2回目（`cubeB`）でもそのまま
-    // 返していた——`variable_catalog` の synthetic_excluded 判定が
-    // 「v2compat ≠ v2(本番)」を恒等的に満たせず不発になっていた
-    // （実測: DO/pH/SS/気温/水温が常に unexplained）。
-    const { buildCubeFixture: buildFixture, FX: fx } = await import("@/lib/cube/__fixtures__/cube-fixture");
-    const { runV2Query: runQuery } = await import("./adapters-v2");
-
-    const cubeA = buildFixture();
-    const cubeB = buildFixture();
-    try {
-      // cubeB だけ「浮遊物質量 SS」の year セルを1つ増やす（n が動く）。
-      // period_start は既存フィクスチャ行（2024年）と衝突しない年にする。
-      cubeB.raw
-        .prepare(
-          `INSERT INTO observation_agg
-            (region_id, place_id, place_kind, variable_id, obs_stat, unit_id, value_grain,
-             period_start, period_end, grain, input_grain, stat, value_zero, value_lod,
-             n, n_censored, n_not_detected, n_places, built_from, spec_version)
-           VALUES ('kanagawa', @placeId, 'site', 'common:variable:water.ss', 'mean', @unitId, 'day',
-                   '2030-01-01', '2030-12-31', 'year', 'day', 'mean', 1.0, 1.0, 1, 0, 0, 1, 'fixture:test', 'fixture@1')`,
-        )
-        .run({ placeId: fx.places.c, unitId: fx.units.mgPerL });
-
-      const compare = { key: ["alias"], numeric: ["n", "n_sites"], label: ["unit"] };
-      const rowsA = await runQuery(cubeA.db, "variable_catalog", {}, compare, "zero");
-      const rowsB = await runQuery(cubeB.db, "variable_catalog", {}, compare, "zero");
-      const ssA = rowsA.find((r) => r.key[0] === "浮遊物質量 SS");
-      const ssB = rowsB.find((r) => r.key[0] === "浮遊物質量 SS");
-      expect(ssA).toBeDefined();
-      expect(ssB).toBeDefined();
-      // cubeB の方が n が1つ多い（cubeA と同じ値を使い回していれば、ここが一致してしまう）。
-      expect(ssB!.numeric.n).toBe(Number(ssA!.numeric.n) + 1);
-    } finally {
-      cubeA.db.close();
-      cubeB.db.close();
-    }
-  });
-});
-
 
 /**
  * PR-4: 文書・概況・流域の v2 アダプタが、`serving_queries.yaml` の `compare` の列名どおりの行を返す
  * （`lib/cube` の新関数は U1 の実装なのでここでは §4.1 の形のスタブに差し替える。値の正しさは
- * serving-diff の `--only` が見る）。呼び出しの既定値（画面・API と同じ `minYears: 3`・`limit: 8`・
+ * serving-snapshot が見る）。呼び出しの既定値（画面・API と同じ `minYears: 3`・`limit: 8`・
  * `watershedRollup(db)` 1本）もここで固定する。
  */
 describe("PR-4 の v2 アダプタ: compare の列名と呼び出しの既定値", () => {
@@ -378,15 +136,12 @@ describe("PR-4 の v2 アダプタ: compare の列名と呼び出しの既定値
   });
 
   const HERE_ = path.dirname(fileURLToPath(import.meta.url));
-  const config = loadYaml(fs.readFileSync(path.join(HERE_, "..", "..", "..", "serving_queries.yaml"), "utf8")) as {
-    queries: { id: string; compare: CompareSpec; retired?: string[] }[];
-  };
+  const config = parseServingQueries(fs.readFileSync(path.join(HERE_, "..", "..", "..", "serving_queries.yaml"), "utf8"));
   const IDS = ["doc_series_meta", "doc_series_points", "overview_counts", "landuse_highlight", "watershed_rollup"];
 
   it("serving_queries.yaml に PR-4 の 5 問い合わせ（新規4＋拡張1）が全部ある", () => {
     const ids = new Set(config.queries.map((q) => q.id));
     for (const id of IDS) expect(ids.has(id), id).toBe(true);
-    expect(config.queries.find((q) => q.id === "overview_counts")!.retired).toEqual(["n_meas", "n_sensor", "n_events"]);
   });
 
   it("各 id が compare の全列（key/numeric/label）で非 null を返し、既定値で呼ぶ", async () => {
@@ -440,5 +195,20 @@ describe("PR-4 の v2 アダプタ: compare の列名と呼び出しの既定値
     const { runV2Query: run } = await import("./adapters-v2");
     const def = config.queries.find((q) => q.id === "watershed_rollup")!;
     await expect(run({} as never, "watershed_rollup", {}, def.compare, "zero")).rejects.toThrow(/2006\/2016/);
+  });
+});
+
+describe("serving_queries.yaml と adapters-v2.ts の id が1対1", () => {
+  const HERE_ = path.dirname(fileURLToPath(import.meta.url));
+  const config = parseServingQueries(fs.readFileSync(path.join(HERE_, "..", "..", "..", "serving_queries.yaml"), "utf8"));
+  const src = fs.readFileSync(path.join(HERE_, "adapters-v2.ts"), "utf8");
+  const caseIds = new Set([...src.matchAll(/^ {4}case "(\w+)":/gm)].map((m) => m[1]));
+
+  it("YAML の全 id にアダプタの case がある", () => {
+    for (const q of config.queries) expect(caseIds.has(q.id), q.id).toBe(true);
+  });
+  it("アダプタの case はすべて YAML にある（呼ばれない分岐を残さない）", () => {
+    const ids = new Set(config.queries.map((q) => q.id));
+    for (const id of caseIds) expect(ids.has(id), id).toBe(true);
   });
 });

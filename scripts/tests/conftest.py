@@ -1,8 +1,7 @@
-"""Phase B 突合ハーネス（scripts/b01_derived_baseline.py / scripts/b02_derived_compare.py）の
-テスト共通設定。
+"""Phase B パイプライン（scripts/b0*.py・scripts/migrate/・scripts/reconcile/）のテスト共通設定。
 
 CI に `data/db/*.sqlite`（14GB、読み取り専用の原本）は無いので、このテストは
-すべて自前で作る小さなフィクスチャ sqlite だけで完結する（本物の derived.sqlite には
+すべて自前で作る小さなフィクスチャ sqlite だけで完結する（本物の原本には
 一切触らない）。
 """
 import os

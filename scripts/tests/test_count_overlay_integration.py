@@ -1,6 +1,6 @@
 """件数の宣言の上書き（Issue #29 A-2）が、`scripts/migrate/period.py` 以外の
 読み込み関数（`source_regions.load_source_regions`・
-`occurrence_period.load_period_shapes`・b07/b08/b09 の
+`occurrence_period.load_period_shapes`・b07/b09 の
 `load_and_validate_*_declarations`）にも正しく効くことの統合テスト。
 tmp_path に自前の小さな宣言 YAML を書くだけで、原本DB・data/sample/ の実データは
 一切使わない。
@@ -8,7 +8,6 @@ tmp_path に自前の小さな宣言 YAML を書くだけで、原本DB・data/s
 from __future__ import annotations
 
 import b07_build_occurrence_cube as b07
-import b08_project_occurrence_v1 as b08
 import b09_build_occurrence_place as b09
 from migrate import occurrence_period, source_regions
 
@@ -79,74 +78,3 @@ def test_b09_place_declarations_count_overlay(tmp_path):
     assert declarations["n_watershed_polygons"]["expected_row_count"] == 377
     assert declarations["place_id_null_count"]["expected_row_count"] == 31
     assert declarations["resolved_count"]["expected_row_count"] == 186
-
-
-def test_b08_watershed_declarations_count_overlay_updates_breakdown_and_total(tmp_path):
-    path = tmp_path / "occurrence_watershed_v1_declarations.yaml"
-    path.write_text(
-        "memo_moved_records:\n"
-        "  expected_count: 11306\n"
-        "  breakdown:\n"
-        "    ws_to_ws: 9428\n"
-        "    v1_assigned_exact_unassigned: 622\n"
-        "    v1_unassigned_exact_assigned: 1256\n"
-        "  note: n\n"
-        "memo_mixed_buckets:\n"
-        "  expected_count: 741\n"
-        "  note: n\n"
-        "org_watershed_year_keys_changed_vs_exact:\n"
-        "  expected_count: 1091\n"
-        "  note: n\n",
-        encoding="utf-8",
-    )
-    overlay = {
-        "memo_moved_records": 1,
-        "memo_moved_records.ws_to_ws": 0,
-        "memo_moved_records.v1_assigned_exact_unassigned": 1,
-        "memo_moved_records.v1_unassigned_exact_assigned": 0,
-        "memo_mixed_buckets": 1,
-        "org_watershed_year_keys_changed_vs_exact": 1,
-    }
-    declarations = b08.load_and_validate_watershed_declarations(path, count_overlay=overlay)
-    assert declarations["memo_moved_records"]["expected_count"] == 1
-    assert declarations["memo_moved_records"]["breakdown"] == {
-        "ws_to_ws": 0, "v1_assigned_exact_unassigned": 1, "v1_unassigned_exact_assigned": 0,
-    }
-    assert declarations["memo_mixed_buckets"]["expected_count"] == 1
-    assert declarations["org_watershed_year_keys_changed_vs_exact"]["expected_count"] == 1
-
-
-def test_b08_watershed_declarations_count_overlay_self_consistency_still_checked(tmp_path):
-    """`apply_count_overlay` 適用後の値でも、breakdown の合計が expected_count と
-    食い違えば自己矛盾として止まる（上書きが検証をすり抜けない）。
-    """
-    import pytest
-
-    from migrate.common import MigrationError
-
-    path = tmp_path / "occurrence_watershed_v1_declarations.yaml"
-    path.write_text(
-        "memo_moved_records:\n"
-        "  expected_count: 3\n"
-        "  breakdown:\n"
-        "    ws_to_ws: 1\n"
-        "    v1_assigned_exact_unassigned: 1\n"
-        "    v1_unassigned_exact_assigned: 1\n"
-        "  note: n\n"
-        "memo_mixed_buckets:\n"
-        "  expected_count: 1\n"
-        "  note: n\n"
-        "org_watershed_year_keys_changed_vs_exact:\n"
-        "  expected_count: 1\n"
-        "  note: n\n",
-        encoding="utf-8",
-    )
-    # 上書きで合計(0+0+0=0)が expected_count(9) と食い違う状態にする。
-    overlay = {
-        "memo_moved_records": 9,
-        "memo_moved_records.ws_to_ws": 0,
-        "memo_moved_records.v1_assigned_exact_unassigned": 0,
-        "memo_moved_records.v1_unassigned_exact_assigned": 0,
-    }
-    with pytest.raises(MigrationError):
-        b08.load_and_validate_watershed_declarations(path, count_overlay=overlay)

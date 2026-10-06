@@ -52,7 +52,7 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 
 # ホストの UID/GID 1000 と揃える。data/ はバインドマウントなので、
-# コンテナが書く derived.sqlite がホスト側で root 所有にならないようにする。
+# コンテナが書く registry.sqlite・v2.sqlite がホスト側で root 所有にならないようにする。
 # 名前付きボリュームは作成時にこのディレクトリの所有者を引き継ぐ。
 # /app/scripts と /app/registry も compose 側でバインドマウントする
 # （レジストリビルドが読むリポジトリ直下の scripts/ と registry/。read-only マウント）。

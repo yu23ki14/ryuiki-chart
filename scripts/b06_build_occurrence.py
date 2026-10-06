@@ -498,7 +498,7 @@ def build_and_write_occurrence(
             # 作業用テーブルを本番名 "occurrence" に差し替え、同じ
             # トランザクションで指紋も記録する（Issue #37 #1・/code-review
             # 指摘の根本対応。`fingerprint_inputs={}`——`occurrence` は基底
-            # テーブルなので系譜は空）。b07/b09/b08 はこの指紋を見て「今の
+            # テーブルなので系譜は空）。b07/b09 はこの指紋を見て「今の
             # occurrence から作った出力か」を検証する。
         # v2 パイプラインの入力＋コードの指紋（Issue #48 PR-0 /simplify 指摘1）:
         # `common.record_v2_input_fingerprint` の docstring 参照

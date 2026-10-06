@@ -27,10 +27,7 @@
 # （解決済みの）系列」の腐った宣言になった。CLAUDE.md「宣言済み差分 > データを
 # 曲げる」に従い削除した——declared は空になる。**
 #
-# 診断専用の「v1互換キューブ」（合成データを含む observation。
-# `scripts/b00_run_full_gate.py`/CI の `--include-synthetic` 段）は、この系列が
-# また現れるため、別ファイル
-# `scripts/migrate/unit_evidence_declarations_v1compat.yaml`（`--unit-evidence-
-# declarations-yaml` で明示的に渡す）を使う——ここには合流させない
-# （本番の declared を「今の observation と過不足なく一致」の状態に保つため）。
+# 診断専用の「v1互換キューブ」（合成データを含む observation）は、この系列がまた現れるため
+# 別ファイルの宣言を使っていたが、Issue #48 PR-5 でその段ごと撤去した（b03 の
+# `--include-synthetic` は診断用の単体オプションとして残っている）。
 declared: []

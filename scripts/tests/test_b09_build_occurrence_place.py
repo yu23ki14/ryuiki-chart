@@ -11,6 +11,8 @@ import b09_build_occurrence_place as b09
 from migrate import common
 
 from .occurrence_fixtures import (
+    DEFAULT_PLACE,
+    DEFAULT_PLACE_SOURCE_REF,
     make_occurrence_place_declarations_yaml,
     make_occurrence_registry_db,
     make_ryuiki_sites_db,
@@ -41,8 +43,12 @@ def _setup(tmp_path, *, occurrence_rows, geojson_features, place_refs, sites_row
     make_v2_db_with_occurrence(v2_db, occurrence_rows)
 
     registry_db = tmp_path / "registry.sqlite"
-    places = [(pid, None, "watershed") for pid, _ext, _sid in place_refs]
-    make_occurrence_registry_db(registry_db, taxa=list(taxa), places=places, place_refs=list(place_refs))
+    places = [(pid, None, "watershed") for pid in dict.fromkeys(pid for pid, _ext, _sid in place_refs)]
+    # occurrence_row の既定 place_id（grid01）も registry で引けること（b09 の検査）。
+    make_occurrence_registry_db(
+        registry_db, taxa=list(taxa), places=list(DEFAULT_PLACE) + places,
+        place_refs=list(DEFAULT_PLACE_SOURCE_REF) + list(place_refs),
+    )
 
     ryuiki_db = tmp_path / "ryuiki.sqlite"
     make_ryuiki_sites_db(ryuiki_db, list(sites_rows))
@@ -251,3 +257,64 @@ def test_site_watershed_edge_matches_passes(tmp_path):
 
     stats = b09.build_and_write_occurrence_place(v2_db, ryuiki_db, registry_db, geojson, decl)
     assert stats["n_checked_sites"] == 2
+
+
+# ---------------------------------------------------------------------------
+# place_id と place_source_ref の関係（Issue #48 PR-5。b08 の逆引き検査から移設）
+# ---------------------------------------------------------------------------
+
+def _run_b09(tmp_path, *, occurrence_rows, place_refs, features=None, extra_registry_refs=(), extra_places=()):
+    v2_db, ryuiki_db, registry_db, geojson = _setup(
+        tmp_path, occurrence_rows=occurrence_rows,
+        geojson_features=features or [("W1", _W1_RINGS)], place_refs=place_refs,
+    )
+    if extra_registry_refs:
+        conn = sqlite3.connect(str(registry_db))
+        conn.executemany("INSERT INTO place_source_ref VALUES (?,?,?)", list(extra_registry_refs))
+        conn.executemany("INSERT INTO place VALUES (?,?,?)", list(extra_places))
+        conn.commit()
+        conn.close()
+    decl = _declarations(
+        tmp_path, n_watershed_polygons=len(features or [1]), place_id_null_count=0, resolved_count=1,
+    )
+    return b09.build_and_write_occurrence_place(v2_db, ryuiki_db, registry_db, geojson, decl)
+
+
+_ONE_RESOLVED = [occurrence_row("r1", None, None, None, None, source_row_id=1, lat=35.05, lon=139.05)]
+
+
+def test_watershed_place_id_with_two_external_keys_halts(tmp_path):
+    """同じ place_id に2つの watershed の external_key が対応していると止まる
+    （external_key は一意でも、place_id → external_key が一意でない）。
+    """
+    with pytest.raises(common.MigrationError, match="place_id について単射でない"):
+        _run_b09(
+            tmp_path, occurrence_rows=_ONE_RESOLVED,
+            features=[("W1", _W1_RINGS), ("W3", _W3_RINGS)],
+            # 2つの流域（external_key は別々）が同じ place_id を指している。
+            place_refs=[
+                (_W1_PLACE_ID, "W1", "watershed_meta.watershed_id"),
+                (_W1_PLACE_ID, "W3", "watershed_meta.watershed_id"),
+            ],
+        )
+
+
+def test_mesh_place_id_with_two_external_keys_halts(tmp_path):
+    with pytest.raises(common.MigrationError, match="place_id について単射でない"):
+        _run_b09(
+            tmp_path, occurrence_rows=_ONE_RESOLVED,
+            place_refs=[(_W1_PLACE_ID, "W1", "watershed_meta.watershed_id")],
+            extra_registry_refs=[(DEFAULT_PLACE_SOURCE_REF[0][0], "grid01:9999,9999", "organism_records.lat_lon")],
+        )
+
+
+def test_occurrence_place_id_missing_from_place_source_ref_halts(tmp_path):
+    """b06 が書いた occurrence.place_id（grid01）が registry の place_source_ref で
+    引けなければ止まる（registry と occurrence の版のずれ）。
+    """
+    rows = [occurrence_row(
+        "r1", None, None, None, None, source_row_id=1, lat=35.05, lon=139.05,
+        place_id="common:place:grid01.0000_00000",
+    )]
+    with pytest.raises(common.MigrationError, match="引けない place_id"):
+        _run_b09(tmp_path, occurrence_rows=rows, place_refs=[(_W1_PLACE_ID, "W1", "watershed_meta.watershed_id")])

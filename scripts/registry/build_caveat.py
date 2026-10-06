@@ -12,8 +12,13 @@ caveats.ts のテーブル→注記マッピング、cells.notes（207行）を 
 
 **例外2（Issue #48 PR-2、`docs/plans/V2_SERVING_PR2.md` §6）**: `censoredLod`・
 `unitUnknown` の2件を新規に足した（`registry/caveat.yaml` の各エントリ直前の
-コメント参照）。`censored` の本文はこの PR でも変えていない（v1 の zero 系列を
-名指ししたまま）。v2 facet 側だけ `censoredLod` に差し替える。
+コメント参照）。
+
+**Issue #48 PR-5**: v1 の派生表・原本表が D1 から DROP されたので、それらの表名の
+'table'/'table_prefix' 行は作らない（残る 'table' 行は `sites` だけ）。v1 の zero 系列を
+名指ししていた `censored` キーは撤去し `censoredLod` に一本化した
+（`docs/plans/V2_SERVING_PR5.md` §4.3・D-1）。以下の「スキーマの逸脱」「scope_kind」節の
+`censored`・`MEASURE_TABLES` などの記述は、当時の経緯として残してある。
 
 ## スキーマの逸脱（計画の7テーブル→8テーブル）
 
@@ -161,92 +166,40 @@ from .build_unit_variable import VARIABLE_ALIAS_CSV
 
 CAVEAT_YAML = common.ROOT / "registry" / "caveat.yaml"
 
-# --- caveats.ts のテーブル集合・注記リストの複製（順序も含めて一致させること） ---
+# --- 注記キーのリスト（順序が sort_order になる） ---
+#
+# Issue #48 PR-5: v1 の派生表・原本表が D1 から DROP されたので、それらの名前を持つ
+# 'table'/'table_prefix' 行（MEASURE_TABLES・ORGANISM_TABLES・mesh_*・ias_species・
+# landuse_*・SYNTHETIC_TABLES）は作らなくなった。残る 'table' 行は `sites` だけ
+# （`ai/tools.ts` が `caveatKeysForTables(["sites", "source_registry"])` で引く）。
+# v2 は facet（'dataset'/'place_kind'/'source_id'/'variable_theme'/'variable'）で引く。
 
 SITES_CAVEATS = ["zone", "municipality"]
 
-MEASURE_CAVEATS = ["measuredOn", "censored", "duplicates"]
-MEASURE_TABLES = [
-    "measurements",
-    "meas_year",
-    "meas_month",
-    "meas_daily",
-    "meas_clim",
-    "zone_year",
-    "zone_clim",
-    "var_catalog",
-    "site_var",
-]
-
-# Issue #48 PR-2（docs/plans/V2_SERVING_PR2.md §6）。v1 の 'table' 行（MEASURE_TABLES）は
-# `censored`（zero 系列を名指し）のまま1行も変えない。v2 facet（dataset='measurements'）
-# 側だけ `censored` を `censoredLod` に差し替えた別リスト。他2キー（measuredOn/duplicates）
-# は系列に依らず両方に共通するのでそのまま。MEASURE_CAVEATS（v1 用）を書き換えると
-# `caveats.test.ts` の34ケースが壊れるため、必ず別リストとして持つこと。
-MEASURE_CAVEATS_V2 = ["measuredOn", "censoredLod", "duplicates"]
+# `censored`（zero 系列を名指しする旧キー）は撤去し、画面の値（lod 系列）に合う `censoredLod`
+# に一本化した（docs/plans/V2_SERVING_PR5.md §4.3・D-1）。
+MEASURE_CAVEATS = ["measuredOn", "censoredLod", "duplicates"]
 
 ORGANISM_CAVEATS = ["organismSite", "effort", "regimes", "gbifCutoff", "share"]
-ORGANISM_TABLES = [
-    "organism_records",
-    "org_norm",
-    "org_group_year",
-    "org_watershed",
-    "org_watershed_year",
-    "species2",
-    "species_year2",
-    "species_month",
-    "effort_year",
-]
-
-# occurrence_place（O-2a、v2.sqlite のL2サテライト表。scripts/b09_build_occurrence_place.py）
-# は v1 の derived.sqlite には存在しない新設テーブルで、`caveats.ts` に対応物が無い
-# （`ORGANISM_TABLES`/`ORGANISM_CAVEATS` は `caveats.ts` の既存マッピングの複製であり、
-# ここに足すと `effort`/`regimes`/`gbifCutoff`/`share`——観測努力・分類群構成の変化・
-# GBIF取り込みの打ち切り・分類群内での割合比較——という、件数や年・分類群の列を一切
-# 持たない `occurrence_place`（record_id/place_kind/place_id/method/built_from/
-# spec_version だけの表）には無関係な注記まで付いてしまう。**`organismSite`
-# （W12 1977年版の点内包判定）1件だけ**を付ける（コードレビュー指摘14。
-# `org_watershed`/`org_watershed_year` は `caveats.ts` の既存マッピングをそのまま
-# 複製した ORGANISM_TABLES に元から含まれており〔本PR より前から〕、v1 の
-# 表示ロジックとの一致を優先してここでは変更しない——同じ5件が本当に全部
-# 妥当かは別途 `caveats.ts` 側の見直しが要る）。
-OCCURRENCE_PLACE_TABLE = "occurrence_place"
-OCCURRENCE_PLACE_CAVEATS = ["organismSite"]
 
 MESH_CAVEATS = ["share", "effort"]
-MESH_TABLE_PREFIX = "mesh_"
-MESH_TABLES_EXTRA = ["species_mesh_year"]
 
 IAS_CAVEATS = ["isAlien"]
-IAS_TABLE = "ias_species"
 
 # P-1b（土地利用、docs/plans/PHASE_B_LANDUSE.md）。Phase A 以降で初めて足した
-# 新規の注記（registry/caveat.yaml 冒頭コメント参照）。scope は v1 の
-# landuse_watershed/landuse_change の2表——`caveats.ts` に対応物が無い
-# 新設テーブルなので、既存の add_table_group 呼び出しをそのまま真似た形で足す。
+# 新規の注記（registry/caveat.yaml 冒頭コメント参照）。scope は variable_theme='landuse'。
 LANDUSE_CAVEATS = ["landuseDefinitionChange"]
-LANDUSE_TABLES = ["landuse_watershed", "landuse_change"]
 
 # ADR-0009 決定4-C（2026-09-24、/code-review 指摘3）。Phase A 以降で
 # `landuseDefinitionChange` に続いて3件目に足した新規の注記
 # （registry/caveat.yaml 冒頭コメント・aboveLod エントリ直前のコメント参照）。
 # `water.transparency`（透明度）の above_lod（定量上限超え、26行）は
 # value_zero/value_lod のどちらにも入らない（列を作らない代わりに注記で
-# 伝える、という設計上の取引）。scope は `censored` と同じ既存の
-# MEASURE_TABLES を再利用する（`caveats.ts` の既存マッピングの複製ではない
-# 新規注記なので、MEASURE_CAVEATS〔複製リスト〕には足さず、LANDUSE_CAVEATS と
-# 同じ「専用リスト＋既存/専用テーブル一覧」の形にする）。
+# 伝える、という設計上の取引）。scope は `censoredLod` と同じ dataset='measurements'。
+# MEASURE_CAVEATS には足さず、専用リストにしてある。
 ABOVE_LOD_CAVEATS = ["aboveLod"]
 
 SYNTHETIC_CAVEATS = ["synthetic"]
-SYNTHETIC_TABLES = [
-    "observers",
-    "interventions",
-    "decisions",
-    "quality_transitions",
-    "quality_monthly",
-    "event_observers",
-]
 
 # 「渡されたテーブルの中に synthetic 対象が1つでもあれば、他のどのテーブルより先頭に
 # 置く」という優先規則を表す priority 値（既定は 0）。scope_kind ではなくここで表す
@@ -256,7 +209,7 @@ DEFAULT_PRIORITY = 0
 
 # Issue #48 PR-2（docs/plans/V2_SERVING_PR2.md §6）。`unitUnknown` は v1 に対応物が無い
 # 新規注記で、v2 facet だけ（scope_kind='variable'、PR-1 で型だけ予約していた kind の
-# 最初の消費者）に付ける。v1 の 'table' 行は作らない。
+# 最初の消費者）に付ける。
 UNIT_UNKNOWN_CAVEATS = ["unitUnknown"]
 
 
@@ -307,13 +260,10 @@ def _build_caveat_rows(entries: list[dict]) -> list[tuple]:
 
 
 def _build_table_scope_rows() -> list[tuple]:
-    """caveats.ts のテーブル→注記マッピング（v1、'table'/'table_prefix'）と、
-    v2（`lib/cube`）が引く facet（'dataset'/'place_kind'/'source_id'/'variable_theme'/
-    'variable'）を caveat_scope の行として作る。v2 facet は同じ caveat_id の v1
-    'table' 行の直後に足すだけで、v1 行自体は1行も変えない（このファイル冒頭の
-    docstring「v2 facet」節参照）。**例外は `censoredLod`/`unitUnknown`**（Issue #48
-    PR-2）: どちらも v1 に対応物が無い新規注記なので、v2 facet だけを作り v1 'table'
-    行は作らない。
+    """caveat_scope の行を作る。'table' 行は `sites`（zone/municipality）だけ。v1 の派生表・
+    原本表は D1 から DROP 済み（Issue #48 PR-5）なので、その表名の行（'table'/
+    'table_prefix'）は作らない。v2（`lib/cube`）が引く facet（'dataset'/'place_kind'/
+    'source_id'/'variable_theme'/'variable'）の行は変えない。
     """
     rows: list[tuple] = []
 
@@ -335,55 +285,27 @@ def _build_table_scope_rows() -> list[tuple]:
     # zone（SITES_CAVEATS[0]）は地点単位（place_kind='site'）にも流域集計
     # （place_kind='zone'）にも掛かる。municipality（SITES_CAVEATS[1]）は地点固有の
     # 属性（sites.municipality）なので place_kind='site' だけ。place_kind='site' での
-    # sort_order は v1（テーブル 'sites'）と同じ番号（zone=0, municipality=1）を保つよう
+    # sort_order は 'sites' テーブルと同じ番号（zone=0, municipality=1）を保つよう
     # municipality 側に `start=1` を明示する（2回の add_facet_group 呼び出しに分かれて
     # いるため、どちらも既定の 0 から採番すると place_kind='site' 上で衝突する）。
     add_facet_group("place_kind", ["site", "zone"], ["zone"])
     add_facet_group("place_kind", ["site"], ["municipality"], start=1)
 
-    add_table_group(MEASURE_TABLES, MEASURE_CAVEATS)
-    # ABOVE_LOD_CAVEATS は MEASURE_CAVEATS と同じ MEASURE_TABLES に掛かる別呼び
-    # 出し（MEASURE_CAVEATS を「caveats.ts の複製」のまま変えないため）。
-    # sort_order が 0 から振り直されて MEASURE_CAVEATS と衝突しないよう、
-    # `len(MEASURE_CAVEATS)` から続きで採番する。
-    add_table_group(MEASURE_TABLES, ABOVE_LOD_CAVEATS, start=len(MEASURE_CAVEATS))
-    # v2 facet だけ MEASURE_CAVEATS_V2（censored→censoredLod に差し替えた別リスト。
-    # Issue #48 PR-2）を使う。v1 'table' 行は上の MEASURE_CAVEATS のまま
-    # （censored を変えない）。start の基準は len(MEASURE_CAVEATS_V2) だが、
-    # 両リストは長さが同じ（3）なので v1 側と同じオフセットになる。
-    add_facet_group("dataset", ["measurements"], MEASURE_CAVEATS_V2)
-    add_facet_group("dataset", ["measurements"], ABOVE_LOD_CAVEATS, start=len(MEASURE_CAVEATS_V2))
-    # unitUnknown: v1 に対応物が無い新規注記（scope_kind='variable' の最初の消費者）。
+    add_facet_group("dataset", ["measurements"], MEASURE_CAVEATS)
+    # aboveLod は MEASURE_CAVEATS の続きの番号で同じ dataset に掛ける。
+    add_facet_group("dataset", ["measurements"], ABOVE_LOD_CAVEATS, start=len(MEASURE_CAVEATS))
+    # unitUnknown: scope_kind='variable' の最初の消費者。
     # refs は registry/variable_alias.csv から機械導出する（ハードコードしない）。
     add_facet_group("variable", _unit_unknown_variable_refs(), UNIT_UNKNOWN_CAVEATS)
 
-    add_table_group(ORGANISM_TABLES, ORGANISM_CAVEATS)
     add_facet_group("dataset", ["organism_records"], ORGANISM_CAVEATS)
-
-    add_table_group([OCCURRENCE_PLACE_TABLE], OCCURRENCE_PLACE_CAVEATS)
-    # occurrence_place（O-2a）は organismSite のみを持ち、上の
-    # add_facet_group("dataset", ["organism_records"], ORGANISM_CAVEATS) が
-    # organismSite を含んでいるので、ここで別の facet 行は要らない。
-
-    add_table_group(MESH_TABLES_EXTRA, MESH_CAVEATS)
+    # place_kind='grid01' は mesh_* 系（旧 mesh_ 接頭辞・species_mesh_year）をまとめて表す。
     add_facet_group("place_kind", ["grid01"], MESH_CAVEATS)
-
-    add_table_group([IAS_TABLE], IAS_CAVEATS)
     add_facet_group("source_id", ["moe_ias_list"], IAS_CAVEATS)
-
-    add_table_group(LANDUSE_TABLES, LANDUSE_CAVEATS)
     add_facet_group("variable_theme", ["landuse"], LANDUSE_CAVEATS)
-
-    add_table_group(SYNTHETIC_TABLES, SYNTHETIC_CAVEATS, priority=SYNTHETIC_PRIORITY)
     # 規約（D4）: 系列の source_id が NULL（is_synthetic=1）であることを
     # dataset='synthetic' という記号で表す。実在の dataset 値ではない。
     add_facet_group("dataset", ["synthetic"], SYNTHETIC_CAVEATS, priority=SYNTHETIC_PRIORITY)
-
-    # mesh_ 接頭辞は個別テーブル名ではなくパターンなので table_prefix で1回だけ持つ。
-    # v2 側は place_kind='grid01' の facet 行（上）が mesh_ プレフィックスと
-    # species_mesh_year の両方をまとめて表すので、ここでは facet を重ねて足さない。
-    for i, key in enumerate(MESH_CAVEATS):
-        rows.append((common.caveat_id(key), "table_prefix", MESH_TABLE_PREFIX, i, DEFAULT_PRIORITY))
 
     return rows
 

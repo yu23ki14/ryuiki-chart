@@ -1,10 +1,9 @@
-"""Phase B 突合ハーネス（docs/adr/0016-migration-plan.md の Phase B 受け入れゲート）。
+"""Phase B パイプラインの共通処理（読み取り専用オープン・テーブルの指紋・YAML 読み込み）。
 
-scripts/b01_derived_baseline.py（v1 派生33テーブルの指紋を作る）と
-scripts/b02_derived_compare.py（指紋と候補側を突き合わせる）が共有するロジックを
-このパッケージに置く。scripts/registry/ が build_*.py 群のオーケストレータ（r01）と
-共通処理（registry/common.py）を分けているのと同じ構成。
+`common`（`open_readonly`・`load_yaml`・`compute_fingerprint`。`scripts/migrate/common.py` が使う）と、
+`datasource`（`compute_fingerprint` が行を読む薄いラッパ）を持つ。v1 との突合
+（b01/b02）は Issue #48 PR-5 で消えた。
 
 このパッケージのどの関数も、渡された sqlite ファイルを読み取り専用でしか開かない
-（`fingerprint.py` の `open_readonly` 参照）。
+（`common.open_readonly` 参照）。
 """

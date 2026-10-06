@@ -13,6 +13,9 @@
 決定4の `not_detected`/`value_zero` の時限的な例外自体は直ちには撤去せず、
 `docs/plans/V2_SERVING.md` PR-6 で扱う。本文は変えない。
 
+**2026-10-06 追記（Issue #48 PR-5）**: registry の caveat `censored`（「0 とみなして集計」）を撤去し、`censoredLod` に一本化した
+（v1 の table 行が消えて読み手がホームだけになり、同じ意味の2キーが残ると再発するため）。
+
 **2026-09-26 追記（Issue #48 PR-2 着手、U1b）**: 上の「申し送り」（決定4本文の直後、
 「`lod` の系列を画面に出す最初の消費者が現れたら censoredZero/censoredLod のように
 key ごと分ける」）のとおり実装した。`censored` の本文・scope は1文字も変えず、`lod`

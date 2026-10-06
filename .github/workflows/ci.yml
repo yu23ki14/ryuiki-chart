@@ -1,72 +1,23 @@
 name: CI
 
-# docs/plans/PHASE_B_INTAKE.md #7。原本 3 ファイル（ryuiki/cells/derived, data/db/ に置く。
-# .gitignore で除外されているため CI には無い）を必要とせず、`registry/` 配下の手書き
-# ファイルとリポジトリのコードだけで完結する3ジョブ。Issue #29「縮小サンプル＋実行証明」で
-# `sample-gate`・`full-gate-proof-check` の2ジョブを追加した（後述）。
+# docs/plans/PHASE_B_INTAKE.md #7。原本（ryuiki/cells。data/db/ に置く。.gitignore で
+# 除外されているため CI には無い）を必要とせず、`registry/` 配下の手書きファイルと
+# リポジトリのコードだけで完結する。Issue #48 PR-5 で v1（派生33表・v1 射影・v1 との突合ゲート）を
+# 撤去したので、v2 だけの検査になっている。
 #
 # - registry: `scripts/r01_build_registry.py --files-only` で作った registry.sqlite から
 #   generated.ts / generated-client.ts を再生成し、コミット済みの内容と一致するかを
 #   `git diff --exit-code` で機械的に確認する（レジストリと生成物のずれをここで落とす）。
 # - web: lint・型検査・テスト（`generated.test.ts` の再生成チェックが走るよう、
 #   ここでも --files-only で registry.sqlite を用意する）。
-# - reconcile: Phase B 突合ハーネス（scripts/b01_derived_baseline.py /
-#   scripts/b02_derived_compare.py / scripts/b03_build_observation.py /
-#   scripts/b04_build_cube.py / scripts/b05_project_v1.py / scripts/b06_build_occurrence.py /
-#   scripts/b07_build_occurrence_cube.py / scripts/b08_project_occurrence_v1.py /
-#   scripts/b09_build_occurrence_place.py / scripts/b13_build_summary.py /
-#   scripts/reconcile/*.py / scripts/migrate/*.py）のフィクスチャテストと、以下の構造検証
-#   （いずれも data/db/*.sqlite・data/db/derived.sqlite を一切必要としない）:
-#     - reports/derived_baseline.json がコミットされ、schema_version が一致すること。
-#     - scripts/reconcile/expected_diffs.yaml が読めて形（テーブル名 -> 宣言のリスト）を
-#       満たし、テーブル名が derived_baseline.json に実在し、key の要素数がそのテーブルの
-#       キー列数と一致し、kind が3種のいずれかであること
-#       （scripts/b02_derived_compare.py の `main()` と同じ `common.validate_expected_diffs`
-#       を呼ぶ。検証ロジックの二重定義を避けるため）。
-#     - scripts/migrate/period_exceptions.yaml が読めて、各エントリが
-#       period_grain_override/expected_row_count/reason/restoration_plan を持つこと
-#       （`migrate.period.validate_period_exceptions_shape`）。
-#     - scripts/migrate/source_regions.yaml（出典→region、region→utc_offset。
-#       consumer ごとに複数のスクリプトが共有する——occurrence
-#       〔scripts/b06_build_occurrence.py、O-1a〕と土地利用
-#       〔scripts/b03_build_observation.py、P-1b〕）が読めて、各エントリが
-#       必須キー（`consumer` を含む——省略すると構造検証で止める。オーナー
-#       決定: 省略時に既定値へ黙って落ちる設計は採らない）を持ち、
-#       utc_offset が `^[+-][0-9]{2}:[0-9]{2}$` の形で、expected_row_count
-#       が整数であること（`migrate.source_regions.validate_source_regions_shape`）。
-#     - scripts/migrate/occurrence_period_shapes.yaml（O-1a。observed_on の12形の宣言。
-#       形の定義自体——正規表現・period_grain・展開規則——はコード
-#       〔scripts/migrate/occurrence_period.py の `_SHAPE_DEFS`〕が正で、この YAML には
-#       expected_row_count/note しか持たない）が読めて、各エントリが必須キーを持ち、
-#       expected_row_count が整数で、宣言された形の名前の集合がコードの12形と
-#       過不足なく一致すること（`migrate.occurrence_period.
-#       validate_occurrence_period_shapes_shape`）。
-#     - scripts/migrate/occurrence_cube_declarations.yaml（O-1b。leaf セル
-#       〔grain='survey_period'〕の元記録数の宣言）が読めて、必須キーを持ち、
-#       expected_row_count が整数で、宣言名の集合が `leaf_cell_source_rows` 1件と
-#       過不足なく一致すること（`b07_build_occurrence_cube.
-#       validate_cube_declarations_shape`）。
-#     - scripts/migrate/occurrence_place_declarations.yaml（O-2a。ポリゴン数・
-#       NULL件数・解決件数の宣言）が読めて、必須キーを持ち、expected_row_count が
-#       整数で、宣言名の集合が3件と過不足なく一致すること
-#       （`b09_build_occurrence_place.validate_place_declarations_shape`）。
-#     - scripts/migrate/occurrence_watershed_v1_declarations.yaml（O-2a。v1のメモ化と
-#       正確な結果の食い違い〔記録単位〕の宣言）が読めて、必須キーを持ち、
-#       `memo_moved_records.breakdown` の3値の合計が `expected_count` と一致すること
-#       （`b08_project_occurrence_v1.validate_watershed_declarations_shape`）。
-#     - registry/taxon/redlist_category.yaml・redlist_category_alias.csv・
-#       assessment_list.yaml・assessment_scope_exclusions.yaml（P-2。taxon_assessment の
-#       語彙4ファイル）が読めて、code/list_id/(list_id,scientific_name) の重複が無く、
-#       alias の code・除外の reasons が語彙に実在し、除外の実測件数（7種、
-#       domestic_origin 6件・subspecies_binomial_contraction 2件）と一致すること
-#       （`registry.build_taxon_assessment` の `load_redlist_category_codes`/
-#       `load_redlist_category_alias`/`load_assessment_lists`/
-#       `load_assessment_scope_exclusions`。原本DB・moe_ias_list.csvは使わない
-#       ——taxon_assessment テーブル自体の構築は `--files-only` の対象外のまま）。
-#   docs/plans/PHASE_B_RECONCILIATION.md §5「CI の限界」で明言しているとおり、
-#   このジョブが保証するのはハーネス自体の正しさとこれらの構造検証だけ。実データ
-#   （data/db/derived.sqlite、14GB）に対する b01 の再実行や b02 の完全モード突合は、
-#   原本のある環境でしか走らない（ここではやらないし、やれない）。
+# - reconcile: パイプライン（scripts/b03〜b07・b09・b13・scripts/migrate/*.py・
+#   scripts/reconcile/common.py）のフィクスチャテスト（pytest）と、宣言ファイルの構造検証
+#   （原本 DB を一切必要としない）。
+# - sample-gate: 縮小サンプル（data/sample/）を使い捨ての checkout に展開して v2 を構築し、
+#   b04/b07/b09 の自己不変条件と、凍結した serving スナップショット
+#   （data/sample/serving_snapshot.json）との一致を見る。
+# - full-gate-proof-check: 原本のある手元で回した b00 の証明
+#   （reports/serving_fingerprint.json）が今のコードに対応しているかを見る。
 
 on:
   push:
@@ -168,18 +119,13 @@ jobs:
         run: pnpm run test
 
   reconcile:
-    name: reconcile (Phase B harness fixtures; does NOT touch real data)
-    # ここが保証するのは docs/plans/PHASE_B_RECONCILIATION.md §5 のとおり、次の3点だけ:
-    #   1. ハーネス自体（b01〜b05/reconcile/*/migrate/*）が正しく動くこと
-    #      （scripts/tests/ は自前でフィクスチャ sqlite を作るので、
-    #      原本 data/db/*.sqlite・data/db/derived.sqlite（.gitignore 済み、
-    #      合計14GB）は要らないし、ここでは一切開かない）。
-    #   2. reports/derived_baseline.json がコミットされていて、
-    #      common.SCHEMA_VERSION と一致すること。
-    #   3. 宣言ファイル2つ（expected_diffs.yaml / period_exceptions.yaml）が
-    #      読めて、原本DBを必要としない範囲の形を満たすこと。
-    # 保証しないこと: 実データに対する b01 の再実行、b02 の完全モード突合
-    # （行レベルの内訳）。これらは原本のある環境でしか走らない。
+    name: reconcile (Phase B pipeline fixtures; does NOT touch real data)
+    # ここが保証するのは次の2点だけ:
+    #   1. パイプライン（b03〜b07・b09・b13・migrate/*・reconcile/common.py）が
+    #      フィクスチャ上で正しく動くこと（scripts/tests/ は自前でフィクスチャ sqlite を
+    #      作るので、原本 data/db/*.sqlite は要らないし、ここでは一切開かない）。
+    #   2. 宣言ファイルが読めて、原本DBを必要としない範囲の形を満たすこと。
+    # 保証しないこと: 実データに対する挙動。原本のある環境でしか走らない（b00）。
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -191,57 +137,19 @@ jobs:
       - name: Install deps
         run: pip install -r requirements.txt
 
-      - name: Phase B 突合ハーネスのフィクスチャテスト（原本DBは使わない）
+      - name: Phase B パイプラインのフィクスチャテスト（原本DBは使わない）
         run: pytest
 
-      - name: derived_baseline.json がコミットされ schema_version が一致することを確認
+      - name: 宣言ファイル（period_exceptions.yaml / time_label_conventions.yaml / source_regions.yaml / occurrence_period_shapes.yaml / occurrence_cube_declarations.yaml）の構造検証（原本DBは使わない）
         run: |
           python3 - <<'PY'
-          import json
-          import pathlib
-          import sys
-
-          sys.path.insert(0, "scripts")
-          from reconcile import common
-
-          path = pathlib.Path("reports/derived_baseline.json")
-          if not path.exists():
-              sys.exit(f"{path} が無い。scripts/b01_derived_baseline.py で作ってコミットすること。")
-
-          data = json.loads(path.read_text(encoding="utf-8"))
-          if data.get("schema_version") != common.SCHEMA_VERSION:
-              sys.exit(
-                  f"schema_version が想定と異なる（期待 {common.SCHEMA_VERSION}、"
-                  f"実際 {data.get('schema_version')!r}）。"
-                  "scripts/b01_derived_baseline.py を実行して作り直すこと。"
-              )
-          print(f"OK: {path} (schema_version={data['schema_version']}, tables={data['table_count']})")
-          PY
-
-      - name: 宣言ファイル（expected_diffs.yaml / period_exceptions.yaml / time_label_conventions.yaml / source_regions.yaml / occurrence_period_shapes.yaml / occurrence_cube_declarations.yaml）の構造検証（原本DBは使わない）
-        run: |
-          python3 - <<'PY'
-          import json
           import pathlib
           import sys
 
           sys.path.insert(0, "scripts")
           import b07_build_occurrence_cube as b07
-          import b08_project_occurrence_v1 as b08
           import b09_build_occurrence_place as b09
           from migrate import occurrence_period, period, source_regions
-          from reconcile import common
-
-          baseline = json.loads(pathlib.Path("reports/derived_baseline.json").read_text(encoding="utf-8"))
-
-          # scripts/b02_derived_compare.py の main() が呼ぶのと同じ関数を呼ぶ
-          # （検証ロジックの二重定義を避ける。common.load_expected_diffs 自体も
-          # 「宣言のリストになっているか」という形を検証する）。
-          expected_diffs_path = pathlib.Path("scripts/reconcile/expected_diffs.yaml")
-          expected_diffs = common.load_expected_diffs(expected_diffs_path)
-          common.validate_expected_diffs(expected_diffs, baseline["tables"], str(expected_diffs_path))
-          n_declared = sum(len(v) for v in expected_diffs.values())
-          print(f"OK: {expected_diffs_path}（テーブル{len(expected_diffs)}件・宣言{n_declared}件）")
 
           # scripts/b03_build_observation.py が呼ぶのと同じ読み込みで、かつ
           # CI ではさらに必須キーが揃っていることまで検証する。
@@ -283,15 +191,6 @@ jobs:
           place_declarations_path = pathlib.Path("scripts/migrate/occurrence_place_declarations.yaml")
           b09.validate_place_declarations_shape(place_declarations_path)
           print(f"OK: {place_declarations_path}")
-
-          # occurrence_watershed_v1_declarations.yaml（O-2a。scripts/b08_project_occurrence_v1.py
-          # が読む、v1のメモ化と正確な結果の食い違い〔記録単位〕の宣言）も検証する
-          # （構造が occurrence_cube_declarations.yaml 等とは違う専用の検証関数）。
-          watershed_declarations_path = pathlib.Path(
-              "scripts/migrate/occurrence_watershed_v1_declarations.yaml"
-          )
-          b08.validate_watershed_declarations_shape(watershed_declarations_path)
-          print(f"OK: {watershed_declarations_path}")
           PY
 
       - name: taxon_assessment（P-2）の語彙4ファイルの構造検証（原本DBは使わない）
@@ -321,26 +220,24 @@ jobs:
           PY
 
   sample-gate:
-    name: sample-gate (v1+v2 pipeline reconciliation on the reduced sample)
-    # Issue #29「縮小サンプル＋実行証明」A-4。data/sample/（コミット済みのテキスト、
-    # 原本ではない）を使い捨ての checkout の中で正規のパス（data/db/・data/processed/）に
-    # 展開し、v1（build-derived.mjs・build-geo.mjs・build-biota.mjs。build-water-geo.mjs は
-    # サンプルに無い入力を要求するため対象外）と v2（r01、b03〜b12）の両方を回して、
-    # 33表を scripts/b02_run_all_gates.py で b02 と同じように突き合わせる。
+    name: sample-gate (v2 pipeline invariants + frozen serving snapshot on the reduced sample)
+    # Issue #29「縮小サンプル＋実行証明」A-4、Issue #48 PR-5 で v2 だけに縮めた。data/sample/
+    # （コミット済みのテキスト、原本ではない）を使い捨ての checkout の中で正規のパス
+    # （data/db/・data/processed/）に展開し、v2（r01、b03〜b13）を回す。b04/b07/b09 の自己不変条件
+    # （キューブだけで成り立つ検証・無作為抽出セルの独立再計算）はこの構築の中で走る。
+    # そのうえで、画面・API・AI と同じ問い合わせ層（`@/lib/cube`）の出力を凍結した
+    # スナップショット（data/sample/serving_snapshot.json）と突き合わせる。
     #
-    # これが保証すること: 「v1 と一致しているか」を毎回のCIで確かめる（サンプル規模で）。
+    # これが保証すること: v2 の構築が不変条件を満たすこと、問い合わせ層の出力が（サンプル規模で）
+    # コミット済みのスナップショットから動いていないこと。
     # これが保証しないこと: サンプルに無い行・癖・出典への挙動。サンプルの件数の宣言
-    # （data/sample/declaration_counts.yaml）が原本の件数を語ること。HEAD の全量で v1 と
-    # v2 が一致すること（`full-gate-proof-check` が別に保証しようとするのは「証明が今の
-    # コードに対応しているか」までで、真偽そのものは確かめられない）。
-    # 詳細は docs/plans/PHASE_B_RECONCILIATION.md §5「保証すること・しないこと」参照。
+    # （data/sample/declaration_counts.yaml）が原本の件数を語ること。全量での挙動
+    # （`full-gate-proof-check` が確かめるのは「証明が今のコードに対応しているか」まで）。
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     env:
       RYUIKI_REGISTRY_DB: ${{ github.workspace }}/data/db/registry.sqlite
       SCRATCH: /tmp/sample-gate-reports
-      # 以前は下の "v2 パイプラインを構築" ステップの5つの --count-overlay に
-      # このパスを直書きしていた（code-review 指摘: 同じ文字列の繰り返し）。
       COUNT_OVERLAY: data/sample/declaration_counts.yaml
     steps:
       - uses: actions/checkout@v4
@@ -355,6 +252,7 @@ jobs:
       - name: サンプルを正規のパスへ展開（data/db/*.sqlite・data/processed/*）
         # GITHUB_ACTIONS 環境変数（値 'true'）が既に立っているので、CI ではこれだけで
         # 動く（--i-am-in-a-throwaway-clone は手元の一時 clone で試すときに使う）。
+        # 本物のチェックアウトでは絶対に実行しない。
         run: python3 scripts/s02_materialize_sample.py
 
       - uses: pnpm/action-setup@v4
@@ -373,29 +271,22 @@ jobs:
 
       - name: better-sqlite3 のネイティブバインディングをビルド
         # pnpm 10 は既定でサードパーティの postinstall スクリプトを実行しない
-        # （`Ignored build scripts` 警告）。build-derived.mjs 等が
+        # （`Ignored build scripts` 警告）。serving-snapshot.mts が
         # `require("better-sqlite3")` するのに必要なので、明示的にビルドする。
         working-directory: web
         run: pnpm rebuild better-sqlite3
 
-      - name: v1 を構築（build-derived / build-geo / build-biota）
-        working-directory: web
-        run: |
-          node scripts/build-derived.mjs
-          node scripts/build-geo.mjs
-          node scripts/build-biota.mjs
-
       - name: v2 レジストリを構築（r01。--files-only ではないフルビルド）
         run: python3 scripts/r01_build_registry.py
 
-      - name: v2 パイプラインを構築（b03〜b13。--count-overlay でサンプルの件数を使う）
+      - name: v2 を構築（b03 → b04 → b06 → b09 → b07 → b13。--count-overlay でサンプルの件数を使う）
+        # `pnpm run build:v2` と同じ順。b04/b07/b09 の自己不変条件はここで走る。
         run: |
           mkdir -p "$SCRATCH"
           python3 scripts/b03_build_observation.py \
             --count-overlay "$COUNT_OVERLAY" \
             --report "$SCRATCH/phase_b_fact_slice.md"
           python3 scripts/b04_build_cube.py
-          python3 scripts/b05_project_v1.py --out data/db/v1_projection.sqlite
           python3 scripts/b06_build_occurrence.py \
             --count-overlay "$COUNT_OVERLAY" \
             --report "$SCRATCH/phase_b_occurrence.md"
@@ -405,99 +296,29 @@ jobs:
             --out data/db/v2.sqlite \
             --count-overlay "$COUNT_OVERLAY"
           python3 scripts/b13_build_summary.py
-          python3 scripts/b08_project_occurrence_v1.py \
-            --cube-db data/db/v2.sqlite \
-            --out data/db/v1_projection_occurrence.sqlite \
-            --count-overlay "$COUNT_OVERLAY" \
-            --ias-report "$SCRATCH/phase_b_taxon_assessment.md"
-          python3 scripts/b10_project_documents_v1.py
-          python3 scripts/b11_project_place_v1.py --out data/db/v1_projection_place.sqlite
-          python3 scripts/b12_project_taxon_v1.py --out data/db/v1_projection_taxon.sqlite
-
-      - name: 診断用の v1互換キューブを構築（Issue #48 PR-2 §1(d)。合成データを含めた b03〜b04→b13→b05・b11）
-        # b03 の合成データ除外（既定 on）は data/db/v1_projection.sqlite を v1
-        # （サンプルの derived_baseline、合成データを含む）と食い違わせる。ここで
-        # `--include-synthetic` の別ファイル（v2_v1compat.sqlite）を作り、b05 を
-        # `--out` 無し（既定の data/db/v1_projection.sqlite）で回すことで、直前の
-        # ステップが書いた「合成データ除外後」の v1_projection.sqlite を
-        # 「合成データを含む」内容へ意図的に上書きする——次の33表ゲート
-        # （scripts/b02_run_all_gates.py、無変更）がこの内容を読み、
-        # 宣言済み差分20件のまま緑になる（scripts/b03_build_observation.py
-        # モジュール docstring「合成データを除く」節・scripts/b00_run_full_gate.py
-        # 参照）。
-        #
-        # v2_v1compat.sqlite は最初に v2.sqlite（observation/occurrence 両方の
-        # キューブが揃っている）を丸ごと複製してから作る——b03/b04 は
-        # `migrate.common.staged_table` で `observation`/`observation_agg` だけを
-        # 差し替えるため、複製した `occurrence`/`occurrence_place`/
-        # `occurrence_agg`（合成データの影響を受けない）はそのまま残る。これが
-        # 無いと、直後の b11（`--cube-db data/db/v2_v1compat.sqlite`）の (b) 系譜
-        # チェックが `org_watershed`（occurrence 系）の突き合わせ先を見つけられず
-        # 落ちる（scripts/b00_run_full_gate.py の `_COPY_V2_FOR_V1COMPAT_BEFORE`
-        # 定義のコメント参照）。
-        #
-        # b04 の直後に b13（`--v2-db data/db/v2_v1compat.sqlite`）を挟み、
-        # summary_variable_catalog/summary_place_variable も「合成データ込み」の
-        # observation_agg から作り直す（Issue #48 PR-2 統合後 修正B）。これが無いと
-        # この2表は v2.sqlite を複製した時点の「合成データ除外後」の内容のまま残り、
-        # serving-diff の `--v1compat-db` 接続が既定の `source:'summary'` で読んだ
-        # ときに本番と同じ値しか返らず、synthetic_excluded 規則が summary 経由の
-        # 問い合わせ（sites_list 等）で機能しない
-        # （web/scripts/lib/serving/adapters-v2.ts の runV2Query docstring 参照）。
-        #
-        # b11 も `--out` 無し（既定の data/db/v1_projection_place.sqlite）で
-        # 回し、直前のステップが書いた `watershed_rollup`（合成データ除外後の
-        # site_var から計算したもの）を「合成データを含む」内容へ上書きする——
-        # site_var が変われば watershed_rollup の site_var_n 等も動くため、
-        # b05 だけを上書きしても不十分（実測で watershed_rollup が不一致になる
-        # ことを確認した）。
-        run: |
-          cp data/db/v2.sqlite data/db/v2_v1compat.sqlite
-          python3 scripts/b03_build_observation.py \
-            --include-synthetic \
-            --out data/db/v2_v1compat.sqlite \
-            --count-overlay "$COUNT_OVERLAY" \
-            --report "$SCRATCH/phase_b_fact_slice_v1compat.md"
-          python3 scripts/b04_build_cube.py \
-            --out data/db/v2_v1compat.sqlite \
-            --unit-evidence-declarations-yaml scripts/migrate/unit_evidence_declarations_v1compat.yaml
-          python3 scripts/b13_build_summary.py --v2-db data/db/v2_v1compat.sqlite
-          python3 scripts/b05_project_v1.py --cube-db data/db/v2_v1compat.sqlite
-          python3 scripts/b11_project_place_v1.py --cube-db data/db/v2_v1compat.sqlite
 
       - name: サンプルの成果物を作り直し、コミット済みのものと一致することを確認
         # scripts/s03_verify_sample_artifacts.py は原本を一切開かない（材料化済みの
-        # data/db/ryuiki.sqlite＝サンプルそのものと、コミット済みの
-        # reports/derived_baseline.json だけを読む）。v1 のスクリプトを触ると
-        # derived_baseline.json/.md の差分として、v2 がずれると次のゲートの不一致として見える。
+        # data/db/ryuiki.sqlite＝サンプルそのものだけを読む）。
         run: |
           python3 scripts/s03_verify_sample_artifacts.py
-          git diff --exit-code \
-            data/sample/declaration_counts.yaml data/sample/derived_keys.yaml \
-            data/sample/derived_baseline.json data/sample/derived_baseline.md
+          git diff --exit-code data/sample/declaration_counts.yaml
 
-      - name: 33表の統合ゲート（宣言済み差分20件、一致+宣言済み差分=33、不一致0）
-        # --expected-diffs は正本（scripts/reconcile/expected_diffs.yaml）をそのまま使う。
-        # サンプル専用の免除ファイルは持たない（org_norm/species2 の Sirosporium
-        # タイブレークもサンプル規模で再現することを確認済み。属の投票元3行を
-        # 漏らさず閉包に入れれば、正本の20キー全部がサンプルでも適用される）。
+      - name: serving スナップショットがコミット済みのものと一致することを確認
+        # 免除リストは持たない。スナップショットの更新自体が「出力が変わった」という宣言になる。
         run: |
-          python3 scripts/b02_run_all_gates.py \
-            --baseline-json data/sample/derived_baseline.json \
-            --expected-diffs scripts/reconcile/expected_diffs.yaml \
-            --out-md "$SCRATCH/derived_reconciliation_all.md" \
-            | tee "$SCRATCH/gate_summary.txt"
-
-      - name: 空振りしていないことを数値で確かめる（一致+宣言済み差分=33、不一致=0、対象外=0、適用した宣言=20）
-        # scripts/s05_check_sample_gate_summary.py を呼ぶだけ（ロジックは
-        # scripts/tests/test_s05_check_sample_gate_summary.py で検証済み。
-        # ワークフローに直接埋め込んだ Python はテストされないため——レビュー指摘）。
-        run: python3 scripts/s05_check_sample_gate_summary.py --summary-file "$SCRATCH/gate_summary.txt"
+          git ls-files --error-unmatch data/sample/serving_snapshot.json >/dev/null
+          (cd web && pnpm run serving:snapshot -- --mode snapshot)
+          if [ -n "$(git status --porcelain -- data/sample/serving_snapshot.json)" ]; then
+            git diff data/sample/serving_snapshot.json | head -100
+            echo "::error::serving スナップショットが動いた。意図した変更なら、'pnpm run serving:snapshot -- --mode diff' の before/after 表を PR に貼り、data/sample/serving_snapshot.json を更新してコミットすること。"
+            exit 1
+          fi
 
   full-gate-proof-check:
-    name: full-gate-proof-check (reports/full_gate_proof.json is current)
+    name: full-gate-proof-check (reports/serving_fingerprint.json is current)
     # Issue #29「縮小サンプル＋実行証明」B。原本のある手元で回した
-    # scripts/b00_run_full_gate.py の証明（reports/full_gate_proof.json、コミット済み）が
+    # scripts/b00_run_full_gate.py の証明（reports/serving_fingerprint.json、コミット済み）が
     # 「今の HEAD のパイプラインコード」に対応しているかを確かめる。**証明が本物である
     # ことまでは確かめられない**（手で書ける値でもある）——確かめられるのは「パイプラインの
     # パスの tree/blob ハッシュが証明に書かれた値と一致するか」「data/sample/manifest.json
@@ -509,7 +330,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: 証明ファイルがコミットされていることを確認
-        run: test -f reports/full_gate_proof.json
+        run: test -f reports/serving_fingerprint.json
 
       - name: パイプラインのパスの tree/blob ハッシュを HEAD で計算し直し、証明と突き合わせる
         # scripts/s04_check_full_gate_proof.py を呼ぶだけ（ロジックは

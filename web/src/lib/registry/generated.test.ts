@@ -73,12 +73,13 @@ describe.skipIf(!hasRegistryDb)("build:registry:ts は再生成しても差分�
  * 生成物の形の健全性（regenerate できない環境でも実行できる、軽い形チェック）。
  */
 describe("generated.ts / generated-client.ts の形", () => {
-  it("caveat は cells.notes 由来（207件）を含まない18件のまま", () => {
+  it("caveat は cells.notes 由来（207件）を含まない17件のまま", () => {
     // P-1b（土地利用）で Phase A 以降初めて新規の注記（landuseDefinitionChange）を
     // 1件足した（14→15）。さらに ADR-0009 決定4-C（above_lod、/code-review 指摘3）で
     // aboveLod を1件足した（15→16）。Issue #48 PR-2 で censoredLod・unitUnknown の
-    // 2件を足した（16→18）。registry/caveat.yaml 冒頭コメント参照。
-    expect(GENERATED_CAVEATS).toHaveLength(18);
+    // 2件を足した（16→18）。PR-5 で `censored` を撤去（18→17）。registry/caveat.yaml 冒頭コメント参照。
+    expect(GENERATED_CAVEATS).toHaveLength(17);
+    expect(GENERATED_CAVEATS.some((c) => c.key === "censored")).toBe(false);
     expect(GENERATED_CAVEATS.every((c) => !c.key.startsWith("cells."))).toBe(true);
   });
 
@@ -100,10 +101,10 @@ describe("generated.ts / generated-client.ts の形", () => {
     ]);
     expect(GENERATED_CAVEAT_SCOPE.length).toBeGreaterThan(0);
     expect(GENERATED_CAVEAT_SCOPE.every((s) => KNOWN_KINDS.has(s.scopeKind))).toBe(true);
-    // v1（table/table_prefix）は v2 facet を足しても1行も減らない（並存。撤去は PR-5）。
-    expect(GENERATED_CAVEAT_SCOPE.some((s) => s.scopeKind === "table" || s.scopeKind === "table_prefix")).toBe(
-      true,
-    );
+    // v1 の表名の行は撤去済み（PR-5）。残る 'table' 行は sites だけで、'table_prefix' は無い。
+    expect(GENERATED_CAVEAT_SCOPE.filter((s) => s.scopeKind === "table").every((s) => s.scopeRef === "sites")).toBe(true);
+    expect(GENERATED_CAVEAT_SCOPE.some((s) => s.scopeKind === "table" && s.scopeRef === "sites")).toBe(true);
+    expect(GENERATED_CAVEAT_SCOPE.some((s) => s.scopeKind === "table_prefix")).toBe(false);
     expect(
       GENERATED_CAVEAT_SCOPE.some(
         (s) =>

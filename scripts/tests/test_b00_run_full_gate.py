@@ -9,19 +9,19 @@
 `PIPELINE_EXPLICIT_FILES`/`PIPELINE_DIRS`/`PIPELINE_FILE_GLOBS` は手で書いた
 宣言であり、`scripts/taxon_namespaces.py`（b06・registry/build_taxon.py が
 import）・`scripts/schema_registry.sql`（registry/common.py が読む）・
-`web/scripts/lib/csv.mjs`（build-geo.mjs が import）の3件を実際に取りこぼして
+`web/scripts/lib/csv.mjs`（当時は build-geo.mjs が import。いまは build-registry-ts.mjs）の3件を実際に取りこぼして
 いた（レビュー指摘・実測で確認済み）。3件を足すだけでは同種の漏れが将来また
 起きるため、ここでは**実際にコードを読んで**パイプラインが依存するファイルを
 機械的に洗い出し、`collect_pipeline_paths()` の範囲と突き合わせる:
 
 1. **Python の import**（`python_import_closure`）: パイプラインの入口
-   （r01・b03〜b12、b00 自身、および b00 がサブプロセスで呼ぶ
-   b02_run_all_gates）から、ローカルの import 文を AST で再帰的にたどる。
-   b00 自身を入口に含めるのは、この回で b00 が s05 を import するように
-   なった（D1）のと同種の漏れ——「b00 が新しく import したファイルを
-   PIPELINE_EXPLICIT_FILES に足し忘れる」——を機械的に検出するため。
-2. **JS の import**（`js_import_closure`）: v1 の3本（build-derived・
-   build-biota・build-geo）から、相対パスの import を正規表現で再帰的にたどる。
+   （`PIPELINE_STEPS` の各段と b00 自身）から、ローカルの import 文を AST で
+   再帰的にたどる。b00 自身を入口に含めるのは、「b00 が新しく import した
+   ファイルを PIPELINE_EXPLICIT_FILES に足し忘れる」漏れを機械的に検出するため。
+2. **JS の import**（`js_import_closure`）: executor（serving-snapshot.mts）と
+   build-registry-ts.mjs から、相対パスの import を正規表現で再帰的にたどる
+   （`@/` の別名で import する `web/src/lib/cube` は `PIPELINE_EXPANDED_DIRS` で
+   ディレクトリごと対象にしている）。
 3. **文字列リテラルで読むファイル**（`find_literal_filename_references`）:
    import ではなく `ROOT / "scripts" / "schema_registry.sql"` のような
    パス結合で読む `.sql`/`.yaml`/`.csv`/`.json` 等を、パス結合の最後の
@@ -51,16 +51,16 @@ import pipeline_inputs  # noqa: E402
 def test_collect_pipeline_paths_includes_known_files():
     paths = b00.collect_pipeline_paths()
     assert "scripts/b03_build_observation.py" in paths
-    assert "scripts/b10_project_documents_v1.py" in paths
+    assert "scripts/b13_build_summary.py" in paths
     assert "scripts/r01_build_registry.py" in paths
     assert "scripts/registry" in paths
     assert "scripts/migrate" in paths
     assert "scripts/reconcile" in paths
     assert "registry" in paths
-    assert "reports/derived_baseline.json" in paths
-    assert "web/scripts/build-derived.mjs" in paths
-    assert "web/scripts/build-geo.mjs" in paths
-    assert "web/scripts/build-biota.mjs" in paths
+    # 配信側のスナップショット（Issue #48 PR-5）。
+    assert "web/serving_queries.yaml" in paths
+    assert "web/scripts/serving-snapshot.mts" in paths
+    assert "web/scripts/lib/csv.mjs" in paths
     assert "requirements.txt" in paths
     assert "web/package.json" in paths
     assert "web/pnpm-lock.yaml" in paths
@@ -73,7 +73,10 @@ def test_collect_pipeline_paths_excludes_tests_and_docs():
     paths = b00.collect_pipeline_paths()
     assert not any(p.startswith("scripts/tests/") for p in paths)
     assert not any(p.startswith("docs/") for p in paths)
-    assert not any(p.startswith("web/src/") for p in paths)
+    # web/src は `web/src/lib/cube`・`web/src/lib/registry`（テスト・フィクスチャを除く）と、
+    # それらが import する単体ファイル（db.ts・schema-cube.ts）だけが入る。
+    allowed = ("web/src/lib/cube/", "web/src/lib/registry/", "web/src/lib/db.ts", "web/src/db/schema-cube.ts")
+    assert not any(p.startswith("web/src/") and not p.startswith(allowed) for p in paths)
     assert not any(p.startswith("data/sample/") for p in paths)
 
 
@@ -93,7 +96,6 @@ def test_collect_pipeline_paths_is_deterministic():
 PYTHON_ENTRY_POINTS: tuple[str, ...] = tuple(
     dict.fromkeys(script for script, _args in b00.PIPELINE_STEPS)
 ) + (
-    "scripts/b02_run_all_gates.py",
     "scripts/b00_run_full_gate.py",
 )
 
@@ -206,14 +208,15 @@ def test_python_import_closure_mutation_taxon_namespaces_would_be_caught():
 
 
 # ---------------------------------------------------------------------------
-# JS: v1 の3本から相対 import を正規表現で再帰的にたどる
+# JS: executor・registry の生成スクリプトから相対 import を再帰的にたどる
 # ---------------------------------------------------------------------------
 
-JS_ENTRY_POINTS: tuple[str, ...] = (
-    "web/scripts/build-derived.mjs",
-    "web/scripts/build-biota.mjs",
-    "web/scripts/build-geo.mjs",
+# serving-snapshot.mts は担当 B が足す（無い間は入口から外れるだけ。統合後は必ず存在する）。
+JS_ENTRY_POINTS: tuple[str, ...] = tuple(
+    ep for ep in ("web/scripts/build-registry-ts.mjs", "web/scripts/serving-snapshot.mts")
+    if (ROOT / ep).is_file()
 )
+_JS_EXTENSION_CANDIDATES = ("", ".ts", ".mts", ".mjs", ".js")
 
 _JS_IMPORT_RE = re.compile(r"""import\s+(?:[^'"]+?\s+from\s+)?["']([^'"]+)["']""")
 
@@ -224,9 +227,13 @@ def _find_local_js_imports(js_file: pathlib.Path) -> set[pathlib.Path]:
     for m in _JS_IMPORT_RE.finditer(text):
         spec = m.group(1)
         if spec.startswith("."):
-            resolved = (js_file.parent / spec).resolve()
-            if resolved.is_file():
-                found.add(resolved)
+            base = (js_file.parent / spec).resolve()
+            # TS の ESM は `./x.js` と書いて実体が `x.ts`、のことがある。
+            stem = base.with_suffix("") if base.suffix in (".js", ".mjs") else base
+            for candidate in (base, *(pathlib.Path(str(stem) + ext) for ext in _JS_EXTENSION_CANDIDATES[1:])):
+                if candidate.is_file():
+                    found.add(candidate)
+                    break
     return found
 
 
@@ -245,6 +252,7 @@ def js_import_closure(entry_points: tuple[str, ...]) -> set[pathlib.Path]:
 
 
 def test_js_import_closure_is_covered_by_pipeline_paths():
+    assert "web/scripts/build-registry-ts.mjs" in JS_ENTRY_POINTS
     closure = js_import_closure(JS_ENTRY_POINTS)
     pipeline_paths = set(b00.collect_pipeline_paths())
     uncovered = sorted(
@@ -307,21 +315,18 @@ def _known_data_input_basenames() -> set[str]:
 
 
 # `data/sample/` は `scripts/s01_build_sample.py` が書く CI サンプル固定物の
-# 置き場で、`reports/derived_baseline.json` などパイプライン本体と同じ
-# ファイル名（例: `derived_baseline.json`・`derived_keys.yaml`）を持つものが
-# ある。この2つは中身も由来も別物（前者は縮小サンプル向けに s01/s03 が作る
-# 出力、後者は原本を読む b01/reconcile が使う正）で、パイプライン本体の
-# エントリポイント（`PYTHON_ENTRY_POINTS`）はどれも `data/sample/` 配下を
-# 一切読まない。ここでの検出はファイル名だけを見る近似（モジュール docstring
-# 参照）なので、実測でこの basename 衝突を確認した2件に限って除外する。
+# 置き場で、パイプライン本体と同じファイル名のものがありうる。中身も由来も別物で、
+# パイプライン本体のエントリポイント（`PYTHON_ENTRY_POINTS`）はどれも
+# `data/sample/` 配下を一切読まない。ここでの検出はファイル名だけを見る近似
+# （モジュール docstring 参照）なので、basename の衝突はこのディレクトリごと除外する。
 _KNOWN_NON_PIPELINE_PATH_PREFIXES = ("data/sample/",)
 
-# `reports/full_gate_proof.json`（`b00.DEFAULT_OUT`）は b00 自身が**書く**出力
+# `reports/serving_fingerprint.json`（`b00.DEFAULT_OUT`）は b00 自身が**書く**出力
 # ファイルの名前で、パイプラインの入力・コードではない（b00 を
 # `PYTHON_ENTRY_POINTS` に加えた〔D1〕ことで初めて拾われるようになった
 # リテラル）。証明の自己参照になるだけで、対象パスに要求する意味が無いため
 # 除外する。
-_KNOWN_OUTPUT_ONLY_BASENAMES = frozenset({"full_gate_proof.json"})
+_KNOWN_OUTPUT_ONLY_BASENAMES = frozenset({"serving_fingerprint.json"})
 
 
 def _uncovered_literal_references(exclude_from_pipeline_paths: frozenset[str] = frozenset()) -> list[str]:
@@ -363,3 +368,74 @@ def test_literal_file_references_mutation_schema_registry_sql_would_be_caught():
     )
     problems = _uncovered_literal_references(exclude_from_pipeline_paths=frozenset({"scripts/schema_registry.sql"}))
     assert any("schema_registry.sql" in p for p in problems)
+
+
+# ---------------------------------------------------------------------------
+# Issue #48 PR-5: 展開するディレクトリ・除外グロブ・証明の差分
+# ---------------------------------------------------------------------------
+
+def test_expanded_dirs_are_expanded_to_files_and_tests_and_fixtures_are_excluded():
+    paths = b00.collect_pipeline_paths()
+    for d in b00.PIPELINE_EXPANDED_DIRS:
+        assert d not in paths  # ディレクトリそのものではなく配下のファイルで入る
+    assert not any(p.endswith(".test.ts") for p in paths)
+    assert not any("/__fixtures__/" in p for p in paths)
+
+
+def test_exclude_globs_match_tests_and_fixtures_at_any_depth_but_not_sources():
+    assert b00._is_excluded("web/src/lib/cube/db.test.ts")
+    assert b00._is_excluded("web/scripts/lib/serving/normalize.test.ts")
+    assert b00._is_excluded("web/src/lib/cube/__fixtures__/a/b/c.json")
+    assert not b00._is_excluded("web/src/lib/cube/db.ts")
+    assert not b00._is_excluded("web/scripts/lib/serving/normalize.ts")
+
+
+def test_expanded_dir_files_are_listed_from_the_index(monkeypatch):
+    """展開は git 管理下のファイルだけを個別に拾い、除外グロブを適用する。"""
+    fake = {
+        "web/src/lib/cube": ["web/src/lib/cube/a.ts", "web/src/lib/cube/a.test.ts", "web/src/lib/cube/__fixtures__/x.json"],
+        "web/scripts/lib/serving": ["web/scripts/lib/serving/n.ts"],
+        "web/src/lib/registry": ["web/src/lib/registry/lookup.ts", "web/src/lib/registry/lookup.test.ts"],
+    }
+    monkeypatch.setattr(b00, "_tracked_files_under", lambda d: fake[d])
+    paths = b00.collect_pipeline_paths()
+    assert "web/src/lib/cube/a.ts" in paths and "web/scripts/lib/serving/n.ts" in paths
+    assert "web/src/lib/cube/a.test.ts" not in paths and "web/src/lib/cube/__fixtures__/x.json" not in paths
+    assert "web/src/lib/registry/lookup.ts" in paths and "web/src/lib/registry/lookup.test.ts" not in paths
+
+
+def _q(qid, runs):
+    return {"id": qid, "n_domain": len(runs), "runs": [{"params": p, "n_rows": 1, "sums": {}, "hash": h} for p, h in runs]}
+
+
+def test_changes_vs_previous_counts_same_changed_added_removed_per_query():
+    previous = {
+        "git_head": "abc",
+        "queries": [_q("a", [({"x": 1}, "h1"), ({"x": 2}, "h2"), ({"x": 3}, "h3")]), _q("gone", [({}, "g")])],
+    }
+    queries = [_q("a", [({"x": 1}, "h1"), ({"x": 2}, "CHANGED"), ({"x": 4}, "h4")]), _q("new", [({}, "n")])]
+    changes = b00.compute_changes_vs_previous(previous, queries)
+    assert changes["previous_git_head"] == "abc"
+    assert changes["per_query"]["a"] == {"same": 1, "changed": 1, "added": 1, "removed": 1}
+    assert changes["per_query"]["new"] == {"same": 0, "changed": 0, "added": 1, "removed": 0}
+    assert changes["per_query"]["gone"] == {"same": 0, "changed": 0, "added": 0, "removed": 1}
+
+
+def test_run_params_are_matched_regardless_of_key_order():
+    previous = {"queries": [_q("a", [({"x": 1, "y": 2}, "h")])]}
+    changes = b00.compute_changes_vs_previous(previous, [_q("a", [({"y": 2, "x": 1}, "h")])])
+    assert changes["per_query"]["a"] == {"same": 1, "changed": 0, "added": 0, "removed": 0}
+
+
+def test_load_previous_proof_tolerates_missing_and_broken_files(tmp_path):
+    assert b00.load_previous_proof(tmp_path / "none.json") is None
+    broken = tmp_path / "broken.json"
+    broken.write_text("{not json", encoding="utf-8")
+    assert b00.load_previous_proof(broken) is None
+
+
+def test_explicit_pipeline_files_exist():
+    """手書きの対象パスが実在する（b00 の実行時に取得が落ちるのを先に捕まえる）。
+    executor（serving-snapshot.mts）は担当 B が足すので、統合前だけ欠けていてよい。"""
+    missing = [f for f in b00.PIPELINE_EXPLICIT_FILES if not (ROOT / f).exists()]
+    assert set(missing) <= {"web/scripts/serving-snapshot.mts"}, missing

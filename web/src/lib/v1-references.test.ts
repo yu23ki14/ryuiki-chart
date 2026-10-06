@@ -13,7 +13,8 @@ import { TABLE_ORIGIN, TABLE_META, SAMPLE_QUERIES } from "@/lib/table-meta";
  * の2つだけ。素の単語一致は CSS クラス（pointer-events-none）や変数名（events.data）に当たって偽陽性が出る。
  * 実行時の「カタログ」（TABLE_ORIGIN/TABLE_META）に禁止表が混ざっていないことも見る。
  *
- * PR-5 で表を DROP したあとも、退行防止としてこのテストはそのまま残す。
+ * PR-5 で表を DROP した（マイグレーション 0010）。ここは退行防止として残す
+ * （schema*.ts に禁止表が再び現れないことも見る）。
  * 設計: docs/plans/V2_SERVING_PR4.md §2.2。
  */
 
@@ -54,16 +55,9 @@ interface Allowed {
 
 const ALLOWED: readonly Allowed[] = [
   {
-    file: "src/db/schema.ts",
-    tables: "*",
-    reason: "Drizzle の v1 表定義。表の DROP とこの定義の削除は PR-5（drizzle のマイグレーションと一緒に）",
-  },
-  {
     file: "src/lib/registry/generated-client.ts",
-    tables: "*",
-    reason:
-      "registry の生成物。caveat_scope の table スコープ行に派生表名が残る。registry/build_caveat.py の表名集合を " +
-      "掃除して再生成するのは PR-5（パイプラインのパスなので b00 が要る）",
+    tables: ["measurements", "organism_records"],
+    reason: "dataset 型 scope の dataset キー（scopeKind: \"dataset\"）。v1 表の参照ではない。恒久",
   },
   {
     file: "src/lib/registry/generated.ts",
@@ -274,7 +268,9 @@ describe("カタログの整合（実行時）", () => {
       const src = fs.readFileSync(path.join(SRC_ROOT, "db", f), "utf8");
       return [...src.matchAll(/sqliteTable\(\s*"(\w+)"/g)].map((m) => m[1]);
     });
-    expect(defined.length).toBeGreaterThan(80);
+    expect(defined.length).toBeGreaterThan(35);
+    // DROP した表が schema に戻ってきていない（退行防止）
+    expect(defined.filter((t) => FORBIDDEN_TABLES.includes(t))).toEqual([]);
     const classified = new Set([...Object.keys(TABLE_ORIGIN), ...FORBIDDEN_TABLES]);
     // `_` で始まる表はシード管理などの内部表
     const unclassified = defined.filter((t) => !t.startsWith("_") && !classified.has(t));

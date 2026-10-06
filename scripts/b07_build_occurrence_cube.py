@@ -119,6 +119,9 @@ assert_grouped_totals_match` は `FULL OUTER JOIN`（SQLite 3.39 で追加）を
    ごと。系列は (source_id, taxon_id)）: year 族は母集団の全行、month 族は
    母集団のうち `_SAME_MONTH_EXPR` を満たす行、それぞれの Σn/Σn_red_list/
    Σn_alien が `staging`（対応する `place_kind`・`grain IN 族` で絞る）と一致する。
+   さらに流域（`place_kind='watershed'`）の year 族は (place_id, 年) の粒度でも
+   母集団と一致する（`cube_invariants.assert_place_year_totals_match_population`。
+   Issue #48 PR-5 で b08 の保存則から移設）。
 3. **宣言との突合**（`scripts/migrate/occurrence_cube_declarations.yaml`。4件。
    `_assert_declared_counts`）: `staging` 自身から集計した
    - leaf（`grain='survey_period'`）の Σn が `leaf_cell_source_rows`
@@ -155,7 +158,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import b09_build_occurrence_place as b09  # noqa: E402
-from migrate import common, period  # noqa: E402
+from migrate import common, cube_invariants, period  # noqa: E402
 
 DEFAULT_DB = ROOT / "data" / "db" / "v2.sqlite"
 DEFAULT_DECLARATIONS_YAML = ROOT / "scripts" / "migrate" / "occurrence_cube_declarations.yaml"
@@ -939,6 +942,13 @@ def build_cube(
                     conn, staging, pop_tables[place_kind], place_kind, family_name,
                 )
 
+            # 流域セルの (place_id, 年) 粒度の突合（Issue #48 PR-5: b08 の保存則から移設。
+            # 系列粒度の上の検査より細かく、place・年の間の付け替えを捕まえる）。
+            n_place_years_checked = cube_invariants.assert_place_year_totals_match_population(
+                conn, staging, pop_tables[WATERSHED_PLACE_KIND], WATERSHED_PLACE_KIND,
+                YEAR_GRAIN_FAMILY, _MEASURE_SELECT,
+            )
+
             _assert_declared_counts(conn, staging, declarations, n_dated_by_place_kind, declarations_yaml)
             _assert_cell_shapes(conn, staging)
             _assert_month_cells_are_subset_of_year_cells(conn, staging)
@@ -967,6 +977,7 @@ def build_cube(
         "n_watershed_resolved_rows": declarations[_WATERSHED_RESOLVED_DECLARATION_NAME]["expected_row_count"],
         "n_watershed_unresolved_rows": declarations[_WATERSHED_UNRESOLVED_DECLARATION_NAME]["expected_row_count"],
         "n_series_checked": n_series_checked,
+        "n_watershed_place_years_checked": n_place_years_checked,
     }
 
 

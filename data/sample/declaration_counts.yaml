@@ -22,12 +22,6 @@
 "occurrence_place_declarations.yaml:n_watershed_polygons": 377
 "occurrence_place_declarations.yaml:place_id_null_count": 89
 "occurrence_place_declarations.yaml:resolved_count": 2430
-"occurrence_watershed_v1_declarations.yaml:memo_mixed_buckets": 4
-"occurrence_watershed_v1_declarations.yaml:memo_moved_records": 6
-"occurrence_watershed_v1_declarations.yaml:memo_moved_records.v1_assigned_exact_unassigned": 1
-"occurrence_watershed_v1_declarations.yaml:memo_moved_records.v1_unassigned_exact_assigned": 0
-"occurrence_watershed_v1_declarations.yaml:memo_moved_records.ws_to_ws": 5
-"occurrence_watershed_v1_declarations.yaml:org_watershed_year_keys_changed_vs_exact": 9
 "period_exceptions.yaml:atsugi_river_water_quality": 3840
 "source_regions.yaml:gbif_kanagawa_occurrences": 2424
 "source_regions.yaml:inaturalist_kanagawa": 95

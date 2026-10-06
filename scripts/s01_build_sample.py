@@ -46,10 +46,6 @@ test_s01_build_sample.py::test_determinism`）。挿入順は原本の rowid 順
   サンプル行数。
 - `data/sample/declaration_counts.yaml`: 件数の宣言の上書き値
   （`scripts/migrate/period.apply_count_overlay` が読む形。§A-2）。
-- `data/sample/derived_keys.yaml`: `reports/derived_baseline.json`
-  （原本由来。正）の33表の `key` をそのままサンプル用の宣言的キーにする
-  （§A-3。サンプルでは行数が少なく別の列組み合わせでも偶然一意になり
-  うるため、全量と同じキーを強制する）。
 """
 from __future__ import annotations
 
@@ -76,7 +72,6 @@ DEFAULT_RYUIKI_DB = ROOT / "data" / "db" / "ryuiki.sqlite"
 DEFAULT_CELLS_DB = ROOT / "data" / "db" / "cells.sqlite"
 DEFAULT_PROCESSED_DIR = ROOT / "data" / "processed"
 DEFAULT_COVERAGE_YAML = ROOT / "data" / "sample" / "coverage.yaml"
-DEFAULT_BASELINE_JSON = ROOT / "reports" / "derived_baseline.json"
 DEFAULT_OUT_DIR = ROOT / "data" / "sample"
 DEFAULT_GEOJSON = ROOT / "data" / "processed" / "nlni_w12_watersheds.geojson"
 DEFAULT_LANDUSE_CSV = ROOT / "data" / "processed" / "nlni_l03b_landuse_by_watershed.csv"
@@ -344,13 +339,9 @@ def compute_month_cell_source_rows(rows: list[sqlite3.Row], utc_offset_by_source
 
 def compute_occurrence_place_and_watershed_stats(rows: list[sqlite3.Row], geojson_path) -> dict:
     """`occurrence_place_declarations.yaml`（3件。`n_watershed_polygons` は
-    読み込んだ `polys` からそのまま数える）と
-    `occurrence_watershed_v1_declarations.yaml`（3件）をサンプルに対して実測する。
-
-    v1 のメモ化（0.001度バケット、`MIN(source_row_id)` を代表とする）を
-    `scripts/migrate/point_in_polygon` の `locate()` で再現する。`source_row_id`
-    はサンプルの rowid 相対順（= 材料化後の新しい rowid の相対順と一致する。
-    モジュール docstring「決定論」参照）を使う。
+    読み込んだ `polys` からそのまま数える）と `occurrence_cube_declarations.yaml` の
+    流域の2件（日付あり記録の解決済み・未解決）をサンプルに対して実測する。
+    （v1 のメモ化の再現〔`occurrence_watershed_v1_declarations.yaml`〕は Issue #48 PR-5 で消えた。）
     """
     polys = pip.load_polygons(geojson_path)
     grid = pip.build_grid(polys)
@@ -379,72 +370,6 @@ def compute_occurrence_place_and_watershed_stats(rows: list[sqlite3.Row], geojso
     )
     n_watershed_dated_unresolved = len(dated_record_ids) - n_watershed_dated_resolved
 
-    # v1 母集団: period_raw(=observed_on) と lat/lon がどちらも非NULL
-    v1_pop = [r for r in geo_rows if r["observed_on"] is not None]
-    buckets: dict[tuple[str, str], list[sqlite3.Row]] = defaultdict(list)
-    for row in v1_pop:
-        key = (f"{row['lat']:.3f}", f"{row['lon']:.3f}")
-        buckets[key].append(row)
-
-    ws_to_ws = 0
-    v1_assigned_exact_unassigned = 0
-    v1_unassigned_exact_assigned = 0
-    mixed_buckets = 0
-
-    memo_year_agg: dict[tuple[str | None, str], dict[str, int]] = defaultdict(
-        lambda: {"n": 0, "species_n": 0, "alien_n": 0, "redlist_n": 0, "_species": set()}
-    )
-    exact_year_agg: dict[tuple[str | None, str], dict[str, int]] = defaultdict(
-        lambda: {"n": 0, "species_n": 0, "alien_n": 0, "redlist_n": 0, "_species": set()}
-    )
-
-    for members in buckets.values():
-        # 代表 = rowid が最小（このサンプル内での相対順）
-        rep = min(members, key=lambda r: r["rowid"])
-        rep_watershed = exact_watershed.get(rep["record_id"])
-        distinct_exact = {exact_watershed.get(m["record_id"]) for m in members}
-        if len(distinct_exact) >= 2:
-            mixed_buckets += 1
-        for m in members:
-            memo_ws = rep_watershed
-            exact_ws = exact_watershed.get(m["record_id"])
-            if memo_ws != exact_ws:
-                if memo_ws is not None and exact_ws is not None:
-                    ws_to_ws += 1
-                elif memo_ws is not None and exact_ws is None:
-                    v1_assigned_exact_unassigned += 1
-                elif memo_ws is None and exact_ws is not None:
-                    v1_unassigned_exact_assigned += 1
-            year = _year4(m["observed_on"])
-            if year is None:
-                continue
-            if memo_ws is not None:
-                agg = memo_year_agg[(memo_ws, year)]
-                agg["n"] += 1
-                agg["_species"].add(m["scientific_name"])
-                agg["alien_n"] += 1 if m["is_alien"] else 0
-                agg["redlist_n"] += 1 if (m["red_list_category"] or "") != "" else 0
-            if exact_ws is not None:
-                agg = exact_year_agg[(exact_ws, year)]
-                agg["n"] += 1
-                agg["_species"].add(m["scientific_name"])
-                agg["alien_n"] += 1 if m["is_alien"] else 0
-                agg["redlist_n"] += 1 if (m["red_list_category"] or "") != "" else 0
-
-    for agg in list(memo_year_agg.values()) + list(exact_year_agg.values()):
-        agg["species_n"] = len(agg["_species"])
-        del agg["_species"]
-
-    keys_changed = 0
-    for key in set(memo_year_agg) | set(exact_year_agg):
-        a = memo_year_agg.get(key)
-        b = exact_year_agg.get(key)
-        if a is None or b is None:
-            keys_changed += 1
-            continue
-        if any(a[f] != b[f] for f in ("n", "species_n", "alien_n", "redlist_n")):
-            keys_changed += 1
-
     return {
         # `polys` は既にこの関数が読み込み済みの流域ポリゴン一覧
         # （feature 1件 = Polygon 1件。`point_in_polygon.load_polygons`
@@ -456,13 +381,6 @@ def compute_occurrence_place_and_watershed_stats(rows: list[sqlite3.Row], geojso
         "resolved_count": n_resolved,
         "watershed_dated_resolved_rows": n_watershed_dated_resolved,
         "watershed_dated_unresolved_rows": n_watershed_dated_unresolved,
-        "memo_moved_records": {
-            "ws_to_ws": ws_to_ws,
-            "v1_assigned_exact_unassigned": v1_assigned_exact_unassigned,
-            "v1_unassigned_exact_assigned": v1_unassigned_exact_assigned,
-        },
-        "memo_mixed_buckets": mixed_buckets,
-        "org_watershed_year_keys_changed_vs_exact": keys_changed,
     }
 
 
@@ -581,7 +499,7 @@ def build_declaration_counts(
         org_rows, utc_offset_by_source,
     )
 
-    # occurrence_place_declarations.yaml / occurrence_watershed_v1_declarations.yaml
+    # occurrence_place_declarations.yaml / occurrence_cube_declarations.yaml（流域の2件）
     stats = compute_occurrence_place_and_watershed_stats(org_rows, geojson_path)
     out["occurrence_place_declarations.yaml:n_watershed_polygons"] = stats["n_watershed_polygons"]
     out["occurrence_place_declarations.yaml:place_id_null_count"] = stats["place_id_null_count"]
@@ -591,16 +509,6 @@ def build_declaration_counts(
     ]
     out["occurrence_cube_declarations.yaml:watershed_dated_unresolved_rows"] = stats[
         "watershed_dated_unresolved_rows"
-    ]
-
-    moved = stats["memo_moved_records"]
-    total_moved = sum(moved.values())
-    out["occurrence_watershed_v1_declarations.yaml:memo_moved_records"] = total_moved
-    for key, value in moved.items():
-        out[f"occurrence_watershed_v1_declarations.yaml:memo_moved_records.{key}"] = value
-    out["occurrence_watershed_v1_declarations.yaml:memo_mixed_buckets"] = stats["memo_mixed_buckets"]
-    out["occurrence_watershed_v1_declarations.yaml:org_watershed_year_keys_changed_vs_exact"] = stats[
-        "org_watershed_year_keys_changed_vs_exact"
     ]
 
     return out
@@ -620,36 +528,6 @@ def _dump_declaration_counts_yaml(counts: dict[str, int]) -> str:
 
 
 # ---------------------------------------------------------------------------
-# derived_keys.yaml（Issue #29 A-3）
-# ---------------------------------------------------------------------------
-
-
-def build_derived_keys_yaml(baseline_json_path) -> str:
-    baseline = json.loads(pathlib.Path(baseline_json_path).read_text(encoding="utf-8"))
-    lines = [
-        "# scripts/s01_build_sample.py が reports/derived_baseline.json（原本由来。正）から",
-        "# 生成した、サンプル用の宣言的キー（Issue #29 A-3）。手で編集しない。",
-        "#",
-        "# サンプルでは行数が少なく、全量とは別の（より短い）列の組み合わせでも偶然一意に",
-        "# なりうる。scripts/reconcile/common.derive_key の自動探索に任せず、全量ベース",
-        "# ラインが実際に使ったキーをそのまま強制することで、サンプルの b01 が全量と",
-        "# 違うキーで指紋を計算してしまう事故を防ぐ。",
-        "",
-    ]
-    for table in sorted(baseline["tables"]):
-        key = baseline["tables"][table]["key"]
-        key_list = ", ".join(json.dumps(c, ensure_ascii=False) for c in key)
-        lines.append(f"{table}:")
-        lines.append(f"  key: [{key_list}]")
-        lines.append(
-            '  reason: "sample: 全量ベースライン（reports/derived_baseline.json）の自動導出キーを'
-            'そのまま宣言化。サンプルでは行数が少ないため、探索A/Bに任せると別の短い組み合わせで'
-            '偶然一意になりうる。"'
-        )
-    return "\n".join(lines) + "\n"
-
-
-# ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
 
@@ -660,7 +538,6 @@ def main() -> int:
     parser.add_argument("--cells-db", default=str(DEFAULT_CELLS_DB))
     parser.add_argument("--processed-dir", default=str(DEFAULT_PROCESSED_DIR))
     parser.add_argument("--coverage-yaml", default=str(DEFAULT_COVERAGE_YAML))
-    parser.add_argument("--baseline-json", default=str(DEFAULT_BASELINE_JSON))
     parser.add_argument("--out-dir", default=str(DEFAULT_OUT_DIR))
     args = parser.parse_args()
 
@@ -711,9 +588,6 @@ def main() -> int:
     landuse_csv_path = pathlib.Path(args.processed_dir) / "nlni_l03b_landuse_by_watershed.csv"
     counts = build_declaration_counts(ryuiki_conn, selected, geojson_path, landuse_csv_path)
     (out_dir / "declaration_counts.yaml").write_text(_dump_declaration_counts_yaml(counts), encoding="utf-8")
-
-    # --- derived_keys.yaml ---
-    (out_dir / "derived_keys.yaml").write_text(build_derived_keys_yaml(args.baseline_json), encoding="utf-8")
 
     # --- manifest.json ---
     # source_files のキーの形（"data/db/ryuiki.sqlite" 等）は pipeline_inputs.py

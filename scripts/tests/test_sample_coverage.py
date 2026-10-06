@@ -1,14 +1,13 @@
 """縮小サンプル（Issue #29「縮小サンプル＋実行証明」）の成果物
-（`data/sample/coverage.yaml`・`declaration_counts.yaml`・`derived_keys.yaml`・
-`manifest.json`）の構造検証と、コミット済みのサンプル本体
-（`data/sample/ryuiki/*.sql`・`cells/*.sql`）に対する「宣言どおりに入っているか」
-の検証（A-1「pytest は検証として使う」）。宣言済み差分（`expected_diffs.yaml`）は
-サンプル専用ファイルを持たず、正本（`scripts/reconcile/expected_diffs.yaml`）を
-そのまま使う（下の該当節参照）。
+（`data/sample/coverage.yaml`・`declaration_counts.yaml`・`manifest.json`）の構造検証と、
+コミット済みのサンプル本体（`data/sample/ryuiki/*.sql`・`cells/*.sql`）に対する
+「宣言どおりに入っているか」の検証（A-1「pytest は検証として使う」）。
+（Issue #48 PR-5 で v1 との突合〔`derived_keys.yaml`・`derived_baseline.json`・
+`expected_diffs.yaml`〕は無くなった。）
 
 **原本DB（data/db/*.sqlite、14GB）は一切使わない**——ここで使うのはすべて
-コミット済みのテキスト（`data/sample/`）と、`scripts/reconcile/*.yaml`/
-`scripts/migrate/*.yaml`（正本の宣言。小さい・原本を必要としない）だけ。
+コミット済みのテキスト（`data/sample/`）と、`scripts/migrate/*.yaml`
+（正本の宣言。小さい・原本を必要としない）だけ。
 `s02_materialize_sample.py` で一時ディレクトリに材料化した sqlite に対して
 実際に SQL を投げて検証する。
 """
@@ -139,7 +138,7 @@ def test_wholesale_ryuiki_tables_have_rows(conn, coverage):
 # ---------------------------------------------------------------------------
 
 
-# 7つの宣言ファイルのパス。以前はファイルごとに手で書き写した
+# 6つの宣言ファイルのパス。以前はファイルごとに手で書き写した
 # `_flat_keys_for_*`（7個）を個別に持っており、キーの有効性判定
 # （`expected_row_count`/`expected_count`/`breakdown` の見方）を
 # `scripts/migrate/period.py` の `apply_count_overlay()` と2箇所で
@@ -157,7 +156,6 @@ _DECLARATION_FILE_PATHS = {
         "occurrence_period_shapes.yaml",
         "occurrence_cube_declarations.yaml",
         "occurrence_place_declarations.yaml",
-        "occurrence_watershed_v1_declarations.yaml",
     )
 }
 
@@ -192,46 +190,6 @@ def test_declaration_counts_values_are_non_negative_ints():
 
 
 # ---------------------------------------------------------------------------
-# derived_keys.yaml: サンプルのキーが全量ベースラインの33表と過不足なく一致すること（A-3）。
-# ---------------------------------------------------------------------------
-
-
-def test_derived_keys_yaml_matches_full_baseline_exactly():
-    baseline_path = ROOT / "reports" / "derived_baseline.json"
-    if not baseline_path.exists():
-        pytest.skip("reports/derived_baseline.json が無い")
-    baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
-    sample_keys = load_yaml(SAMPLE_DIR / "derived_keys.yaml")
-
-    missing = set(baseline["tables"]) - set(sample_keys)
-    extra = set(sample_keys) - set(baseline["tables"])
-    assert not missing and not extra, (
-        f"derived_keys.yaml のテーブル集合が derived_baseline.json と一致しない"
-        f"（不足: {sorted(missing)} / 余分: {sorted(extra)}）"
-    )
-    mismatched = {
-        table: (baseline["tables"][table]["key"], sample_keys[table]["key"])
-        for table in baseline["tables"]
-        if baseline["tables"][table]["key"] != sample_keys[table]["key"]
-    }
-    assert not mismatched, f"key が全量ベースラインと食い違うテーブル: {mismatched}"
-
-
-# ---------------------------------------------------------------------------
-# derived_baseline.json（サンプル自身のベースライン。s03 が原本無しで作り直せる）
-# ---------------------------------------------------------------------------
-
-
-def test_sample_derived_baseline_json_has_33_tables():
-    path = SAMPLE_DIR / "derived_baseline.json"
-    if not path.exists():
-        pytest.skip("data/sample/derived_baseline.json が無い")
-    baseline = json.loads(path.read_text(encoding="utf-8"))
-    assert baseline["table_count"] == 33
-    assert len(baseline["tables"]) == 33
-
-
-# ---------------------------------------------------------------------------
 # manifest.json
 # ---------------------------------------------------------------------------
 
@@ -245,20 +203,3 @@ def test_manifest_json_has_required_fields():
     assert set(manifest["source_files"]) == set(pipeline_inputs.SOURCE_FILE_KEYS)
     for name, digest in manifest["source_files"].items():
         assert len(digest) == 64, f"{name} の sha256 の桁数が64でない: {digest!r}"
-
-
-# ---------------------------------------------------------------------------
-# expected_diffs.yaml: サンプルは正本（scripts/reconcile/expected_diffs.yaml）を
-# そのまま使う（レビュー対応で sample 専用ファイルを廃止した——閉包の取り方
-# （Sirosporium の投票元3行）を直した結果、正本の20キー全部がサンプル規模でも
-# 再現するようになったため、免除を維持する理由が無くなった。宣言済み差分>
-# データを曲げる、の原則どおり「サンプルに合わせて宣言を弱める」のではなく
-# 「サンプル側を正しく作る」を選んだ）。
-# ---------------------------------------------------------------------------
-
-
-def test_no_sample_specific_expected_diffs_file_exists():
-    """`data/sample/expected_diffs.yaml` を復活させていないことを確認する
-    （復活させたくなったら、まずこのテストと本ファイルの上のコメントを読むこと）。
-    """
-    assert not (SAMPLE_DIR / "expected_diffs.yaml").exists()

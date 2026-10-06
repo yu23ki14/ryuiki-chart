@@ -14,7 +14,8 @@
  * あちらはモデルが意図ツールで答えられないときの第2層で、止めるかどうかは別の判断になる
  * （フラグでは止まらないが、`runUserSql` の `catalogOnly` でカタログ外の表は読めない）。
  *
- * 探索面は v1 の表も列挙する。PR-5 で v1 の表を DROP するまで true に戻さない。
+ * v1 の表は DROP 済み（PR-5）。`EXPLORE_ENABLED` を戻すかは別の判断で、任意 SQL と全表スキャンが
+ * 公開 URL に出る問題は残る（PR-5 の範囲外）。
  */
 export const EXPLORE_ENABLED = false;
 

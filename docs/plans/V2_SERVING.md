@@ -2,7 +2,7 @@
 
 対象: Issue #48（親: #27「Phase B のあと: 残りの作業」／対象: #28「本番の集計・D1 シードを
 v2 につなぐ」＋ #41「v1 パイプラインの廃止計画を立てる」）
-状態: **PR-0〜PR-3b マージ済み、PR-4 提出**（PR-5〜PR-6 は未着手）
+状態: **PR-0〜PR-4 マージ済み、PR-5 提出**（PR-6 は未着手）
 作成: 2026-09-26 / 関連: ADR-0001, 0009, 0011, 0014, 0016, 0021, 0024, 0025, 0026, 0027,
 0028, **ADR-0029（新設）**, **ADR-0030（新設）**
 
@@ -71,6 +71,7 @@ v1 の派生表（`web/scripts/build-derived.mjs` が書く `derived.sqlite`）�
 
 容量見積もり（実測）: 今のローカル D1 1,295MB → 約500〜900MB。D1 の上限（10GB、込み容量
 5GB）に余裕がある（§8）。
+（実測 2026-10-06: `0010` 適用・シード後は約 1.41GB。見込みの 500〜900MB は外れた。PR-3a で `occurrence_agg` に流域・月のセルが入ったため。内訳は observation_agg 866MB・occurrence_agg 434MB・cells 39MB。上限 10GB には収まる。）
 
 ### 3.2 新たに D1 に要るレジストリ
 
@@ -295,7 +296,15 @@ U4「serving-diff」は未着手）
 
 ### PR-5 v1 の撤去（値は動かない）
 
-状態: 未着手
+状態: **実装済み・提出**（設計は `docs/plans/V2_SERVING_PR5.md`。本番へは出していない。手順書は `DEPLOYMENT.md`
+「v1 撤去後の本番切り替え（PR-5）」）。
+
+**一覧の補記（2026-10-06 実測。下の列挙に無く、PR-5 で一緒に消したもの）**: `data/sample/derived_keys.yaml`、
+`scripts/migrate/unit_evidence_declarations_v1compat.yaml`（v1互換キューブ専用）、`scripts/s05_check_sample_gate_summary.py`・
+`scripts/tests/test_s05_*.py`（v1 ゲート出力のパーサ）、`web/scripts/lib/v1-db-shim.ts`、`web/src/lib/cube/integration.test.ts`・
+`pr4-integration.test.ts`（`derived.sqlite` と突合する実 DB テスト）、serving-diff の v1 側一式（ADR-0029 追記）。
+`derived.sqlite` は D1 シードの入力から消え、`build:derived` は `build:water-geo` に改名した。
+DROP は 46 表（派生33＋落とす原本11＋`instruments`/`protocols`）、D1 は 41 表になる（マイグレーション `0010`）。
 
 - 削除するもの:
   - `web/scripts/build-derived.mjs` / `build-biota.mjs` / `build-geo.mjs`（既存。
