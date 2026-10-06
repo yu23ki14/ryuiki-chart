@@ -18,7 +18,7 @@ interface ColumnInfo {
 interface TableInfo {
   schema: string;
   name: string;
-  rowCount: number;
+  rowCount: number | null;
   columns: ColumnInfo[];
   sql: string | null;
 }

@@ -16,6 +16,8 @@ export interface SqliteCubeDbPaths {
   v2: string;
   registry: string;
   ryuiki: string;
+  /** `cells.sqlite`（文書系列）。無ければ ATTACH しない。 */
+  cells?: string;
 }
 
 export interface CubeDbSingleton {

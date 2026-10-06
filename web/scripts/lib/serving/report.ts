@@ -37,6 +37,10 @@ export interface QueryStats {
   month_cell_membership: number;
   vernacular_label_rule: number;
   undated_excluded: number;
+  // 文書系列の3規則（PR-4）。
+  doc_label_rule: number;
+  doc_warning_scope: number;
+  doc_year_collapse: number;
   unexplained: number;
 }
 
@@ -58,6 +62,9 @@ export function emptyQueryStats(id: string): QueryStats {
     month_cell_membership: 0,
     vernacular_label_rule: 0,
     undated_excluded: 0,
+    doc_label_rule: 0,
+    doc_warning_scope: 0,
+    doc_year_collapse: 0,
     unexplained: 0,
   };
 }
@@ -113,6 +120,10 @@ export interface ReportInput {
   unexplainedSamples: UnexplainedSample[];
   rottenDeclarations: RottenDeclaration[];
   mutationResults?: MutationRunResult[];
+  /** `--mutate all` が現在の imputation では意味を持たないとして外した変異（§7-1）。 */
+  skippedMutations?: { name: string; reason: string }[];
+  /** 廃止列（問い合わせ id → 列名。`serving_queries.yaml` の `retired:`）。 */
+  retiredColumns?: Record<string, string[]>;
 }
 
 // `as const` で6つのリテラルの union に絞る（`(keyof QueryStats)[]` という広い型に
@@ -130,6 +141,9 @@ const KNOWN_RULE_COLUMNS = [
   "month_cell_membership",
   "vernacular_label_rule",
   "undated_excluded",
+  "doc_label_rule",
+  "doc_warning_scope",
+  "doc_year_collapse",
 ] as const satisfies readonly (keyof QueryStats)[];
 
 function mdEscape(v: unknown): string {
@@ -173,6 +187,25 @@ function biotaMovedMd(stats: QueryStats[]): string {
   return mdTable(["rule", "query", "moved（キー数）"], rows);
 }
 
+/** 文書系列3規則の `moved`（キー数。meta は系列、points は点）。受け入れ表 §5.3-3 がこの表の値を見る。 */
+const DOC_RULE_COLUMNS = ["doc_label_rule", "doc_warning_scope", "doc_year_collapse"] as const satisfies readonly (keyof QueryStats)[];
+
+function docMovedMd(stats: QueryStats[]): string {
+  const rows: (readonly unknown[])[] = [];
+  for (const s of stats) {
+    for (const rule of DOC_RULE_COLUMNS) {
+      if (s[rule] > 0) rows.push([rule, s.id, s[rule]]);
+    }
+  }
+  if (!rows.length) return "（無し）";
+  return mdTable(["rule", "query", "moved（キー数）"], rows);
+}
+
+function retiredMd(retired: Record<string, string[]> | undefined): string {
+  const lines = Object.entries(retired ?? {}).map(([id, cols]) => `廃止列（比べない。D2）: \`${id}\` の ${cols.map((c) => `\`${c}\``).join("・")}`);
+  return lines.join("\n");
+}
+
 function labelMovedMd(labelMoved: Record<string, Record<string, number>> | undefined): string {
   const rows: (readonly unknown[])[] = [];
   for (const [id, cats] of Object.entries(labelMoved ?? {})) {
@@ -211,11 +244,12 @@ function rottenMd(rotten: RottenDeclaration[]): string {
   return mdTable(header, rows);
 }
 
-function mutationsMd(results: MutationRunResult[] | undefined): string {
+function mutationsMd(results: MutationRunResult[] | undefined, skipped: { name: string; reason: string }[] | undefined): string {
   if (!results || !results.length) return "";
   const header = ["mutation", "unexplained", "検出できたか"];
   const rows = results.map((r) => [r.name, r.unexplained, r.caughtAsExpected ? "OK" : "NG" + (r.note ? `（${r.note}）` : "")]);
-  return ["", "## 変異テスト（`--mutate`）", "", mdTable(header, rows)].join("\n");
+  const skippedLines = (skipped ?? []).map((k) => `- skipped: \`${k.name}\`（${k.reason}）`);
+  return ["", "## 変異テスト（`--mutate`）", "", mdTable(header, rows), ...(skippedLines.length ? ["", ...skippedLines] : [])].join("\n");
 }
 
 export function buildReportMarkdown(input: ReportInput): string {
@@ -245,6 +279,12 @@ export function buildReportMarkdown(input: ReportInput): string {
     "",
     biotaMovedMd(stats),
     "",
+    "## 文書系列の規則ごとの moved（PR-4）",
+    "",
+    docMovedMd(stats),
+    "",
+    retiredMd(input.retiredColumns),
+    "",
     "### 表示名の動き（`vernacular_label_rule` の label_moved）",
     "",
     labelMovedMd(input.labelMoved),
@@ -256,7 +296,7 @@ export function buildReportMarkdown(input: ReportInput): string {
     "## unexplained の先頭20件",
     "",
     unexplainedSampleMd(input.unexplainedSamples),
-    mutationsMd(input.mutationResults),
+    mutationsMd(input.mutationResults, input.skippedMutations),
     "",
   ].join("\n");
 }
@@ -270,5 +310,7 @@ export function buildReportJson(input: ReportInput): unknown {
     unexplainedSamples: input.unexplainedSamples,
     rottenDeclarations: input.rottenDeclarations,
     mutationResults: input.mutationResults ?? [],
+    skippedMutations: input.skippedMutations ?? [],
+    retiredColumns: input.retiredColumns ?? {},
   };
 }

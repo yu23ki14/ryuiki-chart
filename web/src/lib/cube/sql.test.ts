@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MAX_ID_LIST } from "./db";
-import { seriesFilterSql } from "./sql";
+import { IAS_SINCE_YEAR, occDefaultTo, seriesFilterSql } from "./sql";
 import type { SeriesKey } from "./series";
 
 function series(n: number): SeriesKey[] {
@@ -32,5 +32,16 @@ describe("seriesFilterSql", () => {
 
   it(`series がちょうど上限（${MAX_ID_LIST}）なら例外にならない`, () => {
     expect(() => seriesFilterSql(series(MAX_ID_LIST))).not.toThrow();
+  });
+});
+
+describe("occDefaultTo / IAS_SINCE_YEAR（PR-4 §7）", () => {
+  it("occDefaultTo は注入した日付の年（既定は現在年）", () => {
+    expect(occDefaultTo(new Date("2027-03-01T12:00:00"))).toBe(2027);
+    expect(occDefaultTo(new Date("2026-12-31T12:00:00"))).toBe(2026);
+    expect(occDefaultTo()).toBe(new Date().getFullYear());
+  });
+  it("IAS_SINCE_YEAR は固定の節目 2020（ローリング窓ではない）", () => {
+    expect(IAS_SINCE_YEAR).toBe(2020);
   });
 });

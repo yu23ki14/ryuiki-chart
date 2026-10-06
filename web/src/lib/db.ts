@@ -127,7 +127,11 @@ export interface SqlResult {
  * ユーザーが書いた SQL を実行する。
  * D1 側でも書き込みは通らないが、誤爆時のメッセージを分かりやすくするため事前に弾く。
  */
-export async function runUserSql(sql: string, maxRows = 1000): Promise<SqlResult> {
+export async function runUserSql(
+  sql: string,
+  maxRows = 1000,
+  opts: { catalogOnly?: boolean } = {},
+): Promise<SqlResult> {
   const trimmed = sql.trim().replace(/;+\s*$/, "");
   if (!trimmed) throw new SqlError("SQL が空です");
   if (trimmed.includes(";")) throw new SqlError("複数ステートメントは実行できません（; は末尾のみ）");
@@ -139,6 +143,7 @@ export async function runUserSql(sql: string, maxRows = 1000): Promise<SqlResult
   }
 
   const db = await getD1();
+  if (opts.catalogOnly) await assertCatalogOnly(db, trimmed);
   const t0 = performance.now();
   let raw: [string[], ...unknown[][]];
   try {
@@ -159,6 +164,47 @@ export async function runUserSql(sql: string, maxRows = 1000): Promise<SqlResult
   };
 }
 
+/**
+ * 「実在するが TABLE_ORIGIN（カタログ）に無い表」の集合を、実行時に sqlite_master から導く。
+ * ソースに表名を書かない（v1 の表名は web/src に出さない完了条件と両立させる）。
+ * PR-5 で表が DROP されれば集合が空になり、何も弾かなくなる。isolate ごとに1回だけ引く。
+ */
+let offCatalogCache: Promise<Set<string>> | null = null;
+
+function offCatalogTables(db: D1Database): Promise<Set<string>> {
+  if (!offCatalogCache) {
+    offCatalogCache = db
+      .prepare("SELECT name FROM sqlite_master WHERE type IN ('table','view')")
+      .all<{ name: string }>()
+      .then((r) => {
+        const catalog = new Set(Object.keys(TABLE_ORIGIN).map((n) => n.toLowerCase()));
+        return new Set(r.results.map((t) => t.name.toLowerCase()).filter((n) => !catalog.has(n)));
+      })
+      .catch((e) => {
+        offCatalogCache = null; // 失敗はキャッシュしない
+        throw e;
+      });
+  }
+  return offCatalogCache;
+}
+
+/**
+ * SQL 中の識別子（位置を問わず全部）がカタログ外の実在表に当たれば SqlError。
+ * 文字列リテラル中の語でも弾く（弾く側に倒す。取りこぼすほうが危ない）。
+ * 識別子の全走査なので、表名と同じ語の列名・別名・文字列も弾く（安全側）。
+ */
+async function assertCatalogOnly(db: D1Database, sql: string): Promise<void> {
+  const off = await offCatalogTables(db);
+  if (off.size === 0) return;
+  const re = /[a-zA-Z_][a-zA-Z0-9_]*/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(sql))) {
+    if (off.has(m[0].toLowerCase())) {
+      throw new SqlError("この表は AI からは読めません（カタログ外）");
+    }
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* スキーマ情報                                                        */
 /* ------------------------------------------------------------------ */
@@ -174,7 +220,8 @@ export interface TableInfo {
   /** どの原本から来たテーブルか（main = ryuiki / c = cells / d = derived）。D1 では全部 main スキーマ。 */
   schema: string;
   name: string;
-  rowCount: number;
+  /** 件数を数えない表（巨大表・`counts:false`）は null。 */
+  rowCount: number | null;
   columns: ColumnInfo[];
   sql: string | null;
 }
@@ -182,30 +229,58 @@ export interface TableInfo {
 /** マイグレーション管理・シード状態・miniflare の内部テーブルは一覧に出さない。 */
 const HIDDEN_TABLES = /^(_cf_|sqlite_|d1_migrations$|_seed_state$)/;
 
-export async function listTables(): Promise<TableInfo[]> {
+/** 件数を数えると行数の分だけ rows_read が乗る巨大表（キューブ）。件数は取らない（null）。 */
+const NO_COUNT_TABLES = new Set(["observation_agg", "occurrence_agg"]);
+
+export interface ListTablesOpts {
+  /** true なら TABLE_ORIGIN（カタログ）にある表だけ。 */
+  catalogOnly?: boolean;
+  /** false なら count(*) を投げない（rowCount は null）。既定 true。 */
+  counts?: boolean;
+  /** 指定した表だけ（列定義を1表だけ見たいとき）。 */
+  only?: string;
+}
+
+export async function listTables(opts: ListTablesOpts = {}): Promise<TableInfo[]> {
   const db = await getD1();
+  const withCounts = opts.counts !== false;
 
   const master = (
     await db
       .prepare("SELECT name, sql FROM sqlite_master WHERE type='table' ORDER BY name")
       .all<{ name: string; sql: string | null }>()
-  ).results.filter((t) => !HIDDEN_TABLES.test(t.name));
+  ).results
+    .filter((t) => !HIDDEN_TABLES.test(t.name))
+    .filter((t) => !opts.catalogOnly || t.name in TABLE_ORIGIN)
+    .filter((t) => !opts.only || t.name === opts.only);
 
-  // 56 テーブル分の table_info と count(*) を 1 往復にまとめる
+  // 各表の table_info（と count(*)）を 1 往復にまとめる
   const stmts: D1PreparedStatement[] = [];
+  const countIdx = new Map<string, number>();
   for (const t of master) {
     stmts.push(db.prepare(`PRAGMA table_info(${qi(t.name)})`));
-    stmts.push(db.prepare(`SELECT count(*) AS n FROM ${qi(t.name)}`));
   }
-  const res = await db.batch(stmts);
+  if (withCounts) {
+    // AI 向け（catalogOnly / only）では巨大表の件数を取らない。従来どおりの全表（探索）は全部数える。
+    const skipBig = Boolean(opts.catalogOnly || opts.only);
+    for (const t of master) {
+      if (skipBig && NO_COUNT_TABLES.has(t.name)) continue;
+      countIdx.set(t.name, stmts.length);
+      stmts.push(db.prepare(`SELECT count(*) AS n FROM ${qi(t.name)}`));
+    }
+  }
+  const res = stmts.length ? await db.batch(stmts) : [];
 
-  return master.map((t, i) => ({
-    schema: TABLE_ORIGIN[t.name] ?? "main",
-    name: t.name,
-    rowCount: (res[i * 2 + 1].results as { n: number }[])[0]?.n ?? 0,
-    columns: res[i * 2].results as unknown as ColumnInfo[],
-    sql: t.sql,
-  }));
+  return master.map((t, i) => {
+    const ci = countIdx.get(t.name);
+    return {
+      schema: TABLE_ORIGIN[t.name] ?? "main",
+      name: t.name,
+      rowCount: ci === undefined ? null : ((res[ci].results as { n: number }[])[0]?.n ?? 0),
+      columns: res[i].results as unknown as ColumnInfo[],
+      sql: t.sql,
+    };
+  });
 }
 
 /** シード投入済みか。未投入なら画面に「まだ空」と出す。 */

@@ -1,9 +1,5 @@
 import Link from "next/link";
-import {
-  overviewStats,
-  landuseHighlight,
-} from "@/lib/queries";
-import { d1CubeDb, effortRowV1, effortYears, occurrenceTotals, redlistSummary, representativeSeries, basisOf, yearCellFilterForBasis, summarize, sitesInWaterBody, unitLabel } from "@/lib/cube";
+import { d1CubeDb, MEASUREMENTS_DATASET as DATASET, overviewCounts, landuseHighlight, effortRowV1, effortYears, occurrenceTotals, redlistSummary, representativeSeries, basisOf, yearCellFilterForBasis, summarize, sitesInWaterBody, unitLabel } from "@/lib/cube";
 import { HomeHighlights } from "@/components/HomeHighlights";
 import { Stat, nf } from "@/components/ui";
 import { caveatBody } from "@/lib/registry/lookup-client";
@@ -39,11 +35,6 @@ const SECTIONS = [
     body: "行政PDFの表から抜き出した 119,533 セル。各点が「どの文書の何ページ」に由来するかを持ち、比較を妨げる注記を並べて出す。",
   },
   {
-    href: "/quality",
-    title: "品質と進捗",
-    body: "提出→検証→公開のパイプライン、検証者ごとの差し戻し率、機器の校正、介入と意思決定のタイムライン。",
-  },
-  {
     href: "/explore",
     title: "データ探索",
     body: "D1 の中身を直接見る。テーブル閲覧・列の要約・任意の SELECT・CSV 書き出し。参照系の SQL しか通さない。",
@@ -56,15 +47,11 @@ const SECTIONS = [
   },
 ].filter((s) => s.flag !== false);
 
-/** measurements データセット固定（PR-2 のスコープは測定値系。design §1.1 と同じ前提）。 */
-const DATASET = "measurements";
 const BOD_VARIABLE_ID = "common:variable:water.bod";
 
 /**
- * 一本の川を下るときの水質の変わり方（既定は境川）。v1 の `longitudinalHighlight`
- * （`meas_year` の `kind='daily'`・`year>=2020` を `AVG(avg)` で束ねる）の後継
- * （Issue #48 PR-2 design §2.2「home」）。`summarize(...,'place')` は同じ束ね方
- * （選んだ grain セルの値をそのまま `AVG()` する）をキューブに対して行う。
+ * 一本の川を下るときの水質の変わり方（既定は境川）。キューブ（`observation_agg`）の
+ * 2020 年以降のセル（粒度は指標の basis で決まる）を `summarize(...,'place')` で地点ごとに平均する。
  *
  * 値は `imputation:'lod'`（定量下限値とみなす）で取る——v1 は検閲を単純に含めていたが
  * 曖昧だった扱いを、PR-2 で明示的に選ぶ（D6）。HomeHighlights.tsx の固定文言
@@ -117,10 +104,10 @@ async function longitudinalHighlight(water = "境川（１）", variableId = BOD
 export default async function Home() {
   // D1 は 1 クエリ 1 往復。まとめて投げる。
   const cdb = await d1CubeDb();
-  const [s, longitudinal, landuse, redlistRows, effortRows, occ] = await Promise.all([
-    overviewStats(),
+  const [s, longitudinal, landuseRows, redlistRows, effortRows, occ] = await Promise.all([
+    overviewCounts(cdb),
     longitudinalHighlight(),
-    landuseHighlight(),
+    landuseHighlight(cdb),
     redlistSummary(cdb),
     effortYears(cdb),
     occurrenceTotals(cdb),
@@ -133,6 +120,12 @@ export default async function Home() {
     n: r.n,
   }));
   const effort = effortRows.map(effortRowV1);
+  const landuse = landuseRows.map((r) => ({
+    watershed_id: r.watershedId,
+    water_system_name: r.waterSystemName,
+    delta: r.delta,
+    area_km2: r.areaKm2,
+  }));
 
   return (
     <div className="flex-1 overflow-y-auto thin-scroll">
@@ -152,14 +145,12 @@ export default async function Home() {
             構造が同じ公開データが揃う神奈川県で作っています。地点・測定項目・フォームは設定で差し替えられる前提で作ってあります。
           </p>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-5 mt-6">
-            <Stat label="観測地点" value={nf(s?.n_sites)} unit="件" />
-            <Stat label="測定値" value={nf(s?.n_meas)} unit="行" note={`${s?.y_from}–${s?.y_to}`} />
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-5 mt-6">
+            <Stat label="観測地点" value={nf(s.sites)} unit="件" />
+            <Stat label="観測指標" value={nf(s.variables)} unit="種" note={`${s.yFrom}–${s.yTo}`} />
             <Stat label="日付のある生物レコード" value={nf(occ.records)} unit="件" />
-            <Stat label="センサー観測" value={nf(s?.n_sensor)} unit="行" />
-            <Stat label="単位流域" value={nf(s?.n_watersheds)} unit="面" />
-            <Stat label="観測イベント" value={nf(s?.n_events)} unit="件" />
-            <Stat label="出典" value={nf(s?.n_sources)} unit="件" />
+            <Stat label="単位流域" value={nf(s.watersheds)} unit="面" />
+            <Stat label="出典" value={nf(s.sources)} unit="件" />
           </div>
         </div>
       </section>
@@ -202,7 +193,6 @@ export default async function Home() {
               ["ゾーンは公式の区分ではない", caveatBody("zone")],
               ["生物レコードは地点に紐づいていない", caveatBody("organismSite")],
               ["生物の件数は観察努力を写している", caveatBody("effort")],
-              ["一部は合成データ", caveatBody("synthetic")],
             ].map(([t, b]) => (
               <li key={t} className="border-l-2 border-line pl-3">
                 <div className="text-[12.5px] font-medium">{t}</div>

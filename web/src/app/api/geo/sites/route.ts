@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
-import { d1CubeDb, sites } from "@/lib/cube";
+import { d1CubeDb, sites, MEASUREMENTS_DATASET as DATASET } from "@/lib/cube";
 
 export const runtime = "nodejs";
-
-/** measurements データセット固定（PR-2 のスコープは測定値系。design §1.1 と同じ前提）。 */
-const DATASET = "measurements";
 
 export async function GET() {
   const db = await d1CubeDb();

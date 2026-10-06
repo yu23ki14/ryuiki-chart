@@ -11,7 +11,7 @@ import { OCCURRENCE_AGG_INDEX } from "@/db/schema-cube";
 import { NAME_JA } from "@/lib/registry/generated-client";
 import { MAX_ID_LIST, type CubeDb, type SqlParam } from "./db";
 import { gridCellOfPlaceId } from "./grid";
-import { OCC_DEFAULT_FROM, OCC_DEFAULT_TO, YEAR_GRAINS, chunk, cmp, jsonEachParam, uniq } from "./sql";
+import { OCC_DEFAULT_FROM, occDefaultTo, YEAR_GRAINS, chunk, cmp, jsonEachParam, uniq } from "./sql";
 
 /**
  * D4（オーナー決定）: 記録由来の和名補完（`vernacular_ja_basis='records'`）を表示名に使う。
@@ -109,7 +109,7 @@ export async function speciesYears(
   binoms: readonly string[],
   opt: Partial<YearRange> = {},
 ): Promise<SpeciesYearRow[]> {
-  const [lo, hi] = periodRange(opt.from ?? OCC_DEFAULT_FROM, opt.to ?? OCC_DEFAULT_TO);
+  const [lo, hi] = periodRange(opt.from ?? OCC_DEFAULT_FROM, opt.to ?? occDefaultTo());
   const out: SpeciesYearRow[] = [];
   for (const part of chunk(uniq(binoms), MAX_ID_LIST)) {
     const rows = await db.all<R>(
@@ -153,7 +153,7 @@ export async function speciesMonths(db: CubeDb, binoms: readonly string[]): Prom
 
 /** v1 `speciesMeshYears`。n≥80 の種だけ（それ未満は空配列）。 */
 export async function speciesMeshYears(db: CubeDb, binom: string): Promise<SpeciesMeshYearRow[]> {
-  const [lo, hi] = periodRange(MESH_YEAR_FROM, OCC_DEFAULT_TO); // v1 は yr BETWEEN 1970 AND 2026
+  const [lo, hi] = periodRange(MESH_YEAR_FROM, occDefaultTo()); // v1 は yr BETWEEN 1970 AND 2026（窓の上限は現在年）
   const rows = await db.all<R>(
     `SELECT CAST(substr(o.period_start, 1, 4) AS INTEGER) AS year, o.place_id AS place_id, SUM(o.n) AS n
      FROM summary_species_catalog s

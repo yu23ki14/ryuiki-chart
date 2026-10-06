@@ -14,7 +14,10 @@
  * このファイルを編集したら `npm run db:generate` でマイグレーションを作り直す。
  * drizzle/migrations/*.sql を直接書き換えない。
  */
+import { sql } from "drizzle-orm";
 import { sqliteTable, text, integer, real, index } from "drizzle-orm/sqlite-core";
+// 依存なしの定数ファイル（drizzle-kit は `@/` エイリアスを解決しないので相対 import）。
+import { DOC_SERIES_WHERE } from "../lib/cube/doc-series-where";
 
 export const decisions = sqliteTable("decisions", {
 	decisionId: text("decision_id").primaryKey(),
@@ -295,6 +298,8 @@ export const cells = sqliteTable("cells", {
 },
 (table) => [
 	index("ix_cells_doc").on(table.docId, table.pageNo, table.tableId),
+	// 文書の数値系列（lib/cube/documents.ts）。述語は問い合わせの WHERE と一字一句同じ（DOC_SERIES_WHERE）。
+	index("ix_cells_series").on(table.docId, table.tableId, table.rowKey).where(sql.raw(DOC_SERIES_WHERE)),
 ]);
 
 export const documents = sqliteTable("documents", {

@@ -49,8 +49,7 @@
   画面ごとに個別対応を書かない。`web/src/lib/domain.ts` は Phase B で撤去済み
   （`docs/plans/PHASE_B_INTAKE.md` #6）。日付書式の混在・定量下限の 0 潰しのような
   レジストリの語彙ではないデータの癖は、それを使う画面・モジュール側（例:
-  `municipality` 列に水域名が入っている件の表示名は `web/src/lib/municipality.ts`、
-  `measurements.quality_stage` 等の3値は `web/src/lib/quality.ts` の `QUALITY_STAGES`）に
+  `municipality` 列に水域名が入っている件の表示名は `web/src/lib/municipality.ts`）に
   1箇所だけ置く。複数画面が同じ値を使うときは、その1箇所から import する。
 - 本番 D1 への投入は `pnpm run db:export` が書き出す .sql を `wrangler d1 execute --remote --file` に流す。
   `wrangler d1 export` は大きいテーブルで OOM するので使わない。

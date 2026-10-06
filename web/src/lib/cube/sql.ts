@@ -23,7 +23,12 @@ export type Scope =
 export const YEAR_GRAINS = "('year','survey_period')";
 /** 生物系の窓の既定（v1 の 1990〜2026）。 */
 export const OCC_DEFAULT_FROM = 1990;
-export const OCC_DEFAULT_TO = 2026;
+/** 生物系の窓の既定の上限＝現在年（`now` を注入できる。v1 の 2026 固定は oracle 側だけに残る）。 */
+export function occDefaultTo(now: Date = new Date()): number {
+  return now.getFullYear();
+}
+/** 「2020年以降」の固定の節目（ローリング窓ではない）。`iasSpecies` の `nSince`/`sinceYear`。 */
+export const IAS_SINCE_YEAR = 2020;
 
 export function chunk<T>(xs: readonly T[], size: number): T[][] {
   const out: T[][] = [];

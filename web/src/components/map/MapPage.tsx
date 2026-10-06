@@ -3,7 +3,7 @@
 import * as React from "react";
 import type { SourceSpecification } from "maplibre-gl";
 import { MapCanvas, type MapLayerSpec } from "./MapCanvas";
-import { SEQ, SEQ2, DIVERGING, ZONE_COLORS, ZONE_LABELS, ZONE_ELEV, STATUS } from "@/components/viz/palette";
+import { SEQ, SEQ2, DIVERGING, ZONE_COLORS, ZONE_LABELS, ZONE_ELEV } from "@/components/viz/palette";
 import { Btn, nf, Spinner } from "@/components/ui";
 import { useJson } from "@/components/useJson";
 import { caveatBody } from "@/lib/registry/lookup-client";
@@ -14,19 +14,20 @@ import Link from "next/link";
 type WsMetric = "org_density" | "site_n" | "org_redlist_n" | "built_delta" | "forest_delta" | "paddy_delta";
 type MeshMetric = "n" | "species_n" | "rl_n";
 
-const WS_METRICS: { id: WsMetric; label: string; note: string; diverging?: boolean; unit?: string }[] = [
+const WS_METRICS: { id: WsMetric; label: string; note: string; diverging?: boolean; unit?: string; landuse?: boolean }[] = [
   { id: "org_density", label: "生物記録の密度", note: "流域の面積あたりの観察・標本記録数（件/km²）", unit: "件/km²" },
   { id: "site_n", label: "観測地点の数", note: "その流域にある水質・気象などの観測地点", unit: "地点" },
   { id: "org_redlist_n", label: "レッドリスト種の記録数", note: "レッドリストのカテゴリーが付いた観察記録", unit: "件" },
   {
     id: "built_delta",
-    label: "市街地の増減 2006→2016",
+    label: "市街地の増減",
     note: "国土数値情報 土地利用細分メッシュ。建物用地の面積の差",
     diverging: true,
     unit: "km²",
+    landuse: true,
   },
-  { id: "forest_delta", label: "森林の増減 2006→2016", note: "同上・森林の面積の差", diverging: true, unit: "km²" },
-  { id: "paddy_delta", label: "田の増減 2006→2016", note: "同上・田の面積の差", diverging: true, unit: "km²" },
+  { id: "forest_delta", label: "森林の増減", note: "同上・森林の面積の差", diverging: true, unit: "km²", landuse: true },
+  { id: "paddy_delta", label: "田の増減", note: "同上・田の面積の差", diverging: true, unit: "km²", landuse: true },
 ];
 
 const MESH_METRICS: { id: MeshMetric; label: string; note: string }[] = [
@@ -40,24 +41,20 @@ export function MapPage() {
   const [showSites, setShowSites] = React.useState(true);
   const [showMesh, setShowMesh] = React.useState(false);
   const [showRivers, setShowRivers] = React.useState(false);
-  const [showEvents, setShowEvents] = React.useState(false);
 
   const [wsMetric, setWsMetric] = React.useState<WsMetric>("org_density");
   const [meshMetric, setMeshMetric] = React.useState<MeshMetric>("species_n");
   const [meshYear, setMeshYear] = React.useState<number | null>(null);
   const [sel, setSel] = React.useState<Record<string, unknown> | null>(null);
-  const [selKind, setSelKind] = React.useState<"watershed" | "site" | "mesh" | "event" | null>(null);
+  const [selKind, setSelKind] = React.useState<"watershed" | "site" | "mesh" | null>(null);
 
-  const ws = useJson<GeoJSON.FeatureCollection>("/api/geo/watersheds");
+  const ws = useJson<GeoJSON.FeatureCollection & { landuse_years?: { from: number; to: number } | null }>("/api/geo/watersheds");
+  const luYears = ws.data?.landuse_years ? ` ${ws.data.landuse_years.from}→${ws.data.landuse_years.to}` : "";
   const sites = useJson<GeoJSON.FeatureCollection>("/api/geo/sites");
   const mesh = useJson<GeoJSON.FeatureCollection>(
     showMesh ? `/api/geo/mesh${meshYear ? `?year=${meshYear}` : ""}` : "",
   );
   const rivers = useJson<GeoJSON.FeatureCollection>(showRivers ? "/geo/rivers.geojson" : "");
-  const events = useJson<{
-    interventions: { intervention_id: string; kind: string; site_name: string; lat: number; lon: number; started_on: string; quantity: number; quantity_unit: string; parcel: string; operator: string }[];
-    decisions: { decision_id: string; meeting_name: string; meeting_date: string; decided: string; site_name: string; lat: number; lon: number; stalled_item_resolved: number }[];
-  }>(showEvents ? "/api/geo/events" : "");
 
   const wsScale = React.useMemo(() => {
     if (!ws.data) return { breaks: [] as number[], min: 0, max: 0 };
@@ -83,32 +80,8 @@ export function MapPage() {
     if (sites.data) s["ry-sites"] = { type: "geojson", data: sites.data as never };
     if (mesh.data) s["ry-mesh"] = { type: "geojson", data: mesh.data as never };
     if (rivers.data) s["ry-rivers"] = { type: "geojson", data: rivers.data as never };
-    if (events.data) {
-      s["ry-events"] = {
-        type: "geojson",
-        data: {
-          type: "FeatureCollection",
-          features: [
-            ...events.data.interventions
-              .filter((i) => i.lat != null)
-              .map((i) => ({
-                type: "Feature" as const,
-                geometry: { type: "Point" as const, coordinates: [i.lon, i.lat] },
-                properties: { ...i, _kind: "intervention" },
-              })),
-            ...events.data.decisions
-              .filter((d) => d.lat != null)
-              .map((d) => ({
-                type: "Feature" as const,
-                geometry: { type: "Point" as const, coordinates: [d.lon, d.lat] },
-                properties: { ...d, _kind: "decision" },
-              })),
-          ],
-        } as never,
-      };
-    }
     return s;
-  }, [ws.data, sites.data, mesh.data, rivers.data, events.data]);
+  }, [ws.data, sites.data, mesh.data, rivers.data]);
 
   const layers: MapLayerSpec[] = React.useMemo(() => {
     const out: MapLayerSpec[] = [];
@@ -175,24 +148,8 @@ export function MapPage() {
         },
       });
     }
-    if (showEvents && events.data) {
-      out.push({
-        id: "ry-events-circle",
-        source: "ry-events",
-        interactive: true,
-        spec: {
-          type: "circle",
-          paint: {
-            "circle-radius": 7,
-            "circle-color": ["match", ["get", "_kind"], "intervention", STATUS.good, STATUS.warning] as never,
-            "circle-stroke-color": "#ffffff",
-            "circle-stroke-width": 2,
-          },
-        },
-      });
-    }
     return out;
-  }, [showWatersheds, showSites, showMesh, showRivers, showEvents, ws.data, sites.data, mesh.data, rivers.data, events.data, wsMetric, meshMetric, wsBreaks, meshBreaks]);
+  }, [showWatersheds, showSites, showMesh, showRivers, ws.data, sites.data, mesh.data, rivers.data, wsMetric, meshMetric, wsBreaks, meshBreaks]);
 
   const wsMeta = WS_METRICS.find((m) => m.id === wsMetric)!;
 
@@ -207,20 +164,23 @@ export function MapPage() {
             const p = f.properties as Record<string, unknown>;
             setSel(p);
             setSelKind(
-              f.layer.id.includes("ws") ? "watershed" : f.layer.id.includes("mesh") ? "mesh" : f.layer.id.includes("events") ? "event" : "site",
+              f.layer.id.includes("ws") ? "watershed" : f.layer.id.includes("mesh") ? "mesh" : "site",
             );
           }}
           overlay={
             <div className="absolute bottom-6 left-2 z-10 card px-2.5 py-2 shadow-sm max-w-[220px] max-h-[calc(100%-4rem)] overflow-y-auto thin-scroll no-print">
               {showWatersheds && (
                 <div className="mb-2">
-                  <div className="text-[10.5px] font-semibold mb-1">{wsMeta.label}</div>
+                  <div className="text-[10.5px] font-semibold mb-1">{wsMeta.label}{wsMeta.landuse && luYears}</div>
                   <Ramp
                     min={wsScale.min}
                     max={wsScale.max}
                     diverging={!!wsMeta.diverging}
                     unit={wsMeta.unit}
                   />
+                  {wsMeta.landuse && (
+                    <p className="text-[10px] text-muted mt-1 leading-snug">{caveatBody("landuseDefinitionChange")}</p>
+                  )}
                 </div>
               )}
               {showMesh && (
@@ -281,6 +241,7 @@ export function MapPage() {
                   />
                   <span className="text-[11.5px] leading-tight">
                     {m.label}
+                    {m.landuse && luYears}
                     <span className="block text-[10px] text-muted">{m.note}</span>
                   </span>
                 </label>
@@ -326,7 +287,6 @@ export function MapPage() {
             </div>
           )}
           <Toggle checked={showRivers} onChange={setShowRivers} label="河川流路（W05・2,305本）" />
-          <Toggle checked={showEvents} onChange={setShowEvents} label="介入と意思決定（合成データ）" />
         </Section>
 
         <div className="p-3 border-t border-line">
@@ -335,7 +295,6 @@ export function MapPage() {
           {sel && selKind === "watershed" && <WatershedCard p={sel} />}
           {sel && selKind === "site" && <SiteCard p={sel} />}
           {sel && selKind === "mesh" && <MeshCard p={sel} />}
-          {sel && selKind === "event" && <EventCard p={sel} />}
         </div>
 
         <div className="p-3 border-t border-line text-[10px] text-muted leading-relaxed">
@@ -501,31 +460,6 @@ function MeshCard({ p }: { p: Record<string, unknown> }) {
       <p className="text-[10px] text-muted mt-1.5 leading-snug">
         件数が多くても種数が少ないメッシュは、同じ場所を繰り返し訪れる観察地点（探鳥地など）であることが多い。
       </p>
-    </div>
-  );
-}
-
-function EventCard({ p }: { p: Record<string, unknown> }) {
-  const isInt = p._kind === "intervention";
-  return (
-    <div>
-      <div className="text-[13px] font-semibold">{isInt ? `介入: ${String(p.kind)}` : String(p.meeting_name)}</div>
-      <div className="text-[10px] text-muted mb-1.5">{String(p.site_name ?? "")}</div>
-      {isInt ? (
-        <>
-          <Row k="区画" v={String(p.parcel ?? "–")} />
-          <Row k="量" v={`${fmt(Number(p.quantity))} ${String(p.quantity_unit ?? "")}`} />
-          <Row k="期間" v={`${String(p.started_on)} 〜 ${String(p.finished_on ?? "")}`} />
-          <Row k="実施" v={String(p.operator ?? "–")} />
-        </>
-      ) : (
-        <>
-          <Row k="日付" v={String(p.meeting_date)} />
-          <Row k="停滞案件の解消" v={Number(p.stalled_item_resolved) ? "あり" : "なし"} />
-          <p className="text-[11px] mt-1.5 leading-relaxed">{String(p.decided ?? "")}</p>
-        </>
-      )}
-      <p className="text-[10px] text-muted mt-1.5">この2つのレイヤは合成データ（デモ用に生成したもの）。</p>
     </div>
   );
 }

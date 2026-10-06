@@ -1,14 +1,14 @@
 {
   "header": {
-    "gitHead": "57bf331744dfa89cad617c412bcfa7689d3e8710",
+    "gitHead": "a6e9a3db8d80d418d873dd92309a30c6e3ebcd8f",
     "v2PipelineFingerprint": "phase-b-fact-slice/v1",
     "registryInputFingerprint": "2112cfc3ff09e8fb6cef1be59783381f41bdb2cb8ca751cd702067415142fffa",
     "sqliteVersion": "3.53.4",
     "imputation": "zero",
     "expand": "all",
     "v1Source": "derived",
-    "generatedAt": "2026-10-05T13:32:38.675Z",
-    "elapsedMs": 242352
+    "generatedAt": "2026-10-05T14:56:34.510Z",
+    "elapsedMs": 211906
   },
   "stats": [
     {
@@ -28,6 +28,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -47,6 +50,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -66,6 +72,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -85,6 +94,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -104,6 +116,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -123,6 +138,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -142,6 +160,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -161,6 +182,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -180,6 +204,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -199,6 +226,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -218,6 +248,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -237,6 +270,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -256,6 +292,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -275,6 +314,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -294,6 +336,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -313,6 +358,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -332,6 +380,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -351,6 +402,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -370,6 +424,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -389,6 +446,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -408,6 +468,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -427,6 +490,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -446,6 +512,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -465,6 +534,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -484,6 +556,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -503,6 +578,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -522,6 +600,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 2837,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -541,6 +622,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 2837,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -560,6 +644,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -579,6 +666,9 @@
       "month_cell_membership": 19,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -598,6 +688,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -617,6 +710,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 74,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -636,6 +732,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -655,6 +754,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -674,6 +776,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -693,6 +798,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -712,6 +820,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -731,6 +842,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -750,14 +864,17 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 1,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
       "id": "watershed_rollup",
       "runs": 1,
-      "rowsV1": 287,
-      "rowsV2": 287,
-      "matched": 101,
+      "rowsV1": 377,
+      "rowsV2": 377,
+      "matched": 191,
       "declared": 0,
       "day_split": 0,
       "synthetic_excluded": 0,
@@ -769,6 +886,9 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     },
     {
@@ -788,15 +908,106 @@
       "month_cell_membership": 0,
       "vernacular_label_rule": 0,
       "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
+      "unexplained": 0
+    },
+    {
+      "id": "doc_series_meta",
+      "runs": 1,
+      "rowsV1": 470,
+      "rowsV2": 414,
+      "matched": 163,
+      "declared": 0,
+      "day_split": 0,
+      "synthetic_excluded": 0,
+      "lod_imputation": 0,
+      "unit_label_registry": 0,
+      "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
+      "doc_label_rule": 20,
+      "doc_warning_scope": 245,
+      "doc_year_collapse": 61,
+      "unexplained": 0
+    },
+    {
+      "id": "doc_series_points",
+      "runs": 470,
+      "rowsV1": 3293,
+      "rowsV2": 3050,
+      "matched": 3050,
+      "declared": 0,
+      "day_split": 0,
+      "synthetic_excluded": 0,
+      "lod_imputation": 0,
+      "unit_label_registry": 0,
+      "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 243,
+      "unexplained": 0
+    },
+    {
+      "id": "overview_counts",
+      "runs": 1,
+      "rowsV1": 1,
+      "rowsV2": 1,
+      "matched": 1,
+      "declared": 0,
+      "day_split": 0,
+      "synthetic_excluded": 0,
+      "lod_imputation": 0,
+      "unit_label_registry": 0,
+      "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
+      "unexplained": 0
+    },
+    {
+      "id": "landuse_highlight",
+      "runs": 1,
+      "rowsV1": 8,
+      "rowsV2": 8,
+      "matched": 8,
+      "declared": 0,
+      "day_split": 0,
+      "synthetic_excluded": 0,
+      "lod_imputation": 0,
+      "unit_label_registry": 0,
+      "float_rounding": 0,
+      "watershed_memo": 0,
+      "species_n_definition": 0,
+      "month_cell_membership": 0,
+      "vernacular_label_rule": 0,
+      "undated_excluded": 0,
+      "doc_label_rule": 0,
+      "doc_warning_scope": 0,
+      "doc_year_collapse": 0,
       "unexplained": 0
     }
   ],
   "totals": {
     "id": "total",
-    "runs": 31250,
-    "rowsV1": 1286649,
-    "rowsV2": 1279130,
-    "matched": 1070157,
+    "runs": 31723,
+    "rowsV1": 1290511,
+    "rowsV2": 1282693,
+    "matched": 1073469,
     "declared": 37,
     "day_split": 12,
     "synthetic_excluded": 10129,
@@ -808,6 +1019,9 @@
     "month_cell_membership": 19,
     "vernacular_label_rule": 5748,
     "undated_excluded": 1,
+    "doc_label_rule": 20,
+    "doc_warning_scope": 245,
+    "doc_year_collapse": 304,
     "unexplained": 0
   },
   "labelMoved": {
@@ -856,7 +1070,7 @@
     },
     {
       "name": "drop_series",
-      "unexplained": 634840,
+      "unexplained": 636484,
       "caughtAsExpected": true
     },
     {
@@ -866,7 +1080,7 @@
     },
     {
       "name": "no_unit",
-      "unexplained": 125974,
+      "unexplained": 126544,
       "caughtAsExpected": true
     },
     {
@@ -891,7 +1105,22 @@
     },
     {
       "name": "inflate_n",
-      "unexplained": 37253,
+      "unexplained": 37254,
+      "caughtAsExpected": true
+    },
+    {
+      "name": "doc_label_wrong",
+      "unexplained": 1,
+      "caughtAsExpected": true
+    },
+    {
+      "name": "doc_drop_point",
+      "unexplained": 432,
+      "caughtAsExpected": true
+    },
+    {
+      "name": "inflate_site_n",
+      "unexplained": 377,
       "caughtAsExpected": true
     },
     {
@@ -908,11 +1137,6 @@
       "name": "synthetic_rule_off",
       "unexplained": 10129,
       "caughtAsExpected": true
-    },
-    {
-      "name": "lod_rule_off",
-      "unexplained": 0,
-      "caughtAsExpected": false
     },
     {
       "name": "memo_rule_off",
@@ -940,9 +1164,37 @@
       "caughtAsExpected": true
     },
     {
+      "name": "doc_label_rule_off",
+      "unexplained": 20,
+      "caughtAsExpected": true
+    },
+    {
+      "name": "doc_warning_rule_off",
+      "unexplained": 245,
+      "caughtAsExpected": true
+    },
+    {
+      "name": "doc_collapse_rule_off",
+      "unexplained": 304,
+      "caughtAsExpected": true
+    },
+    {
       "name": "merge_rule_off",
       "unexplained": 381251,
       "caughtAsExpected": true
     }
-  ]
+  ],
+  "skippedMutations": [
+    {
+      "name": "lod_rule_off",
+      "reason": "lod 実行のみ（現在は zero）"
+    }
+  ],
+  "retiredColumns": {
+    "overview_counts": [
+      "n_meas",
+      "n_sensor",
+      "n_events"
+    ]
+  }
 }

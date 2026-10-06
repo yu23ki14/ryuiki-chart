@@ -27,6 +27,15 @@ alias→variable_id の束ねに対応する `*_by_variable` 系の新規問い�
 差が出れば unexplained にする。「鎖に特例を積まない」原則は変わらない。設計は
 `docs/plans/V2_SERVING_PR3B.md` §3。
 
+**2026-10-05 追記（Issue #48 PR-4）**: serving-diff に文書系（`doc_series_meta`/`doc_series_points`）の
+説明規則を3つ足した。`doc_label_rule`（v1 の label の式が `|` を2個以上含む row_key で壊れる
+バグの修正）、`doc_warning_scope`（警告数を doc 単位から「文書全体＋当該表を名指す注記」に）、
+`doc_year_collapse`（同じ年に値が割れる系列を点にしない D1=A。n_years・y_from・y_to・page_no と
+消える点を説明）。どれも `cells.sqlite` からの別 SQL の再計算と v2 が一致することを確かめた上で
+「説明済み」にする（`web/scripts/lib/serving/docs-expect.ts`。`lib/cube` は import しない）。
+page_no は v1 側が GROUP BY の非集約列で不定のため、v2 が期待値（年ごとの MIN の年またぎ MAX）と
+一致すれば説明済みとする。
+
 ## 背景
 
 [ADR-0027](0027-test-and-verification-strategy.md) の層2（縮小サンプル突合）・層3（全量の

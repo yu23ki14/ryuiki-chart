@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { IAS_SINCE_YEAR } from "@/lib/cube/sql";
 import {
   d1CubeDb,
   taxonGroupYears,
@@ -75,6 +76,7 @@ export async function GET(req: NextRequest) {
       case "ias": {
         const rows = await iasSpecies(db);
         return NextResponse.json({
+          since_year: IAS_SINCE_YEAR,
           rows: rows.map((r) => ({
             ias_category: r.iasCategory,
             binom: r.binom,
@@ -85,7 +87,7 @@ export async function GET(req: NextRequest) {
             mesh_n: r.meshN,
             y_from: r.yFrom,
             y_to: r.yTo,
-            n_since_2020: r.nSince2020,
+            n_since: r.nSince,
           })),
         });
       }

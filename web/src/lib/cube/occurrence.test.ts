@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OCCURRENCE_AGG_INDEX as OCC_INDEX } from "@/db/schema-cube";
 import { NAME_JA } from "@/lib/registry/generated-client";
 import type { CubeDb, SqlParam } from "./db";
@@ -245,5 +245,26 @@ describe("EXPLAIN QUERY PLAN の固定（occurrence_agg の索引）", () => {
       const fromJoins = src.match(/(FROM|JOIN)\s+occurrence_agg\b[^\n]*/g) ?? [];
       for (const line of fromJoins) expect(line).toMatch(/INDEXED BY/);
     }
+  });
+});
+
+describe("既定の窓の上限は現在年（PR-4 §7-3）", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("現在年が 2027 なら、2027 のセルも既定の窓に入る（2026 固定ではない）", async () => {
+    fx.raw.exec(
+      `INSERT INTO occurrence_agg SELECT * FROM occurrence_agg WHERE taxon_id = 'common:taxon:fx_a' AND place_kind = 'grid01' AND grain = 'year' AND period_start = '2021-01-01' LIMIT 1`,
+    );
+    fx.raw.exec(`UPDATE occurrence_agg SET period_start = '2027-01-01' WHERE rowid = last_insert_rowid()`);
+
+    vi.useFakeTimers({ now: new Date("2026-06-01T00:00:00Z") });
+    const in2026 = await speciesYears(fx.db, [alpha]);
+    expect(in2026.some((r) => r.year === 2027)).toBe(false);
+
+    vi.setSystemTime(new Date("2027-06-01T00:00:00Z"));
+    const in2027 = await speciesYears(fx.db, [alpha]);
+    expect(in2027.find((r) => r.year === 2027)).toMatchObject({ n: 90 });
   });
 });

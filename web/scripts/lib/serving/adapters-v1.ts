@@ -1,20 +1,14 @@
 /**
- * v1 アダプタ: `web/src/lib/queries.ts` を **無変更で** 呼び、`serving_queries.yaml`
- * の `id` ごとに行を集めて `NormRow[]` に正規化する。
- *
- * `queries.ts` の `import { query, queryOne, queryChunked, ph } from "./db"` は、
- * このプロセスを `node --import ./scripts/lib/serving/register-aliases.mjs` で
- * 起動したときだけ `web/scripts/lib/v1-db-shim.ts`（better-sqlite3）に差し替わる。
- * このファイル自身は `queries.ts` を普通に import するだけで、差し替えの仕組みを
- * 一切知らない（`register-aliases.mjs` のコメント参照）。
+ * v1 アダプタ: `./v1-queries.ts`（PR-4 で `web/src/lib/queries.ts` から無変更で移した v1 の
+ * oracle。`../v1-db-shim` を直接 import する）を呼び、`serving_queries.yaml` の `id` ごとに
+ * 行を集めて `NormRow[]` に正規化する。
  *
  * パラメータの列挙（`enumerateParams`）は v1 の db（derived.sqlite/ryuiki.sqlite）
  * だけを見る（設計書 §1「domains の db は v1」）。v1-db-shim の `query()` を
- * 直接呼ぶ——`queries.ts` 経由ではなく、`serving_queries.yaml` の `domains`/
- * `only_existing` の SQL をそのまま実行する薄い経路。
+ * 直接呼ぶ——`serving_queries.yaml` の `domains`/`only_existing` の SQL をそのまま実行する薄い経路。
  */
 import Database from "better-sqlite3";
-import * as queries from "../../../src/lib/queries";
+import * as queries from "./v1-queries";
 import { query as v1RawQuery, ph } from "../v1-db-shim";
 import * as mergeV1 from "./merge-v1";
 import { speciesLabel } from "@/lib/registry/lookup-client";
@@ -222,7 +216,7 @@ export async function enumerateParams(
 }
 
 /* ------------------------------------------------------------------ */
-/* 問い合わせ本体（id ごとに queries.ts を呼ぶ）                          */
+/* 問い合わせ本体（id ごとに v1-queries.ts を呼ぶ）                          */
 /* ------------------------------------------------------------------ */
 
 async function highlightParams(variant: ScalarParam): Promise<[string, string]> {
@@ -492,7 +486,7 @@ async function fetchRawRows(
 
     /* ------------------------------------------------------------------ */
     /* 生物系（Issue #48 PR-3b、`docs/plans/V2_SERVING_PR3B.md` §3.2）。          */
-    /* `queries.ts` の v1 関数を無変更で呼ぶ（`org_watershed_year` だけは関数が無い */
+    /* `v1-queries.ts` の v1 関数を無変更で呼ぶ（`org_watershed_year` だけは関数が無い */
     /* ので v1 表を直接読む）。表示名は v1 の画面と同じ `speciesLabel(binom, en_name)` */
     /* （`NAME_JA ?? en_name ?? binom`）。                                      */
     /* ------------------------------------------------------------------ */
@@ -543,13 +537,24 @@ async function fetchRawRows(
       return r ? [{ records: r.records, species: r.species, mesh: r.mesh, gbif: r.gbif, inat: r.inat }] : [];
     }
     case "watershed_rollup": {
-      // v2 は 0 件の流域の行を返さない（`summary_watershed_occurrence` は記録のある流域だけ）。
-      // v1 の全 0 行は「どちらも 0」なので比べる対象から外す（`watershed_memo` の moved に数えない）。
+      // PR-4: v2 も全 377 流域を返すので、v1 の全 0 行を落とす処理は外した（流域外の取りこぼしを見逃さない）。
       const rows = await queries.watershedRollup();
-      return rows
-        .filter((r) => r.org_n !== 0 || r.org_alien_n !== 0 || r.org_redlist_n !== 0)
-        .map((r) => ({ watershed_id: r.watershed_id, org_n: r.org_n, org_alien_n: r.org_alien_n, org_redlist_n: r.org_redlist_n }));
+      return rows.map((r) => ({ ...r }));
     }
+    case "doc_series_meta":
+      // 画面・API（`api/documents`）と同じ minYears=3（v1 の既定は 4 だが、API は今も 3 を渡している）。
+      return (await queries.docSeriesList(3)).map((r) => ({ ...r }));
+    case "doc_series_points":
+      return (await queries.docSeriesPoints(String(params.doc_id), String(params.table_id), String(params.row_key))).map((r) => ({ ...r }));
+    case "overview_counts": {
+      // n_meas / n_sensor / n_events は D2 で廃止（キューブから再現できない）ので比べない。
+      const r = await queries.overviewStats();
+      return r
+        ? [{ n_sites: r.n_sites, n_sources: r.n_sources, n_watersheds: r.n_watersheds, y_from: r.y_from, y_to: r.y_to }]
+        : [];
+    }
+    case "landuse_highlight":
+      return (await queries.landuseHighlight(8)).map((r) => ({ ...r }));
     case "watershed_year":
       return v1RawQuery<RawRow>(`SELECT watershed_id, year, n, species_n, alien_n, redlist_n FROM org_watershed_year`);
 

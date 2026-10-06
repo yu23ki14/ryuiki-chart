@@ -24,7 +24,6 @@ export const TOOL_LABEL: Record<string, string> = {
   get_biota_trend: "生物の推移を取得",
   get_redlist: "レッドリストを取得",
   get_overview: "概況を取得",
-  get_quality_progress: "品質進捗を取得",
   describe_schema: "テーブル定義を確認",
   run_sql: "SQLを実行",
 };

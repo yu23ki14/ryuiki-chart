@@ -26,7 +26,6 @@ const ROUTE_TITLES: Record<string, string> = {
   "/biota": "生物相",
   "/sites": "地点カルテ",
   "/documents": "文書と統計",
-  "/quality": "品質と進捗",
   "/explore": "データ探索",
   "/sources": "出典",
 };
