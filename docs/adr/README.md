@@ -129,7 +129,7 @@ SPM(mg/m3) / 浮遊粒子状物質（SPM）_日平均      <- 名前に単位と
 ### (d) ソースを1つ足すとテーブルもAPIも画面も増える
 
 Tier 1 追加時に `protected_areas` / `vegetation_polygons` / `mammal_mesh` /
-`wildlife_sightings` / `river_segments` の5テーブル ＋ `/api/nature?kind=` ＋ `/api/geo/*` が増えた。
+`wildlife_sightings` / `river_segments` の5テーブル ＋ `/api/nature?kind=` ＋ `/api/geo/*` が増えた（→ `/api/nature` は Issue #61 で撤去）。
 追加のたびにこれが繰り返される。→ ADR-0012
 
 ### (e) テーブル数の記録自体がずれている

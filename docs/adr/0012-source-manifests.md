@@ -10,7 +10,7 @@ Tier 1 のデータ追加時に起きたことを数えると、1回の追加で
 - テーブル5つ（`protected_areas` / `vegetation_polygons` / `mammal_mesh` /
   `wildlife_sightings` / `river_segments`）＋ DDL（`scripts/schema_tier1.sql`）
 - 変換スクリプト1本（`scripts/m05_tier1.py`、389行）
-- API 4本（`/api/nature?kind=...`、`/api/geo/{protected-areas,vegetation,river-segments}`）
+- API 4本（`/api/nature?kind=...`、`/api/geo/{protected-areas,vegetation,river-segments}`）（→ `/api/nature` は Issue #61 で撤去）
 - Drizzle スキーマ・`TABLE_ORIGIN`・`TABLE_META` への追記
 
 収集側（`scripts/c*.py` と `docs/COLLECTOR_CONTRACT.md`）は既に規約が明確で、

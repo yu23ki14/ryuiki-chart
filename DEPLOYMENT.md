@@ -279,17 +279,36 @@ pnpm wrangler d1 migrations list ryuiki --remote   # 本番の適用済みを確
 - `0010` を A より先に当てない。
 - サイズ見積もりの根拠は `docs/plans/V2_SERVING.md` §8。
 
-## vocab_*・extraction_log の DROP（Issue #61）
+## v1 撤去の後片付けの本番切り替え（Issue #61）
 
-`0011`（`vocab_areas`/`vocab_eras`/`vocab_indicators`/`vocab_units`/`extraction_log` の5表を DROP）の本番手順。
-手順書で、実施はまだ。`water_*` は残す。表は全部 v1 時代の原本表でコードは読まないが、順序は守る。
+`0011`（`vocab_areas`/`vocab_eras`/`vocab_indicators`/`vocab_units`/`extraction_log` の5表を DROP）と、
+b04 の集計変更（ND を `value_zero` の平均からも除外する）を本番へ出す手順。手順書で、**実施はまだ**。`water_*` は残す。
+b04 の変更で `observation_agg` の値と、そこから作る `summary_*`（b13 の出力）が変わるので、コードだけでなく**データの再投入が要る**。
 
-1. **コードのデプロイ（先）**: main で `pnpm run deploy`。この版は 5 表を参照しない。`/api/nature` も消える。
-   動作確認は「v1 撤去後の本番切り替え」節の手順 B と同じ。問題があれば `wrangler rollback`（DROP はまだ）。
-2. **DROP（後）**: 十分に様子を見てから `pnpm run db:migrate:remote`（`0011` が当たる）。
-   `pnpm wrangler d1 info ryuiki` で表数が 40（実測。5 表減る）になったことと、動作確認を再度。
-   戻すには Time Travel（`0011` の直前）。
-3. 逆順（DROP が先）にしない。旧コードが `extraction_log` 等を読んでいると落ちる。
+順序: **コードのデプロイ → `0011` DROP → キューブ・summary の再投入 → 画面と AI の確認**。
+
+1. **コードのデプロイ**: main で `pnpm run deploy`。この版は 5 表を参照しない（`/api/nature` も消える）。
+   動作確認は「v1 撤去後の本番切り替え」節の手順 B と同じ。
+2. **DROP**: 十分に様子を見てから `pnpm run db:migrate:remote`（`0011` が当たる）。
+   `pnpm wrangler d1 info ryuiki` で表数が 40（実測。5 表減る）になったことを確認。
+3. **キューブ・summary の再投入**: 手元で `build:v2` と D1 のシードが済んだ最新の状態から、`web/src/db/schema-cube.ts` の
+   `observation_agg`（b04）と、そこから作る `summary_variable_catalog`・`summary_place_variable`（b13）を書き出して流す。
+   生物側の `occurrence_agg`・`summary_taxon_catalog`・`summary_watershed_occurrence`・`summary_species_catalog`・`summary_group_year`・
+   `summary_effort_year`・`summary_grid_catalog` は今回の変更の対象外だが、ローカル D1 と行数・内容が一致しないものがあれば同じ手で入れ直す。
+   `reports/serving_fingerprint.json` の `git_head` が今のコードであることと `scripts/check_v2_fresh.py` の鮮度を、入れる前に確かめる。
+   入れ直す表は本番に行があるので、流す前に `DELETE FROM` する（素の `INSERT INTO` のため主キーが衝突する）。
+
+   ```bash
+   pnpm run db:export -- --table observation_agg,summary_variable_catalog,summary_place_variable
+   ```
+
+   流し方は「3. データを入れる」のファイル単位の再試行ループと同じ（`wrangler d1 execute --remote --file`）。`wrangler d1 export` は使わない。
+   投入中は該当画面の値が空か古いので、手順 1〜2 のあと続けて行う。rows written の予算（5,000 万行/月）を数えること。
+4. **確認**: `pnpm run db:verify:remote`（行数がローカル D1 と一致）。画面（`/timeseries`・`/sites`・`/`）と AI の注記で、
+   ND（不検出）の平均が下がっていない・`reports/serving_fingerprint.json` の代表値と矛盾しないことを見る。
+
+ロールバック: 手順 1 は `wrangler rollback`。手順 2 以降（DROP・再投入）は Time Travel（`0011` の直前）になるので、
+**ロールバックは事前にオーナーの許可を取ってから行う**。逆順（DROP が先）にしない。
 
 ## 更新するとき
 
