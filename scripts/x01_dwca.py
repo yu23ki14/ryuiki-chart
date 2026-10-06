@@ -21,6 +21,7 @@ GBIF/JBIF へそのまま投入できる構造にする。座標は一般化せ�
 import sys, csv, json, re, sqlite3, zipfile, pathlib, datetime, argparse
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from common import DB, ROOT, now
+from taxon_namespaces import dwca_taxon_id
 
 OUT = ROOT/"data/dwca"; OUT.mkdir(parents=True, exist_ok=True)
 # DwC-A の zip は展開形と同じ data/dwca/ に置く。
@@ -216,7 +217,7 @@ def build(include_noncommercial=False):
           "basisOfRecord": r["basis_of_record"] or "HumanObservation",
           "occurrenceStatus": "present",
           "scientificName": sci, "acceptedNameUsage": "",
-          "taxonID": r["taxon_key"] or "", "taxonRank": r["taxon_rank"] or "",
+          "taxonID": dwca_taxon_id(sid, r["taxon_key"]), "taxonRank": r["taxon_rank"] or "",
           "kingdom": r["kingdom"] or "", "phylum": r["phylum"] or "",
           "class": r["class"] or "", "order": r["order"] or "",
           "family": r["family"] or "", "genus": r["genus"] or "", "specificEpithet": "",
