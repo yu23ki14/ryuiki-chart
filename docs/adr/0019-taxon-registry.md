@@ -261,21 +261,34 @@ taxon_assessment  taxon_id, list_id, list_year, category_code, category_raw,
 
 設計・実測は `docs/plans/ISSUE34_TAXON.md`、除外規則の実測表は `reports/phase_b_taxon_assessment.md`。
 
-1. **`n_alien` の定義＝国外由来の掲載がある種（宣言の除外を除く）の記録数。** 全国リストの「国内由来」
-   （国内外来種）は地域によって在来であり、全国リストは神奈川で外来かを判定できない。`taxon_assessment.in_scope` は
-   「この地域の外来種として数える対象か」の旗であり、集計がそれを無視していたのは欠陥だった。規則は
-   `registry/taxon/assessment_scope_exclusions.yaml` の `rules:`（binom の掲載行がすべて `origin_ja` に「国内由来」を含む。
-   27 binom）と固定宣言（7種。Apis mellifera だけが規則外で、理由は掲載学名が亜種）の和集合（28 binom）。行は消さず
-   `in_scope=0`・`scope_reason` に理由を残す。b06 が `occurrence.is_alien_in_scope`（原表記 `is_alien` は変えない）を
-   持ち、b07 が `n_alien = SUM(is_alien_in_scope)`（`OCCURRENCE_AGG_SPEC_VERSION` を v3 に）。
+1. **`n_alien` の定義＝記録の学名（二名法）が環境省リスト（moe_ias_2015）に `in_scope=1` で載っている記録の数。**
+   原本の `is_alien` 旗は根拠にしない: 同じ種の中で 1 と 0 が混在し（caveat `isAlien`）、オオクチバス・ウシガエル等が
+   0 になる。b06 が `occurrence.is_alien_in_scope` を `taxon_assessment`（`list_id='moe_ias_2015' AND in_scope=1` の
+   `binom`）との二名法一致から導き、原表記の `is_alien` は残す（遮蔽ではなく置き換え）。b07 が
+   `n_alien = SUM(is_alien_in_scope)`（`OCCURRENCE_AGG_SPEC_VERSION` v3・`OCCURRENCE_SPEC_VERSION` v2・
+   `SUMMARY_SPEC_VERSION` v5）。
+   `in_scope=0`（外来種として数えない）は、全国リストの「国内由来」（国内外来種）は地域によって在来であり、全国リストは
+   神奈川で外来かを判定できないため。`registry/taxon/assessment_scope_exclusions.yaml` の `rules:` は、binom の**すべての
+   掲載**が「国内由来のみ」のとき除外する（27 binom）。1件の `origin_ja` の分類: 空は unknown（1件でもあれば除外しない）、
+   「国内に自然分布域を持つ国外由来の外来種」の語句を除いた残りに「国外由来」を含めば foreign（国外由来の掲載）、
+   それ以外で「国内由来」を含めば domestic。同じ binom に foreign の掲載が1件でもあれば除外しない（Sus scrofa 等）。
+   固定宣言（7種。Apis mellifera だけが規則外）との和集合が除外集合（28 binom）。行は消さず `in_scope=0`・`scope_reason`
+   に理由を残す。規則の件数（27）は `build()` の本番経路が宣言と突き合わせ、固定宣言の `domestic_origin` が規則と
+   食い違えば常に止まる。
 
-   | | 除外前 | 除外後 |
+   **前後の件数**（`organism_records` 823,692 件。occurrence 全体の `n_alien`）:
+
+   | | 旧（原本 `is_alien` の合計） | 新（`is_alien_in_scope` の合計） |
    |---|---:|---:|
-   | `n_alien`（occurrence 全体） | 3,721 | 3,341（-380） |
-   | うち固定7種（以前から宣言していたが `n_alien` には効いていなかった） | 351 | 0 |
-   | うち新規10種（モツゴ・ニホントカゲ・ニホンヒキガエル・Fejervarya kawamurai・Mustela itatsi・Martes melampus・Ficus microcarpa・Coreoperca kawamebari・Dicentra peregrina・Tachysurus nudiceps） | 29 | 0 |
+   | `n_alien` | 3,721 | **19,237**（+15,516） |
+   | 除外集合（28 binom）の記録 | 380 | 0（-380。固定7種 351・新規10種 29） |
+   | 原旗が 0 だったのにリストに載る種の記録 | 0 | 15,896（148 binom） |
 
-   新規10種の記録は 291 件（`is_alien` が立っていたのは 29 件）。種ごとの件数は `reports/phase_b_taxon_assessment.md`。
+   増分の大きい種（記録数・旧 `is_alien=1`）: Garrulax canorus（ガビチョウ）4,353・262、Trachemys scripta 520・169、
+   Solidago altissima 529・228、Paguma larvata 457・17、Bidens pilosa 447・0、Psittacula krameri 407・8、
+   Oenothera laciniata 406・156、Leiothrix lutea 303・39 ほか。旧旗が 1 だったのに新で 0 になるのは除外集合の 380 件だけ。
+   種ごとの除外の表は `reports/phase_b_taxon_assessment.md`。キューブ（`occurrence_agg` の年セル、日付あり記録）の
+   `n_alien` は 3,717 → 19,176。
 2. **`accepted_taxon_id`（方針6）を実装した。** `scripts/c26_taxon_gbif_accepted.py` が GBIF の `species/{key}` から
    `acceptedKey` を収集し（`data/processed/taxon_gbif_accepted.csv`、2,643行。c24 は触らない）、受理名の taxon が
    レジストリに実在する行にだけ入れる。実測: 設定 81件／受理名はあるがその taxon がレジストリに無く NULL 269件／

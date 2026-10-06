@@ -114,3 +114,24 @@ def test_build_rows_weak_match_adopted_and_unresolved_with_reason():
     assert (by["w1"]["weak_resolution"], by["w1"]["weak_key"]) == ("adopted", "99")
     assert (by["w2"]["weak_resolution"], by["w2"]["weak_reason"]) == ("unresolved", "genus_or_higher")
     assert n == 1  # spp. は API を引かない
+
+
+def test_build_rows_retries_weak_api_failure_and_ignores_stale_rows():
+    """弱い一致の API 失敗（weak_reason='api_failed'）は次回再取得する。crosswalk の gbif_key・学名が
+    変わった行は、taxon_id が同じでも再利用しない。"""
+    cw = [_cw("w1", "Foo bar", "5", "HIGHERRANK", "ACCEPTED")]
+
+    def boom(url, params=None):
+        raise RuntimeError("x")
+
+    rows, _ = c26.build_rows(cw, {}, boom)
+    assert rows[0]["weak_reason"] == "api_failed"
+    rows2, n2 = c26.build_rows(cw, {"w1": rows[0]}, lambda url, params=None: _match(usageKey=99))
+    assert (rows2[0]["weak_resolution"], n2) == ("adopted", 1)
+    # 成功済みでも gbif_key が変わっていれば引き直す
+    changed = [_cw("w1", "Foo bar", "6", "HIGHERRANK", "ACCEPTED")]
+    rows3, n3 = c26.build_rows(changed, {"w1": rows2[0]}, lambda url, params=None: _match(usageKey=77))
+    assert (rows3[0]["weak_key"], n3) == ("77", 1)
+    renamed = [_cw("w1", "Foo baz", "5", "HIGHERRANK", "ACCEPTED")]
+    _rows4, n4 = c26.build_rows(renamed, {"w1": rows2[0]}, lambda url, params=None: _match(usageKey=78, canonicalName="Foo baz"))
+    assert n4 == 1

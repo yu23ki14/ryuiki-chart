@@ -63,8 +63,9 @@ import pipeline_inputs  # noqa: E402  (v2 入力指紋が data/processed の sha
 OBSERVATION_AGG_SPEC_VERSION = "phase-b-fact-slice/v3"
 
 # `scripts/b09_build_occurrence_place.py`（`occurrence_place`）専用。
-# キー（`record_id, place_kind`）もスキーマも変わっていないので v1 のまま据え置く。
-OCCURRENCE_SPEC_VERSION = "phase-b-fact-slice/v1"
+# キー（`record_id, place_kind`）もスキーマも変わっていないが、2026-10-06 Issue #34 で
+# 入力の `occurrence` に `is_alien_in_scope` 列が増えた（n_alien の意味が変わった）ため v2 に上げた。
+OCCURRENCE_SPEC_VERSION = "phase-b-fact-slice/v2"
 
 # `scripts/b07_build_occurrence_cube.py`（`occurrence_agg`）専用。2026-09-27
 # Issue #48 PR-3a: 次元キーは変えていないが、(a) `place_kind='watershed'` の
@@ -116,7 +117,9 @@ V2_CHECK_EXIT_STALE = 10
 # `taxon` を読み取り専用で結合して作る）を足したため v2→v3 に上げた。
 # 2026-10-06: Issue #61 で入力の `value_zero` の意味（ND 除外）が変わり、
 # `avg_zero` の値が変わるため v3→v4 に上げた。
-SUMMARY_SPEC_VERSION = "serving-summary/v4"
+# 2026-10-06: Issue #34 で `n_alien` の意味（環境省リスト＋除外規則から導く旗の合計）が変わり、
+# `summary_species_catalog`/`summary_watershed_occurrence` の n_alien の値が変わるため v4→v5 に上げた。
+SUMMARY_SPEC_VERSION = "serving-summary/v5"
 
 # D1 に載せる summary 表（`scripts/b13_build_summary.py` が作る）の名前。
 # `V2_CUBE_SPEC_VERSIONS` に SUMMARY_SPEC_VERSION 付きで足すのに使う——

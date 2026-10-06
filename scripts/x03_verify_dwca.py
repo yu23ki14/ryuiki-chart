@@ -12,11 +12,11 @@ GBIF完走後の再検証にあたってスクリプトとして固定した。�
   3. occurrence.txt / extendedmeasurementorfact.txt の eventID が event.txt に存在するか
   4. event.txt の eventDate の ISO 8601 適合性
   5. occurrence.txt の scientificName 空欄件数・license 列空欄件数
-  7. occurrence.txt の taxonID が <gbif|inat>:<数字>（空は可）で、名前空間が occurrenceID の出典と
-     一致すること（Issue #34 D4。GBIF と iNaturalist の ID 空間を混ぜない）
   6. dataGeneralizations / informationWithheld が常に空欄であること（ADR-0028: 座標は
      一般化しない。旧 FR-4.5 の座標一般化は ADR-0018 とともに撤回されたため、非空の行が
      あれば回帰として検出する）
+  7. occurrence.txt の taxonID が <gbif|inat>:<数字>（空は可）で、名前空間が occurrenceID の出典と
+     一致すること（Issue #34 D4。GBIF と iNaturalist の ID 空間を混ぜない）
 
 eventDate について: Darwin Core の `eventDate` は ISO 8601-1:2019 の
 date / dateTime に加えて「開始/終了」の**区間**表記を許容する

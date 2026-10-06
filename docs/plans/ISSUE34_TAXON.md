@@ -1,6 +1,6 @@
 # Issue #34 分類群・レッドリスト・外来種の整備（設計）
 
-状態: 実装済み（設計承認後）。実測と結果は ADR-0019「Issue #34 追記」・`reports/phase_b_taxon_assessment.md`。実装時の差分: 弱い一致の採用は 0 件、`accepted_taxon_id` は 81 件、`n_alien` は 3,721→3,341、10 種の件数は `occurrence` 上の値（モツゴ 180・ヒキガエル 37）に確定。v1 は #48 PR-5 で撤去済みなので、Issue 本文の行番号と
+状態: 実装済み（設計承認後）。実測と結果は ADR-0019「Issue #34 追記」・`reports/phase_b_taxon_assessment.md`。実装時の差分: 弱い一致の採用は 0 件、`accepted_taxon_id` は 81 件、`n_alien` は 3,721→19,237（レビュー後。原本の `is_alien` 旗ではなく registry から導く定義に変更。ADR-0019 の表が正）、10 種の件数は `occurrence` 上の値（モツゴ 180・ヒキガエル 37）に確定。v1 は #48 PR-5 で撤去済みなので、Issue 本文の行番号と
 `b08_project_occurrence_v1.py` は存在しない。現行の入口は `docs/PIPELINE.md`「取り込み・レジストリ」。
 
 ## 1. 各項目の現状の実測（2026-10-06、読み取り専用で計測）

@@ -38,7 +38,7 @@
 
 4. **和名は `registry/taxon/vernacular_ja.csv`（63件）だけを、機械結合ではない
    人間確認済みの和名として GBIF/iNat 由来の行に上書きする。** 突き合わせは学名の
-   完全一致ではなく `_binom()`（学名の先頭2語）で行い、両方の名前空間を横断して
+   完全一致ではなく `binom_of()`（学名の先頭2語）で行い、両方の名前空間を横断して
    件数最多の (ns, taxon_key) を採用先とする。
 
 5. `taxon_key` を持たない `organism_records` 853行は `taxon_id` 解決の対象外。
@@ -129,7 +129,7 @@ import sqlite3
 
 import yaml
 
-from taxon_namespaces import TAXON_KEY_SOURCE_NAMESPACE, assert_known_source_ids
+from taxon_namespaces import TAXON_KEY_SOURCE_NAMESPACE, assert_known_source_ids, binom_of
 from registry import common
 
 CROSSWALK_CSV = common.ROOT / common.TAXON_CROSSWALK_CSV_RELPATH
@@ -253,16 +253,6 @@ def _assert_known_source_ids(ryuiki: sqlite3.Connection) -> None:
     assert_known_source_ids(r[0] for r in rows)
 
 
-def _binom(name: str | None) -> str | None:
-    """学名の先頭2語（属+種）。web/scripts/build-biota.mjs の BINOM と同じ規則。"""
-    if not name:
-        return None
-    toks = name.split(" ")
-    if len(toks) < 2:
-        return name
-    return f"{toks[0]} {toks[1]}"
-
-
 def _genus(binom: str | None) -> str | None:
     """binom の先頭語（属）。web/scripts/build-biota.mjs の gc CTE の g と同じ規則。"""
     if not binom:
@@ -271,7 +261,7 @@ def _genus(binom: str | None) -> str | None:
 
 
 def _binom_sql(col: str) -> str:
-    """SQL 版の `_binom()`。web/scripts/build-biota.mjs の `BINOM(col)` と同じ式
+    """SQL 版の `binom_of()`。web/scripts/build-biota.mjs の `BINOM(col)` と同じ式
     （Python 側と SQL 側で規則がズレないよう、どちらも「先頭2語」を同じ手順で組み立てる）。
     """
     return (
@@ -300,7 +290,7 @@ def _assert_taxon_key_maps_to_single_binom(ryuiki: sqlite3.Connection) -> None:
     binoms_by_key: dict[tuple[str, str], set] = {}
     for source_id, taxon_key, scientific_name in rows:
         ns = _namespace_for_source(source_id)
-        binoms_by_key.setdefault((ns, taxon_key), set()).add(_binom(scientific_name))
+        binoms_by_key.setdefault((ns, taxon_key), set()).add(binom_of(scientific_name))
     violations = {k: v for k, v in binoms_by_key.items() if len(v) > 1}
     if violations:
         sample = "; ".join(
@@ -440,33 +430,58 @@ def _load_crosswalk_rank() -> dict[str, str]:
 
 
 def _load_gbif_accepted() -> dict[str, dict]:
-    """data/processed/taxon_gbif_accepted.csv の taxon_id（taxa）-> 行。"""
+    """data/processed/taxon_gbif_accepted.csv の taxon_id（taxa）-> 行。
+    ファイルが無いとき（GBIF API 収集物なので、無い環境がありうる: docker・新しい clone）は
+    例外にせず警告を出して空を返す——`accepted_taxon_id` の設定と弱い一致の採用をスキップする
+    （registry の指紋は「不在」を記録するので、ファイルを置けば作り直しになる）。"""
     if not GBIF_ACCEPTED_CSV.exists():
-        raise FileNotFoundError(
-            f"taxon_gbif_accepted.csv が無い: {GBIF_ACCEPTED_CSV}\n"
-            "scripts/c26_taxon_gbif_accepted.py の成果物（GBIF API 呼び出しを伴う。"
-            "CI は data/sample/processed/ のコピーを使う）。"
+        print(
+            f"  [taxon][WARN] taxon_gbif_accepted.csv が無い: {GBIF_ACCEPTED_CSV}\n"
+            "    accepted_taxon_id の設定と弱い一致の自動採用をスキップする"
+            "（scripts/c26_taxon_gbif_accepted.py で作る。GBIF API を呼ぶ）。"
         )
+        return {}
     with GBIF_ACCEPTED_CSV.open(encoding="utf-8", newline="") as f:
         return {row["taxon_id"]: row for row in csv.DictReader(f)}
 
 
-def _apply_adopted_weak_matches(taxa_rows, gbif_accepted: dict[str, dict], crosswalk_rank: dict[str, str]) -> list[dict]:
-    """`weak_resolution='adopted'` の行を EXACT 扱いに書き換えた taxa 行（dict）のリストを返す。
-    crosswalk_rank も採用したランクで更新する（その場で書き換える）。"""
-    out = []
-    n = 0
-    for r in taxa_rows:
-        row = dict(r)
-        g = gbif_accepted.get(row["taxon_id"])
-        if g is not None and g["weak_resolution"] == "adopted" and row["gbif_match_type"] != "EXACT":
-            row["gbif_taxon_key"] = g["weak_key"]
-            row["gbif_match_type"] = "EXACT"
-            crosswalk_rank[row["taxon_id"]] = g["weak_rank"] or None
-            n += 1
-        out.append(row)
-    print(f"  [taxon] 弱い一致の自動採用（正規形完全一致・種以下・候補1つ） = {n:,}")
+def _assert_accepted_matches_taxa(taxa_rows, gbif_accepted: dict[str, dict]) -> None:
+    """収集物の `gbif_key` が今の taxa の `gbif_taxon_key` と一致することを確かめる。
+    食い違えば（taxa か crosswalk を作り直したのに c26 を回していない）止める。"""
+    stale = [
+        (r["taxon_id"], r["gbif_taxon_key"], gbif_accepted[r["taxon_id"]]["gbif_key"])
+        for r in taxa_rows
+        if r["taxon_id"] in gbif_accepted and (r["gbif_taxon_key"] or "") != gbif_accepted[r["taxon_id"]]["gbif_key"]
+    ]
+    if stale:
+        raise ValueError(
+            f"taxon_gbif_accepted.csv が taxa と食い違う（taxon_id, taxa の gbif_taxon_key, 収集物の gbif_key）: "
+            f"{stale[:5]}（{len(stale)}件）。scripts/c26_taxon_gbif_accepted.py を再実行すること"
+        )
+
+
+def _adopted_weak_matches(taxa_rows, gbif_accepted: dict[str, dict]) -> dict[str, dict]:
+    """`weak_resolution='adopted'` で、taxa 側がまだ EXACT でない行の taxon_id -> 収集物の行。"""
+    out = {
+        r["taxon_id"]: gbif_accepted[r["taxon_id"]]
+        for r in taxa_rows
+        if r["gbif_match_type"] != "EXACT"
+        and r["taxon_id"] in gbif_accepted
+        and gbif_accepted[r["taxon_id"]]["weak_resolution"] == "adopted"
+    }
+    print(f"  [taxon] 弱い一致の自動採用（正規形完全一致・種以下・候補1つ） = {len(out):,}")
     return out
+
+
+def _with_adopted(taxa_rows, crosswalk_rank: dict[str, str], adopted: dict[str, dict]):
+    """採用した弱い一致を EXACT 扱いにした (taxa 行の dict のリスト, rank の辞書) を返す（入力は変えない）。"""
+    rows = [
+        {**r, "gbif_taxon_key": adopted[r["taxon_id"]]["weak_key"], "gbif_match_type": "EXACT"}
+        if r["taxon_id"] in adopted else dict(r)
+        for r in taxa_rows
+    ]
+    ranks = {**crosswalk_rank, **{tid: g["weak_rank"] or None for tid, g in adopted.items()}}
+    return rows, ranks
 
 
 def _assign_accepted_taxon_ids(rows_by_id: dict[str, dict], gbif_accepted: dict[str, dict]) -> None:
@@ -784,7 +799,7 @@ def _resolve_classification(
     (ClassA, Animalia)×2 と (ClassB, Animalia)×2 が同数でも、kingdom は
     どちらも Animalia で一致しているので kingdom 側は曖昧ではない）。
     """
-    binom = _binom(scientific_name)
+    binom = binom_of(scientific_name)
     genus = _genus(binom)
     needs_review = False
     bc_entry = bc.get(binom) if binom else None
@@ -907,7 +922,7 @@ def _build_taxon_row(
     return {
         "taxon_id": taxon_id,
         "scientific_name": scientific_name,
-        "canonical_binomial": _binom(scientific_name),
+        "canonical_binomial": binom_of(scientific_name),
         "rank": rank,
         "kingdom": kdm,
         "phylum": phy,
@@ -943,7 +958,10 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     taxa_rows = _load_taxa(ryuiki)
     crosswalk_rank = _load_crosswalk_rank()
     gbif_accepted = _load_gbif_accepted()
-    taxa_rows = _apply_adopted_weak_matches(taxa_rows, gbif_accepted, crosswalk_rank)
+    _assert_accepted_matches_taxa(taxa_rows, gbif_accepted)
+    taxa_rows, crosswalk_rank = _with_adopted(
+        taxa_rows, crosswalk_rank, _adopted_weak_matches(taxa_rows, gbif_accepted)
+    )
     taxa_by_key = _group_taxa_by_gbif_key(taxa_rows)
 
     _create_classification_population(ryuiki)
@@ -1127,7 +1145,7 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     total_by_key = {k: v["total_n"] for k, v in occ.items()}
     binom_index: dict[str, list[tuple[str, str]]] = {}
     for (ns, key), info in occ.items():
-        b = _binom(info["scientific_name"])
+        b = binom_of(info["scientific_name"])
         if b:
             binom_index.setdefault(b, []).append((ns, key))
 

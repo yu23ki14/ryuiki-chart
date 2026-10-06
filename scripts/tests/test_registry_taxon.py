@@ -831,3 +831,23 @@ def test_adopted_weak_match_is_treated_as_exact_and_unadopted_stays_unresolved(t
     assert _taxon(conn, "common:taxon:gbif.500")["scientific_name"] == "Foo bar"
     unresolved = conn.execute("SELECT taxon_id, status FROM taxon WHERE taxon_id LIKE '%ryuiki-taxa%'").fetchall()
     assert len(unresolved) == 1 and unresolved[0]["status"] in ("unresolved", "needs_review")
+
+
+def test_missing_gbif_accepted_csv_warns_and_skips_instead_of_failing(tmp_path, monkeypatch, capsys):
+    """taxon_gbif_accepted.csv が無い環境（docker・新しい clone）でもビルドは止まらない。
+    警告を出して accepted_taxon_id・弱い一致の採用をスキップする。"""
+    monkeypatch.setattr(build_taxon_module, "GBIF_ACCEPTED_CSV", tmp_path / "nonexistent.csv")
+    conn, _ = _build(tmp_path, organism_records_rows=[_occ("100", "Old name")])
+    assert "WARN" in capsys.readouterr().out
+    assert _taxon(conn, "common:taxon:gbif.100")["accepted_taxon_id"] is None
+
+
+def test_gbif_accepted_csv_out_of_sync_with_taxa_stops(tmp_path, monkeypatch):
+    """収集物の gbif_key が今の taxa の gbif_taxon_key と違えば（c26 の回し忘れ）止まる。"""
+    _write_accepted(tmp_path, monkeypatch, [
+        {"taxon_id": "w:ok", "gbif_key": "999", "match_type": "HIGHERRANK", "weak_resolution": "unresolved",
+         "accepted_basis": "n/a"},
+    ])
+    taxa_rows = [("w:ok", "Foo bar", "和名1", "11", "HIGHERRANK", None, None, None, None, None)]
+    with pytest.raises(ValueError, match="c26"):
+        _build(tmp_path, organism_records_rows=[_occ("1", "Dummy one")], taxa_rows=taxa_rows)

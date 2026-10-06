@@ -54,7 +54,7 @@ def _build(path, redlist_rows=(), taxon_rows=(), taxa_rows=()):
 
     src = open_taxon_assessment_src(ryuiki_path)
     try:
-        counts = build_taxon_assessment(registry_conn, src)
+        counts = build_taxon_assessment(registry_conn, src, verify_rule_counts=False)
     finally:
         src["ryuiki"].close()
     return registry_conn, counts
@@ -447,6 +447,7 @@ def test_in_scope_is_0_for_excluded_species_via_binomial_contraction(tmp_path, m
         [_ias_csv_row(
             scientific_name="Trypoxylus dichotomus septentrionalis",
             vernacular_name_ja="カブトムシ",
+            origin_ja="国内由来の外来種、国内に自然分布域を持つ国外由来の外来種",
         )],
     )
     monkeypatch.setattr(ta_module, "MOE_IAS_LIST_CSV", csv_path)
@@ -508,6 +509,7 @@ def test_binom_matches_binom_of_for_redlist_rows(tmp_path):
 
 _DOMESTIC = "国内由来の外来種、国内に自然分布域を持つ国外由来の外来種"
 _FOREIGN = "国外由来の外来種"
+_BOTH = "国内由来の外来種、国外由来の外来種"
 
 
 def _build_ias(tmp_path, monkeypatch, ias_rows):
@@ -515,7 +517,7 @@ def _build_ias(tmp_path, monkeypatch, ias_rows):
     write_moe_ias_list_csv(csv_path, ias_rows)
     monkeypatch.setattr(ta_module, "MOE_IAS_LIST_CSV", csv_path)
     taxa_rows = []
-    for i, r in enumerate(ias_rows):
+    for r in ias_rows:
         key = r["scientific_name"].lower()
         if not any(t[0] == key for t in taxa_rows):
             taxa_rows.append((key, r["scientific_name"], "和名"))
@@ -548,6 +550,29 @@ def test_rule_keeps_binom_with_a_foreign_origin_listing(tmp_path, monkeypatch):
         "SELECT in_scope FROM taxon_assessment WHERE list_id = 'moe_ias_2015'")] == [1, 1]
 
 
+def test_rule_keeps_listing_that_itself_names_foreign_origin(tmp_path, monkeypatch):
+    """1件の origin_ja が国内由来と国外由来の両方を名指す併記（『国内に自然分布域を持つ』の注記ではない）は
+    国外由来の掲載として扱い、除外しない。"""
+    rule = ta_module.load_assessment_scope_rules()[0]
+    assert ta_module._origin_class(_BOTH, rule) == "foreign"
+    assert ta_module._origin_class(_DOMESTIC, rule) == "domestic"
+    assert ta_module._origin_class(_FOREIGN, rule) == "foreign"
+    assert ta_module._origin_class("", rule) == "unknown"
+    rows = [{"list_id": "moe_ias_2015", "scientific_name_raw": "Foo bar", "origin": _BOTH}]
+    rule = dict(rule, known_origin_values=[*rule["known_origin_values"], _BOTH])
+    assert ta_module._apply_scope_rules(rows, [rule])["moe_ias_2015"] == {}
+
+
+def test_rule_does_not_exclude_when_any_listing_has_empty_origin(tmp_path, monkeypatch):
+    """origin が空の掲載（unknown）が1件でもあれば、推測で除外しない。"""
+    conn = _build_ias(tmp_path, monkeypatch, [
+        _ias_csv_row(scientific_name="Foo bar", origin_ja=_DOMESTIC, category_ja="A"),
+        _ias_csv_row(scientific_name="Foo bar", origin_ja="", category_ja="B"),
+    ])
+    assert [r["in_scope"] for r in conn.execute(
+        "SELECT in_scope FROM taxon_assessment WHERE list_id = 'moe_ias_2015'")] == [1, 1]
+
+
 def test_declared_exclusion_outside_rule_keeps_its_own_reason(tmp_path, monkeypatch):
     """Apis mellifera は origin が国外由来（規則に含まれない）。固定宣言の理由だけが残る。"""
     conn = _build_ias(tmp_path, monkeypatch, [
@@ -565,8 +590,15 @@ def test_rule_and_declaration_reasons_are_combined(tmp_path, monkeypatch):
     assert row["scope_reason"] == "domestic_origin,subspecies_binomial_contraction"
 
 
+def test_declared_domestic_origin_not_covered_by_rule_stops_even_in_test_builds(tmp_path, monkeypatch):
+    """固定宣言が domestic_origin なのに出典の origin では該当しないと、小さな CSV でも常に止まる。"""
+    with pytest.raises(AssertionError, match="宣言"):
+        _build_ias(tmp_path, monkeypatch, [
+            _ias_csv_row(scientific_name="Trypoxylus dichotomus septentrionalis", origin_ja=_FOREIGN),
+        ])
+
+
 def test_unknown_origin_value_stops_the_build(tmp_path, monkeypatch):
-    """出典に未知の origin_ja が現れたら、部分一致の取りこぼしを避けるため止まる（壊すと止まる）。"""
     with pytest.raises(AssertionError, match="未知の値"):
         _build_ias(tmp_path, monkeypatch, [_ias_csv_row(scientific_name="Foo bar", origin_ja="不明な由来")])
 
@@ -584,23 +616,15 @@ def test_rule_count_matches_expected_on_real_moe_ias_list():
     rows = _real_ias_rows()
     rules = ta_module.load_assessment_scope_rules()
     exclusions = ta_module.load_assessment_scope_exclusions()
-    hit = ta_module._apply_scope_rules(rows, rules)["moe_ias_2015"]
-    assert len(hit) == 27
-    assert {e["scientific_name"] for e in exclusions} - set(hit) == {"Apis mellifera"}
-    ta_module._assign_in_scope(rows, exclusions, rules)
+    by_rule = ta_module._assign_in_scope(rows, exclusions, rules)
+    ta_module.check_rule_counts(by_rule, rules)
+    assert len(by_rule["moe_ias_2015"]) == 27
+    assert {e["scientific_name"] for e in exclusions} - set(by_rule["moe_ias_2015"]) == {"Apis mellifera"}
     assert len({r["binom"] for r in rows if r["in_scope"] == 0}) == 28
 
 
 def test_rule_count_mismatch_stops():
     rules = [dict(r, expected_binom_count=26) for r in ta_module.load_assessment_scope_rules()]
-    rows = [{"list_id": "moe_ias_2015", "scientific_name_raw": "Foo bar", "origin": _DOMESTIC}]
+    by_rule = ta_module._apply_scope_rules(_real_ias_rows(), rules)
     with pytest.raises(AssertionError, match="宣言"):
-        ta_module._apply_scope_rules(rows, rules)
-
-
-def test_declared_domestic_origin_not_covered_by_rule_stops():
-    """固定宣言が domestic_origin なのに出典の origin では該当しない（ずれ）と止まる。"""
-    rows = [{"list_id": "moe_ias_2015", "scientific_name_raw": "Cervus nippon", "origin": _FOREIGN}]
-    rules = [dict(r, expected_binom_count=0) for r in ta_module.load_assessment_scope_rules()]
-    with pytest.raises(AssertionError, match="宣言"):
-        ta_module._assign_in_scope(rows, ta_module.load_assessment_scope_exclusions(), rules)
+        ta_module.check_rule_counts(by_rule, rules)

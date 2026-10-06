@@ -50,6 +50,10 @@ NULL にするだけで扱えるようにしてある。座標があるのに gr
   `publication_scope`: 原表記の旗（F6）。記録にそのまま運ぶ（NULLIF 等の
   正規化はしない——空文字は空文字のまま。v1 `org_norm` の各列が
   `organism_records` の値をそのまま読んでいるのと同じ扱い）。
+- `is_alien_in_scope`（Issue #34）: `n_alien`（b07）が数える旗。`scientific_name` の二名法（binom）が
+  `taxon_assessment`（moe_ias_2015）に `in_scope=1` で載っていれば 1、無ければ 0。原本の `is_alien`
+  （種内で 1/0 が混在し、オオクチバス・ウシガエルが 0 になる。caveat isAlien）は根拠に使わず、
+  原表記の旗として `is_alien` に残す。
   `order`/`family` 等の上位分類は taxon の属性から取るので occurrence には
   持たない（O-1 設計 v2 D1 に明記）。
 - `period_grain`/`period_start`/`period_end`/`period_raw`: ADR-0008・
@@ -104,6 +108,7 @@ NULL にするだけで扱えるようにしてある。座標があるのに gr
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import pathlib
 import sqlite3
 import sys
@@ -272,13 +277,15 @@ def _problems_from_stats(stats: dict) -> list[str]:
     return problems
 
 
-def _load_out_of_scope_binoms(work: sqlite3.Connection) -> frozenset[str]:
-    """外来種として数えない binom（`taxon_assessment.in_scope=0`、moe_ias_2015。Issue #34:
-    出典の属性による規則＋固定宣言。registry/taxon/assessment_scope_exclusions.yaml）。"""
+def _load_alien_binoms(work: sqlite3.Connection) -> frozenset[str]:
+    """外来種として数える binom（`taxon_assessment` の moe_ias_2015 で `in_scope=1`）。
+    Issue #34: `is_alien_in_scope` の根拠は原本の `is_alien` 旗（種内で 1/0 が混在し、オオクチバス・
+    ウシガエルが 0 になる。caveat isAlien）ではなく、環境省リストの binom 一致と除外規則
+    （`registry/taxon/assessment_scope_exclusions.yaml`）にする。"""
     return frozenset(
         r[0] for r in work.execute(
             "SELECT DISTINCT binom FROM reg.taxon_assessment "
-            "WHERE list_id = ? AND in_scope = 0 AND binom IS NOT NULL",
+            "WHERE list_id = ? AND in_scope = 1 AND binom IS NOT NULL",
             (IAS_LIST_ID,),
         )
     )
@@ -288,23 +295,31 @@ def _load_taxon_ids(work: sqlite3.Connection) -> set[str]:
     return {row[0] for row in work.execute("SELECT taxon_id FROM reg.taxon")}
 
 
+@dataclasses.dataclass(frozen=True)
+class _IngestContext:
+    """`_ingest()` が1行ごとの解決に使う宣言・参照集合（引数が増えたのでまとめた）。"""
+    taxon_ids: set[str]
+    alien_binoms: frozenset[str]
+    sources: dict
+    regions: dict
+    source_usage: object
+    region_usage: object
+    shape_usage: object
+
+
 def _ingest(
     work: sqlite3.Connection,
     dest: sqlite3.Connection,
     insert_table: str,
-    taxon_ids: set[str],
-    out_of_scope_binoms: frozenset[str],
-    sources: dict,
-    regions: dict,
-    source_usage,
-    region_usage,
-    shape_usage,
+    ctx: _IngestContext,
 ) -> dict:
     """`organism_records` を1行ずつ読み、`insert_table` へ `executemany` で
     ストリーム挿入する（b03 の C-5 と同じ理由。823,692行を Python のリストに
     溜めない）。
     """
     stats = _empty_stats()
+    taxon_ids, alien_binoms, sources, regions = ctx.taxon_ids, ctx.alien_binoms, ctx.sources, ctx.regions
+    source_usage, region_usage, shape_usage = ctx.source_usage, ctx.region_usage, ctx.shape_usage
 
     def rows():
         for row in work.execute(_SELECT_ORGANISM_RECORDS_SQL):
@@ -315,10 +330,9 @@ def _ingest(
                 red_list_category, is_alien, license_class, publication_scope,
                 place_id, place_kind, is_synthetic,
             ) = row
-            # 原表記の旗 is_alien は変えない。n_alien（b07）は in_scope を反映したこちらを数える。
-            is_alien_in_scope = (
-                0 if is_alien and binom_of(scientific_name) in out_of_scope_binoms else is_alien
-            )
+            # 原表記の旗 is_alien は変えない。n_alien（b07）は registry（環境省リスト＋除外規則）から
+            # 導いたこちらを数える（原本の旗を遮蔽するのではなく置き換える）。
+            is_alien_in_scope = 1 if binom_of(scientific_name) in alien_binoms else 0
 
             stats["total"] += 1
 
@@ -460,11 +474,11 @@ def build_and_write_occurrence(
                 common.attach_readonly(work, registry_db, "reg")
                 _assert_known_source_ids(work)
                 taxon_ids = _load_taxon_ids(work)
-                out_of_scope_binoms = _load_out_of_scope_binoms(work)
-                stats = _ingest(
-                    work, dest, staging, taxon_ids, out_of_scope_binoms, sources, regions, source_usage, region_usage,
-                    shape_usage,
+                ctx = _IngestContext(
+                    taxon_ids, _load_alien_binoms(work), sources, regions,
+                    source_usage, region_usage, shape_usage,
                 )
+                stats = _ingest(work, dest, staging, ctx)
             finally:
                 work.close()
 

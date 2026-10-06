@@ -4,17 +4,22 @@
 診断としてここに出していた（ADR-0016「再現してから変える」）。v1 撤去後の Issue #34 で、規則を出典の属性に
 切り替えた。このレポートは切り替え時の実測（`organism_records` 823,692 行を b06 で `occurrence` にした結果）を残す。
 
-**規則**（`registry/taxon/assessment_scope_exclusions.yaml` の `rules:`）: moe_ias_2015 の binom（二名法）の掲載行が
-すべて `origin_ja` に「国内由来」を含むなら、その binom は外来種として数えない（同じ binom に国外由来の別掲載が
+**規則**（`registry/taxon/assessment_scope_exclusions.yaml` の `rules:`）: moe_ias_2015 の binom（二名法）の**すべての掲載**が
+「国内由来のみ」（`origin_ja` から『国内に自然分布域を持つ国外由来の外来種』の注記を除いても国外由来を含まず、国内由来を含む。
+origin が空の掲載が1件でもあれば除外しない）なら、その binom は外来種として数えない（同じ binom に国外由来の別掲載が
 1件でもあれば数える。Sus scrofa・Pelodiscus sinensis・Cuora flavomarginata）。固定7種の宣言は併用し、
 Apis mellifera（国外由来だが掲載学名が亜種）だけが規則の外。行は消さず、`taxon_assessment.in_scope=0` と
 `scope_reason` に理由を残す。**`n_alien`（外来種として数える記録）は `occurrence.is_alien_in_scope` の合計**で、
-原表記の `is_alien` は変えない。
+記録の二名法が `in_scope=1` でリストに載っているかから導く（原本の `is_alien` 旗は種内で 1/0 が混在するため
+根拠にしない。原表記として `occurrence.is_alien` に残す）。
 
 - 規則に該当する binom: **27**（固定7種のうち6種を含む）。除外は 27 + Apis mellifera = **28** binom（`in_scope=0` は 28 行）。
 - 記録のある除外種: 17（固定7種 + 新規10種）。記録 3,334 件のうち、元の `is_alien=1` は 380 件。
-- `n_alien`: **3,721 → 3,341**（-380、-10.2%。キューブ `occurrence_agg` の年セル合計は 3,717 → 3,337）。
-  固定7種の 351 件は、以前は `n_alien` に数えられていた（除外は `iasSpecies` の一覧だけに効いていた）。新規10種は 29 件。
+- `n_alien`: **3,721 → 19,237**（+15,516）。内訳は、除外集合の旧旗 380 件が 0 になる（固定7種 351・新規10種 29。
+  以前は固定7種の宣言が `iasSpecies` の一覧だけに効き、`n_alien` には効いていなかった）一方、原本の旗が 0 のまま
+  リストに載る種の記録 15,896 件（148 binom。ガビチョウ 4,353 件のうち旧旗は 262 件など）が新たに数えられる。
+  キューブ（`occurrence_agg` の年セル）は 3,717 → 19,176。
+- 表の「元の is_alien=1」は原本の旗、「is_alien_in_scope=1」は新定義。除外集合では新定義はすべて 0。
 
 | binom | 区分 | scope_reason | 記録数 | 元の is_alien=1 | is_alien_in_scope=1 |
 |---|---|---|---:|---:|---:|

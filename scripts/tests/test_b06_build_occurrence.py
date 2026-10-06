@@ -346,18 +346,18 @@ def _assessment_row(binom, in_scope):
     )
 
 
-def test_is_alien_in_scope_zeroes_flag_for_out_of_scope_binom_but_keeps_raw_flag(tmp_path):
-    """Issue #34: in_scope=0 の binom の外来種旗は is_alien_in_scope=0 になる（原表記 is_alien は変えない）。
-    in_scope=1 の binom・registry に無い binom の外来種旗はそのまま。"""
+def test_is_alien_in_scope_comes_from_registry_not_from_the_raw_flag(tmp_path):
+    """Issue #34: is_alien_in_scope は binom が taxon_assessment に in_scope=1 で載っているかで決まる。
+    原本の is_alien（種内で 1/0 が混在する）は根拠にせず、原表記として残る。"""
     rows = [
         ("gbif__a", "gbif_kanagawa_occurrences", "2020-01-05", 35.505, 139.005, 10.0,
-         "Foo bar baz", "", "SPECIES", "1001", "", 1, "CC-BY", "公開"),   # out of scope（亜種付き学名でも binom で一致）
+         "Keep this sp", "", "SPECIES", "1001", "", 0, "CC-BY", "公開"),   # 亜種付きでも binom（Keep this）で in_scope=1 に一致。原旗は 0
         ("gbif__b", "gbif_kanagawa_occurrences", "2020-01-06", 35.505, 139.005, 10.0,
-         "Keep this", "", "SPECIES", "1001", "", 1, "CC-BY", "公開"),    # in scope
+         "Foo bar baz", "", "SPECIES", "1001", "", 1, "CC-BY", "公開"),    # in_scope=0（亜種付きでも binom で一致）。原旗は 1
         ("gbif__c", "gbif_kanagawa_occurrences", "2020-01-07", 35.505, 139.005, 10.0,
-         "Other sp", "", "SPECIES", "1001", "", 1, "CC-BY", "公開"),     # registry に無い
+         "Other sp", "", "SPECIES", "1001", "", 1, "CC-BY", "公開"),       # リストに無い。原旗は 1
         ("gbif__d", "gbif_kanagawa_occurrences", "2020-01-08", 35.505, 139.005, 10.0,
-         "Foo bar", "", "SPECIES", "1001", "", 0, "CC-BY", "公開"),      # out of scope だが元から外来でない
+         "Keep this", "", "SPECIES", "1001", "", 0, "CC-BY", "公開"),      # in_scope=1 で載る。原旗は 0
     ]
     _stats, out = _build(
         tmp_path, organism_rows=list(DEFAULT_ORGANISM_RECORDS) + rows,
@@ -372,7 +372,8 @@ def test_is_alien_in_scope_zeroes_flag_for_out_of_scope_binom_but_keeps_raw_flag
         ),
     )
     conn = sqlite3.connect(f"file:{out}?mode=ro", uri=True)
-    got = {r[0]: (r[1], r[2]) for r in conn.execute("SELECT record_id, is_alien, is_alien_in_scope FROM occurrence "
+    got = {r[0]: (r[1], r[2]) for r in conn.execute(
+        "SELECT record_id, is_alien, is_alien_in_scope FROM occurrence "
         "WHERE record_id IN ('gbif__a','gbif__b','gbif__c','gbif__d')")}
     conn.close()
-    assert got == {"gbif__a": (1, 0), "gbif__b": (1, 1), "gbif__c": (1, 1), "gbif__d": (0, 0)}
+    assert got == {"gbif__a": (0, 1), "gbif__b": (1, 0), "gbif__c": (1, 0), "gbif__d": (0, 1)}

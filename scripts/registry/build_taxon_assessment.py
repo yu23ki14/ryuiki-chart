@@ -148,11 +148,11 @@ moe_ias_list.csv の429行をそのまま持つ「正の記録」であり、v1 
 
 ## `in_scope`・`scope_reason`（Issue #34 で規則を出典の属性に切り替え）
 
-除外集合 = `assessment_scope_exclusions.yaml` の **`rules:`**（moe_ias_2015 の binom の掲載行が
-すべて origin_ja に「国内由来」を含む。27 binom）∪ 固定宣言 `exclusions:`（7種。Apis mellifera
+除外集合 = `assessment_scope_exclusions.yaml` の **`rules:`**（moe_ias_2015 の binom の全掲載が
+「国内由来のみ」。27 binom）∪ 固定宣言 `exclusions:`（7種。Apis mellifera
 だけが規則外）。`in_scope=0` の行は `scope_reason`（`domestic_origin` /
 `subspecies_binomial_contraction`、重なれば `,` 連結）に理由を残す。行は消さない。
-`occurrence.is_alien_in_scope`（b06）がこの集合を読み、`n_alien` に効く。以下は PR-3a の記述
+`occurrence.is_alien_in_scope`（b06）が `in_scope=1` の binom との一致から導かれ、`n_alien` に効く。以下は PR-3a の記述
 （固定7種だけだった時点）。
 
 ## `in_scope`（D7、Issue #48 PR-3a）
@@ -176,7 +176,7 @@ import sqlite3
 import yaml
 
 from registry import common
-from taxon_namespaces import IAS_LIST_ID as _IAS_LIST_ID, binom_of  # noqa: F401（binom_of は再エクスポート）
+from taxon_namespaces import IAS_LIST_ID, binom_of
 
 REDLIST_CATEGORY_YAML = common.ROOT / "registry" / "taxon" / "redlist_category.yaml"
 REDLIST_CATEGORY_ALIAS_CSV = common.ROOT / "registry" / "taxon" / "redlist_category_alias.csv"
@@ -332,7 +332,7 @@ def load_assessment_scope_exclusions(path=ASSESSMENT_SCOPE_EXCLUSIONS_YAML) -> l
 
 def load_assessment_scope_rules(path=ASSESSMENT_SCOPE_EXCLUSIONS_YAML) -> list[dict]:
     """`rules:`（Issue #34: 出典の属性による除外規則）。構造を検証して返す。
-    実測件数（`expected_binom_count`）との突き合わせは行を持つ `_apply_scope_rules()` が行う。
+    実測件数（`expected_binom_count`）との突き合わせは行を持つ `check_rule_counts()`（build() が呼ぶ）が行う。
     """
     assessment_lists = load_assessment_lists()
     with path.open(encoding="utf-8") as f:
@@ -345,7 +345,9 @@ def load_assessment_scope_rules(path=ASSESSMENT_SCOPE_EXCLUSIONS_YAML) -> list[d
         assert r["reason"] in _KNOWN_EXCLUSION_REASONS, (
             f"{path}: rule {r['rule_id']!r} の reason={r['reason']!r} が未知（{sorted(_KNOWN_EXCLUSION_REASONS)}）"
         )
-        assert r.get("match_origin_contains"), f"{path}: rule {r['rule_id']!r} に match_origin_contains が無い"
+        for key in ("domestic_marker", "foreign_marker"):
+            assert r.get(key), f"{path}: rule {r['rule_id']!r} に {key} が無い"
+        assert isinstance(r.get("foreign_marker_ignore"), list), f"{path}: rule {r['rule_id']!r} に foreign_marker_ignore が無い"
         assert isinstance(r.get("expected_binom_count"), int), f"{path}: rule {r['rule_id']!r} に expected_binom_count が無い"
         assert r.get("known_origin_values"), f"{path}: rule {r['rule_id']!r} に known_origin_values が無い"
     return rules
@@ -484,7 +486,7 @@ def _ias_assessment_id(scientific_name_raw: str, category_raw: str | None, verna
     basis = f"{_norm_id(scientific_name_raw)}|{category_raw or ''}|{vernacular_name_ja_raw or ''}"
     digest = hashlib.sha256(basis.encode("utf-8")).hexdigest()[:12]
     slug = common.slugify_local_key(scientific_name_raw)
-    return f"{_IAS_LIST_ID}_{slug}_{digest}"
+    return f"{IAS_LIST_ID}_{slug}_{digest}"
 
 
 # ---------------------------------------------------------------------------
@@ -499,12 +501,24 @@ def _excluded_binoms_by_list(exclusions: list[dict]) -> dict[str, dict[str, list
     return out
 
 
-def _apply_scope_rules(
-    rows: list[dict], rules: list[dict], *, check_expected_count: bool = True,
-) -> dict[str, dict[str, str]]:
+def _origin_class(origin: str | None, rule: dict) -> str:
+    """掲載1件の origin_ja を `unknown`/`foreign`/`domestic` に分類する（規則の説明は
+    `assessment_scope_exclusions.yaml` の `rules:` のコメント）。空は `unknown`。"""
+    if not origin:
+        return "unknown"
+    text = origin
+    for phrase in rule["foreign_marker_ignore"]:
+        text = text.replace(phrase, "")
+    if rule["foreign_marker"] in text:
+        return "foreign"
+    return "domestic" if rule["domestic_marker"] in origin else "unknown"
+
+
+def _apply_scope_rules(rows: list[dict], rules: list[dict]) -> dict[str, dict[str, str]]:
     """`rules:` を `rows` に適用し `list_id -> {binom: reason}` を返す。
-    binom の掲載行（origin を持つ行）がすべて `match_origin_contains` を含むときだけ該当。
-    `expected_binom_count` と実測が違う・`origin` が `known_origin_values` に無いときは止める。
+    binom の**すべての掲載**が `domestic` のときだけ該当（`unknown`＝origin が空や想定外の掲載が
+    1件でもあれば、推測で除外せず該当させない）。`origin` が `known_origin_values` に無いときは止める。
+    件数の突き合わせはここでは行わない（`check_rule_counts()`）。
     """
     out: dict[str, dict[str, str]] = {}
     for rule in rules:
@@ -512,34 +526,43 @@ def _apply_scope_rules(
         unknown = sorted({r["origin"] for r in listed if r["origin"]} - set(rule["known_origin_values"]))
         assert not unknown, (
             f"rule {rule['rule_id']!r}: origin の未知の値 {unknown}"
-            "（部分一致の取りこぼしを避けるため、known_origin_values に足して意味を確認すること）"
+            "（語句一致の取りこぼしを避けるため、known_origin_values に足して意味を確認すること）"
         )
-        by_binom: dict[str, list[bool]] = {}
+        classes: dict[str, list[str]] = {}
         for r in listed:
             b = binom_of(r["scientific_name_raw"])
-            by_binom.setdefault(b, []).append(bool(r["origin"]) and rule["match_origin_contains"] in r["origin"])
-        hit = {b: rule["reason"] for b, flags in by_binom.items() if b and all(flags)}
-        assert (not check_expected_count) or len(hit) == rule["expected_binom_count"], (
-            f"rule {rule['rule_id']!r}: 該当 binom が宣言({rule['expected_binom_count']}件)と違う: {len(hit)}件"
-            "（moe_ias_list.csv の更新か規則の変更。docs/adr/0019-taxon-registry.md の表を確認・更新すること）"
+            if b:
+                classes.setdefault(b, []).append(_origin_class(r["origin"], rule))
+        out.setdefault(rule["list_id"], {}).update(
+            {b: rule["reason"] for b, cs in classes.items() if all(c == "domestic" for c in cs)}
         )
-        out.setdefault(rule["list_id"], {}).update(hit)
     return out
 
 
-def _assign_in_scope(
-    rows: list[dict], exclusions: list[dict], rules: list[dict], *, check_expected_count: bool = True,
-) -> None:
+def check_rule_counts(by_rule: dict[str, dict[str, str]], rules: list[dict]) -> None:
+    """`rules:` の該当 binom 数が宣言（`expected_binom_count`）と一致することを確認する。
+    実物の moe_ias_list.csv を読む `build()` の本番経路から呼ぶ。"""
+    for rule in rules:
+        n = len(by_rule.get(rule["list_id"], {}))
+        assert n == rule["expected_binom_count"], (
+            f"rule {rule['rule_id']!r}: 該当 binom が宣言({rule['expected_binom_count']}件)と違う: {n}件"
+            "（moe_ias_list.csv の更新か規則の変更。docs/adr/0019-taxon-registry.md の表を確認・更新すること）"
+        )
+
+
+def _assign_in_scope(rows: list[dict], exclusions: list[dict], rules: list[dict]) -> dict[str, dict[str, str]]:
     """`rows` を書き換え、`in_scope`・`binom`・`scope_reason` を付ける。
     除外 = 規則が選ぶ binom ∪ 固定宣言の binom。`scope_reason` は理由コードを `,` 連結
     （規則→宣言の順。重複なし。in_scope=1 は NULL）。固定宣言の `domestic_origin` が
-    規則に含まれないときは止める（宣言と出典属性のずれ）。
+    規則に含まれないときは（その binom の掲載があれば）常に止める（宣言と出典属性のずれ）。規則の該当 binom（件数の突き合わせ用）を返す。
     """
     declared = _excluded_binoms_by_list(exclusions)
-    by_rule = _apply_scope_rules(rows, rules, check_expected_count=check_expected_count)
-    for list_id, binoms in (declared.items() if check_expected_count else ()):
+    by_rule = _apply_scope_rules(rows, rules)
+    present = {(r["list_id"], binom_of(r["scientific_name_raw"])) for r in rows}
+    for list_id, binoms in declared.items():
         for binom, reasons in binoms.items():
-            if "domestic_origin" in reasons:
+            # 掲載の無い宣言（小さな CSV）は検査できないので飛ばす。掲載があるのに規則と食い違えば止める。
+            if "domestic_origin" in reasons and (list_id, binom) in present:
                 assert binom in by_rule.get(list_id, {}), (
                     f"除外宣言 {binom!r} は domestic_origin だが、規則（出典の origin_ja）では該当しない"
                     "——宣言か moe_ias_list.csv のどちらかが変わった"
@@ -558,6 +581,7 @@ def _assign_in_scope(
         # 同じ結合を、taxon_id が解決できない行（IAS 429 行中 83 行）でも
         # 可能にするための列。in_scope と同じ binom_of() の結果を持たせる。
         row["binom"] = binom
+    return by_rule
 
 
 # ---------------------------------------------------------------------------
@@ -645,7 +669,7 @@ def _build_ias_rows(
     by_binom: dict[str, list[str]],
     taxa_lookup: dict[str, tuple[str, str | None]],
 ) -> list[dict]:
-    entry = assessment_lists[_IAS_LIST_ID]
+    entry = assessment_lists[IAS_LIST_ID]
     rows = []
     n_matched = 0
     for r in _load_moe_ias_rows():
@@ -676,7 +700,7 @@ def _build_ias_rows(
         vernacular_raw = r.get("vernacular_name_ja") or None
         rows.append({
             "assessment_id": _ias_assessment_id(sci, category_raw, vernacular_raw),
-            "list_id": _IAS_LIST_ID,
+            "list_id": IAS_LIST_ID,
             "list_year": entry["year"],
             "taxon_id": _resolve_taxon_id(sci, by_name, by_binom),
             "scientific_name_raw": sci,
@@ -687,7 +711,7 @@ def _build_ias_rows(
             "family_ja": (r.get("family_ja") or None),
             "category_raw": category_raw,
             "category_code": _category_code_for_list(
-                _IAS_LIST_ID, category_raw, assessment_lists, alias, context="category_ja",
+                IAS_LIST_ID, category_raw, assessment_lists, alias, context="category_ja",
             ),
             "prev_category_raw": None,
             "prev_category_code": None,
@@ -696,17 +720,20 @@ def _build_ias_rows(
             "source_id": (r.get("source_id") or None),
         })
     print(
-        f"  [taxon_assessment] {_IAS_LIST_ID}: {n_matched:,}/{len(rows):,}行が taxa と"
+        f"  [taxon_assessment] {IAS_LIST_ID}: {n_matched:,}/{len(rows):,}行が taxa と"
         "学名一致（vernacular_name_ja_resolved を解決）"
     )
     return rows
 
 
-def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[str, int]:
+def build(
+    conn: sqlite3.Connection, src: dict[str, sqlite3.Connection], *, verify_rule_counts: bool = True,
+) -> dict[str, int]:
     """conn: registry.sqlite への書き込み用コネクション（taxon (A-4) が既に
     commit 済みであること——r01 の STEPS 順で taxon の後に置く）。
     src: {'ryuiki': ..., 'cells': ...} の読み取り専用コネクション。
-    戻り値: {'taxon_assessment': 挿入した行数}。
+    戻り値: {'taxon_assessment': 挿入した行数}。`verify_rule_counts=False` は小さな CSV を差し替える
+    テスト専用（本番は規則の該当件数を宣言と突き合わせる）。
     """
     ryuiki = src["ryuiki"]
 
@@ -714,8 +741,8 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     assert redlist_list_ids(assessment_lists), (
         f"{ASSESSMENT_LIST_YAML} に kind='red_list' の list が1件も無い"
     )
-    assert _IAS_LIST_ID in assessment_lists, (
-        f"{ASSESSMENT_LIST_YAML} に list_id={_IAS_LIST_ID!r} が無い（P-2の前提）"
+    assert IAS_LIST_ID in assessment_lists, (
+        f"{ASSESSMENT_LIST_YAML} に list_id={IAS_LIST_ID!r} が無い（P-2の前提）"
     )
     alias = load_redlist_category_alias()
     # 構造検証に加え、戻り値を D7 の in_scope 算出にも使う（b08 は同じ関数を
@@ -729,17 +756,14 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     ias_rows = _build_ias_rows(assessment_lists, alias, by_name, by_binom, taxa_lookup)
     all_rows = redlist_rows + ias_rows
     rules = load_assessment_scope_rules()
-    # 実物の moe_ias_list.csv のときだけ実測件数（expected_binom_count）と突き合わせる
-    # （テストは小さな CSV を差し替えるため）。
-    _assign_in_scope(
-        all_rows, exclusions, rules,
-        check_expected_count=(MOE_IAS_LIST_CSV == common.ROOT / common.MOE_IAS_LIST_CSV_RELPATH),
-    )
+    by_rule = _assign_in_scope(all_rows, exclusions, rules)
+    if verify_rule_counts:
+        check_rule_counts(by_rule, rules)
 
     n_taxon_id = sum(1 for r in all_rows if r["taxon_id"])
     print(
         f"  [taxon_assessment] {len(all_rows):,}行"
-        f"（redlist {len(redlist_rows):,} / {_IAS_LIST_ID} {len(ias_rows):,}）"
+        f"（redlist {len(redlist_rows):,} / {IAS_LIST_ID} {len(ias_rows):,}）"
         f" taxon_id解決 {n_taxon_id:,} ({n_taxon_id / len(all_rows) * 100:.1f}%)"
     )
     n_out_of_scope = sum(1 for r in all_rows if r["in_scope"] == 0)

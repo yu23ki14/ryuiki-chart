@@ -21,7 +21,7 @@ GBIF/JBIF へそのまま投入できる構造にする。座標は一般化せ�
 import sys, csv, json, re, sqlite3, zipfile, pathlib, datetime, argparse
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from common import DB, ROOT, now
-from taxon_namespaces import dwca_taxon_id
+from taxon_namespaces import TAXON_KEY_SOURCE_NAMESPACE, dwca_taxon_id
 
 OUT = ROOT/"data/dwca"; OUT.mkdir(parents=True, exist_ok=True)
 # DwC-A の zip は展開形と同じ data/dwca/ に置く。
@@ -180,7 +180,9 @@ def build(include_noncommercial=False):
     # ---- 1) organism_records -> event + occurrence (+ emof for density) ----
     for r in rows(conn, "SELECT * FROM organism_records"):
         sid = r["source_id"]
-        if sid is not None and sid not in allowed and not r["is_synthetic"]:
+        # 名前空間（taxonID の前置）が定義されていない出典（合成データなど）は DwC-A に出さない
+        # （taxonID を名前空間なしで出すと GBIF/iNaturalist の ID 空間が混ざる。Issue #34 D4）。
+        if sid not in TAXON_KEY_SOURCE_NAMESPACE or (sid not in allowed and not r["is_synthetic"]):
             stats["n_occ_excluded_source"] += 1
             excl(sid)
             continue

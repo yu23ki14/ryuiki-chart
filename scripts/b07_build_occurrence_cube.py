@@ -79,7 +79,7 @@ UTC へ正規化してしまう問題〔ADR-0024〕そのものへの依存を�
 
 `n`（記録数）・`n_red_list`（`red_list_category` の原表記が NULL でも '' でも
 ない記録の数。v1 の `mesh_year.rl_n`・`mesh_species.rl_species_n` と同じ定義）・
-`n_alien`（`SUM(is_alien_in_scope)`——Issue #34: 外来種の除外規則〔in_scope〕を反映した旗。`is_alien_in_scope` は (source, taxon_key) ごとに一定なので
+`n_alien`（`SUM(is_alien_in_scope)`——Issue #34: b06 が環境省リスト＋除外規則から導いた旗。`is_alien_in_scope` は (source, taxon_key) ごとに一定なので
 加法で正確——v1 `org_watershed.alien_n`/`watershed_rollup.org_alien_n` の
 後継）。`n_distinct_taxon` は taxon 粒度で非加法なので持たない。
 

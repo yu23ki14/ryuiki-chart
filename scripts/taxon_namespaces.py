@@ -27,6 +27,9 @@ TAXON_KEY_SOURCE_NAMESPACE = {
     "inaturalist_kanagawa": "inat",
 }
 
+# taxonID の前置に使う名前空間の集合（`TAXON_KEY_SOURCE_NAMESPACE` の値）。
+TAXON_NAMESPACES = frozenset(TAXON_KEY_SOURCE_NAMESPACE.values())
+
 
 def assert_known_source_ids(source_ids, error_cls=ValueError) -> None:
     """`source_ids`（重複・`None` を含みうる `organism_records.source_id` の
@@ -100,7 +103,7 @@ def check_dwca_taxon_id(taxon_id: str, occurrence_id: str) -> str | None:
     if taxon_id == "":
         return None
     ns, sep, key = taxon_id.partition(":")
-    if not sep or not key.isdigit() or ns not in set(TAXON_KEY_SOURCE_NAMESPACE.values()):
+    if not sep or not key.isdigit() or ns not in TAXON_NAMESPACES:
         return "形式が <gbif|inat>:<数字> ではない"
     source_id = occurrence_id.split("__", 1)[0]
     if TAXON_KEY_SOURCE_NAMESPACE.get(source_id) != ns:

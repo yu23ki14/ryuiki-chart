@@ -100,9 +100,11 @@ export const OCCURRENCE_AGG_INDEX = {
  * ADR-0025 D2）。次元キー8列＋値3列（`n`/`n_red_list`/`n_alien`）＋来歴2列の
  * 計13列。
  *
- * `n_alien`（Issue #48 PR-3a D3。`SUM(is_alien)`）は v1 `org_watershed.alien_n`/
- * `watershed_rollup.org_alien_n` の後継——JOIN で導くより加法で正確・速い
- * （`is_alien` は (source, taxon_key) ごとに一定であることを実測済み）。
+ * `n_alien`（Issue #48 PR-3a D3。Issue #34 で `SUM(is_alien_in_scope)` に変更）は v1
+ * `org_watershed.alien_n`/`watershed_rollup.org_alien_n` の後継——JOIN で導くより加法で正確・速い。
+ * `is_alien_in_scope` は b06 が、記録の二名法が `taxon_assessment`（moe_ias_2015）に `in_scope=1` で
+ * 載っているかから導く（原本の `is_alien` 旗は種内で 1/0 が混在するため使わない。除外規則は
+ * `registry/taxon/assessment_scope_exclusions.yaml`）。
  *
  * PR-3a で `place_kind`/`grain` の取りうる値が増えた: `place_kind` は
  * `grid01`（既存）に加えて `watershed`（O-2。流域に解決できない日付あり記録は

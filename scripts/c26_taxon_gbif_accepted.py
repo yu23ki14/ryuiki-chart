@@ -36,6 +36,54 @@ def _accepted_from(j: dict) -> tuple[str, str]:
     return str(key), (j.get("accepted") or "") if key else ""
 
 
+def _reusable(prev, r) -> bool:
+    """既存の出力行 `prev` を引き直さず再利用してよいか。API 失敗（`accepted_basis='api_failed'`・
+    弱い一致の `weak_reason='api_failed'`）は再取得する。入力の crosswalk が変わった
+    （gbif_key・学名が違う）行も再取得する（taxon_id だけで再利用すると古い結果が残る）。"""
+    return (
+        prev is not None
+        and prev["accepted_basis"] != "api_failed"
+        and prev["weak_reason"] != "api_failed"
+        and prev["gbif_key"] == r["taxon_key"]
+        and prev["scientific_name"] == r["scientific_name"]
+    )
+
+
+def _resolve_weak(row, name, get_json) -> int:
+    """弱い一致の行 `row` を再照合して書き込む。戻り値: 引いた API 回数。"""
+    query = parse_query_name(name)
+    match, n_calls = None, 0
+    if query["reason"] is None:
+        n_calls = 1
+        try:
+            match = get_json("https://api.gbif.org/v1/species/match", params={"name": name, "verbose": "true"})
+        except Exception:
+            match = None
+    d = decide_weak_match(query, match)
+    row.update(weak_resolution=d["resolution"], weak_reason=d["reason"] or "", accepted_basis="n/a")
+    if d["resolution"] == "adopted":
+        row.update(weak_key=str(match["usageKey"]), weak_rank=match.get("rank") or "",
+                   weak_status=match.get("status") or "")
+        if match.get("status") not in (None, "ACCEPTED"):
+            key, accepted_name = _accepted_from(match)
+            row.update(accepted_key=key, accepted_canonical_name=accepted_name, accepted_basis="api")
+        else:
+            row.update(accepted_key=str(match["usageKey"]),
+                       accepted_canonical_name=match.get("canonicalName") or "", accepted_basis="self")
+    return n_calls
+
+
+def _resolve_accepted(row, taxon_key, get_json) -> None:
+    """ACCEPTED 以外の行の受理名を `species/{key}` から取る（失敗は 'api_failed'。次回再取得される）。"""
+    try:
+        j = get_json(f"https://api.gbif.org/v1/species/{taxon_key}")
+        key, _ = _accepted_from(j)
+        row.update(accepted_key=key, accepted_basis="api",
+                   accepted_canonical_name=(j.get("accepted") or "") if key else "")
+    except Exception:
+        row.update(accepted_basis="api_failed")
+
+
 def build_rows(crosswalk_rows, existing, get_json, limit=None):
     """`crosswalk_rows`（taxon_crosswalk.csv の行）から出力行を作る。`get_json(url, params=)` は注入する
     （テストでは偽物。本番は scripts/common.get_json）。`existing` は {taxon_id: 行}（増分用）。
@@ -43,53 +91,26 @@ def build_rows(crosswalk_rows, existing, get_json, limit=None):
     now = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
     out, n_calls = [], 0
     for r in crosswalk_rows:
-        tid = r["taxon_id"]
         if not (r.get("taxon_key") or "").strip():
             continue  # GBIF が一致を返さなかった行（NONE）は対象外
-        prev = existing.get(tid)
-        if prev is not None and prev["accepted_basis"] != "api_failed":
+        prev = existing.get(r["taxon_id"])
+        if _reusable(prev, r):
             out.append(prev)
             continue
-        row = {c: "" for c in FIELDS}
-        row.update(taxon_id=tid, scientific_name=r["scientific_name"], gbif_key=r["taxon_key"],
-                   match_type=r["matchType"], status=r.get("status") or "", fetched_at=now)
         weak = r["matchType"] in WEAK
-        if limit is not None and n_calls >= limit and (weak or r.get("status") != "ACCEPTED"):
+        needs_api = weak or r.get("status") != "ACCEPTED"
+        if limit is not None and n_calls >= limit and needs_api:
             continue
+        row = {c: "" for c in FIELDS}
+        row.update(taxon_id=r["taxon_id"], scientific_name=r["scientific_name"], gbif_key=r["taxon_key"],
+                   match_type=r["matchType"], status=r.get("status") or "", fetched_at=now)
         if weak:
-            query = parse_query_name(r["scientific_name"])
-            match = None
-            if query["reason"] is None:
-                n_calls += 1
-                try:
-                    match = get_json("https://api.gbif.org/v1/species/match",
-                                     params={"name": r["scientific_name"], "verbose": "true"})
-                except Exception:
-                    match = None
-            d = decide_weak_match(query, match)
-            row.update(weak_resolution=d["resolution"], weak_reason=d["reason"] or "",
-                       accepted_basis="n/a")
-            if d["resolution"] == "adopted":
-                row.update(weak_key=str(match["usageKey"]), weak_rank=match.get("rank") or "",
-                           weak_status=match.get("status") or "")
-                if match.get("status") not in (None, "ACCEPTED"):
-                    key, name = _accepted_from(match)
-                    row.update(accepted_key=key, accepted_canonical_name=name, accepted_basis="api")
-                else:
-                    row.update(accepted_key=str(match["usageKey"]),
-                               accepted_canonical_name=match.get("canonicalName") or "", accepted_basis="self")
-        elif r.get("status") == "ACCEPTED":
+            n_calls += _resolve_weak(row, r["scientific_name"], get_json)
+        elif not needs_api:
             row.update(accepted_key=r["taxon_key"], accepted_canonical_name="", accepted_basis="self")
         else:
             n_calls += 1
-            try:
-                j = get_json(f"https://api.gbif.org/v1/species/{r['taxon_key']}")
-                key, _ = _accepted_from(j)
-                row.update(accepted_key=key, accepted_basis="api")
-                if key:
-                    row["accepted_canonical_name"] = j.get("accepted") or ""
-            except Exception:
-                row.update(accepted_basis="api_failed")
+            _resolve_accepted(row, r["taxon_key"], get_json)
         out.append(row)
     return out, n_calls
 
@@ -100,10 +121,12 @@ def main():
     ap.add_argument("--limit", type=int, default=None, help="API を引く最大件数（スモーク用）")
     args = ap.parse_args()
     cw_path, out_path = PROC / "taxon_crosswalk.csv", PROC / "taxon_gbif_accepted.csv"
-    cw = list(csv.DictReader(open(cw_path, encoding="utf-8")))
+    with open(cw_path, encoding="utf-8") as f:
+        cw = list(csv.DictReader(f))
     existing = {}
     if out_path.exists():
-        existing = {r["taxon_id"]: r for r in csv.DictReader(open(out_path, encoding="utf-8"))}
+        with open(out_path, encoding="utf-8") as f:
+            existing = {r["taxon_id"]: r for r in csv.DictReader(f)}
     rows, n_calls = build_rows(cw, existing, get_json, limit=args.limit)
     with open(out_path, "w", encoding="utf-8", newline="") as f:
         w = csv.DictWriter(f, fieldnames=FIELDS)

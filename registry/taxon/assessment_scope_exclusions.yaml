@@ -30,17 +30,26 @@
 # （origin_ja は国外由来）この宣言が唯一の根拠。
 # ADR-0019「Issue #34: 外来種の除外規則」・reports/phase_b_taxon_assessment.md 参照。
 rules:
-  # list_id の行を binom（二名法）ごとに束ね、その binom の掲載行が**すべて**
-  # origin_ja に match_origin_contains を含むとき、その binom を除外する
-  # （同じ binom に国外由来の別掲載が1件でもあれば除外しない。例: Sus scrofa）。
-  # 理由コード domestic_origin。種名はここにもコードにも書かない。
+  # list_id の行を binom（二名法）ごとに束ね、その binom の**すべての掲載**が「国内由来のみ」
+  # のとき除外する（理由コード domestic_origin）。種名はここにもコードにも書かない。
+  # 掲載1件の origin_ja の分類（build_taxon_assessment.py `_origin_class()`）:
+  #   - 空: unknown（出典が由来を持たない。1件でもあればその binom は除外しない＝推測で除外しない）
+  #   - foreign_marker_ignore の語句を取り除いた残りに foreign_marker を含む: foreign（国外由来の掲載）
+  #   - それ以外で domestic_marker を含む: domestic（国内由来のみ）
+  # 「国内由来の外来種、国内に自然分布域を持つ国外由来の外来種」の「国外由来」は、国内に自然分布域を持つ
+  # ものの注記であり国外由来の掲載ではないので foreign_marker_ignore で取り除く（取り除かないと
+  # 国内由来の併記がすべて「国外由来を含む」ことになり、規則が1件も効かない）。
+  # 同じ binom に国外由来の掲載が1件でもあれば除外しない（Sus scrofa など）。
   - rule_id: domestic_origin_only
     list_id: moe_ias_2015
-    match_origin_contains: "国内由来"
+    domestic_marker: "国内由来"
+    foreign_marker: "国外由来"
+    foreign_marker_ignore:
+      - "国内に自然分布域を持つ国外由来の外来種"
     reason: domestic_origin
-    # ビルドが実測と突き合わせる（moe_ias_list.csv の更新で変わったら止まる）。
+    # build() の本番経路が実測と突き合わせる（moe_ias_list.csv の更新で変わったら止まる）。
     expected_binom_count: 27
-    # origin_ja が取りうる値（未知の値が増えたら止まる。部分一致の取りこぼし防止）。
+    # origin_ja が取りうる値（未知の値が増えたら止まる。語句一致の取りこぼし防止）。
     known_origin_values:
       - "国外由来の外来種"
       - "国内由来の外来種、国内に自然分布域を持つ国外由来の外来種"

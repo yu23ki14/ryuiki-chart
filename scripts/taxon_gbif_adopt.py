@@ -27,7 +27,11 @@ _SPECIES_OR_BELOW = frozenset({"SPECIES", "SUBSPECIES", "VARIETY", "FORM"})
 _GENUS_STOP = frozenset({"spp.", "sp.", "cf.", "aff.", "spp", "sp"})
 _RANK_MARKERS = frozenset({"var.", "subsp.", "ssp.", "f.", "forma", "subsp", "var", "ssp", "fo."})
 _LOWER_WORD = re.compile(r"[a-z][a-z\-]+")
-_AUTHOR_TOKEN = re.compile(r"^[A-Z(\[&]|^(ex|et|in|von|van|de|der|del|da|di|la|le)$|^\d{4}[a-z,)]?$|^[,&]$|.*[.,)\]]$")
+# 著者名の接続語（学名の著者表記に現れる小文字の語。種小名・亜種小名と取り違えない）
+_AUTHOR_CONNECTORS = frozenset({"ex", "et", "in", "von", "van", "de", "der", "del", "da", "di", "la", "le"})
+_AUTHOR_TOKEN = re.compile(
+    r"^[A-Z(\[&]|^(" + "|".join(sorted(_AUTHOR_CONNECTORS)) + r")$|^\d{4}[a-z,)]?$|^[,&]$|.*[.,)\]]$"
+)
 
 
 def parse_query_name(name: str) -> dict:
@@ -57,7 +61,7 @@ def parse_query_name(name: str) -> dict:
         t = rest[i]
         if t.lower() in _RANK_MARKERS:
             has_infra = True
-        elif _LOWER_WORD.fullmatch(t) and t not in {"ex", "et", "in", "von", "van", "de", "der", "del", "da", "di", "la", "le"}:
+        elif _LOWER_WORD.fullmatch(t) and t not in _AUTHOR_CONNECTORS:
             has_infra = True
             out.append(t)
         elif _AUTHOR_TOKEN.match(t):
