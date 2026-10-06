@@ -368,7 +368,6 @@ def test_is_alien_in_scope_comes_from_registry_not_from_the_raw_flag(tmp_path):
             "    expected_row_count: 15\n    evidence: テスト用\n"
             "  inaturalist_kanagawa:\n    region_id: jp-14\n    consumer: occurrence\n"
             "    expected_row_count: 1\n    evidence: テスト用\n"
-            "regions:\n  jp-14:\n    utc_offset: \"+09:00\"\n    evidence: テスト用\n"
         ),
     )
     conn = sqlite3.connect(f"file:{out}?mode=ro", uri=True)
