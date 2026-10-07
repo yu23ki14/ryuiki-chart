@@ -35,7 +35,7 @@ describe("caveatKeysForFacets — facet ごとの注記キー（順序込み）"
     [sourceEditionOf("gbif_kanagawa_occurrences"), ["organismSite", "effort", "regimes", "gbifCutoff"]],
     [sourceEditionOf("inaturalist_kanagawa"), ["organismSite", "effort", "regimes"]],
     [sourceEditionOf("kanagawa_edna"), ["ednaReads", "ednaCoords", "ednaYearBasis", "ednaNonDetect"]],
-    [sourceEditionOf("kanagawa_kuma_sightings"), []],
+    [sourceEditionOf("kanagawa_kuma_sightings"), ["effort"]],
     [{ kind: "observation_set", ref: "is_synthetic=1" }, ["synthetic"]],
     [placeKind("site"), ["zone", "municipality"]],
     [placeKind("zone"), ["zone"]],
@@ -216,7 +216,7 @@ describe("facetsForOccurrence（Issue #48 PR-3b）", () => {
     expect(keys(["kanagawa_edna"])).toEqual(["ednaReads", "ednaCoords", "ednaYearBasis", "ednaNonDetect"]);
     expect(keys(["gbif_kanagawa_occurrences"])).toEqual(["organismSite", "effort", "regimes", "gbifCutoff"]);
     expect(keys(["inaturalist_kanagawa"])).toEqual(["organismSite", "effort", "regimes"]);
-    expect(keys(["kanagawa_kuma_sightings"])).toEqual([]);
+    expect(keys(["kanagawa_kuma_sightings"])).toEqual(["effort"]);
   });
   it("出典の facet: 省略は全出典、指定はその分だけ。eDNA を外すと eDNA の注記は付かない", () => {
     const all = caveatKeysForFacets(facetsForOccurrence({ places: ["grid01"] }));

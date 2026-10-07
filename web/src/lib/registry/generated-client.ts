@@ -340,6 +340,7 @@ export const GENERATED_CAVEAT_SCOPE: readonly GeneratedCaveatScope[] = [
   { scopeKind: "source_edition", scopeRef: "source_id=kanagawa_edna", caveatKey: "ednaCoords", sortOrder: 1, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=kanagawa_edna", caveatKey: "ednaYearBasis", sortOrder: 2, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=kanagawa_edna", caveatKey: "ednaNonDetect", sortOrder: 3, priority: 0 },
+  { scopeKind: "source_edition", scopeRef: "source_id=kanagawa_kuma_sightings", caveatKey: "effort", sortOrder: 0, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=moe_ias_list", caveatKey: "isAlien", sortOrder: 0, priority: 0 },
   { scopeKind: "variable", scopeRef: "common:variable:hydro.flow", caveatKey: "flowTidalBackflow", sortOrder: 0, priority: 0 },
   { scopeKind: "variable", scopeRef: "common:variable:water.transparency", caveatKey: "aboveLod", sortOrder: 0, priority: 0 },
