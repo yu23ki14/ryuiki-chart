@@ -10,9 +10,13 @@
   T1 学名の二名法が registry の species に一意に当たる（学名は行の学名列、または同じ公表物の中で
      同じ和名に付いた学名 `paired_sci`）。
   T2 和名が registry の `vernacular_name_ja` に一意に当たる（species のみ）。
-  T3 学名はあるが registry に無い → GBIF species/match（EXACT・動物界・同じ階級のみ）で `gbif.<key>`。
+  T2c 和名が GBIF の vernacular（language=jpn・和名が完全一致・受理名の種が1つ）に当たる。evidence は gbif_vernacular。
+  T3 学名はあるが registry に無い → GBIF species/match（EXACT・動物界・同じ階級・ACCEPTED か SYNONYM の受理名のみ。
+     DOUBTFUL・tribe 等は採らず T5 に落とす）で `gbif.<key>`。
   T4 和名しか無い → `common:taxon:kanagawa-edna.<slug>` を name_only（status=unresolved）で追加。学名は作らない。
-  T5 属止まり・「A/B」併記 → 行の最も低い確定した階級（シートの属列、無ければ科列…）の taxon。
+  T5 属止まり・「A/B」併記 → 併記は各成員を T1〜T3 で解決し、全員が同じ属ならその属の taxon。属が違う・解決できない
+     成員があるときだけ、行の最も低い確定した階級（シートの属列、無ければ科列…）の taxon。上位の taxon は、まず registry の
+     和名・学名と GBIF（学名・vernacular）で学名の taxon に当て、当たらないときだけ name_only にする。
 決まらない名前（GBIF が曖昧・届かない・registry で複数に当たる・T1 と T2 が食い違う）は**確認一覧**に出して
 非 0 で終了する（T4 に落とさない。人が `reviewed=1` の行で決める）。
 
@@ -278,7 +282,7 @@ class Registry:
             con.row_factory = sqlite3.Row
             rows = [dict(r) for r in con.execute(
                 "SELECT taxon_id, scientific_name, canonical_binomial, rank, family, vernacular_name_ja, status,"
-                " accepted_taxon_id, kingdom FROM taxon")]
+                " accepted_taxon_id, kingdom, \"order\" FROM taxon")]
         finally:
             con.close()
         return cls(rows, exclude_ids)
@@ -423,6 +427,11 @@ class GbifClient:
     def species(self, key):
         return self._fetch(f"species|{key}", f"https://api.gbif.org/v1/species/{key}", None)
 
+    def vernacular(self, name: str, rank: str):
+        """和名で GBIF の分類群を探す（vernacularNames を持つ検索結果）。動物界（highertaxonKey=1）に限る。"""
+        return self._fetch(f"vern|{rank}|{name}", "https://api.gbif.org/v1/species/search",
+                           {"q": name, "qField": "VERNACULAR", "rank": rank.upper(), "highertaxonKey": "1", "limit": "100"})
+
 
 def decide_gbif(client: GbifClient, name: str, rank: str):
     """-> (info dict, None) か (None, 理由)。EXACT・動物界・同じ階級だけを採る。
@@ -439,8 +448,6 @@ def decide_gbif(client: GbifClient, name: str, rank: str):
     status = r.get("status") or ""
     if status == "ACCEPTED":
         return {"key": r["usageKey"], "resp": r, "via": "exact"}, None
-    if status == "DOUBTFUL" and rank.upper() != "SPECIES":
-        return {"key": r["usageKey"], "resp": r, "via": "doubtful"}, None  # 属・科の疑問群は、階級が合えば採る（証拠に残る）
     acc = r.get("acceptedUsageKey")
     if status in ("SYNONYM", "HETEROTYPIC_SYNONYM", "HOMOTYPIC_SYNONYM", "PROPARTE_SYNONYM") and acc:
         a = client.species(acc)
@@ -452,11 +459,46 @@ def decide_gbif(client: GbifClient, name: str, rank: str):
     return None, f"gbif_status_{status.lower() or 'none'}"
 
 
+def decide_vernacular(client: GbifClient, name: str, rank: str, phylum: str | None = None):
+    """和名 → GBIF の受理名（T2c）。-> (info, None) か (None, 理由)。
+    採るのは、vernacularNames に language=jpn で和名が完全一致（NFKC）する結果が、受理名（同物異名は acceptedKey）で
+    1つに決まるときだけ。複数なら確認へ。シートの門が分かっていれば、結果の門が違うもの（同名異物）は採らない。"""
+    r = client.vernacular(name, rank)
+    if not isinstance(r, dict) or "_error" in r:
+        return None, f"gbif_unreachable({(r or {}).get('_error', 'no response')})"
+    want = unicodedata.normalize("NFKC", name)
+    keys: dict = {}
+    for res in r.get("results", []):
+        if (res.get("kingdom") or "") != "Animalia" or (res.get("rank") or "").upper() != rank.upper():
+            continue
+        if not any(v.get("language") == "jpn" and unicodedata.normalize("NFKC", v.get("vernacularName") or "") == want
+                   for v in res.get("vernacularNames", [])):
+            continue
+        key = res.get("key") if res.get("taxonomicStatus") == "ACCEPTED" else res.get("acceptedKey")
+        if key:
+            keys[key] = res
+    if not keys:
+        return None, f"gbif_vernacular_none({name})"
+    if len(keys) > 1:
+        return None, f"gbif_vernacular_ambiguous({name}:{sorted(keys)})"
+    key = next(iter(keys))
+    a = client.species(key)
+    if not isinstance(a, dict) or "_error" in a or not a.get("key"):
+        return None, f"gbif_vernacular_accepted_unreachable({name})"
+    if (a.get("kingdom") or "") != "Animalia" or (a.get("rank") or "").upper() != rank.upper():
+        return None, f"gbif_vernacular_mismatch({name})"
+    if phylum and a.get("phylum") and a["phylum"] != phylum:
+        return None, f"gbif_vernacular_phylum_mismatch({name}:{a['phylum']}!={phylum})"
+    return {"key": a["key"], "resp": a, "via": "gbif_vernacular"}, None
+
+
 # ---------------------------------------------------------------- 解決
 class Taxon:
     """name_map 1行分が指す taxon（registry の行か、supplement に足す行か）。"""
 
-    def __init__(self, taxon_id, rank, scientific_name, vernacular, family=None, genus=None, supplement=None):
+    def __init__(self, taxon_id, rank, scientific_name, vernacular, family=None, genus=None, supplement=None,
+                 order=None):
+        self.order = order
         self.taxon_id = taxon_id
         self.rank = rank
         self.scientific_name = scientific_name or ""
@@ -484,7 +526,8 @@ def _binom_genus(s: str) -> str:
 def _from_registry(row: dict) -> Taxon:
     sci = row.get("scientific_name") or ""
     return Taxon(row["taxon_id"], row.get("rank") or "", sci, row.get("vernacular_name_ja"),
-                 family=row.get("family"), genus=_binom_genus(row.get("canonical_binomial") or sci))
+                 family=row.get("family"), genus=_binom_genus(row.get("canonical_binomial") or sci),
+                 order=row.get("order"))
 
 
 def _gbif_taxon(info: dict, registry: Registry, rank: str) -> tuple[Taxon, bool]:
@@ -506,7 +549,7 @@ def _gbif_taxon(info: dict, registry: Registry, rank: str) -> tuple[Taxon, bool]
         "vernacular_name_ja": "", "gbif_taxon_key": str(key), "basis": "gbif_match", "evidence": "",
     }
     return Taxon(tid, rank.lower(), row["scientific_name"], "", family=row["family"],
-                 genus=_binom_genus(canonical), supplement=row), False
+                 genus=_binom_genus(canonical), supplement=row, order=row["order"]), False
 
 
 class Aggregates:
@@ -557,8 +600,19 @@ class Resolver:
         self.gbif = gbif
         self.agg = aggregates
         self.supp: dict[str, dict] = {}          # taxon_id -> supplement 行
-        self.genus_ja_to_latin: dict[str, set] = collections.defaultdict(set)
-        self.family_ja_to_latin: dict[str, set] = collections.defaultdict(set)
+        self.genus_ja_to_latin: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
+        self.family_ja_to_latin: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
+        self.family_to_order: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
+
+    @staticmethod
+    def _majority(c: collections.Counter):
+        """Counter の最頻値。1つだけ、または2位の2倍以上の件数があるときだけ（分類体系が年度で揺れるため）。"""
+        if not c:
+            return None
+        ranked = c.most_common(2)
+        if len(ranked) == 1 or ranked[0][1] >= 2 * ranked[1][1]:
+            return ranked[0][0]
+        return None
 
     # -- 低レベル: 学名・和名から
     def _sci_species(self, binom: str):
@@ -588,8 +642,31 @@ class Resolver:
         tid = EDNA_ID_PREFIX + slugify_local_key(ja)
         row = {"taxon_id": tid, "scientific_name": "", "canonical_binomial": "", "rank": rank,
                "kingdom": kingdom, "phylum": phylum, "class": class_en, "order": "", "family": "",
-               "vernacular_name_ja": ja, "gbif_taxon_key": "", "basis": "name_only", "evidence": why}
+               "vernacular_name_ja": ja, "gbif_taxon_key": "", "basis": "name_only",
+               "evidence": f"{why}; シート: {cls}/{hier.get('order')}/{hier.get('family')}/{hier.get('genus')}"}
         return Taxon(tid, rank, "", ja, supplement=row)
+
+    def fill_name_only(self, row: dict, hier: dict) -> None:
+        """name_only の追加行に、学名（registry・GBIF）で引けた科・目だけ英語で入れる。和名の科しか分からなければ空のまま。"""
+        latin, ja = level_label(hier.get("family"))
+        fam = latin or (self._majority(self.family_ja_to_latin.get(re.sub(r"科$", "", ja), collections.Counter()))
+                        if ja else None)
+        if fam and row["rank"] != "family":
+            row["family"] = fam
+            order = self._majority(self.family_to_order.get(fam, collections.Counter()))
+            if order:
+                row["order"] = order
+
+    def _vernacular(self, ja: str, rank: str, hier: dict, tier: str):
+        """和名 → GBIF vernacular（T2c）。-> (Taxon, tier, evidence) か (None, None, 理由)。"""
+        if self.gbif is None:
+            return None, None, f"gbif_offline({ja})"
+        phylum = CLASS_JA_TABLE.get(hier.get("class", ""), (None, None, None))[1]
+        info, why = decide_vernacular(self.gbif, ja, rank, phylum)
+        if info is None:
+            return None, None, why
+        t, in_reg = _gbif_taxon(info, self.registry, rank)
+        return t, tier, f"gbif_vernacular {ja} -> {info['key']}" + ("; registry に既存" if in_reg else "")
 
     # -- 種レベルの名前
     def species_level(self, k: str, part: dict, e: dict):
@@ -648,6 +725,13 @@ class Resolver:
                 if t is None:
                     return None, None, ev
                 return t, "T2b", f"辞書 taxa {refs[0]} ({len(refs)}行): {ja} -> {binom}; " + ev
+        if not sci_plain and self.gbif is not None:
+            # T2c: 和名を GBIF の vernacular（jpn・完全一致・受理名が1つ）で引く。複数なら確認へ
+            t, tier, ev = self._vernacular(ja, "species", self.agg.hierarchy(k), "T2c")
+            if t is not None:
+                return t, "T2c", ev
+            if "ambiguous" in ev or "phylum_mismatch" in ev or "unreachable" in ev:
+                return None, None, ev
         if row2:
             return _from_registry(row2), "T2", ev2
         if sci_plain:
@@ -674,10 +758,25 @@ class Resolver:
         if not ja:
             return None, None, "no_label"
         table = self.genus_ja_to_latin if rank == "genus" else self.family_ja_to_latin
-        cands = table.get(re.sub(r"(属|科)$", "", ja), set())
-        if len(cands) == 1:
-            return self.higher_latin(rank, next(iter(cands)))
-        name = ja if ja.endswith("属" if rank == "genus" else "科") else ja + ("属" if rank == "genus" else "科")
+        base = re.sub(r"(属|科)$", "", ja)
+        suffix = "属" if rank == "genus" else "科"
+        name = ja if ja.endswith(suffix) else ja + suffix
+        latin_name = self._majority(table.get(base, collections.Counter()))
+        if latin_name:
+            t, tier, ev = self.higher_latin(rank, latin_name)
+            if t is not None:
+                return t, tier, ev + f" (同じ{suffix}の種から {name} -> {latin_name})"
+        # registry の和名（属・科の行）→ GBIF の vernacular の順で、学名の taxon に当てる
+        row = [x for x in self.registry.by_vern.get(name, []) if (x.get("rank") or "") == rank]
+        if len(row) == 1:
+            return _from_registry(row[0]), "T5", f"registry vernacular_name_ja {name}"
+        if self.gbif is not None:
+            for q in (name, base):
+                t, tier, ev = self._vernacular(q, rank, hier, "T5")
+                if t is not None:
+                    return t, tier, ev
+                if "ambiguous" in ev or "unreachable" in ev:
+                    break
         return self._name_only(name, rank, hier, why), "NAME_ONLY", f"{rank} 和名のみ（{why}）"
 
     def reduce_to_sheet(self, hier: dict, why: str, genus_hint: str | None = None, skip_genus: bool = False):
@@ -735,6 +834,28 @@ class Resolver:
             r = self._fallback(r, self.agg.hierarchy(k))
         return r
 
+    def _common_genus(self, k: str, parts: list[str]):
+        """併記の各成員を T1〜T3（T2b・T2c 含む）で種に解決し、全員が同じ属の種なら、その属の taxon（registry か GBIF）。
+        1つでも解決できない・種でない成員があれば None（シートの属→科に寄せる）。-> (Taxon, evidence) か None"""
+        genera: set = set()
+        said = []
+        for part in parts:
+            pp = parse_part(part)
+            if pp["kind"] not in ("latin_species", "ja_species"):
+                return None
+            t, tier, ev = self.species_level(k, pp, {"sci": collections.Counter()})
+            if t is None or tier in ("NAME_ONLY", None) or not t.genus:
+                return None
+            genera.add(t.genus)
+            said.append(f"{part}->{t.taxon_id}")
+        if len(genera) != 1:
+            return None
+        genus = next(iter(genera))
+        t, tier, ev = self.higher_latin("genus", genus)
+        if t is None:
+            return None
+        return t, f"併記の全成員が属 {genus} の種（{'; '.join(said)}）; " + ev
+
     def _resolve(self, k: str) -> dict:
         e = self.agg.keys[k]
         hier = self.agg.hierarchy(k)
@@ -744,6 +865,9 @@ class Resolver:
         if len(parts) > 1:
             flags["name_ambiguous"] = True
             flags["rank_reduced"] = True
+            same = self._common_genus(k, parts)
+            if same is not None:
+                return self._result(same[0], "T5", same[1], flags)
             t, tier, ev = self.reduce_to_sheet(hier, "併記 " + "/".join(parts))
             return self._result(t, tier, ev, flags)
         p = parse_part(parts[0]) if parts else {"kind": "other", "ja": core}
@@ -812,15 +936,17 @@ def build(reads_rows, registry: Registry, gbif: GbifClient | None, existing_map:
             r = res.resolve(k)
             results[k] = r
             t = r.get("taxon")
-            if t is not None and t.rank == "species" and r["tier"] in ("T1", "T2", "T3") and t.genus:
+            if t is not None and t.rank == "species" and r["tier"] in ("T1", "T2", "T2b", "T2c", "T3") and t.genus:
                 h = agg.keys[k]["hier"]
-                for (_, _c, _o, fam, gen) in h:
+                for (_, _c, _o, fam, gen), n in h.items():
                     gl, gj = level_label(gen)
                     if gj:
-                        res.genus_ja_to_latin[re.sub(r"属$", "", gj)].add(t.genus)
+                        res.genus_ja_to_latin[re.sub(r"属$", "", gj)][t.genus] += n
                     fl, fj = level_label(fam)
                     if fj and t.family:
-                        res.family_ja_to_latin[re.sub(r"科$", "", fj)].add(t.family)
+                        res.family_ja_to_latin[re.sub(r"科$", "", fj)][t.family] += n
+                if t.family and t.order:
+                    res.family_to_order[t.family][t.order] += 1
     # 2 巡目: 属止まり・併記
     for k in keys:
         if k in results or existing_map.get(k, {}).get("reviewed") == "1":
@@ -854,6 +980,8 @@ def build(reads_rows, registry: Registry, gbif: GbifClient | None, existing_map:
                          "tier": r["tier"], "evidence": ev, "reviewed": "0", "name_example": e["example"]})
         if t.supplement is not None:
             row = supp_rows.setdefault(t.taxon_id, dict(t.supplement))
+            if row["basis"] == "name_only":
+                res.fill_name_only(row, agg.hierarchy(k))
             core, _ = clean_core(e["example"])
             p = parse_part(core) if "/" not in core else {"kind": "other"}
             if t.taxon_id.startswith(GBIF_ID_PREFIX) and p["kind"] == "ja_species" and r["tier"] in ("T3",):

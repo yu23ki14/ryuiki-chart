@@ -509,3 +509,94 @@ def test_main_keeps_foreign_supplement_rows(tmp_path):
     got = list(csv.DictReader(open(sp, encoding="utf-8")))
     assert got[0]["taxon_id"] == "common:taxon:gbif.77" and got[0]["evidence"] == "他の出典"
     assert len(got) == 2 and got[1]["evidence"].startswith(c89c.OWNER_MARK)
+
+
+# ---------------------------------------------------------------- T2c（GBIF vernacular）・併記の同属・T3 の受け入れ条件
+def _vern_getter(search=None, species=None, match=None):
+    """species/search（vernacular）・species/{key}・species/match を表で返す偽物。"""
+    calls = []
+
+    def get(url, params=None):
+        calls.append((url, dict(params or {})))
+        if url.endswith("/species/search"):
+            return {"results": (search or {}).get(params["q"], [])}
+        if url.endswith("/species/match"):
+            return (match or {}).get(params["name"], {"matchType": "NONE"})
+        return (species or {})[url.rsplit("/", 1)[1]]
+    get.calls = calls
+    return get
+
+
+def _hit(key, name, lang="jpn", status="ACCEPTED", **kw):
+    r = {"key": key, "rank": "SPECIES", "kingdom": "Animalia", "taxonomicStatus": status,
+         "vernacularNames": [{"vernacularName": name, "language": lang}]}
+    r.update(kw)
+    return r
+
+
+def _sp(key, canonical, **kw):
+    r = {"key": key, "scientificName": canonical + " Auth", "canonicalName": canonical, "rank": "SPECIES",
+         "kingdom": "Animalia", "phylum": "Chordata", "class": "Actinopterygii", "order": "Carangiformes",
+         "family": "Carangidae"}
+    r.update(kw)
+    return r
+
+
+def test_t2c_gbif_vernacular_unique_japanese_exact_match():
+    g = _vern_getter(search={"ロウニンアジ": [_hit(1, "ロウニンアジ"), _hit(2, "ロウニンアジ", lang="eng")]},
+                     species={"1": _sp(1, "Caranx ignobilis")})
+    out, supp, pending = _run([_read(1, "ロウニンアジ", cls="硬骨魚綱", order="スズキ目", fam="アジ科", gen="-")], gbif=g, rows=[])
+    assert pending == [] and out[0]["tier"] == "T2c" and out[0]["taxon_id"] == "common:taxon:gbif.1"
+    assert "gbif_vernacular" in out[0]["evidence"] and supp[0]["class"] == ""   # 魚は registry と同じく class 空
+
+
+def test_t2c_ambiguous_wrong_language_and_phylum_mismatch_do_not_resolve():
+    two = _vern_getter(search={"ナゾ": [_hit(1, "ナゾ"), _hit(2, "ナゾ")]}, species={"1": _sp(1, "A b"), "2": _sp(2, "C d")})
+    assert "gbif_vernacular_ambiguous" in _run([_read(1, "ナゾ")], gbif=two, rows=[])[2][0][2]
+    en = _vern_getter(search={"ナゾ": [_hit(1, "ナゾ", lang="eng")]})
+    assert _run([_read(1, "ナゾ")], gbif=en, rows=[])[0][0]["tier"] == "T4"        # 該当なし → 和名のみ
+    wrong = _vern_getter(search={"ナゾ": [_hit(1, "ナゾ")]}, species={"1": _sp(1, "A b", phylum="Mollusca")})
+    assert "phylum_mismatch" in _run([_read(1, "ナゾ")], gbif=wrong, rows=[])[2][0][2]   # 昆虫綱（節足動物）に軟体動物
+
+
+def test_t3_gbif_doubtful_is_not_accepted_and_falls_back_to_the_sheet():
+    g = _gbif_getter({"Foo": _match(960, "Foo", rank="GENUS", status="DOUBTFUL")})
+    out, _, _ = _run([_read(1, "Foo属の一種", gen="Foo属", fam="Gobiidae")], gbif=g)
+    assert out[0]["taxon_id"] == "common:taxon:gbif.700"       # 属は採らず、シートの科（registry）
+
+
+def test_slash_name_with_members_in_one_genus_reduces_to_that_genus_not_the_family():
+    rows = [
+        _tx("common:taxon:gbif.801", "Helicoverpa armigera (Hübner, 1808)", vern="オオタバコガ", family="Noctuidae"),
+        _tx("common:taxon:gbif.802", "Helicoverpa assulta (Guenée, 1852)", vern="タバコガ", family="Noctuidae"),
+        _tx("common:taxon:gbif.803", "Helicoverpa", rank="genus", binom="Helicoverpa"),
+        _tx("common:taxon:gbif.804", "Noctuidae", rank="family", binom="Noctuidae"),
+    ]
+    out = _by_key(_run([_read(1, "タバコガ/オオタバコガ", gen="-", fam="ヤガ科")], rows=rows))
+    r = out["タバコガ/オオタバコガ"]
+    assert (r["tier"], r["taxon_id"], r["rank"]) == ("T5", "common:taxon:gbif.803", "genus")
+    assert "併記の全成員が属 Helicoverpa" in r["evidence"]
+
+
+def test_slash_name_across_genera_goes_to_sheet_family_resolved_through_species_of_the_same_family():
+    rows = [
+        _tx("common:taxon:gbif.801", "Helicoverpa armigera", vern="オオタバコガ", family="Noctuidae"),
+        _tx("common:taxon:gbif.810", "Spodoptera litura", vern="ハスモンヨトウ", family="Noctuidae"),
+        _tx("common:taxon:gbif.804", "Noctuidae", rank="family", binom="Noctuidae"),
+    ]
+    reads = [_read(1, "オオタバコガ", gen="タバコガ属", fam="ヤガ科"), _read(2, "ハスモンヨトウ", gen="ヨトウガ属", fam="ヤガ科"),
+             _read(3, "オオタバコガ/ハスモンヨトウ", gen="-", fam="ヤガ科")]
+    r = _by_key(_run(reads, rows=rows))["オオタバコガ/ハスモンヨトウ"]
+    assert (r["taxon_id"], r["rank"]) == ("common:taxon:gbif.804", "family")    # name_only の「ヤガ科」を作らない
+
+
+def test_name_only_row_gets_english_family_and_order_only_when_known_from_a_species():
+    rows = [dict(_tx("common:taxon:gbif.801", "Helicoverpa armigera", vern="オオタバコガ", family="Noctuidae"), order="Lepidoptera")]
+    reads = [_read(1, "オオタバコガ", gen="タバコガ属", fam="ヤガ科", order="チョウ目"),
+             _read(2, "ナゾノガ", gen="-", fam="ヤガ科", order="チョウ目"),
+             _read(3, "ナゾノアブ", gen="-", fam="ムシヒキアブ科", order="ハエ目")]
+    _, supp, _ = _run(reads, rows=rows)
+    by = {s["vernacular_name_ja"]: s for s in supp}
+    assert (by["ナゾノガ"]["family"], by["ナゾノガ"]["order"]) == ("Noctuidae", "Lepidoptera")
+    assert (by["ナゾノアブ"]["family"], by["ナゾノアブ"]["order"]) == ("", "")      # 和名の科しか無ければ空
+    assert by["ナゾノガ"]["class"] == "Insecta" and "シート: 昆虫綱/チョウ目/ヤガ科" in by["ナゾノガ"]["evidence"]
