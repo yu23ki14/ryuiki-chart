@@ -11,11 +11,8 @@ export async function GET(req: NextRequest) {
   try {
     if (kind === "list") {
       const cdb = await d1CubeDb();
-      const [seriesRows, docs, warnings] = await Promise.all([
-        docSeriesList(cdb, { minYears: 3 }),
-        documentsList(cdb),
-        blockingNotes(cdb),
-      ]);
+      const [seriesRows, docs] = await Promise.all([docSeriesList(cdb, { minYears: 3 }), documentsList(cdb)]);
+      const warnings = await blockingNotes(cdb, docs); // 文書名は docs から（documents を読み直さない）
       // 応答の形は従来のまま（snake_case）。label は lib/cube が付ける（UI は再計算しない）。
       const series = seriesRows.map((r) => ({
         doc_id: r.docId,

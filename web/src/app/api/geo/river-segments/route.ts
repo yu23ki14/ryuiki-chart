@@ -11,8 +11,9 @@ export const runtime = "nodejs";
 export async function GET(req: NextRequest) {
   const prefecture = req.nextUrl.searchParams.get("prefecture") || undefined;
   const rows = await readRecordSet(await d1CubeDb(), "river_segments", {
-    eq: prefecture ? { col: "prefecture_ja", value: prefecture } : undefined,
-    orderBy: [{ col: "length_m", desc: true }],
+    eq: prefecture ? [{ col: "prefecture_ja", value: prefecture }] : undefined,
+    order: [{ col: "length_m", desc: true }],
+    limit: null, // 水系全体（上限なし）
     withGeometry: true,
   });
   const features = rows.flatMap((r) => {

@@ -13,9 +13,11 @@ export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const legend = sp.get("legend") || undefined;
   const rows = await readRecordSet(await d1CubeDb(), "vegetation", {
-    eq: legend ? { col: "legend_code", value: legend } : undefined,
-    orderBy: [{ col: "area_m2", desc: true }],
-    limit: Math.min(Number(sp.get("limit") ?? 1500), 5000),
+    eq: legend ? [{ col: "legend_code", value: legend }] : undefined,
+    order: [{ col: "area_m2", desc: true }],
+    limit: Number(sp.get("limit")),
+    defaultLimit: 1500,
+    maxLimit: 5000,
     withGeometry: true,
   });
   const features = rows.flatMap((r) => {

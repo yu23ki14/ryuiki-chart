@@ -9,6 +9,6 @@ export const metadata = { title: "出典" };
 export default async function Page() {
   const docs = await documentsList(await d1CubeDb());
   // 出典の正は registry（describe_catalog what='sources' と同じ行）。旧表 source_registry は読まない。
-  const sources = sourcePageRows(new Date()).sort((a, b) => (b.n_source_rows ?? -1) - (a.n_source_rows ?? -1));
+  const sources = sourcePageRows(new Date());
   return <SourceRegistry sources={sources} docs={docs} />;
 }

@@ -383,7 +383,7 @@ pnpm run dev
   ローカル D1（`.wrangler/` 配下）。
 - **完了条件**: `/`・`/map`・`/biota`・`/water` 等の画面が起動し、新エリアのデータが地図・一
   覧・チャートのいずれかに現れる（Step 0 の目標段階に応じて確認箇所を選ぶ）。
-- **落とし穴**: `web/src/lib/queries.ts` の `biotaTotals()` と `web/scripts/build-biota.mjs`
+- **落とし穴**（`queries.ts` は撤去済みで、同種の直書きは `web/src/lib/cube/` 側にあれば同様）: 旧 `web/src/lib/queries.ts` の `biotaTotals()` と `web/scripts/build-biota.mjs`
   は**どちらも** `source_id='gbif_kanagawa_occurrences'` と
   `source_id='inaturalist_kanagawa'`を**直書き**で絞っている。新エリアの生物データを入れても、
   **両方**直さない限り**黙って0件扱いになり集計が過小表示になる**。Step 7 で画面を見た時に生
@@ -588,7 +588,7 @@ b05_project_v1.py` の `_assert_zone_numbers_do_not_collide_across_zone_places` 
 
 | 論点 | 何が起きるか | どこで直すか |
 |---|---|---|
-| `web/src/lib/queries.ts` の `biotaTotals()` と `web/scripts/build-biota.mjs` がともに `source_id='gbif_kanagawa_occurrences'` / `'inaturalist_kanagawa'` を直書き | 他県の生物データを入れても**黙って0件扱いになり**、合計カードと派生集計が過小表示になる | Step 7 で直す（本書スコープ内。決定済み）。恒久対応は `region_id` 列で `WHERE region_id = ?` に置き換えるだけで足りる |
+| 旧 `web/src/lib/queries.ts`（撤去済み）の `biotaTotals()` と `web/scripts/build-biota.mjs` がともに `source_id='gbif_kanagawa_occurrences'` / `'inaturalist_kanagawa'` を直書き | 他県の生物データを入れても**黙って0件扱いになり**、合計カードと派生集計が過小表示になる | Step 7 で直す（本書スコープ内。決定済み）。恒久対応は `region_id` 列で `WHERE region_id = ?` に置き換えるだけで足りる |
 | `web/src/lib/table-meta.ts` の `TABLE_META` 説明文に「神奈川県相当範囲」等の県固有記述 | `web/src/lib/ai/prompt.ts` の `tableCatalog()` がこの文言をそのまま**AIのシステムプロンプトに埋め込む**ため、他県データが増えてもAIが神奈川限定の説明のまま答え続ける | ADR-0016 Phase A（`docs/plans/PHASE_A.md` A-7「AIアシスタントへの配線」）でレジストリ由来の説明に切り替える計画がある。それまでは手動で文言を都度更新する |
 | `taxa.redlist_kanagawa` という県名入りの列名 | 他県のレッドリスト評価を入れる場所が構造上ない | ADR-0019（taxon レジストリ）／Phase A の `taxon` テーブル設計まで待つ。当面は列を増やさず `caveat` に「未対応」と記録する |
 | `vegetation_polygons.feature_id` が環境省 ArcGIS の生 `objectid` をそのまま主キーにしている | 他県分を足すと**主キー衝突のリスクが最も高い**（`objectid` は都道府県ごとに独立に採番されている可能性が高い） | 投入前に `source_id` を前置した合成キーに変える（Step 4 相当の投入スクリプト側で対応。スキーマの主キー制約自体は変えず、値の作り方を直す） |

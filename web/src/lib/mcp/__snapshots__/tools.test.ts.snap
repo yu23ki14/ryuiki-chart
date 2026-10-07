@@ -356,23 +356,13 @@ exports[`MCP ツール一覧（第1段 5 本） > 入力スキーマのスナッ
     "name": "export_dataset",
   },
   {
-    "description": "出典（source_id）を指定して、台帳表の明細をそのまま取る。観測値・出現記録ではない地点・保護区・植生・河川・哺乳類メッシュ・クマ出没・レッドリスト／外来種の評価など。任意 SQL ではなく、出典ごとに宣言された表だけ。主キー昇順。id で 1 件、q で名称・和名・学名の部分一致。植生・河川のジオメトリは id 指定の 1 件だけ include_geometry で返す。結果が truncated のときは next_after を after に渡して続きを取る（深いページは offset より速い）。ライセンスや座標で行を除外・加工しない。利用条件は provenance の出典情報を見る。行政文書の一覧（record_set=documents。抽出セル数 n_cells・注記数 n_notes・比較注意 n_blocking つき）と注記（record_set=document_notes。doc_id・blocking_only で絞れる）は出典に紐付かないので source_id を付けず record_set だけで引く（行の publisher・url・license が出典）。使える出典と record_set（複数あるときは record_set を指定）: biodic_mammal_mesh_kanagawa=mammal_mesh、biodic_veg2024_kanagawa=vegetation、dams_kanagawa=sites、env_kousui_stations_kanagawa=sites、geoshape_sagami_river=river_segments、hadano_preserved_trees=protected_areas、hiratsuka_parks=protected_areas、jma_stations_kanagawa=sites、kanagawa_green_conservation=protected_areas、kanagawa_kuma_sightings=sightings、kanagawa_natural_parks=protected_areas、kanagawa_rdb2022_plants=assessments、kanagawa_redlist=assessments、moe_ias_list=assessments、moni1000_sites=sites、sagami_livecams=sites。",
+    "description": "出典（source_id）を指定して、台帳表の明細をそのまま取る。観測値・出現記録ではない地点・保護区・植生・河川・哺乳類メッシュ・クマ出没・レッドリスト／外来種の評価など。任意 SQL ではなく、出典ごとに宣言された表だけ。主キー昇順。id で 1 件、q で名称・和名・学名の部分一致。植生・河川のジオメトリは id 指定の 1 件だけ include_geometry で返す。結果が truncated のときは next_after を after に渡して続きを取る（深いページは offset より速い）。ライセンスや座標で行を除外・加工しない。利用条件は provenance の出典情報を見る。行政文書の一覧（record_set=documents。抽出セル数 n_cells・注記数 n_notes・比較注意 n_blocking つき）と注記（record_set=document_notes。q は本文と doc_id に効く。id は行の note_rowid）は出典に紐付かないので source_id を付けず record_set だけで引く（行の publisher・url・license が出典）。使える出典と record_set（複数あるときは record_set を指定）: biodic_mammal_mesh_kanagawa=mammal_mesh、biodic_veg2024_kanagawa=vegetation、dams_kanagawa=sites、env_kousui_stations_kanagawa=sites、geoshape_sagami_river=river_segments、hadano_preserved_trees=protected_areas、hiratsuka_parks=protected_areas、jma_stations_kanagawa=sites、kanagawa_green_conservation=protected_areas、kanagawa_kuma_sightings=sightings、kanagawa_natural_parks=protected_areas、kanagawa_rdb2022_plants=assessments、kanagawa_redlist=assessments、moe_ias_list=assessments、moni1000_sites=sites、sagami_livecams=sites。",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
         "after": {
           "description": "直前のページの最後の主キー（結果の next_after をそのまま渡す）。主キー昇順でその次から読む。深いページでは offset より after を使う（offset とは併用できない）",
-          "maxLength": 300,
-          "minLength": 1,
-          "type": "string",
-        },
-        "blocking_only": {
-          "description": "document_notes だけ。true なら時系列比較を妨げる注記（blocks_timeseries=1）だけ",
-          "type": "boolean",
-        },
-        "doc_id": {
-          "description": "document_notes だけ。文書 ID の完全一致で絞る",
           "maxLength": 300,
           "minLength": 1,
           "type": "string",

@@ -63,7 +63,7 @@ export function sourcePageRow(m: Meta, now: Date | undefined) {
 }
 export type SourcePageRow = ReturnType<typeof sourcePageRow>;
 
-/** `/sources` 画面の全行（describe_catalog と同じ SOURCE_META）。 */
+/** `/sources` 画面の全行（describe_catalog と同じ SOURCE_META）。原本の行数の多い順（行数が無い出典は最後）。 */
 export function sourcePageRows(now: Date | undefined): SourcePageRow[] {
-  return SOURCE_META.map((m) => sourcePageRow(m, now));
+  return SOURCE_META.map((m) => sourcePageRow(m, now)).sort((a, b) => (b.n_source_rows ?? -1) - (a.n_source_rows ?? -1));
 }

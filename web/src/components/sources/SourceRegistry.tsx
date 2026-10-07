@@ -3,44 +3,27 @@
 import * as React from "react";
 import { Btn, inputCls, Stat, nf } from "@/components/ui";
 import { STATUS } from "@/components/viz/palette";
+import type { DocumentRow } from "@/lib/records";
+import type { SourcePageRow } from "@/lib/source-catalog";
 
-/** `describe_catalog what='sources'` と同じ行（lib/source-catalog.ts の sourcePageRow）。 */
-interface Source {
-  source_id: string;
-  name: string | null;
-  publisher: string | null;
-  url: string | null;
-  license: string | null;
-  redistributable: boolean | null;
-  fetched_at: string | null;
-  queryable_via: readonly string[];
-  n_source_rows: number | null;
-  unavailable_reason_ja: string | null;
-}
-interface Doc {
-  doc_id: string;
-  title: string;
-  publisher: string;
-  url: string;
-  n_pages: number;
-  fiscal_year: number | null;
-  license: string;
-  n_cells: number;
-  n_notes: number;
-  n_blocking: number;
-}
+type Source = SourcePageRow;
+type Doc = DocumentRow;
 
-/** ライセンス文の自由記述を、バッジに出せる短いラベルに寄せる */
-function licenseBadge(license: string | null): { label: string; tone: "open" | "gov" | "share" | "check" } {
-  const l = license ?? "";
-  if (/CC0/i.test(l)) return { label: "CC0", tone: "open" };
-  if (/ODbL/i.test(l)) return { label: "ODbL（継承条件あり）", tone: "share" };
-  if (/CC[- ]?BY[- ]?NC/i.test(l)) return { label: "CC BY-NC", tone: "share" };
-  if (/CC[-\s]?BY/i.test(l) || /クリエイティブ・コモンズ/.test(l)) return { label: "CC BY", tone: "open" };
-  if (/政府標準利用規約|PDL|公共データ利用規約/.test(l)) return { label: "政府標準利用規約系", tone: "gov" };
-  if (/国土数値情報利用約款/.test(l)) return { label: "国土数値情報利用約款", tone: "gov" };
-  if (/要確認|明示なし|不明|事前アンケート|無断複製/.test(l)) return { label: "要確認", tone: "check" };
-  return { label: "個別条件", tone: "check" };
+/** 出典の license_class（registry）から、バッジに出す短いラベルと色調を決める。ライセンス文の自由記述は読まない。 */
+const LICENSE_BADGE: Record<string, { label: string; tone: "open" | "gov" | "share" | "check" }> = {
+  public_domain: { label: "パブリックドメイン", tone: "open" },
+  cc_by: { label: "CC BY", tone: "open" },
+  open_terms: { label: "公開利用規約", tone: "gov" },
+  share_alike: { label: "継承条件あり", tone: "share" },
+  noncommercial: { label: "非商用", tone: "share" },
+  mixed: { label: "混在", tone: "check" },
+  custom_terms: { label: "個別条件", tone: "check" },
+  restricted: { label: "制限あり", tone: "check" },
+  unconfirmed: { label: "要確認", tone: "check" },
+  unknown: { label: "不明", tone: "check" },
+};
+function licenseBadge(licenseClass: string | null): { label: string; tone: "open" | "gov" | "share" | "check" } {
+  return (licenseClass && LICENSE_BADGE[licenseClass]) || { label: "不明", tone: "check" };
 }
 
 const TONE: Record<string, string> = {
@@ -130,7 +113,7 @@ export function SourceRegistry({ sources, docs }: { sources: Source[]; docs: Doc
             </thead>
             <tbody>
               {rows.map((s) => {
-                const b = licenseBadge(s.license);
+                const b = licenseBadge(s.license_class);
                 return (
                   <tr key={s.source_id}>
                     <td className="max-w-[420px]">
@@ -189,7 +172,7 @@ export function SourceRegistry({ sources, docs }: { sources: Source[]; docs: Doc
               {docs.map((d) => (
                 <tr key={d.doc_id}>
                   <td className="max-w-[460px]">
-                    <a href={d.url} target="_blank" rel="noopener noreferrer" className="text-water-ink hover:underline">
+                    <a href={d.url ?? undefined} target="_blank" rel="noopener noreferrer" className="text-water-ink hover:underline">
                       {d.title}
                     </a>
                   </td>
