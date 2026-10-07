@@ -309,7 +309,7 @@ describe("スキャナの自己診断", () => {
   });
 
   it("許可リスト外のファイルでは禁止表の追加が見つかる（変異）", () => {
-    for (const rel of ["src/lib/queries.ts", "src/lib/db.ts", "src/lib/cube/catalog.ts"]) {
+    for (const rel of ["src/lib/records.ts", "src/lib/db.ts", "src/lib/cube/catalog.ts"]) {
       const src = SOURCE_OF.get(rel);
       expect(src, rel).toBeDefined();
       expect(unallowedReferences(rel, src!), `${rel} は元から参照ゼロのはず`).toEqual([]);

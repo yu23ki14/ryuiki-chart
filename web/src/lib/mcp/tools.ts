@@ -20,7 +20,6 @@ import {
   OCCURRENCE_SOURCE_IDS,
   seriesSourceRefs,
   sourceAccess,
-  sourceFreshness,
   speciesCatalog,
   speciesMonths,
   speciesCatalogCounts,
@@ -33,7 +32,8 @@ import {
   MEASUREMENTS_DATASET,
   type CubeDb,
 } from "@/lib/cube";
-import { SOURCE_EXCLUDED_FROM_LIST, SOURCE_META } from "@/lib/registry/generated-source";
+import { SOURCE_META } from "@/lib/registry/generated-source";
+import { sourceRow, sourceSummary } from "@/lib/source-catalog";
 import { GENERATED_VARIABLES } from "@/lib/registry/generated";
 import { VARIABLE_LABEL, ZONE_INFO } from "@/lib/registry/generated-client";
 import { representativeSeries } from "@/lib/cube/series";
@@ -66,49 +66,6 @@ function defineTool<S extends z.ZodType>(t: {
   execute: (args: z.infer<S>, ctx: McpContext) => Promise<unknown>;
 }): McpTool {
   return t; // execute の引数型は never を受け取る側（McpTool）に代入できる。as unknown で型を潰さない
-}
-
-/** SOURCE_ACCESS は SOURCE_META と同じ出典を網羅する（r01・build-registry-ts・tools.test.ts が固定）。無いのは生成物の不整合。 */
-function sourceAccessOrThrow(sourceId: string) {
-  const a = sourceAccess(sourceId);
-  if (!a) throw new Error(`SOURCE_ACCESS に出典 ${sourceId} が無い（pnpm run build:registry:ts を再実行する）`);
-  return a;
-}
-
-/** 出典 1 件の行（describe_catalog の sources と search_registry の source で同じ形）。 */
-function sourceRow(m: (typeof SOURCE_META)[number], now: Date | undefined) {
-  const a = sourceAccessOrThrow(m.sourceId);
-  return {
-    ...sourceFreshness(m.sourceId, { now }),
-    name: m.nameJa,
-    publisher: m.publisher,
-    superseded_by: m.supersededBy,
-    queryable_via: a.queryableVia,
-    record_sets: a.tables,
-    // 原本の行数（キューブの集計行数ではない。get_observations の n とは別物）。取れない出典は null。
-    n_source_rows: a.nSourceRows,
-    n_source_rows_basis: a.nSourceRowsBasis,
-    counted_at: a.countedAt,
-    unavailable_reason: a.reason,
-    unavailable_reason_ja: a.reasonJa,
-    unavailable_note: a.reasonNote,
-  };
-}
-
-/** `describe_catalog(sources)` の集計済みの件数。モデルに一覧を数えさせない（「123 件中 9 件」の誤りの対策）。 */
-function sourceSummary(metas: readonly (typeof SOURCE_META)[number][]) {
-  const by_tool: Record<string, number> = {};
-  const by_reason: Record<string, number> = {};
-  let queryable = 0;
-  for (const m of metas) {
-    const a = sourceAccessOrThrow(m.sourceId);
-    if (a.state === "queryable") queryable += 1;
-    for (const t of a.queryableVia) by_tool[t] = (by_tool[t] ?? 0) + 1;
-    if (a.reason) by_reason[a.reason] = (by_reason[a.reason] ?? 0) + 1;
-  }
-  // by_tool は重複あり（kanagawa_edna は get_occurrences と get_edna の両方）。重複なしの数は queryable。
-  // excluded: 一覧から除いた出典の件数と理由（合成データ。total には含めない）。
-  return { total: metas.length, queryable, not_queryable: metas.length - queryable, by_tool, by_reason, excluded: { ...SOURCE_EXCLUDED_FROM_LIST } };
 }
 
 /** 出力行数の上限（コンテキストを溢れさせない。超えたら `truncated: true`）。 */

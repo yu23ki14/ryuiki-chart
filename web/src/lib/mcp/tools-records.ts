@@ -28,8 +28,8 @@ export function getRecordsTool(): McpTool {
           ...(r.next_after !== null ? { next_after: r.next_after } : {}),
           ...(r.n_total !== null ? { n_total: r.n_total } : {}),
         },
-        [r.source_id],
-        { now: ctx.now, truncated: r.truncated, caveats: caveatsForFacets(facetsForOccurrence({ places: [], sourceIds: [r.source_id] })) },
+        r.source_id === null ? [] : [r.source_id],
+        { now: ctx.now, truncated: r.truncated, caveats: caveatsForFacets(facetsForOccurrence({ places: [], sourceIds: r.source_id === null ? [] : [r.source_id] })) },
       );
     },
   };

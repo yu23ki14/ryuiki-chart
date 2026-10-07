@@ -4,7 +4,7 @@
  *
  * - 任意 SQL ではない。出典（enum）× 宣言済みの表 × 許可リストの列だけ。SQL は `RECORD_TABLES` の
  *   定義から固定の形で組み立て、表名・列名は定数だけ（入力から組み立てない）。`SELECT *` は書かない。
- * - 出典で必ず絞る。既定は `source_id = ?`（索引が効く）。複合 source_id（`a|b`）を持つ表（`compositeSource`）だけ、
+ * - 出典で必ず絞る（行政文書の `documents`/`document_notes` だけは出典に紐付かないので record_set 単独。`sourceless`）。既定は `source_id = ?`（索引が効く）。複合 source_id（`a|b`）を持つ表（`compositeSource`）だけ、
  *   `|` で区切った要素の完全一致で照合する（LIKE の部分一致にしない）。どちらの出典で絞っても、その行が返る。
  * - ページングは `after`（直前の最後の主キー。keyset）が深くても速い。`offset` は残すが浅いページ向け。
  * - ライセンス・座標の精度で行を除外・加工しない（ADR-0028）。
@@ -37,6 +37,19 @@ export interface RecordTable {
   geometry?: string;
   /** `source_id` に `a|b` の複合値が入りうる表。true のときだけ区切りの完全一致で照合する（索引は効かない）。 */
   compositeSource?: boolean;
+  /**
+   * 出典の列を持たない表（行政文書。`documents`/`notes` に `source_id` は無い）。true の record_set は
+   * `source_id` を受けず（渡すと入力エラー）、record_set 単独で引く。理由は RECORD_TABLES の `documents` のコメント。
+   */
+  sourceless?: boolean;
+  /** 返す算出列（別名 → SQL 式）。表名・列名は定数だけ。`cols` には含めない（実在列ではない）。 */
+  computed?: Record<string, string>;
+  /** 主キーが実列でない（`rowid`）。`cols` の実在検査から外す。 */
+  pkIsRowid?: boolean;
+  /** `doc_id` 入力で絞れる表（完全一致）。 */
+  docIdFilter?: boolean;
+  /** `blocking_only` 入力で絞る述語（`blocks_timeseries = 1`）。 */
+  blockingPredicate?: string;
 }
 
 /**
@@ -102,6 +115,36 @@ export const RECORD_TABLES = {
       "note_ja", "source_id", "source_ref",
     ],
   },
+  /*
+   * 行政文書（cells.sqlite 由来の D1 表 `documents`/`notes`）。出典の列を持たず、access.yaml の出典にも
+   * 結び付かない（文書は PDF 1 本＝1 doc_id で、`source_registry` の出典とは 1 対 1 でも入れ子でもない。
+   * doc_id の接頭辞から出典を推測すると静かに外れる）。そこで `sourceless` とし、record_set 単独で引く。
+   * 「出典単位で読む」契約は、各行の `publisher`/`url`/`license` が出典情報を持つことで満たす。
+   * 表名は access.yaml の record_sets に無いので（出典に紐付かない表は宣言の対象外）ここに直書きする。
+   */
+  documents: {
+    table: "documents",
+    pk: "doc_id",
+    search: ["title", "publisher"],
+    cols: ["doc_id", "title", "publisher", "url", "n_pages", "fiscal_year", "license", "fetched_at"],
+    computed: {
+      n_cells: "(SELECT COUNT(*) FROM cells x WHERE x.doc_id = documents.doc_id)",
+      n_notes: "(SELECT COUNT(*) FROM notes n WHERE n.doc_id = documents.doc_id)",
+      n_blocking: "(SELECT COUNT(*) FROM notes n WHERE n.doc_id = documents.doc_id AND n.blocks_timeseries = 1)",
+    },
+    sourceless: true,
+  },
+  document_notes: {
+    table: "notes",
+    // note_id は 207 行中 30 行が NULL（schema.ts）。主キーに使えないので rowid で並べる・ページングする。
+    pk: "rowid",
+    pkIsRowid: true,
+    search: ["text"],
+    cols: ["rowid", "note_id", "doc_id", "table_ids", "kind", "text", "page", "blocks_timeseries", "reason"],
+    sourceless: true,
+    docIdFilter: true,
+    blockingPredicate: "blocks_timeseries = 1",
+  },
   assessments: {
     table: RECORD_SET_TABLES.assessments,
     pk: "assessment_id",
@@ -124,8 +167,10 @@ export function recordSetsOf(sourceId: string): readonly string[] {
 
 /** MCP・AI 共通の入力（z.tuple は使わない）。出典と表の組み合わせの検査は `queryRecords` が行う。 */
 export const recordsInputSchema = z.object({
-  source_id: z.enum(RECORD_SOURCE_IDS).describe("出典（必須。使える出典と record_set の組はツールの説明にある）"),
-  record_set: z.enum(RECORD_SET_NAMES).optional().describe("記録の集合（sites・protected_areas・vegetation・river_segments・mammal_mesh・sightings・assessments）。出典に集合が複数あるときだけ必須（1つなら省略可）"),
+  source_id: z.enum(RECORD_SOURCE_IDS).optional().describe("出典（documents・document_notes 以外は必須。使える出典と record_set の組はツールの説明にある）"),
+  record_set: z.enum(RECORD_SET_NAMES).optional().describe("記録の集合（sites・protected_areas・vegetation・river_segments・mammal_mesh・sightings・assessments・documents・document_notes）。出典に集合が複数あるときだけ必須（1つなら省略可）。documents・document_notes は出典に紐付かないので source_id なしでこれだけ指定する"),
+  doc_id: idText("document_notes だけ。文書 ID の完全一致で絞る").optional(),
+  blocking_only: z.boolean().optional().describe("document_notes だけ。true なら時系列比較を妨げる注記（blocks_timeseries=1）だけ"),
   id: idText("主キーの完全一致（1 件取り）").optional(),
   q: likeText("表ごとの検索列（名称・和名・学名など）の部分一致").optional(),
   include_geometry: z
@@ -149,13 +194,16 @@ export const RECORDS_DESCRIPTION =
   "主キー昇順。id で 1 件、q で名称・和名・学名の部分一致。植生・河川のジオメトリは id 指定の 1 件だけ include_geometry で返す。" +
   "結果が truncated のときは next_after を after に渡して続きを取る（深いページは offset より速い）。" +
   "ライセンスや座標で行を除外・加工しない。利用条件は provenance の出典情報を見る。" +
+  "行政文書の一覧（record_set=documents。抽出セル数 n_cells・注記数 n_notes・比較注意 n_blocking つき）と注記（record_set=document_notes。" +
+  "doc_id・blocking_only で絞れる）は出典に紐付かないので source_id を付けず record_set だけで引く（行の publisher・url・license が出典）。" +
   `使える出典と record_set（複数あるときは record_set を指定）: ${sourceSetList()}。`;
 
 /** 入力の組み合わせの誤り。`queryRecords` の `onInputError` で呼び出し側の例外（MCP は McpInputError）に変えられる。 */
 export class RecordsInputError extends Error {}
 
 export interface RecordsResult {
-  source_id: string;
+  /** 出典に紐付かない record_set（documents・document_notes）では null。 */
+  source_id: string | null;
   record_set: RecordSetName;
   /** 実表名（AI の provenance 用）。 */
   table: string;
@@ -170,12 +218,17 @@ export interface RecordsResult {
   n_total: number | null;
 }
 
-/** 入力から引く表を決める。出典に無い表・複数表で省略は入力エラー。 */
+/** 入力から引く表を決める。出典に無い表・複数表で省略は入力エラー。出典に紐付かない表（sourceless）は record_set 単独。 */
 export function resolveRecordTable(
   a: Pick<RecordsInput, "source_id" | "record_set">,
   fail: (msg: string) => Error = (m) => new RecordsInputError(m),
 ): RecordSetName {
-  const tables = recordSetsOf(a.source_id) as readonly RecordSetName[];
+  if (a.record_set !== undefined && isSourceless(a.record_set)) {
+    if (a.source_id !== undefined) throw fail(`record_set '${a.record_set}' は出典に紐付かない。source_id を付けず record_set だけで引く`);
+    return a.record_set;
+  }
+  if (a.source_id === undefined) throw fail("source_id が必要（documents・document_notes 以外の record_set は出典単位で読む）");
+  const tables = recordSetsOf(a.source_id).filter((t) => !isSourceless(t)) as readonly RecordSetName[];
   if (tables.length === 0) throw fail(`source_id '${a.source_id}' は get_records の対象ではない`);
   if (a.record_set === undefined) {
     if (tables.length === 1) return tables[0];
@@ -185,6 +238,10 @@ export function resolveRecordTable(
     throw fail(`出典 ${a.source_id} に記録の集合 '${a.record_set}' は無い。record_set は ${tables.join(" / ")} から選ぶ`);
   }
   return a.record_set;
+}
+
+function isSourceless(set: string): boolean {
+  return Boolean((RECORD_TABLES as Record<string, RecordTable>)[set]?.sourceless);
 }
 
 /** 複合の値を持つ表だけ。`|` 区切りの要素の完全一致（LIKE の部分一致にしない）。 */
@@ -209,8 +266,19 @@ export async function queryRecords(db: CubeDb, a: RecordsInput, opt: QueryRecord
 
   const limit = a.limit ?? 100;
   const offset = a.offset ?? 0;
-  const conds: string[] = [def.compositeSource ? COMPOSITE_SOURCE_MATCH : "source_id = ?"];
-  const params: SqlParam[] = [def.compositeSource ? `|${a.source_id}|` : a.source_id];
+  if (a.doc_id !== undefined && !def.docIdFilter) throw fail(`表 ${table} は doc_id で絞れない（document_notes だけ）`);
+  if (a.blocking_only && !def.blockingPredicate) throw fail(`表 ${table} は blocking_only で絞れない（document_notes だけ）`);
+  const conds: string[] = [];
+  const params: SqlParam[] = [];
+  if (!def.sourceless) {
+    conds.push(def.compositeSource ? COMPOSITE_SOURCE_MATCH : "source_id = ?");
+    params.push(def.compositeSource ? `|${a.source_id}|` : (a.source_id as string));
+  }
+  if (a.doc_id !== undefined) {
+    conds.push("doc_id = ?");
+    params.push(a.doc_id);
+  }
+  if (a.blocking_only && def.blockingPredicate) conds.push(def.blockingPredicate);
   if (a.id !== undefined) {
     conds.push(`${def.pk} = ?`);
     params.push(a.id);
@@ -226,15 +294,20 @@ export async function queryRecords(db: CubeDb, a: RecordsInput, opt: QueryRecord
   }
   const geomCol = a.include_geometry && def.geometry ? def.geometry : null;
   const cols = geomCol ? [...def.cols, geomCol] : [...def.cols];
-  const sql = `SELECT ${cols.join(", ")} FROM ${table} WHERE ${conds.join(" AND ")} ORDER BY ${def.pk} LIMIT ? OFFSET ?`;
+  const selects = [...cols, ...Object.entries(def.computed ?? {}).map(([k, expr]) => `${expr} AS ${k}`)];
+  const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+  const sql = `SELECT ${selects.join(", ")} FROM ${table} ${where} ORDER BY ${def.pk} LIMIT ? OFFSET ?`;
   const raw = await db.all(sql, [...params, limit + 1, offset]);
   const truncated = raw.length > limit;
   const page = raw.slice(0, limit);
   const rows: RecordsResult["rows"] = geomCol ? page.map((r) => ({ ...r, [geomCol]: parseGeometry(r[geomCol]) })) : page;
   const last = truncated ? page[page.length - 1]?.[def.pk] : undefined;
-  const nTotal = a.id === undefined && a.q === undefined ? (sourceAccess(a.source_id)?.recordSetRows[set] ?? null) : null;
+  const nTotal =
+    a.id === undefined && a.q === undefined && a.source_id !== undefined
+      ? (sourceAccess(a.source_id)?.recordSetRows[set] ?? null)
+      : null;
   return {
-    source_id: a.source_id,
+    source_id: a.source_id ?? null,
     record_set: set,
     table,
     rows,
@@ -253,4 +326,123 @@ function parseGeometry(v: string | number | null | undefined): object | string |
   } catch {
     return v; // 壊れた値は黙って捨てず、そのまま返す
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* 画面・API 用の読み出し（`get_records` と同じ RECORD_TABLES の列定義を共有する）  */
+/* ------------------------------------------------------------------ */
+
+/** 全ページを読み切る（行数の少ない表だけ。`next_after` で続ける）。 */
+async function queryAllRecords(db: CubeDb, a: RecordsInput): Promise<RecordsResult["rows"]> {
+  const out: RecordsResult["rows"] = [];
+  let after: string | undefined;
+  for (;;) {
+    const r = await queryRecords(db, { ...a, limit: RECORDS_MAX_ROWS, after });
+    out.push(...r.rows);
+    if (!r.truncated || r.next_after === null) return out;
+    after = r.next_after;
+  }
+}
+
+export interface MapReadOptions {
+  /** 完全一致で絞る列（`cols` にある列だけ）。 */
+  eq?: { col: string; value: string };
+  /** 並び順（`cols` にある列だけ。desc は NULL を最後に）。 */
+  orderBy: readonly { col: string; desc?: boolean }[];
+  limit?: number;
+  /** ジオメトリ列（`geometry_geojson`）も文字列のまま返す。 */
+  withGeometry?: boolean;
+}
+
+/**
+ * 地図用に、出典を問わず台帳表を読む（`/api/geo/{protected-areas,vegetation,river-segments}`）。
+ * 表名・列は `RECORD_TABLES` のもの。列名・並び順は定数を渡し、`cols` に無い列は例外にする。
+ * ジオメトリは `parseGeometry` せず文字列で返す（呼び出し側が壊れた値を落とす）。
+ */
+export async function readRecordSet(
+  db: CubeDb,
+  set: RecordSetName,
+  opt: MapReadOptions,
+): Promise<Record<string, string | number | null>[]> {
+  const def: RecordTable = RECORD_TABLES[set];
+  const known = new Set<string>(def.cols);
+  const geom = opt.withGeometry ? def.geometry : undefined;
+  if (opt.withGeometry && !geom) throw new Error(`表 ${def.table} にジオメトリは無い`);
+  for (const c of [...opt.orderBy.map((o) => o.col), ...(opt.eq ? [opt.eq.col] : [])]) {
+    if (!known.has(c)) throw new Error(`${def.table}.${c} は許可リストに無い`);
+  }
+  const cols = geom ? [...def.cols, geom] : [...def.cols];
+  const where = opt.eq ? `WHERE ${opt.eq.col} = ?` : "";
+  const order = opt.orderBy.map((o) => `${o.col}${o.desc ? " DESC NULLS LAST" : ""}`).join(", ");
+  const params: SqlParam[] = opt.eq ? [opt.eq.value] : [];
+  const limit = opt.limit !== undefined ? "LIMIT ?" : "";
+  if (opt.limit !== undefined) params.push(opt.limit);
+  return (await db.all(`SELECT ${cols.join(", ")} FROM ${def.table} ${where} ORDER BY ${order} ${limit}`, params)) as Record<
+    string,
+    string | number | null
+  >[];
+}
+
+export interface DocumentRow {
+  doc_id: string;
+  title: string;
+  publisher: string;
+  url: string;
+  n_pages: number;
+  fiscal_year: number | null;
+  license: string;
+  n_cells: number;
+  n_notes: number;
+  n_blocking: number;
+}
+
+/** 抽出元の行政文書の一覧（抽出セルの多い順）。`/api/documents` と `/sources` が使う。 */
+export async function documentsList(db: CubeDb): Promise<DocumentRow[]> {
+  const rows = await queryAllRecords(db, { record_set: "documents" });
+  return rows
+    .map((r) => ({
+      doc_id: r.doc_id, title: r.title, publisher: r.publisher, url: r.url, n_pages: r.n_pages,
+      fiscal_year: r.fiscal_year, license: r.license, n_cells: r.n_cells, n_notes: r.n_notes, n_blocking: r.n_blocking,
+    }) as DocumentRow)
+    .sort((x, y) => y.n_cells - x.n_cells);
+}
+
+export interface DocNote {
+  note_id: string | null;
+  kind: string;
+  text: string;
+  page: number;
+  blocks_timeseries: number;
+  reason: string;
+}
+
+/** 1 文書の注記（時系列を妨げるものを先に、ページ順）。 */
+export async function docNotes(db: CubeDb, docId: string): Promise<DocNote[]> {
+  const rows = await queryAllRecords(db, { record_set: "document_notes", doc_id: docId });
+  return rows
+    .map((r) => ({ note_id: r.note_id, kind: r.kind, text: r.text, page: r.page, blocks_timeseries: r.blocks_timeseries, reason: r.reason }) as DocNote)
+    .sort((x, y) => y.blocks_timeseries - x.blocks_timeseries || x.page - y.page);
+}
+
+export interface BlockingNote {
+  doc_id: string;
+  doc_title: string;
+  kind: string;
+  page: number;
+  reason: string;
+  text: string;
+}
+
+/** 時系列の比較を妨げる注記（種別・文書・ページ順）。文書名は documents から付ける。 */
+export async function blockingNotes(db: CubeDb): Promise<BlockingNote[]> {
+  const [notes, docs] = await Promise.all([
+    queryAllRecords(db, { record_set: "document_notes", blocking_only: true }),
+    queryAllRecords(db, { record_set: "documents" }),
+  ]);
+  const title = new Map(docs.map((d) => [String(d.doc_id), String(d.title ?? "")]));
+  const cmp = (x: string, y: string) => (x < y ? -1 : x > y ? 1 : 0);
+  return notes
+    .filter((n) => title.has(String(n.doc_id))) // 旧実装は documents との内部結合
+    .map((n) => ({ doc_id: n.doc_id, doc_title: title.get(String(n.doc_id)), kind: n.kind, page: n.page, reason: n.reason, text: n.text }) as BlockingNote)
+    .sort((x, y) => cmp(x.kind, y.kind) || cmp(x.doc_id, y.doc_id) || x.page - y.page);
 }

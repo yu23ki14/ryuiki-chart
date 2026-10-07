@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { protectedAreas } from "@/lib/queries";
+import { d1CubeDb } from "@/lib/cube";
+import { readRecordSet } from "@/lib/records";
 
 export const runtime = "nodejs";
 
@@ -10,12 +11,17 @@ export const runtime = "nodejs";
  */
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
-  const rows = await protectedAreas(sp.get("category") || undefined, Number(sp.get("limit") ?? 2000));
+  const category = sp.get("category") || undefined;
+  const rows = await readRecordSet(await d1CubeDb(), "protected_areas", {
+    eq: category ? { col: "category_code", value: category } : undefined,
+    orderBy: [{ col: "category_code" }, { col: "area_ha", desc: true }, { col: "name_ja" }],
+    limit: Number(sp.get("limit") ?? 2000),
+  });
   const features = rows
     .filter((r) => r.lat != null && r.lon != null)
     .map((r) => ({
       type: "Feature",
-      geometry: { type: "Point", coordinates: [r.lon, r.lat] },
+      geometry: { type: "Point", coordinates: [r.lon as number, r.lat as number] },
       properties: {
         area_id: r.area_id,
         name_ja: r.name_ja,
