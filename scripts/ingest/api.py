@@ -14,6 +14,8 @@ adapter は 1 行ごとに `ingest.api.occurrence_row(...)` を `yield` する�
 - `taxon_id`（`common:taxon:…`。registry に実在すること。無ければ None）
 - `observed_on_raw`（原表記。`occurrence_period_shapes.yaml` の 12 形のどれか。無ければ None）
 - `lat`/`lon`（どちらも数値、またはどちらも None。**座標を補完しない**＝推測で埋めない）
+- 任意: `coordinate_uncertainty_m`（座標の不確かさ〔m〕。非負の数値か None。lat/lon が None なら None。
+  推定座標を持つ出典が、使う側に精度で絞らせるために渡す。省略＝None＝従来どおり）
 - 任意: `scientific_name`/`vernacular_name`/`taxon_rank`/`red_list_category`/`license_class`
 - `attributes`（出典固有の補助情報の dict。JSON 文字列として `occurrence.attributes` に保存される。無ければ NULL。
   D1 には L2 を入れないが dist には載る。値は JSON にできるもの〔文字列・数値・真偽・None・リスト・dict〕に限る）
@@ -26,6 +28,7 @@ from typing import Callable, Iterator
 ROW_COLUMNS = ("record_key", "taxon_id", "observed_on_raw", "lat", "lon")
 OPTIONAL_COLUMNS = (
     "scientific_name", "vernacular_name", "taxon_rank", "red_list_category", "license_class", "attributes",
+    "coordinate_uncertainty_m",
 )
 
 
@@ -54,6 +57,7 @@ def occurrence_row(
     red_list_category=None,
     license_class=None,
     attributes=None,
+    coordinate_uncertainty_m=None,
 ) -> dict:
     """occurrence の 1 行（列契約の dict）。型・組の検査はランナーが行う。"""
     return {
@@ -62,4 +66,5 @@ def occurrence_row(
         "scientific_name": scientific_name, "vernacular_name": vernacular_name, "taxon_rank": taxon_rank,
         "red_list_category": red_list_category, "license_class": license_class,
         "attributes": dict(attributes) if attributes else {},
+        "coordinate_uncertainty_m": coordinate_uncertainty_m,
     }

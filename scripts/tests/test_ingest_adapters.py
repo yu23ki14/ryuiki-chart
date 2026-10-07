@@ -223,3 +223,55 @@ def test_manifest_without_processing_adapter_rows_is_an_unused_declaration(env):
     (adapters_dir / f"{SOURCE}.py").write_text("def rows(ctx):\n    return iter(())\n", encoding="utf-8")
     with pytest.raises(common.MigrationError, match="1件も該当しなかった"):
         _run(tmp_path, ryuiki_db, registry_db, manifests)
+
+
+def _write_uncertainty_adapter(adapters_dir, body):
+    (adapters_dir / f"{SOURCE}.py").write_text(
+        "from ingest.api import occurrence_row\n" + "def rows(ctx):\n" + body, encoding="utf-8"
+    )
+
+
+def test_adapter_coordinate_uncertainty_flows_into_occurrence(env):
+    """推定座標の出典が渡した精度は occurrence に入り、省略した行は NULL のまま。"""
+    tmp_path, ryuiki_db, registry_db, manifests, adapters_dir = env
+    _write_adapter_manifest(
+        manifests, expected_row_count=2,
+        extra={"expected": _expected(
+            period_shapes={"day": 0}, place={"coord_resolved": 1, "coord_unresolved": 0},
+            cube={"dated_rows": 0, "dated_no_coordinate_rows": 0, "leaf_cell_source_rows": 0,
+                  "leaf_cell_source_rows_no_coordinate": 0, "month_cell_source_rows": 0,
+                  "watershed_dated_resolved_rows": 0, "watershed_dated_unresolved_rows": 0},
+        )},
+    )
+    _write_uncertainty_adapter(
+        adapters_dir,
+        f"    yield occurrence_row('a', taxon_id={TAXON!r}, lat=35.505, lon=139.005, coordinate_uncertainty_m=3000)\n"
+        f"    yield occurrence_row('b', taxon_id={TAXON!r})\n",
+    )
+    _run(tmp_path, ryuiki_db, registry_db, manifests)
+    conn = sqlite3.connect(f"file:{tmp_path / 'v2.sqlite'}?mode=ro", uri=True)
+    got = dict(conn.execute(
+        "SELECT record_id, coordinate_uncertainty_m FROM occurrence WHERE source_id = ?", (SOURCE,)).fetchall())
+    assert got == {f"{SOURCE}__a": 3000.0, f"{SOURCE}__b": None}
+    # builtin 出典の行は従来どおり（この列に adapter の値が混ざらない）
+    assert conn.execute(
+        "SELECT COUNT(*) FROM occurrence WHERE source_id <> ? AND coordinate_uncertainty_m = 3000", (SOURCE,)
+    ).fetchone()[0] == 0
+
+
+@pytest.mark.parametrize(
+    "args, match",
+    [
+        ("lat=35.5, lon=139.0, coordinate_uncertainty_m=-1", "非負の有限な数値"),
+        ("lat=35.5, lon=139.0, coordinate_uncertainty_m='100'", "非負の有限な数値"),
+        ("lat=35.5, lon=139.0, coordinate_uncertainty_m=True", "非負の有限な数値"),
+        ("lat=35.5, lon=139.0, coordinate_uncertainty_m=float('nan')", "非負の有限な数値"),
+        ("coordinate_uncertainty_m=100", "座標が無いのに"),
+    ],
+)
+def test_adapter_invalid_coordinate_uncertainty_stops(env, args, match):
+    tmp_path, ryuiki_db, registry_db, manifests, adapters_dir = env
+    _write_adapter_manifest(manifests)
+    _write_uncertainty_adapter(adapters_dir, f"    yield occurrence_row('a', {args})\n")
+    with pytest.raises(common.MigrationError, match=match):
+        _run(tmp_path, ryuiki_db, registry_db, manifests)

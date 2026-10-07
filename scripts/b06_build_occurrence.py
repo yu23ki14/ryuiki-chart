@@ -518,7 +518,7 @@ def _ingest(
                 is_alien_in_scope = 1 if binom_of(r.scientific_name) in alien_binoms else 0
                 yield (
                     record_id, source_table, n, source_id, region_id, taxon_id,
-                    place_id, place_kind, None, r.lat, r.lon,
+                    place_id, place_kind, r.coordinate_uncertainty_m, r.lat, r.lon,
                     period_grain, period_start, period_end, period_raw,
                     r.scientific_name, r.vernacular_name, r.taxon_rank,
                     r.red_list_category, None, r.license_class, None,

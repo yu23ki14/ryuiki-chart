@@ -44,6 +44,7 @@ class AdapterRow:
     red_list_category: str | None = None
     license_class: str | None = None
     attributes: dict = field(default_factory=dict)
+    coordinate_uncertainty_m: float | None = None
 
 
 def _number(v) -> bool:
@@ -126,6 +127,14 @@ class AdapterRun:
             raise MigrationError(f"{src}: lat/lon の片方だけが無い: record_key={key!r}")
         if lat is not None and not (_number(lat) and _number(lon)):
             raise MigrationError(f"{src}: lat/lon が数値でない: record_key={key!r} lat={lat!r} lon={lon!r}")
+        unc = raw.get("coordinate_uncertainty_m")
+        if unc is not None:
+            if not _number(unc) or unc < 0 or unc != unc or unc == float("inf"):
+                raise MigrationError(
+                    f"{src}: coordinate_uncertainty_m が非負の有限な数値でない: record_key={key!r} 値={unc!r}")
+            if lat is None:
+                raise MigrationError(
+                    f"{src}: 座標が無いのに coordinate_uncertainty_m がある: record_key={key!r} 値={unc!r}")
         for c in ("taxon_id", "observed_on_raw", "scientific_name", "vernacular_name", "taxon_rank",
                   "red_list_category", "license_class"):
             v = raw.get(c)
@@ -140,6 +149,7 @@ class AdapterRun:
             scientific_name=raw.get("scientific_name"), vernacular_name=raw.get("vernacular_name"),
             taxon_rank=raw.get("taxon_rank"), red_list_category=raw.get("red_list_category"),
             license_class=raw.get("license_class"), attributes=attrs,
+            coordinate_uncertainty_m=None if unc is None else float(unc),
         )
 
     def _apply_row_checks(self, row: AdapterRow, i: int) -> None:
