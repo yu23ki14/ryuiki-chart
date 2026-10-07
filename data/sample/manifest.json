@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-10-07T07:25:49+00:00",
+  "generated_at": "2026-10-07T09:16:43+00:00",
   "generated_by": "scripts/s01_build_sample.py",
   "source_files": {
-    "data/db/ryuiki.sqlite": "75fe7f50659731706b8696149aaff204cdcd6302892c8de3909482d72ec59a2b",
+    "data/db/ryuiki.sqlite": "aa307eb50eccad5d19a013a2a5cede6c5d40e032fe6a58525b836f4d69d8a299",
     "data/db/cells.sqlite": "0668ae12ee127b3638cbdf52a75d6ba7dd96252e04dd928242224e704fe646c5",
     "data/processed/nlni_w12_watersheds.geojson": "0fdb4360f1a1d0f8473a0d5b9b9a16f1cc42420312f654781a5dfd66b0aa56f7",
     "data/processed/nlni_w12_watersheds.jsonl": "901924abd35592a6a1a570864ed6b1843755070490ea39cc16f6a3114a5c492d",
@@ -21,7 +21,7 @@
     "cells.vocab_units": 124,
     "edna_detections": 13263,
     "measurements": 39434,
-    "organism_records": 3270,
+    "organism_records": 3275,
     "quality_transitions": 3372,
     "redlist_assessments": 2884,
     "sensor_timeseries": 6770,

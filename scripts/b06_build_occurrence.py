@@ -92,6 +92,15 @@ grid01 place・期間の展開）に流す。`record_id` は `<source_id>__<reco
 積み、`reports/phase_b_occurrence.md` に出す。b03 と同じく除外を切り替える
 オプションは持たない（b03 の `--include-synthetic` は Issue #61 で撤去した）。
 
+## 不在記録（`occurrence_status='ABSENT'`）を除く（2026-10-07 オーナー決定・ADR-0025）
+
+GBIF の `occurrenceStatus=ABSENT` は「その種はいなかった」という記録で、出現ではない。`organism_records`
+には残し（`occurrence_status` 列。m03 が GBIF の値をそのまま入れ、iNaturalist 等は NULL）、occurrence からだけ
+除く。除いた行数は出典ごとに `stats["absent_excluded_by_source"]` に積み、`manifests/<source>.yml` の
+`expected_absent_excluded_rows`（既定 0）と突合する（食い違えば止まる）。NULL/PRESENT/ABSENT 以外の値は止める。
+合成データの除外と同じく、`source_usage`/`region_usage` の使用マークは除外より前に行う（宣言の使用判定を変えない）が、
+`region_counts`・期間の形・解決の集計は除外後の行だけを数える。
+
 ## 機械検証（1つでも失敗すれば `MigrationError`（のサブクラス）で止まる）
 
 - `manifests/*.yml`/`occurrence_period_shapes.yaml` の構造
@@ -182,13 +191,23 @@ def _assert_known_source_ids(work: sqlite3.Connection) -> None:
     assert_known_source_ids((r[0] for r in rows), error_cls=common.MigrationError)
 
 
+def _assert_occurrence_status_column(work: sqlite3.Connection) -> None:
+    """`organism_records.occurrence_status` が無い（古い原本）なら、黙って全行を出現として数えずに止める。"""
+    cols = [r[1] for r in work.execute("PRAGMA src.table_info(organism_records)")]
+    if "occurrence_status" not in cols:
+        raise common.MigrationError(
+            "organism_records に occurrence_status 列が無い（GBIF の不在記録を除けない）。"
+            "`python scripts/m03_organisms.py --backfill-occurrence-status` で列を足して値を埋めること"
+        )
+
+
 _SELECT_ORGANISM_RECORDS_SQL = """
 SELECT
   o.rowid AS source_row_id, o.record_id, o.source_id, o.observed_on, o.taxon_key,
   o.lat, o.lon, o.coordinate_uncertainty_m,
   o.scientific_name, o.vernacular_name, o.taxon_rank,
   o.red_list_category, o.is_alien, o.license_class, o.publication_scope,
-  psr.place_id AS place_id, p.place_kind AS place_kind, o.is_synthetic
+  psr.place_id AS place_id, p.place_kind AS place_kind, o.is_synthetic, o.occurrence_status
 FROM src.organism_records o
 LEFT JOIN reg.place_source_ref psr
   ON psr.key_space = 'grid01_latlon'
@@ -251,10 +270,53 @@ INSERT INTO {table} (
 """
 
 
+# occurrence_status の語彙（GBIF のまま。NULL は不在の概念が無い出典 = iNaturalist 等）。
+STATUS_ABSENT = "ABSENT"
+_KNOWN_STATUSES = frozenset({None, "PRESENT", STATUS_ABSENT})
+
+# 除外の理由（_exclusion_reason の戻り値）
+_EXCLUDE_SYNTHETIC = "synthetic"
+_EXCLUDE_ABSENT = "absent"
+_EXCLUDE_UNKNOWN_STATUS = "unknown_status"
+
+
+def _exclusion_reason(is_synthetic, occurrence_status) -> str | None:
+    """occurrence に入れない行の理由（入れる行は None）。優先順は 合成データ → 不在記録 → 未知の状態。
+    - 合成データ（`is_synthetic=1`）: Issue #48 PR-0 オーナー決定。本番に出さない。
+    - 不在記録（`occurrence_status='ABSENT'`）: 2026-10-07 オーナー決定・ADR-0025。原本には残し occurrence からだけ除く。
+    - 未知の状態: 語彙が増えた。除いたうえで `_problems_from_stats` が止める。"""
+    if is_synthetic == 1:
+        return _EXCLUDE_SYNTHETIC
+    if occurrence_status == STATUS_ABSENT:
+        return _EXCLUDE_ABSENT
+    if occurrence_status not in _KNOWN_STATUSES:
+        return _EXCLUDE_UNKNOWN_STATUS
+    return None
+
+
+def _count_exclusion(stats: dict, reason: str, source_id: str, record_id: str, occurrence_status) -> None:
+    """除外を stats に積む。不在記録は出典別（マニフェストの `expected_absent_excluded_rows` と突合する）。"""
+    if reason == _EXCLUDE_SYNTHETIC:
+        stats["synthetic_excluded_count"] += 1
+    elif reason == _EXCLUDE_ABSENT:
+        stats["absent_excluded_count"] += 1
+        by_source = stats["absent_excluded_by_source"]
+        by_source[source_id] = by_source.get(source_id, 0) + 1
+    else:
+        stats["unknown_status_count"] += 1
+        if len(stats["unknown_status_sample"]) < _SAMPLE_LIMIT:
+            stats["unknown_status_sample"].append((record_id, occurrence_status))
+
+
 def _empty_stats() -> dict:
     return {
         "total": 0,
         "synthetic_excluded_count": 0,
+        "absent_excluded_count": 0,
+        "n_occurrence": 0,
+        "absent_excluded_by_source": {},
+        "unknown_status_count": 0,
+        "unknown_status_sample": [],
         "n_dated": 0,
         "no_coordinate_count": 0,
         "unresolved_taxon_count": 0,
@@ -288,6 +350,11 @@ _PROBLEM_SPECS = (
         "occurrence: 座標はあるのに grid01 の place_id が解決できない行: "
         "{count}件（例: {sample}）",
     ),
+    (
+        "unknown_status_count", "unknown_status_sample",
+        "occurrence: organism_records.occurrence_status が NULL/PRESENT/ABSENT のどれでもない行: "
+        "{count}件（例: {sample}）。GBIF の語彙が増えた——出現として数えるか除くかを決めてから b06 を直すこと",
+    ),
 )
 
 
@@ -299,6 +366,23 @@ def _problems_from_stats(stats: dict) -> list[str]:
             continue
         problems.append(template.format(count=count, sample=stats[sample_key]))
     problems.extend(stats["adapter_problems"])
+    return problems
+
+
+def _absent_excluded_problems(sources: dict, measured: dict[str, int]) -> list[str]:
+    """不在記録（`occurrence_status='ABSENT'`）として除いた行数を、マニフェストの
+    `expected_absent_excluded_rows`（既定 0）と出典ごとに突合する。"""
+    problems = [
+        f"manifests/{sid}.yml の expected_absent_excluded_rows={src.expected_absent_excluded_rows} と、"
+        f"organism_records.occurrence_status='ABSENT' で除いた行の実測 {measured.get(sid, 0)} が食い違う"
+        "（原本の不在記録が増減した、または宣言が古い。宣言を測り直す）"
+        for sid, src in sorted(sources.items())
+        if measured.get(sid, 0) != src.expected_absent_excluded_rows
+    ]
+    problems += [
+        f"occurrence_status='ABSENT' の行が出典 {sid!r} にあるが、manifests/ に宣言されていない"
+        for sid in sorted(set(measured) - set(sources))
+    ]
     return problems
 
 
@@ -397,7 +481,7 @@ def _ingest(
                 lat, lon, coordinate_uncertainty_m,
                 scientific_name, vernacular_name, taxon_rank,
                 red_list_category, is_alien, license_class, publication_scope,
-                place_id, place_kind, is_synthetic,
+                place_id, place_kind, is_synthetic, occurrence_status,
             ) = row
             # 原表記の旗 is_alien は変えない。n_alien（b07）は registry（環境省リスト＋除外規則）から
             # 導いたこちらを数える（原本の旗を遮蔽するのではなく置き換える）。
@@ -412,14 +496,12 @@ def _ingest(
             region_id = source_region.region_id
             region_usage.mark_used(region_id)
 
-            # Issue #48 PR-0 オーナー決定: 合成データは本番に出さない。
-            # manifests/*.yml の宣言使用マーキングは合成データの行でも
-            # 行った後（実測ではこの出典・region は全行非合成だが、将来
-            # source_id 丸ごとが合成データだけになっても「宣言未使用」の
-            # 誤検出にしないため）、region_counts への計上・alias/place 解決
-            # より前にこの行を弾く（モジュール docstring「合成データを除く」節）。
-            if is_synthetic == 1:
-                stats["synthetic_excluded_count"] += 1
+            # occurrence に入れない行（合成データ・不在記録・未知の状態）。宣言の使用マーキングは除外の行でも
+            # 行った後（将来 source_id 丸ごとが除外対象だけになっても「宣言未使用」の誤検出にしないため）、
+            # region_counts への計上・alias/place 解決より前に弾く（モジュール docstring の各節）。
+            reason = _exclusion_reason(is_synthetic, occurrence_status)
+            if reason is not None:
+                _count_exclusion(stats, reason, source_id, record_id, occurrence_status)
                 continue
 
             stats["region_counts"][region_id] = stats["region_counts"].get(region_id, 0) + 1
@@ -534,6 +616,7 @@ def _ingest(
             stats["adapter_counts"][run.manifest.source] = run.n_rows
             stats["adapter_attributes_count"][run.manifest.source] = run.n_attributes
             stats["adapter_problems"].extend(run.problems())
+    stats["n_occurrence"] = stats["total"] - stats["synthetic_excluded_count"] - stats["absent_excluded_count"]
     return stats
 
 
@@ -609,6 +692,7 @@ def build_and_write_occurrence(
                 common.attach_readonly(work, registry_db, "reg")
                 lineage.watch(work, external=work_external)
                 _assert_known_source_ids(work)
+                _assert_occurrence_status_column(work)
                 taxon_ids = _load_taxon_ids(work)
                 ctx = _IngestContext(
                     taxon_ids, _load_alien_binoms(work), sources, regions,
@@ -627,7 +711,8 @@ def build_and_write_occurrence(
             dest.commit()
 
             declaration_problems = (
-                period.declaration_problems(source_usage, "manifests/ (sources, target=occurrence)")
+                _absent_excluded_problems(sources, stats["absent_excluded_by_source"])
+                + period.declaration_problems(source_usage, "manifests/ (sources, target=occurrence)")
                 + period.declaration_problems(region_usage, "manifests/ (regions, target=occurrence)")
                 + period.declaration_problems(shape_usage, "occurrence_period_shapes.yaml")
             )
@@ -703,7 +788,7 @@ def render_report(stats: dict) -> str:
         "要約。設計は `docs/plans/PHASE_B_OCCURRENCE.md`（O-1a節）参照。"
     )
     a("")
-    n_occurrence = stats["total"] - stats["synthetic_excluded_count"]
+    n_occurrence = stats["n_occurrence"]
     a(f"- `organism_records` 総行数: **{stats['total']:,}**")
     a(
         f"- 合成データ（`is_synthetic=1`）を除外した行数: "
@@ -713,8 +798,14 @@ def render_report(stats: dict) -> str:
         "黙って通さないための防御）"
     )
     a(
+        f"- 不在記録（`occurrence_status='ABSENT'`）を除外した行数: **{stats['absent_excluded_count']:,}**"
+        "（原本には残す。出現として数えない。2026-10-07 オーナー決定・ADR-0025。出典別: "
+        + (", ".join(f"`{k}` {v:,}" for k, v in sorted(stats["absent_excluded_by_source"].items())) or "なし")
+        + "。マニフェストの `expected_absent_excluded_rows` と突合済み）"
+    )
+    a(
         f"- `occurrence` 行数: **{n_occurrence:,}**"
-        "（合成データを除く全行を取り込む。ADR-0007原則1の例外——"
+        "（合成データ・不在記録を除く全行を取り込む。ADR-0007原則1の例外——"
         "Issue #48 PR-0 オーナー決定）"
     )
     a(f"- 日付あり（`period_raw` NOT NULL）: **{stats['n_dated']:,}**")
@@ -788,16 +879,16 @@ def main() -> None:
             args.ryuiki_db, registry_db, args.manifests_dir, args.period_shapes_yaml, args.out,
             count_overlay_by_file,
         )
-        info["n"] = stats["total"] - stats["synthetic_excluded_count"]
+        info["n"] = stats["n_occurrence"]
 
     report_path = pathlib.Path(args.report)
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(render_report(stats), encoding="utf-8")
     print(f"→ {report_path}")
-    n_occurrence = stats["total"] - stats["synthetic_excluded_count"]
+    n_occurrence = stats["n_occurrence"]
     print(
         f"  occurrence: {n_occurrence:,}行（日付あり {stats['n_dated']:,}、"
-        f"合成データ除外 {stats['synthetic_excluded_count']:,}）"
+        f"合成データ除外 {stats['synthetic_excluded_count']:,}、不在記録除外 {stats['absent_excluded_count']:,}）"
     )
 
 

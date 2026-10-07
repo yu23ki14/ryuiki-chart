@@ -1249,7 +1249,18 @@ def _ryuiki_one_table_proxy(ryuiki_db: pathlib.Path, table: str) -> str:
         if not _table_exists(conn, table):
             return _ABSENT
         count, max_rowid = conn.execute(f"SELECT COUNT(*), MAX(rowid) FROM {table}").fetchone()
-        return f"count={count};max_rowid={max_rowid}"
+        proxy = f"count={count};max_rowid={max_rowid}"
+        if table == "organism_records":
+            # b06 は occurrence_status='ABSENT' の行を除く。値だけが変わる更新（backfill 等）は行数も
+            # max rowid も動かさないので、状態別の件数も代理指標に足す（列が無い古い原本は区別して持つ）。
+            try:
+                by_status = conn.execute(
+                    "SELECT occurrence_status, COUNT(*) FROM organism_records GROUP BY 1 ORDER BY 1"
+                ).fetchall()
+            except sqlite3.OperationalError:
+                by_status = "no_column"
+            proxy += f";occurrence_status={by_status}"
+        return proxy
     finally:
         conn.close()
 

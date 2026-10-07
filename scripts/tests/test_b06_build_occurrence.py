@@ -380,3 +380,62 @@ def test_is_alien_in_scope_comes_from_registry_not_from_the_raw_flag(tmp_path):
         "WHERE record_id IN ('gbif_kanagawa_occurrences__a','gbif_kanagawa_occurrences__b','gbif_kanagawa_occurrences__c','gbif_kanagawa_occurrences__d')")}
     conn.close()
     assert got == {"gbif_kanagawa_occurrences__a": (0, 1), "gbif_kanagawa_occurrences__b": (1, 0), "gbif_kanagawa_occurrences__c": (1, 0), "gbif_kanagawa_occurrences__d": (0, 1)}
+
+
+# --- 不在記録（GBIF の occurrenceStatus=ABSENT）を occurrence から除く（2026-10-07 オーナー決定・ADR-0025）---
+
+_ABSENT_SOURCE_REGIONS_TEXT = (
+    "sources:\n"
+    "  gbif_kanagawa_occurrences:\n"
+    "    region_id: jp-14\n    consumer: occurrence\n"
+    "    expected_row_count: 14\n    expected_absent_excluded_rows: {absent}\n    evidence: テスト用\n"
+    "  inaturalist_kanagawa:\n"
+    "    region_id: jp-14\n    consumer: occurrence\n"
+    "    expected_row_count: 1\n    evidence: テスト用\n"
+)
+
+
+def _status_rows(*statuses):
+    """`DEFAULT_ORGANISM_RECORDS` の後ろに足す GBIF の行（16要素目 = occurrence_status）。"""
+    return [
+        (f"gbif_kanagawa_occurrences__st{i}", "gbif_kanagawa_occurrences", "2020-01-06", 35.505, 139.005, 10.0,
+         "Foo bar", "", "SPECIES", "1001", "", 0, "", "公開", 0, st)
+        for i, st in enumerate(statuses)
+    ]
+
+
+def test_absent_status_rows_are_excluded_and_counted(tmp_path):
+    rows = list(DEFAULT_ORGANISM_RECORDS) + _status_rows("ABSENT", "ABSENT", "PRESENT")
+    stats, out = _build(
+        tmp_path, organism_rows=rows,
+        source_regions_text=_ABSENT_SOURCE_REGIONS_TEXT.format(absent=2),
+        period_shapes_counts={"day": 2},  # 既定の day 1 + PRESENT の1行。ABSENT の2行は形にも数えない
+    )
+    assert stats["total"] == len(DEFAULT_ORGANISM_RECORDS) + 3
+    assert stats["absent_excluded_count"] == 2
+    assert stats["absent_excluded_by_source"] == {"gbif_kanagawa_occurrences": 2}
+    conn = sqlite3.connect(f"file:{out}?mode=ro", uri=True)
+    ids = {r[0] for r in conn.execute("SELECT record_id FROM occurrence")}
+    conn.close()
+    assert "gbif_kanagawa_occurrences__st0" not in ids and "gbif_kanagawa_occurrences__st1" not in ids
+    assert "gbif_kanagawa_occurrences__st2" in ids  # PRESENT は入る
+    assert len(ids) == len(DEFAULT_ORGANISM_RECORDS) + 1
+
+
+@pytest.mark.parametrize("declared", [0, 1, 3])
+def test_absent_excluded_count_mismatch_raises(tmp_path, declared):
+    rows = list(DEFAULT_ORGANISM_RECORDS) + _status_rows("ABSENT", "ABSENT", "PRESENT")
+    with pytest.raises(common.MigrationError, match="expected_absent_excluded_rows"):
+        _build(
+            tmp_path, organism_rows=rows,
+            source_regions_text=_ABSENT_SOURCE_REGIONS_TEXT.format(absent=declared),
+            period_shapes_counts={"day": 2},  # 既定の day 1 + PRESENT の1行。ABSENT の2行は形にも数えない
+        )
+
+
+def test_unknown_occurrence_status_raises(tmp_path):
+    with pytest.raises(common.MigrationError, match="occurrence_status"):
+        _build(
+            tmp_path, organism_rows=list(DEFAULT_ORGANISM_RECORDS) + _status_rows("UNKNOWN"),
+            source_regions_text=_ABSENT_SOURCE_REGIONS_TEXT.format(absent=0),
+        )

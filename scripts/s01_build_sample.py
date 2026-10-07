@@ -678,8 +678,17 @@ def build_declaration_counts(
     out["manifests:nlni_l03b_landuse_by_watershed"] = count_csv_data_rows(landuse_csv_path)
     # adapter 出典は入力を全件サンプルに入れる（select_adapter_input_tables）ので、取り込み件数は原本と同じ。
     # マニフェストの宣言値（expected_row_count）をそのまま持つ（キーはマニフェストから導く。新出典で s01 を触らない）。
-    for sid, m in sorted(adapter_inputs(manifests_dir).items()):
-        out[f"manifests:{sid}"] = m.expected_row_count
+    all_manifests = manifest_lib.load_manifests(manifests_dir)
+    for sid, m in sorted(all_manifests.items()):
+        if not m.is_builtin:
+            out[f"manifests:{sid}"] = m.expected_row_count
+    # 不在記録（occurrence_status='ABSENT'）として b06 が除く行数。内訳キーは Manifest.count_breakdown が決める
+    # （source_regions.load_source_regions が出すキーと同じ。宣言を持つ出典だけ）。
+    for sid, m in sorted(all_manifests.items()):
+        if "absent_excluded_rows" in m.count_breakdown:
+            out[f"manifests:{sid}.absent_excluded_rows"] = count(
+                "organism_records", f"source_id = '{sid}' AND occurrence_status = 'ABSENT'"
+            )
 
     # occurrence_period_shapes.yaml。形の名前は宣言ファイル（コードの
     # `_SHAPE_DEFS` と過不足なく一致することを `assert_declared_shapes_match_code`
@@ -690,7 +699,8 @@ def build_declaration_counts(
     # code-review 指摘対応。coverage.yaml も同じ関数に揃えてある）。
     for name in sorted(occurrence_period.load_period_shapes()):
         out[f"occurrence_period_shapes.yaml:{name}"] = count(
-            "organism_records", f"classify_shape(observed_on) = '{name}'"
+            "organism_records",
+            f"classify_shape(observed_on) = '{name}' AND occurrence_status IS NOT 'ABSENT'"
         )
 
     # occurrence_cube_declarations.yaml
@@ -698,6 +708,7 @@ def build_declaration_counts(
         "SELECT t.rowid AS rowid, t.record_id, t.observed_on, t.lat, t.lon, t.scientific_name, "
         "t.is_alien, t.red_list_category, t.source_id "
         "FROM organism_records t JOIN temp.__s01_organism_records_rowids s ON t.rowid = s.rowid_value "
+        "WHERE t.occurrence_status IS NOT 'ABSENT' "   # 不在記録は occurrence に入らない（b06）
         "ORDER BY t.rowid"
     ).fetchall()
     out["occurrence_cube_declarations.yaml:leaf_cell_source_rows"] = compute_leaf_cell_source_rows(org_rows)

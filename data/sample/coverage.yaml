@@ -324,6 +324,13 @@ predicates:
     where: "source_id = 'gbif_kanagawa_occurrences'"
     limit: 10
     min_rows: 10
+  # --- 不在記録（GBIF の occurrenceStatus=ABSENT）。b06 が occurrence から除くことを CI（サンプルの
+  #     b06・declaration_counts の absent_excluded_rows）で検査するため、数行は必ず入れる（2026-10-07）。 ---
+  - name: occurrence_absent_status
+    table: organism_records
+    where: "occurrence_status = 'ABSENT'"
+    limit: 5
+    min_rows: 5
   - name: occurrence_source_inaturalist
     table: organism_records
     where: "source_id = 'inaturalist_kanagawa'"

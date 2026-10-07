@@ -163,7 +163,10 @@ _DECLARATION_FILE_PATHS = {
 def _declared_entries_for(filename: str) -> dict:
     if filename == "manifests":
         return {
-            sid: {"expected_row_count": m.expected_row_count}
+            sid: {
+                "expected_row_count": m.expected_row_count,
+                **({"breakdown": m.count_breakdown} if m.count_breakdown else {}),
+            }
             for sid, m in manifest_lib.load_manifests().items() if m.expected_row_count is not None
         }
     return load_yaml(_DECLARATION_FILE_PATHS[filename])

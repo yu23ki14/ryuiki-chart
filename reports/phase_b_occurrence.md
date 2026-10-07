@@ -4,8 +4,9 @@
 
 - `organism_records` 総行数: **837,355**
 - 合成データ（`is_synthetic=1`）を除外した行数: **0**（本番に出さない。Issue #48 PR-0 オーナー決定。実測では常に0——`organism_records` に合成の出現記録は無い。将来行が増えても黙って通さないための防御）
-- `occurrence` 行数: **837,355**（合成データを除く全行を取り込む。ADR-0007原則1の例外——Issue #48 PR-0 オーナー決定）
-- 日付あり（`period_raw` NOT NULL）: **830,515**
+- 不在記録（`occurrence_status='ABSENT'`）を除外した行数: **2,790**（原本には残す。出現として数えない。2026-10-07 オーナー決定・ADR-0025。出典別: `gbif_kanagawa_occurrences` 2,790。マニフェストの `expected_absent_excluded_rows` と突合済み）
+- `occurrence` 行数: **834,565**（合成データ・不在記録を除く全行を取り込む。ADR-0007原則1の例外——Issue #48 PR-0 オーナー決定）
+- 日付あり（`period_raw` NOT NULL）: **827,725**
 - 座標なし（`lat`/`lon` NULL）: **8,509**
 - `taxon_id` NULL: **853**（うち日付あり: 775）
 
@@ -20,13 +21,13 @@
 
 | region_id | 行数 |
 |---|---:|
-| `jp-14` | 837,355 |
+| `jp-14` | 834,565 |
 
 ## 期間の形（12形）ごとの件数
 
 | 形 | 行数 |
 |---|---:|
-| `day` | 753,982 |
+| `day` | 751,193 |
 | `day_interval` | 3,723 |
 | `instant_millisecond_z` | 800 |
 | `instant_minute` | 26,042 |
@@ -34,7 +35,7 @@
 | `instant_minute_z_interval` | 57 |
 | `instant_second` | 40,633 |
 | `instant_second_z` | 143 |
-| `month` | 1,320 |
+| `month` | 1,319 |
 | `month_interval` | 14 |
 | `year` | 1,797 |
 | `year_interval` | 1,046 |

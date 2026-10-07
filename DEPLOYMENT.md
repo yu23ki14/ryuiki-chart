@@ -413,6 +413,7 @@ pnpm run db:export
 | `occurrence_place_declarations.yaml` | b09 | 値は `organism_records` の rowid に固有。行の追加・削除・並べ替えで変わる。流域ポリゴン数は `nlni_w12_watersheds.geojson` |
 | `occurrence_cube_declarations.yaml` | b07 | `organism_records` の期間・place 内訳 |
 | `occurrence_period_shapes.yaml` | b06 | 日付表記の形ごとの件数 |
+| `manifests/gbif_kanagawa_occurrences.yml` の `expected_absent_excluded_rows` | b06 | GBIF の不在記録（`occurrence_status='ABSENT'`）の件数。原本へ列を足す手順は `python scripts/m03_organisms.py --backfill-occurrence-status`（冪等。ADR-0025 の 2026-10-07 追記） |
 | `period_exceptions.yaml` | b03 | `measurements` の該当 source の件数（厚木） |
 | `time_label_conventions.yaml` | b03 | `sensor_timeseries` の毎時 source の件数 |
 | `source_regions.yaml` | b06/b03 | source ごとの件数（`organism_records`・土地利用 CSV の行数） |

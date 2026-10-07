@@ -9,6 +9,8 @@
 # 2026-09-23）: occurrence（座標のある823,692行全件）を W12 流域ポリゴン
 # （377面）へ純 Python の even-odd 点内包判定で直接解決した結果。
 # 823,692 − 86,285 = 737,407（b09 が起動のたびに検算する）。
+# 2026-10-07: GBIF の不在記録（occurrenceStatus=ABSENT）2,790 行を occurrence から除いた
+# （座標あり 2,790 行のうち流域に解決 2,789・NULL 1）。820,902 − 86,284 = 734,618。
 
 n_watershed_polygons:
   expected_row_count: 377
@@ -18,14 +20,14 @@ n_watershed_polygons:
     （= place_watershed の行数）と一致することを別途検証する。
 
 place_id_null_count:
-  expected_row_count: 86285
+  expected_row_count: 86284
   note: >
     座標はあるがどの流域ポリゴン（377面）にも入らない occurrence 記録の数
     （point_in_polygon の一致ポリゴン数が0）。occurrence_place.place_id が
     NULL になる行数と一致する。
 
 resolved_count:
-  expected_row_count: 737407
+  expected_row_count: 734618
   note: >
     ちょうど1つの流域ポリゴンに解決できた occurrence 記録の数
     （検算式はファイル冒頭のコメント参照。b09 が起動のたびに検算する）。

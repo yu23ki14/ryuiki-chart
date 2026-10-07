@@ -68,6 +68,7 @@ _SOURCE_ID_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
 REQUIRED_KEYS = ("source", "region", "target", "update_mode", "input", "adapter", "evidence")
 OPTIONAL_KEYS = ("expected_row_count", "checks", "edition", "expected", "expected_place_region_null_rows",
+                 "expected_absent_excluded_rows",
                  "sample_input_max_rows")
 
 EXPECTED_PLACE_KEYS = ("coord_resolved", "coord_unresolved")
@@ -93,6 +94,9 @@ class Manifest:
     # b03（観測）: place が region を持たない（place.region_id NULL）のに、マニフェストの region で決めた行の件数の宣言（既定 0）。
     # ADR-0022 決定3: region は出典から決め place 経由は照合だが、place 側が NULL の行は照合できない。黙って増えないよう宣言で固定する。
     expected_place_region_null_rows: int = 0
+    # b06（出現）: organism_records.occurrence_status='ABSENT'（GBIF の不在記録）を occurrence から除いた行数の宣言（既定 0）。
+    # 不在記録は原本に残し、出現として数えない（ADR-0025 の 2026-10-07 追記）。実測と食い違えば b06 が止まる。
+    expected_absent_excluded_rows: int = 0
     # 縮小サンプルに入力表を全件入れてよい行数の、この出典だけの上限（scripts/s01_build_sample.py が見る）。
     # 既定（None）は s01 の ADAPTER_INPUT_WHOLESALE_MAX_ROWS。入力表を絞る経路は無いので、大きい表の出典だけが宣言する。
     sample_input_max_rows: int | None = None
@@ -101,6 +105,12 @@ class Manifest:
     @property
     def is_builtin(self) -> bool:
         return self.adapter == BUILTIN
+
+    @property
+    def count_breakdown(self) -> dict[str, int]:
+        """縮小サンプルの件数 overlay が差し替えられる内訳（`manifests:<source>.<キー>`）。宣言が 0 より大きいものだけ。
+        source_regions・s01・test_sample_coverage はこの 1 か所から導く。"""
+        return {"absent_excluded_rows": self.expected_absent_excluded_rows} if self.expected_absent_excluded_rows else {}
 
 
 def _non_negative_int(v) -> bool:
@@ -196,6 +206,14 @@ def manifest_problems(raw, stem: str, *, adapters_dir=None) -> list[str]:
             problems.append(f"{label}.input は {{table: 名前}} か {{file: パス}} のどちらか 1 つ（実際: {inp!r}）")
     if "expected_place_region_null_rows" in raw and not _non_negative_int(raw["expected_place_region_null_rows"]):
         problems.append(f"{label}.expected_place_region_null_rows が非負整数でない（実際: {raw['expected_place_region_null_rows']!r}）")
+    if "expected_absent_excluded_rows" in raw and not _non_negative_int(raw["expected_absent_excluded_rows"]):
+        problems.append(f"{label}.expected_absent_excluded_rows が非負整数でない（実際: {raw['expected_absent_excluded_rows']!r}）")
+    elif raw.get("expected_absent_excluded_rows") and (raw.get("adapter") != BUILTIN or raw.get("target") != "occurrence"):
+        # 不在記録の除外は b06 の organism_records 経路（adapter=builtin・target=occurrence）にしか無い
+        problems.append(
+            f"{label}.expected_absent_excluded_rows は adapter=builtin かつ target=occurrence のマニフェストにだけ書ける"
+            f"（実際: adapter={raw.get('adapter')!r}, target={raw.get('target')!r}）"
+        )
     if "sample_input_max_rows" in raw:
         v = raw["sample_input_max_rows"]
         if not (isinstance(v, int) and not isinstance(v, bool) and v > 0):
@@ -270,6 +288,7 @@ def load_manifests(manifests_dir=DEFAULT_MANIFESTS_DIR, *, adapters_dir=None) ->
             expected_row_count=raw.get("expected_row_count"),
             checks=tuple(raw.get("checks") or ()), edition=raw.get("edition"),
             expected=raw.get("expected"), expected_place_region_null_rows=raw.get("expected_place_region_null_rows", 0),
+            expected_absent_excluded_rows=raw.get("expected_absent_excluded_rows", 0),
             sample_input_max_rows=raw.get("sample_input_max_rows"),
             path=str(p),
         )
