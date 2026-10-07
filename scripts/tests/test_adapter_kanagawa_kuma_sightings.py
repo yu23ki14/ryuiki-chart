@@ -80,3 +80,4 @@ def test_real_table_yields_400_rows_one_taxon_no_coordinates_31_preliminary():
     assert all(r["observed_on_raw"] is None or len(r["observed_on_raw"]) == 10 for r in out)
     assert sum(r["observed_on_raw"] is None for r in out) == 4  # 日付が確定できなかった行も落とさない
     assert sum(r["attributes"]["is_preliminary"] for r in out) == 31
+    assert all(r["coordinate_uncertainty_m"] is None for r in out)  # 列追加（2026-10-07）後も kuma の出力は不変

@@ -131,3 +131,15 @@ checks:
 10. **未対応・着手条件**: ①非 builtin の observation adapter（b03 が止まる）は、観測型の新出典が実際に要る時に
    alias・単位・期間の解決を ingest.api に足して実装する。②出典の鮮度一覧 CLI（`scripts/freshness.py`）は作らない
    （鮮度は応答封筒の `age_days`/`update_mode` で足りる。一覧が運用で要る時に足す）。
+
+## 追記（2026-10-07）: `coordinate_uncertainty_m` を adapter の任意列に（神奈川県 eDNA 取り込みの前提）
+
+座標が**推定値**（地点名・地図画像から人が当てた位置）の出典が、使う側に精度で絞らせるための口が無かった
+（b06 の adapter 経路は `coordinate_uncertainty_m` を `None` 固定で入れていた）。次を足した。
+
+- `ingest.api.occurrence_row(..., coordinate_uncertainty_m=None)` と `OPTIONAL_COLUMNS` への追加。
+  ランナーは「非負の有限な数値（bool 不可）か None」「lat/lon が None なら None」を検査して違反で止める。
+  b06 の adapter 経路の INSERT は `r.coordinate_uncertainty_m` を入れる。
+- **既存出力は動かない**: 省略は None のままで、builtin 出典の経路には触れていない（kuma を含む adapter 出典の
+  `occurrence` 全行の `coordinate_uncertainty_m` は NULL のまま）。adapter の import 境界（`ingest.api` と標準ライブラリだけ）も不変。
+- 精度の意味づけ（何 m 以下を座標として使うか）は出典側の責任で、attributes ではなく列で渡す。ライブラリは値を解釈しない。

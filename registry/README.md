@@ -23,6 +23,7 @@ Phase A（`docs/plans/PHASE_A.md`, ADR-0016）の成果物。v1 のファクト�
 | `place/site_supplement.csv` | `sites` テーブルに無い観測地点の補完（143件）。`place_local` 列は、
   `site_id` の局番コード部分（`"__"` の後ろ）が空文字で自動導出できない行にだけ
   明示の local を持たせる列（後述「空の局番コード」参照）。他の142行は空欄 |
+| `taxon/supplement_taxa.csv` | adapter 経由の出典が持ち込む、`organism_records`/`taxa` に無い taxon の手書き補完（ADR-0019 2026-10-07 追記）。ヘッダ行だけ＝空でよい。列は `taxon_id, scientific_name, canonical_binomial, rank, kingdom, phylum, class, order, family, vernacular_name_ja, gbif_taxon_key, basis, evidence`。`taxon_id` は `common:taxon:gbif.<key>`（`basis=gbif_match`、`gbif_taxon_key` と一致。`status='accepted'`）か `common:taxon:<名前空間>.<slug>`（`basis=name_only`。slug は `slugify_local_key()` を通した形。学名・二名法・GBIF キーを持たない。`status='unresolved'`）だけ。既存の `taxon_id` と衝突したら `gbif_match` は補完行を捨て、`name_only` はビルドが止まる。`vernacular_ja_basis='supplement'`、`classification_basis='supplement'` |
 | `taxon/vernacular_ja.csv` | 人手確認済みの和名63件（`domain.ts` の `NAME_JA` の複製54件＋Issue #48 PR-3b D4 で足した上書き9件。出典列は `issue48-pr3b:D4`） |
 | `taxon/taxon_group.yaml` | 生物群の日本語ラベル（`taxon_group`）の先勝ちルール表。`web/scripts/build-biota.mjs` の `TAXON_GROUP` CASE式をデータ化したもの（Phase B `phase-b/occurrence-registry`、後述「taxon の分類補完」） |
 | `caveat.yaml` | 注記18件（移設14件＋新規4件〔`landuseDefinitionChange`・`aboveLod`・`censoredLod`・`unitUnknown`〕、Issue #35 で `flowTidalBackflow` を足し `censored` 撤去。全件に `review`） |

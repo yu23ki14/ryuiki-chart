@@ -323,3 +323,19 @@ taxon_assessment  taxon_id, list_id, list_year, category_code, category_raw,
 - **評価の `taxon_id` 解決率 60.6%（2,008/3,313）**: `taxon_assessment.taxon_id` を結合キーに使う画面・クエリが
   出たときに規則を見直す。いまの消費者は `binom` で結合しており足りている。
 
+
+## 追記（2026-10-07）: 補完 taxon（`registry/taxon/supplement_taxa.csv`）
+
+registry の taxon は `organism_records` と `taxa` からしか作られず、adapter 経路で出典が持ち込む種
+（神奈川県 eDNA の和名のみの分類群など）を登録する口が無かった（b06 は registry に無い `taxon_id` を
+「解決できない行」として止める）。`registry/place/site_supplement.csv` と同じ流儀で、**手書き CSV を build_taxon が読む**。
+
+- 列: `taxon_id, scientific_name, canonical_binomial, rank, kingdom, phylum, class, order, family, vernacular_name_ja, gbif_taxon_key, basis, evidence`。
+- `basis=gbif_match`: `taxon_id=common:taxon:gbif.<key>` で `gbif_taxon_key` と一致、学名必須、`status='accepted'`（他の GBIF 行と同じ）。`canonical_binomial` は空か `scientific_name` の二名法と一致（食い違いは止まる）。
+  `basis=name_only`: `taxon_id=common:taxon:<名前空間>.<slug>`（名前空間は `is_valid_namespace` で検査し `gbif`/`inat`/`ryuiki-taxa` は予約、slug は `slugify_local_key()` を通した形そのもの。原文は `vernacular_name_ja`）、学名・二名法・GBIF キーを持たない（捏造しない）、和名必須、`status='unresolved'`。
+  それ以外の ID・未知の `basis`・空の `rank`/`evidence` は止まる。
+- 既存の taxon_id との衝突: `gbif_match` は既存の行を優先して補完行を捨てる（件数を build が出す。後から記録側に同じ GBIF キーが現れても落ちない）。`name_only` は止まる（上書きしない）。NAME_JA 上書き・D4 補完より前に入れるが、
+  どちらも supplement 行の和名は変えない（D4 は `all_keys`＝記録・taxa 由来だけが対象）。
+- 新値: `vernacular_ja_basis='supplement'`、`classification_basis='supplement'`（分類列は CSV の値。`taxon_group` は先勝ちルールで導く）。
+- 空（ヘッダのみ）のとき taxon の出力は現行と全行一致（前後 diff で確認）。`registry/` 配下なので registry の指紋に入り、足せば自動で作り直される。
+- 外来種判定は `scientific_name` の二名法一致なので、学名の無い `name_only` 行は `n_alien` に出ない（過少計上。出典側が宣言する）。

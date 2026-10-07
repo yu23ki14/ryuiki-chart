@@ -317,7 +317,7 @@ export async function resolveNames(
         en: r.en as string | null,
       };
       if (better(c, top.get(binom))) top.set(binom, c);
-      if (c.ja && (records || c.basis === "override" || c.basis === "taxa")) {
+      if (c.ja && (records || c.basis === "override" || c.basis === "taxa" || c.basis === "supplement")) {
         if (better(c, jaAny.get(binom))) jaAny.set(binom, c);
         if (c.species && better(c, jaSp.get(binom))) jaSp.set(binom, c);
       }
@@ -339,7 +339,7 @@ export function pickLabel(binom: string, names: TaxonNames | undefined, records:
   const fixed = NAME_JA[binom];
   if (fixed) return fixed;
   if (names) {
-    const basisOk = records || names.jaBasis === "override" || names.jaBasis === "taxa";
+    const basisOk = records || names.jaBasis === "override" || names.jaBasis === "taxa" || names.jaBasis === "supplement";
     if (names.ja && basisOk) return names.ja;
     if (names.en) return names.en;
   }
