@@ -268,3 +268,37 @@ describe("既定の窓の上限は現在年（PR-4 §7-3）", () => {
     expect(in2027.find((r) => r.year === 2027)).toMatchObject({ n: 90 });
   });
 });
+
+describe("sourceIds（出典で絞る）", () => {
+  const GBIF = "gbif_kanagawa_occurrences";
+  const INAT = "inaturalist_kanagawa";
+  const total = (rows: { n: number }[]) => rows.reduce((a, r) => a + r.n, 0);
+
+  it("未指定は現行どおり。全出典を指定しても同じ", async () => {
+    const all = await speciesYears(fx.db, [alpha, delta]);
+    expect(await speciesYears(fx.db, [alpha, delta], { sourceIds: [GBIF, INAT] })).toEqual(all);
+    expect((await watershedYears(fx.db, { sourceIds: [GBIF, INAT] }))).toEqual(await watershedYears(fx.db));
+  });
+
+  it("出典ごとの n を足すと全体になり、絞ると片方だけになる", async () => {
+    const all = total(await speciesYears(fx.db, [alpha, delta]));
+    const g = total(await speciesYears(fx.db, [alpha, delta], { sourceIds: [GBIF] }));
+    const i = total(await speciesYears(fx.db, [alpha, delta], { sourceIds: [INAT] }));
+    expect(g).toBeGreaterThan(0);
+    expect(i).toBeGreaterThan(0);
+    expect(g + i).toBe(all);
+    const wsAll = total(await watershedYears(fx.db));
+    const wsInat = await watershedYears(fx.db, { sourceIds: [INAT] });
+    expect(wsInat.map((r) => r.n)).toEqual([20]); // INAT の流域セルは delta の 20 だけ
+    expect(total(wsInat)).toBeLessThan(wsAll);
+  });
+
+  it("月別も絞れる。未知・空の出典は 0 行（全出典に戻さない）", async () => {
+    const all = total(await speciesMonths(fx.db, [alpha, beta]));
+    const g = total(await speciesMonths(fx.db, [alpha, beta], { sourceIds: [GBIF] }));
+    const i = total(await speciesMonths(fx.db, [alpha, beta], { sourceIds: [INAT] }));
+    expect(g + i).toBe(all);
+    expect(await speciesYears(fx.db, [alpha], { sourceIds: ["kanagawa_edna"] })).toEqual([]);
+    expect(await speciesYears(fx.db, [alpha], { sourceIds: [] })).toEqual([]);
+  });
+});

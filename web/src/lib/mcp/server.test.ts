@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildCubeFixture, FX, type CubeFixture } from "@/lib/cube/__fixtures__/cube-fixture";
 import { buildOccurrenceFixture, FXO, type OccurrenceFixture } from "@/lib/cube/__fixtures__/occurrence-fixture";
+import { OCCURRENCE_SOURCE_IDS } from "@/lib/cube";
 import { handleBody, handleRpc, listTools, MAX_BATCH, MCP_PROTOCOL_VERSION } from "./server";
 import realDatapackage from "./__fixtures__/datapackage.real.json";
 import { datapackageResources, MCP_TOOLS, type McpContext } from "./tools";
@@ -157,6 +158,39 @@ describe("5 ツールの応答は封筒（excluded=0・合成なし・cite_as・
     expect(missing.isError).toBe(true);
   });
 
+  it("get_occurrences: source_ids で絞ると provenance も絞った出典だけ。未指定は全出典。未知の出典は入力エラー", async () => {
+    const c = ctx({ db: async () => occ.db });
+    const args = { kind: "species_years", binoms: [FXO.binoms.alpha] };
+    const all = await call("get_occurrences", args, c);
+    const one = await call("get_occurrences", { ...args, source_ids: ["inaturalist_kanagawa"] }, c);
+    expectPublicInvariants(one.structuredContent);
+    const ids = (r: typeof all) => (r.structuredContent.provenance as { source_id: string }[]).map((p) => p.source_id).sort();
+    expect(ids(one)).toEqual(["inaturalist_kanagawa"]);
+    expect(ids(all)).toEqual([...OCCURRENCE_SOURCE_IDS].sort());
+    const total = (r: typeof all) => (r.structuredContent.data as { rows: { n: number }[] }).rows.reduce((a, x) => a + x.n, 0);
+    const gbif = await call("get_occurrences", { ...args, source_ids: ["gbif_kanagawa_occurrences"] }, c);
+    expect(total(one) + total(gbif)).toBe(total(all));
+    const bad = await call("get_occurrences", { ...args, source_ids: ["no_such_source"] }, c);
+    expect(bad.isError).toBe(true);
+  });
+
+  it("get_edna: provenance に kanagawa_edna。未知の mode は入力エラー", async () => {
+    const c = ctx({ db: async () => occ.db });
+    const ok = await call("get_edna", { detected_only: true, limit: 5 }, c);
+    expectPublicInvariants(ok.structuredContent);
+    expect((ok.structuredContent.provenance as { source_id: string }[]).map((p) => p.source_id)).toEqual(["kanagawa_edna"]);
+    expect((await call("get_edna", { mode: "nope" }, c)).isError).toBe(true);
+    const keys = (r: typeof ok) => (r.structuredContent.caveats as { key: string }[]).map((x) => x.key);
+    expect(keys(ok)).toContain("ednaNonDetect");
+    // get_occurrences: 全出典（eDNA を含む）では付き、eDNA を外すと付かない
+    const occArgs = { kind: "species_years", binoms: [FXO.binoms.alpha] };
+    expect(keys(await call("get_occurrences", occArgs, c))).toContain("ednaReads");
+    const inat = keys(await call("get_occurrences", { ...occArgs, source_ids: ["inaturalist_kanagawa"] }, c));
+    expect(inat).not.toContain("ednaReads");
+    expect(inat).toContain("effort"); // organism_records 系の注記は出典によらず付く
+    expect(keys(await call("get_occurrences", { ...occArgs, source_ids: ["kanagawa_edna"] }, c))).toContain("ednaReads");
+  });
+
   it("export_dataset: datapackage が無ければ available=false、あれば path と sha256 だけ返す", async () => {
     const none = await call("export_dataset", {}, ctx({ datapackage: async () => null }));
     expectPublicInvariants(none.structuredContent);
@@ -192,7 +226,7 @@ describe("5 ツールの応答は封筒（excluded=0・合成なし・cite_as・
   });
 
   it("全ツールを網羅している（新ツールを足したらこのテストに応答検査を足す）", () => {
-    expect(MCP_TOOLS.map((t) => t.name)).toEqual(["describe_catalog", "search_registry", "get_observations", "get_occurrences", "export_dataset"]);
+    expect(MCP_TOOLS.map((t) => t.name)).toEqual(["describe_catalog", "search_registry", "get_observations", "get_occurrences", "get_edna", "export_dataset"]);
   });
 });
 

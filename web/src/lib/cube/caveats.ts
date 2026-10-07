@@ -38,6 +38,7 @@
  * `SeriesFacetInput`（`SeriesInfo & { theme }`）として渡してもらう形にした。
  */
 import { GENERATED_CAVEAT_SCOPE, type CaveatScopeKind, type GeneratedCaveatScope } from "@/lib/registry/generated-client";
+import { OCCURRENCE_SOURCE_IDS } from "@/lib/registry/generated-source";
 import { resolveCaveatRefs, type CaveatRef, type ScopeMatch } from "@/lib/registry/lookup-client";
 import type { SeriesInfo } from "./series";
 import type { Scope } from "./sql";
@@ -188,11 +189,18 @@ export function facetsForSeries(series: readonly SeriesFacetInput[], scope: Scop
  * `dataset=organism_records` を常に、`place_kind=grid01` を grid01 を引くとき、
  * `source_id=moe_ias_list` を IAS のときに積む（いずれも `registry/caveat.yaml`・
  * `build_caveat.py` に既にある v2 facet）。v1 表名ベースの `table` は使わない（危険16件 #1）。
+ * 出典の facet は `sourceIds`（省略は `OCCURRENCE_SOURCE_IDS` 全部）。
  * `watershed` は専用の注記が無いので積まない（`organism_records` だけで足りる）。
  */
-export function facetsForOccurrence(opt: { places: readonly ("grid01" | "watershed")[]; ias?: boolean }): FacetRef[] {
+export function facetsForOccurrence(opt: {
+  places: readonly ("grid01" | "watershed")[];
+  ias?: boolean;
+  /** 結果に含まれる出典。出典ごとの注記（例: eDNA）を `source_id=<id>` の facet で引く。省略は全出典。 */
+  sourceIds?: readonly string[];
+}): FacetRef[] {
   const refs: FacetRef[] = [{ kind: "dataset", ref: "organism_records" }];
   if (opt.places.includes("grid01")) refs.push(placeKind("grid01"));
+  for (const id of opt.sourceIds ?? OCCURRENCE_SOURCE_IDS) refs.push(sourceEditionOf(id));
   if (opt.ias) refs.push(sourceEditionOf("moe_ias_list"));
   return refs;
 }

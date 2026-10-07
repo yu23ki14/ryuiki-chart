@@ -30,6 +30,7 @@ import {
 import { facetsForSeries, facetsForOccurrence, facetsForTables, caveatKeysForFacets, variableTheme } from "@/lib/cube/caveats";
 import { MEASUREMENTS_DATASET } from "@/lib/cube/series";
 import { timeseries } from "@/lib/cube/timeseries";
+import { EDNA_DESCRIPTION, EDNA_SOURCE_ID, ednaInputSchema, queryEdna } from "@/lib/edna";
 
 /** 測定値系データセット固定（PR-2 のスコープは測定値系。design §1.1 と同じ前提）。registry の dataset キー。 */
 const DATASET = MEASUREMENTS_DATASET;
@@ -749,12 +750,42 @@ const run_sql = tool({
   },
 });
 
+/* ------------------------------------------------------------------ */
+/* get_edna                                                           */
+/* ------------------------------------------------------------------ */
+
+const get_edna = tool({
+  description: EDNA_DESCRIPTION,
+  inputSchema: ednaInputSchema,
+  execute: async (input) => {
+    const t0 = performance.now();
+    const result = await queryEdna(await d1CubeDb(), input);
+    const more = result.rows.length > result.limit;
+    const rows = result.rows.slice(0, result.limit);
+    const out = makeResult({
+      tool: "get_edna",
+      tables: ["edna_sites", "edna_reads"],
+      caveats: caveatKeysForFacets(facetsForOccurrence({ places: ["grid01"], sourceIds: [EDNA_SOURCE_ID] })),
+      data: { mode: result.mode, offset: result.offset, rows },
+      rowCount: rows.length,
+      elapsedMs: performance.now() - t0,
+    });
+    if (!more) return out;
+    return {
+      ...out,
+      truncated: true,
+      truncatedNote: `limit（${result.limit}）を超える行がある。offset を ${result.offset + result.limit} にして続きを取れる。${out.truncatedNote ?? ""}`,
+    };
+  },
+});
+
 export const aiTools = {
   list_catalog,
   get_timeseries,
   get_seasonality,
   get_sites,
   get_biota_trend,
+  get_edna,
   get_redlist,
   get_overview,
   describe_schema,

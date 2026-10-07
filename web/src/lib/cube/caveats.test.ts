@@ -65,8 +65,12 @@ describe("caveatKeysForFacets — facet ごとの注記キー（順序込み）"
   });
 
   it("流域だけの生物（get_overview の facet）には share が付かない。grid01 には付く", () => {
-    expect(caveatKeysForFacets(facetsForOccurrence({ places: ["watershed"] }))).toEqual(["organismSite", "effort", "regimes", "gbifCutoff"]);
-    expect(caveatKeysForFacets(facetsForOccurrence({ places: ["grid01"] }))).toEqual(["organismSite", "effort", "regimes", "gbifCutoff", "share"]);
+    expect(caveatKeysForFacets(facetsForOccurrence({ places: ["watershed"] }))).toEqual([
+      "organismSite", "effort", "regimes", "gbifCutoff", "ednaReads", "ednaCoords", "ednaYearBasis", "ednaNonDetect",
+    ]);
+    expect(caveatKeysForFacets(facetsForOccurrence({ places: ["grid01"] }))).toEqual([
+      "organismSite", "effort", "regimes", "gbifCutoff", "share", "ednaReads", "ednaCoords", "ednaYearBasis", "ednaNonDetect",
+    ]);
   });
 });
 
@@ -198,12 +202,20 @@ describe("facetsForSeries", () => {
 
 describe("facetsForOccurrence（Issue #48 PR-3b）", () => {
   it("organism_records を常に、grid01 を引くとき place、IAS のとき source_edition を積む", () => {
-    expect(facetsForOccurrence({ places: ["watershed"] })).toEqual([{ kind: "dataset", ref: "organism_records" }]);
-    expect(facetsForOccurrence({ places: ["grid01"] })).toEqual([
+    const none = { sourceIds: [] as string[] };
+    expect(facetsForOccurrence({ places: ["watershed"], ...none })).toEqual([{ kind: "dataset", ref: "organism_records" }]);
+    expect(facetsForOccurrence({ places: ["grid01"], ...none })).toEqual([
       { kind: "dataset", ref: "organism_records" },
       placeKind("grid01"),
     ]);
-    expect(facetsForOccurrence({ places: ["grid01", "watershed"], ias: true }).map((f) => f.kind)).toEqual(["dataset", "place", "source_edition"]);
+    expect(facetsForOccurrence({ places: ["grid01", "watershed"], ias: true, ...none }).map((f) => f.kind)).toEqual(["dataset", "place", "source_edition"]);
+  });
+  it("出典の facet: 省略は全出典、指定はその分だけ。eDNA を外すと eDNA の注記は付かない", () => {
+    const all = caveatKeysForFacets(facetsForOccurrence({ places: ["grid01"] }));
+    expect(all).toEqual(expect.arrayContaining(["ednaReads", "ednaNonDetect"]));
+    const inat = caveatKeysForFacets(facetsForOccurrence({ places: ["grid01"], sourceIds: ["inaturalist_kanagawa"] }));
+    expect(inat.some((k) => k.startsWith("edna"))).toBe(false);
+    expect(inat).toContain("effort");
   });
   it("引いた注記に organism/mesh/IAS の主要なキーが入る（v1 表名ベースの table は使わない）", () => {
     const f = facetsForOccurrence({ places: ["grid01"], ias: true });

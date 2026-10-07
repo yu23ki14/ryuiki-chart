@@ -103,13 +103,27 @@ function periodRange(from: number, to: number): [string, string] {
 
 type R = Record<string, string | number | null>;
 
+/**
+ * 出典で絞る任意の条件（`occurrence_agg.source_id`）。未指定（undefined）は絞らない＝現行どおり全出典。
+ * 空配列は「どの出典も選ばない」で 0 行（黙って全出典に戻さない）。値は `json_each(?)` 1個で渡す。
+ */
+export interface SourceFilterOpt {
+  sourceIds?: readonly string[];
+}
+
+export function sourceFilterSql(sourceIds: readonly string[] | undefined): { sql: string; params: SqlParam[] } {
+  if (sourceIds === undefined) return { sql: "", params: [] };
+  return { sql: " AND o.source_id IN (SELECT value FROM json_each(?))", params: [jsonEachParam(uniq(sourceIds))] };
+}
+
 /** v1 `speciesYears`。年は `substr(period_start,1,4)`。窓の既定は 1990〜2026。 */
 export async function speciesYears(
   db: CubeDb,
   binoms: readonly string[],
-  opt: Partial<YearRange> = {},
+  opt: Partial<YearRange> & SourceFilterOpt = {},
 ): Promise<SpeciesYearRow[]> {
   const [lo, hi] = periodRange(opt.from ?? OCC_DEFAULT_FROM, opt.to ?? occDefaultTo());
+  const src = sourceFilterSql(opt.sourceIds);
   const out: SpeciesYearRow[] = [];
   for (const part of chunk(uniq(binoms), MAX_ID_LIST)) {
     const rows = await db.all<R>(
@@ -121,9 +135,9 @@ export async function speciesYears(
        JOIN taxon t INDEXED BY ix_taxon_binomial ON t.canonical_binomial = j.value
        JOIN occurrence_agg o INDEXED BY ${OCCURRENCE_AGG_INDEX.taxonPeriod} ON o.taxon_id = t.taxon_id
        WHERE o.place_kind = 'grid01' AND o.grain IN ${YEAR_GRAINS}
-         AND o.period_start >= ? AND o.period_start < ?
+         AND o.period_start >= ? AND o.period_start < ?${src.sql}
        GROUP BY t.canonical_binomial, year`,
-      [jsonEachParam(part), lo, hi],
+      [jsonEachParam(part), lo, hi, ...src.params],
     );
     for (const r of rows) out.push({ binom: r.binom as string, year: r.year as number, n: r.n as number, meshN: r.mesh_n as number });
   }
@@ -131,7 +145,8 @@ export async function speciesYears(
 }
 
 /** v1 `speciesMonths`。2018-01-01 以降の月セル。n≥80 の足切りは `summary_species_catalog.n`。 */
-export async function speciesMonths(db: CubeDb, binoms: readonly string[]): Promise<SpeciesMonthRow[]> {
+export async function speciesMonths(db: CubeDb, binoms: readonly string[], opt: SourceFilterOpt = {}): Promise<SpeciesMonthRow[]> {
+  const src = sourceFilterSql(opt.sourceIds);
   const out: SpeciesMonthRow[] = [];
   for (const part of chunk(uniq(binoms), MAX_ID_LIST)) {
     const rows = await db.all<R>(
@@ -142,9 +157,9 @@ export async function speciesMonths(db: CubeDb, binoms: readonly string[]): Prom
        JOIN summary_species_catalog s ON s.binom = j.value AND s.n >= ?
        JOIN taxon t INDEXED BY ix_taxon_binomial ON t.canonical_binomial = s.binom
        JOIN occurrence_agg o INDEXED BY ${OCCURRENCE_AGG_INDEX.taxonPeriod} ON o.taxon_id = t.taxon_id
-       WHERE o.place_kind = 'grid01' AND o.grain = 'month' AND o.period_start >= ?
+       WHERE o.place_kind = 'grid01' AND o.grain = 'month' AND o.period_start >= ?${src.sql}
        GROUP BY t.canonical_binomial, month`,
-      [jsonEachParam(part), SPECIES_MIN_N, MONTH_FROM],
+      [jsonEachParam(part), SPECIES_MIN_N, MONTH_FROM, ...src.params],
     );
     for (const r of rows) out.push({ binom: r.binom as string, month: r.month as number, n: r.n as number });
   }
@@ -243,7 +258,7 @@ export async function meshByYear(db: CubeDb, year: number): Promise<MeshYearRow[
 }
 
 /** v1 `org_watershed_year`。画面の読み手は無い（serving-diff の `watershed_year` 用）。 */
-export async function watershedYears(db: CubeDb, opt: { placeId?: string } = {}): Promise<WatershedYearRow[]> {
+export async function watershedYears(db: CubeDb, opt: { placeId?: string } & SourceFilterOpt = {}): Promise<WatershedYearRow[]> {
   const params: SqlParam[] = [];
   let index: string = OCCURRENCE_AGG_INDEX.kindGrainPeriod;
   let where = "o.place_kind = 'watershed' AND o.place_id IS NOT NULL AND o.grain IN " + YEAR_GRAINS;
@@ -252,6 +267,9 @@ export async function watershedYears(db: CubeDb, opt: { placeId?: string } = {})
     where += " AND o.place_id = ?";
     params.push(opt.placeId);
   }
+  const src = sourceFilterSql(opt.sourceIds);
+  where += src.sql;
+  params.push(...src.params);
   const rows = await db.all<R>(
     `SELECT o.place_id AS place_id, CAST(substr(o.period_start, 1, 4) AS INTEGER) AS year,
             SUM(o.n) AS n, SUM(o.n_alien) AS n_alien, SUM(o.n_red_list) AS n_red_list,
