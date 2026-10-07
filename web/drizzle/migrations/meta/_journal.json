@@ -120,6 +120,13 @@
       "when": 1791361231834,
       "tag": "0016_rare_triton",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1791367933383,
+      "tag": "0017_first_bastion",
+      "breakpoints": true
     }
   ]
 }

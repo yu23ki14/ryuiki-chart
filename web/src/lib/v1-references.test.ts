@@ -56,7 +56,7 @@ interface Allowed {
 const ALLOWED: readonly Allowed[] = [
   {
     file: "src/lib/registry/generated-client.ts",
-    tables: ["measurements", "organism_records"],
+    tables: ["measurements"],
     reason: "dataset 型 scope の dataset キー（scopeKind: \"dataset\"）。v1 表の参照ではない。恒久",
   },
   {
@@ -68,11 +68,6 @@ const ALLOWED: readonly Allowed[] = [
     file: "src/lib/cube/series.ts",
     tables: ["measurements", "sensor_timeseries"],
     reason: "MEASUREMENTS_DATASET / SENSOR_DATASET の定義（registry の dataset キー）。各所はここから import する",
-  },
-  {
-    file: "src/lib/cube/caveats.ts",
-    tables: ["organism_records"],
-    reason: "注記の facet の dataset キー（dataset=organism_records）。表の参照ではない",
   },
   {
     file: "src/lib/cube/occurrence.ts",

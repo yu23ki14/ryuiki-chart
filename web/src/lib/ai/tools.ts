@@ -20,7 +20,7 @@ import {
   effortYears,
   occurrenceTotals,
   speciesShareTrend,
-  speciesYears,
+  speciesYearsWithCoverage,
   speciesMonths,
   redlistBundle,
   overviewCounts,
@@ -458,8 +458,11 @@ const yearRange = z.object({
   to: z.number().describe("終了年（西暦）"),
 });
 
-// 生物の注記は v1 表名ではなく facet（dataset=organism_records・place_kind=grid01）で決める。
+// 生物の注記は v1 表名ではなく facet（出典の source_id=<id>・place_kind=grid01）で決める。
 const BIOTA_CAVEATS = caveatKeysForFacets(facetsForOccurrence({ places: ["grid01"] }));
+
+/** get_biota_trend の coverage.no_coordinate の行数の上限（超えたら coverage.truncated=true）。 */
+const COVERAGE_MAX_ROWS = 200;
 
 const get_biota_trend = tool({
   description:
@@ -506,12 +509,18 @@ const get_biota_trend = tool({
       });
     }
     const { binoms } = input;
-    const [years, months] = await Promise.all([speciesYears(db, binoms), speciesMonths(db, binoms)]);
+    const [{ years, noCoordinate }, months] = await Promise.all([speciesYearsWithCoverage(db, binoms), speciesMonths(db, binoms)]);
+    // years[].n は座標の無い記録を含み、mesh_n は座標のある記録だけ（座標のある記録が無い年は null）。格子に置けなかった件数を出典別・年別に添える。
+    const cov = noCoordinate.slice(0, COVERAGE_MAX_ROWS);
+    const coverage = {
+      no_coordinate: cov.map((r) => ({ binom: r.binom, year: r.year, source_id: r.sourceId, n: r.n })),
+      truncated: noCoordinate.length > cov.length,
+    };
     return makeResult({
       tool: "get_biota_trend",
       tables: ["occurrence_agg", "summary_species_catalog"],
       caveats,
-      data: { mode: "species", binoms, years, months },
+      data: { mode: "species", binoms, years, months, coverage },
       rowCount: years.length + months.length,
       elapsedMs: performance.now() - t0,
     });

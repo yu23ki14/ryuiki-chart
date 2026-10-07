@@ -70,6 +70,8 @@ const CAVEAT_KEY_ORDER = {
   ednaCoords: true,
   ednaYearBasis: true,
   ednaNonDetect: true,
+  ednaWatershed: true,
+  effortSurvey: true,
 } satisfies Record<CaveatKey, true>;
 const CAVEAT_KEYS = Object.keys(CAVEAT_KEY_ORDER) as CaveatKey[];
 

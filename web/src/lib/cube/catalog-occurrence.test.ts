@@ -23,15 +23,15 @@ describe("speciesCatalog", () => {
   it("n 降順・binom 昇順。列は summary_species_catalog のまま", async () => {
     const rows = await speciesCatalog(fx.db);
     expect(rows.map((r) => [r.binom, r.n])).toEqual([
-      [alpha, 236],
+      [alpha, 254],
       [beta, 86],
-      [delta, 20],
+      [delta, 40],
       [gamma, 10],
       [named, 3],
     ]);
     expect(rows[0]).toEqual({
       binom: alpha, taxonGroup: "FxBird", class: "Aves", family: "FamA",
-      n: 236, nRedList: 62, nAlien: 0, nPlaces: 2, yFrom: 1950, yTo: 2021, nYears: 5,
+      n: 254, nLocated: 236, nRedList: 67, nAlien: 0, nPlaces: 2, yFrom: 1950, yTo: 2021, nYears: 6,
     });
   });
   it("sourceIds: 全出典の指定は件数が現行と一致し、片方に絞ると和が全体になる。該当なしは空", async () => {
@@ -72,7 +72,7 @@ describe("taxonGroupYears / effortYears", () => {
   });
   it("effortYears: n_inat/n_gbif は source 別の SUM", async () => {
     const rows = await effortYears(fx.db);
-    expect(rows.map((r) => r.year)).toEqual([2000, 2005, 2010, 2021, 2022]);
+    expect(rows.map((r) => r.year)).toEqual([2000, 2005, 2010, 2020, 2021, 2022]); // 2020 は座標の無い記録だけの年（meshN 0）
     expect(rows[0]).toEqual({ year: 2000, n: 105, speciesN: 2, meshN: 2, nInat: 55, nGbif: 50 });
     expect(rows.at(-1)).toEqual({ year: 2022, n: 40, speciesN: 3, meshN: 2, nInat: 40, nGbif: 0 });
   });
@@ -86,7 +86,7 @@ describe("gridCatalog / occurrenceTotals", () => {
     ]);
   });
   it("occurrenceTotals", async () => {
-    expect(await occurrenceTotals(fx.db)).toEqual({ records: 362, species: 5, grids: 2, gbif: 236, inat: 126 });
+    expect(await occurrenceTotals(fx.db)).toEqual({ records: 400, species: 5, grids: 2, gbif: 254, inat: 146 });
   });
 });
 
@@ -106,7 +106,7 @@ describe("iasSpecies", () => {
       ["その他の総合対策外来種", delta],
       ["総合対策外来種", delta],
     ]);
-    expect(rows[0]).toMatchObject({ n: 20, meshN: 1, yFrom: 2022, yTo: 2022, nSince: 20, nameJa: "デルタ", taxonGroup: "FxPlant" });
+    expect(rows[0]).toMatchObject({ n: 40, meshN: 1, yFrom: 2020, yTo: 2022, nSince: 40, nameJa: "デルタ", taxonGroup: "FxPlant" });
   });
 });
 

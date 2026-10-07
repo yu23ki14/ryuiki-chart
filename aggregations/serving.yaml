@@ -51,6 +51,10 @@
 #   - measure の `when: {year_between: [lo, hi], positive: <col>}`: 条件つき集計
 #     （`sum`/`count_distinct` だけ）。窓を焼く（`summary_grid_catalog`）ためのもの。
 #     保存則は `n` 測度の `when` を掛けた側と比べる。
+#   - 2026-10-07: `when: {place_kind: <値>}`。`filter.place_kind` に [grid01, watershed] の
+#     両方を入れ、測度ごとにどちらの系列から数えるかを選ぶ。n は watershed（place_id NULL=
+#     座標なし・流域外のセルを含む、日付のある全記録）、n_places（meshN）は grid01
+#     （座標のある記録）。y_from/y_to/n_years/n_binom は絞らない（2系列の和集合＝全記録）。
 #
 # `key` は必ず `group_by` と同じ集合にすること（summary は1グループ=1行の
 # ロールアップで、`key` がその一意性を保証する次元）。
@@ -63,7 +67,7 @@
 # PR-1 の知見どおり）。
 
 version: 1
-spec_version: serving-summary/v5
+spec_version: serving-summary/v6
 
 summaries:
   summary_variable_catalog:
@@ -142,7 +146,7 @@ summaries:
     source: occurrence_agg
     join: { taxon: registry }
     filter:
-      place_kind: grid01
+      place_kind: [grid01, watershed]
       grain: [year, survey_period]
       taxon.canonical_binomial: { not_null: true }
     columns:
@@ -152,10 +156,12 @@ summaries:
       taxon_group: { fn: max, col: taxon.taxon_group }
       class:       { fn: max, col: taxon.class }
       family:      { fn: max, col: taxon.family }
-      n:           { fn: sum, col: n }
-      n_red_list:  { fn: sum, col: n_red_list }
-      n_alien:     { fn: sum, col: n_alien }
-      n_places:    { fn: count_distinct, col: place_id }
+      n:           { fn: sum, col: n,          when: { place_kind: watershed } }
+      # 座標のある記録の n（grid01 系列）。月別・メッシュの足切り（SPECIES_MIN_N）の判定に使う。
+      n_located:   { fn: sum, col: n,          when: { place_kind: grid01 } }
+      n_red_list:  { fn: sum, col: n_red_list, when: { place_kind: watershed } }
+      n_alien:     { fn: sum, col: n_alien,    when: { place_kind: watershed } }
+      n_places:    { fn: count_distinct, col: place_id, when: { place_kind: grid01 } }
       y_from:      { fn: min, expr: year_of_period_start }
       y_to:        { fn: max, expr: year_of_period_start }
       n_years:     { fn: count_distinct, expr: year_of_period_start }
@@ -168,15 +174,15 @@ summaries:
   summary_group_year:
     source: occurrence_agg
     join: { taxon: registry }
-    filter: { place_kind: grid01, grain: [year, survey_period] }
+    filter: { place_kind: [grid01, watershed], grain: [year, survey_period] }
     columns:
       year:        { expr: year_of_period_start }
       taxon_group: { col: taxon.taxon_group, coalesce: '未判定' }
     group_by: [year, taxon_group, source_id]
     measures:
-      n:        { fn: sum, col: n }
+      n:        { fn: sum, col: n, when: { place_kind: watershed } }
       n_binom:  { fn: count_distinct, col: taxon.canonical_binomial }
-      n_places: { fn: count_distinct, col: place_id }
+      n_places: { fn: count_distinct, col: place_id, when: { place_kind: grid01 } }
     key: [year, taxon_group, source_id]
     indexes: [[year]]
 
@@ -185,14 +191,14 @@ summaries:
   summary_effort_year:
     source: occurrence_agg
     join: { taxon: registry }
-    filter: { place_kind: grid01, grain: [year, survey_period] }
+    filter: { place_kind: [grid01, watershed], grain: [year, survey_period] }
     columns:
       year: { expr: year_of_period_start }
     group_by: [year]
     measures:
-      n:        { fn: sum, col: n }
+      n:        { fn: sum, col: n, when: { place_kind: watershed } }
       n_binom:  { fn: count_distinct, col: taxon.canonical_binomial }
-      n_places: { fn: count_distinct, col: place_id }
+      n_places: { fn: count_distinct, col: place_id, when: { place_kind: grid01 } }
     key: [year]
     indexes: []
 

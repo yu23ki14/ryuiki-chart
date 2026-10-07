@@ -31,11 +31,15 @@ describe("caveatKeysForFacets — facet ごとの注記キー（順序込み）"
   it.each([
     [{ kind: "dataset", ref: "measurements" }, ["measuredOn", "censoredLod", "duplicates"]],
     [{ kind: "dataset", ref: "sites" }, ["zone", "municipality"]],
-    [{ kind: "dataset", ref: "organism_records" }, ["organismSite", "effort", "regimes", "gbifCutoff"]],
+    [{ kind: "dataset", ref: "organism_records" }, []], // 出典の facet に移した（dataset 全体には付けない）
+    [sourceEditionOf("gbif_kanagawa_occurrences"), ["organismSite", "effort", "regimes", "gbifCutoff"]],
+    [sourceEditionOf("inaturalist_kanagawa"), ["organismSite", "effort", "regimes"]],
+    [sourceEditionOf("kanagawa_edna"), ["ednaReads", "ednaCoords", "ednaYearBasis", "ednaNonDetect", "ednaWatershed", "effortSurvey"]],
+    [sourceEditionOf("kanagawa_kuma_sightings"), ["effortSurvey"]],
     [{ kind: "observation_set", ref: "is_synthetic=1" }, ["synthetic"]],
     [placeKind("site"), ["zone", "municipality"]],
     [placeKind("zone"), ["zone"]],
-    [placeKind("grid01"), ["share", "effort"]],
+    [placeKind("grid01"), ["share"]],
     [sourceEditionOf("moe_ias_list"), ["isAlien"]],
     [variableTheme("landuse"), ["landuseDefinitionChange"]],
     [{ kind: "variable", ref: "common:variable:water.transparency" }, ["aboveLod"]],
@@ -66,10 +70,10 @@ describe("caveatKeysForFacets — facet ごとの注記キー（順序込み）"
 
   it("流域だけの生物（get_overview の facet）には share が付かない。grid01 には付く", () => {
     expect(caveatKeysForFacets(facetsForOccurrence({ places: ["watershed"] }))).toEqual([
-      "organismSite", "effort", "regimes", "gbifCutoff", "ednaReads", "ednaCoords", "ednaYearBasis", "ednaNonDetect",
+      "organismSite", "effort", "regimes", "gbifCutoff", "ednaReads", "ednaCoords", "ednaYearBasis", "ednaNonDetect", "ednaWatershed", "effortSurvey",
     ]);
     expect(caveatKeysForFacets(facetsForOccurrence({ places: ["grid01"] }))).toEqual([
-      "organismSite", "effort", "regimes", "gbifCutoff", "share", "ednaReads", "ednaCoords", "ednaYearBasis", "ednaNonDetect",
+      "organismSite", "effort", "regimes", "gbifCutoff", "ednaReads", "ednaCoords", "ednaYearBasis", "ednaNonDetect", "ednaWatershed", "effortSurvey", "share",
     ]);
   });
 });
@@ -201,14 +205,18 @@ describe("facetsForSeries", () => {
 });
 
 describe("facetsForOccurrence（Issue #48 PR-3b）", () => {
-  it("organism_records を常に、grid01 を引くとき place、IAS のとき source_edition を積む", () => {
+  it("出典の facet を積み、grid01 を引くとき place、IAS のとき source_edition を足す（dataset は積まない）", () => {
     const none = { sourceIds: [] as string[] };
-    expect(facetsForOccurrence({ places: ["watershed"], ...none })).toEqual([{ kind: "dataset", ref: "organism_records" }]);
-    expect(facetsForOccurrence({ places: ["grid01"], ...none })).toEqual([
-      { kind: "dataset", ref: "organism_records" },
-      placeKind("grid01"),
-    ]);
-    expect(facetsForOccurrence({ places: ["grid01", "watershed"], ias: true, ...none }).map((f) => f.kind)).toEqual(["dataset", "place", "source_edition"]);
+    expect(facetsForOccurrence({ places: ["watershed"], ...none })).toEqual([]);
+    expect(facetsForOccurrence({ places: ["grid01"], ...none })).toEqual([placeKind("grid01")]);
+    expect(facetsForOccurrence({ places: ["grid01", "watershed"], ias: true, ...none }).map((f) => f.kind)).toEqual(["place", "source_edition"]);
+  });
+  it("出典を絞ると、その出典の注記だけが付く（eDNA だけ=eDNA の6件、GBIF だけ=eDNA なし・gbifCutoff あり、iNat だけ=gbifCutoff なし）", () => {
+    const keys = (sourceIds: string[]) => caveatKeysForFacets(facetsForOccurrence({ places: [], sourceIds }));
+    expect(keys(["kanagawa_edna"])).toEqual(["ednaReads", "ednaCoords", "ednaYearBasis", "ednaNonDetect", "ednaWatershed", "effortSurvey"]);
+    expect(keys(["gbif_kanagawa_occurrences"])).toEqual(["organismSite", "effort", "regimes", "gbifCutoff"]);
+    expect(keys(["inaturalist_kanagawa"])).toEqual(["organismSite", "effort", "regimes"]);
+    expect(keys(["kanagawa_kuma_sightings"])).toEqual(["effortSurvey"]);
   });
   it("出典の facet: 省略は全出典、指定はその分だけ。eDNA を外すと eDNA の注記は付かない", () => {
     const all = caveatKeysForFacets(facetsForOccurrence({ places: ["grid01"] }));

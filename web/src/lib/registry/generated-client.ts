@@ -32,7 +32,7 @@ export type CaveatScopeKind = "variable" | "place" | "source_edition" | "observa
  * 呼ぶときの型で、存在しないキーはここでコンパイルエラーになる（旧 domain.ts の
  * mustCaveatBody() は実行時例外だった）。
  */
-export type CaveatKey = "aboveLod" | "censoredLod" | "duplicates" | "ednaCoords" | "ednaNonDetect" | "ednaReads" | "ednaYearBasis" | "effort" | "fishClass" | "flowTidalBackflow" | "gbifCutoff" | "inatBackfill" | "isAlien" | "landuseDefinitionChange" | "measuredOn" | "municipality" | "organismSite" | "regimes" | "share" | "synthetic" | "unitUnknown" | "zone";
+export type CaveatKey = "aboveLod" | "censoredLod" | "duplicates" | "ednaCoords" | "ednaNonDetect" | "ednaReads" | "ednaWatershed" | "ednaYearBasis" | "effort" | "effortSurvey" | "fishClass" | "flowTidalBackflow" | "gbifCutoff" | "inatBackfill" | "isAlien" | "landuseDefinitionChange" | "measuredOn" | "municipality" | "organismSite" | "regimes" | "share" | "synthetic" | "unitUnknown" | "zone";
 
 export interface GeneratedCaveat {
   key: string;
@@ -284,8 +284,10 @@ export const GENERATED_CAVEATS: readonly GeneratedCaveat[] = [
   { key: "ednaCoords", severity: "warning", kind: null, bodyJa: "eDNA の地点の座標は推定。公開データに座標が無いため、支川名と市町村から河川線の上に推定した（誤差は最大 10 km、地点ごとの誤差は coordinate_uncertainty_m）。座標の無い地点もある。" },
   { key: "ednaNonDetect", severity: "blocking", kind: null, bodyJa: "eDNA の不検出は「その採水でその DNA が検出されなかった」ことを示すだけで、その種がいないことは示さない。不在の根拠にしないこと。" },
   { key: "ednaReads", severity: "blocking", kind: null, bodyJa: "eDNA の値はリード数（DNA の配列が読まれた数）で、個体数・生物量を表さない。地点・年度の間でリード数の大小を比べて、多い少ないを読まないこと。" },
+  { key: "ednaWatershed", severity: "warning", kind: null, bodyJa: "流域は、採水地点の推定座標が流域ポリゴンに入るかで決めている。座標の無い地点はどの流域にも入らない。推定の誤差は最大 10 km なので、流域の境界近くの地点は隣の流域に数えられていることがある。" },
   { key: "ednaYearBasis", severity: "warning", kind: "method_change", bodyJa: "eDNA は年度・ファイルごとに解析方法・参照データベース・収録基準が違う（例: R7 の県民調査は一致率 98.5% 以上の結果のみ）。件数を年度で並べると見かけの増減が出る。" },
   { key: "effort", severity: "blocking", kind: null, bodyJa: "生物観察の件数は観察努力（観察に参加した人や調査の回数）に強く影響される。記録者を特定する列は大半が空（GBIF の約89%、iNaturalist は全件）で、記録者数そのものは測れていない。件数の増加をそのまま「生物が増えた」と読んではいけない。" },
+  { key: "effortSurvey", severity: "blocking", kind: null, bodyJa: "検出数・目撃数は、年ごとの調査・報告の回数と範囲に左右される。件数の増減を生息数の増減と読まない。" },
   { key: "fishClass", severity: "info", kind: null, bodyJa: "魚類は class 列に現れない（Actinopterygii が入っておらず空になっている）。門が Chordata で綱が空のものを魚類として扱っている。" },
   { key: "flowTidalBackflow", severity: "warning", kind: null, bodyJa: "河川の流量。感潮域（全83地点のうち14地点）では潮汐による逆流で負の値になる（4,668行のうち180行、最小 -8.5 m3/s）。負の値は欠測や誤りではなく逆流を表す実測値なので、除外したり絶対値にしたりして平均しないこと。" },
   { key: "gbifCutoff", severity: "blocking", kind: "coverage_gap", bodyJa: "GBIF 側の取り込みは 2024年12月で実質途切れている（月の件数が2024年12月の6,789件から2025年1月に399件へ。2024年の月平均は約6,400件）。鳥類の2025年以降の減少はデータの都合であり、生きものの減少ではない。" },
@@ -315,10 +317,6 @@ export const GENERATED_CAVEAT_SCOPE: readonly GeneratedCaveatScope[] = [
   { scopeKind: "dataset", scopeRef: "measurements", caveatKey: "measuredOn", sortOrder: 0, priority: 0 },
   { scopeKind: "dataset", scopeRef: "measurements", caveatKey: "censoredLod", sortOrder: 1, priority: 0 },
   { scopeKind: "dataset", scopeRef: "measurements", caveatKey: "duplicates", sortOrder: 2, priority: 0 },
-  { scopeKind: "dataset", scopeRef: "organism_records", caveatKey: "organismSite", sortOrder: 0, priority: 0 },
-  { scopeKind: "dataset", scopeRef: "organism_records", caveatKey: "effort", sortOrder: 1, priority: 0 },
-  { scopeKind: "dataset", scopeRef: "organism_records", caveatKey: "regimes", sortOrder: 2, priority: 0 },
-  { scopeKind: "dataset", scopeRef: "organism_records", caveatKey: "gbifCutoff", sortOrder: 3, priority: 0 },
   { scopeKind: "dataset", scopeRef: "sites", caveatKey: "zone", sortOrder: 0, priority: 0 },
   { scopeKind: "dataset", scopeRef: "sites", caveatKey: "municipality", sortOrder: 1, priority: 0 },
   { scopeKind: "observation_set", scopeRef: "is_synthetic=1", caveatKey: "synthetic", sortOrder: 0, priority: 1 },
@@ -330,14 +328,23 @@ export const GENERATED_CAVEAT_SCOPE: readonly GeneratedCaveatScope[] = [
   { scopeKind: "observation_set", scopeRef: "variable=common:variable:weather.wind_direction_at_gust&unit_id=null", caveatKey: "unitUnknown", sortOrder: 0, priority: 0 },
   { scopeKind: "observation_set", scopeRef: "variable=common:variable:weather.wind_direction_at_max&unit_id=null", caveatKey: "unitUnknown", sortOrder: 0, priority: 0 },
   { scopeKind: "place", scopeRef: "place_kind=grid01", caveatKey: "share", sortOrder: 0, priority: 0 },
-  { scopeKind: "place", scopeRef: "place_kind=grid01", caveatKey: "effort", sortOrder: 1, priority: 0 },
   { scopeKind: "place", scopeRef: "place_kind=site", caveatKey: "zone", sortOrder: 0, priority: 0 },
   { scopeKind: "place", scopeRef: "place_kind=site", caveatKey: "municipality", sortOrder: 1, priority: 0 },
   { scopeKind: "place", scopeRef: "place_kind=zone", caveatKey: "zone", sortOrder: 0, priority: 0 },
+  { scopeKind: "source_edition", scopeRef: "source_id=gbif_kanagawa_occurrences", caveatKey: "organismSite", sortOrder: 0, priority: 0 },
+  { scopeKind: "source_edition", scopeRef: "source_id=gbif_kanagawa_occurrences", caveatKey: "effort", sortOrder: 1, priority: 0 },
+  { scopeKind: "source_edition", scopeRef: "source_id=gbif_kanagawa_occurrences", caveatKey: "regimes", sortOrder: 2, priority: 0 },
+  { scopeKind: "source_edition", scopeRef: "source_id=gbif_kanagawa_occurrences", caveatKey: "gbifCutoff", sortOrder: 3, priority: 0 },
+  { scopeKind: "source_edition", scopeRef: "source_id=inaturalist_kanagawa", caveatKey: "organismSite", sortOrder: 0, priority: 0 },
+  { scopeKind: "source_edition", scopeRef: "source_id=inaturalist_kanagawa", caveatKey: "effort", sortOrder: 1, priority: 0 },
+  { scopeKind: "source_edition", scopeRef: "source_id=inaturalist_kanagawa", caveatKey: "regimes", sortOrder: 2, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=kanagawa_edna", caveatKey: "ednaReads", sortOrder: 0, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=kanagawa_edna", caveatKey: "ednaCoords", sortOrder: 1, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=kanagawa_edna", caveatKey: "ednaYearBasis", sortOrder: 2, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=kanagawa_edna", caveatKey: "ednaNonDetect", sortOrder: 3, priority: 0 },
+  { scopeKind: "source_edition", scopeRef: "source_id=kanagawa_edna", caveatKey: "ednaWatershed", sortOrder: 4, priority: 0 },
+  { scopeKind: "source_edition", scopeRef: "source_id=kanagawa_edna", caveatKey: "effortSurvey", sortOrder: 5, priority: 0 },
+  { scopeKind: "source_edition", scopeRef: "source_id=kanagawa_kuma_sightings", caveatKey: "effortSurvey", sortOrder: 0, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=moe_ias_list", caveatKey: "isAlien", sortOrder: 0, priority: 0 },
   { scopeKind: "variable", scopeRef: "common:variable:hydro.flow", caveatKey: "flowTidalBackflow", sortOrder: 0, priority: 0 },
   { scopeKind: "variable", scopeRef: "common:variable:water.transparency", caveatKey: "aboveLod", sortOrder: 0, priority: 0 },

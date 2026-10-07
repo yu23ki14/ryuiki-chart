@@ -266,7 +266,7 @@ function TrendTab() {
   const up = scored.slice(0, 10);
   const down = [...scored].reverse().slice(0, 10);
 
-  const series = useJson<{ years: { binom: string; year: number; n: number; mesh_n: number }[] }>(
+  const series = useJson<{ years: { binom: string; year: number; n: number; mesh_n: number | null }[] }>(
     picked.length ? `/api/biota?kind=species&binoms=${encodeURIComponent(picked.join(","))}` : "",
   );
 
@@ -275,7 +275,8 @@ function TrendTab() {
     const byB = new Map<string, { x: number; y: number }[]>();
     for (const r of series.data.years) {
       if (!byB.has(r.binom)) byB.set(r.binom, []);
-      byB.get(r.binom)!.push({ x: r.year, y: r.mesh_n });
+      // 座標のある記録が無い年（mesh_n が null）は点を出さない（0 と描くと「メッシュ0」に読める）
+      if (r.mesh_n !== null) byB.get(r.binom)!.push({ x: r.year, y: r.mesh_n });
     }
     return picked.slice(0, 8).map((bn, i) => ({
       key: bn,
@@ -368,7 +369,7 @@ function TrendTab() {
         table={
           <MiniTable
             columns={["種", "年", "メッシュ数", "件数"]}
-            rows={(series.data?.years ?? []).map((r) => [speciesLabel(r.binom), r.year, r.mesh_n, r.n])}
+            rows={(series.data?.years ?? []).map((r) => [speciesLabel(r.binom), r.year, r.mesh_n ?? "—", r.n])}
           />
         }
         note="上の棒グラフをクリックすると種を足せる（最大8種）。もう一度クリックで外れる。"

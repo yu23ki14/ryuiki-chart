@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildCubeFixture, FX, type CubeFixture } from "@/lib/cube/__fixtures__/cube-fixture";
 import { buildOccurrenceFixture, FXO, type OccurrenceFixture } from "@/lib/cube/__fixtures__/occurrence-fixture";
 import { OCCURRENCE_SOURCE_IDS } from "@/lib/cube";
+import { SPECIES_MIN_N } from "@/lib/cube/occurrence";
 import { handleBody, handleRpc, listTools, MAX_BATCH, MCP_PROTOCOL_VERSION } from "./server";
 import realDatapackage from "./__fixtures__/datapackage.real.json";
 import { datapackageResources, MCP_TOOLS, type McpContext } from "./tools";
@@ -187,8 +188,61 @@ describe("5 ツールの応答は封筒（excluded=0・合成なし・cite_as・
     expect(keys(await call("get_occurrences", occArgs, c))).toContain("ednaReads");
     const inat = keys(await call("get_occurrences", { ...occArgs, source_ids: ["inaturalist_kanagawa"] }, c));
     expect(inat).not.toContain("ednaReads");
-    expect(inat).toContain("effort"); // organism_records 系の注記は出典によらず付く
-    expect(keys(await call("get_occurrences", { ...occArgs, source_ids: ["kanagawa_edna"] }, c))).toContain("ednaReads");
+    expect(inat).toContain("effort");
+    expect(inat).not.toContain("gbifCutoff"); // GBIF の途切れは GBIF を含む結果だけ
+    expect(keys(await call("get_occurrences", { ...occArgs, source_ids: ["gbif_kanagawa_occurrences"] }, c))).toContain("gbifCutoff");
+    // eDNA だけ: eDNA の4件だけ。GBIF・iNat 由来の注記は付かない
+    expect(keys(await call("get_occurrences", { ...occArgs, source_ids: ["kanagawa_edna"] }, c))).toEqual(["ednaReads", "ednaCoords", "ednaYearBasis", "ednaNonDetect", "ednaWatershed", "effortSurvey"]);
+    // 未指定は全出典の注記
+    expect(keys(await call("get_occurrences", occArgs, c))).toEqual(
+      expect.arrayContaining(["organismSite", "effort", "regimes", "gbifCutoff", "ednaReads", "ednaNonDetect"]),
+    );
+  });
+
+  it("未知の引数は黙って捨てず isError（全ツール）", async () => {
+    const c = ctx({ db: async () => occ.db });
+    const cases: [string, Record<string, unknown>][] = [
+      ["describe_catalog", { what: "zones" }],
+      ["search_registry", { kind: "source", query: "gbif" }],
+      ["get_observations", { variableId: "x", scope: { type: "zone" }, grain: "year" }],
+      ["get_occurrences", { kind: "species_catalog" }],
+      ["get_edna", {}],
+      ["export_dataset", {}],
+    ];
+    for (const [name, args] of cases) {
+      const r = await call(name, { ...args, bogus_param: 1 }, c);
+      expect(r.isError, name).toBe(true);
+      expect(JSON.stringify(r.structuredContent), name).toContain("bogus_param");
+    }
+    const nested = await call("get_observations", { variableId: "x", scope: { type: "zone", bogus_param: 1 }, grain: "year" }, c);
+    expect(nested.isError).toBe(true);
+    expect((await call("get_occurrences", { kind: "species_catalog" }, c)).isError).toBe(false);
+  });
+
+  it("species_months: 空の種は理由を返す（足切り・月セル無し・カタログ外）。足切りは外さない", async () => {
+    // n_located は A が summary_species_catalog に足す列（仮の名前）。統合までは fixture に n と同じ値で足す。
+    occ.raw.exec("UPDATE summary_species_catalog SET n_located = n");
+    const c = ctx({ db: async () => occ.db });
+    const cat = (await call("get_occurrences", { kind: "species_catalog", limit: 500 }, c)).structuredContent.data as { rows: { binom: string; n: number }[] };
+    const under = cat.rows.filter((r) => r.n < SPECIES_MIN_N);
+    expect(under.length).toBeGreaterThan(0);
+    const r = await call("get_occurrences", { kind: "species_months", binoms: [under[0].binom, "No such binom"] }, c);
+    const data = r.structuredContent.data as { rows: unknown[]; suppressed: unknown[]; not_in_catalog: string[]; no_located_month_cells: unknown[] };
+    expect(data.rows).toEqual([]);
+    expect(data.suppressed).toEqual([{ binom: under[0].binom, n: under[0].n, n_located: under[0].n, min_n: SPECIES_MIN_N }]);
+    expect(data.not_in_catalog).toEqual(["No such binom"]);
+    expect(data.no_located_month_cells).toEqual([]);
+  });
+
+  it("species_months: 足切りを通っても行が空なら no_located_month_cells を返す", async () => {
+    occ.raw.exec(`UPDATE summary_species_catalog SET n_located = ${SPECIES_MIN_N + 1}`);
+    const c = ctx({ db: async () => occ.db });
+    // 足切り（speciesMonths 側の n>=80）で行が空のままの種（fixture の n は小さい）。判定列は n_located なので suppressed には入らない
+    const r = await call("get_occurrences", { kind: "species_months", binoms: [FXO.binoms.alpha], source_ids: ["kanagawa_kuma_sightings"] }, c);
+    const d = r.structuredContent.data as { rows: unknown[]; suppressed: unknown[]; no_located_month_cells: { binom: string; source_ids: string[] }[] };
+    expect(d.rows).toEqual([]);
+    expect(d.suppressed).toEqual([]);
+    expect(d.no_located_month_cells).toEqual([{ binom: FXO.binoms.alpha, source_ids: ["kanagawa_kuma_sightings"] }]);
   });
 
   it("export_dataset: datapackage が無ければ available=false、あれば path と sha256 だけ返す", async () => {

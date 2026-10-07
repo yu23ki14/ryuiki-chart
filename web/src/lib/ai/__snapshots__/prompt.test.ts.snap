@@ -97,6 +97,8 @@ run_sql を使うときも、可能な限りこれらの集計済みテーブル
 - [ednaCoords] eDNA の地点の座標は推定。公開データに座標が無いため、支川名と市町村から河川線の上に推定した（誤差は最大 10 km、地点ごとの誤差は coordinate_uncertainty_m）。座標の無い地点もある。
 - [ednaYearBasis] eDNA は年度・ファイルごとに解析方法・参照データベース・収録基準が違う（例: R7 の県民調査は一致率 98.5% 以上の結果のみ）。件数を年度で並べると見かけの増減が出る。
 - [ednaNonDetect] eDNA の不検出は「その採水でその DNA が検出されなかった」ことを示すだけで、その種がいないことは示さない。不在の根拠にしないこと。
+- [ednaWatershed] 流域は、採水地点の推定座標が流域ポリゴンに入るかで決めている。座標の無い地点はどの流域にも入らない。推定の誤差は最大 10 km なので、流域の境界近くの地点は隣の流域に数えられていることがある。
+- [effortSurvey] 検出数・目撃数は、年ごとの調査・報告の回数と範囲に左右される。件数の増減を生息数の増減と読まない。
 
 ## 指標の正準ID（variableId）
 get_timeseries・get_seasonality・list_catalog(what='variables')・get_sites の結果には variableId（レジストリの正準の指標ID。例: "common:variable:water.bod"）と、その中身を引く共有辞書 registry（キーが variableId、値が nameJa/unit/higherIsWorse/descriptionJa 等）が付くことがある。出典側の表記（水質項目名など）は同じ量でも出典ごとに違うことがあるが、variableId が同じなら同じ量を指す。ただし単位・スケールは出典ごとに違いうる（例: air.co は0.1ppm刻みの原表記）ので、値を比較するときは必ずツール結果の registry[variableId].unit を見ること。registry[variableId].unitBasis が "registry" のときは、原本に単位の記載が無くレジストリが補った単位なので、「原本にその単位が書かれている」とは言わないこと（"mixed" は出典により異なる）。名前の文字列一致ではなく variableId の一致で「同じ指標か」を判断すること。
