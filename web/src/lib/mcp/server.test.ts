@@ -131,6 +131,30 @@ describe("5 ツールの応答は封筒（excluded=0・合成なし・cite_as・
     expect(Array.isArray(env.caveats)).toBe(true);
   });
 
+  it("get_records(sites): 観測局を含む地点の site_id を、そのまま get_observations の scope.siteId に渡すと系列が返る", async () => {
+    const cases = [
+      { source_id: "atsugi_river_water_quality", variableId: FX.variables.ss, grain: "day", series: true, expectIds: [FX.sites.a, FX.sites.b, FX.sites.c] },
+      { source_id: "sagamihara_taiki_stations", variableId: FX.variables.rain, grain: "day", series: false, expectIds: [FX.sites.rain] }, // 旧表 sites に無い観測局（フィクスチャの雨量は get_observations の対象外の系列なので、ID が解決してエラーにならないことだけ見る。旧表に無い地点の系列は fx_site_c が保証）
+    ];
+    for (const c of cases) {
+      const rec = await call("get_records", { source_id: c.source_id, record_set: "sites" });
+      expect(rec.isError, c.source_id).toBe(false);
+      const rows = (rec.structuredContent.data as { rows: { site_id: string; name: string; source_id: string }[] }).rows;
+      expect(rows.map((r) => r.site_id).sort()).toEqual([...c.expectIds].sort());
+      for (const r of rows) {
+        expect(r.name).toBeTruthy();
+        expect(r.source_id).toBe(c.source_id);
+        // 厚木型の fx_site_c は旧表 sites に無い地点。系列のあるものは行が返る
+        const obs = await call("get_observations", { variableId: c.variableId, scope: { type: "site", siteId: r.site_id }, grain: c.grain, from: "2000-01-01" });
+        expect(obs.isError, r.site_id).toBe(false);
+        if (c.series && r.site_id !== FX.sites.b) {
+          const sc = obs.structuredContent as { rows?: unknown[]; data?: { rows: unknown[] } };
+          expect((sc.rows ?? sc.data?.rows ?? []).length, `${r.site_id}/${c.grain}`).toBeGreaterThan(0);
+        }
+      }
+    }
+  });
+
   it("get_observations: 系列が無い variableId は空の封筒（別の系列に倒さない）", async () => {
     const r = await call("get_observations", { variableId: "common:variable:no_such", scope: { type: "zone" }, grain: "year" });
     expect(r.isError).toBe(false);

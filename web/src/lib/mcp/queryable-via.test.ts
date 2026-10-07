@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
-import { applyMigrations, wrapSqlite } from "@/lib/cube/__fixtures__/cube-fixture";
+import { applyMigrations, insertSitePlace, wrapSqlite } from "@/lib/cube/__fixtures__/cube-fixture";
 import { sqliteCubeDb } from "@/lib/cube/db-sqlite";
 import { GENERATED_VARIABLE_ALIASES } from "@/lib/registry/generated";
 import { RECORD_SET_TABLES, SOURCE_ACCESS, SOURCE_META } from "@/lib/registry/generated-source";
@@ -27,7 +27,6 @@ async function call(name: string, args: Record<string, unknown>, ctx: McpContext
 
 describe("queryable_via の（出典, ツール）が実際に動く: get_records（インメモリ）", () => {
   const INSERT: Record<string, string> = {
-    sites: "INSERT INTO sites (site_id, name, source_id) VALUES (?, '名', ?)",
     protected_areas: "INSERT INTO protected_areas (area_id, name_ja, source_id) VALUES (?, '名', ?)",
     vegetation: "INSERT INTO vegetation_polygons (feature_id, legend_name_ja, source_id) VALUES (?, '名', ?)",
     river_segments: "INSERT INTO river_segments (feature_id, name_ja, source_id) VALUES (?, '名', ?)",
@@ -44,6 +43,10 @@ describe("queryable_via の（出典, ツール）が実際に動く: get_record
     expect(recordPairs.length).toBeGreaterThan(0);
     for (const [src] of recordPairs) {
       for (const set of SOURCE_ACCESS[src].tables) {
+        if (set === "sites") {
+          insertSitePlace(raw, `${src}:1`, "名", src);
+          continue;
+        }
         const sql = INSERT[set];
         expect(sql, `${src}/${set}`).toBeTruthy();
         raw.prepare(sql).run(...(set === "mammal_mesh" ? [src] : [`${src}:1`, src]));

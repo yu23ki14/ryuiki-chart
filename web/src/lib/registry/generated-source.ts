@@ -324,10 +324,15 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
   "atsugi_river_water_quality": {
     "state": "queryable",
     "queryableVia": [
-      "get_observations"
+      "get_observations",
+      "get_records"
     ],
-    "tables": [],
-    "recordSetRows": {},
+    "tables": [
+      "sites"
+    ],
+    "recordSetRows": {
+      "sites": 4
+    },
     "nSourceRows": 4560,
     "nSourceRowsBasis": "source_rows",
     "countedAt": "2026-10-07T13:28:13",
@@ -964,15 +969,21 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "reasonNote": null
   },
   "hiratsuka_taiki_stations": {
-    "state": "not_queryable",
-    "queryableVia": [],
-    "tables": [],
-    "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "file_only",
-    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "state": "queryable",
+    "queryableVia": [
+      "get_records"
+    ],
+    "tables": [
+      "sites"
+    ],
+    "recordSetRows": {
+      "sites": 5
+    },
+    "nSourceRows": 5,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
     "reasonNote": null
   },
   "ikilog": {
@@ -1107,10 +1118,15 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
   "kanagawa_jiban_chinka": {
     "state": "queryable",
     "queryableVia": [
-      "get_observations"
+      "get_observations",
+      "get_records"
     ],
-    "tables": [],
-    "recordSetRows": {},
+    "tables": [
+      "sites"
+    ],
+    "recordSetRows": {
+      "sites": 74
+    },
     "nSourceRows": 3286,
     "nSourceRowsBasis": "source_rows",
     "countedAt": "2026-10-07T13:28:13",
@@ -1778,15 +1794,21 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "reasonNote": null
   },
   "sagamihara_taiki_stations": {
-    "state": "not_queryable",
-    "queryableVia": [],
-    "tables": [],
-    "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "file_only",
-    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "state": "queryable",
+    "queryableVia": [
+      "get_records"
+    ],
+    "tables": [
+      "sites"
+    ],
+    "recordSetRows": {
+      "sites": 2
+    },
+    "nSourceRows": 2,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
     "reasonNote": null
   },
   "satonavi_donkai": {
@@ -1828,15 +1850,21 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "reasonNote": null
   },
   "soramame_stations_kanagawa": {
-    "state": "not_queryable",
-    "queryableVia": [],
-    "tables": [],
-    "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "file_only",
-    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "state": "queryable",
+    "queryableVia": [
+      "get_records"
+    ],
+    "tables": [
+      "sites"
+    ],
+    "recordSetRows": {
+      "sites": 4
+    },
+    "nSourceRows": 4,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
     "reasonNote": null
   },
   "tanzawa_shika_suigen_docs": {
@@ -1938,10 +1966,15 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
   "yokohama_river_waterlevel": {
     "state": "queryable",
     "queryableVia": [
-      "get_observations"
+      "get_observations",
+      "get_records"
     ],
-    "tables": [],
-    "recordSetRows": {},
+    "tables": [
+      "sites"
+    ],
+    "recordSetRows": {
+      "sites": 54
+    },
     "nSourceRows": 75528,
     "nSourceRowsBasis": "source_rows",
     "countedAt": "2026-10-07T13:28:13",
@@ -1956,7 +1989,7 @@ export const OBSERVATION_SOURCE_IDS: readonly string[] = ["atsugi_river_water_qu
 
 /** get_records の record_set → D1 の表（registry/source/access.yaml の record_sets。この対応の正はそこ 1 か所）。 */
 export const RECORD_SET_TABLES: Readonly<Record<string, string>> = {
-  "sites": "sites",
+  "sites": "place",
   "protected_areas": "protected_areas",
   "vegetation": "vegetation_polygons",
   "river_segments": "river_segments",
@@ -1969,7 +2002,7 @@ export const RECORD_SET_TABLES: Readonly<Record<string, string>> = {
 export const SOURCE_EXCLUDED_FROM_LIST: Readonly<Record<string, number>> = {"synthetic":1};
 
 /** get_records で引ける出典（SOURCE_ACCESS の tables が空でないもの）。 */
-export const RECORD_SOURCE_IDS: readonly string[] = ["biodic_mammal_mesh_kanagawa","biodic_veg2024_kanagawa","dams_kanagawa","env_kousui_stations_kanagawa","geoshape_sagami_river","hadano_preserved_trees","hiratsuka_parks","jma_stations_kanagawa","kanagawa_green_conservation","kanagawa_kuma_sightings","kanagawa_natural_parks","kanagawa_rdb2022_plants","kanagawa_redlist","moe_ias_list","moni1000_sites","sagami_livecams"];
+export const RECORD_SOURCE_IDS: readonly string[] = ["atsugi_river_water_quality","biodic_mammal_mesh_kanagawa","biodic_veg2024_kanagawa","dams_kanagawa","env_kousui_stations_kanagawa","geoshape_sagami_river","hadano_preserved_trees","hiratsuka_parks","hiratsuka_taiki_stations","jma_stations_kanagawa","kanagawa_green_conservation","kanagawa_jiban_chinka","kanagawa_kuma_sightings","kanagawa_natural_parks","kanagawa_rdb2022_plants","kanagawa_redlist","moe_ias_list","moni1000_sites","sagami_livecams","sagamihara_taiki_stations","soramame_stations_kanagawa","yokohama_river_waterlevel"];
 
 /** find_datasets で引ける出典（外部ポータルの目録。registry/source/access.yaml の catalog を宣言した出典。MCP_EXTERNAL_CATALOG.md §5）。 */
 export const FIND_DATASET_SOURCE_IDS: readonly string[] = ["ckan_bodik_kanagawa","ckan_kanagawa_pref","ckan_sagamihara","ckan_yokohama","estat_agri_census_kanagawa","estat_census_population_kanagawa","estat_shozaiki_kanagawa"];

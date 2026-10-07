@@ -13,7 +13,7 @@
 # record_sets: get_records の引数 record_set の値 → D1 の表。**この対応の正はここ 1 か所**（生成物 RECORD_SET_TABLES を
 # web/src/lib/records.ts が読む）。D1 にある表だけ書く（原本にだけある表は reason: not_in_d1）。
 record_sets:
-  sites: sites
+  sites: place   # place_kind='site'（key_space=site_id）。出典は place_source_ref.source_edition_id → source_edition.source_id
   protected_areas: protected_areas
   vegetation: vegetation_polygons
   river_segments: river_segments
@@ -39,6 +39,9 @@ sources:
   env_kousui_stations_kanagawa: {records: [sites]}
   jma_stations_kanagawa: {records: [sites]}
   moni1000_sites: {records: [sites]}
+  hiratsuka_taiki_stations: {records: [sites]}
+  sagamihara_taiki_stations: {records: [sites]}
+  soramame_stations_kanagawa: {records: [sites]}
   sagami_livecams: {records: [sites]}
   hadano_preserved_trees: {records: [protected_areas]}
   hiratsuka_parks: {records: [protected_areas]}
@@ -51,6 +54,10 @@ sources:
   moe_ias_list: {records: [assessments]}
   kanagawa_rdb2022_plants: {records: [assessments]}
   # --- マニフェストの出典に get_records の表を足す（出現キューブは座標なし 5 セルだけ。明細はこちら）---
+  # 観測局・観測点（sites は place の全地点。siteId は get_observations の scope.siteId にそのまま渡せる）
+  yokohama_river_waterlevel: {records: [sites]}
+  kanagawa_jiban_chinka: {records: [sites]}
+  atsugi_river_water_quality: {records: [sites]}
   kanagawa_kuma_sightings: {records: [sightings]}   # 出現キューブは座標なし 5 セルだけ。明細はこちら
   # --- find_datasets で取れる（外部ポータルの目録。値ではなく定義と最新の URL。docs/plans/MCP_EXTERNAL_CATALOG.md §5）---
   # catalog は records/reason と排他。表は external_dataset（出典の列 source_id で絞る目録）だけ。
@@ -116,7 +123,6 @@ sources:
   gsi_elevation_grid: {reason: file_only, basis: "data/processed に gsi_elevation_grid.csv がある（D1 の表なし）"}
   gsj_geology_points: {reason: file_only, basis: "data/processed に gsj_geology_points.csv がある（D1 の表なし）"}
   gsj_seamless_legend: {reason: file_only, basis: "data/processed に gsj_seamless_legend.csv がある（D1 の表なし）"}
-  hiratsuka_taiki_stations: {reason: file_only, basis: "data/processed に hiratsuka_taiki_stations.csv がある（D1 の表なし）"}
   kanagawa_rdb2006_errata: {reason: file_only, basis: "data/processed に kanagawa_rdb2006_errata.csv がある（D1 の表なし）"}
   kanagawa_redlist_categories: {reason: file_only, basis: "data/processed に kanagawa_redlist_categories.csv がある（D1 の表なし）"}
   kanagawa_shizenshi_bibliography: {reason: file_only, basis: "data/processed に kanagawa_shizenshi_bibliography.csv がある（D1 の表なし）"}
@@ -143,9 +149,7 @@ sources:
   rinya_forest_stats_prefecture: {reason: file_only, basis: "data/processed に rinya_forest_stats_prefecture.csv がある（D1 の表なし）"}
   rinya_lidar_kanagawa_status: {reason: file_only, basis: "data/processed に rinya_lidar_kanagawa_status.csv がある（D1 の表なし）"}
   sagamihara_digital_archive: {reason: file_only, basis: "data/processed に sagamihara_digital_archive.csv がある（D1 の表なし）"}
-  sagamihara_taiki_stations: {reason: file_only, basis: "data/processed に sagamihara_taiki_stations.csv がある（D1 の表なし）"}
   satonavi_donkai: {reason: file_only, basis: "data/processed に satonavi_donkai.csv がある（D1 の表なし）"}
-  soramame_stations_kanagawa: {reason: file_only, basis: "data/processed に soramame_stations_kanagawa.csv がある（D1 の表なし）"}
   tanzawa_species_list_1997: {reason: file_only, basis: "data/processed に tanzawa_species_list_1997.csv がある（D1 の表なし）"}
   tanzawa_visitor_centers: {reason: file_only, basis: "data/processed に tanzawa_visitor_centers.csv がある（D1 の表なし）"}
   yokohama_bio_indicator: {reason: file_only, basis: "data/processed に yokohama_bio_indicator.csv がある（D1 の表なし）"}

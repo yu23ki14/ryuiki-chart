@@ -56,7 +56,7 @@ CATALOG_TABLES = frozenset({"external_dataset"})
 # RECORD_TABLES の許可リスト（列）は record_set → 表を access.yaml の生成物から読む。`taxon_assessment` は語彙レジストリの表
 # （registry.sqlite。原本の taxa・redlist_assessments は D1 に無い＝マイグレーション 0010 で DROP 済み）。
 D1_RECORD_TABLES = frozenset(
-    {"sites", "protected_areas", "vegetation_polygons", "river_segments", "mammal_mesh", "wildlife_sightings", "taxon_assessment"}
+    {"place", "protected_areas", "vegetation_polygons", "river_segments", "mammal_mesh", "wildlife_sightings", "taxon_assessment"}
 )
 
 # n_source_rows を数える表（A の出典。B は `records` の表）。
@@ -173,6 +173,16 @@ def gather_counts(ryuiki: sqlite3.Connection, registry: sqlite3.Connection) -> d
             for part in sid.split("|"):
                 counts[part] = counts.get(part, 0) + n
         by_source[t] = counts
+    # sites の record_set は語彙レジストリの place（site）。出典は place_source_ref の版（source_edition）から引く。
+    by_source["place"] = {
+        str(sid): n
+        for sid, n in registry.execute(
+            "SELECT e.source_id, count(*) FROM place_source_ref psr "
+            "JOIN place p ON p.place_id = psr.place_id AND p.place_kind = 'site' "
+            "JOIN source_edition e ON e.edition_id = psr.source_edition_id "
+            "WHERE psr.key_space = 'site_id' GROUP BY e.source_id"
+        )
+    }
     return {"by_source": by_source}
 
 

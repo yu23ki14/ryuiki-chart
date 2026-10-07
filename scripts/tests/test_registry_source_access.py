@@ -25,7 +25,7 @@ def _reg(*ids):
 def _doc(**sources):
     return {
         "reasons": {"file_only": {"ja": "f"}, "synthetic": {"ja": "s"}, "not_in_d1": {"ja": "n"}, "superseded": {"ja": "u"}},
-        "record_sets": {"sites": "sites", "protected_areas": "protected_areas", "sightings": "wildlife_sightings"},
+        "record_sets": {"sites": "place", "protected_areas": "protected_areas", "sightings": "wildlife_sightings"},
         "sources": sources,
         "extra_tools": {},
     }
@@ -41,7 +41,7 @@ def _build(reg, targets, doc, counts, sup=None):
 
 def test_states_and_counts():
     doc = _doc(a={"records": ["sites"]}, b={"reason": "file_only", "basis": "x"})
-    rows = _build(_reg("a", "b", "m"), {"m": "observation"}, doc, _counts(sites={"a": 3}, measurements={"m": 7}))
+    rows = _build(_reg("a", "b", "m"), {"m": "observation"}, doc, _counts(place={"a": 3}, measurements={"m": 7}))
     by = {r[0]: dict(zip(bsa.COLUMNS, r)) for r in rows}
     assert by["a"]["state"] == "queryable" and by["a"]["queryable_via"] == '["get_records"]' and by["a"]["n_source_rows"] == 3
     assert by["m"]["queryable_via"] == '["get_observations"]' and by["m"]["n_source_rows"] == 7
@@ -98,7 +98,7 @@ def test_static_mutations_stop(mutate, msg):
     doc = _doc(a={"records": ["sites"]}, b={"reason": "file_only", "basis": "x"})
     mutate(doc)
     with pytest.raises(bsa.AccessError, match=msg):
-        _build(_reg("a", "b", "m"), {"m": "observation"}, doc, _counts(sites={"a": 3}, measurements={"m": 1}))
+        _build(_reg("a", "b", "m"), {"m": "observation"}, doc, _counts(place={"a": 3}, measurements={"m": 1}))
 
 
 def test_catalog_source_is_queryable_via_find_datasets_with_catalog_count():
@@ -138,16 +138,16 @@ def test_reason_check_ignores_external_dataset_rows_but_catalog_check_catches_th
 def test_records_table_without_rows_stops():
     doc = _doc(a={"records": ["sites", "protected_areas"]})
     with pytest.raises(bsa.AccessError, match="1 つも無い"):
-        _build(_reg("a"), {}, doc, _counts(sites={"a": 3}))
+        _build(_reg("a"), {}, doc, _counts(place={"a": 3}))
 
 
 def test_reason_source_with_rows_stops_but_row_reasons_need_rows():
     doc = _doc(b={"reason": "file_only", "basis": "x"})
     with pytest.raises(bsa.AccessError, match="原本に行がある"):
-        _build(_reg("b"), {}, doc, _counts(sites={"b": 1}))
+        _build(_reg("b"), {}, doc, _counts(place={"b": 1}))
     for code in ("synthetic", "not_in_d1"):
         doc = _doc(b={"reason": code, "basis": "x"})
-        _build(_reg("b"), {}, doc, _counts(sites={"b": 1}))  # 行があって通る
+        _build(_reg("b"), {}, doc, _counts(place={"b": 1}))  # 行があって通る
         with pytest.raises(bsa.AccessError, match="原本に行が無い"):
             _build(_reg("b"), {}, doc, _counts())
 
@@ -176,9 +176,14 @@ def _real():
     ]
     registry = sqlite3.connect(":memory:")
     registry.execute("CREATE TABLE taxon_assessment (source_id TEXT)")
-    # taxon_assessment は registry.sqlite 由来（実物があれば読む）
+    registry.execute("CREATE TABLE place (place_id TEXT, place_kind TEXT)")
+    registry.execute("CREATE TABLE place_source_ref (place_id TEXT, key_space TEXT, source_edition_id TEXT)")
+    registry.execute("CREATE TABLE source_edition (edition_id TEXT, source_id TEXT)")
+    # taxon_assessment・place・source_edition は registry.sqlite 由来（実物があれば読む）
     if common.REGISTRY_DB.exists():
         src = sqlite3.connect(f"file:{common.REGISTRY_DB}?mode=ro", uri=True)
+        for t, cols in (("place", "place_id, place_kind"), ("place_source_ref", "place_id, key_space, source_edition_id"), ("source_edition", "edition_id, source_id")):
+            registry.executemany(f"INSERT INTO {t} VALUES ({','.join('?' * len(cols.split(',')))})", src.execute(f"SELECT {cols} FROM {t}").fetchall())
         registry.executemany("INSERT INTO taxon_assessment VALUES (?)", src.execute("SELECT source_id FROM taxon_assessment").fetchall())
         sup = dict(src.execute("SELECT source_id, superseded_by FROM source").fetchall())
     else:
@@ -195,7 +200,7 @@ def test_real_declaration_covers_every_source_and_matches_data():
     rows = bsa.assemble(reg, targets, doc, counts, superseded_by=sup)
     assert len(rows) == len(reg) == 125
     by = {r[0]: dict(zip(bsa.COLUMNS, r)) for r in rows}
-    assert sum(1 for r in by.values() if r["state"] == "queryable") == 15 + 15 + 7  # manifests 15 + records のうち manifests 外の 15 + catalog 7
+    assert sum(1 for r in by.values() if r["state"] == "queryable") == 15 + 18 + 7  # manifests 15 + records のうち manifests 外の 18 + catalog 7
     cat = {sid: r for sid, r in by.items() if r["queryable_via"] == '["find_datasets"]'}
     assert sorted(cat) == sorted(sid for sid, e in doc["sources"].items() if "catalog" in e) and len(cat) == 7
     assert all(r["n_source_rows_basis"] == "catalog_datasets" and r["tables"] == "[]" for r in cat.values())
@@ -273,7 +278,7 @@ def test_record_tables_are_in_d1_schema():
 def test_record_set_rows_counts_only_that_record_set_table():
     """get_records の n_total は record_set の表の行数（その出典の分）。manifest の出現の表の合計を使わない。"""
     doc = _doc(a={"records": ["sites"]})
-    rows = _build(_reg("a"), {}, doc, _counts(sites={"a": 3}, wildlife_sightings={"a": 99}))
+    rows = _build(_reg("a"), {}, doc, _counts(place={"a": 3}, wildlife_sightings={"a": 99}))
     row = dict(zip(bsa.COLUMNS, rows[0]))
     assert json.loads(row["record_set_rows"]) == {"sites": 3}
     # 出現の表（manifest 側）と record_set の表が両方ある出典でも、record_set の分だけ
