@@ -86,6 +86,7 @@ const OUT_CLIENT =
 const OUT_ID_MAP =
   process.env.RYUIKI_REGISTRY_TS_OUT_ID_MAP ?? path.join(WEB, "src", "lib", "registry", "generated-id-map.ts");
 const MANIFESTS_DIR = process.env.RYUIKI_MANIFESTS_DIR ?? path.join(REPO, "manifests");
+const ACCESS_YAML = process.env.RYUIKI_ACCESS_YAML ?? path.join(REPO, "registry", "source", "access.yaml");
 const SOURCE_COMMITTED = path.join(WEB, "src", "lib", "registry", "generated-source.ts");
 const OUT_SOURCE =
   process.env.RYUIKI_REGISTRY_TS_OUT_SOURCE ?? path.join(WEB, "src", "lib", "registry", "generated-source.ts");
@@ -350,18 +351,64 @@ const filesOnly = (() => {
   }
 })();
 const knownSourceIds = new Set(sourceMeta.map((m) => m.sourceId));
-const occurrenceSourceIds = fs
+const manifestDocs = fs
   .readdirSync(MANIFESTS_DIR)
   .filter((f) => f.endsWith(".yml"))
   .sort()
-  .map((f) => ({ file: f, doc: loadYaml(fs.readFileSync(path.join(MANIFESTS_DIR, f), "utf8")) }))
-  .filter(({ doc }) => doc?.target === "occurrence")
-  .map(({ file, doc }) => {
-    if (!filesOnly && !knownSourceIds.has(doc.source)) {
-      throw new Error(`manifests/${file} の source=${doc.source} が registry の source に無い（r01 を再実行すること）`);
-    }
-    return doc.source;
-  });
+  .map((f) => ({ file: f, doc: loadYaml(fs.readFileSync(path.join(MANIFESTS_DIR, f), "utf8")) }));
+/** マニフェストの `target` が一致する出典（registry の source に無ければフルビルドは止まる）。 */
+function manifestSourceIds(target) {
+  return manifestDocs
+    .filter(({ doc }) => doc?.target === target)
+    .map(({ file, doc }) => {
+      if (!filesOnly && !knownSourceIds.has(doc.source)) {
+        throw new Error(`manifests/${file} の source=${doc.source} が registry の source に無い（r01 を再実行すること）`);
+      }
+      return doc.source;
+    });
+}
+const occurrenceSourceIds = manifestSourceIds("occurrence");
+// 観測データ（measurements・sensor_timeseries・土地利用）の出典。get_observations で取れる出典（MCP の describe_catalog の queryable_via）。
+const observationSourceIds = manifestSourceIds("observation");
+
+// 出典ごとの状態（source_access。registry/source/access.yaml と manifests/ から r01 が作る。MCP_SOURCE_ACCESS.md §1）。
+// 合成データの出典は SOURCE_META と同じく生成物に載せない。`--files-only` は source_access を作らないので、
+// 保持した生成物の RECORD_SOURCE_IDS を access.yaml（records を持つ出典）と突合して止める。
+const sourceAccessRows = db
+  .prepare(
+    `SELECT source_id, state, queryable_via, tables, n_source_rows, n_source_rows_basis, counted_at,
+            reason, reason_ja, reason_note FROM source_access ORDER BY source_id`,
+  )
+  .all()
+  .filter((r) => !isSyntheticSource(r.source_id));
+const sourceAccess = Object.fromEntries(
+  sourceAccessRows.map((r) => [
+    r.source_id,
+    {
+      state: r.state,
+      queryableVia: JSON.parse(r.queryable_via),
+      tables: JSON.parse(r.tables),
+      nSourceRows: r.n_source_rows,
+      nSourceRowsBasis: r.n_source_rows_basis,
+      countedAt: r.counted_at,
+      reason: r.reason,
+      reasonJa: r.reason_ja,
+      reasonNote: r.reason_note,
+    },
+  ]),
+);
+if (!filesOnly) {
+  const missing = sourceMeta.filter((m) => !sourceAccess[m.sourceId]).map((m) => m.sourceId);
+  if (missing.length) throw new Error(`source_access に無い出典がある（r01 を再実行すること）: ${missing.join(", ")}`);
+}
+const recordSourceIds = Object.entries(sourceAccess)
+  .filter(([, a]) => a.tables.length > 0)
+  .map(([id]) => id);
+const declaredRecordSourceIds = Object.entries(loadYaml(fs.readFileSync(ACCESS_YAML, "utf8")).sources ?? {})
+  .filter(([, e]) => e && e.records)
+  .map(([id]) => id)
+  .filter((id) => !isSyntheticSource(id))
+  .sort();
 
 const licenses = db
   .prepare(`SELECT license_id, name_ja, spdx_or_url, license_class, attribution_text FROM license ORDER BY license_id`)
@@ -783,18 +830,52 @@ export const SOURCE_EDITIONS: readonly GeneratedSourceEdition[] = ${emitObjectAr
 /** 出現データ（occurrence_agg）の出典。マニフェスト（target=occurrence）由来。画面用 API・MCP の provenance/freshness が使う。 */
 export const OCCURRENCE_SOURCE_IDS: readonly string[] = ${JSON.stringify(occurrenceSourceIds)};
 
+/** 出典ごとの状態（registry/source/access.yaml と manifests/ から r01 が作る。MCP_SOURCE_ACCESS.md §1）。 */
+export interface GeneratedSourceAccess {
+  state: "queryable" | "not_queryable";
+  /** 取れるツール名（get_observations / get_occurrences / get_edna / get_records）。取れないなら空。 */
+  queryableVia: string[];
+  /** get_records で引ける D1 の表（空なら get_records の対象外）。 */
+  tables: string[];
+  /** 原本の行数（キューブの集計行数ではない）。取れない出典は null。 */
+  nSourceRows: number | null;
+  nSourceRowsBasis: "source_rows" | "registry_record_count" | "none";
+  /** 件数を数えた原本の最新取得日時（決定論のため実行時刻ではない）。 */
+  countedAt: string | null;
+  /** 取れない理由コード（queryableVia が空のとき必須）。 */
+  reason: string | null;
+  reasonJa: string | null;
+  reasonNote: string | null;
+}
+
+/** 合成データの出典を除く全出典（SOURCE_META と同じキー）。 */
+export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = ${JSON.stringify(sourceAccess, null, 2)};
+
+/** 観測データ（measurements・sensor_timeseries・土地利用）の出典。マニフェスト（target=observation）由来。get_observations で取れる。 */
+export const OBSERVATION_SOURCE_IDS: readonly string[] = ${JSON.stringify(observationSourceIds)};
+
+/** get_records で引ける出典（SOURCE_ACCESS の tables が空でないもの）。 */
+export const RECORD_SOURCE_IDS: readonly string[] = ${JSON.stringify(recordSourceIds)};
+
 export const LICENSES: readonly GeneratedLicense[] = ${emitObjectArray(licenses, ["licenseId", "nameJa", "spdxOrUrl", "licenseClass", "attributionText"])};
 `;
 
 fs.mkdirSync(path.dirname(OUT_SERVER), { recursive: true });
 if (filesOnly) {
   const kept = fs.readFileSync(SOURCE_COMMITTED, "utf8");
-  const m = /export const OCCURRENCE_SOURCE_IDS: readonly string\[\] = (\[.*?\]);/.exec(kept);
-  if (!m || m[1] !== JSON.stringify(occurrenceSourceIds)) {
-    throw new Error(
-      `files-only のため出典メタは再生成しないが、保持した generated-source.ts の OCCURRENCE_SOURCE_IDS が manifests/（target=occurrence）` +
-        `${JSON.stringify(occurrenceSourceIds)} と食い違う。原本のある環境で \`pnpm run build:registry:ts\`（フルビルド）を実行して更新すること`,
-    );
+  const keep = (name) => new RegExp(`export const ${name}: readonly string\\[\\] = (\\[.*?\\]);`).exec(kept)?.[1];
+  const must = [
+    ["OCCURRENCE_SOURCE_IDS", occurrenceSourceIds, "manifests/（target=occurrence）"],
+    ["OBSERVATION_SOURCE_IDS", observationSourceIds, "manifests/（target=observation）"],
+    ["RECORD_SOURCE_IDS", declaredRecordSourceIds, "registry/source/access.yaml（records を持つ出典）"],
+  ];
+  for (const [name, expected, from] of must) {
+    if (keep(name) !== JSON.stringify(expected)) {
+      throw new Error(
+        `files-only のため出典メタは再生成しないが、保持した generated-source.ts の ${name} が ${from}` +
+          `${JSON.stringify(expected)} と食い違う。原本のある環境で \`pnpm run build:registry:ts\`（フルビルド）を実行して更新すること`,
+      );
+    }
   }
   if (path.resolve(OUT_SOURCE) !== path.resolve(SOURCE_COMMITTED)) fs.writeFileSync(OUT_SOURCE, kept); // 出力先が別なら保持した内容を写す（再生成テストがバイト一致を確かめられる）
   console.log("files-only のため出典メタ（generated-source.ts）は再生成せず既存を保持した（registry との照合は未実施）");

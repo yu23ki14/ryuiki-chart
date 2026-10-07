@@ -3,7 +3,7 @@
 exports[`MCP ツール一覧（第1段 5 本） > 入力スキーマのスナップショット 1`] = `
 [
   {
-    "description": "流域カルテにどんな測定項目・水域・ゾーン・出典があるかを一覧する。まず全体像を掴むときに使う。what='variables' は測定項目（variableId を get_observations に渡す）、'waters' は水域、'zones' は Ridge to Reef ゾーン、'sources' は出典（取得日・更新方式つき）。読み方: 値は定量下限未満を value_lod（下限値で代用）と value_zero（0 で代用）の両方で返す。n_censored・n_not_detected が多い系列は下限付近の値を平均した結果なので断定しない。caveats は必ず利用者に伝える。provenance の fetched_at・update_mode・age_days から、データの新しさと更新方式を判断する（update_mode が undeclared の出典は更新方式が未宣言）。欠測を補完しない。",
+    "description": "流域カルテにどんな測定項目・水域・ゾーン・出典があるかを一覧する。まず全体像を掴むときに使う。what='variables' は測定項目（variableId を get_observations に渡す）、'waters' は水域、'zones' は Ridge to Reef ゾーン、'sources' は出典（取得日・更新方式・取れるツール queryable_via・取れない理由つき）。出典の件数・ツール別の件数・取れない理由別の件数は応答の summary を使う（一覧を自分で数えない）。n_source_rows は原本の行数で、get_observations の n（集計に使った件数）とは別物。読み方: 値は定量下限未満を value_lod（下限値で代用）と value_zero（0 で代用）の両方で返す。n_censored・n_not_detected が多い系列は下限付近の値を平均した結果なので断定しない。caveats は必ず利用者に伝える。provenance の fetched_at・update_mode・age_days から、データの新しさと更新方式を判断する（update_mode が undeclared の出典は更新方式が未宣言）。欠測を補完しない。",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -13,6 +13,10 @@ exports[`MCP ツール一覧（第1段 5 本） > 入力スキーマのスナッ
           "maximum": 500,
           "minimum": 1,
           "type": "integer",
+        },
+        "queryable": {
+          "description": "what='sources' のとき、ツールで値が取れる出典（true）／取れない出典（false）に絞る",
+          "type": "boolean",
         },
         "variableId": {
           "description": "what='waters' のとき、この項目のデータを持つ水域に絞る（variables の variableId）",

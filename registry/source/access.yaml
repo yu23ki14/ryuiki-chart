@@ -1,0 +1,153 @@
+# 出典ごとの「ツールで値が取れるか」の宣言（docs/plans/MCP_SOURCE_ACCESS.md §1）。人が書く正。
+#
+# - manifests/ にある出典（15 件。target=observation → get_observations、occurrence → get_occurrences）は
+#   ここに書かない（二重管理しない）。ただし get_records でも取れる表があれば records だけ足す。
+#   get_edna のような追加のツールは extra_tools に書く。
+# - records: get_records で取れる表。出典の列（source_id）を持つ表は表名だけ。出典の列が無い水源マップの表は
+#   {table, whole_table: true} か {table, id_prefix: "..."} で「表のどの行がこの出典か」を宣言する
+#   （r01 が行数を source_registry.record_count と突き合わせて裏づける）。
+# - reason: 取れない理由（reasons の語彙）。basis は下書きの根拠（source_registry の列・data/processed の有無から
+#   機械的に決めたもの）で、必須。note は人が読む補足（任意）。
+# - r01 が、全出典が状態を持つこと・records の表に行があること・reason の出典に行が無いこと
+#   （synthetic だけ例外）を原本と突き合わせて検査する。scripts/registry/build_source_access.py の docstring 参照。
+reasons:
+  not_collected: {ja: "未収集（取得手段が未着手、または登録のみ）"}
+  blocked_access: {ja: "ログイン・APIキー・利用アンケート・JS 画面などで、自動取得できていない"}
+  pdf_document: {ja: "PDF の文書のまま。表として取り出していない"}
+  map_service: {ja: "地図サービス（WebGIS）。値は外部サービス側にある"}
+  external_api: {ja: "外部 API・CGI・現況ページ。値は提供元に問い合わせる"}
+  catalog_only: {ja: "データ目録（メタデータ）で、観測値・記録そのものではない"}
+  license: {ja: "利用条件が不明のため取得していない"}
+  file_only: {ja: "収集済みだが D1 に投入していない（data/processed のファイルのみ）"}
+  superseded: {ja: "別の出典に置き換わった（superseded_by 参照）"}
+  synthetic: {ja: "合成データ。実データと混ぜないため出さない"}
+  d1_no_source_column: {ja: "D1 の表に出典の列が無く、表の行をどの出典のものか機械的に引けない"}
+  not_in_d1: {ja: "原本には行があるが、D1 にその表が無い（本番では引けない）"}
+sources:
+  # --- get_records で取れる（出典の列で絞る表）---
+  dams_kanagawa: {records: [sites]}
+  env_kousui_stations_kanagawa: {records: [sites]}
+  jma_stations_kanagawa: {records: [sites]}
+  moni1000_sites: {records: [sites]}
+  sagami_livecams: {records: [sites]}
+  hadano_preserved_trees: {records: [protected_areas]}
+  hiratsuka_parks: {records: [protected_areas]}
+  kanagawa_green_conservation: {records: [protected_areas]}
+  kanagawa_natural_parks: {records: [protected_areas]}
+  biodic_veg2024_kanagawa: {records: [vegetation_polygons]}
+  biodic_mammal_mesh_kanagawa: {records: [mammal_mesh]}
+  geoshape_sagami_river: {records: [river_segments]}
+  kanagawa_redlist: {records: [taxon_assessment]}
+  moe_ias_list: {records: [taxon_assessment]}
+  kanagawa_rdb2022_plants: {records: [taxon_assessment]}
+  # --- マニフェストの出典に get_records の表を足す（出現キューブは座標なし 5 セルだけ。明細はこちら）---
+  kanagawa_kuma_sightings: {records: [wildlife_sightings]}   # 出現キューブは座標なし 5 セルだけ。明細はこちら
+  # --- 取れない: not_collected（5 件）---
+  buna_suitai_web: {reason: not_collected, basis: "source_registry.format=「表なし、画像のみ」。表として取り出せるデータが無く record_count=0"}
+  geospatial_jp_agri_poly_2021_sagami: {reason: not_collected, basis: "source_registry.record_count=0 かつ data/processed・data/raw とも無し"}
+  nlni_a03_metro_area: {reason: not_collected, basis: "source_registry.access_method=not_collected"}
+  nlni_p05_city_hall: {reason: not_collected, basis: "source_registry.access_method=not_collected"}
+  nlni_w07_watershed_mesh: {reason: not_collected, basis: "source_registry.access_method=not_collected"}
+  # --- 取れない: blocked_access（11 件）---
+  biodic_animal_distribution: {reason: blocked_access, basis: "source_registry.access_method=CSV リンクが 404 で取得できていない（record_count=0）"}
+  eadas_kanagawa: {reason: blocked_access, basis: "source_registry.access_method=トップページの「文献を見る」「報告書を見る」等はJSによるセッション同意ダイアロ"}
+  gsi_kiban_chizu_joho: {reason: blocked_access, basis: "source_registry.access_method=要ユーザー登録のダウンロードサービス（ログイン必須）"}
+  ikilog: {reason: blocked_access, basis: "source_registry.access_method=LifeSearch検索画面はJS駆動。CSVダウンロードAPI(/DownCS"}
+  moni1000_lake_aquaticplants: {reason: blocked_access, basis: "source_registry.access_method=利用アンケートフォーム経由でzip取得を試行"}
+  moni1000_lake_benthos: {reason: blocked_access, basis: "source_registry.access_method=利用アンケートフォーム経由でzip取得を試行"}
+  moni1000_lake_fish: {reason: blocked_access, basis: "source_registry.access_method=利用アンケートフォーム経由でzip取得を試行"}
+  moni1000_waterfowl: {reason: blocked_access, basis: "source_registry.access_method=利用アンケートフォーム経由でzip取得を試行"}
+  moni1000_wetland_vegetation: {reason: blocked_access, basis: "source_registry.access_method=利用アンケートフォーム経由でzip取得を試行"}
+  resas_api: {reason: blocked_access, basis: "source_registry.access_method=要APIキー登録 (利用登録フォーム経由でAPIキー発行が必須)"}
+  snet_kahaku: {reason: blocked_access, basis: "source_registry.access_method=トップページで確認。検索画面はJS駆動のSPA(GETパラメータでの単純検索は不"}
+  # --- 取れない: pdf_document（10 件）---
+  biodic_6th_kanagawa_report: {reason: pdf_document, basis: "source_registry.format=PDF"}
+  ckan_pdf_choju_higai: {reason: pdf_document, basis: "source_registry.format=PDF"}
+  ckan_pdf_choju_kyugo: {reason: pdf_document, basis: "source_registry.format=PDF"}
+  ckan_pdf_ghg_kanagawa: {reason: pdf_document, basis: "source_registry.format=PDF"}
+  ckan_pdf_shinrin_toukei: {reason: pdf_document, basis: "source_registry.format=PDF"}
+  etanzawa_siryousitu: {reason: pdf_document, basis: "source_registry.format=PDF(多数、主にニュースレター類)"}
+  kanagawa_ikimono_chousa: {reason: pdf_document, basis: "source_registry.format=PDF"}
+  kasen_kokusei_sagami: {reason: pdf_document, basis: "source_registry.format=PDF"}
+  sagami_seibi_keikaku_mirror: {reason: pdf_document, basis: "source_registry.format=PDF (未パース)"}
+  tanzawa_shika_suigen_docs: {reason: pdf_document, basis: "source_registry.format=PDF"}
+  # --- 取れない: map_service（2 件）---
+  biodic_kiban_datalist: {reason: map_service, basis: "source_registry.format=HTML(入口ページ)"}
+  biodic_webgis: {reason: map_service, basis: "source_registry.format=WebGIS(ArcGIS)"}
+  # --- 取れない: external_api（3 件）---
+  kanagawa_dam_mizugame: {reason: external_api, basis: "source_registry.access_method=JSON API（/api/rainfall-table.p", note: "動的 JSON の現況。蓄積した履歴が無い"}
+  miyagase_storage_status: {reason: external_api, basis: "source_registry.access_method=HTMLページ(現況スナップショット、更新の都度URL内容が", note: "現況のスナップショット（更新のたびに内容が上書きされる）"}
+  mlit_river_hydro: {reason: external_api, basis: "source_registry.access_method=CGI (SrchSite.exe 等)"}
+  # --- 取れない: catalog_only（7 件）---
+  ckan_bodik_kanagawa: {reason: catalog_only, basis: "source_registry.category=オープンデータ目録"}
+  ckan_kanagawa_pref: {reason: catalog_only, basis: "source_registry.category=オープンデータ目録"}
+  ckan_sagamihara: {reason: catalog_only, basis: "source_registry.category=オープンデータ目録"}
+  ckan_yokohama: {reason: catalog_only, basis: "source_registry.category=オープンデータ目録"}
+  geospatial_jp_kanagawa_catalog: {reason: catalog_only, basis: "source_registry.category=オープンデータ目録"}
+  geospatial_jp_plateau_kanagawa: {reason: catalog_only, basis: "source_registry.category=3D都市モデル目録"}
+  geospatial_jp_pointcloud_kanagawa: {reason: catalog_only, basis: "source_registry.category=地形・森林資源目録"}
+  # --- 取れない: license（1 件）---
+  ylist: {reason: license, basis: "source_registry.access_method=「未取得（利用条件が不明のため）」"}
+  # --- 取れない: file_only（47 件）---
+  ayu_upstream_migration: {reason: file_only, basis: "data/processed に ayu_upstream_migration.csv がある（D1 の表なし）"}
+  biodic_vegcode_legend: {reason: file_only, basis: "data/processed に biodic_vegcode_veg_*.csv がある（record_count=1247。D1 の表なし）"}
+  biodic_vegmesh_4th_kanagawa: {reason: file_only, basis: "data/processed に biodic_vegmesh_4th_kanagawa.csv がある（D1 の表なし）"}
+  biodic_vegmesh_5th_kanagawa: {reason: file_only, basis: "data/processed に biodic_vegmesh_5th_kanagawa.csv がある（D1 の表なし）"}
+  ckan_env_bulk: {reason: file_only, basis: "data/processed に ckan_env/・ckan_env_index.csv がある（record_count=977。D1 の表なし）"}
+  estat_agri_census_kanagawa: {reason: file_only, basis: "data/processed に estat_agri_census_kanagawa.csv がある（D1 の表なし）"}
+  estat_census_population_kanagawa: {reason: file_only, basis: "data/processed に estat_census_population_kanagawa.csv がある（D1 の表なし）"}
+  gbif_species_match: {reason: file_only, basis: "data/processed に taxon_gbif_accepted.csv がある（名寄せ語彙。registry の taxon の入力で、D1 の表は別）"}
+  geospatial_jp_agri_point_2021_sagami: {reason: file_only, basis: "data/processed に geospatial_jp_agri_point_2021_sagami.csv がある（D1 の表なし）"}
+  geospatial_jp_kokudo_landclass_kanagawa: {reason: file_only, basis: "SHP/ZIP を取得済み（record_count=5。ファイル数）。表への変換と D1 への投入は無い"}
+  geospatial_jp_kokudo_river_sagami: {reason: file_only, basis: "SHP/ZIP を取得済み（record_count=40。ファイル数）。表への変換と D1 への投入は無い"}
+  gsi_elevation_grid: {reason: file_only, basis: "data/processed に gsi_elevation_grid.csv がある（D1 の表なし）"}
+  gsj_geology_points: {reason: file_only, basis: "data/processed に gsj_geology_points.csv がある（D1 の表なし）"}
+  gsj_seamless_legend: {reason: file_only, basis: "data/processed に gsj_seamless_legend.csv がある（D1 の表なし）"}
+  hiratsuka_taiki_stations: {reason: file_only, basis: "data/processed に hiratsuka_taiki_stations.csv がある（D1 の表なし）"}
+  kanagawa_rdb2006_errata: {reason: file_only, basis: "data/processed に kanagawa_rdb2006_errata.csv がある（D1 の表なし）"}
+  kanagawa_redlist_categories: {reason: file_only, basis: "data/processed に kanagawa_redlist_categories.csv がある（D1 の表なし）"}
+  kanagawa_shizenshi_bibliography: {reason: file_only, basis: "data/processed に kanagawa_shizenshi_bibliography.csv がある（D1 の表なし）"}
+  moe_meisui_kanagawa: {reason: file_only, basis: "data/processed に moe_meisui_kanagawa.csv がある（D1 の表なし）"}
+  moe_satoyama_kanagawa: {reason: file_only, basis: "data/processed に moe_satoyama_kanagawa.csv がある（D1 の表なし）"}
+  moni1000_coast_shorebird: {reason: file_only, basis: "data/processed に moni1000_coast_shorebird_kanagawa.csv がある（D1 の表なし）"}
+  moni1000_forest_bird: {reason: file_only, basis: "data/processed に moni1000_forest_bird_kanagawa.csv がある（D1 の表なし）"}
+  moni1000_satochi_bird: {reason: file_only, basis: "data/processed に moni1000_satochi_bird_census_kanagawa.csv がある（D1 の表なし）"}
+  moni1000_satochi_butterfly: {reason: file_only, basis: "data/processed に moni1000_satochi_butterfly_census_kanagawa.csv がある（D1 の表なし）"}
+  moni1000_satochi_mammal: {reason: file_only, basis: "data/processed に moni1000_satochi_mammal_photo_kanagawa.csv がある（D1 の表なし）"}
+  nlni_a10_natparks: {reason: file_only, basis: "data/processed に nlni_a10_natparks.csv がある（D1 の表なし）", note: "data/processed に 4 ファイル。D1 の表は無い"}
+  nlni_a15_wildlife: {reason: file_only, basis: "data/processed に nlni_a15_wildlife.csv がある（D1 の表なし）"}
+  nlni_a45_forest: {reason: file_only, basis: "data/processed に nlni_a45_forest.csv がある（D1 の表なし）"}
+  nlni_l03b_landuse_2006: {reason: file_only, basis: "data/processed に nlni_l03b_landuse_2006.csv がある（D1 の表なし）"}
+  nlni_l03b_landuse_2016: {reason: file_only, basis: "data/processed に nlni_l03b_landuse_2016.csv がある（D1 の表なし）"}
+  nlni_w05_river_nodes: {reason: file_only, basis: "data/processed に nlni_w05_river_nodes.csv がある（D1 の表なし）"}
+  nlni_w05_rivers: {reason: file_only, basis: "data/processed に nlni_w05_rivers.csv がある（D1 の表なし）"}
+  nlni_w12_watersheds: {reason: file_only, basis: "data/processed に nlni_w12_watersheds.csv がある（D1 の表なし）"}
+  nlni_w12_watersheds_by_system: {reason: file_only, basis: "data/processed に nlni_w12_watersheds_by_system.csv がある（D1 の表なし）"}
+  osm_kanagawa_farmland: {reason: file_only, basis: "data/processed に osm_kanagawa_farmland.csv がある（D1 の表なし）"}
+  osm_kanagawa_forest: {reason: file_only, basis: "data/processed に osm_kanagawa_forest.csv がある（D1 の表なし）"}
+  osm_kanagawa_protected_area: {reason: file_only, basis: "data/processed に osm_kanagawa_protected_area.csv がある（D1 の表なし）"}
+  osm_kanagawa_water: {reason: file_only, basis: "data/processed に osm_kanagawa_water.csv がある（D1 の表なし）"}
+  rinya_forest_stats_prefecture: {reason: file_only, basis: "data/processed に rinya_forest_stats_prefecture.csv がある（D1 の表なし）"}
+  rinya_lidar_kanagawa_status: {reason: file_only, basis: "data/processed に rinya_lidar_kanagawa_status.csv がある（D1 の表なし）"}
+  sagamihara_digital_archive: {reason: file_only, basis: "data/processed に sagamihara_digital_archive.csv がある（D1 の表なし）"}
+  sagamihara_taiki_stations: {reason: file_only, basis: "data/processed に sagamihara_taiki_stations.csv がある（D1 の表なし）"}
+  satonavi_donkai: {reason: file_only, basis: "data/processed に satonavi_donkai.csv がある（D1 の表なし）"}
+  soramame_stations_kanagawa: {reason: file_only, basis: "data/processed に soramame_stations_kanagawa.csv がある（D1 の表なし）"}
+  tanzawa_species_list_1997: {reason: file_only, basis: "data/processed に tanzawa_species_list_1997.csv がある（D1 の表なし）"}
+  tanzawa_visitor_centers: {reason: file_only, basis: "data/processed に tanzawa_visitor_centers.csv がある（D1 の表なし）"}
+  yokohama_bio_indicator: {reason: file_only, basis: "data/processed に yokohama_bio_indicator.csv がある（D1 の表なし）"}
+  # --- 取れない: superseded（1 件）---
+  gbif_kanagawa: {reason: superseded, basis: "editions.yaml の source_declarations で superseded_by=gbif_kanagawa_occurrences", note: "gbif_kanagawa_occurrences に置き換わった。値はそちらで取る"}
+  # --- 取れない: synthetic（1 件）---
+  synthetic_sensor: {reason: synthetic, basis: "source_registry.category=合成データ。sensor_timeseries に 19,420 行あるが宣言で出さない", note: "sensor_timeseries に行はあるが、合成データなので出さない"}
+  # --- 取れない: d1_no_source_column（4 件）---
+  estat_shozaiki_kanagawa: {reason: d1_no_source_column, basis: "原本 water_zone（5,089 行 = record_count）に出典の列が無い。機械可読な表→出典の宣言が無い"}
+  water_source_docs: {reason: d1_no_source_column, basis: "原本 water_source_doc（69 行 = record_count）に出典の列が無い。機械可読な表→出典の宣言が無い"}
+  water_trace_kawasaki: {reason: d1_no_source_column, basis: "原本 water_zone_assignment の assignment_id 接頭辞 TRACE_KWS:（611 行 = record_count）。出典の列は無い"}
+  water_trace_yokohama: {reason: d1_no_source_column, basis: "原本 water_zone_assignment の assignment_id 接頭辞 TRACE_YOK:（1,718 行 = record_count）。出典の列は無い"}
+  # --- 取れない: not_in_d1（3 件）---
+  kanagawa_rdb2006_animals: {reason: not_in_d1, basis: "原本 taxa に 221 行。D1 の taxa は 0010 で DROP 済みで、taxon_assessment にも載らない"}
+  kanagawa_river_citizen_survey: {reason: not_in_d1, basis: "原本 protocols に 6 行。D1 の protocols は 0010 で DROP 済み"}
+  moe_redlist: {reason: not_in_d1, basis: "原本 taxa に 6,089 行。D1 の taxa は 0010 で DROP 済み"}
+extra_tools:
+  kanagawa_edna: [get_edna]

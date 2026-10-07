@@ -411,6 +411,30 @@ def _hash_source_registry(h, ryuiki_path: pathlib.Path) -> None:
     _hash_labeled(h, "source_registry", None if rows is None else repr(rows).encode("utf-8"))
 
 
+def _hash_source_access_counts(h, ryuiki_path: pathlib.Path) -> None:
+    """`build_source_access.py` が数える原本の表（`source_id` 列を持つ全表）の
+    **行数**を指紋に混ぜる（`n_source_rows` と、宣言（records/reason）と原本の突き合わせの入力。access.yaml と
+    manifests/ は `_fingerprint_source_paths()` が見る）。内容ハッシュではなく行数の代理指標
+    （INSERT/DELETE だけを拾う。`organism_records` と同じ考え方）。表の探索は `sqlite_master` と `PRAGMA` だけ。
+    `ryuiki.sqlite` が無い環境は「無い」を混ぜる。"""
+    if not ryuiki_path.exists():
+        _hash_labeled(h, "source_access_counts", None)
+        return
+    conn = sqlite3.connect(f"file:{ryuiki_path}?mode=ro", uri=True)
+    try:
+        names = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
+        values = []
+        for t in names:
+            if t == "source_registry":
+                continue
+            cols = {r[1] for r in conn.execute(f'PRAGMA table_info("{t}")')}
+            if "source_id" in cols:
+                values.append((t, conn.execute(f'SELECT count(*) FROM "{t}"').fetchone()[0]))
+    finally:
+        conn.close()
+    _hash_labeled(h, "source_access_counts", repr(values).encode("utf-8"))
+
+
 def compute_input_fingerprint(
     root: pathlib.Path | None = None, mode: str = MODE_FULL
 ) -> str:
@@ -482,6 +506,7 @@ def compute_input_fingerprint(
         )
         _hash_organism_records_freshness(h, base / "data" / "db" / "ryuiki.sqlite")
         _hash_source_registry(h, base / "data" / "db" / "ryuiki.sqlite")
+        _hash_source_access_counts(h, base / "data" / "db" / "ryuiki.sqlite")
 
     return h.hexdigest()
 

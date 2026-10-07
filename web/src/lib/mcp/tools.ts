@@ -18,6 +18,7 @@ import {
   buildDataEnvelope,
   OCCURRENCE_SOURCE_IDS,
   seriesSourceRefs,
+  sourceAccess,
   sourceFreshness,
   speciesCatalog,
   speciesMonths,
@@ -64,7 +65,40 @@ function defineTool<S extends z.ZodType>(t: {
 
 /** 出典 1 件の行（describe_catalog の sources と search_registry の source で同じ形）。 */
 function sourceRow(m: (typeof SOURCE_META)[number], now: Date | undefined) {
-  return { ...sourceFreshness(m.sourceId, { now }), name: m.nameJa, publisher: m.publisher, superseded_by: m.supersededBy };
+  // SOURCE_ACCESS は SOURCE_META と同じ出典を網羅する（r01・build-registry-ts・tools.test.ts が固定）。無いのは生成物の不整合。
+  const a = sourceAccess(m.sourceId);
+  if (!a) throw new Error(`SOURCE_ACCESS に出典 ${m.sourceId} が無い（pnpm run build:registry:ts を再実行する）`);
+  return {
+    ...sourceFreshness(m.sourceId, { now }),
+    name: m.nameJa,
+    publisher: m.publisher,
+    superseded_by: m.supersededBy,
+    queryable_via: a.queryableVia,
+    records_tables: a.tables,
+    // 原本の行数（キューブの集計行数ではない。get_observations の n とは別物）。取れない出典は null。
+    n_source_rows: a.nSourceRows,
+    n_source_rows_basis: a.nSourceRowsBasis,
+    counted_at: a.countedAt,
+    unavailable_reason: a.reason,
+    unavailable_reason_ja: a.reasonJa,
+    unavailable_note: a.reasonNote,
+  };
+}
+
+/** `describe_catalog(sources)` の集計済みの件数。モデルに一覧を数えさせない（「123 件中 9 件」の誤りの対策）。 */
+function sourceSummary(metas: readonly (typeof SOURCE_META)[number][]) {
+  const by_tool: Record<string, number> = {};
+  const by_reason: Record<string, number> = {};
+  let queryable = 0;
+  for (const m of metas) {
+    const a = sourceAccess(m.sourceId);
+    if (!a) continue;
+    if (a.state === "queryable") queryable += 1;
+    for (const t of a.queryableVia) by_tool[t] = (by_tool[t] ?? 0) + 1;
+    if (a.reason) by_reason[a.reason] = (by_reason[a.reason] ?? 0) + 1;
+  }
+  // by_tool は重複あり（kanagawa_edna は get_occurrences と get_edna の両方）。重複なしの数は queryable。
+  return { total: metas.length, queryable, not_queryable: metas.length - queryable, by_tool, by_reason };
 }
 
 /** 出力行数の上限（コンテキストを溢れさせない。超えたら `truncated: true`）。 */
@@ -126,23 +160,29 @@ export const MCP_TOOLS: McpTool[] = [
     description:
       "流域カルテにどんな測定項目・水域・ゾーン・出典があるかを一覧する。まず全体像を掴むときに使う。" +
       "what='variables' は測定項目（variableId を get_observations に渡す）、'waters' は水域、'zones' は Ridge to Reef ゾーン、" +
-      "'sources' は出典（取得日・更新方式つき）。" +
+      "'sources' は出典（取得日・更新方式・取れるツール queryable_via・取れない理由つき）。" +
+      "出典の件数・ツール別の件数・取れない理由別の件数は応答の summary を使う（一覧を自分で数えない）。" +
+      "n_source_rows は原本の行数で、get_observations の n（集計に使った件数）とは別物。" +
       READING_RULES,
     inputSchema: z.object({
       what: z.enum(["variables", "waters", "zones", "sources"]).describe("一覧する対象"),
       variableId: z.string().optional().describe("what='waters' のとき、この項目のデータを持つ水域に絞る（variables の variableId）"),
+      queryable: z.boolean().optional().describe("what='sources' のとき、ツールで値が取れる出典（true）／取れない出典（false）に絞る"),
       limit: limitSchema,
     }).strict(),
-    execute: async ({ what, variableId, limit }, ctx) => {
-      const query = { what, variableId: variableId ?? null, limit: limit ?? null };
+    execute: async ({ what, variableId, queryable, limit }, ctx) => {
+      const query = { what, variableId: variableId ?? null, queryable: queryable ?? null, limit: limit ?? null };
       const opt = { now: ctx.now };
       if (what === "zones") return buildDataEnvelope(query, { zones: [...ZONE_INFO] }, [], opt);
       if (what === "sources") {
+        const picked =
+          queryable === undefined ? SOURCE_META : SOURCE_META.filter((m) => (sourceAccess(m.sourceId)?.state === "queryable") === queryable);
         const { rows, truncated } = cap(
-          SOURCE_META.map((m) => sourceRow(m, ctx.now)),
+          picked.map((m) => sourceRow(m, ctx.now)),
           limit ?? MAX_ROWS,
         );
-        return buildDataEnvelope(query, { sources: rows }, [], { ...opt, truncated });
+        // summary は絞り込みに関わらず全出典の集計（「全部で何件・何が取れるか」を数えさせない）。
+        return buildDataEnvelope(query, { summary: sourceSummary(SOURCE_META), sources: rows }, [], { ...opt, truncated });
       }
       const db = await ctx.db();
       if (what === "waters") {

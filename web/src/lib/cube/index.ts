@@ -110,5 +110,5 @@ export { gridCellOfPlaceId, watershedIdOfPlaceId, placeIdOfWatershedId } from ".
 export { facetsForOccurrence } from "./caveats";
 export { timeseries } from "./timeseries";
 export type { TimeseriesInput, TimeseriesResult, TimeseriesScope, TimeseriesGrain } from "./timeseries";
-export { sourceCitation, sourceFreshness, freshnessFor, freshnessForSeries, seriesSourceRefs, OCCURRENCE_SOURCE_IDS, DEFAULT_REGION_ID } from "./source-meta";
+export { sourceCitation, sourceFreshness, freshnessFor, freshnessForSeries, seriesSourceRefs, OCCURRENCE_SOURCE_IDS, OBSERVATION_SOURCE_IDS, RECORD_SOURCE_IDS, sourceAccess, DEFAULT_REGION_ID } from "./source-meta";
 export type { SourceCitation, SourceFreshness, UpdateModeOrUndeclared } from "./source-meta";

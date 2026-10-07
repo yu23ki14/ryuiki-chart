@@ -127,6 +127,13 @@
       "when": 1791367933383,
       "tag": "0017_first_bastion",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1791372761432,
+      "tag": "0018_closed_jasper_sitwell",
+      "breakpoints": true
     }
   ]
 }
