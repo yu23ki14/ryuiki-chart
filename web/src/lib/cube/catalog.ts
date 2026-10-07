@@ -900,40 +900,26 @@ export interface SpeciesCatalogRow {
   label?: string;
 }
 
-/** v1 `speciesList`。`ORDER BY n DESC, binom`。 */
-export async function speciesCatalog(
-  db: CubeDb,
-  opt: { group?: string | null; limit?: number; withNames?: boolean; search?: string; sourceIds?: readonly string[] } = {},
-): Promise<SpeciesCatalogRow[]> {
-  if (opt.sourceIds !== undefined) return speciesCatalogBySource(db, { ...opt, sourceIds: opt.sourceIds });
-  const limit = opt.limit ?? 200;
-  const params: SqlParam[] = [];
-  const conds: string[] = [];
-  if (opt.group) {
-    conds.push("taxon_group = ?");
-    params.push(opt.group);
-  }
-  // 検索語（部分一致・大文字小文字無視）: 学名（binom）か、人が確認した和名（NAME_JA）に当たる種。
-  // 和名は D1 に無く生成物にあるので、当たった学名を IN で渡す（検索語で絞ってから LIMIT する＝上位 N 件の中だけを探さない）。
-  const q = opt.search?.trim().toLowerCase();
-  if (q) {
-    const byName = Object.entries(NAME_JA)
-      .filter(([, ja]) => ja.toLowerCase().includes(q))
-      .map(([binom]) => binom)
-      .slice(0, 50);
-    const like = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-    conds.push(`(LOWER(binom) LIKE ? ESCAPE '\\'${byName.length ? ` OR binom IN (${byName.map(() => "?").join(",")})` : ""})`);
-    params.push(like, ...byName);
-  }
-  const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
-  params.push(limit);
-  const rows = await db.all<OccRow>(
-    `SELECT binom, taxon_group, "class", family, n, n_red_list, n_alien, n_places, y_from, y_to, n_years
-     FROM summary_species_catalog ${where}
-     ORDER BY n DESC, binom LIMIT ?`,
-    params,
-  );
-  const out: SpeciesCatalogRow[] = rows.map((r) => ({
+/**
+ * 検索語（部分一致・大文字小文字無視）: 学名（binom）か、人が確認した和名（NAME_JA）に当たる種。
+ * 和名は D1 に無く生成物にあるので、当たった学名を IN で渡す（検索語で絞ってから LIMIT する＝上位 N 件の中だけを探さない）。
+ */
+function speciesSearchCond(search: string | undefined, binomCol: string): { cond: string; params: SqlParam[] } | null {
+  const q = search?.trim().toLowerCase();
+  if (!q) return null;
+  const byName = Object.entries(NAME_JA)
+    .filter(([, ja]) => ja.toLowerCase().includes(q))
+    .map(([binom]) => binom)
+    .slice(0, 50);
+  const like = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+  return {
+    cond: `(LOWER(${binomCol}) LIKE ? ESCAPE '\\'${byName.length ? ` OR ${binomCol} IN (${byName.map(() => "?").join(",")})` : ""})`,
+    params: [like, ...byName],
+  };
+}
+
+function toSpeciesCatalogRow(r: OccRow): SpeciesCatalogRow {
+  return {
     binom: r.binom as string,
     taxonGroup: r.taxon_group as string | null,
     class: r.class as string | null,
@@ -945,39 +931,71 @@ export async function speciesCatalog(
     yFrom: r.y_from as number | null,
     yTo: r.y_to as number | null,
     nYears: r.n_years as number,
-  }));
-  if (opt.withNames && out.length > 0) {
-    const labels = await labelMap(db, out.map((r) => r.binom), {});
-    for (const r of out) r.label = labels.get(r.binom) ?? r.binom;
+  };
+}
+
+async function withSpeciesLabels(db: CubeDb, rows: SpeciesCatalogRow[], withNames: boolean | undefined): Promise<SpeciesCatalogRow[]> {
+  if (withNames && rows.length > 0) {
+    const labels = await labelMap(db, rows.map((r) => r.binom), {});
+    for (const r of rows) r.label = labels.get(r.binom) ?? r.binom;
   }
-  return out;
+  return rows;
+}
+
+interface SpeciesCatalogOpt {
+  group?: string | null;
+  limit?: number;
+  withNames?: boolean;
+  search?: string;
+  /** 出典で絞る。未指定は `summary_species_catalog`（全出典の事前集計）、指定時は `occurrence_agg` を直接集計する。 */
+  sourceIds?: readonly string[];
+}
+
+/** v1 `speciesList`。`ORDER BY n DESC, binom`。 */
+export async function speciesCatalog(db: CubeDb, opt: SpeciesCatalogOpt = {}): Promise<SpeciesCatalogRow[]> {
+  if (opt.sourceIds !== undefined) return speciesCatalogBySource(db, { ...opt, sourceIds: opt.sourceIds });
+  const limit = opt.limit ?? 200;
+  const params: SqlParam[] = [];
+  const conds: string[] = [];
+  if (opt.group) {
+    conds.push("taxon_group = ?");
+    params.push(opt.group);
+  }
+  const search = speciesSearchCond(opt.search, "binom");
+  if (search) {
+    conds.push(search.cond);
+    params.push(...search.params);
+  }
+  const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+  params.push(limit);
+  const rows = await db.all<OccRow>(
+    `SELECT binom, taxon_group, "class", family, n, n_red_list, n_alien, n_places, y_from, y_to, n_years
+     FROM summary_species_catalog ${where}
+     ORDER BY n DESC, binom LIMIT ?`,
+    params,
+  );
+  return withSpeciesLabels(db, rows.map(toSpeciesCatalogRow), opt.withNames);
 }
 
 /**
- * `speciesCatalog` の出典絞り込み版。`summary_species_catalog` は出典別の列を持たないので、
- * `occurrence_agg` を直接 GROUP BY する（定義は `aggregations/serving.yaml` の summary_species_catalog と同じ:
- * grid01・年族・binom が取れる taxon。出典で絞った分だけ集計する）。全出典の一覧より重い。
+ * `speciesCatalog` の出典絞り込み版。`summary_species_catalog` は出典別の列を持たないので `occurrence_agg` を
+ * 直接 GROUP BY する（定義は `aggregations/serving.yaml` の summary_species_catalog と同じ: grid01・年族・binom が
+ * 取れる taxon）。`group` は未指定の経路と同じく binom の `MAX(taxon_group)` で判定する（HAVING）。
+ * 全出典の一覧より重い。
  */
-async function speciesCatalogBySource(
-  db: CubeDb,
-  opt: { group?: string | null; limit?: number; withNames?: boolean; search?: string; sourceIds: readonly string[] },
-): Promise<SpeciesCatalogRow[]> {
+async function speciesCatalogBySource(db: CubeDb, opt: SpeciesCatalogOpt & { sourceIds: readonly string[] }): Promise<SpeciesCatalogRow[]> {
   const limit = opt.limit ?? 200;
   const params: SqlParam[] = [jsonEachParam(uniq(opt.sourceIds))];
-  const conds: string[] = [];
-  if (opt.group) {
-    conds.push("t.taxon_group = ?");
-    params.push(opt.group);
+  let extra = "";
+  const search = speciesSearchCond(opt.search, "t.canonical_binomial");
+  if (search) {
+    extra += ` AND ${search.cond}`;
+    params.push(...search.params);
   }
-  const q = opt.search?.trim().toLowerCase();
-  if (q) {
-    const byName = Object.entries(NAME_JA)
-      .filter(([, ja]) => ja.toLowerCase().includes(q))
-      .map(([binom]) => binom)
-      .slice(0, 50);
-    const like = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-    conds.push(`(LOWER(t.canonical_binomial) LIKE ? ESCAPE '\\'${byName.length ? ` OR t.canonical_binomial IN (${byName.map(() => "?").join(",")})` : ""})`);
-    params.push(like, ...byName);
+  let having = "";
+  if (opt.group) {
+    having = "HAVING MAX(t.taxon_group) = ?";
+    params.push(opt.group);
   }
   params.push(limit);
   const rows = await db.all<OccRow>(
@@ -991,29 +1009,12 @@ async function speciesCatalogBySource(
      JOIN taxon t ON t.taxon_id = o.taxon_id
      WHERE o.source_id IN (SELECT value FROM json_each(?))
        AND o.place_kind = 'grid01' AND o.grain IN ${YEAR_GRAINS}
-       AND t.canonical_binomial IS NOT NULL${conds.map((c) => ` AND ${c}`).join("")}
-     GROUP BY t.canonical_binomial
+       AND t.canonical_binomial IS NOT NULL${extra}
+     GROUP BY t.canonical_binomial ${having}
      ORDER BY n DESC, binom LIMIT ?`,
     params,
   );
-  const out: SpeciesCatalogRow[] = rows.map((r) => ({
-    binom: r.binom as string,
-    taxonGroup: r.taxon_group as string | null,
-    class: r.class as string | null,
-    family: r.family as string | null,
-    n: r.n as number,
-    nRedList: r.n_red_list as number,
-    nAlien: r.n_alien as number,
-    nPlaces: r.n_places as number,
-    yFrom: r.y_from as number | null,
-    yTo: r.y_to as number | null,
-    nYears: r.n_years as number,
-  }));
-  if (opt.withNames && out.length > 0) {
-    const labels = await labelMap(db, out.map((r) => r.binom), {});
-    for (const r of out) r.label = labels.get(r.binom) ?? r.binom;
-  }
-  return out;
+  return withSpeciesLabels(db, rows.map(toSpeciesCatalogRow), opt.withNames);
 }
 
 export interface TaxonGroupYearRow {

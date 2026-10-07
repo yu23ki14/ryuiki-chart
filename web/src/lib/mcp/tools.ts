@@ -33,7 +33,8 @@ import { SOURCE_META } from "@/lib/registry/generated-source";
 import { GENERATED_VARIABLES } from "@/lib/registry/generated";
 import { VARIABLE_LABEL, ZONE_INFO } from "@/lib/registry/generated-client";
 import { representativeSeries } from "@/lib/cube/series";
-import { EDNA_DESCRIPTION, EDNA_SOURCE_ID, ednaCaveats, ednaCaveatsForSources, ednaInputSchema, queryEdna } from "@/lib/edna";
+import { EDNA_DESCRIPTION, EDNA_SOURCE_ID, ednaInputSchema, queryEdna } from "@/lib/edna";
+import { caveatsForFacets, facetsForOccurrence } from "@/lib/cube/caveats";
 import { loadDatapackage } from "./datapackage";
 
 export interface McpContext {
@@ -67,6 +68,11 @@ function sourceRow(m: (typeof SOURCE_META)[number], now: Date | undefined) {
 /** 出力行数の上限（コンテキストを溢れさせない。超えたら `truncated: true`）。 */
 const MAX_ROWS = 500;
 const limitSchema = z.number().int().min(1).max(MAX_ROWS).optional().describe(`返す行数の上限（既定 100、最大 ${MAX_ROWS}）`);
+
+/** 出現記録の注記。結果に含まれる出典ごとの source facet まで含めて、registry から機械的に引く（出典の分岐は書かない）。 */
+function occurrenceCaveats(sourceIds: readonly string[]) {
+  return caveatsForFacets(facetsForOccurrence({ places: ["grid01"], sourceIds }));
+}
 
 function cap<T>(rows: readonly T[], limit: number | undefined): { rows: T[]; truncated: boolean } {
   const n = limit ?? 100;
@@ -239,7 +245,7 @@ export const MCP_TOOLS: McpTool[] = [
         rows = kind === "species_years" ? await speciesYears(db, binoms, filter) : await speciesMonths(db, binoms, filter);
       }
       const c = cap(rows, limit);
-      return buildDataEnvelope(query, { rows: c.rows, n_total: rows.length }, sourceIds, { now: ctx.now, truncated: c.truncated, caveats: ednaCaveatsForSources(sourceIds) });
+      return buildDataEnvelope(query, { rows: c.rows, n_total: rows.length }, sourceIds, { now: ctx.now, truncated: c.truncated, caveats: occurrenceCaveats(sourceIds) });
     },
   }),
 
@@ -249,11 +255,12 @@ export const MCP_TOOLS: McpTool[] = [
     inputSchema: ednaInputSchema,
     execute: async (args, ctx) => {
       const result = await queryEdna(await ctx.db(), args);
+      const c = cap(result.rows, args.limit);
       return buildDataEnvelope(
         { ...args },
-        { mode: result.mode, rows: result.rows, has_more: result.has_more, limit: result.limit, offset: result.offset },
+        { mode: result.mode, rows: c.rows, offset: result.offset },
         [EDNA_SOURCE_ID],
-        { now: ctx.now, truncated: result.has_more, caveats: ednaCaveats() },
+        { now: ctx.now, truncated: c.truncated, caveats: occurrenceCaveats([EDNA_SOURCE_ID]) },
       );
     },
   }),

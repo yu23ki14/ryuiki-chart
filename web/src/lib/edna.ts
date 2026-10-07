@@ -10,14 +10,25 @@
  *   ここには文字列を持たない。
  */
 import { z } from "zod";
-import { caveatsForFacets } from "@/lib/cube/caveats";
 import type { CubeDb, SqlParam } from "@/lib/cube/db";
 
 export const EDNA_SOURCE_ID = "kanagawa_edna";
 export const EDNA_MAX_ROWS = 500;
-const MAX_TEXT_CHARS = 15; // `%` + 15 文字×3 バイト + `%` ≦ 50 バイト（D1 の LIKE の上限）
+/** D1 の LIKE パターンは 50 バイトまで。`%` 2つとエスケープを含めた UTF-8 のバイト長で見る。 */
+const MAX_LIKE_BYTES = 50;
+const likeParam = (v: string) => `%${v.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+const byteLength = (v: string) => new TextEncoder().encode(v).length;
 
-const text = (what: string) => z.string().trim().min(1).max(MAX_TEXT_CHARS).describe(what);
+/** 部分一致（LIKE）に使う文字列。パターンが 50 バイトに収まること（日本語なら 16 文字ほど）。 */
+const likeText = (what: string) =>
+  z
+    .string()
+    .trim()
+    .min(1)
+    .refine((v) => byteLength(likeParam(v)) <= MAX_LIKE_BYTES, "長すぎる（部分一致の文字列は UTF-8 で 48 バイトまで。日本語なら 16 文字ほど）")
+    .describe(what);
+/** 完全一致の ID。長さは実データの値（地点キーは 162 文字ほど）に合わせて広く取る。 */
+const idText = (what: string) => z.string().trim().min(1).max(300).describe(what);
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD");
 
 /** MCP・AI 共通の入力（z.tuple は使わない。Workers AI が draft 2020-12 で検証して 400 になる）。 */
@@ -29,15 +40,15 @@ export const ednaInputSchema = z.object({
       "records=採水×分類群の明細（既定）、by_site=地点×採水ごとの要約（検出した分類群数・リード数合計）、" +
         "by_taxon=分類群ごとの要約（調べた回数 n_events と検出した回数 n_detected_events）",
     ),
-  site_key: text("地点キー（<ファイル名>:<地点ID>）。完全一致").optional(),
-  area: text("水系・支川・市町村の部分一致（例: 相模川、厚木市）").optional(),
-  taxon_id: text("分類群の taxon_id（例: common:taxon:inat.122882）。完全一致").optional(),
-  species: text("学名・和名・採用名の部分一致（例: ニホンウナギ）").optional(),
+  site_key: idText("地点キー（<ファイル名>:<地点ID>）。完全一致").optional(),
+  area: likeText("水系・支川・市町村の部分一致（例: 相模川、厚木市）").optional(),
+  taxon_id: idText("分類群の taxon_id（例: common:taxon:inat.122882）。完全一致").optional(),
+  species: likeText("学名・和名・採用名の部分一致（例: ニホンウナギ）").optional(),
   from: isoDate.optional().describe("採水日の下限（YYYY-MM-DD）"),
   to: isoDate.optional().describe("採水日の上限（YYYY-MM-DD、含む）"),
   detected_only: z.boolean().optional().describe("true なら検出（リード数>0）だけ。既定 false で不検出（リード数 0）も返す"),
   limit: z.number().int().min(1).max(EDNA_MAX_ROWS).optional().describe(`返す行数の上限（既定 100、最大 ${EDNA_MAX_ROWS}）`),
-  offset: z.number().int().min(0).optional().describe("読み飛ばす行数（ページング。既定 0）"),
+  offset: z.number().int().min(0).optional().describe("読み飛ばす行数（ページング。結果が truncated のとき offset を進めて続きを取る。既定 0）"),
 });
 export type EdnaInput = z.infer<typeof ednaInputSchema>;
 
@@ -46,26 +57,13 @@ export const EDNA_DESCRIPTION =
   "地点（site_key／水系・支川・市町村）・種（taxon_id／学名・和名）・採水日で絞り、mode で明細・地点要約・分類群要約を選ぶ。" +
   "eDNA は目視の観察とは性質が違うので、出現記録（get_occurrences）と比べるときは出典で分ける。";
 
-/** eDNA の注意書き。dataset=kanagawa_edna の facet で registry（caveat_scope）から機械的に引く。 */
-export function ednaCaveats() {
-  return caveatsForFacets([{ kind: "dataset", ref: EDNA_SOURCE_ID }]);
-}
-
-/** 結果の出典に eDNA を含むとき（get_occurrences の未指定＝全出典を含む）だけ、同じ注意書きを返す。 */
-export function ednaCaveatsForSources(sourceIds: readonly string[]) {
-  return sourceIds.includes(EDNA_SOURCE_ID) ? ednaCaveats() : [];
-}
-
 export interface EdnaResult {
   mode: "records" | "by_site" | "by_taxon";
+  /** 最大 limit+1 行（呼び出し側が `cap` で切って truncated を決める。他のツールと同じ流儀）。 */
   rows: Record<string, string | number | null>[];
-  /** limit を超える行があった（offset を進めて続きを取れる）。 */
-  has_more: boolean;
   limit: number;
   offset: number;
 }
-
-const likeParam = (s: string) => `%${s.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 
 const SITE_COLUMNS = `s.site_key AS site_key, s.fiscal_year AS fiscal_year, s.dataset_file AS dataset_file, s.program AS program, s.assay AS assay,
        s.water_system_ja AS water_system, s.tributary_ja AS tributary, s.municipality_ja AS municipality,
@@ -109,6 +107,9 @@ const FROM = `FROM edna_reads r
      JOIN edna_sites s ON s.site_key = r.site_key
      LEFT JOIN taxon t ON t.taxon_id = r.taxon_id`;
 
+/** 分類群の単位。taxon が解決できない行（taxon_id NULL）は name_key で分ける（1つにまとめない）。 */
+const TAXON_KEY = "COALESCE(r.taxon_id, r.name_key)";
+
 export async function queryEdna(db: CubeDb, a: EdnaInput): Promise<EdnaResult> {
   const mode = a.mode ?? "records";
   const limit = a.limit ?? 100;
@@ -118,26 +119,38 @@ export async function queryEdna(db: CubeDb, a: EdnaInput): Promise<EdnaResult> {
   if (mode === "records") {
     sql = `SELECT ${SITE_COLUMNS},
        r.taxon_id AS taxon_id, t.scientific_name AS scientific_name, t.vernacular_name_ja AS vernacular_name_ja, t.rank AS taxon_rank,
-       r.name_adopted AS name_adopted, r.name_note AS name_note, r.genus_ja AS genus_ja,
+       r.name_raw AS name_raw, r.name_adopted AS name_adopted, r.name_note AS name_note, r.genus_ja AS genus_ja,
        r.reliability AS reliability, r.pident_qcov AS pident_qcov,
        r.reads AS reads, r.is_detected AS is_detected, r.read_id AS read_id
      ${FROM} ${w.sql}
      ORDER BY s.collected_on, s.site_key, r.read_id LIMIT ? OFFSET ?`;
   } else if (mode === "by_site") {
-    sql = `SELECT ${SITE_COLUMNS},
-       COUNT(*) AS n_taxa_tested, SUM(r.is_detected) AS n_taxa_detected, SUM(r.reads) AS reads_total
-     ${FROM} ${w.sql}
+    // 採水イベント = 地点（site_key）× 採水日。同じイベントの同じ分類群の複数行は1つにまとめ、どれか1行が検出なら検出。
+    sql = `WITH ev AS (
+       SELECT r.site_key AS site_key, ${TAXON_KEY} AS taxon_key, MAX(r.is_detected) AS detected, SUM(r.reads) AS reads
+       ${FROM} ${w.sql}
+       GROUP BY r.site_key, ${TAXON_KEY})
+     SELECT ${SITE_COLUMNS},
+       COUNT(*) AS n_taxa_tested, SUM(ev.detected) AS n_taxa_detected, SUM(ev.reads) AS reads_total
+     FROM ev JOIN edna_sites s ON s.site_key = ev.site_key
      GROUP BY s.site_key
      ORDER BY s.collected_on, s.site_key LIMIT ? OFFSET ?`;
   } else {
-    sql = `SELECT r.taxon_id AS taxon_id, MAX(t.scientific_name) AS scientific_name, MAX(t.vernacular_name_ja) AS vernacular_name_ja,
-       COUNT(*) AS n_events, SUM(r.is_detected) AS n_detected_events,
-       COUNT(DISTINCT r.site_key) AS n_sites, COUNT(DISTINCT CASE WHEN r.is_detected = 1 THEN r.site_key END) AS n_sites_detected,
-       SUM(r.reads) AS reads_total
-     ${FROM} ${w.sql}
-     GROUP BY r.taxon_id
-     ORDER BY n_detected_events DESC, r.taxon_id LIMIT ? OFFSET ?`;
+    sql = `WITH ev AS (
+       SELECT ${TAXON_KEY} AS taxon_key, MAX(r.taxon_id) AS taxon_id, r.site_key AS site_key, s.collected_on AS collected_on,
+              MAX(r.is_detected) AS detected, SUM(r.reads) AS reads,
+              MAX(t.scientific_name) AS scientific_name, MAX(t.vernacular_name_ja) AS vernacular_name_ja, MAX(r.name_adopted) AS name_adopted
+       ${FROM} ${w.sql}
+       GROUP BY ${TAXON_KEY}, r.site_key, s.collected_on)
+     SELECT taxon_key, MAX(taxon_id) AS taxon_id, MAX(scientific_name) AS scientific_name, MAX(vernacular_name_ja) AS vernacular_name_ja,
+       MAX(name_adopted) AS name_adopted,
+       COUNT(*) AS n_events, SUM(detected) AS n_detected_events,
+       COUNT(DISTINCT site_key) AS n_sites, COUNT(DISTINCT CASE WHEN detected = 1 THEN site_key END) AS n_sites_detected,
+       SUM(reads) AS reads_total
+     FROM ev
+     GROUP BY taxon_key
+     ORDER BY n_detected_events DESC, taxon_key LIMIT ? OFFSET ?`;
   }
   const rows = await db.all(sql, [...w.params, limit + 1, offset]);
-  return { mode, rows: rows.slice(0, limit), has_more: rows.length > limit, limit, offset };
+  return { mode, rows, limit, offset };
 }

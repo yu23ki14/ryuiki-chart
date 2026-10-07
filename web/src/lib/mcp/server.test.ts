@@ -185,7 +185,10 @@ describe("5 ツールの応答は封筒（excluded=0・合成なし・cite_as・
     // get_occurrences: 全出典（eDNA を含む）では付き、eDNA を外すと付かない
     const occArgs = { kind: "species_years", binoms: [FXO.binoms.alpha] };
     expect(keys(await call("get_occurrences", occArgs, c))).toContain("ednaReads");
-    expect(keys(await call("get_occurrences", { ...occArgs, source_ids: ["inaturalist_kanagawa"] }, c))).not.toContain("ednaReads");
+    const inat = keys(await call("get_occurrences", { ...occArgs, source_ids: ["inaturalist_kanagawa"] }, c));
+    expect(inat).not.toContain("ednaReads");
+    expect(inat).toContain("effort"); // organism_records 系の注記は出典によらず付く
+    expect(keys(await call("get_occurrences", { ...occArgs, source_ids: ["kanagawa_edna"] }, c))).toContain("ednaReads");
   });
 
   it("export_dataset: datapackage が無ければ available=false、あれば path と sha256 だけ返す", async () => {

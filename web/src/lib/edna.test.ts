@@ -2,9 +2,8 @@ import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { applyMigrations, wrapSqlite } from "@/lib/cube/__fixtures__/cube-fixture";
 import { TABLE_ORIGIN } from "@/lib/table-meta";
-import { caveatBody } from "@/lib/registry/lookup-client";
-import type { CaveatKey } from "@/lib/registry/generated-client";
-import { ednaCaveats, ednaCaveatsForSources, ednaInputSchema, queryEdna, type EdnaInput } from "./edna";
+import { caveatsForFacets, facetsForOccurrence } from "@/lib/cube/caveats";
+import { ednaInputSchema, queryEdna, type EdnaInput } from "./edna";
 
 let raw: Database.Database;
 let db: ReturnType<typeof wrapSqlite>;
@@ -59,13 +58,11 @@ describe("queryEdna", () => {
     expect((await q({ area: "100%" })).rows).toEqual([]); // LIKE のメタ文字は効かない
   });
 
-  it("ページング: limit と offset、has_more", async () => {
+  it("ページング: limit+1 行まで返す（超えた分は呼び出し側が cap で truncated にする）。offset で続きを取る", async () => {
     const p1 = await q({ limit: 3 });
-    expect(p1.rows).toHaveLength(3);
-    expect(p1.has_more).toBe(true);
+    expect(p1.rows).toHaveLength(4);
     const p2 = await q({ limit: 3, offset: 3 });
     expect(ids(p2)).toEqual(["f1:A2:2"]);
-    expect(p2.has_more).toBe(false);
   });
 
   it("by_site: 地点×採水ごとの検出分類群数とリード数", async () => {
@@ -85,12 +82,37 @@ describe("queryEdna", () => {
   });
 });
 
+describe("重複・taxon 未解決", () => {
+  it("同じイベントで同じ taxon の行が複数あっても1回と数え、どれか1行が検出なら検出", async () => {
+    // コイ（飼育型）0 とコイ（野生型）5 が同じ taxon に寄る
+    raw.prepare(READ).run("f1:A1:3", "f1:A1", "コイ（飼育型）", 0, 0, "k3a", "t:carp");
+    raw.prepare(READ).run("f1:A1:4", "f1:A1", "コイ（野生型）", 5, 1, "k3b", "t:carp");
+    const t = (await q({ mode: "by_taxon" })).rows.find((x) => x.taxon_id === "t:carp")!;
+    expect([t.n_events, t.n_detected_events, t.n_sites, t.n_sites_detected, t.reads_total]).toEqual([1, 1, 1, 1, 5]);
+    const site = (await q({ mode: "by_site", site_key: "f1:A1" })).rows[0]!;
+    expect([site.n_taxa_tested, site.n_taxa_detected]).toEqual([3, 2]); // eel 0・ayu 120・carp(0|5)
+    const recs = (await q({ taxon_id: "t:carp" })).rows;
+    expect(recs.map((x) => x.name_adopted)).toEqual(["コイ（飼育型）", "コイ（野生型）"]); // 重複が行で分かる
+  });
+
+  it("taxon_id が NULL の行は name_key ごとに分ける（1つにまとめない）", async () => {
+    raw.prepare(READ).run("f1:A1:5", "f1:A1", "未同定A", 3, 1, "kA", null);
+    raw.prepare(READ).run("f1:A1:6", "f1:A1", "未同定B", 0, 0, "kB", null);
+    const rows = (await q({ mode: "by_taxon" })).rows.filter((x) => x.taxon_id === null);
+    expect(rows.map((x) => [x.taxon_key, x.n_detected_events]).sort()).toEqual([["kA", 1], ["kB", 0]]);
+  });
+});
+
 describe("入力スキーマ", () => {
   it("未知の引数・不正な日付・上限超過は弾く。z.tuple（prefixItems）は無い", () => {
     expect(ednaInputSchema.safeParse({ mode: "nope" }).success).toBe(false);
     expect(ednaInputSchema.safeParse({ from: "2021/06/01" }).success).toBe(false);
     expect(ednaInputSchema.safeParse({ limit: 100000 }).success).toBe(false);
-    expect(ednaInputSchema.safeParse({ area: "あ".repeat(16) }).success).toBe(false);
+    expect(ednaInputSchema.safeParse({ area: "あ".repeat(17) }).success).toBe(false); // LIKE パターンは 50 バイトまで
+    expect(ednaInputSchema.safeParse({ area: "あ".repeat(16) }).success).toBe(true);
+    expect(ednaInputSchema.safeParse({ species: "%".repeat(25) }).success).toBe(false); // エスケープ後のバイト長で見る
+    // 実データの地点キー（23〜162 文字）・taxon_id は完全一致なので長くてよい
+    expect(ednaInputSchema.safeParse({ site_key: "r7_project_kekka:" + "x".repeat(145), taxon_id: "common:taxon:inat.122882" }).success).toBe(true);
     expect(ednaInputSchema.safeParse({ unknown_arg: 1 }).success).toBe(true); // 既存ツールと同じ（zod 既定は余分なキーを捨てる）
     expect(JSON.stringify(ednaInputSchema.toJSONSchema())).not.toContain("prefixItems");
   });
@@ -108,16 +130,12 @@ describe("D1 への載せ方", () => {
 });
 
 describe("注意書き", () => {
-  it("dataset=kanagawa_edna の facet で registry から引く（4件。リード数・推定座標・年度差・不検出）", () => {
-    const c = ednaCaveats();
-    expect(c.map((x) => x.key).sort()).toEqual(["ednaCoords", "ednaNonDetect", "ednaReads", "ednaYearBasis"]);
-    const body = c.map((x) => caveatBody(x.key as CaveatKey)).join("\n");
-    expect(body).toMatch(/リード数/);
-    expect(body).toMatch(/推定/);
-    expect(body).toMatch(/不検出/);
+  const keys = (sourceIds: string[]) => caveatsForFacets(facetsForOccurrence({ places: ["grid01"], sourceIds })).map((c) => c.key);
+  it("出典の facet（source_id=kanagawa_edna）で registry から引く。リード数・推定座標・年度差・不検出", () => {
+    const k = keys(["kanagawa_edna"]);
+    for (const key of ["ednaReads", "ednaCoords", "ednaYearBasis", "ednaNonDetect"]) expect(k).toContain(key);
   });
-  it("出典に kanagawa_edna を含むときだけ付く", () => {
-    expect(ednaCaveatsForSources(["kanagawa_edna", "inaturalist_kanagawa"])).toHaveLength(4);
-    expect(ednaCaveatsForSources(["inaturalist_kanagawa"])).toEqual([]);
+  it("eDNA を含まない出典では付かない", () => {
+    expect(keys(["inaturalist_kanagawa"]).some((x) => x.startsWith("edna"))).toBe(false);
   });
 });

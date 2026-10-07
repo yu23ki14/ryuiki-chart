@@ -45,6 +45,14 @@ describe("speciesCatalog", () => {
     expect(await speciesCatalog(fx.db, { sourceIds: ["kanagawa_edna"] })).toEqual([]);
     expect((await speciesCatalog(fx.db, { sourceIds: ["gbif_kanagawa_occurrences"], group: "FxPlant", limit: 1 })).length).toBeLessThanOrEqual(1);
   });
+  it("出典指定の経路と未指定の経路が同じ定義になる（全出典・group・search・limit の組で一致）", async () => {
+    const all = ["gbif_kanagawa_occurrences", "inaturalist_kanagawa", "kanagawa_edna", "kanagawa_kuma_sightings"];
+    const strip = (rows: Awaited<ReturnType<typeof speciesCatalog>>) =>
+      rows.map((r) => [r.binom, r.taxonGroup, r.class, r.family, r.n, r.nRedList, r.nAlien, r.nPlaces, r.yFrom, r.yTo, r.nYears, r.label]);
+    for (const opt of [{}, { group: "FxPlant" }, { group: "FxBird" }, { search: "fx" }, { search: "アルファ" }, { limit: 2 }, { group: "FxPlant", withNames: true }]) {
+      expect(strip(await speciesCatalog(fx.db, { ...opt, sourceIds: all }))).toEqual(strip(await speciesCatalog(fx.db, opt)));
+    }
+  });
   it("group と limit", async () => {
     expect((await speciesCatalog(fx.db, { group: "FxPlant" })).map((r) => r.binom)).toEqual([delta, gamma, named]);
     expect((await speciesCatalog(fx.db, { limit: 1 })).length).toBe(1);

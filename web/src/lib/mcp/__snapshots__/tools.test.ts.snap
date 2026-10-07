@@ -234,7 +234,6 @@ exports[`MCP ツール一覧（第1段 5 本） > 入力スキーマのスナッ
       "properties": {
         "area": {
           "description": "水系・支川・市町村の部分一致（例: 相模川、厚木市）",
-          "maxLength": 15,
           "minLength": 1,
           "type": "string",
         },
@@ -263,26 +262,25 @@ exports[`MCP ツール一覧（第1段 5 本） > 入力スキーマのスナッ
           "type": "string",
         },
         "offset": {
-          "description": "読み飛ばす行数（ページング。既定 0）",
+          "description": "読み飛ばす行数（ページング。結果が truncated のとき offset を進めて続きを取る。既定 0）",
           "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer",
         },
         "site_key": {
           "description": "地点キー（<ファイル名>:<地点ID>）。完全一致",
-          "maxLength": 15,
+          "maxLength": 300,
           "minLength": 1,
           "type": "string",
         },
         "species": {
           "description": "学名・和名・採用名の部分一致（例: ニホンウナギ）",
-          "maxLength": 15,
           "minLength": 1,
           "type": "string",
         },
         "taxon_id": {
           "description": "分類群の taxon_id（例: common:taxon:inat.122882）。完全一致",
-          "maxLength": 15,
+          "maxLength": 300,
           "minLength": 1,
           "type": "string",
         },

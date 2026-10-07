@@ -52,7 +52,7 @@ def test_every_caveat_has_a_complete_review_record():
     assert len(entries) >= 18
     for e in entries:
         r = e["review"]
-        assert r["reviewed_on"] == "2026-10-06"
+        assert r["reviewed_on"] in {"2026-10-06", "2026-10-07"}  # eDNA の注記4件は 10-07
         assert r["reviewer"] == "claude（オーナー委任）"
         assert r["owner_confirmed_on"] == "2026-10-07"
         assert r["reason"]
@@ -170,6 +170,14 @@ def test_duplicate_scope_row_stops(decl):
     _rewrite(scope, lambda d: d["scopes"].append(dict(d["scopes"][0])))
     with pytest.raises(build_caveat.CaveatDeclarationError, match="重複"):
         _build_rows()
+
+
+def test_source_id_selector_accepts_manifest_sources(decl):
+    """taxon_assessment 由来の集合（moe_ias_list）に無くても、manifests/ のある出典（kanagawa_edna）は受け付ける。"""
+    rows = _build_rows()
+    assert any(r[1] == "source_edition" and r[2] == "source_id=kanagawa_edna" for r in rows)
+    assert "kanagawa_edna" in build_caveat._manifest_source_ids()
+    assert "kanagawa_edna" not in (yaml.safe_load(decl[1].read_text(encoding="utf-8"))["values"]["source_id"])
 
 
 def test_unknown_deriver_stops(decl):

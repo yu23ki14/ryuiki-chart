@@ -151,6 +151,16 @@ def _load_variable_ids_and_themes() -> tuple[set[str], set[str]]:
     return {v["variable_id"] for v in variables}, {v["theme"] for v in variables if v.get("theme")}
 
 
+MANIFESTS_DIR = common.ROOT / "manifests"
+
+
+def _manifest_source_ids() -> set[str]:
+    """`manifests/<source_id>.yml` がある出典の ID（registry の source 表に載る出典。ファイルだけで引けるので
+    原本を開かない --files-only でも検査できる）。source_id の選択式は、`values.source_id`
+    （taxon_assessment 由来の moe_ias_list 等）とこの集合の和に対して検査する。"""
+    return {p.stem for p in MANIFESTS_DIR.glob("*.yml")}
+
+
 def _validate_ref(kind: str, ref: str, doc: dict, variable_ids: set[str], themes: set[str]) -> None:
     """scope_ref が語彙・実在する値に収まっていることを検査する。cells.notes 由来の
     `doc_id`・`doc_table`（ここでは宣言しない）は検査しない。"""
@@ -169,7 +179,7 @@ def _validate_ref(kind: str, ref: str, doc: dict, variable_ids: set[str], themes
         return
     allowed_values = {
         "place_kind": set(values.get("place_kind", [])),
-        "source_id": set(values.get("source_id", [])),
+        "source_id": set(values.get("source_id", [])) | _manifest_source_ids(),
         "theme": themes,
         "variable": variable_ids,
         "is_synthetic": {"1"},

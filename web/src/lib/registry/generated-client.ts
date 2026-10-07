@@ -312,10 +312,6 @@ export const GENERATED_CAVEATS: readonly GeneratedCaveat[] = [
  * （scripts/registry/build_caveat.py の docstring参照）。
  */
 export const GENERATED_CAVEAT_SCOPE: readonly GeneratedCaveatScope[] = [
-  { scopeKind: "dataset", scopeRef: "kanagawa_edna", caveatKey: "ednaReads", sortOrder: 0, priority: 0 },
-  { scopeKind: "dataset", scopeRef: "kanagawa_edna", caveatKey: "ednaCoords", sortOrder: 1, priority: 0 },
-  { scopeKind: "dataset", scopeRef: "kanagawa_edna", caveatKey: "ednaYearBasis", sortOrder: 2, priority: 0 },
-  { scopeKind: "dataset", scopeRef: "kanagawa_edna", caveatKey: "ednaNonDetect", sortOrder: 3, priority: 0 },
   { scopeKind: "dataset", scopeRef: "measurements", caveatKey: "measuredOn", sortOrder: 0, priority: 0 },
   { scopeKind: "dataset", scopeRef: "measurements", caveatKey: "censoredLod", sortOrder: 1, priority: 0 },
   { scopeKind: "dataset", scopeRef: "measurements", caveatKey: "duplicates", sortOrder: 2, priority: 0 },
@@ -338,6 +334,10 @@ export const GENERATED_CAVEAT_SCOPE: readonly GeneratedCaveatScope[] = [
   { scopeKind: "place", scopeRef: "place_kind=site", caveatKey: "zone", sortOrder: 0, priority: 0 },
   { scopeKind: "place", scopeRef: "place_kind=site", caveatKey: "municipality", sortOrder: 1, priority: 0 },
   { scopeKind: "place", scopeRef: "place_kind=zone", caveatKey: "zone", sortOrder: 0, priority: 0 },
+  { scopeKind: "source_edition", scopeRef: "source_id=kanagawa_edna", caveatKey: "ednaReads", sortOrder: 0, priority: 0 },
+  { scopeKind: "source_edition", scopeRef: "source_id=kanagawa_edna", caveatKey: "ednaCoords", sortOrder: 1, priority: 0 },
+  { scopeKind: "source_edition", scopeRef: "source_id=kanagawa_edna", caveatKey: "ednaYearBasis", sortOrder: 2, priority: 0 },
+  { scopeKind: "source_edition", scopeRef: "source_id=kanagawa_edna", caveatKey: "ednaNonDetect", sortOrder: 3, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=moe_ias_list", caveatKey: "isAlien", sortOrder: 0, priority: 0 },
   { scopeKind: "variable", scopeRef: "common:variable:hydro.flow", caveatKey: "flowTidalBackflow", sortOrder: 0, priority: 0 },
   { scopeKind: "variable", scopeRef: "common:variable:water.transparency", caveatKey: "aboveLod", sortOrder: 0, priority: 0 },
