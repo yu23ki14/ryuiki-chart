@@ -302,7 +302,7 @@ export const OCCURRENCE_SOURCE_IDS: readonly string[] = ["gbif_kanagawa_occurren
 /** 出典ごとの状態（registry/source/access.yaml と manifests/ から r01 が作る。MCP_SOURCE_ACCESS.md §1）。 */
 export interface GeneratedSourceAccess {
   state: "queryable" | "not_queryable";
-  /** 取れるツール名（get_observations / get_occurrences / get_edna / get_records）。取れないなら空。 */
+  /** 取れるツール名（get_observations / get_occurrences / get_edna / get_records / find_datasets）。取れないなら空。 */
   queryableVia: string[];
   /** get_records で引ける record_set（記録の集合名。空なら get_records の対象外）。 */
   tables: string[];
@@ -310,7 +310,7 @@ export interface GeneratedSourceAccess {
   recordSetRows: Record<string, number>;
   /** 原本の行数（キューブの集計行数ではない）。取れない出典は null。 */
   nSourceRows: number | null;
-  nSourceRowsBasis: "source_rows" | "registry_record_count" | "none";
+  nSourceRowsBasis: "source_rows" | "registry_record_count" | "catalog_datasets" | "none";
   /** 件数を数えた原本の最新取得日時（決定論のため実行時刻ではない）。 */
   countedAt: string | null;
   /** 取れない理由コード（queryableVia が空のとき必須）。 */
@@ -480,15 +480,17 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "reasonNote": null
   },
   "ckan_bodik_kanagawa": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "find_datasets"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "catalog_only",
-    "reasonJa": "データ目録（メタデータ）で、観測値・記録そのものではない",
+    "nSourceRows": 680,
+    "nSourceRowsBasis": "catalog_datasets",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
     "reasonNote": null
   },
   "ckan_env_bulk": {
@@ -504,15 +506,17 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "reasonNote": null
   },
   "ckan_kanagawa_pref": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "find_datasets"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "catalog_only",
-    "reasonJa": "データ目録（メタデータ）で、観測値・記録そのものではない",
+    "nSourceRows": 811,
+    "nSourceRowsBasis": "catalog_datasets",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
     "reasonNote": null
   },
   "ckan_pdf_choju_higai": {
@@ -564,27 +568,31 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "reasonNote": null
   },
   "ckan_sagamihara": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "find_datasets"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "catalog_only",
-    "reasonJa": "データ目録（メタデータ）で、観測値・記録そのものではない",
+    "nSourceRows": 114,
+    "nSourceRowsBasis": "catalog_datasets",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
     "reasonNote": null
   },
   "ckan_yokohama": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "find_datasets"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "catalog_only",
-    "reasonJa": "データ目録（メタデータ）で、観測値・記録そのものではない",
+    "nSourceRows": 654,
+    "nSourceRowsBasis": "catalog_datasets",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
     "reasonNote": null
   },
   "dams_kanagawa": {
@@ -664,39 +672,45 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "reasonNote": null
   },
   "estat_agri_census_kanagawa": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "find_datasets"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "file_only",
-    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "nSourceRows": 5,
+    "nSourceRowsBasis": "catalog_datasets",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
     "reasonNote": null
   },
   "estat_census_population_kanagawa": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "find_datasets"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "file_only",
-    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "nSourceRows": 1,
+    "nSourceRowsBasis": "catalog_datasets",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
     "reasonNote": null
   },
   "estat_shozaiki_kanagawa": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "find_datasets"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "d1_no_source_column",
-    "reasonJa": "D1 の表に出典の列が無く、表の行をどの出典のものか機械的に引けない",
+    "nSourceRows": 1,
+    "nSourceRowsBasis": "catalog_datasets",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
     "reasonNote": null
   },
   "etanzawa_siryousitu": {
@@ -1956,6 +1970,9 @@ export const SOURCE_EXCLUDED_FROM_LIST: Readonly<Record<string, number>> = {"syn
 
 /** get_records で引ける出典（SOURCE_ACCESS の tables が空でないもの）。 */
 export const RECORD_SOURCE_IDS: readonly string[] = ["biodic_mammal_mesh_kanagawa","biodic_veg2024_kanagawa","dams_kanagawa","env_kousui_stations_kanagawa","geoshape_sagami_river","hadano_preserved_trees","hiratsuka_parks","jma_stations_kanagawa","kanagawa_green_conservation","kanagawa_kuma_sightings","kanagawa_natural_parks","kanagawa_rdb2022_plants","kanagawa_redlist","moe_ias_list","moni1000_sites","sagami_livecams"];
+
+/** find_datasets で引ける出典（外部ポータルの目録。registry/source/access.yaml の catalog を宣言した出典。MCP_EXTERNAL_CATALOG.md §5）。 */
+export const FIND_DATASET_SOURCE_IDS: readonly string[] = ["ckan_bodik_kanagawa","ckan_kanagawa_pref","ckan_sagamihara","ckan_yokohama","estat_agri_census_kanagawa","estat_census_population_kanagawa","estat_shozaiki_kanagawa"];
 
 export const LICENSES: readonly GeneratedLicense[] = [
   { licenseId: "all_rights_reserved", nameJa: "無断複製・転用不可", spdxOrUrl: null, licenseClass: "restricted", attributionText: null },

@@ -670,3 +670,38 @@ def test_declared_source_rows_cover_row_reasons_with_one_row_from_first_table():
     assert s01.select_declared_source_rows(conn, access, {"aaa": {1}, "protected_areas": {5}}) == {}
     with pytest.raises(SystemExit, match="nothere"):
         s01.select_declared_source_rows(conn, {"record_sets": {}, "sources": {"nothere": {"reason": "synthetic"}}}, {})
+
+
+# ---------------------------------------------------------------- access.yaml の catalog（外部ポータルの目録）の閉包
+
+def _catalog_db():
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE external_dataset (dataset_key TEXT, source_id TEXT, n_resources INTEGER)")
+    conn.execute("CREATE TABLE external_resource (resource_key TEXT, dataset_key TEXT)")
+    conn.execute("CREATE TABLE external_resource_format (dataset_key TEXT, format_norm TEXT, resource_key TEXT)")
+    # c: rowid 1=資源 3 件 / 2=資源 0 件 / 3=資源 1 件（選ばれる: 資源が 1 以上で最少、dataset_key 昇順）/ 4=資源 1 件で dataset_key が後 / 5=d（資源 0 件だけ）
+    conn.executemany("INSERT INTO external_dataset VALUES (?,?,?)", [("c:z", "c", 3), ("c:y", "c", 0), ("c:b", "c", 1), ("c:c", "c", 1), ("d:1", "d", 0)])
+    conn.executemany("INSERT INTO external_resource VALUES (?,?)",
+                     [("c:z1", "c:z"), ("c:z2", "c:z"), ("c:z3", "c:z"), ("c:b1", "c:b"), ("c:c1", "c:c")])
+    conn.executemany("INSERT INTO external_resource_format VALUES (?,?,?)",
+                     [("c:z", "CSV", "c:z1"), ("c:b", "CSV", "c:b1"), ("c:b", "SHP", "c:b1"), ("c:c", "PDF", "c:c1")])
+    return conn
+
+
+_CATALOG_ACCESS = {"record_sets": {}, "sources": {"c": {"catalog": "external_dataset"}, "d": {"catalog": "external_dataset"}}}
+
+
+def test_declared_source_rows_catalog_picks_smallest_dataset_with_its_resources():
+    got = s01.select_declared_source_rows(_catalog_db(), _CATALOG_ACCESS, {})
+    # c: 資源数が 1 以上で最少のうち dataset_key 昇順 → c:b（rowid 3）とその資源 1 件（rowid 4）。d: 資源 0 件しか無いので d:1（rowid 5）
+    assert got == {"external_dataset": {3, 5}, "external_resource": {4}, "external_resource_format": {2, 3}}
+
+
+def test_declared_source_rows_catalog_skips_sources_already_in_sample_and_stops_without_rows():
+    got = s01.select_declared_source_rows(_catalog_db(), _CATALOG_ACCESS, {"external_dataset": {1, 5}})
+    assert got == {}  # c は rowid 1、d は rowid 5 で満たされている。資源は足さない
+    access = {"record_sets": {}, "sources": {"zzz": {"catalog": "external_dataset"}}}
+    with pytest.raises(SystemExit, match="zzz"):
+        s01.select_declared_source_rows(_catalog_db(), access, {})
+    with pytest.raises(SystemExit, match="原本に無い"):
+        s01.select_declared_source_rows(sqlite3.connect(":memory:"), _CATALOG_ACCESS, {})

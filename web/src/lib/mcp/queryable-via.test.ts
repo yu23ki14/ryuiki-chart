@@ -59,6 +59,26 @@ describe("queryable_via の（出典, ツール）が実際に動く: get_record
     }
     raw.close();
   });
+
+  it("全出典で find_datasets が 1 行以上返る（件数 > 0 の宣言の裏づけ。出典ごとに目録 1 件を入れる）", async () => {
+    const raw = new Database(":memory:");
+    applyMigrations(raw);
+    const ctx: McpContext = { db: async () => wrapSqlite(raw), now: NOW };
+    const catalogPairs = pairs.filter(([, t]) => t === "find_datasets");
+    expect(catalogPairs.length).toBe(7);
+    for (const [src] of catalogPairs) {
+      raw
+        .prepare(
+          `INSERT INTO external_dataset (dataset_key, source_id, portal, dataset_id, title, page_url, fetched_at) VALUES (?, ?, ?, '1', '題', 'https://x.test/', '2026-08-29T00:00:00')`,
+        )
+        .run(`${src}:1`, src, src.startsWith("estat") ? "estat" : "ckan");
+    }
+    for (const [src] of catalogPairs) {
+      const r = await call("find_datasets", { source_id: src }, ctx);
+      expect((r.data.rows as unknown[]).length, src).toBeGreaterThanOrEqual(1);
+    }
+    raw.close();
+  });
 });
 
 const REPO = path.resolve(__dirname, "../../../..");
@@ -80,6 +100,8 @@ describe.skipIf(!haveReal)("queryable_via の（出典, ツール）が実際に
       let n = 0;
       if (tool === "get_records") {
         for (const set of SOURCE_ACCESS[src].tables) n += ((await call(tool, { source_id: src, record_set: set, limit: 1 }, ctx)).data.rows as unknown[]).length;
+      } else if (tool === "find_datasets") {
+        n = ((await call(tool, { source_id: src, limit: 1 }, ctx)).data.rows as unknown[]).length;
       } else if (tool === "get_occurrences") {
         n = ((await call(tool, { kind: "species_catalog", source_ids: [src], limit: 1 }, ctx)).data.rows as unknown[])?.length ?? 0;
       } else if (tool === "get_edna") {

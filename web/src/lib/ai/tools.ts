@@ -32,6 +32,8 @@ import { MEASUREMENTS_DATASET } from "@/lib/cube/series";
 import { timeseries } from "@/lib/cube/timeseries";
 import { EDNA_DESCRIPTION, EDNA_SOURCE_ID, ednaInputSchema, queryEdna } from "@/lib/edna";
 import { queryRecords, RECORD_TABLES, RecordsInputError, recordsInputSchema, RECORDS_DESCRIPTION } from "@/lib/records";
+import { byteLength, fitHeadRows } from "@/lib/fit-head-rows";
+import { FIND_DATASETS_DESCRIPTION, FindDatasetsInputError, findDatasetsInputSchema, queryDatasets } from "@/lib/catalog-search";
 
 /** 測定値系データセット固定（PR-2 のスコープは測定値系。design §1.1 と同じ前提）。registry の dataset キー。 */
 const DATASET = MEASUREMENTS_DATASET;
@@ -74,10 +76,6 @@ export interface ToolResult<T> {
  * organism_records 系の暴走（数万トークン）を止めるという本来の目的はこの値でも果たせる。
  */
 const BYTE_BUDGET = 24 * 1024;
-
-function byteLength(value: unknown): number {
-  return new TextEncoder().encode(JSON.stringify(value)).length;
-}
 
 /** data の中に生えている配列（1階層ずつ掘って集める。深追いはしない）を集める。 */
 function collectArrays(value: unknown, acc: unknown[][], depth: number): unknown[][] {
@@ -186,33 +184,68 @@ function registryFor(pairs: readonly { variableId: string; unitId?: string | nul
   return registry;
 }
 
-function makeResult<T>(opts: {
-  tool: string;
-  tables: string[];
-  data: T;
-  rowCount: number;
-  elapsedMs: number;
-  sql?: string;
-  /** table 経由ではなく facet 経由で決めた注記キー（`lib/cube/caveats` の
-   *  `facetsForSeries`/`caveatKeysForFacets` を使うツール用）。指定時はこちらを使う。 */
-  caveats?: string[];
-}): ToolResult<T> {
-  const { data, truncated } = fitToBudget(opts.data);
+/**
+ * 行の単位で先頭から切るモード。続きを取る手段（offset / next_after）が「返した最後の行」の次を指すツール用。
+ * `fitToBudget`（いちばん大きい配列を等間隔に間引く。入れ子の配列＝資源のリストまで間引く）には渡さない。
+ * `build` は（残した行, 続きがあるか）から `data` を組み直す。続きがある（元から or 予算で減らした）ときだけ `truncated` と、
+ * `continueNote`（続きの取り方）が `truncatedNote` に入る。
+ */
+interface HeadRows<T, R> {
+  rows: readonly R[];
+  /** 元の応答に続きがあるか（ツール側の limit で切った）。 */
+  more: boolean;
+  build: (rows: R[], more: boolean) => T;
+  continueNote: (rows: R[]) => string;
+}
+
+function makeResult<T, R = never>(
+  opts: {
+    tool: string;
+    tables: string[];
+    elapsedMs: number;
+    sql?: string;
+    /** table 経由ではなく facet 経由で決めた注記キー（`lib/cube/caveats` の
+     *  `facetsForSeries`/`caveatKeysForFacets` を使うツール用）。指定時はこちらを使う。 */
+    caveats?: string[];
+  } & ({ data: T; rowCount: number; headRows?: undefined } | { headRows: HeadRows<T, R>; data?: undefined; rowCount?: undefined }),
+): ToolResult<T> {
+  let data: T;
+  let rowCount: number;
+  let truncated: boolean;
+  let truncatedNote: string | undefined;
+  if (opts.headRows) {
+    const h = opts.headRows;
+    const fit = fitHeadRows(h.rows, h.more, h.build, BYTE_BUDGET);
+    data = fit.data;
+    rowCount = fit.rows.length;
+    truncated = fit.more;
+    truncatedNote = fit.more
+      ? h.continueNote(fit.rows) +
+        (fit.shrunk ? "応答が大きいため行を先頭から残して減らしてある（間引いてはいない）。" : "") +
+        (fit.oversize ? "1 件だけでも上限を超えるが、行の途中は削らずそのまま返している。" : "")
+      : undefined;
+  } else {
+    const fit = fitToBudget(opts.data);
+    data = fit.data;
+    rowCount = opts.rowCount;
+    truncated = fit.truncated;
+    truncatedNote = fit.truncated
+      ? "応答が大きいため系列を等間隔に間引いてある（先頭と末尾は保持）。実際の件数は provenance.rowCount。" +
+        "間引いた系列から「何件あった」「この期間に無かった」とは言えない。"
+      : undefined;
+  }
   return {
     data,
     provenance: {
       tool: opts.tool,
       tables: opts.tables,
       sql: opts.sql,
-      rowCount: opts.rowCount,
+      rowCount,
       elapsedMs: Math.round(opts.elapsedMs),
     },
     caveats: opts.caveats ?? caveatKeysForFacets(facetsForTables(opts.tables)),
     truncated: truncated || undefined,
-    truncatedNote: truncated
-      ? "応答が大きいため系列を等間隔に間引いてある（先頭と末尾は保持）。実際の件数は provenance.rowCount。" +
-        "間引いた系列から「何件あった」「この期間に無かった」とは言えない。"
-      : undefined,
+    truncatedNote,
   };
 }
 
@@ -812,45 +845,76 @@ const get_records = tool({
         ...(nextAfter !== null ? { next_after: nextAfter } : {}),
         ...(r.n_total !== null ? { n_total: r.n_total } : {}),
       });
-      const done = (data: object, rowCount: number, truncatedNote?: string) => {
-        const out = makeResult({
-          tool: "get_records",
-          tables: [r.table],
-          caveats: caveatKeysForFacets(facetsForOccurrence({ places: [], sourceIds: [r.source_id] })),
-          data,
-          rowCount,
-          elapsedMs: performance.now() - t0,
-        });
-        return truncatedNote ? { ...out, truncated: true, truncatedNote: `${truncatedNote}${out.truncatedNote ?? ""}` } : out;
+      const base = {
+        tool: "get_records",
+        tables: [r.table],
+        caveats: caveatKeysForFacets(facetsForOccurrence({ places: [], sourceIds: [r.source_id] })),
+        elapsedMs: performance.now() - t0,
       };
-
-      let rows = r.rows;
-      let nextAfter = r.next_after;
       if (input.include_geometry) {
         // ジオメトリは間引かない（座標の一部だけでは地図にならない）。予算を超えるなら返さず、その旨を返す。
+        let rows = r.rows;
+        let omitted: string | undefined;
         if (byteLength(dataOf(rows, null)) > BYTE_BUDGET) {
-          const bare = rows.map((row) => Object.fromEntries(Object.entries(row).filter(([k]) => k !== "geometry_geojson")));
-          return done({ ...dataOf(bare, null), geometry_omitted: "ジオメトリが大きすぎて応答に載せられないので省いた（属性だけ返している）" }, bare.length);
+          rows = rows.map((row) => Object.fromEntries(Object.entries(row).filter(([k]) => k !== "geometry_geojson")));
+          omitted = "ジオメトリが大きすぎて応答に載せられないので省いた（属性だけ返している）";
         }
-        return done(dataOf(rows, null), rows.length);
+        return makeResult({ ...base, data: { ...dataOf(rows, null), ...(omitted ? { geometry_omitted: omitted } : {}) }, rowCount: rows.length });
       }
-      // 行は makeResult の間引き（fitToBudget）に任せない（next_after で続きが取れなくなる）。
-      // 予算に収まるまで行数を減らし、truncated と next_after を実際に返した最後の行に合わせる。
-      let shrunk = false;
-      while (rows.length > 1 && byteLength(dataOf(rows, nextAfter)) > BYTE_BUDGET) {
-        rows = rows.slice(0, Math.max(1, Math.floor(rows.length * 0.7)));
-        nextAfter = String(rows[rows.length - 1][pk]);
-        shrunk = true;
-      }
-      const more = r.truncated || shrunk;
-      return done(
-        dataOf(rows, more ? nextAfter : null),
-        rows.length,
-        more ? `続きがある。next_after（${nextAfter}）を after に渡して続きを取れる。` : undefined,
-      );
+      // 行は fitToBudget（等間隔の間引き）に任せない（next_after で続きが取れなくなる）。先頭から残し、next_after は実際に返した最後の行に合わせる。
+      const nextAfterOf = (rows: typeof r.rows) => (rows.length === r.rows.length ? r.next_after : String(rows[rows.length - 1][pk]));
+      return makeResult({
+        ...base,
+        headRows: {
+          rows: r.rows,
+          more: r.truncated,
+          build: (rows, more) => dataOf(rows, more ? nextAfterOf(rows) : null),
+          continueNote: (rows) => `続きがある。next_after（${nextAfterOf(rows)}）を after に渡して続きを取れる。`,
+        },
+      });
     } catch (e) {
       if (!(e instanceof RecordsInputError)) throw e;
       return makeResult({ tool: "get_records", tables: [], caveats: [], data: { error: e.message }, rowCount: 0, elapsedMs: performance.now() - t0 });
+    }
+  },
+});
+
+/* ------------------------------------------------------------------ */
+/* find_datasets                                                      */
+/* ------------------------------------------------------------------ */
+
+/** AI の find_datasets の既定の件数（応答 24KB に収めるため、MCP の既定 20 より小さい）。 */
+const AI_DATASETS_DEFAULT_LIMIT = 10;
+
+const find_datasets = tool({
+  description: FIND_DATASETS_DESCRIPTION,
+  inputSchema: findDatasetsInputSchema,
+  execute: async (input) => {
+    const t0 = performance.now();
+    try {
+      const r = await queryDatasets(await d1CubeDb(), { ...input, limit: input.limit ?? AI_DATASETS_DEFAULT_LIMIT });
+      // 行（データセット）は fitToBudget（等間隔の間引き。入れ子の資源のリストまで間引く）に任せない。行の単位で先頭から残す。
+      return makeResult({
+        tool: "find_datasets",
+        tables: ["external_dataset", "external_resource", "external_resource_format"],
+        caveats: caveatKeysForFacets(facetsForOccurrence({ places: [], sourceIds: r.source_ids })),
+        elapsedMs: performance.now() - t0,
+        headRows: {
+          rows: r.rows,
+          more: r.truncated,
+          build: (rows, more) => ({
+            offset: r.offset,
+            rows,
+            ...(more ? { next_offset: r.offset + rows.length } : {}),
+            ...(r.n_total !== null ? { n_total: r.n_total } : {}),
+            ...(r.excluded_no_modified !== null ? { excluded_no_modified: r.excluded_no_modified } : {}),
+          }),
+          continueNote: (rows) => `続きがある。offset を ${r.offset + rows.length} にして続きを取れる。`,
+        },
+      });
+    } catch (e) {
+      if (!(e instanceof FindDatasetsInputError)) throw e;
+      return makeResult({ tool: "find_datasets", tables: [], caveats: [], data: { error: e.message }, rowCount: 0, elapsedMs: performance.now() - t0 });
     }
   },
 });
@@ -863,6 +927,7 @@ export const aiTools = {
   get_biota_trend,
   get_edna,
   get_records,
+  find_datasets,
   get_redlist,
   get_overview,
   describe_schema,

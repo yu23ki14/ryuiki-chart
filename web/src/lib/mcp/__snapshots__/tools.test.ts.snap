@@ -3,7 +3,7 @@
 exports[`MCP ツール一覧（第1段 5 本） > 入力スキーマのスナップショット 1`] = `
 [
   {
-    "description": "流域カルテにどんな測定項目・水域・ゾーン・出典があるかを一覧する。まず全体像を掴むときに使う。what='variables' は測定項目（variableId を get_observations に渡す）、'waters' は水域、'zones' は Ridge to Reef ゾーン、'sources' は出典（取得日・更新方式・取れるツール queryable_via・取れない理由つき）。出典の件数・ツール別の件数・取れない理由別の件数は応答の summary を使う（一覧を自分で数えない）。n_source_rows は原本の行数で、get_observations の n（集計に使った件数）とは別物。読み方: 値は定量下限未満を value_lod（下限値で代用）と value_zero（0 で代用）の両方で返す。n_censored・n_not_detected が多い系列は下限付近の値を平均した結果なので断定しない。caveats は必ず利用者に伝える。provenance の fetched_at・update_mode・age_days から、データの新しさと更新方式を判断する（update_mode が undeclared の出典は更新方式が未宣言）。欠測を補完しない。",
+    "description": "流域カルテにどんな測定項目・水域・ゾーン・出典があるかを一覧する。まず全体像を掴むときに使う。what='variables' は測定項目（variableId を get_observations に渡す）、'waters' は水域、'zones' は Ridge to Reef ゾーン、'sources' は出典（取得日・更新方式・取れるツール queryable_via・取れない理由つき。queryable_via が find_datasets の出典は外部ポータルの目録で、値ではなく定義と最新の URL を find_datasets で引く）。出典の件数・ツール別の件数・取れない理由別の件数は応答の summary を使う（一覧を自分で数えない）。n_source_rows は原本の行数で、get_observations の n（集計に使った件数）とは別物（find_datasets の出典では目録のデータセット数。n_source_rows_basis=catalog_datasets）。読み方: 値は定量下限未満を value_lod（下限値で代用）と value_zero（0 で代用）の両方で返す。n_censored・n_not_detected が多い系列は下限付近の値を平均した結果なので断定しない。caveats は必ず利用者に伝える。provenance の fetched_at・update_mode・age_days から、データの新しさと更新方式を判断する（update_mode が undeclared の出典は更新方式が未宣言）。欠測を補完しない。",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -436,6 +436,98 @@ exports[`MCP ツール一覧（第1段 5 本） > 入力スキーマのスナッ
       "type": "object",
     },
     "name": "get_records",
+  },
+  {
+    "description": "外部オープンデータポータル（CKAN: 神奈川県・相模原市・BODIK・横浜市、e-Stat の統計表）の目録を検索する。ここに値は無い。「どんなデータセットがあるか（題名・説明・提供組織・ライセンス・形式・列の見出し）」と、「最新を取りに行く URL」（urls.api_package_show・urls.page・資源の direct_url）を返す。値が要るときは、返した URL を利用者側で開く。目録は収穫日（fetched_at）時点の写しで、metadata_modified・資源のサイズ・URL は古いことがある（月単位で更新される）。最新は CKAN の api_package_show（package_show の result.metadata_modified と result.resources[]）で確かめる。列の見出し（data_definition.columns）は、検出できたものだけ根拠つきで返す。status が not_extracted なら不明（直リンクのファイルを開いて確認する）。ライセンスが空のデータセットは license: null（不明）で返す（除外しない）。q・source_id・organization・format・modified_since・id のどれか 1 つ以上が要る。資源の一覧は id（1 件取り）か include_resources（limit 10 以下）で返し、1 データセット 50 件まで（resources_truncated・n_resources。続きは id と resource_offset）。modified_since は metadata_modified が無いデータセット（e-Stat）を除く（excluded_no_modified）。使える出典: ckan_bodik_kanagawa=BODIK オープンデータカタログ(神奈川県内参加団体)、ckan_kanagawa_pref=神奈川県オープンデータカタログ、ckan_sagamihara=相模原市オープンデータカタログ、ckan_yokohama=横浜市オープンデータポータル、estat_agri_census_kanagawa=農林業センサス 市区町村別統計書(神奈川県) 農業経営体数・経営耕地面積・耕作放棄地面積、estat_census_population_kanagawa=令和7年国勢調査 速報集計 人口速報集計（男女別人口・世帯数, 2020年比較付き）神奈川県 市区町村別、estat_shozaiki_kanagawa=2020年国勢調査 小地域（町丁・字等別）境界データ 神奈川県。",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "description": "資源に 1 つでもこの形式を含むデータセット（SHP,CSV のような複数形式は要素ごとに照合）",
+          "enum": [
+            "CSV",
+            "XLSX",
+            "XLS",
+            "XLSM",
+            "PDF",
+            "ZIP",
+            "TXT",
+            "HTML",
+            "SHP",
+            "GEOJSON",
+            "JSON",
+            "XML",
+            "RDF",
+            "TURTLE",
+            "FIWARE-NGSI",
+            "DOC",
+            "DOCX",
+            "JPEG",
+            "PNG",
+          ],
+          "type": "string",
+        },
+        "id": {
+          "description": "dataset_key の完全一致（1 件取り。資源も返す。資源は 50 件まで。続きは resource_offset）",
+          "maxLength": 300,
+          "minLength": 1,
+          "type": "string",
+        },
+        "include_resources": {
+          "description": "資源（直リンク・形式・サイズ）も返す。既定 false（資源の数と形式別の件数だけ）。limit が 10 以下のときだけ。1 データセット 50 件まで（resources_truncated）",
+          "type": "boolean",
+        },
+        "limit": {
+          "description": "返す件数の上限（既定 20、最大 100）",
+          "maximum": 100,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "modified_since": {
+          "description": "metadata_modified がこの日以降。収穫時点（fetched_at）の値で比べる。最新の更新日は api_package_show で確かめる。metadata_modified が無いデータセット（e-Stat 等）は除く（excluded_no_modified に件数）",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string",
+        },
+        "offset": {
+          "description": "読み飛ばす件数（ページング。並びは metadata_modified の新しい順・dataset_key 昇順で固定）",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "organization": {
+          "description": "提供組織名の部分一致（例: 厚木市）",
+          "minLength": 1,
+          "type": "string",
+        },
+        "q": {
+          "description": "題名・説明・タグ・分野の部分一致。空白区切りは AND（3 語まで）",
+          "minLength": 1,
+          "type": "string",
+        },
+        "resource_offset": {
+          "description": "id 指定のとき、資源を読み飛ばす件数（50 件を超える資源の続き。resources_truncated が true のとき next_resource_offset を渡す）",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "source_id": {
+          "description": "出典で絞る（ポータル単位。describe_catalog what='sources' で queryable_via に find_datasets があるもの）",
+          "enum": [
+            "ckan_bodik_kanagawa",
+            "ckan_kanagawa_pref",
+            "ckan_sagamihara",
+            "ckan_yokohama",
+            "estat_agri_census_kanagawa",
+            "estat_census_population_kanagawa",
+            "estat_shozaiki_kanagawa",
+          ],
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "find_datasets",
   },
 ]
 `;

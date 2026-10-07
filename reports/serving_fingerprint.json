@@ -182,34 +182,34 @@
         "same": 60
       }
     },
-    "previous_git_head": "eb229ad98a20e0f478eb304160b7639cc92a9c40"
+    "previous_git_head": "00fe506b77d367d82d2885e88d1c3e48697f6d7f"
   },
-  "created_at": "2026-10-07T12:26:57+00:00",
+  "created_at": "2026-10-07T13:40:01+00:00",
   "environment": {
     "better_sqlite3_sqlite_version": "3.53.4",
     "node_version": "v22.22.2",
     "python_sqlite3_version": "3.49.1",
     "python_version": "3.13.7"
   },
-  "git_head": "00fe506b77d367d82d2885e88d1c3e48697f6d7f",
+  "git_head": "abdcd9211eea3e8fddab5f55979f816dbab283cf",
   "pipeline_fingerprint_rows": {
     "registry.sqlite": null,
     "v2.sqlite": [
       {
         "fingerprint": "sha256:17ceb60713d7c652789a4a82149a952234848b16162f5d22b0f2f3d8e0adb544:1029034",
-        "inputs": "{\"ext:registry.place\": \"3e93d2eb36225cb817553bcc3e341e883c2b4f4c70a27e07218cc5ae47a4c81e\", \"ext:registry.place_source_ref\": \"3e93d2eb36225cb817553bcc3e341e883c2b4f4c70a27e07218cc5ae47a4c81e\", \"ext:registry.source_edition\": \"3e93d2eb36225cb817553bcc3e341e883c2b4f4c70a27e07218cc5ae47a4c81e\", \"ext:registry.variable_alias\": \"3e93d2eb36225cb817553bcc3e341e883c2b4f4c70a27e07218cc5ae47a4c81e\", \"ext:ryuiki.measurements\": \"count=323164;max_rowid=342142\", \"ext:ryuiki.sensor_timeseries\": \"count=717839;max_rowid=1775419\"}",
+        "inputs": "{\"ext:registry.place\": \"41a1bee0092c8b5bdbc28ca5fe48089cc4a40e8db377e0ee2370ca9491099c8f\", \"ext:registry.place_source_ref\": \"41a1bee0092c8b5bdbc28ca5fe48089cc4a40e8db377e0ee2370ca9491099c8f\", \"ext:registry.source_edition\": \"41a1bee0092c8b5bdbc28ca5fe48089cc4a40e8db377e0ee2370ca9491099c8f\", \"ext:registry.variable_alias\": \"41a1bee0092c8b5bdbc28ca5fe48089cc4a40e8db377e0ee2370ca9491099c8f\", \"ext:ryuiki.measurements\": \"count=323164;max_rowid=342142\", \"ext:ryuiki.sensor_timeseries\": \"count=717839;max_rowid=1775419\"}",
         "spec_version": "phase-b-fact-slice/v1",
         "table_name": "observation"
       },
       {
         "fingerprint": "sha256:396f44fe82b23c3d70f9f102619dfda7864e13235d318f6f202e01704cc92049:2011364",
-        "inputs": "{\"ext:registry.unit\": \"3e93d2eb36225cb817553bcc3e341e883c2b4f4c70a27e07218cc5ae47a4c81e\", \"ext:registry.variable\": \"3e93d2eb36225cb817553bcc3e341e883c2b4f4c70a27e07218cc5ae47a4c81e\", \"ext:registry.variable_alias\": \"3e93d2eb36225cb817553bcc3e341e883c2b4f4c70a27e07218cc5ae47a4c81e\", \"observation\": \"sha256:17ceb60713d7c652789a4a82149a952234848b16162f5d22b0f2f3d8e0adb544:1029034\"}",
+        "inputs": "{\"ext:registry.unit\": \"41a1bee0092c8b5bdbc28ca5fe48089cc4a40e8db377e0ee2370ca9491099c8f\", \"ext:registry.variable\": \"41a1bee0092c8b5bdbc28ca5fe48089cc4a40e8db377e0ee2370ca9491099c8f\", \"ext:registry.variable_alias\": \"41a1bee0092c8b5bdbc28ca5fe48089cc4a40e8db377e0ee2370ca9491099c8f\", \"observation\": \"sha256:17ceb60713d7c652789a4a82149a952234848b16162f5d22b0f2f3d8e0adb544:1029034\"}",
         "spec_version": "phase-b-fact-slice/v4",
         "table_name": "observation_agg"
       },
       {
         "fingerprint": "sha256:05fa606cdcb3165a2d17c87cdbaab5e0d6e8a797d679cb539ce93abf24da873b:834565",
-        "inputs": "{\"ext:registry.place\": \"3e93d2eb36225cb817553bcc3e341e883c2b4f4c70a27e07218cc5ae47a4c81e\", \"ext:registry.place_source_ref\": \"3e93d2eb36225cb817553bcc3e341e883c2b4f4c70a27e07218cc5ae47a4c81e\", \"ext:registry.source_edition\": \"3e93d2eb36225cb817553bcc3e341e883c2b4f4c70a27e07218cc5ae47a4c81e\", \"ext:registry.taxon\": \"3e93d2eb36225cb817553bcc3e341e883c2b4f4c70a27e07218cc5ae47a4c81e\", \"ext:registry.taxon_assessment\": \"3e93d2eb36225cb817553bcc3e341e883c2b4f4c70a27e07218cc5ae47a4c81e\", \"ext:ryuiki.edna_detections\": \"count=13263;max_rowid=13263\", \"ext:ryuiki.organism_records\": \"count=823692;max_rowid=823692;occurrence_status=[(None, 165332), ('ABSENT', 2790), ('PRESENT', 655570)]\", \"ext:ryuiki.wildlife_sightings\": \"count=400;max_rowid=400\"}",
+        "inputs": "{\"ext:registry.place\": \"41a1bee0092c8b5bdbc28ca5fe48089cc4a40e8db377e0ee2370ca9491099c8f\", \"ext:registry.place_source_ref\": \"41a1bee0092c8b5bdbc28ca5fe48089cc4a40e8db377e0ee2370ca9491099c8f\", \"ext:registry.source_edition\": \"41a1bee0092c8b5bdbc28ca5fe48089cc4a40e8db377e0ee2370ca9491099c8f\", \"ext:registry.taxon\": \"41a1bee0092c8b5bdbc28ca5fe48089cc4a40e8db377e0ee2370ca9491099c8f\", \"ext:registry.taxon_assessment\": \"41a1bee0092c8b5bdbc28ca5fe48089cc4a40e8db377e0ee2370ca9491099c8f\", \"ext:ryuiki.edna_detections\": \"count=13263;max_rowid=13263\", \"ext:ryuiki.organism_records\": \"count=823692;max_rowid=823692;occurrence_status=[(None, 165332), ('ABSENT', 2790), ('PRESENT', 655570)]\", \"ext:ryuiki.wildlife_sightings\": \"count=400;max_rowid=400\"}",
         "spec_version": "phase-b-fact-slice/v1",
         "table_name": "occurrence"
       },
@@ -221,25 +221,25 @@
       },
       {
         "fingerprint": "sha256:01a28006d9848aa0cb7013a5255e64e1d524ce46a67f07722ee6a737c3823ffa:834561",
-        "inputs": "{\"ext:registry.place_source_ref\": \"3e93d2eb36225cb817553bcc3e341e883c2b4f4c70a27e07218cc5ae47a4c81e\", \"ext:ryuiki.sites\": \"count=352;max_rowid=738\", \"occurrence\": \"sha256:05fa606cdcb3165a2d17c87cdbaab5e0d6e8a797d679cb539ce93abf24da873b:834565\"}",
+        "inputs": "{\"ext:registry.place_source_ref\": \"41a1bee0092c8b5bdbc28ca5fe48089cc4a40e8db377e0ee2370ca9491099c8f\", \"ext:ryuiki.sites\": \"count=352;max_rowid=738\", \"occurrence\": \"sha256:05fa606cdcb3165a2d17c87cdbaab5e0d6e8a797d679cb539ce93abf24da873b:834565\"}",
         "spec_version": "phase-b-fact-slice/v4",
         "table_name": "occurrence_place"
       },
       {
         "fingerprint": "sha256:29de9c0667c7328463802d8d71dec8f3371e2cd64f7b24aea61092355761f2dd:171",
-        "inputs": "{\"ext:registry.taxon\": \"3e93d2eb36225cb817553bcc3e341e883c2b4f4c70a27e07218cc5ae47a4c81e\", \"occurrence_agg\": \"sha256:a228722f537f05555b058b94ccd68f33a466b0f74f8f4b811b018f05dd07a5dd:1447556\"}",
+        "inputs": "{\"ext:registry.taxon\": \"41a1bee0092c8b5bdbc28ca5fe48089cc4a40e8db377e0ee2370ca9491099c8f\", \"occurrence_agg\": \"sha256:a228722f537f05555b058b94ccd68f33a466b0f74f8f4b811b018f05dd07a5dd:1447556\"}",
         "spec_version": "serving-summary/v6",
         "table_name": "summary_effort_year"
       },
       {
         "fingerprint": "sha256:cb0e83e6b8f5637294068a1bd7f95e7ed3b78b9159cdb1b3541211ef17292e0f:4086",
-        "inputs": "{\"ext:registry.taxon\": \"3e93d2eb36225cb817553bcc3e341e883c2b4f4c70a27e07218cc5ae47a4c81e\", \"occurrence_agg\": \"sha256:a228722f537f05555b058b94ccd68f33a466b0f74f8f4b811b018f05dd07a5dd:1447556\"}",
+        "inputs": "{\"ext:registry.taxon\": \"41a1bee0092c8b5bdbc28ca5fe48089cc4a40e8db377e0ee2370ca9491099c8f\", \"occurrence_agg\": \"sha256:a228722f537f05555b058b94ccd68f33a466b0f74f8f4b811b018f05dd07a5dd:1447556\"}",
         "spec_version": "serving-summary/v6",
         "table_name": "summary_grid_catalog"
       },
       {
         "fingerprint": "sha256:0d6054da344bd5163288c8ccd2faecbee6c3d8ed18298618129ae360c2d082c2:1892",
-        "inputs": "{\"ext:registry.taxon\": \"3e93d2eb36225cb817553bcc3e341e883c2b4f4c70a27e07218cc5ae47a4c81e\", \"occurrence_agg\": \"sha256:a228722f537f05555b058b94ccd68f33a466b0f74f8f4b811b018f05dd07a5dd:1447556\"}",
+        "inputs": "{\"ext:registry.taxon\": \"41a1bee0092c8b5bdbc28ca5fe48089cc4a40e8db377e0ee2370ca9491099c8f\", \"occurrence_agg\": \"sha256:a228722f537f05555b058b94ccd68f33a466b0f74f8f4b811b018f05dd07a5dd:1447556\"}",
         "spec_version": "serving-summary/v6",
         "table_name": "summary_group_year"
       },
@@ -251,7 +251,7 @@
       },
       {
         "fingerprint": "sha256:28f81ee14a05141050518e8f059b7f1f08fd2ecb744c0281f8ae6f264c24ded3:24151",
-        "inputs": "{\"ext:registry.taxon\": \"3e93d2eb36225cb817553bcc3e341e883c2b4f4c70a27e07218cc5ae47a4c81e\", \"occurrence_agg\": \"sha256:a228722f537f05555b058b94ccd68f33a466b0f74f8f4b811b018f05dd07a5dd:1447556\"}",
+        "inputs": "{\"ext:registry.taxon\": \"41a1bee0092c8b5bdbc28ca5fe48089cc4a40e8db377e0ee2370ca9491099c8f\", \"occurrence_agg\": \"sha256:a228722f537f05555b058b94ccd68f33a466b0f74f8f4b811b018f05dd07a5dd:1447556\"}",
         "spec_version": "serving-summary/v6",
         "table_name": "summary_species_catalog"
       },
@@ -278,7 +278,7 @@
   "pipeline_path_hashes": {
     "aggregations": "11a8b17bee8e9e1157382fa890764cb7ecaa524f",
     "manifests": "90db9572781215c470ac98df278bb17c4220a005",
-    "registry": "651b83daba755b185d362c4116ade1a848c9b5f3",
+    "registry": "1560b888f7e7d6a3aff9e0badf72debd3e71470b",
     "requirements.txt": "4323abaaacdc6a851d6f323c3a8e542996714511",
     "scripts/adapters": "738619c00e564dccf500bdba1ffc78abcd3bd940",
     "scripts/b00_run_full_gate.py": "9e7a22be5e41d6d592c6815c3b3e956c0254103e",
@@ -294,12 +294,12 @@
     "scripts/pipeline_inputs.py": "d681352977b943ed8f7c689bbb16786f9ee93754",
     "scripts/r01_build_registry.py": "90a81e95830ee61a9353bbf9bb2916dba583e075",
     "scripts/reconcile": "0434daaaa6e412fafdff6a99768d9486b7c5c9a0",
-    "scripts/registry": "fb2631cec0ffd697ec35af368de6124e2df3aa0a",
-    "scripts/schema_registry.sql": "dd26ca0835044cd8b69117d7d19292efa8416aa4",
+    "scripts/registry": "e901453ed31dc13b94ce70e451c0440b61b434df",
+    "scripts/schema_registry.sql": "fba1a5a777db59c67aba11c0c269286ba10b0a87",
     "scripts/taxon_namespaces.py": "96b49ceb0d4badf6a32f2a5732f2ed2efe0df79f",
     "web/package.json": "cfdc9a0a4addc8aa86b9db4727d13e5c4fae3e2e",
     "web/pnpm-lock.yaml": "6ed023dae786be30e10835dd8a13d5af0bccd466",
-    "web/scripts/build-registry-ts.mjs": "e7fad38fad98e2a5f4bff2e3f5ace69a1b76a07a",
+    "web/scripts/build-registry-ts.mjs": "87213e70187477998d043ff774045658a2295b88",
     "web/scripts/lib/csv.mjs": "2d1fa1614b795cc6b3501f25afadddb30403afe2",
     "web/scripts/lib/registry-codegen.mjs": "de8f929332c58b7dd8a8391f1b17391326ed6342",
     "web/scripts/lib/serving/adapters-v2.ts": "2d62b4df13cc085594d4eaafc51f5f6496dd603d",
@@ -331,7 +331,7 @@
     "web/src/lib/db.ts": "cb9a153fb416b4400bd74ecf0fd4d3977df90944",
     "web/src/lib/registry/generated-client.ts": "29d96948cce972b55731ac8b108672dbfb6f8803",
     "web/src/lib/registry/generated-id-map.ts": "df5cd62cdf65bf30fe058654c18ed5a3f648bd75",
-    "web/src/lib/registry/generated-source.ts": "c45c60b9c6d5c94f8a21c744583790db15460b79",
+    "web/src/lib/registry/generated-source.ts": "0b6455b60212e1a22b835a6c6795dbf053693a4c",
     "web/src/lib/registry/generated.ts": "260e216c1034ef85d2fd3ad9e8a5da44c7302a47",
     "web/src/lib/registry/index.ts": "02fc0d4c3b83cce49ea4b72d5e349dc3c45a201b",
     "web/src/lib/registry/legacy-id.ts": "e6fb112a8a1288823915b2030c6d72d1a57c751c",
@@ -10398,7 +10398,7 @@
   "schema_version": 1,
   "source_hashes": {
     "data/db/cells.sqlite": "0668ae12ee127b3638cbdf52a75d6ba7dd96252e04dd928242224e704fe646c5",
-    "data/db/ryuiki.sqlite": "aa307eb50eccad5d19a013a2a5cede6c5d40e032fe6a58525b836f4d69d8a299",
+    "data/db/ryuiki.sqlite": "46f02af8ed5c82a41f29602afaed0b5570a85a8f1c052c15f7dac95d07a68e88",
     "data/processed/moe_ias_list.csv": "54a3261737bc72b84910d75d78a7da7beee067c5b78581c9b2522627b7bffb41",
     "data/processed/nlni_l03b_landuse_by_watershed.csv": "ec71d28f382785af6ef7ed588350f67537f96d356d1d73c541522a74421cb644",
     "data/processed/nlni_w12_watersheds.geojson": "0fdb4360f1a1d0f8473a0d5b9b9a16f1cc42420312f654781a5dfd66b0aa56f7",

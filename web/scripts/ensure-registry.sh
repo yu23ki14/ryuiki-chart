@@ -25,6 +25,15 @@ REGISTRY_FILE="$DB_DIR/registry.sqlite"
 # どちらも）は子プロセスなのでこの export を見る。呼び出しごとに書き直さない。
 export RYUIKI_REGISTRY_DB="$REGISTRY_FILE"
 
+# 0. 外部ポータルの目録（ryuiki.sqlite の external_dataset / external_resource。find_datasets の元）。
+# レジストリのビルド（r01）は access.yaml の catalog 宣言と external_dataset を突き合わせて、目録が空だと止まる。
+# だから先に「無い・空のときだけ」m08 で作る（入力は data/processed の ckan_*.jsonl・estat_*.jsonl）。
+# 入力も無ければ、m08 が直し方を書いて失敗する（set -e でここで止まる）。原本が無い環境（CI）では何もしない。
+# 目録を作り直したときの鮮度は、下の --check-fresh が見る（指紋に出典別の件数が入っている）。
+if [ -f "$DB_DIR/ryuiki.sqlite" ]; then
+  scripts/run-python.sh scripts/m08_external_catalog.py --db "$DB_DIR/ryuiki.sqlite" --if-empty
+fi
+
 # --check-fresh の終了コードは3種類を区別する（r01_build_registry.py の
 # EXIT_FRESH=0 / EXIT_STALE=10。それ以外は「判定できない」。fix 1, phase-b/registry-atomic）。
 # `if cmd; then` の形にすると set -e に巻き込まれず $? を安全に取れる。

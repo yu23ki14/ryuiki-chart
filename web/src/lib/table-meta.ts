@@ -41,6 +41,8 @@ export const TABLE_ORIGIN: Record<string, string> = {
   wildlife_sightings: "main", river_segments: "main",
   // 神奈川県 eDNA（scripts/m07_kanagawa_edna.py）。検出も不検出も。MCP/AI の get_edna と run_sql 用の台帳表
   edna_sites: "main", edna_reads: "main",
+  // 外部ポータルの目録（scripts/m08_external_catalog.py。MCP/AI の find_datasets と run_sql 用。値は持たない）
+  external_dataset: "main", external_resource: "main", external_resource_format: "main",
   // 水道水の水源マップ（docs/WATER_SOURCE_MAP.md）。原本は data/water/*.csv → ryuiki.sqlite。
   // v2 にキューブ化しない台帳表として D1 に残す（Issue #61）。run_sql で「この町の水源はどこか」に答える用途
   water_utility: "main", water_source: "main", water_facility: "main",
@@ -84,6 +86,13 @@ export const TABLE_META: Record<string, string> = {
   edna_reads:
     "eDNA の検出・不検出（地点×採水×分類群のリード数。0 は不検出）。リード数は個体数ではない。" +
     "taxon_id は registry の taxon に結ぶ",
+  external_dataset:
+    "外部ポータル（CKAN 4 インスタンス・e-Stat）のデータセット目録。題名・説明・提供者・ライセンス・" +
+    "最新を取る URL（api_url）つき。値は持たない。metadata_modified は fetched_at 時点",
+  external_resource:
+    "外部ポータルの資源（ファイル）。形式（format は原文）・サイズ・直リンク。sheets_json は見出しを検出できたものだけ列名を持つ",
+  external_resource_format:
+    "外部ポータルの資源の形式を正規化して要素ごとに 1 行にした照合用の表（'SHP,CSV' は 2 行。XLSK→XLSX、'.CSV'→CSV）",
   river_segments:
     "相模川水系の河川流路。水系単位のため、県単位の nlni_w05 由来データに無い" +
     "山梨県側（桂川上流部）を含む",

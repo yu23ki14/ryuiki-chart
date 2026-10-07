@@ -11,7 +11,7 @@
  * drizzle/migrations/*.sql を直接書き換えない。
  */
 import { sql } from "drizzle-orm";
-import { sqliteTable, text, integer, real, index } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, index, primaryKey } from "drizzle-orm/sqlite-core";
 // 依存なしの定数ファイル（drizzle-kit は `@/` エイリアスを解決しないので相対 import）。
 import { DOC_SERIES_WHERE } from "../lib/cube/doc-series-where";
 
@@ -315,6 +315,70 @@ export const riverSegments = sqliteTable("river_segments", {
 	index("ix_river_pref").on(table.prefectureJa),
 ]);
 
+
+/**
+ * 外部ポータルの目録（CKAN 4 インスタンス + e-Stat 7 件。docs/plans/MCP_EXTERNAL_CATALOG.md §1）。
+ * 値は持たない。「どんなデータがあるか」の定義と、最新を取りに行く URL だけ（`find_datasets` が読む）。
+ * `scripts/m08_external_catalog.py` が原本 ryuiki.sqlite に作る（DDL は `scripts/schema_catalog.sql`）。
+ * metadata_modified・last_modified・size は収穫時点（fetched_at）の値。最新は api_url（package_show）が正。
+ * license の空は NULL（不明。除外しない）。
+ */
+export const externalDataset = sqliteTable("external_dataset", {
+	datasetKey: text("dataset_key").primaryKey(),
+	sourceId: text("source_id").notNull(),
+	portal: text().notNull(),
+	datasetId: text("dataset_id").notNull(),
+	name: text(),
+	title: text().notNull(),
+	description: text(),
+	descriptionTruncated: integer("description_truncated").notNull().default(0),
+	organization: text(),
+	license: text(),
+	licenseUrl: text("license_url"),
+	groups: text(),
+	tags: text(),
+	nResources: integer("n_resources").notNull().default(0),
+	/** 見出しを検出できた資源の数（m08 が sheets_json から数える。find_datasets は sheets_json を展開しない）。 */
+	nWithHeader: integer("n_with_header").notNull().default(0),
+	metadataModified: text("metadata_modified"),
+	pageUrl: text("page_url").notNull(),
+	apiUrl: text("api_url"),
+	fetchedAt: text("fetched_at").notNull(),
+},
+(table) => [
+	index("ix_ed_source_modified").on(table.sourceId, table.metadataModified),
+	index("ix_ed_org").on(table.organization),
+]);
+
+/** 外部ポータルの資源（ファイル）。sheets_json は NULL か `[{sheet, n_rows, n_cols, header: [...] | null, header_basis?}]`。 */
+export const externalResource = sqliteTable("external_resource", {
+	resourceKey: text("resource_key").primaryKey(),
+	datasetKey: text("dataset_key").notNull(),
+	name: text(),
+	format: text(),
+	size: integer(),
+	lastModified: text("last_modified"),
+	directUrl: text("direct_url"),
+	pageUrl: text("page_url"),
+	sheetsJson: text("sheets_json"),
+},
+(table) => [
+	index("ix_er_dataset").on(table.datasetKey),
+]);
+
+/**
+ * 資源の format を正規化して要素ごとに 1 行（前後の空白と先頭の '.' を除き大文字・別名を寄せる。空は 'unspecified'）。
+ * `find_datasets` の format 絞りが等号で引くための照合用。原文は `external_resource.format`。m08 が作る。
+ */
+export const externalResourceFormat = sqliteTable("external_resource_format", {
+	datasetKey: text("dataset_key").notNull(),
+	formatNorm: text("format_norm").notNull(),
+	resourceKey: text("resource_key").notNull(),
+},
+(table) => [
+	primaryKey({ columns: [table.datasetKey, table.formatNorm, table.resourceKey] }),
+	index("ix_erf_format").on(table.formatNorm, table.datasetKey),
+]);
 
 /* ------------------------------------------------------------------ *
  * 水道水の水源マップ（docs/WATER_SOURCE_MAP.md）

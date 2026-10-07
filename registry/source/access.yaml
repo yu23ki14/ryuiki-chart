@@ -3,6 +3,8 @@
 # - manifests/ にある出典（15 件。target=observation → get_observations、occurrence → get_occurrences）は
 #   ここに書かない（二重管理しない）。ただし get_records でも取れる表があれば records だけ足す。
 #   get_edna のような追加のツールは extra_tools に書く。
+# - catalog: find_datasets で取れる（外部ポータルの目録 external_dataset に出典の行がある。records/reason と排他）。
+#   n_source_rows は目録の件数（データセット数）で、値の行数ではない。
 # - records: get_records で取れる record_set（下の record_sets の名前）。表は出典の列 source_id で絞る。
 # - reason: 取れない理由（reasons の語彙）。basis は下書きの根拠（source_registry の列・data/processed の有無から
 #   機械的に決めたもの）で、必須。note は人が読む補足（任意）。
@@ -50,6 +52,15 @@ sources:
   kanagawa_rdb2022_plants: {records: [assessments]}
   # --- マニフェストの出典に get_records の表を足す（出現キューブは座標なし 5 セルだけ。明細はこちら）---
   kanagawa_kuma_sightings: {records: [sightings]}   # 出現キューブは座標なし 5 セルだけ。明細はこちら
+  # --- find_datasets で取れる（外部ポータルの目録。値ではなく定義と最新の URL。docs/plans/MCP_EXTERNAL_CATALOG.md §5）---
+  # catalog は records/reason と排他。表は external_dataset（出典の列 source_id で絞る目録）だけ。
+  ckan_kanagawa_pref: {catalog: external_dataset}
+  ckan_sagamihara: {catalog: external_dataset}
+  ckan_bodik_kanagawa: {catalog: external_dataset}
+  ckan_yokohama: {catalog: external_dataset}
+  estat_agri_census_kanagawa: {catalog: external_dataset}
+  estat_census_population_kanagawa: {catalog: external_dataset}
+  estat_shozaiki_kanagawa: {catalog: external_dataset}
   # --- 取れない: not_collected（5 件）---
   buna_suitai_web: {reason: not_collected, basis: "source_registry.format=「表なし、画像のみ」。表として取り出せるデータが無く record_count=0"}
   geospatial_jp_agri_poly_2021_sagami: {reason: not_collected, basis: "source_registry.record_count=0 かつ data/processed・data/raw とも無し"}
@@ -86,24 +97,18 @@ sources:
   kanagawa_dam_mizugame: {reason: external_api, basis: "source_registry.access_method=JSON API（/api/rainfall-table.p", note: "動的 JSON の現況。蓄積した履歴が無い"}
   miyagase_storage_status: {reason: external_api, basis: "source_registry.access_method=HTMLページ(現況スナップショット、更新の都度URL内容が", note: "現況のスナップショット（更新のたびに内容が上書きされる）"}
   mlit_river_hydro: {reason: external_api, basis: "source_registry.access_method=CGI (SrchSite.exe 等)"}
-  # --- 取れない: catalog_only（7 件）---
-  ckan_bodik_kanagawa: {reason: catalog_only, basis: "source_registry.category=オープンデータ目録"}
-  ckan_kanagawa_pref: {reason: catalog_only, basis: "source_registry.category=オープンデータ目録"}
-  ckan_sagamihara: {reason: catalog_only, basis: "source_registry.category=オープンデータ目録"}
-  ckan_yokohama: {reason: catalog_only, basis: "source_registry.category=オープンデータ目録"}
+  # --- 取れない: catalog_only（3 件）---
   geospatial_jp_kanagawa_catalog: {reason: catalog_only, basis: "source_registry.category=オープンデータ目録"}
   geospatial_jp_plateau_kanagawa: {reason: catalog_only, basis: "source_registry.category=3D都市モデル目録"}
   geospatial_jp_pointcloud_kanagawa: {reason: catalog_only, basis: "source_registry.category=地形・森林資源目録"}
   # --- 取れない: license（1 件）---
   ylist: {reason: license, basis: "source_registry.access_method=「未取得（利用条件が不明のため）」"}
-  # --- 取れない: file_only（47 件）---
+  # --- 取れない: file_only（45 件）---
   ayu_upstream_migration: {reason: file_only, basis: "data/processed に ayu_upstream_migration.csv がある（D1 の表なし）"}
   biodic_vegcode_legend: {reason: file_only, basis: "data/processed に biodic_vegcode_veg_*.csv がある（record_count=1247。D1 の表なし）"}
   biodic_vegmesh_4th_kanagawa: {reason: file_only, basis: "data/processed に biodic_vegmesh_4th_kanagawa.csv がある（D1 の表なし）"}
   biodic_vegmesh_5th_kanagawa: {reason: file_only, basis: "data/processed に biodic_vegmesh_5th_kanagawa.csv がある（D1 の表なし）"}
   ckan_env_bulk: {reason: file_only, basis: "data/processed に ckan_env/・ckan_env_index.csv がある（record_count=977。D1 の表なし）"}
-  estat_agri_census_kanagawa: {reason: file_only, basis: "data/processed に estat_agri_census_kanagawa.csv がある（D1 の表なし）"}
-  estat_census_population_kanagawa: {reason: file_only, basis: "data/processed に estat_census_population_kanagawa.csv がある（D1 の表なし）"}
   gbif_species_match: {reason: file_only, basis: "data/processed に taxon_gbif_accepted.csv がある（名寄せ語彙。registry の taxon の入力で、D1 の表は別）"}
   geospatial_jp_agri_point_2021_sagami: {reason: file_only, basis: "data/processed に geospatial_jp_agri_point_2021_sagami.csv がある（D1 の表なし）"}
   geospatial_jp_kokudo_landclass_kanagawa: {reason: file_only, basis: "SHP/ZIP を取得済み（record_count=5。ファイル数）。表への変換と D1 への投入は無い"}
@@ -148,8 +153,7 @@ sources:
   gbif_kanagawa: {reason: superseded, basis: "editions.yaml の source_declarations で superseded_by=gbif_kanagawa_occurrences", note: "gbif_kanagawa_occurrences に置き換わった。値はそちらで取る"}
   # --- 取れない: synthetic（1 件）---
   synthetic_sensor: {reason: synthetic, basis: "source_registry.category=合成データ。sensor_timeseries に 19,420 行あるが宣言で出さない", note: "sensor_timeseries に行はあるが、合成データなので出さない"}
-  # --- 取れない: d1_no_source_column（4 件）---
-  estat_shozaiki_kanagawa: {reason: d1_no_source_column, basis: "原本 water_zone（5,089 行 = record_count）に出典の列が無い。機械可読な表→出典の宣言が無い"}
+  # --- 取れない: d1_no_source_column（3 件）---
   water_source_docs: {reason: d1_no_source_column, basis: "原本 water_source_doc（69 行 = record_count）に出典の列が無い。機械可読な表→出典の宣言が無い"}
   water_trace_kawasaki: {reason: d1_no_source_column, basis: "原本 water_zone_assignment の assignment_id 接頭辞 TRACE_KWS:（611 行 = record_count）。出典の列は無い"}
   water_trace_yokohama: {reason: d1_no_source_column, basis: "原本 water_zone_assignment の assignment_id 接頭辞 TRACE_YOK:（1,718 行 = record_count）。出典の列は無い"}

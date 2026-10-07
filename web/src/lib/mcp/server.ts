@@ -96,7 +96,8 @@ export async function handleRpc(msg: unknown, ctx: McpContext): Promise<JsonRpcR
           serverInfo: SERVER_INFO,
           instructions:
             "流域カルテ（相模川流域の水質・生物出現データ）。まず describe_catalog で項目を確認し、get_observations / get_occurrences で取る。" +
-            "応答の caveats と provenance（取得日・更新方式）を必ず伝える。任意の SQL は受け付けない。",
+            "応答の caveats と provenance（取得日・更新方式）を必ず伝える。任意の SQL は受け付けない。" +
+            "外部ポータル（CKAN・e-Stat）にどんなデータがあるかは find_datasets（値ではなく定義と最新を取る URL を返す）。",
         };
         break;
       }

@@ -46,6 +46,8 @@ CLAUDE.md 「サンプル」設計の要件）。
   rowid 最小の 1 行を足す（`select_declared_source_rows`。複合 `a|b` の行も区切りの完全一致で拾う）。
   同じ検査は `reason: synthetic` / `not_in_d1`（原本に行があることを要求する理由）の出典にも「行が 1 つ以上」を
   求めるので、その出典にも、出典の列を持つ表（表名の昇順で最初のもの）から rowid 最小の 1 行を足す。
+  `catalog`（外部ポータルの目録）を宣言した出典には、`external_dataset` が「出典の種類が宣言と一致」を要求するので、
+  資源の数が最も少ない（1 以上の）データセット 1 件と、その `external_resource`・`external_resource_format` を足す（目録の閉包。孤児を作らない）。
 - **文書単位**（`cells.sqlite` の `cells`）は `document_closure.doc_ids` で
   指定した `doc_id` の全セルを入れる。
 
@@ -465,6 +467,15 @@ def _source_rowids(conn: sqlite3.Connection, table: str, sid: str) -> list[int]:
         "ORDER BY rowid", (sid,))]
 
 
+def _catalog_dataset_rowids(conn: sqlite3.Connection, table: str, sid: str) -> tuple[int, str] | None:
+    """出典 `sid` の目録から、サンプルに入れる 1 件（資源が 1 つ以上あるうち最少。同数は dataset_key 昇順）の (rowid, dataset_key)。
+    資源が 1 つも無いデータセットしか無ければ、そのうち dataset_key 最小。"""
+    row = conn.execute(
+        f'SELECT rowid, dataset_key FROM "{table}" WHERE source_id = ? '
+        "ORDER BY (n_resources = 0), n_resources, dataset_key LIMIT 1", (sid,)).fetchone()
+    return (row[0], row[1]) if row else None
+
+
 def select_declared_source_rows(
     conn: sqlite3.Connection, access_doc: dict, selected: dict[str, set[int]],
 ) -> dict[str, set[int]]:
@@ -474,6 +485,7 @@ def select_declared_source_rows(
       `taxon_assessment` など）ものは対象外。
     - `reason` が `ROW_REASONS`（synthetic・not_in_d1）の出典: 出典の列を持つどれかの表に行が 1 つ以上
       （表名の昇順で最初に原本に行がある表から 1 行）。
+    - `catalog` の出典: `external_dataset` に 1 行（資源数が最少で 1 以上のもの）と、その `external_resource`・`external_resource_format` の全行。
     原本にも行が無ければ止まる（宣言が古い）。"""
     existing = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     record_sets = access_doc.get("record_sets") or {}
@@ -492,6 +504,20 @@ def select_declared_source_rows(
                 raise SystemExit(f"access.yaml: {sid} の records {rs}（表 {table}）に、原本にもこの出典の行が無い")
             if not have(table).intersection(rowids):
                 out.setdefault(table, set()).add(rowids[0])
+        table = entry.get("catalog")
+        if table:
+            if table not in existing:
+                raise SystemExit(f"access.yaml: {sid} の catalog（表 {table}）が原本に無い（scripts/m08_external_catalog.py を先に流す）")
+            picked = _catalog_dataset_rowids(conn, table, sid)
+            if not picked:
+                raise SystemExit(f"access.yaml: {sid} の catalog（表 {table}）に、原本にもこの出典の行が無い")
+            ds_rowid, ds_key = picked
+            if not have(table).intersection(_source_rowids(conn, table, sid)):
+                out.setdefault(table, set()).add(ds_rowid)
+                out.setdefault("external_resource", set()).update(
+                    r[0] for r in conn.execute("SELECT rowid FROM external_resource WHERE dataset_key = ?", (ds_key,)))
+                out.setdefault("external_resource_format", set()).update(
+                    r[0] for r in conn.execute("SELECT rowid FROM external_resource_format WHERE dataset_key = ?", (ds_key,)))
         if entry.get("reason") in build_source_access.ROW_REASONS:
             per_table = {t: _source_rowids(conn, t, sid) for t in registry_common.source_id_tables(conn)}
             per_table = {t: r for t, r in per_table.items() if r}
