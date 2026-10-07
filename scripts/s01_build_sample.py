@@ -678,12 +678,14 @@ def build_declaration_counts(
     out["manifests:nlni_l03b_landuse_by_watershed"] = count_csv_data_rows(landuse_csv_path)
     # adapter 出典は入力を全件サンプルに入れる（select_adapter_input_tables）ので、取り込み件数は原本と同じ。
     # マニフェストの宣言値（expected_row_count）をそのまま持つ（キーはマニフェストから導く。新出典で s01 を触らない）。
-    for sid, m in sorted(adapter_inputs(manifests_dir).items()):
-        out[f"manifests:{sid}"] = m.expected_row_count
-    # 不在記録（occurrence_status='ABSENT'）として b06 が除く行数。宣言を持つ出典だけ
-    # （source_regions.load_source_regions が breakdown.absent_excluded_rows として出すキーと同じ）。
-    for sid, m in sorted(manifest_lib.load_manifests(manifests_dir).items()):
-        if m.expected_absent_excluded_rows:
+    all_manifests = manifest_lib.load_manifests(manifests_dir)
+    for sid, m in sorted(all_manifests.items()):
+        if not m.is_builtin:
+            out[f"manifests:{sid}"] = m.expected_row_count
+    # 不在記録（occurrence_status='ABSENT'）として b06 が除く行数。内訳キーは Manifest.count_breakdown が決める
+    # （source_regions.load_source_regions が出すキーと同じ。宣言を持つ出典だけ）。
+    for sid, m in sorted(all_manifests.items()):
+        if "absent_excluded_rows" in m.count_breakdown:
             out[f"manifests:{sid}.absent_excluded_rows"] = count(
                 "organism_records", f"source_id = '{sid}' AND occurrence_status = 'ABSENT'"
             )

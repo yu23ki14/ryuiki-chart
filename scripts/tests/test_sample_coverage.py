@@ -165,8 +165,7 @@ def _declared_entries_for(filename: str) -> dict:
         return {
             sid: {
                 "expected_row_count": m.expected_row_count,
-                **({"breakdown": {"absent_excluded_rows": m.expected_absent_excluded_rows}}
-                   if m.expected_absent_excluded_rows else {}),
+                **({"breakdown": m.count_breakdown} if m.count_breakdown else {}),
             }
             for sid, m in manifest_lib.load_manifests().items() if m.expected_row_count is not None
         }

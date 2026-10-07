@@ -961,3 +961,27 @@ def test_check_v2_pipeline_fresh_flags_when_a_raw_input_changes(tmp_path):
     )
     assert any("ryuiki.measurements" in p for p in problems)
     conn.close()
+
+
+def test_ryuiki_table_proxy_organism_records_includes_occurrence_status_counts(tmp_path):
+    """値だけが変わる更新（backfill 等）は行数も max rowid も動かさないので、状態別の件数を見る。"""
+    db_path = tmp_path / "ryuiki.sqlite"
+    conn = sqlite3.connect(f"file:{db_path}", uri=True)
+    for t in common.V2_RYUIKI_TABLES:
+        if t != "organism_records":
+            conn.execute(f"CREATE TABLE {t} (v INTEGER)")
+    conn.execute("CREATE TABLE organism_records (v INTEGER)")  # 列の無い古い原本
+    conn.execute("INSERT INTO organism_records VALUES (1)")
+    conn.commit()
+    no_column = common._ryuiki_table_proxy(db_path)["ryuiki.organism_records"]
+    conn.execute("ALTER TABLE organism_records ADD COLUMN occurrence_status TEXT")
+    conn.commit()
+    with_column = common._ryuiki_table_proxy(db_path)["ryuiki.organism_records"]
+    conn.execute("UPDATE organism_records SET occurrence_status='PRESENT'")
+    conn.commit()
+    present = common._ryuiki_table_proxy(db_path)["ryuiki.organism_records"]
+    conn.execute("UPDATE organism_records SET occurrence_status='ABSENT'")  # 行数・max rowid は同じ
+    conn.commit()
+    absent = common._ryuiki_table_proxy(db_path)["ryuiki.organism_records"]
+    conn.close()
+    assert len({no_column, with_column, present, absent}) == 4

@@ -270,11 +270,50 @@ INSERT INTO {table} (
 """
 
 
+# occurrence_status の語彙（GBIF のまま。NULL は不在の概念が無い出典 = iNaturalist 等）。
+STATUS_ABSENT = "ABSENT"
+_KNOWN_STATUSES = frozenset({None, "PRESENT", STATUS_ABSENT})
+
+# 除外の理由（_exclusion_reason の戻り値）
+_EXCLUDE_SYNTHETIC = "synthetic"
+_EXCLUDE_ABSENT = "absent"
+_EXCLUDE_UNKNOWN_STATUS = "unknown_status"
+
+
+def _exclusion_reason(is_synthetic, occurrence_status) -> str | None:
+    """occurrence に入れない行の理由（入れる行は None）。優先順は 合成データ → 不在記録 → 未知の状態。
+    - 合成データ（`is_synthetic=1`）: Issue #48 PR-0 オーナー決定。本番に出さない。
+    - 不在記録（`occurrence_status='ABSENT'`）: 2026-10-07 オーナー決定・ADR-0025。原本には残し occurrence からだけ除く。
+    - 未知の状態: 語彙が増えた。除いたうえで `_problems_from_stats` が止める。"""
+    if is_synthetic == 1:
+        return _EXCLUDE_SYNTHETIC
+    if occurrence_status == STATUS_ABSENT:
+        return _EXCLUDE_ABSENT
+    if occurrence_status not in _KNOWN_STATUSES:
+        return _EXCLUDE_UNKNOWN_STATUS
+    return None
+
+
+def _count_exclusion(stats: dict, reason: str, source_id: str, record_id: str, occurrence_status) -> None:
+    """除外を stats に積む。不在記録は出典別（マニフェストの `expected_absent_excluded_rows` と突合する）。"""
+    if reason == _EXCLUDE_SYNTHETIC:
+        stats["synthetic_excluded_count"] += 1
+    elif reason == _EXCLUDE_ABSENT:
+        stats["absent_excluded_count"] += 1
+        by_source = stats["absent_excluded_by_source"]
+        by_source[source_id] = by_source.get(source_id, 0) + 1
+    else:
+        stats["unknown_status_count"] += 1
+        if len(stats["unknown_status_sample"]) < _SAMPLE_LIMIT:
+            stats["unknown_status_sample"].append((record_id, occurrence_status))
+
+
 def _empty_stats() -> dict:
     return {
         "total": 0,
         "synthetic_excluded_count": 0,
         "absent_excluded_count": 0,
+        "n_occurrence": 0,
         "absent_excluded_by_source": {},
         "unknown_status_count": 0,
         "unknown_status_sample": [],
@@ -457,28 +496,12 @@ def _ingest(
             region_id = source_region.region_id
             region_usage.mark_used(region_id)
 
-            # Issue #48 PR-0 オーナー決定: 合成データは本番に出さない。
-            # manifests/*.yml の宣言使用マーキングは合成データの行でも
-            # 行った後（実測ではこの出典・region は全行非合成だが、将来
-            # source_id 丸ごとが合成データだけになっても「宣言未使用」の
-            # 誤検出にしないため）、region_counts への計上・alias/place 解決
-            # より前にこの行を弾く（モジュール docstring「合成データを除く」節）。
-            if is_synthetic == 1:
-                stats["synthetic_excluded_count"] += 1
-                continue
-
-            # 不在記録（GBIF の occurrenceStatus=ABSENT）は出現ではない: 原本には残し、occurrence からだけ除く
-            # （2026-10-07 オーナー決定。ADR-0025）。NULL は不在の概念が無い出典（iNaturalist 等）。
-            # 件数は出典ごとに積み、マニフェストの expected_absent_excluded_rows と突合する。
-            if occurrence_status == "ABSENT":
-                stats["absent_excluded_count"] += 1
-                by_source = stats["absent_excluded_by_source"]
-                by_source[source_id] = by_source.get(source_id, 0) + 1
-                continue
-            if occurrence_status is not None and occurrence_status != "PRESENT":
-                stats["unknown_status_count"] += 1
-                if len(stats["unknown_status_sample"]) < _SAMPLE_LIMIT:
-                    stats["unknown_status_sample"].append((record_id, occurrence_status))
+            # occurrence に入れない行（合成データ・不在記録・未知の状態）。宣言の使用マーキングは除外の行でも
+            # 行った後（将来 source_id 丸ごとが除外対象だけになっても「宣言未使用」の誤検出にしないため）、
+            # region_counts への計上・alias/place 解決より前に弾く（モジュール docstring の各節）。
+            reason = _exclusion_reason(is_synthetic, occurrence_status)
+            if reason is not None:
+                _count_exclusion(stats, reason, source_id, record_id, occurrence_status)
                 continue
 
             stats["region_counts"][region_id] = stats["region_counts"].get(region_id, 0) + 1
@@ -593,6 +616,7 @@ def _ingest(
             stats["adapter_counts"][run.manifest.source] = run.n_rows
             stats["adapter_attributes_count"][run.manifest.source] = run.n_attributes
             stats["adapter_problems"].extend(run.problems())
+    stats["n_occurrence"] = stats["total"] - stats["synthetic_excluded_count"] - stats["absent_excluded_count"]
     return stats
 
 
@@ -764,7 +788,7 @@ def render_report(stats: dict) -> str:
         "要約。設計は `docs/plans/PHASE_B_OCCURRENCE.md`（O-1a節）参照。"
     )
     a("")
-    n_occurrence = stats["total"] - stats["synthetic_excluded_count"] - stats["absent_excluded_count"]
+    n_occurrence = stats["n_occurrence"]
     a(f"- `organism_records` 総行数: **{stats['total']:,}**")
     a(
         f"- 合成データ（`is_synthetic=1`）を除外した行数: "
@@ -855,13 +879,13 @@ def main() -> None:
             args.ryuiki_db, registry_db, args.manifests_dir, args.period_shapes_yaml, args.out,
             count_overlay_by_file,
         )
-        info["n"] = stats["total"] - stats["synthetic_excluded_count"] - stats["absent_excluded_count"]
+        info["n"] = stats["n_occurrence"]
 
     report_path = pathlib.Path(args.report)
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(render_report(stats), encoding="utf-8")
     print(f"→ {report_path}")
-    n_occurrence = stats["total"] - stats["synthetic_excluded_count"] - stats["absent_excluded_count"]
+    n_occurrence = stats["n_occurrence"]
     print(
         f"  occurrence: {n_occurrence:,}行（日付あり {stats['n_dated']:,}、"
         f"合成データ除外 {stats['synthetic_excluded_count']:,}、不在記録除外 {stats['absent_excluded_count']:,}）"

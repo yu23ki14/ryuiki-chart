@@ -106,6 +106,12 @@ class Manifest:
     def is_builtin(self) -> bool:
         return self.adapter == BUILTIN
 
+    @property
+    def count_breakdown(self) -> dict[str, int]:
+        """縮小サンプルの件数 overlay が差し替えられる内訳（`manifests:<source>.<キー>`）。宣言が 0 より大きいものだけ。
+        source_regions・s01・test_sample_coverage はこの 1 か所から導く。"""
+        return {"absent_excluded_rows": self.expected_absent_excluded_rows} if self.expected_absent_excluded_rows else {}
+
 
 def _non_negative_int(v) -> bool:
     return isinstance(v, int) and not isinstance(v, bool) and v >= 0
@@ -202,6 +208,12 @@ def manifest_problems(raw, stem: str, *, adapters_dir=None) -> list[str]:
         problems.append(f"{label}.expected_place_region_null_rows が非負整数でない（実際: {raw['expected_place_region_null_rows']!r}）")
     if "expected_absent_excluded_rows" in raw and not _non_negative_int(raw["expected_absent_excluded_rows"]):
         problems.append(f"{label}.expected_absent_excluded_rows が非負整数でない（実際: {raw['expected_absent_excluded_rows']!r}）")
+    elif raw.get("expected_absent_excluded_rows") and (raw.get("adapter") != BUILTIN or raw.get("target") != "occurrence"):
+        # 不在記録の除外は b06 の organism_records 経路（adapter=builtin・target=occurrence）にしか無い
+        problems.append(
+            f"{label}.expected_absent_excluded_rows は adapter=builtin かつ target=occurrence のマニフェストにだけ書ける"
+            f"（実際: adapter={raw.get('adapter')!r}, target={raw.get('target')!r}）"
+        )
     if "sample_input_max_rows" in raw:
         v = raw["sample_input_max_rows"]
         if not (isinstance(v, int) and not isinstance(v, bool) and v > 0):

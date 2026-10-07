@@ -69,3 +69,41 @@ def test_backfill_adds_column_and_is_idempotent(proc_dir):
     added, n, changed, _ = m03.backfill_occurrence_status(conn)  # 2回目: 何も変わらない
     assert (added, n, changed) == (False, 3, 0)
     assert _statuses(conn) == first
+
+
+def _boom(*a, **k):
+    raise AssertionError("DB を開いてはいけない")
+
+
+def test_cli_help_exits_without_opening_any_db(monkeypatch, capsys):
+    """--help は全件の取り込み（本物の原本への書き込み）に落ちない。DB を開こうとしたら失敗させる。"""
+    monkeypatch.setattr(m03, "appdb", _boom)
+    monkeypatch.setattr(sqlite3, "connect", _boom)
+    with pytest.raises(SystemExit) as e:
+        m03.main(["--help"])
+    assert e.value.code == 0
+    assert "--backfill-occurrence-status" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("argv", [["--no-such-option"], ["--backfill-occurence-status"], ["--db", "x.sqlite"]])
+def test_cli_unknown_or_misplaced_arguments_stop_before_any_db(monkeypatch, argv):
+    monkeypatch.setattr(m03, "appdb", _boom)
+    monkeypatch.setattr(sqlite3, "connect", _boom)
+    with pytest.raises(SystemExit) as e:
+        m03.main(argv)
+    assert e.value.code == 2
+
+
+def test_backfill_stops_without_writing_when_jsonl_keys_have_no_row(proc_dir):
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE organism_records (record_id TEXT PRIMARY KEY, source_id TEXT, occurrence_status TEXT)")
+    conn.execute("INSERT INTO organism_records (record_id, source_id) VALUES "
+                 "('gbif_kanagawa_occurrences__1', 'gbif_kanagawa_occurrences')")  # 2, 3 が無い
+    with pytest.raises(SystemExit, match="2 件"):
+        m03.backfill_occurrence_status(conn)
+    assert _statuses(conn) == {"gbif_kanagawa_occurrences__1": None}  # 何も書いていない
+
+
+def test_backfill_stops_with_clear_message_when_table_is_missing(proc_dir):
+    with pytest.raises(SystemExit, match="organism_records 表が無い"):
+        m03.backfill_occurrence_status(sqlite3.connect(":memory:"))

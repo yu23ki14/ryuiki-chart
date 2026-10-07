@@ -134,6 +134,11 @@ def load_allowed_sources(conn):
             allowed.add(alias)
     return allowed, reg
 
+def dwc_occurrence_status(status):
+    """organism_records.occurrence_status（GBIF の PRESENT/ABSENT。NULL は不在の概念が無い出典）→ DwC の
+    occurrenceStatus。ABSENT は 'absent'、それ以外（NULL 含む）は 'present'。"""
+    return "absent" if status == "ABSENT" else "present"
+
 def rows(conn, sql):
     cur = conn.execute(sql); cols = [d[0] for d in cur.description]
     for r in cur: yield dict(zip(cols, r))
@@ -225,7 +230,7 @@ def build(include_noncommercial=False):
         wocc.writerow({k: clean(v) for k, v in {
           "occurrenceID": occ_id, "eventID": eid,
           "basisOfRecord": r["basis_of_record"] or "HumanObservation",
-          "occurrenceStatus": "present",
+          "occurrenceStatus": dwc_occurrence_status(r.get("occurrence_status")),
           "scientificName": sci, "acceptedNameUsage": "",
           "taxonID": dwca_taxon_id(sid, r["taxon_key"]), "taxonRank": r["taxon_rank"] or "",
           "kingdom": r["kingdom"] or "", "phylum": r["phylum"] or "",

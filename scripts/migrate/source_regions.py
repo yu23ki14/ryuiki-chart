@@ -77,10 +77,8 @@ def load_source_regions(
         sid: {
             "region_id": m.region, "consumer": m.target, "evidence": m.evidence,
             **({"expected_row_count": m.expected_row_count} if m.expected_row_count is not None else {}),
-            # 0 より大きい宣言だけ breakdown に出す（縮小サンプルの overlay が
-            # `manifests:<source>.absent_excluded_rows` で差し替えられる。宣言の無い出典に overlay は指せない）
-            **({"breakdown": {"absent_excluded_rows": m.expected_absent_excluded_rows}}
-               if m.expected_absent_excluded_rows else {}),
+            # 縮小サンプルの overlay が `manifests:<source>.<キー>` で差し替えられる内訳（宣言の無い出典に overlay は指せない）
+            **({"breakdown": m.count_breakdown} if m.count_breakdown else {}),
         }
         for sid, m in manifests.items()
     }

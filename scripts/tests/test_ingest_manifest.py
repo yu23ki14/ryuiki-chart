@@ -285,3 +285,22 @@ def test_parser_disagreeing_with_pyyaml_stops_validation(tmp_path):
     )
     with pytest.raises(common.MigrationError, match="最小パーサ"):
         manifest_lib.validate_manifests_shape(d, adapters_dir=ad)
+
+
+def test_expected_absent_excluded_rows_only_for_builtin_occurrence(tmp_path):
+    """不在記録の除外は b06 の organism_records 経路（adapter=builtin・target=occurrence）にしか無い。"""
+    write_manifest(tmp_path / "ok", "src_a", target="occurrence", extra={"expected_absent_excluded_rows": 3})
+    manifest_lib.validate_manifests_shape(tmp_path / "ok")
+    assert manifest_lib.load_manifests(tmp_path / "ok")["src_a"].count_breakdown == {"absent_excluded_rows": 3}
+
+    write_manifest(tmp_path / "obs", "src_a", target="observation", extra={"expected_absent_excluded_rows": 3})
+    with pytest.raises(common.MigrationError, match="expected_absent_excluded_rows は adapter=builtin"):
+        manifest_lib.validate_manifests_shape(tmp_path / "obs")
+
+    ad = _adapter_dir(tmp_path)
+    write_manifest(
+        tmp_path / "ad", "src_a", target="occurrence", adapter="src_a", expected_row_count=1,
+        extra={"expected": _ok_expected(), "expected_absent_excluded_rows": 3},
+    )
+    with pytest.raises(common.MigrationError, match="expected_absent_excluded_rows は adapter=builtin"):
+        manifest_lib.validate_manifests_shape(tmp_path / "ad", adapters_dir=ad)

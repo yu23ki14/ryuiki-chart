@@ -250,3 +250,7 @@ GBIF の `occurrenceStatus=ABSENT` は「その種はいなかった」という
   `reports/phase_b_occurrence.md` と stats（`absent_excluded_count`/`absent_excluded_by_source`）にも出す。
 - 取り込む行数の宣言（`expected_row_count: 658360`）は変えない（原本の行数。不在記録も読む）。変わるのは、期間の形（day/month）・
   キューブ（`month_cell_source_rows`・watershed の2件）・場所（`resolved_count`/`place_id_null_count`）の、除外後の行だけを数える宣言。
+
+**既知の制約（2026-10-07）**: registry（`build_place` の grid01 セル・`build_taxon` の代表名の選び方）は `organism_records` の全行から
+作られ、ABSENT 行も含む。不在記録だけの taxon やセルが registry に残り、代表名の多数決（`vernacular_name` 等）に不在記録の行が混ざる。
+occurrence・キューブの件数には影響しない（b06 が除く）。registry 側で除くかは別の判断（今回は直さない）。
