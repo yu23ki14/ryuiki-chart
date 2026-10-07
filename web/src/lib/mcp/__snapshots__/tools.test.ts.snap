@@ -6,6 +6,7 @@ exports[`MCP ツール一覧（第1段 5 本） > 入力スキーマのスナッ
     "description": "流域カルテにどんな測定項目・水域・ゾーン・出典があるかを一覧する。まず全体像を掴むときに使う。what='variables' は測定項目（variableId を get_observations に渡す）、'waters' は水域、'zones' は Ridge to Reef ゾーン、'sources' は出典（取得日・更新方式つき）。読み方: 値は定量下限未満を value_lod（下限値で代用）と value_zero（0 で代用）の両方で返す。n_censored・n_not_detected が多い系列は下限付近の値を平均した結果なので断定しない。caveats は必ず利用者に伝える。provenance の fetched_at・update_mode・age_days から、データの新しさと更新方式を判断する（update_mode が undeclared の出典は更新方式が未宣言）。欠測を補完しない。",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
       "properties": {
         "limit": {
           "description": "返す行数の上限（既定 100、最大 500）",
@@ -39,6 +40,7 @@ exports[`MCP ツール一覧（第1段 5 本） > 入力スキーマのスナッ
     "description": "語彙（測定項目・出典・生物種）を名前で検索する。変数名や種名の表記ゆれから ID（variableId・sourceId・学名）を引くときに使う。kind='variable' は測定項目、'source' は出典、'species' は出現記録のある種（和名・学名）。",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
       "properties": {
         "kind": {
           "description": "検索する語彙",
@@ -74,6 +76,7 @@ exports[`MCP ツール一覧（第1段 5 本） > 入力スキーマのスナッ
     "description": "ある測定項目の時系列を取る（水質・気象・水文など）。scope で水域（地点ごと）・1地点・ゾーン平均を選び、grain で粒度を選ぶ。応答は封筒（rows・coverage・provenance・caveats・excluded・cite_as）。読み方: 値は定量下限未満を value_lod（下限値で代用）と value_zero（0 で代用）の両方で返す。n_censored・n_not_detected が多い系列は下限付近の値を平均した結果なので断定しない。caveats は必ず利用者に伝える。provenance の fetched_at・update_mode・age_days から、データの新しさと更新方式を判断する（update_mode が undeclared の出典は更新方式が未宣言）。欠測を補完しない。",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
       "properties": {
         "from": {
           "description": "grain='day' の開始日 YYYY-MM-DD（grain='day' で from/to とも省略すると直近 2 年）",
@@ -98,6 +101,7 @@ exports[`MCP ツール一覧（第1段 5 本） > 入力スキーマのスナッ
         "scope": {
           "oneOf": [
             {
+              "additionalProperties": false,
               "properties": {
                 "name": {
                   "description": "水域名（describe_catalog what='waters'）",
@@ -115,6 +119,7 @@ exports[`MCP ツール一覧（第1段 5 本） > 入力スキーマのスナッ
               "type": "object",
             },
             {
+              "additionalProperties": false,
               "properties": {
                 "siteId": {
                   "description": "地点 ID",
@@ -132,6 +137,7 @@ exports[`MCP ツール一覧（第1段 5 本） > 入力スキーマのスナッ
               "type": "object",
             },
             {
+              "additionalProperties": false,
               "properties": {
                 "type": {
                   "const": "zone",
@@ -171,6 +177,7 @@ exports[`MCP ツール一覧（第1段 5 本） > 入力スキーマのスナッ
     "description": "生物の出現記録（GBIF・iNaturalist）の集計を取る。kind='species_catalog' は種の一覧（件数の多い順、group で分類群を絞る）、'species_years'/'species_months' は種ごとの年別・月別件数（binoms に学名）、'watershed_years' は流域ごとの年別件数。出現記録は観察努力量に偏るため、件数の増減を生息数の増減と読まない。source_ids で出典（gbif_kanagawa_occurrences・inaturalist_kanagawa・kanagawa_edna・kanagawa_kuma_sightings）を絞れる（省略時は全出典の合算）。eDNA（kanagawa_edna）は採水による検出で、目視の観察とは性質が違うので、比べるときは出典で分ける。",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
       "properties": {
         "binoms": {
           "description": "kind='species_years'/'species_months' の学名（最大 20）",
@@ -231,6 +238,7 @@ exports[`MCP ツール一覧（第1段 5 本） > 入力スキーマのスナッ
     "description": "神奈川県の環境DNA（eDNA、採水による検出。source_id=kanagawa_edna）の明細を、不検出（リード数 0）も含めて取る。地点（site_key／水系・支川・市町村）・種（taxon_id／学名・和名）・採水日で絞り、mode で明細・地点要約・分類群要約を選ぶ。eDNA は目視の観察とは性質が違うので、出現記録（get_occurrences）と比べるときは出典で分ける。",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
       "properties": {
         "area": {
           "description": "水系・支川・市町村の部分一致（例: 相模川、厚木市）",
@@ -298,6 +306,7 @@ exports[`MCP ツール一覧（第1段 5 本） > 入力スキーマのスナッ
     "description": "配布用データセット（dist/ の Parquet）の目録を返す。datapackage.json が指す各ファイルの相対パスと sha256 だけで、ファイルそのものは返さない（配信は別）。配布物が未配備のときは available=false と理由を返す。",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
       "properties": {},
       "type": "object",
     },

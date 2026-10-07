@@ -36,6 +36,7 @@ import { VARIABLE_LABEL, ZONE_INFO } from "@/lib/registry/generated-client";
 import { representativeSeries } from "@/lib/cube/series";
 import { EDNA_DESCRIPTION, EDNA_SOURCE_ID, ednaInputSchema, queryEdna } from "@/lib/edna";
 import { caveatsForFacets, facetsForOccurrence } from "@/lib/cube/caveats";
+import { SPECIES_MIN_N } from "@/lib/cube/occurrence";
 import { loadDatapackage } from "./datapackage";
 
 export interface McpContext {
@@ -70,9 +71,29 @@ function sourceRow(m: (typeof SOURCE_META)[number], now: Date | undefined) {
 const MAX_ROWS = 500;
 const limitSchema = z.number().int().min(1).max(MAX_ROWS).optional().describe(`返す行数の上限（既定 100、最大 ${MAX_ROWS}）`);
 
-/** 出現記録の注記。結果に含まれる出典ごとの source facet まで含めて、registry から機械的に引く（出典の分岐は書かない）。 */
+/**
+ * 出現記録の注記。結果に含まれる出典の source facet だけで、registry から機械的に引く（出典の分岐は書かない）。
+ * MCP は件数を返すので、割合で比べる画面の注記（grid01 の share）は引かない（places は空）。
+ */
 function occurrenceCaveats(sourceIds: readonly string[]) {
-  return caveatsForFacets(facetsForOccurrence({ places: ["grid01"], sourceIds }));
+  return caveatsForFacets(facetsForOccurrence({ places: [], sourceIds }));
+}
+
+/**
+ * species_months の足切り（`SPECIES_MIN_N`）で空になった種を、件数つきで返す。足切りそのものは外さない。
+ * 件数は足切りに使う `summary_species_catalog.n` と同じ（speciesCatalog の出典なし経路）。カタログに無い学名は `not_in_catalog`。
+ */
+async function monthsSuppression(db: CubeDb, binoms: readonly string[], rows: readonly { binom: string }[]) {
+  const have = new Set(rows.map((r) => r.binom));
+  const suppressed: { binom: string; n: number; min_n: number }[] = [];
+  const notInCatalog: string[] = [];
+  for (const binom of new Set(binoms)) {
+    if (have.has(binom)) continue;
+    const hit = (await speciesCatalog(db, { search: binom, limit: 50 })).find((s) => s.binom === binom);
+    if (hit && hit.n < SPECIES_MIN_N) suppressed.push({ binom, n: hit.n, min_n: SPECIES_MIN_N });
+    else if (!hit) notInCatalog.push(binom);
+  }
+  return { suppressed, not_in_catalog: notInCatalog };
 }
 
 function cap<T>(rows: readonly T[], limit: number | undefined): { rows: T[]; truncated: boolean } {
@@ -101,7 +122,7 @@ export const MCP_TOOLS: McpTool[] = [
       what: z.enum(["variables", "waters", "zones", "sources"]).describe("一覧する対象"),
       variableId: z.string().optional().describe("what='waters' のとき、この項目のデータを持つ水域に絞る（variables の variableId）"),
       limit: limitSchema,
-    }),
+    }).strict(),
     execute: async ({ what, variableId, limit }, ctx) => {
       const query = { what, variableId: variableId ?? null, limit: limit ?? null };
       const opt = { now: ctx.now };
@@ -142,7 +163,7 @@ export const MCP_TOOLS: McpTool[] = [
       kind: z.enum(["variable", "source", "species"]).describe("検索する語彙"),
       query: z.string().min(1).max(100).describe("部分一致の検索語（和名・英名・ID の一部）"),
       limit: limitSchema,
-    }),
+    }).strict(),
     execute: async ({ kind, query, limit }, ctx) => {
       const q = query.trim().toLowerCase();
       const hit = (...xs: (string | null | undefined)[]) => xs.some((x) => x != null && x.toLowerCase().includes(q));
@@ -186,16 +207,16 @@ export const MCP_TOOLS: McpTool[] = [
     inputSchema: z.object({
       variableId: z.string().describe("測定項目の ID（describe_catalog / search_registry で引く）"),
       scope: z.discriminatedUnion("type", [
-        z.object({ type: z.literal("water"), name: z.string().describe("水域名（describe_catalog what='waters'）") }),
-        z.object({ type: z.literal("site"), siteId: z.string().describe("地点 ID") }),
-        z.object({ type: z.literal("zone") }),
+        z.object({ type: z.literal("water"), name: z.string().describe("水域名（describe_catalog what='waters'）") }).strict(),
+        z.object({ type: z.literal("site"), siteId: z.string().describe("地点 ID") }).strict(),
+        z.object({ type: z.literal("zone") }).strict(),
       ]),
       grain: z.enum(["year", "fiscal_year", "month", "day"]).describe("時間の粒度。year=暦年、fiscal_year=年度（4月始まり）、month=月、day=日。zone は year/fiscal_year のみ意味を持つ"),
       stat: z.string().optional().describe("非代表の統計量（p75/p90/max/min）。省略時は代表系列"),
       from: z.string().optional().describe(`grain='day' の開始日 YYYY-MM-DD（grain='day' で from/to とも省略すると直近 ${DAY_DEFAULT_YEARS} 年）`),
       to: z.string().optional().describe("grain='day' の終了日 YYYY-MM-DD"),
       limit: limitSchema,
-    }),
+    }).strict(),
     execute: async ({ limit, ...input }, ctx) => {
       // grain='day' で期間が無いと全期間の日次を読む。直近 DAY_DEFAULT_YEARS 年に絞り、query に反映して黙らない。
       if (input.grain === "day" && !input.from && !input.to) {
@@ -232,7 +253,7 @@ export const MCP_TOOLS: McpTool[] = [
         .optional()
         .describe("出典で絞る（省略時は全出典の合算）。例: ['kanagawa_edna']"),
       limit: limitSchema,
-    }),
+    }).strict(),
     execute: async ({ kind, group, binoms, placeId, source_ids, limit }, ctx) => {
       const db = await ctx.db();
       const sourceIds = source_ids ?? [...OCCURRENCE_SOURCE_IDS]; // 未指定は全出典（絞り込みなし）
@@ -240,26 +261,33 @@ export const MCP_TOOLS: McpTool[] = [
       const query = { kind, group: group ?? null, binoms: binoms ?? null, placeId: placeId ?? null, source_ids: source_ids ?? null, limit: limit ?? null };
       let rows: unknown[];
       let coverage: { no_coordinate: { binom: string; year: number; source_id: string; n: number }[] } | undefined;
+      let extra: Record<string, unknown> = {};
       if (kind === "species_catalog") rows = await speciesCatalog(db, { group: group ?? null, limit: (limit ?? 100) + 1, withNames: true, ...filter });
       else if (kind === "watershed_years") rows = await watershedYears(db, { placeId, ...filter });
       else {
         if (!binoms?.length) throw new McpInputError(`kind='${kind}' には binoms（学名）が要る`);
-        rows = kind === "species_years" ? await speciesYears(db, binoms, filter) : await speciesMonths(db, binoms, filter);
         if (kind === "species_years") {
+          rows = await speciesYears(db, binoms, filter);
           // n は座標の無い記録を含む。そのうち格子に置けなかった件数を出典別・年別に添える（mesh_n は座標のある記録だけ）。
           const nc = await speciesYearsNoCoordinate(db, binoms, filter);
           coverage = { no_coordinate: nc.map((r) => ({ binom: r.binom, year: r.year, source_id: r.sourceId, n: r.n })) };
+        } else {
+          const months = await speciesMonths(db, binoms, filter);
+          rows = months;
+          // 件数の少ない種は月別を出さない（足切り）。黙って空にせず、どの種が何件で切られたかを返す。
+          const s = await monthsSuppression(db, binoms, months);
+          if (s.suppressed.length || s.not_in_catalog.length) extra = s;
         }
       }
       const c = cap(rows, limit);
-      return buildDataEnvelope(query, { rows: c.rows, n_total: rows.length, ...(coverage ? { coverage } : {}) }, sourceIds, { now: ctx.now, truncated: c.truncated, caveats: occurrenceCaveats(sourceIds) });
+      return buildDataEnvelope(query, { rows: c.rows, n_total: rows.length, ...(coverage ? { coverage } : {}), ...extra }, sourceIds, { now: ctx.now, truncated: c.truncated, caveats: occurrenceCaveats(sourceIds) });
     },
   }),
 
   defineTool({
     name: "get_edna",
     description: EDNA_DESCRIPTION,
-    inputSchema: ednaInputSchema,
+    inputSchema: ednaInputSchema.strict(), // MCP だけ strict（AI 側は余計なキーで詰まらないよう既定のまま）
     execute: async (args, ctx) => {
       const result = await queryEdna(await ctx.db(), args);
       const c = cap(result.rows, args.limit);
@@ -277,7 +305,7 @@ export const MCP_TOOLS: McpTool[] = [
     description:
       "配布用データセット（dist/ の Parquet）の目録を返す。datapackage.json が指す各ファイルの相対パスと sha256 だけで、" +
       "ファイルそのものは返さない（配信は別）。配布物が未配備のときは available=false と理由を返す。",
-    inputSchema: z.object({}),
+    inputSchema: z.object({}).strict(),
     execute: async (_args, ctx) => {
       const pkg = await (ctx.datapackage ?? loadDatapackage)();
       if (pkg === null) {
