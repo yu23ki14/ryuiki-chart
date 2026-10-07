@@ -7,10 +7,13 @@
 #   - data/db/ryuiki.sqlite, cells.sqlite : 原本。100MB 超のため別配布
 # 例外は 2 つだけ。どちらも「スクリプトで再生成できない、手で育てるデータ」。
 #   - data/vocab/ : LLM 抽出済みの語彙（再取得できず、436KB）
+#   - data/edna/  : 神奈川県 eDNA 地点の推定座標台帳（scripts/c89b_edna_site_coords.py が名前から推定し、
+#                   人が図から読み取った行〔reviewed=1〕を足していく。docs/plans/KANAGAWA_EDNA.md §5.1）
 #   - data/water/ : 水道水の水源マップの原本 CSV（事業体の PDF を人と Agent が読んで作る。
 #                   docs/WATER_SOURCE_MAP.md §6。PDF 自体は data/raw/water/ で管理外）
 data/*
 !data/vocab/
+!data/edna/
 !data/water/
 # Issue #29「縮小サンプル＋実行証明」の縮小サンプル。scripts/s01_build_sample.py が
 # 書くテキスト（CREATE/INSERT の .sql・coverage.yaml・manifest.json・
