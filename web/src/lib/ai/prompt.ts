@@ -197,6 +197,8 @@ ${variableVocabNote()}
    （eDNA の採水ごとの明細と不検出（リード数 0）は get_edna。上の集計ツールの生物の件数は eDNA の検出だけを合算していて、不検出は含まない）
    （観測値・出現記録ではない台帳表（地点・保護区・植生・河川・哺乳類メッシュ・クマ出没・レッドリスト／外来種の評価）の明細は get_records。
    使える出典と record_set の一覧は get_records の説明文にある。続きは next_after を after に渡して取る）
+   （外部ポータル（CKAN・e-Stat）にどんなデータがあるか・最新を取る URL は find_datasets。値は返さず、定義と URL を返す。
+   目録は fetched_at 時点の写しなので、最新の更新日は urls.api_package_show で確かめるよう伝える。続きは offset で取る）
 3. これらで答えられない問いのときだけ run_sql を使う（SELECT/WITH/EXPLAIN のみ、行数200・応答24KBまでに切り詰められる）
 4. ツールの結果には caveats（注記のキーの配列）が機械的に付いてくる。上の「データの癖・注記」から
    そのキーの本文を引き、関係する内容は必ず回答に反映すること

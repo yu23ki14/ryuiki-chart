@@ -316,6 +316,55 @@ export const riverSegments = sqliteTable("river_segments", {
 ]);
 
 
+/**
+ * 外部ポータルの目録（CKAN 4 インスタンス + e-Stat 7 件。docs/plans/MCP_EXTERNAL_CATALOG.md §1）。
+ * 値は持たない。「どんなデータがあるか」の定義と、最新を取りに行く URL だけ（`find_datasets` が読む）。
+ * `scripts/m08_external_catalog.py` が原本 ryuiki.sqlite に作る（DDL は `scripts/schema_catalog.sql`）。
+ * metadata_modified・last_modified・size は収穫時点（fetched_at）の値。最新は api_url（package_show）が正。
+ * license の空は NULL（不明。除外しない）。
+ */
+export const externalDataset = sqliteTable("external_dataset", {
+	datasetKey: text("dataset_key").primaryKey(),
+	sourceId: text("source_id").notNull(),
+	portal: text().notNull(),
+	datasetId: text("dataset_id").notNull(),
+	name: text(),
+	title: text().notNull(),
+	description: text(),
+	descriptionTruncated: integer("description_truncated").notNull().default(0),
+	organization: text(),
+	license: text(),
+	licenseUrl: text("license_url"),
+	groups: text(),
+	tags: text(),
+	nResources: integer("n_resources").notNull().default(0),
+	metadataModified: text("metadata_modified"),
+	pageUrl: text("page_url").notNull(),
+	apiUrl: text("api_url"),
+	fetchedAt: text("fetched_at").notNull(),
+},
+(table) => [
+	index("ix_ed_source_modified").on(table.sourceId, table.metadataModified),
+	index("ix_ed_org").on(table.organization),
+]);
+
+/** 外部ポータルの資源（ファイル）。sheets_json は NULL か `[{sheet, n_rows, n_cols, header: [...] | null, header_basis?}]`。 */
+export const externalResource = sqliteTable("external_resource", {
+	resourceKey: text("resource_key").primaryKey(),
+	datasetKey: text("dataset_key").notNull(),
+	name: text(),
+	format: text(),
+	size: integer(),
+	lastModified: text("last_modified"),
+	directUrl: text("direct_url"),
+	pageUrl: text("page_url"),
+	sheetsJson: text("sheets_json"),
+},
+(table) => [
+	index("ix_er_dataset").on(table.datasetKey),
+	index("ix_er_format").on(table.format),
+]);
+
 /* ------------------------------------------------------------------ *
  * 水道水の水源マップ（docs/WATER_SOURCE_MAP.md）
  *

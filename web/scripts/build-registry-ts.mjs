@@ -406,6 +406,16 @@ const recordSourceIds = Object.entries(sourceAccess)
   .filter(([, a]) => a.tables.length > 0)
   .map(([id]) => id);
 const accessDoc = loadYaml(fs.readFileSync(ACCESS_YAML, "utf8"));
+const declaredCatalogSourceIds = Object.entries(accessDoc.sources ?? {})
+  .filter(([, e]) => e && e.catalog)
+  .map(([id]) => id)
+  .filter((id) => !isSyntheticSource(id))
+  .sort();
+// find_datasets で引ける出典（source_access の queryable_via。files-only では保持した生成物と access.yaml を突き合わせる）。
+const findDatasetSourceIds = Object.entries(sourceAccess)
+  .filter(([, a]) => a.queryableVia.includes("find_datasets"))
+  .map(([id]) => id)
+  .sort();
 const recordSetTables = accessDoc.record_sets ?? {};
 // 一覧（SOURCE_META・SOURCE_ACCESS）から除いた出典の件数と理由（describe_catalog の summary.excluded）。
 const excludedFromList = {};
@@ -841,7 +851,7 @@ export const OCCURRENCE_SOURCE_IDS: readonly string[] = ${JSON.stringify(occurre
 /** 出典ごとの状態（registry/source/access.yaml と manifests/ から r01 が作る。MCP_SOURCE_ACCESS.md §1）。 */
 export interface GeneratedSourceAccess {
   state: "queryable" | "not_queryable";
-  /** 取れるツール名（get_observations / get_occurrences / get_edna / get_records）。取れないなら空。 */
+  /** 取れるツール名（get_observations / get_occurrences / get_edna / get_records / find_datasets）。取れないなら空。 */
   queryableVia: string[];
   /** get_records で引ける record_set（記録の集合名。空なら get_records の対象外）。 */
   tables: string[];
@@ -849,7 +859,7 @@ export interface GeneratedSourceAccess {
   recordSetRows: Record<string, number>;
   /** 原本の行数（キューブの集計行数ではない）。取れない出典は null。 */
   nSourceRows: number | null;
-  nSourceRowsBasis: "source_rows" | "registry_record_count" | "none";
+  nSourceRowsBasis: "source_rows" | "registry_record_count" | "catalog_datasets" | "none";
   /** 件数を数えた原本の最新取得日時（決定論のため実行時刻ではない）。 */
   countedAt: string | null;
   /** 取れない理由コード（queryableVia が空のとき必須）。 */
@@ -873,6 +883,9 @@ export const SOURCE_EXCLUDED_FROM_LIST: Readonly<Record<string, number>> = ${JSO
 /** get_records で引ける出典（SOURCE_ACCESS の tables が空でないもの）。 */
 export const RECORD_SOURCE_IDS: readonly string[] = ${JSON.stringify(recordSourceIds)};
 
+/** find_datasets で引ける出典（外部ポータルの目録。registry/source/access.yaml の catalog を宣言した出典。MCP_EXTERNAL_CATALOG.md §5）。 */
+export const FIND_DATASET_SOURCE_IDS: readonly string[] = ${JSON.stringify(findDatasetSourceIds)};
+
 export const LICENSES: readonly GeneratedLicense[] = ${emitObjectArray(licenses, ["licenseId", "nameJa", "spdxOrUrl", "licenseClass", "attributionText"])};
 `;
 
@@ -884,6 +897,7 @@ if (filesOnly) {
     ["OCCURRENCE_SOURCE_IDS", occurrenceSourceIds, "manifests/（target=occurrence）"],
     ["OBSERVATION_SOURCE_IDS", observationSourceIds, "manifests/（target=observation）"],
     ["RECORD_SOURCE_IDS", declaredRecordSourceIds, "registry/source/access.yaml（records を持つ出典）"],
+    ["FIND_DATASET_SOURCE_IDS", declaredCatalogSourceIds, "registry/source/access.yaml（catalog を持つ出典）"],
   ];
   for (const [name, expected, from] of must) {
     if (keep(name) !== JSON.stringify(expected)) {

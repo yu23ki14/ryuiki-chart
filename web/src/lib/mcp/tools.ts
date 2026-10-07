@@ -43,6 +43,7 @@ import { SPECIES_MIN_N } from "@/lib/cube/occurrence";
 import { loadDatapackage } from "./datapackage";
 import { McpInputError } from "./errors";
 import { getRecordsTool } from "./tools-records";
+import { findDatasetsTool } from "./tools-find-datasets";
 
 export interface McpContext {
   db: () => Promise<CubeDb>;
@@ -169,9 +170,9 @@ export const MCP_TOOLS: McpTool[] = [
     description:
       "流域カルテにどんな測定項目・水域・ゾーン・出典があるかを一覧する。まず全体像を掴むときに使う。" +
       "what='variables' は測定項目（variableId を get_observations に渡す）、'waters' は水域、'zones' は Ridge to Reef ゾーン、" +
-      "'sources' は出典（取得日・更新方式・取れるツール queryable_via・取れない理由つき）。" +
+      "'sources' は出典（取得日・更新方式・取れるツール queryable_via・取れない理由つき。queryable_via が find_datasets の出典は外部ポータルの目録で、値ではなく定義と最新の URL を find_datasets で引く）。" +
       "出典の件数・ツール別の件数・取れない理由別の件数は応答の summary を使う（一覧を自分で数えない）。" +
-      "n_source_rows は原本の行数で、get_observations の n（集計に使った件数）とは別物。" +
+      "n_source_rows は原本の行数で、get_observations の n（集計に使った件数）とは別物（find_datasets の出典では目録のデータセット数。n_source_rows_basis=catalog_datasets）。" +
       READING_RULES,
     inputSchema: z.object({
       what: z.enum(["variables", "waters", "zones", "sources"]).describe("一覧する対象"),
@@ -398,6 +399,7 @@ export const MCP_TOOLS: McpTool[] = [
   }),
 
   getRecordsTool(),
+  findDatasetsTool(),
 ];
 
 export { McpInputError };

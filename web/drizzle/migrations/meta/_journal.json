@@ -141,6 +141,13 @@
       "when": 1791374254224,
       "tag": "0019_cuddly_goliath",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1791377362182,
+      "tag": "0020_goofy_talkback",
+      "breakpoints": true
     }
   ]
 }

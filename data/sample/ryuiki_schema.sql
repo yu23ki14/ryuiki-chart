@@ -6,6 +6,37 @@ CREATE TABLE edna_detections (
   lat REAL, lon REAL, coordinate_uncertainty_m REAL,
   attributes_json TEXT NOT NULL         -- 設計 §3.3 の attributes。m07 が組む
 );
+CREATE TABLE external_dataset (
+  dataset_key TEXT PRIMARY KEY,          -- '<source_id>:<dataset_id>'（e-Stat は '<source_id>:<statInfId>'）
+  source_id TEXT NOT NULL,
+  portal TEXT NOT NULL,                  -- ckan / estat
+  dataset_id TEXT NOT NULL,              -- CKAN の UUID（e-Stat は statInfId、境界 GIS は dlserveyId）
+  name TEXT,                             -- CKAN の URL 用の名前（e-Stat は NULL）
+  title TEXT NOT NULL,
+  description TEXT,
+  description_truncated INTEGER NOT NULL DEFAULT 0,   -- 収穫時に 800 文字で切ってある（長さがちょうど 800）
+  organization TEXT,
+  license TEXT,                          -- 空は NULL（不明。除外しない）
+  license_url TEXT,
+  groups TEXT,                           -- '|' 区切り
+  tags TEXT,                             -- '|' 区切り
+  n_resources INTEGER NOT NULL DEFAULT 0,
+  metadata_modified TEXT,                -- 収穫時点の値（最新は api_url の package_show）
+  page_url TEXT NOT NULL,
+  api_url TEXT,                          -- CKAN: package_show（UUID 指定）。e-Stat は NULL
+  fetched_at TEXT NOT NULL               -- source_registry.fetched_at（出典単位の収穫日）
+);
+CREATE TABLE external_resource (
+  resource_key TEXT PRIMARY KEY,         -- '<source_id>:<resource_id>'
+  dataset_key TEXT NOT NULL,
+  name TEXT,
+  format TEXT,                           -- 大文字。'SHP,CSV' のようにカンマ区切りが混ざる
+  size INTEGER,
+  last_modified TEXT,                    -- 収穫時点の値
+  direct_url TEXT,                       -- 直リンク（url が空の行は NULL）
+  page_url TEXT,
+  sheets_json TEXT                       -- NULL か [{sheet, n_rows, n_cols, header: [...] | null, header_basis?}]
+);
 CREATE TABLE mammal_mesh (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   mesh_code TEXT, species TEXT, species_ja TEXT,

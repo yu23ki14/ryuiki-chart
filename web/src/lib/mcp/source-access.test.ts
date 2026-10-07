@@ -3,6 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { MCP_TOOLS } from "./tools";
 import { OBSERVATION_SOURCE_IDS, OCCURRENCE_SOURCE_IDS, RECORD_SOURCE_IDS } from "@/lib/cube";
+import { FIND_DATASET_SOURCE_IDS } from "@/lib/catalog-search";
 import { RECORD_SET_TABLES, SOURCE_ACCESS, SOURCE_META } from "@/lib/registry/generated-source";
 
 /** 出典の状態（MCP_SOURCE_ACCESS.md §2）。生成物と describe_catalog / search_registry の応答の整合を固定する。 */
@@ -70,6 +71,7 @@ describe("出典の状態 SOURCE_ACCESS", () => {
     for (const a of Object.values(SOURCE_ACCESS)) for (const t of a.tables) expect(RECORD_SET_TABLES, t).toHaveProperty(t);
     expect(tables.size).toBeGreaterThan(0);
     for (const t of tables) expect(defined.has(t), t).toBe(true);
+    for (const t of ["external_dataset", "external_resource"]) expect(defined.has(t), t).toBe(true); // find_datasets の表
   });
 });
 
@@ -100,7 +102,26 @@ describe("describe_catalog(sources) の状態と summary", () => {
     const toolCount = (t: string) => rows.filter((r) => r.queryable_via.includes(t)).length;
     for (const [t, n] of Object.entries(summary.by_tool)) expect(n, t).toBe(toolCount(t));
     expect(summary.by_tool.get_records).toBe(RECORD_SOURCE_IDS.length);
+    expect(summary.by_tool.find_datasets).toBe(FIND_DATASET_SOURCE_IDS.length);
     expect(summary.excluded).toEqual({ synthetic: 1 }); // 一覧から除いた出典（合成データ）。total には含めない
+  });
+
+  it("外部ポータルの目録 7 出典は queryable_via に find_datasets が付き、n_source_rows は目録の件数（basis=catalog_datasets）", async () => {
+    const { data } = await run("describe_catalog", { what: "sources" });
+    const rows = (data.sources as (Row & { n_source_rows_basis: string })[]).filter((r) => r.queryable_via.includes("find_datasets"));
+    expect(rows.map((r) => r.source_id).sort()).toEqual([
+      "ckan_bodik_kanagawa", "ckan_kanagawa_pref", "ckan_sagamihara", "ckan_yokohama",
+      "estat_agri_census_kanagawa", "estat_census_population_kanagawa", "estat_shozaiki_kanagawa",
+    ]);
+    for (const r of rows) {
+      expect(r.queryable_via, r.source_id).toEqual(["find_datasets"]);
+      expect(r.n_source_rows_basis, r.source_id).toBe("catalog_datasets");
+      expect(r.n_source_rows, r.source_id).toBeGreaterThan(0);
+      expect(r.unavailable_reason, r.source_id).toBeNull();
+    }
+    expect(Object.fromEntries(rows.map((r) => [r.source_id, r.n_source_rows]))).toMatchObject({
+      estat_agri_census_kanagawa: 5, estat_census_population_kanagawa: 1, estat_shozaiki_kanagawa: 1,
+    });
   });
 
   it("queryable で絞れる。summary は絞り込みに関わらず全出典の集計", async () => {

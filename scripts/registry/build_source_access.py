@@ -7,7 +7,8 @@
 
 - `manifests/<source_id>.yml` の `target`: observation → `get_observations`、occurrence → `get_occurrences`
   （宣言しない。二重管理にしない）。
-- `registry/source/access.yaml`（手書き）: `records`（`get_records` で取れる表）・`reason`（取れない理由。
+- `registry/source/access.yaml`（手書き）: `records`（`get_records` で取れる表）・`catalog`（`find_datasets` で取れる
+  外部ポータルの目録。docs/plans/MCP_EXTERNAL_CATALOG.md §5）・`reason`（取れない理由。
   `basis` に下書きの根拠を残す）・`extra_tools`。形は access.yaml の冒頭コメント。
 - 原本 `ryuiki.sqlite`: 出典ごとの行数（`n_source_rows`）と、宣言との突き合わせ（§1.4）。
 
@@ -21,13 +22,16 @@
 - 理由コードが語彙内・`reason` に `basis` がある・`records` と `reason` の両方は持てない
 - `records` の record_set が `record_sets`（record_set → D1 の表。**正はここ 1 か所**）にあり、その表が許可リスト
   （`D1_RECORD_TABLES`＝**D1 にある表**。原本にだけある表は対象外で、理由は `not_in_d1`）内
+- `catalog` の表は `CATALOG_TABLES`（`external_dataset`）だけ。`records`・`reason` と排他（3 つのうち 1 つだけ）
 - `reason` を持つ出典はマニフェストに無い（取れるものを「取れない」と書かない）
 - `extra_tools` はマニフェストの出典にだけ付く
 
 原本あり:
 - 全出典が状態を持つ（マニフェスト由来 + `records` + `reason` が `source_registry` と過不足なく一致）
 - `records` の (出典, 表) の行数が 1 以上
-- `reason` の出典が、出典の列を持つ全表のどれにも 0 行（`ROW_REASONS` の `synthetic`・`not_in_d1` だけ例外。
+- `catalog` の出典は `external_dataset` に 1 行以上あり、`external_dataset.source_id` の種類は `catalog` の宣言と過不足なく
+  一致する（宣言漏れ・過剰を止める。`n_source_rows` は目録の件数＝データセット数、basis は `catalog_datasets`）
+- `reason` の出典が、出典の列を持つ全表（`external_dataset` を除く。目録は値ではない）のどれにも 0 行（`ROW_REASONS` の `synthetic`・`not_in_d1` だけ例外。
   この2つは逆に、原本に行があることを要求する。宣言が古ければ止まる）
 - `reason: superseded` ⇔ `source.superseded_by` がある
 """
@@ -44,6 +48,9 @@ ACCESS_YAML = common.ROOT / "registry" / "source" / "access.yaml"
 TOOL_BY_TARGET = {"observation": "get_observations", "occurrence": "get_occurrences"}
 EXTRA_TOOLS = {"get_edna"}
 RECORDS_TOOL = "get_records"
+CATALOG_TOOL = "find_datasets"
+# `catalog` が指してよい表（外部ポータルの目録。出典の列 source_id で数える。external_resource は出典の列を持たない）。
+CATALOG_TABLES = frozenset({"external_dataset"})
 
 # `record_sets` が指してよい表（**D1 にある表**。出典の列 `source_id` で絞る）。web/src/lib/records.ts の
 # RECORD_TABLES の許可リスト（列）は record_set → 表を access.yaml の生成物から読む。`taxon_assessment` は語彙レジストリの表
@@ -58,8 +65,8 @@ PRIMARY_TABLES = {
     "occurrence": ("organism_records", "edna_reads", "wildlife_sightings"),
 }
 
-N_BASIS = ("source_rows", "registry_record_count", "none")
-_SOURCE_KEYS = {"records", "reason", "basis", "note"}
+N_BASIS = ("source_rows", "registry_record_count", "catalog_datasets", "none")
+_SOURCE_KEYS = {"records", "catalog", "reason", "basis", "note"}
 # 原本に行がある理由（合成データ・D1 に未投入）。他の理由は「原本に行が無い」ことを検査する。
 ROW_REASONS = frozenset({"synthetic", "not_in_d1"})
 
@@ -88,6 +95,11 @@ def normalize_records(sid: str, records, record_sets: dict[str, str]) -> list[st
     return list(records)
 
 
+def catalog_sources(doc: dict) -> dict[str, str]:
+    """`catalog` を宣言した出典 → 表。`validate_static` が検査した後に使う。"""
+    return {sid: e["catalog"] for sid, e in (doc.get("sources") or {}).items() if isinstance(e, dict) and "catalog" in e}
+
+
 def validate_static(doc: dict, manifest_targets: dict[str, str]) -> dict[str, list[str]]:
     """原本不要の検査。戻り値は `{source_id: 正規化した records}`（records を持つ出典だけ）。"""
     reasons = doc.get("reasons")
@@ -112,14 +124,21 @@ def validate_static(doc: dict, manifest_targets: dict[str, str]) -> dict[str, li
         extra = set(entry) - _SOURCE_KEYS
         if extra:
             raise AccessError(f"access.yaml: sources.{sid} に未対応のキー {sorted(extra)}（使えるキー: {sorted(_SOURCE_KEYS)}）")
-        has_rec, has_reason = "records" in entry, "reason" in entry
-        if has_rec == has_reason:
-            raise AccessError(f"access.yaml: sources.{sid} は records か reason のどちらか一方だけを持つ（両方・どちらも無しは不可）")
+        has_rec, has_reason, has_cat = "records" in entry, "reason" in entry, "catalog" in entry
+        if has_rec + has_reason + has_cat != 1:
+            raise AccessError(f"access.yaml: sources.{sid} は records・catalog・reason のどれか 1 つだけを持つ（複数・どれも無しは不可）")
+        if has_cat:
+            if entry["catalog"] not in CATALOG_TABLES:
+                raise AccessError(f"access.yaml: sources.{sid} の catalog={entry['catalog']!r} は使えない（使える表: {sorted(CATALOG_TABLES)}）")
+            if "basis" in entry:
+                raise AccessError(f"access.yaml: sources.{sid} は catalog を持つので basis は書けない（basis は reason の根拠）")
+            if sid in manifest_targets:
+                raise AccessError(f"access.yaml: sources.{sid} はマニフェストのある出典なので catalog は書けない")
         if has_rec:
             records_by_source[sid] = normalize_records(sid, entry["records"], record_sets)
             if "basis" in entry:
                 raise AccessError(f"access.yaml: sources.{sid} は records を持つので basis は書けない（basis は reason の根拠）")
-        else:
+        elif has_reason:
             code = entry["reason"]
             if code not in reasons:
                 raise AccessError(f"access.yaml: sources.{sid} の reason={code!r} が語彙 {sorted(reasons)} に無い")
@@ -224,11 +243,27 @@ def assemble(
                     f"access.yaml: {sid} の records に宣言した record_set {rs}（表 {table}）に、この出典の行が 1 つも無い"
                     "（宣言が古い。records から外すか、reason に直す）"
                 )
+    # catalog: 宣言した出典の目録に 1 行以上・目録の出典の種類が宣言と一致（宣言漏れ・過剰を止める）
+    catalogs = catalog_sources(doc)
+    for sid, table in catalogs.items():
+        if _table_rows(counts, sid, table) == 0:
+            raise AccessError(
+                f"access.yaml: {sid} の catalog（表 {table}）に、この出典の行が 1 つも無い"
+                "（目録が未投入か宣言が古い。scripts/m08_external_catalog.py を流すか、宣言を外す）"
+            )
+    for table in sorted(CATALOG_TABLES):
+        present = {s for s, n in all_source_tables.get(table, {}).items() if n}
+        declared_here = {s for s, t in catalogs.items() if t == table}
+        if present != declared_here:
+            raise AccessError(
+                f"access.yaml: {table}.source_id の種類が catalog の宣言と一致しない"
+                f"（目録にあって宣言が無い: {sorted(present - declared_here)} / 宣言があって目録に無い: {sorted(declared_here - present)}）"
+            )
     for sid, entry in sources.items():
         code = entry.get("reason")
         if code is None:
             continue
-        have = {t: c[sid] for t, c in all_source_tables.items() if c.get(sid)}
+        have = {t: c[sid] for t, c in all_source_tables.items() if c.get(sid) and t not in CATALOG_TABLES}
         if code in ROW_REASONS:
             if not have:
                 raise AccessError(f"access.yaml: {sid} は reason={code} だが原本に行が無い（宣言が古い。{code} は行がある出典の理由）")
@@ -252,10 +287,16 @@ def assemble(
             via.extend(extra_tools.get(sid, []))
         if recs:
             via.append(RECORDS_TOOL)
+        cat_table = catalogs.get(sid)
+        if cat_table:
+            via.append(CATALOG_TOOL)
         tables = list(recs)
         reason = entry.get("reason")
         if via:
-            if target:
+            if cat_table:
+                # 目録の件数（データセット数）。値の行数（estat_*.jsonl の行）ではない。
+                n, basis = _table_rows(counts, sid, cat_table), "catalog_datasets"
+            elif target:
                 n = sum(all_source_tables.get(t, {}).get(sid, 0) for t in PRIMARY_TABLES[target])
                 if n == 0:
                     n, basis = r["record_count"], "registry_record_count"

@@ -32,6 +32,7 @@ import { MEASUREMENTS_DATASET } from "@/lib/cube/series";
 import { timeseries } from "@/lib/cube/timeseries";
 import { EDNA_DESCRIPTION, EDNA_SOURCE_ID, ednaInputSchema, queryEdna } from "@/lib/edna";
 import { queryRecords, RECORD_TABLES, RecordsInputError, recordsInputSchema, RECORDS_DESCRIPTION } from "@/lib/records";
+import { FIND_DATASETS_DESCRIPTION, FindDatasetsInputError, findDatasetsInputSchema, queryDatasets } from "@/lib/catalog-search";
 
 /** 測定値系データセット固定（PR-2 のスコープは測定値系。design §1.1 と同じ前提）。registry の dataset キー。 */
 const DATASET = MEASUREMENTS_DATASET;
@@ -855,6 +856,49 @@ const get_records = tool({
   },
 });
 
+/* ------------------------------------------------------------------ */
+/* find_datasets                                                      */
+/* ------------------------------------------------------------------ */
+
+/** AI の find_datasets の既定の件数（応答 24KB に収めるため、MCP の既定 20 より小さい）。 */
+const AI_DATASETS_DEFAULT_LIMIT = 10;
+
+const find_datasets = tool({
+  description: FIND_DATASETS_DESCRIPTION,
+  inputSchema: findDatasetsInputSchema,
+  execute: async (input) => {
+    const t0 = performance.now();
+    try {
+      const r = await queryDatasets(await d1CubeDb(), { ...input, limit: input.limit ?? AI_DATASETS_DEFAULT_LIMIT });
+      const dataOf = (rows: typeof r.rows) => ({ offset: r.offset, rows, ...(r.n_total !== null ? { n_total: r.n_total } : {}) });
+      // 行は makeResult の間引き（fitToBudget。等間隔）に任せない（offset で続きが取れなくなる）。予算に収まるまで先頭から残す。
+      let rows = r.rows;
+      let shrunk = false;
+      while (rows.length > 1 && byteLength(dataOf(rows)) > BYTE_BUDGET) {
+        rows = rows.slice(0, Math.max(1, Math.floor(rows.length * 0.7)));
+        shrunk = true;
+      }
+      const out = makeResult({
+        tool: "find_datasets",
+        tables: ["external_dataset", "external_resource"],
+        caveats: caveatKeysForFacets(facetsForOccurrence({ places: [], sourceIds: r.source_ids })),
+        data: dataOf(rows),
+        rowCount: rows.length,
+        elapsedMs: performance.now() - t0,
+      });
+      if (!(r.truncated || shrunk)) return out;
+      return {
+        ...out,
+        truncated: true,
+        truncatedNote: `続きがある。offset を ${r.offset + rows.length} にして続きを取れる。${out.truncatedNote ?? ""}`,
+      };
+    } catch (e) {
+      if (!(e instanceof FindDatasetsInputError)) throw e;
+      return makeResult({ tool: "find_datasets", tables: [], caveats: [], data: { error: e.message }, rowCount: 0, elapsedMs: performance.now() - t0 });
+    }
+  },
+});
+
 export const aiTools = {
   list_catalog,
   get_timeseries,
@@ -863,6 +907,7 @@ export const aiTools = {
   get_biota_trend,
   get_edna,
   get_records,
+  find_datasets,
   get_redlist,
   get_overview,
   describe_schema,

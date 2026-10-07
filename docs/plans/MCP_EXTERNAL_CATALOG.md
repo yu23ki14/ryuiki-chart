@@ -213,3 +213,17 @@ MCP の `tools.ts` は触らない（SA の A が 1 行で登録）。SQL は固
 4. G空間情報センター等への対象の拡大はしない。
 5. 縮小サンプルに2表の数行を入れ（s01 の閉包か coverage.yaml）、CI で検査されるようにする。
 6. ライセンスが空の行（84 件）は除外せず、license を null（不明）として返す。
+
+## 実装メモ（2026-10-07、実装担当）
+設計どおりに実装した。差が出た点だけ書く。
+- 件数: `external_dataset` 2,266（県 811・相模原 114・BODIK 680・横浜 654・e-Stat 7）、`external_resource` 23,251（url 空 3 件は `direct_url` NULL）。設計の見込みと一致。
+- 見出しを検出できたシート: §3 の「495 シート・170 resource」は `kanagawa_pref_web`（CKAN 外の `web_` 始まり。目録に載らない）の 44 シートを含んでいた。
+  目録に載る資源で数えると **452 シート・148 resource**（基準は同じ `header_is_reliable`）。
+- `description_truncated`: 収穫物の `notes` の最大長は 587 文字で、800 文字で切れた行は 0 件（列は設計どおり持つ）。
+- e-Stat は表題・statInfId を `estat_*.jsonl` から引き、国勢調査の表題（jsonl に `table_ja` が無い）と境界 GIS の URL は `m08` の定数。
+  c64/c90 は `requests`・`shapely` が要るので import せず、`test_m08_external_catalog.py` が文字列の一致を固定する。
+- `sheets_json` の e-Stat は `header`＝指標（出現順・上位 20。`header_basis: harvested_indicators`）と `units`。値は持たない。
+- `find_datasets` の `format` 絞りは `instr(',' || format || ',', ',CSV,')`。資源は `json_each(?)`（バインド 1 個）で取る。
+- r01 の検査: `catalog` は `external_dataset` だけ。`records`/`reason` と排他。出典の過不足は `external_dataset.source_id` の種類との一致で止める。
+- 本番反映後、`access.yaml`・`registry` を触ったので `reports/serving_fingerprint.json`（b00）と `data/sample/manifest.json` の原本 sha256 は、
+  m08 を流した本物の `ryuiki.sqlite` で作り直す（原本が変わるため）。

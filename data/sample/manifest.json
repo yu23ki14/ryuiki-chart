@@ -20,6 +20,8 @@
     "cells.vocab_indicators": 236,
     "cells.vocab_units": 124,
     "edna_detections": 13263,
+    "external_dataset": 7,
+    "external_resource": 7,
     "mammal_mesh": 1,
     "measurements": 39434,
     "organism_records": 3275,

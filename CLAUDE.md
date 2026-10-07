@@ -19,8 +19,8 @@
   `check_v2_pipeline_fresh()`。手書きの mtime 走査は撤去した）。単体で作り直すだけなら
   `cd web && pnpm run build:v2`。
 - データの置き場所は **Cloudflare D1**（デプロイ先を Cloudflare 想定にしたため）。
-  44 テーブル（`web/drizzle/migrations/` 適用後の実測。うちシード管理用の内部表
-  `_seed_state` を除く43表が `web/scripts/seed-d1-local.mjs` のシード対象）を 1 つの D1 に
+  49 テーブル（`web/drizzle/migrations/` 適用後の実測。うちシード管理用の内部表
+  `_seed_state` を除く48表が `web/scripts/seed-d1-local.mjs` のシード対象）を 1 つの D1 に
   統合してある。D1 に `ATTACH` は無いので `d.` / `c.` の接頭辞は使わない。
   どの原本から来たテーブルかは `web/src/lib/table-meta.ts` の `TABLE_ORIGIN`。
 - D1 のスキーマは `web/src/db/schema.ts`（v1、既存表）・`web/src/db/schema-registry.ts`
@@ -69,6 +69,11 @@
   `wildlife_sightings` / `river_segments` を新設した（DDL は `scripts/schema_tier1.sql`）。
   API は `/api/geo/{protected-areas,vegetation,river-segments}`（`/api/nature` は Issue #61 で撤去）。
   `mammal_mesh` / `wildlife_sightings` は画面・API の読み手は無く、MCP / AI の `get_records`（`web/src/lib/records.ts`）が出典単位で読む（AI の run_sql / describe_schema の台帳表でもある）。
+- 外部ポータル（CKAN 4 インスタンス・e-Stat 7 件）の目録は `external_dataset` / `external_resource`
+  （`scripts/m08_external_catalog.py` が `data/processed` の収穫物から原本 `ryuiki.sqlite` に作る。DDL は
+  `scripts/schema_catalog.sql`）。MCP / AI の `find_datasets`（`web/src/lib/catalog-search.ts`）が読む。値は持たず、
+  定義と最新を取る URL（`api_url`＝CKAN の package_show）だけ。更新手順は `docs/PIPELINE.md`「外部ポータルの目録」。
+  出典の状態は `registry/source/access.yaml` の `catalog:`（`queryable_via` に `find_datasets`）。
 - 収集スクリプトの User-Agent に個人名・個人アドレスを入れない（`scripts/common.py`）。
   経緯は `docs/COLLECTOR_CONTRACT.md` の追記を読むこと。
 - 新しいエリア（東京都・沖縄県・兵庫県など）を足すときは `docs/add_area.md` の手順に従う。

@@ -73,8 +73,14 @@ def test_manifest_source_can_add_records_and_extra_tools():
     "mutate, msg",
     [
         (lambda d: d["sources"].pop("b"), "状態の無い出典"),  # 出典を 1 つ消す
-        (lambda d: d["sources"].update(a={"records": ["sites"], "reason": "file_only", "basis": "x"}), "どちらか一方"),
-        (lambda d: d["sources"].update(a={}), "どちらか一方"),
+        (lambda d: d["sources"].update(a={"records": ["sites"], "reason": "file_only", "basis": "x"}), "どれか 1 つだけ"),
+        (lambda d: d["sources"].update(a={}), "どれか 1 つだけ"),
+        (lambda d: d["sources"].update(a={"records": ["sites"], "catalog": "external_dataset"}), "どれか 1 つだけ"),
+        (lambda d: d["sources"].update(b={"catalog": "external_dataset", "reason": "file_only", "basis": "x"}), "どれか 1 つだけ"),
+        (lambda d: d["sources"].update(b={"catalog": "sites"}), "使えない"),  # catalog の表は external_dataset だけ
+        (lambda d: d["sources"].update(b={"catalog": "external_resource"}), "使えない"),
+        (lambda d: d["sources"].update(b={"catalog": "external_dataset", "basis": "x"}), "basis は書けない"),
+        (lambda d: d["sources"].update(m={"catalog": "external_dataset"}), "マニフェストのある出典"),
         (lambda d: d["sources"].update(b={"reason": "nope", "basis": "x"}), "語彙"),
         (lambda d: d["sources"].update(b={"reason": "file_only"}), "basis"),
         (lambda d: d["sources"].update(a={"records": ["taxa"]}), "record_sets に無い"),  # D1 に無い表
@@ -93,6 +99,40 @@ def test_static_mutations_stop(mutate, msg):
     mutate(doc)
     with pytest.raises(bsa.AccessError, match=msg):
         _build(_reg("a", "b", "m"), {"m": "observation"}, doc, _counts(sites={"a": 3}, measurements={"m": 1}))
+
+
+def test_catalog_source_is_queryable_via_find_datasets_with_catalog_count():
+    doc = _doc(c={"catalog": "external_dataset"}, b={"reason": "file_only", "basis": "x"})
+    rows = _build(_reg("c", "b"), {}, doc, _counts(external_dataset={"c": 811}))
+    r = {x[0]: dict(zip(bsa.COLUMNS, x)) for x in rows}["c"]
+    assert r["state"] == "queryable"
+    assert r["queryable_via"] == '["find_datasets"]' and r["tables"] == "[]" and r["record_set_rows"] == "{}"
+    # 目録の件数（データセット数）。値の行数ではない
+    assert (r["n_source_rows"], r["n_source_rows_basis"]) == (811, "catalog_datasets")
+    assert "catalog_datasets" in bsa.N_BASIS and r["reason"] is None
+
+
+def test_catalog_declaration_must_match_catalog_rows_both_ways():
+    doc = _doc(c={"catalog": "external_dataset"})
+    # (1) 宣言したのに目録に行が無い
+    with pytest.raises(bsa.AccessError, match="1 つも無い"):
+        _build(_reg("c"), {}, doc, _counts())
+    # (2) 目録にあるのに宣言が無い（宣言漏れ）。他の出典が reason で宣言していても止まる
+    doc2 = _doc(c={"catalog": "external_dataset"}, b={"reason": "file_only", "basis": "x"})
+    with pytest.raises(bsa.AccessError, match="宣言が無い: \\['b'\\]"):
+        _build(_reg("c", "b"), {}, doc2, _counts(external_dataset={"c": 2, "b": 1}))
+    # (3) 目録に無い出典を宣言（上の (1) と別経路: 他の出典の行はある）
+    doc3 = _doc(c={"catalog": "external_dataset"}, d={"catalog": "external_dataset"})
+    with pytest.raises(bsa.AccessError, match="1 つも無い"):
+        _build(_reg("c", "d"), {}, doc3, _counts(external_dataset={"c": 2}))
+
+
+def test_reason_check_ignores_external_dataset_rows_but_catalog_check_catches_them():
+    # reason の出典が external_dataset にだけ行を持つとき、「原本に行がある」の検査は対象外にする（目録は値ではない）
+    # ——代わりに catalog の過不足の検査（宣言漏れ）が止める。
+    doc = _doc(b={"reason": "file_only", "basis": "x"})
+    with pytest.raises(bsa.AccessError, match="catalog の宣言と一致しない"):
+        _build(_reg("b"), {}, doc, _counts(external_dataset={"b": 1}))
 
 
 def test_records_table_without_rows_stops():
@@ -155,7 +195,11 @@ def test_real_declaration_covers_every_source_and_matches_data():
     rows = bsa.assemble(reg, targets, doc, counts, superseded_by=sup)
     assert len(rows) == len(reg) == 125
     by = {r[0]: dict(zip(bsa.COLUMNS, r)) for r in rows}
-    assert sum(1 for r in by.values() if r["state"] == "queryable") == 15 + 15  # manifests 15 + records のうち manifests 外の 15
+    assert sum(1 for r in by.values() if r["state"] == "queryable") == 15 + 15 + 7  # manifests 15 + records のうち manifests 外の 15 + catalog 7
+    cat = {sid: r for sid, r in by.items() if r["queryable_via"] == '["find_datasets"]'}
+    assert sorted(cat) == sorted(sid for sid, e in doc["sources"].items() if "catalog" in e) and len(cat) == 7
+    assert all(r["n_source_rows_basis"] == "catalog_datasets" and r["tables"] == "[]" for r in cat.values())
+    assert cat["estat_agri_census_kanagawa"]["n_source_rows"] == 5  # 値の行数（6,422）ではなく目録の件数
     for sid, r in by.items():
         if r["state"] == "not_queryable":
             assert r["reason"] and r["reason_ja"], sid
@@ -188,6 +232,26 @@ def test_real_declaration_mutations_stop():
     d = copy.deepcopy(doc)
     d["sources"]["ylist"] = {"reason": "not_in_d1", "basis": "x"}
     with pytest.raises(bsa.AccessError, match="原本に行が無い"):
+        bsa.assemble(reg, targets, d, counts, superseded_by=sup)
+
+
+@needs_ryuiki
+def test_real_catalog_mutations_stop():
+    reg, targets, doc, counts, sup = _real()
+    # (5) catalog の宣言を 1 件消す（目録にあるのに宣言が無い）→ 状態の無い出典で止まる
+    d = copy.deepcopy(doc)
+    d["sources"].pop("ckan_yokohama")
+    with pytest.raises(bsa.AccessError, match="状態の無い出典"):
+        bsa.assemble(reg, targets, d, counts, superseded_by=sup)
+    # (6) 消して reason に直しても、目録に行があるので止まる（宣言漏れ・過剰を止める）
+    d = copy.deepcopy(doc)
+    d["sources"]["ckan_yokohama"] = {"reason": "catalog_only", "basis": "x"}
+    with pytest.raises(bsa.AccessError, match="catalog の宣言と一致しない"):
+        bsa.assemble(reg, targets, d, counts, superseded_by=sup)
+    # (7) 目録に行の無い出典（ylist）に catalog を足す
+    d = copy.deepcopy(doc)
+    d["sources"]["ylist"] = {"catalog": "external_dataset"}
+    with pytest.raises(bsa.AccessError, match="1 つも無い"):
         bsa.assemble(reg, targets, d, counts, superseded_by=sup)
 
 
