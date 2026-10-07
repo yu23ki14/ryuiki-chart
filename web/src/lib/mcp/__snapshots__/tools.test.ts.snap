@@ -317,11 +317,17 @@ exports[`MCP ツール一覧（第1段 5 本） > 入力スキーマのスナッ
     "name": "export_dataset",
   },
   {
-    "description": "出典（source_id）を指定して、台帳表の明細をそのまま取る。観測値・出現記録ではない地点・保護区・植生・河川・哺乳類メッシュ・クマ出没・レッドリスト／外来種の評価など。任意 SQL ではなく、出典ごとに宣言された表だけ。主キー昇順。id で 1 件、q で名称・和名・学名の部分一致。植生・河川のジオメトリは id 指定の 1 件だけ include_geometry で返す。ライセンスや座標で行を除外・加工しない。利用条件は provenance の出典情報を見る。",
+    "description": "出典（source_id）を指定して、台帳表の明細をそのまま取る。観測値・出現記録ではない地点・保護区・植生・河川・哺乳類メッシュ・クマ出没・レッドリスト／外来種の評価など。任意 SQL ではなく、出典ごとに宣言された表だけ。主キー昇順。id で 1 件、q で名称・和名・学名の部分一致。植生・河川のジオメトリは id 指定の 1 件だけ include_geometry で返す。結果が truncated のときは next_after を after に渡して続きを取る（深いページは offset より速い）。ライセンスや座標で行を除外・加工しない。利用条件は provenance の出典情報を見る。使える出典と record_set（複数あるときは record_set を指定）: biodic_mammal_mesh_kanagawa=mammal_mesh、biodic_veg2024_kanagawa=vegetation、dams_kanagawa=sites、env_kousui_stations_kanagawa=sites、geoshape_sagami_river=river_segments、hadano_preserved_trees=protected_areas、hiratsuka_parks=protected_areas、jma_stations_kanagawa=sites、kanagawa_green_conservation=protected_areas、kanagawa_kuma_sightings=sightings、kanagawa_natural_parks=protected_areas、kanagawa_rdb2022_plants=assessments、kanagawa_redlist=assessments、moe_ias_list=assessments、moni1000_sites=sites、sagami_livecams=sites。",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
       "properties": {
+        "after": {
+          "description": "直前のページの最後の主キー（結果の next_after をそのまま渡す）。主キー昇順でその次から読む。深いページでは offset より after を使う（offset とは併用できない）",
+          "maxLength": 300,
+          "minLength": 1,
+          "type": "string",
+        },
         "id": {
           "description": "主キーの完全一致（1 件取り）",
           "maxLength": 300,
@@ -339,7 +345,7 @@ exports[`MCP ツール一覧（第1段 5 本） > 入力スキーマのスナッ
           "type": "integer",
         },
         "offset": {
-          "description": "読み飛ばす行数（ページング。結果が truncated のとき offset を進めて続きを取る。既定 0）",
+          "description": "読み飛ばす行数（浅いページ向け。深いページは after を使う。既定 0）",
           "maximum": 9007199254740991,
           "minimum": 0,
           "type": "integer",
@@ -363,7 +369,7 @@ exports[`MCP ツール一覧（第1段 5 本） > 入力スキーマのスナッ
           "type": "string",
         },
         "source_id": {
-          "description": "出典（必須。describe_catalog の records_tables が空でない出典）",
+          "description": "出典（必須。使える出典と record_set の組はツールの説明にある）",
           "enum": [
             "biodic_mammal_mesh_kanagawa",
             "biodic_veg2024_kanagawa",

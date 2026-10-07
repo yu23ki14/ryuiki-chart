@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { applyMigrations, wrapSqlite } from "@/lib/cube/__fixtures__/cube-fixture";
+import { sourceAccess } from "@/lib/cube/source-meta";
 import { McpInputError } from "./errors";
 import { getRecordsTool } from "./tools-records";
 
@@ -28,7 +29,6 @@ describe("get_records（MCP）", () => {
     expect(e.provenance).toHaveLength(1);
     expect(e.provenance[0].source_id).toBe("dams_kanagawa");
     expect(e.excluded).toMatchObject({ by_license: 0, by_embargo: 0 });
-    expect(e.data).not.toHaveProperty("n_total");
   });
 
   it("offset で続きが取れ、最後は truncated=false", async () => {
@@ -37,11 +37,20 @@ describe("get_records（MCP）", () => {
     expect(e.truncated).toBe(false);
   });
 
-  it("n_total は q・id なしのときだけ、渡された事前計算の値を載せる", async () => {
-    const tool = getRecordsTool({ nTotal: (s) => (s === "dams_kanagawa" ? 5 : null) });
-    expect((await run({ source_id: "dams_kanagawa", limit: 1 }, tool)).data.n_total).toBe(5);
-    expect((await run({ source_id: "dams_kanagawa", q: "ダム" }, tool)).data).not.toHaveProperty("n_total");
-    expect((await run({ source_id: "dams_kanagawa", id: "d1" }, tool)).data).not.toHaveProperty("n_total");
+  it("n_total は q・id なしのときだけ、事前計算の出典別の行数（record_set の表の行数）", async () => {
+    const n = sourceAccess("dams_kanagawa")?.recordSetRows.sites;
+    expect(n).toBeGreaterThan(0);
+    expect((await run({ source_id: "dams_kanagawa", limit: 1 })).data.n_total).toBe(n);
+    expect((await run({ source_id: "dams_kanagawa", q: "ダム" })).data).not.toHaveProperty("n_total");
+    expect((await run({ source_id: "dams_kanagawa", id: "d1" })).data).not.toHaveProperty("n_total");
+  });
+
+  it("truncated のとき next_after を返し、after で続きが取れる", async () => {
+    const e = await run({ source_id: "dams_kanagawa", limit: 3 });
+    expect(e.data.next_after).toBe("d3");
+    const f = await run({ source_id: "dams_kanagawa", limit: 3, after: e.data.next_after });
+    expect(f.data.rows.map((r: { site_id: string }) => r.site_id)).toEqual(["d4", "d5"]);
+    expect(f.data).not.toHaveProperty("next_after");
   });
 
   it("入力エラーは McpInputError（ジオメトリの一覧・出典に無い表）", async () => {

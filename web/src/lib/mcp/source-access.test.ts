@@ -22,7 +22,7 @@ async function run(name: string, args: Record<string, unknown>) {
 type Row = {
   source_id: string;
   queryable_via: string[];
-  records_tables: string[];
+  record_sets: string[];
   n_source_rows: number | null;
   unavailable_reason: string | null;
   unavailable_reason_ja: string | null;
@@ -121,7 +121,7 @@ describe("describe_catalog(sources) の状態と summary", () => {
     expect(rows.length).toBeGreaterThan(0);
     for (const r of rows) {
       expect(Array.isArray(r.queryable_via), r.source_id).toBe(true);
-      expect(Array.isArray(r.records_tables), r.source_id).toBe(true);
+      expect(Array.isArray(r.record_sets), r.source_id).toBe(true);
       expect("n_source_rows" in r && "unavailable_reason" in r).toBe(true);
     }
   });

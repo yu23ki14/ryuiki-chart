@@ -31,7 +31,7 @@ import { facetsForSeries, facetsForOccurrence, facetsForTables, caveatKeysForFac
 import { MEASUREMENTS_DATASET } from "@/lib/cube/series";
 import { timeseries } from "@/lib/cube/timeseries";
 import { EDNA_DESCRIPTION, EDNA_SOURCE_ID, ednaInputSchema, queryEdna } from "@/lib/edna";
-import { queryRecords, RecordsInputError, recordsInputSchema, RECORDS_DESCRIPTION } from "@/lib/records";
+import { queryRecords, RECORD_TABLES, RecordsInputError, recordsInputSchema, RECORDS_DESCRIPTION } from "@/lib/records";
 
 /** 測定値系データセット固定（PR-2 のスコープは測定値系。design §1.1 と同じ前提）。registry の dataset キー。 */
 const DATASET = MEASUREMENTS_DATASET;
@@ -793,29 +793,61 @@ const get_edna = tool({
 /* get_records                                                        */
 /* ------------------------------------------------------------------ */
 
+/** AI の get_records の既定の行数（応答 24KB に収めるため、MCP の既定 100 より小さい）。 */
+const AI_RECORDS_DEFAULT_LIMIT = 20;
+
 const get_records = tool({
   description: RECORDS_DESCRIPTION,
   inputSchema: recordsInputSchema,
   execute: async (input) => {
     const t0 = performance.now();
     try {
-      const result = await queryRecords(await d1CubeDb(), input);
-      const more = result.rows.length > result.limit;
-      const rows = result.rows.slice(0, result.limit);
-      const out = makeResult({
-        tool: "get_records",
-        tables: [result.table],
-        caveats: caveatKeysForFacets(facetsForOccurrence({ places: [], sourceIds: [result.source_id] })),
-        data: { source_id: result.source_id, record_set: result.record_set, offset: result.offset, rows },
-        rowCount: rows.length,
-        elapsedMs: performance.now() - t0,
+      const r = await queryRecords(await d1CubeDb(), { ...input, limit: input.limit ?? AI_RECORDS_DEFAULT_LIMIT });
+      const pk = RECORD_TABLES[r.record_set].pk;
+      const dataOf = (rows: typeof r.rows, nextAfter: string | null) => ({
+        source_id: r.source_id,
+        record_set: r.record_set,
+        offset: r.offset,
+        rows,
+        ...(nextAfter !== null ? { next_after: nextAfter } : {}),
+        ...(r.n_total !== null ? { n_total: r.n_total } : {}),
       });
-      if (!more) return out;
-      return {
-        ...out,
-        truncated: true,
-        truncatedNote: `limit（${result.limit}）を超える行がある。offset を ${result.offset + result.limit} にして続きを取れる。${out.truncatedNote ?? ""}`,
+      const done = (data: object, rowCount: number, truncatedNote?: string) => {
+        const out = makeResult({
+          tool: "get_records",
+          tables: [r.table],
+          caveats: caveatKeysForFacets(facetsForOccurrence({ places: [], sourceIds: [r.source_id] })),
+          data,
+          rowCount,
+          elapsedMs: performance.now() - t0,
+        });
+        return truncatedNote ? { ...out, truncated: true, truncatedNote: `${truncatedNote}${out.truncatedNote ?? ""}` } : out;
       };
+
+      let rows = r.rows;
+      let nextAfter = r.next_after;
+      if (input.include_geometry) {
+        // ジオメトリは間引かない（座標の一部だけでは地図にならない）。予算を超えるなら返さず、その旨を返す。
+        if (byteLength(dataOf(rows, null)) > BYTE_BUDGET) {
+          const bare = rows.map((row) => Object.fromEntries(Object.entries(row).filter(([k]) => k !== "geometry_geojson")));
+          return done({ ...dataOf(bare, null), geometry_omitted: "ジオメトリが大きすぎて応答に載せられないので省いた（属性だけ返している）" }, bare.length);
+        }
+        return done(dataOf(rows, null), rows.length);
+      }
+      // 行は makeResult の間引き（fitToBudget）に任せない（next_after で続きが取れなくなる）。
+      // 予算に収まるまで行数を減らし、truncated と next_after を実際に返した最後の行に合わせる。
+      let shrunk = false;
+      while (rows.length > 1 && byteLength(dataOf(rows, nextAfter)) > BYTE_BUDGET) {
+        rows = rows.slice(0, Math.max(1, Math.floor(rows.length * 0.7)));
+        nextAfter = String(rows[rows.length - 1][pk]);
+        shrunk = true;
+      }
+      const more = r.truncated || shrunk;
+      return done(
+        dataOf(rows, more ? nextAfter : null),
+        rows.length,
+        more ? `続きがある。next_after（${nextAfter}）を after に渡して続きを取れる。` : undefined,
+      );
     } catch (e) {
       if (!(e instanceof RecordsInputError)) throw e;
       return makeResult({ tool: "get_records", tables: [], caveats: [], data: { error: e.message }, rowCount: 0, elapsedMs: performance.now() - t0 });

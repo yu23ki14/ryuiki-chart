@@ -304,8 +304,10 @@ export interface GeneratedSourceAccess {
   state: "queryable" | "not_queryable";
   /** 取れるツール名（get_observations / get_occurrences / get_edna / get_records）。取れないなら空。 */
   queryableVia: string[];
-  /** get_records で引ける D1 の表（空なら get_records の対象外）。 */
+  /** get_records で引ける record_set（記録の集合名。空なら get_records の対象外）。 */
   tables: string[];
+  /** record_set → その出典の行数（get_records の n_total。原本の表の行数で、出典で絞った数）。 */
+  recordSetRows: Record<string, number>;
   /** 原本の行数（キューブの集計行数ではない）。取れない出典は null。 */
   nSourceRows: number | null;
   nSourceRowsBasis: "source_rows" | "registry_record_count" | "none";
@@ -325,6 +327,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
       "get_observations"
     ],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": 4560,
     "nSourceRowsBasis": "source_rows",
     "countedAt": "2026-10-07T13:28:13",
@@ -336,6 +339,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -347,6 +351,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -358,6 +363,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -369,6 +375,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -384,6 +391,9 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "tables": [
       "mammal_mesh"
     ],
+    "recordSetRows": {
+      "mammal_mesh": 75240
+    },
     "nSourceRows": 75240,
     "nSourceRowsBasis": "source_rows",
     "countedAt": "2026-10-07T13:28:13",
@@ -399,6 +409,9 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "tables": [
       "vegetation"
     ],
+    "recordSetRows": {
+      "vegetation": 13206
+    },
     "nSourceRows": 13206,
     "nSourceRowsBasis": "source_rows",
     "countedAt": "2026-10-07T13:28:13",
@@ -410,6 +423,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -421,6 +435,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -432,6 +447,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -443,6 +459,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -454,6 +471,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -465,6 +483,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -476,6 +495,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -487,6 +507,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -498,6 +519,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -509,6 +531,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -520,6 +543,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -531,6 +555,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -542,6 +567,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -553,6 +579,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -568,6 +595,9 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "tables": [
       "sites"
     ],
+    "recordSetRows": {
+      "sites": 4
+    },
     "nSourceRows": 4,
     "nSourceRowsBasis": "source_rows",
     "countedAt": "2026-10-07T13:28:13",
@@ -579,6 +609,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -592,6 +623,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
       "get_observations"
     ],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": 98328,
     "nSourceRowsBasis": "source_rows",
     "countedAt": "2026-10-07T13:28:13",
@@ -605,6 +637,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
       "get_observations"
     ],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": 214725,
     "nSourceRowsBasis": "source_rows",
     "countedAt": "2026-10-07T13:28:13",
@@ -620,6 +653,9 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "tables": [
       "sites"
     ],
+    "recordSetRows": {
+      "sites": 290
+    },
     "nSourceRows": 290,
     "nSourceRowsBasis": "source_rows",
     "countedAt": "2026-10-07T13:28:13",
@@ -631,6 +667,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -642,6 +679,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -653,6 +691,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -664,6 +703,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -675,6 +715,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -688,6 +729,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
       "get_occurrences"
     ],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": 658360,
     "nSourceRowsBasis": "source_rows",
     "countedAt": "2026-10-07T13:28:13",
@@ -699,6 +741,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -714,6 +757,9 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "tables": [
       "river_segments"
     ],
+    "recordSetRows": {
+      "river_segments": 1547
+    },
     "nSourceRows": 1547,
     "nSourceRowsBasis": "source_rows",
     "countedAt": "2026-10-07T13:28:13",
@@ -725,6 +771,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -736,6 +783,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -747,6 +795,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -758,6 +807,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -769,6 +819,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -780,6 +831,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -791,6 +843,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -802,6 +855,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -813,6 +867,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -824,6 +879,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -835,6 +891,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -850,6 +907,9 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "tables": [
       "protected_areas"
     ],
+    "recordSetRows": {
+      "protected_areas": 30
+    },
     "nSourceRows": 30,
     "nSourceRowsBasis": "source_rows",
     "countedAt": "2026-10-07T13:28:13",
@@ -865,6 +925,9 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "tables": [
       "protected_areas"
     ],
+    "recordSetRows": {
+      "protected_areas": 290
+    },
     "nSourceRows": 290,
     "nSourceRowsBasis": "source_rows",
     "countedAt": "2026-10-07T13:28:13",
@@ -878,6 +941,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
       "get_observations"
     ],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": 245513,
     "nSourceRowsBasis": "source_rows",
     "countedAt": "2026-10-07T13:28:13",
@@ -889,6 +953,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -900,6 +965,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -913,6 +979,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
       "get_occurrences"
     ],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": 165332,
     "nSourceRowsBasis": "source_rows",
     "countedAt": "2026-10-07T13:28:13",
@@ -926,6 +993,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
       "get_observations"
     ],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": 19420,
     "nSourceRowsBasis": "source_rows",
     "countedAt": "2026-10-07T13:28:13",
@@ -939,6 +1007,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
       "get_observations"
     ],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": 13821,
     "nSourceRowsBasis": "source_rows",
     "countedAt": "2026-10-07T13:28:13",
@@ -954,6 +1023,9 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "tables": [
       "sites"
     ],
+    "recordSetRows": {
+      "sites": 12
+    },
     "nSourceRows": 12,
     "nSourceRowsBasis": "source_rows",
     "countedAt": "2026-10-07T13:28:13",
@@ -965,6 +1037,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -979,6 +1052,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
       "get_edna"
     ],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": 134443,
     "nSourceRowsBasis": "source_rows",
     "countedAt": "2026-10-07T13:28:13",
@@ -994,6 +1068,9 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "tables": [
       "protected_areas"
     ],
+    "recordSetRows": {
+      "protected_areas": 379
+    },
     "nSourceRows": 379,
     "nSourceRowsBasis": "source_rows",
     "countedAt": "2026-10-07T13:28:13",
@@ -1005,6 +1082,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1018,6 +1096,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
       "get_observations"
     ],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": 3286,
     "nSourceRowsBasis": "source_rows",
     "countedAt": "2026-10-07T13:28:13",
@@ -1034,6 +1113,9 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "tables": [
       "sightings"
     ],
+    "recordSetRows": {
+      "sightings": 400
+    },
     "nSourceRows": 400,
     "nSourceRowsBasis": "source_rows",
     "countedAt": "2026-10-07T13:28:13",
@@ -1049,6 +1131,9 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "tables": [
       "protected_areas"
     ],
+    "recordSetRows": {
+      "protected_areas": 29
+    },
     "nSourceRows": 29,
     "nSourceRowsBasis": "source_rows",
     "countedAt": "2026-10-07T13:28:13",
@@ -1060,6 +1145,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1071,6 +1157,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1086,6 +1173,9 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "tables": [
       "assessments"
     ],
+    "recordSetRows": {
+      "assessments": 1033
+    },
     "nSourceRows": 1033,
     "nSourceRowsBasis": "source_rows",
     "countedAt": "2026-10-07T13:28:13",
@@ -1101,6 +1191,9 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "tables": [
       "assessments"
     ],
+    "recordSetRows": {
+      "assessments": 1851
+    },
     "nSourceRows": 1851,
     "nSourceRowsBasis": "source_rows",
     "countedAt": "2026-10-07T13:28:13",
@@ -1112,6 +1205,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1123,6 +1217,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1134,6 +1229,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1145,6 +1241,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1156,6 +1253,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1167,6 +1265,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1182,6 +1281,9 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "tables": [
       "assessments"
     ],
+    "recordSetRows": {
+      "assessments": 429
+    },
     "nSourceRows": 429,
     "nSourceRowsBasis": "source_rows",
     "countedAt": "2026-10-07T13:28:13",
@@ -1193,6 +1295,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1204,6 +1307,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1215,6 +1319,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1226,6 +1331,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1237,6 +1343,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1248,6 +1355,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1259,6 +1367,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1270,6 +1379,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1281,6 +1391,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1292,6 +1403,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1303,6 +1415,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1318,6 +1431,9 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "tables": [
       "sites"
     ],
+    "recordSetRows": {
+      "sites": 30
+    },
     "nSourceRows": 30,
     "nSourceRowsBasis": "source_rows",
     "countedAt": "2026-10-07T13:28:13",
@@ -1329,6 +1445,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1340,6 +1457,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1351,6 +1469,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1362,6 +1481,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1373,6 +1493,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1384,6 +1505,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1395,6 +1517,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1406,6 +1529,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1417,6 +1541,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1428,6 +1553,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1439,6 +1565,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1450,6 +1577,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1461,6 +1589,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1472,6 +1601,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1483,6 +1613,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1494,6 +1625,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1505,6 +1637,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1516,6 +1649,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1527,6 +1661,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1538,6 +1673,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1549,6 +1685,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1560,6 +1697,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1575,6 +1713,9 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "tables": [
       "sites"
     ],
+    "recordSetRows": {
+      "sites": 16
+    },
     "nSourceRows": 16,
     "nSourceRowsBasis": "source_rows",
     "countedAt": "2026-10-07T13:28:13",
@@ -1586,6 +1727,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1597,6 +1739,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1608,6 +1751,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1619,6 +1763,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1630,6 +1775,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1641,6 +1787,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1652,6 +1799,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1663,6 +1811,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1674,6 +1823,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1685,6 +1835,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1696,6 +1847,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1707,6 +1859,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1718,6 +1871,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1729,6 +1883,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1740,6 +1895,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1751,6 +1907,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,
@@ -1762,6 +1919,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "state": "not_queryable",
     "queryableVia": [],
     "tables": [],
+    "recordSetRows": {},
     "nSourceRows": null,
     "nSourceRowsBasis": "none",
     "countedAt": null,

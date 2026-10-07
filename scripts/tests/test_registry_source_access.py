@@ -5,6 +5,8 @@
    宣言を壊す変異（行の無い表を records に足す・行のある出典に reason を付ける・出典を 1 つ消す）で止まる
 """
 import copy
+import hashlib
+import json
 import sqlite3
 
 import pytest
@@ -203,3 +205,44 @@ def test_record_tables_are_in_d1_schema():
         defined |= set(re.findall(r'sqliteTable\(\s*"([a-z_0-9]+)"', (web_db / f).read_text(encoding="utf-8")))
     assert bsa.D1_RECORD_TABLES <= defined, sorted(bsa.D1_RECORD_TABLES - defined)
     assert set(bsa.load_access_yaml()["record_sets"].values()) <= bsa.D1_RECORD_TABLES
+
+
+def test_record_set_rows_counts_only_that_record_set_table():
+    """get_records の n_total は record_set の表の行数（その出典の分）。manifest の出現の表の合計を使わない。"""
+    doc = _doc(a={"records": ["sites"]})
+    rows = _build(_reg("a"), {}, doc, _counts(sites={"a": 3}, wildlife_sightings={"a": 99}))
+    row = dict(zip(bsa.COLUMNS, rows[0]))
+    assert json.loads(row["record_set_rows"]) == {"sites": 3}
+    # 出現の表（manifest 側）と record_set の表が両方ある出典でも、record_set の分だけ
+    doc = _doc(k={"records": ["sightings"]})
+    rows = _build(_reg("k"), {"k": "occurrence"}, doc, _counts(wildlife_sightings={"k": 400}, organism_records={"k": 5}, edna_reads={"k": 7}))
+    assert json.loads(dict(zip(bsa.COLUMNS, rows[0]))["record_set_rows"]) == {"sightings": 400}
+
+
+def test_source_counts_fingerprint_detects_value_moving_between_sources(tmp_path, monkeypatch):
+    """総数が同じでも、出典の値が移れば指紋が変わる（小さい表は出典別の件数、大きい表は行数・最大 rowid）。"""
+    db = tmp_path / "ryuiki.sqlite"
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE sites (site_id TEXT PRIMARY KEY, source_id TEXT)")
+    conn.executemany("INSERT INTO sites VALUES (?, ?)", [("1", "a"), ("2", "a"), ("3", "b")])
+    conn.commit()
+
+    def fp():
+        h = hashlib.sha256()
+        common._hash_source_access_counts(h, db)
+        return h.hexdigest()
+
+    before = fp()
+    conn.execute("UPDATE sites SET source_id='b' WHERE site_id='2'")
+    conn.commit()
+    assert fp() != before
+    # 大きい表（しきい値超）は代理指標（行数・最大 rowid）。行の追加は拾う
+    conn.execute("CREATE TABLE big (k INTEGER PRIMARY KEY, source_id TEXT)")
+    conn.executemany("INSERT INTO big (source_id) VALUES (?)", [("a",)] * 5)
+    conn.commit()
+    monkeypatch.setattr(common, "_SOURCE_COUNTS_EXACT_MAX_ROWS", 2)
+    b1 = fp()
+    conn.execute("INSERT INTO big (source_id) VALUES ('a')")
+    conn.commit()
+    assert fp() != b1
+    conn.close()

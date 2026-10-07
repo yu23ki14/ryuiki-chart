@@ -109,7 +109,7 @@ extra_tools: {kanagawa_edna: [get_edna]}
 ```
 { ...既存（source_id, source_edition_id, fetched_at, update_mode, age_days, name, publisher, superseded_by),
   queryable_via: string[],          // 例 ["get_records"] / ["get_occurrences","get_edna"] / []
-  records_tables: string[],         // get_records の table 引数に渡す値（無ければ []）
+  record_sets: string[],         // get_records の table 引数に渡す値（無ければ []）
   n_rows: number|null, n_rows_basis: "source_rows"|"registry_record_count"|"none", counted_at: string|null,
   unavailable_reason: string|null,  // 理由コード。queryable_via が空のとき必須
   unavailable_reason_ja: string|null, unavailable_note: string|null }

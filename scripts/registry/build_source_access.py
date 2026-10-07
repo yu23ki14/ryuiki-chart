@@ -151,17 +151,11 @@ def validate_static(doc: dict, manifest_targets: dict[str, str]) -> dict[str, li
 def gather_counts(ryuiki: sqlite3.Connection, registry: sqlite3.Connection) -> dict:
     """原本から数える（読み取り専用の接続）。`by_source[table][source_id]`: 出典の列を持つ全表の出典別の行数
     （`a|b` の複合値は要素ごとに数える）。D1 にある `taxon_assessment` は、いま作っている registry から数える。"""
-    tables = [
-        r[0] for r in ryuiki.execute("SELECT name FROM sqlite_master WHERE type='table' AND name != 'source_registry' ORDER BY name")
-    ]
     by_source: dict[str, dict[str, int]] = {}
-    for conn_, t in [(ryuiki, t) for t in tables] + [(registry, "taxon_assessment")]:
-        cols = {r[1] for r in conn_.execute(f'PRAGMA table_info("{t}")')}
-        if "source_id" not in cols:
-            continue
+    for conn_, t in [(ryuiki, t) for t in common.source_id_tables(ryuiki)] + [(registry, "taxon_assessment")]:
         counts: dict[str, int] = {}
-        for sid, n in conn_.execute(f'SELECT source_id, count(*) FROM "{t}" WHERE source_id IS NOT NULL AND source_id != \'\' GROUP BY source_id'):
-            for part in str(sid).split("|"):
+        for sid, n in common.count_by_source(conn_, t).items():
+            for part in sid.split("|"):
                 counts[part] = counts.get(part, 0) + n
         by_source[t] = counts
     return {"by_source": by_source}
@@ -176,7 +170,7 @@ def _table_rows(counts: dict, sid: str, table: str) -> int:
 # ---------------------------------------------------------------------------
 
 COLUMNS = [
-    "source_id", "state", "queryable_via", "tables", "n_source_rows", "n_source_rows_basis",
+    "source_id", "state", "queryable_via", "tables", "record_set_rows", "n_source_rows", "n_source_rows_basis",
     "counted_at", "reason", "reason_ja", "reason_note",
 ]
 
@@ -275,10 +269,11 @@ def assemble(
                     basis = "source_rows"
             else:
                 n, basis = sum(_table_rows(counts, sid, doc["record_sets"][t]) for t in recs), "source_rows"
-            row = (sid, "queryable", json.dumps(via), json.dumps(tables),
+            rs_rows = {t: _table_rows(counts, sid, doc["record_sets"][t]) for t in recs}
+            row = (sid, "queryable", json.dumps(via), json.dumps(tables), json.dumps(rs_rows),
                    n, basis, counted_at, None, None, None)
         else:
-            row = (sid, "not_queryable", "[]", "[]", None, "none", None, reason, reasons[reason]["ja"], entry.get("note"))
+            row = (sid, "not_queryable", "[]", "[]", "{}", None, "none", None, reason, reasons[reason]["ja"], entry.get("note"))
         rows.append(row)
     return rows
 
@@ -306,7 +301,6 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     registry_rows = [dict(zip(cols, r)) for r in cur.fetchall()]
     doc = load_access_yaml()
     targets = _manifest_targets()
-    records_by_source = validate_static(doc, targets)
     counts = gather_counts(ryuiki, conn)
     superseded_by = dict(conn.execute("SELECT source_id, superseded_by FROM source").fetchall())
     rows = assemble(registry_rows, targets, doc, counts, superseded_by=superseded_by)

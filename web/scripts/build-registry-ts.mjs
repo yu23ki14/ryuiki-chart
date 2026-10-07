@@ -376,7 +376,7 @@ const observationSourceIds = manifestSourceIds("observation");
 // 保持した生成物の RECORD_SOURCE_IDS を access.yaml（records を持つ出典）と突合して止める。
 const sourceAccessRows = db
   .prepare(
-    `SELECT source_id, state, queryable_via, tables, n_source_rows, n_source_rows_basis, counted_at,
+    `SELECT source_id, state, queryable_via, tables, record_set_rows, n_source_rows, n_source_rows_basis, counted_at,
             reason, reason_ja, reason_note FROM source_access ORDER BY source_id`,
   )
   .all()
@@ -388,6 +388,7 @@ const sourceAccess = Object.fromEntries(
       state: r.state,
       queryableVia: JSON.parse(r.queryable_via),
       tables: JSON.parse(r.tables),
+      recordSetRows: JSON.parse(r.record_set_rows),
       nSourceRows: r.n_source_rows,
       nSourceRowsBasis: r.n_source_rows_basis,
       countedAt: r.counted_at,
@@ -842,8 +843,10 @@ export interface GeneratedSourceAccess {
   state: "queryable" | "not_queryable";
   /** 取れるツール名（get_observations / get_occurrences / get_edna / get_records）。取れないなら空。 */
   queryableVia: string[];
-  /** get_records で引ける D1 の表（空なら get_records の対象外）。 */
+  /** get_records で引ける record_set（記録の集合名。空なら get_records の対象外）。 */
   tables: string[];
+  /** record_set → その出典の行数（get_records の n_total。原本の表の行数で、出典で絞った数）。 */
+  recordSetRows: Record<string, number>;
   /** 原本の行数（キューブの集計行数ではない）。取れない出典は null。 */
   nSourceRows: number | null;
   nSourceRowsBasis: "source_rows" | "registry_record_count" | "none";

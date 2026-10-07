@@ -168,6 +168,8 @@ export const vegetationPolygons = sqliteTable("vegetation_polygons", {
 },
 (table) => [
 	index("ix_veg_legend").on(table.legendCode),
+	// get_records: source_id = ? で絞って主キー順に読む（keyset ページング）
+	index("ix_veg_source").on(table.sourceId, table.featureId),
 ]);
 
 /**
@@ -190,6 +192,8 @@ export const mammalMesh = sqliteTable("mammal_mesh", {
 },
 (table) => [
 	index("ix_mammal").on(table.species, table.surveyYear, table.meshCode),
+	// get_records: source_id = ? で絞って主キー順に読む（keyset ページング）
+	index("ix_mammal_source").on(table.sourceId, table.id),
 ]);
 
 /**

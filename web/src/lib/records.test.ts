@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { applyMigrations, wrapSqlite } from "@/lib/cube/__fixtures__/cube-fixture";
+import { sourceAccess } from "@/lib/cube/source-meta";
 import { RECORD_SET_TABLES } from "@/lib/registry/generated-source";
 import { TABLE_ORIGIN } from "@/lib/table-meta";
 import {
@@ -97,7 +98,19 @@ describe("queryRecords", () => {
     expect(Object.keys(r.rows[0]).sort()).toEqual([...RECORD_TABLES.sites.cols].sort());
   });
 
-  it("複合 source_id（a|b）は区切りの完全一致。どちらの出典からも見え、前方・後方一致の別出典には見えない", async () => {
+  it("複合の値を持つ表（compositeSource）だけ、a|b を区切りの完全一致で照合する。どちらの出典からも見え、前方・後方一致の別出典には見えない", async () => {
+    const def = RECORD_TABLES.assessments as { compositeSource?: boolean };
+    def.compositeSource = true;
+    try {
+      await compositeCase();
+    } finally {
+      delete def.compositeSource;
+    }
+    // 既定（複合の値を持たない表）は source_id = ? の完全一致。a|b の行は a では引けない
+    expect(ids(await q({ source_id: "moe_ias_list" }), "assessment_id")).toEqual(["x2"]);
+  });
+
+  async function compositeCase() {
     put("assessments", "x1", "両方", "kanagawa_redlist|moe_ias_list");
     put("assessments", "x2", "IASだけ", "moe_ias_list");
     put("assessments", "x3", "別物", "moe_ias_list_old");
@@ -105,7 +118,7 @@ describe("queryRecords", () => {
     expect(ids(await q({ source_id: "moe_ias_list" }), "assessment_id")).toEqual(["x1", "x2"]);
     const other = await queryRecords(db, { source_id: "kanagawa_redlist", record_set: "assessments" });
     expect(ids(other, "assessment_id")).toEqual(["x1"]);
-  });
+  }
 
   it("id（完全一致）と q（部分一致。LIKE のメタ文字は効かない）", async () => {
     put("sites", "s1", "城山ダム", "dams_kanagawa");
@@ -115,8 +128,10 @@ describe("queryRecords", () => {
     expect(ids(await q({ source_id: "dams_kanagawa", q: "ダム" }), "site_id")).toEqual(["s1", "s2"]);
     expect(ids(await q({ source_id: "dams_kanagawa", q: "%" }), "site_id")).toEqual(["s3"]);
     expect(ids(await q({ source_id: "dams_kanagawa", q: "_" }), "site_id")).toEqual([]);
-    expect((await q({ source_id: "dams_kanagawa", q: "ダム" })).unfiltered).toBe(false);
-    expect((await q({ source_id: "dams_kanagawa" })).unfiltered).toBe(true);
+    // n_total は q・id なしのときだけ（事前計算。sites のこの出典の行数）
+    expect((await q({ source_id: "dams_kanagawa", q: "ダム" })).n_total).toBeNull();
+    expect((await q({ source_id: "dams_kanagawa", id: "s1" })).n_total).toBeNull();
+    expect((await q({ source_id: "dams_kanagawa" })).n_total).toBe(sourceAccess("dams_kanagawa")?.recordSetRows.sites);
   });
 
   it("整数の主キー（mammal_mesh）でも id で引け、主キー昇順で並ぶ", async () => {
@@ -125,17 +140,33 @@ describe("queryRecords", () => {
     expect(ids(await q({ source_id: "biodic_mammal_mesh_kanagawa", id: "10" }), "id")).toEqual([10]);
   });
 
-  it("limit/offset のページングで重複・欠落が無い（limit+1 行まで読む）", async () => {
+  it("limit/offset のページングで重複・欠落が無い。truncated は limit を超えるときだけ", async () => {
     for (let i = 1; i <= 7; i++) put("protected_areas", `a${i}`, `区${i}`, "hiratsuka_parks");
     const seen: unknown[] = [];
-    let offset = 0;
-    for (;;) {
+    for (let offset = 0; ; offset += 3) {
       const r = await q({ source_id: "hiratsuka_parks", limit: 3, offset });
-      seen.push(...ids({ rows: r.rows.slice(0, 3) }, "area_id"));
-      if (r.rows.length <= 3) break;
-      offset += 3;
+      expect(r.rows.length).toBeLessThanOrEqual(3);
+      seen.push(...ids(r, "area_id"));
+      if (!r.truncated) break;
     }
     expect(seen).toEqual(["a1", "a2", "a3", "a4", "a5", "a6", "a7"]);
+  });
+
+  it("after（keyset）で最後まで辿れる。next_after は truncated のときだけ。offset と併用は入力エラー", async () => {
+    for (const i of [10, 2, 33, 4, 5]) put("mammal_mesh", i, "タヌキ", "biodic_mammal_mesh_kanagawa");
+    const seen: unknown[] = [];
+    let after: string | undefined;
+    for (;;) {
+      const r = await q({ source_id: "biodic_mammal_mesh_kanagawa", limit: 2, after });
+      seen.push(...ids(r, "id"));
+      if (!r.truncated) {
+        expect(r.next_after).toBeNull();
+        break;
+      }
+      after = r.next_after as string;
+    }
+    expect(seen).toEqual([2, 4, 5, 10, 33]);
+    await expect(q({ source_id: "biodic_mammal_mesh_kanagawa", after: "2", offset: 1 })).rejects.toThrow(RecordsInputError);
   });
 
   it("ジオメトリ: 一覧では返さない。id 指定の 1 件だけ include_geometry で返す", async () => {
@@ -155,8 +186,9 @@ describe("queryRecords", () => {
     const big = JSON.stringify({ type: "Polygon", coordinates: [Array.from({ length: 400 }, (_, i) => [139 + i / 1000, 35 + i / 1000])] });
     for (let i = 0; i < 600; i++) ins.run(`v${String(i).padStart(4, "0")}`, "ブナ林", "biodic_veg2024_kanagawa", big);
     const r = await q({ source_id: "biodic_veg2024_kanagawa", limit: 500 });
-    expect(r.rows).toHaveLength(501);
-    expect(JSON.stringify(r.rows.slice(0, 500)).length).toBeLessThan(500_000);
+    expect(r.rows).toHaveLength(500);
+    expect(r.truncated).toBe(true);
+    expect(JSON.stringify(r.rows).length).toBeLessThan(500_000);
     expect(JSON.stringify(r.rows)).not.toContain("coordinates");
   });
 

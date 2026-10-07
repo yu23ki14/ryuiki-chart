@@ -11,24 +11,10 @@
  */
 import { z } from "zod";
 import type { CubeDb, SqlParam } from "@/lib/cube/db";
+import { idText, likeParam, likeText } from "@/lib/query-params";
 
 export const EDNA_SOURCE_ID = "kanagawa_edna";
 export const EDNA_MAX_ROWS = 500;
-/** D1 の LIKE パターンは 50 バイトまで。`%` 2つとエスケープを含めた UTF-8 のバイト長で見る。 */
-const MAX_LIKE_BYTES = 50;
-export const likeParam = (v: string) => `%${v.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-const byteLength = (v: string) => new TextEncoder().encode(v).length;
-
-/** 部分一致（LIKE）に使う文字列。パターンが 50 バイトに収まること（日本語なら 16 文字ほど）。 */
-export const likeText = (what: string) =>
-  z
-    .string()
-    .trim()
-    .min(1)
-    .refine((v) => byteLength(likeParam(v)) <= MAX_LIKE_BYTES, "長すぎる（部分一致の文字列は UTF-8 で 48 バイトまで。日本語なら 16 文字ほど）")
-    .describe(what);
-/** 完全一致の ID。長さは実データの値（地点キーは 162 文字ほど）に合わせて広く取る。 */
-export const idText = (what: string) => z.string().trim().min(1).max(300).describe(what);
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD");
 
 /** MCP・AI 共通の入力（z.tuple は使わない。Workers AI が draft 2020-12 で検証して 400 になる）。 */

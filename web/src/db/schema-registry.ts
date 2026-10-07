@@ -188,7 +188,7 @@ export const sourceEdition = sqliteTable("source_edition", {
 /**
  * 出典ごとの「ツールで値が取れるか」（docs/plans/MCP_SOURCE_ACCESS.md §1）。`source` 1 行 = 1 行（合成データを含む）。
  * 正は `registry/source/access.yaml` と `manifests/`（`scripts/registry/build_source_access.py` が原本と突き合わせて作る）。
- * `queryableVia`・`tables` は JSON 文字列（配列）。`nSourceRows` は原本の行数で、
+ * `queryableVia`・`tables` は JSON 文字列（配列）。`recordSetRows` は JSON 文字列（record_set → その出典の行数）。`nSourceRows` は原本の行数で、
  * キューブの集計行数ではない。`reason*` は `state='not_queryable'` のときだけ。
  */
 export const sourceAccess = sqliteTable("source_access", {
@@ -196,6 +196,7 @@ export const sourceAccess = sqliteTable("source_access", {
 	state: text().notNull(),
 	queryableVia: text("queryable_via").notNull(),
 	tables: text().notNull(),
+	recordSetRows: text("record_set_rows").notNull().default("{}"),
 	nSourceRows: integer("n_source_rows"),
 	nSourceRowsBasis: text("n_source_rows_basis").notNull(),
 	countedAt: text("counted_at"),
@@ -393,6 +394,8 @@ export const taxonAssessment = sqliteTable("taxon_assessment", {
 (table) => [
 	index("ix_taxon_assessment_list").on(table.listId),
 	index("ix_taxon_assessment_taxon").on(table.taxonId),
+	// get_records: source_id = ? で絞って主キー順に読む（keyset ページング）
+	index("ix_taxon_assessment_source").on(table.sourceId, table.assessmentId),
 ]);
 
 /**

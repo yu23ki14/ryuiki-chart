@@ -65,18 +65,23 @@ function defineTool<S extends z.ZodType>(t: {
   return t; // execute の引数型は never を受け取る側（McpTool）に代入できる。as unknown で型を潰さない
 }
 
+/** SOURCE_ACCESS は SOURCE_META と同じ出典を網羅する（r01・build-registry-ts・tools.test.ts が固定）。無いのは生成物の不整合。 */
+function sourceAccessOrThrow(sourceId: string) {
+  const a = sourceAccess(sourceId);
+  if (!a) throw new Error(`SOURCE_ACCESS に出典 ${sourceId} が無い（pnpm run build:registry:ts を再実行する）`);
+  return a;
+}
+
 /** 出典 1 件の行（describe_catalog の sources と search_registry の source で同じ形）。 */
 function sourceRow(m: (typeof SOURCE_META)[number], now: Date | undefined) {
-  // SOURCE_ACCESS は SOURCE_META と同じ出典を網羅する（r01・build-registry-ts・tools.test.ts が固定）。無いのは生成物の不整合。
-  const a = sourceAccess(m.sourceId);
-  if (!a) throw new Error(`SOURCE_ACCESS に出典 ${m.sourceId} が無い（pnpm run build:registry:ts を再実行する）`);
+  const a = sourceAccessOrThrow(m.sourceId);
   return {
     ...sourceFreshness(m.sourceId, { now }),
     name: m.nameJa,
     publisher: m.publisher,
     superseded_by: m.supersededBy,
     queryable_via: a.queryableVia,
-    records_tables: a.tables,
+    record_sets: a.tables,
     // 原本の行数（キューブの集計行数ではない。get_observations の n とは別物）。取れない出典は null。
     n_source_rows: a.nSourceRows,
     n_source_rows_basis: a.nSourceRowsBasis,
@@ -93,8 +98,7 @@ function sourceSummary(metas: readonly (typeof SOURCE_META)[number][]) {
   const by_reason: Record<string, number> = {};
   let queryable = 0;
   for (const m of metas) {
-    const a = sourceAccess(m.sourceId);
-    if (!a) continue;
+    const a = sourceAccessOrThrow(m.sourceId);
     if (a.state === "queryable") queryable += 1;
     for (const t of a.queryableVia) by_tool[t] = (by_tool[t] ?? 0) + 1;
     if (a.reason) by_reason[a.reason] = (by_reason[a.reason] ?? 0) + 1;
@@ -102,15 +106,6 @@ function sourceSummary(metas: readonly (typeof SOURCE_META)[number][]) {
   // by_tool は重複あり（kanagawa_edna は get_occurrences と get_edna の両方）。重複なしの数は queryable。
   // excluded: 一覧から除いた出典の件数と理由（合成データ。total には含めない）。
   return { total: metas.length, queryable, not_queryable: metas.length - queryable, by_tool, by_reason, excluded: { ...SOURCE_EXCLUDED_FROM_LIST } };
-}
-
-/**
- * get_records の `n_total`（`q`・`id` なしのとき）。事前計算の出典別の行数（リクエスト時に count(*) しない）。
- * 出典の record_set が 1 つのときだけ意味を持つ（複数なら表ごとの件数が無いので載せない）。
- */
-function recordsNTotal(sourceId: string): number | null {
-  const a = sourceAccess(sourceId);
-  return a && a.tables.length === 1 ? a.nSourceRows : null;
 }
 
 /** 出力行数の上限（コンテキストを溢れさせない。超えたら `truncated: true`）。 */
@@ -381,7 +376,7 @@ export const MCP_TOOLS: McpTool[] = [
     },
   }),
 
-  getRecordsTool({ nTotal: recordsNTotal }),
+  getRecordsTool(),
 ];
 
 export { McpInputError };
