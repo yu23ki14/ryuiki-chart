@@ -182,34 +182,34 @@
         "same": 60
       }
     },
-    "previous_git_head": "17cb6492e6dcb4c30c2dd39ba87d8ba04b01c24b"
+    "previous_git_head": "896321300462fc02d2d20a5e12d568a4da6f8ac7"
   },
-  "created_at": "2026-10-07T03:54:33+00:00",
+  "created_at": "2026-10-07T04:26:51+00:00",
   "environment": {
     "better_sqlite3_sqlite_version": "3.53.4",
     "node_version": "v22.22.2",
     "python_sqlite3_version": "3.49.1",
     "python_version": "3.13.7"
   },
-  "git_head": "896321300462fc02d2d20a5e12d568a4da6f8ac7",
+  "git_head": "164853fcc5581a775b4a8df19136afadb83ac182",
   "pipeline_fingerprint_rows": {
     "registry.sqlite": null,
     "v2.sqlite": [
       {
         "fingerprint": "sha256:17ceb60713d7c652789a4a82149a952234848b16162f5d22b0f2f3d8e0adb544:1029034",
-        "inputs": "{\"ext:registry.place\": \"715b89513d101776ba8e2730580d747b28602d1337aba49f516a32b6acf668e3\", \"ext:registry.place_source_ref\": \"715b89513d101776ba8e2730580d747b28602d1337aba49f516a32b6acf668e3\", \"ext:registry.source_edition\": \"715b89513d101776ba8e2730580d747b28602d1337aba49f516a32b6acf668e3\", \"ext:registry.variable_alias\": \"715b89513d101776ba8e2730580d747b28602d1337aba49f516a32b6acf668e3\", \"ext:ryuiki.measurements\": \"count=323164;max_rowid=342142\", \"ext:ryuiki.sensor_timeseries\": \"count=717839;max_rowid=1775419\"}",
+        "inputs": "{\"ext:registry.place\": \"0fbf9323fc133cc38fcf405e38f3dd3b2907f7d0d4911d7a3f3537a049240810\", \"ext:registry.place_source_ref\": \"0fbf9323fc133cc38fcf405e38f3dd3b2907f7d0d4911d7a3f3537a049240810\", \"ext:registry.source_edition\": \"0fbf9323fc133cc38fcf405e38f3dd3b2907f7d0d4911d7a3f3537a049240810\", \"ext:registry.variable_alias\": \"0fbf9323fc133cc38fcf405e38f3dd3b2907f7d0d4911d7a3f3537a049240810\", \"ext:ryuiki.measurements\": \"count=323164;max_rowid=342142\", \"ext:ryuiki.sensor_timeseries\": \"count=717839;max_rowid=1775419\"}",
         "spec_version": "phase-b-fact-slice/v1",
         "table_name": "observation"
       },
       {
         "fingerprint": "sha256:396f44fe82b23c3d70f9f102619dfda7864e13235d318f6f202e01704cc92049:2011364",
-        "inputs": "{\"ext:registry.unit\": \"715b89513d101776ba8e2730580d747b28602d1337aba49f516a32b6acf668e3\", \"ext:registry.variable\": \"715b89513d101776ba8e2730580d747b28602d1337aba49f516a32b6acf668e3\", \"ext:registry.variable_alias\": \"715b89513d101776ba8e2730580d747b28602d1337aba49f516a32b6acf668e3\", \"observation\": \"sha256:17ceb60713d7c652789a4a82149a952234848b16162f5d22b0f2f3d8e0adb544:1029034\"}",
+        "inputs": "{\"ext:registry.unit\": \"0fbf9323fc133cc38fcf405e38f3dd3b2907f7d0d4911d7a3f3537a049240810\", \"ext:registry.variable\": \"0fbf9323fc133cc38fcf405e38f3dd3b2907f7d0d4911d7a3f3537a049240810\", \"ext:registry.variable_alias\": \"0fbf9323fc133cc38fcf405e38f3dd3b2907f7d0d4911d7a3f3537a049240810\", \"observation\": \"sha256:17ceb60713d7c652789a4a82149a952234848b16162f5d22b0f2f3d8e0adb544:1029034\"}",
         "spec_version": "phase-b-fact-slice/v4",
         "table_name": "observation_agg"
       },
       {
         "fingerprint": "sha256:46f472e41d19a2952fb5e9452f9bddf40253428c3591fd7ae0f37e26b6d3f5b4:824092",
-        "inputs": "{\"ext:registry.place\": \"715b89513d101776ba8e2730580d747b28602d1337aba49f516a32b6acf668e3\", \"ext:registry.place_source_ref\": \"715b89513d101776ba8e2730580d747b28602d1337aba49f516a32b6acf668e3\", \"ext:registry.source_edition\": \"715b89513d101776ba8e2730580d747b28602d1337aba49f516a32b6acf668e3\", \"ext:registry.taxon\": \"715b89513d101776ba8e2730580d747b28602d1337aba49f516a32b6acf668e3\", \"ext:registry.taxon_assessment\": \"715b89513d101776ba8e2730580d747b28602d1337aba49f516a32b6acf668e3\", \"ext:ryuiki.organism_records\": \"count=823692;max_rowid=823692\", \"ext:ryuiki.wildlife_sightings\": \"count=400;max_rowid=400\"}",
+        "inputs": "{\"ext:registry.place\": \"0fbf9323fc133cc38fcf405e38f3dd3b2907f7d0d4911d7a3f3537a049240810\", \"ext:registry.place_source_ref\": \"0fbf9323fc133cc38fcf405e38f3dd3b2907f7d0d4911d7a3f3537a049240810\", \"ext:registry.source_edition\": \"0fbf9323fc133cc38fcf405e38f3dd3b2907f7d0d4911d7a3f3537a049240810\", \"ext:registry.taxon\": \"0fbf9323fc133cc38fcf405e38f3dd3b2907f7d0d4911d7a3f3537a049240810\", \"ext:registry.taxon_assessment\": \"0fbf9323fc133cc38fcf405e38f3dd3b2907f7d0d4911d7a3f3537a049240810\", \"ext:ryuiki.organism_records\": \"count=823692;max_rowid=823692\", \"ext:ryuiki.wildlife_sightings\": \"count=400;max_rowid=400\"}",
         "spec_version": "phase-b-fact-slice/v1",
         "table_name": "occurrence"
       },
@@ -221,25 +221,25 @@
       },
       {
         "fingerprint": "sha256:eaa12bdfeab174c306baace4072cce516bd24059abda2a3eff8214f747d96be5:824088",
-        "inputs": "{\"ext:registry.place_source_ref\": \"715b89513d101776ba8e2730580d747b28602d1337aba49f516a32b6acf668e3\", \"ext:ryuiki.sites\": \"count=352;max_rowid=738\", \"occurrence\": \"sha256:46f472e41d19a2952fb5e9452f9bddf40253428c3591fd7ae0f37e26b6d3f5b4:824092\"}",
+        "inputs": "{\"ext:registry.place_source_ref\": \"0fbf9323fc133cc38fcf405e38f3dd3b2907f7d0d4911d7a3f3537a049240810\", \"ext:ryuiki.sites\": \"count=352;max_rowid=738\", \"occurrence\": \"sha256:46f472e41d19a2952fb5e9452f9bddf40253428c3591fd7ae0f37e26b6d3f5b4:824092\"}",
         "spec_version": "phase-b-fact-slice/v4",
         "table_name": "occurrence_place"
       },
       {
         "fingerprint": "sha256:d5222446e6367c83f64205370bc73d6e94668e9ba195a52fb2f9ef79c951c65b:171",
-        "inputs": "{\"ext:registry.taxon\": \"715b89513d101776ba8e2730580d747b28602d1337aba49f516a32b6acf668e3\", \"occurrence_agg\": \"sha256:d70e8627382900055d8e33787e0066d159ab6ba72b98132d4d925265410b1525:1437603\"}",
+        "inputs": "{\"ext:registry.taxon\": \"0fbf9323fc133cc38fcf405e38f3dd3b2907f7d0d4911d7a3f3537a049240810\", \"occurrence_agg\": \"sha256:d70e8627382900055d8e33787e0066d159ab6ba72b98132d4d925265410b1525:1437603\"}",
         "spec_version": "serving-summary/v5",
         "table_name": "summary_effort_year"
       },
       {
         "fingerprint": "sha256:7a00d35717767cef249a25c7d16f56255f0bd767acfc7209cfe5286fd9971656:4086",
-        "inputs": "{\"ext:registry.taxon\": \"715b89513d101776ba8e2730580d747b28602d1337aba49f516a32b6acf668e3\", \"occurrence_agg\": \"sha256:d70e8627382900055d8e33787e0066d159ab6ba72b98132d4d925265410b1525:1437603\"}",
+        "inputs": "{\"ext:registry.taxon\": \"0fbf9323fc133cc38fcf405e38f3dd3b2907f7d0d4911d7a3f3537a049240810\", \"occurrence_agg\": \"sha256:d70e8627382900055d8e33787e0066d159ab6ba72b98132d4d925265410b1525:1437603\"}",
         "spec_version": "serving-summary/v5",
         "table_name": "summary_grid_catalog"
       },
       {
         "fingerprint": "sha256:293cd085fb6002c514cc7d63a23ea657749eb9acec7d20f373e452b1b8f4d3a7:1851",
-        "inputs": "{\"ext:registry.taxon\": \"715b89513d101776ba8e2730580d747b28602d1337aba49f516a32b6acf668e3\", \"occurrence_agg\": \"sha256:d70e8627382900055d8e33787e0066d159ab6ba72b98132d4d925265410b1525:1437603\"}",
+        "inputs": "{\"ext:registry.taxon\": \"0fbf9323fc133cc38fcf405e38f3dd3b2907f7d0d4911d7a3f3537a049240810\", \"occurrence_agg\": \"sha256:d70e8627382900055d8e33787e0066d159ab6ba72b98132d4d925265410b1525:1437603\"}",
         "spec_version": "serving-summary/v5",
         "table_name": "summary_group_year"
       },
@@ -251,7 +251,7 @@
       },
       {
         "fingerprint": "sha256:ca8e8bff552679b421030c0b79bfd451ad26be9b797137ed3c407343b094bd51:23618",
-        "inputs": "{\"ext:registry.taxon\": \"715b89513d101776ba8e2730580d747b28602d1337aba49f516a32b6acf668e3\", \"occurrence_agg\": \"sha256:d70e8627382900055d8e33787e0066d159ab6ba72b98132d4d925265410b1525:1437603\"}",
+        "inputs": "{\"ext:registry.taxon\": \"0fbf9323fc133cc38fcf405e38f3dd3b2907f7d0d4911d7a3f3537a049240810\", \"occurrence_agg\": \"sha256:d70e8627382900055d8e33787e0066d159ab6ba72b98132d4d925265410b1525:1437603\"}",
         "spec_version": "serving-summary/v5",
         "table_name": "summary_species_catalog"
       },
@@ -289,7 +289,7 @@
     "scripts/b09_build_occurrence_place.py": "82445312bc4bb53f0d49a6a7c4a4b59e41c65e55",
     "scripts/b13_build_summary.py": "9c0fe0c56c79c2f357b44f06429a38fc3d068971",
     "scripts/era_table.py": "b0953de3efa2eee6eff43c249cda61e4e2e64c95",
-    "scripts/ingest": "69c076c2afdc90308df7e6b8b9a5f2a79c9bb90b",
+    "scripts/ingest": "24948f9001c2746643082c38cba4de92fa31da53",
     "scripts/migrate": "18bc24459b90e511c8e9bf71bc5c5a8712581973",
     "scripts/pipeline_inputs.py": "d681352977b943ed8f7c689bbb16786f9ee93754",
     "scripts/r01_build_registry.py": "ea9cd2a918b425153dfa00ed2dc34bc5993142f4",
