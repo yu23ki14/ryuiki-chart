@@ -2,30 +2,31 @@
 
 `scripts/b06_build_occurrence.py` が `data/db/ryuiki.sqlite` の `organism_records` から `data/db/v2.sqlite` の `occurrence` を作った結果の要約。設計は `docs/plans/PHASE_B_OCCURRENCE.md`（O-1a節）参照。
 
-- `organism_records` 総行数: **824,092**
+- `organism_records` 総行数: **837,355**
 - 合成データ（`is_synthetic=1`）を除外した行数: **0**（本番に出さない。Issue #48 PR-0 オーナー決定。実測では常に0——`organism_records` に合成の出現記録は無い。将来行が増えても黙って通さないための防御）
-- `occurrence` 行数: **824,092**（合成データを除く全行を取り込む。ADR-0007原則1の例外——Issue #48 PR-0 オーナー決定）
-- 日付あり（`period_raw` NOT NULL）: **817,252**
-- 座標なし（`lat`/`lon` NULL）: **400**
+- `occurrence` 行数: **837,355**（合成データを除く全行を取り込む。ADR-0007原則1の例外——Issue #48 PR-0 オーナー決定）
+- 日付あり（`period_raw` NOT NULL）: **830,515**
+- 座標なし（`lat`/`lon` NULL）: **8,509**
 - `taxon_id` NULL: **853**（うち日付あり: 775）
 
 ## adapter 経由の出典（`manifests/*.yml` の `adapter` が builtin でないもの）
 
 | source_id | 取り込み行数 | attributes を持つ行 |
 |---|---:|---:|
+| `kanagawa_edna` | 13,263 | 13,263 |
 | `kanagawa_kuma_sightings` | 400 | 400 |
 
 ## region 内訳
 
 | region_id | 行数 |
 |---|---:|
-| `jp-14` | 824,092 |
+| `jp-14` | 837,355 |
 
 ## 期間の形（12形）ごとの件数
 
 | 形 | 行数 |
 |---|---:|
-| `day` | 740,719 |
+| `day` | 753,982 |
 | `day_interval` | 3,723 |
 | `instant_millisecond_z` | 800 |
 | `instant_minute` | 26,042 |
