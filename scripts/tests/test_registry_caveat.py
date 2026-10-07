@@ -66,7 +66,7 @@ def test_sort_order_is_declaration_order_within_same_scope():
     assert sorted(by_scope[("place", "place_kind=grid01")]) == [(0, "share")]  # effort は GBIF・iNat の source facet に移した（B, 2026-10-07）
     assert [k for _, k in sorted(by_scope[("dataset", "measurements")])] == ["measuredOn", "censoredLod", "duplicates"]
     # share は流域（dataset=organism_records）には掛からない
-    assert "share" not in [k for _, k in by_scope[("dataset", "organism_records")]]
+    assert "share" not in [k for _, k in by_scope.get(("dataset", "organism_records"), [])]
 
 
 def test_priority_only_on_synthetic_scope():
