@@ -38,6 +38,12 @@ CLAUDE.md 「サンプル」設計の要件）。
   サンプルの `organism_records` が持たないと、b06 が「座標はあるのに grid01 が解決できない」で止まる。
   サンプルに無いセルごとに、そのセルを生む原本の行を rowid 最小で 1 行足す
   （`select_grid01_origin_rows`。taxon の閉包の**後**に評価する）。原本にも無いセルがあれば止まる。
+- **`registry/source/access.yaml` の `records`（record_set）を宣言した各（出典, 表）の行**。r01 の
+  `build_source_access` は「宣言した record_set の表に、その出典の行が 1 つ以上ある」ことを検査する
+  （無ければ止まる。宣言が古いのではなく、サンプルがその出典の行を持たないだけ）。表名・出典は
+  access.yaml から導き（`record_sets` の表のうち原本 ryuiki.sqlite にあるもの。registry の表
+  `taxon_assessment` は原本の表ではないので対象外）、サンプルにその出典の行がまだ無い（出典, 表）に、
+  rowid 最小の 1 行を足す（`select_record_set_origin_rows`。複合 `a|b` の行も区切りの完全一致で拾う）。
 - **文書単位**（`cells.sqlite` の `cells`）は `document_closure.doc_ids` で
   指定した `doc_id` の全セルを入れる。
 
@@ -93,6 +99,7 @@ DEFAULT_PROCESSED_DIR = ROOT / "data" / "processed"
 DEFAULT_COVERAGE_YAML = ROOT / "data" / "sample" / "coverage.yaml"
 DEFAULT_OUT_DIR = ROOT / "data" / "sample"
 DEFAULT_GEOJSON = ROOT / "data" / "processed" / "nlni_w12_watersheds.geojson"
+ACCESS_YAML = ROOT / "registry" / "source" / "access.yaml"
 DEFAULT_LANDUSE_CSV = ROOT / "data" / "processed" / "nlni_l03b_landuse_by_watershed.csv"
 
 # ---------------------------------------------------------------------------
@@ -449,6 +456,32 @@ def select_grid01_origin_rows(
     return {"organism_records": rows} if rows else {}
 
 
+def select_record_set_origin_rows(
+    conn: sqlite3.Connection, access_doc: dict, selected: dict[str, set[int]],
+) -> dict[str, set[int]]:
+    """access.yaml の `records` で宣言された（出典, 表）ごとに、サンプルにその出典の行が無ければ、
+    原本のその表のその出典の行を rowid 最小で 1 行足す（`{table: {rowid}}`）。出典の値は `a|b` の複合も
+    区切りの完全一致で拾う。原本に表が無い（registry の表 `taxon_assessment` など）ものは対象外。
+    原本にも行が無ければ止まる（r01 の検査と同じ宣言を、サンプルの側でも保証する）。"""
+    existing = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    record_sets = access_doc.get("record_sets") or {}
+    out: dict[str, set[int]] = {}
+    for sid, entry in sorted((access_doc.get("sources") or {}).items()):
+        for rs in entry.get("records") or []:
+            table = record_sets[rs]
+            if table not in existing:
+                continue
+            rowids = [r[0] for r in conn.execute(
+                f'SELECT rowid FROM "{table}" WHERE instr(\'|\' || source_id || \'|\', \'|\' || ? || \'|\') > 0 '
+                "ORDER BY rowid", (sid,))]
+            if not rowids:
+                raise SystemExit(f"access.yaml: {sid} の records {rs}（表 {table}）に、原本にもこの出典の行が無い")
+            have = selected.get(table, set()) | out.get(table, set())
+            if not have.intersection(rowids):
+                out.setdefault(table, set()).add(rowids[0])
+    return out
+
+
 def adapter_input_files(manifests: dict[str, manifest_lib.Manifest]) -> list[str]:
     """adapter 出典の入力ファイル（`input.file`。`data/processed/` 配下のファイル名）。サンプルの processed/ に丸ごと写す。"""
     names: list[str] = []
@@ -758,6 +791,7 @@ def main() -> int:
     parser.add_argument("--coverage-yaml", default=str(DEFAULT_COVERAGE_YAML))
     parser.add_argument("--out-dir", default=str(DEFAULT_OUT_DIR))
     parser.add_argument("--manifests-dir", default=str(source_regions.DEFAULT_MANIFESTS_DIR))
+    parser.add_argument("--access-yaml", default=str(ACCESS_YAML))
     args = parser.parse_args()
 
     coverage = load_yaml(args.coverage_yaml)
@@ -783,6 +817,11 @@ def main() -> int:
         selected[table] = selected.get(table, set()) | rowids
     # 入力表の座標が落ちる grid01 セルを、サンプルの organism_records が持つようにする（taxon の閉包の後）
     for table, rowids in select_grid01_origin_rows(ryuiki_conn, manifests, selected).items():
+        selected[table] = selected.get(table, set()) | rowids
+
+    # access.yaml で records を宣言した（出典, 表）の行が、サンプルに 1 つ以上あるようにする
+    for table, rowids in select_record_set_origin_rows(
+            ryuiki_conn, load_yaml(args.access_yaml), selected).items():
         selected[table] = selected.get(table, set()) | rowids
 
     doc_ids = coverage["document_closure"]["doc_ids"]

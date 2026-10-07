@@ -201,6 +201,9 @@ def test_end_to_end_determinism_on_fixture_db(tmp_path):
     manifests_for_main = tmp_path / "manifests_main"
     write_manifests_from_sources_text(manifests_for_main, _SOURCE_REGIONS_YAML_TEXT)
 
+    access_yaml = tmp_path / "access.yaml"       # フィクスチャの原本に合わせた最小の宣言（本物の宣言は表が違う）
+    access_yaml.write_text("record_sets: {}\nsources: {}\n", encoding="utf-8")
+
     out_dir_1 = tmp_path / "out1"
     out_dir_2 = tmp_path / "out2"
 
@@ -214,6 +217,7 @@ def test_end_to_end_determinism_on_fixture_db(tmp_path):
             "--coverage-yaml", str(coverage_yaml),
             "--out-dir", str(out_dir),
             "--manifests-dir", str(manifests_for_main),
+            "--access-yaml", str(access_yaml),
         ]
         try:
             assert s01.main() == 0
@@ -608,3 +612,45 @@ def test_grid01_cell_matches_the_registry_sql_expression():
     for lat, lon in [(35.29, 139.07), (35.564123, 139.250915), (35.0, 139.0), (35.58, 139.29), (35.1 + 0.2, 139.7 - 0.1)]:
         sql = conn.execute("SELECT CAST(FLOOR(?*100) AS INT), CAST(FLOOR(?*100) AS INT)", (lat, lon)).fetchone()
         assert s01.grid01_cell(lat, lon) == sql
+
+
+# ---------------------------------------------------------------- access.yaml の records を宣言した（出典, 表）の閉包
+
+def _record_set_db():
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE protected_areas (source_id TEXT)")
+    conn.execute("CREATE TABLE sites (source_id TEXT)")
+    # protected_areas rowid: 1=other / 2=ab（a の部分一致。拾わない）/ 3=a|b（複合。a も b も拾う）/ 4=a
+    conn.executemany("INSERT INTO protected_areas VALUES (?)", [("other",), ("ab",), ("a|b",), ("a",)])
+    conn.executemany("INSERT INTO sites VALUES (?)", [("s",), ("s",)])
+    return conn
+
+
+_ACCESS = {
+    "record_sets": {"protected_areas": "protected_areas", "sites": "sites", "assessments": "taxon_assessment"},
+    "sources": {
+        "a": {"records": ["protected_areas"]},
+        "b": {"records": ["protected_areas"]},
+        "s": {"records": ["sites"]},
+        "t": {"records": ["assessments"]},        # 原本に表が無い（registry の表）。対象外
+        "r": {"reason": "file_only"},
+    },
+}
+
+
+def test_record_set_origin_rows_pick_min_rowid_with_exact_delimiter_match():
+    # a は複合 a|b の rowid 3 が最小（部分一致の ab=2 ではない）。b も同じ行で満たされ、足す行は 1 つ
+    got = s01.select_record_set_origin_rows(_record_set_db(), _ACCESS, {})
+    assert got == {"protected_areas": {3}, "sites": {1}}
+
+
+def test_record_set_origin_rows_skip_sources_already_in_sample():
+    got = s01.select_record_set_origin_rows(_record_set_db(), _ACCESS, {"protected_areas": {4}, "sites": {2}})
+    # a は rowid 4 で満たされている。b はまだ無いので複合の 3 を足す
+    assert got == {"protected_areas": {3}}
+
+
+def test_record_set_origin_rows_stop_when_origin_has_no_row():
+    access = {"record_sets": {"sites": "sites"}, "sources": {"zzz": {"records": ["sites"]}}}
+    with pytest.raises(SystemExit, match="zzz"):
+        s01.select_record_set_origin_rows(_record_set_db(), access, {})

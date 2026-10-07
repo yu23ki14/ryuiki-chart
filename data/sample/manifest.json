@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-07T12:28:16+00:00",
+  "generated_at": "2026-10-07T12:33:56+00:00",
   "generated_by": "scripts/s01_build_sample.py",
   "source_files": {
     "data/db/ryuiki.sqlite": "aa307eb50eccad5d19a013a2a5cede6c5d40e032fe6a58525b836f4d69d8a299",
@@ -20,14 +20,18 @@
     "cells.vocab_indicators": 236,
     "cells.vocab_units": 124,
     "edna_detections": 13263,
+    "mammal_mesh": 1,
     "measurements": 39434,
     "organism_records": 3275,
+    "protected_areas": 4,
     "quality_transitions": 3372,
     "redlist_assessments": 2884,
+    "river_segments": 1,
     "sensor_timeseries": 6770,
     "sites": 352,
     "source_registry": 125,
     "taxa": 8585,
+    "vegetation_polygons": 1,
     "wildlife_sightings": 400
   }
 }

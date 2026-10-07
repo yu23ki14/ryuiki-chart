@@ -6,6 +6,15 @@ CREATE TABLE edna_detections (
   lat REAL, lon REAL, coordinate_uncertainty_m REAL,
   attributes_json TEXT NOT NULL         -- 設計 §3.3 の attributes。m07 が組む
 );
+CREATE TABLE mammal_mesh (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  mesh_code TEXT, species TEXT, species_ja TEXT,
+  survey_label TEXT,              -- 元の列名
+  survey_year INTEGER,            -- 西暦。年を持たない調査は NULL
+  confirmed INTEGER,              -- 0/1
+  lat REAL, lon REAL,             -- メッシュ中心
+  source_id TEXT, source_ref TEXT
+);
 CREATE TABLE measurements (
   measurement_id TEXT PRIMARY KEY, event_id TEXT, site_id TEXT,
   measured_on TEXT, variable TEXT, variable_en TEXT,
@@ -28,6 +37,19 @@ CREATE TABLE organism_records (
   quality_stage TEXT DEFAULT '暫定', publication_scope TEXT DEFAULT '限定共有',
   source_id TEXT, source_ref TEXT, is_synthetic INTEGER DEFAULT 0
 , record_license TEXT, license_class TEXT, commercial_ok INTEGER, occurrence_status TEXT);
+CREATE TABLE protected_areas (
+  area_id TEXT PRIMARY KEY,
+  name_ja TEXT,
+  category_ja TEXT,               -- 原文の区分名
+  category_code TEXT,             -- 我々が付けた英字スラグ
+  municipality_ja TEXT,
+  area_ha REAL, area_ha_raw TEXT,
+  designated_on TEXT, designated_on_raw TEXT,
+  lat REAL, lon REAL,
+  watershed TEXT, zone INTEGER,   -- m05 が点内判定で埋める(座標があるもののみ)
+  note_ja TEXT,
+  source_id TEXT, source_ref TEXT
+);
 CREATE TABLE quality_transitions (
   id INTEGER PRIMARY KEY AUTOINCREMENT, target_table TEXT, target_id TEXT,
   from_stage TEXT, to_stage TEXT, actor TEXT, occurred_at TEXT, note TEXT
@@ -49,6 +71,14 @@ CREATE TABLE redlist_assessments (
   taxon_id             TEXT,            -- taxa への対応。機械結合しないため既定NULL
   source_id            TEXT,
   source_ref           TEXT
+);
+CREATE TABLE river_segments (
+  feature_id TEXT PRIMARY KEY,
+  name_ja TEXT, section_type TEXT, prefecture_ja TEXT,
+  length_m REAL,                  -- 近似値
+  start_lat REAL, start_lon REAL, end_lat REAL, end_lon REAL,
+  geometry_geojson TEXT,
+  source_id TEXT, source_ref TEXT
 );
 CREATE TABLE sensor_timeseries (
   id INTEGER PRIMARY KEY AUTOINCREMENT, site_id TEXT, datastream TEXT,
@@ -74,6 +104,18 @@ CREATE TABLE taxa (
   taxon_group_ja TEXT, kingdom TEXT, phylum TEXT, class TEXT, "order" TEXT,
   family TEXT, genus TEXT, gbif_taxon_key TEXT, gbif_match_type TEXT,
   redlist_kanagawa TEXT, redlist_national TEXT, ias_category TEXT,
+  source_id TEXT, source_ref TEXT
+);
+CREATE TABLE vegetation_polygons (
+  feature_id TEXT PRIMARY KEY,
+  legend_code TEXT, legend_name_ja TEXT,
+  veg_division_ja TEXT,
+  naturalness REAL, naturalness_class_ja TEXT,
+  survey_year INTEGER, block_ja TEXT,
+  area_m2 REAL,                   -- 近似値
+  centroid_lat REAL, centroid_lon REAL,
+  watershed TEXT,
+  geometry_geojson TEXT,          -- simplify 済み
   source_id TEXT, source_ref TEXT
 );
 CREATE TABLE wildlife_sightings (
