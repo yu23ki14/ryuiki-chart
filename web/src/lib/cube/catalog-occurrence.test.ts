@@ -34,6 +34,17 @@ describe("speciesCatalog", () => {
       n: 236, nRedList: 62, nAlien: 0, nPlaces: 2, yFrom: 1950, yTo: 2021, nYears: 5,
     });
   });
+  it("sourceIds: 全出典の指定は件数が現行と一致し、片方に絞ると和が全体になる。該当なしは空", async () => {
+    const all = await speciesCatalog(fx.db);
+    const both = await speciesCatalog(fx.db, { sourceIds: ["gbif_kanagawa_occurrences", "inaturalist_kanagawa"] });
+    expect(both.map((r) => [r.binom, r.n, r.nPlaces, r.yFrom, r.yTo, r.nYears])).toEqual(all.map((r) => [r.binom, r.n, r.nPlaces, r.yFrom, r.yTo, r.nYears]));
+    const g = await speciesCatalog(fx.db, { sourceIds: ["gbif_kanagawa_occurrences"] });
+    const i = await speciesCatalog(fx.db, { sourceIds: ["inaturalist_kanagawa"] });
+    const sum = (rows: { n: number }[]) => rows.reduce((a, r) => a + r.n, 0);
+    expect(sum(g) + sum(i)).toBe(sum(all));
+    expect(await speciesCatalog(fx.db, { sourceIds: ["kanagawa_edna"] })).toEqual([]);
+    expect((await speciesCatalog(fx.db, { sourceIds: ["gbif_kanagawa_occurrences"], group: "FxPlant", limit: 1 })).length).toBeLessThanOrEqual(1);
+  });
   it("group と limit", async () => {
     expect((await speciesCatalog(fx.db, { group: "FxPlant" })).map((r) => r.binom)).toEqual([delta, gamma, named]);
     expect((await speciesCatalog(fx.db, { limit: 1 })).length).toBe(1);

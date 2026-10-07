@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildCubeFixture, FX, type CubeFixture } from "@/lib/cube/__fixtures__/cube-fixture";
 import { buildOccurrenceFixture, FXO, type OccurrenceFixture } from "@/lib/cube/__fixtures__/occurrence-fixture";
+import { OCCURRENCE_SOURCE_IDS } from "@/lib/cube";
 import { handleBody, handleRpc, listTools, MAX_BATCH, MCP_PROTOCOL_VERSION } from "./server";
 import realDatapackage from "./__fixtures__/datapackage.real.json";
 import { datapackageResources, MCP_TOOLS, type McpContext } from "./tools";
@@ -155,6 +156,22 @@ describe("5 ツールの応答は封筒（excluded=0・合成なし・cite_as・
     }
     const missing = await call("get_occurrences", { kind: "species_years" }, c);
     expect(missing.isError).toBe(true);
+  });
+
+  it("get_occurrences: source_ids で絞ると provenance も絞った出典だけ。未指定は全出典。未知の出典は入力エラー", async () => {
+    const c = ctx({ db: async () => occ.db });
+    const args = { kind: "species_years", binoms: [FXO.binoms.alpha] };
+    const all = await call("get_occurrences", args, c);
+    const one = await call("get_occurrences", { ...args, source_ids: ["inaturalist_kanagawa"] }, c);
+    expectPublicInvariants(one.structuredContent);
+    const ids = (r: typeof all) => (r.structuredContent.provenance as { source_id: string }[]).map((p) => p.source_id).sort();
+    expect(ids(one)).toEqual(["inaturalist_kanagawa"]);
+    expect(ids(all)).toEqual([...OCCURRENCE_SOURCE_IDS].sort());
+    const total = (r: typeof all) => (r.structuredContent.data as { rows: { n: number }[] }).rows.reduce((a, x) => a + x.n, 0);
+    const gbif = await call("get_occurrences", { ...args, source_ids: ["gbif_kanagawa_occurrences"] }, c);
+    expect(total(one) + total(gbif)).toBe(total(all));
+    const bad = await call("get_occurrences", { ...args, source_ids: ["no_such_source"] }, c);
+    expect(bad.isError).toBe(true);
   });
 
   it("export_dataset: datapackage が無ければ available=false、あれば path と sha256 だけ返す", async () => {

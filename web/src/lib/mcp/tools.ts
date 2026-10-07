@@ -209,26 +209,36 @@ export const MCP_TOOLS: McpTool[] = [
     description:
       "生物の出現記録（GBIF・iNaturalist）の集計を取る。kind='species_catalog' は種の一覧（件数の多い順、group で分類群を絞る）、" +
       "'species_years'/'species_months' は種ごとの年別・月別件数（binoms に学名）、'watershed_years' は流域ごとの年別件数。" +
-      "出現記録は観察努力量に偏るため、件数の増減を生息数の増減と読まない。",
+      "出現記録は観察努力量に偏るため、件数の増減を生息数の増減と読まない。" +
+      "source_ids で出典（gbif_kanagawa_occurrences・inaturalist_kanagawa・kanagawa_edna・kanagawa_kuma_sightings）を絞れる（省略時は全出典の合算）。" +
+      "eDNA（kanagawa_edna）は採水による検出で、目視の観察とは性質が違うので、比べるときは出典で分ける。",
     inputSchema: z.object({
       kind: z.enum(["species_catalog", "species_years", "species_months", "watershed_years"]).describe("集計の種類"),
       group: z.string().optional().describe("kind='species_catalog' の分類群（例: 鳥類）"),
       binoms: z.array(z.string()).max(20).optional().describe("kind='species_years'/'species_months' の学名（最大 20）"),
       placeId: z.string().optional().describe("kind='watershed_years' の流域 place_id（省略時は全流域）"),
+      source_ids: z
+        .array(z.enum(OCCURRENCE_SOURCE_IDS as unknown as [string, ...string[]]))
+        .min(1)
+        .max(OCCURRENCE_SOURCE_IDS.length)
+        .optional()
+        .describe("出典で絞る（省略時は全出典の合算）。例: ['kanagawa_edna']"),
       limit: limitSchema,
     }),
-    execute: async ({ kind, group, binoms, placeId, limit }, ctx) => {
+    execute: async ({ kind, group, binoms, placeId, source_ids, limit }, ctx) => {
       const db = await ctx.db();
-      const query = { kind, group: group ?? null, binoms: binoms ?? null, placeId: placeId ?? null, limit: limit ?? null };
+      const sourceIds = source_ids ?? [...OCCURRENCE_SOURCE_IDS]; // 未指定は全出典（絞り込みなし）
+      const filter = source_ids ? { sourceIds: source_ids } : {};
+      const query = { kind, group: group ?? null, binoms: binoms ?? null, placeId: placeId ?? null, source_ids: source_ids ?? null, limit: limit ?? null };
       let rows: unknown[];
-      if (kind === "species_catalog") rows = await speciesCatalog(db, { group: group ?? null, limit: (limit ?? 100) + 1, withNames: true });
-      else if (kind === "watershed_years") rows = await watershedYears(db, { placeId });
+      if (kind === "species_catalog") rows = await speciesCatalog(db, { group: group ?? null, limit: (limit ?? 100) + 1, withNames: true, ...filter });
+      else if (kind === "watershed_years") rows = await watershedYears(db, { placeId, ...filter });
       else {
         if (!binoms?.length) throw new McpInputError(`kind='${kind}' には binoms（学名）が要る`);
-        rows = kind === "species_years" ? await speciesYears(db, binoms) : await speciesMonths(db, binoms);
+        rows = kind === "species_years" ? await speciesYears(db, binoms, filter) : await speciesMonths(db, binoms, filter);
       }
       const c = cap(rows, limit);
-      return buildDataEnvelope(query, { rows: c.rows, n_total: rows.length }, OCCURRENCE_SOURCE_IDS, { now: ctx.now, truncated: c.truncated });
+      return buildDataEnvelope(query, { rows: c.rows, n_total: rows.length }, sourceIds, { now: ctx.now, truncated: c.truncated });
     },
   }),
 

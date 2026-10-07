@@ -903,8 +903,9 @@ export interface SpeciesCatalogRow {
 /** v1 `speciesList`。`ORDER BY n DESC, binom`。 */
 export async function speciesCatalog(
   db: CubeDb,
-  opt: { group?: string | null; limit?: number; withNames?: boolean; search?: string } = {},
+  opt: { group?: string | null; limit?: number; withNames?: boolean; search?: string; sourceIds?: readonly string[] } = {},
 ): Promise<SpeciesCatalogRow[]> {
+  if (opt.sourceIds !== undefined) return speciesCatalogBySource(db, { ...opt, sourceIds: opt.sourceIds });
   const limit = opt.limit ?? 200;
   const params: SqlParam[] = [];
   const conds: string[] = [];
@@ -929,6 +930,69 @@ export async function speciesCatalog(
   const rows = await db.all<OccRow>(
     `SELECT binom, taxon_group, "class", family, n, n_red_list, n_alien, n_places, y_from, y_to, n_years
      FROM summary_species_catalog ${where}
+     ORDER BY n DESC, binom LIMIT ?`,
+    params,
+  );
+  const out: SpeciesCatalogRow[] = rows.map((r) => ({
+    binom: r.binom as string,
+    taxonGroup: r.taxon_group as string | null,
+    class: r.class as string | null,
+    family: r.family as string | null,
+    n: r.n as number,
+    nRedList: r.n_red_list as number,
+    nAlien: r.n_alien as number,
+    nPlaces: r.n_places as number,
+    yFrom: r.y_from as number | null,
+    yTo: r.y_to as number | null,
+    nYears: r.n_years as number,
+  }));
+  if (opt.withNames && out.length > 0) {
+    const labels = await labelMap(db, out.map((r) => r.binom), {});
+    for (const r of out) r.label = labels.get(r.binom) ?? r.binom;
+  }
+  return out;
+}
+
+/**
+ * `speciesCatalog` の出典絞り込み版。`summary_species_catalog` は出典別の列を持たないので、
+ * `occurrence_agg` を直接 GROUP BY する（定義は `aggregations/serving.yaml` の summary_species_catalog と同じ:
+ * grid01・年族・binom が取れる taxon。出典で絞った分だけ集計する）。全出典の一覧より重い。
+ */
+async function speciesCatalogBySource(
+  db: CubeDb,
+  opt: { group?: string | null; limit?: number; withNames?: boolean; search?: string; sourceIds: readonly string[] },
+): Promise<SpeciesCatalogRow[]> {
+  const limit = opt.limit ?? 200;
+  const params: SqlParam[] = [jsonEachParam(uniq(opt.sourceIds))];
+  const conds: string[] = [];
+  if (opt.group) {
+    conds.push("t.taxon_group = ?");
+    params.push(opt.group);
+  }
+  const q = opt.search?.trim().toLowerCase();
+  if (q) {
+    const byName = Object.entries(NAME_JA)
+      .filter(([, ja]) => ja.toLowerCase().includes(q))
+      .map(([binom]) => binom)
+      .slice(0, 50);
+    const like = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    conds.push(`(LOWER(t.canonical_binomial) LIKE ? ESCAPE '\\'${byName.length ? ` OR t.canonical_binomial IN (${byName.map(() => "?").join(",")})` : ""})`);
+    params.push(like, ...byName);
+  }
+  params.push(limit);
+  const rows = await db.all<OccRow>(
+    `SELECT t.canonical_binomial AS binom, MAX(t.taxon_group) AS taxon_group, MAX(t."class") AS "class", MAX(t.family) AS family,
+            SUM(o.n) AS n, SUM(o.n_red_list) AS n_red_list, SUM(o.n_alien) AS n_alien,
+            COUNT(DISTINCT o.place_id) AS n_places,
+            MIN(CAST(substr(o.period_start, 1, 4) AS INTEGER)) AS y_from,
+            MAX(CAST(substr(o.period_start, 1, 4) AS INTEGER)) AS y_to,
+            COUNT(DISTINCT substr(o.period_start, 1, 4)) AS n_years
+     FROM occurrence_agg o INDEXED BY ${OCCURRENCE_AGG_INDEX.kindGrainPeriod}
+     JOIN taxon t ON t.taxon_id = o.taxon_id
+     WHERE o.source_id IN (SELECT value FROM json_each(?))
+       AND o.place_kind = 'grid01' AND o.grain IN ${YEAR_GRAINS}
+       AND t.canonical_binomial IS NOT NULL${conds.map((c) => ` AND ${c}`).join("")}
+     GROUP BY t.canonical_binomial
      ORDER BY n DESC, binom LIMIT ?`,
     params,
   );
