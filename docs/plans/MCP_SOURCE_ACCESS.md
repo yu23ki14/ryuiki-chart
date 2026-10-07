@@ -287,3 +287,12 @@ unconfirmed が 8 件）で、除外する行は無い。
 8. **性能**。`get_records` は `source_id` の索引が無い表（mammal_mesh 75k 行など）で主キー順に走査する。
    1 出典が表の大半を占める表ばかりなので許容と見るが、`offset` が深いと rows_read が増える。実測は main が 1 回（`EXPLAIN QUERY PLAN` と本番の rows_read）。
    問題なら `source_id` の索引を `schema.ts` に足す。
+
+## メインの判断（2026-10-07）
+1. ライセンス: ADR-0028 に合わせて除外しない（excluded は 0 のまま）。
+2. water_* の8表: どの出典から作った表かを access.yaml で宣言できるものは、get_records の対象にする（表→出典の宣言を r01 が検査する）。宣言できないものは理由 `d1_no_source_column` で取れない側に置く。
+3. kanagawa_kuma_sightings: queryable_via に get_occurrences と get_records（wildlife_sightings）の両方を書く。
+4. 複合 source_id（`a|b`）: どちらの出典で絞っても、その行が返る。照合は区切りで分けた完全一致（LIKE の部分一致にしない）。
+5. 件数の名前は `n_source_rows`。
+6. テストはインメモリの SQLite で行う。
+7. 92 件の理由は、registry・source_registry の情報から機械的に下書きする（宣言に `basis` を残す）。PR に理由別の件数と例を載せ、メインが抜き取りで確かめる。
