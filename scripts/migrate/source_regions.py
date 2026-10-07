@@ -52,6 +52,8 @@ class SourceRegion:
     consumer: str
     expected_row_count: int | None
     evidence: str
+    # b06: occurrence_status='ABSENT' で occurrence から除く行数の宣言（マニフェストの expected_absent_excluded_rows）。
+    expected_absent_excluded_rows: int = 0
 
 
 def load_source_regions(
@@ -75,6 +77,10 @@ def load_source_regions(
         sid: {
             "region_id": m.region, "consumer": m.target, "evidence": m.evidence,
             **({"expected_row_count": m.expected_row_count} if m.expected_row_count is not None else {}),
+            # 0 より大きい宣言だけ breakdown に出す（縮小サンプルの overlay が
+            # `manifests:<source>.absent_excluded_rows` で差し替えられる。宣言の無い出典に overlay は指せない）
+            **({"breakdown": {"absent_excluded_rows": m.expected_absent_excluded_rows}}
+               if m.expected_absent_excluded_rows else {}),
         }
         for sid, m in manifests.items()
     }
@@ -86,6 +92,7 @@ def load_source_regions(
         sid: SourceRegion(
             source_id=sid, region_id=spec["region_id"], consumer=spec["consumer"],
             expected_row_count=spec.get("expected_row_count"), evidence=spec["evidence"],
+            expected_absent_excluded_rows=spec.get("breakdown", {}).get("absent_excluded_rows", 0),
         )
         for sid, spec in sources_raw.items()
     }

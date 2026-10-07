@@ -63,7 +63,10 @@ CREATE TABLE IF NOT EXISTS organism_records (
   -- 再配布可否を判定できず、観察/データセット単位でライセンスが混在するため個別に保持する）
   record_license TEXT,      -- 元データの表記そのまま (例: 'cc-by-nc', 'http://creativecommons.org/licenses/by/4.0/legalcode', NULL, '')
   license_class TEXT,       -- 正規化: open / noncommercial / unknown / restricted
-  commercial_ok INTEGER     -- 0/1 (原ライセンスが商用利用を許諾しているか)
+  commercial_ok INTEGER,    -- 0/1 (原ライセンスが商用利用を許諾しているか)
+  -- GBIF の occurrenceStatus（PRESENT/ABSENT）をそのまま。不在記録（ABSENT）は原本に残し、b06 が
+  -- occurrence から除く。iNaturalist など不在の概念が無い出典は NULL（scripts/m03_organisms.py）
+  occurrence_status TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_org_name ON organism_records(scientific_name);
 CREATE INDEX IF NOT EXISTS ix_org_license_class ON organism_records(license_class);

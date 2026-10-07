@@ -13,6 +13,8 @@
   これを根拠に出力を絞ることはしない（ADR-0028）。
 - quality_stage: iNaturalist の quality_grade=='research' -> '検証済'、それ以外 -> '暫定'。
   GBIF -> '公開済'（GBIF自体が公開済データベースであるため）。
+- occurrence_status: GBIF の occurrenceStatus（PRESENT/ABSENT）をそのまま。iNaturalist は NULL。不在記録（ABSENT）は
+  原本に残し b06 が occurrence から除く。既存DBへの追加は `python scripts/m03_organisms.py --backfill-occurrence-status`（冪等）。
 - 座標は一般化・秘匿しない。元座標をそのまま保持する（iNaturalist側でgeoprivacy設定により
   既に難読化されている場合はその値のまま）。FR-4.5 が定めていた希少種座標の一般化は
   ADR-0028 により撤回された（旧実装は `scripts/x01_dwca.py` の DwC-A 出力時に丸めていたが、
@@ -131,12 +133,14 @@ INSERT_SQL = """INSERT INTO organism_records
    individual_count, density, density_unit, basis_of_record, identified_by,
    identification_basis, identification_confidence, lat, lon, coordinate_uncertainty_m,
    red_list_category, is_alien, quality_stage, publication_scope,
-   source_id, source_ref, is_synthetic, record_license, license_class, commercial_ok)
-  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+   source_id, source_ref, is_synthetic, record_license, license_class, commercial_ok,
+   occurrence_status)
+  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   ON CONFLICT(record_id) DO UPDATE SET
     record_license=excluded.record_license,
     license_class=excluded.license_class,
-    commercial_ok=excluded.commercial_ok"""
+    commercial_ok=excluded.commercial_ok,
+    occurrence_status=excluded.occurrence_status"""
 
 def taxa_lookup(conn):
     rows = conn.execute("select taxon_id, redlist_kanagawa, redlist_national, ias_category from taxa").fetchall()
@@ -183,6 +187,7 @@ def load_inaturalist(conn, taxa, license_counter):
             rl, is_alien, quality_stage, pub_scope,
             "inaturalist_kanagawa", r.get("source_ref"), 0,
             rec_license, license_class, commercial_ok,
+            None,  # occurrence_status: iNaturalist に不在の概念は無い
         ))
         if len(batch) >= 20000:
             conn.executemany(INSERT_SQL, batch); conn.commit(); batch = []
@@ -221,6 +226,7 @@ def load_gbif(conn, taxa, license_counter):
             rl, is_alien, "公開済", pub_scope,
             "gbif_kanagawa_occurrences", r.get("occurrenceID") or str(r.get("key")), 0,
             rec_license, license_class, commercial_ok,
+            r.get("occurrenceStatus"),  # GBIF の語彙（PRESENT/ABSENT）のまま
         ))
         if len(batch) >= 20000:
             conn.executemany(INSERT_SQL, batch); conn.commit(); batch = []
@@ -233,8 +239,65 @@ def load_gbif(conn, taxa, license_counter):
         print(f"  gbif_kanagawa_occurrences: {n} rows read, taxa一致 {n_matched} 件 -> organism_records へ INSERT/UPDATE(license)")
     return n
 
+def ensure_occurrence_status_column(conn):
+    """既存の organism_records に occurrence_status 列が無ければ足す（冪等。足したら True）。
+    schema_app.sql の CREATE TABLE IF NOT EXISTS は既存表に列を足さないので、原本DBにはこちらで足す。"""
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(organism_records)")]
+    if "occurrence_status" in cols:
+        return False
+    conn.execute("ALTER TABLE organism_records ADD COLUMN occurrence_status TEXT")
+    conn.commit()
+    return True
+
+def backfill_occurrence_status(conn, batch_size=20000):
+    """m03 の全件再投入なしで、GBIF の occurrenceStatus を既存行へ入れる（冪等）。
+
+    列が無ければ足し、jsonl の key から record_id='gbif_kanagawa_occurrences__<key>' へ UPDATE する。
+    iNaturalist など GBIF 以外の行は触らない（NULL のまま）。戻り値は (列を足したか, 読んだ行数, 更新した行数,
+    値の内訳 Counter)。"""
+    added = ensure_occurrence_status_column(conn)
+    n = changed = 0
+    counts = collections.Counter()
+    batch = []
+
+    def flush():
+        nonlocal changed
+        if not batch:
+            return
+        before = conn.total_changes
+        conn.executemany(
+            "UPDATE organism_records SET occurrence_status=? WHERE record_id=? "
+            "AND occurrence_status IS NOT ?", [(st, rid, st) for rid, st in batch])
+        changed += conn.total_changes - before
+        conn.commit()
+        batch.clear()
+
+    for r in rd_jsonl("gbif_kanagawa_occurrences"):
+        n += 1
+        st = r.get("occurrenceStatus")
+        counts[st] += 1
+        batch.append((f"gbif_kanagawa_occurrences__{r['key']}", st))
+        if len(batch) >= batch_size:
+            flush()
+    flush()
+    return added, n, changed, counts
+
 def main():
+    argv = sys.argv[1:]
+    if "--backfill-occurrence-status" in argv:
+        # --db <path>: 既定は appdb()（data/db/ryuiki.sqlite）。一時コピーでの確認用
+        conn = sqlite3.connect(argv[argv.index("--db") + 1], timeout=30) if "--db" in argv else appdb()
+        conn.execute("PRAGMA busy_timeout=60000")
+        added, n, changed, counts = backfill_occurrence_status(conn)
+        print(f"  occurrence_status 列を{'追加した' if added else '追加済み'}。jsonl {n} 行を読み、{changed} 行を更新した（2回目以降は 0）")
+        print(f"  jsonl の内訳: {dict(counts)}")
+        for st, c in conn.execute("select occurrence_status, count(*) from organism_records "
+                                  "group by occurrence_status order by 1"):
+            print(f"    organism_records.occurrence_status={st!r}: {c}")
+        conn.close()
+        return
     conn = appdb()
+    ensure_occurrence_status_column(conn)
     conn.execute("PRAGMA busy_timeout=60000")
     conn.execute("PRAGMA journal_mode=WAL")
 

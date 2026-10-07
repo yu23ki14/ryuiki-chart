@@ -28,16 +28,16 @@ year:
   note: "'YYYY'（暦年）。"
 
 month:
-  expected_row_count: 1320
-  note: "'YYYY-MM'（暦月）。"
+  expected_row_count: 1319
+  note: "'YYYY-MM'（暦月）。2026-10-07: 不在記録（occurrence_status='ABSENT'）1行を除いた（1320 -> 1319）。"
 
 year_interval:
   expected_row_count: 1046
   note: "'YYYY/YYYY'（調査期間の開始年/終了年）。"
 
 day:
-  expected_row_count: 740323
-  note: "'YYYY-MM-DD'（検体日）。"
+  expected_row_count: 737534
+  note: "'YYYY-MM-DD'（検体日）。2026-10-07: 不在記録（occurrence_status='ABSENT'）2,789行を除いた（740,323 -> 737,534）。"
 
 month_interval:
   expected_row_count: 14

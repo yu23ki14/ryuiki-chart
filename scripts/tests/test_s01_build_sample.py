@@ -32,7 +32,7 @@ def _build_fixture_ryuiki(path: pathlib.Path) -> None:
         );
         CREATE TABLE organism_records (
           record_id TEXT, observed_on TEXT, lat REAL, lon REAL, scientific_name TEXT,
-          is_alien INTEGER, red_list_category TEXT, source_id TEXT, genus TEXT
+          is_alien INTEGER, red_list_category TEXT, source_id TEXT, genus TEXT, occurrence_status TEXT
         );
         CREATE TABLE sensor_timeseries (source_id TEXT);
         """
@@ -134,7 +134,7 @@ def test_build_declaration_counts_atsugi_predicate(tmp_path):
         "('s2', '2020-01-01', 'atsugi_river_water_quality'), "
         "('s3', '1999', 'other_source');"
         "CREATE TABLE organism_records (record_id TEXT, observed_on TEXT, lat REAL, lon REAL, "
-        "scientific_name TEXT, is_alien INTEGER, red_list_category TEXT, source_id TEXT, genus TEXT);"
+        "scientific_name TEXT, is_alien INTEGER, red_list_category TEXT, source_id TEXT, genus TEXT, occurrence_status TEXT);"
         "CREATE TABLE sensor_timeseries (source_id TEXT);"
     )
     selected = {"measurements": {1, 2, 3}, "organism_records": set(), "sensor_timeseries": set()}
@@ -361,7 +361,7 @@ def test_build_declaration_counts_wires_new_occurrence_cube_keys(tmp_path):
     conn.executescript(
         "CREATE TABLE measurements (site_id TEXT, variable TEXT, measured_on TEXT, source_id TEXT);"
         "CREATE TABLE organism_records (record_id TEXT, observed_on TEXT, lat REAL, lon REAL, "
-        "scientific_name TEXT, is_alien INTEGER, red_list_category TEXT, source_id TEXT, genus TEXT);"
+        "scientific_name TEXT, is_alien INTEGER, red_list_category TEXT, source_id TEXT, genus TEXT, occurrence_status TEXT);"
         "INSERT INTO organism_records "
         "(record_id, observed_on, lat, lon, scientific_name, is_alien, red_list_category, source_id) "
         "VALUES ('r1', '2020-01-05', 35.5, 139.5, 'Foo', 0, '', 'gbif_kanagawa_occurrences');"
@@ -386,6 +386,46 @@ def test_build_declaration_counts_wires_new_occurrence_cube_keys(tmp_path):
     assert counts["occurrence_cube_declarations.yaml:month_cell_source_rows"] == 1
     assert counts["occurrence_cube_declarations.yaml:watershed_dated_resolved_rows"] == 1
     assert counts["occurrence_cube_declarations.yaml:watershed_dated_unresolved_rows"] == 0
+
+
+def test_build_declaration_counts_excludes_absent_status_rows(tmp_path):
+    """不在記録（occurrence_status='ABSENT'）は b06 が除くので、サンプルの形・キューブの実測にも数えず、
+    `manifests:<source>.absent_excluded_rows` に件数を出す（宣言したマニフェストだけ）。"""
+    from .occurrence_fixtures import write_watershed_geojson
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(
+        "CREATE TABLE measurements (site_id TEXT, variable TEXT, measured_on TEXT, source_id TEXT);"
+        "CREATE TABLE organism_records (record_id TEXT, observed_on TEXT, lat REAL, lon REAL, "
+        "scientific_name TEXT, is_alien INTEGER, red_list_category TEXT, source_id TEXT, genus TEXT, occurrence_status TEXT);"
+        "INSERT INTO organism_records (record_id, observed_on, lat, lon, source_id, occurrence_status) VALUES "
+        "('r1', '2020-01-05', 35.5, 139.5, 'gbif_kanagawa_occurrences', 'PRESENT'), "
+        "('r2', '2020-01-06', 35.5, 139.5, 'gbif_kanagawa_occurrences', 'ABSENT');"
+        "CREATE TABLE sensor_timeseries (source_id TEXT);"
+    )
+    selected = {"measurements": set(), "organism_records": {1, 2}, "sensor_timeseries": set()}
+    geojson_path = tmp_path / "watersheds.geojson"
+    write_watershed_geojson(
+        geojson_path,
+        [("W001", [[[139.0, 35.0], [140.0, 35.0], [140.0, 36.0], [139.0, 36.0], [139.0, 35.0]]])],
+    )
+    landuse_csv_path = tmp_path / "landuse.csv"
+    landuse_csv_path.write_text(_MINIMAL_LANDUSE_CSV, encoding="utf-8")
+    manifests_dir = tmp_path / "manifests"
+    write_manifests_from_sources_text(
+        manifests_dir,
+        _SOURCE_REGIONS_YAML_TEXT.replace(
+            "    evidence: テスト用\n", "    expected_absent_excluded_rows: 1\n    evidence: テスト用\n", 1,
+        ),
+    )
+
+    counts = s01.build_declaration_counts(conn, selected, geojson_path, landuse_csv_path, manifests_dir=manifests_dir)
+    assert counts["manifests:gbif_kanagawa_occurrences.absent_excluded_rows"] == 1
+    assert counts["manifests:gbif_kanagawa_occurrences"] == 2  # 取り込む行数は ABSENT も数える（b06 の source_usage と同じ）
+    assert counts["occurrence_period_shapes.yaml:day"] == 1
+    assert counts["occurrence_cube_declarations.yaml:month_cell_source_rows"] == 1
+    assert counts["occurrence_cube_declarations.yaml:watershed_dated_resolved_rows"] == 1
 
 
 # ---------------------------------------------------------------------------

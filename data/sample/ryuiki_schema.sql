@@ -27,7 +27,7 @@ CREATE TABLE organism_records (
   red_list_category TEXT, is_alien INTEGER DEFAULT 0,
   quality_stage TEXT DEFAULT '暫定', publication_scope TEXT DEFAULT '限定共有',
   source_id TEXT, source_ref TEXT, is_synthetic INTEGER DEFAULT 0
-, record_license TEXT, license_class TEXT, commercial_ok INTEGER);
+, record_license TEXT, license_class TEXT, commercial_ok INTEGER, occurrence_status TEXT);
 CREATE TABLE quality_transitions (
   id INTEGER PRIMARY KEY AUTOINCREMENT, target_table TEXT, target_id TEXT,
   from_stage TEXT, to_stage TEXT, actor TEXT, occurred_at TEXT, note TEXT

@@ -232,3 +232,21 @@ b09 は座標なし・日付ありの記録にも `place_kind='watershed', place
 （ADR-0007 原則 1・D2「データを落とさない」と同じ扱い）、b07 の grid01 母集団は「座標あり・日付あり行」に限る
 （座標なし行は grid01 のセルを作らない）。座標なしの件数はマニフェストの `expected.cube.dated_no_coordinate_rows`
 で宣言し、b09/b07 が実測と突合する（宣言が無ければ止まる）。
+
+## 追記（2026-10-07）: 不在記録（`occurrenceStatus=ABSENT`）は出現に数えない
+
+GBIF の `occurrenceStatus=ABSENT` は「その種はいなかった」という記録で、出現ではない（`data/processed/gbif_kanagawa_occurrences.jsonl`
+658,360 行のうち 2,790 行。2,789 行は dc878d3c-ebc2-4b95-824b-2209fb3f38f4＝鶴見川の魚類、1 行は d740f242-6c26-4229-9a8f-b63bfab63dc6）。
+従来は `organism_records` に状態の列が無く、全て出現として数えていた（例: グッピー Poecilia reticulata は 2021 年が不在 73・在 1）。
+
+**決定（オーナー、2026-10-07）: 列を足して出現から除く。不在記録は原本に残す。**
+
+- `organism_records.occurrence_status TEXT`（GBIF の語彙 PRESENT/ABSENT のまま。iNaturalist など不在の概念が無い出典は NULL）。
+  `scripts/m03_organisms.py` の `load_gbif` が入れる。既存の原本DBへは `--backfill-occurrence-status`（列の追加＋ jsonl の key から
+  `record_id='gbif_kanagawa_occurrences__<key>'` への UPDATE。冪等）で足す。
+- b06 は `occurrence_status='ABSENT'` の行を occurrence に入れない（合成データの除外と同じ位置・同じ流儀。`source_usage`/`region_usage` の
+  使用マークは除外より前、`region_counts`・期間の形・解決の集計は除外後）。NULL/PRESENT/ABSENT 以外の値は止める。
+- 除外した行数は出典ごとに `manifests/<source>.yml` の `expected_absent_excluded_rows`（既定 0。gbif は 2,790）と突合し、食い違えば止まる。
+  `reports/phase_b_occurrence.md` と stats（`absent_excluded_count`/`absent_excluded_by_source`）にも出す。
+- 取り込む行数の宣言（`expected_row_count: 658360`）は変えない（原本の行数。不在記録も読む）。変わるのは、期間の形（day/month）・
+  キューブ（`month_cell_source_rows`・watershed の2件）・場所（`resolved_count`/`place_id_null_count`）の、除外後の行だけを数える宣言。

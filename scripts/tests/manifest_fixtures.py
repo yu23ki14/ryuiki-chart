@@ -47,6 +47,8 @@ def write_manifests_from_sources_text(manifests_dir, text: str) -> None:
         write_manifest(
             d, source_id, region=spec["region_id"], target=spec["consumer"],
             expected_row_count=spec.get("expected_row_count"), evidence=spec.get("evidence", "テスト用"),
+            extra=({"expected_absent_excluded_rows": spec["expected_absent_excluded_rows"]}
+                   if spec.get("expected_absent_excluded_rows") else None),
         )
 
 

@@ -8,5 +8,9 @@ input:
   table: organism_records
 adapter: builtin
 expected_row_count: 658360
+# GBIF の不在記録（occurrenceStatus=ABSENT）。原本の organism_records には残し、b06 が occurrence から除く
+# （出現として数えない。ADR-0025 の 2026-10-07 追記）。実測（data/processed/gbif_kanagawa_occurrences.jsonl、2026-10-07）:
+# 658,360 行のうち ABSENT 2,790（dc878d3c-… 鶴見川の魚類 2,789、d740f242-… 1）。
+expected_absent_excluded_rows: 2790
 evidence: >
   GBIF 経由で取得した神奈川県内の occurrence（収集は scripts/c02_gbif.py 系）。対象地域を神奈川県（ADR-0002 jp-14）に絞って収集しているため region=jp-14。 件数は実測（data/db/ryuiki.sqlite、2026-09-22）の organism_records の source_id 別件数。 update_mode=snapshot は registry/source/editions.yaml に宣言済みだったものをここへ移した（二重管理にしない）。
