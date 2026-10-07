@@ -203,6 +203,22 @@ export async function speciesYears(
   return (await speciesYearsWithCoverage(db, binoms, opt)).years;
 }
 
+/** 足切りの理由づけ用: 種ごとの件数（n=座標なしを含む全記録、nLocated=座標のある記録）。カタログに無い学名は返らない。 */
+export async function speciesCatalogCounts(
+  db: CubeDb,
+  binoms: readonly string[],
+): Promise<Map<string, { n: number; nLocated: number }>> {
+  const out = new Map<string, { n: number; nLocated: number }>();
+  for (const part of chunk(uniq(binoms), MAX_ID_LIST)) {
+    const rows = await db.all<R>(
+      "SELECT binom, n, n_located FROM summary_species_catalog WHERE binom IN (SELECT value FROM json_each(?))",
+      [jsonEachParam(part)],
+    );
+    for (const r of rows) out.set(r.binom as string, { n: r.n as number, nLocated: r.n_located as number });
+  }
+  return out;
+}
+
 /** v1 `speciesMonths`。2018-01-01 以降の月セル。n≥80 の足切りは `summary_species_catalog.n_located`（座標のある記録の n。表示する行の元と同じ。v1 の「位置の標本が薄い種を出さない」を保つ）。月の系列は grid01 だけ（座標なしの月別件数は持たない）。 */
 export async function speciesMonths(db: CubeDb, binoms: readonly string[], opt: SourceFilterOpt = {}): Promise<SpeciesMonthRow[]> {
   const src = sourceFilterSql(opt.sourceIds);

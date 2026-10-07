@@ -221,7 +221,7 @@ describe("5 ツールの応答は封筒（excluded=0・合成なし・cite_as・
 
   it("species_months: 空の種は理由を返す（足切り・月セル無し・カタログ外）。足切りは外さない", async () => {
     // n_located は A が summary_species_catalog に足す列（仮の名前）。統合までは fixture に n と同じ値で足す。
-    occ.raw.exec("ALTER TABLE summary_species_catalog ADD COLUMN n_located INTEGER; UPDATE summary_species_catalog SET n_located = n");
+    occ.raw.exec("UPDATE summary_species_catalog SET n_located = n");
     const c = ctx({ db: async () => occ.db });
     const cat = (await call("get_occurrences", { kind: "species_catalog", limit: 500 }, c)).structuredContent.data as { rows: { binom: string; n: number }[] };
     const under = cat.rows.filter((r) => r.n < SPECIES_MIN_N);
@@ -235,7 +235,7 @@ describe("5 ツールの応答は封筒（excluded=0・合成なし・cite_as・
   });
 
   it("species_months: 足切りを通っても行が空なら no_located_month_cells を返す", async () => {
-    occ.raw.exec(`ALTER TABLE summary_species_catalog ADD COLUMN n_located INTEGER; UPDATE summary_species_catalog SET n_located = ${SPECIES_MIN_N + 1}`);
+    occ.raw.exec(`UPDATE summary_species_catalog SET n_located = ${SPECIES_MIN_N + 1}`);
     const c = ctx({ db: async () => occ.db });
     // 足切り（speciesMonths 側の n>=80）で行が空のままの種（fixture の n は小さい）。判定列は n_located なので suppressed には入らない
     const r = await call("get_occurrences", { kind: "species_months", binoms: [FXO.binoms.alpha], source_ids: ["kanagawa_kuma_sightings"] }, c);

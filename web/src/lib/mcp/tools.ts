@@ -21,13 +21,13 @@ import {
   sourceFreshness,
   speciesCatalog,
   speciesMonths,
+  speciesCatalogCounts,
   speciesYearsWithCoverage,
   timeseries,
   variableCatalog,
   watershedYears,
   waterBodies,
   MEASUREMENTS_DATASET,
-  jsonEachParam,
   type CubeDb,
 } from "@/lib/cube";
 import { SOURCE_META } from "@/lib/registry/generated-source";
@@ -96,15 +96,11 @@ async function monthsEmptyReasons(db: CubeDb, binoms: readonly string[], rows: r
     not_in_catalog: [] as string[],
   };
   if (!missing.length) return out;
-  const found = await db.all<{ binom: string; n: number; n_located: number }>(
-    "SELECT binom, n, n_located FROM summary_species_catalog WHERE binom IN (SELECT value FROM json_each(?))",
-    [jsonEachParam(missing)],
-  );
-  const byBinom = new Map(found.map((r) => [r.binom, r]));
+  const byBinom = await speciesCatalogCounts(db, missing);
   for (const binom of missing) {
     const hit = byBinom.get(binom);
     if (!hit) out.not_in_catalog.push(binom);
-    else if (hit.n_located < SPECIES_MIN_N) out.suppressed.push({ binom, n: hit.n, n_located: hit.n_located, min_n: SPECIES_MIN_N });
+    else if (hit.nLocated < SPECIES_MIN_N) out.suppressed.push({ binom, n: hit.n, n_located: hit.nLocated, min_n: SPECIES_MIN_N });
     else out.no_located_month_cells.push({ binom, source_ids: [...sourceIds] });
   }
   return out;
