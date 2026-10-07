@@ -1,0 +1,37 @@
+# manifests/kanagawa_edna.yml（宣言。形は scripts/ingest/manifest.py の docstring）。
+# 変換は scripts/adapters/kanagawa_edna.py（import は ingest.api と json だけ）。設計は docs/plans/KANAGAWA_EDNA.md。
+source: kanagawa_edna
+region: jp-14
+target: occurrence
+update_mode: snapshot          # 公表物を毎回丸ごと取り直す（m07 が wipe+reload）。年度が増えたら c89 の LAYOUTS を足して再実行
+input:
+  table: edna_detections
+adapter: kanagawa_edna
+# TODO(第2段): 以下の数値は概算（検出セル数は実測 13,263）。m07 を一時コピーの DB に流して b06 までを回して実測で埋める。
+expected_row_count: 13263
+checks:
+  - not_null: [record_key, taxon_id]
+  - unique: [record_key]
+  - row_count_between: [13263, 13263]   # TODO(第2段): 実測で締める
+  - in_registry: taxon
+  - date_between: ["2021-04-01", "2026-03-31"]   # R7（2025 年度）の最後が 2026-03。年度は 4〜3 月なので year の形は使わない
+evidence: >
+  TODO(第2段): 実測値（行数・日付が空欄の行数・座標の根拠区分ごとの件数・種の解決の内訳 T1〜T5）を書く。
+  神奈川県ホームページ「環境ＤＮＡのページ」（https://www.pref.kanagawa.jp/docs/b4f/suigen/edna.html）を加工して作成。
+  収集は scripts/c89_kanagawa_edna.py、原本の表は edna_sites / edna_reads / edna_detections（m07_kanagawa_edna.py）。
+  occurrence には検出（リード数 > 0）だけを入れ、不検出は原本表に残す。値はリード数で個体数ではない。
+  座標は公開データに無く、地点ごとの推定位置を精度つきで持つ（判別不能は NULL）。同定の確度が低い行も全部入れ、確度は attributes に残す。
+expected:
+  # TODO(第2段): すべて実測で埋める。日付はすべて day の形（採水日）。日付が空欄の行は形に数えない。
+  period_shapes: {day: 13263}
+  place:
+    coord_resolved: 8600        # 座標がある行（概算）
+    coord_unresolved: 0         # grid01 に解決できない行。0 を保つ（grid01_ok=0 の地点は座標 NULL）
+  cube:
+    dated_rows: 13263
+    dated_no_coordinate_rows: 4663       # 日付あり・座標なし
+    leaf_cell_source_rows: 0             # leaf は年をまたぐ区間の記録。採水日（day）は 0
+    leaf_cell_source_rows_no_coordinate: 0
+    month_cell_source_rows: 8600         # 日付あり・座標あり（同一月に収まる）
+    watershed_dated_resolved_rows: 8600  # 座標があり流域に入る行
+    watershed_dated_unresolved_rows: 4663
