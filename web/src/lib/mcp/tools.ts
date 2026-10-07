@@ -16,6 +16,7 @@
 import { z } from "zod";
 import {
   buildDataEnvelope,
+  OBSERVATION_SOURCE_IDS,
   OCCURRENCE_SOURCE_IDS,
   seriesSourceRefs,
   sourceAccess,
@@ -25,6 +26,7 @@ import {
   speciesCatalogCounts,
   speciesYearsWithCoverage,
   timeseries,
+  TimeseriesInputError,
   variableCatalog,
   watershedYears,
   waterBodies,
@@ -258,7 +260,12 @@ export const MCP_TOOLS: McpTool[] = [
   defineTool({
     name: "get_observations",
     description:
-      "ある測定項目の時系列を取る（水質・気象・水文など）。scope で水域（地点ごと）・1地点・ゾーン平均を選び、grain で粒度を選ぶ。" +
+      "ある測定項目の時系列を取る（水質・気象・水文など）。scope で水域（地点ごと）・1地点・ゾーン平均・流域を選び、grain で粒度を選ぶ。" +
+      "source_ids を省略すると水質などの測定値系の系列（従来どおり）。大気（相模原・そらまめ）・河川水位（横浜）のセンサー系列や" +
+      "土地利用（流域ごと、scope.type='watershed'）は source_ids で出典を指定して引く（出典は describe_catalog what='sources' の queryable_via に get_observations があるもの）。" +
+      "センサー系列は毎時の観測を日・月・年に積んだ値なので、密な日次は scope=site と from/to で絞り、広く見るなら grain=month/year にする" +
+      "（grain='day' で from/to とも省略すると直近 " + DAY_DEFAULT_YEARS + " 年）。" +
+      "同じ測定項目・粒度の系列を複数の出典が共有するとき、セルは出典で分けられない（provenance に出典が並ぶ）。" +
       "応答は封筒（rows・coverage・provenance・caveats・excluded・cite_as）。" +
       READING_RULES,
     inputSchema: z.object({
@@ -267,7 +274,14 @@ export const MCP_TOOLS: McpTool[] = [
         z.object({ type: z.literal("water"), name: z.string().describe("水域名（describe_catalog what='waters'）") }).strict(),
         z.object({ type: z.literal("site"), siteId: z.string().describe("地点 ID") }).strict(),
         z.object({ type: z.literal("zone") }).strict(),
+        z.object({ type: z.literal("watershed"), placeId: z.string().optional().describe("流域の place_id（省略は全流域。土地利用など流域単位の系列用）") }).strict(),
       ]),
+      source_ids: z
+        .array(z.enum(OBSERVATION_SOURCE_IDS as unknown as [string, ...string[]]))
+        .min(1)
+        .max(OBSERVATION_SOURCE_IDS.length)
+        .optional()
+        .describe("出典で絞る（その出典の系列を dataset を問わず引く）。省略時は測定値系（measurements）の系列。例: ['soramame_hourly_kanagawa']"),
       grain: z.enum(["year", "fiscal_year", "month", "day"]).describe("時間の粒度。year=暦年、fiscal_year=年度（4月始まり）、month=月、day=日。zone は year/fiscal_year のみ意味を持つ"),
       stat: z.string().optional().describe("非代表の統計量（p75/p90/max/min）。省略時は代表系列"),
       from: z.string().optional().describe(`grain='day' の開始日 YYYY-MM-DD（grain='day' で from/to とも省略すると直近 ${DAY_DEFAULT_YEARS} 年）`),
@@ -280,7 +294,14 @@ export const MCP_TOOLS: McpTool[] = [
         const now = ctx.now ?? new Date();
         input.from = `${now.getUTCFullYear() - DAY_DEFAULT_YEARS}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-${String(now.getUTCDate()).padStart(2, "0")}`;
       }
-      const r = await timeseries(await ctx.db(), input, { now: ctx.now });
+      const { source_ids, ...rest } = input;
+      let r;
+      try {
+        r = await timeseries(await ctx.db(), { ...rest, ...(source_ids ? { sourceIds: source_ids } : {}) }, { now: ctx.now });
+      } catch (e) {
+        if (e instanceof TimeseriesInputError) throw new McpInputError(e.message);
+        throw e;
+      }
       if (!r.envelope) {
         // 該当する系列が登録されていない。空の封筒（出典なし）で返し、黙って別の系列に倒さない。
         return buildDataEnvelope({ ...input }, { rows: [] }, [], { now: ctx.now });

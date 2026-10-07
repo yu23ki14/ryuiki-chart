@@ -189,6 +189,8 @@ export function isRepresentativeObsStat(obsStat: string | null): boolean {
 
 export interface SeriesForVariableOpt {
   dataset?: string;
+  /** この出典のどれかが登録されている組だけ（`variable_alias.source_id`。dataset は問わない）。 */
+  sourceIds?: readonly string[];
   /** 既定 "representative"（`obsStat` が mean/point/NULL のものだけ）。 */
   obsStats?: "representative" | "all" | string[];
 }
@@ -200,6 +202,7 @@ export function seriesForVariable(variableId: string, opt?: SeriesForVariableOpt
   for (const g of tupleGroups.values()) {
     if (g.key.variableId !== variableId) continue;
     if (opt?.dataset !== undefined && norm(g.dataset) !== opt.dataset) continue;
+    if (opt?.sourceIds !== undefined && !g.sourceIds.some((id) => id !== null && opt.sourceIds!.includes(id))) continue;
     if (mode === "representative") {
       if (!isRepresentativeObsStat(g.key.obsStat)) continue;
     } else if (Array.isArray(mode)) {
@@ -231,12 +234,28 @@ export function representativeSeries(
   dataset: string = DEFAULT_DATASET,
   stat: "representative" | string = "representative",
 ): SeriesInfo[] {
+  return pickSeries(variableId, { dataset }, stat);
+}
+
+/**
+ * `representativeSeries` の出典指定版。dataset は問わず、`sourceIds` のどれかが登録されている組から選ぶ
+ * （センサー系列・土地利用のように measurements 以外の dataset の出典を引くとき）。代表系列とフォールバックの規則は同じ。
+ */
+export function representativeSeriesForSources(
+  variableId: string,
+  sourceIds: readonly string[],
+  stat: "representative" | string = "representative",
+): SeriesInfo[] {
+  return pickSeries(variableId, { sourceIds }, stat);
+}
+
+function pickSeries(variableId: string, base: Pick<SeriesForVariableOpt, "dataset" | "sourceIds">, stat: string): SeriesInfo[] {
   if (stat === "representative") {
-    const rep = seriesForVariable(variableId, { dataset, obsStats: "representative" });
+    const rep = seriesForVariable(variableId, { ...base, obsStats: "representative" });
     if (rep.length > 0) return rep;
-    return seriesForVariable(variableId, { dataset, obsStats: "all" });
+    return seriesForVariable(variableId, { ...base, obsStats: "all" });
   }
-  return seriesForVariable(variableId, { dataset, obsStats: [stat] });
+  return seriesForVariable(variableId, { ...base, obsStats: [stat] });
 }
 
 export interface BasisInfo {

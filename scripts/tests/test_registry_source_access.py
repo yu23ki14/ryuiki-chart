@@ -24,7 +24,7 @@ def _reg(*ids):
 
 def _doc(**sources):
     return {
-        "reasons": {"cube_only": {"ja": "c"}, "file_only": {"ja": "f"}, "synthetic": {"ja": "s"}, "not_in_d1": {"ja": "n"}, "superseded": {"ja": "u"}},
+        "reasons": {"file_only": {"ja": "f"}, "synthetic": {"ja": "s"}, "not_in_d1": {"ja": "n"}, "superseded": {"ja": "u"}},
         "record_sets": {"sites": "sites", "protected_areas": "protected_areas", "sightings": "wildlife_sightings"},
         "sources": sources,
         "extra_tools": {},
@@ -49,11 +49,11 @@ def test_states_and_counts():
     assert by["b"]["reason"] == "file_only" and by["b"]["reason_ja"] == "f"
 
 
-def test_cube_only_drops_the_tool_but_stays_a_declared_reason():
-    doc = _doc(m={"reason": "cube_only", "basis": "x"})
-    rows = _build(_reg("m"), {"m": "observation"}, doc, _counts(sensor_timeseries={"m": 5}))
-    r = dict(zip(bsa.COLUMNS, rows[0]))
-    assert (r["state"], r["queryable_via"], r["reason"], r["n_source_rows"]) == ("not_queryable", "[]", "cube_only", None)
+def test_manifest_source_cannot_declare_a_reason():
+    """マニフェストの出典は取れる出典。取れないと宣言したら止まる（cube_only は撤去した。センサー・土地利用も get_observations で引ける）。"""
+    doc = _doc(m={"reason": "file_only", "basis": "x"})
+    with pytest.raises(bsa.AccessError, match="書けない"):
+        _build(_reg("m"), {"m": "observation"}, doc, _counts(sensor_timeseries={"m": 5}))
 
 
 def test_manifest_source_without_rows_uses_registry_record_count():
@@ -81,8 +81,7 @@ def test_manifest_source_can_add_records_and_extra_tools():
         (lambda d: d["sources"].update(a={"records": ["water_zone"]}), "record_sets に無い"),
         (lambda d: d["record_sets"].update(x="taxa"), "許可リスト"),
         (lambda d: d["sources"].update(a={"records": ["sites", "sites"]}), "重複"),
-        (lambda d: d["sources"].update(m={"reason": "file_only", "basis": "x"}), "合わない"),
-        (lambda d: d["sources"].update(a={"reason": "cube_only", "basis": "x"}), "合わない"),
+        (lambda d: d["sources"].update(m={"reason": "file_only", "basis": "x"}), "書けない"),
         (lambda d: d["sources"].update(zzz={"reason": "file_only", "basis": "x"}), "source_registry に無い"),
         (lambda d: d.__setitem__("extra_tools", {"a": ["get_edna"]}), "マニフェストの出典ではない"),
         (lambda d: d.__setitem__("extra_tools", {"m": ["get_sql"]}), "未対応"),
@@ -156,7 +155,7 @@ def test_real_declaration_covers_every_source_and_matches_data():
     rows = bsa.assemble(reg, targets, doc, counts, superseded_by=sup)
     assert len(rows) == len(reg) == 125
     by = {r[0]: dict(zip(bsa.COLUMNS, r)) for r in rows}
-    assert sum(1 for r in by.values() if r["state"] == "queryable") == 15 - 4 + 15  # manifests 15（うち cube_only 4）+ records のうち manifests 外の 15
+    assert sum(1 for r in by.values() if r["state"] == "queryable") == 15 + 15  # manifests 15 + records のうち manifests 外の 15
     for sid, r in by.items():
         if r["state"] == "not_queryable":
             assert r["reason"] and r["reason_ja"], sid

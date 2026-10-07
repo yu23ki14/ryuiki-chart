@@ -17,7 +17,9 @@ export type Scope =
   | { kind: "site"; siteId: string }
   | { kind: "water"; municipality: string }
   | { kind: "zone"; zone?: number }
-  | { kind: "all_sites" };
+  | { kind: "all_sites" }
+  /** 流域（`place_kind='watershed'`。土地利用など）。`placeId` 省略は全流域。 */
+  | { kind: "watershed"; placeId?: string };
 
 /** 年族のセル（`year` と、日付が範囲の `survey_period`）。生物系の SQL 断片。 */
 export const YEAR_GRAINS = "('year','survey_period')";
@@ -152,14 +154,21 @@ export function buildScopeSql(scope: Scope, alias = OBS): ScopeSql {
       siteIdExpr = "psr.external_key";
       break;
     }
+    case "watershed": {
+      if (scope.placeId !== undefined) {
+        wheres.push(`${alias}.place_id = ?`);
+        whereParams.push(scope.placeId);
+      }
+      break;
+    }
     case "all_sites": {
       // psr を付けない（design: sites に無い地点も含める）。
       break;
     }
   }
 
-  // 「地点」スコープはすべて site の観測に絞る（流域・グリッドのセルは混ぜない）。
-  wheres.push(`${alias}.place_kind = 'site'`);
+  // 「地点」スコープはすべて site の観測に絞る（流域・グリッドのセルは混ぜない）。流域スコープだけ watershed。
+  wheres.push(`${alias}.place_kind = '${scope.kind === "watershed" ? "watershed" : "site"}'`);
 
   return { joins, wheres, joinParams, whereParams, siteIdExpr };
 }

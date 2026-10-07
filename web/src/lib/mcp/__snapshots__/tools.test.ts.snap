@@ -77,7 +77,7 @@ exports[`MCP ツール一覧（第1段 5 本） > 入力スキーマのスナッ
     "name": "search_registry",
   },
   {
-    "description": "ある測定項目の時系列を取る（水質・気象・水文など）。scope で水域（地点ごと）・1地点・ゾーン平均を選び、grain で粒度を選ぶ。応答は封筒（rows・coverage・provenance・caveats・excluded・cite_as）。読み方: 値は定量下限未満を value_lod（下限値で代用）と value_zero（0 で代用）の両方で返す。n_censored・n_not_detected が多い系列は下限付近の値を平均した結果なので断定しない。caveats は必ず利用者に伝える。provenance の fetched_at・update_mode・age_days から、データの新しさと更新方式を判断する（update_mode が undeclared の出典は更新方式が未宣言）。欠測を補完しない。",
+    "description": "ある測定項目の時系列を取る（水質・気象・水文など）。scope で水域（地点ごと）・1地点・ゾーン平均・流域を選び、grain で粒度を選ぶ。source_ids を省略すると水質などの測定値系の系列（従来どおり）。大気（相模原・そらまめ）・河川水位（横浜）のセンサー系列や土地利用（流域ごと、scope.type='watershed'）は source_ids で出典を指定して引く（出典は describe_catalog what='sources' の queryable_via に get_observations があるもの）。センサー系列は毎時の観測を日・月・年に積んだ値なので、密な日次は scope=site と from/to で絞り、広く見るなら grain=month/year にする（grain='day' で from/to とも省略すると直近 2 年）。同じ測定項目・粒度の系列を複数の出典が共有するとき、セルは出典で分けられない（provenance に出典が並ぶ）。応答は封筒（rows・coverage・provenance・caveats・excluded・cite_as）。読み方: 値は定量下限未満を value_lod（下限値で代用）と value_zero（0 で代用）の両方で返す。n_censored・n_not_detected が多い系列は下限付近の値を平均した結果なので断定しない。caveats は必ず利用者に伝える。provenance の fetched_at・update_mode・age_days から、データの新しさと更新方式を判断する（update_mode が undeclared の出典は更新方式が未宣言）。欠測を補完しない。",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -153,7 +153,46 @@ exports[`MCP ツール一覧（第1段 5 本） > 入力スキーマのスナッ
               ],
               "type": "object",
             },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "placeId": {
+                  "description": "流域の place_id（省略は全流域。土地利用など流域単位の系列用）",
+                  "type": "string",
+                },
+                "type": {
+                  "const": "watershed",
+                  "type": "string",
+                },
+              },
+              "required": [
+                "type",
+              ],
+              "type": "object",
+            },
           ],
+        },
+        "source_ids": {
+          "description": "出典で絞る（その出典の系列を dataset を問わず引く）。省略時は測定値系（measurements）の系列。例: ['soramame_hourly_kanagawa']",
+          "items": {
+            "enum": [
+              "atsugi_river_water_quality",
+              "env_kousui_annual_kanagawa",
+              "env_kousui_sample_kanagawa",
+              "hiratsuka_taiki",
+              "jma_daily_yokohama",
+              "jma_monthly_kanagawa",
+              "kanagawa_jiban_chinka",
+              "nlni_l03b_landuse_by_watershed",
+              "sagamihara_taiki_hourly",
+              "soramame_hourly_kanagawa",
+              "yokohama_river_waterlevel",
+            ],
+            "type": "string",
+          },
+          "maxItems": 11,
+          "minItems": 1,
+          "type": "array",
         },
         "stat": {
           "description": "非代表の統計量（p75/p90/max/min）。省略時は代表系列",

@@ -1538,15 +1538,17 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "reasonNote": null
   },
   "nlni_l03b_landuse_by_watershed": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "get_observations"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "cube_only",
-    "reasonJa": "キューブ（集計）には値があるが、MCP の get_observations（測定値系データセット固定）では引けない",
+    "nSourceRows": 4858,
+    "nSourceRowsBasis": "registry_record_count",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
     "reasonNote": null
   },
   "nlni_p05_city_hall": {
@@ -1748,15 +1750,17 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "reasonNote": null
   },
   "sagamihara_taiki_hourly": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "get_observations"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "cube_only",
-    "reasonJa": "キューブ（集計）には値があるが、MCP の get_observations（測定値系データセット固定）では引けない",
+    "nSourceRows": 175344,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
     "reasonNote": null
   },
   "sagamihara_taiki_stations": {
@@ -1796,15 +1800,17 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "reasonNote": null
   },
   "soramame_hourly_kanagawa": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "get_observations"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "cube_only",
-    "reasonJa": "キューブ（集計）には値があるが、MCP の get_observations（測定値系データセット固定）では引けない",
+    "nSourceRows": 168793,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
     "reasonNote": null
   },
   "soramame_stations_kanagawa": {
@@ -1916,15 +1922,17 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "reasonNote": null
   },
   "yokohama_river_waterlevel": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "get_observations"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "cube_only",
-    "reasonJa": "キューブ（集計）には値があるが、MCP の get_observations（測定値系データセット固定）では引けない",
+    "nSourceRows": 75528,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
     "reasonNote": null
   }
 };

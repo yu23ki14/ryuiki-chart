@@ -48,9 +48,7 @@ describe("出典の状態 SOURCE_ACCESS", () => {
 
   it("queryable_via は manifests 由来の ID 集合・records の表と一致する", () => {
     for (const [id, a] of Object.entries(SOURCE_ACCESS)) {
-      // cube_only: キューブにはあるが get_observations では引けない（宣言。queryable-via.test.ts が実データで確かめる）
-      expect(a.queryableVia.includes("get_observations"), id).toBe(OBSERVATION_SOURCE_IDS.includes(id) && a.reason !== "cube_only");
-      if (a.reason === "cube_only") expect(OBSERVATION_SOURCE_IDS, id).toContain(id);
+      expect(a.queryableVia.includes("get_observations"), id).toBe(OBSERVATION_SOURCE_IDS.includes(id));
       expect(a.queryableVia.includes("get_occurrences"), id).toBe(OCCURRENCE_SOURCE_IDS.includes(id));
       expect(a.queryableVia.includes("get_records"), id).toBe(a.tables.length > 0);
     }

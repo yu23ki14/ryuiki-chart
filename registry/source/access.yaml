@@ -29,7 +29,6 @@ reasons:
   file_only: {ja: "収集済みだが D1 に投入していない（data/processed のファイルのみ）"}
   superseded: {ja: "別の出典に置き換わった（superseded_by 参照）"}
   synthetic: {ja: "合成データ。実データと混ぜないため出さない"}
-  cube_only: {ja: "キューブ（集計）には値があるが、MCP の get_observations（測定値系データセット固定）では引けない"}
   d1_no_source_column: {ja: "D1 の表に出典の列が無く、表の行をどの出典のものか機械的に引けない"}
   not_in_d1: {ja: "原本には行があるが、D1 にその表が無い（本番では引けない）"}
 sources:
@@ -158,10 +157,5 @@ sources:
   kanagawa_rdb2006_animals: {reason: not_in_d1, basis: "原本 taxa に 221 行。D1 の taxa は 0010 で DROP 済みで、taxon_assessment にも載らない"}
   kanagawa_river_citizen_survey: {reason: not_in_d1, basis: "原本 protocols に 6 行。D1 の protocols は 0010 で DROP 済み"}
   moe_redlist: {reason: not_in_d1, basis: "原本 taxa に 6,089 行。D1 の taxa は 0010 で DROP 済み"}
-  # --- 取れない: cube_only（マニフェストの出典。キューブにはあるが get_observations で引けない。実データで確認）---
-  nlni_l03b_landuse_by_watershed: {reason: cube_only, basis: "get_observations は測定値系データセット固定。流域 place の土地利用系列は引けない（queryable-via.test.ts が実データで 0 行を確認）"}
-  sagamihara_taiki_hourly: {reason: cube_only, basis: "sensor_timeseries 系列で、変数が測定値系に無く get_observations で 0 行（queryable-via.test.ts が実データで確認）"}
-  soramame_hourly_kanagawa: {reason: cube_only, basis: "sensor_timeseries 系列で、変数が測定値系に無く get_observations で 0 行（queryable-via.test.ts が実データで確認）"}
-  yokohama_river_waterlevel: {reason: cube_only, basis: "sensor_timeseries 系列で、変数が測定値系に無く get_observations で 0 行（queryable-via.test.ts が実データで確認）"}
 extra_tools:
   kanagawa_edna: [get_edna]

@@ -40,7 +40,7 @@ export interface CellSpec {
   /** 既定 ['mean']。 */
   stats?: Stat[];
   /** 'same' = 出典が配った粒度のセル（規則は `cell-basis.ts` の `sourceGrainCellSql`）。 */
-  inputGrain?: "day" | "hour" | "instant" | "same";
+  inputGrain?: "day" | "hour" | "month" | "instant" | "same";
   /** `period_start` の範囲（文字列比較。日時関数は使わない: ADR-0024）。 */
   period?: { from?: string; to?: string };
   imputation: Imputation;

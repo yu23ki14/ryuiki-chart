@@ -6,6 +6,7 @@ import { applyMigrations, wrapSqlite } from "@/lib/cube/__fixtures__/cube-fixtur
 import { sqliteCubeDb } from "@/lib/cube/db-sqlite";
 import { GENERATED_VARIABLE_ALIASES } from "@/lib/registry/generated";
 import { RECORD_SET_TABLES, SOURCE_ACCESS, SOURCE_META } from "@/lib/registry/generated-source";
+import { McpInputError } from "./errors";
 import { MCP_TOOLS, type McpContext } from "./tools";
 
 /**
@@ -91,18 +92,23 @@ describe.skipIf(!haveReal)("queryable_via の（出典, ツール）が実際に
           const waters = ((await call("describe_catalog", { what: "waters", variableId, limit: 50 }, ctx)).data.waters ?? []) as { name?: string; waterName?: string }[];
           // 地点単位の系列（大気・水位・地盤沈下）は水域に属さない。キューブに値のある地点（place_source_ref の site_id）も試す。
           const sites = await db.all<{ k: string; st: string }>(
-            "SELECT DISTINCT s.external_key AS k, o.stat AS st FROM observation_agg o JOIN place_source_ref s ON s.place_id = o.place_id AND s.key_space = 'site_id' WHERE o.variable_id = ? LIMIT 12",
+            "SELECT DISTINCT s.external_key AS k, o.stat AS st FROM observation_agg o JOIN place_source_ref s ON s.place_id = o.place_id AND s.key_space = 'site_id' WHERE o.variable_id = ? LIMIT 400",
             [variableId],
           );
           const scopes = [
             { type: "zone" },
+            { type: "watershed" }, // 土地利用（流域単位）
             ...waters.map((w) => ({ type: "water", name: w.name ?? w.waterName })),
             ...sites.map((x) => ({ type: "site", siteId: x.k, stat: x.st })),
           ];
           for (const sc of scopes) {
             const { stat, ...scope } = sc as { type: string; stat?: string };
             for (const grain of ["year", "fiscal_year", "month", "day"] as const) {
-              const r = await call(tool, { variableId, scope, grain, from: "2000-01-01", limit: 1, ...(stat && stat !== "mean" ? { stat } : {}) }, ctx);
+              // 毎時の系列に fiscal_year は無い（入力エラー）。粒度を総当たりで探すので、その粒度は飛ばす。
+              const r = await call(tool, { variableId, scope, grain, source_ids: [src], from: "2000-01-01", limit: 1, ...(stat && stat !== "mean" ? { stat } : {}) }, ctx).catch((e) => {
+                if (e instanceof McpInputError) return { data: {} as Record<string, unknown>, rows: [] as unknown[] };
+                throw e;
+              });
               n += (((r as { rows?: unknown[] }).rows ?? r.data?.rows) as unknown[] | undefined)?.length ?? 0;
               if (n) break;
             }

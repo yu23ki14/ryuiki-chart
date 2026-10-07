@@ -62,9 +62,6 @@ N_BASIS = ("source_rows", "registry_record_count", "none")
 _SOURCE_KEYS = {"records", "reason", "basis", "note"}
 # 原本に行がある理由（合成データ・D1 に未投入）。他の理由は「原本に行が無い」ことを検査する。
 ROW_REASONS = frozenset({"synthetic", "not_in_d1"})
-# マニフェスト（キューブに入る）の出典だが、対応するツールでは実際に引けない（例: get_observations は測定値系データセット固定で、
-# センサー系列・土地利用を引けない）。tests（queryable-via.test.ts）が実データで確かめた食い違いを宣言する。行の検査は要らない。
-CUBE_ONLY_REASON = "cube_only"
 
 
 class AccessError(AssertionError):
@@ -128,11 +125,10 @@ def validate_static(doc: dict, manifest_targets: dict[str, str]) -> dict[str, li
                 raise AccessError(f"access.yaml: sources.{sid} の reason={code!r} が語彙 {sorted(reasons)} に無い")
             if not str(entry.get("basis") or "").strip():
                 raise AccessError(f"access.yaml: sources.{sid} の reason に basis（根拠）が無い")
-            if (sid in manifest_targets) != (code == CUBE_ONLY_REASON):
+            if sid in manifest_targets:
                 raise AccessError(
-                    f"access.yaml: sources.{sid} の reason={code!r} が合わない。マニフェストのある出典に書けるのは"
-                    f" {CUBE_ONLY_REASON}（キューブにはあるが対応するツールでは引けない）だけで、"
-                    f"{CUBE_ONLY_REASON} はマニフェストのある出典にだけ書ける"
+                    f"access.yaml: sources.{sid} はマニフェストのある出典（ツールで取れる）なので reason={code!r} は書けない"
+                    "（取れるものを「取れない」と書かない）"
                 )
     extra_tools = doc.get("extra_tools") or {}
     for sid, tools in extra_tools.items():
@@ -233,8 +229,6 @@ def assemble(
         if code is None:
             continue
         have = {t: c[sid] for t, c in all_source_tables.items() if c.get(sid)}
-        if code == CUBE_ONLY_REASON:
-            continue
         if code in ROW_REASONS:
             if not have:
                 raise AccessError(f"access.yaml: {sid} は reason={code} だが原本に行が無い（宣言が古い。{code} は行がある出典の理由）")
@@ -253,7 +247,7 @@ def assemble(
         recs = records_by_source.get(sid, [])
         target = manifest_targets.get(sid)
         via: list[str] = []
-        if target and entry.get("reason") != CUBE_ONLY_REASON:
+        if target:
             via.append(TOOL_BY_TARGET[target])
             via.extend(extra_tools.get(sid, []))
         if recs:
