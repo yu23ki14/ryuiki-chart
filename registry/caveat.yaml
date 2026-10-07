@@ -313,3 +313,55 @@ caveats:
     reason: 感潮域の負値を誤りと読んで除外・絶対値化すると平均が偏る。比較自体は成立するので blocking ではなく warning。variable.yaml の description_ja に埋め込んでいたものを variable スコープの独立した注記にした（件数は実測し直して一致）。
     changed:
     - new
+- key: ednaReads
+  severity: blocking
+  kind: null
+  title_ja: null
+  body_ja: eDNA の値はリード数（DNA の配列が読まれた数）で、個体数・生物量を表さない。地点・年度の間でリード数の大小を比べて、多い少ないを読まないこと。
+  quote: null
+  review:
+    reviewed_on: '2026-10-07'
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: '2026-10-07'
+    reason: リード数を個体数と読んで地点・年度を比べると結論が誤る（禁止表現を含むので blocking）。オーナー確認済み。
+    changed:
+    - new
+- key: ednaCoords
+  severity: warning
+  kind: null
+  title_ja: null
+  body_ja: eDNA の地点の座標は推定。公開データに座標が無いため、支川名と市町村から河川線の上に推定した（誤差は最大 10 km、地点ごとの誤差は coordinate_uncertainty_m）。座標の無い地点もある。
+  quote: null
+  review:
+    reviewed_on: '2026-10-07'
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: '2026-10-07'
+    reason: 座標を実測と読むと位置の議論が誤るが、誤差と根拠区分が行に付くので warning。オーナー確認済み。
+    changed:
+    - new
+- key: ednaYearBasis
+  severity: warning
+  kind: method_change
+  title_ja: null
+  body_ja: 'eDNA は年度・ファイルごとに解析方法・参照データベース・収録基準が違う（例: R7 の県民調査は一致率 98.5% 以上の結果のみ）。件数を年度で並べると見かけの増減が出る。'
+  quote: null
+  review:
+    reviewed_on: '2026-10-07'
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: '2026-10-07'
+    reason: 年度間の解析・収録基準の差で見かけの増減が出る（method_change）。オーナー確認済み。
+    changed:
+    - new
+- key: ednaNonDetect
+  severity: blocking
+  kind: null
+  title_ja: null
+  body_ja: eDNA の不検出は「その採水でその DNA が検出されなかった」ことを示すだけで、その種がいないことは示さない。不在の根拠にしないこと。
+  quote: null
+  review:
+    reviewed_on: '2026-10-07'
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: '2026-10-07'
+    reason: 不検出を不在と読むと結論が誤る（禁止表現を含むので blocking）。オーナー確認済み。
+    changed:
+    - new

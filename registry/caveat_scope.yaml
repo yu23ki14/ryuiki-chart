@@ -32,7 +32,7 @@ selectors:
 values:
   place_kind: [site, zone, grid01, watershed]
   source_id: [moe_ias_list]
-  dataset: [measurements, organism_records, sites]
+  dataset: [measurements, organism_records, sites, kanagawa_edna]
 
 scopes:
   # 配信表 sites（地点台帳）を dataset として扱う（v1 の表名で引く経路は廃止）。
@@ -52,6 +52,8 @@ scopes:
   - {kind: observation_set, ref_from: unit_unknown_variables, ref_template: "variable={variable_id}&unit_id=null", caveats: [unitUnknown]}
 
   - {kind: dataset, ref: organism_records, caveats: [organismSite, effort, regimes, gbifCutoff]}
+  # 神奈川県 eDNA（source_id=kanagawa_edna の採水）。get_edna と、出典に kanagawa_edna を含む get_occurrences に掛かる。
+  - {kind: dataset, ref: kanagawa_edna, caveats: [ednaReads, ednaCoords, ednaYearBasis, ednaNonDetect]}
   # share は割合（‰）で比べる画面（grid01 の種別トレンド）だけに掛かる。流域の表は生の件数。
   - {kind: place, ref: place_kind=grid01, caveats: [share, effort]}
   - {kind: source_edition, ref: source_id=moe_ias_list, caveats: [isAlien]}

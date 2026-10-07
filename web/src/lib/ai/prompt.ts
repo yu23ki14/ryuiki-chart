@@ -66,6 +66,10 @@ const CAVEAT_KEY_ORDER = {
   censoredLod: true,
   unitUnknown: true,
   flowTidalBackflow: true,
+  ednaReads: true,
+  ednaCoords: true,
+  ednaYearBasis: true,
+  ednaNonDetect: true,
 } satisfies Record<CaveatKey, true>;
 const CAVEAT_KEYS = Object.keys(CAVEAT_KEY_ORDER) as CaveatKey[];
 

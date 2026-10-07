@@ -33,7 +33,7 @@ import { SOURCE_META } from "@/lib/registry/generated-source";
 import { GENERATED_VARIABLES } from "@/lib/registry/generated";
 import { VARIABLE_LABEL, ZONE_INFO } from "@/lib/registry/generated-client";
 import { representativeSeries } from "@/lib/cube/series";
-import { EDNA_DESCRIPTION, EDNA_SOURCE_ID, ednaCaveats, ednaInputSchema, queryEdna } from "@/lib/edna";
+import { EDNA_DESCRIPTION, EDNA_SOURCE_ID, ednaCaveats, ednaCaveatsForSources, ednaInputSchema, queryEdna } from "@/lib/edna";
 import { loadDatapackage } from "./datapackage";
 
 export interface McpContext {
@@ -239,7 +239,7 @@ export const MCP_TOOLS: McpTool[] = [
         rows = kind === "species_years" ? await speciesYears(db, binoms, filter) : await speciesMonths(db, binoms, filter);
       }
       const c = cap(rows, limit);
-      return buildDataEnvelope(query, { rows: c.rows, n_total: rows.length }, sourceIds, { now: ctx.now, truncated: c.truncated });
+      return buildDataEnvelope(query, { rows: c.rows, n_total: rows.length }, sourceIds, { now: ctx.now, truncated: c.truncated, caveats: ednaCaveatsForSources(sourceIds) });
     },
   }),
 

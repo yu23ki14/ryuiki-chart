@@ -2,7 +2,9 @@ import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { applyMigrations, wrapSqlite } from "@/lib/cube/__fixtures__/cube-fixture";
 import { TABLE_ORIGIN } from "@/lib/table-meta";
-import { ednaCaveats, ednaInputSchema, queryEdna, type EdnaInput } from "./edna";
+import { caveatBody } from "@/lib/registry/lookup-client";
+import type { CaveatKey } from "@/lib/registry/generated-client";
+import { ednaCaveats, ednaCaveatsForSources, ednaInputSchema, queryEdna, type EdnaInput } from "./edna";
 
 let raw: Database.Database;
 let db: ReturnType<typeof wrapSqlite>;
@@ -106,8 +108,16 @@ describe("D1 への載せ方", () => {
 });
 
 describe("注意書き", () => {
-  // registry に dataset=kanagawa_edna の caveat が入るまでは空。入れたら、下の期待を「4件・本文にリード数/推定/不検出」に直す。
-  it("facet（dataset=kanagawa_edna）で引く。registry 未登録の間は空", () => {
-    expect(ednaCaveats()).toEqual([]);
+  it("dataset=kanagawa_edna の facet で registry から引く（4件。リード数・推定座標・年度差・不検出）", () => {
+    const c = ednaCaveats();
+    expect(c.map((x) => x.key).sort()).toEqual(["ednaCoords", "ednaNonDetect", "ednaReads", "ednaYearBasis"]);
+    const body = c.map((x) => caveatBody(x.key as CaveatKey)).join("\n");
+    expect(body).toMatch(/リード数/);
+    expect(body).toMatch(/推定/);
+    expect(body).toMatch(/不検出/);
+  });
+  it("出典に kanagawa_edna を含むときだけ付く", () => {
+    expect(ednaCaveatsForSources(["kanagawa_edna", "inaturalist_kanagawa"])).toHaveLength(4);
+    expect(ednaCaveatsForSources(["inaturalist_kanagawa"])).toEqual([]);
   });
 });

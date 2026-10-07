@@ -51,6 +51,11 @@ export function ednaCaveats() {
   return caveatsForFacets([{ kind: "dataset", ref: EDNA_SOURCE_ID }]);
 }
 
+/** 結果の出典に eDNA を含むとき（get_occurrences の未指定＝全出典を含む）だけ、同じ注意書きを返す。 */
+export function ednaCaveatsForSources(sourceIds: readonly string[]) {
+  return sourceIds.includes(EDNA_SOURCE_ID) ? ednaCaveats() : [];
+}
+
 export interface EdnaResult {
   mode: "records" | "by_site" | "by_taxon";
   rows: Record<string, string | number | null>[];

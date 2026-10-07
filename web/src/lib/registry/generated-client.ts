@@ -32,7 +32,7 @@ export type CaveatScopeKind = "variable" | "place" | "source_edition" | "observa
  * 呼ぶときの型で、存在しないキーはここでコンパイルエラーになる（旧 domain.ts の
  * mustCaveatBody() は実行時例外だった）。
  */
-export type CaveatKey = "aboveLod" | "censoredLod" | "duplicates" | "effort" | "fishClass" | "flowTidalBackflow" | "gbifCutoff" | "inatBackfill" | "isAlien" | "landuseDefinitionChange" | "measuredOn" | "municipality" | "organismSite" | "regimes" | "share" | "synthetic" | "unitUnknown" | "zone";
+export type CaveatKey = "aboveLod" | "censoredLod" | "duplicates" | "ednaCoords" | "ednaNonDetect" | "ednaReads" | "ednaYearBasis" | "effort" | "fishClass" | "flowTidalBackflow" | "gbifCutoff" | "inatBackfill" | "isAlien" | "landuseDefinitionChange" | "measuredOn" | "municipality" | "organismSite" | "regimes" | "share" | "synthetic" | "unitUnknown" | "zone";
 
 export interface GeneratedCaveat {
   key: string;
@@ -281,6 +281,10 @@ export const GENERATED_CAVEATS: readonly GeneratedCaveat[] = [
   { key: "aboveLod", severity: "blocking", kind: "censoring", bodyJa: "透明度の定量上限超え（原表記が「>1.4」〜「>28」など、26行）は、上限がどこまでか分からないという性質上、集計方法によらず値に含められない。件数（n）にも入らないため、他の期間・地点と単純に比較しないこと。" },
   { key: "censoredLod", severity: "blocking", kind: "censoring", bodyJa: "全体の約24%は定量下限未満（原表記が「<0.5」など）。この画面の値は定量下限未満を定量下限値とみなして集計している（上限側の見積もり）。不検出（ND）は平均に含めない。折れ線では中抜きの点で示し、その定量下限値が実際に観測された値だとは読まないこと。" },
   { key: "duplicates", severity: "info", kind: null, bodyJa: "同一の地点・日・項目に複数行あるのは、原本が採水時刻を落としているため。ここでは日ごとに平均して1点にまとめている。" },
+  { key: "ednaCoords", severity: "warning", kind: null, bodyJa: "eDNA の地点の座標は推定。公開データに座標が無いため、支川名と市町村から河川線の上に推定した（誤差は最大 10 km、地点ごとの誤差は coordinate_uncertainty_m）。座標の無い地点もある。" },
+  { key: "ednaNonDetect", severity: "blocking", kind: null, bodyJa: "eDNA の不検出は「その採水でその DNA が検出されなかった」ことを示すだけで、その種がいないことは示さない。不在の根拠にしないこと。" },
+  { key: "ednaReads", severity: "blocking", kind: null, bodyJa: "eDNA の値はリード数（DNA の配列が読まれた数）で、個体数・生物量を表さない。地点・年度の間でリード数の大小を比べて、多い少ないを読まないこと。" },
+  { key: "ednaYearBasis", severity: "warning", kind: "method_change", bodyJa: "eDNA は年度・ファイルごとに解析方法・参照データベース・収録基準が違う（例: R7 の県民調査は一致率 98.5% 以上の結果のみ）。件数を年度で並べると見かけの増減が出る。" },
   { key: "effort", severity: "blocking", kind: null, bodyJa: "生物観察の件数は観察努力（観察に参加した人や調査の回数）に強く影響される。記録者を特定する列は大半が空（GBIF の約89%、iNaturalist は全件）で、記録者数そのものは測れていない。件数の増加をそのまま「生物が増えた」と読んではいけない。" },
   { key: "fishClass", severity: "info", kind: null, bodyJa: "魚類は class 列に現れない（Actinopterygii が入っておらず空になっている）。門が Chordata で綱が空のものを魚類として扱っている。" },
   { key: "flowTidalBackflow", severity: "warning", kind: null, bodyJa: "河川の流量。感潮域（全83地点のうち14地点）では潮汐による逆流で負の値になる（4,668行のうち180行、最小 -8.5 m3/s）。負の値は欠測や誤りではなく逆流を表す実測値なので、除外したり絶対値にしたりして平均しないこと。" },
@@ -308,6 +312,10 @@ export const GENERATED_CAVEATS: readonly GeneratedCaveat[] = [
  * （scripts/registry/build_caveat.py の docstring参照）。
  */
 export const GENERATED_CAVEAT_SCOPE: readonly GeneratedCaveatScope[] = [
+  { scopeKind: "dataset", scopeRef: "kanagawa_edna", caveatKey: "ednaReads", sortOrder: 0, priority: 0 },
+  { scopeKind: "dataset", scopeRef: "kanagawa_edna", caveatKey: "ednaCoords", sortOrder: 1, priority: 0 },
+  { scopeKind: "dataset", scopeRef: "kanagawa_edna", caveatKey: "ednaYearBasis", sortOrder: 2, priority: 0 },
+  { scopeKind: "dataset", scopeRef: "kanagawa_edna", caveatKey: "ednaNonDetect", sortOrder: 3, priority: 0 },
   { scopeKind: "dataset", scopeRef: "measurements", caveatKey: "measuredOn", sortOrder: 0, priority: 0 },
   { scopeKind: "dataset", scopeRef: "measurements", caveatKey: "censoredLod", sortOrder: 1, priority: 0 },
   { scopeKind: "dataset", scopeRef: "measurements", caveatKey: "duplicates", sortOrder: 2, priority: 0 },

@@ -180,6 +180,12 @@ describe("5 ツールの応答は封筒（excluded=0・合成なし・cite_as・
     expectPublicInvariants(ok.structuredContent);
     expect((ok.structuredContent.provenance as { source_id: string }[]).map((p) => p.source_id)).toEqual(["kanagawa_edna"]);
     expect((await call("get_edna", { mode: "nope" }, c)).isError).toBe(true);
+    const keys = (r: typeof ok) => (r.structuredContent.caveats as { key: string }[]).map((x) => x.key);
+    expect(keys(ok)).toContain("ednaNonDetect");
+    // get_occurrences: 全出典（eDNA を含む）では付き、eDNA を外すと付かない
+    const occArgs = { kind: "species_years", binoms: [FXO.binoms.alpha] };
+    expect(keys(await call("get_occurrences", occArgs, c))).toContain("ednaReads");
+    expect(keys(await call("get_occurrences", { ...occArgs, source_ids: ["inaturalist_kanagawa"] }, c))).not.toContain("ednaReads");
   });
 
   it("export_dataset: datapackage が無ければ available=false、あれば path と sha256 だけ返す", async () => {
