@@ -18,6 +18,8 @@ import { idText, likeParam, likeText } from "@/lib/edna";
 export const RECORDS_MAX_ROWS = 500;
 
 export interface RecordTable {
+  /** 実表の名前（入力には出さない。入力は記録の集合名 `record_set`）。 */
+  table: string;
   /** 主キー列。並びは常に主キー昇順（ページングの重複・欠落を防ぐ）。 */
   pk: string;
   /** `q`（部分一致）の対象列。空なら `q` は使えない。 */
@@ -37,6 +39,7 @@ export interface RecordTable {
  */
 export const RECORD_TABLES = {
   sites: {
+    table: "sites",
     pk: "site_id",
     search: ["name", "name_en"],
     // 除外: geohash, treatment, is_synthetic
@@ -46,6 +49,7 @@ export const RECORD_TABLES = {
     ],
   },
   protected_areas: {
+    table: "protected_areas",
     pk: "area_id",
     search: ["name_ja"],
     cols: [
@@ -53,7 +57,8 @@ export const RECORD_TABLES = {
       "designated_on_raw", "lat", "lon", "watershed", "zone", "note_ja", "source_id", "source_ref",
     ],
   },
-  vegetation_polygons: {
+  vegetation: {
+    table: "vegetation_polygons",
     pk: "feature_id",
     search: ["legend_name_ja"],
     cols: [
@@ -63,6 +68,7 @@ export const RECORD_TABLES = {
     geometry: "geometry_geojson",
   },
   river_segments: {
+    table: "river_segments",
     pk: "feature_id",
     search: ["name_ja"],
     cols: [
@@ -72,11 +78,13 @@ export const RECORD_TABLES = {
     geometry: "geometry_geojson",
   },
   mammal_mesh: {
+    table: "mammal_mesh",
     pk: "id",
     search: ["species_ja", "species"],
     cols: ["id", "mesh_code", "species", "species_ja", "survey_label", "survey_year", "confirmed", "lat", "lon", "source_id", "source_ref"],
   },
-  wildlife_sightings: {
+  sightings: {
+    table: "wildlife_sightings",
     pk: "sighting_id",
     search: ["species_ja", "locality_ja"],
     cols: [
@@ -85,7 +93,8 @@ export const RECORD_TABLES = {
       "note_ja", "source_id", "source_ref",
     ],
   },
-  taxon_assessment: {
+  assessments: {
+    table: "taxon_assessment",
     pk: "assessment_id",
     search: ["scientific_name_raw", "vernacular_name_ja_raw", "vernacular_name_ja_resolved"],
     cols: [
@@ -96,14 +105,14 @@ export const RECORD_TABLES = {
   },
 } as const satisfies Record<string, RecordTable>;
 
-export type RecordTableName = keyof typeof RECORD_TABLES;
-export const RECORD_TABLE_NAMES = Object.keys(RECORD_TABLES) as [RecordTableName, ...RecordTableName[]];
+export type RecordSetName = keyof typeof RECORD_TABLES;
+export const RECORD_SET_NAMES = Object.keys(RECORD_TABLES) as [RecordSetName, ...RecordSetName[]];
 
 /**
  * 出典 → `get_records` で引ける表。統合時に `generated-source.ts` の `SOURCE_ACCESS`/`RECORD_SOURCE_IDS`
  * （担当 A）から読む形に差し替え、A の `tables` と一致することをテストする（設計 §5.3）。
  */
-export const RECORD_SOURCES: Readonly<Record<string, readonly RecordTableName[]>> = {
+export const RECORD_SOURCES: Readonly<Record<string, readonly RecordSetName[]>> = {
   dams_kanagawa: ["sites"],
   env_kousui_stations_kanagawa: ["sites"],
   jma_stations_kanagawa: ["sites"],
@@ -113,20 +122,20 @@ export const RECORD_SOURCES: Readonly<Record<string, readonly RecordTableName[]>
   hiratsuka_parks: ["protected_areas"],
   kanagawa_green_conservation: ["protected_areas"],
   kanagawa_natural_parks: ["protected_areas"],
-  biodic_veg2024_kanagawa: ["vegetation_polygons"],
+  biodic_veg2024_kanagawa: ["vegetation"],
   biodic_mammal_mesh_kanagawa: ["mammal_mesh"],
   geoshape_sagami_river: ["river_segments"],
-  kanagawa_kuma_sightings: ["wildlife_sightings"],
-  kanagawa_redlist: ["taxon_assessment"],
-  kanagawa_rdb2022_plants: ["taxon_assessment"],
-  moe_ias_list: ["taxon_assessment"],
+  kanagawa_kuma_sightings: ["sightings"],
+  kanagawa_redlist: ["assessments"],
+  kanagawa_rdb2022_plants: ["assessments"],
+  moe_ias_list: ["assessments"],
 };
 export const RECORD_SOURCE_IDS = Object.keys(RECORD_SOURCES) as [string, ...string[]];
 
 /** MCP・AI 共通の入力（z.tuple は使わない）。出典と表の組み合わせの検査は `queryRecords` が行う。 */
 export const recordsInputSchema = z.object({
   source_id: z.enum(RECORD_SOURCE_IDS).describe("出典（必須。describe_catalog の records_tables が空でない出典）"),
-  table: z.enum(RECORD_TABLE_NAMES).optional().describe("表。出典に表が複数あるときだけ必須（1つなら省略可）"),
+  record_set: z.enum(RECORD_SET_NAMES).optional().describe("記録の集合（sites・protected_areas・vegetation・river_segments・mammal_mesh・sightings・assessments）。出典に集合が複数あるときだけ必須（1つなら省略可）"),
   id: idText("主キーの完全一致（1 件取り）").optional(),
   q: likeText("表ごとの検索列（名称・和名・学名など）の部分一致").optional(),
   include_geometry: z
@@ -149,7 +158,9 @@ export class RecordsInputError extends Error {}
 
 export interface RecordsResult {
   source_id: string;
-  table: RecordTableName;
+  record_set: RecordSetName;
+  /** 実表名（AI の provenance 用）。 */
+  table: string;
   /** 最大 limit+1 行（呼び出し側が切って truncated を決める。他のツールと同じ流儀）。 */
   rows: Record<string, string | number | null | object>[];
   limit: number;
@@ -159,25 +170,26 @@ export interface RecordsResult {
 }
 
 /** 入力から引く表を決める。出典に無い表・複数表で省略は入力エラー。 */
-export function resolveRecordTable(a: Pick<RecordsInput, "source_id" | "table">): RecordTableName {
+export function resolveRecordTable(a: Pick<RecordsInput, "source_id" | "record_set">): RecordSetName {
   const tables = RECORD_SOURCES[a.source_id];
   if (!tables) throw new RecordsInputError(`source_id '${a.source_id}' は get_records の対象ではない`);
-  if (a.table === undefined) {
+  if (a.record_set === undefined) {
     if (tables.length === 1) return tables[0];
-    throw new RecordsInputError(`出典 ${a.source_id} は表が複数ある。table を ${tables.join(" / ")} から指定する`);
+    throw new RecordsInputError(`出典 ${a.source_id} は記録の集合が複数ある。record_set を ${tables.join(" / ")} から指定する`);
   }
-  if (!tables.includes(a.table)) {
-    throw new RecordsInputError(`出典 ${a.source_id} に表 '${a.table}' は無い。table は ${tables.join(" / ")} から選ぶ`);
+  if (!tables.includes(a.record_set)) {
+    throw new RecordsInputError(`出典 ${a.source_id} に記録の集合 '${a.record_set}' は無い。record_set は ${tables.join(" / ")} から選ぶ`);
   }
-  return a.table;
+  return a.record_set;
 }
 
 /** `|` 区切りの複合 source_id を要素の完全一致で照合する。LIKE の部分一致（前方一致の取り違え）にしない。 */
 const SOURCE_MATCH = `instr('|' || source_id || '|', ?) > 0`;
 
 export async function queryRecords(db: CubeDb, a: RecordsInput): Promise<RecordsResult> {
-  const table = resolveRecordTable(a);
-  const def: RecordTable = RECORD_TABLES[table];
+  const set = resolveRecordTable(a);
+  const def: RecordTable = RECORD_TABLES[set];
+  const table = def.table;
   if (a.include_geometry) {
     if (!def.geometry) throw new RecordsInputError(`表 ${table} にジオメトリは無い。include_geometry は使えない`);
     if (a.id === undefined) throw new RecordsInputError("include_geometry は id を指定した 1 件のときだけ使える（一覧では応答が大きくなる）");
@@ -202,7 +214,7 @@ export async function queryRecords(db: CubeDb, a: RecordsInput): Promise<Records
   const sql = `SELECT ${cols.join(", ")} FROM ${table} WHERE ${conds.join(" AND ")} ORDER BY ${def.pk} LIMIT ? OFFSET ?`;
   const raw = await db.all(sql, [...params, limit + 1, offset]);
   const rows: RecordsResult["rows"] = geomCol ? raw.map((r) => ({ ...r, [geomCol]: parseGeometry(r[geomCol]) })) : raw;
-  return { source_id: a.source_id, table, rows, limit, offset, unfiltered: a.id === undefined && a.q === undefined };
+  return { source_id: a.source_id, record_set: set, table, rows, limit, offset, unfiltered: a.id === undefined && a.q === undefined };
 }
 
 function parseGeometry(v: string | number | null | undefined): object | string | number | null {

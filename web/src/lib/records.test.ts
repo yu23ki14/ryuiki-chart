@@ -10,26 +10,26 @@ import {
   RECORD_SOURCE_IDS,
   RECORD_TABLES,
   type RecordsInput,
-  type RecordTableName,
+  type RecordSetName,
 } from "./records";
 
 let raw: Database.Database;
 let db: ReturnType<typeof wrapSqlite>;
 
 /** 表ごとに、主キー・名称・出典だけを入れる最小の INSERT（NOT NULL 列があればここで埋める）。 */
-const INSERT: Record<RecordTableName, string> = {
+const INSERT: Record<RecordSetName, string> = {
   sites: "INSERT INTO sites (site_id, name, source_id) VALUES (?, ?, ?)",
   protected_areas: "INSERT INTO protected_areas (area_id, name_ja, source_id) VALUES (?, ?, ?)",
-  vegetation_polygons:
+  vegetation:
     'INSERT INTO vegetation_polygons (feature_id, legend_name_ja, source_id, geometry_geojson) VALUES (?, ?, ?, \'{"type":"Polygon","coordinates":[]}\')',
   river_segments:
     'INSERT INTO river_segments (feature_id, name_ja, source_id, geometry_geojson) VALUES (?, ?, ?, \'{"type":"LineString","coordinates":[]}\')',
   mammal_mesh: "INSERT INTO mammal_mesh (id, species_ja, source_id) VALUES (?, ?, ?)",
-  wildlife_sightings: "INSERT INTO wildlife_sightings (sighting_id, species_ja, source_id) VALUES (?, ?, ?)",
-  taxon_assessment: "INSERT INTO taxon_assessment (assessment_id, vernacular_name_ja_raw, source_id, list_id) VALUES (?, ?, ?, 'rl')",
+  sightings: "INSERT INTO wildlife_sightings (sighting_id, species_ja, source_id) VALUES (?, ?, ?)",
+  assessments: "INSERT INTO taxon_assessment (assessment_id, vernacular_name_ja_raw, source_id, list_id) VALUES (?, ?, ?, 'rl')",
 };
 
-const put = (t: RecordTableName, pk: string | number, name: string, source: string) => raw.prepare(INSERT[t]).run(pk, name, source);
+const put = (t: RecordSetName, pk: string | number, name: string, source: string) => raw.prepare(INSERT[t]).run(pk, name, source);
 
 beforeEach(() => {
   raw = new Database(":memory:");
@@ -42,9 +42,10 @@ const q = (a: Partial<RecordsInput> & Pick<RecordsInput, "source_id">) => queryR
 const ids = (r: { rows: Record<string, unknown>[] }, pk: string) => r.rows.map((x) => x[pk]);
 
 describe("RECORD_TABLES（許可リスト）", () => {
-  it.each(Object.entries(RECORD_TABLES))("%s の列がすべて実在し、主キー・検索列・source_id を含む", (table, def) => {
+  it.each(Object.entries(RECORD_TABLES))("%s の列がすべて実在し、主キー・検索列・source_id を含む", (_set, def) => {
+    const table = def.table;
     const real = new Set(raw.prepare(`PRAGMA table_info(${table})`).all().map((c) => (c as { name: string }).name));
-    const d = def as { pk: string; search: readonly string[]; cols: readonly string[]; geometry?: string };
+    const d = def as { table: string; pk: string; search: readonly string[]; cols: readonly string[]; geometry?: string };
     for (const c of [...d.cols, ...d.search, d.pk, ...(d.geometry ? [d.geometry] : [])]) expect(real.has(c), `${table}.${c}`).toBe(true);
     expect(d.cols).toContain(d.pk);
     expect(d.cols).toContain("source_id");
@@ -54,12 +55,12 @@ describe("RECORD_TABLES（許可リスト）", () => {
 
   it("除外した列（内部フラグ・ジオメトリ）は許可リストに無い", () => {
     for (const c of ["geohash", "treatment", "is_synthetic"]) expect(RECORD_TABLES.sites.cols).not.toContain(c);
-    expect(RECORD_TABLES.vegetation_polygons.cols).not.toContain("geometry_geojson");
+    expect(RECORD_TABLES.vegetation.cols).not.toContain("geometry_geojson");
     expect(RECORD_TABLES.river_segments.cols).not.toContain("geometry_geojson");
   });
 
   it("全表が D1 の表（TABLE_ORIGIN に載っている）", () => {
-    for (const t of Object.keys(RECORD_TABLES)) expect(TABLE_ORIGIN, t).toHaveProperty(t);
+    for (const t of Object.keys(RECORD_TABLES)) expect(TABLE_ORIGIN, t).toHaveProperty(RECORD_TABLES[t as keyof typeof RECORD_TABLES].table);
   });
 
   it("出典 × 表の宣言は許可リストの表だけを指す", () => {
@@ -76,9 +77,9 @@ describe("queryRecords", () => {
     for (const s of RECORD_SOURCE_IDS) for (const t of RECORD_SOURCES[s]) put(t, t === "mammal_mesh" ? n++ : `${s}:1`, "名", s);
     for (const s of RECORD_SOURCE_IDS) {
       for (const t of RECORD_SOURCES[s]) {
-        const r = await q({ source_id: s, table: t });
+        const r = await q({ source_id: s, record_set: t });
         expect(r.rows.length, `${s}/${t}`).toBeGreaterThanOrEqual(1);
-        expect(r.table).toBe(t);
+        expect(r.record_set).toBe(t);
         for (const row of r.rows) expect(String(row.source_id).split("|")).toContain(s);
       }
     }
@@ -94,12 +95,12 @@ describe("queryRecords", () => {
   });
 
   it("複合 source_id（a|b）は区切りの完全一致。どちらの出典からも見え、前方・後方一致の別出典には見えない", async () => {
-    put("taxon_assessment", "x1", "両方", "kanagawa_redlist|moe_ias_list");
-    put("taxon_assessment", "x2", "IASだけ", "moe_ias_list");
-    put("taxon_assessment", "x3", "別物", "moe_ias_list_old");
-    put("taxon_assessment", "x4", "別物2", "my_moe_ias_list");
+    put("assessments", "x1", "両方", "kanagawa_redlist|moe_ias_list");
+    put("assessments", "x2", "IASだけ", "moe_ias_list");
+    put("assessments", "x3", "別物", "moe_ias_list_old");
+    put("assessments", "x4", "別物2", "my_moe_ias_list");
     expect(ids(await q({ source_id: "moe_ias_list" }), "assessment_id")).toEqual(["x1", "x2"]);
-    const other = await queryRecords(db, { source_id: "kanagawa_redlist", table: "taxon_assessment" });
+    const other = await queryRecords(db, { source_id: "kanagawa_redlist", record_set: "assessments" });
     expect(ids(other, "assessment_id")).toEqual(["x1"]);
   });
 
@@ -135,8 +136,8 @@ describe("queryRecords", () => {
   });
 
   it("ジオメトリ: 一覧では返さない。id 指定の 1 件だけ include_geometry で返す", async () => {
-    put("vegetation_polygons", "v1", "ブナ", "biodic_veg2024_kanagawa");
-    put("vegetation_polygons", "v2", "スギ", "biodic_veg2024_kanagawa");
+    put("vegetation", "v1", "ブナ", "biodic_veg2024_kanagawa");
+    put("vegetation", "v2", "スギ", "biodic_veg2024_kanagawa");
     const list = await q({ source_id: "biodic_veg2024_kanagawa" });
     for (const row of list.rows) expect(row).not.toHaveProperty("geometry_geojson");
     const one = await q({ source_id: "biodic_veg2024_kanagawa", id: "v1", include_geometry: true });
@@ -157,7 +158,7 @@ describe("queryRecords", () => {
   });
 
   it("出典に無い表・対象外の出典は RecordsInputError", async () => {
-    await expect(q({ source_id: "dams_kanagawa", table: "taxon_assessment" })).rejects.toThrow(RecordsInputError);
+    await expect(q({ source_id: "dams_kanagawa", record_set: "assessments" })).rejects.toThrow(RecordsInputError);
     await expect(queryRecords(db, { source_id: "nope" as never })).rejects.toThrow(RecordsInputError);
   });
 });
@@ -169,7 +170,7 @@ describe("recordsInputSchema", () => {
     expect(recordsInputSchema.safeParse({}).success).toBe(false);
     expect(recordsInputSchema.safeParse({ source_id: "moe_redlist" }).success).toBe(false);
     expect(recordsInputSchema.safeParse({ ...ok, limit: 501 }).success).toBe(false);
-    expect(recordsInputSchema.safeParse({ ...ok, table: "sqlite_master" }).success).toBe(false);
+    expect(recordsInputSchema.safeParse({ ...ok, record_set: "sqlite_master" }).success).toBe(false);
     expect(recordsInputSchema.safeParse({ ...ok, q: "あ".repeat(17) }).success).toBe(false);
     expect(recordsInputSchema.strict().safeParse({ ...ok, columns: ["geohash"] }).success).toBe(false);
     expect(recordsInputSchema.strict().safeParse({ ...ok, where: "1=1" }).success).toBe(false);

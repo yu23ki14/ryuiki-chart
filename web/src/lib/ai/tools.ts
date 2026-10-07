@@ -806,7 +806,7 @@ const get_records = tool({
         tool: "get_records",
         tables: [result.table],
         caveats: caveatKeysForFacets(facetsForOccurrence({ places: [], sourceIds: [result.source_id] })),
-        data: { source_id: result.source_id, table: result.table, offset: result.offset, rows },
+        data: { source_id: result.source_id, record_set: result.record_set, offset: result.offset, rows },
         rowCount: rows.length,
         elapsedMs: performance.now() - t0,
       });
