@@ -199,13 +199,13 @@ _REFERENCE_SQL = {
     "summary_species_catalog": """
         SELECT t.canonical_binomial,
                MAX(t.taxon_group), MAX(t.class), MAX(t.family),
-               SUM(o.n), SUM(o.n_red_list), SUM(o.n_alien),
-               COUNT(DISTINCT o.place_id),
+               SUM(CASE WHEN o.place_kind = 'watershed' THEN o.n ELSE 0 END), SUM(CASE WHEN o.place_kind = 'watershed' THEN o.n_red_list ELSE 0 END), SUM(CASE WHEN o.place_kind = 'watershed' THEN o.n_alien ELSE 0 END),
+               COUNT(DISTINCT CASE WHEN o.place_kind = 'grid01' THEN o.place_id END),
                MIN(CAST(substr(o.period_start, 1, 4) AS INTEGER)),
                MAX(CAST(substr(o.period_start, 1, 4) AS INTEGER)),
                COUNT(DISTINCT CAST(substr(o.period_start, 1, 4) AS INTEGER))
         FROM occurrence_agg o JOIN registry.taxon t ON t.taxon_id = o.taxon_id
-        WHERE o.place_kind = 'grid01' AND o.grain IN ('year', 'survey_period')
+        WHERE o.place_kind IN ('grid01', 'watershed') AND o.grain IN ('year', 'survey_period')
           AND t.canonical_binomial IS NOT NULL
         GROUP BY t.canonical_binomial
         ORDER BY t.canonical_binomial
@@ -213,17 +213,17 @@ _REFERENCE_SQL = {
     "summary_group_year": """
         SELECT CAST(substr(o.period_start, 1, 4) AS INTEGER) AS y,
                COALESCE(t.taxon_group, '未判定') AS g, o.source_id,
-               SUM(o.n), COUNT(DISTINCT t.canonical_binomial), COUNT(DISTINCT o.place_id)
+               SUM(CASE WHEN o.place_kind = 'watershed' THEN o.n ELSE 0 END), COUNT(DISTINCT t.canonical_binomial), COUNT(DISTINCT CASE WHEN o.place_kind = 'grid01' THEN o.place_id END)
         FROM occurrence_agg o LEFT JOIN registry.taxon t ON t.taxon_id = o.taxon_id
-        WHERE o.place_kind = 'grid01' AND o.grain IN ('year', 'survey_period')
+        WHERE o.place_kind IN ('grid01', 'watershed') AND o.grain IN ('year', 'survey_period')
         GROUP BY y, g, o.source_id
         ORDER BY y, g, o.source_id
     """,
     "summary_effort_year": """
         SELECT CAST(substr(o.period_start, 1, 4) AS INTEGER) AS y,
-               SUM(o.n), COUNT(DISTINCT t.canonical_binomial), COUNT(DISTINCT o.place_id)
+               SUM(CASE WHEN o.place_kind = 'watershed' THEN o.n ELSE 0 END), COUNT(DISTINCT t.canonical_binomial), COUNT(DISTINCT CASE WHEN o.place_kind = 'grid01' THEN o.place_id END)
         FROM occurrence_agg o LEFT JOIN registry.taxon t ON t.taxon_id = o.taxon_id
-        WHERE o.place_kind = 'grid01' AND o.grain IN ('year', 'survey_period')
+        WHERE o.place_kind IN ('grid01', 'watershed') AND o.grain IN ('year', 'survey_period')
         GROUP BY y
         ORDER BY y
     """,
@@ -678,8 +678,18 @@ def test_build_summary_validates_all_tables_before_writing_any_sql(tmp_path):
 # Issue #48 PR-3b（D1）: registry の taxon を結合した binom 単位の4表
 # ---------------------------------------------------------------------------
 
+def _with_watershed_twins(rows):
+    """実データでは座標のある記録は grid01 と watershed の両系列に入る。grid01×年族の行ごとに、
+    同じ件数の watershed（place_id NULL）の行を足す（n は watershed 系列から数えるため）。"""
+    twins = [
+        (r[0], r[1], None, "watershed") + r[4:]
+        for r in rows if r[3] == "grid01" and r[5] in ("year", "survey_period")
+    ]
+    return rows + twins
+
+
 def _build_binom_fixture(tmp_path):
-    db_path = _make_combined_fixture(tmp_path, occ_rows=_OCC_ROWS + _OCC_ROWS_BINOM_EXTRA)
+    db_path = _make_combined_fixture(tmp_path, occ_rows=_with_watershed_twins(_OCC_ROWS + _OCC_ROWS_BINOM_EXTRA))
     conn = sqlite3.connect(f"file:{db_path}", uri=True)
     stats = b13.build_summary(conn, DEFAULT_YAML)
     return conn, stats
@@ -696,9 +706,10 @@ def test_binom_tables_collapse_taxa_sharing_a_binomial(tmp_path):
         assert set(rows) == {"Aus bus", "Cus dus"}
         # MAX(taxon_group)＝'鳥類' と '哺乳類' の文字列比較で大きい方（v1 の MAX と同じ規則）。
         assert rows["Aus bus"][1] == max("鳥類", "哺乳類")
-        assert rows["Aus bus"][4:] == (39, 7, 2, 2, 2020, 2021, 2)
+        # n は watershed 系列（座標のある 39 の写し＋流域解決済みの 6＋流域 NULL の 2＝47）、n_places は grid01 の格子数（2）。
+        assert rows["Aus bus"][4:] == (47, 8, 2, 2, 2020, 2021, 2)
         # 窓外の 1950 年のセルも種カタログには入る（窓は問い合わせで掛ける）。
-        assert rows["Cus dus"][4:] == (7 + 100, 1 + 40, 0, 2, 1950, 2020, 2)
+        assert rows["Cus dus"][4:] == (7 + 100 + 9, 1 + 40 + 3, 2, 2, 1950, 2021, 3)
     finally:
         conn.close()
 
@@ -717,7 +728,7 @@ def test_group_year_folds_unresolved_and_binomless_into_group(tmp_path):
         assert rows[(2020, "哺乳類", "inat")] == (20, 1, 1)
         assert rows[(1950, "昆虫", "gbif")] == (100, 1, 1)
         total = conn.execute("SELECT SUM(n) FROM summary_group_year").fetchone()[0]
-        assert total == 29 + 20 + 11 + 100
+        assert total == 29 + 20 + 11 + 100 + 6 + 2 + 9  # watershed 系列の全記録（写し＋流域別の行）
     finally:
         conn.close()
 
@@ -727,7 +738,7 @@ def test_effort_year_counts_binom_not_taxon_id(tmp_path):
     try:
         rows = {r[0]: r[1:] for r in conn.execute("SELECT year, n, n_binom, n_places FROM summary_effort_year")}
         # 2020: t1・t2・t3・t4・NULL のセルがあるが、binom は Aus bus・Cus dus の2つ（t1==t3）。
-        assert rows[2020] == (10 + 7 + 3 + 4 + 20 + 11, 2, 2)  # n_places: g1・g3
+        assert rows[2020] == (10 + 7 + 3 + 4 + 20 + 11 + 6 + 2, 2, 2)  # n_places: g1・g3（grid01 だけ）
     finally:
         conn.close()
 
@@ -835,6 +846,8 @@ def test_build_summary_stops_when_taxon_join_multiplies_rows(tmp_path):
          "未知のキー"),
         (lambda raw: raw["summaries"]["summary_grid_catalog"]["measures"]["n"]["when"].__setitem__(
             "year_between", [2026, 1970]), "year_between"),
+        (lambda raw: raw["summaries"]["summary_grid_catalog"]["measures"]["n"]["when"].__setitem__("place_kind", 5),
+         "place_kind は occurrence_agg"),
         (lambda raw: raw["summaries"]["summary_effort_year"]["columns"]["year"].__setitem__("col", "n"),
          "どちらか一方だけ"),
         (lambda raw: raw["summaries"]["summary_species_catalog"]["filter"].__setitem__("place_kind", {"not_null": True}),

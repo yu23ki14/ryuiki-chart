@@ -22,6 +22,7 @@ import {
   speciesCatalog,
   speciesMonths,
   speciesYears,
+  speciesYearsNoCoordinate,
   timeseries,
   variableCatalog,
   watershedYears,
@@ -238,14 +239,20 @@ export const MCP_TOOLS: McpTool[] = [
       const filter = source_ids ? { sourceIds: source_ids } : {};
       const query = { kind, group: group ?? null, binoms: binoms ?? null, placeId: placeId ?? null, source_ids: source_ids ?? null, limit: limit ?? null };
       let rows: unknown[];
+      let coverage: { no_coordinate: { binom: string; year: number; source_id: string; n: number }[] } | undefined;
       if (kind === "species_catalog") rows = await speciesCatalog(db, { group: group ?? null, limit: (limit ?? 100) + 1, withNames: true, ...filter });
       else if (kind === "watershed_years") rows = await watershedYears(db, { placeId, ...filter });
       else {
         if (!binoms?.length) throw new McpInputError(`kind='${kind}' には binoms（学名）が要る`);
         rows = kind === "species_years" ? await speciesYears(db, binoms, filter) : await speciesMonths(db, binoms, filter);
+        if (kind === "species_years") {
+          // n は座標の無い記録を含む。そのうち格子に置けなかった件数を出典別・年別に添える（mesh_n は座標のある記録だけ）。
+          const nc = await speciesYearsNoCoordinate(db, binoms, filter);
+          coverage = { no_coordinate: nc.map((r) => ({ binom: r.binom, year: r.year, source_id: r.sourceId, n: r.n })) };
+        }
       }
       const c = cap(rows, limit);
-      return buildDataEnvelope(query, { rows: c.rows, n_total: rows.length }, sourceIds, { now: ctx.now, truncated: c.truncated, caveats: occurrenceCaveats(sourceIds) });
+      return buildDataEnvelope(query, { rows: c.rows, n_total: rows.length, ...(coverage ? { coverage } : {}) }, sourceIds, { now: ctx.now, truncated: c.truncated, caveats: occurrenceCaveats(sourceIds) });
     },
   }),
 

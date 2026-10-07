@@ -21,6 +21,7 @@ import {
   occurrenceTotals,
   speciesShareTrend,
   speciesYears,
+  speciesYearsNoCoordinate,
   speciesMonths,
   redlistBundle,
   overviewCounts,
@@ -506,12 +507,14 @@ const get_biota_trend = tool({
       });
     }
     const { binoms } = input;
-    const [years, months] = await Promise.all([speciesYears(db, binoms), speciesMonths(db, binoms)]);
+    const [years, months, noCoordinate] = await Promise.all([speciesYears(db, binoms), speciesMonths(db, binoms), speciesYearsNoCoordinate(db, binoms)]);
+    // years[].n は座標の無い記録を含み、mesh_n は座標のある記録だけ。格子に置けなかった件数を出典別・年別に添える。
+    const coverage = { no_coordinate: noCoordinate.map((r) => ({ binom: r.binom, year: r.year, source_id: r.sourceId, n: r.n })) };
     return makeResult({
       tool: "get_biota_trend",
       tables: ["occurrence_agg", "summary_species_catalog"],
       caveats,
-      data: { mode: "species", binoms, years, months },
+      data: { mode: "species", binoms, years, months, coverage },
       rowCount: years.length + months.length,
       elapsedMs: performance.now() - t0,
     });

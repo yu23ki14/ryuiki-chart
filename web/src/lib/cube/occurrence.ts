@@ -29,8 +29,17 @@ export interface SpeciesYearRow {
   binom: string;
   year: number;
   n: number;
-  /** `COUNT(DISTINCT place_id)`（grid01）。v1 `species_year2.mesh_n`。 */
+  /** `COUNT(DISTINCT place_id)`（grid01。座標のある記録だけ）。v1 `species_year2.mesh_n`。 */
   meshN: number;
+}
+
+/** 座標が無いため格子（grid01）に置けなかった件数（出典別・種別・年別。0 のセルは出さない）。 */
+export interface NoCoordinateRow {
+  binom: string;
+  year: number;
+  sourceId: string;
+  /** watershed 系列の n − grid01 系列の n。 */
+  n: number;
 }
 
 export interface SpeciesMonthRow {
@@ -116,7 +125,17 @@ export function sourceFilterSql(sourceIds: readonly string[] | undefined): { sql
   return { sql: " AND o.source_id IN (SELECT value FROM json_each(?))", params: [jsonEachParam(uniq(sourceIds))] };
 }
 
-/** v1 `speciesYears`。年は `substr(period_start,1,4)`。窓の既定は 1990〜2026。 */
+/**
+ * 年別件数の SQL（`speciesYears`・`speciesYearsNoCoordinate` 共通）。**n は watershed 系列**（`place_id` NULL＝座標が無い・
+ * 流域に解決できない記録を含む、日付のある全記録）から、**meshN は grid01 系列**（座標のある記録）から数える。
+ * 2系列は同じ記録を別の見方で並べたもので、座標のある記録は両方に入る（GBIF・iNat は全件に座標があるので n は
+ * 変わらない）。年は両系列とも `substr(period_start,1,4)`・年族（year/survey_period）で同じ。
+ */
+const YEAR_BOTH_KINDS = `o.place_kind IN ('grid01','watershed') AND o.grain IN ${YEAR_GRAINS}`;
+const N_ALL = "SUM(CASE WHEN o.place_kind = 'watershed' THEN o.n ELSE 0 END)";
+const N_GRID = "SUM(CASE WHEN o.place_kind = 'grid01' THEN o.n ELSE 0 END)";
+
+/** v1 `speciesYears`。年は `substr(period_start,1,4)`。窓の既定は 1990〜2026。n の定義は `YEAR_BOTH_KINDS` 参照。 */
 export async function speciesYears(
   db: CubeDb,
   binoms: readonly string[],
@@ -129,12 +148,12 @@ export async function speciesYears(
     const rows = await db.all<R>(
       `SELECT t.canonical_binomial AS binom,
               CAST(substr(o.period_start, 1, 4) AS INTEGER) AS year,
-              SUM(o.n) AS n,
-              COUNT(DISTINCT o.place_id) AS mesh_n
+              ${N_ALL} AS n,
+              COUNT(DISTINCT CASE WHEN o.place_kind = 'grid01' THEN o.place_id END) AS mesh_n
        FROM json_each(?) j
        JOIN taxon t INDEXED BY ix_taxon_binomial ON t.canonical_binomial = j.value
        JOIN occurrence_agg o INDEXED BY ${OCCURRENCE_AGG_INDEX.taxonPeriod} ON o.taxon_id = t.taxon_id
-       WHERE o.place_kind = 'grid01' AND o.grain IN ${YEAR_GRAINS}
+       WHERE ${YEAR_BOTH_KINDS}
          AND o.period_start >= ? AND o.period_start < ?${src.sql}
        GROUP BY t.canonical_binomial, year`,
       [jsonEachParam(part), lo, hi, ...src.params],
@@ -144,7 +163,39 @@ export async function speciesYears(
   return out.sort((a, b) => a.year - b.year || cmp(a.binom, b.binom));
 }
 
-/** v1 `speciesMonths`。2018-01-01 以降の月セル。n≥80 の足切りは `summary_species_catalog.n`。 */
+/**
+ * `speciesYears` の n のうち、座標が無く格子に置けなかった件数（出典別・種別・年別。0 のセルは出さない）。
+ * 応答の `coverage` に載せる（MCP の get_occurrences と AI の get_biota_trend）。
+ */
+export async function speciesYearsNoCoordinate(
+  db: CubeDb,
+  binoms: readonly string[],
+  opt: Partial<YearRange> & SourceFilterOpt = {},
+): Promise<NoCoordinateRow[]> {
+  const [lo, hi] = periodRange(opt.from ?? OCC_DEFAULT_FROM, opt.to ?? occDefaultTo());
+  const src = sourceFilterSql(opt.sourceIds);
+  const out: NoCoordinateRow[] = [];
+  for (const part of chunk(uniq(binoms), MAX_ID_LIST)) {
+    const rows = await db.all<R>(
+      `SELECT t.canonical_binomial AS binom,
+              CAST(substr(o.period_start, 1, 4) AS INTEGER) AS year,
+              o.source_id AS source_id,
+              ${N_ALL} - ${N_GRID} AS n
+       FROM json_each(?) j
+       JOIN taxon t INDEXED BY ix_taxon_binomial ON t.canonical_binomial = j.value
+       JOIN occurrence_agg o INDEXED BY ${OCCURRENCE_AGG_INDEX.taxonPeriod} ON o.taxon_id = t.taxon_id
+       WHERE ${YEAR_BOTH_KINDS}
+         AND o.period_start >= ? AND o.period_start < ?${src.sql}
+       GROUP BY t.canonical_binomial, year, o.source_id
+       HAVING ${N_ALL} <> ${N_GRID}`,
+      [jsonEachParam(part), lo, hi, ...src.params],
+    );
+    for (const r of rows) out.push({ binom: r.binom as string, year: r.year as number, sourceId: r.source_id as string, n: r.n as number });
+  }
+  return out.sort((a, b) => a.year - b.year || cmp(a.binom, b.binom) || cmp(a.sourceId, b.sourceId));
+}
+
+/** v1 `speciesMonths`。2018-01-01 以降の月セル。n≥80 の足切りは `summary_species_catalog.n`（座標なしを含む全記録の n）。月の系列は grid01 だけ（座標なしの月別件数は持たない）。 */
 export async function speciesMonths(db: CubeDb, binoms: readonly string[], opt: SourceFilterOpt = {}): Promise<SpeciesMonthRow[]> {
   const src = sourceFilterSql(opt.sourceIds);
   const out: SpeciesMonthRow[] = [];

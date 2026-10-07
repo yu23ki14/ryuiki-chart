@@ -139,8 +139,10 @@ _ALLOWED_JOINS: dict[str, dict] = {
     },
 }
 # 測度の `when`（条件つき集計）の語彙。`year_between: [lo, hi]` は
-# `year_of_period_start` の閉区間、`positive: <col>` は列 > 0。
-_ALLOWED_WHEN_KEYS = frozenset({"year_between", "positive"})
+# `year_of_period_start` の閉区間、`positive: <col>` は列 > 0、`place_kind: <値>` は
+# `place_kind` 列がその値の行だけ（grid01 と watershed の2系列を同じ表に畳み、測度ごとに
+# どちらの系列から数えるかを選ぶ。`place_kind` は occurrence_agg の次元キー）。
+_ALLOWED_WHEN_KEYS = frozenset({"year_between", "positive", "place_kind"})
 # filter 値の辞書形式（`{not_null: true}` だけ）。
 _ALLOWED_FILTER_OPS = frozenset({"not_null"})
 
@@ -232,6 +234,10 @@ def _validate_when(table_name: str, measure_name: str, when, spec: dict, allowed
             _fail(f"{table_name}.{where}.year_between は [下限, 上限]（整数2つ、下限<=上限）: {yb!r}")
     if "positive" in when:
         _validate_col_ref(table_name, f"{where}.positive", when["positive"], spec, allowed_cube_columns)
+    if "place_kind" in when:
+        pk = when["place_kind"]
+        if spec["source"] != "occurrence_agg" or not isinstance(pk, str) or not pk:
+            _fail(f"{table_name}.{where}.place_kind は occurrence_agg の summary で、文字列の値を1つ: {pk!r}")
 
 
 def _validate_measure(table_name: str, measure_name: str, measure, spec: dict) -> None:
@@ -442,6 +448,9 @@ def _when_sql(spec: dict, when: dict) -> tuple[str, list]:
         params.extend([lo, hi])
     if "positive" in when:
         clauses.append(f"{_col_sql(spec, when['positive'])} > 0")
+    if "place_kind" in when:
+        clauses.append(f"{_col_sql(spec, 'place_kind')} = ?")
+        params.append(when["place_kind"])
     return " AND ".join(clauses), params
 
 

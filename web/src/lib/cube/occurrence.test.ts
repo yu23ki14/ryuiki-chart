@@ -11,6 +11,7 @@ import {
   speciesMonths,
   speciesShareTrend,
   speciesYears,
+  speciesYearsNoCoordinate,
   USE_RECORD_VERNACULAR,
   watershedYears,
 } from "./occurrence";
@@ -35,7 +36,9 @@ describe("speciesYears", () => {
       { binom: alpha, year: 2005, n: 4, meshN: 1 }, // survey_period も年族
       { binom: alpha, year: 2010, n: 90, meshN: 2 },
       { binom: beta, year: 2010, n: 31, meshN: 2 },
-      { binom: alpha, year: 2021, n: 90, meshN: 1 },
+      // n は座標の無い記録（watershed 系列にだけある）を含む。meshN は座標のある記録の格子数だけ
+      { binom: alpha, year: 2020, n: 10, meshN: 0 },
+      { binom: alpha, year: 2021, n: 98, meshN: 1 }, // 90（座標あり）+ 5 + 3（座標なし）
     ]);
   });
 
@@ -55,7 +58,7 @@ describe("speciesYears", () => {
   it("MAX_ID_LIST（1000）を超える一覧も複数回に分けて返す（バインドは常に1個）", async () => {
     const many = [alpha, ...Array.from({ length: 1500 }, (_, i) => `Pad x${i}`)];
     const rows = await speciesYears(fx.db, many);
-    expect(rows.filter((r) => r.binom === alpha)).toHaveLength(4);
+    expect(rows.filter((r) => r.binom === alpha)).toHaveLength(5);
   });
 });
 
@@ -254,10 +257,13 @@ describe("既定の窓の上限は現在年（PR-4 §7-3）", () => {
   });
 
   it("現在年が 2027 なら、2027 のセルも既定の窓に入る（2026 固定ではない）", async () => {
-    fx.raw.exec(
-      `INSERT INTO occurrence_agg SELECT * FROM occurrence_agg WHERE taxon_id = 'common:taxon:fx_a' AND place_kind = 'grid01' AND grain = 'year' AND period_start = '2021-01-01' LIMIT 1`,
-    );
-    fx.raw.exec(`UPDATE occurrence_agg SET period_start = '2027-01-01' WHERE rowid = last_insert_rowid()`);
+    // grid01 と watershed の両系列に 2027 のセルを足す（n は watershed 系列から数える）
+    for (const kind of ["grid01", "watershed"]) {
+      fx.raw.exec(
+        `INSERT INTO occurrence_agg SELECT * FROM occurrence_agg WHERE taxon_id = 'common:taxon:fx_a' AND place_kind = '${kind}' AND grain = 'year' AND period_start = '2021-01-01' AND n = 90 LIMIT 1`,
+      );
+      fx.raw.exec(`UPDATE occurrence_agg SET period_start = '2027-01-01' WHERE rowid = last_insert_rowid()`);
+    }
 
     vi.useFakeTimers({ now: new Date("2026-06-01T00:00:00Z") });
     const in2026 = await speciesYears(fx.db, [alpha]);
@@ -300,5 +306,60 @@ describe("sourceIds（出典で絞る）", () => {
     expect(g + i).toBe(all);
     expect(await speciesYears(fx.db, [alpha], { sourceIds: ["kanagawa_edna"] })).toEqual([]);
     expect(await speciesYears(fx.db, [alpha], { sourceIds: [] })).toEqual([]);
+  });
+});
+
+describe("座標の無い記録（n は watershed 系列、meshN は grid01 系列）", () => {
+  const EDNA = "kanagawa_edna";
+  const GBIF = "gbif_kanagawa_occurrences";
+  const A_ID = "common:taxon:fx_a";
+  const ins = (src: string, kind: string, place: string | null, start: string, n: number) =>
+    fx.raw.exec(
+      `INSERT INTO occurrence_agg (region_id, source_id, place_id, place_kind, taxon_id, grain, period_start, period_end, n, n_red_list, n_alien, built_from, spec_version)
+       VALUES ('kanagawa','${src}',${place ? `'${place}'` : "NULL"},'${kind}','${A_ID}','year','${start}','${start}',${n},0,0,'fixture:edna','fixture@1')`,
+    );
+
+  beforeEach(() => {
+    // eDNA: 2023 は座標のある 2 件（grid01 と、その watershed 側の写し）＋座標の無い 3 件、2024 は座標の無い 4 件だけ。
+    ins(EDNA, "grid01", FXO.places.g1, "2023-01-01", 2);
+    ins(EDNA, "watershed", null, "2023-01-01", 2);
+    ins(EDNA, "watershed", null, "2023-01-01", 3);
+    ins(EDNA, "watershed", null, "2024-01-01", 4);
+  });
+
+  it("eDNA に絞ると座標の無い記録も n に入る。meshN は座標のある記録だけ", async () => {
+    expect(await speciesYears(fx.db, [alpha], { sourceIds: [EDNA] })).toEqual([
+      { binom: alpha, year: 2023, n: 5, meshN: 1 },
+      { binom: alpha, year: 2024, n: 4, meshN: 0 },
+    ]);
+  });
+
+  it("座標なしの件数は出典別・年別（n − 座標のある件数）。0 のセルは出さない", async () => {
+    expect(await speciesYearsNoCoordinate(fx.db, [alpha], { sourceIds: [EDNA] })).toEqual([
+      { binom: alpha, year: 2023, sourceId: EDNA, n: 3 },
+      { binom: alpha, year: 2024, sourceId: EDNA, n: 4 },
+    ]);
+    // 未指定は全出典。GBIF にも（フィクスチャの）座標なしがあり、出典ごとに別の行になる
+    const all = await speciesYearsNoCoordinate(fx.db, [alpha]);
+    expect(all.map((r) => [r.year, r.sourceId, r.n])).toEqual([
+      [2020, GBIF, 10],
+      [2021, GBIF, 8],
+      [2023, EDNA, 3],
+      [2024, EDNA, 4],
+    ]);
+    expect(await speciesYearsNoCoordinate(fx.db, [alpha], { sourceIds: [] })).toEqual([]);
+  });
+
+  it("出典を絞った speciesCatalog も同じ定義（n=全記録、nPlaces=格子の数、年は両系列）", async () => {
+    const rows = await speciesCatalog(fx.db, { sourceIds: [EDNA] });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ binom: alpha, n: 9, nPlaces: 1, yFrom: 2023, yTo: 2024, nYears: 2 });
+  });
+
+  it("出典ごとの n の和は全体の n（絞らない speciesYears と一致）", async () => {
+    const sum = async (opt: { sourceIds?: string[] }) =>
+      (await speciesYears(fx.db, [alpha], opt)).reduce((a, r) => a + r.n, 0);
+    const all = await sum({});
+    expect((await sum({ sourceIds: [EDNA] })) + (await sum({ sourceIds: [GBIF] }))).toBe(all);
   });
 });

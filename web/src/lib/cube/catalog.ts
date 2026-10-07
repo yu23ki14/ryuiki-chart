@@ -979,8 +979,8 @@ export async function speciesCatalog(db: CubeDb, opt: SpeciesCatalogOpt = {}): P
 
 /**
  * `speciesCatalog` の出典絞り込み版。`summary_species_catalog` は出典別の列を持たないので `occurrence_agg` を
- * 直接 GROUP BY する（定義は `aggregations/serving.yaml` の summary_species_catalog と同じ: grid01・年族・binom が
- * 取れる taxon）。`group` は未指定の経路と同じく binom の `MAX(taxon_group)` で判定する（HAVING）。
+ * 直接 GROUP BY する（定義は `aggregations/serving.yaml` の summary_species_catalog と同じ: n 系は watershed 系列
+ * （座標なしを含む日付のある全記録）、n_places は grid01 系列、年族、binom が取れる taxon）。`group` は未指定の経路と同じく binom の `MAX(taxon_group)` で判定する（HAVING）。
  * 全出典の一覧より重い。
  */
 async function speciesCatalogBySource(db: CubeDb, opt: SpeciesCatalogOpt & { sourceIds: readonly string[] }): Promise<SpeciesCatalogRow[]> {
@@ -1000,15 +1000,17 @@ async function speciesCatalogBySource(db: CubeDb, opt: SpeciesCatalogOpt & { sou
   params.push(limit);
   const rows = await db.all<OccRow>(
     `SELECT t.canonical_binomial AS binom, MAX(t.taxon_group) AS taxon_group, MAX(t."class") AS "class", MAX(t.family) AS family,
-            SUM(o.n) AS n, SUM(o.n_red_list) AS n_red_list, SUM(o.n_alien) AS n_alien,
-            COUNT(DISTINCT o.place_id) AS n_places,
+            SUM(CASE WHEN o.place_kind = 'watershed' THEN o.n ELSE 0 END) AS n,
+            SUM(CASE WHEN o.place_kind = 'watershed' THEN o.n_red_list ELSE 0 END) AS n_red_list,
+            SUM(CASE WHEN o.place_kind = 'watershed' THEN o.n_alien ELSE 0 END) AS n_alien,
+            COUNT(DISTINCT CASE WHEN o.place_kind = 'grid01' THEN o.place_id END) AS n_places,
             MIN(CAST(substr(o.period_start, 1, 4) AS INTEGER)) AS y_from,
             MAX(CAST(substr(o.period_start, 1, 4) AS INTEGER)) AS y_to,
             COUNT(DISTINCT substr(o.period_start, 1, 4)) AS n_years
      FROM occurrence_agg o INDEXED BY ${OCCURRENCE_AGG_INDEX.kindGrainPeriod}
      JOIN taxon t ON t.taxon_id = o.taxon_id
      WHERE o.source_id IN (SELECT value FROM json_each(?))
-       AND o.place_kind = 'grid01' AND o.grain IN ${YEAR_GRAINS}
+       AND o.place_kind IN ('grid01','watershed') AND o.grain IN ${YEAR_GRAINS}
        AND t.canonical_binomial IS NOT NULL${extra}
      GROUP BY t.canonical_binomial ${having}
      ORDER BY n DESC, binom LIMIT ?`,

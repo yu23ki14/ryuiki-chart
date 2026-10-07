@@ -60,7 +60,10 @@ interface Cell {
   n: number;
   red?: number;
   alien?: number;
+  twin?: boolean;
 }
+
+const TWIN_MARK = "fixture:occurrence-fixture:twin";
 
 const A = "common:taxon:fx_a";
 const B1 = "common:taxon:fx_b1";
@@ -186,9 +189,16 @@ function seed(db: Database.Database): void {
 
   const oc = db.prepare(
     `INSERT INTO occurrence_agg (region_id, source_id, place_id, place_kind, taxon_id, grain, period_start, period_end, n, n_red_list, n_alien, built_from, spec_version)
-     VALUES ('kanagawa',@src,@place,@kind,@taxon,@grain,@start,@start,@n,@red,@alien,'fixture:occurrence-fixture','fixture@1')`,
+     VALUES ('kanagawa',@src,@place,@kind,@taxon,@grain,@start,@start,@n,@red,@alien,@built,'fixture@1')`,
   );
-  for (const c of CELLS) oc.run({ src: c.src ?? GBIF, place: c.place, kind: c.kind, taxon: c.taxon, grain: c.grain, start: c.start, n: c.n, red: c.red ?? 0, alien: c.alien ?? 0 });
+  // 実データでは、座標のある記録は grid01 と watershed の両方の系列に入る（watershed は流域に解決できない記録を
+  // place_id NULL で持つ）。grid01 の年族セルごとに、同じ件数の watershed（place_id NULL）セルを双子として足す。
+  // 双子は `built_from` に TWIN_MARK を付け、流域別の表（summary_watershed_occurrence）の導出からは外す
+  // （流域のテストの期待値を、双子の件数で動かさないため）。
+  const twins: Cell[] = CELLS.filter((c) => c.kind === "grid01" && c.grain !== "month").map((c) => ({ ...c, kind: "watershed", place: null, twin: true }));
+  for (const c of [...CELLS, ...twins]) {
+    oc.run({ src: c.src ?? GBIF, place: c.place, kind: c.kind, taxon: c.taxon, grain: c.grain, start: c.start, n: c.n, red: c.red ?? 0, alien: c.alien ?? 0, built: c.twin ? TWIN_MARK : "fixture:occurrence-fixture" });
+  }
 
   const as = db.prepare(
     `INSERT INTO taxon_assessment (assessment_id, list_id, list_year, scientific_name_raw, vernacular_name_ja_raw, vernacular_name_ja_resolved, taxon_group_ja, family_ja,
@@ -203,6 +213,10 @@ function seed(db: Database.Database): void {
 }
 
 const YEAR_FAMILY = `o.place_kind = 'grid01' AND o.grain IN ('year','survey_period')`;
+/** n 系は watershed 系列（座標なしを含む全記録）、meshN 系は grid01 系列から数える（`aggregations/serving.yaml` の `when: {place_kind}`）。 */
+const YEAR_BOTH = `o.place_kind IN ('grid01','watershed') AND o.grain IN ('year','survey_period')`;
+const IF_WS = (col: string) => `SUM(CASE WHEN o.place_kind = 'watershed' THEN ${col} ELSE 0 END)`;
+const PLACES_GRID = `COUNT(DISTINCT CASE WHEN o.place_kind = 'grid01' THEN o.place_id END)`;
 const META = `'fixture:occurrence-fixture', 'fixture@1'`;
 
 /** summary を同じセルから導出する（`aggregations/serving.yaml` の宣言と同じ形）。 */
@@ -217,26 +231,26 @@ function seedSummaries(db: Database.Database): void {
     INSERT INTO summary_watershed_occurrence (place_id, n, n_red_list, n_alien, n_taxa, y_from, y_to, built_from, spec_version)
     SELECT o.place_id, SUM(o.n), SUM(o.n_red_list), SUM(o.n_alien), COUNT(DISTINCT o.taxon_id),
            MIN(CAST(substr(o.period_start,1,4) AS INTEGER)), MAX(CAST(substr(o.period_start,1,4) AS INTEGER)), ${META}
-    FROM occurrence_agg o WHERE o.place_kind = 'watershed' AND o.grain IN ('year','survey_period') GROUP BY o.place_id;
+    FROM occurrence_agg o WHERE o.place_kind = 'watershed' AND o.grain IN ('year','survey_period') AND o.built_from <> '${TWIN_MARK}' GROUP BY o.place_id;
 
     INSERT INTO summary_species_catalog (binom, taxon_group, "class", family, n, n_red_list, n_alien, n_places, y_from, y_to, n_years, built_from, spec_version)
     SELECT t.canonical_binomial, MAX(t.taxon_group), MAX(t."class"), MAX(t.family),
-           SUM(o.n), SUM(o.n_red_list), SUM(o.n_alien), COUNT(DISTINCT o.place_id),
+           ${IF_WS("o.n")}, ${IF_WS("o.n_red_list")}, ${IF_WS("o.n_alien")}, ${PLACES_GRID},
            MIN(CAST(substr(o.period_start,1,4) AS INTEGER)), MAX(CAST(substr(o.period_start,1,4) AS INTEGER)),
            COUNT(DISTINCT substr(o.period_start,1,4)), ${META}
     FROM occurrence_agg o JOIN taxon t ON t.taxon_id = o.taxon_id
-    WHERE ${YEAR_FAMILY} AND t.canonical_binomial IS NOT NULL GROUP BY t.canonical_binomial;
+    WHERE ${YEAR_BOTH} AND t.canonical_binomial IS NOT NULL GROUP BY t.canonical_binomial;
 
     INSERT INTO summary_group_year (year, taxon_group, source_id, n, n_binom, n_places, built_from, spec_version)
     SELECT CAST(substr(o.period_start,1,4) AS INTEGER), COALESCE(t.taxon_group, '未判定'), o.source_id,
-           SUM(o.n), COUNT(DISTINCT t.canonical_binomial), COUNT(DISTINCT o.place_id), ${META}
+           ${IF_WS("o.n")}, COUNT(DISTINCT t.canonical_binomial), ${PLACES_GRID}, ${META}
     FROM occurrence_agg o LEFT JOIN taxon t ON t.taxon_id = o.taxon_id
-    WHERE ${YEAR_FAMILY} GROUP BY 1, 2, 3;
+    WHERE ${YEAR_BOTH} GROUP BY 1, 2, 3;
 
     INSERT INTO summary_effort_year (year, n, n_binom, n_places, built_from, spec_version)
-    SELECT CAST(substr(o.period_start,1,4) AS INTEGER), SUM(o.n), COUNT(DISTINCT t.canonical_binomial), COUNT(DISTINCT o.place_id), ${META}
+    SELECT CAST(substr(o.period_start,1,4) AS INTEGER), ${IF_WS("o.n")}, COUNT(DISTINCT t.canonical_binomial), ${PLACES_GRID}, ${META}
     FROM occurrence_agg o LEFT JOIN taxon t ON t.taxon_id = o.taxon_id
-    WHERE ${YEAR_FAMILY} GROUP BY 1;
+    WHERE ${YEAR_BOTH} GROUP BY 1;
 
     INSERT INTO summary_grid_catalog (place_id, n, n_red_list, n_binom, n_red_binom, built_from, spec_version)
     SELECT o.place_id,
