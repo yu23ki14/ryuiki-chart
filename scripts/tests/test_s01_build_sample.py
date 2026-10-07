@@ -479,3 +479,49 @@ def test_adapter_input_file_elsewhere_stops(tmp_path, monkeypatch):
 def test_declaration_counts_keys_come_from_adapter_manifests(tmp_path, monkeypatch):
     m = _adapter_manifest(tmp_path, monkeypatch)
     assert {sid: x.expected_row_count for sid, x in s01.adapter_inputs(m).items()} == {"src_a": 400}
+
+
+# ---------------------------------------------------------------- adapter 入力表の taxon_id が指す taxon の原本の行（閉包）
+def _taxon_origin_db(adapter_ids):
+    from registry import common as registry_common
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE organism_records (source_id TEXT, taxon_key TEXT)")
+    conn.execute("CREATE TABLE taxa (taxon_id TEXT, gbif_taxon_key TEXT, gbif_match_type TEXT)")
+    conn.execute("CREATE TABLE edna_x (taxon_id TEXT)")
+    # rowid: 1,2,3 = gbif 100（最小の 1 だけ要る）/ 4 = inat 7 / 5 = gbif 200（サンプルに既にある）/ 6 = 無関係
+    conn.executemany("INSERT INTO organism_records VALUES (?,?)", [
+        ("gbif_kanagawa_occurrences", "100"), ("gbif_kanagawa_occurrences", "100"), ("gbif_kanagawa_occurrences", "100"),
+        ("inaturalist_kanagawa", "7"), ("gbif_kanagawa_occurrences", "200"), ("gbif_kanagawa_occurrences", "999")])
+    # taxa: 1 = gbif 300（organism_records に無く EXACT）/ 2 = 未照合（ryuiki-taxa）/ 3 = gbif 300 の別の EXACT 行
+    conn.executemany("INSERT INTO taxa VALUES (?,?,?)", [("T-1", "300", "EXACT"), ("T-2", "", ""), ("T-3", "300", "EXACT")])
+    unresolved = registry_common.taxon_id_unresolved("T-2")
+    conn.executemany("INSERT INTO edna_x VALUES (?)", [(i,) for i in adapter_ids(unresolved)])
+    return conn
+
+
+def test_taxon_origin_rows_pick_one_minimal_row_per_taxon(tmp_path, monkeypatch):
+    m = s01.adapter_inputs(_adapter_manifest(tmp_path, monkeypatch, table="edna_x"))
+    conn = _taxon_origin_db(lambda u: [
+        "common:taxon:gbif.100", "common:taxon:inat.7", "common:taxon:gbif.200", "common:taxon:gbif.300", u,
+        "common:taxon:kanagawa-edna.x", None])
+    got = s01.select_taxon_origin_rows(conn, m, {"organism_records": {5}}, supplement_ids={"common:taxon:kanagawa-edna.x"})
+    # gbif.100 は最小の rowid 1、inat.7 は 4、gbif.200 はサンプルに既にある（5）ので足さない、
+    # gbif.300 は organism_records に無いので taxa の最小 rowid 1、未照合は taxa の rowid 2。supplement は対象外
+    assert got == {"organism_records": {1, 4}, "taxa": {1, 2}}
+    # 決定論: 同じ入力で同じ結果
+    assert got == s01.select_taxon_origin_rows(conn, m, {"organism_records": {5}}, supplement_ids={"common:taxon:kanagawa-edna.x"})
+
+
+def test_taxon_origin_rows_stop_on_unresolvable_id(tmp_path, monkeypatch):
+    m = s01.adapter_inputs(_adapter_manifest(tmp_path, monkeypatch, table="edna_x"))
+    conn = _taxon_origin_db(lambda u: ["common:taxon:gbif.100", "common:taxon:gbif.424242", "common:taxon:weird.1"])
+    with pytest.raises(SystemExit, match="2 件"):
+        s01.select_taxon_origin_rows(conn, m, {}, supplement_ids=set())
+
+
+def test_taxon_origin_rows_skip_tables_without_taxon_id_and_non_occurrence(tmp_path, monkeypatch):
+    m = s01.adapter_inputs(_adapter_manifest(tmp_path, monkeypatch))          # wildlife_sightings（taxon_id 列なし）
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE wildlife_sightings (id INTEGER)")
+    conn.execute("CREATE TABLE organism_records (source_id TEXT, taxon_key TEXT)")
+    assert s01.select_taxon_origin_rows(conn, m, {}, supplement_ids=set()) == {}

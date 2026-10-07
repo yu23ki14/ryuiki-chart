@@ -23,6 +23,15 @@ CLAUDE.md 「サンプル」設計の要件）。
   サンプルに無いと「親行が無い」状態になる（閉包「参照の整合」）。
 - **属の全記録**は `coverage.yaml` の `full_closures`（`genus = 'Sirosporium'`、
   上限なし）自体がそのまま閉包になっている——追加のコードは無い。
+- **adapter 入力表の `taxon_id` が参照する taxon の原本の行**。registry の taxon は
+  サンプルに入った `organism_records`/`taxa` からしか作られない（`scripts/registry/build_taxon.py`）ので、
+  adapter 出典（マニフェストの非 builtin・target=occurrence）の入力表が `taxon_id` 列で
+  registry の既存 taxon を指していると、その taxon を生む原本の行がサンプルに無い限り
+  b06 の `in_registry[taxon]` が止まる。taxon_id から原本の行を逆引きし（gbif/inat 名前空間は
+  `organism_records` の `taxon_key`、無ければ `taxa.gbif_taxon_key`、`ryuiki-taxa.` は `taxa` の
+  未照合行）、taxon ごとに rowid 最小の 1 行を足す（`select_taxon_origin_rows`）。
+  サンプルに既にその taxon を生む行があれば足さない。supplement 由来の ID は
+  registry が supplement から作るので対象外。
 - **文書単位**（`cells.sqlite` の `cells`）は `document_closure.doc_ids` で
   指定した `doc_id` の全セルを入れる。
 
@@ -68,6 +77,8 @@ from migrate import occurrence_period  # noqa: E402
 from migrate import point_in_polygon as pip  # noqa: E402
 from migrate import source_regions  # noqa: E402
 from reconcile.common import load_yaml  # noqa: E402
+from registry import build_taxon, common as registry_common  # noqa: E402
+from taxon_namespaces import TAXON_KEY_SOURCE_NAMESPACE  # noqa: E402
 
 DEFAULT_RYUIKI_DB = ROOT / "data" / "db" / "ryuiki.sqlite"
 DEFAULT_CELLS_DB = ROOT / "data" / "db" / "cells.sqlite"
@@ -300,6 +311,94 @@ def select_adapter_input_tables(
             )
         out[table] = set(select_wholesale_rowids(conn, table))
     return out
+
+
+def _supplement_taxon_ids() -> set[str]:
+    p = build_taxon.SUPPLEMENT_TAXA_CSV
+    if not p.exists():
+        return set()
+    with open(p, newline="", encoding="utf-8") as f:
+        return {r["taxon_id"] for r in csv.DictReader(f)}
+
+
+def select_taxon_origin_rows(
+    conn: sqlite3.Connection, manifests: dict[str, manifest_lib.Manifest], selected: dict[str, set[int]],
+    supplement_ids: set[str] | None = None,
+) -> dict[str, set[int]]:
+    """adapter 入力表（target=occurrence の非 builtin の `input.table`）の `taxon_id` 列が指す taxon について、
+    registry がその taxon_id を生むのに要る原本の行（`organism_records` か `taxa`）を、taxon ごとに
+    rowid 最小の 1 行だけ返す（`{table: {rowid}}`。サンプルに既に生む行がある taxon は足さない）。
+    引けない taxon_id（supplement 由来を除く）があれば止まる。出典名は書かず、マニフェストから導く。"""
+    supplement_ids = _supplement_taxon_ids() if supplement_ids is None else supplement_ids
+    needed: set[str] = set()
+    for m in manifests.values():
+        table = m.input.get("table")
+        if table is None or m.target != "occurrence":
+            continue
+        if "taxon_id" not in {r[1] for r in conn.execute(f'PRAGMA table_info("{table}")')}:
+            continue
+        needed |= {r[0] for r in conn.execute(f'SELECT DISTINCT taxon_id FROM "{table}" WHERE taxon_id IS NOT NULL')}
+    needed -= supplement_ids
+    if not needed:
+        return {}
+
+    sources_by_ns: dict[str, list[str]] = defaultdict(list)
+    for src, ns in TAXON_KEY_SOURCE_NAMESPACE.items():
+        sources_by_ns[ns].append(src)
+    keys_by_ns: dict[str, dict[str, str]] = defaultdict(dict)       # ns -> {taxon_key: taxon_id}
+    unresolved_ids: set[str] = set()
+    for tid in sorted(needed):
+        for ns in sources_by_ns:
+            prefix = f"common:taxon:{ns}."
+            if tid.startswith(prefix) and build_taxon._taxon_id_for(ns, tid[len(prefix):]) == tid:
+                keys_by_ns[ns][tid[len(prefix):]] = tid
+                break
+        else:
+            unresolved_ids.add(tid)
+
+    out: dict[str, set[int]] = {"organism_records": set(), "taxa": set()}
+    found: set[str] = set()
+    selected_org = selected.get("organism_records", set())
+    _create_rowid_temp_table(conn, "sel_org", selected_org)
+    for ns, by_key in sorted(keys_by_ns.items()):
+        conn.execute("DROP TABLE IF EXISTS temp.need_keys")
+        conn.execute("CREATE TEMP TABLE need_keys (k TEXT PRIMARY KEY)")
+        conn.executemany("INSERT INTO temp.need_keys VALUES (?)", [(k,) for k in sorted(by_key)])
+        srcs = ",".join("?" for _ in sources_by_ns[ns])
+        have = {r[0] for r in conn.execute(
+            f"SELECT DISTINCT taxon_key FROM organism_records WHERE rowid IN (SELECT rowid_value FROM temp.sel_org) "
+            f"AND source_id IN ({srcs}) AND taxon_key IN (SELECT k FROM temp.need_keys)", sources_by_ns[ns])}
+        rows = conn.execute(
+            f"SELECT taxon_key, MIN(rowid) FROM organism_records WHERE source_id IN ({srcs}) "
+            f"AND taxon_key IN (SELECT k FROM temp.need_keys) GROUP BY taxon_key", sources_by_ns[ns]).fetchall()
+        for key, rowid in rows:
+            found.add(by_key[key])
+            if key not in have:
+                out["organism_records"].add(rowid)
+        if ns == "gbif":                      # organism_records に無い gbif キーは taxa（EXACT）から
+            rest = sorted(set(by_key) - {r[0] for r in rows})
+            conn.execute("DELETE FROM temp.need_keys")
+            conn.executemany("INSERT INTO temp.need_keys VALUES (?)", [(k,) for k in rest])
+            for key, rowid in conn.execute(
+                    "SELECT gbif_taxon_key, MIN(rowid) FROM taxa WHERE gbif_match_type='EXACT' "
+                    "AND gbif_taxon_key IN (SELECT k FROM temp.need_keys) GROUP BY gbif_taxon_key"):
+                found.add(by_key[key])
+                out["taxa"].add(rowid)
+    if any(t.startswith("common:taxon:ryuiki-taxa.") for t in unresolved_ids):
+        seen: dict = {}
+        for rowid, taxa_pk, key, match in conn.execute(
+                "SELECT rowid, taxon_id, COALESCE(gbif_taxon_key,''), gbif_match_type FROM taxa ORDER BY rowid"):
+            if key.strip() and match == "EXACT":
+                continue
+            tid = registry_common.taxon_id_unresolved(taxa_pk, seen=seen)
+            if tid in unresolved_ids:
+                found.add(tid)
+                out["taxa"].add(rowid)
+    missing = sorted(needed - found)
+    if missing:
+        raise SystemExit(f"adapter 入力表の taxon_id のうち、原本の organism_records/taxa から registry が生める行を"
+                         f"引けないものが {len(missing)} 件ある（supplement にも無い）: {missing[:10]}")
+    return {t: r for t, r in out.items() if r}
 
 
 def adapter_input_files(manifests: dict[str, manifest_lib.Manifest]) -> list[str]:
@@ -620,6 +719,9 @@ def main() -> int:
     manifests = adapter_inputs(args.manifests_dir)
     for table, rowids in select_adapter_input_tables(ryuiki_conn, manifests, selected).items():
         selected[table] = rowids
+    # 入力表の taxon_id が指す既存 taxon を、registry が作れるように原本の行を足す
+    for table, rowids in select_taxon_origin_rows(ryuiki_conn, manifests, selected).items():
+        selected[table] = selected.get(table, set()) | rowids
 
     doc_ids = coverage["document_closure"]["doc_ids"]
     if len(doc_ids) < coverage["document_closure"]["min_documents"]:
