@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { MCP_TOOLS } from "./tools";
 import { OBSERVATION_SOURCE_IDS, OCCURRENCE_SOURCE_IDS, RECORD_SOURCE_IDS } from "@/lib/cube";
-import { SOURCE_ACCESS, SOURCE_META } from "@/lib/registry/generated-source";
+import { RECORD_SET_TABLES, SOURCE_ACCESS, SOURCE_META } from "@/lib/registry/generated-source";
 
 /** 出典の状態（MCP_SOURCE_ACCESS.md §2）。生成物と describe_catalog / search_registry の応答の整合を固定する。 */
 const NOW = new Date("2026-10-07T00:00:00Z");
@@ -48,7 +48,9 @@ describe("出典の状態 SOURCE_ACCESS", () => {
 
   it("queryable_via は manifests 由来の ID 集合・records の表と一致する", () => {
     for (const [id, a] of Object.entries(SOURCE_ACCESS)) {
-      expect(a.queryableVia.includes("get_observations"), id).toBe(OBSERVATION_SOURCE_IDS.includes(id));
+      // cube_only: キューブにはあるが get_observations では引けない（宣言。queryable-via.test.ts が実データで確かめる）
+      expect(a.queryableVia.includes("get_observations"), id).toBe(OBSERVATION_SOURCE_IDS.includes(id) && a.reason !== "cube_only");
+      if (a.reason === "cube_only") expect(OBSERVATION_SOURCE_IDS, id).toContain(id);
       expect(a.queryableVia.includes("get_occurrences"), id).toBe(OCCURRENCE_SOURCE_IDS.includes(id));
       expect(a.queryableVia.includes("get_records"), id).toBe(a.tables.length > 0);
     }
@@ -66,7 +68,8 @@ describe("出典の状態 SOURCE_ACCESS", () => {
     for (const f of ["schema.ts", "schema-registry.ts"]) {
       for (const m of fs.readFileSync(path.join(dir, f), "utf8").matchAll(/sqliteTable\(\s*"([a-z_0-9]+)"/g)) defined.add(m[1]);
     }
-    const tables = new Set(Object.values(SOURCE_ACCESS).flatMap((a) => a.tables));
+    const tables = new Set(Object.values(RECORD_SET_TABLES));
+    for (const a of Object.values(SOURCE_ACCESS)) for (const t of a.tables) expect(RECORD_SET_TABLES, t).toHaveProperty(t);
     expect(tables.size).toBeGreaterThan(0);
     for (const t of tables) expect(defined.has(t), t).toBe(true);
   });
@@ -82,6 +85,7 @@ describe("describe_catalog(sources) の状態と summary", () => {
       not_queryable: number;
       by_tool: Record<string, number>;
       by_reason: Record<string, number>;
+      excluded: Record<string, number>;
     };
     expect(rows).toHaveLength(SOURCE_META.length);
     for (const r of rows) {
@@ -98,6 +102,7 @@ describe("describe_catalog(sources) の状態と summary", () => {
     const toolCount = (t: string) => rows.filter((r) => r.queryable_via.includes(t)).length;
     for (const [t, n] of Object.entries(summary.by_tool)) expect(n, t).toBe(toolCount(t));
     expect(summary.by_tool.get_records).toBe(RECORD_SOURCE_IDS.length);
+    expect(summary.excluded).toEqual({ synthetic: 1 }); // 一覧から除いた出典（合成データ）。total には含めない
   });
 
   it("queryable で絞れる。summary は絞り込みに関わらず全出典の集計", async () => {

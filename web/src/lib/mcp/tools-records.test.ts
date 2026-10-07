@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { applyMigrations, wrapSqlite } from "@/lib/cube/__fixtures__/cube-fixture";
-import { McpInputError } from "./tools";
+import { McpInputError } from "./errors";
 import { getRecordsTool } from "./tools-records";
 
 let raw: Database.Database;

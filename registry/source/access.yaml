@@ -3,13 +3,21 @@
 # - manifests/ にある出典（15 件。target=observation → get_observations、occurrence → get_occurrences）は
 #   ここに書かない（二重管理しない）。ただし get_records でも取れる表があれば records だけ足す。
 #   get_edna のような追加のツールは extra_tools に書く。
-# - records: get_records で取れる表。出典の列（source_id）を持つ表は表名だけ。出典の列が無い水源マップの表は
-#   {table, whole_table: true} か {table, id_prefix: "..."} で「表のどの行がこの出典か」を宣言する
-#   （r01 が行数を source_registry.record_count と突き合わせて裏づける）。
+# - records: get_records で取れる record_set（下の record_sets の名前）。表は出典の列 source_id で絞る。
 # - reason: 取れない理由（reasons の語彙）。basis は下書きの根拠（source_registry の列・data/processed の有無から
 #   機械的に決めたもの）で、必須。note は人が読む補足（任意）。
 # - r01 が、全出典が状態を持つこと・records の表に行があること・reason の出典に行が無いこと
 #   （synthetic だけ例外）を原本と突き合わせて検査する。scripts/registry/build_source_access.py の docstring 参照。
+# record_sets: get_records の引数 record_set の値 → D1 の表。**この対応の正はここ 1 か所**（生成物 RECORD_SET_TABLES を
+# web/src/lib/records.ts が読む）。D1 にある表だけ書く（原本にだけある表は reason: not_in_d1）。
+record_sets:
+  sites: sites
+  protected_areas: protected_areas
+  vegetation: vegetation_polygons
+  river_segments: river_segments
+  mammal_mesh: mammal_mesh
+  sightings: wildlife_sightings
+  assessments: taxon_assessment
 reasons:
   not_collected: {ja: "未収集（取得手段が未着手、または登録のみ）"}
   blocked_access: {ja: "ログイン・APIキー・利用アンケート・JS 画面などで、自動取得できていない"}
@@ -21,6 +29,7 @@ reasons:
   file_only: {ja: "収集済みだが D1 に投入していない（data/processed のファイルのみ）"}
   superseded: {ja: "別の出典に置き換わった（superseded_by 参照）"}
   synthetic: {ja: "合成データ。実データと混ぜないため出さない"}
+  cube_only: {ja: "キューブ（集計）には値があるが、MCP の get_observations（測定値系データセット固定）では引けない"}
   d1_no_source_column: {ja: "D1 の表に出典の列が無く、表の行をどの出典のものか機械的に引けない"}
   not_in_d1: {ja: "原本には行があるが、D1 にその表が無い（本番では引けない）"}
 sources:
@@ -34,14 +43,14 @@ sources:
   hiratsuka_parks: {records: [protected_areas]}
   kanagawa_green_conservation: {records: [protected_areas]}
   kanagawa_natural_parks: {records: [protected_areas]}
-  biodic_veg2024_kanagawa: {records: [vegetation_polygons]}
+  biodic_veg2024_kanagawa: {records: [vegetation]}
   biodic_mammal_mesh_kanagawa: {records: [mammal_mesh]}
   geoshape_sagami_river: {records: [river_segments]}
-  kanagawa_redlist: {records: [taxon_assessment]}
-  moe_ias_list: {records: [taxon_assessment]}
-  kanagawa_rdb2022_plants: {records: [taxon_assessment]}
+  kanagawa_redlist: {records: [assessments]}
+  moe_ias_list: {records: [assessments]}
+  kanagawa_rdb2022_plants: {records: [assessments]}
   # --- マニフェストの出典に get_records の表を足す（出現キューブは座標なし 5 セルだけ。明細はこちら）---
-  kanagawa_kuma_sightings: {records: [wildlife_sightings]}   # 出現キューブは座標なし 5 セルだけ。明細はこちら
+  kanagawa_kuma_sightings: {records: [sightings]}   # 出現キューブは座標なし 5 セルだけ。明細はこちら
   # --- 取れない: not_collected（5 件）---
   buna_suitai_web: {reason: not_collected, basis: "source_registry.format=「表なし、画像のみ」。表として取り出せるデータが無く record_count=0"}
   geospatial_jp_agri_poly_2021_sagami: {reason: not_collected, basis: "source_registry.record_count=0 かつ data/processed・data/raw とも無し"}
@@ -149,5 +158,10 @@ sources:
   kanagawa_rdb2006_animals: {reason: not_in_d1, basis: "原本 taxa に 221 行。D1 の taxa は 0010 で DROP 済みで、taxon_assessment にも載らない"}
   kanagawa_river_citizen_survey: {reason: not_in_d1, basis: "原本 protocols に 6 行。D1 の protocols は 0010 で DROP 済み"}
   moe_redlist: {reason: not_in_d1, basis: "原本 taxa に 6,089 行。D1 の taxa は 0010 で DROP 済み"}
+  # --- 取れない: cube_only（マニフェストの出典。キューブにはあるが get_observations で引けない。実データで確認）---
+  nlni_l03b_landuse_by_watershed: {reason: cube_only, basis: "get_observations は測定値系データセット固定。流域 place の土地利用系列は引けない（queryable-via.test.ts が実データで 0 行を確認）"}
+  sagamihara_taiki_hourly: {reason: cube_only, basis: "sensor_timeseries 系列で、変数が測定値系に無く get_observations で 0 行（queryable-via.test.ts が実データで確認）"}
+  soramame_hourly_kanagawa: {reason: cube_only, basis: "sensor_timeseries 系列で、変数が測定値系に無く get_observations で 0 行（queryable-via.test.ts が実データで確認）"}
+  yokohama_river_waterlevel: {reason: cube_only, basis: "sensor_timeseries 系列で、変数が測定値系に無く get_observations で 0 行（queryable-via.test.ts が実データで確認）"}
 extra_tools:
   kanagawa_edna: [get_edna]

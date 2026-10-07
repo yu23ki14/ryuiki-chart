@@ -1,12 +1,13 @@
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { applyMigrations, wrapSqlite } from "@/lib/cube/__fixtures__/cube-fixture";
+import { RECORD_SET_TABLES } from "@/lib/registry/generated-source";
 import { TABLE_ORIGIN } from "@/lib/table-meta";
 import {
   queryRecords,
   RecordsInputError,
   recordsInputSchema,
-  RECORD_SOURCES,
+  recordSetsOf,
   RECORD_SOURCE_IDS,
   RECORD_TABLES,
   type RecordsInput,
@@ -63,10 +64,12 @@ describe("RECORD_TABLES（許可リスト）", () => {
     for (const t of Object.keys(RECORD_TABLES)) expect(TABLE_ORIGIN, t).toHaveProperty(RECORD_TABLES[t as keyof typeof RECORD_TABLES].table);
   });
 
-  it("出典 × 表の宣言は許可リストの表だけを指す", () => {
-    for (const [s, tables] of Object.entries(RECORD_SOURCES)) {
-      expect(tables.length, s).toBeGreaterThan(0);
-      for (const t of tables) expect(RECORD_TABLES, `${s}/${t}`).toHaveProperty(t);
+  it("出典 × record_set の宣言（SOURCE_ACCESS）は許可リストの record_set だけを指し、record_set → 表の対応は access.yaml の 1 か所", () => {
+    expect(Object.keys(RECORD_SET_TABLES).sort()).toEqual(Object.keys(RECORD_TABLES).sort());
+    for (const s of RECORD_SOURCE_IDS) {
+      const sets = recordSetsOf(s);
+      expect(sets.length, s).toBeGreaterThan(0);
+      for (const t of sets) expect(RECORD_TABLES, `${s}/${t}`).toHaveProperty(t);
     }
   });
 });
@@ -74,9 +77,9 @@ describe("RECORD_TABLES（許可リスト）", () => {
 describe("queryRecords", () => {
   it("宣言済みの全 (出典, 表) で 1 行以上返り、行の source_id は出典を含む", async () => {
     let n = 1;
-    for (const s of RECORD_SOURCE_IDS) for (const t of RECORD_SOURCES[s]) put(t, t === "mammal_mesh" ? n++ : `${s}:1`, "名", s);
+    for (const s of RECORD_SOURCE_IDS) for (const t of recordSetsOf(s) as RecordSetName[]) put(t, t === "mammal_mesh" ? n++ : `${s}:1`, "名", s);
     for (const s of RECORD_SOURCE_IDS) {
-      for (const t of RECORD_SOURCES[s]) {
+      for (const t of recordSetsOf(s) as RecordSetName[]) {
         const r = await q({ source_id: s, record_set: t });
         expect(r.rows.length, `${s}/${t}`).toBeGreaterThanOrEqual(1);
         expect(r.record_set).toBe(t);

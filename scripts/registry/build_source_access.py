@@ -19,7 +19,8 @@
 
 静的（原本不要。`--files-only` でも `validate_static()` が走る）:
 - 理由コードが語彙内・`reason` に `basis` がある・`records` と `reason` の両方は持てない
-- `records` の表が許可リスト（`RECORD_TABLES`＝**D1 にある表**。原本にだけある表は対象外で、理由は `not_in_d1`）内
+- `records` の record_set が `record_sets`（record_set → D1 の表。**正はここ 1 か所**）にあり、その表が許可リスト
+  （`D1_RECORD_TABLES`＝**D1 にある表**。原本にだけある表は対象外で、理由は `not_in_d1`）内
 - `reason` を持つ出典はマニフェストに無い（取れるものを「取れない」と書かない）
 - `extra_tools` はマニフェストの出典にだけ付く
 
@@ -44,18 +45,12 @@ TOOL_BY_TARGET = {"observation": "get_observations", "occurrence": "get_occurren
 EXTRA_TOOLS = {"get_edna"}
 RECORDS_TOOL = "get_records"
 
-# `get_records` が読んでよい表（**D1 にある表**。値は出典の列）。web 側の許可リスト（web/src/lib/records.ts の
-# RECORD_TABLES）と一致すること（統合時にテストで突き合わせる）。`taxon_assessment` は語彙レジストリの表
+# `record_sets` が指してよい表（**D1 にある表**。出典の列 `source_id` で絞る）。web/src/lib/records.ts の
+# RECORD_TABLES の許可リスト（列）は record_set → 表を access.yaml の生成物から読む。`taxon_assessment` は語彙レジストリの表
 # （registry.sqlite。原本の taxa・redlist_assessments は D1 に無い＝マイグレーション 0010 で DROP 済み）。
-RECORD_TABLES: dict[str, dict] = {
-    "sites": {"source_column": "source_id"},
-    "protected_areas": {"source_column": "source_id"},
-    "vegetation_polygons": {"source_column": "source_id"},
-    "river_segments": {"source_column": "source_id"},
-    "mammal_mesh": {"source_column": "source_id"},
-    "wildlife_sightings": {"source_column": "source_id"},
-    "taxon_assessment": {"source_column": "source_id", "in_registry": True},
-}
+D1_RECORD_TABLES = frozenset(
+    {"sites", "protected_areas", "vegetation_polygons", "river_segments", "mammal_mesh", "wildlife_sightings", "taxon_assessment"}
+)
 
 # n_source_rows を数える表（A の出典。B は `records` の表）。
 PRIMARY_TABLES = {
@@ -67,6 +62,9 @@ N_BASIS = ("source_rows", "registry_record_count", "none")
 _SOURCE_KEYS = {"records", "reason", "basis", "note"}
 # 原本に行がある理由（合成データ・D1 に未投入）。他の理由は「原本に行が無い」ことを検査する。
 ROW_REASONS = frozenset({"synthetic", "not_in_d1"})
+# マニフェスト（キューブに入る）の出典だが、対応するツールでは実際に引けない（例: get_observations は測定値系データセット固定で、
+# センサー系列・土地利用を引けない）。tests（queryable-via.test.ts）が実データで確かめた食い違いを宣言する。行の検査は要らない。
+CUBE_ONLY_REASON = "cube_only"
 
 
 class AccessError(AssertionError):
@@ -81,18 +79,15 @@ def load_access_yaml(path: pathlib.Path | None = None) -> dict:
 # 宣言の正規化と静的検査
 # ---------------------------------------------------------------------------
 
-def normalize_records(sid: str, records) -> list[str]:
-    """`records`（表名のリスト）を検査する。不正なら止まる。"""
+def normalize_records(sid: str, records, record_sets: dict[str, str]) -> list[str]:
+    """`records`（record_set 名のリスト）を検査する。不正なら止まる。"""
     if not isinstance(records, list) or not records or not all(isinstance(t, str) for t in records):
-        raise AccessError(f"access.yaml: {sid} の records は 1 つ以上の表名のリストでなければならない")
-    for table in records:
-        if table not in RECORD_TABLES:
-            raise AccessError(
-                f"access.yaml: {sid} の records の表 {table!r} が許可リスト（RECORD_TABLES＝D1 にある表）に無い: "
-                f"{sorted(RECORD_TABLES)}。D1 に無い表は reason: not_in_d1 にする"
-            )
+        raise AccessError(f"access.yaml: {sid} の records は 1 つ以上の record_set のリストでなければならない")
+    for rs in records:
+        if rs not in record_sets:
+            raise AccessError(f"access.yaml: {sid} の records の {rs!r} が record_sets に無い: {sorted(record_sets)}。D1 に無い表は reason: not_in_d1 にする")
     if len(set(records)) != len(records):
-        raise AccessError(f"access.yaml: {sid} の records に表が重複している")
+        raise AccessError(f"access.yaml: {sid} の records に record_set が重複している")
     return list(records)
 
 
@@ -104,6 +99,12 @@ def validate_static(doc: dict, manifest_targets: dict[str, str]) -> dict[str, li
     for code, v in reasons.items():
         if not isinstance(v, dict) or not v.get("ja"):
             raise AccessError(f"access.yaml: reasons.{code} に ja が無い")
+    record_sets = doc.get("record_sets")
+    if not isinstance(record_sets, dict) or not record_sets:
+        raise AccessError("access.yaml: record_sets（record_set → D1 の表）が無い")
+    bad = sorted(set(record_sets.values()) - D1_RECORD_TABLES)
+    if bad:
+        raise AccessError(f"access.yaml: record_sets の表 {bad} が D1 にある表の許可リスト（D1_RECORD_TABLES）に無い")
     sources = doc.get("sources")
     if not isinstance(sources, dict):
         raise AccessError("access.yaml: sources が無い")
@@ -118,7 +119,7 @@ def validate_static(doc: dict, manifest_targets: dict[str, str]) -> dict[str, li
         if has_rec == has_reason:
             raise AccessError(f"access.yaml: sources.{sid} は records か reason のどちらか一方だけを持つ（両方・どちらも無しは不可）")
         if has_rec:
-            records_by_source[sid] = normalize_records(sid, entry["records"])
+            records_by_source[sid] = normalize_records(sid, entry["records"], record_sets)
             if "basis" in entry:
                 raise AccessError(f"access.yaml: sources.{sid} は records を持つので basis は書けない（basis は reason の根拠）")
         else:
@@ -127,10 +128,11 @@ def validate_static(doc: dict, manifest_targets: dict[str, str]) -> dict[str, li
                 raise AccessError(f"access.yaml: sources.{sid} の reason={code!r} が語彙 {sorted(reasons)} に無い")
             if not str(entry.get("basis") or "").strip():
                 raise AccessError(f"access.yaml: sources.{sid} の reason に basis（根拠）が無い")
-            if sid in manifest_targets:
+            if (sid in manifest_targets) != (code == CUBE_ONLY_REASON):
                 raise AccessError(
-                    f"access.yaml: sources.{sid} はマニフェストがあり {TOOL_BY_TARGET[manifest_targets[sid]]} で取れる。"
-                    "reason（取れない）は書けない"
+                    f"access.yaml: sources.{sid} の reason={code!r} が合わない。マニフェストのある出典に書けるのは"
+                    f" {CUBE_ONLY_REASON}（キューブにはあるが対応するツールでは引けない）だけで、"
+                    f"{CUBE_ONLY_REASON} はマニフェストのある出典にだけ書ける"
                 )
     extra_tools = doc.get("extra_tools") or {}
     for sid, tools in extra_tools.items():
@@ -225,10 +227,11 @@ def assemble(
     # --- 原本との突き合わせ（§1.4）---
     all_source_tables = counts["by_source"]
     for sid, recs in records_by_source.items():
-        for table in recs:
+        for rs in recs:
+            table = doc["record_sets"][rs]
             if _table_rows(counts, sid, table) == 0:
                 raise AccessError(
-                    f"access.yaml: {sid} の records に宣言した表 {table} に、この出典の行が 1 つも無い"
+                    f"access.yaml: {sid} の records に宣言した record_set {rs}（表 {table}）に、この出典の行が 1 つも無い"
                     "（宣言が古い。records から外すか、reason に直す）"
                 )
     for sid, entry in sources.items():
@@ -236,6 +239,8 @@ def assemble(
         if code is None:
             continue
         have = {t: c[sid] for t, c in all_source_tables.items() if c.get(sid)}
+        if code == CUBE_ONLY_REASON:
+            continue
         if code in ROW_REASONS:
             if not have:
                 raise AccessError(f"access.yaml: {sid} は reason={code} だが原本に行が無い（宣言が古い。{code} は行がある出典の理由）")
@@ -254,7 +259,7 @@ def assemble(
         recs = records_by_source.get(sid, [])
         target = manifest_targets.get(sid)
         via: list[str] = []
-        if target:
+        if target and entry.get("reason") != CUBE_ONLY_REASON:
             via.append(TOOL_BY_TARGET[target])
             via.extend(extra_tools.get(sid, []))
         if recs:
@@ -269,7 +274,7 @@ def assemble(
                 else:
                     basis = "source_rows"
             else:
-                n, basis = sum(_table_rows(counts, sid, t) for t in recs), "source_rows"
+                n, basis = sum(_table_rows(counts, sid, doc["record_sets"][t]) for t in recs), "source_rows"
             row = (sid, "queryable", json.dumps(via), json.dumps(tables),
                    n, basis, counted_at, None, None, None)
         else:

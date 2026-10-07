@@ -31,7 +31,7 @@ import {
   MEASUREMENTS_DATASET,
   type CubeDb,
 } from "@/lib/cube";
-import { SOURCE_META } from "@/lib/registry/generated-source";
+import { SOURCE_EXCLUDED_FROM_LIST, SOURCE_META } from "@/lib/registry/generated-source";
 import { GENERATED_VARIABLES } from "@/lib/registry/generated";
 import { VARIABLE_LABEL, ZONE_INFO } from "@/lib/registry/generated-client";
 import { representativeSeries } from "@/lib/cube/series";
@@ -39,6 +39,8 @@ import { EDNA_DESCRIPTION, EDNA_SOURCE_ID, ednaInputSchema, queryEdna } from "@/
 import { caveatsForFacets, facetsForOccurrence } from "@/lib/cube/caveats";
 import { SPECIES_MIN_N } from "@/lib/cube/occurrence";
 import { loadDatapackage } from "./datapackage";
+import { McpInputError } from "./errors";
+import { getRecordsTool } from "./tools-records";
 
 export interface McpContext {
   db: () => Promise<CubeDb>;
@@ -98,7 +100,17 @@ function sourceSummary(metas: readonly (typeof SOURCE_META)[number][]) {
     if (a.reason) by_reason[a.reason] = (by_reason[a.reason] ?? 0) + 1;
   }
   // by_tool は重複あり（kanagawa_edna は get_occurrences と get_edna の両方）。重複なしの数は queryable。
-  return { total: metas.length, queryable, not_queryable: metas.length - queryable, by_tool, by_reason };
+  // excluded: 一覧から除いた出典の件数と理由（合成データ。total には含めない）。
+  return { total: metas.length, queryable, not_queryable: metas.length - queryable, by_tool, by_reason, excluded: { ...SOURCE_EXCLUDED_FROM_LIST } };
+}
+
+/**
+ * get_records の `n_total`（`q`・`id` なしのとき）。事前計算の出典別の行数（リクエスト時に count(*) しない）。
+ * 出典の record_set が 1 つのときだけ意味を持つ（複数なら表ごとの件数が無いので載せない）。
+ */
+function recordsNTotal(sourceId: string): number | null {
+  const a = sourceAccess(sourceId);
+  return a && a.tables.length === 1 ? a.nSourceRows : null;
 }
 
 /** 出力行数の上限（コンテキストを溢れさせない。超えたら `truncated: true`）。 */
@@ -368,9 +380,11 @@ export const MCP_TOOLS: McpTool[] = [
       return buildDataEnvelope({}, { available: true, resources: datapackageResources(pkg) }, [], { now: ctx.now });
     },
   }),
+
+  getRecordsTool({ nTotal: recordsNTotal }),
 ];
 
-export class McpInputError extends Error {}
+export { McpInputError };
 
 /** `datapackage.json`（Frictionless）の resources から、パスと sha256 とサイズだけを取り出す（他の項目は渡さない）。 */
 export function datapackageResources(pkg: unknown): { name: string | null; path: string | null; sha256: string | null; bytes: number | null }[] {

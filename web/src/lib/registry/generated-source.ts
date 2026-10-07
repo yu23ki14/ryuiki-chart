@@ -397,7 +397,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
       "get_records"
     ],
     "tables": [
-      "vegetation_polygons"
+      "vegetation"
     ],
     "nSourceRows": 13206,
     "nSourceRowsBasis": "source_rows",
@@ -1032,7 +1032,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
       "get_records"
     ],
     "tables": [
-      "wildlife_sightings"
+      "sightings"
     ],
     "nSourceRows": 400,
     "nSourceRowsBasis": "source_rows",
@@ -1084,7 +1084,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
       "get_records"
     ],
     "tables": [
-      "taxon_assessment"
+      "assessments"
     ],
     "nSourceRows": 1033,
     "nSourceRowsBasis": "source_rows",
@@ -1099,7 +1099,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
       "get_records"
     ],
     "tables": [
-      "taxon_assessment"
+      "assessments"
     ],
     "nSourceRows": 1851,
     "nSourceRowsBasis": "source_rows",
@@ -1180,7 +1180,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
       "get_records"
     ],
     "tables": [
-      "taxon_assessment"
+      "assessments"
     ],
     "nSourceRows": 429,
     "nSourceRowsBasis": "source_rows",
@@ -1414,16 +1414,14 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "reasonNote": null
   },
   "nlni_l03b_landuse_by_watershed": {
-    "state": "queryable",
-    "queryableVia": [
-      "get_observations"
-    ],
+    "state": "not_queryable",
+    "queryableVia": [],
     "tables": [],
-    "nSourceRows": 4858,
-    "nSourceRowsBasis": "registry_record_count",
-    "countedAt": "2026-10-07T13:28:13",
-    "reason": null,
-    "reasonJa": null,
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "cube_only",
+    "reasonJa": "キューブ（集計）には値があるが、MCP の get_observations（測定値系データセット固定）では引けない",
     "reasonNote": null
   },
   "nlni_p05_city_hall": {
@@ -1607,16 +1605,14 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "reasonNote": null
   },
   "sagamihara_taiki_hourly": {
-    "state": "queryable",
-    "queryableVia": [
-      "get_observations"
-    ],
+    "state": "not_queryable",
+    "queryableVia": [],
     "tables": [],
-    "nSourceRows": 175344,
-    "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-07T13:28:13",
-    "reason": null,
-    "reasonJa": null,
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "cube_only",
+    "reasonJa": "キューブ（集計）には値があるが、MCP の get_observations（測定値系データセット固定）では引けない",
     "reasonNote": null
   },
   "sagamihara_taiki_stations": {
@@ -1653,16 +1649,14 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "reasonNote": null
   },
   "soramame_hourly_kanagawa": {
-    "state": "queryable",
-    "queryableVia": [
-      "get_observations"
-    ],
+    "state": "not_queryable",
+    "queryableVia": [],
     "tables": [],
-    "nSourceRows": 168793,
-    "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-07T13:28:13",
-    "reason": null,
-    "reasonJa": null,
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "cube_only",
+    "reasonJa": "キューブ（集計）には値があるが、MCP の get_observations（測定値系データセット固定）では引けない",
     "reasonNote": null
   },
   "soramame_stations_kanagawa": {
@@ -1765,22 +1759,34 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "reasonNote": null
   },
   "yokohama_river_waterlevel": {
-    "state": "queryable",
-    "queryableVia": [
-      "get_observations"
-    ],
+    "state": "not_queryable",
+    "queryableVia": [],
     "tables": [],
-    "nSourceRows": 75528,
-    "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-07T13:28:13",
-    "reason": null,
-    "reasonJa": null,
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "cube_only",
+    "reasonJa": "キューブ（集計）には値があるが、MCP の get_observations（測定値系データセット固定）では引けない",
     "reasonNote": null
   }
 };
 
 /** 観測データ（measurements・sensor_timeseries・土地利用）の出典。マニフェスト（target=observation）由来。get_observations で取れる。 */
 export const OBSERVATION_SOURCE_IDS: readonly string[] = ["atsugi_river_water_quality","env_kousui_annual_kanagawa","env_kousui_sample_kanagawa","hiratsuka_taiki","jma_daily_yokohama","jma_monthly_kanagawa","kanagawa_jiban_chinka","nlni_l03b_landuse_by_watershed","sagamihara_taiki_hourly","soramame_hourly_kanagawa","yokohama_river_waterlevel"];
+
+/** get_records の record_set → D1 の表（registry/source/access.yaml の record_sets。この対応の正はそこ 1 か所）。 */
+export const RECORD_SET_TABLES: Readonly<Record<string, string>> = {
+  "sites": "sites",
+  "protected_areas": "protected_areas",
+  "vegetation": "vegetation_polygons",
+  "river_segments": "river_segments",
+  "mammal_mesh": "mammal_mesh",
+  "sightings": "wildlife_sightings",
+  "assessments": "taxon_assessment"
+};
+
+/** 一覧から除いた出典の件数と理由（合成データ。出典メタの読み出し口に合成の出典を出さない既存の保証）。 */
+export const SOURCE_EXCLUDED_FROM_LIST: Readonly<Record<string, number>> = {"synthetic":1};
 
 /** get_records で引ける出典（SOURCE_ACCESS の tables が空でないもの）。 */
 export const RECORD_SOURCE_IDS: readonly string[] = ["biodic_mammal_mesh_kanagawa","biodic_veg2024_kanagawa","dams_kanagawa","env_kousui_stations_kanagawa","geoshape_sagami_river","hadano_preserved_trees","hiratsuka_parks","jma_stations_kanagawa","kanagawa_green_conservation","kanagawa_kuma_sightings","kanagawa_natural_parks","kanagawa_rdb2022_plants","kanagawa_redlist","moe_ias_list","moni1000_sites","sagami_livecams"];

@@ -14,8 +14,12 @@
 import { z } from "zod";
 import type { CubeDb, SqlParam } from "@/lib/cube/db";
 import { idText, likeParam, likeText } from "@/lib/edna";
+import { RECORD_SET_TABLES, RECORD_SOURCE_IDS as GENERATED_RECORD_SOURCE_IDS, SOURCE_ACCESS } from "@/lib/registry/generated-source";
 
 export const RECORDS_MAX_ROWS = 500;
+
+/** `z.enum` に渡す形（空でない配列）。 */
+export const RECORD_SOURCE_IDS = GENERATED_RECORD_SOURCE_IDS as unknown as [string, ...string[]];
 
 export interface RecordTable {
   /** 実表の名前（入力には出さない。入力は記録の集合名 `record_set`）。 */
@@ -39,7 +43,7 @@ export interface RecordTable {
  */
 export const RECORD_TABLES = {
   sites: {
-    table: "sites",
+    table: RECORD_SET_TABLES.sites,
     pk: "site_id",
     search: ["name", "name_en"],
     // 除外: geohash, treatment, is_synthetic
@@ -49,7 +53,7 @@ export const RECORD_TABLES = {
     ],
   },
   protected_areas: {
-    table: "protected_areas",
+    table: RECORD_SET_TABLES.protected_areas,
     pk: "area_id",
     search: ["name_ja"],
     cols: [
@@ -58,7 +62,7 @@ export const RECORD_TABLES = {
     ],
   },
   vegetation: {
-    table: "vegetation_polygons",
+    table: RECORD_SET_TABLES.vegetation,
     pk: "feature_id",
     search: ["legend_name_ja"],
     cols: [
@@ -68,7 +72,7 @@ export const RECORD_TABLES = {
     geometry: "geometry_geojson",
   },
   river_segments: {
-    table: "river_segments",
+    table: RECORD_SET_TABLES.river_segments,
     pk: "feature_id",
     search: ["name_ja"],
     cols: [
@@ -78,13 +82,13 @@ export const RECORD_TABLES = {
     geometry: "geometry_geojson",
   },
   mammal_mesh: {
-    table: "mammal_mesh",
+    table: RECORD_SET_TABLES.mammal_mesh,
     pk: "id",
     search: ["species_ja", "species"],
     cols: ["id", "mesh_code", "species", "species_ja", "survey_label", "survey_year", "confirmed", "lat", "lon", "source_id", "source_ref"],
   },
   sightings: {
-    table: "wildlife_sightings",
+    table: RECORD_SET_TABLES.sightings,
     pk: "sighting_id",
     search: ["species_ja", "locality_ja"],
     cols: [
@@ -94,7 +98,7 @@ export const RECORD_TABLES = {
     ],
   },
   assessments: {
-    table: "taxon_assessment",
+    table: RECORD_SET_TABLES.assessments,
     pk: "assessment_id",
     search: ["scientific_name_raw", "vernacular_name_ja_raw", "vernacular_name_ja_resolved"],
     cols: [
@@ -108,29 +112,10 @@ export const RECORD_TABLES = {
 export type RecordSetName = keyof typeof RECORD_TABLES;
 export const RECORD_SET_NAMES = Object.keys(RECORD_TABLES) as [RecordSetName, ...RecordSetName[]];
 
-/**
- * 出典 → `get_records` で引ける表。統合時に `generated-source.ts` の `SOURCE_ACCESS`/`RECORD_SOURCE_IDS`
- * （担当 A）から読む形に差し替え、A の `tables` と一致することをテストする（設計 §5.3）。
- */
-export const RECORD_SOURCES: Readonly<Record<string, readonly RecordSetName[]>> = {
-  dams_kanagawa: ["sites"],
-  env_kousui_stations_kanagawa: ["sites"],
-  jma_stations_kanagawa: ["sites"],
-  moni1000_sites: ["sites"],
-  sagami_livecams: ["sites"],
-  hadano_preserved_trees: ["protected_areas"],
-  hiratsuka_parks: ["protected_areas"],
-  kanagawa_green_conservation: ["protected_areas"],
-  kanagawa_natural_parks: ["protected_areas"],
-  biodic_veg2024_kanagawa: ["vegetation"],
-  biodic_mammal_mesh_kanagawa: ["mammal_mesh"],
-  geoshape_sagami_river: ["river_segments"],
-  kanagawa_kuma_sightings: ["sightings"],
-  kanagawa_redlist: ["assessments"],
-  kanagawa_rdb2022_plants: ["assessments"],
-  moe_ias_list: ["assessments"],
-};
-export const RECORD_SOURCE_IDS = Object.keys(RECORD_SOURCES) as [string, ...string[]];
+/** 出典 → `get_records` で引ける record_set（生成物 `SOURCE_ACCESS` の `tables`。宣言の正は registry/source/access.yaml）。 */
+export function recordSetsOf(sourceId: string): readonly string[] {
+  return SOURCE_ACCESS[sourceId]?.tables ?? [];
+}
 
 /** MCP・AI 共通の入力（z.tuple は使わない）。出典と表の組み合わせの検査は `queryRecords` が行う。 */
 export const recordsInputSchema = z.object({
@@ -171,8 +156,8 @@ export interface RecordsResult {
 
 /** 入力から引く表を決める。出典に無い表・複数表で省略は入力エラー。 */
 export function resolveRecordTable(a: Pick<RecordsInput, "source_id" | "record_set">): RecordSetName {
-  const tables = RECORD_SOURCES[a.source_id];
-  if (!tables) throw new RecordsInputError(`source_id '${a.source_id}' は get_records の対象ではない`);
+  const tables = recordSetsOf(a.source_id) as readonly RecordSetName[];
+  if (tables.length === 0) throw new RecordsInputError(`source_id '${a.source_id}' は get_records の対象ではない`);
   if (a.record_set === undefined) {
     if (tables.length === 1) return tables[0];
     throw new RecordsInputError(`出典 ${a.source_id} は記録の集合が複数ある。record_set を ${tables.join(" / ")} から指定する`);

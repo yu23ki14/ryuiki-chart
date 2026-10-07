@@ -404,7 +404,14 @@ if (!filesOnly) {
 const recordSourceIds = Object.entries(sourceAccess)
   .filter(([, a]) => a.tables.length > 0)
   .map(([id]) => id);
-const declaredRecordSourceIds = Object.entries(loadYaml(fs.readFileSync(ACCESS_YAML, "utf8")).sources ?? {})
+const accessDoc = loadYaml(fs.readFileSync(ACCESS_YAML, "utf8"));
+const recordSetTables = accessDoc.record_sets ?? {};
+// 一覧（SOURCE_META・SOURCE_ACCESS）から除いた出典の件数と理由（describe_catalog の summary.excluded）。
+const excludedFromList = {};
+for (const r of db.prepare("SELECT source_id FROM source_access").all()) {
+  if (isSyntheticSource(r.source_id)) excludedFromList.synthetic = (excludedFromList.synthetic ?? 0) + 1;
+}
+const declaredRecordSourceIds = Object.entries(accessDoc.sources ?? {})
   .filter(([, e]) => e && e.records)
   .map(([id]) => id)
   .filter((id) => !isSyntheticSource(id))
@@ -853,6 +860,12 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = ${
 
 /** 観測データ（measurements・sensor_timeseries・土地利用）の出典。マニフェスト（target=observation）由来。get_observations で取れる。 */
 export const OBSERVATION_SOURCE_IDS: readonly string[] = ${JSON.stringify(observationSourceIds)};
+
+/** get_records の record_set → D1 の表（registry/source/access.yaml の record_sets。この対応の正はそこ 1 か所）。 */
+export const RECORD_SET_TABLES: Readonly<Record<string, string>> = ${JSON.stringify(recordSetTables, null, 2)};
+
+/** 一覧から除いた出典の件数と理由（合成データ。出典メタの読み出し口に合成の出典を出さない既存の保証）。 */
+export const SOURCE_EXCLUDED_FROM_LIST: Readonly<Record<string, number>> = ${JSON.stringify(excludedFromList)};
 
 /** get_records で引ける出典（SOURCE_ACCESS の tables が空でないもの）。 */
 export const RECORD_SOURCE_IDS: readonly string[] = ${JSON.stringify(recordSourceIds)};

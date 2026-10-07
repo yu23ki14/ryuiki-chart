@@ -1,6 +1,6 @@
 /**
  * MCP の `get_records`（出典ごとの台帳表の明細。docs/plans/MCP_SOURCE_ACCESS.md §3）。
- * 登録は `tools.ts`（担当 A）が `MCP_TOOLS` に `getRecordsTool()` を足すだけ。
+ * `tools.ts` が `MCP_TOOLS` に `getRecordsTool({ nTotal })` を登録する。
  */
 import { z } from "zod";
 import { buildDataEnvelope } from "@/lib/cube";
@@ -12,7 +12,8 @@ import {
   RECORDS_DESCRIPTION,
   type RecordSetName,
 } from "@/lib/records";
-import { McpInputError, type McpContext, type McpTool } from "./tools";
+import { McpInputError } from "./errors";
+import type { McpContext, McpTool } from "./tools";
 
 export interface GetRecordsOptions {
   /**
