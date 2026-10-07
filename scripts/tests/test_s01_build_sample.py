@@ -422,6 +422,10 @@ def test_adapter_input_table_is_included_whole_without_touching_coverage_yaml(tm
     assert set(chosen) == {"wildlife_sightings"} and len(chosen["wildlife_sightings"]) == 400
 
 
+def test_adapter_input_limit_covers_kanagawa_edna():
+    assert s01.ADAPTER_INPUT_WHOLESALE_MAX_ROWS >= 13263   # edna_detections
+
+
 def test_adapter_input_table_over_limit_or_already_narrowed_stops(tmp_path, monkeypatch):
     m = _adapter_manifest(tmp_path, monkeypatch)
     conn = sqlite3.connect(":memory:")

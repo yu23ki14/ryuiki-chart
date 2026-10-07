@@ -31,6 +31,8 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
+# name_key の正は c89c（二重実装しない。c89c は reads と突き合わせて食い違えば止まる）
+from c89c_edna_taxon_map import name_key  # noqa: E402
 
 SOURCE_ID = "kanagawa_edna"
 INDEX_URL = "https://www.pref.kanagawa.jp/docs/b4f/suigen/edna.html"
@@ -371,17 +373,6 @@ def bracket_notes(s):
     return BRACKET.findall(s or "")
 
 
-def name_key(s):
-    """名前の正規化キー（設計 §4.3）: NFKC・括弧書き除去・空白除去・小文字化。
-    ふりがなは load_xlsx が <rPh> として分けて読むので、ここでは外さない。"""
-    if not s:
-        return ""
-    s = unicodedata.normalize("NFKC", s)
-    s = BRACKET.sub("", s)
-    s = re.sub(r"\s+", "", s)
-    return s.lower()
-
-
 def build_known_names(sheet, row_ids):
     """同じブックの「ふりがな付きだった地点ヘッダ」の本体 = 既知の名前。"""
     known = set()
@@ -528,7 +519,7 @@ def parse_book(path, lay, source_ref_base):
             "name_sci_raw": tx("name_sci"), "name_note": "; ".join(notes) or None,
             "pident_qcov": pident, "reliability": rel,
             "national_rl_raw": tx("national_rl"), "pref_rl_raw": tx("pref_rl"), "alien_raw": tx("alien"),
-            "name_key": name_key(name_adopted),
+            "name_key": name_key(name_adopted or name_raw or ""),
             "source_id": SOURCE_ID,
         }
         if not base["name_key"]:
