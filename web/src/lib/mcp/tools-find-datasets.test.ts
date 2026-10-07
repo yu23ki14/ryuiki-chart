@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { applyMigrations, wrapSqlite } from "@/lib/cube/__fixtures__/cube-fixture";
 import { McpInputError } from "./errors";
+import { FIND_DATASETS_MCP_BYTE_BUDGET } from "@/lib/catalog-search";
 import { findDatasetsTool } from "./tools-find-datasets";
 
 let raw: Database.Database;
@@ -68,5 +69,37 @@ describe("find_datasets（MCP）", () => {
     const e = await run({ q: "存在しない語" });
     expect(e.data.rows).toEqual([]);
     expect(e.provenance).toEqual([]);
+  });
+
+  it("応答が大きいときは行を先頭から減らし、truncated と next_offset で続きを取る（欠落・重複なし）", async () => {
+    const big = "あ".repeat(800);
+    for (let i = 0; i < 120; i++) {
+      add("ckan_sagamihara", `big${String(i).padStart(3, "0")}`, "CC-BY", `2026-01-01T00:00:${String(i % 60).padStart(2, "0")}`);
+      raw.prepare("UPDATE external_dataset SET description = ? WHERE dataset_key = ?").run(big, `ckan_sagamihara:big${String(i).padStart(3, "0")}`);
+    }
+    const seen: string[] = [];
+    let offset = 0;
+    for (let guard = 0; guard < 50; guard++) {
+      const e = await run({ source_id: "ckan_sagamihara", limit: 100, offset });
+      expect(JSON.stringify(e.data).length).toBeLessThan(FIND_DATASETS_MCP_BYTE_BUDGET);
+      seen.push(...e.data.rows.map((x: { dataset_key: string }) => x.dataset_key));
+      if (!e.truncated) {
+        expect(e.data).not.toHaveProperty("next_offset");
+        break;
+      }
+      expect(e.data.next_offset).toBe(seen.length);
+      offset = seen.length;
+    }
+    expect(seen).toHaveLength(120);
+    expect(new Set(seen).size).toBe(120);
+  });
+
+  it("modified_since は metadata_modified が無い行を除き、件数と理由を data に出す", async () => {
+    raw.prepare("UPDATE external_dataset SET metadata_modified = NULL WHERE dataset_key = 'ckan_kanagawa_pref:a2'").run();
+    const e = await run({ source_id: "ckan_kanagawa_pref", modified_since: "2026-01-01" });
+    expect(e.data.rows.map((r: { dataset_key: string }) => r.dataset_key)).not.toContain("ckan_kanagawa_pref:a2");
+    expect(e.data.excluded_no_modified).toBe(1);
+    expect(e.data.excluded_reason).toContain("metadata_modified");
+    expect((await run({ source_id: "ckan_kanagawa_pref" })).data).not.toHaveProperty("excluded_no_modified");
   });
 });

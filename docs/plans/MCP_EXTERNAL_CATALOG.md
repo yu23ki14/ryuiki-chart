@@ -227,3 +227,10 @@ MCP の `tools.ts` は触らない（SA の A が 1 行で登録）。SQL は固
 - r01 の検査: `catalog` は `external_dataset` だけ。`records`/`reason` と排他。出典の過不足は `external_dataset.source_id` の種類との一致で止める。
 - 本番反映後、`access.yaml`・`registry` を触ったので `reports/serving_fingerprint.json`（b00）と `data/sample/manifest.json` の原本 sha256 は、
   m08 を流した本物の `ryuiki.sqlite` で作り直す（原本が変わるため）。
+
+## レビュー反映（2026-10-07、修正担当）
+- 起動手順: `ensure-registry.sh` が、`external_dataset` が無い・空のときだけ `m08_external_catalog.py --if-empty` を先に回す（入力も無ければ直し方を書いて止まる）。r01 が目録の空を理由に止まって `db:setup` が通らない状態を避ける。
+- registry の鮮度: `external_dataset` は `source_id` 列を持つ小さい表なので、指紋の出典別の件数（`_hash_source_access_counts`）に既に入っている。m08 の流し直しで件数が変われば古いと判定される（テストで固定）。
+- 件数の上限: 資源は 1 データセット 50 件（`resources_truncated`・`n_resources`・`next_resource_offset`。続きは `id` + `resource_offset`）。MCP の応答は 96KB（行を先頭から減らし `truncated`・`next_offset`）。AI は `makeResult` の行単位モード（`headRows`）で、入れ子の資源を間引かない。
+- format: 原文は `external_resource.format` に残し、正規化（前後の空白・先頭の `.` を除く・大文字・XLSK→XLSX・JPG→JPEG）した要素ごとの行を `external_resource_format` に持つ。`format` 絞りはその表への等号。許可リストは実在する 19 形式。
+- `modified_since`: `metadata_modified` が NULL の行は除き、`excluded_no_modified` で件数を返す。存在しない日は弾く。`n_total` は offset=0 のときだけ。`n_with_header` は m08 がデータセットの列に持つ（`sheets_json` は展開しない）。

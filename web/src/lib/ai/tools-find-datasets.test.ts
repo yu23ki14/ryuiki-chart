@@ -59,6 +59,34 @@ describe("find_datasets（AI）", () => {
     const r = await run({ source_id: "ckan_yokohama" });
     expect(r.data.rows).toHaveLength(10);
     expect(r.truncated).toBe(true);
-    expect(r.provenance.tables).toEqual(["external_dataset", "external_resource"]);
+    expect(r.provenance.tables).toEqual(["external_dataset", "external_resource", "external_resource_format"]);
+  });
+
+  it("資源つきで予算を超えるときも、データセットの行を先頭から残す。資源のリストを間引かない（50 件のまま・続きは offset）", async () => {
+    for (let i = 0; i < 6; i++) {
+      add(`m${i}`, "x", `2026-03-0${1 + i}T00:00:00`);
+      for (let j = 0; j < 60; j++) {
+        raw
+          .prepare("INSERT INTO external_resource (resource_key, dataset_key, name, format, direct_url) VALUES (?,?,?,?,?)")
+          .run(`ckan_yokohama:m${i}_r${String(j).padStart(2, "0")}`, `ckan_yokohama:m${i}`, `資源 ${"あ".repeat(40)} ${j}`, "CSV", `https://x.test/${i}/${j}.csv?token=${"z".repeat(60)}`);
+      }
+    }
+    const seen: string[] = [];
+    let offset = 0;
+    for (let guard = 0; guard < 20; guard++) {
+      const r = await run({ source_id: "ckan_yokohama", include_resources: true, limit: 10, offset });
+      expect(JSON.stringify(r.data).length).toBeLessThan(24 * 1024);
+      for (const d of r.data.rows) {
+        expect(d.urls.resources).toHaveLength(50); // 入れ子の配列は間引かない
+        expect(d.resources_truncated).toBe(true);
+      }
+      seen.push(...r.data.rows.map((x: { dataset_key: string }) => x.dataset_key));
+      if (!r.truncated) break;
+      expect(r.data.next_offset).toBe(seen.length);
+      expect(r.truncatedNote).toContain(`offset を ${seen.length}`);
+      offset = seen.length;
+    }
+    expect(seen).toHaveLength(6);
+    expect(new Set(seen).size).toBe(6);
   });
 });

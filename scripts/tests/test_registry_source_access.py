@@ -309,3 +309,26 @@ def test_source_counts_fingerprint_detects_value_moving_between_sources(tmp_path
     conn.commit()
     assert fp() != b1
     conn.close()
+
+
+def test_source_counts_fingerprint_follows_external_dataset(tmp_path):
+    """m08 で目録を流し直すと（出典の行が増減すると）registry の入力指紋が変わる（external_dataset は source_id 列を持つ小さい表）。"""
+    db = tmp_path / "ryuiki.sqlite"
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE external_dataset (dataset_key TEXT PRIMARY KEY, source_id TEXT NOT NULL)")
+    conn.executemany("INSERT INTO external_dataset VALUES (?, ?)", [("a:1", "a"), ("a:2", "a"), ("b:1", "b")])
+    conn.commit()
+
+    def fp():
+        h = hashlib.sha256()
+        common._hash_source_access_counts(h, db)
+        return h.hexdigest()
+
+    before = fp()
+    assert fp() == before
+    conn.execute("DELETE FROM external_dataset WHERE source_id='b'")  # 出典 b の目録を流し直して 0 件になった
+    conn.commit()
+    assert fp() != before
+    conn.execute("INSERT INTO external_dataset VALUES ('b:9', 'b')")
+    conn.commit()
+    assert fp() == before  # 件数が元に戻れば同じ（registry が読むのは出典別の件数だけ。中身の更新は registry に影響しない）

@@ -5,6 +5,7 @@ import { SOURCE_ACCESS } from "@/lib/registry/generated-source";
 import {
   FIND_DATASET_SOURCE_IDS,
   FIND_DATASETS_DESCRIPTION,
+  FIND_DATASETS_RESOURCES_PER_DATASET,
   findDatasetsInputSchema,
   FindDatasetsInputError,
   queryDatasets,
@@ -41,11 +42,12 @@ function addDataset(o: {
   raw
     .prepare(
       `INSERT INTO external_dataset (dataset_key, source_id, portal, dataset_id, name, title, description, description_truncated, organization, license,
-        license_url, groups, tags, n_resources, metadata_modified, page_url, api_url, fetched_at) VALUES (?,?,?,?,?,?,?,0,?,?,NULL,?,?,?,?,?,?,?)`,
+        license_url, groups, tags, n_resources, n_with_header, metadata_modified, page_url, api_url, fetched_at) VALUES (?,?,?,?,?,?,?,0,?,?,NULL,?,?,?,?,?,?,?,?)`,
     )
     .run(
       key, o.source, portal, o.id, portal === "ckan" ? `n_${o.id}` : null, o.title ?? `題名 ${o.id}`, o.desc ?? null, o.org ?? null, o.license ?? null,
-      o.groups ?? null, o.tags ?? null, o.resources?.length ?? 0, o.modified ?? null,
+      o.groups ?? null, o.tags ?? null, o.resources?.length ?? 0,
+      (o.resources ?? []).filter((r) => r.sheets?.some((sh) => Array.isArray((sh as { header?: unknown }).header))).length, o.modified ?? null,
       base ? `${base}/dataset/n_${o.id}` : `https://www.e-stat.go.jp/stat-search/files?stat_infid=${o.id}`,
       base ? `${base}/api/3/action/package_show?id=${o.id}` : null, "2026-08-29T00:00:00",
     );
@@ -53,6 +55,11 @@ function addDataset(o: {
     raw
       .prepare("INSERT INTO external_resource (resource_key, dataset_key, name, format, size, last_modified, direct_url, page_url, sheets_json) VALUES (?,?,?,?,?,?,?,?,?)")
       .run(`${o.source}:${o.id}_r${i}`, key, r.name ?? `資源${i}`, r.format, 100, null, `https://example.test/${o.id}/${i}`, null, r.sheets ? JSON.stringify(r.sheets) : null);
+    // m08 の normalize_formats と同じ（要素ごとに 1 行。空は unspecified）
+    const norm = [...new Set((r.format ?? "").split(",").map((f) => f.trim().replace(/^\./, "").trim().toUpperCase()).map((f) => (f === "XLSK" ? "XLSX" : f)).filter(Boolean))];
+    for (const f of norm.length ? norm : ["unspecified"]) {
+      raw.prepare("INSERT INTO external_resource_format (dataset_key, format_norm, resource_key) VALUES (?,?,?)").run(key, f, `${o.source}:${o.id}_r${i}`);
+    }
   });
 }
 
@@ -126,10 +133,34 @@ describe("find_datasets: 絞り込み", () => {
     expect((await q({ format: "SHP" })).rows.map((r) => r.dataset_key)).toEqual(["ckan_bodik_kanagawa:w2"]);
   });
 
+  it("format: 表記揺れ（XLSK・'.CSV'・小文字）は正規化した形式で当たり、資源の原文 format は残る", async () => {
+    addDataset({ source: "ckan_sagamihara", id: "fx", title: "揺れ", resources: [{ format: "XLSK" }, { format: ".CSV" }, { format: " pdf " }] });
+    expect((await q({ format: "XLSX", source_id: "ckan_sagamihara" })).rows.map((r) => r.dataset_key)).toContain("ckan_sagamihara:fx");
+    const r = (await q({ id: "ckan_sagamihara:fx" })).rows[0];
+    expect(r.formats).toEqual({ XLSX: 1, CSV: 1, PDF: 1 });
+    expect(r.urls.resources?.map((x) => x.format)).toEqual(["XLSK", ".CSV", " pdf "]);
+  });
+
   it("modified_since: metadata_modified が以降（収穫時点の値）。e-Stat（日付なし）は含まれない", async () => {
     const r = await q({ modified_since: "2026-03-01" });
     expect(r.rows.map((x) => x.dataset_key).sort()).toEqual(["ckan_bodik_kanagawa:w1", "ckan_yokohama:y1"]);
     await expect(q({ modified_since: "2026-13-45" })).rejects.toThrow(FindDatasetsInputError);
+  });
+
+  it("modified_since: 存在しない日（2026-02-30・2025-02-29）は弾く。うるう日は通る", async () => {
+    for (const d of ["2026-02-30", "2025-02-29", "2026-04-31", "2026-00-10"]) await expect(q({ modified_since: d }), d).rejects.toThrow(FindDatasetsInputError);
+    await expect(q({ modified_since: "2024-02-29" })).resolves.toBeDefined();
+  });
+
+  it("modified_since: metadata_modified が無い行（e-Stat・NULL）は除き、除いた件数を excluded_no_modified で返す（他の絞り込みは満たす行だけ数える）", async () => {
+    addDataset({ source: "estat_agri_census_kanagawa", id: "e1", title: "表1", modified: null, resources: [{ format: "XLS" }] });
+    addDataset({ source: "ckan_sagamihara", id: "nm", title: "更新日なし", modified: null, resources: [] });
+    const all = await q({ modified_since: "2026-03-01" });
+    expect(all.rows.every((x) => x.metadata_modified !== null)).toBe(true);
+    expect(all.excluded_no_modified).toBe(2); // 追加した 2 件（beforeEach の行は全て日付あり）
+    const one = await q({ modified_since: "2026-03-01", source_id: "ckan_sagamihara" });
+    expect(one.excluded_no_modified).toBe(1);
+    expect((await q({ source_id: "ckan_sagamihara" })).excluded_no_modified).toBeNull(); // modified_since が無ければ報告しない
   });
 
   it("id: 完全一致で 1 件。資源を全件返す", async () => {
@@ -137,6 +168,42 @@ describe("find_datasets: 絞り込み", () => {
     expect(r.rows).toHaveLength(1);
     expect(r.rows[0].urls.resources).toHaveLength(2);
     expect(r.rows[0].urls.resources?.[0].direct_url).toBe("https://example.test/w1/0");
+  });
+
+  it("資源は 1 データセット 50 件まで。resources_truncated・n_resources を返し、resource_offset で続きを取る（重複・欠落なし）", async () => {
+    addDataset({ source: "ckan_sagamihara", id: "many", title: "資源が多い", resources: Array.from({ length: 120 }, (_, i) => ({ format: i % 2 ? "CSV" : "XLSX", name: `r${String(i).padStart(3, "0")}` })) });
+    const key = "ckan_sagamihara:many";
+    const got: string[] = [];
+    let off = 0;
+    for (let guard = 0; guard < 10; guard++) {
+      const d = (await q({ id: key, resource_offset: off })).rows[0];
+      expect(d.n_resources).toBe(120);
+      expect(d.resource_offset).toBe(off);
+      expect(d.urls.resources!.length).toBeLessThanOrEqual(FIND_DATASETS_RESOURCES_PER_DATASET);
+      expect(d.data_definition.sheets === undefined || d.data_definition.sheets.length <= FIND_DATASETS_RESOURCES_PER_DATASET).toBe(true);
+      expect(d.formats).toEqual({ XLSX: 60, CSV: 60 }); // 形式別の件数は全件（返した分だけではない）
+      got.push(...d.urls.resources!.map((x) => x.name!));
+      if (!d.resources_truncated) {
+        expect(d.next_resource_offset).toBeUndefined();
+        break;
+      }
+      expect(d.next_resource_offset).toBe(off + 50);
+      off = d.next_resource_offset!;
+    }
+    expect(got).toHaveLength(120);
+    expect(new Set(got).size).toBe(120);
+  });
+
+  it("include_resources も 1 データセット 50 件まで。resource_offset は id なしでは使えない", async () => {
+    addDataset({ source: "ckan_sagamihara", id: "many", title: "資源が多い", resources: Array.from({ length: 51 }, () => ({ format: "CSV" })) });
+    addDataset({ source: "ckan_sagamihara", id: "few", title: "資源が少ない", resources: [{ format: "CSV" }] });
+    const r = await q({ source_id: "ckan_sagamihara", include_resources: true, limit: 10 });
+    const by = Object.fromEntries(r.rows.map((d) => [d.dataset_key, d]));
+    expect(by["ckan_sagamihara:many"].urls.resources).toHaveLength(50);
+    expect(by["ckan_sagamihara:many"].resources_truncated).toBe(true);
+    expect(by["ckan_sagamihara:few"].resources_truncated).toBe(false);
+    await expect(q({ source_id: "ckan_sagamihara", resource_offset: 50 })).rejects.toThrow(/resource_offset は id/);
+    expect((await q({ source_id: "ckan_sagamihara" })).rows[0].resources_truncated).toBeUndefined(); // 資源を返さないときは付けない
   });
 
   it("source_id と組み合わせると AND", async () => {
@@ -168,7 +235,9 @@ describe("find_datasets: 入力検査", () => {
 
   it("未知の source_id・形式はスキーマで拒否", () => {
     expect(() => findDatasetsInputSchema.parse({ source_id: "kanagawa_edna" })).toThrow();
-    expect(() => findDatasetsInputSchema.parse({ format: "DOCX" })).toThrow();
+    expect(() => findDatasetsInputSchema.parse({ format: "XLSK" })).toThrow(); // 誤記は正規形（XLSX）で指定する
+    expect(() => findDatasetsInputSchema.parse({ format: "csv" })).toThrow();
+    for (const f of ["DOCX", "JPEG", "TURTLE", "FIWARE-NGSI", "XLSM"]) expect(() => findDatasetsInputSchema.parse({ format: f }), f).not.toThrow();
   });
 });
 
@@ -181,7 +250,7 @@ describe("find_datasets: ページング", () => {
     for (let offset = 0; ; offset += 7) {
       const r = await q({ source_id: "ckan_sagamihara", limit: 7, offset });
       all.push(...r.rows.map((x) => x.dataset_key));
-      expect(r.n_total).toBe(26);
+      expect(r.n_total).toBe(offset === 0 ? 26 : null); // 件数は最初のページだけ（2 ページ目以降は数えない）
       if (!r.truncated) break;
     }
     expect(all).toHaveLength(26);

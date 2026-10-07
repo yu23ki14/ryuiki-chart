@@ -30,7 +30,8 @@ exports[`buildSystemPrompt > pageContext 無し 1`] = `
 - edna_sites（流域DB）: 神奈川県 環境DNA（eDNA）の採水地点（ファイル×調査地点列）。lat/lon は推定位置で、根拠 coord_source と誤差 coordinate_uncertainty_m つき（公開データに座標は無い）
 - edna_reads（流域DB）: eDNA の検出・不検出（地点×採水×分類群のリード数。0 は不検出）。リード数は個体数ではない。taxon_id は registry の taxon に結ぶ
 - external_dataset（流域DB）: 外部ポータル（CKAN 4 インスタンス・e-Stat）のデータセット目録。題名・説明・提供者・ライセンス・最新を取る URL（api_url）つき。値は持たない。metadata_modified は fetched_at 時点
-- external_resource（流域DB）: 外部ポータルの資源（ファイル）。形式・サイズ・直リンク。sheets_json は見出しを検出できたものだけ列名を持つ
+- external_resource（流域DB）: 外部ポータルの資源（ファイル）。形式（format は原文）・サイズ・直リンク。sheets_json は見出しを検出できたものだけ列名を持つ
+- external_resource_format（流域DB）: 外部ポータルの資源の形式を正規化して要素ごとに 1 行にした照合用の表（'SHP,CSV' は 2 行。XLSK→XLSX、'.CSV'→CSV）
 - river_segments（流域DB）: 相模川水系の河川流路。水系単位のため、県単位の nlni_w05 由来データに無い山梨県側（桂川上流部）を含む
 - water_utility（流域DB）: 水道事業体。bulk（用水供給＝卸）と retail（末端給水）
 - water_source（流域DB）: 水道の水源（河川・ダム・地下水・湧水）。parent_id でダム→河川・支流→本流を辿れる

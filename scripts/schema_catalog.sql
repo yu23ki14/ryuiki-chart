@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS external_dataset (
   groups TEXT,                           -- '|' 区切り
   tags TEXT,                             -- '|' 区切り
   n_resources INTEGER NOT NULL DEFAULT 0,
+  n_with_header INTEGER NOT NULL DEFAULT 0,  -- 見出しを検出できた資源の数（m08 が sheets_json から数える。find_datasets は展開しない）
   metadata_modified TEXT,                -- 収穫時点の値（最新は api_url の package_show）
   page_url TEXT NOT NULL,
   api_url TEXT,                          -- CKAN: package_show（UUID 指定）。e-Stat は NULL
@@ -30,7 +31,7 @@ CREATE TABLE IF NOT EXISTS external_resource (
   resource_key TEXT PRIMARY KEY,         -- '<source_id>:<resource_id>'
   dataset_key TEXT NOT NULL,
   name TEXT,
-  format TEXT,                           -- 大文字。'SHP,CSV' のようにカンマ区切りが混ざる
+  format TEXT,                           -- 原文（収穫したまま。'SHP,CSV' のようにカンマ区切りが混ざる・'.CSV'・'XLSK' の誤記もある）。照合は external_resource_format
   size INTEGER,
   last_modified TEXT,                    -- 収穫時点の値
   direct_url TEXT,                       -- 直リンク（url が空の行は NULL）
@@ -38,4 +39,13 @@ CREATE TABLE IF NOT EXISTS external_resource (
   sheets_json TEXT                       -- NULL か [{sheet, n_rows, n_cols, header: [...] | null, header_basis?}]
 );
 CREATE INDEX IF NOT EXISTS ix_er_dataset ON external_resource(dataset_key);
-CREATE INDEX IF NOT EXISTS ix_er_format ON external_resource(format);
+
+-- 資源の format を正規化して要素ごとに 1 行（前後の空白と先頭の '.' を除き大文字・既知の別名を寄せる。format が空は 'unspecified'）。
+-- find_datasets の format 絞りが等号で引くための索引用の表。m08 が external_resource から全行作り直す。
+CREATE TABLE IF NOT EXISTS external_resource_format (
+  dataset_key TEXT NOT NULL,
+  format_norm TEXT NOT NULL,
+  resource_key TEXT NOT NULL,
+  PRIMARY KEY (dataset_key, format_norm, resource_key)
+);
+CREATE INDEX IF NOT EXISTS ix_erf_format ON external_resource_format(format_norm, dataset_key);

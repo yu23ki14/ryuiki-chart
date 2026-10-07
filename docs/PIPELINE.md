@@ -83,8 +83,13 @@ PR-5 で v1 射影（b05/b08）から移した。キューブ・registry だけ�
 e-Stat 7 件の「どんなデータがあるか」の目録で、値は持たない。設計は `docs/plans/MCP_EXTERNAL_CATALOG.md`。
 v2 のパイプライン（`build:v2`・b00 の全量ゲート・指紋）には載せない（レジストリは語彙の置き場で、目録は語彙ではない）。
 
+- 起動時: `web/scripts/ensure-registry.sh` が、原本に `external_dataset` が無い・空のときだけ `m08_external_catalog.py --if-empty` を
+  先に回す（r01 は目録が空だと止まるため。`db:setup` と docker compose の両方）。入力（`ckan_datasets.jsonl` 等）も無ければ、直し方を書いて止まる。
+  目録を作り直したときの registry の鮮度は、指紋の出典別の件数（`_hash_source_access_counts`。`external_dataset` は `source_id` 列を持つ小さい表）が拾う。
 - 作り方: `scripts/m08_external_catalog.py`（`data/processed` の `ckan_*.jsonl`・`ckan_env_index.jsonl`・`estat_*.jsonl` →
   原本 `ryuiki.sqlite`。出典ごとに DELETE → INSERT で冪等。入力が無い出典は飛ばして列挙する。入力が 30 日より古いと警告する）。
+  `format` は原文を残し、前後の空白・先頭の `.` を除いて大文字にし別名（XLSK→XLSX・JPG→JPEG）を寄せたものを
+  `external_resource_format`（要素ごとに 1 行。`find_datasets` の format 絞りが等号で引く）に持つ。`external_dataset.n_with_header` も m08 が数える。
   列の見出し（`sheets_json.header`）は、変換済み CSV の 1 行目が機械的な基準（`header_is_reliable`）を満たすものだけ。
 - 更新手順（四半期ごとが目安。自動化はしない）: `c01_ckan.py`（県・相模原。BODIK は c01 の base が誤りで失敗して飛ばす）→
   `c86_ckan_bodik_yokohama.py`（BODIK・横浜。河川データの取得も走るので重い。目録だけ回す `--catalog-only` は無い）→

@@ -11,7 +11,7 @@
  * drizzle/migrations/*.sql を直接書き換えない。
  */
 import { sql } from "drizzle-orm";
-import { sqliteTable, text, integer, real, index } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, index, primaryKey } from "drizzle-orm/sqlite-core";
 // 依存なしの定数ファイル（drizzle-kit は `@/` エイリアスを解決しないので相対 import）。
 import { DOC_SERIES_WHERE } from "../lib/cube/doc-series-where";
 
@@ -338,6 +338,8 @@ export const externalDataset = sqliteTable("external_dataset", {
 	groups: text(),
 	tags: text(),
 	nResources: integer("n_resources").notNull().default(0),
+	/** 見出しを検出できた資源の数（m08 が sheets_json から数える。find_datasets は sheets_json を展開しない）。 */
+	nWithHeader: integer("n_with_header").notNull().default(0),
 	metadataModified: text("metadata_modified"),
 	pageUrl: text("page_url").notNull(),
 	apiUrl: text("api_url"),
@@ -362,7 +364,20 @@ export const externalResource = sqliteTable("external_resource", {
 },
 (table) => [
 	index("ix_er_dataset").on(table.datasetKey),
-	index("ix_er_format").on(table.format),
+]);
+
+/**
+ * 資源の format を正規化して要素ごとに 1 行（前後の空白と先頭の '.' を除き大文字・別名を寄せる。空は 'unspecified'）。
+ * `find_datasets` の format 絞りが等号で引くための照合用。原文は `external_resource.format`。m08 が作る。
+ */
+export const externalResourceFormat = sqliteTable("external_resource_format", {
+	datasetKey: text("dataset_key").notNull(),
+	formatNorm: text("format_norm").notNull(),
+	resourceKey: text("resource_key").notNull(),
+},
+(table) => [
+	primaryKey({ columns: [table.datasetKey, table.formatNorm, table.resourceKey] }),
+	index("ix_erf_format").on(table.formatNorm, table.datasetKey),
 ]);
 
 /* ------------------------------------------------------------------ *

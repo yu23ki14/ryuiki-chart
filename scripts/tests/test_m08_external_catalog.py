@@ -286,3 +286,79 @@ def test_real_inputs_row_counts_and_url_rule(tmp_path):
     assert c.execute("SELECT count(*) FROM external_resource WHERE direct_url IS NULL").fetchone()[0] == 3
     assert res_["sheets_unmatched"] == 0
     assert c.execute("SELECT count(*) FROM external_resource WHERE sheets_json LIKE '%\"header_basis\": \"converted_csv_first_row\"%'").fetchone()[0] > 100
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("CSV", ["CSV"]), (" .csv ", ["CSV"]), (".CSV", ["CSV"]), ("XLSK", ["XLSX"]), ("SHP,CSV", ["SHP", "CSV"]),
+    ("shp, .csv ,CSV", ["SHP", "CSV"]), ("jpg", ["JPEG"]), ("", ["unspecified"]), (None, ["unspecified"]), (" , ", ["unspecified"]),
+])
+def test_normalize_formats(raw, expected):
+    assert m08.normalize_formats(raw) == expected
+
+
+def test_format_table_keeps_raw_and_matches_by_equality(con, proc):
+    write_jsonl(proc / "ckan_resources.jsonl", [
+        res("kanagawa_pref", "u-k1", "r-k1a", format="XLSK"), res("kanagawa_pref", "u-k1", "r-k1b", format="SHP,CSV"),
+        res("kanagawa_pref", "u-k2", "r-k2", format=".CSV"), res("sagamihara", "u-s1", "r-s1", format=""),
+    ])
+    m08.load(con, proc, root=proc)
+    assert q(con, "SELECT format FROM external_resource WHERE resource_key='ckan_kanagawa_pref:r-k1a'") == [("XLSK",)]  # 原文は残す
+    got = q(con, "SELECT dataset_key, format_norm FROM external_resource_format WHERE dataset_key LIKE 'ckan_%' ORDER BY 1, 2")
+    assert sorted(got) == [
+        ("ckan_bodik_kanagawa:u-b1", "CSV"), ("ckan_kanagawa_pref:u-k1", "CSV"), ("ckan_kanagawa_pref:u-k1", "SHP"),
+        ("ckan_kanagawa_pref:u-k1", "XLSX"), ("ckan_kanagawa_pref:u-k2", "CSV"), ("ckan_sagamihara:u-s1", "unspecified"),
+        ("ckan_yokohama:u-y1", "CSV")]
+    n = q(con, "SELECT count(*) FROM external_resource_format")[0][0]
+    m08.load(con, proc, root=proc)  # 冪等
+    assert q(con, "SELECT count(*) FROM external_resource_format") == [(n,)]
+
+
+def test_n_with_header_is_a_dataset_column(con, proc):
+    m08.load(con, proc, root=proc)
+    assert q(con, "SELECT n_with_header FROM external_dataset WHERE dataset_key='ckan_kanagawa_pref:u-k1'") == [(1,)]
+    assert q(con, "SELECT n_with_header FROM external_dataset WHERE dataset_key='ckan_kanagawa_pref:u-k2'") == [(0,)]
+    assert q(con, "SELECT n_with_header FROM external_dataset WHERE source_id='estat_shozaiki_kanagawa'") == [(0,)]
+    assert q(con, "SELECT min(n_with_header) FROM external_dataset WHERE source_id='estat_census_population_kanagawa'") == [(1,)]
+
+
+def test_old_schema_without_n_with_header_is_upgraded(con, proc):
+    m08.load(con, proc, root=proc)
+    con.execute("ALTER TABLE external_dataset DROP COLUMN n_with_header")
+    m08.load(con, proc, root=proc)
+    assert q(con, "SELECT n_with_header FROM external_dataset WHERE dataset_key='ckan_kanagawa_pref:u-k1'") == [(1,)]
+
+
+def test_page_url_falls_back_to_dataset_id_when_name_is_empty(con, proc):
+    write_jsonl(proc / "ckan_datasets.jsonl", [ds("kanagawa_pref", "u-k1", "", url=""), ds("kanagawa_pref", "u-k2", None, url=""),
+                                               ds("sagamihara", "u-s1", "s1")])
+    write_jsonl(proc / "ckan_resources.jsonl", [res("kanagawa_pref", "u-k1", "r1"), res("kanagawa_pref", "u-k2", "r2"), res("sagamihara", "u-s1", "r3")])
+    m08.load(con, proc, root=proc)
+    base = m08.CKAN_INSTANCES["kanagawa_pref"][1]
+    assert q(con, "SELECT page_url, name FROM external_dataset WHERE dataset_key IN ('ckan_kanagawa_pref:u-k1','ckan_kanagawa_pref:u-k2') ORDER BY dataset_key") == [
+        (f"{base}/dataset/u-k1", None), (f"{base}/dataset/u-k2", None)]
+
+
+def test_estat_sheet_has_no_basis_without_indicators():
+    s = m08.estat_sheet([{"indicator_ja": None, "unit_ja": None}])
+    assert s["header"] is None and "header_basis" not in s
+
+
+def test_if_empty_mode(tmp_path, proc, capsys):
+    db = tmp_path / "r.sqlite"
+    c = sqlite3.connect(db)
+    c.execute("CREATE TABLE source_registry (source_id TEXT PRIMARY KEY, name TEXT, publisher TEXT, url TEXT, license TEXT, fetched_at TEXT)")
+    for sid, f in FETCHED.items():
+        c.execute("INSERT INTO source_registry VALUES (?,?,?,?,?,?)", (sid, f"名 {sid}", f"提供 {sid}", f"https://page/{sid}", "規約", f))
+    c.commit()
+    c.close()
+    assert not m08.catalog_populated(str(db))
+    # 入力が無い → 直し方を書いて止まる
+    with pytest.raises(SystemExit):
+        m08.main(["--db", str(db), "--processed", str(tmp_path / "none"), "--if-empty"])
+    assert "m08_external_catalog.py" in capsys.readouterr().err
+    # 入力がある → 作る。次は何もしない
+    m08.main(["--db", str(db), "--processed", str(proc), "--if-empty"])
+    assert m08.catalog_populated(str(db))
+    capsys.readouterr()
+    m08.main(["--db", str(db), "--processed", str(tmp_path / "none"), "--if-empty"])
+    assert "投入済み" in capsys.readouterr().out

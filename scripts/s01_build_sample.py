@@ -47,7 +47,7 @@ CLAUDE.md 「サンプル」設計の要件）。
   同じ検査は `reason: synthetic` / `not_in_d1`（原本に行があることを要求する理由）の出典にも「行が 1 つ以上」を
   求めるので、その出典にも、出典の列を持つ表（表名の昇順で最初のもの）から rowid 最小の 1 行を足す。
   `catalog`（外部ポータルの目録）を宣言した出典には、`external_dataset` が「出典の種類が宣言と一致」を要求するので、
-  資源の数が最も少ない（1 以上の）データセット 1 件と、その `external_resource` を足す（目録の閉包。孤児を作らない）。
+  資源の数が最も少ない（1 以上の）データセット 1 件と、その `external_resource`・`external_resource_format` を足す（目録の閉包。孤児を作らない）。
 - **文書単位**（`cells.sqlite` の `cells`）は `document_closure.doc_ids` で
   指定した `doc_id` の全セルを入れる。
 
@@ -485,7 +485,7 @@ def select_declared_source_rows(
       `taxon_assessment` など）ものは対象外。
     - `reason` が `ROW_REASONS`（synthetic・not_in_d1）の出典: 出典の列を持つどれかの表に行が 1 つ以上
       （表名の昇順で最初に原本に行がある表から 1 行）。
-    - `catalog` の出典: `external_dataset` に 1 行（資源数が最少で 1 以上のもの）と、その `external_resource` の全行。
+    - `catalog` の出典: `external_dataset` に 1 行（資源数が最少で 1 以上のもの）と、その `external_resource`・`external_resource_format` の全行。
     原本にも行が無ければ止まる（宣言が古い）。"""
     existing = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     record_sets = access_doc.get("record_sets") or {}
@@ -516,6 +516,8 @@ def select_declared_source_rows(
                 out.setdefault(table, set()).add(ds_rowid)
                 out.setdefault("external_resource", set()).update(
                     r[0] for r in conn.execute("SELECT rowid FROM external_resource WHERE dataset_key = ?", (ds_key,)))
+                out.setdefault("external_resource_format", set()).update(
+                    r[0] for r in conn.execute("SELECT rowid FROM external_resource_format WHERE dataset_key = ?", (ds_key,)))
         if entry.get("reason") in build_source_access.ROW_REASONS:
             per_table = {t: _source_rowids(conn, t, sid) for t in registry_common.source_id_tables(conn)}
             per_table = {t: r for t, r in per_table.items() if r}

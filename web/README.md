@@ -17,7 +17,7 @@ docker compose up          # リポジトリ直下で
 # → http://localhost:3000
 ```
 
-起動時に「集計 DB の生成 → 語彙レジストリの生成 → v2（キューブ）の生成 → D1 マイグレーション →
+起動時に「集計 DB の生成 → 外部ポータルの目録（`external_dataset`。無い・空のときだけ m08 で作る）→ 語彙レジストリの生成 → v2（キューブ）の生成 → D1 マイグレーション →
 シード投入」を、まだのものだけ実行します（語彙レジストリと v2 は「古ければ作り直す」判定。
 `scripts/ensure-registry.sh` / `scripts/ensure-v2.sh`）。
 初回は 3〜5 分。2 回目以降はローカル D1 が名前付きボリューム `d1-state` に残るので素通りします。
@@ -34,7 +34,9 @@ pnpm run db:setup        # 語彙レジストリ + v2（キューブ）+ D1 マ�
 pnpm run dev             # http://localhost:3000
 ```
 
-`db:setup` は `predb:setup` フックで、語彙レジストリ（`registry.sqlite`）と v2
+`db:setup` は `predb:setup` フックで、外部ポータルの目録（`ryuiki.sqlite` の `external_dataset` が無い・空なら
+`scripts/m08_external_catalog.py --if-empty` が `data/processed` の収穫物から作る。入力も無ければ直し方を書いて止まる。
+`scripts/ensure-registry.sh` の先頭）、語彙レジストリ（`registry.sqlite`）と v2
 （`v2.sqlite`。`observation_agg`/`occurrence_agg` のキューブ）を「古ければ作り直す」
 （`scripts/ensure-registry.sh` / `scripts/ensure-v2.sh`。初回はそれぞれ数十秒〜数分）。
 v2 だけを作り直したいときは `pnpm run build:v2`

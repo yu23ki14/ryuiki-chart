@@ -25,7 +25,7 @@ CREATE TABLE external_dataset (
   page_url TEXT NOT NULL,
   api_url TEXT,                          -- CKAN: package_show（UUID 指定）。e-Stat は NULL
   fetched_at TEXT NOT NULL               -- source_registry.fetched_at（出典単位の収穫日）
-);
+, n_with_header INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE external_resource (
   resource_key TEXT PRIMARY KEY,         -- '<source_id>:<resource_id>'
   dataset_key TEXT NOT NULL,
@@ -36,6 +36,12 @@ CREATE TABLE external_resource (
   direct_url TEXT,                       -- 直リンク（url が空の行は NULL）
   page_url TEXT,
   sheets_json TEXT                       -- NULL か [{sheet, n_rows, n_cols, header: [...] | null, header_basis?}]
+);
+CREATE TABLE external_resource_format (
+  dataset_key TEXT NOT NULL,
+  format_norm TEXT NOT NULL,
+  resource_key TEXT NOT NULL,
+  PRIMARY KEY (dataset_key, format_norm, resource_key)
 );
 CREATE TABLE mammal_mesh (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -36,6 +36,8 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 SCHEMA = ROOT / "scripts" / "schema_catalog.sql"
 PROC = ROOT / "data" / "processed"
 
+csv.field_size_limit(1 << 27)  # 変換 CSV の 1 行目に巨大セルがある（read_first_row）。1 回だけ設定する
+
 # --- CKAN（instance は c01/c86 の登録名。base は c86 の注記どおり BODIK は data.bodik.jp）---
 CKAN_INSTANCES = {
     "kanagawa_pref": ("ckan_kanagawa_pref", "https://catalog.opendata.pref.kanagawa.jp"),
@@ -91,6 +93,24 @@ def text(v):
     return s or None
 
 
+# 資源の format の表記揺れ（原文は external_resource.format に残し、照合は正規化した external_resource_format で行う）。
+# 別名は実データで確かめたものだけ（XLSK は URL がすべて .xlsx の誤記。JPG は JPEG の通称）。
+FORMAT_ALIASES = {"XLSK": "XLSX", "JPG": "JPEG"}
+FORMAT_UNSPECIFIED = "unspecified"  # format が空の資源（大文字の正規形と衝突しない小文字）
+
+
+def normalize_formats(raw) -> list[str]:
+    """`format`（'SHP,CSV' のようにカンマ区切りが混ざる）を、要素ごとに前後の空白と先頭の '.' を除き、
+    大文字にし、既知の別名を寄せた並び（重複なし・出現順）にする。空なら [FORMAT_UNSPECIFIED]。"""
+    out: list[str] = []
+    for part in (raw or "").split(","):
+        f = part.strip().lstrip(".").strip().upper()
+        f = FORMAT_ALIASES.get(f, f)
+        if f and f not in out:
+            out.append(f)
+    return out or [FORMAT_UNSPECIFIED]
+
+
 def to_int(v):
     s = text(v)
     if s is None:
@@ -118,7 +138,6 @@ def header_is_reliable(cells: list[str], needs_human: bool) -> bool:
 
 
 def read_first_row(path: pathlib.Path) -> list[str] | None:
-    csv.field_size_limit(1 << 27)
     with open(path, encoding="utf-8-sig", errors="replace", newline="") as f:
         row = next(csv.reader(f), None)
     if row is None:
@@ -184,12 +203,13 @@ def ckan_rows(processed: pathlib.Path, instances: tuple[str, ...], ds_file: str,
         if r.get("url") and not r["url"].startswith(base + "/dataset/"):
             raise M08Error(f"{key}: url {r['url']!r} が base {base} の規則から外れている")
         notes = r.get("notes") or ""
+        slug = text(r.get("name")) or did  # name が無い・空なら dataset_id（CKAN は UUID でも /dataset/<id> を開ける）
         datasets.append((
             key, sid, "ckan", did, text(r.get("name")), r.get("title") or "", text(notes),
             1 if len(notes) >= DESCRIPTION_CUT else 0,
             text(r.get("organization")), text(r.get("license")), text(r.get("license_url")),
             text(r.get("groups")), text(r.get("tags")), int(r.get("n_resources") or 0), text(r.get("metadata_modified")),
-            f"{base}/dataset/{r['name']}", f"{base}/api/3/action/package_show?id={did}", fetched[sid],
+            f"{base}/dataset/{slug}", f"{base}/api/3/action/package_show?id={did}", fetched[sid],
         ))
     seen_res: set[str] = set()
     for r in read_jsonl(processed / res_file):
@@ -226,66 +246,78 @@ def estat_sheet(rows: list[dict]) -> dict:
             inds[k] = text(r.get("unit_ja"))
     units = sorted({u for u in inds.values() if u})
     names = list(inds)
-    sheet: dict = {"sheet": None, "n_rows": None, "n_cols": None, "header": names[:ESTAT_INDICATOR_MAX] or None,
-                   "header_basis": HEADER_BASIS_ESTAT if names else None, "units": units}
-    if len(names) > ESTAT_INDICATOR_MAX:
-        sheet["header_truncated"] = True
-    if not names:
-        del sheet["header_basis"]
+    sheet: dict = {"sheet": None, "n_rows": None, "n_cols": None, "header": names[:ESTAT_INDICATOR_MAX] or None, "units": units}
+    if names:
+        sheet["header_basis"] = HEADER_BASIS_ESTAT
+        if len(names) > ESTAT_INDICATOR_MAX:
+            sheet["header_truncated"] = True
     return sheet
+
+
+def _stat_inf_id(r: dict) -> str:
+    m = re.search(r"statInfId=(\d+)", r["source_ref"])
+    if not m:
+        raise M08Error(f"source_ref に statInfId が無い: {r['source_ref']!r}")
+    return m.group(1)
+
+
+def _estat_agri(rows: list[dict], meta: dict) -> list[dict]:
+    """農林業センサス: statInfId ごとに 1 データセット（表題は statInfId 内で一意）。"""
+    by: dict[str, list[dict]] = {}
+    for r in rows:
+        by.setdefault(_stat_inf_id(r), []).append(r)
+    out = []
+    for did in sorted(by):
+        titles = {r["table_ja"] for r in by[did]}
+        if len(titles) != 1:
+            raise M08Error(f"statInfId={did} の表題が一意でない: {titles}")
+        title = titles.pop()
+        out.append({"did": did, "title": title, "desc": None, "page": ESTAT_PAGE.format(id=did),
+                    "file": ESTAT_FILE.format(id=did), "fmt": "XLS", "sheet": estat_sheet(by[did])})
+    return out
+
+
+def _estat_census(rows: list[dict], meta: dict) -> list[dict]:
+    """国勢調査（速報）: 1 データセット。表題は jsonl に無いので定数。"""
+    ids = {_stat_inf_id(r) for r in rows}
+    if ids != {CENSUS_POP_ID}:
+        raise M08Error(f"国勢調査の statInfId が想定（{CENSUS_POP_ID}）と違う: {ids}")
+    notes = {text(r.get("notes")) for r in rows} - {None}
+    return [{"did": CENSUS_POP_ID, "title": CENSUS_POP_TITLE, "desc": notes.pop() if len(notes) == 1 else None,
+             "page": ESTAT_PAGE.format(id=CENSUS_POP_ID), "file": ESTAT_FILE.format(id=CENSUS_POP_ID), "fmt": "XLS",
+             "sheet": estat_sheet(rows)}]
+
+
+def _estat_shozaiki(rows: list[dict], meta: dict) -> list[dict]:
+    """境界 GIS: 属性表を取り出していないので、列の定義は持たない（header: null）。"""
+    return [{"did": SHOZAIKI_DLSURVEY, "title": meta["name"], "desc": None, "page": meta["url"], "file": SHOZAIKI_DATA,
+             "fmt": "SHP", "sheet": {"sheet": None, "n_rows": None, "n_cols": None, "header": None}}]
+
+
+# 出典 → (入力ファイル, データセットの組み立て)。出典が増えたらここに 1 行足す。
+ESTAT_SPECS = {
+    "estat_agri_census_kanagawa": ("estat_agri_census_kanagawa.jsonl", _estat_agri),
+    "estat_census_population_kanagawa": ("estat_census_population_kanagawa.jsonl", _estat_census),
+    "estat_shozaiki_kanagawa": ("estat_shozaiki_kanagawa.jsonl", _estat_shozaiki),
+}
 
 
 def estat_rows(processed: pathlib.Path, src_meta: dict[str, dict], only: set[str]) -> tuple[list[tuple], list[tuple], list[str]]:
     datasets, resources, skipped = [], [], []
-
-    def add(sid, did, title, desc, page, file_url, fmt, rname, sheet):
+    for sid, (fname, build) in ESTAT_SPECS.items():
+        if sid not in only:
+            continue
+        p = processed / fname
+        if not p.exists():
+            skipped.append(sid)
+            continue
         m = src_meta[sid]
-        key = f"{sid}:{did}"
-        datasets.append((key, sid, "estat", did, None, title, desc, 0, text(m.get("publisher")), text(m.get("license")), None,
-                         None, None, 1, None, page, None, m["fetched_at"]))
-        resources.append((f"{sid}:{did}:file", key, rname, fmt, None, None, file_url, page, json.dumps([sheet], ensure_ascii=False)))
-
-    sid = "estat_agri_census_kanagawa"
-    p = processed / "estat_agri_census_kanagawa.jsonl"
-    if sid in only:
-        if not p.exists():
-            skipped.append(sid)
-        else:
-            by: dict[str, list[dict]] = {}
-            for r in read_jsonl(p):
-                m = re.search(r"statInfId=(\d+)", r["source_ref"])
-                if not m:
-                    raise M08Error(f"source_ref に statInfId が無い: {r['source_ref']!r}")
-                by.setdefault(m.group(1), []).append(r)
-            for did in sorted(by):
-                titles = {r["table_ja"] for r in by[did]}
-                if len(titles) != 1:
-                    raise M08Error(f"statInfId={did} の表題が一意でない: {titles}")
-                title = titles.pop()
-                add(sid, did, title, None, ESTAT_PAGE.format(id=did), ESTAT_FILE.format(id=did), "XLS", title, estat_sheet(by[did]))
-    sid = "estat_census_population_kanagawa"
-    p = processed / "estat_census_population_kanagawa.jsonl"
-    if sid in only:
-        if not p.exists():
-            skipped.append(sid)
-        else:
-            rows = read_jsonl(p)
-            ids = {m.group(1) for r in rows if (m := re.search(r"statInfId=(\d+)", r["source_ref"]))}
-            if ids != {CENSUS_POP_ID}:
-                raise M08Error(f"国勢調査の statInfId が想定（{CENSUS_POP_ID}）と違う: {ids}")
-            notes = {text(r.get("notes")) for r in rows} - {None}
-            add(sid, CENSUS_POP_ID, CENSUS_POP_TITLE, notes.pop() if len(notes) == 1 else None,
-                ESTAT_PAGE.format(id=CENSUS_POP_ID), ESTAT_FILE.format(id=CENSUS_POP_ID), "XLS", CENSUS_POP_TITLE,
-                estat_sheet(rows))
-    sid = "estat_shozaiki_kanagawa"
-    if sid in only:
-        if not (processed / "estat_shozaiki_kanagawa.jsonl").exists():
-            skipped.append(sid)
-        else:
-            m = src_meta[sid]
-            # 境界 GIS はファイルの属性表を取り出していないので、列の定義は持たない（header: null）
-            add(sid, SHOZAIKI_DLSURVEY, m["name"], None, m["url"], SHOZAIKI_DATA, "SHP", m["name"],
-                {"sheet": None, "n_rows": None, "n_cols": None, "header": None})
+        for e in build(read_jsonl(p), m):
+            key = f"{sid}:{e['did']}"
+            datasets.append((key, sid, "estat", e["did"], None, e["title"], e["desc"], 0, text(m.get("publisher")), text(m.get("license")),
+                             None, None, None, 1, None, e["page"], None, m["fetched_at"]))
+            resources.append((f"{key}:file", key, e["title"], e["fmt"], None, None, e["file"], e["page"],
+                              json.dumps([e["sheet"]], ensure_ascii=False)))
     return datasets, resources, skipped
 
 
@@ -309,8 +341,32 @@ def source_meta(con: sqlite3.Connection) -> dict[str, dict]:
     return meta
 
 
-def load(con: sqlite3.Connection, processed: pathlib.Path, root: pathlib.Path = ROOT) -> dict:
+def ensure_schema(con: sqlite3.Connection) -> None:
+    """DDL を流す。以前の版（n_with_header の無い external_dataset）で作った原本には列を足す。"""
     con.executescript(SCHEMA.read_text(encoding="utf-8"))
+    con.execute("DROP INDEX IF EXISTS ix_er_format")  # 生の format の索引は使わなくなった（external_resource_format に移した）
+    cols = {r[1] for r in con.execute("PRAGMA table_info(external_dataset)")}
+    if "n_with_header" not in cols:
+        con.execute("ALTER TABLE external_dataset ADD COLUMN n_with_header INTEGER NOT NULL DEFAULT 0")
+
+
+def rebuild_derived(con: sqlite3.Connection) -> dict:
+    """external_resource から派生する 2 つを、全行について作り直す（入力が無くて飛ばした出典の行も含めて整合させる）。
+    - external_resource_format: 正規化した format の索引用の表（format の照合は等号で引く）。
+    - external_dataset.n_with_header: 見出しを検出できた資源の数（find_datasets が sheets_json を展開しなくて済むように）。"""
+    con.execute("DELETE FROM external_resource_format")
+    fmt_rows = []
+    for rkey, dkey, fmt in con.execute("SELECT resource_key, dataset_key, format FROM external_resource ORDER BY resource_key").fetchall():
+        fmt_rows.extend((dkey, f, rkey) for f in normalize_formats(fmt))
+    con.executemany("INSERT INTO external_resource_format (dataset_key, format_norm, resource_key) VALUES (?, ?, ?)", fmt_rows)
+    con.execute(
+        "UPDATE external_dataset SET n_with_header = (SELECT count(*) FROM external_resource r WHERE r.dataset_key = external_dataset.dataset_key "
+        "AND r.sheets_json IS NOT NULL AND EXISTS (SELECT 1 FROM json_each(r.sheets_json) j WHERE json_type(j.value, '$.header') = 'array'))")
+    return {"format_rows": len(fmt_rows)}
+
+
+def load(con: sqlite3.Connection, processed: pathlib.Path, root: pathlib.Path = ROOT) -> dict:
+    ensure_schema(con)
     meta = source_meta(con)
     fetched = {s: m["fetched_at"] for s, m in meta.items()}
     env_path = processed / ENV_INDEX
@@ -339,6 +395,7 @@ def load(con: sqlite3.Connection, processed: pathlib.Path, root: pathlib.Path = 
         con.execute("DELETE FROM external_dataset WHERE source_id = ?", (sid,))
         con.executemany(f"INSERT INTO external_dataset ({','.join(DS_COLS)}) VALUES ({','.join('?' * len(DS_COLS))})", ds)
         con.executemany(f"INSERT INTO external_resource ({','.join(RES_COLS)}) VALUES ({','.join('?' * len(RES_COLS))})", res)
+    rebuild_derived(con)
     n_ds = con.execute("SELECT count(*) FROM external_dataset").fetchone()[0]
     n_res = con.execute("SELECT count(*) FROM external_resource").fetchone()[0]
     orphan = con.execute("SELECT count(*) FROM external_resource r WHERE NOT EXISTS "
@@ -350,6 +407,23 @@ def load(con: sqlite3.Connection, processed: pathlib.Path, root: pathlib.Path = 
         unmatched = sum(1 for (sid, rid) in sheets if f"{sid}:{rid}" not in have)
     return {"datasets": n_ds, "resources": n_res, "orphans": orphan, "by_source": by_source, "skipped": skipped,
             "sheet_stat": sheet_stat, "sheets_unmatched": unmatched}
+
+
+# --if-empty が「作れる」と見なす最小の入力（c01 の CKAN 目録。他の出典は無ければ load() が飛ばして列挙する）。
+REQUIRED_INPUTS = ("ckan_datasets.jsonl", "ckan_resources.jsonl")
+
+
+def catalog_populated(db_path: str) -> bool:
+    """原本に external_dataset があり 1 行以上ある（無い・空・原本が無いは False。読み取り専用で開く）。"""
+    if not pathlib.Path(db_path).exists():
+        return False
+    con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    try:
+        return con.execute("SELECT count(*) FROM external_dataset").fetchone()[0] > 0
+    except sqlite3.OperationalError:
+        return False
+    finally:
+        con.close()
 
 
 def stale_warnings(processed: pathlib.Path, now: float | None = None) -> list[str]:
@@ -369,9 +443,24 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--db", help="書き込み先の sqlite（既定: data/db/ryuiki.sqlite。確認は一時コピーで）")
     ap.add_argument("--processed", default=str(PROC))
+    ap.add_argument("--if-empty", action="store_true",
+                    help="external_dataset が無い・空のときだけ流す（ensure-registry.sh が db:setup / docker 起動で呼ぶ）。"
+                         "入力（ckan_datasets.jsonl 等）も無ければ、直し方を書いて止まる")
     args = ap.parse_args(argv)
     processed = pathlib.Path(args.processed)
-    con = sqlite3.connect(args.db or str(ROOT / "data" / "db" / "ryuiki.sqlite"), timeout=30)
+    db_path = args.db or str(ROOT / "data" / "db" / "ryuiki.sqlite")
+    if args.if_empty:
+        if catalog_populated(db_path):
+            print("✔ 外部ポータルの目録（external_dataset）は投入済み")
+            return
+        missing = [n for n in REQUIRED_INPUTS if not (processed / n).exists()]
+        if missing:
+            print(f"✗ 外部ポータルの目録（external_dataset）が無い・空で、作る入力も無い（{processed} に {', '.join(missing)} が無い）。\n"
+                  "  直し方: c01（神奈川県・相模原市）・c86（BODIK・横浜市）の収集物と estat_*.jsonl を data/processed に置いて "
+                  "`python3 scripts/m08_external_catalog.py` を流す（ryuiki.sqlite に external_dataset が入る）。", file=sys.stderr)
+            raise SystemExit(1)
+        print("▶ 外部ポータルの目録（external_dataset）が無い・空なので作る (m08)")
+    con = sqlite3.connect(db_path, timeout=30)
     con.execute("PRAGMA busy_timeout = 30000")
     try:
         res = load(con, processed)

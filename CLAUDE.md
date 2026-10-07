@@ -4,7 +4,8 @@
   `pnpm deploy` は pnpm 組み込みのコマンドで package.json の `deploy` は動かないので、必ず `pnpm run deploy`。
 - Web アプリは `web/`（Next.js 16 / App Router / TypeScript / Tailwind v4）。詳細は `web/README.md`。
 - デプロイ先は Cloudflare Workers（`@opennextjs/cloudflare`）。手順と未解決点は `DEPLOYMENT.md`。
-- 開発環境は `docker compose up`（リポジトリ直下）。起動時に「水源マップの GeoJSON 生成 → 語彙レジストリ生成 →
+- 開発環境は `docker compose up`（リポジトリ直下）。起動時に「水源マップの GeoJSON 生成 → 外部ポータルの目録
+  （`external_dataset` が無い・空のときだけ `scripts/m08_external_catalog.py --if-empty`。`ensure-registry.sh` の先頭）→ 語彙レジストリ生成 →
   v2（キューブ）生成 → D1 マイグレーション → シード」を、まだのものだけ実行する。ホストで直接動かすときは
   `cd web && pnpm run db:setup && pnpm run dev`
   （`db:setup` は `predb:setup` フックで語彙レジストリも v2 も「古ければ作り直す」。
@@ -19,8 +20,8 @@
   `check_v2_pipeline_fresh()`。手書きの mtime 走査は撤去した）。単体で作り直すだけなら
   `cd web && pnpm run build:v2`。
 - データの置き場所は **Cloudflare D1**（デプロイ先を Cloudflare 想定にしたため）。
-  49 テーブル（`web/drizzle/migrations/` 適用後の実測。うちシード管理用の内部表
-  `_seed_state` を除く48表が `web/scripts/seed-d1-local.mjs` のシード対象）を 1 つの D1 に
+  50 テーブル（`web/drizzle/migrations/` 適用後の実測。うちシード管理用の内部表
+  `_seed_state` を除く49表が `web/scripts/seed-d1-local.mjs` のシード対象）を 1 つの D1 に
   統合してある。D1 に `ATTACH` は無いので `d.` / `c.` の接頭辞は使わない。
   どの原本から来たテーブルかは `web/src/lib/table-meta.ts` の `TABLE_ORIGIN`。
 - D1 のスキーマは `web/src/db/schema.ts`（v1、既存表）・`web/src/db/schema-registry.ts`
@@ -69,7 +70,8 @@
   `wildlife_sightings` / `river_segments` を新設した（DDL は `scripts/schema_tier1.sql`）。
   API は `/api/geo/{protected-areas,vegetation,river-segments}`（`/api/nature` は Issue #61 で撤去）。
   `mammal_mesh` / `wildlife_sightings` は画面・API の読み手は無く、MCP / AI の `get_records`（`web/src/lib/records.ts`）が出典単位で読む（AI の run_sql / describe_schema の台帳表でもある）。
-- 外部ポータル（CKAN 4 インスタンス・e-Stat 7 件）の目録は `external_dataset` / `external_resource`
+- 外部ポータル（CKAN 4 インスタンス・e-Stat 7 件）の目録は `external_dataset` / `external_resource` /
+  `external_resource_format`（format を正規化した照合用。原文は `external_resource.format`）
   （`scripts/m08_external_catalog.py` が `data/processed` の収穫物から原本 `ryuiki.sqlite` に作る。DDL は
   `scripts/schema_catalog.sql`）。MCP / AI の `find_datasets`（`web/src/lib/catalog-search.ts`）が読む。値は持たず、
   定義と最新を取る URL（`api_url`＝CKAN の package_show）だけ。更新手順は `docs/PIPELINE.md`「外部ポータルの目録」。
