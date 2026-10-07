@@ -1,6 +1,6 @@
 # ADR-0016: 移行は4段階に分け、v1 の数値を再現できることを受け入れ基準にする
 
-- 状態: 承認済（一部未実装: Phase D は未着手） / 日付: 2026-09-06
+- 状態: 承認済（Phase C・D は Issue #39・#40 で実施済み。2026-10-08 確認。Phase C は本ファイルの実施記録、Phase D は `docs/plans/ISSUE40_PHASE_D.md` と、`check_source_add_boundary.py` を素のまま通したソース追加〔`kanagawa_kuma_sightings`・`kanagawa_edna`〕） / 日付: 2026-09-06
 - 関連: ADR-0004, 0006, 0008, 0009, 0010, 0011
 
 **2026-09-26 追記（Issue #48）**: Phase B の受け入れ基準（v1 の再現）を満たしたあと、
