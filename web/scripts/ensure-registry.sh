@@ -31,7 +31,7 @@ export RYUIKI_REGISTRY_DB="$REGISTRY_FILE"
 # 入力も無ければ、m08 が直し方を書いて失敗する（set -e でここで止まる）。原本が無い環境（CI）では何もしない。
 # 目録を作り直したときの鮮度は、下の --check-fresh が見る（指紋に出典別の件数が入っている）。
 if [ -f "$DB_DIR/ryuiki.sqlite" ]; then
-  scripts/run-python.sh scripts/m08_external_catalog.py --if-empty
+  scripts/run-python.sh scripts/m08_external_catalog.py --db "$DB_DIR/ryuiki.sqlite" --if-empty
 fi
 
 # --check-fresh の終了コードは3種類を区別する（r01_build_registry.py の
