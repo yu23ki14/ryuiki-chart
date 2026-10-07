@@ -97,6 +97,7 @@ export const SOURCE_META: readonly GeneratedSourceMeta[] = [
   { sourceId: "jma_monthly_kanagawa", nameJa: "気象庁 過去の気象データ 月別値（神奈川県 主要地点）", publisher: "気象庁", homepageUrl: "https://www.data.jma.go.jp/stats/etrn/index.php", supersededBy: null },
   { sourceId: "jma_stations_kanagawa", nameJa: "気象庁 神奈川県 観測地点一覧（アメダス+官署）", publisher: "気象庁", homepageUrl: "https://www.jma.go.jp/bosai/amedas/const/amedastable.json", supersededBy: null },
   { sourceId: "kanagawa_dam_mizugame", nameJa: "かながわの水がめ（相模川・酒匂川水系 降水量/貯水量/ダム諸量）", publisher: "神奈川県企業庁", homepageUrl: "https://kanagawa-dam.jp/", supersededBy: null },
+  { sourceId: "kanagawa_edna", nameJa: "神奈川県 環境DNA調査結果（県民協働・プロジェクト）", publisher: "神奈川県 環境農政局 環境部 水・大気環境課", homepageUrl: "https://www.pref.kanagawa.jp/docs/b4f/suigen/edna.html", supersededBy: null },
   { sourceId: "kanagawa_green_conservation", nameJa: "かながわのみどりの保全（指定状況PDF4種）", publisher: "神奈川県環境農政局", homepageUrl: "https://www.pref.kanagawa.jp/docs/t4i/cnt/f10578/index.html", supersededBy: null },
   { sourceId: "kanagawa_ikimono_chousa", nameJa: "かながわ生きもの調査 年度別結果", publisher: "神奈川県", homepageUrl: "https://www.pref.kanagawa.jp/docs/t4i/cnt/f12655/p1195000.html", supersededBy: null },
   { sourceId: "kanagawa_jiban_chinka", nameJa: "地盤沈下調査結果(令和4〜6年度、観測井戸・水準点)", publisher: "神奈川県 環境農政局 環境部環境課 水環境グループ", homepageUrl: "https://www.pref.kanagawa.jp/docs/pf7/cnt/f41044/p81475.html", supersededBy: null },
@@ -223,6 +224,7 @@ export const SOURCE_EDITIONS: readonly GeneratedSourceEdition[] = [
   { editionId: "common:edition:jma_monthly_kanagawa.20260829", sourceId: "jma_monthly_kanagawa", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:10:54", url: "https://www.data.jma.go.jp/stats/etrn/index.php", licenseId: "gov_standard_2_0", licenseClass: "open_terms", redistributable: true, updateMode: "append", supersededBy: null },
   { editionId: "common:edition:jma_stations_kanagawa.20260829", sourceId: "jma_stations_kanagawa", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:10:43", url: "https://www.jma.go.jp/bosai/amedas/const/amedastable.json", licenseId: "gov_standard_2_0", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:kanagawa_dam_mizugame.20260829", sourceId: "kanagawa_dam_mizugame", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:06:35", url: "https://kanagawa-dam.jp/", licenseId: "all_rights_reserved", licenseClass: "restricted", redistributable: false, updateMode: null, supersededBy: null },
+  { editionId: "common:edition:kanagawa_edna.20261007", sourceId: "kanagawa_edna", editionKey: "20261007", vintage: null, fetchedAt: "2026-10-07T13:28:13", url: "https://www.pref.kanagawa.jp/docs/b4f/suigen/edna.html", licenseId: "site_policy", licenseClass: "open_terms", redistributable: true, updateMode: "snapshot", supersededBy: null },
   { editionId: "common:edition:kanagawa_green_conservation.20260830", sourceId: "kanagawa_green_conservation", editionKey: "20260830", vintage: null, fetchedAt: "2026-08-30T16:15:00", url: "https://www.pref.kanagawa.jp/docs/t4i/cnt/f10578/index.html", licenseId: "terms_unconfirmed", licenseClass: "unconfirmed", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:kanagawa_ikimono_chousa.20260829", sourceId: "kanagawa_ikimono_chousa", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:04:57", url: "https://www.pref.kanagawa.jp/docs/t4i/cnt/f12655/p1195000.html", licenseId: "terms_unconfirmed", licenseClass: "unconfirmed", redistributable: false, updateMode: null, supersededBy: null },
   { editionId: "common:edition:kanagawa_jiban_chinka.20260830", sourceId: "kanagawa_jiban_chinka", editionKey: "20260830", vintage: null, fetchedAt: "2026-08-30T16:23:16", url: "https://www.pref.kanagawa.jp/docs/pf7/cnt/f41044/p81475.html", licenseId: "terms_unconfirmed", licenseClass: "unconfirmed", redistributable: true, updateMode: "revision", supersededBy: null },
@@ -295,7 +297,7 @@ export const SOURCE_EDITIONS: readonly GeneratedSourceEdition[] = [
 ];
 
 /** 出現データ（occurrence_agg）の出典。マニフェスト（target=occurrence）由来。画面用 API・MCP の provenance/freshness が使う。 */
-export const OCCURRENCE_SOURCE_IDS: readonly string[] = ["gbif_kanagawa_occurrences","inaturalist_kanagawa","kanagawa_kuma_sightings"];
+export const OCCURRENCE_SOURCE_IDS: readonly string[] = ["gbif_kanagawa_occurrences","inaturalist_kanagawa","kanagawa_edna","kanagawa_kuma_sightings"];
 
 export const LICENSES: readonly GeneratedLicense[] = [
   { licenseId: "all_rights_reserved", nameJa: "無断複製・転用不可", spdxOrUrl: null, licenseClass: "restricted", attributionText: null },
