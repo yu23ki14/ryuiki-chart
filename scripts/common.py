@@ -1,6 +1,5 @@
 """共通: レート制限付き取得 / source_registry 登録 / 正規化ヘルパ"""
 import hashlib, json, os, re, sqlite3, time, datetime, pathlib, urllib.parse
-import requests
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 RAW, PROC, DB, LOGS = ROOT/"data/raw", ROOT/"data/processed", ROOT/"data/db", ROOT/"data/logs"
@@ -29,6 +28,7 @@ def _throttle(url):
     _last[host] = time.time()
 
 def get(url, *, params=None, timeout=60, retries=3, headers=None, stream=False):
+    import requests  # 遅延 import: CI のテスト環境は requests なしでも common を import できる必要がある（収集スクリプトだけが使う）
     h = {"User-Agent": UA, "Accept-Language": "ja,en;q=0.8"}
     if headers: h.update(headers)
     last = None
