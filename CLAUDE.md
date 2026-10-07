@@ -44,7 +44,7 @@
   実体が壊れたときバイト列を変えられる逃げ道が要る。経緯は `DEPLOYMENT.md`）。
 - D1 はバインドパラメータが 1 クエリ 100 個まで。`IN (...)` を書くときは
   `web/src/lib/db.ts` の `queryChunked` を使う。生の `query()` は 100 個で例外を投げる。
-- 語彙（指標・単位・注記・和名・zone）の正は `registry/` 配下のファイルで、web からは
+- 語彙（指標・単位・注記・和名・zone・地図指標〔`registry/map_metric.yaml`〕）の正は `registry/` 配下のファイルで、web からは
   `web/src/lib/registry/`（`generated.ts`/`generated-client.ts` が再生成物、`lookup.ts`/
   `lookup-client.ts` が読み出し層。画面は `lookup-client.ts` の `caveatBody`/`shortVariable`/
   `speciesLabel` や `generated-client.ts` の `VARIABLE_NOTE` 等を直接 import する）経由で読む。

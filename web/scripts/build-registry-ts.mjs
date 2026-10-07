@@ -76,6 +76,7 @@ const REGISTRY_DB = process.env.RYUIKI_REGISTRY_DB ?? path.join(REPO, "data", "d
 const VERNACULAR_CSV =
   process.env.RYUIKI_VERNACULAR_CSV ?? path.join(REPO, "registry", "taxon", "vernacular_ja.csv");
 const ZONE_YAML = process.env.RYUIKI_ZONE_YAML ?? path.join(REPO, "registry", "place", "zone.yaml");
+const UNIT_YAML = process.env.RYUIKI_UNIT_YAML ?? path.join(REPO, "registry", "unit.yaml");
 const MAP_METRIC_YAML = process.env.RYUIKI_MAP_METRIC_YAML ?? path.join(REPO, "registry", "map_metric.yaml");
 const REDLIST_CATEGORY_YAML =
   process.env.RYUIKI_REDLIST_CATEGORY_YAML ?? path.join(REPO, "registry", "taxon", "redlist_category.yaml");
@@ -107,6 +108,7 @@ requireFile(
 requireFile(VERNACULAR_CSV, "和名台帳");
 requireFile(ZONE_YAML, "zone.yaml");
 requireFile(MAP_METRIC_YAML, "map_metric.yaml");
+requireFile(UNIT_YAML, "unit.yaml");
 requireFile(REDLIST_CATEGORY_YAML, "redlist_category.yaml");
 requireFile(ASSESSMENT_LIST_YAML, "assessment_list.yaml");
 
@@ -244,14 +246,22 @@ const zoneRows = loadYaml(fs.readFileSync(ZONE_YAML, "utf-8"));
   }
 }
 // 地図ページの指標語彙（registry/map_metric.yaml、zone.yaml と同じ直読み）。
+const unitSymbolById = new Map(
+  loadYaml(fs.readFileSync(UNIT_YAML, "utf-8")).units.map((u) => [u.unit_id, u.symbol]),
+);
+const MAP_METRIC_KINDS = new Set(["count", "landuse_delta"]);
 const mapMetrics = loadYaml(fs.readFileSync(MAP_METRIC_YAML, "utf-8")).map((r) => {
-  if (r.scope !== "watershed" && r.scope !== "mesh") {
-    throw new Error(`registry/map_metric.yaml の scope が不正: ${r.scope}（${r.id}）`);
+  const where = `registry/map_metric.yaml の ${r.scope}/${r.id}`;
+  if (r.scope !== "watershed" && r.scope !== "mesh") throw new Error(`${where}: scope が不正`);
+  if (!MAP_METRIC_KINDS.has(r.kind)) throw new Error(`${where}: kind が不正（${r.kind}）`);
+  if (!r.label_ja || !r.note_ja) throw new Error(`${where} に label_ja / note_ja が無い`);
+  if (r.unit_id && r.unit_ja) throw new Error(`${where}: unit_id と unit_ja は同時に書けない`);
+  let unit = r.unit_ja ?? null;
+  if (r.unit_id) {
+    if (!unitSymbolById.has(r.unit_id)) throw new Error(`${where}: unit_id が unit.yaml に無い（${r.unit_id}）`);
+    unit = unitSymbolById.get(r.unit_id);
   }
-  if (!r.label_ja || !r.note_ja) {
-    throw new Error(`registry/map_metric.yaml の ${r.scope}/${r.id} に label_ja / note_ja が無い`);
-  }
-  return { scope: r.scope, id: String(r.id), label: r.label_ja, note: r.note_ja, unit: r.unit_ja ?? null };
+  return { scope: r.scope, id: String(r.id), kind: r.kind, label: r.label_ja, note: r.note_ja, unit };
 });
 {
   const seen = new Set();
@@ -670,15 +680,6 @@ export interface GeneratedZone {
   cond: string;
 }
 
-/** 地図ページの指標（registry/map_metric.yaml）。unit は件数系の表示単位で、無ければ null。 */
-export interface GeneratedMapMetric {
-  scope: "watershed" | "mesh";
-  id: string;
-  label: string;
-  note: string;
-  unit: string | null;
-}
-
 /** region（\`jp-14\` 等）の時刻帯（registry/region.yaml。Issue #32-3、ADR-0024）。 */
 export interface GeneratedRegionTime {
   regionId: string;
@@ -794,8 +795,13 @@ export const ASSESSMENT_LIST: Readonly<Record<string, GeneratedAssessmentList>> 
 /** Ridge to Reef ゾーン(1-5)の定義（registry/place/zone.yaml、旧 domain.ts の ZONE_INFO）。 */
 export const ZONE_INFO: readonly GeneratedZone[] = ${emitObjectArray(zoneInfo, ["zone", "label", "cond"])};
 
-/** 地図ページの指標の語彙（registry/map_metric.yaml）。表示順はファイルの順。 */
-export const MAP_METRICS: readonly GeneratedMapMetric[] = ${emitObjectArray(mapMetrics, ["scope", "id", "label", "note", "unit"])};
+/** 地図ページの指標の語彙（registry/map_metric.yaml）。表示順はファイルの順。unit は表示用の文字列（unit_id を引いたもの）で、無ければ null。 */
+export const MAP_METRICS = ${emitObjectArray(mapMetrics, ["scope", "id", "kind", "label", "note", "unit"])} as const;
+
+/** 流域の塗り分け指標の id（/api/geo/watersheds の properties のキー）。 */
+export type WatershedMetricId = Extract<(typeof MAP_METRICS)[number], { scope: "watershed" }>["id"];
+/** 生物メッシュの指標の id（/api/geo/mesh の properties のキー）。 */
+export type MeshMetricId = Extract<(typeof MAP_METRICS)[number], { scope: "mesh" }>["id"];
 
 /** region の時刻帯（registry/region.yaml の語彙。\`lookup-client.ts\` の \`regionTimeZone()\` が引く）。 */
 export const REGION_TIME: readonly GeneratedRegionTime[] = ${emitObjectArray(regionTime, ["regionId", "tzName", "utcOffset"])};

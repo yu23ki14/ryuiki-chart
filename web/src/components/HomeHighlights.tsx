@@ -8,6 +8,7 @@ import { ChartFrame, MiniTable } from "@/components/viz/ChartFrame";
 import { SERIES, ZONE_COLORS, DIVERGING, STATUS, INK } from "@/components/viz/palette";
 import { fmt } from "@/components/viz/scales";
 import { nf } from "@/components/ui";
+import { MAP_METRICS } from "@/lib/registry/generated-client";
 import { caveatBody } from "@/lib/registry/lookup-client";
 
 export function HomeHighlights({
@@ -21,6 +22,8 @@ export function HomeHighlights({
   redlist: { list_year: number; list_name: string; taxon_group_ja: string; direction: string; n: number }[];
   effort: { year: number; n: number; species_n: number; mesh_n: number; n_inat: number; n_gbif: number }[];
 }) {
+  // 土地利用の面積差の単位は地図指標と同じ registry の語彙（unit.yaml の km2）から引く
+  const landuseUnit = MAP_METRICS.find((m) => m.id === "built_delta")?.unit ?? undefined;
   const unit = longitudinal[0]?.unit ?? null;
 
   const rlByYear = React.useMemo(() => {
@@ -183,9 +186,9 @@ export function HomeHighlights({
             value: r.delta,
           }))}
           color={DIVERGING.pos[2]}
-          unit="km²"
+          unit={landuseUnit}
           maxLabelWidth={130}
-          valueFormat={(v) => `+${fmt(v)} km²`}
+          valueFormat={(v) => `+${fmt(v)} ${landuseUnit}`}
         />
       </ChartFrame>
 

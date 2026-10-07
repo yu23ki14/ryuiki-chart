@@ -6,11 +6,11 @@ import { LineChart, type LineSeries } from "@/components/viz/LineChart";
 import { Heatmap } from "@/components/viz/Heatmap";
 import { ChartFrame, MiniTable } from "@/components/viz/ChartFrame";
 import { MapCanvas } from "@/components/map/MapCanvas";
-import { SERIES, ZONE_COLORS, ZONE_LABELS, INK } from "@/components/viz/palette";
+import { SERIES, ZONE_COLORS, ZONE_LABELS, ZONE_COND, INK } from "@/components/viz/palette";
 import { Btn, Stat, nf, Provenance, Spinner } from "@/components/ui";
 import { caveatBody } from "@/lib/registry/lookup-client";
 import { variableCaveats } from "@/lib/cube/caveats";
-import { VARIABLE_LABEL, ZONE_INFO } from "@/lib/registry/generated-client";
+import { VARIABLE_LABEL } from "@/lib/registry/generated-client";
 import { basisOfCell, type Basis } from "@/lib/cube/cell-basis";
 import { MUNICIPALITY_LABEL } from "@/lib/municipality";
 import { useJson } from "@/components/useJson";
@@ -240,7 +240,7 @@ export function SiteDetail({ site, variables }: { site: Site; variables: Variabl
                 <span
                   className="text-[10.5px] px-1.5 py-0.5 rounded text-white"
                   style={{ background: ZONE_COLORS[site.zone] }}
-                  title={ZONE_INFO.find((i) => i.zone === site.zone)?.cond}
+                  title={ZONE_COND[site.zone]}
                 >
                   ゾーン {site.zone}. {ZONE_LABELS[site.zone]}
                 </span>

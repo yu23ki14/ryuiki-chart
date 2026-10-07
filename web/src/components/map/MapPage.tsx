@@ -3,23 +3,20 @@
 import * as React from "react";
 import type { SourceSpecification } from "maplibre-gl";
 import { MapCanvas, type MapLayerSpec } from "./MapCanvas";
-import { SEQ, SEQ2, DIVERGING, ZONE_COLORS, ZONE_LABELS, INK, SERIES } from "@/components/viz/palette";
+import { SEQ, SEQ2, DIVERGING, ZONE_COLORS, ZONE_LABELS, ZONE_COND, INK, SERIES } from "@/components/viz/palette";
 import { Btn, nf, Spinner } from "@/components/ui";
 import { useJson } from "@/components/useJson";
 import { caveatBody } from "@/lib/registry/lookup-client";
-import { MAP_METRICS, ZONE_INFO, type GeneratedMapMetric } from "@/lib/registry/generated-client";
+import { MAP_METRICS, type WatershedMetricId, type MeshMetricId } from "@/lib/registry/generated-client";
 import { MUNICIPALITY_LABEL } from "@/lib/municipality";
 import { fmt } from "@/components/viz/scales";
 import Link from "next/link";
 
-type WsMetric = "org_density" | "site_n" | "org_redlist_n" | "built_delta" | "forest_delta" | "paddy_delta";
-type MeshMetric = "n" | "species_n" | "rl_n";
+type WsMetric = WatershedMetricId;
+type MeshMetric = MeshMetricId;
 
-const WS_METRICS = MAP_METRICS.filter((m) => m.scope === "watershed") as (GeneratedMapMetric & { id: WsMetric })[];
-const MESH_METRICS = MAP_METRICS.filter((m) => m.scope === "mesh") as (GeneratedMapMetric & { id: MeshMetric })[];
-
-// 描画の振る舞い（語彙ではないのでコード側）。土地利用の増減は 0 に意味があるので発散配色にし、年を注記に付ける。
-const LANDUSE_METRICS: ReadonlySet<WsMetric> = new Set(["built_delta", "forest_delta", "paddy_delta"]);
+const WS_METRICS = MAP_METRICS.filter((m) => m.scope === "watershed");
+const MESH_METRICS = MAP_METRICS.filter((m) => m.scope === "mesh");
 
 export function MapPage() {
   const [showWatersheds, setShowWatersheds] = React.useState(true);
@@ -29,6 +26,9 @@ export function MapPage() {
 
   const [wsMetric, setWsMetric] = React.useState<WsMetric>("org_density");
   const [meshMetric, setMeshMetric] = React.useState<MeshMetric>("species_n");
+  const wsMeta = WS_METRICS.find((m) => m.id === wsMetric)!;
+  // 土地利用の増減は 0 に意味があるので発散配色にし、比較年と定義変更の注記を付ける
+  const isLanduse = wsMeta.kind === "landuse_delta";
   const [meshYear, setMeshYear] = React.useState<number | null>(null);
   const [sel, setSel] = React.useState<Record<string, unknown> | null>(null);
   const [selKind, setSelKind] = React.useState<"watershed" | "site" | "mesh" | null>(null);
@@ -44,9 +44,9 @@ export function MapPage() {
   const wsScale = React.useMemo(() => {
     if (!ws.data) return { breaks: [] as number[], min: 0, max: 0 };
     const vals = ws.data.features.map((f) => Number(f.properties?.[wsMetric])).filter((v) => Number.isFinite(v));
-    const diverging = LANDUSE_METRICS.has(wsMetric);
+    const diverging = isLanduse;
     return { breaks: quantileBreaks(vals, 8, diverging), min: Math.min(...vals), max: Math.max(...vals) };
-  }, [ws.data, wsMetric]);
+  }, [ws.data, wsMetric, isLanduse]);
   const wsBreaks = wsScale.breaks;
 
   const meshScale = React.useMemo(() => {
@@ -71,7 +71,7 @@ export function MapPage() {
   const layers: MapLayerSpec[] = React.useMemo(() => {
     const out: MapLayerSpec[] = [];
     if (showWatersheds && ws.data) {
-      const diverging = LANDUSE_METRICS.has(wsMetric);
+      const diverging = isLanduse;
       out.push({
         id: "ry-ws-fill",
         source: "ry-ws",
@@ -134,9 +134,7 @@ export function MapPage() {
       });
     }
     return out;
-  }, [showWatersheds, showSites, showMesh, showRivers, ws.data, sites.data, mesh.data, rivers.data, wsMetric, meshMetric, wsBreaks, meshBreaks]);
-
-  const wsMeta = WS_METRICS.find((m) => m.id === wsMetric)!;
+  }, [showWatersheds, showSites, showMesh, showRivers, ws.data, sites.data, mesh.data, rivers.data, wsMetric, meshMetric, wsBreaks, meshBreaks, isLanduse]);
 
   return (
     <div className="flex-1 flex min-h-0">
@@ -156,14 +154,14 @@ export function MapPage() {
             <div className="absolute bottom-6 left-2 z-10 card px-2.5 py-2 shadow-sm max-w-[220px] max-h-[calc(100%-4rem)] overflow-y-auto thin-scroll no-print">
               {showWatersheds && (
                 <div className="mb-2">
-                  <div className="text-[10.5px] font-semibold mb-1">{wsMeta.label}{LANDUSE_METRICS.has(wsMetric) && luYears}</div>
+                  <div className="text-[10.5px] font-semibold mb-1">{wsMeta.label}{isLanduse && luYears}</div>
                   <Ramp
                     min={wsScale.min}
                     max={wsScale.max}
-                    diverging={LANDUSE_METRICS.has(wsMetric)}
+                    diverging={isLanduse}
                     unit={wsMeta.unit ?? undefined}
                   />
-                  {LANDUSE_METRICS.has(wsMetric) && (
+                  {isLanduse && (
                     <p className="text-[10px] text-muted mt-1 leading-snug">{caveatBody("landuseDefinitionChange")}</p>
                   )}
                 </div>
@@ -226,7 +224,7 @@ export function MapPage() {
                   />
                   <span className="text-[11.5px] leading-tight">
                     {m.label}
-                    {LANDUSE_METRICS.has(m.id) && luYears}
+                    {m.kind === "landuse_delta" && luYears}
                     <span className="block text-[10px] text-muted">{m.note}</span>
                   </span>
                 </label>
@@ -401,7 +399,7 @@ function SiteCard({ p }: { p: Record<string, unknown> }) {
           <span className="text-[11px]">
             ゾーン {z}. {ZONE_LABELS[z]}
           </span>
-          <span className="text-[10px] text-muted">{ZONE_INFO.find((i) => i.zone === z)?.cond}</span>
+          <span className="text-[10px] text-muted">{ZONE_COND[z]}</span>
         </div>
       )}
       <Row k="標高" v={p.elevation_m != null ? `${fmt(Number(p.elevation_m))} m` : "–"} />

@@ -38,6 +38,9 @@ export const ZONE_COLORS: Record<number, string> = {
  */
 export const ZONE_LABELS: Record<number, string> = Object.fromEntries(ZONE_INFO.map((z) => [z.zone, z.label]));
 
+/** zone番号 -> 標高・海岸距離の条件（`ZONE_INFO[].cond`、registry/place/zone.yaml が正）。 */
+export const ZONE_COND: Record<number, string> = Object.fromEntries(ZONE_INFO.map((z) => [z.zone, z.cond]));
+
 export const SEQ = [
   "#ffe3d8",
   "#f9ccbc",

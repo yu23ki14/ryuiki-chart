@@ -59,7 +59,7 @@ interface ZoneFC extends GeoJSON.FeatureCollection {
   notes?: Record<string, string>;
 }
 
-const UNASSIGNED = INK.axis;
+const UNASSIGNED = INK.grid;
 
 /**
  * 水源 → 地図の色。**実体に固定で割り当てる**（palette.ts の決まり: 系列は実体に固定、
