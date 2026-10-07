@@ -392,7 +392,7 @@ def test_build_declaration_counts_wires_new_occurrence_cube_keys(tmp_path):
 # adapter 出典（マニフェストの非 builtin）の入力はマニフェストから導いてサンプルに入れる（Issue #40）
 # ---------------------------------------------------------------------------
 
-def _adapter_manifest(tmp_path, monkeypatch, *, table="wildlife_sightings", file=None, n=400):
+def _adapter_manifest(tmp_path, monkeypatch, *, table="wildlife_sightings", file=None, n=400, extra_keys=None):
     import ingest.manifest as manifest_lib
     from .manifest_fixtures import write_manifest
 
@@ -408,7 +408,7 @@ def _adapter_manifest(tmp_path, monkeypatch, *, table="wildlife_sightings", file
     d = tmp_path / ("m_file" if file else "m")
     write_manifest(
         d, "src_a", target="occurrence", adapter="src_a", expected_row_count=n,
-        input={"file": file} if file else {"table": table}, extra={"expected": expected},
+        input={"file": file} if file else {"table": table}, extra={"expected": expected, **(extra_keys or {})},
     )
     return d
 
@@ -422,8 +422,36 @@ def test_adapter_input_table_is_included_whole_without_touching_coverage_yaml(tm
     assert set(chosen) == {"wildlife_sightings"} and len(chosen["wildlife_sightings"]) == 400
 
 
-def test_adapter_input_limit_covers_kanagawa_edna():
-    assert s01.ADAPTER_INPUT_WHOLESALE_MAX_ROWS >= 13263   # edna_detections
+def _sub(base, name):
+    d = base / name
+    d.mkdir()
+    return d
+
+
+def test_manifest_sample_input_max_rows_overrides_the_limit_for_that_source_only(tmp_path, monkeypatch):
+    import ingest.manifest as manifest_lib
+    big = s01.ADAPTER_INPUT_WHOLESALE_MAX_ROWS + 10
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE wildlife_sightings (id INTEGER)")
+    conn.executemany("INSERT INTO wildlife_sightings VALUES (?)", [(i,) for i in range(big)])
+    # キーが無ければ既定の上限で止まる
+    m = _adapter_manifest(tmp_path, monkeypatch)
+    with pytest.raises(SystemExit, match="sample_input_max_rows"):
+        s01.select_adapter_input_tables(conn, s01.adapter_inputs(m), selected={})
+    # この出典だけ上限を上げれば全件入る。値はマニフェストから読む
+    m2 = _adapter_manifest(_sub(tmp_path, "x"), monkeypatch, extra_keys={"sample_input_max_rows": big})
+    mans = s01.adapter_inputs(m2)
+    assert mans["src_a"].sample_input_max_rows == big
+    assert len(s01.select_adapter_input_tables(conn, mans, selected={})["wildlife_sightings"]) == big
+    # 上限より 1 行でも多ければ止まる
+    m3 = _adapter_manifest(_sub(tmp_path, "y"), monkeypatch, extra_keys={"sample_input_max_rows": big - 1})
+    with pytest.raises(SystemExit, match="上限"):
+        s01.select_adapter_input_tables(conn, s01.adapter_inputs(m3), selected={})
+    # 正の整数以外は構造検証で止まる
+    for bad in (0, -5, "100", True):
+        m4 = _adapter_manifest(_sub(tmp_path, f"z{bad}"), monkeypatch, extra_keys={"sample_input_max_rows": bad})
+        with pytest.raises(Exception, match="sample_input_max_rows"):
+            manifest_lib.load_manifests(m4)
 
 
 def test_adapter_input_table_over_limit_or_already_narrowed_stops(tmp_path, monkeypatch):

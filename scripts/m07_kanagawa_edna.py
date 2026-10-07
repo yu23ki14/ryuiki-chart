@@ -19,7 +19,7 @@
 import sys, csv, json, sqlite3, argparse, pathlib
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
-from c89_kanagawa_edna import LAYOUTS
+from c89c_edna_taxon_map import clean_core, has_cf, is_ambiguous, read_csv_rows, text  # noqa: E402  判定・読み出しは c89c と共有
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SOURCE_ID = "kanagawa_edna"
@@ -29,27 +29,12 @@ DEFAULT_READS = ROOT / "data" / "processed" / "kanagawa_edna_reads.csv"
 DEFAULT_COORDS = ROOT / "data" / "edna" / "kanagawa_edna_site_coords.csv"
 DEFAULT_NAME_MAP = ROOT / "registry" / "taxon" / "kanagawa_edna_name_map.csv"
 
-# 収録基準が他と違うファイル（r7_kenmin は「98.5%以上の一致のみ」）。c89 のレイアウト宣言が正
-DATASET_FILTERS = {f: l.dataset_filter for f, l in LAYOUTS.items() if l.dataset_filter}
-
 COORD_SOURCES = ("map_image", "estimated_from_name", "none")
 SPECIES_RANKS = ("species", "subspecies", "variety", "form")
 
 
 class M07Error(RuntimeError):
     pass
-
-
-def read_csv(path):
-    with open(path, encoding="utf-8", newline="") as f:
-        return list(csv.DictReader(f))
-
-
-def text(v):
-    if v is None:
-        return None
-    s = str(v).strip()
-    return s or None
 
 
 def num(v):
@@ -73,7 +58,12 @@ def build_coord_index(sites, coords):
     if only_sites or only_ledger:
         raise M07Error(f"台帳と c89 の地点集合が一致しない（台帳に無い {len(only_sites)} 件 {only_sites[:5]} / "
                        f"c89 に無い {len(only_ledger)} 件 {only_ledger[:5]}）")
+    site_by = {s["site_key"]: s for s in sites}
     for k, c in by_key.items():
+        for col in ("water_system_ja", "tributary_ja", "municipality_ja"):
+            if text(c.get(col)) != text(site_by[k].get(col)):
+                raise M07Error(f"台帳 {k}: {col} が c89 の地点と違う（台帳 {c.get(col)!r} / c89 {site_by[k].get(col)!r}）。"
+                               "c89 を作り直したら c89b を再実行して台帳を更新すること")
         src = text(c.get("coord_source"))
         if src not in COORD_SOURCES:
             raise M07Error(f"台帳 {k}: coord_source が不正 ({src!r})")
@@ -98,12 +88,25 @@ def build_name_index(name_map):
     return idx
 
 
+def rank_reduced(nm):
+    """属止まり・併記で上位に寄せた（解決先が種より上、または tier T5）。"""
+    rank = (text(nm.get("rank")) or "").lower()
+    return bool(rank and rank not in SPECIES_RANKS) or text(nm.get("tier")) == "T5"
+
+
+def vernacular_for(read, nm):
+    """occurrence の vernacular_name。name_map に和名があればそれ。無ければ、種のままの行に限りシートの採用名
+    （日本語のもの。括弧書きは除く）。上位 taxon に寄せた行には付けない（種名を上位 taxon の名前にしない）。"""
+    v = text(nm.get("vernacular_name_ja"))
+    if v or rank_reduced(nm):
+        return v
+    core = clean_core(read.get("name_adopted") or "")[0]
+    return core if core and not core.isascii() else None
+
+
 def build_attributes(site, read, nm, coord):
     """設計 §3.3 の attributes。dataset_filter は r7_kenmin だけ。"""
-    note = text(read.get("name_note")) or ""
     adopted = text(read.get("name_adopted")) or ""
-    sci = text(read.get("name_sci_raw")) or ""
-    rank = (text(nm.get("rank")) or "").lower()
     attrs = {
         "dataset_file": site["dataset_file"], "program": site["program"], "assay": site["assay"],
         "fiscal_year": int(site["fiscal_year"]), "site_key": site["site_key"],
@@ -115,19 +118,17 @@ def build_attributes(site, read, nm, coord):
         "pident_qcov": num(read.get("pident_qcov")),
         "name_adopted": text(read.get("name_adopted")),
         "name_note": text(read.get("name_note")),
-        "cf": "cf." in (note + adopted + sci).lower(),
-        # 属止まり・併記で上位に寄せた（解決先が種より上、または tier T5）
-        "rank_reduced": bool(rank and rank not in SPECIES_RANKS) or text(nm.get("tier")) == "T5",
-        "name_ambiguous": "/" in adopted,
+        "cf": any(has_cf(read.get(k) or "") for k in ("name_note", "name_adopted", "name_sci_raw")),
+        "rank_reduced": rank_reduced(nm),
+        "name_ambiguous": is_ambiguous(adopted),
         "coord_source": text(coord.get("coord_source")),
         "coord_method": text(coord.get("coord_method")),
         "alien_raw": text(read.get("alien_raw")),
         "national_rl_raw": text(read.get("national_rl_raw")),
         "pref_rl_raw": text(read.get("pref_rl_raw")),
     }
-    flt = DATASET_FILTERS.get(site["dataset_file"])
-    if flt:
-        attrs["dataset_filter"] = flt
+    if text(read.get("dataset_filter")):
+        attrs["dataset_filter"] = read["dataset_filter"]     # r7_kenmin の「98.5%以上の一致のみ」
     return json.dumps(attrs, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
@@ -182,7 +183,7 @@ def load(con, sites, reads, coords, name_map):
             s, c = site_by[r["site_key"]], coord_by[r["site_key"]]
             det_rows.append((
                 r["read_id"], nm["taxon_id"].strip(), text(nm.get("scientific_name")),
-                text(nm.get("vernacular_name_ja")), text(nm.get("rank")),
+                vernacular_for(r, nm), text(nm.get("rank")),
                 text(r.get("national_rl_raw")) or text(r.get("pref_rl_raw")),
                 text(s.get("collected_on")), num(c.get("lat")), num(c.get("lon")),
                 num(c.get("coordinate_uncertainty_m")), build_attributes(s, r, nm, c)))
@@ -225,8 +226,8 @@ def main(argv=None):
     con.execute("PRAGMA busy_timeout = 30000")
     con.execute("PRAGMA foreign_keys = ON")
     try:
-        res = load(con, read_csv(args.sites), read_csv(args.reads), read_csv(args.coords),
-                   read_csv(args.name_map))
+        res = load(con, read_csv_rows(args.sites), read_csv_rows(args.reads), read_csv_rows(args.coords),
+                   read_csv_rows(args.name_map))
         con.commit()
     except Exception:
         con.rollback()

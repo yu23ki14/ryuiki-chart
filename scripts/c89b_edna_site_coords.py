@@ -29,9 +29,11 @@
 reviewed=1 の行（人が図を見て読み取った map_image 等）は再実行で上書きしない。
 決定的（同じ入力で同じ出力）。
 """
-import sys, csv, json, math, re, sqlite3, argparse, pathlib, collections, unicodedata, os
+import sys, json, math, re, sqlite3, argparse, pathlib, collections, unicodedata, os
 
 import shapely
+sys.path.insert(0, str(pathlib.Path(__file__).parent))
+from c89c_edna_taxon_map import read_csv_rows, write_csv  # noqa: E402  CSV の読み出しは共有
 from shapely.geometry import shape, Point, LineString, MultiLineString
 from shapely.ops import transform, nearest_points
 from shapely import STRtree
@@ -55,6 +57,7 @@ RIVER_POSITION_ERROR_M = 300    # 河川線の位置誤差（精度に足す）
 MIN_UNCERTAINTY_M = 500
 MUNI_BUFFER_M = 100             # 市境を流れる川を落とさないための膨らませ
 DESIGNATED_CITIES = ("横浜市", "川崎市", "相模原市")
+UNC_BINS = (500, 1000, 2000, 3000, 5000, 10000)     # 精度の分布の区切り（上限 MAX_UNCERTAINTY_M まで）
 GENERIC_TRIBUTARIES = {"小水路", "不明", "本流", "湧水", "用水"}
 
 # 神奈川の緯度経度 → 平面メートル（等距円筒。県内の距離計算には十分）
@@ -90,25 +93,26 @@ def ceil100(x):
 
 
 class Context:
+    """参照データ（すべて平面メートル）。W12 流域・町丁は構築時に索引化する。"""
+
     def __init__(self, lines, towns, w12, grid01):
         self.lines = lines      # (norm 河川名, norm 水系名 or None) → [LineString(m)]
-        self.towns = towns      # [(norm city_name, geom(m))]
-        self.w12 = w12          # [(Polygon(lonlat), norm 水系名 or None)]
-        self.w12_tree = STRtree([g for g, _ in w12]) if w12 else None
-        self.w12_m = [transform(to_m, g) for g, _ in w12]
-        self.w12_m_tree = STRtree(self.w12_m) if w12 else None
+        self.towns = towns      # norm city_name → [Polygon(m)]
+        self.w12_names = [n for _, n in w12]                      # norm 水系名 or None
+        self.w12_m = [transform(to_m, g) for g, _ in w12]          # 引数は lon/lat の Polygon
+        self.w12_tree = STRtree(self.w12_m) if w12 else None
         self.grid01 = grid01    # {(mlat, mlon)}
         self._muni_cache = {}
 
     def muni_geom(self, name):
-        """市町村名 → 町丁ポリゴンの和集合（m）。引けなければ None。"""
+        """市町村名 → 町丁ポリゴンの和集合（m）。引けなければ None。政令市は区の和集合。"""
         n = norm(name)
-        if n in self._muni_cache:
-            return self._muni_cache[n]
-        parts = [g for cn, g in self.towns if cn == n or (n in DESIGNATED_CITIES and cn.startswith(n))]
-        geom = shapely.union_all(parts) if parts else None
-        self._muni_cache[n] = geom
-        return geom
+        if n not in self._muni_cache:
+            parts = list(self.towns.get(n, []))
+            if n in DESIGNATED_CITIES:
+                parts += [g for cn, gs in self.towns.items() if cn.startswith(n) and cn != n for g in gs]
+            self._muni_cache[n] = shapely.union_all(parts) if parts else None
+        return self._muni_cache[n]
 
 
 def load_context(w05, towns, w12, registry):
@@ -119,18 +123,14 @@ def load_context(w05, towns, w12, registry):
             continue
         lines[(norm(p["river_name_ja"]), norm(p.get("water_system_name_ja")) or None)].append(
             transform(to_m, shape(f["geometry"])))
-    tw = []
+    tw = collections.defaultdict(list)
     for f in json.load(open(towns, encoding="utf-8"))["features"]:
         g = shape(f["geometry"])
-        if not g.is_valid:
-            g = g.buffer(0)
-        tw.append((norm(f["properties"]["city_name"]), transform(to_m, g)))
+        tw[norm(f["properties"]["city_name"])].append(transform(to_m, g if g.is_valid else g.buffer(0)))
     ws = []
     for f in json.load(open(w12, encoding="utf-8"))["features"]:
         g = shape(f["geometry"])
-        if not g.is_valid:
-            g = g.buffer(0)
-        ws.append((g, norm(f["properties"].get("water_system_name_ja_estimated")) or None))
+        ws.append((g if g.is_valid else g.buffer(0), norm(f["properties"].get("water_system_name_ja_estimated")) or None))
     grid = set()
     if registry and pathlib.Path(registry).exists():
         con = sqlite3.connect(f"file:{registry}?mode=ro", uri=True)
@@ -147,10 +147,7 @@ def _line_parts(geom):
     if geom.geom_type == "LineString":
         return [geom]
     if geom.geom_type in ("MultiLineString", "GeometryCollection"):
-        out = []
-        for g in geom.geoms:
-            out += _line_parts(g)
-        return out
+        return [p for g in geom.geoms for p in _line_parts(g)]
     return []
 
 
@@ -169,10 +166,10 @@ def river_name_for(trib, water):
 def single_watershed(geom_m, pt_m, ctx):
     """線（m）の長さの 98% 以上が W12 流域の 1 つに入り、点もその流域の内側か。
     (ok, 説明)。W12 が無ければ判定できないので False。"""
-    if ctx.w12_m_tree is None or geom_m.length <= 0:
+    if ctx.w12_tree is None or geom_m.length <= 0:
         return False, "W12 流域が無く判定できない"
     best, best_len, n = None, 0.0, 0
-    for i in ctx.w12_m_tree.query(geom_m, predicate="intersects"):
+    for i in ctx.w12_tree.query(geom_m, predicate="intersects"):
         n += 1
         ln = geom_m.intersection(ctx.w12_m[i]).length
         if ln > best_len:
@@ -182,75 +179,71 @@ def single_watershed(geom_m, pt_m, ctx):
         return False, f"線の {share * 100:.0f}% しか 1 つの流域に収まらない（{n} 流域にまたがる）"
     if not ctx.w12_m[best].contains(pt_m):
         return False, "置いた点が線の主な流域の外にある"
-    return True, f"流域 {ctx.w12[best][1] or '(水系不明)'} に {share * 100:.0f}%"
+    return True, f"流域 {ctx.w12_names[best] or '(水系不明)'} に {share * 100:.0f}%"
 
 
-def estimate(site, ctx):
-    """1 地点の推定。{lat, lon, coord_source, coordinate_uncertainty_m, coord_method, evidence}。"""
-    water = norm(site.get("water_system_ja"))
-    river, why = river_name_for(site.get("tributary_ja"), site.get("water_system_ja"))
-    none = lambda method, ev: {"lat": None, "lon": None, "coord_source": "none",
-                               "coordinate_uncertainty_m": None, "coord_method": method, "evidence": ev}
-    if river is None:
-        return none(why, f"支川名 {site.get('tributary_ja')!r} は一般名で、特定の川を指さない")
+def _none(method, evidence):
+    return {"lat": None, "lon": None, "coord_source": "none", "coordinate_uncertainty_m": None,
+            "coord_method": method, "evidence": evidence}
 
-    munis = split_munis(site.get("municipality_ja"))
-    geoms = [ctx.muni_geom(m) for m in munis]
-    found = [g for g in geoms if g is not None]
-    miss = [m for m, g in zip(munis, geoms) if g is None]
-    if not found:
-        return none("none_municipality_unmatched", f"市町村 {munis} が町丁ポリゴンに無い")
-    G = shapely.union_all(found)
 
-    cands = ctx.lines.get((river, water or None), [])
-    if not cands:
-        return none("none_river_not_in_w05", f"W05 に 河川名={river!r} 水系={water!r} の線が無い")
-
-    gbuf = G.buffer(MUNI_BUFFER_M)
-    pieces = []
-    for ln in cands:
-        pieces += _line_parts(ln.intersection(gbuf))
-    pieces = [p for p in pieces if p.length > 0]
+def _locate(cands, G, river, water, munis, miss):
+    """候補線と市町村 G から (位置 pt_m, 線 geom_m, 精度 m, 方式, evidence)。手順 4・5。"""
+    pieces = [p for ln in cands for p in _line_parts(ln.intersection(G.buffer(MUNI_BUFFER_M))) if p.length > 0]
     note_miss = f" 引けなかった市町村 {miss}" if miss else ""
+    where = f"W05 {river}/{water}"
     if pieces:
         merged = shapely.line_merge(MultiLineString(pieces)) if len(pieces) > 1 else pieces[0]
         if merged.geom_type == "LineString":
             pt = merged.interpolate(0.5, normalized=True)
         else:
             pt = nearest_points(merged, merged.centroid)[0]
-        coords = shapely.get_coordinates(merged)
-        spread = float(max(math.hypot(x - pt.x, y - pt.y) for x, y in coords))
+        spread = float(max(math.hypot(x - pt.x, y - pt.y) for x, y in shapely.get_coordinates(merged)))
         unc = max(MIN_UNCERTAINTY_M, ceil100(spread + RIVER_POSITION_ERROR_M))
-        method = "river_in_municipality"
-        ev = (f"W05 {river}/{water} 候補線 {len(cands)} 本を {'・'.join(munis)} で切り取り "
+        ev = (f"{where} 候補線 {len(cands)} 本を {'・'.join(munis)} で切り取り "
               f"{merged.length / 1000:.1f}km、広がり {spread:.0f}m + {RIVER_POSITION_ERROR_M}m{note_miss}")
-    else:
-        cu = shapely.union_all(cands)
-        p_line, p_g = nearest_points(cu, G)
-        d = p_line.distance(p_g)
-        pt = p_line
-        merged = min(cands, key=lambda ln: ln.distance(G))     # 最近点を含む線区間
-        unc = max(MIN_UNCERTAINTY_M, ceil100(d + RIVER_POSITION_ERROR_M))
-        method = "river_nearest_municipality"
-        ev = (f"W05 {river}/{water} は {'・'.join(munis)} と交わらない。市町村に最も近い点まで "
-              f"{d:.0f}m + {RIVER_POSITION_ERROR_M}m{note_miss}")
+        return pt, merged, unc, "river_in_municipality", ev
+    nearest = min(cands, key=lambda ln: ln.distance(G))          # 最近点を含む線区間（1 回の走査）
+    pt, p_g = nearest_points(nearest, G)
+    d = pt.distance(p_g)
+    unc = max(MIN_UNCERTAINTY_M, ceil100(d + RIVER_POSITION_ERROR_M))
+    ev = (f"{where} は {'・'.join(munis)} と交わらない。市町村に最も近い点まで "
+          f"{d:.0f}m + {RIVER_POSITION_ERROR_M}m{note_miss}")
+    return pt, nearest, unc, "river_nearest_municipality", ev
+
+
+def estimate(site, ctx):
+    """1 地点の推定。{lat, lon, coord_source, coordinate_uncertainty_m, coord_method, evidence}。"""
+    water = norm(site.get("water_system_ja"))
+    river, why = river_name_for(site.get("tributary_ja"), site.get("water_system_ja"))
+    if river is None:
+        return _none(why, f"支川名 {site.get('tributary_ja')!r} は一般名で、特定の川を指さない")
+    munis = split_munis(site.get("municipality_ja"))
+    geoms = [ctx.muni_geom(m) for m in munis]
+    found = [g for g in geoms if g is not None]
+    if not found:
+        return _none("none_municipality_unmatched", f"市町村 {munis} が町丁ポリゴンに無い")
+    cands = ctx.lines.get((river, water or None), [])
+    if not cands:
+        return _none("none_river_not_in_w05", f"W05 に 河川名={river!r} 水系={water!r} の線が無い")
+    miss = [m for m, g in zip(munis, geoms) if g is None]
+    pt, line, unc, method, ev = _locate(cands, shapely.union_all(found), river, water, munis, miss)
     if unc > MAX_UNCERTAINTY_M:
-        return none("none_uncertainty_over_limit", f"{ev}（精度 {unc}m > {MAX_UNCERTAINTY_M}m）")
-    ok, wsx = single_watershed(merged, pt, ctx)
+        return _none("none_uncertainty_over_limit", f"{ev}（精度 {unc}m > {MAX_UNCERTAINTY_M}m）")
+    ok, wsx = single_watershed(line, pt, ctx)
     if not ok:
-        return none("none_multi_watershed", f"{ev}（multi_watershed: {wsx}）")
-    ev += f" / {wsx}"
+        return _none("none_multi_watershed", f"{ev}（multi_watershed: {wsx}）")
     lon, lat = to_lonlat(pt.x, pt.y)
     return {"lat": round(lat, 6), "lon": round(lon, 6), "coord_source": "estimated_from_name",
-            "coordinate_uncertainty_m": unc, "coord_method": method, "evidence": ev}
+            "coordinate_uncertainty_m": unc, "coord_method": method, "evidence": f"{ev} / {wsx}"}
 
 
 def check_watershed(res, site, ctx):
     """検算: 位置が入る W12 流域の水系名と地点の水系名が食い違えば警告文（無ければ None）。"""
     if res["lat"] is None or ctx.w12_tree is None:
         return None
-    p = Point(res["lon"], res["lat"])
-    names = {ctx.w12[i][1] for i in ctx.w12_tree.query(p, predicate="intersects")}
+    p = Point(*to_m(res["lon"], res["lat"]))
+    names = {ctx.w12_names[i] for i in ctx.w12_tree.query(p, predicate="intersects")}
     if not names:
         return "WARN:W12 流域の外"
     water = norm(site.get("water_system_ja"))
@@ -301,10 +294,11 @@ def summarize(ledger, detections_by_site=None):
     by_method = collections.Counter(r["coord_method"] for r in ledger)
     lines.append("coord_method: " + ", ".join(f"{k}={v}" for k, v in sorted(by_method.items())))
     uncs = [int(r["coordinate_uncertainty_m"]) for r in ledger if r["coordinate_uncertainty_m"] != ""]
-    bins = collections.Counter()
-    for u in uncs:
-        bins["<=500" if u <= 500 else "<=1000" if u <= 1000 else "<=2000" if u <= 2000 else "<=3000" if u <= 3000 else "<=5000" if u <= 5000 else "<=10000"] += 1
-    lines.append("精度(m)の分布: " + ", ".join(f"{k}:{bins[k]}" for k in ("<=500", "<=1000", "<=2000", "<=3000", "<=5000", "<=10000")))
+    lo, dist = 0, []
+    for hi in UNC_BINS:
+        dist.append(f"<={hi}:{sum(1 for u in uncs if lo < u <= hi)}")
+        lo = hi
+    lines.append("精度(m)の分布: " + ", ".join(dist))
     g0 = [r for r in ledger if str(r["grid01_ok"]) == "0"]
     lines.append(f"grid01_ok=0: {len(g0)} 地点" + (f" / 検出行数 {sum(det.get(r['site_key'], 0) for r in g0)}" if det else ""))
     warns = [r for r in ledger if str(r["evidence"]).startswith("WARN:")]
@@ -313,11 +307,7 @@ def summarize(ledger, detections_by_site=None):
 
 
 def write_ledger(path, ledger):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=LEDGER_COLS)
-        w.writeheader()
-        w.writerows(ledger)
+    write_csv(path, LEDGER_COLS, ledger)
 
 
 def main(argv=None):
@@ -331,9 +321,9 @@ def main(argv=None):
     ap.add_argument("--registry", default=str(DEFAULT_REGISTRY))
     args = ap.parse_args(argv)
 
-    sites = list(csv.DictReader(open(args.sites, encoding="utf-8", newline="")))
+    sites = read_csv_rows(args.sites)
     out = pathlib.Path(args.out)
-    existing = list(csv.DictReader(open(out, encoding="utf-8", newline=""))) if out.exists() else None
+    existing = read_csv_rows(out) if out.exists() else None
     ctx = load_context(args.w05, args.towns, args.w12, args.registry)
     if not ctx.grid01:
         print("  [warn] registry の grid01 が読めない。grid01_ok は 0 になる", file=sys.stderr)
@@ -343,7 +333,7 @@ def main(argv=None):
     det = None
     if pathlib.Path(args.reads).exists():
         det = collections.Counter()
-        for r in csv.DictReader(open(args.reads, encoding="utf-8", newline="")):
+        for r in read_csv_rows(args.reads):
             if r["is_detected"] == "1":
                 det[r["site_key"]] += 1
     print(f"  [write] {out}  {len(ledger)} 地点")

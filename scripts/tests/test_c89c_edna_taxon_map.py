@@ -458,3 +458,54 @@ def test_vernacular_lookup_ignores_non_animal_taxa():
 
 def test_genus_level_sci_without_period_is_not_a_species():
     assert plain_binomial("Misgurnus sp") is None
+
+
+# ---------------------------------------------------------------- 共有 supplement・併記の T4・判定の共有
+def test_slash_name_that_falls_to_name_only_is_t4_like_other_paths():
+    out, supp, _ = _run([_read(1, "ホソミユスリカ/ヒメユスリカ", gen="ホソミユスリカ属")], rows=[])
+    assert out[0]["tier"] == "T4" and supp[0]["basis"] == "name_only"
+
+
+def test_is_ambiguous_uses_the_same_normalization_as_the_resolver():
+    assert c89c.is_ambiguous("A属／B属") and c89c.is_ambiguous("タモロコ / ホンモロコ（注）")
+    assert not c89c.is_ambiguous("Foo barus（注/参考）")
+
+
+def test_merge_supplement_keeps_other_sources_rows_and_marks_its_own():
+    foreign = {"common:taxon:gbif.1": {"taxon_id": "common:taxon:gbif.1", "evidence": "別の出典"}}
+    mine = [{"taxon_id": "common:taxon:gbif.2", "evidence": "GBIF match"},
+            {"taxon_id": "common:taxon:kanagawa-edna.x", "evidence": "kanagawa_edna: 和名のみ"}]
+    out = c89c.merge_supplement(foreign, mine)
+    assert [r["taxon_id"] for r in out] == ["common:taxon:gbif.1", "common:taxon:gbif.2", "common:taxon:kanagawa-edna.x"]
+    assert out[0]["evidence"] == "別の出典" and out[1]["evidence"].startswith(c89c.OWNER_MARK)
+    assert out[2]["evidence"].count(c89c.OWNER_MARK) == 1
+    assert c89c.owned(out[1]) and c89c.owned(out[2]) and not c89c.owned(out[0])
+    with pytest.raises(ValueError, match="衝突"):
+        c89c.merge_supplement(foreign, [{"taxon_id": "common:taxon:gbif.1", "evidence": "x"}])
+
+
+def test_main_keeps_foreign_supplement_rows(tmp_path):
+    import sqlite3
+    db = tmp_path / "registry.sqlite"
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE taxon (taxon_id TEXT, scientific_name TEXT, canonical_binomial TEXT, rank TEXT,"
+                " family TEXT, vernacular_name_ja TEXT, status TEXT, accepted_taxon_id TEXT, kingdom TEXT)")
+    con.commit()
+    con.close()
+    reads = tmp_path / "reads.csv"
+    rows = [_read(1, "シマアメンボ")]
+    with open(reads, "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=list(rows[0]))
+        w.writeheader()
+        w.writerows(rows)
+    sp = tmp_path / "supp.csv"
+    with open(sp, "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=c89c.SUPPLEMENT_FIELDS)
+        w.writeheader()
+        w.writerow({"taxon_id": "common:taxon:gbif.77", "scientific_name": "Other sp", "basis": "gbif_match", "evidence": "他の出典"})
+    argv = ["--offline", "--reads", str(reads), "--registry-db", str(db), "--name-map", str(tmp_path / "nm.csv"),
+            "--supplement", str(sp)]
+    assert c89c.main(argv) == 0 and c89c.main(argv) == 0      # 2 回目でも他の出典の行は残り、自分の行は増えない
+    got = list(csv.DictReader(open(sp, encoding="utf-8")))
+    assert got[0]["taxon_id"] == "common:taxon:gbif.77" and got[0]["evidence"] == "他の出典"
+    assert len(got) == 2 and got[1]["evidence"].startswith(c89c.OWNER_MARK)

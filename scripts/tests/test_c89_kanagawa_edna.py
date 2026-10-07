@@ -229,6 +229,23 @@ def test_stops_on_bad_read_count(tmp_path, bad):
         parse(tmp_path, cells)
 
 
+def test_stops_when_class_column_is_empty_even_if_column_a_has_a_value(tmp_path):
+    # 綱の空欄検査はレイアウトの綱列そのもの（A 列に値があっても素通りさせない）
+    lay = dataclasses.replace(FISH, cols=dict(FISH.cols, **{"class": "B"}))
+    cells = fish_cells()
+    cells["B8"] = None
+    del cells["B8"]
+    with pytest.raises(c89.LayoutError, match="綱"):
+        parse(tmp_path, cells, lay=lay)
+
+
+def test_dataset_filter_is_a_reads_column(tmp_path):
+    sites, reads, _ = parse(tmp_path, fish_cells(), lay=dataclasses.replace(FISH, dataset_filter="match>=98.5%"))
+    assert {r["dataset_filter"] for r in reads} == {"match>=98.5%"}
+    sites, reads, _ = parse(tmp_path, fish_cells())
+    assert {r["dataset_filter"] for r in reads} == {None}
+
+
 def test_stops_on_formula_in_site_body(tmp_path):
     with pytest.raises(c89.LayoutError, match="数式"):
         parse(tmp_path, fish_cells(), formulas=[("H8", 5)])

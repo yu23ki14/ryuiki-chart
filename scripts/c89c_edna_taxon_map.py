@@ -28,6 +28,7 @@ import argparse
 import collections
 import csv
 import json
+import os
 import pathlib
 import re
 import sqlite3
@@ -40,7 +41,7 @@ sys.path.insert(0, str(SCRIPTS))
 from registry.common import slugify_local_key  # noqa: E402  標準ライブラリだけに依存する
 
 READS_CSV = ROOT / "data" / "processed" / "kanagawa_edna_reads.csv"
-REGISTRY_DB = ROOT / "data" / "db" / "registry.sqlite"
+REGISTRY_DB = pathlib.Path(os.environ.get("RYUIKI_REGISTRY_DB") or ROOT / "data" / "db" / "registry.sqlite")
 NAME_MAP_CSV = ROOT / "registry" / "taxon" / "kanagawa_edna_name_map.csv"
 SUPPLEMENT_CSV = ROOT / "registry" / "taxon" / "supplement_taxa.csv"
 GBIF_CACHE_JSON = ROOT / "data" / "processed" / "kanagawa_edna_gbif_cache.json"
@@ -50,6 +51,8 @@ NAME_MAP_FIELDS = ["name_key", "rank", "taxon_id", "scientific_name", "vernacula
 SUPPLEMENT_FIELDS = ["taxon_id", "scientific_name", "canonical_binomial", "rank", "kingdom", "phylum",
                      "class", "order", "family", "vernacular_name_ja", "gbif_taxon_key", "basis", "evidence"]
 EDNA_ID_PREFIX = "common:taxon:kanagawa-edna."
+# supplement_taxa.csv は他の出典も使う共有ファイル。c89c が所有する行は evidence をこの印で始める
+OWNER_MARK = "kanagawa_edna: "
 GBIF_ID_PREFIX = "common:taxon:gbif."
 
 # シートの「綱」列（日本語）→ (kingdom, phylum, class)。name_only の追加 taxon に分類列を持たせるための小さな対応表。
@@ -130,6 +133,12 @@ def name_key(raw: str) -> str:
     core = _CF.sub(" ", core)
     parts = [re.sub(r"\s+", "", p) for p in core.split("/")]
     return "/".join(p.lower() for p in parts if p)
+
+
+def is_ambiguous(raw: str) -> bool:
+    """「A / B」併記か（NFKC で全角スラッシュも畳む。c89c の _resolve と同じ判定）。"""
+    core, _ = clean_core(raw)
+    return len(split_parts(_CF.sub(" ", core))) > 1
 
 
 def has_cf(raw: str) -> bool:
@@ -717,7 +726,7 @@ class Resolver:
                 return self._result(t, "T5", f"種 {name} は GBIF に無い ({m.group(1)}) ので属 {genus} に寄せる; " + ev, flags)
         t, tier, ev = self.reduce_to_sheet(hier, f"{name} は GBIF で決まらない ({m.group(1)})", skip_genus=True)
         if t is not None:
-            return self._result(t, "T4" if (t.supplement and t.supplement["basis"] == "name_only") else "T5", ev, flags)
+            return self._result(t, "T5", ev, flags)
         return r
 
     def resolve(self, k: str) -> dict:
@@ -777,6 +786,8 @@ class Resolver:
     def _result(t, tier, ev, flags):
         if t is None:
             return {"pending": ev or "unresolved", "flags": flags}
+        if tier == "T5" and t.supplement and t.supplement["basis"] == "name_only":
+            tier = "T4"      # 和名しか無く taxon を新設した行はどの経路でも T4（T5 は registry/GBIF の上位 taxon に寄せたもの）
         return {"taxon": t, "tier": tier, "evidence": ev, "flags": flags}
 
 
@@ -862,6 +873,20 @@ def build(reads_rows, registry: Registry, gbif: GbifClient | None, existing_map:
     return out_rows, [supp_rows[t] for t in sorted(supp_rows)], pending
 
 
+def merge_supplement(foreign: dict, mine: list) -> list:
+    """共有 supplement の書き出し行 = 他の出典の行（そのまま）+ c89c の行（印つき）。taxon_id 順。"""
+    out = dict(foreign)
+    for row in mine:
+        if row["taxon_id"] in foreign:
+            raise ValueError(f"supplement の {row['taxon_id']} は他の出典の行（evidence が {OWNER_MARK!r} で始まらない）と"
+                             "衝突する。eDNA の行なら evidence の先頭に印を付けてから再実行する")
+        row = dict(row)
+        if not row.get("evidence", "").startswith(OWNER_MARK):
+            row["evidence"] = OWNER_MARK + row.get("evidence", "")
+        out[row["taxon_id"]] = row
+    return [out[k] for k in sorted(out)]
+
+
 def summarize(rows, agg_rows):
     """tier 別の (名前数, 検出行数)。"""
     det = collections.Counter()
@@ -886,11 +911,29 @@ def read_reads(path: pathlib.Path):
     return rows
 
 
+def owned(row: dict) -> bool:
+    """supplement の行が c89c の所有か（evidence の印、または eDNA 専用の taxon_id）。"""
+    return (row.get("evidence") or "").startswith(OWNER_MARK) or (row.get("taxon_id") or "").startswith(EDNA_ID_PREFIX)
+
+
+def read_csv_rows(path) -> list[dict]:
+    """CSV を dict の列で読む（共有の読み出し。c89b・m07 もこれを使う）。"""
+    with open(path, newline="", encoding="utf-8") as f:
+        return list(csv.DictReader(f))
+
+
 def read_csv_dict(path: pathlib.Path, key: str) -> dict:
     if not path.exists():
         return {}
-    with open(path, newline="", encoding="utf-8") as f:
-        return {r[key]: r for r in csv.DictReader(f)}
+    return {r[key]: r for r in read_csv_rows(path)}
+
+
+def text(v):
+    """前後空白を除き、空は None（m07 などが共有）。"""
+    if v is None:
+        return None
+    s = str(v).strip()
+    return s or None
 
 
 def write_csv(path: pathlib.Path, fields, rows):
@@ -917,7 +960,9 @@ def main(argv=None):
 
     rows = read_reads(args.reads)
     existing_map = read_csv_dict(args.name_map, "name_key")
-    existing_supp = read_csv_dict(args.supplement, "taxon_id")
+    all_supp = read_csv_dict(args.supplement, "taxon_id")
+    existing_supp = {k: v for k, v in all_supp.items() if owned(v)}     # 自分の行だけを入れ替える
+    foreign_supp = {k: v for k, v in all_supp.items() if k not in existing_supp}
     registry = Registry.from_db(args.registry_db, exclude_ids=existing_supp)
     dictionary = Dictionary.from_db(args.dictionary_db) if args.dictionary_db.exists() else None
     gbif = None
@@ -941,7 +986,7 @@ def main(argv=None):
         if not args.allow_pending:
             return 1
     write_csv(args.name_map, NAME_MAP_FIELDS, out_rows)
-    write_csv(args.supplement, SUPPLEMENT_FIELDS, supp_rows)
+    write_csv(args.supplement, SUPPLEMENT_FIELDS, merge_supplement(foreign_supp, supp_rows))
     print(f"書き出し: {args.name_map} ({len(out_rows)} 行), {args.supplement} ({len(supp_rows)} 行)")
     return 0
 

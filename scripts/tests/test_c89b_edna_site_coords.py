@@ -3,6 +3,8 @@
 import csv
 
 import pytest
+
+pytest.importorskip("shapely")   # CI の requirements.txt に shapely は無い（開発用ツールのテスト）
 from shapely.geometry import LineString, Polygon
 from shapely.ops import transform
 
@@ -29,7 +31,7 @@ def make_ctx(**kw):
     lines = {("中津川", "酒匂川"): [m(NAKATSU)],
              ("相模川", "相模川"): [m(LONG)],
              ("遠川", "酒匂川"): [m(FAR)]}
-    towns = [("厚木市", m(TOWN_A)), ("愛川町", m(TOWN_B)), ("横浜市中区", m(TOWN_A)), ("横浜市西区", m(TOWN_B))]
+    towns = {"厚木市": [m(TOWN_A)], "愛川町": [m(TOWN_B)], "横浜市中区": [m(TOWN_A)], "横浜市西区": [m(TOWN_B)]}
     w12 = [(Polygon([(139.28, 35.38), (139.40, 35.38), (139.40, 35.44), (139.28, 35.44)]), "酒匂川")]
     grid = {(3541, 13931), (3541, 13930)}
     return c89b.Context(kw.get("lines", lines), towns, w12, grid)
@@ -95,7 +97,7 @@ def test_none_when_uncertainty_over_limit():
     # 約 51km の本流を、それを覆う広い町で切ると広がり 25km → 10,000m 超で none（lat/lon/精度が全部 NULL）
     big = Polygon([(139.0, 35.3), (139.6, 35.3), (139.6, 35.5), (139.0, 35.5)])
     ctx = make_ctx(lines={("相模川", "相模川"): [m(LineString([(139.0, 35.41), (139.6, 35.41)]))]})
-    ctx.towns.append(("厚木市", m(big)))
+    ctx.towns["厚木市"] = [m(big)]
     ctx._muni_cache.clear()
     r = c89b.estimate(site(water="相模川", trib="-", muni="厚木市"), ctx)
     assert r["coord_source"] == "none" and r["coord_method"] == "none_uncertainty_over_limit"
@@ -103,12 +105,8 @@ def test_none_when_uncertainty_over_limit():
 
 
 def ctx_with_watersheds(polys):
-    ctx = make_ctx()
-    ctx.w12 = [(p, "酒匂川") for p in polys]
-    ctx.w12_tree = c89b.STRtree([p for p, _ in ctx.w12])
-    ctx.w12_m = [m(p) for p in polys]
-    ctx.w12_m_tree = c89b.STRtree(ctx.w12_m)
-    return ctx
+    base = make_ctx()
+    return c89b.Context(base.lines, base.towns, [(p, "酒匂川") for p in polys], base.grid01)
 
 
 def test_multi_watershed_is_none():

@@ -22,7 +22,7 @@ def read(site_key, row, name_adopted, reads, key, **kw):
             "family_ja": "", "genus_ja": "", "name_raw": name_adopted, "name_adopted": name_adopted,
             "name_sci_raw": "", "name_note": "", "reads": str(reads), "is_detected": str(int(reads > 0)),
             "pident_qcov": "", "reliability": "", "national_rl_raw": "", "pref_rl_raw": "", "alien_raw": "",
-            "name_key": key, "source_id": "kanagawa_edna"}
+            "name_key": key, "dataset_filter": "", "source_id": "kanagawa_edna"}
     base.update(kw)
     return base
 
@@ -49,7 +49,8 @@ def data():
         read(k1, 7, "ニホンウナギ", 98, "ニホンウナギ", national_rl_raw="絶滅危惧IB類（EN）", pref_rl_raw="X"),
         read(k1, 8, "コイ（飼育型）", 0, "コイ"),
         read(k2, 9, "ヨシノボリ属の一種 / ウキゴリ", 5, "ヨシノボリ属の一種/ウキゴリ", name_note="（cf.）",
-             pident_qcov="0.99", reliability="低", pref_rl_raw="要注意種", alien_raw="特定外来"),
+             pident_qcov="0.99", reliability="低", pref_rl_raw="要注意種", alien_raw="特定外来",
+             dataset_filter="match>=98.5%"),
     ]
     coords = [coord(k1), coord(k2, src="none")]
     names = [nm("ニホンウナギ"), nm("コイ", taxon="common:taxon:gbif.2", sci="Cyprinus carpio", ja="コイ"),
@@ -184,3 +185,43 @@ def test_cli_with_files(tmp_path, data):
         m07.main(["--db", str(db), "--sites", w("s.csv", sites), "--reads", w("r.csv", reads),
                   "--coords", w("c.csv", coords), "--name-map", w("n2.csv", names[:1])])
     assert sqlite3.connect(db).execute("SELECT COUNT(*) FROM edna_reads").fetchone()[0] == 3
+
+
+def test_stops_when_ledger_names_differ_from_sites(data):
+    sites, reads, coords, names = data
+    for col in ("water_system_ja", "tributary_ja", "municipality_ja"):
+        bad = copy.deepcopy(coords)
+        bad[0][col] = "別の名前"
+        with pytest.raises(m07.M07Error, match="c89b を再実行"):
+            m07.load(sqlite3.connect(":memory:"), sites, reads, bad, names)
+
+
+def test_vernacular_name_from_sheet_only_for_species_level_rows(data):
+    sites, reads, coords, names = data
+    names = copy.deepcopy(names)
+    names[1]["vernacular_name_ja"] = ""                       # コイ: 種のまま・和名が map に無い
+    reads = copy.deepcopy(reads)
+    reads[1].update(reads="3", is_detected="1")               # コイ（飼育型）を検出にする
+    con = sqlite3.connect(":memory:")
+    m07.load(con, sites, reads, coords, names)
+    v = dict(con.execute("SELECT record_key, vernacular_name FROM edna_detections"))
+    assert v["r3_kenmin_gyorui:K-21-1:8"] == "コイ"          # シートの採用名（括弧書きを除く）
+    assert v["r3_kenmin_gyorui:K-21-1:7"] == "ニホンウナギ"   # map の和名
+    assert v["r7_kenmin_kekka:k-25-04:9"] is None            # 属に寄せた行（map の和名が空）には付けない
+    names[1]["scientific_name"] = ""
+    reads[1]["name_adopted"] = "Cyprinus carpio"
+    con2 = sqlite3.connect(":memory:")
+    m07.load(con2, sites, reads, coords, names)
+    assert con2.execute("SELECT vernacular_name FROM edna_detections WHERE record_key LIKE '%:8'").fetchone()[0] is None  # 学名は和名にしない
+
+
+def test_cf_and_ambiguity_use_c89c_normalization(data):
+    sites, reads, coords, names = data
+    reads = copy.deepcopy(reads)
+    reads[0].update(name_adopted="ニホンウナギ（ｃｆ．）", name_note="")      # 全角の cf.
+    reads[2].update(name_adopted="ヨシノボリ属の一種／ウキゴリ", name_note="")  # 全角スラッシュ
+    con = sqlite3.connect(":memory:")
+    m07.load(con, sites, reads, coords, names)
+    a = lambda key: json.loads(con.execute("SELECT attributes_json FROM edna_detections WHERE record_key=?", (key,)).fetchone()[0])
+    assert a("r3_kenmin_gyorui:K-21-1:7")["cf"] is True
+    assert a("r7_kenmin_kekka:k-25-04:9")["name_ambiguous"] is True

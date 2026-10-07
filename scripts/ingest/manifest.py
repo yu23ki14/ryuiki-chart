@@ -67,7 +67,8 @@ CHECK_NAMES = ("not_null", "unique", "row_count_between", "in_registry", "date_b
 _SOURCE_ID_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
 REQUIRED_KEYS = ("source", "region", "target", "update_mode", "input", "adapter", "evidence")
-OPTIONAL_KEYS = ("expected_row_count", "checks", "edition", "expected", "expected_place_region_null_rows")
+OPTIONAL_KEYS = ("expected_row_count", "checks", "edition", "expected", "expected_place_region_null_rows",
+                 "sample_input_max_rows")
 
 EXPECTED_PLACE_KEYS = ("coord_resolved", "coord_unresolved")
 EXPECTED_CUBE_KEYS = (
@@ -92,6 +93,9 @@ class Manifest:
     # b03（観測）: place が region を持たない（place.region_id NULL）のに、マニフェストの region で決めた行の件数の宣言（既定 0）。
     # ADR-0022 決定3: region は出典から決め place 経由は照合だが、place 側が NULL の行は照合できない。黙って増えないよう宣言で固定する。
     expected_place_region_null_rows: int = 0
+    # 縮小サンプルに入力表を全件入れてよい行数の、この出典だけの上限（scripts/s01_build_sample.py が見る）。
+    # 既定（None）は s01 の ADAPTER_INPUT_WHOLESALE_MAX_ROWS。入力表を絞る経路は無いので、大きい表の出典だけが宣言する。
+    sample_input_max_rows: int | None = None
     path: str = ""
 
     @property
@@ -192,6 +196,12 @@ def manifest_problems(raw, stem: str, *, adapters_dir=None) -> list[str]:
             problems.append(f"{label}.input は {{table: 名前}} か {{file: パス}} のどちらか 1 つ（実際: {inp!r}）")
     if "expected_place_region_null_rows" in raw and not _non_negative_int(raw["expected_place_region_null_rows"]):
         problems.append(f"{label}.expected_place_region_null_rows が非負整数でない（実際: {raw['expected_place_region_null_rows']!r}）")
+    if "sample_input_max_rows" in raw:
+        v = raw["sample_input_max_rows"]
+        if not (isinstance(v, int) and not isinstance(v, bool) and v > 0):
+            problems.append(f"{label}.sample_input_max_rows が正の整数でない（実際: {v!r}）")
+        elif raw.get("adapter") == BUILTIN:
+            problems.append(f"{label}: adapter=builtin に sample_input_max_rows は書けない（adapter 出典の入力表の上限）")
     if "expected_row_count" in raw and not _non_negative_int(raw["expected_row_count"]):
         problems.append(f"{label}.expected_row_count が非負整数でない（実際: {raw['expected_row_count']!r}）")
     builtin = raw.get("adapter") == BUILTIN
@@ -260,6 +270,7 @@ def load_manifests(manifests_dir=DEFAULT_MANIFESTS_DIR, *, adapters_dir=None) ->
             expected_row_count=raw.get("expected_row_count"),
             checks=tuple(raw.get("checks") or ()), edition=raw.get("edition"),
             expected=raw.get("expected"), expected_place_region_null_rows=raw.get("expected_place_region_null_rows", 0),
+            sample_input_max_rows=raw.get("sample_input_max_rows"),
             path=str(p),
         )
     return out

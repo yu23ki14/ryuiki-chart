@@ -264,8 +264,9 @@ def select_wholesale_rowids(conn: sqlite3.Connection, table: str) -> list[int]:
 # adapter 出典（マニフェストの非 builtin）の入力表・ファイルを全件サンプルに入れてよい上限（行数）。
 # 入力表を絞り込む経路は無い（coverage.yaml の predicate は adapter の入力表には使えず、overlay も
 # expected の place/cube 値には効かない）。だから全件を入れるしかなく、上限を超えると止まる。
-# 20,000 は神奈川県 eDNA（edna_detections 13,263 行）を入れるために引き上げた（2026-10-07 オーナー判断）。
-ADAPTER_INPUT_WHOLESALE_MAX_ROWS = 20000
+# 大きい入力表を持つ出典は、マニフェストの任意キー sample_input_max_rows でその出典だけ上限を上げる
+# （神奈川県 eDNA の edna_detections 約 1.3 万行など。2026-10-07 オーナー判断）。
+ADAPTER_INPUT_WHOLESALE_MAX_ROWS = 5000
 
 
 def adapter_inputs(manifests_dir=source_regions.DEFAULT_MANIFESTS_DIR) -> dict[str, manifest_lib.Manifest]:
@@ -291,10 +292,11 @@ def select_adapter_input_tables(
                 "（件数の宣言が合わなくなる）ので、predicate を外すこと"
             )
         n = conn.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]
-        if n > ADAPTER_INPUT_WHOLESALE_MAX_ROWS:
+        limit = m.sample_input_max_rows or ADAPTER_INPUT_WHOLESALE_MAX_ROWS
+        if n > limit:
             raise SystemExit(
-                f"{sid}: input.table={table!r} が {n:,} 行ある（全件入れる上限 {ADAPTER_INPUT_WHOLESALE_MAX_ROWS:,}）。"
-                "adapter の入力表を絞る経路は無い。この上限（ADAPTER_INPUT_WHOLESALE_MAX_ROWS）を見直すこと"
+                f"{sid}: input.table={table!r} が {n:,} 行ある（全件入れる上限 {limit:,}）。"
+                "adapter の入力表を絞る経路は無い。マニフェストの sample_input_max_rows でこの出典の上限を上げること"
             )
         out[table] = set(select_wholesale_rowids(conn, table))
     return out
