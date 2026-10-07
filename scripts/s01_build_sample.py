@@ -23,6 +23,21 @@ CLAUDE.md 「サンプル」設計の要件）。
   サンプルに無いと「親行が無い」状態になる（閉包「参照の整合」）。
 - **属の全記録**は `coverage.yaml` の `full_closures`（`genus = 'Sirosporium'`、
   上限なし）自体がそのまま閉包になっている——追加のコードは無い。
+- **adapter 入力表の `taxon_id` が参照する taxon の原本の行**。registry の taxon は
+  サンプルに入った `organism_records`/`taxa` からしか作られない（`scripts/registry/build_taxon.py`）ので、
+  adapter 出典（マニフェストの非 builtin・target=occurrence）の入力表が `taxon_id` 列で
+  registry の既存 taxon を指していると、その taxon を生む原本の行がサンプルに無い限り
+  b06 の `in_registry[taxon]` が止まる。taxon_id から原本の行を逆引きし（gbif/inat 名前空間は
+  `organism_records` の `taxon_key`、無ければ `taxa.gbif_taxon_key`、`ryuiki-taxa.` は `taxa` の
+  未照合行）、taxon ごとに rowid 最小の 1 行を足す（`select_taxon_origin_rows`）。
+  サンプルに既にその taxon を生む行があれば足さない。supplement 由来の ID は
+  registry が supplement から作るので対象外。
+- **adapter 入力表の座標が落ちる grid01 セルを生む `organism_records` の行**。grid01 の place は
+  `organism_records` の座標（`FLOOR(lat*100)`, `FLOOR(lon*100)`）からしか作られない
+  （`registry/build_place.py`）ので、adapter 入力表（`lat`/`lon` 列を持つもの）の座標が落ちるセルを
+  サンプルの `organism_records` が持たないと、b06 が「座標はあるのに grid01 が解決できない」で止まる。
+  サンプルに無いセルごとに、そのセルを生む原本の行を rowid 最小で 1 行足す
+  （`select_grid01_origin_rows`。taxon の閉包の**後**に評価する）。原本にも無いセルがあれば止まる。
 - **文書単位**（`cells.sqlite` の `cells`）は `document_closure.doc_ids` で
   指定した `doc_id` の全セルを入れる。
 
@@ -53,6 +68,7 @@ import argparse
 import csv
 import datetime
 import json
+import math
 import pathlib
 import shutil
 import sqlite3
@@ -68,6 +84,8 @@ from migrate import occurrence_period  # noqa: E402
 from migrate import point_in_polygon as pip  # noqa: E402
 from migrate import source_regions  # noqa: E402
 from reconcile.common import load_yaml  # noqa: E402
+from registry import build_taxon, common as registry_common  # noqa: E402
+from taxon_namespaces import TAXON_KEY_SOURCE_NAMESPACE  # noqa: E402
 
 DEFAULT_RYUIKI_DB = ROOT / "data" / "db" / "ryuiki.sqlite"
 DEFAULT_CELLS_DB = ROOT / "data" / "db" / "cells.sqlite"
@@ -262,7 +280,10 @@ def select_wholesale_rowids(conn: sqlite3.Connection, table: str) -> list[int]:
 
 
 # adapter 出典（マニフェストの非 builtin）の入力表・ファイルを全件サンプルに入れてよい上限（行数）。
-# これを超える入力は coverage.yaml に predicate を書いて絞る（adapter の出力件数の宣言と合わなくなるので自動では絞らない）。
+# 入力表を絞り込む経路は無い（coverage.yaml の predicate は adapter の入力表には使えず、overlay も
+# expected の place/cube 値には効かない）。だから全件を入れるしかなく、上限を超えると止まる。
+# 大きい入力表を持つ出典は、マニフェストの任意キー sample_input_max_rows でその出典だけ上限を上げる
+# （神奈川県 eDNA の edna_detections 約 1.3 万行など。2026-10-07 オーナー判断）。
 ADAPTER_INPUT_WHOLESALE_MAX_ROWS = 5000
 
 
@@ -289,13 +310,143 @@ def select_adapter_input_tables(
                 "（件数の宣言が合わなくなる）ので、predicate を外すこと"
             )
         n = conn.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]
-        if n > ADAPTER_INPUT_WHOLESALE_MAX_ROWS:
+        limit = m.sample_input_max_rows or ADAPTER_INPUT_WHOLESALE_MAX_ROWS
+        if n > limit:
             raise SystemExit(
-                f"{sid}: input.table={table!r} が {n:,} 行ある（全件入れる上限 {ADAPTER_INPUT_WHOLESALE_MAX_ROWS:,}）。"
-                "coverage.yaml に絞り込みの predicate を書き、マニフェストの expected を縮小サンプルの件数に合わせること"
+                f"{sid}: input.table={table!r} が {n:,} 行ある（全件入れる上限 {limit:,}）。"
+                "adapter の入力表を絞る経路は無い。マニフェストの sample_input_max_rows でこの出典の上限を上げること"
             )
         out[table] = set(select_wholesale_rowids(conn, table))
     return out
+
+
+def _supplement_taxon_ids() -> set[str]:
+    p = build_taxon.SUPPLEMENT_TAXA_CSV
+    if not p.exists():
+        return set()
+    with open(p, newline="", encoding="utf-8") as f:
+        return {r["taxon_id"] for r in csv.DictReader(f)}
+
+
+def select_taxon_origin_rows(
+    conn: sqlite3.Connection, manifests: dict[str, manifest_lib.Manifest], selected: dict[str, set[int]],
+    supplement_ids: set[str] | None = None,
+) -> dict[str, set[int]]:
+    """adapter 入力表（target=occurrence の非 builtin の `input.table`）の `taxon_id` 列が指す taxon について、
+    registry がその taxon_id を生むのに要る原本の行（`organism_records` か `taxa`）を、taxon ごとに
+    rowid 最小の 1 行だけ返す（`{table: {rowid}}`。サンプルに既に生む行がある taxon は足さない）。
+    引けない taxon_id（supplement 由来を除く）があれば止まる。出典名は書かず、マニフェストから導く。"""
+    supplement_ids = _supplement_taxon_ids() if supplement_ids is None else supplement_ids
+    needed: set[str] = set()
+    for m in manifests.values():
+        table = m.input.get("table")
+        if table is None or m.target != "occurrence":
+            continue
+        if "taxon_id" not in {r[1] for r in conn.execute(f'PRAGMA table_info("{table}")')}:
+            continue
+        needed |= {r[0] for r in conn.execute(f'SELECT DISTINCT taxon_id FROM "{table}" WHERE taxon_id IS NOT NULL')}
+    needed -= supplement_ids
+    if not needed:
+        return {}
+
+    sources_by_ns: dict[str, list[str]] = defaultdict(list)
+    for src, ns in TAXON_KEY_SOURCE_NAMESPACE.items():
+        sources_by_ns[ns].append(src)
+    keys_by_ns: dict[str, dict[str, str]] = defaultdict(dict)       # ns -> {taxon_key: taxon_id}
+    unresolved_ids: set[str] = set()
+    for tid in sorted(needed):
+        for ns in sources_by_ns:
+            prefix = f"common:taxon:{ns}."
+            if tid.startswith(prefix) and build_taxon._taxon_id_for(ns, tid[len(prefix):]) == tid:
+                keys_by_ns[ns][tid[len(prefix):]] = tid
+                break
+        else:
+            unresolved_ids.add(tid)
+
+    out: dict[str, set[int]] = {"organism_records": set(), "taxa": set()}
+    found: set[str] = set()
+    selected_org = selected.get("organism_records", set())
+    _create_rowid_temp_table(conn, "sel_org", selected_org)
+    for ns, by_key in sorted(keys_by_ns.items()):
+        conn.execute("DROP TABLE IF EXISTS temp.need_keys")
+        conn.execute("CREATE TEMP TABLE need_keys (k TEXT PRIMARY KEY)")
+        conn.executemany("INSERT INTO temp.need_keys VALUES (?)", [(k,) for k in sorted(by_key)])
+        srcs = ",".join("?" for _ in sources_by_ns[ns])
+        have = {r[0] for r in conn.execute(
+            f"SELECT DISTINCT taxon_key FROM organism_records WHERE rowid IN (SELECT rowid_value FROM temp.sel_org) "
+            f"AND source_id IN ({srcs}) AND taxon_key IN (SELECT k FROM temp.need_keys)", sources_by_ns[ns])}
+        rows = conn.execute(
+            f"SELECT taxon_key, MIN(rowid) FROM organism_records WHERE source_id IN ({srcs}) "
+            f"AND taxon_key IN (SELECT k FROM temp.need_keys) GROUP BY taxon_key", sources_by_ns[ns]).fetchall()
+        for key, rowid in rows:
+            found.add(by_key[key])
+            if key not in have:
+                out["organism_records"].add(rowid)
+        if ns == "gbif":                      # organism_records に無い gbif キーは taxa（EXACT）から
+            rest = sorted(set(by_key) - {r[0] for r in rows})
+            conn.execute("DELETE FROM temp.need_keys")
+            conn.executemany("INSERT INTO temp.need_keys VALUES (?)", [(k,) for k in rest])
+            for key, rowid in conn.execute(
+                    "SELECT gbif_taxon_key, MIN(rowid) FROM taxa WHERE gbif_match_type='EXACT' "
+                    "AND gbif_taxon_key IN (SELECT k FROM temp.need_keys) GROUP BY gbif_taxon_key"):
+                found.add(by_key[key])
+                out["taxa"].add(rowid)
+    if any(t.startswith("common:taxon:ryuiki-taxa.") for t in unresolved_ids):
+        seen: dict = {}
+        for rowid, taxa_pk, key, match in conn.execute(
+                "SELECT rowid, taxon_id, COALESCE(gbif_taxon_key,''), gbif_match_type FROM taxa ORDER BY rowid"):
+            if key.strip() and match == "EXACT":
+                continue
+            tid = registry_common.taxon_id_unresolved(taxa_pk, seen=seen)
+            if tid in unresolved_ids:
+                found.add(tid)
+                out["taxa"].add(rowid)
+    missing = sorted(needed - found)
+    if missing:
+        raise SystemExit(f"adapter 入力表の taxon_id のうち、原本の organism_records/taxa から registry が生める行を"
+                         f"引けないものが {len(missing)} 件ある（supplement にも無い）: {missing[:10]}")
+    return {t: r for t, r in out.items() if r}
+
+
+def grid01_cell(lat: float, lon: float) -> tuple[int, int]:
+    """grid01 のセル（`registry/build_place.py`・`b06_build_occurrence.py` の `FLOOR(lat*100)`, `FLOOR(lon*100)` と同じ規則。
+    両者は式をインラインで持ち共有関数が無いので、ここでも同じ式。食い違えば test_s01 のセル一致テストが落ちる）。"""
+    return math.floor(lat * 100), math.floor(lon * 100)
+
+
+def select_grid01_origin_rows(
+    conn: sqlite3.Connection, manifests: dict[str, manifest_lib.Manifest], selected: dict[str, set[int]],
+) -> dict[str, set[int]]:
+    """adapter 入力表（target=occurrence の非 builtin・`lat`/`lon` 列あり）の座標が落ちる grid01 セルのうち、
+    サンプルの `organism_records`（`selected`）にまだ無いセルを、そのセルを生む原本の行（rowid 最小）で足す。
+    原本にもそのセルを生む行が無ければ止まる。"""
+    need: set[tuple[int, int]] = set()
+    for m in manifests.values():
+        table = m.input.get("table")
+        if table is None or m.target != "occurrence":
+            continue
+        cols = {r[1] for r in conn.execute(f'PRAGMA table_info("{table}")')}
+        if not {"lat", "lon"} <= cols:
+            continue
+        need |= {grid01_cell(la, lo) for la, lo in conn.execute(
+            f'SELECT DISTINCT lat, lon FROM "{table}" WHERE lat IS NOT NULL AND lon IS NOT NULL')}
+    if not need:
+        return {}
+    _create_rowid_temp_table(conn, "sel_org_cells", selected.get("organism_records", set()))
+    cell_sql = "CAST(FLOOR(lat*100) AS INT), CAST(FLOOR(lon*100) AS INT)"
+    have = {tuple(r) for r in conn.execute(
+        f"SELECT DISTINCT {cell_sql} FROM organism_records WHERE lat IS NOT NULL AND lon IS NOT NULL "
+        "AND rowid IN (SELECT rowid_value FROM temp.sel_org_cells)")}
+    origin = {(r[0], r[1]): r[2] for r in conn.execute(
+        f"SELECT {cell_sql}, MIN(rowid) FROM organism_records WHERE lat IS NOT NULL AND lon IS NOT NULL "
+        f"GROUP BY {cell_sql}")}
+    missing = sorted(need - have)
+    unresolvable = [c for c in missing if c not in origin]
+    if unresolvable:
+        raise SystemExit(f"adapter 入力表の座標が落ちる grid01 セルのうち、原本の organism_records にも無いものが "
+                         f"{len(unresolvable)} 件ある: {unresolvable[:5]}")
+    rows = {origin[c] for c in missing}
+    return {"organism_records": rows} if rows else {}
 
 
 def adapter_input_files(manifests: dict[str, manifest_lib.Manifest]) -> list[str]:
@@ -616,6 +767,12 @@ def main() -> int:
     manifests = adapter_inputs(args.manifests_dir)
     for table, rowids in select_adapter_input_tables(ryuiki_conn, manifests, selected).items():
         selected[table] = rowids
+    # 入力表の taxon_id が指す既存 taxon を、registry が作れるように原本の行を足す
+    for table, rowids in select_taxon_origin_rows(ryuiki_conn, manifests, selected).items():
+        selected[table] = selected.get(table, set()) | rowids
+    # 入力表の座標が落ちる grid01 セルを、サンプルの organism_records が持つようにする（taxon の閉包の後）
+    for table, rowids in select_grid01_origin_rows(ryuiki_conn, manifests, selected).items():
+        selected[table] = selected.get(table, set()) | rowids
 
     doc_ids = coverage["document_closure"]["doc_ids"]
     if len(doc_ids) < coverage["document_closure"]["min_documents"]:

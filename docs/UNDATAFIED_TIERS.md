@@ -92,6 +92,7 @@ DBおよびリポジトリのファイルは一切変更していない。
 | `c85_hiratsuka_taiki.py` | 平塚市 大気環境 確定値1時間値（194） |
 | `c86_ckan_bodik_yokohama.py` | BODIK・横浜市 CKAN と実データ（199/200） |
 | `c88_minor_sources.py` | RDB2006正誤表・ビジターセンター・里なび・整備計画ミラー（6/66/70/72） |
+| `c89_kanagawa_edna.py`（＋`c89b`・`c89c`・`m07_kanagawa_edna.py`） | 神奈川県 環境DNAのページ eDNA 調査結果 xlsx 9本（R3〜R7）。設計は `docs/plans/KANAGAWA_EDNA.md` |
 
 `scripts/m05_tier1.py` が収集結果をアプリのデータモデルに流す。冪等（source_id 単位で入れ直す）。
 

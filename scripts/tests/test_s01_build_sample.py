@@ -392,7 +392,7 @@ def test_build_declaration_counts_wires_new_occurrence_cube_keys(tmp_path):
 # adapter 出典（マニフェストの非 builtin）の入力はマニフェストから導いてサンプルに入れる（Issue #40）
 # ---------------------------------------------------------------------------
 
-def _adapter_manifest(tmp_path, monkeypatch, *, table="wildlife_sightings", file=None, n=400):
+def _adapter_manifest(tmp_path, monkeypatch, *, table="wildlife_sightings", file=None, n=400, extra_keys=None):
     import ingest.manifest as manifest_lib
     from .manifest_fixtures import write_manifest
 
@@ -408,7 +408,7 @@ def _adapter_manifest(tmp_path, monkeypatch, *, table="wildlife_sightings", file
     d = tmp_path / ("m_file" if file else "m")
     write_manifest(
         d, "src_a", target="occurrence", adapter="src_a", expected_row_count=n,
-        input={"file": file} if file else {"table": table}, extra={"expected": expected},
+        input={"file": file} if file else {"table": table}, extra={"expected": expected, **(extra_keys or {})},
     )
     return d
 
@@ -420,6 +420,38 @@ def test_adapter_input_table_is_included_whole_without_touching_coverage_yaml(tm
     conn.executemany("INSERT INTO wildlife_sightings VALUES (?)", [(i,) for i in range(400)])
     chosen = s01.select_adapter_input_tables(conn, s01.adapter_inputs(m), selected={})
     assert set(chosen) == {"wildlife_sightings"} and len(chosen["wildlife_sightings"]) == 400
+
+
+def _sub(base, name):
+    d = base / name
+    d.mkdir()
+    return d
+
+
+def test_manifest_sample_input_max_rows_overrides_the_limit_for_that_source_only(tmp_path, monkeypatch):
+    import ingest.manifest as manifest_lib
+    big = s01.ADAPTER_INPUT_WHOLESALE_MAX_ROWS + 10
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE wildlife_sightings (id INTEGER)")
+    conn.executemany("INSERT INTO wildlife_sightings VALUES (?)", [(i,) for i in range(big)])
+    # キーが無ければ既定の上限で止まる
+    m = _adapter_manifest(tmp_path, monkeypatch)
+    with pytest.raises(SystemExit, match="sample_input_max_rows"):
+        s01.select_adapter_input_tables(conn, s01.adapter_inputs(m), selected={})
+    # この出典だけ上限を上げれば全件入る。値はマニフェストから読む
+    m2 = _adapter_manifest(_sub(tmp_path, "x"), monkeypatch, extra_keys={"sample_input_max_rows": big})
+    mans = s01.adapter_inputs(m2)
+    assert mans["src_a"].sample_input_max_rows == big
+    assert len(s01.select_adapter_input_tables(conn, mans, selected={})["wildlife_sightings"]) == big
+    # 上限より 1 行でも多ければ止まる
+    m3 = _adapter_manifest(_sub(tmp_path, "y"), monkeypatch, extra_keys={"sample_input_max_rows": big - 1})
+    with pytest.raises(SystemExit, match="上限"):
+        s01.select_adapter_input_tables(conn, s01.adapter_inputs(m3), selected={})
+    # 正の整数以外は構造検証で止まる
+    for bad in (0, -5, "100", True):
+        m4 = _adapter_manifest(_sub(tmp_path, f"z{bad}"), monkeypatch, extra_keys={"sample_input_max_rows": bad})
+        with pytest.raises(Exception, match="sample_input_max_rows"):
+            manifest_lib.load_manifests(m4)
 
 
 def test_adapter_input_table_over_limit_or_already_narrowed_stops(tmp_path, monkeypatch):
@@ -447,3 +479,92 @@ def test_adapter_input_file_elsewhere_stops(tmp_path, monkeypatch):
 def test_declaration_counts_keys_come_from_adapter_manifests(tmp_path, monkeypatch):
     m = _adapter_manifest(tmp_path, monkeypatch)
     assert {sid: x.expected_row_count for sid, x in s01.adapter_inputs(m).items()} == {"src_a": 400}
+
+
+# ---------------------------------------------------------------- adapter 入力表の taxon_id が指す taxon の原本の行（閉包）
+def _taxon_origin_db(adapter_ids):
+    from registry import common as registry_common
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE organism_records (source_id TEXT, taxon_key TEXT)")
+    conn.execute("CREATE TABLE taxa (taxon_id TEXT, gbif_taxon_key TEXT, gbif_match_type TEXT)")
+    conn.execute("CREATE TABLE edna_x (taxon_id TEXT)")
+    # rowid: 1,2,3 = gbif 100（最小の 1 だけ要る）/ 4 = inat 7 / 5 = gbif 200（サンプルに既にある）/ 6 = 無関係
+    conn.executemany("INSERT INTO organism_records VALUES (?,?)", [
+        ("gbif_kanagawa_occurrences", "100"), ("gbif_kanagawa_occurrences", "100"), ("gbif_kanagawa_occurrences", "100"),
+        ("inaturalist_kanagawa", "7"), ("gbif_kanagawa_occurrences", "200"), ("gbif_kanagawa_occurrences", "999")])
+    # taxa: 1 = gbif 300（organism_records に無く EXACT）/ 2 = 未照合（ryuiki-taxa）/ 3 = gbif 300 の別の EXACT 行
+    conn.executemany("INSERT INTO taxa VALUES (?,?,?)", [("T-1", "300", "EXACT"), ("T-2", "", ""), ("T-3", "300", "EXACT")])
+    unresolved = registry_common.taxon_id_unresolved("T-2")
+    conn.executemany("INSERT INTO edna_x VALUES (?)", [(i,) for i in adapter_ids(unresolved)])
+    return conn
+
+
+def test_taxon_origin_rows_pick_one_minimal_row_per_taxon(tmp_path, monkeypatch):
+    m = s01.adapter_inputs(_adapter_manifest(tmp_path, monkeypatch, table="edna_x"))
+    conn = _taxon_origin_db(lambda u: [
+        "common:taxon:gbif.100", "common:taxon:inat.7", "common:taxon:gbif.200", "common:taxon:gbif.300", u,
+        "common:taxon:kanagawa-edna.x", None])
+    got = s01.select_taxon_origin_rows(conn, m, {"organism_records": {5}}, supplement_ids={"common:taxon:kanagawa-edna.x"})
+    # gbif.100 は最小の rowid 1、inat.7 は 4、gbif.200 はサンプルに既にある（5）ので足さない、
+    # gbif.300 は organism_records に無いので taxa の最小 rowid 1、未照合は taxa の rowid 2。supplement は対象外
+    assert got == {"organism_records": {1, 4}, "taxa": {1, 2}}
+    # 決定論: 同じ入力で同じ結果
+    assert got == s01.select_taxon_origin_rows(conn, m, {"organism_records": {5}}, supplement_ids={"common:taxon:kanagawa-edna.x"})
+
+
+def test_taxon_origin_rows_stop_on_unresolvable_id(tmp_path, monkeypatch):
+    m = s01.adapter_inputs(_adapter_manifest(tmp_path, monkeypatch, table="edna_x"))
+    conn = _taxon_origin_db(lambda u: ["common:taxon:gbif.100", "common:taxon:gbif.424242", "common:taxon:weird.1"])
+    with pytest.raises(SystemExit, match="2 件"):
+        s01.select_taxon_origin_rows(conn, m, {}, supplement_ids=set())
+
+
+def test_taxon_origin_rows_skip_tables_without_taxon_id_and_non_occurrence(tmp_path, monkeypatch):
+    m = s01.adapter_inputs(_adapter_manifest(tmp_path, monkeypatch))          # wildlife_sightings（taxon_id 列なし）
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE wildlife_sightings (id INTEGER)")
+    conn.execute("CREATE TABLE organism_records (source_id TEXT, taxon_key TEXT)")
+    assert s01.select_taxon_origin_rows(conn, m, {}, supplement_ids=set()) == {}
+
+
+# ---------------------------------------------------------------- adapter 入力表の座標が落ちる grid01 セルの閉包
+def _grid_db(points):
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE organism_records (lat REAL, lon REAL)")
+    conn.execute("CREATE TABLE edna_x (lat REAL, lon REAL)")
+    # rowid 1,2 = セル (3556,13925) / 3 = (3510,13910) / 4 = (3570,13950) / 5 = 座標なし
+    conn.executemany("INSERT INTO organism_records VALUES (?,?)", [
+        (35.5641, 139.2509), (35.5650, 139.2511), (35.10, 139.10), (35.7001, 139.5002), (None, None)])
+    conn.executemany("INSERT INTO edna_x VALUES (?,?)", points)
+    return conn
+
+
+def test_grid01_origin_rows_add_missing_cells_with_min_rowid(tmp_path, monkeypatch):
+    m = s01.adapter_inputs(_adapter_manifest(tmp_path, monkeypatch, table="edna_x"))
+    conn = _grid_db([(35.564123, 139.250915), (35.7005, 139.5009), (None, None)])
+    got = s01.select_grid01_origin_rows(conn, m, {"organism_records": {3}})
+    assert got == {"organism_records": {1, 4}}          # セルごとに rowid 最小の 1 行
+    assert got == s01.select_grid01_origin_rows(conn, m, {"organism_records": {3}})       # 決定論
+    # サンプルに既にそのセルを生む行があれば足さない（別の行 2 でも同じセル）
+    assert s01.select_grid01_origin_rows(conn, m, {"organism_records": {2, 4}}) == {}
+
+
+def test_grid01_origin_rows_stop_when_origin_has_no_such_cell(tmp_path, monkeypatch):
+    m = s01.adapter_inputs(_adapter_manifest(tmp_path, monkeypatch, table="edna_x"))
+    conn = _grid_db([(36.5, 140.5)])
+    with pytest.raises(SystemExit, match="1 件"):
+        s01.select_grid01_origin_rows(conn, m, {})
+
+
+def test_grid01_origin_rows_skip_tables_without_coordinates(tmp_path, monkeypatch):
+    m = s01.adapter_inputs(_adapter_manifest(tmp_path, monkeypatch))             # wildlife_sightings（lat/lon なし）
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE wildlife_sightings (id INTEGER)")
+    assert s01.select_grid01_origin_rows(conn, m, {}) == {}
+
+
+def test_grid01_cell_matches_the_registry_sql_expression():
+    conn = sqlite3.connect(":memory:")
+    for lat, lon in [(35.29, 139.07), (35.564123, 139.250915), (35.0, 139.0), (35.58, 139.29), (35.1 + 0.2, 139.7 - 0.1)]:
+        sql = conn.execute("SELECT CAST(FLOOR(?*100) AS INT), CAST(FLOOR(?*100) AS INT)", (lat, lon)).fetchone()
+        assert s01.grid01_cell(lat, lon) == sql
