@@ -3,9 +3,9 @@
     "per_query": {
       "biota_totals": {
         "added": 0,
-        "changed": 1,
+        "changed": 0,
         "removed": 0,
-        "same": 0
+        "same": 1
       },
       "climatology_by_variable": {
         "added": 0,
@@ -33,15 +33,15 @@
       },
       "effort_years": {
         "added": 0,
-        "changed": 1,
+        "changed": 0,
         "removed": 0,
-        "same": 0
+        "same": 1
       },
       "ias_species": {
         "added": 0,
-        "changed": 1,
+        "changed": 0,
         "removed": 0,
-        "same": 0
+        "same": 1
       },
       "landuse_highlight": {
         "added": 0,
@@ -51,15 +51,15 @@
       },
       "mesh_all": {
         "added": 0,
-        "changed": 1,
+        "changed": 0,
         "removed": 0,
-        "same": 0
+        "same": 1
       },
       "mesh_by_year": {
         "added": 0,
-        "changed": 5,
+        "changed": 0,
         "removed": 0,
-        "same": 52
+        "same": 57
       },
       "month_series_site_by_variable": {
         "added": 0,
@@ -69,9 +69,9 @@
       },
       "overview_counts": {
         "added": 0,
-        "changed": 1,
+        "changed": 0,
         "removed": 0,
-        "same": 0
+        "same": 1
       },
       "rain_monthly_clim": {
         "added": 0,
@@ -105,39 +105,39 @@
       },
       "species_catalog": {
         "added": 0,
-        "changed": 1,
+        "changed": 0,
         "removed": 0,
-        "same": 0
+        "same": 1
       },
       "species_mesh_years": {
-        "added": 34,
-        "changed": 3,
-        "removed": 34,
-        "same": 23
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 60
       },
       "species_months": {
-        "added": 34,
-        "changed": 3,
-        "removed": 34,
-        "same": 23
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 60
       },
       "species_share_trend": {
         "added": 0,
-        "changed": 7,
+        "changed": 0,
         "removed": 0,
-        "same": 27
+        "same": 34
       },
       "species_years": {
-        "added": 34,
-        "changed": 3,
-        "removed": 34,
-        "same": 23
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 60
       },
       "taxon_group_years": {
         "added": 0,
-        "changed": 1,
+        "changed": 0,
         "removed": 0,
-        "same": 0
+        "same": 1
       },
       "variable_catalog_by_variable": {
         "added": 0,
@@ -159,9 +159,9 @@
       },
       "watershed_rollup": {
         "added": 0,
-        "changed": 1,
+        "changed": 0,
         "removed": 0,
-        "same": 0
+        "same": 1
       },
       "year_series_site_by_variable": {
         "added": 0,
@@ -182,16 +182,16 @@
         "same": 60
       }
     },
-    "previous_git_head": "164853fcc5581a775b4a8df19136afadb83ac182"
+    "previous_git_head": "02eb063a75864ff9aad527782a98ddbed9804216"
   },
-  "created_at": "2026-10-07T07:11:52+00:00",
+  "created_at": "2026-10-07T07:48:20+00:00",
   "environment": {
     "better_sqlite3_sqlite_version": "3.53.4",
     "node_version": "v22.22.2",
     "python_sqlite3_version": "3.49.1",
     "python_version": "3.13.7"
   },
-  "git_head": "02eb063a75864ff9aad527782a98ddbed9804216",
+  "git_head": "66f801b29729e74527626977a678e6638f056238",
   "pipeline_fingerprint_rows": {
     "registry.sqlite": null,
     "v2.sqlite": [
@@ -331,7 +331,7 @@
     "web/src/lib/db.ts": "cb9a153fb416b4400bd74ecf0fd4d3977df90944",
     "web/src/lib/registry/generated-client.ts": "a0871726ce0964fbe31f0fed6a8ed0b98d426460",
     "web/src/lib/registry/generated-id-map.ts": "df5cd62cdf65bf30fe058654c18ed5a3f648bd75",
-    "web/src/lib/registry/generated-source.ts": "3230ee4dbdbeec5142efc982e28e7cc2dc693d1d",
+    "web/src/lib/registry/generated-source.ts": "d56bf3386abd45de5f86aec50543e7631b62e217",
     "web/src/lib/registry/generated.ts": "260e216c1034ef85d2fd3ad9e8a5da44c7302a47",
     "web/src/lib/registry/index.ts": "02fc0d4c3b83cce49ea4b72d5e349dc3c45a201b",
     "web/src/lib/registry/legacy-id.ts": "e6fb112a8a1288823915b2030c6d72d1a57c751c",
