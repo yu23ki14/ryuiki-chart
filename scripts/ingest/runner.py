@@ -18,6 +18,7 @@ from __future__ import annotations
 import csv
 import importlib
 import pathlib
+import math
 import re
 import sqlite3
 from dataclasses import dataclass, field
@@ -129,7 +130,7 @@ class AdapterRun:
             raise MigrationError(f"{src}: lat/lon が数値でない: record_key={key!r} lat={lat!r} lon={lon!r}")
         unc = raw.get("coordinate_uncertainty_m")
         if unc is not None:
-            if not _number(unc) or unc < 0 or unc != unc or unc == float("inf"):
+            if not _number(unc) or unc < 0 or not math.isfinite(unc):
                 raise MigrationError(
                     f"{src}: coordinate_uncertainty_m が非負の有限な数値でない: record_key={key!r} 値={unc!r}")
             if lat is None:

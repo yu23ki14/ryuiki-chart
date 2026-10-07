@@ -257,6 +257,8 @@ CREATE TABLE IF NOT EXISTS place_watershed (
 -- 無条件に上書きする(build_taxon.py モジュール docstring 参照)一方、records
 -- 補完は vernacular_name_ja が NULL の行にだけ適用し、既存の値は1件も変えない。
 -- 双方とも NULL のまま(候補が無い)行は vernacular_ja_basis も NULL。
+-- 'supplement'(2026-10-07): registry/taxon/supplement_taxa.csv の手書き行の和名(人が確かめた値。override と同格)。
+-- classification_basis にも 'supplement'(分類列を CSV の値で持つ補完 taxon)がある。
 CREATE TABLE IF NOT EXISTS taxon (
   taxon_id TEXT PRIMARY KEY,
   scientific_name TEXT,

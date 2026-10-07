@@ -127,6 +127,7 @@ taxa の `gbif_match_type` が HIGHERRANK/FUZZY の行のうち、`taxon_gbif_ac
 import csv
 import re
 import sqlite3
+import urllib.parse
 from collections import Counter
 
 import yaml
@@ -162,10 +163,14 @@ SUPPLEMENT_COLUMNS = (
     "taxon_id", "scientific_name", "canonical_binomial", "rank", "kingdom", "phylum", "class", "order",
     "family", "vernacular_name_ja", "gbif_taxon_key", "basis", "evidence",
 )
-# basis → taxon.status（gbif_match は照合済みなので status は空、name_only は学名を持たない＝unresolved）
-SUPPLEMENT_BASIS_STATUS = {"gbif_match": None, "name_only": "unresolved"}
+# basis → taxon.status（gbif_match は GBIF 照合済み＝他の GBIF 行と同じ 'accepted'、
+# name_only は学名を持たない＝unresolved）
+SUPPLEMENT_BASIS_STATUS = {"gbif_match": "accepted", "name_only": "unresolved"}
 _SUPPLEMENT_GBIF_ID_RE = re.compile(r"^common:taxon:gbif\.([0-9]+)$")
-_SUPPLEMENT_NAME_ONLY_ID_RE = re.compile(r"^common:taxon:kanagawa-edna\.[^\s:]+$")
+# name_only の ID は `common:taxon:<出典の名前空間>.<slug>`。名前空間は出典ごとに自由（ただし既存の
+# 3 空間は予約）、slug は slugify_local_key() を通した形そのもの（taxon_id_unresolved() と同じ流儀）。
+_SUPPLEMENT_NAME_ONLY_ID_RE = re.compile(r"^common:taxon:([^.:]+)\.([^:]+)$")
+_RESERVED_NAMESPACES = frozenset({"gbif", "inat", "ryuiki-taxa"})
 
 # v1 (web/scripts/build-biota.mjs org_norm) と同じ母集団: 日付の無い記録は
 # 分類の多数決に含めない（モジュール docstring参照。v1 の値を変えないための温存）。
@@ -579,8 +584,7 @@ def _pick_taxa_representative(rows: list[dict], crosswalk_rank: dict[str, str]) 
 
 def _load_supplement_taxa(path=None) -> list[dict]:
     """`registry/taxon/supplement_taxa.csv`（ヘッダのみ＝空でよい）を読んで検査する。ID 規則・basis・
-    必須列の違反は止める。既存 taxon との衝突は呼び出し側の `_insert()` が止める。
-    空文字は None に正規化する。
+    必須列・二名法の整合の違反は止める。既存 taxon との衝突は build() が扱う。空文字は None に正規化する。
     """
     path = SUPPLEMENT_TAXA_CSV if path is None else path
     if not path.exists():
@@ -590,28 +594,35 @@ def _load_supplement_taxa(path=None) -> list[dict]:
         if tuple(reader.fieldnames or ()) != SUPPLEMENT_COLUMNS:
             raise ValueError(f"{path.name} のヘッダが違う: {reader.fieldnames} （期待: {list(SUPPLEMENT_COLUMNS)}）")
         raw_rows = list(reader)
-    rows: list[dict] = []
-    seen: set[str] = set()
-    for n, raw in enumerate(raw_rows, start=2):
-        row = {k: (v.strip() if v and v.strip() else None) for k, v in raw.items()}
-        where = f"{path.name}:{n} taxon_id={row['taxon_id']!r}"
-        tid = row["taxon_id"]
-        if tid is None or tid in seen:
-            raise ValueError(f"{where}: taxon_id が空または重複")
-        seen.add(tid)
-        basis = row["basis"]
+    rows = [{k: (v.strip() if v and v.strip() else None) for k, v in raw.items()} for raw in raw_rows]
+    common.assert_unique([r["taxon_id"] for r in rows], f"{path.name} の taxon_id")
+    for n, row in enumerate(rows, start=2):
+        tid, basis = row["taxon_id"], row["basis"]
+        where = f"{path.name}:{n} taxon_id={tid!r}"
+        if tid is None:
+            raise ValueError(f"{where}: taxon_id が空")
         if basis not in SUPPLEMENT_BASIS_STATUS:
             raise ValueError(f"{where}: basis が未知: {basis!r}（{sorted(SUPPLEMENT_BASIS_STATUS)} のどれか）")
-        m = _SUPPLEMENT_GBIF_ID_RE.match(tid)
         if basis == "gbif_match":
+            m = _SUPPLEMENT_GBIF_ID_RE.match(tid)
             if not m or row["gbif_taxon_key"] != m.group(1):
                 raise ValueError(f"{where}: gbif_match は taxon_id=common:taxon:gbif.<key> で gbif_taxon_key と一致すること"
                                  f"（gbif_taxon_key={row['gbif_taxon_key']!r}）")
             if not row["scientific_name"]:
                 raise ValueError(f"{where}: gbif_match は scientific_name が必須")
+            expected = binom_of(row["scientific_name"])
+            if row["canonical_binomial"] not in (None, expected):
+                raise ValueError(f"{where}: canonical_binomial={row['canonical_binomial']!r} が"
+                                 f" scientific_name の二名法 {expected!r} と食い違う（空にすれば自動で入る）")
         else:
-            if not _SUPPLEMENT_NAME_ONLY_ID_RE.match(tid):
-                raise ValueError(f"{where}: name_only は taxon_id=common:taxon:kanagawa-edna.<slug>（空白・コロン無し）")
+            m = _SUPPLEMENT_NAME_ONLY_ID_RE.match(tid)
+            if not m or not common.is_valid_namespace(m.group(1)) or m.group(1) in _RESERVED_NAMESPACES:
+                raise ValueError(f"{where}: name_only は taxon_id=common:taxon:<名前空間>.<slug>"
+                                 f"（名前空間は [a-z0-9_-]+ で gbif/inat/ryuiki-taxa 以外）")
+            local = urllib.parse.unquote(m.group(2))
+            if common.slugify_local_key(local) != m.group(2):
+                raise ValueError(f"{where}: slug が slugify_local_key() を通した形でない"
+                                 f"（期待: {common.slugify_local_key(local)!r}。原文は vernacular_name_ja に置く）")
             if row["gbif_taxon_key"] or row["scientific_name"] or row["canonical_binomial"]:
                 raise ValueError(f"{where}: name_only は学名・二名法・gbif_taxon_key を持たない（学名を捏造しない）")
             if not row["vernacular_name_ja"]:
@@ -620,7 +631,6 @@ def _load_supplement_taxa(path=None) -> list[dict]:
             raise ValueError(f"{where}: rank が空")
         if not row["evidence"]:
             raise ValueError(f"{where}: evidence（出典と確認の経緯）が空")
-        rows.append(row)
     return rows
 
 
@@ -1009,6 +1019,7 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     汚さないため、返り値には含めない）。
     """
     ryuiki = src["ryuiki"]
+    supplement = _load_supplement_taxa()  # 手書き CSV の検査は原本を読む前に（不正なら早く止まる）
 
     _assert_namespaces_have_traits()
     _assert_known_source_ids(ryuiki)
@@ -1201,21 +1212,29 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     print(f"  [taxon] classification_basis 内訳（unresolved含む全体）: {basis_counts}")
     print(f"  [taxon] status='needs_review'（accepted系 + unresolved系）合計 = {n_needs_review:,}")
 
-    # --- 補完 taxon（registry/taxon/supplement_taxa.csv）。既存の taxon_id と衝突したら _insert() が止める
-    supplement = _load_supplement_taxa()
+    # --- 補完 taxon（読み込み・検査は build() の先頭）。gbif_match で同じ taxon_id が既にあれば捨てる
+    # （後から organism_records/taxa 側に同じ GBIF キーが現れても落ちない）。name_only の衝突は止める。
+    n_supplement_dropped = 0
     for sp in supplement:
-        _insert(sp["taxon_id"], ("supplement", sp["taxon_id"]), _build_taxon_row(
-            sp["taxon_id"], sp["scientific_name"], sp["kingdom"], sp["phylum"], sp["class"],
+        tid = sp["taxon_id"]
+        if tid in rows_by_id:
+            if sp["basis"] != "gbif_match":
+                raise ValueError(
+                    f"補完 taxon {tid!r}（name_only）が既存の taxon と衝突: {origin_by_id[tid]!r}。"
+                    "supplement_taxa.csv の行を確認すること（上書きしない）")
+            n_supplement_dropped += 1
+            continue
+        _insert(tid, ("supplement", tid), _build_taxon_row(
+            tid, sp["scientific_name"], sp["kingdom"], sp["phylum"], sp["class"],
             sp["order"], sp["family"], "supplement", group_rules, group_default,
             rank=sp["rank"], gbif_taxon_key=sp["gbif_taxon_key"],
             vernacular_name_ja=sp["vernacular_name_ja"],
             vernacular_ja_basis=VERNACULAR_JA_BASIS_SUPPLEMENT if sp["vernacular_name_ja"] else None,
             status=SUPPLEMENT_BASIS_STATUS[sp["basis"]],
         ))
-        if sp["canonical_binomial"]:
-            rows_by_id[sp["taxon_id"]]["canonical_binomial"] = sp["canonical_binomial"]
     print(f"  [taxon] 補完 taxon（supplement_taxa.csv）= {len(supplement):,}"
-          f"（basis 内訳: {dict(sorted(Counter(sp['basis'] for sp in supplement).items()))}）")
+          f"（basis 内訳: {dict(sorted(Counter(sp['basis'] for sp in supplement).items()))}）"
+          f"、既存 taxon と重複して捨てた gbif_match = {n_supplement_dropped:,}")
 
     # --- NAME_JA（人手確認済み63件）を binom で上書き（gbif/inat 両方の名前空間を横断） ---
     overrides = _load_vernacular_overrides()
