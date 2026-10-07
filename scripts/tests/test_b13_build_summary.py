@@ -708,6 +708,9 @@ def test_binom_tables_collapse_taxa_sharing_a_binomial(tmp_path):
         assert rows["Aus bus"][1] == max("鳥類", "哺乳類")
         # n は watershed 系列（座標のある 39 の写し＋流域解決済みの 6＋流域 NULL の 2＝47）、n_places は grid01 の格子数（2）。
         assert rows["Aus bus"][4:] == (47, 8, 2, 2, 2020, 2021, 2)
+        # n_located は grid01 系列（座標のある記録）の n。足切り（SPECIES_MIN_N）の判定に使う。
+        located = dict(conn.execute("SELECT binom, n_located FROM summary_species_catalog"))
+        assert located == {"Aus bus": 39, "Cus dus": 107}
         # 窓外の 1950 年のセルも種カタログには入る（窓は問い合わせで掛ける）。
         assert rows["Cus dus"][4:] == (7 + 100 + 9, 1 + 40 + 3, 2, 2, 1950, 2021, 3)
     finally:

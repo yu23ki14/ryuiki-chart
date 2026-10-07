@@ -131,7 +131,7 @@ V2_CHECK_EXIT_STALE = 10
 # `summary_species_catalog`/`summary_watershed_occurrence` の n_alien の値が変わるため v4→v5 に上げた。
 # 2026-10-07: n の定義を「日付のある全記録（watershed 系列。座標の無い記録を含む）」に変え、
 # meshN 相当（n_places）は grid01 のまま。`summary_species_catalog`/`summary_group_year`/
-# `summary_effort_year` の n・n_binom・y_*・n_years の値が変わるため v5→v6 に上げた。
+# `summary_effort_year` の n・n_binom・y_*・n_years の値が変わり、summary_species_catalog に n_located を足したため v5→v6 に上げた。
 SUMMARY_SPEC_VERSION = "serving-summary/v6"
 
 # D1 に載せる summary 表（`scripts/b13_build_summary.py` が作る）の名前。

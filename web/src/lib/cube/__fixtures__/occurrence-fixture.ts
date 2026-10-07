@@ -166,7 +166,7 @@ function ensureSchema(db: Database.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS summary_species_catalog (
       binom text NOT NULL, taxon_group text, "class" text, family text,
-      n integer NOT NULL, n_red_list integer NOT NULL, n_alien integer NOT NULL, n_places integer NOT NULL,
+      n integer NOT NULL, n_located integer NOT NULL DEFAULT 0, n_red_list integer NOT NULL, n_alien integer NOT NULL, n_places integer NOT NULL,
       y_from integer, y_to integer, n_years integer NOT NULL, built_from text NOT NULL, spec_version text NOT NULL);
     CREATE TABLE IF NOT EXISTS summary_group_year (
       year integer NOT NULL, taxon_group text NOT NULL, source_id text NOT NULL,
@@ -233,9 +233,9 @@ function seedSummaries(db: Database.Database): void {
            MIN(CAST(substr(o.period_start,1,4) AS INTEGER)), MAX(CAST(substr(o.period_start,1,4) AS INTEGER)), ${META}
     FROM occurrence_agg o WHERE o.place_kind = 'watershed' AND o.grain IN ('year','survey_period') AND o.built_from <> '${TWIN_MARK}' GROUP BY o.place_id;
 
-    INSERT INTO summary_species_catalog (binom, taxon_group, "class", family, n, n_red_list, n_alien, n_places, y_from, y_to, n_years, built_from, spec_version)
+    INSERT INTO summary_species_catalog (binom, taxon_group, "class", family, n, n_located, n_red_list, n_alien, n_places, y_from, y_to, n_years, built_from, spec_version)
     SELECT t.canonical_binomial, MAX(t.taxon_group), MAX(t."class"), MAX(t.family),
-           ${IF_WS("o.n")}, ${IF_WS("o.n_red_list")}, ${IF_WS("o.n_alien")}, ${PLACES_GRID},
+           ${IF_WS("o.n")}, SUM(CASE WHEN o.place_kind = 'grid01' THEN o.n ELSE 0 END), ${IF_WS("o.n_red_list")}, ${IF_WS("o.n_alien")}, ${PLACES_GRID},
            MIN(CAST(substr(o.period_start,1,4) AS INTEGER)), MAX(CAST(substr(o.period_start,1,4) AS INTEGER)),
            COUNT(DISTINCT substr(o.period_start,1,4)), ${META}
     FROM occurrence_agg o JOIN taxon t ON t.taxon_id = o.taxon_id

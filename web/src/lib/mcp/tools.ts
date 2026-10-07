@@ -21,8 +21,7 @@ import {
   sourceFreshness,
   speciesCatalog,
   speciesMonths,
-  speciesYears,
-  speciesYearsNoCoordinate,
+  speciesYearsWithCoverage,
   timeseries,
   variableCatalog,
   watershedYears,
@@ -260,17 +259,21 @@ export const MCP_TOOLS: McpTool[] = [
       const filter = source_ids ? { sourceIds: source_ids } : {};
       const query = { kind, group: group ?? null, binoms: binoms ?? null, placeId: placeId ?? null, source_ids: source_ids ?? null, limit: limit ?? null };
       let rows: unknown[];
-      let coverage: { no_coordinate: { binom: string; year: number; source_id: string; n: number }[] } | undefined;
+      let coverage: { no_coordinate: { binom: string; year: number; source_id: string; n: number }[]; truncated: boolean } | undefined;
+      let coverageTruncated = false;
       let extra: Record<string, unknown> = {};
       if (kind === "species_catalog") rows = await speciesCatalog(db, { group: group ?? null, limit: (limit ?? 100) + 1, withNames: true, ...filter });
       else if (kind === "watershed_years") rows = await watershedYears(db, { placeId, ...filter });
       else {
         if (!binoms?.length) throw new McpInputError(`kind='${kind}' には binoms（学名）が要る`);
         if (kind === "species_years") {
-          rows = await speciesYears(db, binoms, filter);
-          // n は座標の無い記録を含む。そのうち格子に置けなかった件数を出典別・年別に添える（mesh_n は座標のある記録だけ）。
-          const nc = await speciesYearsNoCoordinate(db, binoms, filter);
-          coverage = { no_coordinate: nc.map((r) => ({ binom: r.binom, year: r.year, source_id: r.sourceId, n: r.n })) };
+          // 1回の集計から両方を導く。n は座標の無い記録を含む。そのうち格子に置けなかった件数を出典別・年別に添える
+          // （mesh_n は座標のある記録だけ）。coverage も rows と同じ上限・truncated を効かせる。
+          const r = await speciesYearsWithCoverage(db, binoms, filter);
+          rows = r.years;
+          const nc = cap(r.noCoordinate, limit);
+          coverageTruncated = nc.truncated;
+          coverage = { no_coordinate: nc.rows.map((x) => ({ binom: x.binom, year: x.year, source_id: x.sourceId, n: x.n })), truncated: nc.truncated };
         } else {
           const months = await speciesMonths(db, binoms, filter);
           rows = months;
@@ -280,7 +283,7 @@ export const MCP_TOOLS: McpTool[] = [
         }
       }
       const c = cap(rows, limit);
-      return buildDataEnvelope(query, { rows: c.rows, n_total: rows.length, ...(coverage ? { coverage } : {}), ...extra }, sourceIds, { now: ctx.now, truncated: c.truncated, caveats: occurrenceCaveats(sourceIds) });
+      return buildDataEnvelope(query, { rows: c.rows, n_total: rows.length, ...(coverage ? { coverage } : {}), ...extra }, sourceIds, { now: ctx.now, truncated: c.truncated || coverageTruncated, caveats: occurrenceCaveats(sourceIds) });
     },
   }),
 

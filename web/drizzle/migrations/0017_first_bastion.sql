@@ -1,0 +1,1 @@
+ALTER TABLE `summary_species_catalog` ADD `n_located` integer DEFAULT 0 NOT NULL;

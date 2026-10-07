@@ -288,6 +288,7 @@ export const summarySpeciesCatalog = sqliteTable(
 		class: text(),
 		family: text(),
 		n: integer().notNull(),
+		nLocated: integer("n_located").notNull().default(0),
 		nRedList: integer("n_red_list").notNull(),
 		nAlien: integer("n_alien").notNull(),
 		nPlaces: integer("n_places").notNull(),

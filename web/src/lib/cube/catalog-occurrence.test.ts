@@ -31,7 +31,7 @@ describe("speciesCatalog", () => {
     ]);
     expect(rows[0]).toEqual({
       binom: alpha, taxonGroup: "FxBird", class: "Aves", family: "FamA",
-      n: 254, nRedList: 67, nAlien: 0, nPlaces: 2, yFrom: 1950, yTo: 2021, nYears: 6,
+      n: 254, nLocated: 236, nRedList: 67, nAlien: 0, nPlaces: 2, yFrom: 1950, yTo: 2021, nYears: 6,
     });
   });
   it("sourceIds: 全出典の指定は件数が現行と一致し、片方に絞ると和が全体になる。該当なしは空", async () => {
@@ -106,7 +106,7 @@ describe("iasSpecies", () => {
       ["その他の総合対策外来種", delta],
       ["総合対策外来種", delta],
     ]);
-    expect(rows[0]).toMatchObject({ n: 40, meshN: 1, yFrom: 2020, yTo: 2022, nSince: 20, nameJa: "デルタ", taxonGroup: "FxPlant" });
+    expect(rows[0]).toMatchObject({ n: 40, meshN: 1, yFrom: 2020, yTo: 2022, nSince: 40, nameJa: "デルタ", taxonGroup: "FxPlant" });
   });
 });
 

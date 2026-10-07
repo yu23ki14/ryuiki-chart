@@ -11,7 +11,7 @@ import {
   speciesMonths,
   speciesShareTrend,
   speciesYears,
-  speciesYearsNoCoordinate,
+  speciesYearsWithCoverage,
   USE_RECORD_VERNACULAR,
   watershedYears,
 } from "./occurrence";
@@ -37,7 +37,7 @@ describe("speciesYears", () => {
       { binom: alpha, year: 2010, n: 90, meshN: 2 },
       { binom: beta, year: 2010, n: 31, meshN: 2 },
       // n は座標の無い記録（watershed 系列にだけある）を含む。meshN は座標のある記録の格子数だけ
-      { binom: alpha, year: 2020, n: 10, meshN: 0 },
+      { binom: alpha, year: 2020, n: 10, meshN: null }, // 座標のある記録が無い年は meshN が null（欠測）
       { binom: alpha, year: 2021, n: 98, meshN: 1 }, // 90（座標あり）+ 5 + 3（座標なし）
     ]);
   });
@@ -330,24 +330,24 @@ describe("座標の無い記録（n は watershed 系列、meshN は grid01 系�
   it("eDNA に絞ると座標の無い記録も n に入る。meshN は座標のある記録だけ", async () => {
     expect(await speciesYears(fx.db, [alpha], { sourceIds: [EDNA] })).toEqual([
       { binom: alpha, year: 2023, n: 5, meshN: 1 },
-      { binom: alpha, year: 2024, n: 4, meshN: 0 },
+      { binom: alpha, year: 2024, n: 4, meshN: null },
     ]);
   });
 
   it("座標なしの件数は出典別・年別（n − 座標のある件数）。0 のセルは出さない", async () => {
-    expect(await speciesYearsNoCoordinate(fx.db, [alpha], { sourceIds: [EDNA] })).toEqual([
+    expect((await speciesYearsWithCoverage(fx.db, [alpha], { sourceIds: [EDNA] })).noCoordinate).toEqual([
       { binom: alpha, year: 2023, sourceId: EDNA, n: 3 },
       { binom: alpha, year: 2024, sourceId: EDNA, n: 4 },
     ]);
     // 未指定は全出典。GBIF にも（フィクスチャの）座標なしがあり、出典ごとに別の行になる
-    const all = await speciesYearsNoCoordinate(fx.db, [alpha]);
+    const all = (await speciesYearsWithCoverage(fx.db, [alpha])).noCoordinate;
     expect(all.map((r) => [r.year, r.sourceId, r.n])).toEqual([
       [2020, GBIF, 10],
       [2021, GBIF, 8],
       [2023, EDNA, 3],
       [2024, EDNA, 4],
     ]);
-    expect(await speciesYearsNoCoordinate(fx.db, [alpha], { sourceIds: [] })).toEqual([]);
+    expect((await speciesYearsWithCoverage(fx.db, [alpha], { sourceIds: [] })).noCoordinate).toEqual([]);
   });
 
   it("出典を絞った speciesCatalog も同じ定義（n=全記録、nPlaces=格子の数、年は両系列）", async () => {
@@ -361,5 +361,20 @@ describe("座標の無い記録（n は watershed 系列、meshN は grid01 系�
       (await speciesYears(fx.db, [alpha], opt)).reduce((a, r) => a + r.n, 0);
     const all = await sum({});
     expect((await sum({ sourceIds: [EDNA] })) + (await sum({ sourceIds: [GBIF] }))).toBe(all);
+  });
+});
+
+describe("足切りは座標のある記録の件数（n_located）で判定する", () => {
+  it("座標なしを足して n が 80 を超えても、座標のある記録が 80 未満なら月別・メッシュは空", async () => {
+    // gamma: 座標のある n=10。座標なしを 100 件足して n=110 にする
+    fx.raw.exec(
+      `INSERT INTO occurrence_agg (region_id, source_id, place_id, place_kind, taxon_id, grain, period_start, period_end, n, n_red_list, n_alien, built_from, spec_version)
+       VALUES ('kanagawa','kanagawa_edna',NULL,'watershed','common:taxon:fx_c','year','2023-01-01','2023-01-01',100,0,0,'fixture:edna','fixture@1')`,
+    );
+    fx.raw.exec(`UPDATE summary_species_catalog SET n = n + 100 WHERE binom = '${gamma}'`);
+    const [cat] = (await speciesCatalog(fx.db, { search: gamma })).filter((r) => r.binom === gamma);
+    expect(cat).toMatchObject({ n: 110, nLocated: 10 });
+    expect(await speciesMonths(fx.db, [gamma])).toEqual([]);
+    expect(await speciesMeshYears(fx.db, gamma)).toEqual([]);
   });
 });

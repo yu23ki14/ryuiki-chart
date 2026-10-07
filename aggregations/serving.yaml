@@ -157,6 +157,8 @@ summaries:
       class:       { fn: max, col: taxon.class }
       family:      { fn: max, col: taxon.family }
       n:           { fn: sum, col: n,          when: { place_kind: watershed } }
+      # 座標のある記録の n（grid01 系列）。月別・メッシュの足切り（SPECIES_MIN_N）の判定に使う。
+      n_located:   { fn: sum, col: n,          when: { place_kind: grid01 } }
       n_red_list:  { fn: sum, col: n_red_list, when: { place_kind: watershed } }
       n_alien:     { fn: sum, col: n_alien,    when: { place_kind: watershed } }
       n_places:    { fn: count_distinct, col: place_id, when: { place_kind: grid01 } }

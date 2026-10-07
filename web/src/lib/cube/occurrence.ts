@@ -29,8 +29,8 @@ export interface SpeciesYearRow {
   binom: string;
   year: number;
   n: number;
-  /** `COUNT(DISTINCT place_id)`（grid01。座標のある記録だけ）。v1 `species_year2.mesh_n`。 */
-  meshN: number;
+  /** grid01 の格子数（座標のある記録だけ）。v1 `species_year2.mesh_n`。座標のある記録が無い年は null（欠測）。 */
+  meshN: number | null;
 }
 
 /** 座標が無いため格子（grid01）に置けなかった件数（出典別・種別・年別。0 のセルは出さない）。 */
@@ -126,76 +126,84 @@ export function sourceFilterSql(sourceIds: readonly string[] | undefined): { sql
 }
 
 /**
- * 年別件数の SQL（`speciesYears`・`speciesYearsNoCoordinate` 共通）。**n は watershed 系列**（`place_id` NULL＝座標が無い・
- * 流域に解決できない記録を含む、日付のある全記録）から、**meshN は grid01 系列**（座標のある記録）から数える。
- * 2系列は同じ記録を別の見方で並べたもので、座標のある記録は両方に入る（GBIF・iNat は全件に座標があるので n は
- * 変わらない）。年は両系列とも `substr(period_start,1,4)`・年族（year/survey_period）で同じ。
+ * 件数の定義（**この3つが唯一の場所**。catalog.ts の出典別経路も使う。`aggregations/serving.yaml` の
+ * `when: {place_kind}` と同じ）: **n は watershed 系列**（`place_id` NULL＝座標が無い・流域に解決できない記録を含む、
+ * 日付のある全記録）、**nLocated・meshN は grid01 系列**（座標のある記録）。2系列は同じ記録の別の見方で、座標のある記録は
+ * 両方に入る（GBIF・iNat は全件に座標があるので n は変わらない）。年は両系列とも `substr(period_start,1,4)`・年族。
  */
-const YEAR_BOTH_KINDS = `o.place_kind IN ('grid01','watershed') AND o.grain IN ${YEAR_GRAINS}`;
-const N_ALL = "SUM(CASE WHEN o.place_kind = 'watershed' THEN o.n ELSE 0 END)";
-const N_GRID = "SUM(CASE WHEN o.place_kind = 'grid01' THEN o.n ELSE 0 END)";
+export const OCC_BOTH_KINDS_YEAR = `o.place_kind IN ('grid01','watershed') AND o.grain IN ${YEAR_GRAINS}`;
+export const OCC_SUM = (col: string, kind: "watershed" | "grid01") => `SUM(CASE WHEN o.place_kind = '${kind}' THEN o.${col} ELSE 0 END)`;
+export const OCC_N_ALL = OCC_SUM("n", "watershed");
+export const OCC_N_LOCATED = OCC_SUM("n", "grid01");
+export const OCC_MESH_N = `COUNT(DISTINCT CASE WHEN o.place_kind = 'grid01' THEN o.place_id END)`;
 
-/** v1 `speciesYears`。年は `substr(period_start,1,4)`。窓の既定は 1990〜2026。n の定義は `YEAR_BOTH_KINDS` 参照。 */
-export async function speciesYears(
-  db: CubeDb,
-  binoms: readonly string[],
-  opt: Partial<YearRange> & SourceFilterOpt = {},
-): Promise<SpeciesYearRow[]> {
-  const [lo, hi] = periodRange(opt.from ?? OCC_DEFAULT_FROM, opt.to ?? occDefaultTo());
-  const src = sourceFilterSql(opt.sourceIds);
-  const out: SpeciesYearRow[] = [];
-  for (const part of chunk(uniq(binoms), MAX_ID_LIST)) {
-    const rows = await db.all<R>(
-      `SELECT t.canonical_binomial AS binom,
-              CAST(substr(o.period_start, 1, 4) AS INTEGER) AS year,
-              ${N_ALL} AS n,
-              COUNT(DISTINCT CASE WHEN o.place_kind = 'grid01' THEN o.place_id END) AS mesh_n
-       FROM json_each(?) j
-       JOIN taxon t INDEXED BY ix_taxon_binomial ON t.canonical_binomial = j.value
-       JOIN occurrence_agg o INDEXED BY ${OCCURRENCE_AGG_INDEX.taxonPeriod} ON o.taxon_id = t.taxon_id
-       WHERE ${YEAR_BOTH_KINDS}
-         AND o.period_start >= ? AND o.period_start < ?${src.sql}
-       GROUP BY t.canonical_binomial, year`,
-      [jsonEachParam(part), lo, hi, ...src.params],
-    );
-    for (const r of rows) out.push({ binom: r.binom as string, year: r.year as number, n: r.n as number, meshN: r.mesh_n as number });
-  }
-  return out.sort((a, b) => a.year - b.year || cmp(a.binom, b.binom));
+export interface SpeciesYearsResult {
+  years: SpeciesYearRow[];
+  /** 出典別・種別・年別の座標なし件数（0 は出さない）。 */
+  noCoordinate: NoCoordinateRow[];
 }
 
 /**
- * `speciesYears` の n のうち、座標が無く格子に置けなかった件数（出典別・種別・年別。0 のセルは出さない）。
- * 応答の `coverage` に載せる（MCP の get_occurrences と AI の get_biota_trend）。
+ * 年別件数と座標なしの件数を、(binom, year, source_id) の1回の集計から両方導く。
+ * meshN は出典をまたいで格子が重なるので足せない——格子の ID を集めて和集合で数える
+ * （座標のある記録が無い年は null＝欠測。0 と書くと「格子が0」に読める）。
  */
-export async function speciesYearsNoCoordinate(
+export async function speciesYearsWithCoverage(
   db: CubeDb,
   binoms: readonly string[],
   opt: Partial<YearRange> & SourceFilterOpt = {},
-): Promise<NoCoordinateRow[]> {
+): Promise<SpeciesYearsResult> {
   const [lo, hi] = periodRange(opt.from ?? OCC_DEFAULT_FROM, opt.to ?? occDefaultTo());
   const src = sourceFilterSql(opt.sourceIds);
-  const out: NoCoordinateRow[] = [];
+  const years = new Map<string, { binom: string; year: number; n: number; cells: Set<string> }>();
+  const noCoordinate: NoCoordinateRow[] = [];
   for (const part of chunk(uniq(binoms), MAX_ID_LIST)) {
     const rows = await db.all<R>(
       `SELECT t.canonical_binomial AS binom,
               CAST(substr(o.period_start, 1, 4) AS INTEGER) AS year,
               o.source_id AS source_id,
-              ${N_ALL} - ${N_GRID} AS n
+              ${OCC_N_ALL} AS n,
+              ${OCC_N_LOCATED} AS n_located,
+              group_concat(DISTINCT CASE WHEN o.place_kind = 'grid01' THEN o.place_id END) AS cells
        FROM json_each(?) j
        JOIN taxon t INDEXED BY ix_taxon_binomial ON t.canonical_binomial = j.value
        JOIN occurrence_agg o INDEXED BY ${OCCURRENCE_AGG_INDEX.taxonPeriod} ON o.taxon_id = t.taxon_id
-       WHERE ${YEAR_BOTH_KINDS}
+       WHERE ${OCC_BOTH_KINDS_YEAR}
          AND o.period_start >= ? AND o.period_start < ?${src.sql}
-       GROUP BY t.canonical_binomial, year, o.source_id
-       HAVING ${N_ALL} <> ${N_GRID}`,
+       GROUP BY t.canonical_binomial, year, o.source_id`,
       [jsonEachParam(part), lo, hi, ...src.params],
     );
-    for (const r of rows) out.push({ binom: r.binom as string, year: r.year as number, sourceId: r.source_id as string, n: r.n as number });
+    for (const r of rows) {
+      const binom = r.binom as string;
+      const year = r.year as number;
+      const key = `${binom}\u0000${year}`;
+      let y = years.get(key);
+      if (!y) years.set(key, (y = { binom, year, n: 0, cells: new Set() }));
+      y.n += r.n as number;
+      // place_id は "common:place:grid01.3520_13900" の形で ',' を含まない
+      if (r.cells) for (const c of String(r.cells).split(",")) y.cells.add(c);
+      const nc = (r.n as number) - (r.n_located as number);
+      if (nc !== 0) noCoordinate.push({ binom, year, sourceId: r.source_id as string, n: nc });
+    }
   }
-  return out.sort((a, b) => a.year - b.year || cmp(a.binom, b.binom) || cmp(a.sourceId, b.sourceId));
+  return {
+    years: [...years.values()]
+      .map((y) => ({ binom: y.binom, year: y.year, n: y.n, meshN: y.cells.size > 0 ? y.cells.size : null }))
+      .sort((a, b) => a.year - b.year || cmp(a.binom, b.binom)),
+    noCoordinate: noCoordinate.sort((a, b) => a.year - b.year || cmp(a.binom, b.binom) || cmp(a.sourceId, b.sourceId)),
+  };
 }
 
-/** v1 `speciesMonths`。2018-01-01 以降の月セル。n≥80 の足切りは `summary_species_catalog.n`（座標なしを含む全記録の n）。月の系列は grid01 だけ（座標なしの月別件数は持たない）。 */
+/** v1 `speciesYears`。年は `substr(period_start,1,4)`。窓の既定は 1990〜2026。n の定義は `OCC_BOTH_KINDS_YEAR` 参照。 */
+export async function speciesYears(
+  db: CubeDb,
+  binoms: readonly string[],
+  opt: Partial<YearRange> & SourceFilterOpt = {},
+): Promise<SpeciesYearRow[]> {
+  return (await speciesYearsWithCoverage(db, binoms, opt)).years;
+}
+
+/** v1 `speciesMonths`。2018-01-01 以降の月セル。n≥80 の足切りは `summary_species_catalog.n_located`（座標のある記録の n。表示する行の元と同じ。v1 の「位置の標本が薄い種を出さない」を保つ）。月の系列は grid01 だけ（座標なしの月別件数は持たない）。 */
 export async function speciesMonths(db: CubeDb, binoms: readonly string[], opt: SourceFilterOpt = {}): Promise<SpeciesMonthRow[]> {
   const src = sourceFilterSql(opt.sourceIds);
   const out: SpeciesMonthRow[] = [];
@@ -205,7 +213,7 @@ export async function speciesMonths(db: CubeDb, binoms: readonly string[], opt: 
               CAST(substr(o.period_start, 6, 2) AS INTEGER) AS month,
               SUM(o.n) AS n
        FROM json_each(?) j
-       JOIN summary_species_catalog s ON s.binom = j.value AND s.n >= ?
+       JOIN summary_species_catalog s ON s.binom = j.value AND s.n_located >= ?
        JOIN taxon t INDEXED BY ix_taxon_binomial ON t.canonical_binomial = s.binom
        JOIN occurrence_agg o INDEXED BY ${OCCURRENCE_AGG_INDEX.taxonPeriod} ON o.taxon_id = t.taxon_id
        WHERE o.place_kind = 'grid01' AND o.grain = 'month' AND o.period_start >= ?${src.sql}
@@ -225,7 +233,7 @@ export async function speciesMeshYears(db: CubeDb, binom: string): Promise<Speci
      FROM summary_species_catalog s
      JOIN taxon t INDEXED BY ix_taxon_binomial ON t.canonical_binomial = s.binom
      JOIN occurrence_agg o INDEXED BY ${OCCURRENCE_AGG_INDEX.taxonPeriod} ON o.taxon_id = t.taxon_id
-     WHERE s.binom = ? AND s.n >= ?
+     WHERE s.binom = ? AND s.n_located >= ?
        AND o.place_kind = 'grid01' AND o.grain IN ${YEAR_GRAINS}
        AND o.period_start >= ? AND o.period_start < ?
      GROUP BY year, o.place_id`,

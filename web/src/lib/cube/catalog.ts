@@ -12,8 +12,8 @@ import type { CubeDb, SqlParam } from "./db";
 import { MAX_ID_LIST } from "./db";
 import { gridCellOfPlaceId, watershedIdOfPlaceId } from "./grid";
 import { NAME_JA } from "@/lib/registry/generated-client";
-import { USE_RECORD_VERNACULAR, labelMap, pickLabel, resolveNames } from "./occurrence";
-import { IAS_SINCE_YEAR, OCC_DEFAULT_FROM, occDefaultTo, YEAR_GRAINS, chunk, cmp, jsonEachParam, seriesFilterSql, uniq } from "./sql";
+import { OCC_BOTH_KINDS_YEAR, OCC_MESH_N, OCC_N_ALL, OCC_N_LOCATED, OCC_SUM, USE_RECORD_VERNACULAR, labelMap, pickLabel, resolveNames } from "./occurrence";
+import { IAS_SINCE_YEAR, OCC_DEFAULT_FROM, occDefaultTo, chunk, cmp, jsonEachParam, seriesFilterSql, uniq } from "./sql";
 import { OCCURRENCE_AGG_INDEX } from "@/db/schema-cube";
 import { basisOfCell, isRepresentativeObsStat, seriesKeyFromRow, seriesKeySql, seriesKeyString, type SeriesKey } from "./series";
 
@@ -890,6 +890,8 @@ export interface SpeciesCatalogRow {
   class: string | null;
   family: string | null;
   n: number;
+  /** 座標のある記録の n（grid01 系列）。月別・メッシュの足切り（`SPECIES_MIN_N`）の判定に使う。 */
+  nLocated: number;
   nRedList: number;
   nAlien: number;
   nPlaces: number;
@@ -925,6 +927,7 @@ function toSpeciesCatalogRow(r: OccRow): SpeciesCatalogRow {
     class: r.class as string | null,
     family: r.family as string | null,
     n: r.n as number,
+    nLocated: r.n_located as number,
     nRedList: r.n_red_list as number,
     nAlien: r.n_alien as number,
     nPlaces: r.n_places as number,
@@ -969,7 +972,7 @@ export async function speciesCatalog(db: CubeDb, opt: SpeciesCatalogOpt = {}): P
   const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
   params.push(limit);
   const rows = await db.all<OccRow>(
-    `SELECT binom, taxon_group, "class", family, n, n_red_list, n_alien, n_places, y_from, y_to, n_years
+    `SELECT binom, taxon_group, "class", family, n, n_located, n_red_list, n_alien, n_places, y_from, y_to, n_years
      FROM summary_species_catalog ${where}
      ORDER BY n DESC, binom LIMIT ?`,
     params,
@@ -1000,17 +1003,17 @@ async function speciesCatalogBySource(db: CubeDb, opt: SpeciesCatalogOpt & { sou
   params.push(limit);
   const rows = await db.all<OccRow>(
     `SELECT t.canonical_binomial AS binom, MAX(t.taxon_group) AS taxon_group, MAX(t."class") AS "class", MAX(t.family) AS family,
-            SUM(CASE WHEN o.place_kind = 'watershed' THEN o.n ELSE 0 END) AS n,
-            SUM(CASE WHEN o.place_kind = 'watershed' THEN o.n_red_list ELSE 0 END) AS n_red_list,
-            SUM(CASE WHEN o.place_kind = 'watershed' THEN o.n_alien ELSE 0 END) AS n_alien,
-            COUNT(DISTINCT CASE WHEN o.place_kind = 'grid01' THEN o.place_id END) AS n_places,
+            ${OCC_N_ALL} AS n, ${OCC_N_LOCATED} AS n_located,
+            ${OCC_SUM("n_red_list", "watershed")} AS n_red_list,
+            ${OCC_SUM("n_alien", "watershed")} AS n_alien,
+            ${OCC_MESH_N} AS n_places,
             MIN(CAST(substr(o.period_start, 1, 4) AS INTEGER)) AS y_from,
             MAX(CAST(substr(o.period_start, 1, 4) AS INTEGER)) AS y_to,
             COUNT(DISTINCT substr(o.period_start, 1, 4)) AS n_years
      FROM occurrence_agg o INDEXED BY ${OCCURRENCE_AGG_INDEX.kindGrainPeriod}
      JOIN taxon t ON t.taxon_id = o.taxon_id
      WHERE o.source_id IN (SELECT value FROM json_each(?))
-       AND o.place_kind IN ('grid01','watershed') AND o.grain IN ${YEAR_GRAINS}
+       AND ${OCC_BOTH_KINDS_YEAR}
        AND t.canonical_binomial IS NOT NULL${extra}
      GROUP BY t.canonical_binomial ${having}
      ORDER BY n DESC, binom LIMIT ?`,
@@ -1216,11 +1219,11 @@ export async function iasSpecies(db: CubeDb): Promise<IasSpeciesRow[]> {
   const since = new Map<string, number>();
   for (const part of chunk(binoms, MAX_ID_LIST)) {
     const rows = await db.all<OccRow>(
-      `SELECT t.canonical_binomial AS binom, SUM(o.n) AS n
+      `SELECT t.canonical_binomial AS binom, ${OCC_N_ALL} AS n
        FROM json_each(?) j
        JOIN taxon t INDEXED BY ix_taxon_binomial ON t.canonical_binomial = j.value
        JOIN occurrence_agg o INDEXED BY ${OCCURRENCE_AGG_INDEX.taxonPeriod} ON o.taxon_id = t.taxon_id
-       WHERE o.place_kind = 'grid01' AND o.grain IN ${YEAR_GRAINS} AND o.period_start >= ?
+       WHERE ${OCC_BOTH_KINDS_YEAR} AND o.period_start >= ?
        GROUP BY t.canonical_binomial`,
       [jsonEachParam(part), String(IAS_SINCE_YEAR)],
     );
