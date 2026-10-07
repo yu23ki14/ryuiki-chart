@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { SourceSpecification, StyleImageSource } from "maplibre-gl";
 import { MapCanvas, type MapLayerSpec } from "@/components/map/MapCanvas";
 import { stripeCss, stripeTile } from "@/lib/map/stripe";
-import { SERIES, STATUS } from "@/components/viz/palette";
+import { SERIES, STATUS, INK } from "@/components/viz/palette";
 import { nf, Spinner, Empty } from "@/components/ui";
 import { useJson } from "@/components/useJson";
 
@@ -59,7 +59,7 @@ interface ZoneFC extends GeoJSON.FeatureCollection {
   notes?: Record<string, string>;
 }
 
-const UNASSIGNED = "#d5dbd9";
+const UNASSIGNED = INK.axis;
 
 /**
  * 水源 → 地図の色。**実体に固定で割り当てる**（palette.ts の決まり: 系列は実体に固定、
@@ -300,7 +300,7 @@ export function WaterPage() {
       spec: {
         type: "line",
         paint: {
-          "line-color": "#ffffff",
+          "line-color": INK.surface,
           // 県全域では境界線が潰れるので、寄ったときだけ出す
           "line-width": ["interpolate", ["linear"], ["zoom"], 9, 0.15, 13, 0.7] as never,
           "line-opacity": 0.8,

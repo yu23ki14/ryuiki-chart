@@ -50,7 +50,7 @@ export function Heatmap({
   const lo = vals.length ? Math.min(...vals) : 0;
   const hi = vals.length ? Math.max(...vals) : 1;
   const colorOf = (v: number | null) => {
-    if (v === null || !Number.isFinite(v)) return "#f2f4f3";
+    if (v === null || !Number.isFinite(v)) return INK.grid;
     const t = (v - lo) / (hi - lo || 1);
     return SEQ[Math.min(SEQ.length - 1, Math.max(0, Math.round(t * (SEQ.length - 1))))];
   };

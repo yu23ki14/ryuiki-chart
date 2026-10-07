@@ -83,7 +83,7 @@ function EffortTab() {
       stacks: [...keys, "その他"].map((k, i) => ({
         key: k,
         label: k,
-        color: k === "その他" ? "#c3cfcc" : seriesColor(i),
+        color: k === "その他" ? INK.axis : seriesColor(i),
         values: map.get(k)!,
       })),
     };
@@ -686,9 +686,9 @@ function RedlistTab() {
         title={`2006年版 → ${year}年版：カテゴリーの移動`}
         subtitle="帯の太さが種数。上ほど深刻な区分。赤が悪化、青が改善、灰色が横ばい"
         legend={[
-          { label: "悪化", color: "#d03b3b" },
-          { label: "改善", color: "#2a78d6" },
-          { label: "横ばい", color: "#c3cfcc" },
+          { label: "悪化", color: STATUS.critical },
+          { label: "改善", color: SERIES[0] },
+          { label: "横ばい", color: INK.axis },
         ]}
         table={
           <MiniTable
