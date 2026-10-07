@@ -21,7 +21,8 @@
  5. 切り取りが空なら、候補線の G に最も近い点 = 位置。方式 river_nearest_municipality。
     精度 = G までの距離 + 300 m（同様に切り上げ・下限 500 m）。
  6. 一般名の支川（小水路・不明・本流・湧水・用水・…小河川）、W05 に名前が無い、市町村が引けない、
-    精度が 3,000 m を超える（§11）ものは座標 NULL。
+    精度が 10,000 m を超える、または切り取った線が W12 流域ただ 1 つに
+    （長さ 98% 以上・置いた点も同じ流域の内側）収まらない（multi_watershed。§11）ものは座標 NULL。
  7. 検算: 位置が入る W12 流域の水系名が地点の水系名と食い違えば evidence に WARN を残す。
     grid01 のキーが registry に無ければ grid01_ok=0（座標を NULL にはしない。件数を報告する）。
 
@@ -48,7 +49,8 @@ DEFAULT_REGISTRY = pathlib.Path(os.environ.get("RYUIKI_REGISTRY_DB") or ROOT / "
 LEDGER_COLS = ["site_key", "water_system_ja", "tributary_ja", "municipality_ja", "lat", "lon", "coord_source",
                "coordinate_uncertainty_m", "coord_method", "evidence", "grid01_ok", "reviewed"]
 
-MAX_UNCERTAINTY_M = 3000        # §11: estimated_from_name の上限。超えたら none
+MAX_UNCERTAINTY_M = 10000       # §11（2026-10-07 オーナー決定）: estimated_from_name の上限。超えたら none
+WATERSHED_SHARE_MIN = 0.98      # 線の長さの 98% 以上が W12 流域の 1 つに収まること（b09 の流域解決と同じ層）
 RIVER_POSITION_ERROR_M = 300    # 河川線の位置誤差（精度に足す）
 MIN_UNCERTAINTY_M = 500
 MUNI_BUFFER_M = 100             # 市境を流れる川を落とさないための膨らませ
@@ -93,6 +95,8 @@ class Context:
         self.towns = towns      # [(norm city_name, geom(m))]
         self.w12 = w12          # [(Polygon(lonlat), norm 水系名 or None)]
         self.w12_tree = STRtree([g for g, _ in w12]) if w12 else None
+        self.w12_m = [transform(to_m, g) for g, _ in w12]
+        self.w12_m_tree = STRtree(self.w12_m) if w12 else None
         self.grid01 = grid01    # {(mlat, mlon)}
         self._muni_cache = {}
 
@@ -162,6 +166,25 @@ def river_name_for(trib, water):
     return t, None
 
 
+def single_watershed(geom_m, pt_m, ctx):
+    """線（m）の長さの 98% 以上が W12 流域の 1 つに入り、点もその流域の内側か。
+    (ok, 説明)。W12 が無ければ判定できないので False。"""
+    if ctx.w12_m_tree is None or geom_m.length <= 0:
+        return False, "W12 流域が無く判定できない"
+    best, best_len, n = None, 0.0, 0
+    for i in ctx.w12_m_tree.query(geom_m, predicate="intersects"):
+        n += 1
+        ln = geom_m.intersection(ctx.w12_m[i]).length
+        if ln > best_len:
+            best, best_len = i, ln
+    share = best_len / geom_m.length
+    if best is None or share < WATERSHED_SHARE_MIN:
+        return False, f"線の {share * 100:.0f}% しか 1 つの流域に収まらない（{n} 流域にまたがる）"
+    if not ctx.w12_m[best].contains(pt_m):
+        return False, "置いた点が線の主な流域の外にある"
+    return True, f"流域 {ctx.w12[best][1] or '(水系不明)'} に {share * 100:.0f}%"
+
+
 def estimate(site, ctx):
     """1 地点の推定。{lat, lon, coord_source, coordinate_uncertainty_m, coord_method, evidence}。"""
     water = norm(site.get("water_system_ja"))
@@ -206,12 +229,17 @@ def estimate(site, ctx):
         p_line, p_g = nearest_points(cu, G)
         d = p_line.distance(p_g)
         pt = p_line
+        merged = min(cands, key=lambda ln: ln.distance(G))     # 最近点を含む線区間
         unc = max(MIN_UNCERTAINTY_M, ceil100(d + RIVER_POSITION_ERROR_M))
         method = "river_nearest_municipality"
         ev = (f"W05 {river}/{water} は {'・'.join(munis)} と交わらない。市町村に最も近い点まで "
               f"{d:.0f}m + {RIVER_POSITION_ERROR_M}m{note_miss}")
     if unc > MAX_UNCERTAINTY_M:
         return none("none_uncertainty_over_limit", f"{ev}（精度 {unc}m > {MAX_UNCERTAINTY_M}m）")
+    ok, wsx = single_watershed(merged, pt, ctx)
+    if not ok:
+        return none("none_multi_watershed", f"{ev}（multi_watershed: {wsx}）")
+    ev += f" / {wsx}"
     lon, lat = to_lonlat(pt.x, pt.y)
     return {"lat": round(lat, 6), "lon": round(lon, 6), "coord_source": "estimated_from_name",
             "coordinate_uncertainty_m": unc, "coord_method": method, "evidence": ev}
@@ -275,8 +303,8 @@ def summarize(ledger, detections_by_site=None):
     uncs = [int(r["coordinate_uncertainty_m"]) for r in ledger if r["coordinate_uncertainty_m"] != ""]
     bins = collections.Counter()
     for u in uncs:
-        bins["<=500" if u <= 500 else "<=1000" if u <= 1000 else "<=2000" if u <= 2000 else "<=3000"] += 1
-    lines.append("精度(m)の分布: " + ", ".join(f"{k}:{bins[k]}" for k in ("<=500", "<=1000", "<=2000", "<=3000")))
+        bins["<=500" if u <= 500 else "<=1000" if u <= 1000 else "<=2000" if u <= 2000 else "<=3000" if u <= 3000 else "<=5000" if u <= 5000 else "<=10000"] += 1
+    lines.append("精度(m)の分布: " + ", ".join(f"{k}:{bins[k]}" for k in ("<=500", "<=1000", "<=2000", "<=3000", "<=5000", "<=10000")))
     g0 = [r for r in ledger if str(r["grid01_ok"]) == "0"]
     lines.append(f"grid01_ok=0: {len(g0)} 地点" + (f" / 検出行数 {sum(det.get(r['site_key'], 0) for r in g0)}" if det else ""))
     warns = [r for r in ledger if str(r["evidence"]).startswith("WARN:")]

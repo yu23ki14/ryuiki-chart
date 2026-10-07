@@ -391,7 +391,7 @@ PR-C の本文に `serving:snapshot -- --mode diff` の before/after 表を貼�
 
 ## 11. メインの判断（2026-10-07）
 - 原本ローダの名前は `m07_kanagawa_edna.py`（`m06_water.py` が既にあるため。本文の m06 は m07 に読み替え済み）。
-- §10-1: `estimated_from_name` の精度の上限は **3,000 m**。超えたものは `coord_source='none'`（lat/lon/精度 NULL）。`map_image` は任意の上積みのまま。
+- §10-1（2026-10-07 オーナー決定: 10km＋流域一意）: `estimated_from_name` の精度の上限は **10,000 m**。ただし切り取った線（手順5は最近点を含む線）が W12 流域（b09 の流域解決と同じ層）の**ただ1つに長さ 98% 以上収まり、置いた点もその流域の内側**にある地点だけに座標を付ける。収まらないもの・超えたものは `coord_source='none'`（lat/lon/精度 NULL。evidence に `multi_watershed` 等）。`map_image` は任意の上積みのまま。
 - §5.2 末尾の `grid01_ok=0`: まず件数を実測して報告する（座標を NULL にする処理はまだ入れない）。件数を見てメインが③（build_place の入力拡張）か NULL 化かを決める。
 - §10-2・10-3・10-4・10-5: 宣言として受け入れる（PR 本文と caveat に書く）。
 - §10-6: 担当 C が最初に確かめて報告。決めるのはメイン。

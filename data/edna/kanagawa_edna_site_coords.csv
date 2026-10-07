@@ -1,272 +1,272 @@
 site_key,water_system_ja,tributary_ja,municipality_ja,lat,lon,coord_source,coordinate_uncertainty_m,coord_method,evidence,grid01_ok,reviewed
-r3_kenmin_gyorui:K-21-1,相模川,-,厚木市,,,none,,none_uncertainty_over_limit,W05 相模川/相模川 候補線 51 本を 厚木市 で切り取り 13.3km、広がり 7868m + 300m（精度 8200m > 3000m）,,0
-r3_kenmin_gyorui:K-21-15,相模川,-,厚木市・海老名市,,,none,,none_uncertainty_over_limit,W05 相模川/相模川 候補線 51 本を 厚木市・海老名市 で切り取り 14.8km、広がり 7939m + 300m（精度 8300m > 3000m）,,0
-r3_kenmin_gyorui:K-21-2,酒匂川,川音川,松田町,35.348995,139.149458,estimated_from_name,2100,river_in_municipality,W05 川音川/酒匂川 候補線 3 本を 松田町 で切り取り 3.7km、広がり 1729m + 300m,1,0
-r3_kenmin_gyorui:K-21-3,酒匂川,狩川,南足柄市,,,none,,none_uncertainty_over_limit,W05 狩川/酒匂川 候補線 13 本を 南足柄市 で切り取り 14.8km、広がり 6924m + 300m（精度 7300m > 3000m）,,0
-r3_kenmin_gyorui:K-21-4,鶴見川,早淵川,横浜市,,,none,,none_uncertainty_over_limit,W05 早渕川/鶴見川 候補線 6 本を 横浜市 で切り取り 12.6km、広がり 5547m + 300m（精度 5900m > 3000m）,,0
-r3_kenmin_gyorui:K-21-5,相模川,日向川,伊勢原市,35.434796,139.275853,estimated_from_name,2500,river_in_municipality,W05 日向川/相模川 候補線 4 本を 伊勢原市 で切り取り 4.7km、広がり 2147m + 300m,1,0
-r3_kenmin_gyorui:K-21-6,早川,-,小田原市,,,none,,none_uncertainty_over_limit,W05 早川/早川 候補線 23 本を 小田原市 で切り取り 7.7km、広がり 5493m + 300m（精度 5800m > 3000m）,,0
-r3_kenmin_gyorui:K-21-7,酒匂川,四十八瀬川,秦野市,,,none,,none_uncertainty_over_limit,W05 四十八瀬川/酒匂川 候補線 4 本を 秦野市 で切り取り 10.9km、広がり 4568m + 300m（精度 4900m > 3000m）,,0
-"r3_kenmin_gyorui:K-21-8,9",相模川,玉川,厚木市,,,none,,none_uncertainty_over_limit,W05 玉川/相模川 候補線 9 本を 厚木市 で切り取り 14.2km、広がり 6547m + 300m（精度 6900m > 3000m）,,0
-r3_kenmin_gyorui:S-KNG-0449,相模川,串川,相模原市,,,none,,none_uncertainty_over_limit,W05 串川/相模川 候補線 13 本を 相模原市 で切り取り 14.4km、広がり 4970m + 300m（精度 5300m > 3000m）,,0
-r4_kenmin_gyorui:6/23benten,相模川,道志川,相模原市,,,none,,none_uncertainty_over_limit,W05 道志川/相模川 候補線 46 本を 相模原市 で切り取り 21.6km、広がり 7226m + 300m（精度 7600m > 3000m）,,0
-r4_kenmin_gyorui:K-22-0,相模川,八瀬川,相模原市,,,none,,none_uncertainty_over_limit,W05 八瀬川/相模川 候補線 3 本を 相模原市 で切り取り 6.8km、広がり 2962m + 300m（精度 3300m > 3000m）,,0
+r3_kenmin_gyorui:K-21-1,相模川,-,厚木市,,,none,,none_multi_watershed,W05 相模川/相模川 候補線 51 本を 厚木市 で切り取り 13.3km、広がり 7868m + 300m（multi_watershed: 線の 51% しか 1 つの流域に収まらない（7 流域にまたがる））,,0
+r3_kenmin_gyorui:K-21-15,相模川,-,厚木市・海老名市,,,none,,none_multi_watershed,W05 相模川/相模川 候補線 51 本を 厚木市・海老名市 で切り取り 14.8km、広がり 7939m + 300m（multi_watershed: 線の 50% しか 1 つの流域に収まらない（7 流域にまたがる））,,0
+r3_kenmin_gyorui:K-21-2,酒匂川,川音川,松田町,,,none,,none_multi_watershed,W05 川音川/酒匂川 候補線 3 本を 松田町 で切り取り 3.7km、広がり 1729m + 300m（multi_watershed: 線の 56% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r3_kenmin_gyorui:K-21-3,酒匂川,狩川,南足柄市,,,none,,none_multi_watershed,W05 狩川/酒匂川 候補線 13 本を 南足柄市 で切り取り 14.8km、広がり 6924m + 300m（multi_watershed: 線の 51% しか 1 つの流域に収まらない（7 流域にまたがる））,,0
+r3_kenmin_gyorui:K-21-4,鶴見川,早淵川,横浜市,,,none,,none_multi_watershed,W05 早渕川/鶴見川 候補線 6 本を 横浜市 で切り取り 12.6km、広がり 5547m + 300m（multi_watershed: 線の 69% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r3_kenmin_gyorui:K-21-5,相模川,日向川,伊勢原市,35.434796,139.275853,estimated_from_name,2500,river_in_municipality,W05 日向川/相模川 候補線 4 本を 伊勢原市 で切り取り 4.7km、広がり 2147m + 300m / 流域 相模川 に 100%,1,0
+r3_kenmin_gyorui:K-21-6,早川,-,小田原市,,,none,,none_multi_watershed,W05 早川/早川 候補線 23 本を 小田原市 で切り取り 7.7km、広がり 5493m + 300m（multi_watershed: 線の 51% しか 1 つの流域に収まらない（2 流域にまたがる））,,0
+r3_kenmin_gyorui:K-21-7,酒匂川,四十八瀬川,秦野市,35.401461,139.162964,estimated_from_name,4900,river_in_municipality,W05 四十八瀬川/酒匂川 候補線 4 本を 秦野市 で切り取り 10.9km、広がり 4568m + 300m / 流域 酒匂川 に 99%,1,0
+"r3_kenmin_gyorui:K-21-8,9",相模川,玉川,厚木市,,,none,,none_multi_watershed,W05 玉川/相模川 候補線 9 本を 厚木市 で切り取り 14.2km、広がり 6547m + 300m（multi_watershed: 線の 43% しか 1 つの流域に収まらない（5 流域にまたがる））,,0
+r3_kenmin_gyorui:S-KNG-0449,相模川,串川,相模原市,35.564123,139.250915,estimated_from_name,5300,river_in_municipality,W05 串川/相模川 候補線 13 本を 相模原市 で切り取り 14.4km、広がり 4970m + 300m / 流域 相模川 に 100%,1,0
+r4_kenmin_gyorui:6/23benten,相模川,道志川,相模原市,,,none,,none_multi_watershed,W05 道志川/相模川 候補線 46 本を 相模原市 で切り取り 21.6km、広がり 7226m + 300m（multi_watershed: 線の 98% しか 1 つの流域に収まらない（2 流域にまたがる））,,0
+r4_kenmin_gyorui:K-22-0,相模川,八瀬川,相模原市,35.530799,139.359327,estimated_from_name,3300,river_in_municipality,W05 八瀬川/相模川 候補線 3 本を 相模原市 で切り取り 6.8km、広がり 2962m + 300m / 流域 相模川 に 100%,1,0
 r4_kenmin_gyorui:K-22-1,相模川,厚木市内小河川,厚木市,,,none,,none_generic_tributary,支川名 '厚木市内小河川' は一般名で、特定の川を指さない,,0
-r4_kenmin_gyorui:K-22-10,境川,-,藤沢市,,,none,,none_uncertainty_over_limit,W05 境川/境川 候補線 41 本を 藤沢市 で切り取り 16.0km、広がり 6790m + 300m（精度 7100m > 3000m）,,0
-r4_kenmin_gyorui:K-22-2,相模川,沢井川,相模原市,,,none,,none_uncertainty_over_limit,W05 沢井川/相模川 候補線 18 本を 相模原市 で切り取り 7.8km、広がり 3239m + 300m（精度 3600m > 3000m）,,0
-r4_kenmin_gyorui:K-22-3,相模川,鳩川,相模原市,,,none,,none_uncertainty_over_limit,W05 鳩川/相模川 候補線 6 本を 相模原市 で切り取り 15.2km、広がり 6699m + 300m（精度 7000m > 3000m）,,0
-r4_kenmin_gyorui:K-22-4,酒匂川,中津川,松田町,,,none,,none_uncertainty_over_limit,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（精度 5800m > 3000m）,,0
-r4_kenmin_gyorui:K-22-5,相模川,中津川,愛川町,,,none,,none_uncertainty_over_limit,W05 中津川/相模川 候補線 23 本を 愛川町 で切り取り 13.8km、広がり 5750m + 300m（精度 6100m > 3000m）,,0
-r4_kenmin_gyorui:K-22-6,相模川,中津川,愛川町,,,none,,none_uncertainty_over_limit,W05 中津川/相模川 候補線 23 本を 愛川町 で切り取り 13.8km、広がり 5750m + 300m（精度 6100m > 3000m）,,0
-r4_kenmin_gyorui:K-22-7,相模川,中津川,愛川町,,,none,,none_uncertainty_over_limit,W05 中津川/相模川 候補線 23 本を 愛川町 で切り取り 13.8km、広がり 5750m + 300m（精度 6100m > 3000m）,,0
-r4_kenmin_gyorui:K-22-8,相模川,中津川,愛川町,,,none,,none_uncertainty_over_limit,W05 中津川/相模川 候補線 23 本を 愛川町 で切り取り 13.8km、広がり 5750m + 300m（精度 6100m > 3000m）,,0
-r4_kenmin_gyorui:K-22-9,相模川,鳩川,相模原市,,,none,,none_uncertainty_over_limit,W05 鳩川/相模川 候補線 6 本を 相模原市 で切り取り 15.2km、広がり 6699m + 300m（精度 7000m > 3000m）,,0
-r4_kenmin_gyorui:MF-ISOBE-U,相模川,-,相模原市・厚木市,,,none,,none_uncertainty_over_limit,W05 相模川/相模川 候補線 51 本を 相模原市・厚木市 で切り取り 45.6km、広がり 19381m + 300m（精度 19700m > 3000m）,,0
-r4_kenmin_gyorui:MF-K-16,相模川,八瀬川,相模原市,,,none,,none_uncertainty_over_limit,W05 八瀬川/相模川 候補線 3 本を 相模原市 で切り取り 6.8km、広がり 2962m + 300m（精度 3300m > 3000m）,,0
-r4_kenmin_gyorui:MF-K-17,酒匂川,中津川,松田町,,,none,,none_uncertainty_over_limit,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（精度 5800m > 3000m）,,0
-r4_kenmin_gyorui:MF-K-18,酒匂川,中津川,松田町,,,none,,none_uncertainty_over_limit,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（精度 5800m > 3000m）,,0
-r4_kenmin_gyorui:MF-K-19,相模川,中津川,松田町,,,none,,none_uncertainty_over_limit,W05 中津川/相模川 は 松田町 と交わらない。市町村に最も近い点まで 6896m + 300m（精度 7200m > 3000m）,,0
-r4_kenmin_gyorui:MF-K-22-13,相模川,小出川,茅ヶ崎市,,,none,,none_uncertainty_over_limit,W05 小出川/相模川 候補線 6 本を 茅ヶ崎市 で切り取り 10.5km、広がり 4815m + 300m（精度 5200m > 3000m）,,0
-r4_kenmin_gyorui:MF-K-22-14,相模川,,相模原市,,,none,,none_uncertainty_over_limit,W05 相模川/相模川 候補線 51 本を 相模原市 で切り取り 36.0km、広がり 14317m + 300m（精度 14700m > 3000m）,,0
-r4_kenmin_gyorui:S-ISOBE-D,相模川,-,相模原市・厚木市,,,none,,none_uncertainty_over_limit,W05 相模川/相模川 候補線 51 本を 相模原市・厚木市 で切り取り 45.6km、広がり 19381m + 300m（精度 19700m > 3000m）,,0
-r4_kenmin_gyorui:T-22-1,境川,和泉川,横浜市,,,none,,none_uncertainty_over_limit,W05 和泉川/境川 候補線 3 本を 横浜市 で切り取り 10.5km、広がり 4935m + 300m（精度 5300m > 3000m）,,0
-r4_kenmin_gyorui:T-22-2,相模川,八瀬川,相模原市,,,none,,none_uncertainty_over_limit,W05 八瀬川/相模川 候補線 3 本を 相模原市 で切り取り 6.8km、広がり 2962m + 300m（精度 3300m > 3000m）,,0
-r4_kenmin_gyorui:T-22-3,引地川,-,藤沢市,,,none,,none_uncertainty_over_limit,W05 引地川/引地川 候補線 6 本を 藤沢市 で切り取り 14.1km、広がり 6167m + 300m（精度 6500m > 3000m）,,0
-r5_kenmin_gyorui:K-23-1,相模川,中津川,愛川町,,,none,,none_uncertainty_over_limit,W05 中津川/相模川 候補線 23 本を 愛川町 で切り取り 13.8km、広がり 5750m + 300m（精度 6100m > 3000m）,,0
-r5_kenmin_gyorui:K-23-10,相模川,谷太郎川,厚木市・清川村,35.467402,139.269601,estimated_from_name,2500,river_in_municipality,W05 谷太郎川/相模川 候補線 5 本を 厚木市・清川村 で切り取り 5.1km、広がり 2133m + 300m,1,0
-r5_kenmin_gyorui:K-23-11,相模川,目久尻川,綾瀬市,,,none,,none_uncertainty_over_limit,W05 目久尻川/相模川 候補線 4 本を 綾瀬市 で切り取り 5.9km、広がり 2759m + 300m（精度 3100m > 3000m）,,0
-r5_kenmin_gyorui:K-23-12,酒匂川,中津川,松田町,,,none,,none_uncertainty_over_limit,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（精度 5800m > 3000m）,,0
-r5_kenmin_gyorui:K-23-13,酒匂川,中津川,松田町,,,none,,none_uncertainty_over_limit,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（精度 5800m > 3000m）,,0
-r5_kenmin_gyorui:K-23-14,酒匂川,中津川,松田町,,,none,,none_uncertainty_over_limit,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（精度 5800m > 3000m）,,0
-r5_kenmin_gyorui:K-23-15,酒匂川,-,小田原市,,,none,,none_uncertainty_over_limit,W05 酒匂川/酒匂川 候補線 14 本を 小田原市 で切り取り 8.5km、広がり 4152m + 300m（精度 4500m > 3000m）,,0
+r4_kenmin_gyorui:K-22-10,境川,-,藤沢市,,,none,,none_multi_watershed,W05 境川/境川 候補線 41 本を 藤沢市 で切り取り 16.0km、広がり 6790m + 300m（multi_watershed: 線の 32% しか 1 つの流域に収まらない（7 流域にまたがる））,,0
+r4_kenmin_gyorui:K-22-2,相模川,沢井川,相模原市,35.633414,139.141173,estimated_from_name,3600,river_in_municipality,W05 沢井川/相模川 候補線 18 本を 相模原市 で切り取り 7.8km、広がり 3239m + 300m / 流域 相模川 に 99%,1,0
+r4_kenmin_gyorui:K-22-3,相模川,鳩川,相模原市,,,none,,none_multi_watershed,W05 鳩川/相模川 候補線 6 本を 相模原市 で切り取り 15.2km、広がり 6699m + 300m（multi_watershed: 線の 76% しか 1 つの流域に収まらない（2 流域にまたがる））,,0
+r4_kenmin_gyorui:K-22-4,酒匂川,中津川,松田町,,,none,,none_multi_watershed,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（multi_watershed: 線の 58% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r4_kenmin_gyorui:K-22-5,相模川,中津川,愛川町,35.524042,139.289815,estimated_from_name,6100,river_in_municipality,W05 中津川/相模川 候補線 23 本を 愛川町 で切り取り 13.8km、広がり 5750m + 300m / 流域 相模川 に 98%,1,0
+r4_kenmin_gyorui:K-22-6,相模川,中津川,愛川町,35.524042,139.289815,estimated_from_name,6100,river_in_municipality,W05 中津川/相模川 候補線 23 本を 愛川町 で切り取り 13.8km、広がり 5750m + 300m / 流域 相模川 に 98%,1,0
+r4_kenmin_gyorui:K-22-7,相模川,中津川,愛川町,35.524042,139.289815,estimated_from_name,6100,river_in_municipality,W05 中津川/相模川 候補線 23 本を 愛川町 で切り取り 13.8km、広がり 5750m + 300m / 流域 相模川 に 98%,1,0
+r4_kenmin_gyorui:K-22-8,相模川,中津川,愛川町,35.524042,139.289815,estimated_from_name,6100,river_in_municipality,W05 中津川/相模川 候補線 23 本を 愛川町 で切り取り 13.8km、広がり 5750m + 300m / 流域 相模川 に 98%,1,0
+r4_kenmin_gyorui:K-22-9,相模川,鳩川,相模原市,,,none,,none_multi_watershed,W05 鳩川/相模川 候補線 6 本を 相模原市 で切り取り 15.2km、広がり 6699m + 300m（multi_watershed: 線の 76% しか 1 つの流域に収まらない（2 流域にまたがる））,,0
+r4_kenmin_gyorui:MF-ISOBE-U,相模川,-,相模原市・厚木市,,,none,,none_uncertainty_over_limit,W05 相模川/相模川 候補線 51 本を 相模原市・厚木市 で切り取り 45.6km、広がり 19381m + 300m（精度 19700m > 10000m）,,0
+r4_kenmin_gyorui:MF-K-16,相模川,八瀬川,相模原市,35.530799,139.359327,estimated_from_name,3300,river_in_municipality,W05 八瀬川/相模川 候補線 3 本を 相模原市 で切り取り 6.8km、広がり 2962m + 300m / 流域 相模川 に 100%,1,0
+r4_kenmin_gyorui:MF-K-17,酒匂川,中津川,松田町,,,none,,none_multi_watershed,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（multi_watershed: 線の 58% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r4_kenmin_gyorui:MF-K-18,酒匂川,中津川,松田町,,,none,,none_multi_watershed,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（multi_watershed: 線の 58% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r4_kenmin_gyorui:MF-K-19,相模川,中津川,松田町,35.480987,139.202935,estimated_from_name,7200,river_nearest_municipality,W05 中津川/相模川 は 松田町 と交わらない。市町村に最も近い点まで 6896m + 300m / 流域 相模川 に 100%,1,0
+r4_kenmin_gyorui:MF-K-22-13,相模川,小出川,茅ヶ崎市,,,none,,none_multi_watershed,W05 小出川/相模川 候補線 6 本を 茅ヶ崎市 で切り取り 10.5km、広がり 4815m + 300m（multi_watershed: 線の 85% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r4_kenmin_gyorui:MF-K-22-14,相模川,,相模原市,,,none,,none_uncertainty_over_limit,W05 相模川/相模川 候補線 51 本を 相模原市 で切り取り 36.0km、広がり 14317m + 300m（精度 14700m > 10000m）,,0
+r4_kenmin_gyorui:S-ISOBE-D,相模川,-,相模原市・厚木市,,,none,,none_uncertainty_over_limit,W05 相模川/相模川 候補線 51 本を 相模原市・厚木市 で切り取り 45.6km、広がり 19381m + 300m（精度 19700m > 10000m）,,0
+r4_kenmin_gyorui:T-22-1,境川,和泉川,横浜市,35.431304,139.490206,estimated_from_name,5300,river_in_municipality,W05 和泉川/境川 候補線 3 本を 横浜市 で切り取り 10.5km、広がり 4935m + 300m / 流域 境川 に 98%,1,0
+r4_kenmin_gyorui:T-22-2,相模川,八瀬川,相模原市,35.530799,139.359327,estimated_from_name,3300,river_in_municipality,W05 八瀬川/相模川 候補線 3 本を 相模原市 で切り取り 6.8km、広がり 2962m + 300m / 流域 相模川 に 100%,1,0
+r4_kenmin_gyorui:T-22-3,引地川,-,藤沢市,,,none,,none_multi_watershed,W05 引地川/引地川 候補線 6 本を 藤沢市 で切り取り 14.1km、広がり 6167m + 300m（multi_watershed: 線の 58% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r5_kenmin_gyorui:K-23-1,相模川,中津川,愛川町,35.524042,139.289815,estimated_from_name,6100,river_in_municipality,W05 中津川/相模川 候補線 23 本を 愛川町 で切り取り 13.8km、広がり 5750m + 300m / 流域 相模川 に 98%,1,0
+r5_kenmin_gyorui:K-23-10,相模川,谷太郎川,厚木市・清川村,35.467402,139.269601,estimated_from_name,2500,river_in_municipality,W05 谷太郎川/相模川 候補線 5 本を 厚木市・清川村 で切り取り 5.1km、広がり 2133m + 300m / 流域 相模川 に 99%,1,0
+r5_kenmin_gyorui:K-23-11,相模川,目久尻川,綾瀬市,35.429881,139.418101,estimated_from_name,3100,river_in_municipality,W05 目久尻川/相模川 候補線 4 本を 綾瀬市 で切り取り 5.9km、広がり 2759m + 300m / 流域 相模川 に 100%,1,0
+r5_kenmin_gyorui:K-23-12,酒匂川,中津川,松田町,,,none,,none_multi_watershed,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（multi_watershed: 線の 58% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r5_kenmin_gyorui:K-23-13,酒匂川,中津川,松田町,,,none,,none_multi_watershed,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（multi_watershed: 線の 58% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r5_kenmin_gyorui:K-23-14,酒匂川,中津川,松田町,,,none,,none_multi_watershed,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（multi_watershed: 線の 58% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r5_kenmin_gyorui:K-23-15,酒匂川,-,小田原市,,,none,,none_multi_watershed,W05 酒匂川/酒匂川 候補線 14 本を 小田原市 で切り取り 8.5km、広がり 4152m + 300m（multi_watershed: 線の 73% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
 r5_kenmin_gyorui:K-23-16,酒匂川,酒匂川脇の小河川,小田原市,,,none,,none_generic_tributary,支川名 '酒匂川脇の小河川' は一般名で、特定の川を指さない,,0
-r5_kenmin_gyorui:K-23-17,相模川,串川,相模原市,,,none,,none_uncertainty_over_limit,W05 串川/相模川 候補線 13 本を 相模原市 で切り取り 14.4km、広がり 4970m + 300m（精度 5300m > 3000m）,,0
+r5_kenmin_gyorui:K-23-17,相模川,串川,相模原市,35.564123,139.250915,estimated_from_name,5300,river_in_municipality,W05 串川/相模川 候補線 13 本を 相模原市 で切り取り 14.4km、広がり 4970m + 300m / 流域 相模川 に 100%,1,0
 r5_kenmin_gyorui:K-23-18,相模川,阿津川,相模原市,,,none,,none_river_not_in_w05,W05 に 河川名='阿津川' 水系='相模川' の線が無い,,0
-r5_kenmin_gyorui:K-23-19,酒匂川,狩川,南足柄市,,,none,,none_uncertainty_over_limit,W05 狩川/酒匂川 候補線 13 本を 南足柄市 で切り取り 14.8km、広がり 6924m + 300m（精度 7300m > 3000m）,,0
-r5_kenmin_gyorui:K-23-2,相模川,中津川,愛川町,,,none,,none_uncertainty_over_limit,W05 中津川/相模川 候補線 23 本を 愛川町 で切り取り 13.8km、広がり 5750m + 300m（精度 6100m > 3000m）,,0
-r5_kenmin_gyorui:K-23-3,酒匂川,中津川,松田町,,,none,,none_uncertainty_over_limit,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（精度 5800m > 3000m）,,0
-r5_kenmin_gyorui:K-23-4,酒匂川,中津川,松田町,,,none,,none_uncertainty_over_limit,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（精度 5800m > 3000m）,,0
-r5_kenmin_gyorui:K-23-5,相模川,小出川,茅ヶ崎市,,,none,,none_uncertainty_over_limit,W05 小出川/相模川 候補線 6 本を 茅ヶ崎市 で切り取り 10.5km、広がり 4815m + 300m（精度 5200m > 3000m）,,0
-r5_kenmin_gyorui:K-23-6,相模川,中津川,愛川町,,,none,,none_uncertainty_over_limit,W05 中津川/相模川 候補線 23 本を 愛川町 で切り取り 13.8km、広がり 5750m + 300m（精度 6100m > 3000m）,,0
-r5_kenmin_gyorui:K-23-7,相模川,中津川,愛川町,,,none,,none_uncertainty_over_limit,W05 中津川/相模川 候補線 23 本を 愛川町 で切り取り 13.8km、広がり 5750m + 300m（精度 6100m > 3000m）,,0
-r5_kenmin_gyorui:K-23-8,引地川,-,藤沢市,,,none,,none_uncertainty_over_limit,W05 引地川/引地川 候補線 6 本を 藤沢市 で切り取り 14.1km、広がり 6167m + 300m（精度 6500m > 3000m）,,0
-r5_kenmin_gyorui:K-23-9,境川,-,藤沢市,,,none,,none_uncertainty_over_limit,W05 境川/境川 候補線 41 本を 藤沢市 で切り取り 16.0km、広がり 6790m + 300m（精度 7100m > 3000m）,,0
-r5_kenmin_gyorui:MF-K-20,酒匂川,-,小田原市,,,none,,none_uncertainty_over_limit,W05 酒匂川/酒匂川 候補線 14 本を 小田原市 で切り取り 8.5km、広がり 4152m + 300m（精度 4500m > 3000m）,,0
-r5_kenmin_mtinsects-16s:K-23-1,相模川,中津川,愛川町,,,none,,none_uncertainty_over_limit,W05 中津川/相模川 候補線 23 本を 愛川町 で切り取り 13.8km、広がり 5750m + 300m（精度 6100m > 3000m）,,0
-r5_kenmin_mtinsects-16s:K-23-10,相模川,谷太郎川,厚木市・清川村,35.467402,139.269601,estimated_from_name,2500,river_in_municipality,W05 谷太郎川/相模川 候補線 5 本を 厚木市・清川村 で切り取り 5.1km、広がり 2133m + 300m,1,0
-r5_kenmin_mtinsects-16s:K-23-11,相模川,目久尻川,綾瀬市,,,none,,none_uncertainty_over_limit,W05 目久尻川/相模川 候補線 4 本を 綾瀬市 で切り取り 5.9km、広がり 2759m + 300m（精度 3100m > 3000m）,,0
-r5_kenmin_mtinsects-16s:K-23-12,酒匂川,中津川,松田町,,,none,,none_uncertainty_over_limit,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（精度 5800m > 3000m）,,0
-r5_kenmin_mtinsects-16s:K-23-13,酒匂川,中津川,松田町,,,none,,none_uncertainty_over_limit,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（精度 5800m > 3000m）,,0
-r5_kenmin_mtinsects-16s:K-23-14,酒匂川,中津川,松田町,,,none,,none_uncertainty_over_limit,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（精度 5800m > 3000m）,,0
-r5_kenmin_mtinsects-16s:K-23-15,酒匂川,-,小田原市,,,none,,none_uncertainty_over_limit,W05 酒匂川/酒匂川 候補線 14 本を 小田原市 で切り取り 8.5km、広がり 4152m + 300m（精度 4500m > 3000m）,,0
+r5_kenmin_gyorui:K-23-19,酒匂川,狩川,南足柄市,,,none,,none_multi_watershed,W05 狩川/酒匂川 候補線 13 本を 南足柄市 で切り取り 14.8km、広がり 6924m + 300m（multi_watershed: 線の 51% しか 1 つの流域に収まらない（7 流域にまたがる））,,0
+r5_kenmin_gyorui:K-23-2,相模川,中津川,愛川町,35.524042,139.289815,estimated_from_name,6100,river_in_municipality,W05 中津川/相模川 候補線 23 本を 愛川町 で切り取り 13.8km、広がり 5750m + 300m / 流域 相模川 に 98%,1,0
+r5_kenmin_gyorui:K-23-3,酒匂川,中津川,松田町,,,none,,none_multi_watershed,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（multi_watershed: 線の 58% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r5_kenmin_gyorui:K-23-4,酒匂川,中津川,松田町,,,none,,none_multi_watershed,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（multi_watershed: 線の 58% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r5_kenmin_gyorui:K-23-5,相模川,小出川,茅ヶ崎市,,,none,,none_multi_watershed,W05 小出川/相模川 候補線 6 本を 茅ヶ崎市 で切り取り 10.5km、広がり 4815m + 300m（multi_watershed: 線の 85% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r5_kenmin_gyorui:K-23-6,相模川,中津川,愛川町,35.524042,139.289815,estimated_from_name,6100,river_in_municipality,W05 中津川/相模川 候補線 23 本を 愛川町 で切り取り 13.8km、広がり 5750m + 300m / 流域 相模川 に 98%,1,0
+r5_kenmin_gyorui:K-23-7,相模川,中津川,愛川町,35.524042,139.289815,estimated_from_name,6100,river_in_municipality,W05 中津川/相模川 候補線 23 本を 愛川町 で切り取り 13.8km、広がり 5750m + 300m / 流域 相模川 に 98%,1,0
+r5_kenmin_gyorui:K-23-8,引地川,-,藤沢市,,,none,,none_multi_watershed,W05 引地川/引地川 候補線 6 本を 藤沢市 で切り取り 14.1km、広がり 6167m + 300m（multi_watershed: 線の 58% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r5_kenmin_gyorui:K-23-9,境川,-,藤沢市,,,none,,none_multi_watershed,W05 境川/境川 候補線 41 本を 藤沢市 で切り取り 16.0km、広がり 6790m + 300m（multi_watershed: 線の 32% しか 1 つの流域に収まらない（7 流域にまたがる））,,0
+r5_kenmin_gyorui:MF-K-20,酒匂川,-,小田原市,,,none,,none_multi_watershed,W05 酒匂川/酒匂川 候補線 14 本を 小田原市 で切り取り 8.5km、広がり 4152m + 300m（multi_watershed: 線の 73% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r5_kenmin_mtinsects-16s:K-23-1,相模川,中津川,愛川町,35.524042,139.289815,estimated_from_name,6100,river_in_municipality,W05 中津川/相模川 候補線 23 本を 愛川町 で切り取り 13.8km、広がり 5750m + 300m / 流域 相模川 に 98%,1,0
+r5_kenmin_mtinsects-16s:K-23-10,相模川,谷太郎川,厚木市・清川村,35.467402,139.269601,estimated_from_name,2500,river_in_municipality,W05 谷太郎川/相模川 候補線 5 本を 厚木市・清川村 で切り取り 5.1km、広がり 2133m + 300m / 流域 相模川 に 99%,1,0
+r5_kenmin_mtinsects-16s:K-23-11,相模川,目久尻川,綾瀬市,35.429881,139.418101,estimated_from_name,3100,river_in_municipality,W05 目久尻川/相模川 候補線 4 本を 綾瀬市 で切り取り 5.9km、広がり 2759m + 300m / 流域 相模川 に 100%,1,0
+r5_kenmin_mtinsects-16s:K-23-12,酒匂川,中津川,松田町,,,none,,none_multi_watershed,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（multi_watershed: 線の 58% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r5_kenmin_mtinsects-16s:K-23-13,酒匂川,中津川,松田町,,,none,,none_multi_watershed,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（multi_watershed: 線の 58% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r5_kenmin_mtinsects-16s:K-23-14,酒匂川,中津川,松田町,,,none,,none_multi_watershed,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（multi_watershed: 線の 58% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r5_kenmin_mtinsects-16s:K-23-15,酒匂川,-,小田原市,,,none,,none_multi_watershed,W05 酒匂川/酒匂川 候補線 14 本を 小田原市 で切り取り 8.5km、広がり 4152m + 300m（multi_watershed: 線の 73% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
 r5_kenmin_mtinsects-16s:K-23-16,酒匂川,酒匂川脇の小河川,小田原市,,,none,,none_generic_tributary,支川名 '酒匂川脇の小河川' は一般名で、特定の川を指さない,,0
-r5_kenmin_mtinsects-16s:K-23-17,相模川,串川,相模原市,,,none,,none_uncertainty_over_limit,W05 串川/相模川 候補線 13 本を 相模原市 で切り取り 14.4km、広がり 4970m + 300m（精度 5300m > 3000m）,,0
+r5_kenmin_mtinsects-16s:K-23-17,相模川,串川,相模原市,35.564123,139.250915,estimated_from_name,5300,river_in_municipality,W05 串川/相模川 候補線 13 本を 相模原市 で切り取り 14.4km、広がり 4970m + 300m / 流域 相模川 に 100%,1,0
 r5_kenmin_mtinsects-16s:K-23-18,相模川,阿津川,相模原市,,,none,,none_river_not_in_w05,W05 に 河川名='阿津川' 水系='相模川' の線が無い,,0
-r5_kenmin_mtinsects-16s:K-23-19,酒匂川,狩川,南足柄市,,,none,,none_uncertainty_over_limit,W05 狩川/酒匂川 候補線 13 本を 南足柄市 で切り取り 14.8km、広がり 6924m + 300m（精度 7300m > 3000m）,,0
-r5_kenmin_mtinsects-16s:K-23-2,相模川,中津川,愛川町,,,none,,none_uncertainty_over_limit,W05 中津川/相模川 候補線 23 本を 愛川町 で切り取り 13.8km、広がり 5750m + 300m（精度 6100m > 3000m）,,0
-r5_kenmin_mtinsects-16s:K-23-3,酒匂川,中津川,松田町,,,none,,none_uncertainty_over_limit,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（精度 5800m > 3000m）,,0
-r5_kenmin_mtinsects-16s:K-23-4,酒匂川,中津川,松田町,,,none,,none_uncertainty_over_limit,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（精度 5800m > 3000m）,,0
-r5_kenmin_mtinsects-16s:K-23-5,相模川,小出川,茅ヶ崎市,,,none,,none_uncertainty_over_limit,W05 小出川/相模川 候補線 6 本を 茅ヶ崎市 で切り取り 10.5km、広がり 4815m + 300m（精度 5200m > 3000m）,,0
-r5_kenmin_mtinsects-16s:K-23-6,相模川,中津川,愛川町,,,none,,none_uncertainty_over_limit,W05 中津川/相模川 候補線 23 本を 愛川町 で切り取り 13.8km、広がり 5750m + 300m（精度 6100m > 3000m）,,0
-r5_kenmin_mtinsects-16s:K-23-7,相模川,中津川,愛川町,,,none,,none_uncertainty_over_limit,W05 中津川/相模川 候補線 23 本を 愛川町 で切り取り 13.8km、広がり 5750m + 300m（精度 6100m > 3000m）,,0
-r5_kenmin_mtinsects-16s:K-23-8,引地川,-,藤沢市,,,none,,none_uncertainty_over_limit,W05 引地川/引地川 候補線 6 本を 藤沢市 で切り取り 14.1km、広がり 6167m + 300m（精度 6500m > 3000m）,,0
-r5_kenmin_mtinsects-16s:K-23-9,境川,-,藤沢市,,,none,,none_uncertainty_over_limit,W05 境川/境川 候補線 41 本を 藤沢市 で切り取り 16.0km、広がり 6790m + 300m（精度 7100m > 3000m）,,0
-r5_project_gyorui:23-Pro-01,多摩川,平瀬川,川崎市,,,none,,none_uncertainty_over_limit,W05 平瀬川/多摩川 候補線 4 本を 川崎市 で切り取り 7.9km、広がり 3608m + 300m（精度 4000m > 3000m）,,0
+r5_kenmin_mtinsects-16s:K-23-19,酒匂川,狩川,南足柄市,,,none,,none_multi_watershed,W05 狩川/酒匂川 候補線 13 本を 南足柄市 で切り取り 14.8km、広がり 6924m + 300m（multi_watershed: 線の 51% しか 1 つの流域に収まらない（7 流域にまたがる））,,0
+r5_kenmin_mtinsects-16s:K-23-2,相模川,中津川,愛川町,35.524042,139.289815,estimated_from_name,6100,river_in_municipality,W05 中津川/相模川 候補線 23 本を 愛川町 で切り取り 13.8km、広がり 5750m + 300m / 流域 相模川 に 98%,1,0
+r5_kenmin_mtinsects-16s:K-23-3,酒匂川,中津川,松田町,,,none,,none_multi_watershed,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（multi_watershed: 線の 58% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r5_kenmin_mtinsects-16s:K-23-4,酒匂川,中津川,松田町,,,none,,none_multi_watershed,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（multi_watershed: 線の 58% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r5_kenmin_mtinsects-16s:K-23-5,相模川,小出川,茅ヶ崎市,,,none,,none_multi_watershed,W05 小出川/相模川 候補線 6 本を 茅ヶ崎市 で切り取り 10.5km、広がり 4815m + 300m（multi_watershed: 線の 85% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r5_kenmin_mtinsects-16s:K-23-6,相模川,中津川,愛川町,35.524042,139.289815,estimated_from_name,6100,river_in_municipality,W05 中津川/相模川 候補線 23 本を 愛川町 で切り取り 13.8km、広がり 5750m + 300m / 流域 相模川 に 98%,1,0
+r5_kenmin_mtinsects-16s:K-23-7,相模川,中津川,愛川町,35.524042,139.289815,estimated_from_name,6100,river_in_municipality,W05 中津川/相模川 候補線 23 本を 愛川町 で切り取り 13.8km、広がり 5750m + 300m / 流域 相模川 に 98%,1,0
+r5_kenmin_mtinsects-16s:K-23-8,引地川,-,藤沢市,,,none,,none_multi_watershed,W05 引地川/引地川 候補線 6 本を 藤沢市 で切り取り 14.1km、広がり 6167m + 300m（multi_watershed: 線の 58% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r5_kenmin_mtinsects-16s:K-23-9,境川,-,藤沢市,,,none,,none_multi_watershed,W05 境川/境川 候補線 41 本を 藤沢市 で切り取り 16.0km、広がり 6790m + 300m（multi_watershed: 線の 32% しか 1 つの流域に収まらない（7 流域にまたがる））,,0
+r5_project_gyorui:23-Pro-01,多摩川,平瀬川,川崎市,,,none,,none_multi_watershed,W05 平瀬川/多摩川 候補線 4 本を 川崎市 で切り取り 7.9km、広がり 3608m + 300m（multi_watershed: 線の 77% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
 r5_project_gyorui:23-Pro-02,多摩川,二ヶ領用水,川崎市,,,none,,none_river_not_in_w05,W05 に 河川名='二ヶ領用水' 水系='多摩川' の線が無い,,0
-r5_project_gyorui:23-Pro-03,酒匂川,-,松田町・開成町,35.342346,139.133206,estimated_from_name,2700,river_in_municipality,W05 酒匂川/酒匂川 候補線 14 本を 松田町・開成町 で切り取り 4.8km、広がり 2337m + 300m,1,0
+r5_project_gyorui:23-Pro-03,酒匂川,-,松田町・開成町,,,none,,none_multi_watershed,W05 酒匂川/酒匂川 候補線 14 本を 松田町・開成町 で切り取り 4.8km、広がり 2337m + 300m（multi_watershed: 線の 61% しか 1 つの流域に収まらない（2 流域にまたがる））,,0
 r5_project_gyorui:23-Pro-04,多摩川,二ヶ領用水,川崎市,,,none,,none_river_not_in_w05,W05 に 河川名='二ヶ領用水' 水系='多摩川' の線が無い,,0
-r5_project_gyorui:23-Pro-05,相模川,鳩川,相模原市,,,none,,none_uncertainty_over_limit,W05 鳩川/相模川 候補線 6 本を 相模原市 で切り取り 15.2km、広がり 6699m + 300m（精度 7000m > 3000m）,,0
-r5_project_gyorui:23-Pro-06,酒匂川,四十八瀬川,秦野市,,,none,,none_uncertainty_over_limit,W05 四十八瀬川/酒匂川 候補線 4 本を 秦野市 で切り取り 10.9km、広がり 4568m + 300m（精度 4900m > 3000m）,,0
-r5_project_gyorui:23-Pro-07,鶴見川,奈良川,横浜市,35.556531,139.487806,estimated_from_name,2400,river_in_municipality,W05 奈良川/鶴見川 候補線 4 本を 横浜市 で切り取り 4.6km、広がり 2086m + 300m,1,0
-r5_project_gyorui:23-Pro-08,金目川,葛葉川,秦野市,,,none,,none_uncertainty_over_limit,W05 葛葉川/金目川 候補線 5 本を 秦野市 で切り取り 6.7km、広がり 3030m + 300m（精度 3400m > 3000m）,,0
-r5_project_gyorui:23-Pro-09,鶴見川,-,横浜市,,,none,,none_uncertainty_over_limit,W05 鶴見川/鶴見川 候補線 21 本を 横浜市 で切り取り 29.1km、広がり 10599m + 300m（精度 10900m > 3000m）,,0
-r5_project_gyorui:23-Pro-10,相模川,-,厚木市・海老名市,,,none,,none_uncertainty_over_limit,W05 相模川/相模川 候補線 51 本を 厚木市・海老名市 で切り取り 14.8km、広がり 7939m + 300m（精度 8300m > 3000m）,,0
-r5_project_gyorui:23-Pro-11,相模川,中津川,厚木市,,,none,,none_uncertainty_over_limit,W05 中津川/相模川 候補線 23 本を 厚木市 で切り取り 8.0km、広がり 3772m + 300m（精度 4100m > 3000m）,,0
-r5_project_gyorui:23-Pro-12,境川,和泉川,横浜市,,,none,,none_uncertainty_over_limit,W05 和泉川/境川 候補線 3 本を 横浜市 で切り取り 10.5km、広がり 4935m + 300m（精度 5300m > 3000m）,,0
-r5_project_gyorui:23-Pro-13,境川,-,相模原市,,,none,,none_uncertainty_over_limit,W05 境川/境川 候補線 41 本を 相模原市 で切り取り 7.7km、広がり 10369m + 300m（精度 10700m > 3000m）,,0
-r5_project_gyorui:23-Pro-14,鶴見川,-,横浜市,,,none,,none_uncertainty_over_limit,W05 鶴見川/鶴見川 候補線 21 本を 横浜市 で切り取り 29.1km、広がり 10599m + 300m（精度 10900m > 3000m）,,0
-r5_project_gyorui:23-Pro-15,酒匂川,-,小田原市・大井町,,,none,,none_uncertainty_over_limit,W05 酒匂川/酒匂川 候補線 14 本を 小田原市・大井町 で切り取り 9.6km、広がり 5040m + 300m（精度 5400m > 3000m）,,0
-r5_project_gyorui:23-Pro-16,平作川,-,横須賀市,,,none,,none_uncertainty_over_limit,W05 平作川/平作川 候補線 5 本を 横須賀市 で切り取り 8.5km、広がり 4170m + 300m（精度 4500m > 3000m）,,0
-r5_project_gyorui:23-Pro-17,相模川,道志川,相模原市,,,none,,none_uncertainty_over_limit,W05 道志川/相模川 候補線 46 本を 相模原市 で切り取り 21.6km、広がり 7226m + 300m（精度 7600m > 3000m）,,0
-r5_project_gyorui:23-Pro-18,酒匂川,狩川,南足柄市,,,none,,none_uncertainty_over_limit,W05 狩川/酒匂川 候補線 13 本を 南足柄市 で切り取り 14.8km、広がり 6924m + 300m（精度 7300m > 3000m）,,0
-r5_project_gyorui:23-Pro-19,相模川,恩曽川,厚木市,,,none,,none_uncertainty_over_limit,W05 恩曽川/相模川 候補線 3 本を 厚木市 で切り取り 8.9km、広がり 4065m + 300m（精度 4400m > 3000m）,,0
-r5_project_gyorui:23-Pro-20,金目川,歌川,平塚市・伊勢原市,,,none,,none_uncertainty_over_limit,W05 歌川/金目川 候補線 3 本を 平塚市・伊勢原市 で切り取り 6.2km、広がり 2825m + 300m（精度 3200m > 3000m）,,0
-r5_project_gyorui:23-Pro-21,酒匂川,仙了川,小田原市,35.303817,139.142657,estimated_from_name,2500,river_in_municipality,W05 仙了川/酒匂川 候補線 2 本を 小田原市 で切り取り 4.3km、広がり 2110m + 300m,1,0
-r5_project_gyorui:23-Pro-22,境川,-,横浜市・藤沢市,,,none,,none_uncertainty_over_limit,W05 境川/境川 候補線 41 本を 横浜市・藤沢市 で切り取り 25.1km、広がり 11455m + 300m（精度 11800m > 3000m）,,0
-r5_project_gyorui:23-Pro-23,大岡川,堀割川,横浜市,35.421519,139.62523,estimated_from_name,1700,river_in_municipality,W05 堀割川/大岡川 候補線 2 本を 横浜市 で切り取り 2.7km、広がり 1316m + 300m,1,0
-r5_project_gyorui:23-Pro-24,相模川,姥川,相模原市,35.548205,139.370367,estimated_from_name,3000,river_in_municipality,W05 姥川/相模川 候補線 2 本を 相模原市 で切り取り 6.4km、広がり 2691m + 300m,1,0
+r5_project_gyorui:23-Pro-05,相模川,鳩川,相模原市,,,none,,none_multi_watershed,W05 鳩川/相模川 候補線 6 本を 相模原市 で切り取り 15.2km、広がり 6699m + 300m（multi_watershed: 線の 76% しか 1 つの流域に収まらない（2 流域にまたがる））,,0
+r5_project_gyorui:23-Pro-06,酒匂川,四十八瀬川,秦野市,35.401461,139.162964,estimated_from_name,4900,river_in_municipality,W05 四十八瀬川/酒匂川 候補線 4 本を 秦野市 で切り取り 10.9km、広がり 4568m + 300m / 流域 酒匂川 に 99%,1,0
+r5_project_gyorui:23-Pro-07,鶴見川,奈良川,横浜市,35.556531,139.487806,estimated_from_name,2400,river_in_municipality,W05 奈良川/鶴見川 候補線 4 本を 横浜市 で切り取り 4.6km、広がり 2086m + 300m / 流域 鶴見川 に 100%,1,0
+r5_project_gyorui:23-Pro-08,金目川,葛葉川,秦野市,35.391075,139.207707,estimated_from_name,3400,river_in_municipality,W05 葛葉川/金目川 候補線 5 本を 秦野市 で切り取り 6.7km、広がり 3030m + 300m / 流域 金目川 に 100%,1,0
+r5_project_gyorui:23-Pro-09,鶴見川,-,横浜市,,,none,,none_uncertainty_over_limit,W05 鶴見川/鶴見川 候補線 21 本を 横浜市 で切り取り 29.1km、広がり 10599m + 300m（精度 10900m > 10000m）,,0
+r5_project_gyorui:23-Pro-10,相模川,-,厚木市・海老名市,,,none,,none_multi_watershed,W05 相模川/相模川 候補線 51 本を 厚木市・海老名市 で切り取り 14.8km、広がり 7939m + 300m（multi_watershed: 線の 50% しか 1 つの流域に収まらない（7 流域にまたがる））,,0
+r5_project_gyorui:23-Pro-11,相模川,中津川,厚木市,,,none,,none_multi_watershed,W05 中津川/相模川 候補線 23 本を 厚木市 で切り取り 8.0km、広がり 3772m + 300m（multi_watershed: 線の 81% しか 1 つの流域に収まらない（2 流域にまたがる））,,0
+r5_project_gyorui:23-Pro-12,境川,和泉川,横浜市,35.431304,139.490206,estimated_from_name,5300,river_in_municipality,W05 和泉川/境川 候補線 3 本を 横浜市 で切り取り 10.5km、広がり 4935m + 300m / 流域 境川 に 98%,1,0
+r5_project_gyorui:23-Pro-13,境川,-,相模原市,,,none,,none_uncertainty_over_limit,W05 境川/境川 候補線 41 本を 相模原市 で切り取り 7.7km、広がり 10369m + 300m（精度 10700m > 10000m）,,0
+r5_project_gyorui:23-Pro-14,鶴見川,-,横浜市,,,none,,none_uncertainty_over_limit,W05 鶴見川/鶴見川 候補線 21 本を 横浜市 で切り取り 29.1km、広がり 10599m + 300m（精度 10900m > 10000m）,,0
+r5_project_gyorui:23-Pro-15,酒匂川,-,小田原市・大井町,,,none,,none_multi_watershed,W05 酒匂川/酒匂川 候補線 14 本を 小田原市・大井町 で切り取り 9.6km、広がり 5040m + 300m（multi_watershed: 線の 76% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r5_project_gyorui:23-Pro-16,平作川,-,横須賀市,35.251425,139.680621,estimated_from_name,4500,river_in_municipality,W05 平作川/平作川 候補線 5 本を 横須賀市 で切り取り 8.5km、広がり 4170m + 300m / 流域 平作川 に 100%,1,0
+r5_project_gyorui:23-Pro-17,相模川,道志川,相模原市,,,none,,none_multi_watershed,W05 道志川/相模川 候補線 46 本を 相模原市 で切り取り 21.6km、広がり 7226m + 300m（multi_watershed: 線の 98% しか 1 つの流域に収まらない（2 流域にまたがる））,,0
+r5_project_gyorui:23-Pro-18,酒匂川,狩川,南足柄市,,,none,,none_multi_watershed,W05 狩川/酒匂川 候補線 13 本を 南足柄市 で切り取り 14.8km、広がり 6924m + 300m（multi_watershed: 線の 51% しか 1 つの流域に収まらない（7 流域にまたがる））,,0
+r5_project_gyorui:23-Pro-19,相模川,恩曽川,厚木市,,,none,,none_multi_watershed,W05 恩曽川/相模川 候補線 3 本を 厚木市 で切り取り 8.9km、広がり 4065m + 300m（multi_watershed: 線の 77% しか 1 つの流域に収まらない（4 流域にまたがる））,,0
+r5_project_gyorui:23-Pro-20,金目川,歌川,平塚市・伊勢原市,35.402823,139.339064,estimated_from_name,3200,river_in_municipality,W05 歌川/金目川 候補線 3 本を 平塚市・伊勢原市 で切り取り 6.2km、広がり 2825m + 300m / 流域 金目川 に 100%,1,0
+r5_project_gyorui:23-Pro-21,酒匂川,仙了川,小田原市,35.303817,139.142657,estimated_from_name,2500,river_in_municipality,W05 仙了川/酒匂川 候補線 2 本を 小田原市 で切り取り 4.3km、広がり 2110m + 300m / 流域 酒匂川 に 99%,1,0
+r5_project_gyorui:23-Pro-22,境川,-,横浜市・藤沢市,,,none,,none_uncertainty_over_limit,W05 境川/境川 候補線 41 本を 横浜市・藤沢市 で切り取り 25.1km、広がり 11455m + 300m（精度 11800m > 10000m）,,0
+r5_project_gyorui:23-Pro-23,大岡川,堀割川,横浜市,,,none,,none_multi_watershed,W05 堀割川/大岡川 候補線 2 本を 横浜市 で切り取り 2.7km、広がり 1316m + 300m（multi_watershed: 線の 89% しか 1 つの流域に収まらない（2 流域にまたがる））,,0
+r5_project_gyorui:23-Pro-24,相模川,姥川,相模原市,35.548205,139.370367,estimated_from_name,3000,river_in_municipality,W05 姥川/相模川 候補線 2 本を 相模原市 で切り取り 6.4km、広がり 2691m + 300m / 流域 相模川 に 100%,1,0
 r5_project_gyorui:23-Pro-25,金目川,小水路,大磯町,,,none,,none_generic_tributary,支川名 '小水路' は一般名で、特定の川を指さない,,0
-r5_project_gyorui:23-Pro-26,相模川,玉川,厚木市,,,none,,none_uncertainty_over_limit,W05 玉川/相模川 候補線 9 本を 厚木市 で切り取り 14.2km、広がり 6547m + 300m（精度 6900m > 3000m）,,0
-r5_project_gyorui:23-Pro-27,金目川,鈴川,伊勢原市,,,none,,none_uncertainty_over_limit,W05 鈴川/金目川 候補線 12 本を 伊勢原市 で切り取り 10.1km、広がり 4291m + 300m（精度 4600m > 3000m）,,0
-r5_project_gyorui:23-Pro-28,酒匂川,河内川,山北町,,,none,,none_uncertainty_over_limit,W05 河内川/酒匂川 候補線 42 本を 山北町 で切り取り 19.3km、広がり 6551m + 300m（精度 6900m > 3000m）,,0
-r5_project_gyorui:23-Pro-29,鶴見川,-,川崎市,,,none,,none_uncertainty_over_limit,W05 鶴見川/鶴見川 候補線 21 本を 川崎市 で切り取り 4.1km、広がり 14518m + 300m（精度 14900m > 3000m）,,0
-r5_project_gyorui:23-Pro-30,鶴見川,-,横浜市,,,none,,none_uncertainty_over_limit,W05 鶴見川/鶴見川 候補線 21 本を 横浜市 で切り取り 29.1km、広がり 10599m + 300m（精度 10900m > 3000m）,,0
-r5_project_gyorui:23-Pro-31,早川,-,小田原市,,,none,,none_uncertainty_over_limit,W05 早川/早川 候補線 23 本を 小田原市 で切り取り 7.7km、広がり 5493m + 300m（精度 5800m > 3000m）,,0
-r5_project_gyorui:MF-23-Pro-32,大岡川,-,横浜市,,,none,,none_uncertainty_over_limit,W05 大岡川/大岡川 候補線 6 本を 横浜市 で切り取り 11.5km、広がり 4961m + 300m（精度 5300m > 3000m）,,0
-r5_project_gyorui:MF-23-Pro-33,多摩川,平瀬川,川崎市,,,none,,none_uncertainty_over_limit,W05 平瀬川/多摩川 候補線 4 本を 川崎市 で切り取り 7.9km、広がり 3608m + 300m（精度 4000m > 3000m）,,0
-r6_kenmin_mtinsects_amphi:24-K-05,相模川,鳩川,相模原市,,,none,,none_uncertainty_over_limit,W05 鳩川/相模川 候補線 6 本を 相模原市 で切り取り 15.2km、広がり 6699m + 300m（精度 7000m > 3000m）,,0
-r6_kenmin_mtinsects_amphi:24-K-06,相模川,道保川,相模原市,35.533492,139.3823,estimated_from_name,2200,river_in_municipality,W05 道保川/相模川 候補線 2 本を 相模原市 で切り取り 4.1km、広がり 1839m + 300m,1,0
-r6_kenmin_mtinsects_amphi:24-K-07,酒匂川,中津川,松田町,,,none,,none_uncertainty_over_limit,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（精度 5800m > 3000m）,,0
-r6_kenmin_mtinsects_amphi:24-K-08,酒匂川,中津川,松田町,,,none,,none_uncertainty_over_limit,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（精度 5800m > 3000m）,,0
-r6_kenmin_mtinsects_amphi:24-K-09,酒匂川,中津川,松田町,,,none,,none_uncertainty_over_limit,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（精度 5800m > 3000m）,,0
-r6_kenmin_mtinsects_amphi:24-K-10,酒匂川,-,開成町・松田町,35.342346,139.133206,estimated_from_name,2700,river_in_municipality,W05 酒匂川/酒匂川 候補線 14 本を 開成町・松田町 で切り取り 4.8km、広がり 2337m + 300m,1,0
-r6_kenmin_mtinsects_amphi:24-K-11,引地川,-,藤沢市,,,none,,none_uncertainty_over_limit,W05 引地川/引地川 候補線 6 本を 藤沢市 で切り取り 14.1km、広がり 6167m + 300m（精度 6500m > 3000m）,,0
-r6_kenmin_mtinsects_amphi:24-K-12,境川,-,藤沢市,,,none,,none_uncertainty_over_limit,W05 境川/境川 候補線 41 本を 藤沢市 で切り取り 16.0km、広がり 6790m + 300m（精度 7100m > 3000m）,,0
-r6_kenmin_mtinsects_amphi:K-24-1,酒匂川,中津川,松田町,,,none,,none_uncertainty_over_limit,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（精度 5800m > 3000m）,,0
-r6_kenmin_mtinsects_amphi:K-24-2,酒匂川,中津川,松田町,,,none,,none_uncertainty_over_limit,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（精度 5800m > 3000m）,,0
-r6_kenmin_mtinsects_amphi:K-24-3,酒匂川,中津川,松田町,,,none,,none_uncertainty_over_limit,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（精度 5800m > 3000m）,,0
-r6_kenmin_mtinsects_amphi:K-24-4,境川,-,横浜市・大和市,,,none,,none_uncertainty_over_limit,W05 境川/境川 候補線 41 本を 横浜市・大和市 で切り取り 19.4km、広がり 8653m + 300m（精度 9000m > 3000m）,,0
-r6_project_mtinsects-amphi:24-Pro-05,金目川,室川,秦野市,,,none,,none_uncertainty_over_limit,W05 室川/金目川 候補線 5 本を 秦野市 で切り取り 6.7km、広がり 3020m + 300m（精度 3400m > 3000m）,,0
-r6_project_mtinsects-amphi:24-Pro-06GR,相模川,小出川,茅ヶ崎市,,,none,,none_uncertainty_over_limit,W05 小出川/相模川 候補線 6 本を 茅ヶ崎市 で切り取り 10.5km、広がり 4815m + 300m（精度 5200m > 3000m）,,0
-r6_project_mtinsects-amphi:24-Pro-07IR,多摩川,平瀬川,川崎市,,,none,,none_uncertainty_over_limit,W05 平瀬川/多摩川 候補線 4 本を 川崎市 で切り取り 7.9km、広がり 3608m + 300m（精度 4000m > 3000m）,,0
-r6_project_mtinsects-amphi:24-Pro-08GR,鶴見川,-,横浜市,,,none,,none_uncertainty_over_limit,W05 鶴見川/鶴見川 候補線 21 本を 横浜市 で切り取り 29.1km、広がり 10599m + 300m（精度 10900m > 3000m）,,0
-r6_project_mtinsects-amphi:24-Pro-09,鶴見川,奈良川,横浜市,35.556531,139.487806,estimated_from_name,2400,river_in_municipality,W05 奈良川/鶴見川 候補線 4 本を 横浜市 で切り取り 4.6km、広がり 2086m + 300m,1,0
-r6_project_mtinsects-amphi:24-Pro-10,酒匂川,-,小田原市,,,none,,none_uncertainty_over_limit,W05 酒匂川/酒匂川 候補線 14 本を 小田原市 で切り取り 8.5km、広がり 4152m + 300m（精度 4500m > 3000m）,,0
+r5_project_gyorui:23-Pro-26,相模川,玉川,厚木市,,,none,,none_multi_watershed,W05 玉川/相模川 候補線 9 本を 厚木市 で切り取り 14.2km、広がり 6547m + 300m（multi_watershed: 線の 43% しか 1 つの流域に収まらない（5 流域にまたがる））,,0
+r5_project_gyorui:23-Pro-27,金目川,鈴川,伊勢原市,,,none,,none_multi_watershed,W05 鈴川/金目川 候補線 12 本を 伊勢原市 で切り取り 10.1km、広がり 4291m + 300m（multi_watershed: 線の 77% しか 1 つの流域に収まらない（2 流域にまたがる））,,0
+r5_project_gyorui:23-Pro-28,酒匂川,河内川,山北町,,,none,,none_multi_watershed,W05 河内川/酒匂川 候補線 42 本を 山北町 で切り取り 19.3km、広がり 6551m + 300m（multi_watershed: 線の 58% しか 1 つの流域に収まらない（4 流域にまたがる））,,0
+r5_project_gyorui:23-Pro-29,鶴見川,-,川崎市,,,none,,none_uncertainty_over_limit,W05 鶴見川/鶴見川 候補線 21 本を 川崎市 で切り取り 4.1km、広がり 14518m + 300m（精度 14900m > 10000m）,,0
+r5_project_gyorui:23-Pro-30,鶴見川,-,横浜市,,,none,,none_uncertainty_over_limit,W05 鶴見川/鶴見川 候補線 21 本を 横浜市 で切り取り 29.1km、広がり 10599m + 300m（精度 10900m > 10000m）,,0
+r5_project_gyorui:23-Pro-31,早川,-,小田原市,,,none,,none_multi_watershed,W05 早川/早川 候補線 23 本を 小田原市 で切り取り 7.7km、広がり 5493m + 300m（multi_watershed: 線の 51% しか 1 つの流域に収まらない（2 流域にまたがる））,,0
+r5_project_gyorui:MF-23-Pro-32,大岡川,-,横浜市,,,none,,none_multi_watershed,W05 大岡川/大岡川 候補線 6 本を 横浜市 で切り取り 11.5km、広がり 4961m + 300m（multi_watershed: 線の 40% しか 1 つの流域に収まらない（4 流域にまたがる））,,0
+r5_project_gyorui:MF-23-Pro-33,多摩川,平瀬川,川崎市,,,none,,none_multi_watershed,W05 平瀬川/多摩川 候補線 4 本を 川崎市 で切り取り 7.9km、広がり 3608m + 300m（multi_watershed: 線の 77% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r6_kenmin_mtinsects_amphi:24-K-05,相模川,鳩川,相模原市,,,none,,none_multi_watershed,W05 鳩川/相模川 候補線 6 本を 相模原市 で切り取り 15.2km、広がり 6699m + 300m（multi_watershed: 線の 76% しか 1 つの流域に収まらない（2 流域にまたがる））,,0
+r6_kenmin_mtinsects_amphi:24-K-06,相模川,道保川,相模原市,35.533492,139.3823,estimated_from_name,2200,river_in_municipality,W05 道保川/相模川 候補線 2 本を 相模原市 で切り取り 4.1km、広がり 1839m + 300m / 流域 相模川 に 100%,1,0
+r6_kenmin_mtinsects_amphi:24-K-07,酒匂川,中津川,松田町,,,none,,none_multi_watershed,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（multi_watershed: 線の 58% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r6_kenmin_mtinsects_amphi:24-K-08,酒匂川,中津川,松田町,,,none,,none_multi_watershed,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（multi_watershed: 線の 58% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r6_kenmin_mtinsects_amphi:24-K-09,酒匂川,中津川,松田町,,,none,,none_multi_watershed,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（multi_watershed: 線の 58% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r6_kenmin_mtinsects_amphi:24-K-10,酒匂川,-,開成町・松田町,,,none,,none_multi_watershed,W05 酒匂川/酒匂川 候補線 14 本を 開成町・松田町 で切り取り 4.8km、広がり 2337m + 300m（multi_watershed: 線の 61% しか 1 つの流域に収まらない（2 流域にまたがる））,,0
+r6_kenmin_mtinsects_amphi:24-K-11,引地川,-,藤沢市,,,none,,none_multi_watershed,W05 引地川/引地川 候補線 6 本を 藤沢市 で切り取り 14.1km、広がり 6167m + 300m（multi_watershed: 線の 58% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r6_kenmin_mtinsects_amphi:24-K-12,境川,-,藤沢市,,,none,,none_multi_watershed,W05 境川/境川 候補線 41 本を 藤沢市 で切り取り 16.0km、広がり 6790m + 300m（multi_watershed: 線の 32% しか 1 つの流域に収まらない（7 流域にまたがる））,,0
+r6_kenmin_mtinsects_amphi:K-24-1,酒匂川,中津川,松田町,,,none,,none_multi_watershed,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（multi_watershed: 線の 58% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r6_kenmin_mtinsects_amphi:K-24-2,酒匂川,中津川,松田町,,,none,,none_multi_watershed,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（multi_watershed: 線の 58% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r6_kenmin_mtinsects_amphi:K-24-3,酒匂川,中津川,松田町,,,none,,none_multi_watershed,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（multi_watershed: 線の 58% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r6_kenmin_mtinsects_amphi:K-24-4,境川,-,横浜市・大和市,,,none,,none_multi_watershed,W05 境川/境川 候補線 41 本を 横浜市・大和市 で切り取り 19.4km、広がり 8653m + 300m（multi_watershed: 線の 37% しか 1 つの流域に収まらない（7 流域にまたがる））,,0
+r6_project_mtinsects-amphi:24-Pro-05,金目川,室川,秦野市,,,none,,none_multi_watershed,W05 室川/金目川 候補線 5 本を 秦野市 で切り取り 6.7km、広がり 3020m + 300m（multi_watershed: 線の 94% しか 1 つの流域に収まらない（4 流域にまたがる））,,0
+r6_project_mtinsects-amphi:24-Pro-06GR,相模川,小出川,茅ヶ崎市,,,none,,none_multi_watershed,W05 小出川/相模川 候補線 6 本を 茅ヶ崎市 で切り取り 10.5km、広がり 4815m + 300m（multi_watershed: 線の 85% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r6_project_mtinsects-amphi:24-Pro-07IR,多摩川,平瀬川,川崎市,,,none,,none_multi_watershed,W05 平瀬川/多摩川 候補線 4 本を 川崎市 で切り取り 7.9km、広がり 3608m + 300m（multi_watershed: 線の 77% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r6_project_mtinsects-amphi:24-Pro-08GR,鶴見川,-,横浜市,,,none,,none_uncertainty_over_limit,W05 鶴見川/鶴見川 候補線 21 本を 横浜市 で切り取り 29.1km、広がり 10599m + 300m（精度 10900m > 10000m）,,0
+r6_project_mtinsects-amphi:24-Pro-09,鶴見川,奈良川,横浜市,35.556531,139.487806,estimated_from_name,2400,river_in_municipality,W05 奈良川/鶴見川 候補線 4 本を 横浜市 で切り取り 4.6km、広がり 2086m + 300m / 流域 鶴見川 に 100%,1,0
+r6_project_mtinsects-amphi:24-Pro-10,酒匂川,-,小田原市,,,none,,none_multi_watershed,W05 酒匂川/酒匂川 候補線 14 本を 小田原市 で切り取り 8.5km、広がり 4152m + 300m（multi_watershed: 線の 73% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
 r6_project_mtinsects-amphi:24-Pro-11GR,平作川,矢部川,横須賀市,,,none,,none_river_not_in_w05,W05 に 河川名='矢部川' 水系='平作川' の線が無い,,0
-r6_project_mtinsects-amphi:24-Pro-13,相模川,-,厚木市・海老名市,,,none,,none_uncertainty_over_limit,W05 相模川/相模川 候補線 51 本を 厚木市・海老名市 で切り取り 14.8km、広がり 7939m + 300m（精度 8300m > 3000m）,,0
-r6_project_mtinsects-amphi:24-Pro-14,酒匂川,狩川,小田原市,35.282908,139.147002,estimated_from_name,2500,river_in_municipality,W05 狩川/酒匂川 候補線 13 本を 小田原市 で切り取り 4.4km、広がり 2145m + 300m,1,0
-r6_project_mtinsects-amphi:24-Pro-15OSIR1-10,引地川,-,藤沢市,,,none,,none_uncertainty_over_limit,W05 引地川/引地川 候補線 6 本を 藤沢市 で切り取り 14.1km、広がり 6167m + 300m（精度 6500m > 3000m）,,0
+r6_project_mtinsects-amphi:24-Pro-13,相模川,-,厚木市・海老名市,,,none,,none_multi_watershed,W05 相模川/相模川 候補線 51 本を 厚木市・海老名市 で切り取り 14.8km、広がり 7939m + 300m（multi_watershed: 線の 50% しか 1 つの流域に収まらない（7 流域にまたがる））,,0
+r6_project_mtinsects-amphi:24-Pro-14,酒匂川,狩川,小田原市,,,none,,none_multi_watershed,W05 狩川/酒匂川 候補線 13 本を 小田原市 で切り取り 4.4km、広がり 2145m + 300m（multi_watershed: 線の 55% しか 1 つの流域に収まらない（6 流域にまたがる））,,0
+r6_project_mtinsects-amphi:24-Pro-15OSIR1-10,引地川,-,藤沢市,,,none,,none_multi_watershed,W05 引地川/引地川 候補線 6 本を 藤沢市 で切り取り 14.1km、広がり 6167m + 300m（multi_watershed: 線の 58% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
 r6_project_mtinsects-amphi:24-Pro-16,相模川,望地用水,相模原市,,,none,,none_river_not_in_w05,W05 に 河川名='望地用水' 水系='相模川' の線が無い,,0
 r6_project_mtinsects-amphi:24-Pro-17,相模川,八瀬川湧水,相模原市,,,none,,none_river_not_in_w05,W05 に 河川名='八瀬川湧水' 水系='相模川' の線が無い,,0
 r6_project_mtinsects-amphi:24-Pro-18,相模川,八瀬川湧水,相模原市,,,none,,none_river_not_in_w05,W05 に 河川名='八瀬川湧水' 水系='相模川' の線が無い,,0
 r6_project_mtinsects-amphi:24-Pro-19,相模川,八瀬川湧水,相模原市,,,none,,none_river_not_in_w05,W05 に 河川名='八瀬川湧水' 水系='相模川' の線が無い,,0
 r6_project_mtinsects-amphi:24-Pro-20,相模川,道保川湧水,相模原市,,,none,,none_river_not_in_w05,W05 に 河川名='道保川湧水' 水系='相模川' の線が無い,,0
-r6_project_mtinsects-amphi:24-Pro-21,相模川,道保川,相模原市,35.533492,139.3823,estimated_from_name,2200,river_in_municipality,W05 道保川/相模川 候補線 2 本を 相模原市 で切り取り 4.1km、広がり 1839m + 300m,1,0
-r6_project_mtinsects-amphi:24-Pro-22,相模川,道保川,相模原市,35.533492,139.3823,estimated_from_name,2200,river_in_municipality,W05 道保川/相模川 候補線 2 本を 相模原市 で切り取り 4.1km、広がり 1839m + 300m,1,0
-r6_project_mtinsects-amphi:24-Pro-23,相模川,道保川,相模原市,35.533492,139.3823,estimated_from_name,2200,river_in_municipality,W05 道保川/相模川 候補線 2 本を 相模原市 で切り取り 4.1km、広がり 1839m + 300m,1,0
+r6_project_mtinsects-amphi:24-Pro-21,相模川,道保川,相模原市,35.533492,139.3823,estimated_from_name,2200,river_in_municipality,W05 道保川/相模川 候補線 2 本を 相模原市 で切り取り 4.1km、広がり 1839m + 300m / 流域 相模川 に 100%,1,0
+r6_project_mtinsects-amphi:24-Pro-22,相模川,道保川,相模原市,35.533492,139.3823,estimated_from_name,2200,river_in_municipality,W05 道保川/相模川 候補線 2 本を 相模原市 で切り取り 4.1km、広がり 1839m + 300m / 流域 相模川 に 100%,1,0
+r6_project_mtinsects-amphi:24-Pro-23,相模川,道保川,相模原市,35.533492,139.3823,estimated_from_name,2200,river_in_municipality,W05 道保川/相模川 候補線 2 本を 相模原市 で切り取り 4.1km、広がり 1839m + 300m / 流域 相模川 に 100%,1,0
 r6_project_mtinsects-amphi:24-Pro-24,相模川,宮川,相模原市,,,none,,none_river_not_in_w05,W05 に 河川名='宮川' 水系='相模川' の線が無い,,0
-r6_project_mtinsects-amphi:24-Pro-25,境川,-,相模原市,,,none,,none_uncertainty_over_limit,W05 境川/境川 候補線 41 本を 相模原市 で切り取り 7.7km、広がり 10369m + 300m（精度 10700m > 3000m）,,0
-r6_project_mtinsects-amphi:24-Pro-26,境川,,相模原市,,,none,,none_uncertainty_over_limit,W05 境川/境川 候補線 41 本を 相模原市 で切り取り 7.7km、広がり 10369m + 300m（精度 10700m > 3000m）,,0
-r6_project_mtinsects-amphi:24-Pro-27,帷子川,石崎川,横浜市,35.457597,139.618102,estimated_from_name,1200,river_in_municipality,W05 石崎川/帷子川 候補線 1 本を 横浜市 で切り取り 1.8km、広がり 846m + 300m,1,0
-r6_project_mtinsects-amphi:24-Pro-28,平作川,,横須賀市,,,none,,none_uncertainty_over_limit,W05 平作川/平作川 候補線 5 本を 横須賀市 で切り取り 8.5km、広がり 4170m + 300m（精度 4500m > 3000m）,,0
-r6_project_mtinsects-amphi:24-Pro-29,鶴見川,早淵川,横浜市,,,none,,none_uncertainty_over_limit,W05 早渕川/鶴見川 候補線 6 本を 横浜市 で切り取り 12.6km、広がり 5547m + 300m（精度 5900m > 3000m）,,0
-r6_project_mtinsects-amphi:24-Pro-30,引地川,-,大和市,,,none,,none_uncertainty_over_limit,W05 引地川/引地川 候補線 6 本を 大和市 で切り取り 7.8km、広がり 3429m + 300m（精度 3800m > 3000m）,,0
-r6_project_mtinsects-amphi:24-Pro-31,酒匂川,,小田原市・大井町,,,none,,none_uncertainty_over_limit,W05 酒匂川/酒匂川 候補線 14 本を 小田原市・大井町 で切り取り 9.6km、広がり 5040m + 300m（精度 5400m > 3000m）,,0
+r6_project_mtinsects-amphi:24-Pro-25,境川,-,相模原市,,,none,,none_uncertainty_over_limit,W05 境川/境川 候補線 41 本を 相模原市 で切り取り 7.7km、広がり 10369m + 300m（精度 10700m > 10000m）,,0
+r6_project_mtinsects-amphi:24-Pro-26,境川,,相模原市,,,none,,none_uncertainty_over_limit,W05 境川/境川 候補線 41 本を 相模原市 で切り取り 7.7km、広がり 10369m + 300m（精度 10700m > 10000m）,,0
+r6_project_mtinsects-amphi:24-Pro-27,帷子川,石崎川,横浜市,35.457597,139.618102,estimated_from_name,1200,river_in_municipality,W05 石崎川/帷子川 候補線 1 本を 横浜市 で切り取り 1.8km、広がり 846m + 300m / 流域 帷子川 に 100%,1,0
+r6_project_mtinsects-amphi:24-Pro-28,平作川,,横須賀市,35.251425,139.680621,estimated_from_name,4500,river_in_municipality,W05 平作川/平作川 候補線 5 本を 横須賀市 で切り取り 8.5km、広がり 4170m + 300m / 流域 平作川 に 100%,1,0
+r6_project_mtinsects-amphi:24-Pro-29,鶴見川,早淵川,横浜市,,,none,,none_multi_watershed,W05 早渕川/鶴見川 候補線 6 本を 横浜市 で切り取り 12.6km、広がり 5547m + 300m（multi_watershed: 線の 69% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r6_project_mtinsects-amphi:24-Pro-30,引地川,-,大和市,35.450882,139.458078,estimated_from_name,3800,river_in_municipality,W05 引地川/引地川 候補線 6 本を 大和市 で切り取り 7.8km、広がり 3429m + 300m / 流域 引地川 に 100%,1,0
+r6_project_mtinsects-amphi:24-Pro-31,酒匂川,,小田原市・大井町,,,none,,none_multi_watershed,W05 酒匂川/酒匂川 候補線 14 本を 小田原市・大井町 で切り取り 9.6km、広がり 5040m + 300m（multi_watershed: 線の 76% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
 r6_project_mtinsects-amphi:24-Pro-32,相模川,鳩川湧水,相模原市,,,none,,none_river_not_in_w05,W05 に 河川名='鳩川湧水' 水系='相模川' の線が無い,,0
 r6_project_mtinsects-amphi:24-Pro-33,相模川,道保川湧水,相模原市,,,none,,none_river_not_in_w05,W05 に 河川名='道保川湧水' 水系='相模川' の線が無い,,0
 r6_project_mtinsects-amphi:24-Pro-34,相模川,道保川湧水,相模原市,,,none,,none_river_not_in_w05,W05 に 河川名='道保川湧水' 水系='相模川' の線が無い,,0
 r6_project_mtinsects-amphi:24-Pro-35,相模川,道保川湧水,相模原市,,,none,,none_river_not_in_w05,W05 に 河川名='道保川湧水' 水系='相模川' の線が無い,,0
-r6_project_mtinsects-amphi:24-Pro-36,相模川,串川,相模原市,,,none,,none_uncertainty_over_limit,W05 串川/相模川 候補線 13 本を 相模原市 で切り取り 14.4km、広がり 4970m + 300m（精度 5300m > 3000m）,,0
-r6_project_mtinsects-amphi:24-Pro-37,相模川,中津川,愛川町,,,none,,none_uncertainty_over_limit,W05 中津川/相模川 候補線 23 本を 愛川町 で切り取り 13.8km、広がり 5750m + 300m（精度 6100m > 3000m）,,0
-r6_project_mtinsects-amphi:24-Pro-38,大岡川,-,横浜市,,,none,,none_uncertainty_over_limit,W05 大岡川/大岡川 候補線 6 本を 横浜市 で切り取り 11.5km、広がり 4961m + 300m（精度 5300m > 3000m）,,0
-r6_project_mtinsects-amphi:24-Pro-39,多摩川,平瀬川,川崎市,,,none,,none_uncertainty_over_limit,W05 平瀬川/多摩川 候補線 4 本を 川崎市 で切り取り 7.9km、広がり 3608m + 300m（精度 4000m > 3000m）,,0
-r6_project_mtinsects-amphi:24-Pro-41,相模川,中津川,愛川町,,,none,,none_uncertainty_over_limit,W05 中津川/相模川 候補線 23 本を 愛川町 で切り取り 13.8km、広がり 5750m + 300m（精度 6100m > 3000m）,,0
+r6_project_mtinsects-amphi:24-Pro-36,相模川,串川,相模原市,35.564123,139.250915,estimated_from_name,5300,river_in_municipality,W05 串川/相模川 候補線 13 本を 相模原市 で切り取り 14.4km、広がり 4970m + 300m / 流域 相模川 に 100%,1,0
+r6_project_mtinsects-amphi:24-Pro-37,相模川,中津川,愛川町,35.524042,139.289815,estimated_from_name,6100,river_in_municipality,W05 中津川/相模川 候補線 23 本を 愛川町 で切り取り 13.8km、広がり 5750m + 300m / 流域 相模川 に 98%,1,0
+r6_project_mtinsects-amphi:24-Pro-38,大岡川,-,横浜市,,,none,,none_multi_watershed,W05 大岡川/大岡川 候補線 6 本を 横浜市 で切り取り 11.5km、広がり 4961m + 300m（multi_watershed: 線の 40% しか 1 つの流域に収まらない（4 流域にまたがる））,,0
+r6_project_mtinsects-amphi:24-Pro-39,多摩川,平瀬川,川崎市,,,none,,none_multi_watershed,W05 平瀬川/多摩川 候補線 4 本を 川崎市 で切り取り 7.9km、広がり 3608m + 300m（multi_watershed: 線の 77% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r6_project_mtinsects-amphi:24-Pro-41,相模川,中津川,愛川町,35.524042,139.289815,estimated_from_name,6100,river_in_municipality,W05 中津川/相模川 候補線 23 本を 愛川町 で切り取り 13.8km、広がり 5750m + 300m / 流域 相模川 に 98%,1,0
 r6_project_mtinsects-amphi:24-Pro-42,相模川,道志川細流,相模原市,,,none,,none_river_not_in_w05,W05 に 河川名='道志川細流' 水系='相模川' の線が無い,,0
 r6_project_mtinsects-amphi:24-Pro-43,相模川,道志川細流,相模原市,,,none,,none_river_not_in_w05,W05 に 河川名='道志川細流' 水系='相模川' の線が無い,,0
-r6_project_mtinsects-amphi:24-Pro-44,相模川,沢井川,相模原市,,,none,,none_uncertainty_over_limit,W05 沢井川/相模川 候補線 18 本を 相模原市 で切り取り 7.8km、広がり 3239m + 300m（精度 3600m > 3000m）,,0
-r6_project_mtinsects-amphi:24-Pro-45,相模川,串川,相模原市,,,none,,none_uncertainty_over_limit,W05 串川/相模川 候補線 13 本を 相模原市 で切り取り 14.4km、広がり 4970m + 300m（精度 5300m > 3000m）,,0
-r6_project_mtinsects-amphi:24-Pro-46,相模川,中津川,厚木市,,,none,,none_uncertainty_over_limit,W05 中津川/相模川 候補線 23 本を 厚木市 で切り取り 8.0km、広がり 3772m + 300m（精度 4100m > 3000m）,,0
-r6_project_mtinsects-amphi:24-Pro-47,相模川,目久尻川,座間市,35.481768,139.412892,estimated_from_name,2300,river_in_municipality,W05 目久尻川/相模川 候補線 4 本を 座間市 で切り取り 4.3km、広がり 1903m + 300m,1,0
-r6_project_mtinsects-amphi:24-Pro-48,金目川,葛葉川,秦野市,,,none,,none_uncertainty_over_limit,W05 葛葉川/金目川 候補線 5 本を 秦野市 で切り取り 6.7km、広がり 3030m + 300m（精度 3400m > 3000m）,,0
-r6_project_mtinsects-amphi:24-Pro-49,酒匂川,四十八瀬川,秦野市,,,none,,none_uncertainty_over_limit,W05 四十八瀬川/酒匂川 候補線 4 本を 秦野市 で切り取り 10.9km、広がり 4568m + 300m（精度 4900m > 3000m）,,0
-r6_project_mtinsects-amphi:24-Pro-50,相模川,八瀬川,相模原市,,,none,,none_uncertainty_over_limit,W05 八瀬川/相模川 候補線 3 本を 相模原市 で切り取り 6.8km、広がり 2962m + 300m（精度 3300m > 3000m）,,0
+r6_project_mtinsects-amphi:24-Pro-44,相模川,沢井川,相模原市,35.633414,139.141173,estimated_from_name,3600,river_in_municipality,W05 沢井川/相模川 候補線 18 本を 相模原市 で切り取り 7.8km、広がり 3239m + 300m / 流域 相模川 に 99%,1,0
+r6_project_mtinsects-amphi:24-Pro-45,相模川,串川,相模原市,35.564123,139.250915,estimated_from_name,5300,river_in_municipality,W05 串川/相模川 候補線 13 本を 相模原市 で切り取り 14.4km、広がり 4970m + 300m / 流域 相模川 に 100%,1,0
+r6_project_mtinsects-amphi:24-Pro-46,相模川,中津川,厚木市,,,none,,none_multi_watershed,W05 中津川/相模川 候補線 23 本を 厚木市 で切り取り 8.0km、広がり 3772m + 300m（multi_watershed: 線の 81% しか 1 つの流域に収まらない（2 流域にまたがる））,,0
+r6_project_mtinsects-amphi:24-Pro-47,相模川,目久尻川,座間市,35.481768,139.412892,estimated_from_name,2300,river_in_municipality,W05 目久尻川/相模川 候補線 4 本を 座間市 で切り取り 4.3km、広がり 1903m + 300m / 流域 相模川 に 100%,1,0
+r6_project_mtinsects-amphi:24-Pro-48,金目川,葛葉川,秦野市,35.391075,139.207707,estimated_from_name,3400,river_in_municipality,W05 葛葉川/金目川 候補線 5 本を 秦野市 で切り取り 6.7km、広がり 3030m + 300m / 流域 金目川 に 100%,1,0
+r6_project_mtinsects-amphi:24-Pro-49,酒匂川,四十八瀬川,秦野市,35.401461,139.162964,estimated_from_name,4900,river_in_municipality,W05 四十八瀬川/酒匂川 候補線 4 本を 秦野市 で切り取り 10.9km、広がり 4568m + 300m / 流域 酒匂川 に 99%,1,0
+r6_project_mtinsects-amphi:24-Pro-50,相模川,八瀬川,相模原市,35.530799,139.359327,estimated_from_name,3300,river_in_municipality,W05 八瀬川/相模川 候補線 3 本を 相模原市 で切り取り 6.8km、広がり 2962m + 300m / 流域 相模川 に 100%,1,0
 r6_project_mtinsects-amphi:24-Pro-51,酒匂川,鬼柳水路,小田原市,,,none,,none_river_not_in_w05,W05 に 河川名='鬼柳水路' 水系='酒匂川' の線が無い,,0
-r6_project_mtinsects-amphi:R6-project-1,葛川,-,二宮町,35.30664,139.249921,estimated_from_name,2600,river_in_municipality,W05 葛川/葛川 候補線 4 本を 二宮町 で切り取り 4.8km、広がり 2273m + 300m,1,0
-r6_project_mtinsects-amphi:R6-project-12,鶴見川,-,横浜市,,,none,,none_uncertainty_over_limit,W05 鶴見川/鶴見川 候補線 21 本を 横浜市 で切り取り 29.1km、広がり 10599m + 300m（精度 10900m > 3000m）,,0
+r6_project_mtinsects-amphi:R6-project-1,葛川,-,二宮町,35.30664,139.249921,estimated_from_name,2600,river_in_municipality,W05 葛川/葛川 候補線 4 本を 二宮町 で切り取り 4.8km、広がり 2273m + 300m / 流域 葛川 に 100%,1,0
+r6_project_mtinsects-amphi:R6-project-12,鶴見川,-,横浜市,,,none,,none_uncertainty_over_limit,W05 鶴見川/鶴見川 候補線 21 本を 横浜市 で切り取り 29.1km、広がり 10599m + 300m（精度 10900m > 10000m）,,0
 r6_project_mtinsects-amphi:R6-project-2,多摩川,ニヶ領用水,川崎市,,,none,,none_river_not_in_w05,W05 に 河川名='ニヶ領用水' 水系='多摩川' の線が無い,,0
-r6_project_mtinsects-amphi:R6-project-3,相模川,-,相模原市・厚木市,,,none,,none_uncertainty_over_limit,W05 相模川/相模川 候補線 51 本を 相模原市・厚木市 で切り取り 45.6km、広がり 19381m + 300m（精度 19700m > 3000m）,,0
-r6_project_mtinsects-amphi:R6-project-4,境川,和泉川,横浜市,,,none,,none_uncertainty_over_limit,W05 和泉川/境川 候補線 3 本を 横浜市 で切り取り 10.5km、広がり 4935m + 300m（精度 5300m > 3000m）,,0
-r6_project_mtinsects-amphi:R6-project-40,鶴見川,-,横浜市,,,none,,none_uncertainty_over_limit,W05 鶴見川/鶴見川 候補線 21 本を 横浜市 で切り取り 29.1km、広がり 10599m + 300m（精度 10900m > 3000m）,,0
-r7_kenmin_kekka:K-25-01,酒匂川,中津川,松田町,,,none,,none_uncertainty_over_limit,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（精度 5800m > 3000m）,,0
-r7_kenmin_kekka:K-25-02,酒匂川,中津川,松田町,,,none,,none_uncertainty_over_limit,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（精度 5800m > 3000m）,,0
-r7_kenmin_kekka:K-25-03,酒匂川,中津川,松田町,,,none,,none_uncertainty_over_limit,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（精度 5800m > 3000m）,,0
-r7_kenmin_kekka:k-25-04,酒匂川,中津川,松田町,,,none,,none_uncertainty_over_limit,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（精度 5800m > 3000m）,,0
-r7_kenmin_kekka:k-25-05,酒匂川,中津川,松田町,,,none,,none_uncertainty_over_limit,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（精度 5800m > 3000m）,,0
-r7_kenmin_kekka:k-25-06,酒匂川,中津川,松田町,,,none,,none_uncertainty_over_limit,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（精度 5800m > 3000m）,,0
-r7_kenmin_kekka:k-25-07,酒匂川,中津川,松田町,,,none,,none_uncertainty_over_limit,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（精度 5800m > 3000m）,,0
-r7_kenmin_kekka:k-25-08,酒匂川,中津川,松田町,,,none,,none_uncertainty_over_limit,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（精度 5800m > 3000m）,,0
-r7_kenmin_kekka:k-25-09,相模川,鳩川,相模原市,,,none,,none_uncertainty_over_limit,W05 鳩川/相模川 候補線 6 本を 相模原市 で切り取り 15.2km、広がり 6699m + 300m（精度 7000m > 3000m）,,0
-r7_kenmin_kekka:k-25-10,多摩川,多摩川,川崎市,,,none,,none_uncertainty_over_limit,W05 多摩川/多摩川 候補線 20 本を 川崎市 で切り取り 15.9km、広がり 13928m + 300m（精度 14300m > 3000m）,,0
-r7_kenmin_kekka:k-25-11,境川,境川,藤沢市,,,none,,none_uncertainty_over_limit,W05 境川/境川 候補線 41 本を 藤沢市 で切り取り 16.0km、広がり 6790m + 300m（精度 7100m > 3000m）,,0
-r7_kenmin_kekka:k-25-12,引地川,引地川,藤沢市,,,none,,none_uncertainty_over_limit,W05 引地川/引地川 候補線 6 本を 藤沢市 で切り取り 14.1km、広がり 6167m + 300m（精度 6500m > 3000m）,,0
-r7_kenmin_kekka:k-25-13,葛川,不動川,大磯町,35.315889,139.28021,estimated_from_name,2500,river_in_municipality,W05 不動川/葛川 候補線 6 本を 大磯町 で切り取り 4.7km、広がり 2167m + 300m,1,0
-r7_project_kekka:25-Pro-01,鶴見川,恩田川,横浜市,,,none,,none_uncertainty_over_limit,W05 恩田川/鶴見川 候補線 6 本を 横浜市 で切り取り 7.5km、広がり 3401m + 300m（精度 3800m > 3000m）,,0
-r7_project_kekka:25-Pro-02,鶴見川,恩田川,横浜市,,,none,,none_uncertainty_over_limit,W05 恩田川/鶴見川 候補線 6 本を 横浜市 で切り取り 7.5km、広がり 3401m + 300m（精度 3800m > 3000m）,,0
-r7_project_kekka:25-Pro-03,鶴見川,早渕川,横浜市,,,none,,none_uncertainty_over_limit,W05 早渕川/鶴見川 候補線 6 本を 横浜市 で切り取り 12.6km、広がり 5547m + 300m（精度 5900m > 3000m）,,0
+r6_project_mtinsects-amphi:R6-project-3,相模川,-,相模原市・厚木市,,,none,,none_uncertainty_over_limit,W05 相模川/相模川 候補線 51 本を 相模原市・厚木市 で切り取り 45.6km、広がり 19381m + 300m（精度 19700m > 10000m）,,0
+r6_project_mtinsects-amphi:R6-project-4,境川,和泉川,横浜市,35.431304,139.490206,estimated_from_name,5300,river_in_municipality,W05 和泉川/境川 候補線 3 本を 横浜市 で切り取り 10.5km、広がり 4935m + 300m / 流域 境川 に 98%,1,0
+r6_project_mtinsects-amphi:R6-project-40,鶴見川,-,横浜市,,,none,,none_uncertainty_over_limit,W05 鶴見川/鶴見川 候補線 21 本を 横浜市 で切り取り 29.1km、広がり 10599m + 300m（精度 10900m > 10000m）,,0
+r7_kenmin_kekka:K-25-01,酒匂川,中津川,松田町,,,none,,none_multi_watershed,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（multi_watershed: 線の 58% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r7_kenmin_kekka:K-25-02,酒匂川,中津川,松田町,,,none,,none_multi_watershed,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（multi_watershed: 線の 58% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r7_kenmin_kekka:K-25-03,酒匂川,中津川,松田町,,,none,,none_multi_watershed,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（multi_watershed: 線の 58% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r7_kenmin_kekka:k-25-04,酒匂川,中津川,松田町,,,none,,none_multi_watershed,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（multi_watershed: 線の 58% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r7_kenmin_kekka:k-25-05,酒匂川,中津川,松田町,,,none,,none_multi_watershed,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（multi_watershed: 線の 58% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r7_kenmin_kekka:k-25-06,酒匂川,中津川,松田町,,,none,,none_multi_watershed,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（multi_watershed: 線の 58% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r7_kenmin_kekka:k-25-07,酒匂川,中津川,松田町,,,none,,none_multi_watershed,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（multi_watershed: 線の 58% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r7_kenmin_kekka:k-25-08,酒匂川,中津川,松田町,,,none,,none_multi_watershed,W05 中津川/酒匂川 候補線 20 本を 松田町 で切り取り 12.1km、広がり 5447m + 300m（multi_watershed: 線の 58% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r7_kenmin_kekka:k-25-09,相模川,鳩川,相模原市,,,none,,none_multi_watershed,W05 鳩川/相模川 候補線 6 本を 相模原市 で切り取り 15.2km、広がり 6699m + 300m（multi_watershed: 線の 76% しか 1 つの流域に収まらない（2 流域にまたがる））,,0
+r7_kenmin_kekka:k-25-10,多摩川,多摩川,川崎市,,,none,,none_uncertainty_over_limit,W05 多摩川/多摩川 候補線 20 本を 川崎市 で切り取り 15.9km、広がり 13928m + 300m（精度 14300m > 10000m）,,0
+r7_kenmin_kekka:k-25-11,境川,境川,藤沢市,,,none,,none_multi_watershed,W05 境川/境川 候補線 41 本を 藤沢市 で切り取り 16.0km、広がり 6790m + 300m（multi_watershed: 線の 32% しか 1 つの流域に収まらない（7 流域にまたがる））,,0
+r7_kenmin_kekka:k-25-12,引地川,引地川,藤沢市,,,none,,none_multi_watershed,W05 引地川/引地川 候補線 6 本を 藤沢市 で切り取り 14.1km、広がり 6167m + 300m（multi_watershed: 線の 58% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r7_kenmin_kekka:k-25-13,葛川,不動川,大磯町,35.315889,139.28021,estimated_from_name,2500,river_in_municipality,W05 不動川/葛川 候補線 6 本を 大磯町 で切り取り 4.7km、広がり 2167m + 300m / 流域 葛川 に 100%,1,0
+r7_project_kekka:25-Pro-01,鶴見川,恩田川,横浜市,35.530428,139.518937,estimated_from_name,3800,river_in_municipality,W05 恩田川/鶴見川 候補線 6 本を 横浜市 で切り取り 7.5km、広がり 3401m + 300m / 流域 鶴見川 に 100%,1,0
+r7_project_kekka:25-Pro-02,鶴見川,恩田川,横浜市,35.530428,139.518937,estimated_from_name,3800,river_in_municipality,W05 恩田川/鶴見川 候補線 6 本を 横浜市 で切り取り 7.5km、広がり 3401m + 300m / 流域 鶴見川 に 100%,1,0
+r7_project_kekka:25-Pro-03,鶴見川,早渕川,横浜市,,,none,,none_multi_watershed,W05 早渕川/鶴見川 候補線 6 本を 横浜市 で切り取り 12.6km、広がり 5547m + 300m（multi_watershed: 線の 69% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
 r7_project_kekka:25-Pro-04,多摩川,二カ領用水,川崎市,,,none,,none_river_not_in_w05,W05 に 河川名='二カ領用水' 水系='多摩川' の線が無い,,0
-r7_project_kekka:25-Pro-05,相模川,恩曽川,厚木市,,,none,,none_uncertainty_over_limit,W05 恩曽川/相模川 候補線 3 本を 厚木市 で切り取り 8.9km、広がり 4065m + 300m（精度 4400m > 3000m）,,0
-r7_project_kekka:25-Pro-06,相模川,,平塚市、茅ケ崎市,,,none,,none_uncertainty_over_limit,W05 相模川/相模川 候補線 51 本を 平塚市・茅ケ崎市 で切り取り 7.6km、広がり 4927m + 300m（精度 5300m > 3000m）,,0
-r7_project_kekka:25-Pro-07,滑川,,鎌倉市,35.320959,139.566227,estimated_from_name,2700,river_in_municipality,W05 滑川/滑川 候補線 5 本を 鎌倉市 で切り取り 6.1km、広がり 2399m + 300m,1,0
-r7_project_kekka:25-Pro-08,山王川,久野川本流,小田原市,35.269497,139.102143,estimated_from_name,2200,river_in_municipality,W05 久野川/山王川 候補線 1 本を 小田原市 で切り取り 4.1km、広がり 1886m + 300m,1,0
-r7_project_kekka:25-Pro-09,山王川,坊所川,小田原市,35.259676,139.120701,estimated_from_name,2300,river_in_municipality,W05 坊所川/山王川 候補線 2 本を 小田原市 で切り取り 4.5km、広がり 1965m + 300m,1,0
+r7_project_kekka:25-Pro-05,相模川,恩曽川,厚木市,,,none,,none_multi_watershed,W05 恩曽川/相模川 候補線 3 本を 厚木市 で切り取り 8.9km、広がり 4065m + 300m（multi_watershed: 線の 77% しか 1 つの流域に収まらない（4 流域にまたがる））,,0
+r7_project_kekka:25-Pro-06,相模川,,平塚市、茅ケ崎市,,,none,,none_multi_watershed,W05 相模川/相模川 候補線 51 本を 平塚市・茅ケ崎市 で切り取り 7.6km、広がり 4927m + 300m（multi_watershed: 線の 61% しか 1 つの流域に収まらない（4 流域にまたがる））,,0
+r7_project_kekka:25-Pro-07,滑川,,鎌倉市,35.320959,139.566227,estimated_from_name,2700,river_in_municipality,W05 滑川/滑川 候補線 5 本を 鎌倉市 で切り取り 6.1km、広がり 2399m + 300m / 流域 滑川 に 100%,1,0
+r7_project_kekka:25-Pro-08,山王川,久野川本流,小田原市,35.269497,139.102143,estimated_from_name,2200,river_in_municipality,W05 久野川/山王川 候補線 1 本を 小田原市 で切り取り 4.1km、広がり 1886m + 300m / 流域 山王川 に 100%,1,0
+r7_project_kekka:25-Pro-09,山王川,坊所川,小田原市,35.259676,139.120701,estimated_from_name,2300,river_in_municipality,W05 坊所川/山王川 候補線 2 本を 小田原市 で切り取り 4.5km、広がり 1965m + 300m / 流域 山王川 に 100%,1,0
 r7_project_kekka:25-Pro-10,山王川,本流,小田原市,,,none,,none_generic_tributary,支川名 '本流' は一般名で、特定の川を指さない,,0
 r7_project_kekka:25-Pro-11,関根川,,横須賀市,,,none,,none_river_not_in_w05,W05 に 河川名='関根川' 水系='関根川' の線が無い,,0
-r7_project_kekka:25-Pro-12,境川,和泉川,横浜市,,,none,,none_uncertainty_over_limit,W05 和泉川/境川 候補線 3 本を 横浜市 で切り取り 10.5km、広がり 4935m + 300m（精度 5300m > 3000m）,,0
-r7_project_kekka:25-Pro-13,酒匂川,,小田原市,,,none,,none_uncertainty_over_limit,W05 酒匂川/酒匂川 候補線 14 本を 小田原市 で切り取り 8.5km、広がり 4152m + 300m（精度 4500m > 3000m）,,0
-r7_project_kekka:25-Pro-14-1,帷子川,,横浜市,,,none,,none_uncertainty_over_limit,W05 帷子川/帷子川 候補線 21 本を 横浜市 で切り取り 17.4km、広がり 7218m + 300m（精度 7600m > 3000m）,,0
+r7_project_kekka:25-Pro-12,境川,和泉川,横浜市,35.431304,139.490206,estimated_from_name,5300,river_in_municipality,W05 和泉川/境川 候補線 3 本を 横浜市 で切り取り 10.5km、広がり 4935m + 300m / 流域 境川 に 98%,1,0
+r7_project_kekka:25-Pro-13,酒匂川,,小田原市,,,none,,none_multi_watershed,W05 酒匂川/酒匂川 候補線 14 本を 小田原市 で切り取り 8.5km、広がり 4152m + 300m（multi_watershed: 線の 73% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r7_project_kekka:25-Pro-14-1,帷子川,,横浜市,,,none,,none_multi_watershed,W05 帷子川/帷子川 候補線 21 本を 横浜市 で切り取り 17.4km、広がり 7218m + 300m（multi_watershed: 線の 41% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
 r7_project_kekka:25-Pro-14-2,関根川,,横須賀市,,,none,,none_river_not_in_w05,W05 に 河川名='関根川' 水系='関根川' の線が無い,,0
-r7_project_kekka:25-Pro-15,相模川,,平塚市,,,none,,none_uncertainty_over_limit,W05 相模川/相模川 候補線 51 本を 平塚市 で切り取り 7.3km、広がり 4901m + 300m（精度 5300m > 3000m）,,0
-r7_project_kekka:25-Pro-16,鶴見川,早渕川,横浜市,,,none,,none_uncertainty_over_limit,W05 早渕川/鶴見川 候補線 6 本を 横浜市 で切り取り 12.6km、広がり 5547m + 300m（精度 5900m > 3000m）,,0
-r7_project_kekka:25-Pro-17,鶴見川,,横浜市,,,none,,none_uncertainty_over_limit,W05 鶴見川/鶴見川 候補線 21 本を 横浜市 で切り取り 29.1km、広がり 10599m + 300m（精度 10900m > 3000m）,,0
+r7_project_kekka:25-Pro-15,相模川,,平塚市,,,none,,none_multi_watershed,W05 相模川/相模川 候補線 51 本を 平塚市 で切り取り 7.3km、広がり 4901m + 300m（multi_watershed: 線の 59% しか 1 つの流域に収まらない（4 流域にまたがる））,,0
+r7_project_kekka:25-Pro-16,鶴見川,早渕川,横浜市,,,none,,none_multi_watershed,W05 早渕川/鶴見川 候補線 6 本を 横浜市 で切り取り 12.6km、広がり 5547m + 300m（multi_watershed: 線の 69% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r7_project_kekka:25-Pro-17,鶴見川,,横浜市,,,none,,none_uncertainty_over_limit,W05 鶴見川/鶴見川 候補線 21 本を 横浜市 で切り取り 29.1km、広がり 10599m + 300m（精度 10900m > 10000m）,,0
 r7_project_kekka:25-Pro-18,相模川,道保川湧水,相模原市,,,none,,none_river_not_in_w05,W05 に 河川名='道保川湧水' 水系='相模川' の線が無い,,0
-r7_project_kekka:25-Pro-19,相模川,道保川,相模原市,35.533492,139.3823,estimated_from_name,2200,river_in_municipality,W05 道保川/相模川 候補線 2 本を 相模原市 で切り取り 4.1km、広がり 1839m + 300m,1,0
+r7_project_kekka:25-Pro-19,相模川,道保川,相模原市,35.533492,139.3823,estimated_from_name,2200,river_in_municipality,W05 道保川/相模川 候補線 2 本を 相模原市 で切り取り 4.1km、広がり 1839m + 300m / 流域 相模川 に 100%,1,0
 r7_project_kekka:25-Pro-20,相模川,宮川,相模原市,,,none,,none_river_not_in_w05,W05 に 河川名='宮川' 水系='相模川' の線が無い,,0
-r7_project_kekka:25-Pro-21,大岡川,,横浜市,,,none,,none_uncertainty_over_limit,W05 大岡川/大岡川 候補線 6 本を 横浜市 で切り取り 11.5km、広がり 4961m + 300m（精度 5300m > 3000m）,,0
-r7_project_kekka:25-Pro-22,早川,,小田原市,,,none,,none_uncertainty_over_limit,W05 早川/早川 候補線 23 本を 小田原市 で切り取り 7.7km、広がり 5493m + 300m（精度 5800m > 3000m）,,0
+r7_project_kekka:25-Pro-21,大岡川,,横浜市,,,none,,none_multi_watershed,W05 大岡川/大岡川 候補線 6 本を 横浜市 で切り取り 11.5km、広がり 4961m + 300m（multi_watershed: 線の 40% しか 1 つの流域に収まらない（4 流域にまたがる））,,0
+r7_project_kekka:25-Pro-22,早川,,小田原市,,,none,,none_multi_watershed,W05 早川/早川 候補線 23 本を 小田原市 で切り取り 7.7km、広がり 5493m + 300m（multi_watershed: 線の 51% しか 1 つの流域に収まらない（2 流域にまたがる））,,0
 r7_project_kekka:25-Pro-23,相模川,道保川湧水,相模原市,,,none,,none_river_not_in_w05,W05 に 河川名='道保川湧水' 水系='相模川' の線が無い,,0
 r7_project_kekka:25-Pro-24,相模川,鳩川湧水,相模原市,,,none,,none_river_not_in_w05,W05 に 河川名='鳩川湧水' 水系='相模川' の線が無い,,0
-r7_project_kekka:25-Pro-25,相模川,鳩川,相模原市,,,none,,none_uncertainty_over_limit,W05 鳩川/相模川 候補線 6 本を 相模原市 で切り取り 15.2km、広がり 6699m + 300m（精度 7000m > 3000m）,,0
-r7_project_kekka:25-Pro-26,境川,,藤沢市,,,none,,none_uncertainty_over_limit,W05 境川/境川 候補線 41 本を 藤沢市 で切り取り 16.0km、広がり 6790m + 300m（精度 7100m > 3000m）,,0
-r7_project_kekka:25-Pro-27,引地川,,大和市,,,none,,none_uncertainty_over_limit,W05 引地川/引地川 候補線 6 本を 大和市 で切り取り 7.8km、広がり 3429m + 300m（精度 3800m > 3000m）,,0
-r7_project_kekka:25-Pro-28,平作川,,横須賀市,,,none,,none_uncertainty_over_limit,W05 平作川/平作川 候補線 5 本を 横須賀市 で切り取り 8.5km、広がり 4170m + 300m（精度 4500m > 3000m）,,0
-r7_project_kekka:25-Pro-29,平作川,,横須賀市,,,none,,none_uncertainty_over_limit,W05 平作川/平作川 候補線 5 本を 横須賀市 で切り取り 8.5km、広がり 4170m + 300m（精度 4500m > 3000m）,,0
-r7_project_kekka:25-Pro-30,酒匂川,,小田原市,,,none,,none_uncertainty_over_limit,W05 酒匂川/酒匂川 候補線 14 本を 小田原市 で切り取り 8.5km、広がり 4152m + 300m（精度 4500m > 3000m）,,0
-r7_project_kekka:25-Pro-31,境川,,大和市,,,none,,none_uncertainty_over_limit,W05 境川/境川 候補線 41 本を 大和市 で切り取り 10.8km、広がり 5025m + 300m（精度 5400m > 3000m）,,0
+r7_project_kekka:25-Pro-25,相模川,鳩川,相模原市,,,none,,none_multi_watershed,W05 鳩川/相模川 候補線 6 本を 相模原市 で切り取り 15.2km、広がり 6699m + 300m（multi_watershed: 線の 76% しか 1 つの流域に収まらない（2 流域にまたがる））,,0
+r7_project_kekka:25-Pro-26,境川,,藤沢市,,,none,,none_multi_watershed,W05 境川/境川 候補線 41 本を 藤沢市 で切り取り 16.0km、広がり 6790m + 300m（multi_watershed: 線の 32% しか 1 つの流域に収まらない（7 流域にまたがる））,,0
+r7_project_kekka:25-Pro-27,引地川,,大和市,35.450882,139.458078,estimated_from_name,3800,river_in_municipality,W05 引地川/引地川 候補線 6 本を 大和市 で切り取り 7.8km、広がり 3429m + 300m / 流域 引地川 に 100%,1,0
+r7_project_kekka:25-Pro-28,平作川,,横須賀市,35.251425,139.680621,estimated_from_name,4500,river_in_municipality,W05 平作川/平作川 候補線 5 本を 横須賀市 で切り取り 8.5km、広がり 4170m + 300m / 流域 平作川 に 100%,1,0
+r7_project_kekka:25-Pro-29,平作川,,横須賀市,35.251425,139.680621,estimated_from_name,4500,river_in_municipality,W05 平作川/平作川 候補線 5 本を 横須賀市 で切り取り 8.5km、広がり 4170m + 300m / 流域 平作川 に 100%,1,0
+r7_project_kekka:25-Pro-30,酒匂川,,小田原市,,,none,,none_multi_watershed,W05 酒匂川/酒匂川 候補線 14 本を 小田原市 で切り取り 8.5km、広がり 4152m + 300m（multi_watershed: 線の 73% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r7_project_kekka:25-Pro-31,境川,,大和市,,,none,,none_multi_watershed,W05 境川/境川 候補線 41 本を 大和市 で切り取り 10.8km、広がり 5025m + 300m（multi_watershed: 線の 48% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
 r7_project_kekka:25-Pro-32,光が丘公園,,横須賀市,,,none,,none_river_not_in_w05,W05 に 河川名='光が丘公園' 水系='光が丘公園' の線が無い,,0
 r7_project_kekka:25-Pro-33,多摩川,二ケ領用水,川崎市,,,none,,none_river_not_in_w05,W05 に 河川名='二ヶ領用水' 水系='多摩川' の線が無い,,0
-r7_project_kekka:25-Pro-34,相模川,中津川,厚木市,,,none,,none_uncertainty_over_limit,W05 中津川/相模川 候補線 23 本を 厚木市 で切り取り 8.0km、広がり 3772m + 300m（精度 4100m > 3000m）,,0
-r7_project_kekka:25-Pro-35,相模川,道保川,相模原市,35.533492,139.3823,estimated_from_name,2200,river_in_municipality,W05 道保川/相模川 候補線 2 本を 相模原市 で切り取り 4.1km、広がり 1839m + 300m,1,0
-r7_project_kekka:25-Pro-36,葛川,,二宮町,35.30664,139.249921,estimated_from_name,2600,river_in_municipality,W05 葛川/葛川 候補線 4 本を 二宮町 で切り取り 4.8km、広がり 2273m + 300m,1,0
-r7_project_kekka:25-Pro-37,葛川,,二宮町,35.30664,139.249921,estimated_from_name,2600,river_in_municipality,W05 葛川/葛川 候補線 4 本を 二宮町 で切り取り 4.8km、広がり 2273m + 300m,1,0
-r7_project_kekka:25-Pro-38,葛川,,二宮町,35.30664,139.249921,estimated_from_name,2600,river_in_municipality,W05 葛川/葛川 候補線 4 本を 二宮町 で切り取り 4.8km、広がり 2273m + 300m,1,0
-r7_project_kekka:25-Pro-39,相模川,道保川,相模原市,35.533492,139.3823,estimated_from_name,2200,river_in_municipality,W05 道保川/相模川 候補線 2 本を 相模原市 で切り取り 4.1km、広がり 1839m + 300m,1,0
-r7_project_kekka:25-Pro-40,相模川,道保川,相模原市,35.533492,139.3823,estimated_from_name,2200,river_in_municipality,W05 道保川/相模川 候補線 2 本を 相模原市 で切り取り 4.1km、広がり 1839m + 300m,1,0
-r7_project_kekka:25-Pro-41,相模川,道保川,相模原市,35.533492,139.3823,estimated_from_name,2200,river_in_municipality,W05 道保川/相模川 候補線 2 本を 相模原市 で切り取り 4.1km、広がり 1839m + 300m,1,0
-r7_project_kekka:25-Pro-42,相模川,道保川,相模原市,35.533492,139.3823,estimated_from_name,2200,river_in_municipality,W05 道保川/相模川 候補線 2 本を 相模原市 で切り取り 4.1km、広がり 1839m + 300m,1,0
-r7_project_kekka:25-Pro-43,境川,,相模原市,,,none,,none_uncertainty_over_limit,W05 境川/境川 候補線 41 本を 相模原市 で切り取り 7.7km、広がり 10369m + 300m（精度 10700m > 3000m）,,0
-r7_project_kekka:25-Pro-44,境川,小松川,相模原市,35.601975,139.293988,estimated_from_name,1400,river_in_municipality,W05 小松川/境川 候補線 3 本を 相模原市 で切り取り 2.2km、広がり 1031m + 300m,1,0
-r7_project_kekka:25-Pro-45,境川,小松川,相模原市,35.601975,139.293988,estimated_from_name,1400,river_in_municipality,W05 小松川/境川 候補線 3 本を 相模原市 で切り取り 2.2km、広がり 1031m + 300m,1,0
-r7_project_kekka:25-Pro-46,相模川,,相模原市,,,none,,none_uncertainty_over_limit,W05 相模川/相模川 候補線 51 本を 相模原市 で切り取り 36.0km、広がり 14317m + 300m（精度 14700m > 3000m）,,0
+r7_project_kekka:25-Pro-34,相模川,中津川,厚木市,,,none,,none_multi_watershed,W05 中津川/相模川 候補線 23 本を 厚木市 で切り取り 8.0km、広がり 3772m + 300m（multi_watershed: 線の 81% しか 1 つの流域に収まらない（2 流域にまたがる））,,0
+r7_project_kekka:25-Pro-35,相模川,道保川,相模原市,35.533492,139.3823,estimated_from_name,2200,river_in_municipality,W05 道保川/相模川 候補線 2 本を 相模原市 で切り取り 4.1km、広がり 1839m + 300m / 流域 相模川 に 100%,1,0
+r7_project_kekka:25-Pro-36,葛川,,二宮町,35.30664,139.249921,estimated_from_name,2600,river_in_municipality,W05 葛川/葛川 候補線 4 本を 二宮町 で切り取り 4.8km、広がり 2273m + 300m / 流域 葛川 に 100%,1,0
+r7_project_kekka:25-Pro-37,葛川,,二宮町,35.30664,139.249921,estimated_from_name,2600,river_in_municipality,W05 葛川/葛川 候補線 4 本を 二宮町 で切り取り 4.8km、広がり 2273m + 300m / 流域 葛川 に 100%,1,0
+r7_project_kekka:25-Pro-38,葛川,,二宮町,35.30664,139.249921,estimated_from_name,2600,river_in_municipality,W05 葛川/葛川 候補線 4 本を 二宮町 で切り取り 4.8km、広がり 2273m + 300m / 流域 葛川 に 100%,1,0
+r7_project_kekka:25-Pro-39,相模川,道保川,相模原市,35.533492,139.3823,estimated_from_name,2200,river_in_municipality,W05 道保川/相模川 候補線 2 本を 相模原市 で切り取り 4.1km、広がり 1839m + 300m / 流域 相模川 に 100%,1,0
+r7_project_kekka:25-Pro-40,相模川,道保川,相模原市,35.533492,139.3823,estimated_from_name,2200,river_in_municipality,W05 道保川/相模川 候補線 2 本を 相模原市 で切り取り 4.1km、広がり 1839m + 300m / 流域 相模川 に 100%,1,0
+r7_project_kekka:25-Pro-41,相模川,道保川,相模原市,35.533492,139.3823,estimated_from_name,2200,river_in_municipality,W05 道保川/相模川 候補線 2 本を 相模原市 で切り取り 4.1km、広がり 1839m + 300m / 流域 相模川 に 100%,1,0
+r7_project_kekka:25-Pro-42,相模川,道保川,相模原市,35.533492,139.3823,estimated_from_name,2200,river_in_municipality,W05 道保川/相模川 候補線 2 本を 相模原市 で切り取り 4.1km、広がり 1839m + 300m / 流域 相模川 に 100%,1,0
+r7_project_kekka:25-Pro-43,境川,,相模原市,,,none,,none_uncertainty_over_limit,W05 境川/境川 候補線 41 本を 相模原市 で切り取り 7.7km、広がり 10369m + 300m（精度 10700m > 10000m）,,0
+r7_project_kekka:25-Pro-44,境川,小松川,相模原市,35.601975,139.293988,estimated_from_name,1400,river_in_municipality,W05 小松川/境川 候補線 3 本を 相模原市 で切り取り 2.2km、広がり 1031m + 300m / 流域 境川 に 100%,1,0
+r7_project_kekka:25-Pro-45,境川,小松川,相模原市,35.601975,139.293988,estimated_from_name,1400,river_in_municipality,W05 小松川/境川 候補線 3 本を 相模原市 で切り取り 2.2km、広がり 1031m + 300m / 流域 境川 に 100%,1,0
+r7_project_kekka:25-Pro-46,相模川,,相模原市,,,none,,none_uncertainty_over_limit,W05 相模川/相模川 候補線 51 本を 相模原市 で切り取り 36.0km、広がり 14317m + 300m（精度 14700m > 10000m）,,0
 r7_project_kekka:25-Pro-47,相模川,中沢,相模原市,,,none,,none_river_not_in_w05,W05 に 河川名='中沢' 水系='相模川' の線が無い,,0
 r7_project_kekka:25-Pro-48,境川,宮川,相模原市,,,none,,none_river_not_in_w05,W05 に 河川名='宮川' 水系='境川' の線が無い,,0
-r7_project_kekka:25-Pro-49,葛川,,二宮町,35.30664,139.249921,estimated_from_name,2600,river_in_municipality,W05 葛川/葛川 候補線 4 本を 二宮町 で切り取り 4.8km、広がり 2273m + 300m,1,0
-r7_project_kekka:25-Pro-50,引地川,,藤沢市,,,none,,none_uncertainty_over_limit,W05 引地川/引地川 候補線 6 本を 藤沢市 で切り取り 14.1km、広がり 6167m + 300m（精度 6500m > 3000m）,,0
-r7_project_kekka:25-Pro-51,相模川,中津川,愛川町,,,none,,none_uncertainty_over_limit,W05 中津川/相模川 候補線 23 本を 愛川町 で切り取り 13.8km、広がり 5750m + 300m（精度 6100m > 3000m）,,0
-r7_project_kekka:25-Pro-52,金目川,大根川,平塚市、秦野市,35.373222,139.280757,estimated_from_name,2100,river_in_municipality,W05 大根川/金目川 候補線 3 本を 平塚市・秦野市 で切り取り 3.5km、広がり 1701m + 300m,1,0
+r7_project_kekka:25-Pro-49,葛川,,二宮町,35.30664,139.249921,estimated_from_name,2600,river_in_municipality,W05 葛川/葛川 候補線 4 本を 二宮町 で切り取り 4.8km、広がり 2273m + 300m / 流域 葛川 に 100%,1,0
+r7_project_kekka:25-Pro-50,引地川,,藤沢市,,,none,,none_multi_watershed,W05 引地川/引地川 候補線 6 本を 藤沢市 で切り取り 14.1km、広がり 6167m + 300m（multi_watershed: 線の 58% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r7_project_kekka:25-Pro-51,相模川,中津川,愛川町,35.524042,139.289815,estimated_from_name,6100,river_in_municipality,W05 中津川/相模川 候補線 23 本を 愛川町 で切り取り 13.8km、広がり 5750m + 300m / 流域 相模川 に 98%,1,0
+r7_project_kekka:25-Pro-52,金目川,大根川,平塚市、秦野市,,,none,,none_multi_watershed,W05 大根川/金目川 候補線 3 本を 平塚市・秦野市 で切り取り 3.5km、広がり 1701m + 300m（multi_watershed: 線の 78% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
 r7_project_kekka:25-Pro-53,金目川,藤沢川,秦野市,,,none,,none_river_not_in_w05,W05 に 河川名='藤沢川' 水系='金目川' の線が無い,,0
-r7_project_kekka:25-Pro-54,金目川,,秦野市,,,none,,none_uncertainty_over_limit,W05 金目川/金目川 候補線 18 本を 秦野市 で切り取り 11.9km、広がり 4935m + 300m（精度 5300m > 3000m）,,0
+r7_project_kekka:25-Pro-54,金目川,,秦野市,,,none,,none_multi_watershed,W05 金目川/金目川 候補線 18 本を 秦野市 で切り取り 11.9km、広がり 4935m + 300m（multi_watershed: 線の 55% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
 r7_project_kekka:25-Pro-55,酒匂川,中川川,山北町,,,none,,none_river_not_in_w05,W05 に 河川名='中川川' 水系='酒匂川' の線が無い,,0
-r7_project_kekka:25-Pro-56,酒匂川,世附川,山北町,,,none,,none_uncertainty_over_limit,W05 世附川/酒匂川 候補線 8 本を 山北町 で切り取り 8.8km、広がり 3520m + 300m（精度 3900m > 3000m）,,0
-r7_project_kekka:25-Pro-57,酒匂川,玄倉川,山北町,,,none,,none_uncertainty_over_limit,W05 玄倉川/酒匂川 候補線 36 本を 山北町 で切り取り 15.2km、広がり 5161m + 300m（精度 5500m > 3000m）,,0
+r7_project_kekka:25-Pro-56,酒匂川,世附川,山北町,,,none,,none_multi_watershed,W05 世附川/酒匂川 候補線 8 本を 山北町 で切り取り 8.8km、広がり 3520m + 300m（multi_watershed: 線の 45% しか 1 つの流域に収まらない（4 流域にまたがる））,,0
+r7_project_kekka:25-Pro-57,酒匂川,玄倉川,山北町,,,none,,none_multi_watershed,W05 玄倉川/酒匂川 候補線 36 本を 山北町 で切り取り 15.2km、広がり 5161m + 300m（multi_watershed: 線の 72% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
 r7_project_kekka:25-Pro-58,金目川,花水川,平塚市,,,none,,none_river_not_in_w05,W05 に 河川名='花水川' 水系='金目川' の線が無い,,0
-r7_project_kekka:25-Pro-59,境川,,相模原市,,,none,,none_uncertainty_over_limit,W05 境川/境川 候補線 41 本を 相模原市 で切り取り 7.7km、広がり 10369m + 300m（精度 10700m > 3000m）,,0
-r7_project_kekka:25-Pro-60,相模川,串川,相模原市,,,none,,none_uncertainty_over_limit,W05 串川/相模川 候補線 13 本を 相模原市 で切り取り 14.4km、広がり 4970m + 300m（精度 5300m > 3000m）,,0
-r7_project_kekka:25-Pro-61,相模川,目久尻川,藤沢市、綾瀬市,,,none,,none_uncertainty_over_limit,W05 目久尻川/相模川 候補線 4 本を 藤沢市・綾瀬市 で切り取り 8.1km、広がり 3892m + 300m（精度 4200m > 3000m）,,0
-r7_project_kekka:25-Pro-62,相模川,目久尻川,寒川町,35.377375,139.380573,estimated_from_name,2700,river_in_municipality,W05 目久尻川/相模川 候補線 4 本を 寒川町 で切り取り 4.9km、広がり 2388m + 300m,1,0
-r7_project_kekka:25-Pro-63,相模川,,相模原市,,,none,,none_uncertainty_over_limit,W05 相模川/相模川 候補線 51 本を 相模原市 で切り取り 36.0km、広がり 14317m + 300m（精度 14700m > 3000m）,,0
-r7_project_kekka:25-Pro-64,相模川,,寒川町,,,none,,none_uncertainty_over_limit,W05 相模川/相模川 候補線 51 本を 寒川町 で切り取り 4.9km、広がり 2919m + 300m（精度 3300m > 3000m）,,0
-r7_project_kekka:25-Pro-65,相模川,目久尻川,藤沢市,35.404728,139.405003,estimated_from_name,2200,river_in_municipality,W05 目久尻川/相模川 候補線 4 本を 藤沢市 で切り取り 3.9km、広がり 1890m + 300m,1,0
-r7_project_kekka:25-Pro-66,相模川,,平塚市、茅ケ崎市,,,none,,none_uncertainty_over_limit,W05 相模川/相模川 候補線 51 本を 平塚市・茅ケ崎市 で切り取り 7.6km、広がり 4927m + 300m（精度 5300m > 3000m）,,0
-r7_project_kekka:25-Pro-67,相模川,目久尻川,綾瀬市,,,none,,none_uncertainty_over_limit,W05 目久尻川/相模川 候補線 4 本を 綾瀬市 で切り取り 5.9km、広がり 2759m + 300m（精度 3100m > 3000m）,,0
-r7_project_kekka:25-Pro-68,相模川,,平塚市、茅ケ崎市,,,none,,none_uncertainty_over_limit,W05 相模川/相模川 候補線 51 本を 平塚市・茅ケ崎市 で切り取り 7.6km、広がり 4927m + 300m（精度 5300m > 3000m）,,0
+r7_project_kekka:25-Pro-59,境川,,相模原市,,,none,,none_uncertainty_over_limit,W05 境川/境川 候補線 41 本を 相模原市 で切り取り 7.7km、広がり 10369m + 300m（精度 10700m > 10000m）,,0
+r7_project_kekka:25-Pro-60,相模川,串川,相模原市,35.564123,139.250915,estimated_from_name,5300,river_in_municipality,W05 串川/相模川 候補線 13 本を 相模原市 で切り取り 14.4km、広がり 4970m + 300m / 流域 相模川 に 100%,1,0
+r7_project_kekka:25-Pro-61,相模川,目久尻川,藤沢市、綾瀬市,35.421338,139.413903,estimated_from_name,4200,river_in_municipality,W05 目久尻川/相模川 候補線 4 本を 藤沢市・綾瀬市 で切り取り 8.1km、広がり 3892m + 300m / 流域 相模川 に 100%,1,0
+r7_project_kekka:25-Pro-62,相模川,目久尻川,寒川町,,,none,,none_multi_watershed,W05 目久尻川/相模川 候補線 4 本を 寒川町 で切り取り 4.9km、広がり 2388m + 300m（multi_watershed: 線の 88% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r7_project_kekka:25-Pro-63,相模川,,相模原市,,,none,,none_uncertainty_over_limit,W05 相模川/相模川 候補線 51 本を 相模原市 で切り取り 36.0km、広がり 14317m + 300m（精度 14700m > 10000m）,,0
+r7_project_kekka:25-Pro-64,相模川,,寒川町,,,none,,none_multi_watershed,W05 相模川/相模川 候補線 51 本を 寒川町 で切り取り 4.9km、広がり 2919m + 300m（multi_watershed: 線の 87% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r7_project_kekka:25-Pro-65,相模川,目久尻川,藤沢市,35.404728,139.405003,estimated_from_name,2200,river_in_municipality,W05 目久尻川/相模川 候補線 4 本を 藤沢市 で切り取り 3.9km、広がり 1890m + 300m / 流域 相模川 に 100%,1,0
+r7_project_kekka:25-Pro-66,相模川,,平塚市、茅ケ崎市,,,none,,none_multi_watershed,W05 相模川/相模川 候補線 51 本を 平塚市・茅ケ崎市 で切り取り 7.6km、広がり 4927m + 300m（multi_watershed: 線の 61% しか 1 つの流域に収まらない（4 流域にまたがる））,,0
+r7_project_kekka:25-Pro-67,相模川,目久尻川,綾瀬市,35.429881,139.418101,estimated_from_name,3100,river_in_municipality,W05 目久尻川/相模川 候補線 4 本を 綾瀬市 で切り取り 5.9km、広がり 2759m + 300m / 流域 相模川 に 100%,1,0
+r7_project_kekka:25-Pro-68,相模川,,平塚市、茅ケ崎市,,,none,,none_multi_watershed,W05 相模川/相模川 候補線 51 本を 平塚市・茅ケ崎市 で切り取り 7.6km、広がり 4927m + 300m（multi_watershed: 線の 61% しか 1 つの流域に収まらない（4 流域にまたがる））,,0
 r7_project_kekka:25-Pro-69,相模川,,不明,,,none,,none_municipality_unmatched,市町村 ['不明'] が町丁ポリゴンに無い,,0
-r7_project_kekka:25-Pro-70,酒匂川,,小田原市、大井町,,,none,,none_uncertainty_over_limit,W05 酒匂川/酒匂川 候補線 14 本を 小田原市・大井町 で切り取り 9.6km、広がり 5040m + 300m（精度 5400m > 3000m）,,0
-r7_project_kekka:25-Pro-71-1,相模川,萩野川,厚木市,,,none,,none_uncertainty_over_limit,W05 萩野川/相模川 候補線 9 本を 厚木市 で切り取り 10.4km、広がり 4369m + 300m（精度 4700m > 3000m）,,0
-r7_project_kekka:25-Pro-71-2,滑川,,鎌倉市,35.320959,139.566227,estimated_from_name,2700,river_in_municipality,W05 滑川/滑川 候補線 5 本を 鎌倉市 で切り取り 6.1km、広がり 2399m + 300m,1,0
-r7_project_kekka:25-Pro-72,酒匂川,要定川,南足柄市,35.309349,139.131334,estimated_from_name,1900,river_in_municipality,W05 要定川/酒匂川 候補線 2 本を 南足柄市 で切り取り 2.8km、広がり 1566m + 300m,1,0
-r7_project_kekka:25-Pro-73,酒匂川,狩川,南足柄市,,,none,,none_uncertainty_over_limit,W05 狩川/酒匂川 候補線 13 本を 南足柄市 で切り取り 14.8km、広がり 6924m + 300m（精度 7300m > 3000m）,,0
-r7_project_kekka:25-Pro-74,境川,,相模原市,,,none,,none_uncertainty_over_limit,W05 境川/境川 候補線 41 本を 相模原市 で切り取り 7.7km、広がり 10369m + 300m（精度 10700m > 3000m）,,0
-r7_project_kekka:25-Pro-75,境川,,相模原市,,,none,,none_uncertainty_over_limit,W05 境川/境川 候補線 41 本を 相模原市 で切り取り 7.7km、広がり 10369m + 300m（精度 10700m > 3000m）,,0
-r7_project_kekka:25-Pro-76,早川,,箱根町,,,none,,none_uncertainty_over_limit,W05 早川/早川 候補線 23 本を 箱根町 で切り取り 20.0km、広がり 7234m + 300m（精度 7600m > 3000m）,,0
-r7_project_kekka:25-Pro-77,早川,須雲川,箱根町,,,none,,none_uncertainty_over_limit,W05 須雲川/早川 候補線 16 本を 箱根町 で切り取り 9.1km、広がり 4166m + 300m（精度 4500m > 3000m）,,0
-r7_project_kekka:25-Pro-78,森戸川（小田原）,,小田原市,35.294795,139.191407,estimated_from_name,2800,river_in_municipality,W05 森戸川/森戸川 候補線 11 本を 小田原市 で切り取り 5.2km、広がり 2481m + 300m,1,0
-r7_project_kekka:25-Pro-79,中村川,,小田原市,35.302631,139.230095,estimated_from_name,2200,river_in_municipality,W05 中村川/中村川 候補線 13 本を 小田原市 で切り取り 4.4km、広がり 1807m + 300m,1,0
+r7_project_kekka:25-Pro-70,酒匂川,,小田原市、大井町,,,none,,none_multi_watershed,W05 酒匂川/酒匂川 候補線 14 本を 小田原市・大井町 で切り取り 9.6km、広がり 5040m + 300m（multi_watershed: 線の 76% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r7_project_kekka:25-Pro-71-1,相模川,萩野川,厚木市,35.489363,139.31892,estimated_from_name,4700,river_in_municipality,W05 萩野川/相模川 候補線 9 本を 厚木市 で切り取り 10.4km、広がり 4369m + 300m / 流域 相模川 に 99%,1,0
+r7_project_kekka:25-Pro-71-2,滑川,,鎌倉市,35.320959,139.566227,estimated_from_name,2700,river_in_municipality,W05 滑川/滑川 候補線 5 本を 鎌倉市 で切り取り 6.1km、広がり 2399m + 300m / 流域 滑川 に 100%,1,0
+r7_project_kekka:25-Pro-72,酒匂川,要定川,南足柄市,,,none,,none_multi_watershed,W05 要定川/酒匂川 候補線 2 本を 南足柄市 で切り取り 2.8km、広がり 1566m + 300m（multi_watershed: 線の 97% しか 1 つの流域に収まらない（2 流域にまたがる））,,0
+r7_project_kekka:25-Pro-73,酒匂川,狩川,南足柄市,,,none,,none_multi_watershed,W05 狩川/酒匂川 候補線 13 本を 南足柄市 で切り取り 14.8km、広がり 6924m + 300m（multi_watershed: 線の 51% しか 1 つの流域に収まらない（7 流域にまたがる））,,0
+r7_project_kekka:25-Pro-74,境川,,相模原市,,,none,,none_uncertainty_over_limit,W05 境川/境川 候補線 41 本を 相模原市 で切り取り 7.7km、広がり 10369m + 300m（精度 10700m > 10000m）,,0
+r7_project_kekka:25-Pro-75,境川,,相模原市,,,none,,none_uncertainty_over_limit,W05 境川/境川 候補線 41 本を 相模原市 で切り取り 7.7km、広がり 10369m + 300m（精度 10700m > 10000m）,,0
+r7_project_kekka:25-Pro-76,早川,,箱根町,,,none,,none_multi_watershed,W05 早川/早川 候補線 23 本を 箱根町 で切り取り 20.0km、広がり 7234m + 300m（multi_watershed: 線の 89% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r7_project_kekka:25-Pro-77,早川,須雲川,箱根町,35.210003,139.062977,estimated_from_name,4500,river_in_municipality,W05 須雲川/早川 候補線 16 本を 箱根町 で切り取り 9.1km、広がり 4166m + 300m / 流域 早川 に 100%,1,0
+r7_project_kekka:25-Pro-78,森戸川（小田原）,,小田原市,,,none,,none_multi_watershed,W05 森戸川/森戸川 候補線 11 本を 小田原市 で切り取り 5.2km、広がり 2481m + 300m（multi_watershed: 線の 94% しか 1 つの流域に収まらない（2 流域にまたがる））,,0
+r7_project_kekka:25-Pro-79,中村川,,小田原市,35.302631,139.230095,estimated_from_name,2200,river_in_municipality,W05 中村川/中村川 候補線 13 本を 小田原市 で切り取り 4.4km、広がり 1807m + 300m / 流域 中村川 に 100%,1,0
 r7_project_kekka:25-Pro-80,酒匂川,ほたる川,小田原市,,,none,,none_river_not_in_w05,W05 に 河川名='ほたる川' 水系='酒匂川' の線が無い,,0
-r7_project_kekka:25-Pro-81,酒匂川,仙了川,小田原市,35.303817,139.142657,estimated_from_name,2500,river_in_municipality,W05 仙了川/酒匂川 候補線 2 本を 小田原市 で切り取り 4.3km、広がり 2110m + 300m,1,0
-r7_project_kekka:25-Pro-82,酒匂川,,小田原市,,,none,,none_uncertainty_over_limit,W05 酒匂川/酒匂川 候補線 14 本を 小田原市 で切り取り 8.5km、広がり 4152m + 300m（精度 4500m > 3000m）,,0
-r7_project_kekka:25-Pro-83,酒匂川,,南足柄市、山北町,,,none,,none_uncertainty_over_limit,W05 酒匂川/酒匂川 候補線 14 本を 南足柄市・山北町 で切り取り 10.9km、広がり 4161m + 300m（精度 4500m > 3000m）,,0
+r7_project_kekka:25-Pro-81,酒匂川,仙了川,小田原市,35.303817,139.142657,estimated_from_name,2500,river_in_municipality,W05 仙了川/酒匂川 候補線 2 本を 小田原市 で切り取り 4.3km、広がり 2110m + 300m / 流域 酒匂川 に 99%,1,0
+r7_project_kekka:25-Pro-82,酒匂川,,小田原市,,,none,,none_multi_watershed,W05 酒匂川/酒匂川 候補線 14 本を 小田原市 で切り取り 8.5km、広がり 4152m + 300m（multi_watershed: 線の 73% しか 1 つの流域に収まらない（3 流域にまたがる））,,0
+r7_project_kekka:25-Pro-83,酒匂川,,南足柄市、山北町,,,none,,none_multi_watershed,W05 酒匂川/酒匂川 候補線 14 本を 南足柄市・山北町 で切り取り 10.9km、広がり 4161m + 300m（multi_watershed: 線の 37% しか 1 つの流域に収まらない（11 流域にまたがる））,,0
 r7_project_kekka:25-Pro-84,相模川,,不明,,,none,,none_municipality_unmatched,市町村 ['不明'] が町丁ポリゴンに無い,,0
-r7_project_kekka:25-Pro-85,相模川,姥川,相模原市,35.548205,139.370367,estimated_from_name,3000,river_in_municipality,W05 姥川/相模川 候補線 2 本を 相模原市 で切り取り 6.4km、広がり 2691m + 300m,1,0
+r7_project_kekka:25-Pro-85,相模川,姥川,相模原市,35.548205,139.370367,estimated_from_name,3000,river_in_municipality,W05 姥川/相模川 候補線 2 本を 相模原市 で切り取り 6.4km、広がり 2691m + 300m / 流域 相模川 に 100%,1,0
 r7_project_kekka:25-Pro-86,相模川,八瀬川湧水,相模原市,,,none,,none_river_not_in_w05,W05 に 河川名='八瀬川湧水' 水系='相模川' の線が無い,,0
 r7_project_kekka:25-Pro-87,相模川,八瀬川湧水,相模原市,,,none,,none_river_not_in_w05,W05 に 河川名='八瀬川湧水' 水系='相模川' の線が無い,,0
-r7_project_kekka:25-Pro-88,相模川,鳩川,相模原市,,,none,,none_uncertainty_over_limit,W05 鳩川/相模川 候補線 6 本を 相模原市 で切り取り 15.2km、広がり 6699m + 300m（精度 7000m > 3000m）,,0
+r7_project_kekka:25-Pro-88,相模川,鳩川,相模原市,,,none,,none_multi_watershed,W05 鳩川/相模川 候補線 6 本を 相模原市 で切り取り 15.2km、広がり 6699m + 300m（multi_watershed: 線の 76% しか 1 つの流域に収まらない（2 流域にまたがる））,,0

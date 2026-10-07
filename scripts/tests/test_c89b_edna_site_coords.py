@@ -86,16 +86,51 @@ def test_tributary_blank_or_dash_uses_water_system():
     ctx = make_ctx()
     r = c89b.estimate(site(water="相模川", trib="-", muni="厚木市"), ctx)
     assert r["coord_method"] in ("river_in_municipality", "none_uncertainty_over_limit")
-    # 長い本流を A 町（約 2.7km）で切り取ると 3km 以内に収まる → 座標あり
-    assert r["coord_source"] == "estimated_from_name" and r["coordinate_uncertainty_m"] <= 3000
+    # 長い本流を A 町（約 2.7km）で切り取ると 10km 以内・流域 1 つに収まる → 座標あり
+    assert r["coord_source"] == "estimated_from_name" and r["coordinate_uncertainty_m"] <= 10000
     assert c89b.estimate(site(water="相模川", trib="", muni="厚木市"), ctx)["lat"] == r["lat"]
 
 
 def test_none_when_uncertainty_over_limit():
-    # 本流を 2 市町（約 5.4km）で切ると広がり 2.7km + 300m → 3,000m 超で none（lat/lon/精度が全部 NULL）
-    r = c89b.estimate(site(water="相模川", trib="-", muni="厚木市・愛川町"), make_ctx())
+    # 約 51km の本流を、それを覆う広い町で切ると広がり 25km → 10,000m 超で none（lat/lon/精度が全部 NULL）
+    big = Polygon([(139.0, 35.3), (139.6, 35.3), (139.6, 35.5), (139.0, 35.5)])
+    ctx = make_ctx(lines={("相模川", "相模川"): [m(LineString([(139.0, 35.41), (139.6, 35.41)]))]})
+    ctx.towns.append(("厚木市", m(big)))
+    ctx._muni_cache.clear()
+    r = c89b.estimate(site(water="相模川", trib="-", muni="厚木市"), ctx)
     assert r["coord_source"] == "none" and r["coord_method"] == "none_uncertainty_over_limit"
     assert r["lat"] is None and r["lon"] is None and r["coordinate_uncertainty_m"] is None
+
+
+def ctx_with_watersheds(polys):
+    ctx = make_ctx()
+    ctx.w12 = [(p, "酒匂川") for p in polys]
+    ctx.w12_tree = c89b.STRtree([p for p, _ in ctx.w12])
+    ctx.w12_m = [m(p) for p in polys]
+    ctx.w12_m_tree = c89b.STRtree(ctx.w12_m)
+    return ctx
+
+
+def test_multi_watershed_is_none():
+    # 中津川（139.305〜139.323）が 2 つの流域に半分ずつ → 98% 未満 → none
+    west = Polygon([(139.28, 35.38), (139.314, 35.38), (139.314, 35.44), (139.28, 35.44)])
+    east = Polygon([(139.314, 35.38), (139.40, 35.38), (139.40, 35.44), (139.314, 35.44)])
+    r = c89b.estimate(site(), ctx_with_watersheds([west, east]))
+    assert r["coord_source"] == "none" and r["coord_method"] == "none_multi_watershed"
+    assert "multi_watershed" in r["evidence"] and r["lat"] is None
+
+
+def test_single_watershed_ok_and_share_threshold():
+    one = Polygon([(139.28, 35.38), (139.40, 35.38), (139.40, 35.44), (139.28, 35.44)])
+    r = c89b.estimate(site(), ctx_with_watersheds([one]))
+    assert r["coord_source"] == "estimated_from_name" and "流域" in r["evidence"]
+    # 線の約 99% が 1 流域、残り 1% が隣 → 98% 以上なので座標あり
+    a = Polygon([(139.28, 35.38), (139.3229, 35.38), (139.3229, 35.44), (139.28, 35.44)])
+    b = Polygon([(139.3229, 35.38), (139.40, 35.38), (139.40, 35.44), (139.3229, 35.44)])
+    assert c89b.estimate(site(), ctx_with_watersheds([a, b]))["coord_source"] == "estimated_from_name"
+    # 流域が無い（W12 の外）なら判定できず none
+    far = Polygon([(140.0, 36.0), (140.1, 36.0), (140.1, 36.1), (140.0, 36.1)])
+    assert c89b.estimate(site(), ctx_with_watersheds([far]))["coord_method"] == "none_multi_watershed"
 
 
 @pytest.mark.parametrize("trib,method", [
