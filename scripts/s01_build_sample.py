@@ -38,12 +38,14 @@ CLAUDE.md 「サンプル」設計の要件）。
   サンプルの `organism_records` が持たないと、b06 が「座標はあるのに grid01 が解決できない」で止まる。
   サンプルに無いセルごとに、そのセルを生む原本の行を rowid 最小で 1 行足す
   （`select_grid01_origin_rows`。taxon の閉包の**後**に評価する）。原本にも無いセルがあれば止まる。
-- **`registry/source/access.yaml` の `records`（record_set）を宣言した各（出典, 表）の行**。r01 の
+- **`registry/source/access.yaml` の宣言が要求する行**（`records`（record_set）を宣言した各（出典, 表））。r01 の
   `build_source_access` は「宣言した record_set の表に、その出典の行が 1 つ以上ある」ことを検査する
   （無ければ止まる。宣言が古いのではなく、サンプルがその出典の行を持たないだけ）。表名・出典は
   access.yaml から導き（`record_sets` の表のうち原本 ryuiki.sqlite にあるもの。registry の表
   `taxon_assessment` は原本の表ではないので対象外）、サンプルにその出典の行がまだ無い（出典, 表）に、
-  rowid 最小の 1 行を足す（`select_record_set_origin_rows`。複合 `a|b` の行も区切りの完全一致で拾う）。
+  rowid 最小の 1 行を足す（`select_declared_source_rows`。複合 `a|b` の行も区切りの完全一致で拾う）。
+  同じ検査は `reason: synthetic` / `not_in_d1`（原本に行があることを要求する理由）の出典にも「行が 1 つ以上」を
+  求めるので、その出典にも、出典の列を持つ表（表名の昇順で最初のもの）から rowid 最小の 1 行を足す。
 - **文書単位**（`cells.sqlite` の `cells`）は `document_closure.doc_ids` で
   指定した `doc_id` の全セルを入れる。
 
@@ -90,7 +92,7 @@ from migrate import occurrence_period  # noqa: E402
 from migrate import point_in_polygon as pip  # noqa: E402
 from migrate import source_regions  # noqa: E402
 from reconcile.common import load_yaml  # noqa: E402
-from registry import build_taxon, common as registry_common  # noqa: E402
+from registry import build_source_access, build_taxon, common as registry_common  # noqa: E402
 from taxon_namespaces import TAXON_KEY_SOURCE_NAMESPACE  # noqa: E402
 
 DEFAULT_RYUIKI_DB = ROOT / "data" / "db" / "ryuiki.sqlite"
@@ -456,29 +458,48 @@ def select_grid01_origin_rows(
     return {"organism_records": rows} if rows else {}
 
 
-def select_record_set_origin_rows(
+def _source_rowids(conn: sqlite3.Connection, table: str, sid: str) -> list[int]:
+    """表のうち出典 `sid` の行の rowid（昇順）。`a|b` の複合値も区切りの完全一致で拾う（部分一致はしない）。"""
+    return [r[0] for r in conn.execute(
+        f'SELECT rowid FROM "{table}" WHERE instr(\'|\' || source_id || \'|\', \'|\' || ? || \'|\') > 0 '
+        "ORDER BY rowid", (sid,))]
+
+
+def select_declared_source_rows(
     conn: sqlite3.Connection, access_doc: dict, selected: dict[str, set[int]],
 ) -> dict[str, set[int]]:
-    """access.yaml の `records` で宣言された（出典, 表）ごとに、サンプルにその出典の行が無ければ、
-    原本のその表のその出典の行を rowid 最小で 1 行足す（`{table: {rowid}}`）。出典の値は `a|b` の複合も
-    区切りの完全一致で拾う。原本に表が無い（registry の表 `taxon_assessment` など）ものは対象外。
-    原本にも行が無ければ止まる（r01 の検査と同じ宣言を、サンプルの側でも保証する）。"""
+    """access.yaml の宣言のうち、r01 の `build_source_access` が「原本（＝サンプル）に行がある」ことを要求するものを、
+    サンプルにその出典の行が無ければ rowid 最小の 1 行で足す（`{table: {rowid}}`）。出典・表は access.yaml から導く。
+    - `records` の（出典, record_set の表）: その表にその出典の行が 1 つ以上。原本に表が無い（registry の表
+      `taxon_assessment` など）ものは対象外。
+    - `reason` が `ROW_REASONS`（synthetic・not_in_d1）の出典: 出典の列を持つどれかの表に行が 1 つ以上
+      （表名の昇順で最初に原本に行がある表から 1 行）。
+    原本にも行が無ければ止まる（宣言が古い）。"""
     existing = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     record_sets = access_doc.get("record_sets") or {}
     out: dict[str, set[int]] = {}
+
+    def have(table: str) -> set[int]:
+        return selected.get(table, set()) | out.get(table, set())
+
     for sid, entry in sorted((access_doc.get("sources") or {}).items()):
         for rs in entry.get("records") or []:
             table = record_sets[rs]
             if table not in existing:
                 continue
-            rowids = [r[0] for r in conn.execute(
-                f'SELECT rowid FROM "{table}" WHERE instr(\'|\' || source_id || \'|\', \'|\' || ? || \'|\') > 0 '
-                "ORDER BY rowid", (sid,))]
+            rowids = _source_rowids(conn, table, sid)
             if not rowids:
                 raise SystemExit(f"access.yaml: {sid} の records {rs}（表 {table}）に、原本にもこの出典の行が無い")
-            have = selected.get(table, set()) | out.get(table, set())
-            if not have.intersection(rowids):
+            if not have(table).intersection(rowids):
                 out.setdefault(table, set()).add(rowids[0])
+        if entry.get("reason") in build_source_access.ROW_REASONS:
+            per_table = {t: _source_rowids(conn, t, sid) for t in registry_common.source_id_tables(conn)}
+            per_table = {t: r for t, r in per_table.items() if r}
+            if not per_table:
+                raise SystemExit(f"access.yaml: {sid} は reason={entry['reason']} だが原本のどの表にもこの出典の行が無い")
+            if not any(have(t).intersection(r) for t, r in per_table.items()):
+                table = min(per_table)
+                out.setdefault(table, set()).add(per_table[table][0])
     return out
 
 
@@ -820,7 +841,7 @@ def main() -> int:
         selected[table] = selected.get(table, set()) | rowids
 
     # access.yaml で records を宣言した（出典, 表）の行が、サンプルに 1 つ以上あるようにする
-    for table, rowids in select_record_set_origin_rows(
+    for table, rowids in select_declared_source_rows(
             ryuiki_conn, load_yaml(args.access_yaml), selected).items():
         selected[table] = selected.get(table, set()) | rowids
 

@@ -638,19 +638,35 @@ _ACCESS = {
 }
 
 
-def test_record_set_origin_rows_pick_min_rowid_with_exact_delimiter_match():
+def test_declared_source_rows_pick_min_rowid_with_exact_delimiter_match():
     # a は複合 a|b の rowid 3 が最小（部分一致の ab=2 ではない）。b も同じ行で満たされ、足す行は 1 つ
-    got = s01.select_record_set_origin_rows(_record_set_db(), _ACCESS, {})
+    got = s01.select_declared_source_rows(_record_set_db(), _ACCESS, {})
     assert got == {"protected_areas": {3}, "sites": {1}}
 
 
-def test_record_set_origin_rows_skip_sources_already_in_sample():
-    got = s01.select_record_set_origin_rows(_record_set_db(), _ACCESS, {"protected_areas": {4}, "sites": {2}})
+def test_declared_source_rows_skip_sources_already_in_sample():
+    got = s01.select_declared_source_rows(_record_set_db(), _ACCESS, {"protected_areas": {4}, "sites": {2}})
     # a は rowid 4 で満たされている。b はまだ無いので複合の 3 を足す
     assert got == {"protected_areas": {3}}
 
 
-def test_record_set_origin_rows_stop_when_origin_has_no_row():
+def test_declared_source_rows_stop_when_origin_has_no_row():
     access = {"record_sets": {"sites": "sites"}, "sources": {"zzz": {"records": ["sites"]}}}
     with pytest.raises(SystemExit, match="zzz"):
-        s01.select_record_set_origin_rows(_record_set_db(), access, {})
+        s01.select_declared_source_rows(_record_set_db(), access, {})
+
+
+def test_declared_source_rows_cover_row_reasons_with_one_row_from_first_table():
+    conn = _record_set_db()
+    conn.execute("CREATE TABLE aaa (source_id TEXT)")
+    conn.execute("CREATE TABLE nocol (x TEXT)")
+    conn.executemany("INSERT INTO aaa VALUES (?)", [("x",), ("n",), ("n",)])
+    conn.execute("INSERT INTO protected_areas VALUES ('n|z')")     # 表名の昇順では aaa が先
+    access = {"record_sets": {}, "sources": {
+        "n": {"reason": "not_in_d1"}, "q": {"reason": "file_only"}, "x": {"reason": "synthetic"}}}
+    # n は aaa の rowid 2 が最小（aaa < protected_areas）。q（行が要らない理由）は触らない。
+    assert s01.select_declared_source_rows(conn, access, {}) == {"aaa": {1, 2}}
+    # すでにどれかの表にあれば足さない（x は aaa の 1、n は protected_areas の 5 が選択済み）
+    assert s01.select_declared_source_rows(conn, access, {"aaa": {1}, "protected_areas": {5}}) == {}
+    with pytest.raises(SystemExit, match="nothere"):
+        s01.select_declared_source_rows(conn, {"record_sets": {}, "sources": {"nothere": {"reason": "synthetic"}}}, {})
