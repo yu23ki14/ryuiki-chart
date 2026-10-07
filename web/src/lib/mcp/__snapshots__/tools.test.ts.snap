@@ -228,6 +228,75 @@ exports[`MCP ツール一覧（第1段 5 本） > 入力スキーマのスナッ
     "name": "get_occurrences",
   },
   {
+    "description": "神奈川県の環境DNA（eDNA、採水による検出。source_id=kanagawa_edna）の明細を、不検出（リード数 0）も含めて取る。地点（site_key／水系・支川・市町村）・種（taxon_id／学名・和名）・採水日で絞り、mode で明細・地点要約・分類群要約を選ぶ。eDNA は目視の観察とは性質が違うので、出現記録（get_occurrences）と比べるときは出典で分ける。",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "area": {
+          "description": "水系・支川・市町村の部分一致（例: 相模川、厚木市）",
+          "maxLength": 15,
+          "minLength": 1,
+          "type": "string",
+        },
+        "detected_only": {
+          "description": "true なら検出（リード数>0）だけ。既定 false で不検出（リード数 0）も返す",
+          "type": "boolean",
+        },
+        "from": {
+          "description": "採水日の下限（YYYY-MM-DD）",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string",
+        },
+        "limit": {
+          "description": "返す行数の上限（既定 100、最大 500）",
+          "maximum": 500,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "mode": {
+          "description": "records=採水×分類群の明細（既定）、by_site=地点×採水ごとの要約（検出した分類群数・リード数合計）、by_taxon=分類群ごとの要約（調べた回数 n_events と検出した回数 n_detected_events）",
+          "enum": [
+            "records",
+            "by_site",
+            "by_taxon",
+          ],
+          "type": "string",
+        },
+        "offset": {
+          "description": "読み飛ばす行数（ページング。既定 0）",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "site_key": {
+          "description": "地点キー（<ファイル名>:<地点ID>）。完全一致",
+          "maxLength": 15,
+          "minLength": 1,
+          "type": "string",
+        },
+        "species": {
+          "description": "学名・和名・採用名の部分一致（例: ニホンウナギ）",
+          "maxLength": 15,
+          "minLength": 1,
+          "type": "string",
+        },
+        "taxon_id": {
+          "description": "分類群の taxon_id（例: common:taxon:inat.122882）。完全一致",
+          "maxLength": 15,
+          "minLength": 1,
+          "type": "string",
+        },
+        "to": {
+          "description": "採水日の上限（YYYY-MM-DD、含む）",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+    "name": "get_edna",
+  },
+  {
     "description": "配布用データセット（dist/ の Parquet）の目録を返す。datapackage.json が指す各ファイルの相対パスと sha256 だけで、ファイルそのものは返さない（配信は別）。配布物が未配備のときは available=false と理由を返す。",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",

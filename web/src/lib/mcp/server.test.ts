@@ -174,6 +174,14 @@ describe("5 ツールの応答は封筒（excluded=0・合成なし・cite_as・
     expect(bad.isError).toBe(true);
   });
 
+  it("get_edna: provenance に kanagawa_edna。未知の mode は入力エラー", async () => {
+    const c = ctx({ db: async () => occ.db });
+    const ok = await call("get_edna", { detected_only: true, limit: 5 }, c);
+    expectPublicInvariants(ok.structuredContent);
+    expect((ok.structuredContent.provenance as { source_id: string }[]).map((p) => p.source_id)).toEqual(["kanagawa_edna"]);
+    expect((await call("get_edna", { mode: "nope" }, c)).isError).toBe(true);
+  });
+
   it("export_dataset: datapackage が無ければ available=false、あれば path と sha256 だけ返す", async () => {
     const none = await call("export_dataset", {}, ctx({ datapackage: async () => null }));
     expectPublicInvariants(none.structuredContent);
@@ -209,7 +217,7 @@ describe("5 ツールの応答は封筒（excluded=0・合成なし・cite_as・
   });
 
   it("全ツールを網羅している（新ツールを足したらこのテストに応答検査を足す）", () => {
-    expect(MCP_TOOLS.map((t) => t.name)).toEqual(["describe_catalog", "search_registry", "get_observations", "get_occurrences", "export_dataset"]);
+    expect(MCP_TOOLS.map((t) => t.name)).toEqual(["describe_catalog", "search_registry", "get_observations", "get_occurrences", "get_edna", "export_dataset"]);
   });
 });
 

@@ -39,6 +39,8 @@ export const TABLE_ORIGIN: Record<string, string> = {
   // AI の run_sql / describe_schema 用の台帳表として D1 に残している
   protected_areas: "main", vegetation_polygons: "main", mammal_mesh: "main",
   wildlife_sightings: "main", river_segments: "main",
+  // 神奈川県 eDNA（scripts/m07_kanagawa_edna.py）。検出も不検出も。MCP/AI の get_edna と run_sql 用の台帳表
+  edna_sites: "main", edna_reads: "main",
   // 水道水の水源マップ（docs/WATER_SOURCE_MAP.md）。原本は data/water/*.csv → ryuiki.sqlite。
   // v2 にキューブ化しない台帳表として D1 に残す（Issue #61）。run_sql で「この町の水源はどこか」に答える用途
   water_utility: "main", water_source: "main", water_facility: "main",
@@ -76,6 +78,12 @@ export const TABLE_META: Record<string, string> = {
   wildlife_sightings:
     "ツキノワグマの出没・目撃記録。頭数・状況（目撃／痕跡／捕殺）・区分（人里／山中）つき。" +
     "原本に座標が無いため lat/lon は空",
+  edna_sites:
+    "神奈川県 環境DNA（eDNA）の採水地点（ファイル×調査地点列）。lat/lon は推定位置で、" +
+    "根拠 coord_source と誤差 coordinate_uncertainty_m つき（公開データに座標は無い）",
+  edna_reads:
+    "eDNA の検出・不検出（地点×採水×分類群のリード数。0 は不検出）。リード数は個体数ではない。" +
+    "taxon_id は registry の taxon に結ぶ",
   river_segments:
     "相模川水系の河川流路。水系単位のため、県単位の nlni_w05 由来データに無い" +
     "山梨県側（桂川上流部）を含む",

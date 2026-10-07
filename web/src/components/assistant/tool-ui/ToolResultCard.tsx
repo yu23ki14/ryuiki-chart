@@ -22,6 +22,7 @@ export const TOOL_LABEL: Record<string, string> = {
   get_seasonality: "季節性を取得",
   get_sites: "地点を検索",
   get_biota_trend: "生物の推移を取得",
+  get_edna: "eDNA（採水）を取得",
   get_redlist: "レッドリストを取得",
   get_overview: "概況を取得",
   describe_schema: "テーブル定義を確認",

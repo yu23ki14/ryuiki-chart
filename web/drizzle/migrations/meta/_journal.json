@@ -113,6 +113,13 @@
       "when": 1791281536127,
       "tag": "0015_modern_bill_hollister",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1791361231834,
+      "tag": "0016_rare_triton",
+      "breakpoints": true
     }
   ]
 }

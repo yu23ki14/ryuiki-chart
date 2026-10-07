@@ -223,6 +223,73 @@ export const wildlifeSightings = sqliteTable("wildlife_sightings", {
 ]);
 
 /**
+ * 神奈川県 環境DNA（eDNA）の採水地点（`scripts/schema_edna.sql` の `edna_sites`、m07 が原本に作る）。
+ * 地点 = ファイル × 調査地点列。lat/lon は台帳からの「推定位置」（公開データに座標は無い）で、
+ * 根拠区分 coord_source と誤差 coordinate_uncertainty_m つき。判別不能は NULL。
+ * AI の run_sql / MCP の get_edna 用の台帳表。出現レコード（occurrence）は b06 が別経路で作る。
+ */
+export const ednaSites = sqliteTable("edna_sites", {
+	siteKey: text("site_key").primaryKey(),
+	datasetFile: text("dataset_file").notNull(),
+	program: text().notNull(),
+	assay: text().notNull(),
+	fiscalYear: integer("fiscal_year").notNull(),
+	siteIdRaw: text("site_id_raw").notNull(),
+	waterSystemRaw: text("water_system_raw"),
+	waterSystemJa: text("water_system_ja"),
+	tributaryRaw: text("tributary_raw"),
+	tributaryJa: text("tributary_ja"),
+	municipalityRaw: text("municipality_raw"),
+	municipalityJa: text("municipality_ja"),
+	collectedOn: text("collected_on"),
+	collectedOnRaw: text("collected_on_raw"),
+	lat: real(),
+	lon: real(),
+	coordSource: text("coord_source").notNull(),
+	coordinateUncertaintyM: real("coordinate_uncertainty_m"),
+	coordMethod: text("coord_method"),
+	coordNote: text("coord_note"),
+	sourceId: text("source_id").notNull(),
+	sourceRef: text("source_ref").notNull(),
+},
+(table) => [
+	index("ix_edna_sites_date").on(table.collectedOn),
+	index("ix_edna_sites_region").on(table.waterSystemJa, table.tributaryJa),
+]);
+
+/**
+ * eDNA の検出・不検出（`edna_reads`、約13.4万行）。値はリード数であって個体数ではない。
+ * is_detected = (reads > 0)。0 は「その採水で検出されなかった」で、不在の証明ではない。
+ * `edna_detections`（検出だけの投影）は reads から導けるので D1 には載せない。
+ */
+export const ednaReads = sqliteTable("edna_reads", {
+	readId: text("read_id").primaryKey(),
+	siteKey: text("site_key").notNull(),
+	classJa: text("class_ja"),
+	orderJa: text("order_ja"),
+	familyJa: text("family_ja"),
+	genusJa: text("genus_ja"),
+	nameRaw: text("name_raw"),
+	nameAdopted: text("name_adopted"),
+	nameSciRaw: text("name_sci_raw"),
+	nameNote: text("name_note"),
+	reads: integer().notNull(),
+	isDetected: integer("is_detected").notNull(),
+	pidentQcov: real("pident_qcov"),
+	reliability: text(),
+	nationalRlRaw: text("national_rl_raw"),
+	prefRlRaw: text("pref_rl_raw"),
+	alienRaw: text("alien_raw"),
+	nameKey: text("name_key").notNull(),
+	taxonId: text("taxon_id"),
+	sourceId: text("source_id").notNull(),
+},
+(table) => [
+	index("ix_edna_reads_site").on(table.siteKey, table.isDetected),
+	index("ix_edna_reads_taxon").on(table.taxonId, table.isDetected),
+]);
+
+/**
  * 河川流路。既存の `nlni_w05_rivers` は都道府県コード単位なので神奈川県内で切れているが、
  * こちらは水系コード 830307 単位なので、相模川の水源である山梨県側の桂川上流部を含む。
  */

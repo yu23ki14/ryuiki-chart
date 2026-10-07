@@ -30,6 +30,7 @@ import {
 import { facetsForSeries, facetsForOccurrence, facetsForTables, caveatKeysForFacets, variableTheme } from "@/lib/cube/caveats";
 import { MEASUREMENTS_DATASET } from "@/lib/cube/series";
 import { timeseries } from "@/lib/cube/timeseries";
+import { EDNA_DESCRIPTION, ednaCaveats, ednaInputSchema, queryEdna } from "@/lib/edna";
 
 /** 測定値系データセット固定（PR-2 のスコープは測定値系。design §1.1 と同じ前提）。registry の dataset キー。 */
 const DATASET = MEASUREMENTS_DATASET;
@@ -749,12 +750,34 @@ const run_sql = tool({
   },
 });
 
+/* ------------------------------------------------------------------ */
+/* get_edna                                                           */
+/* ------------------------------------------------------------------ */
+
+const get_edna = tool({
+  description: EDNA_DESCRIPTION,
+  inputSchema: ednaInputSchema,
+  execute: async (input) => {
+    const t0 = performance.now();
+    const result = await queryEdna(await d1CubeDb(), input);
+    return makeResult({
+      tool: "get_edna",
+      tables: ["edna_sites", "edna_reads"],
+      caveats: ednaCaveats().map((c) => c.key),
+      data: result,
+      rowCount: result.rows.length,
+      elapsedMs: performance.now() - t0,
+    });
+  },
+});
+
 export const aiTools = {
   list_catalog,
   get_timeseries,
   get_seasonality,
   get_sites,
   get_biota_trend,
+  get_edna,
   get_redlist,
   get_overview,
   describe_schema,

@@ -33,6 +33,7 @@ import { SOURCE_META } from "@/lib/registry/generated-source";
 import { GENERATED_VARIABLES } from "@/lib/registry/generated";
 import { VARIABLE_LABEL, ZONE_INFO } from "@/lib/registry/generated-client";
 import { representativeSeries } from "@/lib/cube/series";
+import { EDNA_DESCRIPTION, EDNA_SOURCE_ID, ednaCaveats, ednaInputSchema, queryEdna } from "@/lib/edna";
 import { loadDatapackage } from "./datapackage";
 
 export interface McpContext {
@@ -239,6 +240,21 @@ export const MCP_TOOLS: McpTool[] = [
       }
       const c = cap(rows, limit);
       return buildDataEnvelope(query, { rows: c.rows, n_total: rows.length }, sourceIds, { now: ctx.now, truncated: c.truncated });
+    },
+  }),
+
+  defineTool({
+    name: "get_edna",
+    description: EDNA_DESCRIPTION,
+    inputSchema: ednaInputSchema,
+    execute: async (args, ctx) => {
+      const result = await queryEdna(await ctx.db(), args);
+      return buildDataEnvelope(
+        { ...args },
+        { mode: result.mode, rows: result.rows, has_more: result.has_more, limit: result.limit, offset: result.offset },
+        [EDNA_SOURCE_ID],
+        { now: ctx.now, truncated: result.has_more, caveats: ednaCaveats() },
+      );
     },
   }),
 
