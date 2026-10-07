@@ -4,7 +4,7 @@ import は `ingest.api` と標準の `json` だけ。入力の `edna_detections`
 投影で、種の解決（`taxon_id`）・座標（地点の推定位置と精度）・attributes は m07 までで確定している。adapter は写すだけ。
 
 - 座標は公開データに無い。地点ごとの推定位置（台帳）を、精度（`coordinate_uncertainty_m`）つきで渡す。判別不能な地点は両方 NULL。
-- 日付が空欄の行は observed_on NULL のまま取り込む（落とさない・補わない）。
+- 採水日は全行にある（実測 2026-10-07: 日付が空欄の行は 0）。もし NULL が来ても落とさず補わない（observed_on NULL のまま）。
 - 値はリード数で、個体数ではない（`individual_count` は無い。ADR-0025 に従い n は記録数）。リード数は attributes に残る。
 """
 from __future__ import annotations

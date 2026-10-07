@@ -34,5 +34,5 @@ expected:
     leaf_cell_source_rows: 0             # leaf は年をまたぐ区間の記録。採水日（day）は 0
     leaf_cell_source_rows_no_coordinate: 0
     month_cell_source_rows: 5154         # 日付あり・座標あり（day は同一月に収まる）
-    watershed_dated_resolved_rows: 5154  # 座標は流域一意で付けたので全件が流域に入る見込み
+    watershed_dated_resolved_rows: 5154  # 座標ありの行は全て流域に入る（coord_resolved と同数。流域一意で座標を付けた。b09 の突合で検証される）
     watershed_dated_unresolved_rows: 8109  # 座標なし

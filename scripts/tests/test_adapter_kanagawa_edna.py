@@ -2,7 +2,6 @@
 
 原本（`data/db/ryuiki.sqlite` の `edna_detections`）が手元にあれば実データを検査する
 （無い環境〔CI のサンプル・m07 を流す前〕ではスキップ）。
-
 """
 from __future__ import annotations
 
@@ -17,7 +16,6 @@ from ingest import api, boundary, manifest as manifest_lib
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SOURCE = "kanagawa_edna"
-
 
 
 def _ctx(rows):
@@ -69,6 +67,11 @@ def test_manifest_is_structurally_valid():
     assert cube["leaf_cell_source_rows"] == cube["leaf_cell_source_rows_no_coordinate"] == 0
     assert cube["dated_rows"] == m.expected["period_shapes"]["day"]
     assert cube["watershed_dated_resolved_rows"] + cube["watershed_dated_unresolved_rows"] == cube["dated_rows"]
+    # 座標のある行は、日付ありなら全て grid01 の月セルにも流域にも入る（座標あり行 = 日付あり行 − 座標なしの日付あり行）
+    coord = m.expected["place"]["coord_resolved"]
+    assert coord == cube["month_cell_source_rows"] == cube["watershed_dated_resolved_rows"]
+    assert coord == cube["dated_rows"] - cube["dated_no_coordinate_rows"]
+    assert m.expected["place"]["coord_unresolved"] == 0
 
 
 def test_adapter_imports_only_ingest_api():
@@ -76,6 +79,7 @@ def test_adapter_imports_only_ingest_api():
 
 
 def test_real_table_maps_every_row_with_a_registered_taxon():
+    reg = ROOT / "data" / "db" / "registry.sqlite"
     db = ROOT / "data" / "db" / "ryuiki.sqlite"
     if not db.exists():
         pytest.skip("原本 ryuiki.sqlite が無い環境")
@@ -91,6 +95,16 @@ def test_real_table_maps_every_row_with_a_registered_taxon():
     assert len(out) == len(rows) > 0
     assert len({r["record_key"] for r in out}) == len(out)
     assert all(r["taxon_id"] for r in out)
-    # 座標があるなら精度がある（設計書 §3.1）
-    assert all((r["lat"] is None) == (r["coordinate_uncertainty_m"] is None) for r in out)
+    # 座標があるなら緯度・経度・精度が揃ってある（設計書 §3.1）
+    assert all((r["lat"] is None) == (r["lon"] is None) == (r["coordinate_uncertainty_m"] is None) for r in out)
+    assert all(r["coordinate_uncertainty_m"] is None or r["coordinate_uncertainty_m"] > 0 for r in out)
+    if not reg.exists():
+        pytest.skip("registry.sqlite が無い（taxon_id の実在を検査できない）")
+    rc = sqlite3.connect(f"file:{reg}?mode=ro", uri=True)
+    try:
+        known = {r[0] for r in rc.execute("SELECT taxon_id FROM taxon")}
+    finally:
+        rc.close()
+    missing = sorted({r["taxon_id"] for r in out} - known)
+    assert not missing, f"registry に無い taxon_id（supplement の入れ忘れ）: {missing[:5]}"
     assert all(r["observed_on_raw"] is None or len(r["observed_on_raw"]) == 10 for r in out)
