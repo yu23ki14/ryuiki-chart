@@ -2,7 +2,7 @@
 
 3 つに分かれる:
 1. 宣言の検査（偽の source_registry 行で組み立てを壊し、止まることを固定する。原本は要らない）
-2. 実データ（`data/db/ryuiki.sqlite` があるときだけ）: 124 source・写像漏れ 0・置換・版
+2. 実データ（`data/db/ryuiki.sqlite` があるときだけ）: 125 source・写像漏れ 0・置換・版
 3. registry.sqlite への書き込みと参照整合性、alias.edition_key、id_map/dataset.csv、resolve_edition
 """
 import copy
@@ -284,7 +284,7 @@ def test_real_data_every_source_has_an_edition_and_every_license_is_mapped():
     assert len(src) == len(rows)
     assert {e[1] for e in ed} == {r["source_id"] for r in rows}  # 全 source に最低 1 つ
     assert len({e[0] for e in ed}) == len(ed)
-    # source_public_id は全 124 件で発行でき、一意
+    # source_public_id は全 125 件で発行でき、一意
     assert len({s[1] for s in src}) == len(src)
     assert all(s[1] == common.source_public_id(s[0]) for s in src)
     # redistributable=0 も捨てない（隔離しない。旗として残す）
@@ -355,7 +355,8 @@ def test_build_writes_the_three_tables_and_passes_the_reference_checks(reg):
     finally:
         ryuiki.close()
     reg.commit()
-    assert counts["source"] == 124 and counts["source_edition"] == 125
+    # 124→125 source・125→126 edition: 2026-10-07 神奈川県 eDNA（kanagawa_edna）の追加
+    assert counts["source"] == 125 and counts["source_edition"] == 126
     r01._assert_id_uniqueness(reg)
     r01._assert_id_references(reg)
     assert reg.execute("SELECT count(*) FROM variable_alias WHERE edition_key IS NOT NULL").fetchone()[0] == 46
