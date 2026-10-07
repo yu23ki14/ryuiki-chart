@@ -9,6 +9,7 @@ input:
 adapter: kanagawa_edna
 # TODO(第2段): 以下の数値は概算（検出セル数は実測 13,263）。m07 を一時コピーの DB に流して b06 までを回して実測で埋める。
 expected_row_count: 13263
+sample_input_max_rows: 13500   # 検出行 13,263 を全件サンプルに入れる（全体の上限 5,000 は動かさない）
 checks:
   - not_null: [record_key, taxon_id]
   - unique: [record_key]

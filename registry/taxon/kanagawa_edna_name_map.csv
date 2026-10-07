@@ -285,7 +285,7 @@ zygoneurasciarina,species,common:taxon:gbif.1487012,"Zygoneura sciarina Meigen, 
 アメリカザリガニ,species,common:taxon:inat.51221,Procambarus clarkii,,T1,registry species Procambarus clarkii (学名列) [exact_name],0,アメリカザリガニ
 アメリカシロヒトリ,species,common:taxon:gbif.1817797,"Hyphantria cunea (Drury, 1773)",,T2,registry vernacular_name_ja アメリカシロヒトリ,0,アメリカシロヒトリ
 アメリカジガバチ,species,common:taxon:gbif.5041466,"Sceliphron caementarium (Drury, 1773)",,T2,registry vernacular_name_ja アメリカジガバチ,0,アメリカジガバチ
-アメリカタバコガ/タバコガ/オオタバコガ,family,common:taxon:kanagawa-edna.%E3%83%A4%E3%82%AC%E7%A7%91,,,T5,"family 和名のみ（併記 アメリカタバコガ/タバコガ/オオタバコガ） (シートの科 ヤガ科; 併記 アメリカタバコガ/タバコガ/オオタバコガ) [rank_reduced,name_ambiguous]",0,アメリカタバコガ/タバコガ/オオタバコガ
+アメリカタバコガ/タバコガ/オオタバコガ,family,common:taxon:kanagawa-edna.%E3%83%A4%E3%82%AC%E7%A7%91,,ヤガ科,T4,"family 和名のみ（併記 アメリカタバコガ/タバコガ/オオタバコガ） (シートの科 ヤガ科; 併記 アメリカタバコガ/タバコガ/オオタバコガ) [rank_reduced,name_ambiguous]",0,アメリカタバコガ/タバコガ/オオタバコガ
 アメリカミズアブ,species,common:taxon:inat.82177,Hermetia illucens,,T1,registry species Hermetia illucens (学名列) [exact_name],0,アメリカミズアブ
 アメンボ,species,common:taxon:kanagawa-edna.%E3%82%A2%E3%83%A1%E3%83%B3%E3%83%9C,,アメンボ,T4,和名のみ。registry に学名・和名とも無い,0,アメンボ
 アユ,species,common:taxon:gbif.4283980,"Plecoglossus altivelis (Temminck & Schlegel, 1846)",,T1,registry species Plecoglossus altivelis (学名列),0,アユ
@@ -339,7 +339,7 @@ zygoneurasciarina,species,common:taxon:gbif.1487012,"Zygoneura sciarina Meigen, 
 ウスオビトガリメイガ,species,common:taxon:gbif.5125656,"Endotricha consocia Butler, 1879",,T2,registry vernacular_name_ja ウスオビトガリメイガ,0,ウスオビトガリメイガ
 ウスクロテンヒメシャク,species,common:taxon:gbif.5147426,"Idaea salutaria (Christoph, 1881)",,T1,registry species Idaea salutaria (学名列),0,ウスクロテンヒメシャク
 ウスグモスズ,species,common:taxon:inat.865390,Amusurgus genji,,T1,registry species Amusurgus genji (学名列) [exact_name],0,ウスグモスズ
-ウスチャケシマキムシ/ルイスケシマキムシ,family,common:taxon:kanagawa-edna.%E3%83%92%E3%83%A1%E3%83%9E%E3%82%AD%E3%83%A0%E3%82%B7%E7%A7%91,,,T5,"family 和名のみ（併記 ウスチャケシマキムシ/ルイスケシマキムシ） (シートの科 ヒメマキムシ科; 併記 ウスチャケシマキムシ/ルイスケシマキムシ) [rank_reduced,name_ambiguous]",0,ウスチャケシマキムシ/ルイスケシマキムシ
+ウスチャケシマキムシ/ルイスケシマキムシ,family,common:taxon:kanagawa-edna.%E3%83%92%E3%83%A1%E3%83%9E%E3%82%AD%E3%83%A0%E3%82%B7%E7%A7%91,,ヒメマキムシ科,T4,"family 和名のみ（併記 ウスチャケシマキムシ/ルイスケシマキムシ） (シートの科 ヒメマキムシ科; 併記 ウスチャケシマキムシ/ルイスケシマキムシ) [rank_reduced,name_ambiguous]",0,ウスチャケシマキムシ/ルイスケシマキムシ
 ウスチャヤガ,species,common:taxon:gbif.5112163,"Xestia dilatata Butler, 1879",,T2,registry vernacular_name_ja ウスチャヤガ,0,ウスチャヤガ
 ウスバカゲロウ,species,common:taxon:inat.203923,Baliga micans,,T1,registry species Baliga micans (学名列) [exact_name],0,ウスバカゲロウ
 ウスバカミキリ,species,common:taxon:kanagawa-edna.%E3%82%A6%E3%82%B9%E3%83%90%E3%82%AB%E3%83%9F%E3%82%AD%E3%83%AA,,ウスバカミキリ,T4,和名のみ。registry に学名・和名とも無い,0,ウスバカミキリ
@@ -554,7 +554,7 @@ zygoneurasciarina,species,common:taxon:gbif.1487012,"Zygoneura sciarina Meigen, 
 ギギ,species,common:taxon:inat.472678,Tachysurus nudiceps,,T1,registry species Tachysurus nudiceps (学名列),0,ギギ
 ギバチ,,common:taxon:ryuiki-taxa.wamei.%E3%82%AE%E3%83%90%E3%83%81,,,T2,registry vernacular_name_ja ギバチ [registry_unresolved_wamei],0,ギバチ
 ギフアブラバチ,species,common:taxon:gbif.1269104,"Aphidius gifuensis Ashmead, 1906",,T2,registry vernacular_name_ja ギフアブラバチ,0,ギフアブラバチ
-ギンガメアジ/カスミアジ,genus,common:taxon:kanagawa-edna.%E3%82%AE%E3%83%B3%E3%82%AC%E3%83%A1%E3%82%A2%E3%82%B8%E5%B1%9E,,,T5,"genus 和名のみ（併記 ギンガメアジ/カスミアジ） (シートの属 ギンガメアジ属; 併記 ギンガメアジ/カスミアジ) [rank_reduced,name_ambiguous]",0,ギンガメアジ/カスミアジ
+ギンガメアジ/カスミアジ,genus,common:taxon:kanagawa-edna.%E3%82%AE%E3%83%B3%E3%82%AC%E3%83%A1%E3%82%A2%E3%82%B8%E5%B1%9E,,ギンガメアジ属,T4,"genus 和名のみ（併記 ギンガメアジ/カスミアジ） (シートの属 ギンガメアジ属; 併記 ギンガメアジ/カスミアジ) [rank_reduced,name_ambiguous]",0,ギンガメアジ/カスミアジ
 ギンザケ,species,common:taxon:kanagawa-edna.%E3%82%AE%E3%83%B3%E3%82%B6%E3%82%B1,,ギンザケ,T4,和名のみ。registry に学名・和名とも無い,0,ギンザケ
 ギンヤンマ/クロスジギンヤンマ,genus,common:taxon:gbif.1424815,"Anax Leach, 1815",,T5,"GBIF match genus 'Anax' -> 1424815 (exact) (シートの属 Anax属; 併記 ギンヤンマ/クロスジギンヤンマ) [rank_reduced,name_ambiguous]",0,ギンヤンマ/クロスジギンヤンマ
 クイナ,,common:taxon:ryuiki-taxa.wamei.%E3%82%AF%E3%82%A4%E3%83%8A,,,T2,registry vernacular_name_ja クイナ [registry_unresolved_wamei],0,クイナ
@@ -572,7 +572,7 @@ zygoneurasciarina,species,common:taxon:gbif.1487012,"Zygoneura sciarina Meigen, 
 クビナガムシ,species,common:taxon:gbif.6968647,Cephaloon pallens,,T2,registry vernacular_name_ja クビナガムシ,0,クビナガムシ
 クビレサワユスリカ,species,common:taxon:gbif.1445515,"Potthastia gaedii (Meigen, 1838)",,T3,GBIF match species 'Potthastia gaedii' -> 1445515 (exact) (学名列),0,クビレサワユスリカ
 クビワユスリカ,species,common:taxon:gbif.1455241,"Nanocladius asiaticus Hayashi, 1998",,T3,GBIF match species 'Nanocladius asiaticus' -> 1455241 (exact) (学名列),0,クビワユスリカ
-クボタアリツカコオロギ/クサアリツカコオロギ,family,common:taxon:kanagawa-edna.%E3%82%A2%E3%83%AA%E3%83%84%E3%82%AB%E3%82%B3%E3%82%AA%E3%83%AD%E3%82%AE%E7%A7%91,,,T5,"family 和名のみ（併記 クボタアリツカコオロギ/クサアリツカコオロギ） (シートの科 アリツカコオロギ科; 併記 クボタアリツカコオロギ/クサアリツカコオロギ) [rank_reduced,name_ambiguous]",0,クボタアリツカコオロギ/クサアリツカコオロギ
+クボタアリツカコオロギ/クサアリツカコオロギ,family,common:taxon:kanagawa-edna.%E3%82%A2%E3%83%AA%E3%83%84%E3%82%AB%E3%82%B3%E3%82%AA%E3%83%AD%E3%82%AE%E7%A7%91,,アリツカコオロギ科,T4,"family 和名のみ（併記 クボタアリツカコオロギ/クサアリツカコオロギ） (シートの科 アリツカコオロギ科; 併記 クボタアリツカコオロギ/クサアリツカコオロギ) [rank_reduced,name_ambiguous]",0,クボタアリツカコオロギ/クサアリツカコオロギ
 クマスズムシ,species,common:taxon:inat.545289,Sclerogryllus punctatus,,T1,registry species Sclerogryllus punctatus (学名列) [exact_name],0,クマスズムシ
 クマゼミ,species,common:taxon:gbif.7874703,"Cryptotympana facialis (Walker, 1858)",,T2,registry vernacular_name_ja クマゼミ,0,クマゼミ
 クマネズミ,species,common:taxon:gbif.2439270,"Rattus rattus (Linnaeus, 1758)",,T2,registry vernacular_name_ja クマネズミ,0,クマネズミ
@@ -786,7 +786,7 @@ zygoneurasciarina,species,common:taxon:gbif.1487012,"Zygoneura sciarina Meigen, 
 スネアカキンバエ/コガネキンバエ,genus,common:taxon:inat.61858,Lucilia,,T5,"registry genus Lucilia (シートの属 Lucilia属; 併記 スネアカキンバエ/コガネキンバエ) [rank_reduced,name_ambiguous]",0,スネアカキンバエ/コガネキンバエ
 スミウキゴリ,species,common:taxon:inat.614635,Gymnogobius petschiliensis,,T1,registry species Gymnogobius petschiliensis (学名列) [exact_name],0,スミウキゴリ
 ズアカシダカスミカメ,species,common:taxon:inat.510335,Monalocoris filicis,,T1,registry species Monalocoris filicis (学名列),0,ズアカシダカスミカメ
-ズアカシダカスミカメ/アマミズアカシダカスミカメ,family,common:taxon:kanagawa-edna.%E3%82%AB%E3%82%B9%E3%83%9F%E3%82%AB%E3%83%A1%E3%83%A0%E3%82%B7%E7%A7%91,,,T5,"family 和名のみ（併記 ズアカシダカスミカメ/アマミズアカシダカスミカメ） (シートの科 カスミカメムシ科; 併記 ズアカシダカスミカメ/アマミズアカシダカスミカメ) [rank_reduced,name_ambiguous]",0,ズアカシダカスミカメ/アマミズアカシダカスミカメ
+ズアカシダカスミカメ/アマミズアカシダカスミカメ,family,common:taxon:kanagawa-edna.%E3%82%AB%E3%82%B9%E3%83%9F%E3%82%AB%E3%83%A1%E3%83%A0%E3%82%B7%E7%A7%91,,カスミカメムシ科,T4,"family 和名のみ（併記 ズアカシダカスミカメ/アマミズアカシダカスミカメ） (シートの科 カスミカメムシ科; 併記 ズアカシダカスミカメ/アマミズアカシダカスミカメ) [rank_reduced,name_ambiguous]",0,ズアカシダカスミカメ/アマミズアカシダカスミカメ
 セアカツノカメムシ,species,common:taxon:inat.560194,Acanthosoma denticaudum,,T1,registry species Acanthosoma denticaudum (学名列) [exact_name],0,セアカツノカメムシ
 セアカヒラタゴミムシ,species,common:taxon:gbif.5755454,"Dolichus halensis (Schaller, 1783)",,T2,registry vernacular_name_ja セアカヒラタゴミムシ,0,セアカヒラタゴミムシ
 セイヨウミツバチ,species,common:taxon:inat.47219,Apis mellifera,,T1,registry species Apis mellifera (学名列) [exact_name],0,セイヨウミツバチ
@@ -823,7 +823,7 @@ zygoneurasciarina,species,common:taxon:gbif.1487012,"Zygoneura sciarina Meigen, 
 タカノケフサイソガニ/ケフサイソガニ,genus,common:taxon:inat.48343,Hemigrapsus,,T5,"registry genus Hemigrapsus [exact_name] (シートの属 イソガニ属; 併記 タカノケフサイソガニ/ケフサイソガニ) [rank_reduced,name_ambiguous]",0,タカノケフサイソガニ/ケフサイソガニ
 タカハヤ,species,common:taxon:gbif.5851441,"Rhynchocypris oxycephalus (Sauvage & Dabry de Thiersant, 1874)",,T1,registry species Rhynchocypris oxycephalus (学名列); 同じ和名の未照合 taxon common:taxon:ryuiki-taxa.wamei.%E3%82%BF%E3%82%AB%E3%83%8F%E3%83%A4 が registry にある（採らない）,0,タカハヤ
 タカハヤ/アブラハヤ,genus,common:taxon:inat.91759,Rhynchocypris,,T5,"registry genus Rhynchocypris (シートの属 Rhynchocypris属; 併記 タカハヤ/アブラハヤ) [rank_reduced,name_ambiguous]",0,タカハヤ/アブラハヤ
-タゴガエル/ナガレタゴガエル,genus,common:taxon:kanagawa-edna.%E3%82%A2%E3%82%AB%E3%82%AC%E3%82%A8%E3%83%AB%E5%B1%9E,,,T5,"genus 和名のみ（併記 タゴガエル/ナガレタゴガエル） (シートの属 アカガエル属; 併記 タゴガエル/ナガレタゴガエル) [rank_reduced,name_ambiguous]",0,タゴガエル/ナガレタゴガエル
+タゴガエル/ナガレタゴガエル,genus,common:taxon:kanagawa-edna.%E3%82%A2%E3%82%AB%E3%82%AC%E3%82%A8%E3%83%AB%E5%B1%9E,,アカガエル属,T4,"genus 和名のみ（併記 タゴガエル/ナガレタゴガエル） (シートの属 アカガエル属; 併記 タゴガエル/ナガレタゴガエル) [rank_reduced,name_ambiguous]",0,タゴガエル/ナガレタゴガエル
 タチウオ,species,common:taxon:gbif.2389414,"Trichiurus japonicus Temminck & Schlegel, 1844",,T1,registry species Trichiurus japonicus (学名列),0,タチウオ
 タテジマアヤトビムシ,species,common:taxon:inat.296705,Homidia socia,,T1,registry species Homidia socia (学名列) [exact_name],0,タテジマアヤトビムシ
 タテジマアヤ卜ビムシ,species,common:taxon:kanagawa-edna.%E3%82%BF%E3%83%86%E3%82%B8%E3%83%9E%E3%82%A2%E3%83%A4%E5%8D%9C%E3%83%93%E3%83%A0%E3%82%B7,,タテジマアヤ卜ビムシ,T4,和名のみ。registry に学名・和名とも無い,0,タテジマアヤ卜ビムシ
@@ -837,7 +837,7 @@ zygoneurasciarina,species,common:taxon:gbif.1487012,"Zygoneura sciarina Meigen, 
 タネズミ,species,common:taxon:inat.44546,Rattus tanezumi,,T1,registry species Rattus tanezumi (学名列) [exact_name],0,タネズミ
 タネハゼ,species,common:taxon:gbif.2379340,"Callogobius tanegasimae (Snyder, 1908)",,T3,GBIF match species 'Callogobius tanegasimae' -> 2379340 (exact) (学名列),0,タネハゼ
 タネバエ,species,common:taxon:gbif.5077529,"Delia platura (Meigen, 1826)",,T2,registry vernacular_name_ja タネバエ,0,タネバエ
-タバコガ/オオタバコガ/アメリカタバコガ,family,common:taxon:kanagawa-edna.%E3%83%A4%E3%82%AC%E7%A7%91,,,T5,"family 和名のみ（併記 タバコガ/オオタバコガ/アメリカタバコガ） (シートの科 ヤガ科; 併記 タバコガ/オオタバコガ/アメリカタバコガ) [rank_reduced,name_ambiguous]",0,タバコガ/オオタバコガ/アメリカタバコガ
+タバコガ/オオタバコガ/アメリカタバコガ,family,common:taxon:kanagawa-edna.%E3%83%A4%E3%82%AC%E7%A7%91,,ヤガ科,T4,"family 和名のみ（併記 タバコガ/オオタバコガ/アメリカタバコガ） (シートの科 ヤガ科; 併記 タバコガ/オオタバコガ/アメリカタバコガ) [rank_reduced,name_ambiguous]",0,タバコガ/オオタバコガ/アメリカタバコガ
 タバココナジラミ,species,common:taxon:kanagawa-edna.%E3%82%BF%E3%83%90%E3%82%B3%E3%82%B3%E3%83%8A%E3%82%B8%E3%83%A9%E3%83%9F,,タバココナジラミ,T4,和名のみ。registry に学名・和名とも無い,0,タバココナジラミ
 タマガムシ,species,common:taxon:gbif.8590416,"Amphiops mater Sharp, 1873",,T1,registry species Amphiops mater (学名列),0,タマガムシ
 タマナヤガ,species,common:taxon:gbif.1771245,"Agrotis ipsilon (Hufnagel, 1766)",,T2,registry vernacular_name_ja タマナヤガ,0,タマナヤガ
@@ -1025,7 +1025,7 @@ zygoneurasciarina,species,common:taxon:gbif.1487012,"Zygoneura sciarina Meigen, 
 ヌマムツ,species,common:taxon:gbif.2360921,"Nipponocypris sieboldii (Temminck & Schlegel, 1846)",,T3,GBIF match species 'Nipponocypris sieboldii' -> 2360921 (exact) (学名列),0,ヌマムツ
 ネグロセンブリ,species,common:taxon:gbif.5101304,"Sialis japonica van der Weele, 1909",,T1,registry species Sialis japonica (学名列),0,ネグロセンブリ
 ネッタイシバスズ,species,common:taxon:kanagawa-edna.%E3%83%8D%E3%83%83%E3%82%BF%E3%82%A4%E3%82%B7%E3%83%90%E3%82%B9%E3%82%BA,,ネッタイシバスズ,T4,和名のみ。registry に学名・和名とも無い,0,ネッタイシバスズ
-ノイヌ/オオカミ,genus,common:taxon:kanagawa-edna.%E3%82%A4%E3%83%8C%E5%B1%9E,,,T5,"genus 和名のみ（併記 ノイヌ/オオカミ） (シートの属 イヌ属; 併記 ノイヌ/オオカミ) [rank_reduced,name_ambiguous]",0,ノイヌ/オオカミ
+ノイヌ/オオカミ,genus,common:taxon:kanagawa-edna.%E3%82%A4%E3%83%8C%E5%B1%9E,,イヌ属,T4,"genus 和名のみ（併記 ノイヌ/オオカミ） (シートの属 イヌ属; 併記 ノイヌ/オオカミ) [rank_reduced,name_ambiguous]",0,ノイヌ/オオカミ
 ノギカワゲラ,species,common:taxon:gbif.2001336,"Cryptoperla japonica (Okamoto, 1912)",,T3,GBIF match species 'Cryptoperla japonica' -> 2001336 (exact) (学名列),0,ノギカワゲラ
 ノゲシヒゲナガアブラムシ/タイワンヒゲナガアブラムシ,genus,common:taxon:inat.84469,Uroleucon,,T5,"registry genus Uroleucon (シートの属 Uroleucon属; 併記 ノゲシヒゲナガアブラムシ/タイワンヒゲナガアブラムシ) [rank_reduced,name_ambiguous]",0,ノゲシヒゲナガアブラムシ/タイワンヒゲナガアブラムシ
 ノゲシフクレアブラムシ,species,common:taxon:gbif.2076852,"Hyperomyzus carduellinus (Theobald, 1915)",,T3,GBIF match species 'Hyperomyzus carduellinus' -> 2076852 (exact) (学名列),0,ノゲシフクレアブラムシ
@@ -1040,7 +1040,7 @@ zygoneurasciarina,species,common:taxon:gbif.1487012,"Zygoneura sciarina Meigen, 
 ハイイロマメシジミ,species,common:taxon:gbif.7664805,"Euglesa casertana (Poli, 1791)",,T3,GBIF match species 'Euglesa casertana' -> 7664805 (exact) (学名列),0,ハイイロマメシジミ
 ハイイロヤケイ/セキショクヤケイ,family,common:taxon:inat.574,Phasianidae,,T5,"registry family Phasianidae (シートの科 キジ科; 属 ヤケイ属 は決まらない; 併記 ハイイロヤケイ/セキショクヤケイ) [rank_reduced,name_ambiguous]",0,ハイイロヤケイ/セキショクヤケイ
 ハイマダラノメイガ,species,common:taxon:inat.208101,Hellula undalis,,T1,registry species Hellula undalis (学名列) [exact_name],0,ハイマダラノメイガ
-ハクセキレイ/セグロセキレイ/ツメナガセキレイ,genus,common:taxon:kanagawa-edna.%E3%82%BB%E3%82%AD%E3%83%AC%E3%82%A4%E5%B1%9E,,,T5,"genus 和名のみ（併記 ハクセキレイ/セグロセキレイ/ツメナガセキレイ） (シートの属 セキレイ属; 併記 ハクセキレイ/セグロセキレイ/ツメナガセキレイ) [rank_reduced,name_ambiguous]",0,ハクセキレイ/セグロセキレイ/ツメナガセキレイ
+ハクセキレイ/セグロセキレイ/ツメナガセキレイ,genus,common:taxon:kanagawa-edna.%E3%82%BB%E3%82%AD%E3%83%AC%E3%82%A4%E5%B1%9E,,セキレイ属,T4,"genus 和名のみ（併記 ハクセキレイ/セグロセキレイ/ツメナガセキレイ） (シートの属 セキレイ属; 併記 ハクセキレイ/セグロセキレイ/ツメナガセキレイ) [rank_reduced,name_ambiguous]",0,ハクセキレイ/セグロセキレイ/ツメナガセキレイ
 ハクビシン,species,common:taxon:inat.41625,Paguma larvata,,T1,registry species Paguma larvata (学名列) [exact_name],0,ハクビシン
 ハクライオウギガニ,species,common:taxon:gbif.5969273,"Acantholobulus pacificus (Edmondson, 1931)",,T3,GBIF match species 'Acantholobulus pacificus' -> 5969273 (exact) (学名列),0,ハクライオウギガニ
 ハグルマチャタテ,species,common:taxon:kanagawa-edna.%E3%83%8F%E3%82%B0%E3%83%AB%E3%83%9E%E3%83%81%E3%83%A3%E3%82%BF%E3%83%86,,ハグルマチャタテ,T4,和名のみ。registry に学名・和名とも無い,0,ハグルマチャタテ
@@ -1054,7 +1054,7 @@ zygoneurasciarina,species,common:taxon:gbif.1487012,"Zygoneura sciarina Meigen, 
 ハスクビレアブラムシ,species,common:taxon:gbif.9565622,"Rhopalosiphum nymphaeae (Linnaeus, 1761)",,T3,GBIF match species 'Rhopalosiphum nymphaeae' -> 9565622 (exact) (学名列),0,ハスクビレアブラムシ
 ハスジフトメイガ,species,common:taxon:gbif.1877206,"Epilepia dentatum Matsumura & Shibuya, 1927",,T2,registry vernacular_name_ja ハスジフトメイガ,0,ハスジフトメイガ
 ハスモンヨトウ,species,common:taxon:inat.124875,Spodoptera litura,,T1,registry species Spodoptera litura (学名列) [exact_name],0,ハスモンヨトウ
-ハスモンヨトウ/ツマジロクサヨトウ,family,common:taxon:kanagawa-edna.%E3%83%A4%E3%82%AC%E7%A7%91,,,T5,"family 和名のみ（併記 ハスモンヨトウ/ツマジロクサヨトウ） (シートの科 ヤガ科; 併記 ハスモンヨトウ/ツマジロクサヨトウ) [rank_reduced,name_ambiguous]",0,ハスモンヨトウ/ツマジロクサヨトウ
+ハスモンヨトウ/ツマジロクサヨトウ,family,common:taxon:kanagawa-edna.%E3%83%A4%E3%82%AC%E7%A7%91,,ヤガ科,T4,"family 和名のみ（併記 ハスモンヨトウ/ツマジロクサヨトウ） (シートの科 ヤガ科; 併記 ハスモンヨトウ/ツマジロクサヨトウ) [rank_reduced,name_ambiguous]",0,ハスモンヨトウ/ツマジロクサヨトウ
 ハゼアブラムシ,species,common:taxon:inat.635240,Aphis odinae,,T1,registry species Aphis odinae (学名列),0,ハゼアブラムシ（ヌルデアブラムシ）
 ハタケノウマオイ,species,common:taxon:gbif.1688451,"Hexacentrus japonicus Karny, 1907",,T2,registry vernacular_name_ja ハタケノウマオイ,0,ハタケノウマオイ
 ハタケノウマオイ/ハヤシノウマオイ,genus,common:taxon:inat.437626,Hexacentrus,,T5,"registry genus Hexacentrus (シートの属 Hexacentrus属; 併記 ハタケノウマオイ/ハヤシノウマオイ) [rank_reduced,name_ambiguous]",0,ハタケノウマオイ/ハヤシノウマオイ
@@ -1202,7 +1202,7 @@ zygoneurasciarina,species,common:taxon:gbif.1487012,"Zygoneura sciarina Meigen, 
 フナ属,genus,common:taxon:inat.58617,Carassius,,T5,registry genus Carassius [exact_name] (学名列の属 Carassius; ja_genus フナ属) [rank_reduced],0,フナ属
 フナ属の一種,genus,common:taxon:inat.58617,Carassius,,T5,registry genus Carassius [exact_name] [rank_reduced],0,フナ属の一種
 フリッツェホウジャク,species,common:taxon:gbif.5124304,"Macroglossum fritzei Rothschild & Jordan, 1903",,T3,GBIF match species 'Macroglossum fritzei' -> 5124304 (exact) (学名列),0,フリッツェホウジャク
-フロリダガー/スポッテッドガー,genus,common:taxon:kanagawa-edna.%E3%83%AC%E3%83%94%E3%82%BD%E3%82%B9%E3%83%86%E3%82%A6%E3%82%B9%E5%B1%9E,,,T5,"genus 和名のみ（併記 フロリダガー/スポッテッドガー） (シートの属 レピソステウス属; 併記 フロリダガー/スポッテッドガー) [rank_reduced,name_ambiguous]",0,フロリダガー/スポッテッドガー
+フロリダガー/スポッテッドガー,genus,common:taxon:kanagawa-edna.%E3%83%AC%E3%83%94%E3%82%BD%E3%82%B9%E3%83%86%E3%82%A6%E3%82%B9%E5%B1%9E,,レピソステウス属,T4,"genus 和名のみ（併記 フロリダガー/スポッテッドガー） (シートの属 レピソステウス属; 併記 フロリダガー/スポッテッドガー) [rank_reduced,name_ambiguous]",0,フロリダガー/スポッテッドガー
 ブタクサハムシ,species,common:taxon:inat.226508,Ophraella communa,,T1,registry species Ophraella communa (学名列) [exact_name],0,ブタクサハムシ
 ブドウスズメ,species,common:taxon:inat.489784,Acosmeryx castanea,,T1,registry species Acosmeryx castanea (学名列) [exact_name],0,ブドウスズメ
 ブラウントラウト,species,common:taxon:inat.47518,Salmo trutta,,T2b,辞書 taxa moe_ias_list:https://www.env.go.jp/nature/intro/2outline/list/list2.xls#動物!row=238 (1行): ブラウントラウト -> Salmo trutta; registry species Salmo trutta,0,ブラウントラウト
@@ -1288,7 +1288,7 @@ zygoneurasciarina,species,common:taxon:gbif.1487012,"Zygoneura sciarina Meigen, 
 マルバネトビケラ,species,common:taxon:gbif.1441064,"Phryganopsyche latipennis (Banks, 1906)",,T3,GBIF match species 'Phryganopsyche latipennis' -> 1441064 (exact) (学名列),0,マルバネトビケラ
 マルヒメツヤドロムシ,species,common:taxon:gbif.6968543,"Zaitzeviaria ovata (Nomura, 1959)",,T3,GBIF match species 'Zaitzeviaria ovata' -> 6968543 (exact) (学名列),0,マルヒメツヤドロムシ
 マルヒラタドロムシ,species,common:taxon:kanagawa-edna.%E3%83%9E%E3%83%AB%E3%83%92%E3%83%A9%E3%82%BF%E3%83%89%E3%83%AD%E3%83%A0%E3%82%B7,,マルヒラタドロムシ,T4,和名のみ。registry に学名・和名とも無い,0,マルヒラタドロムシ
-マルヒラタドロムシ/クシヒゲマルヒラタドロムシ,genus,common:taxon:kanagawa-edna.%E3%83%9E%E3%83%AB%E3%83%92%E3%83%A9%E3%82%BF%E3%83%89%E3%83%AD%E3%83%A0%E3%82%B7%E5%B1%9E,,,T5,"genus 和名のみ（併記 マルヒラタドロムシ/クシヒゲマルヒラタドロムシ） (シートの属 マルヒラタドロムシ属; 併記 マルヒラタドロムシ/クシヒゲマルヒラタドロムシ) [rank_reduced,name_ambiguous]",0,マルヒラタドロムシ/クシヒゲマルヒラタドロムシ
+マルヒラタドロムシ/クシヒゲマルヒラタドロムシ,genus,common:taxon:kanagawa-edna.%E3%83%9E%E3%83%AB%E3%83%92%E3%83%A9%E3%82%BF%E3%83%89%E3%83%AD%E3%83%A0%E3%82%B7%E5%B1%9E,,マルヒラタドロムシ属,T4,"genus 和名のみ（併記 マルヒラタドロムシ/クシヒゲマルヒラタドロムシ） (シートの属 マルヒラタドロムシ属; 併記 マルヒラタドロムシ/クシヒゲマルヒラタドロムシ) [rank_reduced,name_ambiguous]",0,マルヒラタドロムシ/クシヒゲマルヒラタドロムシ
 マルミズムシ,species,common:taxon:inat.1364667,Paraplea japonica,,T1,registry species Paraplea japonica (学名列) [exact_name],0,マルミズムシ
 マルムネハサミムシ科の一種ns-2016,family,common:taxon:kanagawa-edna.%E3%83%9E%E3%83%AB%E3%83%A0%E3%83%8D%E3%83%8F%E3%82%B5%E3%83%9F%E3%83%A0%E3%82%B7%E7%A7%91,,マルムネハサミムシ科,T4,family 和名のみ（科の和名） [rank_reduced],0,マルムネハサミムシ科の一種 NS-2016
 ミエツノマユブユ,species,common:taxon:gbif.1645808,"Simulium mie Ogata & Sasa, 1954",,T3,GBIF match species 'Simulium mie' -> 1645808 (exact) (学名列),0,ミエツノマユブユ
@@ -1318,7 +1318,7 @@ zygoneurasciarina,species,common:taxon:gbif.1487012,"Zygoneura sciarina Meigen, 
 ミナカワトゲタニガワトビケラ,species,common:taxon:gbif.9886000,"Kisaura minakawai TI Arefina, 2005",,T3,GBIF match species 'Kisaura minakawai' -> 9886000 (exact) (学名列),0,ミナカワトゲタニガワトビケラ
 ミナミアオカメムシ,species,common:taxon:gbif.2078852,"Nezara viridula (Linnaeus, 1758)",,T2,registry vernacular_name_ja ミナミアオカメムシ,0,ミナミアオカメムシ
 ミナミイシガメ,species,common:taxon:gbif.2443393,"Mauremys mutica (Cantor, 1842)",,T2b,辞書 taxa moe_ias_list:https://www.env.go.jp/nature/intro/2outline/list/list2.xls#動物!row=179 (1行): ミナミイシガメ -> Mauremys mutica; GBIF match species 'Mauremys mutica' -> 2443393 (exact),0,ミナミイシガメ
-ミナミギンガメアジ/ギンガメアジ/カスミアジ,genus,common:taxon:kanagawa-edna.%E3%82%AE%E3%83%B3%E3%82%AC%E3%83%A1%E3%82%A2%E3%82%B8%E5%B1%9E,,,T5,"genus 和名のみ（併記 ミナミギンガメアジ/ギンガメアジ/カスミアジ） (シートの属 ギンガメアジ属; 併記 ミナミギンガメアジ/ギンガメアジ/カスミアジ) [rank_reduced,name_ambiguous]",0,ミナミギンガメアジ/ギンガメアジ/カスミアジ
+ミナミギンガメアジ/ギンガメアジ/カスミアジ,genus,common:taxon:kanagawa-edna.%E3%82%AE%E3%83%B3%E3%82%AC%E3%83%A1%E3%82%A2%E3%82%B8%E5%B1%9E,,ギンガメアジ属,T4,"genus 和名のみ（併記 ミナミギンガメアジ/ギンガメアジ/カスミアジ） (シートの属 ギンガメアジ属; 併記 ミナミギンガメアジ/ギンガメアジ/カスミアジ) [rank_reduced,name_ambiguous]",0,ミナミギンガメアジ/ギンガメアジ/カスミアジ
 ミナミスナヤツメ,genus,common:taxon:gbif.2421216,"Lethenteron Creaser & Hubbs, 1922",,T5,種 Lethenteron hattai は GBIF に無い (none) ので属 Lethenteron に寄せる; GBIF match genus 'Lethenteron' -> 2421216 (exact) [rank_reduced],0,ミナミスナヤツメ
 ミナミテナガエビ/ザラテテナガエビ,genus,common:taxon:gbif.2224508,"Macrobrachium Spence Bate, 1868",,T5,"GBIF match genus 'Macrobrachium' -> 2224508 (exact) (シートの属 テナガエビ属; 併記 ミナミテナガエビ/ザラテテナガエビ) [rank_reduced,name_ambiguous]",0,ミナミテナガエビ/ザラテテナガエビ
 ミナミヌマエビ,species,common:taxon:kanagawa-edna.%E3%83%9F%E3%83%8A%E3%83%9F%E3%83%8C%E3%83%9E%E3%82%A8%E3%83%93,,ミナミヌマエビ,T4,和名のみ。registry に学名・和名とも無い,0,ミナミヌマエビ
@@ -1376,7 +1376,7 @@ zygoneurasciarina,species,common:taxon:gbif.1487012,"Zygoneura sciarina Meigen, 
 モモジロコウモリ,,common:taxon:ryuiki-taxa.wamei.%E3%83%A2%E3%83%A2%E3%82%B8%E3%83%AD%E3%82%B3%E3%82%A6%E3%83%A2%E3%83%AA,,,T2,registry vernacular_name_ja モモジロコウモリ [registry_unresolved_wamei],0,モモジロコウモリ
 モモヒメヨコバイ/ミドリヒメヨコバイ,genus,common:taxon:gbif.2048201,"Singapora Mahmood, 1967",,T5,"GBIF match genus 'Singapora' -> 2048201 (exact) (シートの属 Singapora属; 併記 モモヒメヨコバイ/ミドリヒメヨコバイ) [rank_reduced,name_ambiguous]",0,モモヒメヨコバイ/ミドリヒメヨコバイ
 モモブトカミキリモドキ,species,common:taxon:kanagawa-edna.%E3%83%A2%E3%83%A2%E3%83%96%E3%83%88%E3%82%AB%E3%83%9F%E3%82%AD%E3%83%AA%E3%83%A2%E3%83%89%E3%82%AD,,モモブトカミキリモドキ,T4,和名のみ。registry に学名・和名とも無い,0,モモブトカミキリモドキ
-モヨウハゼ/ツマグロスジハゼ,genus,common:taxon:kanagawa-edna.%E3%82%AD%E3%83%A9%E3%83%A9%E3%83%8F%E3%82%BC%E5%B1%9E,,,T5,"genus 和名のみ（併記 モヨウハゼ/ツマグロスジハゼ） (シートの属 キララハゼ属; 併記 モヨウハゼ/ツマグロスジハゼ) [rank_reduced,name_ambiguous]",0,モヨウハゼ / ツマグロスジハゼ
+モヨウハゼ/ツマグロスジハゼ,genus,common:taxon:kanagawa-edna.%E3%82%AD%E3%83%A9%E3%83%A9%E3%83%8F%E3%82%BC%E5%B1%9E,,キララハゼ属,T4,"genus 和名のみ（併記 モヨウハゼ/ツマグロスジハゼ） (シートの属 キララハゼ属; 併記 モヨウハゼ/ツマグロスジハゼ) [rank_reduced,name_ambiguous]",0,モヨウハゼ / ツマグロスジハゼ
 モリアオガエル,species,common:taxon:inat.923351,Zhangixalus arboreus,,T1,registry species Zhangixalus arboreus (学名列) [exact_name]; 同じ和名の未照合 taxon common:taxon:ryuiki-taxa.wamei.%E3%83%A2%E3%83%AA%E3%82%A2%E3%82%AA%E3%82%AC%E3%82%A8%E3%83%AB が registry にある（採らない）,0,モリアオガエル
 モリオカメコオロギ,species,common:taxon:inat.358830,Loxoblemmus sylvestris,,T1,registry species Loxoblemmus sylvestris (学名列) [exact_name],0,モリオカメコオロギ
 モリシタケアリ,species,common:taxon:gbif.5035807,"Lasius capitatus (Kuznetsov-Ugamsky, 1927)",,T3,GBIF match species 'Lasius capitatus' -> 5035807 (exact) (学名列),0,モリシタケアリ

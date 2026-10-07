@@ -2,12 +2,10 @@
 
 原本（`data/db/ryuiki.sqlite` の `edna_detections`）が手元にあれば実データを検査する
 （無い環境〔CI のサンプル・m07 を流す前〕ではスキップ）。
-`coordinate_uncertainty_m` を `occurrence_row` が受ける変更（設計書 §6-①、担当 B）が入るまでは、
-それを渡す部分のテストは理由つきで保留する。
+
 """
 from __future__ import annotations
 
-import inspect
 import json
 import pathlib
 import sqlite3
@@ -20,9 +18,6 @@ from ingest import api, boundary, manifest as manifest_lib
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SOURCE = "kanagawa_edna"
 
-HAS_UNCERTAINTY = "coordinate_uncertainty_m" in inspect.signature(api.occurrence_row).parameters
-needs_uncertainty = pytest.mark.skipif(
-    not HAS_UNCERTAINTY, reason="occurrence_row の coordinate_uncertainty_m（設計書 §6-①・担当 B）が未マージ")
 
 
 def _ctx(rows):
@@ -45,7 +40,6 @@ def _row(i, **over):
     return r
 
 
-@needs_uncertainty
 def test_adapter_maps_row_with_estimated_coordinates_and_uncertainty():
     out = list(adapter.rows(_ctx([_row(1), _row(2, red_list_category="情報不足（DD）")])))
     assert [r["record_key"] for r in out] == ["r7_project_kekka:1:25-Pro-01", "r7_project_kekka:2:25-Pro-01"]
@@ -58,7 +52,6 @@ def test_adapter_maps_row_with_estimated_coordinates_and_uncertainty():
     assert "individual_count" not in r["attributes"]  # ADR-0025: n は記録数。値はリード数
 
 
-@needs_uncertainty
 def test_row_without_coordinates_or_date_is_kept_with_nulls():
     r = list(adapter.rows(_ctx([_row(3, lat=None, lon=None, coordinate_uncertainty_m=None, observed_on=None)])))[0]
     assert r["lat"] is None and r["lon"] is None and r["coordinate_uncertainty_m"] is None
@@ -82,7 +75,6 @@ def test_adapter_imports_only_ingest_api():
     assert boundary.adapter_import_problems(ROOT / "scripts" / "adapters" / f"{SOURCE}.py") == []
 
 
-@needs_uncertainty
 def test_real_table_maps_every_row_with_a_registered_taxon():
     db = ROOT / "data" / "db" / "ryuiki.sqlite"
     if not db.exists():
