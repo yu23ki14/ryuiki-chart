@@ -33,3 +33,17 @@ def run_python_cli_isolated(
     if env_overrides:
         env.update(env_overrides)
     return subprocess.run(cmd, cwd=str(cwd or ROOT), env=env, capture_output=True, text=True)
+
+
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _isolate_taxon_supplement(request, tmp_path_factory, monkeypatch):
+    """build_taxon が読む補完 taxon の CSV（registry/taxon/supplement_taxa.csv。出典が足す共有ファイルで、行数が増える）を、
+    ヘッダだけの一時ファイルに差し替える。taxon の件数を数える既存テストが、出典の追加で壊れないようにするため。
+    補完を読むこと自体を検査するテスト（test_build_taxon_supplement.py）は自分で差し替える。"""
+    from registry import build_taxon
+    path = tmp_path_factory.mktemp("supplement") / "supplement_taxa.csv"
+    path.write_text(",".join(build_taxon.SUPPLEMENT_COLUMNS) + "\n", encoding="utf-8")
+    monkeypatch.setattr(build_taxon, "SUPPLEMENT_TAXA_CSV", path)
