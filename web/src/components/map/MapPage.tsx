@@ -3,10 +3,11 @@
 import * as React from "react";
 import type { SourceSpecification } from "maplibre-gl";
 import { MapCanvas, type MapLayerSpec } from "./MapCanvas";
-import { SEQ, SEQ2, DIVERGING, ZONE_COLORS, ZONE_LABELS, ZONE_ELEV } from "@/components/viz/palette";
+import { SEQ, SEQ2, DIVERGING, ZONE_COLORS, ZONE_LABELS, INK, SERIES } from "@/components/viz/palette";
 import { Btn, nf, Spinner } from "@/components/ui";
 import { useJson } from "@/components/useJson";
 import { caveatBody } from "@/lib/registry/lookup-client";
+import { MAP_METRICS, ZONE_INFO, type GeneratedMapMetric } from "@/lib/registry/generated-client";
 import { MUNICIPALITY_LABEL } from "@/lib/municipality";
 import { fmt } from "@/components/viz/scales";
 import Link from "next/link";
@@ -14,27 +15,11 @@ import Link from "next/link";
 type WsMetric = "org_density" | "site_n" | "org_redlist_n" | "built_delta" | "forest_delta" | "paddy_delta";
 type MeshMetric = "n" | "species_n" | "rl_n";
 
-const WS_METRICS: { id: WsMetric; label: string; note: string; diverging?: boolean; unit?: string; landuse?: boolean }[] = [
-  { id: "org_density", label: "生物記録の密度", note: "流域の面積あたりの観察・標本記録数（件/km²）", unit: "件/km²" },
-  { id: "site_n", label: "観測地点の数", note: "その流域にある水質・気象などの観測地点", unit: "地点" },
-  { id: "org_redlist_n", label: "レッドリスト種の記録数", note: "レッドリストのカテゴリーが付いた観察記録", unit: "件" },
-  {
-    id: "built_delta",
-    label: "市街地の増減",
-    note: "国土数値情報 土地利用細分メッシュ。建物用地の面積の差",
-    diverging: true,
-    unit: "km²",
-    landuse: true,
-  },
-  { id: "forest_delta", label: "森林の増減", note: "同上・森林の面積の差", diverging: true, unit: "km²", landuse: true },
-  { id: "paddy_delta", label: "田の増減", note: "同上・田の面積の差", diverging: true, unit: "km²", landuse: true },
-];
+const WS_METRICS = MAP_METRICS.filter((m) => m.scope === "watershed") as (GeneratedMapMetric & { id: WsMetric })[];
+const MESH_METRICS = MAP_METRICS.filter((m) => m.scope === "mesh") as (GeneratedMapMetric & { id: MeshMetric })[];
 
-const MESH_METRICS: { id: MeshMetric; label: string; note: string }[] = [
-  { id: "n", label: "記録の件数", note: "同じ場所で何度も記録されると大きくなる" },
-  { id: "species_n", label: "確認された種数", note: "件数が多くても種数が少ない場所がある" },
-  { id: "rl_n", label: "レッドリスト種の記録数", note: "保全上の重要地点を探す" },
-];
+// 描画の振る舞い（語彙ではないのでコード側）。土地利用の増減は 0 に意味があるので発散配色にし、年を注記に付ける。
+const LANDUSE_METRICS: ReadonlySet<WsMetric> = new Set(["built_delta", "forest_delta", "paddy_delta"]);
 
 export function MapPage() {
   const [showWatersheds, setShowWatersheds] = React.useState(true);
@@ -59,7 +44,7 @@ export function MapPage() {
   const wsScale = React.useMemo(() => {
     if (!ws.data) return { breaks: [] as number[], min: 0, max: 0 };
     const vals = ws.data.features.map((f) => Number(f.properties?.[wsMetric])).filter((v) => Number.isFinite(v));
-    const diverging = !!WS_METRICS.find((m) => m.id === wsMetric)?.diverging;
+    const diverging = LANDUSE_METRICS.has(wsMetric);
     return { breaks: quantileBreaks(vals, 8, diverging), min: Math.min(...vals), max: Math.max(...vals) };
   }, [ws.data, wsMetric]);
   const wsBreaks = wsScale.breaks;
@@ -86,7 +71,7 @@ export function MapPage() {
   const layers: MapLayerSpec[] = React.useMemo(() => {
     const out: MapLayerSpec[] = [];
     if (showWatersheds && ws.data) {
-      const diverging = !!WS_METRICS.find((m) => m.id === wsMetric)?.diverging;
+      const diverging = LANDUSE_METRICS.has(wsMetric);
       out.push({
         id: "ry-ws-fill",
         source: "ry-ws",
@@ -103,14 +88,14 @@ export function MapPage() {
       out.push({
         id: "ry-ws-line",
         source: "ry-ws",
-        spec: { type: "line", paint: { "line-color": "#ffffff", "line-width": 0.7, "line-opacity": 0.8 } },
+        spec: { type: "line", paint: { "line-color": INK.surface, "line-width": 0.7, "line-opacity": 0.8 } },
       });
     }
     if (showRivers && rivers.data) {
       out.push({
         id: "ry-rivers-line",
         source: "ry-rivers",
-        spec: { type: "line", paint: { "line-color": "#2a78d6", "line-width": 1.1, "line-opacity": 0.7 } },
+        spec: { type: "line", paint: { "line-color": SERIES[0], "line-width": 1.1, "line-opacity": 0.7 } },
       });
     }
     if (showMesh && mesh.data) {
@@ -140,9 +125,9 @@ export function MapPage() {
               "match",
               ["get", "zone"],
               1, ZONE_COLORS[1], 2, ZONE_COLORS[2], 3, ZONE_COLORS[3], 4, ZONE_COLORS[4], 5, ZONE_COLORS[5],
-              "#9aa8a6",
+              INK.muted,
             ] as never,
-            "circle-stroke-color": "#ffffff",
+            "circle-stroke-color": INK.surface,
             "circle-stroke-width": 1.6,
           },
         },
@@ -171,14 +156,14 @@ export function MapPage() {
             <div className="absolute bottom-6 left-2 z-10 card px-2.5 py-2 shadow-sm max-w-[220px] max-h-[calc(100%-4rem)] overflow-y-auto thin-scroll no-print">
               {showWatersheds && (
                 <div className="mb-2">
-                  <div className="text-[10.5px] font-semibold mb-1">{wsMeta.label}{wsMeta.landuse && luYears}</div>
+                  <div className="text-[10.5px] font-semibold mb-1">{wsMeta.label}{LANDUSE_METRICS.has(wsMetric) && luYears}</div>
                   <Ramp
                     min={wsScale.min}
                     max={wsScale.max}
-                    diverging={!!wsMeta.diverging}
-                    unit={wsMeta.unit}
+                    diverging={LANDUSE_METRICS.has(wsMetric)}
+                    unit={wsMeta.unit ?? undefined}
                   />
-                  {wsMeta.landuse && (
+                  {LANDUSE_METRICS.has(wsMetric) && (
                     <p className="text-[10px] text-muted mt-1 leading-snug">{caveatBody("landuseDefinitionChange")}</p>
                   )}
                 </div>
@@ -203,7 +188,7 @@ export function MapPage() {
                       </li>
                     ))}
                     <li className="flex items-center gap-1.5 text-[10px] text-muted">
-                      <span className="w-2.5 h-2.5 rounded-full border border-white" style={{ background: "#9aa8a6" }} />
+                      <span className="w-2.5 h-2.5 rounded-full border border-white" style={{ background: INK.muted }} />
                       標高不明
                     </li>
                   </ul>
@@ -241,7 +226,7 @@ export function MapPage() {
                   />
                   <span className="text-[11.5px] leading-tight">
                     {m.label}
-                    {m.landuse && luYears}
+                    {LANDUSE_METRICS.has(m.id) && luYears}
                     <span className="block text-[10px] text-muted">{m.note}</span>
                   </span>
                 </label>
@@ -416,7 +401,7 @@ function SiteCard({ p }: { p: Record<string, unknown> }) {
           <span className="text-[11px]">
             ゾーン {z}. {ZONE_LABELS[z]}
           </span>
-          <span className="text-[10px] text-muted">{ZONE_ELEV[z]}</span>
+          <span className="text-[10px] text-muted">{ZONE_INFO.find((i) => i.zone === z)?.cond}</span>
         </div>
       )}
       <Row k="標高" v={p.elevation_m != null ? `${fmt(Number(p.elevation_m))} m` : "–"} />

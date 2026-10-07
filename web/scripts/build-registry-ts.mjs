@@ -56,6 +56,7 @@
  *   - RYUIKI_REGISTRY_DB: 入力の registry.sqlite
  *   - RYUIKI_VERNACULAR_CSV: 入力の vernacular_ja.csv
  *   - RYUIKI_ZONE_YAML: 入力の zone.yaml
+ *   - RYUIKI_MAP_METRIC_YAML: 入力の map_metric.yaml（地図ページの指標語彙。zone.yaml と同じ直読み）
  *   - RYUIKI_REDLIST_CATEGORY_YAML / RYUIKI_ASSESSMENT_LIST_YAML: 入力の
  *     registry/taxon/redlist_category.yaml / assessment_list.yaml
  *   - RYUIKI_REGISTRY_TS_OUT_SERVER / RYUIKI_REGISTRY_TS_OUT_CLIENT / RYUIKI_REGISTRY_TS_OUT_ID_MAP: 出力先
@@ -75,6 +76,7 @@ const REGISTRY_DB = process.env.RYUIKI_REGISTRY_DB ?? path.join(REPO, "data", "d
 const VERNACULAR_CSV =
   process.env.RYUIKI_VERNACULAR_CSV ?? path.join(REPO, "registry", "taxon", "vernacular_ja.csv");
 const ZONE_YAML = process.env.RYUIKI_ZONE_YAML ?? path.join(REPO, "registry", "place", "zone.yaml");
+const MAP_METRIC_YAML = process.env.RYUIKI_MAP_METRIC_YAML ?? path.join(REPO, "registry", "map_metric.yaml");
 const REDLIST_CATEGORY_YAML =
   process.env.RYUIKI_REDLIST_CATEGORY_YAML ?? path.join(REPO, "registry", "taxon", "redlist_category.yaml");
 const ASSESSMENT_LIST_YAML =
@@ -104,6 +106,7 @@ requireFile(
 );
 requireFile(VERNACULAR_CSV, "和名台帳");
 requireFile(ZONE_YAML, "zone.yaml");
+requireFile(MAP_METRIC_YAML, "map_metric.yaml");
 requireFile(REDLIST_CATEGORY_YAML, "redlist_category.yaml");
 requireFile(ASSESSMENT_LIST_YAML, "assessment_list.yaml");
 
@@ -240,6 +243,25 @@ const zoneRows = loadYaml(fs.readFileSync(ZONE_YAML, "utf-8"));
     }
   }
 }
+// 地図ページの指標語彙（registry/map_metric.yaml、zone.yaml と同じ直読み）。
+const mapMetrics = loadYaml(fs.readFileSync(MAP_METRIC_YAML, "utf-8")).map((r) => {
+  if (r.scope !== "watershed" && r.scope !== "mesh") {
+    throw new Error(`registry/map_metric.yaml の scope が不正: ${r.scope}（${r.id}）`);
+  }
+  if (!r.label_ja || !r.note_ja) {
+    throw new Error(`registry/map_metric.yaml の ${r.scope}/${r.id} に label_ja / note_ja が無い`);
+  }
+  return { scope: r.scope, id: String(r.id), label: r.label_ja, note: r.note_ja, unit: r.unit_ja ?? null };
+});
+{
+  const seen = new Set();
+  for (const m of mapMetrics) {
+    const k = `${m.scope}/${m.id}`;
+    if (seen.has(k)) throw new Error(`registry/map_metric.yaml の ${k} が重複している`);
+    seen.add(k);
+  }
+}
+
 // region（時刻帯の語彙。Issue #32-3、ADR-0024）。registry.sqlite の `region` 表（手書きの正は
 // registry/region.yaml）から作る。応答封筒（ADR-0014）が `regionTimeZone()` で引く。
 const regionTime = db
@@ -648,6 +670,15 @@ export interface GeneratedZone {
   cond: string;
 }
 
+/** 地図ページの指標（registry/map_metric.yaml）。unit は件数系の表示単位で、無ければ null。 */
+export interface GeneratedMapMetric {
+  scope: "watershed" | "mesh";
+  id: string;
+  label: string;
+  note: string;
+  unit: string | null;
+}
+
 /** region（\`jp-14\` 等）の時刻帯（registry/region.yaml。Issue #32-3、ADR-0024）。 */
 export interface GeneratedRegionTime {
   regionId: string;
@@ -762,6 +793,9 @@ export const ASSESSMENT_LIST: Readonly<Record<string, GeneratedAssessmentList>> 
 
 /** Ridge to Reef ゾーン(1-5)の定義（registry/place/zone.yaml、旧 domain.ts の ZONE_INFO）。 */
 export const ZONE_INFO: readonly GeneratedZone[] = ${emitObjectArray(zoneInfo, ["zone", "label", "cond"])};
+
+/** 地図ページの指標の語彙（registry/map_metric.yaml）。表示順はファイルの順。 */
+export const MAP_METRICS: readonly GeneratedMapMetric[] = ${emitObjectArray(mapMetrics, ["scope", "id", "label", "note", "unit"])};
 
 /** region の時刻帯（registry/region.yaml の語彙。\`lookup-client.ts\` の \`regionTimeZone()\` が引く）。 */
 export const REGION_TIME: readonly GeneratedRegionTime[] = ${emitObjectArray(regionTime, ["regionId", "tzName", "utcOffset"])};

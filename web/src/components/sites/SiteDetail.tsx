@@ -6,11 +6,11 @@ import { LineChart, type LineSeries } from "@/components/viz/LineChart";
 import { Heatmap } from "@/components/viz/Heatmap";
 import { ChartFrame, MiniTable } from "@/components/viz/ChartFrame";
 import { MapCanvas } from "@/components/map/MapCanvas";
-import { SERIES, ZONE_COLORS, ZONE_LABELS, ZONE_ELEV } from "@/components/viz/palette";
+import { SERIES, ZONE_COLORS, ZONE_LABELS, INK } from "@/components/viz/palette";
 import { Btn, Stat, nf, Provenance, Spinner } from "@/components/ui";
 import { caveatBody } from "@/lib/registry/lookup-client";
 import { variableCaveats } from "@/lib/cube/caveats";
-import { VARIABLE_LABEL } from "@/lib/registry/generated-client";
+import { VARIABLE_LABEL, ZONE_INFO } from "@/lib/registry/generated-client";
 import { basisOfCell, type Basis } from "@/lib/cube/cell-basis";
 import { MUNICIPALITY_LABEL } from "@/lib/municipality";
 import { useJson } from "@/components/useJson";
@@ -214,8 +214,8 @@ export function SiteDetail({ site, variables }: { site: Site; variables: Variabl
           type: "circle" as const,
           paint: {
             "circle-radius": 8,
-            "circle-color": site.zone != null ? ZONE_COLORS[site.zone] : "#9aa8a6",
-            "circle-stroke-color": "#ffffff",
+            "circle-color": site.zone != null ? ZONE_COLORS[site.zone] : INK.muted,
+            "circle-stroke-color": INK.surface,
             "circle-stroke-width": 2.5,
           },
         },
@@ -240,7 +240,7 @@ export function SiteDetail({ site, variables }: { site: Site; variables: Variabl
                 <span
                   className="text-[10.5px] px-1.5 py-0.5 rounded text-white"
                   style={{ background: ZONE_COLORS[site.zone] }}
-                  title={ZONE_ELEV[site.zone]}
+                  title={ZONE_INFO.find((i) => i.zone === site.zone)?.cond}
                 >
                   ゾーン {site.zone}. {ZONE_LABELS[site.zone]}
                 </span>

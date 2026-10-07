@@ -59,6 +59,15 @@ export interface GeneratedZone {
   cond: string;
 }
 
+/** 地図ページの指標（registry/map_metric.yaml）。unit は件数系の表示単位で、無ければ null。 */
+export interface GeneratedMapMetric {
+  scope: "watershed" | "mesh";
+  id: string;
+  label: string;
+  note: string;
+  unit: string | null;
+}
+
 /** region（`jp-14` 等）の時刻帯（registry/region.yaml。Issue #32-3、ADR-0024）。 */
 export interface GeneratedRegionTime {
   regionId: string;
@@ -389,6 +398,19 @@ export const ZONE_INFO: readonly GeneratedZone[] = [
   { zone: 3, label: "丘陵・扇状地", cond: "標高 100–400m" },
   { zone: 4, label: "平野・沖積低地", cond: "標高 100m 以下・海岸から 2km 超" },
   { zone: 5, label: "河口・沿岸", cond: "標高 100m 以下・海岸から 2km 以内" },
+];
+
+/** 地図ページの指標の語彙（registry/map_metric.yaml）。表示順はファイルの順。 */
+export const MAP_METRICS: readonly GeneratedMapMetric[] = [
+  { scope: "watershed", id: "org_density", label: "生物記録の密度", note: "流域の面積あたりの観察・標本記録数（件/km²）", unit: "件/km²" },
+  { scope: "watershed", id: "site_n", label: "観測地点の数", note: "その流域にある水質・気象などの観測地点", unit: "地点" },
+  { scope: "watershed", id: "org_redlist_n", label: "レッドリスト種の記録数", note: "レッドリストのカテゴリーが付いた観察記録", unit: "件" },
+  { scope: "watershed", id: "built_delta", label: "市街地の増減", note: "国土数値情報 土地利用細分メッシュ。建物用地の面積の差", unit: "km²" },
+  { scope: "watershed", id: "forest_delta", label: "森林の増減", note: "同上・森林の面積の差", unit: "km²" },
+  { scope: "watershed", id: "paddy_delta", label: "田の増減", note: "同上・田の面積の差", unit: "km²" },
+  { scope: "mesh", id: "n", label: "記録の件数", note: "同じ場所で何度も記録されると大きくなる", unit: null },
+  { scope: "mesh", id: "species_n", label: "確認された種数", note: "件数が多くても種数が少ない場所がある", unit: null },
+  { scope: "mesh", id: "rl_n", label: "レッドリスト種の記録数", note: "保全上の重要地点を探す", unit: null },
 ];
 
 /** region の時刻帯（registry/region.yaml の語彙。`lookup-client.ts` の `regionTimeZone()` が引く）。 */

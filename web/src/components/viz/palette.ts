@@ -38,23 +38,6 @@ export const ZONE_COLORS: Record<number, string> = {
  */
 export const ZONE_LABELS: Record<number, string> = Object.fromEntries(ZONE_INFO.map((z) => [z.zone, z.label]));
 
-/**
- * 既知の未解消の重複（code-review 指摘、Phase B #6 の範囲外）: この5件は
- * `ZONE_INFO[].cond`（`registry/place/zone.yaml` が正）と同じ情報を別に手書きしている。
- * 表記が微妙に違う（例: zone4 はここでは「2km超」、ZONE_INFO 側は「2km 超」と
- * 半角スペース入り）ため、`ZONE_LABELS` と同じようには統合できない。
- * 今の画面の表示文字列を変えない、というこの PR の制約上ここでは統合しない
- * （統合すると MapPage/SiteDetail の画面表示が変わってしまう）。
- * 水野研レビューで zone の閾値が確定するタイミングで、この2つの表記を統合する形で見直すこと。
- */
-export const ZONE_ELEV: Record<number, string> = {
-  1: "標高 800m 超",
-  2: "標高 400–800m",
-  3: "標高 100–400m",
-  4: "標高 100m 以下・海岸から2km超",
-  5: "標高 100m 以下・海岸から2km以内",
-};
-
 export const SEQ = [
   "#ffe3d8",
   "#f9ccbc",
