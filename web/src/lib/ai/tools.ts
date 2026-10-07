@@ -31,6 +31,7 @@ import { facetsForSeries, facetsForOccurrence, facetsForTables, caveatKeysForFac
 import { MEASUREMENTS_DATASET } from "@/lib/cube/series";
 import { timeseries } from "@/lib/cube/timeseries";
 import { EDNA_DESCRIPTION, EDNA_SOURCE_ID, ednaInputSchema, queryEdna } from "@/lib/edna";
+import { queryRecords, RecordsInputError, recordsInputSchema, RECORDS_DESCRIPTION } from "@/lib/records";
 
 /** 測定値系データセット固定（PR-2 のスコープは測定値系。design §1.1 と同じ前提）。registry の dataset キー。 */
 const DATASET = MEASUREMENTS_DATASET;
@@ -788,6 +789,40 @@ const get_edna = tool({
   },
 });
 
+/* ------------------------------------------------------------------ */
+/* get_records                                                        */
+/* ------------------------------------------------------------------ */
+
+const get_records = tool({
+  description: RECORDS_DESCRIPTION,
+  inputSchema: recordsInputSchema,
+  execute: async (input) => {
+    const t0 = performance.now();
+    try {
+      const result = await queryRecords(await d1CubeDb(), input);
+      const more = result.rows.length > result.limit;
+      const rows = result.rows.slice(0, result.limit);
+      const out = makeResult({
+        tool: "get_records",
+        tables: [result.table],
+        caveats: caveatKeysForFacets(facetsForOccurrence({ places: [], sourceIds: [result.source_id] })),
+        data: { source_id: result.source_id, table: result.table, offset: result.offset, rows },
+        rowCount: rows.length,
+        elapsedMs: performance.now() - t0,
+      });
+      if (!more) return out;
+      return {
+        ...out,
+        truncated: true,
+        truncatedNote: `limit（${result.limit}）を超える行がある。offset を ${result.offset + result.limit} にして続きを取れる。${out.truncatedNote ?? ""}`,
+      };
+    } catch (e) {
+      if (!(e instanceof RecordsInputError)) throw e;
+      return makeResult({ tool: "get_records", tables: [], caveats: [], data: { error: e.message }, rowCount: 0, elapsedMs: performance.now() - t0 });
+    }
+  },
+});
+
 export const aiTools = {
   list_catalog,
   get_timeseries,
@@ -795,6 +830,7 @@ export const aiTools = {
   get_sites,
   get_biota_trend,
   get_edna,
+  get_records,
   get_redlist,
   get_overview,
   describe_schema,
