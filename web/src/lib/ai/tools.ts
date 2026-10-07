@@ -458,7 +458,7 @@ const yearRange = z.object({
   to: z.number().describe("終了年（西暦）"),
 });
 
-// 生物の注記は v1 表名ではなく facet（dataset=organism_records・place_kind=grid01）で決める。
+// 生物の注記は v1 表名ではなく facet（出典の source_id=<id>・place_kind=grid01）で決める。
 const BIOTA_CAVEATS = caveatKeysForFacets(facetsForOccurrence({ places: ["grid01"] }));
 
 /** get_biota_trend の coverage.no_coordinate の行数の上限（超えたら coverage.truncated=true）。 */

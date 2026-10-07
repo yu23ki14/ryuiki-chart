@@ -27,6 +27,7 @@ import {
   watershedYears,
   waterBodies,
   MEASUREMENTS_DATASET,
+  jsonEachParam,
   type CubeDb,
 } from "@/lib/cube";
 import { SOURCE_META } from "@/lib/registry/generated-source";
@@ -79,20 +80,34 @@ function occurrenceCaveats(sourceIds: readonly string[]) {
 }
 
 /**
- * species_months の足切り（`SPECIES_MIN_N`）で空になった種を、件数つきで返す。足切りそのものは外さない。
- * 件数は足切りに使う `summary_species_catalog.n` と同じ（speciesCatalog の出典なし経路）。カタログに無い学名は `not_in_catalog`。
+ * species_months で行が空だった種の理由を返す。足切りそのものは外さない。
+ * 足切りの判定列は `summary_species_catalog.n_located`（座標のある記録の件数。仮の名前。A の統合後に合わせる）。
+ * 1回の完全一致の問い合わせ（binom IN json_each）で n と n_located を引く。
+ *  - suppressed: 足切り（n_located < min_n）。n（座標なしを含む）と n_located を添える。
+ *  - no_located_month_cells: 足切りは通ったが、指定の出典の月セルが無い（出典の絞り込み・2018年以降のみ等）。
+ *  - not_in_catalog: カタログに無い学名。
  */
-async function monthsSuppression(db: CubeDb, binoms: readonly string[], rows: readonly { binom: string }[]) {
+async function monthsEmptyReasons(db: CubeDb, binoms: readonly string[], rows: readonly { binom: string }[], sourceIds: readonly string[]) {
   const have = new Set(rows.map((r) => r.binom));
-  const suppressed: { binom: string; n: number; min_n: number }[] = [];
-  const notInCatalog: string[] = [];
-  for (const binom of new Set(binoms)) {
-    if (have.has(binom)) continue;
-    const hit = (await speciesCatalog(db, { search: binom, limit: 50 })).find((s) => s.binom === binom);
-    if (hit && hit.n < SPECIES_MIN_N) suppressed.push({ binom, n: hit.n, min_n: SPECIES_MIN_N });
-    else if (!hit) notInCatalog.push(binom);
+  const missing = [...new Set(binoms)].filter((b) => !have.has(b));
+  const out = {
+    suppressed: [] as { binom: string; n: number; n_located: number; min_n: number }[],
+    no_located_month_cells: [] as { binom: string; source_ids: string[] }[],
+    not_in_catalog: [] as string[],
+  };
+  if (!missing.length) return out;
+  const found = await db.all<{ binom: string; n: number; n_located: number }>(
+    "SELECT binom, n, n_located FROM summary_species_catalog WHERE binom IN (SELECT value FROM json_each(?))",
+    [jsonEachParam(missing)],
+  );
+  const byBinom = new Map(found.map((r) => [r.binom, r]));
+  for (const binom of missing) {
+    const hit = byBinom.get(binom);
+    if (!hit) out.not_in_catalog.push(binom);
+    else if (hit.n_located < SPECIES_MIN_N) out.suppressed.push({ binom, n: hit.n, n_located: hit.n_located, min_n: SPECIES_MIN_N });
+    else out.no_located_month_cells.push({ binom, source_ids: [...sourceIds] });
   }
-  return { suppressed, not_in_catalog: notInCatalog };
+  return out;
 }
 
 function cap<T>(rows: readonly T[], limit: number | undefined): { rows: T[]; truncated: boolean } {
@@ -277,9 +292,9 @@ export const MCP_TOOLS: McpTool[] = [
         } else {
           const months = await speciesMonths(db, binoms, filter);
           rows = months;
-          // 件数の少ない種は月別を出さない（足切り）。黙って空にせず、どの種が何件で切られたかを返す。
-          const s = await monthsSuppression(db, binoms, months);
-          if (s.suppressed.length || s.not_in_catalog.length) extra = s;
+          // 行が空の種は、黙って空にせず理由（足切り・月セル無し・カタログ外）を返す。
+          const s = await monthsEmptyReasons(db, binoms, months, sourceIds);
+          if (s.suppressed.length || s.no_located_month_cells.length || s.not_in_catalog.length) extra = s;
         }
       }
       const c = cap(rows, limit);

@@ -28,11 +28,11 @@ selectors:
 # 値が閉じた集合のもの（実在の値。build_caveat.py が scope_ref の値と照合し、無ければ止める）。
 # variable_id・theme は registry/variable.yaml、doc_id・doc_table は cells.notes から検証するので
 # ここには書かない。place_kind は place.place_kind、source_id は taxon_assessment.source_id と manifests/<source_id>.yml のある出典、
-# dataset は variable_alias.csv の dataset 列＋配信表 sites・生物レコード organism_records。
+# dataset は variable_alias.csv の dataset 列＋配信表 sites。
 values:
   place_kind: [site, zone, grid01, watershed]
-  source_id: [moe_ias_list, gbif_kanagawa_occurrences, inaturalist_kanagawa]
-  dataset: [measurements, organism_records, sites]
+  source_id: [moe_ias_list, gbif_kanagawa_occurrences, inaturalist_kanagawa, kanagawa_kuma_sightings]
+  dataset: [measurements, sites]
 
 scopes:
   # 配信表 sites（地点台帳）を dataset として扱う（v1 の表名で引く経路は廃止）。
@@ -52,12 +52,14 @@ scopes:
   - {kind: observation_set, ref_from: unit_unknown_variables, ref_template: "variable={variable_id}&unit_id=null", caveats: [unitUnknown]}
 
   # 出現記録の注記は、関係する出典の facet に付ける（dataset 全体には付けない。結果に含まれない出典の注記を出さないため）。
-  # organismSite（流域は点内包判定の推定）・effort（観察努力）・regimes（年代で中身が入れ替わる）は GBIF と iNaturalist の記録に
-  # ついての本文。gbifCutoff は GBIF 側の取り込みの途切れなので GBIF だけ。eDNA・クマ目撃には付けない。
+  # 本文に照らした対応: organismSite は本文の件数・「原本で全件 NULL」が GBIF・iNat の記録（organism_records）のものなので
+  # GBIF と iNat だけ。effort は GBIF・iNat だけ（本文が記録者列の数値を含む）。eDNA・クマ目撃の努力の注記は effortSurvey（オーナー確認 2026-10-07）。ednaWatershed は eDNA だけ。
+  # regimes は標本・eBird・iNat の年代の入れ替わりなので GBIF と iNat。gbifCutoff は GBIF 側の途切れなので GBIF だけ。
   - {kind: source_edition, ref: source_id=gbif_kanagawa_occurrences, caveats: [organismSite, effort, regimes, gbifCutoff]}
   - {kind: source_edition, ref: source_id=inaturalist_kanagawa, caveats: [organismSite, effort, regimes]}
+  - {kind: source_edition, ref: source_id=kanagawa_kuma_sightings, caveats: [effortSurvey]}
   # 神奈川県 eDNA（source_id=kanagawa_edna の採水）。結果の出典に kanagawa_edna を含む tool に、source facet で掛かる。
-  - {kind: source_edition, ref: source_id=kanagawa_edna, caveats: [ednaReads, ednaCoords, ednaYearBasis, ednaNonDetect]}
+  - {kind: source_edition, ref: source_id=kanagawa_edna, caveats: [ednaReads, ednaCoords, ednaYearBasis, ednaNonDetect, ednaWatershed, effortSurvey]}
   # share は割合（‰）で比べる画面（grid01 の種別トレンド）だけに掛かる。流域の表は生の件数。件数を返す MCP は引かない。
   - {kind: place, ref: place_kind=grid01, caveats: [share]}
   - {kind: source_edition, ref: source_id=moe_ias_list, caveats: [isAlien]}

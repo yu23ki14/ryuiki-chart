@@ -34,8 +34,8 @@ describe("caveatKeysForFacets — facet ごとの注記キー（順序込み）"
     [{ kind: "dataset", ref: "organism_records" }, []], // 出典の facet に移した（dataset 全体には付けない）
     [sourceEditionOf("gbif_kanagawa_occurrences"), ["organismSite", "effort", "regimes", "gbifCutoff"]],
     [sourceEditionOf("inaturalist_kanagawa"), ["organismSite", "effort", "regimes"]],
-    [sourceEditionOf("kanagawa_edna"), ["ednaReads", "ednaCoords", "ednaYearBasis", "ednaNonDetect"]],
-    [sourceEditionOf("kanagawa_kuma_sightings"), []],
+    [sourceEditionOf("kanagawa_edna"), ["ednaReads", "ednaCoords", "ednaYearBasis", "ednaNonDetect", "ednaWatershed", "effortSurvey"]],
+    [sourceEditionOf("kanagawa_kuma_sightings"), ["effortSurvey"]],
     [{ kind: "observation_set", ref: "is_synthetic=1" }, ["synthetic"]],
     [placeKind("site"), ["zone", "municipality"]],
     [placeKind("zone"), ["zone"]],
@@ -70,10 +70,10 @@ describe("caveatKeysForFacets — facet ごとの注記キー（順序込み）"
 
   it("流域だけの生物（get_overview の facet）には share が付かない。grid01 には付く", () => {
     expect(caveatKeysForFacets(facetsForOccurrence({ places: ["watershed"] }))).toEqual([
-      "organismSite", "effort", "regimes", "gbifCutoff", "ednaReads", "ednaCoords", "ednaYearBasis", "ednaNonDetect",
+      "organismSite", "effort", "regimes", "gbifCutoff", "ednaReads", "ednaCoords", "ednaYearBasis", "ednaNonDetect", "ednaWatershed", "effortSurvey",
     ]);
     expect(caveatKeysForFacets(facetsForOccurrence({ places: ["grid01"] }))).toEqual([
-      "organismSite", "effort", "regimes", "gbifCutoff", "ednaReads", "ednaCoords", "ednaYearBasis", "ednaNonDetect", "share",
+      "organismSite", "effort", "regimes", "gbifCutoff", "ednaReads", "ednaCoords", "ednaYearBasis", "ednaNonDetect", "ednaWatershed", "effortSurvey", "share",
     ]);
   });
 });
@@ -211,12 +211,12 @@ describe("facetsForOccurrence（Issue #48 PR-3b）", () => {
     expect(facetsForOccurrence({ places: ["grid01"], ...none })).toEqual([placeKind("grid01")]);
     expect(facetsForOccurrence({ places: ["grid01", "watershed"], ias: true, ...none }).map((f) => f.kind)).toEqual(["place", "source_edition"]);
   });
-  it("出典を絞ると、その出典の注記だけが付く（eDNA だけ=eDNA の4件、GBIF だけ=eDNA なし・gbifCutoff あり、iNat だけ=gbifCutoff なし）", () => {
+  it("出典を絞ると、その出典の注記だけが付く（eDNA だけ=eDNA の6件、GBIF だけ=eDNA なし・gbifCutoff あり、iNat だけ=gbifCutoff なし）", () => {
     const keys = (sourceIds: string[]) => caveatKeysForFacets(facetsForOccurrence({ places: [], sourceIds }));
-    expect(keys(["kanagawa_edna"])).toEqual(["ednaReads", "ednaCoords", "ednaYearBasis", "ednaNonDetect"]);
+    expect(keys(["kanagawa_edna"])).toEqual(["ednaReads", "ednaCoords", "ednaYearBasis", "ednaNonDetect", "ednaWatershed", "effortSurvey"]);
     expect(keys(["gbif_kanagawa_occurrences"])).toEqual(["organismSite", "effort", "regimes", "gbifCutoff"]);
     expect(keys(["inaturalist_kanagawa"])).toEqual(["organismSite", "effort", "regimes"]);
-    expect(keys(["kanagawa_kuma_sightings"])).toEqual([]);
+    expect(keys(["kanagawa_kuma_sightings"])).toEqual(["effortSurvey"]);
   });
   it("出典の facet: 省略は全出典、指定はその分だけ。eDNA を外すと eDNA の注記は付かない", () => {
     const all = caveatKeysForFacets(facetsForOccurrence({ places: ["grid01"] }));
