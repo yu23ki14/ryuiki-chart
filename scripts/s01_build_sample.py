@@ -32,6 +32,12 @@ CLAUDE.md 「サンプル」設計の要件）。
   未照合行）、taxon ごとに rowid 最小の 1 行を足す（`select_taxon_origin_rows`）。
   サンプルに既にその taxon を生む行があれば足さない。supplement 由来の ID は
   registry が supplement から作るので対象外。
+- **adapter 入力表の座標が落ちる grid01 セルを生む `organism_records` の行**。grid01 の place は
+  `organism_records` の座標（`FLOOR(lat*100)`, `FLOOR(lon*100)`）からしか作られない
+  （`registry/build_place.py`）ので、adapter 入力表（`lat`/`lon` 列を持つもの）の座標が落ちるセルを
+  サンプルの `organism_records` が持たないと、b06 が「座標はあるのに grid01 が解決できない」で止まる。
+  サンプルに無いセルごとに、そのセルを生む原本の行を rowid 最小で 1 行足す
+  （`select_grid01_origin_rows`。taxon の閉包の**後**に評価する）。原本にも無いセルがあれば止まる。
 - **文書単位**（`cells.sqlite` の `cells`）は `document_closure.doc_ids` で
   指定した `doc_id` の全セルを入れる。
 
@@ -62,6 +68,7 @@ import argparse
 import csv
 import datetime
 import json
+import math
 import pathlib
 import shutil
 import sqlite3
@@ -401,6 +408,47 @@ def select_taxon_origin_rows(
     return {t: r for t, r in out.items() if r}
 
 
+def grid01_cell(lat: float, lon: float) -> tuple[int, int]:
+    """grid01 のセル（`registry/build_place.py`・`b06_build_occurrence.py` の `FLOOR(lat*100)`, `FLOOR(lon*100)` と同じ規則。
+    両者は式をインラインで持ち共有関数が無いので、ここでも同じ式。食い違えば test_s01 のセル一致テストが落ちる）。"""
+    return math.floor(lat * 100), math.floor(lon * 100)
+
+
+def select_grid01_origin_rows(
+    conn: sqlite3.Connection, manifests: dict[str, manifest_lib.Manifest], selected: dict[str, set[int]],
+) -> dict[str, set[int]]:
+    """adapter 入力表（target=occurrence の非 builtin・`lat`/`lon` 列あり）の座標が落ちる grid01 セルのうち、
+    サンプルの `organism_records`（`selected`）にまだ無いセルを、そのセルを生む原本の行（rowid 最小）で足す。
+    原本にもそのセルを生む行が無ければ止まる。"""
+    need: set[tuple[int, int]] = set()
+    for m in manifests.values():
+        table = m.input.get("table")
+        if table is None or m.target != "occurrence":
+            continue
+        cols = {r[1] for r in conn.execute(f'PRAGMA table_info("{table}")')}
+        if not {"lat", "lon"} <= cols:
+            continue
+        need |= {grid01_cell(la, lo) for la, lo in conn.execute(
+            f'SELECT DISTINCT lat, lon FROM "{table}" WHERE lat IS NOT NULL AND lon IS NOT NULL')}
+    if not need:
+        return {}
+    _create_rowid_temp_table(conn, "sel_org_cells", selected.get("organism_records", set()))
+    cell_sql = "CAST(FLOOR(lat*100) AS INT), CAST(FLOOR(lon*100) AS INT)"
+    have = {tuple(r) for r in conn.execute(
+        f"SELECT DISTINCT {cell_sql} FROM organism_records WHERE lat IS NOT NULL AND lon IS NOT NULL "
+        "AND rowid IN (SELECT rowid_value FROM temp.sel_org_cells)")}
+    origin = {(r[0], r[1]): r[2] for r in conn.execute(
+        f"SELECT {cell_sql}, MIN(rowid) FROM organism_records WHERE lat IS NOT NULL AND lon IS NOT NULL "
+        f"GROUP BY {cell_sql}")}
+    missing = sorted(need - have)
+    unresolvable = [c for c in missing if c not in origin]
+    if unresolvable:
+        raise SystemExit(f"adapter 入力表の座標が落ちる grid01 セルのうち、原本の organism_records にも無いものが "
+                         f"{len(unresolvable)} 件ある: {unresolvable[:5]}")
+    rows = {origin[c] for c in missing}
+    return {"organism_records": rows} if rows else {}
+
+
 def adapter_input_files(manifests: dict[str, manifest_lib.Manifest]) -> list[str]:
     """adapter 出典の入力ファイル（`input.file`。`data/processed/` 配下のファイル名）。サンプルの processed/ に丸ごと写す。"""
     names: list[str] = []
@@ -721,6 +769,9 @@ def main() -> int:
         selected[table] = rowids
     # 入力表の taxon_id が指す既存 taxon を、registry が作れるように原本の行を足す
     for table, rowids in select_taxon_origin_rows(ryuiki_conn, manifests, selected).items():
+        selected[table] = selected.get(table, set()) | rowids
+    # 入力表の座標が落ちる grid01 セルを、サンプルの organism_records が持つようにする（taxon の閉包の後）
+    for table, rowids in select_grid01_origin_rows(ryuiki_conn, manifests, selected).items():
         selected[table] = selected.get(table, set()) | rowids
 
     doc_ids = coverage["document_closure"]["doc_ids"]

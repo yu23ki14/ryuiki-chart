@@ -525,3 +525,46 @@ def test_taxon_origin_rows_skip_tables_without_taxon_id_and_non_occurrence(tmp_p
     conn.execute("CREATE TABLE wildlife_sightings (id INTEGER)")
     conn.execute("CREATE TABLE organism_records (source_id TEXT, taxon_key TEXT)")
     assert s01.select_taxon_origin_rows(conn, m, {}, supplement_ids=set()) == {}
+
+
+# ---------------------------------------------------------------- adapter 入力表の座標が落ちる grid01 セルの閉包
+def _grid_db(points):
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE organism_records (lat REAL, lon REAL)")
+    conn.execute("CREATE TABLE edna_x (lat REAL, lon REAL)")
+    # rowid 1,2 = セル (3556,13925) / 3 = (3510,13910) / 4 = (3570,13950) / 5 = 座標なし
+    conn.executemany("INSERT INTO organism_records VALUES (?,?)", [
+        (35.5641, 139.2509), (35.5650, 139.2511), (35.10, 139.10), (35.7001, 139.5002), (None, None)])
+    conn.executemany("INSERT INTO edna_x VALUES (?,?)", points)
+    return conn
+
+
+def test_grid01_origin_rows_add_missing_cells_with_min_rowid(tmp_path, monkeypatch):
+    m = s01.adapter_inputs(_adapter_manifest(tmp_path, monkeypatch, table="edna_x"))
+    conn = _grid_db([(35.564123, 139.250915), (35.7005, 139.5009), (None, None)])
+    got = s01.select_grid01_origin_rows(conn, m, {"organism_records": {3}})
+    assert got == {"organism_records": {1, 4}}          # セルごとに rowid 最小の 1 行
+    assert got == s01.select_grid01_origin_rows(conn, m, {"organism_records": {3}})       # 決定論
+    # サンプルに既にそのセルを生む行があれば足さない（別の行 2 でも同じセル）
+    assert s01.select_grid01_origin_rows(conn, m, {"organism_records": {2, 4}}) == {}
+
+
+def test_grid01_origin_rows_stop_when_origin_has_no_such_cell(tmp_path, monkeypatch):
+    m = s01.adapter_inputs(_adapter_manifest(tmp_path, monkeypatch, table="edna_x"))
+    conn = _grid_db([(36.5, 140.5)])
+    with pytest.raises(SystemExit, match="1 件"):
+        s01.select_grid01_origin_rows(conn, m, {})
+
+
+def test_grid01_origin_rows_skip_tables_without_coordinates(tmp_path, monkeypatch):
+    m = s01.adapter_inputs(_adapter_manifest(tmp_path, monkeypatch))             # wildlife_sightings（lat/lon なし）
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE wildlife_sightings (id INTEGER)")
+    assert s01.select_grid01_origin_rows(conn, m, {}) == {}
+
+
+def test_grid01_cell_matches_the_registry_sql_expression():
+    conn = sqlite3.connect(":memory:")
+    for lat, lon in [(35.29, 139.07), (35.564123, 139.250915), (35.0, 139.0), (35.58, 139.29), (35.1 + 0.2, 139.7 - 0.1)]:
+        sql = conn.execute("SELECT CAST(FLOOR(?*100) AS INT), CAST(FLOOR(?*100) AS INT)", (lat, lon)).fetchone()
+        assert s01.grid01_cell(lat, lon) == sql
