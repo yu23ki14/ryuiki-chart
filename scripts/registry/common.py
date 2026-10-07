@@ -411,6 +411,50 @@ def _hash_source_registry(h, ryuiki_path: pathlib.Path) -> None:
     _hash_labeled(h, "source_registry", None if rows is None else repr(rows).encode("utf-8"))
 
 
+def source_id_tables(conn: sqlite3.Connection) -> list[str]:
+    """`source_id` 列を持つ表（`source_registry` を除く）。`build_source_access.gather_counts` と指紋が同じ表を見る。"""
+    names = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name != 'source_registry' ORDER BY name")]
+    return [t for t in names if "source_id" in {r[1] for r in conn.execute(f'PRAGMA table_info("{t}")')}]
+
+
+def count_by_source(conn: sqlite3.Connection, table: str) -> dict[str, int]:
+    """表の出典別の行数。値はそのまま（`a|b` の複合値も 1 つの値。分けるかは呼び出し側）。"""
+    sql = f'SELECT source_id, count(*) FROM "{table}" WHERE source_id IS NOT NULL AND source_id != \'\' GROUP BY source_id'
+    return {str(sid): n for sid, n in conn.execute(sql)}
+
+
+# 出典別の件数（GROUP BY）で指紋を取る表の行数の上限。超える表（measurements / sensor_timeseries /
+# organism_records 級。索引が無く GROUP BY が表走査で、3 表で約 2 秒かかる）は v2 の代理指標と同じ（行数・最大 rowid）。
+_SOURCE_COUNTS_EXACT_MAX_ROWS = 100_000
+
+
+def _hash_source_access_counts(h, ryuiki_path: pathlib.Path) -> None:
+    """`build_source_access.py` が数える原本の表（`source_id` 列を持つ全表）の件数を指紋に混ぜる
+    （`n_source_rows` と、宣言（records/reason）と原本の突き合わせの入力。access.yaml と
+    manifests/ は `_fingerprint_source_paths()` が見る）。
+
+    行数が `_SOURCE_COUNTS_EXACT_MAX_ROWS` 以下の表は **出典別の件数**（`gather_counts` と同じ `count_by_source`。
+    値が出典の間で移っても、総数が同じでも検知できる）。それより大きい表は軽い代理指標（行数・最大 rowid。
+    INSERT/DELETE だけを拾う。`organism_records` と同じ考え方）。大表で出典の値だけが書き換わったときは検知できない
+    （既知の限界。そのときは `pnpm run build:registry` を明示する）。
+    `ryuiki.sqlite` が無い環境は「無い」を混ぜる。"""
+    if not ryuiki_path.exists():
+        _hash_labeled(h, "source_access_counts", None)
+        return
+    conn = sqlite3.connect(f"file:{ryuiki_path}?mode=ro", uri=True)
+    try:
+        values = []
+        for t in source_id_tables(conn):
+            n = conn.execute(f'SELECT count(*) FROM "{t}"').fetchone()[0]
+            if n <= _SOURCE_COUNTS_EXACT_MAX_ROWS:
+                values.append((t, n, sorted(count_by_source(conn, t).items())))
+            else:
+                values.append((t, n, conn.execute(f'SELECT max(rowid) FROM "{t}"').fetchone()[0]))
+    finally:
+        conn.close()
+    _hash_labeled(h, "source_access_counts", repr(values).encode("utf-8"))
+
+
 def compute_input_fingerprint(
     root: pathlib.Path | None = None, mode: str = MODE_FULL
 ) -> str:
@@ -482,6 +526,7 @@ def compute_input_fingerprint(
         )
         _hash_organism_records_freshness(h, base / "data" / "db" / "ryuiki.sqlite")
         _hash_source_registry(h, base / "data" / "db" / "ryuiki.sqlite")
+        _hash_source_access_counts(h, base / "data" / "db" / "ryuiki.sqlite")
 
     return h.hexdigest()
 

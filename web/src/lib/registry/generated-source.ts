@@ -299,6 +299,1664 @@ export const SOURCE_EDITIONS: readonly GeneratedSourceEdition[] = [
 /** 出現データ（occurrence_agg）の出典。マニフェスト（target=occurrence）由来。画面用 API・MCP の provenance/freshness が使う。 */
 export const OCCURRENCE_SOURCE_IDS: readonly string[] = ["gbif_kanagawa_occurrences","inaturalist_kanagawa","kanagawa_edna","kanagawa_kuma_sightings"];
 
+/** 出典ごとの状態（registry/source/access.yaml と manifests/ から r01 が作る。MCP_SOURCE_ACCESS.md §1）。 */
+export interface GeneratedSourceAccess {
+  state: "queryable" | "not_queryable";
+  /** 取れるツール名（get_observations / get_occurrences / get_edna / get_records）。取れないなら空。 */
+  queryableVia: string[];
+  /** get_records で引ける record_set（記録の集合名。空なら get_records の対象外）。 */
+  tables: string[];
+  /** record_set → その出典の行数（get_records の n_total。原本の表の行数で、出典で絞った数）。 */
+  recordSetRows: Record<string, number>;
+  /** 原本の行数（キューブの集計行数ではない）。取れない出典は null。 */
+  nSourceRows: number | null;
+  nSourceRowsBasis: "source_rows" | "registry_record_count" | "none";
+  /** 件数を数えた原本の最新取得日時（決定論のため実行時刻ではない）。 */
+  countedAt: string | null;
+  /** 取れない理由コード（queryableVia が空のとき必須）。 */
+  reason: string | null;
+  reasonJa: string | null;
+  reasonNote: string | null;
+}
+
+/** 合成データの出典を除く全出典（SOURCE_META と同じキー）。 */
+export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
+  "atsugi_river_water_quality": {
+    "state": "queryable",
+    "queryableVia": [
+      "get_observations"
+    ],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": 4560,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": null
+  },
+  "ayu_upstream_migration": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "biodic_6th_kanagawa_report": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "pdf_document",
+    "reasonJa": "PDF の文書のまま。表として取り出していない",
+    "reasonNote": null
+  },
+  "biodic_animal_distribution": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "blocked_access",
+    "reasonJa": "ログイン・APIキー・利用アンケート・JS 画面などで、自動取得できていない",
+    "reasonNote": null
+  },
+  "biodic_kiban_datalist": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "map_service",
+    "reasonJa": "地図サービス（WebGIS）。値は外部サービス側にある",
+    "reasonNote": null
+  },
+  "biodic_mammal_mesh_kanagawa": {
+    "state": "queryable",
+    "queryableVia": [
+      "get_records"
+    ],
+    "tables": [
+      "mammal_mesh"
+    ],
+    "recordSetRows": {
+      "mammal_mesh": 75240
+    },
+    "nSourceRows": 75240,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": null
+  },
+  "biodic_veg2024_kanagawa": {
+    "state": "queryable",
+    "queryableVia": [
+      "get_records"
+    ],
+    "tables": [
+      "vegetation"
+    ],
+    "recordSetRows": {
+      "vegetation": 13206
+    },
+    "nSourceRows": 13206,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": null
+  },
+  "biodic_vegcode_legend": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "biodic_vegmesh_4th_kanagawa": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "biodic_vegmesh_5th_kanagawa": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "biodic_webgis": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "map_service",
+    "reasonJa": "地図サービス（WebGIS）。値は外部サービス側にある",
+    "reasonNote": null
+  },
+  "buna_suitai_web": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "not_collected",
+    "reasonJa": "未収集（取得手段が未着手、または登録のみ）",
+    "reasonNote": null
+  },
+  "ckan_bodik_kanagawa": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "catalog_only",
+    "reasonJa": "データ目録（メタデータ）で、観測値・記録そのものではない",
+    "reasonNote": null
+  },
+  "ckan_env_bulk": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "ckan_kanagawa_pref": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "catalog_only",
+    "reasonJa": "データ目録（メタデータ）で、観測値・記録そのものではない",
+    "reasonNote": null
+  },
+  "ckan_pdf_choju_higai": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "pdf_document",
+    "reasonJa": "PDF の文書のまま。表として取り出していない",
+    "reasonNote": null
+  },
+  "ckan_pdf_choju_kyugo": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "pdf_document",
+    "reasonJa": "PDF の文書のまま。表として取り出していない",
+    "reasonNote": null
+  },
+  "ckan_pdf_ghg_kanagawa": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "pdf_document",
+    "reasonJa": "PDF の文書のまま。表として取り出していない",
+    "reasonNote": null
+  },
+  "ckan_pdf_shinrin_toukei": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "pdf_document",
+    "reasonJa": "PDF の文書のまま。表として取り出していない",
+    "reasonNote": null
+  },
+  "ckan_sagamihara": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "catalog_only",
+    "reasonJa": "データ目録（メタデータ）で、観測値・記録そのものではない",
+    "reasonNote": null
+  },
+  "ckan_yokohama": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "catalog_only",
+    "reasonJa": "データ目録（メタデータ）で、観測値・記録そのものではない",
+    "reasonNote": null
+  },
+  "dams_kanagawa": {
+    "state": "queryable",
+    "queryableVia": [
+      "get_records"
+    ],
+    "tables": [
+      "sites"
+    ],
+    "recordSetRows": {
+      "sites": 4
+    },
+    "nSourceRows": 4,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": null
+  },
+  "eadas_kanagawa": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "blocked_access",
+    "reasonJa": "ログイン・APIキー・利用アンケート・JS 画面などで、自動取得できていない",
+    "reasonNote": null
+  },
+  "env_kousui_annual_kanagawa": {
+    "state": "queryable",
+    "queryableVia": [
+      "get_observations"
+    ],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": 98328,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": null
+  },
+  "env_kousui_sample_kanagawa": {
+    "state": "queryable",
+    "queryableVia": [
+      "get_observations"
+    ],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": 214725,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": null
+  },
+  "env_kousui_stations_kanagawa": {
+    "state": "queryable",
+    "queryableVia": [
+      "get_records"
+    ],
+    "tables": [
+      "sites"
+    ],
+    "recordSetRows": {
+      "sites": 290
+    },
+    "nSourceRows": 290,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": null
+  },
+  "estat_agri_census_kanagawa": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "estat_census_population_kanagawa": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "estat_shozaiki_kanagawa": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "d1_no_source_column",
+    "reasonJa": "D1 の表に出典の列が無く、表の行をどの出典のものか機械的に引けない",
+    "reasonNote": null
+  },
+  "etanzawa_siryousitu": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "pdf_document",
+    "reasonJa": "PDF の文書のまま。表として取り出していない",
+    "reasonNote": null
+  },
+  "gbif_kanagawa": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "superseded",
+    "reasonJa": "別の出典に置き換わった（superseded_by 参照）",
+    "reasonNote": "gbif_kanagawa_occurrences に置き換わった。値はそちらで取る"
+  },
+  "gbif_kanagawa_occurrences": {
+    "state": "queryable",
+    "queryableVia": [
+      "get_occurrences"
+    ],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": 658360,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": null
+  },
+  "gbif_species_match": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "geoshape_sagami_river": {
+    "state": "queryable",
+    "queryableVia": [
+      "get_records"
+    ],
+    "tables": [
+      "river_segments"
+    ],
+    "recordSetRows": {
+      "river_segments": 1547
+    },
+    "nSourceRows": 1547,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": null
+  },
+  "geospatial_jp_agri_point_2021_sagami": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "geospatial_jp_agri_poly_2021_sagami": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "not_collected",
+    "reasonJa": "未収集（取得手段が未着手、または登録のみ）",
+    "reasonNote": null
+  },
+  "geospatial_jp_kanagawa_catalog": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "catalog_only",
+    "reasonJa": "データ目録（メタデータ）で、観測値・記録そのものではない",
+    "reasonNote": null
+  },
+  "geospatial_jp_kokudo_landclass_kanagawa": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "geospatial_jp_kokudo_river_sagami": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "geospatial_jp_plateau_kanagawa": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "catalog_only",
+    "reasonJa": "データ目録（メタデータ）で、観測値・記録そのものではない",
+    "reasonNote": null
+  },
+  "geospatial_jp_pointcloud_kanagawa": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "catalog_only",
+    "reasonJa": "データ目録（メタデータ）で、観測値・記録そのものではない",
+    "reasonNote": null
+  },
+  "gsi_elevation_grid": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "gsi_kiban_chizu_joho": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "blocked_access",
+    "reasonJa": "ログイン・APIキー・利用アンケート・JS 画面などで、自動取得できていない",
+    "reasonNote": null
+  },
+  "gsj_geology_points": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "gsj_seamless_legend": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "hadano_preserved_trees": {
+    "state": "queryable",
+    "queryableVia": [
+      "get_records"
+    ],
+    "tables": [
+      "protected_areas"
+    ],
+    "recordSetRows": {
+      "protected_areas": 30
+    },
+    "nSourceRows": 30,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": null
+  },
+  "hiratsuka_parks": {
+    "state": "queryable",
+    "queryableVia": [
+      "get_records"
+    ],
+    "tables": [
+      "protected_areas"
+    ],
+    "recordSetRows": {
+      "protected_areas": 290
+    },
+    "nSourceRows": 290,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": null
+  },
+  "hiratsuka_taiki": {
+    "state": "queryable",
+    "queryableVia": [
+      "get_observations"
+    ],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": 245513,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": null
+  },
+  "hiratsuka_taiki_stations": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "ikilog": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "blocked_access",
+    "reasonJa": "ログイン・APIキー・利用アンケート・JS 画面などで、自動取得できていない",
+    "reasonNote": null
+  },
+  "inaturalist_kanagawa": {
+    "state": "queryable",
+    "queryableVia": [
+      "get_occurrences"
+    ],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": 165332,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": null
+  },
+  "jma_daily_yokohama": {
+    "state": "queryable",
+    "queryableVia": [
+      "get_observations"
+    ],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": 19420,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": null
+  },
+  "jma_monthly_kanagawa": {
+    "state": "queryable",
+    "queryableVia": [
+      "get_observations"
+    ],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": 13821,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": null
+  },
+  "jma_stations_kanagawa": {
+    "state": "queryable",
+    "queryableVia": [
+      "get_records"
+    ],
+    "tables": [
+      "sites"
+    ],
+    "recordSetRows": {
+      "sites": 12
+    },
+    "nSourceRows": 12,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": null
+  },
+  "kanagawa_dam_mizugame": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "external_api",
+    "reasonJa": "外部 API・CGI・現況ページ。値は提供元に問い合わせる",
+    "reasonNote": "動的 JSON の現況。蓄積した履歴が無い"
+  },
+  "kanagawa_edna": {
+    "state": "queryable",
+    "queryableVia": [
+      "get_occurrences",
+      "get_edna"
+    ],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": 134443,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": null
+  },
+  "kanagawa_green_conservation": {
+    "state": "queryable",
+    "queryableVia": [
+      "get_records"
+    ],
+    "tables": [
+      "protected_areas"
+    ],
+    "recordSetRows": {
+      "protected_areas": 379
+    },
+    "nSourceRows": 379,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": null
+  },
+  "kanagawa_ikimono_chousa": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "pdf_document",
+    "reasonJa": "PDF の文書のまま。表として取り出していない",
+    "reasonNote": null
+  },
+  "kanagawa_jiban_chinka": {
+    "state": "queryable",
+    "queryableVia": [
+      "get_observations"
+    ],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": 3286,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": null
+  },
+  "kanagawa_kuma_sightings": {
+    "state": "queryable",
+    "queryableVia": [
+      "get_occurrences",
+      "get_records"
+    ],
+    "tables": [
+      "sightings"
+    ],
+    "recordSetRows": {
+      "sightings": 400
+    },
+    "nSourceRows": 400,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": null
+  },
+  "kanagawa_natural_parks": {
+    "state": "queryable",
+    "queryableVia": [
+      "get_records"
+    ],
+    "tables": [
+      "protected_areas"
+    ],
+    "recordSetRows": {
+      "protected_areas": 29
+    },
+    "nSourceRows": 29,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": null
+  },
+  "kanagawa_rdb2006_animals": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "not_in_d1",
+    "reasonJa": "原本には行があるが、D1 にその表が無い（本番では引けない）",
+    "reasonNote": null
+  },
+  "kanagawa_rdb2006_errata": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "kanagawa_rdb2022_plants": {
+    "state": "queryable",
+    "queryableVia": [
+      "get_records"
+    ],
+    "tables": [
+      "assessments"
+    ],
+    "recordSetRows": {
+      "assessments": 1033
+    },
+    "nSourceRows": 1033,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": null
+  },
+  "kanagawa_redlist": {
+    "state": "queryable",
+    "queryableVia": [
+      "get_records"
+    ],
+    "tables": [
+      "assessments"
+    ],
+    "recordSetRows": {
+      "assessments": 1851
+    },
+    "nSourceRows": 1851,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": null
+  },
+  "kanagawa_redlist_categories": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "kanagawa_river_citizen_survey": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "not_in_d1",
+    "reasonJa": "原本には行があるが、D1 にその表が無い（本番では引けない）",
+    "reasonNote": null
+  },
+  "kanagawa_shizenshi_bibliography": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "kasen_kokusei_sagami": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "pdf_document",
+    "reasonJa": "PDF の文書のまま。表として取り出していない",
+    "reasonNote": null
+  },
+  "miyagase_storage_status": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "external_api",
+    "reasonJa": "外部 API・CGI・現況ページ。値は提供元に問い合わせる",
+    "reasonNote": "現況のスナップショット（更新のたびに内容が上書きされる）"
+  },
+  "mlit_river_hydro": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "external_api",
+    "reasonJa": "外部 API・CGI・現況ページ。値は提供元に問い合わせる",
+    "reasonNote": null
+  },
+  "moe_ias_list": {
+    "state": "queryable",
+    "queryableVia": [
+      "get_records"
+    ],
+    "tables": [
+      "assessments"
+    ],
+    "recordSetRows": {
+      "assessments": 429
+    },
+    "nSourceRows": 429,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": null
+  },
+  "moe_meisui_kanagawa": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "moe_redlist": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "not_in_d1",
+    "reasonJa": "原本には行があるが、D1 にその表が無い（本番では引けない）",
+    "reasonNote": null
+  },
+  "moe_satoyama_kanagawa": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "moni1000_coast_shorebird": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "moni1000_forest_bird": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "moni1000_lake_aquaticplants": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "blocked_access",
+    "reasonJa": "ログイン・APIキー・利用アンケート・JS 画面などで、自動取得できていない",
+    "reasonNote": null
+  },
+  "moni1000_lake_benthos": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "blocked_access",
+    "reasonJa": "ログイン・APIキー・利用アンケート・JS 画面などで、自動取得できていない",
+    "reasonNote": null
+  },
+  "moni1000_lake_fish": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "blocked_access",
+    "reasonJa": "ログイン・APIキー・利用アンケート・JS 画面などで、自動取得できていない",
+    "reasonNote": null
+  },
+  "moni1000_satochi_bird": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "moni1000_satochi_butterfly": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "moni1000_satochi_mammal": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "moni1000_sites": {
+    "state": "queryable",
+    "queryableVia": [
+      "get_records"
+    ],
+    "tables": [
+      "sites"
+    ],
+    "recordSetRows": {
+      "sites": 30
+    },
+    "nSourceRows": 30,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": null
+  },
+  "moni1000_waterfowl": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "blocked_access",
+    "reasonJa": "ログイン・APIキー・利用アンケート・JS 画面などで、自動取得できていない",
+    "reasonNote": null
+  },
+  "moni1000_wetland_vegetation": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "blocked_access",
+    "reasonJa": "ログイン・APIキー・利用アンケート・JS 画面などで、自動取得できていない",
+    "reasonNote": null
+  },
+  "nlni_a03_metro_area": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "not_collected",
+    "reasonJa": "未収集（取得手段が未着手、または登録のみ）",
+    "reasonNote": null
+  },
+  "nlni_a10_natparks": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": "data/processed に 4 ファイル。D1 の表は無い"
+  },
+  "nlni_a15_wildlife": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "nlni_a45_forest": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "nlni_l03b_landuse_2006": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "nlni_l03b_landuse_2016": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "nlni_l03b_landuse_by_watershed": {
+    "state": "queryable",
+    "queryableVia": [
+      "get_observations"
+    ],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": 4858,
+    "nSourceRowsBasis": "registry_record_count",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": null
+  },
+  "nlni_p05_city_hall": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "not_collected",
+    "reasonJa": "未収集（取得手段が未着手、または登録のみ）",
+    "reasonNote": null
+  },
+  "nlni_w05_river_nodes": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "nlni_w05_rivers": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "nlni_w07_watershed_mesh": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "not_collected",
+    "reasonJa": "未収集（取得手段が未着手、または登録のみ）",
+    "reasonNote": null
+  },
+  "nlni_w12_watersheds": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "nlni_w12_watersheds_by_system": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "osm_kanagawa_farmland": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "osm_kanagawa_forest": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "osm_kanagawa_protected_area": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "osm_kanagawa_water": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "resas_api": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "blocked_access",
+    "reasonJa": "ログイン・APIキー・利用アンケート・JS 画面などで、自動取得できていない",
+    "reasonNote": null
+  },
+  "rinya_forest_stats_prefecture": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "rinya_lidar_kanagawa_status": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "sagami_livecams": {
+    "state": "queryable",
+    "queryableVia": [
+      "get_records"
+    ],
+    "tables": [
+      "sites"
+    ],
+    "recordSetRows": {
+      "sites": 16
+    },
+    "nSourceRows": 16,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": null
+  },
+  "sagami_seibi_keikaku_mirror": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "pdf_document",
+    "reasonJa": "PDF の文書のまま。表として取り出していない",
+    "reasonNote": null
+  },
+  "sagamihara_digital_archive": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "sagamihara_taiki_hourly": {
+    "state": "queryable",
+    "queryableVia": [
+      "get_observations"
+    ],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": 175344,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": null
+  },
+  "sagamihara_taiki_stations": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "satonavi_donkai": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "snet_kahaku": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "blocked_access",
+    "reasonJa": "ログイン・APIキー・利用アンケート・JS 画面などで、自動取得できていない",
+    "reasonNote": null
+  },
+  "soramame_hourly_kanagawa": {
+    "state": "queryable",
+    "queryableVia": [
+      "get_observations"
+    ],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": 168793,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": null
+  },
+  "soramame_stations_kanagawa": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "tanzawa_shika_suigen_docs": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "pdf_document",
+    "reasonJa": "PDF の文書のまま。表として取り出していない",
+    "reasonNote": null
+  },
+  "tanzawa_species_list_1997": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "tanzawa_visitor_centers": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "water_source_docs": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "d1_no_source_column",
+    "reasonJa": "D1 の表に出典の列が無く、表の行をどの出典のものか機械的に引けない",
+    "reasonNote": null
+  },
+  "water_trace_kawasaki": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "d1_no_source_column",
+    "reasonJa": "D1 の表に出典の列が無く、表の行をどの出典のものか機械的に引けない",
+    "reasonNote": null
+  },
+  "water_trace_yokohama": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "d1_no_source_column",
+    "reasonJa": "D1 の表に出典の列が無く、表の行をどの出典のものか機械的に引けない",
+    "reasonNote": null
+  },
+  "ylist": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "license",
+    "reasonJa": "利用条件が不明のため取得していない",
+    "reasonNote": null
+  },
+  "yokohama_bio_indicator": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "yokohama_river_waterlevel": {
+    "state": "queryable",
+    "queryableVia": [
+      "get_observations"
+    ],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": 75528,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-07T13:28:13",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": null
+  }
+};
+
+/** 観測データ（measurements・sensor_timeseries・土地利用）の出典。マニフェスト（target=observation）由来。get_observations で取れる。 */
+export const OBSERVATION_SOURCE_IDS: readonly string[] = ["atsugi_river_water_quality","env_kousui_annual_kanagawa","env_kousui_sample_kanagawa","hiratsuka_taiki","jma_daily_yokohama","jma_monthly_kanagawa","kanagawa_jiban_chinka","nlni_l03b_landuse_by_watershed","sagamihara_taiki_hourly","soramame_hourly_kanagawa","yokohama_river_waterlevel"];
+
+/** get_records の record_set → D1 の表（registry/source/access.yaml の record_sets。この対応の正はそこ 1 か所）。 */
+export const RECORD_SET_TABLES: Readonly<Record<string, string>> = {
+  "sites": "sites",
+  "protected_areas": "protected_areas",
+  "vegetation": "vegetation_polygons",
+  "river_segments": "river_segments",
+  "mammal_mesh": "mammal_mesh",
+  "sightings": "wildlife_sightings",
+  "assessments": "taxon_assessment"
+};
+
+/** 一覧から除いた出典の件数と理由（合成データ。出典メタの読み出し口に合成の出典を出さない既存の保証）。 */
+export const SOURCE_EXCLUDED_FROM_LIST: Readonly<Record<string, number>> = {"synthetic":1};
+
+/** get_records で引ける出典（SOURCE_ACCESS の tables が空でないもの）。 */
+export const RECORD_SOURCE_IDS: readonly string[] = ["biodic_mammal_mesh_kanagawa","biodic_veg2024_kanagawa","dams_kanagawa","env_kousui_stations_kanagawa","geoshape_sagami_river","hadano_preserved_trees","hiratsuka_parks","jma_stations_kanagawa","kanagawa_green_conservation","kanagawa_kuma_sightings","kanagawa_natural_parks","kanagawa_rdb2022_plants","kanagawa_redlist","moe_ias_list","moni1000_sites","sagami_livecams"];
+
 export const LICENSES: readonly GeneratedLicense[] = [
   { licenseId: "all_rights_reserved", nameJa: "無断複製・転用不可", spdxOrUrl: null, licenseClass: "restricted", attributionText: null },
   { licenseId: "biodic_terms", nameJa: "環境省生物多様性センターウェブサイト利用規約", spdxOrUrl: "https://www.biodic.go.jp/", licenseClass: "custom_terms", attributionText: "出典を明示する" },

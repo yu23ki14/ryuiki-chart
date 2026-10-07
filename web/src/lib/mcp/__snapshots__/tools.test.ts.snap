@@ -3,7 +3,7 @@
 exports[`MCP ツール一覧（第1段 5 本） > 入力スキーマのスナップショット 1`] = `
 [
   {
-    "description": "流域カルテにどんな測定項目・水域・ゾーン・出典があるかを一覧する。まず全体像を掴むときに使う。what='variables' は測定項目（variableId を get_observations に渡す）、'waters' は水域、'zones' は Ridge to Reef ゾーン、'sources' は出典（取得日・更新方式つき）。読み方: 値は定量下限未満を value_lod（下限値で代用）と value_zero（0 で代用）の両方で返す。n_censored・n_not_detected が多い系列は下限付近の値を平均した結果なので断定しない。caveats は必ず利用者に伝える。provenance の fetched_at・update_mode・age_days から、データの新しさと更新方式を判断する（update_mode が undeclared の出典は更新方式が未宣言）。欠測を補完しない。",
+    "description": "流域カルテにどんな測定項目・水域・ゾーン・出典があるかを一覧する。まず全体像を掴むときに使う。what='variables' は測定項目（variableId を get_observations に渡す）、'waters' は水域、'zones' は Ridge to Reef ゾーン、'sources' は出典（取得日・更新方式・取れるツール queryable_via・取れない理由つき）。出典の件数・ツール別の件数・取れない理由別の件数は応答の summary を使う（一覧を自分で数えない）。n_source_rows は原本の行数で、get_observations の n（集計に使った件数）とは別物。読み方: 値は定量下限未満を value_lod（下限値で代用）と value_zero（0 で代用）の両方で返す。n_censored・n_not_detected が多い系列は下限付近の値を平均した結果なので断定しない。caveats は必ず利用者に伝える。provenance の fetched_at・update_mode・age_days から、データの新しさと更新方式を判断する（update_mode が undeclared の出典は更新方式が未宣言）。欠測を補完しない。",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -13,6 +13,10 @@ exports[`MCP ツール一覧（第1段 5 本） > 入力スキーマのスナッ
           "maximum": 500,
           "minimum": 1,
           "type": "integer",
+        },
+        "queryable": {
+          "description": "what='sources' のとき、ツールで値が取れる出典（true）／取れない出典（false）に絞る",
+          "type": "boolean",
         },
         "variableId": {
           "description": "what='waters' のとき、この項目のデータを持つ水域に絞る（variables の variableId）",
@@ -73,7 +77,7 @@ exports[`MCP ツール一覧（第1段 5 本） > 入力スキーマのスナッ
     "name": "search_registry",
   },
   {
-    "description": "ある測定項目の時系列を取る（水質・気象・水文など）。scope で水域（地点ごと）・1地点・ゾーン平均を選び、grain で粒度を選ぶ。応答は封筒（rows・coverage・provenance・caveats・excluded・cite_as）。読み方: 値は定量下限未満を value_lod（下限値で代用）と value_zero（0 で代用）の両方で返す。n_censored・n_not_detected が多い系列は下限付近の値を平均した結果なので断定しない。caveats は必ず利用者に伝える。provenance の fetched_at・update_mode・age_days から、データの新しさと更新方式を判断する（update_mode が undeclared の出典は更新方式が未宣言）。欠測を補完しない。",
+    "description": "ある測定項目の時系列を取る（水質・気象・水文など）。scope で水域（地点ごと）・1地点・ゾーン平均・流域を選び、grain で粒度を選ぶ。source_ids を省略すると水質などの測定値系の系列（従来どおり）。大気（相模原・そらまめ）・河川水位（横浜）のセンサー系列や土地利用（流域ごと、scope.type='watershed'）は source_ids で出典を指定して引く（出典は describe_catalog what='sources' の queryable_via に get_observations があるもの）。センサー系列は毎時の観測を日・月・年に積んだ値なので、密な日次は scope=site と from/to で絞り、広く見るなら grain=month/year にする（grain='day' で from/to とも省略すると直近 2 年）。同じ測定項目・粒度の系列を複数の出典が共有するとき、セルは出典で分けられない（provenance に出典が並ぶ）。応答は封筒（rows・coverage・provenance・caveats・excluded・cite_as）。読み方: 値は定量下限未満を value_lod（下限値で代用）と value_zero（0 で代用）の両方で返す。n_censored・n_not_detected が多い系列は下限付近の値を平均した結果なので断定しない。caveats は必ず利用者に伝える。provenance の fetched_at・update_mode・age_days から、データの新しさと更新方式を判断する（update_mode が undeclared の出典は更新方式が未宣言）。欠測を補完しない。",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -149,7 +153,46 @@ exports[`MCP ツール一覧（第1段 5 本） > 入力スキーマのスナッ
               ],
               "type": "object",
             },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "placeId": {
+                  "description": "流域の place_id（省略は全流域。土地利用など流域単位の系列用）",
+                  "type": "string",
+                },
+                "type": {
+                  "const": "watershed",
+                  "type": "string",
+                },
+              },
+              "required": [
+                "type",
+              ],
+              "type": "object",
+            },
           ],
+        },
+        "source_ids": {
+          "description": "出典で絞る（その出典の系列を dataset を問わず引く）。省略時は測定値系（measurements）の系列。例: ['soramame_hourly_kanagawa']",
+          "items": {
+            "enum": [
+              "atsugi_river_water_quality",
+              "env_kousui_annual_kanagawa",
+              "env_kousui_sample_kanagawa",
+              "hiratsuka_taiki",
+              "jma_daily_yokohama",
+              "jma_monthly_kanagawa",
+              "kanagawa_jiban_chinka",
+              "nlni_l03b_landuse_by_watershed",
+              "sagamihara_taiki_hourly",
+              "soramame_hourly_kanagawa",
+              "yokohama_river_waterlevel",
+            ],
+            "type": "string",
+          },
+          "maxItems": 11,
+          "minItems": 1,
+          "type": "array",
         },
         "stat": {
           "description": "非代表の統計量（p75/p90/max/min）。省略時は代表系列",
@@ -311,6 +354,88 @@ exports[`MCP ツール一覧（第1段 5 本） > 入力スキーマのスナッ
       "type": "object",
     },
     "name": "export_dataset",
+  },
+  {
+    "description": "出典（source_id）を指定して、台帳表の明細をそのまま取る。観測値・出現記録ではない地点・保護区・植生・河川・哺乳類メッシュ・クマ出没・レッドリスト／外来種の評価など。任意 SQL ではなく、出典ごとに宣言された表だけ。主キー昇順。id で 1 件、q で名称・和名・学名の部分一致。植生・河川のジオメトリは id 指定の 1 件だけ include_geometry で返す。結果が truncated のときは next_after を after に渡して続きを取る（深いページは offset より速い）。ライセンスや座標で行を除外・加工しない。利用条件は provenance の出典情報を見る。使える出典と record_set（複数あるときは record_set を指定）: biodic_mammal_mesh_kanagawa=mammal_mesh、biodic_veg2024_kanagawa=vegetation、dams_kanagawa=sites、env_kousui_stations_kanagawa=sites、geoshape_sagami_river=river_segments、hadano_preserved_trees=protected_areas、hiratsuka_parks=protected_areas、jma_stations_kanagawa=sites、kanagawa_green_conservation=protected_areas、kanagawa_kuma_sightings=sightings、kanagawa_natural_parks=protected_areas、kanagawa_rdb2022_plants=assessments、kanagawa_redlist=assessments、moe_ias_list=assessments、moni1000_sites=sites、sagami_livecams=sites。",
+    "inputSchema": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "after": {
+          "description": "直前のページの最後の主キー（結果の next_after をそのまま渡す）。主キー昇順でその次から読む。深いページでは offset より after を使う（offset とは併用できない）",
+          "maxLength": 300,
+          "minLength": 1,
+          "type": "string",
+        },
+        "id": {
+          "description": "主キーの完全一致（1 件取り）",
+          "maxLength": 300,
+          "minLength": 1,
+          "type": "string",
+        },
+        "include_geometry": {
+          "description": "true なら geometry_geojson も返す（植生・河川のみ。id を指定した 1 件のときだけ許す。一覧では返さない）",
+          "type": "boolean",
+        },
+        "limit": {
+          "description": "返す行数の上限（既定 100、最大 500）",
+          "maximum": 500,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "offset": {
+          "description": "読み飛ばす行数（浅いページ向け。深いページは after を使う。既定 0）",
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer",
+        },
+        "q": {
+          "description": "表ごとの検索列（名称・和名・学名など）の部分一致",
+          "minLength": 1,
+          "type": "string",
+        },
+        "record_set": {
+          "description": "記録の集合（sites・protected_areas・vegetation・river_segments・mammal_mesh・sightings・assessments）。出典に集合が複数あるときだけ必須（1つなら省略可）",
+          "enum": [
+            "sites",
+            "protected_areas",
+            "vegetation",
+            "river_segments",
+            "mammal_mesh",
+            "sightings",
+            "assessments",
+          ],
+          "type": "string",
+        },
+        "source_id": {
+          "description": "出典（必須。使える出典と record_set の組はツールの説明にある）",
+          "enum": [
+            "biodic_mammal_mesh_kanagawa",
+            "biodic_veg2024_kanagawa",
+            "dams_kanagawa",
+            "env_kousui_stations_kanagawa",
+            "geoshape_sagami_river",
+            "hadano_preserved_trees",
+            "hiratsuka_parks",
+            "jma_stations_kanagawa",
+            "kanagawa_green_conservation",
+            "kanagawa_kuma_sightings",
+            "kanagawa_natural_parks",
+            "kanagawa_rdb2022_plants",
+            "kanagawa_redlist",
+            "moe_ias_list",
+            "moni1000_sites",
+            "sagami_livecams",
+          ],
+          "type": "string",
+        },
+      },
+      "required": [
+        "source_id",
+      ],
+      "type": "object",
+    },
+    "name": "get_records",
   },
 ]
 `;

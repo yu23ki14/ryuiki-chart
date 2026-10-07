@@ -138,6 +138,26 @@ CREATE TABLE IF NOT EXISTS source_edition (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS ux_source_edition_source_key ON source_edition(source_id, edition_key);
 
+-- 出典ごとの「ツールで値が取れるか」(docs/plans/MCP_SOURCE_ACCESS.md §1)。source 1 行 = 1 行(合成データを含む)。
+-- 正は registry/source/access.yaml と manifests/(build_source_access.py が原本と突き合わせて作る)。
+-- state: queryable / not_queryable。queryable_via・tables は JSON(配列)。record_set_rows は JSON(オブジェクト。record_set → その出典の行数。get_records の n_total)。
+-- n_source_rows は原本の行数(キューブの集計行数ではない)。basis: source_rows / registry_record_count / none。
+-- counted_at は件数を数えた原本の最新取得日時(source_registry.fetched_at の最大。決定論のため実行時刻は使わない)。
+-- not_queryable のときだけ reason(コード)・reason_ja・reason_note を持つ。
+CREATE TABLE IF NOT EXISTS source_access (
+  source_id TEXT PRIMARY KEY,
+  state TEXT NOT NULL,
+  queryable_via TEXT NOT NULL,
+  tables TEXT NOT NULL,
+  record_set_rows TEXT NOT NULL DEFAULT '{}',
+  n_source_rows INTEGER,
+  n_source_rows_basis TEXT NOT NULL,
+  counted_at TEXT,
+  reason TEXT,
+  reason_ja TEXT,
+  reason_note TEXT
+);
+
 -- 空間単位(ADR-0006)。Phase A で登録するのは集計軸として実在するものだけ
 -- (site / watershed / mesh3 / zone)。geometry_ref は持たない(点→place の解決も含め
 -- Phase B 以降)。region_id は place_id 自身のスコープ(<scope>:place:...)と一致させる

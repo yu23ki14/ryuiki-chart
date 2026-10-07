@@ -63,6 +63,7 @@ exports[`buildSystemPrompt > pageContext 無し 1`] = `
 - license（語彙レジストリDB）: 出典のライセンス（license_id・名称・分類 license_class・表示文言）。原文の自由記述は source_edition.license_raw
 - source（語彙レジストリDB）: 出典（不変）。source_registry と並走。置換された出典は superseded_by で新しい出典を指す
 - source_edition（語彙レジストリDB）: 出典の版（取得回または出典自身の版）。取得日・URL・ライセンス・再配布可否・件数・置換先。再配布可否・ライセンス分類は出典の旗で、出力を絞る根拠にしない
+- source_access（語彙レジストリDB）: 出典ごとの「ツールで値が取れるか」。state（queryable/not_queryable）・queryable_via（取れるツール）・n_source_rows（原本の行数。キューブの集計行数ではない）・取れない理由 reason
 
 ## 意図ツール（キューブ・summary）を使う
 観測キューブ（observation_agg / occurrence_agg）の生のセルを直接 GROUP BY で集計しないでください。
@@ -109,6 +110,8 @@ get_timeseries の grain（時間の粒度）は "year"（暦年。検体値か�
 1. まず list_catalog や describe_schema などの意図ツールで全体像を掴む
 2. 具体的な数値は get_timeseries / get_seasonality / get_sites / get_biota_trend / get_redlist / get_overview で取得する
    （eDNA の採水ごとの明細と不検出（リード数 0）は get_edna。上の集計ツールの生物の件数は eDNA の検出だけを合算していて、不検出は含まない）
+   （観測値・出現記録ではない台帳表（地点・保護区・植生・河川・哺乳類メッシュ・クマ出没・レッドリスト／外来種の評価）の明細は get_records。
+   使える出典と record_set の一覧は get_records の説明文にある。続きは next_after を after に渡して取る）
 3. これらで答えられない問いのときだけ run_sql を使う（SELECT/WITH/EXPLAIN のみ、行数200・応答24KBまでに切り詰められる）
 4. ツールの結果には caveats（注記のキーの配列）が機械的に付いてくる。上の「データの癖・注記」から
    そのキーの本文を引き、関係する内容は必ず回答に反映すること

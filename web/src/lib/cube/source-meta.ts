@@ -19,10 +19,14 @@ import { regionTimeZone } from "@/lib/registry/lookup-client";
 import { seriesInfo, type SeriesKey, type SourceRef } from "./series";
 import {
   LICENSES,
+  OBSERVATION_SOURCE_IDS,
   OCCURRENCE_SOURCE_IDS,
+  RECORD_SOURCE_IDS,
+  SOURCE_ACCESS,
   SOURCE_EDITIONS,
   SOURCE_META,
   type GeneratedLicense,
+  type GeneratedSourceAccess,
   type GeneratedSourceEdition,
   type GeneratedSourceMeta,
 } from "@/lib/registry/generated-source";
@@ -185,6 +189,19 @@ export const REDLIST_SOURCE_IDS: readonly string[] = ["kanagawa_redlist", "kanag
 
 /** 出現データの出典（マニフェスト target=occurrence 由来の生成物。手書きしない）。 */
 export { OCCURRENCE_SOURCE_IDS };
+
+/** 観測データの出典（マニフェスト target=observation 由来）。 */
+export { OBSERVATION_SOURCE_IDS };
+/** get_records で引ける出典（SOURCE_ACCESS の tables が空でないもの）。 */
+export { RECORD_SOURCE_IDS };
+
+/**
+ * 出典の状態（ツールで値が取れるか・取れない理由・原本の行数）。`describe_catalog`/`search_registry` が使う。
+ * 生成物（`SOURCE_ACCESS`）だけを読み、D1 を引かない。合成データの出典・未知の ID は undefined。
+ */
+export function sourceAccess(sourceId: string): GeneratedSourceAccess | undefined {
+  return SOURCE_ACCESS[sourceId];
+}
 
 /** 系列の集合が引く出典（と版）。合成（出典未記録）は含まない。 */
 export function seriesSourceRefs(series: readonly SeriesKey[]): SourceRef[] {

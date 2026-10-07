@@ -170,6 +170,7 @@ def _load_build_steps() -> None:
     from registry.build_unit_variable import build as build_unit_variable
     from registry.build_region import build as build_region
     from registry.build_source import build as build_source
+    from registry.build_source_access import build as build_source_access, check_static as check_source_access_static
     from registry.build_place import build as build_place
     from registry.build_taxon import build as build_taxon
     from registry.build_taxon_assessment import build as build_taxon_assessment
@@ -190,6 +191,9 @@ def _load_build_steps() -> None:
             # （scripts/registry/build_taxon_assessment.py モジュール docstring
             # 「taxon_id 解決」参照）。
             ("taxon_assessment (P-2)", build_taxon_assessment),
+            # source_access（MCP の出典アクセス）は source と taxon_assessment の後: reason=superseded を
+            # source.superseded_by と、get_records の表 taxon_assessment の行数を作成済みの registry と突き合わせる。
+            ("source_access (MCP 出典アクセス)", build_source_access),
             ("caveat (A-5)", build_caveat),
         ]
     if FILES_ONLY_STEPS is None:
@@ -198,6 +202,8 @@ def _load_build_steps() -> None:
             ("region (#32-3)", build_region),
             ("unit/variable/variable_alias (A-2)", build_unit_variable),
             ("caveat, ファイル由来のみ (A-5, --files-only)", lambda conn, _src: build_caveat_from_files(conn)),
+            # 原本不要の静的検査だけ（語彙・records の表・reason と manifests の重複）。表は作らない。
+            ("source_access, 静的検査のみ (--files-only)", lambda conn, _src: check_source_access_static()),
         ]
 
 

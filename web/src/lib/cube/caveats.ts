@@ -179,7 +179,8 @@ export function facetsForSeries(series: readonly SeriesFacetInput[], scope: Scop
     if (s.unitId === null) push(unitUnknownOf(s.variableId));
   }
 
-  push(placeKind(scope.kind === "zone" ? "zone" : "site"));
+  // 流域スコープ（土地利用）は専用の place 注記が無い（site の注記〔zone・municipality〕は当てはまらない）。
+  if (scope.kind !== "watershed") push(placeKind(scope.kind === "zone" ? "zone" : "site"));
 
   return [...refs.values()];
 }

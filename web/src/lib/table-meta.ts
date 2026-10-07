@@ -57,7 +57,7 @@ export const TABLE_ORIGIN: Record<string, string> = {
   region: "reg", unit: "reg", variable: "reg", variable_alias: "reg",
   place: "reg", place_source_ref: "reg", place_relation: "reg", place_watershed: "reg",
   taxon: "reg", taxon_assessment: "reg", caveat: "reg", caveat_scope: "reg",
-  license: "reg", source: "reg", source_edition: "reg",
+  license: "reg", source: "reg", source_edition: "reg", source_access: "reg",
 };
 
 export const TABLE_META: Record<string, string> = {
@@ -141,6 +141,9 @@ export const TABLE_META: Record<string, string> = {
   source_edition:
     "出典の版（取得回または出典自身の版）。取得日・URL・ライセンス・再配布可否・件数・置換先。" +
     "再配布可否・ライセンス分類は出典の旗で、出力を絞る根拠にしない",
+  source_access:
+    "出典ごとの「ツールで値が取れるか」。state（queryable/not_queryable）・queryable_via（取れるツール）・" +
+    "n_source_rows（原本の行数。キューブの集計行数ではない）・取れない理由 reason",
 };
 
 export const SAMPLE_QUERIES: { title: string; note: string; sql: string }[] = [

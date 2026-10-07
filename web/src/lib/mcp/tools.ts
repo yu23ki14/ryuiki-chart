@@ -16,21 +16,24 @@
 import { z } from "zod";
 import {
   buildDataEnvelope,
+  OBSERVATION_SOURCE_IDS,
   OCCURRENCE_SOURCE_IDS,
   seriesSourceRefs,
+  sourceAccess,
   sourceFreshness,
   speciesCatalog,
   speciesMonths,
   speciesCatalogCounts,
   speciesYearsWithCoverage,
   timeseries,
+  TimeseriesInputError,
   variableCatalog,
   watershedYears,
   waterBodies,
   MEASUREMENTS_DATASET,
   type CubeDb,
 } from "@/lib/cube";
-import { SOURCE_META } from "@/lib/registry/generated-source";
+import { SOURCE_EXCLUDED_FROM_LIST, SOURCE_META } from "@/lib/registry/generated-source";
 import { GENERATED_VARIABLES } from "@/lib/registry/generated";
 import { VARIABLE_LABEL, ZONE_INFO } from "@/lib/registry/generated-client";
 import { representativeSeries } from "@/lib/cube/series";
@@ -38,6 +41,8 @@ import { EDNA_DESCRIPTION, EDNA_SOURCE_ID, ednaInputSchema, queryEdna } from "@/
 import { caveatsForFacets, facetsForOccurrence } from "@/lib/cube/caveats";
 import { SPECIES_MIN_N } from "@/lib/cube/occurrence";
 import { loadDatapackage } from "./datapackage";
+import { McpInputError } from "./errors";
+import { getRecordsTool } from "./tools-records";
 
 export interface McpContext {
   db: () => Promise<CubeDb>;
@@ -62,9 +67,47 @@ function defineTool<S extends z.ZodType>(t: {
   return t; // execute の引数型は never を受け取る側（McpTool）に代入できる。as unknown で型を潰さない
 }
 
+/** SOURCE_ACCESS は SOURCE_META と同じ出典を網羅する（r01・build-registry-ts・tools.test.ts が固定）。無いのは生成物の不整合。 */
+function sourceAccessOrThrow(sourceId: string) {
+  const a = sourceAccess(sourceId);
+  if (!a) throw new Error(`SOURCE_ACCESS に出典 ${sourceId} が無い（pnpm run build:registry:ts を再実行する）`);
+  return a;
+}
+
 /** 出典 1 件の行（describe_catalog の sources と search_registry の source で同じ形）。 */
 function sourceRow(m: (typeof SOURCE_META)[number], now: Date | undefined) {
-  return { ...sourceFreshness(m.sourceId, { now }), name: m.nameJa, publisher: m.publisher, superseded_by: m.supersededBy };
+  const a = sourceAccessOrThrow(m.sourceId);
+  return {
+    ...sourceFreshness(m.sourceId, { now }),
+    name: m.nameJa,
+    publisher: m.publisher,
+    superseded_by: m.supersededBy,
+    queryable_via: a.queryableVia,
+    record_sets: a.tables,
+    // 原本の行数（キューブの集計行数ではない。get_observations の n とは別物）。取れない出典は null。
+    n_source_rows: a.nSourceRows,
+    n_source_rows_basis: a.nSourceRowsBasis,
+    counted_at: a.countedAt,
+    unavailable_reason: a.reason,
+    unavailable_reason_ja: a.reasonJa,
+    unavailable_note: a.reasonNote,
+  };
+}
+
+/** `describe_catalog(sources)` の集計済みの件数。モデルに一覧を数えさせない（「123 件中 9 件」の誤りの対策）。 */
+function sourceSummary(metas: readonly (typeof SOURCE_META)[number][]) {
+  const by_tool: Record<string, number> = {};
+  const by_reason: Record<string, number> = {};
+  let queryable = 0;
+  for (const m of metas) {
+    const a = sourceAccessOrThrow(m.sourceId);
+    if (a.state === "queryable") queryable += 1;
+    for (const t of a.queryableVia) by_tool[t] = (by_tool[t] ?? 0) + 1;
+    if (a.reason) by_reason[a.reason] = (by_reason[a.reason] ?? 0) + 1;
+  }
+  // by_tool は重複あり（kanagawa_edna は get_occurrences と get_edna の両方）。重複なしの数は queryable。
+  // excluded: 一覧から除いた出典の件数と理由（合成データ。total には含めない）。
+  return { total: metas.length, queryable, not_queryable: metas.length - queryable, by_tool, by_reason, excluded: { ...SOURCE_EXCLUDED_FROM_LIST } };
 }
 
 /** 出力行数の上限（コンテキストを溢れさせない。超えたら `truncated: true`）。 */
@@ -126,23 +169,29 @@ export const MCP_TOOLS: McpTool[] = [
     description:
       "流域カルテにどんな測定項目・水域・ゾーン・出典があるかを一覧する。まず全体像を掴むときに使う。" +
       "what='variables' は測定項目（variableId を get_observations に渡す）、'waters' は水域、'zones' は Ridge to Reef ゾーン、" +
-      "'sources' は出典（取得日・更新方式つき）。" +
+      "'sources' は出典（取得日・更新方式・取れるツール queryable_via・取れない理由つき）。" +
+      "出典の件数・ツール別の件数・取れない理由別の件数は応答の summary を使う（一覧を自分で数えない）。" +
+      "n_source_rows は原本の行数で、get_observations の n（集計に使った件数）とは別物。" +
       READING_RULES,
     inputSchema: z.object({
       what: z.enum(["variables", "waters", "zones", "sources"]).describe("一覧する対象"),
       variableId: z.string().optional().describe("what='waters' のとき、この項目のデータを持つ水域に絞る（variables の variableId）"),
+      queryable: z.boolean().optional().describe("what='sources' のとき、ツールで値が取れる出典（true）／取れない出典（false）に絞る"),
       limit: limitSchema,
     }).strict(),
-    execute: async ({ what, variableId, limit }, ctx) => {
-      const query = { what, variableId: variableId ?? null, limit: limit ?? null };
+    execute: async ({ what, variableId, queryable, limit }, ctx) => {
+      const query = { what, variableId: variableId ?? null, queryable: queryable ?? null, limit: limit ?? null };
       const opt = { now: ctx.now };
       if (what === "zones") return buildDataEnvelope(query, { zones: [...ZONE_INFO] }, [], opt);
       if (what === "sources") {
+        const picked =
+          queryable === undefined ? SOURCE_META : SOURCE_META.filter((m) => (sourceAccess(m.sourceId)?.state === "queryable") === queryable);
         const { rows, truncated } = cap(
-          SOURCE_META.map((m) => sourceRow(m, ctx.now)),
+          picked.map((m) => sourceRow(m, ctx.now)),
           limit ?? MAX_ROWS,
         );
-        return buildDataEnvelope(query, { sources: rows }, [], { ...opt, truncated });
+        // summary は絞り込みに関わらず全出典の集計（「全部で何件・何が取れるか」を数えさせない）。
+        return buildDataEnvelope(query, { summary: sourceSummary(SOURCE_META), sources: rows }, [], { ...opt, truncated });
       }
       const db = await ctx.db();
       if (what === "waters") {
@@ -211,7 +260,12 @@ export const MCP_TOOLS: McpTool[] = [
   defineTool({
     name: "get_observations",
     description:
-      "ある測定項目の時系列を取る（水質・気象・水文など）。scope で水域（地点ごと）・1地点・ゾーン平均を選び、grain で粒度を選ぶ。" +
+      "ある測定項目の時系列を取る（水質・気象・水文など）。scope で水域（地点ごと）・1地点・ゾーン平均・流域を選び、grain で粒度を選ぶ。" +
+      "source_ids を省略すると水質などの測定値系の系列（従来どおり）。大気（相模原・そらまめ）・河川水位（横浜）のセンサー系列や" +
+      "土地利用（流域ごと、scope.type='watershed'）は source_ids で出典を指定して引く（出典は describe_catalog what='sources' の queryable_via に get_observations があるもの）。" +
+      "センサー系列は毎時の観測を日・月・年に積んだ値なので、密な日次は scope=site と from/to で絞り、広く見るなら grain=month/year にする" +
+      "（grain='day' で from/to とも省略すると直近 " + DAY_DEFAULT_YEARS + " 年）。" +
+      "同じ測定項目・粒度の系列を複数の出典が共有するとき、セルは出典で分けられない（provenance に出典が並ぶ）。" +
       "応答は封筒（rows・coverage・provenance・caveats・excluded・cite_as）。" +
       READING_RULES,
     inputSchema: z.object({
@@ -220,7 +274,14 @@ export const MCP_TOOLS: McpTool[] = [
         z.object({ type: z.literal("water"), name: z.string().describe("水域名（describe_catalog what='waters'）") }).strict(),
         z.object({ type: z.literal("site"), siteId: z.string().describe("地点 ID") }).strict(),
         z.object({ type: z.literal("zone") }).strict(),
+        z.object({ type: z.literal("watershed"), placeId: z.string().optional().describe("流域の place_id（省略は全流域。土地利用など流域単位の系列用）") }).strict(),
       ]),
+      source_ids: z
+        .array(z.enum(OBSERVATION_SOURCE_IDS as unknown as [string, ...string[]]))
+        .min(1)
+        .max(OBSERVATION_SOURCE_IDS.length)
+        .optional()
+        .describe("出典で絞る（その出典の系列を dataset を問わず引く）。省略時は測定値系（measurements）の系列。例: ['soramame_hourly_kanagawa']"),
       grain: z.enum(["year", "fiscal_year", "month", "day"]).describe("時間の粒度。year=暦年、fiscal_year=年度（4月始まり）、month=月、day=日。zone は year/fiscal_year のみ意味を持つ"),
       stat: z.string().optional().describe("非代表の統計量（p75/p90/max/min）。省略時は代表系列"),
       from: z.string().optional().describe(`grain='day' の開始日 YYYY-MM-DD（grain='day' で from/to とも省略すると直近 ${DAY_DEFAULT_YEARS} 年）`),
@@ -233,7 +294,14 @@ export const MCP_TOOLS: McpTool[] = [
         const now = ctx.now ?? new Date();
         input.from = `${now.getUTCFullYear() - DAY_DEFAULT_YEARS}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-${String(now.getUTCDate()).padStart(2, "0")}`;
       }
-      const r = await timeseries(await ctx.db(), input, { now: ctx.now });
+      const { source_ids, ...rest } = input;
+      let r;
+      try {
+        r = await timeseries(await ctx.db(), { ...rest, ...(source_ids ? { sourceIds: source_ids } : {}) }, { now: ctx.now });
+      } catch (e) {
+        if (e instanceof TimeseriesInputError) throw new McpInputError(e.message);
+        throw e;
+      }
       if (!r.envelope) {
         // 該当する系列が登録されていない。空の封筒（出典なし）で返し、黙って別の系列に倒さない。
         return buildDataEnvelope({ ...input }, { rows: [] }, [], { now: ctx.now });
@@ -328,9 +396,11 @@ export const MCP_TOOLS: McpTool[] = [
       return buildDataEnvelope({}, { available: true, resources: datapackageResources(pkg) }, [], { now: ctx.now });
     },
   }),
+
+  getRecordsTool(),
 ];
 
-export class McpInputError extends Error {}
+export { McpInputError };
 
 /** `datapackage.json`（Frictionless）の resources から、パスと sha256 とサイズだけを取り出す（他の項目は渡さない）。 */
 export function datapackageResources(pkg: unknown): { name: string | null; path: string | null; sha256: string | null; bytes: number | null }[] {
