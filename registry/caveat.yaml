@@ -365,3 +365,29 @@ caveats:
     reason: 不検出を不在と読むと結論が誤る（禁止表現を含むので blocking）。オーナー確認済み。
     changed:
     - new
+- key: ednaWatershed
+  severity: warning
+  kind: null
+  title_ja: null
+  body_ja: 流域は、採水地点の推定座標が流域ポリゴンに入るかで決めている。座標の無い地点はどの流域にも入らない。推定の誤差は最大 10 km なので、流域の境界近くの地点は隣の流域に数えられていることがある。
+  quote: null
+  review:
+    reviewed_on: '2026-10-07'
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: '2026-10-07'
+    reason: 推定座標による流域割り当ての誤差を伝える。誤読しうるが比較は成立する。オーナー確認済み。
+    changed:
+    - new
+- key: effortSurvey
+  severity: blocking
+  kind: null
+  title_ja: null
+  body_ja: 検出数・目撃数は、年ごとの調査・報告の回数と範囲に左右される。件数の増減を生息数の増減と読まない。
+  quote: null
+  review:
+    reviewed_on: '2026-10-07'
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: '2026-10-07'
+    reason: 調査・報告の努力量の違いを生息数の増減と読むと結論が誤る。オーナー確認済み。
+    changed:
+    - new

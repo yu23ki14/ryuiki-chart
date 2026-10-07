@@ -192,7 +192,7 @@ describe("5 ツールの応答は封筒（excluded=0・合成なし・cite_as・
     expect(inat).not.toContain("gbifCutoff"); // GBIF の途切れは GBIF を含む結果だけ
     expect(keys(await call("get_occurrences", { ...occArgs, source_ids: ["gbif_kanagawa_occurrences"] }, c))).toContain("gbifCutoff");
     // eDNA だけ: eDNA の4件だけ。GBIF・iNat 由来の注記は付かない
-    expect(keys(await call("get_occurrences", { ...occArgs, source_ids: ["kanagawa_edna"] }, c))).toEqual(["ednaReads", "ednaCoords", "ednaYearBasis", "ednaNonDetect"]);
+    expect(keys(await call("get_occurrences", { ...occArgs, source_ids: ["kanagawa_edna"] }, c))).toEqual(["ednaReads", "ednaCoords", "ednaYearBasis", "ednaNonDetect", "ednaWatershed", "effortSurvey"]);
     // 未指定は全出典の注記
     expect(keys(await call("get_occurrences", occArgs, c))).toEqual(
       expect.arrayContaining(["organismSite", "effort", "regimes", "gbifCutoff", "ednaReads", "ednaNonDetect"]),
