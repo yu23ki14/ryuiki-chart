@@ -423,6 +423,21 @@ def count_by_source(conn: sqlite3.Connection, table: str) -> dict[str, int]:
     return {str(sid): n for sid, n in conn.execute(sql)}
 
 
+def count_site_places_by_source(registry: sqlite3.Connection) -> dict[str, int]:
+    """語彙レジストリの地点（place_kind='site'、key_space='site_id'）の出典別の件数。出典は place_source_ref の版
+    （source_edition.source_id）。`get_records` の record_set=sites（`web/src/lib/records.ts` の RECORD_TABLES.sites の
+    `base`/`exprs.source_id`）と**同じ定義**——片方を変えたらもう片方も変える。"""
+    return {
+        str(sid): n
+        for sid, n in registry.execute(
+            "SELECT e.source_id, count(*) FROM place_source_ref psr "
+            "JOIN place p ON p.place_id = psr.place_id AND p.place_kind = 'site' "
+            "JOIN source_edition e ON e.edition_id = psr.source_edition_id "
+            "WHERE psr.key_space = 'site_id' GROUP BY e.source_id"
+        )
+    }
+
+
 # 出典別の件数（GROUP BY）で指紋を取る表の行数の上限。超える表（measurements / sensor_timeseries /
 # organism_records 級。索引が無く GROUP BY が表走査で、3 表で約 2 秒かかる）は v2 の代理指標と同じ（行数・最大 rowid）。
 _SOURCE_COUNTS_EXACT_MAX_ROWS = 100_000

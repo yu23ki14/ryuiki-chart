@@ -705,3 +705,46 @@ def test_declared_source_rows_catalog_skips_sources_already_in_sample_and_stops_
         s01.select_declared_source_rows(_catalog_db(), access, {})
     with pytest.raises(SystemExit, match="原本に無い"):
         s01.select_declared_source_rows(sqlite3.connect(":memory:"), _CATALOG_ACCESS, {})
+
+
+# ---------------------------------------------------------------- records: [sites]（place）の元になる行
+
+def _place_input_db():
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE sites (site_id TEXT, source_id TEXT)")
+    conn.execute("CREATE TABLE sensor_timeseries (site_id TEXT)")
+    conn.execute("CREATE TABLE measurements (site_id TEXT)")
+    conn.executemany("INSERT INTO sites VALUES (?,?)", [("dams__01", "dams"), ("dams__02", "dams")])
+    conn.executemany("INSERT INTO sensor_timeseries VALUES (?)", [("soramame__14206010",), ("soramame_x__1",), ("soramame__14206011",)])
+    conn.executemany("INSERT INTO measurements VALUES (?)", [("atsugi__nakatsu",)])
+    return conn
+
+
+_PLACE_ACCESS = {
+    "record_sets": {"sites": "place"},
+    "sources": {
+        "dams": {"records": ["sites"]},        # 旧表 sites に行がある
+        "soramame": {"records": ["sites"]},    # センサー側にしか無い局（sites に無い）。接頭辞は完全一致（soramame_x は別出典）
+        "atsugi": {"records": ["sites"]},      # 測定側にしか無い局
+    },
+}
+
+
+def test_place_sites_declared_sources_get_one_input_row_each():
+    got = s01.select_declared_source_rows(_place_input_db(), _PLACE_ACCESS, {})
+    assert got == {"sites": {1}, "sensor_timeseries": {1}, "measurements": {1}}
+
+
+def test_place_sites_skip_sources_already_in_sample_and_do_not_mix_prefixes():
+    conn = _place_input_db()
+    # soramame_x__1（rowid 2）は別出典。soramame の行にはならない
+    got = s01.select_declared_source_rows(conn, _PLACE_ACCESS, {"sites": {2}, "sensor_timeseries": {2}, "measurements": {1}})
+    assert got == {"sensor_timeseries": {1}}
+    got = s01.select_declared_source_rows(conn, _PLACE_ACCESS, {"sites": {1}, "sensor_timeseries": {3}, "measurements": {1}})
+    assert got == {}
+
+
+def test_place_sites_stop_when_no_input_row_exists():
+    access = {"record_sets": {"sites": "place"}, "sources": {"nothere": {"records": ["sites"]}}}
+    with pytest.raises(SystemExit, match="nothere"):
+        s01.select_declared_source_rows(_place_input_db(), access, {})

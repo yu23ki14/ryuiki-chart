@@ -178,26 +178,13 @@ function seed(db: Database.Database): void {
   ).run({ siteId: FX.sites.rain, name: "地点雨量", zone: 2, lat: 35.5, lon: 139.3, elevationM: 100, municipality: "相模原" });
   // fx_site_c は意図的に `sites` に行を作らない（厚木型。design §7「sites に無い厚木型1地点」）。
 
-  // 地点の place（get_records の sites が読む）と出典の版。出典 ID は実 registry の access.yaml に
-  // `records: [sites]` がある出典（厚木の水質・相模原の大気観測局）。fx_site_c は `sites` に行を持たない厚木型。
-  const edition = db.prepare(`INSERT INTO source_edition (edition_id, source_id, edition_key, license_id, license_class) VALUES (?,?,?,?,?)`);
-  edition.run("fx_ed_atsugi", "atsugi_river_water_quality", "fx", "cc_by", "cc_by");
-  edition.run("fx_ed_sagamihara", "sagamihara_taiki_stations", "fx", "cc_by", "cc_by");
-  const sitePlace = db.prepare(
-    `INSERT INTO place (place_id, region_id, place_kind, name_ja, lat, lon, elevation_m, area_km2, definition_ref, status)
-     VALUES (?,'kanagawa','site',?,?,?,?,NULL,NULL,NULL)`,
-  );
-  sitePlace.run(FX.places.a, "地点A", 35.4, 139.4, 50);
-  sitePlace.run(FX.places.b, "地点B", 35.41, 139.41, 30);
-  sitePlace.run(FX.places.c, "地点C（厚木型）", null, null, null);
-  sitePlace.run(FX.places.rain, "地点雨量", 35.5, 139.3, 100);
-  const psr = db.prepare(`INSERT INTO place_source_ref (place_id, external_key, key_space, source_edition_id) VALUES (?,?,?,?)`);
-  psr.run(FX.places.a, FX.sites.a, "site_id", "fx_ed_atsugi");
-  psr.run(FX.places.b, FX.sites.b, "site_id", "fx_ed_atsugi");
-  psr.run(FX.places.c, FX.sites.c, "site_id", "fx_ed_atsugi");
-  psr.run(FX.places.rain, FX.sites.rain, "site_id", "fx_ed_sagamihara");
-  psr.run(FX.places.zone3, "3", "zone", null);
-  psr.run(FX.places.zone2, "2", "zone", null);
+  const psr = db.prepare(`INSERT INTO place_source_ref (place_id, external_key, key_space) VALUES (?,?,?)`);
+  psr.run(FX.places.a, FX.sites.a, "site_id");
+  psr.run(FX.places.b, FX.sites.b, "site_id");
+  psr.run(FX.places.c, FX.sites.c, "site_id");
+  psr.run(FX.places.rain, FX.sites.rain, "site_id");
+  psr.run(FX.places.zone3, "3", "zone");
+  psr.run(FX.places.zone2, "2", "zone");
 
   const rel = db.prepare(`INSERT INTO place_relation (parent_id, child_id, relation, fraction, basis) VALUES (?,?,'within',1.0,NULL)`);
   rel.run(FX.places.zone3, FX.places.a);
@@ -403,16 +390,6 @@ export interface CubeFixture {
 }
 
 /** `better-sqlite3` を `CubeDb` に包む（D1 の制約検査 `assertD1Compatible` 付き）。 */
-/**
- * `get_records` の sites が読む地点を 1 件入れる（place〔site〕＋ place_source_ref〔site_id〕＋ source_edition）。
- * 旧表 `sites` には入れない（観測局のように旧表に無い地点を再現する）。
- */
-export function insertSitePlace(db: Database.Database, siteId: string, name: string, sourceId: string): void {
-  db.prepare("INSERT OR IGNORE INTO source_edition (edition_id, source_id, edition_key, license_id, license_class) VALUES (?,?,'k','l','c')").run(`e:${sourceId}`, sourceId);
-  db.prepare("INSERT INTO place (place_id, place_kind, name_ja, lat, lon) VALUES (?, 'site', ?, 35.1, 139.1)").run(`p:${siteId}`, name);
-  db.prepare("INSERT INTO place_source_ref (place_id, external_key, key_space, source_edition_id) VALUES (?,?,'site_id',?)").run(`p:${siteId}`, siteId, `e:${sourceId}`);
-}
-
 export function wrapSqlite(raw: Database.Database): CubeDb & { close(): void } {
   return {
     kind: "sqlite",
@@ -436,3 +413,79 @@ export function buildCubeFixture(): CubeFixture {
 
   return { db: wrapSqlite(raw), raw };
 }
+
+/* ------------------------------------------------------------------ */
+/* get_records(sites) 用の地点（共有フィクスチャの既定の中身は変えない）      */
+/* ------------------------------------------------------------------ */
+
+/** `addRecordSites` が足す、旧表 `sites` に無い観測局（センサー系）。 */
+export const FX_SENSOR_SITE = {
+  placeId: "fx_place_sensor",
+  siteId: "fx_site_sensor",
+  /** 実 registry の access.yaml で `records: [sites]` を宣言している出典。 */
+  sourceId: "sagamihara_taiki_stations",
+} as const;
+
+const EDITION_COLS = "(edition_id, source_id, edition_key, license_id, license_class)";
+
+/**
+ * `get_records` の sites が読む地点を 1 件入れる（place〔site〕＋ place_source_ref〔site_id〕＋ source_edition）。
+ * 旧表 `sites` には入れない（観測局のように旧表に無い地点を再現する）。
+ */
+export function insertSitePlace(
+  db: Database.Database,
+  siteId: string,
+  name: string,
+  sourceId: string,
+  placeId = `p:${siteId}`,
+): void {
+  db.prepare(`INSERT OR IGNORE INTO source_edition ${EDITION_COLS} VALUES (?,?,'k','l','c')`).run(`e:${sourceId}`, sourceId);
+  db.prepare("INSERT INTO place (place_id, place_kind, name_ja, lat, lon) VALUES (?, 'site', ?, 35.1, 139.1)").run(placeId, name);
+  db.prepare("INSERT INTO place_source_ref (place_id, external_key, key_space, source_edition_id) VALUES (?,?,'site_id',?)").run(placeId, siteId, `e:${sourceId}`);
+}
+
+/**
+ * 共有フィクスチャの地点 a・b・c（出典 atsugi_river_water_quality。c は旧表 `sites` に無い厚木型）に place〔site〕と版を足し、
+ * 旧表に無い観測局 `FX_SENSOR_SITE`（sagamihara_taiki_stations）を water.ss の日次系列つきで足す。
+ * `buildCubeFixture()` の後に呼ぶ。
+ */
+export function addRecordSites(raw: Database.Database): void {
+  raw.prepare(`INSERT INTO source_edition ${EDITION_COLS} VALUES ('fx_ed_atsugi','atsugi_river_water_quality','fx','cc_by','cc_by')`).run();
+  const setEdition = raw.prepare("UPDATE place_source_ref SET source_edition_id = 'fx_ed_atsugi' WHERE place_id = ? AND key_space = 'site_id'");
+  const place = raw.prepare(
+    `INSERT INTO place (place_id, region_id, place_kind, name_ja, lat, lon, elevation_m, status)
+     VALUES (?,'kanagawa','site',?,?,?,?,?)`,
+  );
+  place.run(FX.places.a, "地点A", 35.4, 139.4, 50, "ok");
+  place.run(FX.places.b, "地点B", 35.41, 139.41, 30, "ok");
+  place.run(FX.places.c, "地点C（厚木型）", null, null, null, "needs_review");
+  for (const p of [FX.places.a, FX.places.b, FX.places.c]) setEdition.run(p);
+
+  insertSitePlace(raw, FX_SENSOR_SITE.siteId, "センサー局", FX_SENSOR_SITE.sourceId, FX_SENSOR_SITE.placeId);
+  const ss = { variableId: FX.variables.ss, obsStat: "mean", unitId: FX.units.mgPerL, valueGrain: "day", inputGrain: "day", stat: "mean", periodStart: "2024-01-01", valueZero: 5.0, valueLod: 5.0, n: 1 };
+  insertObsAgg(raw, [
+    { placeId: FX_SENSOR_SITE.placeId, grain: "day", ...ss },
+    { placeId: FX_SENSOR_SITE.placeId, grain: "year", periodEnd: "2024-12-31", ...ss },
+  ]);
+}
+
+/**
+ * record_set ごとの「最小の 1 行」の挿入（主キー・名称・出典だけ。NOT NULL 列はここで埋める）。
+ * `get_records` のテストが共有する。sites は place 側（旧表 `sites` ではない）に入れる。
+ * mammal_mesh の主キーは整数なので、数でない pk は自動採番に任せる。
+ */
+export const RECORD_SET_INSERT: Record<string, (db: Database.Database, pk: string | number, name: string, source: string) => void> = {
+  sites: (db, pk, name, source) => insertSitePlace(db, String(pk), name, source),
+  protected_areas: (db, pk, name, source) => void db.prepare("INSERT INTO protected_areas (area_id, name_ja, source_id) VALUES (?,?,?)").run(pk, name, source),
+  vegetation: (db, pk, name, source) =>
+    void db.prepare(`INSERT INTO vegetation_polygons (feature_id, legend_name_ja, source_id, geometry_geojson) VALUES (?,?,?,'{"type":"Polygon","coordinates":[]}')`).run(pk, name, source),
+  river_segments: (db, pk, name, source) =>
+    void db.prepare(`INSERT INTO river_segments (feature_id, name_ja, source_id, geometry_geojson) VALUES (?,?,?,'{"type":"LineString","coordinates":[]}')`).run(pk, name, source),
+  mammal_mesh: (db, pk, name, source) =>
+    void db.prepare("INSERT INTO mammal_mesh (id, species_ja, source_id) VALUES (?,?,?)").run(typeof pk === "number" ? pk : null, name, source),
+  sightings: (db, pk, name, source) => void db.prepare("INSERT INTO wildlife_sightings (sighting_id, species_ja, source_id) VALUES (?,?,?)").run(pk, name, source),
+  documents: (db, pk, name, source) => void db.prepare("INSERT INTO documents (doc_id, title, publisher) VALUES (?,?,?)").run(pk, name, source),
+  document_notes: (db, pk, name, source) => void db.prepare("INSERT INTO notes (note_id, doc_id, kind) VALUES (?,?,?)").run(pk, name, source),
+  assessments: (db, pk, name, source) =>
+    void db.prepare("INSERT INTO taxon_assessment (assessment_id, vernacular_name_ja_raw, source_id, list_id) VALUES (?,?,?,'rl')").run(pk, name, source),
+};

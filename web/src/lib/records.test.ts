@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { applyMigrations, insertSitePlace, wrapSqlite } from "@/lib/cube/__fixtures__/cube-fixture";
+import { applyMigrations, RECORD_SET_INSERT, wrapSqlite } from "@/lib/cube/__fixtures__/cube-fixture";
 import { sourceAccess } from "@/lib/cube/source-meta";
 import { RECORD_SET_TABLES } from "@/lib/registry/generated-source";
 import { TABLE_ORIGIN } from "@/lib/table-meta";
@@ -23,23 +23,7 @@ import {
 let raw: Database.Database;
 let db: ReturnType<typeof wrapSqlite>;
 
-/** 表ごとに、主キー・名称・出典だけを入れる最小の INSERT（NOT NULL 列があればここで埋める）。 */
-const INSERT: Record<RecordSetName, string> = {
-  sites: "", // put() が place / place_source_ref / source_edition に入れる（下）
-  protected_areas: "INSERT INTO protected_areas (area_id, name_ja, source_id) VALUES (?, ?, ?)",
-  vegetation:
-    'INSERT INTO vegetation_polygons (feature_id, legend_name_ja, source_id, geometry_geojson) VALUES (?, ?, ?, \'{"type":"Polygon","coordinates":[]}\')',
-  river_segments:
-    'INSERT INTO river_segments (feature_id, name_ja, source_id, geometry_geojson) VALUES (?, ?, ?, \'{"type":"LineString","coordinates":[]}\')',
-  mammal_mesh: "INSERT INTO mammal_mesh (id, species_ja, source_id) VALUES (?, ?, ?)",
-  sightings: "INSERT INTO wildlife_sightings (sighting_id, species_ja, source_id) VALUES (?, ?, ?)",
-  documents: "INSERT INTO documents (doc_id, title, publisher) VALUES (?, ?, ?)",
-  document_notes: "INSERT INTO notes (note_id, doc_id, kind) VALUES (?, ?, ?)",
-  assessments: "INSERT INTO taxon_assessment (assessment_id, vernacular_name_ja_raw, source_id, list_id) VALUES (?, ?, ?, 'rl')",
-};
-
-const put = (t: RecordSetName, pk: string | number, name: string, source: string) =>
-  t === "sites" ? insertSitePlace(raw, String(pk), name, source) : raw.prepare(INSERT[t]).run(pk, name, source);
+const put = (t: RecordSetName, pk: string | number, name: string, source: string) => RECORD_SET_INSERT[t](raw, pk, name, source);
 
 beforeEach(() => {
   raw = new Database(":memory:");

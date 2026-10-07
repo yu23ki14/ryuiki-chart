@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
-import { applyMigrations, insertSitePlace, wrapSqlite } from "@/lib/cube/__fixtures__/cube-fixture";
+import { applyMigrations, RECORD_SET_INSERT, wrapSqlite } from "@/lib/cube/__fixtures__/cube-fixture";
 import { sqliteCubeDb } from "@/lib/cube/db-sqlite";
 import { GENERATED_VARIABLE_ALIASES } from "@/lib/registry/generated";
 import { RECORD_SET_TABLES, SOURCE_ACCESS, SOURCE_META } from "@/lib/registry/generated-source";
@@ -26,15 +26,6 @@ async function call(name: string, args: Record<string, unknown>, ctx: McpContext
 }
 
 describe("queryable_via の（出典, ツール）が実際に動く: get_records（インメモリ）", () => {
-  const INSERT: Record<string, string> = {
-    protected_areas: "INSERT INTO protected_areas (area_id, name_ja, source_id) VALUES (?, '名', ?)",
-    vegetation: "INSERT INTO vegetation_polygons (feature_id, legend_name_ja, source_id) VALUES (?, '名', ?)",
-    river_segments: "INSERT INTO river_segments (feature_id, name_ja, source_id) VALUES (?, '名', ?)",
-    mammal_mesh: "INSERT INTO mammal_mesh (id, species_ja, source_id) VALUES (1, '名', ?)",
-    sightings: "INSERT INTO wildlife_sightings (sighting_id, species_ja, source_id) VALUES (?, '名', ?)",
-    assessments: "INSERT INTO taxon_assessment (assessment_id, vernacular_name_ja_raw, source_id, list_id) VALUES (?, '名', ?, 'rl')",
-  };
-
   it("全出典・全 record_set で 1 行以上返る（件数 > 0 の宣言の裏づけ）", async () => {
     const raw = new Database(":memory:");
     applyMigrations(raw);
@@ -43,13 +34,9 @@ describe("queryable_via の（出典, ツール）が実際に動く: get_record
     expect(recordPairs.length).toBeGreaterThan(0);
     for (const [src] of recordPairs) {
       for (const set of SOURCE_ACCESS[src].tables) {
-        if (set === "sites") {
-          insertSitePlace(raw, `${src}:1`, "名", src);
-          continue;
-        }
-        const sql = INSERT[set];
-        expect(sql, `${src}/${set}`).toBeTruthy();
-        raw.prepare(sql).run(...(set === "mammal_mesh" ? [src] : [`${src}:1`, src]));
+        const insert = RECORD_SET_INSERT[set];
+        expect(insert, `${src}/${set}`).toBeTruthy();
+        insert(raw, `${src}:1`, "名", src);
       }
     }
     for (const [src] of recordPairs) {

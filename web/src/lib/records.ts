@@ -44,11 +44,8 @@ export interface RecordTable {
   sourceless?: boolean;
   /** 実列でない出力列（別名 → SQL 式。例 `note_rowid` → `notes.rowid`）。`cols` に載せる。実在検査の対象外。 */
   exprs?: Record<string, string>;
-  /** 出典の列の式（既定は `<table>.source_id`）。place 由来の sites は版（source_edition）から引く。 */
-  sourceExpr?: string;
-  /** 常に付ける JOIN 句と条件（定数。別表の列を `exprs` で引く表だけ）。 */
-  baseJoin?: string;
-  baseWhere?: string;
+  /** 常に付ける JOIN 句と条件（定数。別表の列を `exprs` で引く表だけ）。出典の絞りは `exprs.source_id` から導く。 */
+  base?: { join: string; where: string };
   /** 返す算出列（別名 → SQL 式。`join` の別名を参照してよい）。`cols` には含めない。選ぶか並べたときだけ `join` を付ける。 */
   computed?: Record<string, string>;
   /** `computed` が使う JOIN 句（定数）。 */
@@ -75,12 +72,15 @@ export const RECORD_TABLES = {
     table: RECORD_SET_TABLES.sites,
     pk: "site_id",
     search: ["name", "name_en"],
-    sourceExpr: "se.source_id",
-    baseJoin:
-      "JOIN place_source_ref psr ON psr.place_id = place.place_id AND psr.key_space = 'site_id' " +
-      "JOIN source_edition se ON se.edition_id = psr.source_edition_id " +
-      "LEFT JOIN sites ls ON ls.site_id = psr.external_key",
-    baseWhere: "place.place_kind = 'site'",
+    // 地点と出典の定義は scripts/registry/common.py の count_site_places_by_source（n_total の事前計算）と同じ。
+    // 片方を変えたらもう片方も変える。
+    base: {
+      join:
+        "JOIN place_source_ref psr ON psr.place_id = place.place_id AND psr.key_space = 'site_id' " +
+        "JOIN source_edition se ON se.edition_id = psr.source_edition_id " +
+        "LEFT JOIN sites ls ON ls.site_id = psr.external_key",
+      where: "place.place_kind = 'site'",
+    },
     exprs: {
       site_id: "psr.external_key",
       name: "place.name_ja",
@@ -95,7 +95,7 @@ export const RECORD_TABLES = {
       source_ref: "ls.source_ref",
     },
     cols: [
-      "site_id", "place_id", "name", "name_en", "watershed", "zone", "lat", "lon", "elevation_m", "municipality", "muni_code",
+      "site_id", "place_id", "status", "name", "name_en", "watershed", "zone", "lat", "lon", "elevation_m", "municipality", "muni_code",
       "operator", "established_on", "source_id", "source_ref",
     ],
   },
@@ -224,7 +224,7 @@ export const RECORDS_DESCRIPTION =
   "結果が truncated のときは next_after を after に渡して続きを取る（深いページは offset より速い）。" +
   "ライセンスや座標で行を除外・加工しない。利用条件は provenance の出典情報を見る。" +
   "地点（record_set=sites）は大気・水位・水質・地盤沈下などの観測局を含む全地点で、行の site_id は get_observations の scope={type:'site', siteId} にそのまま渡せる。" +
-  "watershed・zone・municipality・operator などは従来の地点表にある地点だけ値が入り、観測局は null（地点と流域・zone の紐付けは未整備）。" +
+  "status が needs_review の地点は座標が未確認（lat・lon は null）。watershed・zone・municipality・operator などは従来の地点表にある地点だけ値が入り、観測局は null（地点と流域・zone の紐付けは未整備）。" +
   "行政文書の一覧（record_set=documents。抽出セル数 n_cells・注記数 n_notes・比較注意 n_blocking つき）と注記（record_set=document_notes。" +
   "q は本文と doc_id に効く。id は行の note_rowid）は出典に紐付かないので source_id を付けず record_set だけで引く（行の publisher・url・license が出典）。" +
   `使える出典と record_set（複数あるときは record_set を指定）: ${sourceSetList()}。`;
@@ -341,11 +341,11 @@ function buildSelect(s: SelectSpec): { sql: string; params: SqlParam[]; limit: n
   const order = [...(s.order ?? []).map((o) => ({ ...o, col: check(o.col) }))];
   if (!order.some((o) => o.col === def.pk)) order.push({ col: def.pk });
 
-  const conds: string[] = def.baseWhere ? [def.baseWhere] : [];
+  const conds: string[] = def.base ? [def.base.where] : [];
   const params: SqlParam[] = [];
   if (!def.sourceless && !s.anySource) {
     if (s.sourceId === undefined) throw new Error(`表 ${t} は出典で絞る必要がある`);
-    const srcExpr = def.sourceExpr ?? `${t}.source_id`;
+    const srcExpr = exprOf("source_id");
     conds.push(def.compositeSource ? COMPOSITE_SOURCE_MATCH(srcExpr) : `${srcExpr} = ?`);
     params.push(def.compositeSource ? `|${s.sourceId}|` : s.sourceId);
   }
@@ -371,7 +371,7 @@ function buildSelect(s: SelectSpec): { sql: string; params: SqlParam[]; limit: n
   const selects = [...picked.map((c) => `${exprOf(c)} AS ${c}`), ...(geomCol ? [`${t}.${geomCol} AS ${geomCol}`] : [])];
   const limit = s.limit === null ? null : clampLimit(s.limit, s.defaultLimit, s.maxLimit);
   let sql =
-    `SELECT ${selects.join(", ")} FROM ${t}${def.baseJoin ? ` ${def.baseJoin}` : ""}${usesJoin && def.join ? ` ${def.join}` : ""}` +
+    `SELECT ${selects.join(", ")} FROM ${t}${def.base ? ` ${def.base.join}` : ""}${usesJoin && def.join ? ` ${def.join}` : ""}` +
     `${conds.length ? ` WHERE ${conds.join(" AND ")}` : ""}` +
     ` ORDER BY ${order.map((o) => `${exprOf(o.col)}${o.desc ? " DESC NULLS LAST" : ""}`).join(", ")}`;
   if (limit !== null) {

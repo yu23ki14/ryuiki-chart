@@ -232,6 +232,10 @@ ID_UNIQUENESS_CHECKS = [
     # zone/watershed_id/grid01_latlon）なので、
     # sites.zone に限定せず汎用にここへ入れる。
     ("place_source_ref", ("place_id", "key_space")),
+    # 外部キーの側も一意（同じ key_space で external_key が 2 つの place を指さない）。`get_records` の sites の
+    # site_id（key_space='site_id' の external_key）が地点の主キーで、cube の site scope も external_key で照合する
+    # ので、重複すると行が二重に出て keyset のページングも崩れる。
+    ("place_source_ref", ("key_space", "external_key")),
     # place_watershed は place_id が PRIMARY KEY（Phase B `phase-b/place-attributes`、
     # P-1a）。SQLite が挿入時点で保証済みだが、他の PK 列（place/taxon/caveat）と
     # 同じく統合作業の受け入れ基準として明示的にも検証する。

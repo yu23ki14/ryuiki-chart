@@ -173,16 +173,8 @@ def gather_counts(ryuiki: sqlite3.Connection, registry: sqlite3.Connection) -> d
             for part in sid.split("|"):
                 counts[part] = counts.get(part, 0) + n
         by_source[t] = counts
-    # sites の record_set は語彙レジストリの place（site）。出典は place_source_ref の版（source_edition）から引く。
-    by_source["place"] = {
-        str(sid): n
-        for sid, n in registry.execute(
-            "SELECT e.source_id, count(*) FROM place_source_ref psr "
-            "JOIN place p ON p.place_id = psr.place_id AND p.place_kind = 'site' "
-            "JOIN source_edition e ON e.edition_id = psr.source_edition_id "
-            "WHERE psr.key_space = 'site_id' GROUP BY e.source_id"
-        )
-    }
+    # sites の record_set は語彙レジストリの place（site）。定義は common.count_site_places_by_source（records.ts と同じ）。
+    by_source["place"] = common.count_site_places_by_source(registry)
     return {"by_source": by_source}
 
 
