@@ -56,6 +56,7 @@
  *   - RYUIKI_REGISTRY_DB: 入力の registry.sqlite
  *   - RYUIKI_VERNACULAR_CSV: 入力の vernacular_ja.csv
  *   - RYUIKI_ZONE_YAML: 入力の zone.yaml
+ *   - RYUIKI_MAP_METRIC_YAML: 入力の map_metric.yaml（地図ページの指標語彙。zone.yaml と同じ直読み）
  *   - RYUIKI_REDLIST_CATEGORY_YAML / RYUIKI_ASSESSMENT_LIST_YAML: 入力の
  *     registry/taxon/redlist_category.yaml / assessment_list.yaml
  *   - RYUIKI_REGISTRY_TS_OUT_SERVER / RYUIKI_REGISTRY_TS_OUT_CLIENT / RYUIKI_REGISTRY_TS_OUT_ID_MAP: 出力先
@@ -75,6 +76,8 @@ const REGISTRY_DB = process.env.RYUIKI_REGISTRY_DB ?? path.join(REPO, "data", "d
 const VERNACULAR_CSV =
   process.env.RYUIKI_VERNACULAR_CSV ?? path.join(REPO, "registry", "taxon", "vernacular_ja.csv");
 const ZONE_YAML = process.env.RYUIKI_ZONE_YAML ?? path.join(REPO, "registry", "place", "zone.yaml");
+const UNIT_YAML = process.env.RYUIKI_UNIT_YAML ?? path.join(REPO, "registry", "unit.yaml");
+const MAP_METRIC_YAML = process.env.RYUIKI_MAP_METRIC_YAML ?? path.join(REPO, "registry", "map_metric.yaml");
 const REDLIST_CATEGORY_YAML =
   process.env.RYUIKI_REDLIST_CATEGORY_YAML ?? path.join(REPO, "registry", "taxon", "redlist_category.yaml");
 const ASSESSMENT_LIST_YAML =
@@ -104,6 +107,8 @@ requireFile(
 );
 requireFile(VERNACULAR_CSV, "和名台帳");
 requireFile(ZONE_YAML, "zone.yaml");
+requireFile(MAP_METRIC_YAML, "map_metric.yaml");
+requireFile(UNIT_YAML, "unit.yaml");
 requireFile(REDLIST_CATEGORY_YAML, "redlist_category.yaml");
 requireFile(ASSESSMENT_LIST_YAML, "assessment_list.yaml");
 
@@ -240,6 +245,33 @@ const zoneRows = loadYaml(fs.readFileSync(ZONE_YAML, "utf-8"));
     }
   }
 }
+// 地図ページの指標語彙（registry/map_metric.yaml、zone.yaml と同じ直読み）。
+const unitSymbolById = new Map(
+  loadYaml(fs.readFileSync(UNIT_YAML, "utf-8")).units.map((u) => [u.unit_id, u.symbol]),
+);
+const MAP_METRIC_KINDS = new Set(["count", "landuse_delta"]);
+const mapMetrics = loadYaml(fs.readFileSync(MAP_METRIC_YAML, "utf-8")).map((r) => {
+  const where = `registry/map_metric.yaml の ${r.scope}/${r.id}`;
+  if (r.scope !== "watershed" && r.scope !== "mesh") throw new Error(`${where}: scope が不正`);
+  if (!MAP_METRIC_KINDS.has(r.kind)) throw new Error(`${where}: kind が不正（${r.kind}）`);
+  if (!r.label_ja || !r.note_ja) throw new Error(`${where} に label_ja / note_ja が無い`);
+  if (r.unit_id && r.unit_ja) throw new Error(`${where}: unit_id と unit_ja は同時に書けない`);
+  let unit = r.unit_ja ?? null;
+  if (r.unit_id) {
+    if (!unitSymbolById.has(r.unit_id)) throw new Error(`${where}: unit_id が unit.yaml に無い（${r.unit_id}）`);
+    unit = unitSymbolById.get(r.unit_id);
+  }
+  return { scope: r.scope, id: String(r.id), kind: r.kind, label: r.label_ja, note: r.note_ja, unit };
+});
+{
+  const seen = new Set();
+  for (const m of mapMetrics) {
+    const k = `${m.scope}/${m.id}`;
+    if (seen.has(k)) throw new Error(`registry/map_metric.yaml の ${k} が重複している`);
+    seen.add(k);
+  }
+}
+
 // region（時刻帯の語彙。Issue #32-3、ADR-0024）。registry.sqlite の `region` 表（手書きの正は
 // registry/region.yaml）から作る。応答封筒（ADR-0014）が `regionTimeZone()` で引く。
 const regionTime = db
@@ -762,6 +794,14 @@ export const ASSESSMENT_LIST: Readonly<Record<string, GeneratedAssessmentList>> 
 
 /** Ridge to Reef ゾーン(1-5)の定義（registry/place/zone.yaml、旧 domain.ts の ZONE_INFO）。 */
 export const ZONE_INFO: readonly GeneratedZone[] = ${emitObjectArray(zoneInfo, ["zone", "label", "cond"])};
+
+/** 地図ページの指標の語彙（registry/map_metric.yaml）。表示順はファイルの順。unit は表示用の文字列（unit_id を引いたもの）で、無ければ null。 */
+export const MAP_METRICS = ${emitObjectArray(mapMetrics, ["scope", "id", "kind", "label", "note", "unit"])} as const;
+
+/** 流域の塗り分け指標の id（/api/geo/watersheds の properties のキー）。 */
+export type WatershedMetricId = Extract<(typeof MAP_METRICS)[number], { scope: "watershed" }>["id"];
+/** 生物メッシュの指標の id（/api/geo/mesh の properties のキー）。 */
+export type MeshMetricId = Extract<(typeof MAP_METRICS)[number], { scope: "mesh" }>["id"];
 
 /** region の時刻帯（registry/region.yaml の語彙。\`lookup-client.ts\` の \`regionTimeZone()\` が引く）。 */
 export const REGION_TIME: readonly GeneratedRegionTime[] = ${emitObjectArray(regionTime, ["regionId", "tzName", "utcOffset"])};

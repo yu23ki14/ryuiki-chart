@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useSize } from "./useSize";
-import { INK } from "./palette";
+import { INK, SERIES, STATUS } from "./palette";
 
 export interface SlopeCategory {
   key: string;
@@ -19,9 +19,9 @@ export interface SlopeFlow {
 }
 
 const DIR_COLOR: Record<string, string> = {
-  悪化: "#d03b3b",
-  改善: "#2a78d6",
-  横ばい: "#c3cfcc",
+  悪化: STATUS.critical,
+  改善: SERIES[0],
+  横ばい: INK.axis,
 };
 
 /**

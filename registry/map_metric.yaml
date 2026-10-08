@@ -1,0 +1,71 @@
+# registry/map_metric.yaml
+#
+# 地図ページ（web/src/components/map/MapPage.tsx）の「流域の塗り分け指標」と「生物メッシュの指標」の
+# 表示語彙（ラベル・説明文・単位・種別）。以前は MapPage.tsx に直書きされていた。
+#
+# 単位: unit.yaml にある単位は unit_id で参照する（build-registry-ts.mjs が実在を検証し、
+# 表示は unit.yaml の symbol）。unit.yaml に無い件数系の表示単位（件/km²・地点・件）だけ
+# unit_ja に書く。unit_id と unit_ja は同時に書けない。単位の無い指標はどちらも省く。
+# 出典名は note_ja の文中に書く（土地利用の増減は 国土数値情報 土地利用細分メッシュ）。
+#
+# kind: count（件数・密度などの非負の量。逐次配色）| landuse_delta（土地利用の年度間の面積差。
+# 0 に意味があるので発散配色にし、比較年と landuseDefinitionChange の注記を付ける）。
+#
+# id は /api/geo/watersheds（scope: watershed）・/api/geo/mesh（scope: mesh）の
+# properties のキー名と一致させる（web/src/lib/registry/map-metric.test.ts が検査する）。
+#
+# web/scripts/build-registry-ts.mjs が zone.yaml と同じくこのファイルを直接読んで
+# generated-client.ts の MAP_METRICS を作る（registry.sqlite は経由しない）。
+# scope: watershed（流域の塗り分け）| mesh（生物メッシュ）。表示順はファイルの順。
+
+- scope: watershed
+  id: org_density
+  kind: count
+  label_ja: 生物記録の密度
+  note_ja: 流域の面積あたりの観察・標本記録数（件/km²）
+  unit_ja: 件/km²
+- scope: watershed
+  id: site_n
+  kind: count
+  label_ja: 観測地点の数
+  note_ja: その流域にある水質・気象などの観測地点
+  unit_ja: 地点
+- scope: watershed
+  id: org_redlist_n
+  kind: count
+  label_ja: レッドリスト種の記録数
+  note_ja: レッドリストのカテゴリーが付いた観察記録
+  unit_ja: 件
+- scope: watershed
+  id: built_delta
+  kind: landuse_delta
+  label_ja: 市街地の増減
+  note_ja: 国土数値情報 土地利用細分メッシュ。建物用地の面積の差
+  unit_id: common:unit:km2
+- scope: watershed
+  id: forest_delta
+  kind: landuse_delta
+  label_ja: 森林の増減
+  note_ja: 同上・森林の面積の差
+  unit_id: common:unit:km2
+- scope: watershed
+  id: paddy_delta
+  kind: landuse_delta
+  label_ja: 田の増減
+  note_ja: 同上・田の面積の差
+  unit_id: common:unit:km2
+- scope: mesh
+  id: "n"
+  kind: count
+  label_ja: 記録の件数
+  note_ja: 同じ場所で何度も記録されると大きくなる
+- scope: mesh
+  id: species_n
+  kind: count
+  label_ja: 確認された種数
+  note_ja: 件数が多くても種数が少ない場所がある
+- scope: mesh
+  id: rl_n
+  kind: count
+  label_ja: レッドリスト種の記録数
+  note_ja: 保全上の重要地点を探す

@@ -5,9 +5,10 @@ import Link from "next/link";
 import { BarChart } from "@/components/viz/BarChart";
 import { LineChart, type LineSeries } from "@/components/viz/LineChart";
 import { ChartFrame, MiniTable } from "@/components/viz/ChartFrame";
-import { SERIES, ZONE_COLORS, DIVERGING, STATUS } from "@/components/viz/palette";
+import { SERIES, ZONE_COLORS, DIVERGING, STATUS, INK } from "@/components/viz/palette";
 import { fmt } from "@/components/viz/scales";
 import { nf } from "@/components/ui";
+import { MAP_METRICS } from "@/lib/registry/generated-client";
 import { caveatBody } from "@/lib/registry/lookup-client";
 
 export function HomeHighlights({
@@ -21,7 +22,9 @@ export function HomeHighlights({
   redlist: { list_year: number; list_name: string; taxon_group_ja: string; direction: string; n: number }[];
   effort: { year: number; n: number; species_n: number; mesh_n: number; n_inat: number; n_gbif: number }[];
 }) {
-  const unit = longitudinal[0]?.unit ?? "mg/L";
+  // 土地利用の面積差の単位は地図指標と同じ registry の語彙（unit.yaml の km2）から引く
+  const landuseUnit = MAP_METRICS.find((m) => m.id === "built_delta")?.unit ?? undefined;
+  const unit = longitudinal[0]?.unit ?? null;
 
   const rlByYear = React.useMemo(() => {
     const m = new Map<number, { 悪化: number; 改善: number; 横ばい: number }>();
@@ -59,7 +62,7 @@ export function HomeHighlights({
         subtitle="境川の5地点、2020年以降の BOD の平均。標高の高い順に並べてある"
         table={
           <MiniTable
-            columns={["地点", "標高(m)", `BOD(${unit})`, "n"]}
+            columns={["地点", "標高(m)", unit ? `BOD(${unit})` : "BOD", "n"]}
             rows={longitudinal.map((r) => [r.name, r.elevation_m, r.avg, r.n])}
           />
         }
@@ -123,7 +126,7 @@ export function HomeHighlights({
                     {a.悪化 / total > 0.12 && <span className="text-[10px] text-white tnum">{a.悪化}</span>}
                   </div>
                   <div
-                    style={{ width: `${(a.横ばい / total) * 100}%`, background: "#c3cfcc" }}
+                    style={{ width: `${(a.横ばい / total) * 100}%`, background: INK.axis }}
                     className="flex items-center justify-center"
                     title={`横ばい ${a.横ばい} 種`}
                   >
@@ -146,7 +149,7 @@ export function HomeHighlights({
               悪化
             </span>
             <span className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-sm" style={{ background: "#c3cfcc" }} />
+              <span className="w-2.5 h-2.5 rounded-sm" style={{ background: INK.axis }} />
               横ばい
             </span>
             <span className="flex items-center gap-1">
@@ -183,9 +186,9 @@ export function HomeHighlights({
             value: r.delta,
           }))}
           color={DIVERGING.pos[2]}
-          unit="km²"
+          unit={landuseUnit}
           maxLabelWidth={130}
-          valueFormat={(v) => `+${fmt(v)} km²`}
+          valueFormat={(v) => `+${fmt(v)} ${landuseUnit}`}
         />
       </ChartFrame>
 

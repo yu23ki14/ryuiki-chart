@@ -18,6 +18,7 @@ Phase A（`docs/plans/PHASE_A.md`, ADR-0016）の成果物。v1 のファクト�
 | `source/editions.yaml` | 出典の版（`source_edition`）の宣言。土地利用の 2006/2016・置換（`gbif_kanagawa` → `gbif_kanagawa_occurrences`）・`update_mode`・`content_file`。過去の取得履歴は復元不能なので書かない（捏造しない） |
 | `id_map/dataset.csv` | 旧 ID → 現行 ID の対応（dataset 分: 旧 `<dataset>@<年>` → 版の ID の 2 行。凍結リストとして `build_source.py` が variable_alias と突き合わせる） |
 | `place/zone.yaml` | Ridge to Reef ゾーン(1-5)の操作的定義 |
+| `map_metric.yaml` | 地図ページの指標9件（流域6・メッシュ3）の表示語彙（ラベル・説明・単位・`kind`）。単位は `unit.yaml` を `unit_id` で参照するか、件数系だけ `unit_ja`。`zone.yaml` と同じく `build-registry-ts.mjs` が直読みして `generated-client.ts` の `MAP_METRICS` に出す（`registry.sqlite` 非経由） |
 | `place/key_space.yaml` | `place_source_ref.key_space`（外部キーの空間: `site_id`/`zone`/`watershed_id`/`grid01_latlon`）の宣言と、旧 `source_id` 値との対応、出典の版を持つか（Issue #39 Phase C、ADR-0006） |
 | `id_map/place.csv` | place の旧→新 ID の対応877件（ADR-0004 規約1 の区切り改定。**手書きの宣言**で、一度だけ旧ビルダーの出力から作った。`r01` が毎回、現行の place と1対1・旧 ID の再利用なし・規則一致を検査して止める。`registry.sqlite` の `id_map` 表→`web/src/lib/registry/generated-id-map.ts`→`legacy-id.ts` のリゾルバ。place_id を受ける経路が無いので未接続）。ファイル名の stem が entity |
 | `place/site_supplement.csv` | `sites` テーブルに無い観測地点の補完（143件）。`place_local` 列は、

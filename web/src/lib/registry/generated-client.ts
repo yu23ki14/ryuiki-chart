@@ -391,6 +391,24 @@ export const ZONE_INFO: readonly GeneratedZone[] = [
   { zone: 5, label: "河口・沿岸", cond: "標高 100m 以下・海岸から 2km 以内" },
 ];
 
+/** 地図ページの指標の語彙（registry/map_metric.yaml）。表示順はファイルの順。unit は表示用の文字列（unit_id を引いたもの）で、無ければ null。 */
+export const MAP_METRICS = [
+  { scope: "watershed", id: "org_density", kind: "count", label: "生物記録の密度", note: "流域の面積あたりの観察・標本記録数（件/km²）", unit: "件/km²" },
+  { scope: "watershed", id: "site_n", kind: "count", label: "観測地点の数", note: "その流域にある水質・気象などの観測地点", unit: "地点" },
+  { scope: "watershed", id: "org_redlist_n", kind: "count", label: "レッドリスト種の記録数", note: "レッドリストのカテゴリーが付いた観察記録", unit: "件" },
+  { scope: "watershed", id: "built_delta", kind: "landuse_delta", label: "市街地の増減", note: "国土数値情報 土地利用細分メッシュ。建物用地の面積の差", unit: "km2" },
+  { scope: "watershed", id: "forest_delta", kind: "landuse_delta", label: "森林の増減", note: "同上・森林の面積の差", unit: "km2" },
+  { scope: "watershed", id: "paddy_delta", kind: "landuse_delta", label: "田の増減", note: "同上・田の面積の差", unit: "km2" },
+  { scope: "mesh", id: "n", kind: "count", label: "記録の件数", note: "同じ場所で何度も記録されると大きくなる", unit: null },
+  { scope: "mesh", id: "species_n", kind: "count", label: "確認された種数", note: "件数が多くても種数が少ない場所がある", unit: null },
+  { scope: "mesh", id: "rl_n", kind: "count", label: "レッドリスト種の記録数", note: "保全上の重要地点を探す", unit: null },
+] as const;
+
+/** 流域の塗り分け指標の id（/api/geo/watersheds の properties のキー）。 */
+export type WatershedMetricId = Extract<(typeof MAP_METRICS)[number], { scope: "watershed" }>["id"];
+/** 生物メッシュの指標の id（/api/geo/mesh の properties のキー）。 */
+export type MeshMetricId = Extract<(typeof MAP_METRICS)[number], { scope: "mesh" }>["id"];
+
 /** region の時刻帯（registry/region.yaml の語彙。`lookup-client.ts` の `regionTimeZone()` が引く）。 */
 export const REGION_TIME: readonly GeneratedRegionTime[] = [
   { regionId: "jp-14", tzName: "Asia/Tokyo", utcOffset: "+09:00" },
