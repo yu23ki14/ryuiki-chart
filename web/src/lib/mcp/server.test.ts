@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { buildCubeFixture, FX, type CubeFixture } from "@/lib/cube/__fixtures__/cube-fixture";
+import { addRecordSites, buildCubeFixture, FX, FX_SENSOR_SITE, type CubeFixture } from "@/lib/cube/__fixtures__/cube-fixture";
 import { buildOccurrenceFixture, FXO, type OccurrenceFixture } from "@/lib/cube/__fixtures__/occurrence-fixture";
 import { OCCURRENCE_SOURCE_IDS } from "@/lib/cube";
 import { SPECIES_MIN_N } from "@/lib/cube/occurrence";
@@ -129,6 +129,30 @@ describe("5 ツールの応答は封筒（excluded=0・合成なし・cite_as・
     expect(env.cite_as).toContain("取得 2026-08-30");
     // 注記は同梱される（facet から機械的に付与。モデル任意のツールにしない）
     expect(Array.isArray(env.caveats)).toBe(true);
+  });
+
+  it("get_records(sites): 旧表に無い局を含む地点の site_id を、そのまま get_observations の scope.siteId に渡すと系列が返る", async () => {
+    addRecordSites(cube.raw);
+    const cases: { source_id: string; expectIds: string[]; withSeries: string[] }[] = [
+      { source_id: "atsugi_river_water_quality", expectIds: [FX.sites.a, FX.sites.b, FX.sites.c], withSeries: [FX.sites.a, FX.sites.c] }, // c は旧表 sites に無い
+      { source_id: "sagamihara_taiki_stations", expectIds: [FX_SENSOR_SITE.siteId], withSeries: [FX_SENSOR_SITE.siteId] }, // 旧表に無い観測局
+    ];
+    for (const c of cases) {
+      const rec = await call("get_records", { source_id: c.source_id, record_set: "sites" });
+      expect(rec.isError, c.source_id).toBe(false);
+      const rows = (rec.structuredContent.data as { rows: { site_id: string; name: string; source_id: string }[] }).rows;
+      expect(rows.map((r) => r.site_id).sort()).toEqual([...c.expectIds].sort());
+      for (const r of rows) {
+        expect(r.name).toBeTruthy();
+        expect(r.source_id).toBe(c.source_id);
+        const obs = await call("get_observations", { variableId: FX.variables.ss, scope: { type: "site", siteId: r.site_id }, grain: "day", from: "2000-01-01" });
+        expect(obs.isError, r.site_id).toBe(false);
+        if (c.withSeries.includes(r.site_id)) {
+          const sc = obs.structuredContent as { rows?: unknown[]; data?: { rows: unknown[] } };
+          expect((sc.rows ?? sc.data?.rows ?? []).length, r.site_id).toBeGreaterThan(0);
+        }
+      }
+    }
   });
 
   it("get_observations: 系列が無い variableId は空の封筒（別の系列に倒さない）", async () => {

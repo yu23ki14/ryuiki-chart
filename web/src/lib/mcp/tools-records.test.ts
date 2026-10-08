@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { applyMigrations, wrapSqlite } from "@/lib/cube/__fixtures__/cube-fixture";
+import { applyMigrations, insertSitePlace, wrapSqlite } from "@/lib/cube/__fixtures__/cube-fixture";
 import { sourceAccess } from "@/lib/cube/source-meta";
 import { McpInputError } from "./errors";
 import { getRecordsTool } from "./tools-records";
@@ -13,9 +13,8 @@ const run = (args: unknown, tool = getRecordsTool()) => tool.execute(args as nev
 beforeEach(() => {
   raw = new Database(":memory:");
   applyMigrations(raw);
-  const ins = raw.prepare("INSERT INTO sites (site_id, name, source_id) VALUES (?,?,?)");
-  for (let i = 1; i <= 5; i++) ins.run(`d${i}`, `ダム${i}`, "dams_kanagawa");
-  ins.run("j1", "気象", "jma_stations_kanagawa");
+  for (let i = 1; i <= 5; i++) insertSitePlace(raw, `d${i}`, `ダム${i}`, "dams_kanagawa");
+  insertSitePlace(raw, "j1", "気象", "jma_stations_kanagawa");
 });
 afterEach(() => raw.close());
 

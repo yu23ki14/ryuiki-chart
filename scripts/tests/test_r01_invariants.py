@@ -361,3 +361,16 @@ def test_watershed_place_has_attributes_and_source_ref_ignores_other_kinds(empty
     empty_registry.commit()
 
     r01._assert_watershed_place_has_attributes_and_source_ref(empty_registry)  # 例外を投げなければOK
+
+
+def test_place_source_ref_external_key_must_be_unique_within_key_space(empty_registry):
+    """get_records(sites) の site_id（key_space='site_id' の external_key）が主キーとして使えること。"""
+    _insert_place_source_ref(empty_registry, "p1", "dup", "site_id")
+    _insert_place_source_ref(empty_registry, "p2", "dup", "zone")  # key_space が違えば別の空間
+    empty_registry.commit()
+    r01._assert_id_uniqueness(empty_registry)  # 例外を投げなければOK
+
+    _insert_place_source_ref(empty_registry, "p3", "dup", "site_id")
+    empty_registry.commit()
+    with pytest.raises(AssertionError, match="一意ではない"):
+        r01._assert_id_uniqueness(empty_registry)

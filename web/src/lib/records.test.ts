@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { applyMigrations, wrapSqlite } from "@/lib/cube/__fixtures__/cube-fixture";
+import { applyMigrations, RECORD_SET_INSERT, wrapSqlite } from "@/lib/cube/__fixtures__/cube-fixture";
 import { sourceAccess } from "@/lib/cube/source-meta";
 import { RECORD_SET_TABLES } from "@/lib/registry/generated-source";
 import { TABLE_ORIGIN } from "@/lib/table-meta";
@@ -23,22 +23,7 @@ import {
 let raw: Database.Database;
 let db: ReturnType<typeof wrapSqlite>;
 
-/** 表ごとに、主キー・名称・出典だけを入れる最小の INSERT（NOT NULL 列があればここで埋める）。 */
-const INSERT: Record<RecordSetName, string> = {
-  sites: "INSERT INTO sites (site_id, name, source_id) VALUES (?, ?, ?)",
-  protected_areas: "INSERT INTO protected_areas (area_id, name_ja, source_id) VALUES (?, ?, ?)",
-  vegetation:
-    'INSERT INTO vegetation_polygons (feature_id, legend_name_ja, source_id, geometry_geojson) VALUES (?, ?, ?, \'{"type":"Polygon","coordinates":[]}\')',
-  river_segments:
-    'INSERT INTO river_segments (feature_id, name_ja, source_id, geometry_geojson) VALUES (?, ?, ?, \'{"type":"LineString","coordinates":[]}\')',
-  mammal_mesh: "INSERT INTO mammal_mesh (id, species_ja, source_id) VALUES (?, ?, ?)",
-  sightings: "INSERT INTO wildlife_sightings (sighting_id, species_ja, source_id) VALUES (?, ?, ?)",
-  documents: "INSERT INTO documents (doc_id, title, publisher) VALUES (?, ?, ?)",
-  document_notes: "INSERT INTO notes (note_id, doc_id, kind) VALUES (?, ?, ?)",
-  assessments: "INSERT INTO taxon_assessment (assessment_id, vernacular_name_ja_raw, source_id, list_id) VALUES (?, ?, ?, 'rl')",
-};
-
-const put = (t: RecordSetName, pk: string | number, name: string, source: string) => raw.prepare(INSERT[t]).run(pk, name, source);
+const put = (t: RecordSetName, pk: string | number, name: string, source: string) => RECORD_SET_INSERT[t](raw, pk, name, source);
 
 beforeEach(() => {
   raw = new Database(":memory:");
@@ -102,9 +87,11 @@ describe("queryRecords", () => {
   it("他の出典の行は返らない。返す列は許可リストだけ（SELECT * でない）", async () => {
     put("sites", "a", "ダムA", "dams_kanagawa");
     put("sites", "b", "気象B", "jma_stations_kanagawa");
-    raw.prepare("UPDATE sites SET geohash='xyz', treatment='t', is_synthetic=1 WHERE site_id='a'").run();
+    raw.prepare("INSERT INTO sites (site_id, name, operator, watershed, geohash, treatment, is_synthetic) VALUES ('a','旧名','県','w1','xyz','t',1)").run();
     const r = await q({ source_id: "dams_kanagawa" });
     expect(ids(r, "site_id")).toEqual(["a"]);
+    // 旧表 sites に行がある地点だけ、流域・管理者が付く（place の名前が優先）。観測局（旧表に無い）は NULL
+    expect(r.rows[0]).toMatchObject({ name: "ダムA", operator: "県", watershed: "w1", place_id: "p:a" });
     expect(Object.keys(r.rows[0]).sort()).toEqual([...RECORD_TABLES.sites.cols].sort());
   });
 

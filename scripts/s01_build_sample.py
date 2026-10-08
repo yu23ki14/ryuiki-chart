@@ -467,6 +467,36 @@ def _source_rowids(conn: sqlite3.Connection, table: str, sid: str) -> list[int]:
         "ORDER BY rowid", (sid,))]
 
 
+# build_place が site の place を作る入力の表（優先順）。place は registry の表で原本（ryuiki）には無いので、
+# `records: [sites]`（record_sets.sites = place）の出典は、その地点の元になる行で満たす。
+# 出典は site_id の接頭辞（`<source>__<code>`。key_space.yaml の per_row_prefix）で決まる。
+PLACE_SITE_INPUT_TABLES = ("sites", "sensor_timeseries", "measurements")
+
+
+def _site_id_prefix_range(sid: str) -> tuple[str, str]:
+    """`site_id` が `<sid>__` で始まる範囲 [lo, hi)（LIKE の `_` ワイルドカードを避け、site_id の索引も使える）。"""
+    lo = f"{sid}__"
+    return lo, lo[:-1] + chr(ord(lo[-1]) + 1)
+
+
+def _place_site_input_rowids(conn: sqlite3.Connection, table: str, sid: str, limit: int | None = None) -> list[int]:
+    lo, hi = _site_id_prefix_range(sid)
+    sql = f'SELECT rowid FROM "{table}" WHERE site_id >= ? AND site_id < ? ORDER BY rowid' + (f" LIMIT {limit}" if limit else "")
+    return [r[0] for r in conn.execute(sql, (lo, hi))]
+
+
+def _place_site_input_selected(conn: sqlite3.Connection, table: str, sid: str, rowids: set[int]) -> bool:
+    """サンプルに選んだ `table` の行のうち、出典 `sid` の地点の行が 1 つでもあるか。"""
+    lo, hi = _site_id_prefix_range(sid)
+    ids = sorted(rowids)
+    for i in range(0, len(ids), 500):
+        chunk = ids[i:i + 500]
+        q = ",".join("?" * len(chunk))
+        if conn.execute(f'SELECT 1 FROM "{table}" WHERE rowid IN ({q}) AND site_id >= ? AND site_id < ? LIMIT 1', (*chunk, lo, hi)).fetchone():
+            return True
+    return False
+
+
 def _catalog_dataset_rowids(conn: sqlite3.Connection, table: str, sid: str) -> tuple[int, str] | None:
     """出典 `sid` の目録から、サンプルに入れる 1 件（資源が 1 つ以上あるうち最少。同数は dataset_key 昇順）の (rowid, dataset_key)。
     資源が 1 つも無いデータセットしか無ければ、そのうち dataset_key 最小。"""
@@ -497,6 +527,18 @@ def select_declared_source_rows(
     for sid, entry in sorted((access_doc.get("sources") or {}).items()):
         for rs in entry.get("records") or []:
             table = record_sets[rs]
+            if table == "place":
+                # 地点の place は registry の表。元になる行（旧表 sites、または測定・センサー側にしか無い局）で満たす。
+                inputs = [t for t in PLACE_SITE_INPUT_TABLES if t in existing]
+                if not any(_place_site_input_selected(conn, t, sid, have(t)) for t in inputs):
+                    for t in inputs:
+                        first = _place_site_input_rowids(conn, t, sid, limit=1)
+                        if first:
+                            out.setdefault(t, set()).add(first[0])
+                            break
+                    else:
+                        raise SystemExit(f"access.yaml: {sid} の records {rs}（place）の元になる行が、原本のどの表（{inputs}）にも無い")
+                continue
             if table not in existing:
                 continue
             rowids = _source_rowids(conn, table, sid)

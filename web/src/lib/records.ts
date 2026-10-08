@@ -44,6 +44,8 @@ export interface RecordTable {
   sourceless?: boolean;
   /** 実列でない出力列（別名 → SQL 式。例 `note_rowid` → `notes.rowid`）。`cols` に載せる。実在検査の対象外。 */
   exprs?: Record<string, string>;
+  /** 常に付ける JOIN 句と条件（定数。別表の列を `exprs` で引く表だけ）。出典の絞りは `exprs.source_id` から導く。 */
+  base?: { join: string; where: string };
   /** 返す算出列（別名 → SQL 式。`join` の別名を参照してよい）。`cols` には含めない。選ぶか並べたときだけ `join` を付ける。 */
   computed?: Record<string, string>;
   /** `computed` が使う JOIN 句（定数）。 */
@@ -58,13 +60,42 @@ export interface RecordTable {
  * `taxon_assessment`（語彙レジストリの表）が持つので、それを引く。
  */
 export const RECORD_TABLES = {
+  /*
+   * 地点は語彙レジストリの `place`（place_kind='site'）の全地点。旧表 `sites`（5 出典・352 地点）には観測局
+   * （soramame・平塚/相模原の大気・横浜の水位・地盤沈下・厚木の水質）が無かったため、place から引く。
+   * `site_id` は place_source_ref（key_space='site_id'）の external_key で、`get_observations` の
+   * `scope={type:'site', siteId}` にそのまま渡せる（cube の buildScopeSql が同じ列で照合する）。
+   * 出典は place_source_ref の版（source_edition.source_id）。旧 `sites` にある地点だけ、流域・zone・
+   * 自治体・管理者などの列が LEFT JOIN で付く（観測局は NULL。地点と流域・zone の紐付けは Issue #86）。
+   */
   sites: {
     table: RECORD_SET_TABLES.sites,
     pk: "site_id",
     search: ["name", "name_en"],
-    // 除外: geohash, treatment, is_synthetic
+    // 地点と出典の定義は scripts/registry/common.py の count_site_places_by_source（n_total の事前計算）と同じ。
+    // 片方を変えたらもう片方も変える。
+    base: {
+      join:
+        "JOIN place_source_ref psr ON psr.place_id = place.place_id AND psr.key_space = 'site_id' " +
+        "JOIN source_edition se ON se.edition_id = psr.source_edition_id " +
+        "LEFT JOIN sites ls ON ls.site_id = psr.external_key",
+      where: "place.place_kind = 'site'",
+    },
+    exprs: {
+      site_id: "psr.external_key",
+      name: "place.name_ja",
+      name_en: "ls.name_en",
+      watershed: "ls.watershed",
+      zone: "ls.zone",
+      municipality: "ls.municipality",
+      muni_code: "ls.muni_code",
+      operator: "ls.operator",
+      established_on: "ls.established_on",
+      source_id: "se.source_id",
+      source_ref: "ls.source_ref",
+    },
     cols: [
-      "site_id", "name", "name_en", "watershed", "zone", "lat", "lon", "elevation_m", "municipality", "muni_code",
+      "site_id", "place_id", "status", "name", "name_en", "watershed", "zone", "lat", "lon", "elevation_m", "municipality", "muni_code",
       "operator", "established_on", "source_id", "source_ref",
     ],
   },
@@ -192,6 +223,8 @@ export const RECORDS_DESCRIPTION =
   "主キー昇順。id で 1 件、q で名称・和名・学名の部分一致。植生・河川のジオメトリは id 指定の 1 件だけ include_geometry で返す。" +
   "結果が truncated のときは next_after を after に渡して続きを取る（深いページは offset より速い）。" +
   "ライセンスや座標で行を除外・加工しない。利用条件は provenance の出典情報を見る。" +
+  "地点（record_set=sites）は大気・水位・水質・地盤沈下などの観測局を含む全地点で、行の site_id は get_observations の scope={type:'site', siteId} にそのまま渡せる。" +
+  "status が needs_review の地点は座標が未確認（lat・lon は null）。watershed・zone・municipality・operator などは従来の地点表にある地点だけ値が入り、観測局は null（地点と流域・zone の紐付けは未整備）。" +
   "行政文書の一覧（record_set=documents。抽出セル数 n_cells・注記数 n_notes・比較注意 n_blocking つき）と注記（record_set=document_notes。" +
   "q は本文と doc_id に効く。id は行の note_rowid）は出典に紐付かないので source_id を付けず record_set だけで引く（行の publisher・url・license が出典）。" +
   `使える出典と record_set（複数あるときは record_set を指定）: ${sourceSetList()}。`;
@@ -247,7 +280,7 @@ export function resolveRecordTable(
 }
 
 /** 複合の値を持つ表だけ。`|` 区切りの要素の完全一致（LIKE の部分一致にしない）。 */
-const COMPOSITE_SOURCE_MATCH = (t: string) => `instr('|' || ${t}.source_id || '|', ?) > 0`;
+const COMPOSITE_SOURCE_MATCH = (srcExpr: string) => `instr('|' || ${srcExpr} || '|', ?) > 0`;
 
 export interface QueryRecordsOptions {
   /** 入力エラーの例外を作る（MCP は `McpInputError`）。省略時は `RecordsInputError`。 */
@@ -301,18 +334,19 @@ function buildSelect(s: SelectSpec): { sql: string; params: SqlParam[]; limit: n
     if (!known.has(c)) throw new Error(`${t}.${c} は許可リストに無い`);
     return c;
   };
-  const exprOf = (c: string) => computed[c] ?? def.exprs?.[c] ?? `${t}.${c}`;
+  const exprOf = (c: string) => computed[c] ?? def.exprs?.[c] ?? `${t}.${c}`; // 検索列・並び・条件・選択列で共通
   const picked = (s.select ?? [...def.cols, ...Object.keys(computed)]).map(check);
   const geomCol = s.geometry ? (def.geometry ?? null) : null;
   if (s.geometry && !geomCol) throw new Error(`表 ${t} にジオメトリは無い`);
   const order = [...(s.order ?? []).map((o) => ({ ...o, col: check(o.col) }))];
   if (!order.some((o) => o.col === def.pk)) order.push({ col: def.pk });
 
-  const conds: string[] = [];
+  const conds: string[] = def.base ? [def.base.where] : [];
   const params: SqlParam[] = [];
   if (!def.sourceless && !s.anySource) {
     if (s.sourceId === undefined) throw new Error(`表 ${t} は出典で絞る必要がある`);
-    conds.push(def.compositeSource ? COMPOSITE_SOURCE_MATCH(t) : `${t}.source_id = ?`);
+    const srcExpr = exprOf("source_id");
+    conds.push(def.compositeSource ? COMPOSITE_SOURCE_MATCH(srcExpr) : `${srcExpr} = ?`);
     params.push(def.compositeSource ? `|${s.sourceId}|` : s.sourceId);
   }
   for (const e of s.eq ?? []) {
@@ -329,7 +363,7 @@ function buildSelect(s: SelectSpec): { sql: string; params: SqlParam[]; limit: n
     params.push(s.after);
   }
   if (s.q !== undefined) {
-    conds.push(`(${def.search.map((c) => `${t}.${c} LIKE ? ESCAPE '\\'`).join(" OR ")})`);
+    conds.push(`(${def.search.map((c) => `${exprOf(c)} LIKE ? ESCAPE '\\'`).join(" OR ")})`);
     const p = likeParam(s.q);
     for (let i = 0; i < def.search.length; i++) params.push(p);
   }
@@ -337,7 +371,7 @@ function buildSelect(s: SelectSpec): { sql: string; params: SqlParam[]; limit: n
   const selects = [...picked.map((c) => `${exprOf(c)} AS ${c}`), ...(geomCol ? [`${t}.${geomCol} AS ${geomCol}`] : [])];
   const limit = s.limit === null ? null : clampLimit(s.limit, s.defaultLimit, s.maxLimit);
   let sql =
-    `SELECT ${selects.join(", ")} FROM ${t}${usesJoin && def.join ? ` ${def.join}` : ""}` +
+    `SELECT ${selects.join(", ")} FROM ${t}${def.base ? ` ${def.base.join}` : ""}${usesJoin && def.join ? ` ${def.join}` : ""}` +
     `${conds.length ? ` WHERE ${conds.join(" AND ")}` : ""}` +
     ` ORDER BY ${order.map((o) => `${exprOf(o.col)}${o.desc ? " DESC NULLS LAST" : ""}`).join(", ")}`;
   if (limit !== null) {
