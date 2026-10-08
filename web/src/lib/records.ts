@@ -4,7 +4,7 @@
  *
  * - 任意 SQL ではない。出典（enum）× 宣言済みの表 × 許可リストの列だけ。SQL は `RECORD_TABLES` の
  *   定義から固定の形で組み立て、表名・列名は定数だけ（入力から組み立てない）。`SELECT *` は書かない。
- * - 出典で必ず絞る。既定は `source_id = ?`（索引が効く）。複合 source_id（`a|b`）を持つ表（`compositeSource`）だけ、
+ * - 出典で必ず絞る（行政文書の `documents`/`document_notes` だけは出典に紐付かないので record_set 単独。`sourceless`）。既定は `source_id = ?`（索引が効く）。複合 source_id（`a|b`）を持つ表（`compositeSource`）だけ、
  *   `|` で区切った要素の完全一致で照合する（LIKE の部分一致にしない）。どちらの出典で絞っても、その行が返る。
  * - ページングは `after`（直前の最後の主キー。keyset）が深くても速い。`offset` は残すが浅いページ向け。
  * - ライセンス・座標の精度で行を除外・加工しない（ADR-0028）。
@@ -37,6 +37,17 @@ export interface RecordTable {
   geometry?: string;
   /** `source_id` に `a|b` の複合値が入りうる表。true のときだけ区切りの完全一致で照合する（索引は効かない）。 */
   compositeSource?: boolean;
+  /**
+   * 出典の列を持たない表（行政文書。`documents`/`notes` に `source_id` は無い）。true の record_set は
+   * `source_id` を受けず（渡すと入力エラー）、record_set 単独で引く。理由は RECORD_TABLES の `documents` のコメント。
+   */
+  sourceless?: boolean;
+  /** 実列でない出力列（別名 → SQL 式。例 `note_rowid` → `notes.rowid`）。`cols` に載せる。実在検査の対象外。 */
+  exprs?: Record<string, string>;
+  /** 返す算出列（別名 → SQL 式。`join` の別名を参照してよい）。`cols` には含めない。選ぶか並べたときだけ `join` を付ける。 */
+  computed?: Record<string, string>;
+  /** `computed` が使う JOIN 句（定数）。 */
+  join?: string;
 }
 
 /**
@@ -102,6 +113,35 @@ export const RECORD_TABLES = {
       "note_ja", "source_id", "source_ref",
     ],
   },
+  /*
+   * 行政文書（cells.sqlite 由来の D1 表 `documents`/`notes`）。出典の列を持たず、access.yaml の出典にも
+   * 結び付かない（文書は PDF 1 本＝1 doc_id で、`source_registry` の出典とは 1 対 1 でも入れ子でもない。
+   * doc_id の接頭辞から出典を推測すると静かに外れる）。そこで `sourceless` とし、record_set 単独で引く。
+   * 「出典単位で読む」契約は、各行の `publisher`/`url`/`license` が出典情報を持つことで満たす。
+   * 表名は access.yaml の record_sets に無いので（出典に紐付かない表は宣言の対象外）ここに直書きする。
+   */
+  documents: {
+    table: "documents",
+    pk: "doc_id",
+    search: ["title", "publisher"],
+    cols: ["doc_id", "title", "publisher", "url", "n_pages", "fiscal_year", "license", "fetched_at"],
+    // cells・notes をそれぞれ 1 回だけ集計して結合する（文書ごとの相関サブクエリにしない）。
+    join:
+      "LEFT JOIN (SELECT doc_id, COUNT(*) AS n FROM cells GROUP BY doc_id) cc ON cc.doc_id = documents.doc_id " +
+      "LEFT JOIN (SELECT doc_id, COUNT(*) AS n, SUM(blocks_timeseries = 1) AS nb FROM notes GROUP BY doc_id) nn ON nn.doc_id = documents.doc_id",
+    computed: { n_cells: "COALESCE(cc.n, 0)", n_notes: "COALESCE(nn.n, 0)", n_blocking: "COALESCE(nn.nb, 0)" },
+    sourceless: true,
+  },
+  document_notes: {
+    table: "notes",
+    // note_id は 207 行中 30 行が NULL（schema.ts）。主キーに使えないので rowid を note_rowid として行に出し、
+    // それで並べる・ページングする・id 指定する（id に渡す値は行の note_rowid）。
+    pk: "note_rowid",
+    exprs: { note_rowid: "notes.rowid" },
+    search: ["text", "doc_id"],
+    cols: ["note_rowid", "note_id", "doc_id", "table_ids", "kind", "text", "page", "blocks_timeseries", "reason"],
+    sourceless: true,
+  },
   assessments: {
     table: RECORD_SET_TABLES.assessments,
     pk: "assessment_id",
@@ -114,6 +154,9 @@ export const RECORD_TABLES = {
   },
 } as const satisfies Record<string, RecordTable>;
 
+/** 表定義を `RecordTable` として引く（as const の狭い型から選択的フィールドを安全に読む）。 */
+const TABLES: Readonly<Record<keyof typeof RECORD_TABLES, RecordTable>> = RECORD_TABLES;
+
 export type RecordSetName = keyof typeof RECORD_TABLES;
 export const RECORD_SET_NAMES = Object.keys(RECORD_TABLES) as [RecordSetName, ...RecordSetName[]];
 
@@ -124,8 +167,8 @@ export function recordSetsOf(sourceId: string): readonly string[] {
 
 /** MCP・AI 共通の入力（z.tuple は使わない）。出典と表の組み合わせの検査は `queryRecords` が行う。 */
 export const recordsInputSchema = z.object({
-  source_id: z.enum(RECORD_SOURCE_IDS).describe("出典（必須。使える出典と record_set の組はツールの説明にある）"),
-  record_set: z.enum(RECORD_SET_NAMES).optional().describe("記録の集合（sites・protected_areas・vegetation・river_segments・mammal_mesh・sightings・assessments）。出典に集合が複数あるときだけ必須（1つなら省略可）"),
+  source_id: z.enum(RECORD_SOURCE_IDS).optional().describe("出典（documents・document_notes 以外は必須。使える出典と record_set の組はツールの説明にある）"),
+  record_set: z.enum(RECORD_SET_NAMES).optional().describe("記録の集合（sites・protected_areas・vegetation・river_segments・mammal_mesh・sightings・assessments・documents・document_notes）。出典に集合が複数あるときだけ必須（1つなら省略可）。documents・document_notes は出典に紐付かないので source_id なしでこれだけ指定する"),
   id: idText("主キーの完全一致（1 件取り）").optional(),
   q: likeText("表ごとの検索列（名称・和名・学名など）の部分一致").optional(),
   include_geometry: z
@@ -149,13 +192,16 @@ export const RECORDS_DESCRIPTION =
   "主キー昇順。id で 1 件、q で名称・和名・学名の部分一致。植生・河川のジオメトリは id 指定の 1 件だけ include_geometry で返す。" +
   "結果が truncated のときは next_after を after に渡して続きを取る（深いページは offset より速い）。" +
   "ライセンスや座標で行を除外・加工しない。利用条件は provenance の出典情報を見る。" +
+  "行政文書の一覧（record_set=documents。抽出セル数 n_cells・注記数 n_notes・比較注意 n_blocking つき）と注記（record_set=document_notes。" +
+  "q は本文と doc_id に効く。id は行の note_rowid）は出典に紐付かないので source_id を付けず record_set だけで引く（行の publisher・url・license が出典）。" +
   `使える出典と record_set（複数あるときは record_set を指定）: ${sourceSetList()}。`;
 
 /** 入力の組み合わせの誤り。`queryRecords` の `onInputError` で呼び出し側の例外（MCP は McpInputError）に変えられる。 */
 export class RecordsInputError extends Error {}
 
 export interface RecordsResult {
-  source_id: string;
+  /** 出典に紐付かない record_set（documents・document_notes）では null。 */
+  source_id: string | null;
   record_set: RecordSetName;
   /** 実表名（AI の provenance 用）。 */
   table: string;
@@ -170,35 +216,141 @@ export interface RecordsResult {
   n_total: number | null;
 }
 
-/** 入力から引く表を決める。出典に無い表・複数表で省略は入力エラー。 */
-export function resolveRecordTable(
+/** 入力から引く表と出典を決める。出典に紐付かない表（sourceless）は record_set 単独で、sourceId は undefined。 */
+function resolveTarget(
   a: Pick<RecordsInput, "source_id" | "record_set">,
-  fail: (msg: string) => Error = (m) => new RecordsInputError(m),
-): RecordSetName {
+  fail: (msg: string) => Error,
+): { set: RecordSetName; sourceId: string | undefined } {
+  if (a.record_set !== undefined && TABLES[a.record_set].sourceless) {
+    if (a.source_id !== undefined) throw fail(`record_set '${a.record_set}' は出典に紐付かない。source_id を付けず record_set だけで引く`);
+    return { set: a.record_set, sourceId: undefined };
+  }
+  if (a.source_id === undefined) throw fail("source_id が必要（documents・document_notes 以外の record_set は出典単位で読む）");
   const tables = recordSetsOf(a.source_id) as readonly RecordSetName[];
   if (tables.length === 0) throw fail(`source_id '${a.source_id}' は get_records の対象ではない`);
   if (a.record_set === undefined) {
-    if (tables.length === 1) return tables[0];
+    if (tables.length === 1) return { set: tables[0], sourceId: a.source_id };
     throw fail(`出典 ${a.source_id} は記録の集合が複数ある。record_set を ${tables.join(" / ")} から指定する`);
   }
   if (!tables.includes(a.record_set)) {
     throw fail(`出典 ${a.source_id} に記録の集合 '${a.record_set}' は無い。record_set は ${tables.join(" / ")} から選ぶ`);
   }
-  return a.record_set;
+  return { set: a.record_set, sourceId: a.source_id };
+}
+
+/** 入力から引く表を決める（`resolveTarget` の record_set だけ）。 */
+export function resolveRecordTable(
+  a: Pick<RecordsInput, "source_id" | "record_set">,
+  fail: (msg: string) => Error = (m) => new RecordsInputError(m),
+): RecordSetName {
+  return resolveTarget(a, fail).set;
 }
 
 /** 複合の値を持つ表だけ。`|` 区切りの要素の完全一致（LIKE の部分一致にしない）。 */
-const COMPOSITE_SOURCE_MATCH = `instr('|' || source_id || '|', ?) > 0`;
+const COMPOSITE_SOURCE_MATCH = (t: string) => `instr('|' || ${t}.source_id || '|', ?) > 0`;
 
 export interface QueryRecordsOptions {
   /** 入力エラーの例外を作る（MCP は `McpInputError`）。省略時は `RecordsInputError`。 */
   onInputError?: (msg: string) => Error;
 }
 
+/* ------------------------------------------------------------------ */
+/* SELECT の組み立て（`queryRecords`・`readRecordSet` が共有する唯一の場所）  */
+/* ------------------------------------------------------------------ */
+
+const DEFAULT_LIMIT = 100;
+
+/** 行数の上限を決める。NaN・非有限・0 以下は既定値、上限超は上限に丸める。 */
+export function clampLimit(v: unknown, def = DEFAULT_LIMIT, max = RECORDS_MAX_ROWS): number {
+  const n = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(n) || n < 1) return def;
+  return Math.min(Math.floor(n), max);
+}
+
+interface SelectSpec {
+  set: RecordSetName;
+  /** 出典付きの表では `anySource` でない限り必須（出典で必ず絞る）。sourceless の表では無視。 */
+  sourceId?: string;
+  /** 出典を問わず読む（画面・API の読み出しだけ）。 */
+  anySource?: boolean;
+  /** 完全一致（`cols` の列だけ）。 */
+  eq?: readonly { col: string; value: SqlParam }[];
+  id?: string;
+  after?: string;
+  q?: string;
+  /** 並び（`cols`/算出列の別名だけ）。主キーは最後のタイブレークとして常に足す（決定的な並び）。 */
+  order?: readonly { col: string; desc?: boolean }[];
+  /** 返す列（`cols`/算出列の別名の部分集合。省略は全部）。算出列を選ばなければ JOIN も付けない。 */
+  select?: readonly string[];
+  geometry?: boolean;
+  /** 行数。null は上限なし（呼び出し側が全件を意図するとき）。省略は `defaultLimit`。 */
+  limit?: number | null;
+  defaultLimit?: number;
+  maxLimit?: number;
+  /** true なら limit+1 行を読む（切り詰め判定用）。 */
+  probe?: boolean;
+  offset?: number;
+}
+
+function buildSelect(s: SelectSpec): { sql: string; params: SqlParam[]; limit: number | null; geomCol: string | null } {
+  const def = TABLES[s.set];
+  const t = def.table;
+  const computed = def.computed ?? {};
+  const known = new Set<string>([...def.cols, ...Object.keys(computed)]);
+  const check = (c: string) => {
+    if (!known.has(c)) throw new Error(`${t}.${c} は許可リストに無い`);
+    return c;
+  };
+  const exprOf = (c: string) => computed[c] ?? def.exprs?.[c] ?? `${t}.${c}`;
+  const picked = (s.select ?? [...def.cols, ...Object.keys(computed)]).map(check);
+  const geomCol = s.geometry ? (def.geometry ?? null) : null;
+  if (s.geometry && !geomCol) throw new Error(`表 ${t} にジオメトリは無い`);
+  const order = [...(s.order ?? []).map((o) => ({ ...o, col: check(o.col) }))];
+  if (!order.some((o) => o.col === def.pk)) order.push({ col: def.pk });
+
+  const conds: string[] = [];
+  const params: SqlParam[] = [];
+  if (!def.sourceless && !s.anySource) {
+    if (s.sourceId === undefined) throw new Error(`表 ${t} は出典で絞る必要がある`);
+    conds.push(def.compositeSource ? COMPOSITE_SOURCE_MATCH(t) : `${t}.source_id = ?`);
+    params.push(def.compositeSource ? `|${s.sourceId}|` : s.sourceId);
+  }
+  for (const e of s.eq ?? []) {
+    if (!def.cols.includes(e.col)) throw new Error(`${t}.${e.col} は許可リストに無い`);
+    conds.push(`${exprOf(e.col)} = ?`);
+    params.push(e.value);
+  }
+  if (s.id !== undefined) {
+    conds.push(`${exprOf(def.pk)} = ?`);
+    params.push(s.id);
+  }
+  if (s.after !== undefined) {
+    conds.push(`${exprOf(def.pk)} > ?`);
+    params.push(s.after);
+  }
+  if (s.q !== undefined) {
+    conds.push(`(${def.search.map((c) => `${t}.${c} LIKE ? ESCAPE '\\'`).join(" OR ")})`);
+    const p = likeParam(s.q);
+    for (let i = 0; i < def.search.length; i++) params.push(p);
+  }
+  const usesJoin = [...picked, ...order.map((o) => o.col)].some((c) => c in computed);
+  const selects = [...picked.map((c) => `${exprOf(c)} AS ${c}`), ...(geomCol ? [`${t}.${geomCol} AS ${geomCol}`] : [])];
+  const limit = s.limit === null ? null : clampLimit(s.limit, s.defaultLimit, s.maxLimit);
+  let sql =
+    `SELECT ${selects.join(", ")} FROM ${t}${usesJoin && def.join ? ` ${def.join}` : ""}` +
+    `${conds.length ? ` WHERE ${conds.join(" AND ")}` : ""}` +
+    ` ORDER BY ${order.map((o) => `${exprOf(o.col)}${o.desc ? " DESC NULLS LAST" : ""}`).join(", ")}`;
+  if (limit !== null) {
+    sql += " LIMIT ? OFFSET ?";
+    params.push(limit + (s.probe ? 1 : 0), s.offset ?? 0);
+  }
+  return { sql, params, limit, geomCol };
+}
+
 export async function queryRecords(db: CubeDb, a: RecordsInput, opt: QueryRecordsOptions = {}): Promise<RecordsResult> {
   const fail = opt.onInputError ?? ((m: string) => new RecordsInputError(m));
-  const set = resolveRecordTable(a, fail);
-  const def: RecordTable = RECORD_TABLES[set];
+  const { set, sourceId } = resolveTarget(a, fail);
+  const def = TABLES[set];
   const table = def.table;
   if (a.include_geometry) {
     if (!def.geometry) throw fail(`表 ${table} にジオメトリは無い。include_geometry は使えない`);
@@ -207,43 +359,37 @@ export async function queryRecords(db: CubeDb, a: RecordsInput, opt: QueryRecord
   if (a.q !== undefined && def.search.length === 0) throw fail(`表 ${table} は q（部分一致）に対応していない`);
   if (a.after !== undefined && a.offset) throw fail("after と offset は併用できない（深いページは after だけを使う）");
 
-  const limit = a.limit ?? 100;
   const offset = a.offset ?? 0;
-  const conds: string[] = [def.compositeSource ? COMPOSITE_SOURCE_MATCH : "source_id = ?"];
-  const params: SqlParam[] = [def.compositeSource ? `|${a.source_id}|` : a.source_id];
-  if (a.id !== undefined) {
-    conds.push(`${def.pk} = ?`);
-    params.push(a.id);
-  }
-  if (a.after !== undefined) {
-    conds.push(`${def.pk} > ?`);
-    params.push(a.after);
-  }
-  if (a.q !== undefined) {
-    conds.push(`(${def.search.map((c) => `${c} LIKE ? ESCAPE '\\'`).join(" OR ")})`);
-    const p = likeParam(a.q);
-    for (let i = 0; i < def.search.length; i++) params.push(p);
-  }
-  const geomCol = a.include_geometry && def.geometry ? def.geometry : null;
-  const cols = geomCol ? [...def.cols, geomCol] : [...def.cols];
-  const sql = `SELECT ${cols.join(", ")} FROM ${table} WHERE ${conds.join(" AND ")} ORDER BY ${def.pk} LIMIT ? OFFSET ?`;
-  const raw = await db.all(sql, [...params, limit + 1, offset]);
-  const truncated = raw.length > limit;
-  const page = raw.slice(0, limit);
+  const { sql, params, limit, geomCol } = buildSelect({
+    set, sourceId, id: a.id, after: a.after, q: a.q, geometry: a.include_geometry, limit: a.limit, offset, probe: true,
+  });
+  const lim = limit ?? DEFAULT_LIMIT; // limit は null にならない（a.limit は undefined か数）
+  const raw = await db.all(sql, params);
+  const truncated = raw.length > lim;
+  const page = raw.slice(0, lim);
   const rows: RecordsResult["rows"] = geomCol ? page.map((r) => ({ ...r, [geomCol]: parseGeometry(r[geomCol]) })) : page;
   const last = truncated ? page[page.length - 1]?.[def.pk] : undefined;
-  const nTotal = a.id === undefined && a.q === undefined ? (sourceAccess(a.source_id)?.recordSetRows[set] ?? null) : null;
   return {
-    source_id: a.source_id,
+    source_id: sourceId ?? null,
     record_set: set,
     table,
     rows,
-    limit,
+    limit: lim,
     offset,
     truncated,
     next_after: last === undefined || last === null ? null : String(last),
-    n_total: nTotal,
+    n_total: a.id === undefined && a.q === undefined ? await totalOf(db, set, sourceId) : null,
   };
+}
+
+/**
+ * q・id なしのときの行数。出典付きの表は事前計算（リクエスト時に count しない）。
+ * 出典に紐付かない表（行政文書。数百行以下）だけ、表全体の count(*) を 1 回数える。
+ */
+async function totalOf(db: CubeDb, set: RecordSetName, sourceId: string | undefined): Promise<number | null> {
+  if (sourceId !== undefined) return sourceAccess(sourceId)?.recordSetRows[set] ?? null;
+  const r = await db.all(`SELECT COUNT(*) AS n FROM ${TABLES[set].table}`, []);
+  return Number(r[0]?.n ?? 0);
 }
 
 function parseGeometry(v: string | number | null | undefined): object | string | number | null {
@@ -253,4 +399,99 @@ function parseGeometry(v: string | number | null | undefined): object | string |
   } catch {
     return v; // 壊れた値は黙って捨てず、そのまま返す
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* 画面・API 用の読み出し（`get_records` と同じ RECORD_TABLES の列定義・同じ builder）  */
+/* ------------------------------------------------------------------ */
+
+export interface ReadRecordOptions {
+  eq?: SelectSpec["eq"];
+  order: NonNullable<SelectSpec["order"]>;
+  select?: SelectSpec["select"];
+  /** 行数。null は全件。数（NaN・負・0 は既定値、上限超は丸める）。 */
+  limit?: number | null;
+  defaultLimit?: number;
+  maxLimit?: number;
+  /** ジオメトリ列（`geometry_geojson`）も文字列のまま返す。 */
+  withGeometry?: boolean;
+}
+
+/**
+ * 出典を問わず台帳表を読む（地図 API・行政文書の画面）。SQL は `queryRecords` と同じ builder。
+ * 戻りの行の型 `T` は呼び出し側が選んだ列に合わせて宣言する（ここが唯一のキャスト）。
+ * ジオメトリは `parseGeometry` せず文字列で返す（呼び出し側が壊れた値を落とす）。
+ */
+export async function readRecordSet<T = Record<string, string | number | null>>(
+  db: CubeDb,
+  set: RecordSetName,
+  opt: ReadRecordOptions,
+): Promise<T[]> {
+  const { sql, params } = buildSelect({
+    set, anySource: true, eq: opt.eq, order: opt.order, select: opt.select, geometry: opt.withGeometry,
+    limit: opt.limit ?? null, defaultLimit: opt.defaultLimit, maxLimit: opt.maxLimit,
+  });
+  return (await db.all(sql, params)) as unknown as T[];
+}
+
+export interface DocumentRow {
+  doc_id: string;
+  title: string | null;
+  publisher: string | null;
+  url: string | null;
+  n_pages: number | null;
+  fiscal_year: number | null;
+  license: string | null;
+  n_cells: number;
+  n_notes: number;
+  n_blocking: number;
+}
+
+/** 抽出元の行政文書の一覧（抽出セルの多い順）。`/api/documents` と `/sources` が使う。 */
+export function documentsList(db: CubeDb): Promise<DocumentRow[]> {
+  return readRecordSet<DocumentRow>(db, "documents", {
+    select: ["doc_id", "title", "publisher", "url", "n_pages", "fiscal_year", "license", "n_cells", "n_notes", "n_blocking"],
+    order: [{ col: "n_cells", desc: true }],
+  });
+}
+
+export interface DocNote {
+  note_id: string | null;
+  kind: string | null;
+  text: string | null;
+  page: number | null;
+  blocks_timeseries: number | null;
+  reason: string | null;
+}
+
+/** 1 文書の注記（時系列を妨げるものを先に、ページ順）。 */
+export function docNotes(db: CubeDb, docId: string): Promise<DocNote[]> {
+  return readRecordSet<DocNote>(db, "document_notes", {
+    eq: [{ col: "doc_id", value: docId }],
+    select: ["note_id", "kind", "text", "page", "blocks_timeseries", "reason"],
+    order: [{ col: "blocks_timeseries", desc: true }, { col: "page" }],
+  });
+}
+
+export interface BlockingNote {
+  doc_id: string;
+  doc_title: string | null;
+  kind: string | null;
+  page: number | null;
+  reason: string | null;
+  text: string | null;
+}
+
+/**
+ * 時系列の比較を妨げる注記（種別・文書・ページ順）。文書名は呼び出し側が持つ一覧から付ける
+ * （documents を読み直さない。`documentsList` の結果を渡す）。文書の無い注記は落とす（旧実装は内部結合）。
+ */
+export async function blockingNotes(db: CubeDb, docs: readonly Pick<DocumentRow, "doc_id" | "title">[]): Promise<BlockingNote[]> {
+  const title = new Map(docs.map((d) => [d.doc_id, d.title]));
+  const rows = await readRecordSet<Omit<BlockingNote, "doc_title">>(db, "document_notes", {
+    eq: [{ col: "blocks_timeseries", value: 1 }],
+    select: ["doc_id", "kind", "page", "reason", "text"],
+    order: [{ col: "kind" }, { col: "doc_id" }, { col: "page" }],
+  });
+  return rows.filter((r) => title.has(r.doc_id)).map((r) => ({ ...r, doc_title: title.get(r.doc_id) ?? null }));
 }

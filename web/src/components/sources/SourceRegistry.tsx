@@ -3,43 +3,27 @@
 import * as React from "react";
 import { Btn, inputCls, Stat, nf } from "@/components/ui";
 import { STATUS } from "@/components/viz/palette";
+import type { DocumentRow } from "@/lib/records";
+import type { SourcePageRow } from "@/lib/source-catalog";
 
-interface Source {
-  source_id: string;
-  name: string;
-  publisher: string;
-  url: string;
-  category: string;
-  license: string;
-  redistributable: number;
-  record_count: number;
-  format: string;
-  notes: string;
-}
-interface Doc {
-  doc_id: string;
-  title: string;
-  publisher: string;
-  url: string;
-  n_pages: number;
-  fiscal_year: number | null;
-  license: string;
-  n_cells: number;
-  n_notes: number;
-  n_blocking: number;
-}
+type Source = SourcePageRow;
+type Doc = DocumentRow;
 
-/** ライセンス文の自由記述を、バッジに出せる短いラベルに寄せる */
-function licenseBadge(license: string): { label: string; tone: "open" | "gov" | "share" | "check" } {
-  const l = license ?? "";
-  if (/CC0/i.test(l)) return { label: "CC0", tone: "open" };
-  if (/ODbL/i.test(l)) return { label: "ODbL（継承条件あり）", tone: "share" };
-  if (/CC[- ]?BY[- ]?NC/i.test(l)) return { label: "CC BY-NC", tone: "share" };
-  if (/CC[-\s]?BY/i.test(l) || /クリエイティブ・コモンズ/.test(l)) return { label: "CC BY", tone: "open" };
-  if (/政府標準利用規約|PDL|公共データ利用規約/.test(l)) return { label: "政府標準利用規約系", tone: "gov" };
-  if (/国土数値情報利用約款/.test(l)) return { label: "国土数値情報利用約款", tone: "gov" };
-  if (/要確認|明示なし|不明|事前アンケート|無断複製/.test(l)) return { label: "要確認", tone: "check" };
-  return { label: "個別条件", tone: "check" };
+/** 出典の license_class（registry）から、バッジに出す短いラベルと色調を決める。ライセンス文の自由記述は読まない。 */
+const LICENSE_BADGE: Record<string, { label: string; tone: "open" | "gov" | "share" | "check" }> = {
+  public_domain: { label: "パブリックドメイン", tone: "open" },
+  cc_by: { label: "CC BY", tone: "open" },
+  open_terms: { label: "公開利用規約", tone: "gov" },
+  share_alike: { label: "継承条件あり", tone: "share" },
+  noncommercial: { label: "非商用", tone: "share" },
+  mixed: { label: "混在", tone: "check" },
+  custom_terms: { label: "個別条件", tone: "check" },
+  restricted: { label: "制限あり", tone: "check" },
+  unconfirmed: { label: "要確認", tone: "check" },
+  unknown: { label: "不明", tone: "check" },
+};
+function licenseBadge(licenseClass: string | null): { label: string; tone: "open" | "gov" | "share" | "check" } {
+  return (licenseClass && LICENSE_BADGE[licenseClass]) || { label: "不明", tone: "check" };
 }
 
 const TONE: Record<string, string> = {
@@ -57,16 +41,16 @@ export function SourceRegistry({ sources, docs }: { sources: Source[]; docs: Doc
   const rows = React.useMemo(() => {
     const needle = q.trim();
     return sources.filter((s) => {
-      if (only === "used" && (s.record_count ?? 0) === 0) return false;
-      if (only === "redist" && s.redistributable !== 1) return false;
-      if (only === "check" && s.redistributable === 1) return false;
-      if (needle && !`${s.name} ${s.publisher} ${s.source_id} ${s.category} ${s.license}`.includes(needle)) return false;
+      if (only === "used" && s.queryable_via.length === 0) return false;
+      if (only === "redist" && s.redistributable !== true) return false;
+      if (only === "check" && s.redistributable === true) return false;
+      if (needle && !`${s.name} ${s.publisher} ${s.source_id} ${s.license}`.includes(needle)) return false;
       return true;
     });
   }, [sources, q, only]);
 
-  const totalRecords = sources.reduce((s, x) => s + (x.record_count ?? 0), 0);
-  const redist = sources.filter((s) => s.redistributable === 1).length;
+  const readable = sources.filter((s) => s.queryable_via.length > 0).length;
+  const redist = sources.filter((s) => s.redistributable === true).length;
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
@@ -91,7 +75,7 @@ export function SourceRegistry({ sources, docs }: { sources: Source[]; docs: Doc
               <div className="flex gap-0.5">
                 {(
                   [
-                    ["used", "取り込み済み"],
+                    ["used", "ツールで取れる"],
                     ["redist", "再配布可"],
                     ["check", "要確認"],
                     ["all", "すべて"],
@@ -107,7 +91,7 @@ export function SourceRegistry({ sources, docs }: { sources: Source[]; docs: Doc
           <div className="ml-auto flex gap-6">
             <Stat label="登録ソース" value={nf(sources.length)} unit="件" />
             <Stat label="再配布可" value={nf(redist)} unit="件" note={`要確認 ${sources.length - redist} 件`} />
-            <Stat label="取り込んだレコード" value={nf(totalRecords)} unit="件" />
+            <Stat label="ツールで取れる" value={nf(readable)} unit="件" />
           </div>
         </div>
       </div>
@@ -119,31 +103,31 @@ export function SourceRegistry({ sources, docs }: { sources: Source[]; docs: Doc
               <tr>
                 <th>名称</th>
                 <th>発行者</th>
-                <th>分類</th>
+                <th>取得日</th>
                 <th>ライセンス</th>
                 <th>再配布</th>
-                <th>レコード数</th>
-                <th>形式</th>
+                <th>原本の行数</th>
+                <th>取り方</th>
                 <th>source_id</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((s) => {
-                const b = licenseBadge(s.license);
+                const b = licenseBadge(s.license_class);
                 return (
                   <tr key={s.source_id}>
                     <td className="max-w-[420px]">
                       {s.url ? (
                         <a href={s.url} target="_blank" rel="noopener noreferrer" className="text-water-ink hover:underline">
-                          {s.name}
+                          {s.name ?? s.source_id}
                         </a>
                       ) : (
-                        s.name
+                        (s.name ?? s.source_id)
                       )}
                     </td>
                     <td className="text-muted">{s.publisher}</td>
-                    <td className="text-muted">{s.category}</td>
-                    <td title={s.license}>
+                    <td className="text-muted">{s.fetched_at ? s.fetched_at.slice(0, 10) : "–"}</td>
+                    <td title={s.license ?? ""}>
                       <span
                         className="text-[10.5px] px-1.5 py-0.5 rounded border"
                         style={{ borderColor: TONE[b.tone], color: TONE[b.tone] }}
@@ -152,7 +136,7 @@ export function SourceRegistry({ sources, docs }: { sources: Source[]; docs: Doc
                       </span>
                     </td>
                     <td>
-                      {s.redistributable === 1 ? (
+                      {s.redistributable === true ? (
                         <span className="text-[11px] text-ok">可</span>
                       ) : (
                         <span className="text-[11px]" style={{ color: STATUS.critical }}>
@@ -160,8 +144,10 @@ export function SourceRegistry({ sources, docs }: { sources: Source[]; docs: Doc
                         </span>
                       )}
                     </td>
-                    <td className="num">{nf(s.record_count ?? 0)}</td>
-                    <td className="text-muted">{s.format}</td>
+                    <td className="num">{s.n_source_rows == null ? "–" : nf(s.n_source_rows)}</td>
+                    <td className="text-muted" title={s.unavailable_reason_ja ?? ""}>
+                      {s.queryable_via.length > 0 ? s.queryable_via.join("・") : "取れない"}
+                    </td>
                     <td className="font-mono text-[10.5px] text-muted">{s.source_id}</td>
                   </tr>
                 );
@@ -186,7 +172,7 @@ export function SourceRegistry({ sources, docs }: { sources: Source[]; docs: Doc
               {docs.map((d) => (
                 <tr key={d.doc_id}>
                   <td className="max-w-[460px]">
-                    <a href={d.url} target="_blank" rel="noopener noreferrer" className="text-water-ink hover:underline">
+                    <a href={d.url ?? undefined} target="_blank" rel="noopener noreferrer" className="text-water-ink hover:underline">
                       {d.title}
                     </a>
                   </td>

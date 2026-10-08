@@ -69,6 +69,11 @@
   台帳・区域・メッシュ型のデータ用に `protected_areas` / `vegetation_polygons` / `mammal_mesh` /
   `wildlife_sightings` / `river_segments` を新設した（DDL は `scripts/schema_tier1.sql`）。
   API は `/api/geo/{protected-areas,vegetation,river-segments}`（`/api/nature` は Issue #61 で撤去）。
+  画面・API・MCP・AI は同じ問い合わせ層を共有する（ADR-0014）：地図 API は `web/src/lib/records.ts` の
+  `readRecordSet`（`get_records` と同じ `RECORD_TABLES` の列定義）で読み、`web/src/lib/queries.ts` は無い。
+  行政文書は `get_records` の `record_set=documents`／`document_notes`（出典に紐付かないので `source_id` なし）で、
+  `/api/documents`・`/sources` も同じ関数（`documentsList` 等）を使う。`/sources` の出典の行は
+  `web/src/lib/source-catalog.ts`（`describe_catalog what='sources'` と同じ registry 由来。旧表 `source_registry` は読まない）。
   `mammal_mesh` / `wildlife_sightings` は画面・API の読み手は無く、MCP / AI の `get_records`（`web/src/lib/records.ts`）が出典単位で読む（AI の run_sql / describe_schema の台帳表でもある）。
 - 外部ポータル（CKAN 4 インスタンス・e-Stat 7 件）の目録は `external_dataset` / `external_resource` /
   `external_resource_format`（format を正規化した照合用。原文は `external_resource.format`）

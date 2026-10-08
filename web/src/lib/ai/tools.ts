@@ -848,7 +848,7 @@ const get_records = tool({
       const base = {
         tool: "get_records",
         tables: [r.table],
-        caveats: caveatKeysForFacets(facetsForOccurrence({ places: [], sourceIds: [r.source_id] })),
+        caveats: caveatKeysForFacets(facetsForOccurrence({ places: [], sourceIds: r.source_id === null ? [] : [r.source_id] })),
         elapsedMs: performance.now() - t0,
       };
       if (input.include_geometry) {

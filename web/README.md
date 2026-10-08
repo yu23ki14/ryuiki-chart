@@ -140,7 +140,7 @@ src/db/schema.ts        ── drizzle-kit generate ──> drizzle/migrations/0
   `.env.local.example` に取得手順のコメントがある。**未設定でもアプリ・ビルドは普通に動く**。
   `/api/chat` が 503 を返し、AIパネルには「AIが未設定です」とだけ出る。
 - 中身は「意図レベルのツール」10個（`src/lib/ai/tools.ts`）。モデルが70個の関数を選ぶような作りにはしていない。
-  ツールはほぼ `src/lib/queries.ts` の合成で、新しい SQL はほとんど書いていない。フォールバックとして
+  ツールはほぼ `src/lib/cube/`・`src/lib/records.ts` の合成で、新しい SQL はほとんど書いていない。フォールバックとして
   `run_sql`（SELECT/WITH/EXPLAIN のみ・行数200・応答8KBまで）がある。
 - ツールが触れたテーブルから、レジストリ（`registry/caveat.yaml` → `src/lib/registry/`）の注記（測定値の癖・観察努力バイアス・合成データ等）を
   **決定論的に**引いて必ず証跡カードに出す（`src/lib/ai/caveats.ts`）。モデルの文章に注記の有無を委ねない。

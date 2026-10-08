@@ -1,5 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { protectedAreas } from "@/lib/queries";
+import { d1CubeDb } from "@/lib/cube";
+import { readRecordSet } from "@/lib/records";
+
+interface ProtectedAreaRow {
+  area_id: string;
+  name_ja: string | null;
+  category_ja: string | null;
+  category_code: string | null;
+  municipality_ja: string | null;
+  area_ha: number | null;
+  designated_on: string | null;
+  lat: number | null;
+  lon: number | null;
+  watershed: string | null;
+  zone: number | null;
+  source_id: string | null;
+}
 
 export const runtime = "nodejs";
 
@@ -10,7 +26,14 @@ export const runtime = "nodejs";
  */
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
-  const rows = await protectedAreas(sp.get("category") || undefined, Number(sp.get("limit") ?? 2000));
+  const category = sp.get("category") || undefined;
+  const rows = await readRecordSet<ProtectedAreaRow>(await d1CubeDb(), "protected_areas", {
+    eq: category ? [{ col: "category_code", value: category }] : undefined,
+    order: [{ col: "category_code" }, { col: "area_ha", desc: true }, { col: "name_ja" }],
+    limit: Number(sp.get("limit")),
+    defaultLimit: 2000,
+    maxLimit: 5000,
+  });
   const features = rows
     .filter((r) => r.lat != null && r.lon != null)
     .map((r) => ({

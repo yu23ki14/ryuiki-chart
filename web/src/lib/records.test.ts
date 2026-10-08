@@ -5,7 +5,12 @@ import { sourceAccess } from "@/lib/cube/source-meta";
 import { RECORD_SET_TABLES } from "@/lib/registry/generated-source";
 import { TABLE_ORIGIN } from "@/lib/table-meta";
 import {
+  blockingNotes,
+  clampLimit,
+  docNotes,
+  documentsList,
   queryRecords,
+  readRecordSet,
   RecordsInputError,
   recordsInputSchema,
   recordSetsOf,
@@ -28,6 +33,8 @@ const INSERT: Record<RecordSetName, string> = {
     'INSERT INTO river_segments (feature_id, name_ja, source_id, geometry_geojson) VALUES (?, ?, ?, \'{"type":"LineString","coordinates":[]}\')',
   mammal_mesh: "INSERT INTO mammal_mesh (id, species_ja, source_id) VALUES (?, ?, ?)",
   sightings: "INSERT INTO wildlife_sightings (sighting_id, species_ja, source_id) VALUES (?, ?, ?)",
+  documents: "INSERT INTO documents (doc_id, title, publisher) VALUES (?, ?, ?)",
+  document_notes: "INSERT INTO notes (note_id, doc_id, kind) VALUES (?, ?, ?)",
   assessments: "INSERT INTO taxon_assessment (assessment_id, vernacular_name_ja_raw, source_id, list_id) VALUES (?, ?, ?, 'rl')",
 };
 
@@ -40,17 +47,18 @@ beforeEach(() => {
 });
 afterEach(() => raw.close());
 
-const q = (a: Partial<RecordsInput> & Pick<RecordsInput, "source_id">) => queryRecords(db, a);
+const q = (a: Partial<RecordsInput>) => queryRecords(db, a);
 const ids = (r: { rows: Record<string, unknown>[] }, pk: string) => r.rows.map((x) => x[pk]);
 
 describe("RECORD_TABLES（許可リスト）", () => {
   it.each(Object.entries(RECORD_TABLES))("%s の列がすべて実在し、主キー・検索列・source_id を含む", (_set, def) => {
     const table = def.table;
     const real = new Set(raw.prepare(`PRAGMA table_info(${table})`).all().map((c) => (c as { name: string }).name));
-    const d = def as { table: string; pk: string; search: readonly string[]; cols: readonly string[]; geometry?: string };
+    const d = def as { table: string; pk: string; search: readonly string[]; cols: readonly string[]; geometry?: string; sourceless?: boolean; };
+    for (const k of Object.keys((def as { exprs?: object }).exprs ?? {})) real.add(k);
     for (const c of [...d.cols, ...d.search, d.pk, ...(d.geometry ? [d.geometry] : [])]) expect(real.has(c), `${table}.${c}`).toBe(true);
     expect(d.cols).toContain(d.pk);
-    expect(d.cols).toContain("source_id");
+    if (!d.sourceless) expect(d.cols).toContain("source_id");
     expect(d.cols).not.toContain(d.geometry ?? "(none)");
     expect(new Set(d.cols).size).toBe(d.cols.length);
   });
@@ -66,7 +74,9 @@ describe("RECORD_TABLES（許可リスト）", () => {
   });
 
   it("出典 × record_set の宣言（SOURCE_ACCESS）は許可リストの record_set だけを指し、record_set → 表の対応は access.yaml の 1 か所", () => {
-    expect(Object.keys(RECORD_SET_TABLES).sort()).toEqual(Object.keys(RECORD_TABLES).sort());
+    // 出典に紐付かない record_set（documents・document_notes）は access.yaml の対象外
+    const sourced = Object.entries(RECORD_TABLES).filter(([, d]) => !("sourceless" in d)).map(([k]) => k);
+    expect(Object.keys(RECORD_SET_TABLES).sort()).toEqual(sourced.sort());
     for (const s of RECORD_SOURCE_IDS) {
       const sets = recordSetsOf(s);
       expect(sets.length, s).toBeGreaterThan(0);
@@ -200,14 +210,66 @@ describe("queryRecords", () => {
 
 describe("recordsInputSchema", () => {
   const ok = { source_id: "dams_kanagawa" };
-  it("source_id 必須・出典 enum・表 enum・limit 上限・q の長さ・strict で未知のキーを拒否", () => {
+  it("出典 enum・表 enum・limit 上限・q の長さ・strict で未知のキーを拒否", () => {
     expect(recordsInputSchema.safeParse(ok).success).toBe(true);
-    expect(recordsInputSchema.safeParse({}).success).toBe(false);
     expect(recordsInputSchema.safeParse({ source_id: "moe_redlist" }).success).toBe(false);
     expect(recordsInputSchema.safeParse({ ...ok, limit: 501 }).success).toBe(false);
     expect(recordsInputSchema.safeParse({ ...ok, record_set: "sqlite_master" }).success).toBe(false);
     expect(recordsInputSchema.safeParse({ ...ok, q: "あ".repeat(17) }).success).toBe(false);
     expect(recordsInputSchema.strict().safeParse({ ...ok, columns: ["geohash"] }).success).toBe(false);
     expect(recordsInputSchema.strict().safeParse({ ...ok, where: "1=1" }).success).toBe(false);
+  });
+
+  it("行政文書（documents・document_notes）は出典に紐付かず record_set 単独で引く。source_id を付けると入力エラー", async () => {
+    raw.prepare("INSERT INTO documents (doc_id, title, publisher) VALUES ('d1','文書1','県'), ('d2','文書2','国')").run();
+    raw.prepare("INSERT INTO cells (doc_id) VALUES ('d1'), ('d1')").run();
+    const ins = raw.prepare("INSERT INTO notes (note_id, doc_id, kind, page, blocks_timeseries) VALUES (?,?,?,?,?)");
+    ins.run("n1", "d1", "定義変更", 3, 1);
+    ins.run(null, "d1", "脚注", 1, 0);
+    ins.run("n3", "d2", "定義変更", 2, 1);
+    const docs = await q({ record_set: "documents" });
+    expect(docs.source_id).toBeNull();
+    expect(docs.n_total).toBe(2); // 出典に紐付かない表は表全体の行数
+    expect(docs.rows.find((r) => r.doc_id === "d1")).toMatchObject({ n_cells: 2, n_notes: 2, n_blocking: 1 });
+    expect(docs.rows.find((r) => r.doc_id === "d2")).toMatchObject({ n_cells: 0, n_notes: 1, n_blocking: 1 });
+    expect(Object.keys(docs.rows[0])).not.toContain("local_path");
+    // note_id が NULL の注記も、行の note_rowid で並び・ページングし・id で引ける
+    const all = await q({ record_set: "document_notes", limit: 2 });
+    expect(all.truncated).toBe(true);
+    const rest = await q({ record_set: "document_notes", limit: 2, after: all.next_after as string });
+    expect(all.rows.length + rest.rows.length).toBe(3);
+    const nullNote = [...all.rows, ...rest.rows].find((r) => r.note_id === null)!;
+    expect(ids(await q({ record_set: "document_notes", id: String(nullNote.note_rowid) }), "note_rowid")).toEqual([nullNote.note_rowid]);
+    expect(ids(await q({ record_set: "document_notes", q: "d2" }), "note_id")).toEqual(["n3"]); // q は doc_id にも効く
+    await expect(q({ record_set: "documents", source_id: "dams_kanagawa" })).rejects.toThrow(RecordsInputError);
+    await expect(q({ record_set: "sites" })).rejects.toThrow(RecordsInputError);
+    // 画面用の関数も同じ定義・同じ builder を通る
+    expect((await documentsList(db)).map((d) => d.doc_id)).toEqual(["d1", "d2"]); // n_cells の多い順
+    const warnings = await blockingNotes(db, await documentsList(db));
+    expect(warnings.map((n) => [n.doc_title, n.kind])).toEqual([["文書1", "定義変更"], ["文書2", "定義変更"]]);
+    expect((await docNotes(db, "d1")).map((n) => n.note_id)).toEqual(["n1", null]);
+  });
+
+  it("limit は builder で丸める（NaN・負・0 は既定値、上限超は上限）", () => {
+    expect(clampLimit(Number.NaN)).toBe(100);
+    expect(clampLimit(-5)).toBe(100);
+    expect(clampLimit(0)).toBe(100);
+    expect(clampLimit(10_000)).toBe(500);
+    expect(clampLimit(7.9)).toBe(7);
+    expect(clampLimit(Number.NaN, 2000, 5000)).toBe(2000);
+    expect(clampLimit(9999, 2000, 5000)).toBe(5000);
+  });
+});
+
+describe("readRecordSet（地図用。get_records と同じ列定義）", () => {
+  it("絞り込み・並び・上限・ジオメトリ（文字列のまま）。許可リスト外の列は例外", async () => {
+    raw.prepare("INSERT INTO protected_areas (area_id, name_ja, category_code, area_ha, lat, lon, source_id) VALUES ('a','A','park',1,35,139,'s'),('b','B','park',5,35,139,'s'),('c','C','tree',9,35,139,'s')").run();
+    const r = await readRecordSet(db, "protected_areas", { eq: [{ col: "category_code", value: "park" }], order: [{ col: "area_ha", desc: true }], limit: 1 });
+    expect(r.map((x) => x.area_id)).toEqual(["b"]);
+    put("river_segments", "r1", "相模川", "geoshape_sagami_river");
+    const g = await readRecordSet(db, "river_segments", { order: [{ col: "feature_id" }], withGeometry: true });
+    expect(typeof g[0].geometry_geojson).toBe("string");
+    await expect(readRecordSet(db, "river_segments", { order: [{ col: "x; DROP TABLE sites" }] })).rejects.toThrow();
+    await expect(readRecordSet(db, "protected_areas", { order: [{ col: "area_id" }], withGeometry: true })).rejects.toThrow();
   });
 });

@@ -58,9 +58,10 @@ describe("get_records（MCP）", () => {
     await expect(run({ source_id: "dams_kanagawa", record_set: "mammal_mesh" })).rejects.toThrow(McpInputError);
   });
 
-  it("入力スキーマは strict。source_id なし・未知のキー・許可リスト外の指定は拒否", () => {
+  it("入力スキーマは strict。未知のキー・許可リスト外の指定は拒否", () => {
     const t = getRecordsTool();
-    expect(t.inputSchema.safeParse({}).success).toBe(false);
+    // source_id の有無は record_set に依る（行政文書は無し）。スキーマでは任意、queryRecords が入力エラーにする
+    expect(t.inputSchema.safeParse({}).success).toBe(true);
     expect(t.inputSchema.safeParse({ source_id: "dams_kanagawa", sql: "select 1" }).success).toBe(false);
     expect(t.inputSchema.safeParse({ source_id: "dams_kanagawa", columns: ["geohash"] }).success).toBe(false);
     expect(t.inputSchema.safeParse({ source_id: "dams_kanagawa" }).success).toBe(true);

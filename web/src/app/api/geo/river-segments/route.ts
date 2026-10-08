@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { riverSegments } from "@/lib/queries";
+import { d1CubeDb } from "@/lib/cube";
+import { readRecordSet } from "@/lib/records";
 
 export const runtime = "nodejs";
 
@@ -8,12 +9,18 @@ export const runtime = "nodejs";
  *   /api/geo/river-segments?prefecture=山梨県
  */
 export async function GET(req: NextRequest) {
-  const rows = await riverSegments(req.nextUrl.searchParams.get("prefecture") || undefined);
+  const prefecture = req.nextUrl.searchParams.get("prefecture") || undefined;
+  const rows = await readRecordSet(await d1CubeDb(), "river_segments", {
+    eq: prefecture ? [{ col: "prefecture_ja", value: prefecture }] : undefined,
+    order: [{ col: "length_m", desc: true }],
+    limit: null, // 水系全体（上限なし）
+    withGeometry: true,
+  });
   const features = rows.flatMap((r) => {
     if (!r.geometry_geojson) return [];
     let geometry: unknown;
     try {
-      geometry = JSON.parse(r.geometry_geojson);
+      geometry = JSON.parse(String(r.geometry_geojson));
     } catch {
       return [];
     }

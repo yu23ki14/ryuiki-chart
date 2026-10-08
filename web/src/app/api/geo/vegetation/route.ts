@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { vegetationShapes } from "@/lib/queries";
+import { d1CubeDb } from "@/lib/cube";
+import { readRecordSet } from "@/lib/records";
 
 export const runtime = "nodejs";
 
@@ -10,15 +11,20 @@ export const runtime = "nodejs";
  */
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
-  const rows = await vegetationShapes(
-    sp.get("legend") || undefined,
-    Math.min(Number(sp.get("limit") ?? 1500), 5000),
-  );
+  const legend = sp.get("legend") || undefined;
+  const rows = await readRecordSet(await d1CubeDb(), "vegetation", {
+    eq: legend ? [{ col: "legend_code", value: legend }] : undefined,
+    order: [{ col: "area_m2", desc: true }],
+    limit: Number(sp.get("limit")),
+    defaultLimit: 1500,
+    maxLimit: 5000,
+    withGeometry: true,
+  });
   const features = rows.flatMap((r) => {
     if (!r.geometry_geojson) return [];
     let geometry: unknown;
     try {
-      geometry = JSON.parse(r.geometry_geojson);
+      geometry = JSON.parse(String(r.geometry_geojson));
     } catch {
       return [];
     }

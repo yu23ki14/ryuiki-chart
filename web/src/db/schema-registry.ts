@@ -140,7 +140,7 @@ export const license = sqliteTable("license", {
  * 出典（不変）。`sourceId` は `source_registry.source_id` そのまま（bare）。公開 ID は
  * `sourceRefId = 'common:source:' || source_id`。`supersededBy` は置き換え先の source_id
  * （旧 ID は消さない。ADR-0004 規約 2。`gbif_kanagawa` → `gbif_kanagawa_occurrences`）。
- * v1 の `source_registry` は並走して残す（`queries.ts` が使用中。撤去は別 Issue）。
+ * v1 の `source_registry` は並走して残す（AI の run_sql・`lib/cube/catalog.ts` の件数が読む。撤去は別 Issue）。
  */
 export const source = sqliteTable("source", {
 	sourceId: text("source_id").primaryKey(),
