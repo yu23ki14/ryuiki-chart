@@ -482,8 +482,8 @@ def test_id_map_is_built_from_csv_without_source_data_in_files_only_mode(tmp_pat
     # dataset.csv が指す alias は variable_alias.csv 由来（--files-only でも作る）
     build_unit_variable.build(conn, {})
     counts = id_map.build_id_map(conn, full=False)
-    assert counts == {"place": 877, "dataset": 2}
-    assert conn.execute("SELECT count(*) FROM id_map").fetchone()[0] == 879
+    assert counts == {"place": 882, "dataset": 2}
+    assert conn.execute("SELECT count(*) FROM id_map").fetchone()[0] == 884
     conn.close()
 
 

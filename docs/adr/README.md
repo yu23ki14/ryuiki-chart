@@ -57,6 +57,7 @@ Architecture Decision Record。1ファイル＝1決定。**背景・決定・根
 | [0028](0028-no-coordinate-generalization.md) | 座標の一般化はしない。入力・外部ソースの値をそのまま配信経路で返す（ADR-0018を置換） | 承認済 |
 | [0029](0029-v1-removal-and-verification-handoff.md) | v1 の撤去にあたり、検証（ADR-0027 層2・層3）の比較対象を「v1」から「凍結スナップショット」へ引き継ぐ | 承認済 |
 | [0030](0030-d1-serving-schema.md) | D1 にキューブを直接載せ、summary は宣言的集計、画面は `value_lod`、合成データは出さない | 承認済 |
+| [0031](0031-zone-definition-v2.md) | zone を地域共通の定義（v2）に差し替える。起伏量・地域の最高峰の比・C23 海岸線、place は `common` | 承認済 |
 
 > ADR-0017（書き込み系ストアの設計）はこのプロジェクトの範囲外とし、シビックテック側に委ねる
 > （2026-09-25 追記、ADR-0017 本文参照）。

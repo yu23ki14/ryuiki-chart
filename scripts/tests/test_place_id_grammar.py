@@ -184,6 +184,49 @@ def test_real_id_map_resolves_every_legacy_place_id_to_exactly_one_current_id():
         m = conn.execute("SELECT old_id, new_id FROM id_map WHERE entity='place'").fetchall()
     finally:
         conn.close()
-    assert len(m) == 877  # site 495 + watershed 377 + zone 5
+    assert len(m) == 882  # site 495 + watershed 377 + zone 5 + zone の昇格前 ID 5（AMAMI_STEP0 §2）
     assert len({o for o, _ in m}) == len(m)
     assert all(n in ids and o not in ids for o, n in m)
+
+
+# ---------------------------------------------------------------------------
+# zone の common 昇格（AMAMI_STEP0 §2、ADR-0004 追記）
+# ---------------------------------------------------------------------------
+
+_ZONE_NEW = "common:place:zone.r2r.3"
+_PROMOTED_PAIRS = [
+    ("jp-14:place:zone.r2r-3", _ZONE_NEW),   # 区切り改定前の旧 ID
+    ("jp-14:place:zone.r2r.3", _ZONE_NEW),   # 改定後・昇格前の ID
+]
+
+
+def test_verify_place_id_map_accepts_zone_promoted_to_common_with_two_old_ids():
+    id_map.verify_place_id_map(_rows(*_PROMOTED_PAIRS), {_ZONE_NEW})
+
+
+def test_verify_place_id_map_halts_when_promoted_zone_has_a_third_old_id():
+    pairs = _PROMOTED_PAIRS + [("jp-46:place:zone.r2r.3", _ZONE_NEW)]
+    with pytest.raises(AssertionError, match="旧 ID が2つより多く"):
+        id_map.verify_place_id_map(_rows(*pairs), {_ZONE_NEW})
+
+
+def test_verify_place_id_map_halts_when_promoted_zone_old_id_drifts():
+    pairs = [("jp-14:place:zone.r2r_3", _ZONE_NEW)]
+    with pytest.raises(AssertionError, match="規則"):
+        id_map.verify_place_id_map(_rows(*pairs), {_ZONE_NEW})
+
+
+def test_verify_place_id_map_still_halts_on_duplicate_new_id_for_non_promoted_kinds():
+    """new_id の重複を許すのは昇格した zone だけ（site 等は 1 対 1 のまま）。"""
+    new = "jp-14:place:site.jma.s1"
+    with pytest.raises(AssertionError, match="new_id が重複"):
+        id_map.verify_place_id_map(_rows(("jp-14:place:site.jma-s1", new), ("jp-14:place:site.jma-s1b", new)), {new})
+
+
+def test_real_place_csv_resolves_both_old_zone_ids_to_common():
+    rows = id_map.load_csv("place")
+    got = {r["old_id"]: r["new_id"] for r in rows if ":zone." in r["old_id"]}
+    for n in range(1, 6):
+        assert got[f"jp-14:place:zone.r2r-{n}"] == f"common:place:zone.r2r.{n}"
+        assert got[f"jp-14:place:zone.r2r.{n}"] == f"common:place:zone.r2r.{n}"
+    assert len(got) == 10

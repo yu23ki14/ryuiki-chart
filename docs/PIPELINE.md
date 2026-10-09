@@ -76,6 +76,11 @@ PR-5 で v1 射影（b05/b08）から移した。キューブ・registry だけ�
   （定義・件数は ADR-0019「Issue #34 追記」）。`taxon.accepted_taxon_id` と弱い一致の採用は
   `scripts/c26_taxon_gbif_accepted.py` が書く `data/processed/taxon_gbif_accepted.csv`（GBIF API 収集物。
   `taxon_crosswalk.csv` と同じ扱いで指紋・サンプル `data/sample/processed/` に入る）を r01 が読む。
+- **zone（Ridge to Reef 1〜5。v2、ADR-0031）の順序**: c36（C23 海岸線 → `nlni_c23_coastline.geojson`）→ c68
+  （地理院標高タイル → `data/processed/terrain_points.csv`。座標ごとの標高・起伏量・最低標高・海岸距離）→ m01
+  （台帳。zone は入れない）→ m09（`sites.zone` を v2 の `classify()` の結果に更新。旧値は `reports/zone_v2_migration.csv`）→ r01
+  （`zone` place と `place_relation` を作る）。`terrain_points.csv` は registry の指紋に入る（`taxon_gbif_accepted.csv` と同じ扱い）。
+  **m09 で `sites.zone` を変えたら `pnpm run build:registry` を明示する**（m09 は原本を書き換えるだけで、registry の鮮度判定に頼らない）。地域ごとの最高峰は `registry/region.yaml` の `terrain.summit`、収集の定数は `scripts/regions.py`。
 
 ## 外部ポータルの目録（`find_datasets`。パイプラインではない運用手順）
 

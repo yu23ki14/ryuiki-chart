@@ -13,6 +13,8 @@ CSV は**手書きの宣言ファイル**（列: `old_id,new_id,reason,spec_vers
    （廃止した ID を別のものに使い回すと、古いリンク・外部の引用が別物を指す）。
 3. 規則との一致: old_id は new_id の最初の `.`（ns と key の区切り）を `-` に
    戻したものと一致する（旧形式の定義。宣言が手でずれたときに止める）。
+   ただし `SCOPE_PROMOTED_KINDS`（zone）の new_id が `common:` のときは、old_id のスコープだけが違ってよく
+   （`jp-14:place:zone.r2r-N` 形、または `jp-14:place:zone.r2r.N` 形）、1つの new_id に旧 ID を最大2つ向けてよい。
 4. 網羅: 区切りが変わった kind（site/watershed/zone）の現行 place_id は
    すべて new_id に宣言されている（宣言漏れで旧 ID が受理されなくならない）。
    逆に new_id は現行 place に実在する。
@@ -29,6 +31,14 @@ ID_MAP_COLUMNS = ("old_id", "new_id", "reason", "spec_version")
 # ADR-0004 規約1 の改定（ns と key の区切りを `-` から `.` へ）で ID が変わる place_kind。
 # grid01 は ns を持たず恒等。
 PLACE_KINDS_RENAMED = frozenset({"site", "watershed", "zone"})
+
+# 定義が地域に依存しなくなって `jp-14:` から `common:` に昇格した place_kind（同じ実体の ID の改称。
+# AMAMI_STEP0 §2、ADR-0004 日付付き追記）。これらの new_id には旧 ID が最大2つ向く
+# （区切り改定前の `jp-14:place:zone.r2r-N` と、改定後・昇格前の `jp-14:place:zone.r2r.N`）。
+# 旧 ID は一意のまま、new_id の重複はこの種別の昇格先に限って許す。
+SCOPE_PROMOTED_KINDS = frozenset({"zone"})
+PROMOTED_TO_SCOPE = "common"
+MAX_OLD_IDS_PER_PROMOTED_NEW_ID = 2
 
 
 def load_csv(entity: str, directory: pathlib.Path | None = None) -> list[dict]:
@@ -53,6 +63,28 @@ def legacy_place_id(new_id: str) -> str:
     return f"{p.scope}:{p.entity}:{p.kind}.{p.ns}-{p.key}"
 
 
+def _is_promoted(new_id: str) -> bool:
+    """new_id が `jp-14:` → `common:` に昇格した種別（zone）の現行 ID か。"""
+    try:
+        p = common.parse_id(new_id)
+    except ValueError:
+        return False
+    return p.entity == "place" and p.kind in SCOPE_PROMOTED_KINDS and p.scope == PROMOTED_TO_SCOPE
+
+
+def _promoted_old_forms(new_id: str, old_id: str) -> set[str]:
+    """昇格した new_id に対し、old_id のスコープ（`common` 以外）を保った旧形式2つ
+    （区切り改定前の `-` 形と、改定後・昇格前の `.` 形）。"""
+    old_scope = old_id.split(":", 1)[0]
+    if old_scope == PROMOTED_TO_SCOPE:
+        return set()
+    p = common.parse_id(new_id)
+    return {
+        f"{old_scope}:{p.entity}:{p.kind}.{p.ns}-{p.key}",
+        f"{old_scope}:{p.entity}:{p.kind}.{p.ns}.{p.key}",
+    }
+
+
 def verify_place_id_map(rows: list[dict], place_ids: set[str] | None) -> None:
     """`rows`（place.csv）が現行の `place_ids`（place テーブルの place_id 全件）と
     整合していることを検査する。食い違いがあれば AssertionError。
@@ -62,6 +94,7 @@ def verify_place_id_map(rows: list[dict], place_ids: set[str] | None) -> None:
     problems: list[str] = []
     old_seen: dict[str, int] = {}
     new_seen: dict[str, int] = {}
+    new_count: dict[str, int] = {}
     for i, r in enumerate(rows, start=2):  # 2 = ヘッダーの次の行
         old, new = r["old_id"], r["new_id"]
         if not old or not new:
@@ -70,9 +103,12 @@ def verify_place_id_map(rows: list[dict], place_ids: set[str] | None) -> None:
         if old in old_seen:
             problems.append(f"{i} 行目: old_id が重複（{old_seen[old]} 行目と同じ）: {old}")
         old_seen[old] = i
-        if new in new_seen:
+        if new in new_seen and not _is_promoted(new):
             problems.append(f"{i} 行目: new_id が重複（{new_seen[new]} 行目と同じ）: {new}")
-        new_seen[new] = i
+        new_seen.setdefault(new, i)
+        new_count[new] = new_count.get(new, 0) + 1
+        if _is_promoted(new) and new_count[new] > MAX_OLD_IDS_PER_PROMOTED_NEW_ID:
+            problems.append(f"{i} 行目: 昇格先の new_id に旧 ID が{MAX_OLD_IDS_PER_PROMOTED_NEW_ID}つより多く向いている: {new}")
         if place_ids is not None and old in place_ids:
             problems.append(
                 f"{i} 行目: 旧 ID が現行の place_id として発行されている"
@@ -86,7 +122,9 @@ def verify_place_id_map(rows: list[dict], place_ids: set[str] | None) -> None:
         except ValueError as e:
             problems.append(f"{i} 行目: new_id が新形式として分解できない: {e}")
         else:
-            if expected_old != old:
+            if _is_promoted(new) and old in _promoted_old_forms(new, old):
+                pass
+            elif expected_old != old:
                 problems.append(
                     f"{i} 行目: old_id が規則（ns と key の区切りを `-` に戻した形）と"
                     f"一致しない: old={old} 期待={expected_old}"

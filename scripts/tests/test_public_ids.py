@@ -255,15 +255,18 @@ needs_registry = pytest.mark.skipif(not _REGISTRY.exists(), reason="registry.sql
 
 @needs_registry
 def test_acceptance_old_ids_resolve_to_exactly_one_current_id_and_supersession_is_declared():
-    """① 旧 ID の凍結リスト（place 877・dataset 2）の各行が id_map でちょうど 1 個の現行 ID に解決する
+    """① 旧 ID の凍結リスト（place 882・dataset 2）の各行が id_map でちょうど 1 個の現行 ID に解決する
     （旧 ID は現行 ID として再利用されていない・新 ID は一意）。② `gbif_kanagawa` の置換が
     `source.superseded_by` と `source_edition.superseded_by` の両方で引ける。"""
     conn = sqlite3.connect(f"file:{_REGISTRY}?mode=ro", uri=True)
     try:
         counts = dict(conn.execute("SELECT entity, count(*) FROM id_map GROUP BY entity"))
-        assert counts == {"place": 877, "dataset": 2}
+        assert counts == {"place": 882, "dataset": 2}  # zone の昇格で旧 ID が5つ増えた（AMAMI_STEP0 §2）
         assert conn.execute("SELECT count(*) FROM (SELECT old_id FROM id_map GROUP BY old_id HAVING count(*) > 1)").fetchone()[0] == 0
-        assert conn.execute("SELECT count(*) FROM (SELECT new_id FROM id_map GROUP BY new_id HAVING count(*) > 1)").fetchone()[0] == 0
+        # new_id の重複は common に昇格した zone（旧 ID が2つ）だけ
+        assert conn.execute(
+            "SELECT count(*) FROM (SELECT new_id FROM id_map GROUP BY new_id HAVING count(*) > 1 "
+            "AND new_id NOT LIKE 'common:place:zone.%')").fetchone()[0] == 0
         assert conn.execute("SELECT count(*) FROM id_map WHERE old_id IN (SELECT place_id FROM place)").fetchone()[0] == 0
         assert conn.execute(
             "SELECT count(*) FROM id_map WHERE entity = 'place' AND new_id NOT IN (SELECT place_id FROM place)"
