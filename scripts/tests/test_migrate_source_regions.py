@@ -266,3 +266,48 @@ def test_region_usage_reports_unused_without_expected_count():
 def test_unknown_source_region_error_message_mentions_source_id():
     with pytest.raises(sr.UnknownSourceRegionError, match="unknown_source"):
         raise sr.UnknownSourceRegionError("unknown_source")
+
+
+# --- region.yaml の terrain.summit（地域の最高峰の宣言。zone v2。AMAMI_STEP0 §1.2） ---
+
+def _summit_yaml(body: str) -> dict:
+    import yaml
+    return yaml.safe_load(
+        "jp-14:\n  name_ja: 神奈川県\n  tz_name: Asia/Tokyo\n  utc_offset: \"+09:00\"\n  evidence: x\n" + body
+    )
+
+
+_GOOD_SUMMIT = (
+    "  terrain:\n    summit:\n      name_ja: 蛭ヶ岳\n      lat: 35.4863\n      lon: 139.1389\n"
+    "      elevation_m: 1673\n"
+)
+
+
+def test_region_without_terrain_passes():
+    assert region_vocab.region_problems(_summit_yaml("")) == []
+
+
+def test_region_with_valid_summit_passes():
+    assert region_vocab.region_problems(_summit_yaml(_GOOD_SUMMIT)) == []
+
+
+@pytest.mark.parametrize("bad", [
+    _GOOD_SUMMIT.replace("      elevation_m: 1673\n", ""),
+    _GOOD_SUMMIT.replace("lat: 35.4863", "lat: \"35.4863\""),
+    _GOOD_SUMMIT.replace("lat: 35.4863", "lat: 95"),
+    _GOOD_SUMMIT.replace("elevation_m: 1673", "elevation_m: 0"),
+    _GOOD_SUMMIT.replace("      name_ja: 蛭ヶ岳\n", ""),
+    "  terrain: {}\n",
+    "  terrain: 1673\n",
+])
+def test_region_with_bad_summit_is_reported(bad):
+    assert region_vocab.region_problems(_summit_yaml(bad))
+
+
+def test_real_region_yaml_declares_summits():
+    regions = region_vocab.load_regions()
+    assert {"jp-14", "jp-46"} <= set(regions)
+    import yaml
+    raw = yaml.safe_load(region_vocab.DEFAULT_REGION_YAML.read_text(encoding="utf-8"))
+    assert raw["jp-14"]["terrain"]["summit"]["elevation_m"] == 1673
+    assert raw["jp-46"]["terrain"]["summit"]["elevation_m"] == 694

@@ -130,15 +130,16 @@ caveats:
   severity: info
   kind: null
   title_ja: null
-  body_ja: ゾーンは標高と海岸線距離だけから機械的に付けた操作的定義であり、公式の区分ではない。zone 1（標高800m超）には水質データが無い。
+  body_ja: zone は地形から機械的に付けた操作的区分で、公式の区分ではない。標高の低い島（奄美大島など）では山地（zone 2）が陸の大半を占め、低地（zone 4）はほとんど現れない。これは定義の結果で、凡例・名称は地域によらず共通である。zone 1（山地で、標高が地域の最高峰の半分以上）には水質データが無い。
   quote: null
   review:
-    reviewed_on: '2026-10-06'
+    reviewed_on: '2026-10-10'
     reviewer: claude（オーナー委任）
     owner_confirmed_on: '2026-10-07'
-    reason: 操作的定義であることの断りで、比較は成立する。zone 1 は4地点で測定0件（本文どおり）。
+    reason: zone 定義 v2（ADR-0031）に合わせて本文を直した。操作的定義であることの断りで、比較は成立する。zone 1 は新定義でも4地点で測定0件（気象庁1・モニ1000 3。本文どおり）。島では zone 2 が大半を占める旨は zone.yaml の note_ja と同じ文。
     changed:
     - severity
+    - body
 - key: organismSite
   severity: warning
   kind: null

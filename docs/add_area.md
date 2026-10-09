@@ -16,7 +16,7 @@
 - `docs/COLLECTOR_CONTRACT.md` — 収集エージェントの契約。禁止事項・User-Agent・ライセンスの
   扱い。**必読であり、この文書はそれを一切上書きしない。** 矛盾するように見えたら
   COLLECTOR_CONTRACT を優先する。
-- `docs/ZONE_DEFINITION.md` — `zone`（Ridge to Reef 1–5）の操作的定義。神奈川の地形前提。
+- `docs/ZONE_DEFINITION.md` — `zone`（Ridge to Reef 1–5）の操作的定義（v2。地域共通の定義）。
 - `docs/add_utility.md` — 水道水源マップに事業体を1つ足す手順。本書と対になる文書で、「1タス
   クの粒度」「調べる→割り付ける→通す→報告する」という進め方の手本にした。
 - `docs/UNDATAFIED_TIERS.md` — 神奈川の未データ化ソースの Tier 分け（Tier 1/2/3）。本書の
@@ -25,17 +25,12 @@
 - `docs/adr/0016-migration-plan.md` と `docs/plans/PHASE_A.md` — v2 設計の移行計画と、レジス
   トリ並走（Phase A）の実装計画。
 
-**現在地**: 実データは神奈川県のみ。v1 のテーブル（`sites` / `measurements` /
-`organism_records` 等）に地域を表す列はまだ無く、`source_id` の `_kanagawa` 接尾辞という**慣
-習だけ**でエリアが分離されている。v2 設計（ADR-0001〜0020）は region を第一級の次元にする方
-向で進行中で、Phase A（語彙レジストリの並走）の A-1（`variable`/`unit`/`place`/`taxon`/
-`caveat` のスキーマ追加。`web/src/db/schema-registry.ts` / `data/db/registry.sqlite`）は既に
-コミット済み（`phase-a/registry` ブランチ。本書を出す `main` ベースの PR にはまだ乗っていな
-い）。`docs/plans/PHASE_A.md` 冒頭の「状態: 計画（未着手）」はこの時点より古い記述であり、実
-態は A-1 着手済みと読み替える。ただし A-1 はレジストリ側の作業であり、**v1 のファクトテーブ
-ルへの `region_id` 追加とは別物**（本書のスコープ）。つまり今エリアを1つ足すなら **v1 のテー
-ブルに `region_id` 列を追加するところから**始まる（§1・§4 Step 2）。Parquet 化・キューブ化・
-ID 付け替えは対象外（Phase B/C）。
+**現在地**: 実データは神奈川県が中心で、奄美大島（`jp-46`）は Step 0（zone の共通定義・C23・
+`scripts/regions.py`・`region.yaml` の追加。`docs/plans/AMAMI_STEP0.md`）まで。v1 は撤去済み（Issue #48
+PR-5）で、配信は語彙レジストリ（`registry/`）とキューブ（v2）が担う。地域は第一級の次元で、出典の
+`region`（`manifests/<source_id>.yml`）と `place.region_id` で切る。「v1 のテーブルに `region_id` 列を足す」
+という旧記述（§1・§4 Step 2）は、現在のパイプライン（`docs/PIPELINE.md`）に合わせて読み替えること。
+Parquet 化・キューブ化・ID 付け替えは対象外。
 
 **「読み取り専用」との関係**: `CLAUDE.md` は `data/db/ryuiki.sqlite` / `cells.sqlite` を「読
 み取り専用」と書いているが、これは **`web/`（Next.js アプリ・API）側から見た規約**であり、書
@@ -62,7 +57,7 @@ ID 付け替えは対象外（Phase B/C）。
 ADR-0004 の例に合わせ `jp-<JIS2桁>` とする（例 `jp-14`＝神奈川県、`jp-13`＝東京都）。**粒度
 は都道府県固定とする（決定済み）**。ADR-0002 の例に `jp-46-tatsugo`（市町村粒度）が挙がって
 いるが、当面はこれを採らず都道府県で切る。東京の島嶼部・沖縄の離島の扱いは、より細かい
-`region_id` を切るのではなく zone 定義側の別閾値セットで対応する（§7）。
+`region_id` を切るのではなく、zone は地域共通の定義（`docs/ZONE_DEFINITION.md` v2）で扱う（§7）。
 
 **ファクト行の `region_id` は出典の管轄県で決まる**（ADR-0004:「地域は**ファクトのパーティシ
 ョン列 `region_id`** で表すのであって、レジストリの ID に埋めない」）。ある地点・記録がどの
@@ -129,25 +124,25 @@ ADR-0004 の例に合わせ `jp-<JIS2桁>` とする（例 `jp-14`＝神奈川�
 い」に同じ）。
 
 `要確認` の値は、本収集に入る前に**必ず1件だけ取得して件数で検証**すること（§4 Step 1）。埋
-めた値は、この文書の表に加えて **`scripts/regions.py`（まだ存在しない。§4 Step 1 で作る）
+めた値は、この文書の表に加えて **`scripts/regions.py`（`jp-14`・`jp-46` の定数がある）
 **にも反映する（決定事項1・§10）。
 
-| パラメータ | 神奈川の値 | 参照している場所（変数名） | 東京都 | 沖縄県 | 兵庫県 | 調べ方 |
-|---|---|---|---|---|---|---|
-| `region_id`（提案） | `jp-14` | ADR-0004 の例 | `jp-13` | `jp-47` | `jp-28` | JIS X 0401（都道府県コード）。上書き不可の周知の値。 |
-| `region_slug` | `kanagawa` | `source_id` の接尾辞（`inaturalist_kanagawa` 等） | 要確認 | 要確認 | 要確認 | 新設ソースの命名規約として決めるだけ。既存ソースとの衝突が無いか `source_registry` を grep して確認。 |
-| JIS都道府県コード | `14` | `c32_nlni_a10.py` `PREFEC_CD`（属性から自動）、`c31_nlni_w05.py`/`c35_nlni_a45.py` の `prefecture_code="14"`（直書き）、`c90_estat_shozaiki.py` の `prefCode=14` | `13` | `47` | `28` | JIS X 0401。周知の値なので確認不要。 |
-| bbox（lon_min, lat_min, lon_max, lat_max） | `(138.9, 35.1, 139.8, 35.7)` | `KANAGAWA_BBOX`（`scripts/m01_sites.py`）／`BBOX`（`scripts/m99_validate.py`）／`KANAGAWA_BBOX`（`scripts/c80_biodic_ikimonomap.py`）※実測では3ファイルとも完全に同一の値だった | 要確認（§7: 単一矩形が破綻する） | 要確認（§7） | 要確認（§7: 2海岸線） | 国土地理院か国勢調査の都道府県外接矩形をまず出し、**離島の有無を必ず確認する**（§7）。単一 bbox で足りるかどうかも同時に判断する。 |
-| GADM gid（GBIF用） | `JPN.19_1` | `GADM`（`scripts/c02_gbif.py`） | 要確認 | 要確認 | 要確認 | `https://www.gbif.org/occurrence/search` で対象都道府県名を検索し、Administrative Area のファセットからGID形式（`JPN.<n>_1`）を1件確認する。 |
-| iNaturalist place_id | `10918` | `PLACE`（`scripts/c03_inaturalist.py`） | 要確認 | 要確認 | 要確認 | `https://api.inaturalist.org/v1/places/autocomplete?q=<都道府県名>` を1回叩き、`results[].id` を確認する（都道府県の行政区分 place を選ぶこと。市区町村の place と取り違えない）。 |
-| 気象庁 prec_no | `46` | `PREC`（`scripts/c10_jma.py`） | 要確認 | 要確認（**単一値ではない可能性**。§7） | 要確認 | 気象庁「過去の気象データ・ダウンロード」の地点選択画面で対象都道府県を選び、URL の `prec_no=` を読む。 |
-| e-Stat prefCode | `14` | `c90_estat_shozaiki.py` の `prefCode=14`（小地域境界データAPI） | 要確認（§7: 特別区単位） | 要確認 | 要確認 | e-Stat 地図で配信されている境界データWebサービスのAPI仕様書、または対象都道府県を選んだ時のリクエストURLで確認。JIS都道府県コードと一致することが多いが**確認せず流用しない**。 |
-| 国土数値情報のファイル名の県コード | `14`（`c31`の`ZIPU`、`c32`/`c33`/`c35`の`ZIPU`、`c30`の`SHP`/`W05_SHP`に埋め込み） | 各 `c3x_nlni_*.py` の `ZIPU` / `SHP` | 要確認 | 要確認 | 要確認 | `https://nlftp.mlit.go.jp/ksj/` の該当データセットのダウンロードページで、対象都道府県のZIPリンクのURLパターンを1件確認する（`W05-08_<コード>_GML.zip` のように末尾がJIS県コードのことが多いが、データセットごとに位置が違うことがある）。 |
-| L03-b（土地利用細分メッシュ）の1次メッシュコード | `("5238","5239","5338","5339")` | `MESHES`（`scripts/c34_nlni_l03b.py`） | 要確認 | 要確認 | 要確認 | 対象都道府県の bbox を国土地理院の「標準地域メッシュ」対応表に当て、1次メッシュ（4桁）を機械的に算出するか、`https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-L03-b.html` のメッシュ一覧図で目視確認する。**沖縄は離島が多く1次メッシュが飛び地状に複数必要になりうる**ので特に注意。 |
-| CKAN インスタンス | `catalog.opendata.pref.kanagawa.jp`（県）／`opendata.city.sagamihara.kanagawa.jp`（相模原市）（`scripts/c01_ckan.py`） | `scripts/c01_ckan.py` の一覧 | 要確認 | 要確認 | 要確認 | 対象都道府県のオープンデータポータルのトップページを確認し、CKAN製か（`/api/3/action/package_search` が応答するか）を1回叩いて確認する。CKANでない場合は別途調査（DCAT-JP等）が要る。 |
-| 県レッドリストの版 | 神奈川県レッドリスト2020（植物編）／レッドデータブック2022（植物編）／レッドリスト2026（昆虫類・クモ類）／レッドデータ生物調査報告書2006（動物編）（`scripts/c20_kanagawa_redlist.py` 他） | `scripts/c20`〜`c28` | 要確認 | 要確認 | 要確認 | 対象都道府県の環境部局サイトで「レッドリスト」「レッドデータブック」を検索し、最新版とその前版の掲載ページ・ファイル形式（HTML表/PDF/xlsx）を確認する。版によって形式が変わることがある。 |
-| 海岸線 | `COASTLINE_LONLAT`（約20点の折れ線近似。`scripts/m01_sites.py`） | 同上 | 要確認 | 要確認 | 要確認 | §7 参照。**折れ線近似は廃止し国土数値情報 C23（海岸線）に置き換える方針が決定済み**（決定事項8・§10）。C23 のデータ仕様は要確認。 |
-| 主要水系 | 相模川水系・酒匂川水系（`scripts/c52_dams_kanagawa.py` コメント） | `scripts/c5x_*.py`、`scripts/c9x_*.py` | 要確認 | 要確認 | 要確認 | 国土数値情報 W05（河川データ）の水系コード一覧（`data/raw/nlni_codelists/WaterSystemCodeCd.html` 相当）で対象都道府県の主要水系を確認する。 |
+| パラメータ | 神奈川の値 | 参照している場所（変数名） | 鹿児島県・奄美大島（`jp-46`） | 東京都 | 沖縄県 | 兵庫県 | 調べ方 |
+|---|---|---|---|---|---|---|---|
+| `region_id`（提案） | `jp-14` | ADR-0004 の例 | `jp-46`（`registry/region.yaml` に追加済み。当面の範囲は奄美大島5市町村） | `jp-13` | `jp-47` | `jp-28` | JIS X 0401（都道府県コード）。上書き不可の周知の値。 |
+| `region_slug` | `kanagawa` | `source_id` の接尾辞（`inaturalist_kanagawa` 等） | 未着手（Step 1 以降） | 要確認 | 要確認 | 要確認 | 新設ソースの命名規約として決めるだけ。既存ソースとの衝突が無いか `source_registry` を grep して確認。 |
+| JIS都道府県コード | `14` | `c32_nlni_a10.py` `PREFEC_CD`（属性から自動）、`c31_nlni_w05.py`/`c35_nlni_a45.py` の `prefecture_code="14"`（直書き）、`c90_estat_shozaiki.py` の `prefCode=14` | `46`（`scripts/regions.py`） | `13` | `47` | `28` | JIS X 0401。周知の値なので確認不要。 |
+| bbox（lon_min, lat_min, lon_max, lat_max） | `(138.9, 35.1, 139.8, 35.7)` | `KANAGAWA_BBOX`（`scripts/m01_sites.py`）／`BBOX`（`scripts/m99_validate.py`）／`KANAGAWA_BBOX`（`scripts/c80_biodic_ikimonomap.py`）※実測では3ファイルとも完全に同一の値だった | 未着手 | 要確認（§7: 単一矩形が破綻する） | 要確認（§7） | 要確認（§7: 2海岸線） | 国土地理院か国勢調査の都道府県外接矩形をまず出し、**離島の有無を必ず確認する**（§7）。単一 bbox で足りるかどうかも同時に判断する。 |
+| GADM gid（GBIF用） | `JPN.19_1` | `GADM`（`scripts/c02_gbif.py`） | `JPN.18.4_1`・`.38_1`・`.41_1`・`.44_1`・`.34_1`（奄美市・龍郷町・宇検村・大和村・瀬戸内町。GBIF で1件ずつ count>0 を確認済み。`reports/add_area_kagoshima.md`） | 要確認 | 要確認 | 要確認 | `https://www.gbif.org/occurrence/search` で対象都道府県名を検索し、Administrative Area のファセットからGID形式（`JPN.<n>_1`）を1件確認する。 |
+| iNaturalist place_id | `10918` | `PLACE`（`scripts/c03_inaturalist.py`） | `34051`・`34081`・`34085`・`34091`・`34088`（奄美市・瀬戸内町・龍郷町・大和村・宇検村。確認済み） | 要確認 | 要確認 | 要確認 | `https://api.inaturalist.org/v1/places/autocomplete?q=<都道府県名>` を1回叩き、`results[].id` を確認する（都道府県の行政区分 place を選ぶこと。市区町村の place と取り違えない）。 |
+| 気象庁 prec_no | `46` | `PREC`（`scripts/c10_jma.py`） | `prec_no=88`（名瀬 `47909`〔官署〕・笠利 `1520`・古仁屋 `0980`〔アメダス〕。確認済み） | 要確認 | 要確認（**単一値ではない可能性**。§7） | 要確認 | 気象庁「過去の気象データ・ダウンロード」の地点選択画面で対象都道府県を選び、URL の `prec_no=` を読む。 |
+| e-Stat prefCode | `14` | `c90_estat_shozaiki.py` の `prefCode=14`（小地域境界データAPI） | `46`（`scripts/regions.py`） | 要確認（§7: 特別区単位） | 要確認 | 要確認 | e-Stat 地図で配信されている境界データWebサービスのAPI仕様書、または対象都道府県を選んだ時のリクエストURLで確認。JIS都道府県コードと一致することが多いが**確認せず流用しない**。 |
+| 国土数値情報のファイル名の県コード | `14`（`c31`の`ZIPU`、`c32`/`c33`/`c35`の`ZIPU`、`c30`の`SHP`/`W05_SHP`に埋め込み） | 各 `c3x_nlni_*.py` の `ZIPU` / `SHP` | `46`（C23 は `C23_001` が奄美5市町村の線だけ。`scripts/regions.py`） | 要確認 | 要確認 | 要確認 | `https://nlftp.mlit.go.jp/ksj/` の該当データセットのダウンロードページで、対象都道府県のZIPリンクのURLパターンを1件確認する（`W05-08_<コード>_GML.zip` のように末尾がJIS県コードのことが多いが、データセットごとに位置が違うことがある）。 |
+| L03-b（土地利用細分メッシュ）の1次メッシュコード | `("5238","5239","5338","5339")` | `MESHES`（`scripts/c34_nlni_l03b.py`） | `("4229",)`（`scripts/regions.py`） | 要確認 | 要確認 | 要確認 | 対象都道府県の bbox を国土地理院の「標準地域メッシュ」対応表に当て、1次メッシュ（4桁）を機械的に算出するか、`https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-L03-b.html` のメッシュ一覧図で目視確認する。**沖縄は離島が多く1次メッシュが飛び地状に複数必要になりうる**ので特に注意。 |
+| CKAN インスタンス | `catalog.opendata.pref.kanagawa.jp`（県）／`opendata.city.sagamihara.kanagawa.jp`（相模原市）（`scripts/c01_ckan.py`） | `scripts/c01_ckan.py` の一覧 | 未着手 | 要確認 | 要確認 | 要確認 | 対象都道府県のオープンデータポータルのトップページを確認し、CKAN製か（`/api/3/action/package_search` が応答するか）を1回叩いて確認する。CKANでない場合は別途調査（DCAT-JP等）が要る。 |
+| 県レッドリストの版 | 神奈川県レッドリスト2020（植物編）／レッドデータブック2022（植物編）／レッドリスト2026（昆虫類・クモ類）／レッドデータ生物調査報告書2006（動物編）（`scripts/c20_kanagawa_redlist.py` 他） | `scripts/c20`〜`c28` | 未着手 | 要確認 | 要確認 | 要確認 | 対象都道府県の環境部局サイトで「レッドリスト」「レッドデータブック」を検索し、最新版とその前版の掲載ページ・ファイル形式（HTML表/PDF/xlsx）を確認する。版によって形式が変わることがある。 |
+| 海岸線 | `COASTLINE_LONLAT`（約20点の折れ線近似。`scripts/m01_sites.py`） | 同上 | 国土数値情報 C23-06（`c36_nlni_c23_coastline.py`）。zone v2 で神奈川も切り替え済み | 要確認 | 要確認 | 要確認 | §7 参照。**折れ線近似は廃止し、国土数値情報 C23（海岸線）に置き換えた**（決定事項8・§10。`C23-06_{県コード}_GML.zip`、線の `C23_001` が行政区域コード）。 |
+| 主要水系 | 相模川水系・酒匂川水系（`scripts/c52_dams_kanagawa.py` コメント） | `scripts/c5x_*.py`、`scripts/c9x_*.py` | 未着手 | 要確認 | 要確認 | 要確認 | 国土数値情報 W05（河川データ）の水系コード一覧（`data/raw/nlni_codelists/WaterSystemCodeCd.html` 相当）で対象都道府県の主要水系を確認する。 |
 
 **確認できたら1件だけ取得して件数で検証する**。例えば iNaturalist なら`place_id` を渡して観
 察記録が1件でも返るか、GBIF なら `gadmGid` を渡して`count` が0でないかを確認してから、
@@ -173,17 +168,17 @@ ADR-0004 の例に合わせ `jp-<JIS2桁>` とする（例 `jp-14`＝神奈川�
 - **落とし穴**: 「とりあえず集められるだけ集める」で始めると、Tier C（§5）に時間を溶かしてL1
   にすら届かないことがある。段階を決めてから着手する。
 
-### Step 1: エリア定数を調べ、`scripts/regions.py` を作り、1件取得で検証する
+### Step 1: エリア定数を調べ、`scripts/regions.py` に足し、1件取得で検証する
 
 §3 の「調べ方」列に従って `要確認` を埋める。**推測しない。1つの値も裏取りせずに埋めてはいけ
-ない。** 埋めた値は §3 の表と、**`scripts/regions.py`**（まだ存在しない。`region_slug` をキ
-ーにした辞書で bbox・GADM gid・iNaturalist place_id・JMA prec_no・e-Stat prefCode・NLNI 県コ
-ード・L03-b メッシュ・CKAN インスタンス等をまとめる。既定は`kanagawa` として既存挙動を変えな
-い。決定事項1・§10 参照）の両方に反映する。埋めたら、収集スクリプトを書く前に API を1回だけ
+ない。** 埋めた値は §3 の表と、**`scripts/regions.py`**（`region_id` をキーにした辞書で、GADM gid・
+iNaturalist place_id・JMA の観測所・e-Stat prefCode・NLNI 県コード・L03-b メッシュ等をまとめる。
+値は全てリスト〔タプル〕で持つ。`jp-14` は既存の c スクリプトの直書きの転記、`jp-46` は実取得で
+確かめた値。決定事項1・§10 参照）の両方に反映する。埋めたら、収集スクリプトを書く前に API を1回だけ
 叩いて1件以上のレコードが返ることを確認する（例: iNaturalist なら
 `https://api.inaturalist.org/v1/observations?place_id=<調べたID>&per_page=1`）。
 
-- **触るファイル**: この文書（`docs/add_area.md`）の §3 表、`scripts/regions.py`（新規）。
+- **触るファイル**: この文書（`docs/add_area.md`）の §3 表、`scripts/regions.py`（既にある。足す）。
 - **完了条件**: 表の `要確認` がすべて具体値に置き換わり、`scripts/regions.py` に新エリアの
   キーが追加されている。値ごとの1件取得の確認ログ（URL・返ってきた件数）を
   **`reports/add_area_<region_slug>.md` に残す**（`docs/add_utility.md` の
@@ -302,8 +297,8 @@ python scripts/m06_water.py --dry-run   # 水道系を足す場合のみ。Tier 
 
 Step 4 は「`m01`〜`m05` に新エリアの入力を読む改修（＋ Step 2.5 の `region_id` 付与）を伴う」
 と明記する。新エリアの `region_slug` 付き `source_id`（例 `jma_stations_tokyo`）を読む分岐を
-各スクリプトに足す。新エリアの `zone_of()`・bbox 判定・`COASTLINE_LONLAT` はすべて神奈川前提
-なので（§7）、Step 4 の時点では `zone` を NULL のままにしてよい（`elevation_m IS NULL` のと
+各スクリプトに足す。新エリアの bbox 判定は神奈川前提のままなので、zone は m01 では付けず
+（`zone_of()`・`COASTLINE_LONLAT` は撤去済み。§7）、`m09_site_zone.py` が `terrain_points.csv` から付ける。Step 4 の時点では `zone` を NULL のままにしてよい（`elevation_m IS NULL` のと
 きと同じ扱い）。
 
 - **触るファイル**: `scripts/m01_sites.py` / `m02_measurements.py` / `m03_organisms.py` /
@@ -511,48 +506,44 @@ PDFが変わるだけ）。
   では約3000点。docstring参照）に絞ってから標高APIを叩く実装になっている。実際に効くのは、
   (1) `m01_sites.py` の `in_bbox()` と `m99_validate.py` の `BBOX`——伊豆・小笠原を含む単一矩
   形では「範囲内/外」の判定が意味を失う（本土と島嶼の間の広大な海域が bbox 内に入るため）、
-  (2) `COASTLINE_LONLAT`（手描き折れ線）——本土の海岸線しか無いので島嶼部の地点は最寄り海岸を
-  誤る（C23 への置き換えで解消する方針。下記）、の2点。`c62` は対象エリアの W12（`c30` のク
+  (2) 海岸線——旧 `COASTLINE_LONLAT`（手描き折れ線）は本土の海岸線しか無く島嶼部の地点は最寄り海岸を
+  誤っていたが、C23 に置き換えて解消した（下記）、の2点。`c62` は対象エリアの W12（`c30` のク
   リップ元）が先に無いと動かない（§5「順序依存」）。**多摩川は東京都・神奈川県だけでなく山梨
   県にも源流を持つ**（本書で以前「東京都と神奈川県にまたがる」としていたのは不正確だったので
   訂正する。region_id は出典単位で決まるため——§1——この3県にまたがること自体は region_id 割り
   当てには影響しない）。
-- **沖縄県**: 離島群のためbboxが広大かつ大半が海域になる。`docs/ZONE_DEFINITION.md`の標高し
-  きい値（800m/400m/100m）は本州の急峻な地形を前提にしており、沖縄の低い山地にはそのまま当て
-  はまらない（最高峰でも800mに届かない）。zone のしきい値自体をエリアごとに定義し直す必要が
-  ある。
+- **沖縄県**: 離島群のためbboxが広大かつ大半が海域になる。旧 zone の標高しきい値
+  （800m/400m/100m）は本州の急峻な地形を前提にしており、沖縄の低い山地にはそのまま当てはまらな
+  かった（最高峰でも800mに届かない）。zone v2 は標高の絶対閾値をやめ、`registry/region.yaml` の
+  `terrain.summit`（地域の最高峰の宣言値）の半分で 1/2 を分けるので、沖縄を足すときは最高峰を
+  宣言すればよい（ADR-0031）。
 - `要確認`: **気象庁 `prec_no` は沖縄県内で複数に分かれる**（本島・大東島・宮古島・石垣島）。
   §3 の表は「1県1値」を前提にした形なので、`scripts/regions.py` の定数は**値でなくリストを許
   す形**にする必要がある。
-- `要確認`: 沖縄・東京島嶼では「海岸線から2km以内」がほぼ全域になり、
-  `docs/ZONE_DEFINITION.md` の zone 4（平野・沖積低地）が事実上消滅する。しきい値だけでなく
-  分類の意味が変わる。
+- 沖縄・東京島嶼・奄美大島のような狭い島では zone 4（平野・沖積低地）がほとんど現れず、zone 2
+  （山地渓流）が陸の大半を占める。これは v2 の定義の結果で、凡例・名称は地域によらず共通（奄美の
+  実測は `docs/ZONE_DEFINITION.md`）。
 - **兵庫県**: 日本海側（但馬）と瀬戸内海側（播磨・淡路含む）の**2つの海岸線**を持つ。
-  `COASTLINE_LONLAT` のような単一の折れ線近似は成り立たない。
+  旧 `COASTLINE_LONLAT` のような単一の折れ線近似は成り立たなかったが、C23 に置き換えたので問題ない。
 - **内陸県一般**（今回の3県には無いが今後の参考として）: zone 5（河口・沿岸）に相当する地点
   が存在せず、海岸距離の計算自体が不要になる。
 - `要確認`: 東京都は e-Stat の市区町村名が特別区単位になる（`docs/add_utility.md` の政令市の
   注記と同型の問題）。
 - `要確認`: W12（昭和52年版）の島嶼部の収録範囲。
 
-**海岸線は `COASTLINE_LONLAT`（手描き折れ線）を捨て、国土数値情報 C23（海岸線）を新ソースと
-して1回取り、全エリア共通で最近傍距離を取る方針にする（決定済み）。** 兵庫の2海岸線も、県境
-付近（川崎の地点に東京湾岸の東京都側が最近傍になる等）も自然に解ける。`要確認`: C23 のデータ
-仕様・ファイル名・都道府県単位かどうか。
+**海岸線は国土数値情報 C23（`C23-06`、`scripts/c36_nlni_c23_coastline.py`）に置き換えた（完了。神奈川も
+切り替え済みで、手描きの `COASTLINE_LONLAT` は撤去した）。** 全エリア共通で最近傍距離を取るので、兵庫の
+2海岸線も県境付近も自然に解ける。C23 は都道府県単位のファイル（`C23-06_{県コード}_GML.zip`）で、
+線の `C23_001` が行政区域コード。許諾は「非商用」（`docs/LICENSE_MATRIX.md` §4.1）。
 
-zone のしきい値・海岸線の定義はエリアごとに持つべきというのは、ADR-0002 が既に指示している方
-向性（「`zone` のような操作的分類は `place_kind='zone'` の place として地域ごとに定義し、定
-義そのもの（閾値・出典・作成日）を place のメタデータに持たせる」）そのものである。本書の v1
-の枠組みでは place レジストリがまだ無いので、当面は`docs/ZONE_DEFINITION.md` に相当するエリ
-ア別ドキュメント（例 `docs/ZONE_DEFINITION_tokyo.md`）を都度作り、`scripts/m01_sites.py` の
-`zone_of()` 相当をエリア別に分岐させずに済む形（設定値の外出し）で実装することを推奨する。
+**zone は地域共通の定義（v2、ADR-0031）**。ADR-0002 の「zone の閾値を place のメタデータに地域ごとに持たせる」
+は採らなかった。定義は `registry/place/zone.yaml` の1つで、地域ごとに違うのは `registry/region.yaml` の
+`terrain.summit`（最高峰の宣言値）だけ。新しい地域の zone を付けるには、その地域の `terrain.summit` を
+宣言し、c68（`c68_gsi_dem_terrain.py`）で `terrain_points.csv` を作り、m09 で `sites.zone` を更新する。
 
-**申し送り（Phase B、蒸し返さない）**: `sites.zone`（`place_source_ref(source_id=
-'sites.zone').external_key`）はゾーン番号（"1".."5"）を region でスコープしていない。
-2地域目でゾーンを定義すると、番号が神奈川県の既存ゾーンと衝突しうる（`scripts/
-b05_project_v1.py` の `_assert_zone_numbers_do_not_collide_across_zone_places` が検出して
-止める）。根本はこの番号を region でスコープしていない ADR-0022 の place のキー設計の側で
-直すべき問題であり、本書の手順では対応しない。
+**申し送り（解消済み）**: かつて `sites.zone` の番号が region でスコープされておらず、2地域目で
+zone を地域別に定義すると番号が衝突する懸念があった。zone の place は `common:place:zone.r2r.N`
+（`region_id` は NULL）の共通の5つになったので、衝突は起きない（ADR-0031）。
 
 ---
 
@@ -598,7 +589,7 @@ b05_project_v1.py` の `_assert_zone_numbers_do_not_collide_across_zone_places` 
 | `web/scripts/copy-geo-assets.mjs` の `FILES` 固定と `web/scripts/build-water-geo.mjs` の入力 `estat_shozaiki_kanagawa.geojson` | 新エリアの河川・流域界・町丁目ポリゴンを地図に出すには、この配列とファイル名を都度手で足す必要がある | Step 6 で個別対応。恒久対応は入力ファイルの発見をエリアリストから生成する仕組み（未着手） |
 | 地図の `DEFAULT_CENTER` / `DEFAULT_ZOOM`（`web/src/lib/map/basemaps.ts`。`KANAGAWA_BOUNDS` は定義だけで未使用） | 複数エリアのデータが入っても地図の初期表示は神奈川中心のまま | UI 文言とあわせて別 PR に切り出す（決定事項7・§10）。エリア切り替え UI の要否はその PR で決める |
 | UI と `table-meta.ts` の県名直書き（`web/src/app/layout.tsx` / `page.tsx` / `water/page.tsx` / `components/SiteNav.tsx` / `components/biota/BiotaExplorer.tsx` 等） | 画面の文言が神奈川限定のまま残り、他県データが表示されても説明文と矛盾する | L2到達時点（§6）で文言をエリア非依存の表現に書き換える。AIプロンプト混入分は上記のtable-meta.ts行と合わせて対応 |
-| `zone` / `COASTLINE_LONLAT` の神奈川前提 | 他エリアの地点に対して誤った zone・海岸距離が算出される、または常にNULLになる | §7 参照。C23（海岸線）への置き換え（決定済み）と、zoneの定義をplaceのメタデータに持たせる設計（Phase B以降） |
+| `zone` / 海岸線の神奈川前提 | （解消済み）旧 `COASTLINE_LONLAT` と絶対閾値は他エリアで誤った zone を付けていた | C23 への置き換えと zone v2（地域共通の定義）で解消。§7、ADR-0031 |
 | `scripts/x01_dwca.py` のEML（title/abstract・packageIDに「神奈川県」を直書き） | DwC-A を外部公開する場合、パッケージのメタデータが神奈川限定の説明のまま他県データを含むことになる | DwC-A公開前に対応する。現状はDwC-A自体が外部公開前（`docs/COLLECTOR_CONTRACT.md` の追記にある通りEMLの連絡先の組織承認待ち）なので緊急度は低い |
 
 ---
@@ -618,5 +609,5 @@ b05_project_v1.py` の `_assert_zone_numbers_do_not_collide_across_zone_places` 
    詳細: Step 5。
 7. `biotaTotals()` / `build-biota.mjs` の SID 直書き修正は本書スコープ内（Step 7）とし、
    `DEFAULT_CENTER` と UI 文言は別 PR に切り出す。詳細: Step 7・§6。
-8. 海岸線は `COASTLINE_LONLAT` を廃止し、国土数値情報 C23（海岸線）に置き換える。詳細: §3・§
+8. 海岸線は `COASTLINE_LONLAT` を廃止し、国土数値情報 C23（海岸線）に置き換えた（完了）。詳細: §3・§
    7。

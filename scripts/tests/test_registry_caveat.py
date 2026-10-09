@@ -52,7 +52,7 @@ def test_every_caveat_has_a_complete_review_record():
     assert len(entries) >= 18
     for e in entries:
         r = e["review"]
-        assert r["reviewed_on"] in {"2026-10-06", "2026-10-07"}  # eDNA の注記4件は 10-07
+        assert r["reviewed_on"] in {"2026-10-06", "2026-10-07", "2026-10-10"}  # eDNA の注記4件は 10-07、zone は v2 で 10-10
         assert r["reviewer"] == "claude（オーナー委任）"
         assert r["owner_confirmed_on"] == "2026-10-07"
         assert r["reason"]
