@@ -28,12 +28,12 @@ SID = "nlni_c23_coastline"
 PAGE = "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-C23.html"
 ZIP_URL = "https://nlftp.mlit.go.jp/ksj/gml/data/C23/C23-06/C23-06_{pref}_GML.zip"
 BASE = RAW / SID
-PREF_NAME = {"14": "神奈川県", "46": "鹿児島県"}
 
 # 鹿児島県のうち奄美大島とその周辺の市町村（C23_001 行政区域コード。2006 年時点）。
 KAGOSHIMA_AMAMI_CODES = REGIONS["jp-46"]["muni_codes"]
-# 県 → 取る行政区域コード（None は全線）
-PREF_CODES = {"14": None, "46": KAGOSHIMA_AMAMI_CODES}
+# 県 → 取る行政区域コード（None は全線）、県 → 県名。どちらも scripts/regions.py から作る。
+PREF_CODES = {r["pref_code"]: r["muni_codes"] for r in REGIONS.values()}
+PREF_NAME = {r["pref_code"]: r["pref_name_ja"] for r in REGIONS.values()}
 
 
 def select(admin_code, codes):

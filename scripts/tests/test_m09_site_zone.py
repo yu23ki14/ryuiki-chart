@@ -71,7 +71,7 @@ def test_run_updates_zone_and_writes_migration_csv_with_declared_diff(env):
     assert set(rows) == {"a__s1", "a__s2", "a__s3", "a__s5"}   # 対象外の s4 は載らない
     assert (rows["a__s1"]["zone_v1"], rows["a__s1"]["zone_v2"]) == ("4", "2")
     assert rows["a__s1"]["reason"] == "mountain_relief_ge_200"
-    assert rows["a__s5"]["zone_v2"] == "" and rows["a__s5"]["reason"] == "elevation_invalid"
+    assert rows["a__s5"]["zone_v2"] == "" and rows["a__s5"]["reason"] == "relief_unavailable"  # DEM 無効・台帳の標高 1.0 でも海岸距離が無く 5 に当たらない
     assert rows["a__s2"]["reason"] == "unchanged"
     assert list(next(iter(rows.values())).keys()) == list(m09.CSV_COLUMNS)
 
@@ -132,18 +132,19 @@ def test_report_flag_prints_markdown_crosstab(env, capsys):
     assert out.startswith("| 旧＼新 |") and "付かない" in out
 
 
-def test_migration_reason_codes_for_each_transition():
-    rule = zone_rule.load_zone_definition()["rule"]
-    P = zone_rule.TerrainPoint
-    mk = lambda e, rw=10.0, rn=5.0, fl=0.0, cd=20000.0: P("0", "0", "jp-14", 1673.0, e, rw, rn, fl, cd)  # noqa: E731
-    r = m09.migration_reason
-    assert r(3, 3, mk(50.0), rule) == "unchanged"
-    assert r(3, 2, mk(300.0, rw=300.0), rule) == "mountain_relief_ge_200"
-    assert r(4, 3, mk(60.0, rn=40.0), rule) == "lowland_relief_near_gt_30"
-    assert r(4, 3, mk(60.0, rn=5.0, fl=0.0), rule) == "lowland_above_floor_gt_15"
-    assert r(4, 5, mk(5.0, cd=100.0), rule) == "coast_c23_within_2km"
-    assert r(5, 4, mk(5.0, cd=4000.0), rule) == "coast_c23_beyond_2km"
-    assert r(5, 4, mk(12.0, cd=500.0), rule) == "coast_elev_gt_10"
-    assert r(5, 3, mk(54.0, rn=50.0, cd=500.0), rule) == "coast_elev_gt_10"
-    assert r(2, 3, mk(725.0, rw=100.0), rule) == "mountain_relief_lt_200"
-    assert r(5, None, mk(None), rule) == "elevation_invalid"
+def test_migration_reason_is_unchanged_or_the_classify_reason():
+    assert m09.migration_reason(3, 3, "lowland_elev_gt_100") == "unchanged"
+    assert m09.migration_reason(5, 3, "lowland_elev_gt_100") == "lowland_elev_gt_100"
+    assert m09.migration_reason(5, None, "elevation_invalid") == "elevation_invalid"
+    assert m09.migration_reason(2, None, "relief_unavailable") == "relief_unavailable"
+
+
+def test_non_default_db_requires_explicit_migration_csv(env, capsys):
+    """--db に一時コピーを渡しても、コミットされる reports/zone_v2_migration.csv を黙って書き換えない。"""
+    db, terrain, _report, argv = env
+    i = argv.index("--migration-csv")
+    no_csv = argv[:i] + argv[i + 2:]
+    with pytest.raises(SystemExit) as e:
+        m09.main(no_csv)
+    assert e.value.code == 2
+    assert "--migration-csv" in capsys.readouterr().err

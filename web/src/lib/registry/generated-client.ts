@@ -391,9 +391,6 @@ export const ZONE_INFO: readonly GeneratedZone[] = [
   { zone: 5, label: "河口・沿岸", cond: "海岸から2km以内かつ標高10m以下" },
 ];
 
-/** zone の定義の版（registry/place/zone.yaml の definition_version。place.definition_ref・place_relation.basis と同じ値）。 */
-export const ZONE_DEFINITION_VERSION = 2;
-
 /** 地図ページの指標の語彙（registry/map_metric.yaml）。表示順はファイルの順。unit は表示用の文字列（unit_id を引いたもの）で、無ければ null。 */
 export const MAP_METRICS = [
   { scope: "watershed", id: "org_density", kind: "count", label: "生物記録の密度", note: "流域の面積あたりの観察・標本記録数（件/km²）", unit: "件/km²" },

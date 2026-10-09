@@ -13,6 +13,7 @@ pytest.importorskip("shapely")
 
 import c68_gsi_dem_terrain as c68  # noqa: E402
 import terrain_lib as T  # noqa: E402
+from registry import zone_rule  # noqa: E402
 
 TERRAIN = {"dem_tile_zoom": 14, "floor_dem_tile_zoom": 12, "relief_wide_radius_m": 1000,
            "relief_near_radius_m": 250, "lowland_floor_radius_m": 2000}
@@ -163,23 +164,23 @@ def test_summit_check_ignores_peak_outside_radius_and_invalid():
 
 
 def test_params_digest_is_stable_and_sensitive():
-    d = T.terrain_params_digest(TERRAIN)
+    d = zone_rule.terrain_params_digest(TERRAIN)
     assert len(d) == 12 and int(d, 16) >= 0
-    assert d == T.terrain_params_digest(dict(reversed(list(TERRAIN.items()))))
+    assert d == zone_rule.terrain_params_digest(dict(reversed(list(TERRAIN.items()))))
     changed = dict(TERRAIN, relief_wide_radius_m=500)
-    assert T.terrain_params_digest(changed) != d
+    assert zone_rule.terrain_params_digest(changed) != d
 
 
 def test_check_terrain_rejects_bad_blocks():
-    assert T.check_terrain(dict(TERRAIN)) == TERRAIN
+    assert zone_rule.check_terrain(dict(TERRAIN)) == TERRAIN
     with pytest.raises(ValueError):
-        T.check_terrain(None)
+        zone_rule.check_terrain(None)
     bad = dict(TERRAIN)
     del bad["lowland_floor_radius_m"]
     with pytest.raises(ValueError):
-        T.check_terrain(bad)
+        zone_rule.check_terrain(bad)
     with pytest.raises(ValueError):
-        T.check_terrain(dict(TERRAIN, relief_near_radius_m=0))
+        zone_rule.check_terrain(dict(TERRAIN, relief_near_radius_m=0))
 
 
 # ---------- c68 ----------
@@ -228,7 +229,8 @@ def write_world(tmp_path, summit_elev=1673.0, declared=1673.0, with_coast=True):
         p.write_bytes(png_bytes(50.0 if z == 14 else 40.0, special, z, x, y))
     (tmp_path / "zone.yaml").write_text("terrain:\n" + "".join(f"  {k}: {v}\n" for k, v in TERRAIN.items()), encoding="utf-8")
     (tmp_path / "region.yaml").write_text(
-        "jp-14:\n  terrain:\n    summit: {name_ja: 合成峰, lat: %r, lon: %r, elevation_m: %r}\n"
+        "jp-14:\n  name_ja: x\n  tz_name: Asia/Tokyo\n  utc_offset: '+09:00'\n  evidence: fixture\n"
+        "  terrain:\n    summit: {name_ja: 合成峰, lat: %r, lon: %r, elevation_m: %r}\n"
         % (summit["lat"], summit["lon"], declared), encoding="utf-8")
     coast = tmp_path / "coast.geojson"
     if with_coast:
@@ -261,15 +263,25 @@ def test_main_writes_deterministic_csv(tmp_path, capsys):
     assert float(row["elevation_m"]) == 50.0
     assert float(row["relief_near_m"]) == 0.0
     assert float(row["coast_dist_m"]) == pytest.approx(0.01 * 110540.0, abs=0.5)
-    assert row["params_digest"] == T.terrain_params_digest(TERRAIN)
+    assert row["params_digest"] == zone_rule.terrain_params_digest(TERRAIN)
 
 
-def test_main_without_coast_leaves_coast_empty(tmp_path):
+def test_main_stops_without_coast_geojson(tmp_path):
     cache, db = write_world(tmp_path, with_coast=False)
-    out = tmp_path / "o.csv"
-    run_main(tmp_path, cache, db, out)
-    row = dict(zip(c68.COLUMNS, out.read_text(encoding="utf-8").splitlines()[1].split(",")))
-    assert row["coast_dist_m"] == ""
+    with pytest.raises(SystemExit, match="c36"):
+        run_main(tmp_path, cache, db, tmp_path / "o.csv")
+    assert not (tmp_path / "o.csv").exists()
+
+
+def test_main_stops_when_a_region_has_no_coastline(tmp_path):
+    """地点のある region（jp-14）に海岸線が1本も無い（別の県の線だけ）と、coast_dist_m が全て空になるので止める。"""
+    cache, db = write_world(tmp_path)
+    (tmp_path / "coast.geojson").write_text(json.dumps({"type": "FeatureCollection", "features": [{
+        "type": "Feature", "geometry": {"type": "LineString", "coordinates": [[129.0, 28.0], [129.1, 28.0]]},
+        "properties": {"prefecture_code": "46"}}]}), encoding="utf-8")
+    with pytest.raises(SystemExit, match="jp-14"):
+        run_main(tmp_path, cache, db, tmp_path / "o.csv")
+    assert not (tmp_path / "o.csv").exists()
 
 
 def test_main_stops_when_summit_declaration_is_off(tmp_path):
@@ -281,7 +293,7 @@ def test_main_stops_when_summit_declaration_is_off(tmp_path):
 
 def test_main_stops_when_region_has_no_summit(tmp_path):
     cache, db = write_world(tmp_path)
-    (tmp_path / "region.yaml").write_text("jp-14:\n  name_ja: x\n", encoding="utf-8")
+    (tmp_path / "region.yaml").write_text("jp-14:\n  name_ja: x\n  tz_name: Asia/Tokyo\n  utc_offset: '+09:00'\n  evidence: fixture\n", encoding="utf-8")
     with pytest.raises(SystemExit, match="terrain.summit"):
         run_main(tmp_path, cache, db, tmp_path / "o.csv")
 

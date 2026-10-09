@@ -15,6 +15,7 @@ REGIONS: dict[str, dict] = {
     "jp-14": {
         "name_ja": "神奈川県",
         "pref_code": "14",
+        "pref_name_ja": "神奈川県",    # name_ja とは別（name_ja は対象地域の呼び名。C23 の prefecture_name_ja に使う）
         "muni_codes": None,
         "gbif_gadm_gids": ("JPN.19_1",),
         "inat_place_ids": (10918,),
@@ -28,6 +29,7 @@ REGIONS: dict[str, dict] = {
     "jp-46": {
         "name_ja": "鹿児島県（奄美大島）",
         "pref_code": "46",
+        "pref_name_ja": "鹿児島県",
         # 奄美市・大和村・宇検村・瀬戸内町・龍郷町
         "muni_codes": ("46222", "46523", "46524", "46525", "46527"),
         # GADM level2: 奄美市=JPN.18.4 / 龍郷町=.38 / 宇検村=.41 / 大和村=.44 / 瀬戸内町=.34

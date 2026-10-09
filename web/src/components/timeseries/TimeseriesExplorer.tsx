@@ -650,7 +650,7 @@ function ZoneMode({ variableId, basis, stat, unit }: { variableId: string; basis
         title={`${latest.year} 年のゾーン間の差`}
         subtitle="同じ年の断面。ゾーンをまたぐ勾配があるかどうかを見る"
         table={<MiniTable columns={["ゾーン", `平均${unit ? `（${unit}）` : ""}`]} rows={latest.rows.map((r) => [r.label, r.value])} />}
-        note="ゾーン1（山地源流域）には水質測定点が無いため、この図には現れない。"
+        note={`ゾーン1（${ZONE_LABELS[1]}）には水質測定点が無いため、この図には現れない。`}
       >
         {latest.rows.length ? (
           <BarChart data={latest.rows} unit={unit} maxLabelWidth={180} />

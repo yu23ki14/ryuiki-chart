@@ -7,12 +7,12 @@
 - zone (Ridge to Reef 1-5): ここでは書かない（NULL）。v2 の定義（地形指標による操作的区分。
   公式区分ではない。docs/ZONE_DEFINITION.md・registry/place/zone.yaml）では、座標から
   scripts/c68_gsi_dem_terrain.py が計算した data/processed/terrain_points.csv を
-  scripts/m09_site_zone.py が読んで sites.zone を更新する。**m01 を再実行したら m09 を続けて回す**
-  （順序: c36 → c68 → m01 → m09 → r01。INSERT OR REPLACE なので m01 だけだと zone が NULL に戻る）。
+  scripts/m09_site_zone.py が読んで sites.zone を更新する。m01 の再実行は既存の sites.zone を保持する
+  （UPSERT。新しい地点だけ NULL。新しい地点があれば続けて m09 を回す。順序: c36 → c68 → m01 → m09 → r01）。
 - 標高: 気象庁アメダスは自己申告値をそのまま使用。それ以外は国土地理院 標高API を
   1.5秒スロットルで叩く（common.get 経由）。結果はキャッシュして再実行時に節約する。
 - treatment（対策区/対照区/参照）: 公開データに存在しないため一律 NULL。
-- 冪等性: site_id を主キーに INSERT OR REPLACE。DROP/DELETE は行わない。
+- 冪等性: site_id を主キーに UPSERT（zone 列は上書きしない）。DROP/DELETE は行わない。
 
 再実行可能（同じ site_id を上書きするだけで重複しない）。
 """
@@ -117,6 +117,18 @@ def rd_jsonl(name):
 
 def get_publishers(conn):
     return dict(conn.execute("select source_id, publisher from source_registry").fetchall())
+
+SITES_COLUMNS = ("site_id", "name", "name_en", "watershed", "zone", "lat", "lon", "elevation_m", "geohash",
+                 "municipality", "muni_code", "treatment", "established_on", "operator",
+                 "source_id", "source_ref", "is_synthetic")
+# 再実行で既存の sites.zone を消さない（INSERT OR REPLACE は zone=NULL を書いて m09 の結果を捨てる）。
+# 新しい地点は zone=NULL のまま（m09_site_zone.py が付ける）。zone 以外の列は上書きする。
+UPSERT_SITES_SQL = (
+    f"INSERT INTO sites ({', '.join(SITES_COLUMNS)}) VALUES ({','.join('?' * len(SITES_COLUMNS))}) "
+    "ON CONFLICT(site_id) DO UPDATE SET "
+    + ", ".join(f"{c}=excluded.{c}" for c in SITES_COLUMNS if c not in ("site_id", "zone"))
+)
+
 
 def main():
     conn = appdb()
@@ -242,13 +254,7 @@ def main():
     ]:
         skipped_no_latlon[sid] = label
 
-    conn.executemany(
-        """INSERT OR REPLACE INTO sites
-           (site_id, name, name_en, watershed, zone, lat, lon, elevation_m, geohash,
-            municipality, muni_code, treatment, established_on, operator,
-            source_id, source_ref, is_synthetic)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-        rows)
+    conn.executemany(UPSERT_SITES_SQL, rows)
     conn.commit()
 
     n_sites = conn.execute("select count(*) from sites").fetchone()[0]

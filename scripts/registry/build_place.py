@@ -295,7 +295,7 @@ def _load_key_spaces() -> list[dict]:
 WATERSHED_JSONL = common.ROOT / common.WATERSHED_JSONL_RELPATH
 # zone v2 の入力（c68 の出力）と、最高峰を宣言する region.yaml。テストは monkeypatch で差し替える。
 TERRAIN_POINTS_CSV = common.ROOT / common.TERRAIN_POINTS_CSV_RELPATH
-REGION_YAML = common.ROOT / "registry" / "region.yaml"
+REGION_YAML = zone_rule.REGION_YAML
 
 # watershed 節（build()）が実際に読むキー（10列すべて。watershed_id を含む）。
 # `_load_watershed_jsonl()` がここに宣言したキー全部の存在を1行ずつ検査する
@@ -526,17 +526,13 @@ def _site_zones(ryuiki: sqlite3.Connection, terrain_points: dict, rule: dict) ->
     """`{site_id: zone}`。対象は sites のうち elevation_m IS NOT NULL の行（座標が terrain_points.csv に
     無ければ地点を列挙して止める）。台帳の sites.zone と全地点で一致しなければ止まる
     （m09_site_zone.py の回し忘れ・terrain_points.csv/zone.yaml の更新後の m09 の回し忘れの検知）。"""
-    rows = ryuiki.execute("SELECT site_id, lat, lon, elevation_m, zone FROM sites").fetchall()
     try:
-        classified = zone_rule.classify_sites(
-            [(r["site_id"], r["lat"], r["lon"], r["elevation_m"]) for r in rows], terrain_points, rule
-        )
+        classified = zone_rule.classify_sites_from_db(ryuiki, terrain_points, rule)
     except zone_rule.ZoneRuleError as e:
         raise AssertionError(str(e)) from e
-    out = {sid: z for sid, (z, _p) in classified.items()}
+    out = {c.site_id: c.zone for c in classified}
     mismatched = [
-        f"{r['site_id']}(台帳 {r['zone']} / 判定 {out[r['site_id']]})"
-        for r in rows if r["zone"] != out[r["site_id"]]
+        f"{c.site_id}(台帳 {c.ledger_zone} / 判定 {c.zone})" for c in classified if c.ledger_zone != c.zone
     ]
     if mismatched:
         raise AssertionError(

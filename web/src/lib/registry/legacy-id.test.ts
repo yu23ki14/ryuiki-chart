@@ -29,16 +29,15 @@ describe("旧 place_id の受理（resolveLegacyId）", () => {
     }
   });
 
-  it("新 ID は parseId() で分解でき、旧 ID は分解できない（区切りが違う）。zone の昇格前 ID（jp-14:place:zone.r2r.N）だけは例外", () => {
-    // zone は jp-14 から common へ昇格した。昇格前の `zone.r2r.N` は今の区切りで分解できる（zone.r2r-N は分解できない）。
-    const isPromotedZoneOld = (old: string) => /^jp-14:place:zone\.r2r\.\d+$/.test(old);
+  it("新 ID は parseId() で分解できる。旧 ID が分解できないのは、区切りが旧形式のとき。旧 ID が今の形式で分解できるのは、その ID が現行の place の ID として発行されていない（昇格前の ID）ときだけ", () => {
+    // zone は jp-14 から common へ昇格した。昇格前の `jp-14:place:zone.r2r.N` は今の区切りでも分解できるが、
+    // 現行の place の ID（common:…）ではない。旧 ID が現行の ID として発行されていれば再利用になるので落とす。
+    const current = new Set(rows.map((r) => r.neu));
     for (const { old, neu } of rows) {
       expect(parseId(neu)).not.toBeNull();
-      if (isPromotedZoneOld(old)) {
-        expect(neu).toBe(old.replace("jp-14:", "common:"));
-        expect(parseId(old)).not.toBeNull();
-      } else {
-        expect(parseId(old)).toBeNull();
+      if (parseId(old) !== null) {
+        expect(current.has(old)).toBe(false);
+        expect(old).not.toBe(neu);
       }
     }
   });

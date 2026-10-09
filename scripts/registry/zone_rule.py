@@ -7,10 +7,14 @@
 
 - `load_zone_definition()`   zone.yaml の読み込みと形の検証
 - `terrain_params_digest()`  `terrain:` ブロックの指紋（csv の `params_digest` 列と照合する。c68 も同じ関数を使うこと）
-- `load_region_summits()`    region.yaml の `terrain.summit.elevation_m`
+- `check_terrain()`          terrain: ブロックの形の検査（c68 も使う。terrain_lib には複製しない）
+- `load_terrain()`           zone.yaml の terrain: だけを読んで検査する（c68 用）
+- `load_region_summit_decls()` region.yaml の `terrain.summit` の宣言（dict）。形の検査は migrate/regions.py
+- `load_region_summits()`    同 `terrain.summit.elevation_m` だけ
 - `load_terrain_points()`     terrain_points.csv を座標の組で引ける辞書に読む（指紋・最高峰の照合込み）
-- `classify()`               §1.1 の規則
+- `classify()`               §1.1 の規則。`(zone または None, reason)` を返す
 - `classify_sites()`         台帳の地点の集合に classify を当てる（csv に無い座標は列挙して止める）
+- `classify_sites_from_db()` 台帳 sites を SELECT して classify_sites に渡す（m09・build_place 共通）
 """
 from __future__ import annotations
 
@@ -18,7 +22,9 @@ import csv
 import hashlib
 import json
 import pathlib
+import sqlite3
 from dataclasses import dataclass
+from typing import NamedTuple
 
 import yaml
 
@@ -44,7 +50,7 @@ TERRAIN_CSV_COLUMNS = (
 )
 
 
-class ZoneRuleError(Exception):
+class ZoneRuleError(ValueError):
     """zone 定義・入力の不整合。黙って進めず、呼び出し側で止める。"""
 
 
@@ -66,6 +72,28 @@ def coord_key(lat, lon) -> tuple[str, str]:
     return (f"{round(float(lat), 6):.6f}", f"{round(float(lon), 6):.6f}")
 
 
+def check_terrain(terrain) -> dict:
+    """zone.yaml の `terrain:` ブロックの形を検査する（足りない・余分なキー、正でない値で ZoneRuleError）。"""
+    if not isinstance(terrain, dict):
+        raise ZoneRuleError("zone.yaml に terrain: ブロックが無い")
+    missing = [k for k in TERRAIN_KEYS if k not in terrain]
+    extra = [k for k in terrain if k not in TERRAIN_KEYS]
+    if missing or extra:
+        raise ZoneRuleError(f"zone.yaml の terrain: のキーが違う（不足 {missing} / 余分 {extra}）")
+    for k in TERRAIN_KEYS:
+        v = terrain[k]
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or v <= 0:
+            raise ZoneRuleError(f"zone.yaml の terrain.{k} が正の数でない: {v!r}")
+    return terrain
+
+
+def load_terrain(path=ZONE_YAML) -> dict:
+    """zone.yaml の `terrain:` だけを読んで検査する（c68 用。rule: や zones: は見ない）。"""
+    with pathlib.Path(path).open(encoding="utf-8") as f:
+        d = yaml.safe_load(f)
+    return check_terrain((d or {}).get("terrain") if isinstance(d, dict) else None)
+
+
 def terrain_params_digest(terrain: dict) -> str:
     """`terrain:` ブロックの sha256 先頭12桁（キー順・空白に依らない正規化 JSON から）。"""
     canon = json.dumps(terrain, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
@@ -82,7 +110,8 @@ def load_zone_definition(path=ZONE_YAML) -> dict:
         raise ZoneRuleError(f"{path}: definition_version が {DEFINITION_VERSION} でない: {d.get('definition_version')!r}")
     if not isinstance(d.get("note_ja"), str) or not d["note_ja"].strip():
         raise ZoneRuleError(f"{path}: note_ja が無い/空")
-    for block, keys in (("terrain", TERRAIN_KEYS), ("rule", RULE_KEYS)):
+    check_terrain(d.get("terrain"))
+    for block, keys in (("rule", RULE_KEYS),):
         b = d.get(block)
         if not isinstance(b, dict):
             raise ZoneRuleError(f"{path}: {block}: がマッピングになっていない")
@@ -103,25 +132,27 @@ def load_zone_definition(path=ZONE_YAML) -> dict:
     return d
 
 
-def load_region_summits(path=REGION_YAML) -> dict[str, float]:
-    """region.yaml の `terrain.summit.elevation_m` を `{region_id: m}` で返す（宣言の無い region は含まない）。"""
+def load_region_summit_decls(path=REGION_YAML) -> dict[str, dict]:
+    """region.yaml の `terrain.summit`（name_ja/lat/lon/elevation_m）を `{region_id: dict}` で返す
+    （宣言の無い region は含まない）。形の検査は `migrate/regions.py` の `region_problems` に任せる。"""
+    from migrate.regions import region_problems
     with pathlib.Path(path).open(encoding="utf-8") as f:
         raw = yaml.safe_load(f) or {}
-    out: dict[str, float] = {}
-    for region_id, spec in raw.items():
-        summit = ((spec or {}).get("terrain") or {}).get("summit")
-        if summit is None:
-            continue
-        try:
-            out[region_id] = float(summit["elevation_m"])
-        except (KeyError, TypeError, ValueError) as e:
-            raise ZoneRuleError(f"{path}: {region_id}: terrain.summit.elevation_m が読めない: {e}") from e
-    return out
+    problems = region_problems(raw)
+    if problems:
+        raise ZoneRuleError(f"{path} の形が不正:\n- " + "\n- ".join(problems))
+    return {rid: spec["terrain"]["summit"] for rid, spec in raw.items() if "terrain" in spec}
 
 
-def _num(v):
-    v = (v or "").strip() if isinstance(v, str) else v
-    return None if v in (None, "") else float(v)
+def load_region_summits(path=REGION_YAML) -> dict[str, float]:
+    """`terrain.summit.elevation_m` を `{region_id: m}` で返す。"""
+    return {rid: float(s["elevation_m"]) for rid, s in load_region_summit_decls(path).items()}
+
+
+def _num(v: str):
+    """csv のセルを float に。空欄は None。"""
+    v = v.strip()
+    return None if v == "" else float(v)
 
 
 def load_terrain_points(path, terrain: dict, region_summits: dict[str, float]) -> dict[tuple[str, str], TerrainPoint]:
@@ -173,48 +204,75 @@ def load_terrain_points(path, terrain: dict, region_summits: dict[str, float]) -
     return points
 
 
-def classify(m: TerrainPoint, rule: dict) -> int | None:
-    """§1.1 の規則。標高なし・山地判定に要る起伏量なしは None（zone を付けない。推測しない）。"""
-    e = m.elevation_m
+def classify(m: TerrainPoint, rule: dict, ledger_elevation_m: float | None = None) -> tuple[int | None, str]:
+    """§1.1 の規則。`(zone または None, reason)`。reason は判定で最後に効いた条件（移行 csv の理由コード）。
+
+    標高は DEM の値、DEM が無効（海の画素など）なら台帳の `sites.elevation_m`（`ledger_elevation_m`）を使う。
+    zone 5 は標高と海岸距離だけで判定でき、起伏量が無くても付く。5 に当たらず山地判定に要る起伏量が
+    無いときだけ None（推測しない）。
+    """
+    e = m.elevation_m if m.elevation_m is not None else ledger_elevation_m
     if e is None:
-        return None
+        return None, "elevation_invalid"
     # 5: 河口・沿岸（地形の種類より先に見る）
     if (m.coast_dist_m is not None and m.coast_dist_m <= rule["coast_dist_max_m"]
             and e <= rule["coast_elev_max_m"]):
-        return 5
+        return 5, "coast_c23_within_2km"
     if m.relief_wide_m is None:
-        return None
+        return None, "relief_unavailable"
     # 1/2: 山地。標高が地域の最高峰の summit_ratio_min 倍以上なら 1
     if m.relief_wide_m >= rule["mountain_relief_min_m"]:
-        return 1 if e >= rule["summit_ratio_min"] * m.summit_m else 2
+        return (1 if e >= rule["summit_ratio_min"] * m.summit_m else 2), "mountain_relief_ge_200"
     # 3/4: 低地の3条件を全て満たせば 4、そうでなければ 3
     if m.floor_min_m is None or m.relief_near_m is None:
-        return 3
-    if (e <= rule["lowland_elev_max_m"] and m.relief_near_m <= rule["lowland_relief_max_m"]
-            and round(e - m.floor_min_m, 6) <= rule["lowland_above_floor_max_m"]):
-        return 4
-    return 3
+        return 3, "lowland_floor_unavailable"
+    if m.relief_near_m > rule["lowland_relief_max_m"]:
+        return 3, "lowland_relief_near_gt_30"
+    if e > rule["lowland_elev_max_m"]:
+        return 3, "lowland_elev_gt_100"
+    # 浮動小数の誤差（16.1 - 1.1 = 15.000000000000002）で比高ちょうどの境が 3 に倒れないよう 6 桁に丸める
+    if round(e - m.floor_min_m, 6) > rule["lowland_above_floor_max_m"]:
+        return 3, "lowland_above_floor_gt_15"
+    return 4, "lowland_criteria_met"
+
+
+class SiteClass(NamedTuple):
+    site_id: str
+    ledger_zone: int | None     # 台帳 sites.zone の現在値
+    elevation_m: float | None   # 台帳 sites.elevation_m（None なら zone の対象外）
+    zone: int | None            # classify() の結果
+    reason: str | None          # classify() の理由（対象外は None）
+    point: TerrainPoint | None  # 対象外は None
 
 
 def classify_sites(sites, points: dict[tuple[str, str], TerrainPoint], rule: dict):
     """`sites`: (site_id, lat, lon, elevation_m) の列。elevation_m IS NOT NULL の行が zone の対象。
 
-    戻り値: `{site_id: (zone または None, TerrainPoint または None)}`（対象外の地点は (None, None)）。
-    対象の座標が `points` に無ければ、黙って捨てず地点を列挙して止める。
+    戻り値: `{site_id: (zone または None, reason または None, TerrainPoint または None)}`（対象外は全て None）。
+    DEM が無効な地点は台帳の elevation_m で判定する。対象の座標が `points` に無ければ、黙って捨てず地点を列挙して止める。
     """
     out: dict = {}
     missing: list[str] = []
     for site_id, lat, lon, elevation_m in sites:
         if elevation_m is None or lat is None or lon is None:
-            out[site_id] = (None, None)
+            out[site_id] = (None, None, None)
             continue
         p = points.get(coord_key(lat, lon))
         if p is None:
             missing.append(f"{site_id}({lat},{lon})")
             continue
-        out[site_id] = (classify(p, rule), p)
+        zone, reason = classify(p, rule, elevation_m)
+        out[site_id] = (zone, reason, p)
     if missing:
         raise ZoneRuleError(
             f"terrain_points.csv に無い座標の地点が {len(missing)} 件ある（c68 を回して）: "
             + ", ".join(missing[:20]) + (" ..." if len(missing) > 20 else ""))
     return out
+
+
+def classify_sites_from_db(conn: sqlite3.Connection, points: dict[tuple[str, str], TerrainPoint],
+                           rule: dict) -> list[SiteClass]:
+    """台帳 sites を全件（site_id 昇順）SELECT して classify_sites に当てる（m09・build_place 共通）。"""
+    rows = conn.execute("SELECT site_id, lat, lon, elevation_m, zone FROM sites ORDER BY site_id").fetchall()
+    classified = classify_sites([(r[0], r[1], r[2], r[3]) for r in rows], points, rule)
+    return [SiteClass(r[0], r[4], r[3], *classified[r[0]]) for r in rows]

@@ -8,25 +8,13 @@ c68_gsi_dem_terrain.py から使う。ネットワークにも原本にも出な
 - 点の座標は Web メルカトルの全球画素座標に直し、座標を含む画素を「その点の標高」とする。
 - 円窓は「画素の中心が点から半径 r [m] 以内」の画素（距離は画素中心と点の距離 × その緯度の1画素の長さ）。
 """
-import hashlib
 import io
-import json
 import math
 
 import numpy as np
 
 TILE = 256
 INVALID_RAW = 2 ** 23
-
-# terrain: ブロック（registry/place/zone.yaml）に必須のキー。
-TERRAIN_KEYS = (
-    "dem_tile_zoom",
-    "floor_dem_tile_zoom",
-    "relief_wide_radius_m",
-    "relief_near_radius_m",
-    "lowland_floor_radius_m",
-)
-
 
 class TileNotCached(FileNotFoundError):
     """窓に必要なタイルがキャッシュに無い（取得前に呼んだ）。"""
@@ -187,25 +175,3 @@ class CoastDistance:
         p = Point(lon * self._kx, lat * 110540.0)
         i = self._tree.nearest(p)
         return float(self._geoms[i].distance(p))
-
-
-# ---------- 定義パラメータの指紋 ----------
-def check_terrain(terrain):
-    """zone.yaml の terrain: ブロックの形を検査する（足りないキー・正でない値で ValueError）。"""
-    if not isinstance(terrain, dict):
-        raise ValueError("zone.yaml に terrain: ブロックが無い")
-    missing = [k for k in TERRAIN_KEYS if k not in terrain]
-    if missing:
-        raise ValueError(f"zone.yaml の terrain: にキーが無い: {missing}")
-    for k in TERRAIN_KEYS:
-        v = terrain[k]
-        if isinstance(v, bool) or not isinstance(v, (int, float)) or v <= 0:
-            raise ValueError(f"zone.yaml の terrain.{k} が正の数でない: {v!r}")
-    return terrain
-
-
-def terrain_params_digest(terrain):
-    """terrain: ブロックの指紋。キー順を正規化した JSON（ensure_ascii=False、区切り ',' ':'）の sha256 の先頭12桁。
-    ビルド側（scripts/registry/zone_rule.py）は同じ式で zone.yaml の現在値と照合する。"""
-    s = json.dumps(terrain, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
-    return hashlib.sha256(s.encode("utf-8")).hexdigest()[:12]

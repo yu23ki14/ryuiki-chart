@@ -2,9 +2,10 @@
  * registry/place/zone.yaml（zone v2。docs/plans/AMAMI_STEP0.md §1.3・ADR-0031）の読み出し。
  *
  * 構造: definition_version（整数）/ note_ja / terrain / rule / zones（5件）。
- * `build-registry-ts.mjs` が呼び、`ZONE_INFO`（zone/label/cond）と `ZONE_DEFINITION_VERSION` を作る。
- * 判定規則の数値（terrain・rule）は Python 側（scripts/registry/zone_rule.py）が正で、ここでは読まない
- * （画面が使うのは名称・短い条件文・版・注記だけ）。
+ * `build-registry-ts.mjs` が呼び、`ZONE_INFO`（zone/label/cond）を作る。
+ * 検査の正は `scripts/registry/zone_rule.py`（`load_zone_definition`）。ここは画面に要る最小限
+ * （名称・短い条件文・版・注記の有無と zone の重複）だけを見る。判定規則の数値（terrain・rule）は
+ * Python 側が正で、ここでは読まない。
  *
  * YAML のパースは呼び出し側（js-yaml）で済ませたオブジェクトを受け取る。ファイルを読まない純関数に
  * しておくと、新構造の小さなフィクスチャでテストできる。

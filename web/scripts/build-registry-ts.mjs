@@ -235,7 +235,7 @@ const vernacular = parseCsvRecords(fs.readFileSync(VERNACULAR_CSV, "utf-8"), [
 // 使う。用途が違う別々の列なので統合しない（zone.yaml のコメント参照）。
 // v2（definition_version: 2）の構造は definition_version / note_ja / terrain / rule / zones。
 // 読み出しと形の検査は scripts/lib/zone-definition.mjs（判定規則の数値は Python 側が正）。
-const { version: zoneDefinitionVersion, zoneInfo } = readZoneDefinition(loadYaml(fs.readFileSync(ZONE_YAML, "utf-8")));
+const { zoneInfo } = readZoneDefinition(loadYaml(fs.readFileSync(ZONE_YAML, "utf-8")));
 // 地図ページの指標語彙（registry/map_metric.yaml、zone.yaml と同じ直読み）。
 const unitSymbolById = new Map(
   loadYaml(fs.readFileSync(UNIT_YAML, "utf-8")).units.map((u) => [u.unit_id, u.symbol]),
@@ -781,9 +781,6 @@ export const ASSESSMENT_LIST: Readonly<Record<string, GeneratedAssessmentList>> 
 
 /** Ridge to Reef ゾーン(1-5)の定義（registry/place/zone.yaml、旧 domain.ts の ZONE_INFO）。 */
 export const ZONE_INFO: readonly GeneratedZone[] = ${emitObjectArray(zoneInfo, ["zone", "label", "cond"])};
-
-/** zone の定義の版（registry/place/zone.yaml の definition_version。place.definition_ref・place_relation.basis と同じ値）。 */
-export const ZONE_DEFINITION_VERSION = ${zoneDefinitionVersion};
 
 /** 地図ページの指標の語彙（registry/map_metric.yaml）。表示順はファイルの順。unit は表示用の文字列（unit_id を引いたもの）で、無ければ null。 */
 export const MAP_METRICS = ${emitObjectArray(mapMetrics, ["scope", "id", "kind", "label", "note", "unit"])} as const;

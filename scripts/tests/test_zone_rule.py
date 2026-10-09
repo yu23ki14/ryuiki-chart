@@ -10,7 +10,8 @@ import pytest
 import yaml
 
 from registry import zone_rule
-from registry.zone_rule import TerrainPoint, ZoneRuleError, classify
+from registry.zone_rule import TerrainPoint, ZoneRuleError
+from registry.zone_rule import classify as classify_with_reason
 
 from .test_registry_place import _build as build_place_with_fixtures
 from .zone_fixtures import SUMMIT_M, real_terrain, write_region_yaml, write_terrain_csv, zone_row
@@ -20,6 +21,11 @@ FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 RULE = zone_rule.load_zone_definition()["rule"]
 
 
+def classify(m, rule, ledger_elevation_m=None):
+    """zone だけ（理由は別のテストで見る）。"""
+    return classify_with_reason(m, rule, ledger_elevation_m)[0]
+
+
 def _pt(e, rw=0.0, rn=0.0, floor=0.0, coast=None, summit=1000.0):
     return TerrainPoint("0", "0", "jp-x", summit, e, rw, rn, floor, coast)
 
@@ -27,6 +33,30 @@ def _pt(e, rw=0.0, rn=0.0, floor=0.0, coast=None, summit=1000.0):
 # ---------------------------------------------------------------------------
 # classify() の境界値（受け入れ基準 1）
 # ---------------------------------------------------------------------------
+
+def test_ledger_elevation_is_used_when_dem_is_invalid():
+    """DEM が無効（海の画素）でも、台帳の標高があれば海岸距離と標高だけで zone 5 が付く（起伏量が無くても）。"""
+    sea = _pt(None, rw=None, rn=None, floor=None, coast=661.0)
+    assert classify_with_reason(sea, RULE, 5.0) == (5, "coast_c23_within_2km")
+    assert classify_with_reason(sea, RULE, None) == (None, "elevation_invalid")
+    # 5 に当たらず起伏量も無いときだけ None
+    assert classify_with_reason(sea, RULE, 50.0) == (None, "relief_unavailable")
+    # DEM の値があれば台帳の標高より DEM を使う
+    assert classify(_pt(300.0, rw=10.0, coast=100.0), RULE, 5.0) != 5
+
+
+@pytest.mark.parametrize("pt,reason", [
+    (_pt(500.0, rw=300.0, summit=1000.0), "mountain_relief_ge_200"),
+    (_pt(60.0, rw=10.0, rn=40.0, floor=0.0), "lowland_relief_near_gt_30"),
+    (_pt(150.0, rw=10.0, rn=5.0, floor=0.0), "lowland_elev_gt_100"),
+    (_pt(60.0, rw=10.0, rn=5.0, floor=0.0), "lowland_above_floor_gt_15"),
+    (_pt(10.0, rw=10.0, rn=5.0, floor=5.0, coast=5000.0), "lowland_criteria_met"),
+    (_pt(60.0, rw=10.0, rn=None, floor=None), "lowland_floor_unavailable"),
+    (_pt(50.0, rw=None), "relief_unavailable"),
+])
+def test_classify_returns_the_last_effective_condition_as_reason(pt, reason):
+    assert classify_with_reason(pt, RULE)[1] == reason
+
 
 def test_no_elevation_gives_none():
     assert classify(_pt(None, coast=0.0), RULE) is None

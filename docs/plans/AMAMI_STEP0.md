@@ -26,13 +26,13 @@
 入力は地点の座標から c68（§3）が計算して `data/processed/terrain_points.csv` に置く指標と、地域の最高峰（`registry/region.yaml` の宣言値）だけ。ビルドの段階では標高タイルも海岸線ポリゴンも W12 も読まない。
 
 ```
-def classify(m, p):                    # m: terrain_points.csv の1行、p: registry/place/zone.yaml の rule:
-    e = m.elevation_m
-    if e is None: return None                                  # 標高が取れない地点は zone を付けない（推測しない）
+def classify(m, p, ledger_elevation_m=None):   # m: terrain_points.csv の1行、p: registry/place/zone.yaml の rule:。実装は (zone, reason) を返す
+    e = m.elevation_m if m.elevation_m is not None else ledger_elevation_m   # DEM が無効（海の画素）なら台帳 sites.elevation_m
+    if e is None: return None                                  # どちらも無ければ zone を付けない（推測しない）
     # --- 5: 河口・沿岸（地形の種類より先に見る。海に落ちる急斜面の麓も沿岸）
     if m.coast_dist_m is not None and m.coast_dist_m <= p.coast_dist_max_m and e <= p.coast_elev_max_m:   # 2000m, 10m
         return 5
-    if m.relief_wide_m is None: return None
+    if m.relief_wide_m is None: return None                    # 5 は標高と海岸距離だけで決まる。5 に当たらず起伏量も無いときだけ None
     # --- 1/2: 山地（周囲 1km の起伏量 200m 以上）。標高が地域の最高峰の半分以上なら 1、未満なら 2
     if m.relief_wide_m >= p.mountain_relief_min_m:
         return 1 if e >= p.summit_ratio_min * m.summit_m else 2                                         # 0.5。m.summit_m は点の region の宣言値
@@ -104,9 +104,9 @@ W12 の面には依存しない（地点→流域は Issue #86 の別件）。`s
 | 4 | 0 | 1 | 41 | 114 | 11 | 0 |
 | 5 | 0 | 0 | 4 | 10 | 37 | 1 |
 
-一致171、変更119、新しい件数は 1:4 / 2:51 / 3:62 / 4:124 / 5:48 / なし:1（旧は 4/11/56/167/52）。
+一致172、変更118、新しい件数は 1:4 / 2:51 / 3:62 / 4:124 / 5:49 / なし:0（レビュー後。DEM が無効な地点は台帳の標高で zone 5 を判定する）（旧は 4/11/56/167/52）。
 
-**(b) 変わった119地点の内訳（宣言済みの差分の理由）**
+**(b) 変わった118地点の内訳（宣言済みの差分の理由）**
 
 | 旧→新 | 件数 | 理由 |
 |---|---|---|
@@ -117,7 +117,7 @@ W12 の面には依存しない（地点→流域は Issue #86 の別件）。`s
 | 5→3 | 4 | 標高10m超かつ250m窓の起伏が大きい（江ノ島 54m など） |
 | 2→3 | 6 | 山地の条件を外れ、標高100m超で 4 にもならない（芦ノ湖の湖面の6地点〔湖央・湖西・湖東〕。弱点 §1.5-3） |
 | 4→2 | 1 | 起伏量200m以上（山間） |
-| 5→なし | 1 | 平潟湾内の地点。DEM が無効（海）で標高が取れない |
+| （5→なし） | 0 | レビュー後に解消。平潟湾内の地点は DEM が無効（海）だが、台帳の標高で 5 のまま |
 
 **(c) C23 と手描き海岸線の違い**: 290地点の海岸距離の差は中央値 0.8km・90%点 2.7km・99%点 4.0km。2km 境をまたぐ地点が23（8%）。手描き折れ線（20点）は東京湾岸の入り組んだ形を省いていた。
 
@@ -191,7 +191,7 @@ W12 の面には依存しない（地点→流域は Issue #86 の別件）。`s
 5. 期待の集合（§1.4-d/e）は設計担当の知識で置いた。**水野研（または地形に詳しい人）に確かめてもらうこと**: (a) 山地を「周囲1km の起伏量200m」で切るのは奄美の低く急な山（最高694m）でも妥当か、(b) 最高峰の半分で 1/2 を分けてよいか、(c) 海岸 2km・10m は奄美のリアス式海岸・サンゴ礁の地形に合うか、(d) zone 3 に台地・丘陵・扇状地をまとめてよいか。
 6. 海の画素は DEM 無効なので、起伏量は陸の画素だけで計算する。岬・海崖で窓の海側が欠け、起伏量が小さめに出る。
 7. C23 は平成18年版で、その後の埋立・護岸は入っていない。
-8. 座標が海上・湾内の地点は標高が無効で zone が付かない（神奈川で1件）。
+8. 座標が海上・湾内の地点は DEM が無効。台帳の標高と海岸距離で zone 5 は付くが、起伏量が無いので 5 に当たらなければ zone が付かない（神奈川で0〜1件。台帳の標高を使う規則は実装後の修正で入れた）。
 
 ## 2. zone の place のスコープ: `jp-14` から `common` に移す（決定）
 
@@ -347,7 +347,7 @@ zone の定義が変わったことは place_id に入れない（`common:place:
 
 ## 7. PR 全体の受け入れ基準（統合・メインが確かめる）
 
-1. **神奈川の zone 付き290地点の旧→新のクロス表と、変わった地点の一覧が PR に付く。** `m09 --report` の出力を貼る。宣言は `reports/zone_v2_migration.csv`（`site_id,zone_v1,zone_v2,elevation_m,relief_wide_m,relief_near_m,coast_dist_m,floor_min_m,reason`。m09 が書き換える前に書き出す）で、`test_zone_v2_migration.py` が機械的に検証する。クロス表は §1.4-a（一致171・変更119・なし1）と一致する。**一致しなければ、規則やデータの差の原因を特定する（ラベルを曲げて合わせない）。**
+1. **神奈川の zone 付き290地点の旧→新のクロス表と、変わった地点の一覧が PR に付く。** `m09 --report` の出力を貼る。宣言は `reports/zone_v2_migration.csv`（`site_id,zone_v1,zone_v2,elevation_m,relief_wide_m,relief_near_m,coast_dist_m,floor_min_m,reason`。m09 が書き換える前に書き出す）で、`test_zone_v2_migration.py` が機械的に検証する。クロス表は §1.4-a（一致172・変更118・なし0）と一致する。**一致しなければ、規則やデータの差の原因を特定する（ラベルを曲げて合わせない）。**
 2. **奄美の確認地点が期待どおりの zone になる**: `scripts/tests/fixtures/zone_checkpoints_metrics.csv` に対する `test_zone_rule.py` が通る（神奈川30地点のうち期待外は `known_miss` の1件〔平塚馬入〕だけ、奄美13/13；最高峰の宣言値の検査〔蛭ヶ岳・湯湾岳〕も通る）。PR に表を貼る。
 3. **生成物の鮮度判定に新しい入力が入る**: `terrain_points.csv` を書き換えると `python3 scripts/r01_build_registry.py --check-fresh` が古いと言う（変異テスト。メインが1回）。`zone.yaml` の `terrain:` を変えて c68 を回さないとビルドが `params_digest` で止まる。
 4. **ビルドの段階でネットワークに出ない**: ソケット禁止下のテストが通る。`scripts/registry/zone_rule.py`・`build_place.py`・`m09_site_zone.py` は `requests`・`urllib` を import しない。

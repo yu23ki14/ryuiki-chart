@@ -31,13 +31,14 @@ import yaml
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from common import ROOT, PROC, RAW, DB
 import terrain_lib as T
+from registry import zone_rule
 
 SID = "gsi_dem_terrain"
 TILE_URL = "https://cyberjapandata.gsi.go.jp/xyz/dem_png/{z}/{x}/{y}.png"
 TILE_CACHE = RAW / "gsi_dem_png"
 COAST_GEOJSON = PROC / "nlni_c23_coastline.geojson"
-ZONE_YAML = ROOT / "registry" / "place" / "zone.yaml"
-REGION_YAML = ROOT / "registry" / "region.yaml"
+ZONE_YAML = zone_rule.ZONE_YAML
+REGION_YAML = zone_rule.REGION_YAML
 MANIFESTS = ROOT / "manifests"
 OUT_DEFAULT = PROC / "terrain_points.csv"
 DEFAULT_REGION = "jp-14"
@@ -51,22 +52,18 @@ CHECK_COLUMNS = ["name", "region_id", "lat", "lon", "expect", "known_miss"] + CO
 
 # ---------- 入力 ----------
 def load_terrain(zone_yaml):
-    return T.check_terrain((yaml.safe_load(pathlib.Path(zone_yaml).read_text(encoding="utf-8")) or {}).get("terrain"))
+    try:
+        return zone_rule.load_terrain(zone_yaml)
+    except zone_rule.ZoneRuleError as e:
+        raise SystemExit(str(e)) from e
 
 
 def load_summits(region_yaml):
-    """{region_id: {name_ja, lat, lon, elevation_m}}。terrain.summit を宣言した region だけ。"""
-    raw = yaml.safe_load(pathlib.Path(region_yaml).read_text(encoding="utf-8")) or {}
-    out = {}
-    for rid, spec in raw.items():
-        s = ((spec or {}).get("terrain") or {}).get("summit")
-        if s is None:
-            continue
-        bad = [k for k in ("lat", "lon", "elevation_m") if not isinstance(s.get(k), (int, float))]
-        if bad:
-            raise SystemExit(f"{region_yaml}: {rid}.terrain.summit の {bad} が数値でない")
-        out[rid] = s
-    return out
+    """{region_id: {name_ja, lat, lon, elevation_m}}。terrain.summit を宣言した region だけ（形の検査は migrate/regions.py）。"""
+    try:
+        return zone_rule.load_region_summit_decls(region_yaml)
+    except zone_rule.ZoneRuleError as e:
+        raise SystemExit(str(e)) from e
 
 
 def region_of_source(source_id, default_region, manifests=MANIFESTS):
@@ -151,12 +148,24 @@ def coast_by_region(geojson_path):
     return {f"jp-{pref}": T.CoastDistance(geoms) for pref, geoms in groups.items()}
 
 
+def require_coasts(geojson_path, region_ids):
+    """C23 の GeoJSON が無い、または地点のある region に海岸線が1本も無ければ止まる
+    （黙って進むと全地点の coast_dist_m が空になり、zone 5 が付かない）。"""
+    if not pathlib.Path(geojson_path).exists():
+        raise SystemExit(f"{geojson_path} が無い。scripts/c36_nlni_c23_coastline.py を先に回すこと")
+    coasts = coast_by_region(geojson_path)
+    no_coast = sorted(set(region_ids) - set(coasts))
+    if no_coast:
+        raise SystemExit(f"{geojson_path} に海岸線が無い region がある: {no_coast}（c36 の対象県を確認する）")
+    return coasts
+
+
 def _f(v, nd=2):
     return "" if v is None else f"{v:.{nd}f}"
 
 
 def compute_rows(points, terrain, summits, store, coasts):
-    digest = T.terrain_params_digest(terrain)
+    digest = zone_rule.terrain_params_digest(terrain)
     rows = []
     for p in points:
         lat, lon = p["lat"], p["lon"]
@@ -233,9 +242,7 @@ def main(argv=None):
             raise SystemExit(f"{rid} の最高峰の宣言値 {s['elevation_m']}m が、周辺{SUMMIT_RADIUS_M:g}mの DEM 最大 {hi} と "
                              f"±{SUMMIT_TOL_M:g}m で合わない（region.yaml の terrain.summit を確認する）")
 
-    coasts = coast_by_region(a.coast) if pathlib.Path(a.coast).exists() else {}
-    if not coasts:
-        print(f"警告: {a.coast} が無い。coast_dist_m は空になる（c36 を先に回す）", file=sys.stderr)
+    coasts = require_coasts(a.coast, {p["region_id"] for p in points})
     rows = sorted(compute_rows(points, terrain, summits, store, coasts), key=sort_key)
     if a.checkpoints:
         write_csv(a.out or "zone_checkpoints_metrics.csv", rows, CHECK_COLUMNS)
@@ -252,7 +259,7 @@ def main(argv=None):
                  " https://www.gsi.go.jp/kikakuchousei/kikakuchousei40182.html",
                  1, len(rows),
                  "台帳 sites の標高がある座標ごとの標高・周囲の起伏量・周囲の最低標高・海岸線（C23）までの距離。"
-                 f"定義パラメータは registry/place/zone.yaml の terrain:（params_digest={T.terrain_params_digest(terrain)}）。"
+                 f"定義パラメータは registry/place/zone.yaml の terrain:（params_digest={zone_rule.terrain_params_digest(terrain)}）。"
                  "標高は dem_png の座標を含む画素、起伏量・最低点は円窓の有効画素から計算。")
 
 

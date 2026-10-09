@@ -32,7 +32,7 @@ def verify_migration(rows, sites, points, rule):
         if p is None:
             continue
         checked += 1
-        got = zone_rule.classify(p, rule)
+        got = zone_rule.classify(p, rule, s[2])[0]
         declared = int(r["zone_v2"]) if r["zone_v2"] != "" else None
         if got != declared:
             bad.append(f"{r['site_id']}: 宣言 {declared} / classify {got}")
