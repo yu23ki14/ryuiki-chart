@@ -110,7 +110,7 @@ sources:
   geospatial_jp_pointcloud_kanagawa: {reason: catalog_only, basis: "source_registry.category=地形・森林資源目録"}
   # --- 取れない: license（1 件）---
   ylist: {reason: license, basis: "source_registry.access_method=「未取得（利用条件が不明のため）」"}
-  # --- 取れない: file_only（45 件）---
+  # --- 取れない: file_only（47 件）---
   ayu_upstream_migration: {reason: file_only, basis: "data/processed に ayu_upstream_migration.csv がある（D1 の表なし）"}
   biodic_vegcode_legend: {reason: file_only, basis: "data/processed に biodic_vegcode_veg_*.csv がある（record_count=1247。D1 の表なし）"}
   biodic_vegmesh_4th_kanagawa: {reason: file_only, basis: "data/processed に biodic_vegmesh_4th_kanagawa.csv がある（D1 の表なし）"}
@@ -121,6 +121,7 @@ sources:
   geospatial_jp_kokudo_landclass_kanagawa: {reason: file_only, basis: "SHP/ZIP を取得済み（record_count=5。ファイル数）。表への変換と D1 への投入は無い"}
   geospatial_jp_kokudo_river_sagami: {reason: file_only, basis: "SHP/ZIP を取得済み（record_count=40。ファイル数）。表への変換と D1 への投入は無い"}
   gsi_elevation_grid: {reason: file_only, basis: "data/processed に gsi_elevation_grid.csv がある（D1 の表なし）"}
+  gsi_dem_terrain: {reason: file_only, basis: "data/processed に terrain_points.csv がある（地点ごとの標高・起伏量・最低点・海岸距離。zone v2 の入力で、D1 の表なし）"}
   gsj_geology_points: {reason: file_only, basis: "data/processed に gsj_geology_points.csv がある（D1 の表なし）"}
   gsj_seamless_legend: {reason: file_only, basis: "data/processed に gsj_seamless_legend.csv がある（D1 の表なし）"}
   kanagawa_rdb2006_errata: {reason: file_only, basis: "data/processed に kanagawa_rdb2006_errata.csv がある（D1 の表なし）"}
@@ -136,6 +137,7 @@ sources:
   nlni_a10_natparks: {reason: file_only, basis: "data/processed に nlni_a10_natparks.csv がある（D1 の表なし）", note: "data/processed に 4 ファイル。D1 の表は無い"}
   nlni_a15_wildlife: {reason: file_only, basis: "data/processed に nlni_a15_wildlife.csv がある（D1 の表なし）"}
   nlni_a45_forest: {reason: file_only, basis: "data/processed に nlni_a45_forest.csv がある（D1 の表なし）"}
+  nlni_c23_coastline: {reason: file_only, basis: "data/processed に nlni_c23_coastline.csv がある（D1 の表なし）"}
   nlni_l03b_landuse_2006: {reason: file_only, basis: "data/processed に nlni_l03b_landuse_2006.csv がある（D1 の表なし）"}
   nlni_l03b_landuse_2016: {reason: file_only, basis: "data/processed に nlni_l03b_landuse_2016.csv がある（D1 の表なし）"}
   nlni_w05_river_nodes: {reason: file_only, basis: "data/processed に nlni_w05_river_nodes.csv がある（D1 の表なし）"}
