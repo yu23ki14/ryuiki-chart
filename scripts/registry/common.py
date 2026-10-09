@@ -272,6 +272,11 @@ TAXON_CROSSWALK_CSV_RELPATH = pathlib.PurePosixPath("data/processed/taxon_crossw
 # （scripts/c26_taxon_gbif_accepted.py。Issue #34 D2・D3）。taxon_crosswalk.csv と同じ扱い。
 TAXON_GBIF_ACCEPTED_CSV_RELPATH = pathlib.PurePosixPath("data/processed/taxon_gbif_accepted.csv")
 
+# build_place.py の zone 節（zone v2）が読む、c68 が座標から計算した地形指標
+# （scripts/c68_gsi_dem_terrain.py。AMAMI_STEP0 §3）。標高タイル・C23 は読まない（このファイルだけが
+# ビルドの入力）。nlni_w12_watersheds.jsonl と同じ扱い（MODE_FULL のみ指紋に混ぜる）。
+TERRAIN_POINTS_CSV_RELPATH = pathlib.PurePosixPath("data/processed/terrain_points.csv")
+
 # build_taxon_assessment.py の moe_ias_2015 節が読む L1（環境省 生態系被害防止外来種
 # リスト。scripts/c21_moe_ias_list.py の成果物）。taxon_crosswalk.csv と同じ扱い
 # （読み取り専用の配布物だが「原本」ではないので内容ハッシュを指紋に混ぜてよい）。
@@ -494,6 +499,7 @@ def compute_input_fingerprint(
       なったための例外（次の段落参照）。
     - `data/processed/moe_ias_list.csv`（build_taxon_assessment.py の
       `MOE_IAS_LIST_CSV_RELPATH`）の中身。
+    - `data/processed/terrain_points.csv`（build_place.py の zone v2 の入力。c68 の出力）の中身。
 
     `mode=MODE_FILES_ONLY` のときはどれにも触れない（`--files-only` は
     build_place.py/build_taxon.py 自体を呼ばないので、CI のように watershed の
@@ -538,6 +544,9 @@ def compute_input_fingerprint(
         )
         _hash_optional_file(
             h, MOE_IAS_LIST_CSV_RELPATH.as_posix(), base / MOE_IAS_LIST_CSV_RELPATH
+        )
+        _hash_optional_file(
+            h, TERRAIN_POINTS_CSV_RELPATH.as_posix(), base / TERRAIN_POINTS_CSV_RELPATH
         )
         _hash_organism_records_freshness(h, base / "data" / "db" / "ryuiki.sqlite")
         _hash_source_registry(h, base / "data" / "db" / "ryuiki.sqlite")

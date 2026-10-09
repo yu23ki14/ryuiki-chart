@@ -29,7 +29,7 @@ import hashlib
 import pathlib
 
 # リポジトリルートからの相対パス。原本2つ（ryuiki.sqlite・cells.sqlite）＋
-# data/processed の入力6つ（v1・v2 のどちらかが読むもの。
+# data/processed の入力（v1・v2 のどちらかが読むもの。
 # data/sample/coverage.yaml の wholesale_processed_files と同じ集合）。
 SOURCE_FILE_KEYS: tuple[str, ...] = (
     "data/db/ryuiki.sqlite",
@@ -40,6 +40,7 @@ SOURCE_FILE_KEYS: tuple[str, ...] = (
     "data/processed/moe_ias_list.csv",
     "data/processed/taxon_crosswalk.csv",
     "data/processed/taxon_gbif_accepted.csv",
+    "data/processed/terrain_points.csv",  # zone v2 の入力（c68 の出力。AMAMI_STEP0 §3）
 )
 
 

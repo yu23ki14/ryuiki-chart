@@ -31,7 +31,7 @@ def main():
     lines.append(f"生成日時: {datetime.datetime.now().isoformat(timespec='seconds')}")
     lines.append("")
     lines.append("担当範囲: 収集済み公開データ -> アプリデータモデル（`data/db/ryuiki.sqlite`）へのマッピング。")
-    lines.append("`zone` は操作的定義であり公式区分ではない（詳細は `docs/ZONE_DEFINITION.md`）。")
+    lines.append("`zone` は地形から機械的に付けた操作的定義 v2 であり公式区分ではない（詳細は `docs/ZONE_DEFINITION.md`・`registry/place/zone.yaml`。m09 が付ける）。")
     lines.append("")
 
     # ---- 1) テーブル行数 / is_synthetic内訳 ----
@@ -60,7 +60,7 @@ def main():
     lines.append("## 3. sites: zone別 地点数")
     zone_rows = q(conn, """select coalesce(zone, -1) as z, count(*) from sites
                             group by z order by z""")
-    zone_rows = [("NULL(標高不明)" if z == -1 else z, n) for z, n in zone_rows]
+    zone_rows = [("NULL(標高不明・zone 未付与)" if z == -1 else z, n) for z, n in zone_rows]
     lines.append(md_table(["zone", "site数"], zone_rows))
     lines.append("")
     lines.append("## 4. sites: source_id別 地点数")

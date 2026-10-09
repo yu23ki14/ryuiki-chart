@@ -115,10 +115,10 @@ def test_id_references_catches_place_region_missing_from_region_vocabulary(empty
 def test_id_references_catches_dangling_place_relation_child(empty_registry):
     """place_relation.child_id -> place.place_id（本PRで r01.ID_REFERENCE_CHECKS に
     追加した2エントリのうちの1つ）。参照切れの辺を黙って通さない。"""
-    _insert_place(empty_registry, "jp-14:place:zone.r2r.1", "jp-14")
+    _insert_place(empty_registry, "common:place:zone.r2r.1", None)
     empty_registry.execute(
         "INSERT INTO place_relation (parent_id, child_id, relation, fraction) VALUES (?,?,?,?)",
-        ("jp-14:place:zone.r2r.1", "jp-14:place:site.missing", "within", 1.0),
+        ("common:place:zone.r2r.1", "jp-14:place:site.missing", "within", 1.0),
     )
     empty_registry.commit()
 
@@ -131,7 +131,7 @@ def test_id_references_catches_dangling_place_relation_parent(empty_registry):
     _insert_place(empty_registry, "jp-14:place:site.s1", "jp-14")
     empty_registry.execute(
         "INSERT INTO place_relation (parent_id, child_id, relation, fraction) VALUES (?,?,?,?)",
-        ("jp-14:place:zone.missing", "jp-14:place:site.s1", "within", 1.0),
+        ("common:place:zone.missing", "jp-14:place:site.s1", "within", 1.0),
     )
     empty_registry.commit()
 
