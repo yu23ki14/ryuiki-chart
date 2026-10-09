@@ -19,6 +19,7 @@ import sys
 import zipfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from regions import REGIONS
 from common import RAW, register, write_jsonl, download
 from nlni_lib import read_shp, geod_length_km, write_geojson, write_csv, LICENSE_NONCOM
 from shapely.geometry import shape as shp_shape
@@ -30,8 +31,7 @@ BASE = RAW / SID
 PREF_NAME = {"14": "神奈川県", "46": "鹿児島県"}
 
 # 鹿児島県のうち奄美大島とその周辺の市町村（C23_001 行政区域コード。2006 年時点）。
-# TODO: scripts/regions.py（担当C）ができたらそこから読む。
-KAGOSHIMA_AMAMI_CODES = ("46222", "46523", "46524", "46525", "46527")
+KAGOSHIMA_AMAMI_CODES = REGIONS["jp-46"]["muni_codes"]
 # 県 → 取る行政区域コード（None は全線）
 PREF_CODES = {"14": None, "46": KAGOSHIMA_AMAMI_CODES}
 

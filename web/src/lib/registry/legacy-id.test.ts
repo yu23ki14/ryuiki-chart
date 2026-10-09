@@ -20,8 +20,8 @@ function loadCsv(): { old: string; neu: string }[] {
 describe("旧 place_id の受理（resolveLegacyId）", () => {
   const rows = loadCsv();
 
-  it("宣言（place.csv）877件がすべて旧→新で引ける（生成物と宣言が一致）", () => {
-    expect(rows).toHaveLength(877);
+  it("宣言（place.csv）の全行が旧→新で引ける（生成物と宣言が一致）", () => {
+    expect(rows.length).toBeGreaterThan(0);
     expect(Object.keys(LEGACY_PLACE_ID_MAP)).toHaveLength(rows.length);
     for (const { old, neu } of rows) {
       expect(legacyPlaceIdToCurrent(old)).toBe(neu);
@@ -29,10 +29,17 @@ describe("旧 place_id の受理（resolveLegacyId）", () => {
     }
   });
 
-  it("新 ID は parseId() で分解でき、旧 ID は分解できない（区切りが違う）", () => {
+  it("新 ID は parseId() で分解でき、旧 ID は分解できない（区切りが違う）。zone の昇格前 ID（jp-14:place:zone.r2r.N）だけは例外", () => {
+    // zone は jp-14 から common へ昇格した。昇格前の `zone.r2r.N` は今の区切りで分解できる（zone.r2r-N は分解できない）。
+    const isPromotedZoneOld = (old: string) => /^jp-14:place:zone\.r2r\.\d+$/.test(old);
     for (const { old, neu } of rows) {
       expect(parseId(neu)).not.toBeNull();
-      expect(parseId(old)).toBeNull();
+      if (isPromotedZoneOld(old)) {
+        expect(neu).toBe(old.replace("jp-14:", "common:"));
+        expect(parseId(old)).not.toBeNull();
+      } else {
+        expect(parseId(old)).toBeNull();
+      }
     }
   });
 

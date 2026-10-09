@@ -198,7 +198,7 @@ def _real():
 def test_real_declaration_covers_every_source_and_matches_data():
     reg, targets, doc, counts, sup = _real()
     rows = bsa.assemble(reg, targets, doc, counts, superseded_by=sup)
-    assert len(rows) == len(reg) == 125
+    assert len(rows) == len(reg) == 127
     by = {r[0]: dict(zip(bsa.COLUMNS, r)) for r in rows}
     assert sum(1 for r in by.values() if r["state"] == "queryable") == 15 + 18 + 7  # manifests 15 + records のうち manifests 外の 18 + catalog 7
     cat = {sid: r for sid, r in by.items() if r["queryable_via"] == '["find_datasets"]'}
