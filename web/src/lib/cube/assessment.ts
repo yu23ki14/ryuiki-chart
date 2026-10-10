@@ -14,7 +14,7 @@ import { cmp, jsonEachParam } from "./sql";
 /** `registry/taxon/redlist_category.yaml`・`assessment_list.yaml` の生成定数の形。 */
 export interface AssessmentVocab {
   categories: Readonly<Record<string, { labelJa: string; rank: number | null }>>;
-  lists: Readonly<Record<string, { name: string; year: number; kind: string }>>;
+  lists: Readonly<Record<string, { name: string; year: number; kind: string; region: string }>>;
 }
 
 /**
@@ -87,9 +87,15 @@ function directionOf(cur: number | null, prev: number | null): RedlistDirection 
   return "横ばい";
 }
 
+/**
+ * 神奈川の画面が出す版。`ASSESSMENT_LIST` には鹿児島県（jp-46）の kgrl2014 も `kind='red_list'` で入るが、
+ * この画面（redlistSummary 等）は神奈川の3版のままにする。地域で絞るのは #93。
+ */
+const REDLIST_REGION = "jp-14";
+
 async function changeRows(db: CubeDb, vocab: AssessmentVocab, listYear?: number): Promise<ChangeRow[]> {
   const listIds = Object.entries(vocab.lists)
-    .filter(([, l]) => l.kind === "red_list")
+    .filter(([, l]) => l.kind === "red_list" && l.region === REDLIST_REGION)
     .map(([id]) => id);
   const params: (string | number)[] = [jsonEachParam(listIds)];
   let where = "list_id IN (SELECT value FROM json_each(?))";

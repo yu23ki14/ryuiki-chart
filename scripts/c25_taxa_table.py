@@ -6,7 +6,7 @@ GBIF の分類階層は taxon_crosswalk.csv がある場合のみ付与し、mat
 """
 import sys, pathlib, re, csv
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
-from common import appdb, PROC
+from common import appdb, PROC, norm_taxon_id as norm_id
 
 DDL = """
 CREATE TABLE IF NOT EXISTS taxa (
@@ -17,9 +17,6 @@ CREATE TABLE IF NOT EXISTS taxa (
   source_id TEXT, source_ref TEXT
 );
 """
-
-def norm_id(s):
-    return re.sub(r"\s+", " ", (s or "")).strip().lower()
 
 def rd(name):
     p = PROC/f"{name}.csv"

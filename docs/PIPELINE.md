@@ -30,6 +30,11 @@ serving-diff の v1 側）は撤去した。ここに残るのは v2（観測・
 - `scripts/b13_build_summary.py`: `observation_agg`/`occurrence_agg` の宣言的集計（`aggregations/serving.yaml`）→
   `v2.sqlite` 内の `summary_*` 表。
 
+`organism_records` を作る `scripts/m03_organisms.py`（b06 の前）は、赤リスト判定（`red_list_category`・`red_list_source`）を
+地域ごとに「県版 → 全国版」で付ける（`regions.REGIONS[rid]["pref_redlist"]`）。このため `taxa`（c25）と
+`redlist_assessments`・`pref_redlist_lookup`（c28）が先に要る: **c25 → c28 → m03**。c28 が無いと m03 は
+何を先に回すかを示して止まる。奄美 Step 2a の設計は `docs/plans/AMAMI_STEP2A.md`。
+
 生物の設計・実測は `docs/plans/PHASE_B_OCCURRENCE.md`・`docs/adr/0025-occurrence-fact-and-cube.md`・
 `docs/adr/0026-occurrence-place-watershed.md`・`docs/plans/V2_SERVING_PR3A.md`。
 

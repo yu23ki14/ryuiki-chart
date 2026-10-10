@@ -11,7 +11,7 @@ beforeEach(() => {
 afterEach(() => fx.db.close());
 
 describe("redlistSummary", () => {
-  it("版×分類群×direction の件数。外来種リスト（kind≠red_list）は含めない", async () => {
+  it("版×分類群×direction の件数。外来種リスト（kind≠red_list）と他地域（jp-46）の版は含めない", async () => {
     expect(await redlistSummary(fx.db, vocab)).toEqual([
       { listYear: 2020, listName: "RL2020", taxonGroupJa: "植物", direction: "前回記載なし", n: 1 },
       { listYear: 2020, listName: "RL2020", taxonGroupJa: "植物", direction: "横ばい", n: 1 },

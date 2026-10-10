@@ -212,8 +212,8 @@ def test_redlist_list_ids_derives_from_kind(tmp_path):
     直書きしていた）。"""
     assessment_lists = ta_module.load_assessment_lists()
     ids = ta_module.redlist_list_ids(assessment_lists)
-    assert ids == sorted(["rl2020", "rdb2022p", "rl2026"])
-    assert "moe_ias_2015" not in ids
+    assert ids == sorted(["rl2020", "rdb2022p", "rl2026", "kgrl2014"])   # kgord は kind=designated なので入らない
+    assert "moe_ias_2015" not in ids and "kgord" not in ids
 
 
 def test_codelist_null_means_category_code_always_none(tmp_path, monkeypatch):

@@ -117,9 +117,10 @@ export const FX_VOCAB = {
     not_listed: { labelJa: "前回記載なし", rank: null },
   },
   lists: {
-    rl2020: { name: "RL2020", year: 2020, kind: "red_list" },
-    rl2026: { name: "RL2026", year: 2026, kind: "red_list" },
-    moe_ias_2015: { name: "IAS", year: 2015, kind: "invasive" },
+    rl2020: { name: "RL2020", year: 2020, kind: "red_list", region: "jp-14" },
+    rl2026: { name: "RL2026", year: 2026, kind: "red_list", region: "jp-14" },
+    kgrl2014: { name: "KG2014", year: 2014, kind: "red_list", region: "jp-46" }, // 神奈川の画面には出さない
+    moe_ias_2015: { name: "IAS", year: 2015, kind: "invasive", region: "jp" },
   },
 } as const;
 
@@ -146,6 +147,7 @@ const ASSESS: AssessFx[] = [
   { id: "rl2020_4", list: "rl2020", year: 2020, sci: "Fxd delta", ja: "デルタ", group: "植物", cat: "NT", prev: "not_listed" }, // 前回記載なし
   { id: "rl2020_5", list: "rl2020", year: 2020, sci: "Fxe eps", ja: "イプシロン", group: "鳥類", cat: "CR", prev: "EN" }, // 悪化
   { id: "rl2026_1", list: "rl2026", year: 2026, sci: "Fxa alpha", ja: "アルファ", group: "鳥類", cat: "VU", prev: "VU" },
+  { id: "kgrl2014_1", list: "kgrl2014", year: 2014, sci: "Fxk kappa", ja: "カッパ", group: "鳥類", cat: "CR", prev: "EN" }, // 鹿児島県版。redlistSummary 等には入らない
   { id: "ias_1", list: "moe_ias_2015", year: 2015, sci: "Fxd delta", ja: "デルタ", group: "植物", cat: null, prev: null, binom: "Fxd delta", catRaw: "総合対策外来種", resolved: "デルタ" },
   { id: "ias_2", list: "moe_ias_2015", year: 2015, sci: "Fxd delta", ja: "デルタ", group: "植物", cat: null, prev: null, binom: "Fxd delta", catRaw: "その他の総合対策外来種", resolved: "デルタ" },
   { id: "ias_3", list: "moe_ias_2015", year: 2015, sci: "Fxz zeta", ja: "ゼータ", group: "植物", cat: null, prev: null, binom: "Fxz zeta", catRaw: "総合対策外来種" }, // 記録なし

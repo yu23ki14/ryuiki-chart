@@ -51,6 +51,8 @@ sources:
   biodic_mammal_mesh_kanagawa: {records: [mammal_mesh]}
   geoshape_sagami_river: {records: [river_segments]}
   kanagawa_redlist: {records: [assessments]}
+  kagoshima_redlist: {records: [assessments]}
+  kagoshima_ordinance_species: {records: [assessments]}
   moe_ias_list: {records: [assessments]}
   kanagawa_rdb2022_plants: {records: [assessments]}
   # --- マニフェストの出典に get_records の表を足す（出現キューブは座標なし 5 セルだけ。明細はこちら）---

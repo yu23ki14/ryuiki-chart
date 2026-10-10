@@ -139,7 +139,7 @@ describe("generated.ts / generated-client.ts の形", () => {
     }
   });
 
-  it("REDLIST_CATEGORY・ASSESSMENT_LIST（PR-3b）: not_listed は順位なし、県レッドリスト3版が red_list", () => {
+  it("REDLIST_CATEGORY・ASSESSMENT_LIST（PR-3b）: not_listed は順位なし、県レッドリスト（神奈川3版＋鹿児島1版）が red_list", () => {
     expect(REDLIST_CATEGORY["not_listed"]?.rank).toBeNull();
     expect(REDLIST_CATEGORY["CR"]?.rank).toBe(60);
     expect(REDLIST_CATEGORY["CR"]?.labelJa).toBe("絶滅危惧IA類");
@@ -147,7 +147,8 @@ describe("generated.ts / generated-client.ts の形", () => {
       .filter(([, v]) => v.kind === "red_list")
       .map(([k]) => k)
       .sort();
-    expect(redLists).toEqual(["rdb2022p", "rl2020", "rl2026"]);
+    // 神奈川: rdb2022p・rl2020・rl2026、鹿児島: kgrl2014（kgord は designated で red_list ではない）
+    expect(redLists).toEqual(["kgrl2014", "rdb2022p", "rl2020", "rl2026"]);
     expect(ASSESSMENT_LIST["moe_ias_2015"]?.kind).toBe("invasive");
   });
 });

@@ -8,7 +8,7 @@
 # ビルド時に検証する）。moe_ias_2015 は `data/processed/moe_ias_list.csv`
 # （環境省 生態系被害防止外来種リスト）に新設した list_id。
 #
-# kind: 'red_list'（レッドリスト/レッドデータブック）| 'invasive'（外来種リスト）。
+# kind: 'red_list'（レッドリスト/レッドデータブック）| 'invasive'（外来種リスト）| 'designated'（条例の指定種）。
 # region: そのリストが対象とする地域スコープ（ADR-0002）。神奈川県の3レッドリストは
 # 'jp-14'。環境省の外来種リストは全国版の国の制度文書なので 'jp'
 # （region_id そのものではなく、リストの対象範囲を表す注記。taxon_assessment の
@@ -39,6 +39,21 @@ lists:
     kind: red_list
     region: jp-14
     codelist: redlist_category
+  # 鹿児島県（奄美、jp-46。docs/plans/AMAMI_STEP2A.md）。kgrl2014 は県版のレッドリスト（red_list）。
+  # kgord は県条例の指定希少野生動植物で、赤リスト該当には含めない（決定 0-1）ので kind は
+  # designated。カテゴリーの語彙が無い（県カテゴリーは参考値）ため codelist は null。
+  - list_id: kgrl2014
+    name: "鹿児島県レッドリスト（平成26年改訂。動物・植物の掲載ページは平成27年度改訂）"
+    year: 2014
+    kind: red_list
+    region: jp-46
+    codelist: redlist_category
+  - list_id: kgord
+    name: "鹿児島県 指定希少野生動植物（県条例）"
+    year: 2026
+    kind: designated
+    region: jp-46
+    codelist: null
   - list_id: moe_ias_2015
     name: "環境省 生態系被害防止外来種リスト"
     year: 2015

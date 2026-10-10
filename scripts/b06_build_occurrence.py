@@ -46,8 +46,9 @@ NULL にするだけで扱えるようにしてある。座標があるのに gr
   `coordinate_uncertainty_m` を運ぶ。使う側が精度で絞る）。座標が無い行は
   `place_id`/`place_kind` とも NULL（ADR-0007 原則1）。
 - `coordinate_uncertainty_m`/`lat`/`lon`/`scientific_name`/`vernacular_name`/
-  `taxon_rank`/`red_list_category`/`is_alien`/`license_class`/
-  `publication_scope`: 原表記の旗（F6）。記録にそのまま運ぶ（NULLIF 等の
+  `taxon_rank`/`red_list_category`/`red_list_source`/`is_alien`/`license_class`/
+  `publication_scope`: 原表記の旗（F6）。記録にそのまま運ぶ。`red_list_source` は赤リスト判定の出所
+  （県版の list_id か 'national'。m03 が付ける。アダプタ経由の記録は NULL）（NULLIF 等の
   正規化はしない——空文字は空文字のまま。v1 `org_norm` の各列が
   `organism_records` の値をそのまま読んでいるのと同じ扱い）。
 - `is_alien_in_scope`（Issue #34）: `n_alien`（b07）が数える旗。`scientific_name` の二名法（binom）が
@@ -191,14 +192,19 @@ def _assert_known_source_ids(work: sqlite3.Connection) -> None:
     assert_known_source_ids((r[0] for r in rows), error_cls=common.MigrationError)
 
 
-def _assert_occurrence_status_column(work: sqlite3.Connection) -> None:
-    """`organism_records.occurrence_status` が無い（古い原本）なら、黙って全行を出現として数えずに止める。"""
-    cols = [r[1] for r in work.execute("PRAGMA src.table_info(organism_records)")]
-    if "occurrence_status" not in cols:
-        raise common.MigrationError(
-            "organism_records に occurrence_status 列が無い（GBIF の不在記録を除けない）。"
-            "`python scripts/m03_organisms.py --backfill-occurrence-status` で列を足して値を埋めること"
-        )
+_REQUIRED_ORGANISM_COLUMNS = {
+    "occurrence_status": "GBIF の不在記録を除けない。`python scripts/m03_organisms.py --backfill-occurrence-status` で列を足して値を埋めること",
+    "red_list_source": "赤リスト判定の出所が引けない。`python scripts/m03_organisms.py` を全件実行して列を足し値を埋めること",
+}
+
+
+def _assert_organism_columns(work: sqlite3.Connection) -> None:
+    """`organism_records` に m03 が足す列（occurrence_status・red_list_source）が無い（古い原本）なら、
+    黙って進まずに止める。"""
+    cols = {r[1] for r in work.execute("PRAGMA src.table_info(organism_records)")}
+    for col, hint in _REQUIRED_ORGANISM_COLUMNS.items():
+        if col not in cols:
+            raise common.MigrationError(f"organism_records に {col} 列が無い（{hint}）")
 
 
 _SELECT_ORGANISM_RECORDS_SQL = """
@@ -206,7 +212,7 @@ SELECT
   o.rowid AS source_row_id, o.record_id, o.source_id, o.observed_on, o.taxon_key,
   o.lat, o.lon, o.coordinate_uncertainty_m,
   o.scientific_name, o.vernacular_name, o.taxon_rank,
-  o.red_list_category, o.is_alien, o.license_class, o.publication_scope,
+  o.red_list_category, o.red_list_source, o.is_alien, o.license_class, o.publication_scope,
   psr.place_id AS place_id, p.place_kind AS place_kind, o.is_synthetic, o.occurrence_status
 FROM src.organism_records o
 LEFT JOIN reg.place_source_ref psr
@@ -243,7 +249,8 @@ CREATE TABLE {table} (
   is_alien_in_scope         INTEGER,
   occurrence_id             TEXT NOT NULL,
   source_edition_id         TEXT,
-  attributes                TEXT
+  attributes                TEXT,
+  red_list_source           TEXT   -- 赤リスト判定の出所（県版の list_id か 'national'）。末尾なのは既存の位置指定の挿入を壊さないため
 )
 """
 
@@ -265,8 +272,8 @@ INSERT INTO {table} (
   period_grain, period_start, period_end, period_raw,
   scientific_name, vernacular_name, taxon_rank,
   red_list_category, is_alien, license_class, publication_scope,
-  is_alien_in_scope, occurrence_id, source_edition_id, attributes
-) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+  is_alien_in_scope, occurrence_id, source_edition_id, attributes, red_list_source
+) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 """
 
 
@@ -480,7 +487,7 @@ def _ingest(
                 source_row_id, record_id, source_id, observed_on, taxon_key,
                 lat, lon, coordinate_uncertainty_m,
                 scientific_name, vernacular_name, taxon_rank,
-                red_list_category, is_alien, license_class, publication_scope,
+                red_list_category, red_list_source, is_alien, license_class, publication_scope,
                 place_id, place_kind, is_synthetic, occurrence_status,
             ) = row
             # 原表記の旗 is_alien は変えない。n_alien（b07）は registry（環境省リスト＋除外規則）から
@@ -544,6 +551,7 @@ def _ingest(
                 red_list_category, is_alien, license_class, publication_scope,
                 is_alien_in_scope,
                 public_id.occurrence_id(record_id, source_id), edition_of(source_id), None,
+                red_list_source,
             )
 
     runs = [ingest_runner.AdapterRun(m, work, taxon_ids) for m in ctx.adapter_manifests]
@@ -607,6 +615,7 @@ def _ingest(
                     is_alien_in_scope,
                     public_id.adapter_occurrence_id(source_id, r.record_key), edition_of(source_id),
                     json.dumps(r.attributes, ensure_ascii=False, sort_keys=True) if r.attributes else None,
+                    None,   # red_list_source: アダプタ経由の記録は出所を持たない
                 )
 
     dest.executemany(_INSERT_SQL.format(table=f'"{insert_table}"'), rows())
@@ -693,7 +702,7 @@ def build_and_write_occurrence(
                 common.attach_readonly(work, registry_db, "reg")
                 lineage.watch(work, external=work_external)
                 _assert_known_source_ids(work)
-                _assert_occurrence_status_column(work)
+                _assert_organism_columns(work)
                 taxon_ids = _load_taxon_ids(work)
                 ctx = _IngestContext(
                     taxon_ids, _load_alien_binoms(work), sources, regions,

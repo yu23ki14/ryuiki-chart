@@ -3,21 +3,21 @@
     "per_query": {
       "biota_totals": {
         "added": 0,
-        "changed": 1,
+        "changed": 0,
         "removed": 0,
-        "same": 0
+        "same": 1
       },
       "climatology_by_variable": {
         "added": 0,
-        "changed": 11,
+        "changed": 0,
         "removed": 0,
-        "same": 42
+        "same": 53
       },
       "day_series_site_by_variable": {
-        "added": 26,
+        "added": 0,
         "changed": 0,
-        "removed": 26,
-        "same": 4
+        "removed": 0,
+        "same": 30
       },
       "doc_series_meta": {
         "added": 0,
@@ -33,15 +33,15 @@
       },
       "effort_years": {
         "added": 0,
-        "changed": 1,
+        "changed": 0,
         "removed": 0,
-        "same": 0
+        "same": 1
       },
       "ias_species": {
         "added": 0,
-        "changed": 1,
+        "changed": 0,
         "removed": 0,
-        "same": 0
+        "same": 1
       },
       "landuse_highlight": {
         "added": 0,
@@ -57,15 +57,15 @@
       },
       "mesh_by_year": {
         "added": 0,
-        "changed": 57,
+        "changed": 46,
         "removed": 0,
-        "same": 0
+        "same": 11
       },
       "month_series_site_by_variable": {
-        "added": 59,
+        "added": 0,
         "changed": 0,
-        "removed": 59,
-        "same": 1
+        "removed": 0,
+        "same": 60
       },
       "overview_counts": {
         "added": 0,
@@ -86,22 +86,22 @@
         "same": 1
       },
       "site_variables_by_variable": {
-        "added": 46,
-        "changed": 0,
-        "removed": 46,
-        "same": 14
-      },
-      "sites_in_water_body": {
-        "added": 2,
+        "added": 0,
         "changed": 0,
         "removed": 0,
-        "same": 26
+        "same": 60
+      },
+      "sites_in_water_body": {
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 28
       },
       "sites_list": {
         "added": 0,
-        "changed": 1,
+        "changed": 0,
         "removed": 0,
-        "same": 0
+        "same": 1
       },
       "species_catalog": {
         "added": 0,
@@ -110,52 +110,52 @@
         "same": 0
       },
       "species_mesh_years": {
-        "added": 50,
-        "changed": 3,
-        "removed": 50,
-        "same": 7
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 60
       },
       "species_months": {
-        "added": 50,
-        "changed": 2,
-        "removed": 50,
-        "same": 8
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 60
       },
       "species_share_trend": {
         "added": 0,
-        "changed": 18,
+        "changed": 0,
         "removed": 0,
-        "same": 16
+        "same": 34
       },
       "species_years": {
-        "added": 50,
-        "changed": 2,
-        "removed": 50,
-        "same": 8
+        "added": 0,
+        "changed": 0,
+        "removed": 0,
+        "same": 60
       },
       "taxon_group_years": {
         "added": 0,
-        "changed": 1,
+        "changed": 0,
         "removed": 0,
-        "same": 0
+        "same": 1
       },
       "variable_catalog_by_variable": {
         "added": 0,
-        "changed": 1,
+        "changed": 0,
         "removed": 0,
-        "same": 0
+        "same": 1
       },
       "water_bodies": {
         "added": 0,
-        "changed": 1,
+        "changed": 0,
         "removed": 0,
-        "same": 0
+        "same": 1
       },
       "water_bodies_for_variable_by_variable": {
         "added": 0,
-        "changed": 35,
+        "changed": 0,
         "removed": 0,
-        "same": 18
+        "same": 53
       },
       "watershed_rollup": {
         "added": 0,
@@ -164,82 +164,82 @@
         "same": 0
       },
       "year_series_site_by_variable": {
-        "added": 55,
+        "added": 0,
         "changed": 0,
-        "removed": 55,
-        "same": 5
+        "removed": 0,
+        "same": 60
       },
       "zone_climatology_by_variable": {
         "added": 0,
-        "changed": 9,
+        "changed": 0,
         "removed": 0,
-        "same": 44
+        "same": 53
       },
       "zone_series_by_variable": {
         "added": 0,
-        "changed": 39,
+        "changed": 0,
         "removed": 0,
-        "same": 21
+        "same": 60
       }
     },
-    "previous_git_head": "6df5559474cb6e4f08b6ee869aa056dc573315fe"
+    "previous_git_head": "66d502da30be131057405c79e41f74fdbed8930b"
   },
-  "created_at": "2026-10-10T05:38:41+00:00",
+  "created_at": "2026-10-10T08:07:42+00:00",
   "environment": {
     "better_sqlite3_sqlite_version": "3.53.4",
     "node_version": "v22.22.2",
     "python_sqlite3_version": "3.49.1",
     "python_version": "3.13.7"
   },
-  "git_head": "66d502da30be131057405c79e41f74fdbed8930b",
+  "git_head": "d85a1a9c7a3a17930bd60b349853cd0c7d72504e",
   "pipeline_fingerprint_rows": {
     "registry.sqlite": null,
     "v2.sqlite": [
       {
         "fingerprint": "sha256:75ef181ba378c125b5885b91c861d4d538531926080a280610ff08fd39d59136:1143383",
-        "inputs": "{\"ext:registry.place\": \"c96a03aedaa16c0d0ed01c49a042f90631a53cacb5dc343a168cfabfefc486a2\", \"ext:registry.place_source_ref\": \"c96a03aedaa16c0d0ed01c49a042f90631a53cacb5dc343a168cfabfefc486a2\", \"ext:registry.source_edition\": \"c96a03aedaa16c0d0ed01c49a042f90631a53cacb5dc343a168cfabfefc486a2\", \"ext:registry.variable_alias\": \"c96a03aedaa16c0d0ed01c49a042f90631a53cacb5dc343a168cfabfefc486a2\", \"ext:ryuiki.measurements\": \"count=327065;max_rowid=991742\", \"ext:ryuiki.sensor_timeseries\": \"count=827721;max_rowid=3240965\"}",
+        "inputs": "{\"ext:registry.place\": \"46166b3e37dd6cf43c115978c74fb85486c7fe58af323aad54060c54f97b74b6\", \"ext:registry.place_source_ref\": \"46166b3e37dd6cf43c115978c74fb85486c7fe58af323aad54060c54f97b74b6\", \"ext:registry.source_edition\": \"46166b3e37dd6cf43c115978c74fb85486c7fe58af323aad54060c54f97b74b6\", \"ext:registry.variable_alias\": \"46166b3e37dd6cf43c115978c74fb85486c7fe58af323aad54060c54f97b74b6\", \"ext:ryuiki.measurements\": \"count=327065;max_rowid=991742\", \"ext:ryuiki.sensor_timeseries\": \"count=827721;max_rowid=3240965\"}",
         "spec_version": "phase-b-fact-slice/v1",
         "table_name": "observation"
       },
       {
         "fingerprint": "sha256:a66c0856e6f442ae1edd9106992a546d874ff1914f0c19af313b705c14e87d9f:2287159",
-        "inputs": "{\"ext:registry.unit\": \"c96a03aedaa16c0d0ed01c49a042f90631a53cacb5dc343a168cfabfefc486a2\", \"ext:registry.variable\": \"c96a03aedaa16c0d0ed01c49a042f90631a53cacb5dc343a168cfabfefc486a2\", \"ext:registry.variable_alias\": \"c96a03aedaa16c0d0ed01c49a042f90631a53cacb5dc343a168cfabfefc486a2\", \"observation\": \"sha256:75ef181ba378c125b5885b91c861d4d538531926080a280610ff08fd39d59136:1143383\"}",
+        "inputs": "{\"ext:registry.unit\": \"46166b3e37dd6cf43c115978c74fb85486c7fe58af323aad54060c54f97b74b6\", \"ext:registry.variable\": \"46166b3e37dd6cf43c115978c74fb85486c7fe58af323aad54060c54f97b74b6\", \"ext:registry.variable_alias\": \"46166b3e37dd6cf43c115978c74fb85486c7fe58af323aad54060c54f97b74b6\", \"observation\": \"sha256:75ef181ba378c125b5885b91c861d4d538531926080a280610ff08fd39d59136:1143383\"}",
         "spec_version": "phase-b-fact-slice/v4",
         "table_name": "observation_agg"
       },
       {
-        "fingerprint": "sha256:0aa3f09266e7e44bdb1de0e0f8c7140048515f57bf13daf52552b055445ce02d:895978",
-        "inputs": "{\"ext:registry.place\": \"c96a03aedaa16c0d0ed01c49a042f90631a53cacb5dc343a168cfabfefc486a2\", \"ext:registry.place_source_ref\": \"c96a03aedaa16c0d0ed01c49a042f90631a53cacb5dc343a168cfabfefc486a2\", \"ext:registry.source_edition\": \"c96a03aedaa16c0d0ed01c49a042f90631a53cacb5dc343a168cfabfefc486a2\", \"ext:registry.taxon\": \"c96a03aedaa16c0d0ed01c49a042f90631a53cacb5dc343a168cfabfefc486a2\", \"ext:registry.taxon_assessment\": \"c96a03aedaa16c0d0ed01c49a042f90631a53cacb5dc343a168cfabfefc486a2\", \"ext:ryuiki.edna_detections\": \"count=13263;max_rowid=13263\", \"ext:ryuiki.organism_records\": \"count=885105;max_rowid=885105;occurrence_status=[(None, 178871), ('ABSENT', 2790), ('PRESENT', 703444)]\", \"ext:ryuiki.wildlife_sightings\": \"count=400;max_rowid=400\"}",
+        "fingerprint": "sha256:5b13e0409338815addc21ab847fbc1d1b6e872805502c1b4c419e3ec37557316:895978",
+        "inputs": "{\"ext:registry.place\": \"46166b3e37dd6cf43c115978c74fb85486c7fe58af323aad54060c54f97b74b6\", \"ext:registry.place_source_ref\": \"46166b3e37dd6cf43c115978c74fb85486c7fe58af323aad54060c54f97b74b6\", \"ext:registry.source_edition\": \"46166b3e37dd6cf43c115978c74fb85486c7fe58af323aad54060c54f97b74b6\", \"ext:registry.taxon\": \"46166b3e37dd6cf43c115978c74fb85486c7fe58af323aad54060c54f97b74b6\", \"ext:registry.taxon_assessment\": \"46166b3e37dd6cf43c115978c74fb85486c7fe58af323aad54060c54f97b74b6\", \"ext:ryuiki.edna_detections\": \"count=13263;max_rowid=13263\", \"ext:ryuiki.organism_records\": \"count=885105;max_rowid=885105;occurrence_status=[(None, 178871), ('ABSENT', 2790), ('PRESENT', 703444)]\", \"ext:ryuiki.wildlife_sightings\": \"count=400;max_rowid=400\"}",
         "spec_version": "phase-b-fact-slice/v1",
         "table_name": "occurrence"
       },
       {
-        "fingerprint": "sha256:464622b845ebe939621740314ca82328ff1a3e58296b503a78dd35580de914de:1544660",
-        "inputs": "{\"occurrence\": \"sha256:0aa3f09266e7e44bdb1de0e0f8c7140048515f57bf13daf52552b055445ce02d:895978\", \"occurrence_place\": \"sha256:22069f804d2e425bc4a73032d487dbe270bf45175f291df4727198a70167e145:895974\"}",
+        "fingerprint": "sha256:e51d2c069e43d6d4dd934c91505c661ed4adbfc457dbd7ced3285623cb3413b2:1544660",
+        "inputs": "{\"occurrence\": \"sha256:5b13e0409338815addc21ab847fbc1d1b6e872805502c1b4c419e3ec37557316:895978\", \"occurrence_place\": \"sha256:76996f6f312ef2ed25dc1ea8ecacc7fa0f110d25ee242b6a8f6065578de386b4:895974\"}",
         "spec_version": "phase-b-fact-slice/v4",
         "table_name": "occurrence_agg"
       },
       {
-        "fingerprint": "sha256:22069f804d2e425bc4a73032d487dbe270bf45175f291df4727198a70167e145:895974",
-        "inputs": "{\"ext:registry.place_source_ref\": \"c96a03aedaa16c0d0ed01c49a042f90631a53cacb5dc343a168cfabfefc486a2\", \"ext:ryuiki.sites\": \"count=380;max_rowid=766\", \"occurrence\": \"sha256:0aa3f09266e7e44bdb1de0e0f8c7140048515f57bf13daf52552b055445ce02d:895978\"}",
-        "spec_version": "phase-b-fact-slice/v4",
+        "fingerprint": "sha256:76996f6f312ef2ed25dc1ea8ecacc7fa0f110d25ee242b6a8f6065578de386b4:895974",
+        "inputs": "{\"ext:registry.place_source_ref\": \"46166b3e37dd6cf43c115978c74fb85486c7fe58af323aad54060c54f97b74b6\", \"ext:ryuiki.sites\": \"count=380;max_rowid=766\", \"occurrence\": \"sha256:5b13e0409338815addc21ab847fbc1d1b6e872805502c1b4c419e3ec37557316:895978\"}",
+        "spec_version": "phase-b-fact-slice/v5",
         "table_name": "occurrence_place"
       },
       {
         "fingerprint": "sha256:bc49de762b3d9fa3a90464f68523995f8dcaecf4c17fc40395e0e5bc1bc6fc82:171",
-        "inputs": "{\"ext:registry.taxon\": \"c96a03aedaa16c0d0ed01c49a042f90631a53cacb5dc343a168cfabfefc486a2\", \"occurrence_agg\": \"sha256:464622b845ebe939621740314ca82328ff1a3e58296b503a78dd35580de914de:1544660\"}",
+        "inputs": "{\"ext:registry.taxon\": \"46166b3e37dd6cf43c115978c74fb85486c7fe58af323aad54060c54f97b74b6\", \"occurrence_agg\": \"sha256:e51d2c069e43d6d4dd934c91505c661ed4adbfc457dbd7ced3285623cb3413b2:1544660\"}",
         "spec_version": "serving-summary/v6",
         "table_name": "summary_effort_year"
       },
       {
-        "fingerprint": "sha256:5feafff2fc9223ded1da88b87e2165a4b75919a11d099cd2b5c6c3b2e8af1976:5817",
-        "inputs": "{\"ext:registry.taxon\": \"c96a03aedaa16c0d0ed01c49a042f90631a53cacb5dc343a168cfabfefc486a2\", \"occurrence_agg\": \"sha256:464622b845ebe939621740314ca82328ff1a3e58296b503a78dd35580de914de:1544660\"}",
+        "fingerprint": "sha256:1abf4bfd50bfd92403f994a717f98cf87a509503a3b073adece0037056900bf4:5817",
+        "inputs": "{\"ext:registry.taxon\": \"46166b3e37dd6cf43c115978c74fb85486c7fe58af323aad54060c54f97b74b6\", \"occurrence_agg\": \"sha256:e51d2c069e43d6d4dd934c91505c661ed4adbfc457dbd7ced3285623cb3413b2:1544660\"}",
         "spec_version": "serving-summary/v6",
         "table_name": "summary_grid_catalog"
       },
       {
         "fingerprint": "sha256:4751a9e2bf7887eb26d72d15fb16f00c6eb2bf2d074393cc932fa1d55d8341b9:2727",
-        "inputs": "{\"ext:registry.taxon\": \"c96a03aedaa16c0d0ed01c49a042f90631a53cacb5dc343a168cfabfefc486a2\", \"occurrence_agg\": \"sha256:464622b845ebe939621740314ca82328ff1a3e58296b503a78dd35580de914de:1544660\"}",
+        "inputs": "{\"ext:registry.taxon\": \"46166b3e37dd6cf43c115978c74fb85486c7fe58af323aad54060c54f97b74b6\", \"occurrence_agg\": \"sha256:e51d2c069e43d6d4dd934c91505c661ed4adbfc457dbd7ced3285623cb3413b2:1544660\"}",
         "spec_version": "serving-summary/v6",
         "table_name": "summary_group_year"
       },
@@ -250,14 +250,14 @@
         "table_name": "summary_place_variable"
       },
       {
-        "fingerprint": "sha256:562d730fa7cd307e8377411ada82cadcfbc9e82227e117e7f7a8ee027b215565:28270",
-        "inputs": "{\"ext:registry.taxon\": \"c96a03aedaa16c0d0ed01c49a042f90631a53cacb5dc343a168cfabfefc486a2\", \"occurrence_agg\": \"sha256:464622b845ebe939621740314ca82328ff1a3e58296b503a78dd35580de914de:1544660\"}",
+        "fingerprint": "sha256:8677b3dc25313cb51222208d66a86344978a315b86289e7aec5ee6a0c9952d04:28270",
+        "inputs": "{\"ext:registry.taxon\": \"46166b3e37dd6cf43c115978c74fb85486c7fe58af323aad54060c54f97b74b6\", \"occurrence_agg\": \"sha256:e51d2c069e43d6d4dd934c91505c661ed4adbfc457dbd7ced3285623cb3413b2:1544660\"}",
         "spec_version": "serving-summary/v6",
         "table_name": "summary_species_catalog"
       },
       {
-        "fingerprint": "sha256:24a747f73c07dac912082c58c702e887f60a03247cd0573e394e1ba5034a79a8:38103",
-        "inputs": "{\"occurrence_agg\": \"sha256:464622b845ebe939621740314ca82328ff1a3e58296b503a78dd35580de914de:1544660\"}",
+        "fingerprint": "sha256:f9ee51111bcb118d6ee2d389fb53edb743f80557d56f7b5af039f096060e515f:38103",
+        "inputs": "{\"occurrence_agg\": \"sha256:e51d2c069e43d6d4dd934c91505c661ed4adbfc457dbd7ced3285623cb3413b2:1544660\"}",
         "spec_version": "serving-summary/v6",
         "table_name": "summary_taxon_catalog"
       },
@@ -268,8 +268,8 @@
         "table_name": "summary_variable_catalog"
       },
       {
-        "fingerprint": "sha256:9e8a9ae355765fc22e49d96f105b06c7e3db5bf35d56415b7821c76ef98f6d7b:313",
-        "inputs": "{\"occurrence_agg\": \"sha256:464622b845ebe939621740314ca82328ff1a3e58296b503a78dd35580de914de:1544660\"}",
+        "fingerprint": "sha256:1f740d25dd4437c881ffaa3e7fcac2032e91bfd7b504efdb2404c036dd968784:313",
+        "inputs": "{\"occurrence_agg\": \"sha256:e51d2c069e43d6d4dd934c91505c661ed4adbfc457dbd7ced3285623cb3413b2:1544660\"}",
         "spec_version": "serving-summary/v6",
         "table_name": "summary_watershed_occurrence"
       }
@@ -278,24 +278,24 @@
   "pipeline_path_hashes": {
     "aggregations": "11a8b17bee8e9e1157382fa890764cb7ecaa524f",
     "manifests": "d064e08d8b88747196df56c7953a448cefe71c86",
-    "registry": "f909868b4504e54e4c7789fd9af1168301e09170",
+    "registry": "fd03fd47d050717847939c75c8fe963ef4d1c38c",
     "requirements.txt": "4323abaaacdc6a851d6f323c3a8e542996714511",
     "scripts/adapters": "738619c00e564dccf500bdba1ffc78abcd3bd940",
     "scripts/b00_run_full_gate.py": "ed8dc0f3d4dfbc5a456b68c324ffb18346cfe71c",
     "scripts/b03_build_observation.py": "6999adb1d42ded40ab9b1619d73a87cb2c336d3e",
     "scripts/b04_build_cube.py": "86d236f0cd8f2144905fd1cf1deaa44afd30996e",
-    "scripts/b06_build_occurrence.py": "0eae17d7d48cd74824e395c7bd9221a53f1be1a9",
+    "scripts/b06_build_occurrence.py": "091a5944f78585ee25352ef752a396edf43014f6",
     "scripts/b07_build_occurrence_cube.py": "f1d0180ede5144aebba3724a85b2fa1213a3dd3a",
     "scripts/b09_build_occurrence_place.py": "53150ddf6ff0b89a4c765f3d190c6b874f334eae",
     "scripts/b13_build_summary.py": "d811ce42072b5a1ec7cad73c2aeec7899ab1f15d",
     "scripts/era_table.py": "b0953de3efa2eee6eff43c249cda61e4e2e64c95",
     "scripts/ingest": "dc133babc35d6c8b8904b08bc1c1c391a3c6d71a",
-    "scripts/migrate": "663857c2930c7ef3baf92bcfb3fdc13d554d0e3e",
+    "scripts/migrate": "9069a9b98079f14dbf995275db9247916b9d8c24",
     "scripts/pipeline_inputs.py": "b8aa7bcb806d1f834006d07c997d8f719c1be17d",
     "scripts/r01_build_registry.py": "141174916b0858228788fee6b951e5f51b4aecd6",
     "scripts/reconcile": "0434daaaa6e412fafdff6a99768d9486b7c5c9a0",
-    "scripts/regions.py": "f205ffd2bd5584f0ee263aabccd0020a8e39b6cf",
-    "scripts/registry": "af3a75e5bb6a3fc8a9f4697e751ba25b64df631a",
+    "scripts/regions.py": "b395bc6574e4d286d69bb1075b3bd9201992084f",
+    "scripts/registry": "63e91abcf2ed3f6e0c7e7c3eb67dfbdaa62f0358",
     "scripts/schema_registry.sql": "fba1a5a777db59c67aba11c0c269286ba10b0a87",
     "scripts/taxon_namespaces.py": "cd93a3697ea446d26963485b1f6e8214d576599a",
     "web/package.json": "cfdc9a0a4addc8aa86b9db4727d13e5c4fae3e2e",
@@ -311,7 +311,7 @@
     "web/scripts/serving-snapshot.mts": "f101456833dcc8654fdba0fc61b7b91d7b9991da",
     "web/serving_queries.yaml": "d9f2eda94c75ea049291b0f14e95651598bbd8d6",
     "web/src/db/schema-cube.ts": "8a6cc1ccb5eccbb0a9f7604a695f8d52b2a82672",
-    "web/src/lib/cube/assessment.ts": "8c16346ecdfaecbfd99e228caa46261c91daac30",
+    "web/src/lib/cube/assessment.ts": "70215d717cd6787b296d548d29ba4bd439b6bb09",
     "web/src/lib/cube/catalog.ts": "8262ed05885e4f57f2ff98666122e06611d4417e",
     "web/src/lib/cube/caveats.ts": "9bb8012d87781cc3ce2270ba428f7cbebb6582fd",
     "web/src/lib/cube/cell-basis.ts": "8daf1bcedb90ed3d26b21d938eba7fc28d722ce8",
@@ -331,9 +331,9 @@
     "web/src/lib/cube/timeseries.ts": "5774b9859f5afb3ece51e6b7076421a91c7c0d58",
     "web/src/lib/cube/unit.ts": "24c38c741b8a1cfc62bc5d33861aa7b1c45cfdcc",
     "web/src/lib/db.ts": "cb9a153fb416b4400bd74ecf0fd4d3977df90944",
-    "web/src/lib/registry/generated-client.ts": "94c8cda838f3f76d3a442aea0c7a208b32eee2e7",
+    "web/src/lib/registry/generated-client.ts": "f6a7116986f0741d45c7d9fd3095d945dec426d5",
     "web/src/lib/registry/generated-id-map.ts": "5004cea9f243ab2eff0be4159bf3fd2c0ad5d231",
-    "web/src/lib/registry/generated-source.ts": "279887d1e29e851b41263bb161cc1a5ef732f209",
+    "web/src/lib/registry/generated-source.ts": "05817ec3670085a9b641c92711c6603b1a9b91d9",
     "web/src/lib/registry/generated.ts": "1e3444fae63b2c84ff4fc2de7d5512207d8be29c",
     "web/src/lib/registry/index.ts": "02fc0d4c3b83cce49ea4b72d5e349dc3c45a201b",
     "web/src/lib/registry/legacy-id.ts": "e6fb112a8a1288823915b2030c6d72d1a57c751c",
@@ -6424,11 +6424,11 @@
       "n_domain": 1,
       "runs": [
         {
-          "hash": "124f7b063618e0ae3ad25a47aa239abf0ada38d797f227ec016a47068a544649",
+          "hash": "a13801f91808ff1e6fd7cda905e37c299371267cdf03b706728cb7e4c8cc11ab",
           "n_rows": 28270,
           "params": {},
           "sums": {
-            "has_red_list": 831,
+            "has_red_list": 881,
             "mesh_n": 347138,
             "n": 886147,
             "n_years": 151158,
@@ -8803,13 +8803,13 @@
       "n_domain": 1,
       "runs": [
         {
-          "hash": "7014e45530f8254e8b5bdd541ad3c15244e6c4789ec0e2562c7d7d2fd8baab31",
+          "hash": "80599e048b3fa31c66827bf1d729fbd9451b65c6e1e239493b8f78d19fc54a45",
           "n_rows": 5814,
           "params": {},
           "sums": {
             "n": 840189,
-            "rl_n": 5530,
-            "rl_species_n": 4322,
+            "rl_n": 5561,
+            "rl_species_n": 4400,
             "species_n": 347133
           }
         }
@@ -8820,110 +8820,110 @@
       "n_domain": 57,
       "runs": [
         {
-          "hash": "d877c2935c98411d7fa75628c8fb3d6d5b8739be9b9243e9b8cc10f3c9239eeb",
+          "hash": "1b05ffc89df4d750a5fee8c01988f01ce955139fc0159cd5c3396d3e3abe886c",
           "n_rows": 191,
           "params": {
             "year": 1970
           },
           "sums": {
             "n": 2192,
-            "rl_n": 31,
+            "rl_n": 11,
             "species_n": 1162
           }
         },
         {
-          "hash": "d1f6c819c23632c31ba246d75c7ccab5cd273ef68a44b5ec7046126aa8c34f6a",
+          "hash": "512587e944efa3933a7e8d92ee1861efdecbf79f842cd6c9bd8e37d6074e2bef",
           "n_rows": 157,
           "params": {
             "year": 1971
           },
           "sums": {
             "n": 1150,
-            "rl_n": 19,
+            "rl_n": 13,
             "species_n": 793
           }
         },
         {
-          "hash": "bb1ffa0d9eb328dbda3993d8f4dd1ac5ed4b862e88e544f9d6339438638c7e5d",
+          "hash": "650e1226c2e9bc840c4e39ddb6732e00d4fead2c36a7e80cb436d5f1f29eae23",
           "n_rows": 119,
           "params": {
             "year": 1972
           },
           "sums": {
             "n": 855,
-            "rl_n": 29,
+            "rl_n": 6,
             "species_n": 556
           }
         },
         {
-          "hash": "44610e714c861009cb46fb827fa5d458ee4ab6925c55040e4e78969929bb1d5c",
+          "hash": "343eb414e9b5e9dfa1c99ce2c214e0386ae9a0e8bfe510eb489df63e6769e72c",
           "n_rows": 191,
           "params": {
             "year": 1973
           },
           "sums": {
             "n": 1584,
-            "rl_n": 40,
+            "rl_n": 16,
             "species_n": 1108
           }
         },
         {
-          "hash": "da49a4d032bf3249b42cc3d185e054a43d3480afbf502bdf69f986233390e792",
+          "hash": "04df89b16688b0fe9e5c2c35ba0c94df592da6399dd40f2a5fc8834ab85849f4",
           "n_rows": 122,
           "params": {
             "year": 1974
           },
           "sums": {
             "n": 880,
-            "rl_n": 5,
+            "rl_n": 3,
             "species_n": 504
           }
         },
         {
-          "hash": "ea471dbb2fbdc010caee4d683e16948c7d6746e8dab749431427bba6eb5a0655",
+          "hash": "237c57b57a69760bfc7ffca932c65a3b3eeb6fec61d0aff5380e0b194cc1d760",
           "n_rows": 198,
           "params": {
             "year": 1975
           },
           "sums": {
             "n": 2342,
-            "rl_n": 103,
+            "rl_n": 14,
             "species_n": 1426
           }
         },
         {
-          "hash": "97ade3fc0ef50ab46e9234d5714a08d9ead4c21333746630aec76f8b54e42609",
+          "hash": "03c79ff35f4b1a9ab00450638547fae8d99201c090ecfdcb089ae18fbadd55e0",
           "n_rows": 162,
           "params": {
             "year": 1976
           },
           "sums": {
             "n": 1565,
-            "rl_n": 21,
+            "rl_n": 19,
             "species_n": 1186
           }
         },
         {
-          "hash": "37839b3d3c0da9720ef7ae4e3756a91f6c90d6ccfc7a0781139e4edc6a218c6b",
+          "hash": "a4ced1b3653598632cce0105c3a3d07c7c46db2d9b714642fb3ba02821c023bf",
           "n_rows": 190,
           "params": {
             "year": 1977
           },
           "sums": {
             "n": 3433,
-            "rl_n": 80,
+            "rl_n": 26,
             "species_n": 1567
           }
         },
         {
-          "hash": "b13eaf1176a013034913db9c5c639f883a5cd427d8035ed5a67b5ee6f1cd2b50",
+          "hash": "094246b5661e32c03d0ce0c4231c9a6eb621515d6ffe5b63a88404454a956733",
           "n_rows": 122,
           "params": {
             "year": 1978
           },
           "sums": {
             "n": 921,
-            "rl_n": 25,
+            "rl_n": 21,
             "species_n": 635
           }
         },
@@ -8940,14 +8940,14 @@
           }
         },
         {
-          "hash": "e801708d32f7aa7c43585935139b71dd6c5521251bde1c023cc2de60a03f5185",
+          "hash": "0cff7689e9e4bf74e82c2768471b1b17123b2a6e278e430d01b4ea6cd8c7d1ee",
           "n_rows": 557,
           "params": {
             "year": 1980
           },
           "sums": {
             "n": 8145,
-            "rl_n": 56,
+            "rl_n": 55,
             "species_n": 7268
           }
         },
@@ -8976,14 +8976,14 @@
           }
         },
         {
-          "hash": "bb3e3d3a76777eb32e0496ae09f415fe5a02e0b590ef0097500b023b3af58790",
+          "hash": "601c8593266e28d1d32cd492a9f9f2c35a522bc8ce779831a10a874648f3b3c2",
           "n_rows": 645,
           "params": {
             "year": 1983
           },
           "sums": {
             "n": 15437,
-            "rl_n": 109,
+            "rl_n": 105,
             "species_n": 12521
           }
         },
@@ -9000,19 +9000,19 @@
           }
         },
         {
-          "hash": "e042403439ccc2f624223f4c2c0e43090efe5adf15c9f970cfb9dc0c799c097c",
+          "hash": "51999d0a78aaa07f0efe37ed0b70c7b8b2d49ccc7d6d053536612837d0458786",
           "n_rows": 687,
           "params": {
             "year": 1985
           },
           "sums": {
             "n": 14182,
-            "rl_n": 122,
+            "rl_n": 95,
             "species_n": 12383
           }
         },
         {
-          "hash": "54ff2c91f8db70948ad862b9cab82e009c0eed2066dad8c716caa37347279a14",
+          "hash": "bcb5071f83753a5cbd96e45b91fa34ebe90a0b7a0ee7ed92071eef051f76048f",
           "n_rows": 603,
           "params": {
             "year": 1986
@@ -9036,26 +9036,26 @@
           }
         },
         {
-          "hash": "fa86ac9b3ab39614c72f9ffc58c0fd15289d093ac8f3e7e8ff9c3976acd2e79b",
+          "hash": "67c49e0f1b24c4e58d616f0a694d1fd5919ef42d94ccbabd00acad62ab6e6400",
           "n_rows": 486,
           "params": {
             "year": 1988
           },
           "sums": {
             "n": 3973,
-            "rl_n": 93,
+            "rl_n": 71,
             "species_n": 2856
           }
         },
         {
-          "hash": "99cbdb1a2b6b9f445c820970e45b71f3ce7b30003a521ff2daca3860a3a9735a",
+          "hash": "2b593b0eaa6c151126cb2eff13930b524e3068affbcbccf7808d6aa1df591e26",
           "n_rows": 423,
           "params": {
             "year": 1989
           },
           "sums": {
             "n": 3688,
-            "rl_n": 87,
+            "rl_n": 71,
             "species_n": 2670
           }
         },
@@ -9072,62 +9072,62 @@
           }
         },
         {
-          "hash": "aa7d5101355e6a3a532abcdf5613a9de1e68405df5b3b98e34aa8a27da8d391e",
+          "hash": "03a2e21bdfe86dbef809e8b32f89f6566c532c1540ee4e72d35182001c2147a2",
           "n_rows": 305,
           "params": {
             "year": 1991
           },
           "sums": {
             "n": 2519,
-            "rl_n": 27,
+            "rl_n": 26,
             "species_n": 1910
           }
         },
         {
-          "hash": "0dba9fb1edafd31ecf2b5c6a09ad24d979a3d94a5f971627ac1d8a4d4db621de",
+          "hash": "ea15065709df6a5fbd33c9adfa0bd0afc128915c06a6b80283774e67372e86ed",
           "n_rows": 317,
           "params": {
             "year": 1992
           },
           "sums": {
             "n": 4140,
-            "rl_n": 22,
+            "rl_n": 19,
             "species_n": 2294
           }
         },
         {
-          "hash": "5156f35b26ce59570dd4168ca52077b0857f8c0183eadce8b022b377bfec47f1",
+          "hash": "8fd71efdccf399e23a14eef594c530440c594c3135b01e03a6348a684b31b26f",
           "n_rows": 369,
           "params": {
             "year": 1993
           },
           "sums": {
             "n": 4588,
-            "rl_n": 43,
+            "rl_n": 41,
             "species_n": 2111
           }
         },
         {
-          "hash": "8c4b9e3ff59218f104cfec1133272918e92cbc941b0c84dcb2c5fba7775e72fd",
+          "hash": "9135908fb334a96a63e97c99fea196c4247866e3da4fe146398db6ac164987bd",
           "n_rows": 356,
           "params": {
             "year": 1994
           },
           "sums": {
             "n": 3906,
-            "rl_n": 39,
+            "rl_n": 34,
             "species_n": 2230
           }
         },
         {
-          "hash": "97d058795a73e55f8c649e5e9d041646bf9761730d6e8457598e82e4d15db7ae",
+          "hash": "f0073e25394407ab76097eadf879d2d3401cd9b0e6b3bf3e471a383d37b12f76",
           "n_rows": 343,
           "params": {
             "year": 1995
           },
           "sums": {
             "n": 2439,
-            "rl_n": 44,
+            "rl_n": 43,
             "species_n": 1661
           }
         },
@@ -9144,38 +9144,38 @@
           }
         },
         {
-          "hash": "346c588f79a0b6c6cc755ae04646b0402226054049498d3b945bf373fbc82454",
+          "hash": "95f89ef82fb3ebd0011c98ac24ff56dea14a186a58d8f8a8a0e8d92f7cc9166a",
           "n_rows": 510,
           "params": {
             "year": 1997
           },
           "sums": {
             "n": 5161,
-            "rl_n": 44,
+            "rl_n": 43,
             "species_n": 4104
           }
         },
         {
-          "hash": "a580a81db6103b8e5091406e559d238b5bbd5dab5d8d9d57158d8bf20f2ef0f2",
+          "hash": "b2e5177f5445d00e66f3b7c3f7b8461a454749259cfaae8c8b71f71e77a1c58c",
           "n_rows": 657,
           "params": {
             "year": 1998
           },
           "sums": {
             "n": 6379,
-            "rl_n": 56,
+            "rl_n": 54,
             "species_n": 4624
           }
         },
         {
-          "hash": "c4e939bd48d85ee10d4ff7019f8b95face91a9d4d1ded17bee1ed6e59d210931",
+          "hash": "29b6b0facd86d3055473121dc3e4832fc486e71ea303933b4a41fed2cf80e00d",
           "n_rows": 550,
           "params": {
             "year": 1999
           },
           "sums": {
             "n": 6300,
-            "rl_n": 71,
+            "rl_n": 70,
             "species_n": 4170
           }
         },
@@ -9192,14 +9192,14 @@
           }
         },
         {
-          "hash": "34437f35b128652657d901b93cb7d48d31312c75ba30dcada2183fb42c2199d4",
+          "hash": "8e9a287f05c826699f62b91d8f8b2c4977f4ef4b9676e4368e7ce92d7f7b999b",
           "n_rows": 263,
           "params": {
             "year": 2001
           },
           "sums": {
             "n": 5014,
-            "rl_n": 71,
+            "rl_n": 67,
             "species_n": 2753
           }
         },
@@ -9216,26 +9216,26 @@
           }
         },
         {
-          "hash": "1b8b6f8eff6fad48de5fa75cdd7f559692d71c9ca18b56542d4189f06225fe9b",
+          "hash": "7caee5cffaf344ba07369c3bacc6cabb2dd99f98d7dfc31a7da588020e5af23d",
           "n_rows": 338,
           "params": {
             "year": 2003
           },
           "sums": {
             "n": 3941,
-            "rl_n": 30,
+            "rl_n": 28,
             "species_n": 2613
           }
         },
         {
-          "hash": "f00c1e6cb23beb65fe5574ba1a729dc637c21b0a439974cd4fd5611b45aec362",
+          "hash": "7ebdf67f7e7a4ed5b5d1ca19d14eb6e8c4ffefc78396307e3742996185a03102",
           "n_rows": 545,
           "params": {
             "year": 2004
           },
           "sums": {
             "n": 4715,
-            "rl_n": 27,
+            "rl_n": 28,
             "species_n": 3325
           }
         },
@@ -9252,14 +9252,14 @@
           }
         },
         {
-          "hash": "75f66ed5d3c4cc7364c5000371faee4f160656d312e2f9fc908db4074e9da06e",
+          "hash": "9ba46c3c13a7ad4b970d98fd08e52fe4fae62cb14f9bc36f9adc962819bac208",
           "n_rows": 557,
           "params": {
             "year": 2006
           },
           "sums": {
             "n": 6239,
-            "rl_n": 49,
+            "rl_n": 36,
             "species_n": 3847
           }
         },
@@ -9276,230 +9276,230 @@
           }
         },
         {
-          "hash": "3c108b5ea46f59a1bee06d287d9db4bee036980894c69572ad8bbb594b822246",
+          "hash": "fae53c78d74c4074c10ef765dd4bbd9575672808b6567e18b6114c2be1cbdad7",
           "n_rows": 621,
           "params": {
             "year": 2008
           },
           "sums": {
             "n": 9595,
-            "rl_n": 47,
+            "rl_n": 46,
             "species_n": 6276
           }
         },
         {
-          "hash": "17a427a2e832b8b03490b881873f1b3656581c897c0fab361c2795bb87682b89",
+          "hash": "32d1cdd2c8589791e8ebbfbef511a10e066e25e37cd058bec41926c85c3621ee",
           "n_rows": 688,
           "params": {
             "year": 2009
           },
           "sums": {
             "n": 11276,
-            "rl_n": 57,
+            "rl_n": 40,
             "species_n": 5621
           }
         },
         {
-          "hash": "4e90352bf054e49fdc1c29b566f83b760acff3d30e78d3e234b7f5d739d6ddd2",
+          "hash": "cde3cccfc84aee18bb308b05340d63db8b582be9d79e308ef26f39a3fa23af72",
           "n_rows": 439,
           "params": {
             "year": 2010
           },
           "sums": {
             "n": 7392,
-            "rl_n": 23,
+            "rl_n": 22,
             "species_n": 2930
           }
         },
         {
-          "hash": "af6b53be3424faf8358ba75a713954f3519e725c8eca8d53a62e218e6c85032a",
+          "hash": "58bcf39a348c6c715982845c66f1344914b5b96813ed41920d8c953884c49d15",
           "n_rows": 576,
           "params": {
             "year": 2011
           },
           "sums": {
             "n": 7951,
-            "rl_n": 46,
+            "rl_n": 20,
             "species_n": 3356
           }
         },
         {
-          "hash": "cb0b5794d8be2ede32f9faefd6b90476057197a9d38532d5b7d26ff165dbad7e",
+          "hash": "974c7cfc1d7893a572de1e82bd5ecf1bf8274bd1227d56233018b610820f444e",
           "n_rows": 623,
           "params": {
             "year": 2012
           },
           "sums": {
             "n": 8323,
-            "rl_n": 34,
+            "rl_n": 31,
             "species_n": 3565
           }
         },
         {
-          "hash": "86597a12f8ea3e0059b9956421301917c6f1ef51888397325371d0c3a054f443",
+          "hash": "01537c86b14673af56284e360d2898f527beaf45f5504a4b4073be626381fdee",
           "n_rows": 1067,
           "params": {
             "year": 2013
           },
           "sums": {
             "n": 15736,
-            "rl_n": 79,
+            "rl_n": 80,
             "species_n": 12575
           }
         },
         {
-          "hash": "ebe540f03089d6c583a582c93a1568ae15e85f44f3f90f97383c4dbab60fa1e9",
+          "hash": "89c4684cce8e79dbdc8e4830c2fdeb13af957555738dc6d8893e377e43621a23",
           "n_rows": 1292,
           "params": {
             "year": 2014
           },
           "sums": {
             "n": 16249,
-            "rl_n": 86,
+            "rl_n": 84,
             "species_n": 13590
           }
         },
         {
-          "hash": "0b4e33818296370a3de0f1d8a0eb8525418520c1d27cdc72df7d5b3973a5eb10",
+          "hash": "79830b35ae4b8c65bf96c6966c7a3bea8e3dcac62b8d1b21d5c616dc524ad9b2",
           "n_rows": 1241,
           "params": {
             "year": 2015
           },
           "sums": {
             "n": 17352,
-            "rl_n": 126,
+            "rl_n": 123,
             "species_n": 14956
           }
         },
         {
-          "hash": "f4bb9c512ca1e49e2cd5035198505f1cf32f6d57c645c43dd9ac50c38604bb49",
+          "hash": "294cb4da509ab1f9eb8553d11e8ae4438336afe19951773b07c0a09b2c192b09",
           "n_rows": 1450,
           "params": {
             "year": 2016
           },
           "sums": {
             "n": 15917,
-            "rl_n": 100,
+            "rl_n": 113,
             "species_n": 12696
           }
         },
         {
-          "hash": "4fbea5d53718b27d277ab74bec4e9eda8d66991082f59134a684d0005341e2cc",
+          "hash": "d725006fb23e49a94728b0148df7faffa3b22667fa0d8f594463ec155bd26807",
           "n_rows": 836,
           "params": {
             "year": 2017
           },
           "sums": {
             "n": 10529,
-            "rl_n": 58,
+            "rl_n": 55,
             "species_n": 5344
           }
         },
         {
-          "hash": "3c2b76ec56b308fa598a65c3d1b456a47a3ef8d4073a8ea6fa49ebef4ef3b7b4",
+          "hash": "6659030bc945a33957c11315a8f51799d315658b1e38bd99d77f42febedd7a3e",
           "n_rows": 1020,
           "params": {
             "year": 2018
           },
           "sums": {
             "n": 21373,
-            "rl_n": 62,
+            "rl_n": 41,
             "species_n": 7895
           }
         },
         {
-          "hash": "831dfec904c913d88ec0b0737c3294e7280cabcaecb4009f891bc33e1c62e6fe",
+          "hash": "8b38538f621f726ca24cbcdc11569c8b4aee5c6ffff1c39bf082b5d868853901",
           "n_rows": 1459,
           "params": {
             "year": 2019
           },
           "sums": {
             "n": 27652,
-            "rl_n": 97,
+            "rl_n": 102,
             "species_n": 10394
           }
         },
         {
-          "hash": "908228e8528f9040353661ca11c39b03d73cf63b4642dacc757cbac877a9bb43",
+          "hash": "fea4e23fe6fdf9021d441644096574f9381b92f0c9d22a245dd276f46b80c358",
           "n_rows": 1404,
           "params": {
             "year": 2020
           },
           "sums": {
             "n": 29776,
-            "rl_n": 149,
+            "rl_n": 99,
             "species_n": 11143
           }
         },
         {
-          "hash": "dd34452e98cf5b80ff7eba4594081106064dc3979100a5d0f21dde325730609a",
+          "hash": "6fda9b2421517fb2063a6cbae22e0ef5df91bf1defdc1033b8c4fb4d26926709",
           "n_rows": 1702,
           "params": {
             "year": 2021
           },
           "sums": {
             "n": 41575,
-            "rl_n": 136,
+            "rl_n": 157,
             "species_n": 13360
           }
         },
         {
-          "hash": "153961e90d5e9660641bcda898d58de10ea594d4408edcc7db06a6b603f264a1",
+          "hash": "0a83bb18cbfa243f9ec973b86c4f5e39b9bbd282f57292b0998b47a62220e2e2",
           "n_rows": 1936,
           "params": {
             "year": 2022
           },
           "sums": {
             "n": 60522,
-            "rl_n": 207,
+            "rl_n": 242,
             "species_n": 18873
           }
         },
         {
-          "hash": "1953615708d7dac11a94bfc9fa5d553d071cb900da57a9336e4d1d50ab3b0451",
+          "hash": "6c58eab0fd1874c60df74c1e321cf1d65e4ed37f817dd8b25bdd98ef3225050e",
           "n_rows": 2367,
           "params": {
             "year": 2023
           },
           "sums": {
             "n": 83953,
-            "rl_n": 360,
+            "rl_n": 429,
             "species_n": 27588
           }
         },
         {
-          "hash": "c100aa8394c2b17a6fd4e6c5633d98d403ad825ed50ecfa746c48927ed79a804",
+          "hash": "51d9b898a0a60b0fa43aa69a0a86e7b1e77261dd7e22b1652d3b686b522bbb90",
           "n_rows": 2723,
           "params": {
             "year": 2024
           },
           "sums": {
             "n": 113891,
-            "rl_n": 495,
+            "rl_n": 600,
             "species_n": 34215
           }
         },
         {
-          "hash": "e1d7777ecf5b23e349baf75cfc593a48c0e34c45e9668badc255aa51d3f896b8",
+          "hash": "813f5e0e5c33004f3dd2d0c464d002a24874d93daec9df9899e04db8bfa870e9",
           "n_rows": 3574,
           "params": {
             "year": 2025
           },
           "sums": {
             "n": 61968,
-            "rl_n": 652,
+            "rl_n": 794,
             "species_n": 33332
           }
         },
         {
-          "hash": "5ca09a7dafa7ca66ec396ed390475a832b78a096ccdef0a3b3f7bb75c896c735",
+          "hash": "86b24d260fe7837b2ae97bd9969e4eceb149baff4c0a519e4d4c48d8f79c6d0a",
           "n_rows": 3276,
           "params": {
             "year": 2026
           },
           "sums": {
             "n": 75157,
-            "rl_n": 691,
+            "rl_n": 786,
             "species_n": 38754
           }
         }
@@ -9560,7 +9560,7 @@
       "n_domain": 1,
       "runs": [
         {
-          "hash": "64e50e954d93f3620e80363ef3ae62f1fbd116a753f3e43e8bd0c296dadeef54",
+          "hash": "5ab208d596e360a55d23b00381ef943dcf3e9642bae52d63743133de8d24767e",
           "n_rows": 402,
           "params": {},
           "sums": {
@@ -9573,7 +9573,7 @@
             "forest_km2_2016": 1803.539835,
             "org_alien_n": 16652,
             "org_n": 757211,
-            "org_redlist_n": 5450,
+            "org_redlist_n": 5285,
             "paddy_km2_2006": 112.813379,
             "paddy_km2_2016": 88.752643,
             "site_n": 283
@@ -10390,12 +10390,12 @@
       "n_domain": 1,
       "runs": [
         {
-          "hash": "caaac5f44a24badaeedc0383d84f06b0a93a2c0468234e2c29d23a07e438a52d",
+          "hash": "b85ee11c36ce21fe5f2463fe548f7f9fc846aa494415c910adf995d80ee15fe3",
           "n_rows": 1,
           "params": {},
           "sums": {
             "n_sites": 380,
-            "n_sources": 154,
+            "n_sources": 156,
             "n_watersheds": 402,
             "y_from": 1973,
             "y_to": 2026
@@ -10421,8 +10421,8 @@
   ],
   "schema_version": 1,
   "source_hashes": {
-    "data/db/cells.sqlite": "0668ae12ee127b3638cbdf52a75d6ba7dd96252e04dd928242224e704fe646c5",
-    "data/db/ryuiki.sqlite": "3ffe2d13e1c88b283e361cb77a72a7439e35061a22422a02323959b4429849b4",
+    "data/db/cells.sqlite": "59487f927f4d211b0cd2a7dd9bdcb1990ea38e94184328fb35e6bc904cc1bdf5",
+    "data/db/ryuiki.sqlite": "b118669f11fcd400f6a99e07d94521da0e987ec142f2e72d4c2bfc55784ae8df",
     "data/processed/moe_ias_list.csv": "54a3261737bc72b84910d75d78a7da7beee067c5b78581c9b2522627b7bffb41",
     "data/processed/nlni_l03b_landuse_by_watershed.csv": "ec71d28f382785af6ef7ed588350f67537f96d356d1d73c541522a74421cb644",
     "data/processed/nlni_l03b_landuse_by_watershed_amami.csv": "0a64640e1a5507567488923f26ba38bf98ce11125394f90d88474ca5e4503e1e",
