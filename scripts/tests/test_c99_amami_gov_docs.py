@@ -76,6 +76,7 @@ def test_pdf_page_count_rejects_broken_files(tmp_path):
     bad.write_bytes(b"<html>not a pdf</html>")
     with pytest.raises(ValueError):
         dc.pdf_page_count(bad)
+    pytest.importorskip("pdfplumber")
     trunc = tmp_path / "y.pdf"
     trunc.write_bytes(b"%PDF-1.4\n garbage")
     with pytest.raises(ValueError):

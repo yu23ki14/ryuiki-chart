@@ -222,10 +222,10 @@ def fetch_pdf(url, path):
 
 def pdf_page_count(path):
     """PDF のページ数。先頭が %PDF でない・pdfplumber で開けない PDF は ValueError。"""
-    import pdfplumber
     with open(path, "rb") as f:
         if not f.read(5).startswith(b"%PDF"):
             raise ValueError(f"PDF ではない: {path}")
+    import pdfplumber  # 先頭の検査より後（pdfplumber の無い環境でも壊れたファイルは弾ける）
     try:
         with pdfplumber.open(str(path)) as pdf:
             return len(pdf.pages)
