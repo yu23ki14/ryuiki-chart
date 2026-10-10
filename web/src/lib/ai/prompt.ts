@@ -72,6 +72,8 @@ const CAVEAT_KEY_ORDER = {
   ednaNonDetect: true,
   ednaWatershed: true,
   effortSurvey: true,
+  amamiRedList: true,
+  amamiWatershedGap: true,
 } satisfies Record<CaveatKey, true>;
 const CAVEAT_KEYS = Object.keys(CAVEAT_KEY_ORDER) as CaveatKey[];
 

@@ -15,6 +15,7 @@ import { NAME_JA } from "@/lib/registry/generated-client";
 import { OCC_BOTH_KINDS_YEAR, OCC_MESH_N, OCC_N_ALL, OCC_N_LOCATED, OCC_SUM, USE_RECORD_VERNACULAR, labelMap, pickLabel, resolveNames } from "./occurrence";
 import { IAS_SINCE_YEAR, OCC_DEFAULT_FROM, occDefaultTo, chunk, cmp, jsonEachParam, seriesFilterSql, uniq } from "./sql";
 import { OCCURRENCE_AGG_INDEX } from "@/db/schema-cube";
+import { OCCURRENCE_SOURCE_IDS } from "./source-meta";
 import { basisOfCell, isRepresentativeObsStat, seriesKeyFromRow, seriesKeySql, seriesKeyString, type SeriesKey } from "./series";
 
 /**
@@ -880,9 +881,10 @@ export async function siteSeriesCells(db: CubeDb, opt: { dataset: string }): Pro
 
 type OccRow = Record<string, string | number | null>;
 
-// 地域ごとに出典が分かれる（神奈川・奄美）。足すときはここだけ。
-const SOURCES_GBIF = ["gbif_kanagawa_occurrences", "gbif_amami_occurrences"];
-const SOURCES_INAT = ["inaturalist_kanagawa", "inaturalist_amami"];
+// 地域ごとに出典が分かれる（神奈川・奄美）。出典の一覧はマニフェスト由来の生成物
+// （OCCURRENCE_SOURCE_IDS）から接頭辞で引く。手で並べない（地域を足しても自動で入る）。
+const SOURCES_GBIF = OCCURRENCE_SOURCE_IDS.filter((id) => id.startsWith("gbif_"));
+const SOURCES_INAT = OCCURRENCE_SOURCE_IDS.filter((id) => id.startsWith("inaturalist_"));
 const placeholders = (n: number) => Array(n).fill("?").join(", ");
 const IAS_LIST_ID = "moe_ias_2015";
 

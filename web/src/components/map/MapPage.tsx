@@ -25,7 +25,7 @@ export function MapPage() {
   const [showMesh, setShowMesh] = React.useState(false);
   const [showRivers, setShowRivers] = React.useState(false);
   // 初期表示は神奈川のまま（MapCanvas の既定）。ボタンを押したときだけ fitBounds で移る。
-  const [jump, setJump] = React.useState<[[number, number], [number, number]] | null>(null);
+  const [jump, setJump] = React.useState<{ bounds: [[number, number], [number, number]]; nonce: number } | null>(null);
 
   const [wsMetric, setWsMetric] = React.useState<WsMetric>("org_density");
   const [meshMetric, setMeshMetric] = React.useState<MeshMetric>("species_n");
@@ -146,7 +146,7 @@ export function MapPage() {
           sources={sources}
           layers={layers}
           className="absolute inset-0"
-          fitBounds={jump}
+          fitTo={jump}
           onFeatureClick={(f) => {
             const p = f.properties as Record<string, unknown>;
             setSel(p);
@@ -217,8 +217,8 @@ export function MapPage() {
         <Section title="地域">
           <div className="flex gap-1.5 flex-wrap">
             {REGION_JUMPS.map((r) => (
-              // 同じ地域を続けて押しても移れるよう、毎回新しい配列を渡す（MapCanvas は参照の変化で動く）
-              <Btn key={r.id} onClick={() => setJump([[...r.bounds[0]], [...r.bounds[1]]])}>
+              // 同じ地域を続けて押しても移れるよう nonce を増やす（MapCanvas は nonce の変化で動く）
+              <Btn key={r.id} onClick={() => setJump((j) => ({ bounds: [[...r.bounds[0]], [...r.bounds[1]]], nonce: (j?.nonce ?? 0) + 1 }))}>
                 {r.label}
               </Btn>
             ))}

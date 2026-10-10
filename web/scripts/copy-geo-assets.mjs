@@ -36,9 +36,18 @@ const DST = path.resolve(__dirname, "..", "public", "geo");
 //
 // src が配列のものは、地域ごとのファイルを順に連結して 1 つの FeatureCollection にする（先頭が神奈川）。
 // 奄美側が無ければ神奈川だけで通す。神奈川（先頭）の feature 数が減っていないことは書き出し時に検査する。
+//
+// 地域ファイルは「<基本名>.geojson（神奈川）」と「<基本名>_<slug>.geojson」（scripts/regions.py の slug。
+// 例: _amami）。slug は英数字だけ許すので `_columns.csv` 等の別ファイルは拾わない。名前順で、基本名が先頭。
+function regionalGeojson(base) {
+  const re = new RegExp(`^${base}(_[a-z0-9]+)?\\.geojson$`);
+  const names = fs.existsSync(SRC) ? fs.readdirSync(SRC).filter((n) => re.test(n)) : [];
+  // 基本名（神奈川）を必ず先頭に。無くても先頭の名前は返す（無いことを下で検出する）
+  return [`${base}.geojson`, ...names.filter((n) => n !== `${base}.geojson`).sort()];
+}
 const FILES = [
-  { src: ["nlni_w05_rivers.geojson", "nlni_w05_rivers_amami.geojson"], dst: "rivers.geojson" },
-  { src: ["nlni_w12_watersheds.geojson", "nlni_w12_watersheds_amami.geojson"], dst: "watersheds.geojson" },
+  { src: regionalGeojson("nlni_w05_rivers"), dst: "rivers.geojson" },
+  { src: regionalGeojson("nlni_w12_watersheds"), dst: "watersheds.geojson" },
   // 水源マップ（docs/WATER_SOURCE_MAP.md）。町丁目ポリゴンに水源比率を焼き込んだもの。
   // ブラウザが直接取る（/water は D1 を読まない）。作るのは scripts/build-water-geo.mjs。
   { src: "water_zones.geojson", dst: "water_zones.geojson" },
@@ -53,6 +62,20 @@ if (
   console.log("▶ water_zones.geojson が無いので作る (build-water-geo.mjs)");
   const r = spawnSync(process.execPath, [path.join(__dirname, "build-water-geo.mjs")], { stdio: "inherit" });
   if (r.status !== 0) process.exit(r.status ?? 1);
+}
+
+// 入力の集合のスタンプ。public/geo は知らないファイルを消す（デプロイに乗せない）ので、その外に置く。
+const STAMP = path.resolve(__dirname, "..", "node_modules", ".cache", "ryuiki-geo-inputs.json");
+function readStamps() {
+  try {
+    return JSON.parse(fs.readFileSync(STAMP, "utf8"));
+  } catch {
+    return {};
+  }
+}
+function writeStamps(v) {
+  fs.mkdirSync(path.dirname(STAMP), { recursive: true });
+  fs.writeFileSync(STAMP, JSON.stringify(v));
 }
 
 fs.mkdirSync(DST, { recursive: true });
@@ -83,8 +106,12 @@ for (const { src: srcSpec, dst: outName } of FILES) {
   }
   const srcMtime = Math.max(...froms.map((p) => fs.statSync(p).mtimeMs));
   const srcSize = froms.reduce((a, p) => a + fs.statSync(p).size, 0);
-  // 出力は入力とサイズが違う（詰めるため）ので、更新の判定は mtime だけで見る
-  if (dst && dst.mtimeMs >= srcMtime) {
+  // 入力の集合（名前・サイズ・mtime）をスタンプに残し、変わったら（ファイルの追加・削除も）作り直す。
+  // 最新 mtime だけだと、古い奄美ファイルを後から足した・消したときに気づけない。
+  const inputsKey = JSON.stringify(froms.map((p) => [path.basename(p), fs.statSync(p).size, fs.statSync(p).mtimeMs]));
+  const stamps = readStamps();
+  // 出力は入力とサイズが違う（詰めるため）ので、更新の判定はスタンプと mtime で見る
+  if (dst && dst.mtimeMs >= srcMtime && stamps[outName] === inputsKey) {
     console.log(`= ${outName} (最新)`);
     continue;
   }
@@ -96,6 +123,8 @@ for (const { src: srcSpec, dst: outName } of FILES) {
     process.exit(1);
   }
   fs.writeFileSync(to, JSON.stringify(merged));
+  stamps[outName] = inputsKey;
+  writeStamps(stamps);
   const after = fs.statSync(to).size;
   console.log(
     `built ${froms.length} file(s) → ${outName} features ${parts.map((g) => (g.features ?? []).length).join("+")}=${merged.features.length} ` +

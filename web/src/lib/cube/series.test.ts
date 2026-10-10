@@ -50,7 +50,7 @@ describe("seriesKeySql", () => {
 });
 
 describe("seriesForAlias（実データ: registry/variable_alias.csv 由来の generated.ts）", () => {
-  it("pH は3出典が2つの組（tuple）にまとまる（mean/day と point/day）", () => {
+  it("pH は4出典が2つの組（tuple）にまとまる（mean/day と point/day）", () => {
     const series = seriesForAlias("measurements", "pH");
     expect(series.length).toBe(2);
 
@@ -64,7 +64,8 @@ describe("seriesForAlias（実データ: registry/variable_alias.csv 由来の g
     // （PR-2 で b03 が合成データを除いた後の observation_agg には出典未記録の行は
     // 現れないが、`variable_alias`〔registry〕の宣言としては両方載っている——
     // `series.ts` の `isSynthetic` は D2 で撤去済み）。
-    expect(pointDay!.sourceIds.sort()).toEqual([null, "env_kousui_sample_kanagawa"].sort());
+    // 奄美の追加で env_kousui_sample_amami も同じ組に入った（組の数は変わらない）。
+    expect(pointDay!.sourceIds.sort()).toEqual([null, "env_kousui_sample_amami", "env_kousui_sample_kanagawa"].sort());
   });
 
   it("存在しない (dataset, alias) は空配列", () => {
@@ -88,14 +89,15 @@ describe("sourceIds は重複排除する（Issue #48 PR-1 code-review #2）", (
     const info = seriesInfo(snowDepthMax);
     expect(info).toBeDefined();
     expect(info!.aliases).toEqual(["雪_最深 積雪", "雪_最深積雪"]);
-    expect(info!.sourceIds).toEqual(["jma_monthly_kanagawa"]);
+    // 奄美の追加で jma_monthly_amami が加わる。各出典は1回ずつ。
+    expect(info!.sourceIds).toEqual(["jma_monthly_kanagawa", "jma_monthly_amami"]);
   });
 
   it("seriesForVariable 経由でも同じ組は sourceIds が重複しない", () => {
     const series = seriesForVariable("common:variable:weather.snow_depth_max", { obsStats: "all" });
     const match = series.find((s) => s.obsStat === "max" && s.valueGrain === "month");
     expect(match).toBeDefined();
-    expect(match!.sourceIds).toEqual(["jma_monthly_kanagawa"]);
+    expect(match!.sourceIds).toEqual(["jma_monthly_kanagawa", "jma_monthly_amami"]);
   });
 });
 
