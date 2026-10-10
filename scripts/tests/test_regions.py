@@ -56,8 +56,8 @@ def test_jp14_matches_hardcoded_collectors():
     assert r["inat_place_ids"] == (int(_const("c03_inaturalist.py", r"^PLACE = (\d+)")),)
     assert r["jma_stations"][0][0] == int(_const("c10_jma.py", r"^PREC = (\d+)"))
     assert r["env_water_prefcodes"] == (_const("c12_env_kousui.py", r'^PREF = "(\d+)"'),)
-    meshes = re.findall(r'"(\d{4})"', _const("c34_nlni_l03b.py", r"^MESHES = \(([^)]*)\)"))
-    assert r["l03b_meshes"] == tuple(meshes)
+    # c34 は直書きをやめて regions.py を読む（layout() 経由）。jp-14 の値は test_nlni_region.py が固定している。
+    assert 'MESHES = L["l03b_meshes"]' in _src("c34_nlni_l03b.py")
 
 
 def test_jp46_counts():

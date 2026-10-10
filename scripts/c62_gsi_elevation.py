@@ -11,12 +11,16 @@
 3. 基盤地図情報ダウンロードサービスの利用者登録要否を実ページで確認し、
    登録不要では取得しない（人間の承認なしにアカウント登録はしない）方針のもと
    record_count=0 で登録するのみ。
-"""
-import sys, json, csv, time
-sys.path.insert(0, "scripts")
-from common import get_json, register, write_jsonl, PROC, RAW, now
 
-SOURCE_ID = "gsi_elevation_grid"
+`--region jp-46`（奄美）: グリッドの範囲は regions.py の bbox、陸域のクリップは奄美の W12
+（data/processed/nlni_w12_watersheds_amami.geojson。先に c30 を回す）の和集合。出力は gsi_elevation_grid_amami.*。
+"""
+import argparse, sys, json, csv, time, pathlib
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from common import get_json, register, write_jsonl, PROC, RAW, now
+from nlni_lib import layout
+from regions import add_region_arg
+
 ELEV_URL = "https://cyberjapandata2.gsi.go.jp/general/dem/scripts/getelevation.php"
 
 # ---------------------------------------------------------------
@@ -32,17 +36,16 @@ def fetch_elevation(lon, lat):
     return r
 
 
-def build_grid_points(step=0.01):
+def build_grid_points(step=0.01, rid="jp-14"):
     """nlni_w12_watersheds.geojson (流域界, 神奈川県全域を覆う) の和集合内に入る
     0.01度グリッド点のみを対象にする。ファイルが無ければ矩形bboxのまま返す。"""
     import numpy as np
-    lon0, lon1 = 138.9, 139.8
-    lat0, lat1 = 35.1, 35.7
+    lon0, lat0, lon1, lat1 = layout(rid)["bbox"]
     lons = [round(float(x), 2) for x in np.arange(lon0, lon1 + 1e-9, step)]
     lats = [round(float(y), 2) for y in np.arange(lat0, lat1 + 1e-9, step)]
     all_pts = [(lo, la) for lo in lons for la in lats]
 
-    boundary_path = PROC / "nlni_w12_watersheds.geojson"
+    boundary_path = PROC / f"{layout(rid)['w12_sid']}.geojson"
     if not boundary_path.exists():
         return all_pts, False, len(all_pts)
 
@@ -70,8 +73,13 @@ def build_grid_points(step=0.01):
 
 
 def main():
+    ap = argparse.ArgumentParser()
+    add_region_arg(ap)
+    rid = ap.parse_args().region
+    L = layout(rid)
+    SOURCE_ID = L["elev_sid"]
     step = 0.01
-    pts, clipped, grid_total = build_grid_points(step)
+    pts, clipped, grid_total = build_grid_points(step, rid)
     print(f"grid_total(bbox)={grid_total} clipped_to_land={len(pts)} clipped={clipped}")
 
     rows = []
@@ -135,14 +143,14 @@ def main():
     n_nodata = sum(1 for r in rows if r["elevation_m"] is None)
     notes = (
         f"グリッド間隔=0.01度、bbox内候補点数={grid_total}、"
-        f"data/processed/nlni_w12_watersheds.geojson(国土数値情報流域界,他エージェント成果物)の"
+        f"data/processed/{L['w12_sid']}.geojson(国土数値情報流域界,他エージェント成果物)の"
         f"和集合ポリゴンでクリップして陸域相当のみ{len(pts)}点を対象に取得(clipped={clipped})。"
         f"取得試行{len(rows)}点中no-data(海上等){n_nodata}点はelevation_m=null。"
         "no-dataはAPIレスポンスelevation='-----'を検出して判定。"
     )
     register(
         source_id=SOURCE_ID,
-        name="国土地理院 標高API グリッド取得（神奈川県相当範囲）",
+        name=f"国土地理院 標高API グリッド取得（{L['name_ja']}相当範囲）",
         publisher="国土交通省国土地理院",
         url="https://maps.gsi.go.jp/development/elevation_s.html",
         category="地形・標高",

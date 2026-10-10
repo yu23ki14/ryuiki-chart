@@ -5,19 +5,30 @@ GM_Surface → GM_SurfaceBoundary(exterior/interior) → GM_Ring
 → GM_CompositeCurve.generator → GM_OrientableCurve → GM_Curve → GM_LineString
 の位相参照を解決して面を組み立てる。座標は "緯度 経度" 順。
 """
-import sys, pathlib, collections, re
+import argparse, sys, pathlib, collections, re
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import xml.etree.ElementTree as ET
 from common import RAW, register, write_jsonl
 from nlni_lib import (geod_area_km2, write_geojson, write_csv,
                       extract_attribute_table, write_columns_csv, LICENSE_NONCOM,
-                      assign_watershed)
+                      assign_watershed, layout, ensure_extracted, bbox_geom)
+from regions import add_region_arg
 from shapely.geometry import Polygon, MultiPolygon, mapping
 
-SID = "nlni_a15_wildlife"
+ap = argparse.ArgumentParser()
+add_region_arg(ap)
+RID = ap.parse_args().region
+L = layout(RID)
+PREF, PREF_NAME = L["pref"], L["pref_name_ja"]
+CLIP = bbox_geom(L["clip_bbox"]) if L["clip_bbox"] else None
+
+SID = L["a15_sid"]
 PAGE = "https://nlftp.mlit.go.jp/ksj/jpgis/datalist/KsjTmplt-A15.html"
-ZIPU = "https://nlftp.mlit.go.jp/ksj/jpgis/data/A15/A15-09/A15-09_14.zip"
-XML = RAW / SID / "A15-09_14" / "A15-09_14.xml"
+ZIPU = L["a15_zip_url"]
+XML = L["a15_xml"]
+if RID != "jp-14":
+    ensure_extracted(ZIPU, RAW / SID / pathlib.PurePosixPath(ZIPU).name, RAW / SID, XML.name,
+                     subdir=f"A15-09_{PREF}")
 
 # ダウンロードページ「属性情報」原文より
 INSTITUTION = {"1": "国指定", "2": "県指定"}
@@ -157,11 +168,15 @@ def caldate(ref):
     return None
 
 
-feats, rows, skipped = [], [], 0
+feats, rows, skipped, n_pref, n_clipped = [], [], 0, 0, 0
 for bh in root.iter(f"{{{NS['ksj']}}}BH01"):
     fid = bh.get("id")
     are = idref(bh, "ARE")
     poly = surface_polygon(are) if are else None
+    n_pref += 1
+    if CLIP is not None and (poly is None or poly.is_empty or not poly.intersects(CLIP)):
+        n_clipped += 1      # 範囲の外（ジオメトリが組めない地物は位置が分からないので落とす）
+        continue
     if poly is None or poly.is_empty:
         skipped += 1
         geom = None
@@ -173,11 +188,11 @@ for bh in root.iter(f"{{{NS['ksj']}}}BH01"):
     dsc, thc = txt("DSC"), txt("THC")
     props = {
         "source_id": SID,
-        "source_ref": f"{ZIPU}#A15-09_14.xml:{fid}",
+        "source_ref": f"{ZIPU}#A15-09_{PREF}.xml:{fid}",
         "feature_id": fid,
         "name_ja": txt("THN"),
         "prefecture_code": txt("PRC"),
-        "prefecture_name_ja": "神奈川県",
+        "prefecture_name_ja": PREF_NAME,
         "designating_institution_code_raw": dsc,
         "designating_institution_ja": INSTITUTION.get(dsc),
         "protection_class_code_raw": thc,
@@ -189,7 +204,7 @@ for bh in root.iter(f"{{{NS['ksj']}}}BH01"):
         "centroid_lon": round(poly.centroid.x, 6) if poly is not None else None,
         "data_year": 2009,
     }
-    props.update(assign_watershed(poly) if poly is not None else
+    props.update(assign_watershed(poly, RID) if poly is not None else
                  {"watershed_id": None, "water_system_code_old": None,
                   "water_system_name_ja_estimated": None,
                   "watershed_join_method": "ジオメトリ無しのため未割当"})
@@ -217,7 +232,7 @@ cols += [
      "description_ja": "本収集で算出。shapely centroid（平面近似）。", "type_ja": "実数",
      "output_column": "centroid_lat / centroid_lon"},
     {"column_code": "", "column_name_ja": "所属単位流域",
-     "description_ja": "本収集で付与。ポリゴン重心が W12 流域界(神奈川, 昭和52年)のどの単位流域内にあるかで判定。外れる場合は null。",
+     "description_ja": f"本収集で付与。ポリゴン重心が W12 流域界({L['pref_short']}, 昭和52年)のどの単位流域内にあるかで判定。外れる場合は null。",
      "type_ja": "文字列", "output_column": "watershed_id / water_system_code_old / water_system_name_ja_estimated"},
     {"column_code": "", "column_name_ja": "地物ID(XML)",
      "description_ja": "XML 上の ksj:BH01/@id。ダウンロードページ記載の「鳥獣保護区ID(7桁)」属性は本XMLには含まれない。",
@@ -232,10 +247,13 @@ for p in rows:
 summary = " / ".join(f"{k}:{v}件 {areas[k]:.1f}km2" for k, v in byclass.items())
 print("  " + summary)
 
-register(SID, "国土数値情報 鳥獣保護区（神奈川県）", "国土交通省 国土数値情報ダウンロードサイト",
+SCOPE = "" if CLIP is None else (f"{L['name_ja']}の範囲（bbox {L['bbox']}）に掛かる {len(rows)} 件だけを、"
+                                 f"県全体 {n_pref} 件から絞った（範囲外 {n_clipped} 件）。")
+register(SID, f"国土数値情報 鳥獣保護区（{PREF_NAME if CLIP is None else L['name_ja']}）", "国土交通省 国土数値情報ダウンロードサイト",
          PAGE, "gis_protected_area", "http_zip_jpgis_xml", "geojson+csv+jsonl",
          LICENSE_NONCOM, 1, len(rows),
-         "神奈川県(14) A15-09_14.zip / 平成21(2009)年。配布は JPGIS 準拠 XML のみで shapefile 版は無いため、"
+         f"{PREF_NAME}({PREF}) A15-09_{PREF}.zip / 平成21(2009)年。{SCOPE}"
+         "配布は JPGIS 準拠 XML のみで shapefile 版は無いため、"
          "GM_Surface の位相参照(Ring→OrientableCurve→Curve→LineString)を自前で解決して面を構築した。"
          f"内訳: {summary}。ジオメトリを構築できなかった地物 {skipped} 件（該当行は geometry 無しで CSV/JSONL のみ）。"
          "指定日 DED / 解除日 CAD は TM_CalDate の 8桁(YYYYMMDD)を YYYY-MM-DD に整形しただけで値の補完はしていない。"
