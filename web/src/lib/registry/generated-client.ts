@@ -32,7 +32,7 @@ export type CaveatScopeKind = "variable" | "place" | "source_edition" | "observa
  * 呼ぶときの型で、存在しないキーはここでコンパイルエラーになる（旧 domain.ts の
  * mustCaveatBody() は実行時例外だった）。
  */
-export type CaveatKey = "aboveLod" | "amamiRedList" | "amamiWatershedGap" | "censoredLod" | "duplicates" | "ednaCoords" | "ednaNonDetect" | "ednaReads" | "ednaWatershed" | "ednaYearBasis" | "effort" | "effortSurvey" | "fishClass" | "flowTidalBackflow" | "gbifCutoff" | "inatBackfill" | "isAlien" | "landuseDefinitionChange" | "measuredOn" | "municipality" | "organismSite" | "regimes" | "share" | "synthetic" | "unitUnknown" | "zone";
+export type CaveatKey = "aboveLod" | "amamiRedList" | "amamiWatershedGap" | "censoredLod" | "duplicates" | "ednaCoords" | "ednaNonDetect" | "ednaReads" | "ednaWatershed" | "ednaYearBasis" | "effort" | "effortSurvey" | "fishClass" | "flowTidalBackflow" | "gbifCutoff" | "inatBackfill" | "isAlien" | "kasenKikiDaily" | "kasenProvisional" | "kasenStageDatum" | "kasenTideDatum" | "landuseDefinitionChange" | "measuredOn" | "municipality" | "organismSite" | "regimes" | "share" | "synthetic" | "unitUnknown" | "zone";
 
 export interface GeneratedCaveat {
   key: string;
@@ -295,6 +295,10 @@ export const GENERATED_CAVEATS: readonly GeneratedCaveat[] = [
   { key: "gbifCutoff", severity: "blocking", kind: "coverage_gap", bodyJa: "GBIF 側の取り込みは 2024年12月で実質途切れている（月の件数が2024年12月の6,789件から2025年1月に399件へ。2024年の月平均は約6,400件）。鳥類の2025年以降の減少はデータの都合であり、生きものの減少ではない。" },
   { key: "inatBackfill", severity: "info", kind: null, bodyJa: "iNaturalist 由来の 165,332 件は分類階級が空だったため、学名の先頭2語をキーに GBIF 側の分類を引き当てて補完している（先頭2語の一致が約71%、属だけの一致が約15%、未解決が約14%）。" },
   { key: "isAlien", severity: "blocking", kind: "known_error", bodyJa: "原本の is_alien フラグは同一種の中で 1 と 0 が混在し、オオクチバスやウシガエルが 0 件になるなど信頼できない。外来種の判定には、記録の学名（二名法）を環境省の生態系被害防止外来種リストに結合した結果を使っている。ただし国内由来のみの種（国内の別地域の個体群など。神奈川県では在来の可能性がある）は外来種に数えない。" },
+  { key: "kasenKikiDaily", severity: "warning", kind: "coverage_gap", bodyJa: "危機管理型水位計は、通常は6時間おきに観測し、水位が上がると間隔が細かくなる。観測の間隔が一定でないので日平均は出していない。日最高・日最低は、観測された値の中での最高・最低で、その日の本当の最高・最低とは限らない。" },
+  { key: "kasenProvisional", severity: "info", kind: "known_error", bodyJa: "鹿児島県の河川砂防情報システムの値は速報値で、検定や点検を受けていない可能性がある。障害や休止の間は欠測になり、日別の集約はその日の観測された値だけで作っている。" },
+  { key: "kasenStageDatum", severity: "warning", kind: "definition_change", bodyJa: "鹿児島県の河川砂防情報システムの水位は、各水位標の零点からの高さで、T.P.（東京湾平均海面）ではない可能性がある。零点の標高は原表に無いので、局どうしの水位の高さは比べられない。同じ局の中の変化だけを読む。" },
+  { key: "kasenTideDatum", severity: "warning", kind: "definition_change", bodyJa: "鹿児島県の河川砂防情報システムの潮位は、基準面が原表に書かれていない。単位も cm と推定している。値は同じ検潮所の中の変化として読み、ほかの潮位データや標高と並べない。" },
   { key: "landuseDefinitionChange", severity: "blocking", kind: "definition_change", bodyJa: "土地利用の区分は2006年調査と2016年調査で定義が違う。2006年の「幹線交通用地」は2016年調査で「道路」「鉄道」に分割されており、同じ区分として比較できない。この2区分が2006年→2016年で全減・全増に見えるのは、実際の土地利用の変化ではなく調査区分の定義変更による見かけ上の増減である。" },
   { key: "measuredOn", severity: "info", kind: null, bodyJa: "measurements.measured_on には「2015-04-08」形式（検体値・215,445行）と「2015」形式（年度集計値・105,454行）が混在する（合成データを除く）。年度集計値は日本の年度（4月〜翌3月）を指す。この画面では両者を kind で区別している。" },
   { key: "municipality", severity: "info", kind: null, bodyJa: "sites.municipality は出典によって中身が違う。環境省 公共用水域の290地点では水域名（河川名・湖沼名）が入り、それ以外の62地点では市区町村名が入る。列名と中身が一致していないため、この画面では「水域・地域」と呼ぶ。" },
@@ -346,6 +350,14 @@ export const GENERATED_CAVEAT_SCOPE: readonly GeneratedCaveatScope[] = [
   { scopeKind: "source_edition", scopeRef: "source_id=inaturalist_kanagawa", caveatKey: "organismSite", sortOrder: 0, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=inaturalist_kanagawa", caveatKey: "effort", sortOrder: 1, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=inaturalist_kanagawa", caveatKey: "regimes", sortOrder: 2, priority: 0 },
+  { scopeKind: "source_edition", scopeRef: "source_id=kagoshima_kasen_choui_amami", caveatKey: "kasenTideDatum", sortOrder: 0, priority: 0 },
+  { scopeKind: "source_edition", scopeRef: "source_id=kagoshima_kasen_choui_amami", caveatKey: "kasenProvisional", sortOrder: 1, priority: 0 },
+  { scopeKind: "source_edition", scopeRef: "source_id=kagoshima_kasen_dam_amami", caveatKey: "kasenProvisional", sortOrder: 0, priority: 0 },
+  { scopeKind: "source_edition", scopeRef: "source_id=kagoshima_kasen_suii_amami", caveatKey: "kasenStageDatum", sortOrder: 0, priority: 0 },
+  { scopeKind: "source_edition", scopeRef: "source_id=kagoshima_kasen_suii_amami", caveatKey: "kasenProvisional", sortOrder: 1, priority: 0 },
+  { scopeKind: "source_edition", scopeRef: "source_id=kagoshima_kasen_suii_kiki_amami", caveatKey: "kasenStageDatum", sortOrder: 0, priority: 0 },
+  { scopeKind: "source_edition", scopeRef: "source_id=kagoshima_kasen_suii_kiki_amami", caveatKey: "kasenKikiDaily", sortOrder: 1, priority: 0 },
+  { scopeKind: "source_edition", scopeRef: "source_id=kagoshima_kasen_suii_kiki_amami", caveatKey: "kasenProvisional", sortOrder: 2, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=kanagawa_edna", caveatKey: "ednaReads", sortOrder: 0, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=kanagawa_edna", caveatKey: "ednaCoords", sortOrder: 1, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=kanagawa_edna", caveatKey: "ednaYearBasis", sortOrder: 2, priority: 0 },

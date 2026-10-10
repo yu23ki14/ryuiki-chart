@@ -147,3 +147,6 @@ jma_sst_amami__617,奄美群島沿岸北西部,,,https://www.data.jma.go.jp/kaiy
 jma_sst_amami__618,奄美群島沿岸南西部,,,https://www.data.jma.go.jp/kaiyou/data/db/kaikyo/series/engan/txt/area618.txt（data/processed/jma_sst_amami.csv area_code=618; scripts/c15_jma_sst.py。気象庁「日本沿岸域の海面水温情報」の海域であり観測点ではない。海域の範囲を代表する座標は原表に無く、推測していない）,
 jma_sst_amami__619,奄美群島沿岸南東部,,,https://www.data.jma.go.jp/kaiyou/data/db/kaikyo/series/engan/txt/area619.txt（data/processed/jma_sst_amami.csv area_code=619; scripts/c15_jma_sst.py。気象庁「日本沿岸域の海面水温情報」の海域であり観測点ではない。海域の範囲を代表する座標は原表に無く、推測していない）,
 jma_sst_amami__620,奄美群島沿岸北東部,,,https://www.data.jma.go.jp/kaiyou/data/db/kaikyo/series/engan/txt/area620.txt（data/processed/jma_sst_amami.csv area_code=620; scripts/c15_jma_sst.py。気象庁「日本沿岸域の海面水温情報」の海域であり観測点ではない。海域の範囲を代表する座標は原表に無く、推測していない）,
+kagoshima_kasen_stations_amami__suii_kiki_139,第2屋仁橋,,,https://data.bodik.jp/dataset/460001_suii（data/processed/kagoshima_kasen_stations_amami.jsonl station_id=suii_kiki_139; 局の表に座標が無いので推測していない）,
+kagoshima_kasen_stations_amami__suii_kiki_144,朝戸橋,,,https://data.bodik.jp/dataset/460001_suii（data/processed/kagoshima_kasen_stations_amami.jsonl station_id=suii_kiki_144; 局の表に座標が無いので推測していない）,
+kagoshima_kasen_stations_amami__suii_kiki_148,古仁屋橋,,,https://data.bodik.jp/dataset/460001_suii（data/processed/kagoshima_kasen_stations_amami.jsonl station_id=suii_kiki_148; 局の表に座標が無いので推測していない）,

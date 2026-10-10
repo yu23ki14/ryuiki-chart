@@ -70,6 +70,11 @@ DwC-Aから除外するようになった（`--include-noncommercial`で無効�
 | sagamihara_taiki_stations | 相模原市 大気汚染常時監視 測定局一覧 | 相模原市 | 7 | 1 | クリエイティブ・コモンズ 表示 (CC BY) https://opendata.city.sagamihara.kanagawa.jp/dataset/taiki | 同上。7行 | https://opendata.city.sagamihara.kanagawa.jp/dataset/taiki | 含める |
 | soramame_hourly_kanagawa | 環境省 そらまめ君 1時間値（神奈川県 流域デモ4局） | 環境省 | 168793 | 1 | 環境省 そらまめ君 利用規約（出典明示による利用可 / 速報値・確定値は国立環境研究所 環境数値データベース）https://soramame.env.go.jp/policy | 環境省そらまめ君利用規約（出典明示による利用可）。168793行。速報値であり確定値と異なる場合がある旨の注記あり | https://soramame.env.go.jp/download | 含める |
 | soramame_stations_kanagawa | 環境省 そらまめ君 測定局マスタ（神奈川県） | 環境省 | 92 | 1 | 環境省 そらまめ君 利用規約（出典明示による利用可 / 速報値・確定値は国立環境研究所 環境数値データベース）https://soramame.env.go.jp/policy | 同上。92行 | https://soramame.env.go.jp/ | 含める |
+| kagoshima_kasen_suii_amami | 鹿児島県 河川砂防情報システムデータ（水位（通常）・奄美大島・日別） | 鹿児島県 土木部河川課（BODIK） | 81004 | 1 | CC BY 4.0（BODIK／鹿児島県 土木部河川課。出典明記） | 通常の水位観測所7局の日最高・日最低（2008年〜）。速報値で検定されていない可能性がある | https://data.bodik.jp/dataset/460001_suii | 含める |
+| kagoshima_kasen_suii_kiki_amami | 鹿児島県 河川砂防情報システムデータ（水位（危機管理型）・奄美大島・日別） | 鹿児島県 土木部河川課（BODIK） | 81004 | 1 | CC BY 4.0（BODIK／鹿児島県 土木部河川課。出典明記） | 危機管理型水位計3局の日最高・日最低（2020年〜）。速報値で検定されていない可能性がある | https://data.bodik.jp/dataset/460001_suii | 含める |
+| kagoshima_kasen_choui_amami | 鹿児島県 河川砂防情報システムデータ（潮位・奄美大島・日別） | 鹿児島県 土木部河川課（BODIK） | 20526 | 1 | CC BY 4.0（BODIK／鹿児島県 土木部河川課。出典明記） | 名瀬の日平均・日最高・日最低。基準面不明 | https://data.bodik.jp/dataset/460001_choui | 含める |
+| kagoshima_kasen_dam_amami | 鹿児島県 河川砂防情報システムデータ（ダム諸量・大和ダム・日別） | 鹿児島県 土木部河川課（BODIK） | 57657 | 1 | CC BY 4.0（BODIK／鹿児島県 土木部河川課。出典明記） | 貯水位・全流入量・全放流量・貯水量・貯水率の日別集約 | https://data.bodik.jp/dataset/460001_dam | 含める |
+| kagoshima_kasen_stations_amami | 鹿児島県 河川砂防情報システム 観測所（奄美大島） | 鹿児島県 土木部河川課（BODIK） | 12 | 1 | 県サイトから事実を抽出（ライセンス表記なし。出典明記）／市町村は国土地理院の逆ジオコーダ | 局名・座標は県の河川砂防情報システム（スマートフォン版）の局定義 js からの事実の抽出。出典明記。市町村は国土地理院の逆ジオコーダ | https://www.pref.kagoshima.jp/ah08/infra/kasen-sabo/sabo/jyouhoushisutemu.html | 含める |
 
 ## 2. 条件付き
 | source_id | 名称 | 提供元 | 行数 | redistributable | ライセンス要旨 | 判定理由 | 根拠URL | 再配布してよいか |

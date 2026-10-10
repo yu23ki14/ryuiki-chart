@@ -31,7 +31,7 @@ def rd_jsonl(name):
 # ============================================================
 def _sensor_sources():
     """[(jsonl名, site_source_id, 地域で欠けても飛ばしてよいか)]。地域ごとに regions.REGIONS から組み立てる
-    （海面水温は観測局ではなく海域〔area_code〕で、jma_sst_areas を持つ地域だけ。site は座標 NULL の `jma_sst_<slug>__<海域>`）。
+    （河川砂防情報システムの水位・潮位・ダムは site が `station_tables` の出典の局（`kagoshima_kasen_stations_<slug>__<種別>_<ID>`）。海面水温は観測局ではなく海域〔area_code〕で、jma_sst_areas を持つ地域だけ。site は座標 NULL の `jma_sst_<slug>__<海域>`）。
     欠けても飛ばしてよいのは baseline でない地域（baseline は無ければ従来どおり止まる）。"""
     out = []
     for rid, r in REGIONS.items():
@@ -47,6 +47,8 @@ def _sensor_sources():
         if r["jma_sst_areas"]:
             sst = regions.name("jma_sst_kanagawa", rid)
             out.append((sst, sst, optional))
+        for name in r.get("station_series", ()):   # 局の表の出典の局。jsonl が無ければ飛ばす（optional）
+            out.append((name, r["station_tables"][0], True))
     return out
 
 

@@ -184,6 +184,26 @@ predicates:
     where: "source_id = 'jma_sst_amami'"
     limit: 100
     min_rows: 100
+  - name: sensor_source_kagoshima_kasen_suii_amami
+    table: sensor_timeseries
+    where: "source_id = 'kagoshima_kasen_suii_amami'"
+    limit: 100
+    min_rows: 100
+  - name: sensor_source_kagoshima_kasen_suii_kiki_amami
+    table: sensor_timeseries
+    where: "source_id = 'kagoshima_kasen_suii_kiki_amami'"
+    limit: 100
+    min_rows: 100
+  - name: sensor_source_kagoshima_kasen_choui_amami
+    table: sensor_timeseries
+    where: "source_id = 'kagoshima_kasen_choui_amami'"
+    limit: 100
+    min_rows: 100
+  - name: sensor_source_kagoshima_kasen_dam_amami
+    table: sensor_timeseries
+    where: "source_id = 'kagoshima_kasen_dam_amami'"
+    limit: 100
+    min_rows: 100
 
   # --- occurrence の12形（scripts/migrate/occurrence_period_shapes.yaml）。
   #     分類の正は正規表現——コード側〔scripts/migrate/occurrence_period.py〕

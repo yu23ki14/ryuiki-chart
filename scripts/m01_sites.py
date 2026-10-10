@@ -169,7 +169,8 @@ def main():
     # 他エージェントのデータには触れない）。
     managed_sources = tuple(regions.name(b, rid) for rid in REGIONS
                             for b in REGIONAL_STATION_SOURCES) + (
-                        "dams_kanagawa", "sagami_livecams", "moni1000_sites")
+                        "dams_kanagawa", "sagami_livecams", "moni1000_sites") + tuple(
+                        src for r in REGIONS.values() for src in r.get("station_tables", ()))
     cur = conn.execute(
         f"DELETE FROM sites WHERE source_id IN ({','.join('?'*len(managed_sources))}) "
         f"AND (lat <= 0 OR lon <= 0)", managed_sources)
@@ -222,6 +223,20 @@ def main():
                             src, r["source_ref"], rid):
                     n += 1
             print(f"  {src}: {n} sites ({spec['note']})")
+
+    # ---- 2b) 局の表の出典（regions の station_tables。鹿児島県 河川砂防情報システム）。座標のある局だけ入れ、
+    #          座標の無い局は add_site が飛ばして registry/place/site_supplement.csv に載せる〔scripts/r03_site_supplement.py〕。
+    #          ファイルが無ければ飛ばす ----
+    for rid, r in REGIONS.items():
+        for src in r.get("station_tables", ()):
+            n = rows_n = 0
+            for st in rd_jsonl(src):
+                rows_n += 1
+                if add_site(f"{src}__{st['station_id']}", st["station_name_ja"], None, st.get("lat"), st.get("lon"),
+                            None, st.get("municipality"), None, publishers.get(src), src,
+                            st.get("source_ref") or src, rid):
+                    n += 1
+            print(f"  {src}: {n} sites / 局の表 {rows_n} 行（座標の無い局は sites に入れない。標高は取らない）")
 
     # ---- 3) ダム ----
     n = 0

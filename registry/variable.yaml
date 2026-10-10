@@ -542,6 +542,72 @@ variables:
     higher_is_worse: null
     description_ja: null
     status: ok
+  - variable_id: common:variable:hydro.reservoir_fill_rate_flood_control
+    code: hydro.reservoir_fill_rate_flood_control
+    name_ja: null
+    name_en: null
+    theme: hydro
+    unit_id: common:unit:0_1percent
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: null
+    description_ja: "ダムの治水容量に対する貯水率。原表記は0.1%単位の整数"
+    status: ok
+  - variable_id: common:variable:hydro.reservoir_fill_rate_water_use
+    code: hydro.reservoir_fill_rate_water_use
+    name_ja: null
+    name_en: null
+    theme: hydro
+    unit_id: common:unit:0_1percent
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: null
+    description_ja: "ダムの利水容量に対する貯水率。原表記は0.1%単位の整数"
+    status: ok
+  - variable_id: common:variable:hydro.reservoir_inflow
+    code: hydro.reservoir_inflow
+    name_ja: null
+    name_en: null
+    theme: hydro
+    unit_id: common:unit:milli_m3_per_s
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: null
+    description_ja: "ダムの全流入量。原表記は10^-3 m3/s 単位の整数"
+    status: ok
+  - variable_id: common:variable:hydro.reservoir_level
+    code: hydro.reservoir_level
+    name_ja: null
+    name_en: null
+    theme: hydro
+    unit_id: common:unit:cm
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: null
+    description_ja: "ダムの貯水位（EL。原表記は [EL.10^2m] で、値 3712 は EL 37.12 m）"
+    status: ok
+  - variable_id: common:variable:hydro.reservoir_outflow
+    code: hydro.reservoir_outflow
+    name_ja: null
+    name_en: null
+    theme: hydro
+    unit_id: common:unit:milli_m3_per_s
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: null
+    description_ja: "ダムの全放流量。原表記は10^-3 m3/s 単位の整数"
+    status: ok
+  - variable_id: common:variable:hydro.reservoir_storage
+    code: hydro.reservoir_storage
+    name_ja: null
+    name_en: null
+    theme: hydro
+    unit_id: common:unit:kilo_m3
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: null
+    description_ja: "ダムの貯水量。原表記は10^3 m3 単位の整数"
+    status: ok
   - variable_id: common:variable:hydro.river_stage
     code: hydro.river_stage
     name_ja: null
@@ -563,6 +629,17 @@ variables:
     default_stat: "mean"
     higher_is_worse: null
     description_ja: null
+    status: ok
+  - variable_id: common:variable:hydro.tide_level
+    code: hydro.tide_level
+    name_ja: null
+    name_en: null
+    theme: hydro
+    unit_id: common:unit:cm
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: null
+    description_ja: "潮位（検潮所の観測。基準面は原表に無く不明）"
     status: ok
   - variable_id: common:variable:land.max_subsidence
     code: land.max_subsidence

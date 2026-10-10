@@ -81,11 +81,11 @@ describe.skipIf(!hasRegistryDb)("build:registry:ts は再生成しても差分�
  * 生成物の形の健全性（regenerate できない環境でも実行できる、軽い形チェック）。
  */
 describe("generated.ts / generated-client.ts の形", () => {
-  it("caveat は cells.notes 由来（207件）を含まない26件", () => {
+  it("caveat は cells.notes 由来（207件）を含まない30件", () => {
     // Phase A の14件に landuseDefinitionChange・aboveLod・censoredLod・unitUnknown を足し（18件）、
     // `censored` を撤去して17件（PR-5）、Issue #35 で flowTidalBackflow を足して18件。
-    // eDNA の注記4件（ednaReads/ednaCoords/ednaYearBasis/ednaNonDetect）を足して22件、ednaWatershed・effortSurvey を足して24件、amamiRedList・amamiWatershedGap（奄美）で26件。
-    expect(GENERATED_CAVEATS).toHaveLength(26);
+    // eDNA の注記4件（ednaReads/ednaCoords/ednaYearBasis/ednaNonDetect）を足して22件、ednaWatershed・effortSurvey を足して24件、amamiRedList・amamiWatershedGap（奄美）で26件、河川砂防情報システムの kasen* 4件（奄美 Step 2b）で30件。
+    expect(GENERATED_CAVEATS).toHaveLength(30);
     expect(GENERATED_CAVEATS.some((c) => c.key === "censored")).toBe(false);
     expect(GENERATED_CAVEATS.every((c) => !c.key.startsWith("cells."))).toBe(true);
   });

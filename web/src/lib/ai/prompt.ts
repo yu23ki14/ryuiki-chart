@@ -74,6 +74,10 @@ const CAVEAT_KEY_ORDER = {
   effortSurvey: true,
   amamiRedList: true,
   amamiWatershedGap: true,
+  kasenStageDatum: true,
+  kasenKikiDaily: true,
+  kasenTideDatum: true,
+  kasenProvisional: true,
 } satisfies Record<CaveatKey, true>;
 const CAVEAT_KEYS = Object.keys(CAVEAT_KEY_ORDER) as CaveatKey[];
 
