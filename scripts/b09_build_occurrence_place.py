@@ -67,11 +67,15 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from ingest import manifest as manifest_lib  # noqa: E402
 from migrate import common, cube_invariants, period, point_in_polygon as pip  # noqa: E402
+import regions as collector_regions  # noqa: E402  w12_stems（地域ごとの W12 の名前）
 
 DEFAULT_V2_DB = ROOT / "data" / "db" / "v2.sqlite"
 DEFAULT_RYUIKI_DB = ROOT / "data" / "db" / "ryuiki.sqlite"
 DEFAULT_REGISTRY_DB = ROOT / "data" / "db" / "registry.sqlite"
-DEFAULT_GEOJSON = ROOT / "data" / "processed" / "nlni_w12_watersheds.geojson"
+# 地域ごとの W12（流域界）。全地域の連結を1回の点内包判定にかける（regions.w12_stems の順）。
+DEFAULT_GEOJSONS = tuple(
+    ROOT / "data" / "processed" / f"{stem}.geojson" for stem in collector_regions.w12_stems()
+)
 DEFAULT_DECLARATIONS_YAML = ROOT / "scripts" / "migrate" / "occurrence_place_declarations.yaml"
 
 PLACE_KIND = "watershed"
@@ -150,8 +154,19 @@ def validate_place_declarations_shape(path=DEFAULT_DECLARATIONS_YAML) -> None:
 # built_from（ポリゴン版の指紋）
 # ---------------------------------------------------------------------------
 
-def _built_from(geojson_path) -> str:
-    digest = hashlib.sha256(pathlib.Path(geojson_path).read_bytes()).hexdigest()
+def _as_paths(geojson_paths) -> list[pathlib.Path]:
+    if isinstance(geojson_paths, (str, pathlib.Path)):
+        return [pathlib.Path(geojson_paths)]
+    return [pathlib.Path(p) for p in geojson_paths]
+
+
+def _built_from(geojson_paths) -> str:
+    """ポリゴン版の指紋。ファイルのバイト列を順に連結したものの sha256
+    （1ファイルなら従来と同じ値。地域が増えるとファイル名の並びも指紋に入る）。"""
+    h = hashlib.sha256()
+    for path in _as_paths(geojson_paths):
+        h.update(path.read_bytes())
+    digest = h.hexdigest()
     return f"occurrence+nlni_w12_watersheds.geojson@sha256:{digest[:16]}"
 
 
@@ -325,7 +340,7 @@ def build_and_write_occurrence_place(
     v2_db,
     ryuiki_db,
     registry_db,
-    geojson_path=DEFAULT_GEOJSON,
+    geojson_path=DEFAULT_GEOJSONS,
     declarations_yaml=DEFAULT_DECLARATIONS_YAML,
     count_overlay: dict[str, int] | None = None,
     expected_sums: manifest_lib.ExpectedSums | None = None,
@@ -347,7 +362,8 @@ def build_and_write_occurrence_place(
     declarations = load_and_validate_place_declarations(declarations_yaml, count_overlay=count_overlay)
     sums = expected_sums or manifest_lib.ExpectedSums()
 
-    polys = pip.load_polygons(geojson_path)
+    # geojson_path は1つのパスでも、地域ごとのパスの列でもよい。流域 ID の照合（registry との一致）は和集合で行う。
+    polys = pip.load_polygons_many(geojson_path)
     grid = pip.build_grid(polys)
     built_from = _built_from(geojson_path)
 
@@ -538,7 +554,10 @@ def main() -> None:
         "--registry-db", default=None,
         help=f"既定は RYUIKI_REGISTRY_DB 環境変数、それも無ければ {DEFAULT_REGISTRY_DB}",
     )
-    parser.add_argument("--geojson", default=str(DEFAULT_GEOJSON))
+    parser.add_argument(
+        "--geojson", action="append", default=None,
+        help="W12 の GeoJSON（地域ごとに繰り返せる）。既定は全地域の data/processed/nlni_w12_watersheds*.geojson",
+    )
     parser.add_argument("--declarations-yaml", default=str(DEFAULT_DECLARATIONS_YAML))
     parser.add_argument("--manifests-dir", default=str(manifest_lib.DEFAULT_MANIFESTS_DIR))
     parser.add_argument(
@@ -563,13 +582,15 @@ def main() -> None:
     print(f"▶ 読み書き可能で開く（occurrence は変更しない）: {db_path}")
     print(f"▶ 読み取り専用で開く: {args.ryuiki_db}")
     print(f"▶ 読み取り専用で開く: {registry_db}")
-    print(f"▶ 読み取り専用で開く: {args.geojson}")
+    geojsons = args.geojson or [str(p) for p in DEFAULT_GEOJSONS]
+    for g in geojsons:
+        print(f"▶ 読み取り専用で開く: {g}")
 
     count_overlay = period.resolve_count_overlay(args.count_overlay, "occurrence_place_declarations.yaml")
 
     with common.timed_step("occurrence_place を構築") as info:
         stats = build_and_write_occurrence_place(
-            args.v2_db, args.ryuiki_db, registry_db, args.geojson, args.declarations_yaml,
+            args.v2_db, args.ryuiki_db, registry_db, geojsons, args.declarations_yaml,
             count_overlay=count_overlay,
             expected_sums=manifest_lib.expected_sums(manifest_lib.load_manifests(args.manifests_dir)),
         )

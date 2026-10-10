@@ -1,0 +1,11 @@
+# manifests/env_kousui_annual_amami.yml（宣言。形は scripts/ingest/manifest.py の docstring）。
+# adapter: builtin = 変換は b03/b06 のまま（出力を動かさない）。メタデータだけを持つ。
+source: env_kousui_annual_amami
+region: jp-46
+target: observation
+update_mode: append
+input:
+  table: measurements
+adapter: builtin
+evidence: >
+  環境省 公共用水域水質測定結果 年間値（鹿児島県のうち奄美大島）。年度ごとに年間値が追加される公表形式なので append。奄美大島に絞った取得なので region=jp-46。

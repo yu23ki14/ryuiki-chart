@@ -73,3 +73,19 @@ def test_compute_source_hashes_missing_file_raises_clear_error(tmp_path):
     (processed_dir / "taxon_crosswalk.csv").unlink()
     with pytest.raises(FileNotFoundError, match="taxon_crosswalk.csv"):
         pipeline_inputs.compute_source_hashes(ryuiki_db, cells_db, processed_dir)
+
+
+def test_source_file_keys_include_every_regions_w12_and_landuse():
+    """奄美（jp-46）の W12・土地利用が指紋（SOURCE_FILE_KEYS）と v2 の鮮度判定の入力に入る。神奈川の名前は従来のまま。"""
+    from migrate import common
+
+    for name in (
+        "nlni_w12_watersheds.geojson", "nlni_w12_watersheds.jsonl", "nlni_l03b_landuse_by_watershed.csv",
+        "nlni_w12_watersheds_amami.geojson", "nlni_w12_watersheds_amami.jsonl",
+        "nlni_l03b_landuse_by_watershed_amami.csv",
+    ):
+        assert f"data/processed/{name}" in pipeline_inputs.SOURCE_FILE_KEYS
+    assert set(common.V2_PROCESSED_FILES) == {
+        "nlni_w12_watersheds.geojson", "nlni_w12_watersheds_amami.geojson",
+        "nlni_l03b_landuse_by_watershed.csv", "nlni_l03b_landuse_by_watershed_amami.csv",
+    }

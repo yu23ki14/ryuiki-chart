@@ -17,7 +17,8 @@
 
 既存の 5 系統（measurements・sensor_timeseries・土地利用・organism_records）の変換は b03/b06 のまま
 （数百万行の出力を 1 ビットも動かさない）。マニフェストはメタデータ（region・update_mode・expected_row_count・
-edition 参照）だけを持つ。`checks`・`expected` は書けない。b03/b06 は、マニフェストに無い出典・
+edition 参照）だけを持つ。`checks` は書けない。`expected` は **target=occurrence のときだけ任意**（下記。奄美の出現の
+件数の宣言。既存出典の宣言は `scripts/migrate/*.yaml` のまま）。b03/b06 は、マニフェストに無い出典・
 マニフェストにあるのに誰も処理しない出典のどちらも止める。
 
 ## `checks`（実装済みの語彙だけ。非 builtin のみ）
@@ -25,7 +26,7 @@ edition 参照）だけを持つ。`checks`・`expected` は書けない。b03/b
 `not_null: [列…]` / `unique: [列…]` / `row_count_between: [最小, 最大]` / `in_registry: taxon` /
 `date_between: [最小日, 最大日]`（`observed_on_raw` の先頭 10 桁の文字列比較）。列は adapter が返す行の列契約。
 
-## `expected`（非 builtin の occurrence のみ。必須）
+## `expected`（target=occurrence のみ。非 builtin は必須、builtin は任意）
 
 既存出典の宣言（`scripts/migrate/occurrence_*.yaml`）は変更しない。新出典の宣言値は**ここに書く**
 （ソース追加で `scripts/migrate/` を触らないため。b06/b07/b09 は yaml の宣言値とここの値の和と突合する）。
@@ -232,8 +233,16 @@ def manifest_problems(raw, stem: str, *, adapters_dir=None) -> list[str]:
     if builtin:
         if raw.get("checks"):
             problems.append(f"{label}: adapter=builtin に checks は書けない（b03/b06 が自分で検査する）")
+        # 緩和（奄美 Step 1 PR-B 決定8）: builtin でも target=occurrence なら expected を書ける。既存出典（神奈川）の宣言は
+        # scripts/migrate/*.yaml のまま、新しい地域の出現の件数はマニフェストに書く。他の組み合わせは従来どおり書けない。
         if "expected" in raw:
-            problems.append(f"{label}: adapter=builtin に expected は書けない（既存出典の宣言は scripts/migrate/*.yaml が持つ）")
+            if raw.get("target") == "occurrence":
+                problems += _expected_problems(label, raw["expected"])
+            else:
+                problems.append(
+                    f"{label}: adapter=builtin に expected は target=occurrence のときしか書けない"
+                    "（既存出典の宣言は scripts/migrate/*.yaml が持つ）"
+                )
     elif raw.get("adapter") not in (None, ""):
         if "expected_row_count" not in raw:
             problems.append(f"{label}: 非 builtin は expected_row_count が必須（取り込み件数の宣言）")
@@ -302,7 +311,7 @@ def update_modes(manifests: dict[str, Manifest]) -> dict[str, str]:
 
 @dataclass(frozen=True)
 class ExpectedSums:
-    """非 builtin マニフェストの `expected` の合計（b06/b07/b09 が yaml の宣言値に足して突合する）。"""
+    """`expected` を持つ occurrence マニフェスト（非 builtin は必須、builtin は任意）の合計（b06/b07/b09 が yaml の宣言値に足して突合する）。"""
     period_shapes: dict = field(default_factory=dict)
     place: dict = field(default_factory=lambda: {k: 0 for k in EXPECTED_PLACE_KEYS})
     cube: dict = field(default_factory=lambda: {k: 0 for k in EXPECTED_CUBE_KEYS})
@@ -315,7 +324,7 @@ def expected_sums(manifests: dict[str, Manifest]) -> ExpectedSums:
     cube = {k: 0 for k in EXPECTED_CUBE_KEYS}
     sources: list[str] = []
     for m in manifests.values():
-        if m.is_builtin or m.target != "occurrence" or not m.expected:
+        if m.target != "occurrence" or not m.expected:
             continue
         sources.append(m.source)
         for k, v in m.expected["period_shapes"].items():

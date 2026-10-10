@@ -1,0 +1,12 @@
+# manifests/inaturalist_amami.yml（宣言。形は scripts/ingest/manifest.py の docstring）。
+# adapter: builtin = 変換は b03/b06 のまま（出力を動かさない）。メタデータだけを持つ。
+source: inaturalist_amami
+region: jp-46
+target: occurrence
+update_mode: snapshot
+input:
+  table: organism_records
+adapter: builtin
+expected_row_count: 13539
+evidence: >
+  iNaturalist 経由で取得した奄美大島内の観測（収集は scripts/c03_inaturalist.py の --region jp-46）。同じく対象地域を奄美大島に絞って収集しているため region=jp-46。 update_mode=snapshot は inaturalist_kanagawa と同じ取得方式。件数は data/processed/inaturalist_amami.jsonl の行数（2026-10-10）。

@@ -1,0 +1,11 @@
+# manifests/jma_daily_nase.yml（宣言。形は scripts/ingest/manifest.py の docstring）。
+# adapter: builtin = 変換は b03/b06 のまま（出力を動かさない）。メタデータだけを持つ。
+source: jma_daily_nase
+region: jp-46
+target: observation
+update_mode: append
+input:
+  table: sensor_timeseries
+adapter: builtin
+evidence: >
+  気象庁 日別値（名瀬。2010年奄美豪雨の月と直近2年）。直近月まで月ごとに追加される形式なので append（jma_daily_yokohama と同じ）。region=jp-46。

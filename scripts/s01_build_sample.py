@@ -96,15 +96,32 @@ from migrate import source_regions  # noqa: E402
 from reconcile.common import load_yaml  # noqa: E402
 from registry import build_source_access, build_taxon, common as registry_common  # noqa: E402
 from taxon_namespaces import TAXON_KEY_SOURCE_NAMESPACE  # noqa: E402
+import regions as collector_regions  # noqa: E402
 
 DEFAULT_RYUIKI_DB = ROOT / "data" / "db" / "ryuiki.sqlite"
 DEFAULT_CELLS_DB = ROOT / "data" / "db" / "cells.sqlite"
 DEFAULT_PROCESSED_DIR = ROOT / "data" / "processed"
 DEFAULT_COVERAGE_YAML = ROOT / "data" / "sample" / "coverage.yaml"
 DEFAULT_OUT_DIR = ROOT / "data" / "sample"
-DEFAULT_GEOJSON = ROOT / "data" / "processed" / "nlni_w12_watersheds.geojson"
+# W12（流域界）と土地利用 CSV は地域ごとに1ファイル（pipeline_inputs の命名規則。全地域ぶんを使う）。
+DEFAULT_GEOJSON = tuple(ROOT / "data" / "processed" / f"{stem}.geojson" for stem in collector_regions.w12_stems())
 ACCESS_YAML = ROOT / "registry" / "source" / "access.yaml"
-DEFAULT_LANDUSE_CSV = ROOT / "data" / "processed" / "nlni_l03b_landuse_by_watershed.csv"
+LANDUSE_BASE = "nlni_l03b_landuse_by_watershed"
+
+
+def landuse_csv_paths(processed_dir) -> dict[str, pathlib.Path]:
+    """土地利用 CSV の `{出典名: パス}`（全地域。出典名は manifests/ のファイル名と同じ）。"""
+    return {
+        collector_regions.name(LANDUSE_BASE, rid): pathlib.Path(processed_dir) / f"{collector_regions.name(LANDUSE_BASE, rid)}.csv"
+        for rid in collector_regions.REGIONS
+    }
+
+
+def w12_geojson_paths(processed_dir) -> list[pathlib.Path]:
+    return [pathlib.Path(processed_dir) / f"{stem}.geojson" for stem in collector_regions.w12_stems()]
+
+
+DEFAULT_LANDUSE_CSV = landuse_csv_paths(ROOT / "data" / "processed")
 
 # ---------------------------------------------------------------------------
 # 小さなユーティリティ
@@ -668,7 +685,7 @@ def compute_occurrence_place_and_watershed_stats(rows: list[sqlite3.Row], geojso
     流域の2件（日付あり記録の解決済み・未解決）をサンプルに対して実測する。
     （v1 のメモ化の再現〔`occurrence_watershed_v1_declarations.yaml`〕は Issue #48 PR-5 で消えた。）
     """
-    polys = pip.load_polygons(geojson_path)
+    polys = pip.load_polygons_many(geojson_path)  # 1つのパスでも、地域ごとのパスの列でもよい
     grid = pip.build_grid(polys)
 
     geo_rows = [r for r in rows if r["lat"] is not None and r["lon"] is not None]
@@ -787,6 +804,9 @@ def build_declaration_counts(
     out["time_label_conventions.yaml:soramame_hourly_kanagawa"] = count(
         "sensor_timeseries", "source_id = 'soramame_hourly_kanagawa'"
     )
+    out["time_label_conventions.yaml:soramame_hourly_amami"] = count(
+        "sensor_timeseries", "source_id = 'soramame_hourly_amami'"
+    )
 
     # manifests/*.yml
     out["manifests:gbif_kanagawa_occurrences"] = count(
@@ -795,9 +815,18 @@ def build_declaration_counts(
     out["manifests:inaturalist_kanagawa"] = count(
         "organism_records", "source_id = 'inaturalist_kanagawa'"
     )
+    # 他の地域の builtin の出現（奄美の gbif_amami_occurrences 等）も、神奈川の2件と同じく原本の件数と突き合わせる
+    # （マニフェストの expected_row_count を持つ builtin × occurrence。キーはマニフェストから導く）。
+    for sid, m in sorted(manifest_lib.load_manifests(manifests_dir).items()):
+        if m.is_builtin and m.target == "occurrence" and m.expected_row_count is not None:
+            out.setdefault(f"manifests:{sid}", count("organism_records", f"source_id = '{sid}'"))
     # 土地利用CSVは丸ごとコピーする（coverage.yaml の wholesale_processed_files）
     # ので、サンプルの件数は原本の行数と同じ（実測: count_csv_data_rows 参照）。
-    out["manifests:nlni_l03b_landuse_by_watershed"] = count_csv_data_rows(landuse_csv_path)
+    # （地域ごとに1ファイル。単独のパスは神奈川のもの）
+    if not isinstance(landuse_csv_path, dict):
+        landuse_csv_path = {LANDUSE_BASE: landuse_csv_path}
+    for sid, csv_path in landuse_csv_path.items():
+        out[f"manifests:{sid}"] = count_csv_data_rows(csv_path)
     # adapter 出典は入力を全件サンプルに入れる（select_adapter_input_tables）ので、取り込み件数は原本と同じ。
     # マニフェストの宣言値（expected_row_count）をそのまま持つ（キーはマニフェストから導く。新出典で s01 を触らない）。
     all_manifests = manifest_lib.load_manifests(manifests_dir)
@@ -941,8 +970,8 @@ def main() -> int:
         shutil.copyfile(processed_dir / name, processed_out / name)
 
     # --- declaration_counts.yaml ---
-    geojson_path = pathlib.Path(args.processed_dir) / "nlni_w12_watersheds.geojson"
-    landuse_csv_path = pathlib.Path(args.processed_dir) / "nlni_l03b_landuse_by_watershed.csv"
+    geojson_path = w12_geojson_paths(args.processed_dir)
+    landuse_csv_path = landuse_csv_paths(args.processed_dir)
     counts = build_declaration_counts(ryuiki_conn, selected, geojson_path, landuse_csv_path, manifests_dir=args.manifests_dir)
     (out_dir / "declaration_counts.yaml").write_text(_dump_declaration_counts_yaml(counts), encoding="utf-8")
 

@@ -415,3 +415,61 @@ def test_b09_output_passes_b07_population_check_for_coordinate_less_record(tmp_p
         assert stats["n_dated_by_place_kind"] == {"grid01": 1, "watershed": 2}
     finally:
         conn.close()
+
+
+# ---- 地域ごとの W12（複数の GeoJSON。奄美 Step 1 PR-B）-------------------------------------------
+
+_A1_RINGS = [[[129.5, 28.3], [129.6, 28.3], [129.6, 28.4], [129.5, 28.4], [129.5, 28.3]]]
+_A1_PLACE_ID = "common:place:watershed.a1"
+
+
+def _setup_two_regions(tmp_path):
+    rows = [
+        occurrence_row("r1", None, None, None, None, source_row_id=1, lat=35.05, lon=139.05),   # 神奈川側 W1
+        occurrence_row("r2", None, None, None, None, source_row_id=2, lat=28.35, lon=129.55),   # 奄美側 A1
+        occurrence_row("r3", None, None, None, None, source_row_id=3, lat=50.0, lon=200.0),     # どちらにも入らない
+    ]
+    v2_db, ryuiki_db, registry_db, geojson_k = _setup(
+        tmp_path, occurrence_rows=rows,
+        geojson_features=[("W1", _W1_RINGS)],
+        place_refs=[(_W1_PLACE_ID, "W1", "watershed_id"), (_A1_PLACE_ID, "A1", "watershed_id")],
+    )
+    geojson_a = tmp_path / "watersheds_amami.geojson"
+    write_watershed_geojson(geojson_a, [("A1", _A1_RINGS)])
+    return v2_db, ryuiki_db, registry_db, geojson_k, geojson_a
+
+
+def test_several_geojsons_are_unioned_and_matched_against_registry(tmp_path):
+    v2_db, ryuiki_db, registry_db, geojson_k, geojson_a = _setup_two_regions(tmp_path)
+    decl = _declarations(tmp_path, n_watershed_polygons=2, place_id_null_count=1, resolved_count=2)
+
+    stats = b09.build_and_write_occurrence_place(v2_db, ryuiki_db, registry_db, [geojson_k, geojson_a], decl)
+    assert (stats["n_polygons"], stats["n_resolved"], stats["n_null"]) == (2, 2, 1)
+    conn = sqlite3.connect(f"file:{v2_db}?mode=ro", uri=True)
+    assert dict(conn.execute("SELECT record_id, place_id FROM occurrence_place")) == {
+        "r1": _W1_PLACE_ID, "r2": _A1_PLACE_ID, "r3": None,
+    }
+
+
+def test_registry_comparison_is_against_the_union_of_all_geojsons(tmp_path):
+    """registry の流域（W1+A1）に対し、片方の地域の GeoJSON しか渡さなければ集合が食い違って止まる。"""
+    v2_db, ryuiki_db, registry_db, geojson_k, _geojson_a = _setup_two_regions(tmp_path)
+    decl = _declarations(tmp_path, n_watershed_polygons=1, place_id_null_count=1, resolved_count=1)
+    with pytest.raises(common.MigrationError, match="食い違う"):
+        b09.build_and_write_occurrence_place(v2_db, ryuiki_db, registry_db, [geojson_k], decl)
+
+
+def test_same_watershed_id_in_two_geojsons_halts(tmp_path):
+    v2_db, ryuiki_db, registry_db, geojson_k, _geojson_a = _setup_two_regions(tmp_path)
+    decl = _declarations(tmp_path, n_watershed_polygons=2, place_id_null_count=1, resolved_count=2)
+    with pytest.raises(ValueError, match="W1"):
+        b09.build_and_write_occurrence_place(v2_db, ryuiki_db, registry_db, [geojson_k, geojson_k], decl)
+
+
+def test_built_from_of_single_path_is_unchanged_by_list_support(tmp_path):
+    """1ファイルなら指紋は従来と同じ（パスでもリストでも同じ値）。"""
+    g = tmp_path / "g.geojson"
+    write_watershed_geojson(g, [("W1", _W1_RINGS)])
+    assert b09._built_from(g) == b09._built_from([g])
+    import hashlib
+    assert b09._built_from(g) == f"occurrence+nlni_w12_watersheds.geojson@sha256:{hashlib.sha256(g.read_bytes()).hexdigest()[:16]}"

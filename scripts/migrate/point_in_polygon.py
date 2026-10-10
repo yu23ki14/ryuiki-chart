@@ -167,6 +167,22 @@ def load_polygons(geojson_path, id_property: str = "watershed_id") -> list[Polyg
     return polys
 
 
+def load_polygons_many(geojson_paths, id_property: str = "watershed_id") -> list[Polygon]:
+    """地域ごとの W12 の GeoJSON（1つのパスでも、パスの列でもよい）を順に読んで連結する。
+    同じ流域 ID が複数のファイルに現れたら止める（点が複数面に当たる原因を、判定の前に潰す）。"""
+    if isinstance(geojson_paths, (str, pathlib.Path)):
+        geojson_paths = [geojson_paths]
+    polys: list[Polygon] = []
+    seen: dict[str, str] = {}
+    for path in geojson_paths:
+        for poly in load_polygons(path, id_property):
+            if poly.id in seen:
+                raise ValueError(f"流域 ID {poly.id!r} が {seen[poly.id]} と {path} の両方にある")
+            seen[poly.id] = str(path)
+            polys.append(poly)
+    return polys
+
+
 # (grid_x, grid_y) -> polys のインデックス列
 Grid = dict[tuple[int, int], list[int]]
 

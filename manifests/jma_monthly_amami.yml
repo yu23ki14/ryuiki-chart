@@ -1,0 +1,11 @@
+# manifests/jma_monthly_amami.yml（宣言。形は scripts/ingest/manifest.py の docstring）。
+# adapter: builtin = 変換は b03/b06 のまま（出力を動かさない）。メタデータだけを持つ。
+source: jma_monthly_amami
+region: jp-46
+target: observation
+update_mode: append
+input:
+  table: sensor_timeseries
+adapter: builtin
+evidence: >
+  気象庁 月別値（奄美大島の名瀬・笠利・古仁屋）。月ごとに追加される形式なので append。奄美大島（鹿児島県）に絞った取得なので region=jp-46。
