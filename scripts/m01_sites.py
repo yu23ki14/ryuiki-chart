@@ -138,6 +138,26 @@ UPSERT_SITES_SQL = (
 )
 
 
+# 地域ごとに同じ形で持つ観測局の出典（キーは神奈川の出典名。他の地域は regions.name が slug に置換する）。
+# main() の取り込みと、自己修復の対象（managed_sources）が同じ組を共有する。
+#   elevation(r, fetch): 標高。気象庁は自己申告値をそのまま、環境省は国土地理院の標高 API（fetch()）
+#   municipality: 市区町村欄に入れる列名 / established_on(r): 設置日欄 / note: 件数表示に添える断り
+REGIONAL_STATION_SOURCES = {
+    "jma_stations_kanagawa": {
+        "elevation": lambda r, fetch: r.get("elevation_m"),
+        "municipality": "prefecture_ja",
+        "established_on": lambda r: None,
+        "note": "elevation_m は自己申告値をそのまま使用",
+    },
+    "env_kousui_stations_kanagawa": {
+        "elevation": lambda r, fetch: fetch(),
+        "municipality": "water_body_ja",
+        "established_on": lambda r: str(r["nendo_from"]) if r.get("nendo_from") else None,
+        "note": "established_onは観測開始年度=nendo_from。物理的な設置日ではない",
+    },
+}
+
+
 def main():
     conn = appdb()
     conn.execute("PRAGMA busy_timeout=30000")
@@ -148,7 +168,7 @@ def main():
     # site として登録してしまった行があれば削除する（本スクリプトが書き込むsource_idの範囲のみ、
     # 他エージェントのデータには触れない）。
     managed_sources = tuple(regions.name(b, rid) for rid in REGIONS
-                            for b in ("jma_stations_kanagawa", "env_kousui_stations_kanagawa")) + (
+                            for b in REGIONAL_STATION_SOURCES) + (
                         "dams_kanagawa", "sagami_livecams", "moni1000_sites")
     cur = conn.execute(
         f"DELETE FROM sites WHERE source_id IN ({','.join('?'*len(managed_sources))}) "
@@ -167,7 +187,7 @@ def main():
     outside_bbox = 0
 
     def add_site(site_id, name, name_en, lat, lon, elevation_m, municipality,
-                 established_on, operator, source_id, source_ref, rid="jp-14"):
+                 established_on, operator, source_id, source_ref, rid=regions.DEFAULT_REGION):
         nonlocal orphan_watershed, outside_bbox
         if lat is None or lon is None:
             return False
@@ -192,29 +212,16 @@ def main():
 
     # ---- 1) 気象庁アメダス / 2) 環境省 公共用水域 水質測定点（地域ごと。ファイルが無い地域は飛ばす） ----
     for rid in REGIONS:
-        src = regions.name("jma_stations_kanagawa", rid)
-        n = 0
-        for r in rd_jsonl(src):
-            sid = f"{src}__{r['station_id']}"
-            if add_site(sid, r["station_name_ja"], r.get("station_name_en"),
-                        r["lat"], r["lon"], r.get("elevation_m"),
-                        r.get("prefecture_ja"), None, publishers.get(src),
-                        src, r["source_ref"], rid):
-                n += 1
-        print(f"  {src}: {n} sites (elevation_m は自己申告値をそのまま使用)")
-
-        src = regions.name("env_kousui_stations_kanagawa", rid)
-        n = 0
-        for r in rd_jsonl(src):
-            sid = f"{src}__{r['station_id']}"
-            elev = fetch_elevation(r["lat"], r["lon"], elev_cache, api_calls)
-            established = str(r["nendo_from"]) if r.get("nendo_from") else None
-            if add_site(sid, r["station_name_ja"], None, r["lat"], r["lon"], elev,
-                        r.get("water_body_ja"), established,
-                        publishers.get(src), src, r["source_ref"], rid):
-                n += 1
-        print(f"  {src}: {n} sites "
-              f"(established_onは観測開始年度=nendo_from。物理的な設置日ではない)")
+        for base, spec in REGIONAL_STATION_SOURCES.items():
+            src = regions.name(base, rid)
+            n = 0
+            for r in rd_jsonl(src):
+                if add_site(f"{src}__{r['station_id']}", r["station_name_ja"], r.get("station_name_en"),
+                            r["lat"], r["lon"], spec["elevation"](r, lambda: fetch_elevation(r["lat"], r["lon"], elev_cache, api_calls)),
+                            r.get(spec["municipality"]), spec["established_on"](r), publishers.get(src),
+                            src, r["source_ref"], rid):
+                    n += 1
+            print(f"  {src}: {n} sites ({spec['note']})")
 
     # ---- 3) ダム ----
     n = 0

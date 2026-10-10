@@ -137,7 +137,7 @@ def load_wildlife(con):
     undated = sum(1 for r in rows if not text(r.get("observed_on")))
     return f"wildlife_sightings: {len(out)} 行 (日付が確定できなかった行 {undated})"
 
-def load_vegetation(con, ws, rid="jp-14"):
+def load_vegetation(con, ws, rid=regions.DEFAULT_REGION):
     """現存植生図2024 (c80_biodic_ikimonomap.py)。地域ごとに呼ぶ。
 
     feature_id は表の主キー。他の地域の行と衝突すると INSERT OR REPLACE が黙って上書きするので、

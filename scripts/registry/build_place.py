@@ -361,25 +361,24 @@ def _load_watershed_jsonl() -> list[dict]:
 # sites.site_id / measurements.site_id / sensor_timeseries.site_id に現れる
 # "<出典名前空間>__<出典側コード>" の <出典名前空間> -> place_id 用の短い名前空間
 # トークン（ADR-0004 の例 jp-14:place:site.env-pubwater-0142 に合わせた命名）。
-# 11種類で全件（sites 352 + 補完143）をカバーする（実測済み）。
+# 神奈川の11種類で全件（sites 352 + 補完143）をカバーする（実測済み）。奄美の4種類は地域の定数から加える。
 SITE_NAMESPACE = {
-    "env_kousui_stations_kanagawa": "env-pubwater",
     "moni1000_sites": "moni1000",
     "sagami_livecams": "sagami-livecam",
-    "jma_stations_kanagawa": "jma",
     "dams_kanagawa": "dams",
     "kanagawa_jiban_chinka": "jiban-chinka",
     "atsugi_river_water_quality": "atsugi-river",
     "hiratsuka_taiki_stations": "hiratsuka-taiki",
     "sagamihara_taiki_stations": "sagamihara-taiki",
-    "soramame_stations_kanagawa": "soramame",
     "yokohama_river_waterlevel": "yokohama-waterlevel",
-    # 奄美（jp-46。scope は regions.site_scope が接頭辞の slug から決める）
-    "jma_stations_amami": "jma",
-    "env_kousui_stations_amami": "env-pubwater",
-    "soramame_stations_amami": "soramame",
-    "jma_sst_amami": "jma-sst",
 }
+# 地域ごとに同じ種類の出典を持つもの（接頭辞は regions.name が slug で作る。scope は regions.site_scope が接頭辞の slug から決める）
+for _rid, _r in regions.REGIONS.items():
+    SITE_NAMESPACE[regions.name("env_kousui_stations_kanagawa", _rid)] = "env-pubwater"
+    SITE_NAMESPACE[regions.name("jma_stations_kanagawa", _rid)] = "jma"
+    SITE_NAMESPACE[regions.name("soramame_stations_kanagawa", _rid)] = "soramame"
+    if _r["jma_sst_areas"]:   # 海面水温は観測局ではなく海域
+        SITE_NAMESPACE[regions.name("jma_sst_kanagawa", _rid)] = "jma-sst"
 
 
 def _site_place_id(site_id: str, place_local_override: str | None = None, *, seen=None) -> str:

@@ -29,18 +29,29 @@ def rd_jsonl(name):
 # ============================================================
 # 1) sensor_timeseries
 # ============================================================
-SENSOR_SOURCES = [
-    # (jsonl名, site_source_id, サイト側の元IDフィールド)
-    ("jma_daily_yokohama", "jma_stations_kanagawa"),
-    ("jma_monthly_kanagawa", "jma_stations_kanagawa"),
-    ("soramame_hourly_kanagawa", "soramame_stations_kanagawa"),
-    ("sagamihara_taiki_hourly", "sagamihara_taiki_stations"),
-    # 奄美（jp-46）。海面水温は観測局ではなく海域（area_code）。site は座標 NULL の `jma_sst_amami__<海域>`
-    ("jma_monthly_amami", "jma_stations_amami"),
-    ("jma_daily_nase", "jma_stations_amami"),
-    ("soramame_hourly_amami", "soramame_stations_amami"),
-    ("jma_sst_amami", "jma_sst_amami"),
-]
+def _sensor_sources():
+    """[(jsonl名, site_source_id, 地域で欠けても飛ばしてよいか)]。地域ごとに regions.REGIONS から組み立てる
+    （海面水温は観測局ではなく海域〔area_code〕で、jma_sst_areas を持つ地域だけ。site は座標 NULL の `jma_sst_<slug>__<海域>`）。
+    欠けても飛ばしてよいのは baseline でない地域（baseline は無ければ従来どおり止まる）。"""
+    out = []
+    for rid, r in REGIONS.items():
+        optional = not regions.is_baseline(rid)
+        jma_site = regions.name("jma_stations_kanagawa", rid)
+        out += [
+            (r["jma_daily"]["source_id"], jma_site, optional),
+            (regions.name("jma_monthly_kanagawa", rid), jma_site, optional),
+            (regions.name("soramame_hourly_kanagawa", rid), regions.name("soramame_stations_kanagawa", rid), optional),
+        ]
+        if regions.is_baseline(rid):
+            out.append(("sagamihara_taiki_hourly", "sagamihara_taiki_stations", optional))   # 神奈川だけの出典（名前に slug が無い）
+        if r["jma_sst_areas"]:
+            sst = regions.name("jma_sst_kanagawa", rid)
+            out.append((sst, sst, optional))
+    return out
+
+
+# (jsonl名, site_source_id, 欠けても飛ばしてよいか)
+SENSOR_SOURCES = _sensor_sources()
 
 
 def sensor_site_id(site_src, r):
@@ -49,14 +60,10 @@ def sensor_site_id(site_src, r):
     return f"{site_src}__{key}"
 
 
-def _optional(name):
-    """jp-14 以外の出典はファイルが無くても飛ばす（神奈川は無ければ従来どおり止まる）。"""
-    return regions.region_of_source_id(name) not in (None, "jp-14")
-
 def load_sensor_timeseries(conn):
     total = 0
-    for name, site_src in SENSOR_SOURCES:
-        if _optional(name) and not (PROC / f"{name}.jsonl").exists():
+    for name, site_src, optional in SENSOR_SOURCES:
+        if optional and not (PROC / f"{name}.jsonl").exists():
             print(f"  sensor_timeseries <- {name}: jsonl が無いので飛ばした")
             continue
         conn.execute("DELETE FROM sensor_timeseries WHERE source_id = ?", (name,))
@@ -90,7 +97,7 @@ def load_sensor_timeseries(conn):
 # ============================================================
 # 2) measurements + events (環境省 公共用水域 水質)
 # ============================================================
-def load_env_kousui_sample(conn, rid="jp-14"):
+def load_env_kousui_sample(conn, rid=regions.DEFAULT_REGION):
     """個別採水データ -> events + measurements。地域ごとに呼ぶ（DELETE はその地域の source_id だけ）。"""
     SRC = regions.name("env_kousui_sample_kanagawa", rid)
     SITE_SRC_KOUSUI = regions.name("env_kousui_stations_kanagawa", rid)
@@ -165,7 +172,7 @@ def load_env_kousui_sample(conn, rid="jp-14"):
 
     print(f"  {SRC}: {n_rows} rows -> {len(events)} events, {len(meas_batch)} measurements")
 
-def load_env_kousui_annual(conn, rid="jp-14"):
+def load_env_kousui_annual(conn, rid=regions.DEFAULT_REGION):
     """年度集計値 -> measurements のみ（event_id=NULL、代表日時なし）。地域ごとに呼ぶ。"""
     SRC = regions.name("env_kousui_annual_kanagawa", rid)
     SITE_SRC_KOUSUI = regions.name("env_kousui_stations_kanagawa", rid)
@@ -208,7 +215,7 @@ def main():
         for fn, base in ((load_env_kousui_sample, "env_kousui_sample_kanagawa"),
                          (load_env_kousui_annual, "env_kousui_annual_kanagawa")):
             src = regions.name(base, rid)
-            if rid != "jp-14" and not (PROC / f"{src}.jsonl").exists():
+            if not regions.is_baseline(rid) and not (PROC / f"{src}.jsonl").exists():
                 print(f"  {src}: jsonl が無いので飛ばした")
                 continue
             fn(conn, rid)
