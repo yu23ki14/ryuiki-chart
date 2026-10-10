@@ -54,7 +54,7 @@ export function SiteNav() {
             会議用に書き出す
           </button>
           <span className="text-[10px] text-muted border border-line rounded px-1.5 py-0.5">
-            デモ / 神奈川県公開データ
+            デモ / 神奈川県・奄美大島の公開データ
           </span>
         </div>
       </div>
