@@ -70,12 +70,12 @@ describe("caveatKeysForFacets — facet ごとの注記キー（順序込み）"
 
   it("流域だけの生物（get_overview の facet）には share が付かない。grid01 には付く", () => {
     expect(caveatKeysForFacets(facetsForOccurrence({ places: ["watershed"] }))).toEqual([
-      // 奄美の2件（amamiRedList・amamiWatershedGap）は奄美の GBIF/iNat 出典に付く（Issue #89 PR-B）。
-      // 流域だけの生物 facet は両地域の出典を含むので、先頭に並ぶ。
-      "amamiRedList", "amamiWatershedGap", "organismSite", "effort", "regimes", "gbifCutoff", "ednaReads", "ednaCoords", "ednaYearBasis", "ednaNonDetect", "ednaWatershed", "effortSurvey",
+      // 奄美の2件（amamiRedList・amamiWatershedGap）と effort は奄美の GBIF/iNat 出典にも付く（Issue #89 PR-B）。
+      // 流域だけの生物 facet は両地域の出典を含むので、奄美の出典に付く3件が先頭に並ぶ。
+      "effort", "amamiRedList", "amamiWatershedGap", "organismSite", "regimes", "gbifCutoff", "ednaReads", "ednaCoords", "ednaYearBasis", "ednaNonDetect", "ednaWatershed", "effortSurvey",
     ]);
     expect(caveatKeysForFacets(facetsForOccurrence({ places: ["grid01"] }))).toEqual([
-      "amamiRedList", "amamiWatershedGap", "organismSite", "effort", "regimes", "gbifCutoff", "ednaReads", "ednaCoords", "ednaYearBasis", "ednaNonDetect", "ednaWatershed", "effortSurvey", "share",
+      "effort", "amamiRedList", "amamiWatershedGap", "organismSite", "regimes", "gbifCutoff", "ednaReads", "ednaCoords", "ednaYearBasis", "ednaNonDetect", "ednaWatershed", "effortSurvey", "share",
     ]);
   });
 });
