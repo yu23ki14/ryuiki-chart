@@ -1,0 +1,4 @@
+row,col,value,reviewer,note
+名瀬保健所|奄美市住用町,H29,995,claude(vision),docling=966 paddle=995。画像（300dpi）の該当セルを目視で 995 と確認。検算（行・列の和）も 995 を示す
+名瀬保健所|名瀬計,R5,"9,905",claude(vision),docling=905 paddle=9905。画像で 9,905 と確認（千の位の桁落ちを docling が見落とした）。検算も 9905
+業者|名瀬管内,R2,238,claude(vision),docling=838 paddle=238。画像で 238 と確認。検算も 238
