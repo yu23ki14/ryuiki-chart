@@ -20,6 +20,13 @@
   ADR-0028 により撤回された（旧実装は `scripts/x01_dwca.py` の DwC-A 出力時に丸めていたが、
   現在は丸めない）。
 
+--- 県版 → 全国版の順（地域ごと。docs/plans/AMAMI_STEP2A.md §3）---
+red_list_category は地域ごとに `regions.REGIONS[rid]["pref_redlist"]` の宣言で県版を引き、無ければ環境省の全国版
+（taxa.redlist_national）を使う。どちらで付けたかは organism_records.red_list_source（県版の list_id か 'national'）
+に持つ。カテゴリーの文字列は c25 の `taxa` と同じ形（「カテゴリー（コード）」）。神奈川（jp-14）は従来どおり
+`redlist_kanagawa or redlist_national` で、red_list_category・publication_scope は変えない。
+条例の指定種（kgord）は赤リスト該当に含めない。
+
 --- レコード単位ライセンス (record_license / license_class / commercial_ok) ---
 iNaturalist・GBIFはソース単位のredistributableフラグだけでは再配布可否を判定できず、
 観察/データセット単位でライセンスが混在する（例: iNaturalist 165,332件中 約82% が
@@ -136,19 +143,66 @@ INSERT_SQL = """INSERT INTO organism_records
    identification_basis, identification_confidence, lat, lon, coordinate_uncertainty_m,
    red_list_category, is_alien, quality_stage, publication_scope,
    source_id, source_ref, is_synthetic, record_license, license_class, commercial_ok,
-   occurrence_status)
-  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+   occurrence_status, red_list_source)
+  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   ON CONFLICT(record_id) DO UPDATE SET
     record_license=excluded.record_license,
     license_class=excluded.license_class,
     commercial_ok=excluded.commercial_ok,
-    occurrence_status=excluded.occurrence_status"""
+    occurrence_status=excluded.occurrence_status,
+    red_list_category=excluded.red_list_category,
+    publication_scope=excluded.publication_scope,
+    red_list_source=excluded.red_list_source"""
 
-def taxa_lookup(conn):
+NATIONAL_SOURCE = "national"   # red_list_source: 環境省の全国版で付けた
+
+
+def _cat_text(category_ja, code):
+    return f"{category_ja}（{code}）" if code else category_ja   # c25 と同じ形
+
+
+def _kanagawa_list_by_taxon(conn, list_ids):
+    """神奈川の taxa.redlist_kanagawa の元になった list_id（c25 と同じ「新しい版が勝つ」）。
+    redlist_assessments（c28）を学名で引く。学名の無い行は taxa の taxon_id が wamei: になる。"""
+    ph = ",".join("?" * len(list_ids))
+    out = {}
+    for aid, sci in conn.execute(
+            f"select assessment_id, scientific_name from redlist_assessments "
+            f"where scientific_name is not null and substr(assessment_id, 1, instr(assessment_id, '_') - 1) in ({ph}) "
+            f"order by list_year, assessment_id", list_ids):
+        out[norm_taxon_id(sci)] = aid.split("_", 1)[0]
+    return out
+
+
+def taxa_lookup(conn, rid=regions.DEFAULT_REGION):
+    """taxon_id -> (red_list_category, ias_category, red_list_source)。地域の県版 → 全国版の順。"""
+    decl = REGIONS[rid]["pref_redlist"]
     rows = conn.execute("select taxon_id, redlist_kanagawa, redlist_national, ias_category from taxa").fetchall()
     d = {}
-    for tid, rk, rn, ias in rows:
-        d[tid] = (rk or rn, ias)  # 神奈川RLを優先、無ければ国RL
+    if decl["source"] == "taxa_column":
+        kan = _kanagawa_list_by_taxon(conn, decl["list_ids"])
+        for tid, rk, rn, ias in rows:
+            if rk:
+                src = kan.get(tid)
+                if src is None and not tid.startswith("wamei:"):
+                    raise ValueError(f"taxa.redlist_kanagawa があるのに redlist_assessments に学名が無い: {tid!r}"
+                                     "（c28 を c25 の後に実行したか確認）")
+                d[tid] = (rk, ias, src)
+            else:
+                d[tid] = (rn, ias, NATIONAL_SOURCE if rn else None)
+    elif decl["source"] == "lookup_table":
+        pref = {tid: _cat_text(cat, code) for tid, cat, code in conn.execute(
+            "select taxon_id, category_ja, category_code from pref_redlist_lookup where region_id=? and list_id=?",
+            (rid, decl["list_id"]))}
+        for tid, rk, rn, ias in rows:
+            if tid in pref:
+                d[tid] = (pref[tid], ias, decl["list_id"])
+            else:
+                d[tid] = (rn, ias, NATIONAL_SOURCE if rn else None)
+        for tid, cat in pref.items():   # 県版にだけある種（taxa に無い）。c25 は神奈川の2版と環境省しか見ないため
+            d.setdefault(tid, (cat, None, decl["list_id"]))
+    else:
+        raise ValueError(f"{rid}: 未知の pref_redlist.source={decl['source']!r}")
     return d
 
 def _license_repr(v):
@@ -166,7 +220,7 @@ def load_inaturalist(conn, taxa, license_counter, rid=regions.DEFAULT_REGION):
     for r in rd_jsonl(src):
         n += 1
         tid = norm_taxon_id(r.get("scientific_name"))
-        rl, ias = taxa.get(tid, (None, None))
+        rl, ias, rl_src = taxa.get(tid, (None, None, None))
         if rl is not None or ias is not None:
             n_matched += 1
         is_alien = 1 if ias else 0
@@ -191,6 +245,7 @@ def load_inaturalist(conn, taxa, license_counter, rid=regions.DEFAULT_REGION):
             src, r.get("source_ref"), 0,
             rec_license, license_class, commercial_ok,
             None,  # occurrence_status: iNaturalist に不在の概念は無い
+            rl_src,
         ))
         if len(batch) >= 20000:
             conn.executemany(INSERT_SQL, batch); conn.commit(); batch = []
@@ -208,7 +263,7 @@ def load_gbif(conn, taxa, license_counter, rid=regions.DEFAULT_REGION):
         n += 1
         sci = r.get("scientificName") or r.get("species")
         tid = norm_taxon_id(sci)
-        rl, ias = taxa.get(tid, (None, None))
+        rl, ias, rl_src = taxa.get(tid, (None, None, None))
         if rl is not None or ias is not None:
             n_matched += 1
         is_alien = 1 if ias else 0
@@ -231,6 +286,7 @@ def load_gbif(conn, taxa, license_counter, rid=regions.DEFAULT_REGION):
             src, r.get("occurrenceID") or str(r.get("key")), 0,
             rec_license, license_class, commercial_ok,
             r.get("occurrenceStatus"),  # GBIF の語彙（PRESENT/ABSENT）のまま
+            rl_src,
         ))
         if len(batch) >= 20000:
             conn.executemany(INSERT_SQL, batch); conn.commit(); batch = []
@@ -253,6 +309,18 @@ def ensure_occurrence_status_column(conn):
     if "occurrence_status" in cols:
         return False
     conn.execute("ALTER TABLE organism_records ADD COLUMN occurrence_status TEXT")
+    conn.commit()
+    return True
+
+def ensure_red_list_source_column(conn):
+    """既存の organism_records に red_list_source 列が無ければ足す（冪等。足したら True）。
+    ensure_occurrence_status_column と同じ流儀。足した直後は NULL で、m03 の全件再投入（ON CONFLICT で更新）が埋める。"""
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(organism_records)")]
+    if not cols:
+        raise SystemExit("organism_records 表が無い。対象の DB が違うか、先に m03 を全件実行して表を作ること")
+    if "red_list_source" in cols:
+        return False
+    conn.execute("ALTER TABLE organism_records ADD COLUMN red_list_source TEXT")
     conn.commit()
     return True
 
@@ -324,16 +392,17 @@ def main(argv=None):
     conn = appdb()
     conn.execute("PRAGMA busy_timeout=60000")
     ensure_occurrence_status_column(conn)
+    ensure_red_list_source_column(conn)
     conn.execute("PRAGMA journal_mode=WAL")
 
-    taxa = taxa_lookup(conn)
-    print(f"  taxa lookup entries: {len(taxa)}")
+    taxa_by_region = {rid: taxa_lookup(conn, rid) for rid in REGIONS}   # 赤リストの引き方は地域ごと
+    print("  taxa lookup entries: " + ", ".join(f"{rid}={len(t)}" for rid, t in taxa_by_region.items()))
 
     license_counter = collections.Counter()
     n_inat = n_gbif = 0
     for rid in REGIONS:   # 地域ごとに別の jsonl・別の record_id 接頭辞（無い出典は 0 件で飛ぶ）
-        n_inat += load_inaturalist(conn, taxa, license_counter, rid)
-        n_gbif += load_gbif(conn, taxa, license_counter, rid)
+        n_inat += load_inaturalist(conn, taxa_by_region[rid], license_counter, rid)
+        n_gbif += load_gbif(conn, taxa_by_region[rid], license_counter, rid)
     write_license_mapping_csv(license_counter)
 
     n_total = conn.execute("select count(*) from organism_records").fetchone()[0]

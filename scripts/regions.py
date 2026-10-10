@@ -18,6 +18,11 @@
   620=北東部（`.../kaikyo/series/engan/engan_KG.html` に一覧）。データは
   `https://www.data.jma.go.jp/kaiyou/data/db/kaikyo/series/engan/txt/area<番号>.txt`
   （`yyyy,mm,dd,areaNo.,flag,Temp.` のCSV。1982年〜前日）で確認。jp-14 は範囲外で空。
+- `pref_redlist`: その地域の出現記録の赤リスト判定で、全国版（環境省）より先に引く県版の宣言
+  （`m03_organisms.taxa_lookup`）。`source` が `taxa_column` なら `taxa.redlist_kanagawa`（c25 が神奈川の
+  2版から作る列。`list_ids` はその列の元になる redlist_assessments の list_id）、`lookup_table` なら
+  `pref_redlist_lookup`（c28 が作る）の `list_id`。県版に無い種は全国版（`taxa.redlist_national`）。
+  条例の指定種（kgord）は赤リスト該当に含めないのでここには書かない（docs/plans/AMAMI_STEP2A.md 決定 0-1）。
 """
 from __future__ import annotations
 
@@ -71,6 +76,7 @@ REGIONS: dict[str, dict] = {
         "l03b_meshes": ("5238", "5239", "5338", "5339"),
         "nlni_pref_codes": ("14",),
         "estat_pref_codes": ("14",),
+        "pref_redlist": {"source": "taxa_column", "list_ids": ("rl2020", "rl2026")},
     },
     "jp-46": {
         "slug": "amami",
@@ -106,6 +112,7 @@ REGIONS: dict[str, dict] = {
         "l03b_meshes": ("4129", "4229", "4329"),
         "nlni_pref_codes": ("46",),
         "estat_pref_codes": ("46",),
+        "pref_redlist": {"source": "lookup_table", "list_id": "kgrl2014"},
     },
 }
 
