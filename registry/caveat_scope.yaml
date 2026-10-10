@@ -31,7 +31,9 @@ selectors:
 # dataset は variable_alias.csv の dataset 列＋配信表 sites。
 values:
   place_kind: [site, zone, grid01, watershed]
-  source_id: [moe_ias_list, gbif_kanagawa_occurrences, inaturalist_kanagawa, kanagawa_kuma_sightings]
+  # 奄美の 3 件はマニフェスト（manifests/）が入るまでここで実在を宣言する（入ったら二重だが無害）
+  source_id: [moe_ias_list, gbif_kanagawa_occurrences, inaturalist_kanagawa, kanagawa_kuma_sightings,
+              gbif_amami_occurrences, inaturalist_amami, nlni_l03b_landuse_by_watershed_amami]
   dataset: [measurements, sites]
 
 scopes:
@@ -63,6 +65,10 @@ scopes:
   # share は割合（‰）で比べる画面（grid01 の種別トレンド）だけに掛かる。流域の表は生の件数。件数を返す MCP は引かない。
   - {kind: place, ref: place_kind=grid01, caveats: [share]}
   - {kind: source_edition, ref: source_id=moe_ias_list, caveats: [isAlien]}
+  # 奄美（決定6・7）。出現記録の赤リストの意味の違いは GBIF・iNat、W12 が覆わない部分は流域別に集計する 3 出典（出現 2 + 土地利用）。
+  - {kind: source_edition, ref: source_id=gbif_amami_occurrences, caveats: [amamiRedList, amamiWatershedGap]}
+  - {kind: source_edition, ref: source_id=inaturalist_amami, caveats: [amamiRedList, amamiWatershedGap]}
+  - {kind: source_edition, ref: source_id=nlni_l03b_landuse_by_watershed_amami, caveats: [amamiWatershedGap]}
   # 土地利用の定義変更は、本文が名指しする3区分（幹線交通用地・道路・鉄道）だけが影響を受けるが、
   # 他の10区分は日本語名が一致するだけで定義の一致は確認できていないので、指標全体（theme）に掛ける
   # （推測で狭めない。docs/plans/ISSUE35_CAVEAT.md §7-3）。

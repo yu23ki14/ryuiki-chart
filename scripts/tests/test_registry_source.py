@@ -361,10 +361,10 @@ def test_build_writes_the_three_tables_and_passes_the_reference_checks(reg):
     assert counts["source"] == 154 and counts["source_edition"] == 156
     r01._assert_id_uniqueness(reg)
     r01._assert_id_references(reg)
-    assert reg.execute("SELECT count(*) FROM variable_alias WHERE edition_key IS NOT NULL").fetchone()[0] == 46
+    assert reg.execute("SELECT count(*) FROM variable_alias WHERE edition_key IS NOT NULL").fetchone()[0] == 92  # 46 + 奄美の複製 46（PR-B）
     assert reg.execute(
         "SELECT edition_key, count(*) FROM variable_alias WHERE edition_key IS NOT NULL GROUP BY 1 ORDER BY 1"
-    ).fetchall() == [("2006", 22), ("2016", 24)]
+    ).fetchall() == [("2006", 44), ("2016", 48)]  # 神奈川 22/24 + 奄美の複製 22/24
     assert reg.execute("SELECT count(*) FROM source_edition WHERE license_id = 'unknown'").fetchone()[0] == 0
 
 
