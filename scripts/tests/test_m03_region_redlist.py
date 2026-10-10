@@ -122,3 +122,44 @@ def test_c28_kagoshima_load(tmp_path, monkeypatch):
         ("aaa bbb", "絶滅危惧Ⅰ類", "CR+EN", "kgrl2014")]
     c28.load_kagoshima_redlist(conn)   # 冪等
     assert conn.execute("select count(*) from pref_redlist_lookup").fetchone()[0] == 1
+
+
+def test_c28_reload_replaces_all_rows_of_the_list(tmp_path, monkeypatch):
+    monkeypatch.setattr(c28, "PROC", tmp_path)
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(c28.DDL)
+    _write(tmp_path / "kagoshima_redlist.csv", [
+        {"scientific_name": "Aaa bbb", "vernacular_name_ja": "ア", "category_code": "NT", "category_ja": "準絶滅危惧"},
+        {"scientific_name": "Ccc ddd", "vernacular_name_ja": "イ", "category_code": "VU", "category_ja": "絶滅危惧Ⅱ類"},
+    ])
+    c28.load_kagoshima_redlist(conn)
+    # 行が減る・ずれる再読込: 末尾の孤児が残らず、名前とカテゴリーが食い違わない
+    _write(tmp_path / "kagoshima_redlist.csv", [
+        {"scientific_name": "Ccc ddd", "vernacular_name_ja": "イ", "category_code": "VU", "category_ja": "絶滅危惧Ⅱ類"},
+    ])
+    c28.load_kagoshima_redlist(conn)
+    assert conn.execute("select assessment_id, vernacular_name_ja from redlist_assessments").fetchall() == [("kgrl2014_00001", "イ")]
+    assert [r[0] for r in conn.execute("select taxon_id from pref_redlist_lookup")] == ["ccc ddd"]
+
+
+def test_c28_missing_csv_leaves_existing_rows(tmp_path, monkeypatch):
+    monkeypatch.setattr(c28, "PROC", tmp_path)
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(c28.DDL + c28.PREF_LOOKUP_DDL)
+    conn.execute("INSERT INTO pref_redlist_lookup VALUES ('jp-46','x y','kgrl2014','準絶滅危惧','NT')")
+    assert c28.load_kagoshima_redlist(conn) == 0 and c28.load_kagoshima_ordinance(conn) == 0
+    assert conn.execute("select count(*) from pref_redlist_lookup").fetchone()[0] == 1
+
+
+def test_taxa_lookup_stops_with_hint_when_c28_not_run(conn):
+    conn.execute("DROP TABLE pref_redlist_lookup")
+    conn.execute("DROP TABLE redlist_assessments")
+    for rid in ("jp-14", "jp-46"):
+        with pytest.raises(SystemExit, match="c28_redlist_assessments"):
+            m03.taxa_lookup(conn, rid)
+
+
+def test_wamei_taxa_are_not_in_lookup(conn):
+    conn.execute("INSERT INTO taxa VALUES ('wamei:foo', NULL, '絶滅危惧Ⅱ類（VU）', NULL, NULL)")
+    assert "wamei:foo" not in m03.taxa_lookup(conn, "jp-14")
+    assert "wamei:foo" not in m03.taxa_lookup(conn, "jp-46")

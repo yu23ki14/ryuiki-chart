@@ -63,6 +63,10 @@ def sha256(p):
 
 def now(): return datetime.datetime.now().isoformat(timespec="seconds")
 
+def norm_taxon_id(s):
+    """学名の正規化キー（空白を1つに・前後を除き・小文字）。taxa.taxon_id・m03・pref_redlist_lookup が共有する。"""
+    return re.sub(r"\s+", " ", (s or "")).strip().lower()
+
 def appdb(): return sqlite3.connect(DB/"ryuiki.sqlite", timeout=30)
 def cellsdb(): return sqlite3.connect(DB/"cells.sqlite", timeout=30)
 

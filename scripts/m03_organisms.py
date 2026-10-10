@@ -21,6 +21,8 @@
   現在は丸めない）。
 
 --- 県版 → 全国版の順（地域ごと。docs/plans/AMAMI_STEP2A.md §3）---
+前提: `taxa`（c25）と、`redlist_assessments`・`pref_redlist_lookup`（c28）が先にできていること
+（c25 → c28 → m03。c28 が無いと taxa_lookup は何を先に回すかを示して止まる）。
 red_list_category は地域ごとに `regions.REGIONS[rid]["pref_redlist"]` の宣言で県版を引き、無ければ環境省の全国版
 （taxa.redlist_national）を使う。どちらで付けたかは organism_records.red_list_source（県版の list_id か 'national'）
 に持つ。カテゴリーの文字列は c25 の `taxa` と同じ形（「カテゴリー（コード）」）。神奈川（jp-14）は従来どおり
@@ -41,12 +43,9 @@ data/processed/license_code_mapping.csv に出力する。
 """
 import sys, pathlib, json, re, sqlite3, csv, collections, argparse
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
-from common import appdb, PROC
+from common import appdb, PROC, norm_taxon_id
 import regions
 from regions import REGIONS
-
-def norm_taxon_id(s):
-    return re.sub(r"\s+", " ", (s or "")).strip().lower()
 
 def rd_jsonl(name):
     p = PROC / f"{name}.jsonl"
@@ -177,14 +176,20 @@ def _kanagawa_list_by_taxon(conn, list_ids):
 def taxa_lookup(conn, rid=regions.DEFAULT_REGION):
     """taxon_id -> (red_list_category, ias_category, red_list_source)。地域の県版 → 全国版の順。"""
     decl = REGIONS[rid]["pref_redlist"]
+    need = "redlist_assessments" if decl["source"] == "taxa_column" else "pref_redlist_lookup"
+    if not conn.execute("select 1 from sqlite_master where type='table' and name=?", (need,)).fetchone():
+        raise SystemExit(f"{need} 表が無い（{rid} の赤リスト判定に要る）。先に "
+                         "`python scripts/c28_redlist_assessments.py` を実行すること（c25 → c28 → m03 の順）")
     rows = conn.execute("select taxon_id, redlist_kanagawa, redlist_national, ias_category from taxa").fetchall()
     d = {}
     if decl["source"] == "taxa_column":
         kan = _kanagawa_list_by_taxon(conn, decl["list_ids"])
         for tid, rk, rn, ias in rows:
+            if tid.startswith("wamei:"):   # 学名の無い行。出現記録（学名の正規化キー）とは結べない
+                continue
             if rk:
                 src = kan.get(tid)
-                if src is None and not tid.startswith("wamei:"):
+                if src is None:
                     raise ValueError(f"taxa.redlist_kanagawa があるのに redlist_assessments に学名が無い: {tid!r}"
                                      "（c28 を c25 の後に実行したか確認）")
                 d[tid] = (rk, ias, src)
@@ -195,6 +200,8 @@ def taxa_lookup(conn, rid=regions.DEFAULT_REGION):
             "select taxon_id, category_ja, category_code from pref_redlist_lookup where region_id=? and list_id=?",
             (rid, decl["list_id"]))}
         for tid, rk, rn, ias in rows:
+            if tid.startswith("wamei:"):
+                continue
             if tid in pref:
                 d[tid] = (pref[tid], ias, decl["list_id"])
             else:
@@ -299,30 +306,27 @@ def load_gbif(conn, taxa, license_counter, rid=regions.DEFAULT_REGION):
         print(f"  {src}: {n} rows read, taxa一致 {n_matched} 件 -> organism_records へ INSERT/UPDATE(license)")
     return n
 
-def ensure_occurrence_status_column(conn):
-    """既存の organism_records に occurrence_status 列が無ければ足す（冪等。足したら True）。
+def _ensure_column(conn, column):
+    """既存の organism_records に列が無ければ TEXT で足す（冪等。足したら True）。
     schema_app.sql の CREATE TABLE IF NOT EXISTS は既存表に列を足さないので、原本DBにはこちらで足す。
     表そのものが無い（空の DB・別の DB を指した）ときは、分かる文言で止める。"""
     cols = [r[1] for r in conn.execute("PRAGMA table_info(organism_records)")]
     if not cols:
-        raise SystemExit("organism_records 表が無い。対象の DB が違う（--db）か、先に m03 を全件実行して表を作ること")
-    if "occurrence_status" in cols:
+        raise SystemExit(f"organism_records 表が無い。対象の DB が違う（--db）か、先に m03 を全件実行して表を作ること")
+    if column in cols:
         return False
-    conn.execute("ALTER TABLE organism_records ADD COLUMN occurrence_status TEXT")
+    conn.execute(f"ALTER TABLE organism_records ADD COLUMN {column} TEXT")
     conn.commit()
     return True
 
+def ensure_occurrence_status_column(conn):
+    """organism_records.occurrence_status を足す（足したら True）。"""
+    return _ensure_column(conn, "occurrence_status")
+
 def ensure_red_list_source_column(conn):
-    """既存の organism_records に red_list_source 列が無ければ足す（冪等。足したら True）。
-    ensure_occurrence_status_column と同じ流儀。足した直後は NULL で、m03 の全件再投入（ON CONFLICT で更新）が埋める。"""
-    cols = [r[1] for r in conn.execute("PRAGMA table_info(organism_records)")]
-    if not cols:
-        raise SystemExit("organism_records 表が無い。対象の DB が違うか、先に m03 を全件実行して表を作ること")
-    if "red_list_source" in cols:
-        return False
-    conn.execute("ALTER TABLE organism_records ADD COLUMN red_list_source TEXT")
-    conn.commit()
-    return True
+    """organism_records.red_list_source を足す（足したら True）。足した直後は NULL で、
+    m03 の全件再投入（ON CONFLICT で更新）が埋める。"""
+    return _ensure_column(conn, "red_list_source")
 
 def backfill_occurrence_status(conn, batch_size=20000, rid=regions.DEFAULT_REGION):
     """m03 の全件再投入なしで、GBIF の occurrenceStatus を既存行へ入れる（冪等）。

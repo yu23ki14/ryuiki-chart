@@ -14,7 +14,8 @@
 import sys, pathlib, re, csv, collections
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from c29_kagoshima_redlist_2014 import (
-    COLS, LIC, CATEGORY_CODE, norm_category, parse_scientific, clean_latin, load_moe_names)
+    COLS, LIC, CATEGORY_CODE, SRC, norm_category, parse_scientific, clean_latin, load_moe_names, make_row,
+    assert_list_matches_registry)
 
 SID = "kagoshima_ordinance_species"
 PAGE = "https://www.pref.kagoshima.jp/ad04/kurashi-kankyo/kankyo/yasei/zyorei/03007006.html"
@@ -35,8 +36,9 @@ def find_pdf_url(html_text):
     raise RuntimeError("一覧表 PDF のリンクが見つからない")
 
 
-def row_from_cells(cells):
-    """表の 1 行 [分類, 和名, 学名, 科名, 県カテゴリー] → dict。ヘッダ行は None。"""
+def row_from_cells(cells, rank_required):
+    """表の 1 行 [分類, 和名, 学名, 科名, 県カテゴリー] → dict。ヘッダ行は None。
+    rank_required は c29 と同じ規則（植物 True・動物 False。SRC[kind]["rank_required"]）。"""
     cells = [re.sub(r"\s+", " ", (c or "")).strip() for c in cells]
     if len(cells) < 5 or cells[0] == "分類":
         return None
@@ -47,11 +49,12 @@ def row_from_cells(cells):
     assert cat == "" or cat in CATEGORY_CODE, f"想定外のカテゴリー {cells[4]!r}"
     latin = cells[2]
     return {"group": group, "verna": cells[1], "latin": latin, "family": cells[3], "cat": cat,
-            "sci": parse_scientific(latin, rank_required=False)}
+            "sci": parse_scientific(latin, rank_required=rank_required)}
 
 
 def main():
     import pdfplumber
+    assert_list_matches_registry("kgord", LIST_YEAR)
     from common import get, download, register, PROC, RAW
     page = get(PAGE)
     page.encoding = page.apparent_encoding
@@ -67,25 +70,16 @@ def main():
     for kind, t in zip(("animals", "plants"), tables):
         n = 0
         for cells in t:
-            r = row_from_cells(cells)
+            r = row_from_cells(cells, SRC[kind]["rank_required"])
             if r:
                 rows.append(r); n += 1
         kinds[kind] = n
     assert dict(kinds) == {"animals": stated["animals"], "plants": stated["plants"]} == EXPECTED, (kinds, stated)
     assert len(rows) == stated["total"] == 59, (len(rows), stated)
     moe = load_moe_names(PROC / "moe_redlist.csv")
-    out = []
-    for r in rows:
-        out.append({
-            "taxon_group_ja": r["group"], "taxon_subgroup_ja": "", "order_ja": "", "family_ja": r["family"],
-            "scientific_name": r["sci"], "vernacular_name_ja": r["verna"],
-            "category_code": CATEGORY_CODE.get(r["cat"], ""), "category_ja": r["cat"],
-            "category_prev_ja": "", "category_1995_ja": "",
-            "national_category_ja": moe.get(r["sci"], "") if r["sci"] else "",
-            "change_from_prev_ja": "", "note_ja": "",
-            "list_year": LIST_YEAR, "scope": "kagoshima", "source_id": SID,
-            "source_ref": url, "scientific_name_raw": clean_latin(r["latin"]),
-        })
+    out = [make_row(group=r["group"], family=r["family"], verna=r["verna"], sci=r["sci"],
+                    raw=clean_latin(r["latin"]), cat=r["cat"], ref=url, year=LIST_YEAR, sid=SID, moe=moe)
+           for r in rows]
     with open(PROC / "kagoshima_ordinance_species.csv", "w", encoding="utf-8", newline="") as f:
         w = csv.DictWriter(f, fieldnames=COLS)
         w.writeheader(); w.writerows(out)

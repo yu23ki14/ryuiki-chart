@@ -192,24 +192,19 @@ def _assert_known_source_ids(work: sqlite3.Connection) -> None:
     assert_known_source_ids((r[0] for r in rows), error_cls=common.MigrationError)
 
 
-def _assert_red_list_source_column(work: sqlite3.Connection) -> None:
-    """`organism_records.red_list_source` が無い（m03 を回す前の原本）なら止める。"""
-    cols = [r[1] for r in work.execute("PRAGMA src.table_info(organism_records)")]
-    if "red_list_source" not in cols:
-        raise common.MigrationError(
-            "organism_records に red_list_source 列が無い。`python scripts/m03_organisms.py` を全件実行して"
-            "列を足し、赤リスト判定の出所を埋めること"
-        )
+_REQUIRED_ORGANISM_COLUMNS = {
+    "occurrence_status": "GBIF の不在記録を除けない。`python scripts/m03_organisms.py --backfill-occurrence-status` で列を足して値を埋めること",
+    "red_list_source": "赤リスト判定の出所が引けない。`python scripts/m03_organisms.py` を全件実行して列を足し値を埋めること",
+}
 
 
-def _assert_occurrence_status_column(work: sqlite3.Connection) -> None:
-    """`organism_records.occurrence_status` が無い（古い原本）なら、黙って全行を出現として数えずに止める。"""
-    cols = [r[1] for r in work.execute("PRAGMA src.table_info(organism_records)")]
-    if "occurrence_status" not in cols:
-        raise common.MigrationError(
-            "organism_records に occurrence_status 列が無い（GBIF の不在記録を除けない）。"
-            "`python scripts/m03_organisms.py --backfill-occurrence-status` で列を足して値を埋めること"
-        )
+def _assert_organism_columns(work: sqlite3.Connection) -> None:
+    """`organism_records` に m03 が足す列（occurrence_status・red_list_source）が無い（古い原本）なら、
+    黙って進まずに止める。"""
+    cols = {r[1] for r in work.execute("PRAGMA src.table_info(organism_records)")}
+    for col, hint in _REQUIRED_ORGANISM_COLUMNS.items():
+        if col not in cols:
+            raise common.MigrationError(f"organism_records に {col} 列が無い（{hint}）")
 
 
 _SELECT_ORGANISM_RECORDS_SQL = """
@@ -707,8 +702,7 @@ def build_and_write_occurrence(
                 common.attach_readonly(work, registry_db, "reg")
                 lineage.watch(work, external=work_external)
                 _assert_known_source_ids(work)
-                _assert_occurrence_status_column(work)
-                _assert_red_list_source_column(work)
+                _assert_organism_columns(work)
                 taxon_ids = _load_taxon_ids(work)
                 ctx = _IngestContext(
                     taxon_ids, _load_alien_binoms(work), sources, regions,

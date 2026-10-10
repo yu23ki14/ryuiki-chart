@@ -28,6 +28,19 @@ def test_infraspecific_ranks_kept_as_trinomial():
         "Symplocos chinensis var. leucocarpa f. pilosa"
     # 動物は階級語なしの三名法
     assert sci("Pteropus dasymallus dasymallus") == "Pteropus dasymallus dasymallus"
+    assert sci("Pteropus dasymallus dasymallus Temminck, 1825") == "Pteropus dasymallus dasymallus"
+    assert sci("Rana narina Stejneger, 1901") == "Rana narina"
+
+
+def test_author_particles_and_qualifiers_are_not_infraspecific():
+    # 階級語なし（動物）でも、著者の小辞・修飾語を亜種小名に取らない
+    for latin, want in (("Uca lactea de Haan", "Uca lactea"), ("Genus species von Siebold", "Genus species"),
+                        ("Genus species van der Hoeven", "Genus species"), ("Genus species du Bois", "Genus species"),
+                        ("Genus species la Cruz", "Genus species"), ("Genus species complex", "Genus species"),
+                        ("Genus species group", "Genus species"), ("Genus species (de Haan, 1835)", "Genus species")):
+        assert sci(latin) == want, latin
+    # 後に著者（大文字）か行末が続く小文字語は亜種小名
+    assert sci("Genus species subspecies Author") == "Genus species subspecies"
 
 
 def test_subgenus_parenthesis_and_spacing_in_parens():
@@ -60,7 +73,7 @@ def test_category_roman_numeral_glyphs():
 
 
 def parse(kind, texts, groups):
-    return c29.parse_pdf_lines(kind, [(1, t) for t in texts], set(groups))
+    return c29.parse_pdf_lines(c29.SRC[kind]["rank_required"], [(1, t) for t in texts], set(groups))
 
 
 def test_rows_grouped_by_heading_and_counted():
@@ -109,11 +122,25 @@ def test_last_species_before_heading_is_not_a_group_name():
 
 
 def test_ordinance_row_and_link():
-    r = c29b.row_from_cells(["魚 類", "タメトモハゼ", "Ophieleotris sp.", "カワアナゴ科", "絶滅危惧Ⅰ類"])
+    r = c29b.row_from_cells(["魚 類", "タメトモハゼ", "Ophieleotris sp.", "カワアナゴ科", "絶滅危惧Ⅰ類"], False)
     assert (r["group"], r["sci"], r["cat"]) == ("魚類", "", "絶滅危惧Ⅰ類")
-    r = c29b.row_from_cells(["貝 類", "ムラクモカノコガイ", "Neritina （Vittoida） variegata", "アマオブネガイ科", "絶滅危惧Ⅰ類"])
+    r = c29b.row_from_cells(["貝 類", "ムラクモカノコガイ", "Neritina （Vittoida） variegata", "アマオブネガイ科", "絶滅危惧Ⅰ類"], False)
     assert r["sci"] == "Neritina variegata"
-    assert c29b.row_from_cells(["甲殻類", "ドウクツベンケイガニ", "Karstarma boholano", "ベンケイガニ科", "－"])["cat"] == ""
-    assert c29b.row_from_cells(["分類", "種名（和名）", "種名（学名）", "科名", "県カテゴリー"]) is None
+    assert c29b.row_from_cells(["甲殻類", "ドウクツベンケイガニ", "Karstarma boholano", "ベンケイガニ科", "－"], False)["cat"] == ""
+    assert c29b.row_from_cells(["分類", "種名（和名）", "種名（学名）", "科名", "県カテゴリー"], False) is None
     html = '<a href="documents/x_1.pdf">パンフレット</a><a href="/ad04/a/documents/y-1.pdf">鹿児島県指定希少野生動植物一覧表（PDF：86KB）</a>'
     assert c29b.find_pdf_url(html).endswith("/ad04/a/documents/y-1.pdf")
+
+
+def test_ordinance_plants_use_rank_required_like_c29():
+    row = ["植物", "テスト", "Genus species de Vriese", "科", "絶滅危惧Ⅱ類"]
+    assert c29b.row_from_cells(row, c29.SRC["plants"]["rank_required"])["sci"] == "Genus species"
+    assert c29.SRC["plants"]["rank_required"] is True and c29.SRC["animals"]["rank_required"] is False
+
+
+def test_make_row_columns_and_category_code():
+    r = c29.make_row(group="g", verna="v", sci="A b", raw="A b X", cat="準絶滅危惧", ref="u", year=2014,
+                     sid="s", moe={"A b": "絶滅危惧IA類"})
+    assert list(r) == c29.COLS
+    assert (r["category_code"], r["national_category_ja"]) == ("NT", "絶滅危惧IA類")
+    assert c29.make_row(group="g", verna="v", sci="", raw="", cat="", ref="u", year=2026, sid="s", moe={})["category_code"] == ""

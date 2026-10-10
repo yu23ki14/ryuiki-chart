@@ -47,7 +47,7 @@ supersede 思想（旧版を消さずに残し監査可能にする）とも整�
 import sys, pathlib, csv, re, sqlite3
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
-from common import appdb, PROC
+from common import appdb, PROC, norm_taxon_id
 
 DDL = """
 CREATE TABLE IF NOT EXISTS redlist_assessments (
@@ -159,16 +159,17 @@ def load_2022(conn):
 
 
 # ---- 鹿児島県（jp-46、Step 2a）----
-# list_name / list_year は registry/taxon/assessment_list.yaml の kgrl2014 / kgord と一致させる
-# （build_taxon_assessment が実データと突き合わせて止める）。CSV の list_year 列は使わない。
-KG_RL_LIST = ("kgrl2014", "鹿児島県レッドリスト（平成26年改訂。動物・植物の掲載ページは平成27年度改訂）", 2014)
-KG_ORD_LIST = ("kgord", "鹿児島県 指定希少野生動植物（県条例）", 2026)   # CSV の list_year に合わせる
-KG_REGION = "jp-46"
+# list の名前・年・地域は registry/taxon/assessment_list.yaml が正（build_taxon_assessment が実データと突き合わせる）。
+# CSV の list_year 列は使わない。
+from registry.build_taxon_assessment import load_assessment_lists, load_redlist_categories
+
+KG_RL_LIST_ID = "kgrl2014"
+KG_ORD_LIST_ID = "kgord"
 
 PREF_LOOKUP_DDL = """
 CREATE TABLE IF NOT EXISTS pref_redlist_lookup (
   region_id     TEXT NOT NULL,
-  taxon_id      TEXT NOT NULL,   -- 学名を正規化した taxa.taxon_id と同じ形（小文字・空白1つ）
+  taxon_id      TEXT NOT NULL,   -- 学名を正規化した taxa.taxon_id と同じ形（common.norm_taxon_id）
   list_id       TEXT NOT NULL,   -- assessment_list.yaml の list_id（red_list の県版）
   category_ja   TEXT NOT NULL,
   category_code TEXT,
@@ -176,25 +177,31 @@ CREATE TABLE IF NOT EXISTS pref_redlist_lookup (
 );
 """
 
-# 同じ学名が別の和名・別のカテゴリーで複数行に出るとき（亜種を縮約した照合ではなく同名の別行）、
-# 厳しい方を残す。順位に無い値は最後（同点なら先に読んだ行）。
-_SEVERITY = {"EX": 0, "EW": 1, "CR+EN": 2, "CR": 2, "EN": 3, "VU": 4, "NT": 5, "DD": 6}
+
+def _severity(code):
+    """同じ学名が別カテゴリーで複数行に出るとき厳しい方を残すための順位（redlist_category.yaml の rank。
+    大きいほど深刻）。コードが語彙に無い・rank が null なら最も軽い扱い。"""
+    cat = _CATEGORIES.get(code)
+    return (cat["rank"] if cat and cat.get("rank") is not None else -1)
 
 
-def _norm_id(s):
-    return re.sub(r"\s+", " ", (s or "")).strip().lower()
+_CATEGORIES = load_redlist_categories()
 
 
-def _load_kagoshima(conn, csv_name, list_id, list_name, list_year, assessment_prefix):
+def _load_kagoshima(conn, csv_name, list_id):
+    """CSV の行を redlist_assessments に入れる。assessment_id は行番号由来（`<list_id>_NNNNN`）なので、
+    行がずれても名前とカテゴリーが食い違ったり末尾が孤児になったりしないよう、その list の行を
+    全部消してから入れ直す。CSV が無ければ何もせず None（既存の行・lookup を消さない）。"""
     path = PROC / csv_name
     if not path.exists():
-        print(f"  {csv_name}: 無い（c29 系の収集が未実行。飛ばす）")
-        return []
+        print(f"  {csv_name}: 無い（c29 系の収集が未実行。何もせず飛ばす）")
+        return None
+    entry = load_assessment_lists()[list_id]
     rows = list(csv.DictReader(open(path, encoding="utf-8")))
     batch = []
     for i, r in enumerate(rows, 1):
         batch.append((
-            f"{assessment_prefix}_{i:05d}", list_name, list_year,
+            f"{list_id}_{i:05d}", entry["name"], entry["year"],
             blank_to_none(r.get("taxon_group_ja")), blank_to_none(r.get("taxon_subgroup_ja")),
             blank_to_none(r.get("family_ja")), blank_to_none(r.get("vernacular_name_ja")),
             blank_to_none(r.get("scientific_name")), blank_to_none(r.get("category_code")),
@@ -202,16 +209,19 @@ def _load_kagoshima(conn, csv_name, list_id, list_name, list_year, assessment_pr
             blank_to_none(r.get("national_category_ja")), blank_to_none(r.get("note_ja")),
             None, registry_source_id(r.get("source_id")), r.get("source_ref"),
         ))
+    conn.execute("DELETE FROM redlist_assessments WHERE assessment_id LIKE ? ESCAPE '\\'", (list_id + "\\_%",))
     conn.executemany(UPSERT, batch)
     conn.commit()
-    print(f"  {csv_name}: {len(batch)} 行を redlist_assessments へ（{list_id}）")
+    print(f"  {csv_name}: {len(batch)} 行を redlist_assessments へ（{list_id}。入れ直し）")
     return rows
 
 
 def load_kagoshima_redlist(conn):
     """kagoshima_redlist.csv -> redlist_assessments(kgrl2014_NNNNN) と pref_redlist_lookup。"""
-    list_id, name, year = KG_RL_LIST
-    rows = _load_kagoshima(conn, "kagoshima_redlist.csv", list_id, name, year, list_id)
+    region = load_assessment_lists()[KG_RL_LIST_ID]["region"]
+    rows = _load_kagoshima(conn, "kagoshima_redlist.csv", KG_RL_LIST_ID)
+    if rows is None:
+        return 0
     best = {}
     for r in rows:
         sci = blank_to_none(r.get("scientific_name"))
@@ -219,27 +229,27 @@ def load_kagoshima_redlist(conn):
         if not sci or not cat:   # 学名が無い行は出現記録と結べない（和名の機械結合はしない）
             continue
         code = blank_to_none(r.get("category_code"))
-        key = _norm_id(sci)
+        key = norm_taxon_id(sci)
         old = best.get(key)
-        if old is None or _SEVERITY.get(code, 99) < _SEVERITY.get(old[1], 99):
+        if old is None or _severity(code) > _severity(old[1]):
             best[key] = (cat, code)
     conn.executescript(PREF_LOOKUP_DDL)
-    # この list の分だけ作り直す（CSV を直したとき古い行を残さない）。他の list・地域は触らない
-    conn.execute("DELETE FROM pref_redlist_lookup WHERE region_id=? AND list_id=?", (KG_REGION, list_id))
+    # この list の分だけ作り直す。他の list・地域は触らない
+    conn.execute("DELETE FROM pref_redlist_lookup WHERE region_id=? AND list_id=?", (region, KG_RL_LIST_ID))
     conn.executemany(
         "INSERT INTO pref_redlist_lookup (region_id, taxon_id, list_id, category_ja, category_code) "
         "VALUES (?,?,?,?,?)",
-        [(KG_REGION, k, list_id, c, cd) for k, (c, cd) in sorted(best.items())])
+        [(region, k, KG_RL_LIST_ID, c, cd) for k, (c, cd) in sorted(best.items())])
     conn.commit()
-    print(f"  pref_redlist_lookup: {len(best)} 種（{KG_REGION} / {list_id}）")
+    print(f"  pref_redlist_lookup: {len(best)} 種（{region} / {KG_RL_LIST_ID}）")
     return len(rows)
 
 
 def load_kagoshima_ordinance(conn):
     """kagoshima_ordinance_species.csv -> redlist_assessments(kgord_NNNNN)。
     条例の指定種は赤リスト該当に含めない（決定 0-1）ので pref_redlist_lookup には入れない。"""
-    list_id, name, year = KG_ORD_LIST
-    return len(_load_kagoshima(conn, "kagoshima_ordinance_species.csv", list_id, name, year, list_id))
+    rows = _load_kagoshima(conn, "kagoshima_ordinance_species.csv", KG_ORD_LIST_ID)
+    return 0 if rows is None else len(rows)
 
 
 def report_diff(conn):

@@ -26,10 +26,10 @@ BASE = "http://www.pref.kagoshima.jp"
 SRC = {
     "animals": {"page": BASE + "/ad04/kurashi-kankyo/kankyo/yasei/reddata/plant-list4.html",
                 "pdf": BASE + "/ad04/kurashi-kankyo/kankyo/yasei/reddata/documents/53565_20211029173904-1.pdf",
-                "file": "animals.pdf"},
+                "file": "animals.pdf", "rank_required": False},
     "plants": {"page": BASE + "/ad04/kurashi-kankyo/kankyo/yasei/reddata/plant-list3.html",
                "pdf": BASE + "/ad04/kurashi-kankyo/kankyo/yasei/reddata/documents/53564_20211029183322-1.pdf",
-               "file": "plants.pdf"},
+               "file": "plants.pdf", "rank_required": True},
 }
 LIC = "鹿児島県ホームページ（無断転載・改変不可）。事実（種名・カテゴリー）のみ抽出し出典を明記"
 
@@ -49,6 +49,11 @@ EXPECTED = {
 CATEGORY_CODE = {"絶滅危惧Ⅰ類": "CR+EN", "絶滅危惧Ⅱ類": "VU", "準絶滅危惧": "NT", "情報不足": "DD"}
 HEAD_RE = re.compile(r"^(絶滅危惧\s*[IVⅠⅡ]+\s*類|準絶滅危惧|情報不足)\s*（(\d+)）$")
 RANKS = {"subsp.", "ssp.", "var.", "f.", "forma", "subvar.", "fo."}
+# 階級語なしの三名法（動物）で、種小名の次の小文字語を亜種小名に取らないための語。著者名の小辞（Uca lactea de Haan の de 等）や
+# 修飾語。取るのは「この語以外の小文字のラテン語らしい語で、後に著者名（大文字始まりか括弧）か行末が続く」ときだけ。
+NOT_INFRASPECIFIC = {"de", "von", "van", "der", "den", "du", "la", "le", "del", "di", "da", "dos", "ten", "ter",
+                     "et", "and", "ex", "in", "non", "complex", "group", "sensu", "auct", "nom", "nud", "cf", "aff",
+                     "sp", "spp"}
 # PDF のフォントで潰れた字（㉀ は fi〔Moellendorffia〕、㉁ は fl〔fluviatilis・flavus・flectosiphonata〕）
 GLYPH_FIX = {"㉀": "fi", "㉁": "fl"}
 
@@ -116,7 +121,9 @@ def parse_scientific(latin, *, rank_required):
         if t in RANKS and i + 1 < len(toks) and re.fullmatch(r"[a-z][a-z-]+", toks[i + 1]):
             parts += [t, toks[i + 1]]
             i += 2
-        elif not rank_required and not any(p in RANKS for p in parts) and re.fullmatch(r"[a-z][a-z-]+", t):
+        elif (not rank_required and not any(p in RANKS for p in parts) and re.fullmatch(r"[a-z][a-z-]+", t)
+              and t not in NOT_INFRASPECIFIC
+              and (i + 1 == len(toks) or toks[i + 1] == "(" or toks[i + 1][0].isupper())):
             parts.append(t)
             i += 1
         else:
@@ -132,20 +139,18 @@ def split_vernacular(line):
     return line[:m.start()].strip(" _\t"), line[m.start():].strip()
 
 
-def parse_pdf_lines(kind, lines, groups_known):
-    """lines: [(page_no, text)]。戻り値: (rows, counts)。rows は dict の並び。"""
+def parse_pdf_lines(rank_required, lines, groups_known):
+    """lines: [(page_no, text)]。戻り値: (rows, counts, declared)。rows は dict の並び。
+    rank_required: parse_scientific に渡す（植物 True・動物 False）。"""
     rows, counts = [], collections.Counter()
     group = cat = None
     declared = {}
-    pending = []
+    # 見出し行を先に確定させてから連結する（見出しの直後の行を連結に巻き込まない）
+    merged = []
     for pg, t in lines:
         t = t.strip()
         if not t:
             continue
-        pending.append((pg, t))
-    # 見出し行を先に確定させてから連結する（見出しの直後の行を連結に巻き込まない）
-    merged = []
-    for pg, t in pending:
         if HEAD_RE.match(t) or t in groups_known:
             merged.append([pg, t, "head"])
         elif merged and merged[-1][2] == "row" and is_continuation(t, merged[-1][1]):
@@ -163,13 +168,34 @@ def parse_pdf_lines(kind, lines, groups_known):
             continue
         assert group and cat, f"見出しの前に行がある: p{pg} {t!r}"
         verna, latin = split_vernacular(t)
-        rank_required = (kind == "plants")
-        sci = parse_scientific(latin, rank_required=rank_required)
         rows.append({"taxon_group_ja": group, "category_ja": cat, "category_code": CATEGORY_CODE[cat],
-                     "vernacular_name_ja": verna, "scientific_name": sci,
+                     "vernacular_name_ja": verna,
+                     "scientific_name": parse_scientific(latin, rank_required=rank_required),
                      "scientific_name_raw": clean_latin(latin), "page": pg})
         counts[(group, cat)] += 1
     return rows, counts, declared
+
+
+def make_row(*, group, family="", verna, sci, raw, cat, ref, year, sid, moe):
+    """CSV の 1 行（c29・c29b 共通。列は COLS）。cat は category_ja（空なら category_code も空）。"""
+    return {
+        "taxon_group_ja": group, "taxon_subgroup_ja": "", "order_ja": "", "family_ja": family,
+        "scientific_name": sci, "vernacular_name_ja": verna,
+        "category_code": CATEGORY_CODE.get(cat, ""), "category_ja": cat,
+        "category_prev_ja": "", "category_1995_ja": "",
+        "national_category_ja": moe.get(sci, "") if sci else "",
+        "change_from_prev_ja": "", "note_ja": "",
+        "list_year": year, "scope": "kagoshima", "source_id": sid,
+        "source_ref": ref, "scientific_name_raw": raw,
+    }
+
+
+def assert_list_matches_registry(list_id, year, name=None):
+    """list_year（と名前）が registry/taxon/assessment_list.yaml と一致すること（c28 は yaml を正に読む）。"""
+    from registry.build_taxon_assessment import load_assessment_lists
+    e = load_assessment_lists()[list_id]
+    assert e["year"] == year, f"{list_id}: yaml の year {e['year']} と {year} が違う"
+    assert name is None or e["name"] == name, f"{list_id}: yaml の name {e['name']!r} と {name!r} が違う"
 
 
 def read_pdf_lines(path):
@@ -193,46 +219,32 @@ def load_moe_names(path):
 
 
 def main():
-    from common import download, register, PROC, RAW, ROOT
+    from common import download, register, PROC, RAW
+    assert_list_matches_registry("kgrl2014", LIST_YEAR, EDITION)
     rawd = RAW / "kagoshima_redlist_2014"
     moe = load_moe_names(PROC / "moe_redlist.csv")
     out, total_by_kind = [], {}
     for kind, s in SRC.items():
         p = download(s["pdf"], rawd / s["file"])
         lines = read_pdf_lines(p)
-        groups_known = _group_names(lines)
-        rows, counts, declared = parse_pdf_lines(kind, lines, groups_known)
-        # 検算: カテゴリー見出しの件数（植物は維管束植物＋藻類）と読んだ行数
+        rows, counts, declared = parse_pdf_lines(s["rank_required"], lines, _group_names(lines))
+        # 検算: カテゴリー見出しの件数（植物は維管束植物＋藻類）と読んだ行数。分類群×カテゴリーごと、合計は想定値
         want = collections.Counter()
         for (g, c), n in declared.items():
-            want[CATEGORY_CODE[c]] += n
-        got = collections.Counter(r["category_code"] for r in rows)
-        assert dict(want) == dict(got), f"{kind}: 見出し {dict(want)} と読んだ行数 {dict(got)} が違う"
-        assert dict(want) == EXPECTED[kind], f"{kind}: 想定の件数と違う {dict(want)}"
-        for (g, c), n in declared.items():
             assert counts[(g, c)] == n, f"{kind} {g} {c}: 見出し {n} と読んだ {counts[(g, c)]}"
+            want[CATEGORY_CODE[c]] += n
+        assert dict(want) == EXPECTED[kind], f"{kind}: 想定の件数と違う {dict(want)}"
         total_by_kind[kind] = len(rows)
-        for r in rows:
-            sci = r["scientific_name"]
-            out.append({
-                "taxon_group_ja": r["taxon_group_ja"], "taxon_subgroup_ja": "", "order_ja": "", "family_ja": "",
-                "scientific_name": sci, "vernacular_name_ja": r["vernacular_name_ja"],
-                "category_code": r["category_code"], "category_ja": r["category_ja"],
-                "category_prev_ja": "", "category_1995_ja": "",
-                "national_category_ja": moe.get(sci, "") if sci else "",
-                "change_from_prev_ja": "", "note_ja": "",
-                "list_year": LIST_YEAR, "scope": "kagoshima", "source_id": SID,
-                "source_ref": f"{s['pdf']}#page={r['page']}",
-                "scientific_name_raw": r["scientific_name_raw"],
-            })
+        out += [make_row(group=r["taxon_group_ja"], verna=r["vernacular_name_ja"], sci=r["scientific_name"],
+                         raw=r["scientific_name_raw"], cat=r["category_ja"],
+                         ref=f"{s['pdf']}#page={r['page']}", year=LIST_YEAR, sid=SID, moe=moe) for r in rows]
     # 同じ (和名, 学名, カテゴリー) の重複は 1 行にする
     seen, dedup = set(), []
     for r in out:
         k = (r["vernacular_name_ja"], r["scientific_name"], r["category_ja"])
-        if k in seen:
-            continue
-        seen.add(k)
-        dedup.append(r)
+        if k not in seen:
+            seen.add(k)
+            dedup.append(r)
     print(f"  [rows] {len(out)} 行 → 重複除去後 {len(dedup)}（動物 {total_by_kind['animals']}／植物 {total_by_kind['plants']}）")
     dest = PROC / "kagoshima_redlist.csv"
     with open(dest, "w", encoding="utf-8", newline="") as f:
