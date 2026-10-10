@@ -212,20 +212,14 @@ DEFAULT_REPORT = ROOT / "reports" / "phase_b_fact_slice.md"
 LANDUSE_SOURCE_ID = "nlni_l03b_landuse_by_watershed"
 # 土地利用の observation.source_table は全地域で LANDUSE_SOURCE_ID（dataset は「データセットの種類」で、
 # 気象・水質が表名を地域をまたいで共有するのと同じ。地域は source_id 列で区別し、source_row_id に出典名を前置する）。
-LANDUSE_SOURCE_TABLES = (LANDUSE_SOURCE_ID,)
-
-
-def landuse_source_table(source_id: str) -> str:
-    """土地利用の CSV の1行（`source_id` 列）→ `observation.source_table`。全地域で `LANDUSE_SOURCE_ID`。"""
-    return LANDUSE_SOURCE_ID
 
 
 def landuse_source_row_id(source_id: str, row_number: int, suffix: str) -> str:
     """神奈川（および地域を特定できない出典名）は従来どおり `<行>:<suffix>`。それ以外の地域は CSV ごとに
     行番号が1から始まり衝突するので、出典名を前置する。"""
-    rid = collector_regions.region_of_source_id(source_id)
+    rid = collector_regions.region_or_default(collector_regions.region_of_source_id(source_id))
     base = f"{row_number}:{suffix}"
-    return base if rid in (None, "jp-14") else f"{source_id}:{base}"
+    return base if rid == collector_regions.DEFAULT_REGION else f"{source_id}:{base}"
 
 _SAMPLE_LIMIT = 20
 
@@ -747,22 +741,20 @@ def _load_watershed_place_lookup(work: sqlite3.Connection) -> dict[str, tuple[st
     return {external_key: (place_id, place_kind) for external_key, place_id, place_kind in rows}
 
 
-def _load_landuse_alias_map(work: sqlite3.Connection) -> dict[tuple[str, str, str, str], tuple]:
-    """`(dataset, edition_key, alias, source_id) -> (variable_id, unit_id, stat, grain)` を返す
-    （`dataset` が `LANDUSE_SOURCE_TABLES` の行だけ。dataset は `observation.source_table` と同じ名前で、b04 の
-    単位根拠の検査がその一致を前提にする。土地利用は2006/2016でコード体系が違い、
+def _load_landuse_alias_map(work: sqlite3.Connection) -> dict[tuple[str, str, str], tuple]:
+    """`(edition_key, alias, source_id) -> (variable_id, unit_id, stat, grain)` を返す
+    （`dataset = LANDUSE_SOURCE_ID` の行だけ。土地利用は2006/2016でコード体系が違い、
     版は `variable_alias.edition_key`（Issue #39 Phase C。以前は `dataset` に `@<年>` を
     後置していた）が持つ。`edition_key` が空の行は版を指定できないので引かない）。
     """
-    marks = ",".join("?" for _ in LANDUSE_SOURCE_TABLES)
     rows = work.execute(
-        "SELECT dataset, edition_key, alias, source_id, variable_id, unit_id, stat, grain "
-        f"FROM reg.variable_alias WHERE dataset IN ({marks}) AND edition_key IS NOT NULL",
-        LANDUSE_SOURCE_TABLES,
+        "SELECT edition_key, alias, source_id, variable_id, unit_id, stat, grain "
+        "FROM reg.variable_alias WHERE dataset = ? AND edition_key IS NOT NULL",
+        (LANDUSE_SOURCE_ID,),
     ).fetchall()
     return {
-        (dataset, edition_key, alias, source_id): (variable_id, unit_id, stat, grain)
-        for dataset, edition_key, alias, source_id, variable_id, unit_id, stat, grain in rows
+        (edition_key, alias, source_id): (variable_id, unit_id, stat, grain)
+        for edition_key, alias, source_id, variable_id, unit_id, stat, grain in rows
     }
 
 
@@ -873,8 +865,7 @@ def _ingest_landuse(
                     if _check_duplicate(stats, seen_business_keys, business_key):
                         continue
 
-                    source_table = landuse_source_table(source_id)
-                    entry = alias_map.get((source_table, data_year, alias, source_id))
+                    entry = alias_map.get((data_year, alias, source_id))
                     if entry is None:
                         variable_id = unit_id = obs_stat = value_grain = None
                     else:
@@ -882,7 +873,7 @@ def _ingest_landuse(
 
                     result = _resolve_and_compute_period(
                         stats, variable_id, place_id, data_year, value_grain, source_id, exceptions, usage,
-                        unresolved_alias_sample_value=(row_number, f"{source_table}/{data_year}", alias, source_id),
+                        unresolved_alias_sample_value=(row_number, f"{LANDUSE_SOURCE_ID}/{data_year}", alias, source_id),
                         unresolved_place_sample_value=(row_number, watershed_id),
                         period_mismatch_sample_value=(row_number, source_id, data_year, value_grain),
                     )
@@ -893,7 +884,7 @@ def _ingest_landuse(
                     source_row_id = landuse_source_row_id(source_id, row_number, suffix)
                     stats["n_observation"] += 1
                     yield (
-                        source_table, source_row_id, region_id, place_id, place_kind,
+                        LANDUSE_SOURCE_ID, source_row_id, region_id, place_id, place_kind,
                         variable_id, obs_stat, unit_id, None, value_grain, period_grain,
                         period_start, period_end, data_year,
                         float(value_str), None, censoring.CENSORING_NONE, None,

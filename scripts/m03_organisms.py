@@ -158,8 +158,8 @@ def _license_repr(v):
         return "(empty string)"
     return v
 
-def load_inaturalist(conn, taxa, license_counter, rid="jp-14"):
-    src = regions.name("inaturalist_kanagawa", rid)   # jp-14 は inaturalist_kanagawa のまま
+def load_inaturalist(conn, taxa, license_counter, rid=regions.DEFAULT_REGION):
+    src = regions.name("inaturalist_kanagawa", rid)   # 既定の地域は inaturalist_kanagawa のまま
     n = 0
     batch = []
     n_matched = 0
@@ -199,8 +199,8 @@ def load_inaturalist(conn, taxa, license_counter, rid="jp-14"):
     print(f"  {src}: {n} rows read, taxa一致 {n_matched} 件 -> organism_records へ INSERT/UPDATE(license)")
     return n
 
-def load_gbif(conn, taxa, license_counter, rid="jp-14"):
-    src = regions.name("gbif_kanagawa_occurrences", rid)   # jp-14 は gbif_kanagawa_occurrences のまま
+def load_gbif(conn, taxa, license_counter, rid=regions.DEFAULT_REGION):
+    src = regions.name("gbif_kanagawa_occurrences", rid)   # 既定の地域は gbif_kanagawa_occurrences のまま
     n = 0
     batch = []
     n_matched = 0
@@ -256,12 +256,13 @@ def ensure_occurrence_status_column(conn):
     conn.commit()
     return True
 
-def backfill_occurrence_status(conn, batch_size=20000, rid="jp-14"):
+def backfill_occurrence_status(conn, batch_size=20000, rid=regions.DEFAULT_REGION):
     """m03 の全件再投入なしで、GBIF の occurrenceStatus を既存行へ入れる（冪等）。
 
     列が無ければ足し、jsonl の key から record_id='gbif_kanagawa_occurrences__<key>' へ UPDATE する。
     iNaturalist など GBIF 以外の行は触らない（NULL のまま）。jsonl の key のうち organism_records に
-    行が無いものがあれば、何も書かずに止める（黙って飛ばさない）。戻り値は (列を足したか, 読んだ行数,
+    行が無いものがあれば、何も書かずに止める（黙って飛ばさない）。ただし organism_records にその出典の行が1行も
+    無い地域は、未取り込みなので「飛ばした」と表示して次の地域に進む。戻り値は (列を足したか, 読んだ行数,
     更新した行数, 値の内訳 Counter)。"""
     conn.execute("PRAGMA busy_timeout=60000")
     added = ensure_occurrence_status_column(conn)
@@ -274,6 +275,9 @@ def backfill_occurrence_status(conn, batch_size=20000, rid="jp-14"):
         pairs.append((f"{src}__{r['key']}", st))
     in_db = {x for (x,) in conn.execute(
         "SELECT record_id FROM organism_records WHERE source_id=?", (src,))}
+    if not in_db:   # その地域の記録が organism_records に1行も無い＝未取り込み。止めずに飛ばす
+        print(f"  {src}: organism_records に1行も無い（未取り込みのため飛ばした）")
+        return added, 0, 0, collections.Counter()
     missing = [x for x, _ in pairs if x not in in_db]
     if missing:
         raise SystemExit(

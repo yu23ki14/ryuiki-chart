@@ -1185,9 +1185,8 @@ def test_landuse_reads_several_csvs_and_names_source_table_per_region(tmp_path):
     assert tables == {b03.LANDUSE_SOURCE_ID}
 
 
-def test_landuse_source_table_rule():
-    assert b03.landuse_source_table("nlni_l03b_landuse_by_watershed") == b03.LANDUSE_SOURCE_ID
-    assert b03.landuse_source_table("test_landuse_source") == b03.LANDUSE_SOURCE_ID  # 地域を特定できない名前
-    assert b03.landuse_source_table(_AMAMI_LANDUSE_SOURCE) == b03.LANDUSE_SOURCE_ID
+def test_landuse_source_row_id_rule():
+    # source_table は全地域で LANDUSE_SOURCE_ID（_ingest_landuse が直接書く）。source_row_id だけ地域で変わる
+    assert b03.landuse_source_row_id("test_landuse_source", 3, "area_km2") == "3:area_km2"  # 地域を特定できない名前
     assert b03.landuse_source_row_id("nlni_l03b_landuse_by_watershed", 3, "area_km2") == "3:area_km2"
     assert b03.landuse_source_row_id(_AMAMI_LANDUSE_SOURCE, 3, "area_km2") == f"{_AMAMI_LANDUSE_SOURCE}:3:area_km2"
