@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-10T05:25:10+00:00",
+  "generated_at": "2026-10-10T05:33:53+00:00",
   "generated_by": "scripts/s01_build_sample.py",
   "source_files": {
     "data/db/ryuiki.sqlite": "3ffe2d13e1c88b283e361cb77a72a7439e35061a22422a02323959b4429849b4",
@@ -28,7 +28,7 @@
     "external_resource": 7,
     "external_resource_format": 7,
     "mammal_mesh": 1,
-    "measurements": 39935,
+    "measurements": 40292,
     "organism_records": 3296,
     "protected_areas": 4,
     "protocols": 1,
