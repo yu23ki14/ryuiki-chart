@@ -210,19 +210,22 @@ DEFAULT_REPORT = ROOT / "reports" / "phase_b_fact_slice.md"
 # 確認済み）。manifests/*.yml の sources キー・observation.source_table・
 # variable_alias.csv の dataset（版は edition_key。Issue #39 Phase C）がこの文字列を共有する。
 LANDUSE_SOURCE_ID = "nlni_l03b_landuse_by_watershed"
-# 土地利用の observation.source_table になりうる名前（神奈川は LANDUSE_SOURCE_ID、他の地域は出典名＝CSV の source_id）。
-LANDUSE_SOURCE_TABLES = tuple(
-    collector_regions.name(LANDUSE_SOURCE_ID, rid) for rid in collector_regions.REGIONS
-)
+# 土地利用の observation.source_table は全地域で LANDUSE_SOURCE_ID（dataset は「データセットの種類」で、
+# 気象・水質が表名を地域をまたいで共有するのと同じ。地域は source_id 列で区別し、source_row_id に出典名を前置する）。
+LANDUSE_SOURCE_TABLES = (LANDUSE_SOURCE_ID,)
 
 
 def landuse_source_table(source_id: str) -> str:
-    """土地利用の CSV の1行（`source_id` 列）→ `observation.source_table`。
-    神奈川（および地域を特定できない出典名）は従来どおり `LANDUSE_SOURCE_ID` のまま
-    （source_table/source_row_id を1文字も変えない）。それ以外の地域は出典名にする
-    （CSV ごとに行番号が1から始まるので、同じ名前にすると source_row_id が衝突する）。"""
+    """土地利用の CSV の1行（`source_id` 列）→ `observation.source_table`。全地域で `LANDUSE_SOURCE_ID`。"""
+    return LANDUSE_SOURCE_ID
+
+
+def landuse_source_row_id(source_id: str, row_number: int, suffix: str) -> str:
+    """神奈川（および地域を特定できない出典名）は従来どおり `<行>:<suffix>`。それ以外の地域は CSV ごとに
+    行番号が1から始まり衝突するので、出典名を前置する。"""
     rid = collector_regions.region_of_source_id(source_id)
-    return LANDUSE_SOURCE_ID if rid in (None, "jp-14") else source_id
+    base = f"{row_number}:{suffix}"
+    return base if rid in (None, "jp-14") else f"{source_id}:{base}"
 
 _SAMPLE_LIMIT = 20
 
@@ -887,7 +890,7 @@ def _ingest_landuse(
                         continue
                     period_grain, period_start, period_end = result
 
-                    source_row_id = f"{row_number}:{suffix}"
+                    source_row_id = landuse_source_row_id(source_id, row_number, suffix)
                     stats["n_observation"] += 1
                     yield (
                         source_table, source_row_id, region_id, place_id, place_kind,

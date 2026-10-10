@@ -1162,31 +1162,32 @@ def _build_two_region_landuse(tmp_path):
 
 def test_landuse_reads_several_csvs_and_names_source_table_per_region(tmp_path):
     """神奈川の source_table/source_row_id は変えず（`LANDUSE_SOURCE_ID` のまま、行番号は CSV ごとに1から）、
-    奄美は出典名を source_table にする（行番号が神奈川と衝突しない）。"""
+    奄美は source_table は同じで source_row_id に出典名を前置する（行番号が神奈川と衝突しない）。"""
     out, all_stats = _build_two_region_landuse(tmp_path)
     assert all_stats[b03.LANDUSE_SOURCE_ID]["total"] == len(DEFAULT_LANDUSE_CSV_ROWS) + 2
 
     conn = sqlite3.connect(f"file:{out}?mode=ro", uri=True)
     try:
-        kana = {r[0] for r in conn.execute(
-            "SELECT source_row_id FROM observation WHERE source_table = ?", (b03.LANDUSE_SOURCE_ID,))}
-        amami = {r[0]: (r[1], r[2]) for r in conn.execute(
-            "SELECT source_row_id, region_id, place_id FROM observation WHERE source_table = ?",
-            (_AMAMI_LANDUSE_SOURCE,))}
+        rows = conn.execute("SELECT source_row_id, region_id, place_id FROM observation").fetchall()
         tables = {r[0] for r in conn.execute("SELECT DISTINCT source_table FROM observation")}
     finally:
         conn.close()
+    kana = {r[0] for r in rows if r[1] != "jp-46"}
+    amami = {r[0]: (r[1], r[2]) for r in rows if r[1] == "jp-46"}
     # 神奈川（5行×2）: 行番号は 1:area_km2 … 5:n_cells。奄美を足しても増減しない
     assert kana == {f"{i}:{s}" for i in range(1, 6) for s in ("area_km2", "n_cells")}
-    # 奄美は同じ行番号 1,2 を使うが source_table が別なので衝突しない
+    # 奄美は同じ行番号 1,2 を使うが出典名を前置するので衝突しない
+    p = _AMAMI_LANDUSE_SOURCE
     assert amami == {
-        "1:area_km2": ("jp-46", "place_a1"), "1:n_cells": ("jp-46", "place_a1"),
-        "2:area_km2": ("jp-46", "place_a1"), "2:n_cells": ("jp-46", "place_a1"),
+        f"{p}:1:area_km2": ("jp-46", "place_a1"), f"{p}:1:n_cells": ("jp-46", "place_a1"),
+        f"{p}:2:area_km2": ("jp-46", "place_a1"), f"{p}:2:n_cells": ("jp-46", "place_a1"),
     }
-    assert tables == {b03.LANDUSE_SOURCE_ID, _AMAMI_LANDUSE_SOURCE}
+    assert tables == {b03.LANDUSE_SOURCE_ID}
 
 
 def test_landuse_source_table_rule():
     assert b03.landuse_source_table("nlni_l03b_landuse_by_watershed") == b03.LANDUSE_SOURCE_ID
     assert b03.landuse_source_table("test_landuse_source") == b03.LANDUSE_SOURCE_ID  # 地域を特定できない名前
-    assert b03.landuse_source_table(_AMAMI_LANDUSE_SOURCE) == _AMAMI_LANDUSE_SOURCE
+    assert b03.landuse_source_table(_AMAMI_LANDUSE_SOURCE) == b03.LANDUSE_SOURCE_ID
+    assert b03.landuse_source_row_id("nlni_l03b_landuse_by_watershed", 3, "area_km2") == "3:area_km2"
+    assert b03.landuse_source_row_id(_AMAMI_LANDUSE_SOURCE, 3, "area_km2") == f"{_AMAMI_LANDUSE_SOURCE}:3:area_km2"
