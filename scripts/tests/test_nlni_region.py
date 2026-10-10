@@ -71,3 +71,12 @@ def test_jp46_names_carry_amami_suffix():
 def test_scripts_take_region_and_use_layout(fn):
     src = (SCRIPTS / f"{fn}.py").read_text(encoding="utf-8")
     assert "add_region_arg(" in src and "layout(" in src
+
+
+def test_c62_amami_grid_uses_l03b_land_cells(tmp_path, monkeypatch):
+    import c62_gsi_elevation as c62
+    # 陸セル1枚: 経度 129.3000〜129.30125, 緯度 28.2000〜28.20083 に重心。格子点 (129.30, 28.20) は入り、(129.31, 28.20) は入らない。
+    (tmp_path / "nlni_l03b_landuse_2016_amami.csv").write_text(
+        "centroid_lat,centroid_lon\n28.200417,129.300625\n", encoding="utf-8")
+    monkeypatch.setattr(c62, "PROC", tmp_path)
+    assert c62.land_points([(129.30, 28.20), (129.31, 28.20)], "jp-46") == [(129.30, 28.20)]

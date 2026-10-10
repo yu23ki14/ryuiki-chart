@@ -159,7 +159,6 @@ sources:
   nlni_w05_rivers_amami: {reason: file_only, basis: "data/processed に nlni_w05_rivers_amami.csv がある（D1 の表なし。PR-B で取り込んだら外す）"}
   nlni_w05_river_nodes_amami: {reason: file_only, basis: "data/processed に nlni_w05_river_nodes_amami.csv がある（D1 の表なし。PR-B で取り込んだら外す）"}
   nlni_w12_watersheds_amami: {reason: file_only, basis: "data/processed に nlni_w12_watersheds_amami.csv がある（D1 の表なし。PR-B で取り込んだら外す）"}
-  nlni_w12_watersheds_amami_by_system: {reason: file_only, basis: "data/processed に nlni_w12_watersheds_amami_by_system.csv がある（D1 の表なし。PR-B で取り込んだら外す）"}
   nlni_a10_natparks_amami: {reason: file_only, basis: "data/processed に nlni_a10_natparks_amami.csv がある（D1 の表なし。PR-B で取り込んだら外す）"}
   nlni_a15_wildlife_amami: {reason: file_only, basis: "data/processed に nlni_a15_wildlife_amami.csv がある（D1 の表なし。PR-B で取り込んだら外す）"}
   nlni_a45_forest_amami: {reason: file_only, basis: "data/processed に nlni_a45_forest_amami.csv がある（D1 の表なし。PR-B で取り込んだら外す）"}

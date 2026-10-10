@@ -12,8 +12,8 @@
    登録不要では取得しない（人間の承認なしにアカウント登録はしない）方針のもと
    record_count=0 で登録するのみ。
 
-`--region jp-46`（奄美）: グリッドの範囲は regions.py の bbox、陸域のクリップは奄美の W12
-（data/processed/nlni_w12_watersheds_amami.geojson。先に c30 を回す）の和集合。出力は gsi_elevation_grid_amami.*。
+`--region jp-46`（奄美）: グリッドの範囲は regions.py の bbox、陸域のクリップは L03-b 2016 の陸セル
+（data/processed/nlni_l03b_landuse_2016_amami.csv。先に c34 を回す）。出力は gsi_elevation_grid_amami.*。
 """
 import argparse, sys, json, csv, time, pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -36,6 +36,20 @@ def fetch_elevation(lon, lat):
     return r
 
 
+def land_points(all_pts, rid):
+    """格子点のうち、L03-b 2016（海水域を除いた陸セル。c34 の出力）の100mセルに入るもの。"""
+    import math
+    cells = PROC / f"{layout(rid)['l03b_sid'](2016)}.csv"
+    if not cells.exists():
+        raise SystemExit(f"{cells} が無い。先に c34 --region {rid} を回す")
+    land = set()
+    with open(cells, encoding="utf-8") as f:
+        for r in csv.DictReader(f):
+            land.add((math.floor(float(r["centroid_lon"]) * 800), math.floor(float(r["centroid_lat"]) * 1200)))
+    return [(lo, la) for lo, la in all_pts
+            if (math.floor(lo * 800 + 1e-9), math.floor(la * 1200 + 1e-9)) in land]
+
+
 def build_grid_points(step=0.01, rid="jp-14"):
     """nlni_w12_watersheds.geojson (流域界, 神奈川県全域を覆う) の和集合内に入る
     0.01度グリッド点のみを対象にする。ファイルが無ければ矩形bboxのまま返す。"""
@@ -44,6 +58,11 @@ def build_grid_points(step=0.01, rid="jp-14"):
     lons = [round(float(x), 2) for x in np.arange(lon0, lon1 + 1e-9, step)]
     lats = [round(float(y), 2) for y in np.arange(lat0, lat1 + 1e-9, step)]
     all_pts = [(lo, la) for lo in lons for la in lats]
+
+    if layout(rid)["clip_bbox"] is not None:
+        # 県の一部の地域: W12 は粗く陸の一部しか覆わないので、L03-b 2016 の陸セルに入る点を残す。
+        pts = land_points(all_pts, rid)
+        return pts, True, len(all_pts)
 
     boundary_path = PROC / f"{layout(rid)['w12_sid']}.geojson"
     if not boundary_path.exists():
@@ -143,8 +162,11 @@ def main():
     n_nodata = sum(1 for r in rows if r["elevation_m"] is None)
     notes = (
         f"グリッド間隔=0.01度、bbox内候補点数={grid_total}、"
-        f"data/processed/{L['w12_sid']}.geojson(国土数値情報流域界,他エージェント成果物)の"
-        f"和集合ポリゴンでクリップして陸域相当のみ{len(pts)}点を対象に取得(clipped={clipped})。"
+        + (f"data/processed/{L['w12_sid']}.geojson(国土数値情報流域界,他エージェント成果物)の"
+           f"和集合ポリゴンでクリップして陸域相当のみ{len(pts)}点を対象に取得(clipped={clipped})。"
+           if L["clip_bbox"] is None else
+           f"L03-b 2016（{L['l03b_sid'](2016)}.csv）の陸セルに入る点のみ{len(pts)}点を対象に取得。")
+        +
         f"取得試行{len(rows)}点中no-data(海上等){n_nodata}点はelevation_m=null。"
         "no-dataはAPIレスポンスelevation='-----'を検出して判定。"
     )
