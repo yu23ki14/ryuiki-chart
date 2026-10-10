@@ -59,6 +59,7 @@ REGIONS: dict[str, dict] = {
             ),
         },
         "jma_sst_area_names": (),
+        "jma_sst_label": "",
         # c30: W12 の register notes に足すデータの癖
         "w12_note": ("shapefile 5件(#15,#49,#116,#153,#158)は外環リングを持たず内側リングのみで構成されており、"
                      "pyshp が外環として符号化した（面積は算出済みだが形状の解釈に注意）。"),
@@ -93,6 +94,7 @@ REGIONS: dict[str, dict] = {
         "vg_block_note": "対応は未確認。",
         "osm_extra_notes": {},
         "w12_note": "",
+        "jma_sst_label": "奄美群島",      # 海域617〜620 は群島の沿岸（島名ではない）
         "jma_sst_area_names": ((617, "奄美群島沿岸北西部"), (618, "奄美群島沿岸南西部"),
                                (619, "奄美群島沿岸南東部"), (620, "奄美群島沿岸北東部")),
         "env_water_prefcodes": ("46",),

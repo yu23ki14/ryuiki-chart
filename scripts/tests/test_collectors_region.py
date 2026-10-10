@@ -206,6 +206,19 @@ def test_c15_jp14_does_nothing(monkeypatch, capsys):
     assert "何もしない" in capsys.readouterr().out
 
 
+def test_c15_register_name_keeps_archipelago(monkeypatch):
+    txt = "yyyy,mm,dd,areaNo.,flag,Temp.\n1982,01,01,617,R, 21.65\n"
+
+    class R:
+        text = txt
+    got = []
+    monkeypatch.setattr(c15_jma_sst, "get", lambda *a, **k: R())
+    monkeypatch.setattr(c15_jma_sst, "PROC", pathlib.Path("/nonexistent"))
+    monkeypatch.setattr(c15_jma_sst, "open", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("w")), raising=False)
+    assert regions.get("jp-46")["jma_sst_label"] == "奄美群島"
+    assert "{cfg['jma_sst_label']}" in (SCRIPTS / "c15_jma_sst.py").read_text(encoding="utf-8")
+
+
 def test_c15_parse_area_and_empty_file_aborts(monkeypatch):
     txt = "yyyy,mm,dd,areaNo.,flag,Temp.\n1982,01,01,617,R, 21.65\n2026,10,09,617,P, 27.32\n1982,01,03,617,R,\n"
     names = dict(regions.get("jp-46")["jma_sst_area_names"])

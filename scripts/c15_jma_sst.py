@@ -62,7 +62,7 @@ def main():
     with open(PROC/f"{sid}.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, list(rows[0].keys())); w.writeheader(); w.writerows(rows)
     write_jsonl(sid, rows)
-    register(sid, f"気象庁 沿岸の海面水温（{cfg['label']} 海域{areas[0]}〜{areas[-1]}）",
+    register(sid, f"気象庁 沿岸の海面水温（{cfg['jma_sst_label']} 海域{areas[0]}〜{areas[-1]}）",
              "気象庁", f"{BASE}/engan_KG.html", "海洋", "HTTP GET (CSV)", "CSV/JSONL",
              LICENSE, True, len(rows),
              f"海域={'/'.join(f'{a}:{area_names.get(a)}' for a in areas)} / 日別の海域平均海面水温 "
