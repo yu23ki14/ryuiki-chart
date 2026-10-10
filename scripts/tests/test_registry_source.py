@@ -360,7 +360,8 @@ def test_build_writes_the_three_tables_and_passes_the_reference_checks(reg):
     # 155→156 edition: 2026-10-10 奄美 Step 1 PR-B（土地利用の奄美は 2006/2016 の 2 版を宣言。自動の 1 版が 2 版に）
     # 154→156 source・156→158 edition: 2026-10-10 奄美 Step 2a（kagoshima_redlist・kagoshima_ordinance_species）
     # 156→161 source・158→163 edition: 2026-10-10 奄美 Step 2b（kagoshima_kasen_{suii,suii_kiki,choui,dam,stations}_amami。水位は通常と危機管理型で2出典）
-    assert counts["source"] == 161 and counts["source_edition"] == 163
+    # 161→165 source・163→167 edition: 2026-10-10 奄美 Step 2c（kagoshima_{umigame,noneko,irikomi,habu}_amami。行政文書の表の出典）
+    assert counts["source"] == 165 and counts["source_edition"] == 167
     r01._assert_id_uniqueness(reg)
     r01._assert_id_references(reg)
     assert reg.execute("SELECT count(*) FROM variable_alias WHERE edition_key IS NOT NULL").fetchone()[0] == 92  # 46 + 奄美の複製 46（PR-B）

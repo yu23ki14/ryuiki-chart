@@ -206,3 +206,21 @@ def test_write_replaces_only_own_doc_id(tmp_path, monkeypatch):
     assert con.execute("SELECT count(*) FROM cells WHERE doc_id='kagoshima_habu_kaiage_h28r7'").fetchone()[0] == 204
     assert con.execute("SELECT count(*) FROM notes WHERE doc_id LIKE 'kagoshima_habu%'").fetchone()[0] == 8
     assert con.execute("SELECT count(*) FROM extraction_log").fetchone()[0] == 4
+
+
+def test_verified_by_never_poses_as_human():
+    assert c.verified_by_for("claude(vision)") == "claude(vision)"
+    assert c.verified_by_for("human:山田") == "human:山田"
+    assert c.verified_by_for("山田") == "human:山田"
+
+
+def test_committed_reviews_are_not_labelled_human():
+    """コミット済みの reviewed.csv の3セルは claude(vision) の確認で、verified_by が human: にならない。"""
+    doc = "kagoshima_habu_kaiage_h28r7"
+    b = c.build(doc)
+    reviewed = c.load_reviewed(c.OCR_DIR / doc / "reviewed.csv")
+    assert len(reviewed) == 3 and all(who == "claude(vision)" for _, who, _ in reviewed.values())
+    by = {(r["row_key"], r["col_key"]): r["verified_by"] for r in b["rows"]}
+    for key in reviewed:
+        assert by[key] == "claude(vision)"
+    assert not any((r["verified_by"] or "").startswith("human:") for r in b["rows"])

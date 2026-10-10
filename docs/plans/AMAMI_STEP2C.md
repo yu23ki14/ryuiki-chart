@@ -107,6 +107,7 @@
     - 2つの OCR を突き合わせる。
   - **人が見る印**: 2つの OCR が食い違ったセル、検算が交点で特定したセル、0 と空欄の区別がつかないセルには、`unreadable_reason="ocr_disagree: …"`、`value_raw=NULL` を付けて採用しない。
   - 人の確認は `data/ocr/habu/<doc_id>/reviewed.csv` に書き、`verified_by="human:<名前>"` にする。
+  - **実際の reviewed.csv の3セル（買上）は reviewer=`claude(vision)` で、人の見直しが済んでいない。** `verified_by` は `claude(vision)` のまま（c26 の前例。`human:` は付けない）。人が見直したら reviewer を人の名前に書き換える。
   - `verified_by` は `auto:xocr+arith`、`auto:arith`、`human:*` のどれか。`confidence` は 1.0・0.8・NULL。
 - **受け入れ基準**: ベンチの正解（scratchpad の `pdfbench/image/gt/I1_bite.csv`・`I1_kaiage.csv`）と全部のセルが一致すること。正解のファイルはテストのフィクスチャとしてリポジトリに入れる。
 - **依存**

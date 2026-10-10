@@ -23,6 +23,7 @@ record_sets:
 reasons:
   not_collected: {ja: "未収集（取得手段が未着手、または登録のみ）"}
   blocked_access: {ja: "ログイン・APIキー・利用アンケート・JS 画面などで、自動取得できていない"}
+  document_cells: {ja: "行政文書の表として cells に入れてある（出典の列は無い）。/documents・run_sql・get_records の record_set=documents で読む"}
   pdf_document: {ja: "PDF の文書のまま。表として取り出していない"}
   map_service: {ja: "地図サービス（WebGIS）。値は外部サービス側にある"}
   external_api: {ja: "外部 API・CGI・現況ページ。値は提供元に問い合わせる"}
@@ -88,6 +89,11 @@ sources:
   moni1000_wetland_vegetation: {reason: blocked_access, basis: "source_registry.access_method=利用アンケートフォーム経由でzip取得を試行"}
   resas_api: {reason: blocked_access, basis: "source_registry.access_method=要APIキー登録 (利用登録フォーム経由でAPIキー発行が必須)"}
   snet_kahaku: {reason: blocked_access, basis: "source_registry.access_method=トップページで確認。検索画面はJS駆動のSPA(GETパラメータでの単純検索は不"}
+  # --- 奄美 Step 2c: 行政文書の表（cells.sqlite の documents/cells/notes）。出典単位の get_records は無い ---
+  kagoshima_umigame_amami: {reason: document_cells, basis: "doc_id=kagoshima_umigame_r7（PDF の表、39市町村×上陸・産卵）。cells に入れた"}
+  kagoshima_noneko_amami: {reason: document_cells, basis: "doc_id=kagoshima_noneko_r4（PDF の表、月次と年度別）。cells に入れた"}
+  kagoshima_irikomi_amami: {reason: document_cells, basis: "doc_id=bodik_460001_guntou_irikomi_2024（BODIK の XLSX、奄美群島の暦年値）。cells に入れた"}
+  kagoshima_habu_amami: {reason: document_cells, basis: "doc_id=kagoshima_habu_bite_h28r7・kagoshima_habu_kaiage_h28r7（画像の PDF を OCR）。cells に入れた"}
   # --- 取れない: pdf_document（10 件）---
   biodic_6th_kanagawa_report: {reason: pdf_document, basis: "source_registry.format=PDF"}
   ckan_pdf_choju_higai: {reason: pdf_document, basis: "source_registry.format=PDF"}

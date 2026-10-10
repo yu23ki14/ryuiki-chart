@@ -75,6 +75,8 @@ DwC-Aから除外するようになった（`--include-noncommercial`で無効�
 | kagoshima_kasen_choui_amami | 鹿児島県 河川砂防情報システムデータ（潮位・奄美大島・日別） | 鹿児島県 土木部河川課（BODIK） | 20526 | 1 | CC BY 4.0（BODIK／鹿児島県 土木部河川課。出典明記） | 名瀬の日平均・日最高・日最低。基準面不明 | https://data.bodik.jp/dataset/460001_choui | 含める |
 | kagoshima_kasen_dam_amami | 鹿児島県 河川砂防情報システムデータ（ダム諸量・大和ダム・日別） | 鹿児島県 土木部河川課（BODIK） | 57657 | 1 | CC BY 4.0（BODIK／鹿児島県 土木部河川課。出典明記） | 貯水位・全流入量・全放流量・貯水量・貯水率の日別集約 | https://data.bodik.jp/dataset/460001_dam | 含める |
 | kagoshima_kasen_stations_amami | 鹿児島県 河川砂防情報システム 観測所（奄美大島） | 鹿児島県 土木部河川課（BODIK） | 12 | 1 | 県サイトから事実を抽出（ライセンス表記なし。出典明記）／市町村は国土地理院の逆ジオコーダ | 局名・座標は県の河川砂防情報システム（スマートフォン版）の局定義 js からの事実の抽出。出典明記。市町村は国土地理院の逆ジオコーダ | https://www.pref.kagoshima.jp/ah08/infra/kasen-sabo/sabo/jyouhoushisutemu.html | 含める |
+| kagoshima_noneko_amami | 奄美大島のノネコ捕獲状況（2018〜2022年度、2023年3月末現在） | 環境省 奄美野生生物保護センター | 76 | 1 | 公共データ利用規約（第1.0版）PDL1.0（環境省ホームページコンテンツの利用） | 環境省サイトの PDL1.0。PDF の表の数値を cells（doc_id=kagoshima_noneko_r4）に入れた | https://kyushu.env.go.jp/okinawa/awcc/Wild-dog-Wild-cat.html | 含める |
+| kagoshima_irikomi_amami | 奄美群島入込客・入域客数（海路・空路、2005〜2024年） | 鹿児島県 大島支庁総務企画課（BODIK） | 80 | 1 | CC BY 4.0 | BODIK の CC BY 4.0。奄美群島全体の暦年値（奄美大島だけではない）を cells（doc_id=bodik_460001_guntou_irikomi_2024）に入れた | https://data.bodik.jp/dataset/460001_guntou_irikomi_nyuiki | 含める |
 
 ## 2. 条件付き
 | source_id | 名称 | 提供元 | 行数 | redistributable | ライセンス要旨 | 判定理由 | 根拠URL | 再配布してよいか |
@@ -146,6 +148,8 @@ DwC-Aから除外するようになった（`--include-noncommercial`で無効�
 | snet_kahaku | サイエンスミュージアムネット S-Net（自然史標本横断検索） | 国立科学博物館 | 0 | 0 | 国立科学博物館の利用規約に準拠(要確認) | redistributable=0、record_count=0（重複回避のため未取得） | https://science-net.kahaku.go.jp/ | 含めない |
 | tanzawa_species_list_1997 | 丹沢のビジターセンター 生き物リスト(哺乳類/鳥類/は虫類/両生類/昆虫) | 神奈川県立 秦野ビジターセンター・西丹沢ビジターセンター(公益財団法人神奈川県公園協会) | 324 | 0 | 要確認(ビジターセンター運営元への利用許諾確認が必要) | ★redistributable=0（ビジターセンター運営元への利用許諾確認が必要、要確認ライセンス）。processed HTML由来CSVは既に生成済み(324行)——再配布不可 | https://www.kanagawa-park.or.jp/tanzawavc/ikimono1.html | 含める |
 | ylist | YList 植物和名ー学名インデックス（日本産維管束植物 和名-学名インデックス） | 米倉浩司・梶田忠（琉球大学熱帯生物圏研究センター） | 0 | 0 | ライセンス表示なし（引用形式のみ指定） | redistributable=0、record_count=0。再配布可否の明示なし（引用形式の指定のみ）のため取得せず | http://ylist.info/ | 含めない |
+| kagoshima_umigame_amami | 鹿児島県 ウミガメ上陸・産卵確認状況（市町村別、R7年度版） | 鹿児島県 環境林務部 自然保護課 | 1271 | 0 | 鹿児島県ホームページ（無断転載・改変不可）。事実（数値）のみ抽出し出典を明記 | 4.9 の方針（事実だけ抽出・出典明記・PDF は再配布しない）。cells（doc_id=kagoshima_umigame_r7） | https://www.pref.kagoshima.jp/ad04/kurashi-kankyo/kankyo/yasei/umigame/umigame.html | 含めない |
+| kagoshima_habu_amami | 鹿児島県 ハブ咬傷者数・買上数（奄美、保健所・市町村別、H28〜R7年度） | 鹿児島県 保健福祉部薬務課 | (c98b 実行後) | 0 | 鹿児島県ホームページ（無断転載・改変不可）。事実（数値）のみ抽出し出典を明記 | 4.9 の方針。画像 PDF を OCR 2種＋検算で読んだ cells（doc_id=kagoshima_habu_bite_h28r7・kagoshima_habu_kaiage_h28r7）。人の見直しが済んでいない3セルを含む | https://www.pref.kagoshima.jp/ae10/kenko-fukushi/yakuji-eisei/habu/index.html | 含めない |
 
 ## 4. 特に注意すべき事項（個別記載）
 
@@ -288,6 +292,11 @@ GBIF_ALIASフォールバックは旧名だけが登録されている環境の�
 抽出し（学名の字形を整え、著者名は分けて持つ）、出典 URL（PDF のページ付き）を `source_ref` に残す。`redistributable=0`。
 PDF は `data/raw/kagoshima_redlist_2014/`（gitignore 済み）に置き、再配布しない。登録のライセンス欄は
 「鹿児島県ホームページ（無断転載・改変不可）。事実（種名・カテゴリー）のみ抽出し出典を明記」。県の許諾は取っていない。
+
+**行政文書の表（Step 2c）**: `kagoshima_umigame_amami`（ウミガメ上陸・産卵）と `kagoshima_habu_amami`（ハブ咬傷・買上）は県の PDF の
+**数値という事実だけ**を cells に入れ、出典 URL を documents に残す（`redistributable=0`、PDF は `data/raw/` に置き再配布しない。県の許諾は取っていない）。
+`kagoshima_noneko_amami` は環境省の PDL1.0、`kagoshima_irikomi_amami` は BODIK の CC BY 4.0 で、どちらも `redistributable=1`。
+観光入込は奄美群島全体の値で、奄美大島の値ではない。ハブの reviewed.csv の3セルは claude(vision) の確認で、人の見直しが済んでいない。
 
 **希少種の位置**: GBIF・iNaturalist 等の公開元が丸めた座標を**そのまま使い**、こちらで細かく起こさない。
 ADR-0028 は「こちらから座標を丸めない（一般化しない）」決定であり、「公開元が丸めたものを細かく復元する」ことは別の話で、

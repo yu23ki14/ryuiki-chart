@@ -15,7 +15,7 @@ CI の pytest が JSON のフィクスチャから回す）。OCR 本体は c98_
    その検算の全セルを疑う。疑われたセルは確定を取り消す。
 6. 未確定・疑われたセルは `unreadable_reason="ocr_disagree: …"`、`value_raw=NULL` で入れ、**採用しない**（推測しない）。
    0 と空欄の区別がつかない（一方が空欄、他方が 0）セルも同じ扱い。
-7. verified_by: 一致＋検算が通った = `auto:xocr+arith`（confidence 1.0）／人の確認 = `human:<名前>`（1.0）／
+7. verified_by: 一致＋検算が通った = `auto:xocr+arith`（confidence 1.0）／人の確認 = `human:<名前>`（1.0。reviewer が `claude(vision)` など AI のときは `claude(vision)` のまま。人の見直しは済んでいない）／
    一致したが検算で確かめられない（入る検算が1つも評価できない）= `auto:xocr`（0.8）／未採用 = NULL。
 cells の形は §3d: row_key `名瀬保健所|奄美市名瀬`、計の行と「合計（3月末）」の列は is_total=1、構成比は float・%・
 fiscal_year=NULL、「5(1)」は value=5 のセルと、`…（うち死亡）` という別の行のセル（value=1）、空欄は value=NULL。
@@ -166,6 +166,16 @@ def to_float(s):
     return float(s.rstrip("%"))
 
 
+def verified_by_for(reviewer):
+    """reviewed.csv の reviewer → verified_by。人の確認を装わない:
+    `human:` で始まる名前だけを人とし、`claude(...)` など AI の確認はそのまま書く（c26 の前例: `claude(vision)`）。
+    それ以外の名前（人名）は `human:<名前>`。"""
+    r = reviewer.strip()
+    if r.startswith("human:") or r.lower().startswith("claude"):
+        return r
+    return f"human:{r}"
+
+
 def load_reviewed(path):
     if not path.exists():
         return {}
@@ -314,7 +324,7 @@ def build(doc_id, ocr_dir=OCR_DIR):
                                  unreadable_reason=f"ocr_disagree: {reason}", confidence=None, verified_by=None))
                 continue
             txt = s["text"]
-            by, conf = ("auto:xocr+arith", 1.0) if s["by"] == "agree" else (f"human:{s['reviewer']}", 1.0)
+            by, conf = ("auto:xocr+arith", 1.0) if s["by"] == "agree" else (verified_by_for(s['reviewer']), 1.0)
             if s["by"] == "agree" and not (touching.get(("n", i, j)) or touching.get(("r", i, j))):
                 by, conf = "auto:xocr", 0.8
             if txt == "":
@@ -373,7 +383,7 @@ def write(doc_id, built):
             con, doc_id,
             document=dict(title=spec["title"], publisher="鹿児島県 保健福祉部薬務課", url=spec["url"], local_path=spec["pdf"],
                           doc_sha256=st["pdf_sha256"], n_pages=1, fiscal_year=2025,
-                          license="県のサイト（事実だけ抜き出し、出典を明記）"),
+                          license=LICENSE),
             cells=built["rows"], notes=built["notes"],
             log=[dict(verdict="pass" if not st["unreadable"] else "fail", page_no=1, table_id="p1_t1",
                       failures=built["warnings"],
@@ -387,7 +397,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--doc", choices=["bite", "kaiage"])
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--no-register", action="store_true", help="source_registry に登録しない")
     a = ap.parse_args()
+    total, written = 0, 0
     for doc_id, spec in SPECS.items():
         if a.doc and a.doc != spec["suffix"]:
             continue
@@ -399,6 +411,24 @@ def main():
             print("  警告:", w)
         if not a.dry_run:
             write(doc_id, b)
+            total += st["n_cells"]
+            written += 1
+    if written and not a.dry_run and not a.no_register and not a.doc:
+        register(total)
+
+
+SOURCE_ID = "kagoshima_habu_amami"
+LICENSE = "鹿児島県ホームページ（無断転載・改変不可）。事実（数値）のみ抽出し出典を明記"
+
+
+def register(n_cells):
+    """咬傷・買上の2文書をまとめて1出典として登録（record_count は2文書の cells 行数の合計）。"""
+    common.register(
+        SOURCE_ID, "鹿児島県 ハブ咬傷者数・ハブ買上数（奄美、保健所・市町村別、H28〜R7年度）",
+        "鹿児島県 保健福祉部薬務課", "https://www.pref.kagoshima.jp/ae10/kenko-fukushi/yakuji-eisei/habu/index.html",
+        "野生動物被害(ハブ)", "PDF（画像）→ OCR 2種＋検算 → cells.sqlite", "PDF", LICENSE, False, n_cells,
+        "doc_id=kagoshima_habu_bite_h28r7・kagoshima_habu_kaiage_h28r7。OCR 2種の一致＋検算で採用。"
+        "人の見直しが済んでいない3セル（reviewed.csv、claude(vision) が画像で確認）を含む。PDF は data/raw に置き再配布しない。")
 
 
 if __name__ == "__main__":
