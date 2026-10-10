@@ -358,7 +358,8 @@ def test_build_writes_the_three_tables_and_passes_the_reference_checks(reg):
     # 125→127 source・126→128 edition: 2026-10-10 奄美 Step 0（nlni_c23_coastline・gsi_dem_terrain）の追加
     # 127→154 source・128→155 edition: 2026-10-10 奄美 Step 1 PR-A（奄美の収集 27 件を file_only で登録）
     # 155→156 edition: 2026-10-10 奄美 Step 1 PR-B（土地利用の奄美は 2006/2016 の 2 版を宣言。自動の 1 版が 2 版に）
-    assert counts["source"] == 154 and counts["source_edition"] == 156
+    # 154→156 source・156→158 edition: 2026-10-10 奄美 Step 2a（kagoshima_redlist・kagoshima_ordinance_species）
+    assert counts["source"] == 156 and counts["source_edition"] == 158
     r01._assert_id_uniqueness(reg)
     r01._assert_id_references(reg)
     assert reg.execute("SELECT count(*) FROM variable_alias WHERE edition_key IS NOT NULL").fetchone()[0] == 92  # 46 + 奄美の複製 46（PR-B）
