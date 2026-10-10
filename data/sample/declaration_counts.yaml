@@ -3,20 +3,23 @@
 # 形式・使い方は docs/plans/PHASE_B_RECONCILIATION.md §5 と
 # scripts/migrate/period.py の apply_count_overlay/load_count_overlay_file を参照。
 
+"manifests:gbif_amami_occurrences": 11
 "manifests:gbif_kanagawa_occurrences": 2721
 "manifests:gbif_kanagawa_occurrences.absent_excluded_rows": 7
+"manifests:inaturalist_amami": 10
 "manifests:inaturalist_kanagawa": 554
 "manifests:kanagawa_edna": 13263
 "manifests:kanagawa_kuma_sightings": 400
 "manifests:nlni_l03b_landuse_by_watershed": 4858
+"manifests:nlni_l03b_landuse_by_watershed_amami": 283
 "occurrence_cube_declarations.yaml:leaf_cell_source_rows": 21
-"occurrence_cube_declarations.yaml:month_cell_source_rows": 3203
-"occurrence_cube_declarations.yaml:watershed_dated_resolved_rows": 3062
-"occurrence_cube_declarations.yaml:watershed_dated_unresolved_rows": 185
-"occurrence_period_shapes.yaml:day": 3022
+"occurrence_cube_declarations.yaml:month_cell_source_rows": 3223
+"occurrence_cube_declarations.yaml:watershed_dated_resolved_rows": 3067
+"occurrence_cube_declarations.yaml:watershed_dated_unresolved_rows": 200
+"occurrence_period_shapes.yaml:day": 3041
 "occurrence_period_shapes.yaml:day_interval": 18
 "occurrence_period_shapes.yaml:instant_millisecond_z": 10
-"occurrence_period_shapes.yaml:instant_minute": 49
+"occurrence_period_shapes.yaml:instant_minute": 50
 "occurrence_period_shapes.yaml:instant_minute_z": 10
 "occurrence_period_shapes.yaml:instant_minute_z_interval": 10
 "occurrence_period_shapes.yaml:instant_second": 61
@@ -25,9 +28,10 @@
 "occurrence_period_shapes.yaml:month_interval": 10
 "occurrence_period_shapes.yaml:year": 19
 "occurrence_period_shapes.yaml:year_interval": 11
-"occurrence_place_declarations.yaml:n_watershed_polygons": 377
-"occurrence_place_declarations.yaml:place_id_null_count": 192
-"occurrence_place_declarations.yaml:resolved_count": 3076
+"occurrence_place_declarations.yaml:n_watershed_polygons": 402
+"occurrence_place_declarations.yaml:place_id_null_count": 208
+"occurrence_place_declarations.yaml:resolved_count": 3081
 "period_exceptions.yaml:atsugi_river_water_quality": 3840
 "time_label_conventions.yaml:sagamihara_taiki_hourly": 1500
+"time_label_conventions.yaml:soramame_hourly_amami": 100
 "time_label_conventions.yaml:soramame_hourly_kanagawa": 3700
