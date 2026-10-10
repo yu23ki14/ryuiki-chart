@@ -52,12 +52,28 @@ def test_formats(rid):
 
 def test_jp14_matches_hardcoded_collectors():
     r = rc.REGIONS["jp-14"]
-    assert r["gbif_gadm_gids"] == (_const("c02_gbif.py", r'^GADM = "([^"]+)"'),)
-    assert r["inat_place_ids"] == (int(_const("c03_inaturalist.py", r"^PLACE = (\d+)")),)
-    assert r["jma_stations"][0][0] == int(_const("c10_jma.py", r"^PREC = (\d+)"))
-    assert r["env_water_prefcodes"] == (_const("c12_env_kousui.py", r'^PREF = "(\d+)"'),)
-    meshes = re.findall(r'"(\d{4})"', _const("c34_nlni_l03b.py", r"^MESHES = \(([^)]*)\)"))
-    assert r["l03b_meshes"] == tuple(meshes)
+    # c02/c03 は直書きを消して regions.py を読む（Step 1 I2）。jp-14 の値は元の定数のまま
+    assert r["gbif_gadm_gids"] == ("JPN.19_1",)
+    assert r["inat_place_ids"] == (10918,)
+    for f in ("c02_gbif.py", "c03_inaturalist.py", "c80_biodic_ikimonomap.py", "c65_osm_overpass.py"):
+        assert "import regions as rc" in _src(f), f
+    # c10/c11/c12 は直書きを消し、regions.py を読む（値の一致は test_collectors_region.py が固定）
+    assert 'cfg["jma_stations"]' in _src("c10_jma.py")
+    assert 'cfg["env_water_prefcodes"]' in _src("c12_env_kousui.py")
+    assert 'cfg["soramame_stations"]' in _src("c11_soramame.py")
+    # c34 は直書きをやめて regions.py を読む（layout() 経由）。jp-14 の値は test_collectors_region.py が固定している。
+    assert 'MESHES = L["l03b_meshes"]' in _src("c34_nlni_l03b.py")
+
+
+@pytest.mark.parametrize("rid", sorted(rc.REGIONS))
+def test_l03b_meshes_cover_bbox(rid):
+    """l03b_meshes は bbox の四隅が入る1次メッシュ（緯度×1.5 の整数部2桁＋経度-100 の整数部2桁）を全て含む。"""
+    import math
+    x0, y0, x1, y1 = rc.REGIONS[rid]["bbox"]
+    want = {f"{math.floor(la * 1.5)}{math.floor(lo) - 100}"
+            for la in (y0, y1) for lo in (x0, x1)}
+    got = set(rc.REGIONS[rid]["l03b_meshes"])
+    assert want <= got, f"{rid}: bbox が掛かる1次メッシュ {sorted(want - got)} が l03b_meshes に無い"
 
 
 def test_jp46_counts():
@@ -66,5 +82,67 @@ def test_jp46_counts():
     assert len(r["gbif_gadm_gids"]) == 5
     assert len(r["inat_place_ids"]) == 5
     assert len(r["jma_stations"]) == 3
-    assert r["l03b_meshes"] == ("4229",)
+    assert r["l03b_meshes"] == ("4129", "4229", "4329")
     assert len(set(r["gbif_gadm_gids"])) == 5 and len(set(r["inat_place_ids"])) == 5
+
+
+def test_name_rules():
+    assert rc.name("gbif_kanagawa_occurrences", "jp-14") == "gbif_kanagawa_occurrences"
+    assert rc.name("gbif_kanagawa_occurrences", "jp-46") == "gbif_amami_occurrences"
+    assert rc.name("jma_monthly_kanagawa", "jp-46") == "jma_monthly_amami"
+    assert rc.name("nlni_w12_watersheds", "jp-14") == "nlni_w12_watersheds"
+    assert rc.name("nlni_w12_watersheds", "jp-46") == "nlni_w12_watersheds_amami"
+
+
+def test_get_and_arg():
+    import argparse
+    assert rc.get("jp-46") is rc.REGIONS["jp-46"]
+    p = argparse.ArgumentParser()
+    rc.add_region_arg(p)
+    assert p.parse_args([]).region == "jp-14"
+    assert p.parse_args(["--region", "jp-46"]).region == "jp-46"
+    with pytest.raises(SystemExit):
+        p.parse_args(["--region", "jp-99"])
+
+
+@pytest.mark.parametrize("rid", sorted(rc.REGIONS))
+def test_slug_bbox_stations(rid):
+    r = rc.REGIONS[rid]
+    assert re.fullmatch(r"[a-z]+", r["slug"])
+    x0, y0, x1, y1 = r["bbox"]
+    assert x0 < x1 and y0 < y1
+    assert isinstance(r["soramame_stations"], tuple) and isinstance(r["jma_sst_areas"], tuple)
+    for code, nm in r["soramame_stations"]:
+        assert code.startswith(r["pref_code"]) and re.fullmatch(r"\d{8}", code) and nm
+    assert all(isinstance(a, int) for a in r["jma_sst_areas"])
+    assert tuple(a for a, _ in r["jma_sst_area_names"]) == r["jma_sst_areas"]
+
+
+def test_jp14_values_match_hardcoded():
+    r = rc.REGIONS["jp-14"]
+    assert r["jma_sst_areas"] == () and r["jma_sst_area_names"] == ()
+
+
+def test_amami_bbox_excludes_neighbours_and_holds_c23():
+    x0, y0, x1, y1 = rc.REGIONS["jp-46"]["bbox"]
+    assert x1 < 129.9  # 喜界島は東経129.9度以東、徳之島の北端は北緯27.9度付近
+    assert y0 > 27.9
+    import json
+    p = SCRIPTS.parent / "data" / "processed" / "nlni_c23_coastline.geojson"
+    if not p.exists():
+        pytest.skip("C23 が無い")
+
+    def pts(c):
+        if isinstance(c[0], (int, float)):
+            yield c
+        else:
+            for d in c:
+                yield from pts(d)
+    n = 0
+    for f in json.loads(p.read_text(encoding="utf-8"))["features"]:
+        if f["properties"]["prefecture_code"] != "46":
+            continue
+        for x, y in (q[:2] for q in pts(f["geometry"]["coordinates"])):
+            assert x0 <= x <= x1 and y0 <= y <= y1
+            n += 1
+    assert n

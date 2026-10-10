@@ -110,7 +110,7 @@ sources:
   geospatial_jp_pointcloud_kanagawa: {reason: catalog_only, basis: "source_registry.category=地形・森林資源目録"}
   # --- 取れない: license（1 件）---
   ylist: {reason: license, basis: "source_registry.access_method=「未取得（利用条件が不明のため）」"}
-  # --- 取れない: file_only（47 件）---
+  # --- 取れない: file_only（44 件）---
   ayu_upstream_migration: {reason: file_only, basis: "data/processed に ayu_upstream_migration.csv がある（D1 の表なし）"}
   biodic_vegcode_legend: {reason: file_only, basis: "data/processed に biodic_vegcode_veg_*.csv がある（record_count=1247。D1 の表なし）"}
   biodic_vegmesh_4th_kanagawa: {reason: file_only, basis: "data/processed に biodic_vegmesh_4th_kanagawa.csv がある（D1 の表なし）"}
@@ -155,6 +155,34 @@ sources:
   tanzawa_species_list_1997: {reason: file_only, basis: "data/processed に tanzawa_species_list_1997.csv がある（D1 の表なし）"}
   tanzawa_visitor_centers: {reason: file_only, basis: "data/processed に tanzawa_visitor_centers.csv がある（D1 の表なし）"}
   yokohama_bio_indicator: {reason: file_only, basis: "data/processed に yokohama_bio_indicator.csv がある（D1 の表なし）"}
+  # --- 奄美 Step 1（PR-A。PR-B で取り込んだら外す）--- file_only 27 件
+  nlni_w05_rivers_amami: {reason: file_only, basis: "data/processed に nlni_w05_rivers_amami.csv がある（D1 の表なし。PR-B で取り込んだら外す）"}
+  nlni_w05_river_nodes_amami: {reason: file_only, basis: "data/processed に nlni_w05_river_nodes_amami.csv がある（D1 の表なし。PR-B で取り込んだら外す）"}
+  nlni_w12_watersheds_amami: {reason: file_only, basis: "data/processed に nlni_w12_watersheds_amami.csv がある（D1 の表なし。PR-B で取り込んだら外す）"}
+  nlni_a10_natparks_amami: {reason: file_only, basis: "data/processed に nlni_a10_natparks_amami.csv がある（D1 の表なし。PR-B で取り込んだら外す）"}
+  nlni_a15_wildlife_amami: {reason: file_only, basis: "data/processed に nlni_a15_wildlife_amami.csv がある（D1 の表なし。PR-B で取り込んだら外す）"}
+  nlni_a45_forest_amami: {reason: file_only, basis: "data/processed に nlni_a45_forest_amami.csv がある（D1 の表なし。PR-B で取り込んだら外す）"}
+  nlni_l03b_landuse_2016_amami: {reason: file_only, basis: "data/processed に nlni_l03b_landuse_2016_amami.csv がある（D1 の表なし。PR-B で取り込んだら外す）"}
+  nlni_l03b_landuse_2006_amami: {reason: file_only, basis: "data/processed に nlni_l03b_landuse_2006_amami.csv がある（D1 の表なし。PR-B で取り込んだら外す）"}
+  nlni_l03b_landuse_by_watershed_amami: {reason: file_only, basis: "data/processed に nlni_l03b_landuse_by_watershed_amami.csv がある（D1 の表なし。PR-B で取り込んだら外す）"}
+  gsi_elevation_grid_amami: {reason: file_only, basis: "data/processed に gsi_elevation_grid_amami.csv がある（D1 の表なし。PR-B で取り込んだら外す）"}
+  biodic_mammal_mesh_amami: {reason: file_only, basis: "data/processed に biodic_mammal_mesh_amami.csv がある（奄美 Step 1。D1 の表なし。PR-B で取り込んだら外す）"}
+  biodic_veg2024_amami: {reason: file_only, basis: "data/processed に biodic_veg2024_amami.csv がある（奄美 Step 1。D1 の表なし。PR-B で取り込んだら外す）"}
+  gbif_amami_occurrences: {reason: file_only, basis: "data/processed に gbif_amami_occurrences.jsonl がある（奄美 Step 1。D1 の表なし。PR-B で取り込んだら外す）"}
+  inaturalist_amami: {reason: file_only, basis: "data/processed に inaturalist_amami.jsonl がある（奄美 Step 1。D1 の表なし。PR-B で取り込んだら外す）"}
+  osm_amami_farmland: {reason: file_only, basis: "data/processed に osm_amami_farmland.csv がある（奄美 Step 1。D1 の表なし。PR-B で取り込んだら外す）"}
+  osm_amami_forest: {reason: file_only, basis: "data/processed に osm_amami_forest.csv がある（奄美 Step 1。D1 の表なし。PR-B で取り込んだら外す）"}
+  osm_amami_protected_area: {reason: file_only, basis: "data/processed に osm_amami_protected_area.csv がある（奄美 Step 1。D1 の表なし。PR-B で取り込んだら外す）"}
+  osm_amami_water: {reason: file_only, basis: "data/processed に osm_amami_water.csv がある（奄美 Step 1。D1 の表なし。PR-B で取り込んだら外す）"}
+  jma_stations_amami: {reason: file_only, basis: "data/processed に jma_stations_amami.csv がある（観測地点3: 名瀬・笠利・古仁屋。D1 の表なし。PR-B で取り込む）"}
+  jma_monthly_amami: {reason: file_only, basis: "data/processed に jma_monthly_amami.csv がある（月別値 6,277 行。D1 の表なし。PR-B で取り込む）"}
+  jma_daily_nase: {reason: file_only, basis: "data/processed に jma_daily_nase.csv がある（名瀬の日別値 20,496 行。D1 の表なし。PR-B で取り込む）"}
+  env_kousui_stations_amami: {reason: file_only, basis: "data/processed に env_kousui_stations_amami.csv がある（25 地点。D1 の表なし。PR-B で取り込む）"}
+  env_kousui_annual_amami: {reason: file_only, basis: "data/processed に env_kousui_annual_amami.csv がある（年間値 2,521 行。D1 の表なし。PR-B で取り込む）"}
+  env_kousui_sample_amami: {reason: file_only, basis: "data/processed に env_kousui_sample_amami.csv がある（検体値 1,380 行。D1 の表なし。PR-B で取り込む）"}
+  soramame_stations_amami: {reason: file_only, basis: "data/processed に soramame_stations_amami.csv がある（1 局。D1 の表なし。PR-B で取り込む）"}
+  soramame_hourly_amami: {reason: file_only, basis: "data/processed に soramame_hourly_amami.csv がある（1時間値 17,697 行。D1 の表なし。PR-B で取り込む）"}
+  jma_sst_amami: {reason: file_only, basis: "data/processed に jma_sst_amami.csv がある（海域617〜620の日別 65,412 行。D1 の表なし。PR-B で取り込む）"}
   # --- 取れない: superseded（1 件）---
   gbif_kanagawa: {reason: superseded, basis: "editions.yaml の source_declarations で superseded_by=gbif_kanagawa_occurrences", note: "gbif_kanagawa_occurrences に置き換わった。値はそちらで取る"}
   # --- 取れない: synthetic（1 件）---

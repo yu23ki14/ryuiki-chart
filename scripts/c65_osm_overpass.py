@@ -17,10 +17,12 @@ import collections, csv, json, sys, time, pathlib
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from common import get, register, write_jsonl, PROC, RAW, now
+import regions as rc
 
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
-RAW_DIR = RAW / "osm_kanagawa"
-RAW_DIR.mkdir(parents=True, exist_ok=True)
+# 地域別の設定。configure(rid) が1か所で組み立て、定義の後の呼び出しで既定の jp-14 にする
+# （jp-14 のパス・source_id・クエリは据え置き）。
+REGION = RAW_DIR = None
 
 ODBL_LICENSE = (
     "ODbL 1.0（Share-Alike/帰属表示の継承条件あり、詳細: "
@@ -34,27 +36,17 @@ ODBL_NOTE = (
     "https://www.openstreetmap.org/copyright および https://opendatacommons.org/licenses/odbl/1-0/ 参照。"
 )
 
-# カテゴリ固有の注意書き（データ利用者向け）
-EXTRA_NOTES = {
-    "protected_area": (
-        "注意: 神奈川県内でleisure=nature_reserve/boundary=protected_areaが付与されたOSM地物は17件のみで、"
-        "実在の保護区（自然環境保全地域・鳥獣保護区等）を網羅していない。OSMのタグ付与状況に依存するため、"
-        "保護区の網羅的分析には国土数値情報等の公的データを使うこと。"
-    ),
-}
-
 CATEGORIES = {
     "water": {
         "source_id": "osm_kanagawa_water",
         "name": "OSM 神奈川県 水系（水域・河川）",
         "query": """
 [out:json][timeout:120];
-area["ISO3166-2"="JP-14"]->.a;
-(
-  way["natural"="water"](area.a);
-  relation["natural"="water"](area.a);
-  way["waterway"="river"](area.a);
-  way["waterway"="stream"](area.a);
+{AREA_DECL}(
+  way["natural"="water"]({AREA});
+  relation["natural"="water"]({AREA});
+  way["waterway"="river"]({AREA});
+  way["waterway"="stream"]({AREA});
 );
 out tags center;
 """,
@@ -64,12 +56,11 @@ out tags center;
         "name": "OSM 神奈川県 森林（landuse=forest, natural=wood）",
         "query": """
 [out:json][timeout:120];
-area["ISO3166-2"="JP-14"]->.a;
-(
-  way["landuse"="forest"](area.a);
-  relation["landuse"="forest"](area.a);
-  way["natural"="wood"](area.a);
-  relation["natural"="wood"](area.a);
+{AREA_DECL}(
+  way["landuse"="forest"]({AREA});
+  relation["landuse"="forest"]({AREA});
+  way["natural"="wood"]({AREA});
+  relation["natural"="wood"]({AREA});
 );
 out tags center;
 """,
@@ -79,12 +70,11 @@ out tags center;
         "name": "OSM 神奈川県 農地（landuse=farmland, meadow）",
         "query": """
 [out:json][timeout:120];
-area["ISO3166-2"="JP-14"]->.a;
-(
-  way["landuse"="farmland"](area.a);
-  relation["landuse"="farmland"](area.a);
-  way["landuse"="meadow"](area.a);
-  relation["landuse"="meadow"](area.a);
+{AREA_DECL}(
+  way["landuse"="farmland"]({AREA});
+  relation["landuse"="farmland"]({AREA});
+  way["landuse"="meadow"]({AREA});
+  relation["landuse"="meadow"]({AREA});
 );
 out tags center;
 """,
@@ -94,18 +84,48 @@ out tags center;
         "name": "OSM 神奈川県 保護区（nature_reserve, protected_area）",
         "query": """
 [out:json][timeout:120];
-area["ISO3166-2"="JP-14"]->.a;
-(
-  node["leisure"="nature_reserve"](area.a);
-  way["leisure"="nature_reserve"](area.a);
-  relation["leisure"="nature_reserve"](area.a);
-  way["boundary"="protected_area"](area.a);
-  relation["boundary"="protected_area"](area.a);
+{AREA_DECL}(
+  node["leisure"="nature_reserve"]({AREA});
+  way["leisure"="nature_reserve"]({AREA});
+  relation["leisure"="nature_reserve"]({AREA});
+  way["boundary"="protected_area"]({AREA});
+  relation["boundary"="protected_area"]({AREA});
 );
 out tags center;
 """,
     },
 }
+
+
+def area_clause(rid):
+    """(AREA_DECL, AREA)。県全域の地域は ISO3166-2 の area（神奈川はクエリを変えない）。
+    県の一部の地域（clip_bbox がある）は bbox を Overpass の (S,W,N,E) で指定する。"""
+    bbox = rc.clip_bbox(rid)
+    if bbox is None:
+        return f'area["ISO3166-2"="JP-{rc.get(rid)["pref_code"]}"]->.a;\n', "area.a"
+    x0, y0, x1, y1 = bbox
+    return "", f"{y0},{x0},{y1},{x1}"
+
+
+def render_cfg(cat_key, rid):
+    """カテゴリ設定を地域用に組み立てる（source_id・名前・クエリ）。"""
+    cfg = CATEGORIES[cat_key]
+    decl, area = area_clause(rid)
+    return {
+        "source_id": rc.name(cfg["source_id"], rid),
+        "name": cfg["name"].replace("神奈川県", rc.get(rid)["name_ja"]),
+        "query": cfg["query"].format(AREA_DECL=decl, AREA=area),
+    }
+
+
+def configure(rid):
+    global REGION, RAW_DIR
+    REGION = rid
+    RAW_DIR = RAW / rc.name("osm_kanagawa", rid)
+    RAW_DIR.mkdir(parents=True, exist_ok=True)
+
+
+configure("jp-14")
 
 
 def run_query(cat_key, cfg):
@@ -179,7 +199,7 @@ def build_rows(cat_key, cfg, elements):
 
 
 def write_outputs(cat_key, rows):
-    out_name = f"osm_kanagawa_{cat_key}"
+    out_name = rc.name(f"osm_kanagawa_{cat_key}", REGION)
     csv_path = PROC / f"{out_name}.csv"
     cols = ["source_id", "source_ref", "osm_type", "osm_id", "name_ja", "tags_json", "lat", "lon"]
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
@@ -192,10 +212,14 @@ def write_outputs(cat_key, rows):
     return csv_path
 
 
-def main():
+def main(argv=None):
+    import argparse
+    ap = argparse.ArgumentParser()
+    rc.add_region_arg(ap)
+    configure(ap.parse_args(argv).region)
     keys = list(CATEGORIES.keys())
     for i, cat_key in enumerate(keys):
-        cfg = CATEGORIES[cat_key]
+        cfg = render_cfg(cat_key, REGION)
         result = run_query(cat_key, cfg)
         if result is not None:
             elements, raw_path, osm_ts = result
@@ -206,10 +230,10 @@ def main():
                 f"OSMデータ基準時刻(timestamp_osm_base)={osm_ts}。要素内訳: {dict(types)}。"
                 f"代表点座標のみ保存（way/relationはOverpassの'out center'出力=境界ボックス中心であり、"
                 f"ポリゴン重心でも面積でもない）。ジオメトリ全体（全頂点）は未保存。"
-                f"生データ: data/raw/osm_kanagawa/{raw_path.name}。"
+                f"生データ: data/raw/{RAW_DIR.name}/{raw_path.name}。"
                 f"OSMはボランティア編集のため地物の網羅性・タグ付与は地域差があり、"
                 f"取得時点のスナップショットであって時系列比較には使えない。"
-                + (" " + EXTRA_NOTES[cat_key] if cat_key in EXTRA_NOTES else "")
+                + (" " + rc.get(REGION)["osm_extra_notes"][cat_key] if cat_key in rc.get(REGION)["osm_extra_notes"] else "")
                 + " " + ODBL_NOTE
             )
             register(

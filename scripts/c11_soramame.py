@@ -5,26 +5,37 @@
     ※ Target_YM は直近13ヶ月のみ有効（それ以前は HTTP 400 パラメータ不正）
 出力: 縦持ち long
 """
-import sys, io, csv, json, zipfile, datetime, pathlib
+import sys, io, csv, json, zipfile, datetime, pathlib, argparse
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from common import *
+import regions
 import pandas as pd
 import requests
 
-SID_ST = "soramame_stations_kanagawa"
-SID_TS = "soramame_hourly_kanagawa"
-RAWD = RAW/"soramame"; RAWD.mkdir(parents=True, exist_ok=True)
-PREF = "14"   # 神奈川県
+# 地域依存の定数。値は regions.py。set_region(rid) が1か所で組み立て、直後の呼び出しで既定の jp-14 にする
+# （jp-14 の名前は scripts/tests/test_collectors_region.py で固定）。main() が --region で呼び直す。
 LICENSE = ("環境省 そらまめ君 利用規約（出典明示による利用可 / 速報値・確定値は国立環境研究所 "
            "環境数値データベース）https://soramame.env.go.jp/policy")
+RID = SID_ST = SID_TS = RAWD = PREF = LABEL = TARGET_STATIONS = ONLY_TARGETS = None
 
-# 流域デモ用に選定した測定局（相模川上流〜下流 / 酒匂川 / 鶴見川 / 境川）
-TARGET_STATIONS = {
-    "14209050": "津久井（相模川上流・城山ダム下流）",
-    "14401010": "愛川町角田（中津川・相模川中流）",
-    "14321010": "寒川町役場（相模川下流）",
-    "14206010": "小田原市役所（酒匂川下流）",
-}
+
+def set_region(rid):
+    global RID, SID_ST, SID_TS, RAWD, PREF, LABEL, TARGET_STATIONS, ONLY_TARGETS
+    RID = rid
+    cfg = regions.get(rid)
+    SID_ST = regions.name("soramame_stations_kanagawa", rid)
+    SID_TS = regions.name("soramame_hourly_kanagawa", rid)
+    RAWD = RAW/regions.name("soramame", rid); RAWD.mkdir(parents=True, exist_ok=True)
+    PREF = cfg["pref_code"]
+    LABEL = cfg["label"]
+    # 流域デモ用に選定した測定局（局コード -> 名称）
+    TARGET_STATIONS = dict(cfg["soramame_stations"])
+    # 県の一部の地域は、県全体の局マスタから対象局だけ残す（県全域の地域は従来どおり県全局）
+    ONLY_TARGETS = regions.clip_bbox(rid) is not None
+
+
+set_region("jp-14")
+
 # 縦持ちにする測定項目（列名 -> (variable, unit)）
 ITEMS = {
     "SO2(ppm)":     ("so2", "ppm"),
@@ -45,6 +56,8 @@ def fetch_station_master(t):
     (RAWD/"existence.csv").write_text(r.text, encoding="utf-8")
     df = pd.read_csv(io.StringIO(r.text), dtype=str)
     df = df[df["都道府県コード"] == PREF].copy()
+    if ONLY_TARGETS:
+        df = df[df["測定局コード"].isin(TARGET_STATIONS)].copy()
     rows = []
     for _, x in df.iterrows():
         rows.append({
@@ -89,6 +102,8 @@ def download_month(ym, codes):
     return dest
 
 def main():
+    ap = argparse.ArgumentParser(); regions.add_region_arg(ap)
+    set_region(ap.parse_args().region)
     latest, md = latest_hour()
     print(f"  soramame latest={md['latest']} oldest={md['oldest']}")
     stations, murl = fetch_station_master(latest)
@@ -96,7 +111,7 @@ def main():
     with open(PROC/f"{SID_ST}.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, hdr); w.writeheader(); w.writerows(stations)
     write_jsonl(SID_ST, stations)
-    register(SID_ST, "環境省 そらまめ君 測定局マスタ（神奈川県）", "環境省",
+    register(SID_ST, f"環境省 そらまめ君 測定局マスタ（{LABEL}）", "環境省",
              "https://soramame.env.go.jp/", "大気", "HTTP GET (CSV)", "CSV/JSONL",
              LICENSE, True, len(stations),
              "existence CSV（測定項目有無つき）。緯度経度は そらまめ君 公開CSVに含まれないため NULL。")
@@ -141,13 +156,13 @@ def main():
     if rows:
         pd.DataFrame(rows).to_csv(PROC/f"{SID_TS}.csv", index=False, encoding="utf-8")
         write_jsonl(SID_TS, rows)
-    register(SID_TS, "環境省 そらまめ君 1時間値（神奈川県 流域デモ4局）", "環境省",
+    register(SID_TS, f"環境省 そらまめ君 1時間値（{LABEL} 流域デモ{len(TARGET_STATIONS)}局）", "環境省",
              "https://soramame.env.go.jp/download", "大気",
              "HTTP POST /soramame/download (ZIP of SJIS CSV)", "CSV/JSONL",
              LICENSE, True, len(rows),
              f"局={'/'.join(TARGET_STATIONS.values())} / 期間={months[0]}-{months[-1]}（API は直近13ヶ月のみ）"
              " / source_ref は ZIP 内 CSV 名#日時。取得元 URL は "
-             "https://soramame.env.go.jp/soramame/download?DL_KBN=3&Target_YM=<YYYYMM>&TDFKN_CD=14&SKT_CD=<局コード>"
+             f"https://soramame.env.go.jp/soramame/download?DL_KBN=3&Target_YM=<YYYYMM>&TDFKN_CD={PREF}&SKT_CD=<局コード>"
              + (f" / 取得失敗={fails}" if fails else "")
              + " / 注記(原文): 「確定値のデータについては、国立環境研究所 環境数値データベースから入手してください。」"
                "→ 本データは速報値であり確定値と一致しない場合がある。")

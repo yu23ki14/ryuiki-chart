@@ -1,13 +1,96 @@
 """国土数値情報(MLIT) 共通ユーティリティ: ダウンロードページ解析 / shapefile→GeoJSON / 面積計算"""
 import csv, html, json, re, sys, pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from common import PROC, RAW, ROOT
+from common import PROC, RAW, ROOT, download
+import regions
 
 from pyproj import Geod
 from shapely.geometry import shape as shp_shape
 from shapely.ops import unary_union
 
 GEOD = Geod(ellps="WGS84")
+
+# W05 河川は県ごとに版が違う（神奈川は W05-08＝平成20年、鹿児島は W05-07＝平成19年しか無い）。
+W05_EDITION = {"14": ("08", "平成20年"), "46": ("07", "平成19年")}
+
+
+def layout(rid):
+    """国土数値情報の c スクリプト群（c30〜c35・c62）が使う出力名・source_id・raw パス・URL。
+
+    jp-14 は従来の直書きと1文字も変わらない（scripts/tests/test_nlni_region.py が固定）。
+    他の地域は regions.name() で `_<slug>` を付ける。ネットワークにも disk にも触れない。
+    """
+    reg = regions.get(rid)
+    pref = reg["pref_code"]
+    def nm(base):
+        return regions.name(base, rid)
+
+    w05_ed, w05_yr = W05_EDITION[pref]
+    w05_dir = nm("nlni_w05_rivers")
+    w05_stem = f"W05-{w05_ed}_{pref}-g"
+    w12_sid = nm("nlni_w12_watersheds")
+
+    def l03b_sid(year):
+        return nm(f"nlni_l03b_landuse_{year}")
+
+    return {
+        "rid": rid, "pref": pref, "pref_name_ja": reg["pref_name_ja"],
+        "pref_short": reg["pref_name_ja"].removesuffix("県"),
+        "name_ja": reg["name_ja"],
+        # 県全域でない地域（muni_codes がある）は bbox に絞る。県全域の jp-14 は絞らない。
+        "clip_bbox": regions.clip_bbox(rid),
+        "bbox": reg["bbox"],
+        # W05
+        "w05_sid": w05_dir, "w05_nodes_sid": nm("nlni_w05_river_nodes"), "w05_dir": RAW / w05_dir,
+        "w05_year_ja": w05_yr, "w05_edition": w05_ed,
+        "w05_year_note": re.sub(r"(\d+)", lambda m: f"{m.group(1)}({1988 + int(m.group(1))})", w05_yr),
+        "w05_zip_url": f"https://nlftp.mlit.go.jp/ksj/gml/data/W05/W05-{w05_ed}/W05-{w05_ed}_{pref}_GML.zip",
+        "w05_stream_shp": RAW / w05_dir / f"{w05_stem}_Stream.shp",
+        "w05_node_shp": RAW / w05_dir / f"{w05_stem}_RiverNode.shp",
+        "w05_stream_stem": f"{w05_stem}_Stream", "w05_node_stem": f"{w05_stem}_RiverNode",
+        # W12
+        "w12_sid": w12_sid, "w12_note": reg["w12_note"],
+        "w12_zip_url": f"https://nlftp.mlit.go.jp/ksj/gmlold/data/W12/W12-52A/W12-52A-{pref}-01.0a_GML.zip",
+        "w12_dir": RAW / w12_sid,
+        "w12_shp": RAW / w12_sid / f"W12-52A-2K-{pref}_WatershedBoundary.shp",
+        # A10 / A15 / A45
+        "a10_sid": nm("nlni_a10_natparks"),
+        "a10_zip_url": f"https://nlftp.mlit.go.jp/ksj/gml/data/A10/A10-15/A10-15_{pref}_GML.zip",
+        "a15_sid": nm("nlni_a15_wildlife"),
+        "a15_zip_url": f"https://nlftp.mlit.go.jp/ksj/jpgis/data/A15/A15-09/A15-09_{pref}.zip",
+        "a15_xml": RAW / nm("nlni_a15_wildlife") / f"A15-09_{pref}" / f"A15-09_{pref}.xml",
+        "a45_sid": nm("nlni_a45_forest"),
+        "a45_zip_url": f"https://nlftp.mlit.go.jp/ksj/gml/data/A45/A45-19/A45-19_{pref}_GML.zip",
+        # L03-b
+        "l03b_dir": RAW / nm("nlni_l03b_landuse"),
+        "l03b_meshes": reg["l03b_meshes"],
+        "l03b_sid": l03b_sid,
+        "l03b_by_ws_sid": nm("nlni_l03b_landuse_by_watershed"),
+        # 標高
+        "elev_sid": nm("gsi_elevation_grid"),
+    }
+
+
+def ensure_extracted(url, zip_path, out_dir, probe, subdir=None):
+    """`probe`（out_dir 直下のファイル名）が無ければ zip を取って平らに展開する（zip-slip 防止）。
+    subdir があればその下に展開する。取得済みなら何もしない。"""
+    import zipfile
+    dest = out_dir / subdir if subdir else out_dir
+    if (dest / probe).exists():
+        return dest
+    download(url, zip_path)
+    dest.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(zip_path) as z:
+        for n in z.namelist():
+            fn = pathlib.PurePosixPath(n).name
+            if fn:
+                (dest / fn).write_bytes(z.read(n))
+    return dest
+
+
+def bbox_geom(bbox):
+    from shapely.geometry import box
+    return box(*bbox)
 
 LICENSE_OPEN = ("国土数値情報利用約款（出典明示で商用利用・再配布可）"
                 " https://nlftp.mlit.go.jp/ksj/other/agreement.html")
@@ -163,40 +246,54 @@ def write_csv(source_id, rows, fieldnames=None):
     return p
 
 
-# ---- W12 単位流域の割り当て（流域単位で束ねるための共通処理） ----
-_W12 = None
-
-
-def w12_index():
-    """W12 神奈川県 単位流域の STRtree を返す -> (tree, ids, codes, names)"""
-    global _W12
-    if _W12 is not None:
-        return _W12
-    import csv as _csv
-    import shapely
-    r, fields, recs, _ = read_shp(RAW / "nlni_w12_watersheds"
-                                  / "W12-52A-2K-14_WatershedBoundary.shp")
-    geoms, ids, codes = [], [], []
-    for sh, rc in zip(r.shapes(), recs):
-        g = shp_shape(sh.__geo_interface__)
+def read_w12(shp, clip_bbox=None):
+    """W12 の shapefile を読み、clip_bbox（None なら絞らない）に掛かる面だけを返す。c30 と w12_index が共有する。
+    -> (fields, dbf の文字コード, 全面数, [(元の通し番号, 元の GeoJSON ジオメトリ, 検証済みジオメトリ, レコード)])"""
+    r, fields, recs, enc = read_shp(shp)
+    clip = bbox_geom(clip_bbox) if clip_bbox else None
+    items = []
+    for i, (sh, rec) in enumerate(zip(r.shapes(), recs)):
+        gj = sh.__geo_interface__
+        g = shp_shape(gj)
         if not g.is_valid:
             g = g.buffer(0)
-        geoms.append(g); ids.append(f"{rc[1]}-{rc[2]}"); codes.append(rc[1])
+        if clip is not None and not g.intersects(clip):
+            continue
+        items.append((i, gj, g, rec))
+    return fields, enc, len(recs), items
+
+
+# ---- W12 単位流域の割り当て（流域単位で束ねるための共通処理） ----
+_W12 = {}
+
+
+def w12_index(rid="jp-14"):
+    """W12 単位流域の STRtree を返す -> (tree, ids, codes, names)。地域ごとに1回だけ作る。
+    県全域でない地域は、c30 と同じ bbox の絞り込みを掛ける（c30 の出力と流域IDが一致する）。"""
+    if rid in _W12:
+        return _W12[rid]
+    import csv as _csv
+    import shapely
+    L = layout(rid)
+    _, _, _, items = read_w12(L["w12_shp"], L["clip_bbox"])
+    geoms = [g for _, _, g, _ in items]
+    ids = [f"{rc[1]}-{rc[2]}" for _, _, _, rc in items]
+    codes = [rc[1] for _, _, _, rc in items]
     names = {}
-    p = PROC / "nlni_w12_watersheds.csv"
+    p = PROC / f"{L['w12_sid']}.csv"
     if p.exists():
         for row in _csv.DictReader(open(p, encoding="utf-8")):
             names[row["watershed_id"]] = row["water_system_name_ja_estimated"] or None
-    _W12 = (shapely.STRtree(geoms), ids, codes, names)
-    return _W12
+    _W12[rid] = (shapely.STRtree(geoms), ids, codes, names)
+    return _W12[rid]
 
 
-def assign_watershed(geom):
+def assign_watershed(geom, rid="jp-14"):
     """ジオメトリの重心が入る W12 単位流域を返す。
     -> dict(watershed_id, water_system_code_old, water_system_name_ja_estimated, watershed_join_method)
     """
     import shapely
-    tree, ids, codes, names = w12_index()
+    tree, ids, codes, names = w12_index(rid)
     c = geom.centroid
     pt = shapely.points(c.x, c.y)
     hit = tree.query(pt, predicate="within")
@@ -209,4 +306,4 @@ def assign_watershed(geom):
                 "watershed_join_method": "重心がW12流域界の外 → 未割当"}
     return {"watershed_id": ids[wid], "water_system_code_old": codes[wid],
             "water_system_name_ja_estimated": names.get(ids[wid]),
-            "watershed_join_method": "重心点がW12単位流域(神奈川,昭和52年)に内包"}
+            "watershed_join_method": f"重心点がW12単位流域({layout(rid)['pref_short']},昭和52年)に内包"}
