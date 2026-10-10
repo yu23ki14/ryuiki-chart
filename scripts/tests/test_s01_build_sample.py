@@ -15,6 +15,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
+import pipeline_inputs  # noqa: E402
 import s01_build_sample as s01  # noqa: E402
 
 
@@ -114,7 +115,7 @@ def test_apply_quality_transitions_closure_pulls_in_referenced_measurements():
 
 _EMPTY_GEOJSON = '{"type": "FeatureCollection", "features": []}'
 
-# `build_declaration_counts` の既定引数 `landuse_csv_path=DEFAULT_LANDUSE_CSV`
+# `build_declaration_counts` の既定引数 `landuse_csv_path=DEFAULT_LANDUSE_CSV`（地域ごとの {出典名: パス}）
 # は正規のパス（`data/processed/nlni_l03b_landuse_by_watershed.csv`）を指す。
 # 原本の無い環境（CI の `reconcile` ジョブ）では実在しないため、`geojson_path`
 # と同じく、このテスト専用の一時ファイルを明示的に渡す（実測で FileNotFoundError
@@ -189,11 +190,13 @@ def test_end_to_end_determinism_on_fixture_db(tmp_path):
 
     # --processed-dir は tmp_path なので、そこに W12 相当のフィクスチャを置く
     # （0件の organism_records でも build_declaration_counts が読みに行くため）。
-    (tmp_path / "nlni_w12_watersheds.geojson").write_text(_EMPTY_GEOJSON, encoding="utf-8")
+    # 地域ごとの W12（pipeline_inputs.W12_PROCESSED_FILES。全地域ぶん）
+    for name in pipeline_inputs.W12_PROCESSED_FILES:
+        (tmp_path / name).write_text(_EMPTY_GEOJSON if name.endswith(".geojson") else "dummy", encoding="utf-8")
     # manifest.json の source_files（pipeline_inputs.SOURCE_FILE_KEYS）は
-    # data/processed の6ファイルすべての実在を要求するので、残り5つもダミーで置く。
+    # data/processed の入力すべての実在を要求するので、残りもダミーで置く（土地利用 CSV は地域ごと）。
     for name in (
-        "nlni_w12_watersheds.jsonl", "nlni_l03b_landuse_by_watershed.csv",
+        *pipeline_inputs.LANDUSE_PROCESSED_FILES,
         "moe_ias_list.csv", "taxon_crosswalk.csv", "taxon_gbif_accepted.csv", "terrain_points.csv",
     ):
         (tmp_path / name).write_text("dummy", encoding="utf-8")
@@ -748,3 +751,12 @@ def test_place_sites_stop_when_no_input_row_exists():
     access = {"record_sets": {"sites": "place"}, "sources": {"nothere": {"records": ["sites"]}}}
     with pytest.raises(SystemExit, match="nothere"):
         s01.select_declared_source_rows(_place_input_db(), access, {})
+
+
+def test_landuse_and_w12_paths_cover_every_region(tmp_path):
+    assert set(s01.landuse_csv_paths(tmp_path)) == {
+        "nlni_l03b_landuse_by_watershed", "nlni_l03b_landuse_by_watershed_amami",
+    }
+    assert [p.name for p in s01.w12_geojson_paths(tmp_path)] == [
+        "nlni_w12_watersheds.geojson", "nlni_w12_watersheds_amami.geojson",
+    ]

@@ -1213,8 +1213,11 @@ def check_v2_cube_fresh(conn: sqlite3.Connection) -> list[str]:
 V2_RYUIKI_TABLES = ("measurements", "sensor_timeseries", "organism_records", "sites")
 
 # v2 パイプラインが実際に読み取る data/processed の入力（b03: 土地利用CSV、
-# b09: 流域 GeoJSON）。
-V2_PROCESSED_FILES = ("nlni_w12_watersheds.geojson", "nlni_l03b_landuse_by_watershed.csv")
+# b09: 流域 GeoJSON）。地域ごとのファイルは全地域ぶん（pipeline_inputs の命名規則。神奈川の指紋のキーは従来のまま）。
+V2_PROCESSED_FILES = (
+    *(n for n in pipeline_inputs.W12_PROCESSED_FILES if n.endswith(".geojson")),
+    *pipeline_inputs.LANDUSE_PROCESSED_FILES,
+)
 
 # v2 パイプラインの6段（`scripts/` 直下、モジュール名で import する）。
 # `b13_build_summary`（Issue #48 PR-2）は `observation_agg` から summary 2表を
