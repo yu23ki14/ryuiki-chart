@@ -542,8 +542,8 @@ variables:
     higher_is_worse: null
     description_ja: null
     status: ok
-  - variable_id: common:variable:hydro.reservoir_fill_rate
-    code: hydro.reservoir_fill_rate
+  - variable_id: common:variable:hydro.reservoir_fill_rate_flood_control
+    code: hydro.reservoir_fill_rate_flood_control
     name_ja: null
     name_en: null
     theme: hydro
@@ -551,7 +551,18 @@ variables:
     value_type: num
     default_stat: "mean"
     higher_is_worse: null
-    description_ja: "ダムの貯水率（利水容量・治水容量の別は系列名に付く）。原表記は0.1%単位の整数"
+    description_ja: "ダムの治水容量に対する貯水率。原表記は0.1%単位の整数"
+    status: ok
+  - variable_id: common:variable:hydro.reservoir_fill_rate_water_use
+    code: hydro.reservoir_fill_rate_water_use
+    name_ja: null
+    name_en: null
+    theme: hydro
+    unit_id: common:unit:0_1percent
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: null
+    description_ja: "ダムの利水容量に対する貯水率。原表記は0.1%単位の整数"
     status: ok
   - variable_id: common:variable:hydro.reservoir_inflow
     code: hydro.reservoir_inflow

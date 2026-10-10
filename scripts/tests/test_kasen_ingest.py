@@ -43,7 +43,7 @@ def test_m02_sources_and_missing_files_are_skipped(tmp_path, monkeypatch):
     for n in ("jma_daily_yokohama", "jma_monthly_kanagawa", "soramame_hourly_kanagawa", "sagamihara_taiki_hourly"):
         jl(tmp_path / f"{n}.jsonl", [])
     jl(tmp_path / "kagoshima_kasen_suii_amami.jsonl",
-       [row("suii_kiki_139", "kagoshima_kasen_suii_amami", "危機管理型水位_日最高")])
+       [row("suii_kiki_139", "kagoshima_kasen_suii_amami", "水位_日最高_cm")])
     jl(tmp_path / "kagoshima_kasen_choui_amami.jsonl",
        [row("choui_4", "kagoshima_kasen_choui_amami", "潮位_日平均")])
     # dam の jsonl は無い -> 飛ばす
@@ -52,7 +52,7 @@ def test_m02_sources_and_missing_files_are_skipped(tmp_path, monkeypatch):
     m02.load_sensor_timeseries(conn)
     assert sorted(conn.execute("SELECT site_id, datastream, source_id FROM sensor_timeseries")) == [
         (f"{SRC}__choui_4", "潮位_日平均", "kagoshima_kasen_choui_amami"),
-        (f"{SRC}__suii_kiki_139", "危機管理型水位_日最高", "kagoshima_kasen_suii_amami"),
+        (f"{SRC}__suii_kiki_139", "水位_日最高_cm", "kagoshima_kasen_suii_amami"),
     ]
 
 

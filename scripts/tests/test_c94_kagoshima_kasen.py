@@ -88,7 +88,7 @@ def test_suii_daily_max_min_missing_counts_and_negative_kept():
     assert bad[("suii_kiki_139", "other:abc")] == 1
     rows = c94.daily_rows(samples, "suii", "kagoshima_kasen_suii_amami", (2024, 2024), {"suii_kiki_139": "第2屋仁橋"})
     d1 = {r["variable"]: r["value"] for r in rows if r["station_id"] == "suii_kiki_139" and r["datetime"] == "2024-01-01"}
-    assert d1 == {"危機管理型水位_日最高": 25.0, "危機管理型水位_日最低": -3.0}
+    assert d1 == {"水位_日最高_cm": 25.0, "水位_日最低_cm": -3.0}
     assert all(r["unit"] == "cm" for r in rows)
     # 他県の局（列 ID 200）は出ない
     assert {r["station_id"] for r in rows} == {"suii_kiki_139", "suii_kiki_144"}

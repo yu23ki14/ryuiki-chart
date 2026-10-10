@@ -49,8 +49,8 @@ MISSING = {"***": "障害・欠測(***)", "---": "休止・該当なし(---)", "
 
 # 出力する系列: (BODIK の列名, 集約, variable)
 # 危機管理型水位計（station_id が suii_kiki_*）と、県の通常の水位局（suii_<ID>。奄美は 181〜187）で variable を分ける
-SUII_VARS = [("max", "危機管理型水位_日最高"), ("min", "危機管理型水位_日最低")]
-SUII_VARS_NORMAL = [("max", "通常水位_日最高"), ("min", "通常水位_日最低")]
+SUII_VARS = [("max", "水位_日最高_cm"), ("min", "水位_日最低_cm")]
+SUII_VARS_NORMAL = [("max", "水位_日最高_cm"), ("min", "水位_日最低_cm")]
 CHOUI_VARS = [("mean", "潮位_日平均"), ("max", "潮位_日最高"), ("min", "潮位_日最低")]
 DAM_COLS = {  # 列名 -> [(集約, variable, unit)]
     "貯水位": [("mean", "貯水位_日平均"), ("min", "貯水位_日最低")],
