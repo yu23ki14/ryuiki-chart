@@ -33,12 +33,12 @@ import sys, json, csv, time, pathlib, threading, collections
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 import common
 from common import PROC, LOGS, RAW, register, now
+import regions as rc
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 B = "https://api.gbif.org/v1/occurrence/search"
 DATASET_API = "https://api.gbif.org/v1/dataset/{}"
-GADM = "JPN.19_1"
 UA = ("ryuiki-demo-datacollector/0.1 (Code for Japan; watershed monitoring demo; "
       "contact: yuki.kawabe@code4japan.org)")
 SAFE_MAX = 10000        # 実測でこれ未満なら offset は高速域
@@ -58,12 +58,36 @@ CSV_COLS = ["key","scientificName","taxonKey","kingdom","class","order","family"
   "eventDate","year","decimalLatitude","decimalLongitude","coordinateUncertaintyInMeters",
   "basisOfRecord","individualCount","institutionCode","datasetKey","license","issues"]
 
-OUT_JSONL = PROC/"gbif_kanagawa_occurrences.jsonl"
-OUT_CSV = PROC/"gbif_kanagawa_occurrences.csv"
-PROGRESS = LOGS/"gbif_progress.json"
-PARTITION_REPORT = LOGS/"gbif_partition_report.csv"
-SUMMARY_DATASET = PROC/"gbif_kanagawa_summary_by_dataset.csv"
-CHECKLIST = PROC/"gbif_kanagawa_species_checklist.csv"
+# 地域別の設定。configure(rid) が書き換える（既定は jp-14。jp-14 の出力名・進捗パス・クエリは据え置き）。
+# GADM は regions.py の gbif_gadm_gids。1つなら文字列（従来と同じクエリ）、複数なら gadmGid を繰り返す（OR）。
+REGION = None
+GADMS = ()
+GADM = ""          # 表示用（複数なら "+" で連結）
+GADM_PARAM = ""    # API の gadmGid 値
+SOURCE_ID = ""
+AREA_JA = ""
+OUT_JSONL = OUT_CSV = PROGRESS = PARTITION_REPORT = SUMMARY_DATASET = CHECKLIST = None
+
+
+def configure(rid):
+    global REGION, GADMS, GADM, GADM_PARAM, SOURCE_ID, AREA_JA
+    global OUT_JSONL, OUT_CSV, PROGRESS, PARTITION_REPORT, SUMMARY_DATASET, CHECKLIST
+    r = rc.get(rid)
+    REGION = rid
+    GADMS = r["gbif_gadm_gids"]
+    GADM = "+".join(GADMS)
+    GADM_PARAM = GADMS[0] if len(GADMS) == 1 else list(GADMS)
+    AREA_JA = r["name_ja"]
+    SOURCE_ID = rc.name("gbif_kanagawa_occurrences", rid)
+    OUT_JSONL = PROC/f"{SOURCE_ID}.jsonl"
+    OUT_CSV = PROC/f"{SOURCE_ID}.csv"
+    PROGRESS = LOGS/f"{rc.name('gbif_progress', rid)}.json"
+    PARTITION_REPORT = LOGS/f"{rc.name('gbif_partition_report', rid)}.csv"
+    SUMMARY_DATASET = PROC/f"{rc.name('gbif_kanagawa_summary_by_dataset', rid)}.csv"
+    CHECKLIST = PROC/f"{rc.name('gbif_kanagawa_species_checklist', rid)}.csv"
+
+
+configure("jp-14")
 
 session = requests.Session()
 _req_lock = threading.Lock()
@@ -116,7 +140,7 @@ def add_gap(scope, dim, expect_total, sum_children):
                                  "note": "検索APIに『フィールド欠損』を問い合わせる手段がなく分離取得不可(ダウンロードAPI要アカウントのため未使用)"})
 
 def build_dataset_leaves(dk, c):
-    base = {"gadmGid": GADM, "datasetKey": dk}
+    base = {"gadmGid": GADM_PARAM, "datasetKey": dk}
     if c <= SAFE_MAX:
         return [{"params": base, "expect": c, "label": f"datasetKey={dk}"}]
     leaves = []
@@ -142,7 +166,7 @@ def build_dataset_leaves(dk, c):
     return leaves
 
 def build_all_leaves():
-    ds_counts = facet_of({"gadmGid": GADM}, "datasetKey", 500)
+    ds_counts = facet_of({"gadmGid": GADM_PARAM}, "datasetKey", 500)
     total_via_ds = sum(ds_counts.values())
     print(f"  [partition] datasetKey facet: {len(ds_counts)} datasets, sum={total_via_ds}", flush=True)
     leaves = []
@@ -176,7 +200,7 @@ def fetch_leaf(leaf):
 
 def main():
     t0 = time.time()
-    total_expect = throttled_get({"gadmGid": GADM, "limit": 0})["count"]
+    total_expect = throttled_get({"gadmGid": GADM_PARAM, "limit": 0})["count"]
     print(f"expect {total_expect} records total (gadmGid={GADM})", flush=True)
 
     leaves, ds_counts, total_via_ds = build_all_leaves()
@@ -184,7 +208,7 @@ def main():
           f"(datasetKey-facet sum={total_via_ds}, vs count={total_expect}, "
           f"diff={total_expect-total_via_ds})", flush=True)
     if total_expect != total_via_ds:
-        add_gap("gadmGid=JPN.19_1 (top level)", "datasetKey", total_expect, total_via_ds)
+        add_gap(f"gadmGid={GADM} (top level)", "datasetKey", total_expect, total_via_ds)
 
     # ---- resume: 既存の progress / jsonl を読み込む ----
     seen = set()
@@ -280,6 +304,10 @@ def main():
     return n, total_expect, ds_counts
 
 if __name__ == "__main__":
+    import argparse
+    _ap = argparse.ArgumentParser()
+    rc.add_region_arg(_ap)
+    configure(_ap.parse_args().region)
     n, total_expect, ds_counts = main()
 
     # ---------------------------------------------------------- 3. CSV 出力
@@ -388,8 +416,8 @@ if __name__ == "__main__":
     # 失敗し GBIF由来レコード全件がDwC-A/配布パッケージから除外されてしまう
     # （実際に本タスクで発覚した不整合。docs/LICENSE_MATRIX.md 4.5 参照）。
     # 実データ側の名称に registry 側を合わせる方針で "gbif_kanagawa_occurrences" に統一する。
-    register("gbif_kanagawa_occurrences", "GBIF Occurrence — 神奈川県 (GADM JPN.19_1)", "GBIF",
-             f"https://www.gbif.org/occurrence/search?gadm_gid={GADM}", "生物出現記録",
+    register(SOURCE_ID, f"GBIF Occurrence — {AREA_JA} (GADM {GADM})", "GBIF",
+             "https://www.gbif.org/occurrence/search?" + "&".join(f"gadm_gid={g}" for g in GADMS), "生物出現記録",
              "REST API (occurrence/search, datasetKey/year/month/day で分割)", "JSONL/CSV",
              "各データセット個別 (CC0/CC BY/CC BY-NC が混在。license列に保持)",
              True, n, f"expect={total_expect}, got={n}, diff={total_expect-n} "

@@ -1,13 +1,15 @@
-"""iNaturalist: 神奈川県(place_id=10918) の観察記録。casual grade 含む市民科学データ"""
+"""iNaturalist: 神奈川県(place_id=10918) の観察記録。casual grade 含む市民科学データ。
+`--region` で regions.py の inat_place_ids（複数なら place ごとに取って id で重複除去）を使う。"""
 import sys, json, time, pathlib; sys.path.insert(0, str(pathlib.Path(__file__).parent))
+import argparse
 import common
 from common import *
+import regions as rc
 common.MIN_INTERVAL = 1.1   # iNat は 60 req/min 推奨
 
 B = "https://api.inaturalist.org/v1/observations"
-PLACE = 10918
 
-def flat(o):
+def flat(o, source_id="inaturalist_kanagawa"):
     t = o.get("taxon") or {}
     anc = {r: None for r in ("kingdom","phylum","class","order","family","genus")}
     for a in (t.get("ancestors") or []):
@@ -36,28 +38,44 @@ def flat(o):
       "license_code": o.get("license_code"),
       "user_login": (o.get("user") or {}).get("login"),
       "captive": o.get("captive"),
-      "source_id": "inaturalist_kanagawa",
+      "source_id": source_id,
       "source_ref": f"https://www.inaturalist.org/observations/{o.get('id')}",
     }
 
-# id_above 方式でページング（per_page*page の1万件上限を回避）
-out, above, n = PROC/"inaturalist_kanagawa.jsonl", 0, 0
-t0 = time.time()
-with open(out, "w", encoding="utf-8") as f:
-    while True:
-        j = get_json(B, params={"place_id": PLACE, "per_page": 200,
-                                "order_by": "id", "order": "asc", "id_above": above})
-        res = j.get("results", [])
-        if not res: break
-        for o in res:
-            f.write(json.dumps(flat(o), ensure_ascii=False)+"\n"); n += 1
-        above = res[-1]["id"]
-        if n % 4000 == 0:
-            print(f"  {n} obs (id_above={above}, {time.time()-t0:.0f}s)", flush=True)
-        if n >= 400000: print("  safety cap"); break
-print(f"wrote {n} observations")
-register("inaturalist_kanagawa", "iNaturalist 観察記録 — 神奈川県 (place 10918)",
-         "iNaturalist", f"https://www.inaturalist.org/observations?place_id={PLACE}",
-         "市民科学 生物観察", "REST API v1", "JSONL",
-         "観察ごとに個別 (CC0/CC BY/CC BY-NC/全権利留保。license_code列に保持)",
-         True, n, "casual+needs_id+research 全grade。obscured/geoprivacy 列あり")
+def main(argv=None):
+    ap = argparse.ArgumentParser()
+    rc.add_region_arg(ap)
+    rid = ap.parse_args(argv).region
+    r = rc.get(rid)
+    places = r["inat_place_ids"]
+    sid = rc.name("inaturalist_kanagawa", rid)
+    seen = set()
+    out, n = PROC/f"{sid}.jsonl", 0
+    t0 = time.time()
+    with open(out, "w", encoding="utf-8") as f:
+        for place in places:
+            above = 0
+            while True:
+                j = get_json(B, params={"place_id": place, "per_page": 200,
+                                        "order_by": "id", "order": "asc", "id_above": above})
+                res = j.get("results", [])
+                if not res: break
+                for o in res:
+                    if o.get("id") in seen: continue
+                    seen.add(o.get("id"))
+                    f.write(json.dumps(flat(o, sid), ensure_ascii=False)+"\n"); n += 1
+                above = res[-1]["id"]
+                if n % 4000 == 0:
+                    print(f"  {n} obs (place={place}, id_above={above}, {time.time()-t0:.0f}s)", flush=True)
+                if n >= 400000: print("  safety cap"); break
+    print(f"wrote {n} observations")
+    place_label = " + ".join(str(p) for p in places)
+    register(sid, f"iNaturalist 観察記録 — {r['name_ja']} (place {place_label})",
+             "iNaturalist", "https://www.inaturalist.org/observations?" + "&".join(f"place_id={p}" for p in places),
+             "市民科学 生物観察", "REST API v1", "JSONL",
+             "観察ごとに個別 (CC0/CC BY/CC BY-NC/全権利留保。license_code列に保持)",
+             True, n, "casual+needs_id+research 全grade。obscured/geoprivacy 列あり")
+
+
+if __name__ == "__main__":
+    main()
