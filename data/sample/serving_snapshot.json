@@ -338,6 +338,15 @@
 {"key":["jma_stations_kanagawa__jma_1096"],"numeric":{"n_meas":0,"n_var":0},"label":{}},
 {"key":["jma_stations_kanagawa__jma_1443"],"numeric":{"n_meas":0,"n_var":0},"label":{}},
 {"key":["jma_stations_kanagawa__jma_47670"],"numeric":{"n_meas":0,"n_var":0},"label":{}},
+{"key":["kagoshima_kasen_stations_amami__choui_4"],"numeric":{"n_meas":0,"n_var":0},"label":{}},
+{"key":["kagoshima_kasen_stations_amami__dam_2"],"numeric":{"n_meas":0,"n_var":0},"label":{}},
+{"key":["kagoshima_kasen_stations_amami__suii_181"],"numeric":{"n_meas":0,"n_var":0},"label":{}},
+{"key":["kagoshima_kasen_stations_amami__suii_182"],"numeric":{"n_meas":0,"n_var":0},"label":{}},
+{"key":["kagoshima_kasen_stations_amami__suii_183"],"numeric":{"n_meas":0,"n_var":0},"label":{}},
+{"key":["kagoshima_kasen_stations_amami__suii_184"],"numeric":{"n_meas":0,"n_var":0},"label":{}},
+{"key":["kagoshima_kasen_stations_amami__suii_185"],"numeric":{"n_meas":0,"n_var":0},"label":{}},
+{"key":["kagoshima_kasen_stations_amami__suii_186"],"numeric":{"n_meas":0,"n_var":0},"label":{}},
+{"key":["kagoshima_kasen_stations_amami__suii_187"],"numeric":{"n_meas":0,"n_var":0},"label":{}},
 {"key":["moni1000_sites__kn3522139"],"numeric":{"n_meas":0,"n_var":0},"label":{}},
 {"key":["moni1000_sites__kn352213963"],"numeric":{"n_meas":0,"n_var":0},"label":{}},
 {"key":["moni1000_sites__kn352213966"],"numeric":{"n_meas":0,"n_var":0},"label":{}},
@@ -415,7 +424,7 @@
 {"key":["鶴見川下流"],"numeric":{"n_sites":5,"n_meas":667,"y_from":2005,"y_to":2025,"elev_min":1.7,"elev_max":8,"zone_min":4,"zone_max":5},"label":{}}
 ]}
 ]},
-{"id": "sites_in_water_body", "n_domain": 25, "runs": [
+{"id": "sites_in_water_body", "n_domain": 26, "runs": [
 {"params": {"water":"丹沢湖"}, "rows": [
 {"key":["env_kousui_stations_kanagawa__kousui_1420050"],"numeric":{"n_meas":140,"n_var":1},"label":{"municipality":"丹沢湖"}},
 {"key":["env_kousui_stations_kanagawa__kousui_1420060"],"numeric":{"n_meas":60,"n_var":1},"label":{"municipality":"丹沢湖"}},
@@ -433,17 +442,23 @@
 {"key":["env_kousui_stations_amami__kousui_4631530"],"numeric":{"n_meas":120,"n_var":3},"label":{"municipality":"奄美大島本島海域"}},
 {"key":["env_kousui_stations_amami__kousui_4631630"],"numeric":{"n_meas":171,"n_var":4},"label":{"municipality":"奄美大島本島海域"}}
 ]},
-{"params": {"water":"早川"}, "rows": [
-{"key":["env_kousui_stations_kanagawa__kousui_1410580"],"numeric":{"n_meas":248,"n_var":1},"label":{"municipality":"早川"}},
-{"key":["env_kousui_stations_kanagawa__kousui_1410590"],"numeric":{"n_meas":92,"n_var":1},"label":{"municipality":"早川"}}
+{"params": {"water":"引地川"}, "rows": [
+{"key":["env_kousui_stations_kanagawa__kousui_1410380"],"numeric":{"n_meas":221,"n_var":1},"label":{"municipality":"引地川"}},
+{"key":["env_kousui_stations_kanagawa__kousui_1410390"],"numeric":{"n_meas":222,"n_var":1},"label":{"municipality":"引地川"}},
+{"key":["env_kousui_stations_kanagawa__kousui_1410400"],"numeric":{"n_meas":221,"n_var":1},"label":{"municipality":"引地川"}},
+{"key":["env_kousui_stations_kanagawa__kousui_1411720"],"numeric":{"n_meas":188,"n_var":1},"label":{"municipality":"引地川"}}
 ]},
-{"params": {"water":"東京湾（１６）"}, "rows": [
-{"key":["env_kousui_stations_kanagawa__kousui_1430180"],"numeric":{"n_meas":40,"n_var":1},"label":{"municipality":"東京湾（１６）"}},
-{"key":["env_kousui_stations_kanagawa__kousui_1430190"],"numeric":{"n_meas":40,"n_var":1},"label":{"municipality":"東京湾（１６）"}}
+{"params": {"water":"東京湾（１２）"}, "rows": [
+{"key":["env_kousui_stations_kanagawa__kousui_1430100"],"numeric":{"n_meas":140,"n_var":1},"label":{"municipality":"東京湾（１２）"}},
+{"key":["env_kousui_stations_kanagawa__kousui_1430110"],"numeric":{"n_meas":140,"n_var":1},"label":{"municipality":"東京湾（１２）"}},
+{"key":["env_kousui_stations_kanagawa__kousui_1430120"],"numeric":{"n_meas":100,"n_var":1},"label":{"municipality":"東京湾（１２）"}},
+{"key":["env_kousui_stations_kanagawa__kousui_1430130"],"numeric":{"n_meas":100,"n_var":1},"label":{"municipality":"東京湾（１２）"}},
+{"key":["env_kousui_stations_kanagawa__kousui_1430140"],"numeric":{"n_meas":100,"n_var":1},"label":{"municipality":"東京湾（１２）"}}
 ]},
-{"params": {"water":"森戸川（小田原市）"}, "rows": [
-{"key":["env_kousui_stations_kanagawa__kousui_1410470"],"numeric":{"n_meas":248,"n_var":1},"label":{"municipality":"森戸川（小田原市）"}},
-{"key":["env_kousui_stations_kanagawa__kousui_1410480"],"numeric":{"n_meas":248,"n_var":1},"label":{"municipality":"森戸川（小田原市）"}}
+{"params": {"water":"東京湾（１７）"}, "rows": [
+{"key":["env_kousui_stations_kanagawa__kousui_1430200"],"numeric":{"n_meas":40,"n_var":1},"label":{"municipality":"東京湾（１７）"}},
+{"key":["env_kousui_stations_kanagawa__kousui_1430210"],"numeric":{"n_meas":40,"n_var":1},"label":{"municipality":"東京湾（１７）"}},
+{"key":["env_kousui_stations_kanagawa__kousui_1430440"],"numeric":{"n_meas":40,"n_var":1},"label":{"municipality":"東京湾（１７）"}}
 ]},
 {"params": {"water":"相模川上流（２）"}, "rows": [
 {"key":["env_kousui_stations_kanagawa__kousui_1410740"],"numeric":{"n_meas":5,"n_var":1},"label":{"municipality":"相模川上流（２）"}},
@@ -465,11 +480,13 @@
 {"key":["env_kousui_stations_kanagawa__kousui_1420150"],"numeric":{"n_meas":135,"n_var":2},"label":{"municipality":"相模湖"}},
 {"key":["env_kousui_stations_kanagawa__kousui_1420200"],"numeric":{"n_meas":171,"n_var":2},"label":{"municipality":"相模湖"}}
 ]},
-{"params": {"water":"芦ノ湖"}, "rows": [
-{"key":["env_kousui_stations_kanagawa__kousui_1420010"],"numeric":{"n_meas":60,"n_var":1},"label":{"municipality":"芦ノ湖"}},
-{"key":["env_kousui_stations_kanagawa__kousui_1420020"],"numeric":{"n_meas":60,"n_var":1},"label":{"municipality":"芦ノ湖"}},
-{"key":["env_kousui_stations_kanagawa__kousui_1420030"],"numeric":{"n_meas":60,"n_var":1},"label":{"municipality":"芦ノ湖"}},
-{"key":["env_kousui_stations_kanagawa__kousui_1420040"],"numeric":{"n_meas":60,"n_var":1},"label":{"municipality":"芦ノ湖"}}
+{"params": {"water":"相模湾（２）"}, "rows": [
+{"key":["env_kousui_stations_kanagawa__kousui_1430260"],"numeric":{"n_meas":39,"n_var":1},"label":{"municipality":"相模湾（２）"}},
+{"key":["env_kousui_stations_kanagawa__kousui_1430270"],"numeric":{"n_meas":39,"n_var":1},"label":{"municipality":"相模湾（２）"}},
+{"key":["env_kousui_stations_kanagawa__kousui_1430280"],"numeric":{"n_meas":48,"n_var":2},"label":{"municipality":"相模湾（２）"}},
+{"key":["env_kousui_stations_kanagawa__kousui_1430290"],"numeric":{"n_meas":48,"n_var":2},"label":{"municipality":"相模湾（２）"}},
+{"key":["env_kousui_stations_kanagawa__kousui_1430320"],"numeric":{"n_meas":9,"n_var":1},"label":{"municipality":"相模湾（２）"}},
+{"key":["env_kousui_stations_kanagawa__kousui_1430360"],"numeric":{"n_meas":9,"n_var":1},"label":{"municipality":"相模湾（２）"}}
 ]},
 {"params": {"water":"金目川下流"}, "rows": [
 {"key":["env_kousui_stations_kanagawa__kousui_1410410"],"numeric":{"n_meas":92,"n_var":1},"label":{"municipality":"金目川下流"}},
@@ -5019,25 +5036,25 @@
 {"key":["89599-0004"],"numeric":{"org_n":0,"org_alien_n":0,"org_redlist_n":0,"site_n":0,"area_km2":5.591754,"centroid_lat":28.427074,"centroid_lon":129.541449,"built_km2_2006":0.045234,"built_km2_2016":0.056543,"forest_km2_2006":4.569382,"forest_km2_2016":5.259308,"paddy_km2_2006":0.237475,"paddy_km2_2016":0.1357},"label":{"water_system_name":"芦花部川"}},
 {"key":["89599-0005"],"numeric":{"org_n":0,"org_alien_n":0,"org_redlist_n":0,"site_n":1,"area_km2":6.954911,"centroid_lat":28.388362,"centroid_lon":129.539325,"built_km2_2006":0.373351,"built_km2_2016":0.486491,"forest_km2_2006":5.306402,"forest_km2_2016":5.928703,"paddy_km2_2006":null,"paddy_km2_2016":null},"label":{"water_system_name":"浦上川"}},
 {"key":["89599-0006"],"numeric":{"org_n":0,"org_alien_n":0,"org_redlist_n":0,"site_n":1,"area_km2":7.558887,"centroid_lat":28.376952,"centroid_lon":129.521444,"built_km2_2006":0.373369,"built_km2_2016":0.588344,"forest_km2_2006":6.664847,"forest_km2_2016":6.868546,"paddy_km2_2006":null,"paddy_km2_2016":null},"label":{"water_system_name":"浦上川"}},
-{"key":["89599-0007"],"numeric":{"org_n":0,"org_alien_n":0,"org_redlist_n":0,"site_n":2,"area_km2":8.636647,"centroid_lat":28.360645,"centroid_lon":129.50106,"built_km2_2006":1.075039,"built_km2_2016":1.052415,"forest_km2_2006":7.35625,"forest_km2_2016":7.412835,"paddy_km2_2006":null,"paddy_km2_2016":null},"label":{"water_system_name":"新川"}},
+{"key":["89599-0007"],"numeric":{"org_n":0,"org_alien_n":0,"org_redlist_n":0,"site_n":3,"area_km2":8.636647,"centroid_lat":28.360645,"centroid_lon":129.50106,"built_km2_2006":1.075039,"built_km2_2016":1.052415,"forest_km2_2006":7.35625,"forest_km2_2016":7.412835,"paddy_km2_2006":null,"paddy_km2_2016":null},"label":{"water_system_name":"新川"}},
 {"key":["89599-0008"],"numeric":{"org_n":1,"org_alien_n":0,"org_redlist_n":0,"site_n":0,"area_km2":9.770016,"centroid_lat":28.358938,"centroid_lon":129.442217,"built_km2_2006":0.056576,"built_km2_2016":0.067892,"forest_km2_2006":9.087897,"forest_km2_2016":9.291594,"paddy_km2_2006":null,"paddy_km2_2016":null},"label":{"water_system_name":"知名瀬川"}},
-{"key":["89599-0009"],"numeric":{"org_n":0,"org_alien_n":0,"org_redlist_n":0,"site_n":0,"area_km2":9.957214,"centroid_lat":28.341979,"centroid_lon":129.384023,"built_km2_2006":0.033953,"built_km2_2016":0.056588,"forest_km2_2006":9.293045,"forest_km2_2016":9.360953,"paddy_km2_2006":null,"paddy_km2_2016":null},"label":{"water_system_name":"大和川"}},
+{"key":["89599-0009"],"numeric":{"org_n":0,"org_alien_n":0,"org_redlist_n":0,"site_n":2,"area_km2":9.957214,"centroid_lat":28.341979,"centroid_lon":129.384023,"built_km2_2006":0.033953,"built_km2_2016":0.056588,"forest_km2_2006":9.293045,"forest_km2_2016":9.360953,"paddy_km2_2006":null,"paddy_km2_2016":null},"label":{"water_system_name":"大和川"}},
 {"key":["89599-0010"],"numeric":{"org_n":0,"org_alien_n":0,"org_redlist_n":0,"site_n":0,"area_km2":10.893552,"centroid_lat":28.316672,"centroid_lon":129.321626,"built_km2_2006":0.03396,"built_km2_2016":0.02264,"forest_km2_2006":9.985814,"forest_km2_2016":10.766989,"paddy_km2_2006":null,"paddy_km2_2016":null},"label":{"water_system_name":"名音川"}},
 {"key":["89599-0011"],"numeric":{"org_n":0,"org_alien_n":0,"org_redlist_n":0,"site_n":0,"area_km2":8.391158,"centroid_lat":28.302744,"centroid_lon":129.265609,"built_km2_2006":null,"built_km2_2016":null,"forest_km2_2006":6.986504,"forest_km2_2016":8.03948,"paddy_km2_2006":null,"paddy_km2_2016":null},"label":{"water_system_name":"大良川"}},
 {"key":["89599-0012"],"numeric":{"org_n":2,"org_alien_n":0,"org_redlist_n":0,"site_n":0,"area_km2":43.730803,"centroid_lat":28.26416,"centroid_lon":129.330755,"built_km2_2006":0.056632,"built_km2_2016":0.294479,"forest_km2_2006":41.718287,"forest_km2_2016":41.593609,"paddy_km2_2006":null,"paddy_km2_2016":null},"label":{"water_system_name":null}},
 {"key":["89599-0013"],"numeric":{"org_n":0,"org_alien_n":0,"org_redlist_n":0,"site_n":0,"area_km2":12.276986,"centroid_lat":28.182192,"centroid_lon":129.322609,"built_km2_2006":0.15872,"built_km2_2016":0.181394,"forest_km2_2006":11.34696,"forest_km2_2016":11.30161,"paddy_km2_2006":null,"paddy_km2_2016":null},"label":{"water_system_name":"阿木名川"}},
 {"key":["89599-0014"],"numeric":{"org_n":0,"org_alien_n":0,"org_redlist_n":0,"site_n":0,"area_km2":11.400313,"centroid_lat":28.197837,"centroid_lon":129.38628,"built_km2_2006":0.011336,"built_km2_2016":null,"forest_km2_2006":11.209427,"forest_km2_2016":11.186744,"paddy_km2_2006":null,"paddy_km2_2016":null},"label":{"water_system_name":"嘉徳川"}},
 {"key":["89599-0015"],"numeric":{"org_n":0,"org_alien_n":0,"org_redlist_n":0,"site_n":0,"area_km2":44.948767,"centroid_lat":28.227389,"centroid_lon":129.360054,"built_km2_2006":0.067974,"built_km2_2016":0.090631,"forest_km2_2006":43.896667,"forest_km2_2016":43.783382,"paddy_km2_2006":null,"paddy_km2_2016":null},"label":{"water_system_name":"役勝川"}},
-{"key":["89599-0016"],"numeric":{"org_n":1,"org_alien_n":0,"org_redlist_n":0,"site_n":0,"area_km2":47.436067,"centroid_lat":28.297002,"centroid_lon":129.378551,"built_km2_2006":0.090616,"built_km2_2016":0.090616,"forest_km2_2006":44.253582,"forest_km2_2016":45.940402,"paddy_km2_2006":null,"paddy_km2_2016":null},"label":{"water_system_name":null}},
-{"key":["89599-0017"],"numeric":{"org_n":0,"org_alien_n":0,"org_redlist_n":0,"site_n":0,"area_km2":28.164137,"centroid_lat":28.316474,"centroid_lon":129.420337,"built_km2_2006":0.079263,"built_km2_2016":0.056617,"forest_km2_2006":26.888976,"forest_km2_2016":26.888991,"paddy_km2_2006":0.056615,"paddy_km2_2016":0.056615},"label":{"water_system_name":null}},
+{"key":["89599-0016"],"numeric":{"org_n":1,"org_alien_n":0,"org_redlist_n":0,"site_n":1,"area_km2":47.436067,"centroid_lat":28.297002,"centroid_lon":129.378551,"built_km2_2006":0.090616,"built_km2_2016":0.090616,"forest_km2_2006":44.253582,"forest_km2_2016":45.940402,"paddy_km2_2006":null,"paddy_km2_2016":null},"label":{"water_system_name":null}},
+{"key":["89599-0017"],"numeric":{"org_n":0,"org_alien_n":0,"org_redlist_n":0,"site_n":1,"area_km2":28.164137,"centroid_lat":28.316474,"centroid_lon":129.420337,"built_km2_2006":0.079263,"built_km2_2016":0.056617,"forest_km2_2006":26.888976,"forest_km2_2016":26.888991,"paddy_km2_2006":0.056615,"paddy_km2_2016":0.056615},"label":{"water_system_name":null}},
 {"key":["89599-0018"],"numeric":{"org_n":0,"org_alien_n":0,"org_redlist_n":0,"site_n":0,"area_km2":8.427781,"centroid_lat":28.315979,"centroid_lon":129.455124,"built_km2_2006":0.011324,"built_km2_2016":null,"forest_km2_2006":8.185646,"forest_km2_2016":8.19697,"paddy_km2_2006":0.033971,"paddy_km2_2016":null},"label":{"water_system_name":"金久田川"}},
-{"key":["89599-0019"],"numeric":{"org_n":1,"org_alien_n":0,"org_redlist_n":0,"site_n":1,"area_km2":32.699408,"centroid_lat":28.334424,"centroid_lon":129.487634,"built_km2_2006":0.283016,"built_km2_2016":0.237733,"forest_km2_2006":29.612715,"forest_km2_2016":30.122103,"paddy_km2_2006":0.72454,"paddy_km2_2016":0.622653},"label":{"water_system_name":"大川"}},
+{"key":["89599-0019"],"numeric":{"org_n":1,"org_alien_n":0,"org_redlist_n":0,"site_n":2,"area_km2":32.699408,"centroid_lat":28.334424,"centroid_lon":129.487634,"built_km2_2006":0.283016,"built_km2_2016":0.237733,"forest_km2_2006":29.612715,"forest_km2_2016":30.122103,"paddy_km2_2006":0.72454,"paddy_km2_2016":0.622653},"label":{"water_system_name":"大川"}},
 {"key":["89599-0020"],"numeric":{"org_n":0,"org_alien_n":0,"org_redlist_n":0,"site_n":0,"area_km2":1.961332,"centroid_lat":28.375898,"centroid_lon":129.587298,"built_km2_2006":0.045264,"built_km2_2016":0.056581,"forest_km2_2006":1.391808,"forest_km2_2016":1.516274,"paddy_km2_2006":null,"paddy_km2_2016":null},"label":{"water_system_name":"大美川"}},
-{"key":["89599-0021"],"numeric":{"org_n":0,"org_alien_n":0,"org_redlist_n":0,"site_n":0,"area_km2":1.623243,"centroid_lat":28.365788,"centroid_lon":129.575829,"built_km2_2006":0.113165,"built_km2_2016":0.101849,"forest_km2_2006":1.312728,"forest_km2_2016":1.346678,"paddy_km2_2006":null,"paddy_km2_2016":null},"label":{"water_system_name":"大美川"}},
+{"key":["89599-0021"],"numeric":{"org_n":0,"org_alien_n":0,"org_redlist_n":0,"site_n":1,"area_km2":1.623243,"centroid_lat":28.365788,"centroid_lon":129.575829,"built_km2_2006":0.113165,"built_km2_2016":0.101849,"forest_km2_2006":1.312728,"forest_km2_2016":1.346678,"paddy_km2_2006":null,"paddy_km2_2016":null},"label":{"water_system_name":"大美川"}},
 {"key":["89599-0022"],"numeric":{"org_n":0,"org_alien_n":0,"org_redlist_n":0,"site_n":0,"area_km2":4.345761,"centroid_lat":28.350699,"centroid_lon":129.548737,"built_km2_2006":null,"built_km2_2016":null,"forest_km2_2006":4.210369,"forest_km2_2016":4.300914,"paddy_km2_2006":null,"paddy_km2_2016":null},"label":{"water_system_name":"大美川"}},
 {"key":["89599-0023"],"numeric":{"org_n":0,"org_alien_n":0,"org_redlist_n":0,"site_n":0,"area_km2":3.729008,"centroid_lat":28.357715,"centroid_lon":129.545753,"built_km2_2006":null,"built_km2_2016":null,"forest_km2_2006":3.463148,"forest_km2_2016":3.655543,"paddy_km2_2006":null,"paddy_km2_2016":null},"label":{"water_system_name":"大美川"}},
 {"key":["89599-0024"],"numeric":{"org_n":0,"org_alien_n":0,"org_redlist_n":0,"site_n":0,"area_km2":8.918548,"centroid_lat":28.372883,"centroid_lon":129.557441,"built_km2_2006":0.079203,"built_km2_2016":0.20367,"forest_km2_2006":7.129078,"forest_km2_2016":8.011694,"paddy_km2_2006":null,"paddy_km2_2016":null},"label":{"water_system_name":"大美川"}},
-{"key":["89599-0025"],"numeric":{"org_n":0,"org_alien_n":0,"org_redlist_n":0,"site_n":0,"area_km2":7.880317,"centroid_lat":28.391921,"centroid_lon":129.577174,"built_km2_2006":0.169706,"built_km2_2016":0.316781,"forest_km2_2006":5.61169,"forest_km2_2016":6.494173,"paddy_km2_2006":0.067881,"paddy_km2_2016":0.033941},"label":{"water_system_name":"大美川"}}
+{"key":["89599-0025"],"numeric":{"org_n":0,"org_alien_n":0,"org_redlist_n":0,"site_n":1,"area_km2":7.880317,"centroid_lat":28.391921,"centroid_lon":129.577174,"built_km2_2006":0.169706,"built_km2_2016":0.316781,"forest_km2_2006":5.61169,"forest_km2_2016":6.494173,"paddy_km2_2006":0.067881,"paddy_km2_2016":0.033941},"label":{"water_system_name":"大美川"}}
 ]}
 ]},
 {"id": "doc_series_meta", "n_domain": 1, "runs": [
@@ -5096,7 +5113,7 @@
 ]},
 {"id": "overview_counts", "n_domain": 1, "runs": [
 {"params": {}, "rows": [
-{"key":[],"numeric":{"n_sites":380,"n_sources":156,"n_watersheds":402,"y_from":1973,"y_to":2025},"label":{}}
+{"key":[],"numeric":{"n_sites":389,"n_sources":161,"n_watersheds":402,"y_from":1973,"y_to":2025},"label":{}}
 ]}
 ]},
 {"id": "landuse_highlight", "n_domain": 1, "runs": [
