@@ -243,3 +243,17 @@ units:
     quantity_kind: energy_per_area
     canonical_unit_id: common:unit:mj_per_m2
     scale_to_canonical: 1
+  - unit_id: common:unit:milli_m3_per_s
+    symbol: "10^-3 m3/s"
+    ucum: null
+    name_ja: "立方メートル毎秒の1000分の1単位の原表記（ダムの流入量・放流量。実値は本値×0.001 m3/s。鹿児島県河川砂防情報システムの表記。換算はしていない）"
+    quantity_kind: volume_flow_rate
+    canonical_unit_id: common:unit:m3_per_s
+    scale_to_canonical: 0.001
+  - unit_id: common:unit:kilo_m3
+    symbol: "10^3 m3"
+    ucum: null
+    name_ja: "千立方メートル単位の原表記（ダムの貯水量。実値は本値×1000 m3。鹿児島県河川砂防情報システムの表記。換算はしていない）"
+    quantity_kind: volume
+    canonical_unit_id: common:unit:kilo_m3
+    scale_to_canonical: 1
