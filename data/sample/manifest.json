@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-10-10T07:56:50+00:00",
+  "generated_at": "2026-10-10T09:22:10+00:00",
   "generated_by": "scripts/s01_build_sample.py",
   "source_files": {
-    "data/db/ryuiki.sqlite": "b118669f11fcd400f6a99e07d94521da0e987ec142f2e72d4c2bfc55784ae8df",
+    "data/db/ryuiki.sqlite": "b503a72d74bbc9ab51c432ccfd2c0d0fe7a1ca086497073858af3fd82c521279",
     "data/db/cells.sqlite": "59487f927f4d211b0cd2a7dd9bdcb1990ea38e94184328fb35e6bc904cc1bdf5",
     "data/processed/nlni_w12_watersheds.geojson": "0fdb4360f1a1d0f8473a0d5b9b9a16f1cc42420312f654781a5dfd66b0aa56f7",
     "data/processed/nlni_w12_watersheds_amami.geojson": "f3fa59a0051f772116167763f1f36b023099c82b82fb5dd44b7fbeb10951c75d",
@@ -35,9 +35,9 @@
     "quality_transitions": 3372,
     "redlist_assessments": 5753,
     "river_segments": 1,
-    "sensor_timeseries": 7170,
-    "sites": 380,
-    "source_registry": 156,
+    "sensor_timeseries": 7470,
+    "sites": 389,
+    "source_registry": 160,
     "taxa": 8585,
     "vegetation_polygons": 2,
     "wildlife_sightings": 400
