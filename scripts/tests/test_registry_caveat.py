@@ -56,7 +56,7 @@ def test_zone_caveat_body_contains_zone_yaml_note_ja():
 
 
 # オーナーの確認待ちの注記（奄美 Step 1 PR-B の決定6・7）。確認したら外す
-PENDING_OWNER_CONFIRMATION = {"amamiRedList", "amamiWatershedGap"}
+PENDING_OWNER_CONFIRMATION = set(build_caveat.OWNER_PENDING_KEYS)
 
 
 def test_every_caveat_has_a_complete_review_record():
@@ -283,7 +283,38 @@ def test_build_from_files_writes_declared_rows(tmp_path):
 
 
 def test_null_owner_confirmation_is_pending_not_missing(decl):
-    """owner_confirmed_on が null（確認待ち）は通る。キー自体が無いのは上のテストで止まる。"""
+    """確認待ち（OWNER_PENDING_KEYS）の注記の null は通る。キー自体が無いのは上のテストで止まる。"""
     cav, _ = decl
-    _rewrite(cav, lambda d: d["caveats"][0]["review"].update(owner_confirmed_on=None))
+
+    def pending_to_null(d):
+        for e in d["caveats"]:
+            if e["key"] in build_caveat.OWNER_PENDING_KEYS:
+                e["review"]["owner_confirmed_on"] = None
+    _rewrite(cav, pending_to_null)
     build_caveat._load_caveat_yaml()
+
+
+def test_confirmed_caveat_reset_to_null_or_empty_is_rejected(decl):
+    """確認済みの注記を null や空文字に戻したら止まる（変異テスト）。"""
+    cav, _ = decl
+    for bad in (None, ""):
+        _rewrite(cav, lambda d, bad=bad: d["caveats"][0]["review"].update(owner_confirmed_on=bad))
+        assert d0_key(cav) not in build_caveat.OWNER_PENDING_KEYS
+        with pytest.raises(build_caveat.CaveatDeclarationError, match="owner_confirmed_on"):
+            build_caveat._load_caveat_yaml()
+
+
+def d0_key(cav):
+    return yaml.safe_load(cav.read_text(encoding="utf-8"))["caveats"][0]["key"]
+
+
+def test_pending_caveat_with_empty_string_is_rejected(decl):
+    cav, _ = decl
+
+    def f(d):
+        for e in d["caveats"]:
+            if e["key"] in build_caveat.OWNER_PENDING_KEYS:
+                e["review"]["owner_confirmed_on"] = ""
+    _rewrite(cav, f)
+    with pytest.raises(build_caveat.CaveatDeclarationError, match="owner_confirmed_on"):
+        build_caveat._load_caveat_yaml()

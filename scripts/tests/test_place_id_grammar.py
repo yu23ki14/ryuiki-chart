@@ -239,9 +239,8 @@ def test_real_place_csv_resolves_both_old_zone_ids_to_common():
 
 # 網羅の検査は「改定時に存在した出典」の place だけ。出典は new_id が指す place の出典から導く。
 _SRC = {
-    "common:place:watershed.nlni.83030-0001": {"nlni_w12"},
+    "common:place:watershed.nlni.83030-0001": {"nlni_w12_watersheds"},
     "jp-14:place:site.jma.jma_0387": {"jma_stations_kanagawa"},
-    "jp-14:place:zone.r2r.3": {"zone_def"},
 }
 _NEW_SITE = "jp-46:place:site.jma.amami_1"
 
@@ -260,3 +259,23 @@ def test_verify_place_id_map_halts_on_undeclared_place_of_a_source_that_existed_
 def test_verify_place_id_map_still_requires_declaration_when_source_is_unknown():
     with pytest.raises(AssertionError, match="宣言されていない"):
         id_map.verify_place_id_map(_rows(*_GOOD_PAIRS), _PLACE_IDS | {_NEW_SITE}, _SRC)
+
+
+def test_sources_at_rename_is_a_fixed_declaration_not_derived_from_id_map():
+    """改定時の出典は定数。place.csv の行を消しても免除は広がらない（自己依存の排除）。"""
+    assert "jma_stations_kanagawa" in id_map.SOURCES_AT_RENAME
+    assert not any("amami" in s for s in id_map.SOURCES_AT_RENAME)
+
+
+def test_verify_place_id_map_halts_when_all_rows_of_a_source_at_rename_are_removed():
+    """変異: 改定時の出典（jma_stations_kanagawa）の行を全部消すと、その place の宣言漏れで止まる
+    （id_map から出典を導いていた頃は、行を消すと免除が広がって通ってしまった）。"""
+    rows = [p for p in _GOOD_PAIRS if "jma" not in p[1]]
+    with pytest.raises(AssertionError, match="宣言されていない"):
+        id_map.verify_place_id_map(_rows(*rows), set(_PLACE_IDS), _SRC)
+
+
+def test_verify_place_id_map_halts_when_place_csv_declares_a_source_born_after_the_rename():
+    src = {**_SRC, "jp-14:place:site.jma.jma_0387": {"jma_stations_kanagawa", "jma_stations_amami"}}
+    with pytest.raises(AssertionError, match="改定後にできた出典"):
+        id_map.verify_place_id_map(_rows(*_GOOD_PAIRS), set(_PLACE_IDS), src)

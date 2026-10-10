@@ -66,8 +66,12 @@ scopes:
   - {kind: place, ref: place_kind=grid01, caveats: [share]}
   - {kind: source_edition, ref: source_id=moe_ias_list, caveats: [isAlien]}
   # 奄美（決定6・7）。出現記録の赤リストの意味の違いは GBIF・iNat、W12 が覆わない部分は流域別に集計する 3 出典（出現 2 + 土地利用）。
-  - {kind: source_edition, ref: source_id=gbif_amami_occurrences, caveats: [amamiRedList, amamiWatershedGap]}
-  - {kind: source_edition, ref: source_id=inaturalist_amami, caveats: [amamiRedList, amamiWatershedGap]}
+  # 神奈川の GBIF・iNat に付く注記のうち、effort（観察努力。件数の増加を実体の増加と読ませない）は奄美にも当てはまるので付ける。
+  # 付けないもの: organismSite（本文の割り当てできない約10%・83,515件は神奈川の実数。奄美の同じ趣旨は amamiWatershedGap が担う）、
+  # regimes（2013–16 標本・2017–24 eBird・2025 以降 iNat という年代の入れ替わりは神奈川の GBIF の実測。奄美では未確認）、
+  # gbifCutoff（2024年12月の途切れは神奈川分の GBIF 取り込みの実測。奄美では未確認）。確認できたら奄美用の注記を別に起こす。
+  - {kind: source_edition, ref: source_id=gbif_amami_occurrences, caveats: [effort, amamiRedList, amamiWatershedGap]}
+  - {kind: source_edition, ref: source_id=inaturalist_amami, caveats: [effort, amamiRedList, amamiWatershedGap]}
   - {kind: source_edition, ref: source_id=nlni_l03b_landuse_by_watershed_amami, caveats: [amamiWatershedGap]}
   # 土地利用の定義変更は、本文が名指しする3区分（幹線交通用地・道路・鉄道）だけが影響を受けるが、
   # 他の10区分は日本語名が一致するだけで定義の一致は確認できていないので、指標全体（theme）に掛ける

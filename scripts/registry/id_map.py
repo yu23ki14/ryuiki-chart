@@ -21,8 +21,9 @@ CSV は**手書きの宣言ファイル**（列: `old_id,new_id,reason,spec_vers
    逆に new_id は現行 place に実在する。
    ただし対象は「改定時に存在した出典」の place だけ。区切り改定（spec 2026-10-issue39）より後に
    できた出典（奄美など）の place には旧 ID が存在せず、宣言すると存在しなかった旧 ID を作ることになる。
-   改定時の出典の集合は定数で持たず、id_map の new_id が指す place の出典
-   （`place_source_ref` → `source_edition.source_id`。`place_sources` 引数）から導く。
+   改定時の出典の集合は固定の宣言 `SOURCES_AT_RENAME`（id_map 自身から導くと、行を消せば免除が広がる自己依存になる）。
+   place.csv の new_id が指す place の出典（`place_source_ref` → `source_edition.source_id`。`place_sources` 引数）が
+   この定数に収まらなければ止める（新しい出典の place を place.csv に宣言しない）。
    出典が分からない place は従来どおり宣言を要求する。
 """
 import csv
@@ -42,6 +43,15 @@ PLACE_KINDS_RENAMED = frozenset({"site", "watershed", "zone"})
 # AMAMI_STEP0 §2、ADR-0004 日付付き追記）。zone は `jp-14:` から `common:` に昇格した。
 # 昇格前の ID は 2 形式ある（区切り改定前の `…zone.r2r-N` と、改定後・昇格前の `…zone.r2r.N`）。
 PROMOTED_FROM = {"zone": "jp-14"}
+
+# 区切り改定（spec 2026-10-issue39）の時点で存在した出典（source_id）。現在の place.csv の new_id が指す place の
+# 出典を一度だけ書き出した固定の宣言で、増やさない（改定より後の出典〔奄美など〕の place には旧 ID が無い）。
+SOURCES_AT_RENAME = frozenset({
+    "atsugi_river_water_quality", "dams_kanagawa", "env_kousui_stations_kanagawa",
+    "hiratsuka_taiki_stations", "kanagawa_jiban_chinka", "jma_stations_kanagawa", "moni1000_sites",
+    "nlni_w12_watersheds", "sagami_livecams", "sagamihara_taiki_stations",
+    "soramame_stations_kanagawa", "yokohama_river_waterlevel",
+})
 
 
 def load_csv(entity: str, directory: pathlib.Path | None = None) -> list[dict]:
@@ -122,18 +132,22 @@ def verify_place_id_map(rows: list[dict], place_ids: set[str] | None,
             if why:
                 problems.append(f"{i} 行目: old_id が規則（scope を new_id に置き換え、区切りを除いて一致）と合わない: {why}")
     declared_new = set(new_seen)
-    legacy_sources: set[str] | None = None
     if place_sources is not None:
-        legacy_sources = set().union(*(place_sources.get(n, set()) for n in declared_new))
+        derived = set().union(*(place_sources.get(n, set()) for n in declared_new))
+        if not derived <= SOURCES_AT_RENAME:
+            problems.append(
+                "place.csv が改定後にできた出典の place を宣言している（旧 ID は存在しない）: "
+                f"{sorted(derived - SOURCES_AT_RENAME)}"
+            )
     for pid in sorted(place_ids or ()):
         try:
             p = common.parse_id(pid)
         except ValueError as e:
             problems.append(f"現行の place_id が新形式として分解できない: {e}")
             continue
-        if legacy_sources is not None:
+        if place_sources is not None:
             srcs = place_sources.get(pid)
-            if srcs and not (srcs & legacy_sources):
+            if srcs and not (srcs & SOURCES_AT_RENAME):
                 continue   # 改定より後にできた出典だけの place。旧 ID は存在しない
         if p.kind in PLACE_KINDS_RENAMED and pid not in declared_new:
             problems.append(f"現行の place_id が id_map/place.csv に宣言されていない: {pid}")
