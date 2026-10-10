@@ -762,7 +762,7 @@ def test_landuse_and_w12_paths_cover_every_region(tmp_path):
     ]
 
 
-def test_manifest_expected_counts_are_measured_from_sample_rows():
+def test_manifest_expected_counts_are_measured_from_sample_rows(tmp_path):
     """builtin × occurrence の manifest の expected は、サンプルの当該出典の行から実測する（yaml 側とは別に）。"""
     import sqlite3
     conn = sqlite3.connect(":memory:")
@@ -775,7 +775,9 @@ def test_manifest_expected_counts_are_measured_from_sample_rows():
     ])
     rows = [{"record_id": str(i), "observed_on": o, "lat": None, "lon": None, "source_id": "x"}
             for i, o in enumerate(["2020-05-01", "2021", None])]
-    geo = s01.DEFAULT_GEOJSON
+    from .occurrence_fixtures import write_watershed_geojson
+    geo = tmp_path / "w12.geojson"   # data/processed の実ファイルに依存しない
+    write_watershed_geojson(geo, [("W1", [[[139.0, 35.0], [139.1, 35.0], [139.1, 35.1], [139.0, 35.1], [139.0, 35.0]]])])
     got = s01._manifest_expected_counts(
         "x", {"period_shapes": {"day": 0, "year": 0}, "place": {"coord_resolved": 0, "coord_unresolved": 0},
               "cube": {"dated_rows": 0, "dated_no_coordinate_rows": 0}},
