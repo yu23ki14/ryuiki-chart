@@ -11,10 +11,14 @@
 #                   人が図から読み取った行〔reviewed=1〕を足していく。docs/plans/KANAGAWA_EDNA.md §5.1）
 #   - data/water/ : 水道水の水源マップの原本 CSV（事業体の PDF を人と Agent が読んで作る。
 #                   docs/WATER_SOURCE_MAP.md §6。PDF 自体は data/raw/water/ で管理外）
+#   - data/ocr/   : ハブ統計（画像の PDF）の OCR 結果の JSON（セルの文字・座標・信頼度）と人の確認の reviewed.csv。
+#                   OCR は別の venv（scripts/ocr/README.md）で回すので、CI は JSON から c98b を回す。
+#                   PDF 自体は data/raw/kagoshima_doc/ で管理外（docs/plans/AMAMI_STEP2C.md §3d）
 data/*
 !data/vocab/
 !data/edna/
 !data/water/
+!data/ocr/
 # Issue #29「縮小サンプル＋実行証明」の縮小サンプル。scripts/s01_build_sample.py が
 # 書くテキスト（CREATE/INSERT の .sql・coverage.yaml・manifest.json・
 # declaration_counts.yaml・derived_keys.yaml）で、sqlite バイナリは含まない

@@ -21,15 +21,15 @@
       },
       "doc_series_meta": {
         "added": 0,
-        "changed": 0,
+        "changed": 1,
         "removed": 0,
-        "same": 1
+        "same": 0
       },
       "doc_series_points": {
-        "added": 0,
+        "added": 53,
         "changed": 0,
-        "removed": 0,
-        "same": 60
+        "removed": 53,
+        "same": 7
       },
       "effort_years": {
         "added": 0,
@@ -92,16 +92,16 @@
         "same": 60
       },
       "sites_in_water_body": {
-        "added": 3,
+        "added": 0,
         "changed": 0,
         "removed": 0,
-        "same": 28
+        "same": 31
       },
       "sites_list": {
         "added": 0,
-        "changed": 1,
+        "changed": 0,
         "removed": 0,
-        "same": 0
+        "same": 1
       },
       "species_catalog": {
         "added": 0,
@@ -159,9 +159,9 @@
       },
       "watershed_rollup": {
         "added": 0,
-        "changed": 1,
+        "changed": 0,
         "removed": 0,
-        "same": 0
+        "same": 1
       },
       "year_series_site_by_variable": {
         "added": 0,
@@ -182,34 +182,34 @@
         "same": 60
       }
     },
-    "previous_git_head": "d85a1a9c7a3a17930bd60b349853cd0c7d72504e"
+    "previous_git_head": "51c2b387e7bfcf7c0d08e370a436658b45f8148a"
   },
-  "created_at": "2026-10-10T10:04:18+00:00",
+  "created_at": "2026-10-10T15:13:39+00:00",
   "environment": {
     "better_sqlite3_sqlite_version": "3.53.4",
     "node_version": "v22.22.2",
     "python_sqlite3_version": "3.49.1",
     "python_version": "3.13.7"
   },
-  "git_head": "51c2b387e7bfcf7c0d08e370a436658b45f8148a",
+  "git_head": "f6530c9d372c3eec2f38981f7ac16e20416c2e49",
   "pipeline_fingerprint_rows": {
     "registry.sqlite": null,
     "v2.sqlite": [
       {
         "fingerprint": "sha256:e4b152eee42bdf33428232b06edb37f1ec8ccd4b416bb09e5fd1014cbddccc09:1302434",
-        "inputs": "{\"ext:registry.place\": \"dbcb25986230b9d74b2de82a6833d8e7ed44213bf844ccc8be7c7c0a764ae7e6\", \"ext:registry.place_source_ref\": \"dbcb25986230b9d74b2de82a6833d8e7ed44213bf844ccc8be7c7c0a764ae7e6\", \"ext:registry.source_edition\": \"dbcb25986230b9d74b2de82a6833d8e7ed44213bf844ccc8be7c7c0a764ae7e6\", \"ext:registry.variable_alias\": \"dbcb25986230b9d74b2de82a6833d8e7ed44213bf844ccc8be7c7c0a764ae7e6\", \"ext:ryuiki.measurements\": \"count=327065;max_rowid=1942604\", \"ext:ryuiki.sensor_timeseries\": \"count=986772;max_rowid=5180074\"}",
+        "inputs": "{\"ext:registry.place\": \"dc6e01473058e9fd8198a54f6d993c39939571b88ebd4a6ab13bc253630e1565\", \"ext:registry.place_source_ref\": \"dc6e01473058e9fd8198a54f6d993c39939571b88ebd4a6ab13bc253630e1565\", \"ext:registry.source_edition\": \"dc6e01473058e9fd8198a54f6d993c39939571b88ebd4a6ab13bc253630e1565\", \"ext:registry.variable_alias\": \"dc6e01473058e9fd8198a54f6d993c39939571b88ebd4a6ab13bc253630e1565\", \"ext:ryuiki.measurements\": \"count=327065;max_rowid=1942604\", \"ext:ryuiki.sensor_timeseries\": \"count=986772;max_rowid=5180074\"}",
         "spec_version": "phase-b-fact-slice/v1",
         "table_name": "observation"
       },
       {
         "fingerprint": "sha256:cee861d890cdc5337129b3927c9b784a00f41fdb61e56e38db16cf7c43776f72:2771033",
-        "inputs": "{\"ext:registry.unit\": \"dbcb25986230b9d74b2de82a6833d8e7ed44213bf844ccc8be7c7c0a764ae7e6\", \"ext:registry.variable\": \"dbcb25986230b9d74b2de82a6833d8e7ed44213bf844ccc8be7c7c0a764ae7e6\", \"ext:registry.variable_alias\": \"dbcb25986230b9d74b2de82a6833d8e7ed44213bf844ccc8be7c7c0a764ae7e6\", \"observation\": \"sha256:e4b152eee42bdf33428232b06edb37f1ec8ccd4b416bb09e5fd1014cbddccc09:1302434\"}",
+        "inputs": "{\"ext:registry.unit\": \"dc6e01473058e9fd8198a54f6d993c39939571b88ebd4a6ab13bc253630e1565\", \"ext:registry.variable\": \"dc6e01473058e9fd8198a54f6d993c39939571b88ebd4a6ab13bc253630e1565\", \"ext:registry.variable_alias\": \"dc6e01473058e9fd8198a54f6d993c39939571b88ebd4a6ab13bc253630e1565\", \"observation\": \"sha256:e4b152eee42bdf33428232b06edb37f1ec8ccd4b416bb09e5fd1014cbddccc09:1302434\"}",
         "spec_version": "phase-b-fact-slice/v4",
         "table_name": "observation_agg"
       },
       {
         "fingerprint": "sha256:5b13e0409338815addc21ab847fbc1d1b6e872805502c1b4c419e3ec37557316:895978",
-        "inputs": "{\"ext:registry.place\": \"dbcb25986230b9d74b2de82a6833d8e7ed44213bf844ccc8be7c7c0a764ae7e6\", \"ext:registry.place_source_ref\": \"dbcb25986230b9d74b2de82a6833d8e7ed44213bf844ccc8be7c7c0a764ae7e6\", \"ext:registry.source_edition\": \"dbcb25986230b9d74b2de82a6833d8e7ed44213bf844ccc8be7c7c0a764ae7e6\", \"ext:registry.taxon\": \"dbcb25986230b9d74b2de82a6833d8e7ed44213bf844ccc8be7c7c0a764ae7e6\", \"ext:registry.taxon_assessment\": \"dbcb25986230b9d74b2de82a6833d8e7ed44213bf844ccc8be7c7c0a764ae7e6\", \"ext:ryuiki.edna_detections\": \"count=13263;max_rowid=13263\", \"ext:ryuiki.organism_records\": \"count=885105;max_rowid=885105;occurrence_status=[(None, 178871), ('ABSENT', 2790), ('PRESENT', 703444)]\", \"ext:ryuiki.wildlife_sightings\": \"count=400;max_rowid=400\"}",
+        "inputs": "{\"ext:registry.place\": \"dc6e01473058e9fd8198a54f6d993c39939571b88ebd4a6ab13bc253630e1565\", \"ext:registry.place_source_ref\": \"dc6e01473058e9fd8198a54f6d993c39939571b88ebd4a6ab13bc253630e1565\", \"ext:registry.source_edition\": \"dc6e01473058e9fd8198a54f6d993c39939571b88ebd4a6ab13bc253630e1565\", \"ext:registry.taxon\": \"dc6e01473058e9fd8198a54f6d993c39939571b88ebd4a6ab13bc253630e1565\", \"ext:registry.taxon_assessment\": \"dc6e01473058e9fd8198a54f6d993c39939571b88ebd4a6ab13bc253630e1565\", \"ext:ryuiki.edna_detections\": \"count=13263;max_rowid=13263\", \"ext:ryuiki.organism_records\": \"count=885105;max_rowid=885105;occurrence_status=[(None, 178871), ('ABSENT', 2790), ('PRESENT', 703444)]\", \"ext:ryuiki.wildlife_sightings\": \"count=400;max_rowid=400\"}",
         "spec_version": "phase-b-fact-slice/v1",
         "table_name": "occurrence"
       },
@@ -221,25 +221,25 @@
       },
       {
         "fingerprint": "sha256:76996f6f312ef2ed25dc1ea8ecacc7fa0f110d25ee242b6a8f6065578de386b4:895974",
-        "inputs": "{\"ext:registry.place_source_ref\": \"dbcb25986230b9d74b2de82a6833d8e7ed44213bf844ccc8be7c7c0a764ae7e6\", \"ext:ryuiki.sites\": \"count=389;max_rowid=775\", \"occurrence\": \"sha256:5b13e0409338815addc21ab847fbc1d1b6e872805502c1b4c419e3ec37557316:895978\"}",
+        "inputs": "{\"ext:registry.place_source_ref\": \"dc6e01473058e9fd8198a54f6d993c39939571b88ebd4a6ab13bc253630e1565\", \"ext:ryuiki.sites\": \"count=389;max_rowid=775\", \"occurrence\": \"sha256:5b13e0409338815addc21ab847fbc1d1b6e872805502c1b4c419e3ec37557316:895978\"}",
         "spec_version": "phase-b-fact-slice/v5",
         "table_name": "occurrence_place"
       },
       {
         "fingerprint": "sha256:bc49de762b3d9fa3a90464f68523995f8dcaecf4c17fc40395e0e5bc1bc6fc82:171",
-        "inputs": "{\"ext:registry.taxon\": \"dbcb25986230b9d74b2de82a6833d8e7ed44213bf844ccc8be7c7c0a764ae7e6\", \"occurrence_agg\": \"sha256:e51d2c069e43d6d4dd934c91505c661ed4adbfc457dbd7ced3285623cb3413b2:1544660\"}",
+        "inputs": "{\"ext:registry.taxon\": \"dc6e01473058e9fd8198a54f6d993c39939571b88ebd4a6ab13bc253630e1565\", \"occurrence_agg\": \"sha256:e51d2c069e43d6d4dd934c91505c661ed4adbfc457dbd7ced3285623cb3413b2:1544660\"}",
         "spec_version": "serving-summary/v6",
         "table_name": "summary_effort_year"
       },
       {
         "fingerprint": "sha256:1abf4bfd50bfd92403f994a717f98cf87a509503a3b073adece0037056900bf4:5817",
-        "inputs": "{\"ext:registry.taxon\": \"dbcb25986230b9d74b2de82a6833d8e7ed44213bf844ccc8be7c7c0a764ae7e6\", \"occurrence_agg\": \"sha256:e51d2c069e43d6d4dd934c91505c661ed4adbfc457dbd7ced3285623cb3413b2:1544660\"}",
+        "inputs": "{\"ext:registry.taxon\": \"dc6e01473058e9fd8198a54f6d993c39939571b88ebd4a6ab13bc253630e1565\", \"occurrence_agg\": \"sha256:e51d2c069e43d6d4dd934c91505c661ed4adbfc457dbd7ced3285623cb3413b2:1544660\"}",
         "spec_version": "serving-summary/v6",
         "table_name": "summary_grid_catalog"
       },
       {
         "fingerprint": "sha256:4751a9e2bf7887eb26d72d15fb16f00c6eb2bf2d074393cc932fa1d55d8341b9:2727",
-        "inputs": "{\"ext:registry.taxon\": \"dbcb25986230b9d74b2de82a6833d8e7ed44213bf844ccc8be7c7c0a764ae7e6\", \"occurrence_agg\": \"sha256:e51d2c069e43d6d4dd934c91505c661ed4adbfc457dbd7ced3285623cb3413b2:1544660\"}",
+        "inputs": "{\"ext:registry.taxon\": \"dc6e01473058e9fd8198a54f6d993c39939571b88ebd4a6ab13bc253630e1565\", \"occurrence_agg\": \"sha256:e51d2c069e43d6d4dd934c91505c661ed4adbfc457dbd7ced3285623cb3413b2:1544660\"}",
         "spec_version": "serving-summary/v6",
         "table_name": "summary_group_year"
       },
@@ -251,7 +251,7 @@
       },
       {
         "fingerprint": "sha256:8677b3dc25313cb51222208d66a86344978a315b86289e7aec5ee6a0c9952d04:28270",
-        "inputs": "{\"ext:registry.taxon\": \"dbcb25986230b9d74b2de82a6833d8e7ed44213bf844ccc8be7c7c0a764ae7e6\", \"occurrence_agg\": \"sha256:e51d2c069e43d6d4dd934c91505c661ed4adbfc457dbd7ced3285623cb3413b2:1544660\"}",
+        "inputs": "{\"ext:registry.taxon\": \"dc6e01473058e9fd8198a54f6d993c39939571b88ebd4a6ab13bc253630e1565\", \"occurrence_agg\": \"sha256:e51d2c069e43d6d4dd934c91505c661ed4adbfc457dbd7ced3285623cb3413b2:1544660\"}",
         "spec_version": "serving-summary/v6",
         "table_name": "summary_species_catalog"
       },
@@ -278,7 +278,7 @@
   "pipeline_path_hashes": {
     "aggregations": "11a8b17bee8e9e1157382fa890764cb7ecaa524f",
     "manifests": "3b2e3ab2864037730e72b3fd33d81762cdf2264b",
-    "registry": "58bc42702ee7b9afd3df109339db0f5e0c1a1706",
+    "registry": "52e16c9fe5fd7328a4810cc8216c4b9799729f83",
     "requirements.txt": "4323abaaacdc6a851d6f323c3a8e542996714511",
     "scripts/adapters": "738619c00e564dccf500bdba1ffc78abcd3bd940",
     "scripts/b00_run_full_gate.py": "ed8dc0f3d4dfbc5a456b68c324ffb18346cfe71c",
@@ -333,7 +333,7 @@
     "web/src/lib/db.ts": "cb9a153fb416b4400bd74ecf0fd4d3977df90944",
     "web/src/lib/registry/generated-client.ts": "85139c41fe45f0d8f0b4499d2223b1e18ccf6125",
     "web/src/lib/registry/generated-id-map.ts": "5004cea9f243ab2eff0be4159bf3fd2c0ad5d231",
-    "web/src/lib/registry/generated-source.ts": "d3b305cd09ca1d6ec023ad68507faea70c58fec3",
+    "web/src/lib/registry/generated-source.ts": "97e7036743d4c402642bdfd635a67efd545b018a",
     "web/src/lib/registry/generated.ts": "1582b52f04293b069363f7d4be7b2657526135bc",
     "web/src/lib/registry/index.ts": "02fc0d4c3b83cce49ea4b72d5e349dc3c45a201b",
     "web/src/lib/registry/legacy-id.ts": "e6fb112a8a1288823915b2030c6d72d1a57c751c",
@@ -9619,47 +9619,47 @@
       "n_domain": 1,
       "runs": [
         {
-          "hash": "90d1745acf39edec5f91615cc449368eb2922dccdc60f5cf3b76b8e7038ade1f",
-          "n_rows": 414,
+          "hash": "970e678d7682276151dbae9236b51c259390dff779a1823d958581404ad3c180",
+          "n_rows": 523,
           "params": {},
           "sums": {
-            "n_warnings": 1674,
-            "n_years": 3019,
-            "page_no": 5593,
-            "y_from": 832842,
-            "y_to": 835763
+            "n_warnings": 1678,
+            "n_years": 4430,
+            "page_no": 5743,
+            "y_from": 1052148,
+            "y_to": 1056472
           }
         }
       ]
     },
     {
       "id": "doc_series_points",
-      "n_domain": 470,
+      "n_domain": 579,
       "runs": [
         {
-          "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-          "n_rows": 0,
+          "hash": "dcdb8a2136b48dda142a00a8c87f2482da7df5f6b66be1c7640b14c048431bd7",
+          "n_rows": 20,
           "params": {
-            "doc_id": "choju_kyugo_jisseki_2014",
-            "row_key": "哺乳類",
-            "table_id": "p1_t2"
+            "doc_id": "bodik_460001_guntou_irikomi_2024",
+            "row_key": "奄美群島|海路",
+            "table_id": "x1"
           },
           "sums": {
-            "page_no": 0,
-            "value": 0
+            "page_no": 20,
+            "value": 4164210
           }
         },
         {
-          "hash": "e405cc00763de3697b5dc75db765ac19196062e8b498142ec8581527d1da0cab",
+          "hash": "87ea97637ded1236a4add96c116cf4e4135f6a44a2ba48dc7454233ccc9e81d1",
           "n_rows": 5,
           "params": {
             "doc_id": "choju_kyugo_jisseki_2014",
-            "row_key": "6",
+            "row_key": "4",
             "table_id": "p1_t4"
           },
           "sums": {
             "page_no": 5,
-            "value": 157
+            "value": 197
           }
         },
         {
@@ -9676,68 +9676,68 @@
           }
         },
         {
-          "hash": "cfb5556b17b13cfafd5b8d6873cd329f8605bfe13d523f54b245c58f59fdb349",
+          "hash": "0edea4b170cf0a78a877365ad1f815e0efb86f980eff45c7c76171139da9b77a",
           "n_rows": 5,
           "params": {
             "doc_id": "choju_kyugo_jisseki_2015",
-            "row_key": "4",
+            "row_key": "5",
             "table_id": "p1_t4"
           },
           "sums": {
             "page_no": 5,
-            "value": 199
+            "value": 175
           }
         },
         {
-          "hash": "51397ab49ab834d9728938f99c96b844d5470282dd311788040769d8163b3c18",
+          "hash": "ed87f69ff85397073973229d38bc7051189ef3fb4d33cfd6b554925d0cfce37d",
           "n_rows": 5,
           "params": {
             "doc_id": "choju_kyugo_jisseki_2015",
-            "row_key": "合 計|短 期",
+            "row_key": "哺乳類|長 期",
             "table_id": "p4_t3"
           },
           "sums": {
             "page_no": 20,
-            "value": 97
+            "value": 5
           }
         },
         {
-          "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-          "n_rows": 0,
-          "params": {
-            "doc_id": "choju_kyugo_jisseki_2016",
-            "row_key": "鳥 類",
-            "table_id": "p1_t2"
-          },
-          "sums": {
-            "page_no": 0,
-            "value": 0
-          }
-        },
-        {
-          "hash": "30eb64da2bbcdf1dfbf4bf63f05187e3222166a3cd79db3fdb7bc7e9447855d8",
+          "hash": "f83fca2ee588c1d3556600de4e306c7b3a24836a8e499cd39045a29f6afce157",
           "n_rows": 5,
           "params": {
             "doc_id": "choju_kyugo_jisseki_2016",
-            "row_key": "7",
+            "row_key": "4",
             "table_id": "p2_t1"
           },
           "sums": {
             "page_no": 10,
-            "value": 115
+            "value": 186
           }
         },
         {
-          "hash": "f6998c6d4f579e19db2b36f44a52ae1fa7a3a417793245abaa054cc00a95f9d3",
+          "hash": "d65a53a55408c1f9954ed630761d6e6752bed71c1340ce3a95a41d2ad9544a48",
           "n_rows": 5,
           "params": {
             "doc_id": "choju_kyugo_jisseki_2016",
-            "row_key": "合 計|短 期",
-            "table_id": "p4_t3"
+            "row_key": "活動延べ人数",
+            "table_id": "p4_t2"
           },
           "sums": {
             "page_no": 20,
-            "value": 62
+            "value": 5519
+          }
+        },
+        {
+          "hash": "ae220597aeaceb7ca1f6a186332e8cc693d97e188f389438764f029428419695",
+          "n_rows": 5,
+          "params": {
+            "doc_id": "choju_kyugo_jisseki_2017",
+            "row_key": "1",
+            "table_id": "p2_t1"
+          },
+          "sums": {
+            "page_no": 10,
+            "value": 427
           }
         },
         {
@@ -9745,98 +9745,7 @@
           "n_rows": 0,
           "params": {
             "doc_id": "choju_kyugo_jisseki_2017",
-            "row_key": "鳥類",
-            "table_id": "p1_t2"
-          },
-          "sums": {
-            "page_no": 0,
-            "value": 0
-          }
-        },
-        {
-          "hash": "25f8838a9f3e2b35d85c1fb016a3c35008bca41f40ce6f8d4bd5d3c3aa5897dd",
-          "n_rows": 5,
-          "params": {
-            "doc_id": "choju_kyugo_jisseki_2017",
-            "row_key": "8",
-            "table_id": "p2_t1"
-          },
-          "sums": {
-            "page_no": 10,
-            "value": 85
-          }
-        },
-        {
-          "hash": "5a5fd49e28418646b01cc521b43d647b60f4de7575689ed340df44433f2b6e8f",
-          "n_rows": 5,
-          "params": {
-            "doc_id": "choju_kyugo_jisseki_2017",
-            "row_key": "合 計|短 期",
-            "table_id": "p4_t3"
-          },
-          "sums": {
-            "page_no": 20,
-            "value": 49
-          }
-        },
-        {
-          "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-          "n_rows": 0,
-          "params": {
-            "doc_id": "choju_kyugo_jisseki_2018",
-            "row_key": "鳥 類",
-            "table_id": "p1_t2"
-          },
-          "sums": {
-            "page_no": 0,
-            "value": 0
-          }
-        },
-        {
-          "hash": "f1260cc6084deb744594294cbb441fc5574aa01676c2bcf4c6b1ebe6ed6bbda5",
-          "n_rows": 5,
-          "params": {
-            "doc_id": "choju_kyugo_jisseki_2018",
-            "row_key": "7",
-            "table_id": "p2_t1"
-          },
-          "sums": {
-            "page_no": 10,
-            "value": 99
-          }
-        },
-        {
-          "hash": "5d4e58ef37cbf08a46e0b79933cca65dbe25c52f03b18ddaa557d4f56e2a4e72",
-          "n_rows": 5,
-          "params": {
-            "doc_id": "choju_kyugo_jisseki_2018",
-            "row_key": "合 計|短 期",
-            "table_id": "p4_t3"
-          },
-          "sums": {
-            "page_no": 20,
-            "value": 41
-          }
-        },
-        {
-          "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-          "n_rows": 0,
-          "params": {
-            "doc_id": "choju_kyugo_jisseki_2019",
-            "row_key": "鳥 類",
-            "table_id": "p1_t2"
-          },
-          "sums": {
-            "page_no": 0,
-            "value": 0
-          }
-        },
-        {
-          "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-          "n_rows": 0,
-          "params": {
-            "doc_id": "choju_kyugo_jisseki_2019",
-            "row_key": "全 体",
+            "row_key": "全体",
             "table_id": "p2_t2"
           },
           "sums": {
@@ -9845,16 +9754,68 @@
           }
         },
         {
-          "hash": "a1ca18cdc745f3bf6e77358d04e8e3b8eb8b18fddc3fab181079b6ab4770b679",
+          "hash": "b0617239d87de890b1c653729314829571e00ba7e34f2bf2e9d2c2c3c91dc971",
           "n_rows": 5,
           "params": {
-            "doc_id": "choju_kyugo_jisseki_2019",
-            "row_key": "哺乳類|長 期",
+            "doc_id": "choju_kyugo_jisseki_2017",
+            "row_key": "鳥 類|短 期",
             "table_id": "p4_t3"
           },
           "sums": {
             "page_no": 20,
-            "value": 3
+            "value": 43
+          }
+        },
+        {
+          "hash": "bba84a4fc7e2bcdf1f5bd07a8dc88932f95e1b89162a65903832bf6b3e7758b8",
+          "n_rows": 5,
+          "params": {
+            "doc_id": "choju_kyugo_jisseki_2018",
+            "row_key": "6",
+            "table_id": "p2_t1"
+          },
+          "sums": {
+            "page_no": 10,
+            "value": 129
+          }
+        },
+        {
+          "hash": "d53cb5ebbb547f2e2801a51b17c1d6948a9197ccf4beff1e733ffeea6d8b97cb",
+          "n_rows": 5,
+          "params": {
+            "doc_id": "choju_kyugo_jisseki_2018",
+            "row_key": "合 計|長 期",
+            "table_id": "p4_t3"
+          },
+          "sums": {
+            "page_no": 20,
+            "value": 25
+          }
+        },
+        {
+          "hash": "50a64a0fec4be288f5d782a00b985a22a30d619040a104e0b81283a6d9b92ab4",
+          "n_rows": 4,
+          "params": {
+            "doc_id": "choju_kyugo_jisseki_2019",
+            "row_key": "2",
+            "table_id": "p2_t1"
+          },
+          "sums": {
+            "page_no": 8,
+            "value": 240
+          }
+        },
+        {
+          "hash": "7af61e058bc1765bfb2320b8a5ccbf708d1f749c7fe0648e7dedd289d4d97b3e",
+          "n_rows": 5,
+          "params": {
+            "doc_id": "choju_kyugo_jisseki_2019",
+            "row_key": "活動延べ人数",
+            "table_id": "p4_t2"
+          },
+          "sums": {
+            "page_no": 20,
+            "value": 5521
           }
         },
         {
@@ -9862,7 +9823,7 @@
           "n_rows": 0,
           "params": {
             "doc_id": "choju_kyugo_jisseki_2020",
-            "row_key": "鳥 類",
+            "row_key": "全 体",
             "table_id": "p2_t1"
           },
           "sums": {
@@ -9884,120 +9845,81 @@
           }
         },
         {
-          "hash": "00470767b6f55e53890a66e0511942b91ed8a0b4d737d07af79996a177c1d10c",
+          "hash": "5b005dd5ec7ee66ef796f88ea6e2d85fe4e0fb9ff040afc0d3ae1c9a72711dcc",
           "n_rows": 5,
           "params": {
             "doc_id": "choju_kyugo_jisseki_2021",
-            "row_key": "4",
+            "row_key": "6",
             "table_id": "p2_t1"
           },
           "sums": {
             "page_no": 10,
-            "value": 138
+            "value": 99
           }
         },
         {
-          "hash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-          "n_rows": 0,
-          "params": {
-            "doc_id": "choju_kyugo_jisseki_2021",
-            "row_key": "鳥 類",
-            "table_id": "p2_t2"
-          },
-          "sums": {
-            "page_no": 0,
-            "value": 0
-          }
-        },
-        {
-          "hash": "43b075dd63c0ab7dcf9559c609c3ed7bc1665cf511289dd883e949fc99fb6d04",
+          "hash": "f8e8ed671ab73a3ca638ae2aacfe57922e075e9c378f929d81b064b095c964be",
           "n_rows": 5,
           "params": {
             "doc_id": "choju_kyugo_jisseki_2021",
-            "row_key": "鳥 類|短 期",
+            "row_key": "合 計|長 期",
             "table_id": "p4_t3"
           },
           "sums": {
             "page_no": 20,
-            "value": 3
+            "value": 12
           }
         },
         {
-          "hash": "73355e0feceb1a37a6df5c97ee8ebfcd7aea6e3e4a35703e01db42f564f5d1bd",
+          "hash": "6845b28f8c2e0a84dde12ffcedbd2adc07cb90a83d2ce4b90d93c6441bac3cb3",
           "n_rows": 5,
           "params": {
             "doc_id": "choju_kyugo_jisseki_2022",
-            "row_key": "総 計|長 期",
+            "row_key": "合 計|長 期",
             "table_id": "p4_t3"
           },
           "sums": {
             "page_no": 20,
-            "value": 10
+            "value": 7
           }
         },
         {
-          "hash": "c5a262ba533fd5f13e871e46d8f63749b492fc19851dbbe637f5d3d6d6e43749",
+          "hash": "259cf48eec0e76127ebfd6d49bbac25682838bbfc1ee57da21885e351b504f47",
           "n_rows": 8,
           "params": {
             "doc_id": "ghg_kencho_jikkou_suii_2015",
-            "row_key": "企業庁合計庁舎(出先)*浄水場*包括委託・ＰＦＩ等庁用車等|浄水場*",
+            "row_key": "企業庁合計庁舎(出先)*浄水場*包括委託・ＰＦＩ等庁用車等|指定管理施設",
             "table_id": "p1_t1"
           },
           "sums": {
             "page_no": 8,
-            "value": 347056
+            "value": 375320
           }
         },
         {
-          "hash": "2dfb076fc5abba5efd7a90c83ef44966609cd3581202acac18f3476543bf03e5",
+          "hash": "7f0d685f037d50c38d9f97d24ac232a712ccfcba0375270a88686a0d0f67cb91",
           "n_rows": 8,
           "params": {
             "doc_id": "ghg_kencho_jikkou_suii_2015",
-            "row_key": "知事部局合計庁舎(本庁舎)*庁舎(合庁、出先)*道路照明庁用車等(小計)業務委託施設(下水道処理場)指定管理施設",
+            "row_key": "知事部局合計庁舎(本庁舎)*庁舎(合庁、出先)*道路照明庁用車等(小計)業務委託施設(下水道処理場)指定管理施設|(小計)",
             "table_id": "p1_t1"
           },
           "sums": {
             "page_no": 8,
-            "value": 1546940
+            "value": 315466
           }
         },
         {
-          "hash": "e410d067716f00b640e6d19a5a59012f596e383ca57a33737a8e07c91ba64037",
+          "hash": "8e84599ad47d0e98f08e3f95200b34b0a8c5b802e6041d113fdec8c735823ffc",
           "n_rows": 8,
           "params": {
             "doc_id": "ghg_kencho_jikkou_suii_2015",
-            "row_key": "総 計",
+            "row_key": "警察合計庁舎(警察本部)*庁舎(警察署等)*信号灯器庁用車|庁舎(警察本部)*",
             "table_id": "p1_t1"
           },
           "sums": {
             "page_no": 8,
-            "value": 2655055
-          }
-        },
-        {
-          "hash": "00a1cf9f368681b01ce2b167248bbf345a05c3392681f70e432f7294a09fb3c0",
-          "n_rows": 4,
-          "params": {
-            "doc_id": "ghg_kencho_jissai_2022",
-            "row_key": "企業庁 合計庁舎等浄水場公用車その他|その他",
-            "table_id": "p5_t1"
-          },
-          "sums": {
-            "page_no": 20,
-            "value": 4
-          }
-        },
-        {
-          "hash": "6929490865be62db8f1beb4789057e865d0b77a529f2f162c0019e8a8484e75c",
-          "n_rows": 4,
-          "params": {
-            "doc_id": "ghg_kencho_jissai_2022",
-            "row_key": "教育委員会 合計庁舎等指定管理施設等公用車その他|指定管理施設等",
-            "table_id": "p5_t1"
-          },
-          "sums": {
-            "page_no": 20,
-            "value": 2371
+            "value": 75777
           }
         },
         {
@@ -10005,12 +9927,25 @@
           "n_rows": 0,
           "params": {
             "doc_id": "ghg_kencho_jissai_2022",
-            "row_key": "警察 合計庁舎等公用車その他|その他",
+            "row_key": "教育委員会 合計庁舎等指定管理施設等公用車その他|その他",
             "table_id": "p5_t1"
           },
           "sums": {
             "page_no": 0,
             "value": 0
+          }
+        },
+        {
+          "hash": "b209c5ee7417b428660d70f127e5d5470aa8bb157e9eb928f3d8784b3239e5cc",
+          "n_rows": 4,
+          "params": {
+            "doc_id": "ghg_kencho_jissai_2022",
+            "row_key": "知事部局 合計庁舎等下水処理施設指定管理施設等公用車その他※１|指定管理施設等",
+            "table_id": "p5_t1"
+          },
+          "sums": {
+            "page_no": 20,
+            "value": 81732
           }
         },
         {
@@ -10027,55 +9962,42 @@
           }
         },
         {
-          "hash": "fb97a57ab71b34e7be78d57c0cf93d582b13b74a5261e367449c92e0c71c08b0",
+          "hash": "1963d08353f2c0690ce775c978b821e7f7da9f9529f2793762745f8dc0c3a0b4",
           "n_rows": 2,
           "params": {
             "doc_id": "ghg_kennai_suikei_2021",
-            "row_key": "運輸部門",
-            "table_id": "p6_t1"
+            "row_key": "石 油※１",
+            "table_id": "p7_t1"
           },
           "sums": {
-            "page_no": 12,
-            "value": 268
+            "page_no": 14,
+            "value": 624
           }
         },
         {
-          "hash": "b112851638456b9bf6da631ed75af19330eb9ba8c67f04f8494d45e06a78a162",
+          "hash": "1e40e0ffe6e2c2519277a7f946f85a6c1ea939866c95b6851ed2bd74e3f046fc",
           "n_rows": 11,
           "params": {
             "doc_id": "ghg_kennai_suikei_2023",
-            "row_key": "エネルギー転換",
+            "row_key": "産業",
             "table_id": "p4_t1"
           },
           "sums": {
             "page_no": 44,
-            "value": 10002
+            "value": 21838
           }
         },
         {
-          "hash": "be8ca60da131ad1484339928a2a0e65e208f9afb969ab989a791386dcd03ecb4",
+          "hash": "c529d978bea2f0533db5e7b1132b6270e828edd1b922b2d9ba9cbe2963687268",
           "n_rows": 3,
           "params": {
             "doc_id": "ghg_kennai_suikei_2023",
-            "row_key": "合 計",
-            "table_id": "p5_t1"
-          },
-          "sums": {
-            "page_no": 15,
-            "value": 2079
-          }
-        },
-        {
-          "hash": "7adefe0323266360abf809e0b6a6e4729f00914014cb8393772e8db8cc7fa58a",
-          "n_rows": 3,
-          "params": {
-            "doc_id": "ghg_kennai_suikei_2023",
-            "row_key": "石 炭",
+            "row_key": "石 油※１",
             "table_id": "p6_t1"
           },
           "sums": {
             "page_no": 18,
-            "value": 268
+            "value": 896
           }
         },
         {
@@ -10092,42 +10014,172 @@
           }
         },
         {
-          "hash": "69b2b13fac21d6663fd1217cc812b3114fd0365e0355217cab5f6a30d5e94403",
+          "hash": "e4764a822a00fdb1cea002fe7a724e51a101a556c35b02ed672735f77754574b",
           "n_rows": 10,
           "params": {
-            "doc_id": "tanzawa_shika_plan5",
-            "row_key": "有害捕獲|メス",
-            "table_id": "p36_t1"
+            "doc_id": "kagoshima_habu_bite_h28r7",
+            "row_key": "名瀬保健所|奄美市笠利町",
+            "table_id": "p1_t1"
           },
           "sums": {
-            "page_no": 360,
-            "value": 523
+            "page_no": 10,
+            "value": 24
           }
         },
         {
-          "hash": "6b2852eca008c5569d78176444be2a852dee6dc261d972d763077d519205cd2a",
+          "hash": "6c310584712ae58dab942b58fcc30806f88987047c538a3d1256a615ee54226e",
           "n_rows": 10,
           "params": {
-            "doc_id": "tanzawa_shika_plan5",
-            "row_key": "第二種銃猟（丙種）",
-            "table_id": "p46_t1"
+            "doc_id": "kagoshima_habu_kaiage_h28r7",
+            "row_key": "名瀬保健所|奄美市名瀬",
+            "table_id": "p1_t1"
           },
           "sums": {
-            "page_no": 460,
-            "value": 4931
+            "page_no": 10,
+            "value": 29235
           }
         },
         {
-          "hash": "60445f1a446357ab08515f7f56b4e4e348e335d8516ce0345f0d0b7292fd291c",
+          "hash": "056336c89f4a9853abeda6bb817569b284dd04aae72b4a3db93425ccbf117464",
+          "n_rows": 5,
+          "params": {
+            "doc_id": "kagoshima_noneko_r4",
+            "row_key": "うち安楽死頭数",
+            "table_id": "p1_t2"
+          },
+          "sums": {
+            "page_no": 5,
+            "value": 0
+          }
+        },
+        {
+          "hash": "f8ea93d000250137defb5fb86a0ec541235d79bc88843654313c1825d15b4734",
+          "n_rows": 6,
+          "params": {
+            "doc_id": "kagoshima_umigame_r7",
+            "row_key": "出水市",
+            "table_id": "p1_t1"
+          },
+          "sums": {
+            "page_no": 6,
+            "value": 1
+          }
+        },
+        {
+          "hash": "9ec23309adc9ca04ab1bae2699b4a96311974d39ef172a6daeddc60ec239c55d",
+          "n_rows": 15,
+          "params": {
+            "doc_id": "kagoshima_umigame_r7",
+            "row_key": "大崎町",
+            "table_id": "p1_t1"
+          },
+          "sums": {
+            "page_no": 15,
+            "value": 659
+          }
+        },
+        {
+          "hash": "fdf1c828723f1eea4f39a80db58c79f3b50c63d65b8912437801f784cc95b5bc",
+          "n_rows": 15,
+          "params": {
+            "doc_id": "kagoshima_umigame_r7",
+            "row_key": "東串良町",
+            "table_id": "p1_t1"
+          },
+          "sums": {
+            "page_no": 15,
+            "value": 121
+          }
+        },
+        {
+          "hash": "726d85c46ade92038ccd742899b6e2606f2ba056eeef85a900e7eb441e9a4fe9",
+          "n_rows": 7,
+          "params": {
+            "doc_id": "kagoshima_umigame_r7",
+            "row_key": "霧島市",
+            "table_id": "p1_t1"
+          },
+          "sums": {
+            "page_no": 7,
+            "value": 1
+          }
+        },
+        {
+          "hash": "6312309e722f86f445f825637ca4ef0eed438fe476df10f3c709e0678fbce638",
+          "n_rows": 4,
+          "params": {
+            "doc_id": "kagoshima_umigame_r7",
+            "row_key": "十島村",
+            "table_id": "p2_t1"
+          },
+          "sums": {
+            "page_no": 8,
+            "value": 0
+          }
+        },
+        {
+          "hash": "b8f905f5358054430573af598d7d82df02aedafa2620e6a77777caec88868ef3",
+          "n_rows": 16,
+          "params": {
+            "doc_id": "kagoshima_umigame_r7",
+            "row_key": "大崎町",
+            "table_id": "p2_t1"
+          },
+          "sums": {
+            "page_no": 32,
+            "value": 589
+          }
+        },
+        {
+          "hash": "0b8ae3b5db79dcadd0b617fc5c9b64912a5d009899553b921e14667ba68cf516",
+          "n_rows": 16,
+          "params": {
+            "doc_id": "kagoshima_umigame_r7",
+            "row_key": "東串良町",
+            "table_id": "p2_t1"
+          },
+          "sums": {
+            "page_no": 32,
+            "value": 98
+          }
+        },
+        {
+          "hash": "38bb61269d31fdf75aac6a65e2615d2494fdc5a4ba9e908670a61bc99ddfbaa1",
+          "n_rows": 8,
+          "params": {
+            "doc_id": "kagoshima_umigame_r7",
+            "row_key": "霧島市",
+            "table_id": "p2_t1"
+          },
+          "sums": {
+            "page_no": 16,
+            "value": 0
+          }
+        },
+        {
+          "hash": "48aaa45d7d9b9b0d58f3f9fb27eedd00cf1475a7b5c9a44cecd7201ef9dd45f2",
           "n_rows": 10,
           "params": {
             "doc_id": "tanzawa_shika_plan5",
-            "row_key": "第一種銃猟",
+            "row_key": "林業被害|保護管理区域定着防止区域計|被害額（千円）被害面積（ha）",
+            "table_id": "p45_t3"
+          },
+          "sums": {
+            "page_no": 450,
+            "value": 0
+          }
+        },
+        {
+          "hash": "0d07ab4b93f0f49f797dbd21cb0b759ba460e701723632730749c9c26390af5b",
+          "n_rows": 10,
+          "params": {
+            "doc_id": "tanzawa_shika_plan5",
+            "row_key": "合 計（実人数）",
             "table_id": "p46_t3"
           },
           "sums": {
             "page_no": 460,
-            "value": 33313
+            "value": 38937
           }
         },
         {
@@ -10144,55 +10196,42 @@
           }
         },
         {
-          "hash": "8b2b6e7f92e7177b6f8bfce05d335101c2c51c475e9b0b2898d9863c7e39c72e",
+          "hash": "d34e130d0e3e5b57a1df796ebba9ae43b7c93143c5ce2a629327b1a7a4859dd1",
           "n_rows": 10,
           "params": {
             "doc_id": "tanzawa_shika_r4",
-            "row_key": "県西地域松田町山北町|伊勢原市",
+            "row_key": "県西地域松田町山北町|松田町",
             "table_id": "p10_t1"
           },
           "sums": {
             "page_no": 100,
-            "value": 6281
+            "value": 948
           }
         },
         {
-          "hash": "5f5acb072107ed3874aca964665003d933fce59977e82605b33d30ef4aca2b4d",
+          "hash": "c361132bb81665ea81af7a5f9fc095c1b66b523524e0ee671f822f6bc7ab5eec",
           "n_rows": 10,
           "params": {
             "doc_id": "tanzawa_shika_r4",
-            "row_key": "県央地域相模原市緑区（藤野、相模湖、城山地区）|相模原市緑区（藤野、相模湖、城山地区）",
+            "row_key": "県西地域小田原市南足柄市中井町大井町開成町箱根町真鶴町湯河原町|大井町",
             "table_id": "p12_t1"
           },
           "sums": {
             "page_no": 120,
-            "value": 877
+            "value": 394
           }
         },
         {
-          "hash": "a0b4d8cd5af2253aa23f264258d52b2b746d231bdddc91ea1748ed58f74195da",
-          "n_rows": 10,
-          "params": {
-            "doc_id": "tanzawa_shika_r4",
-            "row_key": "県西地域小田原市南足柄市中井町大井町開成町箱根町真鶴町湯河原町|箱根町",
-            "table_id": "p12_t1"
-          },
-          "sums": {
-            "page_no": 120,
-            "value": 476
-          }
-        },
-        {
-          "hash": "925305b1afa45285577aba9c198b4237171dc6a64c15f50af8c269458e9eb706",
+          "hash": "bfe171347ee06c13572c091a69f52233c44099b8a555cc8554917dcb4fb8928c",
           "n_rows": 12,
           "params": {
             "doc_id": "tanzawa_shika_r4",
-            "row_key": "清川村|入猟者数",
+            "row_key": "山北町|世附|捕獲頭数",
             "table_id": "p17_t1"
           },
           "sums": {
             "page_no": 204,
-            "value": 3765
+            "value": 84
           }
         },
         {
@@ -10209,198 +10248,159 @@
           }
         },
         {
-          "hash": "ced7e731872f1fbf4e194f44a47635910cf88d85c6a0f8f82dba57e2668e38b3",
+          "hash": "dea6ff6e48ca727fa13b963140c6161f854cdd32d0437cd0c974830ad1ed48d0",
           "n_rows": 6,
           "params": {
             "doc_id": "tanzawa_shika_r4",
-            "row_key": "第二種銃猟",
+            "row_key": "網猟",
             "table_id": "p18_t3"
           },
           "sums": {
             "page_no": 108,
-            "value": 16
+            "value": 127
           }
         },
         {
-          "hash": "fb1f3cacd68255248ad4528307d1483cc2b8b8bf21ff2283195cfb86556fa481",
-          "n_rows": 8,
-          "params": {
-            "doc_id": "tanzawa_shika_r4",
-            "row_key": "伊勢原市",
-            "table_id": "p34_t2"
-          },
-          "sums": {
-            "page_no": 272,
-            "value": 1.79
-          }
-        },
-        {
-          "hash": "a742bb816bc95bad1b5c448962cd54bd2f55aaf67cdf73bf4fd72449d65aa85f",
-          "n_rows": 14,
-          "params": {
-            "doc_id": "tanzawa_shika_r4",
-            "row_key": "合 計（人数）",
-            "table_id": "p35_t1"
-          },
-          "sums": {
-            "page_no": 490,
-            "value": 79156
-          }
-        },
-        {
-          "hash": "32e2c77574e764160b33fcb324dc63444b51918ce49a1415253f66f9b3147871",
-          "n_rows": 14,
-          "params": {
-            "doc_id": "tanzawa_shika_r4",
-            "row_key": "第一種銃猟（乙種）",
-            "table_id": "p35_t2"
-          },
-          "sums": {
-            "page_no": 490,
-            "value": 47951
-          }
-        },
-        {
-          "hash": "cc5fcf67187d85f0d1f3e0a38decbb8f333b0b2616737f46cce0eb3c978df246",
-          "n_rows": 10,
-          "params": {
-            "doc_id": "tanzawa_shika_r6",
-            "row_key": "湘南地域平塚市大磯町二宮町|大磯町",
-            "table_id": "p11_t1"
-          },
-          "sums": {
-            "page_no": 110,
-            "value": 32
-          }
-        },
-        {
-          "hash": "8f9ae2a5e2b154e2e15a6350fcf1799a978b6a8523d70f6fb61bccdd436bffb0",
-          "n_rows": 10,
-          "params": {
-            "doc_id": "tanzawa_shika_r6",
-            "row_key": "県西地域小田原市南足柄市中井町大井町開成町箱根町真鶴町湯河原町|大井町",
-            "table_id": "p11_t1"
-          },
-          "sums": {
-            "page_no": 110,
-            "value": 490
-          }
-        },
-        {
-          "hash": "13018d1d21798e216042a7a902542953688e2d7cb21c384013ba81c79f4d0c5c",
-          "n_rows": 14,
-          "params": {
-            "doc_id": "tanzawa_shika_r6",
-            "row_key": "山北町|三保|捕獲頭数",
-            "table_id": "p17_t1"
-          },
-          "sums": {
-            "page_no": 238,
-            "value": 304
-          }
-        },
-        {
-          "hash": "346d21876d90edb5099ed4ed7787c2180b674c3809a6206d788c3ca5aa28b0fb",
-          "n_rows": 14,
-          "params": {
-            "doc_id": "tanzawa_shika_r6",
-            "row_key": "相模原市|鳥屋|入猟者数",
-            "table_id": "p17_t1"
-          },
-          "sums": {
-            "page_no": 238,
-            "value": 1708
-          }
-        },
-        {
-          "hash": "244bb23da82b3bcaa2207409c9106a7010e017f0c4b190ff4ac5fbc67bf77641",
+          "hash": "2941b65a6e77bbe92aa5ab3375d0e170a41dbdbc30276cfdb6ad05332ca05224",
           "n_rows": 6,
           "params": {
-            "doc_id": "tanzawa_shika_r6",
-            "row_key": "第一種銃猟",
-            "table_id": "p18_t2"
-          },
-          "sums": {
-            "page_no": 108,
-            "value": 8353
-          }
-        },
-        {
-          "hash": "a68f67ff53094a5e9dcc275105ca4d2bbe6d76b1cfcdca08c729270fc3c4e896",
-          "n_rows": 8,
-          "params": {
-            "doc_id": "tanzawa_shika_r6",
-            "row_key": "第一種銃猟",
-            "table_id": "p18_t4"
-          },
-          "sums": {
-            "page_no": 144,
-            "value": 1837
-          }
-        },
-        {
-          "hash": "711d8b5848b156ab9f1864cc899038da7d2128743027ca073ffa7ed6bb2e3dd8",
-          "n_rows": 8,
-          "params": {
-            "doc_id": "tanzawa_shika_r6",
-            "row_key": "定着防止区域|被害面積（ha）",
-            "table_id": "p33_t1"
-          },
-          "sums": {
-            "page_no": 264,
-            "value": 5.64
-          }
-        },
-        {
-          "hash": "d6a366ba60f3c4e2af6418acb664c6d6eb9afb1b2a7229b98332d1c649800416",
-          "n_rows": 6,
-          "params": {
-            "doc_id": "tanzawa_shika_r6",
-            "row_key": "相模原市",
+            "doc_id": "tanzawa_shika_r4",
+            "row_key": "山北町",
             "table_id": "p34_t2"
           },
           "sums": {
             "page_no": 204,
-            "value": 0.77
+            "value": 1.26
           }
         },
         {
-          "hash": "c208398e51e17c84f7edd054ca859860877dc504b1cf1e4231d73e534a0b68e2",
-          "n_rows": 14,
+          "hash": "7cb9bac74b44d233c4594e6eb27ba8abbb413a4d2c2f2ae675c60b29edada534",
+          "n_rows": 12,
           "params": {
-            "doc_id": "tanzawa_shika_r6",
-            "row_key": "年 度",
+            "doc_id": "tanzawa_shika_r4",
+            "row_key": "わな猟",
             "table_id": "p35_t2"
           },
           "sums": {
-            "page_no": 490,
-            "value": 28189
+            "page_no": 420,
+            "value": 16518
           }
         },
         {
-          "hash": "ddcbce866d5de8629004e529fc43ca23471b0ab4bb6c117984f40af762add5fc",
+          "hash": "36b9955dafaa8a684dda17f80111c4aadc413c269d381559a68dee507ecb6c86",
+          "n_rows": 10,
+          "params": {
+            "doc_id": "tanzawa_shika_r6",
+            "row_key": "湘南地域平塚市大磯町二宮町|二宮町",
+            "table_id": "p11_t1"
+          },
+          "sums": {
+            "page_no": 110,
+            "value": 9
+          }
+        },
+        {
+          "hash": "894adcce5bec62eb8afe30ac7070448c51fca7b46214b61a73ed8ac43e2f1410",
+          "n_rows": 10,
+          "params": {
+            "doc_id": "tanzawa_shika_r6",
+            "row_key": "県西地域小田原市南足柄市中井町大井町開成町箱根町真鶴町湯河原町|小田原市",
+            "table_id": "p11_t1"
+          },
+          "sums": {
+            "page_no": 110,
+            "value": 1896
+          }
+        },
+        {
+          "hash": "875dfd082579a119d46c58f88fd9d2a23bdcab21a589d14f815c4f4bce20859c",
+          "n_rows": 14,
+          "params": {
+            "doc_id": "tanzawa_shika_r6",
+            "row_key": "山北町|世附|捕獲頭数",
+            "table_id": "p17_t1"
+          },
+          "sums": {
+            "page_no": 238,
+            "value": 97
+          }
+        },
+        {
+          "hash": "c8898c9c548bcf8ea5bcd7d55f5ef4e7aa4fb25861aef5f8a28ba1f2dde7b046",
+          "n_rows": 10,
+          "params": {
+            "doc_id": "tanzawa_shika_r6",
+            "row_key": "第二種銃猟",
+            "table_id": "p18_t1"
+          },
+          "sums": {
+            "page_no": 180,
+            "value": 872
+          }
+        },
+        {
+          "hash": "bba77306c72be3eb14773808eba4156bb81804073f9da60422b3018b829d36e8",
+          "n_rows": 8,
+          "params": {
+            "doc_id": "tanzawa_shika_r6",
+            "row_key": "わな猟",
+            "table_id": "p18_t4"
+          },
+          "sums": {
+            "page_no": 144,
+            "value": 2447
+          }
+        },
+        {
+          "hash": "7d14a4b5c7fdb447aaf67ed5855fe3b0c133581b190bee3901dc1d8c06ce6e58",
+          "n_rows": 7,
+          "params": {
+            "doc_id": "tanzawa_shika_r6",
+            "row_key": "伊勢原市",
+            "table_id": "p34_t2"
+          },
+          "sums": {
+            "page_no": 238,
+            "value": 0.94
+          }
+        },
+        {
+          "hash": "f2ecdde4a58de2e1939793a3aaf7a5b25fa75f9f3c6e4dd913caf85e2e23c0c8",
+          "n_rows": 14,
+          "params": {
+            "doc_id": "tanzawa_shika_r6",
+            "row_key": "第一種銃猟（乙種）",
+            "table_id": "p35_t1"
+          },
+          "sums": {
+            "page_no": 490,
+            "value": 77247
+          }
+        },
+        {
+          "hash": "60d19f52c03dc241d884bea19178d1621850ea85cece3f171b7cfa3bb4841fdf",
           "n_rows": 4,
           "params": {
             "doc_id": "tanzawa_shika_r6",
-            "row_key": "第二種銃猟（丙種）",
+            "row_key": "わな猟",
             "table_id": "p35_t3"
           },
           "sums": {
             "page_no": 140,
-            "value": 120
+            "value": 10885
           }
         },
         {
-          "hash": "e4f896a1d32b8ebb181dc91102e1ed5a1e6f78e93f6fa1130012b468cd1868f4",
+          "hash": "d961ce475bcdfc80d6127a7ce5d69ec69a9c12edbc06b92afb313024aec3230f",
           "n_rows": 10,
           "params": {
             "doc_id": "tanzawa_shika_r6",
-            "row_key": "湘南地域秦野市伊勢原市|秦野市",
+            "row_key": "湘南地域秦野市伊勢原市|伊勢原市",
             "table_id": "p9_t1"
           },
           "sums": {
             "page_no": 90,
-            "value": 1630
+            "value": 803
           }
         },
         {
@@ -10423,12 +10423,12 @@
       "n_domain": 1,
       "runs": [
         {
-          "hash": "595bfcae1c2ea3febacc98315bad6db8f77f98b209aed5a2e3153e52cfee82f1",
+          "hash": "bb7d07167a3c3a0b09b7c6401b40e0fa90d28940f9611ca112aaa6e0e1e1a183",
           "n_rows": 1,
           "params": {},
           "sums": {
             "n_sites": 389,
-            "n_sources": 161,
+            "n_sources": 165,
             "n_watersheds": 402,
             "y_from": 1973,
             "y_to": 2026
@@ -10454,8 +10454,8 @@
   ],
   "schema_version": 1,
   "source_hashes": {
-    "data/db/cells.sqlite": "59487f927f4d211b0cd2a7dd9bdcb1990ea38e94184328fb35e6bc904cc1bdf5",
-    "data/db/ryuiki.sqlite": "ea03e4a10d11f296462c20e6fd803489adcea7ad9073cf600536f809efd72c20",
+    "data/db/cells.sqlite": "67ebb4128b4f8c5ca14472d4194972faff7a86b74a878b3750a37680f4b04064",
+    "data/db/ryuiki.sqlite": "842bb2f51bcb2ad9d3a081d24b948068f266b890dbc9828954b89b972b5b9005",
     "data/processed/moe_ias_list.csv": "54a3261737bc72b84910d75d78a7da7beee067c5b78581c9b2522627b7bffb41",
     "data/processed/nlni_l03b_landuse_by_watershed.csv": "ec71d28f382785af6ef7ed588350f67537f96d356d1d73c541522a74421cb644",
     "data/processed/nlni_l03b_landuse_by_watershed_amami.csv": "0a64640e1a5507567488923f26ba38bf98ce11125394f90d88474ca5e4503e1e",

@@ -463,7 +463,12 @@ document_closure:
     - choju_kyugo_jisseki_2022
     - kanagawa_river_monitoring_syokubutu
     - kanagawa_river_monitoring_anzen
-  min_documents: 7
+    - kagoshima_umigame_r7
+    - kagoshima_noneko_r4
+    - bodik_460001_guntou_irikomi_2024
+    - kagoshima_habu_bite_h28r7
+    - kagoshima_habu_kaiage_h28r7
+  min_documents: 12
 
 # ---------------------------------------------------------------------------
 # 丸ごと入れる ryuiki.sqlite のテーブル（十分小さい・v1/v2 が読む）。
