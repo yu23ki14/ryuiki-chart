@@ -86,6 +86,15 @@ predicates:
     where: "source_id = 'env_kousui_annual_amami'"
     limit: 10
     min_rows: 10
+  # --- hydro.flow（環境省 公共用水域の「流量関連」。variable_alias で hydro.flow に解決される）を守る ---
+  # 先頭 N 行（rowid 順）で選ぶと、原本の rowid が振り直されたとき（m02 の再投入で env_kousui_sample_kanagawa の
+  # rowid が先頭に来る行が変わった）に流量の行が1つも入らず、variable_catalog / climatology から hydro.flow が
+  # 丸ごと落ちる。そこで流量を持つ5地点（main のサンプルが持っていた357行）を site_id で固定して全部入れる。
+  - name: measurements_hydro_flow_env_kousui_kanagawa
+    table: measurements
+    where: "variable LIKE '流量関連%' AND site_id IN ('env_kousui_stations_kanagawa__kousui_1410260', 'env_kousui_stations_kanagawa__kousui_1410270', 'env_kousui_stations_kanagawa__kousui_1410280', 'env_kousui_stations_kanagawa__kousui_1410290', 'env_kousui_stations_kanagawa__kousui_1410620')"
+    limit: 400
+    min_rows: 357
   - name: measurements_source_null
     table: measurements
     where: "source_id IS NULL"
