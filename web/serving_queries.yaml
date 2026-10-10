@@ -64,6 +64,21 @@ domains:
       JOIN place_source_ref psr ON psr.place_id = spv.place_id AND psr.key_space = 'site_id'
       WHERE spv.input_grain = 'day'
         AND spv.variable_id IN (SELECT variable_id FROM variable_alias WHERE dataset = 'measurements' AND variable_id IS NOT NULL)
+  # 日次の積み上げが「月あたり1件を超える」(variable_id, site_id)（月次系列の n が集計として意味を持つ組）。
+  # 月1回の採水（日次の積み上げが月に1行）の系列は、月次集計の n が常に1で、集計が効いているか確かめられない
+  # （空振り検査 (b) に落ちる）。n > 年数×12 なら、どこかの月に2日以上ある。地域を足して母集団が増えても、
+  # 等間隔の選択が月1回の系列だけを拾うことがなくなる。
+  variable_site_day_dense:
+    db: v2
+    columns: [variable_id, site_id]
+    sql: >
+      SELECT DISTINCT spv.variable_id AS variable_id, psr.external_key AS site_id
+      FROM summary_place_variable spv
+      JOIN place_source_ref psr ON psr.place_id = spv.place_id AND psr.key_space = 'site_id'
+      WHERE spv.input_grain = 'day'
+        AND spv.y_from IS NOT NULL AND spv.y_to IS NOT NULL
+        AND spv.n > (spv.y_to - spv.y_from + 1) * 12
+        AND spv.variable_id IN (SELECT variable_id FROM variable_alias WHERE dataset = 'measurements' AND variable_id IS NOT NULL)
   # 実在する (variable_id, basis)（ゾーン系列）。
   variable_basis:
     db: v2
@@ -170,8 +185,8 @@ queries:
   - id: month_series_site_by_variable
     max_runs: { snapshot: 6 }
     params:
-      variable_id: { domain: variable_site_day }
-      site_id: { domain: variable_site_day }
+      variable_id: { domain: variable_site_day_dense }
+      site_id: { domain: variable_site_day_dense }
     compare:
       key: [ym]
       numeric: [n, avg]
