@@ -15,19 +15,15 @@ import pandas as pd
 import requests
 
 B = "https://water-pub.env.go.jp/water-pub/mizu-site/zip_create"
-# 地域依存の定数。jp-14 の値は従来の直書きと同一（scripts/tests/test_c_region_names.py で固定）。
-RID = "jp-14"
-PREF = regions.get(RID)["env_water_prefcodes"][0]    # "14"
-RAWD = RAW/regions.name("env_kousui", RID); RAWD.mkdir(parents=True, exist_ok=True)
-SID_ST = regions.name("env_kousui_stations_kanagawa", RID)
-SID_Y  = regions.name("env_kousui_annual_kanagawa", RID)
-SID_K  = regions.name("env_kousui_sample_kanagawa", RID)
-LABEL = "神奈川県"
-BBOX = None     # jp-14 は県全域。それ以外は regions の bbox で測定点を絞る
+# 地域依存の定数。値は regions.py。set_region(rid) が1か所で組み立て、直後の呼び出しで既定の jp-14 にする
+# （jp-14 の名前は scripts/tests/test_collectors_region.py で固定）。main() が --region で呼び直す。
+RID = PREF = RAWD = SID_ST = SID_Y = SID_K = LABEL = None
+BBOX = None     # 県の一部の地域は regions の bbox で測定点を絞る。県全域は None
 KEEP = None     # 絞り込み後に残す zettaicode の集合（BBOX が None なら None）
 
+
 def set_region(rid):
-    global RID, PREF, RAWD, SID_ST, SID_Y, SID_K, LABEL, BBOX
+    global RID, PREF, RAWD, SID_ST, SID_Y, SID_K, LABEL, BBOX, KEEP
     RID = rid
     cfg = regions.get(rid)
     PREF = cfg["env_water_prefcodes"][0]
@@ -35,13 +31,13 @@ def set_region(rid):
     SID_ST = regions.name("env_kousui_stations_kanagawa", rid)
     SID_Y  = regions.name("env_kousui_annual_kanagawa", rid)
     SID_K  = regions.name("env_kousui_sample_kanagawa", rid)
-    if rid != "jp-14":
-        LABEL = "奄美大島"
-        BBOX = cfg["bbox"]
+    LABEL = cfg["label"]
+    BBOX = regions.clip_bbox(rid)
+    KEEP = None
 
-def in_bbox(lat, lon):
-    return (lat is not None and lon is not None
-            and BBOX[1] <= lat <= BBOX[3] and BBOX[0] <= lon <= BBOX[2])
+
+set_region("jp-14")
+
 
 def keep_rows(df):
     """BBOX 指定時、測定点マスタで bbox 内と判った地点の行だけ残す。"""
@@ -49,6 +45,8 @@ def keep_rows(df):
         return df
     col = next(c for c in df.columns if c.lower() == "zettaicode")
     return df[df[col].map(s_).isin(KEEP)]
+
+
 LICENSE = ("環境省 水環境総合情報サイト（政府標準利用規約準拠 / 出典明示で利用可） "
            "https://water-pub.env.go.jp/water-pub/mizu-site/env.asp")
 HDRS = {"User-Agent": UA, "Content-Type": "application/json; charset=utf-8",
@@ -211,14 +209,14 @@ def main():
     Y_FROM = 2005
     # --- 1. 測定点マスタ ---
     try:
-        df = fetch_fc("p_kosui_location", f"prefcode='{PREF}'", "location_14.zip")
+        df = fetch_fc("p_kosui_location", f"prefcode='{PREF}'", f"location_{PREF}.zip")
         df["nendo_i"] = pd.to_numeric(df["nendo"], errors="coerce")
         df["zc"] = df["zettaicode"].map(s_)
         g = df.sort_values("nendo_i").groupby("zc")
         st = []
         for code, sub in g:
             last = sub.iloc[-1]
-            if BBOX is not None and not in_bbox(to_number(last["latitude"])[0], to_number(last["longitude"])[0]):
+            if BBOX is not None and not regions.in_bbox(BBOX, to_number(last["latitude"])[0], to_number(last["longitude"])[0]):
                 continue
             st.append({
                 "station_id": "kousui_" + code, "zettaicode": code,
@@ -253,6 +251,9 @@ def main():
         register(SID_ST, f"環境省 公共用水域 水質測定点マスタ（{LABEL}）", "環境省",
                  "https://water-pub.env.go.jp/water-pub/mizu-site/mizu/download/", "水質",
                  "zip_create WebService.asmx", "CSV/JSONL", LICENSE, True, 0, f"取得失敗: {e}")
+    if BBOX is not None and KEEP is None:
+        # 測定点マスタが取れないと bbox で絞れない。県全域の値を *_amami に書かないよう止める
+        raise SystemExit(f"[abort] {RID}: 測定点マスタが取れず bbox {BBOX} で絞れない。年間値・検体値は出さない")
 
     # --- 2. 年間値 (健康項目/生活環境項目/全窒素・全燐) ---
     rows, notes = [], []

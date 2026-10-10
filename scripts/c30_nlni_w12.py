@@ -16,7 +16,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from common import RAW, PROC, register, write_jsonl, to_fiscal_year
 from nlni_lib import (read_shp, geod_area_km2, write_geojson, write_csv,
                       extract_attribute_table, write_columns_csv, parse_codelist_html,
-                      LICENSE_OPEN, layout, ensure_extracted, bbox_geom)
+                      LICENSE_OPEN, layout, ensure_extracted, read_w12)
 from regions import add_region_arg
 from shapely.geometry import shape as shp_shape
 from shapely.strtree import STRtree
@@ -32,11 +32,10 @@ PAGE = "https://nlftp.mlit.go.jp/ksj/gmlold/datalist/gmlold_KsjTmplt-W12.html"
 ZIPU = L["w12_zip_url"]
 SHP = L["w12_shp"]
 W05_SHP = L["w05_stream_shp"]
-if RID != "jp-14":
-    ensure_extracted(ZIPU, L["w12_dir"] / pathlib.PurePosixPath(ZIPU).name, L["w12_dir"], SHP.name)
-    ensure_extracted(L["w05_zip_url"], L["w05_dir"] / pathlib.PurePosixPath(L["w05_zip_url"]).name,
-                     L["w05_dir"], W05_SHP.name)
-CLIP = bbox_geom(L["clip_bbox"]) if L["clip_bbox"] else None
+ensure_extracted(ZIPU, L["w12_dir"] / pathlib.PurePosixPath(ZIPU).name, L["w12_dir"], SHP.name)
+ensure_extracted(L["w05_zip_url"], L["w05_dir"] / pathlib.PurePosixPath(L["w05_zip_url"]).name,
+                 L["w05_dir"], W05_SHP.name)
+CLIP = L["clip_bbox"]
 
 WATERSHED_TYPE = {"0": "流域界", "1": "非集水域界"}
 
@@ -66,9 +65,8 @@ def ws_category(code):
     return None
 
 # ---- 読み込み ----
-r, fields, recs, enc = read_shp(SHP)
-shapes = r.shapes()
-print(f"W12: {len(recs)} features, fields={fields}, dbf encoding={enc}")
+fields, enc, n_all, w12_items = read_w12(SHP, L["clip_bbox"])
+print(f"W12: {n_all} features, fields={fields}, dbf encoding={enc}")
 
 # ---- W05 河川で水系名を推定 ----
 ws_names = parse_codelist_html(RAW / "nlni_codelists" / "WaterSystemCodeCd.html", r"\d{6}")
@@ -83,13 +81,7 @@ tree = STRtree([s[0] for s in streams])
 print(f"W05 streams for naming: {len(streams)}")
 
 features, rows = [], []
-for i, (sh, rc) in enumerate(zip(shapes, recs)):
-    gj = sh.__geo_interface__
-    g = shp_shape(gj)
-    if not g.is_valid:
-        g = g.buffer(0)
-    if CLIP is not None and not g.intersects(CLIP):
-        continue
+for i, gj, g, rc in w12_items:
     ws_code, uv_code, wtype = rc[1], rc[2], str(rc[0])
     area = geod_area_km2(g)
     c = g.centroid
@@ -230,7 +222,7 @@ cols += [
 write_columns_csv(SID, cols)
 
 SCOPE = "" if CLIP is None else (f"{L['name_ja']}の範囲（bbox {L['bbox']}）に掛かる {len(rows)} 面だけを、"
-                                  f"県全体 {len(recs)} 面から絞った。")
+                                  f"県全体 {n_all} 面から絞った。")
 NOTES = (f"{PREF_NAME}({PREF})/世界測地系版 {pathlib.PurePosixPath(ZIPU).name}。基準年 昭和52(1977)年。{SCOPE}"
          "原データに水系名は無く旧水系域コード(5桁)のみ。公式コードリスト OldWaterSystemCd には"
          "名称対応表が存在しないため、水系名は W05河川との空間クロスによる推定値を "
@@ -240,8 +232,7 @@ NOTES = (f"{PREF_NAME}({PREF})/世界測地系版 {pathlib.PurePosixPath(ZIPU).n
          "データの一部は領域外にあるものがあるため、利用には注意を要する。」"
          "「旧フォーマットに記録されていた”非集水域界”のデータについては、幾何形状に課題があったため"
          "GML変換時に削除した。」→ 実際に watershed_type は全件 0(流域界) で非集水域界は0件。"
-         + ("shapefile 5件(#15,#49,#116,#153,#158)は外環リングを持たず内側リングのみで構成されており、"
-            "pyshp が外環として符号化した（面積は算出済みだが形状の解釈に注意）。" if RID == "jp-14" else "")
+         + L["w12_note"]
          + f"付随出力: {SID}_by_system.csv/.jsonl（旧水系域コード単位の集計）, {SID}_columns.csv")
 register(SID, f"国土数値情報 流域界・非集水域（{PREF_NAME if CLIP is None else L['name_ja']}）", "国土交通省 国土数値情報ダウンロードサイト",
          PAGE, "gis_watershed", "http_zip_shapefile", "geojson+csv+jsonl",

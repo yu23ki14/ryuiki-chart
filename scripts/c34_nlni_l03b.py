@@ -14,10 +14,9 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import numpy as np
 import shapefile
 import shapely
-from shapely.geometry import shape as shp_shape
 from common import RAW, PROC, ROOT, register, write_jsonl, download
-from nlni_lib import (read_shp, write_csv, extract_attribute_table, write_columns_csv,
-                      parse_codelist_html, GEOD, layout, bbox_geom)
+from nlni_lib import (write_csv, extract_attribute_table, write_columns_csv,
+                      parse_codelist_html, GEOD, layout, read_w12)
 from regions import add_region_arg
 
 ap = argparse.ArgumentParser()
@@ -77,18 +76,10 @@ else:
     print("  [warn] 検証用 .shp が無いため mesh_cell() の突き合わせを省略")
 
 # ---- W12 単位流域（流域IDの付与元）----
-w12, w12fields, w12recs, _ = read_shp(L["w12_shp"])
-w12geoms, w12ids, w12codes = [], [], []
-_clip = bbox_geom(CLIP_BBOX) if CLIP_BBOX else None
-for sh, rc in zip(w12.shapes(), w12recs):
-    g = shp_shape(sh.__geo_interface__)
-    if not g.is_valid:
-        g = g.buffer(0)
-    if _clip is not None and not g.intersects(_clip):
-        continue                                           # c30 と同じ絞り込み
-    w12geoms.append(g)
-    w12ids.append(f"{rc[1]}-{rc[2]}")
-    w12codes.append(rc[1])
+_, _, _, w12_items = read_w12(L["w12_shp"], CLIP_BBOX)     # c30 と同じ絞り込み
+w12geoms = [g for _, _, g, _ in w12_items]
+w12ids = [f"{rc[1]}-{rc[2]}" for _, _, _, rc in w12_items]
+w12codes = [rc[1] for _, _, _, rc in w12_items]
 tree = shapely.STRtree(w12geoms)
 print(f"  W12 unit watersheds for join: {len(w12geoms)}")
 
@@ -108,8 +99,7 @@ for yy, year in YEARS.items():
     codes, lus, dates, srcrefs = [], [], [], []
     for m in MESHES:
         zp = BASE / f"L03-b-{yy}_{m}-jgd_GML.zip"
-        if RID != "jp-14":
-            download(f"https://nlftp.mlit.go.jp/ksj/gml/data/L03-b/L03-b-{yy}/{zp.name}", zp)
+        download(f"https://nlftp.mlit.go.jp/ksj/gml/data/L03-b/L03-b-{yy}/{zp.name}", zp)
         z = zipfile.ZipFile(zp)
         dbfname = [n for n in z.namelist() if n.lower().endswith(".dbf")][0]
         tmp = tempfile.mkdtemp()
@@ -203,7 +193,7 @@ for yy, year in YEARS.items():
         nm, cat = ws_name.get(wid, ("", ""))
         feats.append({"type": "Feature", "properties": {
             "source_id": SID,
-            "source_ref": f"L03-b-{yy}#{wid}#{lu}",
+            "source_ref": f"L03-b-{yy}#{wid or ''}#{lu}",       # W12 の外（wid なし）は流域の部分を空に
             "watershed_id": wid,
             "water_system_code_old": wid.split("-")[0] if wid else None,
             "water_system_name_ja_estimated": nm or None,

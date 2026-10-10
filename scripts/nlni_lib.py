@@ -22,27 +22,34 @@ def layout(rid):
     """
     reg = regions.get(rid)
     pref = reg["pref_code"]
-    nm = lambda base: regions.name(base, rid)  # noqa: E731
+    def nm(base):
+        return regions.name(base, rid)
+
     w05_ed, w05_yr = W05_EDITION[pref]
     w05_dir = nm("nlni_w05_rivers")
     w05_stem = f"W05-{w05_ed}_{pref}-g"
     w12_sid = nm("nlni_w12_watersheds")
+
+    def l03b_sid(year):
+        return nm(f"nlni_l03b_landuse_{year}")
+
     return {
         "rid": rid, "pref": pref, "pref_name_ja": reg["pref_name_ja"],
         "pref_short": reg["pref_name_ja"].removesuffix("県"),
         "name_ja": reg["name_ja"],
         # 県全域でない地域（muni_codes がある）は bbox に絞る。県全域の jp-14 は絞らない。
-        "clip_bbox": reg["bbox"] if reg["muni_codes"] is not None else None,
+        "clip_bbox": regions.clip_bbox(rid),
         "bbox": reg["bbox"],
         # W05
         "w05_sid": w05_dir, "w05_nodes_sid": nm("nlni_w05_river_nodes"), "w05_dir": RAW / w05_dir,
         "w05_year_ja": w05_yr, "w05_edition": w05_ed,
+        "w05_year_note": re.sub(r"(\d+)", lambda m: f"{m.group(1)}({1988 + int(m.group(1))})", w05_yr),
         "w05_zip_url": f"https://nlftp.mlit.go.jp/ksj/gml/data/W05/W05-{w05_ed}/W05-{w05_ed}_{pref}_GML.zip",
         "w05_stream_shp": RAW / w05_dir / f"{w05_stem}_Stream.shp",
         "w05_node_shp": RAW / w05_dir / f"{w05_stem}_RiverNode.shp",
         "w05_stream_stem": f"{w05_stem}_Stream", "w05_node_stem": f"{w05_stem}_RiverNode",
         # W12
-        "w12_sid": w12_sid,
+        "w12_sid": w12_sid, "w12_note": reg["w12_note"],
         "w12_zip_url": f"https://nlftp.mlit.go.jp/ksj/gmlold/data/W12/W12-52A/W12-52A-{pref}-01.0a_GML.zip",
         "w12_dir": RAW / w12_sid,
         "w12_shp": RAW / w12_sid / f"W12-52A-2K-{pref}_WatershedBoundary.shp",
@@ -57,7 +64,7 @@ def layout(rid):
         # L03-b
         "l03b_dir": RAW / nm("nlni_l03b_landuse"),
         "l03b_meshes": reg["l03b_meshes"],
-        "l03b_sid": lambda year: nm(f"nlni_l03b_landuse_{year}"),
+        "l03b_sid": l03b_sid,
         "l03b_by_ws_sid": nm("nlni_l03b_landuse_by_watershed"),
         # 標高
         "elev_sid": nm("gsi_elevation_grid"),
@@ -239,6 +246,23 @@ def write_csv(source_id, rows, fieldnames=None):
     return p
 
 
+def read_w12(shp, clip_bbox=None):
+    """W12 の shapefile を読み、clip_bbox（None なら絞らない）に掛かる面だけを返す。c30 と w12_index が共有する。
+    -> (fields, dbf の文字コード, 全面数, [(元の通し番号, 元の GeoJSON ジオメトリ, 検証済みジオメトリ, レコード)])"""
+    r, fields, recs, enc = read_shp(shp)
+    clip = bbox_geom(clip_bbox) if clip_bbox else None
+    items = []
+    for i, (sh, rec) in enumerate(zip(r.shapes(), recs)):
+        gj = sh.__geo_interface__
+        g = shp_shape(gj)
+        if not g.is_valid:
+            g = g.buffer(0)
+        if clip is not None and not g.intersects(clip):
+            continue
+        items.append((i, gj, g, rec))
+    return fields, enc, len(recs), items
+
+
 # ---- W12 単位流域の割り当て（流域単位で束ねるための共通処理） ----
 _W12 = {}
 
@@ -251,16 +275,10 @@ def w12_index(rid="jp-14"):
     import csv as _csv
     import shapely
     L = layout(rid)
-    r, fields, recs, _ = read_shp(L["w12_shp"])
-    clip = bbox_geom(L["clip_bbox"]) if L["clip_bbox"] else None
-    geoms, ids, codes = [], [], []
-    for sh, rc in zip(r.shapes(), recs):
-        g = shp_shape(sh.__geo_interface__)
-        if not g.is_valid:
-            g = g.buffer(0)
-        if clip is not None and not g.intersects(clip):
-            continue
-        geoms.append(g); ids.append(f"{rc[1]}-{rc[2]}"); codes.append(rc[1])
+    _, _, _, items = read_w12(L["w12_shp"], L["clip_bbox"])
+    geoms = [g for _, _, g, _ in items]
+    ids = [f"{rc[1]}-{rc[2]}" for _, _, _, rc in items]
+    codes = [rc[1] for _, _, _, rc in items]
     names = {}
     p = PROC / f"{L['w12_sid']}.csv"
     if p.exists():

@@ -20,10 +20,9 @@ from common import get, register, write_jsonl, PROC, RAW, now
 import regions as rc
 
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
-# 地域別の設定。configure(rid) が書き換える（既定は jp-14。jp-14 のパス・source_id・クエリは据え置き）
-REGION = "jp-14"
-RAW_DIR = RAW / rc.name("osm_kanagawa", REGION)
-RAW_DIR.mkdir(parents=True, exist_ok=True)
+# 地域別の設定。configure(rid) が1か所で組み立て、定義の後の呼び出しで既定の jp-14 にする
+# （jp-14 のパス・source_id・クエリは据え置き）。
+REGION = RAW_DIR = None
 
 ODBL_LICENSE = (
     "ODbL 1.0（Share-Alike/帰属表示の継承条件あり、詳細: "
@@ -36,15 +35,6 @@ ODBL_NOTE = (
     "ODbLまたは互換ライセンスで公開する必要がある。詳細は"
     "https://www.openstreetmap.org/copyright および https://opendatacommons.org/licenses/odbl/1-0/ 参照。"
 )
-
-# カテゴリ固有の注意書き（データ利用者向け）
-EXTRA_NOTES = {
-    "protected_area": (
-        "注意: 神奈川県内でleisure=nature_reserve/boundary=protected_areaが付与されたOSM地物は17件のみで、"
-        "実在の保護区（自然環境保全地域・鳥獣保護区等）を網羅していない。OSMのタグ付与状況に依存するため、"
-        "保護区の網羅的分析には国土数値情報等の公的データを使うこと。"
-    ),
-}
 
 CATEGORIES = {
     "water": {
@@ -108,11 +98,12 @@ out tags center;
 
 
 def area_clause(rid):
-    """(AREA_DECL, AREA)。jp-14 は ISO3166-2 の area のまま（クエリを変えない）。
-    それ以外は regions.py の bbox を Overpass の (S,W,N,E) で指定する。"""
-    if rid == "jp-14":
-        return 'area["ISO3166-2"="JP-14"]->.a;\n', "area.a"
-    x0, y0, x1, y1 = rc.get(rid)["bbox"]
+    """(AREA_DECL, AREA)。県全域の地域は ISO3166-2 の area（神奈川はクエリを変えない）。
+    県の一部の地域（clip_bbox がある）は bbox を Overpass の (S,W,N,E) で指定する。"""
+    bbox = rc.clip_bbox(rid)
+    if bbox is None:
+        return f'area["ISO3166-2"="JP-{rc.get(rid)["pref_code"]}"]->.a;\n', "area.a"
+    x0, y0, x1, y1 = bbox
     return "", f"{y0},{x0},{y1},{x1}"
 
 
@@ -132,6 +123,9 @@ def configure(rid):
     REGION = rid
     RAW_DIR = RAW / rc.name("osm_kanagawa", rid)
     RAW_DIR.mkdir(parents=True, exist_ok=True)
+
+
+configure("jp-14")
 
 
 def run_query(cat_key, cfg):
@@ -239,7 +233,7 @@ def main(argv=None):
                 f"生データ: data/raw/{RAW_DIR.name}/{raw_path.name}。"
                 f"OSMはボランティア編集のため地物の網羅性・タグ付与は地域差があり、"
                 f"取得時点のスナップショットであって時系列比較には使えない。"
-                + (" " + EXTRA_NOTES[cat_key] if cat_key in EXTRA_NOTES and REGION == "jp-14" else "")
+                + (" " + rc.get(REGION)["osm_extra_notes"][cat_key] if cat_key in rc.get(REGION)["osm_extra_notes"] else "")
                 + " " + ODBL_NOTE
             )
             register(

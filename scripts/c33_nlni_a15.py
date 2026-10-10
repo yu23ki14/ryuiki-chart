@@ -26,9 +26,8 @@ SID = L["a15_sid"]
 PAGE = "https://nlftp.mlit.go.jp/ksj/jpgis/datalist/KsjTmplt-A15.html"
 ZIPU = L["a15_zip_url"]
 XML = L["a15_xml"]
-if RID != "jp-14":
-    ensure_extracted(ZIPU, RAW / SID / pathlib.PurePosixPath(ZIPU).name, RAW / SID, XML.name,
-                     subdir=f"A15-09_{PREF}")
+ensure_extracted(ZIPU, RAW / SID / pathlib.PurePosixPath(ZIPU).name, RAW / SID, XML.name,
+                 subdir=f"A15-09_{PREF}")
 
 # ダウンロードページ「属性情報」原文より
 INSTITUTION = {"1": "国指定", "2": "県指定"}

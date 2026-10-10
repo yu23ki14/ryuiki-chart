@@ -25,8 +25,7 @@ SID = L["a10_sid"]
 PAGE = "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-A10-v3_1.html"
 ZIPU = L["a10_zip_url"]
 BASE = RAW / SID
-if RID != "jp-14":
-    ensure_extracted(ZIPU, BASE / pathlib.PurePosixPath(ZIPU).name, BASE, f"A10-15_{PREF}.xml")
+ensure_extracted(ZIPU, BASE / pathlib.PurePosixPath(ZIPU).name, BASE, f"A10-15_{PREF}.xml")
 
 LAYER = {11: "自然公園地域", 12: "特別地域", 13: "特別保護地区"}
 IOSIDE = {0: "毛羽無し", 1: "内向き", 2: "外向き"}

@@ -12,30 +12,30 @@ import regions
 import pandas as pd
 import requests
 
-# 地域依存の定数。jp-14 の値は従来の直書きと同一（scripts/tests/test_c_region_names.py で固定）。
-RID = "jp-14"
-SID_ST = regions.name("soramame_stations_kanagawa", RID)
-SID_TS = regions.name("soramame_hourly_kanagawa", RID)
-RAWD = RAW/regions.name("soramame", RID); RAWD.mkdir(parents=True, exist_ok=True)
-PREF = regions.get(RID)["pref_code"]   # "14"
-LABEL = "神奈川県"
+# 地域依存の定数。値は regions.py。set_region(rid) が1か所で組み立て、直後の呼び出しで既定の jp-14 にする
+# （jp-14 の名前は scripts/tests/test_collectors_region.py で固定）。main() が --region で呼び直す。
 LICENSE = ("環境省 そらまめ君 利用規約（出典明示による利用可 / 速報値・確定値は国立環境研究所 "
            "環境数値データベース）https://soramame.env.go.jp/policy")
+RID = SID_ST = SID_TS = RAWD = PREF = LABEL = TARGET_STATIONS = ONLY_TARGETS = None
 
-# 流域デモ用に選定した測定局。局コード -> 名称は regions.py の soramame_stations
-TARGET_STATIONS = dict(regions.get(RID)["soramame_stations"])
 
 def set_region(rid):
-    global RID, SID_ST, SID_TS, RAWD, PREF, LABEL, TARGET_STATIONS
+    global RID, SID_ST, SID_TS, RAWD, PREF, LABEL, TARGET_STATIONS, ONLY_TARGETS
     RID = rid
     cfg = regions.get(rid)
     SID_ST = regions.name("soramame_stations_kanagawa", rid)
     SID_TS = regions.name("soramame_hourly_kanagawa", rid)
     RAWD = RAW/regions.name("soramame", rid); RAWD.mkdir(parents=True, exist_ok=True)
     PREF = cfg["pref_code"]
+    LABEL = cfg["label"]
+    # 流域デモ用に選定した測定局（局コード -> 名称）
     TARGET_STATIONS = dict(cfg["soramame_stations"])
-    if rid != "jp-14":
-        LABEL = "奄美大島"
+    # 県の一部の地域は、県全体の局マスタから対象局だけ残す（県全域の地域は従来どおり県全局）
+    ONLY_TARGETS = regions.clip_bbox(rid) is not None
+
+
+set_region("jp-14")
+
 # 縦持ちにする測定項目（列名 -> (variable, unit)）
 ITEMS = {
     "SO2(ppm)":     ("so2", "ppm"),
@@ -56,7 +56,7 @@ def fetch_station_master(t):
     (RAWD/"existence.csv").write_text(r.text, encoding="utf-8")
     df = pd.read_csv(io.StringIO(r.text), dtype=str)
     df = df[df["都道府県コード"] == PREF].copy()
-    if RID != "jp-14":      # 県全体の局マスタから、対象局だけ残す（jp-14 は従来どおり県全局）
+    if ONLY_TARGETS:
         df = df[df["測定局コード"].isin(TARGET_STATIONS)].copy()
     rows = []
     for _, x in df.iterrows():

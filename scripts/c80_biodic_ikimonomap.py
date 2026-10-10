@@ -57,17 +57,10 @@ from shapely.ops import transform as shp_transform
 # 定数
 # ---------------------------------------------------------------------------
 
-# 地域別の設定。configure(rid) が書き換える（既定は jp-14。jp-14 のパス・source_id は据え置き）
-REGION = "jp-14"
-RAW_DIR = RAW / rc.name("biodic_ikimonomap", REGION)
-RAW_DIR.mkdir(parents=True, exist_ok=True)
-BBOX = rc.get(REGION)["bbox"]
-SID_VEG = rc.name("biodic_veg2024_kanagawa", REGION)
-SID_MAMMAL = rc.name("biodic_mammal_mesh_kanagawa", REGION)
-AREA_JA = rc.get(REGION)["name_ja"]
-# 現存植生図2024 は地域ブロックごとに別レイヤ（0=北海道〜7=九州・沖縄）。bbox の入るブロックを実測で選ぶ
-VG_BLOCKS = {"jp-14": (2, "関東"), "jp-46": (7, "九州・沖縄")}
-VG_LAYER_ID, VG_BLOCK_JA = VG_BLOCKS[REGION]
+# 地域別の設定。configure(rid) が1か所で組み立て、定数の定義の後の呼び出しで既定の jp-14 にする
+# （jp-14 のパス・source_id は据え置き）。値は regions.py。
+REGION = RAW_DIR = BBOX = SID_VEG = SID_MAMMAL = AREA_JA = VG_LAYER_ID = VG_BLOCK_JA = VG_BLOCK_NOTE = None
+VG2024_LAYER_URL = None
 
 APP_ITEM_ID = "8ba29c091ba04870a8c7e5265fb9fb6c"
 APP_CONFIG_URL = (
@@ -79,7 +72,6 @@ APP_PUBLIC_URL = (
 )
 
 SERVICES_BASE = "https://arc-gis.biodic.go.jp/arcgis/rest/services/webgis"
-VG2024_LAYER_URL = f"{SERVICES_BASE}/vg2024/MapServer/{VG_LAYER_ID}"  # jp-14 は 2=関東ブロック(実測で確認)
 
 MAMMAL_LAYERS = {
     "tanuki": f"{SERVICES_BASE}/tanuki/FeatureServer/0",
@@ -121,17 +113,23 @@ YEAR_SUFFIX_RE = re.compile(r"(20\d{2})$")
 # ---------------------------------------------------------------------------
 
 def configure(rid):
-    """地域を切り替える（raw ディレクトリ・source_id・bbox・植生レイヤ）。jp-14 は既定と同じ。"""
-    global REGION, RAW_DIR, BBOX, SID_VEG, SID_MAMMAL, AREA_JA, VG_LAYER_ID, VG_BLOCK_JA, VG2024_LAYER_URL
+    """地域を切り替える（raw ディレクトリ・source_id・bbox・植生レイヤ）。何度呼んでも全て組み直す。"""
+    global REGION, RAW_DIR, BBOX, SID_VEG, SID_MAMMAL, AREA_JA, VG_LAYER_ID, VG_BLOCK_JA, VG_BLOCK_NOTE, VG2024_LAYER_URL
+    cfg = rc.get(rid)
     REGION = rid
     RAW_DIR = RAW / rc.name("biodic_ikimonomap", rid)
     RAW_DIR.mkdir(parents=True, exist_ok=True)
-    BBOX = rc.get(rid)["bbox"]
+    BBOX = cfg["bbox"]
     SID_VEG = rc.name("biodic_veg2024_kanagawa", rid)
     SID_MAMMAL = rc.name("biodic_mammal_mesh_kanagawa", rid)
-    AREA_JA = rc.get(rid)["name_ja"]
-    VG_LAYER_ID, VG_BLOCK_JA = VG_BLOCKS[rid]
+    AREA_JA = cfg["name_ja"]
+    # 現存植生図2024 は地域ブロックごとに別レイヤ（0=北海道〜7=九州・沖縄）。bbox の入るブロックを実測で選ぶ
+    VG_LAYER_ID, VG_BLOCK_JA = cfg["vg_layer"]
+    VG_BLOCK_NOTE = cfg["vg_block_note"]
     VG2024_LAYER_URL = f"{SERVICES_BASE}/vg2024/MapServer/{VG_LAYER_ID}"
+
+
+configure("jp-14")
 
 
 def _cached_json(cache_path: pathlib.Path, fetch_fn):
@@ -410,9 +408,7 @@ def step_veg2024():
             f"({VG_BLOCK_JA}ブロック)を検索。returnCountOnly={expected_count}件に対し実取得{len(features)}件"
             f"(geometry欠損スキップ{skipped_no_geom}件)。"
             "『地域ブロック』フィールドの値(例:'3')はアプリの8分割レイヤID(0=北海道..7=九州沖縄)とは"
-            + ("対応していない可能性がある(layer2=関東で取得したのに地域ブロック='3'の行が多数を占めた実測結果あり)。"
-               if REGION == "jp-14" else "対応は未確認。")
-            +
+            + VG_BLOCK_NOTE +
             "値をそのまま保持しレイヤIDとの対応付けはしていない。"
             "作成年度(survey_year/survey_year_raw)は個々のポリゴンの実測年で、"
             "サービス名の『2024』は最新統合版のリリース名であり全ポリゴンの作成年ではない"

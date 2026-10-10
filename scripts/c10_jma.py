@@ -10,26 +10,15 @@ from common import *
 import regions
 import pandas as pd
 
-# 地域依存の定数。jp-14 の値は従来の直書きと同一（scripts/tests/test_c_region_names.py で固定）。
-# main() が --region から設定する。import しただけでは jp-14。
-RID = "jp-14"
-SID_ST   = regions.name("jma_stations_kanagawa", RID)
-SID_MON  = regions.name("jma_monthly_kanagawa", RID)
-SID_DAY  = "jma_daily_yokohama"
+# 地域依存の定数。値は regions.py。set_region(rid) が1か所で組み立て、末尾の呼び出しで既定の jp-14 にする
+# （jp-14 の名前は scripts/tests/test_collectors_region.py で固定）。main() が --region で呼び直す。
 BASE = "https://www.data.jma.go.jp/stats/etrn"
-PREC = regions.get(RID)["jma_stations"][0][0]   # 46
-BLOCKS = None          # jp-14 は県のページから。jp-46 は regions.jma_stations の block_no を直接指定
-RAWD = RAW/regions.name("jma", RID); RAWD.mkdir(parents=True, exist_ok=True)
-PREF_JA = "神奈川県"
-LABEL = "神奈川県"      # register() の名称に入れる地域の呼び名
-# 月別値の対象地点・日別値の (地点名, 期間リスト, source_id)
-TARGETS = ["横浜", "海老名", "辻堂", "小田原", "丹沢湖", "相模湖", "三浦"]
-DAILY_ST = "横浜"
-DAILY_PERIODS = [(2024, 1, 12), (2025, 1, 12), (2026, 1, 12)]    # (年, 開始月, 終了月)
-DAILY_NOTE = "2024-01〜直近月の日別値"
+RID = SID_ST = SID_MON = SID_DAY = PREC = BLOCKS = RAWD = PREF_JA = LABEL = None
+TARGETS = DAILY_ST = DAILY_PERIODS = DAILY_NOTE = None
+
 
 def set_region(rid):
-    """--region からモジュール定数を組み立てる。jp-14 は import 時と同じ値になる。"""
+    """--region からモジュール定数を組み立てる（jp-46 の後に jp-14 へ戻しても全て戻る）。"""
     global RID, SID_ST, SID_MON, SID_DAY, PREC, BLOCKS, RAWD, PREF_JA, LABEL, TARGETS, DAILY_ST, DAILY_PERIODS, DAILY_NOTE
     RID = rid
     cfg = regions.get(rid)
@@ -37,17 +26,17 @@ def set_region(rid):
     SID_MON = regions.name("jma_monthly_kanagawa", rid)
     PREC = cfg["jma_stations"][0][0]
     RAWD = RAW/regions.name("jma", rid); RAWD.mkdir(parents=True, exist_ok=True)
-    if rid == "jp-14":
-        return
     PREF_JA = cfg["pref_name_ja"]
-    LABEL = "奄美大島"
-    BLOCKS = {b for _, b, _ in cfg["jma_stations"]}
-    SID_DAY = "jma_daily_nase"
-    TARGETS = ["名瀬", "笠利", "古仁屋"]
-    # 名瀬の日別: 2010年奄美豪雨（2010-10）＋ 横浜と同じ直近2年
-    DAILY_ST = "名瀬"
-    DAILY_NOTE = "2010-10（奄美豪雨）と 2024-01〜直近月の日別値"
-    DAILY_PERIODS = [(2010, 10, 10), (2024, 1, 12), (2025, 1, 12), (2026, 1, 12)]
+    LABEL = cfg["label"]
+    # block_no を直接指定する地域は集合、県のページから取る地域（block_no が None）は None
+    BLOCKS = {b for _, b, _ in cfg["jma_stations"] if b} or None
+    TARGETS = list(cfg["jma_targets"])
+    d = cfg["jma_daily"]
+    SID_DAY, DAILY_ST, DAILY_NOTE = d["source_id"], d["station"], d["note"]
+    DAILY_PERIODS = [tuple(x) for x in d["periods"]]
+
+
+set_region("jp-14")
 
 LICENSE = ("気象庁ホームページ利用規約（政府標準利用規約 2.0 準拠 / CC BY 4.0 互換）"
            " https://www.jma.go.jp/jma/kishou/info/coment.html")
@@ -73,16 +62,15 @@ def fetch_stations():
         etrn[d["name"]] = d
     print(f"  etrn prefecture page: {len(etrn)} stations")
 
-    # (b) amedastable.json（全国）から神奈川(=46xxx)を抽出
+    # (b) amedastable.json（全国）から対象県(=prec_no で始まる id)を抽出
     tbl = get_json("https://www.jma.go.jp/bosai/amedas/const/amedastable.json")
     (RAWD/"amedastable.json").write_text(json.dumps(tbl, ensure_ascii=False), encoding="utf-8")
     rows = []
     for amedas_id, v in tbl.items():
         name = v.get("kjName")
-        if BLOCKS is None:
-            if not amedas_id.startswith("46"):
-                continue
-        elif name not in etrn:
+        if not amedas_id.startswith(str(PREC)):     # amedas id の先頭2桁は prec_no
+            continue
+        if BLOCKS is not None and name not in etrn:  # 対象地点（block_no 指定）だけ
             continue
         e = etrn.get(name, {})
         rows.append({

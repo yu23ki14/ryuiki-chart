@@ -10,7 +10,7 @@ from common import RAW, register, write_jsonl, to_fiscal_year
 from nlni_lib import (read_shp, geod_length_km, write_geojson, write_csv,
                       extract_attribute_table, write_columns_csv, parse_codelist_html,
                       LICENSE_NONCOM, layout, ensure_extracted, bbox_geom)
-from regions import add_region_arg
+from regions import add_region_arg, in_bbox
 from shapely.geometry import shape as shp_shape
 
 ap = argparse.ArgumentParser()
@@ -21,11 +21,9 @@ L = layout(RID)
 PAGE = "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-W05.html"
 ZIPU = L["w05_zip_url"]
 BASE = L["w05_dir"]
-PREF, PREF_NAME, YEAR_JA = L["pref"], L["pref_name_ja"], L["w05_year_ja"]
-YEAR_NOTE = {"14": "平成20(2008)年", "46": "平成19(2007)年"}[PREF]
-if RID != "jp-14":
-    ensure_extracted(ZIPU, BASE / pathlib.PurePosixPath(ZIPU).name, BASE,
-                     L["w05_stream_stem"] + ".shp")
+PREF, PREF_NAME, YEAR_JA, YEAR_NOTE = L["pref"], L["pref_name_ja"], L["w05_year_ja"], L["w05_year_note"]
+ensure_extracted(ZIPU, BASE / pathlib.PurePosixPath(ZIPU).name, BASE,
+                 L["w05_stream_stem"] + ".shp")
 CLIP = bbox_geom(L["clip_bbox"]) if L["clip_bbox"] else None
 
 SECTION = {"1": "1級直轄区間", "2": "1級指定区間", "3": "2級河川区間", "4": "指定区間外",
@@ -116,7 +114,7 @@ for i, (sh, rc) in enumerate(zip(r2.shapes(), rec2)):
     gj = sh.__geo_interface__
     d = dict(zip(f2, rc))
     lon, lat = gj["coordinates"][0], gj["coordinates"][1]
-    if CLIP is not None and not (L["bbox"][0] <= lon <= L["bbox"][2] and L["bbox"][1] <= lat <= L["bbox"][3]):
+    if CLIP is not None and not in_bbox(L["bbox"], lat, lon):
         continue
     elev_raw = d.get("W05_011")
     try:

@@ -52,8 +52,10 @@ def main(argv=None):
     seen = set()
     out, n = PROC/f"{sid}.jsonl", 0
     t0 = time.time()
+    capped = False
     with open(out, "w", encoding="utf-8") as f:
         for place in places:
+            if capped: break
             above = 0
             while True:
                 j = get_json(B, params={"place_id": place, "per_page": 200,
@@ -67,7 +69,8 @@ def main(argv=None):
                 above = res[-1]["id"]
                 if n % 4000 == 0:
                     print(f"  {n} obs (place={place}, id_above={above}, {time.time()-t0:.0f}s)", flush=True)
-                if n >= 400000: print("  safety cap"); break
+                if n >= 400000: capped = True; break      # 安全上限は place をまたいで効く
+    if capped: print("  safety cap (400000)")
     print(f"wrote {n} observations")
     place_label = " + ".join(str(p) for p in places)
     register(sid, f"iNaturalist 観察記録 — {r['name_ja']} (place {place_label})",

@@ -18,8 +18,7 @@ CLIP = bbox_geom(L["clip_bbox"]) if L["clip_bbox"] else None
 SID = L["a45_sid"]
 PAGE = "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-A45.html"
 ZIPU = L["a45_zip_url"]
-if RID != "jp-14":
-    ensure_extracted(ZIPU, RAW / SID / pathlib.PurePosixPath(ZIPU).name, RAW / SID, f"A45-19_{PREF}.shp")
+ensure_extracted(ZIPU, RAW / SID / pathlib.PurePosixPath(ZIPU).name, RAW / SID, f"A45-19_{PREF}.shp")
 LICENSE = ("オープンデータ（CC BY 4.0）／国土数値情報利用約款。"
            "ダウンロードページ原文「適用する利用規約に基づく（オープンデータ）」"
            " https://nlftp.mlit.go.jp/ksj/other/agreement.html")
