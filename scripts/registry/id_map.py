@@ -19,6 +19,11 @@ CSV は**手書きの宣言ファイル**（列: `old_id,new_id,reason,spec_vers
 4. 網羅: 区切りが変わった kind（site/watershed/zone）の現行 place_id は
    すべて new_id に宣言されている（宣言漏れで旧 ID が受理されなくならない）。
    逆に new_id は現行 place に実在する。
+   ただし対象は「改定時に存在した出典」の place だけ。区切り改定（spec 2026-10-issue39）より後に
+   できた出典（奄美など）の place には旧 ID が存在せず、宣言すると存在しなかった旧 ID を作ることになる。
+   改定時の出典の集合は定数で持たず、id_map の new_id が指す place の出典
+   （`place_source_ref` → `source_edition.source_id`。`place_sources` 引数）から導く。
+   出典が分からない place は従来どおり宣言を要求する。
 """
 import csv
 import pathlib
@@ -79,12 +84,16 @@ def _split_id(id_value: str) -> tuple[str, str, str]:
     return scope, entity, local
 
 
-def verify_place_id_map(rows: list[dict], place_ids: set[str] | None) -> None:
+def verify_place_id_map(rows: list[dict], place_ids: set[str] | None,
+                        place_sources: dict[str, set[str]] | None = None) -> None:
     """`rows`（place.csv）が現行の `place_ids`（place テーブルの place_id 全件）と
     整合していることを検査する。食い違いがあれば AssertionError。
 
     `place_ids=None`（`--files-only`。place を作らない）のときは、現行 place に依存しない検査
-    （空でない・old/new の一意・new が新形式・old が規則どおり）だけを行う。"""
+    （空でない・old/new の一意・new が新形式・old が規則どおり）だけを行う。
+
+    `place_sources`: place_id -> その place の出典（source_id）の集合。与えたとき、網羅の検査は
+    「宣言済みの new_id が指す place の出典」から出た place だけが対象になる（新しい出典の place は対象外）。"""
     problems: list[str] = []
     old_seen: dict[str, int] = {}
     new_seen: dict[str, int] = {}
@@ -113,12 +122,19 @@ def verify_place_id_map(rows: list[dict], place_ids: set[str] | None) -> None:
             if why:
                 problems.append(f"{i} 行目: old_id が規則（scope を new_id に置き換え、区切りを除いて一致）と合わない: {why}")
     declared_new = set(new_seen)
+    legacy_sources: set[str] | None = None
+    if place_sources is not None:
+        legacy_sources = set().union(*(place_sources.get(n, set()) for n in declared_new))
     for pid in sorted(place_ids or ()):
         try:
             p = common.parse_id(pid)
         except ValueError as e:
             problems.append(f"現行の place_id が新形式として分解できない: {e}")
             continue
+        if legacy_sources is not None:
+            srcs = place_sources.get(pid)
+            if srcs and not (srcs & legacy_sources):
+                continue   # 改定より後にできた出典だけの place。旧 ID は存在しない
         if p.kind in PLACE_KINDS_RENAMED and pid not in declared_new:
             problems.append(f"現行の place_id が id_map/place.csv に宣言されていない: {pid}")
     if problems:
@@ -152,9 +168,15 @@ def verify_dataset_id_map(rows: list[dict], conn) -> None:
         ).fetchone() is None:
             problems.append(f"new_id={r['new_id']!r} が source_edition に無い")
         mapped.add((ds, key))
-    in_alias = set(conn.execute(
-        "SELECT DISTINCT dataset, edition_key FROM variable_alias WHERE edition_key IS NOT NULL"
-    ))
+    # 旧 `<dataset>@<年>` が存在した dataset（= id_map に1行でもある dataset）だけを突き合わせる。
+    # 区切り改定より後にできた dataset（奄美の土地利用など）に旧 ID は無く、宣言すると存在しなかった
+    # 旧 ID を作ることになる（place の網羅検査と同じ理由）。
+    mapped_datasets = {ds for ds, _ in mapped}
+    in_alias = {
+        (ds, k) for ds, k in conn.execute(
+            "SELECT DISTINCT dataset, edition_key FROM variable_alias WHERE edition_key IS NOT NULL"
+        ) if ds in mapped_datasets
+    }
     if in_alias != mapped:
         problems.append(
             "variable_alias の (dataset, edition_key) と一致しない: "
@@ -173,7 +195,15 @@ def build_id_map(conn, *, full: bool, directory: pathlib.Path | None = None) -> 
     place_rows = load_csv("place", directory)
     dataset_rows = load_csv("dataset", directory)
     place_ids = {r[0] for r in conn.execute("SELECT place_id FROM place")} if full else None
-    verify_place_id_map(place_rows, place_ids)
+    place_sources = None
+    if full:
+        place_sources = {}
+        for pid, sid in conn.execute(
+            "SELECT psr.place_id, e.source_id FROM place_source_ref psr "
+            "JOIN source_edition e ON e.edition_id = psr.source_edition_id"
+        ):
+            place_sources.setdefault(pid, set()).add(sid)
+    verify_place_id_map(place_rows, place_ids, place_sources)
     verify_dataset_id_map(dataset_rows, conn)
     sql = "INSERT INTO id_map (entity, old_id, new_id, reason, spec_version) VALUES (?, ?, ?, ?, ?)"
     for entity, rows in (("place", place_rows), ("dataset", dataset_rows)):

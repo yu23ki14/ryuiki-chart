@@ -477,6 +477,13 @@ def test_dataset_id_map_matches_alias_and_halts_when_broken(reg):
         id_map.verify_dataset_id_map(_dataset_rows([GOOD_PAIRS[0], ("lu@2016", "common:edition:lu.2017")]), reg)
 
 
+def test_dataset_id_map_ignores_alias_dataset_born_after_the_rename(reg):
+    _reg_with_landuse_editions(reg)
+    reg.execute("INSERT INTO variable_alias (alias, dataset, source_id, edition_key, source_edition_id) "
+                "VALUES ('z', 'lu_amami', 'lu_amami', '2016', 'common:edition:lu_amami.2016')")
+    id_map.verify_dataset_id_map(_dataset_rows(GOOD_PAIRS), reg)   # 旧 ID の無い dataset は宣言不要
+
+
 def test_id_map_is_built_from_csv_without_source_data_in_files_only_mode(tmp_path):
     """原本が要らない: place も source_edition も空のレジストリでも（`full=False`）、
     place.csv・dataset.csv が id_map に載る（CI の生成物検査が空のマップで上書きされない）。"""
