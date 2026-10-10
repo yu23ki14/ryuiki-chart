@@ -147,6 +147,12 @@ mappings:
   # （ノネコは環境省の PDL1.0、観光入込は BODIK の CC BY 4.0 で、既存の原文にそのまま写る）
   - raw: "鹿児島県ホームページ（無断転載・改変不可）。事実（数値）のみ抽出し出典を明記"
     license_id: all_rights_reserved
+  # 奄美 Step 2d: 行政文書。環境省・BODIK は既存の原文（PDL1.0・CC BY 4.0）に写る。国交省は PDL1.0 の別の原文、
+  # ライセンス表記なしの3件（地域戦略・エコツーリズム推進全体構想・持続的観光マスタープラン）は推測で埋めず terms_unconfirmed。
+  - raw: "公共データ利用規約（第1.0版）PDL1.0（国土交通省ホームページの利用について）: https://www.mlit.go.jp/link.html"
+    license_id: pdl_1_0
+  - raw: "ライセンス表記なし（題名・URL・ページ数・sha256 のみ掲載。本文は転載しない）"
+    license_id: terms_unconfirmed
   # 河川砂防情報システムの局の表（奄美 Step 2b）。県サイトの局定義 js から局名・座標の事実を抽出（ライセンス表記なし）、市町村は国土地理院の逆ジオコーダ。
   - raw: "県サイトから局名・座標の事実を抽出（ライセンス表記なし）／市町村は国土地理院の逆ジオコーダ"
     license_id: all_rights_reserved

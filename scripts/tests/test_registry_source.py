@@ -361,7 +361,8 @@ def test_build_writes_the_three_tables_and_passes_the_reference_checks(reg):
     # 154→156 source・156→158 edition: 2026-10-10 奄美 Step 2a（kagoshima_redlist・kagoshima_ordinance_species）
     # 156→161 source・158→163 edition: 2026-10-10 奄美 Step 2b（kagoshima_kasen_{suii,suii_kiki,choui,dam,stations}_amami。水位は通常と危機管理型で2出典）
     # 161→165 source・163→167 edition: 2026-10-10 奄美 Step 2c（kagoshima_{umigame,noneko,irikomi,habu}_amami。行政文書の表の出典）
-    assert counts["source"] == 165 and counts["source_edition"] == 167
+    # 165→170 source・167→172 edition: 2026-10-11 奄美 Step 2d（行政文書の5出典。moe_amami_wh_plans・mlit_amami_action_plan・amami_biodiversity_strategy・bodik_kagoshima_ryuiki_chisui・amami_tourism_plans）
+    assert counts["source"] == 170 and counts["source_edition"] == 172
     r01._assert_id_uniqueness(reg)
     r01._assert_id_references(reg)
     assert reg.execute("SELECT count(*) FROM variable_alias WHERE edition_key IS NOT NULL").fetchone()[0] == 92  # 46 + 奄美の複製 46（PR-B）

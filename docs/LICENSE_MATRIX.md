@@ -77,6 +77,9 @@ DwC-Aから除外するようになった（`--include-noncommercial`で無効�
 | kagoshima_kasen_stations_amami | 鹿児島県 河川砂防情報システム 観測所（奄美大島） | 鹿児島県 土木部河川課（BODIK） | 12 | 1 | 県サイトから事実を抽出（ライセンス表記なし。出典明記）／市町村は国土地理院の逆ジオコーダ | 局名・座標は県の河川砂防情報システム（スマートフォン版）の局定義 js からの事実の抽出。出典明記。市町村は国土地理院の逆ジオコーダ | https://www.pref.kagoshima.jp/ah08/infra/kasen-sabo/sabo/jyouhoushisutemu.html | 含める |
 | kagoshima_noneko_amami | 奄美大島のノネコ捕獲状況（2018〜2022年度、2023年3月末現在） | 環境省 奄美野生生物保護センター | 76 | 1 | 公共データ利用規約（第1.0版）PDL1.0（環境省ホームページコンテンツの利用） | 環境省サイトの PDL1.0。PDF の表の数値を cells（doc_id=kagoshima_noneko_r4）に入れた | https://kyushu.env.go.jp/okinawa/awcc/Wild-dog-Wild-cat.html | 含める |
 | kagoshima_irikomi_amami | 奄美群島入込客・入域客数（海路・空路、2005〜2024年） | 鹿児島県 大島支庁総務企画課（BODIK） | 80 | 1 | CC BY 4.0 | BODIK の CC BY 4.0。奄美群島全体の暦年値（奄美大島だけではない）を cells（doc_id=bodik_460001_guntou_irikomi_2024）に入れた | https://data.bodik.jp/dataset/460001_guntou_irikomi_nyuiki | 含める |
+| moe_amami_wh_plans_amami | 環境省 奄美の世界自然遺産関連の計画・評価シート（包括的管理計画〔2025年改定案〕・マングース・ノネコ2本・モニタリング評価R1〜R5） | 環境省 九州地方環境事務所 沖縄奄美自然環境事務所 | 9（文書） | 1 | 公共データ利用規約（第1.0版）PDL1.0（環境省ホームページコンテンツの利用） | PDF のまま documents（doc_id=amami_wh_comprehensive_plan_2025draft ほか）と事実だけの notes。cells なし | https://kyushu.env.go.jp/okinawa/amami-okinawa/plans/index.html | 含める |
+| mlit_amami_action_plan_amami | 国土交通省 奄美大島 行動計画（2016年） | 国土交通省 | 1（文書） | 1 | 公共データ利用規約（第1.0版）PDL1.0（国土交通省ホームページの利用） | PDF のまま documents（doc_id=mlit_amami_action_plan_2016）。cells なし | https://www.mlit.go.jp/common/001294716.pdf | 含める |
+| bodik_kagoshima_ryuiki_chisui_amami | 鹿児島県 奄美大島地域流域治水プロジェクト（BODIK） | 鹿児島県（BODIK） | 1（文書） | 1 | CC BY 4.0 | PDF 4ページ。documents（doc_id=bodik_460001_amami_ryuiki_chisui_2022）。cells なし | https://data.bodik.jp/dataset/460001_1_01_ryuuikichisuipurojekuto | 含める |
 
 ## 2. 条件付き
 | source_id | 名称 | 提供元 | 行数 | redistributable | ライセンス要旨 | 判定理由 | 根拠URL | 再配布してよいか |
@@ -150,6 +153,8 @@ DwC-Aから除外するようになった（`--include-noncommercial`で無効�
 | ylist | YList 植物和名ー学名インデックス（日本産維管束植物 和名-学名インデックス） | 米倉浩司・梶田忠（琉球大学熱帯生物圏研究センター） | 0 | 0 | ライセンス表示なし（引用形式のみ指定） | redistributable=0、record_count=0。再配布可否の明示なし（引用形式の指定のみ）のため取得せず | http://ylist.info/ | 含めない |
 | kagoshima_umigame_amami | 鹿児島県 ウミガメ上陸・産卵確認状況（市町村別、R7年度版） | 鹿児島県 環境林務部 自然保護課 | 1271 | 0 | 鹿児島県ホームページ（無断転載・改変不可）。事実（数値）のみ抽出し出典を明記 | 4.9 の方針（事実だけ抽出・出典明記・PDF は再配布しない）。cells（doc_id=kagoshima_umigame_r7） | https://www.pref.kagoshima.jp/ad04/kurashi-kankyo/kankyo/yasei/umigame/umigame.html | 含めない |
 | kagoshima_habu_amami | 鹿児島県 ハブ咬傷者数・買上数（奄美、保健所・市町村別、H28〜R7年度） | 鹿児島県 保健福祉部薬務課 | 393（咬傷189＋買上204） | 0 | 鹿児島県ホームページ（無断転載・改変不可）。事実（数値）のみ抽出し出典を明記 | 4.9 の方針。画像 PDF を OCR 2種＋検算で読んだ cells（doc_id=kagoshima_habu_bite_h28r7・kagoshima_habu_kaiage_h28r7）。人の見直しが済んでいない3セルを含む | https://www.pref.kagoshima.jp/ae10/kenko-fukushi/yakuji-eisei/habu/index.html | 含めない |
+| amami_biodiversity_strategy_amami | 奄美大島生物多様性地域戦略（2020年3月改訂、計画期間2015〜2024年度） | 奄美大島自然保護協議会 | 1（文書） | 0 | ライセンス表記なし（題名・URL・ページ数・sha256 のみ掲載。本文は転載しない） | 表記が無いのでメタデータだけ載せる（doc_id=amami_biodiversity_strategy_2015_2024）。PDF は再配布しない | https://www.vill.yamato.lg.jp/kikaku/kurashi/kankyo/shizenkankyo/shizenhogo/jore/documents/00_full.pdf | 含めない |
+| amami_tourism_plans_amami | 奄美群島エコツーリズム推進全体構想・奄美大島持続的観光マスタープラン | 奄美群島エコツーリズム推進協議会・鹿児島県 | 2（文書） | 0 | ライセンス表記なし（題名・URL・ページ数・sha256 のみ掲載。本文は転載しない） | 同上（doc_id=amami_ecotourism_zentai_2017・amami_sustainable_tourism_mp_2016）。PDF は再配布しない | https://kyushu.env.go.jp/okinawa/amami-okinawa/plans/ecotourism/index.html | 含めない |
 
 ## 4. 特に注意すべき事項（個別記載）
 
@@ -297,6 +302,10 @@ PDF は `data/raw/kagoshima_redlist_2014/`（gitignore 済み）に置き、再�
 **数値という事実だけ**を cells に入れ、出典 URL を documents に残す（`redistributable=0`、PDF は `data/raw/` に置き再配布しない。県の許諾は取っていない）。
 `kagoshima_noneko_amami` は環境省の PDL1.0、`kagoshima_irikomi_amami` は BODIK の CC BY 4.0 で、どちらも `redistributable=1`。
 観光入込は奄美群島全体の値で、奄美大島の値ではない。ハブの reviewed.csv の3セルは claude(vision) の確認で、人の見直しが済んでいない。
+
+**行政文書（Step 2d）**: 奄美の計画・戦略・評価シート14本を `documents` と事実だけの `notes` に載せた（cells は 0 件、PDF は `data/raw/amami_doc/` で再配布しない）。
+環境省・国交省は PDL1.0、BODIK は CC BY 4.0（`redistributable=1`）。ライセンス表記の無い3本（地域戦略・エコツーリズム推進全体構想・持続的観光マスタープラン）は
+題名・URL・ページ数・sha256 だけで、本文は転載しない（`redistributable=0`、レジストリ上は `terms_unconfirmed`）。
 
 **希少種の位置**: GBIF・iNaturalist 等の公開元が丸めた座標を**そのまま使い**、こちらで細かく起こさない。
 ADR-0028 は「こちらから座標を丸めない（一般化しない）」決定であり、「公開元が丸めたものを細かく復元する」ことは別の話で、
