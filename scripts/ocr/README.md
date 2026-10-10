@@ -47,9 +47,8 @@ row,col,value,reviewer,note
 ```
 
 - `row` は row_key、`col` は col_key（`H28`〜`R7`・`合計(3月末)`・`構成比`）、`value` は原表の表記（カンマ・括弧・% も可。空欄は空）。
-- 採用されたセルは `verified_by="human:<名前>"`・confidence 1.0（reviewer が `claude(vision)` など AI のときは `claude(vision)` のまま。人の確認を装わない）。人が入れた値も検算にかけ、合わなければ警告が出る。
-- `reviewer` は確認した人の名前。画像を見たのが Claude のときは `claude(vision)`（`data/cells` の前例 c26 と同じ流儀）。
-  **人が見直すときは名前を書き換える**。現在の reviewed.csv の3セル（買上の `名瀬保健所|奄美市住用町` H29、`名瀬保健所|名瀬計` R5、`業者|名瀬管内` R2）は
+- `reviewer` は **`human:<名前>`**（人。confidence 1.0）か、claude・gpt・gemini で始まる AI の名前（`verified_by` は名前のまま、confidence 0.9）。それ以外の名前は c98b が止める。人・AI の値も検算にかけ、合わなければ警告を出して未採用にする。
+- 画像を見たのが Claude のときは `claude(vision)`（c26 の前例と同じ流儀）。**人が見直すときは `human:<名前>` に書き換える**。現在の reviewed.csv の3セル（買上の `名瀬保健所|奄美市住用町` H29、`名瀬保健所|名瀬計` R5、`業者|名瀬管内` R2）は
   **人の見直しが済んでいない**（claude(vision) が画像で確認し、検算も合っている）。
 
 ## verified_by と confidence
@@ -58,6 +57,7 @@ row,col,value,reviewer,note
 |---|---|---|
 | `auto:xocr+arith` | 1.0 | 2つの OCR が一致し、書式が正しく、そのセルが入る検算が通った |
 | `human:<名前>` | 1.0 | reviewed.csv の人の確認 |
+| `claude(vision)` など AI の名前 | 0.9 | reviewed.csv の AI の確認（人の見直しは済んでいない） |
 | `claude(vision)` | 1.0 | reviewed.csv の AI（画像を見た Claude）の確認。人の見直しは未済 |
 | `auto:xocr` | 0.8 | 一致したが、検算で確かめられない（そのセルが入る検算が1つも評価できない。未確定のセルが相手のとき、または構成比が空欄のとき） |
 | NULL | NULL | 未採用（`unreadable_reason` に理由） |

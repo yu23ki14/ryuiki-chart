@@ -36,6 +36,7 @@ def grid_of(built, doc_id):
 
 
 def copy_ocr(tmp_path, doc_id, with_reviewed):
+    tmp_path.mkdir(parents=True, exist_ok=True)
     dst = tmp_path / doc_id
     shutil.copytree(c.OCR_DIR / doc_id, dst)
     if not with_reviewed and (dst / "reviewed.csv").exists():
@@ -84,14 +85,18 @@ def test_kaiage_disagreements_carry_arithmetic_hint(tmp_path):
 def test_provenance_and_shape_bite():
     b = c.build("kagoshima_habu_bite_h28r7")
     rows = b["rows"]
-    assert len(rows) == 13 * 12 + 6                      # 死亡数のセルが6つ（天城町・徳之島計・合計の R7 と合計（3月末））
+    assert len(rows) == 13 * 12 + 3 * 11                 # 死亡数の行は3つ（天城町・徳之島計・合計）。年度10と合計（3月末）の11セルずつ
     assert {r["verified_by"] for r in rows} == {"auto:xocr+arith"}
     assert {r["confidence"] for r in rows} == {1.0}
-    death = [r for r in rows if r["row_key"].endswith("（うち死亡）")]
-    assert {(r["row_key"], r["col_key"], r["value"]) for r in death} == {
-        ("徳之島保健所|天城町（うち死亡）", "R7", "1"), ("徳之島保健所|天城町（うち死亡）", "合計(3月末)", "1"),
-        ("徳之島保健所|徳之島計（うち死亡）", "R7", "1"), ("徳之島保健所|徳之島計（うち死亡）", "合計(3月末)", "1"),
-        ("合計（うち死亡）", "R7", "1"), ("合計（うち死亡）", "合計(3月末)", "1")}
+    death = {(r["row_key"], r["col_key"]): r["value"] for r in rows if r["row_key"].endswith("（うち死亡）")}
+    assert len(death) == 33
+    assert {k for k, v in death.items() if v == "1"} == {
+        (rk, ck) for rk in ("徳之島保健所|天城町（うち死亡）", "徳之島保健所|徳之島計（うち死亡）", "合計（うち死亡）")
+        for ck in ("R7", "合計(3月末)")}
+    assert {v for k, v in death.items()} == {"0", "1"}   # 括弧の無い年は 0
+    zero = next(r for r in rows if (r["row_key"], r["col_key"]) == ("合計（うち死亡）", "H28"))
+    assert (zero["value"], zero["value_raw"], zero["value_type"], zero["fiscal_year"], zero["is_total"]) == ("0", None, "int", 2016, 1)
+    assert not any(r["row_key"].endswith("（うち死亡）") and r["col_key"] == "構成比" for r in rows)
     by = {(r["row_key"], r["col_key"]): r for r in rows}
     cell = by[("徳之島保健所|天城町", "R7")]
     assert (cell["value_raw"], cell["value"], cell["value_type"], cell["unit"]) == ("5(1)", "5", "int", "人")
@@ -165,13 +170,15 @@ def test_dot_in_integer_column_is_a_thousands_separator():
     assert c.fmt_ok(0, "5(1)") and c.fmt_ok(0, "") and not c.fmt_ok(0, "5(") and not c.fmt_ok(c.NY + 1, "12%")
 
 
-def test_reviewed_value_that_breaks_arithmetic_warns(tmp_path):
+def test_reviewed_value_that_breaks_arithmetic_is_not_adopted(tmp_path):
     doc = "kagoshima_habu_kaiage_h28r7"
     root = copy_ocr(tmp_path, doc, with_reviewed=True)
     p = root / doc / "reviewed.csv"
     p.write_text(p.read_text(encoding="utf-8").replace("名瀬保健所|奄美市住用町,H29,995,", "名瀬保健所|奄美市住用町,H29,996,"), encoding="utf-8")
     b = c.build(doc, root)
     assert any("人が確認したセルが検算に合わない" in w for w in b["warnings"])
+    r = {(x["row_key"], x["col_key"]): x for x in b["rows"]}[("名瀬保健所|奄美市住用町", "H29")]
+    assert r["unreadable_reason"].startswith("ocr_disagree:") and r["value"] is None and r["verified_by"] is None
 
 
 def test_reviewed_csv_requires_reviewer(tmp_path):
@@ -202,25 +209,67 @@ def test_write_replaces_only_own_doc_id(tmp_path, monkeypatch):
     con = sqlite3.connect(db)
     assert con.execute("SELECT count(*) FROM cells WHERE doc_id='other'").fetchone()[0] == 1
     assert con.execute("SELECT count(*) FROM notes WHERE doc_id='other'").fetchone()[0] == 1
-    assert con.execute("SELECT count(*) FROM cells WHERE doc_id='kagoshima_habu_bite_h28r7'").fetchone()[0] == 162
+    assert con.execute("SELECT count(*) FROM cells WHERE doc_id='kagoshima_habu_bite_h28r7'").fetchone()[0] == 189
     assert con.execute("SELECT count(*) FROM cells WHERE doc_id='kagoshima_habu_kaiage_h28r7'").fetchone()[0] == 204
     assert con.execute("SELECT count(*) FROM notes WHERE doc_id LIKE 'kagoshima_habu%'").fetchone()[0] == 8
     assert con.execute("SELECT count(*) FROM extraction_log").fetchone()[0] == 4
 
 
 def test_verified_by_never_poses_as_human():
-    assert c.verified_by_for("claude(vision)") == "claude(vision)"
-    assert c.verified_by_for("human:山田") == "human:山田"
-    assert c.verified_by_for("山田") == "human:山田"
+    assert c.verified_by_for("claude(vision)") == ("claude(vision)", 0.9)
+    assert c.verified_by_for("GPT-5 vision") == ("GPT-5 vision", 0.9)
+    assert c.verified_by_for("human:山田") == ("human:山田", 1.0)
+    for bad in ("山田", "", "human:", None):
+        with pytest.raises(ValueError):
+            c.verified_by_for(bad)
 
 
-def test_committed_reviews_are_not_labelled_human():
-    """コミット済みの reviewed.csv の3セルは claude(vision) の確認で、verified_by が human: にならない。"""
+def test_committed_reviews_are_ai_confidence_not_human():
+    """コミット済みの reviewed.csv の3セルは claude(vision) の確認。verified_by は human: にならず、confidence は 1.0 でない。"""
     doc = "kagoshima_habu_kaiage_h28r7"
     b = c.build(doc)
     reviewed = c.load_reviewed(c.OCR_DIR / doc / "reviewed.csv")
     assert len(reviewed) == 3 and all(who == "claude(vision)" for _, who, _ in reviewed.values())
-    by = {(r["row_key"], r["col_key"]): r["verified_by"] for r in b["rows"]}
+    by = {(r["row_key"], r["col_key"]): (r["verified_by"], r["confidence"]) for r in b["rows"]}
     for key in reviewed:
-        assert by[key] == "claude(vision)"
+        assert by[key] == ("claude(vision)", 0.9)
     assert not any((r["verified_by"] or "").startswith("human:") for r in b["rows"])
+
+
+def test_unknown_reviewer_name_stops(tmp_path):
+    doc = "kagoshima_habu_kaiage_h28r7"
+    root = copy_ocr(tmp_path, doc, with_reviewed=True)
+    p = root / doc / "reviewed.csv"
+    p.write_text(p.read_text(encoding="utf-8").replace("claude(vision)", "山田"), encoding="utf-8")
+    with pytest.raises(ValueError, match="reviewer が不明"):
+        c.build(doc, root)
+
+
+def test_grid_size_and_pdf_sha_must_agree(tmp_path):
+    doc = "kagoshima_habu_bite_h28r7"
+    with pytest.raises(ValueError, match="格子"):
+        c.build(doc, _mutate(tmp_path / "a", doc, "paddle", lambda d: d["grid"]["rows"].pop()))
+    with pytest.raises(ValueError, match="pdf_sha256"):
+        c.build(doc, _mutate(tmp_path / "b", doc, "paddle", lambda d: d.update(pdf_sha256="0" * 64)))
+
+
+def test_local_pdf_sha_must_match_json(tmp_path):
+    doc = "kagoshima_habu_bite_h28r7"
+    pdf = tmp_path / "root" / c.SPECS[doc]["pdf"]
+    pdf.parent.mkdir(parents=True)
+    pdf.write_bytes(b"not the pdf")
+    with pytest.raises(ValueError, match="ローカルの PDF"):
+        c.build(doc, pdf_root=tmp_path / "root")
+    assert c.build(doc, pdf_root=tmp_path / "none")["stats"]["pdf_sha256"]   # PDF が無い環境（CI）では照合を飛ばす
+
+
+def test_box_that_fits_no_column_makes_cell_unread(tmp_path):
+    doc = "kagoshima_habu_bite_h28r7"
+    def spanning(d):
+        g = d["grid"]; (y0, y1), (x0, x1) = g["rows"][0], g["cols"][3]
+        x2 = g["cols"][4][1]
+        d["boxes"].append(dict(text="99", x0=x0 + 5, x1=x2 - 5, y0=y0 + 5, y1=y1 - 5, conf=0.9))   # 2列にまたがる箱
+    b = c.build(doc, _mutate(tmp_path, doc, "paddle", spanning))
+    got = {(x["row_key"], x["col_key"]): x for x in b["rows"]}
+    assert "格子に収まらない" in got[("名瀬保健所|奄美市名瀬", "R1")]["unreadable_reason"]
+    assert any("格子に収まらない OCR の箱" in w for w in b["warnings"])

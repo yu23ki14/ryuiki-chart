@@ -26,7 +26,7 @@ N_MUNICIPALITIES = 39
 UNIT = "回"
 EXTRACTOR = "pdfplumber"
 VERIFIED_BY = "auto:arith"
-LICENSE = "鹿児島県ホームページ（無断転載・改変不可）。事実（数値）のみ抽出し出典を明記"
+LICENSE = dc.LICENSE_PREF_KAGOSHIMA
 
 # (page_no, table_id, 行ラベルの「市町村数」行, 見出し)
 TABLES = [
@@ -82,15 +82,10 @@ def build_cells(page_no, table_id, t, count_label, sha):
     out = []
 
     def add(row_key, i, raw, is_total, unit):
-        v, _ = dc.parse_count(raw)
-        out.append({
-            "doc_sha256": sha, "page_no": page_no, "table_id": table_id, "row_key": row_key,
-            "col_key": t["cols"][i], "value_raw": raw, "value": None if v is None else str(v),
-            "value_type": "int" if v is not None else "string", "unit": unit,
-            "fiscal_year": t["years"][i], "era_raw": t["cols"][i],
-            "is_total": int(is_total), "confidence": 1.0,
-            "extractor": EXTRACTOR, "verified_by": VERIFIED_BY,
-        })
+        out.append(dc.count_cell(
+            raw, doc_sha256=sha, page_no=page_no, table_id=table_id, row_key=row_key, col_key=t["cols"][i],
+            unit=unit, fiscal_year=t["years"][i], era_raw=t["cols"][i], is_total=int(is_total), confidence=1.0,
+            extractor=EXTRACTOR, verified_by=VERIFIED_BY))
 
     for label, vals in t["munis"]:
         for i, raw in enumerate(vals):
@@ -127,22 +122,14 @@ def build_notes():
 
 
 def read_tables(pdf_path):
-    import pdfplumber
-    with pdfplumber.open(str(pdf_path)) as pdf:
-        n_pages = len(pdf.pages)
-        res = []
-        for page_no, table_id, count_label, _ in TABLES:
-            rows = pdf.pages[page_no - 1].extract_tables()[0]
-            res.append((page_no, table_id, count_label, parse_table(rows, count_label)))
-    return n_pages, res
+    n_pages, by_page = dc.pdf_tables(pdf_path, [p for p, *_ in TABLES])
+    return n_pages, [(page_no, table_id, count_label, parse_table(by_page[page_no][0], count_label))
+                     for page_no, table_id, count_label, _ in TABLES]
 
 
 def main():
-    from common import RAW, sha256, cellsdb, register, download
-    pdf = RAW / PDF_FILE
-    if not pdf.exists():
-        download(PDF_URL, pdf)
-    sha = sha256(pdf)
+    from common import RAW
+    pdf, sha = dc.fetch_pdf(PDF_URL, RAW / PDF_FILE)
     n_pages, tables = read_tables(pdf)
     cells, log = [], []
     for page_no, table_id, count_label, t in tables:
@@ -152,17 +139,15 @@ def main():
                     "failures": {"declared_sum_exceptions": {k: list(v) for k, v in a.items()},
                                  "declared_count_exceptions": {k: list(v) for k, v in b.items()}},
                     "note": "39行の和＝合計・正の行数＝市町村数（宣言した例外を除き全列で一致）"})
-    con = cellsdb()
     document = dict(title="鹿児島県のウミガメ上陸・産卵確認状況（過去15年間、R7年度版）",
                     publisher="鹿児島県 環境林務部 自然保護課", url=PDF_URL, local_path=str(PDF_FILE),
                     doc_sha256=sha, n_pages=n_pages, fiscal_year=2025, license=LICENSE)
-    n = dc.write_doc(con, DOC_ID, document, cells, build_notes(), log)
-    con.close()
-    register(SOURCE_ID, "鹿児島県 ウミガメ上陸・産卵確認状況（市町村別、R7年度版）",
-             "鹿児島県 環境林務部 自然保護課", PAGE_URL, "生態系モニタリング", "PDF（pdfplumber）→ cells.sqlite", "PDF",
-             LICENSE, 0, n,
-             f"doc_id={DOC_ID}。39市町村×上陸15年・産卵16年。検算済み（H27 の合計の原本誤りは注記）。"
-             "PDF は data/raw に置き再配布しない。")
+    n = dc.commit_doc(DOC_ID, document, cells, build_notes(), log, source=dict(
+        source_id=SOURCE_ID, name="鹿児島県 ウミガメ上陸・産卵確認状況（市町村別、R7年度版）",
+        publisher="鹿児島県 環境林務部 自然保護課", url=PAGE_URL, category="生態系モニタリング",
+        access_method="PDF（pdfplumber）→ cells.sqlite", fmt="PDF", license_=LICENSE, redistributable=0,
+        notes=f"doc_id={DOC_ID}。39市町村×上陸15年・産卵16年。検算済み（H27 の合計の原本誤りは注記）。"
+              "PDF は data/raw に置き再配布しない。"))
     print(f"done. cells={n}")
 
 

@@ -8,6 +8,11 @@ AMAMI_STEP2C §2。c95〜c98b が使う。要点:
 - 検算（check_identity）は書く前に済ませる。原本の誤りは「宣言した例外」として列挙し、
   過不足なく一致しなければ止める。
 - 関数は接続を受け取り commit しない。1つのトランザクションにまとめるには write_doc を使う。
+  write_doc は、呼び手が開いたトランザクションがあれば止める（自分の分だけを commit/rollback するため）。
+- 使い分け: PDF の一括抽出（p1_maker / p2_checker の p1/p2）は従来どおり。検算つきの個別文書（c95〜c98b など、
+  1文書ごとに表の形と検算を書く）はこのモジュール。
+- 後始末までの流れは commit_doc（cellsdb を開いて write_doc、必要なら source_registry に register）。
+- extraction_log.failures の形は **dict か None**（失敗の種類 -> 詳細。宣言した例外・警告など。リストにしない）。
 """
 import json
 import re
@@ -16,6 +21,9 @@ import unicodedata
 from datetime import datetime
 
 from common import to_fiscal_year  # noqa: E402
+
+# 鹿児島県のサイトから事実（数値）だけを抜き出す文書の license（c95・c98b 共通）
+LICENSE_PREF_KAGOSHIMA = "鹿児島県ホームページ（無断転載・改変不可）。事実（数値）のみ抽出し出典を明記"
 
 CELL_COLUMNS = (
     "doc_id", "doc_sha256", "page_no", "table_id", "row_key", "col_key",
@@ -53,6 +61,15 @@ def parse_count(s):
     if not m:
         raise ValueError(f"件数として読めない: {s!r}")
     return int(m.group(1)), (int(m.group(2)) if m.group(2) is not None else None)
+
+
+def count_cell(raw, **base):
+    """件数の文字列から cells の1行（dict）を作る。base は page_no・table_id・row_key など残りの列。
+    value は文字列（JSON）、value_type は int（読めた）／string（「-」など読めない表記）／NULL（空欄。value_raw も NULL）。"""
+    v, _ = parse_count(raw)
+    blank = raw is None or str(raw).strip() == ""
+    return dict(base, value_raw=None if blank else raw, value=None if v is None else str(v),
+                value_type="int" if v is not None else (None if blank else "string"))
 
 
 def era_to_year(s):
@@ -160,9 +177,11 @@ def log_check(con, doc_id, verdict, *, page_no=None, table_id=None, role="checke
 
 
 def write_doc(con, doc_id, document, cells, notes, log=None):
-    """検算が済んだあとに呼ぶ。documents・cells・notes・log を1つのトランザクションで書く。"""
-    if not con.in_transaction:
-        con.execute("BEGIN IMMEDIATE")
+    """検算が済んだあとに呼ぶ。documents・cells・notes・log を1つのトランザクションで書く。
+    呼び手が開いたトランザクションがあれば RuntimeError（その中に混ぜず、自分の分だけを確定するため）。"""
+    if con.in_transaction:
+        raise RuntimeError("write_doc: 呼び手のトランザクションが開いている。commit してから呼ぶ")
+    con.execute("BEGIN IMMEDIATE")
     try:
         put_document(con, doc_id, **document)
         n = replace_doc_cells(con, doc_id, cells)
@@ -174,3 +193,32 @@ def write_doc(con, doc_id, document, cells, notes, log=None):
         con.rollback()
         raise
     return n
+
+
+def commit_doc(doc_id, document, cells, notes, log=None, source=None):
+    """cellsdb を開いて write_doc し、閉じる。source（common.register の引数の dict。record_count は挿入した行数）が
+    あれば source_registry に登録する。返り値は挿入した cells の行数。"""
+    import common
+    con = common.cellsdb()
+    try:
+        n = write_doc(con, doc_id, document, cells, notes, log)
+    finally:
+        con.close()
+    if source:
+        common.register(**source, record_count=n)
+    return n
+
+
+def fetch_pdf(url, path):
+    """PDF が無ければ取得して保存する。-> (path, sha256)。path は絶対パス。"""
+    import common
+    if not path.exists():
+        common.download(url, path)
+    return path, common.sha256(path)
+
+
+def pdf_tables(path, pages):
+    """pdfplumber の罫線で表を読む。-> (ページ数, {ページ番号: [表（行のリスト）…]})。pages は 1 始まり。"""
+    import pdfplumber
+    with pdfplumber.open(str(path)) as pdf:
+        return len(pdf.pages), {p: pdf.pages[p - 1].extract_tables() for p in pages}

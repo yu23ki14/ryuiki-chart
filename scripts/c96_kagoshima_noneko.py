@@ -85,12 +85,10 @@ def build_cells(monthly, annual, sha, page_no=1):
     out = []
 
     def add(tid, name, col, raw, fy, is_total, era):
-        v = _n(raw)
-        out.append({"doc_sha256": sha, "page_no": page_no, "table_id": tid, "row_key": name, "col_key": col,
-                    "value_raw": raw, "value": None if v is None else str(v),
-                    "value_type": "int" if v is not None else "string", "unit": UNIT,
-                    "fiscal_year": fy, "era_raw": era, "is_total": int(is_total), "confidence": 1.0,
-                    "extractor": EXTRACTOR, "verified_by": VERIFIED_BY})
+        out.append(dc.count_cell(
+            raw, doc_sha256=sha, page_no=page_no, table_id=tid, row_key=name, col_key=col, unit=UNIT,
+            fiscal_year=fy, era_raw=era, is_total=int(is_total), confidence=1.0,
+            extractor=EXTRACTOR, verified_by=VERIFIED_BY))
 
     for name, vals in monthly["rows"].items():
         for col, raw in zip(monthly["cols"], vals):
@@ -124,19 +122,14 @@ def build_notes():
 
 
 def read_tables(pdf_path):
-    import pdfplumber
-    with pdfplumber.open(str(pdf_path)) as pdf:
-        n_pages = len(pdf.pages)
-        tables = pdf.pages[0].extract_tables()
+    n_pages, by_page = dc.pdf_tables(pdf_path, [1])
+    tables = by_page[1]
     return n_pages, parse_table(tables[0]), parse_table(tables[1])
 
 
 def main():
-    from common import RAW, sha256, cellsdb, register, download
-    pdf = RAW / PDF_FILE
-    if not pdf.exists():
-        download(PDF_URL, pdf)
-    sha = sha256(pdf)
+    from common import RAW
+    pdf, sha = dc.fetch_pdf(PDF_URL, RAW / PDF_FILE)
     n_pages, monthly, annual = read_tables(pdf)
     exc = verify(monthly, annual)
     cells = build_cells(monthly, annual, sha)
@@ -144,14 +137,13 @@ def main():
             "failures": {"declared_split_exceptions": {k: list(v) for k, v in e.items()}},
             "note": "行の和＝合計・月次合計＝2022年度（全列一致）・捕獲＝内訳の和（宣言した例外を除き一致）"}
            for tid, e in exc.items()]
-    con = cellsdb()
     document = dict(title="奄美大島のノネコ捕獲状況（2023年3月末現在）", publisher=PUBLISHER, url=PDF_URL,
                     local_path=PDF_FILE, doc_sha256=sha, n_pages=n_pages, fiscal_year=2022, license=LICENSE)
-    n = dc.write_doc(con, DOC_ID, document, cells, build_notes(), log)
-    con.close()
-    register(SOURCE_ID, "奄美大島のノネコ捕獲状況（2018〜2022年度、2023年3月末現在）", PUBLISHER, PAGE_URL,
-             "生態系モニタリング", "PDF（pdfplumber）→ cells.sqlite", "PDF", LICENSE, 1, n,
-             f"doc_id={DOC_ID}。月次（2022年度）と年度別（2018〜2022年度）。検算済み（捕獲と内訳の2頭差は注記）。")
+    n = dc.commit_doc(DOC_ID, document, cells, build_notes(), log, source=dict(
+        source_id=SOURCE_ID, name="奄美大島のノネコ捕獲状況（2018〜2022年度、2023年3月末現在）", publisher=PUBLISHER,
+        url=PAGE_URL, category="生態系モニタリング", access_method="PDF（pdfplumber）→ cells.sqlite", fmt="PDF",
+        license_=LICENSE, redistributable=1,
+        notes=f"doc_id={DOC_ID}。月次（2022年度）と年度別（2018〜2022年度）。検算済み（捕獲と内訳の2頭差は注記）。"))
     print(f"done. cells={n}")
 
 

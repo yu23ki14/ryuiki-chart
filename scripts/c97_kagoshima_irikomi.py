@@ -28,6 +28,9 @@ SLEEP = 5.0   # BODIK の呼び出しの間（秒。続けて呼ぶと 403 に�
 RAW = common.RAW / "bodik_irikomi"
 SOURCE_ID = "kagoshima_irikomi_amami"
 DOC_ID = "bodik_460001_guntou_irikomi_2024"
+# 2024年版 XLSX のリソース URL（package_show の値。--no-fetch でも documents.url に入れる定数）
+MAIN_URL = (f"{BASE}/dataset/ef79a687-f144-4b66-88f0-aa4a6749e7c6/resource/812ed3c9-1417-4500-8bdb-8cc87e548080/"
+            "download/2024_guntou_irikomi_nyuiki.xlsx")
 MAIN_FILE, CHECK_FILE = "2024_guntou_irikomi_nyuiki.xlsx", "2022_guntou_irikomi_nyuiki.xlsx"
 YEARS = range(2005, 2025)
 ROUTES = ("海路", "空路")
@@ -38,7 +41,7 @@ SCRIPT_ID = "c97"
 
 
 def fetch(force=False):
-    """package_show -> RAW に2つの XLSX を保存。-> {ファイル名: URL}"""
+    """package_show -> RAW に2つの XLSX を保存（あれば取らない）。"""
     urls = {}
     time.sleep(SLEEP)
     pkg = common.get_json(f"{BASE}/api/3/action/package_show", params={"id": PKG})["result"]
@@ -53,7 +56,6 @@ def fetch(force=False):
             continue
         time.sleep(SLEEP)
         common.download(url, RAW / name)
-    return urls
 
 
 def parse_workbook(path):
@@ -95,6 +97,9 @@ def check(main, other):
             raise ValueError(f"{tid}: 年が {sorted(t)}（期待 2005〜2024 の連続）")
     n = 0
     for tid, t in other.items():
+        extra = sorted(set(t) - set(main[tid]))
+        if extra:
+            raise ValueError(f"{tid}: 2022年版にあって2024年版に無い年 {extra}（2024年版は過去の年を落とさない前提）")
         for y, row in t.items():
             for route, (v, _) in row.items():
                 if main[tid][y][route][0] != v:
@@ -110,12 +115,11 @@ def build_rows(main, other, extracted_at):
             for route in ROUTES:
                 v, cell = main[tid][y][route]
                 both = y in other[tid]
-                rows.append(dict(
-                    page_no=page, table_id=tid, row_key=f"奄美群島|{route}", col_key=str(y),
-                    value_raw=str(v), value=str(v), value_type="int", unit="人", fiscal_year=y, era_raw=str(y),
-                    source_text=f"{y}年 {route} {v:,}", source_bbox=f"{sheet}!{cell}", notes_ref=None,
-                    is_total=0, merged=0, unreadable_reason=None, confidence=1.0,
-                    extractor=EXTRACTOR, verified_by="auto:xversion" if both else "auto:xlsx", extracted_at=extracted_at))
+                rows.append(doccells.count_cell(
+                    str(v), page_no=page, table_id=tid, row_key=f"奄美群島|{route}", col_key=str(y), unit="人",
+                    fiscal_year=y, era_raw=str(y), source_text=f"{y}年 {route} {v:,}", source_bbox=f"{sheet}!{cell}",
+                    is_total=0, merged=0, confidence=1.0, extractor=EXTRACTOR,
+                    verified_by="auto:xversion" if both else "auto:xlsx", extracted_at=extracted_at))
     return rows
 
 
@@ -138,32 +142,28 @@ def main():
     ap.add_argument("--no-fetch", action="store_true", help="取得せず、RAW にある XLSX を使う")
     ap.add_argument("--no-register", action="store_true", help="source_registry に登録しない")
     a = ap.parse_args()
-    urls = {} if a.no_fetch else fetch()
+    if not a.no_fetch:
+        fetch()
     main_p, other_p = RAW / MAIN_FILE, RAW / CHECK_FILE
     main_t, other_t = parse_workbook(main_p), parse_workbook(other_p)
     n = check(main_t, other_t)
     print(f"  [check] 2022年版との重なり {n} 値が一致")
-    extracted_at = common.now()
-    rows = build_rows(main_t, other_t, extracted_at)
-    page = f"{BASE}/dataset/{PKG}"
+    rows = build_rows(main_t, other_t, common.now())
     sha = common.sha256(main_p)
-    con = common.cellsdb()
-    try:
-        doccells.write_doc(
-            con, DOC_ID,
-            document=dict(title="奄美群島入込客・入域客数（海路・空路、2005〜2024年）",
-                          publisher="鹿児島県 大島支庁総務企画課（BODIK）", url=urls.get(MAIN_FILE) or page,
-                          local_path=str(main_p.relative_to(common.ROOT)), doc_sha256=sha, n_pages=len(SHEETS),
-                          fiscal_year=2024, license=LICENSE),
-            cells=[dict(r, doc_sha256=sha) for r in rows], notes=NOTES,
-            log=[dict(verdict="pass", note=f"{SCRIPT_ID}: 年の連続 2005〜2024・値は非負の整数・2022年版との一致 {n} 値")])
-    finally:
-        con.close()
-    print(f"  [cells] {DOC_ID}: {len(rows)} 行、系列 {len({(r['table_id'], r['row_key']) for r in rows})}")
-    if not a.no_register:
-        common.register(SOURCE_ID, "奄美群島入込客・入域客数（海路・空路）", "鹿児島県 大島支庁総務企画課（BODIK）", page,
-                        "観光", "HTTP GET (CKAN package_show -> XLSX)", "XLSX", LICENSE, True, len(rows),
-                        "奄美群島全体の暦年の値（奄美大島だけではない）。入込客・入域客×海路・空路。")
+    page = f"{BASE}/dataset/{PKG}"
+    document = dict(title="奄美群島入込客・入域客数（海路・空路、2005〜2024年）",
+                    publisher="鹿児島県 大島支庁総務企画課（BODIK）", url=MAIN_URL,
+                    local_path=str(main_p.relative_to(common.ROOT)), doc_sha256=sha, n_pages=len(SHEETS),
+                    fiscal_year=2024, license=LICENSE)
+    source = None if a.no_register else dict(
+        source_id=SOURCE_ID, name="奄美群島入込客・入域客数（海路・空路）", publisher="鹿児島県 大島支庁総務企画課（BODIK）",
+        url=page, category="観光", access_method="HTTP GET (CKAN package_show -> XLSX)", fmt="XLSX",
+        license_=LICENSE, redistributable=True,
+        notes="奄美群島全体の暦年の値（奄美大島だけではない）。入込客・入域客×海路・空路。")
+    n = doccells.commit_doc(
+        DOC_ID, document, [dict(r, doc_sha256=sha) for r in rows], NOTES,
+        [dict(verdict="pass", note=f"{SCRIPT_ID}: 年の連続 2005〜2024・値は非負の整数・2022年版との一致 {n} 値")], source)
+    print(f"  [cells] {DOC_ID}: {n} 行、系列 {len({(r['table_id'], r['row_key']) for r in rows})}")
 
 
 if __name__ == "__main__":

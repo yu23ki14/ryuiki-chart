@@ -106,9 +106,17 @@
     - 検算する（行の和＝合計、市町村の和＝保健所の計、2つの計の和＝保健所計、構成比）。
     - 2つの OCR を突き合わせる。
   - **人が見る印**: 2つの OCR が食い違ったセル、検算が交点で特定したセル、0 と空欄の区別がつかないセルには、`unreadable_reason="ocr_disagree: …"`、`value_raw=NULL` を付けて採用しない。
-  - 人の確認は `data/ocr/habu/<doc_id>/reviewed.csv` に書き、`verified_by="human:<名前>"` にする。
-  - **実際の reviewed.csv の3セル（買上）は reviewer=`claude(vision)` で、人の見直しが済んでいない。** `verified_by` は `claude(vision)` のまま（c26 の前例。`human:` は付けない）。人が見直したら reviewer を人の名前に書き換える。
-  - `verified_by` は `auto:xocr+arith`、`auto:arith`、`human:*` のどれか。`confidence` は 1.0・0.8・NULL。
+  - 人の確認は `data/ocr/habu/<doc_id>/reviewed.csv` に書く。reviewer は `human:<名前>`（人）か claude・gpt・gemini で始まる AI の名前。それ以外は止める。
+  - **実際の reviewed.csv の3セル（買上）は reviewer=`claude(vision)` で、人の見直しが済んでいない。** `verified_by` は `claude(vision)` のまま（c26 の前例。`human:` は付けない）で、confidence は 0.9。人が見直したら reviewer を `human:<名前>` に書き換える。
+  - `verified_by`（実装の一覧）:
+    - `auto:xocr+arith`（confidence 1.0）: 2つの OCR が一致し、検算が通った。
+    - `auto:xocr`（0.8）: 一致したが、そのセルが入る検算が1つも評価できない。
+    - `human:<名前>`（1.0）: reviewed.csv の人の確認。
+    - `claude(vision)` など AI の名前（0.9）: reviewed.csv の AI の確認（人の見直しは済んでいない）。
+    - NULL（confidence NULL）: 未採用（`unreadable_reason="ocr_disagree: …"`）。
+    - 観光入込（c97）は `auto:xversion`（2022年版と一致。1.0）・`auto:xlsx`（2024年版だけの年。1.0）。
+    - `auto:arith`（OCR が食い違うのに検算だけで決める）は作らない。検算の示す値は理由に書くだけ。
+  - 死亡数の行（`…（うち死亡）`）は、括弧のあるセルが1つでもある行について、値の読めた年・合計の列を全部出す（括弧の無い所は 0）。
 - **受け入れ基準**: ベンチの正解（scratchpad の `pdfbench/image/gt/I1_bite.csv`・`I1_kaiage.csv`）と全部のセルが一致すること。正解のファイルはテストのフィクスチャとしてリポジトリに入れる。
 - **依存**
   - `scripts/ocr/requirements-docling.txt` と `requirements-paddle.txt` は別の venv にする（torch と paddle が衝突するため）。手順は `scripts/ocr/README.md` に書く。

@@ -104,3 +104,35 @@ def test_write_doc_rolls_back_and_log_appends(con):
     with pytest.raises(ValueError):
         dc.write_doc(con, "a", doc, [cell("a", "x", 3)], [{"kind": "bogus", "text": "x"}])
     assert con.execute("SELECT value FROM cells WHERE doc_id='a'").fetchall() == [("2",)]  # 戻っている
+
+
+def test_write_doc_refuses_open_caller_transaction(con):
+    con.execute("INSERT INTO documents(doc_id) VALUES('x')")   # 呼び手のトランザクションが開いたまま
+    with pytest.raises(RuntimeError, match="トランザクション"):
+        dc.write_doc(con, "d", {"title": "t"}, [], [])
+    assert con.in_transaction   # 呼び手の分には触れていない
+
+
+def test_count_cell():
+    base = dict(table_id="t", row_key="r")
+    assert dc.count_cell("1,796", **base) == dict(base, value_raw="1,796", value="1796", value_type="int")
+    c = dc.count_cell("5(1)", **base)
+    assert (c["value"], c["value_type"]) == ("5", "int")
+    assert dc.count_cell("－", **base)["value_type"] == "string" and dc.count_cell("－", **base)["value"] is None
+    blank = dc.count_cell("", **base)
+    assert (blank["value_raw"], blank["value"], blank["value_type"]) == (None, None, None)
+    assert dc.count_cell("0", **base)["value"] == "0"
+
+
+def test_commit_doc_opens_writes_closes(tmp_path, monkeypatch):
+    import common
+    db = tmp_path / "c.sqlite"
+    c0 = sqlite3.connect(db)
+    c0.executescript(SCHEMA)
+    c0.close()
+    monkeypatch.setattr(common, "cellsdb", lambda: sqlite3.connect(db))
+    seen = []
+    monkeypatch.setattr(common, "register", lambda **kw: seen.append(kw))
+    n = dc.commit_doc("d", {"title": "t"}, [dc.count_cell("3", table_id="t", row_key="r")], [], source=dict(source_id="s"))
+    assert n == 1 and seen == [dict(source_id="s", record_count=1)]
+    assert sqlite3.connect(db).execute("SELECT count(*) FROM cells").fetchone() == (1,)

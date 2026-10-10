@@ -149,7 +149,7 @@ DwC-Aから除外するようになった（`--include-noncommercial`で無効�
 | tanzawa_species_list_1997 | 丹沢のビジターセンター 生き物リスト(哺乳類/鳥類/は虫類/両生類/昆虫) | 神奈川県立 秦野ビジターセンター・西丹沢ビジターセンター(公益財団法人神奈川県公園協会) | 324 | 0 | 要確認(ビジターセンター運営元への利用許諾確認が必要) | ★redistributable=0（ビジターセンター運営元への利用許諾確認が必要、要確認ライセンス）。processed HTML由来CSVは既に生成済み(324行)——再配布不可 | https://www.kanagawa-park.or.jp/tanzawavc/ikimono1.html | 含める |
 | ylist | YList 植物和名ー学名インデックス（日本産維管束植物 和名-学名インデックス） | 米倉浩司・梶田忠（琉球大学熱帯生物圏研究センター） | 0 | 0 | ライセンス表示なし（引用形式のみ指定） | redistributable=0、record_count=0。再配布可否の明示なし（引用形式の指定のみ）のため取得せず | http://ylist.info/ | 含めない |
 | kagoshima_umigame_amami | 鹿児島県 ウミガメ上陸・産卵確認状況（市町村別、R7年度版） | 鹿児島県 環境林務部 自然保護課 | 1271 | 0 | 鹿児島県ホームページ（無断転載・改変不可）。事実（数値）のみ抽出し出典を明記 | 4.9 の方針（事実だけ抽出・出典明記・PDF は再配布しない）。cells（doc_id=kagoshima_umigame_r7） | https://www.pref.kagoshima.jp/ad04/kurashi-kankyo/kankyo/yasei/umigame/umigame.html | 含めない |
-| kagoshima_habu_amami | 鹿児島県 ハブ咬傷者数・買上数（奄美、保健所・市町村別、H28〜R7年度） | 鹿児島県 保健福祉部薬務課 | (c98b 実行後) | 0 | 鹿児島県ホームページ（無断転載・改変不可）。事実（数値）のみ抽出し出典を明記 | 4.9 の方針。画像 PDF を OCR 2種＋検算で読んだ cells（doc_id=kagoshima_habu_bite_h28r7・kagoshima_habu_kaiage_h28r7）。人の見直しが済んでいない3セルを含む | https://www.pref.kagoshima.jp/ae10/kenko-fukushi/yakuji-eisei/habu/index.html | 含めない |
+| kagoshima_habu_amami | 鹿児島県 ハブ咬傷者数・買上数（奄美、保健所・市町村別、H28〜R7年度） | 鹿児島県 保健福祉部薬務課 | 393（咬傷189＋買上204） | 0 | 鹿児島県ホームページ（無断転載・改変不可）。事実（数値）のみ抽出し出典を明記 | 4.9 の方針。画像 PDF を OCR 2種＋検算で読んだ cells（doc_id=kagoshima_habu_bite_h28r7・kagoshima_habu_kaiage_h28r7）。人の見直しが済んでいない3セルを含む | https://www.pref.kagoshima.jp/ae10/kenko-fukushi/yakuji-eisei/habu/index.html | 含めない |
 
 ## 4. 特に注意すべき事項（個別記載）
 

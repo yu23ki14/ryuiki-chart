@@ -15,7 +15,6 @@
   版（ライブラリ・モデル）と入力の sha256 も書く。結果の JSON はコミットする（CI では OCR を回さない）。
 """
 import argparse
-import hashlib
 import json
 import pathlib
 import shutil
@@ -24,22 +23,18 @@ import sys
 import tempfile
 import time
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
-RAW = ROOT / "data/raw/kagoshima_doc"
+sys.path.insert(0, str(pathlib.Path(__file__).parent))
+import common   # 標準ライブラリだけで import できる（requests は遅延 import）ので、OCR の venv でも使える
+
+ROOT = common.ROOT
+RAW = common.RAW / "kagoshima_doc"
 OUT = ROOT / "data/ocr/habu"
+sha256 = common.sha256
 DOCS = {   # doc_id -> (PDF, 行数〔見出しを除く〕, 列数〔管内・市町村名の2列を除く: 10年度＋合計＋構成比〕)
     "kagoshima_habu_bite_h28r7": ("habu_bite_h28r7.pdf", 13, 12),
     "kagoshima_habu_kaiage_h28r7": ("habu_kaiage_h28r7.pdf", 17, 12),
 }
 ENGINES = ("docling_rapid", "paddle")
-
-
-def sha256(p):
-    h = hashlib.sha256()
-    with open(p, "rb") as f:
-        for b in iter(lambda: f.read(1 << 20), b""):
-            h.update(b)
-    return h.hexdigest()
 
 
 def extract_image(pdf, tmp):

@@ -109,6 +109,7 @@ def test_write_doc_end_to_end_keeps_other_docs():
     con = sqlite3.connect(":memory:")
     con.executescript(SCHEMA)
     dc.replace_doc_cells(con, "other", [{"table_id": "t", "row_key": "r", "value": "1", "value_type": "int"}])
+    con.commit()
     monthly, annual = noneko_tables()
     cells = c96.build_cells(monthly, annual, "sha")
     n = dc.write_doc(con, c96.DOC_ID, {"title": "t"}, cells, c96.build_notes())
