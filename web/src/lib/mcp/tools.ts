@@ -272,10 +272,10 @@ export const MCP_TOOLS: McpTool[] = [
   defineTool({
     name: "get_occurrences",
     description:
-      "生物の出現記録（GBIF・iNaturalist）の集計を取る。kind='species_catalog' は種の一覧（件数の多い順、group で分類群を絞る）、" +
+      "生物の出現記録（GBIF・iNaturalist。神奈川県・奄美大島）の集計を取る。kind='species_catalog' は種の一覧（件数の多い順、group で分類群を絞る）、" +
       "'species_years'/'species_months' は種ごとの年別・月別件数（binoms に学名）、'watershed_years' は流域ごとの年別件数。" +
       "出現記録は観察努力量に偏るため、件数の増減を生息数の増減と読まない。" +
-      "source_ids で出典（gbif_kanagawa_occurrences・inaturalist_kanagawa・kanagawa_edna・kanagawa_kuma_sightings）を絞れる（省略時は全出典の合算）。" +
+      "source_ids で出典（gbif_kanagawa_occurrences・inaturalist_kanagawa・gbif_amami_occurrences・inaturalist_amami・kanagawa_edna・kanagawa_kuma_sightings）を絞れる（省略時は全出典の合算）。" +
       "eDNA（kanagawa_edna）は採水による検出で、目視の観察とは性質が違うので、比べるときは出典で分ける。",
     inputSchema: z.object({
       kind: z.enum(["species_catalog", "species_years", "species_months", "watershed_years"]).describe("集計の種類"),

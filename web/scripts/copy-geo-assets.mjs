@@ -33,9 +33,12 @@ const DST = path.resolve(__dirname, "..", "public", "geo");
  *      実体が壊れて 500 を返す状態になり、名前を変えて上げ直しても同じハッシュ＝同じ壊れた実体を
  *      指したままだった。バイト列が変われば別の実体になる。詰めた結果は入力が同じなら毎回同じ。
  */
+//
+// src が配列のものは、地域ごとのファイルを順に連結して 1 つの FeatureCollection にする（先頭が神奈川）。
+// 奄美側が無ければ神奈川だけで通す。神奈川（先頭）の feature 数が減っていないことは書き出し時に検査する。
 const FILES = [
-  { src: "nlni_w05_rivers.geojson", dst: "rivers.geojson" },
-  { src: "nlni_w12_watersheds.geojson", dst: "watersheds.geojson" },
+  { src: ["nlni_w05_rivers.geojson", "nlni_w05_rivers_amami.geojson"], dst: "rivers.geojson" },
+  { src: ["nlni_w12_watersheds.geojson", "nlni_w12_watersheds_amami.geojson"], dst: "watersheds.geojson" },
   // 水源マップ（docs/WATER_SOURCE_MAP.md）。町丁目ポリゴンに水源比率を焼き込んだもの。
   // ブラウザが直接取る（/water は D1 を読まない）。作るのは scripts/build-water-geo.mjs。
   { src: "water_zones.geojson", dst: "water_zones.geojson" },
@@ -61,28 +64,42 @@ for (const name of fs.readdirSync(DST)) {
   }
 }
 let missing = 0;
-for (const { src: f, dst: outName } of FILES) {
-  const from = path.join(SRC, f);
+for (const { src: srcSpec, dst: outName } of FILES) {
+  const names = Array.isArray(srcSpec) ? srcSpec : [srcSpec];
+  const label = names[0];
+  const froms = names.map((n) => path.join(SRC, n)).filter((p) => fs.existsSync(p));
   const to = path.join(DST, outName);
-  const src = fs.existsSync(from) ? fs.statSync(from) : null;
   const dst = fs.existsSync(to) ? fs.statSync(to) : null;
 
-  if (!src) {
+  // 先頭（神奈川）が無ければ入力なし扱い。奄美だけがあっても神奈川を欠いた配信にはしない。
+  if (!fs.existsSync(path.join(SRC, names[0]))) {
     if (dst) {
-      console.warn(`! ${f}: ${SRC} に無いので public/geo にあるものを使う`);
+      console.warn(`! ${label}: ${SRC} に無いので public/geo にあるものを使う`);
     } else {
-      console.error(`✗ ${f} が ${SRC} にも public/geo にも無い。scripts/c31_nlni_w05.py などで再取得する。`);
+      console.error(`✗ ${label} が ${SRC} にも public/geo にも無い。scripts/c31_nlni_w05.py などで再取得する。`);
       missing++;
     }
     continue;
   }
+  const srcMtime = Math.max(...froms.map((p) => fs.statSync(p).mtimeMs));
+  const srcSize = froms.reduce((a, p) => a + fs.statSync(p).size, 0);
   // 出力は入力とサイズが違う（詰めるため）ので、更新の判定は mtime だけで見る
-  if (dst && dst.mtimeMs >= src.mtimeMs) {
+  if (dst && dst.mtimeMs >= srcMtime) {
     console.log(`= ${outName} (最新)`);
     continue;
   }
-  fs.writeFileSync(to, JSON.stringify(JSON.parse(fs.readFileSync(from, "utf8"))));
+  const parts = froms.map((p) => JSON.parse(fs.readFileSync(p, "utf8")));
+  const merged = { ...parts[0], features: parts.flatMap((g) => g.features ?? []) };
+  const base = (parts[0].features ?? []).length;
+  if (base === 0 || merged.features.length < base) {
+    console.error(`✗ ${outName}: feature 数が神奈川 (${base}) を下回る (${merged.features.length})`);
+    process.exit(1);
+  }
+  fs.writeFileSync(to, JSON.stringify(merged));
   const after = fs.statSync(to).size;
-  console.log(`built ${f} → ${outName} ${(src.size / 1e6).toFixed(1)}MB → ${(after / 1e6).toFixed(1)}MB`);
+  console.log(
+    `built ${froms.length} file(s) → ${outName} features ${parts.map((g) => (g.features ?? []).length).join("+")}=${merged.features.length} ` +
+      `${(srcSize / 1e6).toFixed(1)}MB → ${(after / 1e6).toFixed(1)}MB`,
+  );
 }
 if (missing) process.exit(1);

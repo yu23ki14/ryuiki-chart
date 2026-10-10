@@ -38,7 +38,7 @@ export function BiotaExplorer() {
           </Btn>
         ))}
         <p className="text-[10.5px] text-muted ml-auto max-w-lg leading-snug">
-          出典: GBIF（658,360件）と iNaturalist（165,332件）。神奈川県内の観察・標本記録。
+          出典: GBIF と iNaturalist。神奈川県・奄美大島の観察・標本記録。
         </p>
       </div>
       <div className="flex-1 overflow-y-auto thin-scroll p-4">
