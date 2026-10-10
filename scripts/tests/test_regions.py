@@ -68,3 +68,66 @@ def test_jp46_counts():
     assert len(r["jma_stations"]) == 3
     assert r["l03b_meshes"] == ("4229",)
     assert len(set(r["gbif_gadm_gids"])) == 5 and len(set(r["inat_place_ids"])) == 5
+
+
+def test_name_rules():
+    assert rc.name("gbif_kanagawa_occurrences", "jp-14") == "gbif_kanagawa_occurrences"
+    assert rc.name("gbif_kanagawa_occurrences", "jp-46") == "gbif_amami_occurrences"
+    assert rc.name("jma_monthly_kanagawa", "jp-46") == "jma_monthly_amami"
+    assert rc.name("nlni_w12_watersheds", "jp-14") == "nlni_w12_watersheds"
+    assert rc.name("nlni_w12_watersheds", "jp-46") == "nlni_w12_watersheds_amami"
+
+
+def test_get_and_arg():
+    import argparse
+    assert rc.get("jp-46") is rc.REGIONS["jp-46"]
+    p = argparse.ArgumentParser()
+    rc.add_region_arg(p)
+    assert p.parse_args([]).region == "jp-14"
+    assert p.parse_args(["--region", "jp-46"]).region == "jp-46"
+    with pytest.raises(SystemExit):
+        p.parse_args(["--region", "jp-99"])
+
+
+@pytest.mark.parametrize("rid", sorted(rc.REGIONS))
+def test_slug_bbox_stations(rid):
+    r = rc.REGIONS[rid]
+    assert re.fullmatch(r"[a-z]+", r["slug"])
+    x0, y0, x1, y1 = r["bbox"]
+    assert x0 < x1 and y0 < y1
+    assert isinstance(r["soramame_stations"], tuple) and isinstance(r["jma_sst_areas"], tuple)
+    for code, nm in r["soramame_stations"]:
+        assert code.startswith(r["pref_code"]) and re.fullmatch(r"\d{8}", code) and nm
+    assert all(isinstance(a, int) for a in r["jma_sst_areas"])
+
+
+def test_jp14_values_match_hardcoded():
+    r = rc.REGIONS["jp-14"]
+    codes = re.findall(r'"(\d{8})":', _const("c11_soramame.py", r"^TARGET_STATIONS = \{([^}]*)\}"))
+    assert tuple(c for c, _ in r["soramame_stations"]) == tuple(codes)
+    assert r["jma_sst_areas"] == ()
+
+
+def test_amami_bbox_excludes_neighbours_and_holds_c23():
+    x0, y0, x1, y1 = rc.REGIONS["jp-46"]["bbox"]
+    assert x1 < 129.9  # 喜界島は東経129.9度以東、徳之島の北端は北緯27.9度付近
+    assert y0 > 27.9
+    import json
+    p = SCRIPTS.parent / "data" / "processed" / "nlni_c23_coastline.geojson"
+    if not p.exists():
+        pytest.skip("C23 が無い")
+
+    def pts(c):
+        if isinstance(c[0], (int, float)):
+            yield c
+        else:
+            for d in c:
+                yield from pts(d)
+    n = 0
+    for f in json.loads(p.read_text(encoding="utf-8"))["features"]:
+        if f["properties"]["prefecture_code"] != "46":
+            continue
+        for x, y in (q[:2] for q in pts(f["geometry"]["coordinates"])):
+            assert x0 <= x <= x1 and y0 <= y <= y1
+            n += 1
+    assert n
