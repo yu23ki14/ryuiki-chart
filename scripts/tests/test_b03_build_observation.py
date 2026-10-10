@@ -1127,7 +1127,7 @@ def _build_two_region_landuse(tmp_path):
 
     # 奄美: 同じ変数・同じ版・別の出典名（alias の dataset は observation.source_table と同じ名前）
     amami_aliases = [
-        (_AMAMI_LANDUSE_SOURCE, alias, _AMAMI_LANDUSE_SOURCE, vid, uid, stat, grain, ed)
+        (b03.LANDUSE_SOURCE_ID, alias, _AMAMI_LANDUSE_SOURCE, vid, uid, stat, grain, ed)
         for (_ds, alias, _sid, vid, uid, stat, grain, ed) in DEFAULT_LANDUSE_ALIASES
     ]
     registry_db = tmp_path / "registry.sqlite"

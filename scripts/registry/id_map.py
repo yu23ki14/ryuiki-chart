@@ -168,15 +168,9 @@ def verify_dataset_id_map(rows: list[dict], conn) -> None:
         ).fetchone() is None:
             problems.append(f"new_id={r['new_id']!r} が source_edition に無い")
         mapped.add((ds, key))
-    # 旧 `<dataset>@<年>` が存在した dataset（= id_map に1行でもある dataset）だけを突き合わせる。
-    # 区切り改定より後にできた dataset（奄美の土地利用など）に旧 ID は無く、宣言すると存在しなかった
-    # 旧 ID を作ることになる（place の網羅検査と同じ理由）。
-    mapped_datasets = {ds for ds, _ in mapped}
-    in_alias = {
-        (ds, k) for ds, k in conn.execute(
-            "SELECT DISTINCT dataset, edition_key FROM variable_alias WHERE edition_key IS NOT NULL"
-        ) if ds in mapped_datasets
-    }
+    in_alias = set(conn.execute(
+        "SELECT DISTINCT dataset, edition_key FROM variable_alias WHERE edition_key IS NOT NULL"
+    ))
     if in_alias != mapped:
         problems.append(
             "variable_alias の (dataset, edition_key) と一致しない: "
