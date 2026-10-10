@@ -139,6 +139,10 @@ licenses:
 
 # 原文（source_registry.license）-> license_id。
 mappings:
+  # 鹿児島県のサイトは無断転載・改変不可。種名・カテゴリーの事実だけを抜き出し出典を明記している。
+  # 独自の許諾条項は無いので、最も近い all_rights_reserved に写す（分類であって許諾の判断ではない）。
+  - raw: "鹿児島県ホームページ（無断転載・改変不可）。事実（種名・カテゴリー）のみ抽出し出典を明記"
+    license_id: all_rights_reserved
   - raw: "無断複製・転用不可（サイトポリシー）"
     license_id: all_rights_reserved
   - raw: "生物多様性センターウェブサイト利用規約"
