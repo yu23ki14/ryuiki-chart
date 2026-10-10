@@ -569,11 +569,11 @@ variables:
     name_ja: null
     name_en: null
     theme: hydro
-    unit_id: common:unit:m
+    unit_id: common:unit:cm
     value_type: num
     default_stat: "mean"
     higher_is_worse: null
-    description_ja: "ダムの貯水位"
+    description_ja: "ダムの貯水位（EL。原表記は [EL.10^2m] で、値 3712 は EL 37.12 m）"
     status: ok
   - variable_id: common:variable:hydro.reservoir_outflow
     code: hydro.reservoir_outflow

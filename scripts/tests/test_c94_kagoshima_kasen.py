@@ -147,3 +147,15 @@ def test_unpadded_timestamps_and_utf8_js():
     p = c94.parse_wide_csv("水位,,\n2,5\n観測時刻,橋\n2025/3/1 0:10,7\n2025/03/01 00:10,7\n")
     c94.collect_samples(p, {"5": "suii_5"}, samples, bad, "t")
     assert samples[("suii_5", "2025-03-01")] == [7.0] and not bad
+
+
+def test_partial_last_day_with_only_month_start_row_is_dropped():
+    csv_text = ("危機管理型水位\n" "2,139,144\n"
+                "観測時刻,第2屋仁橋,朝戸橋\n"
+                "2026/09/30 23:50,5,6\n2026/10/01 00:00,7,8\n")
+    blob = make_zip({"suii2026_1-12/202609_危機管理型水位計.csv": csv_text})
+    samples, bad, warn = defaultdict(list), Counter(), set()
+    wanted = {True: {139: ("suii_kiki_139", "第2屋仁橋")}, False: {}}
+    c94.collect_zip(blob, "suii", wanted, None, samples, bad, warn)
+    rows = c94.daily_rows(samples, "suii", "x", (2026, 2026), {})
+    assert {r["datetime"] for r in rows} == {"2026-09-30"}   # 2026-10-01 は 00:00 の1行だけ -> 出さない

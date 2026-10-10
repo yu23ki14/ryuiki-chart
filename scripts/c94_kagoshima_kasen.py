@@ -169,6 +169,7 @@ def collect_samples(parsed, wanted, samples, bad, tag):
     同じ (局, 時刻) は1度だけ数える（月末の翌月1日 00:00 の行が重なりうる）。"""
     idx = [(i, wanted[c]) for i, c in enumerate(parsed["ids"]) if c in wanted]
     seen = samples.setdefault("__seen__", set())
+    midnight = samples.setdefault("__month_start__", set())   # 月初 00:00 の観測（月のファイルの最後の行〔翌月1日 00:00〕）
     for ts, cells in parsed["rows"]:
         d = ts_date(ts)
         if d is None:
@@ -185,6 +186,8 @@ def collect_samples(parsed, wanted, samples, bad, tag):
                 continue
             seen.add(k)
             samples[(sid, d)].append(v)
+            if k[1].endswith("/01 00:00"):
+                midnight.add((sid, d, v))
 
 
 def collect_zip(blob, kind, wanted_suii, wanted_dam, samples, bad, name_warn):
@@ -238,6 +241,9 @@ def daily_rows(samples, kind, sid_base, years, station_names):
         sid, d = key
         vals = samples[key]
         if not (years[0] <= int(d[:4]) <= years[1]) or not vals:
+            continue
+        # その日の観測が月初 00:00 の1行だけ（最終月のファイルの末尾）は部分日。日最高・日最低が意味を持たないので出さない
+        if len(vals) == 1 and (sid, d, vals[0]) in samples.get("__month_start__", ()):
             continue
         if kind == "dam":
             station, col = sid.split("|")
