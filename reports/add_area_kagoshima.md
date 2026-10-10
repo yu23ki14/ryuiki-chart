@@ -152,7 +152,7 @@ GBIF は 5 つの GADM gid を `gadmGid` の複数指定（OR）で一度に取�
 
 ## Step 1 PR-B 取り込みと計測
 
-計測は `scripts/measure_amami_step1b.py`（原本は読み取り専用。W12 は `nlni_w12_watersheds_amami.geojson`、
+計測の方法は `docs/plans/AMAMI_STEP1B.md` §4（原本は読み取り専用。W12 は `nlni_w12_watersheds_amami.geojson`、
 「陸セル」は `nlni_l03b_landuse_2016_amami.geojson`〔L03-b 2016 の単位流域×土地利用の面〕に点が入るか）。
 丸め/秘匿は GBIF の `issues` に COORDINATE_ROUNDED、iNaturalist の `obscured`/`geoprivacy` が付く行。
 原本の `organism_records` に丸めの列は無い。

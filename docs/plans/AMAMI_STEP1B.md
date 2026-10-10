@@ -124,6 +124,13 @@ PR-A（#91）で `data/processed` に集めた奄美（`jp-46`）の分を、ア
   - 出典別、日付の有無別、丸めた座標かどうか別にも出す。
 - 水質の地点と気象の地点が W12 に入る割合。
 - 名寄せされていない奄美の taxon の数（決定 9）。
+- 方法（計測用のスクリプトは残さない。使い捨ての Python を `.venv/bin/python3` で書く）: 原本 `ryuiki.sqlite` は
+  `file:…?mode=ro` で開く。`organism_records`（`source_id IN ('gbif_amami_occurrences','inaturalist_amami')`）の
+  `(lon, lat)` を `migrate/point_in_polygon.py` の `load_polygons`・`build_grid`・`locate` で
+  `nlni_w12_watersheds_amami.geojson` に当て、0面の点は `nlni_l03b_landuse_2016_amami.geojson`（陸セル）に入るかで
+  陸・海を分ける。丸め/秘匿は出典ファイルから引く（GBIF の `issues` に COORDINATE_ROUNDED、iNaturalist の
+  `obscured`/`geoprivacy`。原本に列は無い）。taxon は `taxon_key` を `taxon_gbif_accepted.csv` の
+  `gbif_key`/`accepted_key` と照らす。数字は reports の PR-B 節に残してある。
 
 ## 5. 受け入れ基準
 
