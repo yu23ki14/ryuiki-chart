@@ -27,3 +27,12 @@ def test_rerun_keeps_existing_zone_and_updates_other_columns():
     got = {r[0]: r[1:] for r in conn.execute("SELECT site_id, name, zone, elevation_m FROM sites")}
     assert got["a"] == ("新名", 3, 20.0)      # zone は残り、他の列は更新される
     assert got["b"] == ("新地点", None, 10.0)  # 新しい地点は NULL（m09 が付ける）
+
+
+def test_rerun_keeps_existing_treatment():
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(SCHEMA.read_text(encoding="utf-8"))
+    conn.executemany(m01_sites.UPSERT_SITES_SQL, [_row("a", "旧名")])
+    conn.execute("UPDATE sites SET treatment = '対策区' WHERE site_id = 'a'")   # s01_synthetic が付けた
+    conn.executemany(m01_sites.UPSERT_SITES_SQL, [_row("a", "新名")])
+    assert conn.execute("SELECT name, treatment FROM sites WHERE site_id='a'").fetchone() == ("新名", "対策区")

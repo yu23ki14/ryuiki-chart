@@ -130,10 +130,11 @@ SITES_COLUMNS = ("site_id", "name", "name_en", "watershed", "zone", "lat", "lon"
                  "source_id", "source_ref", "is_synthetic")
 # 再実行で既存の sites.zone を消さない（INSERT OR REPLACE は zone=NULL を書いて m09 の結果を捨てる）。
 # 新しい地点は zone=NULL のまま（m09_site_zone.py が付ける）。zone 以外の列は上書きする。
+# treatment も同様（s01_synthetic.py が合成12地点に書く。本スクリプトは常に NULL を渡すので上書きさせない）。
 UPSERT_SITES_SQL = (
     f"INSERT INTO sites ({', '.join(SITES_COLUMNS)}) VALUES ({','.join('?' * len(SITES_COLUMNS))}) "
     "ON CONFLICT(site_id) DO UPDATE SET "
-    + ", ".join(f"{c}=excluded.{c}" for c in SITES_COLUMNS if c not in ("site_id", "zone"))
+    + ", ".join(f"{c}=excluded.{c}" for c in SITES_COLUMNS if c not in ("site_id", "zone", "treatment"))
 )
 
 
