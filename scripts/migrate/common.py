@@ -74,7 +74,8 @@ OBSERVATION_AGG_SPEC_VERSION = "phase-b-fact-slice/v4"
 # 2026-10-06: Issue #39 Phase C で place_id の ID 文法が変わり、occurrence に公開 ID（occurrence_id）と
 # source_edition_id が付いたため v3 に上げた。
 # 2026-10-06: Issue #40 Phase D で occurrence に attributes 列（JSON 文字列）が付いたため v4 に上げた。
-OCCURRENCE_SPEC_VERSION = "phase-b-fact-slice/v4"
+# 2026-10-10: 奄美 Step 2a で occurrence に red_list_source 列（赤リスト判定の出所）が付いたため v5 に上げた。
+OCCURRENCE_SPEC_VERSION = "phase-b-fact-slice/v5"
 
 # `scripts/b07_build_occurrence_cube.py`（`occurrence_agg`）専用。2026-09-27
 # Issue #48 PR-3a: 次元キーは変えていないが、(a) `place_kind='watershed'` の

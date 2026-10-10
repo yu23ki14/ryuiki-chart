@@ -66,7 +66,10 @@ CREATE TABLE IF NOT EXISTS organism_records (
   commercial_ok INTEGER,    -- 0/1 (原ライセンスが商用利用を許諾しているか)
   -- GBIF の occurrenceStatus（PRESENT/ABSENT）をそのまま。不在記録（ABSENT）は原本に残し、b06 が
   -- occurrence から除く。iNaturalist など不在の概念が無い出典は NULL（scripts/m03_organisms.py）
-  occurrence_status TEXT
+  occurrence_status TEXT,
+  -- red_list_category を付けるのに使ったリスト。assessment_list.yaml の list_id（県版）か 'national'（環境省の全国版）。
+  -- red_list_category が NULL なら NULL。カテゴリーの文字列は変えず、出所だけをこの列に持つ（scripts/m03_organisms.py）
+  red_list_source TEXT
 );
 CREATE INDEX IF NOT EXISTS ix_org_name ON organism_records(scientific_name);
 CREATE INDEX IF NOT EXISTS ix_org_license_class ON organism_records(license_class);
