@@ -60,3 +60,13 @@ soramame_hourly_kanagawa:
     一次資料での確認には至らなかった（2026-09-15）。そのため
     「収集スクリプト（c11・および c13 の『そらまめ君同様』という記載）の
     記載のみ・一次資料未確認」として扱う。推測で hour_beginning と断定しない。
+
+soramame_hourly_amami:
+  convention: hour_ending
+  expected_row_count: 17697
+  evidence: >
+    奄美（局 46225010）の環境省そらまめ君 1 時間値。取得元・時刻列の形式は神奈川の
+    soramame_hourly_kanagawa と同じ（scripts/c11_soramame.py が同じ変換規則で書く）なので、同じ convention を
+    採る（上の soramame_hourly_kanagawa の evidence を参照。一次資料での「1時の値は0〜1時の平均」の明記は
+    神奈川と同様に未確認）。件数は data/processed/soramame_hourly_amami.jsonl の行数（2026-10-10）。
+    value_grain='hour' になる行数は原本取り込み後に b03 が実測と突き合わせる（食い違えば b03 が止まる）。
