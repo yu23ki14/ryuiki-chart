@@ -11,6 +11,7 @@ import { MAP_METRICS, type WatershedMetricId, type MeshMetricId } from "@/lib/re
 import { MUNICIPALITY_LABEL } from "@/lib/municipality";
 import { fmt } from "@/components/viz/scales";
 import Link from "next/link";
+import { REGION_JUMPS } from "@/lib/map/basemaps";
 
 type WsMetric = WatershedMetricId;
 type MeshMetric = MeshMetricId;
@@ -23,6 +24,8 @@ export function MapPage() {
   const [showSites, setShowSites] = React.useState(true);
   const [showMesh, setShowMesh] = React.useState(false);
   const [showRivers, setShowRivers] = React.useState(false);
+  // 初期表示は神奈川のまま（MapCanvas の既定）。ボタンを押したときだけ fitBounds で移る。
+  const [jump, setJump] = React.useState<[[number, number], [number, number]] | null>(null);
 
   const [wsMetric, setWsMetric] = React.useState<WsMetric>("org_density");
   const [meshMetric, setMeshMetric] = React.useState<MeshMetric>("species_n");
@@ -143,6 +146,7 @@ export function MapPage() {
           sources={sources}
           layers={layers}
           className="absolute inset-0"
+          fitBounds={jump}
           onFeatureClick={(f) => {
             const p = f.properties as Record<string, unknown>;
             setSel(p);
@@ -209,6 +213,17 @@ export function MapPage() {
             国土数値情報 W12 の単位流域（377面・1977年版）を土台に、観測地点と生物記録を重ねる。
           </p>
         </div>
+
+        <Section title="地域">
+          <div className="flex gap-1.5 flex-wrap">
+            {REGION_JUMPS.map((r) => (
+              // 同じ地域を続けて押しても移れるよう、毎回新しい配列を渡す（MapCanvas は参照の変化で動く）
+              <Btn key={r.id} onClick={() => setJump([[...r.bounds[0]], [...r.bounds[1]]])}>
+                {r.label}
+              </Btn>
+            ))}
+          </div>
+        </Section>
 
         <Section title="レイヤ">
           <Toggle checked={showWatersheds} onChange={setShowWatersheds} label="流域界（塗り分け）" />
