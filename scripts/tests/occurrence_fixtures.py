@@ -157,13 +157,13 @@ def make_organism_records_db(path, rows=None) -> None:
                 lat REAL, lon REAL, coordinate_uncertainty_m REAL,
                 scientific_name TEXT, vernacular_name TEXT, taxon_rank TEXT, taxon_key TEXT,
                 red_list_category TEXT, is_alien INTEGER, license_class TEXT, publication_scope TEXT,
-                is_synthetic INTEGER DEFAULT 0, occurrence_status TEXT
+                is_synthetic INTEGER DEFAULT 0, occurrence_status TEXT, red_list_source TEXT
             )"""
         )
         source_rows = rows if rows is not None else DEFAULT_ORGANISM_RECORDS
-        normalized_rows = [(*row, *(0, None)[len(row) - 14:]) if len(row) < 16 else row for row in source_rows]
+        normalized_rows = [(*row, *(0, None)[len(row) - 14:], None) if len(row) < 16 else (*row, None) for row in source_rows]
         conn.executemany(
-            "INSERT INTO organism_records VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO organism_records VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             normalized_rows,
         )
         conn.commit()
@@ -337,8 +337,8 @@ def _create_and_fill_occurrence(conn: sqlite3.Connection, rows: list[tuple]) -> 
 
     conn.execute(b06._CREATE_OCCURRENCE_SQL.format(table="occurrence"))
     if rows and len(rows[0]) == len(_OCCURRENCE_COLUMNS):  # 旧来の列数。Issue #39 Phase C の 2 列と attributes（Phase D）を足す
-        rows = [tuple(r) + (f"common:occ:fixture.{r[0]}", None, None) for r in rows]
-    placeholders = ", ".join("?" for _ in range(len(_OCCURRENCE_COLUMNS) + 3))
+        rows = [tuple(r) + (f"common:occ:fixture.{r[0]}", None, None, None) for r in rows]
+    placeholders = ", ".join("?" for _ in range(len(_OCCURRENCE_COLUMNS) + 4))
     conn.executemany(f"INSERT INTO occurrence VALUES ({placeholders})", rows)
     common.record_stage_fingerprint(conn, "occurrence")
 
