@@ -18,6 +18,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from common import appdb, PROC, ROOT, now
 import regions
 from regions import REGIONS
+from m01_sites import load_watersheds
 
 from shapely.geometry import shape, Point
 from shapely import STRtree
@@ -61,22 +62,8 @@ def text(v):
 # ---- 流域ポリゴン (m01_sites.py と同じ原本。点数が多いので STRtree で引く) ----
 class Watersheds:
     def __init__(self):
-        # 全地域の W12 を連結して読む。無い地域は飛ばす（そこの点は流域 NULL）。1つも無ければ止める
-        self.polys, self.props = [], []
-        paths = [PROC / f"{stem}.geojson" for stem in regions.w12_stems()]
-        paths = [p for p in paths if p.exists()]
-        if not paths:
-            raise SystemExit("W12 の geojson が1つも無い（data/processed/nlni_w12_watersheds*.geojson）")
-        for path in paths:
-            gj = json.load(open(path, encoding="utf-8"))
-            for feat in gj["features"]:
-                try:
-                    self.polys.append(shape(feat["geometry"]))
-                except Exception:
-                    continue
-                self.props.append(feat["properties"])
+        self.polys, self.props = load_watersheds()   # m01 と同じ読み込み（全地域の W12。無い地域は飛ばす）
         self.tree = STRtree(self.polys)
-        print(f"  流域ポリゴン: {len(self.polys)}")
 
     def find(self, lon, lat):
         if lon is None or lat is None:
@@ -153,22 +140,24 @@ def load_wildlife(con):
 def load_vegetation(con, ws, rid="jp-14"):
     """現存植生図2024 (c80_biodic_ikimonomap.py)。地域ごとに呼ぶ。
 
-    feature_id は表の主キー。地域をまたいで重複すると INSERT OR REPLACE が黙って上書きするので、
-    重複したら止める（入れる前に調べる。自分の出典の旧行は先に消すので衝突に数えない）。"""
+    feature_id は表の主キー。他の地域の行と衝突すると INSERT OR REPLACE が黙って上書きするので、
+    衝突したら止める（入れる前に調べる）。同じ出典の中の重複は従来どおり INSERT OR REPLACE が吸収する。"""
     src = regions.name("biodic_veg2024_kanagawa", rid)
     rows = read_csv(src)
     if rows is None:
         return None
     wipe(con, "vegetation_polygons", [src])
-    ids = [r["feature_id"] for r in rows]
-    seen, dup = set(), set()
-    for i in ids:
-        (dup if i in seen else seen).add(i)
-    other = {x for (x,) in con.execute("SELECT feature_id FROM vegetation_polygons")}
-    dup |= set(ids) & other
+    ids = sorted({r["feature_id"] for r in rows})   # 同一出典内の重複は INSERT OR REPLACE が従来どおり吸収する
+    dup = set()
+    for i in range(0, len(ids), 500):
+        chunk = ids[i:i + 500]
+        marks = ",".join("?" for _ in chunk)
+        dup.update(x for (x,) in con.execute(
+            f"SELECT feature_id FROM vegetation_polygons WHERE source_id != ? AND feature_id IN ({marks})",
+            (src, *chunk)))
     if dup:
-        raise SystemExit(f"{src}: vegetation_polygons.feature_id が重複している"
-                         f"（{len(dup)} 件、例: {sorted(dup)[:3]}）。地域間で feature_id が衝突している")
+        raise SystemExit(f"{src}: vegetation_polygons.feature_id が他の地域の行と衝突している"
+                         f"（{len(dup)} 件、例: {sorted(dup)[:3]}）")
     out = []
     for r in rows:
         lat, lon = num(r.get("centroid_lat")), num(r.get("centroid_lon"))

@@ -51,7 +51,7 @@ def geohash_encode(lat, lon, precision=9):
 # ---- 流域ポリゴン ----
 def load_watersheds():
     """全地域の W12 を連結して読む（無い地域は飛ばす。W12 が覆わない点は流域 NULL）。"""
-    paths = [p for p in (PROC / f"{stem}.geojson" for stem in regions.w12_stems()) if p.exists()]
+    paths = regions.w12_paths(PROC, missing_ok=True)
     if not paths:
         raise SystemExit("W12 の geojson が1つも無い（data/processed/nlni_w12_watersheds*.geojson）")
     polys, props = [], []

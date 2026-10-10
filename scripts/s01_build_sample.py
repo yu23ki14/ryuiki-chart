@@ -104,7 +104,7 @@ DEFAULT_PROCESSED_DIR = ROOT / "data" / "processed"
 DEFAULT_COVERAGE_YAML = ROOT / "data" / "sample" / "coverage.yaml"
 DEFAULT_OUT_DIR = ROOT / "data" / "sample"
 # W12（流域界）と土地利用 CSV は地域ごとに1ファイル（pipeline_inputs の命名規則。全地域ぶんを使う）。
-DEFAULT_GEOJSON = tuple(ROOT / "data" / "processed" / f"{stem}.geojson" for stem in collector_regions.w12_stems())
+DEFAULT_GEOJSON = tuple(collector_regions.w12_paths(ROOT / "data" / "processed"))
 ACCESS_YAML = ROOT / "registry" / "source" / "access.yaml"
 LANDUSE_BASE = "nlni_l03b_landuse_by_watershed"
 
@@ -115,10 +115,6 @@ def landuse_csv_paths(processed_dir) -> dict[str, pathlib.Path]:
         collector_regions.name(LANDUSE_BASE, rid): pathlib.Path(processed_dir) / f"{collector_regions.name(LANDUSE_BASE, rid)}.csv"
         for rid in collector_regions.REGIONS
     }
-
-
-def w12_geojson_paths(processed_dir) -> list[pathlib.Path]:
-    return [pathlib.Path(processed_dir) / f"{stem}.geojson" for stem in collector_regions.w12_stems()]
 
 
 DEFAULT_LANDUSE_CSV = landuse_csv_paths(ROOT / "data" / "processed")
@@ -970,7 +966,7 @@ def main() -> int:
         shutil.copyfile(processed_dir / name, processed_out / name)
 
     # --- declaration_counts.yaml ---
-    geojson_path = w12_geojson_paths(args.processed_dir)
+    geojson_path = collector_regions.w12_paths(args.processed_dir)
     landuse_csv_path = landuse_csv_paths(args.processed_dir)
     counts = build_declaration_counts(ryuiki_conn, selected, geojson_path, landuse_csv_path, manifests_dir=args.manifests_dir)
     (out_dir / "declaration_counts.yaml").write_text(_dump_declaration_counts_yaml(counts), encoding="utf-8")

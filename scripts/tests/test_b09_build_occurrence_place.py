@@ -473,3 +473,19 @@ def test_built_from_of_single_path_is_unchanged_by_list_support(tmp_path):
     assert b09._built_from(g) == b09._built_from([g])
     import hashlib
     assert b09._built_from(g) == f"occurrence+nlni_w12_watersheds.geojson@sha256:{hashlib.sha256(g.read_bytes()).hexdigest()[:16]}"
+
+
+def test_built_from_of_many_paths_has_no_concatenation_ambiguity(tmp_path):
+    """複数ファイルは名前と長さを区切りに含める。同じ連結バイト列でも分割が違えば指紋が変わる。"""
+    a, b, c = (tmp_path / n for n in ("a.geojson", "b.geojson", "c.geojson"))
+    a.write_bytes(b"AB")
+    b.write_bytes(b"C")
+    c.write_bytes(b"ABC")
+    assert b09._built_from([a, b]) != b09._built_from(c)
+    a.write_bytes(b"A")
+    b.write_bytes(b"BC")   # 連結は同じ "ABC"
+    assert b09._built_from([a, b]) != b09._built_from([tmp_path / "a.geojson", tmp_path / "b.geojson"][::-1])
+    first = b09._built_from([a, b])
+    a.write_bytes(b"AB")
+    b.write_bytes(b"C")
+    assert b09._built_from([a, b]) != first

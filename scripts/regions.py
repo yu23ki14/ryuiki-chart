@@ -21,10 +21,12 @@
 """
 from __future__ import annotations
 
+import pathlib
 import re
 
 REGIONS: dict[str, dict] = {
     "jp-14": {
+        "baseline": True,   # 既存の地域。既存出典の宣言は scripts/migrate/*.yaml が持ち、必須の入力（m02 の気象庁等）も全て揃える
         "slug": "kanagawa",
         "bbox": (138.9, 35.1, 139.8, 35.7),
         "soramame_stations": (
@@ -108,9 +110,22 @@ REGIONS: dict[str, dict] = {
 }
 
 
+# 既定の地域（`baseline: True` の地域）。「jp-14」の直書きの分岐はここに寄せる（神奈川の既存 ID・既存の出力を変えない既定）。
+DEFAULT_REGION = next(rid for rid, r in REGIONS.items() if r.get("baseline"))
+
+
+def region_or_default(rid: str | None) -> str:
+    """region_id が未指定（None・空）なら既定の地域。"""
+    return rid or DEFAULT_REGION
+
+
+def is_baseline(rid: str) -> bool:
+    return bool(REGIONS[rid].get("baseline"))
+
+
 def add_region_arg(parser) -> None:
-    """`--region`（既定 jp-14、REGIONS の鍵だけ）を足す。"""
-    parser.add_argument("--region", default="jp-14", choices=sorted(REGIONS))
+    """`--region`（既定は DEFAULT_REGION、REGIONS の鍵だけ）を足す。"""
+    parser.add_argument("--region", default=DEFAULT_REGION, choices=sorted(REGIONS))
 
 
 def get(rid: str) -> dict:
@@ -132,11 +147,11 @@ def in_bbox(bbox, lat, lon) -> bool:
 
 def name(base: str, rid: str) -> str:
     """出力名・source_id・raw パスを地域別にする。`kanagawa` を含めば slug に置換、
-    含まなければ jp-14 はそのまま・他は `_<slug>` を末尾に付ける。"""
+    含まなければ既定の地域はそのまま・他は `_<slug>` を末尾に付ける。"""
     slug = REGIONS[rid]["slug"]
     if "kanagawa" in base:
         return base.replace("kanagawa", slug)
-    return base if rid == "jp-14" else f"{base}_{slug}"
+    return base if rid == DEFAULT_REGION else f"{base}_{slug}"
 
 
 def region_of_source_id(source_id: str) -> str | None:
@@ -155,7 +170,21 @@ def w12_stems() -> list[str]:
     return [name("nlni_w12_watersheds", rid) for rid in REGIONS]
 
 
+def as_paths(paths) -> list[pathlib.Path]:
+    """パス1つ（str/Path）でもパスの列でも、`list[Path]` にそろえる（W12 の入力の正規化はここ1か所）。"""
+    if isinstance(paths, (str, pathlib.Path)):
+        return [pathlib.Path(paths)]
+    return [pathlib.Path(p) for p in paths]
+
+
+def w12_paths(proc_dir, ext: str = "geojson", missing_ok: bool = False) -> list[pathlib.Path]:
+    """全地域の W12 のファイル（`proc_dir/<stem>.<ext>`。`w12_stems()` の順）。
+    `missing_ok=True` は無い地域を飛ばす（そこの点は流域 NULL）。False は存在を問わず全地域ぶんを返す。"""
+    paths = [pathlib.Path(proc_dir) / f"{stem}.{ext}" for stem in w12_stems()]
+    return [p for p in paths if p.exists()] if missing_ok else paths
+
+
 def site_scope(prefix: str) -> str:
     """site の出典接頭辞（例: `jma_stations_amami`・`jma_sst_amami__617`）→ ID の scope（region_id）。
-    slug を含まない接頭辞は、神奈川の既存 ID を変えないため jp-14。"""
-    return region_of_source_id(prefix) or "jp-14"
+    slug を含まない接頭辞は、神奈川の既存 ID を変えないため既定の地域。"""
+    return region_or_default(region_of_source_id(prefix))

@@ -757,6 +757,6 @@ def test_landuse_and_w12_paths_cover_every_region(tmp_path):
     assert set(s01.landuse_csv_paths(tmp_path)) == {
         "nlni_l03b_landuse_by_watershed", "nlni_l03b_landuse_by_watershed_amami",
     }
-    assert [p.name for p in s01.w12_geojson_paths(tmp_path)] == [
+    assert [p.name for p in s01.collector_regions.w12_paths(tmp_path)] == [
         "nlni_w12_watersheds.geojson", "nlni_w12_watersheds_amami.geojson",
     ]

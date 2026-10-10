@@ -51,6 +51,7 @@ import pathlib
 import re
 from dataclasses import dataclass, field
 
+import regions
 from migrate.common import MigrationError, load_yaml, parse_manifest_inputs
 
 from .api import ROW_COLUMNS  # adapter が返す行の列契約（正は api.py の 1 か所。`checks` の列名の検証に使う）
@@ -238,6 +239,13 @@ def manifest_problems(raw, stem: str, *, adapters_dir=None) -> list[str]:
         if "expected" in raw:
             if raw.get("target") == "occurrence":
                 problems += _expected_problems(label, raw["expected"])
+                # 既存の地域（baseline）の builtin 出現は、件数の宣言を scripts/migrate/*.yaml が既に持つ。
+                # 両方に書くと二重計上になる（b06/b07/b09 は yaml の値にマニフェストの合計を足す）ので止める。
+                if raw.get("region") in regions.REGIONS and regions.is_baseline(raw["region"]):
+                    problems.append(
+                        f"{label}: 既存の地域（region={raw['region']}）の builtin 出現は expected を書けない"
+                        "（scripts/migrate/*.yaml が既に宣言を持つ。二重に数える）"
+                    )
             else:
                 problems.append(
                     f"{label}: adapter=builtin に expected は target=occurrence のときしか書けない"

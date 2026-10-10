@@ -73,9 +73,7 @@ DEFAULT_V2_DB = ROOT / "data" / "db" / "v2.sqlite"
 DEFAULT_RYUIKI_DB = ROOT / "data" / "db" / "ryuiki.sqlite"
 DEFAULT_REGISTRY_DB = ROOT / "data" / "db" / "registry.sqlite"
 # 地域ごとの W12（流域界）。全地域の連結を1回の点内包判定にかける（regions.w12_stems の順）。
-DEFAULT_GEOJSONS = tuple(
-    ROOT / "data" / "processed" / f"{stem}.geojson" for stem in collector_regions.w12_stems()
-)
+DEFAULT_GEOJSONS = tuple(collector_regions.w12_paths(ROOT / "data" / "processed"))
 DEFAULT_DECLARATIONS_YAML = ROOT / "scripts" / "migrate" / "occurrence_place_declarations.yaml"
 
 PLACE_KIND = "watershed"
@@ -154,20 +152,18 @@ def validate_place_declarations_shape(path=DEFAULT_DECLARATIONS_YAML) -> None:
 # built_from（ポリゴン版の指紋）
 # ---------------------------------------------------------------------------
 
-def _as_paths(geojson_paths) -> list[pathlib.Path]:
-    if isinstance(geojson_paths, (str, pathlib.Path)):
-        return [pathlib.Path(geojson_paths)]
-    return [pathlib.Path(p) for p in geojson_paths]
-
-
 def _built_from(geojson_paths) -> str:
-    """ポリゴン版の指紋。ファイルのバイト列を順に連結したものの sha256
-    （1ファイルなら従来と同じ値。地域が増えるとファイル名の並びも指紋に入る）。"""
+    """ポリゴン版の指紋の sha256（先頭16桁）。1ファイルなら、そのバイト列の sha256（従来と同値）。
+    複数なら、各ファイルを「名前 NUL 長さ NUL バイト列」の順に連結する（連結の境目が曖昧にならず、
+    ファイルの順・名前・分割が変われば変わる）。"""
+    paths = collector_regions.as_paths(geojson_paths)
     h = hashlib.sha256()
-    for path in _as_paths(geojson_paths):
-        h.update(path.read_bytes())
-    digest = h.hexdigest()
-    return f"occurrence+nlni_w12_watersheds.geojson@sha256:{digest[:16]}"
+    for path in paths:
+        data = path.read_bytes()
+        if len(paths) > 1:
+            h.update(path.name.encode("utf-8") + b"\0" + str(len(data)).encode("ascii") + b"\0")
+        h.update(data)
+    return f"occurrence+nlni_w12_watersheds.geojson@sha256:{h.hexdigest()[:16]}"
 
 
 # ---------------------------------------------------------------------------

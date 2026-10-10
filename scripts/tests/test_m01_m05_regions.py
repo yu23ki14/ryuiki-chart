@@ -116,9 +116,10 @@ def test_vegetation_per_region_and_duplicate_feature_id_stops(env):
     assert dict(con.execute("SELECT source_id, count(*) FROM vegetation_polygons GROUP BY 1")) == {
         "biodic_veg2024_kanagawa": 2, "biodic_veg2024_amami": 2}
     veg_csv(proc / "biodic_veg2024_amami.csv", "biodic_veg2024_amami", [2, 5])   # 神奈川の 2 と衝突
-    with pytest.raises(SystemExit, match="重複"):
+    with pytest.raises(SystemExit, match="衝突"):
         m05_tier1.load_vegetation(con, ws, "jp-46")
-    veg_csv(proc / "biodic_veg2024_amami.csv", "biodic_veg2024_amami", [5, 5])   # 同じ地域内の重複
-    with pytest.raises(SystemExit, match="重複"):
-        m05_tier1.load_vegetation(con, ws, "jp-46")
+    con.rollback()
+    veg_csv(proc / "biodic_veg2024_amami.csv", "biodic_veg2024_amami", [5, 5])   # 同じ出典内の重複は従来どおり吸収する
+    assert "2 行" in m05_tier1.load_vegetation(con, ws, "jp-46")
+    assert con.execute("SELECT count(*) FROM vegetation_polygons WHERE source_id='biodic_veg2024_amami'").fetchone()[0] == 1
     assert m05_tier1.load_vegetation(con, ws, "jp-14").startswith("vegetation_polygons[biodic_veg2024_kanagawa]")
