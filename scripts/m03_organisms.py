@@ -35,6 +35,8 @@ data/processed/license_code_mapping.csv に出力する。
 import sys, pathlib, json, re, sqlite3, csv, collections, argparse
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from common import appdb, PROC
+import regions
+from regions import REGIONS
 
 def norm_taxon_id(s):
     return re.sub(r"\s+", " ", (s or "")).strip().lower()
@@ -156,11 +158,12 @@ def _license_repr(v):
         return "(empty string)"
     return v
 
-def load_inaturalist(conn, taxa, license_counter):
+def load_inaturalist(conn, taxa, license_counter, rid="jp-14"):
+    src = regions.name("inaturalist_kanagawa", rid)   # jp-14 は inaturalist_kanagawa のまま
     n = 0
     batch = []
     n_matched = 0
-    for r in rd_jsonl("inaturalist_kanagawa"):
+    for r in rd_jsonl(src):
         n += 1
         tid = norm_taxon_id(r.get("scientific_name"))
         rl, ias = taxa.get(tid, (None, None))
@@ -174,10 +177,10 @@ def load_inaturalist(conn, taxa, license_counter):
         quality_stage = "検証済" if r.get("quality_grade") == "research" else "暫定"
         pub_scope = "限定共有" if rl else "全公開"
         raw_license = r.get("license_code")
-        license_counter[("inaturalist_kanagawa", _license_repr(raw_license))] += 1
+        license_counter[(src, _license_repr(raw_license))] += 1
         rec_license, license_class, commercial_ok = classify_license(raw_license)
         batch.append((
-            f"inaturalist_kanagawa__{r['id']}", None, None,
+            f"{src}__{r['id']}", None, None,
             r.get("observed_on"), r.get("scientific_name"), r.get("vernacular_name_ja"),
             r.get("rank"), r.get("kingdom"), r.get("phylum"), r.get("class"), r.get("order"),
             r.get("family"), r.get("genus"), str(r.get("taxon_id")) if r.get("taxon_id") is not None else None,
@@ -185,7 +188,7 @@ def load_inaturalist(conn, taxa, license_counter):
             "HumanObservation", None, "写真+コミュニティ同定（iNaturalist quality_grade参照）", conf,
             r.get("lat"), r.get("lon"), r.get("positional_accuracy_m"),
             rl, is_alien, quality_stage, pub_scope,
-            "inaturalist_kanagawa", r.get("source_ref"), 0,
+            src, r.get("source_ref"), 0,
             rec_license, license_class, commercial_ok,
             None,  # occurrence_status: iNaturalist に不在の概念は無い
         ))
@@ -193,14 +196,15 @@ def load_inaturalist(conn, taxa, license_counter):
             conn.executemany(INSERT_SQL, batch); conn.commit(); batch = []
     if batch:
         conn.executemany(INSERT_SQL, batch); conn.commit()
-    print(f"  inaturalist_kanagawa: {n} rows read, taxa一致 {n_matched} 件 -> organism_records へ INSERT/UPDATE(license)")
+    print(f"  {src}: {n} rows read, taxa一致 {n_matched} 件 -> organism_records へ INSERT/UPDATE(license)")
     return n
 
-def load_gbif(conn, taxa, license_counter):
+def load_gbif(conn, taxa, license_counter, rid="jp-14"):
+    src = regions.name("gbif_kanagawa_occurrences", rid)   # jp-14 は gbif_kanagawa_occurrences のまま
     n = 0
     batch = []
     n_matched = 0
-    for r in rd_jsonl("gbif_kanagawa_occurrences"):
+    for r in rd_jsonl(src):
         n += 1
         sci = r.get("scientificName") or r.get("species")
         tid = norm_taxon_id(sci)
@@ -213,10 +217,10 @@ def load_gbif(conn, taxa, license_counter):
             f"{r['year']:04d}-{r.get('month',1) or 1:02d}-{r.get('day',1) or 1:02d}"
             if r.get("year") else None)
         raw_license = r.get("license")
-        license_counter[("gbif_kanagawa_occurrences", _license_repr(raw_license))] += 1
+        license_counter[(src, _license_repr(raw_license))] += 1
         rec_license, license_class, commercial_ok = classify_license(raw_license)
         batch.append((
-            f"gbif_kanagawa_occurrences__{r['key']}", None, None,
+            f"{src}__{r['key']}", None, None,
             obs_on, sci, r.get("vernacularName"),
             r.get("taxonRank"), r.get("kingdom"), r.get("phylum"), r.get("class"), r.get("order"),
             r.get("family"), r.get("genus"), str(r.get("taxonKey")) if r.get("taxonKey") is not None else None,
@@ -224,7 +228,7 @@ def load_gbif(conn, taxa, license_counter):
             r.get("basisOfRecord"), r.get("identifiedBy"), None, None,
             r.get("decimalLatitude"), r.get("decimalLongitude"), r.get("coordinateUncertaintyInMeters"),
             rl, is_alien, "公開済", pub_scope,
-            "gbif_kanagawa_occurrences", r.get("occurrenceID") or str(r.get("key")), 0,
+            src, r.get("occurrenceID") or str(r.get("key")), 0,
             rec_license, license_class, commercial_ok,
             r.get("occurrenceStatus"),  # GBIF の語彙（PRESENT/ABSENT）のまま
         ))
@@ -233,10 +237,10 @@ def load_gbif(conn, taxa, license_counter):
     if batch:
         conn.executemany(INSERT_SQL, batch); conn.commit()
     if n == 0:
-        print("  gbif_kanagawa_occurrences: 0 rows (別エージェントの収集が未完了/未着手のためスキップ。"
+        print(f"  {src}: 0 rows (別エージェントの収集が未完了/未着手のためスキップ。"
               "再実行すれば取り込まれる)")
     else:
-        print(f"  gbif_kanagawa_occurrences: {n} rows read, taxa一致 {n_matched} 件 -> organism_records へ INSERT/UPDATE(license)")
+        print(f"  {src}: {n} rows read, taxa一致 {n_matched} 件 -> organism_records へ INSERT/UPDATE(license)")
     return n
 
 def ensure_occurrence_status_column(conn):
@@ -252,7 +256,7 @@ def ensure_occurrence_status_column(conn):
     conn.commit()
     return True
 
-def backfill_occurrence_status(conn, batch_size=20000):
+def backfill_occurrence_status(conn, batch_size=20000, rid="jp-14"):
     """m03 の全件再投入なしで、GBIF の occurrenceStatus を既存行へ入れる（冪等）。
 
     列が無ければ足し、jsonl の key から record_id='gbif_kanagawa_occurrences__<key>' へ UPDATE する。
@@ -261,15 +265,16 @@ def backfill_occurrence_status(conn, batch_size=20000):
     更新した行数, 値の内訳 Counter)。"""
     conn.execute("PRAGMA busy_timeout=60000")
     added = ensure_occurrence_status_column(conn)
+    src = regions.name("gbif_kanagawa_occurrences", rid)
     counts = collections.Counter()
     pairs = []
-    for r in rd_jsonl("gbif_kanagawa_occurrences"):
+    for r in rd_jsonl(src):
         st = r.get("occurrenceStatus")
         counts[st] += 1
-        pairs.append((f"gbif_kanagawa_occurrences__{r['key']}", st))
-    in_db = {rid for (rid,) in conn.execute(
-        "SELECT record_id FROM organism_records WHERE source_id='gbif_kanagawa_occurrences'")}
-    missing = [rid for rid, _ in pairs if rid not in in_db]
+        pairs.append((f"{src}__{r['key']}", st))
+    in_db = {x for (x,) in conn.execute(
+        "SELECT record_id FROM organism_records WHERE source_id=?", (src,))}
+    missing = [x for x, _ in pairs if x not in in_db]
     if missing:
         raise SystemExit(
             f"jsonl の key のうち organism_records に行が無いものが {len(missing)} 件ある（例: {missing[:3]}）。"
@@ -279,7 +284,7 @@ def backfill_occurrence_status(conn, batch_size=20000):
         before = conn.total_changes
         conn.executemany(
             "UPDATE organism_records SET occurrence_status=? WHERE record_id=? "
-            "AND occurrence_status IS NOT ?", [(st, rid, st) for rid, st in pairs[i:i + batch_size]])
+            "AND occurrence_status IS NOT ?", [(st, k, st) for k, st in pairs[i:i + batch_size]])
         changed += conn.total_changes - before
         conn.commit()
     return added, len(pairs), changed, counts
@@ -301,7 +306,10 @@ def main(argv=None):
     args = parse_args(argv)
     if args.backfill_occurrence_status:
         conn = sqlite3.connect(args.db, timeout=30) if args.db else appdb()
-        added, n, changed, counts = backfill_occurrence_status(conn)
+        added, n, changed, counts = False, 0, 0, collections.Counter()
+        for rid in REGIONS:
+            a, n1, c1, k1 = backfill_occurrence_status(conn, rid=rid)
+            added, n, changed, counts = added or a, n + n1, changed + c1, counts + k1
         print(f"  occurrence_status 列を{'追加した' if added else '追加済み'}。jsonl {n} 行を読み、{changed} 行を更新した（2回目以降は 0）")
         print(f"  jsonl の内訳: {dict(counts)}")
         for st, c in conn.execute("select occurrence_status, count(*) from organism_records "
@@ -318,8 +326,10 @@ def main(argv=None):
     print(f"  taxa lookup entries: {len(taxa)}")
 
     license_counter = collections.Counter()
-    n_inat = load_inaturalist(conn, taxa, license_counter)
-    n_gbif = load_gbif(conn, taxa, license_counter)
+    n_inat = n_gbif = 0
+    for rid in REGIONS:   # 地域ごとに別の jsonl・別の record_id 接頭辞（無い出典は 0 件で飛ぶ）
+        n_inat += load_inaturalist(conn, taxa, license_counter, rid)
+        n_gbif += load_gbif(conn, taxa, license_counter, rid)
     write_license_mapping_csv(license_counter)
 
     n_total = conn.execute("select count(*) from organism_records").fetchone()[0]
