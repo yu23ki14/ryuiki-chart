@@ -388,6 +388,8 @@ export const ASSESSMENT_LIST: Readonly<Record<string, GeneratedAssessmentList>> 
   "rl2020": { name: "神奈川県レッドリスト2020（植物編CSV）", year: 2020, kind: "red_list", region: "jp-14", codelist: "redlist_category" },
   "rdb2022p": { name: "神奈川県レッドデータブック2022（植物編）", year: 2022, kind: "red_list", region: "jp-14", codelist: "redlist_category" },
   "rl2026": { name: "神奈川県レッドリスト2026（昆虫類・クモ類）", year: 2026, kind: "red_list", region: "jp-14", codelist: "redlist_category" },
+  "kgrl2014": { name: "鹿児島県レッドリスト（平成26年改訂。動物・植物の掲載ページは平成27年度改訂）", year: 2014, kind: "red_list", region: "jp-46", codelist: "redlist_category" },
+  "kgord": { name: "鹿児島県 指定希少野生動植物（県条例）", year: 2026, kind: "designated", region: "jp-46", codelist: null },
   "moe_ias_2015": { name: "環境省 生態系被害防止外来種リスト", year: 2015, kind: "invasive", region: "jp", codelist: null },
 };
 

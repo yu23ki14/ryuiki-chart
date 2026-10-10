@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-10-10T05:33:53+00:00",
+  "generated_at": "2026-10-10T07:34:46+00:00",
   "generated_by": "scripts/s01_build_sample.py",
   "source_files": {
-    "data/db/ryuiki.sqlite": "3ffe2d13e1c88b283e361cb77a72a7439e35061a22422a02323959b4429849b4",
-    "data/db/cells.sqlite": "0668ae12ee127b3638cbdf52a75d6ba7dd96252e04dd928242224e704fe646c5",
+    "data/db/ryuiki.sqlite": "88b8d6aea51ff53d25c8c8d767c47ae9f1356f2497dae360ce4ac18d7a77edd4",
+    "data/db/cells.sqlite": "8755350d5a41fb32f060d27fd4c0f443e9cc26c4821dbf4f70c9a71480ea9f85",
     "data/processed/nlni_w12_watersheds.geojson": "0fdb4360f1a1d0f8473a0d5b9b9a16f1cc42420312f654781a5dfd66b0aa56f7",
     "data/processed/nlni_w12_watersheds_amami.geojson": "f3fa59a0051f772116167763f1f36b023099c82b82fb5dd44b7fbeb10951c75d",
     "data/processed/nlni_w12_watersheds.jsonl": "901924abd35592a6a1a570864ed6b1843755070490ea39cc16f6a3114a5c492d",
@@ -33,11 +33,11 @@
     "protected_areas": 4,
     "protocols": 1,
     "quality_transitions": 3372,
-    "redlist_assessments": 2884,
+    "redlist_assessments": 5753,
     "river_segments": 1,
     "sensor_timeseries": 7170,
     "sites": 380,
-    "source_registry": 154,
+    "source_registry": 156,
     "taxa": 8585,
     "vegetation_polygons": 2,
     "wildlife_sightings": 400
