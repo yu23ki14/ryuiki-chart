@@ -82,6 +82,7 @@ def load_source_regions(
         }
         for sid, m in manifests.items()
     }
+    count_overlay, _ = manifest_lib.split_expected_overlay(count_overlay)   # manifest の expected への overlay は別の層（apply_expected_overlay）
     if count_overlay:
         sources_raw = period.apply_count_overlay(sources_raw, count_overlay)
 

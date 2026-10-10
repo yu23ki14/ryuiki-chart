@@ -760,3 +760,29 @@ def test_landuse_and_w12_paths_cover_every_region(tmp_path):
     assert [p.name for p in s01.collector_regions.w12_paths(tmp_path)] == [
         "nlni_w12_watersheds.geojson", "nlni_w12_watersheds_amami.geojson",
     ]
+
+
+def test_manifest_expected_counts_are_measured_from_sample_rows():
+    """builtin × occurrence の manifest の expected は、サンプルの当該出典の行から実測する（yaml 側とは別に）。"""
+    import sqlite3
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    register = s01.register_classify_shape
+    register(conn)
+    conn.execute("CREATE TABLE organism_records (observed_on TEXT, lat REAL, lon REAL, source_id TEXT, occurrence_status TEXT)")
+    conn.executemany("INSERT INTO organism_records VALUES (?,?,?,?,?)", [
+        ("2020-05-01", None, None, "x", None), ("2021", None, None, "x", None), (None, None, None, "x", None),
+    ])
+    rows = [{"record_id": str(i), "observed_on": o, "lat": None, "lon": None, "source_id": "x"}
+            for i, o in enumerate(["2020-05-01", "2021", None])]
+    geo = s01.DEFAULT_GEOJSON
+    got = s01._manifest_expected_counts(
+        "x", {"period_shapes": {"day": 0, "year": 0}, "place": {"coord_resolved": 0, "coord_unresolved": 0},
+              "cube": {"dated_rows": 0, "dated_no_coordinate_rows": 0}},
+        rows,
+        lambda table, where: conn.execute(f"SELECT COUNT(*) FROM {table} WHERE {where}").fetchone()[0],
+        {"x": "+09:00"}, geo)
+    assert got["manifests:x.expected.cube.dated_rows"] == 2
+    assert got["manifests:x.expected.cube.dated_no_coordinate_rows"] == 2
+    assert got["manifests:x.expected.period_shapes.day"] == 1 and got["manifests:x.expected.period_shapes.year"] == 1
+    assert got["manifests:x.expected.place.coord_resolved"] == 0

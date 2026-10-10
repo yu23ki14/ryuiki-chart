@@ -47,9 +47,10 @@ edition 参照）だけを持つ。`checks` は書けない。`expected` は **t
 """
 from __future__ import annotations
 
+import copy
 import pathlib
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import regions
 from migrate.common import MigrationError, load_yaml, parse_manifest_inputs
@@ -342,3 +343,57 @@ def expected_sums(manifests: dict[str, Manifest]) -> ExpectedSums:
         for k in EXPECTED_CUBE_KEYS:
             cube[k] += m.expected["cube"][k]
     return ExpectedSums(shapes, place, cube, tuple(sorted(sources)))
+
+
+# ---- 縮小サンプルの件数 overlay が manifest の `expected` に効く層 ----------------------------------------
+# overlay のキーは `manifests:<source>.expected.<section>.<key>`（section は period_shapes / place / cube）。
+# 対象は builtin × occurrence で `expected` を持つ出典（奄美の GBIF・iNat 等）だけ。
+# scripts/migrate/*.yaml の宣言は `period.apply_count_overlay` が差し替えるが、manifest の expected は別の場所にあり、
+# 差し替えないと原本の全件の値がサンプルの実測に足されてしまう。
+
+EXPECTED_OVERLAY_PREFIX = "expected."
+
+
+def split_expected_overlay(overlay: dict | None) -> tuple[dict, dict]:
+    """`manifests` グループの overlay を (従来の件数キー, `<source>.expected.…` のキー) に分ける。"""
+    plain: dict = {}
+    exp: dict = {}
+    for k, v in (overlay or {}).items():
+        _, _, sub = k.partition(".")
+        (exp if sub.startswith(EXPECTED_OVERLAY_PREFIX) else plain)[k] = v
+    return plain, exp
+
+
+def expected_overlay_keys(manifests: dict[str, "Manifest"]) -> set[str]:
+    """overlay が指せる `<source>.expected.<section>.<key>` の集合（builtin × occurrence で expected を持つ出典）。"""
+    keys: set[str] = set()
+    for sid, m in manifests.items():
+        if m.is_builtin and m.target == "occurrence" and m.expected:
+            for section, sub in m.expected.items():
+                keys.update(f"{sid}.expected.{section}.{k}" for k in sub)
+    return keys
+
+
+def apply_expected_overlay(manifests: dict[str, "Manifest"], overlay: dict | None) -> dict[str, "Manifest"]:
+    """`manifests` の `expected` を overlay で差し替えたコピーを返す（overlay が None・空なら同じものを返す）。
+    実在しない出典・section・key を指すと KeyError（黙って無視しない）。"""
+    _, exp = split_expected_overlay(overlay)
+    if not exp:
+        return manifests
+    out = dict(manifests)
+    copied: set[str] = set()
+    for flat_key, value in exp.items():
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise TypeError(f"count overlay: {flat_key!r} の値は整数でなければならない（実際: {value!r}）")
+        sid, _, rest = flat_key.partition(".")
+        _, section, key = rest.split(".", 2)
+        m = out.get(sid)
+        if m is None or not (m.is_builtin and m.target == "occurrence" and m.expected) \
+                or section not in m.expected or key not in m.expected[section]:
+            raise KeyError(f"count overlay: manifests:{flat_key} が manifest の expected に無い")
+        if sid not in copied:   # 元の manifests を書き換えない
+            m = replace(m, expected=copy.deepcopy(m.expected))
+            copied.add(sid)
+        m.expected[section][key] = value
+        out[sid] = m
+    return out

@@ -660,7 +660,8 @@ def build_and_write_occurrence(
     )
     # 非 builtin のマニフェスト（adapter 経由の出現）の宣言値（`expected`）は yaml の宣言値に足して突合する
     # （ソース追加で scripts/migrate/ を触らない。J6）。既存出典の宣言は従来どおり yaml のまま。
-    manifests = manifest_lib.load_manifests(manifests_dir)
+    manifests = manifest_lib.apply_expected_overlay(
+        manifest_lib.load_manifests(manifests_dir), overlay.get("manifests"))
     adapter_manifests = tuple(
         m for m in manifests.values() if m.target == "occurrence" and not m.is_builtin
     )

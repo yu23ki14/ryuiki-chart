@@ -331,3 +331,28 @@ def test_expected_absent_excluded_rows_only_for_builtin_occurrence(tmp_path):
     )
     with pytest.raises(common.MigrationError, match="expected_absent_excluded_rows は adapter=builtin"):
         manifest_lib.validate_manifests_shape(tmp_path / "ad", adapters_dir=ad)
+
+
+def test_count_overlay_replaces_manifest_expected_of_builtin_occurrence(tmp_path):
+    """縮小サンプルの overlay（manifests:<出典>.expected.…）は manifest の expected を差し替える。
+    差し替えないと原本の全件の値がサンプルの実測に足される。"""
+    e = _ok_expected()
+    e["cube"]["dated_rows"] = 100
+    write_manifest(tmp_path / "m", "gbif_x", region="jp-46", target="occurrence", extra={"expected": e})
+    manifests = manifest_lib.load_manifests(tmp_path / "m")
+    keys = manifest_lib.expected_overlay_keys(manifests)
+    assert "gbif_x.expected.cube.dated_rows" in keys and "gbif_x.expected.period_shapes.day" in keys
+    ov = {"gbif_x.expected.cube.dated_rows": 3, "gbif_x.expected.period_shapes.day": 2}
+    new = manifest_lib.apply_expected_overlay(manifests, ov)
+    sums = manifest_lib.expected_sums(new)
+    assert sums.cube["dated_rows"] == 3 and sums.period_shapes == {"day": 2}
+    assert manifests["gbif_x"].expected["cube"]["dated_rows"] == 100   # 元は書き換えない
+    assert manifest_lib.apply_expected_overlay(manifests, None) is manifests
+    # 実在しないキーは黙って無視せず止まる
+    with pytest.raises(KeyError):
+        manifest_lib.apply_expected_overlay(manifests, {"gbif_x.expected.cube.nope": 1})
+    with pytest.raises(KeyError):
+        manifest_lib.apply_expected_overlay(manifests, {"other.expected.cube.dated_rows": 1})
+    # 従来の件数 overlay には混ざらない
+    plain, exp = manifest_lib.split_expected_overlay({"gbif_x": 5, "gbif_x.absent_excluded_rows": 1, **ov})
+    assert plain == {"gbif_x": 5, "gbif_x.absent_excluded_rows": 1} and exp == ov

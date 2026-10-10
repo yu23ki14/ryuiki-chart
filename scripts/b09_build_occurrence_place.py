@@ -588,7 +588,9 @@ def main() -> None:
         stats = build_and_write_occurrence_place(
             args.v2_db, args.ryuiki_db, registry_db, geojsons, args.declarations_yaml,
             count_overlay=count_overlay,
-            expected_sums=manifest_lib.expected_sums(manifest_lib.load_manifests(args.manifests_dir)),
+            expected_sums=manifest_lib.expected_sums(manifest_lib.apply_expected_overlay(
+                manifest_lib.load_manifests(args.manifests_dir),
+                period.resolve_count_overlay(args.count_overlay, "manifests"))),
         )
         info["n"] = stats["n_total"]
 

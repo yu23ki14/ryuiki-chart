@@ -844,10 +844,19 @@ def build_declaration_counts(
     # `_open_ro` が登録済み）を使う（以前の `length(observed_on) = N` は
     # 「12形の文字数がたまたま全部異なる」という前提の近似だった。
     # code-review 指摘対応。coverage.yaml も同じ関数に揃えてある）。
+    # scripts/migrate の yaml の値は、manifest の `expected` を持つ出典（builtin × occurrence。奄美など）を含まない。
+    # b06/b07/b09 は yaml の値に manifest の expected の和を足すので、yaml 側の実測からはその出典を除く
+    # （含めると二重に数える）。manifest 側は下で `manifests:<出典>.expected.…` として別に実測する。
+    expected_sids = sorted(
+        sid for sid, m in all_manifests.items() if m.is_builtin and m.target == "occurrence" and m.expected
+    )
+    not_expected = (
+        " AND source_id NOT IN (" + ",".join(f"'{x}'" for x in expected_sids) + ")" if expected_sids else ""
+    )
     for name in sorted(occurrence_period.load_period_shapes()):
         out[f"occurrence_period_shapes.yaml:{name}"] = count(
             "organism_records",
-            f"classify_shape(observed_on) = '{name}' AND occurrence_status IS NOT 'ABSENT'"
+            f"classify_shape(observed_on) = '{name}' AND occurrence_status IS NOT 'ABSENT'{not_expected}"
         )
 
     # occurrence_cube_declarations.yaml
@@ -858,6 +867,7 @@ def build_declaration_counts(
         "WHERE t.occurrence_status IS NOT 'ABSENT' "   # 不在記録は occurrence に入らない（b06）
         "ORDER BY t.rowid"
     ).fetchall()
+    all_org_rows, org_rows = org_rows, [r for r in org_rows if r["source_id"] not in expected_sids]
     out["occurrence_cube_declarations.yaml:leaf_cell_source_rows"] = compute_leaf_cell_source_rows(org_rows)
     utc_offset_by_source = load_utc_offset_by_source(manifests_dir)
     out["occurrence_cube_declarations.yaml:month_cell_source_rows"] = compute_month_cell_source_rows(
@@ -876,6 +886,39 @@ def build_declaration_counts(
         "watershed_dated_unresolved_rows"
     ]
 
+    # manifest の `expected`（builtin × occurrence）。キーは宣言と同じ（manifest の expected のキーから導く）。
+    for sid in expected_sids:
+        rows = [r for r in all_org_rows if r["source_id"] == sid]
+        out.update(_manifest_expected_counts(
+            sid, all_manifests[sid].expected, rows, count, utc_offset_by_source, geojson_path))
+
+    return out
+
+
+def _manifest_expected_counts(sid, expected, rows, count, utc_offset_by_source, geojson_path) -> dict[str, int]:
+    """manifest `expected`（period_shapes・place・cube）の各キーを、サンプルの `sid` の行から実測する。
+    意味は b06（形ごとの件数）・b09（coord_resolved/unresolved）・b07（cube の各件数）の突合と同じ。"""
+    pre = f"manifests:{sid}.expected"
+    stats = compute_occurrence_place_and_watershed_stats(rows, geojson_path)
+    no_coord = [r for r in rows if r["lat"] is None or r["lon"] is None]
+    dated = [r for r in rows if r["observed_on"] is not None]
+    cube = {
+        "dated_rows": len(dated),
+        "dated_no_coordinate_rows": sum(1 for r in dated if r["lat"] is None or r["lon"] is None),
+        "leaf_cell_source_rows": compute_leaf_cell_source_rows(rows),
+        "leaf_cell_source_rows_no_coordinate": compute_leaf_cell_source_rows(no_coord),
+        "month_cell_source_rows": compute_month_cell_source_rows(rows, utc_offset_by_source),
+        "watershed_dated_resolved_rows": stats["watershed_dated_resolved_rows"],
+        "watershed_dated_unresolved_rows": stats["watershed_dated_unresolved_rows"],
+    }
+    place = {"coord_resolved": stats["resolved_count"], "coord_unresolved": stats["place_id_null_count"]}
+    out = {f"{pre}.cube.{k}": cube[k] for k in expected.get("cube", {})}
+    out.update({f"{pre}.place.{k}": place[k] for k in expected.get("place", {})})
+    for name in expected.get("period_shapes", {}):
+        out[f"{pre}.period_shapes.{name}"] = count(
+            "organism_records",
+            f"source_id = '{sid}' AND classify_shape(observed_on) = '{name}' AND occurrence_status IS NOT 'ABSENT'",
+        )
     return out
 
 
