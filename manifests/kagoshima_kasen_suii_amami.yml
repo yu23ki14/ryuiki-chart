@@ -9,4 +9,4 @@ input:
   table: sensor_timeseries
 adapter: builtin
 evidence: >
-  鹿児島県 土木部河川課 河川砂防情報システム（BODIK、CC BY 4.0）の危機管理型水位計（奄美大島の局）。日最高・日最低だけを入れる。最新の年は月ごとに差し替わるので毎回取り直す append。region=jp-46。
+  鹿児島県 土木部河川課 河川砂防情報システム（BODIK、CC BY 4.0）の通常の水位観測所（奄美大島の7局、suii_181〜187、2008年〜）。日最高・日最低だけを入れる。最新の年は月ごとに差し替わるので毎回取り直す append。region=jp-46。

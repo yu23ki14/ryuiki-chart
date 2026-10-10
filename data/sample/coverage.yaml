@@ -189,6 +189,11 @@ predicates:
     where: "source_id = 'kagoshima_kasen_suii_amami'"
     limit: 100
     min_rows: 100
+  - name: sensor_source_kagoshima_kasen_suii_kiki_amami
+    table: sensor_timeseries
+    where: "source_id = 'kagoshima_kasen_suii_kiki_amami'"
+    limit: 100
+    min_rows: 100
   - name: sensor_source_kagoshima_kasen_choui_amami
     table: sensor_timeseries
     where: "source_id = 'kagoshima_kasen_choui_amami'"

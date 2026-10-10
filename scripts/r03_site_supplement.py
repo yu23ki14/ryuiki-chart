@@ -1,11 +1,11 @@
-"""河川砂防情報システム（BODIK）の局のうち、座標の無いものを registry/place/site_supplement.csv に載せる。
+"""局の表（regions の station_tables の出典）のうち、座標の無い局を registry/place/site_supplement.csv に載せる。
 
 m01 は座標のある局だけを sites に入れる（座標を推測しない）。座標の無い局は sensor_timeseries にだけ現れ、
 build_place が「site_supplement.csv に無い site_id」として止まるので、局の表
-（data/processed/kagoshima_kasen_stations_<slug>.jsonl）から機械的に行を作る。
+（data/processed/<出典>.jsonl。例 kagoshima_kasen_stations_amami）から機械的に行を作る。
 lat/lon は空のまま（place は status=needs_review になる）。再実行しても同じ結果（この出典の行だけ入れ直す）。
 
-    python3 scripts/r03_site_supplement_kasen.py [--region jp-46] [--check]
+    python3 scripts/r03_site_supplement.py --source kagoshima_kasen_stations_amami [--check]
 
 --check は書かずに、CSV が局の表と一致するかだけ見る（ずれていれば終了コード 1）。
 """
@@ -36,7 +36,7 @@ def supplement_lines(src: str, stations: list[dict]) -> list[str]:
             continue
         ref = r.get("source_ref") or src
         w.writerow([f"{src}__{r['station_id']}", r["station_name_ja"], "", "",
-                    f"{ref}（data/processed/{src}.jsonl station_id={r['station_id']}; scripts/c94_kagoshima_kasen.py: "
+                    f"{ref}（data/processed/{src}.jsonl station_id={r['station_id']}; "
                     "局の表に座標が無いので推測していない）", ""])
     return buf.getvalue().splitlines()
 
@@ -50,15 +50,13 @@ def merge(text: str, src: str, new_lines: list[str]) -> str:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    regions.add_region_arg(ap)
+    declared = sorted(t for r in regions.REGIONS.values() for t in r.get("station_tables", ()))
+    ap.add_argument("--source", required=True, choices=declared)
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--proc", default=str(PROC))
     ap.add_argument("--csv", default=str(SUPPLEMENT))
     a = ap.parse_args(argv)
-    src = regions.kasen_stations_source(a.region)
-    if not src:
-        print(f"{a.region}: 河川砂防情報システムの出典なし")
-        return 0
+    src = a.source
     p = pathlib.Path(a.proc) / f"{src}.jsonl"
     if not p.exists():
         print(f"{p.name} が無いので何もしない")
@@ -69,7 +67,7 @@ def main(argv=None) -> int:
     new = merge(text, src, supplement_lines(src, stations))
     if a.check:
         ok = new.rstrip() == text.rstrip()
-        print("一致" if ok else "ずれている（r03_site_supplement_kasen.py を実行する）")
+        print("一致" if ok else "ずれている（r03_site_supplement.py を実行する）")
         return 0 if ok else 1
     path.open("w", encoding="utf-8", newline="").write(new)
     print(f"{src}: 座標の無い局 {len(supplement_lines(src, stations))} 行を {path.name} に反映")

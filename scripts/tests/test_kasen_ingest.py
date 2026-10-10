@@ -7,7 +7,7 @@ import pytest
 
 import m02_measurements as m02
 import regions
-import r03_site_supplement_kasen as r03
+import r03_site_supplement as r03
 from registry import build_place
 
 SCRIPTS = pathlib.Path(m02.__file__).parent
@@ -25,10 +25,11 @@ def row(station_id, source_id, variable_ja, **kw):
     return r
 
 
-def test_regions_helpers():
-    assert regions.kasen_sources("jp-46") == [f"kagoshima_kasen_{k}_amami" for k in ("suii", "choui", "dam")]
-    assert regions.kasen_stations_source("jp-46") == SRC
-    assert regions.kasen_sources("jp-14") == [] and regions.kasen_stations_source("jp-14") is None
+def test_regions_declarations():
+    r = regions.get("jp-46")
+    assert r["station_tables"] == (SRC,)
+    assert r["station_series"] == tuple(f"kagoshima_kasen_{k}_amami" for k in ("suii", "suii_kiki", "choui", "dam"))
+    assert "station_tables" not in regions.get("jp-14")
     assert regions.site_scope(SRC) == "jp-46"
     assert regions.region_of_source_id("kagoshima_kasen_dam_amami") == "jp-46"
 
@@ -36,9 +37,8 @@ def test_regions_helpers():
 def test_m02_sources_and_missing_files_are_skipped(tmp_path, monkeypatch):
     monkeypatch.setattr(m02, "PROC", tmp_path)
     got = {n: (s, opt) for n, s, opt in m02._sensor_sources()}
-    for n in regions.kasen_sources("jp-46"):
+    for n in regions.get("jp-46")["station_series"]:
         assert got[n] == (SRC, True)          # 局の表と同じ接頭辞・欠けても飛ばす
-    assert not any("kasen" in n for n in got if n.endswith("kanagawa"))
 
     for n in ("jma_daily_yokohama", "jma_monthly_kanagawa", "soramame_hourly_kanagawa", "sagamihara_taiki_hourly"):
         jl(tmp_path / f"{n}.jsonl", [])
@@ -88,10 +88,10 @@ def test_r03_cli_writes_and_checks(tmp_path):
     jl(tmp_path / f"{SRC}.jsonl", STATIONS)
     csvp = tmp_path / "s.csv"
     csvp.write_text("site_id,name_ja,lat,lon,definition_ref,place_local\n", encoding="utf-8")
-    args = ["--region", "jp-46", "--proc", str(tmp_path), "--csv", str(csvp)]
+    args = ["--source", SRC, "--proc", str(tmp_path), "--csv", str(csvp)]
     assert r03.main(args + ["--check"]) == 1
     assert r03.main(args) == 0
     assert r03.main(args + ["--check"]) == 0
     assert csvp.read_text(encoding="utf-8").count(f"{SRC}__") == 2
     # 局の表が無ければ何もしない
-    assert r03.main(["--region", "jp-46", "--proc", str(tmp_path / "none"), "--csv", str(csvp)]) == 0
+    assert r03.main(["--source", SRC, "--proc", str(tmp_path / "none"), "--csv", str(csvp)]) == 0

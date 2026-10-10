@@ -18,9 +18,10 @@
   620=北東部（`.../kaikyo/series/engan/engan_KG.html` に一覧）。データは
   `https://www.data.jma.go.jp/kaiyou/data/db/kaikyo/series/engan/txt/area<番号>.txt`
   （`yyyy,mm,dd,areaNo.,flag,Temp.` のCSV。1982年〜前日）で確認。jp-14 は範囲外で空。
-- `kasen_kinds`（任意。無い地域は空）: 鹿児島県「河川砂防情報システム」（BODIK）の種別。出典は
-  `kagoshima_kasen_<種別>_<slug>`（時系列）と `kagoshima_kasen_stations_<slug>`（局の表）。
-  suii=危機管理型水位計の水位・choui=潮位・dam=ダム諸量（docs/plans/AMAMI_STEP2B.md）。
+- `station_tables`（任意。無い地域は空）: 局の表の出典。site は `<出典>__<station_id>` で、座標のある局だけ m01 が sites に入れ、
+  座標の無い局は `scripts/r03_site_supplement.py --source <出典>` が site_supplement.csv に載せる。
+- `station_series`（任意）: その局の時系列の出典（sensor_timeseries。jsonl が無ければ m02 が飛ばす）。site は station_tables の出典の局。
+  鹿児島県「河川砂防情報システム」（BODIK）の水位（通常・危機管理型）・潮位・ダム諸量（docs/plans/AMAMI_STEP2B.md）。
 - `pref_redlist`: その地域の出現記録の赤リスト判定で、全国版（環境省）より先に引く県版の宣言
   （`m03_organisms.taxa_lookup`）。`source` が `taxa_column` なら `taxa.redlist_kanagawa`（c25 が神奈川の
   2版から作る列。`list_ids` はその列の元になる redlist_assessments の list_id）、`lookup_table` なら
@@ -86,7 +87,9 @@ REGIONS: dict[str, dict] = {
         "bbox": (129.1, 27.95, 129.85, 28.8),
         "soramame_stations": (("46225010", "奄美（奄美市名瀬浦上町）"),),
         "jma_sst_areas": (617, 618, 619, 620),
-        "kasen_kinds": ("suii", "choui", "dam"),
+        "station_tables": ("kagoshima_kasen_stations_amami",),
+        "station_series": ("kagoshima_kasen_suii_amami", "kagoshima_kasen_suii_kiki_amami",
+                           "kagoshima_kasen_choui_amami", "kagoshima_kasen_dam_amami"),
         "name_ja": "鹿児島県（奄美大島）",
         "label": "奄美大島",
         "pref_code": "46",
@@ -163,18 +166,6 @@ def name(base: str, rid: str) -> str:
     if "kanagawa" in base:
         return base.replace("kanagawa", slug)
     return base if rid == DEFAULT_REGION else f"{base}_{slug}"
-
-
-def kasen_sources(rid: str) -> list[str]:
-    """河川砂防情報システムの時系列の出典名（`kasen_kinds` の順。持たない地域は空）。"""
-    r = REGIONS[rid]
-    return [f"kagoshima_kasen_{k}_{r['slug']}" for k in r.get("kasen_kinds", ())]
-
-
-def kasen_stations_source(rid: str) -> str | None:
-    """河川砂防情報システムの局の表の出典名（site_id の接頭辞も同じ）。持たない地域は None。"""
-    r = REGIONS[rid]
-    return f"kagoshima_kasen_stations_{r['slug']}" if r.get("kasen_kinds") else None
 
 
 def region_of_source_id(source_id: str) -> str | None:

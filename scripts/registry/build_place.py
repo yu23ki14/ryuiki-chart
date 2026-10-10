@@ -377,8 +377,8 @@ for _rid, _r in regions.REGIONS.items():
     SITE_NAMESPACE[regions.name("env_kousui_stations_kanagawa", _rid)] = "env-pubwater"
     SITE_NAMESPACE[regions.name("jma_stations_kanagawa", _rid)] = "jma"
     SITE_NAMESPACE[regions.name("soramame_stations_kanagawa", _rid)] = "soramame"
-    if _r.get("kasen_kinds"):   # 河川砂防情報システムの局（site_id は `<接頭辞>__<種別>_<ID>`）
-        SITE_NAMESPACE[regions.kasen_stations_source(_rid)] = "kasen"
+    for _src in _r.get("station_tables", ()):   # 局の表の出典（河川砂防情報システム。site_id は `<接頭辞>__<種別>_<ID>`）
+        SITE_NAMESPACE[_src] = "kasen"
     if _r["jma_sst_areas"]:   # 海面水温は観測局ではなく海域
         SITE_NAMESPACE[regions.name("jma_sst_kanagawa", _rid)] = "jma-sst"
 
