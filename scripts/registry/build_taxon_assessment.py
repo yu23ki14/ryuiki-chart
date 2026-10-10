@@ -193,12 +193,12 @@ TAXON_ASSESSMENT_COLUMNS = [
     "national_category_raw", "origin", "source_id", "in_scope", "binom", "scope_reason",
 ]
 
-_KNOWN_LIST_KINDS = frozenset({"red_list", "invasive"})
+_KNOWN_LIST_KINDS = frozenset({"red_list", "invasive", "designated"})
 # assessment_list.yaml/redlist_category.yaml の region/scope が取りうる値
 # （ADR-0002 の地域ID + 'common'）。/code-review 指摘9: 宣言されているのに
 # どこからも参照されていなかったため、ここで実際に検証する（新しい地域IDが
 # 増えたらこのリストに足すこと）。
-_KNOWN_REGIONS = frozenset({"common", "jp", "jp-14"})
+_KNOWN_REGIONS = frozenset({"common", "jp", "jp-14", "jp-46"})
 
 _KNOWN_EXCLUSION_REASONS = frozenset({"domestic_origin", "subspecies_binomial_contraction"})
 # 実測件数（docs/plans/PHASE_B_TAXON_ASSESSMENT.md 参照）。将来この宣言ファイルの
