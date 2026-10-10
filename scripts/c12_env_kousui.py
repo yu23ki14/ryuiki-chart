@@ -7,18 +7,48 @@
 FeatureClass:
   p_kosui_location 水質測定点マスタ / p_kosui_y01,y02,y03 年間値 / kosui_k01,k02,k03,k08 検体値
 """
-import sys, io, csv, json, time, zipfile, pathlib, re
+import sys, io, csv, json, time, zipfile, pathlib, re, argparse
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from common import *
+import regions
 import pandas as pd
 import requests
 
 B = "https://water-pub.env.go.jp/water-pub/mizu-site/zip_create"
-PREF = "14"
-RAWD = RAW/"env_kousui"; RAWD.mkdir(parents=True, exist_ok=True)
-SID_ST = "env_kousui_stations_kanagawa"
-SID_Y  = "env_kousui_annual_kanagawa"
-SID_K  = "env_kousui_sample_kanagawa"
+# 地域依存の定数。jp-14 の値は従来の直書きと同一（scripts/tests/test_c_region_names.py で固定）。
+RID = "jp-14"
+PREF = regions.get(RID)["env_water_prefcodes"][0]    # "14"
+RAWD = RAW/regions.name("env_kousui", RID); RAWD.mkdir(parents=True, exist_ok=True)
+SID_ST = regions.name("env_kousui_stations_kanagawa", RID)
+SID_Y  = regions.name("env_kousui_annual_kanagawa", RID)
+SID_K  = regions.name("env_kousui_sample_kanagawa", RID)
+LABEL = "神奈川県"
+BBOX = None     # jp-14 は県全域。それ以外は regions の bbox で測定点を絞る
+KEEP = None     # 絞り込み後に残す zettaicode の集合（BBOX が None なら None）
+
+def set_region(rid):
+    global RID, PREF, RAWD, SID_ST, SID_Y, SID_K, LABEL, BBOX
+    RID = rid
+    cfg = regions.get(rid)
+    PREF = cfg["env_water_prefcodes"][0]
+    RAWD = RAW/regions.name("env_kousui", rid); RAWD.mkdir(parents=True, exist_ok=True)
+    SID_ST = regions.name("env_kousui_stations_kanagawa", rid)
+    SID_Y  = regions.name("env_kousui_annual_kanagawa", rid)
+    SID_K  = regions.name("env_kousui_sample_kanagawa", rid)
+    if rid != "jp-14":
+        LABEL = "奄美大島"
+        BBOX = cfg["bbox"]
+
+def in_bbox(lat, lon):
+    return (lat is not None and lon is not None
+            and BBOX[1] <= lat <= BBOX[3] and BBOX[0] <= lon <= BBOX[2])
+
+def keep_rows(df):
+    """BBOX 指定時、測定点マスタで bbox 内と判った地点の行だけ残す。"""
+    if KEEP is None:
+        return df
+    col = next(c for c in df.columns if c.lower() == "zettaicode")
+    return df[df[col].map(s_).isin(KEEP)]
 LICENSE = ("環境省 水環境総合情報サイト（政府標準利用規約準拠 / 出典明示で利用可） "
            "https://water-pub.env.go.jp/water-pub/mizu-site/env.asp")
 HDRS = {"User-Agent": UA, "Content-Type": "application/json; charset=utf-8",
@@ -175,6 +205,9 @@ def dump(name, rows):
     write_jsonl(name, rows)
 
 def main():
+    global KEEP
+    ap = argparse.ArgumentParser(); regions.add_region_arg(ap)
+    set_region(ap.parse_args().region)
     Y_FROM = 2005
     # --- 1. 測定点マスタ ---
     try:
@@ -185,6 +218,8 @@ def main():
         st = []
         for code, sub in g:
             last = sub.iloc[-1]
+            if BBOX is not None and not in_bbox(to_number(last["latitude"])[0], to_number(last["longitude"])[0]):
+                continue
             st.append({
                 "station_id": "kousui_" + code, "zettaicode": code,
                 "station_name_ja": s_(last["locationname"]) or None,
@@ -202,17 +237,20 @@ def main():
         with open(PROC/f"{SID_ST}.csv", "w", newline="", encoding="utf-8") as f:
             w = csv.DictWriter(f, list(st[0].keys())); w.writeheader(); w.writerows(st)
         write_jsonl(SID_ST, st)
+        if BBOX is not None:
+            KEEP = {x["zettaicode"] for x in st}
+            print(f"  bbox {BBOX}: {len(st)} stations")
         STMAP.update({x["zettaicode"]: {"station_name_ja": x["station_name_ja"],
                                         "water_body_ja": x["water_body_ja"],
                                         "lat": x["lat"], "lon": x["lon"]} for x in st})
-        register(SID_ST, "環境省 公共用水域 水質測定点マスタ（神奈川県）", "環境省",
+        register(SID_ST, f"環境省 公共用水域 水質測定点マスタ（{LABEL}）", "環境省",
                  "https://water-pub.env.go.jp/water-pub/mizu-site/mizu/download/", "水質",
                  "zip_create WebService.asmx (StartCreation/GetThreadStatus/download.aspx)",
                  "CSV/JSONL", LICENSE, True, len(st),
                  "p_kosui_location を年度重複排除。nendo_from/to は測定点マスタに現れた年度範囲。")
     except Exception as e:
         print(f"  [fail] location: {e}")
-        register(SID_ST, "環境省 公共用水域 水質測定点マスタ（神奈川県）", "環境省",
+        register(SID_ST, f"環境省 公共用水域 水質測定点マスタ（{LABEL}）", "環境省",
                  "https://water-pub.env.go.jp/water-pub/mizu-site/mizu/download/", "水質",
                  "zip_create WebService.asmx", "CSV/JSONL", LICENSE, True, 0, f"取得失敗: {e}")
 
@@ -223,12 +261,12 @@ def main():
         where = f"nendo>={Y_FROM} and prefcode='{PREF}'"
         try:
             df = fetch_fc(fc, where, f"{fc}_{PREF}_{Y_FROM}.zip")
-            r = melt(df, SID_Y, fc, where, "y")
+            r = melt(keep_rows(df), SID_Y, fc, where, "y")
             rows += r; print(f"  {fc} {label}: {len(df)} src rows -> {len(r)} long rows")
         except Exception as e:
             notes.append(f"{fc}({label})取得失敗: {e}"); print(f"  [fail] {fc}: {e}")
     dump(SID_Y, rows)
-    register(SID_Y, "環境省 公共用水域水質測定結果 年間値（神奈川県）", "環境省",
+    register(SID_Y, f"環境省 公共用水域水質測定結果 年間値（{LABEL}）", "環境省",
              "https://water-pub.env.go.jp/water-pub/mizu-site/mizu/kousui/dataMap.asp", "水質",
              "zip_create WebService.asmx (CSV in ZIP)", "CSV/JSONL", LICENSE, True, len(rows),
              f"nendo>={Y_FROM} / 生活環境項目(BOD,COD,DO,pH,SS,大腸菌群数,全亜鉛 等)・全窒素全燐・健康項目 / "
@@ -242,12 +280,12 @@ def main():
         where = f"nendo>={K_FROM} and prefcode='{PREF}'"
         try:
             df = fetch_fc(fc, where, f"{fc}_{PREF}_{K_FROM}.zip")
-            r = melt(df, SID_K, fc, where, "k")
+            r = melt(keep_rows(df), SID_K, fc, where, "k")
             rows2 += r; print(f"  {fc} {label}: {len(df)} src rows -> {len(r)} long rows")
         except Exception as e:
             notes2.append(f"{fc}({label})取得失敗: {e}"); print(f"  [fail] {fc}: {e}")
     dump(SID_K, rows2)
-    register(SID_K, "環境省 公共用水域水質測定結果 検体値（神奈川県）", "環境省",
+    register(SID_K, f"環境省 公共用水域水質測定結果 検体値（{LABEL}）", "環境省",
              "https://water-pub.env.go.jp/water-pub/mizu-site/mizu/download/", "水質",
              "zip_create WebService.asmx (CSV in ZIP)", "CSV/JSONL", LICENSE, True, len(rows2),
              f"nendo>={K_FROM} / 採水日時単位の検体値（datetime は FISCALYEAR-MONTH-DAYTIME(DDHHMM) より復元, JST）。"

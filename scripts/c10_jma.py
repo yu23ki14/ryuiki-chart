@@ -4,17 +4,50 @@
  - 日別値: 横浜(47670) 直近2年 (daily_s1)  ← FR-1.8 降雨イベントトリガー用
 出力は縦持ち(long): station_id, station_name_ja, lat, lon, datetime, variable, value, unit, ...
 """
-import sys, re, io, json, pathlib, csv
+import sys, re, io, json, pathlib, csv, argparse
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from common import *
+import regions
 import pandas as pd
 
-SID_ST   = "jma_stations_kanagawa"
-SID_MON  = "jma_monthly_kanagawa"
+# 地域依存の定数。jp-14 の値は従来の直書きと同一（scripts/tests/test_c_region_names.py で固定）。
+# main() が --region から設定する。import しただけでは jp-14。
+RID = "jp-14"
+SID_ST   = regions.name("jma_stations_kanagawa", RID)
+SID_MON  = regions.name("jma_monthly_kanagawa", RID)
 SID_DAY  = "jma_daily_yokohama"
 BASE = "https://www.data.jma.go.jp/stats/etrn"
-PREC = 46
-RAWD = RAW/"jma"; RAWD.mkdir(parents=True, exist_ok=True)
+PREC = regions.get(RID)["jma_stations"][0][0]   # 46
+BLOCKS = None          # jp-14 は県のページから。jp-46 は regions.jma_stations の block_no を直接指定
+RAWD = RAW/regions.name("jma", RID); RAWD.mkdir(parents=True, exist_ok=True)
+PREF_JA = "神奈川県"
+LABEL = "神奈川県"      # register() の名称に入れる地域の呼び名
+# 月別値の対象地点・日別値の (地点名, 期間リスト, source_id)
+TARGETS = ["横浜", "海老名", "辻堂", "小田原", "丹沢湖", "相模湖", "三浦"]
+DAILY_ST = "横浜"
+DAILY_PERIODS = [(2024, 1, 12), (2025, 1, 12), (2026, 1, 12)]    # (年, 開始月, 終了月)
+DAILY_NOTE = "2024-01〜直近月の日別値"
+
+def set_region(rid):
+    """--region からモジュール定数を組み立てる。jp-14 は import 時と同じ値になる。"""
+    global RID, SID_ST, SID_MON, SID_DAY, PREC, BLOCKS, RAWD, PREF_JA, LABEL, TARGETS, DAILY_ST, DAILY_PERIODS, DAILY_NOTE
+    RID = rid
+    cfg = regions.get(rid)
+    SID_ST = regions.name("jma_stations_kanagawa", rid)
+    SID_MON = regions.name("jma_monthly_kanagawa", rid)
+    PREC = cfg["jma_stations"][0][0]
+    RAWD = RAW/regions.name("jma", rid); RAWD.mkdir(parents=True, exist_ok=True)
+    if rid == "jp-14":
+        return
+    PREF_JA = cfg["pref_name_ja"]
+    LABEL = "奄美大島"
+    BLOCKS = {b for _, b, _ in cfg["jma_stations"]}
+    SID_DAY = "jma_daily_nase"
+    TARGETS = ["名瀬", "笠利", "古仁屋"]
+    # 名瀬の日別: 2010年奄美豪雨（2010-10）＋ 横浜と同じ直近2年
+    DAILY_ST = "名瀬"
+    DAILY_NOTE = "2010-10（奄美豪雨）と 2024-01〜直近月の日別値"
+    DAILY_PERIODS = [(2010, 10, 10), (2024, 1, 12), (2025, 1, 12), (2026, 1, 12)]
 
 LICENSE = ("気象庁ホームページ利用規約（政府標準利用規約 2.0 準拠 / CC BY 4.0 互換）"
            " https://www.jma.go.jp/jma/kishou/info/coment.html")
@@ -27,7 +60,7 @@ def fetch_stations():
     # (a) etrn 都道府県ページ: block_no と観測要素フラグ
     url = f"{BASE}/select/prefecture.php?prec_no={PREC}&block_no=&year=&month=&day=&view="
     r = get(url); r.encoding = "utf-8"
-    (RAWD/"prefecture_46.html").write_text(r.text, encoding="utf-8")
+    (RAWD/f"prefecture_{PREC}.html").write_text(r.text, encoding="utf-8")
     pat = re.compile(r"viewPoint\('(?P<type>[as])','(?P<block>\d+)','(?P<name>[^']*)','(?P<kana>[^']*)',"
                      r"'(?P<latd>[^']*)','(?P<latm>[^']*)','(?P<lond>[^']*)','(?P<lonm>[^']*)','(?P<alt>[^']*)',"
                      r"'(?P<rain>[^']*)','(?P<wind>[^']*)','(?P<temp>[^']*)','(?P<sun>[^']*)','(?P<snow>[^']*)',"
@@ -35,6 +68,8 @@ def fetch_stations():
     etrn = {}
     for m in pat.finditer(r.text):
         d = m.groupdict()
+        if BLOCKS is not None and d["block"] not in BLOCKS:
+            continue
         etrn[d["name"]] = d
     print(f"  etrn prefecture page: {len(etrn)} stations")
 
@@ -43,9 +78,12 @@ def fetch_stations():
     (RAWD/"amedastable.json").write_text(json.dumps(tbl, ensure_ascii=False), encoding="utf-8")
     rows = []
     for amedas_id, v in tbl.items():
-        if not amedas_id.startswith("46"):
-            continue
         name = v.get("kjName")
+        if BLOCKS is None:
+            if not amedas_id.startswith("46"):
+                continue
+        elif name not in etrn:
+            continue
         e = etrn.get(name, {})
         rows.append({
             "station_id":       f"jma_{e['block']}" if e else f"jma_amd{amedas_id}",
@@ -56,7 +94,7 @@ def fetch_stations():
             "station_name_ja":  name,
             "station_kana_ja":  v.get("knName"),
             "station_name_en":  v.get("enName"),
-            "prefecture_ja":    "神奈川県",
+            "prefecture_ja":    PREF_JA,
             "lat":              dm(*v["lat"]),
             "lon":              dm(*v["lon"]),
             "elevation_m":      v.get("alt"),
@@ -78,7 +116,7 @@ def fetch_stations():
             "prec_no": str(PREC),
             "station_type": {"s": "官署", "a": "アメダス"}.get(e["type"], "アメダス"),
             "station_name_ja": name, "station_kana_ja": e["kana"], "station_name_en": None,
-            "prefecture_ja": "神奈川県",
+            "prefecture_ja": PREF_JA,
             "lat": dm(e["latd"], e["latm"]), "lon": dm(e["lond"], e["lonm"]),
             "elevation_m": to_number(e["alt"])[0],
             "obs_rain": e["rain"], "obs_temp": e["temp"], "obs_wind": e["wind"],
@@ -231,12 +269,14 @@ def read_first_table(url, cache):
 
 # ---------------------------------------------------------------- main
 def main():
+    ap = argparse.ArgumentParser(); regions.add_region_arg(ap)
+    set_region(ap.parse_args().region)
     stations = fetch_stations()
     hdr = list(stations[0].keys())
     with open(PROC/f"{SID_ST}.csv", "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, hdr); w.writeheader(); w.writerows(stations)
     write_jsonl(SID_ST, stations)
-    register(SID_ST, "気象庁 神奈川県 観測地点一覧（アメダス+官署）", "気象庁",
+    register(SID_ST, f"気象庁 {LABEL} 観測地点一覧（アメダス+官署）", "気象庁",
              "https://www.jma.go.jp/bosai/amedas/const/amedastable.json",
              "気象", "JSON API + HTML(etrn 都道府県ページ)", "CSV/JSONL",
              LICENSE, True, len(stations),
@@ -244,7 +284,6 @@ def main():
     byname = {s["station_name_ja"]: s for s in stations}
 
     # --- 月別値: 主要地点 x 直近6年 ---
-    TARGETS = ["横浜", "海老名", "辻堂", "小田原", "丹沢湖", "相模湖", "三浦"]
     YEARS = list(range(2019, 2027))
     mon = []
     for nm in TARGETS:
@@ -266,18 +305,18 @@ def main():
     if mon:
         pd.DataFrame(mon).to_csv(PROC/f"{SID_MON}.csv", index=False, encoding="utf-8")
         write_jsonl(SID_MON, mon)
-    register(SID_MON, "気象庁 過去の気象データ 月別値（神奈川県 主要地点）", "気象庁",
+    register(SID_MON, f"気象庁 過去の気象データ 月別値（{LABEL} 主要地点）", "気象庁",
              f"{BASE}/index.php", "気象", "HTML テーブル (pandas.read_html)", "CSV/JSONL",
              LICENSE, True, len(mon),
              f"地点={','.join(TARGETS)} / 年={YEARS[0]}-{YEARS[-1]} / 縦持ち long 形式")
 
     # --- 日別値: 横浜 直近2年 ---
-    st = byname["横浜"]
+    st = byname[DAILY_ST]
     day = []
     import datetime as _dt
     today = _dt.date.today()
-    for y in (2024, 2025, 2026):
-        for m in range(1, 13):
+    for y, m0, m1 in DAILY_PERIODS:
+        for m in range(m0, m1 + 1):
             if (y, m) > (today.year, today.month):
                 continue
             url = (f"{BASE}/view/daily_s1.php?prec_no={PREC}&block_no={st['block_no']}"
@@ -293,14 +332,14 @@ def main():
                               url, "day")
             for r in rows: r["source_id"] = SID_DAY
             day += rows
-        print(f"  daily 横浜 {y}: cumulative {len(day)}")
+        print(f"  daily {DAILY_ST} {y}: cumulative {len(day)}")
     if day:
         pd.DataFrame(day).to_csv(PROC/f"{SID_DAY}.csv", index=False, encoding="utf-8")
         write_jsonl(SID_DAY, day)
-    register(SID_DAY, "気象庁 過去の気象データ 日別値（横浜 47670）", "気象庁",
-             f"{BASE}/view/daily_s1.php?prec_no=46&block_no=47670", "気象",
+    register(SID_DAY, f"気象庁 過去の気象データ 日別値（{DAILY_ST} {st['block_no']}）", "気象庁",
+             f"{BASE}/view/daily_s1.php?prec_no={PREC}&block_no={st['block_no']}", "気象",
              "HTML テーブル (pandas.read_html)", "CSV/JSONL", LICENSE, True, len(day),
-             "2024-01〜直近月の日別値。降水量合計=precipitation_total は FR-1.8 降雨イベントトリガー用。"
+             f"{DAILY_NOTE}。降水量合計=precipitation_total は FR-1.8 降雨イベントトリガー用。"
              "「--」は気象庁凡例「現象がなかったことを示す」→ value は NULL のまま no_phenomenon=1 で保持（推測補完しない）")
 
 if __name__ == "__main__":
