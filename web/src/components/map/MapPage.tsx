@@ -210,7 +210,7 @@ export function MapPage() {
         <div className="p-3 border-b border-line">
           <h1 className="text-[14px] font-bold">流域マップ</h1>
           <p className="text-[11px] text-muted mt-0.5 leading-snug">
-            国土数値情報 W12 の単位流域（377面・1977年版）を土台に、観測地点と生物記録を重ねる。
+            国土数値情報 W12 の単位流域（{ws.data ? `${ws.data.features.length}面・` : ""}神奈川・奄美とも1977年版）を土台に、観測地点と生物記録を重ねる。
           </p>
         </div>
 
