@@ -57,8 +57,9 @@ def test_jp14_matches_hardcoded_collectors():
     assert r["inat_place_ids"] == (10918,)
     for f in ("c02_gbif.py", "c03_inaturalist.py", "c80_biodic_ikimonomap.py", "c65_osm_overpass.py"):
         assert "import regions as rc" in _src(f), f
-    assert r["jma_stations"][0][0] == int(_const("c10_jma.py", r"^PREC = (\d+)"))
-    assert r["env_water_prefcodes"] == (_const("c12_env_kousui.py", r'^PREF = "(\d+)"'),)
+    # c10/c12 は直書きを消し、regions.py を読む（値の一致は test_c_region_names.py が固定）
+    assert 'regions.get(RID)["jma_stations"]' in _src("c10_jma.py")
+    assert 'regions.get(RID)["env_water_prefcodes"]' in _src("c12_env_kousui.py")
     # c34 は直書きをやめて regions.py を読む（layout() 経由）。jp-14 の値は test_nlni_region.py が固定している。
     assert 'MESHES = L["l03b_meshes"]' in _src("c34_nlni_l03b.py")
 
@@ -106,8 +107,7 @@ def test_slug_bbox_stations(rid):
 
 def test_jp14_values_match_hardcoded():
     r = rc.REGIONS["jp-14"]
-    codes = re.findall(r'"(\d{8})":', _const("c11_soramame.py", r"^TARGET_STATIONS = \{([^}]*)\}"))
-    assert tuple(c for c, _ in r["soramame_stations"]) == tuple(codes)
+    assert 'regions.get(RID)["soramame_stations"]' in _src("c11_soramame.py")
     assert r["jma_sst_areas"] == ()
 
 

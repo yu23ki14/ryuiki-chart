@@ -175,6 +175,16 @@ sources:
   osm_amami_forest: {reason: file_only, basis: "data/processed に osm_amami_forest.csv がある（奄美 Step 1。D1 の表なし。PR-B で取り込んだら外す）"}
   osm_amami_protected_area: {reason: file_only, basis: "data/processed に osm_amami_protected_area.csv がある（奄美 Step 1。D1 の表なし。PR-B で取り込んだら外す）"}
   osm_amami_water: {reason: file_only, basis: "data/processed に osm_amami_water.csv がある（奄美 Step 1。D1 の表なし。PR-B で取り込んだら外す）"}
+  # --- 奄美 Step 1 (I3) ---
+  jma_stations_amami: {reason: file_only, basis: "data/processed に jma_stations_amami.csv がある（観測地点3: 名瀬・笠利・古仁屋。D1 の表なし。PR-B で取り込む）"}
+  jma_monthly_amami: {reason: file_only, basis: "data/processed に jma_monthly_amami.csv がある（月別値 6,277 行。D1 の表なし。PR-B で取り込む）"}
+  jma_daily_nase: {reason: file_only, basis: "data/processed に jma_daily_nase.csv がある（名瀬の日別値 20,496 行。D1 の表なし。PR-B で取り込む）"}
+  env_kousui_stations_amami: {reason: file_only, basis: "data/processed に env_kousui_stations_amami.csv がある（25 地点。D1 の表なし。PR-B で取り込む）"}
+  env_kousui_annual_amami: {reason: file_only, basis: "data/processed に env_kousui_annual_amami.csv がある（年間値 2,521 行。D1 の表なし。PR-B で取り込む）"}
+  env_kousui_sample_amami: {reason: file_only, basis: "data/processed に env_kousui_sample_amami.csv がある（検体値 1,380 行。D1 の表なし。PR-B で取り込む）"}
+  soramame_stations_amami: {reason: file_only, basis: "data/processed に soramame_stations_amami.csv がある（1 局。D1 の表なし。PR-B で取り込む）"}
+  soramame_hourly_amami: {reason: file_only, basis: "data/processed に soramame_hourly_amami.csv がある（1時間値 17,697 行。D1 の表なし。PR-B で取り込む）"}
+  jma_sst_amami: {reason: file_only, basis: "data/processed に jma_sst_amami.csv がある（海域617〜620の日別 65,412 行。D1 の表なし。PR-B で取り込む）"}
   # --- 取れない: superseded（1 件）---
   gbif_kanagawa: {reason: superseded, basis: "editions.yaml の source_declarations で superseded_by=gbif_kanagawa_occurrences", note: "gbif_kanagawa_occurrences に置き換わった。値はそちらで取る"}
   # --- 取れない: synthetic（1 件）---
