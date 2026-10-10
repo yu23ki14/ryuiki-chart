@@ -73,6 +73,10 @@ scopes:
   - {kind: source_edition, ref: source_id=gbif_amami_occurrences, caveats: [effort, amamiRedList, amamiWatershedGap]}
   - {kind: source_edition, ref: source_id=inaturalist_amami, caveats: [effort, amamiRedList, amamiWatershedGap]}
   - {kind: source_edition, ref: source_id=nlni_l03b_landuse_by_watershed_amami, caveats: [amamiWatershedGap]}
+  # 奄美 Step 2b（河川砂防情報システム）。水位は基準面と観測間隔、潮位は基準面、全て速報値。
+  - {kind: source_edition, ref: source_id=kagoshima_kasen_suii_amami, caveats: [kasenStageDatum, kasenKikiDaily, kasenProvisional]}
+  - {kind: source_edition, ref: source_id=kagoshima_kasen_choui_amami, caveats: [kasenTideDatum, kasenProvisional]}
+  - {kind: source_edition, ref: source_id=kagoshima_kasen_dam_amami, caveats: [kasenProvisional]}
   # 土地利用の定義変更は、本文が名指しする3区分（幹線交通用地・道路・鉄道）だけが影響を受けるが、
   # 他の10区分は日本語名が一致するだけで定義の一致は確認できていないので、指標全体（theme）に掛ける
   # （推測で狭めない。docs/plans/ISSUE35_CAVEAT.md §7-3）。
