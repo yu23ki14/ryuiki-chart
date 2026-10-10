@@ -301,7 +301,7 @@ export const GENERATED_CAVEATS: readonly GeneratedCaveat[] = [
   { key: "share", severity: "warning", kind: null, bodyJa: "件数そのものではなく、同じ分類群の中での割合（‰）で比べている。観察する人が増えれば件数は全種で一斉に増えるため、生の件数の増減には意味がない。" },
   { key: "synthetic", severity: "blocking", kind: "synthetic", bodyJa: "合成データ（デモ用に生成したもの）。実在の公開データではない。" },
   { key: "unitUnknown", severity: "blocking", kind: "unit_change", bodyJa: "この指標のうち、原本に単位の記載が無い出典は、レジストリでも単位を確定できていない。該当する値は原本の数値のまま示しており、推測で換算していない（相模原市の1時間値 RAIN は0.1mm刻みの可能性があるが未確定のまま）。単位が判明している出典の値と混同しないこと。" },
-  { key: "zone", severity: "info", kind: null, bodyJa: "ゾーンは標高と海岸線距離だけから機械的に付けた操作的定義であり、公式の区分ではない。zone 1（標高800m超）には水質データが無い。" },
+  { key: "zone", severity: "info", kind: null, bodyJa: "zone は地形から機械的に付けた操作的区分で、公式の区分ではない。標高の低い島（奄美大島など）では山地（zone 2）が陸の大半を占め、低地（zone 4）はほとんど現れない。これは定義の結果で、凡例・名称は地域によらず共通である。zone 1（山地で、標高が地域の最高峰の半分以上）には水質データが無い。" },
 ];
 
 /**
@@ -384,11 +384,11 @@ export const ASSESSMENT_LIST: Readonly<Record<string, GeneratedAssessmentList>> 
 
 /** Ridge to Reef ゾーン(1-5)の定義（registry/place/zone.yaml、旧 domain.ts の ZONE_INFO）。 */
 export const ZONE_INFO: readonly GeneratedZone[] = [
-  { zone: 1, label: "山地源流域", cond: "標高 800m 超" },
-  { zone: 2, label: "山地渓流", cond: "標高 400–800m" },
-  { zone: 3, label: "丘陵・扇状地", cond: "標高 100–400m" },
-  { zone: 4, label: "平野・沖積低地", cond: "標高 100m 以下・海岸から 2km 超" },
-  { zone: 5, label: "河口・沿岸", cond: "標高 100m 以下・海岸から 2km 以内" },
+  { zone: 1, label: "山地源流域", cond: "山地（周囲1kmの起伏量200m以上）で、標高が地域の最高峰の半分以上" },
+  { zone: 2, label: "山地渓流", cond: "山地（周囲1kmの起伏量200m以上）で、標高が地域の最高峰の半分未満" },
+  { zone: 3, label: "丘陵・台地・扇状地", cond: "山地でも低地でもない場所" },
+  { zone: 4, label: "平野・沖積低地", cond: "標高100m以下・周囲250mの起伏量30m以下・周囲2kmの最低点から15m以内（山地でも沿岸でもない）" },
+  { zone: 5, label: "河口・沿岸", cond: "海岸から2km以内かつ標高10m以下" },
 ];
 
 /** 地図ページの指標の語彙（registry/map_metric.yaml）。表示順はファイルの順。unit は表示用の文字列（unit_id を引いたもの）で、無ければ null。 */
@@ -412,4 +412,5 @@ export type MeshMetricId = Extract<(typeof MAP_METRICS)[number], { scope: "mesh"
 /** region の時刻帯（registry/region.yaml の語彙。`lookup-client.ts` の `regionTimeZone()` が引く）。 */
 export const REGION_TIME: readonly GeneratedRegionTime[] = [
   { regionId: "jp-14", tzName: "Asia/Tokyo", utcOffset: "+09:00" },
+  { regionId: "jp-46", tzName: "Asia/Tokyo", utcOffset: "+09:00" },
 ];

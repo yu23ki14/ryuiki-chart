@@ -17,6 +17,7 @@ from registry import common
 from registry.build_place import build as build_place
 
 from .registry_fixtures import make_ryuiki_places_db, open_places_src, write_watershed_jsonl
+from .zone_fixtures import write_region_yaml, write_terrain_csv, zone_row
 
 
 def test_region_id_for_scoped_id_derives_from_scope_not_hardcoded():
@@ -24,13 +25,24 @@ def test_region_id_for_scoped_id_derives_from_scope_not_hardcoded():
     assert common.region_id_for_scoped_id("common:place:watershed.nlni.83032-0024") is None
     assert common.region_id_for_scoped_id("common:place:grid01.3500_13900") is None
     assert common.region_id_for_scoped_id("jp-14:place:site.jma.jma_0387") == "jp-14"
-    assert common.region_id_for_scoped_id("jp-14:place:zone.r2r.1") == "jp-14"
+    assert common.region_id_for_scoped_id("common:place:zone.r2r.1") is None  # zone v2 は地域共通（AMAMI_STEP0 §2）
 
 
-def _build(tmp_path, monkeypatch, sites_rows, watershed_rows=(), organism_records_rows=()):
+def _build(tmp_path, monkeypatch, sites_rows, watershed_rows=(), organism_records_rows=(), terrain_rows=None):
     """`watershed_rows`: dict のリスト（write_watershed_jsonl() 参照）。空なら
     watershed 節は0件のまま（place_kind='watershed' の行は作られない）。
+    `terrain_rows`: terrain_points.csv の行。省略時は sites_rows の (lat, lon, zone) から、
+    その zone に classify() がなる指標を自動で作る（zone=None は標高が取れない行）。
     """
+    if terrain_rows is None:
+        terrain_rows = [zone_row(r[2], r[3], r[7]) for r in sites_rows]
+    terrain_path = tmp_path / "terrain_points.csv"
+    write_terrain_csv(terrain_path, terrain_rows)
+    region_path = tmp_path / "region.yaml"
+    write_region_yaml(region_path)
+    monkeypatch.setattr(build_place_module, "TERRAIN_POINTS_CSV", terrain_path)
+    monkeypatch.setattr(build_place_module, "REGION_YAML", region_path)
+
     ryuiki_path = tmp_path / "ryuiki.sqlite"
     make_ryuiki_places_db(ryuiki_path, sites_rows, organism_records_rows)
 
@@ -75,8 +87,8 @@ _WATERSHED_ROW_FULL = {
 
 
 def test_region_id_common_scope_is_null_and_region_scope_matches_id(tmp_path, monkeypatch):
-    """common:スコープ(watershed/grid01)は region_id=NULL、jp-14:スコープ(site/zone)は
-    region_id='jp-14'（ADR-0022 決定1。「Phase A の対象地域は神奈川だから」で全行 jp-14 に
+    """common:スコープ(watershed/grid01)は region_id=NULL、jp-14:スコープ(site)は
+    region_id='jp-14'、zone は v2 で common 化したので NULL（ADR-0022 決定1。「Phase A の対象地域は神奈川だから」で全行 jp-14 に
     していた旧実装の回帰テスト）。
     """
     sites_rows = [("jma_stations_kanagawa__s1", "地点1", 35.0, 139.0, 10.0, "src", "ref", 1, None)]
@@ -89,12 +101,13 @@ def test_region_id_common_scope_is_null_and_region_scope_matches_id(tmp_path, mo
     assert region_by_kind["site"] == "jp-14"
     assert region_by_kind["watershed"] is None
     assert region_by_kind["grid01"] is None
-    assert region_by_kind["zone"] == "jp-14"
+    assert region_by_kind["zone"] is None  # zone v2 は common スコープ（AMAMI_STEP0 §2）
     assert counts["place_relation"] == 1
 
 
 def test_place_relation_edge_count_matches_sites_with_zone_not_null(tmp_path, monkeypatch):
-    """place_relation の辺数は sites.zone IS NOT NULL の地点数と一致する（受け入れ条件3）。"""
+    """place_relation の辺数は zone が付く（elevation_m があり classify() が None でない）地点数と一致する
+    （受け入れ条件3）。"""
     sites_rows = [
         ("jma_stations_kanagawa__s1", "地点1", 35.0, 139.0, 10.0, "src", "ref", 1, None),
         ("jma_stations_kanagawa__s2", "地点2", 35.1, 139.1, 20.0, "src", "ref", 3, None),
@@ -109,19 +122,20 @@ def test_place_relation_edge_count_matches_sites_with_zone_not_null(tmp_path, mo
     assert [r["relation"] for r in rows] == ["within", "within"]
     # fraction は NOT NULL・常に 1.0（地点は1つのゾーンに完全に含まれる。ADR-0022 決定2）。
     assert [r["fraction"] for r in rows] == [1.0, 1.0]
-    assert rows[0]["parent_id"] == "jp-14:place:zone.r2r.1"
+    assert rows[0]["parent_id"] == "common:place:zone.r2r.1"
     assert rows[0]["child_id"] == "jp-14:place:site.jma.s1"
-    assert rows[1]["parent_id"] == "jp-14:place:zone.r2r.3"
+    assert rows[1]["parent_id"] == "common:place:zone.r2r.3"
     assert rows[1]["child_id"] == "jp-14:place:site.jma.s2"
 
 
-def test_unresolvable_zone_value_raises(tmp_path, monkeypatch):
-    """registry/place/zone.yaml に無いゾーン番号は黙って捨てず例外で止める（ADR-0022 決定2）。"""
+def test_ledger_zone_that_differs_from_classify_raises(tmp_path, monkeypatch):
+    """台帳 sites.zone が classify() の結果と食い違えば止まる（m09 の回し忘れの検知。AMAMI_STEP0 §3）。"""
     sites_rows = [
-        ("jma_stations_kanagawa__s1", "地点1", 35.0, 139.0, 10.0, "src", "ref", 99, None),  # zone.yamlに無い
+        ("jma_stations_kanagawa__s1", "地点1", 35.0, 139.0, 10.0, "src", "ref", 99, None),  # 台帳だけ 99
     ]
-    with pytest.raises(ValueError, match="解決できるゾーンが"):
-        _build(tmp_path, monkeypatch, sites_rows)
+    terrain_rows = [zone_row(35.0, 139.0, 1)]
+    with pytest.raises(AssertionError, match="食い違う"):
+        _build(tmp_path, monkeypatch, sites_rows, terrain_rows=terrain_rows)
 
 
 # ---------------------------------------------------------------------------

@@ -162,7 +162,7 @@ ID を機械的に作っていたが、レビューで「ID は不変（ADR-0004
 
 ## zone
 
-`registry/place/zone.yaml`（手書き）を読む。PyYAML（`yaml.safe_load`）で読む
+`registry/place/zone.yaml`（手書き。v2 の構造）を読む。PyYAML（`yaml.safe_load`）で読む
 （A-2/A-5 と統一。以前は自前の小さいパーサだったが、YAML の読み方をリポジトリ全体で
 1本化するため置き換えた）。
 
@@ -173,8 +173,11 @@ ID を機械的に作っていたが、レビューで「ID は不変（ADR-0004
     place_relation(parent_id=ゾーンのplace_id, child_id=地点のplace_id,
                     relation='within', fraction=1.0, basis=<zone.yamlの定義を指す文字列>)
 
-対象は `sites` テーブル本体のうち `zone IS NOT NULL` の行（290件。`site_supplement.csv`
-側の補完地点は zone 列を持たないため対象外）。`parent_id` は `place_source_ref
+対象は `sites` テーブル本体のうち `elevation_m IS NOT NULL` の行（290件）に
+`scripts/registry/zone_rule.py` の `classify()`（`terrain_points.csv` の地形指標と zone.yaml の
+`rule:`）を当てて zone が付いたもの。台帳の `sites.zone`（`m09_site_zone.py` が更新）と全地点で
+一致しなければ止まる。`site_supplement.csv` 側の補完地点・観測局は対象外（Issue #86）。
+zone の place は地域に依存しない共通定義なので `common:place:zone.r2r.N`（region_id NULL。AMAMI_STEP0 §2）。`parent_id` は `place_source_ref
 (key_space='zone')` 相当の対応から解決し、`registry/place/zone.yaml` に無い
 ゾーン番号が現れたら例外を投げて止める（`_zone_relation_rows()`）。
 
@@ -208,9 +211,13 @@ import sqlite3
 import yaml
 
 from . import common
+from . import zone_rule
 
-# site / zone の place_id を発行する scope（Phase A の対象地域は神奈川県だけ）。
+# site の place_id を発行する scope（Phase A の対象地域は神奈川県だけ）。
 PLACE_SCOPE = "jp-14"
+# zone の place_id のスコープ。zone v2 は地域に依存しない共通の定義なので common
+# （region_id=NULL。AMAMI_STEP0 §2、ADR-0004 規約0・ADR-0022 決定1）。
+ZONE_SCOPE = "common"
 
 PLACE_DIR = pathlib.Path(__file__).resolve().parents[2] / "registry" / "place"
 
@@ -286,6 +293,9 @@ def _load_key_spaces() -> list[dict]:
 # monkeypatch でこのモジュール変数を差し替える（build_taxon.CROSSWALK_CSV と
 # 同じ流儀）。
 WATERSHED_JSONL = common.ROOT / common.WATERSHED_JSONL_RELPATH
+# zone v2 の入力（c68 の出力）と、最高峰を宣言する region.yaml。テストは monkeypatch で差し替える。
+TERRAIN_POINTS_CSV = common.ROOT / common.TERRAIN_POINTS_CSV_RELPATH
+REGION_YAML = zone_rule.REGION_YAML
 
 # watershed 節（build()）が実際に読むキー（10列すべて。watershed_id を含む）。
 # `_load_watershed_jsonl()` がここに宣言したキー全部の存在を1行ずつ検査する
@@ -392,14 +402,13 @@ def _load_site_supplement() -> dict[str, dict]:
     return out
 
 
-def _load_zone_yaml() -> list[dict]:
-    """registry/place/zone.yaml（手書き）を PyYAML で読む。"""
-    path = PLACE_DIR / "zone.yaml"
-    with path.open(encoding="utf-8") as f:
-        items = yaml.safe_load(f)
+def _load_zone_yaml() -> dict:
+    """registry/place/zone.yaml（手書き。v2 の構造）を読んで形を検証する
+    （`zone_rule.load_zone_definition()`。definition_version/note_ja/terrain/rule/zones）。"""
+    defn = zone_rule.load_zone_definition(PLACE_DIR / "zone.yaml")
     # 件数のハードコード assert ではなく、zone 番号の一意性チェックにする（/simplify 修正5）。
-    common.assert_unique([item["zone"] for item in items], "registry/place/zone.yaml の zone")  # Issue #37 #4
-    return items
+    common.assert_unique([item["zone"] for item in defn["zones"]], "registry/place/zone.yaml の zone")  # Issue #37 #4
+    return defn
 
 
 def _relation_rows(
@@ -437,27 +446,28 @@ def _relation_rows(
 def _zone_relation_rows(
     site_zone_pairs: list[tuple[str, int]],
     zone_place_id_by_external_key: dict[str, str],
+    params_digest: str = "",
 ) -> list[tuple]:
-    """place_relation の地点->ゾーンの辺を組み立てる（sites.zone 由来。ADR-0022 決定2）。
+    """place_relation の地点->ゾーンの辺を組み立てる（zone v2。`zone_rule.classify()` の結果由来。ADR-0022 決定2）。
 
-    `site_zone_pairs`: (地点の place_id, sites.zone の値) のペア。sites 本体のうち
-    zone IS NOT NULL の行だけが対象（zone は sites にしか無い列なので、
-    site_supplement.csv 側の補完地点は対象外）。
+    `site_zone_pairs`: (地点の place_id, classify() の結果) のペア。sites 本体のうち
+    elevation_m IS NOT NULL で zone が付く行だけが対象（site_supplement.csv 側の補完地点・
+    観測局は対象外）。`params_digest`: `terrain:` ブロックの指紋（basis に入れる）。
     `zone_place_id_by_external_key`: ゾーン番号(文字列) -> place_id
     （place_source_ref(key_space='zone') 相当の対応）。
     `registry/place/zone.yaml` に無いゾーン番号が現れたら、黙って捨てず例外を投げる。
     """
     basis = (
-        "sites.zone（Ridge to Reef ゾーン1-5、registry/place/zone.yaml の操作的定義。"
-        "標高・海岸線からの距離のみに基づく操作的区分であり、公式の行政区分・学術区分ではない）"
-        "の値から機械的に生成。"
+        "zone.yaml v2（definition_version: 2、Ridge to Reef ゾーン1-5、registry/place/zone.yaml の操作的定義。"
+        f"params_digest={params_digest}）を terrain_points.csv の地形指標に当てた結果から機械的に生成。"
+        "地形から付けた操作的区分であり、公式の行政区分・学術区分ではない。"
     )
     return _relation_rows(
         site_zone_pairs,
         zone_place_id_by_external_key,
         basis=basis,
         not_found_message=lambda zone, site_pid: (
-            f"sites.zone={zone!r}（地点 place_id={site_pid!r}）を解決できるゾーンが "
+            f"zone={zone!r}（地点 place_id={site_pid!r}）を解決できるゾーンが "
             "registry/place/zone.yaml に無い（黙って捨てない。ADR-0022 決定2）。"
         ),
     )
@@ -512,6 +522,27 @@ def _place_id_by_external_key(ref_rows: list[tuple], key_space: str) -> dict[str
     }
 
 
+def _site_zones(ryuiki: sqlite3.Connection, terrain_points: dict, rule: dict) -> dict[str, int | None]:
+    """`{site_id: zone}`。対象は sites のうち elevation_m IS NOT NULL の行（座標が terrain_points.csv に
+    無ければ地点を列挙して止める）。台帳の sites.zone と全地点で一致しなければ止まる
+    （m09_site_zone.py の回し忘れ・terrain_points.csv/zone.yaml の更新後の m09 の回し忘れの検知）。"""
+    try:
+        classified = zone_rule.classify_sites_from_db(ryuiki, terrain_points, rule)
+    except zone_rule.ZoneRuleError as e:
+        raise AssertionError(str(e)) from e
+    out = {c.site_id: c.zone for c in classified}
+    mismatched = [
+        f"{c.site_id}(台帳 {c.ledger_zone} / 判定 {c.zone})" for c in classified if c.ledger_zone != c.zone
+    ]
+    if mismatched:
+        raise AssertionError(
+            f"台帳 sites.zone と classify() の結果が {len(mismatched)} 件食い違う"
+            "（scripts/m09_site_zone.py を回して台帳を更新すること）: "
+            + ", ".join(mismatched[:20]) + (" ..." if len(mismatched) > 20 else "")
+        )
+    return out
+
+
 def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[str, int]:
     """conn: registry.sqlite への書き込み用コネクション。
     src: {'ryuiki': ..., 'cells': ...} の読み取り専用コネクション（'derived' は
@@ -522,6 +553,13 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     戻り値: {テーブル名: 挿入した行数}（ログ表示用）。
     """
     ryuiki = src["ryuiki"]
+
+    # zone v2: terrain_points.csv（c68 の出力）を classify() に当てる。ネットワークには出ない。
+    zone_defn = _load_zone_yaml()
+    terrain_points = zone_rule.load_terrain_points(
+        TERRAIN_POINTS_CSV, zone_defn["terrain"], zone_rule.load_region_summits(REGION_YAML)
+    )
+    site_zone_by_id = _site_zones(ryuiki, terrain_points, zone_defn["rule"])
 
     place_rows: list[tuple] = []
     ref_rows: list[tuple] = []
@@ -541,11 +579,12 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
 
     # --- site: sites テーブル本体（352件） ---------------------------------
     for row in ryuiki.execute(
-        "SELECT site_id, name, lat, lon, elevation_m, source_id, source_ref, zone, watershed FROM sites"
+        "SELECT site_id, name, lat, lon, elevation_m, source_id, source_ref, watershed FROM sites"
     ):
         pid = _site_place_id(row["site_id"], seen=place_id_seen)
-        if row["zone"] is not None:
-            site_zone_pairs.append((pid, row["zone"]))
+        site_zone = site_zone_by_id[row["site_id"]]
+        if site_zone is not None:
+            site_zone_pairs.append((pid, site_zone))
         if row["watershed"] is not None:
             site_watershed_pairs.append((pid, row["watershed"]))
         place_rows.append((
@@ -655,18 +694,17 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
         ))
         ref_rows.append((pid, f"grid01:{mlat},{mlon}", KS_GRID01_LATLON))
 
-    # --- zone: registry/place/zone.yaml（5件） ------------------------------
+    # --- zone: registry/place/zone.yaml（5件。地域共通の定義なので common スコープ） --------
     disclaimer = (
-        "Ridge to Reef ゾーン(1-5)の操作的定義。標高と海岸線からの距離のみを用いて"
-        "機械的に算出した、本データ統合作業独自の操作的区分であり、公式の行政区分・"
-        "学術区分ではない。分水嶺・尾根線・行政界等の地形学的境界は考慮していない。"
-        "閾値は仮に置いた値であり、専門家レビューで確定する必要がある"
-        "（docs/ZONE_DEFINITION.md）。"
+        "Ridge to Reef ゾーン(1-5)の操作的定義（definition_version: 2。神奈川・奄美で共通）。"
+        "標高・海岸線からの距離・周囲の起伏から機械的に算出した、本データ統合作業独自の操作的区分であり、"
+        "公式の行政区分・学術区分ではない。分水嶺・尾根線・行政界等の地形学的境界は考慮していない。"
+        "閾値は仮に置いた値であり、専門家レビューで確定する必要がある（docs/ZONE_DEFINITION.md）。"
     )
-    for item in _load_zone_yaml():
+    for item in zone_defn["zones"]:
         n = int(item["zone"])
-        pid = common.place_id("zone", "r2r", str(n), scope=PLACE_SCOPE, seen=place_id_seen)
-        definition_ref = f"{disclaimer} 条件: {item['condition_ja']}。"
+        pid = common.place_id("zone", "r2r", str(n), scope=ZONE_SCOPE, seen=place_id_seen)
+        definition_ref = f"{disclaimer} 条件: {item['condition_ja']}。{zone_defn['note_ja']}"
         place_rows.append((
             pid, common.region_id_for_scoped_id(pid), "zone", item["name_ja"],
             None, None, None, None, definition_ref, "ok",
@@ -678,7 +716,10 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     # 上の zone loop が積んだ行だけなので、専用の対応表を別途維持しなくても
     # ref_rows 一本から求まる。`_place_id_by_external_key()` 参照）。
     zone_place_id_by_external_key = _place_id_by_external_key(ref_rows, KS_ZONE)
-    zone_relation_rows = _zone_relation_rows(site_zone_pairs, zone_place_id_by_external_key)
+    zone_relation_rows = _zone_relation_rows(
+        site_zone_pairs, zone_place_id_by_external_key,
+        zone_rule.terrain_params_digest(zone_defn["terrain"]),
+    )
 
     # --- place_relation: 地点 -> 流域（sites.watershed 由来。Phase B
     # `phase-b/place-attributes`、P-1a） ---------------------------------------

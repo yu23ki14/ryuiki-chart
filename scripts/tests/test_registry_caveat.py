@@ -47,12 +47,20 @@ def test_real_declaration_builds_and_uses_only_adr_vocabulary():
     assert not {r[1] for r in rows} & {"table", "table_prefix", "place_kind", "source_id", "variable_theme", "cell", "cell_table"}
 
 
+def test_zone_caveat_body_contains_zone_yaml_note_ja():
+    """zone.yaml の note_ja は caveat.yaml の zone の本文に手で複製してある。ずれたら止める。"""
+    from registry import zone_rule
+    note = zone_rule.load_zone_definition()["note_ja"].strip()
+    body = {e["key"]: e["body_ja"] for e in build_caveat._load_caveat_yaml()}["zone"]
+    assert note in body, "caveat.yaml の zone の body_ja が zone.yaml の note_ja を含まない（どちらかを直してそろえる）"
+
+
 def test_every_caveat_has_a_complete_review_record():
     entries = build_caveat._load_caveat_yaml()
     assert len(entries) >= 18
     for e in entries:
         r = e["review"]
-        assert r["reviewed_on"] in {"2026-10-06", "2026-10-07"}  # eDNA の注記4件は 10-07
+        assert r["reviewed_on"] in {"2026-10-06", "2026-10-07", "2026-10-10"}  # eDNA の注記4件は 10-07、zone は v2 で 10-10
         assert r["reviewer"] == "claude（オーナー委任）"
         assert r["owner_confirmed_on"] == "2026-10-07"
         assert r["reason"]

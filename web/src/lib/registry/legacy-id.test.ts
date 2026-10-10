@@ -20,8 +20,8 @@ function loadCsv(): { old: string; neu: string }[] {
 describe("旧 place_id の受理（resolveLegacyId）", () => {
   const rows = loadCsv();
 
-  it("宣言（place.csv）877件がすべて旧→新で引ける（生成物と宣言が一致）", () => {
-    expect(rows).toHaveLength(877);
+  it("宣言（place.csv）の全行が旧→新で引ける（生成物と宣言が一致）", () => {
+    expect(rows.length).toBeGreaterThan(0);
     expect(Object.keys(LEGACY_PLACE_ID_MAP)).toHaveLength(rows.length);
     for (const { old, neu } of rows) {
       expect(legacyPlaceIdToCurrent(old)).toBe(neu);
@@ -29,10 +29,16 @@ describe("旧 place_id の受理（resolveLegacyId）", () => {
     }
   });
 
-  it("新 ID は parseId() で分解でき、旧 ID は分解できない（区切りが違う）", () => {
+  it("新 ID は parseId() で分解できる。旧 ID が分解できないのは、区切りが旧形式のとき。旧 ID が今の形式で分解できるのは、その ID が現行の place の ID として発行されていない（昇格前の ID）ときだけ", () => {
+    // zone は jp-14 から common へ昇格した。昇格前の `jp-14:place:zone.r2r.N` は今の区切りでも分解できるが、
+    // 現行の place の ID（common:…）ではない。旧 ID が現行の ID として発行されていれば再利用になるので落とす。
+    const current = new Set(rows.map((r) => r.neu));
     for (const { old, neu } of rows) {
       expect(parseId(neu)).not.toBeNull();
-      expect(parseId(old)).toBeNull();
+      if (parseId(old) !== null) {
+        expect(current.has(old)).toBe(false);
+        expect(old).not.toBe(neu);
+      }
     }
   });
 

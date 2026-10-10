@@ -68,6 +68,7 @@ import { fileURLToPath } from "node:url";
 import { load as loadYaml } from "js-yaml";
 import { parseCsvRecords } from "./lib/csv.mjs";
 import { buildClientVariableMaps, buildVariableLabelMap } from "./lib/registry-codegen.mjs";
+import { readZoneDefinition } from "./lib/zone-definition.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB = path.resolve(__dirname, "..");
@@ -232,19 +233,9 @@ const vernacular = parseCsvRecords(fs.readFileSync(VERNACULAR_CSV, "utf-8"), [
 // condition_ja（不等号表記、definition_ref の一文に埋め込む）を使い、こちらは
 // ui_condition_ja（画面・AIツール向けの短い日本語表記、旧 domain.ts の ZONE_INFO.cond）を
 // 使う。用途が違う別々の列なので統合しない（zone.yaml のコメント参照）。
-const zoneRows = loadYaml(fs.readFileSync(ZONE_YAML, "utf-8"));
-{
-  const seenZones = new Set();
-  for (const r of zoneRows) {
-    if (seenZones.has(r.zone)) {
-      throw new Error(`registry/place/zone.yaml の zone が重複している: ${r.zone}`);
-    }
-    seenZones.add(r.zone);
-    if (!r.ui_condition_ja) {
-      throw new Error(`registry/place/zone.yaml の zone=${r.zone} に ui_condition_ja が無い`);
-    }
-  }
-}
+// v2（definition_version: 2）の構造は definition_version / note_ja / terrain / rule / zones。
+// 読み出しと形の検査は scripts/lib/zone-definition.mjs（判定規則の数値は Python 側が正）。
+const { zoneInfo } = readZoneDefinition(loadYaml(fs.readFileSync(ZONE_YAML, "utf-8")));
 // 地図ページの指標語彙（registry/map_metric.yaml、zone.yaml と同じ直読み）。
 const unitSymbolById = new Map(
   loadYaml(fs.readFileSync(UNIT_YAML, "utf-8")).units.map((u) => [u.unit_id, u.symbol]),
@@ -278,10 +269,6 @@ const regionTime = db
   .prepare(`SELECT region_id, tz_name, utc_offset FROM region ORDER BY region_id`)
   .all()
   .map((r) => ({ regionId: r.region_id, tzName: r.tz_name, utcOffset: r.utc_offset }));
-
-const zoneInfo = zoneRows
-  .map((r) => ({ zone: r.zone, label: r.name_ja, cond: r.ui_condition_ja }))
-  .sort((a, b) => a.zone - b.zone);
 
 // レッドリストのカテゴリー（code -> 表示名・順位）と評価リストの台帳（Issue #48 PR-3b §2.4）。
 // registry.sqlite には表が無い（`taxon_assessment.category_code`/`list_id` がこのコードを

@@ -1,15 +1,16 @@
 {
-  "generated_at": "2026-10-07T13:41:12+00:00",
+  "generated_at": "2026-10-09T16:59:36+00:00",
   "generated_by": "scripts/s01_build_sample.py",
   "source_files": {
-    "data/db/ryuiki.sqlite": "46f02af8ed5c82a41f29602afaed0b5570a85a8f1c052c15f7dac95d07a68e88",
+    "data/db/ryuiki.sqlite": "d4a7c54003fbd3e3916ed01322b7931778e110b7ad6f26b3412098045e37bf1f",
     "data/db/cells.sqlite": "0668ae12ee127b3638cbdf52a75d6ba7dd96252e04dd928242224e704fe646c5",
     "data/processed/nlni_w12_watersheds.geojson": "0fdb4360f1a1d0f8473a0d5b9b9a16f1cc42420312f654781a5dfd66b0aa56f7",
     "data/processed/nlni_w12_watersheds.jsonl": "901924abd35592a6a1a570864ed6b1843755070490ea39cc16f6a3114a5c492d",
     "data/processed/nlni_l03b_landuse_by_watershed.csv": "ec71d28f382785af6ef7ed588350f67537f96d356d1d73c541522a74421cb644",
     "data/processed/moe_ias_list.csv": "54a3261737bc72b84910d75d78a7da7beee067c5b78581c9b2522627b7bffb41",
     "data/processed/taxon_crosswalk.csv": "cde56ea81743f7790a04ac9c7e5fd9dc47699edd56c8c9fcfe70c3eea6a74e52",
-    "data/processed/taxon_gbif_accepted.csv": "d0b325a0eadac87515420002f6a7fc2ac39be827ebc506a76a10f5c29239c8d2"
+    "data/processed/taxon_gbif_accepted.csv": "d0b325a0eadac87515420002f6a7fc2ac39be827ebc506a76a10f5c29239c8d2",
+    "data/processed/terrain_points.csv": "f88b3224069e122264fe54a6f4f16df147714d9ab6a0f971415b4a8a9e9b47aa"
   },
   "row_counts": {
     "cells.cells": 286,
@@ -33,7 +34,7 @@
     "river_segments": 1,
     "sensor_timeseries": 6770,
     "sites": 352,
-    "source_registry": 125,
+    "source_registry": 127,
     "taxa": 8585,
     "vegetation_polygons": 1,
     "wildlife_sightings": 400

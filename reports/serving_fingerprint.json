@@ -69,9 +69,9 @@
       },
       "overview_counts": {
         "added": 0,
-        "changed": 0,
+        "changed": 1,
         "removed": 0,
-        "same": 1
+        "same": 0
       },
       "rain_monthly_clim": {
         "added": 0,
@@ -147,9 +147,9 @@
       },
       "water_bodies": {
         "added": 0,
-        "changed": 0,
+        "changed": 1,
         "removed": 0,
-        "same": 1
+        "same": 0
       },
       "water_bodies_for_variable_by_variable": {
         "added": 0,
@@ -171,45 +171,45 @@
       },
       "zone_climatology_by_variable": {
         "added": 0,
-        "changed": 0,
+        "changed": 16,
         "removed": 0,
-        "same": 53
+        "same": 37
       },
       "zone_series_by_variable": {
         "added": 0,
-        "changed": 0,
+        "changed": 52,
         "removed": 0,
-        "same": 60
+        "same": 8
       }
     },
-    "previous_git_head": "5581221207cc58ab206165c12cfeb936c2bf3f99"
+    "previous_git_head": "45680b42e582f203be08c33ed19d8db62b9d71a8"
   },
-  "created_at": "2026-10-08T04:43:53+00:00",
+  "created_at": "2026-10-09T17:10:57+00:00",
   "environment": {
     "better_sqlite3_sqlite_version": "3.53.4",
     "node_version": "v22.22.2",
     "python_sqlite3_version": "3.49.1",
     "python_version": "3.13.7"
   },
-  "git_head": "45680b42e582f203be08c33ed19d8db62b9d71a8",
+  "git_head": "b037c0f69338ff4202f8d97c3ef32a73124fd19d",
   "pipeline_fingerprint_rows": {
     "registry.sqlite": null,
     "v2.sqlite": [
       {
         "fingerprint": "sha256:17ceb60713d7c652789a4a82149a952234848b16162f5d22b0f2f3d8e0adb544:1029034",
-        "inputs": "{\"ext:registry.place\": \"ac01a001405553132fa59be5c3ace0306bd4df25ebe12504bc27738c4e0eea8f\", \"ext:registry.place_source_ref\": \"ac01a001405553132fa59be5c3ace0306bd4df25ebe12504bc27738c4e0eea8f\", \"ext:registry.source_edition\": \"ac01a001405553132fa59be5c3ace0306bd4df25ebe12504bc27738c4e0eea8f\", \"ext:registry.variable_alias\": \"ac01a001405553132fa59be5c3ace0306bd4df25ebe12504bc27738c4e0eea8f\", \"ext:ryuiki.measurements\": \"count=323164;max_rowid=342142\", \"ext:ryuiki.sensor_timeseries\": \"count=717839;max_rowid=1775419\"}",
+        "inputs": "{\"ext:registry.place\": \"a8222185b7d5bcb0c56e862d6d7470a8b7708fa2f10891e9f4c8f46aa2b8acf4\", \"ext:registry.place_source_ref\": \"a8222185b7d5bcb0c56e862d6d7470a8b7708fa2f10891e9f4c8f46aa2b8acf4\", \"ext:registry.source_edition\": \"a8222185b7d5bcb0c56e862d6d7470a8b7708fa2f10891e9f4c8f46aa2b8acf4\", \"ext:registry.variable_alias\": \"a8222185b7d5bcb0c56e862d6d7470a8b7708fa2f10891e9f4c8f46aa2b8acf4\", \"ext:ryuiki.measurements\": \"count=323164;max_rowid=342142\", \"ext:ryuiki.sensor_timeseries\": \"count=717839;max_rowid=1775419\"}",
         "spec_version": "phase-b-fact-slice/v1",
         "table_name": "observation"
       },
       {
         "fingerprint": "sha256:396f44fe82b23c3d70f9f102619dfda7864e13235d318f6f202e01704cc92049:2011364",
-        "inputs": "{\"ext:registry.unit\": \"ac01a001405553132fa59be5c3ace0306bd4df25ebe12504bc27738c4e0eea8f\", \"ext:registry.variable\": \"ac01a001405553132fa59be5c3ace0306bd4df25ebe12504bc27738c4e0eea8f\", \"ext:registry.variable_alias\": \"ac01a001405553132fa59be5c3ace0306bd4df25ebe12504bc27738c4e0eea8f\", \"observation\": \"sha256:17ceb60713d7c652789a4a82149a952234848b16162f5d22b0f2f3d8e0adb544:1029034\"}",
+        "inputs": "{\"ext:registry.unit\": \"a8222185b7d5bcb0c56e862d6d7470a8b7708fa2f10891e9f4c8f46aa2b8acf4\", \"ext:registry.variable\": \"a8222185b7d5bcb0c56e862d6d7470a8b7708fa2f10891e9f4c8f46aa2b8acf4\", \"ext:registry.variable_alias\": \"a8222185b7d5bcb0c56e862d6d7470a8b7708fa2f10891e9f4c8f46aa2b8acf4\", \"observation\": \"sha256:17ceb60713d7c652789a4a82149a952234848b16162f5d22b0f2f3d8e0adb544:1029034\"}",
         "spec_version": "phase-b-fact-slice/v4",
         "table_name": "observation_agg"
       },
       {
         "fingerprint": "sha256:05fa606cdcb3165a2d17c87cdbaab5e0d6e8a797d679cb539ce93abf24da873b:834565",
-        "inputs": "{\"ext:registry.place\": \"ac01a001405553132fa59be5c3ace0306bd4df25ebe12504bc27738c4e0eea8f\", \"ext:registry.place_source_ref\": \"ac01a001405553132fa59be5c3ace0306bd4df25ebe12504bc27738c4e0eea8f\", \"ext:registry.source_edition\": \"ac01a001405553132fa59be5c3ace0306bd4df25ebe12504bc27738c4e0eea8f\", \"ext:registry.taxon\": \"ac01a001405553132fa59be5c3ace0306bd4df25ebe12504bc27738c4e0eea8f\", \"ext:registry.taxon_assessment\": \"ac01a001405553132fa59be5c3ace0306bd4df25ebe12504bc27738c4e0eea8f\", \"ext:ryuiki.edna_detections\": \"count=13263;max_rowid=13263\", \"ext:ryuiki.organism_records\": \"count=823692;max_rowid=823692;occurrence_status=[(None, 165332), ('ABSENT', 2790), ('PRESENT', 655570)]\", \"ext:ryuiki.wildlife_sightings\": \"count=400;max_rowid=400\"}",
+        "inputs": "{\"ext:registry.place\": \"a8222185b7d5bcb0c56e862d6d7470a8b7708fa2f10891e9f4c8f46aa2b8acf4\", \"ext:registry.place_source_ref\": \"a8222185b7d5bcb0c56e862d6d7470a8b7708fa2f10891e9f4c8f46aa2b8acf4\", \"ext:registry.source_edition\": \"a8222185b7d5bcb0c56e862d6d7470a8b7708fa2f10891e9f4c8f46aa2b8acf4\", \"ext:registry.taxon\": \"a8222185b7d5bcb0c56e862d6d7470a8b7708fa2f10891e9f4c8f46aa2b8acf4\", \"ext:registry.taxon_assessment\": \"a8222185b7d5bcb0c56e862d6d7470a8b7708fa2f10891e9f4c8f46aa2b8acf4\", \"ext:ryuiki.edna_detections\": \"count=13263;max_rowid=13263\", \"ext:ryuiki.organism_records\": \"count=823692;max_rowid=823692;occurrence_status=[(None, 165332), ('ABSENT', 2790), ('PRESENT', 655570)]\", \"ext:ryuiki.wildlife_sightings\": \"count=400;max_rowid=400\"}",
         "spec_version": "phase-b-fact-slice/v1",
         "table_name": "occurrence"
       },
@@ -221,25 +221,25 @@
       },
       {
         "fingerprint": "sha256:01a28006d9848aa0cb7013a5255e64e1d524ce46a67f07722ee6a737c3823ffa:834561",
-        "inputs": "{\"ext:registry.place_source_ref\": \"ac01a001405553132fa59be5c3ace0306bd4df25ebe12504bc27738c4e0eea8f\", \"ext:ryuiki.sites\": \"count=352;max_rowid=738\", \"occurrence\": \"sha256:05fa606cdcb3165a2d17c87cdbaab5e0d6e8a797d679cb539ce93abf24da873b:834565\"}",
+        "inputs": "{\"ext:registry.place_source_ref\": \"a8222185b7d5bcb0c56e862d6d7470a8b7708fa2f10891e9f4c8f46aa2b8acf4\", \"ext:ryuiki.sites\": \"count=352;max_rowid=738\", \"occurrence\": \"sha256:05fa606cdcb3165a2d17c87cdbaab5e0d6e8a797d679cb539ce93abf24da873b:834565\"}",
         "spec_version": "phase-b-fact-slice/v4",
         "table_name": "occurrence_place"
       },
       {
         "fingerprint": "sha256:29de9c0667c7328463802d8d71dec8f3371e2cd64f7b24aea61092355761f2dd:171",
-        "inputs": "{\"ext:registry.taxon\": \"ac01a001405553132fa59be5c3ace0306bd4df25ebe12504bc27738c4e0eea8f\", \"occurrence_agg\": \"sha256:a228722f537f05555b058b94ccd68f33a466b0f74f8f4b811b018f05dd07a5dd:1447556\"}",
+        "inputs": "{\"ext:registry.taxon\": \"a8222185b7d5bcb0c56e862d6d7470a8b7708fa2f10891e9f4c8f46aa2b8acf4\", \"occurrence_agg\": \"sha256:a228722f537f05555b058b94ccd68f33a466b0f74f8f4b811b018f05dd07a5dd:1447556\"}",
         "spec_version": "serving-summary/v6",
         "table_name": "summary_effort_year"
       },
       {
         "fingerprint": "sha256:cb0e83e6b8f5637294068a1bd7f95e7ed3b78b9159cdb1b3541211ef17292e0f:4086",
-        "inputs": "{\"ext:registry.taxon\": \"ac01a001405553132fa59be5c3ace0306bd4df25ebe12504bc27738c4e0eea8f\", \"occurrence_agg\": \"sha256:a228722f537f05555b058b94ccd68f33a466b0f74f8f4b811b018f05dd07a5dd:1447556\"}",
+        "inputs": "{\"ext:registry.taxon\": \"a8222185b7d5bcb0c56e862d6d7470a8b7708fa2f10891e9f4c8f46aa2b8acf4\", \"occurrence_agg\": \"sha256:a228722f537f05555b058b94ccd68f33a466b0f74f8f4b811b018f05dd07a5dd:1447556\"}",
         "spec_version": "serving-summary/v6",
         "table_name": "summary_grid_catalog"
       },
       {
         "fingerprint": "sha256:0d6054da344bd5163288c8ccd2faecbee6c3d8ed18298618129ae360c2d082c2:1892",
-        "inputs": "{\"ext:registry.taxon\": \"ac01a001405553132fa59be5c3ace0306bd4df25ebe12504bc27738c4e0eea8f\", \"occurrence_agg\": \"sha256:a228722f537f05555b058b94ccd68f33a466b0f74f8f4b811b018f05dd07a5dd:1447556\"}",
+        "inputs": "{\"ext:registry.taxon\": \"a8222185b7d5bcb0c56e862d6d7470a8b7708fa2f10891e9f4c8f46aa2b8acf4\", \"occurrence_agg\": \"sha256:a228722f537f05555b058b94ccd68f33a466b0f74f8f4b811b018f05dd07a5dd:1447556\"}",
         "spec_version": "serving-summary/v6",
         "table_name": "summary_group_year"
       },
@@ -251,7 +251,7 @@
       },
       {
         "fingerprint": "sha256:28f81ee14a05141050518e8f059b7f1f08fd2ecb744c0281f8ae6f264c24ded3:24151",
-        "inputs": "{\"ext:registry.taxon\": \"ac01a001405553132fa59be5c3ace0306bd4df25ebe12504bc27738c4e0eea8f\", \"occurrence_agg\": \"sha256:a228722f537f05555b058b94ccd68f33a466b0f74f8f4b811b018f05dd07a5dd:1447556\"}",
+        "inputs": "{\"ext:registry.taxon\": \"a8222185b7d5bcb0c56e862d6d7470a8b7708fa2f10891e9f4c8f46aa2b8acf4\", \"occurrence_agg\": \"sha256:a228722f537f05555b058b94ccd68f33a466b0f74f8f4b811b018f05dd07a5dd:1447556\"}",
         "spec_version": "serving-summary/v6",
         "table_name": "summary_species_catalog"
       },
@@ -278,10 +278,10 @@
   "pipeline_path_hashes": {
     "aggregations": "11a8b17bee8e9e1157382fa890764cb7ecaa524f",
     "manifests": "90db9572781215c470ac98df278bb17c4220a005",
-    "registry": "09b9c5dd78fd76b536961deea151c1c97eb9055e",
+    "registry": "e68526e3ce5104a517dda037b804afb5faf0b4f6",
     "requirements.txt": "4323abaaacdc6a851d6f323c3a8e542996714511",
     "scripts/adapters": "738619c00e564dccf500bdba1ffc78abcd3bd940",
-    "scripts/b00_run_full_gate.py": "9e7a22be5e41d6d592c6815c3b3e956c0254103e",
+    "scripts/b00_run_full_gate.py": "d048540daa03e562976b215b86481a74adfbfd66",
     "scripts/b03_build_observation.py": "03f0aa1ff0ae65ec622ef14f1c68a4436f8c1c2f",
     "scripts/b04_build_cube.py": "86d236f0cd8f2144905fd1cf1deaa44afd30996e",
     "scripts/b06_build_occurrence.py": "cdf6eb3ded036a687d0ab2b18c8db8375801dd8d",
@@ -290,22 +290,23 @@
     "scripts/b13_build_summary.py": "d811ce42072b5a1ec7cad73c2aeec7899ab1f15d",
     "scripts/era_table.py": "b0953de3efa2eee6eff43c249cda61e4e2e64c95",
     "scripts/ingest": "e83ee45995b844ece570f140e07617a6cb9a53bf",
-    "scripts/migrate": "ac4db558007ddc2df1acc89c2ef5974e4fdf9cc4",
-    "scripts/pipeline_inputs.py": "d681352977b943ed8f7c689bbb16786f9ee93754",
+    "scripts/migrate": "852dadd520d3299ef8fb460244a5b0e76d75a832",
+    "scripts/pipeline_inputs.py": "52e970df67660463fe21adb3ad8ef8e32395ea0b",
     "scripts/r01_build_registry.py": "141174916b0858228788fee6b951e5f51b4aecd6",
     "scripts/reconcile": "0434daaaa6e412fafdff6a99768d9486b7c5c9a0",
-    "scripts/registry": "ec9bfab2ce851fb3ede445b537665e9174bdf5f6",
+    "scripts/registry": "b555cf002d39216679d8a024ab06a46b021988d4",
     "scripts/schema_registry.sql": "fba1a5a777db59c67aba11c0c269286ba10b0a87",
     "scripts/taxon_namespaces.py": "96b49ceb0d4badf6a32f2a5732f2ed2efe0df79f",
     "web/package.json": "cfdc9a0a4addc8aa86b9db4727d13e5c4fae3e2e",
     "web/pnpm-lock.yaml": "6ed023dae786be30e10835dd8a13d5af0bccd466",
-    "web/scripts/build-registry-ts.mjs": "9c7cd09e1587020ccfef8feee9aa32736c18190f",
+    "web/scripts/build-registry-ts.mjs": "df584e8e540b62e135be13c90e87c95889f7428e",
     "web/scripts/lib/csv.mjs": "2d1fa1614b795cc6b3501f25afadddb30403afe2",
     "web/scripts/lib/registry-codegen.mjs": "de8f929332c58b7dd8a8391f1b17391326ed6342",
     "web/scripts/lib/serving/adapters-v2.ts": "2d62b4df13cc085594d4eaafc51f5f6496dd603d",
     "web/scripts/lib/serving/normalize.ts": "9095ffacc1494ffd084ff872c98f3ac005b887d0",
     "web/scripts/lib/serving/register-aliases.mjs": "2cb72578a5245ece90194b7e599178007b59f24a",
     "web/scripts/lib/serving/snapshot.ts": "beb996b860b34dde85aa318af5544b310b3c8d8e",
+    "web/scripts/lib/zone-definition.mjs": "788265f59a2cc5738759e2a5614c4c4a475426e8",
     "web/scripts/serving-snapshot.mts": "f101456833dcc8654fdba0fc61b7b91d7b9991da",
     "web/serving_queries.yaml": "8f191c103cbfb9119fbe28e58046a2c195a34d8e",
     "web/src/db/schema-cube.ts": "8a6cc1ccb5eccbb0a9f7604a695f8d52b2a82672",
@@ -329,9 +330,9 @@
     "web/src/lib/cube/timeseries.ts": "5774b9859f5afb3ece51e6b7076421a91c7c0d58",
     "web/src/lib/cube/unit.ts": "24c38c741b8a1cfc62bc5d33861aa7b1c45cfdcc",
     "web/src/lib/db.ts": "cb9a153fb416b4400bd74ecf0fd4d3977df90944",
-    "web/src/lib/registry/generated-client.ts": "41d9063130193733f0b3cf97cf967cae1a898132",
-    "web/src/lib/registry/generated-id-map.ts": "df5cd62cdf65bf30fe058654c18ed5a3f648bd75",
-    "web/src/lib/registry/generated-source.ts": "37876b5b1b12433a350bc09d012d150ab73fece2",
+    "web/src/lib/registry/generated-client.ts": "3bef7320a1f02c625eff123cdd5c70f3e715fc9d",
+    "web/src/lib/registry/generated-id-map.ts": "5004cea9f243ab2eff0be4159bf3fd2c0ad5d231",
+    "web/src/lib/registry/generated-source.ts": "b787da3dafbcdffcb09c0b38c568059cfff11924",
     "web/src/lib/registry/generated.ts": "260e216c1034ef85d2fd3ad9e8a5da44c7302a47",
     "web/src/lib/registry/index.ts": "02fc0d4c3b83cce49ea4b72d5e349dc3c45a201b",
     "web/src/lib/registry/legacy-id.ts": "e6fb112a8a1288823915b2030c6d72d1a57c751c",
@@ -360,7 +361,7 @@
       "n_domain": 1,
       "runs": [
         {
-          "hash": "7acfe4ad7c6d5a98f3321694475fde222d81924b72196ea15bcede1971cf38d6",
+          "hash": "98a734f5fb00e1eaaa39c7692dd3d725c79ae2c1185e6312093bf1344adb0e1b",
           "n_rows": 26,
           "params": {},
           "sums": {
@@ -370,8 +371,8 @@
             "n_sites": 127,
             "y_from": 52140,
             "y_to": 52650,
-            "zone_max": 76,
-            "zone_min": 69
+            "zone_max": 74,
+            "zone_min": 57
           }
         }
       ]
@@ -3535,14 +3536,14 @@
       "n_domain": 65,
       "runs": [
         {
-          "hash": "5edeb69b179c86371c3e2ce8f45e9bbd4e5031b72cdc7243a63a9dae7bf50347",
-          "n_rows": 12,
+          "hash": "7af4204f7170cd6930a57793655c16db0278c3133a244f5970d384b8d3f22c3f",
+          "n_rows": 16,
           "params": {
             "basis": "day",
             "variable_id": "common:variable:hydro.flow"
           },
           "sums": {
-            "avg": 43.0172138401,
+            "avg": 53.1998994245,
             "n": 2895,
             "n_sites": 322
           }
@@ -3639,241 +3640,241 @@
           }
         },
         {
-          "hash": "75a1e64d7cf3253e6ec7ddbd8f5549b5aa83497828a58c95b0ec864d28c53f12",
+          "hash": "105e8e4a2820c6a9d57d3484ae04d007c83128fc2e523cf2c2d6f68e5be45662",
           "n_rows": 80,
           "params": {
             "basis": "fiscal_year",
             "variable_id": "common:variable:water.111_trichloroethane"
           },
           "sums": {
-            "avg": 0.0282091600127,
+            "avg": 0.0282677462888,
             "n": 1842,
             "n_sites": 1842
           }
         },
         {
-          "hash": "a8dae63975bb019909335b6f2fad4e0ee93238d434a9ced6a27beec623e44f20",
+          "hash": "d7b717a9c34673cb9806dc8bb10bc1ea0f5e1f0f3429630b42bd04f9571259ec",
           "n_rows": 80,
           "params": {
             "basis": "fiscal_year",
             "variable_id": "common:variable:water.112_trichloroethane"
           },
           "sums": {
-            "avg": 0.0322731445867,
+            "avg": 0.0323517318938,
             "n": 1842,
             "n_sites": 1842
           }
         },
         {
-          "hash": "3a4495a0895023ae874d84caf9c90e15840a82c960d680459593c575e89cc80b",
+          "hash": "9d372324cd8c9d4d5193b4a26f7de436cb1d219a54bbe8ba697f1eb50e6dc959",
           "n_rows": 80,
           "params": {
             "basis": "fiscal_year",
             "variable_id": "common:variable:water.11_dichloroethylene"
           },
           "sums": {
-            "avg": 0.222692042375,
+            "avg": 0.224617431399,
             "n": 1842,
             "n_sites": 1842
           }
         },
         {
-          "hash": "f7582119a3fdcca53d0e4ac600f367c03200f1524be21b5e3a2436d67fca9180",
+          "hash": "2a6ee7c172905021a10e6b82eb0a5d605b71df89a488a29d803aec69b419c8c6",
           "n_rows": 80,
           "params": {
             "basis": "fiscal_year",
             "variable_id": "common:variable:water.12_dichloroethane"
           },
           "sums": {
-            "avg": 0.0241365722934,
+            "avg": 0.0241758659469,
             "n": 1842,
             "n_sites": 1842
           }
         },
         {
-          "hash": "e80b5f5d35135824a41d97d9eed7cd3cc180b0b605c903d329ae972f7e031035",
+          "hash": "168b6fd6c7bf7613644f36459bbfb8799c27243ecf58ec9f1b4c49652242c74b",
           "n_rows": 80,
           "params": {
             "basis": "fiscal_year",
             "variable_id": "common:variable:water.13_dichloropropene"
           },
           "sums": {
-            "avg": 0.0239571615788,
+            "avg": 0.0239605263158,
             "n": 1842,
             "n_sites": 1842
           }
         },
         {
-          "hash": "ca7dc082d2d0d165adf855449270ab14784b97ddf37de1b1a75561c27d2fb714",
-          "n_rows": 72,
+          "hash": "3f1d6756a6e307954586862767d92b776850bc64e93804663d378c8de03ca957",
+          "n_rows": 76,
           "params": {
             "basis": "fiscal_year",
             "variable_id": "common:variable:water.14_dioxane"
           },
           "sums": {
-            "avg": 0.377051282051,
+            "avg": 0.404444444444,
             "n": 1311,
             "n_sites": 1311
           }
         },
         {
-          "hash": "963cac71715b98417f7da6da692ad3de70c97be5fccfe53b3c67c93093874ed9",
-          "n_rows": 5,
+          "hash": "5a26c91def381c90c6a2bd7a6e1e819a69f6085b6850ee7ad1630dd2570ce018",
+          "n_rows": 4,
           "params": {
             "basis": "fiscal_year",
             "variable_id": "common:variable:water.alkyl_mercury"
           },
           "sums": {
-            "avg": 0.0015,
+            "avg": 0.001,
             "n": 13,
             "n_sites": 13
           }
         },
         {
-          "hash": "a6acbca9dc97fc01663167d46404a85427fe4303fd780cc8c48b738981e4bf1e",
+          "hash": "6e8ad28cc9de43bfabc2f06fb6f72307e13d962186797e13d8ee65f93a70bbe5",
           "n_rows": 80,
           "params": {
             "basis": "fiscal_year",
             "variable_id": "common:variable:water.arsenic"
           },
           "sums": {
-            "avg": 0.432344578241,
+            "avg": 0.433900073099,
             "n": 1846,
             "n_sites": 1846
           }
         },
         {
-          "hash": "0856e4b6aae7e13373ce1a3046d91239b1931a158ddb403e608129574912acdf",
+          "hash": "bd7892acebe587b3e987fb5e8516391a5d959b311ee9a6dffdfa8b4234844a42",
           "n_rows": 80,
           "params": {
             "basis": "fiscal_year",
             "variable_id": "common:variable:water.benzene"
           },
           "sums": {
-            "avg": 0.0485462891734,
+            "avg": 0.0487034637877,
             "n": 1842,
             "n_sites": 1842
           }
         },
         {
-          "hash": "ac57f45de5c09ead9e39a31f86c39d7a9d3f01588e98d1a38a55cfc6f6a93896",
+          "hash": "6c4c27cbb60c4b3d33ec0bb7b4ac2fc8c8ebf5ca08141daadb54f37a97fe4849",
           "n_rows": 44,
           "params": {
             "basis": "day",
             "variable_id": "common:variable:water.bod"
           },
           "sums": {
-            "avg": 53.142613766,
+            "avg": 59.4097574829,
             "n": 14045,
             "n_sites": 1180
           }
         },
         {
-          "hash": "f2473f6660196c3edbb6c82596bee3d816a38839684160158271f2e9499d5aac",
+          "hash": "a69a4000f37b68faaf6d07469764be75009ab07fbaefc271f0c271ce38ce3a35",
           "n_rows": 80,
           "params": {
             "basis": "fiscal_year",
             "variable_id": "common:variable:water.boron"
           },
           "sums": {
-            "avg": 5.45238831876,
+            "avg": 6.42265602542,
             "n": 1599,
             "n_sites": 1599
           }
         },
         {
-          "hash": "d1e97e54f221a728fb6648fb1954ef0e173eb09ea25b579de53adff104802e93",
+          "hash": "5e27969c79434249cd06c6d0dfb7c1311d5e0391308d640862c5df5b241b9c99",
           "n_rows": 80,
           "params": {
             "basis": "fiscal_year",
             "variable_id": "common:variable:water.cadmium"
           },
           "sums": {
-            "avg": 0.0436442923219,
+            "avg": 0.043654231579,
             "n": 1842,
             "n_sites": 1842
           }
         },
         {
-          "hash": "bd7356ae4ff44b4b930d58334fb2cbe97b1265bdd132768d536328dcdc3072f9",
+          "hash": "4465e76a0f471589830f0ab5466b4f651d314bb52c30b3bcb0563a2416886f4d",
           "n_rows": 80,
           "params": {
             "basis": "fiscal_year",
             "variable_id": "common:variable:water.carbon_tetrachloride"
           },
           "sums": {
-            "avg": 0.0160043478261,
+            "avg": 0.016004,
             "n": 1842,
             "n_sites": 1842
           }
         },
         {
-          "hash": "d7b00b87f9dbb5c17b15acc0e7c5d5e77c941258789676432e7d9bb8e486fcdd",
+          "hash": "28120a25de89a5a31c79c3be0cb8f9401a0ae1f139516c3b8f1c36a9c0f8cb1f",
           "n_rows": 80,
           "params": {
             "basis": "fiscal_year",
             "variable_id": "common:variable:water.cis12_dichloroethylene"
           },
           "sums": {
-            "avg": 0.170647958628,
+            "avg": 0.171394072874,
             "n": 1842,
             "n_sites": 1842
           }
         },
         {
-          "hash": "e2c371871d306fecce89c5570c0f1f50086c4e8669cc31e871d796f0cb7c627c",
+          "hash": "ccb03afe8608bed89c6f172dc65af85c597b223900a967a533e8c8788480b334",
           "n_rows": 44,
           "params": {
             "basis": "day",
             "variable_id": "common:variable:water.cod"
           },
           "sums": {
-            "avg": 115.596460418,
+            "avg": 128.493524721,
             "n": 14163,
             "n_sites": 1191
           }
         },
         {
-          "hash": "c0fe93c43e601d0e502c7fdbd4adad530dc3a74d35cddfc24e52fc528a91752d",
+          "hash": "a0d06fbdc8854aa8c33e53923543e6e427211280d39f2e5c589417d749f68445",
           "n_rows": 75,
           "params": {
             "basis": "fiscal_year",
             "variable_id": "common:variable:water.cod"
           },
           "sums": {
-            "avg": 198.560091427,
+            "avg": 213.333964963,
             "n": 1592,
             "n_sites": 1592
           }
         },
         {
-          "hash": "f18d6bd62cfa5789115b3dd8a70c49312a20e67e09869efe04aff1dbe33171bf",
+          "hash": "af0c4b85f3184adc1f0856117d8b5e810697a1ddc30c43a1b99f011583ad3399",
           "n_rows": 33,
           "params": {
             "basis": "day",
             "variable_id": "common:variable:water.coliform_group"
           },
           "sums": {
-            "avg": 359127.870128,
+            "avg": 466036.435683,
             "n": 7652,
             "n_sites": 844
           }
         },
         {
-          "hash": "2da0b261b3573b1d1547ee0b0bbdafc463f05610b78908e122818025c08960f6",
+          "hash": "28b7159b95141a5f5689a8e33b4febb80b75ba98c5406b9ff039d0bff5eba87c",
           "n_rows": 68,
           "params": {
             "basis": "fiscal_year",
             "variable_id": "common:variable:water.coliform_group"
           },
           "sums": {
-            "avg": 1138088.3142,
+            "avg": 1473258.92336,
             "n": 1788,
             "n_sites": 1788
           }
         },
         {
-          "hash": "f8c71c7f91b897785abc8e3b15ff1009460fb4c2a722a9f7a2e878eeead65621",
+          "hash": "a921995e4994e8fb31ec5a911982132e08b2c54810db43c31caced4de2c8a79b",
           "n_rows": 80,
           "params": {
             "basis": "fiscal_year",
@@ -3886,202 +3887,202 @@
           }
         },
         {
-          "hash": "f347a640af5dee8eff584b1ba1c8ffd0343d25e063f5c8de84b9b287e4c7d7f2",
+          "hash": "e8e5c5e7b7368861b681a7c8e67126bc4f33f924f90e55189450e99ee24f3295",
           "n_rows": 80,
           "params": {
             "basis": "fiscal_year",
             "variable_id": "common:variable:water.dichloromethane"
           },
           "sums": {
-            "avg": 0.0915514189469,
+            "avg": 0.0917532051282,
             "n": 1842,
             "n_sites": 1842
           }
         },
         {
-          "hash": "9d68987f9c67ce41bfba4d764a804fceee068304325e9c3b15464e02d740e5b3",
+          "hash": "079065f743da839201a4ff6626c85338032ca1449a8bec742ab35abdaf2144df",
           "n_rows": 44,
           "params": {
             "basis": "day",
             "variable_id": "common:variable:water.do"
           },
           "sums": {
-            "avg": 397.334409791,
+            "avg": 407.616413861,
             "n": 14174,
             "n_sites": 1191
           }
         },
         {
-          "hash": "451dc10ab5fefa61abe2bf86662a81ad02a06cad89bdac7ab35864233d00a4c0",
+          "hash": "6deba73f1ae0886feff603ab8e17bb8a758edf386c1c943aeca6586c917c2b4b",
           "n_rows": 80,
           "params": {
             "basis": "fiscal_year",
             "variable_id": "common:variable:water.do"
           },
           "sums": {
-            "avg": 701.108187387,
+            "avg": 719.865257525,
             "n": 2154,
             "n_sites": 2154
           }
         },
         {
-          "hash": "73e5b91a5c167abe40b903833279d44dcfbb9f8b56e1a7fa39467af68b3dbbda",
+          "hash": "e0fec7c031a52f85e36ebd5bd29f8b4631827d177815f86e47497a8ac446f99f",
           "n_rows": 9,
           "params": {
             "basis": "fiscal_year",
             "variable_id": "common:variable:water.do_bottom"
           },
           "sums": {
-            "avg": 68.9038461538,
+            "avg": 71.4166666667,
             "n": 54,
             "n_sites": 54
           }
         },
         {
-          "hash": "e5c5f662323acc6fd9efed7c8aeb2e789263f8406f37f0e9eff6816452ff021b",
+          "hash": "c545bc35557a0d70d07ae12abdae841ef31b9e7174f5379e4b94cd6c05ac667c",
           "n_rows": 16,
           "params": {
             "basis": "day",
             "variable_id": "common:variable:water.ecoli"
           },
           "sums": {
-            "avg": 12562.3603348,
+            "avg": 15664.0871394,
             "n": 3450,
             "n_sites": 422
           }
         },
         {
-          "hash": "545c78742dcca69cb8235f8c5fab6b18025799b5ff5921efc76d38c5bd79fcb2",
+          "hash": "cb212e496a55fb06abe17c68b83581ecda0157adf2e1823a9f4e6f45e49eb8e6",
           "n_rows": 12,
           "params": {
             "basis": "fiscal_year",
             "variable_id": "common:variable:water.ecoli"
           },
           "sums": {
-            "avg": 9124.17068511,
+            "avg": 11419.6943448,
             "n": 318,
             "n_sites": 318
           }
         },
         {
-          "hash": "b135d22587052526340dbbf4c3cb5ada55db818c520e96dfda513968e844ae4c",
+          "hash": "c62432081d6c6cae5d729285c0f1ea7a07349b3389863c4692653621ad46e271",
           "n_rows": 80,
           "params": {
             "basis": "fiscal_year",
             "variable_id": "common:variable:water.fluorine"
           },
           "sums": {
-            "avg": 7.44710670591,
+            "avg": 7.78478632388,
             "n": 1589,
             "n_sites": 1589
           }
         },
         {
-          "hash": "7403ac113d4cb71adf9c35dc2e8240f843eab15d2fe08ea7c6d88419866d9a05",
+          "hash": "f9fe51fc688840f5aa9c2baddc5d66a3e5edc96da88a7841087933c43d24d00a",
           "n_rows": 80,
           "params": {
             "basis": "fiscal_year",
             "variable_id": "common:variable:water.hexavalent_chromium"
           },
           "sums": {
-            "avg": 1.51037121563,
+            "avg": 1.5041656034,
             "n": 1842,
             "n_sites": 1842
           }
         },
         {
-          "hash": "7a126ce4ccc0171aee66f9daed8e780a82aae57777b3fbb0882fe9a6d244282d",
+          "hash": "dba961a13f1452739e4da15a7a49faa89a571b2839b05bc5af378d14f0d1cdaa",
           "n_rows": 44,
           "params": {
             "basis": "day",
             "variable_id": "common:variable:water.las"
           },
           "sums": {
-            "avg": 0.150801910538,
+            "avg": 0.166243038831,
             "n": 3137,
             "n_sites": 700
           }
         },
         {
-          "hash": "48e5cd6b36f41c6d968f677a09b928edeaeaea6bce04e8d95f5361247e893f2d",
+          "hash": "f145a8c6c1a627ecf56352fed9f9f42b81390d1119a7d566f294d52d86c666ee",
           "n_rows": 44,
           "params": {
             "basis": "fiscal_year",
             "variable_id": "common:variable:water.las"
           },
           "sums": {
-            "avg": 0.164848163282,
+            "avg": 0.181175138215,
             "n": 688,
             "n_sites": 688
           }
         },
         {
-          "hash": "9cf880401ecceaa7d449b08eec139f391456279a3011fabb257e3931c45818a3",
+          "hash": "d12adcb2e59f8e25d58bc4f37c0b16f59f311b7552cee683db945648996863d9",
           "n_rows": 80,
           "params": {
             "basis": "fiscal_year",
             "variable_id": "common:variable:water.lead"
           },
           "sums": {
-            "avg": 0.399487492291,
+            "avg": 0.399578315789,
             "n": 1842,
             "n_sites": 1842
           }
         },
         {
-          "hash": "2123e015811268eb7bdeee376cef509c7efada3fdc8e02bf4864766aec83a726",
+          "hash": "0827b83baaeaf616c4198b60682c0c92af9b51b914f6c42f53e9e31e4be5cf33",
           "n_rows": 44,
           "params": {
             "basis": "day",
             "variable_id": "common:variable:water.n_hexane_extract"
           },
           "sums": {
-            "avg": 22.0170634921,
+            "avg": 22.0164917541,
             "n": 1833,
             "n_sites": 766
           }
         },
         {
-          "hash": "b3c49b27ca14326fd0fa6a8dcac471879510e7f85a7c21e7ca50834f4bd49e81",
+          "hash": "97adf3e2975a859d3f5bcb97f53666ebe3d58ff77abb0215331c93411c37219f",
           "n_rows": 62,
           "params": {
             "basis": "fiscal_year",
             "variable_id": "common:variable:water.n_hexane_extract"
           },
           "sums": {
-            "avg": 29.0646825397,
+            "avg": 29.059970015,
             "n": 959,
             "n_sites": 959
           }
         },
         {
-          "hash": "8d83ffbe94609188f43b031949363b43b3d23bb0e70cb4b124d36ad63afc4259",
+          "hash": "3b4276e14f321a1f52f67d918503857f7383a35c0103b3cc24b559cf6d3f3563",
           "n_rows": 80,
           "params": {
             "basis": "fiscal_year",
             "variable_id": "common:variable:water.nitrate_nitrite_n"
           },
           "sums": {
-            "avg": 111.589275758,
+            "avg": 143.441787291,
             "n": 2154,
             "n_sites": 2154
           }
         },
         {
-          "hash": "74d1e7a7cdef2c80882b3438c90c4f3233465abe97c88392a19e7f36c06e0c39",
+          "hash": "eda0078358f7c6ae9beb3eb6ba659d033f8a1902685a73e6d216eb9ab5084e83",
           "n_rows": 44,
           "params": {
             "basis": "day",
             "variable_id": "common:variable:water.nonylphenol"
           },
           "sums": {
-            "avg": 0.0028654164297,
+            "avg": 0.00286293177684,
             "n": 2549,
             "n_sites": 708
           }
         },
         {
-          "hash": "2fadcbb4d2e903972e441805d45eb3875b857cdce4e876185996a0c10b29906c",
+          "hash": "e10adb82623200f8e32b0df60a0a3b606228e585530ec40737ed035f7ee613ce",
           "n_rows": 80,
           "params": {
             "basis": "fiscal_year",
@@ -4094,14 +4095,14 @@
           }
         },
         {
-          "hash": "fe3b9bd19dff026485468974bc0347909b13fa49b6440931929216b92d2e381e",
+          "hash": "78607b8e7208e9b29bce534ab64577953465c669b4b923668dfd27590ea044eb",
           "n_rows": 44,
           "params": {
             "basis": "day",
             "variable_id": "common:variable:water.ph"
           },
           "sums": {
-            "avg": 340.235764658,
+            "avg": 345.298404843,
             "n": 14174,
             "n_sites": 1191
           }
@@ -4120,85 +4121,85 @@
           }
         },
         {
-          "hash": "82328f53ec7f932ae661fc3cf4179878e4e466549306ff7e13e9ca788999c181",
+          "hash": "4032256add942e970bbea8aea592b925917483dc7376aaf2365ec6a5796551fb",
           "n_rows": 80,
           "params": {
             "basis": "fiscal_year",
             "variable_id": "common:variable:water.selenium"
           },
           "sums": {
-            "avg": 0.160136493987,
+            "avg": 0.160141871345,
             "n": 1842,
             "n_sites": 1842
           }
         },
         {
-          "hash": "f63dfc4a7af0920ca909f94ddcfda0de29536d6cf464b186dbf3d40431640376",
+          "hash": "aacea7b28eacf240c82d93683de3bb135342d16184c8c4577d4713a5b8dd72d3",
           "n_rows": 80,
           "params": {
             "basis": "fiscal_year",
             "variable_id": "common:variable:water.simazine"
           },
           "sums": {
-            "avg": 0.0240085106383,
+            "avg": 0.0240105263158,
             "n": 1843,
             "n_sites": 1843
           }
         },
         {
-          "hash": "2603579d20754f191fb2c7b721a9de10e513b8a39d95d00780bb5962dc7f857c",
+          "hash": "54796ab78e50665e2ccb3dc4346cd35aad7affcb7039705dca9aec14cf018956",
           "n_rows": 44,
           "params": {
             "basis": "day",
             "variable_id": "common:variable:water.ss"
           },
           "sums": {
-            "avg": 145.342381238,
+            "avg": 162.378083173,
             "n": 12928,
             "n_sites": 1180
           }
         },
         {
-          "hash": "795ad4014f6ad2319eba50daf37a58ec150e629df6a79ddf3a171c9b308b2cc9",
+          "hash": "639ea9eea60b0479c747d1e5ceed342b75ea2416ce1d2991fab08c80e6c804aa",
           "n_rows": 80,
           "params": {
             "basis": "fiscal_year",
             "variable_id": "common:variable:water.ss"
           },
           "sums": {
-            "avg": 304.613966985,
+            "avg": 343.02789488,
             "n": 2128,
             "n_sites": 2128
           }
         },
         {
-          "hash": "bc529c3bea780cd161b3a9496dc3856e45a6e17eb90d0103fdfc8bf5d11b4644",
+          "hash": "dd6b6a0ffffb96e5ce635013cab749b4757f6547590e69791cdd0335610c09ce",
           "n_rows": 80,
           "params": {
             "basis": "fiscal_year",
             "variable_id": "common:variable:water.tetrachloroethylene"
           },
           "sums": {
-            "avg": 0.0289304346812,
+            "avg": 0.0294063577884,
             "n": 1842,
             "n_sites": 1842
           }
         },
         {
-          "hash": "dfdbfd674b808fd9328ea52191cbdb4cd959d0fb4af597551d33ff213ec10573",
+          "hash": "45acffe893ed504cade060fad1741a4cd4cc296230df9737e5237250b3562c4d",
           "n_rows": 80,
           "params": {
             "basis": "fiscal_year",
             "variable_id": "common:variable:water.thiobencarb"
           },
           "sums": {
-            "avg": 0.159597070614,
+            "avg": 0.159628947368,
             "n": 1843,
             "n_sites": 1843
           }
         },
         {
-          "hash": "5db4274cf5eb3c9ec5bf9ea38c378ba03168f77f521ee71d6c0d0186884d11c3",
+          "hash": "522993d219e3652b51d5325e8601bc7c1b18131b366eea4f820cd741afae2208",
           "n_rows": 80,
           "params": {
             "basis": "fiscal_year",
@@ -4211,105 +4212,105 @@
           }
         },
         {
-          "hash": "14ecaa80d52f2f718dbb69a8d0e9b9cabccbb1231700d5b18520fffde18bee19",
+          "hash": "cacea0cfaf65cc5b5b7c174c1fcd811dcaa914e2265781fbfe8896de1cc1d5cf",
           "n_rows": 76,
           "params": {
             "basis": "fiscal_year",
             "variable_id": "common:variable:water.tn"
           },
           "sums": {
-            "avg": 125.65839482,
+            "avg": 157.944287466,
             "n": 1770,
             "n_sites": 1770
           }
         },
         {
-          "hash": "d16cfc0c3edd70ca665721807f68acef8c69121b2c27c3e0927cc5ac8db5bfa8",
+          "hash": "d64c2a64ebf102b2cca2e99ab3be58db75bb83cc77349e723a46949caf00fa1b",
           "n_rows": 80,
           "params": {
             "basis": "fiscal_year",
             "variable_id": "common:variable:water.total_mercury"
           },
           "sums": {
-            "avg": 0.0400130434783,
+            "avg": 0.040012,
             "n": 1842,
             "n_sites": 1842
           }
         },
         {
-          "hash": "6b11dc6fb408eed479a85e2b832a714700820731bc0f9f7753bfdf884d5731b7",
+          "hash": "23cd841d9cd4559626066f53419fdb0e8f01b8968259a1c296c21e439d8cea65",
           "n_rows": 72,
           "params": {
             "basis": "fiscal_year",
             "variable_id": "common:variable:water.total_zinc"
           },
           "sums": {
-            "avg": 0.506230173758,
+            "avg": 0.615380104735,
             "n": 1810,
             "n_sites": 1810
           }
         },
         {
-          "hash": "2bff998bf329e3c23faa303d6683e2a53000402fb101734f7a83da2e9a325d05",
+          "hash": "a4f9f0b7439eb8f8c488fc7f4b30ddf385ada6b4bc8eb3c85ad8b5d1df2b2016",
           "n_rows": 76,
           "params": {
             "basis": "fiscal_year",
             "variable_id": "common:variable:water.tp"
           },
           "sums": {
-            "avg": 7.83426259907,
+            "avg": 10.0098456761,
             "n": 1770,
             "n_sites": 1770
           }
         },
         {
-          "hash": "9ebb452eb3800f462c73b1734962c2ef175ce0a5e4c2170d39265c5460bcb58b",
+          "hash": "647dbce20c0f89904d0b8e37c7055a667114766fd47d6163fb6d5ffb899371a4",
           "n_rows": 13,
           "params": {
             "basis": "day",
             "variable_id": "common:variable:water.transparency"
           },
           "sums": {
-            "avg": 57.3341489298,
+            "avg": 48.618970659,
             "n": 705,
             "n_sites": 121
           }
         },
         {
-          "hash": "fc7fab8fa3aa24aa0d797a8a2ee230dc2ee1bcb0e961639367c5168b2fdf158a",
+          "hash": "9031ed230c47fb34b18f9f2b4105ba959d453d11a27f99d8066a6357c2955257",
           "n_rows": 80,
           "params": {
             "basis": "fiscal_year",
             "variable_id": "common:variable:water.trichloroethylene"
           },
           "sums": {
-            "avg": 0.0895936067765,
+            "avg": 0.0899396414755,
             "n": 1842,
             "n_sites": 1842
           }
         },
         {
-          "hash": "d42e685af48a62c5e239927bea89f22ec0e4ed8d8bdc927bb565ce89c5dde988",
+          "hash": "af6bf37b4d82ecaa29992e35f5c570e026baa676c9ea3e311e783319d32e9869",
           "n_rows": 16,
           "params": {
             "basis": "day",
             "variable_id": "common:variable:water.water_temp"
           },
           "sums": {
-            "avg": 227.812606294,
+            "avg": 246.596625596,
             "n": 4114,
             "n_sites": 477
           }
         },
         {
-          "hash": "8707ff3d2bc2661da860de807dc6c36c8f8454f9a3f7049742f0ceadab17b25b",
+          "hash": "b128258caa6360973fdb4bc1eace3dcb15ae10ec299488b2200d69b9b58073f9",
           "n_rows": 16,
           "params": {
             "basis": "day",
             "variable_id": "common:variable:weather.air_temp"
           },
           "sums": {
-            "avg": 262.948519849,
+            "avg": 264.457643844,
             "n": 4114,
             "n_sites": 477
           }
@@ -5016,13 +5017,13 @@
       "n_domain": 53,
       "runs": [
         {
-          "hash": "d57c4b2b78e9ca247bb54fcd780a06938dd5ada1df83fa2c0449397b6c90340d",
-          "n_rows": 36,
+          "hash": "b1d35c54a1cf64e40455200df0354ef9fce5e72ab640c027c113426d896fa821",
+          "n_rows": 48,
           "params": {
             "variable_id": "common:variable:hydro.flow"
           },
           "sums": {
-            "avg": 140.259936185,
+            "avg": 169.486953791,
             "n": 2895
           }
         },
@@ -5214,13 +5215,13 @@
           }
         },
         {
-          "hash": "7d98ab2b2dad8004f4455ac636437e5628c170f3596dd00dc1240050582a04bd",
-          "n_rows": 40,
+          "hash": "105b908b0d91df9edd3478143ed4d84fd23a7ea582f301980a0f50a944e6a2df",
+          "n_rows": 48,
           "params": {
             "variable_id": "common:variable:water.bod"
           },
           "sums": {
-            "avg": 52.0590470586,
+            "avg": 65.031471605,
             "n": 14045
           }
         },
@@ -5269,24 +5270,24 @@
           }
         },
         {
-          "hash": "e8e9701fe5e450236b1f7d51473f4631179ffd128ca097ffee8b6499374a84b3",
-          "n_rows": 40,
+          "hash": "c8fe4d22e446672fb1711015459f8d5eed744724bf28dc5ac6246a93632e338d",
+          "n_rows": 48,
           "params": {
             "variable_id": "common:variable:water.cod"
           },
           "sums": {
-            "avg": 114.143446721,
+            "avg": 143.572298823,
             "n": 14163
           }
         },
         {
-          "hash": "7da771d78dd580b6cd825c54567e60a227bcfc739ae408f774cfa85e51b1bfc6",
-          "n_rows": 40,
+          "hash": "7568d3b553559524ebec9f02d5422656881abb87e8d7e7a4f4c14b9f7081506e",
+          "n_rows": 48,
           "params": {
             "variable_id": "common:variable:water.coliform_group"
           },
           "sums": {
-            "avg": 563433.906382,
+            "avg": 774831.334903,
             "n": 7652
           }
         },
@@ -5313,35 +5314,35 @@
           }
         },
         {
-          "hash": "c6d15842e1dab3edec453f65665832e5fb7c0fb70419641771bbf35c417cd401",
-          "n_rows": 40,
+          "hash": "dcefce60140c5d6dc9f895d7f36c6e5800ce8c55719fef533ae407749b4dffa5",
+          "n_rows": 48,
           "params": {
             "variable_id": "common:variable:water.do"
           },
           "sums": {
-            "avg": 361.299221326,
+            "avg": 444.039243161,
             "n": 14174
           }
         },
         {
-          "hash": "ce57efd7ed3747dda172382d248feadea433e1f9361053c6ba6b4b039530f368",
-          "n_rows": 28,
+          "hash": "9c6a55d91ac7ed6cddf98174ffc6a089e33ab40640eb5e34374cdf7222c38e31",
+          "n_rows": 36,
           "params": {
             "variable_id": "common:variable:water.do_bottom"
           },
           "sums": {
-            "avg": 232.438648928,
+            "avg": 310.978570278,
             "n": 531
           }
         },
         {
-          "hash": "ba86d6be28da64e957f2900df75bdfa96a38b6db802a76da96a65e7b1f486624",
-          "n_rows": 40,
+          "hash": "ecbf24e1112a978ed98b39099d31b33dd94c79b1a61018c63c8b9622c3635a80",
+          "n_rows": 48,
           "params": {
             "variable_id": "common:variable:water.ecoli"
           },
           "sums": {
-            "avg": 36695.9823767,
+            "avg": 46761.9557611,
             "n": 3450
           }
         },
@@ -5368,13 +5369,13 @@
           }
         },
         {
-          "hash": "479232fe1863b73517b270fc1cb64a9b207a37a2affb358d9b703e00e022046d",
-          "n_rows": 38,
+          "hash": "a1fa1e960678b9d9ac4e4068e35e4dacce5ea7a072dfd3990eb596ad8902233a",
+          "n_rows": 48,
           "params": {
             "variable_id": "common:variable:water.las"
           },
           "sums": {
-            "avg": 0.288732560354,
+            "avg": 0.233602316078,
             "n": 3137
           }
         },
@@ -5390,13 +5391,13 @@
           }
         },
         {
-          "hash": "8ddf4979e51999524c3200aaf63acc6074ccea44489c8e3220e5ea9d4f4dda76",
-          "n_rows": 30,
+          "hash": "f61cfc8d6b56e2bab65275e31e49501eb438371f418c24f7553277e6d4dff1bc",
+          "n_rows": 40,
           "params": {
             "variable_id": "common:variable:water.n_hexane_extract"
           },
           "sums": {
-            "avg": 15.0020138155,
+            "avg": 20.0020112093,
             "n": 1833
           }
         },
@@ -5412,13 +5413,13 @@
           }
         },
         {
-          "hash": "43c22db9ea86d547bda5fe059057fb4cd5d0a2b83256cac1fc936be8e54fb646",
-          "n_rows": 38,
+          "hash": "c7d31c9837b196a2451c6db933a4934f48e2760dc2a20956d79a46f2458f3621",
+          "n_rows": 48,
           "params": {
             "variable_id": "common:variable:water.nonylphenol"
           },
           "sums": {
-            "avg": 0.00243072471279,
+            "avg": 0.00304135788836,
             "n": 2549
           }
         },
@@ -5434,13 +5435,13 @@
           }
         },
         {
-          "hash": "4efca9a7514296d1002dbbecb52216912b9faa87e5ccedbd5dcb3c661b611122",
-          "n_rows": 40,
+          "hash": "be928b28dccb1f29ee0bf4dfa655f897fe7486c0005869bb3da36fd4b0e841b4",
+          "n_rows": 48,
           "params": {
             "variable_id": "common:variable:water.ph"
           },
           "sums": {
-            "avg": 312.939447132,
+            "avg": 378.591204889,
             "n": 14174
           }
         },
@@ -5467,13 +5468,13 @@
           }
         },
         {
-          "hash": "a6d839f65dc14dbfdce51751af2ec99f4320e6fac07c53a408dd1ee724bf1d5c",
-          "n_rows": 40,
+          "hash": "b41d99c72e8c70ae89b1e801bfeabdeb9904bf952ce65d5621565440d61faa93",
+          "n_rows": 48,
           "params": {
             "variable_id": "common:variable:water.ss"
           },
           "sums": {
-            "avg": 160.859955063,
+            "avg": 191.84361997,
             "n": 12928
           }
         },
@@ -5533,13 +5534,13 @@
           }
         },
         {
-          "hash": "6da8e0ce6a761abde63707c2a2d67636562355848e0a0d877b693ff3f99f1541",
-          "n_rows": 38,
+          "hash": "497b8e4ec207d33d3c384e1dc17685359f6c1e7f86deed49aca03f14dfec4f85",
+          "n_rows": 48,
           "params": {
             "variable_id": "common:variable:water.total_zinc"
           },
           "sums": {
-            "avg": 0.311797629479,
+            "avg": 0.431912600893,
             "n": 8792
           }
         },
@@ -5555,13 +5556,13 @@
           }
         },
         {
-          "hash": "a00cc6aa520fc08dbdb49e7bb944aad1c42639430e5e11d5b75ab3f029cb1699",
-          "n_rows": 27,
+          "hash": "36910c26c1e9c0d407de86c6c1b87dd13004813c7bd33548085eb472e1a981f7",
+          "n_rows": 35,
           "params": {
             "variable_id": "common:variable:water.transparency"
           },
           "sums": {
-            "avg": 95.5713023088,
+            "avg": 113.167834338,
             "n": 705
           }
         },
@@ -5577,24 +5578,24 @@
           }
         },
         {
-          "hash": "28e5ac6a76186ff495550dd38f901cd97f53657b280d21400646742f9dcff029",
-          "n_rows": 40,
+          "hash": "fb5b2b6f9117e4bb755e59efd7c805b97338fe9e7618af598e07a71fd6b9f2c3",
+          "n_rows": 48,
           "params": {
             "variable_id": "common:variable:water.water_temp"
           },
           "sums": {
-            "avg": 657.354091889,
+            "avg": 815.194551597,
             "n": 4114
           }
         },
         {
-          "hash": "d12370bfc2189e08d8d2036c0f25b2dc8db33945d1cb28623c5f363ffec73114",
-          "n_rows": 40,
+          "hash": "82a6bcb234b457e3ce6d349886554e721fa177eff19af63f44bae01b90a97065",
+          "n_rows": 48,
           "params": {
             "variable_id": "common:variable:weather.air_temp"
           },
           "sums": {
-            "avg": 736.252365694,
+            "avg": 889.656277612,
             "n": 4114
           }
         }
@@ -10366,12 +10367,12 @@
       "n_domain": 1,
       "runs": [
         {
-          "hash": "7acf01729b3a5bb0732fc24fe8e75341fa55753315e75767addb9b85797a0b59",
+          "hash": "3ba88867b4a5358c7d9a658ca5a627ccbbab16d084c41ad205a933be0e286c42",
           "n_rows": 1,
           "params": {},
           "sums": {
             "n_sites": 352,
-            "n_sources": 125,
+            "n_sources": 127,
             "n_watersheds": 377,
             "y_from": 1973,
             "y_to": 2026
@@ -10398,12 +10399,13 @@
   "schema_version": 1,
   "source_hashes": {
     "data/db/cells.sqlite": "0668ae12ee127b3638cbdf52a75d6ba7dd96252e04dd928242224e704fe646c5",
-    "data/db/ryuiki.sqlite": "46f02af8ed5c82a41f29602afaed0b5570a85a8f1c052c15f7dac95d07a68e88",
+    "data/db/ryuiki.sqlite": "d4a7c54003fbd3e3916ed01322b7931778e110b7ad6f26b3412098045e37bf1f",
     "data/processed/moe_ias_list.csv": "54a3261737bc72b84910d75d78a7da7beee067c5b78581c9b2522627b7bffb41",
     "data/processed/nlni_l03b_landuse_by_watershed.csv": "ec71d28f382785af6ef7ed588350f67537f96d356d1d73c541522a74421cb644",
     "data/processed/nlni_w12_watersheds.geojson": "0fdb4360f1a1d0f8473a0d5b9b9a16f1cc42420312f654781a5dfd66b0aa56f7",
     "data/processed/nlni_w12_watersheds.jsonl": "901924abd35592a6a1a570864ed6b1843755070490ea39cc16f6a3114a5c492d",
     "data/processed/taxon_crosswalk.csv": "cde56ea81743f7790a04ac9c7e5fd9dc47699edd56c8c9fcfe70c3eea6a74e52",
-    "data/processed/taxon_gbif_accepted.csv": "d0b325a0eadac87515420002f6a7fc2ac39be827ebc506a76a10f5c29239c8d2"
+    "data/processed/taxon_gbif_accepted.csv": "d0b325a0eadac87515420002f6a7fc2ac39be827ebc506a76a10f5c29239c8d2",
+    "data/processed/terrain_points.csv": "f88b3224069e122264fe54a6f4f16df147714d9ab6a0f971415b4a8a9e9b47aa"
   }
 }

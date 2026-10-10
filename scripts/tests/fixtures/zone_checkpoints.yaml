@@ -1,0 +1,48 @@
+# zone の確認地点（docs/plans/AMAMI_STEP0.md §1.4-d・e の43地点）。
+# 座標は標高タイルで山頂・海岸の画素に寄せた値（表のとおり）。expect は期待する zone の集合、
+# known_miss は規則の境界の問題で期待外になることを承知している地点（理由は設計書 §1.4-d）。
+# c68 `--checkpoints` がこれを読み、指標を scripts/tests/fixtures/zone_checkpoints_metrics.csv に出す。
+checkpoints:
+  - {name: "丹沢山頂(蛭ヶ岳付近)", region: jp-14, lat: 35.4863, lon: 139.1389, expect: [1]}
+  - {name: "大山山頂付近", region: jp-14, lat: 35.4408, lon: 139.2312, expect: [1, 2]}
+  - {name: "神山(箱根)", region: jp-14, lat: 35.2334, lon: 139.0209, expect: [1]}
+  - {name: "芦ノ湖畔(箱根)", region: jp-14, lat: 35.2013, lon: 139.0256, expect: [2, 3]}
+  - {name: "相模湖(山間)", region: jp-14, lat: 35.6133, lon: 139.1933, expect: [2, 3]}
+  - {name: "宮ヶ瀬湖", region: jp-14, lat: 35.52, lon: 139.23, expect: [2, 3]}
+  - {name: "相模野台地(大和市)", region: jp-14, lat: 35.4678, lon: 139.4605, expect: [3]}
+  - {name: "相模野台地(相模大野)", region: jp-14, lat: 35.5314, lon: 139.4373, expect: [3]}
+  - {name: "下末吉台地(鶴見)", region: jp-14, lat: 35.5128, lon: 139.6572, expect: [3]}
+  - {name: "三浦丘陵(武山付近)", region: jp-14, lat: 35.2203, lon: 139.6657, expect: [3]}
+  - {name: "相模川低地(寒川)", region: jp-14, lat: 35.3733, lon: 139.3886, expect: [4]}
+  - {name: "相模川低地(厚木)", region: jp-14, lat: 35.439, lon: 139.364, expect: [3, 4]}
+  - {name: "酒匂川扇状地(開成)", region: jp-14, lat: 35.3236, lon: 139.1197, expect: [3, 4]}
+  - {name: "足柄平野(小田原飯泉)", region: jp-14, lat: 35.285, lon: 139.155, expect: [3, 4]}
+  - {name: "平塚 馬入(河口)", region: jp-14, lat: 35.3338, lon: 139.3472, expect: [5], known_miss: true}
+  - {name: "横浜 山下公園", region: jp-14, lat: 35.4437, lon: 139.6503, expect: [5]}
+  - {name: "相模原台地(中央区)", region: jp-14, lat: 35.5715, lon: 139.3733, expect: [3]}
+  - {name: "座間 台地", region: jp-14, lat: 35.4376, lon: 139.4318, expect: [3]}
+  - {name: "湘南台(藤沢台地)", region: jp-14, lat: 35.3938, lon: 139.4678, expect: [3]}
+  - {name: "日吉(下末吉台地)", region: jp-14, lat: 35.5546, lon: 139.6469, expect: [3]}
+  - {name: "衣笠(三浦丘陵)", region: jp-14, lat: 35.2635, lon: 139.6538, expect: [3]}
+  - {name: "初声(三浦台地)", region: jp-14, lat: 35.1835, lon: 139.6465, expect: [3]}
+  - {name: "麻生(多摩丘陵)", region: jp-14, lat: 35.6, lon: 139.5, expect: [3]}
+  - {name: "新横浜(鶴見川低地)", region: jp-14, lat: 35.5071, lon: 139.6177, expect: [4]}
+  - {name: "酒匂(酒匂川デルタ)", region: jp-14, lat: 35.2715, lon: 139.176, expect: [4, 5]}
+  - {name: "茅ヶ崎 柳島(相模川下流)", region: jp-14, lat: 35.319, lon: 139.366, expect: [4, 5]}
+  - {name: "溝の口(多摩川低地)", region: jp-14, lat: 35.6001, lon: 139.6101, expect: [4]}
+  - {name: "藤沢 境川低地", region: jp-14, lat: 35.342, lon: 139.47, expect: [4]}
+  - {name: "山北(丹沢山麓)", region: jp-14, lat: 35.36, lon: 139.08, expect: [2, 3]}
+  - {name: "相模原 津久井(山間)", region: jp-14, lat: 35.6, lon: 139.22, expect: [2, 3]}
+  - {name: "湯湾岳山頂", region: jp-46, lat: 28.2963, lon: 129.3209, expect: [1]}
+  - {name: "金作原", region: jp-46, lat: 28.3167, lon: 129.4119, expect: [1, 2]}
+  - {name: "住用 山地(中腹)", region: jp-46, lat: 28.273, lon: 129.445, expect: [1, 2]}
+  - {name: "住用マングローブ(河口)", region: jp-46, lat: 28.2954, lon: 129.45, expect: [5]}
+  - {name: "名瀬市街", region: jp-46, lat: 28.3772, lon: 129.4939, expect: [5]}
+  - {name: "新川河口付近", region: jp-46, lat: 28.379, lon: 129.493, expect: [5]}
+  - {name: "龍郷湾岸", region: jp-46, lat: 28.3996, lon: 129.5243, expect: [5]}
+  - {name: "大和村 大和浜", region: jp-46, lat: 28.3241, lon: 129.2944, expect: [5]}
+  - {name: "古仁屋", region: jp-46, lat: 28.1415, lon: 129.3185, expect: [5]}
+  - {name: "宇検村 湯湾", region: jp-46, lat: 28.2718, lon: 129.2956, expect: [5]}
+  - {name: "笠利(奄美空港付近)", region: jp-46, lat: 28.4306, lon: 129.7125, expect: [3, 4, 5]}
+  - {name: "大川ダム付近", region: jp-46, lat: 28.33, lon: 129.37, expect: [2, 3]}
+  - {name: "笠利 丘陵(内陸)", region: jp-46, lat: 28.428, lon: 129.688, expect: [3]}

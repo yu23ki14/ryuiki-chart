@@ -115,13 +115,10 @@ def test_verify_place_id_map_halts_when_old_id_is_reused_as_a_live_id():
         id_map.verify_place_id_map(_rows(*_GOOD_PAIRS), live)
 
 
-def test_verify_place_id_map_halts_on_duplicate_old_or_new_id():
+def test_verify_place_id_map_halts_on_duplicate_old_id():
     dup_old = _GOOD_PAIRS + [(_GOOD_PAIRS[0][0], "common:place:watershed.nlni.99999-0001")]
     with pytest.raises(AssertionError, match="old_id が重複"):
         id_map.verify_place_id_map(_rows(*dup_old), _PLACE_IDS | {"common:place:watershed.nlni.99999-0001"})
-    dup_new = _GOOD_PAIRS + [("common:place:watershed.nlni-other", _GOOD_PAIRS[0][1])]
-    with pytest.raises(AssertionError, match="new_id が重複"):
-        id_map.verify_place_id_map(_rows(*dup_new), set(_PLACE_IDS))
 
 
 def test_verify_place_id_map_allows_declared_places_absent_from_a_reduced_sample():
@@ -184,6 +181,57 @@ def test_real_id_map_resolves_every_legacy_place_id_to_exactly_one_current_id():
         m = conn.execute("SELECT old_id, new_id FROM id_map WHERE entity='place'").fetchall()
     finally:
         conn.close()
-    assert len(m) == 877  # site 495 + watershed 377 + zone 5
+    assert len(m) == 882  # site 495 + watershed 377 + zone 5 + zone の昇格前 ID 5（AMAMI_STEP0 §2）
     assert len({o for o, _ in m}) == len(m)
     assert all(n in ids and o not in ids for o, n in m)
+
+
+# ---------------------------------------------------------------------------
+# zone の common 昇格（AMAMI_STEP0 §2、ADR-0004 追記）
+# ---------------------------------------------------------------------------
+
+_ZONE_NEW = "common:place:zone.r2r.3"
+_PROMOTED_PAIRS = [
+    ("jp-14:place:zone.r2r-3", _ZONE_NEW),   # 区切り改定前の旧 ID
+    ("jp-14:place:zone.r2r.3", _ZONE_NEW),   # 改定後・昇格前の ID
+]
+
+
+def test_verify_place_id_map_accepts_zone_promoted_to_common_with_two_old_ids():
+    id_map.verify_place_id_map(_rows(*_PROMOTED_PAIRS), {_ZONE_NEW})
+
+
+def test_verify_place_id_map_halts_when_old_scope_is_not_a_declared_promotion():
+    """scope が違うのは PROMOTED_FROM に宣言した（kind, 旧 scope）だけ。jp-46 の zone は昇格前に存在しない。"""
+    pairs = _PROMOTED_PAIRS + [("jp-46:place:zone.r2r.3", _ZONE_NEW)]
+    with pytest.raises(AssertionError, match="昇格前の scope"):
+        id_map.verify_place_id_map(_rows(*pairs), {_ZONE_NEW})
+    with pytest.raises(AssertionError, match="昇格前の scope"):   # kind が違えば jp-14 → common でも通さない
+        id_map.verify_place_id_map(_rows(("jp-14:place:site.jma-s1", "common:place:site.jma.s1")), set())
+
+
+def test_verify_place_id_map_halts_when_promoted_zone_old_id_drifts():
+    pairs = [("jp-14:place:zone.r2r_3", _ZONE_NEW)]
+    with pytest.raises(AssertionError, match="規則"):
+        id_map.verify_place_id_map(_rows(*pairs), {_ZONE_NEW})
+
+
+def test_verify_place_id_map_halts_when_a_row_is_not_a_rename():
+    new = "jp-14:place:site.jma.s1"
+    with pytest.raises(AssertionError, match="改称になっていない"):
+        id_map.verify_place_id_map(_rows((new, new)), {new})
+
+
+def test_verify_place_id_map_allows_many_old_ids_for_one_new_id():
+    """new_id の重複は上限なし（old_id の一意性だけを守る）。"""
+    pairs = _PROMOTED_PAIRS + [("jp-14:place:zone.r2r3", _ZONE_NEW)]
+    id_map.verify_place_id_map(_rows(*pairs), {_ZONE_NEW})
+
+
+def test_real_place_csv_resolves_both_old_zone_ids_to_common():
+    rows = id_map.load_csv("place")
+    got = {r["old_id"]: r["new_id"] for r in rows if ":zone." in r["old_id"]}
+    for n in range(1, 6):
+        assert got[f"jp-14:place:zone.r2r-{n}"] == f"common:place:zone.r2r.{n}"
+        assert got[f"jp-14:place:zone.r2r.{n}"] == f"common:place:zone.r2r.{n}"
+    assert len(got) == 10

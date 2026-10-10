@@ -29,6 +29,10 @@ UTC_OFFSET_PATTERN = re.compile(r"^[+-][0-9]{2}:[0-9]{2}$")
 TZ_NAME_PATTERN = re.compile(r"^[A-Za-z_]+(/[A-Za-z0-9_+-]+)+$")
 
 
+# terrain.summit の数値キーと許容範囲（日本の範囲。単位は度・m）。
+SUMMIT_RANGES = (("lat", 20.0, 46.0), ("lon", 122.0, 154.0), ("elevation_m", 1.0, 3800.0))
+
+
 @dataclass(frozen=True)
 class RegionTime:
     region_id: str
@@ -60,6 +64,30 @@ def region_problems(raw: object) -> list[str]:
             problems.append(f"{label}: utc_offset が想定外の形（'+HH:MM'/'-HH:MM' のみ。実際: {spec['utc_offset']!r}）")
         if not TZ_NAME_PATTERN.fullmatch(str(spec["tz_name"])):
             problems.append(f"{label}: tz_name が IANA 名の形でない: {spec['tz_name']!r}")
+        if "terrain" in spec:
+            problems.extend(_terrain_problems(label, spec["terrain"]))
+    return problems
+
+
+def _is_number(v: object) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def _terrain_problems(label: str, terrain: object) -> list[str]:
+    """`terrain.summit`（地域の最高峰の宣言。zone v2 の 1/2 の境に使う。AMAMI_STEP0 §1.2）の形。
+    `terrain` が無い region は通す（zone を付けない地域・既存のフィクスチャを壊さない）。"""
+    if not isinstance(terrain, dict) or not isinstance(terrain.get("summit"), dict):
+        return [f"{label}: terrain は summit のマッピングを含む必要がある"]
+    summit = terrain["summit"]
+    problems: list[str] = []
+    if not isinstance(summit.get("name_ja"), str) or not summit["name_ja"]:
+        problems.append(f"{label}: terrain.summit.name_ja が文字列でない")
+    for key, lo, hi in SUMMIT_RANGES:
+        v = summit.get(key)
+        if not _is_number(v):
+            problems.append(f"{label}: terrain.summit.{key} が数値でない: {v!r}")
+        elif not lo <= v <= hi:
+            problems.append(f"{label}: terrain.summit.{key} が範囲外（{lo}〜{hi}）: {v!r}")
     return problems
 
 

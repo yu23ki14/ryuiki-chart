@@ -38,6 +38,13 @@ landuse: `landuse.<watershed_id>.<data_year>.<区分コード>.<area_km2|n_cells
 載せない。DwC-A の `occurrenceID` は新 ID に切り替え、旧→新の対応を `occurrenceID_mapping.csv` として
 DwC-A に同梱する（公開物の契約変更。`data/dwca` の再公開はしない）。
 
+**2026-10-10 追記（奄美 Step 0、ADR-0031）**: zone（Ridge to Reef 1-5）の定義が地域に依存しなくなった
+ため、`jp-14:place:zone.r2r.N` を `common:place:zone.r2r.N`（`region_id` は NULL）に昇格した。これは別の実体への
+置換ではなく**同じ実体の ID の改称**なので `id_map`（`registry/id_map/place.csv`。spec_version
+`2026-10-zone-v2`）で扱い、`superseded_by` は使わない。旧 ID（区切り改定前の `jp-14:place:zone.r2r-N` と
+改定後・昇格前の `jp-14:place:zone.r2r.N`）はどちらも新 ID に解決し、再利用しない。規約0 の表の
+`jp-46-tatsugo:place:zone.r2r.3`（地域固有の操作的定義）の例は古くなった。本文の表は書き換えない。
+
 ## 背景
 
 現行の ID には規約が無く、出典の都合がそのまま漏れている。

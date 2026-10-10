@@ -194,7 +194,7 @@ def test_end_to_end_determinism_on_fixture_db(tmp_path):
     # data/processed の6ファイルすべての実在を要求するので、残り5つもダミーで置く。
     for name in (
         "nlni_w12_watersheds.jsonl", "nlni_l03b_landuse_by_watershed.csv",
-        "moe_ias_list.csv", "taxon_crosswalk.csv", "taxon_gbif_accepted.csv",
+        "moe_ias_list.csv", "taxon_crosswalk.csv", "taxon_gbif_accepted.csv", "terrain_points.csv",
     ):
         (tmp_path / name).write_text("dummy", encoding="utf-8")
 

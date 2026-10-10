@@ -355,8 +355,8 @@ def test_build_writes_the_three_tables_and_passes_the_reference_checks(reg):
     finally:
         ryuiki.close()
     reg.commit()
-    # 124→125 source・125→126 edition: 2026-10-07 神奈川県 eDNA（kanagawa_edna）の追加
-    assert counts["source"] == 125 and counts["source_edition"] == 126
+    # 125→127 source・126→128 edition: 2026-10-10 奄美 Step 0（nlni_c23_coastline・gsi_dem_terrain）の追加
+    assert counts["source"] == 127 and counts["source_edition"] == 128
     r01._assert_id_uniqueness(reg)
     r01._assert_id_references(reg)
     assert reg.execute("SELECT count(*) FROM variable_alias WHERE edition_key IS NOT NULL").fetchone()[0] == 46
@@ -482,8 +482,8 @@ def test_id_map_is_built_from_csv_without_source_data_in_files_only_mode(tmp_pat
     # dataset.csv が指す alias は variable_alias.csv 由来（--files-only でも作る）
     build_unit_variable.build(conn, {})
     counts = id_map.build_id_map(conn, full=False)
-    assert counts == {"place": 877, "dataset": 2}
-    assert conn.execute("SELECT count(*) FROM id_map").fetchone()[0] == 879
+    assert counts == {"place": 882, "dataset": 2}
+    assert conn.execute("SELECT count(*) FROM id_map").fetchone()[0] == 884
     conn.close()
 
 

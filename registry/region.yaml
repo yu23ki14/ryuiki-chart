@@ -16,6 +16,13 @@
 # （その時点で応答封筒が時刻ごとにオフセットを引く必要がある）。
 #
 # region.yaml 各エントリのキー: name_ja / tz_name（IANA）/ utc_offset / evidence（根拠）
+#   terrain.summit（任意。zone を付ける地域では必須）: name_ja / lat / lon / elevation_m。
+#     その地域の最高峰の宣言値。zone 1/2 の境（標高が最高峰の半分以上か）の分類上の宣言で、
+#     DEM の最大から導出しない。scripts/c68_gsi_dem_terrain.py が宣言座標の周辺 500m の DEM 最大が
+#     elevation_m ±20m に収まるかを検査する（docs/plans/AMAMI_STEP0.md §1.2、ADR-0031）。
+#     build_region.py は terrain を読まない（registry.sqlite・D1 の region 表に列を足さない）。
+# 収集の定数（GADM gid・iNaturalist place_id 等）はここに入れず scripts/regions.py に置く
+# （registry/ 配下は全ファイルが registry の指紋に入るため）。
 
 jp-14:
   name_ja: 神奈川県
@@ -26,3 +33,24 @@ jp-14:
     'Z'（UTC）表記の observed_on をローカル時刻に直すとき（scripts/migrate/occurrence_period.py、
     ADR-0024）と、sensor_timeseries の 25 桁ラベル（'+09:00' 固定。scripts/migrate/period.py）の
     検査に使う。
+  terrain:
+    summit:
+      name_ja: 蛭ヶ岳
+      lat: 35.4863
+      lon: 139.1389
+      elevation_m: 1673
+
+jp-46:
+  name_ja: 鹿児島県
+  tz_name: Asia/Tokyo
+  utc_offset: "+09:00"
+  evidence: >
+    日本標準時（JST、UTC+9、夏時間なし）。ADR-0002 のコードリストにある鹿児島県のスコープ。
+    当面のデータの範囲は奄美大島の5市町村（奄美市・大和村・宇検村・瀬戸内町・龍郷町。
+    scripts/regions.py）。
+  terrain:
+    summit:
+      name_ja: 湯湾岳
+      lat: 28.2963
+      lon: 129.3209
+      elevation_m: 694

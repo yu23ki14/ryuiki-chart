@@ -8,11 +8,14 @@ CSV は**手書きの宣言ファイル**（列: `old_id,new_id,reason,spec_vers
 食い違えば止める（宣言済み差分を機械検証する運用）。
 
 検査（`verify_place_id_map()`）:
-1. 宣言の形: old_id・new_id が空でない / old_id が一意 / new_id が一意（1対1）。
+1. 宣言の形: old_id・new_id が空でない / old_id が一意（new_id は重複してよい。1つの ID に旧 ID が
+   複数向くことがある。例: zone の昇格前の2形式）。
 2. 「再利用しない」: old_id が現行の place_id として発行されていない
    （廃止した ID を別のものに使い回すと、古いリンク・外部の引用が別物を指す）。
-3. 規則との一致: old_id は new_id の最初の `.`（ns と key の区切り）を `-` に
-   戻したものと一致する（旧形式の定義。宣言が手でずれたときに止める）。
+3. 規則との一致（汎用）: old_id の scope を new_id の scope に置き換えたものが、区切り（`-`/`.`）を除いて
+   new_id と一致する（宣言が手でずれたときに止める）。scope が違ってよいのは、`PROMOTED_FROM` に
+   「その kind は旧 scope から昇格した」と明示した組だけ（`jp-46:place:zone.r2r.1` のような誤った行を通さない）。
+   scope が同じで old_id == new_id の行（改称になっていない）は止める。
 4. 網羅: 区切りが変わった kind（site/watershed/zone）の現行 place_id は
    すべて new_id に宣言されている（宣言漏れで旧 ID が受理されなくならない）。
    逆に new_id は現行 place に実在する。
@@ -30,6 +33,11 @@ ID_MAP_COLUMNS = ("old_id", "new_id", "reason", "spec_version")
 # grid01 は ns を持たず恒等。
 PLACE_KINDS_RENAMED = frozenset({"site", "watershed", "zone"})
 
+# 定義が地域に依存しなくなって昇格した place_kind の、昇格前の scope（同じ実体の ID の改称。
+# AMAMI_STEP0 §2、ADR-0004 日付付き追記）。zone は `jp-14:` から `common:` に昇格した。
+# 昇格前の ID は 2 形式ある（区切り改定前の `…zone.r2r-N` と、改定後・昇格前の `…zone.r2r.N`）。
+PROMOTED_FROM = {"zone": "jp-14"}
+
 
 def load_csv(entity: str, directory: pathlib.Path | None = None) -> list[dict]:
     """`registry/id_map/<entity>.csv` を読む。列は `ID_MAP_COLUMNS` と一致していること。"""
@@ -43,14 +51,32 @@ def load_csv(entity: str, directory: pathlib.Path | None = None) -> list[dict]:
         return list(reader)
 
 
-def legacy_place_id(new_id: str) -> str:
-    """新形式の place_id から旧形式（ns と key を `-` でつないだもの）を再構成する。
-    宣言（CSV）が規則からずれていないかの検査にだけ使う（受理の経路には使わない。
-    受理は CSV 由来の表を引く）。"""
-    p = common.parse_id(new_id)
-    if p.ns is None:
-        return new_id
-    return f"{p.scope}:{p.entity}:{p.kind}.{p.ns}-{p.key}"
+def _strip_separators(local: str) -> str:
+    return local.replace("-", "").replace(".", "")
+
+
+def old_id_problem(old: str, new: str) -> str | None:
+    """old_id が new_id の改称として規則どおりか。問題があれば理由（文字列）、なければ None。
+    old_id は旧形式（`-` 区切り）を含むので `common.parse_id` は使わず、`<scope>:<entity>:<local>` に切るだけ。"""
+    old_scope, e1, old_local = _split_id(old)
+    new_p = common.parse_id(new)
+    if e1 != new_p.entity:
+        return f"entity が違う: old={old} new={new}"
+    if old_scope != new_p.scope:
+        if PROMOTED_FROM.get(new_p.kind) != old_scope:
+            return (f"scope が違うが、{new_p.kind!r} の昇格前の scope として宣言されていない"
+                    f"（PROMOTED_FROM={PROMOTED_FROM}）: old={old} new={new}")
+    elif old == new:
+        return f"改称になっていない（old_id == new_id）: {old}"
+    if _strip_separators(old_local) != _strip_separators(new_p.local):
+        return f"区切りを除いて一致しない: old={old} new={new}"
+    return None
+
+
+def _split_id(id_value: str) -> tuple[str, str, str]:
+    scope, _, rest = id_value.partition(":")
+    entity, _, local = rest.partition(":")
+    return scope, entity, local
 
 
 def verify_place_id_map(rows: list[dict], place_ids: set[str] | None) -> None:
@@ -70,9 +96,7 @@ def verify_place_id_map(rows: list[dict], place_ids: set[str] | None) -> None:
         if old in old_seen:
             problems.append(f"{i} 行目: old_id が重複（{old_seen[old]} 行目と同じ）: {old}")
         old_seen[old] = i
-        if new in new_seen:
-            problems.append(f"{i} 行目: new_id が重複（{new_seen[new]} 行目と同じ）: {new}")
-        new_seen[new] = i
+        new_seen.setdefault(new, i)
         if place_ids is not None and old in place_ids:
             problems.append(
                 f"{i} 行目: 旧 ID が現行の place_id として発行されている"
@@ -82,15 +106,12 @@ def verify_place_id_map(rows: list[dict], place_ids: set[str] | None) -> None:
         # 作らない環境がある。旧 ID の受理は place の有無に関わらず恒久的に宣言どおりに効く）。
         # 代わりに、new_id が新形式として分解でき、old_id が規則から導けることは常に検査する。
         try:
-            expected_old = legacy_place_id(new)
+            why = old_id_problem(old, new)
         except ValueError as e:
             problems.append(f"{i} 行目: new_id が新形式として分解できない: {e}")
         else:
-            if expected_old != old:
-                problems.append(
-                    f"{i} 行目: old_id が規則（ns と key の区切りを `-` に戻した形）と"
-                    f"一致しない: old={old} 期待={expected_old}"
-                )
+            if why:
+                problems.append(f"{i} 行目: old_id が規則（scope を new_id に置き換え、区切りを除いて一致）と合わない: {why}")
     declared_new = set(new_seen)
     for pid in sorted(place_ids or ()):
         try:

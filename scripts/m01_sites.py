@@ -4,12 +4,15 @@
 - lat/lon を持つ地点のみ登録する（そらまめ君・相模原市大気局・県民参加型調査地点は
   収集データに座標が無いため sites には入れない。センサー時系列側で扱う）。
 - watershed: nlni_w12_watersheds.geojson (377単位流域ポリゴン) に対する点内判定。
-- zone (Ridge to Reef 1-5): 標高 + 海岸線からの距離による「我々の操作的定義」。
-  公式区分ではない。定義は docs/ZONE_DEFINITION.md を参照。
+- zone (Ridge to Reef 1-5): ここでは書かない（NULL）。v2 の定義（地形指標による操作的区分。
+  公式区分ではない。docs/ZONE_DEFINITION.md・registry/place/zone.yaml）では、座標から
+  scripts/c68_gsi_dem_terrain.py が計算した data/processed/terrain_points.csv を
+  scripts/m09_site_zone.py が読んで sites.zone を更新する。m01 の再実行は既存の sites.zone を保持する
+  （UPSERT。新しい地点だけ NULL。新しい地点があれば続けて m09 を回す。順序: c36 → c68 → m01 → m09 → r01）。
 - 標高: 気象庁アメダスは自己申告値をそのまま使用。それ以外は国土地理院 標高API を
   1.5秒スロットルで叩く（common.get 経由）。結果はキャッシュして再実行時に節約する。
 - treatment（対策区/対照区/参照）: 公開データに存在しないため一律 NULL。
-- 冪等性: site_id を主キーに INSERT OR REPLACE。DROP/DELETE は行わない。
+- 冪等性: site_id を主キーに UPSERT（zone 列は上書きしない）。DROP/DELETE は行わない。
 
 再実行可能（同じ site_id を上書きするだけで重複しない）。
 """
@@ -20,69 +23,6 @@ from common import appdb, PROC, get, now
 from shapely.geometry import shape, Point
 
 KANAGAWA_BBOX = (138.9, 35.1, 139.8, 35.7)  # lon_min, lat_min, lon_max, lat_max (おおよそ)
-
-# ---- 神奈川県 沿岸線の粗いポリライン（我々が定義した近似。公式コースラインではない） ----
-# 東京湾岸（川崎→横浜→横須賀→三浦半島先端）→ 相模湾岸（葉山→鎌倉→藤沢→茅ヶ崎→
-# 平塚→大磯→二宮→小田原→真鶴→湯河原/静岡県境）の順に地名を辿った近似点列。
-COASTLINE_LONLAT = [
-    (139.7267, 35.5308),  # 川崎(多摩川河口)
-    (139.7383, 35.4658),  # 横浜 大黒ふ頭
-    (139.6503, 35.4437),  # 横浜 山下公園
-    (139.6178, 35.3378),  # 横浜 金沢区
-    (139.6660, 35.2850),  # 横須賀港
-    (139.7508, 35.2467),  # 横須賀 観音崎(浦賀水道)
-    (139.6900, 35.1850),  # 三浦 城ヶ島付近
-    (139.6156, 35.1347),  # 三浦 三崎港(半島先端)
-    (139.6117, 35.1600),  # 三浦 油壺
-    (139.5747, 35.2664),  # 葉山 森戸
-    (139.5814, 35.2967),  # 逗子
-    (139.5461, 35.3061),  # 鎌倉 由比ヶ浜
-    (139.4803, 35.3006),  # 藤沢 江の島
-    (139.4025, 35.3183),  # 茅ヶ崎
-    (139.3378, 35.3239),  # 平塚(相模川河口)
-    (139.3131, 35.3106),  # 大磯
-    (139.2492, 35.3086),  # 二宮
-    (139.1508, 35.2497),  # 小田原(酒匂川河口)
-    (139.1533, 35.1592),  # 真鶴
-    (139.1017, 35.1364),  # 湯河原(静岡県境)
-]
-
-def _dist_m_point_to_segment(px, py, ax, ay, bx, by, coslat):
-    # 度→メートルの局所近似投影（緯度cosでlon方向を縮小）。神奈川程度の範囲では十分。
-    ax_, bx_, px_ = ax * coslat, bx * coslat, px * coslat
-    dx, dy = bx_ - ax_, by - ay
-    if dx == 0 and dy == 0:
-        t = 0.0
-    else:
-        t = ((px_ - ax_) * dx + (py - ay) * dy) / (dx * dx + dy * dy)
-        t = max(0.0, min(1.0, t))
-    cx, cy = ax_ + t * dx, ay + t * dy
-    ddeg = ((px_ - cx) ** 2 + (py - cy) ** 2) ** 0.5
-    return ddeg * 111320.0
-
-def dist_to_coast_m(lon, lat):
-    coslat = __import__("math").cos(__import__("math").radians(lat))
-    best = None
-    for (ax, ay), (bx, by) in zip(COASTLINE_LONLAT, COASTLINE_LONLAT[1:]):
-        d = _dist_m_point_to_segment(lon, lat, ax, ay, bx, by, coslat)
-        if best is None or d < best:
-            best = d
-    return best
-
-def zone_of(elevation_m, dist_coast_m):
-    """操作的定義（docs/ZONE_DEFINITION.md と同一のロジック）。"""
-    if elevation_m is None:
-        return None
-    if elevation_m > 800:
-        return 1
-    if elevation_m > 400:
-        return 2
-    if elevation_m > 100:
-        return 3
-    # elevation_m <= 100
-    if dist_coast_m is not None and dist_coast_m <= 2000:
-        return 5
-    return 4
 
 # ---- geohash (標準base32, 依存ライブラリ不要の自前実装) ----
 _GH_BASE32 = "0123456789bcdefghjkmnpqrstuvwxyz"
@@ -178,6 +118,18 @@ def rd_jsonl(name):
 def get_publishers(conn):
     return dict(conn.execute("select source_id, publisher from source_registry").fetchall())
 
+SITES_COLUMNS = ("site_id", "name", "name_en", "watershed", "zone", "lat", "lon", "elevation_m", "geohash",
+                 "municipality", "muni_code", "treatment", "established_on", "operator",
+                 "source_id", "source_ref", "is_synthetic")
+# 再実行で既存の sites.zone を消さない（INSERT OR REPLACE は zone=NULL を書いて m09 の結果を捨てる）。
+# 新しい地点は zone=NULL のまま（m09_site_zone.py が付ける）。zone 以外の列は上書きする。
+UPSERT_SITES_SQL = (
+    f"INSERT INTO sites ({', '.join(SITES_COLUMNS)}) VALUES ({','.join('?' * len(SITES_COLUMNS))}) "
+    "ON CONFLICT(site_id) DO UPDATE SET "
+    + ", ".join(f"{c}=excluded.{c}" for c in SITES_COLUMNS if c not in ("site_id", "zone"))
+)
+
+
 def main():
     conn = appdb()
     conn.execute("PRAGMA busy_timeout=30000")
@@ -223,8 +175,7 @@ def main():
         ws = find_watershed(lon, lat, polys, props)
         if ws is None:
             orphan_watershed += 1
-        dist_coast = dist_to_coast_m(lon, lat)
-        zone = zone_of(elevation_m, dist_coast)
+        zone = None  # zone は m09_site_zone.py が terrain_points.csv から付ける（AMAMI_STEP0 §3）
         gh = geohash_encode(lat, lon)
         rows.append((
             site_id, name, name_en, ws, zone, lat, lon, elevation_m, gh,
@@ -303,13 +254,7 @@ def main():
     ]:
         skipped_no_latlon[sid] = label
 
-    conn.executemany(
-        """INSERT OR REPLACE INTO sites
-           (site_id, name, name_en, watershed, zone, lat, lon, elevation_m, geohash,
-            municipality, muni_code, treatment, established_on, operator,
-            source_id, source_ref, is_synthetic)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-        rows)
+    conn.executemany(UPSERT_SITES_SQL, rows)
     conn.commit()
 
     n_sites = conn.execute("select count(*) from sites").fetchone()[0]

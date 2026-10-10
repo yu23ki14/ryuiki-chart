@@ -76,6 +76,8 @@ PIPELINE_EXPLICIT_FILES = (
     "web/scripts/build-registry-ts.mjs",
     "web/scripts/lib/registry-codegen.mjs",
     "web/scripts/lib/csv.mjs",
+    # build-registry-ts.mjs が import する zone 定義の版（ZONE_DEFINITION_VERSION の生成元）。
+    "web/scripts/lib/zone-definition.mjs",
     # web/src/lib/cube が `@/` 別名で import する単体ファイル（cube/db-sqlite・cube/*.ts → db / schema-cube）。
     "web/src/lib/db.ts",
     "web/src/db/schema-cube.ts",

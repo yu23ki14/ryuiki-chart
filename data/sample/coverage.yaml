@@ -427,3 +427,4 @@ wholesale_processed_files:
   - moe_ias_list.csv
   - taxon_crosswalk.csv
   - taxon_gbif_accepted.csv
+  - terrain_points.csv
