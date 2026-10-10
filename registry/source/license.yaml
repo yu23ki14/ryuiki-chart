@@ -177,6 +177,8 @@ mappings:
     license_id: gov_standard_2_0
   - raw: "気象庁ホームページ利用規約（政府標準利用規約 2.0 準拠 / CC BY 4.0 互換） https://www.jma.go.jp/jma/kishou/info/coment.html"
     license_id: gov_standard_2_0
+  - raw: "気象庁ホームページ利用規約（政府標準利用規約 2.0 準拠）／公共データ利用規約 第1.0版（PDL1.0） https://www.jma.go.jp/jma/kishou/info/coment.html"
+    license_id: pdl_1_0
   - raw: "環境省 水環境総合情報サイト（政府標準利用規約準拠 / 出典明示で利用可） https://water-pub.env.go.jp/water-pub/mizu-site/env.asp"
     license_id: gov_standard_2_0
   - raw: "国土地理院コンテンツ利用規約（公共データ利用規約(PDL1.0)相当、出典表記必須） https://www.gsi.go.jp/kikakuchousei/kikakuchousei40182.html"
