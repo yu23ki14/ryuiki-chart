@@ -1,0 +1,176 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""行政文書の表を cells.sqlite（documents / cells / notes / extraction_log）に書く共通部品。
+
+AMAMI_STEP2C §2。c95〜c98b が使う。要点:
+- 書き込みは doc_id 単位。`DELETE ... WHERE doc_id=?` だけを使い、ほかの doc_id には触れない
+  （表全体の削除や extractor を条件にした削除はしない。AMAMI_STEP2A の教訓）。
+- 検算（check_identity）は書く前に済ませる。原本の誤りは「宣言した例外」として列挙し、
+  過不足なく一致しなければ止める。
+- 関数は接続を受け取り commit しない。1つのトランザクションにまとめるには write_doc を使う。
+"""
+import json
+import re
+import sqlite3
+import unicodedata
+from datetime import datetime
+
+from common import to_fiscal_year  # noqa: E402
+
+CELL_COLUMNS = (
+    "doc_id", "doc_sha256", "page_no", "table_id", "row_key", "col_key",
+    "value_raw", "value", "value_type", "unit", "fiscal_year", "era_raw",
+    "source_text", "source_bbox", "notes_ref", "is_total", "merged",
+    "unreadable_reason", "confidence", "extractor", "verified_by", "extracted_at",
+    "superseded",
+)
+DOC_COLUMNS = ("doc_id", "title", "publisher", "url", "local_path", "doc_sha256",
+               "n_pages", "fiscal_year", "license", "fetched_at")
+NOTE_KINDS = ("comparability", "definition_change", "footnote", "survey_scope")
+
+
+def _now():
+    return datetime.now().isoformat(timespec="seconds")
+
+
+# ---- 値の読み取り ------------------------------------------------------
+
+_BLANKS = {"", "-", "－", "―", "ー", "‐", "—", "–", "−"}
+
+
+def parse_count(s):
+    """件数の文字列 → (値, かっこ内の値)。
+
+    "5(1)" → (5, 1)、"1,796" → (1796, None)、"－" や空欄 → (None, None)。0 は 0（空欄と区別する）。
+    common.to_number は "5(1)" を 51 と読むので使わない。読めない文字列は ValueError。
+    """
+    if s is None:
+        return None, None
+    t = unicodedata.normalize("NFKC", str(s)).strip().replace(",", "").replace(" ", "")
+    if t in _BLANKS:
+        return None, None
+    m = re.fullmatch(r"(\d+)(?:\((\d+)\))?", t)
+    if not m:
+        raise ValueError(f"件数として読めない: {s!r}")
+    return int(m.group(1)), (int(m.group(2)) if m.group(2) is not None else None)
+
+
+def era_to_year(s):
+    """"Ｒ１"・"R元"・"H２３"・"令和4年度" → 西暦年。NFKC で全角を半角にしてから to_fiscal_year へ。"""
+    if s is None:
+        return None
+    return to_fiscal_year(unicodedata.normalize("NFKC", str(s)).strip())
+
+
+# ---- 検算 --------------------------------------------------------------
+
+class IdentityError(AssertionError):
+    pass
+
+
+def check_identity(label, observed, declared=None):
+    """和などの恒等式の検算。
+
+    observed: {キー: (左辺, 右辺)} 全部の検算。左右が違うものが「食い違い」。
+    declared: {キー: (左辺, 右辺)} 原本の誤りとして宣言した食い違い（値まで含めて）。
+    食い違いの集合と宣言が過不足なく一致しなければ IdentityError。一致すれば宣言した食い違いを返す。
+    """
+    declared = declared or {}
+    actual = {k: (a, b) for k, (a, b) in observed.items() if a != b}
+    problems = []
+    for k in sorted(set(actual) - set(declared), key=str):
+        problems.append(f"宣言にない食い違い {k}: {actual[k][0]} != {actual[k][1]}")
+    for k in sorted(set(declared) - set(actual), key=str):
+        problems.append(f"宣言した例外が食い違っていない {k}: 宣言 {declared[k]}")
+    for k in sorted(set(actual) & set(declared), key=str):
+        if tuple(actual[k]) != tuple(declared[k]):
+            problems.append(f"宣言と値が違う {k}: 宣言 {tuple(declared[k])} / 実際 {tuple(actual[k])}")
+    if problems:
+        raise IdentityError(f"[{label}] 検算が通らない:\n  " + "\n  ".join(problems))
+    return actual
+
+
+# ---- 書き込み ----------------------------------------------------------
+
+def put_document(con, doc_id, **fields):
+    """documents を doc_id で入れ替える（その1行だけ）。"""
+    unknown = set(fields) - set(DOC_COLUMNS)
+    if unknown:
+        raise TypeError(f"documents にない列: {sorted(unknown)}")
+    fields.setdefault("fetched_at", _now())
+    row = {c: fields.get(c) for c in DOC_COLUMNS if c != "doc_id"}
+    con.execute("DELETE FROM documents WHERE doc_id=?", (doc_id,))
+    cols = ["doc_id", *row]
+    con.execute(f"INSERT INTO documents ({','.join(cols)}) VALUES ({','.join('?' * len(cols))})",
+                [doc_id, *row.values()])
+
+
+def replace_doc_cells(con, doc_id, rows):
+    """その doc_id の cells だけを消して入れ直す。rows は dict の列。返り値は挿入した行数。"""
+    now = _now()
+    prepared = []
+    for r in rows:
+        if r.get("doc_id", doc_id) != doc_id:
+            raise ValueError(f"別の doc_id の行が混じっている: {r.get('doc_id')!r} != {doc_id!r}")
+        unknown = set(r) - set(CELL_COLUMNS)
+        if unknown:
+            raise TypeError(f"cells にない列: {sorted(unknown)}")
+        d = {c: r.get(c) for c in CELL_COLUMNS}
+        d["doc_id"] = doc_id
+        d["is_total"] = int(d["is_total"] or 0)
+        d["merged"] = int(d["merged"] or 0)
+        d["superseded"] = int(d["superseded"] or 0)
+        d["extracted_at"] = d["extracted_at"] or now
+        if d["value"] is not None and not isinstance(d["value"], str):
+            d["value"] = json.dumps(d["value"])  # value は JSON の文字列
+        prepared.append(d)
+    con.execute("DELETE FROM cells WHERE doc_id=?", (doc_id,))
+    con.executemany(
+        f"INSERT INTO cells ({','.join(CELL_COLUMNS)}) VALUES ({','.join('?' * len(CELL_COLUMNS))})",
+        [[d[c] for c in CELL_COLUMNS] for d in prepared])
+    return len(prepared)
+
+
+def put_notes(con, doc_id, notes):
+    """notes を入れ替える。note_id は f"{doc_id}_n{連番(1始まり、3桁)}"。
+    notes: dict の列（kind, text, page, table_ids(list)|None, blocks_timeseries, reason）。"""
+    con.execute("DELETE FROM notes WHERE doc_id=?", (doc_id,))
+    ids = []
+    for i, n in enumerate(notes, 1):
+        if n["kind"] not in NOTE_KINDS:
+            raise ValueError(f"kind が不正: {n['kind']!r}")
+        nid = f"{doc_id}_n{i:03d}"
+        con.execute(
+            "INSERT INTO notes (note_id, doc_id, table_ids, kind, text, page, blocks_timeseries, reason)"
+            " VALUES (?,?,?,?,?,?,?,?)",
+            (nid, doc_id, json.dumps(n.get("table_ids") or [], ensure_ascii=False), n["kind"], n["text"],
+             n.get("page"), int(n.get("blocks_timeseries") or 0), n.get("reason")))
+        ids.append(nid)
+    return ids
+
+
+def log_check(con, doc_id, verdict, *, page_no=None, table_id=None, role="checker",
+              attempt=1, failures=None, note=None):
+    """extraction_log に1行追記するだけ（消さない）。"""
+    con.execute(
+        "INSERT INTO extraction_log (ts, doc_id, page_no, table_id, role, attempt, verdict, failures, note)"
+        " VALUES (?,?,?,?,?,?,?,?,?)",
+        (_now(), doc_id, page_no, table_id, role, attempt, verdict,
+         json.dumps(failures, ensure_ascii=False) if failures is not None else None, note))
+
+
+def write_doc(con, doc_id, document, cells, notes, log=None):
+    """検算が済んだあとに呼ぶ。documents・cells・notes・log を1つのトランザクションで書く。"""
+    if not con.in_transaction:
+        con.execute("BEGIN IMMEDIATE")
+    try:
+        put_document(con, doc_id, **document)
+        n = replace_doc_cells(con, doc_id, cells)
+        put_notes(con, doc_id, notes)
+        for entry in log or []:
+            log_check(con, doc_id, **entry)
+        con.commit()
+    except BaseException:
+        con.rollback()
+        raise
+    return n
