@@ -107,8 +107,10 @@ def _validate_review(key: str, review) -> None:
     if not isinstance(review, dict):
         raise CaveatDeclarationError(f"caveat {key!r}: review が無い（Issue #35: 全注記に人のレビュー記録が要る）")
     missing = [f for f in REVIEW_FIELDS if f not in review or review[f] in (None, "")]
-    # changed は false（変更なし）が正当な値なので、None/空だけを欠落とみなす
-    missing = [f for f in missing if not (f == "changed" and review.get(f) is False)]
+    # changed は false（変更なし）が正当な値なので、None/空だけを欠落とみなす。
+    # owner_confirmed_on は、キーがあれば null（オーナーの確認待ち）でもよい（奄美 Step 1 PR-B）。キー自体が無いのは欠落
+    missing = [f for f in missing if not (f == "changed" and review.get(f) is False)
+               and not (f == "owner_confirmed_on" and f in review)]
     if missing:
         raise CaveatDeclarationError(f"caveat {key!r}: review に {missing} が無い")
     changed = review["changed"]

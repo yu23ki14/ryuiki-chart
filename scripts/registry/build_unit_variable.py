@@ -220,7 +220,7 @@ STAT_CODES = frozenset({
 QUANTITY_KIND_CODES = frozenset({
     "", "mass_concentration", "microbial_density", "elevation", "length", "temperature",
     "area", "count", "volume_fraction", "time", "pressure", "fraction", "velocity",
-    "volume_flow_rate", "dimensionless",
+    "volume_flow_rate", "dimensionless", "energy_per_area",
 })
 
 

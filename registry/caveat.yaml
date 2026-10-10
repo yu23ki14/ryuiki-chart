@@ -392,3 +392,31 @@ caveats:
     reason: 調査・報告の努力量の違いを生息数の増減と読むと結論が誤る。オーナー確認済み。
     changed:
     - new
+# 奄美 Step 1 PR-B（docs/plans/AMAMI_STEP1B.md §0 決定6・7）。オーナーの確認は未了
+# （review.owner_confirmed_on を空にしてある。確認したら日付を入れる。build_caveat は空を「確認待ち」として通す）。
+- key: amamiRedList
+  severity: warning
+  kind: definition_change
+  title_ja: null
+  body_ja: 奄美大島の赤リスト（絶滅危惧の区分）は、環境省の全国版だけを参照している。神奈川県の区分は県のレッドリストを含むが、鹿児島県のレッドリストはまだ収集していないため、同じ種でも県の評価は出ない。神奈川県の区分と並べて危険度を比べない。
+  quote: null
+  review:
+    reviewed_on: '2026-10-10'
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: null
+    reason: 県版 RDB の有無で区分の意味が地域で違う（定義の違い）。誤読すると地域間の比較が成り立たない（禁止表現を含むが警告に留める。オーナー確認待ち）。
+    changed:
+    - new
+- key: amamiWatershedGap
+  severity: warning
+  kind: coverage_gap
+  title_ja: null
+  body_ja: 奄美大島の流域は、国土数値情報 W12（1977年版）のポリゴンで決めている。W12 が覆わない部分（島の海岸部など）の記録は流域が空になり、流域ごとの集計には出ない。島全体の件数と流域別の合計は一致しない。
+  quote: null
+  review:
+    reviewed_on: '2026-10-10'
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: null
+    reason: W12 が覆わない部分は流域が NULL になる（網羅性の欠け）。流域別の合計を島全体と読むと過小になる。オーナー確認待ち。
+    changed:
+    - new

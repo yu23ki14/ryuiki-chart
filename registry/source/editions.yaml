@@ -50,6 +50,17 @@ declared_editions:
     vintage: "2016"
     fetched_from: nlni_l03b_landuse_2016
     notes: "国土数値情報 L03-b 2016 年版（コード体系は 0100,0200,0500,…,1600）。variable_alias.csv の edition_key=2016。"
+  # 奄美（jp-46。奄美 Step 1 PR-B）。神奈川と同じ 2 版（取得行は版ごとの奄美の出典）。
+  - source_id: nlni_l03b_landuse_by_watershed_amami
+    edition_key: "2006"
+    vintage: "2006"
+    fetched_from: nlni_l03b_landuse_2006_amami
+    notes: "国土数値情報 L03-b 2006 年版・奄美（コード体系は神奈川の 2006 年版と同じ）。variable_alias.csv の edition_key=2006。"
+  - source_id: nlni_l03b_landuse_by_watershed_amami
+    edition_key: "2016"
+    vintage: "2016"
+    fetched_from: nlni_l03b_landuse_2016_amami
+    notes: "国土数値情報 L03-b 2016 年版・奄美（コード体系は神奈川の 2016 年版と同じ）。variable_alias.csv の edition_key=2016。"
 
 # source ごとの宣言（edition の自動生成・declared_editions のどちらにも効く）。
 source_declarations:

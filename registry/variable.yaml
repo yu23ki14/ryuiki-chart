@@ -201,6 +201,17 @@ variables:
     higher_is_worse: null
     description_ja: "採水時の水温"
     status: ok
+  - variable_id: common:variable:water.sea_surface_temp
+    code: water.sea_surface_temp
+    name_ja: null
+    name_en: null
+    theme: water
+    unit_id: common:unit:degc
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: null
+    description_ja: "海域の平均海面水温。点の水温ではない（気象庁「日本沿岸域の海面水温情報」の海域平均）"
+    status: ok
   - variable_id: common:variable:water.transparency
     code: water.transparency
     name_ja: null
@@ -816,6 +827,17 @@ variables:
     default_stat: "sum"
     higher_is_worse: null
     description_ja: null
+    status: ok
+  - variable_id: common:variable:weather.global_solar_radiation
+    code: weather.global_solar_radiation
+    name_ja: null
+    name_en: null
+    theme: weather
+    unit_id: common:unit:mj_per_m2
+    value_type: num
+    default_stat: "mean"
+    higher_is_worse: null
+    description_ja: "全天日射量（日合計の月平均。気象庁の月別値）"
     status: ok
   - variable_id: common:variable:weather.wind_speed_mean
     code: weather.wind_speed_mean

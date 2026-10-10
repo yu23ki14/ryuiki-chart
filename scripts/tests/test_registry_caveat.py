@@ -55,6 +55,10 @@ def test_zone_caveat_body_contains_zone_yaml_note_ja():
     assert note in body, "caveat.yaml の zone の body_ja が zone.yaml の note_ja を含まない（どちらかを直してそろえる）"
 
 
+# オーナーの確認待ちの注記（奄美 Step 1 PR-B の決定6・7）。確認したら外す
+PENDING_OWNER_CONFIRMATION = {"amamiRedList", "amamiWatershedGap"}
+
+
 def test_every_caveat_has_a_complete_review_record():
     entries = build_caveat._load_caveat_yaml()
     assert len(entries) >= 18
@@ -62,7 +66,10 @@ def test_every_caveat_has_a_complete_review_record():
         r = e["review"]
         assert r["reviewed_on"] in {"2026-10-06", "2026-10-07", "2026-10-10"}  # eDNA の注記4件は 10-07、zone は v2 で 10-10
         assert r["reviewer"] == "claude（オーナー委任）"
-        assert r["owner_confirmed_on"] == "2026-10-07"
+        if e["key"] in PENDING_OWNER_CONFIRMATION:
+            assert r["owner_confirmed_on"] is None  # 確認したら日付を入れて、ここから外す
+        else:
+            assert r["owner_confirmed_on"] == "2026-10-07"
         assert r["reason"]
 
 
@@ -273,3 +280,10 @@ def test_build_from_files_writes_declared_rows(tmp_path):
     assert counts["caveat"] >= 18
     kinds = {r[0] for r in conn.execute("SELECT DISTINCT scope_kind FROM caveat_scope")}
     assert kinds <= CAVEAT_VOCABULARY
+
+
+def test_null_owner_confirmation_is_pending_not_missing(decl):
+    """owner_confirmed_on が null（確認待ち）は通る。キー自体が無いのは上のテストで止まる。"""
+    cav, _ = decl
+    _rewrite(cav, lambda d: d["caveats"][0]["review"].update(owner_confirmed_on=None))
+    build_caveat._load_caveat_yaml()
