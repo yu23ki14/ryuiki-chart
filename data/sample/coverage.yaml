@@ -76,6 +76,25 @@ predicates:
     where: "source_id = 'env_kousui_annual_kanagawa'"
     limit: 10
     min_rows: 10
+  - name: measurements_source_env_kousui_sample_amami
+    table: measurements
+    where: "source_id = 'env_kousui_sample_amami'"
+    limit: 10
+    min_rows: 10
+  - name: measurements_source_env_kousui_annual_amami
+    table: measurements
+    where: "source_id = 'env_kousui_annual_amami'"
+    limit: 10
+    min_rows: 10
+  # --- hydro.flow（環境省 公共用水域の「流量関連」。variable_alias で hydro.flow に解決される）を守る ---
+  # 先頭 N 行（rowid 順）で選ぶと、原本の rowid が振り直されたとき（m02 の再投入で env_kousui_sample_kanagawa の
+  # rowid が先頭に来る行が変わった）に流量の行が1つも入らず、variable_catalog / climatology から hydro.flow が
+  # 丸ごと落ちる。そこで流量を持つ5地点（main のサンプルが持っていた357行）を site_id で固定して全部入れる。
+  - name: measurements_hydro_flow_env_kousui_kanagawa
+    table: measurements
+    where: "variable LIKE '流量関連%' AND site_id IN ('env_kousui_stations_kanagawa__kousui_1410260', 'env_kousui_stations_kanagawa__kousui_1410270', 'env_kousui_stations_kanagawa__kousui_1410280', 'env_kousui_stations_kanagawa__kousui_1410290', 'env_kousui_stations_kanagawa__kousui_1410620')"
+    limit: 400
+    min_rows: 357
   - name: measurements_source_null
     table: measurements
     where: "source_id IS NULL"
@@ -142,6 +161,28 @@ predicates:
     table: sensor_timeseries
     where: "site_id = 'jma_stations_kanagawa__jma_0387'"
     limit: 250
+    min_rows: 100
+
+  # --- sensor_timeseries の source_id 網羅（奄美。出典ごとに先頭の100行。集計の退化検査の対象ではない） ---
+  - name: sensor_source_soramame_hourly_amami
+    table: sensor_timeseries
+    where: "source_id = 'soramame_hourly_amami'"
+    limit: 100
+    min_rows: 100
+  - name: sensor_source_jma_monthly_amami
+    table: sensor_timeseries
+    where: "source_id = 'jma_monthly_amami'"
+    limit: 100
+    min_rows: 100
+  - name: sensor_source_jma_daily_nase
+    table: sensor_timeseries
+    where: "source_id = 'jma_daily_nase'"
+    limit: 100
+    min_rows: 100
+  - name: sensor_source_jma_sst_amami
+    table: sensor_timeseries
+    where: "source_id = 'jma_sst_amami'"
+    limit: 100
     min_rows: 100
 
   # --- occurrence の12形（scripts/migrate/occurrence_period_shapes.yaml）。
@@ -336,6 +377,16 @@ predicates:
     where: "source_id = 'inaturalist_kanagawa'"
     limit: 10
     min_rows: 10
+  - name: occurrence_source_gbif_amami
+    table: organism_records
+    where: "source_id = 'gbif_amami_occurrences'"
+    limit: 10
+    min_rows: 10
+  - name: occurrence_source_inaturalist_amami
+    table: organism_records
+    where: "source_id = 'inaturalist_amami'"
+    limit: 10
+    min_rows: 10
 
 # ---------------------------------------------------------------------------
 # 全部入れる「閉包」（宣言済み差分の再現に要るもの、および全量で明示された
@@ -424,6 +475,10 @@ wholesale_processed_files:
   - nlni_w12_watersheds.geojson
   - nlni_w12_watersheds.jsonl
   - nlni_l03b_landuse_by_watershed.csv
+  # 奄美（jp-46）。pipeline_inputs.SOURCE_FILE_KEYS が全地域ぶんを並べる（test_pipeline_inputs が一致を見る）
+  - nlni_w12_watersheds_amami.geojson
+  - nlni_w12_watersheds_amami.jsonl
+  - nlni_l03b_landuse_by_watershed_amami.csv
   - moe_ias_list.csv
   - taxon_crosswalk.csv
   - taxon_gbif_accepted.csv

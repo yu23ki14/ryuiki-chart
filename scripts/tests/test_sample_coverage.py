@@ -177,6 +177,8 @@ def test_declaration_counts_keys_match_declared_entries_exactly(filename):
     grouped = period.load_count_overlay_file(SAMPLE_DIR / "declaration_counts.yaml")
     overlay_keys = set(grouped.get(filename, {}))
     declared_keys = period.declared_overlay_keys(_declared_entries_for(filename))
+    if filename == "manifests":   # builtin × occurrence の manifest の expected も overlay が差し替える
+        declared_keys |= manifest_lib.expected_overlay_keys(manifest_lib.load_manifests())
     missing = declared_keys - overlay_keys
     extra = overlay_keys - declared_keys
     assert not missing and not extra, (

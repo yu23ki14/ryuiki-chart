@@ -193,13 +193,16 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from ingest import manifest as manifest_lib  # noqa: E402
 from migrate import censoring, common, edition, period, public_id, regions as region_vocab, source_regions  # noqa: E402
+import pipeline_inputs  # noqa: E402
+import regions as collector_regions  # noqa: E402  region_of_source_id・name（地域ごとの出典名）
 
 DEFAULT_RYUIKI_DB = ROOT / "data" / "db" / "ryuiki.sqlite"
 DEFAULT_REGISTRY_DB = ROOT / "data" / "db" / "registry.sqlite"
 DEFAULT_EXCEPTIONS_YAML = ROOT / "scripts" / "migrate" / "period_exceptions.yaml"
 DEFAULT_TIME_LABEL_CONVENTIONS_YAML = ROOT / "scripts" / "migrate" / "time_label_conventions.yaml"
 DEFAULT_MANIFESTS_DIR = source_regions.DEFAULT_MANIFESTS_DIR
-DEFAULT_LANDUSE_CSV = ROOT / "data" / "processed" / "nlni_l03b_landuse_by_watershed.csv"
+# 土地利用の CSV は地域ごとに1ファイル（全地域ぶんを順に読む。pipeline_inputs.LANDUSE_PROCESSED_FILES）。
+DEFAULT_LANDUSE_CSVS = tuple(ROOT / "data" / "processed" / n for n in pipeline_inputs.LANDUSE_PROCESSED_FILES)
 DEFAULT_OUT = ROOT / "data" / "db" / "v2.sqlite"
 DEFAULT_REPORT = ROOT / "reports" / "phase_b_fact_slice.md"
 # P-1b（土地利用、docs/plans/PHASE_B_LANDUSE.md）。CSV の source_id 列は全行
@@ -207,6 +210,16 @@ DEFAULT_REPORT = ROOT / "reports" / "phase_b_fact_slice.md"
 # 確認済み）。manifests/*.yml の sources キー・observation.source_table・
 # variable_alias.csv の dataset（版は edition_key。Issue #39 Phase C）がこの文字列を共有する。
 LANDUSE_SOURCE_ID = "nlni_l03b_landuse_by_watershed"
+# 土地利用の observation.source_table は全地域で LANDUSE_SOURCE_ID（dataset は「データセットの種類」で、
+# 気象・水質が表名を地域をまたいで共有するのと同じ。地域は source_id 列で区別し、source_row_id に出典名を前置する）。
+
+
+def landuse_source_row_id(source_id: str, row_number: int, suffix: str) -> str:
+    """神奈川（および地域を特定できない出典名）は従来どおり `<行>:<suffix>`。それ以外の地域は CSV ごとに
+    行番号が1から始まり衝突するので、出典名を前置する。"""
+    rid = collector_regions.region_or_default(collector_regions.region_of_source_id(source_id))
+    base = f"{row_number}:{suffix}"
+    return base if rid == collector_regions.DEFAULT_REGION else f"{source_id}:{base}"
 
 _SAMPLE_LIMIT = 20
 
@@ -756,8 +769,9 @@ def _ingest_landuse(
     source_usage,
     region_usage,
 ) -> dict:
-    """`csv_path`（既定 `data/processed/nlni_l03b_landuse_by_watershed.csv`。
-    国土数値情報 L03-b 土地利用、流域別・2006/2016年版に前処理済みのCSV、L1）を
+    """`csv_path`（既定は全地域の `data/processed/nlni_l03b_landuse_by_watershed*.csv`。
+    国土数値情報 L03-b 土地利用、流域別・2006/2016年版に前処理済みのCSV、L1。
+    1つのパスでも、パスの列でもよい。`source_row_id` の行番号は CSV ごとに1から数える）を
     1行ずつ読み、`insert_table` へ `executemany` でストリーム挿入する
     （`_ingest_measurements`/`_ingest_sensor_timeseries` と同じくジェネレータを
     直接渡す。C-5）。
@@ -814,8 +828,10 @@ def _ingest_landuse(
     seen_business_keys: set[tuple] = set()
     edition_of = edition.make_resolver(work, "reg")
 
-    def rows():
-        with open(csv_path, encoding="utf-8", newline="") as f:
+    csv_paths = [csv_path] if isinstance(csv_path, (str, pathlib.Path)) else list(csv_path)
+
+    def rows_of(one_csv):
+        with open(one_csv, encoding="utf-8", newline="") as f:
             reader = csv.DictReader(f)
             for row_number, row in enumerate(reader, start=1):
                 stats["total"] += 1
@@ -865,7 +881,7 @@ def _ingest_landuse(
                         continue
                     period_grain, period_start, period_end = result
 
-                    source_row_id = f"{row_number}:{suffix}"
+                    source_row_id = landuse_source_row_id(source_id, row_number, suffix)
                     stats["n_observation"] += 1
                     yield (
                         LANDUSE_SOURCE_ID, source_row_id, region_id, place_id, place_kind,
@@ -876,6 +892,10 @@ def _ingest_landuse(
                         public_id.landuse_observation_id(watershed_id, data_year, code, suffix),
                         edition_of(source_id, vintage=data_year),
                     )
+
+    def rows():
+        for one_csv in csv_paths:
+            yield from rows_of(one_csv)
 
     dest.executemany(_INSERT_SQL.format(table=f'"{insert_table}"'), rows())
     return stats
@@ -888,7 +908,7 @@ def build_and_write_observation(
     time_conventions_yaml=DEFAULT_TIME_LABEL_CONVENTIONS_YAML,
     out_path=DEFAULT_OUT,
     manifests_dir=DEFAULT_MANIFESTS_DIR,
-    landuse_csv=DEFAULT_LANDUSE_CSV,
+    landuse_csv=DEFAULT_LANDUSE_CSVS,
     count_overlay_by_file: dict[str, dict[str, int]] | None = None,
 ) -> dict[str, dict]:
     """`observation` を構築し、`out_path` の `observation` テーブルに書き込む
@@ -1243,8 +1263,8 @@ def main() -> None:
         help="土地利用（consumer='observation'）の region 宣言（P-1b）",
     )
     parser.add_argument(
-        "--landuse-csv", default=str(DEFAULT_LANDUSE_CSV),
-        help="国土数値情報 L03-b 土地利用（流域別、2006/2016年版）のCSV（P-1b）",
+        "--landuse-csv", action="append", default=None,
+        help="国土数値情報 L03-b 土地利用（流域別、2006/2016年版）のCSV（P-1b）。地域ごとに繰り返せる。既定は全地域",
     )
     parser.add_argument(
         "--count-overlay", default=None,
@@ -1262,7 +1282,9 @@ def main() -> None:
 
     print(f"▶ 読み取り専用で開く: {args.ryuiki_db}")
     print(f"▶ 読み取り専用で開く: {registry_db}")
-    print(f"▶ 読み取り専用で読む: {args.landuse_csv}")
+    landuse_csvs = args.landuse_csv or [str(p) for p in DEFAULT_LANDUSE_CSVS]
+    for c in landuse_csvs:
+        print(f"▶ 読み取り専用で読む: {c}")
 
     count_overlay_by_file = period.resolve_count_overlays(
         args.count_overlay,
@@ -1272,7 +1294,7 @@ def main() -> None:
     with common.timed_step("observation を構築して書き出し") as info:
         all_stats = build_and_write_observation(
             args.ryuiki_db, registry_db, args.exceptions_yaml, args.time_conventions_yaml, args.out,
-            args.manifests_dir, args.landuse_csv, count_overlay_by_file,
+            args.manifests_dir, landuse_csvs, count_overlay_by_file,
         )
         info["n"] = sum(s["n_observation"] for s in all_stats.values())
 

@@ -171,6 +171,13 @@
         <worktree>/data/processed/nlni_w12_watersheds.geojson
   ln -s /home/yu23ki14/cfj/ryuiki-demo/data/processed/nlni_l03b_landuse_by_watershed.csv \
         <worktree>/data/processed/nlni_l03b_landuse_by_watershed.csv
+  # 奄美（jp-46）。r01/b03/b09 は全地域の入力を要求するので、奄美の W12 と土地利用も要る
+  ln -s /home/yu23ki14/cfj/ryuiki-demo/data/processed/nlni_w12_watersheds_amami.jsonl \
+        <worktree>/data/processed/nlni_w12_watersheds_amami.jsonl
+  ln -s /home/yu23ki14/cfj/ryuiki-demo/data/processed/nlni_w12_watersheds_amami.geojson \
+        <worktree>/data/processed/nlni_w12_watersheds_amami.geojson
+  ln -s /home/yu23ki14/cfj/ryuiki-demo/data/processed/nlni_l03b_landuse_by_watershed_amami.csv \
+        <worktree>/data/processed/nlni_l03b_landuse_by_watershed_amami.csv
   ln -s /home/yu23ki14/cfj/ryuiki-demo/data/processed/moe_ias_list.csv \
         <worktree>/data/processed/moe_ias_list.csv
   ln -s /home/yu23ki14/cfj/ryuiki-demo/data/processed/taxon_gbif_accepted.csv \

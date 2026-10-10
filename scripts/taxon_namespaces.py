@@ -25,6 +25,8 @@ GBIFのtaxonKeyとは無関係な別の数値空間）は `'inat'`。`m03_organi
 TAXON_KEY_SOURCE_NAMESPACE = {
     "gbif_kanagawa_occurrences": "gbif",
     "inaturalist_kanagawa": "inat",
+    "gbif_amami_occurrences": "gbif",
+    "inaturalist_amami": "inat",
 }
 
 # taxonID の前置に使う名前空間の集合（`TAXON_KEY_SOURCE_NAMESPACE` の値）。

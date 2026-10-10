@@ -39,7 +39,11 @@ export interface MapCanvasProps {
   images?: Record<string, StyleImageSource>;
   onFeatureClick?: (f: MapGeoJSONFeature, lngLat: LngLat) => void;
   onHover?: (f: MapGeoJSONFeature | null) => void;
-  fitBounds?: [[number, number], [number, number]] | null;
+  /**
+   * 指定の範囲へ移す。同じ範囲を続けて指定しても移れるよう、押すたびに nonce を増やして渡す
+   * （効果は fitTo の同一性ではなく nonce の変化で動く）。
+   */
+  fitTo?: { bounds: [[number, number], [number, number]]; nonce: number } | null;
   center?: [number, number];
   zoom?: number;
   className?: string;
@@ -79,7 +83,7 @@ export function MapCanvas({
   images,
   onFeatureClick,
   onHover,
-  fitBounds,
+  fitTo,
   center = DEFAULT_CENTER,
   zoom = DEFAULT_ZOOM,
   className = "",
@@ -263,9 +267,10 @@ export function MapCanvas({
   // fitBounds
   React.useEffect(() => {
     const map = mapRef.current;
-    if (!map || !ready || !fitBounds) return;
-    map.fitBounds(fitBounds, { padding: 48, duration: 700, maxZoom: 14 });
-  }, [fitBounds, ready]);
+    if (!map || !ready || !fitTo) return;
+    map.fitBounds(fitTo.bounds, { padding: 48, duration: 700, maxZoom: 14 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 動かす条件は nonce の変化だけ
+  }, [fitTo?.nonce, ready]);
 
   // className は「位置指定済みの箱」であることが前提（absolute inset-0 か relative + 高さ）。
   // ここで relative を足すと呼び出し側の absolute と競合して高さ 0 になるため足さない。

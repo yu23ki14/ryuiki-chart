@@ -16,6 +16,9 @@ docs/UNDATAFIED_TIERS.md の Tier 1 を c80〜c88 で収集した結果
 import sys, pathlib, json, csv, sqlite3
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from common import appdb, PROC, ROOT, now
+import regions
+from regions import REGIONS
+from m01_sites import load_watersheds
 
 from shapely.geometry import shape, Point
 from shapely import STRtree
@@ -59,16 +62,8 @@ def text(v):
 # ---- 流域ポリゴン (m01_sites.py と同じ原本。点数が多いので STRtree で引く) ----
 class Watersheds:
     def __init__(self):
-        gj = json.load(open(PROC / "nlni_w12_watersheds.geojson", encoding="utf-8"))
-        self.polys, self.props = [], []
-        for feat in gj["features"]:
-            try:
-                self.polys.append(shape(feat["geometry"]))
-            except Exception:
-                continue
-            self.props.append(feat["properties"])
+        self.polys, self.props = load_watersheds()   # m01 と同じ読み込み（全地域の W12。無い地域は飛ばす）
         self.tree = STRtree(self.polys)
-        print(f"  流域ポリゴン: {len(self.polys)}")
 
     def find(self, lon, lat):
         if lon is None or lat is None:
@@ -142,12 +137,27 @@ def load_wildlife(con):
     undated = sum(1 for r in rows if not text(r.get("observed_on")))
     return f"wildlife_sightings: {len(out)} 行 (日付が確定できなかった行 {undated})"
 
-def load_vegetation(con, ws):
-    """現存植生図2024 (c80_biodic_ikimonomap.py)。"""
-    rows = read_csv("biodic_veg2024_kanagawa")
+def load_vegetation(con, ws, rid=regions.DEFAULT_REGION):
+    """現存植生図2024 (c80_biodic_ikimonomap.py)。地域ごとに呼ぶ。
+
+    feature_id は表の主キー。他の地域の行と衝突すると INSERT OR REPLACE が黙って上書きするので、
+    衝突したら止める（入れる前に調べる）。同じ出典の中の重複は従来どおり INSERT OR REPLACE が吸収する。"""
+    src = regions.name("biodic_veg2024_kanagawa", rid)
+    rows = read_csv(src)
     if rows is None:
         return None
-    wipe(con, "vegetation_polygons", ["biodic_veg2024_kanagawa"])
+    wipe(con, "vegetation_polygons", [src])
+    ids = sorted({r["feature_id"] for r in rows})   # 同一出典内の重複は INSERT OR REPLACE が従来どおり吸収する
+    dup = set()
+    for i in range(0, len(ids), 500):
+        chunk = ids[i:i + 500]
+        marks = ",".join("?" for _ in chunk)
+        dup.update(x for (x,) in con.execute(
+            f"SELECT feature_id FROM vegetation_polygons WHERE source_id != ? AND feature_id IN ({marks})",
+            (src, *chunk)))
+    if dup:
+        raise SystemExit(f"{src}: vegetation_polygons.feature_id が他の地域の行と衝突している"
+                         f"（{len(dup)} 件、例: {sorted(dup)[:3]}）")
     out = []
     for r in rows:
         lat, lon = num(r.get("centroid_lat")), num(r.get("centroid_lon"))
@@ -166,7 +176,7 @@ def load_vegetation(con, ws):
             source_id,source_ref)
            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", out)
     inws = sum(1 for o in out if o[11])
-    return f"vegetation_polygons: {len(out)} 行 (流域が引けた {inws})"
+    return f"vegetation_polygons[{src}]: {len(out)} 行 (流域が引けた {inws})"
 
 def load_mammal_mesh(con):
     """中大型哺乳類3種のメッシュ分布 (c80_biodic_ikimonomap.py)。"""
@@ -354,7 +364,6 @@ def main():
     jobs = [
         ("保護区・緑地台帳",      lambda: load_protected_areas(con, ws)),
         ("ツキノワグマ出没記録",  lambda: load_wildlife(con)),
-        ("現存植生図2024",        lambda: load_vegetation(con, ws)),
         ("哺乳類メッシュ分布",    lambda: load_mammal_mesh(con)),
         ("相模川水系 流路",       lambda: load_river_segments(con)),
         ("平塚市 大気(日別)",     lambda: load_hiratsuka_air(con)),
@@ -368,6 +377,8 @@ def main():
             site_key=lambda r: (text(r.get("well_id")) or text(r.get("municipality_ja"))
                                 or "県全体"))),
     ]
+    for k, rid in enumerate(REGIONS):
+        jobs.insert(2 + k, (f"現存植生図2024 ({rid})", lambda rid=rid: load_vegetation(con, ws, rid)))
     for label, fn in jobs:
         msg = fn()
         if msg is None:

@@ -662,7 +662,7 @@ def test_a2_duplicate_rows_raise_migration_error_with_count_and_examples(tmp_pat
 def test_build_and_write_observation_default_landuse_args_point_at_module_constants():
     """コードレビュー指摘10: `manifests_dir`/`landuse_csv` を省略した
     ときに使われる既定値が、`main()` が明示的に渡す値と同じ
-    `DEFAULT_MANIFESTS_DIR`/`DEFAULT_LANDUSE_CSV`（モジュール定数）で
+    `DEFAULT_MANIFESTS_DIR`/`DEFAULT_LANDUSE_CSVS`（モジュール定数）で
     あることを確認する。`None` 番兵＋関数内で解決する設計をやめ、他の3引数
     （`exceptions_yaml` 等）と同じ素のデフォルト引数に戻した結果、この
     「引数を省略したときの経路」自体はシグネチャの既定値を見るだけで検証
@@ -671,7 +671,7 @@ def test_build_and_write_observation_default_landuse_args_point_at_module_consta
     """
     sig = inspect.signature(b03.build_and_write_observation)
     assert sig.parameters["manifests_dir"].default == b03.DEFAULT_MANIFESTS_DIR
-    assert sig.parameters["landuse_csv"].default == b03.DEFAULT_LANDUSE_CSV
+    assert sig.parameters["landuse_csv"].default == b03.DEFAULT_LANDUSE_CSVS
 
 
 def _build_landuse(tmp_path, registry_db, landuse_csv=None, source_regions_yaml=None):
@@ -1109,3 +1109,84 @@ def test_month_label_restoration_without_label_stops(tmp_path):
             tmp_path, measurements_db, registry_db, _restore_yaml(tmp_path), _no_conventions_path(tmp_path),
             tmp_path / "v2.sqlite",
         )
+
+
+# ---- 土地利用の複数 CSV（奄美 Step 1 PR-B。地域ごとに1ファイル）------------------------------------
+
+_AMAMI_LANDUSE_SOURCE = "nlni_l03b_landuse_by_watershed_amami"
+
+
+def _build_two_region_landuse(tmp_path):
+    """神奈川相当（フィクスチャの source_id）と奄美（出典名＝`..._amami`）の2つの CSV を同時に読む。"""
+    from .manifest_fixtures import write_manifest
+    from .migrate_fixtures import (
+        DEFAULT_LANDUSE_ALIASES, DEFAULT_LANDUSE_VARIABLES, DEFAULT_PLACE_REFS, DEFAULT_PLACES,
+        DEFAULT_VARIABLES, DEFAULT_WATERSHED_PLACE_REFS, DEFAULT_WATERSHED_PLACES, LANDUSE_SOURCE_ID,
+        make_landuse_csv, make_registry_db,
+    )
+
+    # 奄美: 同じ変数・同じ版・別の出典名（alias の dataset は observation.source_table と同じ名前）
+    amami_aliases = [
+        (b03.LANDUSE_SOURCE_ID, alias, _AMAMI_LANDUSE_SOURCE, vid, uid, stat, grain, ed)
+        for (_ds, alias, _sid, vid, uid, stat, grain, ed) in DEFAULT_LANDUSE_ALIASES
+    ]
+    registry_db = tmp_path / "registry.sqlite"
+    make_registry_db(
+        registry_db,
+        aliases=DEFAULT_LANDUSE_ALIASES + amami_aliases,
+        places=DEFAULT_PLACES + DEFAULT_WATERSHED_PLACES + [("place_a1", None, "watershed")],
+        place_refs=DEFAULT_PLACE_REFS + DEFAULT_WATERSHED_PLACE_REFS + [("place_a1", "A1", "watershed_id")],
+        variables=DEFAULT_VARIABLES + DEFAULT_LANDUSE_VARIABLES,
+    )
+    kanagawa_csv = tmp_path / "landuse_kanagawa.csv"
+    make_landuse_csv(kanagawa_csv)
+    amami_csv = tmp_path / "landuse_amami.csv"
+    make_landuse_csv(amami_csv, rows=[
+        (_AMAMI_LANDUSE_SOURCE, "ref2006", 2006, "A1", "OLDA", "", "1", "田", 7, 0.7),
+        (_AMAMI_LANDUSE_SOURCE, "ref2016", 2016, "A1", "OLDA", "", "0100", "田", 8, 0.8),
+    ])
+    manifests = tmp_path / "manifests"
+    write_manifest(manifests, LANDUSE_SOURCE_ID, region="jp-14", target="observation", update_mode="revision",
+                   input={"file": "x.csv"}, expected_row_count=len(DEFAULT_LANDUSE_CSV_ROWS))
+    write_manifest(manifests, _AMAMI_LANDUSE_SOURCE, region="jp-46", target="observation", update_mode="revision",
+                   input={"file": "y.csv"}, expected_row_count=2)
+    measurements_db = tmp_path / "ryuiki.sqlite"
+    make_measurements_db(measurements_db, rows=[])
+    out = tmp_path / "v2.sqlite"
+    all_stats = b03.build_and_write_observation(
+        measurements_db, registry_db, _no_exceptions_path(tmp_path), _no_conventions_path(tmp_path), out,
+        manifests, [kanagawa_csv, amami_csv],
+    )
+    return out, all_stats
+
+
+def test_landuse_reads_several_csvs_and_names_source_table_per_region(tmp_path):
+    """神奈川の source_table/source_row_id は変えず（`LANDUSE_SOURCE_ID` のまま、行番号は CSV ごとに1から）、
+    奄美は source_table は同じで source_row_id に出典名を前置する（行番号が神奈川と衝突しない）。"""
+    out, all_stats = _build_two_region_landuse(tmp_path)
+    assert all_stats[b03.LANDUSE_SOURCE_ID]["total"] == len(DEFAULT_LANDUSE_CSV_ROWS) + 2
+
+    conn = sqlite3.connect(f"file:{out}?mode=ro", uri=True)
+    try:
+        rows = conn.execute("SELECT source_row_id, region_id, place_id FROM observation").fetchall()
+        tables = {r[0] for r in conn.execute("SELECT DISTINCT source_table FROM observation")}
+    finally:
+        conn.close()
+    kana = {r[0] for r in rows if r[1] != "jp-46"}
+    amami = {r[0]: (r[1], r[2]) for r in rows if r[1] == "jp-46"}
+    # 神奈川（5行×2）: 行番号は 1:area_km2 … 5:n_cells。奄美を足しても増減しない
+    assert kana == {f"{i}:{s}" for i in range(1, 6) for s in ("area_km2", "n_cells")}
+    # 奄美は同じ行番号 1,2 を使うが出典名を前置するので衝突しない
+    p = _AMAMI_LANDUSE_SOURCE
+    assert amami == {
+        f"{p}:1:area_km2": ("jp-46", "place_a1"), f"{p}:1:n_cells": ("jp-46", "place_a1"),
+        f"{p}:2:area_km2": ("jp-46", "place_a1"), f"{p}:2:n_cells": ("jp-46", "place_a1"),
+    }
+    assert tables == {b03.LANDUSE_SOURCE_ID}
+
+
+def test_landuse_source_row_id_rule():
+    # source_table は全地域で LANDUSE_SOURCE_ID（_ingest_landuse が直接書く）。source_row_id だけ地域で変わる
+    assert b03.landuse_source_row_id("test_landuse_source", 3, "area_km2") == "3:area_km2"  # 地域を特定できない名前
+    assert b03.landuse_source_row_id("nlni_l03b_landuse_by_watershed", 3, "area_km2") == "3:area_km2"
+    assert b03.landuse_source_row_id(_AMAMI_LANDUSE_SOURCE, 3, "area_km2") == f"{_AMAMI_LANDUSE_SOURCE}:3:area_km2"

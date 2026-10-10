@@ -1,0 +1,11 @@
+# manifests/soramame_hourly_amami.yml（宣言。形は scripts/ingest/manifest.py の docstring）。
+# adapter: builtin = 変換は b03/b06 のまま（出力を動かさない）。メタデータだけを持つ。
+source: soramame_hourly_amami
+region: jp-46
+target: observation
+update_mode: snapshot
+input:
+  table: sensor_timeseries
+adapter: builtin
+evidence: >
+  環境省そらまめ君 1 時間値（奄美局 1 局）。API が直近 13 ヶ月の窓しか返さず、取得のたびに窓ごと取り直すので snapshot（soramame_hourly_kanagawa と同じ）。region=jp-46。

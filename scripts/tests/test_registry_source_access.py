@@ -200,7 +200,14 @@ def test_real_declaration_covers_every_source_and_matches_data():
     rows = bsa.assemble(reg, targets, doc, counts, superseded_by=sup)
     assert len(rows) == len(reg)  # 宣言（access.yaml + manifests）と source_registry の件数が一致すること。件数は直書きしない
     by = {r[0]: dict(zip(bsa.COLUMNS, r)) for r in rows}
-    assert sum(1 for r in by.values() if r["state"] == "queryable") == 15 + 18 + 7  # manifests 15 + records のうち manifests 外の 18 + catalog 7
+    # 引ける出典 = manifests の出典 ∪ records を宣言した出典 ∪ catalog を宣言した出典。件数は直書きしない
+    # （奄美の取り込みで manifests 15→24・records のうち manifests 外 18→22 になって、直書きの 40 が 53 に食い違った。
+    # 前提が古かっただけで、宣言の誤りではない。宣言は assemble が原本の行数と突き合わせ済み）
+    queryable = {sid for sid, r in by.items() if r["state"] == "queryable"}
+    assert queryable == (set(targets)
+                         | {sid for sid, e in doc["sources"].items() if "records" in e}
+                         | {sid for sid, e in doc["sources"].items() if "catalog" in e})
+    assert set(targets) <= queryable
     cat = {sid: r for sid, r in by.items() if r["queryable_via"] == '["find_datasets"]'}
     assert sorted(cat) == sorted(sid for sid, e in doc["sources"].items() if "catalog" in e) and len(cat) == 7
     assert all(r["n_source_rows_basis"] == "catalog_datasets" and r["tables"] == "[]" for r in cat.values())

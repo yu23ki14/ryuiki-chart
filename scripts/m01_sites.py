@@ -19,10 +19,12 @@
 import sys, pathlib, json, re
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from common import appdb, PROC, get, now
+import regions
+from regions import REGIONS
 
 from shapely.geometry import shape, Point
 
-KANAGAWA_BBOX = (138.9, 35.1, 139.8, 35.7)  # lon_min, lat_min, lon_max, lat_max (おおよそ)
+# bbox（lon_min, lat_min, lon_max, lat_max）は regions.REGIONS[rid]["bbox"]（地域ごと）
 
 # ---- geohash (標準base32, 依存ライブラリ不要の自前実装) ----
 _GH_BASE32 = "0123456789bcdefghjkmnpqrstuvwxyz"
@@ -48,14 +50,19 @@ def geohash_encode(lat, lon, precision=9):
 
 # ---- 流域ポリゴン ----
 def load_watersheds():
-    gj = json.load(open(PROC / "nlni_w12_watersheds.geojson", encoding="utf-8"))
+    """全地域の W12 を連結して読む（無い地域は飛ばす。W12 が覆わない点は流域 NULL）。"""
+    paths = regions.w12_paths(PROC, missing_ok=True)
+    if not paths:
+        raise SystemExit("W12 の geojson が1つも無い（data/processed/nlni_w12_watersheds*.geojson）")
     polys, props = [], []
-    for feat in gj["features"]:
-        try:
-            geom = shape(feat["geometry"])
-        except Exception:
-            continue
-        polys.append(geom); props.append(feat["properties"])
+    for path in paths:
+        gj = json.load(open(path, encoding="utf-8"))
+        for feat in gj["features"]:
+            try:
+                geom = shape(feat["geometry"])
+            except Exception:
+                continue
+            polys.append(geom); props.append(feat["properties"])
     print(f"  watersheds loaded: {len(polys)}")
     return polys, props
 
@@ -123,11 +130,32 @@ SITES_COLUMNS = ("site_id", "name", "name_en", "watershed", "zone", "lat", "lon"
                  "source_id", "source_ref", "is_synthetic")
 # 再実行で既存の sites.zone を消さない（INSERT OR REPLACE は zone=NULL を書いて m09 の結果を捨てる）。
 # 新しい地点は zone=NULL のまま（m09_site_zone.py が付ける）。zone 以外の列は上書きする。
+# treatment も同様（s01_synthetic.py が合成12地点に書く。本スクリプトは常に NULL を渡すので上書きさせない）。
 UPSERT_SITES_SQL = (
     f"INSERT INTO sites ({', '.join(SITES_COLUMNS)}) VALUES ({','.join('?' * len(SITES_COLUMNS))}) "
     "ON CONFLICT(site_id) DO UPDATE SET "
-    + ", ".join(f"{c}=excluded.{c}" for c in SITES_COLUMNS if c not in ("site_id", "zone"))
+    + ", ".join(f"{c}=excluded.{c}" for c in SITES_COLUMNS if c not in ("site_id", "zone", "treatment"))
 )
+
+
+# 地域ごとに同じ形で持つ観測局の出典（キーは神奈川の出典名。他の地域は regions.name が slug に置換する）。
+# main() の取り込みと、自己修復の対象（managed_sources）が同じ組を共有する。
+#   elevation(r, fetch): 標高。気象庁は自己申告値をそのまま、環境省は国土地理院の標高 API（fetch()）
+#   municipality: 市区町村欄に入れる列名 / established_on(r): 設置日欄 / note: 件数表示に添える断り
+REGIONAL_STATION_SOURCES = {
+    "jma_stations_kanagawa": {
+        "elevation": lambda r, fetch: r.get("elevation_m"),
+        "municipality": "prefecture_ja",
+        "established_on": lambda r: None,
+        "note": "elevation_m は自己申告値をそのまま使用",
+    },
+    "env_kousui_stations_kanagawa": {
+        "elevation": lambda r, fetch: fetch(),
+        "municipality": "water_body_ja",
+        "established_on": lambda r: str(r["nendo_from"]) if r.get("nendo_from") else None,
+        "note": "established_onは観測開始年度=nendo_from。物理的な設置日ではない",
+    },
+}
 
 
 def main():
@@ -139,7 +167,8 @@ def main():
     # 自己修復: 過去の本スクリプト実行で lat=-1/lon=-1 等のセンチネル値を誤って
     # site として登録してしまった行があれば削除する（本スクリプトが書き込むsource_idの範囲のみ、
     # 他エージェントのデータには触れない）。
-    managed_sources = ("jma_stations_kanagawa", "env_kousui_stations_kanagawa",
+    managed_sources = tuple(regions.name(b, rid) for rid in REGIONS
+                            for b in REGIONAL_STATION_SOURCES) + (
                         "dams_kanagawa", "sagami_livecams", "moni1000_sites")
     cur = conn.execute(
         f"DELETE FROM sites WHERE source_id IN ({','.join('?'*len(managed_sources))}) "
@@ -157,11 +186,8 @@ def main():
     orphan_watershed = 0
     outside_bbox = 0
 
-    def in_bbox(lat, lon):
-        return KANAGAWA_BBOX[0] <= lon <= KANAGAWA_BBOX[2] and KANAGAWA_BBOX[1] <= lat <= KANAGAWA_BBOX[3]
-
     def add_site(site_id, name, name_en, lat, lon, elevation_m, municipality,
-                 established_on, operator, source_id, source_ref):
+                 established_on, operator, source_id, source_ref, rid=regions.DEFAULT_REGION):
         nonlocal orphan_watershed, outside_bbox
         if lat is None or lon is None:
             return False
@@ -170,7 +196,7 @@ def main():
         # 非正の値は欠損として扱う（実在しない座標を site として登録しない）。
         if lat <= 0 or lon <= 0:
             return False
-        if not in_bbox(lat, lon):
+        if not regions.in_bbox(REGIONS[rid]["bbox"], lat, lon):
             outside_bbox += 1
         ws = find_watershed(lon, lat, polys, props)
         if ws is None:
@@ -184,30 +210,18 @@ def main():
         ))
         return True
 
-    # ---- 1) 気象庁アメダス ----
-    n = 0
-    for r in rd_jsonl("jma_stations_kanagawa"):
-        sid = f"jma_stations_kanagawa__{r['station_id']}"
-        if add_site(sid, r["station_name_ja"], r.get("station_name_en"),
-                    r["lat"], r["lon"], r.get("elevation_m"),
-                    r.get("prefecture_ja"), None, publishers.get("jma_stations_kanagawa"),
-                    "jma_stations_kanagawa", r["source_ref"]):
-            n += 1
-    print(f"  jma_stations_kanagawa: {n} sites (elevation_m は自己申告値をそのまま使用)")
-
-    # ---- 2) 環境省 公共用水域 水質測定点 ----
-    n = 0
-    for r in rd_jsonl("env_kousui_stations_kanagawa"):
-        sid = f"env_kousui_stations_kanagawa__{r['station_id']}"
-        elev = fetch_elevation(r["lat"], r["lon"], elev_cache, api_calls)
-        established = str(r["nendo_from"]) if r.get("nendo_from") else None
-        if add_site(sid, r["station_name_ja"], None, r["lat"], r["lon"], elev,
-                    r.get("water_body_ja"), established,
-                    publishers.get("env_kousui_stations_kanagawa"),
-                    "env_kousui_stations_kanagawa", r["source_ref"]):
-            n += 1
-    print(f"  env_kousui_stations_kanagawa: {n} sites "
-          f"(established_onは観測開始年度=nendo_from。物理的な設置日ではない)")
+    # ---- 1) 気象庁アメダス / 2) 環境省 公共用水域 水質測定点（地域ごと。ファイルが無い地域は飛ばす） ----
+    for rid in REGIONS:
+        for base, spec in REGIONAL_STATION_SOURCES.items():
+            src = regions.name(base, rid)
+            n = 0
+            for r in rd_jsonl(src):
+                if add_site(f"{src}__{r['station_id']}", r["station_name_ja"], r.get("station_name_en"),
+                            r["lat"], r["lon"], spec["elevation"](r, lambda: fetch_elevation(r["lat"], r["lon"], elev_cache, api_calls)),
+                            r.get(spec["municipality"]), spec["established_on"](r), publishers.get(src),
+                            src, r["source_ref"], rid):
+                    n += 1
+            print(f"  {src}: {n} sites ({spec['note']})")
 
     # ---- 3) ダム ----
     n = 0
@@ -261,7 +275,7 @@ def main():
     print(f"\n  TOTAL sites inserted/updated this run: {len(rows)}; table now has {n_sites} rows")
     print(f"  GSI elevation API calls made this run: {api_calls[0]} (cap={ELEV_CAP})")
     print(f"  orphan watershed (no polygon matched): {orphan_watershed}")
-    print(f"  outside Kanagawa bbox: {outside_bbox}")
+    print(f"  outside region bbox: {outside_bbox}")
     print(f"  座標が無いため sites に入れなかったソース: {skipped_no_latlon}")
     conn.close()
 

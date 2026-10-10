@@ -15,6 +15,7 @@ import { NAME_JA } from "@/lib/registry/generated-client";
 import { OCC_BOTH_KINDS_YEAR, OCC_MESH_N, OCC_N_ALL, OCC_N_LOCATED, OCC_SUM, USE_RECORD_VERNACULAR, labelMap, pickLabel, resolveNames } from "./occurrence";
 import { IAS_SINCE_YEAR, OCC_DEFAULT_FROM, occDefaultTo, chunk, cmp, jsonEachParam, seriesFilterSql, uniq } from "./sql";
 import { OCCURRENCE_AGG_INDEX } from "@/db/schema-cube";
+import { OCCURRENCE_SOURCE_IDS } from "./source-meta";
 import { basisOfCell, isRepresentativeObsStat, seriesKeyFromRow, seriesKeySql, seriesKeyString, type SeriesKey } from "./series";
 
 /**
@@ -880,8 +881,11 @@ export async function siteSeriesCells(db: CubeDb, opt: { dataset: string }): Pro
 
 type OccRow = Record<string, string | number | null>;
 
-const SOURCE_GBIF = "gbif_kanagawa_occurrences";
-const SOURCE_INAT = "inaturalist_kanagawa";
+// 地域ごとに出典が分かれる（神奈川・奄美）。出典の一覧はマニフェスト由来の生成物
+// （OCCURRENCE_SOURCE_IDS）から接頭辞で引く。手で並べない（地域を足しても自動で入る）。
+const SOURCES_GBIF = OCCURRENCE_SOURCE_IDS.filter((id) => id.startsWith("gbif_"));
+const SOURCES_INAT = OCCURRENCE_SOURCE_IDS.filter((id) => id.startsWith("inaturalist_"));
+const placeholders = (n: number) => Array(n).fill("?").join(", ");
 const IAS_LIST_ID = "moe_ias_2015";
 
 export interface SpeciesCatalogRow {
@@ -1065,19 +1069,20 @@ export async function effortYears(db: CubeDb, opt: { from?: number; to?: number 
     ),
     db.all<OccRow>(
       `SELECT year, source_id, SUM(n) AS n FROM summary_group_year
-       WHERE year BETWEEN ? AND ? AND source_id IN (?, ?) GROUP BY year, source_id`,
-      [...range, SOURCE_GBIF, SOURCE_INAT],
+       WHERE year BETWEEN ? AND ? AND source_id IN (${placeholders(SOURCES_GBIF.length + SOURCES_INAT.length)}) GROUP BY year, source_id`,
+      [...range, ...SOURCES_GBIF, ...SOURCES_INAT],
     ),
   ]);
   const bySource = new Map<string, number>();
+  const sum = (year: number, ids: string[]) => ids.reduce((a, id) => a + (bySource.get(`${year}|${id}`) ?? 0), 0);
   for (const r of src) bySource.set(`${r.year}|${r.source_id}`, r.n as number);
   return eff.map((r) => ({
     year: r.year as number,
     n: r.n as number,
     speciesN: r.n_binom as number,
     meshN: r.n_places as number,
-    nInat: bySource.get(`${r.year}|${SOURCE_INAT}`) ?? 0,
-    nGbif: bySource.get(`${r.year}|${SOURCE_GBIF}`) ?? 0,
+    nInat: sum(r.year as number, SOURCES_INAT),
+    nGbif: sum(r.year as number, SOURCES_GBIF),
   }));
 }
 
@@ -1127,9 +1132,9 @@ export async function occurrenceTotals(db: CubeDb): Promise<OccurrenceTotals> {
     `SELECT (SELECT COALESCE(SUM(n), 0) FROM summary_effort_year) AS records,
             (SELECT COUNT(*) FROM summary_species_catalog) AS species,
             (SELECT COUNT(*) FROM summary_grid_catalog WHERE n > 0) AS grids,
-            (SELECT COALESCE(SUM(n), 0) FROM summary_group_year WHERE source_id = ?) AS gbif,
-            (SELECT COALESCE(SUM(n), 0) FROM summary_group_year WHERE source_id = ?) AS inat`,
-    [SOURCE_GBIF, SOURCE_INAT],
+            (SELECT COALESCE(SUM(n), 0) FROM summary_group_year WHERE source_id IN (${placeholders(SOURCES_GBIF.length)})) AS gbif,
+            (SELECT COALESCE(SUM(n), 0) FROM summary_group_year WHERE source_id IN (${placeholders(SOURCES_INAT.length)})) AS inat`,
+    [...SOURCES_GBIF, ...SOURCES_INAT],
   );
   const r = rows[0] ?? {};
   return {

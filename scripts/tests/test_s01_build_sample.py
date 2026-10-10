@@ -15,6 +15,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
+import pipeline_inputs  # noqa: E402
 import s01_build_sample as s01  # noqa: E402
 
 
@@ -114,7 +115,7 @@ def test_apply_quality_transitions_closure_pulls_in_referenced_measurements():
 
 _EMPTY_GEOJSON = '{"type": "FeatureCollection", "features": []}'
 
-# `build_declaration_counts` の既定引数 `landuse_csv_path=DEFAULT_LANDUSE_CSV`
+# `build_declaration_counts` の既定引数 `landuse_csv_path=DEFAULT_LANDUSE_CSV`（地域ごとの {出典名: パス}）
 # は正規のパス（`data/processed/nlni_l03b_landuse_by_watershed.csv`）を指す。
 # 原本の無い環境（CI の `reconcile` ジョブ）では実在しないため、`geojson_path`
 # と同じく、このテスト専用の一時ファイルを明示的に渡す（実測で FileNotFoundError
@@ -189,11 +190,13 @@ def test_end_to_end_determinism_on_fixture_db(tmp_path):
 
     # --processed-dir は tmp_path なので、そこに W12 相当のフィクスチャを置く
     # （0件の organism_records でも build_declaration_counts が読みに行くため）。
-    (tmp_path / "nlni_w12_watersheds.geojson").write_text(_EMPTY_GEOJSON, encoding="utf-8")
+    # 地域ごとの W12（pipeline_inputs.W12_PROCESSED_FILES。全地域ぶん）
+    for name in pipeline_inputs.W12_PROCESSED_FILES:
+        (tmp_path / name).write_text(_EMPTY_GEOJSON if name.endswith(".geojson") else "dummy", encoding="utf-8")
     # manifest.json の source_files（pipeline_inputs.SOURCE_FILE_KEYS）は
-    # data/processed の6ファイルすべての実在を要求するので、残り5つもダミーで置く。
+    # data/processed の入力すべての実在を要求するので、残りもダミーで置く（土地利用 CSV は地域ごと）。
     for name in (
-        "nlni_w12_watersheds.jsonl", "nlni_l03b_landuse_by_watershed.csv",
+        *pipeline_inputs.LANDUSE_PROCESSED_FILES,
         "moe_ias_list.csv", "taxon_crosswalk.csv", "taxon_gbif_accepted.csv", "terrain_points.csv",
     ):
         (tmp_path / name).write_text("dummy", encoding="utf-8")
@@ -748,3 +751,40 @@ def test_place_sites_stop_when_no_input_row_exists():
     access = {"record_sets": {"sites": "place"}, "sources": {"nothere": {"records": ["sites"]}}}
     with pytest.raises(SystemExit, match="nothere"):
         s01.select_declared_source_rows(_place_input_db(), access, {})
+
+
+def test_landuse_and_w12_paths_cover_every_region(tmp_path):
+    assert set(s01.landuse_csv_paths(tmp_path)) == {
+        "nlni_l03b_landuse_by_watershed", "nlni_l03b_landuse_by_watershed_amami",
+    }
+    assert [p.name for p in s01.collector_regions.w12_paths(tmp_path)] == [
+        "nlni_w12_watersheds.geojson", "nlni_w12_watersheds_amami.geojson",
+    ]
+
+
+def test_manifest_expected_counts_are_measured_from_sample_rows(tmp_path):
+    """builtin × occurrence の manifest の expected は、サンプルの当該出典の行から実測する（yaml 側とは別に）。"""
+    import sqlite3
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    register = s01.register_classify_shape
+    register(conn)
+    conn.execute("CREATE TABLE organism_records (observed_on TEXT, lat REAL, lon REAL, source_id TEXT, occurrence_status TEXT)")
+    conn.executemany("INSERT INTO organism_records VALUES (?,?,?,?,?)", [
+        ("2020-05-01", None, None, "x", None), ("2021", None, None, "x", None), (None, None, None, "x", None),
+    ])
+    rows = [{"record_id": str(i), "observed_on": o, "lat": None, "lon": None, "source_id": "x"}
+            for i, o in enumerate(["2020-05-01", "2021", None])]
+    from .occurrence_fixtures import write_watershed_geojson
+    geo = tmp_path / "w12.geojson"   # data/processed の実ファイルに依存しない
+    write_watershed_geojson(geo, [("W1", [[[139.0, 35.0], [139.1, 35.0], [139.1, 35.1], [139.0, 35.1], [139.0, 35.0]]])])
+    got = s01._manifest_expected_counts(
+        "x", {"period_shapes": {"day": 0, "year": 0}, "place": {"coord_resolved": 0, "coord_unresolved": 0},
+              "cube": {"dated_rows": 0, "dated_no_coordinate_rows": 0}},
+        rows,
+        lambda table, where: conn.execute(f"SELECT COUNT(*) FROM {table} WHERE {where}").fetchone()[0],
+        {"x": "+09:00"}, geo)
+    assert got["manifests:x.expected.cube.dated_rows"] == 2
+    assert got["manifests:x.expected.cube.dated_no_coordinate_rows"] == 2
+    assert got["manifests:x.expected.period_shapes.day"] == 1 and got["manifests:x.expected.period_shapes.year"] == 1
+    assert got["manifests:x.expected.place.coord_resolved"] == 0

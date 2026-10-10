@@ -149,3 +149,51 @@ GBIF は 5 つの GADM gid を `gadmGid` の複数指定（OR）で一度に取�
 - **海面水温**: txt に平年差の列は無い。flag の P/R は、ページの説明（直近は速報値、後日再解析値に更新）から P=速報値・R=再解析値と読めるが、
   定義の明記は無いので `quality_flag` に原文のまま持った。
 - 原本の `source_registry` に足したのは上の 9 件のみ（`register()`）。
+
+## Step 1 PR-B 取り込みと計測
+
+計測の方法は `docs/plans/AMAMI_STEP1B.md` §4（原本は読み取り専用。W12 は `nlni_w12_watersheds_amami.geojson`、
+「陸セル」は `nlni_l03b_landuse_2016_amami.geojson`〔L03-b 2016 の単位流域×土地利用の面〕に点が入るか）。
+丸め/秘匿は GBIF の `issues` に COORDINATE_ROUNDED、iNaturalist の `obscured`/`geoprivacy` が付く行。
+原本の `organism_records` に丸めの列は無い。
+
+### 出現（organism_records）と W12
+
+| 出典 | 件数 | 1面に解決 | 0面・陸セル内 | 0面・陸セル外 | 座標なし |
+|---|---:|---:|---:|---:|---:|
+| gbif_amami_occurrences | 47,874 | 17,959（37.5%） | 26,267（54.9%） | 3,648（7.6%） | 0 |
+| inaturalist_amami | 13,539 | 3,816（28.2%） | 4,645（34.3%） | 5,078（37.5%） | 0 |
+
+複数面に入った点は 0 件。W12 が覆わない陸が出現の約半数（GBIF 55%・iNat 34%）あり、流域単位の集計から落ちる。
+iNat の陸セル外が多いのは、obscured（座標を意図的にずらした）行 5,150 件のうち 2,754 件が海側に落ちるため。
+
+日付の有無別・丸め別（件数）:
+
+| 出典 | 区分 | 日付あり 通常 | 日付あり 丸め/秘匿 | 日付なし 通常 | 日付なし 丸め/秘匿 |
+|---|---|---:|---:|---:|---:|
+| GBIF | 1面に解決 | 16,189 | 1,507 | 234 | 29 |
+| GBIF | 0面・陸セル内 | 21,031 | 3,947 | 1,281 | 8 |
+| GBIF | 0面・陸セル外 | 2,910 | 728 | 10 | 0 |
+| iNat | 1面に解決 | 2,584 | 1,225 | 7 | 0 |
+| iNat | 0面・陸セル内 | 3,473 | 1,171 | 1 | 0 |
+| iNat | 0面・陸セル外 | 2,324 | 2,751 | 0 | 3 |
+
+### 地点（sites）の watershed
+
+| 出典 | 地点数 | watershed が NULL でない | 割合 |
+|---|---:|---:|---:|
+| env_kousui_stations_amami | 25 | 5 | 20% |
+| jma_stations_amami | 3 | 0 | 0% |
+
+### 名寄せされていない taxon
+
+`organism_records.taxon_key` が `taxon_gbif_accepted.csv` の `gbif_key` / `accepted_key` のどちらにも無いもの。
+
+| 出典 | 記録数 | taxon_key なし | 未名寄せの記録数 | 未名寄せの distinct taxon_key |
+|---|---:|---:|---:|---:|
+| gbif_amami_occurrences | 47,874 | 132 | 46,364 | 5,087 |
+| inaturalist_amami | 13,539 | 5 | 13,533 | 4,041 |
+
+iNaturalist の `taxon_key` は iNaturalist の taxon_id（GBIF の key とは別の名前空間）で、表が GBIF の key で引く限り
+一致しない。上の数字は 99.9% が未名寄せだが、iNat は名前空間の違いが主因。`taxon_gbif_accepted.csv` は神奈川の
+`taxon_crosswalk.csv` 由来で、奄美の種は未照会。

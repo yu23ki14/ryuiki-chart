@@ -37,7 +37,7 @@ def test_real_manifests_are_valid_and_cover_the_builtin_families():
     assert {
         "organism_records", "measurements", "sensor_timeseries", "data/processed/nlni_l03b_landuse_by_watershed.csv",
     } <= tables
-    assert {m.region for m in manifests.values()} == {"jp-14"}
+    assert {m.region for m in manifests.values()} == {"jp-14", "jp-46"}
 
 
 def test_update_mode_codes_match_registry_editions_yaml():
@@ -106,11 +106,31 @@ def test_adapter_must_exist_and_match_source_name(tmp_path):
         manifest_lib.validate_manifests_shape(tmp_path / "m", adapters_dir=_adapter_dir(tmp_path))
 
 
-def test_builtin_cannot_carry_checks_or_expected(tmp_path):
-    write_manifest(tmp_path / "m", "src_a", target="occurrence", extra={"expected": _ok_expected()})
+def test_builtin_expected_is_allowed_only_for_occurrence(tmp_path):
+    """緩和（奄美 Step 1 PR-B 決定8）は builtin × occurrence のときだけ効く。他の組み合わせは従来どおり止まる。"""
+    # builtin × occurrence: expected を書ける（書かなくてもよい）
+    write_manifest(tmp_path / "m", "src_a", region="jp-46", target="occurrence", extra={"expected": _ok_expected()})
+    manifest_lib.validate_manifests_shape(tmp_path / "m")
+    # 既存の地域（baseline）の builtin 出現は、yaml が既に値を持つので expected を書けない（二重計上の変異）
+    write_manifest(tmp_path / "m", "src_a", region="jp-14", target="occurrence", extra={"expected": _ok_expected()})
+    with pytest.raises(common.MigrationError, match="二重に数える"):
+        manifest_lib.validate_manifests_shape(tmp_path / "m")
+    # builtin × occurrence でも、形が壊れた expected は止まる
+    bad = _ok_expected()
+    bad["cube"]["dated_rows"] = -1
+    write_manifest(tmp_path / "m", "src_a", region="jp-46", target="occurrence", extra={"expected": bad})
+    with pytest.raises(common.MigrationError, match="dated_rows"):
+        manifest_lib.validate_manifests_shape(tmp_path / "m")
+    # builtin × observation: 書けない
+    write_manifest(tmp_path / "m", "src_a", target="observation", extra={"expected": _ok_expected()})
     with pytest.raises(common.MigrationError, match="builtin に expected"):
         manifest_lib.validate_manifests_shape(tmp_path / "m")
-    write_manifest(tmp_path / "m", "src_a", target="occurrence", extra={"checks": [{"not_null": ["record_key"]}]})
+
+
+def test_builtin_cannot_carry_checks(tmp_path):
+    write_manifest(tmp_path / "m", "src_a", region="jp-46", target="occurrence", extra={"expected": _ok_expected()})
+    manifest_lib.validate_manifests_shape(tmp_path / "m")
+    write_manifest(tmp_path / "m", "src_a", region="jp-46", target="occurrence", extra={"checks": [{"not_null": ["record_key"]}]})
     with pytest.raises(common.MigrationError, match="builtin に checks"):
         manifest_lib.validate_manifests_shape(tmp_path / "m")
 
@@ -148,15 +168,22 @@ def test_check_vocabulary_is_closed(tmp_path, check):
         manifest_lib.validate_manifests_shape(tmp_path / "m", adapters_dir=ad)
 
 
-def test_expected_sums_adds_only_non_builtin_manifests(tmp_path):
+def test_expected_sums_adds_manifests_that_declare_expected(tmp_path):
     ad = _adapter_dir(tmp_path)
-    write_manifest(tmp_path / "m", "gbif_x", target="occurrence")  # builtin（宣言は yaml 側）
+    write_manifest(tmp_path / "m", "gbif_x", target="occurrence")  # builtin で expected なし（宣言は yaml 側）
     e = _ok_expected()
     e["cube"]["dated_rows"] = 7
     write_manifest(tmp_path / "m", "src_a", target="occurrence", adapter="src_a", expected_row_count=1,
                    extra={"expected": e})
     sums = manifest_lib.expected_sums(manifest_lib.load_manifests(tmp_path / "m", adapters_dir=ad))
     assert sums.cube["dated_rows"] == 7 and sums.sources == ("src_a",) and sums.period_shapes == {"day": 1}
+    # builtin でも expected を書いたものは和に入る
+    e2 = _ok_expected()
+    e2["cube"]["dated_rows"] = 5
+    e2["period_shapes"] = {"day": 2}
+    write_manifest(tmp_path / "m", "gbif_x", region="jp-46", target="occurrence", extra={"expected": e2})
+    sums = manifest_lib.expected_sums(manifest_lib.load_manifests(tmp_path / "m", adapters_dir=ad))
+    assert sums.cube["dated_rows"] == 12 and sums.sources == ("gbif_x", "src_a") and sums.period_shapes == {"day": 3}
 
 
 # ---- registry（source_edition.update_mode）への流れ ----------------------------------------------
@@ -304,3 +331,28 @@ def test_expected_absent_excluded_rows_only_for_builtin_occurrence(tmp_path):
     )
     with pytest.raises(common.MigrationError, match="expected_absent_excluded_rows は adapter=builtin"):
         manifest_lib.validate_manifests_shape(tmp_path / "ad", adapters_dir=ad)
+
+
+def test_count_overlay_replaces_manifest_expected_of_builtin_occurrence(tmp_path):
+    """縮小サンプルの overlay（manifests:<出典>.expected.…）は manifest の expected を差し替える。
+    差し替えないと原本の全件の値がサンプルの実測に足される。"""
+    e = _ok_expected()
+    e["cube"]["dated_rows"] = 100
+    write_manifest(tmp_path / "m", "gbif_x", region="jp-46", target="occurrence", extra={"expected": e})
+    manifests = manifest_lib.load_manifests(tmp_path / "m")
+    keys = manifest_lib.expected_overlay_keys(manifests)
+    assert "gbif_x.expected.cube.dated_rows" in keys and "gbif_x.expected.period_shapes.day" in keys
+    ov = {"gbif_x.expected.cube.dated_rows": 3, "gbif_x.expected.period_shapes.day": 2}
+    new = manifest_lib.apply_expected_overlay(manifests, ov)
+    sums = manifest_lib.expected_sums(new)
+    assert sums.cube["dated_rows"] == 3 and sums.period_shapes == {"day": 2}
+    assert manifests["gbif_x"].expected["cube"]["dated_rows"] == 100   # 元は書き換えない
+    assert manifest_lib.apply_expected_overlay(manifests, None) is manifests
+    # 実在しないキーは黙って無視せず止まる
+    with pytest.raises(KeyError):
+        manifest_lib.apply_expected_overlay(manifests, {"gbif_x.expected.cube.nope": 1})
+    with pytest.raises(KeyError):
+        manifest_lib.apply_expected_overlay(manifests, {"other.expected.cube.dated_rows": 1})
+    # 従来の件数 overlay には混ざらない
+    plain, exp = manifest_lib.split_expected_overlay({"gbif_x": 5, "gbif_x.absent_excluded_rows": 1, **ov})
+    assert plain == {"gbif_x": 5, "gbif_x.absent_excluded_rows": 1} and exp == ov

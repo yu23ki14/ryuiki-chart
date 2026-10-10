@@ -5,7 +5,7 @@
 （キーは (lat, lon) の小数6桁。同じ座標の地点は1行を共有する。lat, lon 昇順。決定的）
 
 - 対象 `--points sites`（既定）: 原本 ryuiki.sqlite（読み取り専用）の sites のうち elevation_m IS NOT NULL の座標。
-  region は出典のマニフェスト（manifests/<source_id>.yml の region）。マニフェストが無い出典は --default-region（jp-14）。
+  region は出典のマニフェスト（manifests/<source_id>.yml の region）。マニフェストが無い出典は出典名の slug（regions.region_of_source_id）、それでも引けなければ --default-region（jp-14）。
 - 対象 `--checkpoints <yaml>`: 確認地点だけ（scripts/tests/fixtures/zone_checkpoints.yaml）。--out に別の CSV を書く。
   先頭に name, expect, known_miss が付く（テストが読む）。
 - 窓の半径・タイルのズームは registry/place/zone.yaml の terrain:。変えたら params_digest が変わり、
@@ -30,6 +30,7 @@ import yaml
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from common import ROOT, PROC, RAW, DB
+import regions
 import terrain_lib as T
 from registry import zone_rule
 
@@ -41,7 +42,7 @@ ZONE_YAML = zone_rule.ZONE_YAML
 REGION_YAML = zone_rule.REGION_YAML
 MANIFESTS = ROOT / "manifests"
 OUT_DEFAULT = PROC / "terrain_points.csv"
-DEFAULT_REGION = "jp-14"
+DEFAULT_REGION = regions.DEFAULT_REGION
 SUMMIT_RADIUS_M = 500.0
 SUMMIT_TOL_M = 20.0
 
@@ -72,7 +73,8 @@ def region_of_source(source_id, default_region, manifests=MANIFESTS):
         r = (yaml.safe_load(p.read_text(encoding="utf-8")) or {}).get("region")
         if r:
             return r
-    return default_region
+    # マニフェストが無い出典（sites の出典）は名前の slug から引く。引けなければ既定
+    return regions.region_of_source_id(source_id) or default_region
 
 
 def sites_points(db_path, default_region, manifests=MANIFESTS):

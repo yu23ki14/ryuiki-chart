@@ -25,7 +25,7 @@ key_spaces:
   - key_space: watershed_id
     place_kind: watershed
     edition: fixed
-    edition_source_id: nlni_w12_watersheds
+    edition_source_id: nlni_w12_watersheds   # 既定。地域ごとの W12（nlni_w12_watersheds_amami 等）は build_place が jsonl の名前で行ごとに引く
     edition_note: data/processed/nlni_w12_watersheds.jsonl（国土数値情報 W12 流域界 1977年版）。
   - key_space: grid01_latlon
     place_kind: grid01

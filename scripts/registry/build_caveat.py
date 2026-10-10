@@ -71,6 +71,9 @@ CAVEAT_SCOPE_YAML = common.ROOT / "registry" / "caveat_scope.yaml"
 DEFAULT_PRIORITY = 0
 
 REVIEW_FIELDS = ("reviewed_on", "reviewer", "owner_confirmed_on", "reason", "changed")
+# オーナーの確認待ち（review.owner_confirmed_on が null）を許す注記の key。**ここに無い注記の null は止める**
+# （確認済みだった注記を null に戻すと、確認の記録が黙って消えるため）。確認したら日付を入れて、ここから外す。
+OWNER_PENDING_KEYS = frozenset({"amamiRedList", "amamiWatershedGap"})
 REVIEW_CHANGED_VALUES = {"severity", "kind", "scope", "body", "new"}
 
 
@@ -107,8 +110,12 @@ def _validate_review(key: str, review) -> None:
     if not isinstance(review, dict):
         raise CaveatDeclarationError(f"caveat {key!r}: review が無い（Issue #35: 全注記に人のレビュー記録が要る）")
     missing = [f for f in REVIEW_FIELDS if f not in review or review[f] in (None, "")]
-    # changed は false（変更なし）が正当な値なので、None/空だけを欠落とみなす
-    missing = [f for f in missing if not (f == "changed" and review.get(f) is False)]
+    # changed は false（変更なし）が正当な値なので、None/空だけを欠落とみなす。
+    # owner_confirmed_on は、キーがあれば null（オーナーの確認待ち）でもよい（奄美 Step 1 PR-B）。キー自体が無いのは欠落
+    # null は OWNER_PENDING_KEYS の注記だけ許す。空文字は常に欠落。
+    missing = [f for f in missing if not (f == "changed" and review.get(f) is False)
+               and not (f == "owner_confirmed_on" and review.get(f) is None
+                        and f in review and key in OWNER_PENDING_KEYS)]
     if missing:
         raise CaveatDeclarationError(f"caveat {key!r}: review に {missing} が無い")
     changed = review["changed"]

@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 export const metadata: Metadata = {
   title: { default: "流域カルテ | Watershed Chart", template: "%s | 流域カルテ" },
   description:
-    "尾根から海まで（Ridge to Reef）の観測データを一枚のカルテにするモニタリングデータ基盤のデモ。神奈川県の公開データで構成。",
+    "尾根から海まで（Ridge to Reef）の観測データを一枚のカルテにするモニタリングデータ基盤のデモ。神奈川県・奄美大島の公開データで構成。",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

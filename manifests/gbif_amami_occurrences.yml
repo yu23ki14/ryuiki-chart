@@ -1,0 +1,16 @@
+# manifests/gbif_amami_occurrences.yml（宣言。形は scripts/ingest/manifest.py の docstring）。
+# adapter: builtin = 変換は b03/b06 のまま（出力を動かさない）。メタデータだけを持つ。
+source: gbif_amami_occurrences
+region: jp-46
+target: occurrence
+update_mode: snapshot
+input:
+  table: organism_records
+adapter: builtin
+expected_row_count: 47874
+evidence: >
+  GBIF 経由で取得した奄美大島（奄美市・龍郷町・宇検村・大和村・瀬戸内町）内の occurrence（収集は scripts/c02_gbif.py の --region jp-46）。対象地域を奄美大島に絞って収集しているため region=jp-46。 update_mode=snapshot は gbif_kanagawa_occurrences と同じ取得方式。件数は data/processed/gbif_amami_occurrences.jsonl の行数（2026-10-10。不在記録 ABSENT は 0 件）。
+expected:
+  period_shapes: {year: 114, month: 1128, day: 41573, instant_minute: 1386, instant_minute_z: 23, instant_second: 1203, instant_second_z: 2, day_interval: 878, instant_millisecond_z: 5}
+  place: {coord_resolved: 17959, coord_unresolved: 29915}
+  cube: {dated_rows: 46312, dated_no_coordinate_rows: 0, leaf_cell_source_rows: 15, leaf_cell_source_rows_no_coordinate: 0, month_cell_source_rows: 46063, watershed_dated_resolved_rows: 17696, watershed_dated_unresolved_rows: 28616}

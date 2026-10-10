@@ -23,6 +23,8 @@ import pathlib
 import time
 from typing import NamedTuple
 
+import regions as _regions  # scripts/regions.py（scripts/ は sys.path にある）
+
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 DB_DIR = ROOT / "data" / "db"
 SCHEMA_SQL = ROOT / "scripts" / "schema_registry.sql"
@@ -259,7 +261,7 @@ MODE_FILES_ONLY = "files_only"
 
 # build_place.py/build_taxon.py が derived.sqlite 以外から読み、指紋計算もハッシュする、
 # 「読み取り専用だが値が変わりうる」入力（data/processed/ の収集物）。ビルド側
-# （build_place.py の WATERSHED_JSONL / build_taxon.py の CROSSWALK_CSV）と指紋計算
+# （build_place.py の WATERSHED_JSONLS / build_taxon.py の CROSSWALK_CSV）と指紋計算
 # （_hash_optional_file 呼び出し側）がこの宣言を共有する（指紋の対象とビルドが実際に
 # 読むファイルがずれる穴を防ぐため）。derived.sqlite がここに無い経緯は `SOURCE_NAMES`
 # 直前のコメント参照。旧 `DERIVED_TABLES_READ`/`_hash_derived_tables()`（derived.sqlite
@@ -291,6 +293,12 @@ MOE_IAS_LIST_CSV_RELPATH = pathlib.PurePosixPath("data/processed/moe_ias_list.cs
 # この1ファイルは読み取り専用の配布物だが「原本」（scripts/m0x_*.py が書く3ファイル）
 # ではないので、内容ハッシュを指紋に混ぜてよい（taxon_crosswalk.csv と同じ扱い）。
 WATERSHED_JSONL_RELPATH = pathlib.PurePosixPath("data/processed/nlni_w12_watersheds.jsonl")
+
+# 全地域の W12 の jsonl（`regions.w12_stems()` の順。神奈川が先頭で、`WATERSHED_JSONL_RELPATH` と同じ。
+# 奄美 Step 1 PR-B）。ビルド（build_place.py の WATERSHED_JSONLS）と指紋計算が共有する。
+WATERSHED_JSONL_RELPATHS = tuple(
+    pathlib.PurePosixPath(f"data/processed/{stem}.jsonl") for stem in _regions.w12_stems()
+)
 
 # grid01（build_place.py）の入力が derived.mesh_all から ryuiki.organism_records の
 # 座標に変わったことで抜けた鮮度検知の穴を塞ぐ軽い代理指標（phase-b/occurrence-registry
@@ -488,8 +496,8 @@ def compute_input_fingerprint(
     P-2（2026-09-23）で追加。いずれも build_place.py / build_taxon.py /
     build_taxon_assessment.py が読むのに以前は指紋に入っていなかった）:
 
-    - `data/processed/nlni_w12_watersheds.jsonl`（build_place.py の `WATERSHED_JSONL`）
-      の中身。
+    - 全地域の W12 の jsonl（`WATERSHED_JSONL_RELPATHS`。build_place.py の `WATERSHED_JSONLS`）
+      の中身。神奈川の1本目のハッシュ入力は奄美を足す前と同じ（相対パス＋中身）。
     - `data/processed/taxon_crosswalk.csv`（build_taxon.py の `CROSSWALK_CSV`）の中身。
     - `data/processed/taxon_gbif_accepted.csv`（build_taxon.py の `GBIF_ACCEPTED_CSV`。Issue #34）の中身。
     - `ryuiki.sqlite` の `source_registry` の全内容（`_hash_source_registry()`。build_source.py の入力。
@@ -533,9 +541,8 @@ def compute_input_fingerprint(
         h.update(b"\0")
 
     if mode == MODE_FULL:
-        _hash_optional_file(
-            h, WATERSHED_JSONL_RELPATH.as_posix(), base / WATERSHED_JSONL_RELPATH
-        )
+        for rel in WATERSHED_JSONL_RELPATHS:
+            _hash_optional_file(h, rel.as_posix(), base / rel)
         _hash_optional_file(
             h, TAXON_CROSSWALK_CSV_RELPATH.as_posix(), base / TAXON_CROSSWALK_CSV_RELPATH
         )
@@ -678,7 +685,7 @@ def place_id(
     （`parse_id()` が kind だけで ns の有無を決められるように）。
 
     `local` は `slugify_local_key()` を通す（空白・コロン・非ASCII対策。
-    レビュー指摘）。`seen` を渡すと、同じ (place_kind, namespace) の中で
+    レビュー指摘）。`seen` を渡すと、同じ (scope, place_kind, namespace) の中で
     別の元 local が同じ slug に潰れた場合に例外を投げる。
     """
     if place_kind in PLACE_KINDS_WITHOUT_NAMESPACE:
@@ -700,7 +707,7 @@ def place_id(
             )
     slug = slugify_local_key(str(local))
     if seen is not None:
-        key = (place_kind, namespace)
+        key = (scope, place_kind, namespace)  # scope を入れる（奄美 Step 1 PR-B。scope が違えば別 ID）
         bucket = seen.setdefault(key, {})
         prev = bucket.get(slug)
         if prev is not None and prev != local:

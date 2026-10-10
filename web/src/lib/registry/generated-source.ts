@@ -223,9 +223,9 @@ export const SOURCE_EDITIONS: readonly GeneratedSourceEdition[] = [
   { editionId: "common:edition:ckan_yokohama.20260830", sourceId: "ckan_yokohama", editionKey: "20260830", vintage: null, fetchedAt: "2026-08-30T16:21:00", url: "https://data.city.yokohama.lg.jp", licenseId: "per_item_mixed", licenseClass: "mixed", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:dams_kanagawa.20260829", sourceId: "dams_kanagawa", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T14:58:50", url: "https://www.pref.kanagawa.jp/docs/vh6/cnt/f8018/ ; https://www.ktr.mlit.go.jp/sagami/", licenseId: "terms_unconfirmed", licenseClass: "unconfirmed", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:eadas_kanagawa.20260829", sourceId: "eadas_kanagawa", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:08:21", url: "https://eadas.env.go.jp/", licenseId: "terms_unconfirmed", licenseClass: "unconfirmed", redistributable: false, updateMode: null, supersededBy: null },
-  { editionId: "common:edition:env_kousui_annual_amami.20261010", sourceId: "env_kousui_annual_amami", editionKey: "20261010", vintage: null, fetchedAt: "2026-10-10T11:30:34", url: "https://water-pub.env.go.jp/water-pub/mizu-site/mizu/kousui/dataMap.asp", licenseId: "gov_standard_2_0", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
+  { editionId: "common:edition:env_kousui_annual_amami.20261010", sourceId: "env_kousui_annual_amami", editionKey: "20261010", vintage: null, fetchedAt: "2026-10-10T11:30:34", url: "https://water-pub.env.go.jp/water-pub/mizu-site/mizu/kousui/dataMap.asp", licenseId: "gov_standard_2_0", licenseClass: "open_terms", redistributable: true, updateMode: "append", supersededBy: null },
   { editionId: "common:edition:env_kousui_annual_kanagawa.20260829", sourceId: "env_kousui_annual_kanagawa", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:06:01", url: "https://water-pub.env.go.jp/water-pub/mizu-site/mizu/kousui/dataMap.asp", licenseId: "gov_standard_2_0", licenseClass: "open_terms", redistributable: true, updateMode: "append", supersededBy: null },
-  { editionId: "common:edition:env_kousui_sample_amami.20261010", sourceId: "env_kousui_sample_amami", editionKey: "20261010", vintage: null, fetchedAt: "2026-10-10T11:30:51", url: "https://water-pub.env.go.jp/water-pub/mizu-site/mizu/download/", licenseId: "gov_standard_2_0", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
+  { editionId: "common:edition:env_kousui_sample_amami.20261010", sourceId: "env_kousui_sample_amami", editionKey: "20261010", vintage: null, fetchedAt: "2026-10-10T11:30:51", url: "https://water-pub.env.go.jp/water-pub/mizu-site/mizu/download/", licenseId: "gov_standard_2_0", licenseClass: "open_terms", redistributable: true, updateMode: "append", supersededBy: null },
   { editionId: "common:edition:env_kousui_sample_kanagawa.20260829", sourceId: "env_kousui_sample_kanagawa", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:06:32", url: "https://water-pub.env.go.jp/water-pub/mizu-site/mizu/download/", licenseId: "gov_standard_2_0", licenseClass: "open_terms", redistributable: true, updateMode: "append", supersededBy: null },
   { editionId: "common:edition:env_kousui_stations_amami.20261010", sourceId: "env_kousui_stations_amami", editionKey: "20261010", vintage: null, fetchedAt: "2026-10-10T11:30:05", url: "https://water-pub.env.go.jp/water-pub/mizu-site/mizu/download/", licenseId: "gov_standard_2_0", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:env_kousui_stations_kanagawa.20260829", sourceId: "env_kousui_stations_kanagawa", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:05:51", url: "https://water-pub.env.go.jp/water-pub/mizu-site/mizu/download/", licenseId: "gov_standard_2_0", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
@@ -233,7 +233,7 @@ export const SOURCE_EDITIONS: readonly GeneratedSourceEdition[] = [
   { editionId: "common:edition:estat_census_population_kanagawa.20260829", sourceId: "estat_census_population_kanagawa", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:31:49", url: "https://www.e-stat.go.jp/stat-search/file-download?statInfId=000040454825&fileKind=0", licenseId: "gov_standard_2_0", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:estat_shozaiki_kanagawa.20260905", sourceId: "estat_shozaiki_kanagawa", editionKey: "20260905", vintage: null, fetchedAt: "2026-09-05T16:54:15", url: "https://www.e-stat.go.jp/gis/statmap-search?page=1&type=2&aggregateUnitForBoundary=A&toukeiCode=00200521&serveyId=A002005212020&prefCode=14&coordsys=1&format=shape", licenseId: "gov_standard_2_0", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:etanzawa_siryousitu.20260829", sourceId: "etanzawa_siryousitu", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:03:15", url: "https://www.pref.kanagawa.jp/docs/f4y/03shinrin/e-tanzawa/siryousitu.html", licenseId: "terms_unconfirmed", licenseClass: "unconfirmed", redistributable: false, updateMode: null, supersededBy: null },
-  { editionId: "common:edition:gbif_amami_occurrences.20261010", sourceId: "gbif_amami_occurrences", editionKey: "20261010", vintage: null, fetchedAt: "2026-10-10T11:32:29", url: "https://www.gbif.org/occurrence/search?gadm_gid=JPN.18.4_1&gadm_gid=JPN.18.38_1&gadm_gid=JPN.18.41_1&gadm_gid=JPN.18.44_1&gadm_gid=JPN.18.34_1", licenseId: "per_item_mixed", licenseClass: "mixed", redistributable: true, updateMode: null, supersededBy: null },
+  { editionId: "common:edition:gbif_amami_occurrences.20261010", sourceId: "gbif_amami_occurrences", editionKey: "20261010", vintage: null, fetchedAt: "2026-10-10T11:32:29", url: "https://www.gbif.org/occurrence/search?gadm_gid=JPN.18.4_1&gadm_gid=JPN.18.38_1&gadm_gid=JPN.18.41_1&gadm_gid=JPN.18.44_1&gadm_gid=JPN.18.34_1", licenseId: "per_item_mixed", licenseClass: "mixed", redistributable: true, updateMode: "snapshot", supersededBy: null },
   { editionId: "common:edition:gbif_kanagawa.20260829", sourceId: "gbif_kanagawa", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T17:37:13", url: "https://www.gbif.org/occurrence/search?gadm_gid=JPN.19_1", licenseId: "per_item_mixed", licenseClass: "mixed", redistributable: true, updateMode: "snapshot", supersededBy: "common:edition:gbif_kanagawa_occurrences.20260829" },
   { editionId: "common:edition:gbif_kanagawa_occurrences.20260829", sourceId: "gbif_kanagawa_occurrences", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T18:46:34", url: "https://www.gbif.org/occurrence/search?gadm_gid=JPN.19_1", licenseId: "per_item_mixed", licenseClass: "mixed", redistributable: true, updateMode: "snapshot", supersededBy: null },
   { editionId: "common:edition:gbif_species_match.20260829", sourceId: "gbif_species_match", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T16:10:09", url: "https://api.gbif.org/v1/species/match", licenseId: "cc_by", licenseClass: "cc_by", redistributable: true, updateMode: null, supersededBy: null },
@@ -245,7 +245,7 @@ export const SOURCE_EDITIONS: readonly GeneratedSourceEdition[] = [
   { editionId: "common:edition:geospatial_jp_kokudo_river_sagami.20260829", sourceId: "geospatial_jp_kokudo_river_sagami", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:33:33", url: "https://www.geospatial.jp/ckan/dataset/mlit-kokudo-6", licenseId: "custom_terms", licenseClass: "custom_terms", redistributable: false, updateMode: null, supersededBy: null },
   { editionId: "common:edition:geospatial_jp_plateau_kanagawa.20260829", sourceId: "geospatial_jp_plateau_kanagawa", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:31:24", url: "https://www.geospatial.jp/ckan/dataset?q=plateau", licenseId: "plateau_site_policy", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:geospatial_jp_pointcloud_kanagawa.20260829", sourceId: "geospatial_jp_pointcloud_kanagawa", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:31:24", url: "https://www.geospatial.jp/ckan/dataset/kanagawa-2022-pointcloud", licenseId: "cc_by", licenseClass: "cc_by", redistributable: true, updateMode: null, supersededBy: null },
-  { editionId: "common:edition:gsi_dem_terrain.20261010", sourceId: "gsi_dem_terrain", editionKey: "20261010", vintage: null, fetchedAt: "2026-10-10T01:35:17", url: "https://maps.gsi.go.jp/development/demtile.html", licenseId: "gsi_terms", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
+  { editionId: "common:edition:gsi_dem_terrain.20261010", sourceId: "gsi_dem_terrain", editionKey: "20261010", vintage: null, fetchedAt: "2026-10-10T14:06:41", url: "https://maps.gsi.go.jp/development/demtile.html", licenseId: "gsi_terms", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:gsi_elevation_grid.20260829", sourceId: "gsi_elevation_grid", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T16:39:04", url: "https://maps.gsi.go.jp/development/elevation_s.html", licenseId: "gsi_terms", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:gsi_elevation_grid_amami.20261010", sourceId: "gsi_elevation_grid_amami", editionKey: "20261010", vintage: null, fetchedAt: "2026-10-10T12:12:14", url: "https://maps.gsi.go.jp/development/elevation_s.html", licenseId: "gsi_terms", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:gsi_kiban_chizu_joho.20260829", sourceId: "gsi_kiban_chizu_joho", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:23:45", url: "https://service.gsi.go.jp/kiban/", licenseId: "gsi_terms", licenseClass: "open_terms", redistributable: false, updateMode: null, supersededBy: null },
@@ -256,13 +256,13 @@ export const SOURCE_EDITIONS: readonly GeneratedSourceEdition[] = [
   { editionId: "common:edition:hiratsuka_taiki.20260830", sourceId: "hiratsuka_taiki", editionKey: "20260830", vintage: null, fetchedAt: "2026-08-30T16:14:32", url: "https://hiratsukataiki.sakura.ne.jp/download-kakutei.php", licenseId: "terms_unconfirmed", licenseClass: "unconfirmed", redistributable: false, updateMode: "append", supersededBy: null },
   { editionId: "common:edition:hiratsuka_taiki_stations.20260830", sourceId: "hiratsuka_taiki_stations", editionKey: "20260830", vintage: null, fetchedAt: "2026-08-30T16:14:32", url: "https://hiratsukataiki.sakura.ne.jp/download-kakutei.php", licenseId: "terms_unconfirmed", licenseClass: "unconfirmed", redistributable: false, updateMode: null, supersededBy: null },
   { editionId: "common:edition:ikilog.20260829", sourceId: "ikilog", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:04:57", url: "https://ikilog.biodic.go.jp/", licenseId: "biodic_terms", licenseClass: "custom_terms", redistributable: false, updateMode: null, supersededBy: null },
-  { editionId: "common:edition:inaturalist_amami.20261010", sourceId: "inaturalist_amami", editionKey: "20261010", vintage: null, fetchedAt: "2026-10-10T11:32:40", url: "https://www.inaturalist.org/observations?place_id=34051&place_id=34081&place_id=34085&place_id=34091&place_id=34088", licenseId: "per_item_mixed", licenseClass: "mixed", redistributable: true, updateMode: null, supersededBy: null },
+  { editionId: "common:edition:inaturalist_amami.20261010", sourceId: "inaturalist_amami", editionKey: "20261010", vintage: null, fetchedAt: "2026-10-10T11:32:40", url: "https://www.inaturalist.org/observations?place_id=34051&place_id=34081&place_id=34085&place_id=34091&place_id=34088", licenseId: "per_item_mixed", licenseClass: "mixed", redistributable: true, updateMode: "snapshot", supersededBy: null },
   { editionId: "common:edition:inaturalist_kanagawa.20260829", sourceId: "inaturalist_kanagawa", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:22:16", url: "https://www.inaturalist.org/observations?place_id=10918", licenseId: "per_item_mixed", licenseClass: "mixed", redistributable: true, updateMode: "snapshot", supersededBy: null },
-  { editionId: "common:edition:jma_daily_nase.20261010", sourceId: "jma_daily_nase", editionKey: "20261010", vintage: null, fetchedAt: "2026-10-10T11:31:08", url: "https://www.data.jma.go.jp/stats/etrn/view/daily_s1.php?prec_no=88&block_no=47909", licenseId: "gov_standard_2_0", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
+  { editionId: "common:edition:jma_daily_nase.20261010", sourceId: "jma_daily_nase", editionKey: "20261010", vintage: null, fetchedAt: "2026-10-10T11:31:08", url: "https://www.data.jma.go.jp/stats/etrn/view/daily_s1.php?prec_no=88&block_no=47909", licenseId: "gov_standard_2_0", licenseClass: "open_terms", redistributable: true, updateMode: "append", supersededBy: null },
   { editionId: "common:edition:jma_daily_yokohama.20260829", sourceId: "jma_daily_yokohama", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:10:56", url: "https://www.data.jma.go.jp/stats/etrn/view/daily_s1.php?prec_no=46&block_no=47670", licenseId: "gov_standard_2_0", licenseClass: "open_terms", redistributable: true, updateMode: "append", supersededBy: null },
-  { editionId: "common:edition:jma_monthly_amami.20261010", sourceId: "jma_monthly_amami", editionKey: "20261010", vintage: null, fetchedAt: "2026-10-10T11:30:15", url: "https://www.data.jma.go.jp/stats/etrn/index.php", licenseId: "gov_standard_2_0", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
+  { editionId: "common:edition:jma_monthly_amami.20261010", sourceId: "jma_monthly_amami", editionKey: "20261010", vintage: null, fetchedAt: "2026-10-10T11:30:15", url: "https://www.data.jma.go.jp/stats/etrn/index.php", licenseId: "gov_standard_2_0", licenseClass: "open_terms", redistributable: true, updateMode: "append", supersededBy: null },
   { editionId: "common:edition:jma_monthly_kanagawa.20260829", sourceId: "jma_monthly_kanagawa", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:10:54", url: "https://www.data.jma.go.jp/stats/etrn/index.php", licenseId: "gov_standard_2_0", licenseClass: "open_terms", redistributable: true, updateMode: "append", supersededBy: null },
-  { editionId: "common:edition:jma_sst_amami.20261010", sourceId: "jma_sst_amami", editionKey: "20261010", vintage: null, fetchedAt: "2026-10-10T11:29:35", url: "https://www.data.jma.go.jp/kaiyou/data/db/kaikyo/series/engan/engan_KG.html", licenseId: "pdl_1_0", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
+  { editionId: "common:edition:jma_sst_amami.20261010", sourceId: "jma_sst_amami", editionKey: "20261010", vintage: null, fetchedAt: "2026-10-10T11:29:35", url: "https://www.data.jma.go.jp/kaiyou/data/db/kaikyo/series/engan/engan_KG.html", licenseId: "pdl_1_0", licenseClass: "open_terms", redistributable: true, updateMode: "snapshot", supersededBy: null },
   { editionId: "common:edition:jma_stations_amami.20261010", sourceId: "jma_stations_amami", editionKey: "20261010", vintage: null, fetchedAt: "2026-10-10T11:29:40", url: "https://www.jma.go.jp/bosai/amedas/const/amedastable.json", licenseId: "gov_standard_2_0", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:jma_stations_kanagawa.20260829", sourceId: "jma_stations_kanagawa", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:10:43", url: "https://www.jma.go.jp/bosai/amedas/const/amedastable.json", licenseId: "gov_standard_2_0", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:kanagawa_dam_mizugame.20260829", sourceId: "kanagawa_dam_mizugame", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:06:35", url: "https://kanagawa-dam.jp/", licenseId: "all_rights_reserved", licenseClass: "restricted", redistributable: false, updateMode: null, supersededBy: null },
@@ -311,7 +311,8 @@ export const SOURCE_EDITIONS: readonly GeneratedSourceEdition[] = [
   { editionId: "common:edition:nlni_l03b_landuse_2016_amami.20261010", sourceId: "nlni_l03b_landuse_2016_amami", editionKey: "20261010", vintage: null, fetchedAt: "2026-10-10T12:11:55", url: "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-L03-b.html", licenseId: "nlni_terms", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:nlni_l03b_landuse_by_watershed.2006", sourceId: "nlni_l03b_landuse_by_watershed", editionKey: "2006", vintage: "2006", fetchedAt: "2026-08-29T15:05:31", url: "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-L03-b.html", licenseId: "nlni_terms", licenseClass: "open_terms", redistributable: true, updateMode: "revision", supersededBy: null },
   { editionId: "common:edition:nlni_l03b_landuse_by_watershed.2016", sourceId: "nlni_l03b_landuse_by_watershed", editionKey: "2016", vintage: "2016", fetchedAt: "2026-08-29T15:03:45", url: "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-L03-b.html", licenseId: "nlni_terms", licenseClass: "open_terms", redistributable: true, updateMode: "revision", supersededBy: null },
-  { editionId: "common:edition:nlni_l03b_landuse_by_watershed_amami.20261010", sourceId: "nlni_l03b_landuse_by_watershed_amami", editionKey: "20261010", vintage: null, fetchedAt: "2026-10-10T12:12:09", url: "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-L03-b.html", licenseId: "nlni_terms", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
+  { editionId: "common:edition:nlni_l03b_landuse_by_watershed_amami.2006", sourceId: "nlni_l03b_landuse_by_watershed_amami", editionKey: "2006", vintage: "2006", fetchedAt: "2026-10-10T12:12:09", url: "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-L03-b.html", licenseId: "nlni_terms", licenseClass: "open_terms", redistributable: true, updateMode: "revision", supersededBy: null },
+  { editionId: "common:edition:nlni_l03b_landuse_by_watershed_amami.2016", sourceId: "nlni_l03b_landuse_by_watershed_amami", editionKey: "2016", vintage: "2016", fetchedAt: "2026-10-10T12:11:55", url: "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-L03-b.html", licenseId: "nlni_terms", licenseClass: "open_terms", redistributable: true, updateMode: "revision", supersededBy: null },
   { editionId: "common:edition:nlni_p05_city_hall.20260829", sourceId: "nlni_p05_city_hall", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:07:53", url: "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-P05.html", licenseId: "terms_unconfirmed", licenseClass: "unconfirmed", redistributable: false, updateMode: null, supersededBy: null },
   { editionId: "common:edition:nlni_w05_river_nodes.20260829", sourceId: "nlni_w05_river_nodes", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T14:52:05", url: "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-W05.html", licenseId: "nlni_noncommercial", licenseClass: "noncommercial", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:nlni_w05_river_nodes_amami.20261010", sourceId: "nlni_w05_river_nodes_amami", editionKey: "20261010", vintage: null, fetchedAt: "2026-10-10T11:30:20", url: "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-W05.html", licenseId: "nlni_noncommercial", licenseClass: "noncommercial", redistributable: true, updateMode: null, supersededBy: null },
@@ -339,7 +340,7 @@ export const SOURCE_EDITIONS: readonly GeneratedSourceEdition[] = [
   { editionId: "common:edition:sagamihara_taiki_stations.20260829", sourceId: "sagamihara_taiki_stations", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:11:40", url: "https://opendata.city.sagamihara.kanagawa.jp/dataset/taiki", licenseId: "cc_by", licenseClass: "cc_by", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:satonavi_donkai.20260830", sourceId: "satonavi_donkai", editionKey: "20260830", vintage: null, fetchedAt: "2026-08-30T16:23:18", url: "https://www.env.go.jp/nature/satoyama/satonavi/group/12.html", licenseId: "terms_unconfirmed", licenseClass: "unconfirmed", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:snet_kahaku.20260829", sourceId: "snet_kahaku", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:05:23", url: "https://science-net.kahaku.go.jp/", licenseId: "terms_unconfirmed", licenseClass: "unconfirmed", redistributable: false, updateMode: null, supersededBy: null },
-  { editionId: "common:edition:soramame_hourly_amami.20261010", sourceId: "soramame_hourly_amami", editionKey: "20261010", vintage: null, fetchedAt: "2026-10-10T11:30:04", url: "https://soramame.env.go.jp/download", licenseId: "soramame_terms", licenseClass: "custom_terms", redistributable: true, updateMode: null, supersededBy: null },
+  { editionId: "common:edition:soramame_hourly_amami.20261010", sourceId: "soramame_hourly_amami", editionKey: "20261010", vintage: null, fetchedAt: "2026-10-10T11:30:04", url: "https://soramame.env.go.jp/download", licenseId: "soramame_terms", licenseClass: "custom_terms", redistributable: true, updateMode: "snapshot", supersededBy: null },
   { editionId: "common:edition:soramame_hourly_kanagawa.20260829", sourceId: "soramame_hourly_kanagawa", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T14:53:33", url: "https://soramame.env.go.jp/download", licenseId: "soramame_terms", licenseClass: "custom_terms", redistributable: true, updateMode: "snapshot", supersededBy: null },
   { editionId: "common:edition:soramame_stations_amami.20261010", sourceId: "soramame_stations_amami", editionKey: "20261010", vintage: null, fetchedAt: "2026-10-10T11:29:41", url: "https://soramame.env.go.jp/", licenseId: "soramame_terms", licenseClass: "custom_terms", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:soramame_stations_kanagawa.20260829", sourceId: "soramame_stations_kanagawa", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T14:53:16", url: "https://soramame.env.go.jp/", licenseId: "soramame_terms", licenseClass: "custom_terms", redistributable: true, updateMode: null, supersededBy: null },
@@ -355,7 +356,7 @@ export const SOURCE_EDITIONS: readonly GeneratedSourceEdition[] = [
 ];
 
 /** 出現データ（occurrence_agg）の出典。マニフェスト（target=occurrence）由来。画面用 API・MCP の provenance/freshness が使う。 */
-export const OCCURRENCE_SOURCE_IDS: readonly string[] = ["gbif_kanagawa_occurrences","inaturalist_kanagawa","kanagawa_edna","kanagawa_kuma_sightings"];
+export const OCCURRENCE_SOURCE_IDS: readonly string[] = ["gbif_amami_occurrences","gbif_kanagawa_occurrences","inaturalist_amami","inaturalist_kanagawa","kanagawa_edna","kanagawa_kuma_sightings"];
 
 /** 出典ごとの状態（registry/source/access.yaml と manifests/ から r01 が作る。MCP_SOURCE_ACCESS.md §1）。 */
 export interface GeneratedSourceAccess {
@@ -393,7 +394,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 4560,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -471,21 +472,27 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 75240,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
   },
   "biodic_veg2024_amami": {
-    "state": "not_queryable",
-    "queryableVia": [],
-    "tables": [],
-    "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "file_only",
-    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "state": "queryable",
+    "queryableVia": [
+      "get_records"
+    ],
+    "tables": [
+      "vegetation"
+    ],
+    "recordSetRows": {
+      "vegetation": 9979
+    },
+    "nSourceRows": 9979,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-10T14:06:41",
+    "reason": null,
+    "reasonJa": null,
     "reasonNote": null
   },
   "biodic_veg2024_kanagawa": {
@@ -501,7 +508,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 13206,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -575,7 +582,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 680,
     "nSourceRowsBasis": "catalog_datasets",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -601,7 +608,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 811,
     "nSourceRowsBasis": "catalog_datasets",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -663,7 +670,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 114,
     "nSourceRowsBasis": "catalog_datasets",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -677,7 +684,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 654,
     "nSourceRowsBasis": "catalog_datasets",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -695,7 +702,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 4,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -713,15 +720,17 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "reasonNote": null
   },
   "env_kousui_annual_amami": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "get_observations"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "file_only",
-    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "nSourceRows": 2521,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-10T14:06:41",
+    "reason": null,
+    "reasonJa": null,
     "reasonNote": null
   },
   "env_kousui_annual_kanagawa": {
@@ -733,21 +742,23 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 98328,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
   },
   "env_kousui_sample_amami": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "get_observations"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "file_only",
-    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "nSourceRows": 1380,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-10T14:06:41",
+    "reason": null,
+    "reasonJa": null,
     "reasonNote": null
   },
   "env_kousui_sample_kanagawa": {
@@ -759,21 +770,27 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 214725,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
   },
   "env_kousui_stations_amami": {
-    "state": "not_queryable",
-    "queryableVia": [],
-    "tables": [],
-    "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "file_only",
-    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "state": "queryable",
+    "queryableVia": [
+      "get_records"
+    ],
+    "tables": [
+      "sites"
+    ],
+    "recordSetRows": {
+      "sites": 25
+    },
+    "nSourceRows": 25,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-10T14:06:41",
+    "reason": null,
+    "reasonJa": null,
     "reasonNote": null
   },
   "env_kousui_stations_kanagawa": {
@@ -789,7 +806,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 290,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -803,7 +820,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 5,
     "nSourceRowsBasis": "catalog_datasets",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -817,7 +834,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 1,
     "nSourceRowsBasis": "catalog_datasets",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -831,7 +848,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 1,
     "nSourceRowsBasis": "catalog_datasets",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -849,15 +866,17 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "reasonNote": null
   },
   "gbif_amami_occurrences": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "get_occurrences"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "file_only",
-    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "nSourceRows": 47874,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-10T14:06:41",
+    "reason": null,
+    "reasonJa": null,
     "reasonNote": null
   },
   "gbif_kanagawa": {
@@ -881,7 +900,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 658360,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -911,7 +930,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 1547,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1085,7 +1104,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 30,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1103,7 +1122,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 290,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1117,7 +1136,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 245513,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1135,7 +1154,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 5,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1153,15 +1172,17 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "reasonNote": null
   },
   "inaturalist_amami": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "get_occurrences"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "file_only",
-    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "nSourceRows": 13539,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-10T14:06:41",
+    "reason": null,
+    "reasonJa": null,
     "reasonNote": null
   },
   "inaturalist_kanagawa": {
@@ -1173,21 +1194,23 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 165332,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
   },
   "jma_daily_nase": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "get_observations"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "file_only",
-    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "nSourceRows": 20496,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-10T14:06:41",
+    "reason": null,
+    "reasonJa": null,
     "reasonNote": null
   },
   "jma_daily_yokohama": {
@@ -1199,21 +1222,23 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 19420,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
   },
   "jma_monthly_amami": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "get_observations"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "file_only",
-    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "nSourceRows": 6277,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-10T14:06:41",
+    "reason": null,
+    "reasonJa": null,
     "reasonNote": null
   },
   "jma_monthly_kanagawa": {
@@ -1225,33 +1250,41 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 13821,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
   },
   "jma_sst_amami": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "get_observations"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "file_only",
-    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "nSourceRows": 65412,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-10T14:06:41",
+    "reason": null,
+    "reasonJa": null,
     "reasonNote": null
   },
   "jma_stations_amami": {
-    "state": "not_queryable",
-    "queryableVia": [],
-    "tables": [],
-    "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "file_only",
-    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "state": "queryable",
+    "queryableVia": [
+      "get_records"
+    ],
+    "tables": [
+      "sites"
+    ],
+    "recordSetRows": {
+      "sites": 3
+    },
+    "nSourceRows": 3,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-10T14:06:41",
+    "reason": null,
+    "reasonJa": null,
     "reasonNote": null
   },
   "jma_stations_kanagawa": {
@@ -1267,7 +1300,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 12,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1294,7 +1327,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 134443,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1312,7 +1345,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 379,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1343,7 +1376,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 3286,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1362,7 +1395,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 400,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1380,7 +1413,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 29,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1422,7 +1455,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 1033,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1440,7 +1473,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 1851,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1530,7 +1563,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 429,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1680,7 +1713,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 30,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1862,21 +1895,23 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 4858,
     "nSourceRowsBasis": "registry_record_count",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
   },
   "nlni_l03b_landuse_by_watershed_amami": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "get_observations"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "file_only",
-    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "nSourceRows": 283,
+    "nSourceRowsBasis": "registry_record_count",
+    "countedAt": "2026-10-10T14:06:41",
+    "reason": null,
+    "reasonJa": null,
     "reasonNote": null
   },
   "nlni_p05_city_hall": {
@@ -2132,7 +2167,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 16,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -2170,7 +2205,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 175344,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -2188,7 +2223,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 2,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -2218,15 +2253,17 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "reasonNote": null
   },
   "soramame_hourly_amami": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "get_observations"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "file_only",
-    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "nSourceRows": 17697,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-10T14:06:41",
+    "reason": null,
+    "reasonJa": null,
     "reasonNote": null
   },
   "soramame_hourly_kanagawa": {
@@ -2238,21 +2275,27 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 168793,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
   },
   "soramame_stations_amami": {
-    "state": "not_queryable",
-    "queryableVia": [],
-    "tables": [],
-    "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "file_only",
-    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "state": "queryable",
+    "queryableVia": [
+      "get_records"
+    ],
+    "tables": [
+      "sites"
+    ],
+    "recordSetRows": {
+      "sites": 1
+    },
+    "nSourceRows": 1,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-10T14:06:41",
+    "reason": null,
+    "reasonJa": null,
     "reasonNote": null
   },
   "soramame_stations_kanagawa": {
@@ -2268,7 +2311,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 4,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -2383,7 +2426,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 75528,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-10T12:12:14",
+    "countedAt": "2026-10-10T14:06:41",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -2391,7 +2434,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
 };
 
 /** 観測データ（measurements・sensor_timeseries・土地利用）の出典。マニフェスト（target=observation）由来。get_observations で取れる。 */
-export const OBSERVATION_SOURCE_IDS: readonly string[] = ["atsugi_river_water_quality","env_kousui_annual_kanagawa","env_kousui_sample_kanagawa","hiratsuka_taiki","jma_daily_yokohama","jma_monthly_kanagawa","kanagawa_jiban_chinka","nlni_l03b_landuse_by_watershed","sagamihara_taiki_hourly","soramame_hourly_kanagawa","yokohama_river_waterlevel"];
+export const OBSERVATION_SOURCE_IDS: readonly string[] = ["atsugi_river_water_quality","env_kousui_annual_amami","env_kousui_annual_kanagawa","env_kousui_sample_amami","env_kousui_sample_kanagawa","hiratsuka_taiki","jma_daily_nase","jma_daily_yokohama","jma_monthly_amami","jma_monthly_kanagawa","jma_sst_amami","kanagawa_jiban_chinka","nlni_l03b_landuse_by_watershed","nlni_l03b_landuse_by_watershed_amami","sagamihara_taiki_hourly","soramame_hourly_amami","soramame_hourly_kanagawa","yokohama_river_waterlevel"];
 
 /** get_records の record_set → D1 の表（registry/source/access.yaml の record_sets。この対応の正はそこ 1 か所）。 */
 export const RECORD_SET_TABLES: Readonly<Record<string, string>> = {
@@ -2408,7 +2451,7 @@ export const RECORD_SET_TABLES: Readonly<Record<string, string>> = {
 export const SOURCE_EXCLUDED_FROM_LIST: Readonly<Record<string, number>> = {"synthetic":1};
 
 /** get_records で引ける出典（SOURCE_ACCESS の tables が空でないもの）。 */
-export const RECORD_SOURCE_IDS: readonly string[] = ["atsugi_river_water_quality","biodic_mammal_mesh_kanagawa","biodic_veg2024_kanagawa","dams_kanagawa","env_kousui_stations_kanagawa","geoshape_sagami_river","hadano_preserved_trees","hiratsuka_parks","hiratsuka_taiki_stations","jma_stations_kanagawa","kanagawa_green_conservation","kanagawa_jiban_chinka","kanagawa_kuma_sightings","kanagawa_natural_parks","kanagawa_rdb2022_plants","kanagawa_redlist","moe_ias_list","moni1000_sites","sagami_livecams","sagamihara_taiki_stations","soramame_stations_kanagawa","yokohama_river_waterlevel"];
+export const RECORD_SOURCE_IDS: readonly string[] = ["atsugi_river_water_quality","biodic_mammal_mesh_kanagawa","biodic_veg2024_amami","biodic_veg2024_kanagawa","dams_kanagawa","env_kousui_stations_amami","env_kousui_stations_kanagawa","geoshape_sagami_river","hadano_preserved_trees","hiratsuka_parks","hiratsuka_taiki_stations","jma_stations_amami","jma_stations_kanagawa","kanagawa_green_conservation","kanagawa_jiban_chinka","kanagawa_kuma_sightings","kanagawa_natural_parks","kanagawa_rdb2022_plants","kanagawa_redlist","moe_ias_list","moni1000_sites","sagami_livecams","sagamihara_taiki_stations","soramame_stations_amami","soramame_stations_kanagawa","yokohama_river_waterlevel"];
 
 /** find_datasets で引ける出典（外部ポータルの目録。registry/source/access.yaml の catalog を宣言した出典。MCP_EXTERNAL_CATALOG.md §5）。 */
 export const FIND_DATASET_SOURCE_IDS: readonly string[] = ["ckan_bodik_kanagawa","ckan_kanagawa_pref","ckan_sagamihara","ckan_yokohama","estat_agri_census_kanagawa","estat_census_population_kanagawa","estat_shozaiki_kanagawa"];

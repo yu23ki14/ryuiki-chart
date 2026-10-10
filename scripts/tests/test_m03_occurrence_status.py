@@ -107,3 +107,19 @@ def test_backfill_stops_without_writing_when_jsonl_keys_have_no_row(proc_dir):
 def test_backfill_stops_with_clear_message_when_table_is_missing(proc_dir):
     with pytest.raises(SystemExit, match="organism_records 表が無い"):
         m03.backfill_occurrence_status(sqlite3.connect(":memory:"))
+
+
+def test_backfill_skips_region_with_no_rows_and_continues(proc_dir, capsys):
+    """organism_records に1行も無い地域（未取り込み）は「飛ばした」と表示して飛ばし、集計は続く。"""
+    (proc_dir / "gbif_amami_occurrences.jsonl").write_text(_gbif_line(7, "PRESENT") + "\n", encoding="utf-8")
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE organism_records (record_id TEXT PRIMARY KEY, source_id TEXT, occurrence_status TEXT)")
+    conn.executemany("INSERT INTO organism_records (record_id, source_id) VALUES (?,?)", [
+        (f"gbif_kanagawa_occurrences__{k}", "gbif_kanagawa_occurrences") for k in (1, 2, 3)])
+    results = [m03.backfill_occurrence_status(conn, rid=rid) for rid in m03.REGIONS]
+    assert "未取り込みのため飛ばした" in capsys.readouterr().out
+    assert [r[1] for r in results] == [3, 0] and [r[2] for r in results] == [3, 0]
+    # 取り込み済み（1行でもある）地域で欠けがあれば従来どおり止まる
+    conn.execute("INSERT INTO organism_records (record_id, source_id) VALUES ('gbif_amami_occurrences__1', 'gbif_amami_occurrences')")
+    with pytest.raises(SystemExit, match="1 件"):
+        m03.backfill_occurrence_status(conn, rid="jp-46")

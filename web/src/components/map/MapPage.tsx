@@ -11,6 +11,7 @@ import { MAP_METRICS, type WatershedMetricId, type MeshMetricId } from "@/lib/re
 import { MUNICIPALITY_LABEL } from "@/lib/municipality";
 import { fmt } from "@/components/viz/scales";
 import Link from "next/link";
+import { REGION_JUMPS } from "@/lib/map/basemaps";
 
 type WsMetric = WatershedMetricId;
 type MeshMetric = MeshMetricId;
@@ -23,6 +24,8 @@ export function MapPage() {
   const [showSites, setShowSites] = React.useState(true);
   const [showMesh, setShowMesh] = React.useState(false);
   const [showRivers, setShowRivers] = React.useState(false);
+  // 初期表示は神奈川のまま（MapCanvas の既定）。ボタンを押したときだけ fitBounds で移る。
+  const [jump, setJump] = React.useState<{ bounds: [[number, number], [number, number]]; nonce: number } | null>(null);
 
   const [wsMetric, setWsMetric] = React.useState<WsMetric>("org_density");
   const [meshMetric, setMeshMetric] = React.useState<MeshMetric>("species_n");
@@ -143,6 +146,7 @@ export function MapPage() {
           sources={sources}
           layers={layers}
           className="absolute inset-0"
+          fitTo={jump}
           onFeatureClick={(f) => {
             const p = f.properties as Record<string, unknown>;
             setSel(p);
@@ -206,9 +210,20 @@ export function MapPage() {
         <div className="p-3 border-b border-line">
           <h1 className="text-[14px] font-bold">流域マップ</h1>
           <p className="text-[11px] text-muted mt-0.5 leading-snug">
-            国土数値情報 W12 の単位流域（377面・1977年版）を土台に、観測地点と生物記録を重ねる。
+            国土数値情報 W12 の単位流域（{ws.data ? `${ws.data.features.length}面・` : ""}神奈川・奄美とも1977年版）を土台に、観測地点と生物記録を重ねる。
           </p>
         </div>
+
+        <Section title="地域">
+          <div className="flex gap-1.5 flex-wrap">
+            {REGION_JUMPS.map((r) => (
+              // 同じ地域を続けて押しても移れるよう nonce を増やす（MapCanvas は nonce の変化で動く）
+              <Btn key={r.id} onClick={() => setJump((j) => ({ bounds: [[...r.bounds[0]], [...r.bounds[1]]], nonce: (j?.nonce ?? 0) + 1 }))}>
+                {r.label}
+              </Btn>
+            ))}
+          </div>
+        </Section>
 
         <Section title="レイヤ">
           <Toggle checked={showWatersheds} onChange={setShowWatersheds} label="流域界（塗り分け）" />

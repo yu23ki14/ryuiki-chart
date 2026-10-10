@@ -59,6 +59,8 @@ PIPELINE_FILE_GLOBS = ("scripts/b0*.py", "scripts/b1*.py")
 PIPELINE_EXPLICIT_FILES = (
     "scripts/r01_build_registry.py",
     "scripts/pipeline_inputs.py",
+    # scripts/pipeline_inputs.py・b03・b09・s01 が import する（地域ごとの W12・土地利用のファイル名。依存なし）。
+    "scripts/regions.py",
     # scripts/b06_build_occurrence.py・scripts/registry/build_taxon.py が import
     # する（scripts/ 直下の単体ファイルで、b0*/b1* にも scripts/registry/ にも
     # マッチしない。code-review 指摘）。

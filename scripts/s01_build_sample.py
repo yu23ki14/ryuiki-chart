@@ -96,15 +96,28 @@ from migrate import source_regions  # noqa: E402
 from reconcile.common import load_yaml  # noqa: E402
 from registry import build_source_access, build_taxon, common as registry_common  # noqa: E402
 from taxon_namespaces import TAXON_KEY_SOURCE_NAMESPACE  # noqa: E402
+import regions as collector_regions  # noqa: E402
 
 DEFAULT_RYUIKI_DB = ROOT / "data" / "db" / "ryuiki.sqlite"
 DEFAULT_CELLS_DB = ROOT / "data" / "db" / "cells.sqlite"
 DEFAULT_PROCESSED_DIR = ROOT / "data" / "processed"
 DEFAULT_COVERAGE_YAML = ROOT / "data" / "sample" / "coverage.yaml"
 DEFAULT_OUT_DIR = ROOT / "data" / "sample"
-DEFAULT_GEOJSON = ROOT / "data" / "processed" / "nlni_w12_watersheds.geojson"
+# W12（流域界）と土地利用 CSV は地域ごとに1ファイル（pipeline_inputs の命名規則。全地域ぶんを使う）。
+DEFAULT_GEOJSON = tuple(collector_regions.w12_paths(ROOT / "data" / "processed"))
 ACCESS_YAML = ROOT / "registry" / "source" / "access.yaml"
-DEFAULT_LANDUSE_CSV = ROOT / "data" / "processed" / "nlni_l03b_landuse_by_watershed.csv"
+LANDUSE_BASE = "nlni_l03b_landuse_by_watershed"
+
+
+def landuse_csv_paths(processed_dir) -> dict[str, pathlib.Path]:
+    """土地利用 CSV の `{出典名: パス}`（全地域。出典名は manifests/ のファイル名と同じ）。"""
+    return {
+        collector_regions.name(LANDUSE_BASE, rid): pathlib.Path(processed_dir) / f"{collector_regions.name(LANDUSE_BASE, rid)}.csv"
+        for rid in collector_regions.REGIONS
+    }
+
+
+DEFAULT_LANDUSE_CSV = landuse_csv_paths(ROOT / "data" / "processed")
 
 # ---------------------------------------------------------------------------
 # 小さなユーティリティ
@@ -668,7 +681,7 @@ def compute_occurrence_place_and_watershed_stats(rows: list[sqlite3.Row], geojso
     流域の2件（日付あり記録の解決済み・未解決）をサンプルに対して実測する。
     （v1 のメモ化の再現〔`occurrence_watershed_v1_declarations.yaml`〕は Issue #48 PR-5 で消えた。）
     """
-    polys = pip.load_polygons(geojson_path)
+    polys = pip.load_polygons_many(geojson_path)  # 1つのパスでも、地域ごとのパスの列でもよい
     grid = pip.build_grid(polys)
 
     geo_rows = [r for r in rows if r["lat"] is not None and r["lon"] is not None]
@@ -787,6 +800,9 @@ def build_declaration_counts(
     out["time_label_conventions.yaml:soramame_hourly_kanagawa"] = count(
         "sensor_timeseries", "source_id = 'soramame_hourly_kanagawa'"
     )
+    out["time_label_conventions.yaml:soramame_hourly_amami"] = count(
+        "sensor_timeseries", "source_id = 'soramame_hourly_amami'"
+    )
 
     # manifests/*.yml
     out["manifests:gbif_kanagawa_occurrences"] = count(
@@ -795,9 +811,18 @@ def build_declaration_counts(
     out["manifests:inaturalist_kanagawa"] = count(
         "organism_records", "source_id = 'inaturalist_kanagawa'"
     )
+    # 他の地域の builtin の出現（奄美の gbif_amami_occurrences 等）も、神奈川の2件と同じく原本の件数と突き合わせる
+    # （マニフェストの expected_row_count を持つ builtin × occurrence。キーはマニフェストから導く）。
+    for sid, m in sorted(manifest_lib.load_manifests(manifests_dir).items()):
+        if m.is_builtin and m.target == "occurrence" and m.expected_row_count is not None:
+            out.setdefault(f"manifests:{sid}", count("organism_records", f"source_id = '{sid}'"))
     # 土地利用CSVは丸ごとコピーする（coverage.yaml の wholesale_processed_files）
     # ので、サンプルの件数は原本の行数と同じ（実測: count_csv_data_rows 参照）。
-    out["manifests:nlni_l03b_landuse_by_watershed"] = count_csv_data_rows(landuse_csv_path)
+    # （地域ごとに1ファイル。単独のパスは神奈川のもの）
+    if not isinstance(landuse_csv_path, dict):
+        landuse_csv_path = {LANDUSE_BASE: landuse_csv_path}
+    for sid, csv_path in landuse_csv_path.items():
+        out[f"manifests:{sid}"] = count_csv_data_rows(csv_path)
     # adapter 出典は入力を全件サンプルに入れる（select_adapter_input_tables）ので、取り込み件数は原本と同じ。
     # マニフェストの宣言値（expected_row_count）をそのまま持つ（キーはマニフェストから導く。新出典で s01 を触らない）。
     all_manifests = manifest_lib.load_manifests(manifests_dir)
@@ -819,10 +844,19 @@ def build_declaration_counts(
     # `_open_ro` が登録済み）を使う（以前の `length(observed_on) = N` は
     # 「12形の文字数がたまたま全部異なる」という前提の近似だった。
     # code-review 指摘対応。coverage.yaml も同じ関数に揃えてある）。
+    # scripts/migrate の yaml の値は、manifest の `expected` を持つ出典（builtin × occurrence。奄美など）を含まない。
+    # b06/b07/b09 は yaml の値に manifest の expected の和を足すので、yaml 側の実測からはその出典を除く
+    # （含めると二重に数える）。manifest 側は下で `manifests:<出典>.expected.…` として別に実測する。
+    expected_sids = sorted(
+        sid for sid, m in all_manifests.items() if m.is_builtin and m.target == "occurrence" and m.expected
+    )
+    not_expected = (
+        " AND source_id NOT IN (" + ",".join(f"'{x}'" for x in expected_sids) + ")" if expected_sids else ""
+    )
     for name in sorted(occurrence_period.load_period_shapes()):
         out[f"occurrence_period_shapes.yaml:{name}"] = count(
             "organism_records",
-            f"classify_shape(observed_on) = '{name}' AND occurrence_status IS NOT 'ABSENT'"
+            f"classify_shape(observed_on) = '{name}' AND occurrence_status IS NOT 'ABSENT'{not_expected}"
         )
 
     # occurrence_cube_declarations.yaml
@@ -833,6 +867,7 @@ def build_declaration_counts(
         "WHERE t.occurrence_status IS NOT 'ABSENT' "   # 不在記録は occurrence に入らない（b06）
         "ORDER BY t.rowid"
     ).fetchall()
+    all_org_rows, org_rows = org_rows, [r for r in org_rows if r["source_id"] not in expected_sids]
     out["occurrence_cube_declarations.yaml:leaf_cell_source_rows"] = compute_leaf_cell_source_rows(org_rows)
     utc_offset_by_source = load_utc_offset_by_source(manifests_dir)
     out["occurrence_cube_declarations.yaml:month_cell_source_rows"] = compute_month_cell_source_rows(
@@ -851,6 +886,39 @@ def build_declaration_counts(
         "watershed_dated_unresolved_rows"
     ]
 
+    # manifest の `expected`（builtin × occurrence）。キーは宣言と同じ（manifest の expected のキーから導く）。
+    for sid in expected_sids:
+        rows = [r for r in all_org_rows if r["source_id"] == sid]
+        out.update(_manifest_expected_counts(
+            sid, all_manifests[sid].expected, rows, count, utc_offset_by_source, geojson_path))
+
+    return out
+
+
+def _manifest_expected_counts(sid, expected, rows, count, utc_offset_by_source, geojson_path) -> dict[str, int]:
+    """manifest `expected`（period_shapes・place・cube）の各キーを、サンプルの `sid` の行から実測する。
+    意味は b06（形ごとの件数）・b09（coord_resolved/unresolved）・b07（cube の各件数）の突合と同じ。"""
+    pre = f"manifests:{sid}.expected"
+    stats = compute_occurrence_place_and_watershed_stats(rows, geojson_path)
+    no_coord = [r for r in rows if r["lat"] is None or r["lon"] is None]
+    dated = [r for r in rows if r["observed_on"] is not None]
+    cube = {
+        "dated_rows": len(dated),
+        "dated_no_coordinate_rows": sum(1 for r in dated if r["lat"] is None or r["lon"] is None),
+        "leaf_cell_source_rows": compute_leaf_cell_source_rows(rows),
+        "leaf_cell_source_rows_no_coordinate": compute_leaf_cell_source_rows(no_coord),
+        "month_cell_source_rows": compute_month_cell_source_rows(rows, utc_offset_by_source),
+        "watershed_dated_resolved_rows": stats["watershed_dated_resolved_rows"],
+        "watershed_dated_unresolved_rows": stats["watershed_dated_unresolved_rows"],
+    }
+    place = {"coord_resolved": stats["resolved_count"], "coord_unresolved": stats["place_id_null_count"]}
+    out = {f"{pre}.cube.{k}": cube[k] for k in expected.get("cube", {})}
+    out.update({f"{pre}.place.{k}": place[k] for k in expected.get("place", {})})
+    for name in expected.get("period_shapes", {}):
+        out[f"{pre}.period_shapes.{name}"] = count(
+            "organism_records",
+            f"source_id = '{sid}' AND classify_shape(observed_on) = '{name}' AND occurrence_status IS NOT 'ABSENT'",
+        )
     return out
 
 
@@ -941,8 +1009,8 @@ def main() -> int:
         shutil.copyfile(processed_dir / name, processed_out / name)
 
     # --- declaration_counts.yaml ---
-    geojson_path = pathlib.Path(args.processed_dir) / "nlni_w12_watersheds.geojson"
-    landuse_csv_path = pathlib.Path(args.processed_dir) / "nlni_l03b_landuse_by_watershed.csv"
+    geojson_path = collector_regions.w12_paths(args.processed_dir)
+    landuse_csv_path = landuse_csv_paths(args.processed_dir)
     counts = build_declaration_counts(ryuiki_conn, selected, geojson_path, landuse_csv_path, manifests_dir=args.manifests_dir)
     (out_dir / "declaration_counts.yaml").write_text(_dump_declaration_counts_yaml(counts), encoding="utf-8")
 

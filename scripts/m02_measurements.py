@@ -15,6 +15,8 @@
 import sys, pathlib, json, sqlite3
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 from common import appdb, PROC
+import regions
+from regions import REGIONS
 
 def rd_jsonl(name):
     p = PROC / f"{name}.jsonl"
@@ -27,22 +29,48 @@ def rd_jsonl(name):
 # ============================================================
 # 1) sensor_timeseries
 # ============================================================
-SENSOR_SOURCES = [
-    # (jsonl名, site_source_id, サイト側の元IDフィールド)
-    ("jma_daily_yokohama", "jma_stations_kanagawa"),
-    ("jma_monthly_kanagawa", "jma_stations_kanagawa"),
-    ("soramame_hourly_kanagawa", "soramame_stations_kanagawa"),
-    ("sagamihara_taiki_hourly", "sagamihara_taiki_stations"),
-]
+def _sensor_sources():
+    """[(jsonl名, site_source_id, 地域で欠けても飛ばしてよいか)]。地域ごとに regions.REGIONS から組み立てる
+    （海面水温は観測局ではなく海域〔area_code〕で、jma_sst_areas を持つ地域だけ。site は座標 NULL の `jma_sst_<slug>__<海域>`）。
+    欠けても飛ばしてよいのは baseline でない地域（baseline は無ければ従来どおり止まる）。"""
+    out = []
+    for rid, r in REGIONS.items():
+        optional = not regions.is_baseline(rid)
+        jma_site = regions.name("jma_stations_kanagawa", rid)
+        out += [
+            (r["jma_daily"]["source_id"], jma_site, optional),
+            (regions.name("jma_monthly_kanagawa", rid), jma_site, optional),
+            (regions.name("soramame_hourly_kanagawa", rid), regions.name("soramame_stations_kanagawa", rid), optional),
+        ]
+        if regions.is_baseline(rid):
+            out.append(("sagamihara_taiki_hourly", "sagamihara_taiki_stations", optional))   # 神奈川だけの出典（名前に slug が無い）
+        if r["jma_sst_areas"]:
+            sst = regions.name("jma_sst_kanagawa", rid)
+            out.append((sst, sst, optional))
+    return out
+
+
+# (jsonl名, site_source_id, 欠けても飛ばしてよいか)
+SENSOR_SOURCES = _sensor_sources()
+
+
+def sensor_site_id(site_src, r):
+    """sensor_timeseries.site_id。観測局は `<site_src>__<station_id>`、海面水温は `<site_src>__<海域番号>`。"""
+    key = r["station_id"] if "station_id" in r else r["area_code"]
+    return f"{site_src}__{key}"
+
 
 def load_sensor_timeseries(conn):
     total = 0
-    for name, site_src in SENSOR_SOURCES:
+    for name, site_src, optional in SENSOR_SOURCES:
+        if optional and not (PROC / f"{name}.jsonl").exists():
+            print(f"  sensor_timeseries <- {name}: jsonl が無いので飛ばした")
+            continue
         conn.execute("DELETE FROM sensor_timeseries WHERE source_id = ?", (name,))
         batch = []
         n = 0
         for r in rd_jsonl(name):
-            site_id = f"{site_src}__{r['station_id']}"
+            site_id = sensor_site_id(site_src, r)
             datastream = r.get("variable_ja") or r["variable"]
             batch.append((
                 site_id, datastream, r["datetime"], r.get("value"),
@@ -69,12 +97,12 @@ def load_sensor_timeseries(conn):
 # ============================================================
 # 2) measurements + events (環境省 公共用水域 水質)
 # ============================================================
-SITE_SRC_KOUSUI = "env_kousui_stations_kanagawa"
-
-def load_env_kousui_sample(conn):
-    """個別採水データ -> events + measurements"""
-    conn.execute("DELETE FROM measurements WHERE source_id = ?", ("env_kousui_sample_kanagawa",))
-    conn.execute("DELETE FROM events WHERE source_id = ?", ("env_kousui_sample_kanagawa",))
+def load_env_kousui_sample(conn, rid=regions.DEFAULT_REGION):
+    """個別採水データ -> events + measurements。地域ごとに呼ぶ（DELETE はその地域の source_id だけ）。"""
+    SRC = regions.name("env_kousui_sample_kanagawa", rid)
+    SITE_SRC_KOUSUI = regions.name("env_kousui_stations_kanagawa", rid)
+    conn.execute("DELETE FROM measurements WHERE source_id = ?", (SRC,))
+    conn.execute("DELETE FROM events WHERE source_id = ?", (SRC,))
 
     events = {}  # event_id -> dict
     meas_batch = []
@@ -94,7 +122,7 @@ def load_env_kousui_sample(conn):
     # 1st pass: build events dict and measurement rows (need 2 passes because
     # water_temp needs to be folded into events.water_temp_c which may appear
     # anywhere in the per-station variable block)
-    rows = list(rd_jsonl("env_kousui_sample_kanagawa"))
+    rows = list(rd_jsonl(SRC))
     n_rows = len(rows)
     for r in rows:
         eid = event_id_for(r["station_id"], r["datetime"])
@@ -118,7 +146,7 @@ def load_env_kousui_sample(conn):
             "採水・現地分析（環境省 公共用水域水質測定 公表データ, period=sample）",
             None, r.get("quality_flag"),
             "公開済", None, None,
-            "env_kousui_sample_kanagawa", r["source_ref"], 0,
+            SRC, r["source_ref"], 0,
         ))
 
     conn.executemany(
@@ -128,7 +156,7 @@ def load_env_kousui_sample(conn):
             is_backfilled, is_rain_triggered, source_id, source_ref, is_synthetic)
            VALUES (?,?,?,?,NULL,NULL,NULL,NULL,?,NULL,NULL,0,0,?,?,0)""",
         [(e["event_id"], e["site_id"], e["event_date"], e["event_time"], e["water_temp_c"],
-          "env_kousui_sample_kanagawa", e["source_ref"]) for e in events.values()])
+          SRC, e["source_ref"]) for e in events.values()])
     conn.commit()
 
     CHUNK = 20000
@@ -142,14 +170,16 @@ def load_env_kousui_sample(conn):
             meas_batch[i:i+CHUNK])
         conn.commit()
 
-    print(f"  env_kousui_sample: {n_rows} rows -> {len(events)} events, {len(meas_batch)} measurements")
+    print(f"  {SRC}: {n_rows} rows -> {len(events)} events, {len(meas_batch)} measurements")
 
-def load_env_kousui_annual(conn):
-    """年度集計値 -> measurements のみ（event_id=NULL、代表日時なし）"""
-    conn.execute("DELETE FROM measurements WHERE source_id = ?", ("env_kousui_annual_kanagawa",))
+def load_env_kousui_annual(conn, rid=regions.DEFAULT_REGION):
+    """年度集計値 -> measurements のみ（event_id=NULL、代表日時なし）。地域ごとに呼ぶ。"""
+    SRC = regions.name("env_kousui_annual_kanagawa", rid)
+    SITE_SRC_KOUSUI = regions.name("env_kousui_stations_kanagawa", rid)
+    conn.execute("DELETE FROM measurements WHERE source_id = ?", (SRC,))
     meas_batch = []
     n_rows = 0
-    for r in rd_jsonl("env_kousui_annual_kanagawa"):
+    for r in rd_jsonl(SRC):
         n_rows += 1
         mid = f"env_kousui_annual__{r['station_id']}__{r['fiscal_year']}__{r['variable']}"
         meas_batch.append((
@@ -161,7 +191,7 @@ def load_env_kousui_annual(conn):
             "年間の代表値のため個別の測定日時は無い）",
             None, r.get("quality_flag"),
             "公開済", None, None,
-            "env_kousui_annual_kanagawa", r["source_ref"], 0,
+            SRC, r["source_ref"], 0,
         ))
     CHUNK = 20000
     for i in range(0, len(meas_batch), CHUNK):
@@ -173,7 +203,7 @@ def load_env_kousui_annual(conn):
                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             meas_batch[i:i+CHUNK])
         conn.commit()
-    print(f"  env_kousui_annual: {n_rows} rows -> {len(meas_batch)} measurements (event_id=NULL)")
+    print(f"  {SRC}: {n_rows} rows -> {len(meas_batch)} measurements (event_id=NULL)")
 
 def main():
     conn = appdb()
@@ -181,8 +211,14 @@ def main():
     conn.execute("PRAGMA journal_mode=WAL")
 
     load_sensor_timeseries(conn)
-    load_env_kousui_sample(conn)
-    load_env_kousui_annual(conn)
+    for rid in REGIONS:
+        for fn, base in ((load_env_kousui_sample, "env_kousui_sample_kanagawa"),
+                         (load_env_kousui_annual, "env_kousui_annual_kanagawa")):
+            src = regions.name(base, rid)
+            if not regions.is_baseline(rid) and not (PROC / f"{src}.jsonl").exists():
+                print(f"  {src}: jsonl が無いので飛ばした")
+                continue
+            fn(conn, rid)
 
     n_ev = conn.execute("select count(*) from events").fetchone()[0]
     n_ms = conn.execute("select count(*) from measurements").fetchone()[0]

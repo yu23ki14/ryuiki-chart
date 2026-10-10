@@ -55,6 +55,10 @@ def test_zone_caveat_body_contains_zone_yaml_note_ja():
     assert note in body, "caveat.yaml の zone の body_ja が zone.yaml の note_ja を含まない（どちらかを直してそろえる）"
 
 
+# オーナーの確認待ちの注記（奄美 Step 1 PR-B の決定6・7）。確認したら外す
+PENDING_OWNER_CONFIRMATION = set(build_caveat.OWNER_PENDING_KEYS)
+
+
 def test_every_caveat_has_a_complete_review_record():
     entries = build_caveat._load_caveat_yaml()
     assert len(entries) >= 18
@@ -62,7 +66,10 @@ def test_every_caveat_has_a_complete_review_record():
         r = e["review"]
         assert r["reviewed_on"] in {"2026-10-06", "2026-10-07", "2026-10-10"}  # eDNA の注記4件は 10-07、zone は v2 で 10-10
         assert r["reviewer"] == "claude（オーナー委任）"
-        assert r["owner_confirmed_on"] == "2026-10-07"
+        if e["key"] in PENDING_OWNER_CONFIRMATION:
+            assert r["owner_confirmed_on"] is None  # 確認したら日付を入れて、ここから外す
+        else:
+            assert r["owner_confirmed_on"] == "2026-10-07"
         assert r["reason"]
 
 
@@ -273,3 +280,41 @@ def test_build_from_files_writes_declared_rows(tmp_path):
     assert counts["caveat"] >= 18
     kinds = {r[0] for r in conn.execute("SELECT DISTINCT scope_kind FROM caveat_scope")}
     assert kinds <= CAVEAT_VOCABULARY
+
+
+def test_null_owner_confirmation_is_pending_not_missing(decl):
+    """確認待ち（OWNER_PENDING_KEYS）の注記の null は通る。キー自体が無いのは上のテストで止まる。"""
+    cav, _ = decl
+
+    def pending_to_null(d):
+        for e in d["caveats"]:
+            if e["key"] in build_caveat.OWNER_PENDING_KEYS:
+                e["review"]["owner_confirmed_on"] = None
+    _rewrite(cav, pending_to_null)
+    build_caveat._load_caveat_yaml()
+
+
+def test_confirmed_caveat_reset_to_null_or_empty_is_rejected(decl):
+    """確認済みの注記を null や空文字に戻したら止まる（変異テスト）。"""
+    cav, _ = decl
+    for bad in (None, ""):
+        _rewrite(cav, lambda d, bad=bad: d["caveats"][0]["review"].update(owner_confirmed_on=bad))
+        assert d0_key(cav) not in build_caveat.OWNER_PENDING_KEYS
+        with pytest.raises(build_caveat.CaveatDeclarationError, match="owner_confirmed_on"):
+            build_caveat._load_caveat_yaml()
+
+
+def d0_key(cav):
+    return yaml.safe_load(cav.read_text(encoding="utf-8"))["caveats"][0]["key"]
+
+
+def test_pending_caveat_with_empty_string_is_rejected(decl):
+    cav, _ = decl
+
+    def f(d):
+        for e in d["caveats"]:
+            if e["key"] in build_caveat.OWNER_PENDING_KEYS:
+                e["review"]["owner_confirmed_on"] = ""
+    _rewrite(cav, f)
+    with pytest.raises(build_caveat.CaveatDeclarationError, match="owner_confirmed_on"):
+        build_caveat._load_caveat_yaml()

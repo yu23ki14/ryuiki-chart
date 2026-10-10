@@ -236,3 +236,10 @@ units:
     quantity_kind: dimensionless
     canonical_unit_id: common:unit:dimensionless
     scale_to_canonical: 1
+  - unit_id: common:unit:mj_per_m2
+    symbol: "MJ/m2"
+    ucum: "MJ/m2"
+    name_ja: "メガジュール毎平方メートル"
+    quantity_kind: energy_per_area
+    canonical_unit_id: common:unit:mj_per_m2
+    scale_to_canonical: 1

@@ -1,0 +1,11 @@
+# manifests/jma_sst_amami.yml（宣言。形は scripts/ingest/manifest.py の docstring）。
+# adapter: builtin = 変換は b03/b06 のまま（出力を動かさない）。メタデータだけを持つ。
+source: jma_sst_amami
+region: jp-46
+target: observation
+update_mode: snapshot
+input:
+  table: sensor_timeseries
+adapter: builtin
+evidence: >
+  気象庁 日本沿岸域の海面水温（奄美群島の海域617〜620、1982年〜前日）。海域ごとの時系列ファイル全体を取得のたびに取り直すので snapshot。site は座標を持たない（jma_sst_amami__<海域>）。region=jp-46。

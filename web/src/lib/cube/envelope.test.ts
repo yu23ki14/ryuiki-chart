@@ -137,9 +137,11 @@ describe("buildEnvelope", () => {
     const env = await buildEnvelope(spec, rows);
 
     expect(env.coverage.n_rows).toBe(1);
-    expect(env.provenance).toHaveLength(1);
-    expect(env.provenance[0].source_id).toBe("jma_monthly_kanagawa");
-    expect(env.provenance[0].n_rows).toBe(env.coverage.n_rows);
+    // 奄美の追加（Issue #89 PR-B）で同じ系列に jma_monthly_amami の alias が載った。
+    // 系列キーは地域を持たないので、出典は地域ごとに1件ずつ（計2件）。肝心なのは
+    // 「同じ出典の alias が2つあっても、その出典の n_rows は2重にならない」こと。
+    expect(env.provenance.map((p) => p.source_id).sort()).toEqual(["jma_monthly_amami", "jma_monthly_kanagawa"]);
+    for (const p of env.provenance) expect(p.n_rows).toBe(env.coverage.n_rows);
   });
 
   it("excluded.reasons: PR-2 で撤去した synthetic_included はもう報告しない（D2。b03 が合成データを除くため）", async () => {

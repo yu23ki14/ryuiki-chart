@@ -1074,7 +1074,9 @@ def main() -> None:
         with common.timed_step("occurrence_agg を構築") as info:
             stats = build_cube(
                 conn, args.declarations_yaml, count_overlay=count_overlay,
-                expected_sums=manifest_lib.expected_sums(manifest_lib.load_manifests(args.manifests_dir)),
+                expected_sums=manifest_lib.expected_sums(manifest_lib.apply_expected_overlay(
+                    manifest_lib.load_manifests(args.manifests_dir),
+                    period.resolve_count_overlay(args.count_overlay, "manifests"))),
             )
             info["n"] = stats["n_total_cells"]
     finally:

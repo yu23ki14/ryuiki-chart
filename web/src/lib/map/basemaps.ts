@@ -161,5 +161,15 @@ export const KANAGAWA_BOUNDS: [[number, number], [number, number]] = [
   [138.9, 35.1],
   [139.83, 35.68],
 ];
+/** 奄美大島の範囲。scripts/regions.py の jp-46 の bbox（lon_min, lat_min, lon_max, lat_max）と同じ値。 */
+export const AMAMI_BOUNDS: [[number, number], [number, number]] = [
+  [129.1, 27.95],
+  [129.85, 28.8],
+];
+/** 地図の「◯◯へ」ボタンが使う地域の範囲。足すときはここだけ。 */
+export const REGION_JUMPS: { id: string; label: string; bounds: [[number, number], [number, number]] }[] = [
+  { id: "jp-14", label: "神奈川県へ", bounds: KANAGAWA_BOUNDS },
+  { id: "jp-46", label: "奄美大島へ", bounds: AMAMI_BOUNDS },
+];
 export const DEFAULT_CENTER: [number, number] = [139.35, 35.42];
 export const DEFAULT_ZOOM = 9.2;
