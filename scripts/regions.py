@@ -21,6 +21,8 @@
 """
 from __future__ import annotations
 
+import re
+
 REGIONS: dict[str, dict] = {
     "jp-14": {
         "slug": "kanagawa",
@@ -135,3 +137,25 @@ def name(base: str, rid: str) -> str:
     if "kanagawa" in base:
         return base.replace("kanagawa", slug)
     return base if rid == "jp-14" else f"{base}_{slug}"
+
+
+def region_of_source_id(source_id: str) -> str | None:
+    """出典名（source_id・出力名）から地域を引く。未知は None（既定は呼び手が決める）。
+    規則は `name()` と同じ: 名前に slug が単語（`_` 区切り）として入っていればその地域。
+    それで引けない例外（日別値の source_id: `jma_daily_nase` 等）は REGIONS の `jma_daily` から引く。"""
+    tokens = set(re.split(r"_+", source_id or ""))
+    for rid, r in REGIONS.items():
+        if r["slug"] in tokens or r["jma_daily"]["source_id"] == source_id:
+            return rid
+    return None
+
+
+def w12_stems() -> list[str]:
+    """全地域の W12（流域界）の名前を REGIONS の順に返す。"""
+    return [name("nlni_w12_watersheds", rid) for rid in REGIONS]
+
+
+def site_scope(prefix: str) -> str:
+    """site の出典接頭辞（例: `jma_stations_amami`・`jma_sst_amami__617`）→ ID の scope（region_id）。
+    slug を含まない接頭辞は、神奈川の既存 ID を変えないため jp-14。"""
+    return region_of_source_id(prefix) or "jp-14"

@@ -146,3 +146,37 @@ def test_amami_bbox_excludes_neighbours_and_holds_c23():
             assert x0 <= x <= x1 and y0 <= y <= y1
             n += 1
     assert n
+
+
+AMAMI_SOURCES = (
+    "nlni_w05_rivers_amami", "nlni_w05_river_nodes_amami", "nlni_w12_watersheds_amami",
+    "nlni_l03b_landuse_by_watershed_amami", "biodic_veg2024_amami", "biodic_mammal_mesh_amami",
+    "gbif_amami_occurrences", "inaturalist_amami", "jma_stations_amami", "env_kousui_stations_amami",
+    "soramame_stations_amami", "jma_monthly_amami", "jma_daily_nase", "env_kousui_annual_amami",
+    "env_kousui_sample_amami", "soramame_hourly_amami", "jma_sst_amami",
+)
+
+
+def test_region_of_source_id():
+    for s in ("gbif_kanagawa_occurrences", "inaturalist_kanagawa", "jma_daily_yokohama"):
+        assert rc.region_of_source_id(s) == "jp-14", s
+    for s in AMAMI_SOURCES:
+        assert rc.region_of_source_id(s) == "jp-46", s
+    assert rc.region_of_source_id("unknown_source") is None
+    assert rc.region_of_source_id("") is None and rc.region_of_source_id(None) is None
+
+
+def test_region_of_source_id_roundtrips_name():
+    for rid in rc.REGIONS:
+        if rid == "jp-46":
+            assert rc.region_of_source_id(rc.name("inaturalist_kanagawa", rid)) == rid
+
+
+def test_w12_stems_order():
+    assert rc.w12_stems() == ["nlni_w12_watersheds", "nlni_w12_watersheds_amami"]
+
+
+def test_site_scope():
+    assert rc.site_scope("jma_sst_amami__617") == "jp-46"
+    assert rc.site_scope("jma_stations_amami") == "jp-46"
+    assert rc.site_scope("jma_stations") == "jp-14"
