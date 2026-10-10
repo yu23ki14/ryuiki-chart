@@ -16,7 +16,7 @@ CI の pytest が JSON のフィクスチャから回す）。OCR 本体は c98_
 6. 未確定・疑われたセルは `unreadable_reason="ocr_disagree: …"`、`value_raw=NULL` で入れ、**採用しない**（推測しない）。
    0 と空欄の区別がつかない（一方が空欄、他方が 0）セルも同じ扱い。
 7. verified_by: 一致＋検算が通った = `auto:xocr+arith`（confidence 1.0）／人の確認 = `human:<名前>`（1.0）／
-   一致したが検算の相手が未確定で確かめられない = `auto:xocr`（0.8。未確定が残る間だけ現れる）／未採用 = NULL。
+   一致したが検算で確かめられない（入る検算が1つも評価できない）= `auto:xocr`（0.8）／未採用 = NULL。
 cells の形は §3d: row_key `名瀬保健所|奄美市名瀬`、計の行と「合計（3月末）」の列は is_total=1、構成比は float・%・
 fiscal_year=NULL、「5(1)」は value=5 のセルと、`…（うち死亡）` という別の行のセル（value=1）、空欄は value=NULL。
 
@@ -34,6 +34,7 @@ import unicodedata
 from collections import defaultdict
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
+import common
 import doccells
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -365,18 +366,21 @@ def notes_for(doc_id):
 
 # ------------------------------------------------------------ DB
 def write(doc_id, built):
-    spec = built["spec"]
-    doccells.put_document(
-        doc_id, title=spec["title"], publisher="鹿児島県 保健福祉部薬務課", url=spec["url"], local_path=spec["pdf"],
-        doc_sha256=built["stats"]["pdf_sha256"], n_pages=1, fiscal_year=2025,
-        license="県のサイト（事実だけ抜き出し、出典を明記）")
-    doccells.replace_doc_cells(doc_id, built["rows"])
-    doccells.put_notes(doc_id, built["notes"])
-    st = built["stats"]
-    doccells.log_check(doc_id, "p1_t1", "pass" if not st["unreadable"] else "partial",
-                       failures=[w for w in built["warnings"]],
-                       note=f"{SCRIPT_ID}: OCR 2種の一致率 {st['agree_rate']:.1%}、未採用 {st['unreadable']} セル、人の確認 {st['reviewed']} セル、"
-                            f"検算 {st['evaluated']} 件中 失敗 {st['failed_constraints']} 件")
+    spec, st = built["spec"], built["stats"]
+    con = common.cellsdb()
+    try:
+        doccells.write_doc(
+            con, doc_id,
+            document=dict(title=spec["title"], publisher="鹿児島県 保健福祉部薬務課", url=spec["url"], local_path=spec["pdf"],
+                          doc_sha256=st["pdf_sha256"], n_pages=1, fiscal_year=2025,
+                          license="県のサイト（事実だけ抜き出し、出典を明記）"),
+            cells=built["rows"], notes=built["notes"],
+            log=[dict(verdict="pass" if not st["unreadable"] else "fail", page_no=1, table_id="p1_t1",
+                      failures=built["warnings"],
+                      note=f"{SCRIPT_ID}: OCR 2種の一致率 {st['agree_rate']:.1%}、未採用 {st['unreadable']} セル、"
+                           f"人の確認 {st['reviewed']} セル、検算 {st['evaluated']} 件中 失敗 {st['failed_constraints']} 件")])
+    finally:
+        con.close()
 
 
 def main():

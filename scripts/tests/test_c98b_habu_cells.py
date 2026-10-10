@@ -180,3 +180,29 @@ def test_reviewed_csv_requires_reviewer(tmp_path):
     (root / doc / "reviewed.csv").write_text("row,col,value,reviewer,note\n業者|名瀬管内,R2,238,,\n", encoding="utf-8")
     with pytest.raises(ValueError, match="reviewer"):
         c.build(doc, root)
+
+
+def test_write_replaces_only_own_doc_id(tmp_path, monkeypatch):
+    """DB への書き込みは自分の doc_id の行だけを入れ替える。ほかの doc_id・もう一方のハブの資料には触れない。"""
+    import sqlite3
+    import common
+    db = tmp_path / "cells.sqlite"
+    con = sqlite3.connect(db)
+    con.executescript((c.ROOT / "scripts/schema_cells.sql").read_text(encoding="utf-8"))
+    con.execute("ALTER TABLE cells ADD COLUMN superseded INTEGER DEFAULT 0")
+    con.execute("INSERT INTO documents(doc_id,title) VALUES('other','x')")
+    con.execute("INSERT INTO cells(doc_id,row_key,col_key,value,value_type) VALUES('other','r','c','1','int')")
+    con.execute("INSERT INTO notes(note_id,doc_id,kind,text) VALUES('other_n001','other','footnote','t')")
+    con.commit()
+    con.close()
+    monkeypatch.setattr(common, "cellsdb", lambda: sqlite3.connect(db))
+    for _ in range(2):   # 2回書いても行は増えない（入れ替え）
+        for doc_id in DOCS:
+            c.write(doc_id, c.build(doc_id))
+    con = sqlite3.connect(db)
+    assert con.execute("SELECT count(*) FROM cells WHERE doc_id='other'").fetchone()[0] == 1
+    assert con.execute("SELECT count(*) FROM notes WHERE doc_id='other'").fetchone()[0] == 1
+    assert con.execute("SELECT count(*) FROM cells WHERE doc_id='kagoshima_habu_bite_h28r7'").fetchone()[0] == 162
+    assert con.execute("SELECT count(*) FROM cells WHERE doc_id='kagoshima_habu_kaiage_h28r7'").fetchone()[0] == 204
+    assert con.execute("SELECT count(*) FROM notes WHERE doc_id LIKE 'kagoshima_habu%'").fetchone()[0] == 8
+    assert con.execute("SELECT count(*) FROM extraction_log").fetchone()[0] == 4

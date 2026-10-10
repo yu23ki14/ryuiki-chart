@@ -34,6 +34,7 @@ ROUTES = ("海路", "空路")
 SHEETS = {"x1": ("入込客（人）", 1), "x2": ("入域客（人）", 2)}   # table_id -> (シート名, page_no)
 LICENSE = "CC BY 4.0"
 EXTRACTOR = "openpyxl"
+SCRIPT_ID = "c97"
 
 
 def fetch(force=False):
@@ -145,13 +146,19 @@ def main():
     extracted_at = common.now()
     rows = build_rows(main_t, other_t, extracted_at)
     page = f"{BASE}/dataset/{PKG}"
-    doccells.put_document(
-        DOC_ID, title="奄美群島入込客・入域客数（海路・空路、2005〜2024年）", publisher="鹿児島県 大島支庁総務企画課（BODIK）",
-        url=urls.get(MAIN_FILE) or page, local_path=str(main_p.relative_to(common.ROOT)), doc_sha256=common.sha256(main_p),
-        n_pages=len(SHEETS), fiscal_year=2024, license=LICENSE)
-    doccells.replace_doc_cells(DOC_ID, [dict(r, doc_sha256=common.sha256(main_p)) for r in rows])
-    doccells.put_notes(DOC_ID, NOTES)
-    doccells.log_check(DOC_ID, None, "pass", note=f"年の連続 2005〜2024・値は非負の整数・2022年版との一致 {n} 値")
+    sha = common.sha256(main_p)
+    con = common.cellsdb()
+    try:
+        doccells.write_doc(
+            con, DOC_ID,
+            document=dict(title="奄美群島入込客・入域客数（海路・空路、2005〜2024年）",
+                          publisher="鹿児島県 大島支庁総務企画課（BODIK）", url=urls.get(MAIN_FILE) or page,
+                          local_path=str(main_p.relative_to(common.ROOT)), doc_sha256=sha, n_pages=len(SHEETS),
+                          fiscal_year=2024, license=LICENSE),
+            cells=[dict(r, doc_sha256=sha) for r in rows], notes=NOTES,
+            log=[dict(verdict="pass", note=f"{SCRIPT_ID}: 年の連続 2005〜2024・値は非負の整数・2022年版との一致 {n} 値")])
+    finally:
+        con.close()
     print(f"  [cells] {DOC_ID}: {len(rows)} 行、系列 {len({(r['table_id'], r['row_key']) for r in rows})}")
     if not a.no_register:
         common.register(SOURCE_ID, "奄美群島入込客・入域客数（海路・空路）", "鹿児島県 大島支庁総務企画課（BODIK）", page,
