@@ -3,6 +3,12 @@ dams_kanagawa__01,3,2,247.67,413.47,192.88,26452.7,117.46,mountain_relief_ge_200
 dams_kanagawa__02,3,2,126.49,299.93,142.88,30522,61.21,mountain_relief_ge_200
 dams_kanagawa__03,3,2,169.85,275.57,171.69,35630.8,128.52,mountain_relief_ge_200
 dams_kanagawa__04,3,2,339.25,452.32,96.73,20908.9,189.46,mountain_relief_ge_200
+env_kousui_stations_amami__kousui_4611030,,5,7.83,250.91,97.25,239.9,0,coast_c23_within_2km
+env_kousui_stations_amami__kousui_4611040,,5,0.5,171.21,30.44,3.1,0,coast_c23_within_2km
+env_kousui_stations_amami__kousui_4611050,,5,8.05,232.62,101.75,256.8,0,coast_c23_within_2km
+env_kousui_stations_amami__kousui_4611060,,5,9.5,221.75,137.54,298.2,0,coast_c23_within_2km
+env_kousui_stations_amami__kousui_4611910,,2,11.42,251.39,117.21,255.5,0,mountain_relief_ge_200
+env_kousui_stations_amami__kousui_4620230,,2,48.47,311.23,159.09,4427.1,9.82,mountain_relief_ge_200
 env_kousui_stations_kanagawa__kousui_1410010,5,4,3.17,3,1.71,4087.7,0,lowland_criteria_met
 env_kousui_stations_kanagawa__kousui_1410014,5,4,3.17,3,1.71,4087.7,0,lowland_criteria_met
 env_kousui_stations_kanagawa__kousui_1410020,5,4,4.31,4.06,2.96,4868.3,-0.1,lowland_criteria_met
@@ -231,6 +237,9 @@ env_kousui_stations_kanagawa__kousui_1420190,3,3,127.38,128.63,53.16,32479.3,125
 env_kousui_stations_kanagawa__kousui_1420200,3,3,167.82,193.22,82.29,37224.5,165,unchanged
 env_kousui_stations_kanagawa__kousui_1430090,5,5,,,,661,,unchanged
 env_kousui_stations_kanagawa__kousui_1430230,4,4,3.3,5.85,1.2,2539.6,0,unchanged
+jma_stations_amami__jma_0980,,5,0.08,188.41,14.7,0,0,coast_c23_within_2km
+jma_stations_amami__jma_1520,,5,3.46,27.45,3.87,196.6,0,coast_c23_within_2km
+jma_stations_amami__jma_47909,,5,4.99,212.47,88.65,36.6,0,coast_c23_within_2km
 jma_stations_kanagawa__jma_0387,3,2,182.92,275.31,40.01,35495.7,128.69,mountain_relief_ge_200
 jma_stations_kanagawa__jma_0388,4,4,16.92,33.02,2.63,12842.1,9.9,unchanged
 jma_stations_kanagawa__jma_0390,1,1,856,464.62,141.45,9105.3,427.46,unchanged

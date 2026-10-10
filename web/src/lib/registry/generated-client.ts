@@ -32,7 +32,7 @@ export type CaveatScopeKind = "variable" | "place" | "source_edition" | "observa
  * 呼ぶときの型で、存在しないキーはここでコンパイルエラーになる（旧 domain.ts の
  * mustCaveatBody() は実行時例外だった）。
  */
-export type CaveatKey = "aboveLod" | "censoredLod" | "duplicates" | "ednaCoords" | "ednaNonDetect" | "ednaReads" | "ednaWatershed" | "ednaYearBasis" | "effort" | "effortSurvey" | "fishClass" | "flowTidalBackflow" | "gbifCutoff" | "inatBackfill" | "isAlien" | "landuseDefinitionChange" | "measuredOn" | "municipality" | "organismSite" | "regimes" | "share" | "synthetic" | "unitUnknown" | "zone";
+export type CaveatKey = "aboveLod" | "amamiRedList" | "amamiWatershedGap" | "censoredLod" | "duplicates" | "ednaCoords" | "ednaNonDetect" | "ednaReads" | "ednaWatershed" | "ednaYearBasis" | "effort" | "effortSurvey" | "fishClass" | "flowTidalBackflow" | "gbifCutoff" | "inatBackfill" | "isAlien" | "landuseDefinitionChange" | "measuredOn" | "municipality" | "organismSite" | "regimes" | "share" | "synthetic" | "unitUnknown" | "zone";
 
 export interface GeneratedCaveat {
   key: string;
@@ -279,6 +279,8 @@ export const NAME_JA: Readonly<Record<string, string>> = {
  */
 export const GENERATED_CAVEATS: readonly GeneratedCaveat[] = [
   { key: "aboveLod", severity: "blocking", kind: "censoring", bodyJa: "透明度の定量上限超え（原表記が「>1.4」〜「>28」など、26行）は、上限がどこまでか分からないという性質上、集計方法によらず値に含められない。件数（n）にも入らないため、他の期間・地点と単純に比較しないこと。" },
+  { key: "amamiRedList", severity: "warning", kind: "definition_change", bodyJa: "奄美大島の赤リスト（絶滅危惧の区分）は、環境省の全国版だけを参照している。神奈川県の区分は県のレッドリストを含むが、鹿児島県のレッドリストはまだ収集していないため、同じ種でも県の評価は出ない。神奈川県の区分と並べて危険度を比べない。" },
+  { key: "amamiWatershedGap", severity: "warning", kind: "coverage_gap", bodyJa: "奄美大島の流域は、国土数値情報 W12（1977年版）のポリゴンで決めている。W12 が覆わない部分（島の海岸部など）の記録は流域が空になり、流域ごとの集計には出ない。島全体の件数と流域別の合計は一致しない。" },
   { key: "censoredLod", severity: "blocking", kind: "censoring", bodyJa: "全体の約24%は定量下限未満（原表記が「<0.5」など）。この画面の値は定量下限未満を定量下限値とみなして集計している（上限側の見積もり）。不検出（ND）は平均に含めない。折れ線では中抜きの点で示し、その定量下限値が実際に観測された値だとは読まないこと。" },
   { key: "duplicates", severity: "info", kind: null, bodyJa: "同一の地点・日・項目に複数行あるのは、原本が採水時刻を落としているため。ここでは日ごとに平均して1点にまとめている。" },
   { key: "ednaCoords", severity: "warning", kind: null, bodyJa: "eDNA の地点の座標は推定。公開データに座標が無いため、支川名と市町村から河川線の上に推定した（誤差は最大 10 km、地点ごとの誤差は coordinate_uncertainty_m）。座標の無い地点もある。" },
@@ -331,10 +333,14 @@ export const GENERATED_CAVEAT_SCOPE: readonly GeneratedCaveatScope[] = [
   { scopeKind: "place", scopeRef: "place_kind=site", caveatKey: "zone", sortOrder: 0, priority: 0 },
   { scopeKind: "place", scopeRef: "place_kind=site", caveatKey: "municipality", sortOrder: 1, priority: 0 },
   { scopeKind: "place", scopeRef: "place_kind=zone", caveatKey: "zone", sortOrder: 0, priority: 0 },
+  { scopeKind: "source_edition", scopeRef: "source_id=gbif_amami_occurrences", caveatKey: "amamiRedList", sortOrder: 0, priority: 0 },
+  { scopeKind: "source_edition", scopeRef: "source_id=gbif_amami_occurrences", caveatKey: "amamiWatershedGap", sortOrder: 1, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=gbif_kanagawa_occurrences", caveatKey: "organismSite", sortOrder: 0, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=gbif_kanagawa_occurrences", caveatKey: "effort", sortOrder: 1, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=gbif_kanagawa_occurrences", caveatKey: "regimes", sortOrder: 2, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=gbif_kanagawa_occurrences", caveatKey: "gbifCutoff", sortOrder: 3, priority: 0 },
+  { scopeKind: "source_edition", scopeRef: "source_id=inaturalist_amami", caveatKey: "amamiRedList", sortOrder: 0, priority: 0 },
+  { scopeKind: "source_edition", scopeRef: "source_id=inaturalist_amami", caveatKey: "amamiWatershedGap", sortOrder: 1, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=inaturalist_kanagawa", caveatKey: "organismSite", sortOrder: 0, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=inaturalist_kanagawa", caveatKey: "effort", sortOrder: 1, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=inaturalist_kanagawa", caveatKey: "regimes", sortOrder: 2, priority: 0 },
@@ -346,6 +352,7 @@ export const GENERATED_CAVEAT_SCOPE: readonly GeneratedCaveatScope[] = [
   { scopeKind: "source_edition", scopeRef: "source_id=kanagawa_edna", caveatKey: "effortSurvey", sortOrder: 5, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=kanagawa_kuma_sightings", caveatKey: "effortSurvey", sortOrder: 0, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=moe_ias_list", caveatKey: "isAlien", sortOrder: 0, priority: 0 },
+  { scopeKind: "source_edition", scopeRef: "source_id=nlni_l03b_landuse_by_watershed_amami", caveatKey: "amamiWatershedGap", sortOrder: 0, priority: 0 },
   { scopeKind: "variable", scopeRef: "common:variable:hydro.flow", caveatKey: "flowTidalBackflow", sortOrder: 0, priority: 0 },
   { scopeKind: "variable", scopeRef: "common:variable:water.transparency", caveatKey: "aboveLod", sortOrder: 0, priority: 0 },
   { scopeKind: "variable", scopeRef: "theme=landuse", caveatKey: "landuseDefinitionChange", sortOrder: 0, priority: 0 },
