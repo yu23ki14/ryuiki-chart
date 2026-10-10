@@ -7,22 +7,36 @@
   各流域ポリゴンで空間クロスさせ、ポリゴン内合計延長が最大の「水系域コード(6桁, 新)」を
   コードリスト WaterSystemCodeCd で名称化したものを `*_estimated` 列に入れる。
   推定であることが判る列名・estimate_method 列を必ず付け、原コードは無加工で残す。
+
+`--region jp-46`（奄美）は鹿児島県のファイル（823 面）から、奄美の bbox（regions.py）に掛かる流域だけを
+`nlni_w12_watersheds_amami.*` に出す。水系名の推定は奄美の W05（c31 の入力、W05-07）を使う。
 """
-import sys, pathlib, collections
+import argparse, sys, pathlib, collections
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from common import RAW, PROC, register, write_jsonl, to_fiscal_year
 from nlni_lib import (read_shp, geod_area_km2, write_geojson, write_csv,
                       extract_attribute_table, write_columns_csv, parse_codelist_html,
-                      LICENSE_OPEN)
+                      LICENSE_OPEN, layout, ensure_extracted, bbox_geom)
+from regions import add_region_arg
 from shapely.geometry import shape as shp_shape
 from shapely.strtree import STRtree
 from shapely import prepared
 
-SID = "nlni_w12_watersheds"
+ap = argparse.ArgumentParser()
+add_region_arg(ap)
+RID = ap.parse_args().region
+L = layout(RID)
+PREF, PREF_NAME, PREF_SHORT = L["pref"], L["pref_name_ja"], L["pref_short"]
+SID = L["w12_sid"]
 PAGE = "https://nlftp.mlit.go.jp/ksj/gmlold/datalist/gmlold_KsjTmplt-W12.html"
-ZIPU = "https://nlftp.mlit.go.jp/ksj/gmlold/data/W12/W12-52A/W12-52A-14-01.0a_GML.zip"
-SHP = RAW / SID / "W12-52A-2K-14_WatershedBoundary.shp"
-W05_SHP = RAW / "nlni_w05_rivers" / "W05-08_14-g_Stream.shp"
+ZIPU = L["w12_zip_url"]
+SHP = L["w12_shp"]
+W05_SHP = L["w05_stream_shp"]
+if RID != "jp-14":
+    ensure_extracted(ZIPU, L["w12_dir"] / pathlib.PurePosixPath(ZIPU).name, L["w12_dir"], SHP.name)
+    ensure_extracted(L["w05_zip_url"], L["w05_dir"] / pathlib.PurePosixPath(L["w05_zip_url"]).name,
+                     L["w05_dir"], W05_SHP.name)
+CLIP = bbox_geom(L["clip_bbox"]) if L["clip_bbox"] else None
 
 WATERSHED_TYPE = {"0": "流域界", "1": "非集水域界"}
 
@@ -74,6 +88,8 @@ for i, (sh, rc) in enumerate(zip(shapes, recs)):
     g = shp_shape(gj)
     if not g.is_valid:
         g = g.buffer(0)
+    if CLIP is not None and not g.intersects(CLIP):
+        continue
     ws_code, uv_code, wtype = rc[1], rc[2], str(rc[0])
     area = geod_area_km2(g)
     c = g.centroid
@@ -111,7 +127,7 @@ for i, (sh, rc) in enumerate(zip(shapes, recs)):
 
     props = {
         "source_id": SID,
-        "source_ref": f"{ZIPU}#W12-52A-2K-14_WatershedBoundary:{i}",
+        "source_ref": f"{ZIPU}#W12-52A-2K-{PREF}_WatershedBoundary:{i}",
         "watershed_id": f"{ws_code}-{uv_code}",
         "watershed_type_code_raw": wtype,
         "watershed_type_ja": WATERSHED_TYPE.get(wtype),
@@ -128,11 +144,11 @@ for i, (sh, rc) in enumerate(zip(shapes, recs)):
         "estimate_matched_streams": len(by_sys),
         "estimate_flag": est_flag,
         "main_river_names_ja": rivers,
-        "estimate_method": ("W05河川(神奈川,平成20年)の流路を当ポリゴンで交差させ、"
+        "estimate_method": (f"W05河川({PREF_SHORT},{L['w05_year_ja']})の流路を当ポリゴンで交差させ、"
                             "交差延長最大の水系域コードをWaterSystemCodeCdで名称化した推定値"),
         "data_year": to_fiscal_year("昭和52年"),
-        "prefecture_code": "14",
-        "prefecture_name_ja": "神奈川県",
+        "prefecture_code": PREF,
+        "prefecture_name_ja": PREF_NAME,
     }
     features.append({"type": "Feature", "geometry": gj, "properties": props})
     rows.append(props)
@@ -213,7 +229,9 @@ cols += [
 ]
 write_columns_csv(SID, cols)
 
-NOTES = ("神奈川県(14)/世界測地系版 W12-52A-14-01.0a_GML.zip。基準年 昭和52(1977)年。"
+SCOPE = "" if CLIP is None else (f"{L['name_ja']}の範囲（bbox {L['bbox']}）に掛かる {len(rows)} 面だけを、"
+                                  f"県全体 {len(recs)} 面から絞った。")
+NOTES = (f"{PREF_NAME}({PREF})/世界測地系版 {pathlib.PurePosixPath(ZIPU).name}。基準年 昭和52(1977)年。{SCOPE}"
          "原データに水系名は無く旧水系域コード(5桁)のみ。公式コードリスト OldWaterSystemCd には"
          "名称対応表が存在しないため、水系名は W05河川との空間クロスによる推定値を "
          "*_estimated 列に格納（estimate_method 列に方法を明記）。"
@@ -222,10 +240,10 @@ NOTES = ("神奈川県(14)/世界測地系版 W12-52A-14-01.0a_GML.zip。基準�
          "データの一部は領域外にあるものがあるため、利用には注意を要する。」"
          "「旧フォーマットに記録されていた”非集水域界”のデータについては、幾何形状に課題があったため"
          "GML変換時に削除した。」→ 実際に watershed_type は全件 0(流域界) で非集水域界は0件。"
-         "shapefile 5件(#15,#49,#116,#153,#158)は外環リングを持たず内側リングのみで構成されており、"
-         "pyshp が外環として符号化した（面積は算出済みだが形状の解釈に注意）。"
-         f"付随出力: {SID}_by_system.csv/.jsonl（旧水系域コード単位の集計）, {SID}_columns.csv")
-register(SID, "国土数値情報 流域界・非集水域（神奈川県）", "国土交通省 国土数値情報ダウンロードサイト",
+         + ("shapefile 5件(#15,#49,#116,#153,#158)は外環リングを持たず内側リングのみで構成されており、"
+            "pyshp が外環として符号化した（面積は算出済みだが形状の解釈に注意）。" if RID == "jp-14" else "")
+         + f"付随出力: {SID}_by_system.csv/.jsonl（旧水系域コード単位の集計）, {SID}_columns.csv")
+register(SID, f"国土数値情報 流域界・非集水域（{PREF_NAME if CLIP is None else L['name_ja']}）", "国土交通省 国土数値情報ダウンロードサイト",
          PAGE, "gis_watershed", "http_zip_shapefile", "geojson+csv+jsonl",
          LICENSE_OPEN, 1, len(rows), NOTES)
 

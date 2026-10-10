@@ -5,20 +5,36 @@
   .dbf のみを展開し、セル矩形はメッシュコードから厳密に生成する（.shp と一致することを検証する）。
 - W12 流域界（単位流域 377面）にセル重心が入るものだけを残し、流域IDを付与する
   → 流域単位の土地利用集計が可能になる。
+
+`--region jp-46`（奄美。1次メッシュ 4229）は、bbox（regions.py）内に重心があり、かつ海水域でないセルを残す。
+流域は W12（奄美の bbox に掛かる面）の外なら NULL。流域ごとの集計（`*_by_watershed_amami`）は W12 の内側だけで作る。
 """
-import sys, pathlib, zipfile, tempfile, collections, csv, json, shutil
+import argparse, sys, pathlib, zipfile, tempfile, collections, csv, json, shutil
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import numpy as np
 import shapefile
 import shapely
 from shapely.geometry import shape as shp_shape
-from common import RAW, PROC, ROOT, register, write_jsonl
+from common import RAW, PROC, ROOT, register, write_jsonl, download
 from nlni_lib import (read_shp, write_csv, extract_attribute_table, write_columns_csv,
-                      parse_codelist_html, GEOD)
+                      parse_codelist_html, GEOD, layout, bbox_geom)
+from regions import add_region_arg
+
+ap = argparse.ArgumentParser()
+add_region_arg(ap)
+RID = ap.parse_args().region
+L = layout(RID)
+PREF_NAME = L["pref_name_ja"]
+CLIP_BBOX = L["clip_bbox"]          # None なら従来どおり（W12 に重心が入るセルだけ残す）
+AREA_JA = PREF_NAME if CLIP_BBOX is None else L["name_ja"]
+SEA_JA = "海水域"                    # コードリストの名称。奄美はこれを除く
+# 2006 年度版の土地利用種「0」（コードリスト外）は、2016 年度版に1セルも無い洋上のセル（奄美で 122,704 セル、
+# うち 2016 の陸域セルと重なるのは 0）。海として除く。神奈川（bbox で絞らない）には掛けない。
+SEA_RAW_2006 = "0"
 
 PAGE = "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-L03-b.html"
-BASE = RAW / "nlni_l03b_landuse"
-MESHES = ("5238", "5239", "5338", "5339")
+BASE = L["l03b_dir"]
+MESHES = L["l03b_meshes"]
 YEARS = {"16": 2016, "06": 2006}
 LICENSE = {
     2016: ("国土数値情報利用約款 / 平成28年度分は「適用する利用規約に基づく（オープンデータ）」"
@@ -43,7 +59,7 @@ def mesh_cell(code):
 
 
 # ---- メッシュコード→矩形 の検証（2016年 5339 の .shp と突き合わせ）----
-_v = BASE / "L03-b-16_5339.shp"
+_v = BASE / f"L03-b-16_{MESHES[-1]}.shp"
 if _v.exists():
     vr = shapefile.Reader(str(_v).replace(".shp", ""), encoding="cp932")
     bad = 0
@@ -61,13 +77,15 @@ else:
     print("  [warn] 検証用 .shp が無いため mesh_cell() の突き合わせを省略")
 
 # ---- W12 単位流域（流域IDの付与元）----
-w12, w12fields, w12recs, _ = read_shp(RAW / "nlni_w12_watersheds"
-                                      / "W12-52A-2K-14_WatershedBoundary.shp")
+w12, w12fields, w12recs, _ = read_shp(L["w12_shp"])
 w12geoms, w12ids, w12codes = [], [], []
+_clip = bbox_geom(CLIP_BBOX) if CLIP_BBOX else None
 for sh, rc in zip(w12.shapes(), w12recs):
     g = shp_shape(sh.__geo_interface__)
     if not g.is_valid:
         g = g.buffer(0)
+    if _clip is not None and not g.intersects(_clip):
+        continue                                           # c30 と同じ絞り込み
     w12geoms.append(g)
     w12ids.append(f"{rc[1]}-{rc[2]}")
     w12codes.append(rc[1])
@@ -76,7 +94,7 @@ print(f"  W12 unit watersheds for join: {len(w12geoms)}")
 
 # 単位流域ごとの水系名（c30 の出力を利用）
 ws_name = {}
-p_by = PROC / "nlni_w12_watersheds.csv"
+p_by = PROC / f"{L['w12_sid']}.csv"
 if p_by.exists():
     for r_ in csv.DictReader(open(p_by, encoding="utf-8")):
         ws_name[r_["watershed_id"]] = (r_["water_system_name_ja_estimated"] or "",
@@ -86,10 +104,12 @@ agg_all = []
 for yy, year in YEARS.items():
     landuse = parse_codelist_html(RAW / "nlni_codelists" / f"{CODELIST[year]}.html", r"[0-9A-G]+")
     landuse = {k: v for k, v in landuse.items() if v and v != "-"}
-    SID = f"nlni_l03b_landuse_{year}"
+    SID = L["l03b_sid"](year)
     codes, lus, dates, srcrefs = [], [], [], []
     for m in MESHES:
         zp = BASE / f"L03-b-{yy}_{m}-jgd_GML.zip"
+        if RID != "jp-14":
+            download(f"https://nlftp.mlit.go.jp/ksj/gml/data/L03-b/L03-b-{yy}/{zp.name}", zp)
         z = zipfile.ZipFile(zp)
         dbfname = [n for n in z.namelist() if n.lower().endswith(".dbf")][0]
         tmp = tempfile.mkdtemp()
@@ -111,11 +131,26 @@ for yy, year in YEARS.items():
     cx = (arr[:, 0] + arr[:, 2]) / 2.0
     cy = (arr[:, 1] + arr[:, 3]) / 2.0
     pts = shapely.points(cx, cy)
-    qi, ti = tree.query(pts, predicate="within")           # (点index, 流域index)
-    assign = {}
-    for a, b in zip(qi, ti):
-        assign.setdefault(int(a), int(b))                  # 重複は先勝ち
-    print(f"  {year}: {len(codes)} cells -> {len(assign)} cells inside W12 watersheds")
+    if CLIP_BBOX is None:
+        qi, ti = tree.query(pts, predicate="within")       # (点index, 流域index)
+        assign = {}
+        for a, b in zip(qi, ti):
+            assign.setdefault(int(a), int(b))              # 重複は先勝ち
+        selected = sorted(assign)
+        print(f"  {year}: {len(codes)} cells -> {len(assign)} cells inside W12 watersheds")
+    else:
+        # bbox 内に重心があり、海水域でないセルを残す。流域は W12 の外なら NULL（assign に無い）。
+        inbox = ((cx >= CLIP_BBOX[0]) & (cx <= CLIP_BBOX[2])
+                 & (cy >= CLIP_BBOX[1]) & (cy <= CLIP_BBOX[3]))
+        sea = np.array([landuse.get(lu_) == SEA_JA or lu_ == SEA_RAW_2006 for lu_ in lus])
+        cand = np.nonzero(inbox & ~sea)[0]
+        qi, ti = tree.query(pts[cand], predicate="within")
+        assign = {}
+        for a, b in zip(qi, ti):
+            assign.setdefault(int(cand[a]), int(b))
+        selected = [int(i) for i in cand]
+        print(f"  {year}: {len(codes)} cells -> in bbox {int(inbox.sum())} -> land {len(selected)} "
+              f"-> inside W12 {len(assign)} ({len(selected) - len(assign)} cells watershed=NULL)")
 
     # セル面積(km2): 緯度に依存するので緯度帯ごとに測地線面積を算出して使い回す
     area_cache = {}
@@ -132,12 +167,12 @@ for yy, year in YEARS.items():
     agg = collections.Counter()
     agg_area = collections.Counter()
     zipurl = dict(srcrefs)
-    for i in sorted(assign):
-        wi = assign[i]
+    for i in selected:
+        wi = assign.get(i)
         code, lu = codes[i], lus[i]
         lon0, lat0, lon1, lat1 = arr[i]
         a_km2 = cell_area(lat0, lon0, lat1, lon1)
-        wid = w12ids[wi]
+        wid = w12ids[wi] if wi is not None else None
         nm, cat = ws_name.get(wid, ("", ""))
         props = {
             "source_id": SID,
@@ -147,7 +182,7 @@ for yy, year in YEARS.items():
             "landuse_name_ja": landuse.get(lu),
             "survey_date_raw": dates[i] or None,
             "watershed_id": wid,
-            "water_system_code_old": w12codes[wi],
+            "water_system_code_old": w12codes[wi] if wi is not None else None,
             "water_system_name_ja_estimated": nm or None,
             "cell_area_km2": round(a_km2, 6),
             "centroid_lat": round((lat0 + lat1) / 2, 8),
@@ -163,14 +198,14 @@ for yy, year in YEARS.items():
     # GeoJSON: 100mセルを (単位流域 × 土地利用種) でディゾルブして出力。
     # セル単位の全属性は .csv/.jsonl 側にあり、セル矩形は mesh_code から厳密に復元できる
     # （復元式は _columns.csv に明記）。セル1枚ずつ出すと 230MB を超え地図表示にも耐えないため。
-    for (wid, lu), bx in sorted(boxes.items()):
+    for (wid, lu), bx in sorted(boxes.items(), key=lambda kv: (kv[0][0] or "", kv[0][1])):
         merged = shapely.union_all(bx)
         nm, cat = ws_name.get(wid, ("", ""))
         feats.append({"type": "Feature", "properties": {
             "source_id": SID,
             "source_ref": f"L03-b-{yy}#{wid}#{lu}",
             "watershed_id": wid,
-            "water_system_code_old": wid.split("-")[0],
+            "water_system_code_old": wid.split("-")[0] if wid else None,
             "water_system_name_ja_estimated": nm or None,
             "landuse_code_raw": lu,
             "landuse_name_ja": landuse.get(lu),
@@ -191,10 +226,12 @@ for yy, year in YEARS.items():
     write_csv(SID, rows)
     write_jsonl(SID, rows)
 
-    for (wid, lu), n in sorted(agg.items()):
+    for (wid, lu), n in sorted(agg.items(), key=lambda kv: (kv[0][0] or "", kv[0][1])):
+        if wid is None:
+            continue                                       # 集計は W12 の内側だけ
         nm, cat = ws_name.get(wid, ("", ""))
         agg_all.append({
-            "source_id": "nlni_l03b_landuse_by_watershed",
+            "source_id": L["l03b_by_ws_sid"],
             "source_ref": f"{PAGE}#L03-b-{yy}",
             "data_year": year,
             "watershed_id": wid,
@@ -229,7 +266,7 @@ for yy, year in YEARS.items():
                            "lon=100+int(c[2:4])+int(c[5])/8+int(c[7])/80+int(c[9])/800, セルは (lon, lat)〜(lon+1/800, lat+1/1200)。",
          "type_ja": "—", "output_column": "mesh_code / centroid_lat / centroid_lon"},
         {"column_code": "", "column_name_ja": "所属単位流域",
-         "description_ja": "本収集で付与。セル重心が W12 流域界(神奈川県, 昭和52年)のどの単位流域ポリゴン内にあるかで判定。境界上/複数該当は先勝ち。",
+         "description_ja": f"本収集で付与。セル重心が W12 流域界({PREF_NAME}, 昭和52年)のどの単位流域ポリゴン内にあるかで判定。境界上/複数該当は先勝ち。" + ("" if CLIP_BBOX is None else "W12 の外は NULL。"),
          "type_ja": "文字列", "output_column": "watershed_id / water_system_code_old / water_system_name_ja_estimated"},
     ]
     write_columns_csv(SID, cols)
@@ -239,12 +276,18 @@ for yy, year in YEARS.items():
         lu_summary[r_["landuse_name_ja"] or f"code:{r_['landuse_code_raw']}"] += r_["cell_area_km2"]
     summ = " / ".join(f"{k}:{v:.1f}km2" for k, v in lu_summary.most_common())
     print("   " + summ)
-    register(SID, f"国土数値情報 土地利用細分メッシュ（神奈川県流域内, {year}年）",
+    register(SID, f"国土数値情報 土地利用細分メッシュ（{PREF_NAME}流域内, {year}年）" if CLIP_BBOX is None
+             else f"国土数値情報 土地利用細分メッシュ（{AREA_JA}, {year}年）",
              "国土交通省 国土数値情報ダウンロードサイト", PAGE, "gis_landuse",
              "http_zip_shapefile(dbf)", "geojson+csv+jsonl", LICENSE[year], 1, len(rows),
              f"1次メッシュ {'/'.join(MESHES)} の JGD2000(-jgd)版。100mメッシュ。"
              f"セル形状はメッシュコードから厳密生成し .shp と一致することを検証済み（.shpは85MB/枚のため未展開）。"
-             f"W12流域界(神奈川)内に重心が入るセルのみ {len(rows)} 件を残した（原データ4枚合計 {len(codes)} セル）。"
+             + (f"W12流域界(神奈川)内に重心が入るセルのみ {len(rows)} 件を残した（原データ4枚合計 {len(codes)} セル）。"
+                if CLIP_BBOX is None else
+                f"{AREA_JA}の範囲（bbox {CLIP_BBOX}）内に重心があり、海水域（2006年度の「0」を含む）でないセルのみ {len(rows)} 件を残した"
+                f"（原データ{len(MESHES)}枚合計 {len(codes)} セル）。W12流域界の外のセルは watershed_id=NULL"
+                f"（W12 の内側 {sum(1 for r_ in rows if r_['watershed_id'])} 件）。")
+             + 
              f"CSV/JSONL はセル単位（{len(rows)}行）、GeoJSON は単位流域×土地利用種でディゾルブした {len(feats)} 面"
              "（セル単位GeoJSONは230MB超で地図表示に耐えないため。セル矩形は mesh_code から厳密復元でき、復元式は _columns.csv に記載）。"
              f"土地利用種コードは {CODELIST[year]} で名称化。内訳: {summ}。"
@@ -254,9 +297,9 @@ for yy, year in YEARS.items():
              "昭和51/62・平成3/9年度版は日本測地系(TD)のみの提供でメッシュ番号の準拠測地系が異なるため、"
              "メッシュコードによる直接比較は行わず本収集では取得していない。")
 
-write_csv("nlni_l03b_landuse_by_watershed", agg_all)
-write_jsonl("nlni_l03b_landuse_by_watershed", agg_all)
-register("nlni_l03b_landuse_by_watershed", "土地利用細分メッシュ 流域別集計（神奈川県 2006/2016）",
+write_csv(L["l03b_by_ws_sid"], agg_all)
+write_jsonl(L["l03b_by_ws_sid"], agg_all)
+register(L["l03b_by_ws_sid"], f"土地利用細分メッシュ 流域別集計（{AREA_JA} 2006/2016）",
          "国土交通省 国土数値情報ダウンロードサイト（本収集で集計）", PAGE, "gis_landuse",
          "derived", "csv+jsonl", LICENSE[2016], 1, len(agg_all),
          "L03-b(2006/2016)の100mメッシュを W12 単位流域ID×土地利用種で件数・面積集計したもの。"

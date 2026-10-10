@@ -5,23 +5,34 @@
 ※原データ(shapefile/GML とも)に「国定公園名」等の公園名称は含まれない（OBJ_NAME は全件空）。
   推測で丹沢大山国定公園等を割り当てることはしない。市町村名 CTV_NAME を原文のまま残す。
 """
-import sys, pathlib, glob, collections
+import argparse, sys, pathlib, glob, collections
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from common import RAW, register, write_jsonl, to_fiscal_year, to_number
 from nlni_lib import (read_shp, geod_area_km2, write_geojson, write_csv,
                       extract_attribute_table, write_columns_csv, LICENSE_NONCOM,
-                      assign_watershed)
+                      assign_watershed, layout, ensure_extracted, bbox_geom)
+from regions import add_region_arg
 from shapely.geometry import shape as shp_shape
 
-SID = "nlni_a10_natparks"
+ap = argparse.ArgumentParser()
+add_region_arg(ap)
+RID = ap.parse_args().region
+L = layout(RID)
+PREF, PREF_NAME = L["pref"], L["pref_name_ja"]
+CLIP = bbox_geom(L["clip_bbox"]) if L["clip_bbox"] else None
+
+SID = L["a10_sid"]
 PAGE = "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-A10-v3_1.html"
-ZIPU = "https://nlftp.mlit.go.jp/ksj/gml/data/A10/A10-15/A10-15_14_GML.zip"
+ZIPU = L["a10_zip_url"]
 BASE = RAW / SID
+if RID != "jp-14":
+    ensure_extracted(ZIPU, BASE / pathlib.PurePosixPath(ZIPU).name, BASE, f"A10-15_{PREF}.xml")
 
 LAYER = {11: "自然公園地域", 12: "特別地域", 13: "特別保護地区"}
 IOSIDE = {0: "毛羽無し", 1: "内向き", 2: "外向き"}
 
 feats, rows = [], []
+n_pref = 0
 for shp in sorted(glob.glob(str(BASE / "*.shp"))):
     r, fields, recs, enc = read_shp(shp)
     print(f"{pathlib.Path(shp).name}: {len(recs)} features enc={enc}")
@@ -30,6 +41,9 @@ for shp in sorted(glob.glob(str(BASE / "*.shp"))):
         g = shp_shape(gj)
         if not g.is_valid:
             g = g.buffer(0)
+        n_pref += 1
+        if CLIP is not None and not g.intersects(CLIP):
+            continue
         d = dict(zip(fields, rc))
         layer = int(d["LAYER_NO"])
         size_raw = d.get("AREA_SIZE")
@@ -40,7 +54,7 @@ for shp in sorted(glob.glob(str(BASE / "*.shp"))):
             "source_ref": f"{ZIPU}#{pathlib.Path(shp).name}:{i}",
             "object_id": d.get("OBJECTID"),
             "prefecture_code": str(d.get("PREFEC_CD")).zfill(2),
-            "prefecture_name_ja": "神奈川県",
+            "prefecture_name_ja": PREF_NAME,
             "subprefecture_code": str(d.get("AREA_CD")),
             "municipality_names_ja": d.get("CTV_NAME") or "",
             "fiscal_year_raw": d.get("FIS_YEAR"),
@@ -61,7 +75,7 @@ for shp in sorted(glob.glob(str(BASE / "*.shp"))):
             "centroid_lon": round(c.x, 6),
             "data_year": 2015,
         }
-        props.update(assign_watershed(g))
+        props.update(assign_watershed(g, RID))
         feats.append({"type": "Feature", "geometry": gj, "properties": props})
         rows.append(props)
 
@@ -91,7 +105,7 @@ cols += [
      "description_ja": "本収集で算出。pyproj.Geod(ellps=WGS84).geometry_area_perimeter による測地線多角形面積を km2 換算。",
      "type_ja": "実数", "output_column": "area_km2"},
     {"column_code": "", "column_name_ja": "所属単位流域",
-     "description_ja": "本収集で付与。ポリゴン重心が W12 流域界(神奈川, 昭和52年)のどの単位流域内にあるかで判定。外れる場合は null。大きな面ほど重心1点での代表性は落ちる点に注意。",
+     "description_ja": f"本収集で付与。ポリゴン重心が W12 流域界({L['pref_short']}, 昭和52年)のどの単位流域内にあるかで判定。外れる場合は null。大きな面ほど重心1点での代表性は落ちる点に注意。",
      "type_ja": "文字列", "output_column": "watershed_id / water_system_code_old / water_system_name_ja_estimated"},
     {"column_code": "", "column_name_ja": "レイヤ番号の意味",
      "description_ja": "ダウンロードページ属性情報の原文「（自然公園地域 下2けた 11）（特別地域 下2けた 12）（特別保護地区 下2けた 13）」より。",
@@ -106,10 +120,12 @@ for p in rows:
 summary = " / ".join(f"{k}:{v}件 {area_by_layer[k]:.1f}km2" for k, v in by_layer.items())
 print("  " + summary)
 
-register(SID, "国土数値情報 自然公園地域（神奈川県）", "国土交通省 国土数値情報ダウンロードサイト",
+SCOPE = "" if CLIP is None else (f"{L['name_ja']}の範囲（bbox {L['bbox']}）に掛かる {len(rows)} 面だけを、"
+                                 f"県全体 {n_pref} 面から絞った。")
+register(SID, f"国土数値情報 自然公園地域（{PREF_NAME if CLIP is None else L['name_ja']}）", "国土交通省 国土数値情報ダウンロードサイト",
          PAGE, "gis_protected_area", "http_zip_shapefile", "geojson+csv+jsonl",
          LICENSE_NONCOM, 1, len(rows),
-         "神奈川県(14) A10-15_14_GML.zip / 平成27(2015)年度版(第4.1版)。"
+         f"{PREF_NAME}({PREF}) A10-15_{PREF}_GML.zip / 平成27(2015)年度版(第4.1版)。{SCOPE}"
          f"レイヤ内訳: {summary}。"
          "※原データに公園名称（丹沢大山国定公園等）は含まれない（OBJ_NAME は全件空、GML の naturalParkCode も 1/2/3 のみ）。"
          "推測で公園名を付与していない。AREA_SIZE(ha) も原データでは全件 0.0。"

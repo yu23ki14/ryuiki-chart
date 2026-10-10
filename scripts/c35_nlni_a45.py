@@ -1,14 +1,25 @@
 """国土数値情報 A45 森林地域（国有林小班・神奈川県 14, 2018年）→ GeoJSON/CSV/JSONL"""
-import sys, pathlib, re, html, collections
+import argparse, sys, pathlib, re, html, collections
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from common import RAW, register, write_jsonl, to_number
 from nlni_lib import (read_shp, geod_area_km2, write_geojson, write_csv,
-                      extract_attribute_table, write_columns_csv, assign_watershed)
+                      extract_attribute_table, write_columns_csv, assign_watershed,
+                      layout, ensure_extracted, bbox_geom)
+from regions import add_region_arg
 from shapely.geometry import shape as shp_shape
 
-SID = "nlni_a45_forest"
+ap = argparse.ArgumentParser()
+add_region_arg(ap)
+RID = ap.parse_args().region
+L = layout(RID)
+PREF, PREF_NAME = L["pref"], L["pref_name_ja"]
+CLIP = bbox_geom(L["clip_bbox"]) if L["clip_bbox"] else None
+
+SID = L["a45_sid"]
 PAGE = "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-A45.html"
-ZIPU = "https://nlftp.mlit.go.jp/ksj/gml/data/A45/A45-19/A45-19_14_GML.zip"
+ZIPU = L["a45_zip_url"]
+if RID != "jp-14":
+    ensure_extracted(ZIPU, RAW / SID / pathlib.PurePosixPath(ZIPU).name, RAW / SID, f"A45-19_{PREF}.shp")
 LICENSE = ("オープンデータ（CC BY 4.0）／国土数値情報利用約款。"
            "ダウンロードページ原文「適用する利用規約に基づく（オープンデータ）」"
            " https://nlftp.mlit.go.jp/ksj/other/agreement.html")
@@ -71,7 +82,7 @@ FIELD = {  # A45_xxx -> (英字列名, 日本語属性名, 参照コードリス
     "A45_033": ("green_corridor_ja", "緑の回廊", "midorinokairoCd"),
 }
 
-r, fields, recs, enc = read_shp(RAW / SID / "A45-19_14")
+r, fields, recs, enc = read_shp(RAW / SID / f"A45-19_{PREF}")
 print(f"A45: {len(recs)} features enc={enc}")
 feats, rows = [], []
 for i, (sh, rc) in enumerate(zip(r.shapes(), recs)):
@@ -79,8 +90,10 @@ for i, (sh, rc) in enumerate(zip(r.shapes(), recs)):
     g = shp_shape(gj)
     if not g.is_valid:
         g = g.buffer(0)
+    if CLIP is not None and not g.intersects(CLIP):
+        continue
     d = dict(zip(fields, rc))
-    props = {"source_id": SID, "source_ref": f"{ZIPU}#A45-19_14:{i}"}
+    props = {"source_id": SID, "source_ref": f"{ZIPU}#A45-19_{PREF}:{i}"}
     for code, (col, ja, cl) in FIELD.items():
         v = d.get(code)
         v = v.strip() if isinstance(v, str) else v
@@ -92,10 +105,10 @@ for i, (sh, rc) in enumerate(zip(r.shapes(), recs)):
     props["area_km2"] = geod_area_km2(g)
     props["centroid_lat"] = round(g.centroid.y, 6)
     props["centroid_lon"] = round(g.centroid.x, 6)
-    props.update(assign_watershed(g))
+    props.update(assign_watershed(g, RID))
     props["data_year"] = 2018
-    props["prefecture_code"] = "14"
-    props["prefecture_name_ja"] = "神奈川県"
+    props["prefecture_code"] = PREF
+    props["prefecture_name_ja"] = PREF_NAME
     feats.append({"type": "Feature", "geometry": gj, "properties": props})
     rows.append(props)
 
@@ -115,7 +128,7 @@ cols += [
      "description_ja": "原データの略号（例: 水涵保, 天, 自然維持, 丹沢緑）を各コードリスト(hoanrinCd/rinshunosaibunCd/kinouruikeiCd/midorinokairoCd/jushuCd/hogorinCd)で正式名称に展開したもの。展開できない値は null。",
      "type_ja": "文字列", "output_column": "*_full"},
     {"column_code": "", "column_name_ja": "所属単位流域",
-     "description_ja": "本収集で付与。小班ポリゴンの重心が W12 流域界(神奈川, 昭和52年)のどの単位流域内にあるかで判定。外れる場合は null。",
+     "description_ja": f"本収集で付与。小班ポリゴンの重心が W12 流域界({L['pref_short']}, 昭和52年)のどの単位流域内にあるかで判定。外れる場合は null。",
      "type_ja": "文字列", "output_column": "watershed_id / water_system_code_old / water_system_name_ja_estimated"},
 ]
 write_columns_csv(SID, cols)
@@ -127,10 +140,12 @@ summ = " / ".join(f"{k}:{v:.1f}km2" for k, v in by_ws.most_common())
 print("  流域別: " + summ)
 unassigned = sum(1 for p in rows if not p["watershed_id"])
 
-register(SID, "国土数値情報 森林地域（国有林小班・神奈川県）", "国土交通省 国土数値情報ダウンロードサイト",
+SCOPE = "" if CLIP is None else (f"{L['name_ja']}の範囲（bbox {L['bbox']}）に掛かる {len(rows)} 件だけを、"
+                                 f"県全体 {len(recs)} 件から絞った。")
+register(SID, f"国土数値情報 森林地域（国有林小班・{PREF_NAME if CLIP is None else L['name_ja']}）", "国土交通省 国土数値情報ダウンロードサイト",
          PAGE, "gis_forest", "http_zip_shapefile", "geojson+csv+jsonl", LICENSE, 1, len(rows),
-         "神奈川県(14) A45-19_14_GML.zip / 2018年(平成30年)。国有林の小班ポリゴン。座標系 JGD2011。"
+         f"{PREF_NAME}({PREF}) A45-19_{PREF}_GML.zip / 2018年(平成30年)。国有林の小班ポリゴン。座標系 JGD2011。{SCOPE}"
          "属性は略号（水涵保=水源かん養保安林 等）で格納されているため、各コードリストで展開した *_full 列を追加。"
          f"W12単位流域を重心で割り当て（未割当 {unassigned} 件）。流域別面積: {summ}。"
          "ダウンロードページ原文注記: 「本製品を複製する場合には、国土地理院の長の承認を得なければなりません。」"
-         "※本データは国有林のみで、民有林（神奈川県の森林の大半）は含まれない。")
+         f"※本データは国有林のみで、民有林（{PREF_NAME}の森林の大半）は含まれない。")
