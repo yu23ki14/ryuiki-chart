@@ -176,6 +176,7 @@ sources:
   jma_stations_amami: {records: [sites]}
   env_kousui_stations_amami: {records: [sites]}
   soramame_stations_amami: {records: [sites]}
+  kagoshima_kasen_stations_amami: {records: [sites]}   # 奄美 Step 2b。局の表（座標のある局だけ place に入る）。時系列の3出典は manifests/ にあるので書かない
   # --- 取れない: superseded（1 件）---
   gbif_kanagawa: {reason: superseded, basis: "editions.yaml の source_declarations で superseded_by=gbif_kanagawa_occurrences", note: "gbif_kanagawa_occurrences に置き換わった。値はそちらで取る"}
   # --- 取れない: synthetic（1 件）---
