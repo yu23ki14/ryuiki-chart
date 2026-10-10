@@ -17,7 +17,7 @@ place_watershed は watershed だけが持つ属性サテライト（下記「wa
 ## region_id（ADR-0022 決定1。理由・経緯はそちらを参照）
 
 `place.region_id` は `place_id` のスコープと一致させる。`common.region_id_for_scoped_id()`
-で発行済みの `place_id` から機械的に導く（`PLACE_SCOPE` 定数を region_id 列に直接
+で発行済みの `place_id` から機械的に導く（scope を region_id 列に直接
 代入しない）。site / zone は scope=`jp-14` なので `region_id='jp-14'`、
 watershed / grid01 は scope=`common`（県境をまたぐ流域・独自グリッド）なので
 `region_id=NULL`。
@@ -210,11 +210,13 @@ import sqlite3
 
 import yaml
 
+import regions
+
 from . import common
 from . import zone_rule
 
-# site の place_id を発行する scope（Phase A の対象地域は神奈川県だけ）。
-PLACE_SCOPE = "jp-14"
+# site の place_id の scope は、出典の接頭辞から `regions.site_scope()` で決める（奄美 Step 1 PR-B。
+# 神奈川の接頭辞は slug を含まないので jp-14 のまま——既存 ID は1文字も変わらない）。
 # zone の place_id のスコープ。zone v2 は地域に依存しない共通の定義なので common
 # （region_id=NULL。AMAMI_STEP0 §2、ADR-0004 規約0・ADR-0022 決定1）。
 ZONE_SCOPE = "common"
@@ -244,12 +246,13 @@ def _edition_resolver(conn, key_spaces: list[dict]):
     mode = {it["key_space"]: it for it in key_spaces}
     fixed = {ks: resolve(it["edition_source_id"]) for ks, it in mode.items() if it["edition"] == "fixed"}
 
-    def resolve_row(key_space: str, external_key: str):
+    def resolve_row(key_space: str, external_key: str, source_id: str | None = None):
+        """`source_id` は fixed の key_space で、行ごとに出典が違うとき（地域ごとの W12）の出典。"""
         kind = mode[key_space]["edition"]
         if kind == "none":
             return None
         if kind == "fixed":
-            return fixed[key_space]
+            return resolve(source_id) if source_id else fixed[key_space]
         if kind == "per_row_prefix":
             source_id, sep, _ = external_key.partition("__")
             if not sep:
@@ -288,11 +291,11 @@ def _load_key_spaces() -> list[dict]:
     return items
 
 # watershed 節の入力（L1、国土数値情報 W12 流域界 1977年版、377面）。
-# common.WATERSHED_JSONL_RELPATH と共有する（指紋計算とビルド側が同じファイルを
+# common.WATERSHED_JSONL_RELPATHS（全地域の連結）と共有する（指紋計算とビルド側が同じファイルを
 # 指す。scripts/registry/common.py の同名の定数のコメント参照）。テストは
 # monkeypatch でこのモジュール変数を差し替える（build_taxon.CROSSWALK_CSV と
 # 同じ流儀）。
-WATERSHED_JSONL = common.ROOT / common.WATERSHED_JSONL_RELPATH
+WATERSHED_JSONLS = [common.ROOT / rel for rel in common.WATERSHED_JSONL_RELPATHS]
 # zone v2 の入力（c68 の出力）と、最高峰を宣言する region.yaml。テストは monkeypatch で差し替える。
 TERRAIN_POINTS_CSV = common.ROOT / common.TERRAIN_POINTS_CSV_RELPATH
 REGION_YAML = zone_rule.REGION_YAML
@@ -319,7 +322,8 @@ WATERSHED_JSONL_REQUIRED_KEYS = (
 
 
 def _load_watershed_jsonl() -> list[dict]:
-    """`WATERSHED_JSONL` を1行1レコードの JSON として読み、各行が
+    """`WATERSHED_JSONLS`（全地域。ファイルが1つでも無ければ止まる）を連結して、1行1レコードの
+    JSON として読み、各行が
     `WATERSHED_JSONL_REQUIRED_KEYS` を全部持つことを検査する。
 
     以前は `derived.watershed_meta`（v1 の派生表）を読んでいたが、これは
@@ -327,27 +331,30 @@ def _load_watershed_jsonl() -> list[dict]:
     docstring の「watershed」節参照）。読み方を変えても値は1ビットも変わらない
     ことを実測で確認済み（同節参照）。
     """
-    if not WATERSHED_JSONL.exists():
-        raise FileNotFoundError(
-            f"流域界の原本が無い: {WATERSHED_JSONL}\n"
-            "リポジトリの data/processed/ に配布物として置く（CLAUDE.md の worktree "
-            "運用の symlink 手順を参照。scripts/c*.py で再生成できるものではない）。"
-        )
     rows: list[dict] = []
-    with WATERSHED_JSONL.open(encoding="utf-8") as f:
-        for lineno, line in enumerate(f, start=1):
-            line = line.strip()
-            if not line:
-                continue
-            row = json.loads(line)
-            missing = [k for k in WATERSHED_JSONL_REQUIRED_KEYS if k not in row]
-            if missing:
-                raise ValueError(
-                    f"{WATERSHED_JSONL} の {lineno} 行目に必須キーが無い: {missing}\n"
-                    "入力の列名が変わった可能性がある。黙って NULL 埋めしない"
-                    "（scripts/registry/build_place.py の watershed 節を確認すること）。"
-                )
-            rows.append(row)
+    for path in WATERSHED_JSONLS:
+        if not path.exists():
+            raise FileNotFoundError(
+                f"流域界の原本が無い: {path}\n"
+                "リポジトリの data/processed/ に配布物として置く（CLAUDE.md の worktree "
+                "運用の symlink 手順を参照。scripts/c*.py で再生成できるものではない）。"
+            )
+        with path.open(encoding="utf-8") as f:
+            for lineno, line in enumerate(f, start=1):
+                line = line.strip()
+                if not line:
+                    continue
+                row = json.loads(line)
+                missing = [k for k in WATERSHED_JSONL_REQUIRED_KEYS if k not in row]
+                if missing:
+                    raise ValueError(
+                        f"{path} の {lineno} 行目に必須キーが無い: {missing}\n"
+                        "入力の列名が変わった可能性がある。黙って NULL 埋めしない"
+                        "（scripts/registry/build_place.py の watershed 節を確認すること）。"
+                    )
+                # 出典は jsonl の名前（regions.w12_stems()）。place_source_ref の版を行ごとに引くため
+                row["_edition_source_id"] = path.stem
+                rows.append(row)
     return rows
 
 
@@ -367,6 +374,11 @@ SITE_NAMESPACE = {
     "sagamihara_taiki_stations": "sagamihara-taiki",
     "soramame_stations_kanagawa": "soramame",
     "yokohama_river_waterlevel": "yokohama-waterlevel",
+    # 奄美（jp-46。scope は regions.site_scope が接頭辞の slug から決める）
+    "jma_stations_amami": "jma",
+    "env_kousui_stations_amami": "env-pubwater",
+    "soramame_stations_amami": "soramame",
+    "jma_sst_amami": "jma-sst",
 }
 
 
@@ -389,7 +401,7 @@ def _site_place_id(site_id: str, place_local_override: str | None = None, *, see
                 "docs/COLLECTOR_CONTRACT.md）。"
             )
         local = place_local_override
-    return common.place_id("site", ns, local, scope=PLACE_SCOPE, seen=seen)
+    return common.place_id("site", ns, local, scope=regions.site_scope(prefix), seen=seen)
 
 
 def _load_site_supplement() -> dict[str, dict]:
@@ -547,7 +559,7 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     """conn: registry.sqlite への書き込み用コネクション。
     src: {'ryuiki': ..., 'cells': ...} の読み取り専用コネクション（'derived' は
     `common.open_sources()` の既定の集合から外れている——watershed の入力は
-    WATERSHED_JSONL の直読みに切り替え済み・このモジュールは 'derived' を一切
+    WATERSHED_JSONLS の直読みに切り替え済み・このモジュールは 'derived' を一切
     使わない。モジュール docstring「watershed」節、`common.py` の
     `SOURCE_NAMES`/`DEFAULT_SOURCES` のコメント参照）。
     戻り値: {テーブル名: 挿入した行数}（ログ表示用）。
@@ -634,6 +646,8 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     # （`?? null`、nullish coalescing）に合わせて空文字列をそのまま持つ
     # （None に丸めない）。
     watershed_attr_rows: list[tuple] = []
+    # place_id -> 流域の出典（jsonl の名前）。place_source_ref の版を地域ごとに引く
+    watershed_edition_source: dict[str, str] = {}
     for o in _load_watershed_jsonl():
         # _load_watershed_jsonl() が WATERSHED_JSONL_REQUIRED_KEYS の存在を
         # 行ごとに検査済みなので、ここでは `.get()` ではなく直接添字で読む
@@ -646,6 +660,7 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
             o["source_ref"], "ok",
         ))
         ref_rows.append((pid, o["watershed_id"], KS_WATERSHED_ID))
+        watershed_edition_source[pid] = o["_edition_source_id"]
         watershed_attr_rows.append((
             pid,
             o["water_system_code_old"],
@@ -744,7 +759,7 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     common.insert_many(
         conn, "place_source_ref",
         ["place_id", "external_key", "key_space", "source_edition_id"],
-        [(pid, ext, ks, edition_of(ks, ext)) for pid, ext, ks in ref_rows],
+        [(pid, ext, ks, edition_of(ks, ext, watershed_edition_source.get(pid))) for pid, ext, ks in ref_rows],
     )
     common.insert_many(
         conn, "place_relation",

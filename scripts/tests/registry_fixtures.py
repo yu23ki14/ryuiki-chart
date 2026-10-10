@@ -14,7 +14,7 @@ grid01 節参照）。`make_ryuiki_places_db()` の `organism_records_rows` が�
 watershed の入力は Phase B `phase-b/place-attributes` で `derived.watershed_meta`
 から `data/processed/nlni_w12_watersheds.jsonl`（L1）直読みに変わった
 （`scripts/registry/build_place.py` の watershed 節参照）。`write_watershed_jsonl()`
-がその入力を作る。呼び出し側が `build_place_module.WATERSHED_JSONL` をこの JSONL の
+がその入力を作る。呼び出し側が `build_place_module.WATERSHED_JSONLS（パスのリスト）` をこの JSONL の
 パスに monkeypatch すること（`scripts/registry/build_taxon.py` の `CROSSWALK_CSV` と
 同じ流儀）。`make_derived_places_db()` は watershed 節ではもう使わない
 （derived.sqlite は registry ビルドの入力ではなくなった）が、「derived.sqlite の
@@ -137,7 +137,7 @@ def open_taxon_src(ryuiki_path) -> dict:
 def open_places_src(ryuiki_path) -> dict:
     """build_place.build(conn, src) の src 引数を作る（row_factory=Row）。
     'ryuiki' キーだけを使う（build_place.py は Phase B `phase-b/place-attributes`
-    で 'derived' を読まなくなった——watershed の入力を WATERSHED_JSONL の直読みに
+    で 'derived' を読まなくなった——watershed の入力を WATERSHED_JSONLS の直読みに
     切り替えたため。呼び出し側が使い終わったら自分で close() すること。
     """
     conn = sqlite3.connect(str(ryuiki_path))

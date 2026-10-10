@@ -48,7 +48,7 @@ def _build(tmp_path, monkeypatch, sites_rows, watershed_rows=(), organism_record
 
     watershed_jsonl_path = tmp_path / "nlni_w12_watersheds.jsonl"
     write_watershed_jsonl(watershed_jsonl_path, watershed_rows)
-    monkeypatch.setattr(build_place_module, "WATERSHED_JSONL", watershed_jsonl_path)
+    monkeypatch.setattr(build_place_module, "WATERSHED_JSONLS", [watershed_jsonl_path])
 
     registry_conn = common.create_registry_db(tmp_path / "registry.sqlite")
     registry_conn.row_factory = sqlite3.Row
@@ -290,7 +290,7 @@ def test_place_watershed_main_rivers_empty_string_is_not_coerced_to_null(tmp_pat
 
 def test_watershed_place_not_loaded_when_watershed_jsonl_is_empty(tmp_path, monkeypatch):
     """watershed 節への入力が0件なら place_kind='watershed' の行も0件
-    （WATERSHED_JSONL の存在は必須だが、中身が空でもクラッシュしない）。
+    （WATERSHED_JSONLS の存在は必須だが、中身が空でもクラッシュしない）。
     """
     conn, counts = _build(tmp_path, monkeypatch, [], [])
     assert counts["place_watershed"] == 0
@@ -387,7 +387,7 @@ def test_load_watershed_jsonl_raises_file_not_found_when_missing(tmp_path, monke
     worktree 運用の symlink 手順参照）。
     """
     monkeypatch.setattr(
-        build_place_module, "WATERSHED_JSONL", tmp_path / "does_not_exist.jsonl"
+        build_place_module, "WATERSHED_JSONLS", [tmp_path / "does_not_exist.jsonl"]
     )
     with pytest.raises(FileNotFoundError, match="流域界の原本が無い"):
         build_place_module._load_watershed_jsonl()
@@ -402,7 +402,7 @@ def test_load_watershed_jsonl_raises_on_missing_required_key(tmp_path, monkeypat
     row = dict(_WATERSHED_ROW_FULL)
     del row["area_km2"]  # 必須キーを1つ欠かす
     write_watershed_jsonl(jsonl_path, [row])
-    monkeypatch.setattr(build_place_module, "WATERSHED_JSONL", jsonl_path)
+    monkeypatch.setattr(build_place_module, "WATERSHED_JSONLS", [jsonl_path])
 
     with pytest.raises(ValueError, match="必須キーが無い"):
         build_place_module._load_watershed_jsonl()
