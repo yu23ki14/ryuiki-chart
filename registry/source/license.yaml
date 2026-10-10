@@ -157,6 +157,8 @@ mappings:
     license_id: cc0_1_0
   - raw: "CC-BY 4.0"
     license_id: cc_by
+  - raw: "CC BY 4.0"
+    license_id: cc_by
   - raw: "Creative Commons Attribution (CC BY)"
     license_id: cc_by
   - raw: "Creative Commons Attribution 4.0 International (CC BY 4.0)"

@@ -420,3 +420,57 @@ caveats:
     reason: W12 が覆わない部分は流域が NULL になる（網羅性の欠け）。流域別の合計を島全体と読むと過小になる。オーナー確認待ち。
     changed:
     - new
+# 奄美 Step 2b（docs/plans/AMAMI_STEP2B.md §3）。鹿児島県 河川砂防情報システムの水位・潮位・ダム。オーナーの確認は未了
+# （review.owner_confirmed_on を空にしてある。確認したら日付を入れ、build_caveat.OWNER_PENDING_KEYS から外す）。
+- key: kasenStageDatum
+  severity: warning
+  kind: definition_change
+  title_ja: null
+  body_ja: 鹿児島県の河川砂防情報システムの水位は、各水位標の零点からの高さで、T.P.（東京湾平均海面）ではない。零点の標高は原表に無いので、局どうしの水位の高さは比べられない。同じ局の中の変化だけを読む。
+  quote: null
+  review:
+    reviewed_on: '2026-10-10'
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: null
+    reason: 水位の基準面が局ごとに違い、原表に零点の標高が無い（定義の違い。誤読すると局間比較が成り立たない。オーナー確認待ち）。
+    changed:
+    - new
+- key: kasenKikiDaily
+  severity: warning
+  kind: coverage_gap
+  title_ja: null
+  body_ja: 危機管理型水位計は、通常は6時間おきに観測し、水位が上がると間隔が細かくなる。観測の間隔が一定でないので日平均は出していない。日最高・日最低は、観測された値の中での最高・最低で、その日の本当の最高・最低とは限らない。
+  quote: null
+  review:
+    reviewed_on: '2026-10-10'
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: null
+    reason: 観測間隔が水位で変わるため、日平均は高い側に偏る。日最高・日最低も観測の間の値は拾えない（網羅性の欠け。オーナー確認待ち）。
+    changed:
+    - new
+- key: kasenTideDatum
+  severity: warning
+  kind: definition_change
+  title_ja: null
+  body_ja: 鹿児島県の河川砂防情報システムの潮位は、基準面が原表に書かれていない。単位も cm と推定している。値は同じ検潮所の中の変化として読み、ほかの潮位データや標高と並べない。
+  quote: null
+  review:
+    reviewed_on: '2026-10-10'
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: null
+    reason: 潮位の基準面・単位が原表に無い（定義の欠け。他データとの比較が成り立たない。オーナー確認待ち）。
+    changed:
+    - new
+- key: kasenProvisional
+  severity: info
+  kind: known_error
+  title_ja: null
+  body_ja: 鹿児島県の河川砂防情報システムの値は速報値で、検定や点検を受けていない可能性がある。障害や休止の間は欠測になり、日別の集約はその日の観測された値だけで作っている。
+  quote: null
+  review:
+    reviewed_on: '2026-10-10'
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: null
+    reason: 速報値で、確定値に直される保証が原表に無い（誤差の可能性。オーナー確認待ち）。
+    changed:
+    - new

@@ -1,0 +1,12 @@
+# manifests/kagoshima_kasen_suii_amami.yml（宣言。形は scripts/ingest/manifest.py の docstring）。
+# adapter: builtin = 変換は b03/b06 のまま（出力を動かさない）。メタデータだけを持つ。
+# expected_row_count は統合で実測して書く（取り込む行数の宣言。b03 が実測と突合する）。
+source: kagoshima_kasen_suii_amami
+region: jp-46
+target: observation
+update_mode: append
+input:
+  table: sensor_timeseries
+adapter: builtin
+evidence: >
+  鹿児島県 土木部河川課 河川砂防情報システム（BODIK、CC BY 4.0）の危機管理型水位計（奄美大島の局）。日最高・日最低だけを入れる。最新の年は月ごとに差し替わるので毎回取り直す append。region=jp-46。
