@@ -52,8 +52,11 @@ def test_formats(rid):
 
 def test_jp14_matches_hardcoded_collectors():
     r = rc.REGIONS["jp-14"]
-    assert r["gbif_gadm_gids"] == (_const("c02_gbif.py", r'^GADM = "([^"]+)"'),)
-    assert r["inat_place_ids"] == (int(_const("c03_inaturalist.py", r"^PLACE = (\d+)")),)
+    # c02/c03 は直書きを消して regions.py を読む（Step 1 I2）。jp-14 の値は元の定数のまま
+    assert r["gbif_gadm_gids"] == ("JPN.19_1",)
+    assert r["inat_place_ids"] == (10918,)
+    for f in ("c02_gbif.py", "c03_inaturalist.py", "c80_biodic_ikimonomap.py", "c65_osm_overpass.py"):
+        assert "import regions as rc" in _src(f), f
     assert r["jma_stations"][0][0] == int(_const("c10_jma.py", r"^PREC = (\d+)"))
     assert r["env_water_prefcodes"] == (_const("c12_env_kousui.py", r'^PREF = "(\d+)"'),)
     # c34 は直書きをやめて regions.py を読む（layout() 経由）。jp-14 の値は test_nlni_region.py が固定している。

@@ -166,6 +166,15 @@ sources:
   nlni_l03b_landuse_2006_amami: {reason: file_only, basis: "data/processed に nlni_l03b_landuse_2006_amami.csv がある（D1 の表なし。PR-B で取り込んだら外す）"}
   nlni_l03b_landuse_by_watershed_amami: {reason: file_only, basis: "data/processed に nlni_l03b_landuse_by_watershed_amami.csv がある（D1 の表なし。PR-B で取り込んだら外す）"}
   gsi_elevation_grid_amami: {reason: file_only, basis: "data/processed に gsi_elevation_grid_amami.csv がある（D1 の表なし。PR-B で取り込んだら外す）"}
+  # --- 奄美 Step 1 (I2) ---
+  biodic_mammal_mesh_amami: {reason: file_only, basis: "data/processed に biodic_mammal_mesh_amami.csv がある（奄美 Step 1。D1 の表なし。PR-B で取り込んだら外す）"}
+  biodic_veg2024_amami: {reason: file_only, basis: "data/processed に biodic_veg2024_amami.csv がある（奄美 Step 1。D1 の表なし。PR-B で取り込んだら外す）"}
+  gbif_amami_occurrences: {reason: file_only, basis: "data/processed に gbif_amami_occurrences.jsonl がある（奄美 Step 1。D1 の表なし。PR-B で取り込んだら外す）"}
+  inaturalist_amami: {reason: file_only, basis: "data/processed に inaturalist_amami.jsonl がある（奄美 Step 1。D1 の表なし。PR-B で取り込んだら外す）"}
+  osm_amami_farmland: {reason: file_only, basis: "data/processed に osm_amami_farmland.csv がある（奄美 Step 1。D1 の表なし。PR-B で取り込んだら外す）"}
+  osm_amami_forest: {reason: file_only, basis: "data/processed に osm_amami_forest.csv がある（奄美 Step 1。D1 の表なし。PR-B で取り込んだら外す）"}
+  osm_amami_protected_area: {reason: file_only, basis: "data/processed に osm_amami_protected_area.csv がある（奄美 Step 1。D1 の表なし。PR-B で取り込んだら外す）"}
+  osm_amami_water: {reason: file_only, basis: "data/processed に osm_amami_water.csv がある（奄美 Step 1。D1 の表なし。PR-B で取り込んだら外す）"}
   # --- 取れない: superseded（1 件）---
   gbif_kanagawa: {reason: superseded, basis: "editions.yaml の source_declarations で superseded_by=gbif_kanagawa_occurrences", note: "gbif_kanagawa_occurrences に置き換わった。値はそちらで取る"}
   # --- 取れない: synthetic（1 件）---

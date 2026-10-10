@@ -48,6 +48,7 @@ import pathlib
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from common import get_json, register, write_jsonl, to_fiscal_year, PROC, RAW, now
+import regions as rc
 
 from shapely.geometry import shape, mapping
 from shapely.ops import transform as shp_transform
@@ -56,8 +57,17 @@ from shapely.ops import transform as shp_transform
 # 定数
 # ---------------------------------------------------------------------------
 
-RAW_DIR = RAW / "biodic_ikimonomap"
+# 地域別の設定。configure(rid) が書き換える（既定は jp-14。jp-14 のパス・source_id は据え置き）
+REGION = "jp-14"
+RAW_DIR = RAW / rc.name("biodic_ikimonomap", REGION)
 RAW_DIR.mkdir(parents=True, exist_ok=True)
+BBOX = rc.get(REGION)["bbox"]
+SID_VEG = rc.name("biodic_veg2024_kanagawa", REGION)
+SID_MAMMAL = rc.name("biodic_mammal_mesh_kanagawa", REGION)
+AREA_JA = rc.get(REGION)["name_ja"]
+# 現存植生図2024 は地域ブロックごとに別レイヤ（0=北海道〜7=九州・沖縄）。bbox の入るブロックを実測で選ぶ
+VG_BLOCKS = {"jp-14": (2, "関東"), "jp-46": (7, "九州・沖縄")}
+VG_LAYER_ID, VG_BLOCK_JA = VG_BLOCKS[REGION]
 
 APP_ITEM_ID = "8ba29c091ba04870a8c7e5265fb9fb6c"
 APP_CONFIG_URL = (
@@ -69,7 +79,7 @@ APP_PUBLIC_URL = (
 )
 
 SERVICES_BASE = "https://arc-gis.biodic.go.jp/arcgis/rest/services/webgis"
-VG2024_LAYER_URL = f"{SERVICES_BASE}/vg2024/MapServer/2"  # 関東ブロック(実測で確認)
+VG2024_LAYER_URL = f"{SERVICES_BASE}/vg2024/MapServer/{VG_LAYER_ID}"  # jp-14 は 2=関東ブロック(実測で確認)
 
 MAMMAL_LAYERS = {
     "tanuki": f"{SERVICES_BASE}/tanuki/FeatureServer/0",
@@ -78,8 +88,8 @@ MAMMAL_LAYERS = {
 }
 MAMMAL_JA = {"tanuki": "タヌキ", "kitune": "キツネ", "anaguma": "アナグマ"}
 
-# 神奈川県を覆うbbox(県境を含むよう余裕をもたせた)。lon_min, lat_min, lon_max, lat_max
-KANAGAWA_BBOX = (138.9, 35.1, 139.8, 35.7)
+# bbox は regions.py の REGIONS[rid]["bbox"]（lon_min, lat_min, lon_max, lat_max。jp-14 は神奈川県を覆う
+# 県境を含む余裕つき矩形）。
 
 PAGE_SIZE = 1000  # 各レイヤの maxRecordCount=2000 より小さくして安全側に
 
@@ -109,6 +119,20 @@ YEAR_SUFFIX_RE = re.compile(r"(20\d{2})$")
 # ---------------------------------------------------------------------------
 # 共通ヘルパ
 # ---------------------------------------------------------------------------
+
+def configure(rid):
+    """地域を切り替える（raw ディレクトリ・source_id・bbox・植生レイヤ）。jp-14 は既定と同じ。"""
+    global REGION, RAW_DIR, BBOX, SID_VEG, SID_MAMMAL, AREA_JA, VG_LAYER_ID, VG_BLOCK_JA, VG2024_LAYER_URL
+    REGION = rid
+    RAW_DIR = RAW / rc.name("biodic_ikimonomap", rid)
+    RAW_DIR.mkdir(parents=True, exist_ok=True)
+    BBOX = rc.get(rid)["bbox"]
+    SID_VEG = rc.name("biodic_veg2024_kanagawa", rid)
+    SID_MAMMAL = rc.name("biodic_mammal_mesh_kanagawa", rid)
+    AREA_JA = rc.get(rid)["name_ja"]
+    VG_LAYER_ID, VG_BLOCK_JA = VG_BLOCKS[rid]
+    VG2024_LAYER_URL = f"{SERVICES_BASE}/vg2024/MapServer/{VG_LAYER_ID}"
+
 
 def _cached_json(cache_path: pathlib.Path, fetch_fn):
     """cache_path に既存ファイルがあれば読み込んで返す(冪等)。無ければ fetch_fn() を呼んで保存。"""
@@ -284,10 +308,10 @@ VEG_CSV_FIELDS = [
 
 
 def step_veg2024():
-    print("[2] 現存植生図2024 (vg2024/MapServer/2, 関東ブロック)")
-    source_id = "biodic_veg2024_kanagawa"
+    print(f"[2] 現存植生図2024 (vg2024/MapServer/{VG_LAYER_ID}, {VG_BLOCK_JA}ブロック)")
+    source_id = SID_VEG
 
-    layer_def_path = RAW_DIR / "vg2024_layer2_def.json"
+    layer_def_path = RAW_DIR / f"vg2024_layer{VG_LAYER_ID}_def.json"
     layer_def = _cached_json(layer_def_path, lambda: get_json(VG2024_LAYER_URL, params={"f": "json"}))
     field_names = {f["name"] for f in layer_def.get("fields", [])}
     missing = VG_EXPECTED_FIELDS - field_names
@@ -299,11 +323,11 @@ def step_veg2024():
     print(f"  レイヤ名={layer_def.get('name')!r} geometryType={layer_def.get('geometryType')} "
           f"maxRecordCount={layer_def.get('maxRecordCount')}")
 
-    expected_count = get_count(VG2024_LAYER_URL, KANAGAWA_BBOX)
+    expected_count = get_count(VG2024_LAYER_URL, BBOX)
     print(f"  bbox内件数(returnCountOnly)= {expected_count}")
 
     page_cache_dir = RAW_DIR / "vg2024_pages"
-    features = fetch_all_features(VG2024_LAYER_URL, KANAGAWA_BBOX, out_fields="*",
+    features = fetch_all_features(VG2024_LAYER_URL, BBOX, out_fields="*",
                                    page_cache_dir=page_cache_dir)
     print(f"  取得 {len(features)}件 (期待値 {expected_count})")
     if expected_count is not None and len(features) != expected_count:
@@ -367,13 +391,13 @@ def step_veg2024():
 
     register(
         source_id=source_id,
-        name="現存植生図2024(いきもの地図/vg2024, 関東ブロック・神奈川県相当bbox抽出)",
+        name=f"現存植生図2024(いきもの地図/vg2024, {VG_BLOCK_JA}ブロック・{AREA_JA}相当bbox抽出)",
         publisher="環境省生物多様性センター",
         url=APP_PUBLIC_URL,
         category="自然環境保全基礎調査(植生)",
         access_method=(
             f"ArcGIS REST API 匿名アクセス({VG2024_LAYER_URL}/query, f=geojson)。"
-            f"lon/lat bbox({KANAGAWA_BBOX}) と esriSpatialRelIntersects でページング取得"
+            f"lon/lat bbox({BBOX}) と esriSpatialRelIntersects でページング取得"
             f"(resultOffset, page_size={PAGE_SIZE})。exceededTransferLimitはページ打ち切り判定に使わず、"
             "返却件数がpage_size未満になるまで継続。"
         ),
@@ -382,11 +406,13 @@ def step_veg2024():
         redistributable=1,
         record_count=len(rows),
         notes=(
-            f"bbox {KANAGAWA_BBOX}(lon_min,lat_min,lon_max,lat_max)で vg2024/MapServer/2"
-            f"(関東ブロック)を検索。returnCountOnly={expected_count}件に対し実取得{len(features)}件"
+            f"bbox {BBOX}(lon_min,lat_min,lon_max,lat_max)で vg2024/MapServer/{VG_LAYER_ID}"
+            f"({VG_BLOCK_JA}ブロック)を検索。returnCountOnly={expected_count}件に対し実取得{len(features)}件"
             f"(geometry欠損スキップ{skipped_no_geom}件)。"
             "『地域ブロック』フィールドの値(例:'3')はアプリの8分割レイヤID(0=北海道..7=九州沖縄)とは"
-            "対応していない可能性がある(layer2=関東で取得したのに地域ブロック='3'の行が多数を占めた実測結果あり)。"
+            + ("対応していない可能性がある(layer2=関東で取得したのに地域ブロック='3'の行が多数を占めた実測結果あり)。"
+               if REGION == "jp-14" else "対応は未確認。")
+            +
             "値をそのまま保持しレイヤIDとの対応付けはしていない。"
             "作成年度(survey_year/survey_year_raw)は個々のポリゴンの実測年で、"
             "サービス名の『2024』は最新統合版のリリース名であり全ポリゴンの作成年ではない"
@@ -427,7 +453,7 @@ def parse_flag_value(v):
 
 def step_mammals():
     print("[3] 中大型哺乳類分布調査(タヌキ/キツネ/アナグマ)")
-    source_id = "biodic_mammal_mesh_kanagawa"
+    source_id = SID_MAMMAL
 
     all_rows = []
     per_species_counts = {}
@@ -461,9 +487,9 @@ def step_mammals():
                 "(survey_labelには生の列名'anaguma202'をそのまま残した)。"
             )
 
-        expected_count = get_count(layer_url, KANAGAWA_BBOX)
+        expected_count = get_count(layer_url, BBOX)
         page_cache_dir = RAW_DIR / f"{species}_pages"
-        features = fetch_all_features(layer_url, KANAGAWA_BBOX, out_fields="*",
+        features = fetch_all_features(layer_url, BBOX, out_fields="*",
                                        page_cache_dir=page_cache_dir)
         print(f"  取得 {len(features)}件 (returnCountOnly={expected_count})")
         if expected_count is not None and len(features) != expected_count:
@@ -514,7 +540,7 @@ def step_mammals():
     write_jsonl(source_id, all_rows)
 
     notes = (
-        f"bbox {KANAGAWA_BBOX} でタヌキ/キツネ/アナグマ各FeatureServer/0を検索し、"
+        f"bbox {BBOX} でタヌキ/キツネ/アナグマ各FeatureServer/0を検索し、"
         f"メッシュ単位×年別・情報源別の確認フラグ列(1メッシュあたり実測120列)をワイド→ロング変換した。"
         f"種別内訳: " + ", ".join(
             f"{sp}: メッシュ{c['n_mesh']}件×フラグ列{c['n_flag_fields']}列={c['n_rows']}行"
@@ -540,13 +566,13 @@ def step_mammals():
 
     register(
         source_id=source_id,
-        name="中大型哺乳類分布調査(タヌキ・キツネ・アナグマ, いきもの地図/神奈川県相当bbox・3次メッシュ)",
+        name=f"中大型哺乳類分布調査(タヌキ・キツネ・アナグマ, いきもの地図/{AREA_JA}相当bbox・3次メッシュ)",
         publisher="環境省生物多様性センター",
         url=APP_PUBLIC_URL,
         category="自然環境保全基礎調査(動物分布)",
         access_method=(
             "ArcGIS REST API 匿名アクセス(tanuki/kitune/anaguma 各 FeatureServer/0, f=geojson)。"
-            f"lon/lat bbox({KANAGAWA_BBOX})でページング取得(resultOffset, page_size={PAGE_SIZE})。"
+            f"lon/lat bbox({BBOX})でページング取得(resultOffset, page_size={PAGE_SIZE})。"
             "ワイド(1メッシュ1行×約120フラグ列)→ロング(1行=1メッシュ×1survey_label)に変換。"
         ),
         fmt="ArcGIS REST(GeoJSON) -> CSV/JSONL(UTF-8)",
@@ -559,12 +585,17 @@ def step_mammals():
 
 
 # ---------------------------------------------------------------------------
-def main():
+def main(argv=None):
+    import argparse
+    ap = argparse.ArgumentParser()
+    rc.add_region_arg(ap)
+    args = ap.parse_args(argv)
+    configure(args.region)
     t0 = time.time()
     step1_services()
     n_veg = step_veg2024()
     n_mammal = step_mammals()
-    print(f"完了: biodic_veg2024_kanagawa={n_veg}行, biodic_mammal_mesh_kanagawa={n_mammal}行 "
+    print(f"完了: {SID_VEG}={n_veg}行, {SID_MAMMAL}={n_mammal}行 "
           f"({time.time()-t0:.1f}s)")
 
 
