@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-10-11T08:42:03+00:00",
+  "generated_at": "2026-10-11T09:21:17+00:00",
   "generated_by": "scripts/s01_build_sample.py",
   "source_files": {
-    "data/db/ryuiki.sqlite": "7d270720162664e8b0e0161fddc11b18ec3140a0e0ab10e8a582587eaaa0ad3f",
+    "data/db/ryuiki.sqlite": "f81e43599163eb6ec1b82133fc5c8a522d8a5e82f3b244f4b6c21d4a7855901b",
     "data/db/cells.sqlite": "03c4e37ef21cebb2784d2dd53232e54fbbda688a3737dc6dc38d309a04d5d5a4",
     "data/processed/nlni_w12_watersheds.geojson": "0fdb4360f1a1d0f8473a0d5b9b9a16f1cc42420312f654781a5dfd66b0aa56f7",
     "data/processed/gsi_dem_watersheds_amami.geojson": "26504fd71446806629ba4e4d4d9f075162f232cdfbbc79e188ba90632102d26b",
@@ -31,7 +31,7 @@
     "mammal_mesh": 1,
     "measurements": 40292,
     "organism_records": 3296,
-    "protected_areas": 4,
+    "protected_areas": 7,
     "protocols": 1,
     "quality_transitions": 3372,
     "redlist_assessments": 5753,
