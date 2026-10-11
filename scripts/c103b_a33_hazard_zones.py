@@ -54,7 +54,7 @@ EXPECTED_COUNTS = {
     "j_yzone1": (16, 10, 12, 27, 0),
 }
 EXPECTED_TOTAL = 6038
-EXPECTED_MULTI_SITES = 120      # 同じ箇所番号・同じ区分で複数行の箇所（分割された区域。宣言した事実）
+EXPECTED_MULTI_SITES = 120      # 同じ箇所番号・現象・区分で複数行の箇所（分割された区域。宣言した事実）
 # 設計時の実測は 198,460（変換前）。make_valid と 6 桁への丸め（連続する同一点が消える）で 0.2% ほど減るので下限は 198,000
 MIN_VERTICES = 198_000
 # 区分別の面積の総和（km²。ポリゴンごとの平面面積の合計。区分をまたいで足さない）。±0.01
@@ -63,12 +63,14 @@ EXPECTED_AREA_KM2 = {
     ("debris_flow", "special_warning"): 0.75, ("steep_slope", "special_warning"): 20.86,
 }
 BAD_DATE_RAW = "令和2月3月13日"
+# 6桁に丸めると面が消える欠片（面積 0.002 m²）。この行だけ 9 桁で持つ（宣言した例外。行は落とさない）
+EXPECTED_FINE_ROWS = {"k_yzone1#174"}
 EXPECTED_BAD_DATES = 35
 EXPECTED_PARSED_DATES = 6003
 FIELDS = ["zone_id", "site_code", "site_name_ja", "phenomenon_code", "phenomenon_ja", "zone_kind_code", "zone_kind_ja",
           "municipality_ja", "locality_ja", "river_name_ja", "office_ja", "designated_on", "designated_on_raw",
           "notice_no_raw", "area_m2", "centroid_lat", "centroid_lon", "geometry_geojson", "source_id", "source_ref",
-          "n_vertices"]    # n_vertices は検算・正解 csv 用（表には入れない。m05 は読まない）
+          "n_vertices", "coord_digits"]    # n_vertices・coord_digits は検算・正解 csv 用（表には入れない。m05 は読まない）
 DATE_RE = re.compile(r"^(令和|平成)(元|\d+)年(\d+)月(\d+)日$")
 
 
@@ -90,10 +92,17 @@ def _round_coords(c, nd=6):
     return [_round_coords(x, nd) for x in c]
 
 
-def count_vertices(c):
+def iter_coords(c):
+    """GeoJSON の coordinates 以下の頂点 [lon, lat] を順に返す。"""
     if isinstance(c[0], (int, float)):
-        return 1
-    return sum(count_vertices(x) for x in c)
+        yield c
+    else:
+        for x in c:
+            yield from iter_coords(x)
+
+
+def count_vertices(c):
+    return sum(1 for _ in iter_coords(c))
 
 
 def _polygonal(geom):
@@ -112,13 +121,18 @@ def _polygonal(geom):
 
 
 def convert_geometry(geom_plane, transform):
-    """第I系の GeoJSON ジオメトリ -> (WGS84 6桁の GeoJSON 文字列, 平面面積 m², 代表点(lat,lon), 頂点数, 直した種別 0/1/2)。"""
+    """第I系の GeoJSON ジオメトリ -> (WGS84 の GeoJSON 文字列, 平面面積 m², 代表点(lat,lon), 頂点数, 情報 dict)。
+
+    情報: src_invalid=もとの形が無効（make_valid で直した）/ rounded_invalid=6桁に丸めると無効になった（丸めた形を直した）/
+    digits=座標の桁数（6。面積 0.002 m² ほどの欠片は丸めると面が消えるので、その行だけ 9 桁。EXPECTED_FINE_ROWS で宣言）。
+    返す形は必ず妥当（is_valid）。直せなければ ValueError。"""
     from shapely.geometry import mapping, shape
     from shapely.ops import transform as shp_transform
+    from shapely import set_precision
     from shapely.validation import make_valid
     g = shape(geom_plane)
-    fixed = int(not g.is_valid)       # 1=もとの形が無効 / 2=6桁に丸めて無効になった
-    if fixed:
+    info = {"src_invalid": not g.is_valid, "rounded_invalid": False, "digits": 6}
+    if info["src_invalid"]:
         g = _polygonal(make_valid(g))
         if g is None:
             raise ValueError("make_valid の結果に面が無い")
@@ -126,19 +140,21 @@ def convert_geometry(geom_plane, transform):
     w = shp_transform(transform, g)
     gj = mapping(w)
     gj = {"type": gj["type"], "coordinates": _round_coords(gj["coordinates"])}
-    rounded = shape(gj)
-    if not rounded.is_valid:        # 6桁に丸めて自己接触した。丸めた後の形を直す（直した数に数える）
-        fixed = 2
-        repaired = _polygonal(make_valid(rounded))
-        if repaired is None:        # 面積 0.002 m² ほどの欠片は丸めると消える。その行だけ 9 桁で持つ（行は落とさない）
-            gj = {"type": gj["type"], "coordinates": _round_coords(mapping(w)["coordinates"], 9)}
-        else:
-            m = mapping(repaired)
+    if not shape(gj).is_valid:      # 6桁に丸めて自己接触した。6桁の格子に載せ直す（GEOS が妥当な形で返す）
+        info["rounded_invalid"] = True
+        snapped = _polygonal(set_precision(w, 1e-6))
+        if snapped is not None and not snapped.is_empty:
+            m = mapping(snapped)
             gj = {"type": m["type"], "coordinates": _round_coords(m["coordinates"])}
-            w = repaired
+            w = snapped
+        else:                       # 面が残らない。9 桁の（妥当な）形をそのまま持つ。verify が宣言した行だけを許す
+            info["digits"] = 9
+            gj = {"type": gj["type"], "coordinates": _round_coords(mapping(w)["coordinates"], 9)}
+    if not shape(gj).is_valid:
+        raise ValueError("妥当な形にできない")
     pt = w.representative_point()
     return (json.dumps(gj, ensure_ascii=False, separators=(",", ":")), area, (pt.y, pt.x),
-            count_vertices(gj["coordinates"]), fixed)
+            count_vertices(gj["coordinates"]), info)
 
 
 def make_transform():
@@ -147,10 +163,10 @@ def make_transform():
 
 
 def build_rows(features, transform):
-    """features: [{'file','rec_no','props','geometry'}] -> (行 dict のリスト〔zone_id 付き〕, Counter{直した種別: 件数})。
+    """features: [{'file','rec_no','props','geometry'}] -> (行 dict のリスト〔zone_id 付き〕, Counter{src_invalid, rounded_invalid, fine})。
     shp ファイル名から決まる現象・区分と、属性（genshoname・kubun）が食い違えば止める。"""
-    rows, fixed_n = [], Counter()
-    seq = defaultdict(int)
+    rows, fixed_n = [], Counter()   # fixed_n: src_invalid / rounded_invalid / fine（9桁）の件数
+    seq = defaultdict(int)       # (箇所番号, 現象, 色) ごとの連番
     for f in features:
         ph, kind, kcol, ncol = FILES[f["file"]]
         p = f["props"]
@@ -161,14 +177,16 @@ def build_rows(features, transform):
         code = (p[kcol] or "").strip()
         if not code:
             raise ValueError(f"{f['file']}#{f['rec_no']}: 箇所番号が空")
-        gj, area, (lat, lon), nv, fixed = convert_geometry(f["geometry"], transform)
-        fixed_n[fixed] += 1
-        seq[(code, COLOR[kind])] += 1
+        gj, area, (lat, lon), nv, info = convert_geometry(f["geometry"], transform)
+        for k in ("src_invalid", "rounded_invalid"):
+            fixed_n[k] += info[k]
+        fixed_n["fine"] += info["digits"] == 9
+        seq[(code, ph, COLOR[kind])] += 1
         raw = (p["koujidate"] or "").strip()
         # 水系名・河川名。空と「-」（原表の「なし」の印）は空として扱い、両方空なら NULL
         river = [(v if v != "-" else "") for v in ((p.get("suikeiname") or "").strip(), (p.get("kasenname") or "").strip())]
         rows.append({
-            "zone_id": f"{code}:{COLOR[kind]}:{seq[(code, COLOR[kind])]}",
+            "zone_id": f"{code}:{COLOR[kind]}:{seq[(code, ph, COLOR[kind])]}",
             "site_code": code, "site_name_ja": (p[ncol] or "").strip() or None,
             "phenomenon_code": ph, "phenomenon_ja": p["genshoname"],
             "zone_kind_code": kind, "zone_kind_ja": p["kubun"],
@@ -179,7 +197,7 @@ def build_rows(features, transform):
             "notice_no_raw": (p["koujinum"] or "").strip() or None,
             "area_m2": round(area, 1), "centroid_lat": round(lat, 6), "centroid_lon": round(lon, 6),
             "geometry_geojson": gj, "source_id": SOURCE_ID,
-            "source_ref": f"{f['file']}#{f['rec_no']}", "n_vertices": nv,
+            "source_ref": f"{f['file']}#{f['rec_no']}", "n_vertices": nv, "coord_digits": info["digits"],
         })
     return rows, fixed_n
 
@@ -216,14 +234,15 @@ def verify(rows):
             raise ValueError(f"{fn} の市町村別件数 {have}（期待 {exp}）")
     if len({r["zone_id"] for r in rows}) != len(rows):
         raise ValueError("zone_id が一意でない")
-    sites = Counter((r["site_code"], r["zone_kind_code"]) for r in rows)
+    sites = Counter((r["site_code"], r["phenomenon_code"], r["zone_kind_code"]) for r in rows)
     multi = sum(1 for c in sites.values() if c > 1)
     if multi != EXPECTED_MULTI_SITES:
-        raise ValueError(f"同じ箇所番号・同じ区分で複数行の箇所 {multi}（期待 {EXPECTED_MULTI_SITES}）")
-    msgs.append(f"箇所番号×区分 {len(sites)} 件（複数行の箇所 {multi}）")
+        raise ValueError(f"同じ箇所番号・現象・区分で複数行の箇所 {multi}（期待 {EXPECTED_MULTI_SITES}）")
+    msgs.append(f"箇所番号×現象×区分 {len(sites)} 件（複数行の箇所 {multi}）")
     nv = sum(r["n_vertices"] for r in rows)
     if nv < MIN_VERTICES:
         raise ValueError(f"頂点数 {nv} < {MIN_VERTICES}")
+    from shapely.geometry import shape
     lon0, lat0, lon1, lat1 = regions.REGIONS["jp-46"]["bbox"]
     for r in rows:
         g = json.loads(r["geometry_geojson"])
@@ -231,14 +250,16 @@ def verify(rows):
             raise ValueError(f"{r['zone_id']}: {g['type']}")
         if not (lon0 <= r["centroid_lon"] <= lon1 and lat0 <= r["centroid_lat"] <= lat1):
             raise ValueError(f"{r['zone_id']}: 代表点が奄美の範囲外 ({r['centroid_lat']}, {r['centroid_lon']})")
-        stack = [g["coordinates"]]
-        while stack:
-            c = stack.pop()
-            if isinstance(c[0], (int, float)):
-                if not (lon0 <= c[0] <= lon1 and lat0 <= c[1] <= lat1):
-                    raise ValueError(f"{r['zone_id']}: 頂点が奄美の範囲外 {c}")
-            else:
-                stack.extend(c)
+        for pt in iter_coords(g["coordinates"]):
+            if not (lon0 <= pt[0] <= lon1 and lat0 <= pt[1] <= lat1):
+                raise ValueError(f"{r['zone_id']}: 頂点が奄美の範囲外 {pt}")
+            if r["coord_digits"] == 6 and any(round(v, 6) != v for v in pt):
+                raise ValueError(f"{r['zone_id']}: 6桁の契約を守っていない {pt}")
+        if not shape(g).is_valid:
+            raise ValueError(f"{r['zone_id']}: ジオメトリが無効")
+    fine = {r["source_ref"] for r in rows if r["coord_digits"] != 6}
+    if fine != EXPECTED_FINE_ROWS:
+        raise ValueError(f"9桁で持つ行 {sorted(fine)}（宣言 {sorted(EXPECTED_FINE_ROWS)}）")
     area = defaultdict(float)
     for r in rows:
         area[(r["phenomenon_code"], r["zone_kind_code"])] += r["area_m2"] / 1e6
@@ -272,7 +293,7 @@ def main():
     a = ap.parse_args()
     feats = read_features()
     rows, fixed = build_rows(feats, make_transform())
-    print(f"  [read] {len(rows)} ポリゴン（もとが無効で make_valid {fixed[1]}・6桁に丸めて無効になり直した {fixed[2]}）")
+    print(f"  [read] {len(rows)} ポリゴン（もとが無効 {fixed["src_invalid"]}・6桁に丸めて無効になり直した {fixed["rounded_invalid"]}・9桁のまま {fixed["fine"]}）")
     for m in verify(rows):
         print("  [check]", m)
     if a.dry_run:
@@ -283,7 +304,7 @@ def main():
             SOURCE_ID, "土砂災害警戒区域・土砂災害特別警戒区域（奄美5市町村）", "鹿児島県土木部砂防課（BODIK）",
             DATASET_URL, "防災", "HTTP GET (CKAN package_show -> ZIP/shapefile)", "Shapefile", LICENSE, True, len(rows),
             notes=f"2026-02-10 現在（20260210_shape.zip）。指定済みのみ（未指定=基礎調査完了の5行は入れない）。座標は第I系->WGS84を6桁、"
-                  f"無効ジオメトリ {fixed[1]} 件は make_valid、6桁に丸めて無効になった {fixed[2]} 件も直した。公示日の誤記 {EXPECTED_BAD_DATES} 件（{BAD_DATE_RAW}）は直さず designated_on=NULL。"
+                  f"無効ジオメトリ {fixed["src_invalid"]} 件は make_valid、6桁に丸めて無効になった {fixed["rounded_invalid"]} 件も直した（{fixed["fine"]} 件は面が消えるので 9 桁）。公示日の誤記 {EXPECTED_BAD_DATES} 件（{BAD_DATE_RAW}）は直さず designated_on=NULL。"
                   "特別警戒区域は警戒区域の内側にあり、面積を区分をまたいで足さない。")
 
 

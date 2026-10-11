@@ -22,5 +22,4 @@ CREATE TABLE `hazard_zones` (
 	`source_ref` text
 );
 --> statement-breakpoint
-CREATE INDEX `ix_hz` ON `hazard_zones` (`source_id`,`phenomenon_code`,`zone_kind_code`,`municipality_ja`);--> statement-breakpoint
 CREATE INDEX `ix_hz_source` ON `hazard_zones` (`source_id`,`zone_id`);

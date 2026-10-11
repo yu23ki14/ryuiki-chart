@@ -202,7 +202,6 @@ export const hazardZones = sqliteTable("hazard_zones", {
 	sourceRef: text("source_ref"),
 },
 (table) => [
-	index("ix_hz").on(table.sourceId, table.phenomenonCode, table.zoneKindCode, table.municipalityJa),
 	// get_records: source_id = ? で絞って主キー順に読む（keyset ページング）
 	index("ix_hz_source").on(table.sourceId, table.zoneId),
 ]);

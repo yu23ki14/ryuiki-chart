@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "4098dc51-89d7-4ecc-987c-89b09279f65e",
+  "id": "29cc891d-ad2f-47b4-85d2-2cead67508bd",
   "prevId": "cb4c3b9b-bfe3-477b-b442-75507bf11c96",
   "tables": {
     "cells": {
@@ -1090,16 +1090,6 @@
         }
       },
       "indexes": {
-        "ix_hz": {
-          "name": "ix_hz",
-          "columns": [
-            "source_id",
-            "phenomenon_code",
-            "zone_kind_code",
-            "municipality_ja"
-          ],
-          "isUnique": false
-        },
         "ix_hz_source": {
           "name": "ix_hz_source",
           "columns": [

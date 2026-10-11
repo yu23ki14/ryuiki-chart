@@ -63,7 +63,8 @@ CREATE TABLE IF NOT EXISTS hazard_zones (
   geometry_geojson TEXT,          -- 6桁、単純化なし
   source_id TEXT, source_ref TEXT -- source_ref: '<shp 名>#<レコード番号(0始まり)>'
 );
-CREATE INDEX IF NOT EXISTS ix_hz ON hazard_zones(source_id, phenomenon_code, zone_kind_code, municipality_ja);
+-- get_records: source_id = ? で絞って主キー順に読む（keyset ページング。schema.ts の ix_hz_source と同じ）
+CREATE INDEX IF NOT EXISTS ix_hz_source ON hazard_zones(source_id, zone_id);
 
 -- 中大型哺乳類の3次メッシュ分布(タヌキ/キツネ/アナグマ)。
 -- 元データは年別の確認フラグが横に並ぶワイド形式。1メッシュ×1調査年次=1行に展開してある。

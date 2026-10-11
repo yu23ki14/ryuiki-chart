@@ -62,7 +62,7 @@ def test_rows_basic(built):
     assert r["d_rzone1#721"]["river_name_ja"] is None
     assert r["k_rzone1#192"]["river_name_ja"] is None
     # 無効ジオメトリは直して数える
-    assert fixed[1] >= 1
+    assert fixed["src_invalid"] >= 1
     for x in rows:
         g = json.loads(x["geometry_geojson"])
         assert g["type"] in ("Polygon", "MultiPolygon") and x["area_m2"] > 0
@@ -73,16 +73,9 @@ def test_rows_basic(built):
 
 def test_coordinates_have_at_most_6_digits(built):
     rows, _ = built
-    def walk(co):
-        if isinstance(co[0], (int, float)):
-            yield co
-        else:
-            for x in co:
-                yield from walk(x)
     for x in rows:
-        if x["source_ref"] == "d_rzone1#402":      # 丸めで消える欠片だけ 9 桁（このフィクスチャには無い）
-            continue
-        for pt in walk(json.loads(x["geometry_geojson"])["coordinates"]):
+        assert x["coord_digits"] == 6
+        for pt in c.iter_coords(json.loads(x["geometry_geojson"])["coordinates"]):
             assert all(round(v, 6) == v for v in pt)
 
 
@@ -111,7 +104,7 @@ needs_raw = pytest.mark.skipif(not (c.RAW / "x").exists(), reason="data/raw/bodi
 def test_full_conversion_matches_truth_and_checks():
     rows, fixed = c.build_rows(c.read_features(), c.make_transform())
     c.verify(rows)           # §5 の検算（件数・面積・公示日・範囲）
-    assert fixed[1] == 10    # もとの形が無効だった行
+    assert fixed["src_invalid"] == 10 and fixed["fine"] == 1
     got = {r["source_ref"]: r for r in rows}
     with open(FIX / "truth.csv", encoding="utf-8", newline="") as f:
         truth = list(csv.DictReader(f))
@@ -182,3 +175,19 @@ def test_m05_only_selects_jobs(env):
     assert m05_tier1.select_jobs(jobs, None) == jobs          # 既定は全部
     with pytest.raises(SystemExit, match="合うジョブが無い"):
         m05_tier1.select_jobs(jobs, ["nope"])
+
+
+def test_load_hazard_zones_stops_on_foreign_source_id(env, built):
+    proc, db = env
+    rows, _ = built
+    write_csv(proc / f"{c.SOURCE_ID}.csv", [dict(r, source_id="other_src") for r in rows])
+    with pytest.raises(SystemExit, match="source_id"):
+        m05_tier1.load_hazard_zones(sqlite3.connect(db), FakeWs())
+
+
+def test_zone_id_seq_counts_same_site_color(feats):
+    """同じ箇所番号・同じ色の2行目は連番 2（連番のキーは 箇所番号×現象×色）。"""
+    k = next(f for f in feats if f["file"] == "k_rzone1")
+    dbl = json.loads(json.dumps([k, k]))
+    rows, _ = c.build_rows(dbl, c.make_transform())
+    assert [r["zone_id"].rsplit(":", 1)[1] for r in rows] == ["1", "2"]
