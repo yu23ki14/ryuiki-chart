@@ -479,6 +479,8 @@ export const RECORD_SET_INSERT: Record<string, (db: Database.Database, pk: strin
   protected_areas: (db, pk, name, source) => void db.prepare("INSERT INTO protected_areas (area_id, name_ja, source_id) VALUES (?,?,?)").run(pk, name, source),
   vegetation: (db, pk, name, source) =>
     void db.prepare(`INSERT INTO vegetation_polygons (feature_id, legend_name_ja, source_id, geometry_geojson) VALUES (?,?,?,'{"type":"Polygon","coordinates":[]}')`).run(pk, name, source),
+  hazard_zones: (db, pk, name, source) =>
+    void db.prepare(`INSERT INTO hazard_zones (zone_id, site_name_ja, source_id, geometry_geojson) VALUES (?,?,?,'{"type":"Polygon","coordinates":[]}')`).run(pk, name, source),
   river_segments: (db, pk, name, source) =>
     void db.prepare(`INSERT INTO river_segments (feature_id, name_ja, source_id, geometry_geojson) VALUES (?,?,?,'{"type":"LineString","coordinates":[]}')`).run(pk, name, source),
   mammal_mesh: (db, pk, name, source) =>

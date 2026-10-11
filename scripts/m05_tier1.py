@@ -178,6 +178,48 @@ def load_vegetation(con, ws, rid=regions.DEFAULT_REGION):
     inws = sum(1 for o in out if o[11])
     return f"vegetation_polygons[{src}]: {len(out)} 行 (流域が引けた {inws})"
 
+def load_hazard_zones(con, ws, rid="jp-46"):
+    """土砂災害警戒区域・特別警戒区域 (c103b_a33_hazard_zones.py)。
+
+    zone_id は表の主キー。他の出典の行と衝突すると INSERT OR REPLACE が黙って上書きするので、衝突したら止める。
+    流域は代表点が W12 に入った行だけ（海岸近くは W12 が覆っていないので NULL が残る）。"""
+    src = regions.name("bodik_kagoshima_dosha", rid)
+    rows = read_csv(src)
+    if rows is None:
+        return None
+    wipe(con, "hazard_zones", [src])
+    ids = [r["zone_id"] for r in rows]
+    if len(set(ids)) != len(ids):
+        raise SystemExit(f"{src}: zone_id が出典の中で重複している")
+    dup = set()
+    for i in range(0, len(ids), 500):
+        chunk = ids[i:i + 500]
+        marks = ",".join("?" for _ in chunk)
+        dup.update(x for (x,) in con.execute(
+            f"SELECT zone_id FROM hazard_zones WHERE source_id != ? AND zone_id IN ({marks})", (src, *chunk)))
+    if dup:
+        raise SystemExit(f"{src}: hazard_zones.zone_id が他の出典の行と衝突している（{len(dup)} 件、例: {sorted(dup)[:3]}）")
+    out = []
+    for r in rows:
+        lat, lon = num(r.get("centroid_lat")), num(r.get("centroid_lon"))
+        out.append((
+            r["zone_id"], text(r.get("site_code")), text(r.get("site_name_ja")),
+            text(r.get("phenomenon_code")), text(r.get("phenomenon_ja")),
+            text(r.get("zone_kind_code")), text(r.get("zone_kind_ja")),
+            text(r.get("municipality_ja")), text(r.get("locality_ja")), text(r.get("river_name_ja")),
+            text(r.get("office_ja")), text(r.get("designated_on")), text(r.get("designated_on_raw")),
+            text(r.get("notice_no_raw")), num(r.get("area_m2")), lat, lon, ws.find(lon, lat),
+            text(r.get("geometry_geojson")), r["source_id"], text(r.get("source_ref")),
+        ))
+    con.executemany(
+        """INSERT OR REPLACE INTO hazard_zones
+           (zone_id,site_code,site_name_ja,phenomenon_code,phenomenon_ja,zone_kind_code,zone_kind_ja,
+            municipality_ja,locality_ja,river_name_ja,office_ja,designated_on,designated_on_raw,notice_no_raw,
+            area_m2,centroid_lat,centroid_lon,watershed,geometry_geojson,source_id,source_ref)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", out)
+    inws = sum(1 for o in out if o[17])
+    return f"hazard_zones[{src}]: {len(out)} 行 (流域が引けた {inws})"
+
 def load_mammal_mesh(con):
     """中大型哺乳類3種のメッシュ分布 (c80_biodic_ikimonomap.py)。"""
     rows = read_csv("biodic_mammal_mesh_kanagawa")
@@ -379,6 +421,7 @@ def main():
     ]
     for k, rid in enumerate(REGIONS):
         jobs.insert(2 + k, (f"現存植生図2024 ({rid})", lambda rid=rid: load_vegetation(con, ws, rid)))
+    jobs.insert(2 + len(REGIONS), ("土砂災害警戒区域 (奄美)", lambda: load_hazard_zones(con, ws)))
     for label, fn in jobs:
         msg = fn()
         if msg is None:

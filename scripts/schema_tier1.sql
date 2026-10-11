@@ -40,6 +40,31 @@ CREATE TABLE IF NOT EXISTS vegetation_polygons (
 );
 CREATE INDEX IF NOT EXISTS ix_veg_legend ON vegetation_polygons(legend_code);
 
+-- 土砂災害警戒区域・特別警戒区域(BODIK 460001_kgod016、鹿児島県。奄美5市町村の指定済みポリゴン。c103b)。
+-- 特別警戒区域は警戒区域の内側にある。area_m2 はポリゴンごとの平面(第I系)面積で、区分をまたいで足すと二重に数える。
+-- 箇所番号は分割された区域で重複するので主キーは zone_id（'<箇所番号>:<r|y>:<連番>'）。
+CREATE TABLE IF NOT EXISTS hazard_zones (
+  zone_id TEXT PRIMARY KEY,
+  site_code TEXT,                 -- 箇所番号(keiryunum / kashonum)
+  site_name_ja TEXT,
+  phenomenon_code TEXT,           -- debris_flow / steep_slope / landslide
+  phenomenon_ja TEXT,             -- 原文(土石流 / 急傾斜地の崩壊 / 地滑り)
+  zone_kind_code TEXT,            -- warning / special_warning
+  zone_kind_ja TEXT,              -- 原文(警戒区域 / 特別警戒区域)
+  municipality_ja TEXT,
+  locality_ja TEXT,
+  river_name_ja TEXT,             -- 水系名|河川名(土石流のみ。片方だけの行もある)
+  office_ja TEXT,
+  designated_on TEXT, designated_on_raw TEXT,   -- 公示日(ISO / 原文)。誤記の35行は raw だけ
+  notice_no_raw TEXT,
+  area_m2 REAL,
+  centroid_lat REAL, centroid_lon REAL,         -- representative_point(必ずポリゴンの内側)
+  watershed TEXT,                 -- 代表点が W12 に入った行だけ
+  geometry_geojson TEXT,          -- 6桁、単純化なし
+  source_id TEXT, source_ref TEXT -- source_ref: '<shp 名>#<レコード番号(0始まり)>'
+);
+CREATE INDEX IF NOT EXISTS ix_hz ON hazard_zones(source_id, phenomenon_code, zone_kind_code, municipality_ja);
+
 -- 中大型哺乳類の3次メッシュ分布(タヌキ/キツネ/アナグマ)。
 -- 元データは年別の確認フラグが横に並ぶワイド形式。1メッシュ×1調査年次=1行に展開してある。
 -- survey_label に元の列名を必ず残す(第6回=dai6kai のように年を持たない列があるため)。
