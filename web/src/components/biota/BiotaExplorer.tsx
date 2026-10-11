@@ -11,6 +11,9 @@ import { SERIES, seriesColor, INK, STATUS } from "@/components/viz/palette";
 import { Btn, inputCls, Spinner, Stat, nf, Provenance } from "@/components/ui";
 import { speciesLabel, caveatBody } from "@/lib/registry/lookup-client";
 import { useRegionJson } from "@/components/useRegionJson";
+import { useRegion } from "@/components/useRegion";
+import { regionOf } from "@/lib/region";
+import { DEFAULT_REDLIST_REGION, defaultRedlistYear, redlistEditions } from "@/lib/redlist-editions";
 import { useSetPageContext } from "@/components/assistant/PageContextProvider";
 
 type Tab = "effort" | "trend" | "ias" | "redlist";
@@ -582,7 +585,13 @@ function IasTab() {
 /* ------------------------------------------------------------------ */
 
 function RedlistTab() {
-  const [year, setYear] = React.useState(2022);
+  const filter = useRegion();
+  const region = regionOf(filter);
+  const editions = React.useMemo(() => redlistEditions(region), [region]);
+  // 地域を切り替えたら、その地域の既定の版に戻す（選んだ版が無い地域で空にしない）。
+  const [picked, setPicked] = React.useState<number | null>(null);
+  const year = picked !== null && editions.some((e) => e.year === picked) ? picked : defaultRedlistYear(region);
+  const setYear = setPicked;
   const [group, setGroup] = React.useState<string>("");
   const [dir, setDir] = React.useState<string>("");
 
@@ -645,15 +654,11 @@ function RedlistTab() {
         <div>
           <span className="block text-[10.5px] text-muted mb-1">比較する版</span>
           <div className="flex gap-0.5">
-            <Btn active={year === 2020} onClick={() => { setYear(2020); setGroup(""); }}>
-              2020 植物編
-            </Btn>
-            <Btn active={year === 2022} onClick={() => { setYear(2022); setGroup(""); }}>
-              2022 植物編
-            </Btn>
-            <Btn active={year === 2026} onClick={() => { setYear(2026); setGroup(""); }}>
-              2026 昆虫・クモ
-            </Btn>
+            {editions.map((e) => (
+              <Btn key={e.listId} active={year === e.year} onClick={() => { setYear(e.year); setGroup(""); }}>
+                {e.label}
+              </Btn>
+            ))}
           </div>
         </div>
         <label>
@@ -760,9 +765,9 @@ function RedlistTab() {
           </table>
         </div>
         <Provenance>
-          神奈川県レッドリスト2020（植物編）／神奈川県レッドデータブック2022（植物編）／神奈川県レッドリスト2026（昆虫類・クモ類）。
-          神奈川県環境農政局緑政部自然環境保全課ほか（神奈川県サイトポリシー：出典記載により利用可）。
-          2022年版には学名の記載が無いため和名で表示している。
+          {editions.map((e) => e.name).join("／")}。
+          {(region ?? DEFAULT_REDLIST_REGION) === DEFAULT_REDLIST_REGION &&
+            "神奈川県環境農政局緑政部自然環境保全課ほか（神奈川県サイトポリシー：出典記載により利用可）。2022年版には学名の記載が無いため和名で表示している。"}
         </Provenance>
       </div>
     </div>

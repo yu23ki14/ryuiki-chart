@@ -8,6 +8,7 @@
  * 1 版は最大 1,033 行なので行を取って TS で畳む。
  */
 import type { RegionId } from "@/lib/region";
+import { DEFAULT_REDLIST_REGION } from "@/lib/redlist-editions";
 import { ASSESSMENT_LIST, REDLIST_CATEGORY } from "@/lib/registry/generated-client";
 import type { CubeDb } from "./db";
 import { cmp, jsonEachParam } from "./sql";
@@ -91,9 +92,8 @@ function directionOf(cur: number | null, prev: number | null): RedlistDirection 
 /**
  * 画面が出すレッドリストの版。`ASSESSMENT_LIST` には鹿児島県（jp-46）の kgrl2014 も `kind='red_list'` で入る。
  * 全体（region 未指定）は現状維持で神奈川（jp-14）の3版、jp-14 も同じ、jp-46 は鹿児島県版（Issue #93 §3-4）。
+ * 既定の地域は `redlist-editions.ts` の `DEFAULT_REDLIST_REGION`。
  */
-const DEFAULT_REDLIST_REGION = "jp-14";
-
 async function changeRows(db: CubeDb, vocab: AssessmentVocab, listYear?: number, region?: RegionId): Promise<ChangeRow[]> {
   const redlistRegion = region ?? DEFAULT_REDLIST_REGION;
   const listIds = Object.entries(vocab.lists)

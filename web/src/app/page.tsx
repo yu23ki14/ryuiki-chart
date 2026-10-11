@@ -5,7 +5,7 @@ import { Stat, nf } from "@/components/ui";
 import { caveatBody } from "@/lib/registry/lookup-client";
 import { PageContextSetter } from "@/components/assistant/PageContextProvider";
 import { EXPLORE_ENABLED } from "@/lib/features";
-import { parseRegion, regionOf, regionLabel, type RegionFilter, type RegionId } from "@/lib/region";
+import { parseRegion, regionOf, regionLabel, regionUi, REGIONS, REGION_ALL, type RegionFilter, type RegionId } from "@/lib/region";
 import { withRegion } from "@/components/region-url";
 
 export const dynamic = "force-dynamic";
@@ -61,9 +61,10 @@ const BOD_VARIABLE_ID = "common:variable:water.bod";
  * （「5倍近い差」等）はここでは触らない——文言は PR 本文の before/after を見て
  * オーナーが判断する（設計責任者の決定、D6）。
  */
-async function longitudinalHighlight(region: RegionId | undefined, water = "境川（１）", variableId = BOD_VARIABLE_ID) {
-  // 境川は神奈川の川。奄美（jp-46）には相当する既定の水域が無いので出さない（見出しだけ。#93 決定）。
-  if (region === "jp-46") return [];
+async function longitudinalHighlight(region: RegionId | undefined, variableId = BOD_VARIABLE_ID) {
+  // 既定の水域は地域ごとに lib/region.ts の highlightWater で宣言する。無い地域（奄美）は出さない（見出しだけ。#93 決定）。
+  const water = regionUi(region ?? REGION_ALL)?.highlightWater ?? (region ? undefined : REGIONS[0].highlightWater);
+  if (!water) return [];
   const db = await d1CubeDb();
   // basis はセルの性質（grain/input_grain）であって系列の登録（value_grain）ではない
   // ため、系列を basis で事前に絞り込まない（Issue #48 PR-2 統合後修正A #1）——
@@ -82,11 +83,11 @@ async function longitudinalHighlight(region: RegionId | undefined, water = "境�
         inputGrain,
         period: { from: "2020-01-01" },
         imputation: "lod",
-        ...(region ? { region } : {}),
+        region,
       },
       "place",
     ),
-    sitesInWaterBody(db, water, { dataset: DATASET, ...(region ? { region } : {}) }),
+    sitesInWaterBody(db, water, { dataset: DATASET, region }),
   ]);
   const siteById = new Map(sites.map((s) => [s.siteId, s]));
   const unit = unitLabel(series[0]?.unitId ?? null);
@@ -111,7 +112,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ r
   const filter = parseRegion((await searchParams).region);
   // cube 層へは 'all' を入れない（undefined = 全体）。
   const region = regionOf(filter);
-  const ropt = region ? { region } : {};
   // D1 は 1 クエリ 1 往復。まとめて投げる。
   const cdb = await d1CubeDb();
   const [s, longitudinal, landuseRows, redlistRows, effortRows, occ] = await Promise.all([
@@ -119,7 +119,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ r
     longitudinalHighlight(region),
     landuseHighlight(cdb, 8, region),
     redlistSummary(cdb, undefined, region),
-    effortYears(cdb, ropt),
+    effortYears(cdb, { region }),
     occurrenceTotals(cdb, region),
   ]);
   const redlist = redlistRows.map((r) => ({

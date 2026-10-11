@@ -8,6 +8,6 @@ export const metadata = { title: "地点カルテ" };
 export default async function Page({ searchParams }: { searchParams: Promise<{ region?: string | string[] }> }) {
   const region = regionOf(parseRegion((await searchParams).region));
   const db = await d1CubeDb();
-  const rows = await sites(db, { dataset: DATASET, ...(region ? { region } : {}) });
+  const rows = await sites(db, { dataset: DATASET, region });
   return <SiteList sites={rows} />;
 }

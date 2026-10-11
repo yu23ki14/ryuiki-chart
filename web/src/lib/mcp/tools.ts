@@ -41,6 +41,7 @@ import { EDNA_DESCRIPTION, EDNA_SOURCE_ID, ednaInputSchema, queryEdna } from "@/
 import { caveatsForFacets, facetsForOccurrence } from "@/lib/cube/caveats";
 import { SPECIES_MIN_N } from "@/lib/cube/occurrence";
 import { sourceInRegion, sourcesOfRegion } from "@/lib/cube/region";
+import type { RegionId } from "@/lib/region";
 import { regionSchema, REGION_NOTE } from "./region-schema";
 import { loadDatapackage } from "./datapackage";
 import { McpInputError } from "./errors";
@@ -90,7 +91,7 @@ function occurrenceCaveats(sourceIds: readonly string[]) {
  *  - no_located_month_cells: 足切りは通ったが、指定の出典の月セルが無い（出典の絞り込み・2018年以降のみ等）。
  *  - not_in_catalog: カタログに無い学名。
  */
-async function monthsEmptyReasons(db: CubeDb, binoms: readonly string[], rows: readonly { binom: string }[], sourceIds: readonly string[]) {
+async function monthsEmptyReasons(db: CubeDb, binoms: readonly string[], rows: readonly { binom: string }[], sourceIds: readonly string[], region?: RegionId) {
   const have = new Set(rows.map((r) => r.binom));
   const missing = [...new Set(binoms)].filter((b) => !have.has(b));
   const out = {
@@ -99,7 +100,7 @@ async function monthsEmptyReasons(db: CubeDb, binoms: readonly string[], rows: r
     not_in_catalog: [] as string[],
   };
   if (!missing.length) return out;
-  const byBinom = await speciesCatalogCounts(db, missing);
+  const byBinom = await speciesCatalogCounts(db, missing, { region });
   for (const binom of missing) {
     const hit = byBinom.get(binom);
     if (!hit) out.not_in_catalog.push(binom);
@@ -327,7 +328,7 @@ export const MCP_TOOLS: McpTool[] = [
           const months = await speciesMonths(db, binoms, filter);
           rows = months;
           // 行が空の種は、黙って空にせず理由（足切り・月セル無し・カタログ外）を返す。
-          const s = await monthsEmptyReasons(db, binoms, months, sourceIds);
+          const s = await monthsEmptyReasons(db, binoms, months, sourceIds, region);
           if (s.suppressed.length || s.no_located_month_cells.length || s.not_in_catalog.length) extra = s;
         }
       }

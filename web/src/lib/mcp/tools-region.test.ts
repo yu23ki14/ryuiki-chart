@@ -4,17 +4,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * MCP の `region` 引数（Issue #93。docs/plans/REGION_FILTER.md §5）。
  * cube 層と地域の部品は差し替える（A の実装・生成物に依存せず、ツールの配線だけを見る）。
  */
-vi.mock("@/lib/region", () => ({
-  REGIONS: [
-    { id: "jp-14", label: "神奈川県" },
-    { id: "jp-46", label: "奄美大島" },
-  ],
-}));
-vi.mock("@/lib/cube/region", () => ({
+vi.mock("@/lib/cube/region", async (orig) => {
   // 出典の地域は ID の綴りで代用する（実物は SOURCE_REGION。ここでは「地域に属さない出典は並ばない」ことだけを見る）。
-  sourcesOfRegion: (ids: readonly string[], region?: string) =>
-    region === "jp-14" ? ids.filter((i) => !i.includes("amami")) : region === "jp-46" ? ids.filter((i) => !i.includes("kanagawa")) : [...ids],
-}));
+  const inRegion = (id: string, region?: string) =>
+    region === "jp-14" ? !id.includes("amami") : region === "jp-46" ? !id.includes("kanagawa") : true;
+  return {
+    ...(await orig<typeof import("@/lib/cube/region")>()),
+    sourceInRegion: inRegion,
+    sourcesOfRegion: (ids: readonly string[], region?: string) => ids.filter((i) => inRegion(i, region)),
+  };
+});
 
 const spies = vi.hoisted(() => ({
   speciesCatalog: vi.fn(async () => []),

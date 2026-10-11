@@ -16,6 +16,7 @@
  * `Date.UTC` だけで行い、SQLite の日時関数は使わない（ADR-0024）。
  */
 import type { RegionId } from "@/lib/region";
+import { DEFAULT_REDLIST_REGION } from "@/lib/redlist-editions";
 import { regionTimeZone } from "@/lib/registry/lookup-client";
 import { sourceInRegion } from "./region";
 import { seriesInfo, type SeriesKey, type SourceRef } from "./series";
@@ -194,6 +195,15 @@ export function freshnessForSeries(series: readonly SeriesKey[], opt: SourceMeta
  * 宣言されるまで "undeclared"（推測で埋めない）。
  */
 export const REDLIST_SOURCE_IDS: readonly string[] = ["kanagawa_redlist", "kanagawa_rdb2022_plants"];
+
+/** 地域のレッドリストの出典（全体・未登録の地域は神奈川＝画面が出す版と同じ。`redlist-editions.ts` の規則）。 */
+const REDLIST_SOURCE_IDS_BY_REGION: Readonly<Record<string, readonly string[]>> = {
+  "jp-14": REDLIST_SOURCE_IDS,
+  "jp-46": ["kagoshima_redlist"],
+};
+export function redlistSourceIds(region: RegionId | undefined): readonly string[] {
+  return REDLIST_SOURCE_IDS_BY_REGION[region ?? DEFAULT_REDLIST_REGION] ?? [];
+}
 
 /** 出現データの出典（マニフェスト target=occurrence 由来の生成物。手書きしない）。 */
 export { OCCURRENCE_SOURCE_IDS };

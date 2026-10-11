@@ -8,7 +8,7 @@ import { Btn, nf, Spinner } from "@/components/ui";
 import { useJson } from "@/components/useJson";
 import { useRegionJson } from "@/components/useRegionJson";
 import { useRegion } from "@/components/useRegion";
-import { REGION_ALL, REGIONS, regionLabel } from "@/lib/region";
+import { REGION_ALL, regionBounds, regionLabel } from "@/lib/region";
 import { caveatBody } from "@/lib/registry/lookup-client";
 import { MAP_METRICS, type WatershedMetricId, type MeshMetricId } from "@/lib/registry/generated-client";
 import { MUNICIPALITY_LABEL } from "@/lib/municipality";
@@ -30,18 +30,15 @@ export function MapPage() {
   // 地域の絞り（URL の ?region=）。'all' なら初期表示は神奈川のまま（MapCanvas の既定）で、ボタンを押したときだけ
   // fitBounds で移る。地域を絞っているときは、その地域の範囲へ移って始まり、切り替えるたびに移る。
   const region = useRegion();
-  const boundsOf = (r: typeof region) => (REGIONS.find((x) => x.id === r) ?? REGIONS[0]).bounds;
   const [jump, setJump] = React.useState<{ bounds: [[number, number], [number, number]]; nonce: number } | null>(() =>
-    region === REGION_ALL ? null : { bounds: boundsOf(region), nonce: 1 },
+    region === REGION_ALL ? null : { bounds: regionBounds(region), nonce: 1 },
   );
   const prevRegion = React.useRef(region);
   React.useEffect(() => {
     if (prevRegion.current === region) return;
     prevRegion.current = region;
     // 'all' に戻したときは既定の見え方（神奈川側）へ戻す
-    setJump((j) => ({ bounds: boundsOf(region), nonce: (j?.nonce ?? 0) + 1 }));
-    // boundsOf は region だけに依存する
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setJump((j) => ({ bounds: regionBounds(region), nonce: (j?.nonce ?? 0) + 1 }));
   }, [region]);
 
   const [wsMetric, setWsMetric] = React.useState<WsMetric>("org_density");

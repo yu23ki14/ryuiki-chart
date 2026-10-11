@@ -14,6 +14,8 @@ interface ToolResultShape {
   /** 注記はキーだけ流れてくる。本文は caveats.ts の caveatText で引く（往復のトークンを減らすため）。 */
   caveats?: string[];
   truncated?: boolean;
+  /** 地域で絞ったツールだけ入る（全体・省略は null）。 */
+  region?: string | null;
 }
 
 export const TOOL_LABEL: Record<string, string> = {
@@ -66,6 +68,7 @@ export function ToolResultCard(props: ToolCallMessagePartProps) {
         provenance={provenance}
         caveats={caveats}
         truncated={r.truncated}
+        region={r.region}
         isError={isError}
         open={open}
         onToggle={() => setOpen((v) => !v)}

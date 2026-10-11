@@ -1075,6 +1075,8 @@ export interface TaxonGroupYearRow {
 /** v1 `taxonGroupYears`（窓の既定 1990〜2026）。 */
 export async function taxonGroupYears(db: CubeDb, opt: { from?: number; to?: number; region?: RegionId } = {}): Promise<TaxonGroupYearRow[]> {
   // 地域: `summary_group_year` は出典別なので、その地域の出典だけに絞る（表は変えない）。
+  // 前提: 出現データの出典はすべてマニフェストで地域宣言済み（共通出典が無い）なので、
+  // 出典基準（sourcesOfRegion）と region_id 基準の絞りは一致する（cube/region.test.ts が全出典の宣言を検査）。
   const regionSources = opt.region === undefined ? undefined : sourcesOfRegion(OCCURRENCE_SOURCE_IDS, opt.region);
   const rows = await db.all<OccRow>(
     `SELECT year, taxon_group, SUM(n) AS n, MAX(n_places) AS mesh_n
@@ -1105,12 +1107,11 @@ export async function effortYears(db: CubeDb, opt: { from?: number; to?: number;
   const gbifIds = sourcesOfRegion(SOURCES_GBIF, opt.region);
   const inatIds = sourcesOfRegion(SOURCES_INAT, opt.region);
   const [eff, src] = await Promise.all([
-    opt.region === undefined
-      ? db.all<OccRow>(`SELECT year, n, n_binom, n_places FROM summary_effort_year WHERE year BETWEEN ? AND ? ORDER BY year`, range)
-      : db.all<OccRow>(
-          `SELECT year, n, n_binom, n_places FROM summary_effort_year_by_region WHERE region_id = ? AND year BETWEEN ? AND ? ORDER BY year`,
-          [opt.region, ...range],
-        ),
+    db.all<OccRow>(
+      `SELECT year, n, n_binom, n_places FROM ${opt.region === undefined ? "summary_effort_year" : "summary_effort_year_by_region"}
+       WHERE ${opt.region === undefined ? "" : "region_id = ? AND "}year BETWEEN ? AND ? ORDER BY year`,
+      opt.region === undefined ? range : [opt.region, ...range],
+    ),
     db.all<OccRow>(
       `SELECT year, source_id, SUM(n) AS n FROM summary_group_year
        WHERE year BETWEEN ? AND ? AND source_id IN (${placeholders(gbifIds.length + inatIds.length)}) GROUP BY year, source_id`,
@@ -1144,9 +1145,7 @@ export interface GridCatalogRow {
 export async function gridCatalog(db: CubeDb, region?: RegionId): Promise<GridCatalogRow[]> {
   const rj = placeRegionJoin("g", region);
   const rows = await db.all<OccRow>(
-    region === undefined
-      ? `SELECT place_id, n, n_red_list, n_binom, n_red_binom FROM summary_grid_catalog WHERE n > 0 ORDER BY place_id`
-      : `SELECT g.place_id, g.n, g.n_red_list, g.n_binom, g.n_red_binom FROM summary_grid_catalog g
+    `SELECT g.place_id, g.n, g.n_red_list, g.n_binom, g.n_red_binom FROM summary_grid_catalog g
          ${rj.joins.join("\n         ")} WHERE g.n > 0 ORDER BY g.place_id`,
     rj.params,
   );
@@ -1223,9 +1222,7 @@ export async function watershedOccurrence(db: CubeDb, region?: RegionId): Promis
   // 地域指定時は `place_region` に載る流域だけ。`place_id` NULL（流域外）の行は地域に帰属させられないので出ない（outsideWatershed は null）。
   const rj = placeRegionJoin("w", region);
   const rows = await db.all<OccRow>(
-    region === undefined
-      ? `SELECT place_id, n, n_red_list, n_alien FROM summary_watershed_occurrence ORDER BY place_id`
-      : `SELECT w.place_id, w.n, w.n_red_list, w.n_alien FROM summary_watershed_occurrence w
+    `SELECT w.place_id, w.n, w.n_red_list, w.n_alien FROM summary_watershed_occurrence w
          ${rj.joins.join("\n         ")} ORDER BY w.place_id`,
     rj.params,
   );

@@ -12,7 +12,8 @@ export async function GET(req: NextRequest) {
     const fc = await loadGeoJson("watersheds.geojson");
     const { watersheds, landuseYears } = await watershedRollup(await d1CubeDb(), region);
     const rollup = new Map(watersheds.map((r) => [r.watershedId, r]));
-    const features = fc.features.map((f) => {
+    // 地域指定時は、その地域の流域（watershedRollup が返す集合）だけ返す。他地域を 0 で塗らない。
+    const features = (region ? fc.features.filter((f) => rollup.has(String((f.properties as Record<string, unknown>).watershed_id ?? ""))) : fc.features).map((f) => {
       const id = String((f.properties as Record<string, unknown>).watershed_id ?? "");
       const r = rollup.get(id);
       const orgN = r?.orgN ?? 0;

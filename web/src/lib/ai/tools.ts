@@ -33,6 +33,8 @@ import { timeseries } from "@/lib/cube/timeseries";
 import { EDNA_DESCRIPTION, EDNA_SOURCE_ID, ednaInputSchema, queryEdna } from "@/lib/edna";
 import { queryRecords, RECORD_TABLES, RecordsInputError, recordsInputSchema, RECORDS_DESCRIPTION } from "@/lib/records";
 import { regionSchema, REGION_NOTE } from "@/lib/mcp/region-schema";
+import { REGIONS } from "@/lib/region";
+import { DEFAULT_REDLIST_REGION, redlistEditions } from "@/lib/redlist-editions";
 import { byteLength, fitHeadRows } from "@/lib/fit-head-rows";
 import { FIND_DATASETS_DESCRIPTION, FindDatasetsInputError, findDatasetsInputSchema, queryDatasets } from "@/lib/catalog-search";
 
@@ -213,8 +215,8 @@ function makeResult<T, R = never>(
     /** table 経由ではなく facet 経由で決めた注記キー（`lib/cube/caveats` の
      *  `facetsForSeries`/`caveatKeysForFacets` を使うツール用）。指定時はこちらを使う。 */
     caveats?: string[];
-    /** `region` を受けるツールだけ渡す（全体は null）。`ToolResult.region` に載る。 */
-    region?: string | null;
+    /** `region` を受けるツールだけキーごと渡す（undefined = 全体 → null に正規化）。`ToolResult.region` に載る。 */
+    region?: string | undefined;
   } & ({ data: T; rowCount: number; headRows?: undefined } | { headRows: HeadRows<T, R>; data?: undefined; rowCount?: undefined }),
 ): ToolResult<T> {
   let data: T;
@@ -252,7 +254,7 @@ function makeResult<T, R = never>(
       elapsedMs: Math.round(opts.elapsedMs),
     },
     caveats: opts.caveats ?? caveatKeysForFacets(facetsForTables(opts.tables)),
-    ...(opts.region !== undefined ? { region: opts.region } : {}),
+    ...("region" in opts ? { region: opts.region ?? null } : {}),
     truncated: truncated || undefined,
     truncatedNote,
   };
@@ -294,7 +296,7 @@ const list_catalog = tool({
         : await waterBodies(db, { dataset: DATASET, region });
       return makeResult({
         tool: "list_catalog",
-        region: region ?? null,
+        region,
         tables: ["sites", "summary_place_variable"],
         data: { waters: rows },
         rowCount: rows.length,
@@ -305,7 +307,7 @@ const list_catalog = tool({
     const registry = registryFor(rows.map((r) => ({ variableId: r.variableId, unitId: r.unitId })));
     return makeResult({
       tool: "list_catalog",
-      region: region ?? null,
+      region,
       tables: ["summary_variable_catalog"],
       data: { variables: rows, registry },
       rowCount: rows.length,
@@ -358,7 +360,7 @@ const get_timeseries = tool({
     if (r.series.length === 0) {
       return makeResult({
         tool: "get_timeseries",
-        region: region ?? null,
+        region,
         tables: [],
         data: { ...base, envelope: null },
         rowCount: 0,
@@ -367,7 +369,7 @@ const get_timeseries = tool({
     }
     return makeResult({
       tool: "get_timeseries",
-      region: region ?? null,
+      region,
       tables: ["observation_agg"],
       data: { ...base, sites: r.sites, envelope: r.envelope },
       rowCount: r.points.length,
@@ -400,7 +402,7 @@ const get_seasonality = tool({
       return makeResult({
         tool: "get_seasonality",
         tables: [],
-        region: region ?? null,
+        region,
         data: { variableId, registry, overall: [], byZone: [] },
         rowCount: 0,
         elapsedMs: performance.now() - t0,
@@ -432,11 +434,11 @@ const get_seasonality = tool({
       valueLod: r.avgLod ?? null,
       valueZero: r.avgZero ?? null,
     }));
-    const facets = facetsForSeries(series.map((s) => withTheme(s)), overallScope);
+    const facets = facetsForSeries(series.map((s) => withTheme(s)), overallScope, region);
 
     return makeResult({
       tool: "get_seasonality",
-      region: region ?? null,
+      region,
       tables: ["observation_agg"],
       data: { variableId, registry, overall, byZone },
       rowCount: overall.length + byZone.length,
@@ -489,7 +491,7 @@ const get_sites = tool({
     const limited = rows.slice(0, limit ?? 20);
     return makeResult({
       tool: "get_sites",
-      region: region ?? null,
+      region,
       tables: ["sites", "summary_place_variable"],
       data: { sites: limited, matched },
       rowCount: limited.length,
@@ -547,7 +549,7 @@ const get_biota_trend = tool({
       const [groups, effort] = await Promise.all([taxonGroupYears(db, { region }), effortYears(db, { region })]);
       return makeResult({
         tool: "get_biota_trend",
-        region: region ?? null,
+        region,
         tables: ["summary_group_year", "summary_effort_year"],
         caveats,
         data: { mode: "groups", groups, effort },
@@ -560,7 +562,7 @@ const get_biota_trend = tool({
       const rows = await speciesShareTrend(db, group, periodA, periodB, { region });
       return makeResult({
         tool: "get_biota_trend",
-        region: region ?? null,
+        region,
         tables: ["occurrence_agg", "summary_species_catalog"],
         caveats,
         data: { mode: "share", group, periodA, periodB, rows },
@@ -578,7 +580,7 @@ const get_biota_trend = tool({
     };
     return makeResult({
       tool: "get_biota_trend",
-      region: region ?? null,
+      region,
       tables: ["occurrence_agg", "summary_species_catalog"],
       caveats,
       data: { mode: "species", binoms, years, months, coverage },
@@ -592,10 +594,17 @@ const get_biota_trend = tool({
 /* 6. get_redlist                                                     */
 /* ------------------------------------------------------------------ */
 
+/** 地域ごとのレッドリストの版の説明（ASSESSMENT_LIST から機械的に作る）。 */
+const REDLIST_REGION_NOTE = REGIONS.map((r) => {
+  const eds = redlistEditions(r.id);
+  const years = eds.map((e) => e.year).join("・");
+  return `${r.id}（${r.label}）は${eds.length}版（${years}年）${eds.length < 2 ? "で版間比較は無く、flows は空" : ""}`;
+}).join("、") + `。省略は${DEFAULT_REDLIST_REGION}と同じ。`;
+
 const get_redlist = tool({
   description:
     "レッドリストの版間比較を見る。まず summary で版・分類群ごとの増減件数を俯瞰し、年を指定すると内訳（flows/species）が付く。" +
-    "region を省略または jp-14 にすると神奈川県の3版。jp-46 は鹿児島県レッドリスト（2014年版のみで版間比較は無く、flows は空）。",
+    "region を省略すると" + REDLIST_REGION_NOTE,
   inputSchema: z.object({
     year: z.number().int().describe("見たい版の年（例: 2022）。summary の一覧から選ぶとよい"),
     group: z.string().optional().describe("分類群（和名、例: 鳥類）で絞り込む"),
@@ -611,7 +620,7 @@ const get_redlist = tool({
     const { summary, flows, species } = await redlistBundle(db, year, { group, direction, limit: 300, region });
     return makeResult({
       tool: "get_redlist",
-      region: region ?? null,
+      region,
       tables: ["taxon_assessment"],
       data: { year, group, direction, region: region ?? null, summary, flows, species },
       rowCount: summary.length + flows.length + species.length,
@@ -695,7 +704,7 @@ const get_overview = tool({
     ];
     return makeResult({
       tool: "get_overview",
-      region: region ?? null,
+      region,
       tables,
       caveats,
       data: {

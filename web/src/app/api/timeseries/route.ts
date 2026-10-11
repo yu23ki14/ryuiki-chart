@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
   const basis = ((sp.get("basis") as Basis | null) ?? "day") as Basis;
   // cube 層へは 'all' を入れない（undefined = 全体）。
   const region = regionOf(parseRegion(sp.get("region")));
-  const ropt = region ? { region } : {};
+  const ropt = { region };
 
   try {
     if (!variableId) return NextResponse.json({ error: "variable（variable_id）は必須です" }, { status: 400 });
@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
       // basis の絞り込みは `yearSeries`/`monthSeries`/`daySeries`（`lib/cube`）がセル側で行う。
       const series = representativeSeries(variableId, DATASET, stat ?? "representative");
       const unit = unitLabel(series[0]?.unitId ?? null);
-      const caveats = series.length ? caveatKeysForFacets(facetsForSeries(series.map((s) => withTheme(s)), scope)) : [];
+      const caveats = series.length ? caveatKeysForFacets(facetsForSeries(series.map((s) => withTheme(s)), scope, region)) : [];
       // 出典ごとの取得日・更新方式・経過日数（加算。registry の生成物から引くので D1 は引かない。ADR-0014/0020）。
       const freshness = freshnessForSeries(series, {}, region);
       const sites = mode === "water" ? await sitesInWaterBody(db, sp.get("water") ?? "", { dataset: DATASET, ...ropt }) : undefined;
@@ -86,7 +86,7 @@ export async function GET(req: NextRequest) {
       const scope: Scope = { kind: "all_sites" };
       const spec: CellSpec = { series, scope, grain: cellGrain, inputGrain, imputation: "lod", ...ropt };
       const { rows: points } = await summarize(db, spec, "zone");
-      const caveats = caveatKeysForFacets(facetsForSeries(series.map((s) => withTheme(s)), scope));
+      const caveats = caveatKeysForFacets(facetsForSeries(series.map((s) => withTheme(s)), scope, region));
       return NextResponse.json({ points, unit, grain: cellGrain, basis, stat: stat ?? "representative", caveats, freshness: freshnessForSeries(series, {}, region) });
     }
 

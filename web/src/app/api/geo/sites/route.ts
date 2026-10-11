@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export async function GET(req: NextRequest) {
   const region = regionOf(parseRegion(req.nextUrl.searchParams.get("region")));
   const db = await d1CubeDb();
-  const rows = await sites(db, { dataset: DATASET, ...(region ? { region } : {}) });
+  const rows = await sites(db, { dataset: DATASET, region });
   return NextResponse.json(
     {
       type: "FeatureCollection",

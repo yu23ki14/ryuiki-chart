@@ -6,7 +6,7 @@
  * 画面への遷移をモデルに行わせない、という Stage 2 の設計判断そのもの。
  */
 
-import type { RegionFilter } from "@/lib/region";
+import { applyRegionParam, type RegionFilter } from "@/lib/region";
 
 export interface TimeseriesLinkScope {
   type: "water" | "site" | "zone";
@@ -47,7 +47,7 @@ export function timeseriesUrl(input: TimeseriesLinkInput): string | null {
   }
   if (input.basis) params.set("basis", input.basis);
   if (input.stat) params.set("stat", input.stat);
-  if (input.region && input.region !== "all") params.set("region", input.region);
+  applyRegionParam(params, input.region ?? "all");
   return `/timeseries?${params.toString()}`;
 }
 

@@ -43,7 +43,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
   redirectIfAlias(sp);
 
   const region = regionOf(parseRegion(sp.region));
-  const ropt = region ? { region } : {};
+  const ropt = { region };
   const db = await d1CubeDb();
   const [watersRaw, varsRaw] = await Promise.all([
     waterBodies(db, { dataset: DATASET, ...ropt }),

@@ -7,9 +7,7 @@
  * - `z.tuple` は使わない（Workers AI が draft 2020-12 で検証して 400 になる）。enum なら両 draft で同じ形。
  */
 import { z } from "zod";
-import { REGIONS, type RegionId } from "@/lib/region";
-
-export const REGION_IDS = REGIONS.map((r) => r.id) as [RegionId, ...RegionId[]];
+import { REGIONS, REGION_IDS } from "@/lib/region";
 
 export const regionSchema = z
   .enum(REGION_IDS)

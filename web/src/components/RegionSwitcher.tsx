@@ -1,13 +1,9 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { REGION_ALL, REGIONS, regionLabel, type RegionFilter } from "@/lib/region";
+import { REGION_OPTIONS as OPTIONS, type RegionFilter } from "@/lib/region";
 import { regionFromSearch, searchWithRegion } from "@/components/region-url";
 
-const OPTIONS: { id: RegionFilter; label: string }[] = [
-  { id: REGION_ALL, label: regionLabel(REGION_ALL) },
-  ...REGIONS.map((r) => ({ id: r.id as RegionFilter, label: r.label })),
-];
 
 /** 全体／神奈川県／奄美大島の切り替え。現在の URL の `region` だけを差し替える（他のクエリは保つ。'all' は消す）。 */
 export function RegionSwitcher() {

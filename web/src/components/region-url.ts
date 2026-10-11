@@ -1,4 +1,4 @@
-import { REGION_ALL, parseRegion, type RegionFilter } from "@/lib/region";
+import { applyRegionParam, parseRegion, type RegionFilter } from "@/lib/region";
 
 /**
  * 地域の絞り（?region=）を URL に載せ降ろしする純粋な関数（クライアント・サーバ共通）。
@@ -24,8 +24,7 @@ export function withRegion(url: string, region: RegionFilter): string {
  */
 export function searchWithRegion(search: string, region: RegionFilter): string {
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
-  if (region === REGION_ALL) params.delete("region");
-  else params.set("region", region);
+  applyRegionParam(params, region);
   return params.toString();
 }
 

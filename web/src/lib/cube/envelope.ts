@@ -22,7 +22,7 @@ import {
   type SourceCitation,
   type UpdateModeOrUndeclared,
 } from "./source-meta";
-import { sourceInRegion, sourceRegion } from "./region";
+import { sourceInRegion } from "./region";
 import { seriesInfo, type Grain, type SeriesKey, type SourceRef } from "./series";
 import type { CellRow, CellSpec, Imputation, ZoneYearRow } from "./observation";
 
@@ -149,10 +149,7 @@ function resolveProvenance(rows: readonly CellRow[], now: Date, regionId: string
     for (const ref of seriesInfo(r.series)?.sourceRefs ?? []) {
       // 行の地域と出典の地域が食い違うものは帰属させない（同じ系列キーを両地域の出典が共有する。
       // 出典の地域が未宣言、または行の地域が不明（null）なら残す。Issue #93 §3-6）。
-      if (r.regionId != null) {
-        const sr = sourceRegion(ref.sourceId);
-        if (sr !== undefined && sr !== r.regionId) continue;
-      }
+      if (!sourceInRegion(ref.sourceId, (r.regionId ?? undefined) as RegionId | undefined)) continue;
       const key = `${ref.sourceId}\u0000${ref.editionKey ?? ""}`;
       const cur = counted.get(key) ?? { ref, n: 0 };
       cur.n += 1;

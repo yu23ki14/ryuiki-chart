@@ -23,7 +23,6 @@ import {
 } from "./series";
 import { sitesInWaterBody } from "./catalog";
 import type { Scope } from "./sql";
-import { sourcesOfRegion } from "./region";
 import { unitLabel } from "./unit";
 import { caveatsForFacets, facetsForSeries } from "./caveats";
 
@@ -115,13 +114,7 @@ export async function timeseries(db: CubeDb, input: TimeseriesInput, envelopeOpt
           : { kind: "site", siteId: scope.siteId };
   // 地域で絞るときは、他の地域の出典の注記（source_edition facet）を引かない。
   const caveats = caveatsForFacets(
-    facetsForSeries(
-      all.map((s) => {
-        const t = withTheme(s);
-        return region === undefined ? t : { ...t, sourceIds: t.sourceIds.filter((id) => id === null || sourcesOfRegion([id], region).length > 0) };
-      }),
-      facetsScope,
-    ),
+    facetsForSeries(all.map((s) => withTheme(s)), facetsScope, region),
   );
 
   if (scope.type === "zone") {

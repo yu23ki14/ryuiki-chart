@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { IAS_SINCE_YEAR } from "@/lib/cube/sql";
-import { freshnessFor, OCCURRENCE_SOURCE_IDS, REDLIST_SOURCE_IDS } from "@/lib/cube/source-meta";
+import { freshnessFor, OCCURRENCE_SOURCE_IDS, redlistSourceIds } from "@/lib/cube/source-meta";
+import { defaultRedlistYear } from "@/lib/redlist-editions";
 import { parseRegion, regionOf } from "@/lib/region";
 import {
   d1CubeDb,
@@ -23,7 +24,6 @@ export const dynamic = "force-dynamic";
 /** kind ごとの出典（既定は出現データの出典）。外来種は環境省リスト、レッドリストは評価リストの出典も引く。 */
 const FRESHNESS_SOURCES: Record<string, readonly string[]> = {
   ias: [...OCCURRENCE_SOURCE_IDS, "moe_ias_list"],
-  redlist: REDLIST_SOURCE_IDS,
 };
 
 export async function GET(req: NextRequest) {
@@ -31,11 +31,11 @@ export async function GET(req: NextRequest) {
   const kind = sp.get("kind") ?? "effort";
   // cube 層へは 'all' を入れない（undefined = 全体。全体のときは条件も表も現状のまま）。
   const region = regionOf(parseRegion(sp.get("region")));
-  const ropt = region ? { region } : {};
+  const ropt = { region };
   try {
     const db = await d1CubeDb();
     // 出典ごとの取得日・更新方式・経過日数（加算。registry の生成物から引き、D1 は引かない。ADR-0014/0020）。
-    const freshness = freshnessFor(FRESHNESS_SOURCES[kind] ?? OCCURRENCE_SOURCE_IDS, {}, region);
+    const freshness = freshnessFor(kind === "redlist" ? redlistSourceIds(region) : (FRESHNESS_SOURCES[kind] ?? OCCURRENCE_SOURCE_IDS), {}, region);
     switch (kind) {
       case "effort": {
         const [groups, effort, totals] = await Promise.all([
@@ -109,7 +109,7 @@ export async function GET(req: NextRequest) {
         });
       }
       case "redlist": {
-        const y = Number(sp.get("year") ?? 2022);
+        const y = Number(sp.get("year") ?? defaultRedlistYear(region));
         const group = sp.get("group") || undefined;
         const { flows, species, summary } = await redlistBundle(db, y, {
           group,

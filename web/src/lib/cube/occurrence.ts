@@ -234,7 +234,7 @@ export async function speciesCatalogCounts(
   const cat = speciesCatalogTable(opt.region);
   for (const part of chunk(uniq(binoms), MAX_ID_LIST)) {
     const rows = await db.all<R>(
-      `SELECT binom, n, n_located FROM ${cat.table} WHERE binom IN (SELECT value FROM json_each(?))${cat.on.replace("s.region_id", "region_id")}`,
+      `SELECT s.binom, s.n, s.n_located FROM ${cat.table} s WHERE s.binom IN (SELECT value FROM json_each(?))${cat.on}`,
       [jsonEachParam(part), ...cat.params],
     );
     for (const r of rows) out.set(r.binom as string, { n: r.n as number, nLocated: r.n_located as number });

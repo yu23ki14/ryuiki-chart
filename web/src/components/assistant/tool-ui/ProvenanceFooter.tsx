@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { caveatText } from "@/lib/ai/caveats";
+import { REGION_ALL, parseRegion, regionLabel } from "@/lib/region";
 
 export interface Provenance {
   tool: string;
@@ -23,6 +24,7 @@ export function ProvenanceFooter({
   provenance,
   caveats = [],
   truncated,
+  region,
   isError,
   open,
   onToggle,
@@ -33,6 +35,8 @@ export function ProvenanceFooter({
   provenance?: Provenance;
   caveats?: string[];
   truncated?: boolean;
+  /** 地域で絞ったとき（具体的な地域のときだけ「地域=…」を出す。null・省略・'all' は何も出さない）。 */
+  region?: string | null;
   isError?: boolean;
   open: boolean;
   onToggle: () => void;
@@ -41,6 +45,8 @@ export function ProvenanceFooter({
   link?: React.ReactNode;
 }) {
   const hasSynthetic = caveats.includes("synthetic");
+  const filter = parseRegion(region);
+  const regionNote = filter === REGION_ALL ? null : regionLabel(filter);
 
   return (
     <div className={className}>
@@ -56,6 +62,7 @@ export function ProvenanceFooter({
             {provenance.rowCount.toLocaleString("ja-JP")}件 ・ {Math.round(provenance.elapsedMs)}ms
           </span>
         )}
+        {regionNote && <span className="text-[10.5px] text-muted whitespace-nowrap">地域={regionNote}</span>}
         {hasSynthetic && <span className="text-[10px] text-warn font-medium whitespace-nowrap">合成データ</span>}
         <span className="ml-auto text-[10px] shrink-0">{open ? "根拠を隠す ▲" : "根拠を見る ▼"}</span>
       </button>

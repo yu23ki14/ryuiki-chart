@@ -1,14 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
-vi.mock("@/lib/region", () => ({
-  REGIONS: [
-    { id: "jp-14", label: "神奈川県" },
-    { id: "jp-46", label: "奄美大島" },
-  ],
-  regionLabel: (f: string) => (f === "all" ? "全体" : f === "jp-14" ? "神奈川県" : "奄美大島"),
-}));
-
 const spies = vi.hoisted(() => ({
   variableCatalog: vi.fn(async () => []),
   waterBodies: vi.fn(async () => []),

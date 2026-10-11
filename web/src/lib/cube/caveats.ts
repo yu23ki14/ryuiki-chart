@@ -41,7 +41,7 @@ import type { RegionId } from "@/lib/region";
 import { GENERATED_CAVEAT_SCOPE, type CaveatScopeKind, type GeneratedCaveatScope } from "@/lib/registry/generated-client";
 import { OCCURRENCE_SOURCE_IDS } from "@/lib/registry/generated-source";
 import { resolveCaveatRefs, type CaveatRef, type ScopeMatch } from "@/lib/registry/lookup-client";
-import { sourcesOfRegion } from "./region";
+import { sourceInRegion, sourcesOfRegion } from "./region";
 import type { SeriesInfo } from "./series";
 import type { Scope } from "./sql";
 
@@ -161,7 +161,7 @@ export type SeriesFacetInput = SeriesInfo & {
  * 同じ `(kind, ref)` の組は「初めて現れたところ」だけを残す（`caveatsForFacets` の
  * 初出順ソートに使うため）。
  */
-export function facetsForSeries(series: readonly SeriesFacetInput[], scope: Scope): FacetRef[] {
+export function facetsForSeries(series: readonly SeriesFacetInput[], scope: Scope, region?: RegionId): FacetRef[] {
   // 同じ (kind, ref) は初出だけを残す（Map は挿入順）。
   const refs = new Map<string, FacetRef>();
   const push = (f: FacetRef) => {
@@ -173,7 +173,8 @@ export function facetsForSeries(series: readonly SeriesFacetInput[], scope: Scop
     push({ kind: "dataset", ref: s.dataset });
     if (s.theme !== null) push(variableTheme(s.theme));
     for (const id of s.sourceIds) {
-      if (id !== null) push(sourceEditionOf(id));
+      // 地域で絞るときは、他の地域の出典の注記（source_edition facet）を引かない（画面・API・AI・MCP 共通）。
+      if (id !== null && sourceInRegion(id, region)) push(sourceEditionOf(id));
     }
     // 変数単位の注記（hydro.flow の逆流など）は単位の有無によらず付く。
     push({ kind: "variable", ref: s.variableId });

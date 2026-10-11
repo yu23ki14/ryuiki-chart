@@ -1,13 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
-
-// 担当 A の lib/region.ts と同じ契約（設計書 §3-1）の最小の差し替え。
-vi.mock("@/lib/region", () => {
-  const KNOWN = ["jp-14", "jp-46"];
-  return {
-    REGION_ALL: "all",
-    parseRegion: (raw: unknown) => (typeof raw === "string" && KNOWN.includes(raw) ? raw : "all"),
-  };
-});
+import { describe, expect, it } from "vitest";
 
 import { regionFromSearch, searchWithRegion, withRegion } from "./region-url";
 

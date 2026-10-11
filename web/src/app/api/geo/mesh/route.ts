@@ -10,11 +10,10 @@ export async function GET(req: NextRequest) {
   const yearRaw = req.nextUrl.searchParams.get("year");
   const year = yearRaw ? Number(yearRaw) : null;
   const region = regionOf(parseRegion(req.nextUrl.searchParams.get("region")));
-  const ropt = region ? { region } : {};
   const db = await d1CubeDb();
   // meshByYear は種別の絶滅危惧種数を持たない（0）。gridCatalog は持つ。
   const rows = year
-    ? (await meshByYear(db, year, ropt)).map((r) => ({ ...r, rlSpeciesN: 0 }))
+    ? (await meshByYear(db, year, { region })).map((r) => ({ ...r, rlSpeciesN: 0 }))
     : await gridCatalog(db, region);
   return NextResponse.json(
     {
