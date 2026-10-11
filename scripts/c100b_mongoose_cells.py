@@ -41,7 +41,6 @@ from ocr import cellmatch
 
 ROOT = common.ROOT
 OCR_DIR = ROOT / "data/ocr/mongoose"
-ENGINES = cellmatch.ENGINES
 DOC_ID = "moe_mongoose_catch_h12r4"
 SOURCE_ID = "moe_mongoose_amami"
 SCRIPT_ID = "c100b_mongoose_cells"
@@ -75,10 +74,6 @@ DECLARED_SHEET_DIFF = {("わな捕獲|CPUE", COL_TOTAL): ("0.616", "0.513")}
 
 
 # ------------------------------------------------------------ 文字と書式
-def norm(s):
-    return cellmatch.norm(s)
-
-
 def lenient(j, s):
     """整数の列の「.」は桁区切りカンマの誤読とみなして除く（CPUE の列は小数点なので除かない）。"""
     return s if j == J_CPUE else s.replace(".", "")
@@ -111,7 +106,7 @@ def label_report(data):
         return []
     bad = []
     for i, (y0, y1) in enumerate(data["grid"]["rows"]):
-        txt = norm("".join(b["text"] for b in sorted(data["boxes"], key=lambda b: b["x0"])
+        txt = cellmatch.norm("".join(b["text"] for b in sorted(data["boxes"], key=lambda b: b["x0"])
                            if lc[0] <= (b["x0"] + b["x1"]) / 2 <= lc[1] and y0 - 1 <= (b["y0"] + b["y1"]) / 2 <= y1 + 1))
         if i == NYEAR:
             exp = COL_TOTAL
@@ -181,7 +176,7 @@ def sheet_rows(pdf_path, page=SHEET_PAGE):
         tok = ln.split()
         if not tok or tok[0] not in COL_KEYS:
             continue
-        vals = [norm(t) for t in tok[1:]]
+        vals = [cellmatch.norm(t) for t in tok[1:]]
         if not all(re.fullmatch(r"\d+(\.\d+)?", v) for v in vals):
             continue
         i = COL_KEYS.index(tok[0])
@@ -240,10 +235,10 @@ def to_rows(state, A, B, bbox, flagged, hints, touching, sheet_ok, extractor, sh
                 else:
                     who = "人が確認した値が" if s["by"] == "reviewed" else "OCR が一致した値が"
                     reason = (f"{who}検算（{', '.join(arith)}）に合わない"
-                              f"（{ENGINES[0]}={A[i][j]!r} {ENGINES[1]}={B[i][j]!r} 採用={s['text']!r}）")
+                              f"（{cellmatch.ENGINES[0]}={A[i][j]!r} {cellmatch.ENGINES[1]}={B[i][j]!r} 採用={s['text']!r}）")
                 n_unread += 1
                 rows.append(dict(base, value_raw=None, value=None, value_type=None,
-                                 source_text=f"{ENGINES[0]}={A[i][j]!r} {ENGINES[1]}={B[i][j]!r}",
+                                 source_text=f"{cellmatch.ENGINES[0]}={A[i][j]!r} {cellmatch.ENGINES[1]}={B[i][j]!r}",
                                  unreadable_reason=f"ocr_disagree: {reason}", confidence=None, verified_by=None))
                 continue
             txt = s["text"]
@@ -268,13 +263,15 @@ def to_rows(state, A, B, bbox, flagged, hints, touching, sheet_ok, extractor, sh
     return rows, n_unread
 
 
-def build(ocr_dir=None, root=ROOT, sheet_pdf="default"):
+def build(ocr_dir=None, root=ROOT, sheet_pdf="default", require_sheet=False):
     """-> dict(rows=cells の行, notes, stats, warnings)。DB には触れない。
-    sheet_pdf: 評価シートの PDF のパス。既定は root/data/raw/amami_doc/mon_a-4-j.pdf（無ければ警告して飛ばす）、None なら使わない。"""
+    sheet_pdf: 評価シートの PDF のパス。既定は root/data/raw/amami_doc/mon_a-4-j.pdf（無ければ警告して飛ばす）、None なら使わない。
+    require_sheet: True なら、PDF（または pdfplumber）が無いとき止める（DB に書くとき。verified_by が実行環境で変わらないように）。
+    シートの表が読めない（ValueError）ときは常に止める（黙って xtext を落とさない）。"""
     ocr_dir = ocr_dir or OCR_DIR
     data, sha = cellmatch.load_engines(DOC_ID, ocr_dir, NROW, NCOL, root / PNG, "pdf_sha256", "PNG")
     warnings, texts, bad, bbox = [], {}, {}, None
-    for e in ENGINES:
+    for e in cellmatch.ENGINES:
         texts[e], b, bad_e, orphans = cellmatch.assign(data[e], lenient)
         bbox = bbox or b
         for cell, why in bad_e.items():
@@ -283,22 +280,15 @@ def build(ocr_dir=None, root=ROOT, sheet_pdf="default"):
             warnings.append(f"{e}: 格子に収まらない OCR の箱 {orphans} 個（該当セルは未採用）")
         for i, exp, got in label_report(data[e]):
             warnings.append(f"{e}: 行 {i} の見出し {got!r}（期待に {exp!r} を含む）")
-    A, B = (texts[e] for e in ENGINES)
+    A, B = (texts[e] for e in cellmatch.ENGINES)
     bad = {c: "; ".join(v) for c, v in bad.items()}
-    reviewed = {}
-    for (rk, ck), (txt, who, note) in cellmatch.load_reviewed(ocr_dir / DOC_ID / "reviewed.csv", norm).items():
-        if rk not in ROW_KEYS or ck not in COL_KEYS:
-            raise ValueError(f"reviewed.csv: 行・列が不明 {rk!r} {ck!r}")
-        i, j = COL_KEYS.index(ck), ROW_KEYS.index(rk)
-        txt = lenient(j, txt)
-        if not fmt_ok(j, txt):
-            raise ValueError(f"reviewed.csv: 書式不正 {rk} {ck} {txt!r}")
-        reviewed[(i, j)] = (txt, who, note)
-    state = cellmatch.decide(A, B, bad, fmt_ok, reviewed)
+    locate = lambda rk, ck: (COL_KEYS.index(ck), ROW_KEYS.index(rk)) if rk in ROW_KEYS and ck in COL_KEYS else None
+    reviewed = cellmatch.load_reviewed(ocr_dir / DOC_ID / "reviewed.csv")
+    state = cellmatch.decide(A, B, bad, fmt_ok, reviewed, locate, lenient)
     for (i, j), s in state.items():   # 空欄があるはずの場所だけが空欄
         if s["text"] is not None and ((s["text"] == "") != ((i, j) in BLANK)):
             kind = "空欄のはずの場所に値がある" if s["text"] else "空欄のはずでない場所が空欄"
-            state[(i, j)] = dict(text=None, by=None, reason=f"{kind}（{ENGINES[0]}={A[i][j]!r} {ENGINES[1]}={B[i][j]!r}）")
+            state[(i, j)] = dict(text=None, by=None, reason=f"{kind}（{cellmatch.ENGINES[0]}={A[i][j]!r} {cellmatch.ENGINES[1]}={B[i][j]!r}）")
             if s["by"] == "reviewed":
                 warnings.append(f"人が確認したセルが空欄の構造に合わない（未採用にした）: {ROW_KEYS[j]} {COL_KEYS[i]}")
     flagged, hints, touching, stats = arith_flag(state)
@@ -308,17 +298,21 @@ def build(ocr_dir=None, root=ROOT, sheet_pdf="default"):
     sheet_ok, declared_diff = set(), {}
     if sheet_pdf == "default":
         sheet_pdf = root / SHEET_PDF
-    if sheet_pdf is not None and pathlib.Path(sheet_pdf).exists():
+    problem = None
+    if sheet_pdf is None or not pathlib.Path(sheet_pdf).exists():
+        problem = "評価シートの PDF が無い"
+    else:
         try:
             sheet = sheet_rows(sheet_pdf)
         except ImportError:
-            warnings.append("pdfplumber が無いので評価シートとの突き合わせを飛ばした（xocr+arith に落とす）")
+            problem = "pdfplumber が無い"
         else:
-            adopted = {c: s for c, s in state.items() if c not in flagged}
-            sheet_ok, declared_diff = sheet_compare(sheet, adopted)
-    else:
-        warnings.append("評価シートの PDF が無いので突き合わせを飛ばした（xocr+arith に落とす）")
-    extractor = "ocr:" + "+".join(f"{e}@" + "+".join(f"{k}{v}" for k, v in data[e]["versions"].items()) for e in ENGINES)
+            sheet_ok, declared_diff = sheet_compare(sheet, {c: s for c, s in state.items() if c not in flagged})
+    if problem:
+        if require_sheet:
+            raise SystemExit(f"{problem}ので評価シートとの突き合わせができない（書き込みには必須。verified_by が環境で変わるため）")
+        warnings.append(f"{problem}ので評価シートとの突き合わせを飛ばした（xocr+arith に落とす）")
+    extractor = "ocr:" + "+".join(f"{e}@" + "+".join(f"{k}{v}" for k, v in data[e]["versions"].items()) for e in cellmatch.ENGINES)
     rows, n_unread = to_rows(state, A, B, bbox, flagged, hints, touching, sheet_ok, extractor, sha)
     stats.update(n_cells=len(rows), unreadable=n_unread, ocr_disagree=sum(1 for s in state.values() if s["by"] is None),
                  reviewed=sum(1 for s in state.values() if s["by"] == "reviewed"), arith_flagged=len(flagged),
@@ -384,7 +378,7 @@ def main():
     ap.add_argument("--dry-run", action="store_true", help="DB に書かない")
     ap.add_argument("--no-register", action="store_true", help="source_registry に登録しない")
     a = ap.parse_args()
-    b = build()
+    b = build(require_sheet=not a.dry_run)
     st = b["stats"]
     print(f"{DOC_ID}: cells {st['n_cells']}（未採用 {st['unreadable']}、うち OCR 食い違い {st['ocr_disagree']}、検算で特定 {st['arith_flagged']}）"
           f"、人の確認 {st['reviewed']}、評価シートと一致 {st['sheet_matched']}、OCR 一致率 {st['agree_rate']:.1%}、"

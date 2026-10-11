@@ -5,24 +5,15 @@
 （`scripts/` が sys.path にあること）。列ごとの差（書式・小数点の扱い）は引数で渡す。検算の式（何と何が等しいか）は
 表ごとに違うのでハブ・マングースの側に残し、疑うセルの絞り込みだけを `arith_flag` に共通化した。
 
-API 一覧:
-  norm(s)                                   NFKC・空白とカンマを除く
-  verified_by_for(reviewer)                 -> (verified_by, confidence)。不明な reviewer は ValueError
-  load_reviewed(path, norm=norm)            -> {(row_key, col_key): (正規化した値, reviewer, note)}
-  assign(data, lenient=None)                -> (文字の行列, bbox の行列, 収まらない箱の理由 {(行,列): 文字}, 収まらない箱の数)
-  decide(A, B, bad, fmt_ok, reviewed_by_cell=None, engines=ENGINES)
-                                            -> {(i,j): dict(text, by, …)}（text=None は未確定。reason 付き）
-  load_engines(doc_id, ocr_dir, expect_rows, expect_cols, input_path, input_key, input_label)
-                                            -> (data, 入力の sha256)
-  arith_flag(cons, val, known, evaluate, hint_ok=…)
-                                            -> (flagged, hints, touching, stats)
+API: norm / verified_by_for / load_reviewed / assign / decide / load_engines / arith_flag（各関数の docstring を見る）。
 """
 import csv
 import json
-import hashlib
 import re
 import unicodedata
 from collections import defaultdict
+
+import common   # sha256。標準ライブラリだけで import できる（requests は遅延 import）
 
 ENGINES = ("docling_rapid", "paddle")
 KNOWN_AI = ("claude", "gpt", "gemini")   # reviewed.csv の reviewer がこれで始まれば AI の確認（人の確認として扱わない）
@@ -31,14 +22,6 @@ CONF_HUMAN, CONF_AI, CONF_AUTO, CONF_XOCR = 1.0, 0.9, 1.0, 0.8
 
 def norm(s):
     return re.sub(r"[\s,，、]", "", unicodedata.normalize("NFKC", s or ""))
-
-
-def _sha256(path):
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
 
 
 def verified_by_for(reviewer):
@@ -53,7 +36,7 @@ def verified_by_for(reviewer):
     raise ValueError(f"reviewer が不明: {r!r}（人は `human:<名前>`、AI は claude・gpt・gemini で始まる名前）")
 
 
-def load_reviewed(path, norm=norm):
+def load_reviewed(path):
     """reviewed.csv（列: row, col, value, reviewer, note）-> {(row_key, col_key): (正規化した値, reviewer, note)}"""
     if not path.exists():
         return {}
@@ -105,10 +88,11 @@ def assign(data, lenient=None):
     return text, bbox, bad, orphans
 
 
-def decide(A, B, bad, fmt_ok, reviewed_by_cell=None, engines=ENGINES):
+def decide(A, B, bad, fmt_ok, reviewed=None, locate=None, lenient=None, engines=ENGINES):
     """2つの OCR の文字行列（A=engines[0]、B=engines[1]）と人の確認 -> {(i,j): dict(text, by, …)}。text=None は未確定（reason 付き）。
-    fmt_ok(j, s): 列 j の書式検査。reviewed_by_cell: {(i,j): (確認した値〔lenient 済み〕, reviewer, note)}。
-    人の値の書式不正は呼び出し側が先に ValueError にする（行・列の名前を出せるのは呼び出し側だけ）。"""
+    fmt_ok(j, s): 列 j の書式検査。reviewed: load_reviewed の結果 {(row_key, col_key): (値, reviewer, note)}。
+    locate(row_key, col_key) -> (i, j)（不明な行・列は None）。lenient(j, s): assign と同じ列ごとの後処理を人の値にも掛ける。
+    人の値の行・列が不明、または書式不正なら ValueError（reviewed.csv の誤りは止める）。"""
     state = {}
     for i in range(len(A)):
         for j in range(len(A[i])):
@@ -125,7 +109,14 @@ def decide(A, B, bad, fmt_ok, reviewed_by_cell=None, engines=ENGINES):
             else:
                 state[(i, j)] = dict(text=None, by=None, reason=f"{engines[0]}={a!r} {engines[1]}={b!r}"
                                      + ("" if fmt_ok(j, a) and fmt_ok(j, b) else "（書式不正あり）"))
-    for (i, j), (txt, who, note) in (reviewed_by_cell or {}).items():
+    for (rk, ck), (txt, who, note) in (reviewed or {}).items():
+        cell = locate(rk, ck)
+        if cell is None:
+            raise ValueError(f"reviewed.csv: 行・列が不明 {rk!r} {ck!r}")
+        i, j = cell
+        txt = lenient(j, txt) if lenient else txt
+        if not fmt_ok(j, txt):
+            raise ValueError(f"reviewed.csv: 書式不正 {rk} {ck} {txt!r}")
         state[(i, j)] = dict(text=txt, by="reviewed", reviewer=who, note=note)
     return state
 
@@ -151,13 +142,14 @@ def load_engines(doc_id, ocr_dir, expect_rows, expect_cols, input_path, input_ke
     if len(shas) != 1:
         raise ValueError(f"2つの JSON の {input_key} が違う: {sorted(shas)}")
     sha = shas.pop()
-    if input_path.exists() and _sha256(input_path) != sha:
+    if input_path.exists() and common.sha256(input_path) != sha:
         raise ValueError(f"ローカルの {input_label}（{input_path}）の sha256 が JSON の値と違う。{input_label}が更新された？ OCR をやり直す")
     return data, sha
 
 
 def arith_flag(cons, val, known, evaluate, hint_ok=lambda name: True):
     """確定したセルだけで検算し、疑うセルを絞る。-> (flagged {(行,列): [検算名]}, hints {(行,列): {値}}, touching, stats)。
+    touching は キー -> そのキーが入る検算のうち**通ったもの**（空なら裏づけ無し）。
     cons: [(名前, 左辺のキー, 右辺のキー, 種類, 余分なキー)]。キーは (層, 行, 列)。余分なキーは、その検算に入るが
       左右辺ではないセル（比の分母など）。
     val: キー -> 数値、known: 確定したキーの集合。evaluate(lhs, rhs, kind, val) -> True/False/None（None は対象外）。
@@ -198,4 +190,5 @@ def arith_flag(cons, val, known, evaluate, hint_ok=lambda name: True):
             flagged.setdefault((k[1], k[2]), set()).update(cov)
         remaining -= cov
     flagged = {c: sorted(ns) for c, ns in flagged.items()}
-    return flagged, hints, touching, dict(failed_constraints=len(failed), evaluated=len(status))
+    passed = {k: ns - failed for k, ns in touching.items()}   # 返す touching は「通った検算」だけ（失敗した検算は裏づけにならない）
+    return flagged, hints, passed, dict(failed_constraints=len(failed), evaluated=len(status))

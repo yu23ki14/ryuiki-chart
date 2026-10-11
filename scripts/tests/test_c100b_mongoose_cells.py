@@ -21,7 +21,7 @@ needs_sheet = pytest.mark.skipif(not SHEET.exists(), reason="評価シートの 
 def gt_matrix():
     rows = list(csv.reader(open(GT_CSV, encoding="utf-8")))[1:]
     assert len(rows) == c.NROW and all(len(r) == c.NCOL + 1 for r in rows)
-    return [[c.norm(x) for x in r[1:]] for r in rows]
+    return [[c.cellmatch.norm(x) for x in r[1:]] for r in rows]
 
 
 def grid_of(built):
@@ -34,7 +34,7 @@ def grid_of(built):
             r = got[(rk, ck)]
             if r["unreadable_reason"]:
                 unread.add((i, j))
-            row.append(c.norm(r["value_raw"] or ""))
+            row.append(c.cellmatch.norm(r["value_raw"] or ""))
         mat.append(row)
     return mat, unread
 
@@ -95,7 +95,7 @@ def test_without_review_no_silent_errors(tmp_path):
         for j, v in enumerate(row):
             if (i, j) not in unread:
                 assert v == gt[i][j], (i, j)
-    reviewed = c.cellmatch.load_reviewed(c.OCR_DIR / c.DOC_ID / "reviewed.csv", c.norm)
+    reviewed = c.cellmatch.load_reviewed(c.OCR_DIR / c.DOC_ID / "reviewed.csv")
     assert unread == {(c.COL_KEYS.index(ck), c.ROW_KEYS.index(rk)) for rk, ck in reviewed}   # reviewed.csv の集合と一致（無ければ空）
     for r in b["rows"]:
         if r["unreadable_reason"]:
@@ -115,7 +115,7 @@ def test_disagreement_is_flagged_not_adopted(tmp_path):
 def test_both_ocr_wrong_the_same_way_is_found_by_arithmetic(tmp_path):
     """2つの OCR が同じ誤読をしても、行と列の検算が交点で特定して未採用にする。"""
     root = tmp_path
-    for e in c.ENGINES:
+    for e in c.cellmatch.ENGINES:
         root = _mutate(tmp_path, e, lambda d: _set_cell(d, 10, c.J_TRAP, "2,201,116"))   # 2010 のわな日 2,101,116 -> 2,201,116（CPUE も合わなくなる大きさ）
     b = _build(root)
     flagged = {(r["row_key"], r["col_key"]) for r in b["rows"] if r["unreadable_reason"]}
@@ -126,7 +126,7 @@ def test_both_ocr_wrong_the_same_way_is_found_by_arithmetic(tmp_path):
 
 def test_cpue_off_is_found_by_arithmetic(tmp_path):
     root = tmp_path
-    for e in c.ENGINES:
+    for e in c.cellmatch.ENGINES:
         root = _mutate(tmp_path, e, lambda d: _set_cell(d, 7, c.J_CPUE, "0.657"))   # 2007: 0.567 -> 0.657
     flagged = {(r["row_key"], r["col_key"]) for r in _build(root)["rows"] if r["unreadable_reason"]}
     assert flagged == {(c.ROW_KEYS[c.J_CPUE], "2007")}
@@ -144,10 +144,8 @@ def test_zero_vs_blank_is_flagged(tmp_path):
 def test_blank_where_a_value_should_be_is_not_adopted(tmp_path):
     """2つの OCR が同じ場所を空欄と読んでも、空欄のはずでない場所（2012 のわな日）は採用しない。"""
     root = tmp_path
-    for e in c.ENGINES:
+    for e in c.cellmatch.ENGINES:
         def drop(d):
-            g = d["grid"]
-            (y0, y1), (x0, x1) = g["rows"][12], g["cols"][c.J_TRAP]
             d["boxes"] = [b for b in d["boxes"] if b not in _cell_boxes(d, 12, c.J_TRAP)]
         root = _mutate(tmp_path, e, drop)
     r = _by(_build(root))[(c.ROW_KEYS[c.J_TRAP], "2012")]
@@ -157,7 +155,7 @@ def test_blank_where_a_value_should_be_is_not_adopted(tmp_path):
 
 def test_value_where_blank_expected_is_not_adopted(tmp_path):
     root = tmp_path
-    for e in c.ENGINES:
+    for e in c.cellmatch.ENGINES:
         def add(d):
             g = d["grid"]
             (y0, y1), (x0, x1) = g["rows"][2], g["cols"][c.J_DOG]
@@ -194,7 +192,7 @@ def test_grid_size_and_input_sha_must_agree(tmp_path):
 
 def test_reviewed_value_that_breaks_arithmetic_is_not_adopted(tmp_path):
     root = copy_ocr(tmp_path, with_reviewed=False)
-    for e in c.ENGINES:   # 2010 のわな捕獲を片方 OCR で壊し、人の確認が検算に合わない値を書く
+    for e in c.cellmatch.ENGINES:   # 2010 のわな捕獲を片方 OCR で壊し、人の確認が検算に合わない値を書く
         _mutate(tmp_path, e, lambda d: None)
     _mutate(tmp_path, "paddle", lambda d: _set_cell(d, 10, c.J_CATCH, "9"))
     (root / c.DOC_ID / "reviewed.csv").write_text(
@@ -268,7 +266,7 @@ def test_verified_by_without_sheet_falls_back_to_arith():
     b = c.build(sheet_pdf=None)
     assert any("評価シート" in w for w in b["warnings"])
     by = {(r["row_key"], r["col_key"]): r for r in b["rows"]}
-    reviewed = c.cellmatch.load_reviewed(c.OCR_DIR / c.DOC_ID / "reviewed.csv", c.norm)
+    reviewed = c.cellmatch.load_reviewed(c.OCR_DIR / c.DOC_ID / "reviewed.csv")
     for k, r in by.items():   # 人の確認でない reviewer（claude(vision)）は 0.9、それ以外は検算 1.0
         assert (r["verified_by"], r["confidence"]) == (("claude(vision)", 0.9) if k in reviewed else ("auto:xocr+arith", 1.0))
 
@@ -313,7 +311,7 @@ def test_with_sheet_year_cells_are_xtext_and_the_declared_diff_is_the_total_cpue
     st = b["stats"]
     assert st["sheet_matched"] == 23 * 5 and st["sheet_declared_diff"] == [(c.ROW_KEYS[c.J_CPUE], c.COL_TOTAL)]
     by = _by(b)
-    reviewed = c.cellmatch.load_reviewed(c.OCR_DIR / c.DOC_ID / "reviewed.csv", c.norm)
+    reviewed = c.cellmatch.load_reviewed(c.OCR_DIR / c.DOC_ID / "reviewed.csv")
     assert {by[(rk, str(y))]["verified_by"] for rk in c.ROW_KEYS for y in range(2000, 2023) if (rk, str(y)) not in reviewed} == {"auto:xocr+xtext"}
     assert {by[(rk, c.COL_TOTAL)]["verified_by"] for rk in c.ROW_KEYS if (rk, c.COL_TOTAL) not in reviewed} == {"auto:xocr+arith"}
     assert by[(c.ROW_KEYS[c.J_CPUE], "2018")]["value_raw"] == "0.0004"   # 3桁に丸めて比べるが、値は PNG の印字のまま
@@ -393,3 +391,26 @@ def test_register_writes_one_source_with_the_cell_count(tmp_path, monkeypatch):
     row = sqlite3.connect(app_db).execute(
         "SELECT source_id, license, redistributable, record_count FROM source_registry").fetchall()
     assert row == [(c.SOURCE_ID, doccells.LICENSE_MOE_PDL, 1, 120)]
+
+
+def test_writing_requires_the_sheet_and_an_unreadable_sheet_stops(tmp_path, monkeypatch):
+    """書き込み（require_sheet）では評価シートが無いと止める。シートの表が読めなければ常に止める（黙って xtext を落とさない）。"""
+    with pytest.raises(SystemExit, match="評価シート"):
+        c.build(sheet_pdf=None, require_sheet=True)
+    dummy = tmp_path / "sheet.pdf"
+    dummy.write_bytes(b"%PDF-")
+    def broken(p):
+        raise ValueError("評価シートに行が無い: ['2000']")
+    monkeypatch.setattr(c, "sheet_rows", broken)
+    with pytest.raises(ValueError, match="評価シート"):
+        c.build(sheet_pdf=dummy)
+
+
+def test_arith_backing_counts_only_passed_constraints():
+    """cellmatch.arith_flag の touching は通った検算だけ。失敗した検算にしか入らないセルは裏づけ無し。"""
+    cons = [("ok", [("n", 0, 0)], ("n", 0, 1), "sum", ()), ("ng", [("n", 1, 0), ("n", 1, 1)], ("n", 1, 2), "sum", ())]
+    val = {("n", 0, 0): 1.0, ("n", 0, 1): 1.0, ("n", 1, 0): 1.0, ("n", 1, 1): 1.0, ("n", 1, 2): 5.0}
+    ev = lambda lhs, rhs, kind, v: abs(sum(v[k] for k in lhs) - v[rhs]) < 0.5
+    flagged, _h, touching, st = c.cellmatch.arith_flag(cons, val, set(val), ev)
+    assert st["failed_constraints"] == 1 and flagged
+    assert touching[("n", 0, 0)] == {"ok"} and touching[("n", 1, 0)] == set()

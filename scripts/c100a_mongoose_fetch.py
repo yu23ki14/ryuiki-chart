@@ -43,10 +43,13 @@ def main():
             time.sleep(SLEEP)
         first = False
         r = common.get(url)
-        dest.write_bytes(r.content)
-        sha = common.sha256(dest)
+        tmp = dest.with_name(dest.name + ".part")   # 検査してから置き換える（不一致で既存の良いコピーを壊さない）
+        tmp.write_bytes(r.content)
+        sha = common.sha256(tmp)
         if want and sha != want:
+            tmp.unlink()
             raise SystemExit(f"{name}: sha256 が期待と違う（{sha}）。表が更新された？ OCR・正解 csv を作り直す前に人が確認する")
+        tmp.replace(dest)
         print(f"  [save] {dest.relative_to(common.ROOT)}  {len(r.content)} bytes  sha256={sha[:12]}  <- {url}")
 
 

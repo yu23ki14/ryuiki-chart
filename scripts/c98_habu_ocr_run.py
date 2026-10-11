@@ -15,7 +15,6 @@
   版（ライブラリ・モデル）と入力の sha256 も書く。結果の JSON はコミットする（CI では OCR を回さない）。
 """
 import argparse
-import json
 import pathlib
 import subprocess
 import sys
@@ -28,7 +27,6 @@ import common   # 標準ライブラリだけで import できる（requests は
 ROOT = common.ROOT
 RAW = common.RAW / "kagoshima_doc"
 OUT = ROOT / "data/ocr/habu"
-sha256 = engines.sha256
 DOCS = {   # doc_id -> (PDF, 行数〔見出しを除く〕, 列数〔管内・市町村名の2列を除く: 10年度＋合計＋構成比〕)
     "kagoshima_habu_bite_h28r7": ("habu_bite_h28r7.pdf", 13, 12),
     "kagoshima_habu_kaiage_h28r7": ("habu_kaiage_h28r7.pdf", 17, 12),
@@ -48,16 +46,6 @@ def extract_image(pdf, tmp):
     return tmp / "page.jpg"
 
 
-def _groups(idx, mingap=1):
-    g = []
-    for i in idx:
-        if g and i - g[-1][-1] <= mingap:
-            g[-1].append(i)
-        else:
-            g.append([i])
-    return g
-
-
 def ruled_grid(path, nrow, ncol):
     """画像の罫線から格子を取る。-> dict(rows=[[y0,y1]…], cols=[[x0,x1]…], labelcol=[x0,x1], groupcol=[x0,x1])
     rows は見出しの帯を除く本体の行、cols は年度・合計・構成比の列（管内・市町村名の列は含まない）。"""
@@ -68,8 +56,8 @@ def ruled_grid(path, nrow, ncol):
     bw = (im < 128).astype(np.uint8)
     hk = cv2.morphologyEx(bw, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (w // 6, 1)))
     vk = cv2.morphologyEx(bw, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (1, h // 12)))
-    ys = [float(np.mean(g)) for g in _groups(np.where(hk.sum(1) > w * 0.4)[0])]
-    xs = [float(np.mean(g)) for g in _groups(np.where(vk.sum(0) > h * 0.25)[0])]
+    ys = [float(np.mean(g)) for g in engines.groups(np.where(hk.sum(1) > w * 0.4)[0])]
+    xs = [float(np.mean(g)) for g in engines.groups(np.where(vk.sum(0) > h * 0.25)[0])]
     rows = [[ys[i], ys[i + 1]] for i in range(len(ys) - 1)][1:]
     cols = [[xs[i], xs[i + 1]] for i in range(len(xs) - 1)]
     if len(rows) != nrow or len(cols) != ncol + 2:
@@ -95,7 +83,7 @@ def main():
             grid = ruled_grid(img, nrow, ncol)
             boxes, dt, size = engines.ocr_image(a.engine, img, a.scale)
             out = OUT / doc_id / f"{a.engine}.json"
-            engines.write_json(out, doc_id, a.engine, sha256(pdf), sha256(img), size, a.scale, grid, boxes, dt)
+            engines.write_json(out, doc_id, a.engine, common.sha256(pdf), common.sha256(img), size, a.scale, grid, boxes, dt)
             print(f"{doc_id} {a.engine}: {len(boxes)} boxes  {dt:.0f}s -> {out.relative_to(ROOT)}", flush=True)
 
 

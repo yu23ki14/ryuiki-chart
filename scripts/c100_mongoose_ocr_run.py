@@ -32,16 +32,6 @@ COLS = [[140, 250], [250, 345], [345, 440], [440, 505], [505, 566]]
 LABELCOL = [0, 140]
 
 
-def _groups(idx, mingap=1):
-    g = []
-    for i in idx:
-        if g and i - g[-1][-1] <= mingap:
-            g[-1].append(i)
-        else:
-            g.append([i])
-    return g
-
-
 def uniform_grid(path, n_year_rows=N_YEAR_ROWS, cols=COLS):
     """画像の全幅の横罫線のうち、見出しの下・合計の上の2本を見つけ、その間を n_year_rows 等分する。
     -> dict(rows=[[y0,y1]…]〔年度の行 n_year_rows＋合計の行 1〕, cols=…, labelcol=…, groupcol=…)"""
@@ -51,8 +41,8 @@ def uniform_grid(path, n_year_rows=N_YEAR_ROWS, cols=COLS):
     h, w = im.shape
     bw = (im < 128).astype(np.uint8)
     hk = cv2.morphologyEx(bw, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (w // 2, 1)))
-    # 画像の縁（枠）と、表の下の注記の枠は除く: 上下 5% の外側と、下 15% は見ない
-    ys = [float(np.mean(g)) for g in _groups(np.where(hk.sum(1) > w * 0.9)[0])
+    # 画像の縁（枠）と、表の下の注記の枠は除く: 高さの 3%〜93% の範囲の罫線だけを見る
+    ys = [float(np.mean(g)) for g in engines.groups(np.where(hk.sum(1) > w * 0.9)[0])
           if h * 0.03 < np.mean(g) < h * 0.93]
     if len(ys) != 2:
         raise SystemExit(f"全幅の横罫線が2本ではない: {ys}（見出しの下と合計の上を期待）。罫線の検出を確かめる")
@@ -70,7 +60,7 @@ def main():
     a = ap.parse_args()
     if not PNG.exists():
         raise SystemExit(f"{PNG} が無い。先に scripts/c100a_mongoose_fetch.py")
-    sha = engines.sha256(PNG)
+    sha = common.sha256(PNG)
     if not sha.startswith(PNG_SHA256):
         raise SystemExit(f"PNG の sha256 が想定と違う（{sha}）。列の x を決め直す必要がある")
     grid = uniform_grid(PNG)

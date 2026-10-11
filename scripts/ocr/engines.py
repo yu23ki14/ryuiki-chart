@@ -4,21 +4,23 @@ import は選んだエンジンの分だけ遅延で行う（docling と paddle 
 ハブ統計の c98_habu_ocr_run.py から移した（設計: docs/plans/AMAMI_STEP3A.md §5）。格子の取り方は表ごとに違うので
 各 ocr_run スクリプトに置く。
 """
-import hashlib
 import json
 import pathlib
 import tempfile
 import time
 
-ENGINES = ("docling_rapid", "paddle")
+from ocr.cellmatch import ENGINES   # noqa: F401（呼び手が engines.ENGINES で参照）
 
 
-def sha256(path):
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            h.update(chunk)
-    return h.hexdigest()
+def groups(idx, mingap=1):
+    """整数の列 -> 連続する塊のリスト（罫線の検出で、隣り合う画素行・列を1本にまとめる）"""
+    g = []
+    for i in idx:
+        if g and i - g[-1][-1] <= mingap:
+            g[-1].append(i)
+        else:
+            g.append([i])
+    return g
 
 
 def run_docling_rapid(img, W, H):
