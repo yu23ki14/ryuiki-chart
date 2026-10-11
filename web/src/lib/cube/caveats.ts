@@ -37,9 +37,11 @@
  * （`variable` テーブルを既に読んでいる 1a の catalog.ts/series.ts 側）に委ね、
  * `SeriesFacetInput`（`SeriesInfo & { theme }`）として渡してもらう形にした。
  */
+import type { RegionId } from "@/lib/region";
 import { GENERATED_CAVEAT_SCOPE, type CaveatScopeKind, type GeneratedCaveatScope } from "@/lib/registry/generated-client";
 import { OCCURRENCE_SOURCE_IDS } from "@/lib/registry/generated-source";
 import { resolveCaveatRefs, type CaveatRef, type ScopeMatch } from "@/lib/registry/lookup-client";
+import { sourcesOfRegion } from "./region";
 import type { SeriesInfo } from "./series";
 import type { Scope } from "./sql";
 
@@ -198,9 +200,11 @@ export function facetsForOccurrence(opt: {
   ias?: boolean;
   /** 結果に含まれる出典。出典ごとの注記（例: eDNA）を `source_id=<id>` の facet で引く。省略は全出典。 */
   sourceIds?: readonly string[];
+  /** `sourceIds` 省略時の既定（全出典）をこの地域の出典に絞る（Issue #93）。`sourceIds` を渡したときは使わない。 */
+  region?: RegionId;
 }): FacetRef[] {
   const refs: FacetRef[] = [];
-  for (const id of opt.sourceIds ?? OCCURRENCE_SOURCE_IDS) refs.push(sourceEditionOf(id));
+  for (const id of opt.sourceIds ?? sourcesOfRegion(OCCURRENCE_SOURCE_IDS, opt.region)) refs.push(sourceEditionOf(id));
   if (opt.places.includes("grid01")) refs.push(placeKind("grid01"));
   if (opt.ias) refs.push(sourceEditionOf("moe_ias_list"));
   return refs;

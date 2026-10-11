@@ -15,7 +15,9 @@
  * （`regionTimeZone()`）のオフセットを付けて ISO 8601 にする。日時の演算は文字列と
  * `Date.UTC` だけで行い、SQLite の日時関数は使わない（ADR-0024）。
  */
+import type { RegionId } from "@/lib/region";
 import { regionTimeZone } from "@/lib/registry/lookup-client";
+import { sourceInRegion } from "./region";
 import { seriesInfo, type SeriesKey, type SourceRef } from "./series";
 import {
   LICENSES,
@@ -170,13 +172,19 @@ export function dedupeSourceRefs(sources: readonly (string | SourceRef)[]): Sour
 }
 
 /** 画面用 API に加算する `freshness`（出典ごとの取得日・更新方式・経過日数）。重複は除く。版つき出典は `SourceRef` で渡す。 */
-export function freshnessFor(sources: readonly (string | SourceRef)[], opt: SourceMetaOpt = {}): SourceFreshness[] {
-  return dedupeSourceRefs(sources).map((r) => sourceFreshness(r.sourceId, { ...opt, editionKey: r.editionKey ?? opt.editionKey }));
+export function freshnessFor(
+  sources: readonly (string | SourceRef)[],
+  opt: SourceMetaOpt = {},
+  region?: RegionId,
+): SourceFreshness[] {
+  return dedupeSourceRefs(sources)
+    .filter((r) => sourceInRegion(r.sourceId, region))
+    .map((r) => sourceFreshness(r.sourceId, { ...opt, editionKey: r.editionKey ?? opt.editionKey }));
 }
 
 /** 系列の出典（`series.ts` の登録）の `freshness`。出典未記録（NULL＝合成）の alias は載せない（envelope と同じ規則）。 */
-export function freshnessForSeries(series: readonly SeriesKey[], opt: SourceMetaOpt = {}): SourceFreshness[] {
-  return freshnessFor(seriesSourceRefs(series), opt);
+export function freshnessForSeries(series: readonly SeriesKey[], opt: SourceMetaOpt = {}, region?: RegionId): SourceFreshness[] {
+  return freshnessFor(seriesSourceRefs(series), opt, region);
 }
 
 /**

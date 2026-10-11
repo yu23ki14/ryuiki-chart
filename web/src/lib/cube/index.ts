@@ -112,3 +112,7 @@ export { timeseries, TimeseriesInputError } from "./timeseries";
 export type { TimeseriesInput, TimeseriesResult, TimeseriesScope, TimeseriesGrain } from "./timeseries";
 export { sourceCitation, sourceFreshness, freshnessFor, freshnessForSeries, seriesSourceRefs, OCCURRENCE_SOURCE_IDS, OBSERVATION_SOURCE_IDS, RECORD_SOURCE_IDS, sourceAccess, DEFAULT_REGION_ID } from "./source-meta";
 export type { SourceCitation, SourceFreshness, UpdateModeOrUndeclared } from "./source-meta";
+
+// 地域で絞る（Issue #93）。cube 層は `region?: RegionId`（undefined = 全体）を受ける。
+export type { RegionId } from "@/lib/region";
+export { regionPred, placeRegionJoin, sourceRegion, sourceInRegion, sourcesOfRegion } from "./region";
