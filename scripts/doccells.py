@@ -25,6 +25,9 @@ from common import to_fiscal_year  # noqa: E402
 # 鹿児島県のサイトから事実（数値）だけを抜き出す文書の license（c95・c98b 共通）
 LICENSE_PREF_KAGOSHIMA = "鹿児島県ホームページ（無断転載・改変不可）。事実（数値）のみ抽出し出典を明記"
 
+# ライセンス表記のない文書から事実（数値）だけを抜き出すときの license（c102b。registry/source/license.yaml の mappings にある）
+LICENSE_NOTE_UNSTATED = "ライセンス表記なし（事実（数値）のみ抽出し出典を明記。原本の PDF は再配布しない）"
+
 # 環境省ホームページコンテンツの PDL1.0 の原文（c96・c99 共通。registry/source/license.yaml の mappings にある）
 LICENSE_MOE_PDL = "公共データ利用規約（第1.0版）PDL1.0（環境省ホームページコンテンツの利用について）: https://www.env.go.jp/mail.html"
 
