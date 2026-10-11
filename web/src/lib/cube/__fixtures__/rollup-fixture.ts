@@ -104,7 +104,7 @@ export function buildRollupFixture(opts: { years?: [number, number] } = {}): Rol
     `INSERT INTO observation_agg
        (region_id, place_id, place_kind, variable_id, obs_stat, unit_id, value_grain, period_start, period_end, grain, input_grain, stat,
         value_zero, value_lod, n, n_censored, n_not_detected, n_places, built_from, spec_version)
-     VALUES ('kanagawa',?,'watershed',?,'sum','common:unit:km2','year',?,?,?,'year',?,?,?,1,0,0,1,'fixture','fixture@1')`,
+     VALUES ('jp-14',?,'watershed',?,'sum','common:unit:km2','year',?,?,?,'year',?,?,?,1,0,0,1,'fixture','fixture@1')`,
   );
   for (const r of lu) obs.run(PLACE(r.ws), r.variable, `${r.year}-01-01`, `${r.year}-12-31`, r.grain ?? "year", r.stat ?? "mean", r.value, r.value);
   // 別の指標（土地利用でない）は引かない

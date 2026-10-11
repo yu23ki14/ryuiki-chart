@@ -63,7 +63,7 @@ interface Cell {
   twin?: boolean;
 }
 
-const TWIN_MARK = "fixture:occurrence-fixture:twin";
+export const TWIN_MARK = "fixture:occurrence-fixture:twin";
 
 const A = "common:taxon:fx_a";
 const B1 = "common:taxon:fx_b1";
@@ -222,7 +222,7 @@ const PLACES_GRID = `COUNT(DISTINCT CASE WHEN o.place_kind = 'grid01' THEN o.pla
 const META = `'fixture:occurrence-fixture', 'fixture@1'`;
 
 /** summary を同じセルから導出する（`aggregations/serving.yaml` の宣言と同じ形）。 */
-function seedSummaries(db: Database.Database): void {
+export function seedSummaries(db: Database.Database): void {
   db.exec(`
     INSERT INTO summary_taxon_catalog (taxon_id, n, n_red_list, n_alien, n_places, y_from, y_to, n_years, built_from, spec_version)
     SELECT o.taxon_id, SUM(o.n), SUM(o.n_red_list), SUM(o.n_alien), COUNT(DISTINCT o.place_id),

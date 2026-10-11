@@ -8,6 +8,7 @@
  */
 import type { CubeDb, SqlParam } from "./db";
 import { MAX_ID_LIST } from "./db";
+import type { RegionId } from "@/lib/region";
 import { buildScopeSql, OBS, seriesFilterSql, zoneExprSql, type Scope } from "./sql";
 import {
   basisOf,
@@ -23,6 +24,7 @@ import {
   type SeriesInfo,
   type SeriesKey,
 } from "./series";
+import { regionPred } from "./region";
 import { sourceGrainCellSql } from "./cell-basis";
 
 export type { Scope } from "./sql";
@@ -36,6 +38,8 @@ export interface CellSpec {
   /** 省略時は variableId の全系列（フィルタしない）。 */
   series?: SeriesKey[];
   scope: Scope;
+  /** 地域で絞る（`observation_agg.region_id`）。undefined = 全体（条件を足さない）。 */
+  region?: RegionId;
   grain: Grain | Grain[];
   /** 既定 ['mean']。 */
   stats?: Stat[];
@@ -88,6 +92,8 @@ function applyLimit<T>(rows: T[], limit: number): LimitedRows<T> {
 
 export interface CellRow {
   placeId: string;
+  /** `observation_agg.region_id`（nullable）。provenance が出典の地域と突き合わせる。 */
+  regionId?: string | null;
   siteId: string | null;
   series: SeriesKey;
   inputGrain: string;
@@ -106,6 +112,7 @@ export interface CellRow {
 
 interface RawCellRow {
   place_id: string;
+  region_id: string | null;
   site_id: string | null;
   variable_id: string;
   obs_stat: string | null;
@@ -186,6 +193,12 @@ function commonFilterSql(spec: CellSpec, alias: string): { joins: string[]; wher
   wheres.push(...scopeSql.wheres);
   whereParams.push(...scopeSql.whereParams);
 
+  const rp = regionPred(alias, spec.region);
+  if (rp.sql) {
+    wheres.push(rp.sql);
+    whereParams.push(...rp.params);
+  }
+
   const grains = grainsOf(spec);
   wheres.push(`${alias}.grain IN (${inClausePlaceholders(grains.length)})`);
   whereParams.push(...grains);
@@ -222,6 +235,7 @@ function toCellRow(r: RawCellRow, imputation: Imputation): CellRow {
   const value = imputation === "zero" ? r.value_zero : imputation === "lod" ? r.value_lod : null;
   return {
     placeId: r.place_id,
+    regionId: r.region_id,
     siteId: r.site_id,
     series: seriesKeyFromRow(r),
     inputGrain: r.input_grain,
@@ -248,7 +262,7 @@ export async function queryCells(db: CubeDb, spec: CellSpec): Promise<LimitedRow
   const limit = limitOf(spec);
 
   const sql = `
-    SELECT ${OBS}.place_id AS place_id, ${siteIdExpr} AS site_id,
+    SELECT ${OBS}.place_id AS place_id, ${OBS}.region_id AS region_id, ${siteIdExpr} AS site_id,
            ${OBS}.variable_id AS variable_id, ${OBS}.obs_stat AS obs_stat, ${OBS}.unit_id AS unit_id,
            ${OBS}.value_grain AS value_grain, ${OBS}.input_grain AS input_grain, ${OBS}.grain AS grain,
            ${OBS}.period_start AS period_start, ${OBS}.period_end AS period_end, ${OBS}.stat AS stat,

@@ -9,6 +9,7 @@
  *
  * 消費者は PR-2（AI ツール）。PR-1 はテスト（フィクスチャ）だけで検証する。
  */
+import type { RegionId } from "@/lib/region";
 import type { CaveatRef } from "@/lib/registry/lookup-client";
 import { regionTimeZone } from "@/lib/registry/lookup-client";
 import { GENERATED_CAVEATS } from "@/lib/registry/generated-client";
@@ -21,6 +22,7 @@ import {
   type SourceCitation,
   type UpdateModeOrUndeclared,
 } from "./source-meta";
+import { sourceInRegion, sourceRegion } from "./region";
 import { seriesInfo, type Grain, type SeriesKey, type SourceRef } from "./series";
 import type { CellRow, CellSpec, Imputation, ZoneYearRow } from "./observation";
 
@@ -145,6 +147,12 @@ function resolveProvenance(rows: readonly CellRow[], now: Date, regionId: string
   const counted = new Map<string, { ref: SourceRef; n: number }>();
   for (const r of rows) {
     for (const ref of seriesInfo(r.series)?.sourceRefs ?? []) {
+      // 行の地域と出典の地域が食い違うものは帰属させない（同じ系列キーを両地域の出典が共有する。
+      // 出典の地域が未宣言、または行の地域が不明（null）なら残す。Issue #93 §3-6）。
+      if (r.regionId != null) {
+        const sr = sourceRegion(ref.sourceId);
+        if (sr !== undefined && sr !== r.regionId) continue;
+      }
       const key = `${ref.sourceId}\u0000${ref.editionKey ?? ""}`;
       const cur = counted.get(key) ?? { ref, n: 0 };
       cur.n += 1;
@@ -164,8 +172,15 @@ function resolveProvenance(rows: readonly CellRow[], now: Date, regionId: string
  * 結果全体の行数をそのまま添える（「この結果にはこれらの出典が寄与しうる」
  * という近似。`buildZoneEnvelope` が使う）。
  */
-function resolveSeriesSetProvenance(series: readonly SeriesKey[], nRows: number, now: Date, regionId: string): EnvelopeProvenance[] {
-  return seriesSourceRefs(series).map((ref) => provenanceRow(ref, nRows, now, regionId));
+function resolveSeriesSetProvenance(
+  series: readonly SeriesKey[],
+  nRows: number,
+  now: Date,
+  regionId: string,
+  region?: RegionId,
+): EnvelopeProvenance[] {
+  const refs = seriesSourceRefs(series);
+  return refs.filter((ref) => sourceInRegion(ref.sourceId, region)).map((ref) => provenanceRow(ref, nRows, now, regionId));
 }
 
 /** provenance の取得日の最古・最新（文字列比較。同じ時刻帯のオフセット付きなので辞書順が時刻順）。 */
@@ -319,7 +334,7 @@ export function buildZoneEnvelope(spec: CellSpec, rows: readonly ZoneYearRow[], 
     { name: "value_lod", type: "number", unit, ucum: null },
   ];
 
-  const provenance = resolveSeriesSetProvenance(series, rows.length, now, regionId);
+  const provenance = resolveSeriesSetProvenance(series, rows.length, now, regionId, spec.region);
   const meta = envelopeMeta(provenance, now, regionId);
 
   return {
