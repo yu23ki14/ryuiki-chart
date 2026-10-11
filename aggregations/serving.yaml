@@ -56,6 +56,15 @@
 #     座標なし・流域外のセルを含む、日付のある全記録）、n_places（meshN）は grid01
 #     （座標のある記録）。y_from/y_to/n_years/n_binom は絞らない（2系列の和集合＝全記録）。
 #
+# Issue #93（地域で絞る切り替え）の語彙:
+#   - `by_region: true`: その summary と同じ定義（filter・measures・join）で、`region_id` を group_by・key の
+#     先頭に足した表 `<名前>_by_region` を b13 が作る（既存の表は変えない。「全体」は元の表のまま）。
+#     使えるのは件数が加法でない4表（`common.V2_SUMMARY_BY_REGION_BASES` と過不足なく一致すること）。
+#     `avg` の測度を持つ summary には付けられない（地域和で検算できない）。作った後に、地域和が元の表と
+#     一致すること（`sum`・`place_id` の `count_distinct` は和、`min`/`max` は最小の最小/最大の最大、
+#     その他の `count_distinct` は元の表以下）を b13 が自己検査する。`place_region`（place_id -> region_id）も
+#     b13 が作る（宣言ではなく関数。1つの place が2地域に出たら止まる）。
+#
 # `key` は必ず `group_by` と同じ集合にすること（summary は1グループ=1行の
 # ロールアップで、`key` がその一意性を保証する次元）。
 #
@@ -67,10 +76,11 @@
 # PR-1 の知見どおり）。
 
 version: 1
-spec_version: serving-summary/v6
+spec_version: serving-summary/v7
 
 summaries:
   summary_variable_catalog:
+    by_region: true
     source: observation_agg
     filter: { place_kind: site, grain: [year, fiscal_year], stat: mean }
     group_by: [variable_id, obs_stat, unit_id, value_grain, grain, input_grain]
@@ -103,6 +113,7 @@ summaries:
   # `catalog.ts`（PR-3b）の仕事——ここは `taxon_id` 単位のロールアップのまま。
   # `taxon_id IS NULL`（分類群未解決）の行も落とさず1行として持つ。
   summary_taxon_catalog:
+    by_region: true
     source: occurrence_agg
     filter: { place_kind: grid01, grain: [year, survey_period] }
     group_by: [taxon_id]
@@ -143,6 +154,7 @@ summaries:
   # v1 `species2` の後継。`taxon_group`/`class`/`family` は v1 の `MAX(...)` と同じ規則。
   # `taxon_id IS NULL`・binom が取れない taxon の行は含まない（binom がキーのため）。
   summary_species_catalog:
+    by_region: true
     source: occurrence_agg
     join: { taxon: registry }
     filter:
@@ -189,6 +201,7 @@ summaries:
   # v1 `effort_year` の後継。`n_inat`/`n_gbif` は持たない（n は加法なので
   # `summary_group_year` の `source_id` 別 `SUM(n)` から正確に引ける）。
   summary_effort_year:
+    by_region: true
     source: occurrence_agg
     join: { taxon: registry }
     filter: { place_kind: [grid01, watershed], grain: [year, survey_period] }

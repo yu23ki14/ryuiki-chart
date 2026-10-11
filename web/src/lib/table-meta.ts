@@ -55,6 +55,10 @@ export const TABLE_ORIGIN: Record<string, string> = {
   summary_variable_catalog: "v2", summary_place_variable: "v2",
   summary_taxon_catalog: "v2", summary_watershed_occurrence: "v2",
   summary_species_catalog: "v2", summary_group_year: "v2", summary_effort_year: "v2", summary_grid_catalog: "v2",
+  // 地域で絞る切り替え（Issue #93）の事前集計。place_region と、件数が加法でない4表の地域別版
+  place_region: "v2",
+  summary_species_catalog_by_region: "v2", summary_taxon_catalog_by_region: "v2",
+  summary_effort_year_by_region: "v2", summary_variable_catalog_by_region: "v2",
   // registry.sqlite 由来（語彙レジストリ）
   region: "reg", unit: "reg", variable: "reg", variable_alias: "reg",
   place: "reg", place_source_ref: "reg", place_relation: "reg", place_watershed: "reg",
@@ -137,6 +141,17 @@ export const TABLE_META: Record<string, string> = {
     "画面・意図ツールは直接読まず summary_* 経由で読む（行数が多いので集計時は条件で絞ること）",
   summary_grid_catalog:
     "0.01度グリッドごとの記録数・レッドリスト記録数・種数（年1970〜2026の窓）の事前集計",
+  place_region:
+    "場所（place_id）が属する地域（region_id）。観測・生物のキューブの region_id と観測地点の place.region_id の和集合。" +
+    "流域・グリッドは place.region_id が空なので、地域で絞るときはここを引く。1つの場所は1つの地域にだけ属する",
+  summary_species_catalog_by_region:
+    "summary_species_catalog の地域別版（先頭に region_id）。地域（jp-14 神奈川県／jp-46 奄美大島）で絞った種数・記録数は" +
+    "元の表ではなくこちらを引く（元の表は全地域の合算で、行を足し合わせても種数にならない）",
+  summary_taxon_catalog_by_region: "summary_taxon_catalog の地域別版（先頭に region_id）。地域で絞った分類群ごとの記録数",
+  summary_effort_year_by_region:
+    "summary_effort_year の地域別版（先頭に region_id）。地域で絞った年ごとの観察努力（記録数・種数・グリッド数）",
+  summary_variable_catalog_by_region:
+    "summary_variable_catalog の地域別版（先頭に region_id）。地域で絞った指標ごとの観測件数・地点数・年範囲",
   unit: "単位レジストリ。unit_id・表記・変換係数",
   variable: "指標レジストリ。正準の variable_id・和名・単位・higher_is_worse・説明",
   variable_alias: "出典ごとの指標名（表記違い）から正準の variable_id への対応",

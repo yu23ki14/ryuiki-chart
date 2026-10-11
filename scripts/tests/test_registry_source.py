@@ -16,7 +16,7 @@ import yaml
 import r01_build_registry as r01
 from migrate import edition as edition_mod
 from migrate import common as common_migrate
-from registry import build_source, build_unit_variable, common, id_map
+from registry import build_region, build_source, build_unit_variable, common, id_map
 
 RYUIKI = common.DB_DIR / "ryuiki.sqlite"
 needs_ryuiki = pytest.mark.skipif(not RYUIKI.exists(), reason="原本 ryuiki.sqlite が無い（CI 等）")
@@ -55,6 +55,22 @@ def _editions_doc(**kw):
 
 def _assemble(rows, lic=None, ed=None, root=None):
     return build_source.assemble(rows, lic or _license_doc(), ed or _editions_doc(), root=root)
+
+
+def test_source_region_comes_from_the_manifest_and_stays_null_without_one():
+    """Issue #93: source.region_id はマニフェストの region。マニフェストの無い出典（文書・台帳系）は NULL のまま。"""
+    _, src, _, _ = build_source.assemble(
+        [_row("a"), _row("b")], _license_doc(), _editions_doc(), manifest_regions={"a": "jp-46"},
+    )
+    region = {s[0]: s[build_source._SOURCE_COLUMNS.index("region_id")] for s in src}
+    assert region == {"a": "jp-46", "b": None}
+
+
+def test_manifest_region_for_an_unknown_source_halts():
+    with pytest.raises(AssertionError, match="source_registry に無い"):
+        build_source.assemble(
+            [_row("a")], _license_doc(), _editions_doc(), manifest_regions={"zzz": "jp-14"},
+        )
 
 
 def test_default_edition_is_one_per_source_with_fetch_date_key():
@@ -348,6 +364,7 @@ def _fake_ryuiki(rows):
 def test_build_writes_the_three_tables_and_passes_the_reference_checks(reg):
     """本物の registry/ 配下の宣言 + 本物の source_registry で build() し、r01 の一意性・参照整合性の
     検査（自己参照の superseded_by を含む）が通る。alias の宣言と dataset.csv も整合する。"""
+    build_region.build(reg)  # source.region_id（Issue #93）の参照先
     build_unit_variable.build(reg, {})
     ryuiki = sqlite3.connect(f"file:{RYUIKI}?mode=ro", uri=True)
     try:
@@ -368,6 +385,11 @@ def test_build_writes_the_three_tables_and_passes_the_reference_checks(reg):
     assert counts["source"] == 176 and counts["source_edition"] == 178
     r01._assert_id_uniqueness(reg)
     r01._assert_id_references(reg)
+    # Issue #93: source.region_id はマニフェストの region（マニフェストの無い出典は NULL）。
+    from ingest import manifest as manifest_lib
+    expected_region = {sid: m.region for sid, m in manifest_lib.load_manifests().items()}
+    got_region = dict(reg.execute("SELECT source_id, region_id FROM source WHERE region_id IS NOT NULL"))
+    assert got_region == expected_region
     assert reg.execute("SELECT count(*) FROM variable_alias WHERE edition_key IS NOT NULL").fetchone()[0] == 92  # 46 + 奄美の複製 46（PR-B）
     assert reg.execute(
         "SELECT edition_key, count(*) FROM variable_alias WHERE edition_key IS NOT NULL GROUP BY 1 ORDER BY 1"

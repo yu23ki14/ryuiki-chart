@@ -8,7 +8,8 @@
 
 出力（registry.sqlite）:
 - `license`: license.yaml の `licenses`
-- `source`: source_registry 1 行 = 1 行（`source_id` は bare のまま）。`superseded_by`
+- `source`: source_registry 1 行 = 1 行（`source_id` は bare のまま）。`superseded_by`。
+  `region_id` は `manifests/<source_id>.yml` の `region`（マニフェストの無い出典は NULL。Issue #93）
 - `source_edition`: 宣言された版 + 宣言の無い source の「取得回」の版（1 source に最低 1 つ）
 
 **過去の取得履歴は作らない**（復元不能。捏造しない）。**隔離・出力の絞り込みの根拠にしない**:
@@ -207,7 +208,7 @@ def _manifest_update_mode(sid: str, manifest_modes: dict[str, str], declared: st
 
 def assemble(
     registry_rows: list[dict], license_doc: dict, editions_doc: dict, *, root: pathlib.Path | None = None,
-    manifest_modes: dict[str, str] | None = None,
+    manifest_modes: dict[str, str] | None = None, manifest_regions: dict[str, str] | None = None,
 ):
     """`source_registry` の行（辞書のリスト）と 2 つの宣言から、3 表に入れる行を作る。
 
@@ -218,7 +219,8 @@ def assemble(
     reg = {r["source_id"]: r for r in registry_rows}
     common.assert_unique(list(reg), "source_registry.source_id")
     manifest_modes = manifest_modes or {}
-    unknown_manifest_sources = sorted(set(manifest_modes) - set(reg))
+    manifest_regions = manifest_regions or {}
+    unknown_manifest_sources = sorted((set(manifest_modes) | set(manifest_regions)) - set(reg))
     if unknown_manifest_sources:
         raise AssertionError(f"manifests/ の source が source_registry に無い: {unknown_manifest_sources}")
 
@@ -331,7 +333,8 @@ def assemble(
     for sid in sorted(reg):
         r = reg[sid]
         source_rows.append((
-            sid, common.source_public_id(sid), r["name"], r["publisher"], r["url"], None,
+            sid, common.source_public_id(sid), r["name"], r["publisher"], r["url"],
+            manifest_regions.get(sid),  # マニフェストの region（宣言の無い出典は NULL のまま。Issue #93）
             r["category"], r["access_method"], superseded.get(sid), r["notes"],
         ))
     license_rows = [
@@ -377,9 +380,11 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
 
     from ingest import manifest as manifest_lib  # noqa: E402（scripts/ を sys.path に持つ実行経路でだけ読む）
 
+    manifests = manifest_lib.load_manifests()
     license_rows, source_rows, edition_rows, unmapped = assemble(
         registry_rows, load_license_yaml(), load_editions_yaml(),
-        manifest_modes=manifest_lib.update_modes(manifest_lib.load_manifests()),
+        manifest_modes=manifest_lib.update_modes(manifests),
+        manifest_regions={sid: m.region for sid, m in manifests.items()},
     )
     if unmapped:
         n_src = sum(1 for r in registry_rows if r["license"] in set(unmapped))

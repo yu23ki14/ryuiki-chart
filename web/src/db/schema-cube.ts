@@ -354,3 +354,106 @@ export const summaryGridCatalog = sqliteTable(
 		specVersion: text("spec_version").notNull(),
 	},
 );
+
+/**
+ * 地域で絞る切り替え（Issue #93、`docs/plans/REGION_FILTER.md` §3-3）の事前集計。
+ *
+ * `place_region`: 各 place が属する地域。観測・出現のキューブの `region_id` と、registry の site の
+ * `place.region_id` の和集合（流域・グリッドは `place.region_id` が NULL のまま、ADR-0022 決定1 は
+ * 覆さない）。1つの place が2地域に出たら b13 が止まる。
+ */
+export const placeRegion = sqliteTable(
+	"place_region",
+	{
+		placeId: text("place_id").notNull(),
+		regionId: text("region_id").notNull(),
+		builtFrom: text("built_from").notNull(),
+		specVersion: text("spec_version").notNull(),
+	},
+	(table) => [
+		index("ix_place_region_place").on(table.placeId),
+		index("ix_place_region_region_place").on(table.regionId, table.placeId),
+	],
+);
+
+/**
+ * 以下4表は、同名の既存の summary 表（`aggregations/serving.yaml` で `by_region: true` を宣言した表）と同じ
+ * 定義を、地域ごとの `occurrence_agg`／`observation_agg` の行だけに絞って作ったもの。列は既存の同名表と
+ * 同じ＋先頭に `region_id`。件数が加法でない表（種数・年数・場所数）を地域で絞るときの事前集計で、
+ * 既存の表は触らない（`region` なしの読み手は元の表のまま）。
+ */
+export const summarySpeciesCatalogByRegion = sqliteTable(
+	"summary_species_catalog_by_region",
+	{
+		regionId: text("region_id").notNull(),
+		binom: text(),
+		taxonGroup: text("taxon_group"),
+		class: text(),
+		family: text(),
+		n: integer().notNull(),
+		nLocated: integer("n_located").notNull().default(0),
+		nRedList: integer("n_red_list").notNull(),
+		nAlien: integer("n_alien").notNull(),
+		nPlaces: integer("n_places").notNull(),
+		yFrom: integer("y_from"),
+		yTo: integer("y_to"),
+		nYears: integer("n_years").notNull(),
+		builtFrom: text("built_from").notNull(),
+		specVersion: text("spec_version").notNull(),
+	},
+	(table) => [index("ix_summary_species_catalog_by_region_region_binom").on(table.regionId, table.binom)],
+);
+
+export const summaryTaxonCatalogByRegion = sqliteTable(
+	"summary_taxon_catalog_by_region",
+	{
+		regionId: text("region_id").notNull(),
+		taxonId: text("taxon_id"),
+		n: integer().notNull(),
+		nRedList: integer("n_red_list").notNull(),
+		nAlien: integer("n_alien").notNull(),
+		nPlaces: integer("n_places").notNull(),
+		yFrom: integer("y_from"),
+		yTo: integer("y_to"),
+		nYears: integer("n_years").notNull(),
+		builtFrom: text("built_from").notNull(),
+		specVersion: text("spec_version").notNull(),
+	},
+	(table) => [index("ix_summary_taxon_catalog_by_region_region_taxon").on(table.regionId, table.taxonId)],
+);
+
+export const summaryEffortYearByRegion = sqliteTable(
+	"summary_effort_year_by_region",
+	{
+		regionId: text("region_id").notNull(),
+		year: integer(),
+		n: integer().notNull(),
+		nBinom: integer("n_binom").notNull(),
+		nPlaces: integer("n_places").notNull(),
+		builtFrom: text("built_from").notNull(),
+		specVersion: text("spec_version").notNull(),
+	},
+	(table) => [index("ix_summary_effort_year_by_region_region_year").on(table.regionId, table.year)],
+);
+
+export const summaryVariableCatalogByRegion = sqliteTable(
+	"summary_variable_catalog_by_region",
+	{
+		regionId: text("region_id").notNull(),
+		variableId: text("variable_id"),
+		obsStat: text("obs_stat"),
+		unitId: text("unit_id"),
+		valueGrain: text("value_grain"),
+		grain: text(),
+		inputGrain: text("input_grain"),
+		n: integer().notNull(),
+		nPlaces: integer("n_places").notNull(),
+		yFrom: integer("y_from"),
+		yTo: integer("y_to"),
+		nCensored: integer("n_censored").notNull(),
+		nNotDetected: integer("n_not_detected").notNull(),
+		builtFrom: text("built_from").notNull(),
+		specVersion: text("spec_version").notNull(),
+	},
+	(table) => [index("ix_summary_variable_catalog_by_region_region_variable").on(table.regionId, table.variableId)],
+);

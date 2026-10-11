@@ -390,6 +390,30 @@ const occurrenceSourceIds = manifestSourceIds("occurrence");
 // 観測データ（measurements・sensor_timeseries・土地利用）の出典。get_observations で取れる出典（MCP の describe_catalog の queryable_via）。
 const observationSourceIds = manifestSourceIds("observation");
 
+// 出典 → 地域（Issue #93）。正は manifests/<source_id>.yml の `region`。r01 が registry の source.region_id に写すので
+// フルビルドはそこから読み、files-only（source 表が空）はマニフェストから直接導いて保持した生成物と突合する。
+// マニフェストの無い出典（文書・台帳系）は載せない（= 地域未宣言）。合成データの出典も載せない。
+const sortedEntries = (obj) => Object.fromEntries(Object.entries(obj).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+const manifestSourceRegion = sortedEntries(
+  Object.fromEntries(
+    manifestDocs.filter(({ doc }) => doc?.source && doc?.region && !isSyntheticSource(doc.source)).map(({ doc }) => [doc.source, doc.region]),
+  ),
+);
+const sourceRegion = filesOnly
+  ? manifestSourceRegion
+  : sortedEntries(
+      Object.fromEntries(
+        db
+          .prepare("SELECT source_id, region_id FROM source WHERE region_id IS NOT NULL")
+          .all()
+          .filter((r) => !isSyntheticSource(r.source_id))
+          .map((r) => [r.source_id, r.region_id]),
+      ),
+    );
+if (!filesOnly && JSON.stringify(sourceRegion) !== JSON.stringify(manifestSourceRegion)) {
+  throw new Error("registry の source.region_id が manifests/ の region と食い違う（r01 を再実行すること）");
+}
+
 // 出典ごとの状態（source_access。registry/source/access.yaml と manifests/ から r01 が作る。MCP_SOURCE_ACCESS.md §1）。
 // 合成データの出典は SOURCE_META と同じく生成物に載せない。`--files-only` は source_access を作らないので、
 // 保持した生成物の RECORD_SOURCE_IDS を access.yaml（records を持つ出典）と突合して止める。
@@ -913,6 +937,9 @@ export const RECORD_SOURCE_IDS: readonly string[] = ${JSON.stringify(recordSourc
 /** find_datasets で引ける出典（外部ポータルの目録。registry/source/access.yaml の catalog を宣言した出典。MCP_EXTERNAL_CATALOG.md §5）。 */
 export const FIND_DATASET_SOURCE_IDS: readonly string[] = ${JSON.stringify(findDatasetSourceIds)};
 
+/** 出典 → 地域（manifests/<source_id>.yml の region。Issue #93）。マニフェストの無い出典（文書・台帳系）は載せない = 地域未宣言。 */
+export const SOURCE_REGION: Readonly<Record<string, string>> = ${JSON.stringify(sourceRegion)};
+
 export const LICENSES: readonly GeneratedLicense[] = ${emitObjectArray(licenses, ["licenseId", "nameJa", "spdxOrUrl", "licenseClass", "attributionText"])};
 `;
 
@@ -926,6 +953,13 @@ if (filesOnly) {
     ["RECORD_SOURCE_IDS", declaredRecordSourceIds, "registry/source/access.yaml（records を持つ出典）"],
     ["FIND_DATASET_SOURCE_IDS", declaredCatalogSourceIds, "registry/source/access.yaml（catalog を持つ出典）"],
   ];
+  const keptRegion = /export const SOURCE_REGION: Readonly<Record<string, string>> = (\{.*?\});/.exec(kept)?.[1];
+  if (keptRegion !== JSON.stringify(sourceRegion)) {
+    throw new Error(
+      "files-only のため出典メタは再生成しないが、保持した generated-source.ts の SOURCE_REGION が manifests/ の region " +
+        "と食い違う。原本のある環境で `pnpm run build:registry:ts`（フルビルド）を実行して更新すること",
+    );
+  }
   for (const [name, expected, from] of must) {
     if (keep(name) !== JSON.stringify(expected)) {
       throw new Error(

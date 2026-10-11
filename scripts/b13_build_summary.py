@@ -89,6 +89,7 @@ common.py` の `record_v2_input_fingerprint` docstring 参照）。
 from __future__ import annotations
 
 import argparse
+import copy
 import pathlib
 import sqlite3
 import sys
@@ -186,6 +187,8 @@ _REBUILD_HINT_BY_SOURCE = {
     "observation_agg": "scripts/b04_build_cube.py を再実行すること。",
     "occurrence_agg": "scripts/b07_build_occurrence_cube.py を再実行すること。",
 }
+
+_REBUILD_HINT_SUMMARY = "scripts/b13_build_summary.py を再実行すること。"
 
 _ALLOWED_DIM_COLUMNS_BY_SOURCE: dict[str, frozenset[str]] = {
     "observation_agg": frozenset(b04.DIM_COLUMNS),
@@ -380,6 +383,15 @@ def _validate_summary_spec(table_name: str, spec: dict) -> None:
     if "n" not in measures:
         _fail(f"{table_name}.measures に n が無い（保存則が SUM(n) を比べる）")
 
+    if "by_region" in spec:
+        if spec["by_region"] is not True:
+            _fail(f"{table_name}.by_region は true だけ（宣言しないなら書かない）: {spec['by_region']!r}")
+        if "region_id" in group_by:
+            _fail(f"{table_name}: by_region を宣言した summary の group_by に region_id を書かない（b13 が先頭に足す）")
+        for measure_name, measure in measures.items():
+            if measure["fn"] == "avg":
+                _fail(f"{table_name}.measures.{measure_name}: avg は by_region と併用できない（地域和で検算できない）")
+
     produced_columns = set(group_by) | set(measures)
     for index_cols in spec.get("indexes") or []:
         for col in index_cols:
@@ -405,6 +417,12 @@ def _validate_manifest_shape(raw: dict) -> None:
     summaries = raw.get("summaries")
     if not isinstance(summaries, dict):
         _fail(f"summaries が辞書ではない: {summaries!r}")
+    by_region_declared = {t for t, spec in summaries.items() if isinstance(spec, dict) and "by_region" in spec}
+    if by_region_declared != set(common.V2_SUMMARY_BY_REGION_BASES):
+        _fail(
+            "by_region を宣言した summary の集合が scripts/migrate/common.py の V2_SUMMARY_BY_REGION_BASES と"
+            f"過不足なく一致しない（宣言: {sorted(by_region_declared)}、期待: {sorted(common.V2_SUMMARY_BY_REGION_BASES)}）"
+        )
     declared = set(summaries)
     expected = set(common.V2_SUMMARY_TABLES)
     if declared != expected:
@@ -604,6 +622,141 @@ def _conservation_totals(conn: sqlite3.Connection, spec: dict) -> tuple[int, int
     return cube_total, join_total, joined_total
 
 
+def _by_region_spec(base_name: str, base: dict) -> dict:
+    """`by_region: true` を宣言した summary `base` から、`<base_name>_by_region` の宣言を導く。
+    同じ `filter`/`measures`/`join`/`columns`、`region_id` を group_by・key の先頭に足し、索引は
+    `(region_id, <元の group_by の先頭>)` の1本（設計書 REGION_FILTER.md §3-3）。
+    """
+    spec = copy.deepcopy(base)
+    del spec["by_region"]
+    spec["group_by"] = ["region_id", *base["group_by"]]
+    spec["key"] = list(spec["group_by"])
+    spec["indexes"] = [["region_id", base["group_by"][0]]]
+    spec[_BY_REGION_OF] = base_name
+    return spec
+
+
+_BY_REGION_OF = "_by_region_of"
+
+
+def _additive_measure(measure: dict) -> bool:
+    """地域に分けても和が変わらない測度（場所が地域に純粋なので `place_id` の distinct も和になる）。"""
+    return measure["fn"] == "sum" or (
+        measure["fn"] == "count_distinct" and measure.get("col") == "place_id"
+    )
+
+
+def _assert_by_region_conservation(
+    conn: sqlite3.Connection, staging: str, base_table: str, spec: dict, table_name: str,
+) -> None:
+    """地域別の表（作業用テーブル `staging`）が元の表 `base_table` と矛盾しないことを確かめる:
+    地域を畳んだ（キー = `spec["key"]` から `region_id` を除いたもの）行が元の表と同じキーの集合で、
+    加法の測度は和が一致、`min`/`max` は最小の最小/最大の最大が一致、それ以外の `count_distinct`
+    （年数・種数）は地域別が元の表以下であること。
+    """
+    keys = [k for k in spec["key"] if k != "region_id"]
+    null_regions = conn.execute(f'SELECT COUNT(*) FROM "{staging}" WHERE region_id IS NULL').fetchone()[0]
+    if null_regions:
+        raise common.MigrationError(
+            f"{table_name}: region_id が NULL の行が {null_regions} 行ある（キューブの region_id を確認すること）。"
+        )
+    agg_exprs: list[str] = []
+    equal_conds: list[str] = []
+    for name, m in spec["measures"].items():
+        if _additive_measure(m):
+            agg_exprs.append(f"SUM({name}) AS {name}")
+        elif m["fn"] == "min":
+            agg_exprs.append(f"MIN({name}) AS {name}")
+        elif m["fn"] == "max":
+            agg_exprs.append(f"MAX({name}) AS {name}")
+        else:
+            continue
+        equal_conds.append(f"b.{name} IS NOT r.{name}")
+    key_list = ", ".join(keys)
+    on_keys = " AND ".join(f"b.{k} IS r.{k}" for k in keys)
+    folded = (
+        f'SELECT {key_list}, {", ".join(agg_exprs)}, 1 AS _present FROM "{staging}" GROUP BY {key_list}'
+    )
+    n_folded = conn.execute(f"SELECT COUNT(*) FROM ({folded})").fetchone()[0]
+    n_base = conn.execute(f"SELECT COUNT(*) FROM {base_table}").fetchone()[0]
+    n_mismatch = conn.execute(
+        f"SELECT COUNT(*) FROM {base_table} b LEFT JOIN ({folded}) r ON {on_keys} "
+        f"WHERE r._present IS NULL OR {' OR '.join(equal_conds)}"
+    ).fetchone()[0]
+    if n_folded != n_base or n_mismatch:
+        raise common.MigrationError(
+            f"{table_name}: 地域別の表を畳むと {base_table} と一致しない"
+            f"（キー数 {n_folded} 対 {n_base}、食い違う行 {n_mismatch}）。"
+            "加法の測度の地域和・最小の最小・最大の最大のいずれかが崩れている"
+            "（n_places が崩れているなら、1つの place が2地域に出ていないか確かめること）。"
+        )
+    subadditive = [n for n, m in spec["measures"].items() if m["fn"] == "count_distinct" and not _additive_measure(m)]
+    if subadditive:
+        on_keys_s = " AND ".join(f"b.{k} IS s.{k}" for k in keys)
+        n_over = conn.execute(
+            f'SELECT COUNT(*) FROM "{staging}" s JOIN {base_table} b ON {on_keys_s} '
+            f"WHERE {' OR '.join(f's.{n} > b.{n}' for n in subadditive)}"
+        ).fetchone()[0]
+        if n_over:
+            raise common.MigrationError(
+                f"{table_name}: {', '.join(subadditive)} が元の表 {base_table} を超える行が {n_over} 行ある。"
+            )
+
+
+# 索引の正は Drizzle（web/src/db/schema-cube.ts）。列の組が一致することは test_cube_index_parity.py が見る。
+PLACE_REGION_INDEXES = (("place_id",), ("region_id", "place_id"))
+
+_CREATE_PLACE_REGION_SQL = (
+    "CREATE TABLE {table} (\n  place_id TEXT NOT NULL,\n  region_id TEXT NOT NULL,\n"
+    "  built_from TEXT NOT NULL,\n  spec_version TEXT NOT NULL\n)"
+)
+_INSERT_PLACE_REGION_SQL = (
+    "INSERT INTO {{table}} (place_id, region_id, built_from, spec_version) "
+    "SELECT place_id, region_id, ?, ? FROM ("
+    "SELECT place_id, region_id FROM observation_agg WHERE place_id IS NOT NULL AND region_id IS NOT NULL "
+    "UNION "
+    "SELECT place_id, region_id FROM occurrence_agg WHERE place_id IS NOT NULL AND region_id IS NOT NULL "
+    "UNION "
+    "SELECT place_id, region_id FROM {registry}.place WHERE place_kind = 'site' AND region_id IS NOT NULL"
+    ") ORDER BY place_id, region_id"
+)
+
+
+def _build_place_region(
+    conn: sqlite3.Connection, lineage: common.LineageTracker, *, spec_version: str,
+) -> dict:
+    """`place_region`（place_id -> region_id）。観測・出現のキューブの `region_id` と、registry の site の
+    `place.region_id` の和集合（流域・グリッドの `place.region_id` は NULL のまま、ADR-0022 決定1。キューブ側の
+    region から補う）。1つの place が2つ以上の地域に出たら止まる。
+    """
+    lineage.verify("observation_agg", rebuild_hint=_REBUILD_HINT_BY_SOURCE["observation_agg"])
+    lineage.verify("occurrence_agg", rebuild_hint=_REBUILD_HINT_BY_SOURCE["occurrence_agg"])
+    table_name = common.V2_PLACE_REGION_TABLE
+    lineage.begin_output()
+    with common.staged_table(
+        conn, table_name, _CREATE_PLACE_REGION_SQL,
+        lineage=lineage, fingerprint_spec_version=spec_version,
+    ) as staging:
+        built_from = f"observation_agg + occurrence_agg + {_JOIN_ALIAS}:place (sqlite={sqlite3.sqlite_version})"
+        cur = conn.execute(
+            _INSERT_PLACE_REGION_SQL.format(registry=_JOIN_ALIAS).format(table=f'"{staging}"'),
+            [built_from, spec_version],
+        )
+        n_rows = cur.rowcount
+        multi = conn.execute(
+            f'SELECT place_id, GROUP_CONCAT(region_id) FROM "{staging}" GROUP BY place_id HAVING COUNT(*) > 1 LIMIT 5'
+        ).fetchall()
+        if multi:
+            raise common.MigrationError(
+                f"{table_name}: 1つの place が2つ以上の地域に出ている（場所は地域に純粋でなければならない。"
+                f"地域別の事前集計の n_places が和にならなくなる）: {multi}"
+            )
+        if n_rows == 0:
+            raise common.MigrationError(f"{table_name}: 0行しか生成されなかった。")
+    common.create_indexes(conn, table_name, [(f"{table_name}_{'_'.join(cols)}", cols) for cols in PLACE_REGION_INDEXES])
+    return {"n_rows": n_rows, "sum_n": None}
+
+
 def _default_built_from(source: str) -> str:
     return f"{source} (sqlite={sqlite3.sqlite_version})"
 
@@ -648,6 +801,12 @@ def build_summary(
     summaries = raw["summaries"]
     for table_name in common.V2_SUMMARY_TABLES:
         _validate_summary_spec(table_name, summaries[table_name])
+    # 地域別の表（Issue #93）の宣言を導いて、同じ検証に通す（元の表の宣言が正しければ通るはずの確認）。
+    summaries = dict(summaries)
+    for base_name in common.V2_SUMMARY_BY_REGION_BASES:
+        by_region_name = f"{base_name}_by_region"
+        summaries[by_region_name] = _by_region_spec(base_name, summaries[base_name])
+        _validate_summary_spec(by_region_name, summaries[by_region_name])
 
     # 段階間の指紋（Issue #37 #1）: 各 summary が使う `source`（observation_agg/
     # occurrence_agg）が「今の上流から作られた」ことまで遡って確認する（b04/b07
@@ -695,13 +854,15 @@ def _attach_registry(conn: sqlite3.Connection, registry_path: pathlib.Path) -> N
     # `file:` URI の `?mode=ro` は %-エスケープが要る文字（`?`/`#`/`%`）を含むパスで壊れる。
     uri = "file:" + urllib.parse.quote(str(registry_path.resolve())) + "?mode=ro"
     conn.execute(f"ATTACH DATABASE ? AS {_JOIN_ALIAS}", (uri,))
-    has_taxon = conn.execute(
-        f"SELECT 1 FROM {_JOIN_ALIAS}.sqlite_master WHERE type='table' AND name='taxon'"
-    ).fetchone()
-    if not has_taxon:
+    has_tables = {
+        name for (name,) in conn.execute(
+            f"SELECT name FROM {_JOIN_ALIAS}.sqlite_master WHERE type='table' AND name IN ('taxon', 'place')"
+        )
+    }
+    if has_tables != {"taxon", "place"}:
         conn.execute(f"DETACH DATABASE {_JOIN_ALIAS}")
         raise common.MigrationError(
-            f"{registry_path} に taxon 表が無い（--files-only で作った registry ではないか）。"
+            f"{registry_path} に taxon 表が無い、または place 表が無い（--files-only で作った registry ではないか）。"
             "scripts/r01_build_registry.py のフルビルドをやり直すこと。"
         )
 
@@ -711,7 +872,7 @@ def _build_summary_tables(
     built_from: str | None, spec_version: str,
 ) -> dict[str, dict]:
     stats: dict[str, dict] = {}
-    for table_name in common.V2_SUMMARY_TABLES:
+    for table_name in (*common.V2_SUMMARY_TABLES, *common.V2_SUMMARY_BY_REGION_TABLES):
         spec = summaries[table_name]
         source = spec["source"]
         lineage.verify(source, rebuild_hint=_REBUILD_HINT_BY_SOURCE[source])  # 冪等（source ごとに実検証は1回）
@@ -721,6 +882,9 @@ def _build_summary_tables(
         create_sql = _create_table_sql(spec)
         insert_sql, insert_params = _insert_select_sql(spec, built_from=table_built_from, spec_version=spec_version)
 
+        if _BY_REGION_OF in spec:
+            # 地域別の表は、畳んだ結果を元の表と突き合わせる（機械検証3b）ので元の表を読む。系譜にも載る。
+            lineage.verify(spec[_BY_REGION_OF], rebuild_hint=_REBUILD_HINT_SUMMARY)
         lineage.begin_output()  # 出力表ごとの系譜（この表の構築が読むものだけ）
         with common.staged_table(
             conn, table_name, create_sql,
@@ -758,6 +922,10 @@ def _build_summary_tables(
                     "aggregations/serving.yaml の filter/group_by を確認すること。"
                 )
 
+            # 機械検証3b: 地域別の表は、地域を畳むと元の表に戻ること（Issue #93）。
+            if _BY_REGION_OF in spec:
+                _assert_by_region_conservation(conn, staging, spec[_BY_REGION_OF], spec, table_name)
+
             # 機械検証4: 行数 > 0（filter が絞りすぎている事故を検出する）。
             if n_rows == 0:
                 raise common.MigrationError(
@@ -775,6 +943,8 @@ def _build_summary_tables(
         )
         stats[table_name] = {"n_rows": n_rows, "sum_n": summary_total}
 
+    # place_region（1つの place が2地域に出たら止まる）。地域別の n_places の検算が崩れたときの原因もこれ。
+    stats[common.V2_PLACE_REGION_TABLE] = _build_place_region(conn, lineage, spec_version=spec_version)
     return stats
 
 
@@ -818,7 +988,8 @@ def main() -> None:
         conn.close()
 
     for table_name, s in stats.items():
-        print(f"  {table_name}: {s['n_rows']:,}行（SUM(n)={s['sum_n']:,}、保存則OK）")
+        sum_n = "" if s["sum_n"] is None else f"SUM(n)={s['sum_n']:,}、"
+        print(f"  {table_name}: {s['n_rows']:,}行（{sum_n}保存則OK）")
 
 
 if __name__ == "__main__":

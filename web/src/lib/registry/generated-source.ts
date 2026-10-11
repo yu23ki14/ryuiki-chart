@@ -2797,6 +2797,9 @@ export const RECORD_SOURCE_IDS: readonly string[] = ["atsugi_river_water_quality
 /** find_datasets で引ける出典（外部ポータルの目録。registry/source/access.yaml の catalog を宣言した出典。MCP_EXTERNAL_CATALOG.md §5）。 */
 export const FIND_DATASET_SOURCE_IDS: readonly string[] = ["ckan_bodik_kanagawa","ckan_kanagawa_pref","ckan_sagamihara","ckan_yokohama","estat_agri_census_kanagawa","estat_census_population_kanagawa","estat_shozaiki_kanagawa"];
 
+/** 出典 → 地域（manifests/<source_id>.yml の region。Issue #93）。マニフェストの無い出典（文書・台帳系）は載せない = 地域未宣言。 */
+export const SOURCE_REGION: Readonly<Record<string, string>> = {"atsugi_river_water_quality":"jp-14","env_kousui_annual_amami":"jp-46","env_kousui_annual_kanagawa":"jp-14","env_kousui_sample_amami":"jp-46","env_kousui_sample_kanagawa":"jp-14","gbif_amami_occurrences":"jp-46","gbif_kanagawa_occurrences":"jp-14","hiratsuka_taiki":"jp-14","inaturalist_amami":"jp-46","inaturalist_kanagawa":"jp-14","jma_daily_nase":"jp-46","jma_daily_yokohama":"jp-14","jma_monthly_amami":"jp-46","jma_monthly_kanagawa":"jp-14","jma_sst_amami":"jp-46","kagoshima_kasen_choui_amami":"jp-46","kagoshima_kasen_dam_amami":"jp-46","kagoshima_kasen_suii_amami":"jp-46","kagoshima_kasen_suii_kiki_amami":"jp-46","kanagawa_edna":"jp-14","kanagawa_jiban_chinka":"jp-14","kanagawa_kuma_sightings":"jp-14","nlni_l03b_landuse_by_watershed":"jp-14","nlni_l03b_landuse_by_watershed_amami":"jp-46","sagamihara_taiki_hourly":"jp-14","soramame_hourly_amami":"jp-46","soramame_hourly_kanagawa":"jp-14","yokohama_river_waterlevel":"jp-14"};
+
 export const LICENSES: readonly GeneratedLicense[] = [
   { licenseId: "all_rights_reserved", nameJa: "無断複製・転用不可", spdxOrUrl: null, licenseClass: "restricted", attributionText: null },
   { licenseId: "biodic_terms", nameJa: "環境省生物多様性センターウェブサイト利用規約", spdxOrUrl: "https://www.biodic.go.jp/", licenseClass: "custom_terms", attributionText: "出典を明示する" },

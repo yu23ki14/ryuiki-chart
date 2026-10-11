@@ -110,3 +110,28 @@ def test_drizzle_index_definitions_use_the_constants():
     text = SCHEMA_CUBE_TS.read_text(encoding="utf-8")
     for key in _occurrence_agg_index_constants():
         assert f"index(OCCURRENCE_AGG_INDEX.{key})" in text
+
+
+# ---------------------------------------------------------------------------
+# Issue #93: 地域別の事前集計（`*_by_region` 4表と `place_region`）の索引。正は Drizzle、b13 が写しを持つ
+# （b13 の索引名は `<表>_<列…>`、Drizzle は `ix_…`。名前は違ってよいので列の組だけを比べる）。
+# ---------------------------------------------------------------------------
+
+def test_region_tables_index_parity_with_b13():
+    import yaml
+
+    import b13_build_summary as b13
+    from migrate import common
+
+    tables = (*common.V2_SUMMARY_BY_REGION_TABLES, common.V2_PLACE_REGION_TABLE)
+    from_migrations = _indexes_from_migrations(tables)
+    summaries = yaml.safe_load((ROOT / "aggregations" / "serving.yaml").read_text(encoding="utf-8"))["summaries"]
+
+    expected: dict[str, set[tuple[str, ...]]] = {common.V2_PLACE_REGION_TABLE: set(b13.PLACE_REGION_INDEXES)}
+    for base in common.V2_SUMMARY_BY_REGION_BASES:
+        spec = b13._by_region_spec(base, summaries[base])
+        expected[f"{base}_by_region"] = {tuple(cols) for cols in spec["indexes"]}
+
+    for table in tables:
+        assert set(from_migrations[table].values()) == expected[table], table
+        assert len(from_migrations[table]) == len(expected[table]), f"{table}: 同じ列の組の索引が重複している"
