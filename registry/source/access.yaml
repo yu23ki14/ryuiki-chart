@@ -20,6 +20,7 @@ record_sets:
   mammal_mesh: mammal_mesh
   sightings: wildlife_sightings
   assessments: taxon_assessment
+  hazard_zones: hazard_zones
 reasons:
   not_collected: {ja: "未収集（取得手段が未着手、または登録のみ）"}
   blocked_access: {ja: "ログイン・APIキー・利用アンケート・JS 画面などで、自動取得できていない"}
@@ -105,6 +106,10 @@ sources:
   # --- 奄美 Step 3b: 2010年奄美豪雨の雨量・被害（京大防災研の速報・鹿大の報告書。数値だけ cells に入れた。気象庁は既存の jma_daily_nase） ---
   dpri_gouu2010_amami: {reason: document_cells, basis: "doc_id=dpri_amami_gouu_sokuho_2011（速報の本文の雨量・被害を cells に入れた。2011年。fiscal_year は NULL の単発の事象）"}
   kagoshima_univ_gouu2010_amami: {reason: document_cells, basis: "doc_id=kagoshima_univ_amami_gouu_2012（報告書の本文・画像・表-2 の雨量・被害を cells に入れた。2012年。どちらも fiscal_year は NULL の単発の事象）"}
+  # --- 奄美 Step 3c: A33 土砂災害警戒区域（BODIK）・水道の水源種別・ダム容量（県の流域治水10頁版） ---
+  bodik_kagoshima_dosha_amami: {records: [hazard_zones]}
+  kagoshima_suido_amami: {reason: document_cells, basis: "doc_id=kagoshima_suido_r5_joryo・kagoshima_suido_r5_kani（令和5年度水道統計の上水道・簡易水道の取水の種別。cells に入れた。fiscal_year は NULL）"}
+  kagoshima_dam_capacity_amami: {reason: document_cells, basis: "doc_id=kagoshima_amami_ryuiki_chisui_10p_2023（県の流域治水プロジェクト10頁版の大和・大川ダムの有効貯水容量。cells に入れた。BODIK 版の4頁には容量が無い）"}
   # --- 取れない: pdf_document（10 件。上の奄美 Step 2d の5件は別に並べた）---
   biodic_6th_kanagawa_report: {reason: pdf_document, basis: "source_registry.format=PDF"}
   ckan_pdf_choju_higai: {reason: pdf_document, basis: "source_registry.format=PDF"}
