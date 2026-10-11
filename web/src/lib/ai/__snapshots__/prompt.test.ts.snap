@@ -63,7 +63,7 @@ exports[`buildSystemPrompt > pageContext 無し 1`] = `
 - place（語彙レジストリDB）: 場所レジストリ。地点・流域・ゾーン・0.01度グリッドの place_id・名称・座標・面積
 - place_source_ref（語彙レジストリDB）: place と出典側のキー（site_id・watershed_id など）の対応
 - place_relation（語彙レジストリDB）: 場所どうしの包含関係（地点→流域・ゾーンなど）
-- place_watershed（語彙レジストリDB）: 流域（place）の水系コード・水系区分・主な河川・データ年
+- place_watershed（語彙レジストリDB）: 流域（place）の水系コード・水系区分・主な河川・データ年。計算した流域（奄美）は種別 unit_kind・併合した斜面の割合 merged_share・自前の集水面積 own_drainage_km2
 - region（語彙レジストリDB）: 地域（region_id）の時刻帯。IANA 名と UTC オフセット（観測日時はこの時刻帯のローカル時刻）
 - taxon（語彙レジストリDB）: 分類群レジストリ。taxon_id・学名・和名・分類階級
 - taxon_assessment（語彙レジストリDB）: 分類群ごとのレッドリスト・外来種などの評価（版・カテゴリー）

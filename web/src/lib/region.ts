@@ -6,7 +6,7 @@
  *   入口（API・ページ・ツール）で `regionOf(parseRegion(...))` に直す。
  * - UI の語（神奈川県／奄美大島）はここだけに持つ。registry の `name_ja`（jp-46 は鹿児島県）は使わない。
  */
-import { REGION_TIME } from "@/lib/registry/generated-client";
+import { REGION_TIME, type CaveatKey } from "@/lib/registry/generated-client";
 
 /** 具体的な地域（registry/region.yaml の region_id）。 */
 export type RegionId = (typeof REGION_TIME)[number]["regionId"];
@@ -31,6 +31,8 @@ export interface RegionUi {
   watershedBasis: string;
   /** 流域マップの出典の流域界の部分。 */
   watershedSource: string;
+  /** 流域マップに添える注意書き（registry の caveat）。流域が公式の界でない地域だけ持つ。 */
+  watershedCaveat?: CaveatKey;
 }
 
 export const REGION_ALL = "all" as const;
@@ -58,6 +60,7 @@ export const REGIONS: readonly RegionUi[] = [
     hasFixedNarrative: false,
     watershedBasis: "国土地理院の10m標高から計算した流域",
     watershedSource: "国土地理院 基盤地図情報 数値標高モデル（DEM10B）から計算した流域界",
+    watershedCaveat: "amamiWatershedDem",
     bounds: [
       [129.1, 27.95],
       [129.85, 28.8],

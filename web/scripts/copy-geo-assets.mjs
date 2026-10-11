@@ -50,7 +50,8 @@ const FILES = [
   // 神奈川は W12、奄美は地理院10m標高から計算した流域（Issue #94）。名前を明示する：
   // regionalGeojson は L1 として残す nlni_w12_watersheds_amami.geojson も拾ってしまう。
   // scripts/regions.py の watershed_stems() と一致すること（scripts/tests/test_regions.py が検査）。
-  { src: ["nlni_w12_watersheds.geojson", "gsi_dem_watersheds_amami.geojson"], dst: "watersheds.geojson" },
+  // required: 宣言した地域のファイルが 1 つでも欠けたら止まる（黙って神奈川だけの配信にしない）。
+  { src: ["nlni_w12_watersheds.geojson", "gsi_dem_watersheds_amami.geojson"], dst: "watersheds.geojson", required: true },
   // 水源マップ（docs/WATER_SOURCE_MAP.md）。町丁目ポリゴンに水源比率を焼き込んだもの。
   // ブラウザが直接取る（/water は D1 を読まない）。作るのは scripts/build-water-geo.mjs。
   { src: "water_zones.geojson", dst: "water_zones.geojson" },
@@ -90,7 +91,7 @@ for (const name of fs.readdirSync(DST)) {
   }
 }
 let missing = 0;
-for (const { src: srcSpec, dst: outName } of FILES) {
+for (const { src: srcSpec, dst: outName, required } of FILES) {
   const names = Array.isArray(srcSpec) ? srcSpec : [srcSpec];
   const label = names[0];
   const froms = names.map((n) => path.join(SRC, n)).filter((p) => fs.existsSync(p));
@@ -105,6 +106,15 @@ for (const { src: srcSpec, dst: outName } of FILES) {
       console.error(`✗ ${label} が ${SRC} にも public/geo にも無い。scripts/c31_nlni_w05.py などで再取得する。`);
       missing++;
     }
+    continue;
+  }
+  const absent = names.filter((n) => !fs.existsSync(path.join(SRC, n)));
+  if (required && absent.length) {
+    console.error(
+      `✗ ${outName}: 宣言された入力が ${SRC} に無い: ${absent.join(", ")}。` +
+        `奄美の流域は .venv-dem/bin/python3 scripts/c69_gsi_dem_watersheds.py で作る（scripts/regions.py の watershed.stem）。`,
+    );
+    missing++;
     continue;
   }
   const srcMtime = Math.max(...froms.map((p) => fs.statSync(p).mtimeMs));

@@ -28,6 +28,9 @@ export async function GET(req: NextRequest) {
           watershed_id: id,
           water_system_name: r?.waterSystemName ?? null,
           main_rivers: (f.properties as Record<string, unknown>).main_river_names_ja ?? null,
+          // 計算した流域（奄美）だけが持つ。W12 は undefined → null
+          unit_kind: (f.properties as Record<string, unknown>).unit_kind ?? null,
+          merged_share: (f.properties as Record<string, unknown>).merged_share ?? null,
           area_km2: r?.areaKm2 ?? null,
           site_n: r?.siteN ?? 0,
           org_n: orgN,
