@@ -1,14 +1,16 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { parseRegion, regionOf } from "@/lib/region";
 import { loadGeoJson } from "@/lib/geo";
 import { d1CubeDb, landuseDelta, watershedRollup } from "@/lib/cube";
 
 export const runtime = "nodejs";
 
 /** 国土数値情報 W12 の流域界ポリゴンに、集計値を載せて返す。 */
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const region = regionOf(parseRegion(req.nextUrl.searchParams.get("region")));
   try {
     const fc = await loadGeoJson("watersheds.geojson");
-    const { watersheds, landuseYears } = await watershedRollup(await d1CubeDb());
+    const { watersheds, landuseYears } = await watershedRollup(await d1CubeDb(), region ? { region } : {});
     const rollup = new Map(watersheds.map((r) => [r.watershedId, r]));
     const features = fc.features.map((f) => {
       const id = String((f.properties as Record<string, unknown>).watershed_id ?? "");

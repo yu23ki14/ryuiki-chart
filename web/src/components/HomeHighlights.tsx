@@ -10,18 +10,24 @@ import { fmt } from "@/components/viz/scales";
 import { nf } from "@/components/ui";
 import { MAP_METRICS } from "@/lib/registry/generated-client";
 import { caveatBody } from "@/lib/registry/lookup-client";
+import { withRegion } from "@/components/region-url";
+import { REGION_ALL, type RegionFilter } from "@/lib/region";
 
 export function HomeHighlights({
   longitudinal,
   landuse,
   redlist,
   effort,
+  region = REGION_ALL,
 }: {
   longitudinal: { site_id: string; name: string; elevation_m: number; zone: number; avg: number; n: number; unit: string | null }[];
   landuse: { watershed_id: string; water_system_name: string | null; delta: number; area_km2: number }[];
   redlist: { list_year: number; list_name: string; taxon_group_ja: string; direction: string; n: number }[];
   effort: { year: number; n: number; species_n: number; mesh_n: number; n_inat: number; n_gbif: number }[];
+  /** 画面の地域。①②③の固定文言（境川・鶴見川・レッドリスト3版）は神奈川の数字なので、奄美（jp-46）では出さない。 */
+  region?: RegionFilter;
 }) {
+  const amami = region === "jp-46";
   // 土地利用の面積差の単位は地図指標と同じ registry の語彙（unit.yaml の km2）から引く
   const landuseUnit = MAP_METRICS.find((m) => m.id === "built_delta")?.unit ?? undefined;
   const unit = longitudinal[0]?.unit ?? null;
@@ -57,35 +63,47 @@ export function HomeHighlights({
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4">
-      <ChartFrame
-        title="① 場所で比べる — 川を下ると水はどう変わるか"
-        subtitle="境川の5地点、2020年以降の BOD の平均。標高の高い順に並べてある"
-        table={
-          <MiniTable
-            columns={["地点", "標高(m)", unit ? `BOD(${unit})` : "BOD", "n"]}
-            rows={longitudinal.map((r) => [r.name, r.elevation_m, r.avg, r.n])}
-          />
-        }
-        note={
-          <>
-            上流の常矢橋と下流の大道橋で 5 倍近い差がある。この差は10年間ずっと同じ向きで出ている。
-            <Link href="/timeseries" className="text-water underline ml-1">
-              時系列比較で見る
+      {amami ? (
+        <div className="card p-3.5">
+          <div className="text-[13px] font-semibold">① 場所で比べる — 川を下ると水はどう変わるか</div>
+          <p className="text-[11.5px] text-muted mt-1 leading-relaxed">
+            奄美大島には、この概況で固定して見せる川（神奈川では境川）をまだ決めていません。時系列比較で水域を選んでください。
+            <Link href={withRegion("/timeseries", region)} className="text-water underline ml-1">
+              時系列比較を開く
             </Link>
-          </>
-        }
-      >
-        <BarChart
-          data={longitudinal.map((r) => ({
-            key: r.site_id,
-            label: `${r.name}（${Math.round(r.elevation_m)}m）`,
-            value: r.avg,
-            color: ZONE_COLORS[r.zone] ?? SERIES[0],
-          }))}
-          unit={unit}
-          maxLabelWidth={140}
-        />
-      </ChartFrame>
+          </p>
+        </div>
+      ) : (
+        <ChartFrame
+          title="① 場所で比べる — 川を下ると水はどう変わるか"
+          subtitle="境川の5地点、2020年以降の BOD の平均。標高の高い順に並べてある"
+          table={
+            <MiniTable
+              columns={["地点", "標高(m)", unit ? `BOD(${unit})` : "BOD", "n"]}
+              rows={longitudinal.map((r) => [r.name, r.elevation_m, r.avg, r.n])}
+            />
+          }
+          note={
+            <>
+              上流の常矢橋と下流の大道橋で 5 倍近い差がある。この差は10年間ずっと同じ向きで出ている。
+              <Link href={withRegion("/timeseries", region)} className="text-water underline ml-1">
+                時系列比較で見る
+              </Link>
+            </>
+          }
+        >
+          <BarChart
+            data={longitudinal.map((r) => ({
+              key: r.site_id,
+              label: `${r.name}（${Math.round(r.elevation_m)}m）`,
+              value: r.avg,
+              color: ZONE_COLORS[r.zone] ?? SERIES[0],
+            }))}
+            unit={unit}
+            maxLabelWidth={140}
+          />
+        </ChartFrame>
+      )}
 
       <ChartFrame
         title="② 版で比べる — レッドリストは20年でどう動いたか"
@@ -98,8 +116,10 @@ export function HomeHighlights({
         }
         note={
           <>
-            植物は改善が悪化を上回るのに対し、昆虫・クモは悪化が改善の 1.7 倍。分類群で向きが逆になっている。
-            <Link href="/biota" className="text-water underline ml-1">
+            {amami
+              ? "鹿児島県レッドリストは版が1つだけで、版間の比較は出せない。"
+              : "植物は改善が悪化を上回るのに対し、昆虫・クモは悪化が改善の 1.7 倍。分類群で向きが逆になっている。"}
+            <Link href={withRegion("/biota", region)} className="text-water underline ml-1">
               版間比較を開く
             </Link>
           </>
@@ -171,8 +191,10 @@ export function HomeHighlights({
         }
         note={
           <>
-            境川・鶴見川の下流部で 5km² 以上増えている。同じ流域の水質と重ねると読み方が変わる。
-            <Link href="/map" className="text-water underline ml-1">
+            {amami
+              ? "同じ流域の水質と重ねると読み方が変わる。"
+              : "境川・鶴見川の下流部で 5km² 以上増えている。同じ流域の水質と重ねると読み方が変わる。"}
+            <Link href={withRegion("/map", region)} className="text-water underline ml-1">
               地図で塗り分ける
             </Link>
             <span className="block mt-1">{caveatBody("landuseDefinitionChange")}</span>

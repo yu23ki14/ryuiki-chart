@@ -6,6 +6,9 @@ import { MapCanvas, type MapLayerSpec } from "./MapCanvas";
 import { SEQ, SEQ2, DIVERGING, ZONE_COLORS, ZONE_LABELS, ZONE_COND, INK, SERIES } from "@/components/viz/palette";
 import { Btn, nf, Spinner } from "@/components/ui";
 import { useJson } from "@/components/useJson";
+import { useRegionJson } from "@/components/useRegionJson";
+import { useRegion } from "@/components/useRegion";
+import { REGION_ALL, REGIONS, regionLabel } from "@/lib/region";
 import { caveatBody } from "@/lib/registry/lookup-client";
 import { MAP_METRICS, type WatershedMetricId, type MeshMetricId } from "@/lib/registry/generated-client";
 import { MUNICIPALITY_LABEL } from "@/lib/municipality";
@@ -24,8 +27,22 @@ export function MapPage() {
   const [showSites, setShowSites] = React.useState(true);
   const [showMesh, setShowMesh] = React.useState(false);
   const [showRivers, setShowRivers] = React.useState(false);
-  // 初期表示は神奈川のまま（MapCanvas の既定）。ボタンを押したときだけ fitBounds で移る。
-  const [jump, setJump] = React.useState<{ bounds: [[number, number], [number, number]]; nonce: number } | null>(null);
+  // 地域の絞り（URL の ?region=）。'all' なら初期表示は神奈川のまま（MapCanvas の既定）で、ボタンを押したときだけ
+  // fitBounds で移る。地域を絞っているときは、その地域の範囲へ移って始まり、切り替えるたびに移る。
+  const region = useRegion();
+  const boundsOf = (r: typeof region) => (REGIONS.find((x) => x.id === r) ?? REGIONS[0]).bounds;
+  const [jump, setJump] = React.useState<{ bounds: [[number, number], [number, number]]; nonce: number } | null>(() =>
+    region === REGION_ALL ? null : { bounds: boundsOf(region), nonce: 1 },
+  );
+  const prevRegion = React.useRef(region);
+  React.useEffect(() => {
+    if (prevRegion.current === region) return;
+    prevRegion.current = region;
+    // 'all' に戻したときは既定の見え方（神奈川側）へ戻す
+    setJump((j) => ({ bounds: boundsOf(region), nonce: (j?.nonce ?? 0) + 1 }));
+    // boundsOf は region だけに依存する
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [region]);
 
   const [wsMetric, setWsMetric] = React.useState<WsMetric>("org_density");
   const [meshMetric, setMeshMetric] = React.useState<MeshMetric>("species_n");
@@ -36,10 +53,10 @@ export function MapPage() {
   const [sel, setSel] = React.useState<Record<string, unknown> | null>(null);
   const [selKind, setSelKind] = React.useState<"watershed" | "site" | "mesh" | null>(null);
 
-  const ws = useJson<GeoJSON.FeatureCollection & { landuse_years?: { from: number; to: number } | null }>("/api/geo/watersheds");
+  const ws = useRegionJson<GeoJSON.FeatureCollection & { landuse_years?: { from: number; to: number } | null }>("/api/geo/watersheds");
   const luYears = ws.data?.landuse_years ? ` ${ws.data.landuse_years.from}→${ws.data.landuse_years.to}` : "";
-  const sites = useJson<GeoJSON.FeatureCollection>("/api/geo/sites");
-  const mesh = useJson<GeoJSON.FeatureCollection>(
+  const sites = useRegionJson<GeoJSON.FeatureCollection>("/api/geo/sites");
+  const mesh = useRegionJson<GeoJSON.FeatureCollection>(
     showMesh ? `/api/geo/mesh${meshYear ? `?year=${meshYear}` : ""}` : "",
   );
   const rivers = useJson<GeoJSON.FeatureCollection>(showRivers ? "/geo/rivers.geojson" : "");
@@ -168,6 +185,9 @@ export function MapPage() {
                   {isLanduse && (
                     <p className="text-[10px] text-muted mt-1 leading-snug">{caveatBody("landuseDefinitionChange")}</p>
                   )}
+                  {region !== REGION_ALL && (
+                    <p className="text-[10px] text-muted mt-1 leading-snug">色の区切りは{regionLabel(region)}の流域の値だけで決めている。</p>
+                  )}
                 </div>
               )}
               {showMesh && (
@@ -208,12 +228,14 @@ export function MapPage() {
 
       <aside className="w-[300px] shrink-0 border-l border-line bg-surface overflow-y-auto min-h-0 thin-scroll no-print">
         <div className="p-3 border-b border-line">
-          <h1 className="text-[14px] font-bold">流域マップ</h1>
+          <h1 className="text-[14px] font-bold">流域マップ{region !== REGION_ALL && `（${regionLabel(region)}）`}</h1>
           <p className="text-[11px] text-muted mt-0.5 leading-snug">
             国土数値情報 W12 の単位流域（{ws.data ? `${ws.data.features.length}面・` : ""}神奈川・奄美とも1977年版）を土台に、観測地点と生物記録を重ねる。
           </p>
         </div>
 
+        {/* 地域を絞っているときは上部の切り替えと二重になるので、全体のときだけ出す */}
+        {region === REGION_ALL && (
         <Section title="地域">
           <div className="flex gap-1.5 flex-wrap">
             {REGION_JUMPS.map((r) => (
@@ -224,6 +246,7 @@ export function MapPage() {
             ))}
           </div>
         </Section>
+        )}
 
         <Section title="レイヤ">
           <Toggle checked={showWatersheds} onChange={setShowWatersheds} label="流域界（塗り分け）" />
@@ -246,7 +269,7 @@ export function MapPage() {
               ))}
             </div>
           )}
-          <Toggle checked={showSites} onChange={setShowSites} label="観測地点（352）" />
+          <Toggle checked={showSites} onChange={setShowSites} label={`観測地点${sites.data ? `（${sites.data.features.length}）` : ""}`} />
           <Toggle checked={showMesh} onChange={setShowMesh} label="生物記録メッシュ（1km）" />
           {showMesh && (
             <div className="pl-5 pb-1">
