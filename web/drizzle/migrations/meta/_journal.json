@@ -176,6 +176,13 @@
       "when": 1791705972221,
       "tag": "0024_yielding_toad_men",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1791709580773,
+      "tag": "0025_busy_silverclaw",
+      "breakpoints": true
     }
   ]
 }

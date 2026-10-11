@@ -188,6 +188,20 @@ describe("queryRecords", () => {
     expect(one.rows[0].geometry_geojson).toEqual({ type: "Polygon", coordinates: [] });
   });
 
+  it("protected_areas: 一覧にジオメトリは無く、id 指定の 1 件だけ include_geometry で返す。NULL の行は null", async () => {
+    const ins = raw.prepare("INSERT INTO protected_areas (area_id, name_ja, source_id, geometry_geojson) VALUES (?,?,?,?)");
+    ins.run("pa1", "奄美群島国立公園", "hiratsuka_parks", '{"type":"Polygon","coordinates":[]}');
+    ins.run("pa2", "神奈川の公園", "hiratsuka_parks", null);
+    const list = await q({ source_id: "hiratsuka_parks" });
+    expect(list.rows).toHaveLength(2);
+    for (const row of list.rows) expect(row).not.toHaveProperty("geometry_geojson");
+    const one = await q({ source_id: "hiratsuka_parks", id: "pa1", include_geometry: true });
+    expect(one.rows[0].geometry_geojson).toEqual({ type: "Polygon", coordinates: [] });
+    const none = await q({ source_id: "hiratsuka_parks", id: "pa2", include_geometry: true });
+    expect(none.rows[0].geometry_geojson).toBeNull();
+    await expect(q({ source_id: "hiratsuka_parks", include_geometry: true })).rejects.toThrow(RecordsInputError);
+  });
+
   it("vegetation を limit=500 で引いても geometry を含まず 500KB 以内", async () => {
     const ins = raw.prepare("INSERT INTO vegetation_polygons (feature_id, legend_name_ja, source_id, geometry_geojson) VALUES (?,?,?,?)");
     const big = JSON.stringify({ type: "Polygon", coordinates: [Array.from({ length: 400 }, (_, i) => [139 + i / 1000, 35 + i / 1000])] });
@@ -267,6 +281,6 @@ describe("readRecordSet（地図用。get_records と同じ列定義）", () => 
     const g = await readRecordSet(db, "river_segments", { order: [{ col: "feature_id" }], withGeometry: true });
     expect(typeof g[0].geometry_geojson).toBe("string");
     await expect(readRecordSet(db, "river_segments", { order: [{ col: "x; DROP TABLE sites" }] })).rejects.toThrow();
-    await expect(readRecordSet(db, "protected_areas", { order: [{ col: "area_id" }], withGeometry: true })).rejects.toThrow();
+    await expect(readRecordSet(db, "sites", { order: [{ col: "site_id" }], withGeometry: true })).rejects.toThrow();
   });
 });

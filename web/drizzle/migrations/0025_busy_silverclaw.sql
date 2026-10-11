@@ -1,0 +1,1 @@
+ALTER TABLE `protected_areas` ADD `geometry_geojson` text;
