@@ -6,6 +6,7 @@ import { EXPLORE_ENABLED } from "@/lib/features";
 import { RegionSwitcher } from "@/components/RegionSwitcher";
 import { useRegion } from "@/components/useRegion";
 import { withRegion } from "@/components/region-url";
+import { AMAMI_STORY_HREF, AMAMI_STORY_LABEL, showAmamiStory } from "@/lib/stories/links";
 
 const NAV = [
   { href: "/", label: "概況", exact: true },
@@ -21,6 +22,8 @@ const NAV = [
 export function SiteNav() {
   const pathname = usePathname();
   const region = useRegion();
+  // 物語への導線は奄美を選んだときだけ（全体・神奈川では出さない）。固定の URL なので withRegion は使わない。
+  const items = showAmamiStory(region) ? [...NAV, { href: AMAMI_STORY_HREF, label: AMAMI_STORY_LABEL, fixed: true }] : NAV;
   return (
     <header className="no-print sticky top-0 z-50 border-b border-line bg-surface/95 backdrop-blur">
       <div className="flex items-stretch gap-1 px-4 h-12">
@@ -32,12 +35,12 @@ export function SiteNav() {
           </span>
         </Link>
         <nav className="flex items-stretch gap-0.5 overflow-x-auto thin-scroll">
-          {NAV.map((n) => {
-            const active = n.exact ? pathname === n.href : pathname.startsWith(n.href);
+          {items.map((n) => {
+            const active = "fixed" in n ? pathname.startsWith("/stories/amami") : n.exact ? pathname === n.href : pathname.startsWith(n.href);
             return (
               <Link
                 key={n.href}
-                href={withRegion(n.href, region)}
+                href={"fixed" in n ? n.href : withRegion(n.href, region)}
                 className={`flex items-center px-3 text-[13px] whitespace-nowrap border-b-2 transition-colors ${
                   active
                     ? "border-water text-water-ink font-medium"

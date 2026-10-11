@@ -9,7 +9,7 @@
 import type { CubeDb } from "@/lib/cube/db";
 import { docSeriesPoints, type DocSeriesPoint } from "@/lib/cube/documents";
 import { timeseries } from "@/lib/cube/timeseries";
-import { docNotes, documentsList, type DocNote, type DocumentRow } from "@/lib/records";
+import { countRecordsBy, type CountRow, docNotes, documentsList, readRecordSet, type DocNote, type DocumentRow } from "@/lib/records";
 
 /* ------------------------------------------------------------------ */
 /* 宣言（章の構造。数値は持たない）                                        */
@@ -114,7 +114,7 @@ export const AMAMI_STORY = {
     },
   },
   hazard: {
-    set: "hazard_zones",
+    set: "hazard_zones" as const,
     groupBy: ["municipality_ja", "phenomenon_ja", "zone_kind_ja"],
     /** 区分の表示順（この語を含む区分は後ろ）。 */
     specialKindMatch: "特別",
@@ -173,16 +173,14 @@ export interface DocCell {
   page_no: number | null;
 }
 
-/**
- * 1 文書のセル（`superseded = 0`）。契約（§1.1）は `readRecordSet(db, "document_cells", { eq: doc_id })`。
- * 担当1の `document_cells` が入るまでの仮実装（同じ列・同じ条件を `cells` から直接読む）。
- */
-// TODO(#105): 担当1の document_cells をマージしたら readRecordSet に置き換える。
+/** 1 文書のセル（`document_cells`＝`superseded = 0`、`get_records` と同じ層）。 */
 async function readDocCells(db: CubeDb, docId: string): Promise<DocCell[]> {
-  return db.all<DocCell>(
-    "SELECT table_id, row_key, col_key, value, unit, page_no FROM cells WHERE doc_id = ? AND superseded = 0 ORDER BY page_no, id",
-    [docId],
-  ) as Promise<DocCell[]>;
+  return readRecordSet<DocCell>(db, "document_cells", {
+    eq: [{ col: "doc_id", value: docId }],
+    select: ["table_id", "row_key", "col_key", "value", "unit", "page_no"],
+    order: [{ col: "page_no" }, { col: "id" }],
+    limit: null,
+  });
 }
 
 function num(v: string | null | undefined): number | null {
@@ -384,30 +382,16 @@ export interface HazardStory {
   mapHref: string;
 }
 
-type CountRow = { municipality_ja: string | null; phenomenon_ja: string | null; zone_kind_ja: string | null; n: number };
-
-/**
- * 市町村 × 現象 × 区分の件数。契約（§1.1）は `countRecordsBy(db, "hazard_zones", groupBy)`。
- * 担当1の関数が入るまでの仮実装（同じ許可リストの列で、件数のみ）。
- */
-// TODO(#105): 担当1の countRecordsBy をマージしたら置き換える。
-async function countHazard(db: CubeDb): Promise<CountRow[]> {
-  return db.all<CountRow>(
-    "SELECT municipality_ja, phenomenon_ja, zone_kind_ja, COUNT(*) AS n FROM hazard_zones GROUP BY municipality_ja, phenomenon_ja, zone_kind_ja",
-    [],
-  ) as Promise<CountRow[]>;
-}
-
 export function buildHazardPanels(rows: readonly CountRow[], specialMatch: string): HazardKindPanel[] {
-  const kinds = [...new Set(rows.map((r) => r.zone_kind_ja ?? ""))];
+  const kinds = [...new Set(rows.map((r) => String(r.zone_kind_ja ?? "")))];
   const panels = kinds.map((kind) => {
-    const mine = rows.filter((r) => (r.zone_kind_ja ?? "") === kind);
-    const phenomena = [...new Set(mine.map((r) => r.phenomenon_ja ?? ""))];
+    const mine = rows.filter((r) => (String(r.zone_kind_ja ?? "")) === kind);
+    const phenomena = [...new Set(mine.map((r) => String(r.phenomenon_ja ?? "")))];
     const muni = new Map<string, Record<string, number>>();
     for (const r of mine) {
-      const m = muni.get(r.municipality_ja ?? "") ?? {};
-      m[r.phenomenon_ja ?? ""] = (m[r.phenomenon_ja ?? ""] ?? 0) + r.n;
-      muni.set(r.municipality_ja ?? "", m);
+      const m = muni.get(String(r.municipality_ja ?? "")) ?? {};
+      m[String(r.phenomenon_ja ?? "")] = (m[String(r.phenomenon_ja ?? "")] ?? 0) + r.n;
+      muni.set(String(r.municipality_ja ?? ""), m);
     }
     const municipalities = [...muni.entries()]
       .map(([name, byPhenomenon]) => ({ name, byPhenomenon, total: Object.values(byPhenomenon).reduce((a, b) => a + b, 0) }))
@@ -419,7 +403,7 @@ export function buildHazardPanels(rows: readonly CountRow[], specialMatch: strin
 
 export async function loadHazard(db: CubeDb): Promise<HazardStory> {
   const h = AMAMI_STORY.hazard;
-  const [rows, riverCells, docs] = await Promise.all([countHazard(db), readDocCells(db, h.rivers.docId), documentsList(db)]);
+  const [rows, riverCells, docs] = await Promise.all([countRecordsBy(db, h.set, h.groupBy), readDocCells(db, h.rivers.docId), documentsList(db)]);
   const panels = buildHazardPanels(rows, h.specialKindMatch);
   return {
     panels,
