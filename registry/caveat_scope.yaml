@@ -70,9 +70,9 @@ scopes:
   # 付けないもの: organismSite（本文の割り当てできない約10%・83,515件は神奈川の実数。奄美の同じ趣旨は amamiWatershedGap が担う）、
   # regimes（2013–16 標本・2017–24 eBird・2025 以降 iNat という年代の入れ替わりは神奈川の GBIF の実測。奄美では未確認）、
   # gbifCutoff（2024年12月の途切れは神奈川分の GBIF 取り込みの実測。奄美では未確認）。確認できたら奄美用の注記を別に起こす。
-  - {kind: source_edition, ref: source_id=gbif_amami_occurrences, caveats: [effort, amamiRedList, amamiWatershedGap]}
-  - {kind: source_edition, ref: source_id=inaturalist_amami, caveats: [effort, amamiRedList, amamiWatershedGap]}
-  - {kind: source_edition, ref: source_id=nlni_l03b_landuse_by_watershed_amami, caveats: [amamiWatershedGap]}
+  - {kind: source_edition, ref: source_id=gbif_amami_occurrences, caveats: [effort, amamiRedList, amamiWatershedGap, amamiWatershedDem]}
+  - {kind: source_edition, ref: source_id=inaturalist_amami, caveats: [effort, amamiRedList, amamiWatershedGap, amamiWatershedDem]}
+  - {kind: source_edition, ref: source_id=nlni_l03b_landuse_by_watershed_amami, caveats: [amamiWatershedGap, amamiWatershedDem]}
   # 奄美 Step 2b（河川砂防情報システム）。水位は基準面と観測間隔、潮位は基準面、全て速報値。
   - {kind: source_edition, ref: source_id=kagoshima_kasen_suii_amami, caveats: [kasenStageDatum, kasenProvisional]}
   - {kind: source_edition, ref: source_id=kagoshima_kasen_suii_kiki_amami, caveats: [kasenStageDatum, kasenKikiDaily, kasenProvisional]}

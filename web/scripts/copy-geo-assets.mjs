@@ -47,7 +47,10 @@ function regionalGeojson(base) {
 }
 const FILES = [
   { src: regionalGeojson("nlni_w05_rivers"), dst: "rivers.geojson" },
-  { src: regionalGeojson("nlni_w12_watersheds"), dst: "watersheds.geojson" },
+  // 神奈川は W12、奄美は地理院10m標高から計算した流域（Issue #94）。名前を明示する：
+  // regionalGeojson は L1 として残す nlni_w12_watersheds_amami.geojson も拾ってしまう。
+  // scripts/regions.py の watershed_stems() と一致すること（scripts/tests/test_regions.py が検査）。
+  { src: ["nlni_w12_watersheds.geojson", "gsi_dem_watersheds_amami.geojson"], dst: "watersheds.geojson" },
   // 水源マップ（docs/WATER_SOURCE_MAP.md）。町丁目ポリゴンに水源比率を焼き込んだもの。
   // ブラウザが直接取る（/water は D1 を読まない）。作るのは scripts/build-water-geo.mjs。
   { src: "water_zones.geojson", dst: "water_zones.geojson" },
