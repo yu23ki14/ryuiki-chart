@@ -107,6 +107,7 @@ export const RECORD_TABLES = {
       "area_id", "name_ja", "category_ja", "category_code", "municipality_ja", "area_ha", "area_ha_raw", "designated_on",
       "designated_on_raw", "lat", "lon", "watershed", "zone", "note_ja", "source_id", "source_ref",
     ],
+    geometry: "geometry_geojson",
   },
   vegetation: {
     table: RECORD_SET_TABLES.vegetation,
@@ -216,7 +217,7 @@ export const recordsInputSchema = z.object({
   include_geometry: z
     .boolean()
     .optional()
-    .describe("true なら geometry_geojson も返す（植生・河川のみ。id を指定した 1 件のときだけ許す。一覧では返さない）"),
+    .describe("true なら geometry_geojson も返す（保護区・植生・河川・土砂災害区域のみ。id を指定した 1 件のときだけ許す。一覧では返さない）"),
   limit: z.number().int().min(1).max(RECORDS_MAX_ROWS).optional().describe(`返す行数の上限（既定 100、最大 ${RECORDS_MAX_ROWS}）`),
   after: idText("直前のページの最後の主キー（結果の next_after をそのまま渡す）。主キー昇順でその次から読む。深いページでは offset より after を使う（offset とは併用できない）").optional(),
   offset: z.number().int().min(0).optional().describe("読み飛ばす行数（浅いページ向け。深いページは after を使う。既定 0）"),
@@ -231,7 +232,7 @@ function sourceSetList(): string {
 export const RECORDS_DESCRIPTION =
   "出典（source_id）を指定して、台帳表の明細をそのまま取る。観測値・出現記録ではない地点・保護区・植生・河川・" +
   "哺乳類メッシュ・クマ出没・レッドリスト／外来種の評価など。任意 SQL ではなく、出典ごとに宣言された表だけ。" +
-  "主キー昇順。id で 1 件、q で名称・和名・学名の部分一致。植生・河川のジオメトリは id 指定の 1 件だけ include_geometry で返す。" +
+  "主キー昇順。id で 1 件、q で名称・和名・学名の部分一致。保護区・植生・河川・土砂災害区域のジオメトリは id 指定の 1 件だけ include_geometry で返す。" +
   "結果が truncated のときは next_after を after に渡して続きを取る（深いページは offset より速い）。" +
   "ライセンスや座標で行を除外・加工しない。利用条件は provenance の出典情報を見る。" +
   "地点（record_set=sites）は大気・水位・水質・地盤沈下などの観測局を含む全地点で、行の site_id は get_observations の scope={type:'site', siteId} にそのまま渡せる。" +
