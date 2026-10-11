@@ -14,7 +14,26 @@ import { MAP_METRICS, type WatershedMetricId, type MeshMetricId } from "@/lib/re
 import { MUNICIPALITY_LABEL } from "@/lib/municipality";
 import { fmt } from "@/components/viz/scales";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { REGION_JUMPS } from "@/lib/map/basemaps";
+import { OverlayLegend, type OverlayLegendData } from "./OverlayLegend";
+import {
+  HAZARD_STYLE,
+  OVERLAYS,
+  PHENOMENA,
+  PROTECTED_IDS,
+  hazardLayerSpecs,
+  overlayUrl,
+  overlaysForRegion,
+  parseLayersParam,
+  protectedLayerSpecs,
+  searchWithLayers,
+  type Bbox,
+  type OverlayId,
+  type PhenomenonCode,
+} from "@/lib/map/overlay-layers";
+
+type OverlayData = GeoJSON.FeatureCollection & OverlayLegendData;
 
 type WsMetric = WatershedMetricId;
 type MeshMetric = MeshMetricId;
@@ -30,6 +49,32 @@ export function MapPage() {
   // 地域の絞り（URL の ?region=）。'all' なら初期表示は神奈川のまま（MapCanvas の既定）で、ボタンを押したときだけ
   // fitBounds で移る。地域を絞っているときは、その地域の範囲へ移って始まり、切り替えるたびに移る。
   const region = useRegion();
+
+  // 奄美の重ね描き。ON/OFF の正は URL の ?layers=（往復する）。地域に出さないレイヤーは URL にあっても無視する
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const visibleOverlays = React.useMemo(() => overlaysForRegion(region), [region]);
+  const activeIds = React.useMemo(() => {
+    const vis = new Set(visibleOverlays.map((o) => o.id));
+    return parseLayersParam(searchParams.get("layers")).filter((id) => vis.has(id));
+  }, [searchParams, visibleOverlays]);
+  const toggleOverlay = (id: OverlayId, on: boolean) => {
+    const next = on ? [...activeIds, id] : activeIds.filter((x) => x !== id);
+    const qs = searchWithLayers(searchParams.toString(), next);
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  };
+  const [view, setView] = React.useState<{ bbox: Bbox; zoom: number } | null>(null);
+  const [phenomena, setPhenomena] = React.useState<PhenomenonCode[]>(PHENOMENA.map((p) => p.code));
+  const ovHazard = useJson<OverlayData>(activeIds.includes("hazard") ? overlayUrl(OVERLAYS[0], view) : "");
+  const ovA10 = useJson<OverlayData>(activeIds.includes("pa_a10") ? overlayUrl(OVERLAYS[1], view) : "");
+  const ovA15 = useJson<OverlayData>(activeIds.includes("pa_a15") ? overlayUrl(OVERLAYS[2], view) : "");
+  const ovA45 = useJson<OverlayData>(activeIds.includes("pa_a45") ? overlayUrl(OVERLAYS[3], view) : "");
+  const ovLoading = ovHazard.loading || ovA10.loading || ovA15.loading || ovA45.loading;
+  const overlayData: Record<OverlayId, OverlayData | null> = React.useMemo(
+    () => ({ hazard: ovHazard.data, pa_a10: ovA10.data, pa_a15: ovA15.data, pa_a45: ovA45.data }),
+    [ovHazard.data, ovA10.data, ovA15.data, ovA45.data],
+  );
   // 流域の作り方は地域で違う（神奈川は W12、奄美は標高から計算）。全体のときは両方を並べる
   const wsRegions = REGIONS.filter((r) => region === REGION_ALL || r.id === region);
   const [jump, setJump] = React.useState<{ bounds: [[number, number], [number, number]]; nonce: number } | null>(() =>
@@ -50,7 +95,7 @@ export function MapPage() {
   const isLanduse = wsMeta.kind === "landuse_delta";
   const [meshYear, setMeshYear] = React.useState<number | null>(null);
   const [sel, setSel] = React.useState<Record<string, unknown> | null>(null);
-  const [selKind, setSelKind] = React.useState<"watershed" | "site" | "mesh" | null>(null);
+  const [selKind, setSelKind] = React.useState<"watershed" | "site" | "mesh" | "hazard" | "protected" | null>(null);
 
   const ws = useRegionJson<GeoJSON.FeatureCollection & { landuse_years?: { from: number; to: number } | null }>("/api/geo/watersheds");
   const luYears = ws.data?.landuse_years ? ` ${ws.data.landuse_years.from}→${ws.data.landuse_years.to}` : "";
@@ -84,8 +129,12 @@ export function MapPage() {
     if (sites.data) s["ry-sites"] = { type: "geojson", data: sites.data as never };
     if (mesh.data) s["ry-mesh"] = { type: "geojson", data: mesh.data as never };
     if (rivers.data) s["ry-rivers"] = { type: "geojson", data: rivers.data as never };
+    for (const o of OVERLAYS) {
+      const d = overlayData[o.id];
+      if (d && activeIds.includes(o.id)) s[`ry-ov-${o.id}`] = { type: "geojson", data: d as never };
+    }
     return s;
-  }, [ws.data, sites.data, mesh.data, rivers.data]);
+  }, [ws.data, sites.data, mesh.data, rivers.data, overlayData, activeIds]);
 
   const layers: MapLayerSpec[] = React.useMemo(() => {
     const out: MapLayerSpec[] = [];
@@ -131,6 +180,11 @@ export function MapPage() {
         },
       });
     }
+    // 保護区（下）→ 警戒区域（上）。警戒区域が常に読めるよう、保護区は警戒区域の下に積む
+    for (const id of PROTECTED_IDS) {
+      if (activeIds.includes(id) && overlayData[id]) out.push(...protectedLayerSpecs(id, `ry-ov-${id}`));
+    }
+    if (activeIds.includes("hazard") && overlayData.hazard) out.push(...hazardLayerSpecs("ry-ov-hazard", phenomena));
     if (showSites && sites.data) {
       out.push({
         id: "ry-sites-circle",
@@ -153,7 +207,7 @@ export function MapPage() {
       });
     }
     return out;
-  }, [showWatersheds, showSites, showMesh, showRivers, ws.data, sites.data, mesh.data, rivers.data, wsMetric, meshMetric, wsBreaks, meshBreaks, isLanduse]);
+  }, [showWatersheds, showSites, showMesh, showRivers, ws.data, sites.data, mesh.data, rivers.data, wsMetric, meshMetric, wsBreaks, meshBreaks, isLanduse, activeIds, phenomena, overlayData]);
 
   return (
     <div className="flex-1 flex min-h-0">
@@ -163,11 +217,20 @@ export function MapPage() {
           layers={layers}
           className="absolute inset-0"
           fitTo={jump}
+          onViewChange={setView}
           onFeatureClick={(f) => {
             const p = f.properties as Record<string, unknown>;
             setSel(p);
             setSelKind(
-              f.layer.id.includes("ws") ? "watershed" : f.layer.id.includes("mesh") ? "mesh" : "site",
+              f.layer.id.startsWith("ry-hazard")
+                ? "hazard"
+                : f.layer.id.startsWith("ry-pa-")
+                  ? "protected"
+                  : f.layer.id.includes("ws")
+                    ? "watershed"
+                    : f.layer.id.includes("mesh")
+                      ? "mesh"
+                      : "site",
             );
           }}
           overlay={
@@ -215,10 +278,15 @@ export function MapPage() {
                   </ul>
                 </div>
               )}
+              <OverlayLegend
+                active={visibleOverlays.filter((o) => activeIds.includes(o.id))}
+                zoom={view?.zoom ?? null}
+                data={overlayData}
+              />
             </div>
           }
         />
-        {(ws.loading || sites.loading || mesh.loading || rivers.loading) && (
+        {(ws.loading || sites.loading || mesh.loading || rivers.loading || ovLoading) && (
           <div className="absolute top-2 right-12 z-10 card px-2 py-1">
             <Spinner label="読み込み中" />
           </div>
@@ -310,12 +378,39 @@ export function MapPage() {
           <Toggle checked={showRivers} onChange={setShowRivers} label="河川流路（W05・2,305本）" />
         </Section>
 
+        {visibleOverlays.length > 0 && (
+          <Section title="災害・保護区">
+            {visibleOverlays.map((o) => (
+              <React.Fragment key={o.id}>
+                <Toggle checked={activeIds.includes(o.id)} onChange={(v) => toggleOverlay(o.id, v)} label={o.label} />
+                {o.id === "hazard" && activeIds.includes("hazard") && (
+                  <div className="pl-5 pb-1 flex gap-1.5 flex-wrap">
+                    {PHENOMENA.map((p) => (
+                      <Btn
+                        key={p.code}
+                        active={phenomena.includes(p.code)}
+                        onClick={() =>
+                          setPhenomena((cur) => (cur.includes(p.code) ? cur.filter((c) => c !== p.code) : [...cur, p.code]))
+                        }
+                      >
+                        {p.label}
+                      </Btn>
+                    ))}
+                  </div>
+                )}
+              </React.Fragment>
+            ))}
+          </Section>
+        )}
+
         <div className="p-3 border-t border-line">
           <h2 className="text-[12px] font-semibold mb-1.5">選んだ地物</h2>
           {!sel && <p className="text-[11px] text-muted">地図をクリックすると内容が出ます。</p>}
           {sel && selKind === "watershed" && <WatershedCard p={sel} />}
           {sel && selKind === "site" && <SiteCard p={sel} />}
           {sel && selKind === "mesh" && <MeshCard p={sel} />}
+          {sel && selKind === "hazard" && <HazardCard p={sel} />}
+          {sel && selKind === "protected" && <ProtectedCard p={sel} />}
         </div>
 
         <div className="p-3 border-t border-line text-[10px] text-muted leading-relaxed">
@@ -486,6 +581,42 @@ function SiteCard({ p }: { p: Record<string, unknown> }) {
           </a>
         )}
       </div>
+    </div>
+  );
+}
+
+function HazardCard({ p }: { p: Record<string, unknown> }) {
+  const kind = String(p.zone_kind_code) as keyof typeof HAZARD_STYLE;
+  const area = p.area_m2 == null ? null : Number(p.area_m2);
+  return (
+    <div>
+      <div className="text-[13px] font-semibold">{String(p.zone_kind_ja ?? "–")}</div>
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <span className="w-3 h-3 rounded-sm" style={{ background: HAZARD_STYLE[kind]?.color ?? INK.muted }} />
+        <span className="text-[11px]">{String(p.phenomenon_ja ?? "–")}</span>
+      </div>
+      <Row k="市町村" v={String(p.municipality_ja ?? "–")} />
+      <Row k="所在地" v={String(p.locality_ja ?? "–")} />
+      {p.river_name_ja != null && String(p.river_name_ja) !== "" && <Row k="水系|河川" v={String(p.river_name_ja)} />}
+      {p.site_name_ja != null && String(p.site_name_ja) !== "" && <Row k="箇所名" v={String(p.site_name_ja)} />}
+      <Row k="この区域の面積" v={area != null ? `${nf(Math.round(area))} m²` : "–"} />
+      <p className="text-[10px] text-muted mt-1.5 leading-snug">
+        1つの区域（ポリゴン）の面積。区分・現象をまたいで足さない。
+      </p>
+    </div>
+  );
+}
+
+function ProtectedCard({ p }: { p: Record<string, unknown> }) {
+  const area = p.area_ha == null ? null : Number(p.area_ha);
+  return (
+    <div>
+      <div className="text-[13px] font-semibold">{String(p.name_ja ?? p.name ?? "（名称なし）")}</div>
+      <div className="text-[11px] text-ink-2 mb-1.5">{String(p.category_ja ?? p.category_code ?? "–")}</div>
+      <Row k="この区域の面積" v={area != null ? `${fmt(area)} ha` : "–"} />
+      <p className="text-[10px] text-muted mt-1.5 leading-snug">
+        自然公園の公園区域・特別地域・特別保護地区は入れ子なので、面積を足さない。
+      </p>
     </div>
   );
 }
