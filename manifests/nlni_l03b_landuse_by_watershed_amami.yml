@@ -7,6 +7,6 @@ update_mode: revision
 input:
   file: data/processed/nlni_l03b_landuse_by_watershed_amami.csv
 adapter: builtin
-expected_row_count: 283
+expected_row_count: 806
 evidence: >
   国土数値情報 L03-b 土地利用（奄美大島の流域別、2006/2016年版、前処理は data/processed/nlni_l03b_landuse_by_watershed_amami.csv）。奄美大島の流域に絞って前処理しているため region=jp-46。 place（watershed。common スコープ）の region_id は常に NULL（ADR-0022 決定1）なので、出典から決める。件数は data/processed の CSV の行数（2026-10-10）。 update_mode=revision は神奈川の nlni_l03b_landuse_by_watershed と同じ（版ごと）。
