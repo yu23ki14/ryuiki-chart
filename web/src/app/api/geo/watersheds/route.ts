@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
   const region = regionOf(parseRegion(req.nextUrl.searchParams.get("region")));
   try {
     const fc = await loadGeoJson("watersheds.geojson");
-    const { watersheds, landuseYears } = await watershedRollup(await d1CubeDb(), region ? { region } : {});
+    const { watersheds, landuseYears } = await watershedRollup(await d1CubeDb(), region);
     const rollup = new Map(watersheds.map((r) => [r.watershedId, r]));
     const features = fc.features.map((f) => {
       const id = String((f.properties as Record<string, unknown>).watershed_id ?? "");

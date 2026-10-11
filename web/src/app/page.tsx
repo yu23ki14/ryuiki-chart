@@ -115,12 +115,12 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ r
   // D1 は 1 クエリ 1 往復。まとめて投げる。
   const cdb = await d1CubeDb();
   const [s, longitudinal, landuseRows, redlistRows, effortRows, occ] = await Promise.all([
-    overviewCounts(cdb, ropt),
+    overviewCounts(cdb, region),
     longitudinalHighlight(region),
-    landuseHighlight(cdb, 8, ropt),
-    redlistSummary(cdb, undefined, ropt),
+    landuseHighlight(cdb, 8, region),
+    redlistSummary(cdb, undefined, region),
     effortYears(cdb, ropt),
-    occurrenceTotals(cdb, ropt),
+    occurrenceTotals(cdb, region),
   ]);
   const redlist = redlistRows.map((r) => ({
     list_year: r.listYear,

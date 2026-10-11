@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
       const unit = unitLabel(series[0]?.unitId ?? null);
       const caveats = series.length ? caveatKeysForFacets(facetsForSeries(series.map((s) => withTheme(s)), scope)) : [];
       // 出典ごとの取得日・更新方式・経過日数（加算。registry の生成物から引くので D1 は引かない。ADR-0014/0020）。
-      const freshness = freshnessForSeries(series, ropt);
+      const freshness = freshnessForSeries(series, {}, region);
       const sites = mode === "water" ? await sitesInWaterBody(db, sp.get("water") ?? "", { dataset: DATASET, ...ropt }) : undefined;
 
       if (series.length === 0) {
@@ -87,7 +87,7 @@ export async function GET(req: NextRequest) {
       const spec: CellSpec = { series, scope, grain: cellGrain, inputGrain, imputation: "lod", ...ropt };
       const { rows: points } = await summarize(db, spec, "zone");
       const caveats = caveatKeysForFacets(facetsForSeries(series.map((s) => withTheme(s)), scope));
-      return NextResponse.json({ points, unit, grain: cellGrain, basis, stat: stat ?? "representative", caveats, freshness: freshnessForSeries(series, ropt) });
+      return NextResponse.json({ points, unit, grain: cellGrain, basis, stat: stat ?? "representative", caveats, freshness: freshnessForSeries(series, {}, region) });
     }
 
     if (mode === "season") {
@@ -106,7 +106,7 @@ export async function GET(req: NextRequest) {
           : Promise.resolve({ rows: [], truncated: false }),
         rainMonthlyClim(db, ropt),
       ]);
-      return NextResponse.json({ overall: overall.rows, byZone: byZone.rows, rain: rain.rows, unit, freshness: freshnessForSeries(series, ropt) });
+      return NextResponse.json({ overall: overall.rows, byZone: byZone.rows, rain: rain.rows, unit, freshness: freshnessForSeries(series, {}, region) });
     }
 
     return NextResponse.json({ error: "不明な mode" }, { status: 400 });

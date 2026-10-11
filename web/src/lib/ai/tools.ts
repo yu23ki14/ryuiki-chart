@@ -636,9 +636,9 @@ const get_overview = tool({
     const t0 = performance.now();
     const db = await d1CubeDb();
     const [counts, rollupAll, occ] = await Promise.all([
-      overviewCounts(db, { region }),
-      watershedRollup(db, { region }),
-      occurrenceTotals(db, { region }),
+      overviewCounts(db, region),
+      watershedRollup(db, region),
+      occurrenceTotals(db, region),
     ]);
     // 生物の件数・種数は cube（日付のある記録だけ）。それ以外の総数は overviewCounts。
     const stats = {

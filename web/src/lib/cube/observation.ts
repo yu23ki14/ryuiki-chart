@@ -904,13 +904,14 @@ export async function rainDaily(db: CubeDb, opt?: { period?: { from?: string; to
 }
 
 /** RAIN の月別平年値（`SUM(v)/COUNT(DISTINCT 年)`）。v1 の `/10` はしない（同上）。 */
-export async function rainMonthlyClim(db: CubeDb): Promise<LimitedRows<MonthOfYearRow>> {
+export async function rainMonthlyClim(db: CubeDb, opt: { region?: RegionId } = {}): Promise<LimitedRows<MonthOfYearRow>> {
   const spec: CellSpec = {
     series: rainSeries(),
     scope: { kind: "all_sites" },
     grain: "day",
     stats: ["sum"],
     imputation: "zero",
+    ...(opt.region ? { region: opt.region } : {}),
   };
   return summarize(db, spec, "month_of_year", { measure: "sum_per_year" });
 }

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { IAS_SINCE_YEAR } from "@/lib/cube/sql";
 import { freshnessFor, OCCURRENCE_SOURCE_IDS, REDLIST_SOURCE_IDS } from "@/lib/cube/source-meta";
-import { sourcesOfRegion } from "@/lib/cube/region";
 import { parseRegion, regionOf } from "@/lib/region";
 import {
   d1CubeDb,
@@ -36,13 +35,13 @@ export async function GET(req: NextRequest) {
   try {
     const db = await d1CubeDb();
     // 出典ごとの取得日・更新方式・経過日数（加算。registry の生成物から引き、D1 は引かない。ADR-0014/0020）。
-    const freshness = freshnessFor(sourcesOfRegion(FRESHNESS_SOURCES[kind] ?? OCCURRENCE_SOURCE_IDS, region));
+    const freshness = freshnessFor(FRESHNESS_SOURCES[kind] ?? OCCURRENCE_SOURCE_IDS, {}, region);
     switch (kind) {
       case "effort": {
         const [groups, effort, totals] = await Promise.all([
           taxonGroupYears(db, ropt),
           effortYears(db, ropt),
-          occurrenceTotals(db, ropt),
+          occurrenceTotals(db, region),
         ]);
         // 画面の形（snake_case）は v1 のまま。totals.mesh は日付のある記録が入るグリッド数（D3）。
         return NextResponse.json({
@@ -91,7 +90,7 @@ export async function GET(req: NextRequest) {
       case "mesh":
         return NextResponse.json({ rows: await speciesMeshYears(db, sp.get("binom") ?? "", ropt), freshness });
       case "ias": {
-        const rows = await iasSpecies(db, ropt);
+        const rows = await iasSpecies(db, region);
         return NextResponse.json({
           freshness,
           since_year: IAS_SINCE_YEAR,

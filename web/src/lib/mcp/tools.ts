@@ -40,7 +40,7 @@ import { representativeSeries } from "@/lib/cube/series";
 import { EDNA_DESCRIPTION, EDNA_SOURCE_ID, ednaInputSchema, queryEdna } from "@/lib/edna";
 import { caveatsForFacets, facetsForOccurrence } from "@/lib/cube/caveats";
 import { SPECIES_MIN_N } from "@/lib/cube/occurrence";
-import { sourcesOfRegion } from "@/lib/cube/region";
+import { sourceInRegion, sourcesOfRegion } from "@/lib/cube/region";
 import { regionSchema, REGION_NOTE } from "./region-schema";
 import { loadDatapackage } from "./datapackage";
 import { McpInputError } from "./errors";
@@ -166,7 +166,7 @@ export const MCP_TOOLS: McpTool[] = [
       }
       const all = await variableCatalog(db, { dataset: MEASUREMENTS_DATASET, region });
       const { rows, truncated } = cap(all, limit);
-      const sourceIds = sourcesOfRegion(rows.flatMap((r) => seriesSourceRefsOf(r.variableId)), region);
+      const sourceIds = rows.flatMap((r) => seriesSourceRefsOf(r.variableId)).filter((r) => sourceInRegion(r.sourceId, region));
       return buildDataEnvelope(
         query,
         { variables: rows.map((r) => ({ ...r, label: VARIABLE_LABEL[r.variableId]?.short ?? null })) },

@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   // meshByYear は種別の絶滅危惧種数を持たない（0）。gridCatalog は持つ。
   const rows = year
     ? (await meshByYear(db, year, ropt)).map((r) => ({ ...r, rlSpeciesN: 0 }))
-    : await gridCatalog(db, ropt);
+    : await gridCatalog(db, region);
   return NextResponse.json(
     {
       type: "FeatureCollection",

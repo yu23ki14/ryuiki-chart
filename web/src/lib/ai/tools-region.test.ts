@@ -66,9 +66,9 @@ describe("AI ツールの region", () => {
 
   it("get_overview / get_redlist / get_biota_trend / get_sites も region を渡す", async () => {
     await run("get_overview", { region: "jp-46" });
-    expect(spies.overviewCounts).toHaveBeenCalledWith(expect.anything(), { region: "jp-46" });
-    expect(spies.watershedRollup).toHaveBeenCalledWith(expect.anything(), { region: "jp-46" });
-    expect(spies.occurrenceTotals).toHaveBeenCalledWith(expect.anything(), { region: "jp-46" });
+    expect(spies.overviewCounts).toHaveBeenCalledWith(expect.anything(), "jp-46");
+    expect(spies.watershedRollup).toHaveBeenCalledWith(expect.anything(), "jp-46");
+    expect(spies.occurrenceTotals).toHaveBeenCalledWith(expect.anything(), "jp-46");
     await run("get_redlist", { year: 2014, region: "jp-46" });
     expect(spies.redlistBundle).toHaveBeenCalledWith(expect.anything(), 2014, expect.objectContaining({ region: "jp-46" }));
     await run("get_biota_trend", { mode: "groups", region: "jp-46" });

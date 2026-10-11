@@ -106,6 +106,6 @@ describe("region の配線", () => {
 
   it("get_observations: region 省略なら timeseries の入力に region が入らない", async () => {
     await call("get_observations", { variableId: "common:variable:water.bod", scope: { type: "zone" }, grain: "year" });
-    expect(spies.timeseries.mock.calls[0][1]).not.toHaveProperty("region");
+    expect((spies.timeseries.mock.calls[0] as unknown[])[1]).not.toHaveProperty("region");
   });
 });
