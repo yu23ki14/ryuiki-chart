@@ -411,13 +411,26 @@ caveats:
   severity: warning
   kind: coverage_gap
   title_ja: null
-  body_ja: 奄美大島の流域は、国土数値情報 W12（1977年版）のポリゴンで決めている。W12 が覆わない部分（島の海岸部など）の記録は流域が空になり、流域ごとの集計には出ない。島全体の件数と流域別の合計は一致しない。
+  body_ja: 奄美大島の流域は地理院の10m標高から計算した面で決めている。海上や海岸線の外にずれた座標（特に iNaturalist の秘匿された座標）の記録は流域が空になり、流域ごとの集計には出ない。島全体の件数と流域別の合計は一致しない。
   quote: null
   review:
     reviewed_on: '2026-10-10'
     reviewer: claude（オーナー委任）
     owner_confirmed_on: null
-    reason: W12 が覆わない部分は流域が NULL になる（網羅性の欠け）。流域別の合計を島全体と読むと過小になる。オーナー確認待ち。
+    reason: 海上・海岸線の外にずれた座標は流域が NULL になる（網羅性の欠け）。流域別の合計を島全体と読むと過小になる。Issue #94 で DEM 流域に合わせて本文を書き直した。オーナー確認待ち。
+    changed:
+    - body
+- key: amamiWatershedDem
+  severity: warning
+  kind: definition
+  title_ja: null
+  body_ja: 奄美大島の流域は国土数値情報 W12 の公式の流域界ではなく、国土地理院の10m標高から集水域を計算したもの。小さな海岸斜面は隣の流域に含めてある（面ごとの unit_kind は河口の流域・沿岸の小流域群・小島、merged_share は面積のうち併合した小斜面の割合）。河川（W05）の河口との位置は検査済みだが、専門家の確認は済んでいない。
+  quote: null
+  review:
+    reviewed_on: '2026-10-11'
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: null
+    reason: 標高からの計算で小さな海岸斜面を併合しており、公式の流域界と読むと誤る（定義の違い）。専門家（水野研）の確認待ち（Issue #94 §8-1・2・4）。オーナー確認待ち。
     changed:
     - new
 # 奄美 Step 2b（docs/plans/AMAMI_STEP2B.md §3）。鹿児島県 河川砂防情報システムの水位・潮位・ダム。オーナーの確認は未了

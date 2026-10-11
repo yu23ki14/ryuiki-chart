@@ -27,6 +27,10 @@ export interface RegionUi {
   hasFixedNarrative: boolean;
   /** レッドリスト画面の既定の版の年。無ければ最新の版。 */
   defaultRedlistYear?: number;
+  /** 流域マップの説明（地図の左の見出し下）。流域の作り方は地域で違う（Issue #94）。 */
+  watershedBasis: string;
+  /** 流域マップの出典の流域界の部分。 */
+  watershedSource: string;
 }
 
 export const REGION_ALL = "all" as const;
@@ -40,6 +44,8 @@ export const REGIONS: readonly RegionUi[] = [
     highlightWater: "境川（１）",
     hasFixedNarrative: true,
     defaultRedlistYear: 2022,
+    watershedBasis: "国土数値情報 W12 の単位流域（1977年版）",
+    watershedSource: "国土数値情報 流域界・非集水域 W12（国土数値情報利用約款）",
     bounds: [
       [138.9, 35.1],
       [139.83, 35.68],
@@ -50,6 +56,8 @@ export const REGIONS: readonly RegionUi[] = [
     label: "奄美大島",
     jumpLabel: "奄美大島へ",
     hasFixedNarrative: false,
+    watershedBasis: "国土地理院の10m標高から計算した流域",
+    watershedSource: "国土地理院 基盤地図情報 数値標高モデル（DEM10B）から計算した流域界",
     bounds: [
       [129.1, 27.95],
       [129.85, 28.8],

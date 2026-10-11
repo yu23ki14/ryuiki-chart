@@ -8,7 +8,7 @@ import { Btn, nf, Spinner } from "@/components/ui";
 import { useJson } from "@/components/useJson";
 import { useRegionJson } from "@/components/useRegionJson";
 import { useRegion } from "@/components/useRegion";
-import { REGION_ALL, regionBounds, regionLabel } from "@/lib/region";
+import { REGION_ALL, REGIONS, regionBounds, regionLabel, regionUi } from "@/lib/region";
 import { caveatBody } from "@/lib/registry/lookup-client";
 import { MAP_METRICS, type WatershedMetricId, type MeshMetricId } from "@/lib/registry/generated-client";
 import { MUNICIPALITY_LABEL } from "@/lib/municipality";
@@ -30,6 +30,8 @@ export function MapPage() {
   // 地域の絞り（URL の ?region=）。'all' なら初期表示は神奈川のまま（MapCanvas の既定）で、ボタンを押したときだけ
   // fitBounds で移る。地域を絞っているときは、その地域の範囲へ移って始まり、切り替えるたびに移る。
   const region = useRegion();
+  // 流域の作り方は地域で違う（神奈川は W12、奄美は標高から計算）。全体のときは両方を並べる
+  const wsRegions = region === REGION_ALL ? REGIONS : [regionUi(region)!];
   const [jump, setJump] = React.useState<{ bounds: [[number, number], [number, number]]; nonce: number } | null>(() =>
     region === REGION_ALL ? null : { bounds: regionBounds(region), nonce: 1 },
   );
@@ -227,7 +229,8 @@ export function MapPage() {
         <div className="p-3 border-b border-line">
           <h1 className="text-[14px] font-bold">流域マップ{region !== REGION_ALL && `（${regionLabel(region)}）`}</h1>
           <p className="text-[11px] text-muted mt-0.5 leading-snug">
-            国土数値情報 W12 の単位流域（{ws.data ? `${ws.data.features.length}面・` : ""}神奈川・奄美とも1977年版）を土台に、観測地点と生物記録を重ねる。
+            {wsRegions.map((r) => `${r.label}は${r.watershedBasis}`).join("、")}
+            {ws.data ? `（${ws.data.features.length}面）` : ""}を土台に、観測地点と生物記録を重ねる。
           </p>
         </div>
 
@@ -318,8 +321,9 @@ export function MapPage() {
         <div className="p-3 border-t border-line text-[10px] text-muted leading-relaxed">
           <p className="mb-1.5">{caveatBody("organismSite")}</p>
           <p className="mb-1.5">{caveatBody("zone")}</p>
+          {wsRegions.some((r) => r.id === "jp-46") && <p className="mb-1.5">{caveatBody("amamiWatershedDem")}</p>}
           <p>
-            出典: 国土数値情報 流域界・非集水域 W12（国土数値情報利用約款）／河川 W05／土地利用細分メッシュ L03-b、
+            出典: {wsRegions.map((r) => r.watershedSource).join("／")}／河川 W05／土地利用細分メッシュ L03-b、
             環境省 公共用水域 水質測定点マスタ、GBIF・iNaturalist。
           </p>
         </div>

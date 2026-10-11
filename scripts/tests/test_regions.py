@@ -198,3 +198,17 @@ def test_site_scope():
     assert rc.site_scope("jma_sst_amami__617") == "jp-46"
     assert rc.site_scope("jma_stations_amami") == "jp-46"
     assert rc.site_scope("jma_stations") == "jp-14"
+
+
+def test_copy_geo_assets_watershed_files_match_regions():
+    """web/scripts/copy-geo-assets.mjs の流域の入力が regions.py の watershed_stems() と一致する（Issue #94）。
+    .mjs は文字列として読む。watershed_stems() が無い（担当 B の変更前）ときは神奈川の先頭だけ確かめる。"""
+    mjs = (SCRIPTS.parent / "web" / "scripts" / "copy-geo-assets.mjs").read_text(encoding="utf-8")
+    m = re.search(r'src:\s*\[([^\]]*)\],\s*dst:\s*"watersheds\.geojson"', mjs)
+    assert m, "copy-geo-assets.mjs に watersheds の src 配列が無い"
+    names = re.findall(r'"([^"]+\.geojson)"', m.group(1))
+    assert names[0] == "nlni_w12_watersheds.geojson"
+    if hasattr(rc, "watershed_stems"):
+        assert names == [f"{s}.geojson" for s in rc.watershed_stems()]
+    else:
+        assert names[1:] == ["gsi_dem_watersheds_amami.geojson"]
