@@ -290,7 +290,7 @@ def _load_key_spaces() -> list[dict]:
         )
     return items
 
-# watershed 節の入力（L1、国土数値情報 W12 流域界 1977年版、377面）。
+# watershed 節の入力（L1。神奈川は国土数値情報 W12 流域界 1977年版の377面、奄美は地理院10m標高から計算した71面前後）。
 # common.WATERSHED_JSONL_RELPATHS（全地域の連結）と共有する（指紋計算とビルド側が同じファイルを
 # 指す。scripts/registry/common.py の同名の定数のコメント参照）。テストは
 # monkeypatch でこのモジュール変数を差し替える（build_taxon.CROSSWALK_CSV と
@@ -352,7 +352,7 @@ def _load_watershed_jsonl() -> list[dict]:
                         "入力の列名が変わった可能性がある。黙って NULL 埋めしない"
                         "（scripts/registry/build_place.py の watershed 節を確認すること）。"
                     )
-                # 出典は jsonl の名前（regions.w12_stems()）。place_source_ref の版を行ごとに引くため
+                # 出典は jsonl の名前（regions.watershed_stems()）。place_source_ref の版を行ごとに引くため
                 row["_edition_source_id"] = path.stem
                 rows.append(row)
     return rows
@@ -636,7 +636,7 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
         ))
         ref_rows.append((pid, site_id, KS_SITE_ID))
 
-    # --- watershed: data/processed/nlni_w12_watersheds.jsonl（L1、377件） -----
+    # --- watershed: 全地域の流域の jsonl（L1。神奈川 W12 377件＋奄美 DEM 流域。regions.watershed_stems） -----
     # 入力は Phase B `phase-b/place-attributes` で derived.watershed_meta から
     # 切り替えた（モジュール docstring「watershed」節参照）。`place` に載せる5列は
     # 旧実装と同じ列（water_system_name_ja_estimated は v1（build-geo.mjs）が
@@ -653,7 +653,7 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
         # _load_watershed_jsonl() が WATERSHED_JSONL_REQUIRED_KEYS の存在を
         # 行ごとに検査済みなので、ここでは `.get()` ではなく直接添字で読む
         # （キーが消えたときに黙って NULL 埋めしない。code-review 指摘）。
-        pid = common.place_id("watershed", "nlni", o["watershed_id"], scope="common", seen=place_id_seen)
+        pid = common.watershed_place_id(o["watershed_id"], seen=place_id_seen)
         place_rows.append((
             pid, common.region_id_for_scoped_id(pid), "watershed",
             o["water_system_name_ja_estimated"] or None,

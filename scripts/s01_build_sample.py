@@ -103,8 +103,8 @@ DEFAULT_CELLS_DB = ROOT / "data" / "db" / "cells.sqlite"
 DEFAULT_PROCESSED_DIR = ROOT / "data" / "processed"
 DEFAULT_COVERAGE_YAML = ROOT / "data" / "sample" / "coverage.yaml"
 DEFAULT_OUT_DIR = ROOT / "data" / "sample"
-# W12（流域界）と土地利用 CSV は地域ごとに1ファイル（pipeline_inputs の命名規則。全地域ぶんを使う）。
-DEFAULT_GEOJSON = tuple(collector_regions.w12_paths(ROOT / "data" / "processed"))
+# 流域（神奈川は W12、奄美は地理院10m標高から計算した流域）と土地利用 CSV は地域ごとに1ファイル（pipeline_inputs の命名規則。全地域ぶんを使う）。
+DEFAULT_GEOJSON = tuple(collector_regions.watershed_paths(ROOT / "data" / "processed"))
 ACCESS_YAML = ROOT / "registry" / "source" / "access.yaml"
 LANDUSE_BASE = "nlni_l03b_landuse_by_watershed"
 
@@ -1009,7 +1009,7 @@ def main() -> int:
         shutil.copyfile(processed_dir / name, processed_out / name)
 
     # --- declaration_counts.yaml ---
-    geojson_path = collector_regions.w12_paths(args.processed_dir)
+    geojson_path = collector_regions.watershed_paths(args.processed_dir)
     landuse_csv_path = landuse_csv_paths(args.processed_dir)
     counts = build_declaration_counts(ryuiki_conn, selected, geojson_path, landuse_csv_path, manifests_dir=args.manifests_dir)
     (out_dir / "declaration_counts.yaml").write_text(_dump_declaration_counts_yaml(counts), encoding="utf-8")

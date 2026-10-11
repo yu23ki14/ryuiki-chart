@@ -28,15 +28,16 @@ from __future__ import annotations
 import hashlib
 import pathlib
 
-import regions  # 地域ごとの W12・土地利用のファイル名（依存なし。CI から依存無しで呼べる）
+import regions  # 地域ごとの流域・土地利用のファイル名（依存なし。CI から依存無しで呼べる）
 
 # リポジトリルートからの相対パス。原本2つ（ryuiki.sqlite・cells.sqlite）＋
 # data/processed の入力（v1・v2 のどちらかが読むもの。
 # data/sample/coverage.yaml の wholesale_processed_files と同じ集合）。
-# 地域ごとのファイル（W12 の GeoJSON・JSONL、土地利用 CSV）は REGIONS の全地域ぶんを並べる
-# （`regions.name()` の命名規則。神奈川は従来の名前のまま、奄美は `_amami` 付き）。
-W12_PROCESSED_FILES: tuple[str, ...] = tuple(
-    f"{stem}{ext}" for ext in (".geojson", ".jsonl") for stem in regions.w12_stems()
+# 地域ごとのファイル（流域の GeoJSON・JSONL、土地利用 CSV）は REGIONS の全地域ぶんを並べる
+# （流域は `regions.watershed_stems()`、土地利用は `regions.name()` の命名規則。神奈川は従来の名前のまま。
+# 奄美の流域は地理院10m標高から計算した gsi_dem_watersheds_amami.*。W12 の奄美25面は入らない。Issue #94）。
+WATERSHED_PROCESSED_FILES: tuple[str, ...] = tuple(
+    f"{stem}{ext}" for ext in (".geojson", ".jsonl") for stem in regions.watershed_stems()
 )
 LANDUSE_PROCESSED_FILES: tuple[str, ...] = tuple(
     f"{regions.name('nlni_l03b_landuse_by_watershed', rid)}.csv" for rid in regions.REGIONS
@@ -45,7 +46,7 @@ LANDUSE_PROCESSED_FILES: tuple[str, ...] = tuple(
 SOURCE_FILE_KEYS: tuple[str, ...] = (
     "data/db/ryuiki.sqlite",
     "data/db/cells.sqlite",
-    *(f"data/processed/{n}" for n in W12_PROCESSED_FILES),
+    *(f"data/processed/{n}" for n in WATERSHED_PROCESSED_FILES),
     *(f"data/processed/{n}" for n in LANDUSE_PROCESSED_FILES),
     "data/processed/moe_ias_list.csv",
     "data/processed/taxon_crosswalk.csv",

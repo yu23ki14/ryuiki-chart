@@ -263,37 +263,75 @@ def read_w12(shp, clip_bbox=None):
     return fields, enc, len(recs), items
 
 
-# ---- W12 単位流域の割り当て（流域単位で束ねるための共通処理） ----
-_W12 = {}
+# ---- 流域の割り当て（流域単位で束ねるための共通処理） ----
+# 地域ごとの流域は regions.REGIONS[rid]["watershed"]。method=w12 は国土数値情報 W12（shapefile を読む。神奈川）、
+# method=dem は地理院10m標高から計算した流域（c69 の GeoJSON を読む。奄美。Issue #94）。
+_WATERSHED_UNITS = {}
+_WATERSHED = {}
 
 
-def w12_index(rid="jp-14"):
-    """W12 単位流域の STRtree を返す -> (tree, ids, codes, names)。地域ごとに1回だけ作る。
-    県全域でない地域は、c30 と同じ bbox の絞り込みを掛ける（c30 の出力と流域IDが一致する）。"""
-    if rid in _W12:
-        return _W12[rid]
-    import csv as _csv
-    import shapely
+def watershed_units(rid="jp-14"):
+    """地域の流域の面と属性を返す（地域ごとに1回だけ作る）。
+    -> (geoms, ids, codes, names)。names は {watershed_id: (水系名の推定 or "", 区分 or "")}。
+    method=w12: shapefile（県全域でない地域は c30 と同じ bbox の絞り込み。c30 の出力と流域IDが一致する）、
+    水系名は c30 の CSV から。method=dem: `<stem>.geojson` の properties から（`water_system_code_old` は空）。"""
+    if rid in _WATERSHED_UNITS:
+        return _WATERSHED_UNITS[rid]
     L = layout(rid)
-    _, _, _, items = read_w12(L["w12_shp"], L["clip_bbox"])
-    geoms = [g for _, _, g, _ in items]
-    ids = [f"{rc[1]}-{rc[2]}" for _, _, _, rc in items]
-    codes = [rc[1] for _, _, _, rc in items]
+    cfg = regions.get(rid)["watershed"]
     names = {}
-    p = PROC / f"{L['w12_sid']}.csv"
-    if p.exists():
-        for row in _csv.DictReader(open(p, encoding="utf-8")):
-            names[row["watershed_id"]] = row["water_system_name_ja_estimated"] or None
-    _W12[rid] = (shapely.STRtree(geoms), ids, codes, names)
-    return _W12[rid]
+    if cfg["method"] == "dem":
+        gj = json.load(open(PROC / f"{cfg['stem']}.geojson", encoding="utf-8"))
+        geoms, ids, codes = [], [], []
+        for feat in gj["features"]:
+            g = shp_shape(feat["geometry"])
+            if not g.is_valid:
+                g = g.buffer(0)
+            pr = feat["properties"]
+            geoms.append(g)
+            ids.append(pr["watershed_id"])
+            codes.append(pr.get("water_system_code_old"))
+            names[pr["watershed_id"]] = (pr.get("water_system_name_ja_estimated") or "",
+                                         pr.get("water_system_category_ja") or "")
+    elif cfg["method"] == "w12":
+        _, _, _, items = read_w12(L["w12_shp"], L["clip_bbox"])
+        geoms = [g for _, _, g, _ in items]
+        ids = [f"{rc[1]}-{rc[2]}" for _, _, _, rc in items]
+        codes = [rc[1] for _, _, _, rc in items]
+        p = PROC / f"{L['w12_sid']}.csv"
+        if p.exists():
+            for row in csv.DictReader(open(p, encoding="utf-8")):
+                names[row["watershed_id"]] = (row["water_system_name_ja_estimated"] or "",
+                                              row.get("water_system_category_ja") or "")
+    else:
+        raise ValueError(f"未知の watershed.method: {cfg['method']!r}（region={rid}）")
+    _WATERSHED_UNITS[rid] = (geoms, ids, codes, names)
+    return _WATERSHED_UNITS[rid]
+
+
+def watershed_index(rid="jp-14"):
+    """流域の STRtree を返す -> (tree, ids, codes, names)。地域ごとに1回だけ作る。names は {id: 水系名 or None}。"""
+    if rid in _WATERSHED:
+        return _WATERSHED[rid]
+    import shapely
+    geoms, ids, codes, names = watershed_units(rid)
+    _WATERSHED[rid] = (shapely.STRtree(geoms), ids, codes, {k: v[0] or None for k, v in names.items()})
+    return _WATERSHED[rid]
+
+
+def watershed_join_method(rid="jp-14"):
+    """割り当ての方法の説明文（`watershed_join_method` 列）。"""
+    if regions.get(rid)["watershed"]["method"] == "dem":
+        return "重心点が地理院10m標高から計算した流域に内包"
+    return f"重心点がW12単位流域({layout(rid)['pref_short']},昭和52年)に内包"
 
 
 def assign_watershed(geom, rid="jp-14"):
-    """ジオメトリの重心が入る W12 単位流域を返す。
+    """ジオメトリの重心が入る流域を返す。
     -> dict(watershed_id, water_system_code_old, water_system_name_ja_estimated, watershed_join_method)
     """
     import shapely
-    tree, ids, codes, names = w12_index(rid)
+    tree, ids, codes, names = watershed_index(rid)
     c = geom.centroid
     pt = shapely.points(c.x, c.y)
     hit = tree.query(pt, predicate="within")
@@ -301,9 +339,10 @@ def assign_watershed(geom, rid="jp-14"):
     if len(hit):
         wid = int(hit[0])
     else:                       # 重心が流域界外（海側等）→ 最近傍を採らずに null
+        label = "地理院10m標高から計算した流域" if regions.get(rid)["watershed"]["method"] == "dem" else "W12流域界"
         return {"watershed_id": None, "water_system_code_old": None,
                 "water_system_name_ja_estimated": None,
-                "watershed_join_method": "重心がW12流域界の外 → 未割当"}
+                "watershed_join_method": f"重心が{label}の外 → 未割当"}
     return {"watershed_id": ids[wid], "water_system_code_old": codes[wid],
             "water_system_name_ja_estimated": names.get(ids[wid]),
-            "watershed_join_method": f"重心点がW12単位流域({layout(rid)['pref_short']},昭和52年)に内包"}
+            "watershed_join_method": watershed_join_method(rid)}

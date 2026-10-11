@@ -81,6 +81,8 @@ REGIONS: dict[str, dict] = {
         "nlni_pref_codes": ("14",),
         "estat_pref_codes": ("14",),
         "pref_redlist": {"source": "taxa_column", "list_ids": ("rl2020", "rl2026")},
+        # 流域（place・割り当て・土地利用の流域集計の入力）。神奈川は国土数値情報 W12 のまま（1ビットも変えない）。
+        "watershed": {"method": "w12", "stem": "nlni_w12_watersheds"},
     },
     "jp-46": {
         "slug": "amami",
@@ -120,6 +122,11 @@ REGIONS: dict[str, dict] = {
         "nlni_pref_codes": ("46",),
         "estat_pref_codes": ("46",),
         "pref_redlist": {"source": "lookup_table", "list_id": "kgrl2014"},
+        # 流域: W12 の奄美25面は陸の42.5%しか覆わないので、地理院10m標高から計算した面（c69、Issue #94）に置き換える
+        # （併存させない）。W12 の L1（nlni_w12_watersheds_amami.*）は残し、c69 の比較検査の入力に使う。
+        "watershed": {"method": "dem", "stem": "gsi_dem_watersheds_amami",
+                      "a_min_km2": 3.0, "min_island_km2": 0.1,
+                      "simplify_px": 3, "dem_zoom": 14, "w05_match_m": 500},
     },
 }
 
@@ -179,9 +186,10 @@ def region_of_source_id(source_id: str) -> str | None:
     return None
 
 
-def w12_stems() -> list[str]:
-    """全地域の W12（流域界）の名前を REGIONS の順に返す。"""
-    return [name("nlni_w12_watersheds", rid) for rid in REGIONS]
+def watershed_stems() -> list[str]:
+    """全地域の流域（place・割り当ての入力）の名前を REGIONS の順に返す。
+    地域ごとの `watershed.stem`（神奈川は W12、奄美は地理院10m標高から計算した面。method は `w12`/`dem`）。"""
+    return [REGIONS[rid]["watershed"]["stem"] for rid in REGIONS]
 
 
 def as_paths(paths) -> list[pathlib.Path]:
@@ -191,10 +199,10 @@ def as_paths(paths) -> list[pathlib.Path]:
     return [pathlib.Path(p) for p in paths]
 
 
-def w12_paths(proc_dir, ext: str = "geojson", missing_ok: bool = False) -> list[pathlib.Path]:
-    """全地域の W12 のファイル（`proc_dir/<stem>.<ext>`。`w12_stems()` の順）。
+def watershed_paths(proc_dir, ext: str = "geojson", missing_ok: bool = False) -> list[pathlib.Path]:
+    """全地域の流域のファイル（`proc_dir/<stem>.<ext>`。`watershed_stems()` の順）。
     `missing_ok=True` は無い地域を飛ばす（そこの点は流域 NULL）。False は存在を問わず全地域ぶんを返す。"""
-    paths = [pathlib.Path(proc_dir) / f"{stem}.{ext}" for stem in w12_stems()]
+    paths = [pathlib.Path(proc_dir) / f"{stem}.{ext}" for stem in watershed_stems()]
     return [p for p in paths if p.exists()] if missing_ok else paths
 
 
