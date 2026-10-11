@@ -8,8 +8,10 @@
  */
 import type { CubeDb } from "@/lib/cube/db";
 import { docSeriesPoints, type DocSeriesPoint } from "@/lib/cube/documents";
+import { searchWithLayers } from "@/lib/map/overlay-layers";
+import { searchWithRegion } from "@/components/region-url";
 import { timeseries } from "@/lib/cube/timeseries";
-import { countRecordsBy, type CountRow, docNotes, documentsList, readRecordSet, type DocNote, type DocumentRow } from "@/lib/records";
+import { countRecordsBy, type CountRow, docNotes, readRecordSet, type DocNote, type DocumentRow } from "@/lib/records";
 
 /* ------------------------------------------------------------------ */
 /* 宣言（章の構造。数値は持たない）                                        */
@@ -125,7 +127,10 @@ export const AMAMI_STORY = {
       flooded: "氾濫した二級河川",
     },
     /** 地図への導線（ページ内に1つ）。 */
-    mapHref: "/map?region=jp-46&layers=hazard",
+    sourceId: "bodik_kagoshima_dosha_amami",
+    /** 地図の初期の視点（経度, 緯度, ズーム）。奄美大島の中央付近で、警戒区域が出るズーム以上。 */
+    mapView: { lon: 129.49, lat: 28.38, zoom: 12 },
+    mapLayers: ["hazard"] as const,
   },
   /** 各章末に出す出典の文書。 */
   docs: {
@@ -207,15 +212,16 @@ export interface MongooseStory {
   docs: StoryDoc[];
 }
 
-export async function loadMongoose(db: CubeDb): Promise<MongooseStory> {
+export async function loadMongoose(db: CubeDb, docs: readonly DocumentRow[]): Promise<MongooseStory> {
   const c = AMAMI_STORY.mongoose;
-  const [total, cpue, notes, declNotes, docs] = await Promise.all([
+  const [total, cpue, notes, declNotes] = await Promise.all([
     docSeriesPoints(db, c.docId, c.tableId, c.totalRow),
     docSeriesPoints(db, c.docId, c.tableId, c.cpueRow),
     docNotes(db, c.docId),
     docNotes(db, c.declarationDocId),
-    documentsList(db),
   ]);
+  // 出典の文書や行の名前が変わって系列が空になったら、図が静かに欠けないよう例外にする。
+  if (total.length === 0 || cpue.length === 0) throw new Error(`マングースの系列が空（${c.docId} ${c.tableId} ${c.totalRow} / ${c.cpueRow}）`);
   return {
     total,
     cpue,
@@ -295,14 +301,10 @@ export async function loadRainDays(db: CubeDb): Promise<{ days: RainDay[]; maxHo
   };
 }
 
-async function loadDamage(db: CubeDb): Promise<DamageTable> {
+async function loadDamage(db: CubeDb, notesByDoc: ReadonlyMap<string, DocNote[]>): Promise<DamageTable> {
   const d = AMAMI_STORY.rain.damage;
-  const byDoc = new Map<string, DocCell[]>();
-  const notesByDoc = new Map<string, DocNote[]>();
-  for (const id of new Set(d.sources.map((s) => s.docId))) {
-    byDoc.set(id, await readDocCells(db, id));
-    notesByDoc.set(id, await docNotes(db, id));
-  }
+  const ids = [...new Set(d.sources.map((s) => s.docId))];
+  const byDoc = new Map(await Promise.all(ids.map(async (id) => [id, await readDocCells(db, id)] as const)));
   const columns: DamageColumn[] = d.sources.map((s) => {
     const cells = byDoc.get(s.docId)!;
     const values: DamageColumn["values"] = {};
@@ -313,7 +315,7 @@ async function loadDamage(db: CubeDb): Promise<DamageTable> {
       // 内訳の足し算は、全部の部分が揃っているときだけ（欠けた部分を 0 とみなさない）。
       values[it.key] = parts.length > 0 && parts.every((p) => p !== null) ? { value: parts.reduce((a, p) => a + p!.value, 0), unit: parts[0]!.unit } : null;
     }
-    return { key: s.key, label: s.label, docId: s.docId, values, note: pickNote(notesByDoc.get(s.docId)!, s.noteMatch, s.docId) };
+    return { key: s.key, label: s.label, docId: s.docId, values, note: pickNote(notesByDoc.get(s.docId) ?? [], s.noteMatch, s.docId) };
   });
   const agreed = d.items.flatMap((it) => {
     const vs = columns.map((c) => c.values[it.key]);
@@ -336,26 +338,27 @@ async function loadChisui(db: CubeDb, docs: readonly DocumentRow[]): Promise<Rai
   return { docs: docMeta(docs, c.docIds), dams };
 }
 
-export async function loadRain(db: CubeDb): Promise<RainStory> {
+export async function loadRain(db: CubeDb, docs: readonly DocumentRow[]): Promise<RainStory> {
   const r = AMAMI_STORY.rain;
-  const [{ days, maxHour, unit }, damage, docs, defNotes, ownerNotes] = await Promise.all([
+  // 注記は文書ごとに1回だけ取る（被害表の出典と雨量の注記は同じ文書を共有する）。
+  const noteDocIds = [...new Set([...r.damage.sources.map((s) => s.docId), r.notes.definitionChange.docId, r.notes.stationOwner.docId])];
+  const [{ days, maxHour, unit }, notes, chisui] = await Promise.all([
     loadRainDays(db),
-    loadDamage(db),
-    documentsList(db),
-    docNotes(db, r.notes.definitionChange.docId),
-    docNotes(db, r.notes.stationOwner.docId),
+    Promise.all(noteDocIds.map(async (id) => [id, await docNotes(db, id)] as const)).then((e) => new Map(e)),
+    loadChisui(db, docs),
   ]);
+  const damage = await loadDamage(db, notes);
   const top = days.reduce<RainDay | null>((a, d) => (a === null || d.mm > a.mm ? d : a), null);
-  const defText = defNotes.find((n) => n.kind === r.notes.definitionChange.kind)?.text?.trim();
+  const defText = (notes.get(r.notes.definitionChange.docId) ?? []).find((n) => n.kind === r.notes.definitionChange.kind)?.text?.trim();
   if (!defText) throw new Error(`必須の注記が無い（${r.notes.definitionChange.docId}: kind=${r.notes.definitionChange.kind}）`);
   return {
     days,
     peak: top ? { date: top.date, mm: top.mm, maxHourMm: maxHour.get(top.date) ?? null } : null,
     unit,
     band: r.band,
-    rainNotes: { definitionChange: defText, stationOwner: pickNote(ownerNotes, r.notes.stationOwner.match, r.notes.stationOwner.docId) },
+    rainNotes: { definitionChange: defText, stationOwner: pickNote(notes.get(r.notes.stationOwner.docId) ?? [], r.notes.stationOwner.match, r.notes.stationOwner.docId) },
     damage,
-    chisui: await loadChisui(db, docs),
+    chisui,
     docs: docMeta(docs, AMAMI_STORY.docs.rain),
   };
 }
@@ -363,6 +366,14 @@ export async function loadRain(db: CubeDb): Promise<RainStory> {
 /* ------------------------------------------------------------------ */
 /* 章3: 島の川と土砂災害                                                  */
 /* ------------------------------------------------------------------ */
+
+/** 地図への導線。region・layers は既存のヘルパーで組み、視点だけを足す。 */
+export function hazardMapHref(): string {
+  const h = AMAMI_STORY.hazard;
+  const params = new URLSearchParams(searchWithLayers(searchWithRegion("", AMAMI_STORY.region), h.mapLayers));
+  params.set("view", `${h.mapView.lon},${h.mapView.lat},${h.mapView.zoom}`);
+  return `/map?${params.toString().replace(/%2C/g, ",")}`;
+}
 
 export interface HazardKindPanel {
   kind: string;
@@ -401,9 +412,9 @@ export function buildHazardPanels(rows: readonly CountRow[], specialMatch: strin
   return panels.sort((a, b) => Number(a.special) - Number(b.special));
 }
 
-export async function loadHazard(db: CubeDb): Promise<HazardStory> {
+export async function loadHazard(db: CubeDb, docs: readonly DocumentRow[]): Promise<HazardStory> {
   const h = AMAMI_STORY.hazard;
-  const [rows, riverCells, docs] = await Promise.all([countRecordsBy(db, h.set, h.groupBy), readDocCells(db, h.rivers.docId), documentsList(db)]);
+  const [rows, riverCells] = await Promise.all([countRecordsBy(db, h.set, h.groupBy, { eq: [{ col: "source_id", value: h.sourceId }] }), readDocCells(db, h.rivers.docId)]);
   const panels = buildHazardPanels(rows, h.specialKindMatch);
   return {
     panels,
@@ -413,6 +424,6 @@ export async function loadHazard(db: CubeDb): Promise<HazardStory> {
       flooded: cellValue(riverCells, h.rivers.table, h.rivers.flooded, "値"),
     },
     docs: docMeta(docs, AMAMI_STORY.docs.hazard),
-    mapHref: h.mapHref,
+    mapHref: hazardMapHref(),
   };
 }

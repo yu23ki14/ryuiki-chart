@@ -1,5 +1,6 @@
 import { d1CubeDb } from "@/lib/cube";
 import { HazardChapter, MongooseChapter, RainChapter } from "@/components/stories/Chapters";
+import { documentsList } from "@/lib/records";
 import { loadHazard, loadMongoose, loadRain } from "@/lib/stories/amami";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +13,8 @@ export const metadata = { title: "奄美の物語 | 流域カルテ" };
  */
 export default async function AmamiStoryPage() {
   const db = await d1CubeDb();
-  const [mongoose, rain, hazard] = await Promise.all([loadMongoose(db), loadRain(db), loadHazard(db)]);
+  const docs = await documentsList(db);
+  const [mongoose, rain, hazard] = await Promise.all([loadMongoose(db, docs), loadRain(db, docs), loadHazard(db, docs)]);
   return (
     <div className="flex-1 overflow-y-auto thin-scroll">
       <section className="max-w-[1180px] mx-auto px-6 pt-6">

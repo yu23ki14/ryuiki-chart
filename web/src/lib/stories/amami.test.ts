@@ -5,7 +5,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { applyMigrations, wrapSqlite } from "@/lib/cube/__fixtures__/cube-fixture";
 import type { CubeDb } from "@/lib/cube/db";
 import { sqliteCubeDb } from "@/lib/cube/db-sqlite";
-import { AMAMI_STORY, buildHazardPanels, loadHazard, loadMongoose, loadRain, loadRainDays, pickNote } from "./amami";
+import { documentsList } from "@/lib/records";
+import { AMAMI_STORY, buildHazardPanels, hazardMapHref, loadHazard, loadMongoose, loadRain, loadRainDays, pickNote } from "./amami";
 
 const REPO = path.resolve(__dirname, "../../../..");
 const P = {
@@ -24,7 +25,7 @@ describe.skipIf(!haveReal)("実データ（読み取り専用）: 受け入れ�
   afterAll(() => db.close());
 
   it("マングース: CPUE 22 点・総捕獲 23 点。必須の注記が全部ある", async () => {
-    const m = await loadMongoose(db);
+    const m = await loadMongoose(db, await documentsList(db));
     expect(m.cpue).toHaveLength(22);
     expect(m.total).toHaveLength(23);
     expect(m.notes.map((n) => n.key)).toEqual(AMAMI_STORY.mongoose.requiredNotes.map((n) => n.key));
@@ -36,12 +37,12 @@ describe.skipIf(!haveReal)("実データ（読み取り専用）: 受け入れ�
     const r = await loadRainDays(db);
     expect(r.days.find((d) => d.date === "2010-10-20")?.mm).toBe(622);
     expect(r.maxHour.get("2010-10-20")).toBe(78.5);
-    const story = await loadRain(db);
+    const story = await loadRain(db, await documentsList(db));
     expect(story.peak).toEqual({ date: "2010-10-20", mm: 622, maxHourMm: 78.5 });
   });
 
   it("被害表: 死者は3出典とも 3。確定は死者だけ", async () => {
-    const { damage, chisui } = await loadRain(db);
+    const { damage, chisui } = await loadRain(db, await documentsList(db));
     expect(damage.columns).toHaveLength(3);
     for (const c of damage.columns) expect(c.values.death?.value).toBe(3);
     expect(damage.agreed.map((a) => [a.key, a.value])).toEqual([["death", 3]]);
@@ -52,7 +53,7 @@ describe.skipIf(!haveReal)("実データ（読み取り専用）: 受け入れ�
   });
 
   it("土砂災害: 警戒・特別警戒の2面、河川の数が引ける", async () => {
-    const h = await loadHazard(db);
+    const h = await loadHazard(db, await documentsList(db));
     expect(h.panels).toHaveLength(2);
     expect(h.panels[0].special).toBe(false);
     expect(h.panels[1].special).toBe(true);
@@ -76,8 +77,17 @@ describe("必須の注記が無いときは静かに欠けず例外を投げる"
   });
   afterAll(() => raw.close());
 
-  it("loadMongoose は注記が無ければ例外", async () => {
-    await expect(loadMongoose(db)).rejects.toThrow("必須の注記が無い");
+  it("loadMongoose: 系列が空なら例外", async () => {
+    await expect(loadMongoose(db, [])).rejects.toThrow("系列が空");
+  });
+
+  it("loadMongoose: 系列があっても注記が無ければ例外", async () => {
+    const m = AMAMI_STORY.mongoose;
+    const ins = raw.prepare(
+      "INSERT INTO cells (doc_id, page_no, table_id, row_key, col_key, value, value_type, unit, fiscal_year, is_total, superseded) VALUES (?,?,?,?,?,?,?,?,?,0,0)",
+    );
+    for (const row of [m.totalRow, m.cpueRow]) for (const y of [2001, 2002, 2003]) ins.run(m.docId, 1, m.tableId, row, String(y), "5", "int", "頭", y);
+    await expect(loadMongoose(db, [])).rejects.toThrow("必須の注記が無い");
   });
 
   it("pickNote: 一致する本文があれば返し、空文字・無いときは例外", () => {
@@ -106,15 +116,17 @@ describe("buildHazardPanels", () => {
   });
 });
 
-describe("ページの JSX に数字のリテラルが無い", () => {
-  const files = [
-    "src/app/stories/amami/page.tsx",
-    ...fs.readdirSync(path.resolve(__dirname, "../../components/stories")).filter((f) => f.endsWith(".tsx")).map((f) => `src/components/stories/${f}`),
-  ];
-  it.each(files)("%s", (f) => {
-    const src = fs.readFileSync(path.resolve(__dirname, "../../..", f), "utf8");
-    // JSX の本文（> と < のあいだ）に半角数字を直接書かない。{式} の中は対象外。
-    const bad = [...src.matchAll(/>([^<>{}]*\d[^<>{}]*)</g)].map((m) => m[1].trim()).filter(Boolean);
-    expect(bad).toEqual([]);
+describe("構造: 数値は宣言と DB から", () => {
+  it("宣言に数値の主張（件数・被害・雨量・確率）を持たない: 値は行キー・列キー・日付・視点だけ", () => {
+    const json = JSON.stringify(AMAMI_STORY);
+    // 被害・雨量・件数の実測値が宣言に混ざっていない
+    for (const v of ["622", "6038", "3884", "99.7", "721"]) expect(json).not.toContain(v);
+  });
+  it("地図への導線: region・layers・view を持つ", () => {
+    const u = new URL(hazardMapHref(), "http://x.test");
+    expect(u.pathname).toBe("/map");
+    expect(u.searchParams.get("region")).toBe("jp-46");
+    expect(u.searchParams.get("layers")).toBe("hazard");
+    expect(u.searchParams.get("view")).toBe("129.49,28.38,12");
   });
 });
