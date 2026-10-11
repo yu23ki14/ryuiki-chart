@@ -182,16 +182,16 @@
         "same": 60
       }
     },
-    "previous_git_head": "aa75ab68821c717b572bd8f5c125da73843e5483"
+    "previous_git_head": "9c685c4b82ca8e6843ac73111106bf17bfd3d377"
   },
-  "created_at": "2026-10-11T13:33:41+00:00",
+  "created_at": "2026-10-11T15:23:38+00:00",
   "environment": {
     "better_sqlite3_sqlite_version": "3.53.4",
     "node_version": "v22.22.2",
     "python_sqlite3_version": "3.49.1",
     "python_version": "3.13.7"
   },
-  "git_head": "9c685c4b82ca8e6843ac73111106bf17bfd3d377",
+  "git_head": "0ed2a1d8925f1d9a4fe47d02bf63f8db1e0683f4",
   "pipeline_fingerprint_rows": {
     "registry.sqlite": null,
     "v2.sqlite": [
@@ -226,87 +226,93 @@
         "table_name": "occurrence_place"
       },
       {
-        "fingerprint": "sha256:f2ac066a20fd94be67044292f622477b8bbc9b29700a939472db09b027f1a99b:6805",
+        "fingerprint": "sha256:6e31589aee7f42169c2413cc3db112f423aace65429216a0a1e99efe7463e452:6805",
         "inputs": "{\"ext:registry.place\": \"db418c05944b1f8141b2909c6b4dd6d22ba4a2e7760877c5a523e71ffc19b74b\", \"observation_agg\": \"sha256:5a718aeda7eafbab37975cda1b1f12d402ffa75718bf950760bc5b4c5e095a8c:2774171\", \"occurrence_agg\": \"sha256:5f6e8b73fb02f7d64e74c6f0d8a0f2e1ebfd50ffa784e1a962f65d2e73081952:1549581\"}",
-        "spec_version": "serving-summary/v7",
+        "spec_version": "serving-summary/v8",
         "table_name": "place_region"
       },
       {
-        "fingerprint": "sha256:f8e2ab5bd0723104cd97100004cd0f76fb1685b1032f9de1f4d686e95b50bdb5:171",
+        "fingerprint": "sha256:72cbf8fa5fc246403ab6561dd831f813c13b97c7ffd81bc4e3b3127ce01e3320:171",
         "inputs": "{\"ext:registry.taxon\": \"db418c05944b1f8141b2909c6b4dd6d22ba4a2e7760877c5a523e71ffc19b74b\", \"occurrence_agg\": \"sha256:5f6e8b73fb02f7d64e74c6f0d8a0f2e1ebfd50ffa784e1a962f65d2e73081952:1549581\"}",
-        "spec_version": "serving-summary/v7",
+        "spec_version": "serving-summary/v8",
         "table_name": "summary_effort_year"
       },
       {
-        "fingerprint": "sha256:afba78e1b738da0f85cb08032ad09adf961377c2bc76b0d040c75ad605bd2440:297",
-        "inputs": "{\"ext:registry.taxon\": \"db418c05944b1f8141b2909c6b4dd6d22ba4a2e7760877c5a523e71ffc19b74b\", \"occurrence_agg\": \"sha256:5f6e8b73fb02f7d64e74c6f0d8a0f2e1ebfd50ffa784e1a962f65d2e73081952:1549581\", \"summary_effort_year\": \"sha256:f8e2ab5bd0723104cd97100004cd0f76fb1685b1032f9de1f4d686e95b50bdb5:171\"}",
-        "spec_version": "serving-summary/v7",
+        "fingerprint": "sha256:4eacf3e9b30a5ed32e8e27e4c4adef9cee97b1c6956b41af8af796a4bdebe887:297",
+        "inputs": "{\"ext:registry.taxon\": \"db418c05944b1f8141b2909c6b4dd6d22ba4a2e7760877c5a523e71ffc19b74b\", \"occurrence_agg\": \"sha256:5f6e8b73fb02f7d64e74c6f0d8a0f2e1ebfd50ffa784e1a962f65d2e73081952:1549581\", \"summary_effort_year\": \"sha256:72cbf8fa5fc246403ab6561dd831f813c13b97c7ffd81bc4e3b3127ce01e3320:171\"}",
+        "spec_version": "serving-summary/v8",
         "table_name": "summary_effort_year_by_region"
       },
       {
-        "fingerprint": "sha256:9dfeb5def30ec27db9c5c904f02e8c09bab86040fc487556752e86a664836fb2:5817",
+        "fingerprint": "sha256:2c6a751560efeaa1ce5581fc0591f889f2bfa623e045c084172d04c5da355147:5817",
         "inputs": "{\"ext:registry.taxon\": \"db418c05944b1f8141b2909c6b4dd6d22ba4a2e7760877c5a523e71ffc19b74b\", \"occurrence_agg\": \"sha256:5f6e8b73fb02f7d64e74c6f0d8a0f2e1ebfd50ffa784e1a962f65d2e73081952:1549581\"}",
-        "spec_version": "serving-summary/v7",
+        "spec_version": "serving-summary/v8",
         "table_name": "summary_grid_catalog"
       },
       {
-        "fingerprint": "sha256:a91b6b09809d2578c94ce8ed0e14bfa3de7749aa367192ae1e5104262288b631:2727",
+        "fingerprint": "sha256:6b033aac50bc54130c018ebf6315f0c60ffc1fdc8f0a97a45221e3283a0977d6:2727",
         "inputs": "{\"ext:registry.taxon\": \"db418c05944b1f8141b2909c6b4dd6d22ba4a2e7760877c5a523e71ffc19b74b\", \"occurrence_agg\": \"sha256:5f6e8b73fb02f7d64e74c6f0d8a0f2e1ebfd50ffa784e1a962f65d2e73081952:1549581\"}",
-        "spec_version": "serving-summary/v7",
+        "spec_version": "serving-summary/v8",
         "table_name": "summary_group_year"
       },
       {
-        "fingerprint": "sha256:49fc5afa4d765b3116aee6b8fe7eacea8e07e2dac3b11712fbda901e57f4b3e3:8893",
+        "fingerprint": "sha256:b790e5a4e9aac1cc3ac393cc065370381612a18f0a9966b586bd21258b592dc7:8893",
         "inputs": "{\"observation_agg\": \"sha256:5a718aeda7eafbab37975cda1b1f12d402ffa75718bf950760bc5b4c5e095a8c:2774171\"}",
-        "spec_version": "serving-summary/v7",
+        "spec_version": "serving-summary/v8",
         "table_name": "summary_place_variable"
       },
       {
-        "fingerprint": "sha256:af061d74f0444d51fc80d586c87808b49fd2834032c2f85dc235e77fce09f76f:28270",
+        "fingerprint": "sha256:f361472027ad1cc05b38e75f64a21b1eed4bae9223569cd8d1ad71ce10c51cd6:28270",
         "inputs": "{\"ext:registry.taxon\": \"db418c05944b1f8141b2909c6b4dd6d22ba4a2e7760877c5a523e71ffc19b74b\", \"occurrence_agg\": \"sha256:5f6e8b73fb02f7d64e74c6f0d8a0f2e1ebfd50ffa784e1a962f65d2e73081952:1549581\"}",
-        "spec_version": "serving-summary/v7",
+        "spec_version": "serving-summary/v8",
         "table_name": "summary_species_catalog"
       },
       {
-        "fingerprint": "sha256:9600ff59355165db1fbeb66fae7f3decc297c8864821108e88ea09af6ef0fb8f:31006",
-        "inputs": "{\"ext:registry.taxon\": \"db418c05944b1f8141b2909c6b4dd6d22ba4a2e7760877c5a523e71ffc19b74b\", \"occurrence_agg\": \"sha256:5f6e8b73fb02f7d64e74c6f0d8a0f2e1ebfd50ffa784e1a962f65d2e73081952:1549581\", \"summary_species_catalog\": \"sha256:af061d74f0444d51fc80d586c87808b49fd2834032c2f85dc235e77fce09f76f:28270\"}",
-        "spec_version": "serving-summary/v7",
+        "fingerprint": "sha256:f71e2790320cced51ec6e275d1beef9682a1d6c5c05c8436db800b4f01761bb0:31006",
+        "inputs": "{\"ext:registry.taxon\": \"db418c05944b1f8141b2909c6b4dd6d22ba4a2e7760877c5a523e71ffc19b74b\", \"occurrence_agg\": \"sha256:5f6e8b73fb02f7d64e74c6f0d8a0f2e1ebfd50ffa784e1a962f65d2e73081952:1549581\", \"summary_species_catalog\": \"sha256:f361472027ad1cc05b38e75f64a21b1eed4bae9223569cd8d1ad71ce10c51cd6:28270\"}",
+        "spec_version": "serving-summary/v8",
         "table_name": "summary_species_catalog_by_region"
       },
       {
-        "fingerprint": "sha256:2b04062e3e4c6d0ddb36dbd4d70dddf7104f0bd6f69e385c038c8bfa9cce1c62:38103",
+        "fingerprint": "sha256:e5e08b392dcfc3cef26373d7f9e08870726c18165b8fbac89afe11f05ffd5cc6:38103",
         "inputs": "{\"occurrence_agg\": \"sha256:5f6e8b73fb02f7d64e74c6f0d8a0f2e1ebfd50ffa784e1a962f65d2e73081952:1549581\"}",
-        "spec_version": "serving-summary/v7",
+        "spec_version": "serving-summary/v8",
         "table_name": "summary_taxon_catalog"
       },
       {
-        "fingerprint": "sha256:ac008fa8c92060120d0c30bdc8ae23258139e3ea1b4b9b2345d9ef7704199ef9:41292",
-        "inputs": "{\"occurrence_agg\": \"sha256:5f6e8b73fb02f7d64e74c6f0d8a0f2e1ebfd50ffa784e1a962f65d2e73081952:1549581\", \"summary_taxon_catalog\": \"sha256:2b04062e3e4c6d0ddb36dbd4d70dddf7104f0bd6f69e385c038c8bfa9cce1c62:38103\"}",
-        "spec_version": "serving-summary/v7",
+        "fingerprint": "sha256:789567f92fee757204a7193664720647dc0d92ef942d3796c62c271b24ec0eb5:41292",
+        "inputs": "{\"occurrence_agg\": \"sha256:5f6e8b73fb02f7d64e74c6f0d8a0f2e1ebfd50ffa784e1a962f65d2e73081952:1549581\", \"summary_taxon_catalog\": \"sha256:e5e08b392dcfc3cef26373d7f9e08870726c18165b8fbac89afe11f05ffd5cc6:38103\"}",
+        "spec_version": "serving-summary/v8",
         "table_name": "summary_taxon_catalog_by_region"
       },
       {
-        "fingerprint": "sha256:bc20a2aad6d38b12b9188a3741b1ae139bf4193c675537377bb46530b6dab395:134",
+        "fingerprint": "sha256:7949d6784fa079edfb51ceb20377abdb9125eda139886af74041b1064b776e75:955",
+        "inputs": "{\"occurrence\": \"sha256:5b13e0409338815addc21ab847fbc1d1b6e872805502c1b4c419e3ec37557316:895978\"}",
+        "spec_version": "serving-summary/v8",
+        "table_name": "summary_taxon_red_list"
+      },
+      {
+        "fingerprint": "sha256:0c6f5ca79eff8dd98de53a9cd77656874d241f1506aafeda9bdd683acd94a8d6:134",
         "inputs": "{\"observation_agg\": \"sha256:5a718aeda7eafbab37975cda1b1f12d402ffa75718bf950760bc5b4c5e095a8c:2774171\"}",
-        "spec_version": "serving-summary/v7",
+        "spec_version": "serving-summary/v8",
         "table_name": "summary_variable_catalog"
       },
       {
-        "fingerprint": "sha256:40a22a11f9035352e1052b611b8d38453a2e65d14c7c124a65f718be245f9f7f:201",
-        "inputs": "{\"observation_agg\": \"sha256:5a718aeda7eafbab37975cda1b1f12d402ffa75718bf950760bc5b4c5e095a8c:2774171\", \"summary_variable_catalog\": \"sha256:bc20a2aad6d38b12b9188a3741b1ae139bf4193c675537377bb46530b6dab395:134\"}",
-        "spec_version": "serving-summary/v7",
+        "fingerprint": "sha256:b468a3f649332dcd91643e78ba0b68209c90fb4ed14b17b566bce065878793e7:201",
+        "inputs": "{\"observation_agg\": \"sha256:5a718aeda7eafbab37975cda1b1f12d402ffa75718bf950760bc5b4c5e095a8c:2774171\", \"summary_variable_catalog\": \"sha256:0c6f5ca79eff8dd98de53a9cd77656874d241f1506aafeda9bdd683acd94a8d6:134\"}",
+        "spec_version": "serving-summary/v8",
         "table_name": "summary_variable_catalog_by_region"
       },
       {
-        "fingerprint": "sha256:66d5e797a1bd77e8269a051ef427b7d931a4b78582b27425fceb3c2cae367a80:355",
+        "fingerprint": "sha256:db8b14af833db54aed5cfd44d026e29aefc5ebdfee198e233c4b012db66c4f5a:355",
         "inputs": "{\"occurrence_agg\": \"sha256:5f6e8b73fb02f7d64e74c6f0d8a0f2e1ebfd50ffa784e1a962f65d2e73081952:1549581\"}",
-        "spec_version": "serving-summary/v7",
+        "spec_version": "serving-summary/v8",
         "table_name": "summary_watershed_occurrence"
       }
     ]
   },
   "pipeline_path_hashes": {
-    "aggregations": "1bb5bec3c86fd6bcbabdd3df405a989f4d43a1f8",
+    "aggregations": "f71dfec79df069ac8364fe6eeee55d14fa4b3e04",
     "manifests": "3a2a1e281308063fabf60e8fe1d8cf65c6e9e829",
     "registry": "b4b52dbb5c46837df8cad558b4c09252af21a3a8",
     "requirements.txt": "4323abaaacdc6a851d6f323c3a8e542996714511",
@@ -317,10 +323,10 @@
     "scripts/b06_build_occurrence.py": "091a5944f78585ee25352ef752a396edf43014f6",
     "scripts/b07_build_occurrence_cube.py": "f1d0180ede5144aebba3724a85b2fa1213a3dd3a",
     "scripts/b09_build_occurrence_place.py": "466059cd51eb11721a316da35cc48dff56683f24",
-    "scripts/b13_build_summary.py": "32b53722abe4bed1a8adc25a78e43a74e371ba17",
+    "scripts/b13_build_summary.py": "8200b7c2022000b376da47ccf616ac6a5a855b1f",
     "scripts/era_table.py": "b0953de3efa2eee6eff43c249cda61e4e2e64c95",
     "scripts/ingest": "dc133babc35d6c8b8904b08bc1c1c391a3c6d71a",
-    "scripts/migrate": "28a5e6522a93affe039f03676cada886545eec53",
+    "scripts/migrate": "a07ad13407442e2a550b5104d4d344f82fc3bf8a",
     "scripts/pipeline_inputs.py": "0975e0fa1718a4c0e11d6ced0241d9cd060a2540",
     "scripts/r01_build_registry.py": "ca694efac6fd3282080250e63a37e22bdb6d84fd",
     "scripts/reconcile": "0434daaaa6e412fafdff6a99768d9486b7c5c9a0",
@@ -340,9 +346,9 @@
     "web/scripts/lib/zone-definition.mjs": "788265f59a2cc5738759e2a5614c4c4a475426e8",
     "web/scripts/serving-snapshot.mts": "f101456833dcc8654fdba0fc61b7b91d7b9991da",
     "web/serving_queries.yaml": "d9f2eda94c75ea049291b0f14e95651598bbd8d6",
-    "web/src/db/schema-cube.ts": "3a2fe5a9bcfbdeed878a8d4f6c26fb23cabb294b",
+    "web/src/db/schema-cube.ts": "89f4dd5f549d3ea378f3d39272e0537bb6e69301",
     "web/src/lib/cube/assessment.ts": "d50fb3264b62b0856fbb3aeda0bbf9dd0ef2552f",
-    "web/src/lib/cube/catalog.ts": "c629d90dd1a73cf8a21250731be47aa9cbbb3037",
+    "web/src/lib/cube/catalog.ts": "0dfba2ffa7ca7e5ec02af6d14f7768d71ba35936",
     "web/src/lib/cube/caveats.ts": "625de3aecfa1b68c13b1ab715df349270d223391",
     "web/src/lib/cube/cell-basis.ts": "8daf1bcedb90ed3d26b21d938eba7fc28d722ce8",
     "web/src/lib/cube/db-d1.ts": "04fc725695abca60df033398f90c9b82b602522a",
@@ -351,14 +357,14 @@
     "web/src/lib/cube/doc-series-where.ts": "4fe9d9c42d6f079713e87a3c0498ddb480e1049c",
     "web/src/lib/cube/documents.ts": "76d830abf16fa04d42e78d7cbbf1c993239cdf9c",
     "web/src/lib/cube/envelope.ts": "09e08bd8b5cec2a2dfbd6f67531d7d2fdb6e791e",
-    "web/src/lib/cube/grid.ts": "49b81b18753b3cad0366fae46b5db44d07f6180f",
+    "web/src/lib/cube/grid.ts": "a197c88f05a17e456715a20eb8de9dc15463c3a2",
     "web/src/lib/cube/index.ts": "b549d792aad6d1bd4d207fe2043e746b2b09daf8",
     "web/src/lib/cube/observation.ts": "79e8aeb5b0a51811c535ac071eb431d531b92368",
     "web/src/lib/cube/occurrence.ts": "036521c976208d844f1f9f70f3507bac32ae8985",
     "web/src/lib/cube/region.ts": "0624ea6e82f13d5da65fbc698e1500d679d809de",
     "web/src/lib/cube/series.ts": "d2b9a095140d00ad74b321ff5d0f1b29d9d52822",
     "web/src/lib/cube/source-meta.ts": "8cd9acd1a2de4dca7b515210d541b3ae459846d2",
-    "web/src/lib/cube/sql.ts": "86b7e660e8f06a625829bf3dc9be0579c45eede3",
+    "web/src/lib/cube/sql.ts": "cd59c8c4560b16d1dad5e6dae9e75289d167c6a7",
     "web/src/lib/cube/timeseries.ts": "7e0bef3741ab039a4bfdaa68af05327a2821d3ca",
     "web/src/lib/cube/unit.ts": "24c38c741b8a1cfc62bc5d33861aa7b1c45cfdcc",
     "web/src/lib/db.ts": "cb9a153fb416b4400bd74ecf0fd4d3977df90944",
