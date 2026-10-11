@@ -156,6 +156,8 @@ DwC-Aから除外するようになった（`--include-noncommercial`で無効�
 | kagoshima_habu_amami | 鹿児島県 ハブ咬傷者数・買上数（奄美、保健所・市町村別、H28〜R7年度） | 鹿児島県 保健福祉部薬務課 | 393（咬傷189＋買上204） | 0 | 鹿児島県ホームページ（無断転載・改変不可）。事実（数値）のみ抽出し出典を明記 | 4.9 の方針。画像 PDF を OCR 2種＋検算で読んだ cells（doc_id=kagoshima_habu_bite_h28r7・kagoshima_habu_kaiage_h28r7）。人の見直しが済んでいない3セルを含む | https://www.pref.kagoshima.jp/ae10/kenko-fukushi/yakuji-eisei/habu/index.html | 含めない |
 | amami_biodiversity_strategy_amami | 奄美大島生物多様性地域戦略（2020年3月改訂、計画期間2015〜2024年度） | 奄美大島自然保護協議会 | 1（文書） | 0 | ライセンス表記なし（題名・URL・ページ数・sha256 のみ掲載。本文は転載しない） | 表記が無いのでメタデータだけ載せる（doc_id=amami_biodiversity_strategy_2015_2024）。PDF は再配布しない | https://www.vill.yamato.lg.jp/kikaku/kurashi/kankyo/shizenkankyo/shizenhogo/jore/documents/00_full.pdf | 含めない |
 | amami_tourism_plans_amami | 奄美群島エコツーリズム推進全体構想・奄美大島持続的観光マスタープラン | 奄美群島エコツーリズム推進協議会・鹿児島県 | 2（文書） | 0 | ライセンス表記なし（題名・URL・ページ数・sha256 のみ掲載。本文は転載しない） | 同上（doc_id=amami_ecotourism_zentai_2017・amami_sustainable_tourism_mp_2016）。PDF は再配布しない | https://kyushu.env.go.jp/okinawa/amami-okinawa/plans/ecotourism/index.html | 含めない |
+| dpri_gouu2010_amami | 京都大学防災研究所 2010年奄美豪雨の調査速報（雨量・被害） | 京都大学防災研究所（自然災害研究協議会災害調査団） | 12 | 0 | ライセンス表記なし（事実（数値）のみ抽出し出典を明記。原本の PDF は再配布しない） | 速報の本文にある雨量・被害の数値だけを cells に入れた（doc_id=dpri_amami_gouu_sokuho_2011）。PDF は再配布しない。転載を禁じる記載は確認できていない（規約ページは未確認） | https://www.dpri.kyoto-u.ac.jp/web_j/contents/event_text/20110221.pdf | 含めない |
+| kagoshima_univ_gouu2010_amami | 鹿児島大学 2010年奄美豪雨災害の総合的調査研究報告書（雨量・被害） | 鹿児島大学奄美豪雨災害調査委員会 | 94 | 0 | ライセンス表記なし（事実（数値）のみ抽出し出典を明記。原本の PDF は再配布しない） | 報告書の本文・被害状況（画像）・表-2 にある雨量・被害の数値だけを cells に入れた（doc_id=kagoshima_univ_amami_gouu_2012）。PDF は再配布しない | https://bousai.kagoshima-u.ac.jp/wpo/wp-content/uploads/2024/03/2010_gouu.pdf | 含めない |
 
 ## 4. 特に注意すべき事項（個別記載）
 
@@ -313,6 +315,13 @@ PDF は `data/raw/kagoshima_redlist_2014/`（gitignore 済み）に置き、再�
 文字情報との突き合わせで cells（`moe_mongoose_catch_h12r4`、120セル）にした。環境省ホームページの PDL1.0（`redistributable=1`）。
 同じ出典に、根絶宣言（2024年9月3日、2026年8月7日修正）の報道発表を documents と notes だけで載せた（`moe_mongoose_eradication_declaration_2024`）。
 2023年度以降の数表は公表が見つからず、cells には無い。PNG・HTML は `data/raw/moe_mongoose/` に置き再配布しない。
+
+**2010年奄美豪雨の雨量・被害（Step 3b）**: 京都大学防災研究所の調査速報（`dpri_gouu2010_amami`、12セル）と鹿児島大学の総合的調査研究報告書
+（`kagoshima_univ_gouu2010_amami`、94セル）から、雨量と被害の**数値という事実だけ**を cells にした。どちらも**ライセンス表記なし**
+（転載を禁じる記載も確認できないので、レジストリ上は `terms_unconfirmed`。`redistributable=0`）。PDF は `data/raw/amami_rain2010/` に置き再配布しない。
+京大と鹿大の食い違い（住用の総雨量 894／891／893 mm、全半壊 485／489／565 棟、床上・床下浸水の件数）は**どれにも寄せず両論併記**にした
+（別 doc_id の別セル。出典の時点・資料が違い、どれが確定値かは確認できていない）。単発の事象なので `fiscal_year` は全部 NULL で、`/documents` の系列には出ない。
+鹿大 p17 の被害状況（県 2010-11-26 現在）は画像を目で読んだもの（`claude(vision)`）で、人の見直しが済んでいない。気象庁（名瀬・古仁屋）の値とは突き合わせて一致を確かめた（新しい出典は作らない）。
 
 **希少種の位置**: GBIF・iNaturalist 等の公開元が丸めた座標を**そのまま使い**、こちらで細かく起こさない。
 ADR-0028 は「こちらから座標を丸めない（一般化しない）」決定であり、「公開元が丸めたものを細かく復元する」ことは別の話で、
