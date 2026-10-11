@@ -182,16 +182,16 @@
         "same": 60
       }
     },
-    "previous_git_head": "9c685c4b82ca8e6843ac73111106bf17bfd3d377"
+    "previous_git_head": "0ed2a1d8925f1d9a4fe47d02bf63f8db1e0683f4"
   },
-  "created_at": "2026-10-11T15:23:38+00:00",
+  "created_at": "2026-10-11T23:30:10+00:00",
   "environment": {
     "better_sqlite3_sqlite_version": "3.53.4",
     "node_version": "v22.22.2",
     "python_sqlite3_version": "3.49.1",
     "python_version": "3.13.7"
   },
-  "git_head": "0ed2a1d8925f1d9a4fe47d02bf63f8db1e0683f4",
+  "git_head": "bdb881d502b89582455c505c8802899be59b94ac",
   "pipeline_fingerprint_rows": {
     "registry.sqlite": null,
     "v2.sqlite": [
@@ -357,7 +357,7 @@
     "web/src/lib/cube/doc-series-where.ts": "4fe9d9c42d6f079713e87a3c0498ddb480e1049c",
     "web/src/lib/cube/documents.ts": "76d830abf16fa04d42e78d7cbbf1c993239cdf9c",
     "web/src/lib/cube/envelope.ts": "09e08bd8b5cec2a2dfbd6f67531d7d2fdb6e791e",
-    "web/src/lib/cube/grid.ts": "a197c88f05a17e456715a20eb8de9dc15463c3a2",
+    "web/src/lib/cube/grid.ts": "48fc17db162bf50e55c4f38df97c07758e20fbf7",
     "web/src/lib/cube/index.ts": "b549d792aad6d1bd4d207fe2043e746b2b09daf8",
     "web/src/lib/cube/observation.ts": "79e8aeb5b0a51811c535ac071eb431d531b92368",
     "web/src/lib/cube/occurrence.ts": "036521c976208d844f1f9f70f3507bac32ae8985",
