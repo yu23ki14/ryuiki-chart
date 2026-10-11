@@ -144,6 +144,7 @@ export const SOURCE_META: readonly GeneratedSourceMeta[] = [
   { sourceId: "moe_amami_wh_plans_amami", nameJa: "環境省 奄美の世界自然遺産関連の計画・評価シート（包括的管理計画・マングース・ノネコ・モニタリング評価）", publisher: "環境省 九州地方環境事務所 沖縄奄美自然環境事務所", homepageUrl: "https://kyushu.env.go.jp/okinawa/amami-okinawa/plans/index.html", supersededBy: null },
   { sourceId: "moe_ias_list", nameJa: "生態系被害防止外来種リスト（我が国の生態系等に被害を及ぼすおそれのある外来種リスト）", publisher: "環境省 自然環境局", homepageUrl: "https://www.env.go.jp/nature/intro/2outline/iaslist.html", supersededBy: null },
   { sourceId: "moe_meisui_kanagawa", nameJa: "名水百選（神奈川県分: 秦野盆地湧水群・洒水の滝/滝沢川）", publisher: "環境省", homepageUrl: "https://water-pub.env.go.jp/water-pub/mizu-site/meisui/", supersededBy: null },
+  { sourceId: "moe_mongoose_amami", nameJa: "環境省 奄美大島 マングース捕獲数・わな日・CPUE（2000〜2022年度）", publisher: "環境省 沖縄奄美自然環境事務所", homepageUrl: "https://kyushu.env.go.jp/okinawa/press_00065.html", supersededBy: null },
   { sourceId: "moe_redlist", nameJa: "環境省レッドリスト（分類群ごとの最新版）", publisher: "環境省／生物多様性センター いきものログ", homepageUrl: "https://www.env.go.jp/nature/kisho/hozen/redlist/", supersededBy: null },
   { sourceId: "moe_satoyama_kanagawa", nameJa: "重要里地里山 選定地一覧（神奈川県）", publisher: "環境省", homepageUrl: "https://www.env.go.jp/nature/satoyama/14_kanagawa/kanagawa.html", supersededBy: null },
   { sourceId: "moni1000_coast_shorebird", nameJa: "モニタリングサイト1000 沿岸域(シギ・チドリ類)調査（神奈川県サイトのみ抽出）", publisher: "環境省生物多様性センター", homepageUrl: "https://www.biodic.go.jp/moni1000/coast.html", supersededBy: null },
@@ -316,6 +317,7 @@ export const SOURCE_EDITIONS: readonly GeneratedSourceEdition[] = [
   { editionId: "common:edition:moe_amami_wh_plans_amami.20261011", sourceId: "moe_amami_wh_plans_amami", editionKey: "20261011", vintage: null, fetchedAt: "2026-10-11T01:02:48", url: "https://kyushu.env.go.jp/okinawa/amami-okinawa/plans/index.html", licenseId: "pdl_1_0", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:moe_ias_list.20260829", sourceId: "moe_ias_list", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T14:52:40", url: "https://www.env.go.jp/nature/intro/2outline/iaslist.html", licenseId: "pdl_1_0", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:moe_meisui_kanagawa.20260829", sourceId: "moe_meisui_kanagawa", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:09:33", url: "https://water-pub.env.go.jp/water-pub/mizu-site/meisui/", licenseId: "terms_unconfirmed", licenseClass: "unconfirmed", redistributable: true, updateMode: null, supersededBy: null },
+  { editionId: "common:edition:moe_mongoose_amami.20261011", sourceId: "moe_mongoose_amami", editionKey: "20261011", vintage: null, fetchedAt: "2026-10-11T10:54:38", url: "https://kyushu.env.go.jp/okinawa/press_00065.html", licenseId: "pdl_1_0", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:moe_redlist.20260829", sourceId: "moe_redlist", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T14:54:16", url: "https://www.env.go.jp/nature/kisho/hozen/redlist/", licenseId: "pdl_1_0", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:moe_satoyama_kanagawa.20260829", sourceId: "moe_satoyama_kanagawa", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:06:49", url: "https://www.env.go.jp/nature/satoyama/14_kanagawa/kanagawa.html", licenseId: "terms_unconfirmed", licenseClass: "unconfirmed", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:moni1000_coast_shorebird.20260829", sourceId: "moni1000_coast_shorebird", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:01:14", url: "https://www.biodic.go.jp/moni1000/coast.html", licenseId: "biodic_terms", licenseClass: "custom_terms", redistributable: false, updateMode: null, supersededBy: null },
@@ -450,7 +452,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 4560,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -528,7 +530,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 75240,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -546,7 +548,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 9979,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -564,7 +566,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 13206,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -650,7 +652,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 680,
     "nSourceRowsBasis": "catalog_datasets",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -676,7 +678,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 811,
     "nSourceRowsBasis": "catalog_datasets",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -738,7 +740,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 114,
     "nSourceRowsBasis": "catalog_datasets",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -752,7 +754,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 654,
     "nSourceRowsBasis": "catalog_datasets",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -770,7 +772,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 4,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -796,7 +798,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 2521,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -810,7 +812,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 98328,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -824,7 +826,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 1380,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -838,7 +840,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 214725,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -856,7 +858,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 25,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -874,7 +876,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 290,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -888,7 +890,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 5,
     "nSourceRowsBasis": "catalog_datasets",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -902,7 +904,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 1,
     "nSourceRowsBasis": "catalog_datasets",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -916,7 +918,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 1,
     "nSourceRowsBasis": "catalog_datasets",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -942,7 +944,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 47874,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -968,7 +970,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 658360,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -998,7 +1000,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 1547,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1172,7 +1174,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 30,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1190,7 +1192,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 290,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1204,7 +1206,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 245513,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1222,7 +1224,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 5,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1248,7 +1250,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 13539,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1262,7 +1264,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 165332,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1276,7 +1278,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 20496,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1290,7 +1292,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 19420,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1304,7 +1306,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 6277,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1318,7 +1320,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 13821,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1332,7 +1334,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 65412,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1350,7 +1352,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 3,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1368,7 +1370,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 12,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1406,7 +1408,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 20508,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1420,7 +1422,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 57591,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1438,7 +1440,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 12,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1452,7 +1454,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 69120,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1466,7 +1468,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 11832,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1496,7 +1498,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 59,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1514,7 +1516,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 2810,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1553,7 +1555,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 134443,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1571,7 +1573,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 379,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1602,7 +1604,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 3286,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1621,7 +1623,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 400,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1639,7 +1641,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 29,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1681,7 +1683,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 1033,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1699,7 +1701,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 1851,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1813,7 +1815,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 429,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1828,6 +1830,18 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
+  "moe_mongoose_amami": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "document_cells",
+    "reasonJa": "行政文書の表として cells に入れてある（出典の列は無い）。/documents・run_sql・get_records の record_set=documents で読む",
     "reasonNote": null
   },
   "moe_redlist": {
@@ -1963,7 +1977,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 30,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -2145,7 +2159,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 4858,
     "nSourceRowsBasis": "registry_record_count",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -2159,7 +2173,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 283,
     "nSourceRowsBasis": "registry_record_count",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -2417,7 +2431,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 16,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -2455,7 +2469,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 175344,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -2473,7 +2487,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 2,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -2511,7 +2525,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 17697,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -2525,7 +2539,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 168793,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -2543,7 +2557,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 1,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -2561,7 +2575,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 4,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -2676,7 +2690,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 75528,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T01:02:48",
+    "countedAt": "2026-10-11T10:54:38",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null

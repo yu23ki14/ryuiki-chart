@@ -29,22 +29,19 @@ fiscal_year=NULL、「5(1)」は value=5 のセルと、`…（うち死亡）` 
 reviewed.csv の列: row（row_key）, col（col_key: H28〜R7・合計(3月末)・構成比）, value（原表の表記。空欄は空）, reviewer, note
 """
 import argparse
-import csv
 import datetime
 import json
 import pathlib
 import re
 import sys
-import unicodedata
-from collections import defaultdict
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 import common
 import doccells
+from ocr import cellmatch
 
 ROOT = common.ROOT
 OCR_DIR = ROOT / "data/ocr/habu"
-ENGINES = ("docling_rapid", "paddle")
 YEAR_LABELS = ["H28", "H29", "H30", "R1", "R2", "R3", "R4", "R5", "R6", "R7"]
 COL_TOTAL, COL_RATIO = "合計(3月末)", "構成比"
 COL_KEYS = YEAR_LABELS + [COL_TOTAL, COL_RATIO]
@@ -84,10 +81,6 @@ FOOTNOTE_DEATH = "（　）は死亡者数で内数（原表の注記）"
 
 
 # ------------------------------------------------------------ 文字と格子
-def norm(s):
-    return re.sub(r"[\s,，、]", "", unicodedata.normalize("NFKC", s or ""))
-
-
 def is_ratio_col(j):
     return j == NY + 1
 
@@ -104,36 +97,8 @@ def fmt_ok(j, s):
 
 
 def assign(data):
-    """OCR の JSON -> (文字の行列 [行][列]、各セルの bbox、収まらない箱の理由 {(行,列): 文字}、収まらない箱の数)。
-    列は年度10・合計・構成比の12。データ領域（格子の内側）に中心がある箱が、列を1つに決められない（どの列にも入らない・
-    2列にまたがる）ときは、近いセルを未採用にするために理由を返す（黙って空欄にしない）。見出し・管内の列・表の外は無視する。"""
-    g = data["grid"]
-    rows, cols = g["rows"], g["cols"]
-    x_lo, x_hi, y_lo, y_hi = cols[0][0], cols[-1][1], rows[0][0] - 1, rows[-1][1] + 1
-    cells = [[[] for _ in cols] for _ in rows]
-    bad, orphans = {}, 0
-    for b in data["boxes"]:
-        cx, cy = (b["x0"] + b["x1"]) / 2, (b["y0"] + b["y1"]) / 2
-        if not (x_lo <= cx <= x_hi and y_lo <= cy <= y_hi):
-            continue
-        ri = [i for i, (a, c) in enumerate(rows) if a - 1 <= cy <= c + 1]
-        w = max(b["x1"] - b["x0"], 1e-9)
-        # 箱の幅（または列の幅）の 30% 以上が重なる列を数える。2列以上なら「またがる」
-        over = [j for j, (a, c) in enumerate(cols) if min(b["x1"], c) - max(b["x0"], a) > 0.3 * min(w, c - a)]
-        ci = [j for j, (a, c) in enumerate(cols) if a <= cx <= c]
-        if ri and len(ci) == 1 and len(over) <= 1:
-            cells[ri[0]][ci[0]].append((cx, b["text"]))
-            continue
-        orphans += 1
-        near_r = ri or [min(range(len(rows)), key=lambda k: abs((rows[k][0] + rows[k][1]) / 2 - cy))]
-        near_c = sorted(set(over) | set(ci)) or [min(range(len(cols)), key=lambda k: abs((cols[k][0] + cols[k][1]) / 2 - cx))]
-        for i in near_r:
-            for j in near_c:
-                bad[(i, j)] = f"箱 {b['text']!r} が列を決められない"
-    text = [[lenient(j, norm("".join(t for _, t in sorted(c)))) for j, c in enumerate(r)] for r in cells]
-    bbox = [[[round(cols[j][0], 1), round(rows[i][0], 1), round(cols[j][1], 1), round(rows[i][1], 1)]
-             for j in range(len(cols))] for i in range(len(rows))]
-    return text, bbox, bad, orphans
+    """OCR の JSON -> (文字の行列、bbox、収まらない箱の理由、その数)。共通部分は ocr/cellmatch.py。"""
+    return cellmatch.assign(data, lenient)
 
 
 def label_report(spec, data):
@@ -142,7 +107,7 @@ def label_report(spec, data):
     x0, x1 = g["groupcol"][0], g["labelcol"][1]   # 「合計」「保健所計」の見出しは管内の列にまたがる
     bad = []
     for i, (y0, y1) in enumerate(g["rows"]):
-        txt = norm("".join(b["text"] for b in sorted(data["boxes"], key=lambda b: b["x0"])
+        txt = cellmatch.norm("".join(b["text"] for b in sorted(data["boxes"], key=lambda b: b["x0"])
                            if x0 <= (b["x0"] + b["x1"]) / 2 <= x1 and y0 - 1 <= (b["y0"] + b["y1"]) / 2 <= y1 + 1))
         exp = spec["rows"][i][1]
         if exp not in txt and not (len(txt) >= 2 and txt in exp):
@@ -152,17 +117,18 @@ def label_report(spec, data):
 
 # ------------------------------------------------------------ 検算
 def constraints(spec):
-    """-> [(名前, 左辺の行・列のキー, 右辺のキー, 種類)]。キーは (層, 行, 列)、層は n=件数・d=死亡数・r=構成比"""
+    """-> [(名前, 左辺の行・列のキー, 右辺のキー, 種類, 余分なキー)]。キーは (層, 行, 列)、層は n=件数・d=死亡数・r=構成比"""
     nrow = len(spec["rows"])
     out = []
     for layer in ("n", "d"):
         for i in range(nrow):
-            out.append((f"{layer}:row[{i}]", [(layer, i, j) for j in range(NY)], (layer, i, NY), "sum"))
+            out.append((f"{layer}:row[{i}]", [(layer, i, j) for j in range(NY)], (layer, i, NY), "sum", ()))
         for tot, mem in spec["sums"].items():
             for j in range(NY + 1):
-                out.append((f"{layer}:col[{tot},{j}]", [(layer, i, j) for i in mem], (layer, tot, j), "sum"))
+                out.append((f"{layer}:col[{tot},{j}]", [(layer, i, j) for i in mem], (layer, tot, j), "sum", ()))
     for i in range(nrow):
-        out.append((f"r:ratio[{i}]", [("n", i, NY)], ("r", i, NY + 1), "ratio"))
+        out.append((f"r:ratio[{i}]", [("n", i, NY)], ("r", i, NY + 1), "ratio",
+                    (("n", i, NY), ("n", spec["grand"], NY))))
     return out
 
 
@@ -189,100 +155,22 @@ def to_float(s):
     return float(s.rstrip("%"))
 
 
-KNOWN_AI = ("claude", "gpt", "gemini")   # reviewed.csv の reviewer がこれで始まれば AI の確認（人の確認として扱わない）
-CONF_HUMAN, CONF_AI, CONF_AUTO, CONF_XOCR = 1.0, 0.9, 1.0, 0.8
-
-
-def verified_by_for(reviewer):
-    """reviewed.csv の reviewer -> (verified_by, confidence)。人の確認を装わない。既定は拒否:
-    `human:` で始まる名前だけを人（confidence 1.0）、既知の AI（claude・gpt・gemini で始まる名前）は名前のまま
-    （AI は 0.9。人の見直しは済んでいない）、それ以外は ValueError（人なら `human:<名前>` と書く）。"""
-    r = (reviewer or "").strip()
-    if r.startswith("human:") and len(r) > len("human:"):
-        return r, CONF_HUMAN
-    if r.lower().startswith(KNOWN_AI):
-        return r, CONF_AI
-    raise ValueError(f"reviewer が不明: {r!r}（人は `human:<名前>`、AI は claude・gpt・gemini で始まる名前）")
-
-
-def load_reviewed(path):
-    if not path.exists():
-        return {}
-    out = {}
-    with open(path, encoding="utf-8", newline="") as f:
-        for r in csv.DictReader(f):
-            if not (r.get("row") or "").strip():
-                continue
-            who = (r.get("reviewer") or "").strip()
-            if not who:
-                raise ValueError(f"reviewed.csv: reviewer が空 {r['row']} {r['col']}")
-            verified_by_for(who)   # 不明な名前はここで止める
-            out[(r["row"].strip(), r["col"].strip())] = (norm(r["value"]), who, r.get("note", ""))
-    return out
-
-
 def load_engines(doc_id, ocr_dir, pdf_root):
-    """2つの OCR の JSON を読み、整合を確かめる。-> (data, pdf_sha256)。
-    doc_id・格子の大きさと位置・pdf_sha256 が2つで一致すること、ローカルに PDF があればその sha が JSON と一致すること。"""
+    """2つの OCR の JSON を読み、整合を確かめる。-> (data, pdf_sha256)。"""
     spec = SPECS[doc_id]
-    data = {e: json.load(open(ocr_dir / doc_id / f"{e}.json", encoding="utf-8")) for e in ENGINES}
-    for e in ENGINES:
-        if data[e]["doc_id"] != doc_id:
-            raise ValueError(f"{e}.json の doc_id が違う: {data[e]['doc_id']}")
-    ga, gb = data[ENGINES[0]]["grid"], data[ENGINES[1]]["grid"]
-    for key in ("rows", "cols"):
-        if len(ga[key]) != len(gb[key]):
-            raise ValueError(f"2つの JSON の格子（{key}）の数が違う: {len(ga[key])} と {len(gb[key])}")
-        for p, q in zip(ga[key], gb[key]):   # 同じ画像から取るので位置も一致するはず
-            if max(abs(p[0] - q[0]), abs(p[1] - q[1])) > 2:
-                raise ValueError(f"2つの JSON の格子（{key}）が一致しない: {p} {q}")
-    nrow, ncol = len(spec["rows"]), NY + 2
-    if len(ga["rows"]) != nrow or len(ga["cols"]) != ncol:
-        raise ValueError(f"格子が {len(ga['rows'])}行×{len(ga['cols'])}列（期待 {nrow}×{ncol}）")
-    shas = {data[e]["pdf_sha256"] for e in ENGINES}
-    if len(shas) != 1:
-        raise ValueError(f"2つの JSON の pdf_sha256 が違う: {sorted(shas)}")
-    sha = shas.pop()
-    local = pdf_root / spec["pdf"]
-    if local.exists() and common.sha256(local) != sha:
-        raise ValueError(f"ローカルの PDF（{local}）の sha256 が JSON の値と違う。PDF が更新された？ OCR をやり直す")
-    return data, sha
+    return cellmatch.load_engines(doc_id, ocr_dir, len(spec["rows"]), NY + 2, pdf_root / spec["pdf"], "pdf_sha256")
 
 
 def decide_state(spec, A, B, bad, reviewed):
     """2つの OCR の文字行列と人の確認 -> {(i,j): dict(text, by, …)}。text=None は未確定（reason 付き）。"""
-    state = {}
-    for i in range(len(spec["rows"])):
-        for j in range(NY + 2):
-            a, b = A[i][j], B[i][j]
-            if (i, j) in bad:
-                state[(i, j)] = dict(text=None, by=None, reason=f"OCR の箱が格子に収まらない（{bad[(i, j)]}）")
-            elif a == b and fmt_ok(j, a):
-                state[(i, j)] = dict(text=a, by="agree")
-            elif a == b:
-                state[(i, j)] = dict(text=None, by=None, reason=f"書式不正 {a!r}（2つの OCR とも同じ）")
-            elif {a, b} == {"", "0"}:
-                state[(i, j)] = dict(text=None, by=None,
-                                     reason=f"0 と空欄の区別がつかない（{ENGINES[0]}={a!r} {ENGINES[1]}={b!r}）")
-            else:
-                state[(i, j)] = dict(text=None, by=None, reason=f"{ENGINES[0]}={a!r} {ENGINES[1]}={b!r}"
-                                     + ("" if fmt_ok(j, a) and fmt_ok(j, b) else "（書式不正あり）"))
     rowidx = {r[0]: i for i, r in enumerate(spec["rows"])}
-    for (rk, ck), (txt, who, note) in reviewed.items():
-        if rk not in rowidx or ck not in COL_KEYS:
-            raise ValueError(f"reviewed.csv: 行・列が不明 {rk!r} {ck!r}")
-        i, j = rowidx[rk], COL_KEYS.index(ck)
-        txt = lenient(j, txt)
-        if not fmt_ok(j, txt):
-            raise ValueError(f"reviewed.csv: 書式不正 {rk} {ck} {txt!r}")
-        state[(i, j)] = dict(text=txt, by="reviewed", reviewer=who, note=note)
-    return state
+    locate = lambda rk, ck: (rowidx[rk], COL_KEYS.index(ck)) if rk in rowidx and ck in COL_KEYS else None
+    return cellmatch.decide(A, B, bad, fmt_ok, reviewed, locate, lenient)
 
 
 def arith_flag(spec, state):
-    """確定したセルだけで検算し、疑うセルを絞る。-> (flagged {(i,j): [検算名]}, hints {(i,j): {値}}, touching, stats)。
+    """確定したセルだけで検算し、疑うセルを絞る。-> (flagged, hints, touching, stats)。共通部分は cellmatch.arith_flag。
     人が確認したセルも、検算に合わなければ疑う（採用しない）。"""
-    cons = constraints(spec)
     val, known = {}, set()
     for (i, j), s in state.items():
         if s["text"] is None:
@@ -294,43 +182,9 @@ def arith_flag(spec, state):
             n, dth = parse_cell(s["text"])
             val[("n", i, j)], val[("d", i, j)] = float(n or 0), float(dth or 0)
             known |= {("n", i, j), ("d", i, j)}
-    status, cons_keys, touching = {}, {}, defaultdict(set)   # 検算 -> 成否／検算 -> 入るキー／キー -> 入る検算
-    for name, lhs, rhs, kind in cons:
-        keys = set(lhs) | {rhs} | ({("n", rhs[1], NY), ("n", spec["grand"], NY)} if kind == "ratio" else set())
-        if not keys <= known:
-            continue
-        ok = evaluate(spec, lhs, rhs, kind, val)
-        if ok is None:
-            continue
-        status[name], cons_keys[name] = ok, keys
-        for k in keys:
-            touching[k].add(name)
-    failed = {n for n, ok in status.items() if not ok}
-    hints = defaultdict(set)   # 未確定のセル -> 件数の和の検算が示す値（人が確認するときの手がかり。採用はしない）
-    for name, lhs, rhs, kind in cons:
-        if kind != "sum" or name.startswith("d:"):
-            continue
-        missing = [k for k in list(lhs) + [rhs] if k not in known]
-        if len(missing) == 1:
-            k = missing[0]
-            rest = sum(val[x] for x in lhs if x != k)
-            hints[(k[1], k[2])].add(int(val[rhs] - rest) if k != rhs else int(rest))
-    # 疑い候補 = 入る検算がすべて失敗しているキー。最小の組を貪欲法で選ぶ。候補で覆えない検算は全キーを疑う。
-    suspects = {k for k, ns in touching.items() if ns <= failed}
-    flagged, remaining = {}, set(failed)
-    while remaining:
-        best = max(((k, remaining & touching[k]) for k in sorted(suspects) if remaining & touching[k]),
-                   key=lambda kv: len(kv[1]), default=None)
-        if best is None:
-            n = min(remaining)
-            picks, cov = sorted(cons_keys[n]), {n}
-        else:
-            picks, cov = [best[0]], best[1]
-        for k in picks:
-            flagged.setdefault((k[1], k[2]), set()).update(cov)
-        remaining -= cov
-    flagged = {c: sorted(ns) for c, ns in flagged.items()}
-    return flagged, hints, touching, dict(failed_constraints=len(failed), evaluated=len(status))
+    return cellmatch.arith_flag(constraints(spec), val, known,
+                                lambda lhs, rhs, kind, v: evaluate(spec, lhs, rhs, kind, v),
+                                hint_ok=lambda name: not name.startswith("d:"))
 
 
 def to_rows(spec, state, A, B, bbox, flagged, hints, touching, extractor, sha):
@@ -355,10 +209,10 @@ def to_rows(spec, state, A, B, bbox, flagged, hints, touching, extractor, sha):
                 else:
                     who = "人が確認した値が" if s["by"] == "reviewed" else "OCR が一致した値が"
                     reason = (f"{who}検算（{', '.join(arith)}）に合わない"
-                              f"（{ENGINES[0]}={A[i][j]!r} {ENGINES[1]}={B[i][j]!r} 採用={s['text']!r}）")
+                              f"（{cellmatch.ENGINES[0]}={A[i][j]!r} {cellmatch.ENGINES[1]}={B[i][j]!r} 採用={s['text']!r}）")
                 n_unread += 1
                 cell = dict(base, value_raw=None, value=None, value_type=None,
-                            source_text=f"{ENGINES[0]}={A[i][j]!r} {ENGINES[1]}={B[i][j]!r}",
+                            source_text=f"{cellmatch.ENGINES[0]}={A[i][j]!r} {cellmatch.ENGINES[1]}={B[i][j]!r}",
                             unreadable_reason=f"ocr_disagree: {reason}", confidence=None, verified_by=None)
                 main.append(cell)
                 if j <= NY:
@@ -366,10 +220,10 @@ def to_rows(spec, state, A, B, bbox, flagged, hints, touching, extractor, sha):
                 continue
             txt = s["text"]
             if s["by"] == "agree":
-                by, conf = ("auto:xocr+arith", CONF_AUTO) if (touching.get(("n", i, j)) or touching.get(("r", i, j))) \
-                    else ("auto:xocr", CONF_XOCR)
+                by, conf = ("auto:xocr+arith", cellmatch.CONF_AUTO) if (touching.get(("n", i, j)) or touching.get(("r", i, j))) \
+                    else ("auto:xocr", cellmatch.CONF_XOCR)
             else:
-                by, conf = verified_by_for(s["reviewer"])
+                by, conf = cellmatch.verified_by_for(s["reviewer"])
             ok = dict(unreadable_reason=None, confidence=conf, verified_by=by)
             if txt == "":
                 cell = dict(base, value_raw=None, value=None, value_type=None, source_text="(空欄)", **ok)
@@ -396,7 +250,7 @@ def build(doc_id, ocr_dir=OCR_DIR, pdf_root=ROOT):
     data, sha = load_engines(doc_id, ocr_dir, pdf_root)
     warnings, texts, bad = [], {}, {}
     bbox = None
-    for e in ENGINES:
+    for e in cellmatch.ENGINES:
         texts[e], b, bad_e, orphans = assign(data[e])
         bbox = bbox or b
         for cell, why in bad_e.items():
@@ -405,14 +259,14 @@ def build(doc_id, ocr_dir=OCR_DIR, pdf_root=ROOT):
             warnings.append(f"{e}: 格子に収まらない OCR の箱 {orphans} 個（該当セルは未採用）")
         for i, exp, got in label_report(spec, data[e]):
             warnings.append(f"{e}: 行 {i} の見出し {got!r}（期待 {exp!r}）")
-    A, B = (texts[e] for e in ENGINES)
+    A, B = (texts[e] for e in cellmatch.ENGINES)
     bad = {c: "; ".join(v) for c, v in bad.items()}
-    state = decide_state(spec, A, B, bad, load_reviewed(ocr_dir / doc_id / "reviewed.csv"))
+    state = decide_state(spec, A, B, bad, cellmatch.load_reviewed(ocr_dir / doc_id / "reviewed.csv"))
     flagged, hints, touching, stats = arith_flag(spec, state)
     for (i, j) in flagged:
         if state[(i, j)]["by"] == "reviewed":
             warnings.append(f"人が確認したセルが検算に合わない（未採用にした）: {spec['rows'][i][0]} {COL_KEYS[j]}")
-    extractor = "ocr:" + "+".join(f"{e}@" + "+".join(f"{k}{v}" for k, v in data[e]["versions"].items()) for e in ENGINES)
+    extractor = "ocr:" + "+".join(f"{e}@" + "+".join(f"{k}{v}" for k, v in data[e]["versions"].items()) for e in cellmatch.ENGINES)
     rows, n_unread = to_rows(spec, state, A, B, bbox, flagged, hints, touching, extractor, sha)
     nrow, ncol = len(spec["rows"]), NY + 2
     stats.update(n_cells=len(rows), unreadable=n_unread, ocr_disagree=sum(1 for s in state.values() if s["by"] is None),
