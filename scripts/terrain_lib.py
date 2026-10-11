@@ -15,6 +15,8 @@ import numpy as np
 
 TILE = 256
 INVALID_RAW = 2 ** 23
+EARTH_CIRC_M = 40075016.686   # Web メルカトルの赤道の周長 [m]
+TILE_URL = "https://cyberjapandata.gsi.go.jp/xyz/dem_png/{z}/{x}/{y}.png"   # c68・c69 が共有する標高タイルの URL
 
 class TileNotCached(FileNotFoundError):
     """窓に必要なタイルがキャッシュに無い（取得前に呼んだ）。"""
@@ -36,9 +38,17 @@ def pixel_to_lonlat(px, py, z):
     return lon, lat
 
 
+def pixel_to_lonlat_arr(px, py, z):
+    """pixel_to_lonlat の配列版（numpy）。"""
+    n = 2 ** z * TILE
+    lon = np.asarray(px, float) / n * 360.0 - 180.0
+    lat = np.degrees(np.arctan(np.sinh(np.pi * (1.0 - 2.0 * np.asarray(py, float) / n))))
+    return lon, lat
+
+
 def m_per_px(lat, z):
     """その緯度・ズームの 1 画素の長さ [m]。"""
-    return 40075016.686 * math.cos(math.radians(lat)) / (TILE * 2 ** z)
+    return EARTH_CIRC_M * math.cos(math.radians(lat)) / (TILE * 2 ** z)
 
 
 def _bounds(lon, lat, r_m, z):

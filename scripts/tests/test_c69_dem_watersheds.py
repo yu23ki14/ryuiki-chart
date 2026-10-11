@@ -24,6 +24,7 @@ CFG = {"method": "dem", "stem": "gsi_dem_watersheds_amami", "a_min_km2": 0.5, "m
        "simplify_px": 2, "dem_zoom": 14, "w05_match_m": 500}
 # 画素の面積は約 0.00007 km²。0.5 km² は約 7,000 画素
 X0, Y0 = int((129.4 + 180) / 360 * 2 ** Z) // 1, int(T.lonlat_to_pixel(129.4, 28.3, Z)[1] // 256)
+W05_SHA = "w05-test"
 
 
 def synthetic_dem():
@@ -47,7 +48,7 @@ def synthetic_dem():
 
 def run(cfg=CFG, mouths=(), dem=None, want_upa=False):
     dem = synthetic_dem() if dem is None else dem
-    return c69.compute(cfg, "jp-46", dem, (X0, Y0), L.mosaic_sha256(dem), list(mouths), want_upa=want_upa)
+    return c69.compute(cfg, "jp-46", dem, (X0, Y0), L.mosaic_sha256(dem), W05_SHA, list(mouths), want_upa=want_upa)
 
 
 @pytest.fixture(autouse=True)
@@ -104,10 +105,10 @@ def test_assemble_units_kinds_and_id_order():
     for k, (c0, c1) in enumerate([(0, 8), (8, 10), (14, 16), (16, 18), (18, 20), (22, 24)], 1):
         lab[:, c0:c1] = k
     row_area = np.full(8, 0.01)
-    area = L.basin_areas(lab, row_area, 6)
+    area = L.basin_areas(lab, L.pixel_weights(row_area, lab.shape), 6)
     root = L.merge_basins(L.basin_adjacency(lab, 6), area, a_min=0.4)
     pits_rc = np.array([[7, 3], [7, 8], [0, 14], [1, 16], [2, 18], [5, 22]])
-    lab_f, units, dropped = L.assemble_units(lab, root, area, pits_rc, row_area, 0.4, 0.05, X0, Y0, Z, "dem-x")
+    lab_f, units, dropped = L.assemble_units(lab, root, area, pits_rc, 0.4, 0.05, X0, Y0, Z, "dem-x")
     assert [u["watershed_id"] for u in units] == ["dem-x-001", "dem-x-002", "dem-x-003"]
     assert {u["unit_kind"] for u in units} == {L.KIND_BASIN, L.KIND_COAST_GROUP, L.KIND_ISLAND}
     basin = next(u for u in units if u["unit_kind"] == L.KIND_BASIN)
@@ -127,9 +128,9 @@ def test_assemble_units_drops_tiny_units():
     lab[:, :2] = 1
     lab[0, 3] = 2
     row_area = np.full(4, 0.001)
-    area = L.basin_areas(lab, row_area, 2)
+    area = L.basin_areas(lab, L.pixel_weights(row_area, lab.shape), 2)
     root = L.merge_basins(L.basin_adjacency(lab, 2), area, a_min=1.0)
-    lab_f, units, dropped = L.assemble_units(lab, root, area, np.array([[3, 0], [0, 3]]), row_area, 1.0, 0.005, X0, Y0, Z, "d")
+    lab_f, units, dropped = L.assemble_units(lab, root, area, np.array([[3, 0], [0, 3]]), 1.0, 0.005, X0, Y0, Z, "d")
     assert len(units) == 1 and dropped["n"] == 1 and dropped["area_km2"] == pytest.approx(0.001)
     assert lab_f[0, 3] == 0
 
@@ -156,6 +157,34 @@ def test_w05_mouths_ends_not_starts_and_attach():
     assert units[1]["water_system_name_ja_estimated"] is None and units[1]["main_river_names_ja"] == ""
     assert units[1]["w05_mouth_distance_m"] > 500             # 距離は残す（検査が外れとして見る）
     assert units[2]["w05_mouth_distance_m"] is None           # basin 以外は河口を引かない
+
+
+def test_attach_w05_multiple_systems_at_one_mouth_are_all_listed():
+    mouth = {"node_id": "b", "lon": 129.41, "lat": 28.3, "elevation_m": 1.0, "river_names": ("甲川",),
+             "water_system_names": ("乙水系", "甲水系")}
+    units = [{"unit_kind": L.KIND_BASIN, "outlet_lon": 129.41, "outlet_lat": 28.3}]
+    L.attach_w05(units, [mouth], 500)
+    assert units[0]["water_system_name_ja_estimated"] == "乙水系|甲水系"   # 文字列順の先頭を黙って選ばない
+
+
+def test_params_digest_depends_on_w05_input():
+    base = L.params_digest(CFG, "1.0", "m", "w05a")
+    assert L.params_digest(CFG, "1.0", "m", "w05b") != base
+
+
+def test_files_sha256_tracks_content(tmp_path):
+    a, b = tmp_path / "a", tmp_path / "b"
+    a.write_bytes(b"x")
+    b.write_bytes(b"y")
+    h = L.files_sha256([a, b])
+    b.write_bytes(b"z")
+    assert L.files_sha256([a, b]) != h
+
+
+def test_check_fresh_is_unknown_when_inputs_are_missing(tmp_path, capsys):
+    """海岸線ファイルが無いとき exit 1（例外）ではなく契約どおり 3（判定不能）。"""
+    rc = c69.check_fresh("jp-46", tmp_path / "no_coast.geojson", tmp_path, tmp_path / "x.jsonl")
+    assert rc == c69.EXIT_UNKNOWN
 
 
 def test_required_tiles_follow_land_not_bbox():
@@ -251,7 +280,7 @@ def test_pipeline_two_valleys_island_rock_and_pit(solved, monkeypatch):
     monkeypatch.setitem(regions.REGIONS["jp-46"], "watershed", CFG)
     res = run(want_upa=True)
     units = res["units"]
-    by_kind = {k: [u for u in units if u["unit_kind"] == k] for k in L.CATEGORY_JA}
+    by_kind = {k: [u for u in units if u["unit_kind"] == k] for k in L.KINDS}
     assert len(by_kind[L.KIND_BASIN]) == 2                       # 谷が 2 本（窪地は出口にならない）
     assert len(by_kind[L.KIND_ISLAND]) == 1 and by_kind[L.KIND_ISLAND][0]["area_km2"] == pytest.approx(
         40 * 40 * T.m_per_px(28.3, Z) ** 2 / 1e6, rel=0.05)
@@ -310,7 +339,7 @@ def test_w05_names_flow_into_rows(solved):
     res = run(mouths=[mouth])
     row = json.loads(res["jsonl"].splitlines()[0])
     assert row["main_river_names_ja"] == "試験川" and row["water_system_name_ja_estimated"] == "試験水系"
-    assert row["water_system_category_ja"] == L.CATEGORY_JA[row["unit_kind"]]
+    assert row["water_system_category_ja"] is None            # W12 の水系区分の列には DEM の種別を混ぜない（unit_kind が持つ）
     assert row["w05_mouth_distance_m"] == 0.0
 
 

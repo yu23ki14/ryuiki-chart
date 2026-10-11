@@ -268,6 +268,7 @@ def read_w12(shp, clip_bbox=None):
 # method=dem は地理院10m標高から計算した流域（c69 の GeoJSON を読む。奄美。Issue #94）。
 _WATERSHED_UNITS = {}
 _WATERSHED = {}
+_JOIN_METHOD = {}   # rid -> 割り当ての方法の説明文（watershed_units が method の分岐の中で決める）
 
 
 def watershed_units(rid="jp-14"):
@@ -293,6 +294,7 @@ def watershed_units(rid="jp-14"):
             codes.append(pr.get("water_system_code_old"))
             names[pr["watershed_id"]] = (pr.get("water_system_name_ja_estimated") or "",
                                          pr.get("water_system_category_ja") or "")
+        _JOIN_METHOD[rid] = f"重心点が{cfg['label_ja']}に内包"
     elif cfg["method"] == "w12":
         _, _, _, items = read_w12(L["w12_shp"], L["clip_bbox"])
         geoms = [g for _, _, g, _ in items]
@@ -303,6 +305,7 @@ def watershed_units(rid="jp-14"):
             for row in csv.DictReader(open(p, encoding="utf-8")):
                 names[row["watershed_id"]] = (row["water_system_name_ja_estimated"] or "",
                                               row.get("water_system_category_ja") or "")
+        _JOIN_METHOD[rid] = f"重心点がW12単位流域({L['pref_short']},昭和52年)に内包"
     else:
         raise ValueError(f"未知の watershed.method: {cfg['method']!r}（region={rid}）")
     _WATERSHED_UNITS[rid] = (geoms, ids, codes, names)
@@ -321,9 +324,8 @@ def watershed_index(rid="jp-14"):
 
 def watershed_join_method(rid="jp-14"):
     """割り当ての方法の説明文（`watershed_join_method` 列）。"""
-    if regions.get(rid)["watershed"]["method"] == "dem":
-        return "重心点が地理院10m標高から計算した流域に内包"
-    return f"重心点がW12単位流域({layout(rid)['pref_short']},昭和52年)に内包"
+    watershed_units(rid)
+    return _JOIN_METHOD[rid]
 
 
 def assign_watershed(geom, rid="jp-14"):
@@ -339,10 +341,9 @@ def assign_watershed(geom, rid="jp-14"):
     if len(hit):
         wid = int(hit[0])
     else:                       # 重心が流域界外（海側等）→ 最近傍を採らずに null
-        label = "地理院10m標高から計算した流域" if regions.get(rid)["watershed"]["method"] == "dem" else "W12流域界"
         return {"watershed_id": None, "water_system_code_old": None,
                 "water_system_name_ja_estimated": None,
-                "watershed_join_method": f"重心が{label}の外 → 未割当"}
+                "watershed_join_method": f"重心が{regions.watershed_label(rid)}の外 → 未割当"}
     return {"watershed_id": ids[wid], "water_system_code_old": codes[wid],
             "water_system_name_ja_estimated": names.get(ids[wid]),
             "watershed_join_method": watershed_join_method(rid)}

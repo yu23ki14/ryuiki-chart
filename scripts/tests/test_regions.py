@@ -179,12 +179,15 @@ def test_watershed_stems_order():
 
 
 def test_watershed_declarations():
-    assert rc.REGIONS["jp-14"]["watershed"] == {"method": "w12", "stem": "nlni_w12_watersheds"}
+    assert rc.REGIONS["jp-14"]["watershed"] == {"method": "w12", "stem": "nlni_w12_watersheds", "label_ja": "W12流域界"}
     dem = rc.REGIONS["jp-46"]["watershed"]
     assert dem["method"] == "dem" and dem["stem"] == "gsi_dem_watersheds_amami"
     assert {"a_min_km2", "min_island_km2", "simplify_px", "dem_zoom", "w05_match_m"} <= set(dem)
     for r in rc.REGIONS.values():
         assert r["watershed"]["method"] in ("w12", "dem")
+        assert r["watershed"]["label_ja"]          # 割り当ての説明・未割当の文言（c34・assign_watershed）が引く
+    assert rc.dem_regions() == ["jp-46"]
+    assert rc.watershed_label("jp-46") == "地理院10m標高から計算した流域"
 
 
 def test_watershed_paths_follow_stems(tmp_path):

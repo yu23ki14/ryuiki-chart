@@ -18,22 +18,30 @@ import shapely
 from shapely.geometry import shape, mapping, box
 from shapely.ops import unary_union, polygonize
 
+import regions
 import terrain_lib as T
 
 TILE = T.TILE
 ALGO_VERSION = "dem-watershed/1"
-TILE_URL = "https://cyberjapandata.gsi.go.jp/xyz/dem_png/{z}/{x}/{y}.png"
+TILE_URL = T.TILE_URL
 NODATA = -9999.0
 
+# unit_kind の値。日本語の呼び名（河口の流域／沿岸の小流域群／小島）は画面側（web の MapPage）が持つ。
+# water_system_category_ja（W12 の水系区分の列）には混ぜず、DEM の行では NULL にする。
 KIND_BASIN = "basin"
 KIND_COAST_GROUP = "coast_group"
 KIND_ISLAND = "island"
-CATEGORY_JA = {KIND_BASIN: "河口の流域", KIND_COAST_GROUP: "沿岸の小流域群", KIND_ISLAND: "小島"}
+KINDS = (KIND_BASIN, KIND_COAST_GROUP, KIND_ISLAND)
 
 ROW_KEYS = ("source_id", "watershed_id", "water_system_code_old", "water_system_name_ja_estimated",
             "water_system_category_ja", "main_river_names_ja", "area_km2", "centroid_lat", "centroid_lon",
             "data_year", "source_ref", "unit_kind", "own_drainage_km2", "merged_share", "outlet_lat",
             "outlet_lon", "w05_mouth_distance_m", "dem_zoom", "params_digest")
+
+
+def id_prefix(slug):
+    """watershed_id の接頭辞（`dem-<slug>`。規則は regions.WATERSHED_DEM_ID_PREFIX）。"""
+    return f"{regions.WATERSHED_DEM_ID_PREFIX}{slug}"
 
 
 # ---------- 陸とタイル ----------
@@ -88,16 +96,21 @@ def row_area_km2(y0, height, z):
     ys = (np.arange(height) + 0.5) + y0 * TILE
     n = TILE * 2 ** z
     lat = np.degrees(np.arctan(np.sinh(np.pi * (1.0 - 2.0 * ys / n))))
-    mpp = 40075016.686 * np.cos(np.radians(lat)) / n
+    mpp = T.EARTH_CIRC_M * np.cos(np.radians(lat)) / n
     return (mpp ** 2) / 1e6
 
 
-def drop_small_components(valid, row_area, min_km2):
-    """有効画素（8近傍）の連結成分のうち面積 < min_km2（岩礁）を落とす。(新しい valid, 落とした面積 km², 落とした成分数)。"""
+def pixel_weights(row_area, shape):
+    """全画素の面積 [km²] を平らに並べた配列（行の面積を列数ぶん繰り返す）。大きいので compute() が1回だけ作って共有する。"""
+    return np.repeat(row_area, shape[1])
+
+
+def drop_small_components(valid, w, min_km2):
+    """有効画素（8近傍）の連結成分のうち面積 < min_km2（岩礁）を落とす。w は pixel_weights()。
+    (新しい valid, 落とした面積 km², 落とした成分数)。"""
     from scipy import ndimage
     lab, n = ndimage.label(valid, structure=np.ones((3, 3)))
-    area = np.bincount(lab.ravel(), weights=np.broadcast_to(row_area[:, None], valid.shape).ravel(),
-                       minlength=n + 1)
+    area = np.bincount(lab.ravel(), weights=w, minlength=n + 1)
     small = area < min_km2
     small[0] = False
     return valid & ~small[lab], float(area[small].sum()), int(small.sum())
@@ -113,10 +126,11 @@ def flow_basins(dem, valid, row_area, want_upa=False):
     """窪地埋め → D8 → 海に接する画素ごとの流域。(lab, pits, upa|None, 版)。
     lab は int32 の (H, W)（0=無効、1..P=pits の順）。pits はラスタの平坦な添字の配列。"""
     import pyflwdir
-    d = np.where(valid, dem, NODATA).astype(np.float32)
+    d = np.where(valid, dem, np.float32(NODATA))   # dem は float32 なので float32 のまま
     flw = pyflwdir.from_dem(d, nodata=NODATA, outlets="edge")
     pits = np.asarray(flw.idxs_pit)
-    lab = flw.basins(idxs=pits, ids=np.arange(1, len(pits) + 1, dtype=np.uint32)).astype(np.int32)
+    lab = flw.basins(idxs=pits, ids=np.arange(1, len(pits) + 1, dtype=np.uint32))
+    lab = lab.view(np.int32) if lab.dtype == np.uint32 else lab.astype(np.int32)   # 番号は 2^31 未満
     upa = None
     if want_upa:
         areaw = np.where(valid, row_area[:, None], 0.0)
@@ -125,9 +139,8 @@ def flow_basins(dem, valid, row_area, want_upa=False):
 
 
 # ---------- 併合 ----------
-def basin_areas(lab, row_area, n_basins):
-    """流域ごとの面積 [km²]（形 n_basins+1。0 番は未使用）。"""
-    w = np.broadcast_to(row_area[:, None], lab.shape).ravel()
+def basin_areas(lab, w, n_basins):
+    """流域ごとの面積 [km²]（形 n_basins+1。0 番は未使用）。w は pixel_weights()。"""
     return np.bincount(lab.ravel(), weights=w, minlength=n_basins + 1)
 
 
@@ -192,17 +205,10 @@ def merge_basins(adj, area, a_min):
 
 def pit_lonlat(rows, cols, x0, y0, z):
     """ラスタの (row, col) 配列 → 画素中心の (lon, lat) 配列。"""
-    return px_to_lonlat(np.asarray(cols, float) + 0.5 + x0 * TILE, np.asarray(rows, float) + 0.5 + y0 * TILE, z)
+    return T.pixel_to_lonlat_arr(np.asarray(cols, float) + 0.5 + x0 * TILE, np.asarray(rows, float) + 0.5 + y0 * TILE, z)
 
 
-def px_to_lonlat(px, py, z):
-    n = TILE * 2 ** z
-    lon = np.asarray(px, float) / n * 360.0 - 180.0
-    lat = np.degrees(np.arctan(np.sinh(np.pi * (1.0 - 2.0 * np.asarray(py, float) / n))))
-    return lon, lat
-
-
-def assemble_units(lab, root_of, basin_area, pits_rc, row_area, a_min, min_island_km2, x0, y0, z, id_prefix):
+def assemble_units(lab, root_of, basin_area, pits_rc, a_min, min_island_km2, x0, y0, z, id_prefix):
     """併合結果から面（unit）を組み立てる。
     戻り値: (lab_final, units, dropped)
       lab_final: int32。面の番号（1..N）。落とした面は 0。
@@ -213,8 +219,7 @@ def assemble_units(lab, root_of, basin_area, pits_rc, row_area, a_min, min_islan
     出口 = 面を作る流域のうち自前の集水面積が最大のもの（同じなら番号の小さい方）の pit。
     unit_kind: 自前の集水面積 >= a_min の出口を持てば basin、持たずに面積 >= a_min なら coast_group、
     面積 < a_min（併合しても届かない＝隣が無い）なら island。"""
-    lab_root = root_of[lab]
-    unit_area = basin_area_by(lab_root, row_area, len(root_of))
+    unit_area = np.bincount(root_of, weights=basin_area, minlength=len(root_of))   # 面ごとの面積 = 流域の面積の和
     roots = [int(r) for r in np.unique(root_of[1:]) if unit_area[r] >= min_island_km2]
     dropped_roots = [int(r) for r in np.unique(root_of[1:]) if unit_area[r] < min_island_km2]
     dropped = {"n": len(dropped_roots), "area_km2": float(sum(unit_area[r] for r in dropped_roots))}
@@ -252,13 +257,8 @@ def assemble_units(lab, root_of, basin_area, pits_rc, row_area, a_min, min_islan
         u["id"] = k
         u["watershed_id"] = f"{id_prefix}-{k:03d}"
         remap[u["root"]] = k
-    lab_final = np.where(lab > 0, remap[root_of[lab]], 0).astype(np.int32)
+    lab_final = remap[root_of][lab]   # 0 番（無効）は root_of[0] = 0 → remap[0] = 0 で 0 のまま。int32
     return lab_final, units, dropped
-
-
-def basin_area_by(label_img, row_area, size):
-    w = np.broadcast_to(row_area[:, None], label_img.shape).ravel()
-    return np.bincount(label_img.ravel(), weights=w, minlength=size)
 
 
 # ---------- ポリゴン化 ----------
@@ -293,7 +293,7 @@ def labels_to_polygons(lab, x0, y0, z, simplify_px):
         geoms = shapely.coverage_simplify(geoms, float(simplify_px))
 
     def to_lonlat(xy):
-        lon, lat = px_to_lonlat(xy[:, 0] + x0 * TILE, xy[:, 1] + y0 * TILE, z)
+        lon, lat = T.pixel_to_lonlat_arr(xy[:, 0] + x0 * TILE, xy[:, 1] + y0 * TILE, z)
         return np.stack([lon, lat], axis=1)
 
     out = {}
@@ -358,8 +358,10 @@ def attach_w05(units, mouths, match_m):
         u["w05_mouth_distance_m"] = round(near[0][0], 1)
         within = [m for d, _, m in near if d <= match_m]
         if within:
+            # 水系名は最寄りの河口（match_m 以内）のもの。その河口に水系が複数あるときは文字列順の先頭を
+            # 選ばず、全部を `|` で並べる（main_river_names_ja と同じ区切り）。曖昧さを隠さない。
             systems = within[0]["water_system_names"]
-            u["water_system_name_ja_estimated"] = systems[0] if systems else None
+            u["water_system_name_ja_estimated"] = "|".join(systems) if systems else None
             names = []
             for m in within:
                 for nm in m["river_names"]:
@@ -369,11 +371,20 @@ def attach_w05(units, mouths, match_m):
 
 
 # ---------- 出力 ----------
-def params_digest(cfg, flow_version, mosaic_sha):
-    """定義パラメータとモザイクの中身から作る指紋（16桁）。jsonl の全行に入れる。"""
+def files_sha256(paths):
+    """複数ファイルの中身から作る sha256（パスの順）。W05 の入力の指紋に使う。"""
+    h = hashlib.sha256()
+    for p in paths:
+        h.update(hashlib.sha256(pathlib.Path(p).read_bytes()).digest())
+    return h.hexdigest()
+
+
+def params_digest(cfg, flow_version, mosaic_sha, w05_sha):
+    """定義パラメータ・モザイクの中身・W05 入力の中身から作る指紋（16桁）。jsonl の全行に入れる。
+    水系名・河川名・河口までの距離は W05 から付くので、W05 が変わったら指紋も変わる（--check-fresh が拾う）。"""
     payload = {"algo": ALGO_VERSION, "a_min_km2": cfg["a_min_km2"], "min_island_km2": cfg["min_island_km2"],
                "simplify_px": cfg["simplify_px"], "dem_zoom": cfg["dem_zoom"], "w05_match_m": cfg["w05_match_m"],
-               "pyflwdir": flow_version, "mosaic_sha256": mosaic_sha}
+               "pyflwdir": flow_version, "mosaic_sha256": mosaic_sha, "w05_sha256": w05_sha}
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:16]
 
 
@@ -388,7 +399,7 @@ def unit_rows(units, polys, cfg, digest):
             "watershed_id": u["watershed_id"],
             "water_system_code_old": None,
             "water_system_name_ja_estimated": u["water_system_name_ja_estimated"],
-            "water_system_category_ja": CATEGORY_JA[u["unit_kind"]],
+            "water_system_category_ja": None,   # W12 の水系区分の列。DEM の種別は unit_kind に持つ
             "main_river_names_ja": u["main_river_names_ja"],
             "area_km2": round(u["area_km2"], 6),
             "centroid_lat": round(c.y, 6),
@@ -612,5 +623,5 @@ def check_largest_unit_outlet(units, decl):
 def check_unit_count(units, decl):
     spec = decl["unit_count"]
     ok = abs(len(units) - int(spec["expected"])) <= int(spec.get("tolerance", 0))
-    kinds = {k: sum(1 for u in units if u["unit_kind"] == k) for k in CATEGORY_JA}
+    kinds = {k: sum(1 for u in units if u["unit_kind"] == k) for k in KINDS}
     return _result("unit_count", decl, {"n": len(units), "by_kind": kinds}, ok)

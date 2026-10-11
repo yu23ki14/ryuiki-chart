@@ -670,8 +670,8 @@ def is_valid_namespace(ns: str) -> bool:
 # `dem-amami-001` → ns=`dem`・local=`amami-001`）、それ以外は国土数値情報 W12（ns=`nlni`、ID 全体が local）。
 # web の `lib/cube/grid.ts`（`watershedIdOfPlaceId`/`placeIdOfWatershedId`）が同じ規則を持つ。
 WATERSHED_NS_NLNI = "nlni"
-WATERSHED_NS_DEM = "dem"
-_WATERSHED_DEM_PREFIX = "dem-"
+WATERSHED_NS_DEM = _regions.WATERSHED_DEM_NS
+_WATERSHED_DEM_PREFIX = _regions.WATERSHED_DEM_ID_PREFIX
 
 
 def watershed_ns_and_key(watershed_id: str) -> tuple[str, str]:

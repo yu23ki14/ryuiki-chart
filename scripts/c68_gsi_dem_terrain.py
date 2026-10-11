@@ -35,7 +35,7 @@ import terrain_lib as T
 from registry import zone_rule
 
 SID = "gsi_dem_terrain"
-TILE_URL = "https://cyberjapandata.gsi.go.jp/xyz/dem_png/{z}/{x}/{y}.png"
+TILE_URL = T.TILE_URL
 TILE_CACHE = RAW / "gsi_dem_png"
 COAST_GEOJSON = PROC / "nlni_c23_coastline.geojson"
 ZONE_YAML = zone_rule.ZONE_YAML

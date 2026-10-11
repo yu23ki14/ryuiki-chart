@@ -37,8 +37,13 @@ EXIT_FRESH, EXIT_STALE, EXIT_UNKNOWN = 0, 10, 3
 def watershed_cfg(rid):
     cfg = regions.get(rid).get("watershed")
     if not cfg or cfg.get("method") != "dem":
-        raise SystemExit(f"{rid} は regions.py の watershed.method が dem ではない（c69 は DEM で流域を作る地域だけ）")
+        raise ValueError(f"{rid} は regions.py の watershed.method が dem ではない（c69 は DEM で流域を作る地域だけ）")
     return cfg
+
+
+def w05_paths(rid):
+    """河口の入力（W05 の流路・ノード）。水系名・河川名・河口までの距離がここから付くので digest に入れる。"""
+    return [PROC / f"{regions.name(base, rid)}.jsonl" for base in ("nlni_w05_rivers", "nlni_w05_river_nodes")]
 
 
 def read_jsonl(path):
@@ -46,27 +51,29 @@ def read_jsonl(path):
 
 
 # ---------- 計算 ----------
-def compute(cfg, rid, dem, origin, mosaic_sha, mouths, want_upa=False):
-    """モザイク → 面・ポリゴン・出力テキスト。純粋に入力から決まる（ファイルに書かない）。"""
+def compute(cfg, rid, dem, origin, mosaic_sha, w05_sha, mouths, want_upa=False):
+    """モザイク → 面・ポリゴン・出力テキスト。純粋に入力から決まる（ファイルに書かない）。
+    valid・upa は --check（want_upa）のときだけ返す（全画素の大きい配列なので、要らないときは持たない）。"""
     x0, y0 = origin
     z = cfg["dem_zoom"]
     h, w = dem.shape
     row_area = L.row_area_km2(y0, h, z)
-    valid, dropped_comp_km2, dropped_comp_n = L.drop_small_components(np.isfinite(dem), row_area, cfg["min_island_km2"])
+    pw = L.pixel_weights(row_area, dem.shape)
+    valid, dropped_comp_km2, dropped_comp_n = L.drop_small_components(np.isfinite(dem), pw, cfg["min_island_km2"])
     lab, pits, upa, flow_version = L.flow_basins(dem, valid, row_area, want_upa=want_upa)
     n = len(pits)
-    basin_area = L.basin_areas(lab, row_area, n)
+    basin_area = L.basin_areas(lab, pw, n)
     root_of = L.merge_basins(L.basin_adjacency(lab, n), basin_area, cfg["a_min_km2"])
     pits_rc = np.stack(np.divmod(pits, w), axis=1)
     lab_final, units, dropped_units = L.assemble_units(
-        lab, root_of, basin_area, pits_rc, row_area, cfg["a_min_km2"], cfg["min_island_km2"], x0, y0, z,
-        id_prefix=f"dem-{regions.get(rid)['slug']}")
+        lab, root_of, basin_area, pits_rc, cfg["a_min_km2"], cfg["min_island_km2"], x0, y0, z,
+        id_prefix=L.id_prefix(regions.get(rid)["slug"]))
     polys = L.labels_to_polygons(lab_final, x0, y0, z, cfg["simplify_px"])
     L.attach_w05(units, mouths, cfg["w05_match_m"])
-    digest = L.params_digest(cfg, flow_version, mosaic_sha)
+    digest = L.params_digest(cfg, flow_version, mosaic_sha, w05_sha)
     pairs = L.unit_rows(units, polys, cfg, digest)
     return {
-        "units": units, "polys": polys, "digest": digest, "valid": valid, "upa": upa,
+        "units": units, "polys": polys, "digest": digest, "valid": valid if want_upa else None, "upa": upa,
         "dropped_components": {"n": dropped_comp_n, "area_km2": dropped_comp_km2}, "dropped_units": dropped_units,
         "jsonl": L.dump_jsonl([r for r, _ in pairs]), "geojson": L.dump_geojson([f for _, f in pairs]),
         "n_basins": n, "origin": origin,
@@ -109,13 +116,16 @@ def run_checks(cfg, res, land_polys, mouths, w12_path, out_paths):
             "checks": {k: checks[k] for k in L.CHECK_NAMES}}
 
 
-def check_fresh(cfg, polys, cache, jsonl_path):
-    """jsonl の params_digest と、いまのモザイク・パラメータから作った指紋が一致するか（流向は計算しない）。"""
+def check_fresh(rid, coast, cache, jsonl_path):
+    """jsonl の params_digest と、いまのモザイク・W05 入力・パラメータから作った指紋が一致するか（流向は計算しない）。
+    入力（海岸線・設定・W05・タイル・pyflwdir）が揃わず判定できないときは EXIT_UNKNOWN。"""
     try:
+        cfg = watershed_cfg(rid)
+        land = L.land_polygons(coast, regions.get(rid)["pref_code"])
         rows = read_jsonl(jsonl_path)
-        dem, _, sha = load_mosaic(cfg, polys, cache)
-        digest = L.params_digest(cfg, L.flow_version(), sha)
-    except (FileNotFoundError, T.TileNotCached, ImportError) as e:
+        dem, _, sha = load_mosaic(cfg, land, cache)
+        digest = L.params_digest(cfg, L.flow_version(), sha, L.files_sha256(w05_paths(rid)))
+    except (FileNotFoundError, T.TileNotCached, ImportError, ValueError, KeyError) as e:
         print(f"判定不能: {type(e).__name__}: {e}")
         return EXIT_UNKNOWN
     have = {r["params_digest"] for r in rows}
@@ -129,7 +139,7 @@ def check_fresh(cfg, polys, cache, jsonl_path):
 # ---------- 入口 ----------
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--region", default="jp-46", choices=sorted(regions.REGIONS))
+    ap.add_argument("--region", default="jp-46", choices=regions.dem_regions())
     ap.add_argument("--plan", action="store_true", help="足りないタイルの枚数だけ数えて終わる")
     ap.add_argument("--no-fetch", action="store_true", help="タイルを取らない（足りなければ止まる）")
     ap.add_argument("--no-register", action="store_true", help="source_registry に登録しない")
@@ -141,6 +151,8 @@ def main(argv=None):
     a = ap.parse_args(argv)
 
     rid = a.region
+    if a.check_fresh:   # 入力が無いときも例外にせず EXIT_UNKNOWN を返す（契約は 0/10/3）
+        return check_fresh(rid, a.coast, a.cache, PROC / f"{watershed_cfg(rid)['stem']}.jsonl")
     cfg = watershed_cfg(rid)
     out = {"geojson": PROC / f"{cfg['stem']}.geojson", "jsonl": PROC / f"{cfg['stem']}.jsonl"}
     if not pathlib.Path(a.coast).exists():
@@ -151,19 +163,17 @@ def main(argv=None):
     print(f"陸のポリゴン {len(land)} 面、必要なタイル {len(tiles)} 枚、足りない {len(missing)} 枚")
     if a.plan:
         return 0
-    if a.check_fresh:
-        return check_fresh(cfg, land, a.cache, out["jsonl"])
     if missing:
         if a.no_fetch:
             raise SystemExit(f"タイルが {len(missing)} 枚足りない（--no-fetch）")
         c68.fetch_tiles(missing, a.cache)
 
     name = regions.name
-    mouths = L.w05_mouths(read_jsonl(PROC / f"{name('nlni_w05_rivers', rid)}.jsonl"),
-                          read_jsonl(PROC / f"{name('nlni_w05_river_nodes', rid)}.jsonl"))
+    rivers_p, nodes_p = w05_paths(rid)
+    mouths = L.w05_mouths(read_jsonl(rivers_p), read_jsonl(nodes_p))
     dem, origin, sha = load_mosaic(cfg, land, a.cache)
-    res = compute(cfg, rid, dem, origin, sha, mouths, want_upa=a.check)
-    kinds = {k: sum(1 for u in res["units"] if u["unit_kind"] == k) for k in L.CATEGORY_JA}
+    res = compute(cfg, rid, dem, origin, sha, L.files_sha256([rivers_p, nodes_p]), mouths, want_upa=a.check)
+    kinds = {k: sum(1 for u in res["units"] if u["unit_kind"] == k) for k in L.KINDS}
     print(f"面 {len(res['units'])}（{kinds}）、流域 {res['n_basins']}、落とした岩礁 {res['dropped_components']['n']} 成分 "
           f"{res['dropped_components']['area_km2']:.2f} km²、落とした面 {res['dropped_units']['n']}、params_digest={res['digest']}")
 

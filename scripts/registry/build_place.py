@@ -668,6 +668,11 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
             o["water_system_category_ja"],
             o["main_river_names_ja"],
             o["data_year"],
+            # 以下3列は DEM 流域（奄美）の行だけが持つ。W12 の行にはキー自体が無いので NULL
+            # （上の必須キーと違い、無いことが正常な列だけ .get() で読む）。
+            o.get("unit_kind"),
+            o.get("merged_share"),
+            o.get("own_drainage_km2"),
         ))
 
     # --- grid01: ryuiki.organism_records の座標（4,087件） -------------------
@@ -769,7 +774,8 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     )
     common.insert_many(
         conn, "place_watershed",
-        ["place_id", "water_system_code", "water_system_category", "main_rivers", "data_year"],
+        ["place_id", "water_system_code", "water_system_category", "main_rivers", "data_year",
+         "unit_kind", "merged_share", "own_drainage_km2"],
         watershed_attr_rows,
     )
 

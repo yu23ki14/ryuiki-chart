@@ -82,7 +82,7 @@ REGIONS: dict[str, dict] = {
         "estat_pref_codes": ("14",),
         "pref_redlist": {"source": "taxa_column", "list_ids": ("rl2020", "rl2026")},
         # 流域（place・割り当て・土地利用の流域集計の入力）。神奈川は国土数値情報 W12 のまま（1ビットも変えない）。
-        "watershed": {"method": "w12", "stem": "nlni_w12_watersheds"},
+        "watershed": {"method": "w12", "stem": "nlni_w12_watersheds", "label_ja": "W12流域界"},
     },
     "jp-46": {
         "slug": "amami",
@@ -124,7 +124,7 @@ REGIONS: dict[str, dict] = {
         "pref_redlist": {"source": "lookup_table", "list_id": "kgrl2014"},
         # 流域: W12 の奄美25面は陸の42.5%しか覆わないので、地理院10m標高から計算した面（c69、Issue #94）に置き換える
         # （併存させない）。W12 の L1（nlni_w12_watersheds_amami.*）は残し、c69 の比較検査の入力に使う。
-        "watershed": {"method": "dem", "stem": "gsi_dem_watersheds_amami",
+        "watershed": {"method": "dem", "stem": "gsi_dem_watersheds_amami", "label_ja": "地理院10m標高から計算した流域",
                       "a_min_km2": 3.0, "min_island_km2": 0.1,
                       "simplify_px": 3, "dem_zoom": 14, "w05_match_m": 500},
     },
@@ -184,6 +184,23 @@ def region_of_source_id(source_id: str) -> str | None:
         if r["slug"] in tokens or r["jma_daily"]["source_id"] == source_id:
             return rid
     return None
+
+
+# DEM 流域の watershed_id は `dem-<slug>-NNN`。place_id の ns・ID の接頭辞の規則はここ1か所
+# （registry/common.py・c69・dem_watershed_lib が import する。web の cube/grid.ts は同じ規則を
+# scripts/tests/fixtures/watershed_id_cases.json の表で検査する）。
+WATERSHED_DEM_NS = "dem"
+WATERSHED_DEM_ID_PREFIX = WATERSHED_DEM_NS + "-"
+
+
+def watershed_label(rid: str) -> str:
+    """流域の呼び名（`watershed.label_ja`。割り当ての説明・未割当の文言に使う）。"""
+    return REGIONS[rid]["watershed"]["label_ja"]
+
+
+def dem_regions() -> list[str]:
+    """流域を DEM で作る地域（`watershed.method == "dem"`）。"""
+    return [rid for rid, r in REGIONS.items() if r["watershed"]["method"] == "dem"]
 
 
 def watershed_stems() -> list[str]:

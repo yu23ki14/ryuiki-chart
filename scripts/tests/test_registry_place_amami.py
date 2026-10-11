@@ -4,6 +4,7 @@
 - 奄美の site は `jp-46:place:site.<ns>.<local>`・`place.region_id='jp-46'`。
 - W12 は全地域の jsonl を連結して読み、place_source_ref の版は jsonl の出典で引く。
 """
+import json
 import pathlib
 import sqlite3
 
@@ -117,14 +118,15 @@ def test_default_watershed_jsonls_cover_every_region():
 
 # --- Issue #94: 奄美の流域は地理院10m標高から計算した面（名前空間 dem）。W12 の nlni とは別 ---
 
-@pytest.mark.parametrize("wid, expected", [
-    ("83032-0024", ("nlni", "83032-0024")),
-    ("89599-0001", ("nlni", "89599-0001")),          # W12 の ID は従来どおり（神奈川の ID を変えない）
-    ("dem-amami-001", ("dem", "amami-001")),
-    ("dem-amami-071", ("dem", "amami-071")),
-])
-def test_watershed_ns_and_key(wid, expected):
-    assert common.watershed_ns_and_key(wid) == expected
+# web の lib/cube/grid.test.ts も同じ JSON の表を読む（place_id ⇔ watershed_id の規則を両側で検査する）
+_ID_CASES = json.loads((pathlib.Path(__file__).parent / "fixtures" / "watershed_id_cases.json").read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("case", _ID_CASES, ids=lambda c: c["watershed_id"])
+def test_watershed_place_id_cases(case):
+    assert common.watershed_place_id(case["watershed_id"]) == case["place_id"]
+    ns, key = common.watershed_ns_and_key(case["watershed_id"])
+    assert case["place_id"] == f"common:place:watershed.{ns}.{key}"
 
 
 def test_kanagawa_watershed_place_id_is_unchanged():
@@ -134,8 +136,9 @@ def test_kanagawa_watershed_place_id_is_unchanged():
 
 def test_dem_watershed_builds_place_with_dem_namespace(tmp_path, monkeypatch):
     dem_row = dict(_WATERSHED_ROW_FULL, watershed_id="dem-amami-001", water_system_code_old=None,
-                   water_system_name_ja_estimated=None, water_system_category_ja="河口の流域",
-                   main_river_names_ja="", data_year=None, centroid_lat=28.3, centroid_lon=129.5)
+                   water_system_name_ja_estimated=None, water_system_category_ja=None,
+                   main_river_names_ja="", data_year=None, centroid_lat=28.3, centroid_lon=129.5,
+                   unit_kind="coast_group", merged_share=0.25, own_drainage_km2=1.5)
     conn, counts = _build(tmp_path, monkeypatch, [], watershed_rows=[_WATERSHED_ROW_FULL, dem_row])
     assert counts["place_watershed"] == 2
     pid = "common:place:watershed.dem.amami-001"
@@ -143,6 +146,12 @@ def test_dem_watershed_builds_place_with_dem_namespace(tmp_path, monkeypatch):
         "SELECT place_id FROM place_source_ref WHERE key_space='watershed_id' AND external_key='dem-amami-001'"
     ).fetchone()[0] == pid
     assert conn.execute("SELECT place_kind, region_id FROM place WHERE place_id=?", (pid,)).fetchone()[0] == "watershed"
-    assert conn.execute("SELECT water_system_category FROM place_watershed WHERE place_id=?", (pid,)).fetchone()[0] == "河口の流域"
+    # 種別・併合した割合・自前の集水面積は専用列に届く（水系区分の列には混ぜない）。W12 の行は NULL
+    assert tuple(conn.execute(
+        "SELECT water_system_category, unit_kind, merged_share, own_drainage_km2 FROM place_watershed WHERE place_id=?",
+        (pid,)).fetchone()) == (None, "coast_group", 0.25, 1.5)
+    assert tuple(conn.execute(
+        "SELECT unit_kind, merged_share, own_drainage_km2 FROM place_watershed WHERE place_id='common:place:watershed.nlni.83032-0024'"
+    ).fetchone()) == (None, None, None)
     # 神奈川の流域の ID は従来のまま
     assert conn.execute("SELECT COUNT(*) FROM place WHERE place_id='common:place:watershed.nlni.83032-0024'").fetchone()[0] == 1
