@@ -141,36 +141,46 @@ def _pct_of(part, whole):
 def run_checks(spec):
     """行内の和 = 合計、ダムの足し算と割り算を検算する。通らなければ IdentityError。-> 検算で裏付けたセルの key の集合"""
     by = {_key(c): c for c in spec}
-    backed, obs = set(), {}
+    backed = set()
 
     def val(doc, t, r, k):
         return _int(by[(doc, t, r, k)]["value_raw"])
 
+    obs = {}
     for muni in JORYO_ROWS:
-        obs[("上水道", muni)] = (sum(val(JORYO, T_X1, muni, k) for k in JORYO_COLS), val(JORYO, T_X1, muni, "合計"))
+        obs[muni] = (sum(val(JORYO, T_X1, muni, k) for k in JORYO_COLS), val(JORYO, T_X1, muni, "合計"))
         backed |= {(JORYO, T_X1, muni, k) for k in [*JORYO_COLS, "合計"]}
-    doccells.check_identity("上水道 種別の和 = 合計", {k: v for k, v in obs.items() if k[0] == "上水道"})
+    doccells.check_identity("上水道 種別の和 = 合計", obs)
     obs = {}
     for muni in KANI_ROWS:
-        obs[("簡易", muni)] = (sum(val(KANI, T_X2, muni, k) for k in KANI_AMOUNT_COLS), val(KANI, T_X2, muni, KANI_TOTAL))
+        obs[muni] = (sum(val(KANI, T_X2, muni, k) for k in KANI_AMOUNT_COLS), val(KANI, T_X2, muni, KANI_TOTAL))
         backed |= {(KANI, T_X2, muni, k) for k in [*KANI_AMOUNT_COLS, KANI_TOTAL]}
         for k in ("簡易水道の箇所数", "表流水（取水箇所）", "地下水（取水箇所）", "その他（取水箇所）"):
-            val(KANI, T_X2, muni, k)   # 値の形だけ
+            _int(by[(KANI, T_X2, muni, k)]["value_raw"])   # 値の形だけ
     doccells.check_identity("簡易水道 取水量の和 = 計", obs)
-    d = lambda k: val(DAM, T_P5, "大和ダム", k)   # noqa: E731
-    dp = lambda k: Decimal(by[(DAM, T_P5, "大和ダム", k)]["value_raw"])   # noqa: E731
-    obs = {"洪水調節＋可能＝使える": (d("洪水調節容量") + d("洪水調節可能容量"), d("水害対策に使える容量"))}
-    for part in ("洪水調節容量", "洪水調節可能容量", "水害対策に使える容量"):
+
+    def d(k):
+        return val(DAM, T_P5, "大和ダム", k)
+
+    def dp(k):
+        return Decimal(by[(DAM, T_P5, "大和ダム", k)]["value_raw"])
+
+    parts = ("洪水調節容量", "洪水調節可能容量", "水害対策に使える容量")
+    obs = {"洪水調節＋可能＝使える": (d(parts[0]) + d(parts[1]), d(parts[2]))}
+    for part in parts:
         obs[f"割合 {part}"] = (_pct_of(d(part), d("有効貯水容量")), dp(f"{part}の{PCT}"))
     doccells.check_identity("大和ダム 容量", obs)
-    backed |= {(DAM, T_P5, "大和ダム", k) for k in ("有効貯水容量", "洪水調節容量", "洪水調節可能容量", "水害対策に使える容量",
-                                                  *(f"{p}の{PCT}" for p in ("洪水調節容量", "洪水調節可能容量", "水害対策に使える容量")))}
+    backed |= {(DAM, T_P5, "大和ダム", k) for k in ("有効貯水容量", *parts, *(f"{p}の{PCT}" for p in parts))}
     for k in ("有効貯水量", "うち洪水調節可能容量"):
-        val(DAM, T_P6, "大川ダム", k)
+        _int(by[(DAM, T_P6, "大川ダム", k)]["value_raw"])
     return backed
 
 
 # ---------------------------------------------------------------- PDF の検査（任意）
+JORYO_PDF_COLS = [(k, i + 1) for i, k in enumerate([*JORYO_COLS, "合計"])]       # (col_key, 表の列番号)
+KANI_PDF_COLS = [(ck, j) for (ck, _u, _t), j in zip(KANI_COLS, [1, 8, 9, 10, 11, 12, 13, 14])]
+
+
 def _squash(s):
     return "".join((s or "").split())
 
@@ -183,6 +193,21 @@ def _best_table(tables, pred):
     raise ValueError("期待する表が見つからない")
 
 
+def _find_row(rows, pred, label):
+    """pred を満たす行がちょうど1つであることを確かめて、その行番号を返す（0個・2個以上は ValueError）。"""
+    idx = [i for i, r in enumerate(rows) if r and pred(r[0])]
+    if len(idx) != 1:
+        raise ValueError(f"{label}: 行が{len(idx)}個（1個のはず）")
+    return idx[0]
+
+
+def _cell_text(cell, where):
+    """表のセルの数値の印字（カンマ付き）。None・空・'-'・数字でないものは、文書・行の文脈つきの ValueError。"""
+    if cell is None or not re.fullmatch(r"\d{1,3}(,\d{3})*|\d+", cell.strip()):
+        raise ValueError(f"{where}: 表が SPEC と違う（数値として読めない {cell!r}）")
+    return cell.strip()
+
+
 def _bbox(t, i, j):
     try:
         cell = t.rows[i].cells[j]
@@ -191,86 +216,100 @@ def _bbox(t, i, j):
     return [round(x, 1) for x in cell] if cell else None
 
 
-def verify_pdfs(spec, root=ROOT):
+def _shas(root=ROOT):
+    return {d: common.sha256(root / m["local_path"]) if (root / m["local_path"]).exists() else None for d, m in DOCS.items()}
+
+
+def _check_text(doc, text, needles):
+    for n in needles:
+        if _squash(n) not in text:
+            raise ValueError(f"{doc}: 本文に現れない断片 {n!r}")
+
+
+def _verify_rows(doc, table_id, t, rows, row_keys, colmap, by, bbox):
+    """行ごとに、表の値が SPEC の value_raw と一致すること、行が一意なことを検査し、セル座標を bbox に入れる。"""
+    for rk in row_keys:
+        i = _find_row(rows, lambda c0, rk=rk: c0 == rk, f"{doc} {rk}")
+        want = [by[(doc, table_id, rk, ck)]["value_raw"] for ck, _ in colmap]
+        got = [_cell_text(rows[i][j], f"{doc} {rk}") for _, j in colmap]
+        if got != want:
+            raise ValueError(f"{doc} {rk}: 表が SPEC と違う: {got}")
+        for ck, j in colmap:
+            bbox[(doc, table_id, rk, ck)] = _bbox(t, i, j)
+
+
+def _verify_joryo(pdf, by, bbox):
+    page = pdf.pages[0]
+    text = _squash(page.extract_text())
+    _check_text(JORYO, text, DOCS[JORYO]["needles"])
+    if _squash("ダム湖水自流伏流水浅井戸深井戸") not in text:
+        raise ValueError(f"{JORYO}: 見出し（種別の並び）が違う")
+    t, rows = _best_table(page.find_tables(), lambda r: r[0] == "奄美市")
+    _verify_rows(JORYO, T_X1, t, rows, JORYO_ROWS, JORYO_PDF_COLS, by, bbox)
+
+
+def _verify_kani(pdf, by, bbox):
+    page = pdf.pages[0]
+    _check_text(KANI, _squash(page.extract_text()), DOCS[KANI]["needles"])
+    t, rows = _best_table(page.find_tables(), lambda r: r[0] == "大和村")
+    hdr = rows[1]
+    if [hdr[8], hdr[10], hdr[12], hdr[14]] != ["表流水", "地下水", "その他", "計"]:
+        raise ValueError(f"{KANI}: 見出しが違う: {hdr}")
+    _verify_rows(KANI, T_X2, t, rows, KANI_ROWS, KANI_PDF_COLS, by, bbox)
+
+
+def _verify_dam(pdf, by, bbox):
+    dam_cols = [(r[3], r[4]) for r in DAM_ROWS if r[2] == "大和ダム"]   # (col_key, 印字)
+    want = [by[(DAM, T_P5, "大和ダム", ck)]["value_raw"] for ck, _ in dam_cols]
+    page5 = pdf.pages[4]
+    squashed = _squash(page5.extract_text())
+    if "大和ダム" + "".join(w + ("%" if "." in w else "") for w in want) not in squashed:
+        raise ValueError("p5: 本文に大和ダムの行が現れない")
+    # 表: 先頭の「大」が欠ける（'和ダム'）ことがあるので 2文字目以降で見る
+    exp = [w + ("%" if "." in w else "") for w in want]
+    is_row = lambda c0: c0 in ("和ダム", "大和ダム")   # noqa: E731
+    t, rows = _best_table(page5.find_tables(), lambda r: is_row(r[0]))
+    i = _find_row(rows, is_row, "p5 大和ダム")
+    if rows[i][1:] != exp:
+        raise ValueError(f"p5 大和ダム: 表が SPEC と違う: {rows[i][1:]}")
+    for j, (ck, _) in enumerate(dam_cols, 1):
+        bbox[(DAM, T_P5, "大和ダム", ck)] = _bbox(t, i, j)
+    text6 = _squash(unicodedata.normalize("NFKC", pdf.pages[5].extract_text() or ""))
+    if "大川ダム" not in text6:
+        raise ValueError("p6: 大川ダムが現れない")
+    for ck in ("有効貯水量", "うち洪水調節可能容量"):
+        needle = f"V={by[(DAM, T_P6, '大川ダム', ck)]['value_raw']}千m3"   # NFKC・空白除去後の本文
+        if needle not in text6:
+            raise ValueError(f"p6: 本文に現れない断片 {needle!r}")
+
+
+_VERIFY = {JORYO: _verify_joryo, KANI: _verify_kani, DAM: _verify_dam}
+
+
+def verify_pdfs(spec, root=ROOT, sha=None):
     """sha256・ページ数・表の値・見出し・本文の文字列を検査する。-> (bbox {key: [x0,y0,x1,y1]}, 警告, checked)。
-    PDF・pdfplumber が無ければ ({}, [警告], False)。PDF があって sha256 が c104a の FILES と違えば止める。"""
-    paths = {d: root / m["local_path"] for d, m in DOCS.items()}
-    missing = [p.name for p in paths.values() if not p.exists()]
+    PDF・pdfplumber が無ければ ({}, [警告], False)。PDF があって sha256 が c104a の FILES と違えば止める。
+    sha: _shas(root) の結果（渡せば二重に計算しない）。"""
+    sha = sha if sha is not None else _shas(root)
+    missing = [DOCS[d]["file"] for d, s in sha.items() if s is None]
     if missing:
         return {}, [f"PDF が無い（{', '.join(missing)}）ので表・本文の検査を飛ばした"], False
-    for d, p in paths.items():
-        if common.sha256(p) != DOCS[d]["sha256"]:
-            raise SystemExit(f"{p.name}: sha256 が c104a_amami_water_dam_fetch.FILES と違う。資料が更新された？ 人が確認する")
+    for d, s in sha.items():
+        if s != DOCS[d]["sha256"]:
+            raise SystemExit(f"{DOCS[d]['file']}: sha256 が c104a_amami_water_dam_fetch.FILES と違う。資料が更新された？ 人が確認する")
     try:
         import pdfplumber
     except ImportError:
         return {}, ["pdfplumber が無いので表・本文の検査を飛ばした"], False
     by = {_key(c): c for c in spec}
     bbox = {}
-    for doc, path in paths.items():
-        with pdfplumber.open(str(path)) as pdf:
-            if len(pdf.pages) != DOCS[doc]["n_pages"]:
-                raise ValueError(f"{doc}: ページ数が {len(pdf.pages)}（DOCS は {DOCS[doc]['n_pages']}）")
-            if doc in (JORYO, KANI):
-                page = pdf.pages[0]
-                text = _squash(page.extract_text())
-                for n in DOCS[doc]["needles"]:
-                    if _squash(n) not in text:
-                        raise ValueError(f"{doc}: 本文に現れない断片 {n!r}")
-                tables = page.find_tables()
-                if doc == JORYO:
-                    if _squash("ダム湖水自流伏流水浅井戸深井戸") not in text:
-                        raise ValueError(f"{doc}: 見出し（種別の並び）が違う")
-                    t, rows = _best_table(tables, lambda r: r[0] == "奄美市")
-                    for muni in JORYO_ROWS:
-                        vals = [by[(doc, T_X1, muni, k)]["value_raw"] for k in [*JORYO_COLS, "合計"]]
-                        idx = [i for i, r in enumerate(rows) if r[0] == muni]
-                        if len(idx) != 1:
-                            raise ValueError(f"{doc}: 行 {muni} が{len(idx)}個")
-                        i = idx[0]
-                        got = [fmt(int(x.replace(",", ""))) for x in rows[i][1:9]]
-                        if got != vals:
-                            raise ValueError(f"{doc} {muni}: 表が SPEC と違う: {rows[i][1:9]}")
-                        for j in range(8):
-                            bbox[(doc, T_X1, muni, "合計" if j == 7 else JORYO_COLS[j])] = _bbox(t, i, j + 1)
-                else:
-                    t, rows = _best_table(tables, lambda r: r[0] == "大和村")
-                    hdr = rows[1]
-                    if [hdr[8], hdr[10], hdr[12], hdr[14]] != ["表流水", "地下水", "その他", "計"]:
-                        raise ValueError(f"{doc}: 見出しが違う: {hdr}")
-                    cols = [1, 8, 9, 10, 11, 12, 13, 14]
-                    for muni in KANI_ROWS:
-                        vals = [by[(doc, T_X2, muni, ck)]["value_raw"] for ck, _u, _t in KANI_COLS]
-                        idx = [i for i, r in enumerate(rows) if r[0] == muni]
-                        if len(idx) != 1:
-                            raise ValueError(f"{doc}: 行 {muni} が{len(idx)}個")
-                        i = idx[0]
-                        got = [fmt(int(rows[i][j].replace(",", ""))) for j in cols]
-                        if got != vals:
-                            raise ValueError(f"{doc} {muni}: 表が SPEC と違う: {got}")
-                        for (ck, _u, _t), j in zip(KANI_COLS, cols):
-                            bbox[(doc, T_X2, muni, ck)] = _bbox(t, i, j)
-            else:
-                want = [by[(DAM, T_P5, "大和ダム", r[3])]["value_raw"] for r in DAM_ROWS if r[2] == "大和ダム"]
-                page5 = pdf.pages[4]
-                squashed = _squash(page5.extract_text())
-                if "大和ダム" + "".join(want) not in squashed.replace("%", "").replace("％", "") and \
-                        "大和ダム" + "".join(w + ("%" if "." in w else "") for w in want) not in squashed:
-                    raise ValueError("p5: 本文に大和ダムの行が現れない")
-                # 表: 先頭の「大」が欠ける（'和ダム'）ことがあるので 2文字目以降で見る
-                exp = [want[0], want[1], want[2] + "%", want[3], want[4] + "%", want[5], want[6] + "%"]
-                t, rows = _best_table(page5.find_tables(), lambda r: r[0] in ("和ダム", "大和ダム") and r[1:] == exp)
-                i = [k for k, r in enumerate(rows) if r[0] in ("和ダム", "大和ダム")][0]
-                for j, (_t, _p, rk, ck, _raw, _u) in enumerate(r for r in DAM_ROWS if r[2] == "大和ダム"):
-                    bbox[(DAM, T_P5, rk, ck)] = _bbox(t, i, j + 1)
-                text6 = _squash(unicodedata.normalize("NFKC", pdf.pages[5].extract_text() or ""))
-                if "大川ダム" not in text6:
-                    raise ValueError("p6: 大川ダムが現れない")
-                for ck in ("有効貯水量", "うち洪水調節可能容量"):
-                    needle = f"V={by[(DAM, T_P6, '大川ダム', ck)]['value_raw']}千m3"   # NFKC・空白除去後の本文
-                    if needle not in text6:
-                        raise ValueError(f"p6: 本文に現れない断片 {needle!r}")
+    for doc, m in DOCS.items():
+        with pdfplumber.open(str(root / m["local_path"])) as pdf:
+            if len(pdf.pages) != m["n_pages"]:
+                raise ValueError(f"{doc}: ページ数が {len(pdf.pages)}（DOCS は {m['n_pages']}）")
+            _VERIFY[doc](pdf, by, bbox)
     return {k: v for k, v in bbox.items() if v}, [], True
+
 
 
 # ---------------------------------------------------------------- 組み立て
@@ -333,12 +372,12 @@ def build(root=ROOT, spec=None, check_pdfs=True, require_pdfs=False):
     """-> dict(docs={doc_id: dict(document, rows, notes)}, stats, warnings)。DB には触れない。"""
     spec = spec if spec is not None else SPEC
     backed = run_checks(spec)
+    sha = _shas(root)
     bbox, warnings, checked = {}, [], False
     if check_pdfs:
-        bbox, warnings, checked = verify_pdfs(spec, root)
+        bbox, warnings, checked = verify_pdfs(spec, root, sha)
         if not checked and require_pdfs:
             raise SystemExit(warnings[0] + "（書き込みには必須）")
-    sha = {d: common.sha256(root / m["local_path"]) if (root / m["local_path"]).exists() else None for d, m in DOCS.items()}
     by_doc = to_rows(spec, backed, bbox, checked, sha)
     ns = notes()
     docs = {d: dict(document=dict(title=m["title"], publisher=m["publisher"], url=m["url"], local_path=m["local_path"],
@@ -355,7 +394,7 @@ def write(built, register=True):
     for d, b in built["docs"].items():
         out[d] = doccells.commit_doc(
             d, document=b["document"], cells=b["rows"], notes=b["notes"],
-            log=[dict(verdict="pass", note=f"{SCRIPT_ID}: cells {len(b['rows'])} 件、検算で裏付け {built['stats']['backed']} セル（全体）",
+            log=[dict(verdict="pass", note=f"{SCRIPT_ID}: cells {len(b['rows'])} 件、検算で裏付け {sum(r['verified_by'] == 'auto:xtext+arith' for r in b['rows'])} セル",
                       failures={"warnings": built["warnings"]} if built["warnings"] else None)])
     if register:
         for sid, s in SOURCES.items():
