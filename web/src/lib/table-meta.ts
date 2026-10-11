@@ -57,6 +57,7 @@ export const TABLE_ORIGIN: Record<string, string> = {
   summary_species_catalog: "v2", summary_group_year: "v2", summary_effort_year: "v2", summary_grid_catalog: "v2",
   // 地域で絞る切り替え（Issue #93）の事前集計。place_region と、件数が加法でない4表の地域別版
   place_region: "v2",
+  summary_taxon_red_list: "v2",
   summary_species_catalog_by_region: "v2", summary_taxon_catalog_by_region: "v2",
   summary_effort_year_by_region: "v2", summary_variable_catalog_by_region: "v2",
   // registry.sqlite 由来（語彙レジストリ）
@@ -145,6 +146,9 @@ export const TABLE_META: Record<string, string> = {
   place_region:
     "場所（place_id）が属する地域（region_id）。観測・生物のキューブの region_id と観測地点の place.region_id の和集合。" +
     "流域・グリッドは place.region_id が空なので、地域で絞るときはここを引く。1つの場所は1つの地域にだけ属する",
+  summary_taxon_red_list:
+    "地域×taxon×赤リスト判定ラベル（カテゴリと出所〔県版の list_id か national〕）の記録数。種の一覧が赤リストのラベルを返す元。" +
+    "同じ地域・taxon に複数のラベルがあれば全部持つ",
   summary_species_catalog_by_region:
     "summary_species_catalog の地域別版（先頭に region_id）。地域（jp-14 神奈川県／jp-46 奄美大島）で絞った種数・記録数は" +
     "元の表ではなくこちらを引く（元の表は全地域の合算で、行を足し合わせても種数にならない）",

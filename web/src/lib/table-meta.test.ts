@@ -28,9 +28,10 @@ describe("table-meta と D1 スキーマの整合", () => {
     }
   });
 
-  it("地域で絞る切り替え（Issue #93）の新表 5 つは v2 由来", () => {
+  it("地域で絞る切り替え（Issue #93）の新表は v2 由来", () => {
     for (const name of [
       "place_region",
+      "summary_taxon_red_list",
       "summary_species_catalog_by_region",
       "summary_taxon_catalog_by_region",
       "summary_effort_year_by_region",
