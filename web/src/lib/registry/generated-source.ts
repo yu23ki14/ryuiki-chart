@@ -95,6 +95,7 @@ export const SOURCE_META: readonly GeneratedSourceMeta[] = [
   { sourceId: "geospatial_jp_plateau_kanagawa", nameJa: "G空間情報センター PLATEAU 神奈川県内市町村 3D都市モデル目録", publisher: "国土交通省 Project PLATEAU", homepageUrl: "https://www.geospatial.jp/ckan/dataset?q=plateau", supersededBy: null },
   { sourceId: "geospatial_jp_pointcloud_kanagawa", nameJa: "G空間情報センター 神奈川県 航空レーザ測量3次元点群データ目録", publisher: "神奈川県 環境農政局緑政部森林再生課", homepageUrl: "https://www.geospatial.jp/ckan/dataset/kanagawa-2022-pointcloud", supersededBy: null },
   { sourceId: "gsi_dem_terrain", nameJa: "国土地理院 標高タイル（DEM10B）から計算した地点の地形指標", publisher: "国土交通省国土地理院", homepageUrl: "https://maps.gsi.go.jp/development/demtile.html", supersededBy: null },
+  { sourceId: "gsi_dem_watersheds_amami", nameJa: "国土地理院 標高タイル（DEM10B）から計算した集水域（奄美大島）", publisher: "国土交通省国土地理院", homepageUrl: "https://maps.gsi.go.jp/development/demtile.html", supersededBy: null },
   { sourceId: "gsi_elevation_grid", nameJa: "国土地理院 標高API グリッド取得（神奈川県相当範囲）", publisher: "国土交通省国土地理院", homepageUrl: "https://maps.gsi.go.jp/development/elevation_s.html", supersededBy: null },
   { sourceId: "gsi_elevation_grid_amami", nameJa: "国土地理院 標高API グリッド取得（鹿児島県（奄美大島）相当範囲）", publisher: "国土交通省国土地理院", homepageUrl: "https://maps.gsi.go.jp/development/elevation_s.html", supersededBy: null },
   { sourceId: "gsi_kiban_chizu_joho", nameJa: "基盤地図情報（基本項目・数値標高モデル等）ダウンロードサービス", publisher: "国土交通省国土地理院", homepageUrl: "https://service.gsi.go.jp/kiban/", supersededBy: null },
@@ -273,6 +274,7 @@ export const SOURCE_EDITIONS: readonly GeneratedSourceEdition[] = [
   { editionId: "common:edition:geospatial_jp_plateau_kanagawa.20260829", sourceId: "geospatial_jp_plateau_kanagawa", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:31:24", url: "https://www.geospatial.jp/ckan/dataset?q=plateau", licenseId: "plateau_site_policy", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:geospatial_jp_pointcloud_kanagawa.20260829", sourceId: "geospatial_jp_pointcloud_kanagawa", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:31:24", url: "https://www.geospatial.jp/ckan/dataset/kanagawa-2022-pointcloud", licenseId: "cc_by", licenseClass: "cc_by", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:gsi_dem_terrain.20261010", sourceId: "gsi_dem_terrain", editionKey: "20261010", vintage: null, fetchedAt: "2026-10-10T18:00:26", url: "https://maps.gsi.go.jp/development/demtile.html", licenseId: "gsi_terms", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
+  { editionId: "common:edition:gsi_dem_watersheds_amami.20261011", sourceId: "gsi_dem_watersheds_amami", editionKey: "20261011", vintage: null, fetchedAt: "2026-10-11T17:04:47", url: "https://maps.gsi.go.jp/development/demtile.html", licenseId: "gsi_terms", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:gsi_elevation_grid.20260829", sourceId: "gsi_elevation_grid", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T16:39:04", url: "https://maps.gsi.go.jp/development/elevation_s.html", licenseId: "gsi_terms", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:gsi_elevation_grid_amami.20261010", sourceId: "gsi_elevation_grid_amami", editionKey: "20261010", vintage: null, fetchedAt: "2026-10-10T12:12:14", url: "https://maps.gsi.go.jp/development/elevation_s.html", licenseId: "gsi_terms", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:gsi_kiban_chizu_joho.20260829", sourceId: "gsi_kiban_chizu_joho", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:23:45", url: "https://service.gsi.go.jp/kiban/", licenseId: "gsi_terms", licenseClass: "open_terms", redistributable: false, updateMode: null, supersededBy: null },
@@ -350,13 +352,13 @@ export const SOURCE_EDITIONS: readonly GeneratedSourceEdition[] = [
   { editionId: "common:edition:nlni_a45_forest_amami.20261010", sourceId: "nlni_a45_forest_amami", editionKey: "20261010", vintage: null, fetchedAt: "2026-10-10T11:31:49", url: "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-A45.html", licenseId: "nlni_terms", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:nlni_c23_coastline.20261010", sourceId: "nlni_c23_coastline", editionKey: "20261010", vintage: null, fetchedAt: "2026-10-10T01:35:14", url: "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-C23.html", licenseId: "nlni_noncommercial", licenseClass: "noncommercial", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:nlni_l03b_landuse_2006.20260829", sourceId: "nlni_l03b_landuse_2006", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:05:31", url: "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-L03-b.html", licenseId: "nlni_terms", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
-  { editionId: "common:edition:nlni_l03b_landuse_2006_amami.20261010", sourceId: "nlni_l03b_landuse_2006_amami", editionKey: "20261010", vintage: null, fetchedAt: "2026-10-10T12:12:09", url: "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-L03-b.html", licenseId: "nlni_terms", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
+  { editionId: "common:edition:nlni_l03b_landuse_2006_amami.20261011", sourceId: "nlni_l03b_landuse_2006_amami", editionKey: "20261011", vintage: null, fetchedAt: "2026-10-11T17:05:56", url: "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-L03-b.html", licenseId: "nlni_terms", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:nlni_l03b_landuse_2016.20260829", sourceId: "nlni_l03b_landuse_2016", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:03:45", url: "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-L03-b.html", licenseId: "nlni_terms", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
-  { editionId: "common:edition:nlni_l03b_landuse_2016_amami.20261010", sourceId: "nlni_l03b_landuse_2016_amami", editionKey: "20261010", vintage: null, fetchedAt: "2026-10-10T12:11:55", url: "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-L03-b.html", licenseId: "nlni_terms", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
+  { editionId: "common:edition:nlni_l03b_landuse_2016_amami.20261011", sourceId: "nlni_l03b_landuse_2016_amami", editionKey: "20261011", vintage: null, fetchedAt: "2026-10-11T17:05:43", url: "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-L03-b.html", licenseId: "nlni_terms", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:nlni_l03b_landuse_by_watershed.2006", sourceId: "nlni_l03b_landuse_by_watershed", editionKey: "2006", vintage: "2006", fetchedAt: "2026-08-29T15:05:31", url: "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-L03-b.html", licenseId: "nlni_terms", licenseClass: "open_terms", redistributable: true, updateMode: "revision", supersededBy: null },
   { editionId: "common:edition:nlni_l03b_landuse_by_watershed.2016", sourceId: "nlni_l03b_landuse_by_watershed", editionKey: "2016", vintage: "2016", fetchedAt: "2026-08-29T15:03:45", url: "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-L03-b.html", licenseId: "nlni_terms", licenseClass: "open_terms", redistributable: true, updateMode: "revision", supersededBy: null },
-  { editionId: "common:edition:nlni_l03b_landuse_by_watershed_amami.2006", sourceId: "nlni_l03b_landuse_by_watershed_amami", editionKey: "2006", vintage: "2006", fetchedAt: "2026-10-10T12:12:09", url: "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-L03-b.html", licenseId: "nlni_terms", licenseClass: "open_terms", redistributable: true, updateMode: "revision", supersededBy: null },
-  { editionId: "common:edition:nlni_l03b_landuse_by_watershed_amami.2016", sourceId: "nlni_l03b_landuse_by_watershed_amami", editionKey: "2016", vintage: "2016", fetchedAt: "2026-10-10T12:11:55", url: "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-L03-b.html", licenseId: "nlni_terms", licenseClass: "open_terms", redistributable: true, updateMode: "revision", supersededBy: null },
+  { editionId: "common:edition:nlni_l03b_landuse_by_watershed_amami.2006", sourceId: "nlni_l03b_landuse_by_watershed_amami", editionKey: "2006", vintage: "2006", fetchedAt: "2026-10-11T17:05:56", url: "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-L03-b.html", licenseId: "nlni_terms", licenseClass: "open_terms", redistributable: true, updateMode: "revision", supersededBy: null },
+  { editionId: "common:edition:nlni_l03b_landuse_by_watershed_amami.2016", sourceId: "nlni_l03b_landuse_by_watershed_amami", editionKey: "2016", vintage: "2016", fetchedAt: "2026-10-11T17:05:43", url: "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-L03-b.html", licenseId: "nlni_terms", licenseClass: "open_terms", redistributable: true, updateMode: "revision", supersededBy: null },
   { editionId: "common:edition:nlni_p05_city_hall.20260829", sourceId: "nlni_p05_city_hall", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:07:53", url: "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-P05.html", licenseId: "terms_unconfirmed", licenseClass: "unconfirmed", redistributable: false, updateMode: null, supersededBy: null },
   { editionId: "common:edition:nlni_w05_river_nodes.20260829", sourceId: "nlni_w05_river_nodes", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T14:52:05", url: "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-W05.html", licenseId: "nlni_noncommercial", licenseClass: "noncommercial", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:nlni_w05_river_nodes_amami.20261010", sourceId: "nlni_w05_river_nodes_amami", editionKey: "20261010", vintage: null, fetchedAt: "2026-10-10T11:30:20", url: "https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-W05.html", licenseId: "nlni_noncommercial", licenseClass: "noncommercial", redistributable: true, updateMode: null, supersededBy: null },
@@ -462,7 +464,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 4560,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -540,7 +542,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 75240,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -558,7 +560,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 9979,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -576,7 +578,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 13206,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -642,7 +644,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 6038,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -680,7 +682,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 680,
     "nSourceRowsBasis": "catalog_datasets",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -706,7 +708,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 811,
     "nSourceRowsBasis": "catalog_datasets",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -768,7 +770,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 114,
     "nSourceRowsBasis": "catalog_datasets",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -782,7 +784,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 654,
     "nSourceRowsBasis": "catalog_datasets",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -800,7 +802,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 4,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -838,7 +840,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 2521,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -852,7 +854,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 98328,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -866,7 +868,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 1380,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -880,7 +882,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 214725,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -898,7 +900,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 25,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -916,7 +918,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 290,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -930,7 +932,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 5,
     "nSourceRowsBasis": "catalog_datasets",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -944,7 +946,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 1,
     "nSourceRowsBasis": "catalog_datasets",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -958,7 +960,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 1,
     "nSourceRowsBasis": "catalog_datasets",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -984,7 +986,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 47874,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1010,7 +1012,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 658360,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1040,7 +1042,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 1547,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1141,6 +1143,18 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
     "reasonNote": null
   },
+  "gsi_dem_watersheds_amami": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "file_only",
+    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
+    "reasonNote": null
+  },
   "gsi_elevation_grid": {
     "state": "not_queryable",
     "queryableVia": [],
@@ -1214,7 +1228,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 30,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1232,7 +1246,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 290,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1246,7 +1260,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 245513,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1264,7 +1278,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 5,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1290,7 +1304,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 13539,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1304,7 +1318,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 165332,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1318,7 +1332,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 20496,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1332,7 +1346,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 19420,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1346,7 +1360,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 6277,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1360,7 +1374,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 13821,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1374,7 +1388,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 65412,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1392,7 +1406,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 3,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1410,7 +1424,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 12,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1460,7 +1474,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 20508,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1474,7 +1488,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 57591,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1492,7 +1506,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 12,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1506,7 +1520,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 69120,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1520,7 +1534,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 11832,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1550,7 +1564,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 59,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1568,7 +1582,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 2810,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1631,7 +1645,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 134443,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1649,7 +1663,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 379,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1680,7 +1694,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 3286,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1699,7 +1713,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 400,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1717,7 +1731,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 29,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1759,7 +1773,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 1033,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1777,7 +1791,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 1851,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -1891,7 +1905,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 429,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -2053,7 +2067,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 30,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -2235,7 +2249,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 4858,
     "nSourceRowsBasis": "registry_record_count",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -2247,9 +2261,9 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": 283,
+    "nSourceRows": 806,
     "nSourceRowsBasis": "registry_record_count",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -2507,7 +2521,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 16,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -2545,7 +2559,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 175344,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -2563,7 +2577,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 2,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -2601,7 +2615,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 17697,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -2615,7 +2629,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 168793,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -2633,7 +2647,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 1,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -2651,7 +2665,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 4,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
@@ -2766,7 +2780,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 75528,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-11T13:40:02",
+    "countedAt": "2026-10-11T17:05:56",
     "reason": null,
     "reasonJa": null,
     "reasonNote": null
