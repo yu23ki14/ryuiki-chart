@@ -3,7 +3,7 @@
  * `region` が undefined のときは何も足さない（全体は現状と同じ SQL 文字列・パラメータ）。
  */
 import type { RegionId } from "@/lib/region";
-import { SOURCE_REGION } from "@/lib/registry/generated-source";
+import { REGION_SLUGS, SOURCE_REGION } from "@/lib/registry/generated-source";
 import type { SqlParam } from "./db";
 
 /** `<alias>.region_id = ?` 単体（" AND " は付けない）。region が undefined なら sql は ""。 */
@@ -27,9 +27,18 @@ export function placeRegionJoin(
   };
 }
 
-/** 出典の地域（マニフェスト由来の生成物 SOURCE_REGION）。未宣言は undefined。 */
+/**
+ * 出典の地域。マニフェスト由来の SOURCE_REGION が先、無ければ scripts/regions.py の `region_of_source_id` と同じ規則
+ * （source_id を `_` で割ったトークンに地域の slug があればその地域。slug は生成物の REGION_SLUGS）。どちらも無ければ undefined。
+ */
 export function sourceRegion(sourceId: string): RegionId | undefined {
-  return SOURCE_REGION[sourceId];
+  const declared = SOURCE_REGION[sourceId];
+  if (declared !== undefined) return declared;
+  const tokens = new Set(sourceId.split(/_+/));
+  for (const [rid, slugs] of Object.entries(REGION_SLUGS)) {
+    if (slugs.some((s) => tokens.has(s))) return rid as RegionId;
+  }
+  return undefined;
 }
 
 /** 出典がその地域に属するか。region undefined は常に true。地域未宣言の出典も true（共通出典）。 */
