@@ -48,7 +48,7 @@ def copy_ocr(tmp_path, with_reviewed):
 
 
 def _mutate(tmp_path, engine, fn):
-    root = tmp_path if (tmp_path / c.DOC_ID).exists() else copy_ocr(tmp_path, with_reviewed=False)
+    root = tmp_path if (tmp_path / c.DOC_ID).exists() else copy_ocr(tmp_path, with_reviewed=True)
     p = root / c.DOC_ID / f"{engine}.json"
     d = json.load(open(p, encoding="utf-8"))
     fn(d)
@@ -265,7 +265,10 @@ def json_len(s):
 def test_verified_by_without_sheet_falls_back_to_arith():
     b = c.build(sheet_pdf=None)
     assert any("評価シート" in w for w in b["warnings"])
-    assert {r["verified_by"] for r in b["rows"]} == {"auto:xocr+arith"} and {r["confidence"] for r in b["rows"]} == {1.0}
+    by = {(r["row_key"], r["col_key"]): r for r in b["rows"]}
+    reviewed = c.cellmatch.load_reviewed(c.OCR_DIR / c.DOC_ID / "reviewed.csv", c.norm)
+    for k, r in by.items():   # 人の確認でない reviewer（claude(vision)）は 0.9、それ以外は検算 1.0
+        assert (r["verified_by"], r["confidence"]) == (("claude(vision)", 0.9) if k in reviewed else ("auto:xocr+arith", 1.0))
 
 
 def test_doc_series_where_counts():
@@ -308,8 +311,9 @@ def test_with_sheet_year_cells_are_xtext_and_the_declared_diff_is_the_total_cpue
     st = b["stats"]
     assert st["sheet_matched"] == 23 * 5 and st["sheet_declared_diff"] == [(c.ROW_KEYS[c.J_CPUE], c.COL_TOTAL)]
     by = _by(b)
-    assert {by[(rk, str(y))]["verified_by"] for rk in c.ROW_KEYS for y in range(2000, 2023)} == {"auto:xocr+xtext"}
-    assert {by[(rk, c.COL_TOTAL)]["verified_by"] for rk in c.ROW_KEYS} == {"auto:xocr+arith"}
+    reviewed = c.cellmatch.load_reviewed(c.OCR_DIR / c.DOC_ID / "reviewed.csv", c.norm)
+    assert {by[(rk, str(y))]["verified_by"] for rk in c.ROW_KEYS for y in range(2000, 2023) if (rk, str(y)) not in reviewed} == {"auto:xocr+xtext"}
+    assert {by[(rk, c.COL_TOTAL)]["verified_by"] for rk in c.ROW_KEYS if (rk, c.COL_TOTAL) not in reviewed} == {"auto:xocr+arith"}
     assert by[(c.ROW_KEYS[c.J_CPUE], "2018")]["value_raw"] == "0.0004"   # 3桁に丸めて比べるが、値は PNG の印字のまま
 
 
@@ -367,3 +371,23 @@ def test_write_replaces_only_own_doc_id(tmp_path, monkeypatch):
     assert con.execute("SELECT count(*) FROM documents WHERE doc_id IN (?,?)", (c.DOC_ID, d.DOC_ID)).fetchone()[0] == 2
     assert con.execute("SELECT n_pages FROM documents WHERE doc_id=?", (d.DOC_ID,)).fetchone()[0] is None
     assert con.execute("SELECT count(*) FROM extraction_log").fetchone()[0] == 2   # 2回書いて c100b のログ 2 行
+
+
+def test_register_writes_one_source_with_the_cell_count(tmp_path, monkeypatch):
+    import common
+    cells_db, app_db = tmp_path / "cells.sqlite", tmp_path / "ryuiki.sqlite"
+    con = sqlite3.connect(cells_db)
+    con.executescript((c.ROOT / "scripts/schema_cells.sql").read_text(encoding="utf-8"))
+    con.execute("ALTER TABLE cells ADD COLUMN superseded INTEGER DEFAULT 0")
+    con.commit()
+    con.close()
+    con = sqlite3.connect(app_db)
+    con.executescript((c.ROOT / "scripts/schema_app.sql").read_text(encoding="utf-8"))
+    con.commit()
+    con.close()
+    monkeypatch.setattr(common, "cellsdb", lambda: sqlite3.connect(cells_db))
+    monkeypatch.setattr(common, "appdb", lambda: sqlite3.connect(app_db))
+    c.write(c.build(sheet_pdf=None))
+    row = sqlite3.connect(app_db).execute(
+        "SELECT source_id, license, redistributable, record_count FROM source_registry").fetchall()
+    assert row == [(c.SOURCE_ID, doccells.LICENSE_MOE_PDL, 1, 120)]
