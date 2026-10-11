@@ -377,6 +377,30 @@ export const placeRegion = sqliteTable(
 );
 
 /**
+ * `summary_taxon_red_list`: 地域×taxon×赤リスト判定ラベルの記録数（`scripts/b13_build_summary.py` の
+ * `_build_taxon_red_list`。`occurrence` のうち `red_list_category` が空でない日付ありの記録を
+ * (region_id, taxon_id, red_list_category, red_list_source) ごとに数える）。`occurrence_agg.n_red_list` を数えた
+ * 判定結果そのもののラベルなので、種の一覧の件数とラベルが食い違わない。同じ (地域, taxon) に複数のラベルがあれば全部持つ。
+ * `red_list_source` は県版の list_id か 'national'。旧来の記録は NULL のことがある。
+ */
+export const summaryTaxonRedList = sqliteTable(
+	"summary_taxon_red_list",
+	{
+		regionId: text("region_id").notNull(),
+		taxonId: text("taxon_id").notNull(),
+		redListCategory: text("red_list_category").notNull(),
+		redListSource: text("red_list_source"),
+		n: integer().notNull(),
+		builtFrom: text("built_from").notNull(),
+		specVersion: text("spec_version").notNull(),
+	},
+	(table) => [
+		index("ix_summary_taxon_red_list_taxon").on(table.taxonId),
+		index("ix_summary_taxon_red_list_region_taxon").on(table.regionId, table.taxonId),
+	],
+);
+
+/**
  * 以下4表は、同名の既存の summary 表（`aggregations/serving.yaml` で `by_region: true` を宣言した表）と同じ
  * 定義を、地域ごとの `occurrence_agg`／`observation_agg` の行だけに絞って作ったもの。列は既存の同名表と
  * 同じ＋先頭に `region_id`。件数が加法でない表（種数・年数・場所数）を地域で絞るときの事前集計で、

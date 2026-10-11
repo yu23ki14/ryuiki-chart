@@ -32,7 +32,8 @@ serving-diff の v1 側）は撤去した。ここに残るのは v2（観測・
   （実測 1,437,598 セル。`watershed`×`month` は消費者が無いので作らない）。流域に解決できない日付あり記録も
   `place_kind='watershed', place_id NULL` のセルとして持つ（データを落とさない）。測度は `n`/`n_red_list`/`n_alien`。
 - `scripts/b13_build_summary.py`: `observation_agg`/`occurrence_agg` の宣言的集計（`aggregations/serving.yaml`）→
-  `v2.sqlite` 内の `summary_*` 表。
+  `v2.sqlite` 内の `summary_*` 表。あわせて `place_region` と `summary_taxon_red_list`（`occurrence` の赤リスト判定ラベル〔`red_list_category`・
+  `red_list_source`〕を地域×taxon×ラベルで数えた表。種の一覧が件数 `n_red_list` と同じ判定結果のラベルを返す元。ラベルは潰さず全部持つ）を作る。
 
 `organism_records` を作る `scripts/m03_organisms.py`（b06 の前）は、赤リスト判定（`red_list_category`・`red_list_source`）を
 地域ごとに「県版 → 全国版」で付ける（`regions.REGIONS[rid]["pref_redlist"]`）。このため `taxa`（c25）と

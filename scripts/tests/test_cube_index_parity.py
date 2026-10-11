@@ -123,11 +123,14 @@ def test_region_tables_index_parity_with_b13():
     import b13_build_summary as b13
     from migrate import common
 
-    tables = (*common.V2_SUMMARY_BY_REGION_TABLES, common.V2_PLACE_REGION_TABLE)
+    tables = (*common.V2_SUMMARY_BY_REGION_TABLES, common.V2_PLACE_REGION_TABLE, common.V2_TAXON_RED_LIST_TABLE)
     from_migrations = _indexes_from_migrations(tables)
     summaries = yaml.safe_load((ROOT / "aggregations" / "serving.yaml").read_text(encoding="utf-8"))["summaries"]
 
-    expected: dict[str, set[tuple[str, ...]]] = {common.V2_PLACE_REGION_TABLE: set(b13.PLACE_REGION_INDEXES)}
+    expected: dict[str, set[tuple[str, ...]]] = {
+        common.V2_PLACE_REGION_TABLE: set(b13.PLACE_REGION_INDEXES),
+        common.V2_TAXON_RED_LIST_TABLE: set(b13.TAXON_RED_LIST_INDEXES),
+    }
     for base in common.V2_SUMMARY_BY_REGION_BASES:
         spec = b13._by_region_spec(base, summaries[base])
         expected[f"{base}_by_region"] = {tuple(cols) for cols in spec["indexes"]}

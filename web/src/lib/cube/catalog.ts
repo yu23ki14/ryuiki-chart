@@ -13,7 +13,7 @@ import { MAX_ID_LIST } from "./db";
 import { gridCellOfPlaceId, watershedIdOfPlaceId } from "./grid";
 import { NAME_JA } from "@/lib/registry/generated-client";
 import { OCC_BOTH_KINDS_YEAR, OCC_MESH_N, OCC_N_ALL, OCC_N_LOCATED, OCC_SUM, USE_RECORD_VERNACULAR, labelMap, pickLabel, resolveNames } from "./occurrence";
-import { IAS_SINCE_YEAR, OCC_DEFAULT_FROM, occDefaultTo, chunk, cmp, jsonEachParam, seriesFilterSql, uniq } from "./sql";
+import { IAS_SINCE_YEAR, OCC_DEFAULT_FROM, YEAR_GRAINS, occDefaultTo, chunk, cmp, jsonEachParam, seriesFilterSql, uniq } from "./sql";
 import { OCCURRENCE_AGG_INDEX } from "@/db/schema-cube";
 import { OCCURRENCE_SOURCE_IDS } from "./source-meta";
 import type { RegionId } from "@/lib/region";
@@ -935,7 +935,25 @@ export interface SpeciesCatalogRow {
   nYears: number;
   /** `withNames` のときだけ（§2.3 の表示名）。 */
   label?: string;
+  /** 出典・流域・期間・赤リストで絞った経路（`speciesCatalogScoped`）だけ。赤リストの判定ラベル（無い種は空配列）。 */
+  redList?: RedListLabel[];
 }
+
+/**
+ * 赤リスト該当の記録に付いた判定ラベル（`summary_taxon_red_list`。`occurrence_agg.n_red_list` を数えた判定結果そのもの）。
+ * 地域ごと・ラベルごとに1行。同じ種に複数のラベルがあれば全部返す（最頻値に潰さない）。`n` はその地域の日付のある
+ * 全記録のうちそのラベルの記録数で、絞り込み（流域・期間）では数え直さない。`source` は県版の list_id か 'national'
+ * （旧来の記録は null）。
+ */
+export interface RedListLabel {
+  regionId: string;
+  category: string;
+  source: string | null;
+  n: number;
+}
+
+/** 流域を指定した種の一覧の行。座標のある記録の件数（grid01 系列）は流域の指定とは別物なので持たない。 */
+export type PlaceSpeciesCatalogRow = Omit<SpeciesCatalogRow, "nLocated" | "nPlaces">;
 
 /**
  * 検索語（部分一致・大文字小文字無視）: 学名（binom）か、人が確認した和名（NAME_JA）に当たる種。
@@ -989,11 +1007,19 @@ interface SpeciesCatalogOpt {
   sourceIds?: readonly string[];
   /** 地域で絞る（`summary_species_catalog_by_region`。`sourceIds` との併用は `occurrence_agg` に `region_id` を足す）。未指定は全体。 */
   region?: RegionId;
+  /** 流域の place_id・期間（暦年。period_start の年）・赤リスト該当の種だけ、のいずれかを付けると `occurrence_agg` を直接集計する（`speciesCatalogScoped`）。 */
+  placeId?: string;
+  yearFrom?: number;
+  yearTo?: number;
+  redListOnly?: boolean;
 }
 
 /** v1 `speciesList`。`ORDER BY n DESC, binom`。 */
-export async function speciesCatalog(db: CubeDb, opt: SpeciesCatalogOpt = {}): Promise<SpeciesCatalogRow[]> {
-  if (opt.sourceIds !== undefined) return speciesCatalogBySource(db, { ...opt, sourceIds: opt.sourceIds });
+export async function speciesCatalog(db: CubeDb, opt: SpeciesCatalogOpt & { placeId: string }): Promise<PlaceSpeciesCatalogRow[]>;
+export async function speciesCatalog(db: CubeDb, opt?: SpeciesCatalogOpt): Promise<SpeciesCatalogRow[]>;
+export async function speciesCatalog(db: CubeDb, opt: SpeciesCatalogOpt = {}): Promise<SpeciesCatalogRow[] | PlaceSpeciesCatalogRow[]> {
+  const scoped = opt.placeId !== undefined || opt.yearFrom !== undefined || opt.yearTo !== undefined || opt.redListOnly;
+  if (opt.sourceIds !== undefined || scoped) return speciesCatalogScoped(db, opt);
   const limit = opt.limit ?? 200;
   const params: SqlParam[] = [];
   const conds: string[] = [];
@@ -1022,26 +1048,57 @@ export async function speciesCatalog(db: CubeDb, opt: SpeciesCatalogOpt = {}): P
 }
 
 /**
- * `speciesCatalog` の出典絞り込み版。`summary_species_catalog` は出典別の列を持たないので `occurrence_agg` を
- * 直接 GROUP BY する（定義は `aggregations/serving.yaml` の summary_species_catalog と同じ: n 系は watershed 系列
- * （座標なしを含む日付のある全記録）、n_places は grid01 系列、年族、binom が取れる taxon）。`group` は未指定の経路と同じく binom の `MAX(taxon_group)` で判定する（HAVING）。
- * 全出典の一覧より重い。
+ * `speciesCatalog` の絞り込み版（出典・流域・期間・赤リスト）。`summary_species_catalog` は出典別の列も流域も期間も
+ * 持たないので `occurrence_agg` を直接 GROUP BY する（定義は `aggregations/serving.yaml` の summary_species_catalog と
+ * 同じ: n 系は watershed 系列〔座標なしを含む日付のある全記録〕、n_places は grid01 系列、年族、binom が取れる taxon）。
+ * `group` は未指定の経路と同じく binom の `MAX(taxon_group)` で判定する（HAVING）。全出典の一覧より重い。
+ *
+ * `placeId` を指定すると watershed 系列のその流域だけを数える（索引 place_period。`watershedYears` と同じ書き方）。
+ * 流域に解決できない記録（海上・流域の外。`place_id` NULL のセル）は入らない。このとき `nLocated`/`nPlaces`（grid01 系列）
+ * は流域の指定とは別物なので行に持たない。期間は記録の `period_start` の年（`yearFrom` 以上、`yearTo` 以下）。
+ * `redListOnly` は赤リストの記録がある種だけ。
  */
-async function speciesCatalogBySource(db: CubeDb, opt: SpeciesCatalogOpt & { sourceIds: readonly string[] }): Promise<SpeciesCatalogRow[]> {
+async function speciesCatalogScoped(db: CubeDb, opt: SpeciesCatalogOpt): Promise<SpeciesCatalogRow[] | PlaceSpeciesCatalogRow[]> {
   const limit = opt.limit ?? 200;
+  const conds: string[] = [];
+  const params: SqlParam[] = [];
+  let index: string = OCCURRENCE_AGG_INDEX.kindGrainPeriod;
+  if (opt.placeId !== undefined) {
+    index = OCCURRENCE_AGG_INDEX.placePeriod;
+    conds.push(`o.place_kind = 'watershed' AND o.place_id = ? AND o.grain IN ${YEAR_GRAINS}`);
+    params.push(opt.placeId);
+  } else {
+    conds.push(OCC_BOTH_KINDS_YEAR);
+  }
+  if (opt.sourceIds !== undefined) {
+    conds.push("o.source_id IN (SELECT value FROM json_each(?))");
+    params.push(jsonEachParam(uniq(opt.sourceIds)));
+  }
   const rp = regionPred("o", opt.region);
-  const params: SqlParam[] = [jsonEachParam(uniq(opt.sourceIds)), ...rp.params];
-  let extra = "";
+  if (rp.sql) {
+    conds.push(rp.sql);
+    params.push(...rp.params);
+  }
+  if (opt.yearFrom !== undefined) {
+    conds.push("o.period_start >= ?");
+    params.push(String(opt.yearFrom).padStart(4, "0"));
+  }
+  if (opt.yearTo !== undefined) {
+    conds.push("o.period_start < ?");
+    params.push(String(opt.yearTo + 1).padStart(4, "0"));
+  }
+  conds.push("t.canonical_binomial IS NOT NULL");
   const search = speciesSearchCond(opt.search, "t.canonical_binomial");
   if (search) {
-    extra += ` AND ${search.cond}`;
+    conds.push(search.cond);
     params.push(...search.params);
   }
-  let having = "";
+  const having: string[] = [];
   if (opt.group) {
-    having = "HAVING MAX(t.taxon_group) = ?";
+    having.push("MAX(t.taxon_group) = ?");
     params.push(opt.group);
   }
+  if (opt.redListOnly) having.push(`${OCC_SUM("n_red_list", "watershed")} > 0`);
   params.push(limit);
   const rows = await db.all<OccRow>(
     `SELECT t.canonical_binomial AS binom, MAX(t.taxon_group) AS taxon_group, MAX(t."class") AS "class", MAX(t.family) AS family,
@@ -1052,16 +1109,49 @@ async function speciesCatalogBySource(db: CubeDb, opt: SpeciesCatalogOpt & { sou
             MIN(CAST(substr(o.period_start, 1, 4) AS INTEGER)) AS y_from,
             MAX(CAST(substr(o.period_start, 1, 4) AS INTEGER)) AS y_to,
             COUNT(DISTINCT substr(o.period_start, 1, 4)) AS n_years
-     FROM occurrence_agg o INDEXED BY ${OCCURRENCE_AGG_INDEX.kindGrainPeriod}
+     FROM occurrence_agg o INDEXED BY ${index}
      JOIN taxon t ON t.taxon_id = o.taxon_id
-     WHERE o.source_id IN (SELECT value FROM json_each(?))${rp.sql ? ` AND ${rp.sql}` : ""}
-       AND ${OCC_BOTH_KINDS_YEAR}
-       AND t.canonical_binomial IS NOT NULL${extra}
-     GROUP BY t.canonical_binomial ${having}
+     WHERE ${conds.join(" AND ")}
+     GROUP BY t.canonical_binomial${having.length ? ` HAVING ${having.join(" AND ")}` : ""}
      ORDER BY n DESC, binom LIMIT ?`,
     params,
   );
-  return withSpeciesLabels(db, rows.map(toSpeciesCatalogRow), opt.withNames);
+  const out = await withSpeciesLabels(db, rows.map(toSpeciesCatalogRow), opt.withNames);
+  await attachRedListLabels(db, out, opt.region);
+  if (opt.placeId === undefined) return out;
+  return out.map((r) => {
+    const row: Partial<SpeciesCatalogRow> = { ...r };
+    delete row.nLocated; // grid01 系列の値は流域の指定とは別物なので出さない
+    delete row.nPlaces;
+    return row as PlaceSpeciesCatalogRow;
+  });
+}
+
+/** 赤リストの記録がある種に、判定ラベル（`summary_taxon_red_list`）を付ける。無い種は空配列。 */
+async function attachRedListLabels(db: CubeDb, rows: SpeciesCatalogRow[], region: RegionId | undefined): Promise<void> {
+  for (const r of rows) r.redList = [];
+  const listed = rows.filter((r) => r.nRedList > 0);
+  if (listed.length === 0) return;
+  const rp = regionPred("l", region);
+  const labels = await db.all<OccRow>(
+    `SELECT t.canonical_binomial AS binom, l.region_id AS region_id, l.red_list_category AS category,
+            l.red_list_source AS source, SUM(l.n) AS n
+     FROM summary_taxon_red_list l
+     JOIN taxon t ON t.taxon_id = l.taxon_id
+     WHERE t.canonical_binomial IN (SELECT value FROM json_each(?))${rp.sql ? ` AND ${rp.sql}` : ""}
+     GROUP BY t.canonical_binomial, l.region_id, l.red_list_category, l.red_list_source
+     ORDER BY binom, region_id, n DESC, category`,
+    [jsonEachParam(listed.map((r) => r.binom)), ...rp.params],
+  );
+  const byBinom = new Map(listed.map((r) => [r.binom, r]));
+  for (const l of labels) {
+    byBinom.get(l.binom as string)?.redList?.push({
+      regionId: l.region_id as string,
+      category: l.category as string,
+      source: l.source as string | null,
+      n: l.n as number,
+    });
+  }
 }
 
 export interface TaxonGroupYearRow {

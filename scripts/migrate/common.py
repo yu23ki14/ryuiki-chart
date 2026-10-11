@@ -140,7 +140,9 @@ V2_CHECK_EXIT_STALE = 10
 # `summary_effort_year` の n・n_binom・y_*・n_years の値が変わり、summary_species_catalog に n_located を足したため v5→v6 に上げた。
 # 2026-10-11: Issue #93 で地域別の事前集計（`*_by_region` 4表と `place_region`。`aggregations/serving.yaml` の
 # `by_region: true`）を足したため v6→v7 に上げた（全員の v2 が古い判定になり作り直しになる）。
-SUMMARY_SPEC_VERSION = "serving-summary/v7"
+# 2026-10-12: 種の一覧に赤リストの判定ラベルを返すため `summary_taxon_red_list`（b13 が `occurrence` から作る）を
+# 足したので v7→v8 に上げた。
+SUMMARY_SPEC_VERSION = "serving-summary/v8"
 
 # D1 に載せる summary 表（`scripts/b13_build_summary.py` が作る）の名前。
 # `V2_CUBE_SPEC_VERSIONS` に SUMMARY_SPEC_VERSION 付きで足すのに使う——
@@ -170,6 +172,8 @@ V2_SUMMARY_BY_REGION_BASES = (
 V2_SUMMARY_BY_REGION_TABLES = tuple(f"{t}_by_region" for t in V2_SUMMARY_BY_REGION_BASES)
 # place_id -> region_id（観測・出現のキューブの region_id と site の place.region_id の和集合）。b13 が作る。
 V2_PLACE_REGION_TABLE = "place_region"
+# (region_id, taxon_id, red_list_category, red_list_source) ごとの記録数。b13 が `occurrence` から作る。
+V2_TAXON_RED_LIST_TABLE = "summary_taxon_red_list"
 
 # D1 に載せるキューブ表と、それぞれの spec_version。値は上の
 # `OBSERVATION_AGG_SPEC_VERSION`/`OCCURRENCE_AGG_SPEC_VERSION`/`SUMMARY_SPEC_VERSION`
@@ -185,6 +189,7 @@ V2_CUBE_SPEC_VERSIONS = {
     **{table: SUMMARY_SPEC_VERSION for table in V2_SUMMARY_TABLES},
     **{table: SUMMARY_SPEC_VERSION for table in V2_SUMMARY_BY_REGION_TABLES},
     V2_PLACE_REGION_TABLE: SUMMARY_SPEC_VERSION,
+    V2_TAXON_RED_LIST_TABLE: SUMMARY_SPEC_VERSION,
 }
 
 # SQLite 3.43 未満では2つの理由でパイプラインが壊れる: (1) AVG()/SUM() の

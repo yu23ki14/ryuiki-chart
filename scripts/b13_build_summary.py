@@ -757,6 +757,51 @@ def _build_place_region(
     return {"n_rows": n_rows, "sum_n": None}
 
 
+# 索引の正は Drizzle（web/src/db/schema-cube.ts）。列の組が一致することは test_cube_index_parity.py が見る。
+TAXON_RED_LIST_INDEXES = (("taxon_id",), ("region_id", "taxon_id"))
+
+_CREATE_TAXON_RED_LIST_SQL = (
+    "CREATE TABLE {table} (\n  region_id TEXT NOT NULL,\n  taxon_id TEXT NOT NULL,\n"
+    "  red_list_category TEXT NOT NULL,\n  red_list_source TEXT,\n  n INTEGER NOT NULL,\n"
+    "  built_from TEXT NOT NULL,\n  spec_version TEXT NOT NULL\n)"
+)
+# 述語は b07 の n_red_list と同じ（`red_list_category` が NULL でも '' でもない）、母集団は watershed 系列の
+# 「日付のある全記録」（`period_raw IS NOT NULL`）と同じ——だからラベルの出所は、キューブの n_red_list を
+# 数えた判定結果そのもの。同じ (region, taxon) に複数のラベルがあれば全部残す（最頻値に潰さない）。
+_INSERT_TAXON_RED_LIST_SQL = (
+    "INSERT INTO {table} (region_id, taxon_id, red_list_category, red_list_source, n, built_from, spec_version) "
+    "SELECT region_id, taxon_id, red_list_category, red_list_source, COUNT(*), ?, ? FROM occurrence "
+    "WHERE period_raw IS NOT NULL AND taxon_id IS NOT NULL AND red_list_category IS NOT NULL AND red_list_category <> '' "
+    "GROUP BY region_id, taxon_id, red_list_category, red_list_source "
+    "ORDER BY region_id, taxon_id, red_list_category, red_list_source"
+)
+
+
+def _build_taxon_red_list(
+    conn: sqlite3.Connection, lineage: common.LineageTracker, *, spec_version: str,
+) -> dict:
+    """`summary_taxon_red_list`（地域×taxon×赤リストの判定ラベル）。`occurrence_agg.n_red_list` を数えた
+    記録の `red_list_category`/`red_list_source` を、(region_id, taxon_id, category, source) ごとに数えたもの。
+    問い合わせ層（種の一覧）が、件数（n_red_list）とラベルを同じ判定結果から返すための表。
+    """
+    lineage.verify("occurrence", rebuild_hint="scripts/b06_build_occurrence.py を再実行すること。")
+    table_name = common.V2_TAXON_RED_LIST_TABLE
+    lineage.begin_output()
+    with common.staged_table(
+        conn, table_name, _CREATE_TAXON_RED_LIST_SQL,
+        lineage=lineage, fingerprint_spec_version=spec_version,
+    ) as staging:
+        cur = conn.execute(
+            _INSERT_TAXON_RED_LIST_SQL.format(table=f'"{staging}"'),
+            [f"occurrence (sqlite={sqlite3.sqlite_version})", spec_version],
+        )
+        n_rows = cur.rowcount
+        if n_rows == 0:
+            raise common.MigrationError(f"{table_name}: 0行しか生成されなかった（赤リスト該当の記録が1件も無い）。")
+    common.create_indexes(conn, table_name, [(f"{table_name}_{'_'.join(cols)}", cols) for cols in TAXON_RED_LIST_INDEXES])
+    return {"n_rows": n_rows, "sum_n": None}
+
+
 def _default_built_from(source: str) -> str:
     return f"{source} (sqlite={sqlite3.sqlite_version})"
 
@@ -945,6 +990,7 @@ def _build_summary_tables(
 
     # place_region（1つの place が2地域に出たら止まる）。地域別の n_places の検算が崩れたときの原因もこれ。
     stats[common.V2_PLACE_REGION_TABLE] = _build_place_region(conn, lineage, spec_version=spec_version)
+    stats[common.V2_TAXON_RED_LIST_TABLE] = _build_taxon_red_list(conn, lineage, spec_version=spec_version)
     return stats
 
 

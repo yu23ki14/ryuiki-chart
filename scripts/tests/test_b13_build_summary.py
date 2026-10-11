@@ -20,7 +20,7 @@ import b13_build_summary as b13
 from migrate import common
 
 from .migrate_fixtures import make_observation_agg_fixture
-from .occurrence_fixtures import make_occurrence_agg_fixture
+from .occurrence_fixtures import _create_and_fill_occurrence, make_occurrence_agg_fixture, occurrence_row
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 DEFAULT_YAML = ROOT / "aggregations" / "serving.yaml"
@@ -87,7 +87,7 @@ _OCC_ROWS = [
 ]
 
 
-def _make_combined_fixture(tmp_path, obs_rows=_ROWS, occ_rows=_OCC_ROWS, name: str = "v2.sqlite") -> pathlib.Path:
+def _make_combined_fixture(tmp_path, obs_rows=_ROWS, occ_rows=_OCC_ROWS, name: str = "v2.sqlite", red_records=None) -> pathlib.Path:
     """`observation_agg`（`_ROWS`）と `occurrence_agg`（`_OCC_ROWS`）の両方を
     同じ v2.sqlite 風フィクスチャに持たせる。summary 4表のうち2表ずつが別々の
     `source` を使うため、`build_summary` を実際に完走させるテストは両方が
@@ -95,7 +95,39 @@ def _make_combined_fixture(tmp_path, obs_rows=_ROWS, occ_rows=_OCC_ROWS, name: s
     フィクスチャだけで足りる——各テストの docstring/コメント参照）。
     """
     make_observation_agg_fixture(tmp_path, obs_rows, name=name)
-    return make_occurrence_agg_fixture(tmp_path, occ_rows, name=name)
+    db_path = make_occurrence_agg_fixture(tmp_path, occ_rows, name=name)
+    _add_occurrence_table(db_path, _RED_LIST_RECORDS if red_records is None else red_records)
+    return db_path
+
+
+def _rl_record(record_id, region_id, taxon_id, category, source, *, period_raw="2020-05-01", period_start="2020-05-01"):
+    """`occurrence` の1行（b13 の summary_taxon_red_list が読む列だけ意味を持つ）。"""
+    return occurrence_row(
+        record_id, taxon_id, period_start, period_start, period_raw,
+        region_id=region_id, red_list_category=category,
+    ) + (f"common:occ:fixture.{record_id}", None, None, source)
+
+
+# summary_taxon_red_list の検証用。t1 は jp-14 で2つのラベル（最頻値に潰さず両方残す）、jp-46 で別のラベル。
+_RED_LIST_RECORDS = [
+    _rl_record("r1", "jp-14", "t1", "絶滅危惧Ⅱ類（VU）", "rl2020"),
+    _rl_record("r2", "jp-14", "t1", "絶滅危惧Ⅱ類（VU）", "rl2020"),
+    _rl_record("r3", "jp-14", "t1", "準絶滅危惧", None),            # 出所の無い旧来の行
+    _rl_record("r4", "jp-46", "t1", "絶滅危惧Ⅰ類（CR+EN）", "kgrl2014"),
+    _rl_record("r5", "jp-46", "t2", "情報不足（DD）", "national"),
+    _rl_record("r6", "jp-14", "t2", "", None),                         # 空文字列は該当なし
+    _rl_record("r7", "jp-14", "t2", None, None),                       # NULL も該当なし
+    _rl_record("r8", "jp-14", "t2", "絶滅危惧Ⅱ類（VU）", "rl2020", period_raw=None, period_start=None),  # 日付なしは数えない
+]
+
+
+def _add_occurrence_table(db_path, rows):
+    conn = sqlite3.connect(f"file:{db_path}", uri=True)
+    try:
+        _create_and_fill_occurrence(conn, rows)
+        conn.commit()
+    finally:
+        conn.close()
 
 # registry.sqlite 風フィクスチャ（`taxon` だけ。D1: b13 が `ATTACH ... mode=ro` して結合する）。
 # t1 と t3 は同じ binom（`Aus bus`）——taxon_id 単位ではなく binom 単位に束ねる
@@ -320,6 +352,7 @@ def test_build_summary_creates_both_tables_and_conservation_holds(tmp_path):
 
         assert set(stats) == {
             *common.V2_SUMMARY_TABLES, *common.V2_SUMMARY_BY_REGION_TABLES, common.V2_PLACE_REGION_TABLE,
+            common.V2_TAXON_RED_LIST_TABLE,
         }
         # 機械検証4: 行数 > 0。
         assert stats["summary_variable_catalog"]["n_rows"] == 1  # 1 variable × 1 obs_stat/unit/grain 組
@@ -1060,6 +1093,41 @@ def test_build_summary_rejects_bad_by_region_declarations(tmp_path, mutate, matc
 
 def test_new_tables_are_part_of_the_cube_freshness_contract():
     """spec_version を上げたので全員の v2 が作り直しになる。新表も鮮度判定（check_v2_fresh・seed）の対象。"""
-    assert common.SUMMARY_SPEC_VERSION == "serving-summary/v7"
-    for table in (*common.V2_SUMMARY_BY_REGION_TABLES, common.V2_PLACE_REGION_TABLE):
+    assert common.SUMMARY_SPEC_VERSION == "serving-summary/v8"
+    for table in (*common.V2_SUMMARY_BY_REGION_TABLES, common.V2_PLACE_REGION_TABLE, common.V2_TAXON_RED_LIST_TABLE):
         assert common.V2_CUBE_SPEC_VERSIONS[table] == common.SUMMARY_SPEC_VERSION
+
+
+def test_taxon_red_list_counts_each_label_and_keeps_all_of_them(tmp_path):
+    db_path = _make_combined_fixture(tmp_path)
+    conn = sqlite3.connect(f"file:{db_path}", uri=True)
+    try:
+        stats = b13.build_summary(conn, DEFAULT_YAML)
+        got = {
+            (r, t, c, s): n
+            for r, t, c, s, n in conn.execute(
+                "SELECT region_id, taxon_id, red_list_category, red_list_source, n FROM summary_taxon_red_list"
+            )
+        }
+        assert got == {
+            ("jp-14", "t1", "絶滅危惧Ⅱ類（VU）", "rl2020"): 2,
+            ("jp-14", "t1", "準絶滅危惧", None): 1,
+            ("jp-46", "t1", "絶滅危惧Ⅰ類（CR+EN）", "kgrl2014"): 1,
+            ("jp-46", "t2", "情報不足（DD）", "national"): 1,
+        }
+        assert stats["summary_taxon_red_list"]["n_rows"] == 4
+        assert conn.execute("SELECT DISTINCT spec_version FROM summary_taxon_red_list").fetchall() == [(common.SUMMARY_SPEC_VERSION,)]
+        names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='summary_taxon_red_list'")}
+        assert {"summary_taxon_red_list_taxon_id", "summary_taxon_red_list_region_id_taxon_id"} <= names
+    finally:
+        conn.close()
+
+
+def test_taxon_red_list_stops_when_the_cube_has_no_red_list_records(tmp_path):
+    db_path = _make_combined_fixture(tmp_path, red_records=[_rl_record("x1", "jp-14", "t1", "", None)])
+    conn = sqlite3.connect(f"file:{db_path}", uri=True)
+    try:
+        with pytest.raises(common.MigrationError, match="summary_taxon_red_list"):
+            b13.build_summary(conn, DEFAULT_YAML)
+    finally:
+        conn.close()

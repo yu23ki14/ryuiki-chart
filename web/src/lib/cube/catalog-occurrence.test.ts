@@ -59,6 +59,46 @@ describe("speciesCatalog", () => {
   });
 });
 
+describe("speciesCatalog: 流域・期間・赤リストの絞り込み（フィクスチャ。D1 のマイグレーション適用後の表だけを使う）", () => {
+  const ws1 = FXO.places.ws1;
+  const labelAlpha = (region: string, category: string, source: string | null, n: number) =>
+    fx.raw
+      .prepare("INSERT INTO summary_taxon_red_list (region_id, taxon_id, red_list_category, red_list_source, n, built_from, spec_version) VALUES (?, 'common:taxon:fx_a', ?, ?, ?, 'fixture', 'fixture@1')")
+      .run(region, category, source, n);
+
+  it("placeId: その流域の watershed 系列だけを数える（place_id NULL の記録は入らない）。行は n_located/n_places を持たない", async () => {
+    const rows = await speciesCatalog(fx.db, { placeId: ws1 });
+    expect(rows.map((r) => [r.binom, r.n, r.nRedList])).toEqual([
+      [delta, 20, 0],
+      [alpha, 15, 5],
+    ]);
+    expect(rows[0]).not.toHaveProperty("nLocated");
+    expect(rows[0]).not.toHaveProperty("nPlaces");
+  });
+
+  it("yearFrom/yearTo は period_start の年。redListOnly は赤リストの記録がある種だけ", async () => {
+    expect((await speciesCatalog(fx.db, { placeId: ws1, yearFrom: 2021 })).map((r) => [r.binom, r.n])).toEqual([[alpha, 5]]);
+    expect((await speciesCatalog(fx.db, { placeId: ws1, yearTo: 2020 })).map((r) => [r.binom, r.n])).toEqual([[delta, 20], [alpha, 10]]);
+    expect((await speciesCatalog(fx.db, { placeId: ws1, redListOnly: true })).map((r) => r.binom)).toEqual([alpha]);
+  });
+
+  it("redList: 地域ごとのラベルを全部返す。region 指定ではその地域のラベルだけ。赤リストの無い種は空配列", async () => {
+    labelAlpha("kanagawa", "絶滅危惧Ⅱ類（VU）", "rl2020", 40);
+    labelAlpha("kanagawa", "準絶滅危惧", null, 2);
+    labelAlpha("jp-46", "絶滅危惧Ⅰ類（CR+EN）", "kgrl2014", 7);
+    const rows = await speciesCatalog(fx.db, { placeId: ws1, redListOnly: false, yearFrom: 2000 });
+    const a = rows.find((r) => r.binom === alpha)!;
+    expect(a.redList).toEqual([
+      { regionId: "jp-46", category: "絶滅危惧Ⅰ類（CR+EN）", source: "kgrl2014", n: 7 },
+      { regionId: "kanagawa", category: "絶滅危惧Ⅱ類（VU）", source: "rl2020", n: 40 },
+      { regionId: "kanagawa", category: "準絶滅危惧", source: null, n: 2 },
+    ]);
+    expect(rows.find((r) => r.binom === delta)!.redList).toEqual([]);
+    const k = await speciesCatalog(fx.db, { placeId: ws1, yearFrom: 2000, region: "kanagawa" as never });
+    expect(k.find((r) => r.binom === alpha)!.redList!.map((l) => l.regionId)).toEqual(["kanagawa", "kanagawa"]);
+  });
+});
+
 describe("taxonGroupYears / effortYears", () => {
   it("taxonGroupYears: mesh_n は source 別 n_places の MAX。taxon_id NULL は '未判定'", async () => {
     const rows = await taxonGroupYears(fx.db);

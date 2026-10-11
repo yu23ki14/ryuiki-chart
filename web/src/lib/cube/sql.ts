@@ -50,6 +50,11 @@ export function cmp(a: string | null, b: string | null): number {
   return a < b ? -1 : 1;
 }
 
+/** 値が undefined のキーを落としたオブジェクト（任意の絞り込みを `...(x !== undefined ? {x} : {})` と並べないための小道具）。 */
+export function pickDefined<T extends Record<string, unknown>>(o: T): Partial<T> {
+  return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as Partial<T>;
+}
+
 export function jsonEachParam(values: readonly (string | number)[]): string {
   return JSON.stringify(values);
 }

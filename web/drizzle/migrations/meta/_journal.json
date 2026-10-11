@@ -183,6 +183,13 @@
       "when": 1791709580773,
       "tag": "0025_busy_silverclaw",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1791731009714,
+      "tag": "0026_conscious_hemingway",
+      "breakpoints": true
     }
   ]
 }

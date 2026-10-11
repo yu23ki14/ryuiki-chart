@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
     return rpcFail(400, RPC_ERRORS.parse, "JSON として読めない");
   }
 
-  const out = await handleBody(body, { db: d1CubeDb });
+  const out = await handleBody(body, { db: d1CubeDb, origin: req.nextUrl.origin });
   return out === null ? new NextResponse(null, { status: 202 }) : NextResponse.json(out);
 }
 

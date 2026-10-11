@@ -73,7 +73,7 @@ describe("queryable_via の（出典, ツール）が実際に動く: get_record
 
 const REPO = path.resolve(__dirname, "../../../..");
 const P = {
-  v2: path.join(REPO, "data/db/v2.sqlite"),
+  v2: process.env.RYUIKI_V2_DB ?? path.join(REPO, "data/db/v2.sqlite"),
   registry: path.join(REPO, "data/db/registry.sqlite"),
   ryuiki: path.join(REPO, "data/db/ryuiki.sqlite"),
   cells: path.join(REPO, "data/db/cells.sqlite"),

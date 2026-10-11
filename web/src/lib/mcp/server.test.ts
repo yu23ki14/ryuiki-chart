@@ -303,8 +303,8 @@ describe("5 ツールの応答は封筒（excluded=0・合成なし・cite_as・
     expect(over.error?.code).toBe(-32600);
   });
 
-  it("全ツールを網羅している（新ツールを足したらこのテストに応答検査を足す）", () => {
-    expect(MCP_TOOLS.map((t) => t.name)).toEqual(["describe_catalog", "search_registry", "get_observations", "get_occurrences", "get_edna", "export_dataset", "get_records", "find_datasets"]);
+  it("全ツールを網羅している（新ツールを足したらこのテストに応答検査を足す。get_watersheds は tools-watersheds.test.ts）", () => {
+    expect(MCP_TOOLS.map((t) => t.name)).toEqual(["describe_catalog", "search_registry", "get_observations", "get_occurrences", "get_edna", "export_dataset", "get_records", "find_datasets", "get_watersheds"]);
   });
 });
 
