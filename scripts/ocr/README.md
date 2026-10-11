@@ -1,4 +1,4 @@
-# OCR の環境（ハブ統計）
+# OCR の環境（ハブ統計・マングース）
 
 `scripts/c98_habu_ocr_run.py` を回すための環境。**OCR は手元で1回回して、結果の JSON を `data/ocr/habu/` にコミットする**。
 CI・通常の開発では OCR を回さない（`scripts/c98b_habu_cells.py` が JSON だけを読む。OCR のライブラリは要らない）。
@@ -33,6 +33,29 @@ python3 scripts/c98b_habu_cells.py                    # cells・documents・note
 
 `c98_habu_ocr_run.py` は、PDF（300dpi の JPEG が1枚）から画像を取り出し、罫線から格子（行帯・列帯）を取って、
 OCR の文字・座標・信頼度とともに `data/ocr/habu/<doc_id>/<engine>.json` に書く。JSON には版と入力の sha256 も入る。
+
+## 共通部分（scripts/ocr/）
+
+- `engines.py`（OCR の venv 側。import は遅延）: `run_docling_rapid`・`run_paddle`・`versions`・`ocr_image(engine, img, scale)`・`write_json`。
+- `cellmatch.py`（OCR のライブラリ不要。CI の pytest が使う）: `assign`（箱を格子に割り当てる）・`decide`（一致・食い違い・書式不正）・
+  `load_engines`（2つの JSON の整合）・`arith_flag`（検算が疑うセルの絞り込み）・`verified_by_for`・`load_reviewed`。
+  検算の式と書式は表ごとに違うので各 `c9xb`／`c100b` の側に置く。格子の取り方も各 `*_ocr_run.py` に置く。
+- ハブ（c98）の JSON は共通化の前後で変わらない（`pdf_sha256` のキーは入力が PNG のときも変えない）。
+
+## マングースの回し方（c100、PNG 1枚）
+
+```
+python3 scripts/c100a_mongoose_fetch.py                 # PNG・HTML を data/raw/moe_mongoose/ に保存
+$HOME/.venvs/ocr-docling/bin/python scripts/c100_mongoose_ocr_run.py --engine docling_rapid   # 約1分（CPU）
+$HOME/.venvs/ocr-paddle/bin/python  scripts/c100_mongoose_ocr_run.py --engine paddle          # 約1.5分（CPU）
+python3 scripts/c100b_mongoose_cells.py --dry-run       # OCR 依存なし
+```
+
+- 画像が 565×646 と小さいので `--scale 3`（既定）で拡大して OCR にかける（座標は拡大前に戻して書く）。
+- 格子は `uniform_grid`: 全幅の横罫線2本（見出しの下・合計の上）の間を 23 等分し、列は右揃えの数字の右端で決めた5列の x を固定値で持つ
+  （PNG の sha256 が固定）。出力は `data/ocr/mongoose/moe_mongoose_catch_h12r4/<engine>.json`。
+- 2026-10-11 の実測: 2つの OCR が食い違うのは 24行×5列の120セル中 2セル（Docling が合計のわな日に緑の印を `F` と誤読、
+  Paddle が 2020年度の捕獲頭数 `0` を落とす）。どちらも正解 csv とは、もう一方が一致。
 
 ## 人の確認（reviewed.csv）
 
