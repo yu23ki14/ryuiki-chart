@@ -2136,7 +2136,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": "2026-10-11T18:06:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": "奄美のみ。神奈川は A10・A15・A45 を取り込んでいない（神奈川の保護区は県・市の台帳）。3レイヤ（自然公園地域・特別地域・特別保護地区）は入れ子なので category_code をまたいで area_ha を足さない。公園名は原データに無い。"
   },
   "nlni_a15_wildlife": {
     "state": "not_queryable",
@@ -2166,7 +2166,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": "2026-10-11T18:06:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": "奄美のみ。神奈川は A10・A15・A45 を取り込んでいない（神奈川の保護区は県・市の台帳）。2009年版。20件中19件は版の時点の指定期間が 2018 年までに満了している。"
   },
   "nlni_a45_forest": {
     "state": "not_queryable",
@@ -2196,7 +2196,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": "2026-10-11T18:06:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": "奄美のみ。神奈川は A10・A15・A45 を取り込んでいない（神奈川の保護区は県・市の台帳）。国有林の小班（2018年度版）。民有林は含まない。"
   },
   "nlni_c23_coastline": {
     "state": "not_queryable",

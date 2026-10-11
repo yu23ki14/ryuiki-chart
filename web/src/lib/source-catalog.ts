@@ -30,7 +30,9 @@ export function sourceRow(m: Meta, now: Date | undefined) {
     counted_at: a.countedAt,
     unavailable_reason: a.reason,
     unavailable_reason_ja: a.reasonJa,
-    unavailable_note: a.reasonNote,
+    unavailable_note: a.state === "queryable" ? null : a.reasonNote,
+    // access.yaml の note（取れる出典の補足。例: 奄美だけ入れている出典）。取れない出典の補足は unavailable_note。
+    note: a.state === "queryable" ? a.reasonNote : null,
   };
 }
 

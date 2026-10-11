@@ -9,6 +9,7 @@ import pytest
 pytest.importorskip("shapely")
 
 import m05_tier1  # noqa: E402
+from common import ensure_column, round_coords  # noqa: E402
 from shapely.geometry import Point, shape  # noqa: E402
 
 SCRIPTS = pathlib.Path(m05_tier1.__file__).parent
@@ -77,7 +78,8 @@ def test_load_three_sources(con, proc):
     assert all(r["name_ja"] is None and r["area_ha"] == pytest.approx(250) and r["area_ha_raw"] is None for r in a10)
     assert all("入れ子" in r["note_ja"] for r in a10)
     assert [r["municipality_ja"] for r in a10 if r["area_id"].endswith(":100")] == ["奄美市"]
-    assert [r["designated_on"] for r in sorted(a10, key=lambda r: r["area_id"])] == [None, "2006", "2006"]
+    assert all(r["designated_on"] is None for r in a10)
+    assert [r["designated_on_raw"] for r in sorted(a10, key=lambda r: r["area_id"])] == [None, "2006", "2006"]
     a15 = [r for r in rs if r["source_id"] == "nlni_a15_wildlife_amami"]
     assert {r["category_code"] for r in a15} == {"wildlife_reserve", "wildlife_special_protection"}
     assert "2007-11-01〜2017-10-31" in a15[0]["note_ja"]
@@ -137,6 +139,17 @@ def test_no_csv_returns_none(con, tmp_path, monkeypatch):
 def test_ensure_geometry_column_adds_to_legacy_table():
     c = sqlite3.connect(":memory:")
     c.execute("CREATE TABLE protected_areas (area_id TEXT PRIMARY KEY, source_id TEXT)")
-    m05_tier1.ensure_protected_areas_geometry(c)
-    m05_tier1.ensure_protected_areas_geometry(c)
+    ensure_column(c, 'protected_areas', 'geometry_geojson', 'TEXT')
+    ensure_column(c, 'protected_areas', 'geometry_geojson', 'TEXT')
     assert "geometry_geojson" in {r[1] for r in c.execute("PRAGMA table_info(protected_areas)")}
+
+
+def test_unknown_category_stops(con, proc):
+    p = proc / "nlni_a10_natparks_amami.csv"
+    p.write_text(p.read_text(encoding="utf-8").replace(",13,", ",99,"), encoding="utf-8")
+    with pytest.raises(SystemExit, match="nlni_a10_natparks_amami.*99"):
+        m05_tier1.load_protected_areas_nlni(con, FakeWs())
+
+
+def test_round_coords_accepts_integer_coordinates():
+    assert round_coords([[1, 2], [3.123456789, 4]]) == [[1, 2], [3.123457, 4]]

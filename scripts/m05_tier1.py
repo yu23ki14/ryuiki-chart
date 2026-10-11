@@ -15,7 +15,7 @@ docs/UNDATAFIED_TIERS.md の Tier 1 を c80〜c88 で収集した結果
 """
 import sys, pathlib, json, csv, sqlite3
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
-from common import appdb, PROC, ROOT, now
+from common import appdb, PROC, ROOT, now, ensure_column, round_coords
 import regions
 from regions import REGIONS
 from m01_sites import load_watersheds
@@ -120,13 +120,10 @@ NLNI_PA_NOTE_A10 = ("国土数値情報 A10-15（2015年版）。名称は原デ
 A10_CODES = {"11": "natpark_area", "12": "natpark_special", "13": "natpark_special_protection"}
 A15_CODES = {"鳥獣保護区": "wildlife_reserve", "特別保護地区": "wildlife_special_protection"}
 
-def _round_coords(c, nd=6):
-    return round(c, nd) if isinstance(c, float) else [_round_coords(x, nd) for x in c]
-
 def _pa_geometry(feature):
     """GeoJSON の geometry を座標 6 桁・空白なしの文字列にし、shapely の図形も返す。"""
     g = feature["geometry"]
-    g = {"type": g["type"], "coordinates": _round_coords(g["coordinates"])}
+    g = {"type": g["type"], "coordinates": round_coords(g["coordinates"])}
     return json.dumps(g, ensure_ascii=False, separators=(",", ":")), shape(g)
 
 def _nlni_pa_rows(src, rows, features, make):
@@ -144,35 +141,42 @@ def _nlni_pa_rows(src, rows, features, make):
         out.append(d)
     return out
 
-def _make_a10(r):
+def _code(codes, src, v):
+    k = str(v).strip()
+    if k not in codes:
+        raise SystemExit(f"{src}: 未知の区分 {k!r}（既知: {sorted(codes)}）")
+    return codes[k]
+
+def _area_ha(r):
+    """測地面積 area_km2 を ha にする（A10 の面積欄は ha でないので使わない）。"""
     km2 = num(r.get("area_km2"))
-    fy = text(r.get("fiscal_year"))
+    return None if km2 is None else km2 * 100
+
+def _make_a10(r):
     return dict(
         area_id=f"nlni_a10_natparks_amami:{r['object_id']}", name_ja=None,
-        category_ja=text(r.get("layer_name_ja")), category_code=A10_CODES[str(r["layer_no"]).strip()],
+        category_ja=text(r.get("layer_name_ja")), category_code=_code(A10_CODES, "nlni_a10_natparks_amami", r["layer_no"]),
         municipality_ja=text(r.get("municipality_names_ja")),
-        area_ha=None if km2 is None else km2 * 100, area_ha_raw=None,
-        designated_on=fy, designated_on_raw=text(r.get("fiscal_year_raw")) if fy else None,
+        area_ha=_area_ha(r), area_ha_raw=None,
+        designated_on=None, designated_on_raw=text(r.get("fiscal_year_raw")),
         note_ja=NLNI_PA_NOTE_A10)
 
 def _make_a15(r):
-    km2 = num(r.get("area_km2"))
     d, c = text(r.get("designated_date")), text(r.get("cancel_date"))
     return dict(
         area_id=f"nlni_a15_wildlife_amami:{r['feature_id']}", name_ja=text(r.get("name_ja")),
-        category_ja=text(r.get("protection_class_ja")), category_code=A15_CODES[r["protection_class_ja"].strip()],
-        municipality_ja=None, area_ha=None if km2 is None else km2 * 100, area_ha_raw=None,
+        category_ja=text(r.get("protection_class_ja")), category_code=_code(A15_CODES, "nlni_a15_wildlife_amami", r["protection_class_ja"]),
+        municipality_ja=None, area_ha=_area_ha(r), area_ha_raw=None,
         designated_on=d, designated_on_raw=d,
         note_ja=f"A15-09（2009年版）。指定期間 {d or '不明'}〜{c or '不明'}")
 
 def _make_a45(r):
-    km2 = num(r.get("area_km2"))
     shp_no = r["source_ref"].rsplit(":", 1)[1]
     name = " ".join(x for x in (text(r.get("national_forest_name_ja")), text(r.get("compartment_label_ja"))) if x) or None
     return dict(
         area_id=f"nlni_a45_forest_amami:{shp_no}", name_ja=name,
         category_ja="国有林", category_code="national_forest", municipality_ja=text(r.get("municipality_name_ja")),
-        area_ha=None if km2 is None else km2 * 100, area_ha_raw=text(r.get("area_ha_source")),
+        area_ha=_area_ha(r), area_ha_raw=text(r.get("area_ha_source")),
         designated_on=None, designated_on_raw=None,
         note_ja=(f"A45-19（2018年度版）。機能類型: {text(r.get('function_type_ja')) or '不明'}、"
                  f"林種: {text(r.get('forest_subtype_ja')) or '不明'}。小班IDは複数行に重複する"))
@@ -201,24 +205,20 @@ def load_protected_areas_nlni(con, ws, sources=NLNI_PA_SOURCES):
         ids = [d["area_id"] for d in recs]
         if len(set(ids)) != len(ids):
             raise SystemExit(f"{src}: area_id が出典の中で重複している")
-        wipe(con, "protected_areas", [src])
         _assert_no_id_collision(con, "protected_areas", "area_id", src, ids, "他の出典")
+        for d in recs:
+            d["watershed"] = ws.find(d["lon"], d["lat"])
+        wipe(con, "protected_areas", [src])
         con.executemany(
             """INSERT OR REPLACE INTO protected_areas
                (area_id,name_ja,category_ja,category_code,municipality_ja,area_ha,area_ha_raw,
                 designated_on,designated_on_raw,lat,lon,watershed,zone,note_ja,source_id,source_ref,geometry_geojson)
                VALUES (:area_id,:name_ja,:category_ja,:category_code,:municipality_ja,:area_ha,:area_ha_raw,
                 :designated_on,:designated_on_raw,:lat,:lon,:watershed,NULL,:note_ja,:source_id,:source_ref,:geometry_geojson)""",
-            [{**d, "watershed": ws.find(d["lon"], d["lat"])} for d in recs])
-        inws = sum(1 for d in recs if ws.find(d["lon"], d["lat"]))
+            recs)
+        inws = sum(1 for d in recs if d["watershed"])
         msgs.append(f"protected_areas[{src}]: {len(recs)} 行 (流域が引けた {inws})")
     return "; ".join(msgs) if msgs else None
-
-def ensure_protected_areas_geometry(con):
-    """既存の protected_areas（原本）に geometry_geojson 列が無ければ足す（冪等）。"""
-    cols = {r[1] for r in con.execute("PRAGMA table_info(protected_areas)")}
-    if cols and "geometry_geojson" not in cols:
-        con.execute("ALTER TABLE protected_areas ADD COLUMN geometry_geojson TEXT")
 
 def load_wildlife(con):
     """ツキノワグマ出没・目撃記録 (c81_kanagawa_kuma.py)。"""
@@ -542,7 +542,7 @@ def main(argv=None):
     con = appdb()
     con.execute("PRAGMA busy_timeout = 30000")
     ddl = (ROOT / "scripts/schema_tier1.sql").read_text(encoding="utf-8")
-    ensure_protected_areas_geometry(con)   # 既存の表に列を足してから CREATE IF NOT EXISTS / INDEX を流す
+    ensure_column(con, "protected_areas", "geometry_geojson", "TEXT")   # 既存の表に列を足してから CREATE IF NOT EXISTS / INDEX を流す
     con.executescript(ddl)
     print("Tier 1 テーブルを用意した")
 

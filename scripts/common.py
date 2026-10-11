@@ -67,6 +67,18 @@ def norm_taxon_id(s):
     """学名の正規化キー（空白を1つに・前後を除き・小文字）。taxa.taxon_id・m03・pref_redlist_lookup が共有する。"""
     return re.sub(r"\s+", " ", (s or "")).strip().lower()
 
+def ensure_column(con, table, col, decl):
+    """既存の表に列が無ければ足す（冪等）。表が無いときは何もしない（CREATE TABLE 側に列がある）。"""
+    cols = {r[1] for r in con.execute(f"PRAGMA table_info({table})")}
+    if cols and col not in cols:
+        con.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
+
+def round_coords(c, nd=6):
+    """GeoJSON の coordinates を nd 桁に丸める（整数座標も可）。"""
+    if isinstance(c[0], (int, float)):
+        return [round(c[0], nd), round(c[1], nd)]
+    return [round_coords(x, nd) for x in c]
+
 def appdb(): return sqlite3.connect(DB/"ryuiki.sqlite", timeout=30)
 def cellsdb(): return sqlite3.connect(DB/"cells.sqlite", timeout=30)
 

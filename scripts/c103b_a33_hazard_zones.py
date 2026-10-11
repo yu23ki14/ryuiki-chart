@@ -86,10 +86,7 @@ def era_date(raw):
         return None
 
 
-def _round_coords(c, nd=6):
-    if isinstance(c[0], (int, float)):
-        return [round(c[0], nd), round(c[1], nd)]
-    return [_round_coords(x, nd) for x in c]
+_round_coords = common.round_coords  # 共有実装（scripts/common.py）
 
 
 def iter_coords(c):
