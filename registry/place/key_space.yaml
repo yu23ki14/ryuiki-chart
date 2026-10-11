@@ -25,8 +25,12 @@ key_spaces:
   - key_space: watershed_id
     place_kind: watershed
     edition: fixed
-    edition_source_id: nlni_w12_watersheds   # 既定。地域ごとの W12（nlni_w12_watersheds_amami 等）は build_place が jsonl の名前で行ごとに引く
-    edition_note: data/processed/nlni_w12_watersheds.jsonl（国土数値情報 W12 流域界 1977年版）。
+    edition_source_id: nlni_w12_watersheds   # 既定。地域ごとの流域（gsi_dem_watersheds_amami 等）は build_place が jsonl の名前（regions.watershed_stems）で行ごとに引く
+    edition_note: >-
+      神奈川は data/processed/nlni_w12_watersheds.jsonl（国土数値情報 W12 流域界 1977年版）。
+      奄美大島は data/processed/gsi_dem_watersheds_amami.jsonl
+      （国土地理院の10m標高 DEM10B から計算した集水域。公式の流域界ではない。external_key は `dem-amami-NNN`、
+      place_id は common:place:watershed.dem.amami-NNN。Issue #94）。
   - key_space: grid01_latlon
     place_kind: grid01
     edition: none

@@ -13,12 +13,14 @@
 # （座標あり 2,790 行のうち流域に解決 2,789・NULL 1）。820,902 − 86,284 = 734,618。
 
 n_watershed_polygons:
-  expected_row_count: 402
+  expected_row_count: 448
   note: >
-    全地域の W12 の GeoJSON（scripts/regions.py の w12_stems の順に連結）の feature 数の合計
-    （神奈川 data/processed/nlni_w12_watersheds.geojson 377 + 奄美 nlni_w12_watersheds_amami.geojson 25。
-    奄美 Step 1 PR-B で 377 から変えた。他の2件は神奈川の値のまま、奄美の分はマニフェストの
-    expected.place に書く）。registry の
+    全地域の流域の GeoJSON（scripts/regions.py の watershed_stems の順に連結）の feature 数の合計
+    （神奈川 data/processed/nlni_w12_watersheds.geojson 377 + 奄美 gsi_dem_watersheds_amami.geojson 71。
+    奄美 Step 1 PR-B で 377 から 402 にし、Issue #94 で奄美を W12 の25面から地理院10m標高から計算した流域
+    〔c69〕に置き換えた〔併存させない〕。**71 は設計時の試算値**で、c69 の出力の行数が確定値——
+    食い違えば b09 が止まるので、c69 を回したあとここを合わせる。他の2件は神奈川の値のまま、
+    奄美の分はマニフェストの expected.place に書く）。registry の
     place_source_ref(key_space='watershed_id') の external_key 数
     （= place_watershed の行数）と一致することを別途検証する。
 

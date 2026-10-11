@@ -100,16 +100,49 @@ def test_sea_surface_and_soramame_supplement_rows_are_amami_needs_review():
 
 def test_watershed_jsonls_concatenate_and_edition_follows_each_file(tmp_path, monkeypatch):
     k = tmp_path / "nlni_w12_watersheds.jsonl"
-    a = tmp_path / "nlni_w12_watersheds_amami.jsonl"
+    a = tmp_path / "gsi_dem_watersheds_amami.jsonl"
     write_watershed_jsonl(k, [_WATERSHED_ROW_FULL])
-    write_watershed_jsonl(a, [dict(_WATERSHED_ROW_FULL, watershed_id="89599-0001", centroid_lat=28.4, centroid_lon=129.6)])
+    write_watershed_jsonl(a, [dict(_WATERSHED_ROW_FULL, watershed_id="dem-amami-001", centroid_lat=28.4, centroid_lon=129.6)])
     monkeypatch.setattr(build_place_module, "WATERSHED_JSONLS", [k, a])
     rows = build_place_module._load_watershed_jsonl()
-    assert [r["watershed_id"] for r in rows] == ["83032-0024", "89599-0001"]
-    assert [r["_edition_source_id"] for r in rows] == ["nlni_w12_watersheds", "nlni_w12_watersheds_amami"]
+    assert [r["watershed_id"] for r in rows] == ["83032-0024", "dem-amami-001"]
+    assert [r["_edition_source_id"] for r in rows] == ["nlni_w12_watersheds", "gsi_dem_watersheds_amami"]
 
 
 def test_default_watershed_jsonls_cover_every_region():
     names = [p.stem for p in build_place_module.WATERSHED_JSONLS]
-    assert names == regions.w12_stems()
+    assert names == regions.watershed_stems()
     assert names[0] == "nlni_w12_watersheds"  # 神奈川が先頭（指紋の先頭のハッシュ入力は PR-B 前と同じ）
+
+
+# --- Issue #94: 奄美の流域は地理院10m標高から計算した面（名前空間 dem）。W12 の nlni とは別 ---
+
+@pytest.mark.parametrize("wid, expected", [
+    ("83032-0024", ("nlni", "83032-0024")),
+    ("89599-0001", ("nlni", "89599-0001")),          # W12 の ID は従来どおり（神奈川の ID を変えない）
+    ("dem-amami-001", ("dem", "amami-001")),
+    ("dem-amami-071", ("dem", "amami-071")),
+])
+def test_watershed_ns_and_key(wid, expected):
+    assert common.watershed_ns_and_key(wid) == expected
+
+
+def test_kanagawa_watershed_place_id_is_unchanged():
+    assert common.watershed_place_id("83032-0024") == "common:place:watershed.nlni.83032-0024"
+    assert common.watershed_place_id("dem-amami-001") == "common:place:watershed.dem.amami-001"
+
+
+def test_dem_watershed_builds_place_with_dem_namespace(tmp_path, monkeypatch):
+    dem_row = dict(_WATERSHED_ROW_FULL, watershed_id="dem-amami-001", water_system_code_old=None,
+                   water_system_name_ja_estimated=None, water_system_category_ja="河口の流域",
+                   main_river_names_ja="", data_year=None, centroid_lat=28.3, centroid_lon=129.5)
+    conn, counts = _build(tmp_path, monkeypatch, [], watershed_rows=[_WATERSHED_ROW_FULL, dem_row])
+    assert counts["place_watershed"] == 2
+    pid = "common:place:watershed.dem.amami-001"
+    assert conn.execute(
+        "SELECT place_id FROM place_source_ref WHERE key_space='watershed_id' AND external_key='dem-amami-001'"
+    ).fetchone()[0] == pid
+    assert conn.execute("SELECT place_kind, region_id FROM place WHERE place_id=?", (pid,)).fetchone()[0] == "watershed"
+    assert conn.execute("SELECT water_system_category FROM place_watershed WHERE place_id=?", (pid,)).fetchone()[0] == "河口の流域"
+    # 神奈川の流域の ID は従来のまま
+    assert conn.execute("SELECT COUNT(*) FROM place WHERE place_id='common:place:watershed.nlni.83032-0024'").fetchone()[0] == 1
