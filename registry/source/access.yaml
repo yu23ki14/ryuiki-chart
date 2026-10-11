@@ -102,6 +102,9 @@ sources:
   amami_tourism_plans_amami: {reason: pdf_document, basis: "doc_id=amami_ecotourism_zentai_2017・amami_sustainable_tourism_mp_2016（ライセンス表記なし。題名・URL・ページ数・sha256 のみ）"}
   # --- 奄美 Step 3a: マングース防除の捕獲数・わな日・CPUE（PNG の表を OCR）と根絶宣言 ---
   moe_mongoose_amami: {reason: document_cells, basis: "doc_id=moe_mongoose_catch_h12r4（PNG の表を OCR 2種＋検算＋評価シート突き合わせ、2000〜2022年度）・moe_mongoose_eradication_declaration_2024（documents と notes だけ）。cells に入れた"}
+  # --- 奄美 Step 3b: 2010年奄美豪雨の雨量・被害（京大防災研の速報・鹿大の報告書。数値だけ cells に入れた。気象庁は既存の jma_daily_nase） ---
+  dpri_gouu2010_amami: {reason: document_cells, basis: "doc_id=dpri_amami_gouu_sokuho_2011（速報の本文の雨量・被害を cells に入れた。2011年。fiscal_year は NULL の単発の事象）"}
+  kagoshima_univ_gouu2010_amami: {reason: document_cells, basis: "doc_id=kagoshima_univ_amami_gouu_2012（報告書の本文・画像・表-2 の雨量・被害を cells に入れた。2012年。どちらも fiscal_year は NULL の単発の事象）"}
   # --- 取れない: pdf_document（10 件。上の奄美 Step 2d の5件は別に並べた）---
   biodic_6th_kanagawa_report: {reason: pdf_document, basis: "source_registry.format=PDF"}
   ckan_pdf_choju_higai: {reason: pdf_document, basis: "source_registry.format=PDF"}

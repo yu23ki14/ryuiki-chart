@@ -153,6 +153,9 @@ mappings:
     license_id: pdl_1_0
   - raw: "ライセンス表記なし（題名・URL・ページ数・sha256 のみ掲載。本文は転載しない）"
     license_id: terms_unconfirmed
+  # 奄美 Step 3b: 2010年奄美豪雨の京大防災研の速報・鹿大の報告書。ライセンス表記なし（転載を禁じる記載も確認できない）なので terms_unconfirmed。
+  - raw: "ライセンス表記なし（事実（数値）のみ抽出し出典を明記。原本の PDF は再配布しない）"
+    license_id: terms_unconfirmed
   # 河川砂防情報システムの局の表（奄美 Step 2b）。県サイトの局定義 js から局名・座標の事実を抽出（ライセンス表記なし）、市町村は国土地理院の逆ジオコーダ。
   - raw: "県サイトから局名・座標の事実を抽出（ライセンス表記なし）／市町村は国土地理院の逆ジオコーダ"
     license_id: all_rights_reserved

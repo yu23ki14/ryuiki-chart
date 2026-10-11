@@ -21,15 +21,15 @@
       },
       "doc_series_meta": {
         "added": 0,
-        "changed": 1,
+        "changed": 0,
         "removed": 0,
-        "same": 0
+        "same": 1
       },
       "doc_series_points": {
-        "added": 48,
+        "added": 0,
         "changed": 0,
-        "removed": 48,
-        "same": 12
+        "removed": 0,
+        "same": 60
       },
       "effort_years": {
         "added": 0,
@@ -182,34 +182,34 @@
         "same": 60
       }
     },
-    "previous_git_head": "4b75562cc2e060ffd28abc7b9c365d4e9be55d70"
+    "previous_git_head": "f54ad29bed620e11fd4f701ef58dd8ad5b284829"
   },
-  "created_at": "2026-10-11T02:19:20+00:00",
+  "created_at": "2026-10-11T03:24:31+00:00",
   "environment": {
     "better_sqlite3_sqlite_version": "3.53.4",
     "node_version": "v22.22.2",
     "python_sqlite3_version": "3.49.1",
     "python_version": "3.13.7"
   },
-  "git_head": "f54ad29bed620e11fd4f701ef58dd8ad5b284829",
+  "git_head": "8fbe39285c072ca20162e3f8b747124636d15328",
   "pipeline_fingerprint_rows": {
     "registry.sqlite": null,
     "v2.sqlite": [
       {
         "fingerprint": "sha256:e4b152eee42bdf33428232b06edb37f1ec8ccd4b416bb09e5fd1014cbddccc09:1302434",
-        "inputs": "{\"ext:registry.place\": \"b6a3f66bebbbcb3a9f9c06d13e105e38ba0a4181318096bce293fefadef642ed\", \"ext:registry.place_source_ref\": \"b6a3f66bebbbcb3a9f9c06d13e105e38ba0a4181318096bce293fefadef642ed\", \"ext:registry.source_edition\": \"b6a3f66bebbbcb3a9f9c06d13e105e38ba0a4181318096bce293fefadef642ed\", \"ext:registry.variable_alias\": \"b6a3f66bebbbcb3a9f9c06d13e105e38ba0a4181318096bce293fefadef642ed\", \"ext:ryuiki.measurements\": \"count=327065;max_rowid=1942604\", \"ext:ryuiki.sensor_timeseries\": \"count=986772;max_rowid=5180074\"}",
+        "inputs": "{\"ext:registry.place\": \"1a849df970322b07d36c382b899d23b9c5394d92ba6c69995c9aad725aabc81e\", \"ext:registry.place_source_ref\": \"1a849df970322b07d36c382b899d23b9c5394d92ba6c69995c9aad725aabc81e\", \"ext:registry.source_edition\": \"1a849df970322b07d36c382b899d23b9c5394d92ba6c69995c9aad725aabc81e\", \"ext:registry.variable_alias\": \"1a849df970322b07d36c382b899d23b9c5394d92ba6c69995c9aad725aabc81e\", \"ext:ryuiki.measurements\": \"count=327065;max_rowid=1942604\", \"ext:ryuiki.sensor_timeseries\": \"count=986772;max_rowid=5180074\"}",
         "spec_version": "phase-b-fact-slice/v1",
         "table_name": "observation"
       },
       {
         "fingerprint": "sha256:cee861d890cdc5337129b3927c9b784a00f41fdb61e56e38db16cf7c43776f72:2771033",
-        "inputs": "{\"ext:registry.unit\": \"b6a3f66bebbbcb3a9f9c06d13e105e38ba0a4181318096bce293fefadef642ed\", \"ext:registry.variable\": \"b6a3f66bebbbcb3a9f9c06d13e105e38ba0a4181318096bce293fefadef642ed\", \"ext:registry.variable_alias\": \"b6a3f66bebbbcb3a9f9c06d13e105e38ba0a4181318096bce293fefadef642ed\", \"observation\": \"sha256:e4b152eee42bdf33428232b06edb37f1ec8ccd4b416bb09e5fd1014cbddccc09:1302434\"}",
+        "inputs": "{\"ext:registry.unit\": \"1a849df970322b07d36c382b899d23b9c5394d92ba6c69995c9aad725aabc81e\", \"ext:registry.variable\": \"1a849df970322b07d36c382b899d23b9c5394d92ba6c69995c9aad725aabc81e\", \"ext:registry.variable_alias\": \"1a849df970322b07d36c382b899d23b9c5394d92ba6c69995c9aad725aabc81e\", \"observation\": \"sha256:e4b152eee42bdf33428232b06edb37f1ec8ccd4b416bb09e5fd1014cbddccc09:1302434\"}",
         "spec_version": "phase-b-fact-slice/v4",
         "table_name": "observation_agg"
       },
       {
         "fingerprint": "sha256:5b13e0409338815addc21ab847fbc1d1b6e872805502c1b4c419e3ec37557316:895978",
-        "inputs": "{\"ext:registry.place\": \"b6a3f66bebbbcb3a9f9c06d13e105e38ba0a4181318096bce293fefadef642ed\", \"ext:registry.place_source_ref\": \"b6a3f66bebbbcb3a9f9c06d13e105e38ba0a4181318096bce293fefadef642ed\", \"ext:registry.source_edition\": \"b6a3f66bebbbcb3a9f9c06d13e105e38ba0a4181318096bce293fefadef642ed\", \"ext:registry.taxon\": \"b6a3f66bebbbcb3a9f9c06d13e105e38ba0a4181318096bce293fefadef642ed\", \"ext:registry.taxon_assessment\": \"b6a3f66bebbbcb3a9f9c06d13e105e38ba0a4181318096bce293fefadef642ed\", \"ext:ryuiki.edna_detections\": \"count=13263;max_rowid=13263\", \"ext:ryuiki.organism_records\": \"count=885105;max_rowid=885105;occurrence_status=[(None, 178871), ('ABSENT', 2790), ('PRESENT', 703444)]\", \"ext:ryuiki.wildlife_sightings\": \"count=400;max_rowid=400\"}",
+        "inputs": "{\"ext:registry.place\": \"1a849df970322b07d36c382b899d23b9c5394d92ba6c69995c9aad725aabc81e\", \"ext:registry.place_source_ref\": \"1a849df970322b07d36c382b899d23b9c5394d92ba6c69995c9aad725aabc81e\", \"ext:registry.source_edition\": \"1a849df970322b07d36c382b899d23b9c5394d92ba6c69995c9aad725aabc81e\", \"ext:registry.taxon\": \"1a849df970322b07d36c382b899d23b9c5394d92ba6c69995c9aad725aabc81e\", \"ext:registry.taxon_assessment\": \"1a849df970322b07d36c382b899d23b9c5394d92ba6c69995c9aad725aabc81e\", \"ext:ryuiki.edna_detections\": \"count=13263;max_rowid=13263\", \"ext:ryuiki.organism_records\": \"count=885105;max_rowid=885105;occurrence_status=[(None, 178871), ('ABSENT', 2790), ('PRESENT', 703444)]\", \"ext:ryuiki.wildlife_sightings\": \"count=400;max_rowid=400\"}",
         "spec_version": "phase-b-fact-slice/v1",
         "table_name": "occurrence"
       },
@@ -221,25 +221,25 @@
       },
       {
         "fingerprint": "sha256:76996f6f312ef2ed25dc1ea8ecacc7fa0f110d25ee242b6a8f6065578de386b4:895974",
-        "inputs": "{\"ext:registry.place_source_ref\": \"b6a3f66bebbbcb3a9f9c06d13e105e38ba0a4181318096bce293fefadef642ed\", \"ext:ryuiki.sites\": \"count=389;max_rowid=775\", \"occurrence\": \"sha256:5b13e0409338815addc21ab847fbc1d1b6e872805502c1b4c419e3ec37557316:895978\"}",
+        "inputs": "{\"ext:registry.place_source_ref\": \"1a849df970322b07d36c382b899d23b9c5394d92ba6c69995c9aad725aabc81e\", \"ext:ryuiki.sites\": \"count=389;max_rowid=775\", \"occurrence\": \"sha256:5b13e0409338815addc21ab847fbc1d1b6e872805502c1b4c419e3ec37557316:895978\"}",
         "spec_version": "phase-b-fact-slice/v5",
         "table_name": "occurrence_place"
       },
       {
         "fingerprint": "sha256:bc49de762b3d9fa3a90464f68523995f8dcaecf4c17fc40395e0e5bc1bc6fc82:171",
-        "inputs": "{\"ext:registry.taxon\": \"b6a3f66bebbbcb3a9f9c06d13e105e38ba0a4181318096bce293fefadef642ed\", \"occurrence_agg\": \"sha256:e51d2c069e43d6d4dd934c91505c661ed4adbfc457dbd7ced3285623cb3413b2:1544660\"}",
+        "inputs": "{\"ext:registry.taxon\": \"1a849df970322b07d36c382b899d23b9c5394d92ba6c69995c9aad725aabc81e\", \"occurrence_agg\": \"sha256:e51d2c069e43d6d4dd934c91505c661ed4adbfc457dbd7ced3285623cb3413b2:1544660\"}",
         "spec_version": "serving-summary/v6",
         "table_name": "summary_effort_year"
       },
       {
         "fingerprint": "sha256:1abf4bfd50bfd92403f994a717f98cf87a509503a3b073adece0037056900bf4:5817",
-        "inputs": "{\"ext:registry.taxon\": \"b6a3f66bebbbcb3a9f9c06d13e105e38ba0a4181318096bce293fefadef642ed\", \"occurrence_agg\": \"sha256:e51d2c069e43d6d4dd934c91505c661ed4adbfc457dbd7ced3285623cb3413b2:1544660\"}",
+        "inputs": "{\"ext:registry.taxon\": \"1a849df970322b07d36c382b899d23b9c5394d92ba6c69995c9aad725aabc81e\", \"occurrence_agg\": \"sha256:e51d2c069e43d6d4dd934c91505c661ed4adbfc457dbd7ced3285623cb3413b2:1544660\"}",
         "spec_version": "serving-summary/v6",
         "table_name": "summary_grid_catalog"
       },
       {
         "fingerprint": "sha256:4751a9e2bf7887eb26d72d15fb16f00c6eb2bf2d074393cc932fa1d55d8341b9:2727",
-        "inputs": "{\"ext:registry.taxon\": \"b6a3f66bebbbcb3a9f9c06d13e105e38ba0a4181318096bce293fefadef642ed\", \"occurrence_agg\": \"sha256:e51d2c069e43d6d4dd934c91505c661ed4adbfc457dbd7ced3285623cb3413b2:1544660\"}",
+        "inputs": "{\"ext:registry.taxon\": \"1a849df970322b07d36c382b899d23b9c5394d92ba6c69995c9aad725aabc81e\", \"occurrence_agg\": \"sha256:e51d2c069e43d6d4dd934c91505c661ed4adbfc457dbd7ced3285623cb3413b2:1544660\"}",
         "spec_version": "serving-summary/v6",
         "table_name": "summary_group_year"
       },
@@ -251,7 +251,7 @@
       },
       {
         "fingerprint": "sha256:8677b3dc25313cb51222208d66a86344978a315b86289e7aec5ee6a0c9952d04:28270",
-        "inputs": "{\"ext:registry.taxon\": \"b6a3f66bebbbcb3a9f9c06d13e105e38ba0a4181318096bce293fefadef642ed\", \"occurrence_agg\": \"sha256:e51d2c069e43d6d4dd934c91505c661ed4adbfc457dbd7ced3285623cb3413b2:1544660\"}",
+        "inputs": "{\"ext:registry.taxon\": \"1a849df970322b07d36c382b899d23b9c5394d92ba6c69995c9aad725aabc81e\", \"occurrence_agg\": \"sha256:e51d2c069e43d6d4dd934c91505c661ed4adbfc457dbd7ced3285623cb3413b2:1544660\"}",
         "spec_version": "serving-summary/v6",
         "table_name": "summary_species_catalog"
       },
@@ -278,7 +278,7 @@
   "pipeline_path_hashes": {
     "aggregations": "11a8b17bee8e9e1157382fa890764cb7ecaa524f",
     "manifests": "3b2e3ab2864037730e72b3fd33d81762cdf2264b",
-    "registry": "28fba7c0c993c2d30b272e26039776a72dff94e7",
+    "registry": "ab1658de9c6945c8ba0ea26a94f99f7acaac37c4",
     "requirements.txt": "4323abaaacdc6a851d6f323c3a8e542996714511",
     "scripts/adapters": "738619c00e564dccf500bdba1ffc78abcd3bd940",
     "scripts/b00_run_full_gate.py": "ed8dc0f3d4dfbc5a456b68c324ffb18346cfe71c",
@@ -333,7 +333,7 @@
     "web/src/lib/db.ts": "cb9a153fb416b4400bd74ecf0fd4d3977df90944",
     "web/src/lib/registry/generated-client.ts": "85139c41fe45f0d8f0b4499d2223b1e18ccf6125",
     "web/src/lib/registry/generated-id-map.ts": "5004cea9f243ab2eff0be4159bf3fd2c0ad5d231",
-    "web/src/lib/registry/generated-source.ts": "e9cc0dc35cf71d3cf0b81d0abe6a1d5d5cab15bb",
+    "web/src/lib/registry/generated-source.ts": "2a5d81e5ce37340d8b7e5b1b4ff19e8b7f8eccbe",
     "web/src/lib/registry/generated.ts": "1582b52f04293b069363f7d4be7b2657526135bc",
     "web/src/lib/registry/index.ts": "02fc0d4c3b83cce49ea4b72d5e349dc3c45a201b",
     "web/src/lib/registry/legacy-id.ts": "e6fb112a8a1288823915b2030c6d72d1a57c751c",
@@ -10423,12 +10423,12 @@
       "n_domain": 1,
       "runs": [
         {
-          "hash": "a97b3a6e941152f2888840a262115dd512919466e5c6ffc6b2fff04afd488b48",
+          "hash": "4abdd2d8a2d10183cf96bd202f0733e6f7ac59ed71bab140b3d7d9c831b3851f",
           "n_rows": 1,
           "params": {},
           "sums": {
             "n_sites": 389,
-            "n_sources": 171,
+            "n_sources": 173,
             "n_watersheds": 402,
             "y_from": 1973,
             "y_to": 2026
@@ -10454,8 +10454,8 @@
   ],
   "schema_version": 1,
   "source_hashes": {
-    "data/db/cells.sqlite": "eb66897ee547cde90f3115ae0805a51c73c77bdc363034cbb7508b5bc9de333c",
-    "data/db/ryuiki.sqlite": "c874089d0a83970ea5d32dacfd0a9620072babb8d255211b3c347ee710f7f8bd",
+    "data/db/cells.sqlite": "2e04f1bdf5ff6ed77280a5848b9d91b2e8f8d063ed2311c9c07094c429ce0c95",
+    "data/db/ryuiki.sqlite": "70072133771b0b4c6a6fb286d4e30081f5d9bff8000fb9cf7efd74e30dc241fe",
     "data/processed/moe_ias_list.csv": "54a3261737bc72b84910d75d78a7da7beee067c5b78581c9b2522627b7bffb41",
     "data/processed/nlni_l03b_landuse_by_watershed.csv": "ec71d28f382785af6ef7ed588350f67537f96d356d1d73c541522a74421cb644",
     "data/processed/nlni_l03b_landuse_by_watershed_amami.csv": "0a64640e1a5507567488923f26ba38bf98ce11125394f90d88474ca5e4503e1e",
