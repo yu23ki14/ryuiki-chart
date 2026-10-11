@@ -25,6 +25,9 @@ from common import to_fiscal_year  # noqa: E402
 # 鹿児島県のサイトから事実（数値）だけを抜き出す文書の license（c95・c98b 共通）
 LICENSE_PREF_KAGOSHIMA = "鹿児島県ホームページ（無断転載・改変不可）。事実（数値）のみ抽出し出典を明記"
 
+# ライセンス表記のない文書から事実（数値）だけを抜き出すときの license（c102b。registry/source/license.yaml の mappings にある）
+LICENSE_NOTE_UNSTATED = "ライセンス表記なし（事実（数値）のみ抽出し出典を明記。原本の PDF は再配布しない）"
+
 # 環境省ホームページコンテンツの PDL1.0 の原文（c96・c99 共通。registry/source/license.yaml の mappings にある）
 LICENSE_MOE_PDL = "公共データ利用規約（第1.0版）PDL1.0（環境省ホームページコンテンツの利用について）: https://www.env.go.jp/mail.html"
 
@@ -218,6 +221,30 @@ def fetch_pdf(url, path):
     if not path.exists():
         common.download(url, path)
     return path, common.sha256(path)
+
+
+def fetch_verified(url, path, want_sha256):
+    """保存済みで sha256 が同じなら何もしない。違う・無いなら取得し、検査してから置き換える。
+    sha256 が期待と違えば（既存の良いコピーは壊さず）SystemExit。取得の間隔は common.get の throttle に任せる。-> 'skip' | 'save'"""
+    import common
+    if path.exists() and common.sha256(path) == want_sha256:
+        return "skip"
+    tmp = path.with_name(path.name + ".part")
+    tmp.unlink(missing_ok=True)
+    common.download(url, tmp)
+    sha = common.sha256(tmp)
+    if sha != want_sha256:
+        tmp.unlink()
+        raise SystemExit(f"{path.name}: sha256 が期待と違う（{sha}）。資料が更新された？ 正解 csv を作り直す前に人が確認する")
+    tmp.replace(path)
+    return "save"
+
+
+def number_value(raw):
+    """数値の印字（カンマ付き可）-> (value〔JSON の文字列〕, value_type)。小数点があれば float、なければ int。"""
+    from decimal import Decimal
+    v = Decimal(str(raw).replace(",", ""))
+    return (str(float(v)), "float") if "." in str(raw) else (str(int(v)), "int")
 
 
 def pdf_page_count(path):
