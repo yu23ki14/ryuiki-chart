@@ -563,14 +563,15 @@ def check_w12_containment(w12_features, unit_geoms, decl):
 
 
 def outlet_on_coast(valid, units):
-    """出口の画素が有効で、4近傍のどれかが無効（海）・モザイクの外である面の ID でない面を返す。"""
+    """出口の画素が有効で、8近傍のどれかが無効（海）・モザイクの外である条件を満たさない面の ID を返す。
+    D8 の流向は斜めにも流れるので、海との接し方も斜めを含める（4近傍だと斜めにだけ海に接す出口を誤って落とす）。"""
     h, w = valid.shape
     bad = []
     for u in units:
         r, c = u["outlet_row"], u["outlet_col"]
         ok = bool(valid[r, c])
         sea = False
-        for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+        for dr, dc in ((-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)):
             rr, cc = r + dr, c + dc
             if not (0 <= rr < h and 0 <= cc < w) or not valid[rr, cc]:
                 sea = True

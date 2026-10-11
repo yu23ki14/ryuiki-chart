@@ -323,3 +323,14 @@ def test_mouth_catchment_candidates(solved):
     nowhere = dict(mouth, node_id="m3", lon=129.45, lat=28.35)
     cands = L.mouths_with_catchment([mouth, high, nowhere], res["upa"], X0, Y0, Z, CFG["a_min_km2"])
     assert [m["node_id"] for m in cands] == ["m1"]
+
+
+def test_outlet_on_coast_accepts_diagonal_only_sea_contact():
+    """D8 の出口は斜めにだけ海に接していてもよい（dem-amami-028・037 の実例）。内陸の出口は NG。"""
+    valid = np.ones((7, 7), dtype=bool)
+    valid[4, 4] = False                       # (3,3) の右下の斜めだけが海
+    unit = {"watershed_id": "x", "outlet_row": 3, "outlet_col": 3}
+    assert L.outlet_on_coast(valid, [unit]) == []
+    assert L.outlet_on_coast(valid, [{"watershed_id": "y", "outlet_row": 1, "outlet_col": 1}]) == ["y"]
+    valid[3, 3] = False                       # 出口が無効画素なら NG
+    assert L.outlet_on_coast(valid, [unit]) == ["x"]

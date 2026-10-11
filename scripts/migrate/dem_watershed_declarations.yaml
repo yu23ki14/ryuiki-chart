@@ -40,9 +40,11 @@ w12_containment:
     試算は 0.95〜1.00。
 
 outlet_on_coast:
-  expected: all          # 全面の出口が有効画素で、4近傍のどれかが海（無効）かモザイクの外
+  expected: all          # 全面の出口が有効画素で、8近傍のどれかが海（無効）かモザイクの外
   exceptions: []
-  note: pyflwdir の outlets='edge' は海に接する画素を出口にする。
+  note: >
+    pyflwdir の outlets='edge' は海に接する画素を出口にする。D8 なので斜めにだけ海に接する画素も出口になる
+    （dem-amami-028・037 が該当）。そのため近傍は 4 でなく 8。
 
 dropped_area_km2:
   expected: 1.1          # [km²] 以下。捨てた面積（0.1 km² 未満の岩礁の成分＋小さすぎて残らなかった面）の合計
