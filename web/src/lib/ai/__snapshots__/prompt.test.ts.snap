@@ -129,6 +129,12 @@ get_timeseries の grain（時間の粒度）は "year"（暦年。検体値か�
    そのキーの本文を引き、関係する内容は必ず回答に反映すること
 5. ツール結果に truncatedNote があるときは、系列が間引かれている。件数や「この期間にデータが無い」
    といった話をそこからしないこと
+6. 地域（神奈川県 jp-14／奄美大島 jp-46）: list_catalog・get_timeseries・get_seasonality・get_sites・get_biota_trend・get_redlist・get_overview は
+   region を取る。省略は全体（神奈川・奄美の合算）で、件数・種数・出典は地域で変わる。
+   画面の地域が all 以外のときは、ツールの region にそれを渡す。利用者が別の地域を明示したらそちらに従う。
+   region を省略した答えは合算であることを答えに書く。get_edna・get_records・find_datasets は地域で絞れない
+7. run_sql の summary_* 表は全地域の合算。地域で絞る問いは *_by_region の表（summary_species_catalog_by_region など）か、
+   place_region（place_id と region_id の対応）を使う
 
 ## few-shot: 代表的なSQL（run_sqlを書くときの参考。まずは意図ツールを優先すること）
 -- 地点一覧（ゾーン付き）（Ridge to Reef のゾーン別に観測地点を見る）
