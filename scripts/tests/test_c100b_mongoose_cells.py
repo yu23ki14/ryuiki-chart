@@ -360,7 +360,10 @@ def test_write_replaces_only_own_doc_id(tmp_path, monkeypatch):
     for _ in range(2):   # 2回書いても行は増えない（入れ替え）
         c.write(built, register=False)
     con = sqlite3.connect(db)
-    d_doc, d_notes = d.build()
+    html = tmp_path / "declaration.html"   # data/raw に依存しない（CI には無い）。sha256 はこのファイルのもの
+    html.write_text("<html>dummy</html>", encoding="utf-8")
+    d_doc, d_notes = d.build(html)
+    assert d_doc["doc_sha256"] == common.sha256(html)
     doccells.write_doc(con, d.DOC_ID, d_doc, [], d_notes)
     assert con.execute("SELECT count(*) FROM cells WHERE doc_id='other'").fetchone()[0] == 1
     assert con.execute("SELECT count(*) FROM notes WHERE doc_id='other'").fetchone()[0] == 1

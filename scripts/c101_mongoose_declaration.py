@@ -36,8 +36,9 @@ NOTES = [
 ]
 
 
-def build():
-    path = common.RAW / LOCAL
+def build(path=None):
+    """-> (documents の行, notes)。path は保存した HTML（既定は data/raw/moe_mongoose/…。テストは一時ファイルを渡す）。"""
+    path = path or common.RAW / LOCAL
     if not path.exists():
         raise SystemExit(f"{path} が無い。先に scripts/c100a_mongoose_fetch.py")
     fetched_at = datetime.datetime.fromtimestamp(path.stat().st_mtime).isoformat(timespec="seconds")
