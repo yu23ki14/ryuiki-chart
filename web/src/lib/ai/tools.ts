@@ -32,6 +32,7 @@ import { MEASUREMENTS_DATASET } from "@/lib/cube/series";
 import { timeseries } from "@/lib/cube/timeseries";
 import { EDNA_DESCRIPTION, EDNA_SOURCE_ID, ednaInputSchema, queryEdna } from "@/lib/edna";
 import { queryRecords, RECORD_TABLES, RecordsInputError, recordsInputSchema, RECORDS_DESCRIPTION } from "@/lib/records";
+import { regionSchema, REGION_NOTE } from "@/lib/mcp/region-schema";
 import { byteLength, fitHeadRows } from "@/lib/fit-head-rows";
 import { FIND_DATASETS_DESCRIPTION, FindDatasetsInputError, findDatasetsInputSchema, queryDatasets } from "@/lib/catalog-search";
 
@@ -56,6 +57,11 @@ export interface ToolResult<T> {
     rowCount: number;
     elapsedMs: number;
   };
+  /**
+   * 地域で絞ったか（Issue #93）。`region` を受けるツールだけ入り、省略（全体）は null。
+   * 証跡カードが機械的に「地域=奄美大島」と出すための値で、モデルが書くものではない。
+   */
+  region?: string | null;
   /** 注記の「キー」だけ。本文はシステムプロンプトが持ち、表示は証跡カードが caveatText で引く。 */
   caveats: string[];
   truncated?: boolean;
@@ -207,6 +213,8 @@ function makeResult<T, R = never>(
     /** table 経由ではなく facet 経由で決めた注記キー（`lib/cube/caveats` の
      *  `facetsForSeries`/`caveatKeysForFacets` を使うツール用）。指定時はこちらを使う。 */
     caveats?: string[];
+    /** `region` を受けるツールだけ渡す（全体は null）。`ToolResult.region` に載る。 */
+    region?: string | null;
   } & ({ data: T; rowCount: number; headRows?: undefined } | { headRows: HeadRows<T, R>; data?: undefined; rowCount?: undefined }),
 ): ToolResult<T> {
   let data: T;
@@ -244,6 +252,7 @@ function makeResult<T, R = never>(
       elapsedMs: Math.round(opts.elapsedMs),
     },
     caveats: opts.caveats ?? caveatKeysForFacets(facetsForTables(opts.tables)),
+    ...(opts.region !== undefined ? { region: opts.region } : {}),
     truncated: truncated || undefined,
     truncatedNote,
   };
@@ -255,7 +264,8 @@ function makeResult<T, R = never>(
 
 const list_catalog = tool({
   description:
-    "流域カルテにどんな測定項目・水域（地点をまとめた単位）・ゾーンがあるかを一覧する。具体的な数値を見る前に、まず全体像を掴むときに使う。",
+    "流域カルテにどんな測定項目・水域（地点をまとめた単位）・ゾーンがあるかを一覧する。具体的な数値を見る前に、まず全体像を掴むときに使う。" +
+    "region は variables・waters だけに効く。" + REGION_NOTE,
   inputSchema: z.object({
     what: z
       .enum(["variables", "waters", "zones"])
@@ -264,8 +274,9 @@ const list_catalog = tool({
       .string()
       .optional()
       .describe("what='waters' のとき、この項目のデータを実際に持つ水域だけに絞り込む（正準の指標ID。variables の結果の variableId をそのまま渡す）"),
+    region: regionSchema,
   }),
-  execute: async ({ what, variableId }) => {
+  execute: async ({ what, variableId, region }) => {
     const t0 = performance.now();
     if (what === "zones") {
       return makeResult({
@@ -279,20 +290,22 @@ const list_catalog = tool({
     const db = await d1CubeDb();
     if (what === "waters") {
       const rows = variableId
-        ? await waterBodies(db, { series: representativeSeries(variableId, DATASET) })
-        : await waterBodies(db, { dataset: DATASET });
+        ? await waterBodies(db, { series: representativeSeries(variableId, DATASET), region })
+        : await waterBodies(db, { dataset: DATASET, region });
       return makeResult({
         tool: "list_catalog",
+        region: region ?? null,
         tables: ["sites", "summary_place_variable"],
         data: { waters: rows },
         rowCount: rows.length,
         elapsedMs: performance.now() - t0,
       });
     }
-    const rows = await variableCatalog(db, { dataset: DATASET });
+    const rows = await variableCatalog(db, { dataset: DATASET, region });
     const registry = registryFor(rows.map((r) => ({ variableId: r.variableId, unitId: r.unitId })));
     return makeResult({
       tool: "list_catalog",
+      region: region ?? null,
       tables: ["summary_variable_catalog"],
       data: { variables: rows, registry },
       rowCount: rows.length,
@@ -313,7 +326,7 @@ const scopeSchema = z.discriminatedUnion("type", [
 
 const get_timeseries = tool({
   description:
-    "ある測定項目の時系列を取る。scope で「水域の中の地点ごと」「1地点」「ゾーン平均」のどれで見るかを選ぶ。grain で粒度を選ぶ。",
+    "ある測定項目の時系列を取る。scope で「水域の中の地点ごと」「1地点」「ゾーン平均」のどれで見るかを選ぶ。grain で粒度を選ぶ。" + REGION_NOTE,
   inputSchema: z.object({
     variableId: z.string().describe("正準の指標ID（list_catalog(what='variables') の行の variableId をそのまま渡す）"),
     scope: scopeSchema,
@@ -333,17 +346,19 @@ const get_timeseries = tool({
       .optional()
       .describe("grain='day' のときの開始日 YYYY-MM-DD。日次は点が多く、範囲を絞らないと間引かれる"),
     to: z.string().optional().describe("grain='day' のときの終了日 YYYY-MM-DD"),
+    region: regionSchema,
   }),
-  execute: async ({ variableId, scope, grain, stat, from, to }) => {
+  execute: async ({ variableId, scope, grain, stat, from, to, region }) => {
     const t0 = performance.now();
     const db = await d1CubeDb();
     // 本体は lib/cube/timeseries.ts（MCP の get_observations と同じ関数。封筒・注記もそこで付く）。
-    const r = await timeseries(db, { variableId, scope, grain, stat, from, to });
+    const r = await timeseries(db, { variableId, scope, grain, stat, from, to, ...(region ? { region } : {}) });
     const registry = registryFor(r.series.map((s) => ({ variableId: s.variableId, unitId: s.unitId })));
-    const base = { scope, grain, basis: r.basis, stat: stat ?? "representative", variableId, unit: r.unit, registry, points: r.points };
+    const base = { scope, grain, basis: r.basis, stat: stat ?? "representative", variableId, unit: r.unit, registry, points: r.points, region: region ?? null };
     if (r.series.length === 0) {
       return makeResult({
         tool: "get_timeseries",
+        region: region ?? null,
         tables: [],
         data: { ...base, envelope: null },
         rowCount: 0,
@@ -352,6 +367,7 @@ const get_timeseries = tool({
     }
     return makeResult({
       tool: "get_timeseries",
+      region: region ?? null,
       tables: ["observation_agg"],
       data: { ...base, sites: r.sites, envelope: r.envelope },
       rowCount: r.points.length,
@@ -366,11 +382,12 @@ const get_timeseries = tool({
 /* ------------------------------------------------------------------ */
 
 const get_seasonality = tool({
-  description: "ある測定項目の季節性（月ごとの平均）を、全体とゾーン別の両方で取る。検体値（basis=day）の項目だけ意味を持つ。",
+  description: "ある測定項目の季節性（月ごとの平均）を、全体とゾーン別の両方で取る。検体値（basis=day）の項目だけ意味を持つ。" + REGION_NOTE,
   inputSchema: z.object({
     variableId: z.string().describe("正準の指標ID（list_catalog(what='variables') の行の variableId をそのまま渡す）"),
+    region: regionSchema,
   }),
-  execute: async ({ variableId }) => {
+  execute: async ({ variableId, region }) => {
     const t0 = performance.now();
     // 月別集計は検体値（basis=day）からの積み上げだけが意味を持つ（v1 meas_clim/zone_clim と同じ前提）。
     // series は value_grain で絞り込まない——`grain: "day"`/`"month"` のセル自体が
@@ -383,6 +400,7 @@ const get_seasonality = tool({
       return makeResult({
         tool: "get_seasonality",
         tables: [],
+        region: region ?? null,
         data: { variableId, registry, overall: [], byZone: [] },
         rowCount: 0,
         elapsedMs: performance.now() - t0,
@@ -395,8 +413,8 @@ const get_seasonality = tool({
     // 形。Issue #48 PR-2 /simplify #11）——以前は `imputation:'zero'`/`'lod'` を
     // 2回ずつ叩いて JS 側でキーを合わせていた（4回→2回）。
     const [overall_, zone_] = await Promise.all([
-      summarize(db, { series, scope: overallScope, grain: "day", imputation: "both" }, "month_of_year"),
-      summarize(db, { series, scope: overallScope, grain: "month", imputation: "both" }, "zone_month_of_year"),
+      summarize(db, { series, scope: overallScope, grain: "day", imputation: "both", ...(region ? { region } : {}) }, "month_of_year"),
+      summarize(db, { series, scope: overallScope, grain: "month", imputation: "both", ...(region ? { region } : {}) }, "zone_month_of_year"),
     ]);
     const overall = overall_.rows.map((r) => ({
       month: r.month,
@@ -418,6 +436,7 @@ const get_seasonality = tool({
 
     return makeResult({
       tool: "get_seasonality",
+      region: region ?? null,
       tables: ["observation_agg"],
       data: { variableId, registry, overall, byZone },
       rowCount: overall.length + byZone.length,
@@ -433,14 +452,15 @@ const get_seasonality = tool({
 
 const get_sites = tool({
   description:
-    "観測地点を調べる。site_id が分かっていれば個票（保有する測定項目の内訳つき）を返し、分からなければ名前やゾーンで絞った一覧を返す。",
+    "観測地点を調べる。site_id が分かっていれば個票（保有する測定項目の内訳つき）を返し、分からなければ名前やゾーンで絞った一覧を返す。region は一覧だけに効く（個票は siteId 指定なので地域で絞らない）。" + REGION_NOTE,
   inputSchema: z.object({
     siteId: z.string().optional().describe("地点ID。指定すると個票が返る（他の引数は無視される）"),
     query: z.string().optional().describe("地点名の部分一致で絞り込む"),
     zone: z.number().int().min(1).max(5).optional().describe("Ridge to Reefのゾーン(1-5)で絞り込む"),
     limit: z.number().int().min(1).max(100).optional().describe("一覧のとき返す件数の上限（既定20）"),
+    region: regionSchema,
   }),
-  execute: async ({ siteId, query, zone, limit }) => {
+  execute: async ({ siteId, query, zone, limit, region }) => {
     const t0 = performance.now();
     const db = await d1CubeDb();
     if (siteId) {
@@ -459,7 +479,7 @@ const get_sites = tool({
         elapsedMs: performance.now() - t0,
       });
     }
-    let rows = await cubeSites(db, { dataset: DATASET });
+    let rows = await cubeSites(db, { dataset: DATASET, region });
     if (query) {
       const q = query.toLowerCase();
       rows = rows.filter((s) => (s.name ?? "").toLowerCase().includes(q));
@@ -469,6 +489,7 @@ const get_sites = tool({
     const limited = rows.slice(0, limit ?? 20);
     return makeResult({
       tool: "get_sites",
+      region: region ?? null,
       tables: ["sites", "summary_place_variable"],
       data: { sites: limited, matched },
       rowCount: limited.length,
@@ -501,17 +522,19 @@ const COVERAGE_MAX_ROWS = 200;
 const get_biota_trend = tool({
   description:
     "生物観察の推移を見る。mode='groups' で分類群別の年次件数と観察努力、mode='share' で分類群内シェアの前後比較、" +
-    "mode='species' で個別の種の年次・月次推移を取る。",
+    "mode='species' で個別の種の年次・月次推移を取る。" + REGION_NOTE,
   inputSchema: z.discriminatedUnion("mode", [
-    z.object({ mode: z.literal("groups") }),
+    z.object({ mode: z.literal("groups"), region: regionSchema }),
     z.object({
       mode: z.literal("share"),
+      region: regionSchema,
       group: z.string().describe("分類群名（例: 鳥類）"),
       periodA: yearRange.describe("前期間"),
       periodB: yearRange.describe("後期間"),
     }),
     z.object({
       mode: z.literal("species"),
+      region: regionSchema,
       binoms: z.array(z.string()).min(1).max(100).describe("学名（2語、例: Plecoglossus altivelis）の配列"),
     }),
   ]),
@@ -519,10 +542,12 @@ const get_biota_trend = tool({
     const t0 = performance.now();
     const db = await d1CubeDb();
     const caveats = BIOTA_CAVEATS;
+    const region = input.region;
     if (input.mode === "groups") {
-      const [groups, effort] = await Promise.all([taxonGroupYears(db), effortYears(db)]);
+      const [groups, effort] = await Promise.all([taxonGroupYears(db, { region }), effortYears(db, { region })]);
       return makeResult({
         tool: "get_biota_trend",
+        region: region ?? null,
         tables: ["summary_group_year", "summary_effort_year"],
         caveats,
         data: { mode: "groups", groups, effort },
@@ -532,9 +557,10 @@ const get_biota_trend = tool({
     }
     if (input.mode === "share") {
       const { group, periodA, periodB } = input;
-      const rows = await speciesShareTrend(db, group, periodA, periodB);
+      const rows = await speciesShareTrend(db, group, periodA, periodB, { region });
       return makeResult({
         tool: "get_biota_trend",
+        region: region ?? null,
         tables: ["occurrence_agg", "summary_species_catalog"],
         caveats,
         data: { mode: "share", group, periodA, periodB, rows },
@@ -543,7 +569,7 @@ const get_biota_trend = tool({
       });
     }
     const { binoms } = input;
-    const [{ years, noCoordinate }, months] = await Promise.all([speciesYearsWithCoverage(db, binoms), speciesMonths(db, binoms)]);
+    const [{ years, noCoordinate }, months] = await Promise.all([speciesYearsWithCoverage(db, binoms, { region }), speciesMonths(db, binoms, { region })]);
     // years[].n は座標の無い記録を含み、mesh_n は座標のある記録だけ（座標のある記録が無い年は null）。格子に置けなかった件数を出典別・年別に添える。
     const cov = noCoordinate.slice(0, COVERAGE_MAX_ROWS);
     const coverage = {
@@ -552,6 +578,7 @@ const get_biota_trend = tool({
     };
     return makeResult({
       tool: "get_biota_trend",
+      region: region ?? null,
       tables: ["occurrence_agg", "summary_species_catalog"],
       caveats,
       data: { mode: "species", binoms, years, months, coverage },
@@ -566,7 +593,9 @@ const get_biota_trend = tool({
 /* ------------------------------------------------------------------ */
 
 const get_redlist = tool({
-  description: "レッドリストの版間比較を見る。まず summary で版・分類群ごとの増減件数を俯瞰し、年を指定すると内訳（flows/species）が付く。",
+  description:
+    "レッドリストの版間比較を見る。まず summary で版・分類群ごとの増減件数を俯瞰し、年を指定すると内訳（flows/species）が付く。" +
+    "region を省略または jp-14 にすると神奈川県の3版。jp-46 は鹿児島県レッドリスト（2014年版のみで版間比較は無く、flows は空）。",
   inputSchema: z.object({
     year: z.number().int().describe("見たい版の年（例: 2022）。summary の一覧から選ぶとよい"),
     group: z.string().optional().describe("分類群（和名、例: 鳥類）で絞り込む"),
@@ -574,15 +603,17 @@ const get_redlist = tool({
       .string()
       .optional()
       .describe("前版からの変化方向で絞り込む。値は summary/flows の結果に出てくる direction をそのまま渡す（推測で決め打ちしない）"),
+    region: regionSchema,
   }),
-  execute: async ({ year, group, direction }) => {
+  execute: async ({ year, group, direction, region }) => {
     const t0 = performance.now();
     const db = await d1CubeDb();
-    const { summary, flows, species } = await redlistBundle(db, year, { group, direction, limit: 300 });
+    const { summary, flows, species } = await redlistBundle(db, year, { group, direction, limit: 300, region });
     return makeResult({
       tool: "get_redlist",
+      region: region ?? null,
       tables: ["taxon_assessment"],
-      data: { year, group, direction, summary, flows, species },
+      data: { year, group, direction, region: region ?? null, summary, flows, species },
       rowCount: summary.length + flows.length + species.length,
       elapsedMs: performance.now() - t0,
     });
@@ -594,17 +625,20 @@ const get_redlist = tool({
 /* ------------------------------------------------------------------ */
 
 const get_overview = tool({
-  description: "アプリ全体の概況（地点数・観測指標数・生物記録数などの総数）と、流域ごとのロールアップ上位N件を取る。",
+  description:
+    "アプリ全体の概況（地点数・観測指標数・生物記録数などの総数）と、流域ごとのロールアップ上位N件を取る。" +
+    "n_sources（出典の件数）は地域で絞らない。" + REGION_NOTE,
   inputSchema: z.object({
     limit: z.number().int().min(1).max(50).optional().describe("流域ロールアップの件数上限（既定10、生物記録数の多い順）"),
+    region: regionSchema,
   }),
-  execute: async ({ limit }) => {
+  execute: async ({ limit, region }) => {
     const t0 = performance.now();
     const db = await d1CubeDb();
     const [counts, rollupAll, occ] = await Promise.all([
-      overviewCounts(db),
-      watershedRollup(db),
-      occurrenceTotals(db),
+      overviewCounts(db, { region }),
+      watershedRollup(db, { region }),
+      occurrenceTotals(db, { region }),
     ]);
     // 生物の件数・種数は cube（日付のある記録だけ）。それ以外の総数は overviewCounts。
     const stats = {
@@ -661,6 +695,7 @@ const get_overview = tool({
     ];
     return makeResult({
       tool: "get_overview",
+      region: region ?? null,
       tables,
       caveats,
       data: {

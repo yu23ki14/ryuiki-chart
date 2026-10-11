@@ -40,6 +40,8 @@ import { representativeSeries } from "@/lib/cube/series";
 import { EDNA_DESCRIPTION, EDNA_SOURCE_ID, ednaInputSchema, queryEdna } from "@/lib/edna";
 import { caveatsForFacets, facetsForOccurrence } from "@/lib/cube/caveats";
 import { SPECIES_MIN_N } from "@/lib/cube/occurrence";
+import { sourcesOfRegion } from "@/lib/cube/region";
+import { regionSchema, REGION_NOTE } from "./region-schema";
 import { loadDatapackage } from "./datapackage";
 import { McpInputError } from "./errors";
 import { getRecordsTool } from "./tools-records";
@@ -119,7 +121,8 @@ const READING_RULES =
   "読み方: 値は定量下限未満を value_lod（下限値で代用）と value_zero（0 で代用）の両方で返す。" +
   "n_censored・n_not_detected が多い系列は下限付近の値を平均した結果なので断定しない。" +
   "caveats は必ず利用者に伝える。provenance の fetched_at・update_mode・age_days から、データの新しさと更新方式を判断する" +
-  "（update_mode が undeclared の出典は更新方式が未宣言）。欠測を補完しない。";
+  "（update_mode が undeclared の出典は更新方式が未宣言）。欠測を補完しない。" +
+  "地域: " + REGION_NOTE;
 
 export const MCP_TOOLS: McpTool[] = [
   defineTool({
@@ -130,15 +133,17 @@ export const MCP_TOOLS: McpTool[] = [
       "'sources' は出典（取得日・更新方式・取れるツール queryable_via・取れない理由つき。queryable_via が find_datasets の出典は外部ポータルの目録で、値ではなく定義と最新の URL を find_datasets で引く）。" +
       "出典の件数・ツール別の件数・取れない理由別の件数は応答の summary を使う（一覧を自分で数えない）。" +
       "n_source_rows は原本の行数で、get_observations の n（集計に使った件数）とは別物（find_datasets の出典では目録のデータセット数。n_source_rows_basis=catalog_datasets）。" +
+      "region は what='variables'・'waters' だけに効く（'zones'・'sources' は地域で絞らない）。" +
       READING_RULES,
     inputSchema: z.object({
       what: z.enum(["variables", "waters", "zones", "sources"]).describe("一覧する対象"),
       variableId: z.string().optional().describe("what='waters' のとき、この項目のデータを持つ水域に絞る（variables の variableId）"),
       queryable: z.boolean().optional().describe("what='sources' のとき、ツールで値が取れる出典（true）／取れない出典（false）に絞る"),
+      region: regionSchema,
       limit: limitSchema,
     }).strict(),
-    execute: async ({ what, variableId, queryable, limit }, ctx) => {
-      const query = { what, variableId: variableId ?? null, queryable: queryable ?? null, limit: limit ?? null };
+    execute: async ({ what, variableId, queryable, region, limit }, ctx) => {
+      const query = { what, variableId: variableId ?? null, queryable: queryable ?? null, region: region ?? null, limit: limit ?? null };
       const opt = { now: ctx.now };
       if (what === "zones") return buildDataEnvelope(query, { zones: [...ZONE_INFO] }, [], opt);
       if (what === "sources") {
@@ -154,14 +159,14 @@ export const MCP_TOOLS: McpTool[] = [
       const db = await ctx.db();
       if (what === "waters") {
         const all = variableId
-          ? await waterBodies(db, { series: representativeSeries(variableId, MEASUREMENTS_DATASET) })
-          : await waterBodies(db, { dataset: MEASUREMENTS_DATASET });
+          ? await waterBodies(db, { series: representativeSeries(variableId, MEASUREMENTS_DATASET), region })
+          : await waterBodies(db, { dataset: MEASUREMENTS_DATASET, region });
         const { rows, truncated } = cap(all, limit);
         return buildDataEnvelope(query, { waters: rows }, [], { ...opt, truncated });
       }
-      const all = await variableCatalog(db, { dataset: MEASUREMENTS_DATASET });
+      const all = await variableCatalog(db, { dataset: MEASUREMENTS_DATASET, region });
       const { rows, truncated } = cap(all, limit);
-      const sourceIds = rows.flatMap((r) => seriesSourceRefsOf(r.variableId));
+      const sourceIds = sourcesOfRegion(rows.flatMap((r) => seriesSourceRefsOf(r.variableId)), region);
       return buildDataEnvelope(
         query,
         { variables: rows.map((r) => ({ ...r, label: VARIABLE_LABEL[r.variableId]?.short ?? null })) },
@@ -175,13 +180,16 @@ export const MCP_TOOLS: McpTool[] = [
     name: "search_registry",
     description:
       "語彙（測定項目・出典・生物種）を名前で検索する。変数名や種名の表記ゆれから ID（variableId・sourceId・学名）を引くときに使う。" +
-      "kind='variable' は測定項目、'source' は出典、'species' は出現記録のある種（和名・学名）。",
+      "kind='variable' は測定項目、'source' は出典、'species' は出現記録のある種（和名・学名）。" +
+      "region は kind='species' だけに効く（種の件数 n と出典を地域で絞る。variable・source は地域で絞らない）。" +
+      REGION_NOTE,
     inputSchema: z.object({
       kind: z.enum(["variable", "source", "species"]).describe("検索する語彙"),
       query: z.string().min(1).max(100).describe("部分一致の検索語（和名・英名・ID の一部）"),
+      region: regionSchema,
       limit: limitSchema,
     }).strict(),
-    execute: async ({ kind, query, limit }, ctx) => {
+    execute: async ({ kind, query, region, limit }, ctx) => {
       const q = query.trim().toLowerCase();
       const hit = (...xs: (string | null | undefined)[]) => xs.some((x) => x != null && x.toLowerCase().includes(q));
       const opt = { now: ctx.now };
@@ -194,22 +202,22 @@ export const MCP_TOOLS: McpTool[] = [
           unitId: v.unitId,
         }));
         const c = cap(rows, limit);
-        return buildDataEnvelope({ kind, query, limit: limit ?? null }, { matches: c.rows }, [], { ...opt, truncated: c.truncated });
+        return buildDataEnvelope({ kind, query, region: region ?? null, limit: limit ?? null }, { matches: c.rows }, [], { ...opt, truncated: c.truncated });
       }
       if (kind === "source") {
         const rows = SOURCE_META.filter((m) => hit(m.sourceId, m.nameJa, m.publisher)).map((m) => sourceRow(m, ctx.now));
         const c = cap(rows, limit);
-        return buildDataEnvelope({ kind, query, limit: limit ?? null }, { matches: c.rows }, [], { ...opt, truncated: c.truncated });
+        return buildDataEnvelope({ kind, query, region: region ?? null, limit: limit ?? null }, { matches: c.rows }, [], { ...opt, truncated: c.truncated });
       }
       // species: cube 層の speciesCatalog に検索語を渡して絞る（学名・和名の部分一致。MCP 専用の SQL は持たない）。
       const n = (limit ?? 100) + 1; // 1 件多く取って truncated を判定する
-      const catalog = await speciesCatalog(await ctx.db(), { search: query, limit: n, withNames: true });
+      const catalog = await speciesCatalog(await ctx.db(), { search: query, limit: n, withNames: true, region });
       const rows = catalog.map((s) => ({ binom: s.binom, label: s.label ?? null, taxonGroup: s.taxonGroup, n: s.n }));
       const c = cap(rows, limit);
       return buildDataEnvelope(
-        { kind, query, limit: limit ?? null },
+        { kind, query, region: region ?? null, limit: limit ?? null },
         { matches: c.rows },
-        OCCURRENCE_SOURCE_IDS,
+        sourcesOfRegion(OCCURRENCE_SOURCE_IDS, region),
         { ...opt, truncated: c.truncated },
       );
     },
@@ -224,7 +232,7 @@ export const MCP_TOOLS: McpTool[] = [
       "センサー系列は毎時の観測を日・月・年に積んだ値なので、密な日次は scope=site と from/to で絞り、広く見るなら grain=month/year にする" +
       "（grain='day' で from/to とも省略すると直近 " + DAY_DEFAULT_YEARS + " 年）。" +
       "同じ測定項目・粒度の系列を複数の出典が共有するとき、セルは出典で分けられない（provenance に出典が並ぶ）。" +
-      "応答は封筒（rows・coverage・provenance・caveats・excluded・cite_as）。" +
+      "応答は封筒（rows・coverage・provenance・caveats・excluded・cite_as）。provenance の出典は行の地域に属するものだけが並ぶ（region 省略の全体でも、神奈川の行に奄美の出典は付かない）。" +
       READING_RULES,
     inputSchema: z.object({
       variableId: z.string().describe("測定項目の ID（describe_catalog / search_registry で引く）"),
@@ -244,6 +252,7 @@ export const MCP_TOOLS: McpTool[] = [
       stat: z.string().optional().describe("非代表の統計量（p75/p90/max/min）。省略時は代表系列"),
       from: z.string().optional().describe(`grain='day' の開始日 YYYY-MM-DD（grain='day' で from/to とも省略すると直近 ${DAY_DEFAULT_YEARS} 年）`),
       to: z.string().optional().describe("grain='day' の終了日 YYYY-MM-DD"),
+      region: regionSchema,
       limit: limitSchema,
     }).strict(),
     execute: async ({ limit, ...input }, ctx) => {
@@ -252,10 +261,10 @@ export const MCP_TOOLS: McpTool[] = [
         const now = ctx.now ?? new Date();
         input.from = `${now.getUTCFullYear() - DAY_DEFAULT_YEARS}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-${String(now.getUTCDate()).padStart(2, "0")}`;
       }
-      const { source_ids, ...rest } = input;
+      const { source_ids, region, ...rest } = input;
       let r;
       try {
-        r = await timeseries(await ctx.db(), { ...rest, ...(source_ids ? { sourceIds: source_ids } : {}) }, { now: ctx.now });
+        r = await timeseries(await ctx.db(), { ...rest, ...(source_ids ? { sourceIds: source_ids } : {}), ...(region ? { region } : {}) }, { now: ctx.now });
       } catch (e) {
         if (e instanceof TimeseriesInputError) throw new McpInputError(e.message);
         throw e;
@@ -276,7 +285,8 @@ export const MCP_TOOLS: McpTool[] = [
       "'species_years'/'species_months' は種ごとの年別・月別件数（binoms に学名）、'watershed_years' は流域ごとの年別件数。" +
       "出現記録は観察努力量に偏るため、件数の増減を生息数の増減と読まない。" +
       "source_ids で出典（gbif_kanagawa_occurrences・inaturalist_kanagawa・gbif_amami_occurrences・inaturalist_amami・kanagawa_edna・kanagawa_kuma_sightings）を絞れる（省略時は全出典の合算）。" +
-      "eDNA（kanagawa_edna）は採水による検出で、目視の観察とは性質が違うので、比べるときは出典で分ける。",
+      "eDNA（kanagawa_edna）は採水による検出で、目視の観察とは性質が違うので、比べるときは出典で分ける。" +
+      REGION_NOTE,
     inputSchema: z.object({
       kind: z.enum(["species_catalog", "species_years", "species_months", "watershed_years"]).describe("集計の種類"),
       group: z.string().optional().describe("kind='species_catalog' の分類群（例: 鳥類）"),
@@ -288,13 +298,15 @@ export const MCP_TOOLS: McpTool[] = [
         .max(OCCURRENCE_SOURCE_IDS.length)
         .optional()
         .describe("出典で絞る（省略時は全出典の合算）。例: ['kanagawa_edna']"),
+      region: regionSchema,
       limit: limitSchema,
     }).strict(),
-    execute: async ({ kind, group, binoms, placeId, source_ids, limit }, ctx) => {
+    execute: async ({ kind, group, binoms, placeId, source_ids, region, limit }, ctx) => {
       const db = await ctx.db();
-      const sourceIds = source_ids ?? [...OCCURRENCE_SOURCE_IDS]; // 未指定は全出典（絞り込みなし）
-      const filter = source_ids ? { sourceIds: source_ids } : {};
-      const query = { kind, group: group ?? null, binoms: binoms ?? null, placeId: placeId ?? null, source_ids: source_ids ?? null, limit: limit ?? null };
+      // 未指定は全出典（絞り込みなし）。provenance・注記に載せる出典は region に属するものだけ（神奈川の問い合わせに奄美の出典を並べない）。
+      const sourceIds = sourcesOfRegion(source_ids ?? OCCURRENCE_SOURCE_IDS, region);
+      const filter = { ...(source_ids ? { sourceIds: source_ids } : {}), ...(region ? { region } : {}) };
+      const query = { kind, group: group ?? null, binoms: binoms ?? null, placeId: placeId ?? null, source_ids: source_ids ?? null, region: region ?? null, limit: limit ?? null };
       let rows: unknown[];
       let coverage: { no_coordinate: { binom: string; year: number; source_id: string; n: number }[]; truncated: boolean } | undefined;
       let coverageTruncated = false;
@@ -326,7 +338,7 @@ export const MCP_TOOLS: McpTool[] = [
 
   defineTool({
     name: "get_edna",
-    description: EDNA_DESCRIPTION,
+    description: EDNA_DESCRIPTION + "（地域では絞らない。神奈川県のみ）",
     inputSchema: ednaInputSchema.strict(), // MCP だけ strict（AI 側は余計なキーで詰まらないよう既定のまま）
     execute: async (args, ctx) => {
       const result = await queryEdna(await ctx.db(), args);
@@ -344,7 +356,7 @@ export const MCP_TOOLS: McpTool[] = [
     name: "export_dataset",
     description:
       "配布用データセット（dist/ の Parquet）の目録を返す。datapackage.json が指す各ファイルの相対パスと sha256 だけで、" +
-      "ファイルそのものは返さない（配信は別）。配布物が未配備のときは available=false と理由を返す。",
+      "ファイルそのものは返さない（配信は別）。配布物が未配備のときは available=false と理由を返す。地域では絞らない。",
     inputSchema: z.object({}).strict(),
     execute: async (_args, ctx) => {
       const pkg = await (ctx.datapackage ?? loadDatapackage)();
