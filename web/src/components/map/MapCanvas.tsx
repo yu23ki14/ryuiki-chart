@@ -51,6 +51,8 @@ export interface MapCanvasProps {
   overlay?: React.ReactNode;
   /** ベースマップの明暗をユーザーに知らせたい場合 */
   onBasemapChange?: (b: Basemap) => void;
+  /** 表示範囲とズームの通知（moveend を 400ms デバウンス。読み込み直後にも1回）。bbox は [w, s, e, n]。 */
+  onViewChange?: (v: { bbox: [number, number, number, number]; zoom: number }) => void;
 }
 
 const LS_KEY = "ryuiki.basemap";
@@ -89,6 +91,7 @@ export function MapCanvas({
   className = "",
   overlay,
   onBasemapChange,
+  onViewChange,
 }: MapCanvasProps) {
   const containerRef = React.useRef<HTMLDivElement>(null);
   const mapRef = React.useRef<MlMap | null>(null);
@@ -104,6 +107,10 @@ export function MapCanvas({
     }
   });
 
+  const onViewChangeRef = React.useRef(onViewChange);
+  React.useEffect(() => {
+    onViewChangeRef.current = onViewChange;
+  });
   const sourcesRef = React.useRef(sources);
   const layersRef = React.useRef(layers);
   const imagesRef = React.useRef(images);
@@ -161,6 +168,27 @@ export function MapCanvas({
     // basemapId は別 effect で扱う
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 表示範囲の通知（取得するレイヤーが bbox を使う）
+  React.useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const emit = () => {
+      const b = map.getBounds();
+      onViewChangeRef.current?.({ bbox: [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()], zoom: map.getZoom() });
+    };
+    const onMoveEnd = () => {
+      clearTimeout(timer);
+      timer = setTimeout(emit, 400);
+    };
+    emit();
+    map.on("moveend", onMoveEnd);
+    return () => {
+      clearTimeout(timer);
+      map.off("moveend", onMoveEnd);
+    };
+  }, [ready]);
 
   // ベースマップ切替
   React.useEffect(() => {
@@ -224,11 +252,13 @@ export function MapCanvas({
       for (const l of map.getStyle().layers ?? []) {
         if (l.id.startsWith("ry-") && !wanted.has(l.id)) map.removeLayer(l.id);
       }
-      for (const l of layers) {
+      for (const [i, l] of layers.entries()) {
         const existing = map.getLayer(l.id);
         if (!existing) {
           if (map.getSource(l.source)) {
-            map.addLayer({ ...l.spec, id: l.id, source: l.source } as unknown as LayerSpecification);
+            // 配列の順が重ね順。後から足すレイヤーも、すでにある次のレイヤーの手前に挿して順を保つ
+            const before = layers.slice(i + 1).find((n) => map.getLayer(n.id))?.id;
+            map.addLayer({ ...l.spec, id: l.id, source: l.source } as unknown as LayerSpecification, before);
           }
           continue;
         }
