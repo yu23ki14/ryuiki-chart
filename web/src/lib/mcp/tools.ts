@@ -46,6 +46,8 @@ import { regionSchema, REGION_NOTE } from "./region-schema";
 import { loadDatapackage } from "./datapackage";
 import { McpInputError } from "./errors";
 import { getRecordsTool } from "./tools-records";
+import { pickDefined } from "@/lib/cube/sql";
+import { OUTSIDE_WATERSHED_NOTE } from "@/lib/watersheds";
 import { findDatasetsTool } from "./tools-find-datasets";
 import { getWatershedsTool } from "./tools-watersheds";
 
@@ -111,6 +113,12 @@ async function monthsEmptyReasons(db: CubeDb, binoms: readonly string[], rows: r
     else out.no_located_month_cells.push({ binom, source_ids: [...sourceIds] });
   }
   return out;
+}
+
+/** species_catalog の行を出力の形（snake_case）にする。赤リストの判定ラベルは red_list に配列で載せる。 */
+function toSpeciesRow(r: Awaited<ReturnType<typeof speciesCatalog>>[number]) {
+  const { redList, ...rest } = r;
+  return { ...rest, ...(redList ? { red_list: redList.map((l) => ({ region_id: l.regionId, category: l.category, source: l.source, n: l.n })) } : {}) };
 }
 
 function cap<T>(rows: readonly T[], limit: number | undefined): { rows: T[]; truncated: boolean } {
@@ -287,8 +295,8 @@ export const MCP_TOOLS: McpTool[] = [
     description:
       "生物の出現記録（GBIF・iNaturalist。神奈川県・奄美大島）の集計を取る。kind='species_catalog' は種の一覧（件数の多い順、group で分類群を絞る）。" +
       "species_catalog は placeId（流域の place_id）・year_from/year_to（暦年）・red_list_only（レッドリスト該当の種だけ）で絞れ、" +
-      "絞ると各種の n・n_red_list をその流域・期間で数え直し、赤リストの判定（red_list_category と red_list_source〔県版の list_id か 'national'〕）を載せる。" +
-      "流域に入らない記録（海上・流域の外）は流域の集計（watershed_years、placeId を付けた species_catalog）に入らない。流域の属性・境界は get_watersheds で取る。" +
+      "絞ると各種の n・n_red_list をその流域・期間で数え直し、赤リストの判定ラベルを red_list（地域・カテゴリ・出所〔県版の list_id か 'national'〕・その地域での記録数 n の配列。同じ種に複数あれば全部）で載せる。" +
+      OUTSIDE_WATERSHED_NOTE + "流域の属性・境界は get_watersheds で取る。" +
       "その他の kind: 'species_years'/'species_months' は種ごとの年別・月別件数（binoms に学名）、'watershed_years' は流域ごとの年別件数。" +
       "出現記録は観察努力量に偏るため、件数の増減を生息数の増減と読まない。" +
       "source_ids で出典（gbif_kanagawa_occurrences・inaturalist_kanagawa・gbif_amami_occurrences・inaturalist_amami・kanagawa_edna・kanagawa_kuma_sightings）を絞れる（省略時は全出典の合算）。" +
@@ -315,7 +323,7 @@ export const MCP_TOOLS: McpTool[] = [
       const db = await ctx.db();
       // 未指定は全出典（絞り込みなし）。provenance・注記に載せる出典は region に属するものだけ（神奈川の問い合わせに奄美の出典を並べない）。
       const sourceIds = sourcesOfRegion(source_ids ?? OCCURRENCE_SOURCE_IDS, region);
-      const filter = { ...(source_ids ? { sourceIds: source_ids } : {}), ...(region ? { region } : {}) };
+      const filter = pickDefined({ sourceIds: source_ids, region });
       const query = { kind, group: group ?? null, binoms: binoms ?? null, placeId: placeId ?? null, year_from: year_from ?? null, year_to: year_to ?? null, red_list_only: red_list_only ?? null, source_ids: source_ids ?? null, region: region ?? null, limit: limit ?? null };
       let rows: unknown[];
       let coverage: { no_coordinate: { binom: string; year: number; source_id: string; n: number }[]; truncated: boolean } | undefined;
@@ -323,10 +331,9 @@ export const MCP_TOOLS: McpTool[] = [
       let extra: Record<string, unknown> = {};
       if (kind === "species_catalog") {
         if (year_from !== undefined && year_to !== undefined && year_from > year_to) throw new McpInputError("year_from は year_to 以下にする");
-        const scoped = { ...(placeId !== undefined ? { placeId } : {}), ...(year_from !== undefined ? { yearFrom: year_from } : {}), ...(year_to !== undefined ? { yearTo: year_to } : {}), ...(red_list_only ? { redListOnly: true } : {}) };
-        const found = await speciesCatalog(db, { group: group ?? null, limit: (limit ?? 100) + 1, withNames: true, ...scoped, ...filter });
-        // 流域を指定した行は、座標のある記録の件数（n_located・n_places）が grid 系列の値で流域の指定とは別物なので出さない。
-        rows = placeId !== undefined ? found.map((r) => ({ ...r, nLocated: undefined, nPlaces: undefined })) : found;
+        const scope = pickDefined({ placeId, yearFrom: year_from, yearTo: year_to, redListOnly: red_list_only || undefined });
+        const found = await speciesCatalog(db, { group: group ?? null, limit: (limit ?? 100) + 1, withNames: true, ...scope, ...filter });
+        rows = found.map(toSpeciesRow);
       }
       else if (kind === "watershed_years") rows = await watershedYears(db, { placeId, ...filter });
       else {
