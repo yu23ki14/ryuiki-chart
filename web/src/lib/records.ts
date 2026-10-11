@@ -233,9 +233,7 @@ export const RECORDS_DESCRIPTION =
   "出典（source_id）を指定して、台帳表の明細をそのまま取る。観測値・出現記録ではない地点・保護区・植生・河川・" +
   "哺乳類メッシュ・クマ出没・レッドリスト／外来種の評価など。任意 SQL ではなく、出典ごとに宣言された表だけ。" +
   "主キー昇順。id で 1 件、q で名称・和名・学名の部分一致。保護区・植生・河川・土砂災害区域のジオメトリは id 指定の 1 件だけ include_geometry で返す。" +
-  "保護区（record_set=protected_areas）は地域で範囲が違う。神奈川は県・市の緑地・自然公園の台帳（kanagawa_natural_parks など）、" +
-  "奄美は国土数値情報の A10 自然公園地域（2015年版。3区分は入れ子なので面積を足さない）・A15 鳥獣保護区（2009年版。20件中19件は版の時点の指定期間が2018年までに満了）・" +
-  "A45 国有林（2018年度版）。神奈川の A10・A15・A45 は入れていない。地域の区別は source_id。" +
+  "保護区（record_set=protected_areas）は地域で出典と範囲が違う（区別は source_id。出典ごとの範囲は describe_catalog what='sources'）。" +
   "結果が truncated のときは next_after を after に渡して続きを取る（深いページは offset より速い）。" +
   "ライセンスや座標で行を除外・加工しない。利用条件は provenance の出典情報を見る。" +
   "地点（record_set=sites）は大気・水位・水質・地盤沈下などの観測局を含む全地点で、行の site_id は get_observations の scope={type:'site', siteId} にそのまま渡せる。" +

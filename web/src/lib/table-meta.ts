@@ -75,8 +75,7 @@ export const TABLE_META: Record<string, string> = {
   protected_areas:
     "保護区・緑地・保存樹木の指定台帳。自然公園／特別緑地保全地区／近郊緑地保全区域／" +
     "歴史的風土保存地区／風致地区／都市公園／保存樹木を category_code で束ねている。" +
-    "奄美（国土数値情報 A10/A15/A45）の行は区域のポリゴン geometry_geojson を持つ（神奈川の行は NULL）。" +
-    "地域で範囲が違い、奄美は A10・A15・A45 のみ、神奈川は県・市の台帳のみ。区別は source_id",
+    "奄美（国土数値情報 A10/A15/A45）の行は区域のポリゴン geometry_geojson を持つ（神奈川の行は NULL）。地域で出典と範囲が違う（区別は source_id）",
   vegetation_polygons:
     "現存植生図2024（環境省 いきもの地図）の神奈川県相当範囲と奄美大島。凡例・植生自然度つき。" +
     "形状は表示用に簡略化してあり、面積は緯度経度からの近似",
