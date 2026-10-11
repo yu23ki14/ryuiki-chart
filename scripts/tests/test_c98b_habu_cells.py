@@ -8,6 +8,7 @@ import shutil
 import pytest
 
 import c98b_habu_cells as c
+from ocr import cellmatch
 
 HERE = pathlib.Path(__file__).parent
 GT_DIR = HERE / "fixtures" / "habu"
@@ -16,7 +17,7 @@ DOCS = {"kagoshima_habu_bite_h28r7": "I1_bite", "kagoshima_habu_kaiage_h28r7": "
 
 def gt_matrix(doc_id):
     rows = list(csv.reader(open(GT_DIR / f"{DOCS[doc_id]}.csv", encoding="utf-8")))[1:]
-    return [[c.norm(x) for x in r[1:]] for r in rows]
+    return [[cellmatch.norm(x) for x in r[1:]] for r in rows]
 
 
 def grid_of(built, doc_id):
@@ -65,7 +66,7 @@ def test_without_review_no_silent_errors(tmp_path, doc_id):
         for j, v in enumerate(row):
             if (i, j) not in unread:
                 assert v == gt[i][j], (i, j)
-    reviewed = c.load_reviewed(c.OCR_DIR / doc_id / "reviewed.csv")
+    reviewed = cellmatch.load_reviewed(c.OCR_DIR / doc_id / "reviewed.csv")
     assert len(unread) == len(reviewed)
     for r in b["rows"]:
         if r["unreadable_reason"]:
@@ -145,7 +146,7 @@ def test_both_ocr_wrong_the_same_way_is_found_by_arithmetic(tmp_path):
     """2つの OCR が同じ誤読をしても、行と列の検算が交点で特定して未採用にする。"""
     doc = "kagoshima_habu_bite_h28r7"
     root = tmp_path
-    for e in c.ENGINES:
+    for e in cellmatch.ENGINES:
         root = _mutate(tmp_path, doc, e, lambda d: _cell_box(d, 4, 3, "9"))   # 宇検村 R1: 1 -> 9（両方とも）
     b = c.build(doc, root)
     flagged = {(x["row_key"], x["col_key"]) for x in b["rows"] if x["unreadable_reason"]}
@@ -216,19 +217,19 @@ def test_write_replaces_only_own_doc_id(tmp_path, monkeypatch):
 
 
 def test_verified_by_never_poses_as_human():
-    assert c.verified_by_for("claude(vision)") == ("claude(vision)", 0.9)
-    assert c.verified_by_for("GPT-5 vision") == ("GPT-5 vision", 0.9)
-    assert c.verified_by_for("human:山田") == ("human:山田", 1.0)
+    assert cellmatch.verified_by_for("claude(vision)") == ("claude(vision)", 0.9)
+    assert cellmatch.verified_by_for("GPT-5 vision") == ("GPT-5 vision", 0.9)
+    assert cellmatch.verified_by_for("human:山田") == ("human:山田", 1.0)
     for bad in ("山田", "", "human:", None):
         with pytest.raises(ValueError):
-            c.verified_by_for(bad)
+            cellmatch.verified_by_for(bad)
 
 
 def test_committed_reviews_are_ai_confidence_not_human():
     """コミット済みの reviewed.csv の3セルは claude(vision) の確認。verified_by は human: にならず、confidence は 1.0 でない。"""
     doc = "kagoshima_habu_kaiage_h28r7"
     b = c.build(doc)
-    reviewed = c.load_reviewed(c.OCR_DIR / doc / "reviewed.csv")
+    reviewed = cellmatch.load_reviewed(c.OCR_DIR / doc / "reviewed.csv")
     assert len(reviewed) == 3 and all(who == "claude(vision)" for _, who, _ in reviewed.values())
     by = {(r["row_key"], r["col_key"]): (r["verified_by"], r["confidence"]) for r in b["rows"]}
     for key in reviewed:

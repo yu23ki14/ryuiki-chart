@@ -100,6 +100,8 @@ sources:
   amami_biodiversity_strategy_amami: {reason: pdf_document, basis: "doc_id=amami_biodiversity_strategy_2015_2024（ライセンス表記なし。題名・URL・ページ数・sha256 のみ）"}
   bodik_kagoshima_ryuiki_chisui_amami: {reason: pdf_document, basis: "doc_id=bodik_460001_amami_ryuiki_chisui_2022（BODIK の PDF、4ページ）"}
   amami_tourism_plans_amami: {reason: pdf_document, basis: "doc_id=amami_ecotourism_zentai_2017・amami_sustainable_tourism_mp_2016（ライセンス表記なし。題名・URL・ページ数・sha256 のみ）"}
+  # --- 奄美 Step 3a: マングース防除の捕獲数・わな日・CPUE（PNG の表を OCR）と根絶宣言 ---
+  moe_mongoose_amami: {reason: document_cells, basis: "doc_id=moe_mongoose_catch_h12r4（PNG の表を OCR 2種＋検算＋評価シート突き合わせ、2000〜2022年度）・moe_mongoose_eradication_declaration_2024（documents と notes だけ）。cells に入れた"}
   # --- 取れない: pdf_document（10 件。上の奄美 Step 2d の5件は別に並べた）---
   biodic_6th_kanagawa_report: {reason: pdf_document, basis: "source_registry.format=PDF"}
   ckan_pdf_choju_higai: {reason: pdf_document, basis: "source_registry.format=PDF"}

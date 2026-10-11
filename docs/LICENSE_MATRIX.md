@@ -80,6 +80,7 @@ DwC-Aから除外するようになった（`--include-noncommercial`で無効�
 | moe_amami_wh_plans_amami | 環境省 奄美の世界自然遺産関連の計画・評価シート（包括的管理計画〔2025年改定案〕・マングース・ノネコ2本・モニタリング評価R1〜R5） | 環境省 九州地方環境事務所 沖縄奄美自然環境事務所 | 9（文書） | 1 | 公共データ利用規約（第1.0版）PDL1.0（環境省ホームページコンテンツの利用） | PDF のまま documents（doc_id=amami_wh_comprehensive_plan_2025draft ほか）と事実だけの notes。cells なし | https://kyushu.env.go.jp/okinawa/amami-okinawa/plans/index.html | 含める |
 | mlit_amami_action_plan_amami | 国土交通省 奄美大島 行動計画（2016年） | 国土交通省 | 1（文書） | 1 | 公共データ利用規約（第1.0版）PDL1.0（国土交通省ホームページの利用） | PDF のまま documents（doc_id=mlit_amami_action_plan_2016）。cells なし | https://www.mlit.go.jp/common/001294716.pdf | 含める |
 | bodik_kagoshima_ryuiki_chisui_amami | 鹿児島県 奄美大島地域流域治水プロジェクト（BODIK） | 鹿児島県（BODIK） | 1（文書） | 1 | CC BY 4.0 | PDF 4ページ。documents（doc_id=bodik_460001_amami_ryuiki_chisui_2022）。cells なし | https://data.bodik.jp/dataset/460001_1_01_ryuuikichisuipurojekuto | 含める |
+| moe_mongoose_amami | 環境省 奄美大島 マングース捕獲数・わな日・CPUE（2000〜2022年度） | 環境省 沖縄奄美自然環境事務所 | 120 | 1 | 公共データ利用規約（第1.0版）PDL1.0（環境省ホームページコンテンツの利用） | 環境省サイトの PDL1.0。お知らせの PNG の表を OCR 2種＋検算＋評価シート突き合わせで読んだ cells（doc_id=moe_mongoose_catch_h12r4）と、根絶宣言の報道発表の documents・notes（doc_id=moe_mongoose_eradication_declaration_2024）。2023年度以降の数表は無い | https://kyushu.env.go.jp/okinawa/press_00065.html | 含める |
 
 ## 2. 条件付き
 | source_id | 名称 | 提供元 | 行数 | redistributable | ライセンス要旨 | 判定理由 | 根拠URL | 再配布してよいか |
@@ -306,6 +307,12 @@ PDF は `data/raw/kagoshima_redlist_2014/`（gitignore 済み）に置き、再�
 **行政文書（Step 2d）**: 奄美の計画・戦略・評価シート14本を `documents` と事実だけの `notes` に載せた（cells は 0 件、PDF は `data/raw/amami_doc/` で再配布しない）。
 環境省・国交省は PDL1.0、BODIK は CC BY 4.0（`redistributable=1`）。ライセンス表記の無い3本（地域戦略・エコツーリズム推進全体構想・持続的観光マスタープラン）は
 題名・URL・ページ数・sha256 だけで、本文は転載しない（`redistributable=0`、レジストリ上は `terms_unconfirmed`）。
+
+**マングース防除の捕獲数（Step 3a）**: `moe_mongoose_amami` は環境省沖縄奄美自然環境事務所のお知らせにある画像（PNG）の表
+（奄美大島、2000〜2022年度の捕獲数・のべわな日・CPUE・探索犬による捕獲・総捕獲頭数）を OCR 2種＋検算＋評価シート（令和4年度）の
+文字情報との突き合わせで cells（`moe_mongoose_catch_h12r4`、120セル）にした。環境省ホームページの PDL1.0（`redistributable=1`）。
+同じ出典に、根絶宣言（2024年9月3日、2026年8月7日修正）の報道発表を documents と notes だけで載せた（`moe_mongoose_eradication_declaration_2024`）。
+2023年度以降の数表は公表が見つからず、cells には無い。PNG・HTML は `data/raw/moe_mongoose/` に置き再配布しない。
 
 **希少種の位置**: GBIF・iNaturalist 等の公開元が丸めた座標を**そのまま使い**、こちらで細かく起こさない。
 ADR-0028 は「こちらから座標を丸めない（一般化しない）」決定であり、「公開元が丸めたものを細かく復元する」ことは別の話で、

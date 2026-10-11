@@ -468,7 +468,9 @@ document_closure:
     - bodik_460001_guntou_irikomi_2024
     - kagoshima_habu_bite_h28r7
     - kagoshima_habu_kaiage_h28r7
-  min_documents: 12
+    - moe_mongoose_catch_h12r4
+    - moe_mongoose_eradication_declaration_2024
+  min_documents: 14
 
 # ---------------------------------------------------------------------------
 # 丸ごと入れる ryuiki.sqlite のテーブル（十分小さい・v1/v2 が読む）。
