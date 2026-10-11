@@ -12,7 +12,7 @@ API 一覧:
   assign(data, lenient=None)                -> (文字の行列, bbox の行列, 収まらない箱の理由 {(行,列): 文字}, 収まらない箱の数)
   decide(A, B, bad, fmt_ok, reviewed_by_cell=None, engines=ENGINES)
                                             -> {(i,j): dict(text, by, …)}（text=None は未確定。reason 付き）
-  load_engines(doc_id, ocr_dir, expect_rows, expect_cols, input_path, input_key)
+  load_engines(doc_id, ocr_dir, expect_rows, expect_cols, input_path, input_key, input_label)
                                             -> (data, 入力の sha256)
   arith_flag(cons, val, known, evaluate, hint_ok=…)
                                             -> (flagged, hints, touching, stats)
@@ -130,7 +130,7 @@ def decide(A, B, bad, fmt_ok, reviewed_by_cell=None, engines=ENGINES):
     return state
 
 
-def load_engines(doc_id, ocr_dir, expect_rows, expect_cols, input_path, input_key="pdf_sha256"):
+def load_engines(doc_id, ocr_dir, expect_rows, expect_cols, input_path, input_key="pdf_sha256", input_label="PDF"):
     """2つの OCR の JSON を読み、整合を確かめる。-> (data, 入力の sha256)。
     doc_id・格子の大きさと位置・入力の sha256（JSON のキー input_key）が2つで一致すること、ローカルに入力
     （PDF・PNG。input_path）があればその sha が JSON と一致すること。"""
@@ -152,7 +152,7 @@ def load_engines(doc_id, ocr_dir, expect_rows, expect_cols, input_path, input_ke
         raise ValueError(f"2つの JSON の {input_key} が違う: {sorted(shas)}")
     sha = shas.pop()
     if input_path.exists() and _sha256(input_path) != sha:
-        raise ValueError(f"ローカルの入力（{input_path}）の sha256 が JSON の値と違う。入力が更新された？ OCR をやり直す")
+        raise ValueError(f"ローカルの{input_label}（{input_path}）の sha256 が JSON の値と違う。{input_label}が更新された？ OCR をやり直す")
     return data, sha
 
 
