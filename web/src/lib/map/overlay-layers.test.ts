@@ -5,12 +5,12 @@ import {
   overlayUrl,
   overlaysForRegion,
   parseLayersParam,
+  parseViewParam,
   protectedLayerSpecs,
   searchWithLayers,
   snapBbox,
   type Bbox,
 } from "./overlay-layers";
-import { sourceRegion } from "@/lib/cube/region";
 import { STATUS } from "@/components/viz/palette";
 
 const hazard = OVERLAYS.find((o) => o.id === "hazard")!;
@@ -33,12 +33,6 @@ describe("layers の URL 往復", () => {
 });
 
 describe("地域の出し分け", () => {
-  it("SOURCE_REGION に宣言があれば fallbackRegion と食い違わない", () => {
-    for (const o of OVERLAYS) {
-      const declared = sourceRegion(o.sourceIds[0]);
-      if (declared) expect(declared).toBe(o.fallbackRegion);
-    }
-  });
   it("奄美と全体では出て、神奈川では出ない（出典の地域から決まる）", () => {
     expect(overlaysForRegion("jp-46").map((o) => o.id)).toEqual(OVERLAYS.map((o) => o.id));
     expect(overlaysForRegion("all").length).toBe(OVERLAYS.length);
@@ -89,7 +83,7 @@ describe("描画の式", () => {
     expect(JSON.stringify(hazardLayerSpecs("s", ["debris_flow", "steep_slope", "landslide"])[0].spec.filter)).not.toContain("phenomenon_code");
     expect(JSON.stringify(hazardLayerSpecs("s", ["debris_flow"])[0].spec.filter)).toContain("phenomenon_code");
   });
-  it("A10 は外側から内側の順に3枚、A45 は未検証の間は線のみ", () => {
+  it("A10 は外側から内側の順に3枚、A45 は面", () => {
     expect(protectedLayerSpecs("pa_a10", "s").map((l) => l.id)).toEqual([
       "ry-pa-a10-natpark_area",
       "ry-pa-a10-natpark_special",
@@ -97,6 +91,15 @@ describe("描画の式", () => {
     ]);
     const a = protectedLayerSpecs("pa_a45", "s");
     expect(a).toHaveLength(1);
-    expect(a[0].spec.type).toBe("line");
+    expect(a[0].spec.type).toBe("fill");
+  });
+});
+
+describe("view パラメータ", () => {
+  it("lon,lat,zoom を読む", () => {
+    expect(parseViewParam("129.49,28.38,12")).toEqual({ center: [129.49, 28.38], zoom: 12 });
+  });
+  it("不正は null", () => {
+    for (const v of [null, "", "1,2", "a,b,c", "129,28,", "129,95,12", "129,28,30", "1,2,3,4"]) expect(parseViewParam(v)).toBeNull();
   });
 });

@@ -62,6 +62,7 @@
  *   - RYUIKI_REGISTRY_TS_OUT_SERVER / RYUIKI_REGISTRY_TS_OUT_CLIENT / RYUIKI_REGISTRY_TS_OUT_ID_MAP: 出力先
  */
 import Database from "better-sqlite3";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -399,7 +400,7 @@ const manifestSourceRegion = sortedEntries(
     manifestDocs.filter(({ doc }) => doc?.source && doc?.region && !isSyntheticSource(doc.source)).map(({ doc }) => [doc.source, doc.region]),
   ),
 );
-const sourceRegion = filesOnly
+const registrySourceRegion = filesOnly
   ? manifestSourceRegion
   : sortedEntries(
       Object.fromEntries(
@@ -410,8 +411,31 @@ const sourceRegion = filesOnly
           .map((r) => [r.source_id, r.region_id]),
       ),
     );
-if (!filesOnly && JSON.stringify(sourceRegion) !== JSON.stringify(manifestSourceRegion)) {
+if (!filesOnly && JSON.stringify(registrySourceRegion) !== JSON.stringify(manifestSourceRegion)) {
   throw new Error("registry の source.region_id が manifests/ の region と食い違う（r01 を再実行すること）");
+}
+// マニフェストの無い出典（台帳・文書系）は scripts/regions.py の region_of_source_id と同じ規則で補う:
+// source_id を `_` で割ったトークンに地域の slug があればその地域。slug は regions.py の REGIONS が正（ここに手書きしない）。
+// 日別値の例外（jma_daily）はマニフェストのある出典なので、ここ（マニフェスト無し）には来ない。
+// files-only は source 表が空で出典の一覧を持たないので補えない（保持した生成物が manifests/ の全宣言を含むことだけ確かめる）。
+const REGION_SLUGS = filesOnly
+  ? {}
+  : JSON.parse(
+      execFileSync(
+        fs.existsSync(path.join(REPO, ".venv", "bin", "python3")) ? path.join(REPO, ".venv", "bin", "python3") : "python3",
+        ["-I", "-c", "import json,sys; sys.path.insert(0,'scripts'); import regions; print(json.dumps({r['slug']: k for k, r in regions.REGIONS.items()}))"],
+        { cwd: REPO, encoding: "utf8" },
+      ),
+    );
+const inferredSourceRegion = {};
+for (const m of filesOnly ? [] : sourceMeta) {
+  if (registrySourceRegion[m.sourceId] || isSyntheticSource(m.sourceId)) continue;
+  const hit = m.sourceId.split(/_+/).find((t) => REGION_SLUGS[t]);
+  if (hit) inferredSourceRegion[m.sourceId] = REGION_SLUGS[hit];
+}
+const sourceRegion = sortedEntries({ ...registrySourceRegion, ...inferredSourceRegion });
+if (!filesOnly && Object.keys(inferredSourceRegion).length) {
+  console.log(`SOURCE_REGION: マニフェスト無しで slug から補った出典 ${Object.keys(inferredSourceRegion).length} 件`);
 }
 
 // 出典ごとの状態（source_access。registry/source/access.yaml と manifests/ から r01 が作る。MCP_SOURCE_ACCESS.md §1）。
@@ -954,7 +978,8 @@ if (filesOnly) {
     ["FIND_DATASET_SOURCE_IDS", declaredCatalogSourceIds, "registry/source/access.yaml（catalog を持つ出典）"],
   ];
   const keptRegion = /export const SOURCE_REGION: Readonly<Record<string, string>> = (\{.*?\});/.exec(kept)?.[1];
-  if (keptRegion !== JSON.stringify(sourceRegion)) {
+  const keptRegionObj = JSON.parse(keptRegion ?? "{}");
+  if (!Object.entries(sourceRegion).every(([k, v]) => keptRegionObj[k] === v)) {
     throw new Error(
       "files-only のため出典メタは再生成しないが、保持した generated-source.ts の SOURCE_REGION が manifests/ の region " +
         "と食い違う。原本のある環境で `pnpm run build:registry:ts`（フルビルド）を実行して更新すること",

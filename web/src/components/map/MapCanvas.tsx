@@ -204,18 +204,25 @@ export function MapCanvas({
     }
   }, [basemapId, ready, onBasemapChange]);
 
-  // ソースのデータ更新
+  // ソースのデータ更新。data の参照が変わらないソースには setData しない
+  // （別のソースだけが変わったとき、巨大な GeoJSON を全部入れ直さない）
+  const lastDataRef = React.useRef<Map<string, unknown>>(new Map());
   React.useEffect(() => {
     const map = mapRef.current;
     if (!map || !ready) return;
+    const last = lastDataRef.current;
     for (const [id, spec] of Object.entries(sources) as [string, SourceSpecification][]) {
       const src = map.getSource(id);
       if (!src) {
-        if (map.isStyleLoaded()) map.addSource(id, spec);
+        if (map.isStyleLoaded()) {
+          map.addSource(id, spec);
+          if (spec.type === "geojson") last.set(id, spec.data);
+        }
         continue;
       }
-      if (spec.type === "geojson" && "setData" in src) {
+      if (spec.type === "geojson" && "setData" in src && last.get(id) !== spec.data) {
         (src as GeoJSONSource).setData(spec.data as never);
+        last.set(id, spec.data);
       }
     }
   }, [sources, ready]);

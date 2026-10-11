@@ -3,7 +3,6 @@ import { INK } from "@/components/viz/palette";
 import {
   A10_STYLE,
   A15_STYLE,
-  A45_FILL_VERIFIED,
   HAZARD_STYLE,
   NOTE_MIN_ZOOM,
   NOTE_TRUNCATED,
@@ -18,11 +17,11 @@ export interface OverlayLegendData {
   sources?: { source_id: string; note?: string | null; license?: string | null }[];
 }
 
-function Swatch({ color, opacity, line }: { color: string; opacity: number; line?: boolean }) {
+function Swatch({ color, opacity }: { color: string; opacity: number }) {
   return (
     <span
       className="inline-block w-3 h-3 rounded-sm shrink-0"
-      style={line ? { border: `2px solid ${color}`, background: "transparent" } : { background: color, opacity, border: `1px solid ${INK.surface}` }}
+      style={{ background: color, opacity, border: `1px solid ${INK.surface}` }}
       aria-hidden
     />
   );
@@ -80,8 +79,8 @@ export function OverlayLegend({
             )}
             {d.id === "pa_a45" && (
               <div className="flex items-center gap-1.5 text-[10px] text-ink-2">
-                <Swatch color={PA_COLORS.pa_a45} opacity={0.3} line={!A45_FILL_VERIFIED} />
-                国有林{A45_FILL_VERIFIED ? "" : "（境界線）"}
+                <Swatch color={PA_COLORS.pa_a45} opacity={0.3} />
+                国有林
               </div>
             )}
             {belowMinZoom(d, zoom) && <p className="text-[10px] text-muted mt-0.5">{NOTE_MIN_ZOOM}</p>}

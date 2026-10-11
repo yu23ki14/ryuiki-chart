@@ -23,7 +23,9 @@ import {
   PHENOMENA,
   PROTECTED_IDS,
   hazardLayerSpecs,
+  overlayDecl,
   overlayUrl,
+  parseViewParam,
   overlaysForRegion,
   parseLayersParam,
   protectedLayerSpecs,
@@ -66,10 +68,10 @@ export function MapPage() {
   };
   const [view, setView] = React.useState<{ bbox: Bbox; zoom: number } | null>(null);
   const [phenomena, setPhenomena] = React.useState<PhenomenonCode[]>(PHENOMENA.map((p) => p.code));
-  const ovHazard = useJson<OverlayData>(activeIds.includes("hazard") ? overlayUrl(OVERLAYS[0], view) : "");
-  const ovA10 = useJson<OverlayData>(activeIds.includes("pa_a10") ? overlayUrl(OVERLAYS[1], view) : "");
-  const ovA15 = useJson<OverlayData>(activeIds.includes("pa_a15") ? overlayUrl(OVERLAYS[2], view) : "");
-  const ovA45 = useJson<OverlayData>(activeIds.includes("pa_a45") ? overlayUrl(OVERLAYS[3], view) : "");
+  const ovHazard = useJson<OverlayData>(activeIds.includes("hazard") ? overlayUrl(overlayDecl("hazard"), view) : "");
+  const ovA10 = useJson<OverlayData>(activeIds.includes("pa_a10") ? overlayUrl(overlayDecl("pa_a10"), view) : "");
+  const ovA15 = useJson<OverlayData>(activeIds.includes("pa_a15") ? overlayUrl(overlayDecl("pa_a15"), view) : "");
+  const ovA45 = useJson<OverlayData>(activeIds.includes("pa_a45") ? overlayUrl(overlayDecl("pa_a45"), view) : "");
   const ovLoading = ovHazard.loading || ovA10.loading || ovA15.loading || ovA45.loading;
   const overlayData: Record<OverlayId, OverlayData | null> = React.useMemo(
     () => ({ hazard: ovHazard.data, pa_a10: ovA10.data, pa_a15: ovA15.data, pa_a45: ovA45.data }),
@@ -77,8 +79,10 @@ export function MapPage() {
   );
   // 流域の作り方は地域で違う（神奈川は W12、奄美は標高から計算）。全体のときは両方を並べる
   const wsRegions = REGIONS.filter((r) => region === REGION_ALL || r.id === region);
+  // ?view=lon,lat,zoom（物語ページからの深いリンク）。あれば初期位置をそれにして、region の fitBounds はしない
+  const [initialView] = React.useState(() => parseViewParam(searchParams.get("view")));
   const [jump, setJump] = React.useState<{ bounds: [[number, number], [number, number]]; nonce: number } | null>(() =>
-    region === REGION_ALL ? null : { bounds: regionBounds(region), nonce: 1 },
+    region === REGION_ALL || initialView ? null : { bounds: regionBounds(region), nonce: 1 },
   );
   const prevRegion = React.useRef(region);
   React.useEffect(() => {
@@ -217,6 +221,8 @@ export function MapPage() {
           layers={layers}
           className="absolute inset-0"
           fitTo={jump}
+          center={initialView?.center}
+          zoom={initialView?.zoom}
           onViewChange={setView}
           onFeatureClick={(f) => {
             const p = f.properties as Record<string, unknown>;
