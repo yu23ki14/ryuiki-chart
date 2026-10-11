@@ -152,7 +152,7 @@ def load_engines(doc_id, ocr_dir, expect_rows, expect_cols, input_path, input_ke
         raise ValueError(f"2つの JSON の {input_key} が違う: {sorted(shas)}")
     sha = shas.pop()
     if input_path.exists() and _sha256(input_path) != sha:
-        raise ValueError(f"ローカルの{input_label}（{input_path}）の sha256 が JSON の値と違う。{input_label}が更新された？ OCR をやり直す")
+        raise ValueError(f"ローカルの {input_label}（{input_path}）の sha256 が JSON の値と違う。{input_label}が更新された？ OCR をやり直す")
     return data, sha
 
 
