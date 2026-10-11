@@ -647,7 +647,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": "2026-10-11T18:06:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": "奄美5市町村（2026-02-10 現在、BODIK、CC BY 4.0）。特別警戒区域は警戒区域の内側にあり、警戒と特別警戒は重なる。区分・現象をまたいで面積を足さない。件数は区域（ポリゴン）の数で、地区・箇所の数ではない。"
   },
   "bodik_kagoshima_ryuiki_chisui_amami": {
     "state": "not_queryable",

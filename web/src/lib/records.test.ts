@@ -7,6 +7,7 @@ import { TABLE_ORIGIN } from "@/lib/table-meta";
 import {
   blockingNotes,
   clampLimit,
+  countRecordsBy,
   docNotes,
   documentsList,
   queryRecords,
@@ -282,5 +283,61 @@ describe("readRecordSet（地図用。get_records と同じ列定義）", () => 
     expect(typeof g[0].geometry_geojson).toBe("string");
     await expect(readRecordSet(db, "river_segments", { order: [{ col: "x; DROP TABLE sites" }] })).rejects.toThrow();
     await expect(readRecordSet(db, "sites", { order: [{ col: "site_id" }], withGeometry: true })).rejects.toThrow();
+  });
+
+  it("document_cells: superseded=0 の行だけ、doc_id で絞って読む。q は doc_id/row_key に効き、n_total も置き換え済みを除く", async () => {
+    raw.prepare("INSERT INTO documents (doc_id, title) VALUES ('d1','文書1'),('d2','文書2')").run();
+    const ins = raw.prepare("INSERT INTO cells (doc_id, row_key, col_key, value, fiscal_year, superseded) VALUES (?,?,?,?,?,?)");
+    ins.run("d1", "総雨量", "値", "1000", null, 0);
+    ins.run("d1", "総雨量", "値", "900", null, 1); // 置き換え済み
+    ins.run("d1", "死者", "値", "3", null, 0);
+    ins.run("d2", "総雨量", "値", "5", 2010, 0);
+    const r = await readRecordSet(db, "document_cells", { eq: [{ col: "doc_id", value: "d1" }], select: ["row_key", "value"], order: [{ col: "row_key" }] });
+    expect(r).toEqual([{ row_key: "死者", value: "3" }, { row_key: "総雨量", value: "1000" }]);
+    const g = await q({ record_set: "document_cells", q: "d2" });
+    expect(g.source_id).toBeNull();
+    expect(ids(g, "value")).toEqual(["5"]);
+    expect((await q({ record_set: "document_cells" })).n_total).toBe(3); // q なしの n_total は置き換え済みを除く
+    await expect(q({ record_set: "document_cells", source_id: "dams_kanagawa" })).rejects.toThrow(RecordsInputError);
+    expect(recordsInputSchema.safeParse({ record_set: "document_cells" }).success).toBe(true);
+  });
+});
+
+describe("countRecordsBy / range（地図・物語用）", () => {
+  const hz = (id: string, kind: string, ph: string, muni: string, lat: number, lon: number) =>
+    raw
+      .prepare("INSERT INTO hazard_zones (zone_id, zone_kind_ja, phenomenon_ja, municipality_ja, centroid_lat, centroid_lon, source_id) VALUES (?,?,?,?,?,?,'s')")
+      .run(id, kind, ph, muni, lat, lon);
+
+  it("groupBy ごとの件数を返し、合計は行数と一致する。許可リスト外の列・空の groupBy・対象外の表は例外", async () => {
+    hz("z1", "警戒区域", "土石流", "奄美市", 28.3, 129.5);
+    hz("z2", "警戒区域", "土石流", "奄美市", 28.3, 129.5);
+    hz("z3", "特別警戒区域", "急傾斜地の崩壊", "龍郷町", 28.4, 129.6);
+    const r = await countRecordsBy(db, "hazard_zones", ["municipality_ja", "phenomenon_ja", "zone_kind_ja"]);
+    expect(r).toEqual([
+      { municipality_ja: "奄美市", phenomenon_ja: "土石流", zone_kind_ja: "警戒区域", n: 2 },
+      { municipality_ja: "龍郷町", phenomenon_ja: "急傾斜地の崩壊", zone_kind_ja: "特別警戒区域", n: 1 },
+    ]);
+    expect(r.reduce((a, x) => a + x.n, 0)).toBe(3);
+    expect(await countRecordsBy(db, "hazard_zones", ["zone_kind_ja"], { eq: [{ col: "municipality_ja", value: "奄美市" }] })).toEqual([{ zone_kind_ja: "警戒区域", n: 2 }]);
+    await expect(countRecordsBy(db, "hazard_zones", ["area_m2"])).rejects.toThrow();
+    await expect(countRecordsBy(db, "hazard_zones", [])).rejects.toThrow();
+    await expect(countRecordsBy(db, "hazard_zones", ["municipality_ja; DROP TABLE sites"])).rejects.toThrow();
+    await expect(countRecordsBy(db, "sites", ["zone"])).rejects.toThrow();
+    await expect(countRecordsBy(db, "protected_areas", ["category_code", "source_id"])).resolves.toEqual([]);
+  });
+
+  it("range: 許可リストの数値列だけ。両端を含む。許可リスト外・非有限は例外", async () => {
+    hz("z1", "警戒区域", "土石流", "奄美市", 28.30, 129.50);
+    hz("z2", "警戒区域", "土石流", "奄美市", 28.40, 129.50);
+    const inRange = await readRecordSet(db, "hazard_zones", {
+      range: [{ col: "centroid_lat", min: 28.3, max: 28.35 }, { col: "centroid_lon", min: 129, max: 130 }],
+      order: [{ col: "zone_id" }],
+      select: ["zone_id"],
+    });
+    expect(inRange.map((x) => x.zone_id)).toEqual(["z1"]);
+    await expect(readRecordSet(db, "hazard_zones", { range: [{ col: "area_m2", min: 0, max: 1 }], order: [{ col: "zone_id" }] })).rejects.toThrow();
+    await expect(readRecordSet(db, "hazard_zones", { range: [{ col: "centroid_lat", min: Number.NaN, max: 1 }], order: [{ col: "zone_id" }] })).rejects.toThrow();
+    await expect(readRecordSet(db, "vegetation", { range: [{ col: "centroid_lat", min: 0, max: 1 }], order: [{ col: "feature_id" }] })).rejects.toThrow();
   });
 });
