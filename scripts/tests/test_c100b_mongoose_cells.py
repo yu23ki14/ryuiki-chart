@@ -228,12 +228,14 @@ def test_reviewed_csv_requires_known_reviewer(tmp_path):
 def test_shape_and_provenance():
     rows = c.build(sheet_pdf=None)["rows"]
     assert len(rows) == 5 * 24
-    assert {r["row_key"] for r in rows} == {"わな捕獲|捕獲頭数", "わな捕獲|のべわな日", "わな捕獲|CPUE", "探索犬|捕獲頭数", "総捕獲頭数"}
+    assert {r["row_key"] for r in rows} == {"わな捕獲|捕獲頭数", "わな捕獲|のべわな日", "わな捕獲|CPUE", "探索犬|探索犬による捕獲頭数", "総捕獲頭数"}
     by = _by({"rows": rows})
     years = [r for r in rows if r["row_key"] == "総捕獲頭数" and r["col_key"] != "合計"]
     assert [r["fiscal_year"] for r in years] == list(range(2000, 2023)) and [r["col_key"] for r in years] == [str(y) for y in range(2000, 2023)]
     assert {r["is_total"] for r in years} == {0}
     assert by[("総捕獲頭数", "2000")]["era_raw"] == "平成12年度(2000)"
+    assert by[("総捕獲頭数", "2019")]["era_raw"] == "令和元年度(2019)"   # 原表の PNG の表記（空白は除く）
+    assert len({k.rsplit("|", 1)[-1] for k in c.ROW_KEYS}) == 5   # /documents の表示名（末尾）が系列ごとに一意
     for rk in c.ROW_KEYS:   # 合計の列は is_total=1・fiscal_year なし
         t = by[(rk, "合計")]
         assert (t["is_total"], t["fiscal_year"], t["era_raw"]) == (1, None, None)
@@ -246,7 +248,7 @@ def test_shape_and_provenance():
     assert by[("わな捕獲|CPUE", "2019")]["value_raw"] == "0.0000" and by[("わな捕獲|CPUE", "合計")]["value_raw"] == "0.616"
     assert by[("わな捕獲|CPUE", "2001")]["value_raw"] == "20.409"
     # 0 は 0（空欄ではない）
-    zero = by[("探索犬|捕獲頭数", "2009")]
+    zero = by[("探索犬|探索犬による捕獲頭数", "2009")]
     assert (zero["value"], zero["value_raw"], zero["value_type"]) == ("0", "0", "int")
     # 空欄は value=NULL・value_raw=NULL・(空欄)。未採用ではない
     blanks = {k for k, r in by.items() if r["value"] is None}
@@ -279,8 +281,8 @@ def test_doc_series_where_counts():
         if r["is_total"] == 0 and r["value_type"] in ("int", "float") and r["value"] is not None and r["fiscal_year"] is not None:
             pts.setdefault(r["row_key"], set()).add(r["fiscal_year"])
     assert {k: len(v) for k, v in pts.items()} == {
-        "わな捕獲|捕獲頭数": 23, "わな捕獲|のべわな日": 22, "わな捕獲|CPUE": 22, "探索犬|捕獲頭数": 15, "総捕獲頭数": 23}
-    assert min(pts["探索犬|捕獲頭数"]) == 2008 and min(pts["わな捕獲|CPUE"]) == 2001
+        "わな捕獲|捕獲頭数": 23, "わな捕獲|のべわな日": 22, "わな捕獲|CPUE": 22, "探索犬|探索犬による捕獲頭数": 15, "総捕獲頭数": 23}
+    assert min(pts["探索犬|探索犬による捕獲頭数"]) == 2008 and min(pts["わな捕獲|CPUE"]) == 2001
 
 
 def test_notes_are_facts_and_block_nothing():
