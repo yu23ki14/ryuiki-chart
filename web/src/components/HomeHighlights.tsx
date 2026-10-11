@@ -11,6 +11,7 @@ import { nf } from "@/components/ui";
 import { MAP_METRICS } from "@/lib/registry/generated-client";
 import { caveatBody } from "@/lib/registry/lookup-client";
 import { withRegion } from "@/components/region-url";
+import { AMAMI_STORY_HREF, AMAMI_STORY_LABEL, showAmamiStory } from "@/lib/stories/links";
 import { REGION_ALL, regionUi, type RegionFilter } from "@/lib/region";
 
 export function HomeHighlights({
@@ -238,6 +239,18 @@ export function HomeHighlights({
           />
         </ChartFrame>
       </div>
+
+      {showAmamiStory(region) && (
+        <div className="card p-3.5 lg:col-span-3">
+          <div className="text-[13px] font-semibold">{AMAMI_STORY_LABEL}</div>
+          <p className="text-[11.5px] text-muted mt-1 leading-relaxed">
+            マングースの捕獲、豪雨の被害、土砂災害の区域を、出典ごとの数字のまま並べたページ。
+            <Link href={AMAMI_STORY_HREF} className="text-water underline ml-1">
+              開く
+            </Link>
+          </p>
+        </div>
+      )}
     </div>
   );
 }
