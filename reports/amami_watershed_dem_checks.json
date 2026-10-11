@@ -1,0 +1,137 @@
+{
+  "checks": {
+    "determinism": {
+      "declared_exceptions_unused": [],
+      "declared_exceptions_used": [],
+      "expected": "byte_identical",
+      "measured": {
+        "differs": [],
+        "files": [
+          "geojson",
+          "jsonl"
+        ]
+      },
+      "passed": true,
+      "undeclared_failures": []
+    },
+    "dropped_area_km2": {
+      "declared_exceptions_unused": [],
+      "declared_exceptions_used": [],
+      "expected": 1.1,
+      "measured": {
+        "components_km2": 0.9674,
+        "total_km2": 0.9694,
+        "units_km2": 0.002,
+        "units_n": 7
+      },
+      "passed": true,
+      "undeclared_failures": []
+    },
+    "land_coverage": {
+      "declared_exceptions_unused": [],
+      "declared_exceptions_used": [],
+      "expected": 0.995,
+      "measured": {
+        "covered_km2": 817.567,
+        "land_km2": 819.486,
+        "share": 0.99766,
+        "uncovered_km2": 1.919
+      },
+      "passed": true,
+      "undeclared_failures": []
+    },
+    "largest_unit_outlet": {
+      "declared_exceptions_unused": [],
+      "declared_exceptions_used": [],
+      "expected": {
+        "lat": 28.25,
+        "lon": 129.41
+      },
+      "measured": {
+        "area_km2": 96.55,
+        "outlet_lat": 28.250297,
+        "outlet_lon": 129.410062,
+        "watershed_id": "dem-amami-039"
+      },
+      "passed": true,
+      "undeclared_failures": []
+    },
+    "outlet_on_coast": {
+      "declared_exceptions_unused": [],
+      "declared_exceptions_used": [],
+      "expected": "all",
+      "measured": {
+        "n": 71,
+        "n_bad": 0
+      },
+      "passed": true,
+      "undeclared_failures": []
+    },
+    "overlap_pairs": {
+      "declared_exceptions_unused": [],
+      "declared_exceptions_used": [],
+      "expected": 0,
+      "measured": {
+        "n_pairs": 0,
+        "pairs": []
+      },
+      "passed": true,
+      "undeclared_failures": []
+    },
+    "unit_count": {
+      "declared_exceptions_unused": [],
+      "declared_exceptions_used": [],
+      "expected": 71,
+      "measured": {
+        "by_kind": {
+          "basin": 35,
+          "coast_group": 31,
+          "island": 5
+        },
+        "n": 71
+      },
+      "passed": true,
+      "undeclared_failures": []
+    },
+    "w05_mouth_to_outlet": {
+      "declared_exceptions_unused": [],
+      "declared_exceptions_used": [],
+      "expected": 500,
+      "measured": {
+        "median_m": 129.0,
+        "n": 38,
+        "n_over": 0,
+        "within_share": 1.0
+      },
+      "passed": true,
+      "undeclared_failures": []
+    },
+    "w05_outlet_to_mouth": {
+      "declared_exceptions_unused": [],
+      "declared_exceptions_used": [],
+      "expected": 500,
+      "measured": {
+        "max_m": 442.9,
+        "median_m": 103.0,
+        "n": 35,
+        "n_over": 0
+      },
+      "passed": true,
+      "undeclared_failures": []
+    },
+    "w12_containment": {
+      "declared_exceptions_unused": [],
+      "declared_exceptions_used": [],
+      "expected": 0.9,
+      "measured": {
+        "min": 0.9543,
+        "n": 25,
+        "n_below": 0
+      },
+      "passed": true,
+      "undeclared_failures": []
+    }
+  },
+  "params_digest": "2cfafcca10ae33d1",
+  "passed": true
+}

@@ -508,8 +508,8 @@ wholesale_processed_files:
   - nlni_w12_watersheds.jsonl
   - nlni_l03b_landuse_by_watershed.csv
   # 奄美（jp-46）。pipeline_inputs.SOURCE_FILE_KEYS が全地域ぶんを並べる（test_pipeline_inputs が一致を見る）
-  - nlni_w12_watersheds_amami.geojson
-  - nlni_w12_watersheds_amami.jsonl
+  - gsi_dem_watersheds_amami.geojson
+  - gsi_dem_watersheds_amami.jsonl
   - nlni_l03b_landuse_by_watershed_amami.csv
   - moe_ias_list.csv
   - taxon_crosswalk.csv

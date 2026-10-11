@@ -4,6 +4,7 @@
 - 奄美の site は `jp-46:place:site.<ns>.<local>`・`place.region_id='jp-46'`。
 - W12 は全地域の jsonl を連結して読み、place_source_ref の版は jsonl の出典で引く。
 """
+import json
 import pathlib
 import sqlite3
 
@@ -100,16 +101,57 @@ def test_sea_surface_and_soramame_supplement_rows_are_amami_needs_review():
 
 def test_watershed_jsonls_concatenate_and_edition_follows_each_file(tmp_path, monkeypatch):
     k = tmp_path / "nlni_w12_watersheds.jsonl"
-    a = tmp_path / "nlni_w12_watersheds_amami.jsonl"
+    a = tmp_path / "gsi_dem_watersheds_amami.jsonl"
     write_watershed_jsonl(k, [_WATERSHED_ROW_FULL])
-    write_watershed_jsonl(a, [dict(_WATERSHED_ROW_FULL, watershed_id="89599-0001", centroid_lat=28.4, centroid_lon=129.6)])
+    write_watershed_jsonl(a, [dict(_WATERSHED_ROW_FULL, watershed_id="dem-amami-001", centroid_lat=28.4, centroid_lon=129.6)])
     monkeypatch.setattr(build_place_module, "WATERSHED_JSONLS", [k, a])
     rows = build_place_module._load_watershed_jsonl()
-    assert [r["watershed_id"] for r in rows] == ["83032-0024", "89599-0001"]
-    assert [r["_edition_source_id"] for r in rows] == ["nlni_w12_watersheds", "nlni_w12_watersheds_amami"]
+    assert [r["watershed_id"] for r in rows] == ["83032-0024", "dem-amami-001"]
+    assert [r["_edition_source_id"] for r in rows] == ["nlni_w12_watersheds", "gsi_dem_watersheds_amami"]
 
 
 def test_default_watershed_jsonls_cover_every_region():
     names = [p.stem for p in build_place_module.WATERSHED_JSONLS]
-    assert names == regions.w12_stems()
+    assert names == regions.watershed_stems()
     assert names[0] == "nlni_w12_watersheds"  # 神奈川が先頭（指紋の先頭のハッシュ入力は PR-B 前と同じ）
+
+
+# --- Issue #94: 奄美の流域は地理院10m標高から計算した面（名前空間 dem）。W12 の nlni とは別 ---
+
+# web の lib/cube/grid.test.ts も同じ JSON の表を読む（place_id ⇔ watershed_id の規則を両側で検査する）
+_ID_CASES = json.loads((pathlib.Path(__file__).parent / "fixtures" / "watershed_id_cases.json").read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("case", _ID_CASES, ids=lambda c: c["watershed_id"])
+def test_watershed_place_id_cases(case):
+    assert common.watershed_place_id(case["watershed_id"]) == case["place_id"]
+    ns, key = common.watershed_ns_and_key(case["watershed_id"])
+    assert case["place_id"] == f"common:place:watershed.{ns}.{key}"
+
+
+def test_kanagawa_watershed_place_id_is_unchanged():
+    assert common.watershed_place_id("83032-0024") == "common:place:watershed.nlni.83032-0024"
+    assert common.watershed_place_id("dem-amami-001") == "common:place:watershed.dem.amami-001"
+
+
+def test_dem_watershed_builds_place_with_dem_namespace(tmp_path, monkeypatch):
+    dem_row = dict(_WATERSHED_ROW_FULL, watershed_id="dem-amami-001", water_system_code_old=None,
+                   water_system_name_ja_estimated=None, water_system_category_ja=None,
+                   main_river_names_ja="", data_year=None, centroid_lat=28.3, centroid_lon=129.5,
+                   unit_kind="coast_group", merged_share=0.25, own_drainage_km2=1.5)
+    conn, counts = _build(tmp_path, monkeypatch, [], watershed_rows=[_WATERSHED_ROW_FULL, dem_row])
+    assert counts["place_watershed"] == 2
+    pid = "common:place:watershed.dem.amami-001"
+    assert conn.execute(
+        "SELECT place_id FROM place_source_ref WHERE key_space='watershed_id' AND external_key='dem-amami-001'"
+    ).fetchone()[0] == pid
+    assert conn.execute("SELECT place_kind, region_id FROM place WHERE place_id=?", (pid,)).fetchone()[0] == "watershed"
+    # 種別・併合した割合・自前の集水面積は専用列に届く（水系区分の列には混ぜない）。W12 の行は NULL
+    assert tuple(conn.execute(
+        "SELECT water_system_category, unit_kind, merged_share, own_drainage_km2 FROM place_watershed WHERE place_id=?",
+        (pid,)).fetchone()) == (None, "coast_group", 0.25, 1.5)
+    assert tuple(conn.execute(
+        "SELECT unit_kind, merged_share, own_drainage_km2 FROM place_watershed WHERE place_id='common:place:watershed.nlni.83032-0024'"
+    ).fetchone()) == (None, None, None)
+    # 神奈川の流域の ID は従来のまま
+    assert conn.execute("SELECT COUNT(*) FROM place WHERE place_id='common:place:watershed.nlni.83032-0024'").fetchone()[0] == 1

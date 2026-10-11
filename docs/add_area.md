@@ -436,9 +436,17 @@ Step 0 で L2 以上を目標にした場合、§5 の Tier B（対象エリア�
 
 **順序依存**: `c31`（河川。原データが `c30` の水系名推定に使われる）→ `c30`（W12 流域界を生
 成。`SHP` に加え水系名推定用の `W05_SHP` も対象都道府県のものにする）→ `c32`/`c33`/`c34`/
-`c35`（`assign_watershed()` で `watershed_id` を付与。`c34` は W12 の生シェープを直接読む）→
+`c35`（`assign_watershed()` で `watershed_id` を付与。`c34` は `nlni_lib.watershed_units()` で読む）→
 `c62`（W12 の和集合ポリゴンでクリップ。対象エリアの W12 が無いと動かない）→ `m01`/`m05`
 （`watershed_id` 付与・zone 判定）。
+
+**流域の方法は地域ごと**（`regions.REGIONS[rid]["watershed"]`）。W12 の面が陸を覆わない地域（奄美は42.5%）は
+`method: dem` にして、地理院10m標高から計算した流域（`c69_gsi_dem_watersheds.py`、設計は
+`docs/plans/AMAMI_WATERSHED_DEM.md`）を `stem` に宣言する。W12 の L1 は残すが、place・割り当て・土地利用の流域集計は
+`stem` のファイルだけを使う（併存させない）。`c69` →（`c32`/`c33`/`c34`/`c35` を `--region <rid>` で回し直す。
+`assign_watershed()` が流域 ID を振る出力＝A10・A15・L03-b 集計・A45 が、流域を作り直すと古い ID を指したままになる）→
+`m01`/`m05` → `r01` → `build:v2` の順。奄美の今回（Issue #94）は `c34` だけ回し直した。奄美の A10/A15/A45 は
+まだ取り込んでいない（Issue #96 で取り込むときに、そのときの流域で振る）ので、回し直す対象が無い。流域 ID が `dem-` で始まれば place の ns は `dem`（それ以外は `nlni`）。
 
 ### Tier B: 同型だが対象エリアの資料を探すところから要る
 

@@ -190,8 +190,8 @@ def test_end_to_end_determinism_on_fixture_db(tmp_path):
 
     # --processed-dir は tmp_path なので、そこに W12 相当のフィクスチャを置く
     # （0件の organism_records でも build_declaration_counts が読みに行くため）。
-    # 地域ごとの W12（pipeline_inputs.W12_PROCESSED_FILES。全地域ぶん）
-    for name in pipeline_inputs.W12_PROCESSED_FILES:
+    # 地域ごとの W12（pipeline_inputs.WATERSHED_PROCESSED_FILES。全地域ぶん）
+    for name in pipeline_inputs.WATERSHED_PROCESSED_FILES:
         (tmp_path / name).write_text(_EMPTY_GEOJSON if name.endswith(".geojson") else "dummy", encoding="utf-8")
     # manifest.json の source_files（pipeline_inputs.SOURCE_FILE_KEYS）は
     # data/processed の入力すべての実在を要求するので、残りもダミーで置く（土地利用 CSV は地域ごと）。
@@ -753,12 +753,12 @@ def test_place_sites_stop_when_no_input_row_exists():
         s01.select_declared_source_rows(_place_input_db(), access, {})
 
 
-def test_landuse_and_w12_paths_cover_every_region(tmp_path):
+def test_landuse_and_watershed_paths_cover_every_region(tmp_path):
     assert set(s01.landuse_csv_paths(tmp_path)) == {
         "nlni_l03b_landuse_by_watershed", "nlni_l03b_landuse_by_watershed_amami",
     }
-    assert [p.name for p in s01.collector_regions.w12_paths(tmp_path)] == [
-        "nlni_w12_watersheds.geojson", "nlni_w12_watersheds_amami.geojson",
+    assert [p.name for p in s01.collector_regions.watershed_paths(tmp_path)] == [
+        "nlni_w12_watersheds.geojson", "gsi_dem_watersheds_amami.geojson",
     ]
 
 

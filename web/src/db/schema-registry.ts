@@ -286,6 +286,12 @@ export const placeWatershed = sqliteTable("place_watershed", {
 	waterSystemCategory: text("water_system_category"),
 	mainRivers: text("main_rivers"),
 	dataYear: integer("data_year"),
+	// 地理院10m標高から計算した流域（奄美。Issue #94）だけが持つ。W12 の行は NULL。
+	// unitKind: basin（河口の流域）/ coast_group（沿岸の小流域群）/ island（小島）。
+	// mergedShare: 面積のうち小さな斜面を併合した分の割合（0〜1）。ownDrainageKm2: 出口の自前の集水面積。
+	unitKind: text("unit_kind"),
+	mergedShare: real("merged_share"),
+	ownDrainageKm2: real("own_drainage_km2"),
 });
 
 /**

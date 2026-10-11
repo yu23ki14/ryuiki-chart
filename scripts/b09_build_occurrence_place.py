@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """`occurrence`（L2、`data/db/v2.sqlite`、b06 が作った823,692行）の座標を、流域
-ポリゴン（`data/processed/nlni_w12_watersheds.geojson`、国土数値情報 W12
-1977年版、377面）へ点内包判定で直接解決し、記録×place のサテライト表
+ポリゴン（全地域の流域の GeoJSON。`regions.watershed_stems()` の順。神奈川は
+`data/processed/nlni_w12_watersheds.geojson`、国土数値情報 W12 1977年版の377面。
+奄美は地理院10m標高から計算した `gsi_dem_watersheds_amami.geojson`〔Issue #94。
+W12 の奄美25面は置き換えたので入力に入らない〕）へ点内包判定で直接解決し、記録×place のサテライト表
 `occurrence_place` を作る（ADR-0016 Phase B「ファクトとキューブ」O-2a。
 ADR-0006 規約2の改定・ADR-0026）。
 
@@ -67,13 +69,13 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from ingest import manifest as manifest_lib  # noqa: E402
 from migrate import common, cube_invariants, period, point_in_polygon as pip  # noqa: E402
-import regions as collector_regions  # noqa: E402  w12_stems（地域ごとの W12 の名前）
+import regions as collector_regions  # noqa: E402  watershed_stems（地域ごとの流域の名前）
 
 DEFAULT_V2_DB = ROOT / "data" / "db" / "v2.sqlite"
 DEFAULT_RYUIKI_DB = ROOT / "data" / "db" / "ryuiki.sqlite"
 DEFAULT_REGISTRY_DB = ROOT / "data" / "db" / "registry.sqlite"
-# 地域ごとの W12（流域界）。全地域の連結を1回の点内包判定にかける（regions.w12_stems の順）。
-DEFAULT_GEOJSONS = tuple(collector_regions.w12_paths(ROOT / "data" / "processed"))
+# 地域ごとの流域。全地域の連結を1回の点内包判定にかける（regions.watershed_stems の順）。
+DEFAULT_GEOJSONS = tuple(collector_regions.watershed_paths(ROOT / "data" / "processed"))
 DEFAULT_DECLARATIONS_YAML = ROOT / "scripts" / "migrate" / "occurrence_place_declarations.yaml"
 
 PLACE_KIND = "watershed"
@@ -206,7 +208,7 @@ def _assert_polygon_set_matches_registry(polys: list[pip.Polygon], reg_conn: sql
             "occurrence_place: GeoJSON の watershed_id 集合と registry の "
             f"place_source_ref(key_space={WATERSHED_KEY_SPACE!r}) の external_key 集合が"
             f"食い違う（GeoJSON にしか無い: {only_geojson} / registry にしか無い: {only_registry}）。"
-            "registry.sqlite と data/processed/nlni_w12_watersheds.geojson の版がずれている"
+            "registry.sqlite と data/processed の流域の GeoJSON（regions.watershed_stems）の版がずれている"
             "可能性がある。"
         )
 
@@ -552,7 +554,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--geojson", action="append", default=None,
-        help="W12 の GeoJSON（地域ごとに繰り返せる）。既定は全地域の data/processed/nlni_w12_watersheds*.geojson",
+        help="流域の GeoJSON（地域ごとに繰り返せる）。既定は regions.watershed_stems の全地域の data/processed/*.geojson",
     )
     parser.add_argument("--declarations-yaml", default=str(DEFAULT_DECLARATIONS_YAML))
     parser.add_argument("--manifests-dir", default=str(manifest_lib.DEFAULT_MANIFESTS_DIR))

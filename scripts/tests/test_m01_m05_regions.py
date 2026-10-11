@@ -68,7 +68,7 @@ def test_jp14_only_input_gives_same_rows(env):
 def test_amami_sites_get_watershed_inside_w12_and_null_outside(env):
     proc, db = env
     w12(proc / "nlni_w12_watersheds.geojson", "K1", 139.3, 35.4)
-    w12(proc / "nlni_w12_watersheds_amami.geojson", "A1", 129.5, 28.4)
+    w12(proc / "gsi_dem_watersheds_amami.geojson", "A1", 129.5, 28.4)
     jl(proc / "jma_stations_kanagawa.jsonl", [jma("jma_1", "横浜", 35.4, 139.3, "r1")])
     jl(proc / "jma_stations_amami.jsonl", [jma("jma_47909", "名瀬", 28.4, 129.5, "r2"),
                                            jma("jma_x", "W12の外", 28.6, 129.7, "r3")])
@@ -90,7 +90,7 @@ def test_amami_files_missing_is_skipped(env):
 def test_m05_watersheds_concatenates_all_regions(env):
     proc, _ = env
     w12(proc / "nlni_w12_watersheds.geojson", "K1", 139.3, 35.4)
-    w12(proc / "nlni_w12_watersheds_amami.geojson", "A1", 129.5, 28.4)
+    w12(proc / "gsi_dem_watersheds_amami.geojson", "A1", 129.5, 28.4)
     ws = m05_tier1.Watersheds()
     assert ws.find(139.3, 35.4) == "K1" and ws.find(129.5, 28.4) == "A1" and ws.find(0.0, 0.0) is None
 
@@ -105,7 +105,7 @@ def veg_csv(path, source_id, ids):
 def test_vegetation_per_region_and_duplicate_feature_id_stops(env):
     proc, db = env
     w12(proc / "nlni_w12_watersheds.geojson", "K1", 139.3, 35.4)
-    w12(proc / "nlni_w12_watersheds_amami.geojson", "A1", 129.5, 28.4)
+    w12(proc / "gsi_dem_watersheds_amami.geojson", "A1", 129.5, 28.4)
     con = sqlite3.connect(db)
     ws = m05_tier1.Watersheds()
     veg_csv(proc / "biodic_veg2024_kanagawa.csv", "biodic_veg2024_kanagawa", [1, 2])
@@ -123,3 +123,27 @@ def test_vegetation_per_region_and_duplicate_feature_id_stops(env):
     assert "2 行" in m05_tier1.load_vegetation(con, ws, "jp-46")
     assert con.execute("SELECT count(*) FROM vegetation_polygons WHERE source_id='biodic_veg2024_amami'").fetchone()[0] == 1
     assert m05_tier1.load_vegetation(con, ws, "jp-14").startswith("vegetation_polygons[biodic_veg2024_kanagawa]")
+
+
+def test_nlni_lib_dem_watershed_index_and_assign(tmp_path, monkeypatch):
+    """奄美（method=dem）は c69 の GeoJSON から流域の索引を作り、重心が入る面を返す（Issue #94）。"""
+    import json as _json
+    import nlni_lib
+    from shapely.geometry import box
+
+    gj = tmp_path / "gsi_dem_watersheds_amami.geojson"
+    gj.write_text(_json.dumps({"type": "FeatureCollection", "features": [{
+        "type": "Feature", "geometry": square(129.5, 28.4),
+        "properties": {"watershed_id": "dem-amami-001", "water_system_code_old": None,
+                       "water_system_name_ja_estimated": "住用川", "water_system_category_ja": "河口の流域"}}]}),
+        encoding="utf-8")
+    monkeypatch.setattr(nlni_lib, "PROC", tmp_path)
+    monkeypatch.setattr(nlni_lib, "_WATERSHED_UNITS", {})
+    monkeypatch.setattr(nlni_lib, "_WATERSHED", {})
+    geoms, ids, codes, names = nlni_lib.watershed_units("jp-46")
+    assert ids == ["dem-amami-001"] and codes == [None] and names["dem-amami-001"] == ("住用川", "河口の流域")
+    got = nlni_lib.assign_watershed(box(129.499, 28.399, 129.501, 28.401), "jp-46")
+    assert got["watershed_id"] == "dem-amami-001" and got["water_system_code_old"] is None
+    assert got["water_system_name_ja_estimated"] == "住用川" and "地理院10m標高" in got["watershed_join_method"]
+    out = nlni_lib.assign_watershed(box(130.0, 29.0, 130.01, 29.01), "jp-46")
+    assert out["watershed_id"] is None

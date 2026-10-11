@@ -182,7 +182,8 @@ sources:
   # --- 奄美 Step 1（PR-B）--- 取り込む 9 件はマニフェスト（manifests/）が持つのでここに書かない。records 4 件と file_only
   nlni_w05_rivers_amami: {reason: file_only, basis: "data/processed に nlni_w05_rivers_amami.csv がある（D1 の表なし。地図の配信に使う: web/scripts/copy-geo-assets.mjs が rivers.geojson に合流させる）"}
   nlni_w05_river_nodes_amami: {reason: file_only, basis: "data/processed に nlni_w05_river_nodes_amami.csv がある（D1 の表なし）"}
-  nlni_w12_watersheds_amami: {reason: file_only, basis: "data/processed に nlni_w12_watersheds_amami.csv がある（D1 の表なし。registry の place・place_watershed と watersheds.geojson の元になる。神奈川と同じ file_only）"}
+  nlni_w12_watersheds_amami: {reason: file_only, basis: "data/processed に nlni_w12_watersheds_amami.csv がある（D1 の表なし。Issue #94 で奄美の place・割り当てからは外した。c69 の比較検査の入力に残す L1）"}
+  gsi_dem_watersheds_amami: {reason: file_only, basis: "data/processed に gsi_dem_watersheds_amami.geojson/.jsonl がある（D1 の表なし。地理院10m標高から計算した奄美の流域。registry の place・place_watershed と watersheds.geojson の元になる。Issue #94）"}
   nlni_a10_natparks_amami: {reason: file_only, basis: "data/processed に nlni_a10_natparks_amami.csv がある（D1 の表なし）"}
   nlni_a15_wildlife_amami: {reason: file_only, basis: "data/processed に nlni_a15_wildlife_amami.csv がある（D1 の表なし）"}
   nlni_a45_forest_amami: {reason: file_only, basis: "data/processed に nlni_a45_forest_amami.csv がある（D1 の表なし）"}

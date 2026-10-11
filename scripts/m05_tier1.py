@@ -62,7 +62,7 @@ def text(v):
 # ---- 流域ポリゴン (m01_sites.py と同じ原本。点数が多いので STRtree で引く) ----
 class Watersheds:
     def __init__(self):
-        self.polys, self.props = load_watersheds()   # m01 と同じ読み込み（全地域の W12。無い地域は飛ばす）
+        self.polys, self.props = load_watersheds()   # m01 と同じ読み込み（全地域の流域。無い地域は飛ばす）
         self.tree = STRtree(self.polys)
 
     def find(self, lon, lat):

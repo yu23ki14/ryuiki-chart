@@ -172,11 +172,46 @@ def test_region_of_source_id_roundtrips_name():
             assert rc.region_of_source_id(rc.name("inaturalist_kanagawa", rid)) == rid
 
 
-def test_w12_stems_order():
-    assert rc.w12_stems() == ["nlni_w12_watersheds", "nlni_w12_watersheds_amami"]
+def test_watershed_stems_order():
+    # 神奈川（W12）が先頭、奄美は地理院10m標高から計算した流域（Issue #94。W12 の奄美25面とは併存させない）
+    assert rc.watershed_stems() == ["nlni_w12_watersheds", "gsi_dem_watersheds_amami"]
+    assert "nlni_w12_watersheds_amami" not in rc.watershed_stems()
+
+
+def test_watershed_declarations():
+    assert rc.REGIONS["jp-14"]["watershed"] == {"method": "w12", "stem": "nlni_w12_watersheds", "label_ja": "W12流域界"}
+    dem = rc.REGIONS["jp-46"]["watershed"]
+    assert dem["method"] == "dem" and dem["stem"] == "gsi_dem_watersheds_amami"
+    assert {"a_min_km2", "min_island_km2", "simplify_px", "dem_zoom", "w05_match_m"} <= set(dem)
+    for r in rc.REGIONS.values():
+        assert r["watershed"]["method"] in ("w12", "dem")
+        assert r["watershed"]["label_ja"]          # 割り当ての説明・未割当の文言（c34・assign_watershed）が引く
+    assert rc.dem_regions() == ["jp-46"]
+    assert rc.watershed_label("jp-46") == "地理院10m標高から計算した流域"
+
+
+def test_watershed_paths_follow_stems(tmp_path):
+    assert [p.name for p in rc.watershed_paths(tmp_path)] == [
+        "nlni_w12_watersheds.geojson", "gsi_dem_watersheds_amami.geojson"]
+    assert [p.name for p in rc.watershed_paths(tmp_path, ext="jsonl")] == [
+        "nlni_w12_watersheds.jsonl", "gsi_dem_watersheds_amami.jsonl"]
 
 
 def test_site_scope():
     assert rc.site_scope("jma_sst_amami__617") == "jp-46"
     assert rc.site_scope("jma_stations_amami") == "jp-46"
     assert rc.site_scope("jma_stations") == "jp-14"
+
+
+def test_copy_geo_assets_watershed_files_match_regions():
+    """web/scripts/copy-geo-assets.mjs の流域の入力が regions.py の watershed_stems() と一致する（Issue #94）。
+    .mjs は文字列として読む。watershed_stems() が無い（担当 B の変更前）ときは神奈川の先頭だけ確かめる。"""
+    mjs = (SCRIPTS.parent / "web" / "scripts" / "copy-geo-assets.mjs").read_text(encoding="utf-8")
+    m = re.search(r'src:\s*\[([^\]]*)\],\s*dst:\s*"watersheds\.geojson"', mjs)
+    assert m, "copy-geo-assets.mjs に watersheds の src 配列が無い"
+    names = re.findall(r'"([^"]+\.geojson)"', m.group(1))
+    assert names[0] == "nlni_w12_watersheds.geojson"
+    if hasattr(rc, "watershed_stems"):
+        assert names == [f"{s}.geojson" for s in rc.watershed_stems()]
+    else:
+        assert names[1:] == ["gsi_dem_watersheds_amami.geojson"]

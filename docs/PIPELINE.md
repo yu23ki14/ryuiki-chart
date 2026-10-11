@@ -20,9 +20,13 @@ serving-diff の v1 側）は撤去した。ここに残るのは v2（観測・
   b03 は合成データ（`is_synthetic=1`）を常に除外する（`--include-synthetic` と v1互換キューブ専用の宣言は Issue #61 で撤去した）。
 - `scripts/b04_build_cube.py`: `observation` → キューブ `observation_agg`（土地利用を足しても無変更）。
 - `scripts/b06_build_occurrence.py`: `organism_records` → `occurrence`（`v2.sqlite` に同居）。
-- `scripts/b09_build_occurrence_place.py`（O-2a）: `occurrence` の座標を `data/processed/nlni_w12_watersheds.geojson`
-  （W12 流域、377 面）へ純 Python の点内包判定（`scripts/migrate/point_in_polygon.py`）で直接解決し、記録×place の
-  サテライト `occurrence_place` を作る。
+- `scripts/b09_build_occurrence_place.py`（O-2a）: `occurrence` の座標を、全地域の流域の GeoJSON
+  （`regions.watershed_stems()` の順に連結。神奈川は `data/processed/nlni_w12_watersheds.geojson`〔W12 流域、377 面〕、
+  奄美は地理院10m標高から計算した `gsi_dem_watersheds_amami.geojson`〔c69、Issue #94。W12 の奄美25面は置き換えたので
+  入力に入らない〕）へ純 Python の点内包判定（`scripts/migrate/point_in_polygon.py`）で直接解決し、記録×place の
+  サテライト `occurrence_place` を作る。流域の place は `common:place:watershed.nlni.*`（W12）と
+  `common:place:watershed.dem.amami-NNN`（DEM。`registry.common.watershed_ns_and_key` が ID の規則）。
+  流域の入力は `regions.REGIONS[rid]["watershed"]`（`method`＝`w12`/`dem`、`stem`）が正。
 - `scripts/b07_build_occurrence_cube.py`: `occurrence`＋`occurrence_place` → キューブ `occurrence_agg`。
   PR-3a（O-2b）で「place_kind × grain 族」の行列にした——`grid01`×`year`・`grid01`×`month`・`watershed`×`year` の3マス
   （実測 1,437,598 セル。`watershed`×`month` は消費者が無いので作らない）。流域に解決できない日付あり記録も

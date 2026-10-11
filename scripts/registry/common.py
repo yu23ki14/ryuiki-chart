@@ -294,10 +294,10 @@ MOE_IAS_LIST_CSV_RELPATH = pathlib.PurePosixPath("data/processed/moe_ias_list.cs
 # ではないので、内容ハッシュを指紋に混ぜてよい（taxon_crosswalk.csv と同じ扱い）。
 WATERSHED_JSONL_RELPATH = pathlib.PurePosixPath("data/processed/nlni_w12_watersheds.jsonl")
 
-# 全地域の W12 の jsonl（`regions.w12_stems()` の順。神奈川が先頭で、`WATERSHED_JSONL_RELPATH` と同じ。
-# 奄美 Step 1 PR-B）。ビルド（build_place.py の WATERSHED_JSONLS）と指紋計算が共有する。
+# 全地域の流域の jsonl（`regions.watershed_stems()` の順。神奈川が先頭で、`WATERSHED_JSONL_RELPATH` と同じ。
+# 神奈川は W12、奄美は地理院10m標高から計算した面（Issue #94。W12 の奄美25面は置き換えた）。奄美 Step 1 PR-B）。ビルド（build_place.py の WATERSHED_JSONLS）と指紋計算が共有する。
 WATERSHED_JSONL_RELPATHS = tuple(
-    pathlib.PurePosixPath(f"data/processed/{stem}.jsonl") for stem in _regions.w12_stems()
+    pathlib.PurePosixPath(f"data/processed/{stem}.jsonl") for stem in _regions.watershed_stems()
 )
 
 # grid01（build_place.py）の入力が derived.mesh_all から ryuiki.organism_records の
@@ -663,6 +663,28 @@ def is_valid_namespace(ns: str) -> bool:
     ns の検証はここ1箇所（`place_id()`・`parse_id()`。TS の `parse-id.ts` の `NAMESPACE_RE` と
     同じ規則であることは `test_place_id_grammar.py` が検査する）。"""
     return bool(_NAMESPACE_RE.fullmatch(ns))
+
+
+# 流域 ID（`place_source_ref(key_space='watershed_id').external_key`＝GeoJSON/JSONL の `watershed_id`）→
+# place_id の (ns, local)。`dem-` で始まる ID は地理院10m標高から計算した流域（Issue #94。
+# `dem-amami-001` → ns=`dem`・local=`amami-001`）、それ以外は国土数値情報 W12（ns=`nlni`、ID 全体が local）。
+# web の `lib/cube/grid.ts`（`watershedIdOfPlaceId`/`placeIdOfWatershedId`）が同じ規則を持つ。
+WATERSHED_NS_NLNI = "nlni"
+WATERSHED_NS_DEM = _regions.WATERSHED_DEM_NS
+_WATERSHED_DEM_PREFIX = _regions.WATERSHED_DEM_ID_PREFIX
+
+
+def watershed_ns_and_key(watershed_id: str) -> tuple[str, str]:
+    """流域 ID -> (place_id の ns, place_id の local)。place_id の組み立ては `place_id()`。"""
+    if watershed_id.startswith(_WATERSHED_DEM_PREFIX):
+        return WATERSHED_NS_DEM, watershed_id[len(_WATERSHED_DEM_PREFIX):]
+    return WATERSHED_NS_NLNI, watershed_id
+
+
+def watershed_place_id(watershed_id: str, *, seen: dict | None = None) -> str:
+    """流域 ID -> place_id（`common:place:watershed.<ns>.<key>`）。"""
+    ns, local = watershed_ns_and_key(watershed_id)
+    return place_id("watershed", ns, local, scope="common", seen=seen)
 
 
 def place_id(

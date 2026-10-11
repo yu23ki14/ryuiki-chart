@@ -66,7 +66,9 @@ import pipeline_inputs  # noqa: E402  (v2 入力指紋が data/processed の sha
 # 意味に変わったため v3 に上げた。
 # 2026-10-06: Issue #39 Phase C で place_id の ID 文法（ns と key の区切り）が変わり、observation に
 # 公開 ID（observation_id）と source_edition_id が付いたため v4 に上げた（place_id がキーの一部）。
-OBSERVATION_AGG_SPEC_VERSION = "phase-b-fact-slice/v4"
+# 2026-10-11: Issue #94 で奄美の流域の place（common:place:watershed.dem.amami-NNN。W12 の25面から置き換え）が
+# 変わり、place_id（キーの一部）の集合が変わったため v5 に上げた。神奈川の行の値は変わらない。
+OBSERVATION_AGG_SPEC_VERSION = "phase-b-fact-slice/v5"
 
 # `scripts/b09_build_occurrence_place.py`（`occurrence_place`）専用。
 # キー（`record_id, place_kind`）もスキーマも変わっていないが、2026-10-06 Issue #34 で
@@ -75,7 +77,9 @@ OBSERVATION_AGG_SPEC_VERSION = "phase-b-fact-slice/v4"
 # source_edition_id が付いたため v3 に上げた。
 # 2026-10-06: Issue #40 Phase D で occurrence に attributes 列（JSON 文字列）が付いたため v4 に上げた。
 # 2026-10-10: 奄美 Step 2a で occurrence に red_list_source 列（赤リスト判定の出所）が付いたため v5 に上げた。
-OCCURRENCE_SPEC_VERSION = "phase-b-fact-slice/v5"
+# 2026-10-11: Issue #94 で奄美の流域ポリゴンを W12 の25面から地理院10m標高から計算した面に置き換え、
+# 割り当ての結果（place_id）が変わったため v6 に上げた。神奈川の行の値は変わらない。
+OCCURRENCE_SPEC_VERSION = "phase-b-fact-slice/v6"
 
 # `scripts/b07_build_occurrence_cube.py`（`occurrence_agg`）専用。2026-09-27
 # Issue #48 PR-3a: 次元キーは変えていないが、(a) `place_kind='watershed'` の
@@ -89,7 +93,8 @@ OCCURRENCE_SPEC_VERSION = "phase-b-fact-slice/v5"
 # 2026-10-06: Issue #34 で `n_alien` の意味が「外来種の除外規則〔in_scope〕を反映した旗の合計」に
 # 変わったため v3 に上げた。
 # 2026-10-06: Issue #39 Phase C で place_id の ID 文法が変わった（place_id がキーの一部）ため v4 に上げた。
-OCCURRENCE_AGG_SPEC_VERSION = "phase-b-fact-slice/v4"
+# 2026-10-11: Issue #94 で奄美の流域の place_id（キーの一部）が置き換わったため v5 に上げた。
+OCCURRENCE_AGG_SPEC_VERSION = "phase-b-fact-slice/v5"
 
 # `record_stage_fingerprint`/`record_stage_fingerprints`（段階間の指紋、
 # Issue #37 #1）の `spec_version` 引数の既定値。**成果物ごとの `built_from`/
@@ -1233,7 +1238,7 @@ V2_RYUIKI_TABLES = ("measurements", "sensor_timeseries", "organism_records", "si
 # v2 パイプラインが実際に読み取る data/processed の入力（b03: 土地利用CSV、
 # b09: 流域 GeoJSON）。地域ごとのファイルは全地域ぶん（pipeline_inputs の命名規則。神奈川の指紋のキーは従来のまま）。
 V2_PROCESSED_FILES = (
-    *(n for n in pipeline_inputs.W12_PROCESSED_FILES if n.endswith(".geojson")),
+    *(n for n in pipeline_inputs.WATERSHED_PROCESSED_FILES if n.endswith(".geojson")),
     *pipeline_inputs.LANDUSE_PROCESSED_FILES,
 )
 

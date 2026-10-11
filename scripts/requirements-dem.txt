@@ -1,0 +1,21 @@
+# scripts/c69_gsi_dem_watersheds.py（奄美の集水域を地理院 DEM10B から計算する。Issue #94、
+# docs/plans/AMAMI_WATERSHED_DEM.md §2.2）だけが要る依存。
+# ルートの requirements.txt には足さない（CI の reconcile ジョブは収集の依存を持たない）。
+# c69 の関数の中でだけ pyflwdir・numba・scipy を import する。numpy・shapely までがトップの import。
+#
+#   python3 -m venv .venv-dem && .venv-dem/bin/pip install -r scripts/requirements-dem.txt
+#   .venv-dem/bin/python3 scripts/c69_gsi_dem_watersheds.py --plan
+#
+# 出力のバイトが版に依存するので固定する（試算: Python 3.10 + shapely 2.1.2 + numpy 2.2.6 と
+# Python 3.13 + shapely 2.2.0 + numpy 2.5.4 でラベル画像・GeoJSON がバイト一致）。
+# shapely は coverage_simplify（2.1 以降）が要る。
+pyflwdir==0.5.12
+numba==0.68.0
+scipy==1.18.1
+shapely==2.2.0
+numpy==2.5.4
+Pillow==12.3.0
+pyproj==3.8.0
+PyYAML==6.0.3
+requests
+pytest==8.2.0

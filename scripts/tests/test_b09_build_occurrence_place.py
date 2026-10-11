@@ -489,3 +489,31 @@ def test_built_from_of_many_paths_has_no_concatenation_ambiguity(tmp_path):
     a.write_bytes(b"AB")
     b.write_bytes(b"C")
     assert b09._built_from([a, b]) != first
+
+
+def test_default_geojsons_are_the_watershed_stems_and_do_not_coexist_with_w12_amami():
+    """既定の入力は regions.watershed_stems の順（神奈川 W12 が先頭、奄美は地理院10m標高から計算した流域）。
+    奄美の W12 25面は入らない（併存すると同じ点が2面に入り、W12 の内側が全部 NULL になる。Issue #94 D2）。"""
+    names = [p.name for p in b09.DEFAULT_GEOJSONS]
+    assert names == ["nlni_w12_watersheds.geojson", "gsi_dem_watersheds_amami.geojson"]
+    assert not any("nlni_w12_watersheds_amami" in n for n in names)
+
+
+def test_polygon_set_check_accepts_dem_watershed_ids(tmp_path):
+    """GeoJSON の watershed_id 集合 == registry の external_key 集合（dem- 始まりの ID も同じ規則）。"""
+    from migrate import point_in_polygon as pip
+
+    from .occurrence_fixtures import write_watershed_geojson
+
+    sq = [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]
+    gj = tmp_path / "w.geojson"
+    write_watershed_geojson(gj, [("83032-0024", sq), ("dem-amami-001", [[[2, 0], [3, 0], [3, 1], [2, 1], [2, 0]]])])
+    polys = pip.load_polygons_many(gj)
+    conn = sqlite3.connect(":memory:")
+    conn.execute("ATTACH ':memory:' AS reg")
+    conn.execute("CREATE TABLE reg.place_source_ref (external_key TEXT, key_space TEXT)")
+    conn.executemany("INSERT INTO reg.place_source_ref VALUES (?, 'watershed_id')", [("83032-0024",), ("dem-amami-001",)])
+    b09._assert_polygon_set_matches_registry(polys, conn)
+    conn.execute("DELETE FROM reg.place_source_ref WHERE external_key='dem-amami-001'")
+    with pytest.raises(common.MigrationError, match="dem-amami-001"):
+        b09._assert_polygon_set_matches_registry(polys, conn)

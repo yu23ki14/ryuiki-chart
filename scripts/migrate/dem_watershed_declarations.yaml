@@ -1,0 +1,72 @@
+# c69（scripts/c69_gsi_dem_watersheds.py --check）の機械検証が読む宣言（Issue #94、
+# docs/plans/AMAMI_WATERSHED_DEM.md §3）。形は occurrence_place_declarations.yaml と同じ
+# （name -> {expected, tolerance?, exceptions: [{id, reason}], note}）。宣言された名前の集合は
+# scripts/dem_watershed_lib.py の CHECK_NAMES と過不足なく一致すること（load_declarations が検証する）。
+#
+# 例外（exceptions）は「宣言済み差分」。検査で外れた ID がここに無ければ失敗し、ここにあるのに外れなかった
+# ID も失敗する（古い例外を残さない）。ゲートを緑にするために値や面を曲げない。
+# id は、面なら watershed_id（dem-amami-NNN）、W05 の河口なら node_id、W12 の面なら W12 の watershed_id。
+# 試算（2026-10-11、A_min=3 km²）では例外は 0 件。実測で外れたらここに1件ずつ理由つきで足す。
+
+w05_outlet_to_mouth:
+  expected: 500          # [m] 以内（最大値）。basin の面の出口から最寄りの W05 河口まで
+  exceptions: []
+  note: >
+    試算で basin 35面のすべてが 443m 以内、中央値 103m。W05 の河口は数値地図25000の河川ノードで、
+    DEM の海岸の画素とは 1 画素（8m）〜数十 m ずれる。
+
+w05_mouth_to_outlet:
+  expected: 500          # [m] 以内（最大値）。標高10m以下で周囲300mに集水面積 >= A_min の画素がある河口から最寄りの出口まで
+  tolerance: 0.10        # 範囲外に出てよい割合の上限。出た河口は exceptions にも要る
+  exceptions: []
+  note: >
+    試算で 40 河口すべてが 443m 以内、中央値 138m。
+
+land_coverage:
+  expected: 0.995        # C23 の陸のうち面に入る面積の割合の下限
+  exceptions: []
+  note: 試算 0.998（817.6 / 819.5 km²。外れ 1.9 km² は海岸線の差）。
+
+overlap_pairs:
+  expected: 0            # 面同士の重なり（面積 > 1e-10 度²）の組の数
+  exceptions: []
+  note: coverage_simplify が隣り合う面の共有境界を一緒に簡略化するので 0 になる。
+
+w12_containment:
+  expected: 0.90         # W12 の各面について、いちばん重なる DEM の面が W12 の面積に占める割合の下限
+  exceptions: []
+  note: >
+    W12 は川ごとに細かく切るので DEM の面が W12 を含む向きで見る（IoU は 0.05〜0.92 とばらつくので使わない）。
+    試算は 0.95〜1.00。
+
+outlet_on_coast:
+  expected: all          # 全面の出口が有効画素で、8近傍のどれかが海（無効）かモザイクの外
+  exceptions: []
+  note: >
+    pyflwdir の outlets='edge' は海に接する画素を出口にする。D8 なので斜めにだけ海に接する画素も出口になる
+    （dem-amami-028・037 が該当）。そのため近傍は 4 でなく 8。
+
+dropped_area_km2:
+  expected: 1.1          # [km²] 以下。捨てた面積（0.1 km² 未満の岩礁の成分＋小さすぎて残らなかった面）の合計
+  exceptions: []
+  note: 試算で岩礁 951 成分 0.96 km²＋捨てた面 7 個（各 0.01 km² 未満）。
+
+determinism:
+  expected: byte_identical   # 計算し直した geojson・jsonl がディスクのファイルとバイト一致
+  exceptions: []
+  note: 環境をまたいでも一致することは試算で確認済み（Python 3.10 / 3.13）。
+
+largest_unit_outlet:
+  expected: {lat: 28.25, lon: 129.41}   # 面積最大の面の出口（住用川の河口付近）
+  tolerance: 0.03                        # [度]
+  exceptions: []
+  note: 試算で面積最大は 96.5 km²（住用川の河口）。W12 は役勝川 44.9 km² などに分けている。
+
+unit_count:
+  expected: 71
+  tolerance: 0
+  exceptions: []
+  note: >
+    試算値（A_min=3 km²: 78 面から捨てる 7 を引いて 71。basin 35・coast_group 約 31・island 5）。
+    GSI がタイルを更新する・pyflwdir の版が変わると動く。動いたら c69 の出力を確かめてからここを直す
+    （ID は連番なので、番号が入れ替わることは宣言済み差分として一覧にする）。

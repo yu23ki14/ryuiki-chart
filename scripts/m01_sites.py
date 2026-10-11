@@ -3,7 +3,8 @@
 方針:
 - lat/lon を持つ地点のみ登録する（そらまめ君・相模原市大気局・県民参加型調査地点は
   収集データに座標が無いため sites には入れない。センサー時系列側で扱う）。
-- watershed: nlni_w12_watersheds.geojson (377単位流域ポリゴン) に対する点内判定。
+- watershed: 全地域の流域ポリゴン（regions.watershed_stems。神奈川は nlni_w12_watersheds.geojson の377面、
+  奄美は地理院10m標高から計算した gsi_dem_watersheds_amami.geojson。Issue #94）に対する点内判定。
 - zone (Ridge to Reef 1-5): ここでは書かない（NULL）。v2 の定義（地形指標による操作的区分。
   公式区分ではない。docs/ZONE_DEFINITION.md・registry/place/zone.yaml）では、座標から
   scripts/c68_gsi_dem_terrain.py が計算した data/processed/terrain_points.csv を
@@ -50,10 +51,10 @@ def geohash_encode(lat, lon, precision=9):
 
 # ---- 流域ポリゴン ----
 def load_watersheds():
-    """全地域の W12 を連結して読む（無い地域は飛ばす。W12 が覆わない点は流域 NULL）。"""
-    paths = regions.w12_paths(PROC, missing_ok=True)
+    """全地域の流域を連結して読む（無い地域は飛ばす。流域が覆わない点は流域 NULL）。"""
+    paths = regions.watershed_paths(PROC, missing_ok=True)
     if not paths:
-        raise SystemExit("W12 の geojson が1つも無い（data/processed/nlni_w12_watersheds*.geojson）")
+        raise SystemExit("流域の geojson が1つも無い（regions.watershed_stems の data/processed/*.geojson）")
     polys, props = [], []
     for path in paths:
         gj = json.load(open(path, encoding="utf-8"))

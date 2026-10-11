@@ -234,7 +234,13 @@ CREATE TABLE IF NOT EXISTS place_watershed (
   water_system_code TEXT,
   water_system_category TEXT,
   main_rivers TEXT,
-  data_year INTEGER
+  data_year INTEGER,
+  -- 地理院10m標高から計算した流域(奄美。Issue #94)だけが持つ。W12 の行は NULL。
+  -- unit_kind: basin(河口の流域)/coast_group(沿岸の小流域群)/island(小島)。
+  -- merged_share: 面積のうち、小さな斜面を併合した分の割合(0〜1)。own_drainage_km2: 出口の自前の集水面積。
+  unit_kind TEXT,
+  merged_share REAL,
+  own_drainage_km2 REAL
 );
 
 -- 分類群レジストリ(ADR-0019。taxon_id の名前空間分割・分類補完は Phase B

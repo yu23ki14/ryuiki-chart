@@ -8,7 +8,7 @@ import { Btn, nf, Spinner } from "@/components/ui";
 import { useJson } from "@/components/useJson";
 import { useRegionJson } from "@/components/useRegionJson";
 import { useRegion } from "@/components/useRegion";
-import { REGION_ALL, regionBounds, regionLabel } from "@/lib/region";
+import { REGION_ALL, REGIONS, regionBounds, regionLabel } from "@/lib/region";
 import { caveatBody } from "@/lib/registry/lookup-client";
 import { MAP_METRICS, type WatershedMetricId, type MeshMetricId } from "@/lib/registry/generated-client";
 import { MUNICIPALITY_LABEL } from "@/lib/municipality";
@@ -30,6 +30,8 @@ export function MapPage() {
   // 地域の絞り（URL の ?region=）。'all' なら初期表示は神奈川のまま（MapCanvas の既定）で、ボタンを押したときだけ
   // fitBounds で移る。地域を絞っているときは、その地域の範囲へ移って始まり、切り替えるたびに移る。
   const region = useRegion();
+  // 流域の作り方は地域で違う（神奈川は W12、奄美は標高から計算）。全体のときは両方を並べる
+  const wsRegions = REGIONS.filter((r) => region === REGION_ALL || r.id === region);
   const [jump, setJump] = React.useState<{ bounds: [[number, number], [number, number]]; nonce: number } | null>(() =>
     region === REGION_ALL ? null : { bounds: regionBounds(region), nonce: 1 },
   );
@@ -227,7 +229,8 @@ export function MapPage() {
         <div className="p-3 border-b border-line">
           <h1 className="text-[14px] font-bold">流域マップ{region !== REGION_ALL && `（${regionLabel(region)}）`}</h1>
           <p className="text-[11px] text-muted mt-0.5 leading-snug">
-            国土数値情報 W12 の単位流域（{ws.data ? `${ws.data.features.length}面・` : ""}神奈川・奄美とも1977年版）を土台に、観測地点と生物記録を重ねる。
+            {wsRegions.map((r) => `${r.label}は${r.watershedBasis}`).join("、")}
+            {ws.data ? `（${ws.data.features.length}面）` : ""}を土台に、観測地点と生物記録を重ねる。
           </p>
         </div>
 
@@ -318,8 +321,15 @@ export function MapPage() {
         <div className="p-3 border-t border-line text-[10px] text-muted leading-relaxed">
           <p className="mb-1.5">{caveatBody("organismSite")}</p>
           <p className="mb-1.5">{caveatBody("zone")}</p>
+          {wsRegions.map((r) =>
+            r.watershedCaveat ? (
+              <p key={r.id} className="mb-1.5">
+                {caveatBody(r.watershedCaveat)}
+              </p>
+            ) : null,
+          )}
           <p>
-            出典: 国土数値情報 流域界・非集水域 W12（国土数値情報利用約款）／河川 W05／土地利用細分メッシュ L03-b、
+            出典: {wsRegions.map((r) => r.watershedSource).join("／")}／河川 W05／土地利用細分メッシュ L03-b、
             環境省 公共用水域 水質測定点マスタ、GBIF・iNaturalist。
           </p>
         </div>
@@ -392,6 +402,13 @@ function Row({ k, v }: { k: string; v: React.ReactNode }) {
   );
 }
 
+/** 計算した流域（奄美）の unit_kind の呼び名。注意書き amamiWatershedDem の文言と揃える。 */
+const UNIT_KIND_LABEL: Record<string, string> = {
+  basin: "河口の流域",
+  coast_group: "沿岸の小流域群",
+  island: "小島",
+};
+
 function WatershedCard({ p }: { p: Record<string, unknown> }) {
   const num = (k: string) => (p[k] == null ? null : Number(p[k]));
   return (
@@ -399,6 +416,14 @@ function WatershedCard({ p }: { p: Record<string, unknown> }) {
       <div className="text-[13px] font-semibold">{String(p.water_system_name ?? "（水系名の推定なし）")}</div>
       <div className="text-[10px] text-muted font-mono mb-1.5">{String(p.watershed_id)}</div>
       <Row k="面積" v={`${fmt(num("area_km2"))} km²`} />
+      {typeof p.unit_kind === "string" && UNIT_KIND_LABEL[p.unit_kind] && (
+        <Row
+          k="種別"
+          v={`${UNIT_KIND_LABEL[p.unit_kind]}${
+            num("merged_share") != null ? `（併合した斜面 ${Math.round(num("merged_share")! * 100)}%）` : ""
+          }`}
+        />
+      )}
       <Row k="観測地点" v={`${nf(num("site_n") ?? 0)} 地点`} />
       <Row k="生物記録" v={`${nf(num("org_n") ?? 0)} 件`} />
       <Row k="うちレッドリスト種" v={`${nf(num("org_redlist_n") ?? 0)} 件`} />

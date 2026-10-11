@@ -74,6 +74,7 @@ const CAVEAT_KEY_ORDER = {
   effortSurvey: true,
   amamiRedList: true,
   amamiWatershedGap: true,
+  amamiWatershedDem: true,
   kasenStageDatum: true,
   kasenKikiDaily: true,
   kasenTideDatum: true,

@@ -7,7 +7,8 @@
   → 流域単位の土地利用集計が可能になる。
 
 `--region jp-46`（奄美。1次メッシュ 4229）は、bbox（regions.py）内に重心があり、かつ海水域でないセルを残す。
-流域は W12（奄美の bbox に掛かる面）の外なら NULL。流域ごとの集計（`*_by_watershed_amami`）は W12 の内側だけで作る。
+流域は regions の `watershed`（奄美は地理院10m標高から計算した流域〔c69、Issue #94〕）の外なら NULL。
+流域ごとの集計（`*_by_watershed_amami`）はその内側だけで作る。
 """
 import argparse, sys, pathlib, zipfile, tempfile, collections, csv, json, shutil
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -16,8 +17,9 @@ import shapefile
 import shapely
 from common import RAW, PROC, ROOT, register, write_jsonl, download
 from nlni_lib import (write_csv, extract_attribute_table, write_columns_csv,
-                      parse_codelist_html, GEOD, layout, read_w12)
+                      parse_codelist_html, GEOD, layout, watershed_units)
 from regions import add_region_arg
+import regions
 
 ap = argparse.ArgumentParser()
 add_region_arg(ap)
@@ -26,6 +28,7 @@ L = layout(RID)
 PREF_NAME = L["pref_name_ja"]
 CLIP_BBOX = L["clip_bbox"]          # None なら従来どおり（W12 に重心が入るセルだけ残す）
 AREA_JA = PREF_NAME if CLIP_BBOX is None else L["name_ja"]
+WS_LABEL = regions.watershed_label(RID)   # regions.py の watershed.label_ja（W12流域界／地理院10m標高から計算した流域）
 SEA_JA = "海水域"                    # コードリストの名称。奄美はこれを除く
 # 2006 年度版の土地利用種「0」（コードリスト外）は、2016 年度版に1セルも無い洋上のセル（奄美で 122,704 セル、
 # うち 2016 の陸域セルと重なるのは 0）。海として除く。神奈川（bbox で絞らない）には掛けない。
@@ -75,21 +78,11 @@ if _v.exists():
 else:
     print("  [warn] 検証用 .shp が無いため mesh_cell() の突き合わせを省略")
 
-# ---- W12 単位流域（流域IDの付与元）----
-_, _, _, w12_items = read_w12(L["w12_shp"], CLIP_BBOX)     # c30 と同じ絞り込み
-w12geoms = [g for _, _, g, _ in w12_items]
-w12ids = [f"{rc[1]}-{rc[2]}" for _, _, _, rc in w12_items]
-w12codes = [rc[1] for _, _, _, rc in w12_items]
-tree = shapely.STRtree(w12geoms)
-print(f"  W12 unit watersheds for join: {len(w12geoms)}")
-
-# 単位流域ごとの水系名（c30 の出力を利用）
-ws_name = {}
-p_by = PROC / f"{L['w12_sid']}.csv"
-if p_by.exists():
-    for r_ in csv.DictReader(open(p_by, encoding="utf-8")):
-        ws_name[r_["watershed_id"]] = (r_["water_system_name_ja_estimated"] or "",
-                                       r_["water_system_category_ja"] or "")
+# ---- 流域（流域IDの付与元。神奈川は W12 の単位流域、奄美は地理院10m標高から計算した流域。regions.REGIONS[rid]["watershed"]）----
+ws_geoms, ws_ids, ws_codes, ws_name = watershed_units(RID)
+tree = shapely.STRtree(ws_geoms)
+print(f"  unit watersheds for join ({WS_LABEL}): {len(ws_geoms)}")
+code_of = dict(zip(ws_ids, ws_codes))
 
 agg_all = []
 for yy, year in YEARS.items():
@@ -127,7 +120,7 @@ for yy, year in YEARS.items():
         for a, b in zip(qi, ti):
             assign.setdefault(int(a), int(b))              # 重複は先勝ち
         selected = sorted(assign)
-        print(f"  {year}: {len(codes)} cells -> {len(assign)} cells inside W12 watersheds")
+        print(f"  {year}: {len(codes)} cells -> {len(assign)} cells inside {WS_LABEL}")
     else:
         # bbox 内に重心があり、海水域でないセルを残す。流域は W12 の外なら NULL（assign に無い）。
         inbox = ((cx >= CLIP_BBOX[0]) & (cx <= CLIP_BBOX[2])
@@ -140,7 +133,7 @@ for yy, year in YEARS.items():
             assign.setdefault(int(cand[a]), int(b))
         selected = [int(i) for i in cand]
         print(f"  {year}: {len(codes)} cells -> in bbox {int(inbox.sum())} -> land {len(selected)} "
-              f"-> inside W12 {len(assign)} ({len(selected) - len(assign)} cells watershed=NULL)")
+              f"-> inside {WS_LABEL} {len(assign)} ({len(selected) - len(assign)} cells watershed=NULL)")
 
     # セル面積(km2): 緯度に依存するので緯度帯ごとに測地線面積を算出して使い回す
     area_cache = {}
@@ -162,7 +155,7 @@ for yy, year in YEARS.items():
         code, lu = codes[i], lus[i]
         lon0, lat0, lon1, lat1 = arr[i]
         a_km2 = cell_area(lat0, lon0, lat1, lon1)
-        wid = w12ids[wi] if wi is not None else None
+        wid = ws_ids[wi] if wi is not None else None
         nm, cat = ws_name.get(wid, ("", ""))
         props = {
             "source_id": SID,
@@ -172,7 +165,7 @@ for yy, year in YEARS.items():
             "landuse_name_ja": landuse.get(lu),
             "survey_date_raw": dates[i] or None,
             "watershed_id": wid,
-            "water_system_code_old": w12codes[wi] if wi is not None else None,
+            "water_system_code_old": code_of.get(wid),  # dem は空
             "water_system_name_ja_estimated": nm or None,
             "cell_area_km2": round(a_km2, 6),
             "centroid_lat": round((lat0 + lat1) / 2, 8),
@@ -193,9 +186,9 @@ for yy, year in YEARS.items():
         nm, cat = ws_name.get(wid, ("", ""))
         feats.append({"type": "Feature", "properties": {
             "source_id": SID,
-            "source_ref": f"L03-b-{yy}#{wid or ''}#{lu}",       # W12 の外（wid なし）は流域の部分を空に
+            "source_ref": f"L03-b-{yy}#{wid or ''}#{lu}",       # 流域の外（wid なし）は流域の部分を空に
             "watershed_id": wid,
-            "water_system_code_old": wid.split("-")[0] if wid else None,
+            "water_system_code_old": code_of.get(wid),
             "water_system_name_ja_estimated": nm or None,
             "landuse_code_raw": lu,
             "landuse_name_ja": landuse.get(lu),
@@ -225,7 +218,7 @@ for yy, year in YEARS.items():
             "source_ref": f"{PAGE}#L03-b-{yy}",
             "data_year": year,
             "watershed_id": wid,
-            "water_system_code_old": wid.split("-")[0],
+            "water_system_code_old": code_of.get(wid),
             "water_system_name_ja_estimated": nm or None,
             "landuse_code_raw": lu,
             "landuse_name_ja": landuse.get(lu),
@@ -256,7 +249,7 @@ for yy, year in YEARS.items():
                            "lon=100+int(c[2:4])+int(c[5])/8+int(c[7])/80+int(c[9])/800, セルは (lon, lat)〜(lon+1/800, lat+1/1200)。",
          "type_ja": "—", "output_column": "mesh_code / centroid_lat / centroid_lon"},
         {"column_code": "", "column_name_ja": "所属単位流域",
-         "description_ja": f"本収集で付与。セル重心が W12 流域界({PREF_NAME}, 昭和52年)のどの単位流域ポリゴン内にあるかで判定。境界上/複数該当は先勝ち。" + ("" if CLIP_BBOX is None else "W12 の外は NULL。"),
+         "description_ja": f"本収集で付与。セル重心が{WS_LABEL}のどの単位流域ポリゴン内にあるかで判定。境界上/複数該当は先勝ち。流域の外は NULL。",
          "type_ja": "文字列", "output_column": "watershed_id / water_system_code_old / water_system_name_ja_estimated"},
     ]
     write_columns_csv(SID, cols)
@@ -275,8 +268,8 @@ for yy, year in YEARS.items():
              + (f"W12流域界(神奈川)内に重心が入るセルのみ {len(rows)} 件を残した（原データ4枚合計 {len(codes)} セル）。"
                 if CLIP_BBOX is None else
                 f"{AREA_JA}の範囲（bbox {CLIP_BBOX}）内に重心があり、海水域（2006年度の「0」を含む）でないセルのみ {len(rows)} 件を残した"
-                f"（原データ{len(MESHES)}枚合計 {len(codes)} セル）。W12流域界の外のセルは watershed_id=NULL"
-                f"（W12 の内側 {sum(1 for r_ in rows if r_['watershed_id'])} 件）。")
+                f"（原データ{len(MESHES)}枚合計 {len(codes)} セル）。{WS_LABEL}の外のセルは watershed_id=NULL"
+                f"（{WS_LABEL}の内側 {sum(1 for r_ in rows if r_['watershed_id'])} 件）。")
              + 
              f"CSV/JSONL はセル単位（{len(rows)}行）、GeoJSON は単位流域×土地利用種でディゾルブした {len(feats)} 面"
              "（セル単位GeoJSONは230MB超で地図表示に耐えないため。セル矩形は mesh_code から厳密復元でき、復元式は _columns.csv に記載）。"
@@ -292,6 +285,6 @@ write_jsonl(L["l03b_by_ws_sid"], agg_all)
 register(L["l03b_by_ws_sid"], f"土地利用細分メッシュ 流域別集計（{AREA_JA} 2006/2016）",
          "国土交通省 国土数値情報ダウンロードサイト（本収集で集計）", PAGE, "gis_landuse",
          "derived", "csv+jsonl", LICENSE[2016], 1, len(agg_all),
-         "L03-b(2006/2016)の100mメッシュを W12 単位流域ID×土地利用種で件数・面積集計したもの。"
-         "面積はセル面積(測地線)の単純合計。2006年度と2016年度でコード体系が異なる点に注意"
+         f"L03-b(2006/2016)の100mメッシュを{WS_LABEL}の流域ID×土地利用種で件数・面積集計したもの。"
+         + "面積はセル面積(測地線)の単純合計。2006年度と2016年度でコード体系が異なる点に注意"
          "（幹線交通用地 9 ⇔ 道路0901/鉄道0902）。")
