@@ -297,7 +297,8 @@ describe("readRecordSet（地図用。get_records と同じ列定義）", () => 
     const g = await q({ record_set: "document_cells", q: "d2" });
     expect(g.source_id).toBeNull();
     expect(ids(g, "value")).toEqual(["5"]);
-    expect((await q({ record_set: "document_cells" })).n_total).toBe(3); // q なしの n_total は置き換え済みを除く
+    expect((await q({ record_set: "document_cells" })).n_total).toBeNull(); // 12 万行の表は全件 count しない
+    expect((await q({ record_set: "document_cells" })).rows).toHaveLength(3); // 置き換え済みは除く
     await expect(q({ record_set: "document_cells", source_id: "dams_kanagawa" })).rejects.toThrow(RecordsInputError);
     expect(recordsInputSchema.safeParse({ record_set: "document_cells" }).success).toBe(true);
   });
