@@ -47,11 +47,14 @@ import { loadDatapackage } from "./datapackage";
 import { McpInputError } from "./errors";
 import { getRecordsTool } from "./tools-records";
 import { findDatasetsTool } from "./tools-find-datasets";
+import { getWatershedsTool } from "./tools-watersheds";
 
 export interface McpContext {
   db: () => Promise<CubeDb>;
   /** `dist/datapackage.json` の読み出し口（Workers は ASSETS、ローカルは public/）。テストで差し替える。 */
   datapackage?: () => Promise<unknown | null>;
+  /** リクエストのオリジン（`https://host`）。応答に載せる公開 URL（get_watersheds の geojson_url）の組み立てに使う。無ければ相対パスを返す。 */
+  origin?: string;
   now?: Date;
 }
 
@@ -323,7 +326,7 @@ export const MCP_TOOLS: McpTool[] = [
         const scoped = { ...(placeId !== undefined ? { placeId } : {}), ...(year_from !== undefined ? { yearFrom: year_from } : {}), ...(year_to !== undefined ? { yearTo: year_to } : {}), ...(red_list_only ? { redListOnly: true } : {}) };
         const found = await speciesCatalog(db, { group: group ?? null, limit: (limit ?? 100) + 1, withNames: true, ...scoped, ...filter });
         // 流域を指定した行は、座標のある記録の件数（n_located・n_places）が grid 系列の値で流域の指定とは別物なので出さない。
-        rows = placeId !== undefined ? found.map(({ nLocated: _l, nPlaces: _p, ...rest }) => rest) : found;
+        rows = placeId !== undefined ? found.map((r) => ({ ...r, nLocated: undefined, nPlaces: undefined })) : found;
       }
       else if (kind === "watershed_years") rows = await watershedYears(db, { placeId, ...filter });
       else {
@@ -382,6 +385,7 @@ export const MCP_TOOLS: McpTool[] = [
 
   getRecordsTool(),
   findDatasetsTool(),
+  getWatershedsTool(),
 ];
 
 export { McpInputError };

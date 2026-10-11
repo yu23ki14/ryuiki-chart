@@ -168,14 +168,15 @@ Claude Desktop（`claude_desktop_config.json`。リモート HTTP は `mcp-remot
 { "mcpServers": { "ryuiki": { "command": "npx", "args": ["-y", "mcp-remote", "https://ryuiki-demo.tokyo-odh-009.workers.dev/api/mcp"] } } }
 ```
 
-### ツール（5 つ）
+### ツール（抜粋。全体は `tools/list`）
 
 | ツール | 内容 |
 | --- | --- |
 | `describe_catalog` | 測定項目・水域・ゾーン・出典の一覧（出典は取得日・更新方式つき）。最初に呼ぶ |
 | `search_registry` | 測定項目・出典・生物種を名前で検索して ID（variableId・sourceId・学名）を引く |
 | `get_observations` | ある測定項目の時系列（水域・地点・ゾーン平均、年/年度/月/日） |
-| `get_occurrences` | 出現記録（GBIF・iNaturalist）の種一覧・年別/月別件数・流域別件数 |
+| `get_occurrences` | 出現記録（GBIF・iNaturalist）の種一覧・年別/月別件数・流域別件数。種一覧は流域（`placeId`）・期間（`year_from`/`year_to`）・赤リスト（`red_list_only`）で絞れ、赤リストのカテゴリと出所を載せる |
+| `get_watersheds` | 流域の属性（名前・面積・unit_kind・主な河川・河口・重心）と境界ポリゴン（`place_ids` 指定時のみ）。全面の GeoJSON の URL（`geojson_url`）つき |
 | `export_dataset` | 配布用 Parquet の目録（パスと sha256 のみ。ファイル本体は返さない） |
 
 応答はすべて封筒（rows・coverage・provenance・caveats・excluded・cite_as）。caveats と provenance は利用者に伝えてください。

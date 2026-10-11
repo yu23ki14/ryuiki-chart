@@ -6,10 +6,10 @@ import { listTools } from "./server";
  * （`EXPLORE_ENABLED` とは独立に成立する）。ツールを足す・入力を広げる変更は、このスナップショットの差分として
  * レビューに出る。
  */
-describe("MCP ツール一覧（第1段 5 本）", () => {
-  it("名前は 5 本で、SQL・表を直接触るツールが無い", () => {
+describe("MCP ツール一覧", () => {
+  it("名前は固定で、SQL・表を直接触るツールが無い", () => {
     const names = listTools().map((t) => t.name);
-    expect(names).toEqual(["describe_catalog", "search_registry", "get_observations", "get_occurrences", "get_edna", "export_dataset", "get_records", "find_datasets"]);
+    expect(names).toEqual(["describe_catalog", "search_registry", "get_observations", "get_occurrences", "get_edna", "export_dataset", "get_records", "find_datasets", "get_watersheds"]);
     expect(names.join(",")).not.toMatch(/sql|query|table|schema/);
   });
 
