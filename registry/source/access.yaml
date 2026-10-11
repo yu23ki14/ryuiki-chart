@@ -184,9 +184,12 @@ sources:
   nlni_w05_river_nodes_amami: {reason: file_only, basis: "data/processed に nlni_w05_river_nodes_amami.csv がある（D1 の表なし）"}
   nlni_w12_watersheds_amami: {reason: file_only, basis: "data/processed に nlni_w12_watersheds_amami.csv がある（D1 の表なし。Issue #94 で奄美の place・割り当てからは外した。c69 の比較検査の入力に残す L1）"}
   gsi_dem_watersheds_amami: {reason: file_only, basis: "data/processed に gsi_dem_watersheds_amami.geojson/.jsonl がある（D1 の表なし。地理院10m標高から計算した奄美の流域。registry の place・place_watershed と watersheds.geojson の元になる。Issue #94）"}
-  nlni_a10_natparks_amami: {reason: file_only, basis: "data/processed に nlni_a10_natparks_amami.csv がある（D1 の表なし）"}
-  nlni_a15_wildlife_amami: {reason: file_only, basis: "data/processed に nlni_a15_wildlife_amami.csv がある（D1 の表なし）"}
-  nlni_a45_forest_amami: {reason: file_only, basis: "data/processed に nlni_a45_forest_amami.csv がある（D1 の表なし）"}
+  # Issue #96: 奄美の A10（61）・A15（20、2009年版。19件は版の時点の指定期間が2018年までに満了）・A45（940、2018年度版）を
+  # protected_areas に投入（geometry_geojson 付き）。奄美のみ。神奈川は A10・A15・A45 を取り込んでいない
+  # （神奈川の区域は県の別出典 kanagawa_natural_parks 等）。records と basis は併記できないのでここに書く。
+  nlni_a10_natparks_amami: {records: [protected_areas]}
+  nlni_a15_wildlife_amami: {records: [protected_areas]}
+  nlni_a45_forest_amami: {records: [protected_areas]}
   nlni_l03b_landuse_2016_amami: {reason: file_only, basis: "data/processed に nlni_l03b_landuse_2016_amami.csv がある（D1 の表なし）"}
   nlni_l03b_landuse_2006_amami: {reason: file_only, basis: "data/processed に nlni_l03b_landuse_2006_amami.csv がある（D1 の表なし）"}
   gsi_elevation_grid_amami: {reason: file_only, basis: "data/processed に gsi_elevation_grid_amami.csv がある（D1 の表なし）"}

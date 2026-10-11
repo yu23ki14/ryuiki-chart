@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS protected_areas (
   zone INTEGER,                   -- 未使用。Ridge to Reef ゾーンは標高と海岸線距離が要る
                                   -- (m01_sites.py 参照)。区域データには標高が無いので埋めていない
   note_ja TEXT,
-  source_id TEXT, source_ref TEXT
+  source_id TEXT, source_ref TEXT,
+  geometry_geojson TEXT           -- 区域の形(6桁、単純化なし)。奄美の A10・A15・A45 だけ。神奈川の既存行は NULL
 );
 CREATE INDEX IF NOT EXISTS ix_pa_cat ON protected_areas(category_code, municipality_ja);
 
