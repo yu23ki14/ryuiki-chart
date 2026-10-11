@@ -69,7 +69,7 @@ describe.skipIf(!haveRedListTable())("実データ: speciesCatalog の流域・�
     const amami = await speciesCatalog(db, { yearFrom: 2022, redListOnly: true, region: "jp-46", limit: 5000 });
     expect(amami.flatMap((r) => r.redList!).every((l) => l.regionId === "jp-46")).toBe(true);
     expect(new Set(all.flatMap((r) => r.redList!.map((l) => l.regionId)))).toEqual(new Set(["jp-14", "jp-46"]));
-  });
+  }, 60_000); // 全地域の赤リスト種を集計するので重い（全体を回すと既定の 5 秒を超えうる）
 
   it("year_to で打ち切れる（流域なしの期間だけの指定）", async () => {
     const upto = await speciesCatalog(db, { sourceIds: ["inaturalist_amami"], yearFrom: 2022, yearTo: 2022, limit: 5000 });
