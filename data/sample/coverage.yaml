@@ -470,7 +470,12 @@ document_closure:
     - kagoshima_habu_kaiage_h28r7
     - moe_mongoose_catch_h12r4
     - moe_mongoose_eradication_declaration_2024
-  min_documents: 14
+    - dpri_amami_gouu_sokuho_2011
+    - kagoshima_univ_amami_gouu_2012
+    - kagoshima_suido_r5_joryo
+    - kagoshima_suido_r5_kani
+    - kagoshima_amami_ryuiki_chisui_10p_2023
+  min_documents: 19
 
 # ---------------------------------------------------------------------------
 # 丸ごと入れる ryuiki.sqlite のテーブル（十分小さい・v1/v2 が読む）。

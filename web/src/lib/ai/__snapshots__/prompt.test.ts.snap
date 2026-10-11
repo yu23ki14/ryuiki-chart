@@ -25,6 +25,7 @@ exports[`buildSystemPrompt > pageContext 無し 1`] = `
 - notes（行政文書DB）: 表に付随する注記。時系列比較を阻害する注記のフラグを含む
 - protected_areas（流域DB）: 保護区・緑地・保存樹木の指定台帳。自然公園／特別緑地保全地区／近郊緑地保全区域／歴史的風土保存地区／風致地区／都市公園／保存樹木を category_code で束ねている
 - vegetation_polygons（流域DB）: 現存植生図2024（環境省 いきもの地図）の神奈川県相当範囲と奄美大島。凡例・植生自然度つき。形状は表示用に簡略化してあり、面積は緯度経度からの近似
+- hazard_zones（流域DB）: 土砂災害警戒区域・特別警戒区域（鹿児島県。奄美5市町村の指定済みポリゴン）。現象（土石流／急傾斜地の崩壊／地滑り）・区分（警戒／特別警戒）・公示日つき。特別警戒区域は警戒区域の内側にあるので area_m2 を区分をまたいで足さない。公示日の原文の誤記35行は designated_on が NULL（designated_on_raw に原文）
 - mammal_mesh（流域DB）: 中大型哺乳類（タヌキ／キツネ／アナグマ）の3次メッシュ分布。1メッシュ×1調査年次=1行。元の列名は survey_label に残してある
 - wildlife_sightings（流域DB）: ツキノワグマの出没・目撃記録。頭数・状況（目撃／痕跡／捕殺）・区分（人里／山中）つき。原本に座標が無いため lat/lon は空
 - edna_sites（流域DB）: 神奈川県 環境DNA（eDNA）の採水地点（ファイル×調査地点列）。lat/lon は推定位置で、根拠 coord_source と誤差 coordinate_uncertainty_m つき（公開データに座標は無い）

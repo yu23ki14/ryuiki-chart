@@ -173,6 +173,40 @@ export const vegetationPolygons = sqliteTable("vegetation_polygons", {
 ]);
 
 /**
+ * 土砂災害警戒区域・特別警戒区域（鹿児島県、BODIK 460001_kgod016。奄美5市町村の指定済みポリゴン）。
+ * 特別警戒区域は警戒区域の内側にあり、`area_m2`（ポリゴンごとの平面面積）を区分をまたいで足すと二重に数える。
+ * 箇所番号は分割された区域で重複するので主キーは `zone_id`（`<箇所番号>:<r|y>:<連番>`）。
+ * `designated_on` は公示日が読めた行だけ（原文の誤記 35 行は NULL で、`designated_on_raw` に原文）。
+ */
+export const hazardZones = sqliteTable("hazard_zones", {
+	zoneId: text("zone_id").primaryKey(),
+	siteCode: text("site_code"),
+	siteNameJa: text("site_name_ja"),
+	phenomenonCode: text("phenomenon_code"),
+	phenomenonJa: text("phenomenon_ja"),
+	zoneKindCode: text("zone_kind_code"),
+	zoneKindJa: text("zone_kind_ja"),
+	municipalityJa: text("municipality_ja"),
+	localityJa: text("locality_ja"),
+	riverNameJa: text("river_name_ja"),
+	officeJa: text("office_ja"),
+	designatedOn: text("designated_on"),
+	designatedOnRaw: text("designated_on_raw"),
+	noticeNoRaw: text("notice_no_raw"),
+	areaM2: real("area_m2"),
+	centroidLat: real("centroid_lat"),
+	centroidLon: real("centroid_lon"),
+	watershed: text(),
+	geometryGeojson: text("geometry_geojson"),
+	sourceId: text("source_id"),
+	sourceRef: text("source_ref"),
+},
+(table) => [
+	// get_records: source_id = ? で絞って主キー順に読む（keyset ページング）
+	index("ix_hz_source").on(table.sourceId, table.zoneId),
+]);
+
+/**
  * 中大型哺乳類の3次メッシュ分布（タヌキ / キツネ / アナグマ）。
  * 元データは年別の確認フラグが横に並ぶワイド形式で、1メッシュ×1調査年次=1行に展開してある。
  * `survey_label` に元の列名を残してある（第6回=dai6kai のように年を持たない列があるため）。

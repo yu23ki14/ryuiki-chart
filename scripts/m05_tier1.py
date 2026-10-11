@@ -137,6 +137,18 @@ def load_wildlife(con):
     undated = sum(1 for r in rows if not text(r.get("observed_on")))
     return f"wildlife_sightings: {len(out)} 行 (日付が確定できなかった行 {undated})"
 
+def _assert_no_id_collision(con, table, id_col, src, ids, label):
+    """他の出典の行と主キーが衝突したら止める（INSERT OR REPLACE が黙って上書きするため。入れる前に調べる）。"""
+    ids = sorted(set(ids))
+    dup = set()
+    for i in range(0, len(ids), 500):
+        chunk = ids[i:i + 500]
+        marks = ",".join("?" for _ in chunk)
+        dup.update(x for (x,) in con.execute(
+            f"SELECT {id_col} FROM {table} WHERE source_id != ? AND {id_col} IN ({marks})", (src, *chunk)))
+    if dup:
+        raise SystemExit(f"{src}: {table}.{id_col} が{label}の行と衝突している（{len(dup)} 件、例: {sorted(dup)[:3]}）")
+
 def load_vegetation(con, ws, rid=regions.DEFAULT_REGION):
     """現存植生図2024 (c80_biodic_ikimonomap.py)。地域ごとに呼ぶ。
 
@@ -147,17 +159,7 @@ def load_vegetation(con, ws, rid=regions.DEFAULT_REGION):
     if rows is None:
         return None
     wipe(con, "vegetation_polygons", [src])
-    ids = sorted({r["feature_id"] for r in rows})   # 同一出典内の重複は INSERT OR REPLACE が従来どおり吸収する
-    dup = set()
-    for i in range(0, len(ids), 500):
-        chunk = ids[i:i + 500]
-        marks = ",".join("?" for _ in chunk)
-        dup.update(x for (x,) in con.execute(
-            f"SELECT feature_id FROM vegetation_polygons WHERE source_id != ? AND feature_id IN ({marks})",
-            (src, *chunk)))
-    if dup:
-        raise SystemExit(f"{src}: vegetation_polygons.feature_id が他の地域の行と衝突している"
-                         f"（{len(dup)} 件、例: {sorted(dup)[:3]}）")
+    _assert_no_id_collision(con, "vegetation_polygons", "feature_id", src, [r["feature_id"] for r in rows], "他の地域")
     out = []
     for r in rows:
         lat, lon = num(r.get("centroid_lat")), num(r.get("centroid_lon"))
@@ -177,6 +179,44 @@ def load_vegetation(con, ws, rid=regions.DEFAULT_REGION):
            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", out)
     inws = sum(1 for o in out if o[11])
     return f"vegetation_polygons[{src}]: {len(out)} 行 (流域が引けた {inws})"
+
+def load_hazard_zones(con, ws, rid="jp-46"):
+    """土砂災害警戒区域・特別警戒区域 (c103b_a33_hazard_zones.py)。
+
+    zone_id は表の主キー。他の出典の行と衝突すると INSERT OR REPLACE が黙って上書きするので、衝突したら止める。
+    流域は代表点が W12 に入った行だけ（海岸近くは W12 が覆っていないので NULL が残る）。"""
+    src = regions.name("bodik_kagoshima_dosha", rid)
+    rows = read_csv(src)
+    if rows is None:
+        return None
+    wipe(con, "hazard_zones", [src])
+    ids = [r["zone_id"] for r in rows]
+    if len(set(ids)) != len(ids):
+        raise SystemExit(f"{src}: zone_id が出典の中で重複している")
+    _assert_no_id_collision(con, "hazard_zones", "zone_id", src, ids, "他の出典")
+    bad = sorted({r["source_id"] for r in rows} - {src})
+    if bad:
+        raise SystemExit(f"{src}: CSV の source_id が {bad} （期待 {src}）")
+    out = []
+    for r in rows:
+        lat, lon = num(r.get("centroid_lat")), num(r.get("centroid_lon"))
+        out.append((
+            r["zone_id"], text(r.get("site_code")), text(r.get("site_name_ja")),
+            text(r.get("phenomenon_code")), text(r.get("phenomenon_ja")),
+            text(r.get("zone_kind_code")), text(r.get("zone_kind_ja")),
+            text(r.get("municipality_ja")), text(r.get("locality_ja")), text(r.get("river_name_ja")),
+            text(r.get("office_ja")), text(r.get("designated_on")), text(r.get("designated_on_raw")),
+            text(r.get("notice_no_raw")), num(r.get("area_m2")), lat, lon, ws.find(lon, lat),
+            text(r.get("geometry_geojson")), src, text(r.get("source_ref")),
+        ))
+    con.executemany(
+        """INSERT OR REPLACE INTO hazard_zones
+           (zone_id,site_code,site_name_ja,phenomenon_code,phenomenon_ja,zone_kind_code,zone_kind_ja,
+            municipality_ja,locality_ja,river_name_ja,office_ja,designated_on,designated_on_raw,notice_no_raw,
+            area_m2,centroid_lat,centroid_lon,watershed,geometry_geojson,source_id,source_ref)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", out)
+    inws = sum(1 for o in out if o[17])
+    return f"hazard_zones[{src}]: {len(out)} 行 (流域が引けた {inws})"
 
 def load_mammal_mesh(con):
     """中大型哺乳類3種のメッシュ分布 (c80_biodic_ikimonomap.py)。"""
@@ -351,7 +391,46 @@ def load_measurements_csv(con, name, source_id, site_key, variable_col="variable
 
 # ------------------------------------------------------------------ #
 
-def main():
+def build_jobs(con, ws):
+    """[(キー, ラベル, 関数)]。キーは --only で指す名前（植生は 'vegetation' で全地域、'vegetation:<rid>' で1地域）。"""
+    def csv_job(key, label, src, site_key):
+        return (key, label, lambda: load_measurements_csv(con, src, src, site_key=site_key))
+    return [
+        ("protected_areas", "保護区・緑地台帳",      lambda: load_protected_areas(con, ws)),
+        ("wildlife",        "ツキノワグマ出没記録",  lambda: load_wildlife(con)),
+        *[(f"vegetation:{rid}", f"現存植生図2024 ({rid})", lambda rid=rid: load_vegetation(con, ws, rid))
+          for rid in REGIONS],
+        ("hazard_zones",    "土砂災害警戒区域 (奄美)", lambda: load_hazard_zones(con, ws)),
+        ("mammal_mesh",     "哺乳類メッシュ分布",    lambda: load_mammal_mesh(con)),
+        ("river_segments",  "相模川水系 流路",       lambda: load_river_segments(con)),
+        ("hiratsuka_air",   "平塚市 大気(日別)",     lambda: load_hiratsuka_air(con)),
+        csv_job("atsugi", "厚木市 相模川水質", "atsugi_river_water_quality",
+                lambda r: text(r.get("site_name_ja"))),
+        ("yokohama",        "横浜市 河川水位(日別)", lambda: load_yokohama_waterlevel(con)),
+        # 表4 由来の県全体の集計値には観測井戸が無いので、市町名か「県全体」を系列キーにする
+        csv_job("jiban", "神奈川県 地盤沈下", "kanagawa_jiban_chinka",
+                lambda r: text(r.get("well_id")) or text(r.get("municipality_ja")) or "県全体"),
+    ]
+
+def select_jobs(jobs, only):
+    """--only の指定（キーかラベル。'vegetation' は 'vegetation:<rid>' 全部）に合うジョブだけ返す。
+    指定が無ければ全部。どれにも合わない指定があれば止める。"""
+    if not only:
+        return jobs
+    picked = []
+    for name in only:
+        hit = [j for j in jobs if name in (j[0], j[1]) or j[0].startswith(name + ":")]
+        if not hit:
+            raise SystemExit(f"--only {name!r} に合うジョブが無い（キー: {', '.join(j[0] for j in jobs)}）")
+        picked += [j for j in hit if j not in picked]
+    return [j for j in jobs if j in picked]
+
+def main(argv=None):
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--only", action="append", metavar="KEY",
+                    help="指定したジョブだけ回す（キーかラベル。繰り返し可。例: --only hazard_zones）。既定は全部")
+    a = ap.parse_args(argv)
     con = appdb()
     con.execute("PRAGMA busy_timeout = 30000")
     ddl = (ROOT / "scripts/schema_tier1.sql").read_text(encoding="utf-8")
@@ -360,26 +439,8 @@ def main():
 
     ws = Watersheds()
     done, skipped = [], []
-
-    jobs = [
-        ("保護区・緑地台帳",      lambda: load_protected_areas(con, ws)),
-        ("ツキノワグマ出没記録",  lambda: load_wildlife(con)),
-        ("哺乳類メッシュ分布",    lambda: load_mammal_mesh(con)),
-        ("相模川水系 流路",       lambda: load_river_segments(con)),
-        ("平塚市 大気(日別)",     lambda: load_hiratsuka_air(con)),
-        ("厚木市 相模川水質",     lambda: load_measurements_csv(
-            con, "atsugi_river_water_quality", "atsugi_river_water_quality",
-            site_key=lambda r: text(r.get("site_name_ja")))),
-        ("横浜市 河川水位(日別)", lambda: load_yokohama_waterlevel(con)),
-        # 表4 由来の県全体の集計値には観測井戸が無いので、市町名か「県全体」を系列キーにする
-        ("神奈川県 地盤沈下",     lambda: load_measurements_csv(
-            con, "kanagawa_jiban_chinka", "kanagawa_jiban_chinka",
-            site_key=lambda r: (text(r.get("well_id")) or text(r.get("municipality_ja"))
-                                or "県全体"))),
-    ]
-    for k, rid in enumerate(REGIONS):
-        jobs.insert(2 + k, (f"現存植生図2024 ({rid})", lambda rid=rid: load_vegetation(con, ws, rid)))
-    for label, fn in jobs:
+    jobs = select_jobs(build_jobs(con, ws), a.only)
+    for _key, label, fn in jobs:
         msg = fn()
         if msg is None:
             skipped.append(label)

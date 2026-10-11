@@ -178,6 +178,16 @@ describe("queryRecords", () => {
     await expect(q({ source_id: "dams_kanagawa", id: "x", include_geometry: true })).rejects.toThrow(RecordsInputError);
   });
 
+  it("hazard_zones: 一覧にジオメトリは無く、zone_id 指定の 1 件だけ include_geometry で返す", async () => {
+    put("hazard_zones", "kyu527-0094-01:y:1", "急・長浜１", "bodik_kagoshima_dosha_amami");
+    put("hazard_zones", "kyu527-0094-01:y:2", "急・長浜１", "bodik_kagoshima_dosha_amami");
+    const list = await q({ source_id: "bodik_kagoshima_dosha_amami" });
+    expect(list.rows).toHaveLength(2);
+    for (const row of list.rows) expect(row).not.toHaveProperty("geometry_geojson");
+    const one = await q({ source_id: "bodik_kagoshima_dosha_amami", id: "kyu527-0094-01:y:2", include_geometry: true });
+    expect(one.rows[0].geometry_geojson).toEqual({ type: "Polygon", coordinates: [] });
+  });
+
   it("vegetation を limit=500 で引いても geometry を含まず 500KB 以内", async () => {
     const ins = raw.prepare("INSERT INTO vegetation_polygons (feature_id, legend_name_ja, source_id, geometry_geojson) VALUES (?,?,?,?)");
     const big = JSON.stringify({ type: "Polygon", coordinates: [Array.from({ length: 400 }, (_, i) => [139 + i / 1000, 35 + i / 1000])] });

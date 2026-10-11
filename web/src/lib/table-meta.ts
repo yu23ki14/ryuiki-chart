@@ -37,7 +37,7 @@ export const TABLE_ORIGIN: Record<string, string> = {
   // Tier 1 追加ソース（docs/UNDATAFIED_TIERS.md）。原本は ryuiki.sqlite。
   // mammal_mesh / wildlife_sightings は画面・API の読み手が無い（/api/nature は Issue #61 で撤去）。
   // AI の run_sql / describe_schema 用の台帳表として D1 に残している
-  protected_areas: "main", vegetation_polygons: "main", mammal_mesh: "main",
+  protected_areas: "main", vegetation_polygons: "main", hazard_zones: "main", mammal_mesh: "main",
   wildlife_sightings: "main", river_segments: "main",
   // 神奈川県 eDNA（scripts/m07_kanagawa_edna.py）。検出も不検出も。MCP/AI の get_edna と run_sql 用の台帳表
   edna_sites: "main", edna_reads: "main",
@@ -74,6 +74,10 @@ export const TABLE_META: Record<string, string> = {
   vegetation_polygons:
     "現存植生図2024（環境省 いきもの地図）の神奈川県相当範囲と奄美大島。凡例・植生自然度つき。" +
     "形状は表示用に簡略化してあり、面積は緯度経度からの近似",
+  hazard_zones:
+    "土砂災害警戒区域・特別警戒区域（鹿児島県。奄美5市町村の指定済みポリゴン）。現象（土石流／急傾斜地の崩壊／地滑り）・" +
+    "区分（警戒／特別警戒）・公示日つき。特別警戒区域は警戒区域の内側にあるので area_m2 を区分をまたいで足さない。" +
+    "公示日の原文の誤記35行は designated_on が NULL（designated_on_raw に原文）",
   mammal_mesh:
     "中大型哺乳類（タヌキ／キツネ／アナグマ）の3次メッシュ分布。1メッシュ×1調査年次=1行。" +
     "元の列名は survey_label に残してある",
