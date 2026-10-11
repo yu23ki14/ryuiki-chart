@@ -158,6 +158,9 @@ DwC-Aから除外するようになった（`--include-noncommercial`で無効�
 | amami_tourism_plans_amami | 奄美群島エコツーリズム推進全体構想・奄美大島持続的観光マスタープラン | 奄美群島エコツーリズム推進協議会・鹿児島県 | 2（文書） | 0 | ライセンス表記なし（題名・URL・ページ数・sha256 のみ掲載。本文は転載しない） | 同上（doc_id=amami_ecotourism_zentai_2017・amami_sustainable_tourism_mp_2016）。PDF は再配布しない | https://kyushu.env.go.jp/okinawa/amami-okinawa/plans/ecotourism/index.html | 含めない |
 | dpri_gouu2010_amami | 京都大学防災研究所 2010年奄美豪雨の調査速報（雨量・被害） | 京都大学防災研究所（自然災害研究協議会災害調査団） | 12 | 0 | ライセンス表記なし（事実（数値）のみ抽出し出典を明記。原本の PDF は再配布しない） | 速報の本文にある雨量・被害の数値だけを cells に入れた（doc_id=dpri_amami_gouu_sokuho_2011）。PDF は再配布しない。転載を禁じる記載は確認できていない（規約ページは未確認） | https://www.dpri.kyoto-u.ac.jp/web_j/contents/event_text/20110221.pdf | 含めない |
 | kagoshima_univ_gouu2010_amami | 鹿児島大学 2010年奄美豪雨災害の総合的調査研究報告書（雨量・被害） | 鹿児島大学奄美豪雨災害調査委員会 | 94 | 0 | ライセンス表記なし（事実（数値）のみ抽出し出典を明記。原本の PDF は再配布しない） | 報告書の本文・被害状況（画像）・表-2 にある雨量・被害の数値だけを cells に入れた（doc_id=kagoshima_univ_amami_gouu_2012）。PDF は再配布しない | https://bousai.kagoshima-u.ac.jp/wpo/wp-content/uploads/2024/03/2010_gouu.pdf | 含めない |
+| bodik_kagoshima_dosha_amami | 鹿児島県 土砂災害警戒区域・特別警戒区域（A33、奄美5市町村、2026-02-10 現在） | 鹿児島県（BODIK） | 6,038 | 1 | CC BY 4.0 | ポリゴンを `hazard_zones` に入れた。座標は加工していない（EPSG:6669→4326 の変換のみ）。公示日の誤記35件（`令和2月3月13日`）は直さず NULL、原文は raw に残す | https://data.bodik.jp/dataset/460001_kgod016 | 含めない（`hazard_zones` はサンプルの対象外） |
+| kagoshima_suido_amami | 鹿児島県 令和5年度水道統計（奄美、上水道・簡易水道の取水の種別） | 鹿児島県 | 48 | 0 | 鹿児島県ホームページ（無断転載・改変不可）。事実（数値）のみ抽出し出典を明記 | 事実の数値のみ（doc_id=kagoshima_suido_r5_joryo・kagoshima_suido_r5_kani）。PDF は再配布しない。上水道と簡易水道で単位が違う | https://www.pref.kagoshima.jp/ | 含めない |
+| kagoshima_dam_capacity_amami | 鹿児島県 大和・大川ダムの有効貯水容量（流域治水プロジェクト10頁版） | 鹿児島県 | 9 | 0 | 鹿児島県ホームページ（無断転載・改変不可）。事実（数値）のみ抽出し出典を明記 | 事実の数値のみ（doc_id=kagoshima_amami_ryuiki_chisui_10p_2023）。BODIK 版（4頁）には容量が無いので県サイトの10頁版を使う。PDF は再配布しない | https://www.pref.kagoshima.jp/ | 含めない |
 
 ## 4. 特に注意すべき事項（個別記載）
 
@@ -322,6 +325,12 @@ PDF は `data/raw/kagoshima_redlist_2014/`（gitignore 済み）に置き、再�
 京大と鹿大の食い違い（住用の総雨量 894／891／893 mm、全半壊 485／489／565 棟、床上・床下浸水の件数）は**どれにも寄せず両論併記**にした
 （別 doc_id の別セル。出典の時点・資料が違い、どれが確定値かは確認できていない）。単発の事象なので `fiscal_year` は全部 NULL で、`/documents` の系列には出ない。
 鹿大 p17 の被害状況（県 2010-11-26 現在）は画像を目で読んだもの（`claude(vision)`）で、人の見直しが済んでいない。気象庁（名瀬・古仁屋）の値とは突き合わせて一致を確かめた（新しい出典は作らない）。
+
+**A33 土砂災害警戒区域・水道の水源種別・ダム容量（Step 3c）**: A33（`bodik_kagoshima_dosha_amami`、6,038 ポリゴン）は BODIK の CC BY 4.0（`redistributable=1`）で、`hazard_zones` に入れた。
+座標は変換（EPSG:6669→4326）だけで加工せず、無効ジオメトリは `make_valid` で直した（直した件数は c103b の出力に残る）。公示日の誤記35件（`令和2月3月13日`）は推定で直さず `designated_on`＝NULL、raw は原文のまま。
+特別警戒区域は警戒区域の内側にあるので、**面積を足さない**（`zone_kind` を分けて使う）。指定前の基礎調査完了（`未指定/`）の5行は入れていない。
+水道（`kagoshima_suido_amami`、48セル）とダム容量（`kagoshima_dam_capacity_amami`、9セル）は鹿児島県サイトの文書から**事実の数値だけ**を cells にした（`redistributable=0`、PDF は再配布しない）。
+上水道と簡易水道は単位が違う。ダム容量は県の流域治水10頁版にあり、既存の BODIK 版（4頁、CC BY 4.0）には無い。単年の表なので `fiscal_year` は NULL で、`/documents` の系列には出ない。
 
 **希少種の位置**: GBIF・iNaturalist 等の公開元が丸めた座標を**そのまま使い**、こちらで細かく起こさない。
 ADR-0028 は「こちらから座標を丸めない（一般化しない）」決定であり、「公開元が丸めたものを細かく復元する」ことは別の話で、

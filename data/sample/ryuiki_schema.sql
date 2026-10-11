@@ -43,6 +43,26 @@ CREATE TABLE external_resource_format (
   resource_key TEXT NOT NULL,
   PRIMARY KEY (dataset_key, format_norm, resource_key)
 );
+CREATE TABLE hazard_zones (
+  zone_id TEXT PRIMARY KEY,
+  site_code TEXT,                 -- 箇所番号(keiryunum / kashonum)
+  site_name_ja TEXT,
+  phenomenon_code TEXT,           -- debris_flow / steep_slope / landslide
+  phenomenon_ja TEXT,             -- 原文(土石流 / 急傾斜地の崩壊 / 地滑り)
+  zone_kind_code TEXT,            -- warning / special_warning
+  zone_kind_ja TEXT,              -- 原文(警戒区域 / 特別警戒区域)
+  municipality_ja TEXT,
+  locality_ja TEXT,
+  river_name_ja TEXT,             -- 水系名|河川名(土石流のみ。片方だけの行もある)
+  office_ja TEXT,
+  designated_on TEXT, designated_on_raw TEXT,   -- 公示日(ISO / 原文)。誤記の35行は raw だけ
+  notice_no_raw TEXT,
+  area_m2 REAL,
+  centroid_lat REAL, centroid_lon REAL,         -- representative_point(必ずポリゴンの内側)
+  watershed TEXT,                 -- 代表点が W12 に入った行だけ
+  geometry_geojson TEXT,          -- 6桁、単純化なし
+  source_id TEXT, source_ref TEXT -- source_ref: '<shp 名>#<レコード番号(0始まり)>'
+);
 CREATE TABLE mammal_mesh (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   mesh_code TEXT, species TEXT, species_ja TEXT,

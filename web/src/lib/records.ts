@@ -118,6 +118,17 @@ export const RECORD_TABLES = {
     ],
     geometry: "geometry_geojson",
   },
+  hazard_zones: {
+    table: RECORD_SET_TABLES.hazard_zones,
+    pk: "zone_id",
+    search: ["site_name_ja", "locality_ja"],
+    cols: [
+      "zone_id", "site_code", "site_name_ja", "phenomenon_code", "phenomenon_ja", "zone_kind_code", "zone_kind_ja",
+      "municipality_ja", "locality_ja", "river_name_ja", "office_ja", "designated_on", "designated_on_raw", "notice_no_raw",
+      "area_m2", "centroid_lat", "centroid_lon", "watershed", "source_id", "source_ref",
+    ],
+    geometry: "geometry_geojson",
+  },
   river_segments: {
     table: RECORD_SET_TABLES.river_segments,
     pk: "feature_id",
@@ -199,7 +210,7 @@ export function recordSetsOf(sourceId: string): readonly string[] {
 /** MCP・AI 共通の入力（z.tuple は使わない）。出典と表の組み合わせの検査は `queryRecords` が行う。 */
 export const recordsInputSchema = z.object({
   source_id: z.enum(RECORD_SOURCE_IDS).optional().describe("出典（documents・document_notes 以外は必須。使える出典と record_set の組はツールの説明にある）"),
-  record_set: z.enum(RECORD_SET_NAMES).optional().describe("記録の集合（sites・protected_areas・vegetation・river_segments・mammal_mesh・sightings・assessments・documents・document_notes）。出典に集合が複数あるときだけ必須（1つなら省略可）。documents・document_notes は出典に紐付かないので source_id なしでこれだけ指定する"),
+  record_set: z.enum(RECORD_SET_NAMES).optional().describe("記録の集合（sites・protected_areas・vegetation・hazard_zones・river_segments・mammal_mesh・sightings・assessments・documents・document_notes）。出典に集合が複数あるときだけ必須（1つなら省略可）。documents・document_notes は出典に紐付かないので source_id なしでこれだけ指定する"),
   id: idText("主キーの完全一致（1 件取り）").optional(),
   q: likeText("表ごとの検索列（名称・和名・学名など）の部分一致").optional(),
   include_geometry: z

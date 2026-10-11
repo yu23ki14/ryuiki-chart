@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-10-11T03:13:14+00:00",
+  "generated_at": "2026-10-11T04:52:12+00:00",
   "generated_by": "scripts/s01_build_sample.py",
   "source_files": {
-    "data/db/ryuiki.sqlite": "70072133771b0b4c6a6fb286d4e30081f5d9bff8000fb9cf7efd74e30dc241fe",
-    "data/db/cells.sqlite": "2e04f1bdf5ff6ed77280a5848b9d91b2e8f8d063ed2311c9c07094c429ce0c95",
+    "data/db/ryuiki.sqlite": "eb91e04299c92a3834bdea530a73cef4aeeec0f1ec373f9d81bce85582636053",
+    "data/db/cells.sqlite": "03c4e37ef21cebb2784d2dd53232e54fbbda688a3737dc6dc38d309a04d5d5a4",
     "data/processed/nlni_w12_watersheds.geojson": "0fdb4360f1a1d0f8473a0d5b9b9a16f1cc42420312f654781a5dfd66b0aa56f7",
     "data/processed/nlni_w12_watersheds_amami.geojson": "f3fa59a0051f772116167763f1f36b023099c82b82fb5dd44b7fbeb10951c75d",
     "data/processed/nlni_w12_watersheds.jsonl": "901924abd35592a6a1a570864ed6b1843755070490ea39cc16f6a3114a5c492d",
@@ -16,9 +16,9 @@
     "data/processed/terrain_points.csv": "100eb55e46da8bac668e5461b2d5da4293aca539b4cb4bf1fb02993105252d1f"
   },
   "row_counts": {
-    "cells.cells": 2332,
-    "cells.documents": 121,
-    "cells.notes": 263,
+    "cells.cells": 2389,
+    "cells.documents": 124,
+    "cells.notes": 270,
     "cells.vocab_areas": 408,
     "cells.vocab_eras": 143,
     "cells.vocab_indicators": 236,
@@ -27,6 +27,7 @@
     "external_dataset": 7,
     "external_resource": 7,
     "external_resource_format": 7,
+    "hazard_zones": 1,
     "mammal_mesh": 1,
     "measurements": 40292,
     "organism_records": 3296,
@@ -37,7 +38,7 @@
     "river_segments": 1,
     "sensor_timeseries": 7570,
     "sites": 389,
-    "source_registry": 173,
+    "source_registry": 176,
     "taxa": 8585,
     "vegetation_polygons": 2,
     "wildlife_sightings": 400
