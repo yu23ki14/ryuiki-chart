@@ -1518,7 +1518,9 @@ def compute_v2_input_fingerprint(
 
 def record_v2_input_fingerprint(conn: sqlite3.Connection, components: dict[str, str]) -> None:
     """`compute_v2_input_fingerprint()` が返した辞書を `v2.sqlite` の
-    `pipeline_input_fingerprint` メタ表（無ければ作る）に upsert する。
+    `pipeline_input_fingerprint` メタ表（無ければ作る）に**置き換えて**記録する
+    （`components` に無いキーは消す。入力から外れたキーが残ると、鮮度判定が「現在=対象外」で
+    永久に古いと出る。呼び出し側 b03/b06/b09 は全部 `compute_v2_input_fingerprint()` の全体を渡す）。
 
     **既存の `pipeline_fingerprint.inputs`（段階間の指紋の系譜）とは別の表に
     する**——`inputs` は `_assert_lineage_fresh()` が「値=上流テーブル名」として
@@ -1534,12 +1536,11 @@ def record_v2_input_fingerprint(conn: sqlite3.Connection, components: dict[str, 
     すること（`record_stage_fingerprint` と同じ利用規約）。
     """
     conn.execute(_CREATE_PIPELINE_INPUT_FINGERPRINT_SQL)
-    for component, value in components.items():
-        conn.execute(
-            f"INSERT INTO {PIPELINE_INPUT_FINGERPRINT_TABLE} (component, value) VALUES (?, ?) "
-            "ON CONFLICT(component) DO UPDATE SET value = excluded.value",
-            (component, value),
-        )
+    conn.execute(f"DELETE FROM {PIPELINE_INPUT_FINGERPRINT_TABLE}")
+    conn.executemany(
+        f"INSERT INTO {PIPELINE_INPUT_FINGERPRINT_TABLE} (component, value) VALUES (?, ?)",
+        list(components.items()),
+    )
 
 
 def read_v2_input_fingerprint(conn: sqlite3.Connection) -> dict[str, str] | None:

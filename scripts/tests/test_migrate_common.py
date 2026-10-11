@@ -857,12 +857,24 @@ def test_record_and_read_v2_input_fingerprint_round_trip(tmp_path):
     conn.close()
 
 
-def test_record_v2_input_fingerprint_upserts_existing_component(tmp_path):
+def test_record_v2_input_fingerprint_updates_existing_component(tmp_path):
     conn = migrate_fixtures.make_v2_cube_tables(tmp_path)
     common.record_v2_input_fingerprint(conn, {"a": "1"})
     common.record_v2_input_fingerprint(conn, {"a": "2", "b": "3"})
     conn.commit()
     assert common.read_v2_input_fingerprint(conn) == {"a": "2", "b": "3"}
+    conn.close()
+
+
+def test_record_v2_input_fingerprint_drops_keys_no_longer_inputs(tmp_path):
+    """入力から外れたキー（例: #94 で外した W12 奄美の geojson）は記録から消え、diff が空になる。"""
+    conn = migrate_fixtures.make_v2_cube_tables(tmp_path)
+    common.record_v2_input_fingerprint(conn, {"a": "1", "gone": "x"})
+    common.record_v2_input_fingerprint(conn, {"a": "1"})
+    conn.commit()
+    recorded = common.read_v2_input_fingerprint(conn)
+    assert recorded == {"a": "1"}
+    assert common.diff_v2_input_fingerprint(recorded, {"a": "1"}) == []
     conn.close()
 
 
