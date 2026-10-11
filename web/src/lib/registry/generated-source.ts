@@ -647,7 +647,7 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": "2026-10-11T18:06:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": "奄美5市町村（2026-02-10 現在、BODIK、CC BY 4.0）。特別警戒区域は警戒区域の内側にあり、警戒と特別警戒は重なる。区分・現象をまたいで面積を足さない。件数は区域（ポリゴン）の数で、地区・箇所の数ではない。"
   },
   "bodik_kagoshima_ryuiki_chisui_amami": {
     "state": "not_queryable",
@@ -2831,6 +2831,8 @@ export const FIND_DATASET_SOURCE_IDS: readonly string[] = ["ckan_bodik_kanagawa"
 
 /** 出典 → 地域（manifests/<source_id>.yml の region。Issue #93）。マニフェストの無い出典（文書・台帳系）は載せない = 地域未宣言。 */
 export const SOURCE_REGION: Readonly<Record<string, string>> = {"atsugi_river_water_quality":"jp-14","env_kousui_annual_amami":"jp-46","env_kousui_annual_kanagawa":"jp-14","env_kousui_sample_amami":"jp-46","env_kousui_sample_kanagawa":"jp-14","gbif_amami_occurrences":"jp-46","gbif_kanagawa_occurrences":"jp-14","hiratsuka_taiki":"jp-14","inaturalist_amami":"jp-46","inaturalist_kanagawa":"jp-14","jma_daily_nase":"jp-46","jma_daily_yokohama":"jp-14","jma_monthly_amami":"jp-46","jma_monthly_kanagawa":"jp-14","jma_sst_amami":"jp-46","kagoshima_kasen_choui_amami":"jp-46","kagoshima_kasen_dam_amami":"jp-46","kagoshima_kasen_suii_amami":"jp-46","kagoshima_kasen_suii_kiki_amami":"jp-46","kanagawa_edna":"jp-14","kanagawa_jiban_chinka":"jp-14","kanagawa_kuma_sightings":"jp-14","nlni_l03b_landuse_by_watershed":"jp-14","nlni_l03b_landuse_by_watershed_amami":"jp-46","sagamihara_taiki_hourly":"jp-14","soramame_hourly_amami":"jp-46","soramame_hourly_kanagawa":"jp-14","yokohama_river_waterlevel":"jp-14"};
+/** 地域 -> 出典名に入る slug（scripts/regions.py の REGIONS が正）。マニフェストの無い出典の地域を cube/region.ts が引く。 */
+export const REGION_SLUGS: Readonly<Record<string, readonly string[]>> = {"jp-14":["kanagawa"],"jp-46":["amami"]};
 
 export const LICENSES: readonly GeneratedLicense[] = [
   { licenseId: "all_rights_reserved", nameJa: "無断複製・転用不可", spdxOrUrl: null, licenseClass: "restricted", attributionText: null },

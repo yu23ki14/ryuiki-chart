@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/registry/generated-source", () => ({
   SOURCE_REGION: { a_k: "jp-14", b_a: "jp-46" },
+  REGION_SLUGS: { "jp-14": ["kanagawa"], "jp-46": ["amami"] },
 }));
 
 import { placeRegionJoin, regionPred, sourceRegion, sourcesOfRegion } from "./region";
@@ -17,6 +18,12 @@ describe("cube/region", () => {
     expect(j.joins).toHaveLength(1);
     expect(j.joins[0]).toContain("place_region");
     expect(j.params).toEqual(["jp-14"]);
+  });
+  it("sourceRegion: マニフェストが先、無ければ source_id の _ 区切りトークンの slug", () => {
+    expect(sourceRegion("nlni_a10_natparks_amami")).toBe("jp-46");
+    expect(sourceRegion("kanagawa_redlist")).toBe("jp-14");
+    expect(sourceRegion("amamix_foo")).toBeUndefined(); // 部分一致はしない
+    expect(sourceRegion("a_k")).toBe("jp-14");
   });
   it("sourceRegion / sourcesOfRegion: 未宣言は常に含める", () => {
     expect(sourceRegion("a_k")).toBe("jp-14");

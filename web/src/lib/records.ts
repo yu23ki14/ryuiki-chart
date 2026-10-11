@@ -42,6 +42,8 @@ export interface RecordTable {
    * `source_id` を受けず（渡すと入力エラー）、record_set 単独で引く。理由は RECORD_TABLES の `documents` のコメント。
    */
   sourceless?: boolean;
+  /** true なら q・id なしの一覧でも n_total を返さない（null）。事前計算が無く、全件 count が重い表（cells 約 12 万行）。 */
+  noTotal?: boolean;
   /** 実列でない出力列（別名 → SQL 式。例 `note_rowid` → `notes.rowid`）。`cols` に載せる。実在検査の対象外。 */
   exprs?: Record<string, string>;
   /** 常に付ける JOIN 句と条件（定数。別表の列を `exprs` で引く表だけ）。出典の絞りは `exprs.source_id` から導く。 */
@@ -185,6 +187,24 @@ export const RECORD_TABLES = {
     cols: ["note_rowid", "note_id", "doc_id", "table_ids", "kind", "text", "page", "blocks_timeseries", "reason"],
     sourceless: true,
   },
+  /*
+   * 行政文書から抽出したセル（D1 表 `cells`）。`documents`/`document_notes` と同じく出典に紐付かない（sourceless）。
+   * `q` に doc_id か row_key を渡して引く。置き換え済み（superseded=1）の行は常に除く。
+   * 豪雨の被害・雨量のような `fiscal_year` が NULL の単発セルや、ダム容量を型のある読み手で引くための集合
+   * （`docSeriesList` は fiscal_year が非 NULL の系列だけ）。Issue #105。
+   */
+  document_cells: {
+    table: "cells",
+    pk: "id",
+    search: ["doc_id", "row_key"],
+    cols: [
+      "id", "doc_id", "page_no", "table_id", "row_key", "col_key", "value_raw", "value", "value_type", "unit",
+      "fiscal_year", "source_text", "is_total",
+    ],
+    sourceless: true,
+    noTotal: true, // 約 12 万行。一覧のたびに count しない（n_total は null）
+    base: { join: "", where: "cells.superseded = 0" },
+  },
   assessments: {
     table: RECORD_SET_TABLES.assessments,
     pk: "assessment_id",
@@ -201,6 +221,9 @@ export const RECORD_TABLES = {
 const TABLES: Readonly<Record<keyof typeof RECORD_TABLES, RecordTable>> = RECORD_TABLES;
 
 export type RecordSetName = keyof typeof RECORD_TABLES;
+/** 出典に紐付かない record_set の名前（documents・document_notes・document_cells）。説明文・入力エラーはここから組み立てる。 */
+const SOURCELESS_SETS = (Object.keys(RECORD_TABLES) as RecordSetName[]).filter((k) => TABLES[k].sourceless);
+const SOURCELESS_LIST = SOURCELESS_SETS.join("・");
 export const RECORD_SET_NAMES = Object.keys(RECORD_TABLES) as [RecordSetName, ...RecordSetName[]];
 
 /** 出典 → `get_records` で引ける record_set（生成物 `SOURCE_ACCESS` の `tables`。宣言の正は registry/source/access.yaml）。 */
@@ -210,8 +233,8 @@ export function recordSetsOf(sourceId: string): readonly string[] {
 
 /** MCP・AI 共通の入力（z.tuple は使わない）。出典と表の組み合わせの検査は `queryRecords` が行う。 */
 export const recordsInputSchema = z.object({
-  source_id: z.enum(RECORD_SOURCE_IDS).optional().describe("出典（documents・document_notes 以外は必須。使える出典と record_set の組はツールの説明にある）"),
-  record_set: z.enum(RECORD_SET_NAMES).optional().describe("記録の集合（sites・protected_areas・vegetation・hazard_zones・river_segments・mammal_mesh・sightings・assessments・documents・document_notes）。出典に集合が複数あるときだけ必須（1つなら省略可）。documents・document_notes は出典に紐付かないので source_id なしでこれだけ指定する"),
+  source_id: z.enum(RECORD_SOURCE_IDS).optional().describe(`出典（${SOURCELESS_LIST} 以外は必須。使える出典と record_set の組はツールの説明にある）`),
+  record_set: z.enum(RECORD_SET_NAMES).optional().describe(`記録の集合（sites・protected_areas・vegetation・hazard_zones・river_segments・mammal_mesh・sightings・assessments・documents・document_notes・document_cells）。出典に集合が複数あるときだけ必須（1つなら省略可）。${SOURCELESS_LIST} は出典に紐付かないので source_id なしでこれだけ指定する`),
   id: idText("主キーの完全一致（1 件取り）").optional(),
   q: likeText("表ごとの検索列（名称・和名・学名など）の部分一致").optional(),
   include_geometry: z
@@ -240,13 +263,14 @@ export const RECORDS_DESCRIPTION =
   "status が needs_review の地点は座標が未確認（lat・lon は null）。watershed・zone・municipality・operator などは従来の地点表にある地点だけ値が入り、観測局は null（地点と流域・zone の紐付けは未整備）。" +
   "行政文書の一覧（record_set=documents。抽出セル数 n_cells・注記数 n_notes・比較注意 n_blocking つき）と注記（record_set=document_notes。" +
   "q は本文と doc_id に効く。id は行の note_rowid）は出典に紐付かないので source_id を付けず record_set だけで引く（行の publisher・url・license が出典）。" +
+  "行政文書の抽出セル（record_set=document_cells。置き換え済みは除く。約 12 万行なので n_total は返さない（null）。q に doc_id を渡して引く）も同じ。" +
   `使える出典と record_set（複数あるときは record_set を指定）: ${sourceSetList()}。`;
 
 /** 入力の組み合わせの誤り。`queryRecords` の `onInputError` で呼び出し側の例外（MCP は McpInputError）に変えられる。 */
 export class RecordsInputError extends Error {}
 
 export interface RecordsResult {
-  /** 出典に紐付かない record_set（documents・document_notes）では null。 */
+  /** 出典に紐付かない record_set（documents・document_notes・document_cells）では null。 */
   source_id: string | null;
   record_set: RecordSetName;
   /** 実表名（AI の provenance 用）。 */
@@ -271,7 +295,7 @@ function resolveTarget(
     if (a.source_id !== undefined) throw fail(`record_set '${a.record_set}' は出典に紐付かない。source_id を付けず record_set だけで引く`);
     return { set: a.record_set, sourceId: undefined };
   }
-  if (a.source_id === undefined) throw fail("source_id が必要（documents・document_notes 以外の record_set は出典単位で読む）");
+  if (a.source_id === undefined) throw fail(`source_id が必要（${SOURCELESS_LIST} 以外の record_set は出典単位で読む）`);
   const tables = recordSetsOf(a.source_id) as readonly RecordSetName[];
   if (tables.length === 0) throw fail(`source_id '${a.source_id}' は get_records の対象ではない`);
   if (a.record_set === undefined) {
@@ -313,6 +337,18 @@ export function clampLimit(v: unknown, def = DEFAULT_LIMIT, max = RECORDS_MAX_RO
   return Math.min(Math.floor(n), max);
 }
 
+/** 範囲指定（`range`）できる数値列。表ごとの許可リスト（地図の bbox 用の座標列だけ）。 */
+const RANGE_COLS: Partial<Record<RecordSetName, readonly string[]>> = {
+  hazard_zones: ["centroid_lat", "centroid_lon"],
+  protected_areas: ["lat", "lon"],
+};
+
+/** 件数の集計（`countRecordsBy`）で groupBy にできる列。表ごとの許可リスト。 */
+const GROUP_COLS: Partial<Record<RecordSetName, readonly string[]>> = {
+  hazard_zones: ["municipality_ja", "phenomenon_ja", "zone_kind_ja"],
+  protected_areas: ["category_code", "source_id"],
+};
+
 interface SelectSpec {
   set: RecordSetName;
   /** 出典付きの表では `anySource` でない限り必須（出典で必ず絞る）。sourceless の表では無視。 */
@@ -324,6 +360,8 @@ interface SelectSpec {
   id?: string;
   after?: string;
   q?: string;
+  /** 数値列の範囲（両端を含む。`RANGE_COLS` の許可リストの列だけ。地図の bbox 用）。 */
+  range?: readonly { col: string; min: number; max: number }[];
   /** 並び（`cols`/算出列の別名だけ）。主キーは最後のタイブレークとして常に足す（決定的な並び）。 */
   order?: readonly { col: string; desc?: boolean }[];
   /** 返す列（`cols`/算出列の別名の部分集合。省略は全部）。算出列を選ばなければ JOIN も付けない。 */
@@ -366,6 +404,12 @@ function buildSelect(s: SelectSpec): { sql: string; params: SqlParam[]; limit: n
     if (!def.cols.includes(e.col)) throw new Error(`${t}.${e.col} は許可リストに無い`);
     conds.push(`${exprOf(e.col)} = ?`);
     params.push(e.value);
+  }
+  for (const r of s.range ?? []) {
+    if (!(RANGE_COLS[s.set] ?? []).includes(r.col)) throw new Error(`${t}.${r.col} は範囲指定の許可リストに無い`);
+    if (!Number.isFinite(r.min) || !Number.isFinite(r.max)) throw new Error(`${t}.${r.col} の範囲が数でない`);
+    conds.push(`${exprOf(r.col)} BETWEEN ? AND ?`);
+    params.push(r.min, r.max);
   }
   if (s.id !== undefined) {
     conds.push(`${exprOf(def.pk)} = ?`);
@@ -431,11 +475,13 @@ export async function queryRecords(db: CubeDb, a: RecordsInput, opt: QueryRecord
 
 /**
  * q・id なしのときの行数。出典付きの表は事前計算（リクエスト時に count しない）。
- * 出典に紐付かない表（行政文書。数百行以下）だけ、表全体の count(*) を 1 回数える。
+ * 出典に紐付かない表のうち行政文書の一覧・注記（数百行以下）だけ、表全体の count(*) を 1 回数える。`noTotal` の表（document_cells）は数えず null。
  */
 async function totalOf(db: CubeDb, set: RecordSetName, sourceId: string | undefined): Promise<number | null> {
   if (sourceId !== undefined) return sourceAccess(sourceId)?.recordSetRows[set] ?? null;
-  const r = await db.all(`SELECT COUNT(*) AS n FROM ${TABLES[set].table}`, []);
+  if (TABLES[set].noTotal) return null;
+  const def = TABLES[set];
+  const r = await db.all(`SELECT COUNT(*) AS n FROM ${def.table}${def.base ? ` ${def.base.join} WHERE ${def.base.where}` : ""}`, []);
   return Number(r[0]?.n ?? 0);
 }
 
@@ -462,6 +508,8 @@ export interface ReadRecordOptions {
   maxLimit?: number;
   /** ジオメトリ列（`geometry_geojson`）も文字列のまま返す。 */
   withGeometry?: boolean;
+  /** 数値列の範囲（両端を含む。hazard_zones の centroid_lat/lon、protected_areas の lat/lon だけ。それ以外は例外）。 */
+  range?: SelectSpec["range"];
 }
 
 /**
@@ -475,10 +523,41 @@ export async function readRecordSet<T = Record<string, string | number | null>>(
   opt: ReadRecordOptions,
 ): Promise<T[]> {
   const { sql, params } = buildSelect({
-    set, anySource: true, eq: opt.eq, order: opt.order, select: opt.select, geometry: opt.withGeometry,
+    set, anySource: true, eq: opt.eq, range: opt.range, order: opt.order, select: opt.select, geometry: opt.withGeometry,
     limit: opt.limit ?? null, defaultLimit: opt.defaultLimit, maxLimit: opt.maxLimit,
   });
   return (await db.all(sql, params)) as unknown as T[];
+}
+
+export type CountRow = Record<string, string | number | null> & { n: number };
+
+/**
+ * 台帳表の件数を列ごとに数える（画面・API 専用。MCP / AI には出さない）。件数のみで面積などは返さない。
+ * `groupBy` は表ごとの許可リスト（`GROUP_COLS`）の列だけ。それ以外は例外。並びは groupBy の列順。
+ */
+export async function countRecordsBy(
+  db: CubeDb,
+  set: RecordSetName,
+  groupBy: readonly string[],
+  opt: { eq?: SelectSpec["eq"] } = {},
+): Promise<CountRow[]> {
+  const def = TABLES[set];
+  const allowed = GROUP_COLS[set];
+  if (!allowed) throw new Error(`${def.table} は件数集計に対応していない`);
+  if (groupBy.length === 0) throw new Error("groupBy が空");
+  for (const c of groupBy) if (!allowed.includes(c)) throw new Error(`${def.table}.${c} は件数集計の許可リストに無い`);
+  const conds: string[] = def.base ? [def.base.where] : [];
+  const params: SqlParam[] = [];
+  for (const e of opt.eq ?? []) {
+    if (!def.cols.includes(e.col)) throw new Error(`${def.table}.${e.col} は許可リストに無い`);
+    conds.push(`${def.table}.${e.col} = ?`);
+    params.push(e.value);
+  }
+  const cols = groupBy.map((c) => `${def.table}.${c}`).join(", ");
+  const sql =
+    `SELECT ${groupBy.map((c) => `${def.table}.${c} AS ${c}`).join(", ")}, COUNT(*) AS n FROM ${def.table}` +
+    `${def.base ? ` ${def.base.join}` : ""}${conds.length ? ` WHERE ${conds.join(" AND ")}` : ""} GROUP BY ${cols} ORDER BY ${cols}`;
+  return (await db.all(sql, params)) as unknown as CountRow[];
 }
 
 export interface DocumentRow {

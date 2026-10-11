@@ -393,6 +393,8 @@ const observationSourceIds = manifestSourceIds("observation");
 // 出典 → 地域（Issue #93）。正は manifests/<source_id>.yml の `region`。r01 が registry の source.region_id に写すので
 // フルビルドはそこから読み、files-only（source 表が空）はマニフェストから直接導いて保持した生成物と突合する。
 // マニフェストの無い出典（文書・台帳系）は載せない（= 地域未宣言）。合成データの出典も載せない。
+// それらの地域は REGION_SLUGS（下）で、web の sourceRegion() が source_id の `_` 区切りトークンから引く
+// （scripts/regions.py の region_of_source_id と同じ規則）。生成物の SOURCE_REGION はマニフェスト由来のままで、files-only とも厳密に一致する。
 const sortedEntries = (obj) => Object.fromEntries(Object.entries(obj).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
 const manifestSourceRegion = sortedEntries(
   Object.fromEntries(
@@ -412,6 +414,17 @@ const sourceRegion = filesOnly
     );
 if (!filesOnly && JSON.stringify(sourceRegion) !== JSON.stringify(manifestSourceRegion)) {
   throw new Error("registry の source.region_id が manifests/ の region と食い違う（r01 を再実行すること）");
+}
+
+// 地域の slug 表（出典名の `_` 区切りトークンに入る地域名）。正は scripts/regions.py の REGIONS の "slug"。
+// python を起こさず、ファイルを静的に読む（files-only でも作れる）。地域数が REGION_TIME と合わなければ止める。
+const REGIONS_PY = path.join(REPO, "scripts", "regions.py");
+const regionSlugs = {};
+for (const m of fs.readFileSync(REGIONS_PY, "utf8").matchAll(/^    "(jp-\d+)": \{\n(?:(?!^    "jp-)[\s\S])*?^        "slug": "(\w+)"/gm)) {
+  (regionSlugs[m[1]] ??= []).push(m[2]);
+}
+if (JSON.stringify(Object.keys(regionSlugs).sort()) !== JSON.stringify(regionTime.map((r) => r.regionId).sort())) {
+  throw new Error("scripts/regions.py の REGIONS の地域が registry/region.yaml と食い違う（slug を読めない）");
 }
 
 // 出典ごとの状態（source_access。registry/source/access.yaml と manifests/ から r01 が作る。MCP_SOURCE_ACCESS.md §1）。
@@ -939,6 +952,8 @@ export const FIND_DATASET_SOURCE_IDS: readonly string[] = ${JSON.stringify(findD
 
 /** 出典 → 地域（manifests/<source_id>.yml の region。Issue #93）。マニフェストの無い出典（文書・台帳系）は載せない = 地域未宣言。 */
 export const SOURCE_REGION: Readonly<Record<string, string>> = ${JSON.stringify(sourceRegion)};
+/** 地域 -> 出典名に入る slug（scripts/regions.py の REGIONS が正）。マニフェストの無い出典の地域を cube/region.ts が引く。 */
+export const REGION_SLUGS: Readonly<Record<string, readonly string[]>> = ${JSON.stringify(sortedEntries(regionSlugs))};
 
 export const LICENSES: readonly GeneratedLicense[] = ${emitObjectArray(licenses, ["licenseId", "nameJa", "spdxOrUrl", "licenseClass", "attributionText"])};
 `;
@@ -954,6 +969,10 @@ if (filesOnly) {
     ["FIND_DATASET_SOURCE_IDS", declaredCatalogSourceIds, "registry/source/access.yaml（catalog を持つ出典）"],
   ];
   const keptRegion = /export const SOURCE_REGION: Readonly<Record<string, string>> = (\{.*?\});/.exec(kept)?.[1];
+  const keptSlugs = /export const REGION_SLUGS: Readonly<Record<string, readonly string\[\]>> = (\{.*?\});/.exec(kept)?.[1];
+  if (keptSlugs !== JSON.stringify(sortedEntries(regionSlugs))) {
+    throw new Error("files-only のため出典メタは再生成しないが、保持した generated-source.ts の REGION_SLUGS が scripts/regions.py と食い違う。原本のある環境で `pnpm run build:registry:ts`（フルビルド）を実行して更新すること");
+  }
   if (keptRegion !== JSON.stringify(sourceRegion)) {
     throw new Error(
       "files-only のため出典メタは再生成しないが、保持した generated-source.ts の SOURCE_REGION が manifests/ の region " +
