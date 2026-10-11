@@ -25,6 +25,9 @@ from common import to_fiscal_year  # noqa: E402
 # 鹿児島県のサイトから事実（数値）だけを抜き出す文書の license（c95・c98b 共通）
 LICENSE_PREF_KAGOSHIMA = "鹿児島県ホームページ（無断転載・改変不可）。事実（数値）のみ抽出し出典を明記"
 
+# 環境省ホームページコンテンツの PDL1.0 の原文（c96・c99 共通。registry/source/license.yaml の mappings にある）
+LICENSE_MOE_PDL = "公共データ利用規約（第1.0版）PDL1.0（環境省ホームページコンテンツの利用について）: https://www.env.go.jp/mail.html"
+
 CELL_COLUMNS = (
     "doc_id", "doc_sha256", "page_no", "table_id", "row_key", "col_key",
     "value_raw", "value", "value_type", "unit", "fiscal_year", "era_raw",
@@ -215,6 +218,19 @@ def fetch_pdf(url, path):
     if not path.exists():
         common.download(url, path)
     return path, common.sha256(path)
+
+
+def pdf_page_count(path):
+    """PDF のページ数。先頭が %PDF でない・pdfplumber で開けない PDF は ValueError。"""
+    with open(path, "rb") as f:
+        if not f.read(5).startswith(b"%PDF"):
+            raise ValueError(f"PDF ではない: {path}")
+    import pdfplumber  # 先頭の検査より後（pdfplumber の無い環境でも壊れたファイルは弾ける）
+    try:
+        with pdfplumber.open(str(path)) as pdf:
+            return len(pdf.pages)
+    except Exception as e:  # pdfminer の例外は種類が多い
+        raise ValueError(f"PDF を開けない: {path}: {e!r}") from e
 
 
 def pdf_tables(path, pages):

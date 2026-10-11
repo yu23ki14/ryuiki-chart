@@ -94,7 +94,13 @@ sources:
   kagoshima_noneko_amami: {reason: document_cells, basis: "doc_id=kagoshima_noneko_r4（PDF の表、月次と年度別）。cells に入れた"}
   kagoshima_irikomi_amami: {reason: document_cells, basis: "doc_id=bodik_460001_guntou_irikomi_2024（BODIK の XLSX、奄美群島の暦年値）。cells に入れた"}
   kagoshima_habu_amami: {reason: document_cells, basis: "doc_id=kagoshima_habu_bite_h28r7・kagoshima_habu_kaiage_h28r7（画像の PDF を OCR）。cells に入れた"}
-  # --- 取れない: pdf_document（10 件）---
+  # --- 奄美 Step 2d: 行政文書（計画・戦略・評価シート）。documents / notes だけで cells は無い。PDF のまま ---
+  moe_amami_wh_plans_amami: {reason: pdf_document, basis: "doc_id=amami_wh_comprehensive_plan_2025draft・moe_amami_mongoose_plan_r3_r7・moe_amami_noneko_plan_2018_2027・moe_amami_noneko_goal_2023rev・moe_wh_monitoring_eval_r1〜r5（documents と notes だけ）"}
+  mlit_amami_action_plan_amami: {reason: pdf_document, basis: "doc_id=mlit_amami_action_plan_2016（documents と notes だけ）"}
+  amami_biodiversity_strategy_amami: {reason: pdf_document, basis: "doc_id=amami_biodiversity_strategy_2015_2024（ライセンス表記なし。題名・URL・ページ数・sha256 のみ）"}
+  bodik_kagoshima_ryuiki_chisui_amami: {reason: pdf_document, basis: "doc_id=bodik_460001_amami_ryuiki_chisui_2022（BODIK の PDF、4ページ）"}
+  amami_tourism_plans_amami: {reason: pdf_document, basis: "doc_id=amami_ecotourism_zentai_2017・amami_sustainable_tourism_mp_2016（ライセンス表記なし。題名・URL・ページ数・sha256 のみ）"}
+  # --- 取れない: pdf_document（10 件。上の奄美 Step 2d の5件は別に並べた）---
   biodic_6th_kanagawa_report: {reason: pdf_document, basis: "source_registry.format=PDF"}
   ckan_pdf_choju_higai: {reason: pdf_document, basis: "source_registry.format=PDF"}
   ckan_pdf_choju_kyugo: {reason: pdf_document, basis: "source_registry.format=PDF"}
