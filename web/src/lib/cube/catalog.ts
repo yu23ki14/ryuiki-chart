@@ -14,6 +14,7 @@ import { gridCellOfPlaceId, watershedIdOfPlaceId } from "./grid";
 import { NAME_JA } from "@/lib/registry/generated-client";
 import { OCC_BOTH_KINDS_YEAR, OCC_MESH_N, OCC_N_ALL, OCC_N_LOCATED, OCC_SUM, USE_RECORD_VERNACULAR, labelMap, pickLabel, resolveNames } from "./occurrence";
 import { IAS_SINCE_YEAR, OCC_DEFAULT_FROM, occDefaultTo, chunk, cmp, jsonEachParam, seriesFilterSql, uniq } from "./sql";
+import { speciesInPlace } from "./species-in-place";
 import { OCCURRENCE_AGG_INDEX } from "@/db/schema-cube";
 import { OCCURRENCE_SOURCE_IDS } from "./source-meta";
 import type { RegionId } from "@/lib/region";
@@ -935,6 +936,9 @@ export interface SpeciesCatalogRow {
   nYears: number;
   /** `withNames` のときだけ（§2.3 の表示名）。 */
   label?: string;
+  /** 流域・期間・赤リストで絞った経路（`speciesInPlace`）だけ。赤リストの判定（カテゴリと出所〔県版の list_id か 'national'〕）。該当しない種は null。 */
+  redListCategory?: string | null;
+  redListSource?: string | null;
 }
 
 /**
@@ -989,10 +993,18 @@ interface SpeciesCatalogOpt {
   sourceIds?: readonly string[];
   /** 地域で絞る（`summary_species_catalog_by_region`。`sourceIds` との併用は `occurrence_agg` に `region_id` を足す）。未指定は全体。 */
   region?: RegionId;
+  /** 流域の place_id・期間（暦年。period_start の年）・赤リスト該当の種だけ、のいずれかを付けると `occurrence_agg` を直接集計する（`species-in-place.ts`）。 */
+  placeId?: string;
+  yearFrom?: number;
+  yearTo?: number;
+  redListOnly?: boolean;
 }
 
 /** v1 `speciesList`。`ORDER BY n DESC, binom`。 */
 export async function speciesCatalog(db: CubeDb, opt: SpeciesCatalogOpt = {}): Promise<SpeciesCatalogRow[]> {
+  if (opt.placeId !== undefined || opt.yearFrom !== undefined || opt.yearTo !== undefined || opt.redListOnly) {
+    return speciesInPlace(db, { ...opt, search: speciesSearchCond(opt.search, "t.canonical_binomial") });
+  }
   if (opt.sourceIds !== undefined) return speciesCatalogBySource(db, { ...opt, sourceIds: opt.sourceIds });
   const limit = opt.limit ?? 200;
   const params: SqlParam[] = [];
