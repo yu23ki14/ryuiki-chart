@@ -393,7 +393,48 @@ def load_measurements_csv(con, name, source_id, site_key, variable_col="variable
 
 # ------------------------------------------------------------------ #
 
-def main():
+def build_jobs(con, ws):
+    """[(キー, ラベル, 関数)]。キーは --only で指す名前（植生は 'vegetation' で全地域、'vegetation:<rid>' で1地域）。"""
+    jobs = [
+        ("protected_areas", "保護区・緑地台帳",      lambda: load_protected_areas(con, ws)),
+        ("wildlife",        "ツキノワグマ出没記録",  lambda: load_wildlife(con)),
+        ("mammal_mesh",     "哺乳類メッシュ分布",    lambda: load_mammal_mesh(con)),
+        ("river_segments",  "相模川水系 流路",       lambda: load_river_segments(con)),
+        ("hiratsuka_air",   "平塚市 大気(日別)",     lambda: load_hiratsuka_air(con)),
+        ("atsugi",          "厚木市 相模川水質",     lambda: load_measurements_csv(
+            con, "atsugi_river_water_quality", "atsugi_river_water_quality",
+            site_key=lambda r: text(r.get("site_name_ja")))),
+        ("yokohama",        "横浜市 河川水位(日別)", lambda: load_yokohama_waterlevel(con)),
+        # 表4 由来の県全体の集計値には観測井戸が無いので、市町名か「県全体」を系列キーにする
+        ("jiban",           "神奈川県 地盤沈下",     lambda: load_measurements_csv(
+            con, "kanagawa_jiban_chinka", "kanagawa_jiban_chinka",
+            site_key=lambda r: (text(r.get("well_id")) or text(r.get("municipality_ja"))
+                                or "県全体"))),
+    ]
+    for k, rid in enumerate(REGIONS):
+        jobs.insert(2 + k, (f"vegetation:{rid}", f"現存植生図2024 ({rid})", lambda rid=rid: load_vegetation(con, ws, rid)))
+    jobs.insert(2 + len(REGIONS), ("hazard_zones", "土砂災害警戒区域 (奄美)", lambda: load_hazard_zones(con, ws)))
+    return jobs
+
+def select_jobs(jobs, only):
+    """--only の指定（キーかラベル。'vegetation' は 'vegetation:<rid>' 全部）に合うジョブだけ返す。
+    指定が無ければ全部。どれにも合わない指定があれば止める。"""
+    if not only:
+        return jobs
+    picked = []
+    for name in only:
+        hit = [j for j in jobs if name in (j[0], j[1]) or j[0].startswith(name + ":")]
+        if not hit:
+            raise SystemExit(f"--only {name!r} に合うジョブが無い（キー: {', '.join(j[0] for j in jobs)}）")
+        picked += [j for j in hit if j not in picked]
+    return [j for j in jobs if j in picked]
+
+def main(argv=None):
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--only", action="append", metavar="KEY",
+                    help="指定したジョブだけ回す（キーかラベル。繰り返し可。例: --only hazard_zones）。既定は全部")
+    a = ap.parse_args(argv)
     con = appdb()
     con.execute("PRAGMA busy_timeout = 30000")
     ddl = (ROOT / "scripts/schema_tier1.sql").read_text(encoding="utf-8")
@@ -402,27 +443,8 @@ def main():
 
     ws = Watersheds()
     done, skipped = [], []
-
-    jobs = [
-        ("保護区・緑地台帳",      lambda: load_protected_areas(con, ws)),
-        ("ツキノワグマ出没記録",  lambda: load_wildlife(con)),
-        ("哺乳類メッシュ分布",    lambda: load_mammal_mesh(con)),
-        ("相模川水系 流路",       lambda: load_river_segments(con)),
-        ("平塚市 大気(日別)",     lambda: load_hiratsuka_air(con)),
-        ("厚木市 相模川水質",     lambda: load_measurements_csv(
-            con, "atsugi_river_water_quality", "atsugi_river_water_quality",
-            site_key=lambda r: text(r.get("site_name_ja")))),
-        ("横浜市 河川水位(日別)", lambda: load_yokohama_waterlevel(con)),
-        # 表4 由来の県全体の集計値には観測井戸が無いので、市町名か「県全体」を系列キーにする
-        ("神奈川県 地盤沈下",     lambda: load_measurements_csv(
-            con, "kanagawa_jiban_chinka", "kanagawa_jiban_chinka",
-            site_key=lambda r: (text(r.get("well_id")) or text(r.get("municipality_ja"))
-                                or "県全体"))),
-    ]
-    for k, rid in enumerate(REGIONS):
-        jobs.insert(2 + k, (f"現存植生図2024 ({rid})", lambda rid=rid: load_vegetation(con, ws, rid)))
-    jobs.insert(2 + len(REGIONS), ("土砂災害警戒区域 (奄美)", lambda: load_hazard_zones(con, ws)))
-    for label, fn in jobs:
+    jobs = select_jobs(build_jobs(con, ws), a.only)
+    for _key, label, fn in jobs:
         msg = fn()
         if msg is None:
             skipped.append(label)

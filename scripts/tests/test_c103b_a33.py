@@ -170,3 +170,15 @@ def test_load_hazard_zones(env, built):
     write_csv(proc / f"{c.SOURCE_ID}.csv", rows)
     with pytest.raises(SystemExit, match="衝突"):
         m05_tier1.load_hazard_zones(con, FakeWs())
+
+
+def test_m05_only_selects_jobs(env):
+    _, db = env
+    con = sqlite3.connect(db)
+    jobs = m05_tier1.build_jobs(con, FakeWs())
+    assert [j[0] for j in m05_tier1.select_jobs(jobs, ["hazard_zones"])] == ["hazard_zones"]
+    assert [j[0] for j in m05_tier1.select_jobs(jobs, ["土砂災害警戒区域 (奄美)"])] == ["hazard_zones"]
+    assert [j[0] for j in m05_tier1.select_jobs(jobs, ["vegetation"])] == [j[0] for j in jobs if j[0].startswith("vegetation:")]
+    assert m05_tier1.select_jobs(jobs, None) == jobs          # 既定は全部
+    with pytest.raises(SystemExit, match="合うジョブが無い"):
+        m05_tier1.select_jobs(jobs, ["nope"])
