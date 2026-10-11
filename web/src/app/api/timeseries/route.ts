@@ -17,6 +17,7 @@ import {
   MEASUREMENTS_DATASET as DATASET,
 } from "@/lib/cube";
 import { freshnessForSeries } from "@/lib/cube/source-meta";
+import { parseRegion, regionOf } from "@/lib/region";
 import { facetsForSeries, caveatKeysForFacets } from "@/lib/cube/caveats";
 
 export const runtime = "nodejs";
@@ -30,6 +31,9 @@ export async function GET(req: NextRequest) {
   const variableId = sp.get("variable") ?? "";
   const stat = sp.get("stat") ?? undefined;
   const basis = ((sp.get("basis") as Basis | null) ?? "day") as Basis;
+  // cube 層へは 'all' を入れない（undefined = 全体）。
+  const region = regionOf(parseRegion(sp.get("region")));
+  const ropt = region ? { region } : {};
 
   try {
     if (!variableId) return NextResponse.json({ error: "variable（variable_id）は必須です" }, { status: 400 });
@@ -37,7 +41,7 @@ export async function GET(req: NextRequest) {
 
     if (mode === "waters") {
       const series = representativeSeries(variableId, DATASET, stat ?? "representative");
-      const waters = await waterBodies(db, { series });
+      const waters = await waterBodies(db, { series, ...ropt });
       return NextResponse.json({ waters });
     }
 
@@ -49,8 +53,8 @@ export async function GET(req: NextRequest) {
       const unit = unitLabel(series[0]?.unitId ?? null);
       const caveats = series.length ? caveatKeysForFacets(facetsForSeries(series.map((s) => withTheme(s)), scope)) : [];
       // 出典ごとの取得日・更新方式・経過日数（加算。registry の生成物から引くので D1 は引かない。ADR-0014/0020）。
-      const freshness = freshnessForSeries(series);
-      const sites = mode === "water" ? await sitesInWaterBody(db, sp.get("water") ?? "", { dataset: DATASET }) : undefined;
+      const freshness = freshnessForSeries(series, ropt);
+      const sites = mode === "water" ? await sitesInWaterBody(db, sp.get("water") ?? "", { dataset: DATASET, ...ropt }) : undefined;
 
       if (series.length === 0) {
         return NextResponse.json({ sites, points: [], unit, grain: sp.get("grain") ?? basis, basis, stat: stat ?? "representative", caveats, freshness });
@@ -63,12 +67,12 @@ export async function GET(req: NextRequest) {
         }
         const period = { from: sp.get("from") ?? undefined, to: sp.get("to") ?? undefined };
         const { rows: points } = grain === "month"
-          ? await monthSeries(db, { variableId, stat, scope, imputation: "lod" })
-          : await daySeries(db, { variableId, stat, scope, period, imputation: "lod" });
+          ? await monthSeries(db, { variableId, stat, scope, imputation: "lod", ...ropt })
+          : await daySeries(db, { variableId, stat, scope, period, imputation: "lod", ...ropt });
         return NextResponse.json({ sites, points, unit, grain, basis, stat: stat ?? "representative", caveats, freshness });
       }
 
-      const { rows: points } = await yearSeries(db, { variableId, stat, basis, scope, imputation: "lod" });
+      const { rows: points } = await yearSeries(db, { variableId, stat, basis, scope, imputation: "lod", ...ropt });
       return NextResponse.json({ sites, points, unit, grain: basis === "day" ? "year" : basis, basis, stat: stat ?? "representative", caveats, freshness });
     }
 
@@ -80,10 +84,10 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ points: [], unit, grain: cellGrain, basis, stat: stat ?? "representative", caveats: [], freshness: [] });
       }
       const scope: Scope = { kind: "all_sites" };
-      const spec: CellSpec = { series, scope, grain: cellGrain, inputGrain, imputation: "lod" };
+      const spec: CellSpec = { series, scope, grain: cellGrain, inputGrain, imputation: "lod", ...ropt };
       const { rows: points } = await summarize(db, spec, "zone");
       const caveats = caveatKeysForFacets(facetsForSeries(series.map((s) => withTheme(s)), scope));
-      return NextResponse.json({ points, unit, grain: cellGrain, basis, stat: stat ?? "representative", caveats, freshness: freshnessForSeries(series) });
+      return NextResponse.json({ points, unit, grain: cellGrain, basis, stat: stat ?? "representative", caveats, freshness: freshnessForSeries(series, ropt) });
     }
 
     if (mode === "season") {
@@ -95,14 +99,14 @@ export async function GET(req: NextRequest) {
       const scope: Scope = { kind: "all_sites" };
       const [overall, byZone, rain] = await Promise.all([
         series.length
-          ? summarize(db, { series, scope, grain: "day", imputation: "lod" }, "month_of_year")
+          ? summarize(db, { series, scope, grain: "day", imputation: "lod", ...ropt }, "month_of_year")
           : Promise.resolve({ rows: [], truncated: false }),
         series.length
-          ? summarize(db, { series, scope, grain: "month", imputation: "lod" }, "zone_month_of_year")
+          ? summarize(db, { series, scope, grain: "month", imputation: "lod", ...ropt }, "zone_month_of_year")
           : Promise.resolve({ rows: [], truncated: false }),
-        rainMonthlyClim(db),
+        rainMonthlyClim(db, ropt),
       ]);
-      return NextResponse.json({ overall: overall.rows, byZone: byZone.rows, rain: rain.rows, unit, freshness: freshnessForSeries(series) });
+      return NextResponse.json({ overall: overall.rows, byZone: byZone.rows, rain: rain.rows, unit, freshness: freshnessForSeries(series, ropt) });
     }
 
     return NextResponse.json({ error: "不明な mode" }, { status: 400 });

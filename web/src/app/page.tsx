@@ -5,14 +5,17 @@ import { Stat, nf } from "@/components/ui";
 import { caveatBody } from "@/lib/registry/lookup-client";
 import { PageContextSetter } from "@/components/assistant/PageContextProvider";
 import { EXPLORE_ENABLED } from "@/lib/features";
+import { parseRegion, regionOf, regionLabel, type RegionFilter, type RegionId } from "@/lib/region";
+import { withRegion } from "@/components/region-url";
 
 export const dynamic = "force-dynamic";
 
-const SECTIONS = [
+/** 画面への入口。件数は地域つきの値（全体なら合算）を差し込む。リンクは現在の地域を引き継ぐ。 */
+const sectionsFor = (s: { watersheds: number; sites: number }, region: RegionFilter) => [
   {
     href: "/map",
     title: "流域マップ",
-    body: "国土数値情報の単位流域 377 面に、観測地点・生物記録・土地利用の変化を重ねる。ベースマップは OpenStreetMap／地理院タイルを切り替えられる。",
+    body: `国土数値情報の単位流域 ${nf(s.watersheds)} 面に、観測地点・生物記録・土地利用の変化を重ねる。ベースマップは OpenStreetMap／地理院タイルを切り替えられる。`,
   },
   {
     href: "/timeseries",
@@ -27,7 +30,7 @@ const SECTIONS = [
   {
     href: "/sites",
     title: "地点カルテ",
-    body: "観測地点 352 件の一覧と個票。その地点が何を、いつから、どれだけ測っているか。",
+    body: `観測地点 ${nf(s.sites)} 件の一覧と個票。その地点が何を、いつから、どれだけ測っているか。`,
   },
   {
     href: "/documents",
@@ -45,7 +48,7 @@ const SECTIONS = [
     title: "出典",
     body: "101 のデータソースと 98 の文書。ライセンスと再配布可否を1件ずつ。",
   },
-].filter((s) => s.flag !== false);
+].filter((sec) => sec.flag !== false).map((sec) => ({ ...sec, href: withRegion(sec.href, region) }));
 
 const BOD_VARIABLE_ID = "common:variable:water.bod";
 
@@ -58,7 +61,9 @@ const BOD_VARIABLE_ID = "common:variable:water.bod";
  * （「5倍近い差」等）はここでは触らない——文言は PR 本文の before/after を見て
  * オーナーが判断する（設計責任者の決定、D6）。
  */
-async function longitudinalHighlight(water = "境川（１）", variableId = BOD_VARIABLE_ID) {
+async function longitudinalHighlight(region: RegionId | undefined, water = "境川（１）", variableId = BOD_VARIABLE_ID) {
+  // 境川は神奈川の川。奄美（jp-46）には相当する既定の水域が無いので出さない（見出しだけ。#93 決定）。
+  if (region === "jp-46") return [];
   const db = await d1CubeDb();
   // basis はセルの性質（grain/input_grain）であって系列の登録（value_grain）ではない
   // ため、系列を basis で事前に絞り込まない（Issue #48 PR-2 統合後修正A #1）——
@@ -77,10 +82,11 @@ async function longitudinalHighlight(water = "境川（１）", variableId = BOD
         inputGrain,
         period: { from: "2020-01-01" },
         imputation: "lod",
+        ...(region ? { region } : {}),
       },
       "place",
     ),
-    sitesInWaterBody(db, water, { dataset: DATASET }),
+    sitesInWaterBody(db, water, { dataset: DATASET, ...(region ? { region } : {}) }),
   ]);
   const siteById = new Map(sites.map((s) => [s.siteId, s]));
   const unit = unitLabel(series[0]?.unitId ?? null);
@@ -101,16 +107,20 @@ async function longitudinalHighlight(water = "境川（１）", variableId = BOD
     .sort((a, b) => b.elevation_m - a.elevation_m);
 }
 
-export default async function Home() {
+export default async function Home({ searchParams }: { searchParams: Promise<{ region?: string | string[] }> }) {
+  const filter = parseRegion((await searchParams).region);
+  // cube 層へは 'all' を入れない（undefined = 全体）。
+  const region = regionOf(filter);
+  const ropt = region ? { region } : {};
   // D1 は 1 クエリ 1 往復。まとめて投げる。
   const cdb = await d1CubeDb();
   const [s, longitudinal, landuseRows, redlistRows, effortRows, occ] = await Promise.all([
-    overviewCounts(cdb),
-    longitudinalHighlight(),
-    landuseHighlight(cdb),
-    redlistSummary(cdb),
-    effortYears(cdb),
-    occurrenceTotals(cdb),
+    overviewCounts(cdb, ropt),
+    longitudinalHighlight(region),
+    landuseHighlight(cdb, 8, ropt),
+    redlistSummary(cdb, undefined, ropt),
+    effortYears(cdb, ropt),
+    occurrenceTotals(cdb, ropt),
   ]);
   const redlist = redlistRows.map((r) => ({
     list_year: r.listYear,
@@ -132,7 +142,10 @@ export default async function Home() {
       <PageContextSetter context={{ route: "/", title: "概況" }} />
       <section className="border-b border-line bg-surface">
         <div className="max-w-[1180px] mx-auto px-6 py-8">
-          <p className="text-[11px] tracking-[0.16em] text-muted uppercase">Watershed Chart — Demo</p>
+          <p className="text-[11px] tracking-[0.16em] text-muted uppercase">
+            Watershed Chart — Demo
+            {region && <span className="ml-3 normal-case tracking-normal text-water-ink">表示中の地域: {regionLabel(filter)}</span>}
+          </p>
           <h1 className="text-[30px] font-bold leading-tight mt-1">
             尾根から海までを、一枚のカルテにする
           </h1>
@@ -150,7 +163,7 @@ export default async function Home() {
             <Stat label="観測指標" value={nf(s.variables)} unit="種" note={`${s.yFrom}–${s.yTo}`} />
             <Stat label="日付のある生物レコード" value={nf(occ.records)} unit="件" />
             <Stat label="単位流域" value={nf(s.watersheds)} unit="面" />
-            <Stat label="出典" value={nf(s.sources)} unit="件" />
+            <Stat label="出典" value={nf(s.sources)} unit="件" note={region ? "全地域共通" : undefined} />
           </div>
         </div>
       </section>
@@ -160,13 +173,13 @@ export default async function Home() {
         <p className="text-[12px] text-muted mt-1 max-w-3xl leading-relaxed">
           「増えた／減った」を言うには、比べてよい相手を選ぶ必要があります。ここでは、場所で比べる・版で比べる・年で比べる、の3つを例に出します。
         </p>
-        <HomeHighlights longitudinal={longitudinal} landuse={landuse} redlist={redlist} effort={effort} />
+        <HomeHighlights longitudinal={longitudinal} landuse={landuse} redlist={redlist} effort={effort} region={filter} />
       </section>
 
       <section className="max-w-[1180px] mx-auto px-6 pb-6">
         <h2 className="text-[16px] font-bold mb-3">画面</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-          {SECTIONS.map((sec) => (
+          {sectionsFor(s, filter).map((sec) => (
             <Link
               key={sec.href}
               href={sec.href}

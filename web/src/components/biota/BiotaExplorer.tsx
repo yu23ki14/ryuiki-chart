@@ -10,7 +10,7 @@ import { ChartFrame, MiniTable } from "@/components/viz/ChartFrame";
 import { SERIES, seriesColor, INK, STATUS } from "@/components/viz/palette";
 import { Btn, inputCls, Spinner, Stat, nf, Provenance } from "@/components/ui";
 import { speciesLabel, caveatBody } from "@/lib/registry/lookup-client";
-import { useJson } from "@/components/useJson";
+import { useRegionJson } from "@/components/useRegionJson";
 import { useSetPageContext } from "@/components/assistant/PageContextProvider";
 
 type Tab = "effort" | "trend" | "ias" | "redlist";
@@ -59,7 +59,7 @@ const GROUP_ORDER = ["鳥類", "被子植物", "昆虫類", "菌類", "シダ植
 
 function EffortTab() {
   useSetPageContext({ route: "/biota", title: "生物相", tab: "effort" });
-  const { data, loading, error } = useJson<{
+  const { data, loading, error } = useRegionJson<{
     groups: { year: number; taxon_group: string; n: number; mesh_n: number }[];
     effort: { year: number; n: number; species_n: number; mesh_n: number; n_inat: number; n_gbif: number }[];
     totals: { records: number; species: number; mesh: number; gbif: number; inat: number };
@@ -247,7 +247,7 @@ function TrendTab() {
 
   useSetPageContext({ route: "/biota", title: "生物相", tab: "trend", group, periodA: a, periodB: b, picked });
 
-  const { data, loading, error } = useJson<{
+  const { data, loading, error } = useRegionJson<{
     rows: { binom: string; label: string; n_a: number; n_b: number; total_a: number; total_b: number }[];
   }>(`/api/biota?kind=trend&group=${encodeURIComponent(group)}&a0=${a[0]}&a1=${a[1]}&b0=${b[0]}&b1=${b[1]}`);
 
@@ -266,7 +266,7 @@ function TrendTab() {
   const up = scored.slice(0, 10);
   const down = [...scored].reverse().slice(0, 10);
 
-  const series = useJson<{ years: { binom: string; year: number; n: number; mesh_n: number | null }[] }>(
+  const series = useRegionJson<{ years: { binom: string; year: number; n: number; mesh_n: number | null }[] }>(
     picked.length ? `/api/biota?kind=species&binoms=${encodeURIComponent(picked.join(","))}` : "",
   );
 
@@ -425,7 +425,7 @@ const IAS_ORDER = ["緊急対策外来種", "重点対策外来種", "その他�
 
 function IasTab() {
   useSetPageContext({ route: "/biota", title: "生物相", tab: "ias" });
-  const { data, loading, error } = useJson<{
+  const { data, loading, error } = useRegionJson<{
     since_year: number;
     rows: {
       ias_category: string;
@@ -443,10 +443,10 @@ function IasTab() {
   const [cat, setCat] = React.useState<string>("すべて");
   const [picked, setPicked] = React.useState<string>("Hestina assimilis");
 
-  const mesh = useJson<{ rows: { year: number; mlat: number; mlon: number; n: number }[] }>(
+  const mesh = useRegionJson<{ rows: { year: number; mlat: number; mlon: number; n: number }[] }>(
     picked ? `/api/biota?kind=mesh&binom=${encodeURIComponent(picked)}` : "",
   );
-  const effort = useJson<{ effort: { year: number; mesh_n: number }[] }>("/api/biota?kind=effort");
+  const effort = useRegionJson<{ effort: { year: number; mesh_n: number }[] }>("/api/biota?kind=effort");
 
   const rows = React.useMemo(
     () => (data?.rows ?? []).filter((r) => cat === "すべて" || r.ias_category === cat),
@@ -588,7 +588,7 @@ function RedlistTab() {
 
   useSetPageContext({ route: "/biota", title: "生物相", tab: "redlist", group: group || undefined });
 
-  const { data, loading, error } = useJson<{
+  const { data, loading, error } = useRegionJson<{
     flows: { prev_label: string; cur_label: string; direction: string; n: number }[];
     species: {
       vernacular_name_ja: string;
