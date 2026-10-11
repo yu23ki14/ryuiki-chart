@@ -44,7 +44,11 @@ def test_counts_and_shape():
     rows = [r for _, r in all_rows(b)]
     assert sum(r["is_total"] for r in rows) == 9 and {r["table_id"] for r in rows if r["is_total"]} == {c.T_K17}
     assert {r["fiscal_year"] for r in rows} == {None}
-    assert all(r["era_raw"] for r in rows)
+    # era_raw は原資料に期間・時点が書かれているものだけ（推定で入れない）
+    era = {(d, r["table_id"], r["row_key"]): r["era_raw"] for d, r in all_rows(b)}
+    assert era[(c.DPRI, c.T_RAIN, "総雨量（住用）")] is None and era[(c.KAGO, c.T_K2, "総雨量（住用町）")] is None
+    assert era[(c.KAGO, c.T_K38, "奄美市名瀬")] is None
+    assert era[(c.KAGO, c.T_K17, "死者")] == "2010年11月26日現在" and era[(c.KAGO, c.T_K6, "20日の日積算雨量（名瀬）")] == "10月20日"
     blank = [r for r in rows if r["value_raw"] is None]
     assert len(blank) == 9 * 6 - sum(v is not None for _, _, vs, _ in c.P17_ROWS for v in vs)
     assert all(r["value"] is None and r["source_text"] == "(内訳に記載なし)" for r in blank)
@@ -75,6 +79,10 @@ def test_provenance():
     assert rows[(c.T_K38, "奄美市住用町", "連続雨量")]["verified_by"] == "claude(text)"
     assert rows[(c.T_K38, "瀬戸内町古仁屋", "日雨量")]["verified_by"] == "claude(text)"
     assert rows[(c.T_DMG, "全壊・半壊の住家", "値")]["verified_by"] == "claude(text)"
+    # vision（p17・p2）とだけ一致するセルは auto に上げない
+    for k in [(c.T_DMG, "死者", "値"), (c.T_K6, "浸水による死者", "値"), (c.T_K6, "崖崩れによる死者", "値")]:
+        assert (rows[k]["verified_by"], rows[k]["confidence"]) == ("claude(text)", 0.9)
+    assert rows[(c.T_RAIN, "最大1時間雨量（住用）", "値")]["verified_by"] == "auto:xtext+arith"   # 表-2 とも一致
 
 
 def test_declared_differences_are_exactly_the_twelve():
@@ -134,6 +142,15 @@ def test_a_changed_value_stops_the_build(table, row, col, new):
         built(mutate(table, row, col, new))
 
 
+def test_rounded_integer_must_be_floor_or_half_even_of_the_decimal():
+    assert c.rounded_ok(c.D(78), c.D("78.5")) and c.rounded_ok(c.D(766), c.D("766.5"))
+    assert not c.rounded_ok(c.D(79), c.D("78.5")) and not c.rounded_ok(c.D(767), c.D("766.5"))
+    with pytest.raises(doccells.IdentityError, match="丸め"):
+        built(mutate(c.T_RAIN, "最大1時間雨量（名瀬）", "値", "79"))
+    with pytest.raises(doccells.IdentityError, match="丸め"):
+        built(mutate(c.T_RAIN, "総雨量（名瀬）", "値", "767"))
+
+
 def test_table2_shape_is_checked():
     with pytest.raises(ValueError, match="値の形"):
         built(mutate(c.T_K38, "奄美市名瀬", "連続雨量", "766.25"))
@@ -156,9 +173,13 @@ def test_missing_jma_day_stops():
         c.build(jma=j, check_pdfs=False)
 
 
-def test_jma_falls_back_to_csv_without_sources(tmp_path):
-    j, warns = c.load_jma(tmp_path)
-    assert j == jma() and warns
+def test_jma_without_sources_falls_back_to_csv_only_when_not_writing(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        c.load_jma(tmp_path)
+    b = c.build(root=tmp_path, check_pdfs=False)
+    assert any("jma_check.csv" in w for w in b["warnings"])
+    with pytest.raises(SystemExit, match="書き込みには必須"):
+        c.build(root=tmp_path, check_pdfs=False, require_jma=True)
 
 
 # ------------------------------------------------------------ PDF
@@ -166,7 +187,7 @@ def test_jma_falls_back_to_csv_without_sources(tmp_path):
 def test_pdf_text_and_table2_match_spec():
     pytest.importorskip("pdfplumber")
     b = c.build(jma=jma())
-    assert b["stats"]["pdf_checked"]
+    assert b["stats"]["pdf_checked"] is True
     boxes = [r["source_bbox"] for _, r in all_rows(b) if r["table_id"] == c.T_K38]
     assert len(boxes) == 9 and all(boxes)
 
@@ -178,6 +199,22 @@ def test_pdf_text_change_stops():
     next(s for s in spec if s["row_key"] == "20日の日雨量（名瀬）")["needle"] = "20日の日雨量は，名瀬で623mm"
     with pytest.raises(ValueError, match="現れない"):
         c.build(spec=spec, jma=jma())
+
+
+def test_pdf_with_wrong_sha_stops(tmp_path):
+    d = tmp_path / c.RAW_DIR
+    d.mkdir(parents=True)
+    for m in c.DOCS.values():
+        (d / m["file"]).write_bytes(b"%PDF-1.4 not the real file")
+    with pytest.raises(SystemExit, match="sha256"):
+        c.build(root=tmp_path, jma=jma())
+
+
+def test_docs_urls_and_shas_come_from_the_fetch_script():
+    import c102a_rain2010_fetch as f
+    for m in c.DOCS.values():
+        assert (m["url"], m["sha256"]) == f.FILES[m["file"]]
+    assert set(f.FILES) == {m["file"] for m in c.DOCS.values()}
 
 
 def test_writing_requires_the_pdfs(tmp_path):

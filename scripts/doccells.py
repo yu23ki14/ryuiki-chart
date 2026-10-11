@@ -223,6 +223,30 @@ def fetch_pdf(url, path):
     return path, common.sha256(path)
 
 
+def fetch_verified(url, path, want_sha256):
+    """保存済みで sha256 が同じなら何もしない。違う・無いなら取得し、検査してから置き換える。
+    sha256 が期待と違えば（既存の良いコピーは壊さず）SystemExit。取得の間隔は common.get の throttle に任せる。-> 'skip' | 'save'"""
+    import common
+    if path.exists() and common.sha256(path) == want_sha256:
+        return "skip"
+    tmp = path.with_name(path.name + ".part")
+    tmp.unlink(missing_ok=True)
+    common.download(url, tmp)
+    sha = common.sha256(tmp)
+    if sha != want_sha256:
+        tmp.unlink()
+        raise SystemExit(f"{path.name}: sha256 が期待と違う（{sha}）。資料が更新された？ 正解 csv を作り直す前に人が確認する")
+    tmp.replace(path)
+    return "save"
+
+
+def number_value(raw):
+    """数値の印字（カンマ付き可）-> (value〔JSON の文字列〕, value_type)。小数点があれば float、なければ int。"""
+    from decimal import Decimal
+    v = Decimal(str(raw).replace(",", ""))
+    return (str(float(v)), "float") if "." in str(raw) else (str(int(v)), "int")
+
+
 def pdf_page_count(path):
     """PDF のページ数。先頭が %PDF でない・pdfplumber で開けない PDF は ValueError。"""
     with open(path, "rb") as f:

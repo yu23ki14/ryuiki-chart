@@ -9,22 +9,23 @@
    p38 の表-2 が SPEC と一致することを検査する。p38 の bbox は pdfplumber のセル座標。
 3. 検算（§5）: p17 の市町村の和 = 合計、表-2 の値の形、気象庁（名瀬・古仁屋）との突き合わせ、出典間の突き合わせ。
    出典間の食い違いは**宣言した差**（DECLARED_DIFFS）として列挙し、過不足なく一致しなければ止める。
-4. verified_by: 本文・p38（extractor=manual:pdftext）は、検算の突き合わせが通ったセルが `auto:xtext+arith`（1.0）、
-   突き合わせ先が無いものは `claude(text)`（0.9）。p2・p17（extractor=manual:vision）は `claude(vision)`（0.9。人の見直し前）。
+4. verified_by: 本文・p38（extractor=manual:pdftext）は、**文字情報・気象庁の値**と突き合わせて一致したセルが `auto:xtext+arith`（1.0）、
+   突き合わせ先が無い・目で読んだ値（p2・p17）としか一致しないセルは `claude(text)`（0.9。裏付けが vision だけなら確信度も vision 側に揃える）。
+   p2・p17（extractor=manual:vision）は `claude(vision)`（0.9。人の見直し前）。
 
 fiscal_year は全セル NULL（単発の事象。DOC_SERIES_WHERE に入れない。era_raw に期間の原文）。
 使い方: python3 scripts/c102b_rain2010_cells.py [--dry-run] [--no-register]
 """
 import argparse
 import csv
-import datetime
 import json
 import pathlib
 import sqlite3
 import sys
-from decimal import Decimal
+from decimal import ROUND_FLOOR, ROUND_HALF_EVEN, Decimal, InvalidOperation
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
+import c102a_rain2010_fetch as fetch
 import common
 import doccells
 
@@ -33,24 +34,25 @@ RAW_DIR = "data/raw/amami_rain2010"
 SCRIPT_ID = "c102b_rain2010_cells"
 JMA_CSV = ROOT / "scripts/tests/fixtures/amami_rain2010/jma_check.csv"
 JMA_DIR = ROOT / RAW_DIR / "jma_check"
-LICENSE = doccells.LICENSE_NOTE_UNSTATED
 
 DPRI, KAGO = "dpri_amami_gouu_sokuho_2011", "kagoshima_univ_amami_gouu_2012"
 DOCS = {
     DPRI: dict(
         title="2010年10月奄美大島豪雨災害調査速報",
         publisher="京都大学防災研究所（自然災害研究協議会災害調査団。竹林洋史）",
-        url="https://www.dpri.kyoto-u.ac.jp/web_j/contents/event_text/20110221.pdf",
         file="20110221.pdf", n_pages=5, fiscal_year=2010,
-        source_id="dpri_gouu2010_amami", source_name="京都大学防災研究所 2010年奄美豪雨の調査速報（本文の雨量・被害）"),
+        source_id="dpri_gouu2010_amami", source_name="京都大学防災研究所 2010年奄美豪雨の調査速報（本文の雨量・被害）",
+        source_notes=f"doc_id={DPRI}（速報の本文の雨量・被害を cells に入れた。2011年）。fiscal_year は NULL の単発の事象。PDF は data/raw に置き再配布しない。"),
     KAGO: dict(
         title="「2010年奄美豪雨災害の総合的調査研究」報告書",
         publisher="鹿児島大学奄美豪雨災害調査委員会",
-        url="https://bousai.kagoshima-u.ac.jp/wpo/wp-content/uploads/2024/03/2010_gouu.pdf",
         file="2010_gouu.pdf", n_pages=191, fiscal_year=2011,
-        source_id="kagoshima_univ_gouu2010_amami", source_name="鹿児島大学 2010年奄美豪雨災害の総合的調査研究報告書（雨量・被害）"),
+        source_id="kagoshima_univ_gouu2010_amami", source_name="鹿児島大学 2010年奄美豪雨災害の総合的調査研究報告書（雨量・被害）",
+        source_notes=f"doc_id={KAGO}（報告書の本文・画像・表-2 の雨量・被害を cells に入れた。2012年）。fiscal_year は NULL の単発の事象。"
+                     "p17 は画像を目で読んだもので人の見直しが済んでいない。PDF は data/raw に置き再配布しない。"),
 }
-SOURCE_PAGE = {DPRI: "https://www.dpri.kyoto-u.ac.jp/web_j/contents/event_text/20110221.pdf", KAGO: DOCS[KAGO]["url"]}
+for _m in DOCS.values():   # 取得先 URL と期待する sha256 は c102a の FILES が正
+    _m["url"], _m["sha256"] = fetch.FILES[_m["file"]]
 
 T_RAIN, T_DMG, T_FLOOD = "p1_text_rain", "p1_text_damage", "p2_text_flood"   # 京大
 T_K2, T_K6, T_K16, T_K17, T_K38 = "p2_text", "p6_text", "p16_text", "p17_t1", "p38_t1"   # 鹿大
@@ -149,14 +151,19 @@ def num(raw):
     return D(raw.replace(",", ""))
 
 
-def era_for(table, row_key, col_key):
-    if table == T_K17:
-        return "2010年11月26日現在"
-    if "総雨量" in row_key or col_key == "連続雨量":
-        return "2010年10月18〜21日"
-    if table in (T_RAIN, T_K2, T_K6, T_K16, T_K38) and any(w in row_key + col_key for w in ("雨量", "時間", "日雨量")):
-        return "2010年10月20日"
-    return "2010年10月豪雨"
+# 期間・時点が原資料に書かれているものだけ（推定で入れない）。(table, row_key) -> 原文の表記
+ERA = {
+    (T_DMG, "死者"): "2010年10月20日", (T_DMG, "全壊・半壊の住家"): "2010年10月20日",
+    (T_K2, "最大1時間雨量（住用町）"): "20日12〜13時", (T_K2, "最大3時間雨量（住用町）"): "20日10〜13時",
+    (T_K6, "20日の日積算雨量（住用町）"): "10月20日", (T_K6, "20日の日積算雨量（名瀬）"): "10月20日",
+    (T_K6, "20日の日積算雨量（古仁屋）"): "10月20日",
+    (T_K16, "24時間雨量（名瀬）"): "20日23時20分まで", (T_K16, "20日の日雨量（名瀬）"): "20日",
+    (T_K16, "最大1時間雨量（古仁屋）"): "20日13時05分まで", (T_K16, "最大1時間雨量（名瀬）"): "20日16時41分まで",
+}
+
+
+def era_for(table, row_key):
+    return "2010年11月26日現在" if table == T_K17 else ERA.get((table, row_key))
 
 
 def cell_row(doc, table, page, row_key, col_key, raw, unit, source_text, needle=None, is_total=0, bbox=None):
@@ -181,11 +188,9 @@ def make_spec():
 SPEC = make_spec()
 
 
-def val(spec, table, row, col="値"):
-    for c in spec:
-        if (c["table_id"], c["row_key"], c["col_key"]) == (table, row, col):
-            return None if c["value_raw"] is None else num(c["value_raw"])
-    raise KeyError((table, row, col))
+def values(spec):
+    """{(table, row, col): Decimal または None〔空欄〕}"""
+    return {(c["table_id"], c["row_key"], c["col_key"]): None if c["value_raw"] is None else num(c["value_raw"]) for c in spec}
 
 
 # ------------------------------------------------------------------ 気象庁
@@ -228,18 +233,17 @@ def jma_kokuya_html(path):
 
 
 def load_jma(root=ROOT):
-    """-> (jma, 警告のリスト)。名瀬は原本 DB、古仁屋は保存 HTML から読む。どちらかが無ければ csv に落とす。"""
+    """名瀬は原本 DB、古仁屋は保存 HTML から読む（8行）。無い・読めないときは FileNotFoundError / ImportError / ValueError。"""
+    db, html = root / "data/db/ryuiki.sqlite", root / RAW_DIR / "jma_check/daily_a1_0980.html"
+    if not (db.exists() and html.exists()):
+        raise FileNotFoundError("原本 DB か保存 HTML が無い")
     try:
-        db = root / "data/db/ryuiki.sqlite"
-        html = root / RAW_DIR / "jma_check/daily_a1_0980.html"
-        if not (db.exists() and html.exists()):
-            raise FileNotFoundError("原本 DB か保存 HTML が無い")
         jma = {**jma_nase_db(db), **jma_kokuya_html(html)}
-        if len(jma) != 8:
-            raise ValueError(f"気象庁の日別が8行にならない: {len(jma)}")
-        return jma, []
-    except (FileNotFoundError, ImportError, sqlite3.Error, ValueError) as e:
-        return jma_from_csv(), [f"気象庁を原本・保存 HTML から読めない（{e}）ので jma_check.csv を使った"]
+    except (sqlite3.Error, InvalidOperation) as e:
+        raise ValueError(f"気象庁の値を読めない: {e!r}") from e
+    if len(jma) != 8:
+        raise ValueError(f"気象庁の日別が8行にならない: {len(jma)}")
+    return jma
 
 
 # ------------------------------------------------------------------ 検算
@@ -251,17 +255,31 @@ def sum_jma(jma, station, key):
     return sum(jma[(station, d)][key] for d in days)
 
 
+def rounded_ok(whole, exact):
+    """整数表記 whole が小数 exact の丸め（切り捨て、または偶数丸め）か。原資料は丸め方を書いていないので両方を許す。"""
+    return whole in (exact.to_integral_value(ROUND_FLOOR), exact.to_integral_value(ROUND_HALF_EVEN))
+
+
 def run_checks(spec, jma):
-    """検算を全部通す。通らなければ doccells.IdentityError / ValueError。-> (backed {(table,row,col)}, 宣言した差の実際)。"""
-    V = lambda t, r, c="値": val(spec, t, r, c)   # noqa: E731
-    k = lambda t, r, c="値": (t, r, c)            # noqa: E731
-    backed = set()
+    """検算を全部通す。通らなければ doccells.IdentityError / ValueError。
+    -> (backed {(table,row,col)}, 宣言した差の実際)。backed は、文字情報か気象庁の値と突き合わせて一致した文字情報のセル
+    （目で読んだ p2・p17 としか一致しないものは含めない）。"""
+    vals = values(spec)
+
+    def V(t, r, c="値"):
+        return vals[(t, r, c)]
+
+    def key(t, r, c="値"):
+        return (t, r, c)
+
+    def total(rk):
+        return key(T_K17, rk, TOTAL_COL)
 
     # (1) 被害状況（p17）: 全行で 市町村の和 = 合計
     doccells.check_identity("p17 の市町村の和と合計", {
-        rk: (sum(V(T_K17, rk, ck) or 0 for ck in P17_COLS), V(T_K17, rk, TOTAL_COL)) for rk, *_ in P17_ROWS})
-    flood = V(T_K17, "床上浸水", TOTAL_COL) + V(T_K17, "床下浸水", TOTAL_COL)
-    wreck = V(T_K17, "住家全壊", TOTAL_COL) + V(T_K17, "住家半壊", TOTAL_COL)
+        rk: (sum(V(T_K17, rk, ck) or 0 for ck in P17_COLS), V(*total(rk))) for rk, *_ in P17_ROWS})
+    flood = V(*total("床上浸水")) + V(*total("床下浸水"))
+    wreck = V(*total("住家全壊")) + V(*total("住家半壊"))
     doccells.check_identity("p17 の浸水の合計と序文の浸水886棟", {"床上＋床下": (flood, D(PREFACE_FLOOD_TOTAL))})
 
     # (2) 表-2 の値の形: 連続雨量は .5 刻み、時間雨量・日雨量は小数1桁以内
@@ -272,44 +290,52 @@ def run_checks(spec, jma):
             if not ok:
                 raise ValueError(f"表-2 の値の形が想定外: {place} {ck} {v}")
 
-    # (3) 気象庁との突き合わせ（label, 気象庁の値, 報告書の値, 裏付けるセル）
+    # (3) 突き合わせ。項は セルのキー／セルのキーの和（list）／外部の数（気象庁の値）。
+    #     外部の数か文字情報のセルと一致したセルだけが backed（vision のセルとだけ一致したものは backed にしない）。
+    def operand(x):
+        keys = [x] if isinstance(x, tuple) else (x if isinstance(x, list) else [])
+        value = sum(V(*k) for k in keys) if keys else x
+        return keys, value
+
+    def textual(keys):
+        return [k for k in keys if k[0] not in VISION_TABLES]
+
+    pairs, backed_by = {}, []
+    def match(label, a, b):
+        (ka, va), (kb, vb) = operand(a), operand(b)
+        pairs[label] = (va, vb)
+        a_solid = not ka or bool(textual(ka))   # 外部の数 or 文字情報のセルを含む
+        b_solid = not kb or bool(textual(kb))
+        backed_by.append((label, textual(ka) if b_solid else [], textual(kb) if a_solid else []))
+
     N, K = "名瀬", "古仁屋"
     j20 = lambda s, i: jma[(s, "2010-10-20")][i]   # noqa: E731
-    pairs = [
-        ("名瀬 18〜21日の和 = 表-2 連続雨量", sum_jma(jma, N, 0), V(T_K38, "奄美市名瀬", "連続雨量"), [k(T_K38, "奄美市名瀬", "連続雨量")]),
-        ("名瀬 20日 = 安達ほか", j20(N, 0), V(T_K6, "20日の日積算雨量（名瀬）"), [k(T_K6, "20日の日積算雨量（名瀬）")]),
-        ("名瀬 20日 = 地頭薗ほか", j20(N, 0), V(T_K16, "20日の日雨量（名瀬）"), [k(T_K16, "20日の日雨量（名瀬）")]),
-        ("名瀬 最大1時間 = 表-2", j20(N, 1), V(T_K38, "奄美市名瀬", "時間雨量"), [k(T_K38, "奄美市名瀬", "時間雨量")]),
-        ("名瀬 最大1時間 = 地頭薗ほか", j20(N, 1), V(T_K16, "最大1時間雨量（名瀬）"), [k(T_K16, "最大1時間雨量（名瀬）")]),
-        ("古仁屋 18〜21日の和 = 表-2 連続雨量", sum_jma(jma, K, 0), V(T_K38, "瀬戸内町古仁屋", "連続雨量"), [k(T_K38, "瀬戸内町古仁屋", "連続雨量")]),
-        ("古仁屋 20日 = 安達ほか", j20(K, 0), V(T_K6, "20日の日積算雨量（古仁屋）"), [k(T_K6, "20日の日積算雨量（古仁屋）")]),
-        ("古仁屋 最大1時間 = 表-2", j20(K, 1), V(T_K38, "瀬戸内町古仁屋", "時間雨量"), [k(T_K38, "瀬戸内町古仁屋", "時間雨量")]),
-        ("古仁屋 最大1時間 = 地頭薗ほか", j20(K, 1), V(T_K16, "最大1時間雨量（古仁屋）"), [k(T_K16, "最大1時間雨量（古仁屋）")]),
-    ]
-    # (4) 出典間の突き合わせ（一致するもの）
-    pairs += [
-        ("住用 最大1時間 京大 = 鹿大表-2", V(T_RAIN, "最大1時間雨量（住用）"), V(T_K38, "奄美市住用町", "時間雨量"),
-         [k(T_RAIN, "最大1時間雨量（住用）"), k(T_K38, "奄美市住用町", "時間雨量")]),
-        ("住用 最大1時間 京大 = 鹿大序文", V(T_RAIN, "最大1時間雨量（住用）"), V(T_K2, "最大1時間雨量（住用町）"),
-         [k(T_K2, "最大1時間雨量（住用町）")]),
-        ("住用 24時間 京大 = 鹿大表-2 日雨量", V(T_RAIN, "24時間雨量（住用）"), V(T_K38, "奄美市住用町", "日雨量"),
-         [k(T_RAIN, "24時間雨量（住用）"), k(T_K38, "奄美市住用町", "日雨量")]),
-        ("名瀬 24時間 京大 = 鹿大表-2 日雨量", V(T_RAIN, "24時間雨量（名瀬）"), V(T_K38, "奄美市名瀬", "日雨量"),
-         [k(T_RAIN, "24時間雨量（名瀬）"), k(T_K38, "奄美市名瀬", "日雨量")]),
-        ("名瀬 24時間 京大 = 地頭薗ほか", V(T_RAIN, "24時間雨量（名瀬）"), V(T_K16, "24時間雨量（名瀬）"), [k(T_K16, "24時間雨量（名瀬）")]),
-        ("死者 京大 = p17 合計", V(T_DMG, "死者"), V(T_K17, "死者", TOTAL_COL), [k(T_DMG, "死者")]),
-        ("死者 安達ほか 2+1 = p17 合計", V(T_K6, "浸水による死者") + V(T_K6, "崖崩れによる死者"), V(T_K17, "死者", TOTAL_COL),
-         [k(T_K6, "浸水による死者"), k(T_K6, "崖崩れによる死者")]),
-    ]
-    # 丸めの範囲で一致（京大の整数。気象庁・鹿大は .5）
-    for label, a, b, cell in [("名瀬 最大1時間 京大78 ≈ 78.5", V(T_RAIN, "最大1時間雨量（名瀬）"), V(T_K38, "奄美市名瀬", "時間雨量"),
-                               k(T_RAIN, "最大1時間雨量（名瀬）")),
-                              ("名瀬 総雨量 京大766 ≈ 766.5", V(T_RAIN, "総雨量（名瀬）"), V(T_K38, "奄美市名瀬", "連続雨量"),
-                               k(T_RAIN, "総雨量（名瀬）"))]:
-        pairs.append((label, a, a if abs(a - b) < 1 else b, [cell]))
+    nase, kok = "奄美市名瀬", "瀬戸内町古仁屋"
+    # 気象庁との突き合わせ
+    match("名瀬 18〜21日の和 = 表-2 連続雨量", sum_jma(jma, N, 0), key(T_K38, nase, "連続雨量"))
+    match("名瀬 20日 = 安達ほか", j20(N, 0), key(T_K6, "20日の日積算雨量（名瀬）"))
+    match("名瀬 20日 = 地頭薗ほか", j20(N, 0), key(T_K16, "20日の日雨量（名瀬）"))
+    match("名瀬 最大1時間 = 表-2", j20(N, 1), key(T_K38, nase, "時間雨量"))
+    match("名瀬 最大1時間 = 地頭薗ほか", j20(N, 1), key(T_K16, "最大1時間雨量（名瀬）"))
+    match("古仁屋 18〜21日の和 = 表-2 連続雨量", sum_jma(jma, K, 0), key(T_K38, kok, "連続雨量"))
+    match("古仁屋 20日 = 安達ほか", j20(K, 0), key(T_K6, "20日の日積算雨量（古仁屋）"))
+    match("古仁屋 最大1時間 = 表-2", j20(K, 1), key(T_K38, kok, "時間雨量"))
+    match("古仁屋 最大1時間 = 地頭薗ほか", j20(K, 1), key(T_K16, "最大1時間雨量（古仁屋）"))
+    # 出典間の突き合わせ（一致するもの）
+    match("住用 最大1時間 京大 = 鹿大表-2", key(T_RAIN, "最大1時間雨量（住用）"), key(T_K38, "奄美市住用町", "時間雨量"))
+    match("住用 最大1時間 京大 = 鹿大序文", key(T_RAIN, "最大1時間雨量（住用）"), key(T_K2, "最大1時間雨量（住用町）"))
+    match("住用 24時間 京大 = 鹿大表-2 日雨量", key(T_RAIN, "24時間雨量（住用）"), key(T_K38, "奄美市住用町", "日雨量"))
+    match("名瀬 24時間 京大 = 鹿大表-2 日雨量", key(T_RAIN, "24時間雨量（名瀬）"), key(T_K38, nase, "日雨量"))
+    match("名瀬 24時間 京大 = 地頭薗ほか", key(T_RAIN, "24時間雨量（名瀬）"), key(T_K16, "24時間雨量（名瀬）"))
+    match("死者 京大 = p17 合計", key(T_DMG, "死者"), total("死者"))
+    match("死者 安達ほか 2+1 = p17 合計", [key(T_K6, "浸水による死者"), key(T_K6, "崖崩れによる死者")], total("死者"))
+    # 丸めの範囲で一致（京大の整数表記。気象庁・鹿大表-2 は .5）。整数が小数の切り捨てか偶数丸めであること
+    for label, whole, exact in [("名瀬 最大1時間 京大78 は 78.5 の丸め", key(T_RAIN, "最大1時間雨量（名瀬）"), key(T_K38, nase, "時間雨量")),
+                                ("名瀬 総雨量 京大766 は 766.5 の丸め", key(T_RAIN, "総雨量（名瀬）"), key(T_K38, nase, "連続雨量"))]:
+        pairs[label] = (True, rounded_ok(V(*whole), V(*exact)))
+        backed_by.append((label, [whole], []))
 
-    # (5) 宣言する差
-    flood_u, flood_d = V(T_K17, "床上浸水", TOTAL_COL), V(T_K17, "床下浸水", TOTAL_COL)
+    # (4) 宣言する差
     declared_in = {
         "住用の総雨量 京大/鹿大序文": (V(T_RAIN, "総雨量（住用）"), V(T_K2, "総雨量（住用町）")),
         "住用の総雨量 京大/鹿大表-2": (V(T_RAIN, "総雨量（住用）"), V(T_K38, "奄美市住用町", "連続雨量")),
@@ -317,19 +343,15 @@ def run_checks(spec, jma):
         "全壊・半壊 京大/県11-26": (V(T_DMG, "全壊・半壊の住家"), wreck),
         "全壊・半壊 京大/安達ほか": (V(T_DMG, "全壊・半壊の住家"), V(T_K6, "全半壊の建物")),
         "全壊・半壊 県11-26/安達ほか": (wreck, V(T_K6, "全半壊の建物")),
-        "床上浸水 京大/県11-26": (V(T_FLOOD, "床上浸水"), flood_u),
+        "床上浸水 京大/県11-26": (V(T_FLOOD, "床上浸水"), V(*total("床上浸水"))),
         "床上浸水 京大/安達ほか": (V(T_FLOOD, "床上浸水"), V(T_K6, "床上浸水")),
-        "床上浸水 県11-26/安達ほか": (flood_u, V(T_K6, "床上浸水")),
-        "床下浸水 京大/県11-26": (V(T_FLOOD, "床下浸水"), flood_d),
+        "床上浸水 県11-26/安達ほか": (V(*total("床上浸水")), V(T_K6, "床上浸水")),
+        "床下浸水 京大/県11-26": (V(T_FLOOD, "床下浸水"), V(*total("床下浸水"))),
         "床下浸水 京大/安達ほか": (V(T_FLOOD, "床下浸水"), V(T_K6, "床下浸水")),
-        "床下浸水 県11-26/安達ほか": (flood_d, V(T_K6, "床下浸水")),
+        "床下浸水 県11-26/安達ほか": (V(*total("床下浸水")), V(T_K6, "床下浸水")),
     }
-    observed = {label: (a, b) for label, a, b, _ in pairs}
-    observed.update(declared_in)
-    actual = doccells.check_identity("気象庁・出典間の突き合わせ", observed, DECLARED_DIFFS)
-    for label, _a, _b, cells in pairs:
-        if label not in actual:
-            backed.update(cells)
+    actual = doccells.check_identity("気象庁・出典間の突き合わせ", {**pairs, **declared_in}, DECLARED_DIFFS)
+    backed = {k for label, ka, kb in backed_by if label not in actual for k in ka + kb}
     return backed, actual
 
 
@@ -339,19 +361,25 @@ def _squash(s):
 
 
 def verify_pdfs(spec, root=ROOT):
-    """本文の数値の文が PDF に現れること、p38 の表-2 が SPEC と一致することを検査する。
-    -> (p38 のセル bbox {(行, 列): [x0, y0, x1, y1]}, 警告のリスト)。PDF・pdfplumber が無ければ ({}, [警告])。"""
+    """PDF の sha256・ページ数、本文の数値の文、p38 の表-2 を検査する。
+    -> (p38 のセル bbox {(行, 列): [x0, y0, x1, y1]}, 警告のリスト, checked)。
+    PDF・pdfplumber が無ければ ({}, [警告], False)。PDF があって sha256 が c102a の FILES と違えば止める。"""
     paths = {d: root / RAW_DIR / DOCS[d]["file"] for d in DOCS}
     missing = [p.name for p in paths.values() if not p.exists()]
     if missing:
-        return {}, [f"PDF が無い（{', '.join(missing)}）ので本文・表-2 の検査を飛ばした"]
+        return {}, [f"PDF が無い（{', '.join(missing)}）ので本文・表-2 の検査を飛ばした"], False
+    for d, p in paths.items():
+        if common.sha256(p) != DOCS[d]["sha256"]:
+            raise SystemExit(f"{p.name}: sha256 が c102a_rain2010_fetch.FILES と違う。資料が更新された？ 人が確認する")
     try:
         import pdfplumber
     except ImportError:
-        return {}, ["pdfplumber が無いので本文・表-2 の検査を飛ばした"]
+        return {}, ["pdfplumber が無いので本文・表-2 の検査を飛ばした"], False
     bbox = {}
     for doc, path in paths.items():
         with pdfplumber.open(str(path)) as pdf:
+            if len(pdf.pages) != DOCS[doc]["n_pages"]:
+                raise ValueError(f"{doc}: ページ数が {len(pdf.pages)}（DOCS は {DOCS[doc]['n_pages']}）")
             need = {}
             for c in spec:
                 if c["doc"] == doc and c["needle"]:
@@ -368,40 +396,37 @@ def verify_pdfs(spec, root=ROOT):
                 t = tables[0]
                 body = t.extract()[1:]
                 want = [[place, *vals] for place, vals in P38_ROWS]
+                if any(x is None for r in body for x in r):
+                    raise ValueError(f"p{P38_PAGE} の表-2 に読めない（None の）セルがある: {body}")
                 if [[_squash(x) for x in r] for r in body] != want:
                     raise ValueError(f"p{P38_PAGE} の表-2 が SPEC と違う: {body}")
                 for i, (place, _) in enumerate(P38_ROWS):
                     for j, (ck, _u) in enumerate(P38_COLS):
-                        x0, y0, x1, y1 = t.rows[i + 1].cells[j + 1]
-                        bbox[(place, ck)] = [round(x0, 1), round(y0, 1), round(x1, 1), round(y1, 1)]
-    return bbox, []
+                        cell = t.rows[i + 1].cells[j + 1]
+                        if cell is None:
+                            raise ValueError(f"p{P38_PAGE} の表-2 のセル座標が無い: {place} {ck}")
+                        bbox[(place, ck)] = [round(x, 1) for x in cell]
+    return bbox, [], True
 
 
 # ------------------------------------------------------------------ 組み立て
 def to_rows(spec, backed, bbox, sha_by_doc):
     out = {d: [] for d in DOCS}
-    now = datetime.datetime.now().isoformat(timespec="seconds")
     for c in spec:
-        vision = c["table_id"] in VISION_TABLES
-        if vision:
+        if c["table_id"] in VISION_TABLES:
             extractor, by, conf = "manual:vision", "claude(vision)", 0.9
         else:
             extractor = "manual:pdftext"
-            ok = (c["table_id"], c["row_key"], c["col_key"]) in backed
-            by, conf = ("auto:xtext+arith", 1.0) if ok else ("claude(text)", 0.9)
-        raw = c["value_raw"]
+            by, conf = ("auto:xtext+arith", 1.0) if (c["table_id"], c["row_key"], c["col_key"]) in backed else ("claude(text)", 0.9)
+        box = bbox.get((c["row_key"], c["col_key"])) if c["table_id"] == T_K38 else None
         row = dict(page_no=c["page_no"], table_id=c["table_id"], row_key=c["row_key"], col_key=c["col_key"],
-                   unit=c["unit"], fiscal_year=None, era_raw=era_for(c["table_id"], c["row_key"], c["col_key"]),
-                   source_text=c["source_text"], source_bbox=json.dumps(bbox[(c["row_key"], c["col_key"])])
-                   if c["table_id"] == T_K38 and (c["row_key"], c["col_key"]) in bbox else None,
-                   notes_ref=None, is_total=c["is_total"], merged=0, extractor=extractor, extracted_at=now,
-                   doc_sha256=sha_by_doc.get(c["doc"]), unreadable_reason=None, confidence=conf, verified_by=by)
-        if raw is None:
-            row.update(value_raw=None, value=None, value_type=None)
-        else:
-            v = num(raw)
-            is_float = "." in raw
-            row.update(value_raw=raw, value=str(float(v)) if is_float else str(int(v)), value_type="float" if is_float else "int")
+                   unit=c["unit"], fiscal_year=None, era_raw=era_for(c["table_id"], c["row_key"]),
+                   source_text=c["source_text"], source_bbox=json.dumps(box) if box else None,
+                   notes_ref=None, is_total=c["is_total"], merged=0, extractor=extractor,
+                   doc_sha256=sha_by_doc.get(c["doc"]), unreadable_reason=None, confidence=conf, verified_by=by,
+                   value_raw=c["value_raw"], value=None, value_type=None)
+        if c["value_raw"] is not None:
+            row["value"], row["value_type"] = doccells.number_value(c["value_raw"])
         out[c["doc"]].append(row)
     return out
 
@@ -453,49 +478,45 @@ def notes():
     }
 
 
-def build(root=ROOT, spec=None, jma=None, check_pdfs=True, require_pdfs=False):
+def build(root=ROOT, spec=None, jma=None, check_pdfs=True, require_pdfs=False, require_jma=False):
     """-> dict(docs={doc_id: dict(document, rows, notes)}, stats, warnings)。DB には触れない。
-    jma: {(地点, 日付): (合計, 最大1時間)}。None なら load_jma（原本・保存 HTML、無ければ csv）。
-    check_pdfs: PDF があれば本文・表-2 を検査する。require_pdfs: PDF が無い・検査できないと止める（書き込みでは必須）。"""
+    jma: {(地点, 日付): (合計, 最大1時間)}。None なら load_jma（原本 DB・保存 HTML）。読めないとき、
+    require_jma なら止める（書き込みでは必須）、でなければ jma_check.csv に落として警告する（dry-run・テスト）。
+    check_pdfs: PDF があれば検査する。require_pdfs: PDF が無い・検査できないと止める（書き込みでは必須）。"""
     spec = spec if spec is not None else SPEC
     warnings = []
     if jma is None:
-        jma, w = load_jma(root)
-        warnings += w
+        try:
+            jma = load_jma(root)
+        except (FileNotFoundError, ImportError, ValueError) as e:
+            if require_jma:
+                raise SystemExit(f"気象庁の値を原本 DB・保存 HTML から読めない（{e}）。書き込みには必須（csv では書かない）")
+            jma = jma_from_csv()
+            warnings.append(f"気象庁を原本・保存 HTML から読めない（{e}）ので jma_check.csv を使った")
     backed, declared = run_checks(spec, jma)
-    bbox, sha = {}, {}
+    bbox, checked = {}, False
     if check_pdfs:
-        bbox, w = verify_pdfs(spec, root)
+        bbox, w, checked = verify_pdfs(spec, root)
         warnings += w
-        if w and require_pdfs:
+        if not checked and require_pdfs:
             raise SystemExit(w[0] + "（書き込みには必須）")
-    for d, meta in DOCS.items():
-        p = root / RAW_DIR / meta["file"]
-        sha[d] = common.sha256(p) if p.exists() else None
+    sha = {d: common.sha256(root / RAW_DIR / m["file"]) if (root / RAW_DIR / m["file"]).exists() else None for d, m in DOCS.items()}
     by_doc = to_rows(spec, backed, bbox, sha)
     ns = notes()
-    docs = {}
-    for d, meta in DOCS.items():
-        docs[d] = dict(document=dict(title=meta["title"], publisher=meta["publisher"], url=meta["url"],
-                                     local_path=f"{RAW_DIR}/{meta['file']}", doc_sha256=sha[d], n_pages=meta["n_pages"],
-                                     fiscal_year=meta["fiscal_year"], license=LICENSE),
-                       rows=by_doc[d], notes=ns[d])
+    docs = {d: dict(document=dict(title=m["title"], publisher=m["publisher"], url=m["url"], local_path=f"{RAW_DIR}/{m['file']}",
+                                  doc_sha256=sha[d], n_pages=m["n_pages"], fiscal_year=m["fiscal_year"], license=doccells.LICENSE_NOTE_UNSTATED),
+                    rows=by_doc[d], notes=ns[d]) for d, m in DOCS.items()}
     stats = dict(n_cells=sum(len(v["rows"]) for v in docs.values()), backed=len(backed), declared_diffs=sorted(declared),
-                 pdf_checked=check_pdfs and not any("飛ばした" in w for w in warnings))
+                 pdf_checked=checked)
     return dict(docs=docs, stats=stats, warnings=warnings)
 
 
 # ------------------------------------------------------------------ DB
 def source_args(doc_id):
-    meta = DOCS[doc_id]
-    if doc_id == DPRI:
-        notes_ = f"doc_id={DPRI}（速報の本文の雨量・被害を cells に入れた）。fiscal_year は NULL の単発の事象。PDF は data/raw に置き再配布しない。"
-    else:
-        notes_ = (f"doc_id={KAGO}（報告書の本文・画像・表-2 の雨量・被害を cells に入れた。2012年。fiscal_year は NULL の単発の事象）。"
-                  "p17 は画像を目で読んだもので人の見直しが済んでいない。PDF は data/raw に置き再配布しない。")
-    return dict(source_id=meta["source_id"], name=meta["source_name"], publisher=meta["publisher"], url=SOURCE_PAGE[doc_id],
+    m = DOCS[doc_id]
+    return dict(source_id=m["source_id"], name=m["source_name"], publisher=m["publisher"], url=m["url"],
                 category="災害(2010年奄美豪雨)", access_method="PDF（本文・画像・表）→ 目視・文字情報＋検算 → cells.sqlite",
-                fmt="PDF", license_=LICENSE, redistributable=False, notes=notes_)
+                fmt="PDF", license_=doccells.LICENSE_NOTE_UNSTATED, redistributable=False, notes=m["source_notes"])
 
 
 def write(built, register=True):
@@ -514,10 +535,11 @@ def write(built, register=True):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--dry-run", action="store_true", help="DB に書かない")
+    ap.add_argument("--dry-run", action="store_true", help="DB に書かない（気象庁・PDF が無ければ csv・検査なしで進む）")
     ap.add_argument("--no-register", action="store_true", help="source_registry に登録しない")
     a = ap.parse_args()
-    b = build(require_pdfs=not a.dry_run)
+    strict = not a.dry_run
+    b = build(require_pdfs=strict, require_jma=strict)
     st = b["stats"]
     print(f"cells {st['n_cells']}（京大 {len(b['docs'][DPRI]['rows'])}・鹿大 {len(b['docs'][KAGO]['rows'])}）、"
           f"検算で裏付けたセル {st['backed']}、宣言した差 {len(st['declared_diffs'])} 件、PDF の検査 {'済' if st['pdf_checked'] else '飛ばした'}")
