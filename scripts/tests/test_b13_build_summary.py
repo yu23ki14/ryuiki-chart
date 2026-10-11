@@ -41,7 +41,7 @@ _ROWS = [
     ("r1", "p2", "site", "v.bod", "mean", "unit.mgl", "day", "2020-01-01", "2020-12-31",
      "year", "day", "mean", 5.0, 5.2, 7, 2, 0, 1, "obs", "v2"),
     # filter 対象外: place_kind='watershed'（site ではない）
-    ("r1", "w1", "watershed", "v.bod", "mean", "unit.mgl", "day", "2020-01-01", "2020-12-31",
+    ("jp-14", "w1", "watershed", "v.bod", "mean", "unit.mgl", "day", "2020-01-01", "2020-12-31",
      "year", "day", "mean", 9.0, 9.0, 999, 0, 0, 1, "obs", "v2"),
     # filter 対象外: stat='min'（非代表統計量。mean のみを対象にする）
     ("r1", "p1", "site", "v.bod", "mean", "unit.mgl", "day", "2020-01-01", "2020-12-31",
@@ -110,11 +110,24 @@ _TAXON_ROWS = [
 ]
 
 
+# place（Issue #93: b13 の place_region が site の place.region_id を読む）。観測フィクスチャ `_ROWS` の
+# 地点 p1・p2 は region 'r1'。p3 はキューブに出ない site（registry だけが地域を知っている）。
+_PLACE_ROWS = [
+    # place_id, region_id, place_kind
+    ("p1", "r1", "site"),
+    ("p2", "r1", "site"),
+    ("p3", "jp-46", "site"),
+    ("w1", None, "watershed"),   # 流域・グリッドは place.region_id が NULL（ADR-0022 決定1）
+]
+
+
 def _make_registry_fixture(tmp_path, taxon_rows=_TAXON_ROWS, name: str = "registry.sqlite",
-                           *, primary_key: bool = True) -> pathlib.Path:
+                           *, primary_key: bool = True, place_rows=_PLACE_ROWS) -> pathlib.Path:
     path = tmp_path / name
     conn = sqlite3.connect(path)
     try:
+        conn.execute("CREATE TABLE place (place_id TEXT PRIMARY KEY, region_id TEXT, place_kind TEXT)")
+        conn.executemany("INSERT INTO place VALUES (?, ?, ?)", place_rows)
         pk = "PRIMARY KEY" if primary_key else ""
         conn.execute(
             f"CREATE TABLE taxon (taxon_id TEXT {pk}, canonical_binomial TEXT, taxon_group TEXT, "
@@ -305,7 +318,9 @@ def test_build_summary_creates_both_tables_and_conservation_holds(tmp_path):
     try:
         stats = b13.build_summary(conn, DEFAULT_YAML)
 
-        assert set(stats) == set(common.V2_SUMMARY_TABLES)
+        assert set(stats) == {
+            *common.V2_SUMMARY_TABLES, *common.V2_SUMMARY_BY_REGION_TABLES, common.V2_PLACE_REGION_TABLE,
+        }
         # 機械検証4: 行数 > 0。
         assert stats["summary_variable_catalog"]["n_rows"] == 1  # 1 variable × 1 obs_stat/unit/grain 組
         assert stats["summary_place_variable"]["n_rows"] == 2  # p1・p2
@@ -870,3 +885,181 @@ def test_build_summary_rejects_bad_join_vocabulary(tmp_path, mutate, match):
             b13.build_summary(conn, yaml_path)
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Issue #93: 地域別の表（`*_by_region`）と place_region
+# ---------------------------------------------------------------------------
+
+# 奄美（jp-46）の行。`_OCC_ROWS` は全部 jp-14 なので、2地域のキューブになる。
+_OCC_ROWS_JP46 = [
+    # t1 @ g9（grid01）, 2022。n=3・RL 1
+    ("jp-46", "gbif", "g9", "grid01", "t1", "year", "2022-01-01", "2022-12-31", 3, 1, 0, "occ", "v"),
+    # t1 @ w9（watershed）, 2022（n は watershed 系列から数える）
+    ("jp-46", "gbif", "w9", "watershed", "t1", "year", "2022-01-01", "2022-12-31", 3, 1, 0, "occ", "v"),
+]
+_ROWS_JP46 = [
+    # p3（registry だけが jp-46 と知っている site）の観測
+    ("jp-46", "p3", "site", "v.bod", "mean", "unit.mgl", "day", "2022-01-01", "2022-12-31",
+     "year", "day", "mean", 2.0, 2.1, 4, 1, 0, 1, "obs", "v2"),
+]
+
+
+def _build_two_region_fixture(tmp_path, occ_extra=_OCC_ROWS_JP46):
+    db_path = _make_combined_fixture(
+        tmp_path, obs_rows=_ROWS + _ROWS_JP46, occ_rows=_OCC_ROWS + occ_extra,
+    )
+    conn = sqlite3.connect(f"file:{db_path}", uri=True)
+    return conn, b13.build_summary(conn, DEFAULT_YAML)
+
+
+def test_by_region_tables_split_by_region_and_fold_back_to_the_base_table(tmp_path):
+    conn, stats = _build_two_region_fixture(tmp_path)
+    try:
+        # 分類群: t1 は jp-14 が 19（g1・g2）、jp-46 が 3（g9）。全体は 22。
+        rows = {
+            (r[0], r[1]): r[2:] for r in conn.execute(
+                "SELECT region_id, taxon_id, n, n_red_list, n_places, y_from, y_to, n_years "
+                "FROM summary_taxon_catalog_by_region"
+            )
+        }
+        assert rows[("jp-14", "t1")] == (19, 2, 2, 2020, 2021, 2)
+        assert rows[("jp-46", "t1")] == (3, 1, 1, 2022, 2022, 1)
+        assert ("jp-46", "t2") not in rows  # 奄美に t2 の記録は無い
+        base = conn.execute(
+            "SELECT n, n_places, y_from, y_to, n_years FROM summary_taxon_catalog WHERE taxon_id='t1'"
+        ).fetchone()
+        assert base == (22, 3, 2020, 2022, 3)  # 年数は地域別の和（2+1）と一致しうるが、一般には全体以下
+
+        # 種カタログ: binom 単位。jp-46 は Aus bus だけ。
+        species = {
+            (r[0], r[1]): r[2:] for r in conn.execute(
+                "SELECT region_id, binom, n, n_located, n_places FROM summary_species_catalog_by_region"
+            )
+        }
+        assert {r for r, _ in species} == {"jp-14", "jp-46"}
+        assert [b for r, b in species if r == "jp-46"] == ["Aus bus"]
+        assert species[("jp-46", "Aus bus")] == (3, 3, 1)
+
+        # 努力量: 2022 年は jp-46 にだけある。
+        efforts = {(r[0], r[1]): r[2] for r in conn.execute(
+            "SELECT region_id, year, n FROM summary_effort_year_by_region"
+        )}
+        assert efforts[("jp-46", 2022)] == 3
+        assert ("jp-14", 2022) not in efforts
+
+        # 指標: r1（p1・p2）と jp-46（p3）。n の和は全体（22 + 4）。
+        var = dict(conn.execute("SELECT region_id, n FROM summary_variable_catalog_by_region"))
+        assert var == {"r1": 22, "jp-46": 4}
+        assert conn.execute("SELECT SUM(n) FROM summary_variable_catalog").fetchone()[0] == 26
+
+        # 版・来歴。
+        for table in common.V2_SUMMARY_BY_REGION_TABLES:
+            assert conn.execute(f"SELECT DISTINCT spec_version FROM {table}").fetchall() == [
+                (common.SUMMARY_SPEC_VERSION,)
+            ]
+        assert stats["summary_taxon_catalog_by_region"]["n_rows"] == len(rows)
+    finally:
+        conn.close()
+
+
+def test_place_region_unions_cube_regions_and_registry_sites(tmp_path):
+    conn, stats = _build_two_region_fixture(tmp_path)
+    try:
+        got = dict(conn.execute("SELECT place_id, region_id FROM place_region"))
+        assert got == {
+            "p1": "r1", "p2": "r1",            # 観測キューブ（site）
+            "p3": "jp-46",                     # キューブにも出る site（registry とも一致）
+            "w1": "jp-14", "w2": "jp-14",      # 流域は place.region_id が NULL なのでキューブの region から
+            "g1": "jp-14", "g2": "jp-14", "g3": "jp-14",
+            "g9": "jp-46", "w9": "jp-46",
+        }
+        assert stats["place_region"]["n_rows"] == len(got)
+        # place_id の NULL（流域に解決できない記録）は入れない。
+        assert conn.execute("SELECT COUNT(*) FROM place_region WHERE place_id IS NULL").fetchone()[0] == 0
+        names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='place_region'")}
+        assert {"place_region_place_id", "place_region_region_id_place_id"} <= names
+    finally:
+        conn.close()
+
+
+def test_place_region_takes_registry_sites_the_cube_never_mentions(tmp_path):
+    reg = _make_registry_fixture(tmp_path, name="reg2.sqlite", place_rows=_PLACE_ROWS + [("p9", "jp-14", "site")])
+    db_path = _make_combined_fixture(tmp_path)
+    conn = sqlite3.connect(f"file:{db_path}", uri=True)
+    try:
+        b13.build_summary(conn, DEFAULT_YAML, registry_db=reg)
+        got = dict(conn.execute("SELECT place_id, region_id FROM place_region"))
+        assert got["p9"] == "jp-14" and got["p3"] == "jp-46"  # キューブに出ない site も registry から入る
+    finally:
+        conn.close()
+
+
+def test_build_summary_stops_when_one_place_appears_in_two_regions(tmp_path):
+    # w1 は jp-14 の流域。同じ place_id が jp-46 にも出る（場所は地域に純粋でなければならない）。
+    # 流域は地域別の表の n_places に効かない（grid01 だけ数える）ので、止めるのは place_region の検査。
+    bad = [("jp-46", "gbif", "w1", "watershed", "t1", "year", "2022-01-01", "2022-12-31", 3, 0, 0, "occ", "v")]
+    db_path = _make_combined_fixture(tmp_path, occ_rows=_OCC_ROWS + bad)
+    conn = sqlite3.connect(f"file:{db_path}", uri=True)
+    try:
+        with pytest.raises(common.MigrationError, match="2つ以上の地域"):
+            b13.build_summary(conn, DEFAULT_YAML)
+    finally:
+        conn.close()
+
+
+def test_by_region_conservation_check_catches_a_drifted_region_table(tmp_path):
+    conn, _ = _build_two_region_fixture(tmp_path)
+    try:
+        spec = b13._by_region_spec("summary_taxon_catalog", _load_real_yaml()["summaries"]["summary_taxon_catalog"])
+        name = "summary_taxon_catalog_by_region"
+        # 正しいうちは通る。
+        b13._assert_by_region_conservation(conn, name, "summary_taxon_catalog", spec, name)
+        # 加法の測度（n）の地域和が崩れる。
+        conn.execute("UPDATE summary_taxon_catalog_by_region SET n = n + 1 WHERE region_id = 'jp-46' AND taxon_id = 't1'")
+        with pytest.raises(common.MigrationError, match="畳むと"):
+            b13._assert_by_region_conservation(conn, name, "summary_taxon_catalog", spec, name)
+        conn.execute("UPDATE summary_taxon_catalog_by_region SET n = n - 1 WHERE region_id = 'jp-46' AND taxon_id = 't1'")
+        # 最小の最小（y_from）が崩れる。
+        conn.execute("UPDATE summary_taxon_catalog_by_region SET y_from = 2000 WHERE region_id = 'jp-14' AND taxon_id = 't1'")
+        with pytest.raises(common.MigrationError, match="畳むと"):
+            b13._assert_by_region_conservation(conn, name, "summary_taxon_catalog", spec, name)
+        conn.execute("UPDATE summary_taxon_catalog_by_region SET y_from = 2020 WHERE region_id = 'jp-14' AND taxon_id = 't1'")
+        # 年数（非加法）が元の表を超える。
+        conn.execute("UPDATE summary_taxon_catalog_by_region SET n_years = 9 WHERE region_id = 'jp-14' AND taxon_id = 't1'")
+        with pytest.raises(common.MigrationError, match="n_years"):
+            b13._assert_by_region_conservation(conn, name, "summary_taxon_catalog", spec, name)
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize(
+    "mutate, match",
+    [
+        # 宣言の集合が V2_SUMMARY_BY_REGION_BASES と食い違う。
+        (lambda raw: raw["summaries"]["summary_species_catalog"].pop("by_region"), "V2_SUMMARY_BY_REGION_BASES"),
+        (lambda raw: raw["summaries"]["summary_grid_catalog"].__setitem__("by_region", True), "V2_SUMMARY_BY_REGION_BASES"),
+        # avg は地域和で検算できない。
+        (lambda raw: raw["summaries"]["summary_variable_catalog"]["measures"].__setitem__(
+            "avg_x", {"fn": "avg", "col": "value_zero"}), "avg は by_region と併用できない"),
+        (lambda raw: raw["summaries"]["summary_effort_year"].__setitem__("by_region", "yes"), "true だけ"),
+    ],
+)
+def test_build_summary_rejects_bad_by_region_declarations(tmp_path, mutate, match):
+    raw = _load_real_yaml()
+    mutate(raw)
+    yaml_path = _write_yaml(tmp_path, raw)
+    db_path = make_observation_agg_fixture(tmp_path, _ROWS)
+    conn = sqlite3.connect(f"file:{db_path}", uri=True)
+    try:
+        with pytest.raises(common.MigrationError, match=match):
+            b13.build_summary(conn, yaml_path)
+    finally:
+        conn.close()
+
+
+def test_new_tables_are_part_of_the_cube_freshness_contract():
+    """spec_version を上げたので全員の v2 が作り直しになる。新表も鮮度判定（check_v2_fresh・seed）の対象。"""
+    assert common.SUMMARY_SPEC_VERSION == "serving-summary/v7"
+    for table in (*common.V2_SUMMARY_BY_REGION_TABLES, common.V2_PLACE_REGION_TABLE):
+        assert common.V2_CUBE_SPEC_VERSIONS[table] == common.SUMMARY_SPEC_VERSION

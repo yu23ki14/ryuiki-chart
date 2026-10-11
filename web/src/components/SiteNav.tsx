@@ -3,6 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { EXPLORE_ENABLED } from "@/lib/features";
+import { RegionSwitcher } from "@/components/RegionSwitcher";
+import { useRegion } from "@/components/useRegion";
+import { withRegion } from "@/components/region-url";
 
 const NAV = [
   { href: "/", label: "概況", exact: true },
@@ -17,10 +20,11 @@ const NAV = [
 
 export function SiteNav() {
   const pathname = usePathname();
+  const region = useRegion();
   return (
     <header className="no-print sticky top-0 z-50 border-b border-line bg-surface/95 backdrop-blur">
       <div className="flex items-stretch gap-1 px-4 h-12">
-        <Link href="/" className="flex items-center gap-2.5 pr-4 shrink-0">
+        <Link href={withRegion("/", region)} className="flex items-center gap-2.5 pr-4 shrink-0">
           <RidgeToReefMark />
           <span className="leading-none">
             <span className="block text-[14px] font-bold tracking-tight">流域カルテ</span>
@@ -33,7 +37,7 @@ export function SiteNav() {
             return (
               <Link
                 key={n.href}
-                href={n.href}
+                href={withRegion(n.href, region)}
                 className={`flex items-center px-3 text-[13px] whitespace-nowrap border-b-2 transition-colors ${
                   active
                     ? "border-water text-water-ink font-medium"
@@ -46,6 +50,7 @@ export function SiteNav() {
           })}
         </nav>
         <div className="ml-auto flex items-center gap-2 pl-3 shrink-0">
+          <RegionSwitcher />
           <button
             onClick={() => window.print()}
             className="text-[11px] border border-line rounded px-2 py-1 text-ink-2 hover:bg-surface-2"

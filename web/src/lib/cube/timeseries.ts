@@ -6,6 +6,7 @@
  * 元は `lib/ai/tools.ts` の `get_timeseries` の本体。挙動は変えずに切り出した
  * （Issue #40 Phase D 担当 E）。
  */
+import type { RegionId } from "@/lib/region";
 import { buildEnvelope, buildZoneEnvelope, type Envelope, type EnvelopeOpt } from "./envelope";
 import type { CubeDb } from "./db";
 import { pivotYearCells, queryCells, summarize, toSeriesPoint } from "./observation";
@@ -50,6 +51,8 @@ export interface TimeseriesInput {
    * （センサー系列・土地利用など measurements 以外）。省略時は従来どおり measurements の系列。
    */
   sourceIds?: readonly string[];
+  /** 地域で絞る。省略は全体（Issue #93）。封筒の出典・水域の地点・セルが地域で絞られる。 */
+  region?: RegionId;
 }
 
 export interface TimeseriesResult {
@@ -64,8 +67,10 @@ export interface TimeseriesResult {
   truncated: boolean;
 }
 
-export async function timeseries(db: CubeDb, input: TimeseriesInput, envelopeOpt?: Pick<EnvelopeOpt, "now" | "regionId">): Promise<TimeseriesResult> {
-  const { variableId, scope, grain, stat, from, to, sourceIds } = input;
+export async function timeseries(db: CubeDb, input: TimeseriesInput, envelopeOpt0?: Pick<EnvelopeOpt, "now" | "regionId">): Promise<TimeseriesResult> {
+  const { variableId, scope, grain, stat, from, to, sourceIds, region } = input;
+  // 封筒の時刻帯。呼び出し側が渡さなければ、絞った地域のものを使う（絞りが無ければ既定のまま）。
+  const envelopeOpt = region !== undefined && envelopeOpt0?.regionId === undefined ? { ...envelopeOpt0, regionId: region } : envelopeOpt0;
   const dataset = MEASUREMENTS_DATASET;
   // series は basis で絞り込まない（basis はセルの性質であって系列の登録
   // 〔value_grain〕ではない。Issue #48 PR-2 統合後修正A #1）——representativeSeries()
@@ -107,10 +112,13 @@ export async function timeseries(db: CubeDb, input: TimeseriesInput, envelopeOpt
         : scope.type === "watershed"
           ? { kind: "watershed", placeId: scope.placeId }
           : { kind: "site", siteId: scope.siteId };
-  const caveats = caveatsForFacets(facetsForSeries(all.map((s) => withTheme(s)), facetsScope));
+  // 地域で絞るときは、他の地域の出典の注記（source_edition facet）を引かない。
+  const caveats = caveatsForFacets(
+    facetsForSeries(all.map((s) => withTheme(s)), facetsScope, region),
+  );
 
   if (scope.type === "zone") {
-    const spec: CellSpec = { series: all, scope: facetsScope, grain: cellGrain, inputGrain: basisFilter.inputGrain, period, imputation: "both" };
+    const spec: CellSpec = { series: all, scope: facetsScope, region, grain: cellGrain, inputGrain: basisFilter.inputGrain, period, imputation: "both" };
     // zero/lod を1回の SQL で両方計算する（`summarizeZone` 参照。Issue #48 PR-2 統合後修正A #4）。
     const { rows, truncated } = await summarize(db, spec, "zone");
     const points = rows.map((r) => ({ zone: r.zone, grain: r.grain, year: r.year, nSites: r.nSites, n: r.n, valueLod: r.avgLod, valueZero: r.avgZero }));
@@ -121,11 +129,12 @@ export async function timeseries(db: CubeDb, input: TimeseriesInput, envelopeOpt
   // 出典指定のときは、その系列が属する dataset が1つに決まるときだけ dataset で絞る（複数なら絞らない）。
   const datasets = new Set(all.map((s) => s.dataset));
   const sitesDataset = sourceIds ? (datasets.size === 1 ? [...datasets][0] : undefined) : dataset;
-  const sites = scope.type === "water" ? await sitesInWaterBody(db, scope.name, { dataset: sitesDataset }) : undefined;
+  const sites = scope.type === "water" ? await sitesInWaterBody(db, scope.name, { dataset: sitesDataset, region }) : undefined;
   const isYearGrain = grain === "year" || grain === "fiscal_year";
   const spec: CellSpec = {
     series: all,
     scope: facetsScope,
+    region,
     grain: cellGrain,
     stats: isYearGrain ? ["mean", "min", "max"] : ["mean"],
     inputGrain: basisFilter.inputGrain,

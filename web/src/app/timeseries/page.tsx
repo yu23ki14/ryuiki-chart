@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { d1CubeDb, waterBodies, variableCatalog, unitLabel, MEASUREMENTS_DATASET as DATASET } from "@/lib/cube";
 import { resolveVariableInfo } from "@/lib/registry/lookup";
+import { parseRegion, regionOf } from "@/lib/region";
 import { TimeseriesExplorer } from "@/components/timeseries/TimeseriesExplorer";
 
 export const dynamic = "force-dynamic";
@@ -41,10 +42,12 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
   const sp = await searchParams;
   redirectIfAlias(sp);
 
+  const region = regionOf(parseRegion(sp.region));
+  const ropt = { region };
   const db = await d1CubeDb();
   const [watersRaw, varsRaw] = await Promise.all([
-    waterBodies(db, { dataset: DATASET }),
-    variableCatalog(db, { dataset: DATASET }),
+    waterBodies(db, { dataset: DATASET, ...ropt }),
+    variableCatalog(db, { dataset: DATASET, ...ropt }),
   ]);
   const waters = watersRaw.map((w) => ({
     name: w.name,

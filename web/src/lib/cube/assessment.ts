@@ -7,6 +7,8 @@
  * の `_v1_compat`/`_direction` と同じ（`not_listed` は label/rank を NULL に戻す＝前回記載なし）。
  * 1 版は最大 1,033 行なので行を取って TS で畳む。
  */
+import type { RegionId } from "@/lib/region";
+import { DEFAULT_REDLIST_REGION } from "@/lib/redlist-editions";
 import { ASSESSMENT_LIST, REDLIST_CATEGORY } from "@/lib/registry/generated-client";
 import type { CubeDb } from "./db";
 import { cmp, jsonEachParam } from "./sql";
@@ -88,14 +90,14 @@ function directionOf(cur: number | null, prev: number | null): RedlistDirection 
 }
 
 /**
- * 神奈川の画面が出す版。`ASSESSMENT_LIST` には鹿児島県（jp-46）の kgrl2014 も `kind='red_list'` で入るが、
- * この画面（redlistSummary 等）は神奈川の3版のままにする。地域で絞るのは #93。
+ * 画面が出すレッドリストの版。`ASSESSMENT_LIST` には鹿児島県（jp-46）の kgrl2014 も `kind='red_list'` で入る。
+ * 全体（region 未指定）は現状維持で神奈川（jp-14）の3版、jp-14 も同じ、jp-46 は鹿児島県版（Issue #93 §3-4）。
+ * 既定の地域は `redlist-editions.ts` の `DEFAULT_REDLIST_REGION`。
  */
-const REDLIST_REGION = "jp-14";
-
-async function changeRows(db: CubeDb, vocab: AssessmentVocab, listYear?: number): Promise<ChangeRow[]> {
+async function changeRows(db: CubeDb, vocab: AssessmentVocab, listYear?: number, region?: RegionId): Promise<ChangeRow[]> {
+  const redlistRegion = region ?? DEFAULT_REDLIST_REGION;
   const listIds = Object.entries(vocab.lists)
-    .filter(([, l]) => l.kind === "red_list" && l.region === REDLIST_REGION)
+    .filter(([, l]) => l.kind === "red_list" && l.region === redlistRegion)
     .map(([id]) => id);
   const params: (string | number)[] = [jsonEachParam(listIds)];
   let where = "list_id IN (SELECT value FROM json_each(?))";
@@ -130,8 +132,12 @@ async function changeRows(db: CubeDb, vocab: AssessmentVocab, listYear?: number)
 }
 
 /** v1 `redlistSummary`。 */
-export async function redlistSummary(db: CubeDb, vocab: AssessmentVocab = generatedAssessmentVocab()): Promise<RedlistSummaryRow[]> {
-  return foldSummary(await changeRows(db, vocab));
+export async function redlistSummary(
+  db: CubeDb,
+  vocab: AssessmentVocab = generatedAssessmentVocab(),
+  region?: RegionId,
+): Promise<RedlistSummaryRow[]> {
+  return foldSummary(await changeRows(db, vocab, undefined, region));
 }
 
 function foldSummary(rows: readonly ChangeRow[]): RedlistSummaryRow[] {
@@ -153,8 +159,9 @@ export async function redlistFlows(
   listYear: number,
   group?: string,
   vocab: AssessmentVocab = generatedAssessmentVocab(),
+  region?: RegionId,
 ): Promise<RedlistFlowRow[]> {
-  return foldFlows(await changeRows(db, vocab, listYear), group);
+  return foldFlows(await changeRows(db, vocab, listYear, region), group);
 }
 
 function foldFlows(rows: readonly ChangeRow[], group?: string): RedlistFlowRow[] {
@@ -180,8 +187,9 @@ export async function redlistSpecies(
   group?: string,
   limit = 300,
   vocab: AssessmentVocab = generatedAssessmentVocab(),
+  region?: RegionId,
 ): Promise<RedlistSpeciesRow[]> {
-  return foldSpecies(await changeRows(db, vocab, listYear), direction, group, limit);
+  return foldSpecies(await changeRows(db, vocab, listYear, region), direction, group, limit);
 }
 
 function foldSpecies(rows: readonly ChangeRow[], direction: string | undefined, group: string | undefined, limit: number): RedlistSpeciesRow[] {
@@ -214,10 +222,10 @@ function foldSpecies(rows: readonly ChangeRow[], direction: string | undefined, 
 export async function redlistBundle(
   db: CubeDb,
   listYear: number,
-  opt: { group?: string; direction?: string; limit?: number } = {},
+  opt: { group?: string; direction?: string; limit?: number; region?: RegionId } = {},
   vocab: AssessmentVocab = generatedAssessmentVocab(),
 ): Promise<{ summary: RedlistSummaryRow[]; flows: RedlistFlowRow[]; species: RedlistSpeciesRow[] }> {
-  const all = await changeRows(db, vocab);
+  const all = await changeRows(db, vocab, undefined, opt.region);
   const year = all.filter((r) => r.listYear === listYear);
   return {
     summary: foldSummary(all),

@@ -37,9 +37,11 @@
  * （`variable` テーブルを既に読んでいる 1a の catalog.ts/series.ts 側）に委ね、
  * `SeriesFacetInput`（`SeriesInfo & { theme }`）として渡してもらう形にした。
  */
+import type { RegionId } from "@/lib/region";
 import { GENERATED_CAVEAT_SCOPE, type CaveatScopeKind, type GeneratedCaveatScope } from "@/lib/registry/generated-client";
 import { OCCURRENCE_SOURCE_IDS } from "@/lib/registry/generated-source";
 import { resolveCaveatRefs, type CaveatRef, type ScopeMatch } from "@/lib/registry/lookup-client";
+import { sourceInRegion, sourcesOfRegion } from "./region";
 import type { SeriesInfo } from "./series";
 import type { Scope } from "./sql";
 
@@ -159,7 +161,7 @@ export type SeriesFacetInput = SeriesInfo & {
  * 同じ `(kind, ref)` の組は「初めて現れたところ」だけを残す（`caveatsForFacets` の
  * 初出順ソートに使うため）。
  */
-export function facetsForSeries(series: readonly SeriesFacetInput[], scope: Scope): FacetRef[] {
+export function facetsForSeries(series: readonly SeriesFacetInput[], scope: Scope, region?: RegionId): FacetRef[] {
   // 同じ (kind, ref) は初出だけを残す（Map は挿入順）。
   const refs = new Map<string, FacetRef>();
   const push = (f: FacetRef) => {
@@ -171,7 +173,8 @@ export function facetsForSeries(series: readonly SeriesFacetInput[], scope: Scop
     push({ kind: "dataset", ref: s.dataset });
     if (s.theme !== null) push(variableTheme(s.theme));
     for (const id of s.sourceIds) {
-      if (id !== null) push(sourceEditionOf(id));
+      // 地域で絞るときは、他の地域の出典の注記（source_edition facet）を引かない（画面・API・AI・MCP 共通）。
+      if (id !== null && sourceInRegion(id, region)) push(sourceEditionOf(id));
     }
     // 変数単位の注記（hydro.flow の逆流など）は単位の有無によらず付く。
     push({ kind: "variable", ref: s.variableId });
@@ -198,9 +201,11 @@ export function facetsForOccurrence(opt: {
   ias?: boolean;
   /** 結果に含まれる出典。出典ごとの注記（例: eDNA）を `source_id=<id>` の facet で引く。省略は全出典。 */
   sourceIds?: readonly string[];
+  /** `sourceIds` 省略時の既定（全出典）をこの地域の出典に絞る（Issue #93）。`sourceIds` を渡したときは使わない。 */
+  region?: RegionId;
 }): FacetRef[] {
   const refs: FacetRef[] = [];
-  for (const id of opt.sourceIds ?? OCCURRENCE_SOURCE_IDS) refs.push(sourceEditionOf(id));
+  for (const id of opt.sourceIds ?? sourcesOfRegion(OCCURRENCE_SOURCE_IDS, opt.region)) refs.push(sourceEditionOf(id));
   if (opt.places.includes("grid01")) refs.push(placeKind("grid01"));
   if (opt.ias) refs.push(sourceEditionOf("moe_ias_list"));
   return refs;

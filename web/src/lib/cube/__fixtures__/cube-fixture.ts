@@ -136,7 +136,7 @@ function insertObsAgg(db: Database.Database, rows: ObsAggFixtureRow[]): void {
   `);
   for (const r of rows) {
     stmt.run({
-      regionId: "kanagawa",
+      regionId: "jp-14",
       placeKind: "site",
       obsStat: null,
       unitId: null,
@@ -356,7 +356,7 @@ function seed(db: Database.Database): void {
  * 導いた2つの経路が一致することを確かめる）が、フィクスチャ側の二重管理で
  * 意味を失わないようにするため。
  */
-function seedSummaryFromObsAgg(db: Database.Database): void {
+export function seedSummaryFromObsAgg(db: Database.Database): void {
   db.exec(`
     INSERT INTO summary_variable_catalog
       (variable_id, obs_stat, unit_id, value_grain, grain, input_grain,

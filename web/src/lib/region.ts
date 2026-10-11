@@ -1,0 +1,99 @@
+/**
+ * 地域で絞る切り替え（Issue #93、`docs/plans/REGION_FILTER.md` §3-1）。
+ * server-only を付けない（クライアントも使う）。
+ *
+ * - cube 層は `region?: RegionId`（undefined = 全体）を受ける。`'all'` は cube に入れない。
+ *   入口（API・ページ・ツール）で `regionOf(parseRegion(...))` に直す。
+ * - UI の語（神奈川県／奄美大島）はここだけに持つ。registry の `name_ja`（jp-46 は鹿児島県）は使わない。
+ */
+import { REGION_TIME } from "@/lib/registry/generated-client";
+
+/** 具体的な地域（registry/region.yaml の region_id）。 */
+export type RegionId = (typeof REGION_TIME)[number]["regionId"];
+/** 画面・URL・ツール引数の「絞り」。'all' = 合算（既定）。 */
+export type RegionFilter = "all" | RegionId;
+
+export interface RegionUi {
+  id: RegionId;
+  /** 切り替えの表示名 */
+  label: string;
+  /** 地図の移動ボタン */
+  jumpLabel: string;
+  /** [[lon_min, lat_min], [lon_max, lat_max]] */
+  bounds: [[number, number], [number, number]];
+  /** 概況の「一本の川を下る」ハイライトの既定の水域。無ければ出さない（見出しだけ）。 */
+  highlightWater?: string;
+  /** 概況の固定文言（境川・鶴見川・レッドリスト3版など）がこの地域の数字として当てはまるか。 */
+  hasFixedNarrative: boolean;
+  /** レッドリスト画面の既定の版の年。無ければ最新の版。 */
+  defaultRedlistYear?: number;
+}
+
+export const REGION_ALL = "all" as const;
+
+/** scripts/regions.py の bbox と同じ値（`map/basemaps.ts` の KANAGAWA_BOUNDS/AMAMI_BOUNDS）。 */
+export const REGIONS: readonly RegionUi[] = [
+  {
+    id: "jp-14",
+    label: "神奈川県",
+    jumpLabel: "神奈川県へ",
+    highlightWater: "境川（１）",
+    hasFixedNarrative: true,
+    defaultRedlistYear: 2022,
+    bounds: [
+      [138.9, 35.1],
+      [139.83, 35.68],
+    ],
+  },
+  {
+    id: "jp-46",
+    label: "奄美大島",
+    jumpLabel: "奄美大島へ",
+    hasFixedNarrative: false,
+    bounds: [
+      [129.1, 27.95],
+      [129.85, 28.8],
+    ],
+  },
+];
+
+/** 'all'・既知の RegionId 以外（空・不正・配列）は 'all'。 */
+export function parseRegion(raw: unknown): RegionFilter {
+  if (typeof raw !== "string") return REGION_ALL;
+  return REGIONS.some((r) => r.id === raw) ? (raw as RegionId) : REGION_ALL;
+}
+
+/** 'all' → undefined（cube 層へはこの形で渡す）。 */
+export function regionOf(f: RegionFilter): RegionId | undefined {
+  return f === REGION_ALL ? undefined : f;
+}
+
+export function regionLabel(f: RegionFilter): string {
+  if (f === REGION_ALL) return "全体";
+  return REGIONS.find((r) => r.id === f)?.label ?? "全体";
+}
+
+/** 具体的な地域の ID の一覧（zod の enum 用のタプル型）。 */
+export const REGION_IDS = REGIONS.map((r) => r.id) as [RegionId, ...RegionId[]];
+
+/** 切り替え UI の選択肢（'all' を先頭に含む）。 */
+export const REGION_OPTIONS: readonly { id: RegionFilter; label: string }[] = [
+  { id: REGION_ALL, label: regionLabel(REGION_ALL) },
+  ...REGIONS.map((r) => ({ id: r.id as RegionFilter, label: r.label })),
+];
+
+/** 地図の移動先。'all' は先頭の地域（既定の見え方）。 */
+export function regionBounds(f: RegionFilter): RegionUi["bounds"] {
+  return (REGIONS.find((r) => r.id === f) ?? REGIONS[0]).bounds;
+}
+
+/** 地域の UI 宣言。'all' は undefined。 */
+export function regionUi(f: RegionFilter): RegionUi | undefined {
+  return REGIONS.find((r) => r.id === f);
+}
+
+/** URL・リンクのクエリに地域を載せる（'all' は `region` を消す＝現状と同じ URL）。 */
+export function applyRegionParam(params: URLSearchParams, f: RegionFilter): void {
+  if (f === REGION_ALL) params.delete("region");
+  else params.set("region", f);
+}

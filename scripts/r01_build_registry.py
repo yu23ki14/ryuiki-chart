@@ -279,6 +279,7 @@ def _assert_id_uniqueness(conn) -> None:
 ID_REFERENCE_CHECKS = [
     # (子テーブル, 外部キー列, 親テーブル, 主キー列)
     ("place", "region_id", "region", "region_id"),  # Issue #32-3: place.region_id は region 語彙に在ること
+    ("source", "region_id", "region", "region_id"),  # Issue #93: マニフェストの region（無い出典は NULL）
     ("variable", "unit_id", "unit", "unit_id"),
     ("unit", "canonical_unit_id", "unit", "unit_id"),
     ("variable_alias", "unit_id", "unit", "unit_id"),

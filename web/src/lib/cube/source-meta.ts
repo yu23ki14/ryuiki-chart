@@ -15,7 +15,10 @@
  * （`regionTimeZone()`）のオフセットを付けて ISO 8601 にする。日時の演算は文字列と
  * `Date.UTC` だけで行い、SQLite の日時関数は使わない（ADR-0024）。
  */
+import type { RegionId } from "@/lib/region";
+import { DEFAULT_REDLIST_REGION } from "@/lib/redlist-editions";
 import { regionTimeZone } from "@/lib/registry/lookup-client";
+import { sourceInRegion } from "./region";
 import { seriesInfo, type SeriesKey, type SourceRef } from "./series";
 import {
   LICENSES,
@@ -170,13 +173,19 @@ export function dedupeSourceRefs(sources: readonly (string | SourceRef)[]): Sour
 }
 
 /** 画面用 API に加算する `freshness`（出典ごとの取得日・更新方式・経過日数）。重複は除く。版つき出典は `SourceRef` で渡す。 */
-export function freshnessFor(sources: readonly (string | SourceRef)[], opt: SourceMetaOpt = {}): SourceFreshness[] {
-  return dedupeSourceRefs(sources).map((r) => sourceFreshness(r.sourceId, { ...opt, editionKey: r.editionKey ?? opt.editionKey }));
+export function freshnessFor(
+  sources: readonly (string | SourceRef)[],
+  opt: SourceMetaOpt = {},
+  region?: RegionId,
+): SourceFreshness[] {
+  return dedupeSourceRefs(sources)
+    .filter((r) => sourceInRegion(r.sourceId, region))
+    .map((r) => sourceFreshness(r.sourceId, { ...opt, editionKey: r.editionKey ?? opt.editionKey }));
 }
 
 /** 系列の出典（`series.ts` の登録）の `freshness`。出典未記録（NULL＝合成）の alias は載せない（envelope と同じ規則）。 */
-export function freshnessForSeries(series: readonly SeriesKey[], opt: SourceMetaOpt = {}): SourceFreshness[] {
-  return freshnessFor(seriesSourceRefs(series), opt);
+export function freshnessForSeries(series: readonly SeriesKey[], opt: SourceMetaOpt = {}, region?: RegionId): SourceFreshness[] {
+  return freshnessFor(seriesSourceRefs(series), opt, region);
 }
 
 /**
@@ -186,6 +195,15 @@ export function freshnessForSeries(series: readonly SeriesKey[], opt: SourceMeta
  * 宣言されるまで "undeclared"（推測で埋めない）。
  */
 export const REDLIST_SOURCE_IDS: readonly string[] = ["kanagawa_redlist", "kanagawa_rdb2022_plants"];
+
+/** 地域のレッドリストの出典（全体・未登録の地域は神奈川＝画面が出す版と同じ。`redlist-editions.ts` の規則）。 */
+const REDLIST_SOURCE_IDS_BY_REGION: Readonly<Record<string, readonly string[]>> = {
+  "jp-14": REDLIST_SOURCE_IDS,
+  "jp-46": ["kagoshima_redlist"],
+};
+export function redlistSourceIds(region: RegionId | undefined): readonly string[] {
+  return REDLIST_SOURCE_IDS_BY_REGION[region ?? DEFAULT_REDLIST_REGION] ?? [];
+}
 
 /** 出現データの出典（マニフェスト target=occurrence 由来の生成物。手書きしない）。 */
 export { OCCURRENCE_SOURCE_IDS };

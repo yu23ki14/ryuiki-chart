@@ -1,4 +1,5 @@
 import { VARIABLE_LABEL } from "@/lib/registry/generated-client";
+import { regionLabel, type RegionFilter } from "@/lib/region";
 
 /** variable_id の表示名（`VARIABLE_LABEL`。無ければ variable_id をそのまま出す）。 */
 function variableLabel(variableId: string): string {
@@ -12,7 +13,7 @@ function variableLabel(variableId: string): string {
  * ルートごとの判別可能ユニオン。1スナップショットは 1KB 以内を目安にする
  * （フィールドは画面の「今の状態」を表す短い値だけで、配列や生データを持たない）。
  */
-export type PageContext =
+type RoutePageContext =
   | { route: "/"; title: string }
   | {
       route: "/timeseries";
@@ -49,6 +50,12 @@ export type PageContext =
   // それ以外の画面は route と画面名だけ。PageContextProvider がパスから機械的に埋める。
   | { route: string; title: string };
 
+/**
+ * 全 route 共通の「地域の絞り」（Issue #93。URL の `?region=` を `parseRegion` した値）。
+ * 省略と 'all' は同じ（全体＝神奈川・奄美の合算）。AssistantPanel が URL から乗せる。
+ */
+export type PageContext = RoutePageContext & { region?: RegionFilter };
+
 const TIMESERIES_MODE_LABEL: Record<string, string> = {
   water: "水域の中で地点を比べる",
   zone: "尾根から海まで（ゾーン）で比べる",
@@ -66,6 +73,13 @@ const BIOTA_TAB_LABEL: Record<string, string> = {
  * システムプロンプトの中で扱いやすい（プロンプト側はこれ + 生JSONの両方を持つ）。
  */
 export function describePageContext(ctx: PageContext): string {
+  const body = describeRoute(ctx);
+  // 地域は画面の「今の状態」の一部。全体（既定）は言わない。ツールの region に渡す既定値としてモデルが使う。
+  if (!ctx.region || ctx.region === "all") return body;
+  return `${body}表示の地域=${regionLabel(ctx.region)}（region="${ctx.region}"）。`;
+}
+
+function describeRoute(ctx: PageContext): string {
   // switch(ctx.route) では絞り込めない: フォールバック分岐の route は string 型なので、
   // "/timeseries" 等のどのリテラルとも両立してしまい、判別共用体として narrow されない。
   // 各分岐だけに存在するプロパティの有無（in 演算子）で判別する。

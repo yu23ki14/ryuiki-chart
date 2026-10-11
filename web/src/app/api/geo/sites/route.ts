@@ -1,11 +1,13 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { parseRegion, regionOf } from "@/lib/region";
 import { d1CubeDb, sites, MEASUREMENTS_DATASET as DATASET } from "@/lib/cube";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const region = regionOf(parseRegion(req.nextUrl.searchParams.get("region")));
   const db = await d1CubeDb();
-  const rows = await sites(db, { dataset: DATASET });
+  const rows = await sites(db, { dataset: DATASET, region });
   return NextResponse.json(
     {
       type: "FeatureCollection",

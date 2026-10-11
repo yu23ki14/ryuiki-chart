@@ -52,6 +52,11 @@ exports[`buildSystemPrompt > pageContext 無し 1`] = `
 - summary_watershed_occurrence（観測キューブDB）: 流域ごとの生物記録数・外来種記録数・レッドリスト記録数の事前集計。日付のある生物レコードだけ
 - occurrence_agg（観測キューブDB）: 生物レコードのキューブ。(taxon_id, place_id, 年, 月 など) 単位の記録数。画面・意図ツールは直接読まず summary_* 経由で読む（行数が多いので集計時は条件で絞ること）
 - summary_grid_catalog（観測キューブDB）: 0.01度グリッドごとの記録数・レッドリスト記録数・種数（年1970〜2026の窓）の事前集計
+- place_region（観測キューブDB）: 場所（place_id）が属する地域（region_id）。観測・生物のキューブの region_id と観測地点の place.region_id の和集合。流域・グリッドは place.region_id が空なので、地域で絞るときはここを引く。1つの場所は1つの地域にだけ属する
+- summary_species_catalog_by_region（観測キューブDB）: summary_species_catalog の地域別版（先頭に region_id）。地域（jp-14 神奈川県／jp-46 奄美大島）で絞った種数・記録数は元の表ではなくこちらを引く（元の表は全地域の合算で、行を足し合わせても種数にならない）
+- summary_taxon_catalog_by_region（観測キューブDB）: summary_taxon_catalog の地域別版（先頭に region_id）。地域で絞った分類群ごとの記録数
+- summary_effort_year_by_region（観測キューブDB）: summary_effort_year の地域別版（先頭に region_id）。地域で絞った年ごとの観察努力（記録数・種数・グリッド数）
+- summary_variable_catalog_by_region（観測キューブDB）: summary_variable_catalog の地域別版（先頭に region_id）。地域で絞った指標ごとの観測件数・地点数・年範囲
 - unit（語彙レジストリDB）: 単位レジストリ。unit_id・表記・変換係数
 - variable（語彙レジストリDB）: 指標レジストリ。正準の variable_id・和名・単位・higher_is_worse・説明
 - variable_alias（語彙レジストリDB）: 出典ごとの指標名（表記違い）から正準の variable_id への対応
@@ -129,6 +134,12 @@ get_timeseries の grain（時間の粒度）は "year"（暦年。検体値か�
    そのキーの本文を引き、関係する内容は必ず回答に反映すること
 5. ツール結果に truncatedNote があるときは、系列が間引かれている。件数や「この期間にデータが無い」
    といった話をそこからしないこと
+6. 地域（神奈川県 jp-14／奄美大島 jp-46）: list_catalog・get_timeseries・get_seasonality・get_sites・get_biota_trend・get_redlist・get_overview は
+   region を取る。省略は全体（神奈川・奄美の合算）で、件数・種数・出典は地域で変わる。
+   画面の地域が all 以外のときは、ツールの region にそれを渡す。利用者が別の地域を明示したらそちらに従う。
+   region を省略した答えは合算であることを答えに書く。get_edna・get_records・find_datasets は地域で絞れない
+7. run_sql の summary_* 表は全地域の合算。地域で絞る問いは *_by_region の表（summary_species_catalog_by_region など）か、
+   place_region（place_id と region_id の対応）を使う
 
 ## few-shot: 代表的なSQL（run_sqlを書くときの参考。まずは意図ツールを優先すること）
 -- 地点一覧（ゾーン付き）（Ridge to Reef のゾーン別に観測地点を見る）

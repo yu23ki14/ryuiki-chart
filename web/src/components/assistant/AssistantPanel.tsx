@@ -6,6 +6,7 @@ import { useChatRuntime } from "@assistant-ui/ai-sdk";
 import { DefaultChatTransport } from "ai";
 import { Thread } from "./Thread";
 import { usePageContextSnapshot } from "./PageContextProvider";
+import { useRegion } from "@/components/useRegion";
 
 /**
  * 右下のフローティングボタン → 右ペインのAIアシスタント。
@@ -26,8 +27,10 @@ export function AssistantPanel() {
   // （node_modules/ai の HttpChatTransport.sendMessages が resolve(this.body) を毎回呼ぶ）、
   // クロージャで拾った最新スナップショットがそのまま最新のリクエストに乗る。
   const pageContext = usePageContextSnapshot();
+  // 画面の地域（URL の ?region=）。PageContext.region は全 route 共通なので、どの画面でも同じ値を載せる。
+  const region = useRegion();
   const runtime = useChatRuntime({
-    transport: new DefaultChatTransport({ api: "/api/chat", body: () => ({ pageContext }) }),
+    transport: new DefaultChatTransport({ api: "/api/chat", body: () => ({ pageContext: { ...pageContext, region } }) }),
   });
 
   // Esc で全画面だけを解除する（パネルそのものを閉じない）。全画面のときだけ listener を張るので、

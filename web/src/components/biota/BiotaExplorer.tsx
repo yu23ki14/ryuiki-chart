@@ -10,7 +10,10 @@ import { ChartFrame, MiniTable } from "@/components/viz/ChartFrame";
 import { SERIES, seriesColor, INK, STATUS } from "@/components/viz/palette";
 import { Btn, inputCls, Spinner, Stat, nf, Provenance } from "@/components/ui";
 import { speciesLabel, caveatBody } from "@/lib/registry/lookup-client";
-import { useJson } from "@/components/useJson";
+import { useRegionJson } from "@/components/useRegionJson";
+import { useRegion } from "@/components/useRegion";
+import { regionOf } from "@/lib/region";
+import { DEFAULT_REDLIST_REGION, defaultRedlistYear, redlistEditions } from "@/lib/redlist-editions";
 import { useSetPageContext } from "@/components/assistant/PageContextProvider";
 
 type Tab = "effort" | "trend" | "ias" | "redlist";
@@ -59,7 +62,7 @@ const GROUP_ORDER = ["鳥類", "被子植物", "昆虫類", "菌類", "シダ植
 
 function EffortTab() {
   useSetPageContext({ route: "/biota", title: "生物相", tab: "effort" });
-  const { data, loading, error } = useJson<{
+  const { data, loading, error } = useRegionJson<{
     groups: { year: number; taxon_group: string; n: number; mesh_n: number }[];
     effort: { year: number; n: number; species_n: number; mesh_n: number; n_inat: number; n_gbif: number }[];
     totals: { records: number; species: number; mesh: number; gbif: number; inat: number };
@@ -247,7 +250,7 @@ function TrendTab() {
 
   useSetPageContext({ route: "/biota", title: "生物相", tab: "trend", group, periodA: a, periodB: b, picked });
 
-  const { data, loading, error } = useJson<{
+  const { data, loading, error } = useRegionJson<{
     rows: { binom: string; label: string; n_a: number; n_b: number; total_a: number; total_b: number }[];
   }>(`/api/biota?kind=trend&group=${encodeURIComponent(group)}&a0=${a[0]}&a1=${a[1]}&b0=${b[0]}&b1=${b[1]}`);
 
@@ -266,7 +269,7 @@ function TrendTab() {
   const up = scored.slice(0, 10);
   const down = [...scored].reverse().slice(0, 10);
 
-  const series = useJson<{ years: { binom: string; year: number; n: number; mesh_n: number | null }[] }>(
+  const series = useRegionJson<{ years: { binom: string; year: number; n: number; mesh_n: number | null }[] }>(
     picked.length ? `/api/biota?kind=species&binoms=${encodeURIComponent(picked.join(","))}` : "",
   );
 
@@ -425,7 +428,7 @@ const IAS_ORDER = ["緊急対策外来種", "重点対策外来種", "その他�
 
 function IasTab() {
   useSetPageContext({ route: "/biota", title: "生物相", tab: "ias" });
-  const { data, loading, error } = useJson<{
+  const { data, loading, error } = useRegionJson<{
     since_year: number;
     rows: {
       ias_category: string;
@@ -443,10 +446,10 @@ function IasTab() {
   const [cat, setCat] = React.useState<string>("すべて");
   const [picked, setPicked] = React.useState<string>("Hestina assimilis");
 
-  const mesh = useJson<{ rows: { year: number; mlat: number; mlon: number; n: number }[] }>(
+  const mesh = useRegionJson<{ rows: { year: number; mlat: number; mlon: number; n: number }[] }>(
     picked ? `/api/biota?kind=mesh&binom=${encodeURIComponent(picked)}` : "",
   );
-  const effort = useJson<{ effort: { year: number; mesh_n: number }[] }>("/api/biota?kind=effort");
+  const effort = useRegionJson<{ effort: { year: number; mesh_n: number }[] }>("/api/biota?kind=effort");
 
   const rows = React.useMemo(
     () => (data?.rows ?? []).filter((r) => cat === "すべて" || r.ias_category === cat),
@@ -582,13 +585,19 @@ function IasTab() {
 /* ------------------------------------------------------------------ */
 
 function RedlistTab() {
-  const [year, setYear] = React.useState(2022);
+  const filter = useRegion();
+  const region = regionOf(filter);
+  const editions = React.useMemo(() => redlistEditions(region), [region]);
+  // 地域を切り替えたら、その地域の既定の版に戻す（選んだ版が無い地域で空にしない）。
+  const [picked, setPicked] = React.useState<number | null>(null);
+  const year = picked !== null && editions.some((e) => e.year === picked) ? picked : defaultRedlistYear(region);
+  const setYear = setPicked;
   const [group, setGroup] = React.useState<string>("");
   const [dir, setDir] = React.useState<string>("");
 
   useSetPageContext({ route: "/biota", title: "生物相", tab: "redlist", group: group || undefined });
 
-  const { data, loading, error } = useJson<{
+  const { data, loading, error } = useRegionJson<{
     flows: { prev_label: string; cur_label: string; direction: string; n: number }[];
     species: {
       vernacular_name_ja: string;
@@ -645,15 +654,11 @@ function RedlistTab() {
         <div>
           <span className="block text-[10.5px] text-muted mb-1">比較する版</span>
           <div className="flex gap-0.5">
-            <Btn active={year === 2020} onClick={() => { setYear(2020); setGroup(""); }}>
-              2020 植物編
-            </Btn>
-            <Btn active={year === 2022} onClick={() => { setYear(2022); setGroup(""); }}>
-              2022 植物編
-            </Btn>
-            <Btn active={year === 2026} onClick={() => { setYear(2026); setGroup(""); }}>
-              2026 昆虫・クモ
-            </Btn>
+            {editions.map((e) => (
+              <Btn key={e.listId} active={year === e.year} onClick={() => { setYear(e.year); setGroup(""); }}>
+                {e.label}
+              </Btn>
+            ))}
           </div>
         </div>
         <label>
@@ -760,9 +765,9 @@ function RedlistTab() {
           </table>
         </div>
         <Provenance>
-          神奈川県レッドリスト2020（植物編）／神奈川県レッドデータブック2022（植物編）／神奈川県レッドリスト2026（昆虫類・クモ類）。
-          神奈川県環境農政局緑政部自然環境保全課ほか（神奈川県サイトポリシー：出典記載により利用可）。
-          2022年版には学名の記載が無いため和名で表示している。
+          {editions.map((e) => e.name).join("／")}。
+          {(region ?? DEFAULT_REDLIST_REGION) === DEFAULT_REDLIST_REGION &&
+            "神奈川県環境農政局緑政部自然環境保全課ほか（神奈川県サイトポリシー：出典記載により利用可）。2022年版には学名の記載が無いため和名で表示している。"}
         </Provenance>
       </div>
     </div>

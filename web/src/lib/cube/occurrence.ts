@@ -10,7 +10,9 @@
 import { OCCURRENCE_AGG_INDEX } from "@/db/schema-cube";
 import { NAME_JA } from "@/lib/registry/generated-client";
 import { MAX_ID_LIST, type CubeDb, type SqlParam } from "./db";
+import type { RegionId } from "@/lib/region";
 import { gridCellOfPlaceId } from "./grid";
+import { regionPred } from "./region";
 import { OCC_DEFAULT_FROM, occDefaultTo, YEAR_GRAINS, chunk, cmp, jsonEachParam, uniq } from "./sql";
 
 /**
@@ -120,6 +122,24 @@ export interface SourceFilterOpt {
   sourceIds?: readonly string[];
 }
 
+/** 地域で絞る任意の条件（`occurrence_agg.region_id`、Issue #93）。未指定（undefined）は全体＝現行どおり。 */
+export interface RegionFilterOpt {
+  region?: RegionId;
+}
+
+/** `occurrence_agg o` の地域条件（` AND o.region_id = ?` 形。未指定は空）。 */
+function regionAndSql(region: RegionId | undefined): { sql: string; params: SqlParam[] } {
+  const rp = regionPred("o", region);
+  return { sql: rp.sql ? ` AND ${rp.sql}` : "", params: rp.params };
+}
+
+/** 事前集計の足切り表（`n_located` 等）。地域指定時は `summary_species_catalog_by_region`（その地域の件数で判定する）。 */
+function speciesCatalogTable(region: RegionId | undefined): { table: string; on: string; params: SqlParam[] } {
+  return region === undefined
+    ? { table: "summary_species_catalog", on: "", params: [] }
+    : { table: "summary_species_catalog_by_region", on: " AND s.region_id = ?", params: [region] };
+}
+
 export function sourceFilterSql(sourceIds: readonly string[] | undefined): { sql: string; params: SqlParam[] } {
   if (sourceIds === undefined) return { sql: "", params: [] };
   return { sql: " AND o.source_id IN (SELECT value FROM json_each(?))", params: [jsonEachParam(uniq(sourceIds))] };
@@ -151,10 +171,11 @@ export interface SpeciesYearsResult {
 export async function speciesYearsWithCoverage(
   db: CubeDb,
   binoms: readonly string[],
-  opt: Partial<YearRange> & SourceFilterOpt = {},
+  opt: Partial<YearRange> & SourceFilterOpt & RegionFilterOpt = {},
 ): Promise<SpeciesYearsResult> {
   const [lo, hi] = periodRange(opt.from ?? OCC_DEFAULT_FROM, opt.to ?? occDefaultTo());
   const src = sourceFilterSql(opt.sourceIds);
+  const reg = regionAndSql(opt.region);
   const years = new Map<string, { binom: string; year: number; n: number; cells: Set<string> }>();
   const noCoordinate: NoCoordinateRow[] = [];
   for (const part of chunk(uniq(binoms), MAX_ID_LIST)) {
@@ -169,9 +190,9 @@ export async function speciesYearsWithCoverage(
        JOIN taxon t INDEXED BY ix_taxon_binomial ON t.canonical_binomial = j.value
        JOIN occurrence_agg o INDEXED BY ${OCCURRENCE_AGG_INDEX.taxonPeriod} ON o.taxon_id = t.taxon_id
        WHERE ${OCC_BOTH_KINDS_YEAR}
-         AND o.period_start >= ? AND o.period_start < ?${src.sql}
+         AND o.period_start >= ? AND o.period_start < ?${src.sql}${reg.sql}
        GROUP BY t.canonical_binomial, year, o.source_id`,
-      [jsonEachParam(part), lo, hi, ...src.params],
+      [jsonEachParam(part), lo, hi, ...src.params, ...reg.params],
     );
     for (const r of rows) {
       const binom = r.binom as string;
@@ -198,7 +219,7 @@ export async function speciesYearsWithCoverage(
 export async function speciesYears(
   db: CubeDb,
   binoms: readonly string[],
-  opt: Partial<YearRange> & SourceFilterOpt = {},
+  opt: Partial<YearRange> & SourceFilterOpt & RegionFilterOpt = {},
 ): Promise<SpeciesYearRow[]> {
   return (await speciesYearsWithCoverage(db, binoms, opt)).years;
 }
@@ -207,12 +228,14 @@ export async function speciesYears(
 export async function speciesCatalogCounts(
   db: CubeDb,
   binoms: readonly string[],
+  opt: RegionFilterOpt = {},
 ): Promise<Map<string, { n: number; nLocated: number }>> {
   const out = new Map<string, { n: number; nLocated: number }>();
+  const cat = speciesCatalogTable(opt.region);
   for (const part of chunk(uniq(binoms), MAX_ID_LIST)) {
     const rows = await db.all<R>(
-      "SELECT binom, n, n_located FROM summary_species_catalog WHERE binom IN (SELECT value FROM json_each(?))",
-      [jsonEachParam(part)],
+      `SELECT s.binom, s.n, s.n_located FROM ${cat.table} s WHERE s.binom IN (SELECT value FROM json_each(?))${cat.on}`,
+      [jsonEachParam(part), ...cat.params],
     );
     for (const r of rows) out.set(r.binom as string, { n: r.n as number, nLocated: r.n_located as number });
   }
@@ -220,8 +243,10 @@ export async function speciesCatalogCounts(
 }
 
 /** v1 `speciesMonths`。2018-01-01 以降の月セル。n≥80 の足切りは `summary_species_catalog.n_located`（座標のある記録の n。表示する行の元と同じ。v1 の「位置の標本が薄い種を出さない」を保つ）。月の系列は grid01 だけ（座標なしの月別件数は持たない）。 */
-export async function speciesMonths(db: CubeDb, binoms: readonly string[], opt: SourceFilterOpt = {}): Promise<SpeciesMonthRow[]> {
+export async function speciesMonths(db: CubeDb, binoms: readonly string[], opt: SourceFilterOpt & RegionFilterOpt = {}): Promise<SpeciesMonthRow[]> {
   const src = sourceFilterSql(opt.sourceIds);
+  const reg = regionAndSql(opt.region);
+  const cat = speciesCatalogTable(opt.region);
   const out: SpeciesMonthRow[] = [];
   for (const part of chunk(uniq(binoms), MAX_ID_LIST)) {
     const rows = await db.all<R>(
@@ -229,12 +254,12 @@ export async function speciesMonths(db: CubeDb, binoms: readonly string[], opt: 
               CAST(substr(o.period_start, 6, 2) AS INTEGER) AS month,
               SUM(o.n) AS n
        FROM json_each(?) j
-       JOIN summary_species_catalog s ON s.binom = j.value AND s.n_located >= ?
+       JOIN ${cat.table} s ON s.binom = j.value AND s.n_located >= ?${cat.on}
        JOIN taxon t INDEXED BY ix_taxon_binomial ON t.canonical_binomial = s.binom
        JOIN occurrence_agg o INDEXED BY ${OCCURRENCE_AGG_INDEX.taxonPeriod} ON o.taxon_id = t.taxon_id
-       WHERE o.place_kind = 'grid01' AND o.grain = 'month' AND o.period_start >= ?${src.sql}
+       WHERE o.place_kind = 'grid01' AND o.grain = 'month' AND o.period_start >= ?${src.sql}${reg.sql}
        GROUP BY t.canonical_binomial, month`,
-      [jsonEachParam(part), SPECIES_MIN_N, MONTH_FROM, ...src.params],
+      [jsonEachParam(part), SPECIES_MIN_N, ...cat.params, MONTH_FROM, ...src.params, ...reg.params],
     );
     for (const r of rows) out.push({ binom: r.binom as string, month: r.month as number, n: r.n as number });
   }
@@ -242,18 +267,20 @@ export async function speciesMonths(db: CubeDb, binoms: readonly string[], opt: 
 }
 
 /** v1 `speciesMeshYears`。n≥80 の種だけ（それ未満は空配列）。 */
-export async function speciesMeshYears(db: CubeDb, binom: string): Promise<SpeciesMeshYearRow[]> {
+export async function speciesMeshYears(db: CubeDb, binom: string, opt: RegionFilterOpt = {}): Promise<SpeciesMeshYearRow[]> {
   const [lo, hi] = periodRange(MESH_YEAR_FROM, occDefaultTo()); // v1 は yr BETWEEN 1970 AND 2026（窓の上限は現在年）
+  const reg = regionAndSql(opt.region);
+  const cat = speciesCatalogTable(opt.region);
   const rows = await db.all<R>(
     `SELECT CAST(substr(o.period_start, 1, 4) AS INTEGER) AS year, o.place_id AS place_id, SUM(o.n) AS n
-     FROM summary_species_catalog s
+     FROM ${cat.table} s
      JOIN taxon t INDEXED BY ix_taxon_binomial ON t.canonical_binomial = s.binom
      JOIN occurrence_agg o INDEXED BY ${OCCURRENCE_AGG_INDEX.taxonPeriod} ON o.taxon_id = t.taxon_id
-     WHERE s.binom = ? AND s.n_located >= ?
+     WHERE s.binom = ? AND s.n_located >= ?${cat.on}
        AND o.place_kind = 'grid01' AND o.grain IN ${YEAR_GRAINS}
-       AND o.period_start >= ? AND o.period_start < ?
+       AND o.period_start >= ? AND o.period_start < ?${reg.sql}
      GROUP BY year, o.place_id`,
-    [binom, SPECIES_MIN_N, lo, hi],
+    [binom, SPECIES_MIN_N, ...cat.params, lo, hi, ...reg.params],
   );
   const out: SpeciesMeshYearRow[] = [];
   for (const r of rows) {
@@ -273,8 +300,11 @@ export async function speciesShareTrend(
   group: string,
   a: YearRange,
   b: YearRange,
-  opt: SpeciesLabelOpt = {},
+  opt: SpeciesLabelOpt & RegionFilterOpt = {},
 ): Promise<ShareTrendRow[]> {
+  const reg = regionAndSql(opt.region);
+  // taxon_group の引き当てだけに使う。地域指定時はその地域に居る種に絞った表を引く。
+  const cat = speciesCatalogTable(opt.region);
   const [aLo, aHi] = periodRange(a.from, a.to);
   const [bLo, bHi] = periodRange(b.from, b.to);
   const lo = aLo < bLo ? aLo : bLo;
@@ -283,14 +313,14 @@ export async function speciesShareTrend(
     `SELECT s.binom AS binom,
             SUM(CASE WHEN o.period_start >= ? AND o.period_start < ? THEN o.n ELSE 0 END) AS n_a,
             SUM(CASE WHEN o.period_start >= ? AND o.period_start < ? THEN o.n ELSE 0 END) AS n_b
-     FROM summary_species_catalog s
+     FROM ${cat.table} s
      JOIN taxon t INDEXED BY ix_taxon_binomial ON t.canonical_binomial = s.binom
      JOIN occurrence_agg o INDEXED BY ${OCCURRENCE_AGG_INDEX.taxonPeriod} ON o.taxon_id = t.taxon_id
-     WHERE s.taxon_group = ?
+     WHERE s.taxon_group = ?${cat.on}
        AND o.place_kind = 'grid01' AND o.grain IN ${YEAR_GRAINS}
-       AND o.period_start >= ? AND o.period_start < ?
+       AND o.period_start >= ? AND o.period_start < ?${reg.sql}
      GROUP BY s.binom`,
-    [aLo, aHi, bLo, bHi, group, lo, hi],
+    [aLo, aHi, bLo, bHi, group, ...cat.params, lo, hi, ...reg.params],
   );
   let totalA = 0;
   let totalB = 0;
@@ -311,8 +341,9 @@ export async function speciesShareTrend(
 }
 
 /** v1 `meshByYear`（`ix_occurrence_agg_kind_grain_period`）。 */
-export async function meshByYear(db: CubeDb, year: number): Promise<MeshYearRow[]> {
+export async function meshByYear(db: CubeDb, year: number, opt: RegionFilterOpt = {}): Promise<MeshYearRow[]> {
   const [lo, hi] = periodRange(year, year);
+  const reg = regionAndSql(opt.region);
   const rows = await db.all<R>(
     `SELECT o.place_id AS place_id, SUM(o.n) AS n,
             COUNT(DISTINCT t.canonical_binomial) AS species_n,
@@ -320,9 +351,9 @@ export async function meshByYear(db: CubeDb, year: number): Promise<MeshYearRow[
      FROM occurrence_agg o INDEXED BY ${OCCURRENCE_AGG_INDEX.kindGrainPeriod}
      LEFT JOIN taxon t ON t.taxon_id = o.taxon_id
      WHERE o.place_kind = 'grid01' AND o.grain IN ${YEAR_GRAINS}
-       AND o.period_start >= ? AND o.period_start < ?
+       AND o.period_start >= ? AND o.period_start < ?${reg.sql}
      GROUP BY o.place_id`,
-    [lo, hi],
+    [lo, hi, ...reg.params],
   );
   const out: MeshYearRow[] = [];
   for (const r of rows) {
@@ -333,7 +364,7 @@ export async function meshByYear(db: CubeDb, year: number): Promise<MeshYearRow[
 }
 
 /** v1 `org_watershed_year`。画面の読み手は無い（serving-diff の `watershed_year` 用）。 */
-export async function watershedYears(db: CubeDb, opt: { placeId?: string } & SourceFilterOpt = {}): Promise<WatershedYearRow[]> {
+export async function watershedYears(db: CubeDb, opt: { placeId?: string } & SourceFilterOpt & RegionFilterOpt = {}): Promise<WatershedYearRow[]> {
   const params: SqlParam[] = [];
   let index: string = OCCURRENCE_AGG_INDEX.kindGrainPeriod;
   let where = "o.place_kind = 'watershed' AND o.place_id IS NOT NULL AND o.grain IN " + YEAR_GRAINS;
@@ -345,6 +376,9 @@ export async function watershedYears(db: CubeDb, opt: { placeId?: string } & Sou
   const src = sourceFilterSql(opt.sourceIds);
   where += src.sql;
   params.push(...src.params);
+  const reg = regionAndSql(opt.region);
+  where += reg.sql;
+  params.push(...reg.params);
   const rows = await db.all<R>(
     `SELECT o.place_id AS place_id, CAST(substr(o.period_start, 1, 4) AS INTEGER) AS year,
             SUM(o.n) AS n, SUM(o.n_alien) AS n_alien, SUM(o.n_red_list) AS n_red_list,

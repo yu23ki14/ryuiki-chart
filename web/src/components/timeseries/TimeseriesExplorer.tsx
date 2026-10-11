@@ -12,7 +12,7 @@ import { caveatBody } from "@/lib/registry/lookup-client";
 import { variableCaveats } from "@/lib/cube/caveats";
 import { VARIABLE_LABEL } from "@/lib/registry/generated-client";
 import { MUNICIPALITY_LABEL } from "@/lib/municipality";
-import { useJson } from "@/components/useJson";
+import { useRegionJson } from "@/components/useRegionJson";
 import { useSetPageContext } from "@/components/assistant/PageContextProvider";
 
 type Basis = "day" | "fiscal_year" | "year";
@@ -100,7 +100,7 @@ export function TimeseriesExplorer({ waters, vars }: { waters: WaterBody[]; vars
 
   // 選んだ項目のデータを実際に持つ水域だけを選択肢にする。
   // 今の水域にその項目が無ければ、地点数が最も多い水域へ自動で移る。
-  const waterOpts = useJson<{ waters: WaterBody[] }>(
+  const waterOpts = useRegionJson<{ waters: WaterBody[] }>(
     `/api/timeseries?mode=waters&variable=${encodeURIComponent(variableId)}&stat=${stat}`,
   );
   const availableWaters = waterOpts.data?.waters ?? waters;
@@ -289,7 +289,7 @@ function WaterMode({
   setHidden: (s: Set<string>) => void;
 }) {
   const qs = `variable=${encodeURIComponent(variableId)}&water=${encodeURIComponent(water)}&basis=${basis}&stat=${stat}`;
-  const { data, loading, error } = useJson<{
+  const { data, loading, error } = useRegionJson<{
     sites: Site[];
     points: (YearApiPoint | SeriesApiPoint)[];
     /** 応答が実際に組み立てた grain（Issue #48 PR-2 code-review #6 参照）。 */
@@ -297,7 +297,7 @@ function WaterMode({
   }>(`/api/timeseries?mode=water&${qs}&grain=${grain}`);
 
   // 季節と経年を1枚で見るためのヒートマップ（水域内の全地点の平均、検体値〔basis=day〕のみ）
-  const monthly = useJson<{ points: SeriesApiPoint[] }>(
+  const monthly = useRegionJson<{ points: SeriesApiPoint[] }>(
     basis === "day" ? `/api/timeseries?mode=water&${qs}&grain=month` : "",
   );
 
@@ -580,7 +580,7 @@ function WaterMode({
 /* ------------------------------------------------------------------ */
 
 function ZoneMode({ variableId, basis, stat, unit }: { variableId: string; basis: Basis; stat: string; unit: string | null }) {
-  const { data, loading, error } = useJson<{
+  const { data, loading, error } = useRegionJson<{
     points: { zone: number; year: number; nSites: number; n: number; avg: number | null }[];
   }>(`/api/timeseries?mode=zone&variable=${encodeURIComponent(variableId)}&basis=${basis}&stat=${stat}`);
 
@@ -667,7 +667,7 @@ function ZoneMode({ variableId, basis, stat, unit }: { variableId: string; basis
 /* ------------------------------------------------------------------ */
 
 function SeasonMode({ variableId, stat, unit }: { variableId: string; stat: string; unit: string | null }) {
-  const { data, loading, error } = useJson<{
+  const { data, loading, error } = useRegionJson<{
     overall: { month: number; n: number; avg: number | null; min: number | null; max: number | null }[];
     byZone: { zone: number; month: number; n: number; avg: number | null }[];
     rain: { month: number; n: number; avg: number | null }[];

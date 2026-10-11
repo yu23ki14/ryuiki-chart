@@ -16,6 +16,8 @@ import { OCC_BOTH_KINDS_YEAR, OCC_MESH_N, OCC_N_ALL, OCC_N_LOCATED, OCC_SUM, USE
 import { IAS_SINCE_YEAR, OCC_DEFAULT_FROM, occDefaultTo, chunk, cmp, jsonEachParam, seriesFilterSql, uniq } from "./sql";
 import { OCCURRENCE_AGG_INDEX } from "@/db/schema-cube";
 import { OCCURRENCE_SOURCE_IDS } from "./source-meta";
+import type { RegionId } from "@/lib/region";
+import { placeRegionJoin, regionPred, sourcesOfRegion } from "./region";
 import { basisOfCell, isRepresentativeObsStat, seriesKeyFromRow, seriesKeySql, seriesKeyString, type SeriesKey } from "./series";
 
 /**
@@ -175,9 +177,9 @@ function yearOf(periodStart: string): number {
 
 /** `variableCatalog({source:'live'})` 用の生セル（`datasetCells` を再利用、dataset
  *  省略時は `observation_agg` を直接、絞り込み無しで読む）。 */
-async function liveCatalogCells(db: CubeDb, dataset?: string): Promise<CatalogCellAgg[]> {
+async function liveCatalogCells(db: CubeDb, dataset?: string, region?: RegionId): Promise<CatalogCellAgg[]> {
   if (dataset !== undefined) {
-    const cells = await datasetCells(db, dataset);
+    const cells = await datasetCells(db, dataset, region);
     return cells.map((c) => ({
       variableId: c.series.variableId,
       obsStat: c.series.obsStat,
@@ -191,10 +193,12 @@ async function liveCatalogCells(db: CubeDb, dataset?: string): Promise<CatalogCe
       yTo: yearOf(c.periodStart),
     }));
   }
+  const rp = regionPred("obs", region);
   const rows = await db.all<RawLiveCatalogCell>(
     `SELECT obs.variable_id, obs.obs_stat, obs.unit_id, obs.grain, obs.input_grain, obs.place_id, obs.period_start, obs.n, obs.n_censored
      FROM observation_agg obs
-     WHERE obs.place_kind = 'site' AND ${YEAR_GRAINS_SQL} AND ${MEAN_STAT_SQL}`,
+     WHERE obs.place_kind = 'site' AND ${YEAR_GRAINS_SQL} AND ${MEAN_STAT_SQL}${rp.sql ? ` AND ${rp.sql}` : ""}`,
+    rp.params,
   );
   return rows.map((r) => ({
     variableId: r.variable_id,
@@ -230,17 +234,19 @@ interface RawSummaryPlaceCell {
  * variable_id への束ねで `nPlaces` を二重計上しないため（`bundleVariableCatalog` の
  * docstring・design §4.1「束ねは summary_place_variable の place 集合から数える」）。
  */
-async function summaryCatalogCells(db: CubeDb, dataset?: string): Promise<CatalogCellAgg[]> {
+async function summaryCatalogCells(db: CubeDb, dataset?: string, region?: RegionId): Promise<CatalogCellAgg[]> {
   const filter = dataset !== undefined ? await datasetFilterSql(db, dataset, "spv") : undefined;
   if (filter?.empty) return [];
+  const rj = placeRegionJoin("spv", region);
 
   const sql = `
     SELECT spv.variable_id, spv.obs_stat, spv.unit_id, spv.grain, spv.input_grain, spv.place_id,
            spv.n, spv.n_censored, spv.y_from, spv.y_to
     FROM summary_place_variable spv
     ${(filter?.joins ?? []).join("\n    ")}
+    ${rj.joins.join("\n    ")}
   `;
-  const rows = await db.all<RawSummaryPlaceCell>(sql, filter?.params ?? []);
+  const rows = await db.all<RawSummaryPlaceCell>(sql, [...(filter?.params ?? []), ...rj.params]);
   return rows.map((r) => ({
     variableId: r.variable_id,
     obsStat: r.obs_stat,
@@ -255,9 +261,15 @@ async function summaryCatalogCells(db: CubeDb, dataset?: string): Promise<Catalo
   }));
 }
 
-export async function variableCatalog(db: CubeDb, opt?: { dataset?: string; source?: CatalogSource }): Promise<VariableCatalogRow[]> {
+export async function variableCatalog(
+  db: CubeDb,
+  opt?: { dataset?: string; source?: CatalogSource; region?: RegionId },
+): Promise<VariableCatalogRow[]> {
   const source = opt?.source ?? DEFAULT_CATALOG_SOURCE;
-  const cells = source.kind === "summary" ? await summaryCatalogCells(db, opt?.dataset) : await liveCatalogCells(db, opt?.dataset);
+  const cells =
+    source.kind === "summary"
+      ? await summaryCatalogCells(db, opt?.dataset, opt?.region)
+      : await liveCatalogCells(db, opt?.dataset, opt?.region);
   return bundleVariableCatalog(cells);
 }
 
@@ -325,7 +337,7 @@ export interface DatasetCell {
  * 同じ alias の mean/point）に同時に現れるケースで二重計上する
  * （実測で判明。`nPlaces` を alias 単位で合算しない設計にした理由）。
  */
-export async function datasetCells(db: CubeDb, dataset: string): Promise<DatasetCell[]> {
+export async function datasetCells(db: CubeDb, dataset: string, region?: RegionId): Promise<DatasetCell[]> {
   const datasetSeries = await seriesForDataset(db, dataset);
   if (datasetSeries.length === 0) return [];
 
@@ -344,13 +356,14 @@ export async function datasetCells(db: CubeDb, dataset: string): Promise<Dataset
     n: number;
     n_censored: number;
   }
+  const rp = regionPred("obs", region);
   const rows = await db.all<RawCell>(
     `SELECT obs.variable_id, obs.obs_stat, obs.unit_id, obs.value_grain, obs.input_grain, obs.grain,
             obs.place_id, obs.period_start, obs.n, obs.n_censored
      FROM observation_agg obs
      JOIN json_each(?) vid ON vid.value = obs.variable_id
-     WHERE obs.place_kind = 'site' AND ${YEAR_GRAINS_SQL} AND ${MEAN_STAT_SQL}`,
-    [jsonEachParam(variableIds)],
+     WHERE obs.place_kind = 'site' AND ${YEAR_GRAINS_SQL} AND ${MEAN_STAT_SQL}${rp.sql ? ` AND ${rp.sql}` : ""}`,
+    [jsonEachParam(variableIds), ...rp.params],
   );
 
   const out: DatasetCell[] = [];
@@ -638,6 +651,15 @@ const SITE_COLUMNS_SQL = `s.site_id, s.name, s.name_en, s.watershed, ${WATER_SYS
  * `datasetFilterSql` で絞り込む（Issue #48 PR-1 論点A）。`source` 既定は
  * `summary`（design §4.3）。
  */
+/** 地点（`sites s`）を地域で絞る WHERE 断片（`place_source_ref` → `place_region`）。region 未指定は空。 */
+function siteRegionCond(region: RegionId | undefined): { sql: string; params: SqlParam[] } {
+  if (region === undefined) return { sql: "", params: [] };
+  return {
+    sql: `s.site_id IN (SELECT rpsr.external_key FROM place_source_ref rpsr JOIN place_region prg ON prg.place_id = rpsr.place_id AND prg.region_id = ? WHERE rpsr.key_space = 'site_id')`,
+    params: [region],
+  };
+}
+
 async function siteRows(
   db: CubeDb,
   opt: { dataset?: string; source?: CatalogSource } | undefined,
@@ -678,8 +700,9 @@ async function siteRows(
 /**
  * `sites` JOIN `place_source_ref` JOIN 年セル集計（design §3.4）。
  */
-export async function sites(db: CubeDb, opt?: { dataset?: string; source?: CatalogSource }): Promise<SiteRow2[]> {
-  return siteRows(db, opt, "", [], "ORDER BY s.zone, s.elevation_m DESC");
+export async function sites(db: CubeDb, opt?: { dataset?: string; source?: CatalogSource; region?: RegionId }): Promise<SiteRow2[]> {
+  const rc = siteRegionCond(opt?.region);
+  return siteRows(db, opt, rc.sql ? `WHERE ${rc.sql}` : "", rc.params, "ORDER BY s.zone, s.elevation_m DESC");
 }
 
 /**
@@ -701,12 +724,13 @@ export async function site(db: CubeDb, siteId: string, opt?: { dataset?: string;
 export async function sitesInWaterBody(
   db: CubeDb,
   municipality: string,
-  opt?: { dataset?: string; source?: CatalogSource },
+  opt?: { dataset?: string; source?: CatalogSource; region?: RegionId },
 ): Promise<SiteRow2[]> {
   const source = opt?.source ?? DEFAULT_CATALOG_SOURCE;
   const alias = source.kind === "summary" ? "spv" : "obs";
   const filter = opt?.dataset ? await datasetFilterSql(db, opt.dataset, alias) : undefined;
   if (filter?.empty) return [];
+  const rc = siteRegionCond(opt?.region);
 
   const sql = `
     SELECT ${SITE_COLUMNS_SQL},
@@ -714,10 +738,10 @@ export async function sitesInWaterBody(
     FROM sites s
     ${WATER_SYSTEM_NAME_JOIN}
     JOIN (${siteRollupSql(source, filter?.joins)}) v ON v.site_id = s.site_id
-    WHERE s.municipality = ?
+    WHERE s.municipality = ?${rc.sql ? ` AND ${rc.sql}` : ""}
     ORDER BY s.elevation_m DESC
   `;
-  const rows = await db.all<Parameters<typeof toSiteRow2>[0]>(sql, [...(filter?.params ?? []), municipality]);
+  const rows = await db.all<Parameters<typeof toSiteRow2>[0]>(sql, [...(filter?.params ?? []), municipality, ...rc.params]);
   return rows.map(toSiteRow2);
 }
 
@@ -738,7 +762,10 @@ export interface WaterBodyRow {
  * `series`（1系列集合に絞る。`waterBodiesForVariable` 相当）と `dataset`（データセット全体で
  * 絞り込む。`listWaterBodies` 相当——Issue #48 PR-1 論点A）はどちらか一方を渡す。`source` 既定は `summary`。
  */
-export async function waterBodies(db: CubeDb, opt?: { series?: SeriesKey[]; dataset?: string; source?: CatalogSource }): Promise<WaterBodyRow[]> {
+export async function waterBodies(
+  db: CubeDb,
+  opt?: { series?: SeriesKey[]; dataset?: string; source?: CatalogSource; region?: RegionId },
+): Promise<WaterBodyRow[]> {
   const source = opt?.source ?? DEFAULT_CATALOG_SOURCE;
   const alias = source.kind === "summary" ? "spv" : "obs";
   const params: SqlParam[] = [];
@@ -762,6 +789,10 @@ export async function waterBodies(db: CubeDb, opt?: { series?: SeriesKey[]; data
     joins.push(...filter.joins);
     params.push(...filter.params);
   }
+  // 地域: 内側の集計に `place_region` を JOIN する（地点の place は地域に純粋なので、地域外の地点は集計に入らない）。
+  const rj = placeRegionJoin(alias, opt?.region);
+  joins.push(...rj.joins);
+  params.push(...rj.params);
 
   const innerMeasuresSql =
     source.kind === "summary"
@@ -956,6 +987,8 @@ interface SpeciesCatalogOpt {
   search?: string;
   /** 出典で絞る。未指定は `summary_species_catalog`（全出典の事前集計）、指定時は `occurrence_agg` を直接集計する。 */
   sourceIds?: readonly string[];
+  /** 地域で絞る（`summary_species_catalog_by_region`。`sourceIds` との併用は `occurrence_agg` に `region_id` を足す）。未指定は全体。 */
+  region?: RegionId;
 }
 
 /** v1 `speciesList`。`ORDER BY n DESC, binom`。 */
@@ -964,6 +997,10 @@ export async function speciesCatalog(db: CubeDb, opt: SpeciesCatalogOpt = {}): P
   const limit = opt.limit ?? 200;
   const params: SqlParam[] = [];
   const conds: string[] = [];
+  if (opt.region !== undefined) {
+    conds.push("region_id = ?");
+    params.push(opt.region);
+  }
   if (opt.group) {
     conds.push("taxon_group = ?");
     params.push(opt.group);
@@ -977,7 +1014,7 @@ export async function speciesCatalog(db: CubeDb, opt: SpeciesCatalogOpt = {}): P
   params.push(limit);
   const rows = await db.all<OccRow>(
     `SELECT binom, taxon_group, "class", family, n, n_located, n_red_list, n_alien, n_places, y_from, y_to, n_years
-     FROM summary_species_catalog ${where}
+     FROM ${opt.region !== undefined ? "summary_species_catalog_by_region" : "summary_species_catalog"} ${where}
      ORDER BY n DESC, binom LIMIT ?`,
     params,
   );
@@ -992,7 +1029,8 @@ export async function speciesCatalog(db: CubeDb, opt: SpeciesCatalogOpt = {}): P
  */
 async function speciesCatalogBySource(db: CubeDb, opt: SpeciesCatalogOpt & { sourceIds: readonly string[] }): Promise<SpeciesCatalogRow[]> {
   const limit = opt.limit ?? 200;
-  const params: SqlParam[] = [jsonEachParam(uniq(opt.sourceIds))];
+  const rp = regionPred("o", opt.region);
+  const params: SqlParam[] = [jsonEachParam(uniq(opt.sourceIds)), ...rp.params];
   let extra = "";
   const search = speciesSearchCond(opt.search, "t.canonical_binomial");
   if (search) {
@@ -1016,7 +1054,7 @@ async function speciesCatalogBySource(db: CubeDb, opt: SpeciesCatalogOpt & { sou
             COUNT(DISTINCT substr(o.period_start, 1, 4)) AS n_years
      FROM occurrence_agg o INDEXED BY ${OCCURRENCE_AGG_INDEX.kindGrainPeriod}
      JOIN taxon t ON t.taxon_id = o.taxon_id
-     WHERE o.source_id IN (SELECT value FROM json_each(?))
+     WHERE o.source_id IN (SELECT value FROM json_each(?))${rp.sql ? ` AND ${rp.sql}` : ""}
        AND ${OCC_BOTH_KINDS_YEAR}
        AND t.canonical_binomial IS NOT NULL${extra}
      GROUP BY t.canonical_binomial ${having}
@@ -1035,12 +1073,16 @@ export interface TaxonGroupYearRow {
 }
 
 /** v1 `taxonGroupYears`（窓の既定 1990〜2026）。 */
-export async function taxonGroupYears(db: CubeDb, opt: { from?: number; to?: number } = {}): Promise<TaxonGroupYearRow[]> {
+export async function taxonGroupYears(db: CubeDb, opt: { from?: number; to?: number; region?: RegionId } = {}): Promise<TaxonGroupYearRow[]> {
+  // 地域: `summary_group_year` は出典別なので、その地域の出典だけに絞る（表は変えない）。
+  // 前提: 出現データの出典はすべてマニフェストで地域宣言済み（共通出典が無い）なので、
+  // 出典基準（sourcesOfRegion）と region_id 基準の絞りは一致する（cube/region.test.ts が全出典の宣言を検査）。
+  const regionSources = opt.region === undefined ? undefined : sourcesOfRegion(OCCURRENCE_SOURCE_IDS, opt.region);
   const rows = await db.all<OccRow>(
     `SELECT year, taxon_group, SUM(n) AS n, MAX(n_places) AS mesh_n
-     FROM summary_group_year WHERE year BETWEEN ? AND ?
+     FROM summary_group_year WHERE year BETWEEN ? AND ?${regionSources ? " AND source_id IN (SELECT value FROM json_each(?))" : ""}
      GROUP BY year, taxon_group ORDER BY year, taxon_group`,
-    [opt.from ?? OCC_DEFAULT_FROM, opt.to ?? occDefaultTo()],
+    [opt.from ?? OCC_DEFAULT_FROM, opt.to ?? occDefaultTo(), ...(regionSources ? [jsonEachParam(regionSources)] : [])],
   );
   return rows.map((r) => ({ year: r.year as number, taxonGroup: r.taxon_group as string, n: r.n as number, meshN: r.mesh_n as number }));
 }
@@ -1060,17 +1102,20 @@ export function effortRowV1(e: EffortYearRow) {
 }
 
 /** v1 `effortYears`（窓の既定 1990〜2026）。`n_inat`/`n_gbif` は source 別の SUM(n)。 */
-export async function effortYears(db: CubeDb, opt: { from?: number; to?: number } = {}): Promise<EffortYearRow[]> {
+export async function effortYears(db: CubeDb, opt: { from?: number; to?: number; region?: RegionId } = {}): Promise<EffortYearRow[]> {
   const range = [opt.from ?? OCC_DEFAULT_FROM, opt.to ?? occDefaultTo()];
+  const gbifIds = sourcesOfRegion(SOURCES_GBIF, opt.region);
+  const inatIds = sourcesOfRegion(SOURCES_INAT, opt.region);
   const [eff, src] = await Promise.all([
     db.all<OccRow>(
-      `SELECT year, n, n_binom, n_places FROM summary_effort_year WHERE year BETWEEN ? AND ? ORDER BY year`,
-      range,
+      `SELECT year, n, n_binom, n_places FROM ${opt.region === undefined ? "summary_effort_year" : "summary_effort_year_by_region"}
+       WHERE ${opt.region === undefined ? "" : "region_id = ? AND "}year BETWEEN ? AND ? ORDER BY year`,
+      opt.region === undefined ? range : [opt.region, ...range],
     ),
     db.all<OccRow>(
       `SELECT year, source_id, SUM(n) AS n FROM summary_group_year
-       WHERE year BETWEEN ? AND ? AND source_id IN (${placeholders(SOURCES_GBIF.length + SOURCES_INAT.length)}) GROUP BY year, source_id`,
-      [...range, ...SOURCES_GBIF, ...SOURCES_INAT],
+       WHERE year BETWEEN ? AND ? AND source_id IN (${placeholders(gbifIds.length + inatIds.length)}) GROUP BY year, source_id`,
+      [...range, ...gbifIds, ...inatIds],
     ),
   ]);
   const bySource = new Map<string, number>();
@@ -1081,8 +1126,8 @@ export async function effortYears(db: CubeDb, opt: { from?: number; to?: number 
     n: r.n as number,
     speciesN: r.n_binom as number,
     meshN: r.n_places as number,
-    nInat: sum(r.year as number, SOURCES_INAT),
-    nGbif: sum(r.year as number, SOURCES_GBIF),
+    nInat: sum(r.year as number, inatIds),
+    nGbif: sum(r.year as number, gbifIds),
   }));
 }
 
@@ -1097,9 +1142,12 @@ export interface GridCatalogRow {
 }
 
 /** v1 `meshAll`（`mesh_all ⋈ mesh_species`）。n>0 のグリッドだけ。 */
-export async function gridCatalog(db: CubeDb): Promise<GridCatalogRow[]> {
+export async function gridCatalog(db: CubeDb, region?: RegionId): Promise<GridCatalogRow[]> {
+  const rj = placeRegionJoin("g", region);
   const rows = await db.all<OccRow>(
-    `SELECT place_id, n, n_red_list, n_binom, n_red_binom FROM summary_grid_catalog WHERE n > 0 ORDER BY place_id`,
+    `SELECT g.place_id, g.n, g.n_red_list, g.n_binom, g.n_red_binom FROM summary_grid_catalog g
+         ${rj.joins.join("\n         ")} WHERE g.n > 0 ORDER BY g.place_id`,
+    rj.params,
   );
   const out: GridCatalogRow[] = [];
   for (const r of rows) {
@@ -1127,14 +1175,22 @@ export interface OccurrenceTotals {
 }
 
 /** v1 `biotaTotals`・`overviewStats` の生物部分。日付のある記録だけ（D3）。 */
-export async function occurrenceTotals(db: CubeDb): Promise<OccurrenceTotals> {
+export async function occurrenceTotals(db: CubeDb, region?: RegionId): Promise<OccurrenceTotals> {
+  const gbifIds = sourcesOfRegion(SOURCES_GBIF, region);
+  const inatIds = sourcesOfRegion(SOURCES_INAT, region);
   const rows = await db.all<OccRow>(
-    `SELECT (SELECT COALESCE(SUM(n), 0) FROM summary_effort_year) AS records,
+    region === undefined
+      ? `SELECT (SELECT COALESCE(SUM(n), 0) FROM summary_effort_year) AS records,
             (SELECT COUNT(*) FROM summary_species_catalog) AS species,
             (SELECT COUNT(*) FROM summary_grid_catalog WHERE n > 0) AS grids,
             (SELECT COALESCE(SUM(n), 0) FROM summary_group_year WHERE source_id IN (${placeholders(SOURCES_GBIF.length)})) AS gbif,
-            (SELECT COALESCE(SUM(n), 0) FROM summary_group_year WHERE source_id IN (${placeholders(SOURCES_INAT.length)})) AS inat`,
-    [...SOURCES_GBIF, ...SOURCES_INAT],
+            (SELECT COALESCE(SUM(n), 0) FROM summary_group_year WHERE source_id IN (${placeholders(SOURCES_INAT.length)})) AS inat`
+      : `SELECT (SELECT COALESCE(SUM(n), 0) FROM summary_effort_year_by_region WHERE region_id = ?) AS records,
+            (SELECT COUNT(*) FROM summary_species_catalog_by_region WHERE region_id = ?) AS species,
+            (SELECT COUNT(*) FROM summary_grid_catalog g JOIN place_region prg ON prg.place_id = g.place_id AND prg.region_id = ? WHERE g.n > 0) AS grids,
+            (SELECT COALESCE(SUM(n), 0) FROM summary_group_year WHERE source_id IN (${placeholders(gbifIds.length)})) AS gbif,
+            (SELECT COALESCE(SUM(n), 0) FROM summary_group_year WHERE source_id IN (${placeholders(inatIds.length)})) AS inat`,
+    region === undefined ? [...SOURCES_GBIF, ...SOURCES_INAT] : [region, region, region, ...gbifIds, ...inatIds],
   );
   const r = rows[0] ?? {};
   return {
@@ -1162,9 +1218,13 @@ export interface WatershedOccurrence {
 }
 
 /** v1 `watershed_rollup` の `org_n`/`org_alien_n`/`org_redlist_n`（`org_watershed`）。 */
-export async function watershedOccurrence(db: CubeDb): Promise<WatershedOccurrence> {
+export async function watershedOccurrence(db: CubeDb, region?: RegionId): Promise<WatershedOccurrence> {
+  // 地域指定時は `place_region` に載る流域だけ。`place_id` NULL（流域外）の行は地域に帰属させられないので出ない（outsideWatershed は null）。
+  const rj = placeRegionJoin("w", region);
   const rows = await db.all<OccRow>(
-    `SELECT place_id, n, n_red_list, n_alien FROM summary_watershed_occurrence ORDER BY place_id`,
+    `SELECT w.place_id, w.n, w.n_red_list, w.n_alien FROM summary_watershed_occurrence w
+         ${rj.joins.join("\n         ")} ORDER BY w.place_id`,
+    rj.params,
   );
   const watersheds: WatershedOccurrenceRow[] = [];
   let outside: WatershedOccurrence["outsideWatershed"] = null;
@@ -1208,29 +1268,30 @@ export interface IasSpeciesRow {
  * `nSince`（IAS_SINCE_YEAR 以降）だけセルを `ix_occurrence_agg_taxon_period` で引く。同じ binom が
  * 2カテゴリに載るときは (category, binom) で返す。
  */
-export async function iasSpecies(db: CubeDb): Promise<IasSpeciesRow[]> {
+export async function iasSpecies(db: CubeDb, region?: RegionId): Promise<IasSpeciesRow[]> {
   const base = await db.all<OccRow>(
     `SELECT a.category_raw AS ias_category, a.binom AS binom,
             MAX(a.vernacular_name_ja_resolved) AS name_ja,
             s.taxon_group, s.n, s.n_places, s.y_from, s.y_to
      FROM taxon_assessment a
-     JOIN summary_species_catalog s ON s.binom = a.binom
+     JOIN ${region === undefined ? "summary_species_catalog s ON s.binom = a.binom" : "summary_species_catalog_by_region s ON s.binom = a.binom AND s.region_id = ?"}
      WHERE a.list_id = ? AND a.in_scope = 1 AND a.binom IS NOT NULL
      GROUP BY a.category_raw, a.binom`,
-    [IAS_LIST_ID],
+    region === undefined ? [IAS_LIST_ID] : [region, IAS_LIST_ID],
   );
   if (base.length === 0) return [];
   const binoms = uniq(base.map((r) => r.binom as string));
   const since = new Map<string, number>();
+  const { sql: regionSql, params: regionParams } = regionPred("o", region);
   for (const part of chunk(binoms, MAX_ID_LIST)) {
     const rows = await db.all<OccRow>(
       `SELECT t.canonical_binomial AS binom, ${OCC_N_ALL} AS n
        FROM json_each(?) j
        JOIN taxon t INDEXED BY ix_taxon_binomial ON t.canonical_binomial = j.value
        JOIN occurrence_agg o INDEXED BY ${OCCURRENCE_AGG_INDEX.taxonPeriod} ON o.taxon_id = t.taxon_id
-       WHERE ${OCC_BOTH_KINDS_YEAR} AND o.period_start >= ?
+       WHERE ${OCC_BOTH_KINDS_YEAR}${regionSql ? ` AND ${regionSql}` : ""} AND o.period_start >= ?
        GROUP BY t.canonical_binomial`,
-      [jsonEachParam(part), String(IAS_SINCE_YEAR)],
+      [jsonEachParam(part), ...regionParams, String(IAS_SINCE_YEAR)],
     );
     for (const r of rows) since.set(r.binom as string, r.n as number);
   }
@@ -1268,14 +1329,24 @@ export interface OverviewCounts {
   yTo: number | null;
 }
 
-export async function overviewCounts(db: CubeDb): Promise<OverviewCounts> {
+export async function overviewCounts(db: CubeDb, region?: RegionId): Promise<OverviewCounts> {
+  // `sources`（出典の件数）は地域で絞らない（出典の地域は未宣言のものが多い。docs/plans/REGION_FILTER.md §9 未決1）。
+  const rc = siteRegionCond(region);
   const rows = await db.all<OccRow>(
-    `SELECT (SELECT COUNT(*) FROM sites) AS sites,
+    region === undefined
+      ? `SELECT (SELECT COUNT(*) FROM sites) AS sites,
             (SELECT COUNT(*) FROM source_registry) AS sources,
             (SELECT COUNT(*) FROM place WHERE place_kind = 'watershed') AS watersheds,
             (SELECT COUNT(DISTINCT variable_id) FROM summary_variable_catalog) AS variables,
             (SELECT MIN(y_from) FROM summary_variable_catalog) AS y_from,
-            (SELECT MAX(y_to) FROM summary_variable_catalog) AS y_to`,
+            (SELECT MAX(y_to) FROM summary_variable_catalog) AS y_to`
+      : `SELECT (SELECT COUNT(*) FROM sites s WHERE ${rc.sql}) AS sites,
+            (SELECT COUNT(*) FROM source_registry) AS sources,
+            (SELECT COUNT(*) FROM place p JOIN place_region prg ON prg.place_id = p.place_id AND prg.region_id = ? WHERE p.place_kind = 'watershed') AS watersheds,
+            (SELECT COUNT(DISTINCT variable_id) FROM summary_variable_catalog_by_region WHERE region_id = ?) AS variables,
+            (SELECT MIN(y_from) FROM summary_variable_catalog_by_region WHERE region_id = ?) AS y_from,
+            (SELECT MAX(y_to) FROM summary_variable_catalog_by_region WHERE region_id = ?) AS y_to`,
+    region === undefined ? [] : [...rc.params, region, region, region, region],
   );
   const r = rows[0] ?? {};
   return {
@@ -1331,14 +1402,16 @@ interface WatershedBase {
 }
 
 /** 流域の `place`。v1 の `watershed_id` は `place_source_ref('watershed_id').external_key`。 */
-async function watershedBases(db: CubeDb): Promise<WatershedBase[]> {
+async function watershedBases(db: CubeDb, region?: RegionId): Promise<WatershedBase[]> {
+  const rj = placeRegionJoin("p", region);
   const rows = await db.all<OccRow>(
     `SELECT p.place_id, r.external_key AS watershed_id, p.name_ja, p.area_km2, p.lat, p.lon
      FROM place p
      JOIN place_source_ref r ON r.place_id = p.place_id AND r.key_space = ?
+     ${rj.joins.join("\n     ")}
      WHERE p.place_kind = 'watershed'
      ORDER BY r.external_key`,
-    [WATERSHED_KEY_SPACE],
+    [WATERSHED_KEY_SPACE, ...rj.params],
   );
   return rows.map((r) => ({
     placeId: r.place_id as string,
@@ -1362,15 +1435,17 @@ interface LanduseLoaded {
  * の誤選択を避ける。PR-3b §0-2 と同じ理由）。`CROSS JOIN` で place 側を外側に固定する。
  * 版の年は取れた `period_start` の最小・最大を `years` として返す（`/api/geo/watersheds` が画面のラベルに使う）。
  */
-async function loadLanduse(db: CubeDb): Promise<LanduseLoaded> {
+async function loadLanduse(db: CubeDb, region?: RegionId): Promise<LanduseLoaded> {
+  const rj = placeRegionJoin("p", region);
   const rows = await db.all<OccRow>(
     `SELECT o.place_id, o.variable_id, o.period_start, o.value_lod
      FROM place p
+     ${rj.joins.join("\n     ")}
      CROSS JOIN observation_agg o INDEXED BY ${OBS_PLACE_VARIABLE_INDEX}
        ON o.place_id = p.place_id
      WHERE p.place_kind = 'watershed'
        AND o.variable_id IN (?, ?, ?) AND o.grain = 'year' AND o.stat = 'mean'`,
-    [LANDUSE_BUILT, LANDUSE_FOREST, LANDUSE_PADDY],
+    [...rj.params, LANDUSE_BUILT, LANDUSE_FOREST, LANDUSE_PADDY],
   );
   const byPlace = new Map<string, Map<string, Map<number, number>>>();
   let from: number | null = null;
@@ -1403,13 +1478,13 @@ function landuseCell(l: LanduseLoaded, placeId: string, variableId: string): Lan
  * serving-diff の3者が同じこの1関数を呼ぶ）。`place`＋`place_relation`（site_n）＋
  * `watershedOccurrence`（org_*。記録の無い流域は 0）＋キューブの土地利用を問い合わせ時に束ねる。
  */
-export async function watershedRollup(db: CubeDb): Promise<{
+export async function watershedRollup(db: CubeDb, region?: RegionId): Promise<{
   watersheds: WatershedRollupRow[];
   landuseYears: { from: number; to: number } | null;
   outsideWatershed: { n: number } | null;
 }> {
   const [bases, siteRows, occ, landuse] = await Promise.all([
-    watershedBases(db),
+    watershedBases(db, region),
     db.all<OccRow>(
       `SELECT r.parent_id AS place_id, COUNT(*) AS n
        FROM place_relation r
@@ -1417,8 +1492,8 @@ export async function watershedRollup(db: CubeDb): Promise<{
        WHERE r.relation = 'within'
        GROUP BY r.parent_id`,
     ),
-    watershedOccurrence(db),
-    loadLanduse(db),
+    watershedOccurrence(db, region),
+    loadLanduse(db, region),
   ]);
   const siteN = new Map(siteRows.map((r) => [r.place_id as string, r.n as number]));
   const orgByPlace = new Map(occ.watersheds.map((w) => [w.placeId, w]));
@@ -1450,8 +1525,9 @@ export async function watershedRollup(db: CubeDb): Promise<{
 export async function landuseHighlight(
   db: CubeDb,
   limit = 8,
+  region?: RegionId,
 ): Promise<{ watershedId: string; waterSystemName: string | null; delta: number; areaKm2: number }[]> {
-  const [bases, landuse] = await Promise.all([watershedBases(db), loadLanduse(db)]);
+  const [bases, landuse] = await Promise.all([watershedBases(db, region), loadLanduse(db, region)]);
   const out: { watershedId: string; waterSystemName: string | null; delta: number; areaKm2: number }[] = [];
   for (const b of bases) {
     const delta = landuseDelta(landuseCell(landuse, b.placeId, LANDUSE_BUILT));

@@ -133,7 +133,9 @@ V2_CHECK_EXIT_STALE = 10
 # 2026-10-07: n の定義を「日付のある全記録（watershed 系列。座標の無い記録を含む）」に変え、
 # meshN 相当（n_places）は grid01 のまま。`summary_species_catalog`/`summary_group_year`/
 # `summary_effort_year` の n・n_binom・y_*・n_years の値が変わり、summary_species_catalog に n_located を足したため v5→v6 に上げた。
-SUMMARY_SPEC_VERSION = "serving-summary/v6"
+# 2026-10-11: Issue #93 で地域別の事前集計（`*_by_region` 4表と `place_region`。`aggregations/serving.yaml` の
+# `by_region: true`）を足したため v6→v7 に上げた（全員の v2 が古い判定になり作り直しになる）。
+SUMMARY_SPEC_VERSION = "serving-summary/v7"
 
 # D1 に載せる summary 表（`scripts/b13_build_summary.py` が作る）の名前。
 # `V2_CUBE_SPEC_VERSIONS` に SUMMARY_SPEC_VERSION 付きで足すのに使う——
@@ -151,6 +153,19 @@ V2_SUMMARY_TABLES = (
     "summary_grid_catalog",
 )
 
+# 地域別の事前集計（Issue #93）。`aggregations/serving.yaml` で `by_region: true` を宣言した summary から、
+# `region_id` を group_by・key の先頭に足した表 `<名前>_by_region` を b13 が作る（既存の表は変えない）。
+# YAML の `by_region` 宣言の集合とこの定数が過不足なく一致することを b13 が検証する。
+V2_SUMMARY_BY_REGION_BASES = (
+    "summary_variable_catalog",
+    "summary_taxon_catalog",
+    "summary_species_catalog",
+    "summary_effort_year",
+)
+V2_SUMMARY_BY_REGION_TABLES = tuple(f"{t}_by_region" for t in V2_SUMMARY_BY_REGION_BASES)
+# place_id -> region_id（観測・出現のキューブの region_id と site の place.region_id の和集合）。b13 が作る。
+V2_PLACE_REGION_TABLE = "place_region"
+
 # D1 に載せるキューブ表と、それぞれの spec_version。値は上の
 # `OBSERVATION_AGG_SPEC_VERSION`/`OCCURRENCE_AGG_SPEC_VERSION`/`SUMMARY_SPEC_VERSION`
 # を直接引く——ここで複製しない。`scripts/check_v2_fresh.py`・
@@ -163,6 +178,8 @@ V2_CUBE_SPEC_VERSIONS = {
     "observation_agg": OBSERVATION_AGG_SPEC_VERSION,
     "occurrence_agg": OCCURRENCE_AGG_SPEC_VERSION,
     **{table: SUMMARY_SPEC_VERSION for table in V2_SUMMARY_TABLES},
+    **{table: SUMMARY_SPEC_VERSION for table in V2_SUMMARY_BY_REGION_TABLES},
+    V2_PLACE_REGION_TABLE: SUMMARY_SPEC_VERSION,
 }
 
 # SQLite 3.43 未満では2つの理由でパイプラインが壊れる: (1) AVG()/SUM() の

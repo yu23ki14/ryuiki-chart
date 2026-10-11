@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import { Noto_Sans_JP, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -29,9 +30,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* 画面の状態（PageContext）をアシスタントに渡す配線。children はサーバコンポーネントのままでよい
             （children を渡すだけなら、それを包むこのコンポーネント自身だけが client になる）。 */}
         <PageContextProvider>
-          <SiteNav />
+          {/* SiteNav・AssistantPanel は useSearchParams（?region=）を読むので Suspense に包む */}
+          <Suspense fallback={<div className="no-print h-12 border-b border-line bg-surface" />}>
+            <SiteNav />
+          </Suspense>
           <main className="flex-1 flex flex-col min-h-0">{children}</main>
-          <AssistantPanel />
+          <Suspense fallback={null}>
+            <AssistantPanel />
+          </Suspense>
         </PageContextProvider>
       </body>
     </html>

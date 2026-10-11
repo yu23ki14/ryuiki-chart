@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { IAS_SINCE_YEAR } from "@/lib/cube/sql";
-import { freshnessFor, OCCURRENCE_SOURCE_IDS, REDLIST_SOURCE_IDS } from "@/lib/cube/source-meta";
+import { freshnessFor, OCCURRENCE_SOURCE_IDS, redlistSourceIds } from "@/lib/cube/source-meta";
+import { defaultRedlistYear } from "@/lib/redlist-editions";
+import { parseRegion, regionOf } from "@/lib/region";
 import {
   d1CubeDb,
   taxonGroupYears,
@@ -22,22 +24,24 @@ export const dynamic = "force-dynamic";
 /** kind ごとの出典（既定は出現データの出典）。外来種は環境省リスト、レッドリストは評価リストの出典も引く。 */
 const FRESHNESS_SOURCES: Record<string, readonly string[]> = {
   ias: [...OCCURRENCE_SOURCE_IDS, "moe_ias_list"],
-  redlist: REDLIST_SOURCE_IDS,
 };
 
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const kind = sp.get("kind") ?? "effort";
+  // cube 層へは 'all' を入れない（undefined = 全体。全体のときは条件も表も現状のまま）。
+  const region = regionOf(parseRegion(sp.get("region")));
+  const ropt = { region };
   try {
     const db = await d1CubeDb();
     // 出典ごとの取得日・更新方式・経過日数（加算。registry の生成物から引き、D1 は引かない。ADR-0014/0020）。
-    const freshness = freshnessFor(FRESHNESS_SOURCES[kind] ?? OCCURRENCE_SOURCE_IDS);
+    const freshness = freshnessFor(kind === "redlist" ? redlistSourceIds(region) : (FRESHNESS_SOURCES[kind] ?? OCCURRENCE_SOURCE_IDS), {}, region);
     switch (kind) {
       case "effort": {
         const [groups, effort, totals] = await Promise.all([
-          taxonGroupYears(db),
-          effortYears(db),
-          occurrenceTotals(db),
+          taxonGroupYears(db, ropt),
+          effortYears(db, ropt),
+          occurrenceTotals(db, region),
         ]);
         // 画面の形（snake_case）は v1 のまま。totals.mesh は日付のある記録が入るグリッド数（D3）。
         return NextResponse.json({
@@ -59,7 +63,7 @@ export async function GET(req: NextRequest) {
         const a1 = Number(sp.get("a1") ?? 2020);
         const b0 = Number(sp.get("b0") ?? 2022);
         const b1 = Number(sp.get("b1") ?? 2024);
-        const rows = await speciesShareTrend(db, group, { from: a0, to: a1 }, { from: b0, to: b1 });
+        const rows = await speciesShareTrend(db, group, { from: a0, to: a1 }, { from: b0, to: b1 }, ropt);
         return NextResponse.json({
           freshness,
           rows: rows.map((r) => ({
@@ -76,7 +80,7 @@ export async function GET(req: NextRequest) {
       }
       case "species": {
         const binoms = (sp.get("binoms") ?? "").split(",").filter(Boolean);
-        const [years, months] = await Promise.all([speciesYears(db, binoms), speciesMonths(db, binoms)]);
+        const [years, months] = await Promise.all([speciesYears(db, binoms, ropt), speciesMonths(db, binoms, ropt)]);
         return NextResponse.json({
           freshness,
           years: years.map((r) => ({ binom: r.binom, year: r.year, n: r.n, mesh_n: r.meshN })),
@@ -84,9 +88,9 @@ export async function GET(req: NextRequest) {
         });
       }
       case "mesh":
-        return NextResponse.json({ rows: await speciesMeshYears(db, sp.get("binom") ?? ""), freshness });
+        return NextResponse.json({ rows: await speciesMeshYears(db, sp.get("binom") ?? "", ropt), freshness });
       case "ias": {
-        const rows = await iasSpecies(db);
+        const rows = await iasSpecies(db, region);
         return NextResponse.json({
           freshness,
           since_year: IAS_SINCE_YEAR,
@@ -105,12 +109,13 @@ export async function GET(req: NextRequest) {
         });
       }
       case "redlist": {
-        const y = Number(sp.get("year") ?? 2022);
+        const y = Number(sp.get("year") ?? defaultRedlistYear(region));
         const group = sp.get("group") || undefined;
         const { flows, species, summary } = await redlistBundle(db, y, {
           group,
           direction: sp.get("direction") || undefined,
           limit: 400,
+          ...ropt,
         });
         return NextResponse.json({
           freshness,
@@ -137,7 +142,7 @@ export async function GET(req: NextRequest) {
         });
       }
       case "list": {
-        const rows = await speciesCatalog(db, { group: sp.get("group") || null, limit: 300, withNames: true });
+        const rows = await speciesCatalog(db, { group: sp.get("group") || null, limit: 300, withNames: true, ...ropt });
         return NextResponse.json({
           freshness,
           rows: rows.map((r) => ({
