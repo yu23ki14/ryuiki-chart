@@ -11,6 +11,12 @@ const WATERSHED_NS = "nlni";
 const DEM_NS = "dem";
 const DEM_ID_PREFIX = "dem-";
 
+/** `watershedIdOfPlaceId`／`placeIdOfWatershedId` の対応を、利用者向けに一文で言ったもの（定数から組む。規則を変えたらここも変わる）。 */
+export const WATERSHED_ID_RULE =
+  `GeoJSON の properties.watershed_id から place_id へは、'${DEM_ID_PREFIX}' で始まらない ID（例 83030-0001）は ` +
+  `'common:place:watershed.${WATERSHED_NS}.' + ID、'${DEM_ID_PREFIX}' で始まる ID（例 dem-amami-039）は ` +
+  `'common:place:watershed.${DEM_NS}.' + '${DEM_ID_PREFIX}' を除いた残り（amami-039）`;
+
 /** `common:place:grid01.3520_13900` → `{ mlat: 3520, mlon: 13900 }`。形式違いは null。 */
 export function gridCellOfPlaceId(placeId: string): { mlat: number; mlon: number } | null {
   const p = parseId(placeId);

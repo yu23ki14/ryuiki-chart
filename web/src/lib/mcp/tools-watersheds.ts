@@ -5,20 +5,24 @@
 import { z } from "zod";
 import { buildDataEnvelope } from "@/lib/cube";
 import { caveatsForFacets, placeKind, sourceEditionOf } from "@/lib/cube/caveats";
-import { watersheds, WATERSHED_GEOJSON_PATH, WATERSHED_ID_RULE, type GeoLoader } from "@/lib/watersheds";
-import { McpInputError } from "./errors";
+import { pickDefined } from "@/lib/cube/sql";
+import { OUTSIDE_WATERSHED_NOTE, watersheds, WATERSHED_GEOJSON_PATH, WATERSHED_ID_RULE, type GeoLoader } from "@/lib/watersheds";
 import { REGION_NOTE, regionSchema } from "./region-schema";
 import type { McpContext, McpTool } from "./tools";
 
 const MAX_PLACE_IDS = 20;
 const MAX_ROWS = 500;
+const DEFAULT_LIMIT = 100;
 
 const inputSchema = z.object({
   region: regionSchema,
   place_ids: z.array(z.string()).min(1).max(MAX_PLACE_IDS).optional().describe(`流域の place_id（最大 ${MAX_PLACE_IDS}。例: common:place:watershed.dem.amami-039）。省略は地域内の全流域`),
   include_geometry: z.boolean().optional().describe("true で各流域の境界ポリゴン（GeoJSON の geometry）を載せる。place_ids を指定したときだけ使える（既定 false）"),
-  limit: z.number().int().min(1).max(MAX_ROWS).optional().describe(`返す行数の上限（既定 100、最大 ${MAX_ROWS}）`),
-}).strict();
+  limit: z.number().int().min(1).max(MAX_ROWS).optional().describe(`返す行数の上限（既定 ${DEFAULT_LIMIT}、最大 ${MAX_ROWS}）`),
+}).strict().refine((a) => !a.include_geometry || a.place_ids !== undefined, {
+  path: ["include_geometry"],
+  message: "include_geometry=true は place_ids（最大 20）を指定したときだけ使える。全面の境界は応答の geojson_url（GeoJSON ファイル）から取る",
+});
 
 export const WATERSHEDS_DESCRIPTION =
   "流域の属性と境界を取る（地図にする・流域を選ぶとき用）。行ごとに place_id・region・name・area_km2・unit_kind" +
@@ -27,8 +31,7 @@ export const WATERSHEDS_DESCRIPTION =
   "include_geometry=true で境界（GeoJSON の geometry）も返すが、place_ids を指定したときだけ使える（全面は大きいので、応答の geojson_url から取る）。" +
   "応答には全面の GeoJSON の公開 URL（geojson_url）と、その properties.watershed_id と place_id の対応規則（watershed_id_rule）が付く。" +
   "get_occurrences の placeId・watershed_years・get_records の watershed 列は、ここで得た place_id を使う。" +
-  "注意: 流域に入らない記録（海上・流域の外）は watershed_years と species_catalog の流域集計に入らない（流域の合計は地域の全記録より少ない）。" +
-  "測点が流域に入っているかは get_records（record_set=sites）の watershed 列で取れる。" +
+  "注意: " + OUTSIDE_WATERSHED_NOTE +
   REGION_NOTE;
 
 export function getWatershedsTool(loadGeo?: GeoLoader): McpTool {
@@ -38,29 +41,24 @@ export function getWatershedsTool(loadGeo?: GeoLoader): McpTool {
     inputSchema,
     execute: async (args: never, ctx: McpContext) => {
       const a = args as z.infer<typeof inputSchema>;
-      if (a.include_geometry && !a.place_ids) {
-        throw new McpInputError("include_geometry=true は place_ids（最大 20）を指定したときだけ使える。全面の境界は応答の geojson_url（GeoJSON ファイル）から取る");
-      }
-      const limit = a.limit ?? 100;
-      const found = await watersheds(
+      const limit = a.limit ?? DEFAULT_LIMIT;
+      const r = await watersheds(
         await ctx.db(),
-        { ...(a.region ? { region: a.region } : {}), ...(a.place_ids ? { placeIds: a.place_ids } : {}), includeGeometry: a.include_geometry === true, limit: limit + 1 },
+        { ...pickDefined({ region: a.region, placeIds: a.place_ids }), includeGeometry: a.include_geometry === true, limit },
         loadGeo,
       );
-      const rows = found.slice(0, limit);
-      const sourceIds = [...new Set(rows.map((r) => r.source_id).filter((s): s is string => s !== null))];
-      const notFound = a.place_ids?.filter((id) => !found.some((r) => r.place_id === id)) ?? [];
+      const sourceIds = [...new Set(r.rows.map((x) => x.source_id).filter((x): x is string => x !== null))];
       return buildDataEnvelope(
         { ...a },
         {
-          rows,
-          n_total: found.length,
-          ...(notFound.length ? { not_found: notFound } : {}),
+          rows: r.rows,
+          n_total: r.nTotal,
+          ...(r.notFound.length ? { not_found: r.notFound } : {}),
           geojson_url: ctx.origin ? new URL(WATERSHED_GEOJSON_PATH, ctx.origin).toString() : WATERSHED_GEOJSON_PATH,
           watershed_id_rule: WATERSHED_ID_RULE,
         },
         sourceIds,
-        { now: ctx.now, truncated: found.length > limit, caveats: caveatsForFacets([placeKind("watershed"), ...sourceIds.map(sourceEditionOf)]) },
+        { now: ctx.now, truncated: r.nTotal > r.rows.length, caveats: caveatsForFacets([placeKind("watershed"), ...sourceIds.map(sourceEditionOf)]) },
       );
     },
   };

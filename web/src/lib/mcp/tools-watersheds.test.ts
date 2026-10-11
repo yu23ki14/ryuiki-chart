@@ -26,7 +26,11 @@ describe.skipIf(!haveReal)("get_watersheds（実データ・読み取り専用�
     db = sqliteCubeDb(P);
   });
   afterAll(() => db.close());
-  const geo = async () => JSON.parse(fs.readFileSync(GEO, "utf8"));
+  let geoReads = 0;
+  const geo = async () => {
+    geoReads++;
+    return JSON.parse(fs.readFileSync(GEO, "utf8"));
+  };
   const tool = getWatershedsTool(geo);
   const run = (args: unknown, origin?: string) => tool.execute(args as never, { db: async () => db, origin } as McpContext) as Promise<Env>;
 
@@ -42,18 +46,33 @@ describe.skipIf(!haveReal)("get_watersheds（実データ・読み取り専用�
     expect(r.provenance.map((p) => p.source_id)).toEqual(["gsi_dem_watersheds_amami"]);
   });
 
-  it("origin が無ければ相対パス。神奈川の流域は outlet が null、unit_kind も null", async () => {
+  it("origin が無ければ相対パス。神奈川の流域は outlet が null、unit_kind も null。境界も DEM 流域も要らなければアセットを読まない", async () => {
+    geoReads = 0;
     const r = await run({ place_ids: ["common:place:watershed.nlni.83030-0001"] });
+    expect(geoReads).toBe(0);
     expect(r.data.geojson_url).toBe("/geo/watersheds.geojson");
     expect(r.data.rows[0]).toMatchObject({ region: "jp-14", name: "多摩川", outlet_lat: null, unit_kind: null, source_id: "nlni_w12_watersheds" });
   });
 
   it("include_geometry は place_ids 指定時だけ。GeoJSON の geometry のまま。未知の place_id は not_found", async () => {
-    await expect(run({ include_geometry: true })).rejects.toThrow(/geojson_url/);
     const r = await run({ place_ids: [AMAMI_039, "common:place:watershed.dem.nope"], include_geometry: true });
     expect(r.data.rows).toHaveLength(1);
     expect((r.data.rows[0].geometry as { type: string }).type).toMatch(/Polygon/);
     expect(r.data.not_found).toEqual(["common:place:watershed.dem.nope"]);
+  });
+
+  it("limit で切っても n_total は総数。not_found は limit と無関係に place_ids の存在で決まる", async () => {
+    const r = await run({ region: "jp-46", limit: 3 });
+    expect(r.data.rows).toHaveLength(3);
+    expect(r.data.n_total).toBe(71);
+    expect(r.truncated).toBe(true);
+    const ids = r.data.rows.map((x) => x.place_id as string);
+    const q = await run({ place_ids: [...ids, "common:place:watershed.dem.nope"], limit: 1 });
+    expect(q.data.rows).toHaveLength(1);
+    expect(q.data.not_found).toEqual(["common:place:watershed.dem.nope"]);
+    // 別の地域の流域は、地域の指定と合わなければ not_found
+    const other = await run({ region: "jp-14", place_ids: [AMAMI_039] });
+    expect(other.data.not_found).toEqual([AMAMI_039]);
   });
 
   it("GeoJSON の watershed_id から place_id への規則が全 448 面で D1 の place に当たる", async () => {
@@ -69,7 +88,9 @@ describe.skipIf(!haveReal)("get_watersheds（実データ・読み取り専用�
     const ctx: McpContext = { db: async () => db };
     const call = async (args: unknown) =>
       (await handleRpc({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "get_watersheds", arguments: args } }, ctx))!.result as { isError: boolean };
-    expect((await call({ include_geometry: true })).isError).toBe(true);
+    const bad = (await call({ include_geometry: true })) as { isError: boolean; structuredContent: { issues: { message: string }[] } };
+    expect(bad.isError).toBe(true);
+    expect(bad.structuredContent.issues[0].message).toMatch(/geojson_url/);
     expect((await call({ foo: 1 })).isError).toBe(true);
     expect((await call({ place_ids: Array.from({ length: 21 }, (_, i) => `x${i}`) })).isError).toBe(true);
   });
