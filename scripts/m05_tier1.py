@@ -15,7 +15,7 @@ docs/UNDATAFIED_TIERS.md の Tier 1 を c80〜c88 で収集した結果
 """
 import sys, pathlib, json, csv, sqlite3
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
-from common import appdb, PROC, ROOT, now
+from common import appdb, PROC, ROOT, now, ensure_column, round_coords
 import regions
 from regions import REGIONS
 from m01_sites import load_watersheds
@@ -112,6 +112,113 @@ def load_protected_areas(con, ws):
             designated_on,designated_on_raw,lat,lon,watershed,zone,note_ja,source_id,source_ref)
            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", out)
     return f"protected_areas: {len(out)} 行 (うち座標あり {with_coords})"
+
+# ---- 奄美の A10・A15・A45（国土数値情報。c32/c33/c35 --region jp-46。Issue #96） ----
+# 神奈川の A10・A15・A45 は入れない（神奈川の区域は県の別出典）。geometry は同名の .geojson から持ってくる。
+NLNI_PA_NOTE_A10 = ("国土数値情報 A10-15（2015年版）。名称は原データに無い。原データの面積欄は ha でないため使っていない。"
+                    "3レイヤは入れ子（自然公園地域 ⊃ 特別地域 ⊃ 特別保護地区）。category_code をまたいで area_ha を足さない")
+A10_CODES = {"11": "natpark_area", "12": "natpark_special", "13": "natpark_special_protection"}
+A15_CODES = {"鳥獣保護区": "wildlife_reserve", "特別保護地区": "wildlife_special_protection"}
+
+def _pa_geometry(feature):
+    """GeoJSON の geometry を座標 6 桁・空白なしの文字列にし、shapely の図形も返す。"""
+    g = feature["geometry"]
+    g = {"type": g["type"], "coordinates": round_coords(g["coordinates"])}
+    return json.dumps(g, ensure_ascii=False, separators=(",", ":")), shape(g)
+
+def _nlni_pa_rows(src, rows, features, make):
+    """CSV の行と .geojson の feature を行順・source_ref で突き合わせ、make(r) が返す辞書に代表点・geometry を足す。"""
+    if len(rows) != len(features):
+        raise SystemExit(f"{src}: CSV {len(rows)} 行と geojson {len(features)} 件が合わない")
+    out = []
+    for r, f in zip(rows, features):
+        if f["properties"].get("source_ref") != r["source_ref"]:
+            raise SystemExit(f"{src}: geojson と CSV の source_ref の順序が合わない（{r['source_ref']}）")
+        gj, geom = _pa_geometry(f)
+        pt = geom.representative_point()
+        d = make(r)
+        d.update(lon=pt.x, lat=pt.y, geometry_geojson=gj, source_id=src, source_ref=r["source_ref"])
+        out.append(d)
+    return out
+
+def _code(codes, src, v):
+    k = str(v).strip()
+    if k not in codes:
+        raise SystemExit(f"{src}: 未知の区分 {k!r}（既知: {sorted(codes)}）")
+    return codes[k]
+
+def _area_ha(r):
+    """測地面積 area_km2 を ha にする（A10 の面積欄は ha でないので使わない）。"""
+    km2 = num(r.get("area_km2"))
+    return None if km2 is None else km2 * 100
+
+def _make_a10(r):
+    return dict(
+        area_id=f"nlni_a10_natparks_amami:{r['object_id']}", name_ja=None,
+        category_ja=text(r.get("layer_name_ja")), category_code=_code(A10_CODES, "nlni_a10_natparks_amami", r["layer_no"]),
+        municipality_ja=text(r.get("municipality_names_ja")),
+        area_ha=_area_ha(r), area_ha_raw=None,
+        designated_on=None, designated_on_raw=text(r.get("fiscal_year_raw")),
+        note_ja=NLNI_PA_NOTE_A10)
+
+def _make_a15(r):
+    d, c = text(r.get("designated_date")), text(r.get("cancel_date"))
+    return dict(
+        area_id=f"nlni_a15_wildlife_amami:{r['feature_id']}", name_ja=text(r.get("name_ja")),
+        category_ja=text(r.get("protection_class_ja")), category_code=_code(A15_CODES, "nlni_a15_wildlife_amami", r["protection_class_ja"]),
+        municipality_ja=None, area_ha=_area_ha(r), area_ha_raw=None,
+        designated_on=d, designated_on_raw=d,
+        note_ja=f"A15-09（2009年版）。指定期間 {d or '不明'}〜{c or '不明'}")
+
+def _make_a45(r):
+    shp_no = r["source_ref"].rsplit(":", 1)[1]
+    name = " ".join(x for x in (text(r.get("national_forest_name_ja")), text(r.get("compartment_label_ja"))) if x) or None
+    return dict(
+        area_id=f"nlni_a45_forest_amami:{shp_no}", name_ja=name,
+        category_ja="国有林", category_code="national_forest", municipality_ja=text(r.get("municipality_name_ja")),
+        area_ha=_area_ha(r), area_ha_raw=text(r.get("area_ha_source")),
+        designated_on=None, designated_on_raw=None,
+        note_ja=(f"A45-19（2018年度版）。機能類型: {text(r.get('function_type_ja')) or '不明'}、"
+                 f"林種: {text(r.get('forest_subtype_ja')) or '不明'}。小班IDは複数行に重複する"))
+
+NLNI_PA_SOURCES = [("nlni_a10_natparks_amami", _make_a10), ("nlni_a15_wildlife_amami", _make_a15),
+                   ("nlni_a45_forest_amami", _make_a45)]
+
+def load_protected_areas_nlni(con, ws, sources=NLNI_PA_SOURCES):
+    """奄美の A10 自然公園・A15 鳥獣保護区・A45 国有林（c32/c33/c35 --region jp-46）。出典ごとに wipe→検査→INSERT。
+
+    lat/lon は区域の代表点（重心だと細長い区域で区域の外・海上に落ちる）。area_ha は測地面積 area_km2×100。
+    area_id が他の出典と衝突したら止める。CSV が1つも無ければ None。"""
+    msgs = []
+    for src, make in sources:
+        rows = read_csv(src)
+        if rows is None:
+            continue
+        bad = sorted({r["source_id"] for r in rows} - {src})
+        if bad:
+            raise SystemExit(f"{src}: CSV の source_id が {bad} （期待 {src}）")
+        gp = PROC / f"{src}.geojson"
+        if not gp.exists():
+            raise SystemExit(f"{src}: {gp.name} が無い（geometry が取れない）")
+        feats = json.loads(gp.read_text(encoding="utf-8"))["features"]
+        recs = _nlni_pa_rows(src, rows, feats, make)
+        ids = [d["area_id"] for d in recs]
+        if len(set(ids)) != len(ids):
+            raise SystemExit(f"{src}: area_id が出典の中で重複している")
+        _assert_no_id_collision(con, "protected_areas", "area_id", src, ids, "他の出典")
+        for d in recs:
+            d["watershed"] = ws.find(d["lon"], d["lat"])
+        wipe(con, "protected_areas", [src])
+        con.executemany(
+            """INSERT OR REPLACE INTO protected_areas
+               (area_id,name_ja,category_ja,category_code,municipality_ja,area_ha,area_ha_raw,
+                designated_on,designated_on_raw,lat,lon,watershed,zone,note_ja,source_id,source_ref,geometry_geojson)
+               VALUES (:area_id,:name_ja,:category_ja,:category_code,:municipality_ja,:area_ha,:area_ha_raw,
+                :designated_on,:designated_on_raw,:lat,:lon,:watershed,NULL,:note_ja,:source_id,:source_ref,:geometry_geojson)""",
+            recs)
+        inws = sum(1 for d in recs if d["watershed"])
+        msgs.append(f"protected_areas[{src}]: {len(recs)} 行 (流域が引けた {inws})")
+    return "; ".join(msgs) if msgs else None
 
 def load_wildlife(con):
     """ツキノワグマ出没・目撃記録 (c81_kanagawa_kuma.py)。"""
@@ -397,6 +504,7 @@ def build_jobs(con, ws):
         return (key, label, lambda: load_measurements_csv(con, src, src, site_key=site_key))
     return [
         ("protected_areas", "保護区・緑地台帳",      lambda: load_protected_areas(con, ws)),
+        ("protected_areas_amami", "保護区(奄美 国土数値情報)", lambda: load_protected_areas_nlni(con, ws)),
         ("wildlife",        "ツキノワグマ出没記録",  lambda: load_wildlife(con)),
         *[(f"vegetation:{rid}", f"現存植生図2024 ({rid})", lambda rid=rid: load_vegetation(con, ws, rid))
           for rid in REGIONS],
@@ -434,6 +542,7 @@ def main(argv=None):
     con = appdb()
     con.execute("PRAGMA busy_timeout = 30000")
     ddl = (ROOT / "scripts/schema_tier1.sql").read_text(encoding="utf-8")
+    ensure_column(con, "protected_areas", "geometry_geojson", "TEXT")   # 既存の表に列を足してから CREATE IF NOT EXISTS / INDEX を流す
     con.executescript(ddl)
     print("Tier 1 テーブルを用意した")
 

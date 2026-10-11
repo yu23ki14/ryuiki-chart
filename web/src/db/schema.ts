@@ -139,6 +139,8 @@ export const protectedAreas = sqliteTable("protected_areas", {
 	noteJa: text("note_ja"),
 	sourceId: text("source_id"),
 	sourceRef: text("source_ref"),
+	/** 区域のポリゴン（奄美の国土数値情報 A10/A15/A45。6桁・単純化なし）。神奈川の既存行と点だけの出典は NULL。 */
+	geometryGeojson: text("geometry_geojson"),
 },
 (table) => [
 	index("ix_pa_cat").on(table.categoryCode, table.municipalityJa),

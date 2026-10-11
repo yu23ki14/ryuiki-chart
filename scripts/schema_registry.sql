@@ -143,7 +143,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_source_edition_source_key ON source_edition
 -- state: queryable / not_queryable。queryable_via・tables は JSON(配列)。record_set_rows は JSON(オブジェクト。record_set → その出典の行数。get_records の n_total)。
 -- n_source_rows は原本の行数(キューブの集計行数ではない)。basis: source_rows / registry_record_count / catalog_datasets(外部ポータルの目録の件数＝データセット数) / none。
 -- counted_at は件数を数えた原本の最新取得日時(source_registry.fetched_at の最大。決定論のため実行時刻は使わない)。
--- not_queryable のときだけ reason(コード)・reason_ja・reason_note を持つ。
+-- not_queryable のときだけ reason(コード)・reason_ja を持つ。reason_note は access.yaml の note（人が読む補足。queryable でも書ける。例: 地域で範囲が違う注記）。
 CREATE TABLE IF NOT EXISTS source_access (
   source_id TEXT PRIMARY KEY,
   state TEXT NOT NULL,

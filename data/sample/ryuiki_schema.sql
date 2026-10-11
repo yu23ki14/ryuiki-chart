@@ -106,7 +106,7 @@ CREATE TABLE protected_areas (
   watershed TEXT, zone INTEGER,   -- m05 が点内判定で埋める(座標があるもののみ)
   note_ja TEXT,
   source_id TEXT, source_ref TEXT
-);
+, geometry_geojson TEXT);
 CREATE TABLE protocols (
   protocol_id TEXT PRIMARY KEY, name TEXT, version TEXT, domain TEXT,
   steps_json TEXT, source_id TEXT, url TEXT

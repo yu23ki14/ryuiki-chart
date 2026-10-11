@@ -20,8 +20,9 @@ interface ProtectedAreaRow {
 export const runtime = "nodejs";
 
 /**
- * 保護区・緑地・保存樹木のうち座標を持つものを点で返す。
- * 面積しか持たない区域（自然公園やPDF由来の指定状況）は原本に座標が無いので出てこない。
+ * 保護区・緑地・保存樹木のうち座標（点または代表点）を持つものを点で返す。神奈川と奄美の両方が混ざる
+ * （区別は source_id。奄美の国土数値情報 A10/A15/A45 は区域の代表点）。区域のポリゴンはここでは返さない
+ * （get_records の include_geometry）。座標を持たない行は出てこない。
  *   /api/geo/protected-areas?category=city_park
  */
 export async function GET(req: NextRequest) {
@@ -31,7 +32,7 @@ export async function GET(req: NextRequest) {
     eq: category ? [{ col: "category_code", value: category }] : undefined,
     order: [{ col: "category_code" }, { col: "area_ha", desc: true }, { col: "name_ja" }],
     limit: Number(sp.get("limit")),
-    defaultLimit: 2000,
+    defaultLimit: 5000,
     maxLimit: 5000,
   });
   const features = rows

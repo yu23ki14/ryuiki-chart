@@ -308,7 +308,7 @@ def assemble(
                 n, basis = sum(_table_rows(counts, sid, doc["record_sets"][t]) for t in recs), "source_rows"
             rs_rows = {t: _table_rows(counts, sid, doc["record_sets"][t]) for t in recs}
             row = (sid, "queryable", json.dumps(via), json.dumps(tables), json.dumps(rs_rows),
-                   n, basis, counted_at, None, None, None)
+                   n, basis, counted_at, None, None, entry.get("note"))
         else:
             row = (sid, "not_queryable", "[]", "[]", "{}", None, "none", None, reason, reasons[reason]["ja"], entry.get("note"))
         rows.append(row)
