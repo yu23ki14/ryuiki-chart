@@ -61,7 +61,7 @@ moni1000_satochi_bird,ダイサギ,ダイサギ,,common:taxon:gbif.9752617,curat
 moni1000_satochi_bird,チョウゲンボウ,チョウゲンボウ,,common:taxon:gbif.9616058,ja_paired_sci,同じ和名に学名で決まった別の行がある（学名の出典の語から）
 moni1000_satochi_bird,ツグミ,ツグミ,,common:taxon:gbif.9615912,curated,責任者の規則: 異名のうち v2 occurrence_agg（region jp-14・jp-46・grain=month・moni1000 を除く出典）の記録数が多い方を採る。Turdus eunomus 3638 / Turdus naumanni 291。現行の分類で和名ツグミは T. eunomus（naumanni はハチジョウツグミ）
 moni1000_satochi_bird,ツグミ科,ツグミ科,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
-moni1000_satochi_bird,ツツドリ,ツツドリ,,common:taxon:gbif.9548093,ja_unique,"Cuculus saturatus Blyth, 1843"
+moni1000_satochi_bird,ツツドリ,ツツドリ,,common:taxon:gbif.5231898,curated,責任者の判断（2026-10-12）: 日本で繁殖するツツドリは Cuculus optatus（C. saturatus から分けられた種）。森林調査の学名行と同じ taxon
 moni1000_satochi_bird,ツバメ,ツバメ,,common:taxon:gbif.9515886,ja_unique,"Hirundo rustica Linnaeus, 1758"
 moni1000_satochi_bird,ツミ,ツミ,,common:taxon:gbif.2480583,curated,責任者の判断（2026-10-12）: Accipiter gularis
 moni1000_satochi_bird,トビ,トビ,,common:taxon:gbif.5229167,ja_paired_sci,同じ和名に学名で決まった別の行がある（学名の出典の語から）
@@ -92,7 +92,7 @@ moni1000_satochi_bird,ミソサザイ,ミソサザイ,,common:taxon:gbif.5231438
 moni1000_satochi_bird,ミヤマホオジロ,ミヤマホオジロ,,common:taxon:gbif.2491475,curated,責任者の判断（2026-10-12）: registry に1件（Emberiza elegans）
 moni1000_satochi_bird,ムクドリ,ムクドリ,,common:taxon:gbif.6100944,ja_unique,"Spodiopsar cineraceus (Temminck, 1835)"
 moni1000_satochi_bird,メジロ,メジロ,,common:taxon:gbif.9300456,ja_unique,"Zosterops japonicus Temminck & Schlegel, 1845"
-moni1000_satochi_bird,メボソムシクイ,メボソムシクイ,,common:taxon:gbif.2493071,ja_unique,"Phylloscopus borealis (J.H.Blasius, 1858)"
+moni1000_satochi_bird,メボソムシクイ,メボソムシクイ,,common:taxon:gbif.5845803,curated,責任者の判断（2026-10-12）: メボソムシクイ類の分割で、日本で繁殖する種の和名は Phylloscopus xanthodryas。森林調査の学名行と同じ taxon
 moni1000_satochi_bird,モズ,モズ,,common:taxon:gbif.2492850,ja_unique,"Lanius bucephalus Temminck & Schlegel, 1845"
 moni1000_satochi_bird,ヤブサメ,ヤブサメ,,common:taxon:gbif.2493223,ja_paired_sci,同じ和名に学名で決まった別の行がある（学名の出典の語から）
 moni1000_satochi_bird,ヤマガラ,ヤマガラ,,common:taxon:gbif.7341813,curated,責任者の規則: 異名のうち v2 occurrence_agg（region jp-14・grain=month・moni1000 を除く出典）の記録数が多い方を採る。Sittiparus varius 2282 / Poecile varius 259 / Parus varius 0。森林調査の学名行と同じ taxon
