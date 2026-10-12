@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""モニ1000 神奈川県 5 出典の和名（と学名）→ registry の taxon の対応表を作る下書きツール。
+"""モニ1000 神奈川県 5・奄美 2 出典の和名（と学名）→ registry の taxon の対応表を作る下書きツール。
 
 設計: docs/plans/MONI1000.md §2.5・§8。出力 CSV（registry/taxon/moni1000_name_map.csv）をコミットする。
 m10_moni1000.py は registry に問い合わせず、この CSV だけを読む（r01 が原本を読む前に m スクリプトが走るため循環になる）。
 
-入力:  5 出典の CSV（m10_moni1000.normalize_all）/ data/db/registry.sqlite（taxon を**読み取り専用**で引く）
+入力:  7 出典の CSV（m10_moni1000.normalize_all）/ data/db/registry.sqlite（taxon を**読み取り専用**で引く）
        registry/taxon/moni1000_name_map.csv（既存。basis=curated の行は人が決めたものなので保持する）
 出力:  registry/taxon/moni1000_name_map.csv
   列: source_id, name_key, species_ja, scientific_name, taxon_id, basis, note
-  name_key は m10_moni1000.name_key()（学名のある出典〔forest_bird・coast_shorebird〕は「和名|学名」、他は和名）。
+  name_key は m10_moni1000.name_key()（学名のある出典〔forest_bird・coast_shorebird と、その奄美版〕は「和名|学名」、他は和名）。
 
 basis（上から順に判定。1 つのキーは 1 つの taxon にしか行かない）:
   exclude:non_wild      ヒト・ネコ・ウコッケイ・ニワトリ（家畜・家禽・人）
@@ -62,6 +62,7 @@ SOURCE_GROUP = {
     "moni1000_satochi_bird": ("class", "Aves"), "moni1000_forest_bird": ("class", "Aves"),
     "moni1000_coast_shorebird": ("class", "Aves"), "moni1000_satochi_butterfly": ("order", "Lepidoptera"),
     "moni1000_satochi_mammal": ("class", "Mammalia"),
+    "moni1000_forest_bird_amami": ("class", "Aves"), "moni1000_coast_shorebird_amami": ("class", "Aves"),
 }
 
 

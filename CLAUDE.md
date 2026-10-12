@@ -75,7 +75,8 @@
   `/api/documents`・`/sources` も同じ関数（`documentsList` 等）を使う。`/sources` の出典の行は
   `web/src/lib/source-catalog.ts`（`describe_catalog what='sources'` と同じ registry 由来。旧表 `source_registry` は読まない）。
   `mammal_mesh` / `wildlife_sightings` は画面・API の読み手は無く、MCP / AI の `get_records`（`web/src/lib/records.ts`）が出典単位で読む（AI の run_sql / describe_schema の台帳表でもある）。
-- モニタリングサイト1000 神奈川県 5 調査（里地 鳥類／チョウ類／中・大型哺乳類、森林・草原 陸生鳥類、沿岸域 シギ・チドリ類）の
+- モニタリングサイト1000 神奈川県 5 調査（里地 鳥類／チョウ類／中・大型哺乳類、森林・草原 陸生鳥類、沿岸域 シギ・チドリ類）と
+  奄美 2 調査（森林・草原 陸生鳥類、沿岸域 シギ・チドリ類。`*_amami`、`scripts/process_moni1000_amami.py`）の
   生の記録は `moni1000_counts`（`scripts/m10_moni1000.py` が原本 `ryuiki.sqlite` に作る。DDL は `scripts/schema_moni1000.sql`）。
   MCP / AI の `get_records` の `record_set=monitoring_counts`（`web/src/lib/records.ts`）が出典単位で読み、
   occurrence には `in_occurrence=1` の行だけを流す。**組織の追認済み（2026-10-12、オーナー確認）・新規取得はしない**

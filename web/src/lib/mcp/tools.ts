@@ -299,7 +299,7 @@ export const MCP_TOOLS: McpTool[] = [
       OUTSIDE_WATERSHED_NOTE + "流域の属性・境界は get_watersheds で取る。" +
       "その他の kind: 'species_years'/'species_months' は種ごとの年別・月別件数（binoms に学名）、'watershed_years' は流域ごとの年別件数。" +
       "出現記録は観察努力量に偏るため、件数の増減を生息数の増減と読まない。" +
-      "source_ids で出典（gbif_kanagawa_occurrences・inaturalist_kanagawa・gbif_amami_occurrences・inaturalist_amami・kanagawa_edna・kanagawa_kuma_sightings・moni1000_satochi_bird・moni1000_satochi_butterfly・moni1000_satochi_mammal・moni1000_forest_bird・moni1000_coast_shorebird〔モニタリングサイト1000 神奈川県の調査記録。n は記録の行数で個体数ではない〕）を絞れる（省略時は全出典の合算）。" +
+      "source_ids で出典（gbif_kanagawa_occurrences・inaturalist_kanagawa・gbif_amami_occurrences・inaturalist_amami・kanagawa_edna・kanagawa_kuma_sightings・moni1000_satochi_bird・moni1000_satochi_butterfly・moni1000_satochi_mammal・moni1000_forest_bird・moni1000_coast_shorebird・moni1000_forest_bird_amami・moni1000_coast_shorebird_amami〔モニタリングサイト1000 神奈川県・奄美の調査記録。n は記録の行数で個体数ではない〕）を絞れる（省略時は全出典の合算）。" +
       "eDNA（kanagawa_edna）は採水による検出で、目視の観察とは性質が違うので、比べるときは出典で分ける。" +
       REGION_NOTE,
     inputSchema: z.object({

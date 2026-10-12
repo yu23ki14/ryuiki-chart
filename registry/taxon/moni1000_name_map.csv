@@ -333,3 +333,98 @@ moni1000_coast_shorebird,ヒバリシギ|Calidris subminuta,ヒバリシギ,Cali
 moni1000_coast_shorebird,ホウロクシギ|Numenius madagascariensis,ホウロクシギ,Numenius madagascariensis,common:taxon:gbif.2481791,sci,"Numenius madagascariensis (Linnaeus, 1766)"
 moni1000_coast_shorebird,ムナグロ|Pluvialis fulva,ムナグロ,Pluvialis fulva,common:taxon:gbif.2480331,sci,"Pluvialis fulva (J.F.Gmelin, 1789)"
 moni1000_coast_shorebird,メダイチドリ|Charadrius mongolus,メダイチドリ,Charadrius mongolus,common:taxon:gbif.9722670,sci,"Charadrius mongolus Pallas, 1776"
+moni1000_forest_bird_amami,sp.1|,sp.1,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_forest_bird_amami,sp.2|,sp.2,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_forest_bird_amami,sp.3|,sp.3,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_forest_bird_amami,sp.4|,sp.4,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_forest_bird_amami,sp.5|,sp.5,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_forest_bird_amami,sp1|,sp1,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_forest_bird_amami,sp2|,sp2,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_forest_bird_amami,sp3|,sp3,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_forest_bird_amami,sp4|,sp4,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_forest_bird_amami,アオジ|Emberiza spodocephala,アオジ,Emberiza spodocephala,common:taxon:gbif.2491522,sci,"Emberiza spodocephala Pallas, 1776"
+moni1000_forest_bird_amami,アオバズク|Ninox scutulata,アオバズク,Ninox scutulata,common:taxon:gbif.2497840,sci,"Ninox scutulata (Raffles, 1822)"
+moni1000_forest_bird_amami,アカショウビン|Halcyon coromanda,アカショウビン,Halcyon coromanda,common:taxon:gbif.5228311,sci,"Halcyon coromanda (Latham, 1790)"
+moni1000_forest_bird_amami,アカショウビン|Halcyon coromanda bangsi,アカショウビン,Halcyon coromanda bangsi,common:taxon:gbif.5228311,ja_unique,"Halcyon coromanda (Latham, 1790) / 学名は registry に無い"
+moni1000_forest_bird_amami,アカハラ|Turdus chrysolaus,アカハラ,Turdus chrysolaus,common:taxon:gbif.2490725,sci,"Turdus chrysolaus Temminck, 1832"
+moni1000_forest_bird_amami,ウグイス|Cettia diphone,ウグイス,Cettia diphone,common:taxon:gbif.2493005,sci,"Cettia diphone (Kittlitz, 1830)"
+moni1000_forest_bird_amami,ウグイス|Horornis diphone,ウグイス,Horornis diphone,common:taxon:gbif.8351644,sci,"Horornis diphone (Kittlitz, 1830) / registry の和名側は別の taxon（common:taxon:gbif.2493005 Cettia diphone (Kittlitz, 1830)）。学名を採る"
+moni1000_forest_bird_amami,オオアカゲラ|Dendrocopos leucotos,オオアカゲラ,Dendrocopos leucotos,common:taxon:gbif.2477927,sci,"Dendrocopos leucotos (Bechstein, 1802)"
+moni1000_forest_bird_amami,カラスバト|Columba janthina,カラスバト,Columba janthina,common:taxon:gbif.5231838,sci,"Columba janthina Temminck, 1830"
+moni1000_forest_bird_amami,カラス科|,カラス科,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_forest_bird_amami,キジバト|Streptopelia orientalis,キジバト,Streptopelia orientalis,common:taxon:gbif.2495681,sci,"Streptopelia orientalis (Latham, 1790)"
+moni1000_forest_bird_amami,キセキレイ|Motacilla cinerea,キセキレイ,Motacilla cinerea,common:taxon:gbif.2490310,sci,"Motacilla cinerea Tunstall, 1771"
+moni1000_forest_bird_amami,キツツキ科|,キツツキ科,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_forest_bird_amami,キビタキ|Ficedula narcissina,キビタキ,Ficedula narcissina,common:taxon:gbif.5231288,sci,"Ficedula narcissina (Temminck, 1836)"
+moni1000_forest_bird_amami,キマユムシクイ|Phylloscopus inornatus,キマユムシクイ,Phylloscopus inornatus,common:taxon:gbif.2493095,sci,"Phylloscopus inornatus (Blyth, 1842)"
+moni1000_forest_bird_amami,コゲラ|Dendrocopos kizuki,コゲラ,Dendrocopos kizuki,common:taxon:gbif.2477900,sci,"Dendrocopos kizuki (Temminck, 1836)"
+moni1000_forest_bird_amami,コゲラ|Yungipicus kizuki,コゲラ,Yungipicus kizuki,common:taxon:gbif.9178169,sci,"Yungipicus kizuki (Temminck, 1836)"
+moni1000_forest_bird_amami,サシバ|Butastur indicus,サシバ,Butastur indicus,common:taxon:gbif.2480477,sci,"Butastur indicus (Gmelin, 1788)"
+moni1000_forest_bird_amami,サンコウチョウ|Terpsiphone atrocaudata,サンコウチョウ,Terpsiphone atrocaudata,common:taxon:gbif.2486680,sci,"Terpsiphone atrocaudata (Eyton, 1839)"
+moni1000_forest_bird_amami,サンコウチョウ|Terpsiphone atrocaudata illex,サンコウチョウ,Terpsiphone atrocaudata illex,common:taxon:gbif.2486680,ja_unique,"Terpsiphone atrocaudata (Eyton, 1839) / 学名は registry に無い"
+moni1000_forest_bird_amami,サンショウクイ|Pericrocotus divaricatus,サンショウクイ,Pericrocotus divaricatus,common:taxon:gbif.2486818,sci,"Pericrocotus divaricatus (Raffles, 1822)"
+moni1000_forest_bird_amami,サンショウクイ|Pericrocotus divaricatus tegimae,サンショウクイ,Pericrocotus divaricatus tegimae,common:taxon:gbif.2486818,ja_paired_sci,同じ和名に学名で決まった別の行がある（学名の出典の語から）
+moni1000_forest_bird_amami,シジュウカラ|Parus cinereus,シジュウカラ,Parus cinereus,common:taxon:gbif.6101070,sci,"Parus cinereus Vieillot, 1818"
+moni1000_forest_bird_amami,シジュウカラ|Parus major,シジュウカラ,Parus major,common:taxon:gbif.9705453,sci,"Parus major Linnaeus, 1758"
+moni1000_forest_bird_amami,シジュウカラ|Parus minor,シジュウカラ,Parus minor,common:taxon:gbif.5844847,sci,"Parus minor Temminck & Schlegel, 1848"
+moni1000_forest_bird_amami,シジュウカラ科|,シジュウカラ科,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_forest_bird_amami,シロハラ|Turdus pallidus,シロハラ,Turdus pallidus,common:taxon:gbif.2490773,sci,"Turdus pallidus Gmelin, 1789"
+moni1000_forest_bird_amami,ズアカアオバト|Sphenurus formosae,ズアカアオバト,Sphenurus formosae,common:taxon:gbif.2495806,ja_paired_sci,同じ和名に学名で決まった別の行がある（学名の出典の語から）
+moni1000_forest_bird_amami,ズアカアオバト|Treron formosae,ズアカアオバト,Treron formosae,common:taxon:gbif.2495806,sci,"Treron formosae Swinhoe, 1863"
+moni1000_forest_bird_amami,ハシブトガラ|Poecile palustris,ハシブトガラ,Poecile palustris,,exclude:unresolved_taxon,registry に和名も学名も無い
+moni1000_forest_bird_amami,ハシブトガラス|Corvus macrorhynchos,ハシブトガラス,Corvus macrorhynchos,common:taxon:gbif.2482487,sci,"Corvus macrorhynchos Wagler, 1827"
+moni1000_forest_bird_amami,ヒヨドリ|Hypsipetes amaurotis,ヒヨドリ,Hypsipetes amaurotis,common:taxon:gbif.7342055,sci,"Hypsipetes amaurotis (Temminck, 1830)"
+moni1000_forest_bird_amami,ミゾゴイ|Gorsachius goisagi,ミゾゴイ,Gorsachius goisagi,,exclude:unresolved_taxon,registry に和名も学名も無い
+moni1000_forest_bird_amami,メジロ|Zosterops japonicus,メジロ,Zosterops japonicus,common:taxon:gbif.9300456,sci,"Zosterops japonicus Temminck & Schlegel, 1845"
+moni1000_forest_bird_amami,ヤブサメ|Urosphena squameiceps,ヤブサメ,Urosphena squameiceps,common:taxon:gbif.2493223,sci,"Urosphena squameiceps (Swinhoe, 1863)"
+moni1000_forest_bird_amami,ヤマガラ|Parus varius,ヤマガラ,Parus varius,common:taxon:gbif.5788757,sci,Parus varius
+moni1000_forest_bird_amami,ヤマガラ|Poecile varius,ヤマガラ,Poecile varius,common:taxon:gbif.6101068,sci,"Poecile varius (Temminck & Schlegel, 1848)"
+moni1000_forest_bird_amami,ヤマガラ|Sittiparus varius,ヤマガラ,Sittiparus varius,common:taxon:gbif.7341813,sci,"Sittiparus varius (Temminck & Schlegel, 1847)"
+moni1000_forest_bird_amami,リュウキュウキビタキ|Ficedula owstoni,リュウキュウキビタキ,Ficedula owstoni,common:taxon:gbif.7915493,sci,"Ficedula owstoni (Bangs, 1901)"
+moni1000_forest_bird_amami,リュウキュウコノハズク|Otus elegans,リュウキュウコノハズク,Otus elegans,common:taxon:gbif.5232245,sci,"Otus elegans (Cassin, 1852)"
+moni1000_forest_bird_amami,リュウキュウサンショウクイ|Pericrocotus divaricatus tegimae,リュウキュウサンショウクイ,Pericrocotus divaricatus tegimae,common:taxon:gbif.2486816,ja_paired_sci,同じ和名に学名で決まった別の行がある（学名の出典の語から）
+moni1000_forest_bird_amami,リュウキュウサンショウクイ|Pericrocotus tegimae,リュウキュウサンショウクイ,Pericrocotus tegimae,common:taxon:gbif.2486816,sci,"Pericrocotus tegimae Stejneger, 1887"
+moni1000_forest_bird_amami,ルリカケス|Garrulus lidthi,ルリカケス,Garrulus lidthi,common:taxon:gbif.5229494,sci,"Garrulus lidthi Bonaparte, 1850"
+moni1000_forest_bird_amami,ルリビタキ|Tarsiger cyanurus,ルリビタキ,Tarsiger cyanurus,common:taxon:gbif.2492509,sci,"Tarsiger cyanurus (Pallas, 1773)"
+moni1000_forest_bird_amami,不明|,不明,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_coast_shorebird_amami,アオアシシギ|Tringa nebularia,アオアシシギ,Tringa nebularia,common:taxon:gbif.2481726,sci,"Tringa nebularia (Gunnerus, 1767)"
+moni1000_coast_shorebird_amami,アカアシシギ|Tringa totanus,アカアシシギ,Tringa totanus,common:taxon:gbif.2481714,sci,"Tringa totanus (Linnaeus, 1758)"
+moni1000_coast_shorebird_amami,イソシギ|Actitis hypoleucos,イソシギ,Actitis hypoleucos,common:taxon:gbif.2481800,sci,"Actitis hypoleucos (Linnaeus, 1758)"
+moni1000_coast_shorebird_amami,ウズラシギ|Calidris acuminata,ウズラシギ,Calidris acuminata,common:taxon:gbif.2481769,sci,"Calidris acuminata (Horsfield, 1821)"
+moni1000_coast_shorebird_amami,エリマキシギ|Calidris pugnax,エリマキシギ,Calidris pugnax,common:taxon:gbif.8250742,sci,"Calidris pugnax (Linnaeus, 1758)"
+moni1000_coast_shorebird_amami,オオソリハシシギ|Limosa lapponica,オオソリハシシギ,Limosa lapponica,common:taxon:gbif.2481681,sci,"Limosa lapponica (Linnaeus, 1758)"
+moni1000_coast_shorebird_amami,オオメダイチドリ|Charadrius leschenaultii,オオメダイチドリ,Charadrius leschenaultii,common:taxon:gbif.2480297,sci,"Charadrius leschenaultii R.Lesson, 1826"
+moni1000_coast_shorebird_amami,オグロシギ|Limosa limosa,オグロシギ,Limosa limosa,common:taxon:gbif.2481685,sci,"Limosa limosa (Linnaeus, 1758)"
+moni1000_coast_shorebird_amami,オジロトウネン|Calidris temminckii,オジロトウネン,Calidris temminckii,common:taxon:gbif.2481740,sci,"Calidris temminckii (Leisler, 1812)"
+moni1000_coast_shorebird_amami,オバシギ|Calidris tenuirostris,オバシギ,Calidris tenuirostris,common:taxon:gbif.2481768,sci,"Calidris tenuirostris (Horsfield, 1821)"
+moni1000_coast_shorebird_amami,キアシシギ|Tringa brevipes,キアシシギ,Tringa brevipes,common:taxon:gbif.2481722,sci,"Tringa brevipes (Vieillot, 1816)"
+moni1000_coast_shorebird_amami,キョウジョシギ|Arenaria interpres,キョウジョシギ,Arenaria interpres,common:taxon:gbif.2481776,sci,"Arenaria interpres (Linnaeus, 1758)"
+moni1000_coast_shorebird_amami,キリアイ|Calidris falcinellus,キリアイ,Calidris falcinellus,common:taxon:gbif.7537888,sci,"Calidris falcinellus (Pontoppidan, 1763)"
+moni1000_coast_shorebird_amami,クサシギ|Tringa ochropus,クサシギ,Tringa ochropus,common:taxon:gbif.2481728,sci,"Tringa ochropus Linnaeus, 1758"
+moni1000_coast_shorebird_amami,クロツラヘラサギ|Platalea minor,クロツラヘラサギ,Platalea minor,common:taxon:gbif.2480805,sci,"Platalea minor Temminck & Schlegel, 1849"
+moni1000_coast_shorebird_amami,コアオアシシギ|Tringa stagnatilis,コアオアシシギ,Tringa stagnatilis,common:taxon:gbif.2481719,sci,"Tringa stagnatilis (Bechstein, 1803)"
+moni1000_coast_shorebird_amami,コオバシギ|Calidris canutus,コオバシギ,Calidris canutus,common:taxon:gbif.2481765,sci,"Calidris canutus (Linnaeus, 1758)"
+moni1000_coast_shorebird_amami,コチドリ|Charadrius dubius,コチドリ,Charadrius dubius,common:taxon:gbif.7937336,sci,"Charadrius dubius Scopoli, 1786"
+moni1000_coast_shorebird_amami,サルハマシギ|Calidris ferruginea,サルハマシギ,Calidris ferruginea,common:taxon:gbif.2481741,sci,"Calidris ferruginea (Pontoppidan, 1763)"
+moni1000_coast_shorebird_amami,シロチドリ|Charadrius alexandrinus,シロチドリ,Charadrius alexandrinus,common:taxon:gbif.2480311,sci,"Charadrius alexandrinus Linnaeus, 1758"
+moni1000_coast_shorebird_amami,セイタカシギ|Himantopus himantopus,セイタカシギ,Himantopus himantopus,common:taxon:gbif.5229126,sci,"Himantopus himantopus (Linnaeus, 1758)"
+moni1000_coast_shorebird_amami,ソリハシシギ|Xenus cinereus,ソリハシシギ,Xenus cinereus,common:taxon:gbif.2481703,sci,"Xenus cinereus (Güldenstädt, 1775)"
+moni1000_coast_shorebird_amami,ソリハシセイタカシギ|Recurvirostra avosetta,ソリハシセイタカシギ,Recurvirostra avosetta,common:taxon:gbif.2480259,sci,"Recurvirostra avosetta Linnaeus, 1758"
+moni1000_coast_shorebird_amami,タカブシギ|Tringa glareola,タカブシギ,Tringa glareola,common:taxon:gbif.2481713,sci,"Tringa glareola Linnaeus, 1758"
+moni1000_coast_shorebird_amami,タゲリ|Vanellus vanellus,タゲリ,Vanellus vanellus,common:taxon:gbif.2480242,sci,"Vanellus vanellus (Linnaeus, 1758)"
+moni1000_coast_shorebird_amami,タシギ|Gallinago gallinago,タシギ,Gallinago gallinago,common:taxon:gbif.2481819,sci,"Gallinago gallinago (Linnaeus, 1758)"
+moni1000_coast_shorebird_amami,ダイシャクシギ|Numenius arquata,ダイシャクシギ,Numenius arquata,common:taxon:gbif.2481792,sci,"Numenius arquata (Linnaeus, 1758)"
+moni1000_coast_shorebird_amami,ダイゼン|Pluvialis squatarola,ダイゼン,Pluvialis squatarola,common:taxon:gbif.2480327,sci,"Pluvialis squatarola (Linnaeus, 1758)"
+moni1000_coast_shorebird_amami,チュウシャクシギ|Numenius phaeopus,チュウシャクシギ,Numenius phaeopus,common:taxon:gbif.2481784,sci,"Numenius phaeopus (Linnaeus, 1758)"
+moni1000_coast_shorebird_amami,ツクシガモ|Tadorna tadorna,ツクシガモ,Tadorna tadorna,common:taxon:gbif.2498009,sci,"Tadorna tadorna (Linnaeus, 1758)"
+moni1000_coast_shorebird_amami,ツバメチドリ|Glareola maldivarum,ツバメチドリ,Glareola maldivarum,common:taxon:gbif.2480759,sci,"Glareola maldivarum J.R.Forster, 1795"
+moni1000_coast_shorebird_amami,ツルシギ|Tringa erythropus,ツルシギ,Tringa erythropus,common:taxon:gbif.2481725,sci,"Tringa erythropus (Pallas, 1764)"
+moni1000_coast_shorebird_amami,トウネン|Calidris ruficollis,トウネン,Calidris ruficollis,common:taxon:gbif.2481746,sci,"Calidris ruficollis (Pallas, 1776)"
+moni1000_coast_shorebird_amami,ハマシギ|Calidris alpina,ハマシギ,Calidris alpina,common:taxon:gbif.2481759,sci,"Calidris alpina (Linnaeus, 1758)"
+moni1000_coast_shorebird_amami,ヒバリシギ|Calidris subminuta,ヒバリシギ,Calidris subminuta,common:taxon:gbif.2481750,sci,"Calidris subminuta (Middendorff, 1853)"
+moni1000_coast_shorebird_amami,ヘラサギ|Platalea leucorodia,ヘラサギ,Platalea leucorodia,common:taxon:gbif.2480801,sci,"Platalea leucorodia Linnaeus, 1758"
+moni1000_coast_shorebird_amami,ホウロクシギ|Numenius madagascariensis,ホウロクシギ,Numenius madagascariensis,common:taxon:gbif.2481791,sci,"Numenius madagascariensis (Linnaeus, 1766)"
+moni1000_coast_shorebird_amami,ミユビシギ|Calidris alba,ミユビシギ,Calidris alba,common:taxon:gbif.2481748,sci,"Calidris alba (Pallas, 1764)"
+moni1000_coast_shorebird_amami,ムナグロ|Pluvialis fulva,ムナグロ,Pluvialis fulva,common:taxon:gbif.2480331,sci,"Pluvialis fulva (J.F.Gmelin, 1789)"
+moni1000_coast_shorebird_amami,メダイチドリ|Charadrius mongolus,メダイチドリ,Charadrius mongolus,common:taxon:gbif.9722670,sci,"Charadrius mongolus Pallas, 1776"
+moni1000_coast_shorebird_amami,ヨーロッパトウネン|Calidris minuta,ヨーロッパトウネン,Calidris minuta,common:taxon:gbif.2481749,sci,"Calidris minuta (Leisler, 1812)"

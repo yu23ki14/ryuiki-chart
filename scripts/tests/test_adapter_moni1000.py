@@ -1,6 +1,6 @@
-"""`adapters/moni1000_*.py`（5 本）と `manifests/moni1000_*.yml`（docs/plans/MONI1000.md §3）。
+"""`adapters/moni1000_*.py`（7 本）と `manifests/moni1000_*.yml`（docs/plans/MONI1000.md §3）。
 
-入力表 `moni1000_counts` は 5 出典で共有。各 adapter は自出典かつ `in_occurrence=1` の行だけを返す。
+入力表 `moni1000_counts` は 5 出典で共有（神奈川 5・奄美 2）。各 adapter は自出典かつ `in_occurrence=1` の行だけを返す。
 原本に表があれば実データで件数・契約を検査する（無い環境ではスキップ）。manifest の `expected_row_count` は
 担当 A の m10 の実測で確定するまで仮置き。
 """
@@ -18,7 +18,12 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 SOURCES = (
     "moni1000_satochi_bird", "moni1000_satochi_butterfly", "moni1000_satochi_mammal",
     "moni1000_forest_bird", "moni1000_coast_shorebird",
+    "moni1000_forest_bird_amami", "moni1000_coast_shorebird_amami",
 )
+
+
+def _region(sid):
+    return "jp-46" if sid.endswith("_amami") else "jp-14"
 
 
 def _adapter(sid):
@@ -85,9 +90,9 @@ def test_no_coordinates_not_invented_and_missing_date_kept():
 @pytest.mark.parametrize("sid", SOURCES)
 def test_manifest_valid_and_adapter_boundary(sid):
     m = manifest_lib.load_manifests(ROOT / "manifests")[sid]
-    assert (m.target, m.adapter, m.region, m.update_mode) == ("occurrence", sid, "jp-14", "snapshot")
+    assert (m.target, m.adapter, m.region, m.update_mode) == ("occurrence", sid, _region(sid), "snapshot")
     assert m.input == {"table": "moni1000_counts"}
-    assert m.sample_input_max_rows == 50000
+    assert m.sample_input_max_rows == 60000
     assert m.expected_row_count is not None
     assert boundary.adapter_import_problems(ROOT / "scripts" / "adapters" / f"{sid}.py") == []
 
