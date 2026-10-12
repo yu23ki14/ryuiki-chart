@@ -237,7 +237,7 @@ export function SiteDetail({ site, variables }: { site: Site; variables: Variabl
                 ← 地点一覧
               </Link>
               <h1 className="text-[18px] font-bold">{site.name ?? site.siteId}</h1>
-              <SiteMapLink lat={site.lat} lon={site.lon} />
+              <SiteMapLink name={site.name ?? site.siteId} lat={site.lat} lon={site.lon} />
               {site.zone != null && (
                 <span
                   className="text-[10.5px] px-1.5 py-0.5 rounded text-white"

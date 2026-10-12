@@ -142,7 +142,7 @@ export function SiteList({ sites }: { sites: Site[] }) {
                   <Link href={`/sites/${encodeURIComponent(s.siteId)}`} className="text-water-ink hover:underline">
                     {s.name ?? s.siteId}
                   </Link>
-                  <SiteMapLink lat={s.lat} lon={s.lon} className="ml-2" />
+                  <SiteMapLink name={s.name ?? s.siteId} lat={s.lat} lon={s.lon} className="ml-2" />
                 </td>
                 <td>
                   {s.zone != null ? (

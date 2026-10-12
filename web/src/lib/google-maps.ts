@@ -8,5 +8,5 @@
 export function googleMapsUrl(lat: number | null | undefined, lon: number | null | undefined): string | null {
   if (typeof lat !== "number" || typeof lon !== "number") return null;
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-  return `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
+  return `https://www.google.com/maps/search/?api=1&query=${lat.toFixed(6)},${lon.toFixed(6)}`;
 }

@@ -558,7 +558,7 @@ function WaterMode({
                       </span>
                     )}
                   </button>
-                  <SiteMapLink lat={s.lat} lon={s.lon} className="shrink-0" />
+                  <SiteMapLink name={s.name ?? s.siteId} lat={s.lat} lon={s.lon} className="shrink-0" />
                 </li>
               );
             })}
