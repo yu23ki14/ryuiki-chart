@@ -13,22 +13,39 @@ import { caveatBody } from "@/lib/registry/lookup-client";
 import { withRegion } from "@/components/region-url";
 import { AMAMI_STORY_HREF, AMAMI_STORY_LABEL, showAmamiStory } from "@/lib/stories/links";
 import { REGION_ALL, regionUi, type RegionFilter } from "@/lib/region";
+import { SiteMapLink } from "@/components/sites/SiteMapLink";
+import type { CoralYearSummary } from "@/lib/home-highlights";
 
 export function HomeHighlights({
   longitudinal,
+  coral = [],
   landuse,
   redlist,
   effort,
   region = REGION_ALL,
 }: {
-  longitudinal: { site_id: string; name: string; elevation_m: number; zone: number; avg: number; n: number; unit: string | null }[];
+  longitudinal: { site_id: string; name: string; elevation_m: number; zone: number; avg: number; n: number; unit: string | null; lat?: number | null; lon?: number | null }[];
+  /** 奄美の②（サンゴ礁の被度）。`RegionUi.homeCoral` の地域だけ中身が入る。 */
+  coral?: CoralYearSummary[];
   landuse: { watershed_id: string; water_system_name: string | null; delta: number; area_km2: number }[];
   redlist: { list_year: number; list_name: string; taxon_group_ja: string; direction: string; n: number }[];
   effort: { year: number; n: number; species_n: number; mesh_n: number; n_inat: number; n_gbif: number }[];
   /** 画面の地域。①②③の固定文言（境川・鶴見川・レッドリスト3版）は神奈川の数字なので、奄美（jp-46）では出さない。 */
   region?: RegionFilter;
 }) {
-  const noFixedNarrative = !(regionUi(region)?.hasFixedNarrative ?? true);
+  const ui = regionUi(region);
+  const noFixedNarrative = !(ui?.hasFixedNarrative ?? true);
+  // ①の指標・並び（地域の宣言。無ければ境川の BOD・標高順）
+  const lg = ui?.highlightLongitudinal;
+  const showLongitudinal = !noFixedNarrative || (!!lg && longitudinal.length > 0);
+  const showCoral = !!ui?.homeCoral && coral.length > 0;
+  const indicator = lg?.indicator ?? "BOD";
+  const timeseriesHref = withRegion(
+    lg
+      ? `/timeseries?${new URLSearchParams({ variable: lg.variableId, ...(ui?.highlightWater ? { water: ui.highlightWater } : {}) }).toString()}`
+      : "/timeseries",
+    region,
+  );
   // 土地利用の面積差の単位は地図指標と同じ registry の語彙（unit.yaml の km2）から引く
   const landuseUnit = MAP_METRICS.find((m) => m.id === "built_delta")?.unit ?? undefined;
   const unit = longitudinal[0]?.unit ?? null;
@@ -43,6 +60,14 @@ export function HomeHighlights({
     }
     return [...m.entries()].sort((a, b) => a[0] - b[0]);
   }, [redlist]);
+
+  const coralLines: LineSeries[] = React.useMemo(
+    () => [
+      { key: "cover", label: "サンゴ被度", color: SERIES[0], points: coral.map((c) => ({ x: c.year, y: c.coverMean, n: c.measured })) },
+      { key: "bleach", label: "白化率（全体）", color: STATUS.critical, points: coral.map((c) => ({ x: c.year, y: c.bleachMean, n: c.bleachN })) },
+    ],
+    [coral],
+  );
 
   const effortLines: LineSeries[] = React.useMemo(
     () => [
@@ -64,7 +89,7 @@ export function HomeHighlights({
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4">
-      {noFixedNarrative ? (
+      {!showLongitudinal ? (
         <div className="card p-3.5">
           <div className="text-[13px] font-semibold">① 場所で比べる — 川を下ると水はどう変わるか</div>
           <p className="text-[11.5px] text-muted mt-1 leading-relaxed">
@@ -74,6 +99,39 @@ export function HomeHighlights({
             </Link>
           </p>
         </div>
+      ) : lg ? (
+        <ChartFrame
+          title={`① 場所で比べる — 島の周りの海（${lg.waterLabel}）`}
+          subtitle={`${longitudinal.length}地点の ${lg.indicator}（化学的酸素要求量、海域の環境基準の項目）の 2020年以降の平均。海は標高で並べられないので、基準点→監視点の順に並べてある`}
+          table={
+            <MiniTable
+              columns={["地点", unit ? `${indicator}(${unit})` : indicator, "n"]}
+              rows={longitudinal.map((r) => [r.name, r.avg, r.n])}
+            />
+          }
+          note={
+            <>
+              値が大きいほど有機物による汚れが多い。地点の位置は名前の横のリンクから地図で確かめられる。
+              <Link href={timeseriesHref} className="text-water underline ml-1">
+                時系列比較で見る
+              </Link>
+            </>
+          }
+        >
+          <BarChart
+            data={longitudinal.map((r) => ({ key: r.site_id, label: r.name, value: r.avg }))}
+            unit={unit}
+            maxLabelWidth={90}
+          />
+          <ul className="px-3 pb-2 grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px] text-ink-2">
+            {longitudinal.map((r) => (
+              <li key={r.site_id} className="flex items-baseline justify-between gap-2">
+                <span>{r.name}</span>
+                <SiteMapLink name={r.name} lat={r.lat} lon={r.lon} />
+              </li>
+            ))}
+          </ul>
+        </ChartFrame>
       ) : (
         <ChartFrame
           title="① 場所で比べる — 川を下ると水はどう変わるか"
@@ -106,6 +164,42 @@ export function HomeHighlights({
         </ChartFrame>
       )}
 
+      {showCoral && (
+        <ChartFrame
+          title="② 年で比べる — サンゴ礁の被度（2004〜2017年度）"
+          subtitle={`奄美大島とその周辺 ${Math.max(...coral.map((c) => c.spots))} スポットの、サンゴ被度と白化率（全体）のスポット平均。スポット調査（目視）`}
+          legend={coralLines.map((s) => ({ label: s.label, color: s.color }))}
+          height={190}
+          table={
+            <MiniTable
+              columns={["年度", "スポット数", "被度平均(%)", "被度<5%", "白化率平均(%)"]}
+              rows={coral.map((c) => [c.year, c.spots, c.coverMean === null ? "–" : fmt(c.coverMean), c.belowLimit, c.bleachMean === null ? "–" : fmt(c.bleachMean)])}
+            />
+          }
+          note={
+            <>
+              データは 2017 年度で止まっている。それ以降の状態はこの図からは言えない。被度が「&lt;5」のスポット（毎年 2〜6 か所）は平均に入れていないので、平均はやや高めに出る。2016〜2017 年度は白化率が急に上がっている。
+              <span className="block mt-1">{caveatBody("moniCoral")}</span>
+              <span className="block mt-1">
+                出典: 環境省 モニタリングサイト1000 サンゴ礁調査（SAN01、スポットチェック法）。
+                <Link href={withRegion("/sources", region)} className="text-water underline ml-1">
+                  出典一覧
+                </Link>
+              </span>
+            </>
+          }
+        >
+          <LineChart
+            series={coralLines}
+            height={190}
+            unit="%"
+            xFormat={(x) => String(Math.round(x))}
+            yZero
+          />
+        </ChartFrame>
+      )}
+
+      {!showCoral && (
       <ChartFrame
         title="② 版で比べる — レッドリストは20年でどう動いたか"
         subtitle="2006年版から各版へ。カテゴリーが1段でも重くなった種を「悪化」と数える"
@@ -180,6 +274,7 @@ export function HomeHighlights({
           </div>
         </div>
       </ChartFrame>
+      )}
 
       <ChartFrame
         title="③ 年で比べる — 10年で市街地が増えた流域"
