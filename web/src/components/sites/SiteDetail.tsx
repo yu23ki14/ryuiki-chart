@@ -12,6 +12,7 @@ import { caveatBody } from "@/lib/registry/lookup-client";
 import { variableCaveats } from "@/lib/cube/caveats";
 import { VARIABLE_LABEL } from "@/lib/registry/generated-client";
 import { basisOfCell, type Basis } from "@/lib/cube/cell-basis";
+import { SiteMapLink } from "./SiteMapLink";
 import { MUNICIPALITY_LABEL } from "@/lib/municipality";
 import { useJson } from "@/components/useJson";
 import { fmt } from "@/components/viz/scales";
@@ -236,6 +237,7 @@ export function SiteDetail({ site, variables }: { site: Site; variables: Variabl
                 ← 地点一覧
               </Link>
               <h1 className="text-[18px] font-bold">{site.name ?? site.siteId}</h1>
+              <SiteMapLink name={site.name ?? site.siteId} lat={site.lat} lon={site.lon} />
               {site.zone != null && (
                 <span
                   className="text-[10.5px] px-1.5 py-0.5 rounded text-white"

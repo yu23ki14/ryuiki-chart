@@ -14,6 +14,7 @@ import { MAP_METRICS, type WatershedMetricId, type MeshMetricId } from "@/lib/re
 import { MUNICIPALITY_LABEL } from "@/lib/municipality";
 import { fmt } from "@/components/viz/scales";
 import Link from "next/link";
+import { SiteMapLink } from "@/components/sites/SiteMapLink";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { REGION_JUMPS } from "@/lib/map/basemaps";
 import { OverlayLegend, type OverlayLegendData } from "./OverlayLegend";
@@ -99,6 +100,7 @@ export function MapPage() {
   const isLanduse = wsMeta.kind === "landuse_delta";
   const [meshYear, setMeshYear] = React.useState<number | null>(null);
   const [sel, setSel] = React.useState<Record<string, unknown> | null>(null);
+  const [selCoords, setSelCoords] = React.useState<{ lat: number; lon: number } | null>(null);
   const [selKind, setSelKind] = React.useState<"watershed" | "site" | "mesh" | "hazard" | "protected" | null>(null);
 
   const ws = useRegionJson<GeoJSON.FeatureCollection & { landuse_years?: { from: number; to: number } | null }>("/api/geo/watersheds");
@@ -227,6 +229,9 @@ export function MapPage() {
           onFeatureClick={(f) => {
             const p = f.properties as Record<string, unknown>;
             setSel(p);
+            const g = f.geometry;
+            const [lon, lat] = g?.type === "Point" ? g.coordinates : [];
+            setSelCoords(Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : null);
             setSelKind(
               f.layer.id.startsWith("ry-hazard")
                 ? "hazard"
@@ -413,7 +418,7 @@ export function MapPage() {
           <h2 className="text-[12px] font-semibold mb-1.5">選んだ地物</h2>
           {!sel && <p className="text-[11px] text-muted">地図をクリックすると内容が出ます。</p>}
           {sel && selKind === "watershed" && <WatershedCard p={sel} />}
-          {sel && selKind === "site" && <SiteCard p={sel} />}
+          {sel && selKind === "site" && <SiteCard p={sel} coords={selCoords} />}
           {sel && selKind === "mesh" && <MeshCard p={sel} />}
           {sel && selKind === "hazard" && <HazardCard p={sel} />}
           {sel && selKind === "protected" && <ProtectedCard p={sel} />}
@@ -548,11 +553,14 @@ function WatershedCard({ p }: { p: Record<string, unknown> }) {
   );
 }
 
-function SiteCard({ p }: { p: Record<string, unknown> }) {
+function SiteCard({ p, coords }: { p: Record<string, unknown>; coords: { lat: number; lon: number } | null }) {
   const z = p.zone == null ? null : Number(p.zone);
   return (
     <div>
-      <div className="text-[13px] font-semibold">{String(p.name ?? "（名称なし）")}</div>
+      <div className="text-[13px] font-semibold">
+        {String(p.name ?? "（名称なし）")}
+        <SiteMapLink name={String(p.name ?? p.site_id)} lat={coords?.lat ?? null} lon={coords?.lon ?? null} className="ml-2 font-normal" />
+      </div>
       <div className="text-[10px] text-muted font-mono mb-1.5 break-all">{String(p.site_id)}</div>
       {z != null && (
         <div className="flex items-center gap-1.5 mb-1.5">
