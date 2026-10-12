@@ -1,6 +1,6 @@
 # manifests/moni1000_forest_bird.yml（宣言。形は scripts/ingest/manifest.py の docstring）。
 # 変換は scripts/adapters/moni1000_forest_bird.py（import は ingest.api だけ）。docs/plans/MONI1000.md §3。
-# 「仮」と書いた値は担当 A の m10 の実測と、メインの全量（b06/b07/b09）の結果で埋める。
+# place・cube の値は仮置き（メインが build:v2 の実測で埋める）。件数・period_shapes は実測。
 source: moni1000_forest_bird
 region: jp-14
 target: occurrence
@@ -8,12 +8,12 @@ update_mode: snapshot
 input:
   table: moni1000_counts
 adapter: moni1000_forest_bird
-expected_row_count: 8400   # 仮（推定。m10 の in_occurrence=1 の実測に置き換える）
+expected_row_count: 9208   # in_occurrence=1 の実測
 sample_input_max_rows: 50000
 checks:
   - not_null: [record_key, taxon_id]
   - unique: [record_key]
-  - row_count_between: [8400, 8400]   # 仮（実測固定に置き換える）
+  - row_count_between: [9208, 9208]   # 実測固定
   - in_registry: taxon
   - date_between: ["2005-01-01", "2025-12-31"]
 evidence: >
@@ -26,17 +26,17 @@ evidence: >
   （区間・ポイントごとに 1 行あるので同じ調査でも行が増える。個体数は attributes.individual_count）。
   座標は出典のまま（丸め・補完をしない）。精度は coord_decimals から coordinate_uncertainty_m（1 桁=10000m）。
   利用規約: 生物多様性センターウェブサイト利用規約（出典を明示する）。各行の source_ref に出典 URL と調査コード。
-  件数・期間の形・place・cube の値は仮置き（実測で更新する）。
-expected:   # 仮（period_shapes は m10 の実測と adapter テストで、place/cube はメインの全量で確定する）
-  period_shapes: {day: 8400}
+  件数と期間の形は in_occurrence=1 の実測（2026-10-12）。place・cube の値は仮置き。
+expected:   # period_shapes は実測。place/cube は仮置き（build:v2 の実測で責任者が埋める）
+  period_shapes: {day: 9208}
   place:
     coord_resolved: 0
-    coord_unresolved: 8400
+    coord_unresolved: 9208
   cube:
-    dated_rows: 8400
+    dated_rows: 9208
     dated_no_coordinate_rows: 0
     leaf_cell_source_rows: 0
     leaf_cell_source_rows_no_coordinate: 0
     month_cell_source_rows: 0
     watershed_dated_resolved_rows: 0
-    watershed_dated_unresolved_rows: 8400
+    watershed_dated_unresolved_rows: 9208
