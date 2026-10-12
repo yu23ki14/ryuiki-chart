@@ -26,8 +26,14 @@ ADR-0006 規約2の改定・ADR-0026）。
 違い 0.001度メモ化はしない）の詳細は ADR-0026 D1・実測節参照。ここでは
 要点だけ: 座標のある全記録が対象（ADR-0007 原則1）、点が入るポリゴンが
 ちょうど1つなら解決・0なら `place_id=NULL`・2つ以上または境界上なら
-無条件に止める（推測で割り当てない）。`coordinate_uncertainty_m` は解決の
-条件にしない。
+無条件に止める（推測で割り当てない）。
+
+**例外（オーナー決定 2026-10-12、全出典共通）**: 記録ごとの `coordinate_uncertainty_m` が
+`WATERSHED_MAX_UNCERTAINTY_M`（10 km）以上の記録は、座標が流域のどれかに入っても流域に
+割り当てない（`place_id=NULL`、`method=METHOD_WITHHELD`）。粗い座標は隣の流域に入りうるので、
+当てずっぽうの帰属をしない。grid01 のセルと region は `occurrence` 側にそのまま残る（b09 は触らない）。
+`coordinate_uncertainty_m` が NULL の記録は従来どおり PIP の結果で解決する。流域外（一致0）の
+`place_id=NULL`〔method は METHOD のまま〕とは method で区別できる。
 
 ## 機械検証（1つでも失敗すれば `common.MigrationError` で止まる）
 
@@ -80,6 +86,11 @@ DEFAULT_DECLARATIONS_YAML = ROOT / "scripts" / "migrate" / "occurrence_place_dec
 
 PLACE_KIND = "watershed"
 METHOD = "point_in_polygon:even_odd"
+# 精度が粗すぎて流域に割り当てない記録の method（place_id は NULL）。流域外〔METHOD で NULL〕と区別する。
+METHOD_WITHHELD = "withheld:coordinate_uncertainty"
+# オーナー決定（2026-10-12、全出典共通）: coordinate_uncertainty_m がこの値（m）以上の記録は流域に割り当てない。
+# モニ1000 の 0.1 度丸め座標（10 km）や GBIF/iNat の粗い座標が隣の流域に入るのを防ぐ。NULL は対象外（従来どおり解決）。
+WATERSHED_MAX_UNCERTAINTY_M = 10000
 WATERSHED_KEY_SPACE = "watershed_id"
 
 _SAMPLE_LIMIT = 20
@@ -443,17 +454,21 @@ def build_and_write_occurrence_place(
 
                 def rows():
                     nonlocal n_no_coord_dated
-                    for record_id, lat, lon in conn.execute(
-                        "SELECT record_id, lat, lon FROM occurrence "
+                    for record_id, lat, lon, uncertainty_m in conn.execute(
+                        "SELECT record_id, lat, lon, coordinate_uncertainty_m FROM occurrence "
                         "WHERE (lat IS NOT NULL AND lon IS NOT NULL) OR period_raw IS NOT NULL "
                         "ORDER BY rowid"
                     ):
+                        method = METHOD
                         if lat is None or lon is None:
                             n_no_coord_dated += 1
                             place_id = None
+                        elif uncertainty_m is not None and uncertainty_m >= WATERSHED_MAX_UNCERTAINTY_M:
+                            place_id = None
+                            method = METHOD_WITHHELD
                         else:
                             place_id = coord_place_id[(lat, lon)]
-                        yield (record_id, PLACE_KIND, place_id, METHOD, built_from, common.OCCURRENCE_SPEC_VERSION)
+                        yield (record_id, PLACE_KIND, place_id, method, built_from, common.OCCURRENCE_SPEC_VERSION)
 
                 conn.executemany(_INSERT_SQL.format(table=f'"{staging}"'), rows())
                 # 検証6: UNIQUE(record_id, place_kind)（コードレビュー指摘10:

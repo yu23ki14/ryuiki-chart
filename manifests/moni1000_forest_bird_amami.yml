@@ -30,13 +30,13 @@ evidence: >
 expected:   # 実測（2026-10-12、build:v2 の b09 の _resolve_distinct_coordinates と m10 の内訳）
   period_shapes: {day: 5303}   # in_occurrence=1 の observed_on の形ごとの実測
   place:
-    coord_resolved: 5303   # 実測。b09 の PIP で流域に解決した行
-    coord_unresolved: 0   # 実測。全行が流域に解決
+    coord_resolved: 0   # 実測。b09 の PIP で流域に解決した行（coordinate_uncertainty_m<10000 または NULL）
+    coord_unresolved: 5303   # 実測。coordinate_uncertainty_m>=10000 のため流域に割り当てない行（5303件、2026-10-12 オーナー決定。流域外は0）
   cube:
     dated_rows: 5303   # 実測。全行に日付あり
     dated_no_coordinate_rows: 0   # 実測。座標なしは 0 行
     leaf_cell_source_rows: 0   # 実測。年をまたぐ区間は無い
     leaf_cell_source_rows_no_coordinate: 0
     month_cell_source_rows: 5303   # 実測。全行が日付あり・座標ありの月セル行
-    watershed_dated_resolved_rows: 5303   # 実測。b09 で流域に解決した日付あり行
-    watershed_dated_unresolved_rows: 0   # 実測。流域外は 0 行
+    watershed_dated_resolved_rows: 0   # 実測。b09 で流域に解決した日付あり行（coordinate_uncertainty_m<10000）
+    watershed_dated_unresolved_rows: 5303   # 実測。流域外＋coordinate_uncertainty_m>=10000 で流域に割り当てない日付あり行（2026-10-12 オーナー決定）
