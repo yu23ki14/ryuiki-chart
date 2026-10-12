@@ -1,0 +1,38 @@
+CREATE TABLE `moni1000_counts` (
+	`record_id` text PRIMARY KEY NOT NULL,
+	`source_id` text NOT NULL,
+	`source_ref` text,
+	`survey_id` text,
+	`site_key` text NOT NULL,
+	`site_name_ja` text,
+	`place_id` text,
+	`lat` real,
+	`lon` real,
+	`lat_lon_basis` text,
+	`coord_decimals` integer,
+	`observed_on` text,
+	`survey_year` integer,
+	`survey_month` integer,
+	`survey_day` integer,
+	`start_time` text,
+	`end_time` text,
+	`season_ja` text,
+	`survey_round` text,
+	`section_ja` text,
+	`species_ja` text,
+	`scientific_name` text,
+	`individual_count` real,
+	`individual_count_raw` text,
+	`count_qualifier` text,
+	`id_note_ja` text,
+	`out_of_range` integer,
+	`out_of_time` integer,
+	`taxon_id` text,
+	`taxon_resolution` text,
+	`in_occurrence` integer NOT NULL,
+	`exclude_reason` text,
+	`extra_json` text
+);
+--> statement-breakpoint
+CREATE INDEX `ix_moni_src` ON `moni1000_counts` (`source_id`,`survey_year`);--> statement-breakpoint
+CREATE INDEX `ix_moni_sp` ON `moni1000_counts` (`species_ja`);

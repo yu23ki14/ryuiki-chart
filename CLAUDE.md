@@ -20,8 +20,8 @@
   `check_v2_pipeline_fresh()`。手書きの mtime 走査は撤去した）。単体で作り直すだけなら
   `cd web && pnpm run build:v2`。
 - データの置き場所は **Cloudflare D1**（デプロイ先を Cloudflare 想定にしたため）。
-  57 テーブル（`web/drizzle/migrations/` 適用後の実測。うちシード管理用の内部表
-  `_seed_state` を除く56表が `web/scripts/seed-d1-local.mjs` のシード対象）を 1 つの D1 に
+  58 テーブル（`web/drizzle/migrations/` 適用後の実測。うちシード管理用の内部表
+  `_seed_state` を除く57表が `web/scripts/seed-d1-local.mjs` のシード対象）を 1 つの D1 に
   統合してある。D1 に `ATTACH` は無いので `d.` / `c.` の接頭辞は使わない。
   どの原本から来たテーブルかは `web/src/lib/table-meta.ts` の `TABLE_ORIGIN`。
 - D1 のスキーマは `web/src/db/schema.ts`（v1、既存表）・`web/src/db/schema-registry.ts`
@@ -75,6 +75,11 @@
   `/api/documents`・`/sources` も同じ関数（`documentsList` 等）を使う。`/sources` の出典の行は
   `web/src/lib/source-catalog.ts`（`describe_catalog what='sources'` と同じ registry 由来。旧表 `source_registry` は読まない）。
   `mammal_mesh` / `wildlife_sightings` は画面・API の読み手は無く、MCP / AI の `get_records`（`web/src/lib/records.ts`）が出典単位で読む（AI の run_sql / describe_schema の台帳表でもある）。
+- モニタリングサイト1000 神奈川県 5 調査（里地 鳥類／チョウ類／中・大型哺乳類、森林・草原 陸生鳥類、沿岸域 シギ・チドリ類）の
+  生の記録は `moni1000_counts`（`scripts/m10_moni1000.py` が原本 `ryuiki.sqlite` に作る。DDL は `scripts/schema_moni1000.sql`）。
+  MCP / AI の `get_records` の `record_set=monitoring_counts`（`web/src/lib/records.ts`）が出典単位で読み、
+  occurrence には `in_occurrence=1` の行だけを流す。**組織の追認済み（2026-10-12、オーナー確認）・新規取得はしない**
+  （かつて無断のフォーム送信で取得して隔離した経緯は `docs/nextstep.md` B-2・`docs/COLLECTOR_CONTRACT.md`。設計は `docs/plans/MONI1000.md`）。
 - 外部ポータル（CKAN 4 インスタンス・e-Stat 7 件）の目録は `external_dataset` / `external_resource` /
   `external_resource_format`（format を正規化した照合用。原文は `external_resource.format`）
   （`scripts/m08_external_catalog.py` が `data/processed` の収穫物から原本 `ryuiki.sqlite` に作る。DDL は
