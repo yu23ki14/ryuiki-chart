@@ -91,6 +91,11 @@ METHOD_WITHHELD = "withheld:coordinate_uncertainty"
 # オーナー決定（2026-10-12、全出典共通）: coordinate_uncertainty_m がこの値（m）以上の記録は流域に割り当てない。
 # モニ1000 の 0.1 度丸め座標（10 km）や GBIF/iNat の粗い座標が隣の流域に入るのを防ぐ。NULL は対象外（従来どおり解決）。
 WATERSHED_MAX_UNCERTAINTY_M = 10000
+
+
+def is_watershed_withheld(uncertainty_m) -> bool:
+    """座標の誤差が大きく、流域に割り当てない記録か（s01 のサンプル実測も同じ述語を使う）。"""
+    return uncertainty_m is not None and uncertainty_m >= WATERSHED_MAX_UNCERTAINTY_M
 WATERSHED_KEY_SPACE = "watershed_id"
 
 _SAMPLE_LIMIT = 20
@@ -466,7 +471,7 @@ def build_and_write_occurrence_place(
                         if lat is None or lon is None:
                             n_no_coord_dated += 1
                             place_id = None
-                        elif uncertainty_m is not None and uncertainty_m >= WATERSHED_MAX_UNCERTAINTY_M:
+                        elif is_watershed_withheld(uncertainty_m):
                             place_id = None
                             method = METHOD_WITHHELD
                         else:

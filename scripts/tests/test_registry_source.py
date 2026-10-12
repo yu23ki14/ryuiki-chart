@@ -382,8 +382,8 @@ def test_build_writes_the_three_tables_and_passes_the_reference_checks(reg):
     # 170→171 source・172→173 edition: 2026-10-11 奄美 Step 3a（moe_mongoose_amami。マングース防除の捕獲数・根絶宣言）
     # 171→173 source・173→175 edition: 2026-10-11 奄美 Step 3b（dpri_gouu2010_amami・kagoshima_univ_gouu2010_amami。2010年奄美豪雨の雨量・被害）
     # 173→176 source・175→178 edition: 2026-10-11 奄美 Step 3c（bodik_kagoshima_dosha_amami・kagoshima_suido_amami・kagoshima_dam_capacity_amami）
-    # 176→177 source・178→179 edition: 2026-10-11 奄美の流域（gsi_dem_watersheds_amami。c69、Issue #94）
-    assert counts["source"] == 177 and counts["source_edition"] == 179
+    # 177→180 source・179→182 edition: 2026-10-12 モニ1000 奄美（moni1000_coast_shorebird_amami・moni1000_forest_bird_amami）とサンゴ礁（#113）
+    assert counts["source"] == 180 and counts["source_edition"] == 182
     r01._assert_id_uniqueness(reg)
     r01._assert_id_references(reg)
     # Issue #93: source.region_id はマニフェストの region（マニフェストの無い出典は NULL）。
