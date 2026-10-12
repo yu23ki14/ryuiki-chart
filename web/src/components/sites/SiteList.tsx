@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ZONE_COLORS, ZONE_LABELS } from "@/components/viz/palette";
 import { Btn, inputCls, nf } from "@/components/ui";
 import { caveatBody } from "@/lib/registry/lookup-client";
+import { SiteMapLink } from "./SiteMapLink";
 import { MUNICIPALITY_LABEL } from "@/lib/municipality";
 
 interface Site {
@@ -141,6 +142,7 @@ export function SiteList({ sites }: { sites: Site[] }) {
                   <Link href={`/sites/${encodeURIComponent(s.siteId)}`} className="text-water-ink hover:underline">
                     {s.name ?? s.siteId}
                   </Link>
+                  <SiteMapLink lat={s.lat} lon={s.lon} className="ml-2" />
                 </td>
                 <td>
                   {s.zone != null ? (

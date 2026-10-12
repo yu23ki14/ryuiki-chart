@@ -14,6 +14,7 @@ import { MAP_METRICS, type WatershedMetricId, type MeshMetricId } from "@/lib/re
 import { MUNICIPALITY_LABEL } from "@/lib/municipality";
 import { fmt } from "@/components/viz/scales";
 import Link from "next/link";
+import { SiteMapLink } from "@/components/sites/SiteMapLink";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { REGION_JUMPS } from "@/lib/map/basemaps";
 import { OverlayLegend, type OverlayLegendData } from "./OverlayLegend";
@@ -552,7 +553,10 @@ function SiteCard({ p }: { p: Record<string, unknown> }) {
   const z = p.zone == null ? null : Number(p.zone);
   return (
     <div>
-      <div className="text-[13px] font-semibold">{String(p.name ?? "（名称なし）")}</div>
+      <div className="text-[13px] font-semibold">
+        {String(p.name ?? "（名称なし）")}
+        <SiteMapLink lat={p.lat as number | null} lon={p.lon as number | null} className="ml-2 font-normal" />
+      </div>
       <div className="text-[10px] text-muted font-mono mb-1.5 break-all">{String(p.site_id)}</div>
       {z != null && (
         <div className="flex items-center gap-1.5 mb-1.5">

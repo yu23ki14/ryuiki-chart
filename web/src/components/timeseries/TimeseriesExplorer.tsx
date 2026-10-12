@@ -11,6 +11,7 @@ import { Btn, inputCls, Spinner, Provenance, nf } from "@/components/ui";
 import { caveatBody } from "@/lib/registry/lookup-client";
 import { variableCaveats } from "@/lib/cube/caveats";
 import { VARIABLE_LABEL } from "@/lib/registry/generated-client";
+import { SiteMapLink } from "@/components/sites/SiteMapLink";
 import { MUNICIPALITY_LABEL } from "@/lib/municipality";
 import { useRegionJson } from "@/components/useRegionJson";
 import { useSetPageContext } from "@/components/assistant/PageContextProvider";
@@ -526,7 +527,7 @@ function WaterMode({
               const off = hidden.has(s.siteId);
               const over = i >= 8;
               return (
-                <li key={s.siteId}>
+                <li key={s.siteId} className="flex items-center gap-1">
                   <button
                     onClick={() => {
                       const next = new Set(hidden);
@@ -534,7 +535,7 @@ function WaterMode({
                       else next.add(s.siteId);
                       setHidden(next);
                     }}
-                    className={`w-full text-left flex items-center gap-2 px-1.5 py-1 rounded hover:bg-surface-2 ${
+                    className={`min-w-0 flex-1 text-left flex items-center gap-2 px-1.5 py-1 rounded hover:bg-surface-2 ${
                       off ? "opacity-40" : ""
                     }`}
                     disabled={over}
@@ -557,6 +558,7 @@ function WaterMode({
                       </span>
                     )}
                   </button>
+                  <SiteMapLink lat={s.lat} lon={s.lon} className="shrink-0" />
                 </li>
               );
             })}

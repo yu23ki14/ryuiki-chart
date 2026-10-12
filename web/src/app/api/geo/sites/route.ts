@@ -18,6 +18,8 @@ export async function GET(req: NextRequest) {
           geometry: { type: "Point", coordinates: [s.lon, s.lat] },
           properties: {
             site_id: s.siteId,
+            lat: s.lat,
+            lon: s.lon,
             name: s.name,
             zone: s.zone,
             elevation_m: s.elevationM,
