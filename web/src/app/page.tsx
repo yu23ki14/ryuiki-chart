@@ -190,9 +190,9 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ r
       </section>
 
       <section className="max-w-[1180px] mx-auto px-6 py-6">
-        <h2 className="text-[16px] font-bold">{ui?.homeCoral ? "この2つが、時系列で比べるということ" : "この3つが、時系列で比べるということ"}</h2>
+        <h2 className="text-[16px] font-bold">この3つが、時系列で比べるということ</h2>
         <p className="text-[12px] text-muted mt-1 max-w-3xl leading-relaxed">
-          「増えた／減った」を言うには、比べてよい相手を選ぶ必要があります。ここでは、{ui?.homeCoral ? "場所で比べる・年で比べる、の2つの型を、海とサンゴ礁・土地利用で例に出します（鹿児島県のレッドリストは版が1つだけで、版で比べる例は出せません）。" : "場所で比べる・版で比べる・年で比べる、の3つを例に出します。"}
+          「増えた／減った」を言うには、比べてよい相手を選ぶ必要があります。ここでは、{ui?.homeCoral ? "場所で比べる（海の地点）・年で比べる（サンゴ礁・土地利用）を例に出します。レッドリストの版で比べる例は、鹿児島県のレッドリストが2014年版の1つだけなので、奄美では出せません。" : "場所で比べる・版で比べる・年で比べる、の3つを例に出します。"}
         </p>
         <HomeHighlights longitudinal={longitudinal} coral={coral} landuse={landuse} redlist={redlist} effort={effort} region={filter} />
       </section>

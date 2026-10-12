@@ -300,7 +300,7 @@ export function HomeHighlights({
         <BarChart
           data={landuse.map((r) => ({
             key: r.watershed_id,
-            label: `${r.water_system_name ?? "?"} ${r.watershed_id.slice(-4)}`,
+            label: r.water_system_name ? `${r.water_system_name} ${r.watershed_id.slice(-4)}` : `流域 ${r.watershed_id.replace(/\D+/g, "").slice(-3)}`,
             value: r.delta,
           }))}
           color={DIVERGING.pos[2]}
