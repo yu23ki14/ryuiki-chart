@@ -13,7 +13,7 @@
   `web/scripts/ensure-v2.sh` が v2（`data/db/v2.sqlite`。`observation_agg`/`occurrence_agg` の
   キューブ。Issue #48 PR-0）を `scripts/check_v2_fresh.py`（0=新鮮/10=古い/それ以外=判定不能）
   一本で判定する——`pipeline_fingerprint.spec_version` の一致に加えて、読み取り専用の原本
-  4表（`measurements`/`sensor_timeseries`/`organism_records`/`sites`、代理指標）・
+  5表（`measurements`/`sensor_timeseries`/`organism_records`/`sites`/`taxa`、代理指標）・
   `data/processed` の入力2つ・`registry.sqlite` 自身の指紋・v2 パイプラインのコード
   （import で機械的に洗い出す）の中身が「最後にビルドしたとき」と一致するかを見る
   （`scripts/migrate/common.py` の `compute_v2_input_fingerprint()`/
