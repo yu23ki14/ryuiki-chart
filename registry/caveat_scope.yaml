@@ -31,10 +31,13 @@ selectors:
 # dataset は variable_alias.csv の dataset 列＋配信表 sites。
 values:
   place_kind: [site, zone, grid01, watershed]
-  # 奄美の 3 件はマニフェスト（manifests/）が入るまでここで実在を宣言する（入ったら二重だが無害）
+  # 暫定: 奄美の 3 件〔gbif_amami_occurrences・inaturalist_amami・nlni_l03b_landuse_by_watershed_amami〕はマニフェスト（manifests/）が
+  # 入るまでここで実在を宣言する（入ったら二重だが無害）。
+  # 恒久: moni1000_coral_amami は manifest を持たない出典（サンゴ礁調査。地点×年度の観測値で、occurrence/observation に流さず
+  # get_records だけで返す）。出典の実在を引く仕組みは manifests/ だけなので、ここで宣言する。
   source_id: [moe_ias_list, gbif_kanagawa_occurrences, inaturalist_kanagawa, kanagawa_kuma_sightings,
               gbif_amami_occurrences, inaturalist_amami, nlni_l03b_landuse_by_watershed_amami,
-              moni1000_coral_amami]   # moni1000_coral_amami は manifest を持たない（occurrence/observation に流さない）ので実在をここで宣言
+              moni1000_coral_amami]
   dataset: [measurements, sites]
 
 scopes:

@@ -159,7 +159,7 @@ export const RECORD_TABLES = {
     ],
   },
   /*
-   * モニタリングサイト1000 神奈川県 5 調査の生の記録（`moni1000_counts`、scripts/m10_moni1000.py）。
+   * モニタリングサイト1000 神奈川県・奄美の調査の生の記録（`moni1000_counts`、scripts/m10_moni1000.py）。
    * 出典（里地 鳥類／チョウ類／哺乳類・森林・草原 鳥類・沿岸域 シギ・チドリ）は source_id で絞る。
    * 個体数 0・名寄せ不能などの行（in_occurrence=0）も含む全行を返す。extra_json は出典固有の列。
    */

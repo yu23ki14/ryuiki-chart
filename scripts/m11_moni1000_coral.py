@@ -19,6 +19,8 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
+from m10_moni1000 import split_ddl  # noqa: E402  （DDL を 1 文ずつに分ける共有の関数）
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SCHEMA = ROOT / "scripts" / "schema_moni1000_coral.sql"
 DEFAULT_CSV = ROOT / "data" / "processed" / "moni1000_coral_amami.csv"
@@ -29,11 +31,6 @@ INTEGER_COLS = ("fiscal_year", "site_no", "spot_no")
 
 class M11Error(RuntimeError):
     pass
-
-
-def split_ddl(sql):
-    return [s.strip() for s in "\n".join(l for l in sql.splitlines() if not l.lstrip().startswith("--")).split(";")
-            if s.strip()]
 
 
 def read_rows(path=DEFAULT_CSV):

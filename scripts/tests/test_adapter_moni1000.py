@@ -1,6 +1,6 @@
-"""`adapters/moni1000_*.py`（7 本）と `manifests/moni1000_*.yml`（docs/plans/MONI1000.md §3）。
+"""`adapters/moni1000_*.py`（全出典）と `manifests/moni1000_*.yml`（docs/plans/MONI1000.md §3）。
 
-入力表 `moni1000_counts` は 5 出典で共有（神奈川 5・奄美 2）。各 adapter は自出典かつ `in_occurrence=1` の行だけを返す。
+入力表 `moni1000_counts` は全出典で共有（神奈川・奄美）。各 adapter は自出典かつ `in_occurrence=1` の行だけを返す。
 原本に表があれば実データで件数・契約を検査する（無い環境ではスキップ）。manifest の `expected_row_count` は
 担当 A の m10 の実測で確定するまで仮置き。
 """

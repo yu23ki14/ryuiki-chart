@@ -22,23 +22,43 @@ NOTE_COMMON = ("追認済み（2026-10-12、オーナー確認）。新規取得
                "data/raw/moni1000/extracted/ から奄美分を抽出。")
 
 
-def extract_sin04():
+class ExtractError(RuntimeError):
+    """入力が無い・該当が 0 行のときに止める（黙って 0 行の CSV を書かない）。"""
+
+
+def _code(series):
+    """地点コードを文字列に揃える（460800 / '460800' / 460800.0 を同じに扱う）。"""
+    return series.astype(str).str.strip().str.replace(r"\.0+$", "", regex=True)
+
+
+def extract_sin04(ext=EXT):
+    files = sorted(glob.glob(str(ext / "SIN04/BirdData*.csv")))
+    if not files:
+        raise ExtractError(f"SIN04 の BirdData*.csv が無い: {ext / 'SIN04'}（展開済みファイルの置き場を確かめる。新規取得はしない）")
     frames = []
-    for f in sorted(glob.glob(str(EXT / "SIN04/BirdData*.csv"))):
+    for f in files:
         df = read_any(f)
         m = (df["都道府県"].astype(str).str.contains("鹿児島", na=False)
              & df["市町村"].astype(str).str.strip().isin(AMAMI_MUNICIPALITIES))
         if m.any():
             frames.append(df[m])
+    if not frames:
+        raise ExtractError(f"SIN04 {len(files)} ファイルに、鹿児島県で市町村が {AMAMI_MUNICIPALITIES} の行が 0 行"
+                           "（列名〔都道府県・市町村〕か表記が変わった可能性）")
     out = pd.concat(frames, ignore_index=True).rename(columns=SIN04_COLMAP)
     out["source_id"] = "moni1000_forest_bird_amami"
     out["source_ref"] = "https://www.biodic.go.jp/moni1000/question/question.html (SIN04)"
     return out
 
 
-def extract_sig02():
-    df = read_any(EXT / "SIG02/一斉調査日個体数リスト表(2004-05以降).csv")
-    out = df[df["Site Code"].astype(str).str.strip() == COAST_SITE_CODE].rename(columns=SIG02_COLMAP).copy()
+def extract_sig02(ext=EXT):
+    path = ext / "SIG02/一斉調査日個体数リスト表(2004-05以降).csv"
+    if not path.exists():
+        raise ExtractError(f"SIG02 の一斉調査日個体数リスト表が無い: {path}（新規取得はしない）")
+    df = read_any(path)
+    out = df[_code(df["Site Code"]) == COAST_SITE_CODE].rename(columns=SIG02_COLMAP).copy()
+    if out.empty:
+        raise ExtractError(f"SIG02 に Site Code={COAST_SITE_CODE} の行が 0 行（コードの型・列名が変わった可能性）")
     out["source_id"] = "moni1000_coast_shorebird_amami"
     out["source_ref"] = "https://www.biodic.go.jp/moni1000/question/question.html (SIG02)"
     return out

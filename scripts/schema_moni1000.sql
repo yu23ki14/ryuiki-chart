@@ -1,5 +1,5 @@
--- モニタリングサイト1000（モニ1000）神奈川県 5 出典の生の記録（scripts/m10_moni1000.py が作る）。
--- 設計: docs/plans/MONI1000.md §2.1。5 出典とも「調査 × 地点 × 種 × 個体数」の同じ形なので 1 表に統合する。
+-- モニタリングサイト1000（モニ1000）神奈川県・奄美の里地/森林/沿岸域の生の記録（scripts/m10_moni1000.py が作る）。
+-- 設計: docs/plans/MONI1000.md §2.1。全出典とも「調査 × 地点 × 種 × 個体数」の同じ形なので 1 表に統合する。
 -- 出典固有の列は extra_json。生の行は 1 行も落とさない（occurrence に流さない行は in_occurrence=0 と exclude_reason）。
 CREATE TABLE IF NOT EXISTS moni1000_counts (
   record_id TEXT PRIMARY KEY,        -- satochi 3 出典: '{source_id}:{data_id}'。他: '{source_id}:r{6桁連番}'（CSV の行順）

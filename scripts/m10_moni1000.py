@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""モニタリングサイト1000（モニ1000）神奈川県 5 出典と奄美 2 出典（計 7）を ryuiki.sqlite の原本表 moni1000_counts に入れる。
+"""モニタリングサイト1000（モニ1000）神奈川県と奄美の全出典（`SOURCES`）を ryuiki.sqlite の原本表 moni1000_counts に入れる。
 
 設計: docs/plans/MONI1000.md §2.1・§2.2・§3.2。DDL は scripts/schema_moni1000.sql。
 
 入力:
   data/processed/moni1000_{satochi_bird_census,satochi_butterfly_census,forest_bird,satochi_mammal_photo,
-                           coast_shorebird}_kanagawa.csv                 （神奈川 5 出典の生の記録）
+                           coast_shorebird}_kanagawa.csv                 （神奈川の生の記録）
   data/processed/moni1000_{forest_bird,coast_shorebird}_amami.csv          （奄美 2 出典。process_moni1000_amami.py）
   data/processed/moni1000_{satochi_bird,satochi_butterfly,satochi_mammal}_sites_kanagawa.csv （里地の地点座標）
   registry/source/moni1000_site_map.csv   （地点対応表: 出典の地点キー → registry の place）
@@ -17,10 +17,10 @@
   （zero_count / unresolved_taxon / non_wild / non_species。§3.2）。
 - 座標は出典の値のまま持つ（丸め・補完・ぼかしをしない）。里地は sites CSV の「緯度詳細/経度詳細」が数値ならそれ、
   「非公開」なら 0.1 度丸めの lat/lon、それも無ければ NULL。
-- 冪等: 自分の 7 出典の行だけを wipe してから同じトランザクションで入れ直す。
-- 取り込み後の検査（ずれたら止まって rollback）: 行数が CSV と 7 出典それぞれ一致 / record_id 一意 /
+- 冪等: 自分の出典（`SOURCES`）の行だけを wipe してから同じトランザクションで入れ直す。
+- 取り込み後の検査（ずれたら止まって rollback）: 行数が CSV と出典それぞれ一致 / record_id 一意 /
   in_occurrence=1 で taxon_id が NULL でない / exclude_reason が語彙内 / observed_on が正規形。
-- 隔離解除: source_registry の 7 行を redistributable=1 にし、notes に追認済みを追記する（組織の追認 2026-10-12、
+- 隔離解除: source_registry の全出典の行を redistributable=1 にし、notes に追認済みを追記する（組織の追認 2026-10-12、
   オーナー確認。新たな取得はしない）。
 - 本物の data/db/ryuiki.sqlite に流すのは 1 回だけ（実行前に .backup を取る）。確認は --dry-run か、一時コピーへの --db で。
 """
@@ -64,8 +64,7 @@ SOURCES = {
                                        "kind": "coast_shorebird"},
 }
 # 学名列が行にある出典。名寄せのキーは「和名|学名」（同じ和名に学名の表記ゆれがあるため）
-SCI_SOURCES = ("moni1000_forest_bird", "moni1000_coast_shorebird",
-               "moni1000_forest_bird_amami", "moni1000_coast_shorebird_amami")
+SCI_SOURCES = tuple(sid for sid, cfg in SOURCES.items() if cfg["kind"] in ("forest_bird", "coast_shorebird"))
 
 EXCLUDE_REASONS = ("zero_count", "unresolved_taxon", "non_wild", "non_species")
 RESOLUTIONS = ("map_sci", "map_ja", "unresolved", "non_taxon")
@@ -453,7 +452,7 @@ def split_ddl(sql):
 
 
 def load(con, records, csv_counts):
-    """moni1000_counts を自分の 7 出典分だけ wipe → 入れ直し、source_registry の隔離を解く。呼び出し側が commit/rollback。"""
+    """moni1000_counts を自分の出典（`SOURCES`）の分だけ wipe → 入れ直し、source_registry の隔離を解く。呼び出し側が commit/rollback。"""
     check_records(records, csv_counts)
     # 検査で止まったとき CREATE TABLE も巻き戻すよう、DDL も同じトランザクションの中で流す
     # （executescript は暗黙の COMMIT をするので使わない）。
@@ -489,8 +488,8 @@ def load(con, records, csv_counts):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="モニ1000 神奈川県 神奈川 5・奄美 2 出典を moni1000_counts に入れる（--dry-run は件数だけ出す）")
-    ap.add_argument("--dry-run", action="store_true", help="DB に触らず、7 出典の内訳だけ出す")
+    ap = argparse.ArgumentParser(description="モニ1000 神奈川県・奄美の全出典を moni1000_counts に入れる（--dry-run は件数だけ出す）")
+    ap.add_argument("--dry-run", action="store_true", help="DB に触らず、全出典の内訳だけ出す")
     ap.add_argument("--db", help="書き込み先の sqlite（既定: data/db/ryuiki.sqlite。確認は一時コピーで）")
     ap.add_argument("--csv-dir", default=str(DEFAULT_CSV_DIR))
     ap.add_argument("--site-map", default=str(DEFAULT_SITE_MAP))

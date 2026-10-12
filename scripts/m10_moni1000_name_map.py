@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""モニ1000 神奈川県 5・奄美 2 出典の和名（と学名）→ registry の taxon の対応表を作る下書きツール。
+"""モニ1000 神奈川県・奄美の全出典の和名（と学名）→ registry の taxon の対応表を作る下書きツール。
 
 設計: docs/plans/MONI1000.md §2.5・§8。出力 CSV（registry/taxon/moni1000_name_map.csv）をコミットする。
 m10_moni1000.py は registry に問い合わせず、この CSV だけを読む（r01 が原本を読む前に m スクリプトが走るため循環になる）。
 
-入力:  7 出典の CSV（m10_moni1000.normalize_all）/ data/db/registry.sqlite（taxon を**読み取り専用**で引く）
+入力:  全出典（m10 の SOURCES）の CSV（m10_moni1000.normalize_all）/ data/db/registry.sqlite（taxon を**読み取り専用**で引く）
        registry/taxon/moni1000_name_map.csv（既存。basis=curated の行は人が決めたものなので保持する）
 出力:  registry/taxon/moni1000_name_map.csv
   列: source_id, name_key, species_ja, scientific_name, taxon_id, basis, note
@@ -58,12 +58,11 @@ def clean_ja(ja):
 
 
 # 出典ごとの分類群の絞り込み（和名の同音異義〔ホトトギス＝鳥・草・貝 など〕を機械で外す）
-SOURCE_GROUP = {
-    "moni1000_satochi_bird": ("class", "Aves"), "moni1000_forest_bird": ("class", "Aves"),
-    "moni1000_coast_shorebird": ("class", "Aves"), "moni1000_satochi_butterfly": ("order", "Lepidoptera"),
-    "moni1000_satochi_mammal": ("class", "Mammalia"),
-    "moni1000_forest_bird_amami": ("class", "Aves"), "moni1000_coast_shorebird_amami": ("class", "Aves"),
+KIND_GROUP = {
+    "satochi_bird": ("class", "Aves"), "forest_bird": ("class", "Aves"), "coast_shorebird": ("class", "Aves"),
+    "satochi_butterfly": ("order", "Lepidoptera"), "satochi_mammal": ("class", "Mammalia"),
 }
+SOURCE_GROUP = {sid: KIND_GROUP[cfg["kind"]] for sid, cfg in m10.SOURCES.items()}
 
 
 def load_taxa(registry_path):

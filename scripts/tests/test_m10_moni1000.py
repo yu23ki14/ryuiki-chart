@@ -1,4 +1,4 @@
-"""m10_moni1000（モニ1000 神奈川 5・奄美 2 出典の原本表への投入）のテスト。小さな CSV を tmp_path に作って通す。
+"""m10_moni1000（モニ1000 神奈川・奄美の全出典の原本表への投入）のテスト。小さな CSV を tmp_path に作って通す。
 本物の ryuiki.sqlite・data/processed には触らない。"""
 import csv
 import json

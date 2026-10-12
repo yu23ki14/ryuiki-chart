@@ -1,6 +1,6 @@
 # manifests/moni1000_forest_bird_amami.yml（宣言。形は scripts/ingest/manifest.py の docstring）。
 # 変換は scripts/adapters/moni1000_forest_bird_amami.py（import は ingest.api だけ）。docs/plans/MONI1000.md §3。
-# 件数・period_shapes は m10 の実測（2026-10-12）。place・cube は仮置き（責任者が build:v2 の実測で埋める）。
+# place・cube・件数・period_shapes は実測（2026-10-12）。
 source: moni1000_forest_bird_amami
 region: jp-46
 target: occurrence
@@ -26,17 +26,17 @@ evidence: >
   （区間・ポイントごとに 1 行あるので同じ調査でも行が増える。個体数は attributes.individual_count）。
   座標は出典のまま（丸め・補完をしない）。精度は coord_decimals から coordinate_uncertainty_m（1 桁=10000m）。
   利用規約: 生物多様性センターウェブサイト利用規約（出典を明示する）。各行の source_ref に出典 URL と調査コード。
-  件数と期間の形は in_occurrence=1 の実測（2026-10-12）。place・cube の値は仮置き（build:v2 の b09 の実測で置き換える）。
-expected:   # period_shapes は m10 の実測。place・cube は【仮】（全行が日付あり・座標ありとして置いた。責任者が build:v2 の b09 の実測で埋める）
+  件数と期間の形は in_occurrence=1 の実測（2026-10-12）。place・cube の値は b09 の実測（build:v2）。
+expected:   # 実測（2026-10-12、build:v2 の b09 の _resolve_distinct_coordinates と m10 の内訳）
   period_shapes: {day: 5303}   # in_occurrence=1 の observed_on の形ごとの実測
   place:
-    coord_resolved: 5303   # 仮
-    coord_unresolved: 0   # 仮
+    coord_resolved: 5303   # 実測。b09 の PIP で流域に解決した行
+    coord_unresolved: 0   # 実測。全行が流域に解決
   cube:
-    dated_rows: 5303   # 実測（全行に日付あり）
-    dated_no_coordinate_rows: 0   # 実測（座標なしは 0 行）
-    leaf_cell_source_rows: 0   # 実測（年をまたぐ区間は無い）
+    dated_rows: 5303   # 実測。全行に日付あり
+    dated_no_coordinate_rows: 0   # 実測。座標なしは 0 行
+    leaf_cell_source_rows: 0   # 実測。年をまたぐ区間は無い
     leaf_cell_source_rows_no_coordinate: 0
-    month_cell_source_rows: 5303   # 仮（流域に解決する前提の月セル行）
-    watershed_dated_resolved_rows: 5303   # 仮
-    watershed_dated_unresolved_rows: 0   # 仮
+    month_cell_source_rows: 5303   # 実測。全行が日付あり・座標ありの月セル行
+    watershed_dated_resolved_rows: 5303   # 実測。b09 で流域に解決した日付あり行
+    watershed_dated_unresolved_rows: 0   # 実測。流域外は 0 行
