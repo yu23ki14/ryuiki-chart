@@ -1,0 +1,335 @@
+source_id,name_key,species_ja,scientific_name,taxon_id,basis,note
+moni1000_satochi_bird,アオゲラ,アオゲラ,,common:taxon:gbif.2478507,ja_unique,"Picus awokera Temminck, 1836"
+moni1000_satochi_bird,アオサギ,アオサギ,,common:taxon:gbif.9797180,ja_unique,"Ardea cinerea Linnaeus, 1758"
+moni1000_satochi_bird,アオジ,アオジ,,common:taxon:gbif.2491522,ja_unique,"Emberiza spodocephala Pallas, 1776"
+moni1000_satochi_bird,アオバト,アオバト,,common:taxon:gbif.2495812,ja_unique,"Treron sieboldii (Temminck, 1835)"
+moni1000_satochi_bird,アカゲラ,アカゲラ,,common:taxon:gbif.2477968,ja_paired_sci,同じ和名に学名で決まった別の行がある（学名の出典の語から）
+moni1000_satochi_bird,アカハラ,アカハラ,,common:taxon:gbif.2490725,ja_unique,"Turdus chrysolaus Temminck, 1832"
+moni1000_satochi_bird,アトリ,アトリ,,common:taxon:gbif.2494441,ja_unique,"Fringilla montifringilla Linnaeus, 1758"
+moni1000_satochi_bird,イカル,イカル,,common:taxon:gbif.2494143,ja_unique,"Eophona personata (Temminck & Schlegel, 1848)"
+moni1000_satochi_bird,イソシギ,イソシギ,,common:taxon:gbif.2481800,ja_paired_sci,同じ和名に学名で決まった別の行がある（学名の出典の語から）
+moni1000_satochi_bird,イワツバメ,イワツバメ,,,pending:ambiguous,"和名の候補: common:taxon:gbif.2489214 (Delichon urbicum (Linnaeus, 1758), accepted); common:taxon:gbif.2489220 (Delichon dasypus (Bonaparte, 1850), accepted)"
+moni1000_satochi_bird,ウグイス,ウグイス,,common:taxon:gbif.2493005,ja_unique,"Cettia diphone (Kittlitz, 1830)"
+moni1000_satochi_bird,ウコッケイ,ウコッケイ,,,exclude:non_wild,家畜・家禽・人
+moni1000_satochi_bird,ウソ,ウソ,,common:taxon:gbif.2494543,ja_unique,"Pyrrhula pyrrhula (Linnaeus, 1758)"
+moni1000_satochi_bird,ウ科,ウ科,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_satochi_bird,エゾムシクイ,エゾムシクイ,,common:taxon:gbif.2493054,ja_paired_sci,同じ和名に学名で決まった別の行がある（学名の出典の語から）
+moni1000_satochi_bird,エナガ,エナガ,,common:taxon:gbif.2495000,ja_unique,"Aegithalos caudatus (Linnaeus, 1758)"
+moni1000_satochi_bird,オオアカゲラ,オオアカゲラ,,common:taxon:gbif.2477927,ja_unique,"Dendrocopos leucotos (Bechstein, 1802)"
+moni1000_satochi_bird,オオヨシキリ,オオヨシキリ,,,exclude:unresolved_taxon,registry に和名も学名も無い
+moni1000_satochi_bird,オオルリ,オオルリ,,common:taxon:gbif.2492391,ja_paired_sci,同じ和名に学名で決まった別の行がある（学名の出典の語から）
+moni1000_satochi_bird,オナガ,オナガ,,common:taxon:gbif.7341881,ja_unique,"Cyanopica cyanus (Pallas, 1776)"
+moni1000_satochi_bird,カケス,カケス,,common:taxon:gbif.5229493,ja_unique,"Garrulus glandarius (Linnaeus, 1758)"
+moni1000_satochi_bird,カシラダカ,カシラダカ,,common:taxon:gbif.2491582,ja_unique,"Emberiza rustica Pallas, 1776"
+moni1000_satochi_bird,カッコウ,カッコウ,,common:taxon:gbif.5231918,ja_paired_sci,同じ和名に学名で決まった別の行がある（学名の出典の語から）
+moni1000_satochi_bird,カラス科,カラス科,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_satochi_bird,カラス類,カラス類,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_satochi_bird,カルガモ,カルガモ,,common:taxon:gbif.2498061,ja_paired_sci,同じ和名に学名で決まった別の行がある（学名の出典の語から）
+moni1000_satochi_bird,カワウ,カワウ,,common:taxon:gbif.2481890,ja_unique,"Phalacrocorax carbo (Linnaeus, 1758)"
+moni1000_satochi_bird,カワガラス,カワガラス,,common:taxon:gbif.5231774,ja_paired_sci,同じ和名に学名で決まった別の行がある（学名の出典の語から）
+moni1000_satochi_bird,カワセミ,カワセミ,,common:taxon:gbif.2475532,ja_unique,"Alcedo atthis (Linnaeus, 1758)"
+moni1000_satochi_bird,カワラヒワ,カワラヒワ,,common:taxon:gbif.2494716,ja_unique,"Carduelis sinica (Linnaeus, 1766)"
+moni1000_satochi_bird,ガビチョウ,ガビチョウ,,common:taxon:gbif.2493479,ja_unique,"Garrulax canorus (Linnaeus, 1758)"
+moni1000_satochi_bird,キジ,キジ,,common:taxon:gbif.5227775,ja_paired_sci,同じ和名に学名で決まった別の行がある（学名の出典の語から）
+moni1000_satochi_bird,キジバト,キジバト,,common:taxon:gbif.2495681,ja_unique,"Streptopelia orientalis (Latham, 1790)"
+moni1000_satochi_bird,キセキレイ,キセキレイ,,common:taxon:gbif.2490310,ja_unique,"Motacilla cinerea Tunstall, 1771"
+moni1000_satochi_bird,キビタキ,キビタキ,,common:taxon:gbif.5231288,ja_unique,"Ficedula narcissina (Temminck, 1836)"
+moni1000_satochi_bird,キンクロハジロ,キンクロハジロ,,common:taxon:gbif.2498261,ja_unique,"Aythya fuligula (Linnaeus, 1758)"
+moni1000_satochi_bird,クロジ,クロジ,,common:taxon:gbif.2491545,ja_unique,"Emberiza variabilis Temminck, 1836"
+moni1000_satochi_bird,コイカル,コイカル,,,exclude:unresolved_taxon,registry に和名も学名も無い
+moni1000_satochi_bird,コガモ,コガモ,,common:taxon:gbif.8214667,ja_unique,"Anas crecca Linnaeus, 1758"
+moni1000_satochi_bird,コガラ,コガラ,,common:taxon:gbif.2487866,ja_paired_sci,同じ和名に学名で決まった別の行がある（学名の出典の語から）
+moni1000_satochi_bird,コゲラ,コゲラ,,common:taxon:gbif.2477900,ja_paired_sci,同じ和名に学名で決まった別の行がある（学名の出典の語から）
+moni1000_satochi_bird,コサギ,コサギ,,common:taxon:gbif.2480876,ja_unique,"Egretta garzetta (Linnaeus, 1766)"
+moni1000_satochi_bird,コジュケイ,コジュケイ,,common:taxon:gbif.5227939,ja_unique,"Bambusicola thoracicus (Temminck, 1815)"
+moni1000_satochi_bird,コチドリ,コチドリ,,common:taxon:gbif.7937336,ja_paired_sci,同じ和名に学名で決まった別の行がある（学名の出典の語から）
+moni1000_satochi_bird,コルリ,コルリ,,,exclude:unresolved_taxon,registry に和名も学名も無い
+moni1000_satochi_bird,ゴイサギ,ゴイサギ,,common:taxon:gbif.2480863,ja_unique,"Nycticorax nycticorax (Linnaeus, 1758)"
+moni1000_satochi_bird,ゴジュウカラ,ゴジュウカラ,,common:taxon:gbif.2484916,ja_paired_sci,同じ和名に学名で決まった別の行がある（学名の出典の語から）
+moni1000_satochi_bird,シジュウカラ,シジュウカラ,,,pending:ambiguous,"和名の候補: common:taxon:gbif.5844847 (Parus minor Temminck & Schlegel, 1848, accepted); common:taxon:gbif.9705453 (Parus major Linnaeus, 1758, accepted)"
+moni1000_satochi_bird,シメ,シメ,,common:taxon:gbif.2494329,ja_unique,"Coccothraustes coccothraustes (Linnaeus, 1758)"
+moni1000_satochi_bird,シロハラ,シロハラ,,common:taxon:gbif.2490773,ja_unique,"Turdus pallidus Gmelin, 1789"
+moni1000_satochi_bird,ジョウビタキ,ジョウビタキ,,common:taxon:gbif.5231223,ja_unique,"Phoenicurus auroreus (Pallas, 1776)"
+moni1000_satochi_bird,スズメ,スズメ,,common:taxon:gbif.5231198,ja_unique,"Passer montanus (Linnaeus, 1758)"
+moni1000_satochi_bird,セキレイ類,セキレイ類,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_satochi_bird,セグロセキレイ,セグロセキレイ,,,exclude:unresolved_taxon,registry に和名も学名も無い
+moni1000_satochi_bird,センダイムシクイ,センダイムシクイ,,common:taxon:gbif.2493060,ja_paired_sci,同じ和名に学名で決まった別の行がある（学名の出典の語から）
+moni1000_satochi_bird,ソウシチョウ,ソウシチョウ,,common:taxon:gbif.5231398,ja_unique,"Leiothrix lutea (Scopoli, 1786)"
+moni1000_satochi_bird,タカ科,タカ科,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_satochi_bird,タヒバリ,タヒバリ,,,exclude:unresolved_taxon,registry に和名も学名も無い
+moni1000_satochi_bird,ダイサギ,ダイサギ,,,exclude:unresolved_taxon,registry に和名も学名も無い
+moni1000_satochi_bird,チョウゲンボウ,チョウゲンボウ,,common:taxon:gbif.9616058,ja_paired_sci,同じ和名に学名で決まった別の行がある（学名の出典の語から）
+moni1000_satochi_bird,ツグミ,ツグミ,,common:taxon:gbif.8294007,ja_unique,"Turdus naumanni Temminck, 1820"
+moni1000_satochi_bird,ツグミ科,ツグミ科,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_satochi_bird,ツツドリ,ツツドリ,,common:taxon:gbif.9548093,ja_unique,"Cuculus saturatus Blyth, 1843"
+moni1000_satochi_bird,ツバメ,ツバメ,,common:taxon:gbif.9515886,ja_unique,"Hirundo rustica Linnaeus, 1758"
+moni1000_satochi_bird,ツミ,ツミ,,,exclude:unresolved_taxon,registry に和名も学名も無い
+moni1000_satochi_bird,トビ,トビ,,common:taxon:gbif.5229167,ja_paired_sci,同じ和名に学名で決まった別の行がある（学名の出典の語から）
+moni1000_satochi_bird,トラツグミ,トラツグミ,,common:taxon:gbif.2490890,ja_paired_sci,同じ和名に学名で決まった別の行がある（学名の出典の語から）
+moni1000_satochi_bird,ドバト,ドバト,,,exclude:unresolved_taxon,registry に和名も学名も無い
+moni1000_satochi_bird,ニワトリ,ニワトリ,,,exclude:non_wild,家畜・家禽・人
+moni1000_satochi_bird,ノジコ,ノジコ,,,exclude:unresolved_taxon,registry に和名も学名も無い
+moni1000_satochi_bird,ノスリ,ノスリ,,common:taxon:gbif.2480537,ja_paired_sci,同じ和名に学名で決まった別の行がある（学名の出典の語から）
+moni1000_satochi_bird,ハイタカ類,ハイタカ類,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_satochi_bird,ハクセキレイ,ハクセキレイ,,common:taxon:gbif.9687165,ja_unique,"Motacilla alba Linnaeus, 1758"
+moni1000_satochi_bird,ハシビロガモ,ハシビロガモ,,,exclude:unresolved_taxon,registry に和名も学名も無い
+moni1000_satochi_bird,ハシブトガラス,ハシブトガラス,,common:taxon:gbif.2482487,ja_unique,"Corvus macrorhynchos Wagler, 1827"
+moni1000_satochi_bird,ハシボソガラス,ハシボソガラス,,common:taxon:gbif.9409796,ja_unique,"Corvus corone Linnaeus, 1758"
+moni1000_satochi_bird,ハト科,ハト科,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_satochi_bird,ヒガラ,ヒガラ,,common:taxon:gbif.2487871,ja_paired_sci,同じ和名に学名で決まった別の行がある（学名の出典の語から）
+moni1000_satochi_bird,ヒタキ科,ヒタキ科,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_satochi_bird,ヒバリ,ヒバリ,,common:taxon:gbif.8077224,ja_unique,"Alauda arvensis Linnaeus, 1758"
+moni1000_satochi_bird,ヒメアマツバメ,ヒメアマツバメ,,common:taxon:gbif.5228679,ja_unique,"Apus nipalensis (Hodgson, 1837)"
+moni1000_satochi_bird,ヒヨドリ,ヒヨドリ,,common:taxon:gbif.7342055,ja_unique,"Hypsipetes amaurotis (Temminck, 1830)"
+moni1000_satochi_bird,ビンズイ,ビンズイ,,common:taxon:gbif.2490244,ja_unique,"Anthus hodgsoni Richmond, 1907"
+moni1000_satochi_bird,フクロウ,フクロウ,,common:taxon:gbif.2497509,ja_unique,"Strix uralensis Pallas, 1771"
+moni1000_satochi_bird,ホオジロ,ホオジロ,,common:taxon:gbif.2491538,ja_unique,"Emberiza cioides J.F.Brandt, 1843"
+moni1000_satochi_bird,ホトトギス,ホトトギス,,common:taxon:gbif.5231927,ja_unique,"Cuculus poliocephalus Latham, 1790"
+moni1000_satochi_bird,ホンセイインコ,ホンセイインコ,,,exclude:unresolved_taxon,registry に和名も学名も無い
+moni1000_satochi_bird,マガモ,マガモ,,common:taxon:gbif.9761484,ja_paired_sci,同じ和名に学名で決まった別の行がある（学名の出典の語から）
+moni1000_satochi_bird,マヒワ,マヒワ,,common:taxon:gbif.2494701,ja_unique,"Carduelis spinus (Linnaeus, 1758)"
+moni1000_satochi_bird,ミソサザイ,ミソサザイ,,common:taxon:gbif.5231438,ja_unique,"Troglodytes troglodytes (Linnaeus, 1758)"
+moni1000_satochi_bird,ミヤマホオジロ,ミヤマホオジロ,,,exclude:unresolved_taxon,registry に和名も学名も無い
+moni1000_satochi_bird,ムクドリ,ムクドリ,,common:taxon:gbif.6100944,ja_unique,"Spodiopsar cineraceus (Temminck, 1835)"
+moni1000_satochi_bird,メジロ,メジロ,,common:taxon:gbif.9300456,ja_unique,"Zosterops japonicus Temminck & Schlegel, 1845"
+moni1000_satochi_bird,メボソムシクイ,メボソムシクイ,,common:taxon:gbif.2493071,ja_unique,"Phylloscopus borealis (J.H.Blasius, 1858)"
+moni1000_satochi_bird,モズ,モズ,,common:taxon:gbif.2492850,ja_unique,"Lanius bucephalus Temminck & Schlegel, 1845"
+moni1000_satochi_bird,ヤブサメ,ヤブサメ,,common:taxon:gbif.2493223,ja_paired_sci,同じ和名に学名で決まった別の行がある（学名の出典の語から）
+moni1000_satochi_bird,ヤマガラ,ヤマガラ,,,pending:ambiguous,"和名の候補: common:taxon:gbif.5788757 (Parus varius, accepted); common:taxon:gbif.6101068 (Poecile varius (Temminck & Schlegel, 1848), accepted)"
+moni1000_satochi_bird,ヤマシギ,ヤマシギ,,common:taxon:gbif.2481700,ja_unique,"Scolopax rusticola Linnaeus, 1758"
+moni1000_satochi_bird,ルリビタキ,ルリビタキ,,common:taxon:gbif.2492509,ja_paired_sci,同じ和名に学名で決まった別の行がある（学名の出典の語から）
+moni1000_satochi_bird,ワシタカ類,ワシタカ類,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_satochi_bird,不明,不明,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_satochi_bird,大型ツグミ類,大型ツグミ類,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_satochi_bird,小型ツグミ類,小型ツグミ類,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_satochi_bird,未調査,未調査,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_satochi_bird,記録無し,記録無し,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_satochi_butterfly,アオスジアゲハ,アオスジアゲハ,,common:taxon:gbif.5141212,ja_unique,"Graphium sarpedon (Linnaeus, 1758)"
+moni1000_satochi_butterfly,アオバセセリ,アオバセセリ,,common:taxon:gbif.5141924,ja_unique,"Choaspes benjaminii (Guérin-Méneville, 1843)"
+moni1000_satochi_butterfly,アカシジミ,アカシジミ,,common:taxon:gbif.8782891,ja_unique,Japonica lutea
+moni1000_satochi_butterfly,アカタテハ,アカタテハ,,common:taxon:gbif.5129293,ja_unique,"Vanessa indica (Herbst, 1794)"
+moni1000_satochi_butterfly,アカボシゴマダラ,アカボシゴマダラ,,common:taxon:gbif.1898441,ja_unique,"Hestina assimilis (Linnaeus, 1758)"
+moni1000_satochi_butterfly,アゲハ,アゲハ,,,exclude:unresolved_taxon,registry に和名も学名も無い
+moni1000_satochi_butterfly,アサギマダラ,アサギマダラ,,common:taxon:gbif.1897664,ja_unique,"Parantica sita (Kollar, 1844)"
+moni1000_satochi_butterfly,イチモンジセセリ,イチモンジセセリ,,common:taxon:gbif.1943212,ja_unique,"Parnara guttatus (Bremer & Grey, 1853)"
+moni1000_satochi_butterfly,イチモンジチョウ,イチモンジチョウ,,,pending:ambiguous,"和名の候補: common:taxon:gbif.7712938 (Ladoga camilla (Linnaeus, 1764), accepted); common:taxon:gbif.8429428 (Limenitis camilla (Linnaeus, 1764), accepted)"
+moni1000_satochi_butterfly,ウラギンシジミ,ウラギンシジミ,,common:taxon:gbif.1931706,ja_unique,"Curetis acuta Moore, 1877"
+moni1000_satochi_butterfly,ウラゴマダラシジミ,ウラゴマダラシジミ,,common:taxon:gbif.1931774,ja_unique,"Artopoetes pryeri (Murray, 1873)"
+moni1000_satochi_butterfly,ウラナミアカシジミ,ウラナミアカシジミ,,common:taxon:gbif.1922713,ja_unique,"Japonica saepestriata (Hewitson, 1865)"
+moni1000_satochi_butterfly,ウラナミシジミ,ウラナミシジミ,,common:taxon:gbif.1924713,ja_unique,"Lampides boeticus (Linnaeus, 1767)"
+moni1000_satochi_butterfly,オオチャバネセセリ,オオチャバネセセリ,,common:taxon:gbif.1949004,ja_unique,"Polytremis pellucida (Murray, 1875)"
+moni1000_satochi_butterfly,オオミドリシジミ,オオミドリシジミ,,common:taxon:gbif.1931285,ja_unique,"Favonius orientalis (Murray, 1875)"
+moni1000_satochi_butterfly,オナガアゲハ,オナガアゲハ,,common:taxon:gbif.1938058,ja_unique,"Papilio macilentus Janson, 1877"
+moni1000_satochi_butterfly,カラスアゲハ,カラスアゲハ,,,pending:ambiguous,"和名の候補: common:taxon:gbif.1937723 (Papilio bianor Cramer, 1777, accepted); common:taxon:gbif.4693382 (Papilio dehaanii, accepted)"
+moni1000_satochi_butterfly,キアゲハ,キアゲハ,,common:taxon:gbif.8225376,ja_unique,"Papilio machaon Linnaeus, 1758"
+moni1000_satochi_butterfly,キタテハ,キタテハ,,common:taxon:gbif.5129417,ja_unique,"Polygonia c-aureum (Linnaeus, 1758)"
+moni1000_satochi_butterfly,キチョウ,キチョウ,,common:taxon:gbif.5137849,ja_unique,"Eurema hecabe (Linnaeus, 1758)"
+moni1000_satochi_butterfly,キマダラセセリ,キマダラセセリ,,common:taxon:gbif.1947740,ja_unique,"Potanthus flava (Murray, 1875)"
+moni1000_satochi_butterfly,クロアゲハ,クロアゲハ,,common:taxon:gbif.1938052,ja_unique,"Papilio protenor Cramer, 1775"
+moni1000_satochi_butterfly,クロコノマチョウ,クロコノマチョウ,,common:taxon:gbif.1895992,ja_unique,"Melanitis phedima Cramer, 1782"
+moni1000_satochi_butterfly,コジャノメ,コジャノメ,,common:taxon:gbif.1893923,ja_unique,"Mycalesis francisca Cramer, 1782"
+moni1000_satochi_butterfly,コチャバネセセリ,コチャバネセセリ,,common:taxon:gbif.1942697,ja_unique,"Thoressa varia (Murray, 1876)"
+moni1000_satochi_butterfly,コミスジ,コミスジ,,common:taxon:gbif.5131142,ja_unique,"Neptis sappho Pallas, 1771"
+moni1000_satochi_butterfly,コムラサキ,コムラサキ,,common:taxon:gbif.5131860,ja_unique,"Apatura metis Frey, 1829"
+moni1000_satochi_butterfly,ゴイシシジミ,ゴイシシジミ,,common:taxon:gbif.1921163,ja_unique,"Taraka hamada (Druce, 1875)"
+moni1000_satochi_butterfly,ゴマダラチョウ,ゴマダラチョウ,,,pending:ambiguous,"和名の候補: common:taxon:gbif.1898434 (Hestina persimilis (Westwood), accepted); common:taxon:gbif.1898448 (Hestina japonica (Felder, 1862), accepted)"
+moni1000_satochi_butterfly,サトキマダラヒカゲ,サトキマダラヒカゲ,,common:taxon:gbif.1914701,ja_unique,"Neope goschkevitschii (Ménétriés, 1857)"
+moni1000_satochi_butterfly,ジャコウアゲハ,ジャコウアゲハ,,common:taxon:gbif.1937556,ja_unique,"Byasa alcinous (Klug, 1836)"
+moni1000_satochi_butterfly,ジャノメチョウ,ジャノメチョウ,,common:taxon:gbif.4535510,ja_unique,"Minois dryas (Scopoli, 1763)"
+moni1000_satochi_butterfly,スジグロシロチョウ,スジグロシロチョウ,,common:taxon:gbif.5137889,ja_unique,"Pieris melete Ménétriès, 1857"
+moni1000_satochi_butterfly,ダイミョウセセリ,ダイミョウセセリ,,common:taxon:gbif.1945066,ja_unique,"Daimio tethys (Ménétriés, 1857)"
+moni1000_satochi_butterfly,チャバネセセリ,チャバネセセリ,,,exclude:unresolved_taxon,registry に和名も学名も無い
+moni1000_satochi_butterfly,ツバメシジミ,ツバメシジミ,,common:taxon:gbif.5883138,ja_unique,"Everes argiades (Pallas, 1771)"
+moni1000_satochi_butterfly,ツマキチョウ,ツマキチョウ,,common:taxon:gbif.1919720,ja_unique,"Anthocharis scolymus Butler, 1866"
+moni1000_satochi_butterfly,ツマグロヒョウモン,ツマグロヒョウモン,,common:taxon:gbif.5133063,ja_unique,"Argyreus hyperbius (Linnaeus, 1763)"
+moni1000_satochi_butterfly,テングチョウ,テングチョウ,,common:taxon:gbif.12155203,ja_unique,"Libythea celtis (Laicharting, 1782)"
+moni1000_satochi_butterfly,トラフシジミ,トラフシジミ,,common:taxon:gbif.1920996,ja_unique,"Rapala arata Bremer, 1864"
+moni1000_satochi_butterfly,ナガサキアゲハ,ナガサキアゲハ,,common:taxon:gbif.1937892,ja_unique,"Papilio memnon Linnaeus, 1758"
+moni1000_satochi_butterfly,ヒオドシチョウ,ヒオドシチョウ,,common:taxon:gbif.5130587,ja_unique,"Nymphalis xanthomelas (Denis & Schiffermüller) , 1775"
+moni1000_satochi_butterfly,ヒカゲチョウ,ヒカゲチョウ,,common:taxon:gbif.1918467,ja_unique,"Lethe sicelis (Hewitson, 1862)"
+moni1000_satochi_butterfly,ヒメアカタテハ,ヒメアカタテハ,,,pending:ambiguous,"和名の候補: common:taxon:gbif.4299368 (Vanessa cardui (Linnaeus, 1758), accepted); common:taxon:gbif.5129588 (Cynthia cardui (Linnaeus, 1758), accepted)"
+moni1000_satochi_butterfly,ヒメウラナミジャノメ,ヒメウラナミジャノメ,,common:taxon:gbif.1907625,ja_unique,"Ypthima argus Butler, 1878"
+moni1000_satochi_butterfly,ヒメジャノメ,ヒメジャノメ,,common:taxon:gbif.1893546,ja_unique,"Mycalesis gotama Moore, 1857"
+moni1000_satochi_butterfly,ベニシジミ,ベニシジミ,,common:taxon:gbif.1929697,ja_unique,"Lycaena phlaeas (Linnaeus, 1761)"
+moni1000_satochi_butterfly,ホソバセセリ,ホソバセセリ,,common:taxon:gbif.1947626,ja_unique,"Isoteinon lamprospilus C.Felder & R.Felder, 1862"
+moni1000_satochi_butterfly,ミズイロオナガシジミ,ミズイロオナガシジミ,,common:taxon:gbif.1924044,ja_unique,"Antigius attilia (Bremer, 1861)"
+moni1000_satochi_butterfly,ムラサキシジミ,ムラサキシジミ,,,exclude:unresolved_taxon,registry に和名も学名も無い
+moni1000_satochi_butterfly,ムラサキツバメ,ムラサキツバメ,,,exclude:unresolved_taxon,registry に和名も学名も無い
+moni1000_satochi_butterfly,モンキアゲハ,モンキアゲハ,,common:taxon:gbif.1938114,ja_unique,"Papilio helenus Linnaeus, 1758"
+moni1000_satochi_butterfly,モンキチョウ,モンキチョウ,,common:taxon:gbif.5137578,ja_unique,"Colias erate (Esper, 1805)"
+moni1000_satochi_butterfly,モンシロチョウ,モンシロチョウ,,common:taxon:gbif.1920496,ja_unique,"Pieris rapae (Linnaeus, 1758)"
+moni1000_satochi_butterfly,ヤマトシジミ,ヤマトシジミ,,,pending:ambiguous,"和名の候補: common:taxon:gbif.1921150 (Pseudozizeeria maha (Kollar, 1848), accepted); common:taxon:gbif.7346407 (Zizeeria maha, accepted)"
+moni1000_satochi_butterfly,ルリシジミ,ルリシジミ,,common:taxon:gbif.1925918,ja_unique,"Celastrina argiolus (Linnaeus, 1758)"
+moni1000_satochi_butterfly,ルリタテハ,ルリタテハ,,common:taxon:gbif.7346344,ja_unique,Kaniska canace
+moni1000_forest_bird,(空)|,(空),,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_forest_bird,sp.1|,sp.1,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_forest_bird,sp.2|,sp.2,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_forest_bird,sp1|,sp1,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_forest_bird,sp6|,sp6,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_forest_bird,sp7|,sp7,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_forest_bird,アオゲラ|Picus awokera,アオゲラ,Picus awokera,common:taxon:gbif.2478507,sci,"Picus awokera Temminck, 1836"
+moni1000_forest_bird,アオサギ|Ardea cinerea,アオサギ,Ardea cinerea,common:taxon:gbif.9797180,sci,"Ardea cinerea Linnaeus, 1758"
+moni1000_forest_bird,アオジ|Emberiza spodocephala,アオジ,Emberiza spodocephala,common:taxon:gbif.2491522,sci,"Emberiza spodocephala Pallas, 1776"
+moni1000_forest_bird,アオバト|Treron sieboldii,アオバト,Treron sieboldii,common:taxon:gbif.2495812,sci,"Treron sieboldii (Temminck, 1835)"
+moni1000_forest_bird,アカゲラ|Dendrocopos major,アカゲラ,Dendrocopos major,common:taxon:gbif.2477968,sci,"Dendrocopos major (Linnaeus, 1758)"
+moni1000_forest_bird,アカハラ|Turdus chrysolaus,アカハラ,Turdus chrysolaus,common:taxon:gbif.2490725,sci,"Turdus chrysolaus Temminck, 1832"
+moni1000_forest_bird,アトリ|Fringilla montifringilla,アトリ,Fringilla montifringilla,common:taxon:gbif.2494441,sci,"Fringilla montifringilla Linnaeus, 1758"
+moni1000_forest_bird,アトリ科|,アトリ科,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_forest_bird,イカル|Eophona personata,イカル,Eophona personata,common:taxon:gbif.2494143,sci,"Eophona personata (Temminck & Schlegel, 1848)"
+moni1000_forest_bird,イスカ|Loxia curvirostra,イスカ,Loxia curvirostra,common:taxon:gbif.9629160,sci,"Loxia curvirostra Linnaeus, 1758"
+moni1000_forest_bird,ウグイス|Cettia diphone,ウグイス,Cettia diphone,common:taxon:gbif.2493005,sci,"Cettia diphone (Kittlitz, 1830)"
+moni1000_forest_bird,ウグイス|Horornis diphone,ウグイス,Horornis diphone,common:taxon:gbif.8351644,sci,"Horornis diphone (Kittlitz, 1830) / registry の和名側は別の taxon（common:taxon:gbif.2493005 Cettia diphone (Kittlitz, 1830)）。学名を採る"
+moni1000_forest_bird,ウソ|Pyrrhula pyrrhula,ウソ,Pyrrhula pyrrhula,common:taxon:gbif.2494543,sci,"Pyrrhula pyrrhula (Linnaeus, 1758)"
+moni1000_forest_bird,エゾビタキ|Muscicapa griseisticta,エゾビタキ,Muscicapa griseisticta,common:taxon:gbif.2492571,sci,"Muscicapa griseisticta (Swinhoe, 1861)"
+moni1000_forest_bird,エゾムシクイ|Phylloscopus borealoides,エゾムシクイ,Phylloscopus borealoides,common:taxon:gbif.2493054,sci,"Phylloscopus borealoides Portenko, 1950"
+moni1000_forest_bird,エナガ|Aegithalos caudatus,エナガ,Aegithalos caudatus,common:taxon:gbif.2495000,sci,"Aegithalos caudatus (Linnaeus, 1758)"
+moni1000_forest_bird,オオアカゲラ|Dendrocopos leucotos,オオアカゲラ,Dendrocopos leucotos,common:taxon:gbif.2477927,sci,"Dendrocopos leucotos (Bechstein, 1802)"
+moni1000_forest_bird,オオバン|Fulica atra,オオバン,Fulica atra,common:taxon:gbif.2474377,sci,"Fulica atra Linnaeus, 1758"
+moni1000_forest_bird,オオムシクイ|Phylloscopus examinandus,オオムシクイ,Phylloscopus examinandus,common:taxon:gbif.5845801,sci,"Phylloscopus examinandus Stresemann, 1913"
+moni1000_forest_bird,オオルリ|Cyanoptila cyanomelana,オオルリ,Cyanoptila cyanomelana,common:taxon:gbif.2492391,sci,"Cyanoptila cyanomelana (Temminck, 1829)"
+moni1000_forest_bird,カイツブリ|Tachybaptus ruficollis,カイツブリ,Tachybaptus ruficollis,common:taxon:gbif.2482048,sci,"Tachybaptus ruficollis (Pallas, 1764)"
+moni1000_forest_bird,カケス|Garrulus glandarius,カケス,Garrulus glandarius,common:taxon:gbif.5229493,sci,"Garrulus glandarius (Linnaeus, 1758)"
+moni1000_forest_bird,カシラダカ|Emberiza rustica,カシラダカ,Emberiza rustica,common:taxon:gbif.2491582,sci,"Emberiza rustica Pallas, 1776"
+moni1000_forest_bird,カッコウ|Cuculus canorus,カッコウ,Cuculus canorus,common:taxon:gbif.5231918,sci,"Cuculus canorus Linnaeus, 1758"
+moni1000_forest_bird,カヤクグリ|Prunella rubida,カヤクグリ,Prunella rubida,common:taxon:gbif.5231769,sci,"Prunella rubida (Temminck & Schlegel, 1845)"
+moni1000_forest_bird,カラス科|,カラス科,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_forest_bird,カラ類|,カラ類,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_forest_bird,カルガモ|Anas zonorhyncha,カルガモ,Anas zonorhyncha,common:taxon:gbif.2498061,sci,"Anas zonorhyncha Swinhoe, 1866"
+moni1000_forest_bird,カワウ|Phalacrocorax carbo,カワウ,Phalacrocorax carbo,common:taxon:gbif.2481890,sci,"Phalacrocorax carbo (Linnaeus, 1758)"
+moni1000_forest_bird,カワガラス|Cinclus pallasii,カワガラス,Cinclus pallasii,common:taxon:gbif.5231774,sci,"Cinclus pallasii Temminck, 1820"
+moni1000_forest_bird,カワセミ|Alcedo atthis,カワセミ,Alcedo atthis,common:taxon:gbif.2475532,sci,"Alcedo atthis (Linnaeus, 1758)"
+moni1000_forest_bird,カワラヒワ|Carduelis sinica,カワラヒワ,Carduelis sinica,common:taxon:gbif.2494716,sci,"Carduelis sinica (Linnaeus, 1766)"
+moni1000_forest_bird,カワラヒワ|Chloris sinica,カワラヒワ,Chloris sinica,common:taxon:gbif.6101015,sci,"Chloris sinica (Linnaeus, 1766) / registry の和名側は別の taxon（common:taxon:gbif.2494716 Carduelis sinica (Linnaeus, 1766)）。学名を採る"
+moni1000_forest_bird,カンムリカイツブリ|Podiceps cristatus,カンムリカイツブリ,Podiceps cristatus,common:taxon:gbif.2482054,sci,"Podiceps cristatus (Linnaeus, 1758)"
+moni1000_forest_bird,ガビチョウ|Garrulax canorus,ガビチョウ,Garrulax canorus,common:taxon:gbif.2493479,sci,"Garrulax canorus (Linnaeus, 1758)"
+moni1000_forest_bird,キクイタダキ|Regulus regulus,キクイタダキ,Regulus regulus,common:taxon:gbif.2484596,sci,"Regulus regulus (Linnaeus, 1758)"
+moni1000_forest_bird,キジ|Phasianus versicolor,キジ,Phasianus versicolor,common:taxon:gbif.5227775,sci,"Phasianus versicolor Vieillot, 1825"
+moni1000_forest_bird,キジバト|Streptopelia orientalis,キジバト,Streptopelia orientalis,common:taxon:gbif.2495681,sci,"Streptopelia orientalis (Latham, 1790)"
+moni1000_forest_bird,キセキレイ|Motacilla cinerea,キセキレイ,Motacilla cinerea,common:taxon:gbif.2490310,sci,"Motacilla cinerea Tunstall, 1771"
+moni1000_forest_bird,キツツキ科|,キツツキ科,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_forest_bird,キバシリ|Certhia familiaris,キバシリ,Certhia familiaris,common:taxon:gbif.2487603,sci,"Certhia familiaris Linnaeus, 1758"
+moni1000_forest_bird,キビタキ|Ficedula narcissina,キビタキ,Ficedula narcissina,common:taxon:gbif.5231288,sci,"Ficedula narcissina (Temminck, 1836)"
+moni1000_forest_bird,クロジ|Emberiza variabilis,クロジ,Emberiza variabilis,common:taxon:gbif.2491545,sci,"Emberiza variabilis Temminck, 1836"
+moni1000_forest_bird,クロツグミ|Turdus cardis,クロツグミ,Turdus cardis,common:taxon:gbif.2490755,sci,"Turdus cardis Temminck, 1831"
+moni1000_forest_bird,コガラ|Poecile montanus,コガラ,Poecile montanus,common:taxon:gbif.2487866,sci,"Poecile montanus (Conrad von Baldenstein, 1827)"
+moni1000_forest_bird,コゲラ|Dendrocopos kizuki,コゲラ,Dendrocopos kizuki,common:taxon:gbif.2477900,sci,"Dendrocopos kizuki (Temminck, 1836)"
+moni1000_forest_bird,コゲラ|Yungipicus kizuki,コゲラ,Yungipicus kizuki,common:taxon:gbif.9178169,sci,"Yungipicus kizuki (Temminck, 1836)"
+moni1000_forest_bird,コサメビタキ|Muscicapa dauurica,コサメビタキ,Muscicapa dauurica,common:taxon:gbif.2492577,sci,"Muscicapa dauurica Pallas, 1811"
+moni1000_forest_bird,コジュケイ|Bambusicola thoracicus,コジュケイ,Bambusicola thoracicus,common:taxon:gbif.5227939,sci,"Bambusicola thoracicus (Temminck, 1815)"
+moni1000_forest_bird,コノハズク|Otus sunia,コノハズク,Otus sunia,,exclude:unresolved_taxon,registry に和名も学名も無い
+moni1000_forest_bird,コマドリ|Luscinia akahige,コマドリ,Luscinia akahige,,exclude:unresolved_taxon,registry に和名も学名も無い
+moni1000_forest_bird,コルリ|Larvivora cyane,コルリ,Larvivora cyane,common:taxon:gbif.7341250,sci,"Larvivora cyane (Pallas, 1776)"
+moni1000_forest_bird,コルリ|Luscinia cyane,コルリ,Luscinia cyane,common:taxon:gbif.2492543,sci,"Luscinia cyane (Pallas, 1776)"
+moni1000_forest_bird,ゴジュウカラ|Sitta europaea,ゴジュウカラ,Sitta europaea,common:taxon:gbif.2484916,sci,"Sitta europaea Linnaeus, 1758"
+moni1000_forest_bird,サンショウクイ|Pericrocotus divaricatus,サンショウクイ,Pericrocotus divaricatus,common:taxon:gbif.2486818,sci,"Pericrocotus divaricatus (Raffles, 1822)"
+moni1000_forest_bird,サンショウクイ科|,サンショウクイ科,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_forest_bird,シジュウカラ|Parus cinereus,シジュウカラ,Parus cinereus,common:taxon:gbif.6101070,sci,"Parus cinereus Vieillot, 1818"
+moni1000_forest_bird,シジュウカラ|Parus major,シジュウカラ,Parus major,common:taxon:gbif.9705453,sci,"Parus major Linnaeus, 1758"
+moni1000_forest_bird,シジュウカラ|Parus minor,シジュウカラ,Parus minor,common:taxon:gbif.5844847,sci,"Parus minor Temminck & Schlegel, 1848"
+moni1000_forest_bird,シジュウカラ科|,シジュウカラ科,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_forest_bird,シメ|Coccothraustes coccothraustes,シメ,Coccothraustes coccothraustes,common:taxon:gbif.2494329,sci,"Coccothraustes coccothraustes (Linnaeus, 1758)"
+moni1000_forest_bird,シロハラ|Turdus pallidus,シロハラ,Turdus pallidus,common:taxon:gbif.2490773,sci,"Turdus pallidus Gmelin, 1789"
+moni1000_forest_bird,ジュウイチ|Hierococcyx hyperythrus,ジュウイチ,Hierococcyx hyperythrus,common:taxon:gbif.6085657,sci,"Hierococcyx hyperythrus (Gould, 1856)"
+moni1000_forest_bird,ジョウビタキ|Phoenicurus auroreus,ジョウビタキ,Phoenicurus auroreus,common:taxon:gbif.5231223,sci,"Phoenicurus auroreus (Pallas, 1776)"
+moni1000_forest_bird,ジョウビタキ・ルリビタキ|,ジョウビタキ・ルリビタキ,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_forest_bird,スズメ|Passer montanus,スズメ,Passer montanus,common:taxon:gbif.5231198,sci,"Passer montanus (Linnaeus, 1758)"
+moni1000_forest_bird,セグロカッコウ|Cuculus micropterus,セグロカッコウ,Cuculus micropterus,,exclude:unresolved_taxon,registry に和名も学名も無い
+moni1000_forest_bird,センダイムシクイ|Phylloscopus coronatus,センダイムシクイ,Phylloscopus coronatus,common:taxon:gbif.2493060,sci,"Phylloscopus coronatus (Temminck & Schlegel, 1847)"
+moni1000_forest_bird,ソウシチョウ|Leiothrix lutea,ソウシチョウ,Leiothrix lutea,common:taxon:gbif.5231398,sci,"Leiothrix lutea (Scopoli, 1786)"
+moni1000_forest_bird,タカ科|,タカ科,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_forest_bird,チョウゲンボウ|Falco tinnunculus,チョウゲンボウ,Falco tinnunculus,common:taxon:gbif.9616058,sci,"Falco tinnunculus Linnaeus, 1758"
+moni1000_forest_bird,ツグミ|Turdus eunomus,ツグミ,Turdus eunomus,common:taxon:gbif.9615912,sci,"Turdus eunomus Temminck, 1831 / registry の和名側は別の taxon（common:taxon:gbif.8294007 Turdus naumanni Temminck, 1820）。学名を採る"
+moni1000_forest_bird,ツグミ|Turdus naumanni,ツグミ,Turdus naumanni,common:taxon:gbif.8294007,sci,"Turdus naumanni Temminck, 1820"
+moni1000_forest_bird,ツグミ科|,ツグミ科,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_forest_bird,ツツドリ|Cuculus optatus,ツツドリ,Cuculus optatus,common:taxon:gbif.5231898,sci,"Cuculus optatus Gould, 1845 / registry の和名側は別の taxon（common:taxon:gbif.9548093 Cuculus saturatus Blyth, 1843）。学名を採る"
+moni1000_forest_bird,ツバメ|Hirundo rustica,ツバメ,Hirundo rustica,common:taxon:gbif.9515886,sci,"Hirundo rustica Linnaeus, 1758"
+moni1000_forest_bird,トビ|Milvus migrans,トビ,Milvus migrans,common:taxon:gbif.5229167,sci,"Milvus migrans (Boddaert, 1783)"
+moni1000_forest_bird,トラツグミ|Zoothera aurea,トラツグミ,Zoothera aurea,common:taxon:gbif.4408785,sci,"Zoothera aurea (Holandre, 1825)"
+moni1000_forest_bird,トラツグミ|Zoothera dauma,トラツグミ,Zoothera dauma,common:taxon:gbif.2490890,sci,"Zoothera dauma (Latham, 1790)"
+moni1000_forest_bird,ノスリ|Buteo buteo,ノスリ,Buteo buteo,common:taxon:gbif.2480537,sci,"Buteo buteo (Linnaeus, 1758)"
+moni1000_forest_bird,ハイタカ|Accipiter nisus,ハイタカ,Accipiter nisus,common:taxon:gbif.2480637,sci,"Accipiter nisus (Linnaeus, 1758)"
+moni1000_forest_bird,ハギマシコ|Leucosticte arctoa,ハギマシコ,Leucosticte arctoa,common:taxon:gbif.2494383,sci,"Leucosticte arctoa (Pallas, 1811)"
+moni1000_forest_bird,ハクセキレイ|Motacilla alba,ハクセキレイ,Motacilla alba,common:taxon:gbif.9687165,sci,"Motacilla alba Linnaeus, 1758"
+moni1000_forest_bird,ハシブトガラス|Corvus macrorhynchos,ハシブトガラス,Corvus macrorhynchos,common:taxon:gbif.2482487,sci,"Corvus macrorhynchos Wagler, 1827"
+moni1000_forest_bird,ハシボソガラス|Corvus corone,ハシボソガラス,Corvus corone,common:taxon:gbif.9409796,sci,"Corvus corone Linnaeus, 1758"
+moni1000_forest_bird,ヒガラ|Parus ater,ヒガラ,Parus ater,common:taxon:gbif.2487871,ja_paired_sci,同じ和名に学名で決まった別の行がある（学名の出典の語から）
+moni1000_forest_bird,ヒガラ|Periparus ater,ヒガラ,Periparus ater,common:taxon:gbif.2487871,sci,"Periparus ater (Linnaeus, 1758)"
+moni1000_forest_bird,ヒタキ科|,ヒタキ科,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_forest_bird,ヒタキ類|,ヒタキ類,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_forest_bird,ヒメアマツバメ|Apus nipalensis,ヒメアマツバメ,Apus nipalensis,common:taxon:gbif.5228679,sci,"Apus nipalensis (Hodgson, 1837)"
+moni1000_forest_bird,ヒヨドリ|Hypsipetes amaurotis,ヒヨドリ,Hypsipetes amaurotis,common:taxon:gbif.7342055,sci,"Hypsipetes amaurotis (Temminck, 1830)"
+moni1000_forest_bird,ヒレンジャク|Bombycilla japonica,ヒレンジャク,Bombycilla japonica,common:taxon:gbif.2484608,sci,"Bombycilla japonica (Siebold, 1824)"
+moni1000_forest_bird,ビンズイ|Anthus hodgsoni,ビンズイ,Anthus hodgsoni,common:taxon:gbif.2490244,sci,"Anthus hodgsoni Richmond, 1907"
+moni1000_forest_bird,フクロウ?|,フクロウ？,,common:taxon:gbif.2497509,ja_unique,"Strix uralensis Pallas, 1771"
+moni1000_forest_bird,フクロウ|Strix uralensis,フクロウ,Strix uralensis,common:taxon:gbif.2497509,sci,"Strix uralensis Pallas, 1771"
+moni1000_forest_bird,ベニマシコ|Uragus sibiricus,ベニマシコ,Uragus sibiricus,,exclude:unresolved_taxon,registry に和名も学名も無い
+moni1000_forest_bird,ホオジロ|Emberiza cioides,ホオジロ,Emberiza cioides,common:taxon:gbif.2491538,sci,"Emberiza cioides J.F.Brandt, 1843"
+moni1000_forest_bird,ホオジロ科|,ホオジロ科,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_forest_bird,ホトトギス|Cuculus poliocephalus,ホトトギス,Cuculus poliocephalus,common:taxon:gbif.5231927,sci,"Cuculus poliocephalus Latham, 1790"
+moni1000_forest_bird,マガモ|Anas platyrhynchos,マガモ,Anas platyrhynchos,common:taxon:gbif.9761484,sci,"Anas platyrhynchos Linnaeus, 1758"
+moni1000_forest_bird,マヒワ|Carduelis spinus,マヒワ,Carduelis spinus,common:taxon:gbif.2494701,sci,"Carduelis spinus (Linnaeus, 1758)"
+moni1000_forest_bird,マヒワ|Spinus spinus,マヒワ,Spinus spinus,common:taxon:gbif.6092830,sci,"Spinus spinus (Linnaeus, 1758) / registry の和名側は別の taxon（common:taxon:gbif.2494701 Carduelis spinus (Linnaeus, 1758)）。学名を採る"
+moni1000_forest_bird,マミジロ|Zoothera sibirica,マミジロ,Zoothera sibirica,,exclude:unresolved_taxon,registry に和名も学名も無い
+moni1000_forest_bird,ミサゴ|Pandion haliaetus,ミサゴ,Pandion haliaetus,common:taxon:gbif.2480726,sci,"Pandion haliaetus (Linnaeus, 1758)"
+moni1000_forest_bird,ミソサザイ?|,ミソサザイ？,,common:taxon:gbif.5231438,ja_unique,"Troglodytes troglodytes (Linnaeus, 1758)"
+moni1000_forest_bird,ミソサザイ|Troglodytes troglodytes,ミソサザイ,Troglodytes troglodytes,common:taxon:gbif.5231438,sci,"Troglodytes troglodytes (Linnaeus, 1758)"
+moni1000_forest_bird,ムクドリ|Spodiopsar cineraceus,ムクドリ,Spodiopsar cineraceus,common:taxon:gbif.6100944,sci,"Spodiopsar cineraceus (Temminck, 1835)"
+moni1000_forest_bird,メジロ|Zosterops japonicus,メジロ,Zosterops japonicus,common:taxon:gbif.9300456,sci,"Zosterops japonicus Temminck & Schlegel, 1845"
+moni1000_forest_bird,メボソムシクイ|Phylloscopus xanthodryas,メボソムシクイ,Phylloscopus xanthodryas,common:taxon:gbif.5845803,sci,"Phylloscopus xanthodryas (Swinhoe, 1863) / registry の和名側は別の taxon（common:taxon:gbif.2493071 Phylloscopus borealis (J.H.Blasius, 1858)）。学名を採る"
+moni1000_forest_bird,モズ|Lanius bucephalus,モズ,Lanius bucephalus,common:taxon:gbif.2492850,sci,"Lanius bucephalus Temminck & Schlegel, 1845"
+moni1000_forest_bird,ヤブサメ|Urosphena squameiceps,ヤブサメ,Urosphena squameiceps,common:taxon:gbif.2493223,sci,"Urosphena squameiceps (Swinhoe, 1863)"
+moni1000_forest_bird,ヤマガラ|Parus varius,ヤマガラ,Parus varius,common:taxon:gbif.5788757,sci,Parus varius
+moni1000_forest_bird,ヤマガラ|Poecile varius,ヤマガラ,Poecile varius,common:taxon:gbif.6101068,sci,"Poecile varius (Temminck & Schlegel, 1848)"
+moni1000_forest_bird,ヤマガラ|Sittiparus varius,ヤマガラ,Sittiparus varius,common:taxon:gbif.7341813,sci,"Sittiparus varius (Temminck & Schlegel, 1847)"
+moni1000_forest_bird,ヤマセミ|Megaceryle lugubris,ヤマセミ,Megaceryle lugubris,common:taxon:gbif.2475476,sci,"Megaceryle lugubris (Temminck, 1834)"
+moni1000_forest_bird,ヤマドリ|Syrmaticus soemmerringii,ヤマドリ,Syrmaticus soemmerringii,common:taxon:gbif.2473484,sci,"Syrmaticus soemmerringii (Temminck, 1830) / registry の和名側は別の taxon（common:taxon:gbif.12359882 Phasianus soemmerringii Temminck, 1830）。学名を採る"
+moni1000_forest_bird,ヨタカ|Caprimulgus indicus,ヨタカ,Caprimulgus indicus,,exclude:unresolved_taxon,registry に和名も学名も無い
+moni1000_forest_bird,リュウキュウサンショウクイ|Pericrocotus tegimae,リュウキュウサンショウクイ,Pericrocotus tegimae,common:taxon:gbif.2486816,sci,"Pericrocotus tegimae Stejneger, 1887"
+moni1000_forest_bird,ルリビタキ|Tarsiger cyanurus,ルリビタキ,Tarsiger cyanurus,common:taxon:gbif.2492509,sci,"Tarsiger cyanurus (Pallas, 1773)"
+moni1000_forest_bird,不明|,不明,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_forest_bird,大型ツグミ類|,大型ツグミ類,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_forest_bird,小型ツグミ類|,小型ツグミ類,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_satochi_mammal,アナグマ,アナグマ,,,exclude:unresolved_taxon,registry に和名も学名も無い
+moni1000_satochi_mammal,アライグマ,アライグマ,,common:taxon:gbif.5218786,ja_unique,"Procyon lotor (Linnaeus, 1758)"
+moni1000_satochi_mammal,イタチ類,イタチ類,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_satochi_mammal,タイワンリス,タイワンリス,,common:taxon:inat.45952,ja_unique,Callosciurus erythraeus
+moni1000_satochi_mammal,タヌキ,タヌキ,,,exclude:unresolved_taxon,registry に和名も学名も無い
+moni1000_satochi_mammal,ネコ,ネコ,,,exclude:non_wild,家畜・家禽・人
+moni1000_satochi_mammal,ネズミ類,ネズミ類,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_satochi_mammal,ハクビシン,ハクビシン,,common:taxon:gbif.2434654,ja_unique,"Paguma larvata (C.E.H.Smith, 1827)"
+moni1000_satochi_mammal,ヒト,ヒト,,,exclude:non_wild,家畜・家禽・人
+moni1000_satochi_mammal,哺乳類(同定不能),哺乳類（同定不能）,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
+moni1000_coast_shorebird,アオアシシギ|Tringa nebularia,アオアシシギ,Tringa nebularia,common:taxon:gbif.2481726,sci,"Tringa nebularia (Gunnerus, 1767)"
+moni1000_coast_shorebird,アメリカウズラシギ|Calidris melanotos,アメリカウズラシギ,Calidris melanotos,,exclude:unresolved_taxon,registry に和名も学名も無い
+moni1000_coast_shorebird,イカルチドリ|Charadrius placidus,イカルチドリ,Charadrius placidus,common:taxon:gbif.2480322,sci,"Charadrius placidus J.E.Gray & G.R.Gray, 1863"
+moni1000_coast_shorebird,イソシギ|Actitis hypoleucos,イソシギ,Actitis hypoleucos,common:taxon:gbif.2481800,sci,"Actitis hypoleucos (Linnaeus, 1758)"
+moni1000_coast_shorebird,エリマキシギ|Calidris pugnax,エリマキシギ,Calidris pugnax,common:taxon:gbif.8250742,sci,"Calidris pugnax (Linnaeus, 1758)"
+moni1000_coast_shorebird,オオジシギ|Gallinago hardwickii,オオジシギ,Gallinago hardwickii,common:taxon:gbif.2481830,sci,"Gallinago hardwickii (J.E.Gray, 1831)"
+moni1000_coast_shorebird,オオソリハシシギ|Limosa lapponica,オオソリハシシギ,Limosa lapponica,common:taxon:gbif.2481681,sci,"Limosa lapponica (Linnaeus, 1758)"
+moni1000_coast_shorebird,オグロシギ|Limosa limosa,オグロシギ,Limosa limosa,common:taxon:gbif.2481685,sci,"Limosa limosa (Linnaeus, 1758)"
+moni1000_coast_shorebird,オジロトウネン|Calidris temminckii,オジロトウネン,Calidris temminckii,common:taxon:gbif.2481740,sci,"Calidris temminckii (Leisler, 1812)"
+moni1000_coast_shorebird,オバシギ|Calidris tenuirostris,オバシギ,Calidris tenuirostris,common:taxon:gbif.2481768,sci,"Calidris tenuirostris (Horsfield, 1821)"
+moni1000_coast_shorebird,キアシシギ|Tringa brevipes,キアシシギ,Tringa brevipes,common:taxon:gbif.2481722,sci,"Tringa brevipes (Vieillot, 1816)"
+moni1000_coast_shorebird,キョウジョシギ|Arenaria interpres,キョウジョシギ,Arenaria interpres,common:taxon:gbif.2481776,sci,"Arenaria interpres (Linnaeus, 1758)"
+moni1000_coast_shorebird,キリアイ|Calidris falcinellus,キリアイ,Calidris falcinellus,common:taxon:gbif.7537888,sci,"Calidris falcinellus (Pontoppidan, 1763)"
+moni1000_coast_shorebird,クサシギ|Tringa ochropus,クサシギ,Tringa ochropus,common:taxon:gbif.2481728,sci,"Tringa ochropus Linnaeus, 1758"
+moni1000_coast_shorebird,ケリ|Vanellus cinereus,ケリ,Vanellus cinereus,common:taxon:gbif.5229145,sci,"Vanellus cinereus (Blyth, 1842)"
+moni1000_coast_shorebird,コアオアシシギ|Tringa stagnatilis,コアオアシシギ,Tringa stagnatilis,common:taxon:gbif.2481719,sci,"Tringa stagnatilis (Bechstein, 1803)"
+moni1000_coast_shorebird,コチドリ|Charadrius dubius,コチドリ,Charadrius dubius,common:taxon:gbif.7937336,sci,"Charadrius dubius Scopoli, 1786"
+moni1000_coast_shorebird,シロチドリ|Charadrius alexandrinus,シロチドリ,Charadrius alexandrinus,common:taxon:gbif.2480311,sci,"Charadrius alexandrinus Linnaeus, 1758"
+moni1000_coast_shorebird,セイタカシギ|Himantopus himantopus,セイタカシギ,Himantopus himantopus,common:taxon:gbif.5229126,sci,"Himantopus himantopus (Linnaeus, 1758)"
+moni1000_coast_shorebird,ソリハシシギ|Xenus cinereus,ソリハシシギ,Xenus cinereus,common:taxon:gbif.2481703,sci,"Xenus cinereus (Güldenstädt, 1775)"
+moni1000_coast_shorebird,タカブシギ|Tringa glareola,タカブシギ,Tringa glareola,common:taxon:gbif.2481713,sci,"Tringa glareola Linnaeus, 1758"
+moni1000_coast_shorebird,タゲリ|Vanellus vanellus,タゲリ,Vanellus vanellus,common:taxon:gbif.2480242,sci,"Vanellus vanellus (Linnaeus, 1758)"
+moni1000_coast_shorebird,タシギ|Gallinago gallinago,タシギ,Gallinago gallinago,common:taxon:gbif.2481819,sci,"Gallinago gallinago (Linnaeus, 1758)"
+moni1000_coast_shorebird,ダイシャクシギ|Numenius arquata,ダイシャクシギ,Numenius arquata,common:taxon:gbif.2481792,sci,"Numenius arquata (Linnaeus, 1758)"
+moni1000_coast_shorebird,ダイゼン|Pluvialis squatarola,ダイゼン,Pluvialis squatarola,common:taxon:gbif.2480327,sci,"Pluvialis squatarola (Linnaeus, 1758)"
+moni1000_coast_shorebird,チュウシャクシギ|Numenius phaeopus,チュウシャクシギ,Numenius phaeopus,common:taxon:gbif.2481784,sci,"Numenius phaeopus (Linnaeus, 1758)"
+moni1000_coast_shorebird,ツルシギ|Tringa erythropus,ツルシギ,Tringa erythropus,common:taxon:gbif.2481725,sci,"Tringa erythropus (Pallas, 1764)"
+moni1000_coast_shorebird,トウネン|Calidris ruficollis,トウネン,Calidris ruficollis,common:taxon:gbif.2481746,sci,"Calidris ruficollis (Pallas, 1776)"
+moni1000_coast_shorebird,ハマシギ|Calidris alpina,ハマシギ,Calidris alpina,common:taxon:gbif.2481759,sci,"Calidris alpina (Linnaeus, 1758)"
+moni1000_coast_shorebird,ハリオシギ|Gallinago stenura,ハリオシギ,Gallinago stenura,common:taxon:gbif.2481828,sci,"Gallinago stenura (Bonaparte, 1831)"
+moni1000_coast_shorebird,ヒバリシギ|Calidris subminuta,ヒバリシギ,Calidris subminuta,common:taxon:gbif.2481750,sci,"Calidris subminuta (Middendorff, 1853)"
+moni1000_coast_shorebird,ホウロクシギ|Numenius madagascariensis,ホウロクシギ,Numenius madagascariensis,common:taxon:gbif.2481791,sci,"Numenius madagascariensis (Linnaeus, 1766)"
+moni1000_coast_shorebird,ムナグロ|Pluvialis fulva,ムナグロ,Pluvialis fulva,common:taxon:gbif.2480331,sci,"Pluvialis fulva (J.F.Gmelin, 1789)"
+moni1000_coast_shorebird,メダイチドリ|Charadrius mongolus,メダイチドリ,Charadrius mongolus,common:taxon:gbif.9722670,sci,"Charadrius mongolus Pallas, 1776"
