@@ -14,6 +14,9 @@ import { VARIABLE_LABEL } from "@/lib/registry/generated-client";
 import { SiteMapLink } from "@/components/sites/SiteMapLink";
 import { MUNICIPALITY_LABEL } from "@/lib/municipality";
 import { useRegionJson } from "@/components/useRegionJson";
+import { useRegion } from "@/components/useRegion";
+import { regionUi } from "@/lib/region";
+import { GLOBAL_DEFAULT_VARIABLE, pickVariable, pickWater } from "@/lib/timeseries-defaults";
 import { useSetPageContext } from "@/components/assistant/PageContextProvider";
 
 type Basis = "day" | "fiscal_year" | "year";
@@ -80,8 +83,11 @@ export function TimeseriesExplorer({ waters, vars }: { waters: WaterBody[]; vars
     const m = sp.get("mode");
     return m === "zone" || m === "season" ? m : "water";
   });
-  const [variableId, setVariableId] = React.useState(() => sp.get("variable") ?? "common:variable:water.bod");
-  const [waterPref, setWater] = React.useState(() => sp.get("water") ?? "境川（１）");
+  const regionUiDef = regionUi(useRegion());
+  const [variablePref, setVariableId] = React.useState(() => sp.get("variable") ?? "");
+  const [waterPref, setWater] = React.useState(() => sp.get("water") ?? regionUiDef?.highlightWater ?? "");
+  // 項目は「この地域の項目一覧にあるもの」だけを採る（神奈川の既定 BOD が奄美に無くても他地域の表示にならない）。
+  const variableId = pickVariable(vars, [variablePref, regionUiDef?.defaultVariable, GLOBAL_DEFAULT_VARIABLE]);
   const [grainPref, setGrainPref] = React.useState<"year" | "month">(() => (sp.get("grain") === "month" ? "month" : "year"));
   const [basisPref, setBasisPref] = React.useState<Basis>(() => {
     const b = sp.get("basis");
@@ -106,10 +112,8 @@ export function TimeseriesExplorer({ waters, vars }: { waters: WaterBody[]; vars
   );
   const availableWaters = waterOpts.data?.waters ?? waters;
   // 選んだ項目のデータが今の水域に無ければ、地点数が最も多い水域を既定にする（状態は書き換えない）
-  const water =
-    availableWaters.length === 0 || availableWaters.some((w) => w.name === waterPref)
-      ? waterPref
-      : availableWaters[0].name;
+  // 一覧が空（この地域にその項目の水域が無い）なら null。他地域の水域名を残して問い合わせない。
+  const water = pickWater(availableWaters, waterPref);
 
   // アシスタントに渡すのは「今実際に描画されている値」。waterPref/basisPref という利用者の希望ではなく、
   // 上の自動補正を経た water/basis を渡す（ここを間違えると、画面に無いものをAIが語ることになる）。
@@ -118,7 +122,7 @@ export function TimeseriesExplorer({ waters, vars }: { waters: WaterBody[]; vars
     title: "時系列比較",
     mode,
     variableId,
-    water,
+    water: water ?? "",
     grain: mode === "season" ? "month" : mode === "zone" ? (basis === "fiscal_year" ? "fiscal_year" : "year") : grain,
     basis,
   });
@@ -157,7 +161,7 @@ export function TimeseriesExplorer({ waters, vars }: { waters: WaterBody[]; vars
             <span className="block text-[10.5px] text-muted mb-1">{MUNICIPALITY_LABEL}</span>
             <select
               className={inputCls + " w-56"}
-              value={water}
+              value={water ?? ""}
               onChange={(e) => {
                 setWater(e.target.value);
                 setHidden(new Set());
@@ -230,7 +234,10 @@ export function TimeseriesExplorer({ waters, vars }: { waters: WaterBody[]; vars
       </div>
 
       <div className="flex-1 overflow-y-auto thin-scroll p-4">
-        {mode === "water" && (
+        {mode === "water" && water === null && (
+          <p className="text-[13px] text-muted p-4">この地域には、この項目のデータがある水域がありません。別の項目を選んでください。</p>
+        )}
+        {mode === "water" && water !== null && (
           <WaterMode
             water={water}
             variableId={variableId}
