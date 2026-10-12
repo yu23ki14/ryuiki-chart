@@ -1,8 +1,9 @@
 """奄美の抽出（process_moni1000_amami）が空振りしないことのテスト。小さな CSV を tmp_path に作る。"""
-import pandas as pd
 import pytest
 
-import process_moni1000_amami as pa
+pd = pytest.importorskip("pandas")  # CI の reconcile 環境には pandas が無い
+
+import process_moni1000_amami as pa  # noqa: E402  (pandas を使うので importorskip の後)
 
 
 def write(path, df):
