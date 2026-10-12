@@ -8,6 +8,7 @@ export interface CoralSpotRow {
   cover_pct: number | null;
   cover_pct_raw: string | null;
   bleach_all_pct: number | null;
+  bleach_all_pct_raw: string | null;
 }
 
 export interface CoralYearSummary {
@@ -22,6 +23,8 @@ export interface CoralYearSummary {
   coverMean: number | null;
   /** 白化率（全体）が数値のスポット数 */
   bleachN: number;
+  /** 白化率（全体）が「<5」など下限表記のスポット数（平均には入れない） */
+  bleachBelowLimit: number;
   /** 白化率（全体）の平均（%）。無ければ null */
   bleachMean: number | null;
 }
@@ -45,7 +48,9 @@ export function summarizeCoralByYear(rows: readonly CoralSpotRow[]): CoralYearSu
     .map(([year, rs]) => {
       const cover = rs.map((r) => r.cover_pct).filter((v): v is number => v !== null && Number.isFinite(v));
       const bleach = rs.map((r) => r.bleach_all_pct).filter((v): v is number => v !== null && Number.isFinite(v));
-      const belowLimit = rs.filter((r) => r.cover_pct === null && (r.cover_pct_raw ?? "").trim().startsWith("<")).length;
+      const isBelow = (v: number | null, raw: string | null) => v === null && (raw ?? "").trim().startsWith("<");
+      const belowLimit = rs.filter((r) => isBelow(r.cover_pct, r.cover_pct_raw)).length;
+      const bleachBelowLimit = rs.filter((r) => isBelow(r.bleach_all_pct, r.bleach_all_pct_raw)).length;
       return {
         year,
         spots: rs.length,
@@ -53,6 +58,7 @@ export function summarizeCoralByYear(rows: readonly CoralSpotRow[]): CoralYearSu
         belowLimit,
         coverMean: mean(cover),
         bleachN: bleach.length,
+        bleachBelowLimit,
         bleachMean: mean(bleach),
       };
     });
@@ -60,22 +66,23 @@ export function summarizeCoralByYear(rows: readonly CoralSpotRow[]): CoralYearSu
 
 const SEA_FIXED = ["基準点", "監視点"];
 const SEA_LETTERS = "イロハニホヘト";
-const DIGITS = "０１２３４５６７８９";
+const SEA_DIGITS = "1234";
 
 /**
  * 海域の測定点（基準点１〜４、監視点イ〜ト）の並べ替えキー。基準点が先、監視点が後。
- * 数字は全角、監視点の記号はいろは順（コードポイント順ではロが後ろにずれる）。
- * 知らない名前は末尾（名前の文字列順）。
+ * 全角・半角は NFKC で揃える。接尾辞は 1 文字ちょうど（数字は 1〜4、記号はいろは順＝コードポイント順だとロが後ろにずれる）。
+ * それ以外（空・複数文字・知らない名前）は末尾（名前の文字列順）。
  */
-export function seaStationOrderKey(name: string): [number, number, string] {
+function seaStationOrderKey(name: string): [number, number, string] {
+  const n = name.normalize("NFKC");
   for (let i = 0; i < SEA_FIXED.length; i++) {
     const p = SEA_FIXED[i];
-    if (!name.startsWith(p)) continue;
-    const rest = name.slice(p.length);
-    const d = DIGITS.indexOf(rest);
-    const l = SEA_LETTERS.indexOf(rest);
-    const idx = d >= 0 ? d : l >= 0 ? l : 99;
-    return [i, idx, name];
+    if (!n.startsWith(p)) continue;
+    const rest = n.slice(p.length);
+    if (rest.length !== 1) break;
+    const idx = (i === 0 ? SEA_DIGITS : SEA_LETTERS).indexOf(rest);
+    if (idx >= 0) return [i, idx, name];
+    break;
   }
   return [99, 0, name];
 }

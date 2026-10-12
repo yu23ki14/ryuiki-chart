@@ -15,7 +15,7 @@ import { SiteMapLink } from "@/components/sites/SiteMapLink";
 import { MUNICIPALITY_LABEL } from "@/lib/municipality";
 import { useRegionJson } from "@/components/useRegionJson";
 import { useRegion } from "@/components/useRegion";
-import { regionUi } from "@/lib/region";
+import { highlightOf } from "@/lib/region";
 import { GLOBAL_DEFAULT_VARIABLE, pickVariable, pickWater } from "@/lib/timeseries-defaults";
 import { useSetPageContext } from "@/components/assistant/PageContextProvider";
 
@@ -83,11 +83,11 @@ export function TimeseriesExplorer({ waters, vars }: { waters: WaterBody[]; vars
     const m = sp.get("mode");
     return m === "zone" || m === "season" ? m : "water";
   });
-  const regionUiDef = regionUi(useRegion());
+  const highlight = highlightOf(useRegion());
   const [variablePref, setVariableId] = React.useState(() => sp.get("variable") ?? "");
-  const [waterPref, setWater] = React.useState(() => sp.get("water") ?? regionUiDef?.highlightWater ?? "");
+  const [waterPref, setWater] = React.useState(() => sp.get("water") ?? highlight?.water ?? "");
   // 項目は「この地域の項目一覧にあるもの」だけを採る（神奈川の既定 BOD が奄美に無くても他地域の表示にならない）。
-  const variableId = pickVariable(vars, [variablePref, regionUiDef?.defaultVariable, GLOBAL_DEFAULT_VARIABLE]);
+  const variableId = pickVariable(vars, [variablePref, highlight?.variableId, GLOBAL_DEFAULT_VARIABLE]);
   const [grainPref, setGrainPref] = React.useState<"year" | "month">(() => (sp.get("grain") === "month" ? "month" : "year"));
   const [basisPref, setBasisPref] = React.useState<Basis>(() => {
     const b = sp.get("basis");

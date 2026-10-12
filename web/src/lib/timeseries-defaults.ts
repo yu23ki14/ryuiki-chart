@@ -9,10 +9,10 @@ export function pickVariable(
   vars: readonly { variableId: string; n: number }[],
   candidates: readonly (string | null | undefined)[],
 ): string {
-  for (const c of candidates) {
-    if (c && vars.some((v) => v.variableId === c)) return c;
-  }
-  if (vars.length === 0) return candidates.find((c) => !!c) ?? GLOBAL_DEFAULT_VARIABLE;
+  const hit = candidates.find((c) => !!c && vars.some((v) => v.variableId === c));
+  if (hit) return hit;
+  // 一覧が空なら出すデータは無い。希望（無ければ全体の既定）をそのまま返す。
+  if (vars.length === 0) return candidates.find((c) => !!c) || GLOBAL_DEFAULT_VARIABLE;
   return vars.reduce((a, b) => (b.n > a.n ? b : a)).variableId;
 }
 

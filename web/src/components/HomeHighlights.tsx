@@ -8,13 +8,165 @@ import { ChartFrame, MiniTable } from "@/components/viz/ChartFrame";
 import { SERIES, ZONE_COLORS, DIVERGING, STATUS, INK } from "@/components/viz/palette";
 import { fmt } from "@/components/viz/scales";
 import { nf } from "@/components/ui";
-import { MAP_METRICS } from "@/lib/registry/generated-client";
+import { MAP_METRICS, VARIABLE_LABEL } from "@/lib/registry/generated-client";
 import { caveatBody } from "@/lib/registry/lookup-client";
 import { withRegion } from "@/components/region-url";
 import { AMAMI_STORY_HREF, AMAMI_STORY_LABEL, showAmamiStory } from "@/lib/stories/links";
-import { REGION_ALL, regionUi, type RegionFilter } from "@/lib/region";
+import { REGION_ALL, regionUi, highlightOf, type RegionFilter } from "@/lib/region";
 import { SiteMapLink } from "@/components/sites/SiteMapLink";
 import type { CoralYearSummary } from "@/lib/home-highlights";
+
+/** ② 年で比べる — サンゴ礁の被度（奄美。モニタリングサイト1000 SAN01）。年の範囲・下限表記の件数は読んだデータから出す。 */
+function CoralCard({ coral, region }: { coral: CoralYearSummary[]; region: RegionFilter }) {
+  const coralLines: LineSeries[] = React.useMemo(
+    () => [
+      { key: "cover", label: "サンゴ被度", color: SERIES[0], points: coral.map((c) => ({ x: c.year, y: c.coverMean, n: c.measured })) },
+      { key: "bleach", label: "白化率（全体）", color: STATUS.critical, points: coral.map((c) => ({ x: c.year, y: c.bleachMean, n: c.bleachN })) },
+    ],
+    [coral],
+  );
+  const first = coral[0]?.year;
+  const last = coral[coral.length - 1]?.year;
+  const belowCounts = coral.map((c) => c.belowLimit).filter((n) => n > 0);
+  const belowRange = belowCounts.length
+    ? Math.min(...belowCounts) === Math.max(...belowCounts)
+      ? `${belowCounts[0]}`
+      : `${Math.min(...belowCounts)}〜${Math.max(...belowCounts)}`
+    : "0";
+  const hasBleachBelow = coral.some((c) => c.bleachBelowLimit > 0);
+  return (
+    <ChartFrame
+      title={`② 年で比べる — サンゴ礁の被度（${first}〜${last}年度）`}
+      subtitle={`奄美大島とその周辺 ${Math.max(...coral.map((c) => c.spots))} スポットの、サンゴ被度と白化率（全体）のスポット平均。スポット調査（目視）`}
+      legend={coralLines.map((s) => ({ label: s.label, color: s.color }))}
+      height={190}
+      table={
+        <MiniTable
+          columns={["年度", "スポット数", "被度平均(%)", "被度<5%", "白化率<5%", "白化率平均(%)"]}
+          rows={coral.map((c) => [c.year, c.spots, c.coverMean === null ? "–" : fmt(c.coverMean), c.belowLimit, c.bleachBelowLimit, c.bleachMean === null ? "–" : fmt(c.bleachMean)])}
+        />
+      }
+      note={
+        <>
+          データは {last} 年度で止まっている。それ以降の状態はこの図からは言えない。被度が「&lt;5」のスポット（年に {belowRange} か所）{hasBleachBelow ? "と、白化率が「<5」のスポット" : ""}は平均に入れていないので、平均はやや高めに出る。
+        <span className="block mt-1">{caveatBody("moniCoral")}</span>
+          <span className="block mt-1">
+            出典: 環境省 モニタリングサイト1000 サンゴ礁調査（SAN01、スポットチェック法）。
+            <Link href={withRegion("/sources", region)} className="text-water underline ml-1">
+              出典一覧
+            </Link>
+          </span>
+        </>
+      }
+    >
+      <LineChart
+        series={coralLines}
+        height={190}
+        unit="%"
+        xFormat={(x) => String(Math.round(x))}
+        yZero
+      />
+    </ChartFrame>
+  );
+}
+
+/** ② 版で比べる — レッドリストの版間の動き。 */
+function RedlistCard({
+  redlist,
+  noFixedNarrative,
+  region,
+}: {
+  redlist: { list_year: number; list_name: string; taxon_group_ja: string; direction: string; n: number }[];
+  noFixedNarrative: boolean;
+  region: RegionFilter;
+}) {
+  const rlByYear = React.useMemo(() => {
+    const m = new Map<number, { 悪化: number; 改善: number; 横ばい: number }>();
+    for (const r of redlist) {
+      if (r.direction === "前回記載なし") continue;
+      const a = m.get(r.list_year) ?? { 悪化: 0, 改善: 0, 横ばい: 0 };
+      if (r.direction in a) a[r.direction as keyof typeof a] += r.n;
+      m.set(r.list_year, a);
+    }
+    return [...m.entries()].sort((a, b) => a[0] - b[0]);
+  }, [redlist]);
+  return (
+  <ChartFrame
+    title="② 版で比べる — レッドリストは20年でどう動いたか"
+    subtitle="2006年版から各版へ。カテゴリーが1段でも重くなった種を「悪化」と数える"
+    table={
+      <MiniTable
+        columns={["版", "悪化", "改善", "横ばい"]}
+        rows={rlByYear.map(([y, a]) => [`${y}年版`, a.悪化, a.改善, a.横ばい])}
+      />
+    }
+    note={
+      <>
+        {noFixedNarrative
+          ? "鹿児島県レッドリストは版が1つだけで、版間の比較は出せない。"
+          : "植物は改善が悪化を上回るのに対し、昆虫・クモは悪化が改善の 1.7 倍。分類群で向きが逆になっている。"}
+        <Link href={withRegion("/biota", region)} className="text-water underline ml-1">
+          版間比較を開く
+        </Link>
+      </>
+    }
+  >
+    <div className="px-3 py-2 space-y-3">
+      {rlByYear.map(([year, a]) => {
+        const total = a.悪化 + a.改善 + a.横ばい || 1;
+        return (
+          <div key={year}>
+            <div className="flex items-baseline gap-2 mb-1">
+              <span className="text-[12px] font-medium">{year}年版</span>
+              <span className="text-[10.5px] text-muted">
+                {year === 2026 ? "昆虫類・クモ類" : "植物ほか"}
+              </span>
+              <span className="ml-auto text-[10.5px] text-muted tnum">{nf(total)} 種</span>
+            </div>
+            <div className="flex h-5 gap-[2px] rounded overflow-hidden">
+              <div
+                style={{ width: `${(a.悪化 / total) * 100}%`, background: STATUS.critical }}
+                className="flex items-center justify-center"
+                title={`悪化 ${a.悪化} 種`}
+              >
+                {a.悪化 / total > 0.12 && <span className="text-[10px] text-white tnum">{a.悪化}</span>}
+              </div>
+              <div
+                style={{ width: `${(a.横ばい / total) * 100}%`, background: INK.axis }}
+                className="flex items-center justify-center"
+                title={`横ばい ${a.横ばい} 種`}
+              >
+                {a.横ばい / total > 0.12 && <span className="text-[10px] text-ink-2 tnum">{a.横ばい}</span>}
+              </div>
+              <div
+                style={{ width: `${(a.改善 / total) * 100}%`, background: SERIES[0] }}
+                className="flex items-center justify-center"
+                title={`改善 ${a.改善} 種`}
+              >
+                {a.改善 / total > 0.12 && <span className="text-[10px] text-white tnum">{a.改善}</span>}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+      <div className="flex gap-3 text-[10.5px] text-muted pt-1">
+        <span className="flex items-center gap-1">
+          <span className="w-2.5 h-2.5 rounded-sm" style={{ background: STATUS.critical }} />
+          悪化
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-2.5 h-2.5 rounded-sm" style={{ background: INK.axis }} />
+          横ばい
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-2.5 h-2.5 rounded-sm" style={{ background: SERIES[0] }} />
+          改善
+        </span>
+      </div>
+    </div>
+  </ChartFrame>
+  );
+}
 
 export function HomeHighlights({
   longitudinal,
@@ -35,39 +187,19 @@ export function HomeHighlights({
 }) {
   const ui = regionUi(region);
   const noFixedNarrative = !(ui?.hasFixedNarrative ?? true);
-  // ①の指標・並び（地域の宣言。無ければ境川の BOD・標高順）
-  const lg = ui?.highlightLongitudinal;
-  const showLongitudinal = !noFixedNarrative || (!!lg && longitudinal.length > 0);
-  const showCoral = !!ui?.homeCoral && coral.length > 0;
-  const indicator = lg?.indicator ?? "BOD";
+  // ①の水域・指標・並び（地域の宣言。'all' は神奈川の境川・BOD）。指標名は registry から引く。
+  const hl = highlightOf(region);
+  const indicator = hl ? (VARIABLE_LABEL[hl.variableId]?.short ?? hl.variableId) : "";
+  const byElevation = hl?.order !== "name";
   const timeseriesHref = withRegion(
-    lg
-      ? `/timeseries?${new URLSearchParams({ variable: lg.variableId, ...(ui?.highlightWater ? { water: ui.highlightWater } : {}) }).toString()}`
-      : "/timeseries",
+    hl ? `/timeseries?${new URLSearchParams({ variable: hl.variableId, water: hl.water }).toString()}` : "/timeseries",
     region,
   );
   // 土地利用の面積差の単位は地図指標と同じ registry の語彙（unit.yaml の km2）から引く
   const landuseUnit = MAP_METRICS.find((m) => m.id === "built_delta")?.unit ?? undefined;
   const unit = longitudinal[0]?.unit ?? null;
-
-  const rlByYear = React.useMemo(() => {
-    const m = new Map<number, { 悪化: number; 改善: number; 横ばい: number }>();
-    for (const r of redlist) {
-      if (r.direction === "前回記載なし") continue;
-      const a = m.get(r.list_year) ?? { 悪化: 0, 改善: 0, 横ばい: 0 };
-      if (r.direction in a) a[r.direction as keyof typeof a] += r.n;
-      m.set(r.list_year, a);
-    }
-    return [...m.entries()].sort((a, b) => a[0] - b[0]);
-  }, [redlist]);
-
-  const coralLines: LineSeries[] = React.useMemo(
-    () => [
-      { key: "cover", label: "サンゴ被度", color: SERIES[0], points: coral.map((c) => ({ x: c.year, y: c.coverMean, n: c.measured })) },
-      { key: "bleach", label: "白化率（全体）", color: STATUS.critical, points: coral.map((c) => ({ x: c.year, y: c.bleachMean, n: c.bleachN })) },
-    ],
-    [coral],
-  );
+  const waterShort = hl?.water.replace(/（.*）$/, "") ?? "";
+  const hasCoords = longitudinal.some((r) => r.lat != null && r.lon != null);
 
   const effortLines: LineSeries[] = React.useMemo(
     () => [
@@ -89,29 +221,33 @@ export function HomeHighlights({
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4">
-      {!showLongitudinal ? (
+      {longitudinal.length === 0 || !hl ? (
         <div className="card p-3.5">
           <div className="text-[13px] font-semibold">① 場所で比べる — 川を下ると水はどう変わるか</div>
           <p className="text-[11.5px] text-muted mt-1 leading-relaxed">
-            奄美大島には、この概況で固定して見せる川（神奈川では境川）をまだ決めていません。時系列比較で水域を選んでください。
-            <Link href={withRegion("/timeseries", region)} className="text-water underline ml-1">
+            {hl
+              ? `${hl.water} には、2020年以降の ${indicator} のデータがありません。時系列比較で別の水域や項目を選べます。`
+              : `${ui?.label ?? "この地域"}には、この概況で固定して見せる川をまだ決めていません。時系列比較で水域を選んでください。`}
+            <Link href={timeseriesHref} className="text-water underline ml-1">
               時系列比較を開く
             </Link>
           </p>
         </div>
-      ) : lg ? (
+      ) : (
         <ChartFrame
-          title={`① 場所で比べる — 島の周りの海（${lg.waterLabel}）`}
-          subtitle={`${longitudinal.length}地点の ${lg.indicator}（化学的酸素要求量、海域の環境基準の項目）の 2020年以降の平均。海は標高で並べられないので、基準点→監視点の順に並べてある`}
+          title={byElevation ? "① 場所で比べる — 川を下ると水はどう変わるか" : `① 場所で比べる — ${waterShort}の地点`}
+          subtitle={`${waterShort}の${longitudinal.length}地点、2020年以降の ${indicator} の平均。${byElevation ? "標高の高い順に並べてある" : "海は標高で並べられないので、名前の順に並べてある"}`}
           table={
             <MiniTable
-              columns={["地点", unit ? `${indicator}(${unit})` : indicator, "n"]}
-              rows={longitudinal.map((r) => [r.name, r.avg, r.n])}
+              columns={byElevation ? ["地点", "標高(m)", unit ? `${indicator}(${unit})` : indicator, "n"] : ["地点", unit ? `${indicator}(${unit})` : indicator, "n"]}
+              rows={longitudinal.map((r) => (byElevation ? [r.name, r.elevation_m, r.avg, r.n] : [r.name, r.avg, r.n]))}
             />
           }
           note={
             <>
-              値が大きいほど有機物による汚れが多い。地点の位置は名前の横のリンクから地図で確かめられる。
+              {noFixedNarrative
+                ? `値が大きいほど有機物による汚れが多い。${hasCoords ? "地点の位置は名前の横のリンクから地図で確かめられる。" : ""}`
+                : "上流の常矢橋と下流の大道橋で 5 倍近い差がある。この差は10年間ずっと同じ向きで出ている。"}
               <Link href={timeseriesHref} className="text-water underline ml-1">
                 時系列比較で見る
               </Link>
@@ -119,162 +255,28 @@ export function HomeHighlights({
           }
         >
           <BarChart
-            data={longitudinal.map((r) => ({ key: r.site_id, label: r.name, value: r.avg }))}
+            data={longitudinal.map((r) =>
+              byElevation
+                ? { key: r.site_id, label: `${r.name}（${Math.round(r.elevation_m)}m）`, value: r.avg, color: ZONE_COLORS[r.zone] ?? SERIES[0] }
+                : { key: r.site_id, label: r.name, value: r.avg },
+            )}
             unit={unit}
-            maxLabelWidth={90}
+            maxLabelWidth={byElevation ? 140 : 90}
           />
-          <ul className="px-3 pb-2 grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px] text-ink-2">
-            {longitudinal.map((r) => (
-              <li key={r.site_id} className="flex items-baseline justify-between gap-2">
-                <span>{r.name}</span>
-                <SiteMapLink name={r.name} lat={r.lat} lon={r.lon} />
-              </li>
-            ))}
-          </ul>
-        </ChartFrame>
-      ) : (
-        <ChartFrame
-          title="① 場所で比べる — 川を下ると水はどう変わるか"
-          subtitle="境川の5地点、2020年以降の BOD の平均。標高の高い順に並べてある"
-          table={
-            <MiniTable
-              columns={["地点", "標高(m)", unit ? `BOD(${unit})` : "BOD", "n"]}
-              rows={longitudinal.map((r) => [r.name, r.elevation_m, r.avg, r.n])}
-            />
-          }
-          note={
-            <>
-              上流の常矢橋と下流の大道橋で 5 倍近い差がある。この差は10年間ずっと同じ向きで出ている。
-              <Link href={withRegion("/timeseries", region)} className="text-water underline ml-1">
-                時系列比較で見る
-              </Link>
-            </>
-          }
-        >
-          <BarChart
-            data={longitudinal.map((r) => ({
-              key: r.site_id,
-              label: `${r.name}（${Math.round(r.elevation_m)}m）`,
-              value: r.avg,
-              color: ZONE_COLORS[r.zone] ?? SERIES[0],
-            }))}
-            unit={unit}
-            maxLabelWidth={140}
-          />
+          {!byElevation && hasCoords && (
+            <ul className="px-3 pb-2 grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px] text-ink-2">
+              {longitudinal.map((r) => (
+                <li key={r.site_id} className="flex items-baseline justify-between gap-2">
+                  <span>{r.name}</span>
+                  <SiteMapLink name={r.name} lat={r.lat} lon={r.lon} />
+                </li>
+              ))}
+            </ul>
+          )}
         </ChartFrame>
       )}
 
-      {showCoral && (
-        <ChartFrame
-          title="② 年で比べる — サンゴ礁の被度（2004〜2017年度）"
-          subtitle={`奄美大島とその周辺 ${Math.max(...coral.map((c) => c.spots))} スポットの、サンゴ被度と白化率（全体）のスポット平均。スポット調査（目視）`}
-          legend={coralLines.map((s) => ({ label: s.label, color: s.color }))}
-          height={190}
-          table={
-            <MiniTable
-              columns={["年度", "スポット数", "被度平均(%)", "被度<5%", "白化率平均(%)"]}
-              rows={coral.map((c) => [c.year, c.spots, c.coverMean === null ? "–" : fmt(c.coverMean), c.belowLimit, c.bleachMean === null ? "–" : fmt(c.bleachMean)])}
-            />
-          }
-          note={
-            <>
-              データは 2017 年度で止まっている。それ以降の状態はこの図からは言えない。被度が「&lt;5」のスポット（毎年 2〜6 か所）は平均に入れていないので、平均はやや高めに出る。2016〜2017 年度は白化率が急に上がっている。
-              <span className="block mt-1">{caveatBody("moniCoral")}</span>
-              <span className="block mt-1">
-                出典: 環境省 モニタリングサイト1000 サンゴ礁調査（SAN01、スポットチェック法）。
-                <Link href={withRegion("/sources", region)} className="text-water underline ml-1">
-                  出典一覧
-                </Link>
-              </span>
-            </>
-          }
-        >
-          <LineChart
-            series={coralLines}
-            height={190}
-            unit="%"
-            xFormat={(x) => String(Math.round(x))}
-            yZero
-          />
-        </ChartFrame>
-      )}
-
-      {!showCoral && (
-      <ChartFrame
-        title="② 版で比べる — レッドリストは20年でどう動いたか"
-        subtitle="2006年版から各版へ。カテゴリーが1段でも重くなった種を「悪化」と数える"
-        table={
-          <MiniTable
-            columns={["版", "悪化", "改善", "横ばい"]}
-            rows={rlByYear.map(([y, a]) => [`${y}年版`, a.悪化, a.改善, a.横ばい])}
-          />
-        }
-        note={
-          <>
-            {noFixedNarrative
-              ? "鹿児島県レッドリストは版が1つだけで、版間の比較は出せない。"
-              : "植物は改善が悪化を上回るのに対し、昆虫・クモは悪化が改善の 1.7 倍。分類群で向きが逆になっている。"}
-            <Link href={withRegion("/biota", region)} className="text-water underline ml-1">
-              版間比較を開く
-            </Link>
-          </>
-        }
-      >
-        <div className="px-3 py-2 space-y-3">
-          {rlByYear.map(([year, a]) => {
-            const total = a.悪化 + a.改善 + a.横ばい || 1;
-            return (
-              <div key={year}>
-                <div className="flex items-baseline gap-2 mb-1">
-                  <span className="text-[12px] font-medium">{year}年版</span>
-                  <span className="text-[10.5px] text-muted">
-                    {year === 2026 ? "昆虫類・クモ類" : "植物ほか"}
-                  </span>
-                  <span className="ml-auto text-[10.5px] text-muted tnum">{nf(total)} 種</span>
-                </div>
-                <div className="flex h-5 gap-[2px] rounded overflow-hidden">
-                  <div
-                    style={{ width: `${(a.悪化 / total) * 100}%`, background: STATUS.critical }}
-                    className="flex items-center justify-center"
-                    title={`悪化 ${a.悪化} 種`}
-                  >
-                    {a.悪化 / total > 0.12 && <span className="text-[10px] text-white tnum">{a.悪化}</span>}
-                  </div>
-                  <div
-                    style={{ width: `${(a.横ばい / total) * 100}%`, background: INK.axis }}
-                    className="flex items-center justify-center"
-                    title={`横ばい ${a.横ばい} 種`}
-                  >
-                    {a.横ばい / total > 0.12 && <span className="text-[10px] text-ink-2 tnum">{a.横ばい}</span>}
-                  </div>
-                  <div
-                    style={{ width: `${(a.改善 / total) * 100}%`, background: SERIES[0] }}
-                    className="flex items-center justify-center"
-                    title={`改善 ${a.改善} 種`}
-                  >
-                    {a.改善 / total > 0.12 && <span className="text-[10px] text-white tnum">{a.改善}</span>}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-          <div className="flex gap-3 text-[10.5px] text-muted pt-1">
-            <span className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-sm" style={{ background: STATUS.critical }} />
-              悪化
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-sm" style={{ background: INK.axis }} />
-              横ばい
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-sm" style={{ background: SERIES[0] }} />
-              改善
-            </span>
-          </div>
-        </div>
-      </ChartFrame>
-      )}
+      {coral.length > 0 ? <CoralCard coral={coral} region={region} /> : <RedlistCard redlist={redlist} noFixedNarrative={noFixedNarrative} region={region} />}
 
       <ChartFrame
         title="③ 年で比べる — 10年で市街地が増えた流域"

@@ -1,11 +1,11 @@
 import Link from "next/link";
-import { d1CubeDb, MEASUREMENTS_DATASET as DATASET, overviewCounts, landuseHighlight, effortRowV1, effortYears, occurrenceTotals, redlistSummary, representativeSeries, basisOf, yearCellFilterForBasis, summarize, sitesInWaterBody, unitLabel } from "@/lib/cube";
+import { d1CubeDb, type CubeDb, MEASUREMENTS_DATASET as DATASET, overviewCounts, landuseHighlight, effortRowV1, effortYears, occurrenceTotals, redlistSummary, representativeSeries, basisOf, yearCellFilterForBasis, summarize, sitesInWaterBody, unitLabel } from "@/lib/cube";
 import { HomeHighlights } from "@/components/HomeHighlights";
 import { Stat, nf } from "@/components/ui";
 import { caveatBody } from "@/lib/registry/lookup-client";
 import { PageContextSetter } from "@/components/assistant/PageContextProvider";
 import { EXPLORE_ENABLED } from "@/lib/features";
-import { parseRegion, regionOf, regionLabel, regionUi, REGIONS, REGION_ALL, type RegionFilter, type RegionId } from "@/lib/region";
+import { parseRegion, regionOf, regionLabel, regionUi, highlightOf, REGION_ALL, type RegionFilter, type RegionId, type RegionUi } from "@/lib/region";
 import { withRegion } from "@/components/region-url";
 import { readRecordSet } from "@/lib/records";
 import { compareSeaStations, summarizeCoralByYear, type CoralSpotRow } from "@/lib/home-highlights";
@@ -52,8 +52,6 @@ const sectionsFor = (s: { watersheds: number; sites: number }, region: RegionFil
   },
 ].filter((sec) => sec.flag !== false).map((sec) => ({ ...sec, href: withRegion(sec.href, region) }));
 
-const BOD_VARIABLE_ID = "common:variable:water.bod";
-
 /**
  * 一本の川を下るときの水質の変わり方（既定は境川）。キューブ（`observation_agg`）の
  * 2020 年以降のセル（粒度は指標の basis で決まる）を `summarize(...,'place')` で地点ごとに平均する。
@@ -63,15 +61,12 @@ const BOD_VARIABLE_ID = "common:variable:water.bod";
  * （「5倍近い差」等）はここでは触らない——文言は PR 本文の before/after を見て
  * オーナーが判断する（設計責任者の決定、D6）。
  */
-async function longitudinalHighlight(region: RegionId | undefined) {
-  // 既定の水域・指標・並びは地域ごとに lib/region.ts（highlightWater / highlightLongitudinal）で宣言する。
+async function longitudinalHighlight(db: CubeDb, region: RegionId | undefined) {
+  // 既定の水域・指標・並びは地域ごとに lib/region.ts（highlight）で宣言する。
   // 無い地域は出さない（見出しだけ。#93 決定）。全体（region なし）は先頭の地域＝神奈川の境川・BOD。
-  const ui = regionUi(region ?? REGION_ALL) ?? (region ? undefined : REGIONS[0]);
-  const water = ui?.highlightWater;
-  if (!water) return [];
-  const variableId = ui?.highlightLongitudinal?.variableId ?? BOD_VARIABLE_ID;
-  const order = ui?.highlightLongitudinal?.order ?? "elevation";
-  const db = await d1CubeDb();
+  const hl = highlightOf(region ?? REGION_ALL);
+  if (!hl) return [];
+  const { water, variableId, order } = hl;
   // basis はセルの性質（grain/input_grain）であって系列の登録（value_grain）ではない
   // ため、系列を basis で事前に絞り込まない（Issue #48 PR-2 統合後修正A #1）——
   // `representativeSeries()` の全 value_grain をそのまま渡し、`yearCellFilterForBasis()`
@@ -116,11 +111,12 @@ async function longitudinalHighlight(region: RegionId | undefined) {
     .sort((a, b) => (order === "name" ? compareSeaStations(a.name, b.name) : b.elevation_m - a.elevation_m));
 }
 
-/** 奄美の概況②。サンゴ礁調査（moni1000_coral_spots）の全行を `get_records` と同じ読み出し層で読み、年度ごとに要約する。 */
-async function coralHighlight(region: RegionId | undefined) {
-  if (!region || !regionUi(region)?.homeCoral) return [];
-  const rows = await readRecordSet<CoralSpotRow>(await d1CubeDb(), "coral_reef_surveys", {
-    select: ["fiscal_year", "cover_pct", "cover_pct_raw", "bleach_all_pct"],
+/** 奄美の概況②。サンゴ礁調査（moni1000_coral_spots）の宣言された出典の全行を `get_records` と同じ読み出し層で読み、年度ごとに要約する。 */
+async function coralHighlight(db: CubeDb, ui: RegionUi | undefined) {
+  if (!ui?.homeCoral) return [];
+  const rows = await readRecordSet<CoralSpotRow>(db, "coral_reef_surveys", {
+    select: ["fiscal_year", "cover_pct", "cover_pct_raw", "bleach_all_pct", "bleach_all_pct_raw"],
+    eq: [{ col: "source_id", value: ui.homeCoral.sourceId }],
     order: [{ col: "fiscal_year" }],
     limit: null,
   });
@@ -136,8 +132,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ r
   const cdb = await d1CubeDb();
   const [s, longitudinal, coral, landuseRows, redlistRows, effortRows, occ] = await Promise.all([
     overviewCounts(cdb, region),
-    longitudinalHighlight(region),
-    coralHighlight(region),
+    longitudinalHighlight(cdb, region),
+    coralHighlight(cdb, ui),
     landuseHighlight(cdb, 8, region),
     redlistSummary(cdb, undefined, region),
     effortYears(cdb, { region }),
@@ -192,7 +188,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ r
       <section className="max-w-[1180px] mx-auto px-6 py-6">
         <h2 className="text-[16px] font-bold">この3つが、時系列で比べるということ</h2>
         <p className="text-[12px] text-muted mt-1 max-w-3xl leading-relaxed">
-          「増えた／減った」を言うには、比べてよい相手を選ぶ必要があります。ここでは、{ui?.homeCoral ? "場所で比べる（海の地点）・年で比べる（サンゴ礁・土地利用）を例に出します。レッドリストの版で比べる例は、鹿児島県のレッドリストが2014年版の1つだけなので、奄美では出せません。" : "場所で比べる・版で比べる・年で比べる、の3つを例に出します。"}
+          「増えた／減った」を言うには、比べてよい相手を選ぶ必要があります。ここでは、{coral.length > 0 ? "場所で比べる（海の地点）・年で比べる（サンゴ礁・土地利用）を例に出します。レッドリストの版で比べる例は、鹿児島県のレッドリストが2014年版の1つだけなので、奄美では出せません。" : "場所で比べる・版で比べる・年で比べる、の3つを例に出します。"}
         </p>
         <HomeHighlights longitudinal={longitudinal} coral={coral} landuse={landuse} redlist={redlist} effort={effort} region={filter} />
       </section>
