@@ -23,6 +23,8 @@ export interface RegionUi {
   bounds: [[number, number], [number, number]];
   /** 概況の「一本の川を下る」ハイライトの既定の水域。無ければ出さない（見出しだけ）。 */
   highlightWater?: string;
+  /** 時系列画面の既定の項目（variable_id）。無ければ BOD。その地域に無い項目は自動で件数最多へ寄せる。 */
+  defaultVariable?: string;
   /** 概況の固定文言（境川・鶴見川・レッドリスト3版など）がこの地域の数字として当てはまるか。 */
   hasFixedNarrative: boolean;
   /** レッドリスト画面の既定の版の年。無ければ最新の版。 */
@@ -57,6 +59,8 @@ export const REGIONS: readonly RegionUi[] = [
     id: "jp-46",
     label: "奄美大島",
     jumpLabel: "奄美大島へ",
+    // 奄美の BOD は水域に紐づく代表系列が無い。海域の COD は 2 水域・10 地点で揃っている。
+    defaultVariable: "common:variable:water.cod",
     hasFixedNarrative: false,
     watershedBasis: "国土地理院の10m標高から計算した流域",
     watershedSource: "国土地理院 基盤地図情報 数値標高モデル（DEM10B）から計算した流域界",
