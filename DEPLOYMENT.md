@@ -390,6 +390,25 @@ place を引く画面・API が壊れていたのは 23:43〜00:50（約67分）
 
 画面が壊れていたのは 22:54〜23:21 頃（約 27 分）。ロールバックは行っていない。
 
+## モニタリングサイト1000 の本番反映（2026-10-12、#112・#113・#114）
+
+神奈川5調査・奄美2調査の生の記録（`moni1000_counts`）と奄美のサンゴ礁（`moni1000_coral_spots`）を足した。前回と違い、**変わった表だけ**を入れ直した。
+
+1. **事前**（main `881a37c`）: `check_v2_fresh.py`＝0、`r01 --check-fresh`＝0。`pnpm run db:setup`（ローカル D1 は 58 表 / 5,062,755 行）→ `pnpm run db:export`（113 ファイル）→ `opennextjs-cloudflare build`。
+   戻し先: Time Travel `0000006b-00000004-00005102-43b23bd6dd897e9a7ee46dcbe4448f33`、直前の Worker は `52b3d0fa-98f8-427e-b3c4-2f79a508ae9e`。
+2. **入れ直す表の決め方**: ローカルと本番の全表を、件数と中身の指紋（列ごとの `length(quote(col))` の合計と、数値列の合計）で比べた。
+   - 違ったのは次の18表。新表2つ、出典・注記6つ（`source`・`source_access`・`source_edition`・`source_registry`・`caveat`・`caveat_scope`）、出現の `occurrence_agg` と `summary_*` 10 表。
+   - `observation_agg`・`place`・`sites` など9表は文字長の合計だけが違った。real 以外の列の文字長と数値の合計は一致した。これは real の `quote()` の書式がローカルと D1 で違うためで、中身は同じ。
+   - 外部キーは `notes`→`documents` だけで、入れ直す表には掛からない。
+3. **マイグレーション**（18:09）: 0027・0028（表を足すだけ）を `migrations apply --remote` で適用した。
+4. **入れ直し**（18:09〜18:17）: 18表を空にし（10万行ずつの `DELETE`）、その表の 33 ファイル（334MB）を流した。`fetch failed` は出なかった。手順は前回の全表入れ直しのスクリプトを、表を絞るように変えたもの。
+5. **確認**: 18表の件数がローカルと一致した。`pnpm run db:verify:remote` で 58 表 / 5,062,755 行すべて一致。
+6. **デプロイ**（18:21頃）: Version `70981b0e-cff4-4111-a424-0822eefb4fb4`。
+   - `/`・`/sites`・`/timeseries`・`/biota`・`/documents`・`/water`・`/map`・`/sources`・`/stories/amami`・`/?region=jp-46` が 200。
+   - MCP の `get_records` は次の3つで値と注記が返った。`monitoring_counts`（`moni1000_satochi_bird` 18,396 行・`moni1000_forest_bird_amami` 6,166 行）と `coral_reef_surveys`（`moni1000_coral_amami` 210 行）。
+
+画面の生物・出典が欠けていたのは 18:09〜18:21 頃（約 12 分）。ロールバックは行っていない。
+
 ## 更新するとき
 
 ### スキーマを変えた
