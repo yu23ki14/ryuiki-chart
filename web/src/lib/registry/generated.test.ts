@@ -112,8 +112,17 @@ describe("generated.ts / generated-client.ts の形", () => {
     ]);
   });
 
-  it("和名台帳（NAME_JA、generated-client.ts）は63件（旧 NAME_JA 54件＋PR-3b D4 の上書き9件）", () => {
-    expect(Object.keys(NAME_JA)).toHaveLength(63);
+  it("和名台帳（NAME_JA、generated-client.ts）は68件（旧 NAME_JA 54件＋PR-3b D4 の上書き9件＋モニ1000 レビューの上書き5件）", () => {
+    expect(Object.keys(NAME_JA)).toHaveLength(68);
+  });
+
+  it("亜種の和名を借りていた種は種の和名で上書きされている（モニ1000 レビュー 2026-10-12）", () => {
+    expect(NAME_JA["Columba janthina"]).toBe("カラスバト");
+    expect(NAME_JA["Falco peregrinus"]).toBe("ハヤブサ");
+    expect(NAME_JA["Buteo buteo"]).toBe("ノスリ");
+    expect(NAME_JA["Rhinolophus cornutus"]).toBe("コキクガシラコウモリ");
+    expect(NAME_JA["Protaetia orientalis"]).toBe("シロテンハナムグリ");
+    expect(NAME_JA["Trypoxylus dichotomus"]).toBe("カブトムシ");
   });
 
   /**
