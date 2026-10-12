@@ -189,6 +189,32 @@ def test_point_on_shared_edge_boundary_halts(tmp_path):
         b09.build_and_write_occurrence_place(v2_db, ryuiki_db, registry_db, geojson, decl)
 
 
+def test_withheld_only_boundary_coordinate_is_not_checked(tmp_path):
+    """誤差 >= 10 km の記録だけが使う座標は PIP も境界の中止検査も通らない（流域に割り当てないので）。
+    精度のある記録が同じ座標を使うなら、従来どおり検査される（上のテスト）。"""
+    rows = [
+        occurrence_row("r1", None, None, None, None, source_row_id=1, lat=35.05, lon=139.1, coordinate_uncertainty_m=11000),
+    ]
+    v2_db, ryuiki_db, registry_db, geojson = _setup(
+        tmp_path, occurrence_rows=rows,
+        geojson_features=[("W1", _W1_RINGS), ("W3", _W3_RINGS)],
+        place_refs=[(_W1_PLACE_ID, "W1", "watershed_id"), (_W3_PLACE_ID, "W3", "watershed_id")],
+    )
+    decl = _declarations(tmp_path, n_watershed_polygons=2, place_id_null_count=1, resolved_count=0)
+    stats = b09.build_and_write_occurrence_place(v2_db, ryuiki_db, registry_db, geojson, decl)
+    assert (stats["n_resolved"], stats["n_null"]) == (0, 1)
+
+    rows.append(occurrence_row("r2", None, None, None, None, source_row_id=2, lat=35.05, lon=139.1, coordinate_uncertainty_m=100))
+    (tmp_path / "again").mkdir()
+    v2_db, ryuiki_db, registry_db, geojson = _setup(
+        tmp_path / "again", occurrence_rows=rows,
+        geojson_features=[("W1", _W1_RINGS), ("W3", _W3_RINGS)],
+        place_refs=[(_W1_PLACE_ID, "W1", "watershed_id"), (_W3_PLACE_ID, "W3", "watershed_id")],
+    )
+    with pytest.raises(common.MigrationError, match="境界"):
+        b09.build_and_write_occurrence_place(v2_db, ryuiki_db, registry_db, geojson, decl)
+
+
 def test_watershed_external_key_duplicate_halts(tmp_path):
     """registry の `place_source_ref(source_id='watershed_id')`
     に同じ `external_key`（watershed_id）を持つ行が2つあると、

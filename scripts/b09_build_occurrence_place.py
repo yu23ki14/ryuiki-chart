@@ -431,7 +431,10 @@ def build_and_write_occurrence_place(
             coords = [
                 (lat, lon)
                 for lat, lon in conn.execute(
-                    "SELECT DISTINCT lat, lon FROM occurrence WHERE lat IS NOT NULL AND lon IS NOT NULL"
+                    # 誤差が大きく流域に割り当てない記録（下の rows()）の座標は引かない。精度のある記録も使う座標は残る
+                    "SELECT DISTINCT lat, lon FROM occurrence WHERE lat IS NOT NULL AND lon IS NOT NULL "
+                    "AND (coordinate_uncertainty_m IS NULL OR coordinate_uncertainty_m < ?)",
+                    (WATERSHED_MAX_UNCERTAINTY_M,),
                 )
             ]
             matches, near_coords = _resolve_distinct_coordinates(coords, polys, grid)

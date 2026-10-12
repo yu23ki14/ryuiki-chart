@@ -24,6 +24,32 @@
 | `moni1000_satochi_butterfly` | 14,395 | 14,395 |
 | `moni1000_satochi_mammal` | 1,581 | 1,581 |
 
+## 赤リスト判定を b06 が補った記録（出典が `red_list_category` を付けていなかったもの）
+
+`scripts/migrate/redlist_fill.py`。`subspecies` は県版が亜種だけを載せている種の記録（`red_list_source` に掲載名が入る）。
+
+| source_id | 規則 | 記録数 | 地域×学名の種類数 |
+|---|---|---:|---:|
+| `gbif_amami_occurrences` | national_exact | 475 | 109 |
+| `gbif_amami_occurrences` | pref_exact | 4,770 | 340 |
+| `gbif_amami_occurrences` | subspecies | 1,903 | 88 |
+| `gbif_kanagawa_occurrences` | national_exact | 1,898 | 211 |
+| `gbif_kanagawa_occurrences` | pref_exact | 3,308 | 237 |
+| `gbif_kanagawa_occurrences` | subspecies | 648 | 22 |
+| `inaturalist_amami` | subspecies | 208 | 59 |
+| `inaturalist_kanagawa` | national_exact | 2 | 1 |
+| `inaturalist_kanagawa` | pref_exact | 1,980 | 305 |
+| `inaturalist_kanagawa` | subspecies | 152 | 22 |
+| `kanagawa_edna` | national_exact | 448 | 11 |
+| `kanagawa_edna` | pref_exact | 48 | 11 |
+| `kanagawa_edna` | subspecies | 1 | 1 |
+| `moni1000_coast_shorebird` | national_exact | 8 | 2 |
+| `moni1000_coast_shorebird_amami` | pref_exact | 35 | 7 |
+| `moni1000_coast_shorebird_amami` | subspecies | 27 | 5 |
+| `moni1000_forest_bird_amami` | pref_exact | 665 | 2 |
+| `moni1000_forest_bird_amami` | subspecies | 602 | 4 |
+| `moni1000_satochi_butterfly` | pref_exact | 26 | 6 |
+
 ## region 内訳
 
 | region_id | 行数 |

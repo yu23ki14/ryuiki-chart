@@ -65,13 +65,13 @@ scopes:
   - {kind: source_edition, ref: source_id=inaturalist_kanagawa, caveats: [organismSite, effort, regimes, redListSubspecies]}
   - {kind: source_edition, ref: source_id=kanagawa_kuma_sightings, caveats: [effortSurvey]}
   # 神奈川県 eDNA（source_id=kanagawa_edna の採水）。結果の出典に kanagawa_edna を含む tool に、source facet で掛かる。
-  - {kind: source_edition, ref: source_id=kanagawa_edna, caveats: [ednaReads, ednaCoords, ednaYearBasis, ednaNonDetect, ednaWatershed, effortSurvey, redListSubspecies]}
+  - {kind: source_edition, ref: source_id=kanagawa_edna, caveats: [ednaReads, ednaCoords, ednaYearBasis, ednaNonDetect, ednaWatershed, effortSurvey]}
   # モニタリングサイト1000 神奈川 5 調査（追認済み 2026-10-12）。座標の精度・標準外の記録（里地の鳥・チョウ）・n は記録の行数で個体数でない。努力の注記は effortSurvey。
-  - {kind: source_edition, ref: source_id=moni1000_satochi_bird, caveats: [moniCoords, moniOutOfRange, moniCounts, effortSurvey, redListSubspecies]}
-  - {kind: source_edition, ref: source_id=moni1000_satochi_butterfly, caveats: [moniCoords, moniOutOfRange, moniCounts, effortSurvey, redListSubspecies]}
-  - {kind: source_edition, ref: source_id=moni1000_satochi_mammal, caveats: [moniCoords, moniCounts, effortSurvey, redListSubspecies]}
-  - {kind: source_edition, ref: source_id=moni1000_forest_bird, caveats: [moniCoords, moniCounts, effortSurvey, redListSubspecies]}
-  - {kind: source_edition, ref: source_id=moni1000_coast_shorebird, caveats: [moniCoords, moniCounts, effortSurvey, redListSubspecies]}
+  - {kind: source_edition, ref: source_id=moni1000_satochi_bird, caveats: [moniCoords, moniOutOfRange, moniCounts, effortSurvey]}
+  - {kind: source_edition, ref: source_id=moni1000_satochi_butterfly, caveats: [moniCoords, moniOutOfRange, moniCounts, effortSurvey]}
+  - {kind: source_edition, ref: source_id=moni1000_satochi_mammal, caveats: [moniCoords, moniCounts, effortSurvey]}
+  - {kind: source_edition, ref: source_id=moni1000_forest_bird, caveats: [moniCoords, moniCounts, effortSurvey]}
+  - {kind: source_edition, ref: source_id=moni1000_coast_shorebird, caveats: [moniCoords, moniCounts, effortSurvey]}
   - {kind: source_edition, ref: source_id=moni1000_coast_shorebird_amami, caveats: [moniCoords, moniCounts, effortSurvey, redListSubspecies]}
   - {kind: source_edition, ref: source_id=moni1000_forest_bird_amami, caveats: [moniCoords, moniCounts, effortSurvey, redListSubspecies]}
   - {kind: source_edition, ref: source_id=moni1000_coral_amami, caveats: [moniCoral]}

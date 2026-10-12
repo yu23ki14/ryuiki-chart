@@ -22,6 +22,8 @@ GBIFのtaxonKeyとは無関係な別の数値空間）は `'inat'`。`m03_organi
 依存しない（import 時の副作用も無い）ことを条件に、ここへ切り出した。**
 """
 
+import re
+
 TAXON_KEY_SOURCE_NAMESPACE = {
     "gbif_kanagawa_occurrences": "gbif",
     "inaturalist_kanagawa": "inat",
@@ -66,8 +68,6 @@ def assert_known_source_ids(source_ids, error_cls=ValueError) -> None:
 # （yaml に依存しないこのモジュールに置く。Issue #34）。
 IAS_LIST_ID = "moe_ias_2015"
 
-
-import re  # noqa: E402
 
 
 def norm_taxon_id(s) -> str:

@@ -129,6 +129,7 @@ GBIF の `occurrenceStatus=ABSENT` は「その種はいなかった」という
 from __future__ import annotations
 
 import argparse
+import collections
 import json
 import math
 import dataclasses
@@ -143,7 +144,7 @@ from ingest import manifest as manifest_lib, runner as ingest_runner  # noqa: E4
 from migrate import common, edition, occurrence_period, period, public_id, redlist_fill, source_regions  # noqa: E402
 from registry import common as registry_common  # noqa: E402
 from taxon_namespaces import (  # noqa: E402
-    IAS_LIST_ID, TAXON_KEY_SOURCE_NAMESPACE, assert_known_source_ids, binom_of, norm_taxon_id,
+    IAS_LIST_ID, TAXON_KEY_SOURCE_NAMESPACE, assert_known_source_ids, binom_of,
 )
 
 DEFAULT_RYUIKI_DB = ROOT / "data" / "db" / "ryuiki.sqlite"
@@ -342,8 +343,8 @@ def _empty_stats() -> dict:
         "adapter_counts": {},
         "adapter_attributes_count": {},
         "adapter_problems": [],
-        "red_list_filled": {},   # source_id -> rule -> 件数（出典が付けなかった記録に b06 が赤リスト判定を補った数）
-        "red_list_filled_taxa": {},   # source_id -> rule -> {scientific_name の正規化名}
+        "red_list_filled": collections.defaultdict(collections.Counter),   # source_id -> rule -> 件数（出典が付けなかった記録に b06 が赤リスト判定を補った数）
+        "red_list_filled_taxa": collections.defaultdict(lambda: collections.defaultdict(set)),   # source_id -> rule -> {(region, 正規化名)}
     }
 
 
@@ -464,12 +465,9 @@ def _fill_red_list(resolver, stats, source_id, region_id, scientific_name, taxon
     hit = resolver.resolve(region_id, scientific_name, taxon_id)
     if hit is None:
         return category, source
-    category, source, rule = hit
-    by_rule = stats["red_list_filled"].setdefault(source_id, {})
-    by_rule[rule] = by_rule.get(rule, 0) + 1
-    stats["red_list_filled_taxa"].setdefault(source_id, {}).setdefault(rule, set()).add(
-        (region_id, taxon_id or norm_taxon_id(scientific_name)))
-    return category, source
+    stats["red_list_filled"][source_id][hit.rule] += 1
+    stats["red_list_filled_taxa"][source_id][hit.rule].add((region_id, hit.key))
+    return hit.category, hit.source
 
 
 @dataclasses.dataclass(frozen=True)
