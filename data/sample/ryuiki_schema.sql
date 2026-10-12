@@ -81,6 +81,34 @@ CREATE TABLE measurements (
   verified_by TEXT, verified_on TEXT,
   source_id TEXT, source_ref TEXT, is_synthetic INTEGER DEFAULT 0
 );
+CREATE TABLE moni1000_counts (
+  record_id TEXT PRIMARY KEY,        -- satochi 3 出典: '{source_id}:{data_id}'。他: '{source_id}:r{6桁連番}'（CSV の行順）
+  source_id TEXT NOT NULL, source_ref TEXT,
+  survey_id TEXT,                    -- 調査 ID（satochi 3 出典。他は NULL）
+  site_key TEXT NOT NULL,            -- 出典の地点キー（S060 / 100246 / 130700）
+  site_name_ja TEXT,
+  place_id TEXT,                     -- registry の place（registry/source/moni1000_site_map.csv で結ぶ。無ければ NULL）
+  lat REAL, lon REAL,                -- 出典の値のまま（丸め・補完・ぼかしをしない）
+  lat_lon_basis TEXT,                -- 'row'（行に在る）/ 'site_table'（sites CSV）/ NULL
+  coord_decimals INTEGER,            -- 小数桁数（精度の根拠）
+  observed_on TEXT,                  -- 'YYYY-MM-DD' / 'YYYY-MM' / 'YYYY'（欠けた分は補わない）か NULL
+  survey_year INTEGER, survey_month INTEGER, survey_day INTEGER,
+  start_time TEXT, end_time TEXT,    -- 'HH:MM'（forest/shorebird）。mammal の photo_time は start_time に
+  season_ja TEXT,                    -- season_ja / survey_period_ja を出典ごとに
+  survey_round TEXT,                 -- rep_no（調査回）
+  section_ja TEXT,                   -- section_name_ja / point_ja（ライン区間・ポイント）
+  species_ja TEXT, scientific_name TEXT,
+  individual_count REAL,             -- 数値化できたときだけ。0 も 0 のまま
+  individual_count_raw TEXT,         -- 原文（'－'・'-' を含む。空は NULL）
+  count_qualifier TEXT,              -- plusminus（'+'/'±'）
+  id_note_ja TEXT,                   -- id_confidence_ja（'sp.'/'?'）/ id_type_ja
+  out_of_range INTEGER, out_of_time INTEGER,   -- 0/1（範囲外・時間外。元の列が空なら 0）
+  taxon_id TEXT,                     -- 名寄せ表（registry/taxon/moni1000_name_map.csv）の結果。無ければ NULL
+  taxon_resolution TEXT,             -- 'map_sci'/'map_ja'/'unresolved'/'non_taxon'
+  in_occurrence INTEGER NOT NULL,    -- 1=occurrence に流す、0=流さない
+  exclude_reason TEXT,               -- in_occurrence=0 の理由: zero_count / unresolved_taxon / non_wild / non_species
+  extra_json TEXT                    -- 出典固有の残りの列
+, coordinate_uncertainty_m REAL);
 CREATE TABLE organism_records (
   record_id TEXT PRIMARY KEY, event_id TEXT, site_id TEXT,
   observed_on TEXT, scientific_name TEXT, vernacular_name TEXT,

@@ -159,6 +159,23 @@ export const RECORD_TABLES = {
     ],
   },
   /*
+   * モニタリングサイト1000 神奈川県 5 調査の生の記録（`moni1000_counts`、scripts/m10_moni1000.py）。
+   * 出典（里地 鳥類／チョウ類／哺乳類・森林・草原 鳥類・沿岸域 シギ・チドリ）は source_id で絞る。
+   * 個体数 0・名寄せ不能などの行（in_occurrence=0）も含む全行を返す。extra_json は出典固有の列。
+   */
+  monitoring_counts: {
+    table: RECORD_SET_TABLES.monitoring_counts,
+    pk: "record_id",
+    search: ["species_ja", "scientific_name", "site_name_ja"],
+    cols: [
+      "record_id", "source_id", "source_ref", "survey_id", "site_key", "site_name_ja", "place_id", "lat", "lon",
+      "lat_lon_basis", "coord_decimals", "coordinate_uncertainty_m", "observed_on", "survey_year", "survey_month", "survey_day", "start_time", "end_time",
+      "season_ja", "survey_round", "section_ja", "species_ja", "scientific_name", "individual_count", "individual_count_raw",
+      "count_qualifier", "id_note_ja", "out_of_range", "out_of_time", "taxon_id", "taxon_resolution", "in_occurrence",
+      "exclude_reason", "extra_json",
+    ],
+  },
+  /*
    * 行政文書（cells.sqlite 由来の D1 表 `documents`/`notes`）。出典の列を持たず、access.yaml の出典にも
    * 結び付かない（文書は PDF 1 本＝1 doc_id で、`source_registry` の出典とは 1 対 1 でも入れ子でもない。
    * doc_id の接頭辞から出典を推測すると静かに外れる）。そこで `sourceless` とし、record_set 単独で引く。
@@ -234,7 +251,7 @@ export function recordSetsOf(sourceId: string): readonly string[] {
 /** MCP・AI 共通の入力（z.tuple は使わない）。出典と表の組み合わせの検査は `queryRecords` が行う。 */
 export const recordsInputSchema = z.object({
   source_id: z.enum(RECORD_SOURCE_IDS).optional().describe(`出典（${SOURCELESS_LIST} 以外は必須。使える出典と record_set の組はツールの説明にある）`),
-  record_set: z.enum(RECORD_SET_NAMES).optional().describe(`記録の集合（sites・protected_areas・vegetation・hazard_zones・river_segments・mammal_mesh・sightings・assessments・documents・document_notes・document_cells）。出典に集合が複数あるときだけ必須（1つなら省略可）。${SOURCELESS_LIST} は出典に紐付かないので source_id なしでこれだけ指定する`),
+  record_set: z.enum(RECORD_SET_NAMES).optional().describe(`記録の集合（sites・protected_areas・vegetation・hazard_zones・river_segments・mammal_mesh・sightings・monitoring_counts・assessments・documents・document_notes・document_cells）。出典に集合が複数あるときだけ必須（1つなら省略可）。${SOURCELESS_LIST} は出典に紐付かないので source_id なしでこれだけ指定する`),
   id: idText("主キーの完全一致（1 件取り）").optional(),
   q: likeText("表ごとの検索列（名称・和名・学名など）の部分一致").optional(),
   include_geometry: z

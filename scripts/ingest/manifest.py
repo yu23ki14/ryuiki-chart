@@ -24,7 +24,8 @@ edition 参照）だけを持つ。`checks` は書けない。`expected` は **t
 ## `checks`（実装済みの語彙だけ。非 builtin のみ）
 
 `not_null: [列…]` / `unique: [列…]` / `row_count_between: [最小, 最大]` / `in_registry: taxon` /
-`date_between: [最小日, 最大日]`（`observed_on_raw` の先頭 10 桁の文字列比較）。列は adapter が返す行の列契約。
+`date_between: [最小日, 最大日]`（`observed_on_raw` の先頭 10 桁を、その桁数に境界を切って文字列比較。
+年だけ・月だけの値 `'2008'`・`'2008-01'` は `lo[:n] <= v <= hi[:n]`）。列は adapter が返す行の列契約。
 
 ## `expected`（target=occurrence のみ。非 builtin は必須、builtin は任意）
 

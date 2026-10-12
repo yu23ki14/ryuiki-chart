@@ -332,14 +332,14 @@ export const SOURCE_EDITIONS: readonly GeneratedSourceEdition[] = [
   { editionId: "common:edition:moe_mongoose_amami.20261011", sourceId: "moe_mongoose_amami", editionKey: "20261011", vintage: null, fetchedAt: "2026-10-11T10:54:38", url: "https://kyushu.env.go.jp/okinawa/press_00065.html", licenseId: "pdl_1_0", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:moe_redlist.20260829", sourceId: "moe_redlist", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T14:54:16", url: "https://www.env.go.jp/nature/kisho/hozen/redlist/", licenseId: "pdl_1_0", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:moe_satoyama_kanagawa.20260829", sourceId: "moe_satoyama_kanagawa", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:06:49", url: "https://www.env.go.jp/nature/satoyama/14_kanagawa/kanagawa.html", licenseId: "terms_unconfirmed", licenseClass: "unconfirmed", redistributable: true, updateMode: null, supersededBy: null },
-  { editionId: "common:edition:moni1000_coast_shorebird.20260829", sourceId: "moni1000_coast_shorebird", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:01:14", url: "https://www.biodic.go.jp/moni1000/coast.html", licenseId: "biodic_terms", licenseClass: "custom_terms", redistributable: false, updateMode: null, supersededBy: null },
-  { editionId: "common:edition:moni1000_forest_bird.20260829", sourceId: "moni1000_forest_bird", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:01:14", url: "https://www.biodic.go.jp/moni1000/forest.html", licenseId: "biodic_terms", licenseClass: "custom_terms", redistributable: false, updateMode: null, supersededBy: null },
+  { editionId: "common:edition:moni1000_coast_shorebird.20260829", sourceId: "moni1000_coast_shorebird", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:01:14", url: "https://www.biodic.go.jp/moni1000/coast.html", licenseId: "biodic_terms", licenseClass: "custom_terms", redistributable: true, updateMode: "snapshot", supersededBy: null },
+  { editionId: "common:edition:moni1000_forest_bird.20260829", sourceId: "moni1000_forest_bird", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:01:14", url: "https://www.biodic.go.jp/moni1000/forest.html", licenseId: "biodic_terms", licenseClass: "custom_terms", redistributable: true, updateMode: "snapshot", supersededBy: null },
   { editionId: "common:edition:moni1000_lake_aquaticplants.20260829", sourceId: "moni1000_lake_aquaticplants", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:01:14", url: "https://www.biodic.go.jp/moni1000/wetlands.html", licenseId: "biodic_terms", licenseClass: "custom_terms", redistributable: false, updateMode: null, supersededBy: null },
   { editionId: "common:edition:moni1000_lake_benthos.20260829", sourceId: "moni1000_lake_benthos", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:01:14", url: "https://www.biodic.go.jp/moni1000/wetlands.html", licenseId: "biodic_terms", licenseClass: "custom_terms", redistributable: false, updateMode: null, supersededBy: null },
   { editionId: "common:edition:moni1000_lake_fish.20260829", sourceId: "moni1000_lake_fish", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:01:14", url: "https://www.biodic.go.jp/moni1000/wetlands.html", licenseId: "biodic_terms", licenseClass: "custom_terms", redistributable: false, updateMode: null, supersededBy: null },
-  { editionId: "common:edition:moni1000_satochi_bird.20260829", sourceId: "moni1000_satochi_bird", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T14:57:28", url: "https://www.biodic.go.jp/moni1000/village.html", licenseId: "biodic_terms", licenseClass: "custom_terms", redistributable: false, updateMode: null, supersededBy: null },
-  { editionId: "common:edition:moni1000_satochi_butterfly.20260829", sourceId: "moni1000_satochi_butterfly", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T14:57:28", url: "https://www.biodic.go.jp/moni1000/village.html", licenseId: "biodic_terms", licenseClass: "custom_terms", redistributable: false, updateMode: null, supersededBy: null },
-  { editionId: "common:edition:moni1000_satochi_mammal.20260829", sourceId: "moni1000_satochi_mammal", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T14:57:28", url: "https://www.biodic.go.jp/moni1000/village.html", licenseId: "biodic_terms", licenseClass: "custom_terms", redistributable: false, updateMode: null, supersededBy: null },
+  { editionId: "common:edition:moni1000_satochi_bird.20260829", sourceId: "moni1000_satochi_bird", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T14:57:28", url: "https://www.biodic.go.jp/moni1000/village.html", licenseId: "biodic_terms", licenseClass: "custom_terms", redistributable: true, updateMode: "snapshot", supersededBy: null },
+  { editionId: "common:edition:moni1000_satochi_butterfly.20260829", sourceId: "moni1000_satochi_butterfly", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T14:57:28", url: "https://www.biodic.go.jp/moni1000/village.html", licenseId: "biodic_terms", licenseClass: "custom_terms", redistributable: true, updateMode: "snapshot", supersededBy: null },
+  { editionId: "common:edition:moni1000_satochi_mammal.20260829", sourceId: "moni1000_satochi_mammal", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T14:57:28", url: "https://www.biodic.go.jp/moni1000/village.html", licenseId: "biodic_terms", licenseClass: "custom_terms", redistributable: true, updateMode: "snapshot", supersededBy: null },
   { editionId: "common:edition:moni1000_sites.20260829", sourceId: "moni1000_sites", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T14:51:45", url: "https://www.biodic.go.jp/moni1000/site_list.html", licenseId: "terms_unconfirmed", licenseClass: "unconfirmed", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:moni1000_waterfowl.20260829", sourceId: "moni1000_waterfowl", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:01:14", url: "https://www.biodic.go.jp/moni1000/wetlands.html", licenseId: "biodic_terms", licenseClass: "custom_terms", redistributable: false, updateMode: null, supersededBy: null },
   { editionId: "common:edition:moni1000_wetland_vegetation.20260829", sourceId: "moni1000_wetland_vegetation", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:01:14", url: "https://www.biodic.go.jp/moni1000/wetlands.html", licenseId: "biodic_terms", licenseClass: "custom_terms", redistributable: false, updateMode: null, supersededBy: null },
@@ -402,7 +402,7 @@ export const SOURCE_EDITIONS: readonly GeneratedSourceEdition[] = [
 ];
 
 /** 出現データ（occurrence_agg）の出典。マニフェスト（target=occurrence）由来。画面用 API・MCP の provenance/freshness が使う。 */
-export const OCCURRENCE_SOURCE_IDS: readonly string[] = ["gbif_amami_occurrences","gbif_kanagawa_occurrences","inaturalist_amami","inaturalist_kanagawa","kanagawa_edna","kanagawa_kuma_sightings"];
+export const OCCURRENCE_SOURCE_IDS: readonly string[] = ["gbif_amami_occurrences","gbif_kanagawa_occurrences","inaturalist_amami","inaturalist_kanagawa","kanagawa_edna","kanagawa_kuma_sightings","moni1000_coast_shorebird","moni1000_forest_bird","moni1000_satochi_bird","moni1000_satochi_butterfly","moni1000_satochi_mammal"];
 
 /** 出典ごとの状態（registry/source/access.yaml と manifests/ から r01 が作る。MCP_SOURCE_ACCESS.md §1）。 */
 export interface GeneratedSourceAccess {
@@ -1959,28 +1959,42 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "reasonNote": null
   },
   "moni1000_coast_shorebird": {
-    "state": "not_queryable",
-    "queryableVia": [],
-    "tables": [],
-    "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "file_only",
-    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "state": "queryable",
+    "queryableVia": [
+      "get_occurrences",
+      "get_records"
+    ],
+    "tables": [
+      "monitoring_counts"
+    ],
+    "recordSetRows": {
+      "monitoring_counts": 620
+    },
+    "nSourceRows": 620,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-11T18:06:44",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": "環境省生物多様性センター モニタリングサイト1000 沿岸域調査 シギ・チドリ類調査（生物多様性センターウェブサイト利用規約に基づき出典を明示）。神奈川県のサイトのみ。出現の n は記録の行数（個体数ではない）。"
   },
   "moni1000_forest_bird": {
-    "state": "not_queryable",
-    "queryableVia": [],
-    "tables": [],
-    "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "file_only",
-    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "state": "queryable",
+    "queryableVia": [
+      "get_occurrences",
+      "get_records"
+    ],
+    "tables": [
+      "monitoring_counts"
+    ],
+    "recordSetRows": {
+      "monitoring_counts": 9433
+    },
+    "nSourceRows": 9433,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-11T18:06:44",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": "環境省生物多様性センター モニタリングサイト1000 森林・草原調査 陸生鳥類調査（生物多様性センターウェブサイト利用規約に基づき出典を明示）。神奈川県のサイトのみ。出現の n は記録の行数（個体数ではない）。"
   },
   "moni1000_lake_aquaticplants": {
     "state": "not_queryable",
@@ -2019,40 +2033,61 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "reasonNote": null
   },
   "moni1000_satochi_bird": {
-    "state": "not_queryable",
-    "queryableVia": [],
-    "tables": [],
-    "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "file_only",
-    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "state": "queryable",
+    "queryableVia": [
+      "get_occurrences",
+      "get_records"
+    ],
+    "tables": [
+      "monitoring_counts"
+    ],
+    "recordSetRows": {
+      "monitoring_counts": 18396
+    },
+    "nSourceRows": 18396,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-11T18:06:44",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": "環境省生物多様性センター モニタリングサイト1000 里地調査 鳥類調査（生物多様性センターウェブサイト利用規約に基づき出典を明示）。神奈川県のサイトのみ。出現の n は記録の行数（個体数ではない）。"
   },
   "moni1000_satochi_butterfly": {
-    "state": "not_queryable",
-    "queryableVia": [],
-    "tables": [],
-    "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "file_only",
-    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "state": "queryable",
+    "queryableVia": [
+      "get_occurrences",
+      "get_records"
+    ],
+    "tables": [
+      "monitoring_counts"
+    ],
+    "recordSetRows": {
+      "monitoring_counts": 14529
+    },
+    "nSourceRows": 14529,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-11T18:06:44",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": "環境省生物多様性センター モニタリングサイト1000 里地調査 チョウ類調査（生物多様性センターウェブサイト利用規約に基づき出典を明示）。神奈川県のサイトのみ。出現の n は記録の行数（個体数ではない）。"
   },
   "moni1000_satochi_mammal": {
-    "state": "not_queryable",
-    "queryableVia": [],
-    "tables": [],
-    "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "file_only",
-    "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "state": "queryable",
+    "queryableVia": [
+      "get_occurrences",
+      "get_records"
+    ],
+    "tables": [
+      "monitoring_counts"
+    ],
+    "recordSetRows": {
+      "monitoring_counts": 2031
+    },
+    "nSourceRows": 2031,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-10-11T18:06:44",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": "環境省生物多様性センター モニタリングサイト1000 里地調査 中・大型哺乳類調査（自動撮影）（生物多様性センターウェブサイト利用規約に基づき出典を明示）。神奈川県のサイトのみ。出現の n は記録の行数（個体数ではない）。"
   },
   "moni1000_sites": {
     "state": "queryable",
@@ -2817,20 +2852,21 @@ export const RECORD_SET_TABLES: Readonly<Record<string, string>> = {
   "mammal_mesh": "mammal_mesh",
   "sightings": "wildlife_sightings",
   "assessments": "taxon_assessment",
-  "hazard_zones": "hazard_zones"
+  "hazard_zones": "hazard_zones",
+  "monitoring_counts": "moni1000_counts"
 };
 
 /** 一覧から除いた出典の件数と理由（合成データ。出典メタの読み出し口に合成の出典を出さない既存の保証）。 */
 export const SOURCE_EXCLUDED_FROM_LIST: Readonly<Record<string, number>> = {"synthetic":1};
 
 /** get_records で引ける出典（SOURCE_ACCESS の tables が空でないもの）。 */
-export const RECORD_SOURCE_IDS: readonly string[] = ["atsugi_river_water_quality","biodic_mammal_mesh_kanagawa","biodic_veg2024_amami","biodic_veg2024_kanagawa","bodik_kagoshima_dosha_amami","dams_kanagawa","env_kousui_stations_amami","env_kousui_stations_kanagawa","geoshape_sagami_river","hadano_preserved_trees","hiratsuka_parks","hiratsuka_taiki_stations","jma_stations_amami","jma_stations_kanagawa","kagoshima_kasen_stations_amami","kagoshima_ordinance_species","kagoshima_redlist","kanagawa_green_conservation","kanagawa_jiban_chinka","kanagawa_kuma_sightings","kanagawa_natural_parks","kanagawa_rdb2022_plants","kanagawa_redlist","moe_ias_list","moni1000_sites","nlni_a10_natparks_amami","nlni_a15_wildlife_amami","nlni_a45_forest_amami","sagami_livecams","sagamihara_taiki_stations","soramame_stations_amami","soramame_stations_kanagawa","yokohama_river_waterlevel"];
+export const RECORD_SOURCE_IDS: readonly string[] = ["atsugi_river_water_quality","biodic_mammal_mesh_kanagawa","biodic_veg2024_amami","biodic_veg2024_kanagawa","bodik_kagoshima_dosha_amami","dams_kanagawa","env_kousui_stations_amami","env_kousui_stations_kanagawa","geoshape_sagami_river","hadano_preserved_trees","hiratsuka_parks","hiratsuka_taiki_stations","jma_stations_amami","jma_stations_kanagawa","kagoshima_kasen_stations_amami","kagoshima_ordinance_species","kagoshima_redlist","kanagawa_green_conservation","kanagawa_jiban_chinka","kanagawa_kuma_sightings","kanagawa_natural_parks","kanagawa_rdb2022_plants","kanagawa_redlist","moe_ias_list","moni1000_coast_shorebird","moni1000_forest_bird","moni1000_satochi_bird","moni1000_satochi_butterfly","moni1000_satochi_mammal","moni1000_sites","nlni_a10_natparks_amami","nlni_a15_wildlife_amami","nlni_a45_forest_amami","sagami_livecams","sagamihara_taiki_stations","soramame_stations_amami","soramame_stations_kanagawa","yokohama_river_waterlevel"];
 
 /** find_datasets で引ける出典（外部ポータルの目録。registry/source/access.yaml の catalog を宣言した出典。MCP_EXTERNAL_CATALOG.md §5）。 */
 export const FIND_DATASET_SOURCE_IDS: readonly string[] = ["ckan_bodik_kanagawa","ckan_kanagawa_pref","ckan_sagamihara","ckan_yokohama","estat_agri_census_kanagawa","estat_census_population_kanagawa","estat_shozaiki_kanagawa"];
 
 /** 出典 → 地域（manifests/<source_id>.yml の region。Issue #93）。マニフェストの無い出典（文書・台帳系）は載せない = 地域未宣言。 */
-export const SOURCE_REGION: Readonly<Record<string, string>> = {"atsugi_river_water_quality":"jp-14","env_kousui_annual_amami":"jp-46","env_kousui_annual_kanagawa":"jp-14","env_kousui_sample_amami":"jp-46","env_kousui_sample_kanagawa":"jp-14","gbif_amami_occurrences":"jp-46","gbif_kanagawa_occurrences":"jp-14","hiratsuka_taiki":"jp-14","inaturalist_amami":"jp-46","inaturalist_kanagawa":"jp-14","jma_daily_nase":"jp-46","jma_daily_yokohama":"jp-14","jma_monthly_amami":"jp-46","jma_monthly_kanagawa":"jp-14","jma_sst_amami":"jp-46","kagoshima_kasen_choui_amami":"jp-46","kagoshima_kasen_dam_amami":"jp-46","kagoshima_kasen_suii_amami":"jp-46","kagoshima_kasen_suii_kiki_amami":"jp-46","kanagawa_edna":"jp-14","kanagawa_jiban_chinka":"jp-14","kanagawa_kuma_sightings":"jp-14","nlni_l03b_landuse_by_watershed":"jp-14","nlni_l03b_landuse_by_watershed_amami":"jp-46","sagamihara_taiki_hourly":"jp-14","soramame_hourly_amami":"jp-46","soramame_hourly_kanagawa":"jp-14","yokohama_river_waterlevel":"jp-14"};
+export const SOURCE_REGION: Readonly<Record<string, string>> = {"atsugi_river_water_quality":"jp-14","env_kousui_annual_amami":"jp-46","env_kousui_annual_kanagawa":"jp-14","env_kousui_sample_amami":"jp-46","env_kousui_sample_kanagawa":"jp-14","gbif_amami_occurrences":"jp-46","gbif_kanagawa_occurrences":"jp-14","hiratsuka_taiki":"jp-14","inaturalist_amami":"jp-46","inaturalist_kanagawa":"jp-14","jma_daily_nase":"jp-46","jma_daily_yokohama":"jp-14","jma_monthly_amami":"jp-46","jma_monthly_kanagawa":"jp-14","jma_sst_amami":"jp-46","kagoshima_kasen_choui_amami":"jp-46","kagoshima_kasen_dam_amami":"jp-46","kagoshima_kasen_suii_amami":"jp-46","kagoshima_kasen_suii_kiki_amami":"jp-46","kanagawa_edna":"jp-14","kanagawa_jiban_chinka":"jp-14","kanagawa_kuma_sightings":"jp-14","moni1000_coast_shorebird":"jp-14","moni1000_forest_bird":"jp-14","moni1000_satochi_bird":"jp-14","moni1000_satochi_butterfly":"jp-14","moni1000_satochi_mammal":"jp-14","nlni_l03b_landuse_by_watershed":"jp-14","nlni_l03b_landuse_by_watershed_amami":"jp-46","sagamihara_taiki_hourly":"jp-14","soramame_hourly_amami":"jp-46","soramame_hourly_kanagawa":"jp-14","yokohama_river_waterlevel":"jp-14"};
 /** 地域 -> 出典名に入る slug（scripts/regions.py の REGIONS が正）。マニフェストの無い出典の地域を cube/region.ts が引く。 */
 export const REGION_SLUGS: Readonly<Record<string, readonly string[]>> = {"jp-14":["kanagawa"],"jp-46":["amami"]};
 
