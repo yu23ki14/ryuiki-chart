@@ -48,7 +48,9 @@ NULL にするだけで扱えるようにしてある。座標があるのに gr
 - `coordinate_uncertainty_m`/`lat`/`lon`/`scientific_name`/`vernacular_name`/
   `taxon_rank`/`red_list_category`/`red_list_source`/`is_alien`/`license_class`/
   `publication_scope`: 原表記の旗（F6）。記録にそのまま運ぶ。`red_list_source` は赤リスト判定の出所
-  （県版の list_id か 'national'。m03 が付ける。アダプタ経由の記録は NULL）（NULLIF 等の
+  （県版の list_id か 'national'。m03 が付ける。出典が `red_list_category` を付けなかった記録〔モニ1000 等のアダプタ、
+  GBIF/iNat で m03 が引けなかった記録〕には b06 が `scripts/migrate/redlist_fill.py` で補う。県版が亜種だけを載せている種の
+  種レベルの記録は '<list_id>+subspecies:<掲載名>'。アダプタが自分で付けた記録は NULL のまま）（NULLIF 等の
   正規化はしない——空文字は空文字のまま。v1 `org_norm` の各列が
   `organism_records` の値をそのまま読んでいるのと同じ扱い）。
 - `is_alien_in_scope`（Issue #34）: `n_alien`（b07）が数える旗。`scientific_name` の二名法（binom）が
@@ -138,10 +140,10 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from ingest import manifest as manifest_lib, runner as ingest_runner  # noqa: E402
-from migrate import common, edition, occurrence_period, period, public_id, source_regions  # noqa: E402
+from migrate import common, edition, occurrence_period, period, public_id, redlist_fill, source_regions  # noqa: E402
 from registry import common as registry_common  # noqa: E402
 from taxon_namespaces import (  # noqa: E402
-    IAS_LIST_ID, TAXON_KEY_SOURCE_NAMESPACE, assert_known_source_ids, binom_of,
+    IAS_LIST_ID, TAXON_KEY_SOURCE_NAMESPACE, assert_known_source_ids, binom_of, norm_taxon_id,
 )
 
 DEFAULT_RYUIKI_DB = ROOT / "data" / "db" / "ryuiki.sqlite"
@@ -340,6 +342,8 @@ def _empty_stats() -> dict:
         "adapter_counts": {},
         "adapter_attributes_count": {},
         "adapter_problems": [],
+        "red_list_filled": {},   # source_id -> rule -> 件数（出典が付けなかった記録に b06 が赤リスト判定を補った数）
+        "red_list_filled_taxa": {},   # source_id -> rule -> {scientific_name の正規化名}
     }
 
 
@@ -452,6 +456,22 @@ def _load_grid01_places(work: sqlite3.Connection) -> dict[str, tuple[str, str]]:
     }
 
 
+def _fill_red_list(resolver, stats, source_id, region_id, scientific_name, taxon_id, category, source):
+    """出典が `red_list_category` を付けていない（NULL）記録にだけ、赤リスト判定を補う（`migrate/redlist_fill.py`）。
+    付いている値・出所は変えない。"""
+    if category is not None or resolver is None:
+        return category, source
+    hit = resolver.resolve(region_id, scientific_name, taxon_id)
+    if hit is None:
+        return category, source
+    category, source, rule = hit
+    by_rule = stats["red_list_filled"].setdefault(source_id, {})
+    by_rule[rule] = by_rule.get(rule, 0) + 1
+    stats["red_list_filled_taxa"].setdefault(source_id, {}).setdefault(rule, set()).add(
+        (region_id, taxon_id or norm_taxon_id(scientific_name)))
+    return category, source
+
+
 @dataclasses.dataclass(frozen=True)
 class _IngestContext:
     """`_ingest()` が1行ごとの解決に使う宣言・参照集合（引数が増えたのでまとめた）。"""
@@ -463,6 +483,7 @@ class _IngestContext:
     region_usage: object
     shape_usage: object
     adapter_manifests: tuple = ()
+    red_list: object = None   # redlist_fill.RedListResolver（出典が赤リスト判定を付けなかった記録を補う）
 
 
 def _ingest(
@@ -542,6 +563,9 @@ def _ingest(
             period_grain, period_start, period_end, period_raw = _period_fields(
                 stats, shape_usage, observed_on, utc_offset, record_id
             )
+            red_list_category, red_list_source = _fill_red_list(
+                ctx.red_list, stats, source_id, region_id, scientific_name, taxon_id, red_list_category, red_list_source,
+            )
 
             yield (
                 record_id, "organism_records", source_row_id, source_id, region_id, taxon_id,
@@ -606,16 +630,19 @@ def _ingest(
                     stats, shape_usage, r.observed_on_raw, utc_offset, record_id
                 )
                 is_alien_in_scope = 1 if binom_of(r.scientific_name) in alien_binoms else 0
+                red_list_category, red_list_source = _fill_red_list(
+                    ctx.red_list, stats, source_id, region_id, r.scientific_name, taxon_id, r.red_list_category, None,
+                )
                 yield (
                     record_id, source_table, n, source_id, region_id, taxon_id,
                     place_id, place_kind, r.coordinate_uncertainty_m, r.lat, r.lon,
                     period_grain, period_start, period_end, period_raw,
                     r.scientific_name, r.vernacular_name, r.taxon_rank,
-                    r.red_list_category, None, r.license_class, None,
+                    red_list_category, None, r.license_class, None,
                     is_alien_in_scope,
                     public_id.adapter_occurrence_id(source_id, r.record_key), edition_of(source_id),
                     json.dumps(r.attributes, ensure_ascii=False, sort_keys=True) if r.attributes else None,
-                    None,   # red_list_source: アダプタ経由の記録は出所を持たない
+                    red_list_source,   # アダプタが赤リスト判定を付けた記録は出所なし（NULL）。付けなかった記録は _fill_red_list が補う
                 )
 
     dest.executemany(_INSERT_SQL.format(table=f'"{insert_table}"'), rows())
@@ -707,6 +734,7 @@ def build_and_write_occurrence(
                 ctx = _IngestContext(
                     taxon_ids, _load_alien_binoms(work), sources, regions,
                     source_usage, region_usage, shape_usage, adapter_manifests,
+                    redlist_fill.RedListResolver(work),
                 )
                 stats = _ingest(work, dest, staging, ctx)
             finally:
@@ -832,6 +860,17 @@ def render_report(stats: dict) -> str:
         a("|---|---:|---:|")
         for sid, n in sorted(stats["adapter_counts"].items()):
             a(f"| `{sid}` | {n:,} | {stats['adapter_attributes_count'][sid]:,} |")
+    if stats["red_list_filled"]:
+        a("")
+        a("## 赤リスト判定を b06 が補った記録（出典が `red_list_category` を付けていなかったもの）")
+        a("")
+        a("`scripts/migrate/redlist_fill.py`。`subspecies` は県版が亜種だけを載せている種の記録（`red_list_source` に掲載名が入る）。")
+        a("")
+        a("| source_id | 規則 | 記録数 | 地域×学名の種類数 |")
+        a("|---|---|---:|---:|")
+        for sid, by_rule in sorted(stats["red_list_filled"].items()):
+            for rule, n in sorted(by_rule.items()):
+                a(f"| `{sid}` | {rule} | {n:,} | {len(stats['red_list_filled_taxa'][sid][rule]):,} |")
     a("")
     a("## region 内訳")
     a("")
