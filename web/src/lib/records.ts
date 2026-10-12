@@ -169,7 +169,7 @@ export const RECORD_TABLES = {
     search: ["species_ja", "scientific_name", "site_name_ja"],
     cols: [
       "record_id", "source_id", "source_ref", "survey_id", "site_key", "site_name_ja", "place_id", "lat", "lon",
-      "lat_lon_basis", "coord_decimals", "observed_on", "survey_year", "survey_month", "survey_day", "start_time", "end_time",
+      "lat_lon_basis", "coord_decimals", "coordinate_uncertainty_m", "observed_on", "survey_year", "survey_month", "survey_day", "start_time", "end_time",
       "season_ja", "survey_round", "section_ja", "species_ja", "scientific_name", "individual_count", "individual_count_raw",
       "count_qualifier", "id_note_ja", "out_of_range", "out_of_time", "taxon_id", "taxon_resolution", "in_occurrence",
       "exclude_reason", "extra_json",

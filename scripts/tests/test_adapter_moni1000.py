@@ -33,7 +33,7 @@ def _row(sid, i, **over):
     r = {
         "record_id": f"{sid}:{i}", "source_id": sid, "source_ref": "https://example/ (X)", "survey_id": "S1",
         "site_key": "S060", "site_name_ja": "地点", "place_id": None, "lat": 35.4, "lon": 139.5,
-        "lat_lon_basis": "site_table", "coord_decimals": 1, "observed_on": "2010-05-03", "season_ja": "春",
+        "lat_lon_basis": "site_table", "coord_decimals": 1, "coordinate_uncertainty_m": 10000.0, "observed_on": "2010-05-03", "season_ja": "春",
         "survey_round": "1", "section_ja": "A", "species_ja": "ウグイス", "scientific_name": "Horornis diphone",
         "individual_count": 3.0, "individual_count_raw": "3", "count_qualifier": None, "id_note_ja": None,
         "out_of_range": 0, "out_of_time": 0, "start_time": None, "taxon_id": "common:taxon:inat.1",
@@ -67,16 +67,17 @@ def test_row_mapping_keeps_source_values_and_counts_as_attributes():
     assert a["out_of_range"] == 1
 
 
-@pytest.mark.parametrize("dec,expect", [(1, 10000), (2, 1000), (4, 10), (None, None), (3, None)])
-def test_uncertainty_from_decimals(dec, expect):
+@pytest.mark.parametrize("unc", [10000.0, 1000.0, 100.0, 10.0])
+def test_uncertainty_is_copied_from_the_column(unc):
     sid = "moni1000_satochi_bird"
-    r = list(_adapter(sid).rows(_ctx(sid, [_row(sid, 1, coord_decimals=dec)])))[0]
-    assert r["coordinate_uncertainty_m"] == expect
+    r = list(_adapter(sid).rows(_ctx(sid, [_row(sid, 1, coordinate_uncertainty_m=unc)])))[0]
+    assert r["coordinate_uncertainty_m"] == unc
 
 
 def test_no_coordinates_not_invented_and_missing_date_kept():
     sid = "moni1000_satochi_mammal"
-    r = list(_adapter(sid).rows(_ctx(sid, [_row(sid, 1, lat=None, lon=None, observed_on=None, coord_decimals=2)])))[0]
+    r = list(_adapter(sid).rows(_ctx(sid, [_row(sid, 1, lat=None, lon=None, observed_on=None, coord_decimals=2,
+                                                 coordinate_uncertainty_m=None)])))[0]
     assert r["lat"] is None and r["lon"] is None and r["observed_on_raw"] is None
     assert r["coordinate_uncertainty_m"] is None
 

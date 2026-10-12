@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import argparse
 import collections
-import csv
 import datetime
 import json
 import pathlib
@@ -37,6 +36,8 @@ import sys
 import unicodedata
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
+
+from c89c_edna_taxon_map import read_csv_rows, text  # noqa: E402  (m07 と同じ共有の読み出し)
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SCHEMA = ROOT / "scripts" / "schema_moni1000.sql"
@@ -70,7 +71,7 @@ REGISTRY_NOTE = (REGISTRY_NOTE_MARK + "組織の追認済み（2026-10-12、オ�
 
 COLUMNS = (
     "record_id", "source_id", "source_ref", "survey_id", "site_key", "site_name_ja", "place_id", "lat", "lon",
-    "lat_lon_basis", "coord_decimals", "observed_on", "survey_year", "survey_month", "survey_day", "start_time",
+    "lat_lon_basis", "coord_decimals", "coordinate_uncertainty_m", "observed_on", "survey_year", "survey_month", "survey_day", "start_time",
     "end_time", "season_ja", "survey_round", "section_ja", "species_ja", "scientific_name", "individual_count",
     "individual_count_raw", "count_qualifier", "id_note_ja", "out_of_range", "out_of_time", "taxon_id",
     "taxon_resolution", "in_occurrence", "exclude_reason", "extra_json")
@@ -82,13 +83,6 @@ class M10Error(RuntimeError):
 
 # ── 値の整形 ─────────────────────────────────────────────
 
-def text(v):
-    if v is None:
-        return None
-    s = str(v).strip()
-    return s or None
-
-
 def to_int(v):
     """'2005.0' / '9' → int。空・非数値は None。"""
     s = text(v)
@@ -96,9 +90,9 @@ def to_int(v):
         return None
     try:
         f = float(s)
-    except ValueError:
+        return int(f) if f == int(f) else None
+    except (ValueError, OverflowError):      # nan は int(nan) で ValueError、inf は OverflowError
         return None
-    return int(f) if f == int(f) else None
 
 
 def to_num(v):
@@ -154,18 +148,19 @@ def parse_coord(v):
     frac = s.split(".", 1)[1] if "." in s else ""
     if len(frac) > 8:
         f = round(f, 7)
-        frac = repr(f).split(".", 1)[1] if "." in repr(f) else ""
+        r = repr(f)
+        frac = r.split(".", 1)[1] if "." in r else ""
     return f, len(frac)
+
+
+def uncertainty_m(decimals):
+    """小数桁数 d → 座標の不確かさ（m）。10^(5-d)（1 桁=0.1 度≒10 km、2 桁=1 km、4 桁=10 m）。桁数が無ければ None。"""
+    return None if decimals is None else float(10 ** (5 - decimals))
 
 
 def dump_extra(d):
     d = {k: v for k, v in d.items() if text(v) is not None}
     return json.dumps(d, ensure_ascii=False, sort_keys=True, separators=(",", ":")) if d else None
-
-
-def read_csv(path):
-    with open(path, newline="", encoding="utf-8-sig") as f:
-        return list(csv.DictReader(f))
 
 
 def clean_sci(v):
@@ -188,16 +183,16 @@ def load_site_coords(csv_dir, sites_csv):
     out = {}
     if not sites_csv:
         return out
-    for r in read_csv(pathlib.Path(csv_dir) / sites_csv):
+    for r in read_csv_rows(pathlib.Path(csv_dir) / sites_csv):
         lat, dec_lat = parse_coord(r.get("緯度詳細"))
         lon, dec_lon = parse_coord(r.get("経度詳細"))
         if lat is None or lon is None:
             lat, dec_lat = parse_coord(r.get("lat"))
             lon, dec_lon = parse_coord(r.get("lon"))
         if lat is None or lon is None:
-            out[r["site_id"]] = (None, None, None)
+            out[r["site_id"].strip()] = (None, None, None)
         else:
-            out[r["site_id"]] = (lat, lon, min(dec_lat, dec_lon))
+            out[r["site_id"].strip()] = (lat, lon, min(dec_lat, dec_lon))
     return out
 
 
@@ -266,7 +261,8 @@ def norm_forest_bird(row, rec, site_coords):
                species_ja=text(row["species_ja"]), scientific_name=text(row["scientific_name"]),
                id_note_ja=text(row["id_type_ja"]))
     if lat is not None and lon is not None:
-        rec.update(lat=lat, lon=lon, lat_lon_basis="row", coord_decimals=min(dec_lat, dec_lon))
+        rec.update(lat=lat, lon=lon, lat_lon_basis="row", coord_decimals=min(dec_lat, dec_lon),
+                   coordinate_uncertainty_m=uncertainty_m(min(dec_lat, dec_lon)))
     fill_count(rec, row["count"])
     rec["extra_json"] = dump_extra({
         "site_type_ja": row["site_type_ja"], "habitat_ja": row["habitat_ja"], "prefecture_ja": row["prefecture_ja"],
@@ -284,7 +280,8 @@ def norm_coast_shorebird(row, rec, site_coords):
                season_ja=text(row["season_ja"]), species_ja=text(row["species_ja"]),
                scientific_name=text(row["scientific_name"]))
     if lat is not None and lon is not None:
-        rec.update(lat=lat, lon=lon, lat_lon_basis="row", coord_decimals=min(dec_lat, dec_lon))
+        rec.update(lat=lat, lon=lon, lat_lon_basis="row", coord_decimals=min(dec_lat, dec_lon),
+                   coordinate_uncertainty_m=uncertainty_m(min(dec_lat, dec_lon)))
     fill_count(rec, row["count"])
     rec["extra_json"] = dump_extra({
         "species_en": row["species_en"], "survey_year_raw": row["survey_year_raw"],
@@ -294,7 +291,8 @@ def norm_coast_shorebird(row, rec, site_coords):
 def site_coord(rec, site_coords):
     c = site_coords.get(rec["site_key"])
     if c and c[0] is not None:
-        rec.update(lat=c[0], lon=c[1], lat_lon_basis="site_table", coord_decimals=c[2])
+        rec.update(lat=c[0], lon=c[1], lat_lon_basis="site_table", coord_decimals=c[2],
+                   coordinate_uncertainty_m=uncertainty_m(c[2]))
 
 
 NORMALIZERS = {"satochi_bird": norm_satochi_bird, "satochi_butterfly": norm_satochi_butterfly,
@@ -307,7 +305,7 @@ DATA_ID_KINDS = ("satochi_bird", "satochi_butterfly", "satochi_mammal")
 def normalize_source(source_id, csv_dir=DEFAULT_CSV_DIR):
     """1 出典の CSV → 正規化済みの記録（名寄せ・地点対応・除外の前）。name_key を '_name_key' に持つ。"""
     cfg = SOURCES[source_id]
-    rows = read_csv(pathlib.Path(csv_dir) / cfg["csv"])
+    rows = read_csv_rows(pathlib.Path(csv_dir) / cfg["csv"])
     site_coords = load_site_coords(csv_dir, cfg["sites"])
     fn = NORMALIZERS[cfg["kind"]]
     out = []
@@ -328,7 +326,7 @@ def normalize_all(csv_dir=DEFAULT_CSV_DIR):
 
 def load_site_map(path=DEFAULT_SITE_MAP):
     idx = {}
-    for r in read_csv(path):
+    for r in read_csv_rows(path):
         k = (r["source_id"], r["site_key"])
         if k in idx:
             raise M10Error(f"地点対応表に重複: {k}")
@@ -338,7 +336,7 @@ def load_site_map(path=DEFAULT_SITE_MAP):
 
 def load_name_map(path=DEFAULT_NAME_MAP):
     idx = {}
-    for r in read_csv(path):
+    for r in read_csv_rows(path):
         k = (r["source_id"], r["name_key"])
         if k in idx:
             raise M10Error(f"名寄せ表に重複: {k}")
@@ -442,10 +440,25 @@ def check_records(records, csv_counts):
             raise M10Error(f"observed_on が正規形でない: {r['record_id']} {o!r}")
 
 
+def split_ddl(sql):
+    """schema_moni1000.sql を 1 文ずつに分ける（; で区切る。DDL に ; を含む文字列は無い）。"""
+    return [s.strip() for s in "\n".join(l for l in sql.splitlines() if not l.lstrip().startswith("--")).split(";")
+            if s.strip()]
+
+
 def load(con, records, csv_counts):
     """moni1000_counts を自分の 5 出典分だけ wipe → 入れ直し、source_registry の隔離を解く。呼び出し側が commit/rollback。"""
     check_records(records, csv_counts)
-    con.executescript(SCHEMA.read_text(encoding="utf-8"))
+    # 検査で止まったとき CREATE TABLE も巻き戻すよう、DDL も同じトランザクションの中で流す
+    # （executescript は暗黙の COMMIT をするので使わない）。
+    if not con.in_transaction:
+        con.execute("BEGIN")        # sqlite3 は DDL の前に BEGIN を自動で発行しないので明示する
+    for stmt in split_ddl(SCHEMA.read_text(encoding="utf-8")):
+        con.execute(stmt)
+    # 列を足す前の版で作った表（列の追加は CREATE IF NOT EXISTS では入らない）に不足の列を足す
+    have = {r[1] for r in con.execute("PRAGMA table_info(moni1000_counts)")}
+    if "coordinate_uncertainty_m" not in have:
+        con.execute("ALTER TABLE moni1000_counts ADD COLUMN coordinate_uncertainty_m REAL")
     marks = ",".join("?" for _ in SOURCES)
     con.execute(f"DELETE FROM moni1000_counts WHERE source_id IN ({marks})", tuple(SOURCES))
     con.executemany(
@@ -455,17 +468,17 @@ def load(con, records, csv_counts):
     if n != len(records):
         raise M10Error(f"投入後の行数が合わない（{n} / {len(records)}）")
     released = 0
-    has_registry = con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='source_registry'").fetchone()
-    if has_registry:
-        for sid in SOURCES:
-            row = con.execute("SELECT notes FROM source_registry WHERE source_id=?", (sid,)).fetchone()
-            if row is None:
-                raise M10Error(f"source_registry に {sid} の行が無い")
-            notes = row[0] or ""
-            if REGISTRY_NOTE_MARK not in notes:
-                notes = (notes + " || " if notes else "") + REGISTRY_NOTE
-            con.execute("UPDATE source_registry SET redistributable=1, notes=? WHERE source_id=?", (notes, sid))
-            released += 1
+    if not con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='source_registry'").fetchone():
+        raise M10Error("source_registry 表が無い（隔離解除を黙って飛ばさない）")
+    for sid in SOURCES:
+        row = con.execute("SELECT notes FROM source_registry WHERE source_id=?", (sid,)).fetchone()
+        if row is None:
+            raise M10Error(f"source_registry に {sid} の行が無い")
+        notes = row[0] or ""
+        if REGISTRY_NOTE_MARK not in notes:
+            notes = (notes + " || " if notes else "") + REGISTRY_NOTE
+        con.execute("UPDATE source_registry SET redistributable=1, notes=? WHERE source_id=?", (notes, sid))
+        released += 1
     return {"rows": n, "released": released}
 
 

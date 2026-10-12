@@ -15,6 +15,7 @@ import pytest
 import adapters
 import b06_build_occurrence as b06
 from ingest import manifest as manifest_lib
+from ingest import runner
 from migrate import common
 
 from .manifest_fixtures import write_manifest, write_manifests_from_sources_text
@@ -275,3 +276,23 @@ def test_adapter_invalid_coordinate_uncertainty_stops(env, args, match):
     _write_uncertainty_adapter(adapters_dir, f"    yield occurrence_row('a', {args})\n")
     with pytest.raises(common.MigrationError, match=match):
         _run(tmp_path, ryuiki_db, registry_db, manifests)
+
+
+@pytest.mark.parametrize(
+    "value, ok",
+    [
+        ("2008", True), ("2012", True), ("2007", False), ("2013", False),      # 年だけ（境界は年に切る）
+        ("2008-01", True), ("2012-12", True), ("2007-12", False), ("2013-01", False),   # 月だけ
+        ("2008-01-01", True), ("2012-12-31", True), ("2007-12-31", False), ("2013-01-01", False),
+        ("2008-01-01T09:00:00+09:00", True),
+    ],
+)
+def test_date_between_partial_dates_compare_at_their_own_precision(value, ok):
+    from types import SimpleNamespace
+
+    run = object.__new__(runner.AdapterRun)
+    run.manifest = SimpleNamespace(source="s")
+    run._checks = [("date_between", ["2008-01-01", "2012-12-31"])]
+    run._problems = []
+    run._apply_row_checks(SimpleNamespace(record_key="k", observed_on_raw=value), 1)
+    assert (run._problems == []) is ok

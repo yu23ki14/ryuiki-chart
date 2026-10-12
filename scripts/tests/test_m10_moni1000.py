@@ -292,3 +292,69 @@ def test_dry_run_does_not_touch_db(inputs, capsys):
     d, site_map, name_map = inputs
     m10.main(["--dry-run", "--csv-dir", str(d), "--site-map", str(site_map), "--name-map", str(name_map)])
     assert "TOTAL 14" in capsys.readouterr().out
+
+
+# ── F1・F5: 精度の列・堅牢化 ──────────────────────────────
+
+@pytest.mark.parametrize("dec,expect", [(1, 10000.0), (2, 1000.0), (3, 100.0), (4, 10.0), (7, 0.01), (None, None)])
+def test_uncertainty_m_general_formula(dec, expect):
+    assert m10.uncertainty_m(dec) == expect
+
+
+def test_coordinate_uncertainty_column_on_every_coordinate_row(inputs):
+    recs, _ = build(inputs)
+    for r in recs:
+        assert (r["lat"] is None) == (r["coordinate_uncertainty_m"] is None), r["record_id"]
+    assert by_id(recs, "moni1000_satochi_bird:10")["coordinate_uncertainty_m"] == 10000.0   # 0.1 度
+    assert by_id(recs, "moni1000_coast_shorebird:r000001")["coordinate_uncertainty_m"] == 100.0   # 3 桁
+
+
+def test_site_id_is_stripped_for_site_coords(tmp_path):
+    write(tmp_path / "s.csv", SITES, [{"site_id": " S065 ", "lat": "35.3", "lon": "139.6", "緯度詳細": "35.3445",
+                                         "経度詳細": "139.5869"}])
+    assert m10.load_site_coords(tmp_path, "s.csv") == {"S065": (35.3445, 139.5869, 4)}
+
+
+def test_missing_source_registry_stops_and_rolls_back_ddl(inputs, tmp_path):
+    recs, counts = build(inputs)
+    db = tmp_path / "noreg.sqlite"
+    con = sqlite3.connect(db)
+    with pytest.raises(m10.M10Error, match="source_registry 表が無い"):
+        m10.load(con, recs, counts)
+    con.rollback()
+    assert con.execute("SELECT COUNT(*) FROM sqlite_master WHERE name='moni1000_counts'").fetchone()[0] == 0
+
+
+def test_check_failure_rolls_back_create_table(inputs, tmp_path):
+    recs, counts = build(inputs)
+    con = registry_db(tmp_path)
+    bad = [dict(r) for r in recs]
+    bad[0]["observed_on"] = "2009/02"
+    with pytest.raises(m10.M10Error):
+        m10.load(con, bad, counts)
+    assert con.execute("SELECT COUNT(*) FROM sqlite_master WHERE name='moni1000_counts'").fetchone()[0] == 0
+    # 検査より後（隔離解除）で止まっても、CREATE TABLE と投入は巻き戻る
+    con.execute("DELETE FROM source_registry WHERE source_id='moni1000_forest_bird'")
+    con.commit()
+    with pytest.raises(m10.M10Error, match="行が無い"):
+        m10.load(con, recs, counts)
+    con.rollback()
+    assert con.execute("SELECT COUNT(*) FROM sqlite_master WHERE name='moni1000_counts'").fetchone()[0] == 0
+
+
+@pytest.mark.parametrize("v", ["nan", "inf", "-inf", "NaN", "x", "", None])
+def test_to_int_rejects_non_finite(v):
+    assert m10.to_int(v) is None
+    assert m10.to_int("2005.0") == 2005
+
+
+def test_load_adds_missing_uncertainty_column_to_old_table(inputs, tmp_path):
+    recs, counts = build(inputs)
+    con = registry_db(tmp_path)
+    old = "\n".join(l for l in m10.SCHEMA.read_text(encoding="utf-8").splitlines() if "coordinate_uncertainty_m" not in l)
+    for stmt in m10.split_ddl(old):
+        con.execute(stmt)
+    con.commit()
+    m10.load(con, recs, counts)
+    assert con.execute("SELECT COUNT(*) FROM moni1000_counts WHERE lat IS NOT NULL AND "
+                       "coordinate_uncertainty_m IS NULL").fetchone()[0] == 0

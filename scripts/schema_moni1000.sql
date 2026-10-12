@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS moni1000_counts (
   lat REAL, lon REAL,                -- 出典の値のまま（丸め・補完・ぼかしをしない）
   lat_lon_basis TEXT,                -- 'row'（行に在る）/ 'site_table'（sites CSV）/ NULL
   coord_decimals INTEGER,            -- 小数桁数（精度の根拠）
+  coordinate_uncertainty_m REAL,     -- 座標の不確かさ（m）。小数桁 d から 10^(5-d)（1桁=10000m）。座標が無ければ NULL
   observed_on TEXT,                  -- 'YYYY-MM-DD' / 'YYYY-MM' / 'YYYY'（欠けた分は補わない）か NULL
   survey_year INTEGER, survey_month INTEGER, survey_day INTEGER,
   start_time TEXT, end_time TEXT,    -- 'HH:MM'（forest/shorebird）。mammal の photo_time は start_time に
@@ -22,7 +23,7 @@ CREATE TABLE IF NOT EXISTS moni1000_counts (
   individual_count_raw TEXT,         -- 原文（'－'・'-' を含む。空は NULL）
   count_qualifier TEXT,              -- plusminus（'+'/'±'）
   id_note_ja TEXT,                   -- id_confidence_ja（'sp.'/'?'）/ id_type_ja
-  out_of_range INTEGER, out_of_time INTEGER,   -- 0/1（範囲外・時間外。元の列が空なら 0）
+  out_of_range INTEGER, out_of_time INTEGER,   -- 0/1。元の列がある出典（satochi_bird・satochi_butterfly）だけ（空なら 0）。他の出典（forest・mammal・shorebird）は NULL
   taxon_id TEXT,                     -- 名寄せ表（registry/taxon/moni1000_name_map.csv）の結果。無ければ NULL
   taxon_resolution TEXT,             -- 'map_sci'/'map_ja'/'unresolved'/'non_taxon'
   in_occurrence INTEGER NOT NULL,    -- 1=occurrence に流す、0=流さない

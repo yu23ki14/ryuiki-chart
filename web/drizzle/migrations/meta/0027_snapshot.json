@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "1c0bf919-2dfd-4067-8c89-0326ae533237",
+  "id": "1697aa1f-2c01-4cda-8e94-4dfa3bd006e2",
   "prevId": "838c94c8-3680-4488-899f-7eb5cf21a26e",
   "tables": {
     "cells": {
@@ -1285,6 +1285,13 @@
         "coord_decimals": {
           "name": "coord_decimals",
           "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "coordinate_uncertainty_m": {
+          "name": "coordinate_uncertainty_m",
+          "type": "real",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false

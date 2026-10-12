@@ -174,7 +174,8 @@ class AdapterRun:
             elif name == "date_between":
                 lo, hi = arg
                 d = (row.observed_on_raw or "")[:10]
-                if row.observed_on_raw is not None and not (lo <= d <= hi):
+                # 年だけ・月だけの値は、その桁数に境界を切って比べる（'2008' を '2008-01-01' と比べると下限を割る）
+                if row.observed_on_raw is not None and not (lo[:len(d)] <= d <= hi[:len(d)]):
                     self._problems.append(
                         f"{src}: checks.date_between[{lo}..{hi}] に違反: {row.observed_on_raw!r}（record_key={row.record_key!r}）"
                     )

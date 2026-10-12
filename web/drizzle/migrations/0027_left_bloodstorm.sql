@@ -10,6 +10,7 @@ CREATE TABLE `moni1000_counts` (
 	`lon` real,
 	`lat_lon_basis` text,
 	`coord_decimals` integer,
+	`coordinate_uncertainty_m` real,
 	`observed_on` text,
 	`survey_year` integer,
 	`survey_month` integer,

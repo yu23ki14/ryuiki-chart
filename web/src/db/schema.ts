@@ -280,6 +280,7 @@ export const moni1000Counts = sqliteTable("moni1000_counts", {
 	lon: real(),
 	latLonBasis: text("lat_lon_basis"),
 	coordDecimals: integer("coord_decimals"),
+	coordinateUncertaintyM: real("coordinate_uncertainty_m"),
 	observedOn: text("observed_on"),
 	surveyYear: integer("survey_year"),
 	surveyMonth: integer("survey_month"),

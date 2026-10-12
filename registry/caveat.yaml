@@ -491,20 +491,20 @@ caveats:
   severity: warning
   kind: coverage_gap
   title_ja: null
-  body_ja: モニタリングサイト1000 の座標は、出典が丸めた値のまま載せている（里地調査は地点の希少種保護のため 0.1 度単位に丸められている）。流域や地点の判定は数 km ずれうるので、coordinate_uncertainty_m を見て精度を確かめる。
+  body_ja: モニタリングサイト1000 の座標は、出典の値のまま載せている。精度は出典・地点で異なり（0.1 度〜小数4桁）、粗いものは流域や地点の判定が数 km ずれうる。coordinate_uncertainty_m を見て精度を確かめる。
   quote: null
   review:
     reviewed_on: '2026-10-12'
     reviewer: claude（オーナー委任）
     owner_confirmed_on: null
-    reason: 出典側で座標が丸められており、位置の精度が地点により違う（精度の欠け。オーナー確認待ち）。
+    reason: 座標の精度が出典・地点により違う（精度の欠け。オーナー確認待ち）。
     changed:
     - new
 - key: moniOutOfRange
   severity: info
   kind: definition_change
   title_ja: null
-  body_ja: モニタリングサイト1000 の記録には、調査の標準の区間・時間の外で記録されたもの（out_of_range・out_of_time）が含まれる。種が居たこと自体は事実だが、調査努力が揃わないので、標準の範囲に限って比べるときは attributes の out_of_range・out_of_time で除く。
+  body_ja: モニタリングサイト1000 の里地調査（鳥類・チョウ類）の記録には、調査の標準の区間・時間の外で記録されたもの（out_of_range・out_of_time）が含まれる。種が居たこと自体は事実だが、調査努力が揃わないので、標準の範囲に限って比べるときは attributes の out_of_range・out_of_time で除く。
   quote: null
   review:
     reviewed_on: '2026-10-12'
