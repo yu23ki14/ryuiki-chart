@@ -69,7 +69,7 @@ moni1000_satochi_bird,トラツグミ,トラツグミ,,common:taxon:gbif.4408785
 moni1000_satochi_bird,ドバト,ドバト,,common:taxon:gbif.2495414,curated,責任者の判断（2026-10-12）: Columba livia。野外に定着した個体なので non_wild にしない
 moni1000_satochi_bird,ニワトリ,ニワトリ,,,exclude:non_wild,家畜・家禽・人
 moni1000_satochi_bird,ノジコ,ノジコ,,common:taxon:gbif.2491529,curated,責任者の判断（2026-10-12）: registry に1件（Emberiza sulphurata）
-moni1000_satochi_bird,ノスリ,ノスリ,,common:taxon:gbif.2480537,ja_paired_sci,同じ和名に学名で決まった別の行がある（学名の出典の語から）
+moni1000_satochi_bird,ノスリ,ノスリ,,common:taxon:gbif.2480537,ja_unique,"Buteo buteo (Linnaeus, 1758)"
 moni1000_satochi_bird,ハイタカ類,ハイタカ類,,,exclude:non_species,種に決められない語（科・類・同定不能・sp. 等）
 moni1000_satochi_bird,ハクセキレイ,ハクセキレイ,,common:taxon:gbif.9687165,ja_unique,"Motacilla alba Linnaeus, 1758"
 moni1000_satochi_bird,ハシビロガモ,ハシビロガモ,,,exclude:unresolved_taxon,registry に和名も学名も無い
