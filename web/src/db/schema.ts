@@ -310,6 +310,79 @@ export const moni1000Counts = sqliteTable("moni1000_counts", {
 ]);
 
 /**
+ * モニタリングサイト1000 サンゴ礁調査（SAN01）の奄美分（`scripts/schema_moni1000_coral.sql`、`scripts/m11_moni1000_coral.py` が原本に作る）。
+ * 種の出現ではなく地点（スポット）×年度の観測値（被度・白化率・オニヒトデ・SPSS・大型魚・病気）。occurrence にも observation にも流さず、
+ * get_records の coral_reef_surveys が全行を返す。値は原文の文字列（'<5'・'-'・'20-30' 等）を *_raw に持ち、数値に直せたものだけ数値列に入れる。
+ * lat/lon は度分秒（lat_dms_raw / lon_dms_raw に原文）から十進の度に換算した値。
+ */
+export const moni1000CoralSpots = sqliteTable("moni1000_coral_spots", {
+	recordId: text("record_id").primaryKey(),
+	sourceId: text("source_id").notNull(),
+	sourceRef: text("source_ref"),
+	fiscalYear: integer("fiscal_year").notNull(),
+	blockJa: text("block_ja"),
+	siteNo: integer("site_no").notNull(),
+	siteNameJa: text("site_name_ja"),
+	spotNo: integer("spot_no").notNull(),
+	spotNameJa: text("spot_name_ja"),
+	prefectureJa: text("prefecture_ja"),
+	lat: real("lat"),
+	lon: real("lon"),
+	latDmsRaw: text("lat_dms_raw"),
+	lonDmsRaw: text("lon_dms_raw"),
+	landformJa: text("landform_ja"),
+	substrateJa: text("substrate_ja"),
+	areaMRaw: text("area_m_raw"),
+	depthRangeMRaw: text("depth_range_m_raw"),
+	observedOn: text("observed_on"),
+	investigatorJa: text("investigator_ja"),
+	method: text("method"),
+	observeMinutesRaw: text("observe_minutes_raw"),
+	observeMinutes: real("observe_minutes"),
+	coverPctRaw: text("cover_pct_raw"),
+	coverPct: real("cover_pct"),
+	bleachAllPctRaw: text("bleach_all_pct_raw"),
+	bleachAllPct: real("bleach_all_pct"),
+	bleachAcroporaPctRaw: text("bleach_acropora_pct_raw"),
+	bleachAcroporaPct: real("bleach_acropora_pct"),
+	deadAllPctRaw: text("dead_all_pct_raw"),
+	deadAllPct: real("dead_all_pct"),
+	deadAcroporaPctRaw: text("dead_acropora_pct_raw"),
+	deadAcroporaPct: real("dead_acropora_pct"),
+	recruitsPerM2Raw: text("recruits_per_m2_raw"),
+	recruitsPerM2: real("recruits_per_m2"),
+	tableAcroporaSizeCmRaw: text("table_acropora_size_cm_raw"),
+	tableAcroporaSizeCm: real("table_acropora_size_cm"),
+	cotsPer15MinRaw: text("cots_per_15min_raw"),
+	cotsPer15Min: real("cots_per_15min"),
+	cotsDominantSizeCmRaw: text("cots_dominant_size_cm_raw"),
+	cotsDominantSizeCm: real("cots_dominant_size_cm"),
+	cotsPredationPctRaw: text("cots_predation_pct_raw"),
+	cotsPredationPct: real("cots_predation_pct"),
+	snailPredationPctRaw: text("snail_predation_pct_raw"),
+	snailPredationPct: real("snail_predation_pct"),
+	spssKgM3Raw: text("spss_kg_m3_raw"),
+	spssKgM3: real("spss_kg_m3"),
+	grouperNRaw: text("grouper_n_raw"),
+	grouperN: real("grouper_n"),
+	wrasseNRaw: text("wrasse_n_raw"),
+	wrasseN: real("wrasse_n"),
+	parrotfishNRaw: text("parrotfish_n_raw"),
+	parrotfishN: real("parrotfish_n"),
+	growthClass: text("growth_class"),
+	growthTypeJa: text("growth_type_ja"),
+	cotsClass: text("cots_class"),
+	cotsSizeRangeCm: text("cots_size_range_cm"),
+	snailClass: text("snail_class"),
+	spssClass: text("spss_class"),
+	disease: text("disease"),
+	noteJa: text("note_ja"),
+},
+(table) => [
+	index("ix_coral_src").on(table.sourceId, table.fiscalYear),
+]);
+
+/**
  * 神奈川県 環境DNA（eDNA）の採水地点（`scripts/schema_edna.sql` の `edna_sites`、m07 が原本に作る）。
  * 地点 = ファイル × 調査地点列。lat/lon は台帳からの「推定位置」（公開データに座標は無い）で、
  * 根拠区分 coord_source と誤差 coordinate_uncertainty_m つき。判別不能は NULL。

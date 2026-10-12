@@ -1,0 +1,42 @@
+# manifests/moni1000_forest_bird_amami.yml（宣言。形は scripts/ingest/manifest.py の docstring）。
+# 変換は scripts/adapters/moni1000_forest_bird_amami.py（import は ingest.api だけ）。docs/plans/MONI1000.md §3。
+# place・cube・件数・period_shapes は実測（2026-10-12）。
+source: moni1000_forest_bird_amami
+region: jp-46
+target: occurrence
+update_mode: snapshot
+input:
+  table: moni1000_counts
+adapter: moni1000_forest_bird_amami
+expected_row_count: 5303   # in_occurrence=1 の実測
+sample_input_max_rows: 60000
+checks:
+  - not_null: [record_key, taxon_id]
+  - unique: [record_key]
+  - row_count_between: [5303, 5303]   # 実測固定
+  - in_registry: taxon
+  - date_between: ["2006-01-01", "2025-12-31"]
+evidence: >
+  環境省生物多様性センター モニタリングサイト1000 森林・草原調査 陸生鳥類調査（奄美のサイトのみ抽出。収集は
+  scripts/process_moni1000_amami.py、全国分の既取得 ZIP の展開済みファイルから抽出。以後は新規取得しない。2026-10-12 に追認、隔離解除）。
+  原本の表は moni1000_counts（scripts/m10_moni1000.py が data/processed の CSV から作る。7 出典共通の 1 表で
+  source_id=moni1000_forest_bird_amami の行）。update_mode=snapshot は m10 が出典単位で全件を置き換えるため。
+  occurrence に入れるのは in_occurrence=1 の行だけ（個体数 0・名寄せ不能・非野生・科/類は exclude_reason つきで
+  生の表にだけ残す。件数は m10 の --dry-run の内訳。黙って落とさない）。出現の n は記録の行数で個体数ではない
+  （区間・ポイントごとに 1 行あるので同じ調査でも行が増える。個体数は attributes.individual_count）。
+  座標は出典のまま（丸め・補完をしない）。精度は coord_decimals から coordinate_uncertainty_m（1 桁=10000m）。
+  利用規約: 生物多様性センターウェブサイト利用規約（出典を明示する）。各行の source_ref に出典 URL と調査コード。
+  件数と期間の形は in_occurrence=1 の実測（2026-10-12）。place・cube の値は b09 の実測（build:v2）。
+expected:   # 実測（2026-10-12、build:v2 の b09 の _resolve_distinct_coordinates と m10 の内訳）
+  period_shapes: {day: 5303}   # in_occurrence=1 の observed_on の形ごとの実測
+  place:
+    coord_resolved: 5303   # 実測。b09 の PIP で流域に解決した行
+    coord_unresolved: 0   # 実測。全行が流域に解決
+  cube:
+    dated_rows: 5303   # 実測。全行に日付あり
+    dated_no_coordinate_rows: 0   # 実測。座標なしは 0 行
+    leaf_cell_source_rows: 0   # 実測。年をまたぐ区間は無い
+    leaf_cell_source_rows_no_coordinate: 0
+    month_cell_source_rows: 5303   # 実測。全行が日付あり・座標ありの月セル行
+    watershed_dated_resolved_rows: 5303   # 実測。b09 で流域に解決した日付あり行
+    watershed_dated_unresolved_rows: 0   # 実測。流域外は 0 行

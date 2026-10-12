@@ -38,6 +38,8 @@ PR-A（#91）で `data/processed` に集めた奄美（`jp-46`）の分を、ア
 | `soramame_hourly_amami` | `sensor_timeseries`。マニフェストは snapshot、時刻ラベルの宣言は hour_ending | 消す |
 | `jma_sst_amami` | `sensor_timeseries`（site は `jma_sst_amami__<海域>`）。マニフェストは snapshot | 消す |
 
+【追記 2026-10-12】上の27件のほかに、モニタリングサイト1000 の奄美 2 出典（`moni1000_forest_bird_amami`・`moni1000_coast_shorebird_amami`）を `moni1000_counts`（m10）→ occurrence に載せた（`records: [monitoring_counts]`、`docs/plans/MONI1000.md` §9）。
+
 ## 2. 担当ごとの変更
 
 ### 2.0 担当 F（最初に入れる。小さい）

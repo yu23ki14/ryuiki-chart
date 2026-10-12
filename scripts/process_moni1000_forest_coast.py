@@ -9,6 +9,27 @@ from common import PROC, RAW, register, write_jsonl
 
 EXT = RAW / "moni1000" / "extracted"
 
+# 列名の対応（奄美の抽出 process_moni1000_amami.py も使う）
+SIN04_COLMAP = {
+    "サイトID": "site_id", "サイトタイプ": "site_type_ja", "環境": "habitat_ja",
+    "緯度": "lat", "経度": "lon", "都道府県": "prefecture_ja", "市町村": "municipality_ja",
+    "サイクル": "cycle_ja", "調査年度・時期": "survey_period_ja", "地点": "point_ja",
+    "回": "rep_no", "年": "survey_year", "月": "survey_month", "日": "survey_day",
+    "開始時": "start_hour", "開始分": "start_min", "終了時": "end_hour", "終了分": "end_min",
+    "天候": "weather_ja", "種名": "species_ja", "亜種名": "subspecies_ja",
+    "学名": "scientific_name", "個体数": "count", "確認区分": "id_type_ja",
+    "調査方法": "survey_method_ja",
+}
+
+SIG02_COLMAP = {
+    "Survey Year": "survey_year_raw", "Season": "season_ja", "Site Code": "site_code",
+    "Japanese Site Name": "site_name_ja", "Alphabetical Site Name": "site_name_romaji",
+    "Latitude": "lat", "Longitude": "lon", "Year": "year", "Month": "month", "Day": "day",
+    "Start Time": "start_time", "End Time": "end_time",
+    "Japanese Name": "species_ja", "English Name": "species_en",
+    "Scientific Name": "scientific_name", "Count": "count",
+}
+
 
 def read_any(path):
     try:
@@ -26,17 +47,7 @@ def process_sin04():
         if len(kn):
             frames.append(kn)
     allkn = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
-    colmap = {
-        "サイトID": "site_id", "サイトタイプ": "site_type_ja", "環境": "habitat_ja",
-        "緯度": "lat", "経度": "lon", "都道府県": "prefecture_ja", "市町村": "municipality_ja",
-        "サイクル": "cycle_ja", "調査年度・時期": "survey_period_ja", "地点": "point_ja",
-        "回": "rep_no", "年": "survey_year", "月": "survey_month", "日": "survey_day",
-        "開始時": "start_hour", "開始分": "start_min", "終了時": "end_hour", "終了分": "end_min",
-        "天候": "weather_ja", "種名": "species_ja", "亜種名": "subspecies_ja",
-        "学名": "scientific_name", "個体数": "count", "確認区分": "id_type_ja",
-        "調査方法": "survey_method_ja",
-    }
-    allkn = allkn.rename(columns=colmap)
+    allkn = allkn.rename(columns=SIN04_COLMAP)
     allkn["source_id"] = "moni1000_forest_bird"
     allkn["source_ref"] = "https://www.biodic.go.jp/moni1000/question/question.html (SIN04)"
     csv_path = PROC / "moni1000_forest_bird_kanagawa.csv"
@@ -67,15 +78,7 @@ def process_sig02():
     # 東京都(江東区・大田区)側のみのサイトは除外し、神奈川県内(川崎市・海老名市・小田原市)サイトのみ残す
     exclude = {"中央防波堤内・外側埋立地", "東京港野鳥公園", "東京港野鳥公園　前浜干潟"}
     kn = cand[~cand["Japanese Site Name"].isin(exclude)].copy()
-    colmap = {
-        "Survey Year": "survey_year_raw", "Season": "season_ja", "Site Code": "site_code",
-        "Japanese Site Name": "site_name_ja", "Alphabetical Site Name": "site_name_romaji",
-        "Latitude": "lat", "Longitude": "lon", "Year": "year", "Month": "month", "Day": "day",
-        "Start Time": "start_time", "End Time": "end_time",
-        "Japanese Name": "species_ja", "English Name": "species_en",
-        "Scientific Name": "scientific_name", "Count": "count",
-    }
-    kn = kn.rename(columns=colmap)
+    kn = kn.rename(columns=SIG02_COLMAP)
     kn["source_id"] = "moni1000_coast_shorebird"
     kn["source_ref"] = "https://www.biodic.go.jp/moni1000/question/question.html (SIG02)"
     csv_path = PROC / "moni1000_coast_shorebird_kanagawa.csv"
