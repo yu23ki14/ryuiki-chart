@@ -1,0 +1,42 @@
+# manifests/moni1000_satochi_bird.yml（宣言。形は scripts/ingest/manifest.py の docstring）。
+# 変換は scripts/adapters/moni1000_satochi_bird.py（import は ingest.api だけ）。docs/plans/MONI1000.md §3。
+# 「仮」と書いた値は担当 A の m10 の実測と、メインの全量（b06/b07/b09）の結果で埋める。
+source: moni1000_satochi_bird
+region: jp-14
+target: occurrence
+update_mode: snapshot
+input:
+  table: moni1000_counts
+adapter: moni1000_satochi_bird
+expected_row_count: 17700   # 仮（推定。m10 の in_occurrence=1 の実測に置き換える）
+sample_input_max_rows: 50000
+checks:
+  - not_null: [record_key, taxon_id]
+  - unique: [record_key]
+  - row_count_between: [17700, 17700]   # 仮（実測固定に置き換える）
+  - in_registry: taxon
+  - date_between: ["2008-01-01", "2012-12-31"]
+evidence: >
+  環境省生物多様性センター モニタリングサイト1000 里地調査 鳥類調査（神奈川県のサイトのみ抽出。収集は
+  scripts/process_moni1000_*.py、取得は 2026-08-29 で以後は新規取得しない。2026-10-12 に追認、隔離解除）。
+  原本の表は moni1000_counts（scripts/m10_moni1000.py が data/processed の CSV から作る。5 出典共通の 1 表で
+  source_id=moni1000_satochi_bird の行）。update_mode=snapshot は m10 が出典単位で全件を置き換えるため。
+  occurrence に入れるのは in_occurrence=1 の行だけ（個体数 0・名寄せ不能・非野生・科/類は exclude_reason つきで
+  生の表にだけ残す。件数は m10 の --dry-run の内訳。黙って落とさない）。出現の n は記録の行数で個体数ではない
+  （区間・ポイントごとに 1 行あるので同じ調査でも行が増える。個体数は attributes.individual_count）。
+  座標は出典のまま（丸め・補完をしない）。精度は coord_decimals から coordinate_uncertainty_m（1 桁=10000m）。
+  調査は月単位（日なし）。observed_on は YYYY-MM。利用規約: 生物多様性センターウェブサイト利用規約（出典を明示する）。各行の source_ref に出典 URL と調査コード。
+  件数・期間の形・place・cube の値は仮置き（実測で更新する）。
+expected:   # 仮（period_shapes は m10 の実測と adapter テストで、place/cube はメインの全量で確定する）
+  period_shapes: {month: 17700}
+  place:
+    coord_resolved: 0
+    coord_unresolved: 17700
+  cube:
+    dated_rows: 17700
+    dated_no_coordinate_rows: 0
+    leaf_cell_source_rows: 0
+    leaf_cell_source_rows_no_coordinate: 0
+    month_cell_source_rows: 17700
+    watershed_dated_resolved_rows: 0
+    watershed_dated_unresolved_rows: 17700

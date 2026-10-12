@@ -56,13 +56,13 @@ CATALOG_TABLES = frozenset({"external_dataset"})
 # RECORD_TABLES の許可リスト（列）は record_set → 表を access.yaml の生成物から読む。`taxon_assessment` は語彙レジストリの表
 # （registry.sqlite。原本の taxa・redlist_assessments は D1 に無い＝マイグレーション 0010 で DROP 済み）。
 D1_RECORD_TABLES = frozenset(
-    {"place", "protected_areas", "vegetation_polygons", "river_segments", "mammal_mesh", "wildlife_sightings", "taxon_assessment", "hazard_zones"}
+    {"place", "protected_areas", "vegetation_polygons", "river_segments", "mammal_mesh", "wildlife_sightings", "taxon_assessment", "hazard_zones", "moni1000_counts"}
 )
 
 # n_source_rows を数える表（A の出典。B は `records` の表）。
 PRIMARY_TABLES = {
     "observation": ("measurements", "sensor_timeseries"),
-    "occurrence": ("organism_records", "edna_reads", "wildlife_sightings"),
+    "occurrence": ("organism_records", "edna_reads", "wildlife_sightings", "moni1000_counts"),
 }
 
 N_BASIS = ("source_rows", "registry_record_count", "catalog_datasets", "none")

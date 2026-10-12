@@ -487,3 +487,42 @@ caveats:
     reason: 速報値で、確定値に直される保証が原表に無い（誤差の可能性。オーナー確認待ち）。
     changed:
     - new
+- key: moniCoords
+  severity: warning
+  kind: coverage_gap
+  title_ja: null
+  body_ja: モニタリングサイト1000 の座標は、出典が丸めた値のまま載せている（里地調査は地点の希少種保護のため 0.1 度単位に丸められている）。流域や地点の判定は数 km ずれうるので、coordinate_uncertainty_m を見て精度を確かめる。
+  quote: null
+  review:
+    reviewed_on: '2026-10-12'
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: null
+    reason: 出典側で座標が丸められており、位置の精度が地点により違う（精度の欠け。オーナー確認待ち）。
+    changed:
+    - new
+- key: moniOutOfRange
+  severity: info
+  kind: definition_change
+  title_ja: null
+  body_ja: モニタリングサイト1000 の記録には、調査の標準の区間・時間の外で記録されたもの（out_of_range・out_of_time）が含まれる。種が居たこと自体は事実だが、調査努力が揃わないので、標準の範囲に限って比べるときは attributes の out_of_range・out_of_time で除く。
+  quote: null
+  review:
+    reviewed_on: '2026-10-12'
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: null
+    reason: 標準外の記録を出現に含めているため、調査努力をそろえて比べるときに除く手段を示す（オーナー確認待ち）。
+    changed:
+    - new
+- key: moniCounts
+  severity: blocking
+  kind: null
+  title_ja: null
+  body_ja: モニタリングサイト1000 の n は記録の行数で、個体数ではない（区間・ポイントごとに 1 行あるので、同じ調査でも行が増える。GBIF・iNaturalist の n と同じ尺度に混ざる）。個体数は調査ごとの確認数（attributes の individual_count）で、「+」「±」や空は個体数不明。n を個体数や生息数と読まないこと。
+  quote: null
+  review:
+    reviewed_on: '2026-10-12'
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: null
+    reason: n を個体数と読むと結論が誤る（禁止表現を含むので blocking。オーナー確認待ち）。
+    changed:
+    - new

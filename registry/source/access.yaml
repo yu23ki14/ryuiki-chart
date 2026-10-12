@@ -21,6 +21,7 @@ record_sets:
   sightings: wildlife_sightings
   assessments: taxon_assessment
   hazard_zones: hazard_zones
+  monitoring_counts: moni1000_counts   # モニタリングサイト1000 神奈川 5 調査の生の記録。出典は列 source_id
 reasons:
   not_collected: {ja: "未収集（取得手段が未着手、または登録のみ）"}
   blocked_access: {ja: "ログイン・APIキー・利用アンケート・JS 画面などで、自動取得できていない"}
@@ -63,6 +64,13 @@ sources:
   kanagawa_jiban_chinka: {records: [sites]}
   atsugi_river_water_quality: {records: [sites]}
   kanagawa_kuma_sightings: {records: [sightings]}   # 出現キューブは座標なし 5 セルだけ。明細はこちら
+  # モニタリングサイト1000 神奈川 5 調査。追認済み（2026-10-12、オーナー確認）・新規取得はしない（手元の data/processed/moni1000_*_kanagawa.csv だけを使う）。
+  # 生の記録は get_records(record_set=monitoring_counts)、名寄せ済みの出現は get_occurrences。occurrence の n は記録の行数で個体数ではない。
+  moni1000_satochi_bird: {records: [monitoring_counts], note: "環境省生物多様性センター モニタリングサイト1000 里地調査 鳥類調査（生物多様性センターウェブサイト利用規約に基づき出典を明示）。神奈川県のサイトのみ。出現の n は記録の行数（個体数ではない）。"}
+  moni1000_satochi_butterfly: {records: [monitoring_counts], note: "環境省生物多様性センター モニタリングサイト1000 里地調査 チョウ類調査（生物多様性センターウェブサイト利用規約に基づき出典を明示）。神奈川県のサイトのみ。出現の n は記録の行数（個体数ではない）。"}
+  moni1000_satochi_mammal: {records: [monitoring_counts], note: "環境省生物多様性センター モニタリングサイト1000 里地調査 中・大型哺乳類調査（自動撮影）（生物多様性センターウェブサイト利用規約に基づき出典を明示）。神奈川県のサイトのみ。出現の n は記録の行数（個体数ではない）。"}
+  moni1000_forest_bird: {records: [monitoring_counts], note: "環境省生物多様性センター モニタリングサイト1000 森林・草原調査 陸生鳥類調査（生物多様性センターウェブサイト利用規約に基づき出典を明示）。神奈川県のサイトのみ。出現の n は記録の行数（個体数ではない）。"}
+  moni1000_coast_shorebird: {records: [monitoring_counts], note: "環境省生物多様性センター モニタリングサイト1000 沿岸域調査 シギ・チドリ類調査（生物多様性センターウェブサイト利用規約に基づき出典を明示）。神奈川県のサイトのみ。出現の n は記録の行数（個体数ではない）。"}
   # --- find_datasets で取れる（外部ポータルの目録。値ではなく定義と最新の URL。docs/plans/MCP_EXTERNAL_CATALOG.md §5）---
   # catalog は records/reason と排他。表は external_dataset（出典の列 source_id で絞る目録）だけ。
   ckan_kanagawa_pref: {catalog: external_dataset}
@@ -153,11 +161,6 @@ sources:
   kanagawa_shizenshi_bibliography: {reason: file_only, basis: "data/processed に kanagawa_shizenshi_bibliography.csv がある（D1 の表なし）"}
   moe_meisui_kanagawa: {reason: file_only, basis: "data/processed に moe_meisui_kanagawa.csv がある（D1 の表なし）"}
   moe_satoyama_kanagawa: {reason: file_only, basis: "data/processed に moe_satoyama_kanagawa.csv がある（D1 の表なし）"}
-  moni1000_coast_shorebird: {reason: file_only, basis: "data/processed に moni1000_coast_shorebird_kanagawa.csv がある（D1 の表なし）"}
-  moni1000_forest_bird: {reason: file_only, basis: "data/processed に moni1000_forest_bird_kanagawa.csv がある（D1 の表なし）"}
-  moni1000_satochi_bird: {reason: file_only, basis: "data/processed に moni1000_satochi_bird_census_kanagawa.csv がある（D1 の表なし）"}
-  moni1000_satochi_butterfly: {reason: file_only, basis: "data/processed に moni1000_satochi_butterfly_census_kanagawa.csv がある（D1 の表なし）"}
-  moni1000_satochi_mammal: {reason: file_only, basis: "data/processed に moni1000_satochi_mammal_photo_kanagawa.csv がある（D1 の表なし）"}
   nlni_a10_natparks: {reason: file_only, basis: "data/processed に nlni_a10_natparks.csv がある（D1 の表なし）", note: "data/processed に 4 ファイル。D1 の表は無い"}
   nlni_a15_wildlife: {reason: file_only, basis: "data/processed に nlni_a15_wildlife.csv がある（D1 の表なし）"}
   nlni_a45_forest: {reason: file_only, basis: "data/processed に nlni_a45_forest.csv がある（D1 の表なし）"}
