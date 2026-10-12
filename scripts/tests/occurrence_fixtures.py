@@ -297,7 +297,7 @@ def occurrence_row(
     place_id=DEFAULT_GRID01_PLACE_ID, place_kind="grid01",
     source_row_id=1, red_list_category="",
     lat=35.505, lon=139.005, scientific_name="Foo bar", is_alien=0,
-    is_alien_in_scope=None,
+    is_alien_in_scope=None, coordinate_uncertainty_m=None,
 ) -> tuple:
     """`_OCCURRENCE_COLUMNS`（≡ `scripts/b06_build_occurrence.py` の
     `_CREATE_OCCURRENCE_SQL`）の並びで `occurrence` の1行を組み立てる
@@ -316,7 +316,7 @@ def occurrence_row(
     """
     return (
         record_id, "organism_records", source_row_id, source_id, region_id, taxon_id,
-        place_id, place_kind, None, lat, lon,
+        place_id, place_kind, coordinate_uncertainty_m, lat, lon,
         "day", period_start, period_end, period_raw,
         scientific_name, "フーバー", "SPECIES", red_list_category, is_alien, "CC-BY", "公開",
         is_alien if is_alien_in_scope is None else is_alien_in_scope,

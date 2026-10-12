@@ -93,6 +93,37 @@ def test_resolved_and_null_rows(tmp_path):
     assert {"occurrence", "ext:registry.place_source_ref", "ext:ryuiki.sites"} <= lineage_keys
 
 
+def test_coordinate_uncertainty_threshold_withholds_watershed(tmp_path):
+    """オーナー決定 2026-10-12: coordinate_uncertainty_m >= 10000 は流域に割り当てない
+    （9999 は解決、NULL は従来どおり解決）。withheld は method で流域外と区別できる。"""
+    inside = dict(lat=35.05, lon=139.05)
+    rows = [
+        occurrence_row("r_10000", None, None, None, None, source_row_id=1, coordinate_uncertainty_m=10000, **inside),
+        occurrence_row("r_9999", None, None, None, None, source_row_id=2, coordinate_uncertainty_m=9999, **inside),
+        occurrence_row("r_null", None, None, None, None, source_row_id=3, **inside),
+        occurrence_row("r_huge", None, None, None, None, source_row_id=4, coordinate_uncertainty_m=250000, **inside),
+        occurrence_row("r_out", None, None, None, None, source_row_id=5, lat=50.0, lon=200.0),
+    ]
+    v2_db, ryuiki_db, registry_db, geojson = _setup(
+        tmp_path,
+        occurrence_rows=rows,
+        geojson_features=[("W1", _W1_RINGS)],
+        place_refs=[(_W1_PLACE_ID, "W1", "watershed_id")],
+    )
+    decl = _declarations(tmp_path, n_watershed_polygons=1, place_id_null_count=3, resolved_count=2)
+
+    stats = b09.build_and_write_occurrence_place(v2_db, ryuiki_db, registry_db, geojson, decl)
+    assert (stats["n_resolved"], stats["n_null"]) == (2, 3)
+
+    conn = sqlite3.connect(f"file:{v2_db}?mode=ro", uri=True)
+    out = {r[0]: (r[1], r[2]) for r in conn.execute("SELECT record_id, place_id, method FROM occurrence_place")}
+    assert out["r_10000"] == (None, b09.METHOD_WITHHELD)
+    assert out["r_huge"] == (None, b09.METHOD_WITHHELD)
+    assert out["r_9999"] == (_W1_PLACE_ID, b09.METHOD)
+    assert out["r_null"] == (_W1_PLACE_ID, b09.METHOD)
+    assert out["r_out"] == (None, b09.METHOD)
+
+
 def test_records_without_coordinates_get_no_row(tmp_path):
     """座標の無い記録（lat/lon NULL）は occurrence_place に行を持たない
     （母集団は「座標のある全記録」）。
