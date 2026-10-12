@@ -263,6 +263,52 @@ export const wildlifeSightings = sqliteTable("wildlife_sightings", {
 ]);
 
 /**
+ * モニタリングサイト1000 神奈川県 5 調査（里地 鳥類／チョウ類／中・大型哺乳類、森林・草原 陸生鳥類、沿岸域 シギ・チドリ類）の
+ * 生の記録（`scripts/schema_moni1000.sql`、m10 が原本に作る）。調査 × 地点 × 種 × 個体数。
+ * 出典固有の列は extra_json。in_occurrence=0 の行（個体数 0・名寄せ不能・非野生・科/類）も落とさず持つ。
+ * 座標は出典のまま（丸め・補完・ぼかしをしない）。
+ */
+export const moni1000Counts = sqliteTable("moni1000_counts", {
+	recordId: text("record_id").primaryKey(),
+	sourceId: text("source_id").notNull(),
+	sourceRef: text("source_ref"),
+	surveyId: text("survey_id"),
+	siteKey: text("site_key").notNull(),
+	siteNameJa: text("site_name_ja"),
+	placeId: text("place_id"),
+	lat: real(),
+	lon: real(),
+	latLonBasis: text("lat_lon_basis"),
+	coordDecimals: integer("coord_decimals"),
+	observedOn: text("observed_on"),
+	surveyYear: integer("survey_year"),
+	surveyMonth: integer("survey_month"),
+	surveyDay: integer("survey_day"),
+	startTime: text("start_time"),
+	endTime: text("end_time"),
+	seasonJa: text("season_ja"),
+	surveyRound: text("survey_round"),
+	sectionJa: text("section_ja"),
+	speciesJa: text("species_ja"),
+	scientificName: text("scientific_name"),
+	individualCount: real("individual_count"),
+	individualCountRaw: text("individual_count_raw"),
+	countQualifier: text("count_qualifier"),
+	idNoteJa: text("id_note_ja"),
+	outOfRange: integer("out_of_range"),
+	outOfTime: integer("out_of_time"),
+	taxonId: text("taxon_id"),
+	taxonResolution: text("taxon_resolution"),
+	inOccurrence: integer("in_occurrence").notNull(),
+	excludeReason: text("exclude_reason"),
+	extraJson: text("extra_json"),
+},
+(table) => [
+	index("ix_moni_src").on(table.sourceId, table.surveyYear),
+	index("ix_moni_sp").on(table.speciesJa),
+]);
+
+/**
  * 神奈川県 環境DNA（eDNA）の採水地点（`scripts/schema_edna.sql` の `edna_sites`、m07 が原本に作る）。
  * 地点 = ファイル × 調査地点列。lat/lon は台帳からの「推定位置」（公開データに座標は無い）で、
  * 根拠区分 coord_source と誤差 coordinate_uncertainty_m つき。判別不能は NULL。
