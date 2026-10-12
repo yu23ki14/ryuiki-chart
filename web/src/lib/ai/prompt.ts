@@ -82,6 +82,7 @@ const CAVEAT_KEY_ORDER = {
   moniCoords: true,
   moniOutOfRange: true,
   moniCounts: true,
+  moniCoral: true,
 } satisfies Record<CaveatKey, true>;
 const CAVEAT_KEYS = Object.keys(CAVEAT_KEY_ORDER) as CaveatKey[];
 

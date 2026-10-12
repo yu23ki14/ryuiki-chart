@@ -9,7 +9,7 @@ input:
   table: moni1000_counts
 adapter: moni1000_satochi_mammal
 expected_row_count: 1581   # in_occurrence=1 の実測
-sample_input_max_rows: 50000
+sample_input_max_rows: 60000
 checks:
   - not_null: [record_key, taxon_id]
   - unique: [record_key]

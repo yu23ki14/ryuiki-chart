@@ -39,8 +39,10 @@ export const TABLE_ORIGIN: Record<string, string> = {
   // AI の run_sql / describe_schema 用の台帳表として D1 に残している
   protected_areas: "main", vegetation_polygons: "main", hazard_zones: "main", mammal_mesh: "main",
   wildlife_sightings: "main", river_segments: "main",
-  // モニタリングサイト1000 神奈川県 5 調査の生の記録（scripts/m10_moni1000.py）。get_records の monitoring_counts
+  // モニタリングサイト1000 神奈川県・奄美の調査の生の記録（scripts/m10_moni1000.py）。get_records の monitoring_counts
   moni1000_counts: "main",
+  // モニタリングサイト1000 サンゴ礁調査（奄美、scripts/m11_moni1000_coral.py）。get_records の coral_reef_surveys
+  moni1000_coral_spots: "main",
   // 神奈川県 eDNA（scripts/m07_kanagawa_edna.py）。検出も不検出も。MCP/AI の get_edna と run_sql 用の台帳表
   edna_sites: "main", edna_reads: "main",
   // 外部ポータルの目録（scripts/m08_external_catalog.py。MCP/AI の find_datasets と run_sql 用。値は持たない）
@@ -93,10 +95,15 @@ export const TABLE_META: Record<string, string> = {
     "ツキノワグマの出没・目撃記録。頭数・状況（目撃／痕跡／捕殺）・区分（人里／山中）つき。" +
     "原本に座標が無いため lat/lon は空",
   moni1000_counts:
-    "モニタリングサイト1000 神奈川県 5 調査（里地 鳥類／チョウ類／中・大型哺乳類、森林・草原 陸生鳥類、" +
-    "沿岸域 シギ・チドリ類）の生の記録。調査回・区間/ポイント・個体数つき。座標は出典のまま（精度は出典・地点で異なり、" +
+    "モニタリングサイト1000 神奈川県・奄美の調査（里地 鳥類／チョウ類／中・大型哺乳類、森林・草原 陸生鳥類、" +
+    "沿岸域 シギ・チドリ類。奄美は森林・草原 陸生鳥類と沿岸域 シギ・チドリ類）の生の記録。調査回・区間/ポイント・個体数つき。座標は出典のまま（精度は出典・地点で異なり、" +
     "0.1 度〜。coordinate_uncertainty_m に示す）。個体数 0・名寄せ不能・非野生の行も残してある（in_occurrence=0）。out_of_range・out_of_time は里地の鳥・チョウだけ（他の出典は NULL）。" +
     "個体数は調査ごとの確認数で、'+' は個体数不明（count_qualifier）",
+  moni1000_coral_spots:
+    "モニタリングサイト1000 サンゴ礁調査（スポットチェック法）の奄美大島とその周辺 15 スポット × 2004〜2017 年度の観測値。" +
+    "サンゴ被度（目視の見積り、10% 刻み。'<1'・'<5' がある）・白化率・オニヒトデ・サンゴ食巻貝・SPSS・大型魚・病気・特記事項。" +
+    "値は原文の文字列を *_raw に、数値に直せたものだけを同名の数値列に持つ（'<5'・'-' 等は数値列が NULL）。" +
+    "lat/lon は度分秒（lat_dms_raw / lon_dms_raw）から換算した十進の度。種の出現ではない",
   edna_sites:
     "神奈川県 環境DNA（eDNA）の採水地点（ファイル×調査地点列）。lat/lon は推定位置で、" +
     "根拠 coord_source と誤差 coordinate_uncertainty_m つき（公開データに座標は無い）",

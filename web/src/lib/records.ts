@@ -159,7 +159,7 @@ export const RECORD_TABLES = {
     ],
   },
   /*
-   * モニタリングサイト1000 神奈川県 5 調査の生の記録（`moni1000_counts`、scripts/m10_moni1000.py）。
+   * モニタリングサイト1000 神奈川県・奄美の調査の生の記録（`moni1000_counts`、scripts/m10_moni1000.py）。
    * 出典（里地 鳥類／チョウ類／哺乳類・森林・草原 鳥類・沿岸域 シギ・チドリ）は source_id で絞る。
    * 個体数 0・名寄せ不能などの行（in_occurrence=0）も含む全行を返す。extra_json は出典固有の列。
    */
@@ -173,6 +173,29 @@ export const RECORD_TABLES = {
       "season_ja", "survey_round", "section_ja", "species_ja", "scientific_name", "individual_count", "individual_count_raw",
       "count_qualifier", "id_note_ja", "out_of_range", "out_of_time", "taxon_id", "taxon_resolution", "in_occurrence",
       "exclude_reason", "extra_json",
+    ],
+  },
+  /*
+   * モニタリングサイト1000 サンゴ礁調査（SAN01）の奄美分（`moni1000_coral_spots`、scripts/m11_moni1000_coral.py）。
+   * 種の出現ではなく地点（スポット）×年度の観測値（被度・白化率・オニヒトデ・SPSS・大型魚・病気）。全行を返す。
+   * 値は原文の文字列を *_raw に、数値に直せたものだけ同名の数値列に持つ（'<5'・'-' 等は NULL）。
+   */
+  coral_reef_surveys: {
+    table: RECORD_SET_TABLES.coral_reef_surveys,
+    pk: "record_id",
+    search: ["spot_name_ja", "site_name_ja"],
+    cols: [
+      "record_id", "source_id", "source_ref", "fiscal_year", "block_ja", "site_no", "site_name_ja", "spot_no",
+      "spot_name_ja", "prefecture_ja", "lat", "lon", "lat_dms_raw", "lon_dms_raw", "landform_ja", "substrate_ja",
+      "area_m_raw", "depth_range_m_raw", "observed_on", "investigator_ja", "method", "observe_minutes_raw",
+      "observe_minutes", "cover_pct_raw", "cover_pct", "bleach_all_pct_raw", "bleach_all_pct", "bleach_acropora_pct_raw",
+      "bleach_acropora_pct", "dead_all_pct_raw", "dead_all_pct", "dead_acropora_pct_raw", "dead_acropora_pct",
+      "recruits_per_m2_raw", "recruits_per_m2", "table_acropora_size_cm_raw", "table_acropora_size_cm",
+      "cots_per_15min_raw", "cots_per_15min", "cots_dominant_size_cm_raw", "cots_dominant_size_cm",
+      "cots_predation_pct_raw", "cots_predation_pct", "snail_predation_pct_raw", "snail_predation_pct", "spss_kg_m3_raw",
+      "spss_kg_m3", "grouper_n_raw", "grouper_n", "wrasse_n_raw", "wrasse_n", "parrotfish_n_raw", "parrotfish_n",
+      "growth_class", "growth_type_ja", "cots_class", "cots_size_range_cm", "snail_class", "spss_class", "disease",
+      "note_ja"
     ],
   },
   /*
@@ -251,7 +274,7 @@ export function recordSetsOf(sourceId: string): readonly string[] {
 /** MCP・AI 共通の入力（z.tuple は使わない）。出典と表の組み合わせの検査は `queryRecords` が行う。 */
 export const recordsInputSchema = z.object({
   source_id: z.enum(RECORD_SOURCE_IDS).optional().describe(`出典（${SOURCELESS_LIST} 以外は必須。使える出典と record_set の組はツールの説明にある）`),
-  record_set: z.enum(RECORD_SET_NAMES).optional().describe(`記録の集合（sites・protected_areas・vegetation・hazard_zones・river_segments・mammal_mesh・sightings・monitoring_counts・assessments・documents・document_notes・document_cells）。出典に集合が複数あるときだけ必須（1つなら省略可）。${SOURCELESS_LIST} は出典に紐付かないので source_id なしでこれだけ指定する`),
+  record_set: z.enum(RECORD_SET_NAMES).optional().describe(`記録の集合（sites・protected_areas・vegetation・hazard_zones・river_segments・mammal_mesh・sightings・monitoring_counts・coral_reef_surveys・assessments・documents・document_notes・document_cells）。出典に集合が複数あるときだけ必須（1つなら省略可）。${SOURCELESS_LIST} は出典に紐付かないので source_id なしでこれだけ指定する`),
   id: idText("主キーの完全一致（1 件取り）").optional(),
   q: likeText("表ごとの検索列（名称・和名・学名など）の部分一致").optional(),
   include_geometry: z

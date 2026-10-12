@@ -488,6 +488,8 @@ export const RECORD_SET_INSERT: Record<string, (db: Database.Database, pk: strin
   sightings: (db, pk, name, source) => void db.prepare("INSERT INTO wildlife_sightings (sighting_id, species_ja, source_id) VALUES (?,?,?)").run(pk, name, source),
   monitoring_counts: (db, pk, name, source) =>
     void db.prepare("INSERT INTO moni1000_counts (record_id, source_id, site_key, species_ja, in_occurrence) VALUES (?,?,'k',?,1)").run(String(pk), source, name),
+  coral_reef_surveys: (db, pk, name, source) =>
+    void db.prepare("INSERT INTO moni1000_coral_spots (record_id, source_id, fiscal_year, site_no, spot_no, spot_name_ja) VALUES (?,?,2010,1,1,?)").run(String(pk), source, name),
   documents: (db, pk, name, source) => void db.prepare("INSERT INTO documents (doc_id, title, publisher) VALUES (?,?,?)").run(pk, name, source),
   document_notes: (db, pk, name, source) => void db.prepare("INSERT INTO notes (note_id, doc_id, kind) VALUES (?,?,?)").run(pk, name, source),
   assessments: (db, pk, name, source) =>

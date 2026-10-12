@@ -1,4 +1,4 @@
-"""m10_moni1000（モニ1000 5 出典の原本表への投入）のテスト。小さな CSV を tmp_path に作って通す。
+"""m10_moni1000（モニ1000 神奈川・奄美の全出典の原本表への投入）のテスト。小さな CSV を tmp_path に作って通す。
 本物の ryuiki.sqlite・data/processed には触らない。"""
 import csv
 import json
@@ -94,6 +94,18 @@ def inputs(tmp_path):
          "scientific_name": "Pluvialis squatarola", "count": "1", "source_id": "moni1000_coast_shorebird",
          "source_ref": SRC + " (SIG02)"}])
 
+    write(d / "moni1000_forest_bird_amami.csv", FOREST, [
+        {"site_id": "200029", "site_type_ja": "コアサイト", "habitat_ja": "森林", "lat": "28.3", "lon": "129.5",
+         "prefecture_ja": "鹿児島県", "municipality_ja": "奄美市", "survey_year": "2010.0", "survey_month": "5.0",
+         "survey_day": "3.0", "species_ja": "ヒヨドリ", "scientific_name": "Hypsipetes amaurotis", "count": "4",
+         "source_id": "moni1000_forest_bird_amami", "source_ref": SRC + " (SIN04)"}])
+    write(d / "moni1000_coast_shorebird_amami.csv", SHORE, [
+        {"survey_year_raw": "2009/10", "season_ja": "Winter(Dec-Feb)", "site_code": "460800",
+         "site_name_ja": "奄美大島大瀬海岸", "lat": "28.4523", "lon": "129.7166", "year": "2010", "month": "1",
+         "day": "17", "start_time": "14:00", "end_time": "16:00", "species_ja": "ダイゼン",
+         "species_en": "Grey Plover", "scientific_name": "Pluvialis squatarola", "count": "2",
+         "source_id": "moni1000_coast_shorebird_amami", "source_ref": SRC + " (SIG02)"}])
+
     site_map = tmp_path / "site_map.csv"
     write(site_map, ["source_id", "site_key", "site_name_ja", "place_id", "basis"], [
         {"source_id": "moni1000_satochi_bird", "site_key": "S064", "site_name_ja": "瀬上の森",
@@ -105,7 +117,11 @@ def inputs(tmp_path):
         {"source_id": "moni1000_satochi_mammal", "site_key": "S067", "site_name_ja": "生田緑地", "place_id": "",
          "basis": "none"},
         {"source_id": "moni1000_coast_shorebird", "site_key": "130700", "site_name_ja": "多摩川河口",
-         "place_id": "jp-14:place:site.moni1000.kn355413976", "basis": "name"}])
+         "place_id": "jp-14:place:site.moni1000.kn355413976", "basis": "name"},
+        {"source_id": "moni1000_forest_bird_amami", "site_key": "200029", "site_name_ja": "奄美（奄美市）",
+         "place_id": "", "basis": "none"},
+        {"source_id": "moni1000_coast_shorebird_amami", "site_key": "460800", "site_name_ja": "奄美大島大瀬海岸",
+         "place_id": "", "basis": "none"}])
 
     def nm(src, key, ja, sci, tid, basis):
         return {"source_id": src, "name_key": key, "species_ja": ja, "scientific_name": sci, "taxon_id": tid,
@@ -122,7 +138,11 @@ def inputs(tmp_path):
         nm(f, "ウグイス|Cettia diphone", "ウグイス", "Cettia diphone", "T:uguisu", "sci"),
         nm(f, "フクロウ?|Strix uralensis", "フクロウ？", "Strix uralensis", "T:fukuro", "sci"),
         nm(ma, "ハクビシン", "ハクビシン", "", "T:hakubishin", "ja_unique"),
-        nm(sh, "ダイゼン|Pluvialis squatarola", "ダイゼン", "Pluvialis squatarola", "T:daizen", "sci")])
+        nm(sh, "ダイゼン|Pluvialis squatarola", "ダイゼン", "Pluvialis squatarola", "T:daizen", "sci"),
+        nm("moni1000_forest_bird_amami", "ヒヨドリ|Hypsipetes amaurotis", "ヒヨドリ", "Hypsipetes amaurotis",
+           "T:hiyodori", "sci"),
+        nm("moni1000_coast_shorebird_amami", "ダイゼン|Pluvialis squatarola", "ダイゼン", "Pluvialis squatarola",
+           "T:daizen", "sci")])
     return d, site_map, name_map
 
 
@@ -141,7 +161,8 @@ def by_id(recs, rid):
 def test_row_counts_and_ids(inputs):
     recs, counts = build(inputs)
     assert counts == {"moni1000_satochi_bird": 6, "moni1000_satochi_butterfly": 1, "moni1000_forest_bird": 3,
-                      "moni1000_satochi_mammal": 3, "moni1000_coast_shorebird": 1}
+                      "moni1000_satochi_mammal": 3, "moni1000_coast_shorebird": 1,
+                      "moni1000_forest_bird_amami": 1, "moni1000_coast_shorebird_amami": 1}
     assert by_id(recs, "moni1000_satochi_bird:10")
     assert by_id(recs, "moni1000_forest_bird:r000002")          # data_id の無い出典は CSV の行順
     assert by_id(recs, "moni1000_coast_shorebird:r000001")
@@ -241,10 +262,10 @@ def registry_db(tmp_path):
 def test_load_is_idempotent_and_releases_quarantine(inputs, tmp_path):
     recs, counts = build(inputs)
     con = registry_db(tmp_path)
-    assert m10.load(con, recs, counts) == {"rows": 14, "released": 5}
+    assert m10.load(con, recs, counts) == {"rows": 16, "released": 7}
     m10.load(con, recs, counts)                                   # 2 回目も同じ（二重にならない）
-    assert con.execute("SELECT COUNT(*) FROM moni1000_counts").fetchone()[0] == 14
-    assert con.execute("SELECT COUNT(*) FROM moni1000_counts WHERE in_occurrence=1").fetchone()[0] == 10
+    assert con.execute("SELECT COUNT(*) FROM moni1000_counts").fetchone()[0] == 16
+    assert con.execute("SELECT COUNT(*) FROM moni1000_counts WHERE in_occurrence=1").fetchone()[0] == 12
     assert con.execute("SELECT COUNT(*) FROM other_table").fetchone()[0] == 1          # 他の表に触らない
     rows = con.execute("SELECT redistributable, notes FROM source_registry").fetchall()
     assert all(r[0] == 1 for r in rows)
@@ -291,7 +312,7 @@ def test_summarize(inputs):
 def test_dry_run_does_not_touch_db(inputs, capsys):
     d, site_map, name_map = inputs
     m10.main(["--dry-run", "--csv-dir", str(d), "--site-map", str(site_map), "--name-map", str(name_map)])
-    assert "TOTAL 14" in capsys.readouterr().out
+    assert "TOTAL 16" in capsys.readouterr().out
 
 
 # ── F1・F5: 精度の列・堅牢化 ──────────────────────────────

@@ -1,6 +1,6 @@
 """モニタリングサイト1000 沿岸域調査 シギ・チドリ類調査（原本 `moni1000_counts` の source_id=moni1000_coast_shorebird）→ occurrence（docs/plans/MONI1000.md §3）。
 
-import は `ingest.api` だけ（boundary.py）。入力表は 5 出典で共有なので、自出典かつ `in_occurrence=1` の行だけを返す
+import は `ingest.api` だけ（boundary.py）。入力表は全出典で共有なので、自出典かつ `in_occurrence=1` の行だけを返す
 （個体数 0・名寄せ不能・非野生は m10 が `in_occurrence=0` にした行。生の表には残る）。
 座標は出典の値のまま渡し（丸め・補完をしない）、精度（`coordinate_uncertainty_m`）は m10 が小数桁数から計算した列をそのまま渡す。
 個体数は attributes に残し、occurrence の n（記録の行数）には使わない（ADR-0025。n は個体数ではない）。
