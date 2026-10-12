@@ -79,6 +79,9 @@ const CAVEAT_KEY_ORDER = {
   kasenKikiDaily: true,
   kasenTideDatum: true,
   kasenProvisional: true,
+  moniCoords: true,
+  moniOutOfRange: true,
+  moniCounts: true,
 } satisfies Record<CaveatKey, true>;
 const CAVEAT_KEYS = Object.keys(CAVEAT_KEY_ORDER) as CaveatKey[];
 
