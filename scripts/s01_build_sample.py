@@ -90,6 +90,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import pipeline_inputs  # noqa: E402
 from ingest import manifest as manifest_lib  # noqa: E402
+from b09_build_occurrence_place import is_watershed_withheld  # noqa: E402  流域に割り当てない誤差の述語（b09 と共有）
 from migrate import occurrence_period  # noqa: E402
 from migrate import point_in_polygon as pip  # noqa: E402
 from migrate import source_regions  # noqa: E402
@@ -687,6 +688,10 @@ def compute_occurrence_place_and_watershed_stats(rows: list[sqlite3.Row], geojso
     geo_rows = [r for r in rows if r["lat"] is not None and r["lon"] is not None]
     exact_watershed: dict[str, str | None] = {}
     for row in geo_rows:
+        # 誤差が大きい記録は流域に割り当てない（b09 と同じ述語。行に列が無い fixture は精度なし扱い）
+        if "coordinate_uncertainty_m" in row.keys() and is_watershed_withheld(row["coordinate_uncertainty_m"]):
+            exact_watershed[row["record_id"]] = None
+            continue
         matched, _near = pip.locate(row["lon"], row["lat"], polys, grid)
         exact_watershed[row["record_id"]] = matched[0] if len(matched) == 1 else None
 
@@ -862,7 +867,7 @@ def build_declaration_counts(
     # occurrence_cube_declarations.yaml
     org_rows = conn.execute(
         "SELECT t.rowid AS rowid, t.record_id, t.observed_on, t.lat, t.lon, t.scientific_name, "
-        "t.is_alien, t.red_list_category, t.source_id "
+        "t.is_alien, t.red_list_category, t.source_id, t.coordinate_uncertainty_m "
         "FROM organism_records t JOIN temp.__s01_organism_records_rowids s ON t.rowid = s.rowid_value "
         "WHERE t.occurrence_status IS NOT 'ABSENT' "   # 不在記録は occurrence に入らない（b06）
         "ORDER BY t.rowid"

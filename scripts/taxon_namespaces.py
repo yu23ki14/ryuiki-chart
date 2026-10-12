@@ -22,6 +22,8 @@ GBIFのtaxonKeyとは無関係な別の数値空間）は `'inat'`。`m03_organi
 依存しない（import 時の副作用も無い）ことを条件に、ここへ切り出した。**
 """
 
+import re
+
 TAXON_KEY_SOURCE_NAMESPACE = {
     "gbif_kanagawa_occurrences": "gbif",
     "inaturalist_kanagawa": "inat",
@@ -65,6 +67,13 @@ def assert_known_source_ids(source_ids, error_cls=ValueError) -> None:
 # b06（occurrence の is_alien_in_scope）と build_taxon_assessment.py が共有する
 # （yaml に依存しないこのモジュールに置く。Issue #34）。
 IAS_LIST_ID = "moe_ias_2015"
+
+
+
+def norm_taxon_id(s) -> str:
+    """学名の正規化キー（空白を1つに・前後を除き・小文字）。`taxa.taxon_id`・m03（`scripts/common.py` が再輸出）・
+    `pref_redlist_lookup`・b06 の赤リスト判定（`scripts/migrate/redlist_fill.py`）が共有する正。"""
+    return re.sub(r"\s+", " ", (s or "")).strip().lower()
 
 
 def binom_of(name: str | None) -> str | None:

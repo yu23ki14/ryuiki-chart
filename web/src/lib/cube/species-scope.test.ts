@@ -36,11 +36,11 @@ describe.skipIf(!haveRedListTable())("実データ: speciesCatalog の流域・�
 
   const scoped = { sourceIds: ["inaturalist_amami"], placeId: AMAMI_039, yearFrom: 2022, limit: 5000, withNames: true } as const;
 
-  it("奄美の iNaturalist・dem-amami-039・2022年以降: n=1154・赤リスト 139 件・74 種。流域指定の行は n_located/n_places を持たない", async () => {
+  it("奄美の iNaturalist・dem-amami-039・2022年以降: n=1070・赤リスト 120 件・64 種。流域指定の行は n_located/n_places を持たない", async () => {
     const rows = await speciesCatalog(db, scoped);
-    expect(rows.reduce((a, r) => a + r.n, 0)).toBe(1154);
-    expect(rows.reduce((a, r) => a + r.nRedList, 0)).toBe(139);
-    expect(rows.filter((r) => r.nRedList > 0)).toHaveLength(74);
+    expect(rows.reduce((a, r) => a + r.n, 0)).toBe(1070);
+    expect(rows.reduce((a, r) => a + r.nRedList, 0)).toBe(120);
+    expect(rows.filter((r) => r.nRedList > 0)).toHaveLength(64);
     expect(rows[0]).not.toHaveProperty("nLocated");
     expect(rows[0]).not.toHaveProperty("nPlaces");
     // 件数のある種には必ずラベルがあり、無い種は空配列（件数とラベルの元が同じ判定結果）
@@ -56,9 +56,9 @@ describe.skipIf(!haveRedListTable())("実データ: speciesCatalog の流域・�
     expect(rabbit.redList).toContainEqual(expect.objectContaining({ regionId: "jp-46", category: "絶滅危惧Ⅰ類（CR+EN）", source: "kgrl2014" }));
   });
 
-  it("redListOnly は赤リストの記録がある種だけ（74 種）。ラベルの出所は県版と national", async () => {
+  it("redListOnly は赤リストの記録がある種だけ（64 種）。ラベルの出所は県版と national", async () => {
     const rows = await speciesCatalog(db, { ...scoped, redListOnly: true });
-    expect(rows).toHaveLength(74);
+    expect(rows).toHaveLength(64);
     const sources = new Set(rows.flatMap((r) => r.redList!.map((l) => l.source)));
     expect(sources.has("kgrl2014")).toBe(true);
     expect(sources.has("national")).toBe(true);

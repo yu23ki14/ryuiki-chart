@@ -32,8 +32,8 @@ describe("caveatKeysForFacets — facet ごとの注記キー（順序込み）"
     [{ kind: "dataset", ref: "measurements" }, ["measuredOn", "censoredLod", "duplicates"]],
     [{ kind: "dataset", ref: "sites" }, ["zone", "municipality"]],
     [{ kind: "dataset", ref: "organism_records" }, []], // 出典の facet に移した（dataset 全体には付けない）
-    [sourceEditionOf("gbif_kanagawa_occurrences"), ["organismSite", "effort", "regimes", "gbifCutoff"]],
-    [sourceEditionOf("inaturalist_kanagawa"), ["organismSite", "effort", "regimes"]],
+    [sourceEditionOf("gbif_kanagawa_occurrences"), ["organismSite", "effort", "regimes", "gbifCutoff", "redListSubspecies"]],
+    [sourceEditionOf("inaturalist_kanagawa"), ["organismSite", "effort", "regimes", "redListSubspecies"]],
     [sourceEditionOf("kanagawa_edna"), ["ednaReads", "ednaCoords", "ednaYearBasis", "ednaNonDetect", "ednaWatershed", "effortSurvey"]],
     [sourceEditionOf("kanagawa_kuma_sightings"), ["effortSurvey"]],
     [{ kind: "observation_set", ref: "is_synthetic=1" }, ["synthetic"]],
@@ -72,10 +72,10 @@ describe("caveatKeysForFacets — facet ごとの注記キー（順序込み）"
     expect(caveatKeysForFacets(facetsForOccurrence({ places: ["watershed"] }))).toEqual([
       // 奄美の2件（amamiRedList・amamiWatershedGap）と effort は奄美の GBIF/iNat 出典にも付く（Issue #89 PR-B）。
       // 流域だけの生物 facet は両地域の出典を含むので、奄美の出典に付く3件が先頭に並ぶ。
-      "effort", "amamiRedList", "amamiWatershedGap", "amamiWatershedDem", "organismSite", "regimes", "gbifCutoff", "ednaReads", "ednaCoords", "ednaYearBasis", "ednaNonDetect", "ednaWatershed", "effortSurvey", "moniCoords", "moniCounts", "moniOutOfRange",
+      "effort", "amamiRedList", "amamiWatershedGap", "amamiWatershedDem", "redListSubspecies", "organismSite", "regimes", "gbifCutoff", "ednaReads", "ednaCoords", "ednaYearBasis", "ednaNonDetect", "ednaWatershed", "effortSurvey", "moniCoords", "moniCounts", "moniOutOfRange",
     ]);
     expect(caveatKeysForFacets(facetsForOccurrence({ places: ["grid01"] }))).toEqual([
-      "effort", "amamiRedList", "amamiWatershedGap", "amamiWatershedDem", "organismSite", "regimes", "gbifCutoff", "ednaReads", "ednaCoords", "ednaYearBasis", "ednaNonDetect", "ednaWatershed", "effortSurvey", "moniCoords", "moniCounts", "moniOutOfRange", "share",
+      "effort", "amamiRedList", "amamiWatershedGap", "amamiWatershedDem", "redListSubspecies", "organismSite", "regimes", "gbifCutoff", "ednaReads", "ednaCoords", "ednaYearBasis", "ednaNonDetect", "ednaWatershed", "effortSurvey", "moniCoords", "moniCounts", "moniOutOfRange", "share",
     ]);
   });
 });
@@ -216,8 +216,8 @@ describe("facetsForOccurrence（Issue #48 PR-3b）", () => {
   it("出典を絞ると、その出典の注記だけが付く（eDNA だけ=eDNA の6件、GBIF だけ=eDNA なし・gbifCutoff あり、iNat だけ=gbifCutoff なし）", () => {
     const keys = (sourceIds: string[]) => caveatKeysForFacets(facetsForOccurrence({ places: [], sourceIds }));
     expect(keys(["kanagawa_edna"])).toEqual(["ednaReads", "ednaCoords", "ednaYearBasis", "ednaNonDetect", "ednaWatershed", "effortSurvey"]);
-    expect(keys(["gbif_kanagawa_occurrences"])).toEqual(["organismSite", "effort", "regimes", "gbifCutoff"]);
-    expect(keys(["inaturalist_kanagawa"])).toEqual(["organismSite", "effort", "regimes"]);
+    expect(keys(["gbif_kanagawa_occurrences"])).toEqual(["organismSite", "effort", "regimes", "gbifCutoff", "redListSubspecies"]);
+    expect(keys(["inaturalist_kanagawa"])).toEqual(["organismSite", "effort", "regimes", "redListSubspecies"]);
     expect(keys(["kanagawa_kuma_sightings"])).toEqual(["effortSurvey"]);
   });
   it("出典の facet: 省略は全出典、指定はその分だけ。eDNA を外すと eDNA の注記は付かない", () => {

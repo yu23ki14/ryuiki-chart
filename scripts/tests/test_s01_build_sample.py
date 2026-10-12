@@ -33,7 +33,7 @@ def _build_fixture_ryuiki(path: pathlib.Path) -> None:
         );
         CREATE TABLE organism_records (
           record_id TEXT, observed_on TEXT, lat REAL, lon REAL, scientific_name TEXT,
-          is_alien INTEGER, red_list_category TEXT, source_id TEXT, genus TEXT, occurrence_status TEXT
+          is_alien INTEGER, red_list_category TEXT, source_id TEXT, genus TEXT, occurrence_status TEXT, coordinate_uncertainty_m REAL
         );
         CREATE TABLE sensor_timeseries (source_id TEXT);
         """
@@ -135,7 +135,7 @@ def test_build_declaration_counts_atsugi_predicate(tmp_path):
         "('s2', '2020-01-01', 'atsugi_river_water_quality'), "
         "('s3', '1999', 'other_source');"
         "CREATE TABLE organism_records (record_id TEXT, observed_on TEXT, lat REAL, lon REAL, "
-        "scientific_name TEXT, is_alien INTEGER, red_list_category TEXT, source_id TEXT, genus TEXT, occurrence_status TEXT);"
+        "scientific_name TEXT, is_alien INTEGER, red_list_category TEXT, source_id TEXT, genus TEXT, occurrence_status TEXT, coordinate_uncertainty_m REAL);"
         "CREATE TABLE sensor_timeseries (source_id TEXT);"
     )
     selected = {"measurements": {1, 2, 3}, "organism_records": set(), "sensor_timeseries": set()}
@@ -368,7 +368,7 @@ def test_build_declaration_counts_wires_new_occurrence_cube_keys(tmp_path):
     conn.executescript(
         "CREATE TABLE measurements (site_id TEXT, variable TEXT, measured_on TEXT, source_id TEXT);"
         "CREATE TABLE organism_records (record_id TEXT, observed_on TEXT, lat REAL, lon REAL, "
-        "scientific_name TEXT, is_alien INTEGER, red_list_category TEXT, source_id TEXT, genus TEXT, occurrence_status TEXT);"
+        "scientific_name TEXT, is_alien INTEGER, red_list_category TEXT, source_id TEXT, genus TEXT, occurrence_status TEXT, coordinate_uncertainty_m REAL);"
         "INSERT INTO organism_records "
         "(record_id, observed_on, lat, lon, scientific_name, is_alien, red_list_category, source_id) "
         "VALUES ('r1', '2020-01-05', 35.5, 139.5, 'Foo', 0, '', 'gbif_kanagawa_occurrences');"
@@ -405,7 +405,7 @@ def test_build_declaration_counts_excludes_absent_status_rows(tmp_path):
     conn.executescript(
         "CREATE TABLE measurements (site_id TEXT, variable TEXT, measured_on TEXT, source_id TEXT);"
         "CREATE TABLE organism_records (record_id TEXT, observed_on TEXT, lat REAL, lon REAL, "
-        "scientific_name TEXT, is_alien INTEGER, red_list_category TEXT, source_id TEXT, genus TEXT, occurrence_status TEXT);"
+        "scientific_name TEXT, is_alien INTEGER, red_list_category TEXT, source_id TEXT, genus TEXT, occurrence_status TEXT, coordinate_uncertainty_m REAL);"
         "INSERT INTO organism_records (record_id, observed_on, lat, lon, source_id, occurrence_status) VALUES "
         "('r1', '2020-01-05', 35.5, 139.5, 'gbif_kanagawa_occurrences', 'PRESENT'), "
         "('r2', '2020-01-06', 35.5, 139.5, 'gbif_kanagawa_occurrences', 'ABSENT');"
@@ -788,3 +788,25 @@ def test_manifest_expected_counts_are_measured_from_sample_rows(tmp_path):
     assert got["manifests:x.expected.cube.dated_no_coordinate_rows"] == 2
     assert got["manifests:x.expected.period_shapes.day"] == 1 and got["manifests:x.expected.period_shapes.year"] == 1
     assert got["manifests:x.expected.place.coord_resolved"] == 0
+
+
+def test_compute_occurrence_place_and_watershed_stats_withholds_large_uncertainty(tmp_path):
+    """誤差 >= 10 km の記録は、座標が流域に入っても未解決に数える（b09 と同じ述語）。"""
+    from .occurrence_fixtures import write_watershed_geojson
+
+    geojson_path = tmp_path / "watersheds.geojson"
+    write_watershed_geojson(
+        geojson_path,
+        [("W001", [[[139.0, 35.0], [140.0, 35.0], [140.0, 36.0], [139.0, 36.0], [139.0, 35.0]]])],
+    )
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE t (record_id TEXT, observed_on TEXT, lat REAL, lon REAL, coordinate_uncertainty_m REAL)")
+    conn.executemany("INSERT INTO t VALUES (?,?,?,?,?)", [
+        ("r_precise", "2020-01-05", 35.5, 139.5, 9999),
+        ("r_null", "2020-01-05", 35.5, 139.5, None),
+        ("r_withheld", "2020-01-05", 35.5, 139.5, 10000),
+    ])
+    stats = s01.compute_occurrence_place_and_watershed_stats(conn.execute("SELECT * FROM t").fetchall(), geojson_path)
+    assert (stats["resolved_count"], stats["place_id_null_count"]) == (2, 1)
+    assert (stats["watershed_dated_resolved_rows"], stats["watershed_dated_unresolved_rows"]) == (2, 1)

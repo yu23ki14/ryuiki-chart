@@ -32,7 +32,7 @@ export type CaveatScopeKind = "variable" | "place" | "source_edition" | "observa
  * 呼ぶときの型で、存在しないキーはここでコンパイルエラーになる（旧 domain.ts の
  * mustCaveatBody() は実行時例外だった）。
  */
-export type CaveatKey = "aboveLod" | "amamiRedList" | "amamiWatershedDem" | "amamiWatershedGap" | "censoredLod" | "duplicates" | "ednaCoords" | "ednaNonDetect" | "ednaReads" | "ednaWatershed" | "ednaYearBasis" | "effort" | "effortSurvey" | "fishClass" | "flowTidalBackflow" | "gbifCutoff" | "inatBackfill" | "isAlien" | "kasenKikiDaily" | "kasenProvisional" | "kasenStageDatum" | "kasenTideDatum" | "landuseDefinitionChange" | "measuredOn" | "moniCoords" | "moniCoral" | "moniCounts" | "moniOutOfRange" | "municipality" | "organismSite" | "regimes" | "share" | "synthetic" | "unitUnknown" | "zone";
+export type CaveatKey = "aboveLod" | "amamiRedList" | "amamiWatershedDem" | "amamiWatershedGap" | "censoredLod" | "duplicates" | "ednaCoords" | "ednaNonDetect" | "ednaReads" | "ednaWatershed" | "ednaYearBasis" | "effort" | "effortSurvey" | "fishClass" | "flowTidalBackflow" | "gbifCutoff" | "inatBackfill" | "isAlien" | "kasenKikiDaily" | "kasenProvisional" | "kasenStageDatum" | "kasenTideDatum" | "landuseDefinitionChange" | "measuredOn" | "moniCoords" | "moniCoral" | "moniCounts" | "moniOutOfRange" | "municipality" | "organismSite" | "redListSubspecies" | "regimes" | "share" | "synthetic" | "unitUnknown" | "zone";
 
 export interface GeneratedCaveat {
   key: string;
@@ -270,6 +270,11 @@ export const NAME_JA: Readonly<Record<string, string>> = {
   "Fejervarya kawamurai": "ヌマガエル",
   "Mustela itatsi": "ニホンイタチ",
   "Martes melampus": "ホンドテン",
+  "Columba janthina": "カラスバト",
+  "Falco peregrinus": "ハヤブサ",
+  "Buteo buteo": "ノスリ",
+  "Rhinolophus cornutus": "コキクガシラコウモリ",
+  "Protaetia orientalis": "シロテンハナムグリ",
 };
 
 /**
@@ -281,7 +286,7 @@ export const GENERATED_CAVEATS: readonly GeneratedCaveat[] = [
   { key: "aboveLod", severity: "blocking", kind: "censoring", bodyJa: "透明度の定量上限超え（原表記が「>1.4」〜「>28」など、26行）は、上限がどこまでか分からないという性質上、集計方法によらず値に含められない。件数（n）にも入らないため、他の期間・地点と単純に比較しないこと。" },
   { key: "amamiRedList", severity: "warning", kind: "definition_change", bodyJa: "奄美大島の赤リスト（絶滅危惧の区分）は、環境省の全国版だけを参照している。神奈川県の区分は県のレッドリストを含むが、鹿児島県のレッドリストはまだ収集していないため、同じ種でも県の評価は出ない。神奈川県の区分と並べて危険度を比べない。" },
   { key: "amamiWatershedDem", severity: "warning", kind: "definition", bodyJa: "奄美大島の流域は国土数値情報 W12 の公式の流域界ではなく、国土地理院の10m標高から集水域を計算したもの。小さな海岸斜面は隣の流域に含めてある（面ごとの unit_kind は河口の流域・沿岸の小流域群・小島、merged_share は面積のうち併合した小斜面の割合）。河川（W05）の河口との位置は検査済みだが、専門家の確認は済んでいない。" },
-  { key: "amamiWatershedGap", severity: "warning", kind: "coverage_gap", bodyJa: "奄美大島の流域は地理院の10m標高から計算した面で決めている。海上や海岸線の外にずれた座標（特に iNaturalist の秘匿された座標）の記録は流域が空になり、流域ごとの集計には出ない。島全体の件数と流域別の合計は一致しない。" },
+  { key: "amamiWatershedGap", severity: "warning", kind: "coverage_gap", bodyJa: "奄美大島の流域は地理院の10m標高から計算した面で決めている。海上や海岸線の外にずれた座標（特に iNaturalist の秘匿された座標）の記録は流域が空になり、流域ごとの集計には出ない。さらに、座標の誤差（coordinate_uncertainty_m）が 10 km 以上の記録（座標が 0.1 度丸めのモニタリングサイト1000 森林・草原 陸生鳥類、GBIF・iNaturalist の秘匿座標など）は、座標が流域に入っても流域に割り当てない。奄美で座標のある記録 66,991 件のうち 10,315 件（約15%）がこれに当たり（モニ1000 5,303、GBIF 4,009、iNaturalist 1,003）、海上などで流域が空の 6,687 件と合わせて、流域ごとの集計に出ない。島全体の件数と流域別の合計は一致しない。" },
   { key: "censoredLod", severity: "blocking", kind: "censoring", bodyJa: "全体の約24%は定量下限未満（原表記が「<0.5」など）。この画面の値は定量下限未満を定量下限値とみなして集計している（上限側の見積もり）。不検出（ND）は平均に含めない。折れ線では中抜きの点で示し、その定量下限値が実際に観測された値だとは読まないこと。" },
   { key: "duplicates", severity: "info", kind: null, bodyJa: "同一の地点・日・項目に複数行あるのは、原本が採水時刻を落としているため。ここでは日ごとに平均して1点にまとめている。" },
   { key: "ednaCoords", severity: "warning", kind: null, bodyJa: "eDNA の地点の座標は推定。公開データに座標が無いため、支川名と市町村から河川線の上に推定した（誤差は最大 10 km、地点ごとの誤差は coordinate_uncertainty_m）。座標の無い地点もある。" },
@@ -302,12 +307,13 @@ export const GENERATED_CAVEATS: readonly GeneratedCaveat[] = [
   { key: "kasenTideDatum", severity: "warning", kind: "definition_change", bodyJa: "鹿児島県の河川砂防情報システムの潮位は、基準面が原表に書かれていない。単位も cm と推定している。値は同じ検潮所の中の変化として読み、ほかの潮位データや標高と並べない。" },
   { key: "landuseDefinitionChange", severity: "blocking", kind: "definition_change", bodyJa: "土地利用の区分は2006年調査と2016年調査で定義が違う。2006年の「幹線交通用地」は2016年調査で「道路」「鉄道」に分割されており、同じ区分として比較できない。この2区分が2006年→2016年で全減・全増に見えるのは、実際の土地利用の変化ではなく調査区分の定義変更による見かけ上の増減である。" },
   { key: "measuredOn", severity: "info", kind: null, bodyJa: "measurements.measured_on には「2015-04-08」形式（検体値・215,445行）と「2015」形式（年度集計値・105,454行）が混在する（合成データを除く）。年度集計値は日本の年度（4月〜翌3月）を指す。この画面では両者を kind で区別している。" },
-  { key: "moniCoords", severity: "warning", kind: "coverage_gap", bodyJa: "モニタリングサイト1000 の座標は、出典の値のまま載せている。精度は出典・地点で異なり（0.1 度〜小数4桁）、粗いものは流域や地点の判定が数 km ずれうる。coordinate_uncertainty_m を見て精度を確かめる。" },
+  { key: "moniCoords", severity: "warning", kind: "coverage_gap", bodyJa: "モニタリングサイト1000 の座標は、出典の値のまま載せている。精度は出典・地点で異なり（0.1 度〜小数4桁）、誤差（coordinate_uncertainty_m）が 10 km 以上の粗い座標（小数1桁＝0.1 度丸めの座標がこれに当たる）の記録は、隣の流域に入りうるため流域には割り当てていない（グリッドと地域には入る。流域別の集計には出ない）。それより細かい座標でも地点の判定が数 km ずれうる。coordinate_uncertainty_m を見て精度を確かめる。" },
   { key: "moniCoral", severity: "warning", kind: "definition", bodyJa: "モニタリングサイト1000 サンゴ礁調査のサンゴ被度は、潜って目視で見積もった値で、精度は 10% 程度のため 10% 刻みで記録され、ごく小さいものは '<1'・'<5' と書かれる（数値列は NULL、原文は *_raw）。被度は調査範囲全体に対する割合ではなく、サンゴが着生できる底面積に対する割合。データは 2004〜2017 年度までで、それ以降は含まない。" },
   { key: "moniCounts", severity: "blocking", kind: null, bodyJa: "モニタリングサイト1000 の n は記録の行数で、個体数ではない（区間・ポイントごとに 1 行あるので、同じ調査でも行が増える。GBIF・iNaturalist の n と同じ尺度に混ざる）。個体数は調査ごとの確認数（attributes の individual_count）で、「+」「±」や空は個体数不明。n を個体数や生息数と読まないこと。" },
   { key: "moniOutOfRange", severity: "info", kind: "definition_change", bodyJa: "モニタリングサイト1000 の里地調査（鳥類・チョウ類）の記録には、調査の標準の区間・時間の外で記録されたもの（out_of_range・out_of_time）が含まれる。種が居たこと自体は事実だが、調査努力が揃わないので、標準の範囲に限って比べるときは attributes の out_of_range・out_of_time で除く。" },
   { key: "municipality", severity: "info", kind: null, bodyJa: "sites.municipality は出典によって中身が違う。環境省 公共用水域の290地点では水域名（河川名・湖沼名）が入り、それ以外の62地点では市区町村名が入る。列名と中身が一致していないため、この画面では「水域・地域」と呼ぶ。" },
-  { key: "organismSite", severity: "warning", kind: null, bodyJa: "生物レコードには site_id が無い（原本で全件 NULL）。流域への割り当ては緯度経度と国土数値情報 W12（1977年版）ポリゴンの点内包判定によるもので、原本の属性ではない。流域に割り当てられない記録（流域外・未解決）が、日付のある記録の約10%（83,515件/816,856件）ある。" },
+  { key: "organismSite", severity: "warning", kind: null, bodyJa: "生物レコードには site_id が無い（原本で全件 NULL）。流域への割り当ては緯度経度と国土数値情報 W12（1977年版）ポリゴンの点内包判定によるもので、原本の属性ではない。流域に割り当てられない記録（流域外、および位置の誤差が 10 km 以上で流域に割り当てていないもの）が、日付のある記録の約11%（91,573件/814,066件）ある。" },
+  { key: "redListSubspecies", severity: "warning", kind: "definition", bodyJa: "赤リスト該当の記録数には、その県のレッドリストが亜種・変種だけを載せている種の、種レベルの記録も含まれる（例えば奄美のDendrocopos leucotos。亜種owstoniが掲載されている）。そうした記録は red_list_source が「<リストID>+subspecies:<掲載された亜種名>」になる。種レベルの記録は、掲載された亜種のものかどうかまでは分からない。全国版（環境省）の亜種だけの掲載は、地域を決められないので数えない。" },
   { key: "regimes", severity: "blocking", kind: "time_series_break", bodyJa: "記録の中身は年代で入れ替わっている。2013–2016 は標本由来の植物、2017–2024 は eBird 由来の鳥類、2025 以降は iNaturalist 由来の昆虫・植物・菌類が中心。分類群をまたいだ件数の比較はできない。" },
   { key: "share", severity: "warning", kind: null, bodyJa: "件数そのものではなく、同じ分類群の中での割合（‰）で比べている。観察する人が増えれば件数は全種で一斉に増えるため、生の件数の増減には意味がない。" },
   { key: "synthetic", severity: "blocking", kind: "synthetic", bodyJa: "合成データ（デモ用に生成したもの）。実在の公開データではない。" },
@@ -346,17 +352,21 @@ export const GENERATED_CAVEAT_SCOPE: readonly GeneratedCaveatScope[] = [
   { scopeKind: "source_edition", scopeRef: "source_id=gbif_amami_occurrences", caveatKey: "amamiRedList", sortOrder: 1, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=gbif_amami_occurrences", caveatKey: "amamiWatershedGap", sortOrder: 2, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=gbif_amami_occurrences", caveatKey: "amamiWatershedDem", sortOrder: 3, priority: 0 },
+  { scopeKind: "source_edition", scopeRef: "source_id=gbif_amami_occurrences", caveatKey: "redListSubspecies", sortOrder: 4, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=gbif_kanagawa_occurrences", caveatKey: "organismSite", sortOrder: 0, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=gbif_kanagawa_occurrences", caveatKey: "effort", sortOrder: 1, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=gbif_kanagawa_occurrences", caveatKey: "regimes", sortOrder: 2, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=gbif_kanagawa_occurrences", caveatKey: "gbifCutoff", sortOrder: 3, priority: 0 },
+  { scopeKind: "source_edition", scopeRef: "source_id=gbif_kanagawa_occurrences", caveatKey: "redListSubspecies", sortOrder: 4, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=inaturalist_amami", caveatKey: "effort", sortOrder: 0, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=inaturalist_amami", caveatKey: "amamiRedList", sortOrder: 1, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=inaturalist_amami", caveatKey: "amamiWatershedGap", sortOrder: 2, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=inaturalist_amami", caveatKey: "amamiWatershedDem", sortOrder: 3, priority: 0 },
+  { scopeKind: "source_edition", scopeRef: "source_id=inaturalist_amami", caveatKey: "redListSubspecies", sortOrder: 4, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=inaturalist_kanagawa", caveatKey: "organismSite", sortOrder: 0, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=inaturalist_kanagawa", caveatKey: "effort", sortOrder: 1, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=inaturalist_kanagawa", caveatKey: "regimes", sortOrder: 2, priority: 0 },
+  { scopeKind: "source_edition", scopeRef: "source_id=inaturalist_kanagawa", caveatKey: "redListSubspecies", sortOrder: 3, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=kagoshima_kasen_choui_amami", caveatKey: "kasenTideDatum", sortOrder: 0, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=kagoshima_kasen_choui_amami", caveatKey: "kasenProvisional", sortOrder: 1, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=kagoshima_kasen_dam_amami", caveatKey: "kasenProvisional", sortOrder: 0, priority: 0 },
@@ -379,6 +389,7 @@ export const GENERATED_CAVEAT_SCOPE: readonly GeneratedCaveatScope[] = [
   { scopeKind: "source_edition", scopeRef: "source_id=moni1000_coast_shorebird_amami", caveatKey: "moniCoords", sortOrder: 0, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=moni1000_coast_shorebird_amami", caveatKey: "moniCounts", sortOrder: 1, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=moni1000_coast_shorebird_amami", caveatKey: "effortSurvey", sortOrder: 2, priority: 0 },
+  { scopeKind: "source_edition", scopeRef: "source_id=moni1000_coast_shorebird_amami", caveatKey: "redListSubspecies", sortOrder: 3, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=moni1000_coral_amami", caveatKey: "moniCoral", sortOrder: 0, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=moni1000_forest_bird", caveatKey: "moniCoords", sortOrder: 0, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=moni1000_forest_bird", caveatKey: "moniCounts", sortOrder: 1, priority: 0 },
@@ -386,6 +397,7 @@ export const GENERATED_CAVEAT_SCOPE: readonly GeneratedCaveatScope[] = [
   { scopeKind: "source_edition", scopeRef: "source_id=moni1000_forest_bird_amami", caveatKey: "moniCoords", sortOrder: 0, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=moni1000_forest_bird_amami", caveatKey: "moniCounts", sortOrder: 1, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=moni1000_forest_bird_amami", caveatKey: "effortSurvey", sortOrder: 2, priority: 0 },
+  { scopeKind: "source_edition", scopeRef: "source_id=moni1000_forest_bird_amami", caveatKey: "redListSubspecies", sortOrder: 3, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=moni1000_satochi_bird", caveatKey: "moniCoords", sortOrder: 0, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=moni1000_satochi_bird", caveatKey: "moniOutOfRange", sortOrder: 1, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=moni1000_satochi_bird", caveatKey: "moniCounts", sortOrder: 2, priority: 0 },

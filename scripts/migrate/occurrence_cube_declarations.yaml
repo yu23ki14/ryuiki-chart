@@ -1,4 +1,5 @@
 # occurrence_agg（scripts/b07_build_occurrence_cube.py）の機械検証が読む宣言。
+# 2026-10-12: coordinate_uncertainty_m >= 10000 の記録を流域に割り当てない（オーナー決定。b09）ため、流域に解決 730,552 → 722,493、未解決 83,514 → 91,573（差 8,059 = 日付ありの GBIF 神奈川 4,946 + iNat 神奈川 3,113）。
 # 2026-10-07: GBIF の不在記録（occurrenceStatus=ABSENT）2,790 行を occurrence から除き、month・watershed の宣言を実測で減らした（month −2,790、流域に解決 −2,789、未解決 −1）。
 # 形式は occurrence_period_shapes.yaml と同じ（name -> {expected_row_count, note}）。
 # scripts/migrate/period.py の required_keys_problems/entries_with_required_keys/
@@ -35,7 +36,7 @@ month_cell_source_rows:
     要求する。
 
 watershed_dated_resolved_rows:
-  expected_row_count: 730552
+  expected_row_count: 722493
   note: >
     日付あり ∧ occurrence_place（b09、place_kind='watershed'）が place_id を
     解決できた記録の件数（ADR-0026 の保存則の右辺と同じ数）。
@@ -43,7 +44,7 @@ watershed_dated_resolved_rows:
     一致する。Issue #48 PR-3a 設計書 §付録の実測値。
 
 watershed_dated_unresolved_rows:
-  expected_row_count: 83514
+  expected_row_count: 91573
   note: >
     日付あり ∧ occurrence_place（b09）で流域に解決できなかった（place_id が
     NULL の）記録の件数。ADR-0025 D2「データを落とさない」に従い、この記録も

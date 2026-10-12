@@ -81,11 +81,11 @@ describe.skipIf(!hasRegistryDb)("build:registry:ts は再生成しても差分�
  * 生成物の形の健全性（regenerate できない環境でも実行できる、軽い形チェック）。
  */
 describe("generated.ts / generated-client.ts の形", () => {
-  it("caveat は cells.notes 由来（207件）を含まない35件", () => {
+  it("caveat は cells.notes 由来（207件）を含まない36件", () => {
     // Phase A の14件に landuseDefinitionChange・aboveLod・censoredLod・unitUnknown を足し（18件）、
     // `censored` を撤去して17件（PR-5）、Issue #35 で flowTidalBackflow を足して18件。
-    // eDNA の注記4件（ednaReads/ednaCoords/ednaYearBasis/ednaNonDetect）を足して22件、ednaWatershed・effortSurvey を足して24件、amamiRedList・amamiWatershedGap（奄美）で26件、河川砂防情報システムの kasen* 4件（奄美 Step 2b）で30件、amamiWatershedDem（奄美の DEM 流域。Issue #94）で31件、モニ1000 の moniCoords・moniOutOfRange・moniCounts で34件、moniCoral（サンゴ礁調査）で35件。
-    expect(GENERATED_CAVEATS).toHaveLength(35);
+    // eDNA の注記4件（ednaReads/ednaCoords/ednaYearBasis/ednaNonDetect）を足して22件、ednaWatershed・effortSurvey を足して24件、amamiRedList・amamiWatershedGap（奄美）で26件、河川砂防情報システムの kasen* 4件（奄美 Step 2b）で30件、amamiWatershedDem（奄美の DEM 流域。Issue #94）で31件、モニ1000 の moniCoords・moniOutOfRange・moniCounts で34件、moniCoral（サンゴ礁調査）で35件、redListSubspecies（亜種での赤リスト掲載）で36件。
+    expect(GENERATED_CAVEATS).toHaveLength(36);
     expect(GENERATED_CAVEATS.some((c) => c.key === "censored")).toBe(false);
     expect(GENERATED_CAVEATS.every((c) => !c.key.startsWith("cells."))).toBe(true);
   });
@@ -112,8 +112,17 @@ describe("generated.ts / generated-client.ts の形", () => {
     ]);
   });
 
-  it("和名台帳（NAME_JA、generated-client.ts）は63件（旧 NAME_JA 54件＋PR-3b D4 の上書き9件）", () => {
-    expect(Object.keys(NAME_JA)).toHaveLength(63);
+  it("和名台帳（NAME_JA、generated-client.ts）は68件（旧 NAME_JA 54件＋PR-3b D4 の上書き9件＋モニ1000 レビューの上書き5件）", () => {
+    expect(Object.keys(NAME_JA)).toHaveLength(68);
+  });
+
+  it("亜種の和名を借りていた種は種の和名で上書きされている（モニ1000 レビュー 2026-10-12）", () => {
+    expect(NAME_JA["Columba janthina"]).toBe("カラスバト");
+    expect(NAME_JA["Falco peregrinus"]).toBe("ハヤブサ");
+    expect(NAME_JA["Buteo buteo"]).toBe("ノスリ");
+    expect(NAME_JA["Rhinolophus cornutus"]).toBe("コキクガシラコウモリ");
+    expect(NAME_JA["Protaetia orientalis"]).toBe("シロテンハナムグリ");
+    expect(NAME_JA["Trypoxylus dichotomus"]).toBe("カブトムシ");
   });
 
   /**

@@ -36,7 +36,7 @@
 3. **`gbif_match_type='EXACT'` でない `taxa` 行は捨てず
    `common:taxon:ryuiki-taxa.<taxa.taxon_id>` で `status='unresolved'` として登録する。**
 
-4. **和名は `registry/taxon/vernacular_ja.csv`（63件）だけを、機械結合ではない
+4. **和名は `registry/taxon/vernacular_ja.csv`（68件）だけを、機械結合ではない
    人間確認済みの和名として GBIF/iNat 由来の行に上書きする。** 突き合わせは学名の
    完全一致ではなく `binom_of()`（学名の先頭2語）で行い、両方の名前空間を横断して
    件数最多の (ns, taxon_key) を採用先とする。
@@ -1236,7 +1236,7 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
           f"（basis 内訳: {dict(sorted(Counter(sp['basis'] for sp in supplement).items()))}）"
           f"、既存 taxon と重複して捨てた gbif_match = {n_supplement_dropped:,}")
 
-    # --- NAME_JA（人手確認済み63件）を binom で上書き（gbif/inat 両方の名前空間を横断） ---
+    # --- NAME_JA（人手確認済み68件）を binom で上書き（gbif/inat 両方の名前空間を横断） ---
     overrides = _load_vernacular_overrides()
     total_by_key = {k: v["total_n"] for k, v in occ.items()}
     binom_index: dict[str, list[tuple[str, str]]] = {}

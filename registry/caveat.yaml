@@ -144,13 +144,13 @@ caveats:
   severity: warning
   kind: null
   title_ja: null
-  body_ja: 生物レコードには site_id が無い（原本で全件 NULL）。流域への割り当ては緯度経度と国土数値情報 W12（1977年版）ポリゴンの点内包判定によるもので、原本の属性ではない。流域に割り当てられない記録（流域外・未解決）が、日付のある記録の約10%（83,515件/816,856件）ある。
+  body_ja: 生物レコードには site_id が無い（原本で全件 NULL）。流域への割り当ては緯度経度と国土数値情報 W12（1977年版）ポリゴンの点内包判定によるもので、原本の属性ではない。流域に割り当てられない記録（流域外、および位置の誤差が 10 km 以上で流域に割り当てていないもの）が、日付のある記録の約11%（91,573件/814,066件）ある。
   quote: null
   review:
     reviewed_on: '2026-10-06'
     reviewer: claude（オーナー委任）
     owner_confirmed_on: '2026-10-07'
-    reason: 流域・地点への割り当ては推定で誤読しうるが比較は成立する。流域に割り当てられない記録が約10%ある事実を本文に足した。
+    reason: 流域・地点への割り当ては推定で誤読しうるが比較は成立する。流域に割り当てられない記録が約10%ある事実を本文に足した。2026-10-12 のオーナー決定（誤差 10 km 以上は流域に割り当てない）で件数を 91,573/814,066（約11%）に更新した。
     changed:
     - severity
     - body
@@ -411,13 +411,13 @@ caveats:
   severity: warning
   kind: coverage_gap
   title_ja: null
-  body_ja: 奄美大島の流域は地理院の10m標高から計算した面で決めている。海上や海岸線の外にずれた座標（特に iNaturalist の秘匿された座標）の記録は流域が空になり、流域ごとの集計には出ない。島全体の件数と流域別の合計は一致しない。
+  body_ja: 奄美大島の流域は地理院の10m標高から計算した面で決めている。海上や海岸線の外にずれた座標（特に iNaturalist の秘匿された座標）の記録は流域が空になり、流域ごとの集計には出ない。さらに、座標の誤差（coordinate_uncertainty_m）が 10 km 以上の記録（座標が 0.1 度丸めのモニタリングサイト1000 森林・草原 陸生鳥類、GBIF・iNaturalist の秘匿座標など）は、座標が流域に入っても流域に割り当てない。奄美で座標のある記録 66,991 件のうち 10,315 件（約15%）がこれに当たり（モニ1000 5,303、GBIF 4,009、iNaturalist 1,003）、海上などで流域が空の 6,687 件と合わせて、流域ごとの集計に出ない。島全体の件数と流域別の合計は一致しない。
   quote: null
   review:
     reviewed_on: '2026-10-10'
     reviewer: claude（オーナー委任）
     owner_confirmed_on: null
-    reason: 海上・海岸線の外にずれた座標は流域が NULL になる（網羅性の欠け）。流域別の合計を島全体と読むと過小になる。Issue #94 で DEM 流域に合わせて本文を書き直した。オーナー確認待ち。
+    reason: 海上・海岸線の外にずれた座標は流域が NULL になる（網羅性の欠け）。流域別の合計を島全体と読むと過小になる。Issue #94 で DEM 流域に合わせて本文を書き直した。座標の誤差が 10 km 以上の記録を流域に割り当てない決定（2026-10-12）の件数を本文に足した。オーナー確認待ち。
     changed:
     - body
 - key: amamiWatershedDem
@@ -491,13 +491,13 @@ caveats:
   severity: warning
   kind: coverage_gap
   title_ja: null
-  body_ja: モニタリングサイト1000 の座標は、出典の値のまま載せている。精度は出典・地点で異なり（0.1 度〜小数4桁）、粗いものは流域や地点の判定が数 km ずれうる。coordinate_uncertainty_m を見て精度を確かめる。
+  body_ja: モニタリングサイト1000 の座標は、出典の値のまま載せている。精度は出典・地点で異なり（0.1 度〜小数4桁）、誤差（coordinate_uncertainty_m）が 10 km 以上の粗い座標（小数1桁＝0.1 度丸めの座標がこれに当たる）の記録は、隣の流域に入りうるため流域には割り当てていない（グリッドと地域には入る。流域別の集計には出ない）。それより細かい座標でも地点の判定が数 km ずれうる。coordinate_uncertainty_m を見て精度を確かめる。
   quote: null
   review:
     reviewed_on: '2026-10-12'
     reviewer: claude（オーナー委任）
     owner_confirmed_on: null
-    reason: 座標の精度が出典・地点により違う（精度の欠け。オーナー確認待ち）。
+    reason: 座標の精度が出典・地点により違う（精度の欠け。オーナー確認待ち）。2026-10-12 のオーナー決定（coordinate_uncertainty_m が 10 km 以上は流域に割り当てない）を本文に反映した（レビューで「10 km 以下」の誤記を「10 km 以上」に直した）。
     changed:
     - new
 - key: moniOutOfRange
@@ -537,5 +537,18 @@ caveats:
     reviewer: claude（オーナー委任）
     owner_confirmed_on: null
     reason: 被度の定義（分母）と表記の粗さ・期間の上限を示さないと、他の調査の被度や最新の状態と読み違える（オーナー確認待ち）。
+    changed:
+    - new
+- key: redListSubspecies
+  severity: warning
+  kind: definition
+  title_ja: null
+  body_ja: 赤リスト該当の記録数には、その県のレッドリストが亜種・変種だけを載せている種の、種レベルの記録も含まれる（例えば奄美のDendrocopos leucotos。亜種owstoniが掲載されている）。そうした記録は red_list_source が「<リストID>+subspecies:<掲載された亜種名>」になる。種レベルの記録は、掲載された亜種のものかどうかまでは分からない。全国版（環境省）の亜種だけの掲載は、地域を決められないので数えない。
+  quote: null
+  review:
+    reviewed_on: '2026-10-12'
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: null
+    reason: 亜種での掲載を種の該当に含める規則（オーナー決定 2026-10-12）を、記録数を読む側に示さないと、種そのものが掲載されていると読み違える（本文の確認待ち）。
     changed:
     - new

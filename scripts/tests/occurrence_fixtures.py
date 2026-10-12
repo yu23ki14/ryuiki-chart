@@ -160,6 +160,7 @@ def make_organism_records_db(path, rows=None) -> None:
                 is_synthetic INTEGER DEFAULT 0, occurrence_status TEXT, red_list_source TEXT
             )"""
         )
+        conn.execute("CREATE TABLE taxa (taxon_id TEXT PRIMARY KEY, redlist_national TEXT)")   # b06 の赤リスト補完（全国版）が読む
         source_rows = rows if rows is not None else DEFAULT_ORGANISM_RECORDS
         normalized_rows = [(*row, *(0, None)[len(row) - 14:], None) if len(row) < 16 else (*row, None) for row in source_rows]
         conn.executemany(
@@ -184,7 +185,7 @@ def make_occurrence_registry_db(path, taxa=None, places=None, place_refs=None, t
         conn.execute(
             """CREATE TABLE taxon (
                 taxon_id TEXT PRIMARY KEY, canonical_binomial TEXT, rank TEXT, class TEXT,
-                kingdom TEXT, phylum TEXT, "order" TEXT, family TEXT, taxon_group TEXT
+                kingdom TEXT, phylum TEXT, "order" TEXT, family TEXT, taxon_group TEXT, scientific_name TEXT
             )"""
         )
         conn.execute("CREATE TABLE place (place_id TEXT PRIMARY KEY, region_id TEXT, place_kind TEXT)")
@@ -205,7 +206,8 @@ def make_occurrence_registry_db(path, taxa=None, places=None, place_refs=None, t
             )"""
         )
         conn.executemany(
-            "INSERT INTO taxon VALUES (?,?,?,?,?,?,?,?,?)", taxa if taxa is not None else DEFAULT_TAXA
+            "INSERT INTO taxon (taxon_id, canonical_binomial, rank, class, kingdom, phylum, \"order\", family, taxon_group) "
+            "VALUES (?,?,?,?,?,?,?,?,?)", taxa if taxa is not None else DEFAULT_TAXA
         )
         conn.executemany(
             "INSERT INTO place VALUES (?,?,?)", places if places is not None else DEFAULT_PLACE
@@ -297,7 +299,7 @@ def occurrence_row(
     place_id=DEFAULT_GRID01_PLACE_ID, place_kind="grid01",
     source_row_id=1, red_list_category="",
     lat=35.505, lon=139.005, scientific_name="Foo bar", is_alien=0,
-    is_alien_in_scope=None,
+    is_alien_in_scope=None, coordinate_uncertainty_m=None,
 ) -> tuple:
     """`_OCCURRENCE_COLUMNS`（≡ `scripts/b06_build_occurrence.py` の
     `_CREATE_OCCURRENCE_SQL`）の並びで `occurrence` の1行を組み立てる
@@ -316,7 +318,7 @@ def occurrence_row(
     """
     return (
         record_id, "organism_records", source_row_id, source_id, region_id, taxon_id,
-        place_id, place_kind, None, lat, lon,
+        place_id, place_kind, coordinate_uncertainty_m, lat, lon,
         "day", period_start, period_end, period_raw,
         scientific_name, "フーバー", "SPECIES", red_list_category, is_alien, "CC-BY", "公開",
         is_alien if is_alien_in_scope is None else is_alien_in_scope,
