@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-10-12T02:44:39+00:00",
+  "generated_at": "2026-10-12T04:14:56+00:00",
   "generated_by": "scripts/s01_build_sample.py",
   "source_files": {
-    "data/db/ryuiki.sqlite": "61c6be25e7874be0877fd35c16f4f723dcfa5d6b21cfb5566cf601fdf26d0e53",
+    "data/db/ryuiki.sqlite": "6cc0759483893052e578ed7a5c51c12ba6bc6d41d35564ef76f5f7f01851e9f8",
     "data/db/cells.sqlite": "03c4e37ef21cebb2784d2dd53232e54fbbda688a3737dc6dc38d309a04d5d5a4",
     "data/processed/nlni_w12_watersheds.geojson": "0fdb4360f1a1d0f8473a0d5b9b9a16f1cc42420312f654781a5dfd66b0aa56f7",
     "data/processed/gsi_dem_watersheds_amami.geojson": "26504fd71446806629ba4e4d4d9f075162f232cdfbbc79e188ba90632102d26b",
@@ -30,8 +30,9 @@
     "hazard_zones": 1,
     "mammal_mesh": 1,
     "measurements": 40292,
-    "moni1000_counts": 45009,
-    "organism_records": 3474,
+    "moni1000_coral_spots": 1,
+    "moni1000_counts": 51450,
+    "organism_records": 3487,
     "protected_areas": 7,
     "protocols": 1,
     "quality_transitions": 3372,
@@ -39,7 +40,7 @@
     "river_segments": 1,
     "sensor_timeseries": 7570,
     "sites": 389,
-    "source_registry": 177,
+    "source_registry": 180,
     "taxa": 8585,
     "vegetation_polygons": 2,
     "wildlife_sightings": 400
