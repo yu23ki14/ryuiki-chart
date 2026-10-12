@@ -33,7 +33,8 @@ values:
   place_kind: [site, zone, grid01, watershed]
   # 奄美の 3 件はマニフェスト（manifests/）が入るまでここで実在を宣言する（入ったら二重だが無害）
   source_id: [moe_ias_list, gbif_kanagawa_occurrences, inaturalist_kanagawa, kanagawa_kuma_sightings,
-              gbif_amami_occurrences, inaturalist_amami, nlni_l03b_landuse_by_watershed_amami]
+              gbif_amami_occurrences, inaturalist_amami, nlni_l03b_landuse_by_watershed_amami,
+              moni1000_coral_amami]   # moni1000_coral_amami は manifest を持たない（occurrence/observation に流さない）ので実在をここで宣言
   dataset: [measurements, sites]
 
 scopes:
@@ -70,6 +71,7 @@ scopes:
   - {kind: source_edition, ref: source_id=moni1000_coast_shorebird, caveats: [moniCoords, moniCounts, effortSurvey]}
   - {kind: source_edition, ref: source_id=moni1000_coast_shorebird_amami, caveats: [moniCoords, moniCounts, effortSurvey]}
   - {kind: source_edition, ref: source_id=moni1000_forest_bird_amami, caveats: [moniCoords, moniCounts, effortSurvey]}
+  - {kind: source_edition, ref: source_id=moni1000_coral_amami, caveats: [moniCoral]}
   # share は割合（‰）で比べる画面（grid01 の種別トレンド）だけに掛かる。流域の表は生の件数。件数を返す MCP は引かない。
   - {kind: place, ref: place_kind=grid01, caveats: [share]}
   - {kind: source_edition, ref: source_id=moe_ias_list, caveats: [isAlien]}

@@ -20,8 +20,8 @@
   `check_v2_pipeline_fresh()`。手書きの mtime 走査は撤去した）。単体で作り直すだけなら
   `cd web && pnpm run build:v2`。
 - データの置き場所は **Cloudflare D1**（デプロイ先を Cloudflare 想定にしたため）。
-  58 テーブル（`web/drizzle/migrations/` 適用後の実測。うちシード管理用の内部表
-  `_seed_state` を除く57表が `web/scripts/seed-d1-local.mjs` のシード対象）を 1 つの D1 に
+  59 テーブル（`web/drizzle/migrations/` 適用後の実測。うちシード管理用の内部表
+  `_seed_state` を除く58表が `web/scripts/seed-d1-local.mjs` のシード対象）を 1 つの D1 に
   統合してある。D1 に `ATTACH` は無いので `d.` / `c.` の接頭辞は使わない。
   どの原本から来たテーブルかは `web/src/lib/table-meta.ts` の `TABLE_ORIGIN`。
 - D1 のスキーマは `web/src/db/schema.ts`（v1、既存表）・`web/src/db/schema-registry.ts`
@@ -81,6 +81,8 @@
   MCP / AI の `get_records` の `record_set=monitoring_counts`（`web/src/lib/records.ts`）が出典単位で読み、
   occurrence には `in_occurrence=1` の行だけを流す。**組織の追認済み（2026-10-12、オーナー確認）・新規取得はしない**
   （かつて無断のフォーム送信で取得して隔離した経緯は `docs/nextstep.md` B-2・`docs/COLLECTOR_CONTRACT.md`。設計は `docs/plans/MONI1000.md`）。
+  サンゴ礁調査（SAN01）の奄美分 `moni1000_coral_amami` は種の出現ではなく地点×年度の観測値なので別表 `moni1000_coral_spots`（`scripts/m11_moni1000_coral.py`）に入れ、
+  occurrence・observation には流さず `get_records` の `record_set=coral_reef_surveys` だけで返す（2026-10-12 オーナーの明示の承認のもとで取得。`docs/COLLECTOR_CONTRACT.md`）。
 - 外部ポータル（CKAN 4 インスタンス・e-Stat 7 件）の目録は `external_dataset` / `external_resource` /
   `external_resource_format`（format を正規化した照合用。原文は `external_resource.format`）
   （`scripts/m08_external_catalog.py` が `data/processed` の収穫物から原本 `ryuiki.sqlite` に作る。DDL は

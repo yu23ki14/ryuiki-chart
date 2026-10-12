@@ -21,6 +21,7 @@ record_sets:
   sightings: wildlife_sightings
   assessments: taxon_assessment
   hazard_zones: hazard_zones
+  coral_reef_surveys: moni1000_coral_spots   # モニタリングサイト1000 サンゴ礁調査（奄美）の地点×年度の観測値。出典は列 source_id
   monitoring_counts: moni1000_counts   # モニタリングサイト1000 神奈川 5 調査・奄美 2 調査の生の記録。出典は列 source_id
 reasons:
   not_collected: {ja: "未収集（取得手段が未着手、または登録のみ）"}
@@ -73,6 +74,9 @@ sources:
   moni1000_coast_shorebird: {records: [monitoring_counts], note: "環境省生物多様性センター モニタリングサイト1000 沿岸域調査 シギ・チドリ類調査（生物多様性センターウェブサイト利用規約に基づき出典を明示）。神奈川県のサイトのみ。出現の n は記録の行数（個体数ではない）。"}
   moni1000_forest_bird_amami: {records: [monitoring_counts], note: "環境省生物多様性センター モニタリングサイト1000 森林・草原調査 陸生鳥類調査（生物多様性センターウェブサイト利用規約に基づき出典を明示）。奄美のサイト（奄美市・宇検村）のみ。出現の n は記録の行数（個体数ではない）。"}
   moni1000_coast_shorebird_amami: {records: [monitoring_counts], note: "環境省生物多様性センター モニタリングサイト1000 沿岸域調査 シギ・チドリ類調査（生物多様性センターウェブサイト利用規約に基づき出典を明示）。奄美大島大瀬海岸のみ。出現の n は記録の行数（個体数ではない）。"}
+  # サンゴ礁調査は 2026-10-12 にオーナーの明示の承認のもと責任者がフォームを送信して取得（申告内容は docs/COLLECTOR_CONTRACT.md）。これ以上の取得はしない。
+  # 種の出現ではなく地点×年度の観測値なので occurrence にも observation にも流さず、get_records(record_set=coral_reef_surveys) だけで返す。
+  moni1000_coral_amami: {records: [coral_reef_surveys], note: "環境省生物多様性センター モニタリングサイト1000 サンゴ礁調査（スポットチェック法）。奄美大島とその周辺 15 スポットの 2004〜2017 年度の観測値（被度・白化率・オニヒトデ・SPSS・大型魚・病気）。種の出現ではない。データ出典の明示例: 「環境省・モニタリングサイト1000プロジェクトにより松本毅、興克樹、長田智史、岩尾研二、梶原健次、吉田稔、木村匡、上野光弘、佐々木哲朗、清本正人、須之部友基、平林勲、目崎拓真、出羽真一、出羽尚子、野島哲が2020年に提供した（SAN01.zip, http://www.biodic.go.jp/moni1000/findings/data/index.html よりダウンロード）。」"}
   # --- find_datasets で取れる（外部ポータルの目録。値ではなく定義と最新の URL。docs/plans/MCP_EXTERNAL_CATALOG.md §5）---
   # catalog は records/reason と排他。表は external_dataset（出典の列 source_id で絞る目録）だけ。
   ckan_kanagawa_pref: {catalog: external_dataset}

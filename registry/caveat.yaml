@@ -526,3 +526,16 @@ caveats:
     reason: n を個体数と読むと結論が誤る（禁止表現を含むので blocking。オーナー確認待ち）。
     changed:
     - new
+- key: moniCoral
+  severity: warning
+  kind: definition
+  title_ja: null
+  body_ja: モニタリングサイト1000 サンゴ礁調査のサンゴ被度は、潜って目視で見積もった値で、精度は 10% 程度のため 10% 刻みで記録され、ごく小さいものは '<1'・'<5' と書かれる（数値列は NULL、原文は *_raw）。被度は調査範囲全体に対する割合ではなく、サンゴが着生できる底面積に対する割合。データは 2003〜2017 年度までで、それ以降は含まない。
+  quote: null
+  review:
+    reviewed_on: '2026-10-12'
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: null
+    reason: 被度の定義（分母）と表記の粗さ・期間の上限を示さないと、他の調査の被度や最新の状態と読み違える（オーナー確認待ち）。
+    changed:
+    - new

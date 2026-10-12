@@ -32,7 +32,7 @@ export type CaveatScopeKind = "variable" | "place" | "source_edition" | "observa
  * 呼ぶときの型で、存在しないキーはここでコンパイルエラーになる（旧 domain.ts の
  * mustCaveatBody() は実行時例外だった）。
  */
-export type CaveatKey = "aboveLod" | "amamiRedList" | "amamiWatershedDem" | "amamiWatershedGap" | "censoredLod" | "duplicates" | "ednaCoords" | "ednaNonDetect" | "ednaReads" | "ednaWatershed" | "ednaYearBasis" | "effort" | "effortSurvey" | "fishClass" | "flowTidalBackflow" | "gbifCutoff" | "inatBackfill" | "isAlien" | "kasenKikiDaily" | "kasenProvisional" | "kasenStageDatum" | "kasenTideDatum" | "landuseDefinitionChange" | "measuredOn" | "moniCoords" | "moniCounts" | "moniOutOfRange" | "municipality" | "organismSite" | "regimes" | "share" | "synthetic" | "unitUnknown" | "zone";
+export type CaveatKey = "aboveLod" | "amamiRedList" | "amamiWatershedDem" | "amamiWatershedGap" | "censoredLod" | "duplicates" | "ednaCoords" | "ednaNonDetect" | "ednaReads" | "ednaWatershed" | "ednaYearBasis" | "effort" | "effortSurvey" | "fishClass" | "flowTidalBackflow" | "gbifCutoff" | "inatBackfill" | "isAlien" | "kasenKikiDaily" | "kasenProvisional" | "kasenStageDatum" | "kasenTideDatum" | "landuseDefinitionChange" | "measuredOn" | "moniCoords" | "moniCoral" | "moniCounts" | "moniOutOfRange" | "municipality" | "organismSite" | "regimes" | "share" | "synthetic" | "unitUnknown" | "zone";
 
 export interface GeneratedCaveat {
   key: string;
@@ -303,6 +303,7 @@ export const GENERATED_CAVEATS: readonly GeneratedCaveat[] = [
   { key: "landuseDefinitionChange", severity: "blocking", kind: "definition_change", bodyJa: "土地利用の区分は2006年調査と2016年調査で定義が違う。2006年の「幹線交通用地」は2016年調査で「道路」「鉄道」に分割されており、同じ区分として比較できない。この2区分が2006年→2016年で全減・全増に見えるのは、実際の土地利用の変化ではなく調査区分の定義変更による見かけ上の増減である。" },
   { key: "measuredOn", severity: "info", kind: null, bodyJa: "measurements.measured_on には「2015-04-08」形式（検体値・215,445行）と「2015」形式（年度集計値・105,454行）が混在する（合成データを除く）。年度集計値は日本の年度（4月〜翌3月）を指す。この画面では両者を kind で区別している。" },
   { key: "moniCoords", severity: "warning", kind: "coverage_gap", bodyJa: "モニタリングサイト1000 の座標は、出典の値のまま載せている。精度は出典・地点で異なり（0.1 度〜小数4桁）、粗いものは流域や地点の判定が数 km ずれうる。coordinate_uncertainty_m を見て精度を確かめる。" },
+  { key: "moniCoral", severity: "warning", kind: "definition", bodyJa: "モニタリングサイト1000 サンゴ礁調査のサンゴ被度は、潜って目視で見積もった値で、精度は 10% 程度のため 10% 刻みで記録され、ごく小さいものは '<1'・'<5' と書かれる（数値列は NULL、原文は *_raw）。被度は調査範囲全体に対する割合ではなく、サンゴが着生できる底面積に対する割合。データは 2003〜2017 年度までで、それ以降は含まない。" },
   { key: "moniCounts", severity: "blocking", kind: null, bodyJa: "モニタリングサイト1000 の n は記録の行数で、個体数ではない（区間・ポイントごとに 1 行あるので、同じ調査でも行が増える。GBIF・iNaturalist の n と同じ尺度に混ざる）。個体数は調査ごとの確認数（attributes の individual_count）で、「+」「±」や空は個体数不明。n を個体数や生息数と読まないこと。" },
   { key: "moniOutOfRange", severity: "info", kind: "definition_change", bodyJa: "モニタリングサイト1000 の里地調査（鳥類・チョウ類）の記録には、調査の標準の区間・時間の外で記録されたもの（out_of_range・out_of_time）が含まれる。種が居たこと自体は事実だが、調査努力が揃わないので、標準の範囲に限って比べるときは attributes の out_of_range・out_of_time で除く。" },
   { key: "municipality", severity: "info", kind: null, bodyJa: "sites.municipality は出典によって中身が違う。環境省 公共用水域の290地点では水域名（河川名・湖沼名）が入り、それ以外の62地点では市区町村名が入る。列名と中身が一致していないため、この画面では「水域・地域」と呼ぶ。" },
@@ -378,6 +379,7 @@ export const GENERATED_CAVEAT_SCOPE: readonly GeneratedCaveatScope[] = [
   { scopeKind: "source_edition", scopeRef: "source_id=moni1000_coast_shorebird_amami", caveatKey: "moniCoords", sortOrder: 0, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=moni1000_coast_shorebird_amami", caveatKey: "moniCounts", sortOrder: 1, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=moni1000_coast_shorebird_amami", caveatKey: "effortSurvey", sortOrder: 2, priority: 0 },
+  { scopeKind: "source_edition", scopeRef: "source_id=moni1000_coral_amami", caveatKey: "moniCoral", sortOrder: 0, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=moni1000_forest_bird", caveatKey: "moniCoords", sortOrder: 0, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=moni1000_forest_bird", caveatKey: "moniCounts", sortOrder: 1, priority: 0 },
   { scopeKind: "source_edition", scopeRef: "source_id=moni1000_forest_bird", caveatKey: "effortSurvey", sortOrder: 2, priority: 0 },
