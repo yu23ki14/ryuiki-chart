@@ -7,6 +7,8 @@ import { PageContextSetter } from "@/components/assistant/PageContextProvider";
 import { EXPLORE_ENABLED } from "@/lib/features";
 import { parseRegion, regionOf, regionLabel, regionUi, REGIONS, REGION_ALL, type RegionFilter, type RegionId } from "@/lib/region";
 import { withRegion } from "@/components/region-url";
+import { readRecordSet } from "@/lib/records";
+import { compareSeaStations, summarizeCoralByYear, type CoralSpotRow } from "@/lib/home-highlights";
 
 export const dynamic = "force-dynamic";
 
@@ -61,10 +63,14 @@ const BOD_VARIABLE_ID = "common:variable:water.bod";
  * （「5倍近い差」等）はここでは触らない——文言は PR 本文の before/after を見て
  * オーナーが判断する（設計責任者の決定、D6）。
  */
-async function longitudinalHighlight(region: RegionId | undefined, variableId = BOD_VARIABLE_ID) {
-  // 既定の水域は地域ごとに lib/region.ts の highlightWater で宣言する。無い地域（奄美）は出さない（見出しだけ。#93 決定）。
-  const water = regionUi(region ?? REGION_ALL)?.highlightWater ?? (region ? undefined : REGIONS[0].highlightWater);
+async function longitudinalHighlight(region: RegionId | undefined) {
+  // 既定の水域・指標・並びは地域ごとに lib/region.ts（highlightWater / highlightLongitudinal）で宣言する。
+  // 無い地域は出さない（見出しだけ。#93 決定）。全体（region なし）は先頭の地域＝神奈川の境川・BOD。
+  const ui = regionUi(region ?? REGION_ALL) ?? (region ? undefined : REGIONS[0]);
+  const water = ui?.highlightWater;
   if (!water) return [];
+  const variableId = ui?.highlightLongitudinal?.variableId ?? BOD_VARIABLE_ID;
+  const order = ui?.highlightLongitudinal?.order ?? "elevation";
   const db = await d1CubeDb();
   // basis はセルの性質（grain/input_grain）であって系列の登録（value_grain）ではない
   // ため、系列を basis で事前に絞り込まない（Issue #48 PR-2 統合後修正A #1）——
@@ -99,24 +105,39 @@ async function longitudinalHighlight(region: RegionId | undefined, variableId = 
         site_id: r.siteId,
         name: site?.name ?? r.siteId,
         elevation_m: site?.elevationM ?? 0,
+        lat: site?.lat ?? null,
+        lon: site?.lon ?? null,
         zone: site?.zone ?? 0,
         avg: r.avg,
         n: r.n,
         unit,
       };
     })
-    .sort((a, b) => b.elevation_m - a.elevation_m);
+    .sort((a, b) => (order === "name" ? compareSeaStations(a.name, b.name) : b.elevation_m - a.elevation_m));
+}
+
+/** 奄美の概況②。サンゴ礁調査（moni1000_coral_spots）の全行を `get_records` と同じ読み出し層で読み、年度ごとに要約する。 */
+async function coralHighlight(region: RegionId | undefined) {
+  if (!region || !regionUi(region)?.homeCoral) return [];
+  const rows = await readRecordSet<CoralSpotRow>(await d1CubeDb(), "coral_reef_surveys", {
+    select: ["fiscal_year", "cover_pct", "cover_pct_raw", "bleach_all_pct"],
+    order: [{ col: "fiscal_year" }],
+    limit: null,
+  });
+  return summarizeCoralByYear(rows);
 }
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ region?: string | string[] }> }) {
   const filter = parseRegion((await searchParams).region);
   // cube 層へは 'all' を入れない（undefined = 全体）。
   const region = regionOf(filter);
+  const ui = regionUi(filter);
   // D1 は 1 クエリ 1 往復。まとめて投げる。
   const cdb = await d1CubeDb();
-  const [s, longitudinal, landuseRows, redlistRows, effortRows, occ] = await Promise.all([
+  const [s, longitudinal, coral, landuseRows, redlistRows, effortRows, occ] = await Promise.all([
     overviewCounts(cdb, region),
     longitudinalHighlight(region),
+    coralHighlight(region),
     landuseHighlight(cdb, 8, region),
     redlistSummary(cdb, undefined, region),
     effortYears(cdb, { region }),
@@ -169,11 +190,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ r
       </section>
 
       <section className="max-w-[1180px] mx-auto px-6 py-6">
-        <h2 className="text-[16px] font-bold">この3つが、時系列で比べるということ</h2>
+        <h2 className="text-[16px] font-bold">{ui?.homeCoral ? "この2つが、時系列で比べるということ" : "この3つが、時系列で比べるということ"}</h2>
         <p className="text-[12px] text-muted mt-1 max-w-3xl leading-relaxed">
-          「増えた／減った」を言うには、比べてよい相手を選ぶ必要があります。ここでは、場所で比べる・版で比べる・年で比べる、の3つを例に出します。
+          「増えた／減った」を言うには、比べてよい相手を選ぶ必要があります。ここでは、{ui?.homeCoral ? "場所で比べる・年で比べる、の2つの型を、海とサンゴ礁・土地利用で例に出します（鹿児島県のレッドリストは版が1つだけで、版で比べる例は出せません）。" : "場所で比べる・版で比べる・年で比べる、の3つを例に出します。"}
         </p>
-        <HomeHighlights longitudinal={longitudinal} landuse={landuse} redlist={redlist} effort={effort} region={filter} />
+        <HomeHighlights longitudinal={longitudinal} coral={coral} landuse={landuse} redlist={redlist} effort={effort} region={filter} />
       </section>
 
       <section className="max-w-[1180px] mx-auto px-6 pb-6">

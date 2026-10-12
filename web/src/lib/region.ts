@@ -25,6 +25,20 @@ export interface RegionUi {
   highlightWater?: string;
   /** 時系列画面の既定の項目（variable_id）。無ければ BOD。その地域に無い項目は自動で件数最多へ寄せる。 */
   defaultVariable?: string;
+  /**
+   * 概況①「場所で比べる」の指標と並び。無ければ境川（神奈川）と同じ BOD・標高順。
+   * `highlightWater` の水域の地点を `variableId` で比べる。海は標高で並べられないので名前順。
+   */
+  highlightLongitudinal?: {
+    variableId: string;
+    /** 画面に出す指標名（例: COD） */
+    indicator: string;
+    /** 水域の画面用の呼び名 */
+    waterLabel: string;
+    order: "elevation" | "name";
+  };
+  /** 概況②を「サンゴ礁の被度（年で比べる）」にする（モニタリングサイト1000 SAN01、奄美のみ）。 */
+  homeCoral?: boolean;
   /** 概況の固定文言（境川・鶴見川・レッドリスト3版など）がこの地域の数字として当てはまるか。 */
   hasFixedNarrative: boolean;
   /** レッドリスト画面の既定の版の年。無ければ最新の版。 */
@@ -62,6 +76,14 @@ export const REGIONS: readonly RegionUi[] = [
     // 奄美の BOD は水域に紐づく代表系列が無い。海域の COD は 2 水域・10 地点で揃っている。
     defaultVariable: "common:variable:water.cod",
     hasFixedNarrative: false,
+    highlightWater: "奄美大島本島海域",
+    highlightLongitudinal: {
+      variableId: "common:variable:water.cod",
+      indicator: "COD",
+      waterLabel: "奄美大島本島海域",
+      order: "name",
+    },
+    homeCoral: true,
     watershedBasis: "国土地理院の10m標高から計算した流域",
     watershedSource: "国土地理院 基盤地図情報 数値標高モデル（DEM10B）から計算した流域界",
     watershedCaveat: "amamiWatershedDem",
