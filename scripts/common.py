@@ -63,9 +63,7 @@ def sha256(p):
 
 def now(): return datetime.datetime.now().isoformat(timespec="seconds")
 
-def norm_taxon_id(s):
-    """学名の正規化キー（空白を1つに・前後を除き・小文字）。taxa.taxon_id・m03・pref_redlist_lookup が共有する。"""
-    return re.sub(r"\s+", " ", (s or "")).strip().lower()
+from taxon_namespaces import norm_taxon_id  # noqa: E402,F401  学名の正規化キー（正は taxon_namespaces。b06 の赤リスト判定と共有）
 
 def ensure_column(con, table, col, decl):
     """既存の表に列が無ければ足す（冪等）。表が無いときは何もしない（CREATE TABLE 側に列がある）。"""

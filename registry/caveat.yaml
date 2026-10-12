@@ -539,3 +539,16 @@ caveats:
     reason: 被度の定義（分母）と表記の粗さ・期間の上限を示さないと、他の調査の被度や最新の状態と読み違える（オーナー確認待ち）。
     changed:
     - new
+- key: redListSubspecies
+  severity: warning
+  kind: definition
+  title_ja: null
+  body_ja: 赤リスト該当の記録数には、その県のレッドリストが亜種・変種だけを載せている種の、種レベルの記録も含まれる（例えば奄美のDendrocopos leucotos。亜種owstoniが掲載されている）。そうした記録は red_list_source が「<リストID>+subspecies:<掲載された亜種名>」になる。種レベルの記録は、掲載された亜種のものかどうかまでは分からない。全国版（環境省）の亜種だけの掲載は、地域を決められないので数えない。
+  quote: null
+  review:
+    reviewed_on: '2026-10-12'
+    reviewer: claude（オーナー委任）
+    owner_confirmed_on: null
+    reason: 亜種での掲載を種の該当に含める規則（オーナー決定 2026-10-12）を、記録数を読む側に示さないと、種そのものが掲載されていると読み違える（本文の確認待ち）。
+    changed:
+    - new

@@ -79,7 +79,9 @@ OBSERVATION_AGG_SPEC_VERSION = "phase-b-fact-slice/v5"
 # 2026-10-10: 奄美 Step 2a で occurrence に red_list_source 列（赤リスト判定の出所）が付いたため v5 に上げた。
 # 2026-10-11: Issue #94 で奄美の流域ポリゴンを W12 の25面から地理院10m標高から計算した面に置き換え、
 # 割り当ての結果（place_id）が変わったため v6 に上げた。神奈川の行の値は変わらない。
-OCCURRENCE_SPEC_VERSION = "phase-b-fact-slice/v6"
+# 2026-10-12: b06 が出典の付けなかった記録（モニ1000 等）に赤リスト判定を補うようになり（県版の亜種掲載の規則を含む）、
+# red_list_category/red_list_source の値が変わったため v7 に上げた。
+OCCURRENCE_SPEC_VERSION = "phase-b-fact-slice/v7"
 
 # `scripts/b07_build_occurrence_cube.py`（`occurrence_agg`）専用。2026-09-27
 # Issue #48 PR-3a: 次元キーは変えていないが、(a) `place_kind='watershed'` の
@@ -1237,8 +1239,8 @@ def check_v2_cube_fresh(conn: sqlite3.Connection) -> list[str]:
 # ---------------------------------------------------------------------------
 
 # v2 パイプラインが実際に読み取る ryuiki.sqlite の表（b03: measurements/
-# sensor_timeseries、b06: organism_records、b09: sites）。
-V2_RYUIKI_TABLES = ("measurements", "sensor_timeseries", "organism_records", "sites")
+# sensor_timeseries、b06: organism_records と taxa〔赤リスト判定の全国版。redlist_fill〕、b09: sites）。
+V2_RYUIKI_TABLES = ("measurements", "sensor_timeseries", "organism_records", "sites", "taxa")
 
 # v2 パイプラインが実際に読み取る data/processed の入力（b03: 土地利用CSV、
 # b09: 流域 GeoJSON）。地域ごとのファイルは全地域ぶん（pipeline_inputs の命名規則。神奈川の指紋のキーは従来のまま）。

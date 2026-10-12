@@ -74,7 +74,7 @@ REVIEW_FIELDS = ("reviewed_on", "reviewer", "owner_confirmed_on", "reason", "cha
 # オーナーの確認待ち（review.owner_confirmed_on が null）を許す注記の key。**ここに無い注記の null は止める**
 # （確認済みだった注記を null に戻すと、確認の記録が黙って消えるため）。確認したら日付を入れて、ここから外す。
 OWNER_PENDING_KEYS = frozenset({"amamiRedList", "amamiWatershedGap", "amamiWatershedDem", "kasenStageDatum", "kasenKikiDaily",
-                                "kasenTideDatum", "kasenProvisional", "moniCoords", "moniOutOfRange", "moniCounts", "moniCoral"})
+                                "kasenTideDatum", "kasenProvisional", "moniCoords", "moniOutOfRange", "moniCounts", "moniCoral", "redListSubspecies"})
 REVIEW_CHANGED_VALUES = {"severity", "kind", "scope", "body", "new"}
 
 

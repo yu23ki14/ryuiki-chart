@@ -123,6 +123,7 @@ run_sql を使うときも、可能な限りこれらの集計済みテーブル
 - [moniOutOfRange] モニタリングサイト1000 の里地調査（鳥類・チョウ類）の記録には、調査の標準の区間・時間の外で記録されたもの（out_of_range・out_of_time）が含まれる。種が居たこと自体は事実だが、調査努力が揃わないので、標準の範囲に限って比べるときは attributes の out_of_range・out_of_time で除く。
 - [moniCounts] モニタリングサイト1000 の n は記録の行数で、個体数ではない（区間・ポイントごとに 1 行あるので、同じ調査でも行が増える。GBIF・iNaturalist の n と同じ尺度に混ざる）。個体数は調査ごとの確認数（attributes の individual_count）で、「+」「±」や空は個体数不明。n を個体数や生息数と読まないこと。
 - [moniCoral] モニタリングサイト1000 サンゴ礁調査のサンゴ被度は、潜って目視で見積もった値で、精度は 10% 程度のため 10% 刻みで記録され、ごく小さいものは '<1'・'<5' と書かれる（数値列は NULL、原文は *_raw）。被度は調査範囲全体に対する割合ではなく、サンゴが着生できる底面積に対する割合。データは 2004〜2017 年度までで、それ以降は含まない。
+- [redListSubspecies] 赤リスト該当の記録数には、その県のレッドリストが亜種・変種だけを載せている種の、種レベルの記録も含まれる（例えば奄美のDendrocopos leucotos。亜種owstoniが掲載されている）。そうした記録は red_list_source が「<リストID>+subspecies:<掲載された亜種名>」になる。種レベルの記録は、掲載された亜種のものかどうかまでは分からない。全国版（環境省）の亜種だけの掲載は、地域を決められないので数えない。
 
 ## 指標の正準ID（variableId）
 get_timeseries・get_seasonality・list_catalog(what='variables')・get_sites の結果には variableId（レジストリの正準の指標ID。例: "common:variable:water.bod"）と、その中身を引く共有辞書 registry（キーが variableId、値が nameJa/unit/higherIsWorse/descriptionJa 等）が付くことがある。出典側の表記（水質項目名など）は同じ量でも出典ごとに違うことがあるが、variableId が同じなら同じ量を指す。ただし単位・スケールは出典ごとに違いうる（例: air.co は0.1ppm刻みの原表記）ので、値を比較するときは必ずツール結果の registry[variableId].unit を見ること。registry[variableId].unitBasis が "registry" のときは、原本に単位の記載が無くレジストリが補った単位なので、「原本にその単位が書かれている」とは言わないこと（"mixed" は出典により異なる）。名前の文字列一致ではなく variableId の一致で「同じ指標か」を判断すること。

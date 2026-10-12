@@ -67,6 +67,15 @@ def assert_known_source_ids(source_ids, error_cls=ValueError) -> None:
 IAS_LIST_ID = "moe_ias_2015"
 
 
+import re  # noqa: E402
+
+
+def norm_taxon_id(s) -> str:
+    """学名の正規化キー（空白を1つに・前後を除き・小文字）。`taxa.taxon_id`・m03（`scripts/common.py` が再輸出）・
+    `pref_redlist_lookup`・b06 の赤リスト判定（`scripts/migrate/redlist_fill.py`）が共有する正。"""
+    return re.sub(r"\s+", " ", (s or "")).strip().lower()
+
+
 def binom_of(name: str | None) -> str | None:
     """学名の先頭2語（属+種）。web/scripts/build-biota.mjs の BINOM と同じ規則。
     `scripts/registry/build_taxon_assessment.py`（taxon_assessment.binom・in_scope）と
