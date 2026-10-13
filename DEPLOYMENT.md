@@ -587,3 +587,13 @@ docker で開発している間はコンテナ側のボリューム（`d1-state`
      - 注記 `redListSubspecies` が付いた。
 
 画面の生物の集計・注記・和名が欠けていたのは 08:08〜08:15 頃（約7分）。ロールバックは行っていない。
+
+## 奄美のトップ・時系列の既定の本番反映（2026-10-13、#119）
+
+コードだけの変更で、D1 には手を入れていない。main は `f813b66`。v2 と registry はどちらも鮮度判定で新しいままだった。直前の Worker は `7894c9e4-98ed-46d1-b2ea-0c2225a53647`。
+
+- **デプロイ**: `opennextjs-cloudflare build` → `deploy`。Version は `971075b2-f48b-48ff-b53b-8f385f6f8776`。
+- **確認したページ**: `/`・`/?region=jp-46`・`/?region=jp-14`・`/timeseries`・`/timeseries?region=jp-46`・`/sites`・`/map` がどれも 200。
+- **画面の目視**: ヘッドレス Chrome で撮った。
+  - `/?region=jp-46` に ① 海の8地点の COD と ② サンゴ礁の被度が出た。
+  - `/timeseries?region=jp-46` は COD・奄美大島本島海域で開き、8地点の凡例に「Google マップ↗」が付いた。
