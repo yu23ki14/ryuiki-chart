@@ -566,3 +566,24 @@ docker で開発している間はコンテナ側のボリューム（`d1-state`
 - [D1 limits](https://developers.cloudflare.com/d1/platform/limits/)
 - [D1 import / export](https://developers.cloudflare.com/d1/best-practices/import-export-data/)
 - [Workers static assets](https://developers.cloudflare.com/workers/static-assets/)
+
+## モニ1000 レビュー指摘の修正と Google マップのリンクの本番反映（2026-10-13、#116・#117）
+
+前回（10-12）と同じく、変わった表だけを入れ直した。マイグレーションは無し。
+
+1. **事前**（main `c0e630b`）: `check_v2_fresh.py`＝新鮮、`r01 --check-fresh`＝新鮮。`pnpm run db:setup`（ローカル D1 は 58 表 / 5,061,492 行）→ `pnpm run db:export`（113 ファイル）→ `opennextjs-cloudflare build`。
+   戻し先: Time Travel `00000070-00000000-00005102-e1c03c93fed6a4962897a463a573a0a6`、直前の Worker は `70981b0e-cff4-4111-a424-0822eefb4fb4`。
+2. **入れ直す表**: 本番と表ごとに比べた。指紋は、件数・real 以外の列の `length(quote())` の合計・数値列の合計。前回の教訓で、real の書式の差は除いてある。違ったのは 11 表。
+   - 注記の2表（`caveat`・`caveat_scope`）
+   - `occurrence_agg`
+   - `summary_*` 7表（grid_catalog・species_catalog(+by_region)・taxon_catalog(+by_region)・taxon_red_list・watershed_occurrence）
+   - `taxon`（和名の上書き5件）
+3. **入れ直し**（08:08〜08:15）: 11 表を空にし、25 ファイルを流した。`fetch failed` は出なかった。11 表の件数はローカルと一致した。`pnpm run db:verify:remote` では 58 表 / 5,061,492 行がすべて一致した。
+4. **デプロイ**（08:15頃）: Version `7894c9e4-98ed-46d1-b2ea-0c2225a53647`。
+   - `/`・`/sites`・`/timeseries`・`/biota`・`/map`・`/sources`・`/?region=jp-46` が 200 を返した。`/sites` に「Google マップ↗」が出た。
+   - MCP の `get_occurrences`（`region=jp-46`、`kind=species_catalog`、`red_list_only`）の結果。
+     - オオアカゲラは CR+EN（`kgrl2014+subspecies:Dendrocopos leucotos owstoni`）。
+     - カラスバトは NT（和名もカラスバト）。
+     - 注記 `redListSubspecies` が付いた。
+
+画面の生物の集計・注記・和名が欠けていたのは 08:08〜08:15 頃（約7分）。ロールバックは行っていない。
