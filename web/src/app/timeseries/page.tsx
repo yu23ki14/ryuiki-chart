@@ -74,7 +74,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
   // コンポーネントなので、Suspense 境界が要る（無いとビルド時に警告/失敗する）。
   return (
     <Suspense>
-      <TimeseriesExplorer waters={waters} vars={vars} />
+      <TimeseriesExplorer key={region ?? "all"} waters={waters} vars={vars} />
     </Suspense>
   );
 }
