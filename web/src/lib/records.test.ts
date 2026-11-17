@@ -285,6 +285,22 @@ describe("readRecordSet（地図用。get_records と同じ列定義）", () => 
     await expect(readRecordSet(db, "sites", { order: [{ col: "site_id" }], withGeometry: true })).rejects.toThrow();
   });
 
+  it("osm_waterways / osm_water_structures: 出典で絞り、ジオメトリは id 指定のときだけ。structures は source_ref で引く", async () => {
+    put("osm_waterways", 101, "相模川", "osm_waterways");
+    put("osm_waterways", 102, "酒匂川", "osm_waterways");
+    const l = await q({ record_set: "osm_waterways", source_id: "osm_waterways", q: "相模" });
+    expect(ids(l, "way_id")).toEqual([101]);
+    expect(l.rows[0]).not.toHaveProperty("geometry_geojson");
+    const one = await q({ record_set: "osm_waterways", source_id: "osm_waterways", id: "101", include_geometry: true });
+    expect(one.rows[0].geometry_geojson).toEqual({ type: "LineString", coordinates: [] });
+    put("osm_water_structures", "osm:node/10", "城山ダム", "osm_water_structures");
+    put("osm_water_structures", "osm:node/11", "堰", "osm_water_structures");
+    const s = await q({ record_set: "osm_water_structures", source_id: "osm_water_structures" });
+    expect(ids(s, "source_ref")).toEqual(["osm:node/10", "osm:node/11"]);
+    expect(ids(await q({ record_set: "osm_water_structures", source_id: "osm_water_structures", id: "osm:node/11" }), "name_ja")).toEqual(["堰"]);
+    await expect(q({ record_set: "osm_waterways", source_id: "geoshape_sagami_river" })).rejects.toThrow(RecordsInputError);
+  });
+
   it("document_cells: superseded=0 の行だけ、doc_id で絞って読む。q は doc_id/row_key に効き、n_total も置き換え済みを除く", async () => {
     raw.prepare("INSERT INTO documents (doc_id, title) VALUES ('d1','文書1'),('d2','文書2')").run();
     const ins = raw.prepare("INSERT INTO cells (doc_id, row_key, col_key, value, fiscal_year, superseded) VALUES (?,?,?,?,?,?)");

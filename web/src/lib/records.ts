@@ -142,6 +142,31 @@ export const RECORD_TABLES = {
     ],
     geometry: "geometry_geojson",
   },
+  /*
+   * OpenStreetMap の河川線（`osm_waterways`、scripts/c105_osm_waterways.py → m12_osm_waterways.py。ODbL 1.0 © OpenStreetMap contributors）。
+   * 名前つきの waterway=river/stream の way。座標は Overpass の生のまま（ジオメトリは `id` 指定の 1 件だけ include_geometry で返す）。
+   * relation_id は同じ川としてのまとまり（NULL なら不明）。
+   */
+  osm_waterways: {
+    table: RECORD_SET_TABLES.osm_waterways,
+    pk: "way_id",
+    search: ["name_ja"],
+    cols: [
+      "way_id", "name_ja", "waterway", "relation_id", "region_id", "length_m", "start_lat", "start_lon", "end_lat", "end_lon",
+      "source_id", "source_ref",
+    ],
+    geometry: "geometry_geojson",
+  },
+  /*
+   * OpenStreetMap のダム・堰（`osm_water_structures`。waterway=dam/weir）。主キーは (osm_type, osm_id) だが、ページングと id 指定には
+   * 一意な `source_ref`（'osm:node/10' 等）を使う。lat/lon は way・relation では Overpass の center。
+   */
+  osm_water_structures: {
+    table: RECORD_SET_TABLES.osm_water_structures,
+    pk: "source_ref",
+    search: ["name_ja"],
+    cols: ["source_ref", "osm_type", "osm_id", "kind", "name_ja", "region_id", "lat", "lon", "source_id"],
+  },
   mammal_mesh: {
     table: RECORD_SET_TABLES.mammal_mesh,
     pk: "id",
@@ -274,7 +299,7 @@ export function recordSetsOf(sourceId: string): readonly string[] {
 /** MCP・AI 共通の入力（z.tuple は使わない）。出典と表の組み合わせの検査は `queryRecords` が行う。 */
 export const recordsInputSchema = z.object({
   source_id: z.enum(RECORD_SOURCE_IDS).optional().describe(`出典（${SOURCELESS_LIST} 以外は必須。使える出典と record_set の組はツールの説明にある）`),
-  record_set: z.enum(RECORD_SET_NAMES).optional().describe(`記録の集合（sites・protected_areas・vegetation・hazard_zones・river_segments・mammal_mesh・sightings・monitoring_counts・coral_reef_surveys・assessments・documents・document_notes・document_cells）。出典に集合が複数あるときだけ必須（1つなら省略可）。${SOURCELESS_LIST} は出典に紐付かないので source_id なしでこれだけ指定する`),
+  record_set: z.enum(RECORD_SET_NAMES).optional().describe(`記録の集合（sites・protected_areas・vegetation・hazard_zones・river_segments・osm_waterways・osm_water_structures・mammal_mesh・sightings・monitoring_counts・coral_reef_surveys・assessments・documents・document_notes・document_cells）。出典に集合が複数あるときだけ必須（1つなら省略可）。${SOURCELESS_LIST} は出典に紐付かないので source_id なしでこれだけ指定する`),
   id: idText("主キーの完全一致（1 件取り）").optional(),
   q: likeText("表ごとの検索列（名称・和名・学名など）の部分一致").optional(),
   include_geometry: z

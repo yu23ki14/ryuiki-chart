@@ -17,6 +17,8 @@ record_sets:
   protected_areas: protected_areas
   vegetation: vegetation_polygons
   river_segments: river_segments
+  osm_waterways: osm_waterways   # OpenStreetMap の河川線（名前つき waterway=river/stream）。出典は列 source_id
+  osm_water_structures: osm_water_structures   # OpenStreetMap のダム・堰（waterway=dam/weir）。出典は列 source_id
   mammal_mesh: mammal_mesh
   sightings: wildlife_sightings
   assessments: taxon_assessment
@@ -54,6 +56,9 @@ sources:
   biodic_veg2024_kanagawa: {records: [vegetation]}
   biodic_mammal_mesh_kanagawa: {records: [mammal_mesh]}
   geoshape_sagami_river: {records: [river_segments]}
+  # OpenStreetMap（ODbL 1.0 © OpenStreetMap contributors）。Overpass から取得（scripts/c105_osm_waterways.py）。範囲は神奈川県＋相模川の山梨側上流・奄美大島
+  osm_waterways: {records: [osm_waterways], note: "OpenStreetMap の河川線（名前つき waterway=river/stream の way）。座標は Overpass の生のまま。relation_id は同じ川としてのまとまり。データは ODbL 1.0（© OpenStreetMap contributors）"}
+  osm_water_structures: {records: [osm_water_structures], note: "OpenStreetMap のダム・堰（waterway=dam/weir）。データは ODbL 1.0（© OpenStreetMap contributors）"}
   kanagawa_redlist: {records: [assessments]}
   kagoshima_redlist: {records: [assessments]}
   kagoshima_ordinance_species: {records: [assessments]}

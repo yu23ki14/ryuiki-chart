@@ -43,6 +43,8 @@ export const TABLE_ORIGIN: Record<string, string> = {
   moni1000_counts: "main",
   // モニタリングサイト1000 サンゴ礁調査（奄美、scripts/m11_moni1000_coral.py）。get_records の coral_reef_surveys
   moni1000_coral_spots: "main",
+  // OpenStreetMap の河川線とダム・堰（scripts/c105_osm_waterways.py → m12_osm_waterways.py）。get_records の osm_waterways / osm_water_structures
+  osm_waterways: "main", osm_water_structures: "main",
   // 神奈川県 eDNA（scripts/m07_kanagawa_edna.py）。検出も不検出も。MCP/AI の get_edna と run_sql 用の台帳表
   edna_sites: "main", edna_reads: "main",
   // 外部ポータルの目録（scripts/m08_external_catalog.py。MCP/AI の find_datasets と run_sql 用。値は持たない）
@@ -117,6 +119,12 @@ export const TABLE_META: Record<string, string> = {
     "外部ポータルの資源（ファイル）。形式（format は原文）・サイズ・直リンク。sheets_json は見出しを検出できたものだけ列名を持つ",
   external_resource_format:
     "外部ポータルの資源の形式を正規化して要素ごとに 1 行にした照合用の表（'SHP,CSV' は 2 行。XLSK→XLSX、'.CSV'→CSV）",
+  osm_waterways:
+    "OpenStreetMap の河川線（名前つきの waterway=river/stream の way。神奈川県＋相模川の山梨側上流・奄美大島）。" +
+    "座標は Overpass の生のまま。relation_id は同じ川としてのまとまり（NULL は不明）。region_id は jp-14/jp-46。ODbL 1.0（© OpenStreetMap contributors）",
+  osm_water_structures:
+    "OpenStreetMap のダム・堰（waterway=dam/weir。node/way/relation。way・relation の lat/lon は center）。" +
+    "ODbL 1.0（© OpenStreetMap contributors）",
   river_segments:
     "相模川水系の河川流路。水系単位のため、県単位の nlni_w05 由来データに無い" +
     "山梨県側（桂川上流部）を含む",
