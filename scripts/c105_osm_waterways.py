@@ -57,8 +57,9 @@ def structures_query(bbox):
 
 def overpass(query, post=None):
     """1 本の問い合わせ。混雑・時間切れは待って取り直す。応答の dict（remark に error が無いもの）を返す。"""
-    import requests  # 遅延 import（CI は requests なしでも import できる）
-    post = post or requests.post
+    if post is None:
+        import requests  # 遅延 import: 実際に取得するときだけ（CI の reconcile に収集の依存は無い。テストは post を差し込む）
+        post = requests.post
     last = ""
     for wait in (0, *BACKOFF_S):
         if wait:
