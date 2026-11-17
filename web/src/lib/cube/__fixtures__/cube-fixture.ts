@@ -483,6 +483,13 @@ export const RECORD_SET_INSERT: Record<string, (db: Database.Database, pk: strin
     void db.prepare(`INSERT INTO hazard_zones (zone_id, site_name_ja, source_id, geometry_geojson) VALUES (?,?,?,'{"type":"Polygon","coordinates":[]}')`).run(pk, name, source),
   river_segments: (db, pk, name, source) =>
     void db.prepare(`INSERT INTO river_segments (feature_id, name_ja, source_id, geometry_geojson) VALUES (?,?,?,'{"type":"LineString","coordinates":[]}')`).run(pk, name, source),
+  // way_id は整数の主キー。数でない pk は自動採番に任せる（mammal_mesh と同じ）
+  osm_waterways: (db, pk, name, source) =>
+    void db.prepare(`INSERT INTO osm_waterways (way_id, name_ja, waterway, source_id, geometry_geojson) VALUES (?,?,'river',?,'{"type":"LineString","coordinates":[]}')`).run(typeof pk === "number" ? pk : null, name, source),
+  // 主キーは (osm_type, osm_id) だが get_records のページングは source_ref（一意）で行う。osm_id は pk の文字列から決めて重複させない
+  osm_water_structures: (db, pk, name, source) =>
+    void db.prepare("INSERT INTO osm_water_structures (osm_type, osm_id, kind, name_ja, source_id, source_ref) VALUES ('node',?,'dam',?,?,?)").run(
+      typeof pk === "number" ? pk : [...String(pk)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 1_000_000_007, 7), name, source, String(pk)),
   mammal_mesh: (db, pk, name, source) =>
     void db.prepare("INSERT INTO mammal_mesh (id, species_ja, source_id) VALUES (?,?,?)").run(typeof pk === "number" ? pk : null, name, source),
   sightings: (db, pk, name, source) => void db.prepare("INSERT INTO wildlife_sightings (sighting_id, species_ja, source_id) VALUES (?,?,?)").run(pk, name, source),

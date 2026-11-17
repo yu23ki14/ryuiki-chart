@@ -107,8 +107,17 @@ DBおよびリポジトリのファイルは一切変更していない。
 | 厚木市 相模川水質（平成14〜令和2年度） | 4,560 | `measurements` |
 | 神奈川県 地盤沈下 | 3,286 | `measurements` |
 | 相模川水系 流路 | 1,547 | `river_segments` |
+| OpenStreetMap 河川線（名前つき river/stream。神奈川＋相模川の山梨側上流・奄美大島。2026-11-17 取得） | 6,944 | `osm_waterways` |
+| OpenStreetMap ダム・堰（同範囲） | 1,167 | `osm_water_structures` |
 | 保護区・緑地・保存樹木 台帳 | 728 | `protected_areas` |
 | ツキノワグマ 出没・目撃記録 | 400 | `wildlife_sightings` |
+
+OSM の河川線とダム・堰（ODbL 1.0、© OpenStreetMap contributors）は Overpass API から取る。更新手順:
+`.venv/bin/python3 scripts/c105_osm_waterways.py`（`data/raw/osm_waterways/` に生の応答を保存。取得済みは取り直さない。`--force` で取り直し。
+混雑時は 15/30/60/120 秒で自動リトライ）→ 原本を `.backup` してから `scripts/m12_osm_waterways.py`（DDL は `scripts/schema_osm_water.sql`。
+wipe → INSERT で冪等）→ `pnpm run build:registry` → `pnpm run build:registry:ts` → `cd web && pnpm run db:setup`（ローカル D1 の行数確認）→
+本番は `pnpm run db:export` の該当表の INSERT を `wrangler d1 execute --remote --file`。MCP / AI の `get_records` の
+`record_set=osm_waterways` / `osm_water_structures` が読む（画面・API は無い）。
 
 新設テーブルの DDL は `scripts/schema_tier1.sql`、D1 側は `web/src/db/schema.ts` と
 `web/drizzle/migrations/0001_*.sql`。

@@ -11,7 +11,7 @@
  * drizzle/migrations/*.sql を直接書き換えない。
  */
 import { sql } from "drizzle-orm";
-import { sqliteTable, text, integer, real, index, primaryKey } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, index, uniqueIndex, primaryKey } from "drizzle-orm/sqlite-core";
 // 依存なしの定数ファイル（drizzle-kit は `@/` エイリアスを解決しないので相対 import）。
 import { DOC_SERIES_WHERE } from "../lib/cube/doc-series-where";
 
@@ -307,6 +307,50 @@ export const moni1000Counts = sqliteTable("moni1000_counts", {
 (table) => [
 	index("ix_moni_src").on(table.sourceId, table.surveyYear),
 	index("ix_moni_sp").on(table.speciesJa),
+]);
+
+/**
+ * OpenStreetMap の河川線（名前つきの waterway=river/stream の way）。`scripts/schema_osm_water.sql`、
+ * `scripts/c105_osm_waterways.py`（Overpass から取得）→ `scripts/m12_osm_waterways.py` が原本に作る。ODbL 1.0（© OpenStreetMap contributors）。
+ * 座標は Overpass の生の geometry のまま（丸め・間引きなし）。relation_id は同じ川としてのまとまり（無ければ NULL）。
+ * get_records の osm_waterways が返す。
+ */
+export const osmWaterways = sqliteTable("osm_waterways", {
+	wayId: integer("way_id").primaryKey(),
+	nameJa: text("name_ja"),
+	waterway: text("waterway").notNull(),
+	relationId: integer("relation_id"),
+	regionId: text("region_id"),
+	lengthM: real("length_m"),
+	geometryGeojson: text("geometry_geojson"),
+	startLat: real("start_lat"),
+	startLon: real("start_lon"),
+	endLat: real("end_lat"),
+	endLon: real("end_lon"),
+	sourceId: text("source_id").notNull(),
+	sourceRef: text("source_ref"),
+},
+(table) => [
+	index("ix_osmw_region").on(table.regionId, table.waterway),
+	index("ix_osmw_rel").on(table.relationId),
+]);
+
+/** OpenStreetMap のダム・堰（waterway=dam/weir。node/way/relation）。lat/lon は way・relation では Overpass の center。get_records の osm_water_structures。 */
+export const osmWaterStructures = sqliteTable("osm_water_structures", {
+	osmType: text("osm_type").notNull(),
+	osmId: integer("osm_id").notNull(),
+	kind: text("kind").notNull(),
+	nameJa: text("name_ja"),
+	regionId: text("region_id"),
+	lat: real("lat"),
+	lon: real("lon"),
+	sourceId: text("source_id").notNull(),
+	sourceRef: text("source_ref"),
+},
+(table) => [
+	primaryKey({ columns: [table.osmType, table.osmId] }),
+	index("ix_osmws_region").on(table.regionId, table.kind),
+	uniqueIndex("ux_osmws_ref").on(table.sourceRef),
 ]);
 
 /**
