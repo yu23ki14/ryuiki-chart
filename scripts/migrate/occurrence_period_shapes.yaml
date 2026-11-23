@@ -36,28 +36,28 @@ year_interval:
   note: "'YYYY/YYYY'（調査期間の開始年/終了年）。"
 
 day:
-  expected_row_count: 737534
-  note: "'YYYY-MM-DD'（検体日）。2026-10-07: 不在記録（occurrence_status='ABSENT'）2,789行を除いた（740,323 -> 737,534）。"
+  expected_row_count: 736643
+  note: "'YYYY-MM-DD'（検体日）。2026-10-07: 不在記録（occurrence_status='ABSENT'）2,789行を除いた（740,323 -> 737,534）。Issue #125: GBIF 経由の iNaturalist の重複（直取得と source_ref が一致）を除いた（737,534 -> 736,643）。"
 
 month_interval:
   expected_row_count: 14
   note: "'YYYY-MM/YYYY-MM'（調査期間の開始月/終了月）。"
 
 instant_minute:
-  expected_row_count: 26042
-  note: "'YYYY-MM-DDTHH:MM'（秒なし・時刻帯なし）。"
+  expected_row_count: 1108
+  note: "'YYYY-MM-DDTHH:MM'（秒なし・時刻帯なし）。Issue #125: GBIF 経由の iNaturalist の重複を除いた（26,042 -> 1,108）。"
 
 instant_minute_z:
-  expected_row_count: 958
-  note: "'YYYY-MM-DDTHH:MMZ'（秒なし・UTC）。"
+  expected_row_count: 110
+  note: "'YYYY-MM-DDTHH:MMZ'（秒なし・UTC）。Issue #125: GBIF 経由の iNaturalist の重複を除いた（958 -> 110）。"
 
 instant_second:
-  expected_row_count: 40633
-  note: "'YYYY-MM-DDTHH:MM:SS'（時刻帯なし）。"
+  expected_row_count: 1039
+  note: "'YYYY-MM-DDTHH:MM:SS'（時刻帯なし）。Issue #125: GBIF 経由の iNaturalist の重複を除いた（40,633 -> 1,039）。"
 
 instant_second_z:
-  expected_row_count: 143
-  note: "'YYYY-MM-DDTHH:MM:SSZ'（UTC）。"
+  expected_row_count: 76
+  note: "'YYYY-MM-DDTHH:MM:SSZ'（UTC）。Issue #125: GBIF 経由の iNaturalist の重複を除いた（143 -> 76）。"
 
 day_interval:
   expected_row_count: 3723

@@ -810,3 +810,25 @@ def test_compute_occurrence_place_and_watershed_stats_withholds_large_uncertaint
     stats = s01.compute_occurrence_place_and_watershed_stats(conn.execute("SELECT * FROM t").fetchall(), geojson_path)
     assert (stats["resolved_count"], stats["place_id_null_count"]) == (2, 1)
     assert (stats["watershed_dated_resolved_rows"], stats["watershed_dated_unresolved_rows"]) == (2, 1)
+
+
+def test_dedup_functions_pick_shared_refs_in_both_sources(tmp_path):
+    """`dedup_pair_sample` は GBIF 側・直取得側で同じ ref（昇順の先頭 DEDUP_SAMPLE_PAIRS 組）を選び、`is_dup_row` は
+    GBIF 側の一致する行だけ 1（直取得側・一致しない GBIF 行は 0）。"""
+    mdir = tmp_path / "manifests"
+    write_manifests_from_sources_text(mdir, (
+        "sources:\n"
+        "  gbif_x:\n    region_id: jp-14\n    consumer: occurrence\n    dedup_against: inat_x\n"
+        "  inat_x:\n    region_id: jp-14\n    consumer: occurrence\n"
+    ))
+    conn = sqlite3.connect(":memory:")
+    conn.execute("CREATE TABLE organism_records (source_id TEXT, source_ref TEXT)")
+    refs = [f"r{i}" for i in range(5)]
+    conn.executemany("INSERT INTO organism_records VALUES (?,?)", [("inat_x", r) for r in refs + ["only_inat"]]
+                     + [("gbif_x", r) for r in refs + ["only_gbif", "uuid"]])
+    s01.register_dedup_functions(conn, mdir)
+    picked = sorted(conn.execute("SELECT source_id, source_ref FROM organism_records WHERE dedup_pair_sample(source_id, source_ref)"))
+    n = s01.DEDUP_SAMPLE_PAIRS
+    assert picked == sorted([("gbif_x", r) for r in refs[:n]] + [("inat_x", r) for r in refs[:n]])
+    dups = [r[0] for r in conn.execute("SELECT source_ref FROM organism_records WHERE is_dup_row(source_id, source_ref)")]
+    assert sorted(dups) == refs

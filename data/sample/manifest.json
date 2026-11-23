@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-17T14:09:02+00:00",
+  "generated_at": "2026-11-23T00:55:48+00:00",
   "generated_by": "scripts/s01_build_sample.py",
   "source_files": {
     "data/db/ryuiki.sqlite": "ff3bd5c1a4cb021f12f3501a5fa6aa71364dfaf6d2eb061a1d51acfea2cc1e19",
@@ -32,7 +32,7 @@
     "measurements": 40292,
     "moni1000_coral_spots": 1,
     "moni1000_counts": 51450,
-    "organism_records": 3487,
+    "organism_records": 3498,
     "osm_water_structures": 1,
     "osm_waterways": 1,
     "protected_areas": 7,

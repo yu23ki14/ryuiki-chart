@@ -210,3 +210,14 @@ def test_manifest_json_has_required_fields():
     assert set(manifest["source_files"]) == set(pipeline_inputs.SOURCE_FILE_KEYS)
     for name, digest in manifest["source_files"].items():
         assert len(digest) == 64, f"{name} の sha256 の桁数が64でない: {digest!r}"
+
+
+def test_sample_contains_duplicate_pairs_that_b06_excludes(conn):
+    """Issue #125: サンプルに、GBIF 経由の iNaturalist 観察と直取得の重複ペアが神奈川・奄美とも入っている
+    （CI の sample-gate が b06 の除外の経路を通る）。"""
+    for gbif, direct in (("gbif_kanagawa_occurrences", "inaturalist_kanagawa"), ("gbif_amami_occurrences", "inaturalist_amami")):
+        n = conn.execute(
+            "SELECT COUNT(*) FROM organism_records g WHERE g.source_id = ? AND g.source_ref IN "
+            "(SELECT source_ref FROM organism_records WHERE source_id = ?)", (gbif, direct),
+        ).fetchone()[0]
+        assert n >= 2, f"{gbif}: 直取得と source_ref が一致する行が {n} 件"

@@ -221,64 +221,90 @@ predicates:
     limit: 3
     min_rows: 3
 
+  # GBIF 経由の iNaturalist 観察と直取得の重複ペア（b06 が GBIF 側を除く。manifests の dedup_against。Issue #125）。
+  # `dedup_pair_sample` は s01 が登録する SQL 関数で、source_ref が一致する組のうち source_ref 昇順の先頭3組を、
+  # GBIF 側・直取得側の両方で選ぶ（神奈川・奄美とも）。
+  - name: dedup_pair_gbif_kanagawa
+    table: organism_records
+    where: "source_id = 'gbif_kanagawa_occurrences' AND dedup_pair_sample(source_id, source_ref)"
+    limit: 3
+    min_rows: 3
+  - name: dedup_pair_direct_kanagawa
+    table: organism_records
+    where: "source_id = 'inaturalist_kanagawa' AND dedup_pair_sample(source_id, source_ref)"
+    limit: 3
+    min_rows: 3
+  - name: dedup_pair_gbif_amami
+    table: organism_records
+    where: "source_id = 'gbif_amami_occurrences' AND dedup_pair_sample(source_id, source_ref)"
+    limit: 3
+    min_rows: 3
+  - name: dedup_pair_direct_amami
+    table: organism_records
+    where: "source_id = 'inaturalist_amami' AND dedup_pair_sample(source_id, source_ref)"
+    limit: 3
+    min_rows: 3
+
+  # 12形の predicate は、b06 が除く重複行（is_dup_row。s01 が登録する SQL 関数）を選ばない——選ぶと形が occurrence に残らず、
+  # 形の宣言が未使用になる。
   - name: occurrence_shape_year
     table: organism_records
-    where: "classify_shape(observed_on) = 'year'"
+    where: "classify_shape(observed_on) = 'year' AND NOT is_dup_row(source_id, source_ref)"
     limit: 10
     min_rows: 10
   - name: occurrence_shape_month
     table: organism_records
-    where: "classify_shape(observed_on) = 'month'"
+    where: "classify_shape(observed_on) = 'month' AND NOT is_dup_row(source_id, source_ref)"
     limit: 10
     min_rows: 10
   - name: occurrence_shape_year_interval
     table: organism_records
-    where: "classify_shape(observed_on) = 'year_interval'"
+    where: "classify_shape(observed_on) = 'year_interval' AND NOT is_dup_row(source_id, source_ref)"
     limit: 10
     min_rows: 10
   - name: occurrence_shape_day
     table: organism_records
-    where: "classify_shape(observed_on) = 'day'"
+    where: "classify_shape(observed_on) = 'day' AND NOT is_dup_row(source_id, source_ref)"
     limit: 15
     min_rows: 15
   - name: occurrence_shape_month_interval
     table: organism_records
-    where: "classify_shape(observed_on) = 'month_interval'"
+    where: "classify_shape(observed_on) = 'month_interval' AND NOT is_dup_row(source_id, source_ref)"
     limit: 10
     min_rows: 10
   - name: occurrence_shape_instant_minute
     table: organism_records
-    where: "classify_shape(observed_on) = 'instant_minute'"
+    where: "classify_shape(observed_on) = 'instant_minute' AND NOT is_dup_row(source_id, source_ref)"
     limit: 10
     min_rows: 10
   - name: occurrence_shape_instant_minute_z
     table: organism_records
-    where: "classify_shape(observed_on) = 'instant_minute_z'"
+    where: "classify_shape(observed_on) = 'instant_minute_z' AND NOT is_dup_row(source_id, source_ref)"
     limit: 10
     min_rows: 10
   - name: occurrence_shape_instant_second
     table: organism_records
-    where: "classify_shape(observed_on) = 'instant_second'"
+    where: "classify_shape(observed_on) = 'instant_second' AND NOT is_dup_row(source_id, source_ref)"
     limit: 10
     min_rows: 10
   - name: occurrence_shape_instant_second_z
     table: organism_records
-    where: "classify_shape(observed_on) = 'instant_second_z'"
+    where: "classify_shape(observed_on) = 'instant_second_z' AND NOT is_dup_row(source_id, source_ref)"
     limit: 10
     min_rows: 10
   - name: occurrence_shape_day_interval
     table: organism_records
-    where: "classify_shape(observed_on) = 'day_interval'"
+    where: "classify_shape(observed_on) = 'day_interval' AND NOT is_dup_row(source_id, source_ref)"
     limit: 10
     min_rows: 10
   - name: occurrence_shape_instant_millisecond_z
     table: organism_records
-    where: "classify_shape(observed_on) = 'instant_millisecond_z'"
+    where: "classify_shape(observed_on) = 'instant_millisecond_z' AND NOT is_dup_row(source_id, source_ref)"
     limit: 10
     min_rows: 10
   - name: occurrence_shape_instant_minute_z_interval
     table: organism_records
-    where: "classify_shape(observed_on) = 'instant_minute_z_interval'"
+    where: "classify_shape(observed_on) = 'instant_minute_z_interval' AND NOT is_dup_row(source_id, source_ref)"
     limit: 10
     min_rows: 10
   - name: occurrence_observed_on_null

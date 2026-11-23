@@ -153,6 +153,66 @@ def register_classify_shape(conn: sqlite3.Connection) -> None:
     同名関数の再登録を単に上書きする）。
     """
     conn.create_function("classify_shape", 1, _sql_classify_shape)
+    register_dedup_functions(conn)
+
+
+# GBIF 経由の iNaturalist 観察と直取得の重複（Issue #125。b06 が除く行）をサンプルに入れる組数（dedup した出典ごと）。
+DEDUP_SAMPLE_PAIRS = 3
+
+
+def register_dedup_functions(conn: sqlite3.Connection, manifests_dir=source_regions.DEFAULT_MANIFESTS_DIR) -> None:
+    """b06 の重複除外（manifests の `dedup_against`）を s01 が扱うための SQL 関数を登録する。
+    - `is_dup_row(source_id, source_ref)`: b06 が重複として除く行なら 1（`build_declaration_counts` が件数から除くのに使う）。
+    - `dedup_pair_sample(source_id, source_ref)`: 重複する source_ref のうち、source_ref の昇順で先頭 `DEDUP_SAMPLE_PAIRS` 件の
+      「GBIF 側の行と直取得側の行」なら 1（coverage.yaml の predicate が使う。両側で同じ ref を選ぶ）。
+    重複する source_ref の集合は `conn` の organism_records から初回の呼び出しで1回だけ（Python のハッシュで。source_ref に
+    索引は無く、相関サブクエリは使えない）求める。source_ref 列が無い表（テストの小さな表）では空。"""
+    state: dict = {}
+
+    def _pairs() -> dict[str, tuple[str, frozenset]]:
+        """{GBIF 側の出典: (直取得の出典, 重複する source_ref の集合)}"""
+        if "pairs" in state:
+            return state["pairs"]
+        pairs: dict[str, tuple[str, frozenset]] = {}
+        declared = {sid: m.dedup_against for sid, m in manifest_lib.load_manifests(manifests_dir).items() if m.dedup_against}
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(organism_records)")}
+        if declared and "source_ref" in cols:
+            direct_ids = sorted(set(declared.values()))
+            marks = ",".join("?" for _ in direct_ids)
+            direct = {d: set() for d in direct_ids}
+            for sid, ref in conn.execute(
+                f"SELECT source_id, source_ref FROM organism_records WHERE source_id IN ({marks}) "
+                "AND source_ref IS NOT NULL AND source_ref <> ''", direct_ids,
+            ):
+                direct[sid].add(ref)
+            for sid, d in sorted(declared.items()):
+                shared = set()
+                for (ref,) in conn.execute(
+                    "SELECT source_ref FROM organism_records WHERE source_id = ? AND source_ref IS NOT NULL AND source_ref <> ''", (sid,),
+                ):
+                    if ref in direct[d]:
+                        shared.add(ref)
+                pairs[sid] = (d, frozenset(shared))
+        state["pairs"] = pairs
+        return pairs
+
+    def _sample_refs() -> dict[str, frozenset]:
+        if "sample" not in state:
+            state["sample"] = {sid: frozenset(sorted(refs)[:DEDUP_SAMPLE_PAIRS]) for sid, (_d, refs) in _pairs().items()}
+        return state["sample"]
+
+    def is_dup_row(source_id, source_ref) -> int:
+        pair = _pairs().get(source_id)
+        return int(pair is not None and source_ref in pair[1])
+
+    def dedup_pair_sample(source_id, source_ref) -> int:
+        for sid, (d, _refs) in _pairs().items():
+            if source_id in (sid, d) and source_ref in _sample_refs()[sid]:
+                return 1
+        return 0
+
+    conn.create_function("is_dup_row", 2, is_dup_row)
+    conn.create_function("dedup_pair_sample", 2, dedup_pair_sample)
 
 
 def _open_ro(path) -> sqlite3.Connection:
@@ -782,6 +842,10 @@ def build_declaration_counts(
     # `sqlite3.connect()` した）場合に備えてここでも登録しておく（何度
     # 呼んでも安全。register_classify_shape docstring 参照）。
     register_classify_shape(conn)
+    register_dedup_functions(conn, manifests_dir)
+    # b06 が除く重複行（GBIF 経由の iNat。Issue #125）を件数から除く条件。source_ref 列が無い小さな表では空
+    has_ref = any(r[1] == "source_ref" for r in conn.execute("PRAGMA table_info(organism_records)"))
+    not_dup = " AND NOT is_dup_row(source_id, source_ref)" if has_ref else ""
     out: dict[str, int] = {}
 
     _temp_ready: set[str] = set()
@@ -881,7 +945,7 @@ def build_declaration_counts(
     for name in sorted(occurrence_period.load_period_shapes()):
         out[f"occurrence_period_shapes.yaml:{name}"] = count(
             "organism_records",
-            f"classify_shape(observed_on) = '{name}' AND occurrence_status IS NOT 'ABSENT'{not_expected}"
+            f"classify_shape(observed_on) = '{name}' AND occurrence_status IS NOT 'ABSENT'{not_dup}{not_expected}"
         )
 
     # occurrence_cube_declarations.yaml
@@ -889,7 +953,7 @@ def build_declaration_counts(
         "SELECT t.rowid AS rowid, t.record_id, t.observed_on, t.lat, t.lon, t.scientific_name, "
         "t.is_alien, t.red_list_category, t.source_id, t.coordinate_uncertainty_m "
         "FROM organism_records t JOIN temp.__s01_organism_records_rowids s ON t.rowid = s.rowid_value "
-        "WHERE t.occurrence_status IS NOT 'ABSENT' "   # 不在記録は occurrence に入らない（b06）
+        "WHERE t.occurrence_status IS NOT 'ABSENT'" + not_dup.replace("source_id, source_ref", "t.source_id, t.source_ref") + " "   # 不在記録・GBIF 経由の iNat 重複は occurrence に入らない（b06）
         "ORDER BY t.rowid"
     ).fetchall()
     all_org_rows, org_rows = org_rows, [r for r in org_rows if r["source_id"] not in expected_sids]
@@ -915,12 +979,12 @@ def build_declaration_counts(
     for sid in expected_sids:
         rows = [r for r in all_org_rows if r["source_id"] == sid]
         out.update(_manifest_expected_counts(
-            sid, all_manifests[sid].expected, rows, count, utc_offset_by_source, geojson_path))
+            sid, all_manifests[sid].expected, rows, count, utc_offset_by_source, geojson_path, not_dup))
 
     return out
 
 
-def _manifest_expected_counts(sid, expected, rows, count, utc_offset_by_source, geojson_path) -> dict[str, int]:
+def _manifest_expected_counts(sid, expected, rows, count, utc_offset_by_source, geojson_path, not_dup="") -> dict[str, int]:
     """manifest `expected`（period_shapes・place・cube）の各キーを、サンプルの `sid` の行から実測する。
     意味は b06（形ごとの件数）・b09（coord_resolved/unresolved）・b07（cube の各件数）の突合と同じ。"""
     pre = f"manifests:{sid}.expected"
@@ -942,7 +1006,8 @@ def _manifest_expected_counts(sid, expected, rows, count, utc_offset_by_source, 
     for name in expected.get("period_shapes", {}):
         out[f"{pre}.period_shapes.{name}"] = count(
             "organism_records",
-            f"source_id = '{sid}' AND classify_shape(observed_on) = '{name}' AND occurrence_status IS NOT 'ABSENT'",
+            f"source_id = '{sid}' AND classify_shape(observed_on) = '{name}' AND occurrence_status IS NOT 'ABSENT' "
+            + not_dup,
         )
     return out
 
