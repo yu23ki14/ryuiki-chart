@@ -94,7 +94,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import pipeline_inputs  # noqa: E402
 from ingest import manifest as manifest_lib  # noqa: E402
 from b09_build_occurrence_place import is_watershed_withheld  # noqa: E402  流域に割り当てない誤差の述語（b09 と共有）
-from migrate import occurrence_period  # noqa: E402
+from migrate import occurrence_dedup, occurrence_period  # noqa: E402
 from migrate import point_in_polygon as pip  # noqa: E402
 from migrate import source_regions  # noqa: E402
 from reconcile.common import load_yaml  # noqa: E402
@@ -153,6 +153,43 @@ def register_classify_shape(conn: sqlite3.Connection) -> None:
     同名関数の再登録を単に上書きする）。
     """
     conn.create_function("classify_shape", 1, _sql_classify_shape)
+
+
+# GBIF 経由の iNaturalist 観察と直取得の重複（Issue #125。b06 が除く行）をサンプルに入れる組数（dedup した出典ごと）。
+DEDUP_SAMPLE_PAIRS = 3
+
+
+def register_dedup_functions(
+    conn: sqlite3.Connection, manifests_dir=source_regions.DEFAULT_MANIFESTS_DIR, from_sql: str = "organism_records",
+) -> None:
+    """b06 の重複除外（manifests の `dedup_against`）を s01 が扱うための SQL 関数を、`from_sql`（organism_records 相当の
+    表か副問い合わせ）に対して登録する。重複の集合は `migrate.occurrence_dedup`（b06 と共有）で、初回の呼び出しで1回だけ求める。
+    - `is_dup_row(source_id, source_ref)`: `from_sql` の中で b06 が重複として除く行なら 1。
+      選択（coverage.yaml の述語）では原本の全行に対して登録し、宣言件数の実測（`build_declaration_counts`）ではサンプルに
+      選んだ行だけに対して登録し直す——双子がサンプルに揃っていない行を b06 は除かない。
+    - `dedup_pair_sample(source_id, source_ref)`: 重複する source_ref のうち昇順で先頭 `DEDUP_SAMPLE_PAIRS` 件の、GBIF 側と
+      直取得側の行なら 1（coverage.yaml の述語が使う。両側で同じ ref を選ぶ）。"""
+    pairs = {sid: m.dedup_against for sid, m in manifest_lib.load_manifests(manifests_dir).items() if m.dedup_against}
+    state: dict = {}
+
+    def dups() -> dict[str, frozenset]:
+        if "dups" not in state:
+            state["dups"] = occurrence_dedup.duplicate_refs(conn, pairs, from_sql)
+        return state["dups"]
+
+    def sample_refs() -> dict[str, frozenset]:
+        if "sample" not in state:
+            state["sample"] = {sid: frozenset(sorted(refs)[:DEDUP_SAMPLE_PAIRS]) for sid, refs in dups().items()}
+        return state["sample"]
+
+    def is_dup_row(source_id, source_ref) -> int:
+        return int(source_ref in dups().get(source_id, ()))
+
+    def dedup_pair_sample(source_id, source_ref) -> int:
+        return int(any(source_id in (sid, pairs[sid]) and source_ref in refs for sid, refs in sample_refs().items()))
+
+    conn.create_function("is_dup_row", 2, is_dup_row)
+    conn.create_function("dedup_pair_sample", 2, dedup_pair_sample)
 
 
 def _open_ro(path) -> sqlite3.Connection:
@@ -812,6 +849,15 @@ def build_declaration_counts(
     # `_ensure_temp` docstring 参照）。
     _ensure_temp("organism_records")
 
+    # b06 が除く重複行（GBIF 経由の iNaturalist。Issue #125）は、サンプルに選んだ行の中で双子がそろっているものだけ。
+    selected_sql = "(SELECT t.* FROM organism_records t JOIN temp.__s01_organism_records_rowids s ON t.rowid = s.rowid_value)"
+    register_dedup_functions(conn, manifests_dir, selected_sql)
+    has_ref = "source_ref" in occurrence_dedup.table_columns(conn, "organism_records")
+
+    def not_dup(prefix: str = "") -> str:
+        """件数の WHERE に足す「b06 が重複として除く行でない」条件（`prefix` は列の接頭辞。source_ref 列の無い小さな表では空）。"""
+        return f" AND NOT is_dup_row({prefix}source_id, {prefix}source_ref)" if has_ref else ""
+
     # period_exceptions.yaml
     out["period_exceptions.yaml:atsugi_river_water_quality"] = count(
         "measurements", "source_id = 'atsugi_river_water_quality' AND length(measured_on) = 4"
@@ -881,7 +927,7 @@ def build_declaration_counts(
     for name in sorted(occurrence_period.load_period_shapes()):
         out[f"occurrence_period_shapes.yaml:{name}"] = count(
             "organism_records",
-            f"classify_shape(observed_on) = '{name}' AND occurrence_status IS NOT 'ABSENT'{not_expected}"
+            f"classify_shape(observed_on) = '{name}' AND occurrence_status IS NOT 'ABSENT'{not_dup()}{not_expected}"
         )
 
     # occurrence_cube_declarations.yaml
@@ -889,7 +935,7 @@ def build_declaration_counts(
         "SELECT t.rowid AS rowid, t.record_id, t.observed_on, t.lat, t.lon, t.scientific_name, "
         "t.is_alien, t.red_list_category, t.source_id, t.coordinate_uncertainty_m "
         "FROM organism_records t JOIN temp.__s01_organism_records_rowids s ON t.rowid = s.rowid_value "
-        "WHERE t.occurrence_status IS NOT 'ABSENT' "   # 不在記録は occurrence に入らない（b06）
+        "WHERE t.occurrence_status IS NOT 'ABSENT'" + not_dup("t.") + " "   # 不在記録・GBIF 経由の iNat 重複は occurrence に入らない（b06）
         "ORDER BY t.rowid"
     ).fetchall()
     all_org_rows, org_rows = org_rows, [r for r in org_rows if r["source_id"] not in expected_sids]
@@ -915,12 +961,12 @@ def build_declaration_counts(
     for sid in expected_sids:
         rows = [r for r in all_org_rows if r["source_id"] == sid]
         out.update(_manifest_expected_counts(
-            sid, all_manifests[sid].expected, rows, count, utc_offset_by_source, geojson_path))
+            sid, all_manifests[sid].expected, rows, count, utc_offset_by_source, geojson_path, not_dup()))
 
     return out
 
 
-def _manifest_expected_counts(sid, expected, rows, count, utc_offset_by_source, geojson_path) -> dict[str, int]:
+def _manifest_expected_counts(sid, expected, rows, count, utc_offset_by_source, geojson_path, not_dup="") -> dict[str, int]:
     """manifest `expected`（period_shapes・place・cube）の各キーを、サンプルの `sid` の行から実測する。
     意味は b06（形ごとの件数）・b09（coord_resolved/unresolved）・b07（cube の各件数）の突合と同じ。"""
     pre = f"manifests:{sid}.expected"
@@ -942,7 +988,8 @@ def _manifest_expected_counts(sid, expected, rows, count, utc_offset_by_source, 
     for name in expected.get("period_shapes", {}):
         out[f"{pre}.period_shapes.{name}"] = count(
             "organism_records",
-            f"source_id = '{sid}' AND classify_shape(observed_on) = '{name}' AND occurrence_status IS NOT 'ABSENT'",
+            f"source_id = '{sid}' AND classify_shape(observed_on) = '{name}' AND occurrence_status IS NOT 'ABSENT' "
+            + not_dup,
         )
     return out
 
@@ -980,6 +1027,7 @@ def main() -> int:
     out_dir = pathlib.Path(args.out_dir)
 
     ryuiki_conn = _open_ro(args.ryuiki_db)
+    register_dedup_functions(ryuiki_conn, args.manifests_dir)   # coverage.yaml の述語が使う（原本の全行に対して）
     cells_conn = _open_ro(args.cells_db)
 
     # --- 選択 ---

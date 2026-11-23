@@ -439,3 +439,87 @@ def test_unknown_occurrence_status_raises(tmp_path):
             tmp_path, organism_rows=list(DEFAULT_ORGANISM_RECORDS) + _status_rows("UNKNOWN"),
             source_regions_text=_ABSENT_SOURCE_REGIONS_TEXT.format(absent=0),
         )
+
+
+# --- GBIF 経由の iNaturalist 観察を、直取得と重複するものだけ除く（Issue #125）---
+
+_INAT_URL = "https://www.inaturalist.org/observations/{}"
+_ABS_DECL = "expected_absent_excluded_rows: 1\n    "
+_DEDUP_SOURCE_REGIONS_TEXT = (
+    "sources:\n"
+    "  gbif_kanagawa_occurrences:\n"
+    "    region_id: jp-14\n    consumer: occurrence\n"
+    "    expected_row_count: 16\n    " + _ABS_DECL + "evidence: テスト用\n    dedup_against: inaturalist_kanagawa\n"
+    "  inaturalist_kanagawa:\n"
+    "    region_id: jp-14\n    consumer: occurrence\n"
+    "    expected_row_count: 3\n    evidence: テスト用\n"
+)
+
+
+def _ref_row(record_id, source_id, source_ref, status=None):
+    taxon_key = "" if source_id.startswith("inaturalist") else "1001"   # 既定の registry に inat の taxon は無い
+    return (record_id, source_id, "2020-01-06", 35.505, 139.005, 10.0,
+            "Foo bar", "", "SPECIES", taxon_key, "", 0, "", "公開", 0, status, source_ref)
+
+
+def _dedup_rows():
+    return list(DEFAULT_ORGANISM_RECORDS) + [
+        _ref_row("inaturalist_kanagawa__d1", "inaturalist_kanagawa", _INAT_URL.format(1)),
+        _ref_row("inaturalist_kanagawa__d2", "inaturalist_kanagawa", _INAT_URL.format(2)),
+        _ref_row("gbif_kanagawa_occurrences__dup1", "gbif_kanagawa_occurrences", _INAT_URL.format(1)),  # 直取得と一致 -> 除く
+        _ref_row("gbif_kanagawa_occurrences__dup2", "gbif_kanagawa_occurrences", _INAT_URL.format(2)),  # 除く
+        _ref_row("gbif_kanagawa_occurrences__only", "gbif_kanagawa_occurrences", _INAT_URL.format(99)),  # 直取得に無い iNat 由来 -> 残す
+        _ref_row("gbif_kanagawa_occurrences__other", "gbif_kanagawa_occurrences", "urn:uuid:abc"),  # 他の datasetKey -> 残す
+        _ref_row("gbif_kanagawa_occurrences__abs", "gbif_kanagawa_occurrences", _INAT_URL.format(1), "ABSENT"),  # 不在記録として除く（重複には数えない）
+    ]
+
+
+def _build_dedup(tmp_path, text=_DEDUP_SOURCE_REGIONS_TEXT, shapes=5):
+    return _build(tmp_path, organism_rows=_dedup_rows(), source_regions_text=text, period_shapes_counts={"day": shapes})
+
+
+def test_duplicate_of_direct_inaturalist_is_excluded(tmp_path):
+    stats, out = _build_dedup(tmp_path)
+    assert stats["duplicate_excluded_count"] == 2
+    assert stats["duplicate_excluded_by_source"] == {"gbif_kanagawa_occurrences": 2}
+    assert stats["duplicate_expected_by_source"] == {"gbif_kanagawa_occurrences": 2}
+    conn = sqlite3.connect(f"file:{out}?mode=ro", uri=True)
+    ids = {r[0] for r in conn.execute("SELECT record_id FROM occurrence")}
+    conn.close()
+    assert {"gbif_kanagawa_occurrences__dup1", "gbif_kanagawa_occurrences__dup2", "gbif_kanagawa_occurrences__abs"}.isdisjoint(ids)
+    assert {"inaturalist_kanagawa__d1", "inaturalist_kanagawa__d2",
+            "gbif_kanagawa_occurrences__only", "gbif_kanagawa_occurrences__other"} <= ids
+    assert stats["absent_excluded_count"] == 1 and stats["n_occurrence"] == len(ids)
+
+
+def test_duplicate_without_declaration_is_kept(tmp_path):
+    """dedup_against が無い出典は、source_ref が直取得と一致しても除かない。"""
+    text = _DEDUP_SOURCE_REGIONS_TEXT.replace("    dedup_against: inaturalist_kanagawa\n", "")
+    stats, _out = _build_dedup(tmp_path, text=text, shapes=7)
+    assert stats["duplicate_excluded_count"] == 0
+
+
+def test_duplicate_count_mismatch_raises(tmp_path, monkeypatch):
+    """行ごとの除外が独立に数えた重複件数とずれたら止まる（変異: 除外の判定が重複を見なくなる）。"""
+    real = b06._exclusion_reason
+    monkeypatch.setattr(b06, "_exclusion_reason", lambda synth, status, is_duplicate=False: real(synth, status, False))
+    with pytest.raises(common.MigrationError, match="独立に数えた重複件数"):
+        _build_dedup(tmp_path, shapes=5)
+
+
+def test_duplicate_requires_direct_row_that_stays_in_occurrence(tmp_path):
+    """直取得側の行が不在記録（occurrence に入らない）なら、source_ref が一致する GBIF 行も除かない（どちらも消えるのを防ぐ）。"""
+    rows = _dedup_rows() + [
+        _ref_row("inaturalist_kanagawa__abs", "inaturalist_kanagawa", _INAT_URL.format(7), "ABSENT"),
+        _ref_row("gbif_kanagawa_occurrences__tw", "gbif_kanagawa_occurrences", _INAT_URL.format(7)),
+    ]
+    text = _DEDUP_SOURCE_REGIONS_TEXT.replace("expected_row_count: 16", "expected_row_count: 17").replace(
+        "expected_row_count: 3\n", "expected_row_count: 4\n").replace("expected_absent_excluded_rows: 1", "expected_absent_excluded_rows: 1")
+    text = text.replace("  inaturalist_kanagawa:\n    region_id: jp-14\n    consumer: occurrence\n",
+                        "  inaturalist_kanagawa:\n    region_id: jp-14\n    consumer: occurrence\n    expected_absent_excluded_rows: 1\n")
+    stats, out = _build(tmp_path, organism_rows=rows, source_regions_text=text, period_shapes_counts={"day": 6})
+    assert stats["duplicate_excluded_by_source"] == {"gbif_kanagawa_occurrences": 2}   # tw は除かない
+    conn = sqlite3.connect(f"file:{out}?mode=ro", uri=True)
+    ids = {r[0] for r in conn.execute("SELECT record_id FROM occurrence")}
+    conn.close()
+    assert "gbif_kanagawa_occurrences__tw" in ids
