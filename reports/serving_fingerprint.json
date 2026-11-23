@@ -69,9 +69,9 @@
       },
       "overview_counts": {
         "added": 0,
-        "changed": 1,
+        "changed": 0,
         "removed": 0,
-        "same": 0
+        "same": 1
       },
       "rain_monthly_clim": {
         "added": 0,
@@ -182,34 +182,34 @@
         "same": 60
       }
     },
-    "previous_git_head": "eed74d8ae6fd932cd3c8850820d6bd6389da946e"
+    "previous_git_head": "7ed8a2bdaa0fec18d58a3e9347dd0c2fc978d306"
   },
-  "created_at": "2026-11-17T14:22:39+00:00",
+  "created_at": "2026-11-23T01:10:03+00:00",
   "environment": {
     "better_sqlite3_sqlite_version": "3.53.4",
-    "node_version": "v22.23.4",
+    "node_version": "v24.22.2",
     "python_sqlite3_version": "3.49.1",
     "python_version": "3.13.7"
   },
-  "git_head": "7ed8a2bdaa0fec18d58a3e9347dd0c2fc978d306",
+  "git_head": "128c8c71335f1d21efa2c7611b22216f5c532a38",
   "pipeline_fingerprint_rows": {
     "registry.sqlite": null,
     "v2.sqlite": [
       {
         "fingerprint": "sha256:152fc18f5e29255c1ef9eccba4422db31fee0072dffb4095a27cad71ce05763d:1303480",
-        "inputs": "{\"ext:registry.place\": \"758fe8e35cdfa2eb2d20b0707a816a9026b365771f89a621000b99d7c5fdca9b\", \"ext:registry.place_source_ref\": \"758fe8e35cdfa2eb2d20b0707a816a9026b365771f89a621000b99d7c5fdca9b\", \"ext:registry.source_edition\": \"758fe8e35cdfa2eb2d20b0707a816a9026b365771f89a621000b99d7c5fdca9b\", \"ext:registry.variable_alias\": \"758fe8e35cdfa2eb2d20b0707a816a9026b365771f89a621000b99d7c5fdca9b\", \"ext:ryuiki.measurements\": \"count=327065;max_rowid=1942604\", \"ext:ryuiki.sensor_timeseries\": \"count=986772;max_rowid=5180074\"}",
+        "inputs": "{\"ext:registry.place\": \"970f24c824d3e20a02e89d4d41258389102f34886d4a31e1e0dcd87a9b0840cc\", \"ext:registry.place_source_ref\": \"970f24c824d3e20a02e89d4d41258389102f34886d4a31e1e0dcd87a9b0840cc\", \"ext:registry.source_edition\": \"970f24c824d3e20a02e89d4d41258389102f34886d4a31e1e0dcd87a9b0840cc\", \"ext:registry.variable_alias\": \"970f24c824d3e20a02e89d4d41258389102f34886d4a31e1e0dcd87a9b0840cc\", \"ext:ryuiki.measurements\": \"count=327065;max_rowid=1942604\", \"ext:ryuiki.sensor_timeseries\": \"count=986772;max_rowid=5180074\"}",
         "spec_version": "phase-b-fact-slice/v1",
         "table_name": "observation"
       },
       {
         "fingerprint": "sha256:5a718aeda7eafbab37975cda1b1f12d402ffa75718bf950760bc5b4c5e095a8c:2774171",
-        "inputs": "{\"ext:registry.unit\": \"758fe8e35cdfa2eb2d20b0707a816a9026b365771f89a621000b99d7c5fdca9b\", \"ext:registry.variable\": \"758fe8e35cdfa2eb2d20b0707a816a9026b365771f89a621000b99d7c5fdca9b\", \"ext:registry.variable_alias\": \"758fe8e35cdfa2eb2d20b0707a816a9026b365771f89a621000b99d7c5fdca9b\", \"observation\": \"sha256:152fc18f5e29255c1ef9eccba4422db31fee0072dffb4095a27cad71ce05763d:1303480\"}",
+        "inputs": "{\"ext:registry.unit\": \"970f24c824d3e20a02e89d4d41258389102f34886d4a31e1e0dcd87a9b0840cc\", \"ext:registry.variable\": \"970f24c824d3e20a02e89d4d41258389102f34886d4a31e1e0dcd87a9b0840cc\", \"ext:registry.variable_alias\": \"970f24c824d3e20a02e89d4d41258389102f34886d4a31e1e0dcd87a9b0840cc\", \"observation\": \"sha256:152fc18f5e29255c1ef9eccba4422db31fee0072dffb4095a27cad71ce05763d:1303480\"}",
         "spec_version": "phase-b-fact-slice/v5",
         "table_name": "observation_agg"
       },
       {
         "fingerprint": "sha256:64c715d5f8ae17a051617779dfa274fa0fd1359482f98e695c4b0e0bd3a99c57:945620",
-        "inputs": "{\"ext:registry.place\": \"758fe8e35cdfa2eb2d20b0707a816a9026b365771f89a621000b99d7c5fdca9b\", \"ext:registry.place_source_ref\": \"758fe8e35cdfa2eb2d20b0707a816a9026b365771f89a621000b99d7c5fdca9b\", \"ext:registry.source_edition\": \"758fe8e35cdfa2eb2d20b0707a816a9026b365771f89a621000b99d7c5fdca9b\", \"ext:registry.taxon\": \"758fe8e35cdfa2eb2d20b0707a816a9026b365771f89a621000b99d7c5fdca9b\", \"ext:registry.taxon_assessment\": \"758fe8e35cdfa2eb2d20b0707a816a9026b365771f89a621000b99d7c5fdca9b\", \"ext:ryuiki.edna_detections\": \"count=13263;max_rowid=13263\", \"ext:ryuiki.moni1000_counts\": \"count=51450;max_rowid=51450\", \"ext:ryuiki.organism_records\": \"count=885105;max_rowid=885105;occurrence_status=[(None, 178871), ('ABSENT', 2790), ('PRESENT', 703444)]\", \"ext:ryuiki.taxa\": \"count=8585;max_rowid=8585\", \"ext:ryuiki.wildlife_sightings\": \"count=400;max_rowid=400\"}",
+        "inputs": "{\"ext:registry.place\": \"970f24c824d3e20a02e89d4d41258389102f34886d4a31e1e0dcd87a9b0840cc\", \"ext:registry.place_source_ref\": \"970f24c824d3e20a02e89d4d41258389102f34886d4a31e1e0dcd87a9b0840cc\", \"ext:registry.source_edition\": \"970f24c824d3e20a02e89d4d41258389102f34886d4a31e1e0dcd87a9b0840cc\", \"ext:registry.taxon\": \"970f24c824d3e20a02e89d4d41258389102f34886d4a31e1e0dcd87a9b0840cc\", \"ext:registry.taxon_assessment\": \"970f24c824d3e20a02e89d4d41258389102f34886d4a31e1e0dcd87a9b0840cc\", \"ext:ryuiki.edna_detections\": \"count=13263;max_rowid=13263\", \"ext:ryuiki.moni1000_counts\": \"count=51450;max_rowid=51450\", \"ext:ryuiki.organism_records\": \"count=885105;max_rowid=885105;occurrence_status=[(None, 178871), ('ABSENT', 2790), ('PRESENT', 703444)]\", \"ext:ryuiki.taxa\": \"count=8585;max_rowid=8585\", \"ext:ryuiki.wildlife_sightings\": \"count=400;max_rowid=400\"}",
         "spec_version": "phase-b-fact-slice/v1",
         "table_name": "occurrence"
       },
@@ -221,37 +221,37 @@
       },
       {
         "fingerprint": "sha256:f4e964c42871f576f583e978cdf509e0d9796b8660f2b3ec3ba266209fe9075a:945616",
-        "inputs": "{\"ext:registry.place_source_ref\": \"758fe8e35cdfa2eb2d20b0707a816a9026b365771f89a621000b99d7c5fdca9b\", \"ext:ryuiki.sites\": \"count=389;max_rowid=775\", \"occurrence\": \"sha256:64c715d5f8ae17a051617779dfa274fa0fd1359482f98e695c4b0e0bd3a99c57:945620\"}",
+        "inputs": "{\"ext:registry.place_source_ref\": \"970f24c824d3e20a02e89d4d41258389102f34886d4a31e1e0dcd87a9b0840cc\", \"ext:ryuiki.sites\": \"count=389;max_rowid=775\", \"occurrence\": \"sha256:64c715d5f8ae17a051617779dfa274fa0fd1359482f98e695c4b0e0bd3a99c57:945620\"}",
         "spec_version": "phase-b-fact-slice/v7",
         "table_name": "occurrence_place"
       },
       {
         "fingerprint": "sha256:6e31589aee7f42169c2413cc3db112f423aace65429216a0a1e99efe7463e452:6805",
-        "inputs": "{\"ext:registry.place\": \"758fe8e35cdfa2eb2d20b0707a816a9026b365771f89a621000b99d7c5fdca9b\", \"observation_agg\": \"sha256:5a718aeda7eafbab37975cda1b1f12d402ffa75718bf950760bc5b4c5e095a8c:2774171\", \"occurrence_agg\": \"sha256:fc04b885b2dc058049a4d67c57cb8403cd339faeea32ed183ed635752a84fd4f:1565191\"}",
+        "inputs": "{\"ext:registry.place\": \"970f24c824d3e20a02e89d4d41258389102f34886d4a31e1e0dcd87a9b0840cc\", \"observation_agg\": \"sha256:5a718aeda7eafbab37975cda1b1f12d402ffa75718bf950760bc5b4c5e095a8c:2774171\", \"occurrence_agg\": \"sha256:fc04b885b2dc058049a4d67c57cb8403cd339faeea32ed183ed635752a84fd4f:1565191\"}",
         "spec_version": "serving-summary/v8",
         "table_name": "place_region"
       },
       {
         "fingerprint": "sha256:dfc8cd905b378eaddc71891740a59741e6b520ddcf339f210d17cbc16b3ccff7:171",
-        "inputs": "{\"ext:registry.taxon\": \"758fe8e35cdfa2eb2d20b0707a816a9026b365771f89a621000b99d7c5fdca9b\", \"occurrence_agg\": \"sha256:fc04b885b2dc058049a4d67c57cb8403cd339faeea32ed183ed635752a84fd4f:1565191\"}",
+        "inputs": "{\"ext:registry.taxon\": \"970f24c824d3e20a02e89d4d41258389102f34886d4a31e1e0dcd87a9b0840cc\", \"occurrence_agg\": \"sha256:fc04b885b2dc058049a4d67c57cb8403cd339faeea32ed183ed635752a84fd4f:1565191\"}",
         "spec_version": "serving-summary/v8",
         "table_name": "summary_effort_year"
       },
       {
         "fingerprint": "sha256:fd94ead75bc54e01cddc82aa349dddf989e77be5e3cdf86a7f6bb75ba5ce5ed4:297",
-        "inputs": "{\"ext:registry.taxon\": \"758fe8e35cdfa2eb2d20b0707a816a9026b365771f89a621000b99d7c5fdca9b\", \"occurrence_agg\": \"sha256:fc04b885b2dc058049a4d67c57cb8403cd339faeea32ed183ed635752a84fd4f:1565191\", \"summary_effort_year\": \"sha256:dfc8cd905b378eaddc71891740a59741e6b520ddcf339f210d17cbc16b3ccff7:171\"}",
+        "inputs": "{\"ext:registry.taxon\": \"970f24c824d3e20a02e89d4d41258389102f34886d4a31e1e0dcd87a9b0840cc\", \"occurrence_agg\": \"sha256:fc04b885b2dc058049a4d67c57cb8403cd339faeea32ed183ed635752a84fd4f:1565191\", \"summary_effort_year\": \"sha256:dfc8cd905b378eaddc71891740a59741e6b520ddcf339f210d17cbc16b3ccff7:171\"}",
         "spec_version": "serving-summary/v8",
         "table_name": "summary_effort_year_by_region"
       },
       {
         "fingerprint": "sha256:f6d73924420c576129ef425cc0f27ed39e332062df4b02be4f3bb5ad75ad61dd:5817",
-        "inputs": "{\"ext:registry.taxon\": \"758fe8e35cdfa2eb2d20b0707a816a9026b365771f89a621000b99d7c5fdca9b\", \"occurrence_agg\": \"sha256:fc04b885b2dc058049a4d67c57cb8403cd339faeea32ed183ed635752a84fd4f:1565191\"}",
+        "inputs": "{\"ext:registry.taxon\": \"970f24c824d3e20a02e89d4d41258389102f34886d4a31e1e0dcd87a9b0840cc\", \"occurrence_agg\": \"sha256:fc04b885b2dc058049a4d67c57cb8403cd339faeea32ed183ed635752a84fd4f:1565191\"}",
         "spec_version": "serving-summary/v8",
         "table_name": "summary_grid_catalog"
       },
       {
         "fingerprint": "sha256:99d356cdd962e00a7978f233ea939d421c51385758bc94c9eab7b03faf60102b:2817",
-        "inputs": "{\"ext:registry.taxon\": \"758fe8e35cdfa2eb2d20b0707a816a9026b365771f89a621000b99d7c5fdca9b\", \"occurrence_agg\": \"sha256:fc04b885b2dc058049a4d67c57cb8403cd339faeea32ed183ed635752a84fd4f:1565191\"}",
+        "inputs": "{\"ext:registry.taxon\": \"970f24c824d3e20a02e89d4d41258389102f34886d4a31e1e0dcd87a9b0840cc\", \"occurrence_agg\": \"sha256:fc04b885b2dc058049a4d67c57cb8403cd339faeea32ed183ed635752a84fd4f:1565191\"}",
         "spec_version": "serving-summary/v8",
         "table_name": "summary_group_year"
       },
@@ -263,13 +263,13 @@
       },
       {
         "fingerprint": "sha256:8648abffed760f0538bdcd4659a460f892a1e1845d74107339dfd66c1b906f84:28270",
-        "inputs": "{\"ext:registry.taxon\": \"758fe8e35cdfa2eb2d20b0707a816a9026b365771f89a621000b99d7c5fdca9b\", \"occurrence_agg\": \"sha256:fc04b885b2dc058049a4d67c57cb8403cd339faeea32ed183ed635752a84fd4f:1565191\"}",
+        "inputs": "{\"ext:registry.taxon\": \"970f24c824d3e20a02e89d4d41258389102f34886d4a31e1e0dcd87a9b0840cc\", \"occurrence_agg\": \"sha256:fc04b885b2dc058049a4d67c57cb8403cd339faeea32ed183ed635752a84fd4f:1565191\"}",
         "spec_version": "serving-summary/v8",
         "table_name": "summary_species_catalog"
       },
       {
         "fingerprint": "sha256:645a2c4b0f33802e12f7c1f94cd59e4a657a1d9438b0f003fee3ec688ef8e7a6:31010",
-        "inputs": "{\"ext:registry.taxon\": \"758fe8e35cdfa2eb2d20b0707a816a9026b365771f89a621000b99d7c5fdca9b\", \"occurrence_agg\": \"sha256:fc04b885b2dc058049a4d67c57cb8403cd339faeea32ed183ed635752a84fd4f:1565191\", \"summary_species_catalog\": \"sha256:8648abffed760f0538bdcd4659a460f892a1e1845d74107339dfd66c1b906f84:28270\"}",
+        "inputs": "{\"ext:registry.taxon\": \"970f24c824d3e20a02e89d4d41258389102f34886d4a31e1e0dcd87a9b0840cc\", \"occurrence_agg\": \"sha256:fc04b885b2dc058049a4d67c57cb8403cd339faeea32ed183ed635752a84fd4f:1565191\", \"summary_species_catalog\": \"sha256:8648abffed760f0538bdcd4659a460f892a1e1845d74107339dfd66c1b906f84:28270\"}",
         "spec_version": "serving-summary/v8",
         "table_name": "summary_species_catalog_by_region"
       },
@@ -314,7 +314,7 @@
   "pipeline_path_hashes": {
     "aggregations": "f71dfec79df069ac8364fe6eeee55d14fa4b3e04",
     "manifests": "4126d70ce49c7ec66589f3a9a5102ba6d64c708a",
-    "registry": "40f21566e741cd2e52020b669ca571b7c1e3c7ce",
+    "registry": "4532666f24c522fb51666c3d1bbb6f654e46d2d8",
     "requirements.txt": "4323abaaacdc6a851d6f323c3a8e542996714511",
     "scripts/adapters": "e89a485747fdf69db6ceeda7f662ab952c64fd46",
     "scripts/b00_run_full_gate.py": "ed8dc0f3d4dfbc5a456b68c324ffb18346cfe71c",
@@ -328,15 +328,15 @@
     "scripts/ingest": "37a4eb49dd0e8d7b2f03a3fe36727046c80f96af",
     "scripts/migrate": "408802273e758434a9288f512059914befb00129",
     "scripts/pipeline_inputs.py": "0975e0fa1718a4c0e11d6ced0241d9cd060a2540",
-    "scripts/r01_build_registry.py": "ca694efac6fd3282080250e63a37e22bdb6d84fd",
+    "scripts/r01_build_registry.py": "ff7f688e1e79aac8f81ce3f1b4e176d4e349c93f",
     "scripts/reconcile": "0434daaaa6e412fafdff6a99768d9486b7c5c9a0",
     "scripts/regions.py": "9e20e9b0dc787488a4899b31a2eb3ad1dfc41459",
-    "scripts/registry": "95217e57262ea2072703ff99d6f79e40cfce36a1",
-    "scripts/schema_registry.sql": "0157ad26f1dce56c8ec9fe9b5452ec78159fd01c",
+    "scripts/registry": "7790ec1c41e44d95efdf4b62491887e4e6b272a6",
+    "scripts/schema_registry.sql": "fc13cfb2ba787787b3e35f0555ab4454c0a1f43d",
     "scripts/taxon_namespaces.py": "295ce83473adc5b1b35f9064ffdb02ad14a03440",
     "web/package.json": "cfdc9a0a4addc8aa86b9db4727d13e5c4fae3e2e",
     "web/pnpm-lock.yaml": "6ed023dae786be30e10835dd8a13d5af0bccd466",
-    "web/scripts/build-registry-ts.mjs": "542209093e5aee717ff8ee5348a66a30146d1a95",
+    "web/scripts/build-registry-ts.mjs": "c430099057761be2a0467b27ed316a6ba150c4bd",
     "web/scripts/lib/csv.mjs": "2d1fa1614b795cc6b3501f25afadddb30403afe2",
     "web/scripts/lib/registry-codegen.mjs": "de8f929332c58b7dd8a8391f1b17391326ed6342",
     "web/scripts/lib/serving/adapters-v2.ts": "2d62b4df13cc085594d4eaafc51f5f6496dd603d",
@@ -370,7 +370,7 @@
     "web/src/lib/db.ts": "cb9a153fb416b4400bd74ecf0fd4d3977df90944",
     "web/src/lib/registry/generated-client.ts": "70df6b3173211836d364b9107143694a7c023dd1",
     "web/src/lib/registry/generated-id-map.ts": "5004cea9f243ab2eff0be4159bf3fd2c0ad5d231",
-    "web/src/lib/registry/generated-source.ts": "bbcedc8c643a248628d30cd520fcfbab85c55987",
+    "web/src/lib/registry/generated-source.ts": "ae1dbfa29adc5cdd4f504562f9dad6d200a49d0d",
     "web/src/lib/registry/generated.ts": "1582b52f04293b069363f7d4be7b2657526135bc",
     "web/src/lib/registry/index.ts": "a7a24ad7d92b4f10da1fe3641edebb91e22a6836",
     "web/src/lib/registry/legacy-id.ts": "e6fb112a8a1288823915b2030c6d72d1a57c751c",
