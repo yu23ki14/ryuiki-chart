@@ -505,3 +505,21 @@ def test_duplicate_count_mismatch_raises(tmp_path, monkeypatch):
     monkeypatch.setattr(b06, "_exclusion_reason", lambda synth, status, is_duplicate=False: real(synth, status, False))
     with pytest.raises(common.MigrationError, match="独立に数えた重複件数"):
         _build_dedup(tmp_path, shapes=5)
+
+
+def test_duplicate_requires_direct_row_that_stays_in_occurrence(tmp_path):
+    """直取得側の行が不在記録（occurrence に入らない）なら、source_ref が一致する GBIF 行も除かない（どちらも消えるのを防ぐ）。"""
+    rows = _dedup_rows() + [
+        _ref_row("inaturalist_kanagawa__abs", "inaturalist_kanagawa", _INAT_URL.format(7), "ABSENT"),
+        _ref_row("gbif_kanagawa_occurrences__tw", "gbif_kanagawa_occurrences", _INAT_URL.format(7)),
+    ]
+    text = _DEDUP_SOURCE_REGIONS_TEXT.replace("expected_row_count: 16", "expected_row_count: 17").replace(
+        "expected_row_count: 3\n", "expected_row_count: 4\n").replace("expected_absent_excluded_rows: 1", "expected_absent_excluded_rows: 1")
+    text = text.replace("  inaturalist_kanagawa:\n    region_id: jp-14\n    consumer: occurrence\n",
+                        "  inaturalist_kanagawa:\n    region_id: jp-14\n    consumer: occurrence\n    expected_absent_excluded_rows: 1\n")
+    stats, out = _build(tmp_path, organism_rows=rows, source_regions_text=text, period_shapes_counts={"day": 6})
+    assert stats["duplicate_excluded_by_source"] == {"gbif_kanagawa_occurrences": 2}   # tw は除かない
+    conn = sqlite3.connect(f"file:{out}?mode=ro", uri=True)
+    ids = {r[0] for r in conn.execute("SELECT record_id FROM occurrence")}
+    conn.close()
+    assert "gbif_kanagawa_occurrences__tw" in ids

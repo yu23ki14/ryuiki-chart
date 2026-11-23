@@ -110,7 +110,8 @@ GBIF には iNaturalist の研究用グレードの観察（datasetKey `50c9509d
 `organism_records` には GBIF 出典の行（`gbif_*_occurrences`）と iNaturalist 直取得の行（`inaturalist_*`）の両方に同じ観察が
 ある。両方を数えると二重になるので、GBIF 出典の行のうち `source_ref`（occurrenceID。iNaturalist 由来は
 `https://www.inaturalist.org/observations/<id>` で、直取得の `source_ref` と同じ文字列）が、マニフェストの
-`dedup_against` が指す同地域の直取得出典の `source_ref` と一致するものを occurrence から除く。**直取得側を正にする**
+`dedup_against` が指す同地域の直取得出典の「occurrence に残る行」（合成・不在記録・未知の状態を除く）の `source_ref` と一致するものを
+occurrence から除く（集合の作り方は `migrate/occurrence_dedup.py`、s01 と共有）。**直取得側を正にする**
 （直取得は研究用グレード以外も含む）。直取得に一致しない GBIF の iNaturalist 由来行は残す。原本は変えない。
 除いた行数は出典ごとに `stats["duplicate_excluded_by_source"]` に積み、別経路（SQL の結合）で独立に数えた重複件数と
 突合する（食い違えば止まる。ABSENT の宣言突合と違いマニフェストに件数は書かない——原本の更新で自然に動くため）。
@@ -155,7 +156,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from ingest import manifest as manifest_lib, runner as ingest_runner  # noqa: E402
-from migrate import common, edition, occurrence_period, period, public_id, redlist_fill, source_regions  # noqa: E402
+from migrate import common, edition, occurrence_dedup, occurrence_period, period, public_id, redlist_fill, source_regions  # noqa: E402
 from registry import common as registry_common  # noqa: E402
 from taxon_namespaces import (  # noqa: E402
     IAS_LIST_ID, TAXON_KEY_SOURCE_NAMESPACE, assert_known_source_ids, binom_of,
@@ -212,13 +213,13 @@ def _assert_known_source_ids(work: sqlite3.Connection) -> None:
 _REQUIRED_ORGANISM_COLUMNS = {
     "occurrence_status": "GBIF の不在記録を除けない。`python scripts/m03_organisms.py --backfill-occurrence-status` で列を足して値を埋めること",
     "red_list_source": "赤リスト判定の出所が引けない。`python scripts/m03_organisms.py` を全件実行して列を足し値を埋めること",
-    "source_ref": "GBIF 経由の iNaturalist 観察と直取得の重複を突き合わせられない（occurrenceID を持つ列）",
+    "source_ref": "GBIF 経由の iNaturalist 観察と直取得の重複を突き合わせられない。`python scripts/m03_organisms.py` を全件実行して列を足し値を埋めること",
 }
 
 
 def _assert_organism_columns(work: sqlite3.Connection) -> None:
-    """`organism_records` に m03 が足す列（occurrence_status・red_list_source）が無い（古い原本）なら、
-    黙って進まずに止める。"""
+    """`organism_records` に m03 が足す列（occurrence_status・red_list_source）と、出典の occurrenceID を持つ
+    source_ref（GBIF 経由の iNaturalist 重複の突合に使う。m03 が埋める）が無い（古い原本）なら、黙って進まずに止める。"""
     cols = {r[1] for r in work.execute("PRAGMA src.table_info(organism_records)")}
     for col, hint in _REQUIRED_ORGANISM_COLUMNS.items():
         if col not in cols:
@@ -306,7 +307,7 @@ _EXCLUDE_UNKNOWN_STATUS = "unknown_status"
 _EXCLUDE_DUPLICATE = "duplicate"
 
 
-def _exclusion_reason(is_synthetic, occurrence_status, is_duplicate=False) -> str | None:
+def _exclusion_reason(is_synthetic, occurrence_status, is_duplicate) -> str | None:
     """occurrence に入れない行の理由（入れる行は None）。優先順は 合成データ → 不在記録 → 未知の状態 → 重複。
     - 重複（`is_duplicate`）: GBIF 経由の iNaturalist 観察で、直取得と source_ref が一致する行（Issue #125）。
     - 合成データ（`is_synthetic=1`）: Issue #48 PR-0 オーナー決定。本番に出さない。
@@ -323,17 +324,22 @@ def _exclusion_reason(is_synthetic, occurrence_status, is_duplicate=False) -> st
     return None
 
 
+# 出典別に積む除外（理由 -> (総数のキー, 出典別のキー)）。出典ごとに宣言・独立計測と突合する。
+_NO_REFS: frozenset = frozenset()
+_COUNTED_BY_SOURCE = {
+    _EXCLUDE_ABSENT: ("absent_excluded_count", "absent_excluded_by_source"),
+    _EXCLUDE_DUPLICATE: ("duplicate_excluded_count", "duplicate_excluded_by_source"),
+}
+
+
 def _count_exclusion(stats: dict, reason: str, source_id: str, record_id: str, occurrence_status) -> None:
     """除外を stats に積む。不在記録は出典別（マニフェストの `expected_absent_excluded_rows` と突合する）。"""
     if reason == _EXCLUDE_SYNTHETIC:
         stats["synthetic_excluded_count"] += 1
-    elif reason == _EXCLUDE_ABSENT:
-        stats["absent_excluded_count"] += 1
-        by_source = stats["absent_excluded_by_source"]
-        by_source[source_id] = by_source.get(source_id, 0) + 1
-    elif reason == _EXCLUDE_DUPLICATE:
-        stats["duplicate_excluded_count"] += 1
-        by_source = stats["duplicate_excluded_by_source"]
+    elif reason in _COUNTED_BY_SOURCE:
+        total_key, by_source_key = _COUNTED_BY_SOURCE[reason]
+        stats[total_key] += 1
+        by_source = stats[by_source_key]
         by_source[source_id] = by_source.get(source_id, 0) + 1
     else:
         stats["unknown_status_count"] += 1
@@ -407,35 +413,38 @@ def _problems_from_stats(stats: dict) -> list[str]:
     return problems
 
 
-def _load_dedup_refs(work: sqlite3.Connection, sources: dict) -> tuple[dict[str, frozenset], dict[str, int]]:
-    """`dedup_against` を宣言した出典ごとに、(a) 直取得出典の source_ref の集合（`{出典: 集合}`）と、
-    (b) 結合で独立に数えた重複件数（`{出典: 件数}`。合成・不在記録の行は数えない）を返す。
-    organism_records の source_ref に索引は無い。相関サブクエリは遅すぎるので、一時表（PK 索引付き）に入れて結合する。"""
-    pairs = sorted((sid, s.dedup_against) for sid, s in sources.items() if s.dedup_against)
+def _dedup_pairs(sources: dict) -> dict[str, str]:
+    """`dedup_against` を宣言した出典 -> 直取得の出典（参照先の存在は `ingest.manifest` の構造検証が済ませている）。"""
+    pairs = {sid: s.dedup_against for sid, s in sources.items() if s.dedup_against}
+    assert all(d in sources for d in pairs.values()), pairs
+    return pairs
+
+
+def _count_duplicates_by_join(work: sqlite3.Connection, pairs: dict[str, str]) -> dict[str, int]:
+    """重複件数を、行ごとの判定（`occurrence_dedup.duplicate_refs` の集合）とは別の経路——一時表（PK 索引付き）との結合——で
+    数える（`_ingest` の積み上げと突合する）。organism_records の source_ref に索引は無く、相関サブクエリは遅すぎる。
+    数えるのは occurrence に入る GBIF 側の行（合成・不在記録・未知の状態を除く。`_KNOWN_STATUSES` から ABSENT を除いたもの）。"""
     if not pairs:
-        return {}, {}
-    for sid, direct in pairs:
-        if direct not in sources:
-            raise common.MigrationError(f"manifests/{sid}.yml の dedup_against={direct!r} が出現の出典に無い")
+        return {}
+    kept = sorted(s for s in _KNOWN_STATUSES - {STATUS_ABSENT} if s is not None)
+    marks = ",".join("?" for _ in kept)
+    status_ok = f"(g.occurrence_status IS NULL OR g.occurrence_status IN ({marks}))"   # NULL は不在の概念が無い出典（_KNOWN_STATUSES に含む）
     work.execute("CREATE TEMP TABLE dedup_direct (direct_id TEXT, source_ref TEXT, PRIMARY KEY (direct_id, source_ref)) WITHOUT ROWID")
-    work.execute("CREATE TEMP TABLE dedup_pair (source_id TEXT PRIMARY KEY, direct_id TEXT)")
-    work.executemany("INSERT INTO dedup_pair VALUES (?,?)", pairs)
+    direct_ids = sorted(set(pairs.values()))
     work.execute(
         "INSERT INTO dedup_direct SELECT DISTINCT o.source_id, o.source_ref FROM src.organism_records o "
-        "WHERE o.source_id IN (SELECT direct_id FROM dedup_pair) AND o.source_ref IS NOT NULL AND o.source_ref <> ''"
+        f"WHERE o.source_id IN ({','.join('?' for _ in direct_ids)}) AND o.source_ref IS NOT NULL AND o.source_ref <> '' "
+        f"AND COALESCE(o.is_synthetic, 0) <> 1 AND {status_ok.replace('g.', 'o.')}",
+        [*direct_ids, *kept],
     )
-    refs: dict[str, set] = {}
-    for direct_id, ref in work.execute("SELECT direct_id, source_ref FROM dedup_direct"):
-        refs.setdefault(direct_id, set()).add(ref)
-    expected = {sid: 0 for sid, _ in pairs}
-    expected.update(dict(work.execute(
-        "SELECT g.source_id, COUNT(*) FROM src.organism_records g "
-        "JOIN dedup_pair p ON p.source_id = g.source_id "
-        "JOIN dedup_direct d ON d.direct_id = p.direct_id AND d.source_ref = g.source_ref "
-        "WHERE COALESCE(g.is_synthetic, 0) <> 1 AND COALESCE(g.occurrence_status, 'PRESENT') <> 'ABSENT' "
-        "GROUP BY g.source_id"
-    )))
-    return {sid: frozenset(refs.get(direct, ())) for sid, direct in pairs}, expected
+    counts = {}
+    for sid, direct in sorted(pairs.items()):
+        counts[sid] = work.execute(
+            "SELECT COUNT(*) FROM src.organism_records g JOIN dedup_direct d ON d.direct_id = ? AND d.source_ref = g.source_ref "
+            f"WHERE g.source_id = ? AND COALESCE(g.is_synthetic, 0) <> 1 AND {status_ok}",
+            [direct, sid, *kept],
+        ).fetchone()[0]
+    return counts
 
 
 def _duplicate_excluded_problems(measured: dict[str, int], expected: dict[str, int]) -> list[str]:
@@ -567,7 +576,9 @@ def _ingest(
     taxon_ids, alien_binoms, sources, regions = ctx.taxon_ids, ctx.alien_binoms, ctx.sources, ctx.regions
     source_usage, region_usage, shape_usage = ctx.source_usage, ctx.region_usage, ctx.shape_usage
 
-    dedup_ref_sets, stats["duplicate_expected_by_source"] = _load_dedup_refs(work, sources)
+    pairs = _dedup_pairs(sources)
+    dedup_ref_sets = occurrence_dedup.duplicate_refs(work, pairs, "src.organism_records")
+    stats["duplicate_expected_by_source"] = _count_duplicates_by_join(work, pairs)
 
     def rows():
         for row in work.execute(_SELECT_ORGANISM_RECORDS_SQL):
@@ -594,10 +605,8 @@ def _ingest(
             # occurrence に入れない行（合成データ・不在記録・未知の状態）。宣言の使用マーキングは除外の行でも
             # 行った後（将来 source_id 丸ごとが除外対象だけになっても「宣言未使用」の誤検出にしないため）、
             # region_counts への計上・alias/place 解決より前に弾く（モジュール docstring の各節）。
-            dedup_refs = dedup_ref_sets.get(source_id)
             reason = _exclusion_reason(
-                is_synthetic, occurrence_status,
-                dedup_refs is not None and source_ref is not None and source_ref in dedup_refs,
+                is_synthetic, occurrence_status, source_ref in dedup_ref_sets.get(source_id, _NO_REFS),
             )
             if reason is not None:
                 _count_exclusion(stats, reason, source_id, record_id, occurrence_status)
@@ -813,9 +822,7 @@ def build_and_write_occurrence(
             finally:
                 work.close()
 
-            problems = _problems_from_stats(stats) + _duplicate_excluded_problems(
-                stats["duplicate_excluded_by_source"], stats["duplicate_expected_by_source"]
-            )
+            problems = _problems_from_stats(stats)
             if problems:
                 raise common.MigrationError(
                     "occurrence の取り込みを中止した。以下の問題を解消してから"
@@ -825,6 +832,7 @@ def build_and_write_occurrence(
 
             declaration_problems = (
                 _absent_excluded_problems(sources, stats["absent_excluded_by_source"])
+                + _duplicate_excluded_problems(stats["duplicate_excluded_by_source"], stats["duplicate_expected_by_source"])
                 + period.declaration_problems(source_usage, "manifests/ (sources, target=occurrence)")
                 + period.declaration_problems(region_usage, "manifests/ (regions, target=occurrence)")
                 + period.declaration_problems(shape_usage, "occurrence_period_shapes.yaml")

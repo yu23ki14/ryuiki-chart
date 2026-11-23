@@ -1299,6 +1299,19 @@ def _ryuiki_one_table_proxy(ryuiki_db: pathlib.Path, table: str) -> str:
             except sqlite3.OperationalError:
                 by_status = "no_column"
             proxy += f";occurrence_status={by_status}"
+            # b06 は GBIF 経由の iNaturalist 観察を、source_ref が直取得と一致するかで除く（Issue #125）。source_ref だけが
+            # 変わる更新も行数・max rowid を動かさないので、出典ごとの source_ref の安い要約（件数・長さの和・
+            # 末尾2文字の文字コードの和・iNaturalist の観察 URL の件数。1回の走査）も足す。
+            try:
+                by_ref = conn.execute(
+                    "SELECT source_id, COUNT(source_ref), SUM(length(source_ref)), "
+                    "SUM(unicode(substr(source_ref, -1)) + 7 * unicode(substr(source_ref, -2, 1))), "
+                    "SUM(source_ref LIKE 'https://www.inaturalist.org/observations/%') "
+                    "FROM organism_records GROUP BY 1 ORDER BY 1"
+                ).fetchall()
+            except sqlite3.OperationalError:
+                by_ref = "no_column"
+            proxy += f";source_ref={by_ref}"
         return proxy
     finally:
         conn.close()

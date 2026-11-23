@@ -94,7 +94,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import pipeline_inputs  # noqa: E402
 from ingest import manifest as manifest_lib  # noqa: E402
 from b09_build_occurrence_place import is_watershed_withheld  # noqa: E402  流域に割り当てない誤差の述語（b09 と共有）
-from migrate import occurrence_period  # noqa: E402
+from migrate import occurrence_dedup, occurrence_period  # noqa: E402
 from migrate import point_in_polygon as pip  # noqa: E402
 from migrate import source_regions  # noqa: E402
 from reconcile.common import load_yaml  # noqa: E402
@@ -153,63 +153,40 @@ def register_classify_shape(conn: sqlite3.Connection) -> None:
     同名関数の再登録を単に上書きする）。
     """
     conn.create_function("classify_shape", 1, _sql_classify_shape)
-    register_dedup_functions(conn)
 
 
 # GBIF 経由の iNaturalist 観察と直取得の重複（Issue #125。b06 が除く行）をサンプルに入れる組数（dedup した出典ごと）。
 DEDUP_SAMPLE_PAIRS = 3
 
 
-def register_dedup_functions(conn: sqlite3.Connection, manifests_dir=source_regions.DEFAULT_MANIFESTS_DIR) -> None:
-    """b06 の重複除外（manifests の `dedup_against`）を s01 が扱うための SQL 関数を登録する。
-    - `is_dup_row(source_id, source_ref)`: b06 が重複として除く行なら 1（`build_declaration_counts` が件数から除くのに使う）。
-    - `dedup_pair_sample(source_id, source_ref)`: 重複する source_ref のうち、source_ref の昇順で先頭 `DEDUP_SAMPLE_PAIRS` 件の
-      「GBIF 側の行と直取得側の行」なら 1（coverage.yaml の predicate が使う。両側で同じ ref を選ぶ）。
-    重複する source_ref の集合は `conn` の organism_records から初回の呼び出しで1回だけ（Python のハッシュで。source_ref に
-    索引は無く、相関サブクエリは使えない）求める。source_ref 列が無い表（テストの小さな表）では空。"""
+def register_dedup_functions(
+    conn: sqlite3.Connection, manifests_dir=source_regions.DEFAULT_MANIFESTS_DIR, from_sql: str = "organism_records",
+) -> None:
+    """b06 の重複除外（manifests の `dedup_against`）を s01 が扱うための SQL 関数を、`from_sql`（organism_records 相当の
+    表か副問い合わせ）に対して登録する。重複の集合は `migrate.occurrence_dedup`（b06 と共有）で、初回の呼び出しで1回だけ求める。
+    - `is_dup_row(source_id, source_ref)`: `from_sql` の中で b06 が重複として除く行なら 1。
+      選択（coverage.yaml の述語）では原本の全行に対して登録し、宣言件数の実測（`build_declaration_counts`）ではサンプルに
+      選んだ行だけに対して登録し直す——双子がサンプルに揃っていない行を b06 は除かない。
+    - `dedup_pair_sample(source_id, source_ref)`: 重複する source_ref のうち昇順で先頭 `DEDUP_SAMPLE_PAIRS` 件の、GBIF 側と
+      直取得側の行なら 1（coverage.yaml の述語が使う。両側で同じ ref を選ぶ）。"""
+    pairs = {sid: m.dedup_against for sid, m in manifest_lib.load_manifests(manifests_dir).items() if m.dedup_against}
     state: dict = {}
 
-    def _pairs() -> dict[str, tuple[str, frozenset]]:
-        """{GBIF 側の出典: (直取得の出典, 重複する source_ref の集合)}"""
-        if "pairs" in state:
-            return state["pairs"]
-        pairs: dict[str, tuple[str, frozenset]] = {}
-        declared = {sid: m.dedup_against for sid, m in manifest_lib.load_manifests(manifests_dir).items() if m.dedup_against}
-        cols = {r[1] for r in conn.execute("PRAGMA table_info(organism_records)")}
-        if declared and "source_ref" in cols:
-            direct_ids = sorted(set(declared.values()))
-            marks = ",".join("?" for _ in direct_ids)
-            direct = {d: set() for d in direct_ids}
-            for sid, ref in conn.execute(
-                f"SELECT source_id, source_ref FROM organism_records WHERE source_id IN ({marks}) "
-                "AND source_ref IS NOT NULL AND source_ref <> ''", direct_ids,
-            ):
-                direct[sid].add(ref)
-            for sid, d in sorted(declared.items()):
-                shared = set()
-                for (ref,) in conn.execute(
-                    "SELECT source_ref FROM organism_records WHERE source_id = ? AND source_ref IS NOT NULL AND source_ref <> ''", (sid,),
-                ):
-                    if ref in direct[d]:
-                        shared.add(ref)
-                pairs[sid] = (d, frozenset(shared))
-        state["pairs"] = pairs
-        return pairs
+    def dups() -> dict[str, frozenset]:
+        if "dups" not in state:
+            state["dups"] = occurrence_dedup.duplicate_refs(conn, pairs, from_sql)
+        return state["dups"]
 
-    def _sample_refs() -> dict[str, frozenset]:
+    def sample_refs() -> dict[str, frozenset]:
         if "sample" not in state:
-            state["sample"] = {sid: frozenset(sorted(refs)[:DEDUP_SAMPLE_PAIRS]) for sid, (_d, refs) in _pairs().items()}
+            state["sample"] = {sid: frozenset(sorted(refs)[:DEDUP_SAMPLE_PAIRS]) for sid, refs in dups().items()}
         return state["sample"]
 
     def is_dup_row(source_id, source_ref) -> int:
-        pair = _pairs().get(source_id)
-        return int(pair is not None and source_ref in pair[1])
+        return int(source_ref in dups().get(source_id, ()))
 
     def dedup_pair_sample(source_id, source_ref) -> int:
-        for sid, (d, _refs) in _pairs().items():
-            if source_id in (sid, d) and source_ref in _sample_refs()[sid]:
-                return 1
-        return 0
+        return int(any(source_id in (sid, pairs[sid]) and source_ref in refs for sid, refs in sample_refs().items()))
 
     conn.create_function("is_dup_row", 2, is_dup_row)
     conn.create_function("dedup_pair_sample", 2, dedup_pair_sample)
@@ -842,10 +819,6 @@ def build_declaration_counts(
     # `sqlite3.connect()` した）場合に備えてここでも登録しておく（何度
     # 呼んでも安全。register_classify_shape docstring 参照）。
     register_classify_shape(conn)
-    register_dedup_functions(conn, manifests_dir)
-    # b06 が除く重複行（GBIF 経由の iNat。Issue #125）を件数から除く条件。source_ref 列が無い小さな表では空
-    has_ref = any(r[1] == "source_ref" for r in conn.execute("PRAGMA table_info(organism_records)"))
-    not_dup = " AND NOT is_dup_row(source_id, source_ref)" if has_ref else ""
     out: dict[str, int] = {}
 
     _temp_ready: set[str] = set()
@@ -875,6 +848,15 @@ def build_declaration_counts(
     # 使うため、ここで一時テーブルを確定させておく（0件でも作る。上の
     # `_ensure_temp` docstring 参照）。
     _ensure_temp("organism_records")
+
+    # b06 が除く重複行（GBIF 経由の iNaturalist。Issue #125）は、サンプルに選んだ行の中で双子がそろっているものだけ。
+    selected_sql = "(SELECT t.* FROM organism_records t JOIN temp.__s01_organism_records_rowids s ON t.rowid = s.rowid_value)"
+    register_dedup_functions(conn, manifests_dir, selected_sql)
+    has_ref = "source_ref" in occurrence_dedup.table_columns(conn, "organism_records")
+
+    def not_dup(prefix: str = "") -> str:
+        """件数の WHERE に足す「b06 が重複として除く行でない」条件（`prefix` は列の接頭辞。source_ref 列の無い小さな表では空）。"""
+        return f" AND NOT is_dup_row({prefix}source_id, {prefix}source_ref)" if has_ref else ""
 
     # period_exceptions.yaml
     out["period_exceptions.yaml:atsugi_river_water_quality"] = count(
@@ -945,7 +927,7 @@ def build_declaration_counts(
     for name in sorted(occurrence_period.load_period_shapes()):
         out[f"occurrence_period_shapes.yaml:{name}"] = count(
             "organism_records",
-            f"classify_shape(observed_on) = '{name}' AND occurrence_status IS NOT 'ABSENT'{not_dup}{not_expected}"
+            f"classify_shape(observed_on) = '{name}' AND occurrence_status IS NOT 'ABSENT'{not_dup()}{not_expected}"
         )
 
     # occurrence_cube_declarations.yaml
@@ -953,7 +935,7 @@ def build_declaration_counts(
         "SELECT t.rowid AS rowid, t.record_id, t.observed_on, t.lat, t.lon, t.scientific_name, "
         "t.is_alien, t.red_list_category, t.source_id, t.coordinate_uncertainty_m "
         "FROM organism_records t JOIN temp.__s01_organism_records_rowids s ON t.rowid = s.rowid_value "
-        "WHERE t.occurrence_status IS NOT 'ABSENT'" + not_dup.replace("source_id, source_ref", "t.source_id, t.source_ref") + " "   # 不在記録・GBIF 経由の iNat 重複は occurrence に入らない（b06）
+        "WHERE t.occurrence_status IS NOT 'ABSENT'" + not_dup("t.") + " "   # 不在記録・GBIF 経由の iNat 重複は occurrence に入らない（b06）
         "ORDER BY t.rowid"
     ).fetchall()
     all_org_rows, org_rows = org_rows, [r for r in org_rows if r["source_id"] not in expected_sids]
@@ -979,7 +961,7 @@ def build_declaration_counts(
     for sid in expected_sids:
         rows = [r for r in all_org_rows if r["source_id"] == sid]
         out.update(_manifest_expected_counts(
-            sid, all_manifests[sid].expected, rows, count, utc_offset_by_source, geojson_path, not_dup))
+            sid, all_manifests[sid].expected, rows, count, utc_offset_by_source, geojson_path, not_dup()))
 
     return out
 
@@ -1045,6 +1027,7 @@ def main() -> int:
     out_dir = pathlib.Path(args.out_dir)
 
     ryuiki_conn = _open_ro(args.ryuiki_db)
+    register_dedup_functions(ryuiki_conn, args.manifests_dir)   # coverage.yaml の述語が使う（原本の全行に対して）
     cells_conn = _open_ro(args.cells_db)
 
     # --- 選択 ---

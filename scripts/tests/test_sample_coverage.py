@@ -64,6 +64,7 @@ def conn(materialized_db) -> sqlite3.Connection:
     # code-review 指摘対応: length(observed_on) の近似をやめて実際の
     # 分類関数に揃えた）。
     s01.register_classify_shape(c)
+    s01.register_dedup_functions(c)   # coverage.yaml の重複ペアの述語（Issue #125）
     yield c
     c.close()
 
@@ -221,3 +222,28 @@ def test_sample_contains_duplicate_pairs_that_b06_excludes(conn):
             "(SELECT source_ref FROM organism_records WHERE source_id = ?)", (gbif, direct),
         ).fetchone()[0]
         assert n >= 2, f"{gbif}: 直取得と source_ref が一致する行が {n} 件"
+
+
+def test_s01_dup_rows_agree_with_b06_independent_join_on_sample(materialized_db, conn):
+    """s01 が宣言件数から除く重複行（`is_dup_row`。サンプルの選択行の中での判定）が、サンプルに b06 を当てたときの除外件数
+    （b06 が結合で独立に数える重複件数）と出典ごとに一致する。一致しないと sample-gate の件数宣言が合わない。"""
+    import b06_build_occurrence as b06
+    from migrate import source_regions
+
+    sources, _regions = source_regions.load_source_regions(consumer="occurrence")
+    pairs = b06._dedup_pairs(sources)
+    assert pairs, "dedup_against を宣言した出典が無い"
+    s01.register_dedup_functions(conn, from_sql="organism_records")
+    s01_counts = {
+        sid: conn.execute(
+            "SELECT COUNT(*) FROM organism_records WHERE source_id = ? AND is_dup_row(source_id, source_ref) "
+            "AND COALESCE(is_synthetic, 0) <> 1 AND occurrence_status IS NOT 'ABSENT'", (sid,),
+        ).fetchone()[0]
+        for sid in pairs
+    }
+    work = sqlite3.connect("file::memory:", uri=True)
+    work.execute("ATTACH DATABASE ? AS src", (f"file:{materialized_db}?mode=ro",))
+    b06_counts = b06._count_duplicates_by_join(work, pairs)
+    work.close()
+    assert s01_counts == b06_counts
+    assert all(n >= 2 for n in b06_counts.values()), b06_counts
