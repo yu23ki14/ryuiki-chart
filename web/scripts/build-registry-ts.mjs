@@ -433,7 +433,7 @@ if (JSON.stringify(Object.keys(regionSlugs).sort()) !== JSON.stringify(regionTim
 const sourceAccessRows = db
   .prepare(
     `SELECT source_id, state, queryable_via, tables, record_set_rows, n_source_rows, n_source_rows_basis, counted_at,
-            reason, reason_ja, reason_note FROM source_access ORDER BY source_id`,
+            reason, reason_ja, reason_note, doc_ids FROM source_access ORDER BY source_id`,
   )
   .all()
   .filter((r) => !isSyntheticSource(r.source_id));
@@ -451,6 +451,7 @@ const sourceAccess = Object.fromEntries(
       reason: r.reason,
       reasonJa: r.reason_ja,
       reasonNote: r.reason_note,
+      docIds: JSON.parse(r.doc_ids),
     },
   ]),
 );
@@ -473,10 +474,12 @@ const findDatasetSourceIds = Object.entries(sourceAccess)
   .map(([id]) => id)
   .sort();
 const recordSetTables = accessDoc.record_sets ?? {};
-// 一覧（SOURCE_META・SOURCE_ACCESS）から除いた出典の件数と理由（describe_catalog の summary.excluded）。
+// 一覧から除いた出典の件数と理由（describe_catalog の summary.excluded）。合成データは SOURCE_META・SOURCE_ACCESS にも載せない。
+// 置き換え済み（reason: superseded）は SOURCE_META・SOURCE_ACCESS に残し（search_registry・sourceCitation・superseded_by の案内のため）、一覧と total からだけ web 側（source-catalog.ts）で除く。
 const excludedFromList = {};
-for (const r of db.prepare("SELECT source_id FROM source_access").all()) {
+for (const r of db.prepare("SELECT source_id, reason FROM source_access").all()) {
   if (isSyntheticSource(r.source_id)) excludedFromList.synthetic = (excludedFromList.synthetic ?? 0) + 1;
+  else if (r.reason === "superseded") excludedFromList.superseded = (excludedFromList.superseded ?? 0) + 1;
 }
 const declaredRecordSourceIds = Object.entries(accessDoc.sources ?? {})
   .filter(([, e]) => e && e.records)
@@ -923,13 +926,15 @@ export interface GeneratedSourceAccess {
   recordSetRows: Record<string, number>;
   /** 原本の行数（キューブの集計行数ではない）。取れない出典は null。 */
   nSourceRows: number | null;
-  nSourceRowsBasis: "source_rows" | "registry_record_count" | "catalog_datasets" | "none";
+  nSourceRowsBasis: "source_rows" | "registry_record_count" | "catalog_datasets" | "document_cells" | "none";
   /** 件数を数えた原本の最新取得日時（決定論のため実行時刻ではない）。 */
   countedAt: string | null;
   /** 取れない理由コード（queryableVia が空のとき必須）。 */
   reason: string | null;
   reasonJa: string | null;
   reasonNote: string | null;
+  /** 行政文書の表として値が引ける出典の doc_id（access.yaml の documents。get_records(document_cells) の q に渡す）。 */
+  docIds: readonly string[];
 }
 
 /** 合成データの出典を除く全出典（SOURCE_META と同じキー）。 */

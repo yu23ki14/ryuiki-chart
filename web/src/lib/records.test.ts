@@ -301,6 +301,17 @@ describe("readRecordSet（地図用。get_records と同じ列定義）", () => 
     await expect(q({ record_set: "osm_waterways", source_id: "geoshape_sagami_river" })).rejects.toThrow(RecordsInputError);
   });
 
+  it("documents: n_cells は置き換え済み（superseded=1）を数えない", async () => {
+    raw.prepare("INSERT INTO documents (doc_id, title) VALUES ('d1','文書1'),('d2','文書2')").run();
+    const ins = raw.prepare("INSERT INTO cells (doc_id, row_key, col_key, value, superseded) VALUES (?,?,?,?,?)");
+    ins.run("d1", "a", "値", "1", 0);
+    ins.run("d1", "b", "値", "2", 0);
+    ins.run("d1", "a", "値", "0", 1);
+    ins.run("d2", "a", "値", "0", 1); // 旧行だけの文書は 0
+    const rows = await documentsList(db);
+    expect(Object.fromEntries(rows.map((r) => [r.doc_id, r.n_cells]))).toEqual({ d1: 2, d2: 0 });
+  });
+
   it("document_cells: superseded=0 の行だけ、doc_id で絞って読む。q は doc_id/row_key に効き、n_total も置き換え済みを除く", async () => {
     raw.prepare("INSERT INTO documents (doc_id, title) VALUES ('d1','文書1'),('d2','文書2')").run();
     const ins = raw.prepare("INSERT INTO cells (doc_id, row_key, col_key, value, fiscal_year, superseded) VALUES (?,?,?,?,?,?)");
@@ -317,6 +328,21 @@ describe("readRecordSet（地図用。get_records と同じ列定義）", () => 
     expect((await q({ record_set: "document_cells" })).rows).toHaveLength(3); // 置き換え済みは除く
     await expect(q({ record_set: "document_cells", source_id: "dams_kanagawa" })).rejects.toThrow(RecordsInputError);
     expect(recordsInputSchema.safeParse({ record_set: "document_cells" }).success).toBe(true);
+  });
+
+  it("document_cells: doc_id の完全一致で絞れる（q の 50 バイト制限に当たらない長い doc_id でも）。出典付きの表では使えない", async () => {
+    const long = "kanagawa_river_monitoring_h20_sagami_results_" + "x".repeat(40); // `_` が多く q には入らない長さ
+    raw.prepare("INSERT INTO documents (doc_id, title) VALUES (?, 't'), ('other', 'o')").run(long);
+    const ins = raw.prepare("INSERT INTO cells (doc_id, row_key, col_key, value, superseded) VALUES (?,?,?,?,?)");
+    ins.run(long, "a", "値", "1", 0);
+    ins.run(long, "b", "値", "2", 1); // 置き換え済み
+    ins.run("other", "a", "値", "3", 0);
+    const r = await q({ record_set: "document_cells", doc_id: long });
+    expect(ids(r, "doc_id")).toEqual([long]);
+    expect(r.n_total).toBeNull();
+    expect(recordsInputSchema.safeParse({ record_set: "document_cells", q: long }).success).toBe(false);
+    expect(recordsInputSchema.safeParse({ record_set: "document_cells", doc_id: long }).success).toBe(true);
+    await expect(q({ record_set: "sites", source_id: "dams_kanagawa", doc_id: "d" })).rejects.toThrow(RecordsInputError);
   });
 });
 

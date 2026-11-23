@@ -50,6 +50,9 @@ CLAUDE.md 「サンプル」設計の要件）。
   資源の数が最も少ない（1 以上の）データセット 1 件と、その `external_resource`・`external_resource_format` を足す（目録の閉包。孤児を作らない）。
 - **文書単位**（`cells.sqlite` の `cells`）は `document_closure.doc_ids` で
   指定した `doc_id` の全セルを入れる。
+- **`documents` を宣言した出典**（行政文書の表として値が引ける出典）は、r01 が「出典ごとに置き換え済みでない
+  （superseded=0）セルが 1 件以上」を検査する（サンプルは文書ごとに 1 つ入れ、全ての doc_id が実在する形にする）。宣言した doc_id ごとに、サンプルに上の閉包でセルが入らない
+  文書には rowid 最小の有効な 1 セルを足す（`select_declared_document_cells`）。
 
 ## 決定論
 
@@ -609,6 +612,23 @@ def select_cells_rowids(conn: sqlite3.Connection, doc_ids: list[str]) -> list[in
     ]
 
 
+def select_declared_document_cells(conn: sqlite3.Connection, access_doc: dict, selected: list[int]) -> list[int]:
+    """access.yaml の `documents` に宣言した doc_id ごとに、サンプルの cells に有効（superseded=0）なセルが 1 つ以上あるようにする。
+    無ければ、その文書の rowid 最小の有効な 1 セルを足す。有効なセルが原本にも無い doc_id があれば止まる（宣言が古い）。"""
+    have = set(selected)
+    extra: list[int] = []
+    for sid, docs in sorted(build_source_access.document_sources(access_doc).items()):
+        for doc_id in docs:
+            active = [r[0] for r in conn.execute(
+                "SELECT rowid FROM cells WHERE superseded = 0 AND doc_id = ? ORDER BY rowid", (doc_id,))]
+            if not active:
+                raise SystemExit(f"access.yaml: {sid} の documents の {doc_id} に、原本にも有効なセル（superseded=0）が無い")
+            if not have.intersection(active):
+                extra.append(active[0])
+                have.add(active[0])
+    return extra
+
+
 # ---------------------------------------------------------------------------
 # declaration_counts.yaml（Issue #29 A-2）
 # ---------------------------------------------------------------------------
@@ -990,6 +1010,8 @@ def main() -> int:
     if len(doc_ids) < coverage["document_closure"]["min_documents"]:
         raise SystemExit("document_closure.doc_ids が min_documents に足りない")
     cells_selected: dict[str, list[int]] = {"cells": select_cells_rowids(cells_conn, doc_ids)}
+    cells_selected["cells"] = sorted(
+        set(cells_selected["cells"]) | set(select_declared_document_cells(cells_conn, load_yaml(args.access_yaml), cells_selected["cells"])))
     for table in coverage.get("wholesale_cells_tables", []):
         cells_selected[table] = select_wholesale_rowids(cells_conn, table)
 

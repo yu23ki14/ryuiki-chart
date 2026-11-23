@@ -456,6 +456,28 @@ def count_site_places_by_source(registry: sqlite3.Connection) -> dict[str, int]:
 _SOURCE_COUNTS_EXACT_MAX_ROWS = 100_000
 
 
+def count_active_cells_by_doc(cells: sqlite3.Connection) -> dict[str, int]:
+    """`cells.sqlite` の documents 表にある文書ごとの有効なセル数（置き換え済み superseded=1 を除く。0 件の文書も載る）。
+    `build_source_access.gather_counts`（`documents:` の検査）と registry の鮮度指紋が同じ数え方を使う。"""
+    return dict(cells.execute(
+        "SELECT d.doc_id, COUNT(c.rowid) FROM documents d LEFT JOIN cells c ON c.doc_id = d.doc_id AND c.superseded = 0 GROUP BY d.doc_id"
+    ).fetchall())
+
+
+def _hash_document_cells(h, cells_path: pathlib.Path) -> None:
+    """source_access の `documents:` の検査（doc_id の実在・有効セル数）の入力である cells.sqlite の
+    文書ごとの有効セル数を指紋に混ぜる（mtime ではなく中身）。cells.sqlite が無い環境は「無い」を混ぜる。"""
+    if not cells_path.exists():
+        _hash_labeled(h, "document_cells", None)
+        return
+    conn = sqlite3.connect(f"file:{cells_path}?mode=ro", uri=True)
+    try:
+        values = sorted(count_active_cells_by_doc(conn).items())
+    finally:
+        conn.close()
+    _hash_labeled(h, "document_cells", repr(values).encode("utf-8"))
+
+
 def _hash_source_access_counts(h, ryuiki_path: pathlib.Path) -> None:
     """`build_source_access.py` が数える原本の表（`source_id` 列を持つ全表）の件数を指紋に混ぜる
     （`n_source_rows` と、宣言（records/reason）と原本の突き合わせの入力。access.yaml と
@@ -558,6 +580,7 @@ def compute_input_fingerprint(
         _hash_organism_records_freshness(h, base / "data" / "db" / "ryuiki.sqlite")
         _hash_source_registry(h, base / "data" / "db" / "ryuiki.sqlite")
         _hash_source_access_counts(h, base / "data" / "db" / "ryuiki.sqlite")
+        _hash_document_cells(h, base / "data" / "db" / "cells.sqlite")
 
     return h.hexdigest()
 

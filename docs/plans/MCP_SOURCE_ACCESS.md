@@ -82,7 +82,7 @@ extra_tools: {kanagawa_edna: [get_edna]}
 |---|---|
 | `not_collected` | `access_method='not_collected'`（nlni_w07・a03・p05）、`record_count=0` かつ processed・raw ともに 0 |
 | `blocked_access` | 「利用アンケートフォーム経由」「要ユーザー登録」「APIキー」（moni1000_lake_*・waterfowl・wetland、gsi_kiban_chizu_joho、resas_api、ikilog、snet_kahaku） |
-| `pdf_document` | `format` が PDF（ckan_pdf_*・kasen_kokusei_sagami・tanzawa_shika_suigen_docs・biodic_6th・sagami_seibi_keikaku_mirror 等） |
+| `pdf_document` | PDF のまま表として取り出していない出典（ckan_pdf_shinrin_toukei・etanzawa_siryousitu・kanagawa_ikimono_chousa・sagami_seibi_keikaku_mirror・奄美の計画文書など）。表を抽出して cells に入れた出典は reason ではなく `documents:`（下の追記） |
 | `map_service` | biodic_webgis、biodic_kiban_datalist |
 | `external_api` | mlit_river_hydro（CGI）、kanagawa_dam_mizugame・miyagase_storage_status（動的 JSON・現況スナップショット） |
 | `catalog_only` | ckan_*（目録）、geospatial_jp_*catalog/plateau/pointcloud |
@@ -296,3 +296,9 @@ unconfirmed が 8 件）で、除外する行は無い。
 5. 件数の名前は `n_source_rows`。
 6. テストはインメモリの SQLite で行う。
 7. 92 件の理由は、registry・source_registry の情報から機械的に下書きする（宣言に `basis` を残す）。PR に理由別の件数と例を載せ、メインが抜き取りで確かめる。
+
+## 追記（Issue #126）: 行政文書の表として値が引ける出典（`documents:`）
+
+- access.yaml の出典は `records`・`catalog`・`documents`・`reason` のどれか 1 つ（排他）。`documents` は cells.sqlite の doc_id のリスト。`queryable_via` は `get_records(document_cells)`、`summary.queryable` に数える。`document_ids` に doc_id、`n_source_rows` は有効（superseded=0）なセル数（basis `document_cells`）。
+- r01 が doc_id の実在と、出典ごとに有効なセルが 1 件以上あることを原本から検査する。旧 `reason: document_cells` は撤去した。
+- `reason: superseded`（gbif_kanagawa）は `describe_catalog` の一覧・`summary.total` から除き、`summary.excluded.superseded` に数える（synthetic と同じ）。
