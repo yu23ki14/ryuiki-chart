@@ -54,6 +54,8 @@ class SourceRegion:
     evidence: str
     # b06: occurrence_status='ABSENT' で occurrence から除く行数の宣言（マニフェストの expected_absent_excluded_rows）。
     expected_absent_excluded_rows: int = 0
+    # b06: この出典の行のうち source_ref が同地域のこの出典（iNaturalist 直取得）と一致するものを除く（Issue #125）。
+    dedup_against: str | None = None
 
 
 def load_source_regions(
@@ -79,6 +81,7 @@ def load_source_regions(
             **({"expected_row_count": m.expected_row_count} if m.expected_row_count is not None else {}),
             # 縮小サンプルの overlay が `manifests:<source>.<キー>` で差し替えられる内訳（宣言の無い出典に overlay は指せない）
             **({"breakdown": m.count_breakdown} if m.count_breakdown else {}),
+            **({"dedup_against": m.dedup_against} if m.dedup_against else {}),
         }
         for sid, m in manifests.items()
     }
@@ -92,6 +95,7 @@ def load_source_regions(
             source_id=sid, region_id=spec["region_id"], consumer=spec["consumer"],
             expected_row_count=spec.get("expected_row_count"), evidence=spec["evidence"],
             expected_absent_excluded_rows=spec.get("breakdown", {}).get("absent_excluded_rows", 0),
+            dedup_against=spec.get("dedup_against"),
         )
         for sid, spec in sources_raw.items()
     }

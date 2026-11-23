@@ -14,7 +14,7 @@
 
 ## このスクリプトが埋める列・埋めない列
 
-`organism_records` は823,692行**全行**を対象にする（`observed_on` が NULL の
+`organism_records` は823,692行**全行**を対象にする（ただし下の「除く行」——合成・不在記録・GBIF 経由の iNaturalist 重複——は occurrence に入れない。`observed_on` が NULL の
 6,836行も落とさない。ADR-0007 原則1「データは落とさない」。日付が無い行は
 `period_grain`/`period_start`/`period_end`/`period_raw` が NULL になるだけで、
 `taxon_id`/`place_id`/`region_id` は他の行と同じ規則で解決する。**座標
@@ -103,6 +103,20 @@ GBIF の `occurrenceStatus=ABSENT` は「その種はいなかった」という
 `expected_absent_excluded_rows`（既定 0）と突合する（食い違えば止まる）。NULL/PRESENT/ABSENT 以外の値は止める。
 合成データの除外と同じく、`source_usage`/`region_usage` の使用マークは除外より前に行う（宣言の使用判定を変えない）が、
 `region_counts`・期間の形・解決の集計は除外後の行だけを数える。
+
+## GBIF 経由の iNaturalist 観察を除く（Issue #125）
+
+GBIF には iNaturalist の研究用グレードの観察（datasetKey `50c9509d-22c7-4a22-a47d-8c48425ef4a7`）が入っていて、
+`organism_records` には GBIF 出典の行（`gbif_*_occurrences`）と iNaturalist 直取得の行（`inaturalist_*`）の両方に同じ観察が
+ある。両方を数えると二重になるので、GBIF 出典の行のうち `source_ref`（occurrenceID。iNaturalist 由来は
+`https://www.inaturalist.org/observations/<id>` で、直取得の `source_ref` と同じ文字列）が、マニフェストの
+`dedup_against` が指す同地域の直取得出典の `source_ref` と一致するものを occurrence から除く。**直取得側を正にする**
+（直取得は研究用グレード以外も含む）。直取得に一致しない GBIF の iNaturalist 由来行は残す。原本は変えない。
+除いた行数は出典ごとに `stats["duplicate_excluded_by_source"]` に積み、別経路（SQL の結合）で独立に数えた重複件数と
+突合する（食い違えば止まる。ABSENT の宣言突合と違いマニフェストに件数は書かない——原本の更新で自然に動くため）。
+使用マーク・除外の優先順（合成 → 不在 → 未知の状態 → 重複）・集計は ABSENT と同じ扱い。
+**注意**: iNaturalist の多い所で GBIF だけに絞ると iNaturalist 由来が出ない（ここで除くため）。出典を絞る
+（`source_ids`）ときは直取得の `inaturalist_*` を含めること。
 
 ## 機械検証（1つでも失敗すれば `MigrationError`（のサブクラス）で止まる）
 
@@ -198,6 +212,7 @@ def _assert_known_source_ids(work: sqlite3.Connection) -> None:
 _REQUIRED_ORGANISM_COLUMNS = {
     "occurrence_status": "GBIF の不在記録を除けない。`python scripts/m03_organisms.py --backfill-occurrence-status` で列を足して値を埋めること",
     "red_list_source": "赤リスト判定の出所が引けない。`python scripts/m03_organisms.py` を全件実行して列を足し値を埋めること",
+    "source_ref": "GBIF 経由の iNaturalist 観察と直取得の重複を突き合わせられない（occurrenceID を持つ列）",
 }
 
 
@@ -216,7 +231,7 @@ SELECT
   o.lat, o.lon, o.coordinate_uncertainty_m,
   o.scientific_name, o.vernacular_name, o.taxon_rank,
   o.red_list_category, o.red_list_source, o.is_alien, o.license_class, o.publication_scope,
-  psr.place_id AS place_id, p.place_kind AS place_kind, o.is_synthetic, o.occurrence_status
+  psr.place_id AS place_id, p.place_kind AS place_kind, o.is_synthetic, o.occurrence_status, o.source_ref
 FROM src.organism_records o
 LEFT JOIN reg.place_source_ref psr
   ON psr.key_space = 'grid01_latlon'
@@ -288,10 +303,12 @@ _KNOWN_STATUSES = frozenset({None, "PRESENT", STATUS_ABSENT})
 _EXCLUDE_SYNTHETIC = "synthetic"
 _EXCLUDE_ABSENT = "absent"
 _EXCLUDE_UNKNOWN_STATUS = "unknown_status"
+_EXCLUDE_DUPLICATE = "duplicate"
 
 
-def _exclusion_reason(is_synthetic, occurrence_status) -> str | None:
-    """occurrence に入れない行の理由（入れる行は None）。優先順は 合成データ → 不在記録 → 未知の状態。
+def _exclusion_reason(is_synthetic, occurrence_status, is_duplicate=False) -> str | None:
+    """occurrence に入れない行の理由（入れる行は None）。優先順は 合成データ → 不在記録 → 未知の状態 → 重複。
+    - 重複（`is_duplicate`）: GBIF 経由の iNaturalist 観察で、直取得と source_ref が一致する行（Issue #125）。
     - 合成データ（`is_synthetic=1`）: Issue #48 PR-0 オーナー決定。本番に出さない。
     - 不在記録（`occurrence_status='ABSENT'`）: 2026-10-07 オーナー決定・ADR-0025。原本には残し occurrence からだけ除く。
     - 未知の状態: 語彙が増えた。除いたうえで `_problems_from_stats` が止める。"""
@@ -301,6 +318,8 @@ def _exclusion_reason(is_synthetic, occurrence_status) -> str | None:
         return _EXCLUDE_ABSENT
     if occurrence_status not in _KNOWN_STATUSES:
         return _EXCLUDE_UNKNOWN_STATUS
+    if is_duplicate:
+        return _EXCLUDE_DUPLICATE
     return None
 
 
@@ -311,6 +330,10 @@ def _count_exclusion(stats: dict, reason: str, source_id: str, record_id: str, o
     elif reason == _EXCLUDE_ABSENT:
         stats["absent_excluded_count"] += 1
         by_source = stats["absent_excluded_by_source"]
+        by_source[source_id] = by_source.get(source_id, 0) + 1
+    elif reason == _EXCLUDE_DUPLICATE:
+        stats["duplicate_excluded_count"] += 1
+        by_source = stats["duplicate_excluded_by_source"]
         by_source[source_id] = by_source.get(source_id, 0) + 1
     else:
         stats["unknown_status_count"] += 1
@@ -325,6 +348,9 @@ def _empty_stats() -> dict:
         "absent_excluded_count": 0,
         "n_occurrence": 0,
         "absent_excluded_by_source": {},
+        "duplicate_excluded_count": 0,
+        "duplicate_excluded_by_source": {},
+        "duplicate_expected_by_source": {},   # 別経路（SQL の結合）で独立に数えた重複件数。duplicate_excluded_by_source と突合する
         "unknown_status_count": 0,
         "unknown_status_sample": [],
         "n_dated": 0,
@@ -379,6 +405,47 @@ def _problems_from_stats(stats: dict) -> list[str]:
         problems.append(template.format(count=count, sample=stats[sample_key]))
     problems.extend(stats["adapter_problems"])
     return problems
+
+
+def _load_dedup_refs(work: sqlite3.Connection, sources: dict) -> tuple[dict[str, frozenset], dict[str, int]]:
+    """`dedup_against` を宣言した出典ごとに、(a) 直取得出典の source_ref の集合（`{出典: 集合}`）と、
+    (b) 結合で独立に数えた重複件数（`{出典: 件数}`。合成・不在記録の行は数えない）を返す。
+    organism_records の source_ref に索引は無い。相関サブクエリは遅すぎるので、一時表（PK 索引付き）に入れて結合する。"""
+    pairs = sorted((sid, s.dedup_against) for sid, s in sources.items() if s.dedup_against)
+    if not pairs:
+        return {}, {}
+    for sid, direct in pairs:
+        if direct not in sources:
+            raise common.MigrationError(f"manifests/{sid}.yml の dedup_against={direct!r} が出現の出典に無い")
+    work.execute("CREATE TEMP TABLE dedup_direct (direct_id TEXT, source_ref TEXT, PRIMARY KEY (direct_id, source_ref)) WITHOUT ROWID")
+    work.execute("CREATE TEMP TABLE dedup_pair (source_id TEXT PRIMARY KEY, direct_id TEXT)")
+    work.executemany("INSERT INTO dedup_pair VALUES (?,?)", pairs)
+    work.execute(
+        "INSERT INTO dedup_direct SELECT DISTINCT o.source_id, o.source_ref FROM src.organism_records o "
+        "WHERE o.source_id IN (SELECT direct_id FROM dedup_pair) AND o.source_ref IS NOT NULL AND o.source_ref <> ''"
+    )
+    refs: dict[str, set] = {}
+    for direct_id, ref in work.execute("SELECT direct_id, source_ref FROM dedup_direct"):
+        refs.setdefault(direct_id, set()).add(ref)
+    expected = {sid: 0 for sid, _ in pairs}
+    expected.update(dict(work.execute(
+        "SELECT g.source_id, COUNT(*) FROM src.organism_records g "
+        "JOIN dedup_pair p ON p.source_id = g.source_id "
+        "JOIN dedup_direct d ON d.direct_id = p.direct_id AND d.source_ref = g.source_ref "
+        "WHERE COALESCE(g.is_synthetic, 0) <> 1 AND COALESCE(g.occurrence_status, 'PRESENT') <> 'ABSENT' "
+        "GROUP BY g.source_id"
+    )))
+    return {sid: frozenset(refs.get(direct, ())) for sid, direct in pairs}, expected
+
+
+def _duplicate_excluded_problems(measured: dict[str, int], expected: dict[str, int]) -> list[str]:
+    """重複として除いた行数（行ごとの判定の積み上げ）と、結合で独立に数えた重複件数を出典ごとに突合する。"""
+    return [
+        f"GBIF 経由の iNaturalist 重複として除いた行 {measured.get(sid, 0)} が、独立に数えた重複件数 {n} と食い違う"
+        f"（出典 {sid!r}。除外の判定か source_ref の突合が壊れている）"
+        for sid, n in sorted(expected.items())
+        if measured.get(sid, 0) != n
+    ]
 
 
 def _absent_excluded_problems(sources: dict, measured: dict[str, int]) -> list[str]:
@@ -500,6 +567,8 @@ def _ingest(
     taxon_ids, alien_binoms, sources, regions = ctx.taxon_ids, ctx.alien_binoms, ctx.sources, ctx.regions
     source_usage, region_usage, shape_usage = ctx.source_usage, ctx.region_usage, ctx.shape_usage
 
+    dedup_ref_sets, stats["duplicate_expected_by_source"] = _load_dedup_refs(work, sources)
+
     def rows():
         for row in work.execute(_SELECT_ORGANISM_RECORDS_SQL):
             (
@@ -507,7 +576,7 @@ def _ingest(
                 lat, lon, coordinate_uncertainty_m,
                 scientific_name, vernacular_name, taxon_rank,
                 red_list_category, red_list_source, is_alien, license_class, publication_scope,
-                place_id, place_kind, is_synthetic, occurrence_status,
+                place_id, place_kind, is_synthetic, occurrence_status, source_ref,
             ) = row
             # 原表記の旗 is_alien は変えない。n_alien（b07）は registry（環境省リスト＋除外規則）から
             # 導いたこちらを数える（原本の旗を遮蔽するのではなく置き換える）。
@@ -525,7 +594,11 @@ def _ingest(
             # occurrence に入れない行（合成データ・不在記録・未知の状態）。宣言の使用マーキングは除外の行でも
             # 行った後（将来 source_id 丸ごとが除外対象だけになっても「宣言未使用」の誤検出にしないため）、
             # region_counts への計上・alias/place 解決より前に弾く（モジュール docstring の各節）。
-            reason = _exclusion_reason(is_synthetic, occurrence_status)
+            dedup_refs = dedup_ref_sets.get(source_id)
+            reason = _exclusion_reason(
+                is_synthetic, occurrence_status,
+                dedup_refs is not None and source_ref is not None and source_ref in dedup_refs,
+            )
             if reason is not None:
                 _count_exclusion(stats, reason, source_id, record_id, occurrence_status)
                 continue
@@ -650,7 +723,9 @@ def _ingest(
             stats["adapter_counts"][run.manifest.source] = run.n_rows
             stats["adapter_attributes_count"][run.manifest.source] = run.n_attributes
             stats["adapter_problems"].extend(run.problems())
-    stats["n_occurrence"] = stats["total"] - stats["synthetic_excluded_count"] - stats["absent_excluded_count"]
+    stats["n_occurrence"] = (
+        stats["total"] - stats["synthetic_excluded_count"] - stats["absent_excluded_count"] - stats["duplicate_excluded_count"]
+    )
     return stats
 
 
@@ -738,7 +813,9 @@ def build_and_write_occurrence(
             finally:
                 work.close()
 
-            problems = _problems_from_stats(stats)
+            problems = _problems_from_stats(stats) + _duplicate_excluded_problems(
+                stats["duplicate_excluded_by_source"], stats["duplicate_expected_by_source"]
+            )
             if problems:
                 raise common.MigrationError(
                     "occurrence の取り込みを中止した。以下の問題を解消してから"
@@ -840,8 +917,15 @@ def render_report(stats: dict) -> str:
         + "。マニフェストの `expected_absent_excluded_rows` と突合済み）"
     )
     a(
+        f"- GBIF 経由の iNaturalist 観察（直取得と `source_ref` が一致）を除外した行数: **{stats['duplicate_excluded_count']:,}**"
+        "（原本には残す。直取得側を正にして二重に数えない。Issue #125。出典別: "
+        + (", ".join(f"`{k}` {v:,}" for k, v in sorted(stats["duplicate_excluded_by_source"].items())) or "なし")
+        + "。結合で独立に数えた重複件数と突合済み。GBIF の iNaturalist 由来で直取得に一致しない行は残す。"
+        "出典を絞るときは直取得の `inaturalist_*` を含めること）"
+    )
+    a(
         f"- `occurrence` 行数: **{n_occurrence:,}**"
-        "（合成データ・不在記録を除く全行を取り込む。ADR-0007原則1の例外——"
+        "（合成データ・不在記録・重複を除く全行を取り込む。ADR-0007原則1の例外——"
         "Issue #48 PR-0 オーナー決定）"
     )
     a(f"- 日付あり（`period_raw` NOT NULL）: **{stats['n_dated']:,}**")
@@ -935,7 +1019,7 @@ def main() -> None:
     n_occurrence = stats["n_occurrence"]
     print(
         f"  occurrence: {n_occurrence:,}行（日付あり {stats['n_dated']:,}、"
-        f"合成データ除外 {stats['synthetic_excluded_count']:,}、不在記録除外 {stats['absent_excluded_count']:,}）"
+        f"合成データ除外 {stats['synthetic_excluded_count']:,}、不在記録除外 {stats['absent_excluded_count']:,}、iNaturalist 重複除外 {stats['duplicate_excluded_count']:,}）"
     )
 
 

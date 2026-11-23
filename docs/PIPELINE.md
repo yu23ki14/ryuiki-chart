@@ -20,6 +20,10 @@ serving-diff の v1 側）は撤去した。ここに残るのは v2（観測・
   b03 は合成データ（`is_synthetic=1`）を常に除外する（`--include-synthetic` と v1互換キューブ専用の宣言は Issue #61 で撤去した）。
 - `scripts/b04_build_cube.py`: `observation` → キューブ `observation_agg`（土地利用を足しても無変更）。
 - `scripts/b06_build_occurrence.py`: `organism_records` → `occurrence`（`v2.sqlite` に同居）。
+  不在記録（ABSENT）のほか、GBIF 出典の行で `source_ref` が同地域の iNaturalist 直取得（マニフェストの `dedup_against`）と
+  一致するものも除く（Issue #125。GBIF 経由の iNaturalist 観察の二重計上。直取得側を正にする。原本には残す）。除いた件数は
+  `reports/phase_b_occurrence.md` に出典別で出し、結合で独立に数えた重複件数と突合する（食い違えば止まる）。注意: iNaturalist の
+  多い所で GBIF 出典だけに絞ると iNaturalist 由来の観察が出ない（`inaturalist_*` を含めること）。
 - `scripts/b09_build_occurrence_place.py`（O-2a）: `occurrence` の座標を、全地域の流域の GeoJSON
   （`regions.watershed_stems()` の順に連結。神奈川は `data/processed/nlni_w12_watersheds.geojson`〔W12 流域、377 面〕、
   奄美は地理院10m標高から計算した `gsi_dem_watersheds_amami.geojson`〔c69、Issue #94。W12 の奄美25面は置き換えたので
