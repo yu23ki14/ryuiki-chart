@@ -203,6 +203,8 @@ export const sourceAccess = sqliteTable("source_access", {
 	reason: text(),
 	reasonJa: text("reason_ja"),
 	reasonNote: text("reason_note"),
+	/** 行政文書の表として値が引ける出典の doc_id（JSON 配列。access.yaml の `documents`。なければ '[]'）。 */
+	docIds: text("doc_ids").notNull().default("[]"),
 });
 
 /**

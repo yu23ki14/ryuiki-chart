@@ -24,6 +24,8 @@ export function sourceRow(m: Meta, now: Date | undefined) {
     superseded_by: m.supersededBy,
     queryable_via: a.queryableVia,
     record_sets: a.tables,
+    // 行政文書の表として値が引ける出典の doc_id（queryable_via が get_records(document_cells)。q に渡して引く）。ほかは空。
+    document_ids: a.docIds,
     // 原本の行数（キューブの集計行数ではない。get_observations の n とは別物）。取れない出典は null。
     n_source_rows: a.nSourceRows,
     n_source_rows_basis: a.nSourceRowsBasis,
@@ -48,7 +50,7 @@ export function sourceSummary(metas: readonly Meta[]) {
     if (a.reason) by_reason[a.reason] = (by_reason[a.reason] ?? 0) + 1;
   }
   // by_tool は重複あり（kanagawa_edna は get_occurrences と get_edna の両方）。重複なしの数は queryable。
-  // excluded: 一覧から除いた出典の件数と理由（合成データ。total には含めない）。
+  // excluded: 一覧から除いた出典の件数と理由（合成データ・置き換え済み。total には含めない）。
   return { total: metas.length, queryable, not_queryable: metas.length - queryable, by_tool, by_reason, excluded: { ...SOURCE_EXCLUDED_FROM_LIST } };
 }
 

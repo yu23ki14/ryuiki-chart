@@ -235,9 +235,9 @@ export const RECORD_TABLES = {
     pk: "doc_id",
     search: ["title", "publisher"],
     cols: ["doc_id", "title", "publisher", "url", "n_pages", "fiscal_year", "license", "fetched_at"],
-    // cells・notes をそれぞれ 1 回だけ集計して結合する（文書ごとの相関サブクエリにしない）。
+    // cells・notes をそれぞれ 1 回だけ集計して結合する（文書ごとの相関サブクエリにしない）。n_cells は置き換え済み（superseded=1）を数えない（document_cells と同じ）。
     join:
-      "LEFT JOIN (SELECT doc_id, COUNT(*) AS n FROM cells GROUP BY doc_id) cc ON cc.doc_id = documents.doc_id " +
+      "LEFT JOIN (SELECT doc_id, COUNT(*) AS n FROM cells WHERE superseded = 0 GROUP BY doc_id) cc ON cc.doc_id = documents.doc_id " +
       "LEFT JOIN (SELECT doc_id, COUNT(*) AS n, SUM(blocks_timeseries = 1) AS nb FROM notes GROUP BY doc_id) nn ON nn.doc_id = documents.doc_id",
     computed: { n_cells: "COALESCE(cc.n, 0)", n_notes: "COALESCE(nn.n, 0)", n_blocking: "COALESCE(nn.nb, 0)" },
     sourceless: true,

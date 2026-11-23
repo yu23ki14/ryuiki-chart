@@ -322,11 +322,18 @@ const legacyPlaceIds = db
 // （MCP の describe_catalog/search_registry・応答封筒）に合成の出典が出ないことを、ここ（生成の段階）で保証する。
 const SYNTHETIC_SOURCE_PREFIX = "synthetic_";
 const isSyntheticSource = (sourceId) => String(sourceId).startsWith(SYNTHETIC_SOURCE_PREFIX);
+// 置き換え済みの出典（access.yaml の reason: superseded。例: gbif_kanagawa → gbif_kanagawa_occurrences）も一覧
+// （SOURCE_META・SOURCE_ACCESS）から外す。同じデータを二重に数えないため。source_edition は残す（版の引き当ては別）。
+const supersededSourceIds = new Set(
+  Object.entries(loadYaml(fs.readFileSync(ACCESS_YAML, "utf8")).sources ?? {})
+    .filter(([, e]) => e && e.reason === "superseded")
+    .map(([id]) => id),
+);
 const WALL_CLOCK = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/;
 const sourceMeta = db
   .prepare(`SELECT source_id, name_ja, publisher, homepage_url, superseded_by FROM source ORDER BY source_id`)
   .all()
-  .filter((r) => !isSyntheticSource(r.source_id))
+  .filter((r) => !isSyntheticSource(r.source_id) && !supersededSourceIds.has(r.source_id))
   .map((r) => ({ sourceId: r.source_id, nameJa: r.name_ja, publisher: r.publisher, homepageUrl: r.homepage_url, supersededBy: r.superseded_by }));
 const sourceEditions = db
   .prepare(
@@ -433,10 +440,10 @@ if (JSON.stringify(Object.keys(regionSlugs).sort()) !== JSON.stringify(regionTim
 const sourceAccessRows = db
   .prepare(
     `SELECT source_id, state, queryable_via, tables, record_set_rows, n_source_rows, n_source_rows_basis, counted_at,
-            reason, reason_ja, reason_note FROM source_access ORDER BY source_id`,
+            reason, reason_ja, reason_note, doc_ids FROM source_access ORDER BY source_id`,
   )
   .all()
-  .filter((r) => !isSyntheticSource(r.source_id));
+  .filter((r) => !isSyntheticSource(r.source_id) && !supersededSourceIds.has(r.source_id));
 const sourceAccess = Object.fromEntries(
   sourceAccessRows.map((r) => [
     r.source_id,
@@ -451,6 +458,7 @@ const sourceAccess = Object.fromEntries(
       reason: r.reason,
       reasonJa: r.reason_ja,
       reasonNote: r.reason_note,
+      docIds: JSON.parse(r.doc_ids),
     },
   ]),
 );
@@ -477,6 +485,7 @@ const recordSetTables = accessDoc.record_sets ?? {};
 const excludedFromList = {};
 for (const r of db.prepare("SELECT source_id FROM source_access").all()) {
   if (isSyntheticSource(r.source_id)) excludedFromList.synthetic = (excludedFromList.synthetic ?? 0) + 1;
+  else if (supersededSourceIds.has(r.source_id)) excludedFromList.superseded = (excludedFromList.superseded ?? 0) + 1;
 }
 const declaredRecordSourceIds = Object.entries(accessDoc.sources ?? {})
   .filter(([, e]) => e && e.records)
@@ -923,13 +932,15 @@ export interface GeneratedSourceAccess {
   recordSetRows: Record<string, number>;
   /** 原本の行数（キューブの集計行数ではない）。取れない出典は null。 */
   nSourceRows: number | null;
-  nSourceRowsBasis: "source_rows" | "registry_record_count" | "catalog_datasets" | "none";
+  nSourceRowsBasis: "source_rows" | "registry_record_count" | "catalog_datasets" | "document_cells" | "none";
   /** 件数を数えた原本の最新取得日時（決定論のため実行時刻ではない）。 */
   countedAt: string | null;
   /** 取れない理由コード（queryableVia が空のとき必須）。 */
   reason: string | null;
   reasonJa: string | null;
   reasonNote: string | null;
+  /** 行政文書の表として値が引ける出典の doc_id（access.yaml の documents。get_records(document_cells) の q に渡す）。 */
+  docIds: readonly string[];
 }
 
 /** 合成データの出典を除く全出典（SOURCE_META と同じキー）。 */

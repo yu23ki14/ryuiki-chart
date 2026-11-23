@@ -103,7 +103,38 @@ describe("describe_catalog(sources) の状態と summary", () => {
     for (const [t, n] of Object.entries(summary.by_tool)) expect(n, t).toBe(toolCount(t));
     expect(summary.by_tool.get_records).toBe(RECORD_SOURCE_IDS.length);
     expect(summary.by_tool.find_datasets).toBe(FIND_DATASET_SOURCE_IDS.length);
-    expect(summary.excluded).toEqual({ synthetic: 1 }); // 一覧から除いた出典（合成データ）。total には含めない
+    expect(summary.excluded).toEqual({ synthetic: 1, superseded: 1 }); // 一覧から除いた出典（合成データ・置き換え済みの gbif_kanagawa）。total には含めない
+    expect(rows.map((r) => r.source_id)).not.toContain("gbif_kanagawa");
+  });
+
+  it("行政文書の表として値が引ける出典は queryable_via が get_records(document_cells) で、doc_id と有効なセル数を持つ。summary の queryable に数える", async () => {
+    const { data } = await run("describe_catalog", { what: "sources" });
+    const rows = data.sources as (Row & { n_source_rows_basis: string; document_ids: string[] })[];
+    const docRows = rows.filter((r) => r.queryable_via.includes("get_records(document_cells)"));
+    expect(docRows.length).toBeGreaterThan(0);
+    const seen = new Set<string>();
+    for (const r of docRows) {
+      expect(r.queryable_via, r.source_id).toEqual(["get_records(document_cells)"]);
+      expect(r.record_sets, r.source_id).toEqual([]);
+      expect(r.n_source_rows_basis, r.source_id).toBe("document_cells");
+      expect(r.n_source_rows, r.source_id).toBeGreaterThan(0);
+      expect(r.unavailable_reason, r.source_id).toBeNull();
+      expect(r.document_ids.length, r.source_id).toBeGreaterThan(0);
+      for (const d of r.document_ids) {
+        expect(seen.has(d), `${d} が複数の出典にある`).toBe(false);
+        seen.add(d);
+      }
+    }
+    // 行政文書の抽出済みの出典（PDF のままではない）
+    for (const id of ["biodic_6th_kanagawa_report", "ckan_pdf_choju_higai", "kasen_kokusei_sagami", "kanagawa_rdb2006_animals", "kagoshima_umigame_amami"]) {
+      expect(docRows.map((r) => r.source_id), id).toContain(id);
+    }
+    // 値の引けない文書の出典は残る（PDF のまま）
+    expect(rows.find((r) => r.source_id === "amami_tourism_plans_amami")?.unavailable_reason).toBe("pdf_document");
+    expect(rows.find((r) => r.source_id === "moe_redlist")?.unavailable_reason).toBe("not_in_d1");
+    expect(docRows.filter((r) => r.unavailable_reason)).toEqual([]);
+    const summary = data.summary as { by_tool: Record<string, number> };
+    expect(summary.by_tool["get_records(document_cells)"]).toBe(docRows.length);
   });
 
   it("外部ポータルの目録 7 出典は queryable_via に find_datasets が付き、n_source_rows は目録の件数（basis=catalog_datasets）", async () => {

@@ -301,6 +301,17 @@ describe("readRecordSet（地図用。get_records と同じ列定義）", () => 
     await expect(q({ record_set: "osm_waterways", source_id: "geoshape_sagami_river" })).rejects.toThrow(RecordsInputError);
   });
 
+  it("documents: n_cells は置き換え済み（superseded=1）を数えない", async () => {
+    raw.prepare("INSERT INTO documents (doc_id, title) VALUES ('d1','文書1'),('d2','文書2')").run();
+    const ins = raw.prepare("INSERT INTO cells (doc_id, row_key, col_key, value, superseded) VALUES (?,?,?,?,?)");
+    ins.run("d1", "a", "値", "1", 0);
+    ins.run("d1", "b", "値", "2", 0);
+    ins.run("d1", "a", "値", "0", 1);
+    ins.run("d2", "a", "値", "0", 1); // 旧行だけの文書は 0
+    const rows = await documentsList(db);
+    expect(Object.fromEntries(rows.map((r) => [r.doc_id, r.n_cells]))).toEqual({ d1: 2, d2: 0 });
+  });
+
   it("document_cells: superseded=0 の行だけ、doc_id で絞って読む。q は doc_id/row_key に効き、n_total も置き換え済みを除く", async () => {
     raw.prepare("INSERT INTO documents (doc_id, title) VALUES ('d1','文書1'),('d2','文書2')").run();
     const ins = raw.prepare("INSERT INTO cells (doc_id, row_key, col_key, value, fiscal_year, superseded) VALUES (?,?,?,?,?,?)");

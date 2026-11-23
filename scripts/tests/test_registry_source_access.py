@@ -92,6 +92,14 @@ def test_manifest_source_can_add_records_and_extra_tools():
         (lambda d: d.__setitem__("extra_tools", {"a": ["get_edna"]}), "マニフェストの出典ではない"),
         (lambda d: d.__setitem__("extra_tools", {"m": ["get_sql"]}), "未対応"),
         (lambda d: d["sources"].update(b={"reason": "superseded", "basis": "x"}), "superseded_by"),
+        (lambda d: d["sources"].update(a={"records": ["sites"], "documents": ["d1"]}), "どれか 1 つだけ"),
+        (lambda d: d["sources"].update(b={"documents": ["d1"], "reason": "file_only", "basis": "x"}), "どれか 1 つだけ"),
+        (lambda d: d["sources"].update(b={"documents": []}), "1 つ以上の doc_id"),
+        (lambda d: d["sources"].update(b={"documents": ["d1", "d1"]}), "重複"),
+        (lambda d: d["sources"].update(b={"documents": ["d1"], "basis": "x"}), "basis は書けない"),
+        (lambda d: d["sources"].update(m={"documents": ["d1"]}), "マニフェストのある出典"),
+        (lambda d: d["sources"].update(b={"documents": ["d1"]}, c={"documents": ["d1"]}), "両方の documents"),
+        (lambda d: d["sources"].update(b={"reason": "document_cells", "basis": "x"}), "語彙"),  # 撤去した理由コード
     ],
 )
 def test_static_mutations_stop(mutate, msg):
@@ -99,6 +107,26 @@ def test_static_mutations_stop(mutate, msg):
     mutate(doc)
     with pytest.raises(bsa.AccessError, match=msg):
         _build(_reg("a", "b", "m"), {"m": "observation"}, doc, _counts(place={"a": 3}, measurements={"m": 1}))
+
+
+def test_documents_source_is_queryable_via_document_cells_with_active_cell_count():
+    doc = _doc(d={"documents": ["d1", "d2"]})
+    counts = _counts()
+    counts["doc_cells"] = {"d1": 3, "d2": 0, "d9": 5}
+    row = dict(zip(bsa.COLUMNS, _build(_reg("d"), {}, doc, counts)[0]))
+    assert row["state"] == "queryable" and row["queryable_via"] == '["get_records(document_cells)"]'
+    assert row["tables"] == "[]" and row["n_source_rows"] == 3 and row["n_source_rows_basis"] == "document_cells"
+    assert json.loads(row["doc_ids"]) == ["d1", "d2"] and row["reason"] is None
+
+
+def test_documents_declaration_must_match_cells_data():
+    doc = _doc(d={"documents": ["d1"]})
+    with pytest.raises(bsa.AccessError, match="documents 表に無い"):  # 存在しない doc_id
+        _build(_reg("d"), {}, doc, {**_counts(), "doc_cells": {"zzz": 4}})
+    with pytest.raises(bsa.AccessError, match="1 件も無い"):  # セル 0 件（置き換え済みだけの文書を含む）
+        _build(_reg("d"), {}, doc, {**_counts(), "doc_cells": {"d1": 0}})
+    with pytest.raises(bsa.AccessError, match="cells.sqlite"):  # 原本の cells が渡されていない
+        _build(_reg("d"), {}, doc, _counts())
 
 
 def test_catalog_source_is_queryable_via_find_datasets_with_catalog_count():
@@ -190,7 +218,8 @@ def _real():
         pytest.skip("registry.sqlite が無い")
     doc = bsa.load_access_yaml()
     targets = bsa._manifest_targets()
-    counts = bsa.gather_counts(ryuiki, registry)
+    cells = sqlite3.connect(f"file:{common.DB_DIR / 'cells.sqlite'}?mode=ro", uri=True)
+    counts = bsa.gather_counts(ryuiki, registry, cells)
     return reg_rows, targets, doc, counts, sup
 
 
@@ -206,7 +235,8 @@ def test_real_declaration_covers_every_source_and_matches_data():
     queryable = {sid for sid, r in by.items() if r["state"] == "queryable"}
     assert queryable == (set(targets)
                          | {sid for sid, e in doc["sources"].items() if "records" in e}
-                         | {sid for sid, e in doc["sources"].items() if "catalog" in e})
+                         | {sid for sid, e in doc["sources"].items() if "catalog" in e}
+                         | {sid for sid, e in doc["sources"].items() if "documents" in e})
     assert set(targets) <= queryable
     cat = {sid: r for sid, r in by.items() if r["queryable_via"] == '["find_datasets"]'}
     assert sorted(cat) == sorted(sid for sid, e in doc["sources"].items() if "catalog" in e) and len(cat) == 7
@@ -220,6 +250,25 @@ def test_real_declaration_covers_every_source_and_matches_data():
     assert {sid for sid, r in by.items() if r["tables"] != "[]"} == {
         sid for sid, e in doc["sources"].items() if "records" in e
     }
+
+
+@needs_ryuiki
+def test_real_documents_each_doc_has_active_cells_and_mutations_stop():
+    reg, targets, doc, counts, sup = _real()
+    # 列挙した doc_id は全て有効なセル（superseded=0）を持つ（セルの無い文書を列挙しない）
+    for sid, ids in bsa.document_sources(doc).items():
+        for d in ids:
+            assert counts["doc_cells"].get(d, 0) > 0, (sid, d)
+    # 存在しない doc_id を足す・出典の文書をセル 0 件の文書だけにすると止まる
+    d = copy.deepcopy(doc)
+    d["sources"]["kagoshima_umigame_amami"]["documents"].append("no_such_doc")
+    with pytest.raises(bsa.AccessError, match="documents 表に無い"):
+        bsa.assemble(reg, targets, d, counts, superseded_by=sup)
+    empty = next(x for x, n in counts["doc_cells"].items() if n == 0)
+    d = copy.deepcopy(doc)
+    d["sources"]["kagoshima_umigame_amami"]["documents"] = [empty]
+    with pytest.raises(bsa.AccessError, match="1 件も無い"):
+        bsa.assemble(reg, targets, d, counts, superseded_by=sup)
 
 
 @needs_ryuiki

@@ -50,6 +50,9 @@ CLAUDE.md 「サンプル」設計の要件）。
   資源の数が最も少ない（1 以上の）データセット 1 件と、その `external_resource`・`external_resource_format` を足す（目録の閉包。孤児を作らない）。
 - **文書単位**（`cells.sqlite` の `cells`）は `document_closure.doc_ids` で
   指定した `doc_id` の全セルを入れる。
+- **`documents` を宣言した出典**（行政文書の表として値が引ける出典）は、r01 が「出典ごとに置き換え済みでない
+  （superseded=0）セルが 1 件以上」を検査する。サンプルに上の閉包でセルが入らない出典には、宣言した文書のうち
+  最初にセルのある文書の rowid 最小の有効な 1 セルを足す（`select_declared_document_cells`）。
 
 ## 決定論
 
@@ -609,6 +612,29 @@ def select_cells_rowids(conn: sqlite3.Connection, doc_ids: list[str]) -> list[in
     ]
 
 
+def select_declared_document_cells(conn: sqlite3.Connection, access_doc: dict, selected: list[int]) -> list[int]:
+    """access.yaml の `documents` を宣言した各出典に、サンプルの cells に有効（superseded=0）なセルが 1 つ以上あるようにする。
+    無ければ、宣言した文書（宣言順）のうち最初に有効なセルを持つ文書の rowid 最小の 1 セルを足す。原本にも無ければ止まる。"""
+    have = set(selected)
+    extra: list[int] = []
+    for sid, entry in sorted((access_doc.get("sources") or {}).items()):
+        docs = entry.get("documents")
+        if not docs:
+            continue
+        placeholder = ",".join("?" * len(docs))
+        active = [r[0] for r in conn.execute(
+            f"SELECT rowid FROM cells WHERE superseded = 0 AND doc_id IN ({placeholder}) ORDER BY rowid", docs)]
+        if not active:
+            raise SystemExit(f"access.yaml: {sid} の documents に、原本にも有効なセル（superseded=0）が無い")
+        if have.intersection(active):
+            continue
+        first_doc = next(d for d in docs if conn.execute("SELECT 1 FROM cells WHERE superseded = 0 AND doc_id = ? LIMIT 1", (d,)).fetchone())
+        pick = conn.execute("SELECT MIN(rowid) FROM cells WHERE superseded = 0 AND doc_id = ?", (first_doc,)).fetchone()[0]
+        extra.append(pick)
+        have.add(pick)
+    return extra
+
+
 # ---------------------------------------------------------------------------
 # declaration_counts.yaml（Issue #29 A-2）
 # ---------------------------------------------------------------------------
@@ -990,6 +1016,8 @@ def main() -> int:
     if len(doc_ids) < coverage["document_closure"]["min_documents"]:
         raise SystemExit("document_closure.doc_ids が min_documents に足りない")
     cells_selected: dict[str, list[int]] = {"cells": select_cells_rowids(cells_conn, doc_ids)}
+    cells_selected["cells"] = sorted(
+        set(cells_selected["cells"]) | set(select_declared_document_cells(cells_conn, load_yaml(args.access_yaml), cells_selected["cells"])))
     for table in coverage.get("wholesale_cells_tables", []):
         cells_selected[table] = select_wholesale_rowids(cells_conn, table)
 

@@ -23,6 +23,8 @@
 - `records` の record_set が `record_sets`（record_set → D1 の表。**正はここ 1 か所**）にあり、その表が許可リスト
   （`D1_RECORD_TABLES`＝**D1 にある表**。原本にだけある表は対象外で、理由は `not_in_d1`）内
 - `catalog` の表は `CATALOG_TABLES`（`external_dataset`）だけ。`records`・`reason` と排他（3 つのうち 1 つだけ）
+- `documents`（行政文書の表として値が引ける出典。`doc_id` のリスト）は `records`・`catalog`・`reason` と排他（4 つのうち 1 つだけ）。
+  `doc_id` は 1 つ以上・重複なし・他の出典と共有しない
 - `reason` を持つ出典はマニフェストに無い（取れるものを「取れない」と書かない）
 - `extra_tools` はマニフェストの出典にだけ付く
 
@@ -31,6 +33,8 @@
 - `records` の (出典, 表) の行数が 1 以上
 - `catalog` の出典は `external_dataset` に 1 行以上あり、`external_dataset.source_id` の種類は `catalog` の宣言と過不足なく
   一致する（宣言漏れ・過剰を止める。`n_source_rows` は目録の件数＝データセット数、basis は `catalog_datasets`）
+- `documents` の `doc_id` が全て原本 `cells.sqlite` の `documents` 表にあり、出典ごとに置き換え済みでない（superseded=0）セルが 1 件以上ある
+  （件数は直書きせず原本から数える。`n_source_rows` はそのセル数、basis は `document_cells`）
 - `reason` の出典が、出典の列を持つ全表（`external_dataset` を除く。目録は値ではない）のどれにも 0 行（`ROW_REASONS` の `synthetic`・`not_in_d1` だけ例外。
   この2つは逆に、原本に行があることを要求する。宣言が古ければ止まる）
 - `reason: superseded` ⇔ `source.superseded_by` がある
@@ -48,6 +52,8 @@ ACCESS_YAML = common.ROOT / "registry" / "source" / "access.yaml"
 TOOL_BY_TARGET = {"observation": "get_observations", "occurrence": "get_occurrences"}
 EXTRA_TOOLS = {"get_edna"}
 RECORDS_TOOL = "get_records"
+# 行政文書の抽出セル（出典に紐付かない record_set）。出典の列で絞る get_records とは別の表記にする（RECORD_SOURCE_IDS に混ぜない）。
+DOCUMENTS_TOOL = "get_records(document_cells)"
 CATALOG_TOOL = "find_datasets"
 # `catalog` が指してよい表（外部ポータルの目録。出典の列 source_id で数える。external_resource は出典の列を持たない）。
 CATALOG_TABLES = frozenset({"external_dataset"})
@@ -65,8 +71,8 @@ PRIMARY_TABLES = {
     "occurrence": ("organism_records", "edna_reads", "wildlife_sightings", "moni1000_counts"),
 }
 
-N_BASIS = ("source_rows", "registry_record_count", "catalog_datasets", "none")
-_SOURCE_KEYS = {"records", "catalog", "reason", "basis", "note"}
+N_BASIS = ("source_rows", "registry_record_count", "catalog_datasets", "document_cells", "none")
+_SOURCE_KEYS = {"records", "catalog", "documents", "reason", "basis", "note"}
 # 原本に行がある理由（合成データ・D1 に未投入）。他の理由は「原本に行が無い」ことを検査する。
 ROW_REASONS = frozenset({"synthetic", "not_in_d1"})
 
@@ -95,6 +101,20 @@ def normalize_records(sid: str, records, record_sets: dict[str, str]) -> list[st
     return list(records)
 
 
+def normalize_documents(sid: str, docs) -> list[str]:
+    """`documents`（doc_id のリスト）を検査する。不正なら止まる。"""
+    if not isinstance(docs, list) or not docs or not all(isinstance(d, str) and d for d in docs):
+        raise AccessError(f"access.yaml: {sid} の documents は 1 つ以上の doc_id（文字列）のリストでなければならない")
+    if len(set(docs)) != len(docs):
+        raise AccessError(f"access.yaml: {sid} の documents に doc_id が重複している")
+    return list(docs)
+
+
+def document_sources(doc: dict) -> dict[str, list[str]]:
+    """`documents` を宣言した出典 → doc_id のリスト。`validate_static` が検査した後に使う。"""
+    return {sid: list(e["documents"]) for sid, e in (doc.get("sources") or {}).items() if isinstance(e, dict) and "documents" in e}
+
+
 def catalog_sources(doc: dict) -> dict[str, str]:
     """`catalog` を宣言した出典 → 表。`validate_static` が検査した後に使う。"""
     return {sid: e["catalog"] for sid, e in (doc.get("sources") or {}).items() if isinstance(e, dict) and "catalog" in e}
@@ -118,15 +138,26 @@ def validate_static(doc: dict, manifest_targets: dict[str, str]) -> dict[str, li
     if not isinstance(sources, dict):
         raise AccessError("access.yaml: sources が無い")
     records_by_source: dict[str, list[str]] = {}
+    seen_docs: dict[str, str] = {}
     for sid, entry in sources.items():
         if not isinstance(entry, dict):
             raise AccessError(f"access.yaml: sources.{sid} がマップではない")
         extra = set(entry) - _SOURCE_KEYS
         if extra:
             raise AccessError(f"access.yaml: sources.{sid} に未対応のキー {sorted(extra)}（使えるキー: {sorted(_SOURCE_KEYS)}）")
-        has_rec, has_reason, has_cat = "records" in entry, "reason" in entry, "catalog" in entry
-        if has_rec + has_reason + has_cat != 1:
-            raise AccessError(f"access.yaml: sources.{sid} は records・catalog・reason のどれか 1 つだけを持つ（複数・どれも無しは不可）")
+        has_rec, has_reason, has_cat, has_doc = "records" in entry, "reason" in entry, "catalog" in entry, "documents" in entry
+        if has_rec + has_reason + has_cat + has_doc != 1:
+            raise AccessError(f"access.yaml: sources.{sid} は records・catalog・documents・reason のどれか 1 つだけを持つ（複数・どれも無しは不可）")
+        if has_doc:
+            doc_owner_ids = normalize_documents(sid, entry["documents"])
+            if "basis" in entry:
+                raise AccessError(f"access.yaml: sources.{sid} は documents を持つので basis は書けない（basis は reason の根拠）")
+            if sid in manifest_targets:
+                raise AccessError(f"access.yaml: sources.{sid} はマニフェストのある出典なので documents は書けない")
+            for d in doc_owner_ids:
+                if d in seen_docs:
+                    raise AccessError(f"access.yaml: doc_id {d!r} が {seen_docs[d]} と {sid} の両方の documents にある（1 つの文書は 1 つの出典）")
+                seen_docs[d] = sid
         if has_cat:
             if entry["catalog"] not in CATALOG_TABLES:
                 raise AccessError(f"access.yaml: sources.{sid} の catalog={entry['catalog']!r} は使えない（使える表: {sorted(CATALOG_TABLES)}）")
@@ -163,7 +194,7 @@ def validate_static(doc: dict, manifest_targets: dict[str, str]) -> dict[str, li
 # 原本の件数
 # ---------------------------------------------------------------------------
 
-def gather_counts(ryuiki: sqlite3.Connection, registry: sqlite3.Connection) -> dict:
+def gather_counts(ryuiki: sqlite3.Connection, registry: sqlite3.Connection, cells: sqlite3.Connection | None = None) -> dict:
     """原本から数える（読み取り専用の接続）。`by_source[table][source_id]`: 出典の列を持つ全表の出典別の行数
     （`a|b` の複合値は要素ごとに数える）。D1 にある `taxon_assessment` は、いま作っている registry から数える。"""
     by_source: dict[str, dict[str, int]] = {}
@@ -175,7 +206,12 @@ def gather_counts(ryuiki: sqlite3.Connection, registry: sqlite3.Connection) -> d
         by_source[t] = counts
     # sites の record_set は語彙レジストリの place（site）。定義は common.count_site_places_by_source（records.ts と同じ）。
     by_source["place"] = common.count_site_places_by_source(registry)
-    return {"by_source": by_source}
+    out: dict = {"by_source": by_source}
+    if cells is not None:
+        # 文書ごとの有効なセル数（置き換え済み superseded=1 を除く）。documents 表にある文書は 0 件でも載せる。
+        active = dict(cells.execute("SELECT doc_id, COUNT(*) FROM cells WHERE superseded = 0 GROUP BY doc_id").fetchall())
+        out["doc_cells"] = {d: active.get(d, 0) for (d,) in cells.execute("SELECT doc_id FROM documents")}
+    return out
 
 
 def _table_rows(counts: dict, sid: str, table: str) -> int:
@@ -188,7 +224,7 @@ def _table_rows(counts: dict, sid: str, table: str) -> int:
 
 COLUMNS = [
     "source_id", "state", "queryable_via", "tables", "record_set_rows", "n_source_rows", "n_source_rows_basis",
-    "counted_at", "reason", "reason_ja", "reason_note",
+    "counted_at", "reason", "reason_ja", "reason_note", "doc_ids",
 ]
 
 
@@ -261,6 +297,16 @@ def assemble(
                 f"access.yaml: {table}.source_id の種類が catalog の宣言と一致しない"
                 f"（目録にあって宣言が無い: {sorted(present - declared_here)} / 宣言があって目録に無い: {sorted(declared_here - present)}）"
             )
+    docs_by_source = document_sources(doc)
+    doc_cells = counts.get("doc_cells")
+    if docs_by_source and doc_cells is None:
+        raise AccessError("access.yaml に documents があるが、原本 cells.sqlite の文書ごとのセル数（counts['doc_cells']）が渡されていない")
+    for sid, ids in docs_by_source.items():
+        missing_docs = [d for d in ids if d not in doc_cells]
+        if missing_docs:
+            raise AccessError(f"access.yaml: {sid} の documents の doc_id {missing_docs} が原本 cells.sqlite の documents 表に無い（宣言が古い）")
+        if sum(doc_cells[d] for d in ids) == 0:
+            raise AccessError(f"access.yaml: {sid} の documents に、置き換え済みでないセル（superseded=0）が 1 件も無い（表として値が引けない。reason に直す）")
     for sid, entry in sources.items():
         code = entry.get("reason")
         if code is None:
@@ -292,12 +338,17 @@ def assemble(
         cat_table = catalogs.get(sid)
         if cat_table:
             via.append(CATALOG_TOOL)
+        dids = docs_by_source.get(sid, [])
+        if dids:
+            via.append(DOCUMENTS_TOOL)
         tables = list(recs)
         reason = entry.get("reason")
         if via:
             if cat_table:
                 # 目録の件数（データセット数）。値の行数（estat_*.jsonl の行）ではない。
                 n, basis = _table_rows(counts, sid, cat_table), "catalog_datasets"
+            elif dids:
+                n, basis = sum(doc_cells[d] for d in dids), "document_cells"
             elif target:
                 n = sum(all_source_tables.get(t, {}).get(sid, 0) for t in PRIMARY_TABLES[target])
                 if n == 0:
@@ -308,9 +359,9 @@ def assemble(
                 n, basis = sum(_table_rows(counts, sid, doc["record_sets"][t]) for t in recs), "source_rows"
             rs_rows = {t: _table_rows(counts, sid, doc["record_sets"][t]) for t in recs}
             row = (sid, "queryable", json.dumps(via), json.dumps(tables), json.dumps(rs_rows),
-                   n, basis, counted_at, None, None, entry.get("note"))
+                   n, basis, counted_at, None, None, entry.get("note"), json.dumps(dids))
         else:
-            row = (sid, "not_queryable", "[]", "[]", "{}", None, "none", None, reason, reasons[reason]["ja"], entry.get("note"))
+            row = (sid, "not_queryable", "[]", "[]", "{}", None, "none", None, reason, reasons[reason]["ja"], entry.get("note"), "[]")
         rows.append(row)
     return rows
 
@@ -338,7 +389,7 @@ def build(conn: sqlite3.Connection, src: dict[str, sqlite3.Connection]) -> dict[
     registry_rows = [dict(zip(cols, r)) for r in cur.fetchall()]
     doc = load_access_yaml()
     targets = _manifest_targets()
-    counts = gather_counts(ryuiki, conn)
+    counts = gather_counts(ryuiki, conn, src["cells"])
     superseded_by = dict(conn.execute("SELECT source_id, superseded_by FROM source").fetchall())
     rows = assemble(registry_rows, targets, doc, counts, superseded_by=superseded_by)
     n = common.insert_many(conn, "source_access", COLUMNS, rows)

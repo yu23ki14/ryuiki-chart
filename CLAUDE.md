@@ -93,6 +93,7 @@
   `scripts/schema_catalog.sql`）。MCP / AI の `find_datasets`（`web/src/lib/catalog-search.ts`）が読む。値は持たず、
   定義と最新を取る URL（`api_url`＝CKAN の package_show）だけ。更新手順は `docs/PIPELINE.md`「外部ポータルの目録」。
   出典の状態は `registry/source/access.yaml` の `catalog:`（`queryable_via` に `find_datasets`）。
+  行政文書の表を抽出済みの出典は `documents: [doc_id,…]`（`queryable_via` に `get_records(document_cells)`。r01 が doc_id と有効セルを原本と突き合わせる。`records`/`catalog`/`reason` と排他）。
 - 収集スクリプトの User-Agent に個人名・個人アドレスを入れない（`scripts/common.py`）。
   経緯は `docs/COLLECTOR_CONTRACT.md` の追記を読むこと。
 - 新しいエリア（東京都・沖縄県・兵庫県など）を足すときは `docs/add_area.md` の手順に従う。
