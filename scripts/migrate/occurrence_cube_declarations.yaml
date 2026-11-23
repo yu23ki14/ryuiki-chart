@@ -11,6 +11,10 @@
 # （grid01・watershed）で同じ値を要求する。watershed の2件は「流域に解決できる
 # 記録がどれだけあるか」（occurrence_place、b09）由来の値。
 
+# 2026-11-23: Issue #125 で GBIF 経由の iNaturalist の重複（神奈川 66,334 行。いずれも日付あり・同月内の日付/時刻）を occurrence から
+# 除いた。month_cell_source_rows 810,184 → 743,850、watershed_dated_resolved_rows 722,493 → 663,908（−58,585）、
+# watershed_dated_unresolved_rows 91,573 → 83,824（−7,749）。leaf は変わらない。奄美の分は gbif_amami_occurrences の expected.cube。
+
 leaf_cell_source_rows:
   expected_row_count: 1191
   note: >
@@ -22,7 +26,7 @@ leaf_cell_source_rows:
     要求する。不一致は b07 を止める。
 
 month_cell_source_rows:
-  expected_row_count: 810184
+  expected_row_count: 743850
   note: >
     grain='month'（同一月に収まる区間・日付。b07の「月セル」）に集約される、
     日付ありの occurrence 記録の件数。日付あり 816,856 行のうち、同一月に
@@ -36,7 +40,7 @@ month_cell_source_rows:
     要求する。
 
 watershed_dated_resolved_rows:
-  expected_row_count: 722493
+  expected_row_count: 663908
   note: >
     日付あり ∧ occurrence_place（b09、place_kind='watershed'）が place_id を
     解決できた記録の件数（ADR-0026 の保存則の右辺と同じ数）。
@@ -44,7 +48,7 @@ watershed_dated_resolved_rows:
     一致する。Issue #48 PR-3a 設計書 §付録の実測値。
 
 watershed_dated_unresolved_rows:
-  expected_row_count: 91573
+  expected_row_count: 83824
   note: >
     日付あり ∧ occurrence_place（b09）で流域に解決できなかった（place_id が
     NULL の）記録の件数。ADR-0025 D2「データを落とさない」に従い、この記録も
