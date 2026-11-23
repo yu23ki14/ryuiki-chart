@@ -83,6 +83,7 @@ export const SOURCE_META: readonly GeneratedSourceMeta[] = [
   { sourceId: "estat_shozaiki_kanagawa", nameJa: "2020年国勢調査 小地域（町丁・字等別）境界データ 神奈川県", publisher: "総務省統計局 (e-Stat 統計地理情報システム)", homepageUrl: "https://www.e-stat.go.jp/gis/statmap-search?page=1&type=2&aggregateUnitForBoundary=A&toukeiCode=00200521&serveyId=A002005212020&prefCode=14&coordsys=1&format=shape", supersededBy: null },
   { sourceId: "etanzawa_siryousitu", nameJa: "丹沢資料室(一次資料アーカイブ)", publisher: "神奈川県 環境農政局 森林再生課 / 神奈川県自然環境保全センター", homepageUrl: "https://www.pref.kanagawa.jp/docs/f4y/03shinrin/e-tanzawa/siryousitu.html", supersededBy: null },
   { sourceId: "gbif_amami_occurrences", nameJa: "GBIF Occurrence — 鹿児島県（奄美大島） (GADM JPN.18.4_1+JPN.18.38_1+JPN.18.41_1+JPN.18.44_1+JPN.18.34_1)", publisher: "GBIF", homepageUrl: "https://www.gbif.org/occurrence/search?gadm_gid=JPN.18.4_1&gadm_gid=JPN.18.38_1&gadm_gid=JPN.18.41_1&gadm_gid=JPN.18.44_1&gadm_gid=JPN.18.34_1", supersededBy: null },
+  { sourceId: "gbif_kanagawa", nameJa: "GBIF Occurrence — 神奈川県 (GADM JPN.19_1)", publisher: "GBIF", homepageUrl: "https://www.gbif.org/occurrence/search?gadm_gid=JPN.19_1", supersededBy: "gbif_kanagawa_occurrences" },
   { sourceId: "gbif_kanagawa_occurrences", nameJa: "GBIF Occurrence — 神奈川県 (GADM JPN.19_1)", publisher: "GBIF", homepageUrl: "https://www.gbif.org/occurrence/search?gadm_gid=JPN.19_1", supersededBy: null },
   { sourceId: "gbif_species_match", nameJa: "GBIF Backbone Taxonomy 学名照合（species/match API）", publisher: "Global Biodiversity Information Facility (GBIF)", homepageUrl: "https://api.gbif.org/v1/species/match", supersededBy: null },
   { sourceId: "geoshape_sagami_river", nameJa: "相模川水系 河川データ(水系単位, NII再パッケージ版)", publisher: "国立情報学研究所(NII) geoshape.ex.nii.ac.jp / 原データ: 国土交通省 国土数値情報(KSJ) W05 河川", homepageUrl: "https://geoshape.ex.nii.ac.jp/river/resource/830307/stream.json", supersededBy: null },
@@ -1109,6 +1110,19 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "reason": null,
     "reasonJa": null,
     "reasonNote": null,
+    "docIds": []
+  },
+  "gbif_kanagawa": {
+    "state": "not_queryable",
+    "queryableVia": [],
+    "tables": [],
+    "recordSetRows": {},
+    "nSourceRows": null,
+    "nSourceRowsBasis": "none",
+    "countedAt": null,
+    "reason": "superseded",
+    "reasonJa": "別の出典に置き換わった（superseded_by 参照）",
+    "reasonNote": "gbif_kanagawa_occurrences に置き換わった。値はそちらで取る",
     "docIds": []
   },
   "gbif_kanagawa_occurrences": {

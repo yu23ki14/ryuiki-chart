@@ -259,16 +259,15 @@ def test_real_documents_each_doc_has_active_cells_and_mutations_stop():
     for sid, ids in bsa.document_sources(doc).items():
         for d in ids:
             assert counts["doc_cells"].get(d, 0) > 0, (sid, d)
-    # 存在しない doc_id を足す・出典の文書をセル 0 件の文書だけにすると止まる
+    # 存在しない doc_id を足す・出典の文書の有効セルが全て 0 になると止まる
     d = copy.deepcopy(doc)
     d["sources"]["kagoshima_umigame_amami"]["documents"].append("no_such_doc")
     with pytest.raises(bsa.AccessError, match="documents 表に無い"):
         bsa.assemble(reg, targets, d, counts, superseded_by=sup)
-    empty = next(x for x, n in counts["doc_cells"].items() if n == 0)
-    d = copy.deepcopy(doc)
-    d["sources"]["kagoshima_umigame_amami"]["documents"] = [empty]
-    with pytest.raises(bsa.AccessError, match="1 件も無い"):
-        bsa.assemble(reg, targets, d, counts, superseded_by=sup)
+    one = doc["sources"]["kagoshima_umigame_amami"]["documents"][0]
+    zeroed = {**counts, "doc_cells": {**counts["doc_cells"], one: 0}}  # その文書の有効セルが 0 になった（全て置き換え済み）
+    with pytest.raises(bsa.AccessError, match="1 件も無い"):  # 宣言の文書が 1 つだけで、その有効セルが 0
+        bsa.assemble(reg, targets, doc, zeroed, superseded_by=sup)
 
 
 @needs_ryuiki
@@ -370,6 +369,41 @@ def test_source_counts_fingerprint_detects_value_moving_between_sources(tmp_path
     conn.commit()
     assert fp() != b1
     conn.close()
+
+
+def test_document_cells_fingerprint_follows_cells_content(tmp_path):
+    """cells.sqlite の中身（文書ごとの有効セル数）が変わると registry の指紋が変わる。mtime では変わらない。"""
+    import os
+
+    db = tmp_path / "cells.sqlite"
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE documents (doc_id TEXT PRIMARY KEY)")
+    conn.execute("CREATE TABLE cells (id INTEGER PRIMARY KEY, doc_id TEXT, superseded INTEGER NOT NULL DEFAULT 0)")
+    conn.executemany("INSERT INTO documents VALUES (?)", [("d1",), ("d2",)])
+    conn.executemany("INSERT INTO cells (doc_id, superseded) VALUES (?, ?)", [("d1", 0), ("d1", 0), ("d2", 0)])
+    conn.commit()
+
+    def fp():
+        h = hashlib.sha256()
+        common._hash_document_cells(h, db)
+        return h.hexdigest()
+
+    before = fp()
+    os.utime(db, (1, 1))  # mtime だけ変えても変わらない
+    assert fp() == before
+    conn.execute("UPDATE cells SET superseded = 1 WHERE id = 3")  # 有効セルが 0 になる文書
+    conn.commit()
+    assert fp() != before
+    conn.execute("UPDATE cells SET superseded = 0 WHERE id = 3")
+    conn.execute("INSERT INTO documents VALUES ('d3')")  # 文書の追加
+    conn.commit()
+    assert fp() != before
+    assert common.count_active_cells_by_doc(conn) == {"d1": 2, "d2": 1, "d3": 0}
+    conn.close()
+    h1, h2 = hashlib.sha256(), hashlib.sha256()
+    common._hash_document_cells(h1, tmp_path / "none.sqlite")  # cells.sqlite が無い環境は「無い」を混ぜる
+    common._hash_document_cells(h2, tmp_path / "none2.sqlite")
+    assert h1.hexdigest() == h2.hexdigest()
 
 
 def test_source_counts_fingerprint_follows_external_dataset(tmp_path):

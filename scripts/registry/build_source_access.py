@@ -194,7 +194,7 @@ def validate_static(doc: dict, manifest_targets: dict[str, str]) -> dict[str, li
 # 原本の件数
 # ---------------------------------------------------------------------------
 
-def gather_counts(ryuiki: sqlite3.Connection, registry: sqlite3.Connection, cells: sqlite3.Connection | None = None) -> dict:
+def gather_counts(ryuiki: sqlite3.Connection, registry: sqlite3.Connection, cells: sqlite3.Connection) -> dict:
     """原本から数える（読み取り専用の接続）。`by_source[table][source_id]`: 出典の列を持つ全表の出典別の行数
     （`a|b` の複合値は要素ごとに数える）。D1 にある `taxon_assessment` は、いま作っている registry から数える。"""
     by_source: dict[str, dict[str, int]] = {}
@@ -206,12 +206,8 @@ def gather_counts(ryuiki: sqlite3.Connection, registry: sqlite3.Connection, cell
         by_source[t] = counts
     # sites の record_set は語彙レジストリの place（site）。定義は common.count_site_places_by_source（records.ts と同じ）。
     by_source["place"] = common.count_site_places_by_source(registry)
-    out: dict = {"by_source": by_source}
-    if cells is not None:
-        # 文書ごとの有効なセル数（置き換え済み superseded=1 を除く）。documents 表にある文書は 0 件でも載せる。
-        active = dict(cells.execute("SELECT doc_id, COUNT(*) FROM cells WHERE superseded = 0 GROUP BY doc_id").fetchall())
-        out["doc_cells"] = {d: active.get(d, 0) for (d,) in cells.execute("SELECT doc_id FROM documents")}
-    return out
+    # 文書ごとの有効なセル数（置き換え済み superseded=1 を除く。documents 表にある文書は 0 件でも載せる）。
+    return {"by_source": by_source, "doc_cells": common.count_active_cells_by_doc(cells)}
 
 
 def _table_rows(counts: dict, sid: str, table: str) -> int:
@@ -298,9 +294,7 @@ def assemble(
                 f"（目録にあって宣言が無い: {sorted(present - declared_here)} / 宣言があって目録に無い: {sorted(declared_here - present)}）"
             )
     docs_by_source = document_sources(doc)
-    doc_cells = counts.get("doc_cells")
-    if docs_by_source and doc_cells is None:
-        raise AccessError("access.yaml に documents があるが、原本 cells.sqlite の文書ごとのセル数（counts['doc_cells']）が渡されていない")
+    doc_cells = counts.get("doc_cells", {})
     for sid, ids in docs_by_source.items():
         missing_docs = [d for d in ids if d not in doc_cells]
         if missing_docs:

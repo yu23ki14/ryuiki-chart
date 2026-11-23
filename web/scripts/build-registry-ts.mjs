@@ -322,18 +322,11 @@ const legacyPlaceIds = db
 // （MCP の describe_catalog/search_registry・応答封筒）に合成の出典が出ないことを、ここ（生成の段階）で保証する。
 const SYNTHETIC_SOURCE_PREFIX = "synthetic_";
 const isSyntheticSource = (sourceId) => String(sourceId).startsWith(SYNTHETIC_SOURCE_PREFIX);
-// 置き換え済みの出典（access.yaml の reason: superseded。例: gbif_kanagawa → gbif_kanagawa_occurrences）も一覧
-// （SOURCE_META・SOURCE_ACCESS）から外す。同じデータを二重に数えないため。source_edition は残す（版の引き当ては別）。
-const supersededSourceIds = new Set(
-  Object.entries(loadYaml(fs.readFileSync(ACCESS_YAML, "utf8")).sources ?? {})
-    .filter(([, e]) => e && e.reason === "superseded")
-    .map(([id]) => id),
-);
 const WALL_CLOCK = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/;
 const sourceMeta = db
   .prepare(`SELECT source_id, name_ja, publisher, homepage_url, superseded_by FROM source ORDER BY source_id`)
   .all()
-  .filter((r) => !isSyntheticSource(r.source_id) && !supersededSourceIds.has(r.source_id))
+  .filter((r) => !isSyntheticSource(r.source_id))
   .map((r) => ({ sourceId: r.source_id, nameJa: r.name_ja, publisher: r.publisher, homepageUrl: r.homepage_url, supersededBy: r.superseded_by }));
 const sourceEditions = db
   .prepare(
@@ -443,7 +436,7 @@ const sourceAccessRows = db
             reason, reason_ja, reason_note, doc_ids FROM source_access ORDER BY source_id`,
   )
   .all()
-  .filter((r) => !isSyntheticSource(r.source_id) && !supersededSourceIds.has(r.source_id));
+  .filter((r) => !isSyntheticSource(r.source_id));
 const sourceAccess = Object.fromEntries(
   sourceAccessRows.map((r) => [
     r.source_id,
@@ -481,11 +474,12 @@ const findDatasetSourceIds = Object.entries(sourceAccess)
   .map(([id]) => id)
   .sort();
 const recordSetTables = accessDoc.record_sets ?? {};
-// 一覧（SOURCE_META・SOURCE_ACCESS）から除いた出典の件数と理由（describe_catalog の summary.excluded）。
+// 一覧から除いた出典の件数と理由（describe_catalog の summary.excluded）。合成データは SOURCE_META・SOURCE_ACCESS にも載せない。
+// 置き換え済み（reason: superseded）は SOURCE_META・SOURCE_ACCESS に残し（search_registry・sourceCitation・superseded_by の案内のため）、一覧と total からだけ web 側（source-catalog.ts）で除く。
 const excludedFromList = {};
-for (const r of db.prepare("SELECT source_id FROM source_access").all()) {
+for (const r of db.prepare("SELECT source_id, reason FROM source_access").all()) {
   if (isSyntheticSource(r.source_id)) excludedFromList.synthetic = (excludedFromList.synthetic ?? 0) + 1;
-  else if (supersededSourceIds.has(r.source_id)) excludedFromList.superseded = (excludedFromList.superseded ?? 0) + 1;
+  else if (r.reason === "superseded") excludedFromList.superseded = (excludedFromList.superseded ?? 0) + 1;
 }
 const declaredRecordSourceIds = Object.entries(accessDoc.sources ?? {})
   .filter(([, e]) => e && e.records)

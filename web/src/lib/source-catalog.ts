@@ -14,6 +14,12 @@ function sourceAccessOrThrow(sourceId: string) {
   return a;
 }
 
+/**
+ * 一覧（describe_catalog what='sources'・`/sources`）と summary の total に載せる出典。置き換え済み（reason=superseded。
+ * 同じデータを二重に数えないため）は除く。SOURCE_META には残るので、search_registry・sourceCitation・superseded_by の案内は引き続き効く。
+ */
+export const LISTED_SOURCE_META: readonly Meta[] = SOURCE_META.filter((m) => sourceAccess(m.sourceId)?.reason !== "superseded");
+
 /** 出典 1 件の行（describe_catalog の sources と search_registry の source で同じ形）。 */
 export function sourceRow(m: Meta, now: Date | undefined) {
   const a = sourceAccessOrThrow(m.sourceId);
@@ -69,5 +75,5 @@ export type SourcePageRow = ReturnType<typeof sourcePageRow>;
 
 /** `/sources` 画面の全行（describe_catalog と同じ SOURCE_META）。原本の行数の多い順（行数が無い出典は最後）。 */
 export function sourcePageRows(now: Date | undefined): SourcePageRow[] {
-  return SOURCE_META.map((m) => sourcePageRow(m, now)).sort((a, b) => (b.n_source_rows ?? -1) - (a.n_source_rows ?? -1));
+  return LISTED_SOURCE_META.map((m) => sourcePageRow(m, now)).sort((a, b) => (b.n_source_rows ?? -1) - (a.n_source_rows ?? -1));
 }

@@ -6,7 +6,6 @@ import { applyMigrations, RECORD_SET_INSERT, wrapSqlite } from "@/lib/cube/__fix
 import { sqliteCubeDb } from "@/lib/cube/db-sqlite";
 import { GENERATED_VARIABLE_ALIASES } from "@/lib/registry/generated";
 import { RECORD_SET_TABLES, SOURCE_ACCESS, SOURCE_META } from "@/lib/registry/generated-source";
-import { readRecordSet } from "@/lib/records";
 import { McpInputError } from "./errors";
 import { MCP_TOOLS, type McpContext } from "./tools";
 
@@ -64,11 +63,10 @@ describe("queryable_via の（出典, ツール）が実際に動く: get_record
     }
     raw.prepare("INSERT INTO documents (doc_id, title) VALUES ('old_only', 'x')").run();
     raw.prepare("INSERT INTO cells (doc_id, row_key, col_key, value, superseded) VALUES ('old_only', 'r', 'c', '1', 1)").run();
-    // doc_id の完全一致で読む（get_records の q は LIKE で 50 バイトまで。`_` が多い長い doc_id は q に入らないので、型のある読み手で引く）
-    const cellsOf = (d: string) => readRecordSet(wrapSqlite(raw), "document_cells", { eq: [{ col: "doc_id", value: d }], select: ["doc_id"], order: [{ col: "id" }] });
+    // クライアントと同じ get_records を doc_id の完全一致で呼ぶ（q は LIKE で 50 バイトまで。長い doc_id は q に入らない）
+    const cellsOf = async (d: string) => (await call("get_records", { record_set: "document_cells", doc_id: d }, ctx)).data.rows as unknown[];
     for (const d of docIds) expect((await cellsOf(d)).length, d).toBe(1);
-    expect((await cellsOf("old_only")).length).toBe(0);
-    expect(((await call("get_records", { record_set: "document_cells", q: "old_only" }, ctx)).data.rows as unknown[]).length).toBe(0);
+    expect((await cellsOf("old_only")).length).toBe(0); // 置き換え済みだけの文書は引けない
     raw.close();
   });
 
@@ -116,7 +114,7 @@ describe.skipIf(!haveReal)("queryable_via の（出典, ツール）が実際に
         // 宣言した全 doc_id が、有効なセルを 1 行以上返す（1 文書でも空なら失敗）
         n = 1;
         for (const d of SOURCE_ACCESS[src].docIds) {
-          const rows = await readRecordSet(db, "document_cells", { eq: [{ col: "doc_id", value: d }], select: ["doc_id"], order: [{ col: "id" }], limit: 1 });
+          const rows = (await call("get_records", { record_set: "document_cells", doc_id: d, limit: 1 }, ctx)).data.rows as unknown[];
           if (rows.length === 0) n = 0;
         }
       } else if (tool === "find_datasets") {

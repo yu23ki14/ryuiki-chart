@@ -329,6 +329,21 @@ describe("readRecordSet（地図用。get_records と同じ列定義）", () => 
     await expect(q({ record_set: "document_cells", source_id: "dams_kanagawa" })).rejects.toThrow(RecordsInputError);
     expect(recordsInputSchema.safeParse({ record_set: "document_cells" }).success).toBe(true);
   });
+
+  it("document_cells: doc_id の完全一致で絞れる（q の 50 バイト制限に当たらない長い doc_id でも）。出典付きの表では使えない", async () => {
+    const long = "kanagawa_river_monitoring_h20_sagami_results_" + "x".repeat(40); // `_` が多く q には入らない長さ
+    raw.prepare("INSERT INTO documents (doc_id, title) VALUES (?, 't'), ('other', 'o')").run(long);
+    const ins = raw.prepare("INSERT INTO cells (doc_id, row_key, col_key, value, superseded) VALUES (?,?,?,?,?)");
+    ins.run(long, "a", "値", "1", 0);
+    ins.run(long, "b", "値", "2", 1); // 置き換え済み
+    ins.run("other", "a", "値", "3", 0);
+    const r = await q({ record_set: "document_cells", doc_id: long });
+    expect(ids(r, "doc_id")).toEqual([long]);
+    expect(r.n_total).toBeNull();
+    expect(recordsInputSchema.safeParse({ record_set: "document_cells", q: long }).success).toBe(false);
+    expect(recordsInputSchema.safeParse({ record_set: "document_cells", doc_id: long }).success).toBe(true);
+    await expect(q({ record_set: "sites", source_id: "dams_kanagawa", doc_id: "d" })).rejects.toThrow(RecordsInputError);
+  });
 });
 
 describe("countRecordsBy / range（地図・物語用）", () => {
