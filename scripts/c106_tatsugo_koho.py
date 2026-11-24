@@ -214,8 +214,8 @@ def cmd_catalog(raw: pathlib.Path) -> None:
 
 def _pages_of(path: pathlib.Path) -> int | None:
     try:
-        import fitz  # pymupdf（遅延 import）
-        with fitz.open(path) as d:
+        import pymupdf  # 遅延 import
+        with pymupdf.open(path) as d:
             return d.page_count
     except Exception as e:  # noqa: BLE001
         print("page count failed:", path.name, e, file=sys.stderr)
