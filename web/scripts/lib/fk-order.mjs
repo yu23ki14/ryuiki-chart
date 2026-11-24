@@ -31,3 +31,22 @@ export function orderByForeignKeys(db, tables) {
   }
   return out;
 }
+
+/**
+ * 指定した表を空にするとき、それを外部キーで参照している表がリストの外にあれば、その (子表, 親表) の対を返す。
+ * 本番の入れ直し（reload-tables.mjs）は、何も消す前にこれが空であることを確かめる
+ * （documents を指定して cells が外にあると、DELETE が FK で失敗し、手前で空にした表が空のまま残る）。
+ * db は FK の定義がある（マイグレーション適用済みの）ローカル DB。
+ */
+export function referencedOutside(db, tables) {
+  const set = new Set(tables);
+  const all = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all().map((r) => r.name);
+  const out = [];
+  for (const child of all) {
+    if (set.has(child)) continue;
+    for (const fk of db.prepare(`PRAGMA foreign_key_list("${child.replace(/"/g, '""')}")`).all()) {
+      if (set.has(fk.table)) out.push({ child, parent: fk.table });
+    }
+  }
+  return out;
+}

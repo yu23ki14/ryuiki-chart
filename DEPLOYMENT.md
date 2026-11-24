@@ -621,3 +621,50 @@ docker で開発している間はコンテナ側のボリューム（`d1-state`
    - `get_occurrences kind=species_catalog placeId=common:place:watershed.dem.amami-008` では、ドジョウが n=1 になった（前は 2）。
 
 画面の生物の集計が欠けていたのは 02:23〜02:28 UTC 頃（約5分）。ロールバックは行っていない。
+
+## 広報たつごうのベクトル検索の本番反映（Issue #132。反映するときの手順。まだ実施していない）
+
+設計と評価は `docs/plans/TATSUGO_KOHO_VECTOR.md`。モデルは `@cf/baai/bge-m3`（1024 次元・cosine）、インデックス名は
+`web/src/lib/vector/config.json` の `index_name`（`ryuiki-koho-bgem3-v1`）。`web/wrangler.jsonc` に `ai`（`AI`）と `vectorize`（`VECTORIZE`）のバインディングがあり、
+**インデックスが無いと `pnpm run deploy` が失敗する**ので、順序は「D1 → インデックス作成 → 投入 → deploy」。`wrangler login` 済みで、
+`CLOUDFLARE_ACCOUNT_ID` を付ける（wrangler の 7403 対策）。以下は `web/` で実行する。`<cells>` は m13 の出力を含む `cells.sqlite`（本番 D1 に入れた記事と同じもの）。
+
+1. 本番 D1 に広報たつごうの表（`document_articles` ほか）を先に入れる（`TATSUGO_KOHO.md` §9 の手順。ベクトルは D1 に無い記事を返さない）。
+2. インデックスを作る（1 回。次元と metric は作成後に変えられない）:
+   `pnpm wrangler vectorize create ryuiki-koho-bgem3-v1 --dimensions=1024 --metric=cosine`
+3. メタデータインデックスを作る（**ベクトルを入れる前**。後から作ると既存のベクトルに効かない）:
+   `node scripts/vector/sync.mjs --init --execute`（region_id・source_id・year・kind の 4 つ。上限は 10 個）
+4. 埋め込みを作る（手元のキャッシュ `data/vector/cache.sqlite`。AI Gateway 経由、`web/.env.local` の `AI_GATEWAY_*` を使う。約 70 秒・約 5,100 件）:
+   `node scripts/vector/embed.mjs --cells <cells>`
+5. dry-run で件数を確かめてから投入する（既定が dry-run。`--execute` で wrangler の `vectorize upsert`〈ndjson、1,000 件ずつ〉を呼ぶ）:
+   `node scripts/vector/sync.mjs --cells <cells>`（初回は upsert 5,119・delete 0）→ `node scripts/vector/sync.mjs --cells <cells> --execute`
+6. 反映は非同期。件数がマニフェスト（`data/vector/ryuiki-koho-bgem3-v1/manifest.jsonl`）と一致するまで待つ:
+   `node scripts/vector/status.mjs --cells <cells> --remote --wait 300`
+7. `pnpm run deploy`。確認: MCP の `tools/list` に `search_documents` が出る／`tools/call` で「台風のときの避難」を引くと、各行に `citation`・`pdf_url` が付く。
+   バインディングが無い・接続できないときはツールが一覧に出ないだけで、他は変わらない（`web/src/lib/features.ts` の `VECTOR_SEARCH_ENABLED` でも切れる）。
+
+更新（記事が増えた・本文が直った）: 4・5・6 を同じコマンドで回す。差分（`chunk_sha` が変わったものと、チャンクが減って余った `seq`）だけが upsert・delete になる。
+
+取り下げ（`TATSUGO_KOHO.md` §9 の手順 4）: D1 の行を消す**前**に取り下げる `article_id` を控える。号ごと外すなら `--doc-prefix <doc_id>`、記事単位なら 1 行 1 件のファイルを `--article-ids-file` に渡す:
+`node scripts/vector/sync.mjs --withdraw --doc-prefix tatsugo_koho_201408 --execute`（Vectorize の `delete-vectors` とマニフェスト・手元のキャッシュから消す。`--execute` なしは dry-run）。
+その後 `status.mjs --remote` で件数がマニフェストと一致することを確かめる。D1 から行が消えていれば、ベクトルが残っても検索は返さない。
+
+ローカル開発: `next dev` は既定で Workers AI・Vectorize に接続しない（未ログインでも起動する）。ベクトル検索を手元で試すときだけ
+`wrangler login` のうえ `RYUIKI_REMOTE_BINDINGS=1 pnpm run dev`（本番のインデックスに接続し、AI の使用量が課金される）。
+
+費用: Workers Paid なら、保存 5,119 × 1024 次元は無料枠内、埋め込みは全件で約 300 万トークン（約 $0.04）、検索は 1 問ごとに埋め込み 1 回＋Vectorize 1 回。
+hybrid は 1 問あたり D1 の LIKE を最大 6 本（各 約 5,300 行の走査）発行するので、`mode` の既定は semantic にしてある。
+
+## 広報たつごう（#130・#131、PR #133）の本番反映（2026-11-24 実施）
+
+- 事前: main 88c44be、`check_v2_fresh`=0・`r01 --check-fresh`=0。`db:setup`（66 表 / 4,945,724 行）→ `db:export`（120 ファイル）→ build。
+  戻し先: Time Travel `000000d6-00000000-0000512d-2de3d858cdf56b8b438fad96e73dbe3d`、直前の Worker `15e56951-683d-4daa-bc65-edda1df56aef`。
+- マイグレーション 0031 を適用（6 表を足すだけ）。
+- `diff-tables` で違ったのは 14 表（新 6 表・documents・notes・caveat・caveat_scope・source・source_access・source_edition・source_registry）。caveat の +180 は文書ごとのライセンス注記。
+- 入れ直し（03:45:49 UTC〜）: `documents` の DELETE が外部キー（`cells` が参照）で失敗し、手前で空にした notes・source_registry・source_edition・source_access・source・caveat_scope・caveat が約 3 分空になった。
+  documents は消さずに広報誌の 180 行だけを INSERT（`wrangler d1 export --local --table documents` から抽出）し、残り 13 表を入れ直して 03:48:44 UTC に件数一致。
+  `db:verify:remote` で 66 表 / 4,945,724 行すべて一致（1 回目は一時的なエラー）。ロールバックは行っていない。
+- デプロイ: Version `ccf91d85-3bb0-4015-bbc0-263a1cbfd61a`。主要ページ 200。MCP の `get_records` で `periodical_issues`（citation つき）と `document_articles`
+  （q=マングース、include_body、citation「龍郷町「広報たつごう」2012年6月号 p.6」、pdf_url に `#page=6`）が返った。
+- 教訓: 外部キーで参照される表（documents など）を `reload-tables.mjs` で入れ直すと、参照する表がリストの外にあるときに DELETE が失敗し、先に空にした表が空のまま残る。
+  `reload-tables.mjs` は、空にする表を参照する表がリストの外にあれば、何も消す前に止まるようにした（`web/scripts/lib/fk-order.mjs` の `referencedOutside`、テストあり）。

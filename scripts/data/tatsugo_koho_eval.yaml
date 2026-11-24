@@ -1,0 +1,193 @@
+# 「広報たつごう」ベクトル検索の評価用の質問集（Issue #132、docs/plans/TATSUGO_KOHO_VECTOR.md §9）。
+#
+# 正解付けはモデル（Claude Sonnet 5.5）が 2026-11-24 に行った。人の確認はまだ。
+#   - 質問は住民が聞きそうな言い方で書き、見出しはそのまま使っていない。
+#   - 正解は articles.jsonl の本文を読んで、その質問に答えている記事を 1〜3 件付けた。
+#     本文が PDF の段組みで崩れている記事が多く、正解の取りこぼしがありうる（recall は下振れしうる）。
+#   - 人が直すときは gold を編集するだけでよい。eval.mjs はこのファイルだけを読む。
+#   - article_id は m13 が決める（<doc_id>:<ページ3桁>:<見出しのハッシュ8桁>）。再抽出で変わったら、
+#     title_hint（見出し。無い記事は null）と doc_id（号）で探し直す。
+# type: 概念（記事の語を含まない言い換え）／固有名詞／時期（year_from・year_to で発行年を絞る）／否定（正解なし。上位に出る点数の低さを見る）。
+labeled_by: model
+labeled_on: "2026-11-24"
+questions:
+  - id: q01
+    type: 概念
+    topic: disaster
+    q: 大雨や台風のとき、どこへどう逃げればいいかを町がまとめた冊子はありますか
+    gold:
+      - {article_id: "tatsugo_koho_201306:004:4baa8b39", title_hint: "「防災ガイド」を活用しよう！"}
+  - id: q02
+    type: 概念
+    topic: disaster
+    q: 災害のときに集落の集会所で使える発電機などを、町が配ってくれたのはいつですか
+    gold:
+      - {article_id: "tatsugo_koho_201505:007:9604ee3e", title_hint: "〝防災力〟向上へ集落と学校に資機材配備"}
+  - id: q03
+    type: 概念
+    topic: disaster
+    q: 水害で浸かってしまった畑の土を高くしたいので、工事で出た土をもらえますか
+    gold:
+      - {article_id: "tatsugo_koho_201208:009:83deffd6", title_hint: "建設発生土の受け入れ地募集について"}
+  - id: q04
+    type: 概念
+    topic: disaster
+    q: 山崩れが起きる前にはどんな前ぶれがありますか
+    gold:
+      - {article_id: "tatsugo_koho_201605:011:260555c1", title_hint: "ウミガメを守ろう（本文は土砂災害防止月間の記事）"}
+      - {article_id: "tatsugo_koho_201405:012:e6f71857", title_hint: null}
+  - id: q05
+    type: 概念
+    topic: wildlife_alien
+    q: 夜に山道を走るとき、希少なウサギをひかないために気をつけることは
+    gold:
+      - {article_id: "tatsugo_koho_201309:006:810386fc", title_hint: "☆毎年９月～12 月頃に事故発生数が増加します。"}
+      - {article_id: "tatsugo_koho_201309:006:ed927c96", title_hint: null}
+  - id: q06
+    type: 固有名詞
+    topic: wildlife_alien
+    q: マングースの被害や目撃を相談できる窓口はどこですか
+    gold:
+      - {article_id: "tatsugo_koho_201312:012:be9af221", title_hint: "マングース探索犬（現在5 頭）"}
+      - {article_id: "tatsugo_koho_201312:011:3d1cb21b", title_hint: "公共事業入札の公表平成25 年11 月"}
+  - id: q07
+    type: 概念
+    topic: wildlife_alien
+    q: 川で増えている外国産の観賞魚をどうすべきか知りたい
+    gold:
+      - {article_id: "tatsugo_koho_201408:009:1c8305be", title_hint: "ペット飼育には責任を持ちましょう"}
+  - id: q08
+    type: 概念
+    topic: wildlife_alien
+    q: 中学生が道ばたの黄色い花を抜く作業をしたと聞いた。なぜ抜くのですか
+    gold:
+      - {article_id: "tatsugo_koho_201306:016:2f05f192", title_hint: null}
+  - id: q09
+    type: 概念
+    topic: wildlife_alien
+    q: 飼えなくなった猫を山に放すとどんな問題が起きますか
+    gold:
+      - {article_id: "tatsugo_koho_201607:014:73426937", title_hint: null}
+      - {article_id: "tatsugo_koho_201412:008:cac6a46c", title_hint: null}
+  - id: q10
+    type: 概念
+    topic: river_water
+    q: 家の汚水処理の装置は、どんな検査を受けなければいけませんか
+    gold:
+      - {article_id: "tatsugo_koho_201806:011:0ede742e", title_hint: "浄化槽を設置されている方へ　浄化槽定期検査受検のお願い"}
+  - id: q11
+    type: 概念
+    topic: river_water
+    q: 子どもたちが地元の川の水を調べて、思ったより汚れていたという感想
+    gold:
+      - {article_id: "tatsugo_koho_201312:007:c5fb9099", title_hint: null}
+  - id: q12
+    type: 固有名詞
+    topic: river_water
+    q: 戸口小学校の児童がリュウキュウアユについて学んだ授業
+    gold:
+      - {article_id: "tatsugo_koho_202008:003:46b987a3", title_hint: "TatsugoTownTopics"}
+      - {article_id: "tatsugo_koho_202112:003:0932d50a", title_hint: "龍郷町の話題"}
+      - {article_id: "tatsugo_koho_201907:003:916becfa", title_hint: "TatsugoTownTopics"}
+  - id: q13
+    type: 概念
+    topic: conservation_clean
+    q: 海岸で亀の卵を勝手に採ってもいいのですか
+    gold:
+      - {article_id: "tatsugo_koho_201206:016:6eeaf6f8", title_hint: "玉黄金"}
+      - {article_id: "tatsugo_koho_201306:016:6eeaf6f8", title_hint: "玉黄金"}
+  - id: q14
+    type: 概念
+    topic: conservation_clean
+    q: 浜のごみ拾いをするとき、ケガをしないための注意点
+    gold:
+      - {article_id: "tatsugo_koho_201412:009:4ef7cb54", title_hint: "わきゃ島の自然をみんなで守ろう！"}
+      - {article_id: "tatsugo_koho_201411:004:4ef7cb54", title_hint: "わきゃ島の自然をみんなで守ろう！"}
+  - id: q15
+    type: 固有名詞
+    topic: conservation_clean
+    q: 奄美群島国立公園に指定された日と、公園内で許可が要る行為
+    gold:
+      - {article_id: "tatsugo_koho_201703:008:1e843bc5", title_hint: "『奄美群島国立公園』の誕生について"}
+  - id: q16
+    type: 時期
+    topic: other
+    year_from: 2014
+    year_to: 2014
+    q: 充電して使う電池はクリーンセンターに持ち込めなくなったと聞きました
+    gold:
+      - {article_id: "tatsugo_koho_201408:009:a2c898b5", title_hint: "充電式電池は搬入できません！"}
+  - id: q17
+    type: 時期
+    topic: other
+    year_from: 2013
+    year_to: 2014
+    q: 犬に狂犬病の注射を受けさせる費用と会場
+    gold:
+      - {article_id: "tatsugo_koho_201310:017:e08ebc23", title_hint: "第２回巡回狂犬病予防注射のお知らせ"}
+      - {article_id: "tatsugo_koho_201410:017:61934d6e", title_hint: "飼い猫の避妊・去勢に 対する助成について"}
+  - id: q18
+    type: 時期
+    topic: other
+    year_from: 2015
+    year_to: 2015
+    q: 番号制度の通知カードはいつごろ届きますか
+    gold:
+      - {article_id: "tatsugo_koho_201509:010:5bccb610", title_hint: null}
+      - {article_id: "tatsugo_koho_201507:016:dec8f965", title_hint: "警察官Ｂ採用試験"}
+      - {article_id: "tatsugo_koho_201508:008:3323ef33", title_hint: "浄化槽定期検査"}
+  - id: q19
+    type: 概念
+    topic: other
+    q: 暑い夏、お年寄りが体調を崩さないために気をつけること
+    gold:
+      - {article_id: "tatsugo_koho_201207:012:6ddba3cb", title_hint: null}
+  - id: q20
+    type: 固有名詞
+    topic: other
+    q: 秋名で行われる、屋根を揺すり倒す行事と海の岩の上で歌う行事
+    gold:
+      - {article_id: "tatsugo_koho_201210:002:1f973f84", title_hint: "龍郷町の文化・歴史を学ぶ"}
+      - {article_id: "tatsugo_koho_201710:006:25b6cef0", title_hint: "国指定重要無形民俗文化財 「秋名アラセツ行事」"}
+      - {article_id: "tatsugo_koho_201409:002:5312224d", title_hint: "二胡の調べにうっとり　ウェイウェイさん公演"}
+  - id: q21
+    type: 時期
+    topic: other
+    year_from: 2025
+    year_to: 2026
+    q: 町の街並みを守るためのきまりを作る話が議会で出ていた
+    gold:
+      - {article_id: "tatsugo_koho_202505:008:f0a8eb63", title_hint: "景観条例制定について"}
+      - {article_id: "tatsugo_koho_202505:007:e030117d", title_hint: "令和７年 第１回定例会"}
+  - id: q22
+    type: 概念
+    topic: other
+    q: 毒蛇を捕まえたら町から報奨金がもらえますか
+    gold:
+      - {article_id: "tatsugo_koho_201403:013:d4071765", title_hint: null}
+      - {article_id: "tatsugo_koho_201403:012:72b6426b", title_hint: "平成２６年度龍郷町堆肥助成金交付の申請手続きについて"}
+  - id: q23
+    type: 概念
+    topic: other
+    q: 草刈りや畑仕事のときに毒蛇にかまれないための予防策
+    gold:
+      - {article_id: "tatsugo_koho_201404:025:dc61d30f", title_hint: null}
+  - id: q24
+    type: 固有名詞
+    topic: other
+    q: 島の特産の柑橘を通販で買えるサイト
+    gold:
+      - {article_id: "tatsugo_koho_202101:015:36ecf65a", title_hint: "【奄美大島産】"}
+      - {article_id: "tatsugo_koho_202101:014:11d172fa", title_hint: "マイナンバーカードを準備しましょう"}
+  - id: q25
+    type: 概念
+    topic: tourism
+    q: 海水浴に来る観光客のために、トイレや砂の整備を求める質問
+    gold:
+      - {article_id: "tatsugo_koho_201310:007:304acef6", title_hint: "海水浴場の設置について"}
+      - {article_id: "tatsugo_koho_201310:006:d6da3547", title_hint: "月25 日（一般質問）"}
+  - id: q26
+    type: 否定
+    topic: other
+    q: 龍郷町にある新幹線の駅の時刻表
+    gold: []

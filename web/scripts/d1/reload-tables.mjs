@@ -9,6 +9,7 @@
 import { Database, WEB, findLocalD1, qi, wranglerRemote, DB_NAME } from "./common.mjs";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import { referencedOutside } from "../lib/fk-order.mjs";
 import path from "node:path";
 
 const args = process.argv.slice(2);
@@ -31,6 +32,18 @@ const missing = insertOrder.filter((t) => !filesOf(t).length);
 if (missing.length) {
   console.error(`dist/d1 にファイルが無い: ${missing.join(" ")}（${DIST}）。先に db:export --table で出す。`);
   process.exit(1);
+}
+
+// 空にする表を外部キーで参照する表がリストの外にあると、DELETE が FK で失敗する（手前で空にした表が空のまま残る）。何も消す前に止める。
+{
+  const ldb = new Database(findLocalD1(), { readonly: true, fileMustExist: true });
+  const outside = referencedOutside(ldb, insertOrder);
+  ldb.close();
+  if (outside.length) {
+    console.error(`リストの外の表が、空にする表を外部キーで参照している: ${outside.map((o) => `${o.child} -> ${o.parent}`).join(", ")}`);
+    console.error("その表もリストに入れる（消す順・入れる順は自動）か、親の表は消さずに行だけ INSERT する。何も消していない。");
+    process.exit(1);
+  }
 }
 
 const wr = (extra) => ["pnpm", "wrangler", "d1", "execute", DB_NAME, "--remote", "-y", ...extra];

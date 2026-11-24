@@ -44,3 +44,12 @@ export const MCP_RATE_LIMIT = { limit: 60, periodSeconds: 60 } as const;
 
 /** `/api/mcp` が受ける Origin のホスト名（Origin ヘッダがあるときだけ検査。無ければ通す＝CLI/デスクトップのクライアント）。 */
 export const MCP_ALLOWED_ORIGIN_HOSTS = ["ryuiki-demo.tokyo-odh-009.workers.dev", "localhost", "127.0.0.1", "[::1]"] as const;
+
+/**
+ * 「広報たつごう」のベクトル検索（MCP・AI のツール `search_documents`。Issue #132、docs/plans/TATSUGO_KOHO_VECTOR.md §2.3）。
+ *
+ * false にするとツールが一覧に出ない。true でも、Workers AI・Vectorize のバインディングが無い（ローカル・CI・未ログイン）、
+ * または接続できないときは同じくツールが出ない（`src/lib/vector/bindings.ts`）。他のツール・画面・API はどちらでも変わらない。
+ * 本番では Vectorize のインデックスを作って投入してから deploy する（DEPLOYMENT.md）。
+ */
+export const VECTOR_SEARCH_ENABLED = true;

@@ -30,3 +30,21 @@ export function wranglerRemote(sql) {
   );
   return JSON.parse(out.slice(out.indexOf("[")));
 }
+
+/** `pnpm wrangler <args>`（ローカルの wrangler。web/ で実行。標準出力を文字列で返す）。ベクトル検索のスクリプトも使う。 */
+export function wrangler(args, { quiet = false } = {}) {
+  if (!quiet) console.log(`$ wrangler ${args.join(" ").slice(0, 160)}`);
+  return execFileSync("pnpm", ["wrangler", ...args], { encoding: "utf8", maxBuffer: 256 * 1024 * 1024, cwd: WEB, env: process.env, stdio: ["ignore", "pipe", "inherit"] });
+}
+
+/** `.env.local` 形式（KEY=VALUE）を読んで、環境変数に無いものだけ足したオブジェクトを返す。値は表示・ログしない。 */
+export function loadEnvFile(file = path.join(WEB, ".env.local")) {
+  const env = { ...process.env };
+  if (fs.existsSync(file)) {
+    for (const l of fs.readFileSync(file, "utf8").split("\n")) {
+      const m = /^([A-Z_][A-Z0-9_]*)=(.*)$/.exec(l);
+      if (m && env[m[1]] === undefined) env[m[1]] = m[2].trim().replace(/^["']|["']$/g, "");
+    }
+  }
+  return env;
+}

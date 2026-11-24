@@ -94,6 +94,8 @@
   定義と最新を取る URL（`api_url`＝CKAN の package_show）だけ。更新手順は `docs/PIPELINE.md`「外部ポータルの目録」。
   出典の状態は `registry/source/access.yaml` の `catalog:`（`queryable_via` に `find_datasets`）。
   行政文書の表を抽出済みの出典は `documents: [doc_id,…]`（`queryable_via` に `get_records(document_cells)`。r01 が doc_id と有効セルを原本と突き合わせる。`records`/`catalog`/`reason` と排他）。
+- 広報たつごうの内容検索（ベクトル検索。MCP/AI の `search_documents`、Issue #132）は Workers AI（bge-m3）＋Vectorize。作成・投入・取り下げは `web/scripts/vector/`（既定 dry-run。手順は `DEPLOYMENT.md`、設計と評価は `docs/plans/TATSUGO_KOHO_VECTOR.md`）。
+  設定は `web/src/lib/vector/config.json`。ローカル・CI ではバインディングが無くツールが一覧に出ないだけ（`next dev` は `RYUIKI_REMOTE_BINDINGS=1` のときだけ実リソースに接続）。
 - 収集スクリプトの User-Agent に個人名・個人アドレスを入れない（`scripts/common.py`）。
   経緯は `docs/COLLECTOR_CONTRACT.md` の追記を読むこと。
 - 新しいエリア（東京都・沖縄県・兵庫県など）を足すときは `docs/add_area.md` の手順に従う。

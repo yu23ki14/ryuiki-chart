@@ -22,6 +22,16 @@
     }
   ],
 
+  // 「広報たつごう」のベクトル検索（Issue #132、docs/plans/TATSUGO_KOHO_VECTOR.md §2・§6）。
+  // Workers AI と Vectorize にローカルの模擬は無く、バインディングは実リソースへ接続する（remote: true）。
+  // index_name は src/lib/vector/config.json の index_name と同じにする。インデックスは本番反映のときに
+  // `wrangler vectorize create` で先に作る（無いと deploy が失敗する。手順は DEPLOYMENT.md）。
+  // 画面・API・テストはバインディングが無い／接続できないときも動く（src/lib/vector/bindings.ts が無効扱いにする）。
+  "ai": { "binding": "AI", "remote": true },
+  "vectorize": [
+    { "binding": "VECTORIZE", "index_name": "ryuiki-koho-bgem3-v1", "remote": true }
+  ],
+
   // /api/mcp のレート制限（値は src/lib/features.ts の MCP_RATE_LIMIT と揃える）。
   "ratelimits": [
     {

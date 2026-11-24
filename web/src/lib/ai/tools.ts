@@ -36,6 +36,13 @@ import { regionSchema, REGION_NOTE } from "@/lib/mcp/region-schema";
 import { REGIONS } from "@/lib/region";
 import { DEFAULT_REDLIST_REGION, redlistEditions } from "@/lib/redlist-editions";
 import { byteLength, fitHeadRows } from "@/lib/fit-head-rows";
+import {
+  SEARCH_DOCUMENTS_DESCRIPTION,
+  defaultSearchDeps,
+  runSearchDocuments,
+  searchDocumentsInputSchema,
+  type SearchDeps,
+} from "@/lib/document-search";
 import { FIND_DATASETS_DESCRIPTION, FindDatasetsInputError, findDatasetsInputSchema, queryDatasets } from "@/lib/catalog-search";
 
 /** 測定値系データセット固定（PR-2 のスコープは測定値系。design §1.1 と同じ前提）。registry の dataset キー。 */
@@ -963,6 +970,30 @@ const find_datasets = tool({
   },
 });
 
+/* ------------------------------------------------------------------ */
+/* search_documents（広報たつごうの内容検索。Workers AI・Vectorize があるときだけ一覧に出る） */
+/* ------------------------------------------------------------------ */
+
+export function searchDocumentsAiTool(deps: SearchDeps) {
+  return tool({
+    description: SEARCH_DOCUMENTS_DESCRIPTION,
+    inputSchema: searchDocumentsInputSchema,
+    execute: async (input) => {
+      const t0 = performance.now();
+      const r = await runSearchDocuments(deps, input);
+      if (!r.ok) return makeResult({ tool: "search_documents", tables: [], caveats: [], data: { error: r.error }, rowCount: 0, elapsedMs: performance.now() - t0 });
+      return makeResult({
+        tool: "search_documents",
+        tables: ["document_articles", "periodical_issues", "periodical_series", "documents"],
+        caveats: caveatKeysForFacets(facetsForOccurrence({ places: [], sourceIds: r.outcome.source_ids })),
+        elapsedMs: performance.now() - t0,
+        data: r.data,
+        rowCount: r.data.rows.length,
+      });
+    },
+  });
+}
+
 export const aiTools = {
   list_catalog,
   get_timeseries,
@@ -977,3 +1008,9 @@ export const aiTools = {
   describe_schema,
   run_sql,
 };
+
+/** この環境で使うツール。ベクトル検索が使えるとき（バインディングがあるとき）だけ search_documents を足す。 */
+export async function aiToolsFor() {
+  const deps = await defaultSearchDeps();
+  return deps ? { ...aiTools, search_documents: searchDocumentsAiTool(deps) } : aiTools;
+}

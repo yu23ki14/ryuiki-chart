@@ -10,7 +10,9 @@
  * resources/prompts/sampling。サーバから始まるメッセージが無いので不要。
  */
 import { z } from "zod";
-import { MCP_TOOLS, McpInputError, type McpContext } from "./tools";
+import { MCP_TOOLS, McpInputError, type McpContext, type McpTool } from "./tools";
+import { defaultSearchDeps } from "@/lib/document-search";
+import { searchDocumentsTool } from "./tools-search-documents";
 
 export const MCP_PROTOCOL_VERSION = "2025-06-18";
 const SUPPORTED_VERSIONS = new Set(["2025-06-18", "2025-03-26", "2024-11-05"]);
@@ -36,16 +38,25 @@ const ERR = { parse: -32700, invalidRequest: -32600, methodNotFound: -32601, inv
 const rpcError = (id: Id, code: number, message: string): JsonRpcResponse => ({ jsonrpc: "2.0", id, error: { code, message } });
 
 /** `tools/list` の中身。入力スキーマは zod から JSON Schema に直す（スナップショットで固定）。 */
-export function listTools() {
-  return MCP_TOOLS.map((t) => ({
+export function listTools(tools: readonly McpTool[] = MCP_TOOLS) {
+  return tools.map((t) => ({
     name: t.name,
     description: t.description,
     inputSchema: z.toJSONSchema(t.inputSchema, { io: "input" }),
   }));
 }
 
+/**
+ * この環境で使えるツール。静的な `MCP_TOOLS` に、ベクトル検索（Workers AI・Vectorize のバインディングがあるとき）の
+ * `search_documents` を足す。無ければ足さない（ローカル・CI・未接続。他のツールは変わらない）。
+ */
+export async function toolsFor(ctx: McpContext): Promise<McpTool[]> {
+  const deps = await (ctx.vector ?? defaultSearchDeps)();
+  return deps ? [...MCP_TOOLS, searchDocumentsTool(deps)] : [...MCP_TOOLS];
+}
+
 async function callTool(params: Record<string, unknown> | undefined, ctx: McpContext): Promise<unknown> {
-  const tool = MCP_TOOLS.find((t) => t.name === params?.name);
+  const tool = (await toolsFor(ctx)).find((t) => t.name === params?.name);
   if (!tool) throw new RpcError(ERR.invalidParams, `未知のツール: ${String(params?.name)}`);
   const parsed = tool.inputSchema.safeParse(params?.arguments ?? {});
   if (!parsed.success) {
@@ -105,7 +116,7 @@ export async function handleRpc(msg: unknown, ctx: McpContext): Promise<JsonRpcR
         result = {};
         break;
       case "tools/list":
-        result = { tools: listTools() };
+        result = { tools: listTools(await toolsFor(ctx)) };
         break;
       case "tools/call":
         result = await callTool(m.params, ctx);
