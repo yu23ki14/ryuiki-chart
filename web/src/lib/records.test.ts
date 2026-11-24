@@ -3,16 +3,14 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { applyMigrations, RECORD_SET_INSERT, wrapSqlite } from "@/lib/cube/__fixtures__/cube-fixture";
 import { sourceAccess } from "@/lib/cube/source-meta";
 import { RECORD_SET_TABLES } from "@/lib/registry/generated-source";
+import { issueLabel, periodicalCitation, pdfPageUrl } from "@/lib/periodical";
+import { ARTICLE_TOPIC } from "@/lib/registry/generated-client";
 import { TABLE_ORIGIN } from "@/lib/table-meta";
 import {
   blockingNotes,
   clampLimit,
   countRecordsBy,
   INCLUDE_BODY_MAX_ROWS,
-  issueLabel,
-  PERIODICAL_SOURCE_LICENSE,
-  periodicalCitation,
-  pdfPageUrl,
   docNotes,
   documentsList,
   queryRecords,
@@ -398,9 +396,10 @@ describe("countRecordsBy / range（地図・物語用）", () => {
 describe("定期刊行物（periodical_issues・document_articles）", () => {
   const SRC = "tatsugo_koho_amami";
 
+  const SERIES_LICENSE = "著作権は龍郷町に帰属（テスト用の文言）";
   const BODY1 = "秋名の川で外来種のカダヤシが見つかりました。駆除にご協力ください。";
   function seedPeriodical() {
-    raw.prepare("INSERT INTO periodical_series (series_id, source_id, title, publisher) VALUES ('tatsugo_koho', ?, '広報たつごう', '龍郷町')").run(SRC);
+    raw.prepare("INSERT INTO periodical_series (series_id, source_id, title, publisher, license) VALUES ('tatsugo_koho', ?, '広報たつごう', '龍郷町', ?)").run(SRC, SERIES_LICENSE);
     const iss = raw.prepare("INSERT INTO periodical_issues (issue_id, series_id, source_id, kind, year_month, year_month_to, fiscal_year, label_raw, n_files) VALUES (?,?,?,?,?,?,?,?,?)");
     iss.run("tatsugo_koho_202412", "tatsugo_koho", SRC, "monthly", "2024-12", null, 2024, "広報たつごう 2024年12月号", 2);
     iss.run("tatsugo_koho_201904", "tatsugo_koho", SRC, "monthly", "2019-04", "2019-05", 2019, "広報たつごう 2019年4・5月合併号", 1);
@@ -461,7 +460,7 @@ describe("定期刊行物（periodical_issues・document_articles）", () => {
     for (const row of r.rows) {
       expect(row).not.toHaveProperty("body_text");
       expect(row).not.toHaveProperty("doc_url");
-      expect(row.source_license).toBe(PERIODICAL_SOURCE_LICENSE);
+      expect(row.source_license).toBe(SERIES_LICENSE);
     }
     const [a1, a2, a4] = r.rows;
     expect(a1).toMatchObject({ has_body: 1, body_chars: [...BODY1].length, year_month: "2024-12", fiscal_year: 2024 });
@@ -517,6 +516,16 @@ describe("定期刊行物（periodical_issues・document_articles）", () => {
     expect(r.rows.find((x) => x.article_id === "a2")!.match_snippet).toBe("あ".repeat(40) + "カダヤシ" + "い".repeat(40));
   });
 
+  it("year は年をまたぐ合併号を両方の年で拾う。topic の説明は registry の語彙から作る", async () => {
+    seedPeriodical();
+    raw.prepare("INSERT INTO periodical_issues (issue_id, series_id, source_id, kind, year_month, year_month_to, fiscal_year) VALUES ('x','tatsugo_koho',?,'monthly','2019-12','2020-01',2019)").run(SRC);
+    raw.prepare("INSERT INTO document_articles (article_id, issue_id, doc_id, source_id, kind) VALUES ('ax','x','tatsugo_koho_201904',?,'article')").run(SRC);
+    for (const y of [2019, 2020]) expect(ids(await q({ record_set: "periodical_issues", year: y }), "issue_id")).toContain("x");
+    expect(ids(await q({ record_set: "document_articles", year: 2020 }), "article_id")).toEqual(["ax"]);
+    const desc = recordsInputSchema.shape.topic.unwrap().description ?? "";
+    for (const t of ARTICLE_TOPIC) expect(desc).toContain(t.topicId);
+  });
+
   it("入力の検査: 新しい入力は他の record_set では入力エラー。zod は範囲外・型違いを拒む", async () => {
     await expect(q({ record_set: "document_cells", fiscal_year: 2024 })).rejects.toThrow(RecordsInputError);
     await expect(q({ source_id: "dams_kanagawa", topic: "tourism" })).rejects.toThrow(RecordsInputError);
@@ -531,9 +540,10 @@ describe("定期刊行物（periodical_issues・document_articles）", () => {
     expect(issueLabel({ kind: "monthly", year_month: "2019-12", year_month_to: "2020-01" })).toBe("2019年12月・2020年1月合併号");
     expect(issueLabel({ kind: "supplement", year_month: "2015-02" })).toBe("2015年2月 別冊");
     expect(issueLabel({ kind: "monthly", year_month: null })).toBeNull();
-    expect(periodicalCitation({ kind: "monthly", year_month: "2024-04", page_from: 3, page_to: 3 })).toBe("龍郷町「広報たつごう」2024年4月号 p.3");
+    expect(periodicalCitation({ publisher: "龍郷町", title: "広報たつごう", kind: "monthly", year_month: "2024-04", page_from: 3, page_to: 3 })).toBe("龍郷町「広報たつごう」2024年4月号 p.3");
+    expect(periodicalCitation({ kind: "monthly", year_month: "2024-04", page_from: 3 })).toBeNull(); // 系列の行が無いときは推測で埋めない
     expect(periodicalCitation({ publisher: "X町", title: "広報X", kind: "monthly", year_month: "2024-04", page_from: 3, page_to: 5 })).toBe("X町「広報X」2024年4月号 p.3–5");
-    expect(periodicalCitation({ kind: "monthly", year_month: "bad" })).toBeNull();
+    expect(periodicalCitation({ publisher: "X町", title: "広報X", kind: "monthly", year_month: "bad" })).toBeNull();
     expect(pdfPageUrl("https://a/b.pdf", 7)).toBe("https://a/b.pdf#page=7");
     expect(pdfPageUrl(null, 7)).toBeNull();
   });

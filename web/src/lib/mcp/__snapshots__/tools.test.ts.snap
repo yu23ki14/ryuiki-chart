@@ -564,7 +564,7 @@ exports[`MCP ツール一覧 > 入力スキーマのスナップショット 1`]
           "type": "string",
         },
         "topic": {
-          "description": "話題の topic_id の完全一致（record_set=document_articles だけ。river_water〔河川・水〕・wildlife_alien〔生き物・外来種〕・disaster〔防災・災害〕・conservation_clean〔環境保全・清掃〕・agri_fishery〔農林水産〕・tourism〔観光〕・other〔その他〕。語彙の正は registry/article_topic.yaml）",
+          "description": "話題の topic_id の完全一致（record_set=document_articles だけ。agri_fishery〔農林水産〕・conservation_clean〔環境保全・清掃〕・disaster〔防災・災害〕・other〔その他〕・river_water〔河川・水〕・tourism〔観光〕・wildlife_alien〔生き物・外来種〕。語彙の正は registry/article_topic.yaml）",
           "maxLength": 300,
           "minLength": 1,
           "type": "string",

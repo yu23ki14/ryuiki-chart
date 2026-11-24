@@ -19,7 +19,9 @@ if (!requested.length) { console.error("使い方: reload-tables.mjs <table...> 
 const DIST = path.join(WEB, "dist", "d1");
 const CHUNK = 100_000;
 // 入れる順（先に入れる）。消す順はこの逆。
-const rank = (t) => (t === "documents" ? 0 : t === "notes" ? 2 : 1);
+// 外部キー: notes -> documents、広報誌の表は periodical_series -> periodical_issues -> (documents) -> periodical_issue_files -> document_articles -> topics/places
+const ORDER = ["periodical_series", "periodical_issues", "documents", "periodical_issue_files", "document_articles", "document_article_topics", "document_article_places"];
+const rank = (t) => (ORDER.includes(t) ? ORDER.indexOf(t) : t === "notes" ? ORDER.length + 1 : ORDER.length);
 const insertOrder = [...new Set(requested)].sort((a, b) => rank(a) - rank(b));
 const deleteOrder = [...insertOrder].reverse();
 
