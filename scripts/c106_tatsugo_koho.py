@@ -5,7 +5,10 @@
 
 取得は GET のみ（scripts/common.py の get。UA とレート制限つき）。号はリンク文から決め、ファイル名は使わない
 （ファイル名は時期ごとに付け方が違う）。HTML 解析は標準ライブラリだけ（CI は PyYAML と pytest しか無い）。
-PDF のページ数を数える pymupdf は fetch の中で遅延 import する。
+PDF のページ数を数える pymupdf は fetch・extract の中で遅延 import する。
+
+  extract [--only YYYYMM…]         取得済み PDF を記事に切り、issues/files/pages/articles.jsonl と reconcile.json を
+                                   --raw-dir 直下に書く（--only なら、その号の行だけ入れ替える）
 """
 from __future__ import annotations
 
@@ -17,6 +20,8 @@ import sys
 import unicodedata
 import urllib.parse
 from html.parser import HTMLParser
+
+import tatsugo_segment as seg
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DEFAULT_RAW = ROOT / "data/raw/tatsugo_koho"
@@ -244,6 +249,139 @@ def cmd_fetch(raw: pathlib.Path, only: list[str]) -> None:
     log_path.write_text(json.dumps(log, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
+# ---------------------------------------------------------------- extract
+SOURCE_ID = "tatsugo_koho"
+REGION_ID = "jp-46"
+
+
+def build_issue_tables(cat_rows: list[dict], fetch_log: dict) -> tuple[list[dict], list[dict]]:
+    """catalog の PDF 行 → issues（号）と files（ファイル）。設計書 §2・§3.2・§3.3。"""
+    by_issue: dict[str, list[tuple[int, dict]]] = {}
+    for i, r in enumerate(cat_rows):
+        if not r.get("issue"):
+            continue
+        key = r["issue"] + ("_sp1" if r.get("annex") else "")
+        by_issue.setdefault(key, []).append((i, r))
+    issues, files = [], []
+    for key in sorted(by_issue):
+        rows = sorted(by_issue[key], key=lambda ir: (ir[1].get("part") or 0, ir[0]))
+        first = rows[0][1]
+        ym = f"{first['year']:04d}-{first['month']:02d}"
+        months = first["months"]
+        issue_id = f"tatsugo_koho_{key}"
+        offset, n_pages_total, any_unknown = 0, 0, False
+        for n, (_, r) in enumerate(rows, 1):
+            name = r["url"].rsplit("/", 1)[-1]
+            fl = fetch_log.get(name, {})
+            doc_id = issue_id if len(rows) == 1 else f"{issue_id}_p{n}"
+            files.append({
+                "doc_id": doc_id, "issue_id": issue_id, "part_no": n, "page_offset": offset,
+                "link_text_raw": r["link_text"], "download_url": r["url"], "local_path": f"pdf/{name}",
+                "sha256": fl.get("sha256"), "n_pages": fl.get("pages"), "size_kb_listed": r.get("size_kb"),
+            })
+            if fl.get("pages") is None:
+                any_unknown = True
+            else:
+                offset += fl["pages"]
+                n_pages_total += fl["pages"]
+        heads = [h for _, r in rows for h in r["headlines"]]
+        fy = first["year"] if first["month"] >= 4 else first["year"] - 1
+        issues.append({
+            "issue_id": issue_id, "kind": "supplement" if first.get("annex") else "monthly", "year_month": ym,
+            "year_month_to": f"{first['year']:04d}-{months[1]:02d}" if len(months) > 1 else None,
+            "fiscal_year": fy, "issued_on": first.get("issue_date"), "issued_on_raw": first.get("heading"),
+            "label_raw": first["link_text"], "listing_url": first["source_page"], "headlines": heads or None,
+            "n_files": len(rows), "n_pages": None if any_unknown else n_pages_total,
+            "note": "合併号" if len(months) > 1 else ("別冊" if first.get("annex") else None),
+        })
+    return issues, files
+
+
+def extract_file(pdf_path: pathlib.Path, issue: dict, f: dict) -> tuple[list[dict], list[dict]]:
+    """1 ファイル → (pages 行, articles 行)。pymupdf を使う。"""
+    import pymupdf  # 遅延 import
+    y, m = int(issue["year_month"][:4]), int(issue["year_month"][5:])
+    pages, pages_rows = [], []
+    with pymupdf.open(pdf_path) as d:
+        for i, p in enumerate(d, 1):
+            raw = p.get_text("dict")
+            blocks = seg.blocks_from_pymupdf(raw)
+            area = p.rect.width * p.rect.height
+            img = sum((pymupdf.Rect(im["bbox"]) & p.rect).get_area() for im in p.get_image_info()) / area
+            pages.append({"page": i, "w": p.rect.width, "h": p.rect.height, "blocks": blocks, "image_cover": img})
+            nchars = sum(len(b["text"].strip()) for b in blocks)
+            vch = sum(len(b["text"].strip()) for b in blocks if b["vertical"])
+            pages_rows.append({"doc_id": f["doc_id"], "page": i, "n_chars": nchars, "has_text_layer": nchars >= 20,
+                               "vertical_ratio": round(vch / nchars, 2) if nchars else None,
+                               "image_cover": round(img, 2)})
+        version = pymupdf.__version__
+    base = seg.body_size([p["blocks"] for p in pages])
+    now = _now()
+    arts = []
+    for a in seg.segment_file(pages, base):
+        kind = "cover_toc" if a["page_from"] == 1 and f["part_no"] == 1 else a["kind"]
+        is_cover = kind == "cover_toc"
+        a.update({
+            "doc_id": f["doc_id"], "issue_id": f["issue_id"], "kind": kind,
+            "event_dates": [] if is_cover else seg.extract_dates(a["body_text"], y, m),
+            "topics": [] if is_cover else seg.classify(a["title"], a["body_text"]),
+            "places": [] if is_cover else seg.extract_places(a["title"], a["body_text"]),
+            "extractor": f"pymupdf:{version}+{seg.LAYOUT_VERSION}+{seg.RULE_VERSION}", "verified_by": None,
+            "extracted_at": now,
+        })
+        arts.append(a)
+    return pages_rows, arts
+
+
+def _now() -> str:
+    import datetime
+    return datetime.datetime.now().isoformat(timespec="seconds")
+
+
+def _read_jsonl(p: pathlib.Path) -> list[dict]:
+    return [json.loads(l) for l in p.read_text(encoding="utf-8").splitlines() if l.strip()] if p.exists() else []
+
+
+def _write_jsonl(p: pathlib.Path, rows: list[dict]) -> None:
+    p.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8")
+
+
+def cmd_extract(raw: pathlib.Path, only: list[str]) -> None:
+    cat = json.loads((raw / "catalog.json").read_text(encoding="utf-8"))
+    log = json.loads((raw / "fetch_log.json").read_text(encoding="utf-8")) if (raw / "fetch_log.json").exists() else {}
+    issues, files = build_issue_tables(cat["pdfs"], log)
+    _write_jsonl(raw / "issues.jsonl", issues)
+    _write_jsonl(raw / "files.jsonl", files)
+    iss_by_id = {i["issue_id"]: i for i in issues}
+    todo = [f for f in files if (not only or f["issue_id"].removeprefix("tatsugo_koho_")[:6] in only)
+            and f["sha256"] and (raw / f["local_path"]).exists()]
+    pages_old, arts_old = _read_jsonl(raw / "pages.jsonl"), _read_jsonl(raw / "articles.jsonl")
+    done = {f["doc_id"] for f in todo}
+    pages_all = [r for r in pages_old if r["doc_id"] not in done]
+    arts_all = [r for r in arts_old if r["doc_id"] not in done]
+    for f in todo:
+        pr, ar = extract_file(raw / f["local_path"], iss_by_id[f["issue_id"]], f)
+        for a in ar:
+            a["doc_sha256"] = f["sha256"]
+        pages_all += pr
+        arts_all += ar
+        print(f["doc_id"], f"pages={len(pr)} articles={len(ar)}")
+    _write_jsonl(raw / "pages.jsonl", pages_all)
+    _write_jsonl(raw / "articles.jsonl", arts_all)
+    # 令和 2 年度以降の「主な記事」見出しとの照合（抽出済みの号だけ）
+    rec = {}
+    for i in issues:
+        if not i["headlines"]:
+            continue
+        arts = [a for a in arts_all if a["issue_id"] == i["issue_id"]]
+        if arts:
+            rec[i["issue_id"]] = seg.reconcile_issue(i["headlines"], arts)
+    (raw / "reconcile.json").write_text(json.dumps(rec, ensure_ascii=False, indent=1), encoding="utf-8")
+    for k, v in rec.items():
+        print("reconcile", k, f"headlines={v['headlines']} matched={len(v['matched'])} "
+              f"in_text_only={len(v['in_text_only'])} missed={len(v['missed'])} extra={v['extra_count']}")
+
+
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--raw-dir", type=pathlib.Path, default=DEFAULT_RAW)
@@ -252,10 +390,14 @@ def main(argv=None) -> None:
     f = sub.add_parser("fetch")
     f.add_argument("--sample", action="store_true")
     f.add_argument("--only", nargs="+", default=[], metavar="YYYYMM")
+    e = sub.add_parser("extract")
+    e.add_argument("--only", nargs="+", default=[], metavar="YYYYMM")
     a = ap.parse_args(argv)
     a.raw_dir.mkdir(parents=True, exist_ok=True)
     if a.cmd == "catalog":
         cmd_catalog(a.raw_dir)
+    elif a.cmd == "extract":
+        cmd_extract(a.raw_dir, a.only)
     else:
         only = list(a.only) + (list(SAMPLE) if a.sample else [])
         if not only:
