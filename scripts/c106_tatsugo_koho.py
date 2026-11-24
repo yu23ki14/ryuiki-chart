@@ -114,8 +114,10 @@ class _Page(HTMLParser):
 
     def handle_starttag(self, tag, attrs):
         href = dict(attrs).get("href") or ""
+        if tag in ("h2", "h3", "div"):
+            self._last = None  # 見出し・ブロックの区切り（サイトのフッターの ul を主な記事に取り込まない）
         if tag in ("h2", "h3"):
-            self._buf, self._last = (tag, []), None
+            self._buf = (tag, [])
         elif tag == "a" and href:
             self.hrefs.append(href)
             if href.lower().endswith(".pdf"):
@@ -128,6 +130,8 @@ class _Page(HTMLParser):
             self._buf[1].append(data)
 
     def handle_endtag(self, tag):
+        if tag == "ul" and self._last is not None and self.capture_li:
+            self._last = None  # 主な記事の ul は 1 つだけ（2 つ目以降のリストは別物）
         if self._buf is None or self._buf[0] != tag:
             return
         kind, parts = self._buf
@@ -196,12 +200,15 @@ def summarize(rows: list[dict]) -> dict:
 
 
 # ---------------------------------------------------------------- コマンド
-def cmd_catalog(raw: pathlib.Path) -> None:
-    from common import get  # 遅延 import（requests を要する）
+def cmd_catalog(raw: pathlib.Path, offline: bool = False) -> None:
+    """offline なら取得せず、保存済みの HTML（raw/html）から目録を作り直す。"""
     html_dir = raw / "html"
     html_dir.mkdir(parents=True, exist_ok=True)
 
     def fetch_page(url):
+        if offline:
+            return (html_dir / url.rsplit("/", 1)[-1]).read_text(encoding="utf-8")
+        from common import get  # 遅延 import（requests を要する）
         r = get(url)
         r.encoding = "utf-8"
         (html_dir / url.rsplit("/", 1)[-1]).write_text(r.text, encoding="utf-8")
@@ -375,18 +382,20 @@ def cmd_extract(raw: pathlib.Path, only: list[str]) -> None:
             continue
         arts = [a for a in arts_all if a["issue_id"] == i["issue_id"]]
         if arts:
-            rec[i["issue_id"]] = seg.reconcile_issue(i["headlines"], arts)
+            unread = sum(1 for a in arts if a["unreadable_reason"] in ("scanned_no_ocr", "garbled_font_encoding", "no_text_layer"))
+            rec[i["issue_id"]] = seg.reconcile_issue(i["headlines"], arts, unread)
     (raw / "reconcile.json").write_text(json.dumps(rec, ensure_ascii=False, indent=1), encoding="utf-8")
     for k, v in rec.items():
         print("reconcile", k, f"headlines={v['headlines']} matched={len(v['matched'])} "
-              f"in_text_only={len(v['in_text_only'])} missed={len(v['missed'])} extra={v['extra_count']}")
+              f"in_text_only={len(v['in_text_only'])} paraphrase={len(v['paraphrase'])} "
+              f"missed_unreadable={len(v['missed_unreadable'])} missed={len(v['missed'])} extra={v['extra_count']}")
 
 
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--raw-dir", type=pathlib.Path, default=DEFAULT_RAW)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("catalog")
+    sub.add_parser("catalog").add_argument("--offline", action="store_true", help="保存済みの HTML から作り直す（取得しない）")
     f = sub.add_parser("fetch")
     f.add_argument("--sample", action="store_true")
     f.add_argument("--only", nargs="+", default=[], metavar="YYYYMM")
@@ -395,7 +404,7 @@ def main(argv=None) -> None:
     a = ap.parse_args(argv)
     a.raw_dir.mkdir(parents=True, exist_ok=True)
     if a.cmd == "catalog":
-        cmd_catalog(a.raw_dir)
+        cmd_catalog(a.raw_dir, a.offline)
     elif a.cmd == "extract":
         cmd_extract(a.raw_dir, a.only)
     else:

@@ -119,3 +119,33 @@ def test_build_issue_tables_part_order_offsets_and_ids():
     i = {x["issue_id"]: x for x in issues}
     assert i["tatsugo_koho_201808"]["n_pages"] == 16 and i["tatsugo_koho_201502_sp1"]["kind"] == "supplement"
     assert i["tatsugo_koho_201808"]["fiscal_year"] == 2018
+
+
+def test_heading_only_articles_are_absorbed_into_neighbours():
+    p = page(2, [blk("見出しA", 20, 50, 200, 70, size=16, bold=True), blk("本文A" * 20, 20, 80, 200, 200),
+                 blk("箱の見出し", 20, 400, 200, 420, size=16, bold=True)])  # 本文の無い見出し
+    arts = s.segment_file([p], 11.0)
+    assert len(arts) == 1 and "箱の見出し" in arts[0]["body_text"]
+    p = page(2, [blk("先頭の見出し", 20, 20, 200, 40, size=16, bold=True),
+                 blk("記事B", 260, 100, 440, 120, size=16, bold=True), blk("本文B" * 20, 260, 130, 440, 300)])
+    arts = s.segment_file([p], 11.0)
+    assert [a["title"] for a in arts] == ["記事B"] and arts[0]["body_text"].startswith("先頭の見出し")
+
+
+def test_reconcile_paraphrase_unreadable_and_hyoshi_prefix():
+    arts = [{"kind": "article", "title": "別の記事", "body_text": "本場奄美大島紬購入費等助成制度について"}]
+    r = s.reconcile_issue(["本場奄美大島紬購入費助成制度", "［表紙］存在しない大会の結果ほか", "画像の中の記事"], arts, unreadable_pages=0)
+    assert r["paraphrase"] == ["本場奄美大島紬購入費助成制度"] and len(r["missed"]) == 2
+    r = s.reconcile_issue(["画像の中の記事"], arts, unreadable_pages=3)
+    assert r["missed_unreadable"] == ["画像の中の記事"] and not r["missed"]
+    assert s.clean_headline("［表紙］第66回 大会　ほか") == "第66回 大会"
+
+
+def test_footer_list_after_last_pdf_is_not_headlines():
+    rows = c.parse_page('''<div><h3>11月号（10月28日発行）</h3>
+<p><a href="/a/a.pdf">2026年11月号（PDF：1KB）</a></p><ul><li>記事一</li></ul></div>
+<div><ul><li>このサイトについて</li><li>携帯サイト</li></ul></div>''', "https://e.invalid/koho/koho2026.html")
+    assert rows[0]["headlines"] == ["記事一"]
+    rows = c.parse_page('''<h3>10月号（9月30日発行）</h3><p><a href="/a/b.pdf">2026年10月号（PDF：1KB）</a></p>
+<div><ul><li>このサイトについて</li></ul></div>''', "https://e.invalid/koho/koho2026.html")
+    assert rows[0]["headlines"] == []
