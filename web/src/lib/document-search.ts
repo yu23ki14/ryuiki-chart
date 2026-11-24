@@ -10,8 +10,8 @@
  */
 import { z } from "zod";
 import { decorateArticle, issueLabel } from "@/lib/periodical";
-import { keywordRank, queryTerms, rrf } from "../../scripts/vector/keyword.mjs";
-import { normalizeBody } from "../../scripts/vector/chunk.mjs";
+import { keywordRank, queryTerms, rrf } from "@/lib/vector/keyword.mjs";
+import { normalizeBody } from "@/lib/vector/chunk.mjs";
 import { embedQuery, getVectorBindings, type VectorIndexLike, type AiLike } from "@/lib/vector/bindings";
 
 /** 検索の既定のモード。評価（docs/plans/TATSUGO_KOHO_VECTOR.md §9.5）の結果で決めた。 */
@@ -22,7 +22,8 @@ export const MAX_LIMIT = 10;
 export const TOP_K = 50;
 const SNIPPET_MAX = 300;
 const KEYWORD_TERMS = 6;
-const CHUNK_IDS = 90;
+/** hybrid の語ごとの LIKE の取得行数の上限（読み取り量の上限ではなく、返す行の上限）。 */
+const KEYWORD_LIMIT = 200;
 
 export const searchDocumentsInputSchema = z.object({
   query: z.string().min(1).max(200).describe("探したい内容を日本語の文で（例: 「大雨のときの避難の仕方」）。キーワードの羅列でなく、知りたいことを文で書く"),
@@ -39,6 +40,7 @@ export const SEARCH_DOCUMENTS_DESCRIPTION =
   "「広報たつごう」（龍郷町の広報誌。出典 tatsugo_koho_amami）の記事を、内容の近さで探す（ベクトル検索）。" +
   "「大雨のときの避難」のように知りたいことを文で書くと、見出しや本文に同じ語が無くても関連する記事が出る。" +
   "各行に citation（出典の表記）・pdf_url（元の PDF の該当ページ）・snippet（該当部分の本文）・score（類似度）を付けて返す。" +
+  "score は mode が semantic のとき cosine（0〜1）、hybrid のときは順位融合（RRF）の値（約 0.03 以下。大小は同じ質問の中の順位にだけ使える）で、hybrid の各行の similarity がベクトル側の cosine（キーワードだけで当たった行は null）。" +
   "回答では citation を出典として示し、pdf_url を添える。snippet は PDF から機械が読み取った文字で、段組みの読み取りに失敗して文が崩れている記事がある" +
   "（崩れた本文から事実を断定しない。pdf_url で原文を確かめるよう案内する）。見出しや語の完全一致で引くときは get_records（record_set=document_articles の q）を使う。" +
   "意味で探すので、該当する記事が無くても近い記事を返す。score（cosine）は該当の有無を分けない（評価では、記事に無い話題の質問の最上位が該当ありの質問の平均より高かった）。" +
@@ -49,6 +51,12 @@ export interface SearchDeps {
   index: VectorIndexLike;
   /** D1 の SELECT。 */
   all: (sql: string, params: readonly unknown[]) => Promise<Record<string, unknown>[]>;
+  /** `IN (...)` の問い合わせ用（db.ts の queryChunked と同じ形。D1 のバインドパラメータ 100 個の上限を超えない）。 */
+  chunked: (
+    values: readonly unknown[],
+    make: (chunk: readonly unknown[]) => { sql: string; params: readonly unknown[] },
+    chunkSize?: number,
+  ) => Promise<Record<string, unknown>[]>;
 }
 
 export class VectorUnavailableError extends Error {}
@@ -145,39 +153,44 @@ const likeEscape = (t: string) => t.replace(/[\\%_]/g, (c) => `\\${c}`);
 async function keywordCandidates(deps: SearchDeps, input: SearchDocumentsInput): Promise<{ terms: string[]; rank: { article_id: string; score: number }[] }> {
   const terms = queryTerms(input.query, KEYWORD_TERMS);
   const { where, params } = filterSql(input);
+  const from = `${ARTICLE_JOIN} WHERE ${where.join(" AND ")}`;
+  // 総数（IDF の分母）と各語の当たりを並列に引く
+  const [total, ...perTerm] = await Promise.all([
+    deps.all(`SELECT COUNT(*) AS n ${from}`, params),
+    ...terms.map((t) => {
+      const like = `%${likeEscape(t)}%`;
+      return deps.all(`SELECT a.article_id AS article_id ${from} AND (a.title LIKE ? ESCAPE '\\' OR a.body_text LIKE ? ESCAPE '\\') LIMIT ${KEYWORD_LIMIT}`, [...params, like, like]);
+    }),
+  ]);
+  const N = Math.max(1, Number(total[0]?.n ?? 1));
   const hits = new Map<string, Set<string>>();
   const df = new Map<string, number>();
-  for (const t of terms) {
-    const like = `%${likeEscape(t)}%`;
-    const rows = await deps.all(
-      `SELECT a.article_id AS article_id ${ARTICLE_JOIN} WHERE ${where.join(" AND ")} AND (a.title LIKE ? ESCAPE '\\' OR a.body_text LIKE ? ESCAPE '\\')`,
-      [...params, like, like],
-    );
-    const ids = new Set(rows.map((r) => String(r.article_id)));
+  terms.forEach((t, i) => {
+    const ids = new Set(perTerm[i].map((r) => String(r.article_id)));
     hits.set(t, ids);
     df.set(t, ids.size);
-  }
-  return { terms, rank: keywordRank(terms, hits, df, 5000).slice(0, TOP_K) };
+  });
+  return { terms, rank: keywordRank(terms, hits, df, N).slice(0, TOP_K) };
 }
 
 async function fetchArticles(deps: SearchDeps, ids: string[], input: SearchDocumentsInput): Promise<Map<string, ArticleRow>> {
   const { where, params } = filterSql(input);
-  const out = new Map<string, ArticleRow>();
-  for (let i = 0; i < ids.length; i += CHUNK_IDS - params.length - 1) {
-    const part = ids.slice(i, i + CHUNK_IDS - params.length - 1);
-    const rows = await deps.all(
-      `SELECT ${ARTICLE_COLS} ${ARTICLE_JOIN} WHERE ${where.join(" AND ")} AND a.article_id IN (${part.map(() => "?").join(",")})`,
-      [...params, ...part],
-    );
-    for (const r of rows) out.set(String(r.article_id), r as unknown as ArticleRow);
-  }
-  return out;
+  const rows = await deps.chunked(
+    ids,
+    (chunk) => ({
+      sql: `SELECT ${ARTICLE_COLS} ${ARTICLE_JOIN} WHERE ${where.join(" AND ")} AND a.article_id IN (${chunk.map(() => "?").join(",")})`,
+      params: [...params, ...chunk],
+    }),
+    Math.max(1, 90 - params.length),
+  );
+  return new Map(rows.map((r) => [String(r.article_id), r as unknown as ArticleRow]));
 }
 
 function snippetFor(row: ArticleRow, chunk: { c0: number; c1: number; bodySha: string | null } | null, terms: string[]): { snippet: string; stale: boolean } {
   const body = normalizeBody(row.body_text);
   if (!body) return { snippet: "", stale: false };
-  if (chunk && chunk.bodySha !== null && chunk.bodySha === row.body_sha256) {
+  // 索引の body_sha と D1 の body_sha256 が両方あって違うときだけ stale（どちらかが無ければ文字位置を信じる。m13 は本文があれば必ず body_sha256 を付ける）
+  if (chunk && (chunk.bodySha === null || row.body_sha256 === null || chunk.bodySha === row.body_sha256)) {
     return { snippet: body.slice(chunk.c0, chunk.c1).slice(0, SNIPPET_MAX), stale: false };
   }
   if (chunk) return { snippet: body.slice(0, SNIPPET_MAX), stale: true }; // 入れた後に本文が変わった。文字位置は信用しない
@@ -275,14 +288,36 @@ export async function searchDocuments(deps: SearchDeps, rawInput: SearchDocument
   return { mode, rows: out, notes, source_ids: [...new Set(out.map((r) => r.source_id))] };
 }
 
-/** 本番の依存（バインディングと D1）。使えなければ null。 */
+/** ベクトル検索が使えないとき（または一時的に接続できないとき）の文言。MCP・AI 共通。 */
+export const VECTOR_UNAVAILABLE_MESSAGE = "ベクトル検索に一時的に接続できない。get_records（record_set=document_articles の q）で探す";
+
+/** 検索して、MCP・AI が返す data を作る。接続できないときは error（例外にしない）。 */
+export async function runSearchDocuments(
+  deps: SearchDeps,
+  input: SearchDocumentsInput,
+): Promise<{ ok: true; outcome: SearchOutcome; data: { mode: SearchOutcome["mode"]; rows: SearchHit[]; notes?: string[] } } | { ok: false; error: string }> {
+  try {
+    const outcome = await searchDocuments(deps, input);
+    return { ok: true, outcome, data: { mode: outcome.mode, rows: outcome.rows, ...(outcome.notes.length ? { notes: outcome.notes } : {}) } };
+  } catch (e) {
+    if (e instanceof VectorUnavailableError) return { ok: false, error: VECTOR_UNAVAILABLE_MESSAGE };
+    throw e;
+  }
+}
+
+/** 本番の依存（バインディングと D1）。使えない・取得に失敗したら null（呼び出し側で握らない）。 */
 export async function defaultSearchDeps(): Promise<SearchDeps | null> {
-  const b = await getVectorBindings();
-  if (!b) return null;
-  const { query } = await import("@/lib/db");
-  return {
-    embed: (text) => embedQuery(b.ai as AiLike, text),
-    index: b.index,
-    all: (sql, params) => query<Record<string, unknown>>(sql, params),
-  };
+  try {
+    const b = await getVectorBindings();
+    if (!b) return null;
+    const { query, queryChunked } = await import("@/lib/db");
+    return {
+      embed: (text) => embedQuery(b.ai as AiLike, text),
+      index: b.index,
+      all: (sql, params) => query<Record<string, unknown>>(sql, params),
+      chunked: (values, make, size) => queryChunked<Record<string, unknown>>(values, make, size),
+    };
+  } catch {
+    return null;
+  }
 }

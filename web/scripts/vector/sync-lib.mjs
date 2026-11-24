@@ -38,7 +38,10 @@ export function idsToWithdraw(manifest, { articleIds = [], docPrefixes = [] }) {
   return out;
 }
 
-/** 取り下げの結果を状態へ反映する（マニフェスト・キャッシュ・偽インデックスのどこにも残さない単体テスト用の関数）。 */
+/**
+ * 取り下げの結果を状態へ反映する（マニフェストから消す）。返り値は**キャッシュからも消してよい** chunk_sha:
+ * 他の記事（残るマニフェストの行）が同じ chunk_sha を使っているものは含めない（同じ文面の記事は鍵が同じ）。
+ */
 export function applyWithdraw(manifest, ids) {
   const shas = new Set();
   for (const id of ids) {
@@ -46,6 +49,7 @@ export function applyWithdraw(manifest, ids) {
     if (e) shas.add(e.chunk_sha);
     manifest.delete(id);
   }
+  for (const e of manifest.values()) shas.delete(e.chunk_sha);
   return shas;
 }
 

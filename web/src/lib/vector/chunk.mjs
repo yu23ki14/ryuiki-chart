@@ -37,7 +37,7 @@ function sentenceSpans(s) {
     }
     if (b > a) spans.push([a, b]);
   };
-  const re = /[。！？]+ ?/g;
+  const re = /[。!?]+ ?/g;
   let m;
   while ((m = re.exec(s))) {
     push(start, m.index + m[0].length);
@@ -93,15 +93,22 @@ export function vectorId(articleId, seq) {
   return `${sha256(articleId).slice(0, 24)}:${String(seq).padStart(3, "0")}`;
 }
 
-export function chunkShaOf(model, chunkerVersion, text) {
-  return sha256(`${model}\n${chunkerVersion}\n${text}`);
+/** キャッシュ鍵の版。埋め込みを全部作り直したいとき（モデルの扱いを変えたとき）だけ上げる。 */
+const CACHE_KEY_VERSION = 1;
+
+/**
+ * チャンクの鍵（キャッシュ・マニフェストの差分）。埋め込みは「モデル + 埋め込む文字列」だけで決まるので、
+ * chunker_version は入れない（規則を変えても、文字列が同じチャンクは再埋め込み・再投入しない）。
+ */
+export function chunkShaOf(model, text) {
+  return sha256(`${model}\n${CACHE_KEY_VERSION}\n${text}`);
 }
 
 /**
  * 記事（document_articles の行 + year）→ 埋め込み対象のチャンク列。
  * 表紙・目次（cover_toc）と 30 字未満は対象外。
  */
-export function chunksForArticle(a, { model, chunkerVersion }) {
+export function chunksForArticle(a, { model }) {
   if (a.kind === "cover_toc") return [];
   return chunkBody(a.body_text).map((c) => {
     const text = embedText(a, c);
@@ -112,7 +119,7 @@ export function chunksForArticle(a, { model, chunkerVersion }) {
       c0: c.c0,
       c1: c.c1,
       text,
-      chunk_sha: chunkShaOf(model, chunkerVersion, text),
+      chunk_sha: chunkShaOf(model, text),
       body_sha: a.body_sha256 ?? null,
       metadata: { region_id: a.region_id, source_id: a.source_id, year: a.year ?? null, kind: a.kind },
     };

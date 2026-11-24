@@ -12,8 +12,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
-import { CONFIG, REPO, VECTOR_DIR, WEB, allChunks, getVec, modelConfig, openCache, parseArgs, readArticles } from "./lib.mjs";
+import { CONFIG, REPO, VECTOR_DIR, allChunks, loadVectors, modelConfig, openCache, parseArgs, readArticles, wrangler } from "./lib.mjs";
 import { applyWithdraw, desiredState, diffState, idsToWithdraw, toNdjson, vectorRow } from "./sync-lib.mjs";
 
 const args = parseArgs(process.argv.slice(2));
@@ -23,11 +22,6 @@ const dir = path.join(VECTOR_DIR, index);
 const manifestPath = path.join(dir, "manifest.jsonl");
 const UPSERT_BATCH = 1000;
 const DELETE_BATCH = 100;
-
-const wrangler = (...a) => {
-  console.log(`$ wrangler ${a.join(" ").slice(0, 160)}`);
-  return execFileSync("pnpm", ["wrangler", ...a], { cwd: WEB, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
-};
 
 function loadManifest() {
   const m = new Map();
@@ -47,7 +41,7 @@ if (args.init) {
   const props = [["region_id", "string"], ["source_id", "string"], ["year", "number"], ["kind", "string"]];
   for (const [p, t] of props) {
     note(`メタデータインデックス ${index}: ${p} (${t})`);
-    if (execute) wrangler("vectorize", "create-metadata-index", index, "--propertyName", p, "--type", t);
+    if (execute) wrangler(["vectorize", "create-metadata-index", index, "--propertyName", p, "--type", t]);
   }
   note(`インデックスの作成は本番反映のときに人が行う: wrangler vectorize create ${index} --dimensions=${CONFIG.dimensions} --metric=${CONFIG.metric}`);
   process.exit(0);
@@ -63,12 +57,12 @@ if (args.withdraw) {
   const ids = idsToWithdraw(manifest, { articleIds, docPrefixes });
   note(`取り下げ: ${ids.length} ベクトル（マニフェストの ${manifest.size} 件中）`);
   if (execute && ids.length) {
-    for (let i = 0; i < ids.length; i += DELETE_BATCH) wrangler("vectorize", "delete-vectors", index, "--ids", ...ids.slice(i, i + DELETE_BATCH));
+    for (let i = 0; i < ids.length; i += DELETE_BATCH) wrangler(["vectorize", "delete-vectors", index, "--ids", ...ids.slice(i, i + DELETE_BATCH)]);
     const shas = applyWithdraw(manifest, ids);
     saveManifest(manifest);
     const del = cache.prepare("DELETE FROM embedding WHERE chunk_sha = ?");
     cache.transaction(() => { for (const s of shas) del.run(s); })();
-    note(`マニフェストとキャッシュから ${ids.length} 件を消した。status.mjs --remote で件数を確かめる`);
+    note(`マニフェストから ${ids.length} 件、キャッシュから他の記事が使っていない ${shas.size} 件を消した。status.mjs --remote で件数を確かめる`);
   }
   process.exit(0);
 }
@@ -79,7 +73,8 @@ modelConfig(model);
 const chunks = allChunks(readArticles(cells), model);
 const byId = new Map(chunks.map((c) => [c.id, c]));
 const d = diffState(desiredState(chunks), manifest);
-const missing = d.upsert.filter((id) => !getVec(cache, model, byId.get(id).chunk_sha));
+const vectors = loadVectors(cache, model);
+const missing = d.upsert.filter((id) => !vectors.has(byId.get(id).chunk_sha));
 if (missing.length) throw new Error(`埋め込みが無いチャンクが ${missing.length} 件。先に embed.mjs を実行する`);
 note(`index=${index} 望ましい ${byId.size}・マニフェスト ${manifest.size} → upsert ${d.upsert.length}・delete ${d.delete.length}・変わらない ${d.unchanged}`);
 note(`変わる記事 ${d.changedArticles.length} 件${d.changedArticles.length <= 20 ? ": " + d.changedArticles.join(", ") : "（先頭 20）: " + d.changedArticles.slice(0, 20).join(", ")}`);
@@ -89,14 +84,14 @@ fs.mkdirSync(dir, { recursive: true });
 for (let i = 0, n = 1; i < d.upsert.length; i += UPSERT_BATCH, n++) {
   const part = d.upsert.slice(i, i + UPSERT_BATCH);
   const file = path.join(dir, `upsert-${String(n).padStart(3, "0")}.ndjson`);
-  fs.writeFileSync(file, toNdjson(part.map((id) => vectorRow(byId.get(id), getVec(cache, model, byId.get(id).chunk_sha), model))));
-  wrangler("vectorize", "upsert", index, "--file", file);
+  fs.writeFileSync(file, toNdjson(part.map((id) => vectorRow(byId.get(id), vectors.get(byId.get(id).chunk_sha), model))));
+  wrangler(["vectorize", "upsert", index, "--file", file]);
   for (const id of part) manifest.set(id, { id, article_id: byId.get(id).article_id, chunk_sha: byId.get(id).chunk_sha });
   saveManifest(manifest);
 }
 for (let i = 0; i < d.delete.length; i += DELETE_BATCH) {
   const part = d.delete.slice(i, i + DELETE_BATCH);
-  wrangler("vectorize", "delete-vectors", index, "--ids", ...part);
+  wrangler(["vectorize", "delete-vectors", index, "--ids", ...part]);
   for (const id of part) manifest.delete(id);
   saveManifest(manifest);
 }

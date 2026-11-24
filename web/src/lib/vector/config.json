@@ -4,7 +4,7 @@
   "dimensions": 1024,
   "metric": "cosine",
   "index_name": "ryuiki-koho-bgem3-v1",
-  "chunker_version": 1,
+  "chunker_version": 2,
   "query_prefix": "",
   "candidates": {
     "@cf/baai/bge-m3": { "dimensions": 1024, "query_prefix": "", "short": "bgem3" },

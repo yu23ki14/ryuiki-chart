@@ -5,8 +5,19 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
-import { CONFIG, REPO, VECTOR_DIR, WEB, allChunks, openCache, parseArgs, readArticles } from "./lib.mjs";
+import { CONFIG, REPO, VECTOR_DIR, allChunks, openCache, parseArgs, readArticles, wrangler } from "./lib.mjs";
+
+/** wrangler の出力（警告やバナーが前後に付くことがある）から最初の JSON オブジェクトを取り出す。 */
+export function extractJson(out) {
+  try {
+    return JSON.parse(out);
+  } catch {
+    const a = out.indexOf("{");
+    const b = out.lastIndexOf("}");
+    if (a < 0 || b <= a) throw new Error(`wrangler の出力に JSON が無い: ${out.slice(0, 200)}`);
+    return JSON.parse(out.slice(a, b + 1));
+  }
+}
 
 const args = parseArgs(process.argv.slice(2));
 const cells = args.cells || path.join(REPO, "data/db/cells.sqlite");
@@ -20,9 +31,9 @@ console.log(`index=${index} model=${CONFIG.model} チャンク ${chunks.length}�
 if (args.remote) {
   const deadline = Date.now() + Number(args.wait || 0) * 1000;
   for (;;) {
-    const out = execFileSync("pnpm", ["wrangler", "vectorize", "info", index, "--json"], { cwd: WEB, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
-    const info = JSON.parse(out.slice(out.indexOf("{")));
+    const info = extractJson(wrangler(["vectorize", "info", index, "--json"]));
     const n = info.vectorCount ?? info.vectorsCount ?? info.vector_count;
+    if (typeof n !== "number") throw new Error(`info に件数が無い（項目名が違う？）: ${Object.keys(info).join(",")}`);
     console.log(`Vectorize: ${JSON.stringify(info)}`);
     if (n === manifestN) break;
     if (Date.now() > deadline) {

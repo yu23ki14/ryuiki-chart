@@ -51,13 +51,8 @@ export function listTools(tools: readonly McpTool[] = MCP_TOOLS) {
  * `search_documents` を足す。無ければ足さない（ローカル・CI・未接続。他のツールは変わらない）。
  */
 export async function toolsFor(ctx: McpContext): Promise<McpTool[]> {
-  let deps = null;
-  try {
-    deps = await (ctx.vector ?? defaultSearchDeps)();
-  } catch {
-    deps = null;
-  }
-  return deps ? [...MCP_TOOLS, searchDocumentsTool()] : [...MCP_TOOLS];
+  const deps = await (ctx.vector ?? defaultSearchDeps)();
+  return deps ? [...MCP_TOOLS, searchDocumentsTool(deps)] : [...MCP_TOOLS];
 }
 
 async function callTool(params: Record<string, unknown> | undefined, ctx: McpContext): Promise<unknown> {

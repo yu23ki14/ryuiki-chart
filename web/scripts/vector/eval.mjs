@@ -7,9 +7,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
-import { CONFIG, REPO, WEB, allChunks, ensureEmbeddings, fromBlob, modelConfig, openCache, parseArgs, readArticles } from "./lib.mjs";
-import { sha256 } from "./chunk.mjs";
-import { keywordRank, queryTerms, rrf } from "./keyword.mjs";
+import { CONFIG, REPO, WEB, allChunks, ensureEmbeddings, loadVectors, modelConfig, openCache, parseArgs, readArticles } from "./lib.mjs";
+import { sha256 } from "../../src/lib/vector/chunk.mjs";
+import { keywordRank, queryTerms, rrf } from "../../src/lib/vector/keyword.mjs";
 
 const require = createRequire(path.join(WEB, "package.json"));
 const yaml = require("js-yaml");
@@ -60,17 +60,18 @@ const results = [];
 for (const model of models) {
   const mc = modelConfig(model);
   const chunks = allChunks(articles, model);
-  const getVec = cache.prepare("SELECT vec FROM embedding WHERE model = ? AND chunk_sha = ?");
+  const all = loadVectors(cache, model);
   const vecs = chunks.map((c) => {
-    const r = getVec.get(model, c.chunk_sha);
-    if (!r) throw new Error(`キャッシュに無い: ${model} ${c.article_id}。先に embed.mjs --model ${model}`);
-    return fromBlob(r.vec);
+    const v = all.get(c.chunk_sha);
+    if (!v) throw new Error(`キャッシュに無い: ${model} ${c.article_id}。先に embed.mjs --model ${model}`);
+    return v;
   });
   await ensureEmbeddings(cache, questions.map((q) => ({ key: qKey(model, q.q), text: mc.query_prefix + q.q })), model, {});
+  const qvecs = loadVectors(cache, model);
   const norm = (v) => Math.sqrt(v.reduce((s, x) => s + x * x, 0));
   const cn = vecs.map(norm);
   for (const qu of questions) {
-    const qv = fromBlob(getVec.get(model, qKey(model, qu.q)).vec);
+    const qv = qvecs.get(qKey(model, qu.q));
     const qn = norm(qv);
     const best = new Map();
     for (let i = 0; i < chunks.length; i++) {
@@ -118,8 +119,8 @@ function mc(m) {
 for (const model of models) {
   const neg = results.filter((r) => r.model === model && r.mode === "semantic" && r.qu.type === "否定");
   const pos = results.filter((r) => r.model === model && r.mode === "semantic" && r.qu.type !== "否定");
-  const avg = pos.reduce((a, r) => a + r.ranked[0].score, 0) / pos.length;
-  console.log(`否定 ${mc(model)}: 最上位の cosine ${neg.map((r) => r.ranked[0].score.toFixed(3)).join(",")}（正解のある質問の最上位の平均 ${avg.toFixed(3)}）`);
+  const avg = pos.reduce((a, r) => a + (r.ranked[0]?.score ?? 0), 0) / pos.length;
+  console.log(`否定 ${mc(model)}: 最上位の cosine ${neg.map((r) => (r.ranked[0]?.score ?? 0).toFixed(3)).join(",")}（正解のある質問の最上位の平均 ${avg.toFixed(3)}）`);
 }
 if (args.detail) {
   for (const r of results.filter((x) => x.qu.type !== "否定" && !x.hit)) {

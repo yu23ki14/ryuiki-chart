@@ -2,9 +2,9 @@
  * チャンク規則・ID・同期の差分・取り下げの単体テスト（設計 §8 の 9・10）。
  */
 import { describe, expect, it } from "vitest";
-import { MIN_CHARS, chunkBody, chunksForArticle, normalizeBody, vectorId } from "./chunk.mjs";
+import { MIN_CHARS, chunkBody, chunksForArticle, normalizeBody, vectorId } from "../../src/lib/vector/chunk.mjs";
 import { applyWithdraw, desiredState, diffState, idsToWithdraw, vectorRow } from "./sync-lib.mjs";
-import { keywordRank, queryTerms, rrf } from "./keyword.mjs";
+import { keywordRank, queryTerms, rrf } from "../../src/lib/vector/keyword.mjs";
 
 const sentence = (i: number) => `これは${i}番目の文で、避難所の開設や防災の備えについて説明しています。`;
 const longBody = (n: number) => Array.from({ length: n }, (_, i) => sentence(i)).join("");
@@ -59,6 +59,12 @@ describe("chunkBody", () => {
     expect(c.at(-1)!.c1).toBe(b.length);
     expect(c.map((x) => x.seq)).toEqual(c.map((_, i) => i));
   });
+  it("NFKC 後の ! ? も文末として区切る（全角の！？は ASCII になる）", () => {
+    const b = Array.from({ length: 60 }, (_, i) => `避難してください${i}！本当ですか？`).join("");
+    const c = chunkBody(b);
+    expect(c.length).toBeGreaterThan(1);
+    for (const x of c.slice(0, -1)) expect(/[!?]$/.test(x.text)).toBe(true);
+  });
   it("句点のない長い文でも止まらず、1,000 字以内に割る", () => {
     const c = chunkBody("あ".repeat(2500));
     expect(c.length).toBeGreaterThanOrEqual(3);
@@ -70,13 +76,14 @@ describe("chunksForArticle", () => {
   it("表紙・目次（cover_toc）は対象外", () => {
     expect(chunksForArticle(art({ kind: "cover_toc" }), opts)).toEqual([]);
   });
-  it("埋め込む文字列は 見出し + 本文。本文・モデル・規則の版が変わると chunk_sha が変わる", () => {
+  it("埋め込む文字列は 見出し + 本文。本文・モデルが変わると chunk_sha が変わる", () => {
     const [a] = chunksForArticle(art(), opts);
     expect(a.text.startsWith("見出し\n")).toBe(true);
     const [b] = chunksForArticle(art({ body_text: longBody(6) }), opts);
     expect(b.chunk_sha).not.toBe(a.chunk_sha);
     expect(chunksForArticle(art(), { model: "m2", chunkerVersion: 1 })[0].chunk_sha).not.toBe(a.chunk_sha);
-    expect(chunksForArticle(art(), { model: "m", chunkerVersion: 2 })[0].chunk_sha).not.toBe(a.chunk_sha);
+    // 規則の版だけが違っても、埋め込む文字列が同じなら鍵は同じ（再埋め込みしない）
+    expect(chunksForArticle(art(), { model: "m", chunkerVersion: 2 })[0].chunk_sha).toBe(a.chunk_sha);
   });
   it("ベクトル ID は 64 バイト以下で、同じ入力なら同じ", () => {
     const long = `tatsugo_koho_201408_part2:${"9".repeat(80)}`;
@@ -119,6 +126,18 @@ describe("取り下げ", () => {
     const shas = applyWithdraw(m, [...byDoc, ...one]);
     expect(m.size).toBe(0);
     expect(shas.size).toBeGreaterThan(0);
+  });
+  it("他の記事が同じ chunk_sha を使っていれば、キャッシュから消す対象にしない", () => {
+    const same = { body_text: "同じ文面の記事です。".repeat(5), title: null };
+    const m = new Map<string, { id: string; article_id: string; chunk_sha: string }>();
+    for (const a of [art({ article_id: "d1:001:aaaaaaaa", ...same }), art({ article_id: "d2:001:bbbbbbbb", ...same })]) {
+      for (const [k, v] of desiredState(chunksForArticle(a, opts))) m.set(k, v);
+    }
+    expect(m.size).toBe(2);
+    const ids = idsToWithdraw(m, { articleIds: ["d1:001:aaaaaaaa"] });
+    expect(applyWithdraw(m, ids).size).toBe(0); // d2 がまだ使う
+    const ids2 = idsToWithdraw(m, { articleIds: ["d2:001:bbbbbbbb"] });
+    expect(applyWithdraw(m, ids2).size).toBe(1);
   });
   it("接頭辞は doc_id の途中で当たらない（d1 が d10 を巻き込まない）", () => {
     const m = new Map([["i", { id: "i", article_id: "d10:001:x", chunk_sha: "s" }]]);

@@ -130,7 +130,7 @@ Python でなく Node にする。理由: 既存の `web/scripts/d1/`・`seed-d1
 
 | ファイル | 役割 |
 |---|---|
-| `chunk.mjs` | §4 の正規化とチャンク分割（純関数。web からも import できるよう依存なし） |
+| `web/src/lib/vector/chunk.mjs`・`keyword.mjs` | §4 の正規化とチャンク分割、キーワード側の語の取り出しと RRF（純関数。web とスクリプトが同じファイルを import する。スクリプトが src を import する向き） |
 | `embed.mjs` | 原本の `document_articles` を読み取り専用で開き、チャンクを作り、キャッシュに無いものだけ Workers AI で埋め込む |
 | `sync.mjs` | 望ましい状態（キャッシュのチャンク）とマニフェスト（前回入れた状態）の差を計算し、upsert と delete を出す |
 | `eval.mjs` | §9 の評価を回す |
@@ -277,7 +277,7 @@ CI は原本もバインディングも無い clone で走る（sample-gate・we
 
 実装: `web/scripts/vector/eval.mjs`（キャッシュ済みのベクトルへの全探索 cosine。Vectorize・Cloudflare への書き込みなし）。
 質問集 `scripts/data/tatsugo_koho_eval.yaml` は 26 問（正解あり 25 問＋記事に無い話題の否定 1 問）。**正解付けはモデル（Sonnet）で、人の確認はまだ**（本文が段組みで崩れた記事が多く、取りこぼしがありうる）。
-入力は本物の cells.sqlite の記事 5,307 件（再抽出後）→ 対象 3,905 件・チャンク 5,127（埋め込み 5,107 種。再抽出前の 5,296 件でも表は同じ）。次元は両モデルとも 1024（V2 確認）。
+入力は本物の cells.sqlite の記事 5,307 件（再抽出後）→ 対象 3,905 件・チャンク 5,119（埋め込み 5,099 種。再抽出前の 5,296 件でも表は同じ）。次元は両モデルとも 1024（V2 確認）。
 経路は AI Gateway の `/compat/embeddings`（新しいトークンなし）。bge-m3 の全件埋め込み 69 秒、qwen3-embedding-0.6b は 521 秒（レート制限の再試行を含む）。
 キーワード側は質問を `Intl.Segmenter` で語に分け（ひらがなだけの語は捨てる・最大 6 語）、D1 の LIKE に当たる語の IDF 合計で順位づけし、RRF（k=60）で混ぜた。
 

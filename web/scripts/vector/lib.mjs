@@ -5,38 +5,27 @@
  * - 埋め込み: AI Gateway の OpenAI 互換 /compat/embeddings（新しい API トークンは作らない。web/.env.local の AI_GATEWAY_*）
  * - キャッシュ: data/vector/cache.sqlite（gitignore 済み。再作成できる生成物）
  */
-import { createRequire } from "node:module";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { chunksForArticle } from "./chunk.mjs";
+import { parseArgs as nodeParseArgs } from "node:util";
+import { Database, WEB, loadEnvFile } from "../d1/common.mjs";
+import { chunksForArticle } from "../../src/lib/vector/chunk.mjs";
 
-export const WEB = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+export { WEB, wrangler } from "../d1/common.mjs";
+export { Database };
 export const REPO = path.resolve(WEB, "..");
-const require = createRequire(path.join(WEB, "package.json"));
-export const Database = require("better-sqlite3");
 
 export const CONFIG = JSON.parse(fs.readFileSync(path.join(WEB, "src/lib/vector/config.json"), "utf8"));
 /** 作業ディレクトリ。worktree から本体のキャッシュを使うときは RYUIKI_VECTOR_DIR で上書き。 */
 export const VECTOR_DIR = process.env.RYUIKI_VECTOR_DIR || path.join(REPO, "data", "vector");
 
-/** `--key value` / `--flag` の素朴な解析。 */
-export function parseArgs(argv) {
-  const o = { _: [] };
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
-    if (a.startsWith("--")) {
-      const k = a.slice(2);
-      const next = argv[i + 1];
-      if (next === undefined || next.startsWith("--")) o[k] = true;
-      else {
-        o[k] = next;
-        i++;
-      }
-    } else o._.push(a);
-  }
-  return o;
-}
+const OPTIONS = {
+  cells: { type: "string" }, model: { type: "string" }, models: { type: "string" }, limit: { type: "string" }, questions: { type: "string" },
+  wait: { type: "string" }, "doc-prefix": { type: "string" }, "article-ids-file": { type: "string" },
+  execute: { type: "boolean" }, init: { type: "boolean" }, withdraw: { type: "boolean" }, remote: { type: "boolean" },
+  detail: { type: "boolean" }, "dry-run": { type: "boolean" },
+};
+export const parseArgs = (argv) => nodeParseArgs({ args: argv, options: OPTIONS, strict: true }).values;
 
 /** モデルごとの設定（config.json の candidates。無ければ最上位の値）。 */
 export function modelConfig(model = CONFIG.model) {
@@ -46,17 +35,7 @@ export function modelConfig(model = CONFIG.model) {
   throw new Error(`未知のモデル: ${model}`);
 }
 
-export function loadEnv() {
-  const p = path.join(WEB, ".env.local");
-  const env = { ...process.env };
-  if (fs.existsSync(p)) {
-    for (const l of fs.readFileSync(p, "utf8").split("\n")) {
-      const m = /^([A-Z_][A-Z0-9_]*)=(.*)$/.exec(l);
-      if (m && env[m[1]] === undefined) env[m[1]] = m[2].trim().replace(/^["']|["']$/g, "");
-    }
-  }
-  return env;
-}
+export const loadEnv = () => loadEnvFile();
 
 export function openCache(file = path.join(VECTOR_DIR, "cache.sqlite")) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -94,7 +73,11 @@ export function allChunks(articles, model = CONFIG.model) {
   return out;
 }
 
-/** AI Gateway 経由の埋め込み。失敗は半分にして再試行する。 */
+/** 入力が大きすぎる・件数が合わないときだけ二分割して再試行する（認証・形式の誤りは分けても直らないので即 throw）。 */
+class SplitBatch extends Error {}
+const TOO_BIG = /token|too (long|large|big)|exceed|length|limit/i;
+
+/** AI Gateway 経由の埋め込み。429/5xx は待って再試行、413・入力上限・件数不一致だけ半分にして再試行、他の 4xx は即 throw。 */
 export async function embedTexts(texts, model, env = loadEnv()) {
   const acct = env.AI_GATEWAY_ACCOUNT_ID;
   const token = env.AI_GATEWAY_TOKEN;
@@ -109,22 +92,25 @@ export async function embedTexts(texts, model, env = loadEnv()) {
       });
       if (r.ok) {
         const d = await r.json();
-        if (!d.data || d.data.length !== batch.length) throw new Error(`件数が合わない: ${batch.length} → ${d.data?.length}`);
+        if (!d.data || d.data.length !== batch.length) throw new SplitBatch(`件数が合わない: ${batch.length} → ${d.data?.length}`);
         return d.data.sort((a, b) => a.index - b.index).map((x) => x.embedding);
       }
       if (r.status === 429 || r.status >= 500) {
         await new Promise((res) => setTimeout(res, 1500 * (attempt + 1)));
         continue;
       }
-      throw Object.assign(new Error(`埋め込み ${r.status}: ${(await r.text()).slice(0, 200)}`), { status: r.status });
+      const body = (await r.text()).slice(0, 200);
+      const msg = `埋め込み ${r.status}: ${body}`;
+      if (r.status === 413 || ((r.status === 400 || r.status === 422) && TOO_BIG.test(body))) throw new SplitBatch(msg);
+      throw new Error(msg);
     }
-    throw new Error("埋め込みのリトライ上限");
+    throw new Error("埋め込みのリトライ上限（429/5xx）");
   };
   const run = async (batch) => {
     try {
       return await call(batch);
     } catch (e) {
-      if (batch.length === 1) throw e;
+      if (!(e instanceof SplitBatch) || batch.length === 1) throw e;
       const h = batch.length >> 1;
       return [...(await run(batch.slice(0, h))), ...(await run(batch.slice(h)))];
     }
@@ -134,12 +120,12 @@ export async function embedTexts(texts, model, env = loadEnv()) {
 
 /** キャッシュに無いものだけ埋め込み、バッチごとにコミットする。items: [{key, text}] → 件数の内訳。 */
 export async function ensureEmbeddings(cache, items, model, { batch = 32, concurrency = 4, log = () => {} } = {}) {
-  const have = cache.prepare("SELECT 1 FROM embedding WHERE model = ? AND chunk_sha = ?");
+  const have = new Set(cache.prepare("SELECT chunk_sha FROM embedding WHERE model = ?").pluck().all(model));
   const seen = new Set();
   const todo = items.filter((it) => {
     if (seen.has(it.key)) return false;
     seen.add(it.key);
-    return !have.get(model, it.key);
+    return !have.has(it.key);
   });
   const ins = cache.prepare("INSERT OR REPLACE INTO embedding(model, chunk_sha, dims, vec, created_at) VALUES (?,?,?,?,?)");
   const batches = [];
@@ -159,7 +145,9 @@ export async function ensureEmbeddings(cache, items, model, { batch = 32, concur
   return { unique: seen.size, embedded: todo.length, cached: seen.size - todo.length };
 }
 
-export function getVec(cache, model, key) {
-  const r = cache.prepare("SELECT vec FROM embedding WHERE model = ? AND chunk_sha = ?").get(model, key);
-  return r ? fromBlob(r.vec) : null;
+/** そのモデルの埋め込みを全部読む（chunk_sha → Float32Array）。 */
+export function loadVectors(cache, model) {
+  const m = new Map();
+  for (const r of cache.prepare("SELECT chunk_sha, vec FROM embedding WHERE model = ?").iterate(model)) m.set(r.chunk_sha, fromBlob(r.vec));
+  return m;
 }

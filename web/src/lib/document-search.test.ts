@@ -8,8 +8,8 @@ import { applyMigrations } from "@/lib/cube/__fixtures__/cube-fixture";
 
 vi.mock("server-only", () => ({}));
 
-import { rrf } from "../../scripts/vector/keyword.mjs";
-import { chunksForArticle, normalizeBody } from "../../scripts/vector/chunk.mjs";
+import { rrf } from "@/lib/vector/keyword.mjs";
+import { chunksForArticle, normalizeBody } from "@/lib/vector/chunk.mjs";
 import {
   DEFAULT_SEARCH_MODE,
   VectorUnavailableError,
@@ -68,6 +68,15 @@ const deps = (): SearchDeps => ({
   embed: async (t) => fakeEmbed(t),
   index,
   all: async (sql, params) => raw.prepare(sql).all(...(params as unknown[])) as Record<string, unknown>[],
+  chunked: async (values, make, size = 80) => {
+    const out: Record<string, unknown>[] = [];
+    for (let i = 0; i < values.length; i += size) {
+      const { sql, params } = make(values.slice(i, i + size));
+      expect(params.length).toBeLessThanOrEqual(100); // D1 のバインドパラメータの上限
+      out.push(...(raw.prepare(sql).all(...(params as unknown[])) as Record<string, unknown>[]));
+    }
+    return out;
+  },
 });
 
 interface Art {
@@ -164,6 +173,14 @@ describe("searchDocuments", () => {
     expect(r.rows[0].snippet).toBe(normalizeBody(BOUSAI).slice(0, 300));
   });
 
+  it("D1 の body_sha256 が NULL なら文字位置を信じて stale にしない（m13 は本文があれば body_sha256 を必ず付ける）", async () => {
+    addArticle({ id: "a1", title: "防災ガイド", body: BOUSAI });
+    raw.prepare("UPDATE document_articles SET body_sha256 = NULL WHERE article_id = 'a1'").run();
+    const r = await searchDocuments(deps(), { query: "避難所", limit: 5 });
+    expect(r.rows[0].stale_index).toBeUndefined();
+    expect(r.rows[0].snippet).toBe(normalizeBody(BOUSAI).slice(0, 300));
+  });
+
   it("year・region の絞り込みを Vectorize の filter に渡し、topic は D1 で絞る", async () => {
     addArticle({ id: "a1", title: "防災ガイド", body: BOUSAI, issue: "2014-08", topics: ["disaster"] });
     addArticle({ id: "a2", title: "防災の備え", body: BOUSAI, issue: "2019-05", topics: ["other"] });
@@ -191,6 +208,16 @@ describe("searchDocuments", () => {
     index.rows.push({ id: "x", values: fakeEmbed("読めない記事"), metadata: { article_id: "a1", seq: 0, c0: 0, c1: 0, body_sha: "", region_id: "jp-46", source_id: "tatsugo_koho_amami", year: 2014, kind: "article" } });
     const r = await searchDocuments(deps(), { query: "読めない記事" });
     expect(r.rows[0]).toMatchObject({ article_id: "a1", snippet: "", unreadable_reason: "image_only" });
+  });
+
+  it("hybrid のキーワード側は語ごとに並列で LIKE を発行し、総数は実数（COUNT）", async () => {
+    addArticle({ id: "a1", title: "防災ガイド", body: BOUSAI });
+    const sqls: string[] = [];
+    const d = deps();
+    const all = d.all;
+    await searchDocuments({ ...d, all: async (sql, p) => (sqls.push(sql), all(sql, p)) }, { query: "避難所の開設と防災ガイド", mode: "hybrid" });
+    expect(sqls.some((q) => q.includes("COUNT(*)"))).toBe(true);
+    expect(sqls.filter((q) => q.includes("LIKE")).every((q) => /LIMIT \d+/.test(q))).toBe(true);
   });
 
   it("埋め込みや Vectorize が失敗したら VectorUnavailableError", async () => {

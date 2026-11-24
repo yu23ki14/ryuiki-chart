@@ -1,4 +1,4 @@
-import type { Chunk } from "./chunk.mjs";
+import type { Chunk } from "../../src/lib/vector/chunk.mjs";
 
 export interface ManifestEntry {
   id: string;

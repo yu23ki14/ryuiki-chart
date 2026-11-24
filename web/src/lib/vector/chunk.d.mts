@@ -7,7 +7,7 @@ export function normalizeBody(text: string | null | undefined): string;
 export function chunkBody(body: string | null | undefined): { seq: number; c0: number; c1: number; text: string }[];
 export const sha256: (s: string) => string;
 export function vectorId(articleId: string, seq: number): string;
-export function chunkShaOf(model: string, chunkerVersion: number, text: string): string;
+export function chunkShaOf(model: string, text: string): string;
 export interface ArticleLike {
   article_id: string;
   title?: string | null;
@@ -31,4 +31,4 @@ export interface Chunk {
   metadata: Record<string, string | number | null | undefined>;
 }
 export function embedText(article: { title?: string | null; section?: string | null }, chunk: { text: string }): string;
-export function chunksForArticle(a: ArticleLike, opts: { model: string; chunkerVersion: number }): Chunk[];
+export function chunksForArticle(a: ArticleLike, opts: { model: string; chunkerVersion?: number }): Chunk[];

@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
-import { orderByForeignKeys } from "./fk-order.mjs";
+import { orderByForeignKeys, referencedOutside } from "./fk-order.mjs";
 import { applyMigrations } from "@/lib/cube/__fixtures__/cube-fixture";
 
 describe("orderByForeignKeys", () => {
@@ -35,5 +35,20 @@ describe("orderByForeignKeys", () => {
     ]) {
       expect(pos.get(parent)!).toBeLessThan(pos.get(child)!);
     }
+  });
+});
+
+describe("referencedOutside", () => {
+  it("指定した表を参照する表がリストの外にあれば返す", () => {
+    const db = new Database(":memory:");
+    db.exec("CREATE TABLE documents (id TEXT PRIMARY KEY); CREATE TABLE cells (id TEXT, d TEXT REFERENCES documents(id)); CREATE TABLE notes (id TEXT, d TEXT REFERENCES documents(id))");
+    expect(referencedOutside(db, ["documents", "notes"])).toEqual([{ child: "cells", parent: "documents" }]);
+    expect(referencedOutside(db, ["documents", "notes", "cells"])).toEqual([]);
+    expect(referencedOutside(db, ["cells"])).toEqual([]);
+  });
+  it("マイグレーション後: documents だけを指定すると cells などが外にあるとして止まる", () => {
+    const db = new Database(":memory:");
+    applyMigrations(db);
+    expect(referencedOutside(db, ["documents"]).map((o) => o.child)).toContain("cells");
   });
 });
