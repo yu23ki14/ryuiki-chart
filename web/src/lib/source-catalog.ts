@@ -14,6 +14,12 @@ function sourceAccessOrThrow(sourceId: string) {
   return a;
 }
 
+/**
+ * 一覧（describe_catalog what='sources'・`/sources`）と summary の total に載せる出典。置き換え済み（reason=superseded。
+ * 同じデータを二重に数えないため）は除く。SOURCE_META には残るので、search_registry・sourceCitation・superseded_by の案内は引き続き効く。
+ */
+export const LISTED_SOURCE_META: readonly Meta[] = SOURCE_META.filter((m) => sourceAccess(m.sourceId)?.reason !== "superseded");
+
 /** 出典 1 件の行（describe_catalog の sources と search_registry の source で同じ形）。 */
 export function sourceRow(m: Meta, now: Date | undefined) {
   const a = sourceAccessOrThrow(m.sourceId);
@@ -24,6 +30,8 @@ export function sourceRow(m: Meta, now: Date | undefined) {
     superseded_by: m.supersededBy,
     queryable_via: a.queryableVia,
     record_sets: a.tables,
+    // 行政文書の表として値が引ける出典の doc_id（queryable_via が get_records(document_cells)。q に渡して引く）。ほかは空。
+    document_ids: a.docIds,
     // 原本の行数（キューブの集計行数ではない。get_observations の n とは別物）。取れない出典は null。
     n_source_rows: a.nSourceRows,
     n_source_rows_basis: a.nSourceRowsBasis,
@@ -48,7 +56,7 @@ export function sourceSummary(metas: readonly Meta[]) {
     if (a.reason) by_reason[a.reason] = (by_reason[a.reason] ?? 0) + 1;
   }
   // by_tool は重複あり（kanagawa_edna は get_occurrences と get_edna の両方）。重複なしの数は queryable。
-  // excluded: 一覧から除いた出典の件数と理由（合成データ。total には含めない）。
+  // excluded: 一覧から除いた出典の件数と理由（合成データ・置き換え済み。total には含めない）。
   return { total: metas.length, queryable, not_queryable: metas.length - queryable, by_tool, by_reason, excluded: { ...SOURCE_EXCLUDED_FROM_LIST } };
 }
 
@@ -67,5 +75,5 @@ export type SourcePageRow = ReturnType<typeof sourcePageRow>;
 
 /** `/sources` 画面の全行（describe_catalog と同じ SOURCE_META）。原本の行数の多い順（行数が無い出典は最後）。 */
 export function sourcePageRows(now: Date | undefined): SourcePageRow[] {
-  return SOURCE_META.map((m) => sourcePageRow(m, now)).sort((a, b) => (b.n_source_rows ?? -1) - (a.n_source_rows ?? -1));
+  return LISTED_SOURCE_META.map((m) => sourcePageRow(m, now)).sort((a, b) => (b.n_source_rows ?? -1) - (a.n_source_rows ?? -1));
 }

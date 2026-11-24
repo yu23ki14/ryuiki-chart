@@ -33,7 +33,7 @@ import {
   type CubeDb,
 } from "@/lib/cube";
 import { SOURCE_META } from "@/lib/registry/generated-source";
-import { sourceRow, sourceSummary } from "@/lib/source-catalog";
+import { LISTED_SOURCE_META, sourceRow, sourceSummary } from "@/lib/source-catalog";
 import { GENERATED_VARIABLES } from "@/lib/registry/generated";
 import { VARIABLE_LABEL, ZONE_INFO } from "@/lib/registry/generated-client";
 import { representativeSeries } from "@/lib/cube/series";
@@ -143,6 +143,7 @@ export const MCP_TOOLS: McpTool[] = [
       "流域カルテにどんな測定項目・水域・ゾーン・出典があるかを一覧する。まず全体像を掴むときに使う。" +
       "what='variables' は測定項目（variableId を get_observations に渡す）、'waters' は水域、'zones' は Ridge to Reef ゾーン、" +
       "'sources' は出典（取得日・更新方式・取れるツール queryable_via・取れない理由つき。queryable_via が find_datasets の出典は外部ポータルの目録で、値ではなく定義と最新の URL を find_datasets で引く）。" +
+      "queryable_via が get_records(document_cells) の出典は行政文書の表を抽出済みで、get_records を record_set=document_cells・doc_id=document_ids の各値で呼んで値を引く（source_id は付けない。n_source_rows は有効なセル数、basis=document_cells）。" +
       "出典の件数・ツール別の件数・取れない理由別の件数は応答の summary を使う（一覧を自分で数えない）。" +
       "n_source_rows は原本の行数で、get_observations の n（集計に使った件数）とは別物（find_datasets の出典では目録のデータセット数。n_source_rows_basis=catalog_datasets）。" +
       "region は what='variables'・'waters' だけに効く（'zones'・'sources' は地域で絞らない）。" +
@@ -160,13 +161,13 @@ export const MCP_TOOLS: McpTool[] = [
       if (what === "zones") return buildDataEnvelope(query, { zones: [...ZONE_INFO] }, [], opt);
       if (what === "sources") {
         const picked =
-          queryable === undefined ? SOURCE_META : SOURCE_META.filter((m) => (sourceAccess(m.sourceId)?.state === "queryable") === queryable);
+          queryable === undefined ? LISTED_SOURCE_META : LISTED_SOURCE_META.filter((m) => (sourceAccess(m.sourceId)?.state === "queryable") === queryable);
         const { rows, truncated } = cap(
           picked.map((m) => sourceRow(m, ctx.now)),
           limit ?? MAX_ROWS,
         );
         // summary は絞り込みに関わらず全出典の集計（「全部で何件・何が取れるか」を数えさせない）。
-        return buildDataEnvelope(query, { summary: sourceSummary(SOURCE_META), sources: rows }, [], { ...opt, truncated });
+        return buildDataEnvelope(query, { summary: sourceSummary(LISTED_SOURCE_META), sources: rows }, [], { ...opt, truncated });
       }
       const db = await ctx.db();
       if (what === "waters") {

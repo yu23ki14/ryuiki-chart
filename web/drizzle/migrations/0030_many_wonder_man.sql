@@ -1,0 +1,1 @@
+ALTER TABLE `source_access` ADD `doc_ids` text DEFAULT '[]' NOT NULL;

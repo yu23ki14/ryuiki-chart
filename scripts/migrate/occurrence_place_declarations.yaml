@@ -15,6 +15,10 @@
 # 2026-10-07: GBIF の不在記録（occurrenceStatus=ABSENT）2,790 行を occurrence から除いた
 # （座標あり 2,790 行のうち流域に解決 2,789・NULL 1）。820,902 − 86,284 = 734,618。
 
+# 2026-11-23: Issue #125 で GBIF 経由の iNaturalist の重複（直取得と source_ref が一致。神奈川 66,334・奄美 2,359）を
+# occurrence から除いた。神奈川分は解決 725,657 → 667,072（−58,585）、NULL 95,245 → 87,496（−7,749）。
+# 奄美の gbif_amami_occurrences の分（解決 −2,072・NULL −287）はマニフェストの expected.place に書いてある。
+
 n_watershed_polygons:
   expected_row_count: 448
   note: >
@@ -28,14 +32,14 @@ n_watershed_polygons:
     （= place_watershed の行数）と一致することを別途検証する。
 
 place_id_null_count:
-  expected_row_count: 95245
+  expected_row_count: 87496
   note: >
     座標はあるがどの流域ポリゴン（377面）にも入らない occurrence 記録の数
     （point_in_polygon の一致ポリゴン数が0）。occurrence_place.place_id が
     NULL になる行数と一致する。
 
 resolved_count:
-  expected_row_count: 725657
+  expected_row_count: 667072
   note: >
     ちょうど1つの流域ポリゴンに解決できた occurrence 記録の数
     （検算式はファイル冒頭のコメント参照。b09 が起動のたびに検算する）。

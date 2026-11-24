@@ -145,7 +145,7 @@ DEFAULT_SOURCE_REGIONS_YAML_TEXT = (
 def make_organism_records_db(path, rows=None) -> None:
     """`rows` の各要素は14要素（`DEFAULT_ORGANISM_RECORDS` と同じ形。
     `is_synthetic` 省略時は0=非合成）または15要素目に `is_synthetic`
-    （0/1）、16要素目に `occurrence_status`（'PRESENT'/'ABSENT'/None）を足した形のどれでもよい（Issue #48 PR-0: `organism_records`
+    （0/1）、16要素目に `occurrence_status`（'PRESENT'/'ABSENT'/None）、17要素目に `source_ref` を足した形のどれでもよい（Issue #48 PR-0: `organism_records`
     に `is_synthetic` 列を足したときの後方互換——既存テストの14要素の行
     リテラルを1つも書き換えずに済む）。
     """
@@ -157,14 +157,19 @@ def make_organism_records_db(path, rows=None) -> None:
                 lat REAL, lon REAL, coordinate_uncertainty_m REAL,
                 scientific_name TEXT, vernacular_name TEXT, taxon_rank TEXT, taxon_key TEXT,
                 red_list_category TEXT, is_alien INTEGER, license_class TEXT, publication_scope TEXT,
-                is_synthetic INTEGER DEFAULT 0, occurrence_status TEXT, red_list_source TEXT
+                is_synthetic INTEGER DEFAULT 0, occurrence_status TEXT, red_list_source TEXT, source_ref TEXT
             )"""
         )
         conn.execute("CREATE TABLE taxa (taxon_id TEXT PRIMARY KEY, redlist_national TEXT)")   # b06 の赤リスト補完（全国版）が読む
         source_rows = rows if rows is not None else DEFAULT_ORGANISM_RECORDS
-        normalized_rows = [(*row, *(0, None)[len(row) - 14:], None) if len(row) < 16 else (*row, None) for row in source_rows]
+        # 14〜16要素の行は is_synthetic/occurrence_status を補い、red_list_source=None。17要素目は source_ref（Issue #125）。
+        normalized_rows = [
+            (*row[:16], None, row[16] if len(row) > 16 else None) if len(row) >= 16
+            else (*row, *(0, None)[len(row) - 14:], None, None)
+            for row in source_rows
+        ]
         conn.executemany(
-            "INSERT INTO organism_records VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO organism_records VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             normalized_rows,
         )
         conn.commit()

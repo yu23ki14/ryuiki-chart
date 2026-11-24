@@ -81,7 +81,9 @@ OBSERVATION_AGG_SPEC_VERSION = "phase-b-fact-slice/v5"
 # 割り当ての結果（place_id）が変わったため v6 に上げた。神奈川の行の値は変わらない。
 # 2026-10-12: b06 が出典の付けなかった記録（モニ1000 等）に赤リスト判定を補うようになり（県版の亜種掲載の規則を含む）、
 # red_list_category/red_list_source の値が変わったため v7 に上げた。
-OCCURRENCE_SPEC_VERSION = "phase-b-fact-slice/v7"
+# 2026-11-23: Issue #125 で b06 が GBIF 経由の iNaturalist 観察（直取得と source_ref が一致する行）を除くようになり、
+# occurrence の行集合が変わったため v8 に上げた。
+OCCURRENCE_SPEC_VERSION = "phase-b-fact-slice/v8"
 
 # `scripts/b07_build_occurrence_cube.py`（`occurrence_agg`）専用。2026-09-27
 # Issue #48 PR-3a: 次元キーは変えていないが、(a) `place_kind='watershed'` の
@@ -96,7 +98,8 @@ OCCURRENCE_SPEC_VERSION = "phase-b-fact-slice/v7"
 # 変わったため v3 に上げた。
 # 2026-10-06: Issue #39 Phase C で place_id の ID 文法が変わった（place_id がキーの一部）ため v4 に上げた。
 # 2026-10-11: Issue #94 で奄美の流域の place_id（キーの一部）が置き換わったため v5 に上げた。
-OCCURRENCE_AGG_SPEC_VERSION = "phase-b-fact-slice/v5"
+# 2026-11-23: Issue #125 で occurrence の行集合が変わり（GBIF 経由の iNaturalist 重複を除く）n が変わるため v6 に上げた。
+OCCURRENCE_AGG_SPEC_VERSION = "phase-b-fact-slice/v6"
 
 # `record_stage_fingerprint`/`record_stage_fingerprints`（段階間の指紋、
 # Issue #37 #1）の `spec_version` 引数の既定値。**成果物ごとの `built_from`/
@@ -1296,6 +1299,19 @@ def _ryuiki_one_table_proxy(ryuiki_db: pathlib.Path, table: str) -> str:
             except sqlite3.OperationalError:
                 by_status = "no_column"
             proxy += f";occurrence_status={by_status}"
+            # b06 は GBIF 経由の iNaturalist 観察を、source_ref が直取得と一致するかで除く（Issue #125）。source_ref だけが
+            # 変わる更新も行数・max rowid を動かさないので、出典ごとの source_ref の安い要約（件数・長さの和・
+            # 末尾2文字の文字コードの和・iNaturalist の観察 URL の件数。1回の走査）も足す。
+            try:
+                by_ref = conn.execute(
+                    "SELECT source_id, COUNT(source_ref), SUM(length(source_ref)), "
+                    "SUM(unicode(substr(source_ref, -1)) + 7 * unicode(substr(source_ref, -2, 1))), "
+                    "SUM(source_ref LIKE 'https://www.inaturalist.org/observations/%') "
+                    "FROM organism_records GROUP BY 1 ORDER BY 1"
+                ).fetchall()
+            except sqlite3.OperationalError:
+                by_ref = "no_column"
+            proxy += f";source_ref={by_ref}"
         return proxy
     finally:
         conn.close()

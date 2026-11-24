@@ -75,9 +75,10 @@ try で囲んであり、スキーマ流し込みの失敗でも一時ファイ�
 続けるレースがあった。
 
 `--check-fresh` は何も書かず、対象レジストリの `registry_build` が「今の入力」と
-「期待する mode」に一致するかだけを判定して終了コードを返す。`cells` は一切開かない。
-`ryuiki` は `mode='full'` のときだけ、`organism_records` の軽い代理指標を読むために
-一瞬だけ開く（次の段落参照。実測で合計約5ms）。`web/scripts/ensure-registry.sh` は
+「期待する mode」に一致するかだけを判定して終了コードを返す。`mode='full'` のときだけ、
+`ryuiki` を `organism_records` の軽い代理指標などを読むために、`cells` を source_access の
+`documents:` の入力（文書ごとの有効セル数。`common._hash_document_cells()`）を読むために、一瞬だけ開く
+（次の段落参照。`organism_records` の分は実測で合計約5ms）。`web/scripts/ensure-registry.sh` は
 ファイルの有無ではなくこの終了コードで作り直すかどうかを決める。
 
 **`ryuiki.sqlite` は例外。** `full` モードの指紋には、
@@ -543,8 +544,8 @@ def _check_fresh(target_db: pathlib.Path, expected_mode: str) -> int:
     """`target_db` が「今の入力（コード + registry/ 配下 + [full モードのみ]
     nlni_w12_watersheds.jsonl・taxon_crosswalk.csv・ryuiki.organism_records の
     軽い代理指標）」と `expected_mode` から作ったものと一致するかだけを判定する。
-    `cells` は一切開かない。`ryuiki` は full モードのときだけ軽い集約2つのために
-    一瞬だけ開く（実測で合計約5ms。`common._hash_organism_records_freshness()`
+    full モードのときだけ `cells` を文書ごとの有効セル数のために、`ryuiki` を軽い集約2つのために
+    一瞬だけ開く（`ryuiki` の分は実測で合計約5ms。`common._hash_organism_records_freshness()`
     docstring 参照）。`target_db` にも何も書かない。一致すれば `EXIT_FRESH`、
     そうでなければ理由を1行 stderr に出し `EXIT_STALE`。
 
@@ -620,8 +621,8 @@ def main() -> None:
         help=(
             "ビルドせず、対象レジストリ（RYUIKI_REGISTRY_DB があればそれ、無ければ "
             "--files-only の有無で決まる既定パス）が今の入力から作ったものかだけを判定する。"
-            "cells は開かない（full モードでは nlni_w12_watersheds.jsonl と "
-            "taxon_crosswalk.csv、ryuiki.organism_records の軽い代理指標だけ読む。"
+            "full モードでは nlni_w12_watersheds.jsonl と taxon_crosswalk.csv、"
+            "ryuiki.organism_records の軽い代理指標、cells の文書ごとの有効セル数を読む。"
             "PyYAML は import しない）。一致すれば終了コード "
             f"{EXIT_FRESH}、古ければ{EXIT_STALE}、判定できなければそれ以外"
             "（web/scripts/ensure-registry.sh が使う）。"

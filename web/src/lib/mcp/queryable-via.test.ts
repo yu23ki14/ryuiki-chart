@@ -50,6 +50,26 @@ describe("queryable_via の（出典, ツール）が実際に動く: get_record
     raw.close();
   });
 
+  it("get_records(document_cells): 出典の全 doc_id の有効なセルが doc_id で引ける（置き換え済みだけの文書は引けない）", async () => {
+    const raw = new Database(":memory:");
+    applyMigrations(raw);
+    const ctx: McpContext = { db: async () => wrapSqlite(raw), now: NOW };
+    const docPairs = pairs.filter(([, t]) => t === "get_records(document_cells)");
+    expect(docPairs.length).toBeGreaterThan(0);
+    const docIds = [...new Set(docPairs.flatMap(([src]) => SOURCE_ACCESS[src].docIds))];
+    for (const d of docIds) {
+      raw.prepare("INSERT INTO documents (doc_id, title) VALUES (?, ?)").run(d, d);
+      raw.prepare("INSERT INTO cells (doc_id, row_key, col_key, value, superseded) VALUES (?, 'r', 'c', '1', 0)").run(d);
+    }
+    raw.prepare("INSERT INTO documents (doc_id, title) VALUES ('old_only', 'x')").run();
+    raw.prepare("INSERT INTO cells (doc_id, row_key, col_key, value, superseded) VALUES ('old_only', 'r', 'c', '1', 1)").run();
+    // クライアントと同じ get_records を doc_id の完全一致で呼ぶ（q は LIKE で 50 バイトまで。長い doc_id は q に入らない）
+    const cellsOf = async (d: string) => (await call("get_records", { record_set: "document_cells", doc_id: d }, ctx)).data.rows as unknown[];
+    for (const d of docIds) expect((await cellsOf(d)).length, d).toBe(1);
+    expect((await cellsOf("old_only")).length).toBe(0); // 置き換え済みだけの文書は引けない
+    raw.close();
+  });
+
   it("全出典で find_datasets が 1 行以上返る（件数 > 0 の宣言の裏づけ。出典ごとに目録 1 件を入れる）", async () => {
     const raw = new Database(":memory:");
     applyMigrations(raw);
@@ -90,6 +110,13 @@ describe.skipIf(!haveReal)("queryable_via の（出典, ツール）が実際に
       let n = 0;
       if (tool === "get_records") {
         for (const set of SOURCE_ACCESS[src].tables) n += ((await call(tool, { source_id: src, record_set: set, limit: 1 }, ctx)).data.rows as unknown[]).length;
+      } else if (tool === "get_records(document_cells)") {
+        // 宣言した全 doc_id が、有効なセルを 1 行以上返す（1 文書でも空なら失敗）
+        n = 1;
+        for (const d of SOURCE_ACCESS[src].docIds) {
+          const rows = (await call("get_records", { record_set: "document_cells", doc_id: d, limit: 1 }, ctx)).data.rows as unknown[];
+          if (rows.length === 0) n = 0;
+        }
       } else if (tool === "find_datasets") {
         n = ((await call(tool, { source_id: src, limit: 1 }, ctx)).data.rows as unknown[]).length;
       } else if (tool === "get_occurrences") {

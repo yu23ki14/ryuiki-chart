@@ -35,6 +35,8 @@ exports[`buildSystemPrompt > pageContext 無し 1`] = `
 - external_dataset（流域DB）: 外部ポータル（CKAN 4 インスタンス・e-Stat）のデータセット目録。題名・説明・提供者・ライセンス・最新を取る URL（api_url）つき。値は持たない。metadata_modified は fetched_at 時点
 - external_resource（流域DB）: 外部ポータルの資源（ファイル）。形式（format は原文）・サイズ・直リンク。sheets_json は見出しを検出できたものだけ列名を持つ
 - external_resource_format（流域DB）: 外部ポータルの資源の形式を正規化して要素ごとに 1 行にした照合用の表（'SHP,CSV' は 2 行。XLSK→XLSX、'.CSV'→CSV）
+- osm_waterways（流域DB）: OpenStreetMap の河川線（名前つきの waterway=river/stream の way。神奈川県＋相模川の山梨側上流・奄美大島）。座標は Overpass の生のまま。relation_id は同じ川としてのまとまり（NULL は不明）。region_id は jp-14/jp-46。ODbL 1.0（© OpenStreetMap contributors）
+- osm_water_structures（流域DB）: OpenStreetMap のダム・堰（waterway=dam/weir。node/way/relation。way・relation の lat/lon は center）。ODbL 1.0（© OpenStreetMap contributors）
 - river_segments（流域DB）: 相模川水系の河川流路。水系単位のため、県単位の nlni_w05 由来データに無い山梨県側（桂川上流部）を含む
 - water_utility（流域DB）: 水道事業体。bulk（用水供給＝卸）と retail（末端給水）
 - water_source（流域DB）: 水道の水源（河川・ダム・地下水・湧水）。parent_id でダム→河川・支流→本流を辿れる

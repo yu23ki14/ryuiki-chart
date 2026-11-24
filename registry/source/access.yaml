@@ -6,6 +6,8 @@
 # - catalog: find_datasets で取れる（外部ポータルの目録 external_dataset に出典の行がある。records/reason と排他）。
 #   n_source_rows は目録の件数（データセット数）で、値の行数ではない。
 # - records: get_records で取れる record_set（下の record_sets の名前）。表は出典の列 source_id で絞る。
+# - documents: 行政文書の表として値が引ける（cells.sqlite の documents/cells。doc_id のリスト。get_records の record_set=document_cells。
+#   queryable_via は get_records(document_cells)。records/catalog/reason と排他）。r01 が doc_id の実在と、置き換え済みでないセルが出典ごとに 1 件以上あることを原本から検査する。
 # - reason: 取れない理由（reasons の語彙）。basis は下書きの根拠（source_registry の列・data/processed の有無から
 #   機械的に決めたもの）で、必須。note は人が読む補足（任意）。
 # - r01 が、全出典が状態を持つこと・records の表に行があること・reason の出典に行が無いこと
@@ -17,6 +19,8 @@ record_sets:
   protected_areas: protected_areas
   vegetation: vegetation_polygons
   river_segments: river_segments
+  osm_waterways: osm_waterways   # OpenStreetMap の河川線（名前つき waterway=river/stream）。出典は列 source_id
+  osm_water_structures: osm_water_structures   # OpenStreetMap のダム・堰（waterway=dam/weir）。出典は列 source_id
   mammal_mesh: mammal_mesh
   sightings: wildlife_sightings
   assessments: taxon_assessment
@@ -25,8 +29,7 @@ record_sets:
   monitoring_counts: moni1000_counts   # モニタリングサイト1000 神奈川・奄美の調査の生の記録。出典は列 source_id
 reasons:
   not_collected: {ja: "未収集（取得手段が未着手、または登録のみ）"}
-  blocked_access: {ja: "ログイン・APIキー・利用アンケート・JS 画面などで、自動取得できていない"}
-  document_cells: {ja: "行政文書の表として cells に入れてある（出典の列は無い）。/documents・run_sql・get_records の record_set=documents で読む"}
+  blocked_access: {ja: "ログイン・APIキー登録・利用アンケート・JS で動く画面・リンク切れなどで、自動取得できていない"}
   pdf_document: {ja: "PDF の文書のまま。表として取り出していない"}
   map_service: {ja: "地図サービス（WebGIS）。値は外部サービス側にある"}
   external_api: {ja: "外部 API・CGI・現況ページ。値は提供元に問い合わせる"}
@@ -54,6 +57,9 @@ sources:
   biodic_veg2024_kanagawa: {records: [vegetation]}
   biodic_mammal_mesh_kanagawa: {records: [mammal_mesh]}
   geoshape_sagami_river: {records: [river_segments]}
+  # OpenStreetMap（ODbL 1.0 © OpenStreetMap contributors）。Overpass から取得（scripts/c105_osm_waterways.py）。範囲は神奈川県＋相模川の山梨側上流・奄美大島
+  osm_waterways: {records: [osm_waterways], note: "OpenStreetMap の河川線（名前つき waterway=river/stream の way）。座標は Overpass の生のまま。relation_id は同じ川としてのまとまり。データは ODbL 1.0（© OpenStreetMap contributors）"}
+  osm_water_structures: {records: [osm_water_structures], note: "OpenStreetMap のダム・堰（waterway=dam/weir）。データは ODbL 1.0（© OpenStreetMap contributors）"}
   kanagawa_redlist: {records: [assessments]}
   kagoshima_redlist: {records: [assessments]}
   kagoshima_ordinance_species: {records: [assessments]}
@@ -104,11 +110,11 @@ sources:
   moni1000_wetland_vegetation: {reason: blocked_access, basis: "source_registry.access_method=利用アンケートフォーム経由でzip取得を試行"}
   resas_api: {reason: blocked_access, basis: "source_registry.access_method=要APIキー登録 (利用登録フォーム経由でAPIキー発行が必須)"}
   snet_kahaku: {reason: blocked_access, basis: "source_registry.access_method=トップページで確認。検索画面はJS駆動のSPA(GETパラメータでの単純検索は不"}
-  # --- 奄美 Step 2c: 行政文書の表（cells.sqlite の documents/cells/notes）。出典単位の get_records は無い ---
-  kagoshima_umigame_amami: {reason: document_cells, basis: "doc_id=kagoshima_umigame_r7（PDF の表、39市町村×上陸・産卵）。cells に入れた"}
-  kagoshima_noneko_amami: {reason: document_cells, basis: "doc_id=kagoshima_noneko_r4（PDF の表、月次と年度別）。cells に入れた"}
-  kagoshima_irikomi_amami: {reason: document_cells, basis: "doc_id=bodik_460001_guntou_irikomi_2024（BODIK の XLSX、奄美群島の暦年値）。cells に入れた"}
-  kagoshima_habu_amami: {reason: document_cells, basis: "doc_id=kagoshima_habu_bite_h28r7・kagoshima_habu_kaiage_h28r7（画像の PDF を OCR）。cells に入れた"}
+  # --- 奄美 Step 2c: 行政文書の表（cells.sqlite の documents/cells/notes）。出典の列は無いので get_records(document_cells) で doc_id を指定して引く（documents: に doc_id を列挙）---
+  kagoshima_umigame_amami: {documents: ["kagoshima_umigame_r7"], note: "doc_id=kagoshima_umigame_r7（PDF の表、39市町村×上陸・産卵）。cells に入れた"}
+  kagoshima_noneko_amami: {documents: ["kagoshima_noneko_r4"], note: "doc_id=kagoshima_noneko_r4（PDF の表、月次と年度別）。cells に入れた"}
+  kagoshima_irikomi_amami: {documents: ["bodik_460001_guntou_irikomi_2024"], note: "doc_id=bodik_460001_guntou_irikomi_2024（BODIK の XLSX、奄美群島の暦年値）。cells に入れた"}
+  kagoshima_habu_amami: {documents: ["kagoshima_habu_bite_h28r7", "kagoshima_habu_kaiage_h28r7"], note: "doc_id=kagoshima_habu_bite_h28r7・kagoshima_habu_kaiage_h28r7（画像の PDF を OCR）。cells に入れた"}
   # --- 奄美 Step 2d: 行政文書（計画・戦略・評価シート）。documents / notes だけで cells は無い。PDF のまま ---
   moe_amami_wh_plans_amami: {reason: pdf_document, basis: "doc_id=amami_wh_comprehensive_plan_2025draft・moe_amami_mongoose_plan_r3_r7・moe_amami_noneko_plan_2018_2027・moe_amami_noneko_goal_2023rev・moe_wh_monitoring_eval_r1〜r5（documents と notes だけ）"}
   mlit_amami_action_plan_amami: {reason: pdf_document, basis: "doc_id=mlit_amami_action_plan_2016（documents と notes だけ）"}
@@ -116,25 +122,25 @@ sources:
   bodik_kagoshima_ryuiki_chisui_amami: {reason: pdf_document, basis: "doc_id=bodik_460001_amami_ryuiki_chisui_2022（BODIK の PDF、4ページ）"}
   amami_tourism_plans_amami: {reason: pdf_document, basis: "doc_id=amami_ecotourism_zentai_2017・amami_sustainable_tourism_mp_2016（ライセンス表記なし。題名・URL・ページ数・sha256 のみ）"}
   # --- 奄美 Step 3a: マングース防除の捕獲数・わな日・CPUE（PNG の表を OCR）と根絶宣言 ---
-  moe_mongoose_amami: {reason: document_cells, basis: "doc_id=moe_mongoose_catch_h12r4（PNG の表を OCR 2種＋検算＋評価シート突き合わせ、2000〜2022年度）・moe_mongoose_eradication_declaration_2024（documents と notes だけ）。cells に入れた"}
+  moe_mongoose_amami: {documents: ["moe_mongoose_catch_h12r4"], note: "doc_id=moe_mongoose_catch_h12r4（PNG の表を OCR 2種＋検算＋評価シート突き合わせ、2000〜2022年度）・moe_mongoose_eradication_declaration_2024（documents と notes だけ）。cells に入れた"}
   # --- 奄美 Step 3b: 2010年奄美豪雨の雨量・被害（京大防災研の速報・鹿大の報告書。数値だけ cells に入れた。気象庁は既存の jma_daily_nase） ---
-  dpri_gouu2010_amami: {reason: document_cells, basis: "doc_id=dpri_amami_gouu_sokuho_2011（速報の本文の雨量・被害を cells に入れた。2011年。fiscal_year は NULL の単発の事象）"}
-  kagoshima_univ_gouu2010_amami: {reason: document_cells, basis: "doc_id=kagoshima_univ_amami_gouu_2012（報告書の本文・画像・表-2 の雨量・被害を cells に入れた。2012年。どちらも fiscal_year は NULL の単発の事象）"}
+  dpri_gouu2010_amami: {documents: ["dpri_amami_gouu_sokuho_2011"], note: "doc_id=dpri_amami_gouu_sokuho_2011（速報の本文の雨量・被害を cells に入れた。2011年。fiscal_year は NULL の単発の事象）"}
+  kagoshima_univ_gouu2010_amami: {documents: ["kagoshima_univ_amami_gouu_2012"], note: "doc_id=kagoshima_univ_amami_gouu_2012（報告書の本文・画像・表-2 の雨量・被害を cells に入れた。2012年。どちらも fiscal_year は NULL の単発の事象）"}
   # --- 奄美 Step 3c: A33 土砂災害警戒区域（BODIK）・水道の水源種別・ダム容量（県の流域治水10頁版） ---
   bodik_kagoshima_dosha_amami: {records: [hazard_zones], note: "奄美5市町村（2026-02-10 現在、BODIK、CC BY 4.0）。特別警戒区域は警戒区域の内側にあり、警戒と特別警戒は重なる。区分・現象をまたいで面積を足さない。件数は区域（ポリゴン）の数で、地区・箇所の数ではない。"}
-  kagoshima_suido_amami: {reason: document_cells, basis: "doc_id=kagoshima_suido_r5_joryo・kagoshima_suido_r5_kani（令和5年度水道統計の上水道・簡易水道の取水の種別。cells に入れた。fiscal_year は NULL）"}
-  kagoshima_dam_capacity_amami: {reason: document_cells, basis: "doc_id=kagoshima_amami_ryuiki_chisui_10p_2023（県の流域治水プロジェクト10頁版の大和・大川ダムの有効貯水容量。cells に入れた。BODIK 版の4頁には容量が無い）"}
-  # --- 取れない: pdf_document（10 件。上の奄美 Step 2d の5件は別に並べた）---
-  biodic_6th_kanagawa_report: {reason: pdf_document, basis: "source_registry.format=PDF"}
-  ckan_pdf_choju_higai: {reason: pdf_document, basis: "source_registry.format=PDF"}
-  ckan_pdf_choju_kyugo: {reason: pdf_document, basis: "source_registry.format=PDF"}
-  ckan_pdf_ghg_kanagawa: {reason: pdf_document, basis: "source_registry.format=PDF"}
+  kagoshima_suido_amami: {documents: ["kagoshima_suido_r5_joryo", "kagoshima_suido_r5_kani"], note: "doc_id=kagoshima_suido_r5_joryo・kagoshima_suido_r5_kani（令和5年度水道統計の上水道・簡易水道の取水の種別。cells に入れた。fiscal_year は NULL）"}
+  kagoshima_dam_capacity_amami: {documents: ["kagoshima_amami_ryuiki_chisui_10p_2023"], note: "doc_id=kagoshima_amami_ryuiki_chisui_10p_2023（県の流域治水プロジェクト10頁版の大和・大川ダムの有効貯水容量。cells に入れた。BODIK 版の4頁には容量が無い）"}
+  # --- 取れない: pdf_document（残り。上の奄美 Step 2d の5件は別に並べた）---
+  biodic_6th_kanagawa_report: {documents: ["biodic_6th_kanagawa_h16"], note: "第6回自然環境保全基礎調査 神奈川県報告書（PDF の表を抽出して cells に入れた）"}
+  ckan_pdf_choju_higai: {documents: ["choju_higai_choju_sakumotsu_2018", "choju_higai_choju_sakumotsu_2019", "choju_higai_choju_sakumotsu_2020", "choju_higai_choju_sakumotsu_2021", "choju_higai_choju_sakumotsu_2022", "choju_higai_gaiyou_2018", "choju_higai_gaiyou_2019", "choju_higai_shichoson_choju_2018", "choju_higai_shichoson_choju_2019", "choju_higai_shichoson_choju_2020", "choju_higai_shichoson_choju_2021", "choju_higai_shichoson_choju_2022", "choju_higai_shichoson_sakumotsu_2018", "choju_higai_shichoson_sakumotsu_2019", "choju_higai_shichoson_sakumotsu_2020", "choju_higai_shichoson_sakumotsu_2021", "choju_higai_shichoson_sakumotsu_2022"], note: "鳥獣被害の PDF の表を抽出して cells に入れた（c70_ckan_pdf_docs.py。セルのある文書だけ列挙）"}
+  ckan_pdf_choju_kyugo: {documents: ["choju_kyugo_jisseki_2010", "choju_kyugo_jisseki_2011", "choju_kyugo_jisseki_2012", "choju_kyugo_jisseki_2013", "choju_kyugo_jisseki_2014", "choju_kyugo_jisseki_2015", "choju_kyugo_jisseki_2016", "choju_kyugo_jisseki_2017", "choju_kyugo_jisseki_2018", "choju_kyugo_jisseki_2019", "choju_kyugo_jisseki_2020", "choju_kyugo_jisseki_2021", "choju_kyugo_jisseki_2022", "choju_kyugo_shurui_2010", "choju_kyugo_shurui_2011", "choju_kyugo_shurui_2012", "choju_kyugo_shurui_2013", "choju_kyugo_shurui_2014", "choju_kyugo_shurui_2015", "choju_kyugo_shurui_2016", "choju_kyugo_shurui_2017", "choju_kyugo_shurui_2018", "choju_kyugo_shurui_2019", "choju_kyugo_shurui_2020", "choju_kyugo_shurui_2021", "choju_kyugo_shurui_2022"], note: "野生動物救護の PDF の表を抽出して cells に入れた（c70_ckan_pdf_docs.py。セルのある文書だけ列挙）"}
+  ckan_pdf_ghg_kanagawa: {documents: ["ghg_jimujigyou_yokusei_keikaku", "ghg_kencho_jikkou_suii_2015", "ghg_kencho_jissai_2022", "ghg_kencho_yokusei_jikkou_keikaku", "ghg_kennai_suikei_2021", "ghg_kennai_suikei_2023", "ghg_sankou_shiryou_2024", "ghg_taisaku_keikaku_shinchoku_2024"], note: "温室効果ガスの PDF の表を抽出して cells に入れた（c70_ckan_pdf_docs.py）"}
   ckan_pdf_shinrin_toukei: {reason: pdf_document, basis: "source_registry.format=PDF"}
   etanzawa_siryousitu: {reason: pdf_document, basis: "source_registry.format=PDF(多数、主にニュースレター類)"}
   kanagawa_ikimono_chousa: {reason: pdf_document, basis: "source_registry.format=PDF"}
-  kasen_kokusei_sagami: {reason: pdf_document, basis: "source_registry.format=PDF"}
+  kasen_kokusei_sagami: {documents: ["kasen_kokusei_sagami_benthos", "kasen_kokusei_sagami_birds", "kasen_kokusei_sagami_fish", "kasen_kokusei_sagami_herptile_mammal", "kasen_kokusei_sagami_insects", "kasen_kokusei_sagami_plants"], note: "河川水辺の国勢調査（相模川）6 分類群の PDF の表を抽出して cells に入れた（c50_kasen_kokusei.py）"}
   sagami_seibi_keikaku_mirror: {reason: pdf_document, basis: "source_registry.format=PDF (未パース)"}
-  tanzawa_shika_suigen_docs: {reason: pdf_document, basis: "source_registry.format=PDF"}
+  tanzawa_shika_suigen_docs: {documents: ["tanzawa_shika_plan5", "tanzawa_shika_r4", "tanzawa_shika_r6", "suigen_hozen_final_eval"], note: "丹沢のシカ管理実績・保護管理計画・水源環境保全再生の最終評価報告書 4 本の表を cells に入れた（c54_tanzawa_shika_suigen.py）"}
   # --- 取れない: map_service（2 件）---
   biodic_kiban_datalist: {reason: map_service, basis: "source_registry.format=HTML(入口ページ)"}
   biodic_webgis: {reason: map_service, basis: "source_registry.format=WebGIS(ArcGIS)"}
@@ -218,8 +224,8 @@ sources:
   water_trace_kawasaki: {reason: d1_no_source_column, basis: "原本 water_zone_assignment の assignment_id 接頭辞 TRACE_KWS:（611 行 = record_count）。出典の列は無い"}
   water_trace_yokohama: {reason: d1_no_source_column, basis: "原本 water_zone_assignment の assignment_id 接頭辞 TRACE_YOK:（1,718 行 = record_count）。出典の列は無い"}
   # --- 取れない: not_in_d1（3 件）---
-  kanagawa_rdb2006_animals: {reason: not_in_d1, basis: "原本 taxa に 221 行。D1 の taxa は 0010 で DROP 済みで、taxon_assessment にも載らない"}
-  kanagawa_river_citizen_survey: {reason: not_in_d1, basis: "原本 protocols に 6 行。D1 の protocols は 0010 で DROP 済み"}
+  kanagawa_rdb2006_animals: {documents: ["kanagawa_rdb2006_animals"], note: "レッドデータ生物調査報告書2006 のレッドリスト一覧の表を cells に入れた（c26_kanagawa_redlist_animals_2006.py）。原本 taxa の行は D1 に無いので、値は文書の表から引く"}
+  kanagawa_river_citizen_survey: {documents: ["kanagawa_river_monitoring_anzen", "kanagawa_river_monitoring_h20_sagami_results", "kanagawa_river_monitoring_h21_sakawa_results", "kanagawa_river_monitoring_h25_sagami_results", "kanagawa_river_monitoring_h26_sakawa_results", "kanagawa_river_monitoring_h30sagamigawa", "kanagawa_river_monitoring_manyual", "kanagawa_river_monitoring_r1_sakawa_results", "kanagawa_river_monitoring_syokubutu"], note: "県民参加型調査・相模川酒匂川水系の動植物等調査の PDF の表を cells に入れた（c53_kanagawa_river_monitoring.py。セルのある文書だけ列挙）。原本 protocols は D1 に無い"}
   moe_redlist: {reason: not_in_d1, basis: "原本 taxa に 6,089 行。D1 の taxa は 0010 で DROP 済み"}
 extra_tools:
   kanagawa_edna: [get_edna]

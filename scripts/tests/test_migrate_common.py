@@ -997,3 +997,29 @@ def test_ryuiki_table_proxy_organism_records_includes_occurrence_status_counts(t
     absent = common._ryuiki_table_proxy(db_path)["ryuiki.organism_records"]
     conn.close()
     assert len({no_column, with_column, present, absent}) == 4
+
+
+def test_ryuiki_table_proxy_organism_records_includes_source_ref_summary(tmp_path):
+    """source_ref だけが変わる更新（行数・max rowid・状態別件数は同じ）でも代理指標が変わる（Issue #125。重複の判定が依存する）。"""
+    db_path = tmp_path / "ryuiki.sqlite"
+    conn = sqlite3.connect(f"file:{db_path}", uri=True)
+    for t in common.V2_RYUIKI_TABLES:
+        if t != "organism_records":
+            conn.execute(f"CREATE TABLE {t} (v INTEGER)")
+    conn.execute("CREATE TABLE organism_records (source_id TEXT, source_ref TEXT, occurrence_status TEXT)")
+    base = "https://www.inaturalist.org/observations/"
+    conn.executemany("INSERT INTO organism_records VALUES (?,?,NULL)", [("g", base + "10"), ("g", base + "20")])
+    conn.commit()
+
+    def proxy():
+        return common._ryuiki_table_proxy(db_path)["ryuiki.organism_records"]
+
+    before = proxy()
+    conn.execute("UPDATE organism_records SET source_ref = ? WHERE source_ref = ?", (base + "11", base + "10"))   # 同じ長さ
+    conn.commit()
+    same_length = proxy()
+    conn.execute("UPDATE organism_records SET source_ref = 'urn:uuid:abcd-efgh' WHERE source_ref = ?", (base + "11",))
+    conn.commit()
+    other_form = proxy()
+    conn.close()
+    assert len({before, same_length, other_form}) == 3

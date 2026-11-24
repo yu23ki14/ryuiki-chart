@@ -597,3 +597,27 @@ docker で開発している間はコンテナ側のボリューム（`d1-state`
 - **画面の目視**: ヘッドレス Chrome で撮った。
   - `/?region=jp-46` に ① 海の8地点の COD と ② サンゴ礁の被度が出た。
   - `/timeseries?region=jp-46` は COD・奄美大島本島海域で開き、8地点の凡例に「Google マップ↗」が付いた。
+
+## 出典の状態の documents 種別と GBIF/iNaturalist 重複除外の本番反映（2026-11-23、#127・#128）
+
+#116・#117 の反映と同じく、変わった表だけを入れ直した。比べるスクリプトと入れ直すスクリプトは `web/scripts/d1/` に入れた。前回までは、反映のたびに作り直していた。
+
+- `node scripts/d1/diff-tables.mjs --remote`: ローカルと本番を表ごとに比べる。比べるのは、件数・real 以外の列の `length(quote())` の合計・数値列の合計。`--remote` を付けなければ、ローカル同士で比べる自己テストになる。
+- `node scripts/d1/reload-tables.mjs <table...> [--execute]`: 指定した表を空にして、`dist/d1` の該当ファイルを流し、件数を突き合わせる。既定は dry-run。
+
+1. **事前**（main `9b92814`）: `check_v2_fresh.py`＝0、`r01 --check-fresh`＝0。`pnpm run db:setup`（ローカル D1 は 60 表 / 4,926,455 行）→ `pnpm run db:export`（114 ファイル）→ `opennextjs-cloudflare build`。
+   戻し先: Time Travel `000000ca-00000000-0000512c-57f84d122df99ab7997a3952e2fbff41`、直前の Worker は `a7fe21a4-75dd-4c60-b50c-674a7560def2`。
+2. **マイグレーション**: 0030（`source_access.doc_ids` を足すだけ）を `migrations apply --remote` で適用した。旧コードのままでも動く。
+3. **入れ直す表**: `diff-tables.mjs --remote` で比べた。違ったのは 12 表。
+   - `occurrence_agg`
+   - `source_access`
+   - `summary_*` 10 表（effort_year(+by_region)・grid_catalog・group_year・species_catalog(+by_region)・taxon_catalog(+by_region)・taxon_red_list・watershed_occurrence）
+   - `osm_waterways`・`osm_water_structures` は、指紋の式が長すぎて取れなかった。件数は本番と一致し、2本の PR はどちらも触っていないので対象から外した。
+4. **入れ直し**（02:23〜02:28 UTC）: 12 表を空にし、26 ファイルを流した。再試行は 0 回。12 表の件数はローカルと一致した。`pnpm run db:verify:remote` では 60 表 / 4,926,455 行がすべて一致した。
+5. **デプロイ**: Version `15e56951-683d-4daa-bc65-edda1df56aef`。
+   - `/`・`/sites`・`/biota`・`/documents`・`/sources`・`/map`・`/?region=jp-46` が 200 を返した。
+   - MCP の `describe_catalog what='sources'` は total 180・queryable 91 を返した。
+   - `get_records record_set=document_cells doc_id=kanagawa_river_monitoring_h21_sakawa_results` でセルが返った。この doc_id は長く、`q` では引けなかったもの。
+   - `get_occurrences kind=species_catalog placeId=common:place:watershed.dem.amami-008` では、ドジョウが n=1 になった（前は 2）。
+
+画面の生物の集計が欠けていたのは 02:23〜02:28 UTC 頃（約5分）。ロールバックは行っていない。

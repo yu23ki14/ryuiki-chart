@@ -185,6 +185,27 @@ CREATE TABLE organism_records (
   quality_stage TEXT DEFAULT '暫定', publication_scope TEXT DEFAULT '限定共有',
   source_id TEXT, source_ref TEXT, is_synthetic INTEGER DEFAULT 0
 , record_license TEXT, license_class TEXT, commercial_ok INTEGER, occurrence_status TEXT, red_list_source TEXT);
+CREATE TABLE osm_water_structures (
+  osm_type TEXT NOT NULL,            -- 'node' / 'way' / 'relation'
+  osm_id INTEGER NOT NULL,
+  kind TEXT NOT NULL,                -- 'dam' / 'weir'
+  name_ja TEXT,
+  region_id TEXT,
+  lat REAL, lon REAL,                -- node はその座標、way/relation は Overpass の center
+  source_id TEXT NOT NULL, source_ref TEXT,  -- 'osm:node/<id>' 等
+  PRIMARY KEY (osm_type, osm_id)
+);
+CREATE TABLE osm_waterways (
+  way_id INTEGER PRIMARY KEY,        -- OSM の way id
+  name_ja TEXT,                      -- OSM の name（日本語。英語名しか無いものはそのまま）
+  waterway TEXT NOT NULL,            -- 'river' / 'stream'
+  relation_id INTEGER,               -- それを含む waterway リレーション（同じ川としてのまとまり）。無ければ NULL。複数なら最小の id
+  region_id TEXT,                    -- 'jp-14' / 'jp-46'。始点が region の bbox 内ならその region、外なら取得した範囲の region
+  length_m REAL,                     -- 球面近似（haversine の総和）
+  geometry_geojson TEXT,             -- LineString
+  start_lat REAL, start_lon REAL, end_lat REAL, end_lon REAL,
+  source_id TEXT NOT NULL, source_ref TEXT   -- 'osm:way/<id>'
+);
 CREATE TABLE protected_areas (
   area_id TEXT PRIMARY KEY,
   name_ja TEXT,

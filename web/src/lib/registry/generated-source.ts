@@ -198,6 +198,8 @@ export const SOURCE_META: readonly GeneratedSourceMeta[] = [
   { sourceId: "osm_kanagawa_forest", nameJa: "OSM 神奈川県 森林（landuse=forest, natural=wood）", publisher: "OpenStreetMap contributors", homepageUrl: "https://overpass-api.de/api/interpreter", supersededBy: null },
   { sourceId: "osm_kanagawa_protected_area", nameJa: "OSM 神奈川県 保護区（nature_reserve, protected_area）", publisher: "OpenStreetMap contributors", homepageUrl: "https://overpass-api.de/api/interpreter", supersededBy: null },
   { sourceId: "osm_kanagawa_water", nameJa: "OSM 神奈川県 水系（水域・河川）", publisher: "OpenStreetMap contributors", homepageUrl: "https://overpass-api.de/api/interpreter", supersededBy: null },
+  { sourceId: "osm_water_structures", nameJa: "OpenStreetMap ダム・堰（waterway=dam/weir）", publisher: "OpenStreetMap contributors", homepageUrl: "https://overpass-api.de/api/interpreter", supersededBy: null },
+  { sourceId: "osm_waterways", nameJa: "OpenStreetMap 河川線（waterway=river/stream、名前つき）", publisher: "OpenStreetMap contributors", homepageUrl: "https://overpass-api.de/api/interpreter", supersededBy: null },
   { sourceId: "resas_api", nameJa: "RESAS-API (地域経済分析システム)", publisher: "内閣官房・内閣府 デジタル田園都市国家構想実現会議事務局", homepageUrl: "https://opendata.resas-portal.go.jp/", supersededBy: null },
   { sourceId: "rinya_forest_stats_prefecture", nameJa: "都道府県別森林率・人工林率", publisher: "林野庁", homepageUrl: "https://www.rinya.maff.go.jp/j/keikaku/genkyou/r4/attach/xls/1-1.xlsx", supersededBy: null },
   { sourceId: "rinya_lidar_kanagawa_status", nameJa: "森林情報オープンデータ化(航空レーザ計測)神奈川県公開状況", publisher: "林野庁", homepageUrl: "https://www.rinya.maff.go.jp/j/keikaku/smartforest/smart_forestry.html", supersededBy: null },
@@ -382,6 +384,8 @@ export const SOURCE_EDITIONS: readonly GeneratedSourceEdition[] = [
   { editionId: "common:edition:osm_kanagawa_forest.20260829", sourceId: "osm_kanagawa_forest", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:24:32", url: "https://overpass-api.de/api/interpreter", licenseId: "odbl_1_0", licenseClass: "share_alike", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:osm_kanagawa_protected_area.20260829", sourceId: "osm_kanagawa_protected_area", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:24:33", url: "https://overpass-api.de/api/interpreter", licenseId: "odbl_1_0", licenseClass: "share_alike", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:osm_kanagawa_water.20260829", sourceId: "osm_kanagawa_water", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:24:32", url: "https://overpass-api.de/api/interpreter", licenseId: "odbl_1_0", licenseClass: "share_alike", redistributable: true, updateMode: null, supersededBy: null },
+  { editionId: "common:edition:osm_water_structures.20261117", sourceId: "osm_water_structures", editionKey: "20261117", vintage: null, fetchedAt: "2026-11-17T22:48:44", url: "https://overpass-api.de/api/interpreter", licenseId: "odbl_1_0", licenseClass: "share_alike", redistributable: true, updateMode: null, supersededBy: null },
+  { editionId: "common:edition:osm_waterways.20261117", sourceId: "osm_waterways", editionKey: "20261117", vintage: null, fetchedAt: "2026-11-17T22:48:44", url: "https://overpass-api.de/api/interpreter", licenseId: "odbl_1_0", licenseClass: "share_alike", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:resas_api.20260829", sourceId: "resas_api", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:32:33", url: "https://opendata.resas-portal.go.jp/", licenseId: "terms_unconfirmed", licenseClass: "unconfirmed", redistributable: false, updateMode: null, supersededBy: null },
   { editionId: "common:edition:rinya_forest_stats_prefecture.20260829", sourceId: "rinya_forest_stats_prefecture", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:23:44", url: "https://www.rinya.maff.go.jp/j/keikaku/genkyou/r4/attach/xls/1-1.xlsx", licenseId: "pdl_1_0", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
   { editionId: "common:edition:rinya_lidar_kanagawa_status.20260829", sourceId: "rinya_lidar_kanagawa_status", editionKey: "20260829", vintage: null, fetchedAt: "2026-08-29T15:23:45", url: "https://www.rinya.maff.go.jp/j/keikaku/smartforest/smart_forestry.html", licenseId: "pdl_1_0", licenseClass: "open_terms", redistributable: true, updateMode: null, supersededBy: null },
@@ -421,13 +425,15 @@ export interface GeneratedSourceAccess {
   recordSetRows: Record<string, number>;
   /** 原本の行数（キューブの集計行数ではない）。取れない出典は null。 */
   nSourceRows: number | null;
-  nSourceRowsBasis: "source_rows" | "registry_record_count" | "catalog_datasets" | "none";
+  nSourceRowsBasis: "source_rows" | "registry_record_count" | "catalog_datasets" | "document_cells" | "none";
   /** 件数を数えた原本の最新取得日時（決定論のため実行時刻ではない）。 */
   countedAt: string | null;
   /** 取れない理由コード（queryableVia が空のとき必須）。 */
   reason: string | null;
   reasonJa: string | null;
   reasonNote: string | null;
+  /** 行政文書の表として値が引ける出典の doc_id（access.yaml の documents。get_records(document_cells) の q に渡す）。 */
+  docIds: readonly string[];
 }
 
 /** 合成データの出典を除く全出典（SOURCE_META と同じキー）。 */
@@ -442,7 +448,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "pdf_document",
     "reasonJa": "PDF の文書のまま。表として取り出していない",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "amami_tourism_plans_amami": {
     "state": "not_queryable",
@@ -454,7 +461,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "pdf_document",
     "reasonJa": "PDF の文書のまま。表として取り出していない",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "atsugi_river_water_quality": {
     "state": "queryable",
@@ -470,10 +478,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 4560,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "ayu_upstream_migration": {
     "state": "not_queryable",
@@ -485,19 +494,25 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "biodic_6th_kanagawa_report": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "get_records(document_cells)"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "pdf_document",
-    "reasonJa": "PDF の文書のまま。表として取り出していない",
-    "reasonNote": null
+    "nSourceRows": 24361,
+    "nSourceRowsBasis": "document_cells",
+    "countedAt": "2026-11-17T22:48:44",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": "第6回自然環境保全基礎調査 神奈川県報告書（PDF の表を抽出して cells に入れた）",
+    "docIds": [
+      "biodic_6th_kanagawa_h16"
+    ]
   },
   "biodic_animal_distribution": {
     "state": "not_queryable",
@@ -508,8 +523,9 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "nSourceRowsBasis": "none",
     "countedAt": null,
     "reason": "blocked_access",
-    "reasonJa": "ログイン・APIキー・利用アンケート・JS 画面などで、自動取得できていない",
-    "reasonNote": null
+    "reasonJa": "ログイン・APIキー登録・利用アンケート・JS で動く画面・リンク切れなどで、自動取得できていない",
+    "reasonNote": null,
+    "docIds": []
   },
   "biodic_kiban_datalist": {
     "state": "not_queryable",
@@ -521,7 +537,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "map_service",
     "reasonJa": "地図サービス（WebGIS）。値は外部サービス側にある",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "biodic_mammal_mesh_amami": {
     "state": "not_queryable",
@@ -533,7 +550,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "biodic_mammal_mesh_kanagawa": {
     "state": "queryable",
@@ -548,10 +566,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 75240,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "biodic_veg2024_amami": {
     "state": "queryable",
@@ -566,10 +585,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 9979,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "biodic_veg2024_kanagawa": {
     "state": "queryable",
@@ -584,10 +604,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 13206,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "biodic_vegcode_legend": {
     "state": "not_queryable",
@@ -599,7 +620,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "biodic_vegmesh_4th_kanagawa": {
     "state": "not_queryable",
@@ -611,7 +633,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "biodic_vegmesh_5th_kanagawa": {
     "state": "not_queryable",
@@ -623,7 +646,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "biodic_webgis": {
     "state": "not_queryable",
@@ -635,7 +659,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "map_service",
     "reasonJa": "地図サービス（WebGIS）。値は外部サービス側にある",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "bodik_kagoshima_dosha_amami": {
     "state": "queryable",
@@ -650,10 +675,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 6038,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": "奄美5市町村（2026-02-10 現在、BODIK、CC BY 4.0）。特別警戒区域は警戒区域の内側にあり、警戒と特別警戒は重なる。区分・現象をまたいで面積を足さない。件数は区域（ポリゴン）の数で、地区・箇所の数ではない。"
+    "reasonNote": "奄美5市町村（2026-02-10 現在、BODIK、CC BY 4.0）。特別警戒区域は警戒区域の内側にあり、警戒と特別警戒は重なる。区分・現象をまたいで面積を足さない。件数は区域（ポリゴン）の数で、地区・箇所の数ではない。",
+    "docIds": []
   },
   "bodik_kagoshima_ryuiki_chisui_amami": {
     "state": "not_queryable",
@@ -665,7 +691,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "pdf_document",
     "reasonJa": "PDF の文書のまま。表として取り出していない",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "buna_suitai_web": {
     "state": "not_queryable",
@@ -677,7 +704,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "not_collected",
     "reasonJa": "未収集（取得手段が未着手、または登録のみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "ckan_bodik_kanagawa": {
     "state": "queryable",
@@ -688,10 +716,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 680,
     "nSourceRowsBasis": "catalog_datasets",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "ckan_env_bulk": {
     "state": "not_queryable",
@@ -703,7 +732,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "ckan_kanagawa_pref": {
     "state": "queryable",
@@ -714,46 +744,110 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 811,
     "nSourceRowsBasis": "catalog_datasets",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "ckan_pdf_choju_higai": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "get_records(document_cells)"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "pdf_document",
-    "reasonJa": "PDF の文書のまま。表として取り出していない",
-    "reasonNote": null
+    "nSourceRows": 12400,
+    "nSourceRowsBasis": "document_cells",
+    "countedAt": "2026-11-17T22:48:44",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": "鳥獣被害の PDF の表を抽出して cells に入れた（c70_ckan_pdf_docs.py。セルのある文書だけ列挙）",
+    "docIds": [
+      "choju_higai_choju_sakumotsu_2018",
+      "choju_higai_choju_sakumotsu_2019",
+      "choju_higai_choju_sakumotsu_2020",
+      "choju_higai_choju_sakumotsu_2021",
+      "choju_higai_choju_sakumotsu_2022",
+      "choju_higai_gaiyou_2018",
+      "choju_higai_gaiyou_2019",
+      "choju_higai_shichoson_choju_2018",
+      "choju_higai_shichoson_choju_2019",
+      "choju_higai_shichoson_choju_2020",
+      "choju_higai_shichoson_choju_2021",
+      "choju_higai_shichoson_choju_2022",
+      "choju_higai_shichoson_sakumotsu_2018",
+      "choju_higai_shichoson_sakumotsu_2019",
+      "choju_higai_shichoson_sakumotsu_2020",
+      "choju_higai_shichoson_sakumotsu_2021",
+      "choju_higai_shichoson_sakumotsu_2022"
+    ]
   },
   "ckan_pdf_choju_kyugo": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "get_records(document_cells)"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "pdf_document",
-    "reasonJa": "PDF の文書のまま。表として取り出していない",
-    "reasonNote": null
+    "nSourceRows": 18568,
+    "nSourceRowsBasis": "document_cells",
+    "countedAt": "2026-11-17T22:48:44",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": "野生動物救護の PDF の表を抽出して cells に入れた（c70_ckan_pdf_docs.py。セルのある文書だけ列挙）",
+    "docIds": [
+      "choju_kyugo_jisseki_2010",
+      "choju_kyugo_jisseki_2011",
+      "choju_kyugo_jisseki_2012",
+      "choju_kyugo_jisseki_2013",
+      "choju_kyugo_jisseki_2014",
+      "choju_kyugo_jisseki_2015",
+      "choju_kyugo_jisseki_2016",
+      "choju_kyugo_jisseki_2017",
+      "choju_kyugo_jisseki_2018",
+      "choju_kyugo_jisseki_2019",
+      "choju_kyugo_jisseki_2020",
+      "choju_kyugo_jisseki_2021",
+      "choju_kyugo_jisseki_2022",
+      "choju_kyugo_shurui_2010",
+      "choju_kyugo_shurui_2011",
+      "choju_kyugo_shurui_2012",
+      "choju_kyugo_shurui_2013",
+      "choju_kyugo_shurui_2014",
+      "choju_kyugo_shurui_2015",
+      "choju_kyugo_shurui_2016",
+      "choju_kyugo_shurui_2017",
+      "choju_kyugo_shurui_2018",
+      "choju_kyugo_shurui_2019",
+      "choju_kyugo_shurui_2020",
+      "choju_kyugo_shurui_2021",
+      "choju_kyugo_shurui_2022"
+    ]
   },
   "ckan_pdf_ghg_kanagawa": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "get_records(document_cells)"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "pdf_document",
-    "reasonJa": "PDF の文書のまま。表として取り出していない",
-    "reasonNote": null
+    "nSourceRows": 5625,
+    "nSourceRowsBasis": "document_cells",
+    "countedAt": "2026-11-17T22:48:44",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": "温室効果ガスの PDF の表を抽出して cells に入れた（c70_ckan_pdf_docs.py）",
+    "docIds": [
+      "ghg_jimujigyou_yokusei_keikaku",
+      "ghg_kencho_jikkou_suii_2015",
+      "ghg_kencho_jissai_2022",
+      "ghg_kencho_yokusei_jikkou_keikaku",
+      "ghg_kennai_suikei_2021",
+      "ghg_kennai_suikei_2023",
+      "ghg_sankou_shiryou_2024",
+      "ghg_taisaku_keikaku_shinchoku_2024"
+    ]
   },
   "ckan_pdf_shinrin_toukei": {
     "state": "not_queryable",
@@ -765,7 +859,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "pdf_document",
     "reasonJa": "PDF の文書のまま。表として取り出していない",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "ckan_sagamihara": {
     "state": "queryable",
@@ -776,10 +871,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 114,
     "nSourceRowsBasis": "catalog_datasets",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "ckan_yokohama": {
     "state": "queryable",
@@ -790,10 +886,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 654,
     "nSourceRowsBasis": "catalog_datasets",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "dams_kanagawa": {
     "state": "queryable",
@@ -808,22 +905,28 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 4,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "dpri_gouu2010_amami": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "get_records(document_cells)"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "document_cells",
-    "reasonJa": "行政文書の表として cells に入れてある（出典の列は無い）。/documents・run_sql・get_records の record_set=documents で読む",
-    "reasonNote": null
+    "nSourceRows": 12,
+    "nSourceRowsBasis": "document_cells",
+    "countedAt": "2026-11-17T22:48:44",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": "doc_id=dpri_amami_gouu_sokuho_2011（速報の本文の雨量・被害を cells に入れた。2011年。fiscal_year は NULL の単発の事象）",
+    "docIds": [
+      "dpri_amami_gouu_sokuho_2011"
+    ]
   },
   "eadas_kanagawa": {
     "state": "not_queryable",
@@ -834,8 +937,9 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "nSourceRowsBasis": "none",
     "countedAt": null,
     "reason": "blocked_access",
-    "reasonJa": "ログイン・APIキー・利用アンケート・JS 画面などで、自動取得できていない",
-    "reasonNote": null
+    "reasonJa": "ログイン・APIキー登録・利用アンケート・JS で動く画面・リンク切れなどで、自動取得できていない",
+    "reasonNote": null,
+    "docIds": []
   },
   "env_kousui_annual_amami": {
     "state": "queryable",
@@ -846,10 +950,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 2521,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "env_kousui_annual_kanagawa": {
     "state": "queryable",
@@ -860,10 +965,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 98328,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "env_kousui_sample_amami": {
     "state": "queryable",
@@ -874,10 +980,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 1380,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "env_kousui_sample_kanagawa": {
     "state": "queryable",
@@ -888,10 +995,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 214725,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "env_kousui_stations_amami": {
     "state": "queryable",
@@ -906,10 +1014,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 25,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "env_kousui_stations_kanagawa": {
     "state": "queryable",
@@ -924,10 +1033,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 290,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "estat_agri_census_kanagawa": {
     "state": "queryable",
@@ -938,10 +1048,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 5,
     "nSourceRowsBasis": "catalog_datasets",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "estat_census_population_kanagawa": {
     "state": "queryable",
@@ -952,10 +1063,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 1,
     "nSourceRowsBasis": "catalog_datasets",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "estat_shozaiki_kanagawa": {
     "state": "queryable",
@@ -966,10 +1078,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 1,
     "nSourceRowsBasis": "catalog_datasets",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "etanzawa_siryousitu": {
     "state": "not_queryable",
@@ -981,7 +1094,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "pdf_document",
     "reasonJa": "PDF の文書のまま。表として取り出していない",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "gbif_amami_occurrences": {
     "state": "queryable",
@@ -992,10 +1106,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 47874,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "gbif_kanagawa": {
     "state": "not_queryable",
@@ -1007,7 +1122,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "superseded",
     "reasonJa": "別の出典に置き換わった（superseded_by 参照）",
-    "reasonNote": "gbif_kanagawa_occurrences に置き換わった。値はそちらで取る"
+    "reasonNote": "gbif_kanagawa_occurrences に置き換わった。値はそちらで取る",
+    "docIds": []
   },
   "gbif_kanagawa_occurrences": {
     "state": "queryable",
@@ -1018,10 +1134,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 658360,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "gbif_species_match": {
     "state": "not_queryable",
@@ -1033,7 +1150,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "geoshape_sagami_river": {
     "state": "queryable",
@@ -1048,10 +1166,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 1547,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "geospatial_jp_agri_point_2021_sagami": {
     "state": "not_queryable",
@@ -1063,7 +1182,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "geospatial_jp_agri_poly_2021_sagami": {
     "state": "not_queryable",
@@ -1075,7 +1195,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "not_collected",
     "reasonJa": "未収集（取得手段が未着手、または登録のみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "geospatial_jp_kanagawa_catalog": {
     "state": "not_queryable",
@@ -1087,7 +1208,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "catalog_only",
     "reasonJa": "データ目録（メタデータ）で、観測値・記録そのものではない",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "geospatial_jp_kokudo_landclass_kanagawa": {
     "state": "not_queryable",
@@ -1099,7 +1221,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "geospatial_jp_kokudo_river_sagami": {
     "state": "not_queryable",
@@ -1111,7 +1234,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "geospatial_jp_plateau_kanagawa": {
     "state": "not_queryable",
@@ -1123,7 +1247,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "catalog_only",
     "reasonJa": "データ目録（メタデータ）で、観測値・記録そのものではない",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "geospatial_jp_pointcloud_kanagawa": {
     "state": "not_queryable",
@@ -1135,7 +1260,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "catalog_only",
     "reasonJa": "データ目録（メタデータ）で、観測値・記録そのものではない",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "gsi_dem_terrain": {
     "state": "not_queryable",
@@ -1147,7 +1273,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "gsi_dem_watersheds_amami": {
     "state": "not_queryable",
@@ -1159,7 +1286,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "gsi_elevation_grid": {
     "state": "not_queryable",
@@ -1171,7 +1299,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "gsi_elevation_grid_amami": {
     "state": "not_queryable",
@@ -1183,7 +1312,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "gsi_kiban_chizu_joho": {
     "state": "not_queryable",
@@ -1194,8 +1324,9 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "nSourceRowsBasis": "none",
     "countedAt": null,
     "reason": "blocked_access",
-    "reasonJa": "ログイン・APIキー・利用アンケート・JS 画面などで、自動取得できていない",
-    "reasonNote": null
+    "reasonJa": "ログイン・APIキー登録・利用アンケート・JS で動く画面・リンク切れなどで、自動取得できていない",
+    "reasonNote": null,
+    "docIds": []
   },
   "gsj_geology_points": {
     "state": "not_queryable",
@@ -1207,7 +1338,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "gsj_seamless_legend": {
     "state": "not_queryable",
@@ -1219,7 +1351,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "hadano_preserved_trees": {
     "state": "queryable",
@@ -1234,10 +1367,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 30,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "hiratsuka_parks": {
     "state": "queryable",
@@ -1252,10 +1386,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 290,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "hiratsuka_taiki": {
     "state": "queryable",
@@ -1266,10 +1401,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 245513,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "hiratsuka_taiki_stations": {
     "state": "queryable",
@@ -1284,10 +1420,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 5,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "ikilog": {
     "state": "not_queryable",
@@ -1298,8 +1435,9 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "nSourceRowsBasis": "none",
     "countedAt": null,
     "reason": "blocked_access",
-    "reasonJa": "ログイン・APIキー・利用アンケート・JS 画面などで、自動取得できていない",
-    "reasonNote": null
+    "reasonJa": "ログイン・APIキー登録・利用アンケート・JS で動く画面・リンク切れなどで、自動取得できていない",
+    "reasonNote": null,
+    "docIds": []
   },
   "inaturalist_amami": {
     "state": "queryable",
@@ -1310,10 +1448,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 13539,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "inaturalist_kanagawa": {
     "state": "queryable",
@@ -1324,10 +1463,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 165332,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "jma_daily_nase": {
     "state": "queryable",
@@ -1338,10 +1478,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 20496,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "jma_daily_yokohama": {
     "state": "queryable",
@@ -1352,10 +1493,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 19420,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "jma_monthly_amami": {
     "state": "queryable",
@@ -1366,10 +1508,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 6277,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "jma_monthly_kanagawa": {
     "state": "queryable",
@@ -1380,10 +1523,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 13821,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "jma_sst_amami": {
     "state": "queryable",
@@ -1394,10 +1538,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 65412,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "jma_stations_amami": {
     "state": "queryable",
@@ -1412,10 +1557,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 3,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "jma_stations_kanagawa": {
     "state": "queryable",
@@ -1430,46 +1576,63 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 12,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "kagoshima_dam_capacity_amami": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "get_records(document_cells)"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "document_cells",
-    "reasonJa": "行政文書の表として cells に入れてある（出典の列は無い）。/documents・run_sql・get_records の record_set=documents で読む",
-    "reasonNote": null
+    "nSourceRows": 9,
+    "nSourceRowsBasis": "document_cells",
+    "countedAt": "2026-11-17T22:48:44",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": "doc_id=kagoshima_amami_ryuiki_chisui_10p_2023（県の流域治水プロジェクト10頁版の大和・大川ダムの有効貯水容量。cells に入れた。BODIK 版の4頁には容量が無い）",
+    "docIds": [
+      "kagoshima_amami_ryuiki_chisui_10p_2023"
+    ]
   },
   "kagoshima_habu_amami": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "get_records(document_cells)"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "document_cells",
-    "reasonJa": "行政文書の表として cells に入れてある（出典の列は無い）。/documents・run_sql・get_records の record_set=documents で読む",
-    "reasonNote": null
+    "nSourceRows": 393,
+    "nSourceRowsBasis": "document_cells",
+    "countedAt": "2026-11-17T22:48:44",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": "doc_id=kagoshima_habu_bite_h28r7・kagoshima_habu_kaiage_h28r7（画像の PDF を OCR）。cells に入れた",
+    "docIds": [
+      "kagoshima_habu_bite_h28r7",
+      "kagoshima_habu_kaiage_h28r7"
+    ]
   },
   "kagoshima_irikomi_amami": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "get_records(document_cells)"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "document_cells",
-    "reasonJa": "行政文書の表として cells に入れてある（出典の列は無い）。/documents・run_sql・get_records の record_set=documents で読む",
-    "reasonNote": null
+    "nSourceRows": 80,
+    "nSourceRowsBasis": "document_cells",
+    "countedAt": "2026-11-17T22:48:44",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": "doc_id=bodik_460001_guntou_irikomi_2024（BODIK の XLSX、奄美群島の暦年値）。cells に入れた",
+    "docIds": [
+      "bodik_460001_guntou_irikomi_2024"
+    ]
   },
   "kagoshima_kasen_choui_amami": {
     "state": "queryable",
@@ -1480,10 +1643,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 20508,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "kagoshima_kasen_dam_amami": {
     "state": "queryable",
@@ -1494,10 +1658,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 57591,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "kagoshima_kasen_stations_amami": {
     "state": "queryable",
@@ -1512,10 +1677,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 12,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "kagoshima_kasen_suii_amami": {
     "state": "queryable",
@@ -1526,10 +1692,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 69120,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "kagoshima_kasen_suii_kiki_amami": {
     "state": "queryable",
@@ -1540,22 +1707,28 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 11832,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "kagoshima_noneko_amami": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "get_records(document_cells)"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "document_cells",
-    "reasonJa": "行政文書の表として cells に入れてある（出典の列は無い）。/documents・run_sql・get_records の record_set=documents で読む",
-    "reasonNote": null
+    "nSourceRows": 76,
+    "nSourceRowsBasis": "document_cells",
+    "countedAt": "2026-11-17T22:48:44",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": "doc_id=kagoshima_noneko_r4（PDF の表、月次と年度別）。cells に入れた",
+    "docIds": [
+      "kagoshima_noneko_r4"
+    ]
   },
   "kagoshima_ordinance_species": {
     "state": "queryable",
@@ -1570,10 +1743,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 59,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "kagoshima_redlist": {
     "state": "queryable",
@@ -1588,46 +1762,63 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 2810,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "kagoshima_suido_amami": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "get_records(document_cells)"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "document_cells",
-    "reasonJa": "行政文書の表として cells に入れてある（出典の列は無い）。/documents・run_sql・get_records の record_set=documents で読む",
-    "reasonNote": null
+    "nSourceRows": 48,
+    "nSourceRowsBasis": "document_cells",
+    "countedAt": "2026-11-17T22:48:44",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": "doc_id=kagoshima_suido_r5_joryo・kagoshima_suido_r5_kani（令和5年度水道統計の上水道・簡易水道の取水の種別。cells に入れた。fiscal_year は NULL）",
+    "docIds": [
+      "kagoshima_suido_r5_joryo",
+      "kagoshima_suido_r5_kani"
+    ]
   },
   "kagoshima_umigame_amami": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "get_records(document_cells)"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "document_cells",
-    "reasonJa": "行政文書の表として cells に入れてある（出典の列は無い）。/documents・run_sql・get_records の record_set=documents で読む",
-    "reasonNote": null
+    "nSourceRows": 1271,
+    "nSourceRowsBasis": "document_cells",
+    "countedAt": "2026-11-17T22:48:44",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": "doc_id=kagoshima_umigame_r7（PDF の表、39市町村×上陸・産卵）。cells に入れた",
+    "docIds": [
+      "kagoshima_umigame_r7"
+    ]
   },
   "kagoshima_univ_gouu2010_amami": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "get_records(document_cells)"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "document_cells",
-    "reasonJa": "行政文書の表として cells に入れてある（出典の列は無い）。/documents・run_sql・get_records の record_set=documents で読む",
-    "reasonNote": null
+    "nSourceRows": 94,
+    "nSourceRowsBasis": "document_cells",
+    "countedAt": "2026-11-17T22:48:44",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": "doc_id=kagoshima_univ_amami_gouu_2012（報告書の本文・画像・表-2 の雨量・被害を cells に入れた。2012年。どちらも fiscal_year は NULL の単発の事象）",
+    "docIds": [
+      "kagoshima_univ_amami_gouu_2012"
+    ]
   },
   "kanagawa_dam_mizugame": {
     "state": "not_queryable",
@@ -1639,7 +1830,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "external_api",
     "reasonJa": "外部 API・CGI・現況ページ。値は提供元に問い合わせる",
-    "reasonNote": "動的 JSON の現況。蓄積した履歴が無い"
+    "reasonNote": "動的 JSON の現況。蓄積した履歴が無い",
+    "docIds": []
   },
   "kanagawa_edna": {
     "state": "queryable",
@@ -1651,10 +1843,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 134443,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "kanagawa_green_conservation": {
     "state": "queryable",
@@ -1669,10 +1862,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 379,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "kanagawa_ikimono_chousa": {
     "state": "not_queryable",
@@ -1684,7 +1878,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "pdf_document",
     "reasonJa": "PDF の文書のまま。表として取り出していない",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "kanagawa_jiban_chinka": {
     "state": "queryable",
@@ -1700,10 +1895,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 3286,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "kanagawa_kuma_sightings": {
     "state": "queryable",
@@ -1719,10 +1915,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 400,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "kanagawa_natural_parks": {
     "state": "queryable",
@@ -1737,22 +1934,28 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 29,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "kanagawa_rdb2006_animals": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "get_records(document_cells)"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "not_in_d1",
-    "reasonJa": "原本には行があるが、D1 にその表が無い（本番では引けない）",
-    "reasonNote": null
+    "nSourceRows": 874,
+    "nSourceRowsBasis": "document_cells",
+    "countedAt": "2026-11-17T22:48:44",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": "レッドデータ生物調査報告書2006 のレッドリスト一覧の表を cells に入れた（c26_kanagawa_redlist_animals_2006.py）。原本 taxa の行は D1 に無いので、値は文書の表から引く",
+    "docIds": [
+      "kanagawa_rdb2006_animals"
+    ]
   },
   "kanagawa_rdb2006_errata": {
     "state": "not_queryable",
@@ -1764,7 +1967,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "kanagawa_rdb2022_plants": {
     "state": "queryable",
@@ -1779,10 +1983,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 1033,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "kanagawa_redlist": {
     "state": "queryable",
@@ -1797,10 +2002,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 1851,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "kanagawa_redlist_categories": {
     "state": "not_queryable",
@@ -1812,19 +2018,33 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "kanagawa_river_citizen_survey": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "get_records(document_cells)"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "not_in_d1",
-    "reasonJa": "原本には行があるが、D1 にその表が無い（本番では引けない）",
-    "reasonNote": null
+    "nSourceRows": 2303,
+    "nSourceRowsBasis": "document_cells",
+    "countedAt": "2026-11-17T22:48:44",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": "県民参加型調査・相模川酒匂川水系の動植物等調査の PDF の表を cells に入れた（c53_kanagawa_river_monitoring.py。セルのある文書だけ列挙）。原本 protocols は D1 に無い",
+    "docIds": [
+      "kanagawa_river_monitoring_anzen",
+      "kanagawa_river_monitoring_h20_sagami_results",
+      "kanagawa_river_monitoring_h21_sakawa_results",
+      "kanagawa_river_monitoring_h25_sagami_results",
+      "kanagawa_river_monitoring_h26_sakawa_results",
+      "kanagawa_river_monitoring_h30sagamigawa",
+      "kanagawa_river_monitoring_manyual",
+      "kanagawa_river_monitoring_r1_sakawa_results",
+      "kanagawa_river_monitoring_syokubutu"
+    ]
   },
   "kanagawa_shizenshi_bibliography": {
     "state": "not_queryable",
@@ -1836,19 +2056,30 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "kasen_kokusei_sagami": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "get_records(document_cells)"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "pdf_document",
-    "reasonJa": "PDF の文書のまま。表として取り出していない",
-    "reasonNote": null
+    "nSourceRows": 22906,
+    "nSourceRowsBasis": "document_cells",
+    "countedAt": "2026-11-17T22:48:44",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": "河川水辺の国勢調査（相模川）6 分類群の PDF の表を抽出して cells に入れた（c50_kasen_kokusei.py）",
+    "docIds": [
+      "kasen_kokusei_sagami_benthos",
+      "kasen_kokusei_sagami_birds",
+      "kasen_kokusei_sagami_fish",
+      "kasen_kokusei_sagami_herptile_mammal",
+      "kasen_kokusei_sagami_insects",
+      "kasen_kokusei_sagami_plants"
+    ]
   },
   "miyagase_storage_status": {
     "state": "not_queryable",
@@ -1860,7 +2091,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "external_api",
     "reasonJa": "外部 API・CGI・現況ページ。値は提供元に問い合わせる",
-    "reasonNote": "現況のスナップショット（更新のたびに内容が上書きされる）"
+    "reasonNote": "現況のスナップショット（更新のたびに内容が上書きされる）",
+    "docIds": []
   },
   "mlit_amami_action_plan_amami": {
     "state": "not_queryable",
@@ -1872,7 +2104,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "pdf_document",
     "reasonJa": "PDF の文書のまま。表として取り出していない",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "mlit_river_hydro": {
     "state": "not_queryable",
@@ -1884,7 +2117,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "external_api",
     "reasonJa": "外部 API・CGI・現況ページ。値は提供元に問い合わせる",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "moe_amami_wh_plans_amami": {
     "state": "not_queryable",
@@ -1896,7 +2130,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "pdf_document",
     "reasonJa": "PDF の文書のまま。表として取り出していない",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "moe_ias_list": {
     "state": "queryable",
@@ -1911,10 +2146,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 429,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "moe_meisui_kanagawa": {
     "state": "not_queryable",
@@ -1926,19 +2162,25 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "moe_mongoose_amami": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "get_records(document_cells)"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "document_cells",
-    "reasonJa": "行政文書の表として cells に入れてある（出典の列は無い）。/documents・run_sql・get_records の record_set=documents で読む",
-    "reasonNote": null
+    "nSourceRows": 120,
+    "nSourceRowsBasis": "document_cells",
+    "countedAt": "2026-11-17T22:48:44",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": "doc_id=moe_mongoose_catch_h12r4（PNG の表を OCR 2種＋検算＋評価シート突き合わせ、2000〜2022年度）・moe_mongoose_eradication_declaration_2024（documents と notes だけ）。cells に入れた",
+    "docIds": [
+      "moe_mongoose_catch_h12r4"
+    ]
   },
   "moe_redlist": {
     "state": "not_queryable",
@@ -1950,7 +2192,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "not_in_d1",
     "reasonJa": "原本には行があるが、D1 にその表が無い（本番では引けない）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "moe_satoyama_kanagawa": {
     "state": "not_queryable",
@@ -1962,7 +2205,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "moni1000_coast_shorebird": {
     "state": "queryable",
@@ -1978,10 +2222,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 620,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": "環境省生物多様性センター モニタリングサイト1000 沿岸域調査 シギ・チドリ類調査（生物多様性センターウェブサイト利用規約に基づき出典を明示）。神奈川県のサイトのみ。出現の n は記録の行数（個体数ではない）。"
+    "reasonNote": "環境省生物多様性センター モニタリングサイト1000 沿岸域調査 シギ・チドリ類調査（生物多様性センターウェブサイト利用規約に基づき出典を明示）。神奈川県のサイトのみ。出現の n は記録の行数（個体数ではない）。",
+    "docIds": []
   },
   "moni1000_coast_shorebird_amami": {
     "state": "queryable",
@@ -1997,10 +2242,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 275,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": "環境省生物多様性センター モニタリングサイト1000 沿岸域調査 シギ・チドリ類調査（生物多様性センターウェブサイト利用規約に基づき出典を明示）。奄美大島大瀬海岸のみ。出現の n は記録の行数（個体数ではない）。"
+    "reasonNote": "環境省生物多様性センター モニタリングサイト1000 沿岸域調査 シギ・チドリ類調査（生物多様性センターウェブサイト利用規約に基づき出典を明示）。奄美大島大瀬海岸のみ。出現の n は記録の行数（個体数ではない）。",
+    "docIds": []
   },
   "moni1000_coral_amami": {
     "state": "queryable",
@@ -2015,10 +2261,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 210,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": "環境省生物多様性センター モニタリングサイト1000 サンゴ礁調査（スポットチェック法）。奄美大島とその周辺 15 スポットの 2004〜2017 年度の観測値（被度・白化率・オニヒトデ・SPSS・大型魚・病気）。種の出現ではない。データ出典の明示例: 「環境省・モニタリングサイト1000プロジェクトにより松本毅、興克樹、長田智史、岩尾研二、梶原健次、吉田稔、木村匡、上野光弘、佐々木哲朗、清本正人、須之部友基、平林勲、目崎拓真、出羽真一、出羽尚子、野島哲が2020年に提供した（SAN01.zip, http://www.biodic.go.jp/moni1000/findings/data/index.html よりダウンロード）。」"
+    "reasonNote": "環境省生物多様性センター モニタリングサイト1000 サンゴ礁調査（スポットチェック法）。奄美大島とその周辺 15 スポットの 2004〜2017 年度の観測値（被度・白化率・オニヒトデ・SPSS・大型魚・病気）。種の出現ではない。データ出典の明示例: 「環境省・モニタリングサイト1000プロジェクトにより松本毅、興克樹、長田智史、岩尾研二、梶原健次、吉田稔、木村匡、上野光弘、佐々木哲朗、清本正人、須之部友基、平林勲、目崎拓真、出羽真一、出羽尚子、野島哲が2020年に提供した（SAN01.zip, http://www.biodic.go.jp/moni1000/findings/data/index.html よりダウンロード）。」",
+    "docIds": []
   },
   "moni1000_forest_bird": {
     "state": "queryable",
@@ -2034,10 +2281,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 9433,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": "環境省生物多様性センター モニタリングサイト1000 森林・草原調査 陸生鳥類調査（生物多様性センターウェブサイト利用規約に基づき出典を明示）。神奈川県のサイトのみ。出現の n は記録の行数（個体数ではない）。"
+    "reasonNote": "環境省生物多様性センター モニタリングサイト1000 森林・草原調査 陸生鳥類調査（生物多様性センターウェブサイト利用規約に基づき出典を明示）。神奈川県のサイトのみ。出現の n は記録の行数（個体数ではない）。",
+    "docIds": []
   },
   "moni1000_forest_bird_amami": {
     "state": "queryable",
@@ -2053,10 +2301,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 6166,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": "環境省生物多様性センター モニタリングサイト1000 森林・草原調査 陸生鳥類調査（生物多様性センターウェブサイト利用規約に基づき出典を明示）。奄美のサイト（奄美市・宇検村）のみ。出現の n は記録の行数（個体数ではない）。"
+    "reasonNote": "環境省生物多様性センター モニタリングサイト1000 森林・草原調査 陸生鳥類調査（生物多様性センターウェブサイト利用規約に基づき出典を明示）。奄美のサイト（奄美市・宇検村）のみ。出現の n は記録の行数（個体数ではない）。",
+    "docIds": []
   },
   "moni1000_lake_aquaticplants": {
     "state": "not_queryable",
@@ -2067,8 +2316,9 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "nSourceRowsBasis": "none",
     "countedAt": null,
     "reason": "blocked_access",
-    "reasonJa": "ログイン・APIキー・利用アンケート・JS 画面などで、自動取得できていない",
-    "reasonNote": null
+    "reasonJa": "ログイン・APIキー登録・利用アンケート・JS で動く画面・リンク切れなどで、自動取得できていない",
+    "reasonNote": null,
+    "docIds": []
   },
   "moni1000_lake_benthos": {
     "state": "not_queryable",
@@ -2079,8 +2329,9 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "nSourceRowsBasis": "none",
     "countedAt": null,
     "reason": "blocked_access",
-    "reasonJa": "ログイン・APIキー・利用アンケート・JS 画面などで、自動取得できていない",
-    "reasonNote": null
+    "reasonJa": "ログイン・APIキー登録・利用アンケート・JS で動く画面・リンク切れなどで、自動取得できていない",
+    "reasonNote": null,
+    "docIds": []
   },
   "moni1000_lake_fish": {
     "state": "not_queryable",
@@ -2091,8 +2342,9 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "nSourceRowsBasis": "none",
     "countedAt": null,
     "reason": "blocked_access",
-    "reasonJa": "ログイン・APIキー・利用アンケート・JS 画面などで、自動取得できていない",
-    "reasonNote": null
+    "reasonJa": "ログイン・APIキー登録・利用アンケート・JS で動く画面・リンク切れなどで、自動取得できていない",
+    "reasonNote": null,
+    "docIds": []
   },
   "moni1000_satochi_bird": {
     "state": "queryable",
@@ -2108,10 +2360,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 18396,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": "環境省生物多様性センター モニタリングサイト1000 里地調査 鳥類調査（生物多様性センターウェブサイト利用規約に基づき出典を明示）。神奈川県のサイトのみ。出現の n は記録の行数（個体数ではない）。"
+    "reasonNote": "環境省生物多様性センター モニタリングサイト1000 里地調査 鳥類調査（生物多様性センターウェブサイト利用規約に基づき出典を明示）。神奈川県のサイトのみ。出現の n は記録の行数（個体数ではない）。",
+    "docIds": []
   },
   "moni1000_satochi_butterfly": {
     "state": "queryable",
@@ -2127,10 +2380,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 14529,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": "環境省生物多様性センター モニタリングサイト1000 里地調査 チョウ類調査（生物多様性センターウェブサイト利用規約に基づき出典を明示）。神奈川県のサイトのみ。出現の n は記録の行数（個体数ではない）。"
+    "reasonNote": "環境省生物多様性センター モニタリングサイト1000 里地調査 チョウ類調査（生物多様性センターウェブサイト利用規約に基づき出典を明示）。神奈川県のサイトのみ。出現の n は記録の行数（個体数ではない）。",
+    "docIds": []
   },
   "moni1000_satochi_mammal": {
     "state": "queryable",
@@ -2146,10 +2400,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 2031,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": "環境省生物多様性センター モニタリングサイト1000 里地調査 中・大型哺乳類調査（自動撮影）（生物多様性センターウェブサイト利用規約に基づき出典を明示）。神奈川県のサイトのみ。出現の n は記録の行数（個体数ではない）。"
+    "reasonNote": "環境省生物多様性センター モニタリングサイト1000 里地調査 中・大型哺乳類調査（自動撮影）（生物多様性センターウェブサイト利用規約に基づき出典を明示）。神奈川県のサイトのみ。出現の n は記録の行数（個体数ではない）。",
+    "docIds": []
   },
   "moni1000_sites": {
     "state": "queryable",
@@ -2164,10 +2419,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 30,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "moni1000_waterfowl": {
     "state": "not_queryable",
@@ -2178,8 +2434,9 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "nSourceRowsBasis": "none",
     "countedAt": null,
     "reason": "blocked_access",
-    "reasonJa": "ログイン・APIキー・利用アンケート・JS 画面などで、自動取得できていない",
-    "reasonNote": null
+    "reasonJa": "ログイン・APIキー登録・利用アンケート・JS で動く画面・リンク切れなどで、自動取得できていない",
+    "reasonNote": null,
+    "docIds": []
   },
   "moni1000_wetland_vegetation": {
     "state": "not_queryable",
@@ -2190,8 +2447,9 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "nSourceRowsBasis": "none",
     "countedAt": null,
     "reason": "blocked_access",
-    "reasonJa": "ログイン・APIキー・利用アンケート・JS 画面などで、自動取得できていない",
-    "reasonNote": null
+    "reasonJa": "ログイン・APIキー登録・利用アンケート・JS で動く画面・リンク切れなどで、自動取得できていない",
+    "reasonNote": null,
+    "docIds": []
   },
   "nlni_a03_metro_area": {
     "state": "not_queryable",
@@ -2203,7 +2461,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "not_collected",
     "reasonJa": "未収集（取得手段が未着手、または登録のみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "nlni_a10_natparks": {
     "state": "not_queryable",
@@ -2215,7 +2474,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": "data/processed に 4 ファイル。D1 の表は無い"
+    "reasonNote": "data/processed に 4 ファイル。D1 の表は無い",
+    "docIds": []
   },
   "nlni_a10_natparks_amami": {
     "state": "queryable",
@@ -2230,10 +2490,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 61,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": "奄美のみ。神奈川は A10・A15・A45 を取り込んでいない（神奈川の保護区は県・市の台帳）。3レイヤ（自然公園地域・特別地域・特別保護地区）は入れ子なので category_code をまたいで area_ha を足さない。公園名は原データに無い。"
+    "reasonNote": "奄美のみ。神奈川は A10・A15・A45 を取り込んでいない（神奈川の保護区は県・市の台帳）。3レイヤ（自然公園地域・特別地域・特別保護地区）は入れ子なので category_code をまたいで area_ha を足さない。公園名は原データに無い。",
+    "docIds": []
   },
   "nlni_a15_wildlife": {
     "state": "not_queryable",
@@ -2245,7 +2506,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "nlni_a15_wildlife_amami": {
     "state": "queryable",
@@ -2260,10 +2522,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 20,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": "奄美のみ。神奈川は A10・A15・A45 を取り込んでいない（神奈川の保護区は県・市の台帳）。2009年版。20件中19件は版の時点の指定期間が 2018 年までに満了している。"
+    "reasonNote": "奄美のみ。神奈川は A10・A15・A45 を取り込んでいない（神奈川の保護区は県・市の台帳）。2009年版。20件中19件は版の時点の指定期間が 2018 年までに満了している。",
+    "docIds": []
   },
   "nlni_a45_forest": {
     "state": "not_queryable",
@@ -2275,7 +2538,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "nlni_a45_forest_amami": {
     "state": "queryable",
@@ -2290,10 +2554,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 940,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": "奄美のみ。神奈川は A10・A15・A45 を取り込んでいない（神奈川の保護区は県・市の台帳）。国有林の小班（2018年度版）。民有林は含まない。"
+    "reasonNote": "奄美のみ。神奈川は A10・A15・A45 を取り込んでいない（神奈川の保護区は県・市の台帳）。国有林の小班（2018年度版）。民有林は含まない。",
+    "docIds": []
   },
   "nlni_c23_coastline": {
     "state": "not_queryable",
@@ -2305,7 +2570,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "nlni_l03b_landuse_2006": {
     "state": "not_queryable",
@@ -2317,7 +2583,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "nlni_l03b_landuse_2006_amami": {
     "state": "not_queryable",
@@ -2329,7 +2596,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "nlni_l03b_landuse_2016": {
     "state": "not_queryable",
@@ -2341,7 +2609,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "nlni_l03b_landuse_2016_amami": {
     "state": "not_queryable",
@@ -2353,7 +2622,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "nlni_l03b_landuse_by_watershed": {
     "state": "queryable",
@@ -2364,10 +2634,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 4858,
     "nSourceRowsBasis": "registry_record_count",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "nlni_l03b_landuse_by_watershed_amami": {
     "state": "queryable",
@@ -2378,10 +2649,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 806,
     "nSourceRowsBasis": "registry_record_count",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "nlni_p05_city_hall": {
     "state": "not_queryable",
@@ -2393,7 +2665,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "not_collected",
     "reasonJa": "未収集（取得手段が未着手、または登録のみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "nlni_w05_river_nodes": {
     "state": "not_queryable",
@@ -2405,7 +2678,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "nlni_w05_river_nodes_amami": {
     "state": "not_queryable",
@@ -2417,7 +2691,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "nlni_w05_rivers": {
     "state": "not_queryable",
@@ -2429,7 +2704,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "nlni_w05_rivers_amami": {
     "state": "not_queryable",
@@ -2441,7 +2717,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "nlni_w07_watershed_mesh": {
     "state": "not_queryable",
@@ -2453,7 +2730,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "not_collected",
     "reasonJa": "未収集（取得手段が未着手、または登録のみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "nlni_w12_watersheds": {
     "state": "not_queryable",
@@ -2465,7 +2743,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "nlni_w12_watersheds_amami": {
     "state": "not_queryable",
@@ -2477,7 +2756,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "nlni_w12_watersheds_by_system": {
     "state": "not_queryable",
@@ -2489,7 +2769,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "osm_amami_farmland": {
     "state": "not_queryable",
@@ -2501,7 +2782,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "osm_amami_forest": {
     "state": "not_queryable",
@@ -2513,7 +2795,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "osm_amami_protected_area": {
     "state": "not_queryable",
@@ -2525,7 +2808,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "osm_amami_water": {
     "state": "not_queryable",
@@ -2537,7 +2821,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "osm_kanagawa_farmland": {
     "state": "not_queryable",
@@ -2549,7 +2834,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "osm_kanagawa_forest": {
     "state": "not_queryable",
@@ -2561,7 +2847,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "osm_kanagawa_protected_area": {
     "state": "not_queryable",
@@ -2573,7 +2860,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "osm_kanagawa_water": {
     "state": "not_queryable",
@@ -2585,7 +2873,46 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
+  },
+  "osm_water_structures": {
+    "state": "queryable",
+    "queryableVia": [
+      "get_records"
+    ],
+    "tables": [
+      "osm_water_structures"
+    ],
+    "recordSetRows": {
+      "osm_water_structures": 1167
+    },
+    "nSourceRows": 1167,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-11-17T22:48:44",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": "OpenStreetMap のダム・堰（waterway=dam/weir）。データは ODbL 1.0（© OpenStreetMap contributors）",
+    "docIds": []
+  },
+  "osm_waterways": {
+    "state": "queryable",
+    "queryableVia": [
+      "get_records"
+    ],
+    "tables": [
+      "osm_waterways"
+    ],
+    "recordSetRows": {
+      "osm_waterways": 6944
+    },
+    "nSourceRows": 6944,
+    "nSourceRowsBasis": "source_rows",
+    "countedAt": "2026-11-17T22:48:44",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": "OpenStreetMap の河川線（名前つき waterway=river/stream の way）。座標は Overpass の生のまま。relation_id は同じ川としてのまとまり。データは ODbL 1.0（© OpenStreetMap contributors）",
+    "docIds": []
   },
   "resas_api": {
     "state": "not_queryable",
@@ -2596,8 +2923,9 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "nSourceRowsBasis": "none",
     "countedAt": null,
     "reason": "blocked_access",
-    "reasonJa": "ログイン・APIキー・利用アンケート・JS 画面などで、自動取得できていない",
-    "reasonNote": null
+    "reasonJa": "ログイン・APIキー登録・利用アンケート・JS で動く画面・リンク切れなどで、自動取得できていない",
+    "reasonNote": null,
+    "docIds": []
   },
   "rinya_forest_stats_prefecture": {
     "state": "not_queryable",
@@ -2609,7 +2937,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "rinya_lidar_kanagawa_status": {
     "state": "not_queryable",
@@ -2621,7 +2950,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "sagami_livecams": {
     "state": "queryable",
@@ -2636,10 +2966,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 16,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "sagami_seibi_keikaku_mirror": {
     "state": "not_queryable",
@@ -2651,7 +2982,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "pdf_document",
     "reasonJa": "PDF の文書のまま。表として取り出していない",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "sagamihara_digital_archive": {
     "state": "not_queryable",
@@ -2663,7 +2995,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "sagamihara_taiki_hourly": {
     "state": "queryable",
@@ -2674,10 +3007,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 175344,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "sagamihara_taiki_stations": {
     "state": "queryable",
@@ -2692,10 +3026,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 2,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "satonavi_donkai": {
     "state": "not_queryable",
@@ -2707,7 +3042,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "snet_kahaku": {
     "state": "not_queryable",
@@ -2718,8 +3054,9 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "nSourceRowsBasis": "none",
     "countedAt": null,
     "reason": "blocked_access",
-    "reasonJa": "ログイン・APIキー・利用アンケート・JS 画面などで、自動取得できていない",
-    "reasonNote": null
+    "reasonJa": "ログイン・APIキー登録・利用アンケート・JS で動く画面・リンク切れなどで、自動取得できていない",
+    "reasonNote": null,
+    "docIds": []
   },
   "soramame_hourly_amami": {
     "state": "queryable",
@@ -2730,10 +3067,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 17697,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "soramame_hourly_kanagawa": {
     "state": "queryable",
@@ -2744,10 +3082,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "recordSetRows": {},
     "nSourceRows": 168793,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "soramame_stations_amami": {
     "state": "queryable",
@@ -2762,10 +3101,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 1,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "soramame_stations_kanagawa": {
     "state": "queryable",
@@ -2780,22 +3120,31 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 4,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "tanzawa_shika_suigen_docs": {
-    "state": "not_queryable",
-    "queryableVia": [],
+    "state": "queryable",
+    "queryableVia": [
+      "get_records(document_cells)"
+    ],
     "tables": [],
     "recordSetRows": {},
-    "nSourceRows": null,
-    "nSourceRowsBasis": "none",
-    "countedAt": null,
-    "reason": "pdf_document",
-    "reasonJa": "PDF の文書のまま。表として取り出していない",
-    "reasonNote": null
+    "nSourceRows": 11449,
+    "nSourceRowsBasis": "document_cells",
+    "countedAt": "2026-11-17T22:48:44",
+    "reason": null,
+    "reasonJa": null,
+    "reasonNote": "丹沢のシカ管理実績・保護管理計画・水源環境保全再生の最終評価報告書 4 本の表を cells に入れた（c54_tanzawa_shika_suigen.py）",
+    "docIds": [
+      "tanzawa_shika_plan5",
+      "tanzawa_shika_r4",
+      "tanzawa_shika_r6",
+      "suigen_hozen_final_eval"
+    ]
   },
   "tanzawa_species_list_1997": {
     "state": "not_queryable",
@@ -2807,7 +3156,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "tanzawa_visitor_centers": {
     "state": "not_queryable",
@@ -2819,7 +3169,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "water_source_docs": {
     "state": "not_queryable",
@@ -2831,7 +3182,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "d1_no_source_column",
     "reasonJa": "D1 の表に出典の列が無く、表の行をどの出典のものか機械的に引けない",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "water_trace_kawasaki": {
     "state": "not_queryable",
@@ -2843,7 +3195,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "d1_no_source_column",
     "reasonJa": "D1 の表に出典の列が無く、表の行をどの出典のものか機械的に引けない",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "water_trace_yokohama": {
     "state": "not_queryable",
@@ -2855,7 +3208,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "d1_no_source_column",
     "reasonJa": "D1 の表に出典の列が無く、表の行をどの出典のものか機械的に引けない",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "ylist": {
     "state": "not_queryable",
@@ -2867,7 +3221,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "license",
     "reasonJa": "利用条件が不明のため取得していない",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "yokohama_bio_indicator": {
     "state": "not_queryable",
@@ -2879,7 +3234,8 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     "countedAt": null,
     "reason": "file_only",
     "reasonJa": "収集済みだが D1 に投入していない（data/processed のファイルのみ）",
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   },
   "yokohama_river_waterlevel": {
     "state": "queryable",
@@ -2895,10 +3251,11 @@ export const SOURCE_ACCESS: Readonly<Record<string, GeneratedSourceAccess>> = {
     },
     "nSourceRows": 75528,
     "nSourceRowsBasis": "source_rows",
-    "countedAt": "2026-10-12T12:27:58",
+    "countedAt": "2026-11-17T22:48:44",
     "reason": null,
     "reasonJa": null,
-    "reasonNote": null
+    "reasonNote": null,
+    "docIds": []
   }
 };
 
@@ -2911,6 +3268,8 @@ export const RECORD_SET_TABLES: Readonly<Record<string, string>> = {
   "protected_areas": "protected_areas",
   "vegetation": "vegetation_polygons",
   "river_segments": "river_segments",
+  "osm_waterways": "osm_waterways",
+  "osm_water_structures": "osm_water_structures",
   "mammal_mesh": "mammal_mesh",
   "sightings": "wildlife_sightings",
   "assessments": "taxon_assessment",
@@ -2920,10 +3279,10 @@ export const RECORD_SET_TABLES: Readonly<Record<string, string>> = {
 };
 
 /** 一覧から除いた出典の件数と理由（合成データ。出典メタの読み出し口に合成の出典を出さない既存の保証）。 */
-export const SOURCE_EXCLUDED_FROM_LIST: Readonly<Record<string, number>> = {"synthetic":1};
+export const SOURCE_EXCLUDED_FROM_LIST: Readonly<Record<string, number>> = {"superseded":1,"synthetic":1};
 
 /** get_records で引ける出典（SOURCE_ACCESS の tables が空でないもの）。 */
-export const RECORD_SOURCE_IDS: readonly string[] = ["atsugi_river_water_quality","biodic_mammal_mesh_kanagawa","biodic_veg2024_amami","biodic_veg2024_kanagawa","bodik_kagoshima_dosha_amami","dams_kanagawa","env_kousui_stations_amami","env_kousui_stations_kanagawa","geoshape_sagami_river","hadano_preserved_trees","hiratsuka_parks","hiratsuka_taiki_stations","jma_stations_amami","jma_stations_kanagawa","kagoshima_kasen_stations_amami","kagoshima_ordinance_species","kagoshima_redlist","kanagawa_green_conservation","kanagawa_jiban_chinka","kanagawa_kuma_sightings","kanagawa_natural_parks","kanagawa_rdb2022_plants","kanagawa_redlist","moe_ias_list","moni1000_coast_shorebird","moni1000_coast_shorebird_amami","moni1000_coral_amami","moni1000_forest_bird","moni1000_forest_bird_amami","moni1000_satochi_bird","moni1000_satochi_butterfly","moni1000_satochi_mammal","moni1000_sites","nlni_a10_natparks_amami","nlni_a15_wildlife_amami","nlni_a45_forest_amami","sagami_livecams","sagamihara_taiki_stations","soramame_stations_amami","soramame_stations_kanagawa","yokohama_river_waterlevel"];
+export const RECORD_SOURCE_IDS: readonly string[] = ["atsugi_river_water_quality","biodic_mammal_mesh_kanagawa","biodic_veg2024_amami","biodic_veg2024_kanagawa","bodik_kagoshima_dosha_amami","dams_kanagawa","env_kousui_stations_amami","env_kousui_stations_kanagawa","geoshape_sagami_river","hadano_preserved_trees","hiratsuka_parks","hiratsuka_taiki_stations","jma_stations_amami","jma_stations_kanagawa","kagoshima_kasen_stations_amami","kagoshima_ordinance_species","kagoshima_redlist","kanagawa_green_conservation","kanagawa_jiban_chinka","kanagawa_kuma_sightings","kanagawa_natural_parks","kanagawa_rdb2022_plants","kanagawa_redlist","moe_ias_list","moni1000_coast_shorebird","moni1000_coast_shorebird_amami","moni1000_coral_amami","moni1000_forest_bird","moni1000_forest_bird_amami","moni1000_satochi_bird","moni1000_satochi_butterfly","moni1000_satochi_mammal","moni1000_sites","nlni_a10_natparks_amami","nlni_a15_wildlife_amami","nlni_a45_forest_amami","osm_water_structures","osm_waterways","sagami_livecams","sagamihara_taiki_stations","soramame_stations_amami","soramame_stations_kanagawa","yokohama_river_waterlevel"];
 
 /** find_datasets で引ける出典（外部ポータルの目録。registry/source/access.yaml の catalog を宣言した出典。MCP_EXTERNAL_CATALOG.md §5）。 */
 export const FIND_DATASET_SOURCE_IDS: readonly string[] = ["ckan_bodik_kanagawa","ckan_kanagawa_pref","ckan_sagamihara","ckan_yokohama","estat_agri_census_kanagawa","estat_census_population_kanagawa","estat_shozaiki_kanagawa"];

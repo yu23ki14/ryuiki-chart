@@ -72,7 +72,7 @@ _SOURCE_ID_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
 REQUIRED_KEYS = ("source", "region", "target", "update_mode", "input", "adapter", "evidence")
 OPTIONAL_KEYS = ("expected_row_count", "checks", "edition", "expected", "expected_place_region_null_rows",
-                 "expected_absent_excluded_rows",
+                 "expected_absent_excluded_rows", "dedup_against",
                  "sample_input_max_rows")
 
 EXPECTED_PLACE_KEYS = ("coord_resolved", "coord_unresolved")
@@ -101,6 +101,10 @@ class Manifest:
     # b06（出現）: organism_records.occurrence_status='ABSENT'（GBIF の不在記録）を occurrence から除いた行数の宣言（既定 0）。
     # 不在記録は原本に残し、出現として数えない（ADR-0025 の 2026-10-07 追記）。実測と食い違えば b06 が止まる。
     expected_absent_excluded_rows: int = 0
+    # b06（出現）: この出典（GBIF）の行のうち、`source_ref` が同じ地域の `dedup_against` 出典（iNaturalist 直取得）の
+    # `source_ref` と一致するものを occurrence から除く。GBIF 経由で入ってくる iNaturalist 研究用グレードの観察は直取得と
+    # 同じ観察なので、直取得側を正にして二重に数えない（Issue #125）。除いた件数は b06 が独立に数えた重複件数と突合する。
+    dedup_against: str | None = None
     # 縮小サンプルに入力表を全件入れてよい行数の、この出典だけの上限（scripts/s01_build_sample.py が見る）。
     # 既定（None）は s01 の ADAPTER_INPUT_WHOLESALE_MAX_ROWS。入力表を絞る経路は無いので、大きい表の出典だけが宣言する。
     sample_input_max_rows: int | None = None
@@ -218,6 +222,16 @@ def manifest_problems(raw, stem: str, *, adapters_dir=None) -> list[str]:
             f"{label}.expected_absent_excluded_rows は adapter=builtin かつ target=occurrence のマニフェストにだけ書ける"
             f"（実際: adapter={raw.get('adapter')!r}, target={raw.get('target')!r}）"
         )
+    if "dedup_against" in raw:
+        if not (isinstance(raw["dedup_against"], str) and _SOURCE_ID_RE.match(raw["dedup_against"])):
+            problems.append(f"{label}.dedup_against が source_id の形の文字列でない（実際: {raw['dedup_against']!r}）")
+        elif raw["dedup_against"] == stem:
+            problems.append(f"{label}.dedup_against が自分自身")
+        elif raw.get("adapter") != BUILTIN or raw.get("target") != "occurrence":
+            problems.append(
+                f"{label}.dedup_against は adapter=builtin かつ target=occurrence のマニフェストにだけ書ける"
+                f"（実際: adapter={raw.get('adapter')!r}, target={raw.get('target')!r}）"
+            )
     if "sample_input_max_rows" in raw:
         v = raw["sample_input_max_rows"]
         if not (isinstance(v, int) and not isinstance(v, bool) and v > 0):
@@ -279,8 +293,11 @@ def validate_manifests_shape(manifests_dir=DEFAULT_MANIFESTS_DIR, *, adapters_di
     stray = sorted(p.name for p in manifests_dir.iterdir() if p.is_file() and p.suffix not in (".yml", ".md"))
     if stray:
         problems.append(f"{manifests_dir} に .yml 以外のファイルがある: {stray}")
+    raws: dict[str, dict] = {}
     for p in sorted(manifests_dir.glob("*.yml")):
         raw = load_yaml(p)
+        if isinstance(raw, dict):
+            raws[p.stem] = raw
         problems += manifest_problems(raw, p.stem, adapters_dir=adapters_dir)
         if isinstance(raw, dict) and not problems:
             # PyYAML を使えない鮮度判定（check_v2_fresh）が読む最小パーサの結果が、PyYAML の結果と一致していること。
@@ -291,6 +308,14 @@ def validate_manifests_shape(manifests_dir=DEFAULT_MANIFESTS_DIR, *, adapters_di
                     f"{p.stem}: adapter/input を最小パーサ（migrate.common.parse_manifest_inputs）が正しく読めない"
                     f"（パーサ: {adapter!r}/{inp!r}、YAML: {raw.get('adapter')!r}/{want_input!r}）。単純な書き方にすること"
                 )
+    for stem, raw in raws.items():
+        target = raw.get("dedup_against")
+        if isinstance(target, str) and target != stem:
+            other = raws.get(target)
+            if other is None:
+                problems.append(f"{stem}.dedup_against={target!r} のマニフェストが無い")
+            elif (other.get("region"), other.get("target"), other.get("adapter")) != (raw.get("region"), "occurrence", BUILTIN):
+                problems.append(f"{stem}.dedup_against={target!r} は同じ region の adapter=builtin・target=occurrence の出典でなければならない")
     if problems:
         raise MigrationError(f"{manifests_dir} のマニフェストの形が不正:\n- " + "\n- ".join(problems))
 
@@ -308,6 +333,7 @@ def load_manifests(manifests_dir=DEFAULT_MANIFESTS_DIR, *, adapters_dir=None) ->
             checks=tuple(raw.get("checks") or ()), edition=raw.get("edition"),
             expected=raw.get("expected"), expected_place_region_null_rows=raw.get("expected_place_region_null_rows", 0),
             expected_absent_excluded_rows=raw.get("expected_absent_excluded_rows", 0),
+            dedup_against=raw.get("dedup_against"),
             sample_input_max_rows=raw.get("sample_input_max_rows"),
             path=str(p),
         )

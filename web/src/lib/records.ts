@@ -142,6 +142,31 @@ export const RECORD_TABLES = {
     ],
     geometry: "geometry_geojson",
   },
+  /*
+   * OpenStreetMap の河川線（`osm_waterways`、scripts/c105_osm_waterways.py → m12_osm_waterways.py。ODbL 1.0 © OpenStreetMap contributors）。
+   * 名前つきの waterway=river/stream の way。座標は Overpass の生のまま（ジオメトリは `id` 指定の 1 件だけ include_geometry で返す）。
+   * relation_id は同じ川としてのまとまり（NULL なら不明）。
+   */
+  osm_waterways: {
+    table: RECORD_SET_TABLES.osm_waterways,
+    pk: "way_id",
+    search: ["name_ja"],
+    cols: [
+      "way_id", "name_ja", "waterway", "relation_id", "region_id", "length_m", "start_lat", "start_lon", "end_lat", "end_lon",
+      "source_id", "source_ref",
+    ],
+    geometry: "geometry_geojson",
+  },
+  /*
+   * OpenStreetMap のダム・堰（`osm_water_structures`。waterway=dam/weir）。主キーは (osm_type, osm_id) だが、ページングと id 指定には
+   * 一意な `source_ref`（'osm:node/10' 等）を使う。lat/lon は way・relation では Overpass の center。
+   */
+  osm_water_structures: {
+    table: RECORD_SET_TABLES.osm_water_structures,
+    pk: "source_ref",
+    search: ["name_ja"],
+    cols: ["source_ref", "osm_type", "osm_id", "kind", "name_ja", "region_id", "lat", "lon", "source_id"],
+  },
   mammal_mesh: {
     table: RECORD_SET_TABLES.mammal_mesh,
     pk: "id",
@@ -210,9 +235,9 @@ export const RECORD_TABLES = {
     pk: "doc_id",
     search: ["title", "publisher"],
     cols: ["doc_id", "title", "publisher", "url", "n_pages", "fiscal_year", "license", "fetched_at"],
-    // cells・notes をそれぞれ 1 回だけ集計して結合する（文書ごとの相関サブクエリにしない）。
+    // cells・notes をそれぞれ 1 回だけ集計して結合する（文書ごとの相関サブクエリにしない）。n_cells は置き換え済み（superseded=1）を数えない（document_cells と同じ）。
     join:
-      "LEFT JOIN (SELECT doc_id, COUNT(*) AS n FROM cells GROUP BY doc_id) cc ON cc.doc_id = documents.doc_id " +
+      "LEFT JOIN (SELECT doc_id, COUNT(*) AS n FROM cells WHERE superseded = 0 GROUP BY doc_id) cc ON cc.doc_id = documents.doc_id " +
       "LEFT JOIN (SELECT doc_id, COUNT(*) AS n, SUM(blocks_timeseries = 1) AS nb FROM notes GROUP BY doc_id) nn ON nn.doc_id = documents.doc_id",
     computed: { n_cells: "COALESCE(cc.n, 0)", n_notes: "COALESCE(nn.n, 0)", n_blocking: "COALESCE(nn.nb, 0)" },
     sourceless: true,
@@ -274,8 +299,9 @@ export function recordSetsOf(sourceId: string): readonly string[] {
 /** MCP・AI 共通の入力（z.tuple は使わない）。出典と表の組み合わせの検査は `queryRecords` が行う。 */
 export const recordsInputSchema = z.object({
   source_id: z.enum(RECORD_SOURCE_IDS).optional().describe(`出典（${SOURCELESS_LIST} 以外は必須。使える出典と record_set の組はツールの説明にある）`),
-  record_set: z.enum(RECORD_SET_NAMES).optional().describe(`記録の集合（sites・protected_areas・vegetation・hazard_zones・river_segments・mammal_mesh・sightings・monitoring_counts・coral_reef_surveys・assessments・documents・document_notes・document_cells）。出典に集合が複数あるときだけ必須（1つなら省略可）。${SOURCELESS_LIST} は出典に紐付かないので source_id なしでこれだけ指定する`),
+  record_set: z.enum(RECORD_SET_NAMES).optional().describe(`記録の集合（sites・protected_areas・vegetation・hazard_zones・river_segments・osm_waterways・osm_water_structures・mammal_mesh・sightings・monitoring_counts・coral_reef_surveys・assessments・documents・document_notes・document_cells）。出典に集合が複数あるときだけ必須（1つなら省略可）。${SOURCELESS_LIST} は出典に紐付かないので source_id なしでこれだけ指定する`),
   id: idText("主キーの完全一致（1 件取り）").optional(),
+  doc_id: idText("行政文書の doc_id の完全一致（record_set=document_cells・document_notes だけ。describe_catalog what='sources' の document_ids の値をそのまま渡す。q は LIKE で 50 バイトまでなので長い doc_id には使えない）").optional(),
   q: likeText("表ごとの検索列（名称・和名・学名など）の部分一致").optional(),
   include_geometry: z
     .boolean()
@@ -303,7 +329,7 @@ export const RECORDS_DESCRIPTION =
   "status が needs_review の地点は座標が未確認（lat・lon は null）。watershed・zone・municipality・operator などは従来の地点表にある地点だけ値が入り、観測局は null（地点と流域・zone の紐付けは未整備）。" +
   "行政文書の一覧（record_set=documents。抽出セル数 n_cells・注記数 n_notes・比較注意 n_blocking つき）と注記（record_set=document_notes。" +
   "q は本文と doc_id に効く。id は行の note_rowid）は出典に紐付かないので source_id を付けず record_set だけで引く（行の publisher・url・license が出典）。" +
-  "行政文書の抽出セル（record_set=document_cells。置き換え済みは除く。約 12 万行なので n_total は返さない（null）。q に doc_id を渡して引く）も同じ。" +
+  "行政文書の抽出セル（record_set=document_cells。置き換え済みは除く。約 12 万行なので n_total は返さない（null）。doc_id に文書の doc_id を渡して引く（describe_catalog what='sources' の queryable_via が get_records(document_cells) の出典は、document_ids の各値を doc_id に渡す）。document_notes も doc_id で絞れる）も同じ。" +
   `使える出典と record_set（複数あるときは record_set を指定）: ${sourceSetList()}。`;
 
 /** 入力の組み合わせの誤り。`queryRecords` の `onInputError` で呼び出し側の例外（MCP は McpInputError）に変えられる。 */
@@ -488,11 +514,12 @@ export async function queryRecords(db: CubeDb, a: RecordsInput, opt: QueryRecord
     if (a.id === undefined) throw fail("include_geometry は id を指定した 1 件のときだけ使える（一覧では応答が大きくなる）");
   }
   if (a.q !== undefined && def.search.length === 0) throw fail(`表 ${table} は q（部分一致）に対応していない`);
+  if (a.doc_id !== undefined && !def.cols.includes("doc_id")) throw fail(`表 ${table} に doc_id は無い。doc_id は record_set=document_cells・document_notes だけで使える`);
   if (a.after !== undefined && a.offset) throw fail("after と offset は併用できない（深いページは after だけを使う）");
 
   const offset = a.offset ?? 0;
   const { sql, params, limit, geomCol } = buildSelect({
-    set, sourceId, id: a.id, after: a.after, q: a.q, geometry: a.include_geometry, limit: a.limit, offset, probe: true,
+    set, sourceId, id: a.id, after: a.after, q: a.q, eq: a.doc_id === undefined ? undefined : [{ col: "doc_id", value: a.doc_id }], geometry: a.include_geometry, limit: a.limit, offset, probe: true,
   });
   const lim = limit ?? DEFAULT_LIMIT; // limit は null にならない（a.limit は undefined か数）
   const raw = await db.all(sql, params);
@@ -509,7 +536,7 @@ export async function queryRecords(db: CubeDb, a: RecordsInput, opt: QueryRecord
     offset,
     truncated,
     next_after: last === undefined || last === null ? null : String(last),
-    n_total: a.id === undefined && a.q === undefined ? await totalOf(db, set, sourceId) : null,
+    n_total: a.id === undefined && a.q === undefined && a.doc_id === undefined ? await totalOf(db, set, sourceId) : null,
   };
 }
 
