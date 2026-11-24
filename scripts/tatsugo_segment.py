@@ -217,6 +217,7 @@ def segment_file(pages: list[dict], base: float) -> list[dict]:
                 prev["confidence"] = min(prev["confidence"], 0.5)
             else:
                 arts.append(_art(None, "unsegmented", no, no, body, 0.3, None))
+        start = len(arts)
         for h, g in sorted(zip(heads, groups), key=lambda hg: (round(hg[0]["y0"] / 20), -hg[0]["x0"] if hg[0]["vertical"] else hg[0]["x0"])):
             body = block_text(reading_order(g))
             a = _art(_clean_title(h["text"]), "article", no, no, body or None, 0.6 if body else 0.3,
@@ -225,7 +226,31 @@ def segment_file(pages: list[dict], base: float) -> list[dict]:
             if body and garbled(body):
                 a.update(body_text=None, confidence=0.2, unreadable_reason="garbled_font_encoding")
             arts.append(a)
+        arts[start:] = _absorb_heading_only(arts[start:])
     return arts
+
+
+def _absorb_heading_only(page_arts: list[dict]) -> list[dict]:
+    """本文の無い見出し（箱の見出し・小見出し・写真の説明）は記事にしない。同じページの直前の記事の本文に
+    1 行として足し、直前が無ければ直後の記事の本文の先頭に足す。どちらも無ければ残す（理由付き）。"""
+    out: list[dict] = []
+    pending: list[str] = []
+    for a in page_arts:
+        if a["kind"] == "article" and a["unreadable_reason"] == "heading_without_body":
+            if out and out[-1]["body_text"] is not None:
+                out[-1]["body_text"] += "\n" + a["title"]
+            else:
+                pending.append(a["title"])
+                continue
+        else:
+            if pending and a["body_text"] is not None:
+                a["body_text"] = "\n".join(pending) + "\n" + a["body_text"]
+                pending = []
+            out.append(a)
+    if pending:  # 本文のある記事がページに無い
+        out.append(_art(pending[0], "article", page_arts[0]["page_from"], page_arts[0]["page_to"], None, 0.3,
+                        "heading_without_body"))
+    return out
 
 
 def _clean_title(t: str) -> str:
@@ -277,12 +302,18 @@ def _art(title, kind, p0, p1, body, conf, reason) -> dict:
 
 # ---------------------------------------------------------------- 話題（rule:v1）
 TOPIC_RULES: dict[str, list[str]] = {
-    "river_water": ["河川", "川の", "水質", "水道", "治水", "海岸", "龍郷湾", "護岸", "水源", "水害", "排水", "浄化槽", "下水"],
-    "wildlife_alien": ["マングース", "ノネコ", "外来", "希少種", "野生生物", "アマミノクロウサギ", "ルリカケス", "駆除", "生き物", "生物多様性", "ケナガネズミ", "ウミガメ"],
-    "disaster": ["防災", "台風", "豪雨", "避難", "災害", "地震", "津波", "洪水", "土砂", "停電", "被害"],
-    "conservation_clean": ["清掃", "ごみ", "ゴミ", "クリーン", "美化", "保全", "環境", "リサイクル", "世界自然遺産", "海岸漂着"],
-    "agri_fishery": ["農業", "農林", "水産", "漁", "さとうきび", "サトウキビ", "畜産", "農地", "特産", "栽培", "出荷", "林業", "タンカン", "農家"],
-    "tourism": ["観光", "エコツー", "民泊", "誘客", "ふるさと祭", "ツーリズム", "イベント", "宿泊"],
+    "river_water": ["河川", "川の", "川で", "水質", "水道", "治水", "海岸", "龍郷湾", "護岸", "水源", "水害", "排水", "浄化槽", "下水",
+                    "用水", "ダム", "湾", "海の", "海で", "漁港", "水辺", "ため池", "水資源"],
+    "wildlife_alien": ["マングース", "ノネコ", "外来", "希少種", "野生生物", "アマミノクロウサギ", "クロウサギ", "ルリカケス", "駆除", "生き物",
+                       "生物", "野鳥", "動物", "ケナガネズミ", "ウミガメ", "鳥獣", "イノシシ", "保護センター", "ロードキル", "ハブ", "ヤギ", "野犬", "猫"],
+    "disaster": ["防災", "台風", "豪雨", "避難", "災害", "地震", "津波", "洪水", "土砂", "停電", "被害", "消防", "火災", "防火", "大雨", "警報",
+                 "備蓄", "防犯", "救急"],
+    "conservation_clean": ["清掃", "ごみ", "ゴミ", "クリーン", "美化", "保全", "環境", "リサイクル", "世界自然遺産", "漂着", "廃棄物", "不法投棄",
+                           "景観", "緑化", "植樹", "自然保護", "エコ", "資源"],
+    "agri_fishery": ["農業", "農林", "水産", "漁", "さとうきび", "サトウキビ", "畜産", "農地", "特産", "栽培", "出荷", "林業", "タンカン", "農家",
+                     "農", "養殖", "森林", "畑", "収穫", "黒糖", "紬", "島バナナ", "かんきつ", "牛"],
+    "tourism": ["観光", "エコツー", "民泊", "誘客", "ふるさと祭", "ツーリズム", "イベント", "宿泊", "ツアー", "ふるさと納税", "移住", "交流",
+                "地域おこし", "祭り", "体験", "ガイド"],
 }
 TOPIC_IDS = ("river_water", "wildlife_alien", "disaster", "conservation_clean", "agri_fishery", "tourism", "other")
 
@@ -293,9 +324,9 @@ def classify(title: str | None, body: str | None) -> list[dict]:
     out = []
     for topic, kws in TOPIC_RULES.items():
         ht = sum(1 for k in kws if k in t)
-        hb = sum(b.count(k) for k in kws)
+        hb = sum(1 for k in kws if k in b)  # 本文は「異なるキーワードが 2 種以上」で付ける（同じ語の繰り返しだけでは付けない）
         if ht or hb >= 2:
-            conf = min(0.9, 0.35 + 0.25 * ht + 0.05 * min(hb, 6))
+            conf = min(0.9, 0.35 + 0.25 * ht + 0.1 * min(hb, 5))
             out.append({"topic_id": topic, "extractor": RULE_VERSION, "confidence": round(conf, 2)})
     return out or [{"topic_id": "other", "extractor": RULE_VERSION, "confidence": 0.3}]
 
@@ -363,17 +394,24 @@ _TRAIL = re.compile(r"(?:\s|　)*ほか$")
 
 
 def clean_headline(h: str) -> str:
-    return _TRAIL.sub("", h.strip())
+    """HTML の見出しの「［表紙］」印と末尾の「ほか」を落とす。"""
+    return _TRAIL.sub("", re.sub(r"^[［\[]\s*表紙\s*[］\]]", "", h.strip())).strip()
 
 
-def reconcile_issue(headlines: list[str], articles: list[dict]) -> dict:
+def _lcs(text: str, pat: str) -> int:
+    return difflib.SequenceMatcher(None, text, pat, autojunk=False).find_longest_match(0, len(text), 0, len(pat)).size
+
+
+def reconcile_issue(headlines: list[str], articles: list[dict], unreadable_pages: int = 0) -> dict:
     """HTML の主な記事の見出しと、抽出した記事を突き合わせる。
-    matched: 見出しに一致する記事の題がある／in_text_only: 題は見つからないが本文・題のどこかにある（見出し検出漏れ）／
-    missed: どこにも無い（取りこぼし）。extra: どの見出しにも当たらない article（HTML は「主な」記事だけなので誤りとは限らない）。"""
+    matched: 見出しに一致する記事の題がある／in_text_only: 題は無いが見出しの文字列が本文・題のどこかにある（検出漏れ）／
+    paraphrase: 紙面の表記が違う（言い換え・略称）が、見出しの半分以上（6 字以上）の連続が本文にある／
+    missed_unreadable: どこにも無いが、その号にスキャン・文字化けで読めないページがある（OCR で読める可能性）／
+    missed: それ以外の取りこぼし。extra: どの見出しにも当たらない article（HTML は「主な」記事だけなので誤りとは限らない）。"""
     arts = [a for a in articles if a["kind"] == "article" and a.get("title")]
     titles = [(a, norm(a["title"])) for a in arts]
     alltext = norm(" ".join((a.get("title") or "") + (a.get("body_text") or "") for a in articles))
-    matched, in_text, missed, used = [], [], [], set()
+    matched, in_text, para, missed, missed_unread, used = [], [], [], [], [], set()
     for h in headlines:
         hn = norm(clean_headline(h))
         if not hn:
@@ -388,8 +426,13 @@ def reconcile_issue(headlines: list[str], articles: list[dict]) -> dict:
             used.add(id(hit))
         elif hn in alltext:
             in_text.append(h)
+        elif len(hn) >= 6 and _lcs(alltext, hn) >= max(6, len(hn) * 0.5):
+            para.append(h)
+        elif unreadable_pages:
+            missed_unread.append(h)
         else:
             missed.append(h)
     extra = [a["title"] for a, _ in titles if id(a) not in used]
-    return {"headlines": len(headlines), "matched": matched, "in_text_only": in_text, "missed": missed,
+    return {"headlines": len(headlines), "matched": matched, "in_text_only": in_text, "paraphrase": para,
+            "missed_unreadable": missed_unread, "missed": missed, "unreadable_pages": unreadable_pages,
             "extra_count": len(extra), "extra": extra}
