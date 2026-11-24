@@ -48,6 +48,9 @@ CLAUDE.md 「サンプル」設計の要件）。
   求めるので、その出典にも、出典の列を持つ表（表名の昇順で最初のもの）から rowid 最小の 1 行を足す。
   `catalog`（外部ポータルの目録）を宣言した出典には、`external_dataset` が「出典の種類が宣言と一致」を要求するので、
   資源の数が最も少ない（1 以上の）データセット 1 件と、その `external_resource`・`external_resource_format` を足す（目録の閉包。孤児を作らない）。
+- **広報誌**（`coverage.yaml` の `periodical_closure.issue_ids`。docs/plans/TATSUGO_KOHO.md §8.2）は、指定した号を
+  series・号・号⇔ファイル・記事・話題・地名・そのファイルの `documents`/`notes` の一式で入れる（`select_periodical_rowids`）。
+  丸ごと入れる `documents`/`notes` からは広報誌の行を外す。本文はサンプルにも載せる（町との合意。2026-11-24）。
 - **文書単位**（`cells.sqlite` の `cells`）は `document_closure.doc_ids` で
   指定した `doc_id` の全セルを入れる。
 - **`documents` を宣言した出典**（行政文書の表として値が引ける出典）は、r01 が「出典ごとに置き換え済みでない
@@ -649,6 +652,53 @@ def select_cells_rowids(conn: sqlite3.Connection, doc_ids: list[str]) -> list[in
     ]
 
 
+PERIODICAL_PREFIX = "tatsugo_koho_"
+PERIODICAL_TABLES = (
+    "periodical_series", "periodical_issues", "periodical_issue_files", "document_articles",
+    "document_article_topics", "document_article_places",
+)
+
+
+def select_periodical_rowids(conn: sqlite3.Connection, issue_ids: list[str]) -> dict[str, list[int]]:
+    """広報誌（docs/plans/TATSUGO_KOHO.md §8.2）。指定した号を一式（series・号・号⇔ファイル・記事・話題・地名と、
+    そのファイルの documents・notes）で選ぶ。FK の閉包が切れない（孤児を作らない）。原本に号が無ければ止まる。
+
+    `documents`・`notes` は丸ごと入れる表だが、広報誌の doc_id は選んだ号のものだけにする（呼び出し側が `exclude_periodical_docs` で外す）。
+    返すのは cells.sqlite の表名 → rowid（昇順）。"""
+    existing = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    missing = [t for t in PERIODICAL_TABLES if t not in existing]
+    if missing:
+        raise SystemExit(f"coverage.yaml の periodical_closure があるが、cells.sqlite に {missing} が無い（scripts/m13_tatsugo_koho.py を先に流す）")
+    ph = ",".join("?" * len(issue_ids))
+    out: dict[str, list[int]] = {}
+    out["periodical_issues"] = [r[0] for r in conn.execute(
+        f"SELECT rowid FROM periodical_issues WHERE issue_id IN ({ph}) ORDER BY rowid", issue_ids)]
+    if len(out["periodical_issues"]) != len(set(issue_ids)):
+        have = {r[0] for r in conn.execute(f"SELECT issue_id FROM periodical_issues WHERE issue_id IN ({ph})", issue_ids)}
+        raise SystemExit(f"periodical_closure.issue_ids の号が原本に無い: {sorted(set(issue_ids) - have)}")
+    out["periodical_series"] = [r[0] for r in conn.execute("SELECT rowid FROM periodical_series ORDER BY rowid")]
+    out["periodical_issue_files"] = [r[0] for r in conn.execute(
+        f"SELECT rowid FROM periodical_issue_files WHERE issue_id IN ({ph}) ORDER BY rowid", issue_ids)]
+    out["document_articles"] = [r[0] for r in conn.execute(
+        f"SELECT rowid FROM document_articles WHERE issue_id IN ({ph}) ORDER BY rowid", issue_ids)]
+    for t in ("document_article_topics", "document_article_places"):
+        out[t] = [r[0] for r in conn.execute(
+            f"SELECT rowid FROM {t} WHERE article_id IN (SELECT article_id FROM document_articles WHERE issue_id IN ({ph})) ORDER BY rowid",
+            issue_ids)]
+    doc_ids = [r[0] for r in conn.execute(
+        f"SELECT doc_id FROM periodical_issue_files WHERE issue_id IN ({ph}) ORDER BY doc_id", issue_ids)]
+    dph = ",".join("?" * len(doc_ids))
+    out["documents"] = [r[0] for r in conn.execute(f"SELECT rowid FROM documents WHERE doc_id IN ({dph}) ORDER BY rowid", doc_ids)]
+    out["notes"] = [r[0] for r in conn.execute(f"SELECT rowid FROM notes WHERE doc_id IN ({dph}) ORDER BY rowid", doc_ids)]
+    return out
+
+
+def exclude_periodical_docs(conn: sqlite3.Connection, table: str, rowids: list[int]) -> list[int]:
+    """丸ごと入れる `documents`・`notes` から、広報誌の行（doc_id が tatsugo_koho_ で始まる）を外す（選んだ号の分は別に足す）。"""
+    drop = {r[0] for r in conn.execute(f'SELECT rowid FROM "{table}" WHERE doc_id GLOB ?', (PERIODICAL_PREFIX + "*",))}
+    return [r for r in rowids if r not in drop]
+
+
 def select_declared_document_cells(conn: sqlite3.Connection, access_doc: dict, selected: list[int]) -> list[int]:
     """access.yaml の `documents` に宣言した doc_id ごとに、サンプルの cells に有効（superseded=0）なセルが 1 つ以上あるようにする。
     無ければ、その文書の rowid 最小の有効な 1 セルを足す。有効なセルが原本にも無い doc_id があれば止まる（宣言が古い）。"""
@@ -1062,6 +1112,14 @@ def main() -> int:
         set(cells_selected["cells"]) | set(select_declared_document_cells(cells_conn, load_yaml(args.access_yaml), cells_selected["cells"])))
     for table in coverage.get("wholesale_cells_tables", []):
         cells_selected[table] = select_wholesale_rowids(cells_conn, table)
+    # 広報誌は丸ごとではなく、coverage.yaml の periodical_closure の号だけを一式で入れる（設計書 §8.2）
+    for table in ("documents", "notes"):
+        if table in cells_selected:
+            cells_selected[table] = exclude_periodical_docs(cells_conn, table, cells_selected[table])
+    closure = coverage.get("periodical_closure")
+    if closure:
+        for table, rowids in select_periodical_rowids(cells_conn, closure["issue_ids"]).items():
+            cells_selected[table] = sorted(set(cells_selected.get(table, [])) | set(rowids))
 
     # --- テキストの書き出し ---
     ryuiki_tables = sorted(selected)

@@ -505,6 +505,21 @@ def _hash_source_access_counts(h, ryuiki_path: pathlib.Path) -> None:
     _hash_labeled(h, "source_access_counts", repr(values).encode("utf-8"))
 
 
+def _hash_cells_source_counts(h, cells_path: pathlib.Path) -> None:
+    """`cells.sqlite` の `source_id` 列を持つ表（広報誌の `periodical_issues`・`document_articles`。Issue #130）の
+    出典別の件数を指紋に混ぜる（`build_source_access.gather_counts` が `records` の検査に数える）。
+    そういう表が無い（または cells.sqlite が無い）ときは何も混ぜない（既存の指紋を変えない）。"""
+    if not cells_path.exists():
+        return
+    conn = sqlite3.connect(f"file:{cells_path}?mode=ro", uri=True)
+    try:
+        values = [(t, sorted(count_by_source(conn, t).items())) for t in source_id_tables(conn)]
+    finally:
+        conn.close()
+    if values:
+        _hash_labeled(h, "cells_source_counts", repr(values).encode("utf-8"))
+
+
 def compute_input_fingerprint(
     root: pathlib.Path | None = None, mode: str = MODE_FULL
 ) -> str:
@@ -581,6 +596,7 @@ def compute_input_fingerprint(
         _hash_source_registry(h, base / "data" / "db" / "ryuiki.sqlite")
         _hash_source_access_counts(h, base / "data" / "db" / "ryuiki.sqlite")
         _hash_document_cells(h, base / "data" / "db" / "cells.sqlite")
+        _hash_cells_source_counts(h, base / "data" / "db" / "cells.sqlite")
 
     return h.hexdigest()
 

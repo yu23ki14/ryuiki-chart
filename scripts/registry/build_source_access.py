@@ -30,7 +30,7 @@
 
 原本あり:
 - 全出典が状態を持つ（マニフェスト由来 + `records` + `reason` が `source_registry` と過不足なく一致）
-- `records` の (出典, 表) の行数が 1 以上
+- `records` の (出典, 表) の行数が 1 以上（表は原本 `ryuiki.sqlite` か `cells.sqlite` にある。cells 側は広報誌の表）
 - `catalog` の出典は `external_dataset` に 1 行以上あり、`external_dataset.source_id` の種類は `catalog` の宣言と過不足なく
   一致する（宣言漏れ・過剰を止める。`n_source_rows` は目録の件数＝データセット数、basis は `catalog_datasets`）
 - `documents` の `doc_id` が全て原本 `cells.sqlite` の `documents` 表にあり、出典ごとに置き換え済みでない（superseded=0）セルが 1 件以上ある
@@ -62,7 +62,7 @@ CATALOG_TABLES = frozenset({"external_dataset"})
 # RECORD_TABLES の許可リスト（列）は record_set → 表を access.yaml の生成物から読む。`taxon_assessment` は語彙レジストリの表
 # （registry.sqlite。原本の taxa・redlist_assessments は D1 に無い＝マイグレーション 0010 で DROP 済み）。
 D1_RECORD_TABLES = frozenset(
-    {"place", "protected_areas", "vegetation_polygons", "river_segments", "mammal_mesh", "wildlife_sightings", "taxon_assessment", "hazard_zones", "moni1000_counts", "moni1000_coral_spots", "osm_waterways", "osm_water_structures"}
+    {"place", "protected_areas", "vegetation_polygons", "river_segments", "mammal_mesh", "wildlife_sightings", "taxon_assessment", "hazard_zones", "moni1000_counts", "moni1000_coral_spots", "osm_waterways", "osm_water_structures", "periodical_issues", "document_articles"}
 )
 
 # n_source_rows を数える表（A の出典。B は `records` の表）。
@@ -204,6 +204,9 @@ def gather_counts(ryuiki: sqlite3.Connection, registry: sqlite3.Connection, cell
             for part in sid.split("|"):
                 counts[part] = counts.get(part, 0) + n
         by_source[t] = counts
+    # cells.sqlite にも出典の列を持つ表がある（広報誌の periodical_issues・document_articles。Issue #130）。ryuiki と同じ数え方。
+    for t in common.source_id_tables(cells):
+        by_source[t] = dict(common.count_by_source(cells, t))
     # sites の record_set は語彙レジストリの place（site）。定義は common.count_site_places_by_source（records.ts と同じ）。
     by_source["place"] = common.count_site_places_by_source(registry)
     # 文書ごとの有効なセル数（置き換え済み superseded=1 を除く。documents 表にある文書は 0 件でも載せる）。

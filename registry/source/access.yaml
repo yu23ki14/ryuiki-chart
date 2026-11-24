@@ -27,6 +27,8 @@ record_sets:
   hazard_zones: hazard_zones
   coral_reef_surveys: moni1000_coral_spots   # モニタリングサイト1000 サンゴ礁調査（奄美）の地点×年度の観測値。出典は列 source_id
   monitoring_counts: moni1000_counts   # モニタリングサイト1000 神奈川・奄美の調査の生の記録。出典は列 source_id
+  periodical_issues: periodical_issues   # 定期刊行物（広報誌）の号。cells.sqlite 由来。出典は列 source_id（docs/plans/TATSUGO_KOHO.md）
+  document_articles: document_articles   # 定期刊行物の記事（本文つき）。cells.sqlite 由来。出典は列 source_id
 reasons:
   not_collected: {ja: "未収集（取得手段が未着手、または登録のみ）"}
   blocked_access: {ja: "ログイン・APIキー登録・利用アンケート・JS で動く画面・リンク切れなどで、自動取得できていない"}
@@ -227,5 +229,7 @@ sources:
   kanagawa_rdb2006_animals: {documents: ["kanagawa_rdb2006_animals"], note: "レッドデータ生物調査報告書2006 のレッドリスト一覧の表を cells に入れた（c26_kanagawa_redlist_animals_2006.py）。原本 taxa の行は D1 に無いので、値は文書の表から引く"}
   kanagawa_river_citizen_survey: {documents: ["kanagawa_river_monitoring_anzen", "kanagawa_river_monitoring_h20_sagami_results", "kanagawa_river_monitoring_h21_sakawa_results", "kanagawa_river_monitoring_h25_sagami_results", "kanagawa_river_monitoring_h26_sakawa_results", "kanagawa_river_monitoring_h30sagamigawa", "kanagawa_river_monitoring_manyual", "kanagawa_river_monitoring_r1_sakawa_results", "kanagawa_river_monitoring_syokubutu"], note: "県民参加型調査・相模川酒匂川水系の動植物等調査の PDF の表を cells に入れた（c53_kanagawa_river_monitoring.py。セルのある文書だけ列挙）。原本 protocols は D1 に無い"}
   moe_redlist: {reason: not_in_d1, basis: "原本 taxa に 6,089 行。D1 の taxa は 0010 で DROP 済み"}
+  # --- 龍郷町「広報たつごう」（Issue #130）。号と記事（本文つき）。cells.sqlite の periodical_issues / document_articles。
+  tatsugo_koho_amami: {records: [periodical_issues, document_articles], note: "龍郷町「広報たつごう」。月刊175冊・PDF180ファイル（2012-04〜）。全文を載せる（2026-11-24 オーナーが広報担当と確認。町の著作権表記と合意は periodical_series.license）。取り下げは docs/plans/TATSUGO_KOHO.md §9"}
 extra_tools:
   kanagawa_edna: [get_edna]

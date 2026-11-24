@@ -1,0 +1,5 @@
+# 取り下げの除外リスト（docs/plans/TATSUGO_KOHO.md §9）。m13 が読み、該当の号・記事を原本に入れない。
+# 本文・依頼者の個人情報は書かない（ID と日付だけ）。
+# 例: - {scope: issue, id: tatsugo_koho_201808, withdrawn_on: 2026-12-01, reason: 町の依頼}
+#     - {scope: article, id: "tatsugo_koho_202611:004:ab12cd34", withdrawn_on: 2026-12-01, reason: 町の依頼}
+withdrawals: []
