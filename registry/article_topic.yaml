@@ -1,0 +1,12 @@
+# 記事の話題の語彙（docs/plans/TATSUGO_KOHO.md §4）。流域カルテで使う観点に絞った小さな語彙。
+# 1 記事に複数付けてよい（河川と防災が重なる）。どれにも当たらなければ other。
+# 正はこのファイル。m13（scripts/m13_tatsugo_koho.py）が直接読んで document_article_topics.topic_id を検査し、
+# r01 が形を検査して registry.sqlite の article_topic 表に載せる。語彙を足しても既存の付与は付け直さない。
+topics:
+  river_water:        {ja: 河川・水,       note: 河川・海岸の水、水質、水道、治水（防災と重なるときは両方付ける）}
+  wildlife_alien:     {ja: 生き物・外来種, note: 野生生物、希少種、外来種・マングース・ノネコ等の駆除}
+  disaster:           {ja: 防災・災害,     note: 台風・豪雨・避難・訓練・災害の被害}
+  conservation_clean: {ja: 環境保全・清掃, note: 清掃活動・ごみ・保全活動・自然環境の普及啓発}
+  agri_fishery:       {ja: 農林水産,       note: 農業・林業・水産業・特産}
+  tourism:            {ja: 観光,           note: 観光・エコツーリズム・イベント誘客}
+  other:              {ja: その他,         note: 上のどれにも当たらない}

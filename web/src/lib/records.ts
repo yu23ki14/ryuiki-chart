@@ -18,8 +18,12 @@ import type { CubeDb, SqlParam } from "@/lib/cube/db";
 import { idText, likeParam, likeText } from "@/lib/query-params";
 import { RECORD_SET_TABLES, RECORD_SOURCE_IDS as GENERATED_RECORD_SOURCE_IDS } from "@/lib/registry/generated-source";
 import { sourceAccess } from "@/lib/cube/source-meta";
+import { ARTICLE_TOPIC } from "@/lib/registry/generated-client";
+import { decorateArticle, decorateIssue } from "@/lib/periodical";
 
 export const RECORDS_MAX_ROWS = 500;
+/** `include_body=true` の 1 回の上限（本文は 1 件で数千字。応答サイズを抑える）。 */
+export const INCLUDE_BODY_MAX_ROWS = 20;
 
 /** `z.enum` に渡す形（空でない配列）。 */
 export const RECORD_SOURCE_IDS = GENERATED_RECORD_SOURCE_IDS as unknown as [string, ...string[]];
@@ -52,7 +56,35 @@ export interface RecordTable {
   computed?: Record<string, string>;
   /** `computed` が使う JOIN 句（定数）。 */
   join?: string;
+  /**
+   * 本文の列（`cols` に載せない）。`include_body=true` か `id` 指定の 1 件のときだけ返す。一覧は `has_body`・`body_chars`
+   * （算出列）だけ。`q` のときは一致した前後を `match_snippet` に付ける。
+   */
+  bodyCol?: string;
+  /** 追加の絞り込み入力（`FilterKey` → WHERE の断片と束縛する値）。ここに無い入力を渡すと入力エラー。 */
+  filters?: Partial<Record<FilterKey, RecordFilter>>;
+  /** 返す行の整形（出典表記の付与など。`RECORD_TABLES` の定義に持たせ、queryRecords は record_set 名を名指ししない）。 */
+  decorate?: (row: RecordRow) => RecordRow;
+  /** 値が JSON 文字列の列（`cols`・`computed` の別名）。返すときにパースする（壊れた値はそのまま）。 */
+  jsonCols?: readonly string[];
+  /** true なら `source_id` を省いても、その record_set を宣言している出典が 1 つだけのときはそれを使う。 */
+  inferSource?: boolean;
 }
+
+/** 1 行の値の型（`RecordsResult.rows` の要素）。 */
+export type RecordRow = Record<string, string | number | null | object>;
+
+/** 絞り込みの定義: WHERE の断片と、入力値から束縛する値の並び（断片の `?` の数と一致させる）。 */
+export interface RecordFilter {
+  sql: string;
+  bind: (v: SqlParam) => SqlParam[];
+}
+const bind1 = (sql: string): RecordFilter => ({ sql, bind: (v) => [v] });
+const bind2 = (sql: string): RecordFilter => ({ sql, bind: (v) => [v, v] });
+
+/** 定期刊行物の絞り込み入力（`recordsInputSchema`）。 */
+export const FILTER_KEYS = ["issue", "year", "fiscal_year", "topic", "place_id"] as const;
+export type FilterKey = (typeof FILTER_KEYS)[number];
 
 /**
  * 表ごとの許可リスト。実在列との突き合わせは `records.test.ts`（schema.ts の DDL と比べる）。
@@ -270,6 +302,85 @@ export const RECORD_TABLES = {
     noTotal: true, // 約 12 万行。一覧のたびに count しない（n_total は null）
     base: { join: "", where: "cells.superseded = 0" },
   },
+  /*
+   * 定期刊行物（広報たつごう。docs/plans/TATSUGO_KOHO.md §3・§6、scripts/m13_tatsugo_koho.py）。表名は access.yaml の
+   * record_sets の生成物（RECORD_SET_TABLES）と同じ。生成物の再生成前でも動くよう、ここは直書きにしてある。
+   * 本文は bodyCol（include_body か id 指定のときだけ）。citation・pdf_url・source_license は返すたびに `decorate`（lib/periodical.ts）が付ける。
+   */
+  periodical_issues: {
+    table: "periodical_issues",
+    pk: "issue_id",
+    search: ["label_raw", "headlines"],
+    cols: [
+      "issue_id", "kind", "year_month", "year_month_to", "fiscal_year", "issued_on", "label_raw", "listing_url", "headlines",
+      "n_files", "n_pages", "source_id",
+    ],
+    base: { join: "LEFT JOIN periodical_series ps ON ps.series_id = periodical_issues.series_id", where: "1 = 1" },
+    // files（号を構成する PDF）と n_articles（kind='article' の記事数）を 1 回ずつ集計して結合する
+    join:
+      "LEFT JOIN (SELECT issue_id, json_group_array(json_object('doc_id', doc_id, 'part_no', part_no, 'page_offset', page_offset, 'pdf_url', download_url)) AS j " +
+      "FROM (SELECT * FROM periodical_issue_files ORDER BY issue_id, part_no, doc_id) GROUP BY issue_id) ff ON ff.issue_id = periodical_issues.issue_id " +
+      "LEFT JOIN (SELECT issue_id, COUNT(*) AS n FROM document_articles WHERE kind = 'article' GROUP BY issue_id) na ON na.issue_id = periodical_issues.issue_id",
+    computed: { files: "COALESCE(ff.j, '[]')", n_articles: "COALESCE(na.n, 0)", series_title: "ps.title", series_publisher: "ps.publisher" },
+    jsonCols: ["headlines", "files"],
+    // year は号の年月の暦年。年をまたぐ合併号（2019-12〜2020-01）は両方の年で拾う
+    filters: {
+      issue: bind2("(periodical_issues.issue_id = ? OR periodical_issues.year_month = ?)"),
+      year: bind2("(CAST(substr(periodical_issues.year_month, 1, 4) AS INTEGER) = ? OR CAST(substr(periodical_issues.year_month_to, 1, 4) AS INTEGER) = ?)"),
+      fiscal_year: bind1("periodical_issues.fiscal_year = ?"),
+    },
+    decorate: decorateIssue,
+    inferSource: true,
+  },
+  document_articles: {
+    table: "document_articles",
+    pk: "article_id",
+    search: ["title", "body_text"],
+    cols: [
+      "article_id", "issue_id", "doc_id", "kind", "issue_page_from", "issue_page_to", "page_from", "page_to", "title", "section",
+      "event_dates", "extractor", "confidence", "unreadable_reason", "source_id",
+    ],
+    bodyCol: "body_text",
+    base: {
+      join:
+        "LEFT JOIN periodical_issues pi ON pi.issue_id = document_articles.issue_id " +
+        "LEFT JOIN periodical_series ps ON ps.series_id = pi.series_id " +
+        "LEFT JOIN documents dd ON dd.doc_id = document_articles.doc_id",
+      where: "1 = 1",
+    },
+    // topics・places を 1 回ずつ集計して結合する（記事ごとの相関サブクエリにしない）
+    join:
+      "LEFT JOIN (SELECT article_id, json_group_array(json_object('topic_id', topic_id, 'confidence', confidence, 'extractor', extractor)) AS j " +
+      "FROM (SELECT * FROM document_article_topics ORDER BY article_id, topic_id) GROUP BY article_id) tt ON tt.article_id = document_articles.article_id " +
+      "LEFT JOIN (SELECT p.article_id AS article_id, json_group_array(json_object('place_raw', p.place_raw, 'place_type', p.place_type, " +
+      "'place_id', p.place_id, 'match_method', p.match_method, 'confidence', p.confidence, 'extractor', a.extractor)) AS j " +
+      "FROM (SELECT * FROM document_article_places ORDER BY article_id, place_raw) p JOIN document_articles a ON a.article_id = p.article_id " +
+      "GROUP BY p.article_id) pp ON pp.article_id = document_articles.article_id",
+    computed: {
+      topics: "COALESCE(tt.j, '[]')",
+      places: "COALESCE(pp.j, '[]')",
+      year_month: "pi.year_month",
+      year_month_to: "pi.year_month_to",
+      issue_kind: "pi.kind",
+      fiscal_year: "pi.fiscal_year",
+      has_body: "(document_articles.body_text IS NOT NULL)",
+      body_chars: "length(document_articles.body_text)",
+      doc_url: "dd.url",
+      series_title: "ps.title",
+      series_publisher: "ps.publisher",
+      series_license: "ps.license",
+    },
+    jsonCols: ["event_dates", "topics", "places"],
+    filters: {
+      issue: bind2("(document_articles.issue_id = ? OR pi.year_month = ?)"),
+      year: bind2("(CAST(substr(pi.year_month, 1, 4) AS INTEGER) = ? OR CAST(substr(pi.year_month_to, 1, 4) AS INTEGER) = ?)"),
+      fiscal_year: bind1("pi.fiscal_year = ?"),
+      topic: bind1("EXISTS (SELECT 1 FROM document_article_topics t WHERE t.article_id = document_articles.article_id AND t.topic_id = ?)"),
+      place_id: bind1("EXISTS (SELECT 1 FROM document_article_places pl WHERE pl.article_id = document_articles.article_id AND pl.place_id = ?)"),
+    },
+    decorate: decorateArticle,
+    inferSource: true,
+  },
   assessments: {
     table: RECORD_SET_TABLES.assessments,
     pk: "assessment_id",
@@ -299,7 +410,7 @@ export function recordSetsOf(sourceId: string): readonly string[] {
 /** MCP・AI 共通の入力（z.tuple は使わない）。出典と表の組み合わせの検査は `queryRecords` が行う。 */
 export const recordsInputSchema = z.object({
   source_id: z.enum(RECORD_SOURCE_IDS).optional().describe(`出典（${SOURCELESS_LIST} 以外は必須。使える出典と record_set の組はツールの説明にある）`),
-  record_set: z.enum(RECORD_SET_NAMES).optional().describe(`記録の集合（sites・protected_areas・vegetation・hazard_zones・river_segments・osm_waterways・osm_water_structures・mammal_mesh・sightings・monitoring_counts・coral_reef_surveys・assessments・documents・document_notes・document_cells）。出典に集合が複数あるときだけ必須（1つなら省略可）。${SOURCELESS_LIST} は出典に紐付かないので source_id なしでこれだけ指定する`),
+  record_set: z.enum(RECORD_SET_NAMES).optional().describe(`記録の集合（sites・protected_areas・vegetation・hazard_zones・river_segments・osm_waterways・osm_water_structures・mammal_mesh・sightings・monitoring_counts・coral_reef_surveys・periodical_issues・document_articles・assessments・documents・document_notes・document_cells）。出典に集合が複数あるときだけ必須（1つなら省略可）。${SOURCELESS_LIST} は出典に紐付かないので source_id なしでこれだけ指定する`),
   id: idText("主キーの完全一致（1 件取り）").optional(),
   doc_id: idText("行政文書の doc_id の完全一致（record_set=document_cells・document_notes だけ。describe_catalog what='sources' の document_ids の値をそのまま渡す。q は LIKE で 50 バイトまでなので長い doc_id には使えない）").optional(),
   q: likeText("表ごとの検索列（名称・和名・学名など）の部分一致").optional(),
@@ -310,6 +421,15 @@ export const recordsInputSchema = z.object({
   limit: z.number().int().min(1).max(RECORDS_MAX_ROWS).optional().describe(`返す行数の上限（既定 100、最大 ${RECORDS_MAX_ROWS}）`),
   after: idText("直前のページの最後の主キー（結果の next_after をそのまま渡す）。主キー昇順でその次から読む。深いページでは offset より after を使う（offset とは併用できない）").optional(),
   offset: z.number().int().min(0).optional().describe("読み飛ばす行数（浅いページ向け。深いページは after を使う。既定 0）"),
+  issue: idText("号の絞り込み（record_set=periodical_issues・document_articles だけ）。issue_id か年月 'YYYY-MM' の完全一致").optional(),
+  year: z.number().int().min(1900).max(2200).optional().describe("号の年月の暦年（record_set=periodical_issues・document_articles だけ。fiscal_year と併せたら AND）"),
+  fiscal_year: z.number().int().min(1900).max(2200).optional().describe("4 月始まりの年度（record_set=periodical_issues・document_articles だけ。記事は載っている号の年度）"),
+  topic: idText(`話題の topic_id の完全一致（record_set=document_articles だけ。${ARTICLE_TOPIC.map((t) => `${t.topicId}〔${t.nameJa}〕`).join("・")}。語彙の正は registry/article_topic.yaml）`).optional(),
+  place_id: idText("記事の地名に結べた place_id の完全一致（record_set=document_articles だけ。place に結べない地名は q で引く）").optional(),
+  include_body: z
+    .boolean()
+    .optional()
+    .describe(`true なら記事の本文の全文 body_text も返す（record_set=document_articles だけ。1 回 ${INCLUDE_BODY_MAX_ROWS} 件まで。id 指定の 1 件は指定なしでも返す。要約も切り詰めもしない）`),
 });
 export type RecordsInput = z.infer<typeof recordsInputSchema>;
 
@@ -330,6 +450,11 @@ export const RECORDS_DESCRIPTION =
   "行政文書の一覧（record_set=documents。抽出セル数 n_cells・注記数 n_notes・比較注意 n_blocking つき）と注記（record_set=document_notes。" +
   "q は本文と doc_id に効く。id は行の note_rowid）は出典に紐付かないので source_id を付けず record_set だけで引く（行の publisher・url・license が出典）。" +
   "行政文書の抽出セル（record_set=document_cells。置き換え済みは除く。約 12 万行なので n_total は返さない（null）。doc_id に文書の doc_id を渡して引く（describe_catalog what='sources' の queryable_via が get_records(document_cells) の出典は、document_ids の各値を doc_id に渡す）。document_notes も doc_id で絞れる）も同じ。" +
+  "定期刊行物（広報たつごう。出典 tatsugo_koho_amami）は record_set=periodical_issues（号の一覧。files に PDF の URL）と record_set=document_articles（記事。" +
+  "year・fiscal_year・issue・topic・place_id・q〔見出しと本文の部分一致。一致箇所の前後を match_snippet に返す〕で絞る。一覧は has_body・body_chars だけで、" +
+  "本文の全文 body_text は include_body=true〔1 回 20 件まで〕か id 指定の 1 件で返す。全文は要約・切り詰めしない）。" +
+  "document_articles の各行には出典の表記 citation（例: 龍郷町「広報たつごう」2024年12月号 p.12）・pdf_url（該当ページへのリンク）・source_license をサーバが必ず付ける。" +
+  "回答では citation を出典として示し、pdf_url を添える。topics・places の各要素は機械が付けた推定で、本文に書かれたことと区別する（place_raw が記事の原文の地名、place_id は place に結べたものだけ）。" +
   `使える出典と record_set（複数あるときは record_set を指定）: ${sourceSetList()}。`;
 
 /** 入力の組み合わせの誤り。`queryRecords` の `onInputError` で呼び出し側の例外（MCP は McpInputError）に変えられる。 */
@@ -360,6 +485,11 @@ function resolveTarget(
   if (a.record_set !== undefined && TABLES[a.record_set].sourceless) {
     if (a.source_id !== undefined) throw fail(`record_set '${a.record_set}' は出典に紐付かない。source_id を付けず record_set だけで引く`);
     return { set: a.record_set, sourceId: undefined };
+  }
+  if (a.source_id === undefined && a.record_set !== undefined && TABLES[a.record_set].inferSource) {
+    // 宣言している出典が 1 つだけの record_set（定期刊行物）は record_set だけで足りる
+    const only = RECORD_SOURCE_IDS.filter((id) => recordSetsOf(id).includes(a.record_set as string));
+    if (only.length === 1) return { set: a.record_set, sourceId: only[0] };
   }
   if (a.source_id === undefined) throw fail(`source_id が必要（${SOURCELESS_LIST} 以外の record_set は出典単位で読む）`);
   const tables = recordSetsOf(a.source_id) as readonly RecordSetName[];
@@ -433,6 +563,10 @@ interface SelectSpec {
   /** 返す列（`cols`/算出列の別名の部分集合。省略は全部）。算出列を選ばなければ JOIN も付けない。 */
   select?: readonly string[];
   geometry?: boolean;
+  /** 本文列（`bodyCol`）も返す。 */
+  body?: boolean;
+  /** 追加の WHERE 断片と束縛する値（`def.filters` から作る）。 */
+  extra?: readonly { sql: string; params: readonly SqlParam[] }[];
   /** 行数。null は上限なし（呼び出し側が全件を意図するとき）。省略は `defaultLimit`。 */
   limit?: number | null;
   defaultLimit?: number;
@@ -454,6 +588,8 @@ function buildSelect(s: SelectSpec): { sql: string; params: SqlParam[]; limit: n
   const exprOf = (c: string) => computed[c] ?? def.exprs?.[c] ?? `${t}.${c}`; // 検索列・並び・条件・選択列で共通
   const picked = (s.select ?? [...def.cols, ...Object.keys(computed)]).map(check);
   const geomCol = s.geometry ? (def.geometry ?? null) : null;
+  const bodyCol = s.body ? (def.bodyCol ?? null) : null;
+  if (s.body && !bodyCol) throw new Error(`表 ${t} に本文は無い`);
   if (s.geometry && !geomCol) throw new Error(`表 ${t} にジオメトリは無い`);
   const order = [...(s.order ?? []).map((o) => ({ ...o, col: check(o.col) }))];
   if (!order.some((o) => o.col === def.pk)) order.push({ col: def.pk });
@@ -477,6 +613,10 @@ function buildSelect(s: SelectSpec): { sql: string; params: SqlParam[]; limit: n
     conds.push(`${exprOf(r.col)} BETWEEN ? AND ?`);
     params.push(r.min, r.max);
   }
+  for (const x of s.extra ?? []) {
+    conds.push(x.sql);
+    params.push(...x.params);
+  }
   if (s.id !== undefined) {
     conds.push(`${exprOf(def.pk)} = ?`);
     params.push(s.id);
@@ -491,7 +631,7 @@ function buildSelect(s: SelectSpec): { sql: string; params: SqlParam[]; limit: n
     for (let i = 0; i < def.search.length; i++) params.push(p);
   }
   const usesJoin = [...picked, ...order.map((o) => o.col)].some((c) => c in computed);
-  const selects = [...picked.map((c) => `${exprOf(c)} AS ${c}`), ...(geomCol ? [`${t}.${geomCol} AS ${geomCol}`] : [])];
+  const selects = [...picked.map((c) => `${exprOf(c)} AS ${c}`), ...(geomCol ? [`${t}.${geomCol} AS ${geomCol}`] : []), ...(bodyCol ? [`${t}.${bodyCol} AS ${bodyCol}`] : [])];
   const limit = s.limit === null ? null : clampLimit(s.limit, s.defaultLimit, s.maxLimit);
   let sql =
     `SELECT ${selects.join(", ")} FROM ${t}${def.base ? ` ${def.base.join}` : ""}${usesJoin && def.join ? ` ${def.join}` : ""}` +
@@ -517,15 +657,34 @@ export async function queryRecords(db: CubeDb, a: RecordsInput, opt: QueryRecord
   if (a.doc_id !== undefined && !def.cols.includes("doc_id")) throw fail(`表 ${table} に doc_id は無い。doc_id は record_set=document_cells・document_notes だけで使える`);
   if (a.after !== undefined && a.offset) throw fail("after と offset は併用できない（深いページは after だけを使う）");
 
+  const extra: { sql: string; params: SqlParam[] }[] = [];
+  for (const k of FILTER_KEYS) {
+    const v = a[k];
+    if (v === undefined) continue;
+    const frag = def.filters?.[k];
+    if (!frag) throw fail(`表 ${table} に ${k} は無い。${k} は ${filterSets(k).join("・")} だけで使える`);
+    extra.push({ sql: frag.sql, params: frag.bind(v) });
+  }
+  if (a.include_body === true && !def.bodyCol) throw fail(`表 ${table} に本文は無い。include_body は record_set=${bodySets().join("・")} だけで使える`);
+  const wantBody = !!def.bodyCol && (a.include_body === true || a.id !== undefined);
+  if (a.include_body === true && a.id === undefined && a.limit !== undefined && a.limit > INCLUDE_BODY_MAX_ROWS) {
+    throw fail(`include_body=true は 1 回 ${INCLUDE_BODY_MAX_ROWS} 件まで（limit ${a.limit}）。本文は 1 件で数千字あるので、limit を絞って after で続きを取る`);
+  }
+  const reqLimit = a.limit ?? (a.include_body === true && a.id === undefined ? INCLUDE_BODY_MAX_ROWS : undefined);
   const offset = a.offset ?? 0;
+  // q のときは一致箇所の抜粋（match_snippet）を作るために本文も読み、本文を求められていなければ返す前に外す
+  const readBody = wantBody || (a.q !== undefined && !!def.bodyCol);
   const { sql, params, limit, geomCol } = buildSelect({
-    set, sourceId, id: a.id, after: a.after, q: a.q, eq: a.doc_id === undefined ? undefined : [{ col: "doc_id", value: a.doc_id }], geometry: a.include_geometry, limit: a.limit, offset, probe: true,
+    set, sourceId, id: a.id, after: a.after, q: a.q, eq: a.doc_id === undefined ? undefined : [{ col: "doc_id", value: a.doc_id }], geometry: a.include_geometry, body: readBody, extra, limit: reqLimit, offset, probe: true,
   });
   const lim = limit ?? DEFAULT_LIMIT; // limit は null にならない（a.limit は undefined か数）
   const raw = await db.all(sql, params);
   const truncated = raw.length > lim;
   const page = raw.slice(0, lim);
-  const rows: RecordsResult["rows"] = geomCol ? page.map((r) => ({ ...r, [geomCol]: parseGeometry(r[geomCol]) })) : page;
+  let rows: RecordsResult["rows"] = geomCol ? page.map((r) => ({ ...r, [geomCol]: parseJsonText(r[geomCol]) })) : page;
+  if (def.jsonCols) rows = rows.map((r) => parseJsonCols(r, def.jsonCols as readonly string[]));
+  if (def.bodyCol) rows = rows.map((r) => shapeBody(r, def.bodyCol as string, a.q, wantBody));
+  if (def.decorate) rows = rows.map(def.decorate);
   const last = truncated ? page[page.length - 1]?.[def.pk] : undefined;
   return {
     source_id: sourceId ?? null,
@@ -536,7 +695,7 @@ export async function queryRecords(db: CubeDb, a: RecordsInput, opt: QueryRecord
     offset,
     truncated,
     next_after: last === undefined || last === null ? null : String(last),
-    n_total: a.id === undefined && a.q === undefined && a.doc_id === undefined ? await totalOf(db, set, sourceId) : null,
+    n_total: a.id === undefined && a.q === undefined && a.doc_id === undefined && extra.length === 0 ? await totalOf(db, set, sourceId) : null,
   };
 }
 
@@ -552,7 +711,36 @@ async function totalOf(db: CubeDb, set: RecordSetName, sourceId: string | undefi
   return Number(r[0]?.n ?? 0);
 }
 
-function parseGeometry(v: string | number | null | undefined): object | string | number | null {
+/** この絞り込み入力を受ける record_set（入力エラーの案内）。 */
+function filterSets(k: FilterKey): string[] {
+  return RECORD_SET_NAMES.filter((n) => TABLES[n].filters?.[k]);
+}
+/** 本文を持つ record_set。 */
+function bodySets(): string[] {
+  return RECORD_SET_NAMES.filter((n) => TABLES[n].bodyCol);
+}
+
+function parseJsonCols(r: RecordRow, cols: readonly string[]) {
+  const out = { ...r };
+  for (const c of cols) if (c in out) out[c] = parseJsonText(out[c] as string | number | null | undefined);
+  return out;
+}
+
+/** 本文を求められていなければ外し、q のときは一致箇所の前後各 40 字（本文の一部をそのまま切り出す。要約ではない）を足す。 */
+function shapeBody(r: RecordRow, bodyCol: string, q: string | undefined, wantBody: boolean) {
+  const out = { ...r };
+  const body = typeof out[bodyCol] === "string" ? (out[bodyCol] as string) : null;
+  if (q !== undefined) {
+    const i = body === null ? -1 : body.toLowerCase().indexOf(q.toLowerCase());
+    out.match_snippet = i < 0 || body === null ? null : body.slice(Math.max(0, i - SNIPPET_CHARS), i + q.length + SNIPPET_CHARS);
+  }
+  if (!wantBody) delete out[bodyCol];
+  return out;
+}
+const SNIPPET_CHARS = 40;
+
+/** JSON 文字列の列（ジオメトリ・定期刊行物の配列）をパースする。壊れた値・文字列でない値はそのまま返す。 */
+function parseJsonText(v: string | number | null | undefined): object | string | number | null {
   if (typeof v !== "string") return v ?? null;
   try {
     return JSON.parse(v) as object;
@@ -582,7 +770,7 @@ export interface ReadRecordOptions {
 /**
  * 出典を問わず台帳表を読む（地図 API・行政文書の画面）。SQL は `queryRecords` と同じ builder。
  * 戻りの行の型 `T` は呼び出し側が選んだ列に合わせて宣言する（ここが唯一のキャスト）。
- * ジオメトリは `parseGeometry` せず文字列で返す（呼び出し側が壊れた値を落とす）。
+ * ジオメトリは `parseJsonText` せず文字列で返す（呼び出し側が壊れた値を落とす）。
  */
 export async function readRecordSet<T = Record<string, string | number | null>>(
   db: CubeDb,

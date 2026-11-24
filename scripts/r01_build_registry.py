@@ -170,6 +170,7 @@ def _load_build_steps() -> None:
 
     from registry.build_unit_variable import build as build_unit_variable
     from registry.build_region import build as build_region
+    from registry.build_article_topic import build as build_article_topic
     from registry.build_source import build as build_source
     from registry.build_source_access import build as build_source_access, check_static as check_source_access_static
     from registry.build_place import build as build_place
@@ -181,6 +182,7 @@ def _load_build_steps() -> None:
         STEPS = [
             # region (Issue #32-3) は place より前: place.region_id が参照する語彙。
             ("region (#32-3)", build_region),
+            ("article_topic (#130)", build_article_topic),
             ("unit/variable/variable_alias (A-2)", build_unit_variable),
             # license/source/source_edition (Issue #39 Phase C) は alias の後: alias.source_edition_id
             # と alias.source_id が実在するかをこのステップが検査する。
@@ -201,6 +203,7 @@ def _load_build_steps() -> None:
         # --files-only: 原本 DB を開かないので、src を受け取らない関数だけを実行する。
         FILES_ONLY_STEPS = [
             ("region (#32-3)", build_region),
+            ("article_topic (#130)", build_article_topic),
             ("unit/variable/variable_alias (A-2)", build_unit_variable),
             ("caveat, ファイル由来のみ (A-5, --files-only)", lambda conn, _src: build_caveat_from_files(conn)),
             # 原本不要の静的検査だけ（語彙・records の表・reason と manifests の重複）。表は作らない。

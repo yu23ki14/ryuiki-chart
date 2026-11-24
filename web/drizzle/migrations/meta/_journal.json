@@ -218,6 +218,13 @@
       "when": 1795393484989,
       "tag": "0030_many_wonder_man",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1795484131722,
+      "tag": "0031_awesome_shinobi_shaw",
+      "breakpoints": true
     }
   ]
 }

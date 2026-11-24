@@ -19,6 +19,14 @@ CREATE TABLE IF NOT EXISTS region (
   evidence TEXT
 );
 
+-- 記事の話題の語彙（docs/plans/TATSUGO_KOHO.md §4）。手書きの正は registry/article_topic.yaml。
+-- document_article_topics.topic_id（cells.sqlite / D1）の値の一覧。
+CREATE TABLE IF NOT EXISTS article_topic (
+  topic_id TEXT PRIMARY KEY,
+  name_ja TEXT NOT NULL,
+  note TEXT
+);
+
 -- 単位。symbol は人間向けの原表記、ucum は UCUM 準拠のコード。
 CREATE TABLE IF NOT EXISTS unit (
   unit_id TEXT PRIMARY KEY,

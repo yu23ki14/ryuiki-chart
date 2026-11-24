@@ -384,7 +384,8 @@ def test_build_writes_the_three_tables_and_passes_the_reference_checks(reg):
     # 173→176 source・175→178 edition: 2026-10-11 奄美 Step 3c（bodik_kagoshima_dosha_amami・kagoshima_suido_amami・kagoshima_dam_capacity_amami）
     # 177→180 source・179→182 edition: 2026-10-12 モニ1000 奄美（moni1000_coast_shorebird_amami・moni1000_forest_bird_amami）とサンゴ礁（#113）
     # 180→182 source・182→184 edition: OSM の河川線とダム・堰（osm_waterways・osm_water_structures）
-    assert counts["source"] == 182 and counts["source_edition"] == 184
+    # 182→183 source・184→185 edition: 龍郷町「広報たつごう」（tatsugo_koho_amami。Issue #130）
+    assert counts["source"] == 183 and counts["source_edition"] == 185
     r01._assert_id_uniqueness(reg)
     r01._assert_id_references(reg)
     # Issue #93: source.region_id はマニフェストの region（マニフェストの無い出典は NULL）。

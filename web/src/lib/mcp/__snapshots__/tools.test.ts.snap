@@ -424,7 +424,7 @@ exports[`MCP ツール一覧 > 入力スキーマのスナップショット 1`]
     "name": "export_dataset",
   },
   {
-    "description": "出典（source_id）を指定して、台帳表の明細をそのまま取る。観測値・出現記録ではない地点・保護区・植生・河川・哺乳類メッシュ・クマ出没・レッドリスト／外来種の評価など。任意 SQL ではなく、出典ごとに宣言された表だけ。主キー昇順。id で 1 件、q で名称・和名・学名の部分一致。保護区・植生・河川・土砂災害区域のジオメトリは id 指定の 1 件だけ include_geometry で返す。保護区（record_set=protected_areas）は地域で出典と範囲が違う（区別は source_id。出典ごとの範囲は describe_catalog what='sources'）。結果が truncated のときは next_after を after に渡して続きを取る（深いページは offset より速い）。ライセンスや座標で行を除外・加工しない。利用条件は provenance の出典情報を見る。地点（record_set=sites）は大気・水位・水質・地盤沈下などの観測局を含む全地点で、行の site_id は get_observations の scope={type:'site', siteId} にそのまま渡せる。status が needs_review の地点は座標が未確認（lat・lon は null）。watershed・zone・municipality・operator などは従来の地点表にある地点だけ値が入り、観測局は null（地点と流域・zone の紐付けは未整備）。行政文書の一覧（record_set=documents。抽出セル数 n_cells・注記数 n_notes・比較注意 n_blocking つき）と注記（record_set=document_notes。q は本文と doc_id に効く。id は行の note_rowid）は出典に紐付かないので source_id を付けず record_set だけで引く（行の publisher・url・license が出典）。行政文書の抽出セル（record_set=document_cells。置き換え済みは除く。約 12 万行なので n_total は返さない（null）。doc_id に文書の doc_id を渡して引く（describe_catalog what='sources' の queryable_via が get_records(document_cells) の出典は、document_ids の各値を doc_id に渡す）。document_notes も doc_id で絞れる）も同じ。使える出典と record_set（複数あるときは record_set を指定）: atsugi_river_water_quality=sites、biodic_mammal_mesh_kanagawa=mammal_mesh、biodic_veg2024_amami=vegetation、biodic_veg2024_kanagawa=vegetation、bodik_kagoshima_dosha_amami=hazard_zones、dams_kanagawa=sites、env_kousui_stations_amami=sites、env_kousui_stations_kanagawa=sites、geoshape_sagami_river=river_segments、hadano_preserved_trees=protected_areas、hiratsuka_parks=protected_areas、hiratsuka_taiki_stations=sites、jma_stations_amami=sites、jma_stations_kanagawa=sites、kagoshima_kasen_stations_amami=sites、kagoshima_ordinance_species=assessments、kagoshima_redlist=assessments、kanagawa_green_conservation=protected_areas、kanagawa_jiban_chinka=sites、kanagawa_kuma_sightings=sightings、kanagawa_natural_parks=protected_areas、kanagawa_rdb2022_plants=assessments、kanagawa_redlist=assessments、moe_ias_list=assessments、moni1000_coast_shorebird=monitoring_counts、moni1000_coast_shorebird_amami=monitoring_counts、moni1000_coral_amami=coral_reef_surveys、moni1000_forest_bird=monitoring_counts、moni1000_forest_bird_amami=monitoring_counts、moni1000_satochi_bird=monitoring_counts、moni1000_satochi_butterfly=monitoring_counts、moni1000_satochi_mammal=monitoring_counts、moni1000_sites=sites、nlni_a10_natparks_amami=protected_areas、nlni_a15_wildlife_amami=protected_areas、nlni_a45_forest_amami=protected_areas、osm_water_structures=osm_water_structures、osm_waterways=osm_waterways、sagami_livecams=sites、sagamihara_taiki_stations=sites、soramame_stations_amami=sites、soramame_stations_kanagawa=sites、yokohama_river_waterlevel=sites。",
+    "description": "出典（source_id）を指定して、台帳表の明細をそのまま取る。観測値・出現記録ではない地点・保護区・植生・河川・哺乳類メッシュ・クマ出没・レッドリスト／外来種の評価など。任意 SQL ではなく、出典ごとに宣言された表だけ。主キー昇順。id で 1 件、q で名称・和名・学名の部分一致。保護区・植生・河川・土砂災害区域のジオメトリは id 指定の 1 件だけ include_geometry で返す。保護区（record_set=protected_areas）は地域で出典と範囲が違う（区別は source_id。出典ごとの範囲は describe_catalog what='sources'）。結果が truncated のときは next_after を after に渡して続きを取る（深いページは offset より速い）。ライセンスや座標で行を除外・加工しない。利用条件は provenance の出典情報を見る。地点（record_set=sites）は大気・水位・水質・地盤沈下などの観測局を含む全地点で、行の site_id は get_observations の scope={type:'site', siteId} にそのまま渡せる。status が needs_review の地点は座標が未確認（lat・lon は null）。watershed・zone・municipality・operator などは従来の地点表にある地点だけ値が入り、観測局は null（地点と流域・zone の紐付けは未整備）。行政文書の一覧（record_set=documents。抽出セル数 n_cells・注記数 n_notes・比較注意 n_blocking つき）と注記（record_set=document_notes。q は本文と doc_id に効く。id は行の note_rowid）は出典に紐付かないので source_id を付けず record_set だけで引く（行の publisher・url・license が出典）。行政文書の抽出セル（record_set=document_cells。置き換え済みは除く。約 12 万行なので n_total は返さない（null）。doc_id に文書の doc_id を渡して引く（describe_catalog what='sources' の queryable_via が get_records(document_cells) の出典は、document_ids の各値を doc_id に渡す）。document_notes も doc_id で絞れる）も同じ。定期刊行物（広報たつごう。出典 tatsugo_koho_amami）は record_set=periodical_issues（号の一覧。files に PDF の URL）と record_set=document_articles（記事。year・fiscal_year・issue・topic・place_id・q〔見出しと本文の部分一致。一致箇所の前後を match_snippet に返す〕で絞る。一覧は has_body・body_chars だけで、本文の全文 body_text は include_body=true〔1 回 20 件まで〕か id 指定の 1 件で返す。全文は要約・切り詰めしない）。document_articles の各行には出典の表記 citation（例: 龍郷町「広報たつごう」2024年12月号 p.12）・pdf_url（該当ページへのリンク）・source_license をサーバが必ず付ける。回答では citation を出典として示し、pdf_url を添える。topics・places の各要素は機械が付けた推定で、本文に書かれたことと区別する（place_raw が記事の原文の地名、place_id は place に結べたものだけ）。使える出典と record_set（複数あるときは record_set を指定）: atsugi_river_water_quality=sites、biodic_mammal_mesh_kanagawa=mammal_mesh、biodic_veg2024_amami=vegetation、biodic_veg2024_kanagawa=vegetation、bodik_kagoshima_dosha_amami=hazard_zones、dams_kanagawa=sites、env_kousui_stations_amami=sites、env_kousui_stations_kanagawa=sites、geoshape_sagami_river=river_segments、hadano_preserved_trees=protected_areas、hiratsuka_parks=protected_areas、hiratsuka_taiki_stations=sites、jma_stations_amami=sites、jma_stations_kanagawa=sites、kagoshima_kasen_stations_amami=sites、kagoshima_ordinance_species=assessments、kagoshima_redlist=assessments、kanagawa_green_conservation=protected_areas、kanagawa_jiban_chinka=sites、kanagawa_kuma_sightings=sightings、kanagawa_natural_parks=protected_areas、kanagawa_rdb2022_plants=assessments、kanagawa_redlist=assessments、moe_ias_list=assessments、moni1000_coast_shorebird=monitoring_counts、moni1000_coast_shorebird_amami=monitoring_counts、moni1000_coral_amami=coral_reef_surveys、moni1000_forest_bird=monitoring_counts、moni1000_forest_bird_amami=monitoring_counts、moni1000_satochi_bird=monitoring_counts、moni1000_satochi_butterfly=monitoring_counts、moni1000_satochi_mammal=monitoring_counts、moni1000_sites=sites、nlni_a10_natparks_amami=protected_areas、nlni_a15_wildlife_amami=protected_areas、nlni_a45_forest_amami=protected_areas、osm_water_structures=osm_water_structures、osm_waterways=osm_waterways、sagami_livecams=sites、sagamihara_taiki_stations=sites、soramame_stations_amami=sites、soramame_stations_kanagawa=sites、tatsugo_koho_amami=periodical_issues+document_articles、yokohama_river_waterlevel=sites。",
     "inputSchema": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
@@ -441,15 +441,31 @@ exports[`MCP ツール一覧 > 入力スキーマのスナップショット 1`]
           "minLength": 1,
           "type": "string",
         },
+        "fiscal_year": {
+          "description": "4 月始まりの年度（record_set=periodical_issues・document_articles だけ。記事は載っている号の年度）",
+          "maximum": 2200,
+          "minimum": 1900,
+          "type": "integer",
+        },
         "id": {
           "description": "主キーの完全一致（1 件取り）",
           "maxLength": 300,
           "minLength": 1,
           "type": "string",
         },
+        "include_body": {
+          "description": "true なら記事の本文の全文 body_text も返す（record_set=document_articles だけ。1 回 20 件まで。id 指定の 1 件は指定なしでも返す。要約も切り詰めもしない）",
+          "type": "boolean",
+        },
         "include_geometry": {
           "description": "true なら geometry_geojson も返す（保護区・植生・河川・土砂災害区域のみ。id を指定した 1 件のときだけ許す。一覧では返さない）",
           "type": "boolean",
+        },
+        "issue": {
+          "description": "号の絞り込み（record_set=periodical_issues・document_articles だけ）。issue_id か年月 'YYYY-MM' の完全一致",
+          "maxLength": 300,
+          "minLength": 1,
+          "type": "string",
         },
         "limit": {
           "description": "返す行数の上限（既定 100、最大 500）",
@@ -463,13 +479,19 @@ exports[`MCP ツール一覧 > 入力スキーマのスナップショット 1`]
           "minimum": 0,
           "type": "integer",
         },
+        "place_id": {
+          "description": "記事の地名に結べた place_id の完全一致（record_set=document_articles だけ。place に結べない地名は q で引く）",
+          "maxLength": 300,
+          "minLength": 1,
+          "type": "string",
+        },
         "q": {
           "description": "表ごとの検索列（名称・和名・学名など）の部分一致",
           "minLength": 1,
           "type": "string",
         },
         "record_set": {
-          "description": "記録の集合（sites・protected_areas・vegetation・hazard_zones・river_segments・osm_waterways・osm_water_structures・mammal_mesh・sightings・monitoring_counts・coral_reef_surveys・assessments・documents・document_notes・document_cells）。出典に集合が複数あるときだけ必須（1つなら省略可）。documents・document_notes・document_cells は出典に紐付かないので source_id なしでこれだけ指定する",
+          "description": "記録の集合（sites・protected_areas・vegetation・hazard_zones・river_segments・osm_waterways・osm_water_structures・mammal_mesh・sightings・monitoring_counts・coral_reef_surveys・periodical_issues・document_articles・assessments・documents・document_notes・document_cells）。出典に集合が複数あるときだけ必須（1つなら省略可）。documents・document_notes・document_cells は出典に紐付かないので source_id なしでこれだけ指定する",
           "enum": [
             "sites",
             "protected_areas",
@@ -485,6 +507,8 @@ exports[`MCP ツール一覧 > 入力スキーマのスナップショット 1`]
             "documents",
             "document_notes",
             "document_cells",
+            "periodical_issues",
+            "document_articles",
             "assessments",
           ],
           "type": "string",
@@ -534,9 +558,22 @@ exports[`MCP ツール一覧 > 入力スキーマのスナップショット 1`]
             "sagamihara_taiki_stations",
             "soramame_stations_amami",
             "soramame_stations_kanagawa",
+            "tatsugo_koho_amami",
             "yokohama_river_waterlevel",
           ],
           "type": "string",
+        },
+        "topic": {
+          "description": "話題の topic_id の完全一致（record_set=document_articles だけ。agri_fishery〔農林水産〕・conservation_clean〔環境保全・清掃〕・disaster〔防災・災害〕・other〔その他〕・river_water〔河川・水〕・tourism〔観光〕・wildlife_alien〔生き物・外来種〕。語彙の正は registry/article_topic.yaml）",
+          "maxLength": 300,
+          "minLength": 1,
+          "type": "string",
+        },
+        "year": {
+          "description": "号の年月の暦年（record_set=periodical_issues・document_articles だけ。fiscal_year と併せたら AND）",
+          "maximum": 2200,
+          "minimum": 1900,
+          "type": "integer",
         },
       },
       "type": "object",
