@@ -16,9 +16,9 @@ import argparse
 import json
 import pathlib
 import re
-import sys
 import unicodedata
 import urllib.parse
+from collections import defaultdict
 from html.parser import HTMLParser
 
 import tatsugo_segment as seg
@@ -142,7 +142,7 @@ class _Page(HTMLParser):
         elif kind == "a":
             self._last = {"link_text": text, "href": self._href, "heading": self.heading, "headlines": []}
             self.entries.append(self._last)
-        elif text:
+        elif text and self._last is not None:  # li の中の div で _last が外れていることがある
             self._last["headlines"].append(text)
 
 
@@ -224,18 +224,16 @@ def cmd_catalog(raw: pathlib.Path, offline: bool = False) -> None:
     print(json.dumps(s, ensure_ascii=False), f"pages={len(pages)}")
 
 
-def _pages_of(path: pathlib.Path) -> int | None:
-    try:
-        import pymupdf  # 遅延 import
-        with pymupdf.open(path) as d:
-            return d.page_count
-    except Exception as e:  # noqa: BLE001
-        print("page count failed:", path.name, e, file=sys.stderr)
-        return None
+def _pages_of(path: pathlib.Path) -> int:
+    """PDF のページ数（pymupdf）。開けなければ握りつぶさず例外で止める。"""
+    import pymupdf  # 遅延 import
+    with pymupdf.open(path) as d:
+        return d.page_count
 
 
 def cmd_fetch(raw: pathlib.Path, only: list[str]) -> None:
-    from common import get, sha256
+    import os
+    from common import download, sha256
     cat = json.loads((raw / "catalog.json").read_text(encoding="utf-8"))
     log_path = raw / "fetch_log.json"
     log = json.loads(log_path.read_text(encoding="utf-8")) if log_path.exists() else {}
@@ -249,9 +247,12 @@ def cmd_fetch(raw: pathlib.Path, only: list[str]) -> None:
         if dest.exists() and log.get(name, {}).get("sha256") == sha256(dest):
             print("skip (same sha256)", name)
             continue
-        dest.write_bytes(get(r["url"], timeout=180).content)
-        log[name] = {"url": r["url"], "issue": r["issue"], "bytes": dest.stat().st_size,
-                     "sha256": sha256(dest), "pages": _pages_of(dest)}
+        part = dest.with_name(name + ".part")  # 取得の途中で止まった半端なファイルを PDF として残さない
+        part.unlink(missing_ok=True)
+        download(r["url"], part, timeout=180)
+        pages = _pages_of(part)  # 開けなければここで止まる（.part は残るが次回消す）
+        os.replace(part, dest)
+        log[name] = {"url": r["url"], "issue": r["issue"], "bytes": dest.stat().st_size, "sha256": sha256(dest), "pages": pages}
         print("fetched", name, log[name]["bytes"], log[name]["pages"])
     log_path.write_text(json.dumps(log, ensure_ascii=False, indent=1), encoding="utf-8")
 
@@ -264,10 +265,15 @@ REGION_ID = "jp-46"
 def build_issue_tables(cat_rows: list[dict], fetch_log: dict) -> tuple[list[dict], list[dict]]:
     """catalog の PDF 行 → issues（号）と files（ファイル）。設計書 §2・§3.2・§3.3。"""
     by_issue: dict[str, list[tuple[int, dict]]] = {}
-    for i, r in enumerate(cat_rows):
+    annex_n: dict[str, int] = {}
+    # 別冊は 1 ファイル＝1 号で、同じ月の別冊は URL の順に `_sp1`・`_sp2`…（m13 の assign_ids と同じ規則）
+    for i, r in sorted(enumerate(cat_rows), key=lambda ir: ir[1]["url"]):
         if not r.get("issue"):
             continue
-        key = r["issue"] + ("_sp1" if r.get("annex") else "")
+        key = r["issue"]
+        if r.get("annex"):
+            annex_n[key] = annex_n.get(key, 0) + 1
+            key += f"_sp{annex_n[key]}"
         by_issue.setdefault(key, []).append((i, r))
     issues, files = [], []
     for key in sorted(by_issue):
@@ -323,7 +329,7 @@ def extract_file(pdf_path: pathlib.Path, issue: dict, f: dict) -> tuple[list[dic
                                "image_cover": round(img, 2)})
         version = pymupdf.__version__
     base = seg.body_size([p["blocks"] for p in pages])
-    now = _now()
+    now = now_iso()
     arts = []
     for a in seg.segment_file(pages, base):
         kind = "cover_toc" if a["page_from"] == 1 and f["part_no"] == 1 else a["kind"]
@@ -340,16 +346,19 @@ def extract_file(pdf_path: pathlib.Path, issue: dict, f: dict) -> tuple[list[dic
     return pages_rows, arts
 
 
-def _now() -> str:
+def now_iso() -> str:
     import datetime
     return datetime.datetime.now().isoformat(timespec="seconds")
 
 
-def _read_jsonl(p: pathlib.Path) -> list[dict]:
-    return [json.loads(l) for l in p.read_text(encoding="utf-8").splitlines() if l.strip()] if p.exists() else []
+def read_jsonl(p: pathlib.Path, *, missing_ok: bool = False) -> list[dict]:
+    """JSON Lines を読む。無ければ FileNotFoundError（missing_ok なら空）。m13 もこれを使う。"""
+    if missing_ok and not p.exists():
+        return []
+    return [json.loads(l) for l in p.read_text(encoding="utf-8").splitlines() if l.strip()]
 
 
-def _write_jsonl(p: pathlib.Path, rows: list[dict]) -> None:
+def write_jsonl(p: pathlib.Path, rows: list[dict]) -> None:
     p.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), encoding="utf-8")
 
 
@@ -357,12 +366,12 @@ def cmd_extract(raw: pathlib.Path, only: list[str]) -> None:
     cat = json.loads((raw / "catalog.json").read_text(encoding="utf-8"))
     log = json.loads((raw / "fetch_log.json").read_text(encoding="utf-8")) if (raw / "fetch_log.json").exists() else {}
     issues, files = build_issue_tables(cat["pdfs"], log)
-    _write_jsonl(raw / "issues.jsonl", issues)
-    _write_jsonl(raw / "files.jsonl", files)
+    write_jsonl(raw / "issues.jsonl", issues)
+    write_jsonl(raw / "files.jsonl", files)
     iss_by_id = {i["issue_id"]: i for i in issues}
     todo = [f for f in files if (not only or f["issue_id"].removeprefix("tatsugo_koho_")[:6] in only)
             and f["sha256"] and (raw / f["local_path"]).exists()]
-    pages_old, arts_old = _read_jsonl(raw / "pages.jsonl"), _read_jsonl(raw / "articles.jsonl")
+    pages_old, arts_old = read_jsonl(raw / "pages.jsonl", missing_ok=True), read_jsonl(raw / "articles.jsonl", missing_ok=True)
     done = {f["doc_id"] for f in todo}
     pages_all = [r for r in pages_old if r["doc_id"] not in done]
     arts_all = [r for r in arts_old if r["doc_id"] not in done]
@@ -373,16 +382,19 @@ def cmd_extract(raw: pathlib.Path, only: list[str]) -> None:
         pages_all += pr
         arts_all += ar
         print(f["doc_id"], f"pages={len(pr)} articles={len(ar)}")
-    _write_jsonl(raw / "pages.jsonl", pages_all)
-    _write_jsonl(raw / "articles.jsonl", arts_all)
+    write_jsonl(raw / "pages.jsonl", pages_all)
+    write_jsonl(raw / "articles.jsonl", arts_all)
     # 令和 2 年度以降の「主な記事」見出しとの照合（抽出済みの号だけ）
+    by_issue: dict[str, list[dict]] = defaultdict(list)
+    for a in arts_all:
+        by_issue[a["issue_id"]].append(a)
     rec = {}
     for i in issues:
         if not i["headlines"]:
             continue
-        arts = [a for a in arts_all if a["issue_id"] == i["issue_id"]]
+        arts = by_issue.get(i["issue_id"])
         if arts:
-            unread = sum(1 for a in arts if a["unreadable_reason"] in ("scanned_no_ocr", "garbled_font_encoding", "no_text_layer"))
+            unread = sum(1 for a in arts if a["unreadable_reason"] in seg.UNREADABLE_REASONS)
             rec[i["issue_id"]] = seg.reconcile_issue(i["headlines"], arts, unread)
     (raw / "reconcile.json").write_text(json.dumps(rec, ensure_ascii=False, indent=1), encoding="utf-8")
     for k, v in rec.items():

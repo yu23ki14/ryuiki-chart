@@ -219,10 +219,6 @@ CREATE TABLE protected_areas (
   note_ja TEXT,
   source_id TEXT, source_ref TEXT
 , geometry_geojson TEXT);
-CREATE TABLE protocols (
-  protocol_id TEXT PRIMARY KEY, name TEXT, version TEXT, domain TEXT,
-  steps_json TEXT, source_id TEXT, url TEXT
-);
 CREATE TABLE quality_transitions (
   id INTEGER PRIMARY KEY AUTOINCREMENT, target_table TEXT, target_id TEXT,
   from_stage TEXT, to_stage TEXT, actor TEXT, occurred_at TEXT, note TEXT

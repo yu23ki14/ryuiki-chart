@@ -270,6 +270,13 @@ const regionTime = db
   .all()
   .map((r) => ({ regionId: r.region_id, tzName: r.tz_name, utcOffset: r.utc_offset }));
 
+// 記事の話題の語彙（registry/article_topic.yaml → registry.sqlite の article_topic。TATSUGO_KOHO.md §4）。
+// get_records の topic 入力の説明文・検査が引く。
+const articleTopic = db
+  .prepare(`SELECT topic_id, name_ja, note FROM article_topic ORDER BY topic_id`)
+  .all()
+  .map((r) => ({ topicId: r.topic_id, nameJa: r.name_ja, note: r.note ?? null }));
+
 // レッドリストのカテゴリー（code -> 表示名・順位）と評価リストの台帳（Issue #48 PR-3b §2.4）。
 // registry.sqlite には表が無い（`taxon_assessment.category_code`/`list_id` がこのコードを
 // 参照するだけ）ので、zone.yaml と同じく YAML を直接読む。rank は「悪化/改善」の比較順序
@@ -707,6 +714,13 @@ export interface GeneratedZone {
   cond: string;
 }
 
+/** 記事の話題（registry/article_topic.yaml）。 */
+export interface GeneratedArticleTopic {
+  topicId: string;
+  nameJa: string;
+  note: string | null;
+}
+
 /** region（\`jp-14\` 等）の時刻帯（registry/region.yaml。Issue #32-3、ADR-0024）。 */
 export interface GeneratedRegionTime {
   regionId: string;
@@ -829,6 +843,9 @@ export const MAP_METRICS = ${emitObjectArray(mapMetrics, ["scope", "id", "kind",
 export type WatershedMetricId = Extract<(typeof MAP_METRICS)[number], { scope: "watershed" }>["id"];
 /** 生物メッシュの指標の id（/api/geo/mesh の properties のキー）。 */
 export type MeshMetricId = Extract<(typeof MAP_METRICS)[number], { scope: "mesh" }>["id"];
+
+/** 記事の話題の語彙（registry/article_topic.yaml）。\`document_article_topics.topic_id\` の値。 */
+export const ARTICLE_TOPIC: readonly GeneratedArticleTopic[] = ${emitObjectArray(articleTopic, ["topicId", "nameJa", "note"])};
 
 /** region の時刻帯（registry/region.yaml の語彙。\`lookup-client.ts\` の \`regionTimeZone()\` が引く）。 */
 export const REGION_TIME: readonly GeneratedRegionTime[] = ${emitObjectArray(regionTime, ["regionId", "tzName", "utcOffset"])};

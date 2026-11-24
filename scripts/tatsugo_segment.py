@@ -19,6 +19,8 @@ import unicodedata
 
 LAYOUT_VERSION = "layout:v1"
 RULE_VERSION = "rule:v1"
+# 本文を読めないページの理由（OCR で読める可能性があるもの）。見出し照合の missed_unreadable・m13 の突合が参照する
+UNREADABLE_REASONS = ("scanned_no_ocr", "garbled_font_encoding", "no_text_layer")
 
 BOLD_FONT_RE = re.compile(r"Bold|Heavy|Black|Extra|Demi|-B\b|UB\b|DB\b|Medium", re.I)
 FOOTER_RE = re.compile(
@@ -27,8 +29,8 @@ FOOTER_RE = re.compile(
 MARK_RE = re.compile(r"^[■◆●▼◎★☆□◇○▲]")
 
 
-def norm(s: str) -> str:
-    """照合用: NFKC・空白と約物を除く。"""
+def norm_match(s: str) -> str:
+    """照合用: NFKC・空白と約物を除く（m13 の `norm_id` は約物を残す別物）。"""
     s = unicodedata.normalize("NFKC", s)
     return re.sub(r"[\s「」『』()（）\[\]【】〈〉・、。，．,.:：;；!！?？\-－―～~〜]", "", s)
 
@@ -86,7 +88,9 @@ def body_size(blocks_by_page: list[list[dict]]) -> float:
     return max(c.items(), key=lambda kv: kv[1])[0] if c else 10.0
 
 
-def is_footer(b: dict, page_w: float, page_h: float) -> bool:
+def is_footer(b: dict, page_w: float, page_h: float, base: float | None = None) -> bool:
+    """ページ番号・柱・端の見出しタブ。右端の短いブロックを落とすのは、本文以下の大きさの細い帯（幅 30 未満）だけ
+    （縦書きの見出し列は本文より大きいので残す）。base（本文の大きさ）が None なら大きさは見ない。"""
     t = b["text"].strip()
     near_edge = b["y0"] > page_h * 0.93 or b["y1"] < page_h * 0.05
     if near_edge and (FOOTER_RE.match(t) or len(t) <= 14):
@@ -94,7 +98,7 @@ def is_footer(b: dict, page_w: float, page_h: float) -> bool:
     # 紙面の端の見出しタブ（縦の細い帯。1 ブロックに全ラベルが連結されることがある）
     if (b["x1"] - b["x0"]) < 30 and (b["y1"] - b["y0"]) > page_h * 0.5 and (b["x0"] < page_w * 0.06 or b["x1"] > page_w * 0.94):
         return True
-    if b["x0"] > page_w * 0.92 and len(t) <= 14:
+    if b["x0"] > page_w * 0.92 and len(t) <= 14 and (b["x1"] - b["x0"]) < 30 and (base is None or b["size"] <= base):
         return True
     return bool(FOOTER_RE.match(t)) and len(t) <= 16 and near_edge
 
@@ -136,7 +140,7 @@ def merge_headings(heads: list[dict]) -> list[dict]:
         g["parts"].sort(key=lambda p: (round(p["y0"] / 6), -p["x0"] if p["vertical"] else p["x0"]))
         texts = [p["text"].replace("\n", "") for p in g["parts"]]
         # 影つきの文字・二重に置かれた同じ見出しは、他の部分に含まれるものを落とす
-        texts = [t for i, t in enumerate(texts) if not any(t != u and norm(t) in norm(u) or (t == u and j < i)
+        texts = [t for i, t in enumerate(texts) if not any(t != u and norm_match(t) in norm_match(u) or (t == u and j < i)
                                                            for j, u in enumerate(texts))]
         g["text"] = " ".join(texts).strip()
     return out
@@ -197,7 +201,7 @@ def segment_file(pages: list[dict], base: float) -> list[dict]:
     戻り値: 記事 dict のリスト（title, kind, page_from, page_to, body_text, confidence, unreadable_reason, section）。"""
     arts: list[dict] = []
     for pg in pages:
-        blocks = [b for b in pg["blocks"] if not is_footer(b, pg["w"], pg["h"])]
+        blocks = [b for b in pg["blocks"] if not is_footer(b, pg["w"], pg["h"], base)]
         n = sum(len(b["text"].strip()) for b in blocks)
         no = pg["page"]
         if n < 20:
@@ -409,13 +413,15 @@ def reconcile_issue(headlines: list[str], articles: list[dict], unreadable_pages
     missed_unreadable: どこにも無いが、その号にスキャン・文字化けで読めないページがある（OCR で読める可能性）／
     missed: それ以外の取りこぼし。extra: どの見出しにも当たらない article（HTML は「主な」記事だけなので誤りとは限らない）。"""
     arts = [a for a in articles if a["kind"] == "article" and a.get("title")]
-    titles = [(a, norm(a["title"])) for a in arts]
-    alltext = norm(" ".join((a.get("title") or "") + (a.get("body_text") or "") for a in articles))
+    titles = [(a, norm_match(a["title"])) for a in arts]
+    alltext = norm_match(" ".join((a.get("title") or "") + (a.get("body_text") or "") for a in articles))
     matched, in_text, para, missed, missed_unread, used = [], [], [], [], [], set()
+    n_headlines = 0
     for h in headlines:
-        hn = norm(clean_headline(h))
+        hn = norm_match(clean_headline(h))
         if not hn:
-            continue
+            continue  # 正規化で空になる見出し（「［表紙］」だけ等）は分母に数えない
+        n_headlines += 1
         hit = None
         for a, tn in titles:
             if tn and (hn in tn or tn in hn and len(tn) >= 4 or difflib.SequenceMatcher(None, hn, tn).ratio() >= 0.6):
@@ -433,6 +439,6 @@ def reconcile_issue(headlines: list[str], articles: list[dict], unreadable_pages
         else:
             missed.append(h)
     extra = [a["title"] for a, _ in titles if id(a) not in used]
-    return {"headlines": len(headlines), "matched": matched, "in_text_only": in_text, "paraphrase": para,
+    return {"headlines": n_headlines, "matched": matched, "in_text_only": in_text, "paraphrase": para,
             "missed_unreadable": missed_unread, "missed": missed, "unreadable_pages": unreadable_pages,
             "extra_count": len(extra), "extra": extra}

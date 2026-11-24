@@ -18,6 +18,8 @@ import type { CubeDb, SqlParam } from "@/lib/cube/db";
 import { idText, likeParam, likeText } from "@/lib/query-params";
 import { RECORD_SET_TABLES, RECORD_SOURCE_IDS as GENERATED_RECORD_SOURCE_IDS } from "@/lib/registry/generated-source";
 import { sourceAccess } from "@/lib/cube/source-meta";
+import { ARTICLE_TOPIC } from "@/lib/registry/generated-client";
+import { decorateArticle, decorateIssue } from "@/lib/periodical";
 
 export const RECORDS_MAX_ROWS = 500;
 /** `include_body=true` の 1 回の上限（本文は 1 件で数千字。応答サイズを抑える）。 */
@@ -59,13 +61,26 @@ export interface RecordTable {
    * （算出列）だけ。`q` のときは一致した前後を `match_snippet` に付ける。
    */
   bodyCol?: string;
-  /** 追加の絞り込み入力（`FilterKey` → WHERE の断片。`?` の数だけ同じ値を束縛する）。ここに無い入力を渡すと入力エラー。 */
-  filters?: Partial<Record<FilterKey, string>>;
+  /** 追加の絞り込み入力（`FilterKey` → WHERE の断片と束縛する値）。ここに無い入力を渡すと入力エラー。 */
+  filters?: Partial<Record<FilterKey, RecordFilter>>;
+  /** 返す行の整形（出典表記の付与など。`RECORD_TABLES` の定義に持たせ、queryRecords は record_set 名を名指ししない）。 */
+  decorate?: (row: RecordRow) => RecordRow;
   /** 値が JSON 文字列の列（`cols`・`computed` の別名）。返すときにパースする（壊れた値はそのまま）。 */
   jsonCols?: readonly string[];
   /** true なら `source_id` を省いても、その record_set を宣言している出典が 1 つだけのときはそれを使う。 */
   inferSource?: boolean;
 }
+
+/** 1 行の値の型（`RecordsResult.rows` の要素）。 */
+export type RecordRow = Record<string, string | number | null | object>;
+
+/** 絞り込みの定義: WHERE の断片と、入力値から束縛する値の並び（断片の `?` の数と一致させる）。 */
+export interface RecordFilter {
+  sql: string;
+  bind: (v: SqlParam) => SqlParam[];
+}
+const bind1 = (sql: string): RecordFilter => ({ sql, bind: (v) => [v] });
+const bind2 = (sql: string): RecordFilter => ({ sql, bind: (v) => [v, v] });
 
 /** 定期刊行物の絞り込み入力（`recordsInputSchema`）。 */
 export const FILTER_KEYS = ["issue", "year", "fiscal_year", "topic", "place_id"] as const;
@@ -290,7 +305,7 @@ export const RECORD_TABLES = {
   /*
    * 定期刊行物（広報たつごう。docs/plans/TATSUGO_KOHO.md §3・§6、scripts/m13_tatsugo_koho.py）。表名は access.yaml の
    * record_sets の生成物（RECORD_SET_TABLES）と同じ。生成物の再生成前でも動くよう、ここは直書きにしてある。
-   * 本文は bodyCol（include_body か id 指定のときだけ）。citation・pdf_url・source_license は返すたびに `decorateRows` が付ける。
+   * 本文は bodyCol（include_body か id 指定のときだけ）。citation・pdf_url・source_license は返すたびに `decorate`（lib/periodical.ts）が付ける。
    */
   periodical_issues: {
     table: "periodical_issues",
@@ -308,11 +323,13 @@ export const RECORD_TABLES = {
       "LEFT JOIN (SELECT issue_id, COUNT(*) AS n FROM document_articles WHERE kind = 'article' GROUP BY issue_id) na ON na.issue_id = periodical_issues.issue_id",
     computed: { files: "COALESCE(ff.j, '[]')", n_articles: "COALESCE(na.n, 0)", series_title: "ps.title", series_publisher: "ps.publisher" },
     jsonCols: ["headlines", "files"],
+    // year は号の年月の暦年。年をまたぐ合併号（2019-12〜2020-01）は両方の年で拾う
     filters: {
-      issue: "(periodical_issues.issue_id = ? OR periodical_issues.year_month = ?)",
-      year: "CAST(substr(periodical_issues.year_month, 1, 4) AS INTEGER) = ?",
-      fiscal_year: "periodical_issues.fiscal_year = ?",
+      issue: bind2("(periodical_issues.issue_id = ? OR periodical_issues.year_month = ?)"),
+      year: bind2("(CAST(substr(periodical_issues.year_month, 1, 4) AS INTEGER) = ? OR CAST(substr(periodical_issues.year_month_to, 1, 4) AS INTEGER) = ?)"),
+      fiscal_year: bind1("periodical_issues.fiscal_year = ?"),
     },
+    decorate: decorateIssue,
     inferSource: true,
   },
   document_articles: {
@@ -351,15 +368,17 @@ export const RECORD_TABLES = {
       doc_url: "dd.url",
       series_title: "ps.title",
       series_publisher: "ps.publisher",
+      series_license: "ps.license",
     },
     jsonCols: ["event_dates", "topics", "places"],
     filters: {
-      issue: "(document_articles.issue_id = ? OR pi.year_month = ?)",
-      year: "CAST(substr(pi.year_month, 1, 4) AS INTEGER) = ?",
-      fiscal_year: "pi.fiscal_year = ?",
-      topic: "EXISTS (SELECT 1 FROM document_article_topics t WHERE t.article_id = document_articles.article_id AND t.topic_id = ?)",
-      place_id: "EXISTS (SELECT 1 FROM document_article_places pl WHERE pl.article_id = document_articles.article_id AND pl.place_id = ?)",
+      issue: bind2("(document_articles.issue_id = ? OR pi.year_month = ?)"),
+      year: bind2("(CAST(substr(pi.year_month, 1, 4) AS INTEGER) = ? OR CAST(substr(pi.year_month_to, 1, 4) AS INTEGER) = ?)"),
+      fiscal_year: bind1("pi.fiscal_year = ?"),
+      topic: bind1("EXISTS (SELECT 1 FROM document_article_topics t WHERE t.article_id = document_articles.article_id AND t.topic_id = ?)"),
+      place_id: bind1("EXISTS (SELECT 1 FROM document_article_places pl WHERE pl.article_id = document_articles.article_id AND pl.place_id = ?)"),
     },
+    decorate: decorateArticle,
     inferSource: true,
   },
   assessments: {
@@ -405,7 +424,7 @@ export const recordsInputSchema = z.object({
   issue: idText("号の絞り込み（record_set=periodical_issues・document_articles だけ）。issue_id か年月 'YYYY-MM' の完全一致").optional(),
   year: z.number().int().min(1900).max(2200).optional().describe("号の年月の暦年（record_set=periodical_issues・document_articles だけ。fiscal_year と併せたら AND）"),
   fiscal_year: z.number().int().min(1900).max(2200).optional().describe("4 月始まりの年度（record_set=periodical_issues・document_articles だけ。記事は載っている号の年度）"),
-  topic: idText("話題の topic_id の完全一致（record_set=document_articles だけ。語彙は describe_catalog what='sources' の出典の topics）").optional(),
+  topic: idText(`話題の topic_id の完全一致（record_set=document_articles だけ。${ARTICLE_TOPIC.map((t) => `${t.topicId}〔${t.nameJa}〕`).join("・")}。語彙の正は registry/article_topic.yaml）`).optional(),
   place_id: idText("記事の地名に結べた place_id の完全一致（record_set=document_articles だけ。place に結べない地名は q で引く）").optional(),
   include_body: z
     .boolean()
@@ -546,8 +565,8 @@ interface SelectSpec {
   geometry?: boolean;
   /** 本文列（`bodyCol`）も返す。 */
   body?: boolean;
-  /** 追加の WHERE 断片（`def.filters` の値。`?` の数だけ値を束縛する）。 */
-  extra?: readonly { sql: string; value: SqlParam }[];
+  /** 追加の WHERE 断片と束縛する値（`def.filters` から作る）。 */
+  extra?: readonly { sql: string; params: readonly SqlParam[] }[];
   /** 行数。null は上限なし（呼び出し側が全件を意図するとき）。省略は `defaultLimit`。 */
   limit?: number | null;
   defaultLimit?: number;
@@ -596,7 +615,7 @@ function buildSelect(s: SelectSpec): { sql: string; params: SqlParam[]; limit: n
   }
   for (const x of s.extra ?? []) {
     conds.push(x.sql);
-    for (let i = 0; i < x.sql.split("?").length - 1; i++) params.push(x.value);
+    params.push(...x.params);
   }
   if (s.id !== undefined) {
     conds.push(`${exprOf(def.pk)} = ?`);
@@ -638,13 +657,13 @@ export async function queryRecords(db: CubeDb, a: RecordsInput, opt: QueryRecord
   if (a.doc_id !== undefined && !def.cols.includes("doc_id")) throw fail(`表 ${table} に doc_id は無い。doc_id は record_set=document_cells・document_notes だけで使える`);
   if (a.after !== undefined && a.offset) throw fail("after と offset は併用できない（深いページは after だけを使う）");
 
-  const extra: { sql: string; value: SqlParam }[] = [];
+  const extra: { sql: string; params: SqlParam[] }[] = [];
   for (const k of FILTER_KEYS) {
     const v = a[k];
     if (v === undefined) continue;
     const frag = def.filters?.[k];
     if (!frag) throw fail(`表 ${table} に ${k} は無い。${k} は ${filterSets(k).join("・")} だけで使える`);
-    extra.push({ sql: frag, value: v });
+    extra.push({ sql: frag.sql, params: frag.bind(v) });
   }
   if (a.include_body === true && !def.bodyCol) throw fail(`表 ${table} に本文は無い。include_body は record_set=${bodySets().join("・")} だけで使える`);
   const wantBody = !!def.bodyCol && (a.include_body === true || a.id !== undefined);
@@ -662,11 +681,10 @@ export async function queryRecords(db: CubeDb, a: RecordsInput, opt: QueryRecord
   const raw = await db.all(sql, params);
   const truncated = raw.length > lim;
   const page = raw.slice(0, lim);
-  let rows: RecordsResult["rows"] = geomCol ? page.map((r) => ({ ...r, [geomCol]: parseGeometry(r[geomCol]) })) : page;
+  let rows: RecordsResult["rows"] = geomCol ? page.map((r) => ({ ...r, [geomCol]: parseJsonText(r[geomCol]) })) : page;
   if (def.jsonCols) rows = rows.map((r) => parseJsonCols(r, def.jsonCols as readonly string[]));
   if (def.bodyCol) rows = rows.map((r) => shapeBody(r, def.bodyCol as string, a.q, wantBody));
-  if (set === "document_articles") rows = rows.map(decorateArticle);
-  if (set === "periodical_issues") rows = rows.map(decorateIssue);
+  if (def.decorate) rows = rows.map(def.decorate);
   const last = truncated ? page[page.length - 1]?.[def.pk] : undefined;
   return {
     source_id: sourceId ?? null,
@@ -702,22 +720,14 @@ function bodySets(): string[] {
   return RECORD_SET_NAMES.filter((n) => TABLES[n].bodyCol);
 }
 
-function parseJson(v: unknown): unknown {
-  if (typeof v !== "string") return v ?? null;
-  try {
-    return JSON.parse(v) as unknown;
-  } catch {
-    return v; // 壊れた値は黙って捨てず、そのまま返す
-  }
-}
-function parseJsonCols(r: Record<string, string | number | null | object>, cols: readonly string[]) {
+function parseJsonCols(r: RecordRow, cols: readonly string[]) {
   const out = { ...r };
-  for (const c of cols) if (c in out) out[c] = parseJson(out[c]) as string | number | null | object;
+  for (const c of cols) if (c in out) out[c] = parseJsonText(out[c] as string | number | null | undefined);
   return out;
 }
 
 /** 本文を求められていなければ外し、q のときは一致箇所の前後各 40 字（本文の一部をそのまま切り出す。要約ではない）を足す。 */
-function shapeBody(r: Record<string, string | number | null | object>, bodyCol: string, q: string | undefined, wantBody: boolean) {
+function shapeBody(r: RecordRow, bodyCol: string, q: string | undefined, wantBody: boolean) {
   const out = { ...r };
   const body = typeof out[bodyCol] === "string" ? (out[bodyCol] as string) : null;
   if (q !== undefined) {
@@ -729,71 +739,8 @@ function shapeBody(r: Record<string, string | number | null | object>, bodyCol: 
 }
 const SNIPPET_CHARS = 40;
 
-/* ------------------------------------------------------------------ */
-/* 定期刊行物の出典表記（citation・pdf_url。サーバが機械的に付ける。モデルに任せない）  */
-/* ------------------------------------------------------------------ */
-
-/** 記事の source_license（一文の固定文言。原文は periodical_series.license）。 */
-export const PERIODICAL_SOURCE_LICENSE = "著作権は龍郷町に帰属。2026-11-24 オーナーが広報担当と確認のうえ、公開分を試験的に利用している。";
-const DEFAULT_SERIES_TITLE = "広報たつごう";
-const DEFAULT_SERIES_PUBLISHER = "龍郷町";
-
-const ymParts = (ym: unknown): [number, number] | null => {
-  const m = typeof ym === "string" ? /^(\d{4})-(\d{2})$/.exec(ym) : null;
-  return m ? [Number(m[1]), Number(m[2])] : null;
-};
-
-/** 号の表記。月刊は「2024年12月号」、合併号は「2019年4・5月合併号」、別冊は「2015年2月 別冊」。年月が読めなければ null。 */
-export function issueLabel(issue: { kind?: unknown; year_month?: unknown; year_month_to?: unknown }): string | null {
-  const from = ymParts(issue.year_month);
-  if (!from) return null;
-  const to = ymParts(issue.year_month_to);
-  if (issue.kind === "supplement") return `${from[0]}年${from[1]}月 別冊`;
-  if (!to) return `${from[0]}年${from[1]}月号`;
-  return to[0] === from[0] ? `${from[0]}年${from[1]}・${to[1]}月合併号` : `${from[0]}年${from[1]}月・${to[0]}年${to[1]}月合併号`;
-}
-
-/** 出典の文字列。ページは号内通しページ（範囲は p.12–13）。例: 龍郷町「広報たつごう」2024年12月号 p.12 */
-export function periodicalCitation(r: {
-  publisher?: unknown; title?: unknown; kind?: unknown; year_month?: unknown; year_month_to?: unknown; page_from?: unknown; page_to?: unknown;
-}): string | null {
-  const label = issueLabel(r);
-  if (label === null) return null;
-  const publisher = typeof r.publisher === "string" ? r.publisher : DEFAULT_SERIES_PUBLISHER;
-  const title = typeof r.title === "string" ? r.title : DEFAULT_SERIES_TITLE;
-  const from = typeof r.page_from === "number" ? r.page_from : null;
-  const to = typeof r.page_to === "number" ? r.page_to : from;
-  const pages = from === null ? "" : to !== null && to !== from ? ` p.${from}–${to}` : ` p.${from}`;
-  return `${publisher}「${title}」${label}${pages}`;
-}
-
-/** 元 PDF の URL に該当ページ（ファイル内ページ）を付ける。 */
-export function pdfPageUrl(url: unknown, filePage: unknown): string | null {
-  if (typeof url !== "string" || url === "") return null;
-  return typeof filePage === "number" ? `${url}#page=${filePage}` : url;
-}
-
-type Row = Record<string, string | number | null | object>;
-
-function decorateArticle(r: Row): Row {
-  const { doc_url, series_title, series_publisher, issue_kind, ...rest } = r;
-  return {
-    ...rest,
-    citation: periodicalCitation({
-      publisher: series_publisher, title: series_title, kind: issue_kind, year_month: r.year_month, year_month_to: r.year_month_to,
-      page_from: r.issue_page_from, page_to: r.issue_page_to,
-    }),
-    pdf_url: pdfPageUrl(doc_url, r.page_from),
-    source_license: PERIODICAL_SOURCE_LICENSE,
-  };
-}
-
-function decorateIssue(r: Row): Row {
-  const { series_title, series_publisher, ...rest } = r;
-  return { ...rest, citation: periodicalCitation({ publisher: series_publisher, title: series_title, ...r }) };
-}
-
-function parseGeometry(v: string | number | null | undefined): object | string | number | null {
+/** JSON 文字列の列（ジオメトリ・定期刊行物の配列）をパースする。壊れた値・文字列でない値はそのまま返す。 */
+function parseJsonText(v: string | number | null | undefined): object | string | number | null {
   if (typeof v !== "string") return v ?? null;
   try {
     return JSON.parse(v) as object;
@@ -823,7 +770,7 @@ export interface ReadRecordOptions {
 /**
  * 出典を問わず台帳表を読む（地図 API・行政文書の画面）。SQL は `queryRecords` と同じ builder。
  * 戻りの行の型 `T` は呼び出し側が選んだ列に合わせて宣言する（ここが唯一のキャスト）。
- * ジオメトリは `parseGeometry` せず文字列で返す（呼び出し側が壊れた値を落とす）。
+ * ジオメトリは `parseJsonText` せず文字列で返す（呼び出し側が壊れた値を落とす）。
  */
 export async function readRecordSet<T = Record<string, string | number | null>>(
   db: CubeDb,

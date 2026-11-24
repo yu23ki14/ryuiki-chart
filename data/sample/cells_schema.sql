@@ -11,6 +11,28 @@ CREATE TABLE cells (
   confidence REAL, extractor TEXT, verified_by TEXT, extracted_at TEXT, superseded INTEGER DEFAULT 0,
   FOREIGN KEY(doc_id) REFERENCES documents(doc_id)
 );
+CREATE TABLE document_article_places (
+  article_id TEXT NOT NULL, place_raw TEXT NOT NULL, place_type TEXT,
+  place_id TEXT,                 -- place 表に在るものだけ。集落などは NULL
+  match_method TEXT, confidence REAL,
+  PRIMARY KEY (article_id, place_raw),
+  FOREIGN KEY(article_id) REFERENCES document_articles(article_id)
+);
+CREATE TABLE document_article_topics (
+  article_id TEXT NOT NULL, topic_id TEXT NOT NULL, extractor TEXT, confidence REAL,
+  PRIMARY KEY (article_id, topic_id),
+  FOREIGN KEY(article_id) REFERENCES document_articles(article_id)
+);
+CREATE TABLE document_articles (
+  article_id TEXT PRIMARY KEY, issue_id TEXT NOT NULL, doc_id TEXT NOT NULL, source_id TEXT NOT NULL, region_id TEXT NOT NULL,
+  kind TEXT NOT NULL,            -- article / unsegmented / cover_toc
+  page_from INTEGER NOT NULL, page_to INTEGER NOT NULL,                 -- ファイル内ページ
+  issue_page_from INTEGER NOT NULL, issue_page_to INTEGER NOT NULL,     -- 号内通しページ
+  title TEXT, section TEXT, body_text TEXT, body_sha256 TEXT, event_dates TEXT,
+  doc_sha256 TEXT, extractor TEXT, confidence REAL, verified_by TEXT, unreadable_reason TEXT, extracted_at TEXT,
+  FOREIGN KEY(issue_id) REFERENCES periodical_issues(issue_id),
+  FOREIGN KEY(doc_id) REFERENCES documents(doc_id)
+);
 CREATE TABLE documents (
   doc_id TEXT PRIMARY KEY, title TEXT, publisher TEXT, url TEXT,
   local_path TEXT, doc_sha256 TEXT, n_pages INTEGER,
@@ -19,6 +41,28 @@ CREATE TABLE documents (
 CREATE TABLE notes (
   note_id TEXT PRIMARY KEY, doc_id TEXT, table_ids TEXT, kind TEXT,
   text TEXT, page INTEGER, blocks_timeseries INTEGER, reason TEXT
+);
+CREATE TABLE periodical_issue_files (
+  doc_id TEXT PRIMARY KEY, issue_id TEXT NOT NULL, part_no INTEGER NOT NULL,
+  page_offset INTEGER NOT NULL,  -- 号内通しページ = ファイル内ページ + page_offset
+  link_text_raw TEXT, download_url TEXT,
+  FOREIGN KEY(doc_id) REFERENCES documents(doc_id),
+  FOREIGN KEY(issue_id) REFERENCES periodical_issues(issue_id)
+);
+CREATE TABLE periodical_issues (
+  issue_id TEXT PRIMARY KEY, series_id TEXT NOT NULL, source_id TEXT NOT NULL, region_id TEXT NOT NULL,
+  kind TEXT NOT NULL,            -- monthly / supplement
+  year_month TEXT NOT NULL,      -- YYYY-MM（合併号は若い方）
+  year_month_to TEXT,            -- 合併号だけ（2019-05）
+  fiscal_year INTEGER,           -- 4月始まりの年度
+  issued_on TEXT, issued_on_raw TEXT, label_raw TEXT, listing_url TEXT,
+  headlines TEXT,                -- 令和2年度以降の「主な記事」の見出し原文（JSON 配列）
+  n_files INTEGER, n_pages INTEGER, note TEXT,
+  FOREIGN KEY(series_id) REFERENCES periodical_series(series_id)
+);
+CREATE TABLE periodical_series (
+  series_id TEXT PRIMARY KEY, source_id TEXT NOT NULL, title TEXT, publisher TEXT, region_id TEXT,
+  listing_urls TEXT, license TEXT, agreement_note TEXT
 );
 CREATE TABLE vocab_areas      (doc_id TEXT, name TEXT, definition TEXT, found_definition INTEGER, pages TEXT);
 CREATE TABLE vocab_eras       (doc_id TEXT, literal TEXT, pages TEXT);
