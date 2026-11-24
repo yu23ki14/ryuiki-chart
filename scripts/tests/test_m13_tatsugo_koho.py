@@ -149,8 +149,8 @@ def test_untitled_and_collision(catalog):
     ids = [a["article_id"] for a in build(catalog, arts)["articles"]]
     assert f"{d}:001:untitled1" in ids
     dup = arts_for(catalog) + [art(d, 1, title=f"{d} p1")]
-    with pytest.raises(m13.M13Error, match="衝突"):
-        build(catalog, dup)
+    ids2 = [a["article_id"] for a in build(catalog, dup)["articles"]]
+    assert len(ids2) == len(set(ids2)) and f"{d}:001:" in ids2[-1] and ids2[-1].endswith("x2")  # 同一記事の重複は通し番号で区別
 
 
 def test_validation_errors(catalog):

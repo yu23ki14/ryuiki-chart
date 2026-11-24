@@ -23,7 +23,7 @@
     .venv/bin/python3 scripts/m13_tatsugo_koho.py --dry-run                           # 検査と件数だけ（何も書かない）
 
 検査（失敗したら止まる。設計書 §8.1）: 件数（176 号・180 ファイル。`--allow-partial` で外す）・月の欠け・分割の part 番号・
-ページ範囲・全ページの被覆・話題の語彙・`kind='article'` の話題 1 件以上・article_id の衝突・本文 64KB 以下・
+ページ範囲・全ページの被覆・話題の語彙・`kind='article'` の話題 1 件以上・article_id の衝突（同一記事の重複は通し番号 `x2` で区別）・本文 64KB 以下・
 令和 2 年度以降の「主な記事」見出しとの突合（8 割以上。閾値は仮置き）。
 """
 from __future__ import annotations
@@ -71,7 +71,7 @@ KINDS = ("article", "unsegmented", "cover_toc")
 PLACE_TYPES = ("settlement", "river", "coast", "other")
 
 DDL_PATH = ROOT / "scripts" / "schema_tatsugo_koho.sql"
-DEFAULT_PROCESSED = ROOT / "data" / "processed" / "tatsugo_koho"
+DEFAULT_PROCESSED = ROOT / "data" / "raw" / "tatsugo_koho"
 DEFAULT_WITHDRAWN = ROOT / "scripts" / "data" / "tatsugo_koho_withdrawn.yaml"
 
 TABLES_CHILD_FIRST = (
@@ -254,6 +254,13 @@ def build_articles(arts: list[dict], files: list[dict], topic_ids: set[str], pla
     articles, topics, places = [], [], []
     seen: set[str] = set()
     untitled: dict[tuple[str, int], int] = {}
+    # 同じ (doc_id, page_from, 見出しの h8) が複数ある記事（同じページに同じ見出し。例「主な活動」「▼連絡先」）は、
+    # 見出し＋本文の先頭 80 字で h8 を作り直して区別する（入力の並びに依存しない）。それでも重なれば止まる。
+    n_ordinal = 0
+    first_keys: dict[tuple, int] = {}
+    for a in arts:
+        k = (a.get("doc_id"), a.get("page_from"), _h8(a))
+        first_keys[k] = first_keys.get(k, 0) + 1
     for a in arts:
         doc_id = a.get("doc_id")
         f = by_doc.get(doc_id)
@@ -274,12 +281,20 @@ def build_articles(arts: list[dict], files: list[dict], topic_ids: set[str], pla
         if conf is not None and not (0 <= conf <= 1):
             raise M13Error(f"{doc_id} p{p0}: confidence が 0..1 でない")
         h8 = _h8(a)
+        if h8 is not None and first_keys[(doc_id, p0, h8)] > 1:
+            h8 = sha256_text(norm(a.get("title")) + "\0" + norm(body)[:80])[:8]
         if h8 is None:
             k = untitled[(doc_id, p0)] = untitled.get((doc_id, p0), 0) + 1
             h8 = f"untitled{k}"
         article_id = f"{doc_id}:{p0:03d}:{h8}"
         if article_id in seen:
-            raise M13Error(f"article_id が衝突した: {article_id}（同じページに同じ見出しの記事が 2 つある）")
+            # 見出しも本文の先頭も同じ記事が同じページに 2 つ以上ある（見出しだけの重複。c106 の実データに 6 組）。
+            # 入力の並び順の通し番号 `x2`・`x3` で区別する（ほかに区別の手がかりが無い）。
+            k = 2
+            while f"{article_id}x{k}" in seen:
+                k += 1
+            article_id = f"{article_id}x{k}"
+            n_ordinal += 1
         seen.add(article_id)
         ev = a.get("event_dates")
         if ev is not None and not (isinstance(ev, list) and all(isinstance(e, dict) and "raw" in e for e in ev)):
@@ -395,15 +410,83 @@ def apply_withdrawals(model: dict, items: list[dict]) -> dict:
 def build_model(catalog: list[dict], articles_in: list[dict], topic_ids: set[str], withdrawals: list[dict], *,
                 allow_partial: bool = False, place_ids: set[str] | None = None, headline_threshold: float = HEADLINE_THRESHOLD,
                 expect_issues: int = EXPECTED_ISSUES, expect_files: int = EXPECTED_FILES) -> dict:
+    """c106 の catalog 形（PDF ごとの目録）から組み立てる。"""
     files = assign_ids(catalog)
     docs, issues, links = build_issues(files)
+    return finish_model(docs, issues, links, files, articles_in, topic_ids, withdrawals, allow_partial=allow_partial,
+                        place_ids=place_ids, headline_threshold=headline_threshold, expect_issues=expect_issues,
+                        expect_files=expect_files)
+
+
+def _mtime_iso(path: pathlib.Path) -> str | None:
+    """PDF の取得日時（ファイルの更新時刻。c99 と同じ）。ファイルが無ければ None。"""
+    import datetime
+    return datetime.datetime.fromtimestamp(path.stat().st_mtime).isoformat(timespec="seconds") if path.exists() else None
+
+
+def from_extract(issues: list[dict], files: list[dict], raw_dir: pathlib.Path | None = None) -> tuple[list[dict], list[dict], list[dict], list[dict]]:
+    """c106 `extract` の issues.jsonl / files.jsonl（`periodical_issues`・`periodical_issue_files` の列で出てくる）を受ける。
+    doc_id・page_offset・n_files・n_pages が §2・§3 の規則と食い違えば止まる（c106 側の誤りをここで見つける）。
+    -> (documents の行, periodical_issues の行, periodical_issue_files の行, 記事の検査に使うファイル行)。"""
+    by_issue: dict[str, list[dict]] = {}
+    for f in files:
+        by_issue.setdefault(f["issue_id"], []).append(f)
+    iss = {i["issue_id"]: i for i in issues}
+    if len(iss) != len(issues) or set(by_issue) != set(iss):
+        raise M13Error("issues.jsonl と files.jsonl の号が一致しない")
+    docs, out_issues, links, flist = [], [], [], []
+    for issue_id in sorted(iss):
+        i = iss[issue_id]
+        fs = sorted(by_issue[issue_id], key=lambda f: f["part_no"])
+        n = len(fs)
+        if [f["part_no"] for f in fs] != list(range(1, n + 1)):
+            raise M13Error(f"{issue_id}: part_no が 1..{n} でない")
+        offset = 0
+        for f in fs:
+            want = issue_id if (i["kind"] == "supplement" or n == 1) else f"{issue_id}_p{f['part_no']}"
+            if f["doc_id"] != want:
+                raise M13Error(f"{f['doc_id']}: doc_id が規則（{want}）と違う")
+            if f["page_offset"] != offset:
+                raise M13Error(f"{f['doc_id']}: page_offset が {f['page_offset']}（期待 {offset}）")
+            if not f.get("sha256") or int(f["n_pages"]) < 1:
+                raise M13Error(f"{f['doc_id']}: sha256 か n_pages が無い")
+            offset += int(f["n_pages"])
+            saved = f["local_path"].rsplit("/", 1)[-1]
+            ym = i["year_month"]
+            y, mo = int(ym[:4]), int(ym[5:7])
+            if i["kind"] == "supplement":
+                title = f"広報たつごう {y}年{mo}月 別冊"
+            elif i["year_month_to"]:
+                title = f"広報たつごう {y}年{mo}・{int(i['year_month_to'][5:7])}月合併号"
+            else:
+                title = f"広報たつごう {y}年{mo}月号"
+            if n > 1:
+                title += f"（その{f['part_no']}）"
+            docs.append(dict(doc_id=f["doc_id"], title=title, publisher=PUBLISHER, url=f["download_url"], local_path=f"{RAW_SUBDIR}/{saved}",
+                             doc_sha256=f["sha256"], n_pages=int(f["n_pages"]), fiscal_year=i["fiscal_year"], license=LICENSE_TEXT,
+                             fetched_at=_mtime_iso(raw_dir / f["local_path"]) if raw_dir else None))
+            links.append({k: f[k] for k in ("doc_id", "issue_id", "part_no", "page_offset", "link_text_raw", "download_url")})
+            flist.append(dict(doc_id=f["doc_id"], issue_id=issue_id, n_pages=int(f["n_pages"]), page_offset=offset - int(f["n_pages"]),
+                              sha256=f["sha256"]))
+        if (i["n_files"], i["n_pages"]) != (n, offset):
+            raise M13Error(f"{issue_id}: n_files/n_pages が files.jsonl と合わない（{i['n_files']}/{i['n_pages']} と {n}/{offset}）")
+        h = i.get("headlines")
+        out_issues.append(dict(
+            issue_id=issue_id, series_id=SERIES_ID, source_id=SOURCE_ID, region_id=REGION_ID, kind=i["kind"],
+            year_month=i["year_month"], year_month_to=i.get("year_month_to"), fiscal_year=i["fiscal_year"],
+            issued_on=i.get("issued_on"), issued_on_raw=i.get("issued_on_raw"), label_raw=i.get("label_raw"),
+            listing_url=i.get("listing_url"), headlines=json.dumps(h, ensure_ascii=False) if h else None,
+            n_files=n, n_pages=offset, note=i.get("note")))
+    return docs, out_issues, links, flist
+
+
+def finish_model(docs, issues, links, files, articles_in, topic_ids, withdrawals, *, allow_partial=False, place_ids=None,
+                 headline_threshold=HEADLINE_THRESHOLD, expect_issues=EXPECTED_ISSUES, expect_files=EXPECTED_FILES) -> dict:
     if not allow_partial:
         if len(issues) != expect_issues or len(files) != expect_files:
             raise M13Error(f"件数が宣言と違う: 号 {len(issues)}（期待 {expect_issues}）・ファイル {len(files)}（期待 {expect_files}）。"
                            "取りこぼしか、号が増えた（EXPECTED_* を直す）。一部だけ入れるときは --allow-partial")
         check_issue_continuity(issues)
-    for f in files:
-        f.setdefault("sha256", None)
     articles, topics, places = build_articles(articles_in, files, topic_ids, place_ids)
     check_coverage(files, articles)
     found, total, missing = headline_check(issues, articles)
@@ -519,9 +602,14 @@ def main(argv=None) -> None:
         rc = sqlite3.connect(f"file:{a.registry_db}?mode=ro", uri=True)
         place_ids = {r[0] for r in rc.execute("SELECT place_id FROM place")}
         rc.close()
-    model = build_model(read_jsonl(a.processed_dir / "catalog.jsonl"), read_jsonl(a.processed_dir / "articles.jsonl"),
-                        set(load_topics()), load_withdrawn(a.withdrawn), allow_partial=a.allow_partial, place_ids=place_ids,
-                        headline_threshold=a.headline_threshold)
+    kw = dict(allow_partial=a.allow_partial, place_ids=place_ids, headline_threshold=a.headline_threshold)
+    articles_in = read_jsonl(a.processed_dir / "articles.jsonl")
+    if (a.processed_dir / "issues.jsonl").exists():  # c106 extract の出力（既定）
+        docs, issues, links, files = from_extract(read_jsonl(a.processed_dir / "issues.jsonl"), read_jsonl(a.processed_dir / "files.jsonl"),
+                                                  a.processed_dir)
+        model = finish_model(docs, issues, links, files, articles_in, set(load_topics()), load_withdrawn(a.withdrawn), **kw)
+    else:
+        model = build_model(read_jsonl(a.processed_dir / "catalog.jsonl"), articles_in, set(load_topics()), load_withdrawn(a.withdrawn), **kw)
     if a.dry_run:
         report(model, None)
         return
