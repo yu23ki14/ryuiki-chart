@@ -18,7 +18,7 @@ import { Database, findLocalD1, qi, wranglerRemote } from "./common.mjs";
 import { pathToFileURL } from "node:url";
 
 const CHUNK = 100;
-// 子から親の順（消す順）。`kind` は ID の取り方。
+// 記事に紐付く子表（消す順。記事の親より先）。
 const TABLES_BY_ARTICLE = ["document_article_places", "document_article_topics"];
 const ID_PATTERN = /^[A-Za-z0-9_.:#-]+$/;
 
@@ -88,9 +88,11 @@ function main() {
   console.log(`# ${args.execute ? "実行" : "dry-run"}: 号 ${p.issues.length} / 記事 ${p.articleIds.length} / 文書 ${p.docIds.length}`);
   const before = rows.map(([t, c, ids]) => [t, c, ids, countIn(t, c, ids)]);
   for (const [t, , , n] of before) console.log(`- ${t}: ${n.toLocaleString()} 行を消す`);
-  // 指定した ID が本番に無いのは、綴りの誤りか取り下げ済み。黙って 0 行にしない
-  const missingIssues = p.issues.length ? p.issues.filter((i) => countIn("periodical_issues", "issue_id", [i]) === 0) : [];
-  const missingArticles = args.articles.length ? args.articles.filter((a) => !p.articleIds.includes(a) || countIn("document_articles", "article_id", [a]) === 0) : [];
+  // 指定した ID が本番に無いのは、綴りの誤りか取り下げ済み。黙って 0 行にしない（IN で 1 回読んで差集合を取る）
+  const foundIssues = new Set(selectIds("periodical_issues", "issue_id", args.issues, "issue_id"));
+  const missingIssues = args.issues.filter((i) => !foundIssues.has(i));
+  const foundArticles = new Set(selectIds("document_articles", "article_id", args.articles, "article_id"));
+  const missingArticles = args.articles.filter((a) => !foundArticles.has(a));
   if (missingIssues.length || missingArticles.length) {
     console.error(`本番に無い ID: ${[...missingIssues, ...missingArticles].join(" ")}（綴りの誤りか取り下げ済み）`);
     process.exit(1);

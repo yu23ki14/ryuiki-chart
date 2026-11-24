@@ -59,6 +59,13 @@ export interface GeneratedZone {
   cond: string;
 }
 
+/** 記事の話題（registry/article_topic.yaml）。 */
+export interface GeneratedArticleTopic {
+  topicId: string;
+  nameJa: string;
+  note: string | null;
+}
+
 /** region（`jp-14` 等）の時刻帯（registry/region.yaml。Issue #32-3、ADR-0024）。 */
 export interface GeneratedRegionTime {
   regionId: string;
@@ -475,6 +482,17 @@ export const MAP_METRICS = [
 export type WatershedMetricId = Extract<(typeof MAP_METRICS)[number], { scope: "watershed" }>["id"];
 /** 生物メッシュの指標の id（/api/geo/mesh の properties のキー）。 */
 export type MeshMetricId = Extract<(typeof MAP_METRICS)[number], { scope: "mesh" }>["id"];
+
+/** 記事の話題の語彙（registry/article_topic.yaml）。`document_article_topics.topic_id` の値。 */
+export const ARTICLE_TOPIC: readonly GeneratedArticleTopic[] = [
+  { topicId: "agri_fishery", nameJa: "農林水産", note: "農業・林業・水産業・特産" },
+  { topicId: "conservation_clean", nameJa: "環境保全・清掃", note: "清掃活動・ごみ・保全活動・自然環境の普及啓発" },
+  { topicId: "disaster", nameJa: "防災・災害", note: "台風・豪雨・避難・訓練・災害の被害" },
+  { topicId: "other", nameJa: "その他", note: "上のどれにも当たらない" },
+  { topicId: "river_water", nameJa: "河川・水", note: "河川・海岸の水、水質、水道、治水（防災と重なるときは両方付ける）" },
+  { topicId: "tourism", nameJa: "観光", note: "観光・エコツーリズム・イベント誘客" },
+  { topicId: "wildlife_alien", nameJa: "生き物・外来種", note: "野生生物、希少種、外来種・マングース・ノネコ等の駆除" },
+];
 
 /** region の時刻帯（registry/region.yaml の語彙。`lookup-client.ts` の `regionTimeZone()` が引く）。 */
 export const REGION_TIME: readonly GeneratedRegionTime[] = [

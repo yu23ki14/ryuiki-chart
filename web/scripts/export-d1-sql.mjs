@@ -21,9 +21,10 @@
  *   - 複数行を 1 つの INSERT にまとめる。D1 の SQL 文長 100KB に対して余裕を見て 64KB で切る
  *   - ファイルは既定 20MB ごとに分ける。90MB にすると `wrangler d1 execute --remote --file` の
  *     アップロード（R2 への PUT）がほぼ確実に fetch failed で落ちる。20MB なら通る
- *   - documents -> cells の外部キーがあるので、参照される側を先に出す
+ *   - 外部キー（documents -> cells、periodical_issues -> document_articles など）の親を先に出す（scripts/lib/fk-order.mjs が PRAGMA から導く）
  */
 import Database from "better-sqlite3";
+import { orderByForeignKeys } from "./lib/fk-order.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -35,9 +36,6 @@ const D1_STATE = path.join(WEB, ".wrangler", "state", "v3", "d1", "miniflare-D1D
 /** D1 の SQL 文長上限は 100KB。安全側で切る。文字数ではなく **バイト数** で測ること
  *  （日本語は UTF-8 で 1 文字 3 バイト。文字数で測ると 3 倍近くなり SQLITE_TOOBIG になる）。 */
 const MAX_STATEMENT_BYTES = 64 * 1024;
-
-/** 外部キーの親を先に。ここに無いテーブルは名前順。 */
-const FIRST = ["documents"];
 
 /** マイグレーション・シード状態・miniflare の内部テーブルは出さない。 */
 const isInternal = (n) =>
@@ -181,9 +179,8 @@ function main() {
     .all()
     .map((r) => r.name)
     .filter((n) => !isInternal(n));
-  const tables = [...FIRST.filter((t) => all.includes(t)), ...all.filter((t) => !FIRST.includes(t))].filter(
-    (t) => !only || only.includes(t),
-  );
+  // 外部キーの親を先に（子が先だと本番の --file ごとのトランザクションで FK 違反になる）。--table で絞っても依存順は保つ
+  const tables = orderByForeignKeys(db, all).filter((t) => !only || only.includes(t));
   if (only) {
     const missing = only.filter((t) => !all.includes(t));
     if (missing.length) throw new Error(`テーブルが無い: ${missing.join(", ")}`);
