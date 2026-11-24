@@ -370,3 +370,16 @@ def test_get_records_description_lists_every_topic_id():
     src = (m13.ROOT / "web" / "src" / "lib" / "records.ts").read_text(encoding="utf-8")
     missing = [t for t in TOPICS if t not in src]
     assert not missing, missing
+
+
+def test_register_source_passes_every_required_argument():
+    """common.register と同じ署名の偽物に渡す（引数の欠落・コメントが引数を飲み込む事故を止める）。"""
+    import types
+    got = []
+
+    def register(source_id, name, publisher, url, category, access_method, fmt, license_, redistributable, record_count, notes=""):
+        got.append(dict(source_id=source_id, license_=license_, redistributable=redistributable, record_count=record_count, notes=notes))
+
+    m13.register_source(types.SimpleNamespace(register=register), {"articles": [1, 2, 3]})
+    assert got[0]["source_id"] == m13.SOURCE_ID and got[0]["record_count"] == 3 and got[0]["redistributable"] == 1
+    assert got[0]["license_"] == m13.LICENSE_TEXT and "2026-11-24" in got[0]["notes"]

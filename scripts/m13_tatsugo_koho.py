@@ -481,6 +481,16 @@ def report(model: dict, diff: dict | None) -> None:
         print(f"旧原本との差分: 消えた {len(diff['removed'])}・増えた {len(diff['added'])}・本文が変わった {len(diff['changed'])}")
 
 
+def register_source(common, model: dict) -> None:
+    """source_registry（ryuiki.sqlite）に出典の行を足す（c99 と同じ）。"""
+    common.register(
+        source_id=SOURCE_ID, name="龍郷町 広報たつごう", publisher=PUBLISHER, url=INDEX_URL, category="行政広報誌",
+        access_method="PDF 個別ダウンロード（documents・periodical_*・document_articles。本文あり）", fmt="PDF",
+        license_=LICENSE_TEXT, redistributable=1, record_count=len(model["articles"]),
+        notes="号と記事は get_records の record_set=periodical_issues / document_articles。設計は docs/plans/TATSUGO_KOHO.md。"
+              "redistributable=1 の根拠: 2026-11-24 オーナーが龍郷町の広報担当と確認し、公開分の再配布（本文の掲載）が可。自由な再利用ライセンスではない。")
+
+
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--raw-dir", type=pathlib.Path, default=DEFAULT_RAW, help="c106 extract の出力先（issues/files/articles.jsonl と PDF）")
@@ -513,12 +523,7 @@ def main(argv=None) -> None:
         con.close()
     report(model, diff)
     if not (a.no_register or a.cells):
-        common.register(
-            source_id=SOURCE_ID, name="龍郷町 広報たつごう", publisher=PUBLISHER, url=INDEX_URL, category="行政広報誌",
-            access_method="PDF 個別ダウンロード（documents・periodical_*・document_articles。本文あり）", fmt="PDF",
-            license_=LICENSE_TEXT, redistributable=1,  # 根拠は下の notes record_count=len(model["articles"]),
-            notes="号と記事は get_records の record_set=periodical_issues / document_articles。設計は docs/plans/TATSUGO_KOHO.md。"
-                  "redistributable=1 の根拠: 2026-11-24 オーナーが龍郷町の広報担当と確認し、公開分の再配布（本文の掲載）が可。自由な再利用ライセンスではない。")
+        register_source(common, model)
 
 
 if __name__ == "__main__":
