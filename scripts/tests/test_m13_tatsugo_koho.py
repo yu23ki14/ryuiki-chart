@@ -365,10 +365,13 @@ def test_ddl_matches_documented_columns():
     assert {t for t in rcommon.source_id_tables(c)} == {"periodical_series", "periodical_issues", "document_articles"}
 
 
-def test_get_records_description_lists_every_topic_id():
-    """get_records の topic 入力の説明（web/src/lib/records.ts）は語彙を直書きする（describe_catalog に topics は無い）。語彙の追加で食い違わない。"""
-    src = (m13.ROOT / "web" / "src" / "lib" / "records.ts").read_text(encoding="utf-8")
-    missing = [t for t in TOPICS if t not in src]
+def test_generated_client_has_every_topic_id():
+    """web の語彙（generated-client.ts の ARTICLE_TOPIC。build-registry-ts.mjs が registry.sqlite の article_topic から出す）に、
+    registry/article_topic.yaml の全 ID がある。語彙を足したら `pnpm run build:registry:ts` で作り直す。"""
+    src = (m13.ROOT / "web" / "src" / "lib" / "registry" / "generated-client.ts").read_text(encoding="utf-8")
+    block = src[src.index("export const ARTICLE_TOPIC"):]
+    block = block[:block.index("];")]
+    missing = [t for t in TOPICS if f'"{t}"' not in block]
     assert not missing, missing
 
 
